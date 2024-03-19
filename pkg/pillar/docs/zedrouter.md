@@ -8,8 +8,10 @@ networks, aka *network instances*, providing connectivity services for applicati
 such as traffic routing/forwarding, DHCP, DNS, NAT, ACL, flow monitoring, etc.
 It works in conjunction with the NIM microservice to provide external connectivity
 for these network instances and applications that connect to them.
-It also cooperates with domainmgr to attach applications to selected network instances
-using virtual interfaces, aka *VIFs*.
+If kvm or xen hypervisor is used, zedrouter cooperates with domainmgr to attach applications
+to selected network instances using virtual interfaces, aka *VIFs*.
+When running kubevirt hypervisor, application VIFs are created in cooperation between
+the zedrouter, [eve-bridge CNI plugin](../../kube/eve-bridge/README.md) and the Kubevirt.
 
 ## Zedrouter Objects
 
@@ -45,19 +47,32 @@ logs and documentation).
 VIF stands for virtual interface - a virtual network interface that is attached to a network
 instance on one side and to the application container or to a guest VM domain on the other side.
 
-By default (with Linux-based networking), zedrouter uses TAP interface to connect application
-running as VM with the NI bridge inside the host. With default settings, interface will be
-para-virtualized and use `virtio-net-pci` driver under the hood. However, with `LEGACY`
-`virtualizationMode` selected (see `VmConfig` in `vm.proto`), `e1000` network interface
-will be emulated instead.
+How VIF is implemented depends on how the application is deployed (native container,
+or a container running inside an EVE-created Alpine VM, or a full-fledged VM)
+and on the hypervisor (kvm, xen, kubevirt, etc.).
 
-For applications running as native containers, zedrouter uses veth pair, with one end
-of the pair being placed inside the namespace of the container, while the other end is inside
-the main network namespace and attached to the NI bridge.
+For application running as a native container or as a K3s pod, zedrouter uses veth pair,
+with one end of the pair being placed inside the net namespace of the container/pod,
+while the other end is inside the main network namespace and attached to the NI bridge.
+Hypervisor is not involved (no virtualization in this case).
 
-Please note that the creation of VIF interfaces is a responsibility of [domainmgr](domainmgr.md)
-(incl. attachment to the NI bridge).
-Zedrouter then configures ACLs, potentially also (access) VLANs, updates dnsmasq parameters, etc.
+For application running as a VM or as a container inside VM, the hypervisor provides
+some mechanism to connect the host with the application domain. For example, with the kvm
+hypervisor, qemu creates TAP interface to connect VM, running as a user-space process,
+with the host networking. With default settings, interface will be para-virtualized and
+use `virtio-net-pci` driver under the hood. However, with `LEGACY` `virtualizationMode`
+selected (see `VmConfig` in `vm.proto`), `e1000` network interface will be emulated instead.
+
+With kubevirt, even VM application is running inside a K3s pod. This means that zedrouter
+must first create veth pair between the host and the pod just like when connecting a native
+container, then kubevirt creates network interface between the pod net namespace and
+the app VM running inside, and finally the pod-side of the veth and the VM interface
+are bridged together by kubevirt.
+
+Please note that even when the creation (and possibly also attachment to the NI bridge)
+of a VIF interface is carried out by the hypervisor (after receiving config directly from
+[domainmgr](domainmgr.md) or via K3s), zedrouter still takes care of ACLs, potentially also VLANs,
+DHCP/DNS config, etc.
 
 ## Key Input/Output
 
@@ -111,6 +126,9 @@ Zedrouter then configures ACLs, potentially also (access) VLANs, updates dnsmasq
     and destination IP addresses and ports, protocol, number of packets and bytes
     sent/received, ID of the ACL entry applied, etc.
 
+With kubevirt hypervisor, zedrouter also accepts **RPC calls** from the eve-bridge CNI plugin.
+Refer to the [plugin documentation](../../kube/eve-bridge/README.md) for more information.
+
 ## Components
 
 Internally, zedrouter is split into several components following the principle of separation
@@ -138,8 +156,9 @@ The core of the zedrouter is the main event loop, implemented in `pkg/pillar/zed
 On startup, zedrouter first instantiates all components described below, then it subscribes
 to several pubsub topics to receive input from other microservices (most notably zedagent and
 zedmanager), creates publications to output status and metrics for network instances
-and application connectivity (see [Key Input/Output](#key-inputoutput) above) and finally
-it enters the main event loop (endless `for` loop with `select`).
+and application connectivity (see [Key Input/Output](#key-inputoutput) above), starts CNI RPC
+server if kubevirt hypervisor is used and finally it enters the main event loop
+(endless `for` loop with `select`).
 
 Inside the main event loop, zedrouter processes:
 
@@ -166,6 +185,8 @@ Inside the main event loop, zedrouter processes:
   for every (local, non air-gapped) network instance. On change, zedrouter updates
   NI parameters passed to [NIReconciler](#nireconciler), which then performs all necessary
   config changes in the network stack.
+* RPC calls from [eve-bridge CNI plugin](../../kube/eve-bridge/README.md)
+  (only with kubevirt hypervisor).
 
 ### NIReconciler
 
@@ -181,7 +202,7 @@ The current state is being updated during each state reconciliation and potentia
 a state change notification is received from [NetworkMonitor](#networkmonitor) (e.g. a network
 interface (dis)appearing from/in the host OS or a network route being added/deleted by the kernel).
 The intended state is rebuilt by NIReconciler based on the input from Zedrouter, which
-is received through interface methods such as `AddNI`, `UpdateNI`, `DelNI`, `ConnectApp`, etc.
+is received through interface methods such as `AddNI`, `UpdateNI`, `DelNI`, `AddAppConn`, etc.
 This means that in order to understand how application connectivity is realized in a network
 stack (what low-level config it maps to), one only needs to look into the NIReconciler.
 

@@ -15,6 +15,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/netmonitor"
 	"github.com/lf-edge/eve/pkg/pillar/nireconciler/genericitems"
 	"github.com/lf-edge/eve/pkg/pillar/utils/netutils"
+	uuid "github.com/satori/go.uuid"
 	"github.com/vishvananda/netlink"
 )
 
@@ -31,36 +32,47 @@ type Route struct {
 	netlink.Route
 	// OutputIf : output interface for the routed traffic.
 	// Leave undefined if the destination is unreachable.
-	OutputIf RouteOutIf
+	OutputIf genericitems.NetworkIf
 	// GwViaLinkRoute is set to true if gateway is not included in the output interface
 	// subnet and therefore depends on a link route (RT_SCOPE_LINK) for reachability.
 	GwViaLinkRoute bool
+	// ForApp is defined if route is configured inside app network namespace.
+	ForApp ContainerApp
 }
 
-// RouteOutIf : output interface for the route.
-// Only one of these should be defined (this is like union).
-type RouteOutIf struct {
-	// UplinkIfName : uplink interface used as the output device for the route.
-	UplinkIfName string
-	// BridgeIfName : bridge interface used as the output device for the route.
-	BridgeIfName string
-	// DummyIfName : dummy interface used as the output device for the route.
-	DummyIfName string
+// ContainerApp : container application separated from the host only using Linux namespaces.
+type ContainerApp struct {
+	ID uuid.UUID
+	// NetNsName : name of a file under /var/run/netns/ dir, referencing network
+	// namespace of the (container) app.
+	NetNsName string
 }
 
-// Name combines the IP version, output interface name, route table ID and the destination
+// VIFReference : VIF used as the output interface for route.
+type VIFReference struct {
+	ItemName string
+	IfName   string
+}
+
+// Name combines the app UUID, output interface name, route table ID and the destination
 // address to construct a unique route identifier.
 func (r Route) Name() string {
+	var app string
+	if r.ForApp.ID != emptyUUID {
+		app = r.ForApp.ID.String() + "/"
+	}
+	table := fmt.Sprintf("%d/", r.Table)
+	var outIf string
+	if r.OutputIf.IfName != "" {
+		outIf = r.OutputIf.IfName + "/"
+	}
 	var dst string
 	if r.hasDefaultDst() {
 		dst = "default"
 	} else {
 		dst = r.Route.Dst.String()
 	}
-	if r.outputIfName() == "" {
-		return fmt.Sprintf("%d/%s", r.Table, dst)
-	}
-	return fmt.Sprintf("%d/%s/%s", r.Table, r.outputIfName(), dst)
+	return app + table + outIf + dst
 }
 
 // Label is more human-readable than name.
@@ -71,12 +83,16 @@ func (r Route) Label() string {
 	} else {
 		dst = r.Route.Dst.String()
 	}
-	if r.outputIfName() == "" {
-		return fmt.Sprintf("%s route table %d dst %s is unreachable",
-			r.ipVersionStr(), r.Table, dst)
+	var app string
+	if r.ForApp.ID != emptyUUID {
+		app = fmt.Sprintf(" for app %s", r.ForApp.ID)
 	}
-	return fmt.Sprintf("%s route table %d dst %s dev %s via %v",
-		r.ipVersionStr(), r.Table, dst, r.outputIfName(), r.Gw)
+	if r.OutputIf.IfName == "" {
+		return fmt.Sprintf("%s route%s table %d dst %s is unreachable",
+			r.ipVersionStr(), app, r.Table, dst)
+	}
+	return fmt.Sprintf("%s route%s table %d dst %s dev %s via %v",
+		r.ipVersionStr(), app, r.Table, dst, r.OutputIf.IfName, r.Gw)
 }
 
 func (r Route) ipVersionStr() string {
@@ -96,19 +112,6 @@ func (r Route) hasDefaultDst() bool {
 	}
 	ones, _ := r.Route.Dst.Mask.Size()
 	return ones == 0 && r.Route.Dst.IP.IsUnspecified()
-}
-
-func (r Route) outputIfName() string {
-	if r.OutputIf.UplinkIfName != "" {
-		return r.OutputIf.UplinkIfName
-	}
-	if r.OutputIf.BridgeIfName != "" {
-		return r.OutputIf.BridgeIfName
-	}
-	if r.OutputIf.DummyIfName != "" {
-		return r.OutputIf.DummyIfName
-	}
-	return ""
 }
 
 // Type of the item.
@@ -148,7 +151,8 @@ func (r Route) Equal(other dg.Item) bool {
 	}
 	return r.normalizedNetlinkRoute().Equal(r2.normalizedNetlinkRoute()) &&
 		r.OutputIf == r2.OutputIf &&
-		r.GwViaLinkRoute == r2.GwViaLinkRoute
+		r.GwViaLinkRoute == r2.GwViaLinkRoute &&
+		r.ForApp == r2.ForApp
 }
 
 // External returns false.
@@ -158,8 +162,12 @@ func (r Route) External() bool {
 
 // String describes Route in detail.
 func (r Route) String() string {
-	return fmt.Sprintf("Network route for output interface '%s' with priority %d: %s",
-		r.outputIfName(), r.Route.Priority, r.Route.String())
+	if r.ForApp.ID != emptyUUID {
+		return fmt.Sprintf("Network route for app %s interface '%s' with priority %d: %s",
+			r.ForApp.ID, r.OutputIf.IfName, r.Route.Priority, r.Route.String())
+	}
+	return fmt.Sprintf("Network route for host interface '%s' with priority %d: %s",
+		r.OutputIf.IfName, r.Route.Priority, r.Route.String())
 }
 
 // Dependencies of a network route are:
@@ -203,44 +211,15 @@ func (r Route) Dependencies() (deps []dg.Dependency) {
 		}
 		return true
 	}
-	if r.OutputIf.UplinkIfName != "" {
+	if r.OutputIf.IfName != "" {
 		deps = append(deps, dg.Dependency{
-			RequiredItem: dg.ItemRef{
-				ItemType: genericitems.UplinkTypename,
-				ItemName: r.OutputIf.UplinkIfName,
-			},
+			RequiredItem: r.OutputIf.ItemRef,
 			Attributes: dg.DependencyAttributes{
 				// Linux automatically removes the route when the interface disappears.
 				AutoDeletedByExternal: true,
 			},
 			MustSatisfy: gwAndSrcMatchesIP,
-			Description: "Uplink interface must exist and have matching IP address assigned",
-		})
-	} else if r.OutputIf.BridgeIfName != "" {
-		deps = append(deps, dg.Dependency{
-			RequiredItem: dg.ItemRef{
-				ItemType: BridgeTypename,
-				ItemName: r.OutputIf.BridgeIfName,
-			},
-			Attributes: dg.DependencyAttributes{
-				// Linux automatically removes the route when the interface disappears.
-				AutoDeletedByExternal: true,
-			},
-			MustSatisfy: gwAndSrcMatchesIP,
-			Description: "Bridge interface must exist and have matching IP address assigned",
-		})
-	} else if r.OutputIf.DummyIfName != "" {
-		deps = append(deps, dg.Dependency{
-			RequiredItem: dg.ItemRef{
-				ItemType: DummyIfTypename,
-				ItemName: r.OutputIf.DummyIfName,
-			},
-			Attributes: dg.DependencyAttributes{
-				// Linux automatically removes the route when the interface disappears.
-				AutoDeletedByExternal: true,
-			},
-			MustSatisfy: gwAndSrcMatchesIP,
-			Description: "Dummy interface must exist and have matching IP address assigned",
+			Description: "Output interface must exist and have matching IP address assigned",
 		})
 	}
 	if r.GwViaLinkRoute && len(r.Gw) != 0 {
@@ -252,6 +231,7 @@ func (r Route) Dependencies() (deps []dg.Dependency) {
 					Table:  r.Table,
 					Dst:    netutils.HostSubnet(r.Gw)},
 				OutputIf: r.OutputIf,
+				ForApp:   r.ForApp,
 			}),
 			MustSatisfy: func(item dg.Item) bool {
 				gwRoute, isRoute := item.(Route)
@@ -279,6 +259,15 @@ func (c *RouteConfigurator) Create(ctx context.Context, item dg.Item) error {
 	if !isRoute {
 		return fmt.Errorf("invalid item type %T, expected Route", item)
 	}
+	if route.ForApp.NetNsName != "" {
+		// Move into the namespace with the route (leave on defer).
+		revertNs, err := switchToNamespace(c.Log, route.ForApp.NetNsName)
+		if err != nil {
+			return fmt.Errorf("failed to switch to app net namespace %s: %w",
+				route.ForApp.NetNsName, err)
+		}
+		defer revertNs()
+	}
 	netlinkRoute, err := c.makeNetlinkRoute(route)
 	if err != nil {
 		c.Log.Error(err)
@@ -300,18 +289,38 @@ func (c *RouteConfigurator) Create(ctx context.Context, item dg.Item) error {
 func (c *RouteConfigurator) makeNetlinkRoute(route Route) (*netlink.Route, error) {
 	// Copy, do not change the original.
 	netlinkRoute := route.normalizedNetlinkRoute()
-	if netlinkRoute.LinkIndex == 0 && route.outputIfName() != "" {
+	if netlinkRoute.LinkIndex == 0 && route.OutputIf.IfName != "" {
 		// Caller has left it to RouteConfigurator to find the interface index.
-		ifIdx, exists, err := c.NetworkMonitor.GetInterfaceIndex(route.outputIfName())
-		if !exists {
-			// Dependencies should prevent this.
-			err = fmt.Errorf("missing route output interface %s", route.outputIfName())
-			c.Log.Error(err)
-			return nil, err
+		var (
+			err    error
+			ifIdx  int
+			exists bool
+		)
+		if route.ForApp.NetNsName != "" {
+			// TODO: enhance NetworkMonitor to support network namespaces.
+			//       For now we use netlink directly.
+			var link netlink.Link
+			if link, err = netlink.LinkByName(route.OutputIf.IfName); err != nil {
+				if _, notFound := err.(netlink.LinkNotFoundError); notFound {
+					// exists is set to false
+					err = nil
+				}
+			} else {
+				exists = true
+				ifIdx = link.Attrs().Index
+			}
+		} else {
+			ifIdx, exists, err = c.NetworkMonitor.GetInterfaceIndex(route.OutputIf.IfName)
 		}
 		if err != nil {
 			err = fmt.Errorf("failed to get index of route output interface %s: %w",
-				route.outputIfName(), err)
+				route.OutputIf.IfName, err)
+			c.Log.Error(err)
+			return nil, err
+		}
+		if !exists {
+			// Dependencies should prevent this.
+			err = fmt.Errorf("missing route output interface %s", route.OutputIf.IfName)
 			c.Log.Error(err)
 			return nil, err
 		}
@@ -330,6 +339,15 @@ func (c *RouteConfigurator) Delete(ctx context.Context, item dg.Item) error {
 	route, isRoute := item.(Route)
 	if !isRoute {
 		return fmt.Errorf("invalid item type %T, expected Route", item)
+	}
+	if route.ForApp.NetNsName != "" {
+		// Move into the namespace with the route (leave on defer).
+		revertNs, err := switchToNamespace(c.Log, route.ForApp.NetNsName)
+		if err != nil {
+			return fmt.Errorf("failed to switch to app net namespace %s: %w",
+				route.ForApp.NetNsName, err)
+		}
+		defer revertNs()
 	}
 	netlinkRoute, err := c.makeNetlinkRoute(route)
 	if err != nil {

@@ -10,7 +10,7 @@ ARG BUILD_PKGS_BASE="git gcc linux-headers libc-dev make linux-pam-dev m4 findut
 # we use the same image in several places
 ARG EVE_ALPINE_IMAGE=lfedge/eve-alpine:9fb9b9cbf7d90066a70e4704d04a6fe248ff52bb
 
-FROM lfedge/eve-dom0-ztools:417d4ff6a57d2317c9e65166274b0ea6f6da16e2 as zfs
+FROM lfedge/eve-dom0-ztools:81a7af28b32c7558e1c4622e60a9e3197075decd as zfs
 RUN mkdir /out
 # copy zfs-related files from dom0-ztools using prepared list of files
 RUN while read -r x; do \
@@ -66,6 +66,7 @@ FROM build-native AS target-arm64-build-arm64
 # hadolint ignore=DL3006
 FROM target-${TARGETARCH}-build-${BUILDARCH} AS build
 ARG DEV=n
+ARG TEST_TOOLS=n
 ARG TARGETARCH
 
 # some parts of pillar are build conditionally based on the hypervisor
@@ -110,8 +111,11 @@ RUN --mount=type=cache,target=/root/.cache/go-build if [ ${DEV} = "y" ]; then \
     GOFLAGS= CGO_ENABLED=0 go build -ldflags "-s -w -extldflags '-static'" github.com/go-delve/delve/cmd/dlv && \
     cp dlv /final/opt/ ; \
 fi
+RUN --mount=type=cache,target=/root/.cache/go-build if [ "${TEST_TOOLS}" = "y" ]; then \
+    GOBIN=/final/opt/ GOFLAGS="" go install gotest.tools/gotestsum@v1.7.0; \
+fi
 
-FROM lfedge/eve-fscrypt:0b7cc0d9d620e47fc54e21d56cb8a5cd224f9c9b as fscrypt
+FROM lfedge/eve-fscrypt:e8507303431c8c11ec1a2b3b7fb02e1a0dcdf296 as fscrypt
 FROM lfedge/eve-dnsmasq:3af908d86a95a627c729e09b1b125bf8de7fadcb as dnsmasq
 FROM lfedge/eve-gpt-tools:51ecda7bc185c655c1d0423228dc83e29d4c674d as gpttools
 
@@ -153,6 +157,7 @@ ADD scripts/device-steps.sh \
     scripts/handlezedserverconfig.sh \
     scripts/veth.sh \
     scripts/dhcpcd.sh \
+    scripts/copy-image-to-qcow.sh \
   /out/opt/zededa/bin/
 ADD conf/lisp.config.base /out/var/tmp/zededa/lisp.config.base
 

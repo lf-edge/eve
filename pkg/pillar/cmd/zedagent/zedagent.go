@@ -216,8 +216,11 @@ type zedagentContext struct {
 	// Track the counter from force.fallback.counter to detect changes
 	forceFallbackCounter int
 
-	// Interlock with controller to ensure we get the encrypted secrets
+	// Used for retry of EdgeNodeCerts
 	publishedEdgeNodeCerts bool
+
+	// Used for retry of SendAttestEscrow
+	publishedAttestEscrow bool
 
 	attestationTryCount int
 	// cli options
@@ -439,6 +442,10 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	// XXX defer this until we have some config from cloud or saved copy
 	getconfigCtx.pubAppInstanceConfig.SignalRestarted()
 
+	// Initialize remote attestation context. Do this before we get events
+	// from the AttestQuote and EncryptedKeyFromDevice subscriptions
+	attestModuleInitialize(zedagentCtx)
+
 	// With device UUID, zedagent is ready to initialize and activate all subscriptions.
 	initPostOnboardSubs(zedagentCtx)
 
@@ -449,9 +456,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 	//initialize cipher processing block
 	cipherModuleInitialize(zedagentCtx)
-
-	//initialize remote attestation context
-	attestModuleInitialize(zedagentCtx)
 
 	// Pick up debug aka log level before we start real work
 	waitUntilGCReady(zedagentCtx, stillRunning)
@@ -587,7 +591,6 @@ func (zedagentCtx *zedagentContext) init() {
 		currentMetricInterval: zedagentCtx.globalConfig.GlobalValueInt(types.MetricInterval),
 		// edge-view configure
 		configEdgeview: &types.EdgeviewConfig{},
-		cipherContexts: make(map[string]types.CipherContext),
 	}
 	getconfigCtx.sideController.localServerMap = &localServerMap{}
 
@@ -1173,6 +1176,18 @@ func initPublications(zedagentCtx *zedagentContext) {
 		log.Fatal(err)
 	}
 	getconfigCtx.pubControllerCert.ClearRestarted()
+
+	// for CipherContextStatus Publisher
+	getconfigCtx.pubCipherContext, err = ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName:  agentName,
+			Persistent: true,
+			TopicType:  types.CipherContext{},
+		})
+	if err != nil {
+		log.Fatal(err)
+	}
+	getconfigCtx.pubCipherContext.ClearRestarted()
 
 	// for ContentTree config Publisher
 	getconfigCtx.pubContentTreeConfig, err = ps.NewPublication(
@@ -2552,7 +2567,7 @@ func getDeferredSentHandlerFunction(ctx *zedagentContext) *zedcloud.SentHandlerF
 				ctx.publishedEdgeNodeCerts = true
 			}
 		} else {
-			if _, ok := itemType.(attest.ZAttestReqType); ok {
+			if el, ok := itemType.(attest.ZAttestReqType); ok {
 				switch result {
 				case types.SenderStatusUpgrade:
 					log.Functionf("sendAttestReqProtobuf: Controller upgrade in progress")
@@ -2565,6 +2580,13 @@ func getDeferredSentHandlerFunction(ctx *zedagentContext) *zedcloud.SentHandlerF
 				case types.SenderStatusNotFound:
 					log.Functionf("sendAttestReqProtobuf: Controller SenderStatusNotFound")
 					potentialUUIDUpdate(ctx.getconfigCtx)
+				}
+				if el == attest.ZAttestReqType_ATTEST_REQ_CERT {
+					log.Warnf("sendAttestReqProtobuf: Failed to send EdgeNodeCerts: %s",
+						result.String())
+					// XXX should we declare maintenance mode?
+					// We get SenderStatusNotFound when a cert can
+					// not be replaced in the controller for security reasons.
 				}
 				if !ctx.publishedEdgeNodeCerts {
 					// Attestation request does not clog the send queue (issued

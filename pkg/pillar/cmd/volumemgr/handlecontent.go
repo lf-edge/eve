@@ -10,6 +10,7 @@ import (
 
 	v1types "github.com/google/go-containerregistry/pkg/v1/types"
 	zconfig "github.com/lf-edge/eve-api/go/config"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/lf-edge/eve/pkg/pillar/vault"
@@ -182,6 +183,7 @@ func createContentTreeStatus(ctx *volumemgrContext, config types.ContentTreeConf
 			DisplayName:       config.DisplayName,
 			State:             types.INITIAL,
 			Blobs:             []string{},
+			HVTypeKube:        base.IsHVTypeKube(),
 			// LastRefCountChangeTime: time.Now(),
 		}
 		populateDatastoreFields(ctx, config, status)
@@ -325,7 +327,8 @@ func doDeleteContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 	log.Functionf("doDeleteContentTree for %v", status.ContentID)
 	RemoveAllBlobsFromContentTreeStatus(ctx, status, status.Blobs...)
 	//We create a reference when we load the blobs. We should remove that reference when we delete the contentTree.
-	if err := ctx.casClient.RemoveImage(status.ReferenceID()); err != nil {
+	refName := status.ReferenceID()
+	if err := ctx.casClient.RemoveImage(refName); err != nil {
 		log.Errorf("doDeleteContentTree: exception while deleting image %s: %s",
 			status.RelativeURL, err.Error())
 	}

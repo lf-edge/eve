@@ -453,6 +453,24 @@ func deserializeSnapshotInstanceStatus(snapshotID string) (*types.SnapshotInstan
 	return snapshotInstanceStatus, nil
 }
 
+func isSnapshotDescInSlice(slice *[]types.SnapshotDesc, id string) bool {
+	for _, snap := range *slice {
+		if snap.SnapshotID == id {
+			return true
+		}
+	}
+	return false
+}
+
+func removeSnapshotDescFromSlice(slice *[]types.SnapshotDesc, id string) {
+	for i, snap := range *slice {
+		if snap.SnapshotID == id {
+			*slice = append((*slice)[:i], (*slice)[i+1:]...)
+			return
+		}
+	}
+}
+
 func removeSnapshotFromSlice(slice *[]types.SnapshotInstanceStatus, id string) (removedSnap *types.SnapshotInstanceStatus) {
 	removedSnap = nil
 	for i, snap := range *slice {

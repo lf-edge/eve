@@ -48,12 +48,6 @@ const (
 	fixedName = "global"
 	fixedDir  = "/run/" + fixedName
 	maxsize   = 65535 // Max size for json which can be read or written
-
-	// Copied from types package to avoid cycle in package dependencies
-	// persistDir - Location to store persistent files.
-	persistDir = "/persist"
-	// persistConfigDir is where we keep some configuration across reboots
-	persistConfigDir = persistDir + "/config"
 )
 
 // SocketDriver driver for pubsub using local unix-domain socket and files
@@ -87,8 +81,8 @@ func (s *SocketDriver) Publisher(global bool, name, topic string, persistent boo
 	// the dirName depends on if we are persistent, and if it is the global config
 	switch {
 	case persistent && publishToDir:
-		// Special case for /persist/config/
-		dirName = fmt.Sprintf("%s/%s/%s", s.RootDir, persistConfigDir, name)
+		// No longer supported
+		return nil, errors.New("Persistent not supported for empty agentname")
 	case persistent && !publishToDir:
 		dirName = s.persistentDirName(name)
 	case !persistent && publishToDir:
@@ -128,7 +122,7 @@ func (s *SocketDriver) Publisher(global bool, name, topic string, persistent boo
 			sock, err := net.Dial("unixpacket", sockName)
 			if err == nil {
 				sock.Close()
-				s.Log.Fatalf("Can not publish %s since it it already used",
+				s.Log.Fatalf("Cannot publish %s since it is already used",
 					sockName)
 			}
 			if err := os.Remove(sockName); err != nil {
@@ -184,12 +178,10 @@ func (s *SocketDriver) Subscriber(global bool, name, topic string, persistent bo
 	if global {
 		subFromDir = true
 		if persistent {
-			// Special case for /persist/config/
-			dirName = fmt.Sprintf("%s/%s/%s", s.RootDir,
-				persistConfigDir, name)
-		} else {
-			dirName = s.fixedDirName(name)
+			// No longer supported
+			return nil, errors.New("Persistent not supported for empty agentname")
 		}
+		dirName = s.fixedDirName(name)
 	} else if agentName == "zedclient" {
 		subFromDir = true
 		if persistent {
@@ -267,12 +259,14 @@ func GetBuffer() ([]byte, func()) {
 var lastLoggedAllocated uint32
 
 func maybeLogAllocated(log *base.LogObject) {
-	if lastLoggedAllocated == allocated {
+	currentAllocated := atomic.LoadUint32(&allocated)
+	currentLastAllocated := atomic.LoadUint32(&lastLoggedAllocated)
+	if currentLastAllocated == currentAllocated {
 		return
 	}
 	log.Functionf("pubsub buffer allocation changed from %d to  %d",
-		lastLoggedAllocated, allocated)
-	lastLoggedAllocated = allocated
+		currentLastAllocated, currentAllocated)
+	atomic.StoreUint32(&lastLoggedAllocated, currentAllocated)
 }
 
 // Poll to check if we should go away

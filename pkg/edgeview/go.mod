@@ -6,7 +6,7 @@ require (
 	github.com/coreos/go-semver v0.3.1
 	github.com/gorilla/websocket v1.4.2
 	github.com/grandcat/zeroconf v1.0.0
-	github.com/lf-edge/eve-api/go v0.0.0-20231011200019-cb3cb1275e0d
+	github.com/lf-edge/eve-api/go v0.0.0-20240229195728-6180247abbc1
 	github.com/lf-edge/eve/pkg/pillar v0.0.0-20231025120317-b25d016a16bb
 	github.com/satori/go.uuid v1.2.1-0.20180404165556-75cca531ea76
 	github.com/shirou/gopsutil v3.21.11+incompatible
@@ -30,5 +30,5 @@ require (
 	github.com/vishvananda/netns v0.0.0-20210104183010-2eb08e3e575f // indirect
 	github.com/yusufpapurcu/wmi v1.2.2 // indirect
 	golang.org/x/net v0.17.0 // indirect
-	google.golang.org/protobuf v1.28.1 // indirect
+	google.golang.org/protobuf v1.33.0 // indirect
 )

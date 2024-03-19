@@ -392,8 +392,9 @@ currentversion:
 
 test: $(LINUXKIT) test-images-patches | $(DIST)
 	@echo Running tests on $(GOMODULE)
-	$(QUIET)$(DOCKER_GO) "gotestsum --jsonfile $(DOCKER_DIST)/results.json --junitfile $(DOCKER_DIST)/results.xml --raw-command -- go test -coverprofile=coverage.txt -covermode=atomic -race -json ./..." $(GOTREE) $(GOMODULE)
-	$(QUIET)$(DOCKER_GO) "cd \"$(GOTREE)\"; ../../tools/fuzz_test.sh" $(GOTREE) $(GOMODULE)
+	make -C pkg/pillar test
+	cp pkg/pillar/results.json $(DIST)/
+	cp pkg/pillar/results.xml $(DIST)/
 	$(QUIET): $@: Succeeded
 
 # wrap command into DOCKER_GO and propagate it to the pillar's Makefile
@@ -665,11 +666,6 @@ $(SBOM): $(ROOTFS_TAR) | $(INSTALLER)
 	# this all can go away, and we can read the rootfs.tar
 	# see https://github.com/anchore/syft/issues/1400
 	tar xf $< -C $(TMP_ROOTDIR) --exclude "dev/*"
-	# kernel-*.spdx.json are now generated in eve-kernel repo and are stored in docker  image.
-	# Manually extract them to unpacked rootfs.
-	# Later linuxkit will get a support for SBOM in OCI metadata and this step as well as manual run of
-	# syft will be deprecated
-	docker export $(shell docker create $(KERNEL_TAG) create) | tar xv -C $(TMP_ROOTDIR) --wildcards --no-anchored '*.spdx.json'
 	docker run -v $(TMP_ROOTDIR):/rootdir:ro -v $(CURDIR)/.syft.yaml:/syft.yaml:ro $(SYFT_IMAGE) -c /syft.yaml --base-path /rootdir /rootdir > $@
 	rm -rf $(TMP_ROOTDIR)
 	$(QUIET): $@: Succeeded
@@ -833,6 +829,9 @@ cache-export-docker-load-all: $(LINUXKIT) $(addsuffix -cache-export-docker-load,
 
 proto-vendor:
 	@$(DOCKER_GO) "cd pkg/pillar ; go mod vendor" $(CURDIR) proto
+
+bump-eve-api:
+	find . -type f -name "go.mod" -exec grep -q 'github.com/lf-edge/eve-api/go' {} \; -execdir go get -u github.com/lf-edge/eve-api/go \; -execdir go mod tidy \; -execdir go mod vendor \;
 
 .PHONY: proto-api-%
 
@@ -1016,6 +1015,9 @@ help:
 	@echo "   proto-vendor   update vendored API in packages that require it (e.g. pkg/pillar)"
 	@echo "   shell          drop into docker container setup for Go development"
 	@echo "   yetus          run Apache Yetus to check the quality of the source tree"
+	@echo
+	@echo "Seldom used maintenance and development targets:"
+	@echo "   bump-eve-api   bump eve-api in all subprojects"
 	@echo
 	@echo "Commonly used build targets:"
 	@echo "   build-tools      builds linuxkit utilities and installs under build-tools/bin"

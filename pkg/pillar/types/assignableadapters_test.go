@@ -608,6 +608,94 @@ func FuzzCheckBadUSBBundles(f *testing.F) {
 	})
 }
 
+func TestCheckBadParentAssigngrp(t *testing.T) {
+	t.Parallel()
+	aa := AssignableAdapters{}
+
+	aa.IoBundleList = []IoBundle{
+		{
+			Phylabel:              "1",
+			AssignmentGroup:       "BBB",
+			ParentAssignmentGroup: "AAA",
+		},
+		{
+			Phylabel:              "2",
+			AssignmentGroup:       "BBB",
+			ParentAssignmentGroup: "ZZZ",
+		},
+	}
+
+	aa.CheckParentAssigngrp()
+
+	errorSet := false
+	for _, ioBundle := range aa.IoBundleList {
+		if ioBundle.Error == "IOBundle with parentassigngrp mismatch found" {
+			errorSet = true
+			break
+		}
+	}
+
+	if !errorSet {
+		t.Fatal("wrong error message")
+	}
+}
+
+func TestCheckBadParentAssigngrpLoop(t *testing.T) {
+	t.Parallel()
+	aa := AssignableAdapters{}
+
+	aa.IoBundleList = []IoBundle{
+		{
+			Phylabel:              "1",
+			AssignmentGroup:       "BBB",
+			ParentAssignmentGroup: "AAA",
+		},
+		{
+			Phylabel:              "2",
+			AssignmentGroup:       "AAA",
+			ParentAssignmentGroup: "AAA",
+		},
+	}
+
+	aa.CheckParentAssigngrp()
+
+	for _, ioBundle := range aa.IoBundleList {
+		if ioBundle.Phylabel == "2" {
+			if ioBundle.Error != "IOBundle cannot be it's own parent" {
+				t.Fatal("wrong error message")
+			}
+		}
+	}
+
+	aa.IoBundleList = []IoBundle{
+		{
+			Phylabel:              "1",
+			AssignmentGroup:       "BBB",
+			ParentAssignmentGroup: "AAA",
+		},
+		{
+			Phylabel:              "2",
+			AssignmentGroup:       "AAA",
+			ParentAssignmentGroup: "BBB",
+		},
+	}
+
+	aa.CheckParentAssigngrp()
+
+	errorSet := false
+	for _, ioBundle := range aa.IoBundleList {
+		if ioBundle.Error == "Cycle detected, please check provided parentassigngrp/assigngrp" {
+			errorSet = true
+			break
+		}
+
+	}
+	if !errorSet {
+		t.Fatal("wrong error message")
+	}
+
+}
+
 func TestCheckBadUSBBundles(t *testing.T) {
 	t.Parallel()
 	aa := AssignableAdapters{}
@@ -623,11 +711,11 @@ func TestCheckBadUSBBundles(t *testing.T) {
 			bundleWithError: []bundleWithError{
 				{
 					bundle:        IoBundle{Phylabel: "1", UsbAddr: "1:1", UsbProduct: "a:a", PciLong: "1:1"},
-					expectedError: "ioBundle collision:||phylabel 1 - usbaddr: 1:1 usbproduct: a:a||phylabel 2 - usbaddr: 1:1 usbproduct: a:a||",
+					expectedError: "ioBundle collision:||phylabel 1 - usbaddr: 1:1 usbproduct: a:a pcilong: 1:1 assigngrp: ||phylabel 2 - usbaddr: 1:1 usbproduct: a:a pcilong: 1:1 assigngrp: ||",
 				},
 				{
 					bundle:        IoBundle{Phylabel: "2", UsbAddr: "1:1", UsbProduct: "a:a", PciLong: "1:1"},
-					expectedError: "ioBundle collision:||phylabel 1 - usbaddr: 1:1 usbproduct: a:a||phylabel 2 - usbaddr: 1:1 usbproduct: a:a||",
+					expectedError: "ioBundle collision:||phylabel 1 - usbaddr: 1:1 usbproduct: a:a pcilong: 1:1 assigngrp: ||phylabel 2 - usbaddr: 1:1 usbproduct: a:a pcilong: 1:1 assigngrp: ||",
 				},
 			},
 		},
@@ -635,11 +723,11 @@ func TestCheckBadUSBBundles(t *testing.T) {
 			bundleWithError: []bundleWithError{
 				{
 					bundle:        IoBundle{Phylabel: "3", UsbAddr: "1:1", UsbProduct: "a:a"},
-					expectedError: "ioBundle collision:||phylabel 3 - usbaddr: 1:1 usbproduct: a:a||phylabel 4 - usbaddr: 1:1 usbproduct: a:a||",
+					expectedError: "ioBundle collision:||phylabel 3 - usbaddr: 1:1 usbproduct: a:a pcilong:  assigngrp: ||phylabel 4 - usbaddr: 1:1 usbproduct: a:a pcilong:  assigngrp: ||",
 				},
 				{
 					bundle:        IoBundle{Phylabel: "4", UsbAddr: "1:1", UsbProduct: "a:a"},
-					expectedError: "ioBundle collision:||phylabel 3 - usbaddr: 1:1 usbproduct: a:a||phylabel 4 - usbaddr: 1:1 usbproduct: a:a||",
+					expectedError: "ioBundle collision:||phylabel 3 - usbaddr: 1:1 usbproduct: a:a pcilong:  assigngrp: ||phylabel 4 - usbaddr: 1:1 usbproduct: a:a pcilong:  assigngrp: ||",
 				},
 				{
 					bundle:        IoBundle{Phylabel: "5", UsbAddr: "1:1", UsbProduct: ""},
@@ -651,11 +739,11 @@ func TestCheckBadUSBBundles(t *testing.T) {
 			bundleWithError: []bundleWithError{
 				{
 					bundle:        IoBundle{Phylabel: "6", UsbAddr: "1:1", UsbProduct: ""},
-					expectedError: "ioBundle collision:||phylabel 6 - usbaddr: 1:1 usbproduct: ||phylabel 7 - usbaddr: 1:1 usbproduct: ||",
+					expectedError: "ioBundle collision:||phylabel 6 - usbaddr: 1:1 usbproduct:  pcilong:  assigngrp: ||phylabel 7 - usbaddr: 1:1 usbproduct:  pcilong:  assigngrp: ||",
 				},
 				{
 					bundle:        IoBundle{Phylabel: "7", UsbAddr: "1:1", UsbProduct: ""},
-					expectedError: "ioBundle collision:||phylabel 6 - usbaddr: 1:1 usbproduct: ||phylabel 7 - usbaddr: 1:1 usbproduct: ||",
+					expectedError: "ioBundle collision:||phylabel 6 - usbaddr: 1:1 usbproduct:  pcilong:  assigngrp: ||phylabel 7 - usbaddr: 1:1 usbproduct:  pcilong:  assigngrp: ||",
 				},
 			},
 		},
@@ -663,11 +751,11 @@ func TestCheckBadUSBBundles(t *testing.T) {
 			bundleWithError: []bundleWithError{
 				{
 					bundle:        IoBundle{Phylabel: "8", UsbAddr: "", UsbProduct: "a:a"},
-					expectedError: "ioBundle collision:||phylabel 8 - usbaddr:  usbproduct: a:a||phylabel 9 - usbaddr:  usbproduct: a:a||",
+					expectedError: "ioBundle collision:||phylabel 8 - usbaddr:  usbproduct: a:a pcilong:  assigngrp: ||phylabel 9 - usbaddr:  usbproduct: a:a pcilong:  assigngrp: ||",
 				},
 				{
 					bundle:        IoBundle{Phylabel: "9", UsbAddr: "", UsbProduct: "a:a"},
-					expectedError: "ioBundle collision:||phylabel 8 - usbaddr:  usbproduct: a:a||phylabel 9 - usbaddr:  usbproduct: a:a||",
+					expectedError: "ioBundle collision:||phylabel 8 - usbaddr:  usbproduct: a:a pcilong:  assigngrp: ||phylabel 9 - usbaddr:  usbproduct: a:a pcilong:  assigngrp: ||",
 				},
 			},
 		},
@@ -695,9 +783,8 @@ func TestCheckBadUSBBundles(t *testing.T) {
 
 		for i, bundleWithErr := range testCase.bundleWithError {
 			if bundles[i].Error != bundleWithErr.expectedError {
-				t.Logf("bundle %s expected error \n'%s', got error \n'%s'",
+				t.Fatalf("bundle %s expected error \n'%s', got error \n'%s'",
 					bundleWithErr.bundle.Phylabel, bundleWithErr.expectedError, bundles[i].Error)
-
 			}
 		}
 	}

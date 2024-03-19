@@ -4,6 +4,8 @@
 package linuxitems
 
 const (
+	// VIFTypename : typename for VIF.
+	VIFTypename = "VIF"
 	// IPRuleTypename : typename for Linux IP rules.
 	IPRuleTypename = "IPRule"
 	// BridgeTypename : typename for Linux bridges.
@@ -14,4 +16,6 @@ const (
 	VLANBridgeTypename = "VLANBridge"
 	// VLANPortTypename : typename for bridged port with configured VLAN(s).
 	VLANPortTypename = "VLANPort"
+	// SysctlTypename : typename for kernel config applied via sysctl.
+	SysctlTypename = "Sysctl"
 )

@@ -15,6 +15,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	zconfig "github.com/lf-edge/eve-api/go/config"
+	"github.com/lf-edge/eve/pkg/kube/cnirpc"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/utils/cloudconfig"
 )
@@ -380,6 +381,14 @@ type VifConfig struct {
 	Bridge string
 	Vif    string
 	Mac    net.HardwareAddr
+	// PodVif is only valid in the Kubernetes mode.
+	PodVif PodVIF
+}
+
+// PodVIF : configuration parameters for VIF connecting Kubernetes pod with the host.
+type PodVIF struct {
+	GuestIfName string
+	IPAM        cnirpc.PodIPAMConfig
 }
 
 // VifInfo store info about vif

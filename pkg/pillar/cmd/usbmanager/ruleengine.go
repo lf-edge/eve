@@ -10,11 +10,8 @@ type nullObjectPassthroughRule struct {
 	passthroughRuleVMBase
 }
 
-func (pr *nullObjectPassthroughRule) priority() uint8 {
-	return 0
-}
-func (pr *nullObjectPassthroughRule) evaluate(_ usbdevice) passthroughAction {
-	return passthroughNo
+func (pr *nullObjectPassthroughRule) evaluate(_ usbdevice) (passthroughAction, uint8) {
+	return passthroughNo, 0
 }
 func (pr *nullObjectPassthroughRule) String() string {
 	return ""
@@ -44,13 +41,17 @@ func (re *ruleEngine) apply(ud usbdevice) *virtualmachine {
 	var maxRule passthroughRule
 	maxRule = &nullObjectPassthroughRule{}
 
+	var maxPriority uint8
+
 	for _, r := range re.rules {
-		if r.evaluate(ud) == passthroughForbid {
+		eval, priority := r.evaluate(ud)
+		if eval == passthroughForbid {
 			return nil
 		}
-		if r.evaluate(ud) == passthroughDo {
-			if r.priority() > maxRule.priority() {
+		if eval == passthroughDo && r.virtualMachine() != nil {
+			if priority > maxPriority {
 				maxRule = r
+				maxPriority = priority
 			}
 		}
 	}

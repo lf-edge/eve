@@ -307,38 +307,45 @@ func UpdateTLSProxyCerts(ctx *ZedCloudContext) bool {
 	return true
 }
 
-func stapledCheck(log *base.LogObject, connState *tls.ConnectionState) bool {
+func stapledCheck(log *base.LogObject, connState *tls.ConnectionState) (bool, error) {
+	if connState.OCSPResponse == nil {
+		return false, errors.New("no OCSP response")
+	}
 	if connState.VerifiedChains == nil {
-		log.Errorln("stapledCheck: No VerifiedChains")
-		return false
+		return false, errors.New("stapledCheck: No VerifiedChains")
+
 	}
 	if len(connState.VerifiedChains[0]) == 0 {
-		log.Errorln("stapledCheck: No VerifiedChains 2")
-		return false
+		return false, errors.New("stapledCheck: No VerifiedChains 2")
+
 	}
 
 	issuer := connState.VerifiedChains[0][1]
 	resp, err := ocsp.ParseResponse(connState.OCSPResponse, issuer)
 	if err != nil {
-		log.Errorln("stapledCheck: error parsing response: ", err)
-		return false
+		return false,
+			fmt.Errorf("stapledCheck: error parsing response: %s ",
+				err)
+
 	}
 	now := time.Now()
 	age := now.Unix() - resp.ProducedAt.Unix()
 	remain := resp.NextUpdate.Unix() - now.Unix()
 	log.Tracef("OCSP age %d, remain %d\n", age, remain)
 	if remain < 0 {
-		log.Errorln("OCSP expired.")
-		return false
+		return false, errors.New("OCSP expired.")
 	}
-	if resp.Status == ocsp.Good {
+	switch resp.Status {
+	case ocsp.Good:
 		log.Traceln("Certificate Status Good.")
-	} else if resp.Status == ocsp.Unknown {
-		log.Errorln("Certificate Status Unknown")
-	} else {
-		log.Errorln("Certificate Status Revoked")
+		return true, nil
+	case ocsp.Unknown:
+		return false, errors.New("Certificate Status Unknown")
+	case ocsp.Revoked:
+		return false, errors.New("Certificate Status Revoked")
+	default:
+		return false, fmt.Errorf("Unknown OCSP status %d", resp.Status)
 	}
-	return resp.Status == ocsp.Good
 }
 
 func updateEtcSSLforProxyCerts(ctx *ZedCloudContext, dns *types.DeviceNetworkStatus) {

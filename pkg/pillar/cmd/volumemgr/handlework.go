@@ -235,8 +235,10 @@ func casIngestWorker(ctxPtr interface{}, w worker.Work) worker.WorkResult {
 		}
 	}
 
+	appImgName := status.ReferenceID()
+
 	// load the blobs
-	loadedBlobs, err := ctx.casClient.IngestBlobsAndCreateImage(status.ReferenceID(), *root, loadBlobs...)
+	loadedBlobs, err := ctx.casClient.IngestBlobsAndCreateImage(appImgName, *root, loadBlobs...)
 	// loadedBlobs are BlobStatus for the ones we loaded
 	for _, blob := range loadedBlobs {
 		d.loaded = append(d.loaded, blob.Sha256)

@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"time"
 
-	libzfs "github.com/bicomsystems/go-libzfs"
+	libzfs "github.com/andrewd-zededa/go-libzfs"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/vault"
 	"github.com/lf-edge/eve/pkg/pillar/zfs"

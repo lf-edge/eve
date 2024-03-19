@@ -645,7 +645,7 @@ when the application is not actively using the volume. This section explains how
 EVE handles snapshot operations in conjunction with the application lifecycle
 and the low-level details of snapshot management.
 
-### Snapshot Creation
+### Snapshot Creation for ext4
 
 When creating a new snapshot, EVE must stop the application to ensure that the
 volume is not in use. The need to stop the application arises from the fact that
@@ -664,7 +664,7 @@ metadata. Once the snapshot operation is complete, EVE explicitly reactivates
 the application. This process ensures that the snapshot is created in a
 consistent and safe manner.
 
-### Snapshot Rollback
+### Snapshot Rollback for ext4
 
 Similar to snapshot creation, performing a rollback to a previous snapshot
 requires stopping the application. But in this case, EVE triggers it explicitly.
@@ -677,7 +677,7 @@ qemu-img snapshot -a snapshot_name /path/to/base_image.qcow2
 to apply the snapshot. After the rollback operation is complete, EVE reactivates
 the application.
 
-### Snapshot Deletion
+### Snapshot Deletion for ext4
 
 Unlike snapshot creation and rollback, snapshot deletion does not require an
 immediate application reboot. When EVE receives a command to delete a snapshot,
@@ -705,16 +705,60 @@ controller to maintain consistency in the system's view of the snapshots. This
 approach allows EVE to efficiently manage snapshots while minimizing disruptions
 to the application's operation.
 
-### Copy-on-Write (CoW) Approach
+## Low-Level Snapshot Management for ZFS
 
-The qemu-img tool uses a Copy-on-Write (CoW) approach for snapshot management.
-When a new snapshot is created, it does not immediately occupy a large amount of
-storage. Instead, the snapshot files grow over time as changes are made to the
-file system. The CoW approach ensures that only the differences (or deltas)
-between the current file system state and the snapshot state are stored. As more
-changes are made to the file system, the delta files increase in size. This
-approach allows for efficient storage utilization and minimizes the immediate
-impact on storage capacity when creating new snapshots.
+In the EVE project, managing snapshots for ZFS file systems is conducted through
+direct interaction with the ZFS filesystem via the libzfs library. This approach
+enables EVE to perform snapshot operations such as creation, rollback, and
+deletion with high efficiency and reliability. Despite the fact that ZFS
+supports creation and usage of snapshots while the file system is in use, we
+still want to wait for the application to be inactive before performing any
+snapshot operations. This is done to make the code consistent with the ext4 file
+based snapshots and to avoid any potential issues that may arise from the
+application's active use of the volume.
+
+### Snapshot Creation for ZFS
+
+For creating snapshots, EVE employs the `libzfs.DatasetSnapshot` function. This
+function is instrumental in generating a snapshot of the specified ZFS volume.
+The process begins with EVE generating a unique, timestamped snapshot name to
+ensure distinguishability. The DatasetSnapshot function is then called with the
+dataset name and the generated snapshot name. The operation's success,
+including the snapshot name and timestamp, is logged for transparency and
+auditability.
+
+### Snapshot Rollback for ZFS
+
+To roll a ZFS volume back to a previous state, EVE uses the
+`libzfs.DatasetRollback` function. EVE initiates the rollback by first
+identifying the specific snapshot and dataset targeted for rollback. The
+`DatasetRollback` function in libzfs takes the dataset object and the snapshot
+object as arguments. The process is thoroughly logged, indicating the dataset
+and snapshot involved,  to ensure the operation's success is recorded.
+
+### Snapshot Deletion for ZFS
+
+For snapshot deletion, EVE leverages the `libzfs.DestroyDataset` function. This
+step involves validating the snapshot's existence and association with the
+correct volume before proceeding with deletion. Once validated, the
+`DestroyDataset` function is called with the name of the snapshot to be deleted.
+The deletion operation is also logged, providing a record of the action for
+auditing purposes.
+
+## Copy-on-Write (CoW) Approach
+
+Both the qemu-img tool and ZFS utilize the Copy-on-Write (CoW) approach for
+efficient snapshot management. This technique is foundational in ensuring
+snapshots are created without requiring immediate additional storage space
+proportional to the dataset or disk image size.
+
+In the CoW model, when a snapshot is initiated, the system does not duplicate
+the entire file system or disk image. Instead, it maintains references to the
+existing data blocks. As modifications occur, new data is written to different
+locations, preserving the original data blocks as they were at the snapshot's
+creation time. This mechanism ensures that snapshots initially have a minimal
+storage footprint, only increasing as changes accrue in the file system or disk
+image over time.
 
 ## Handling Purgeable Volumes in EVE
 

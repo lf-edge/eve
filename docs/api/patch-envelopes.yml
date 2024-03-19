@@ -27,6 +27,12 @@ paths:
       summary: Send status to controller.
       description: |
         Status is nothing more but a array of bytes send to controller.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OpaqueStatus'
       tags:
         - Status
       responses:
@@ -111,6 +117,16 @@ paths:
 
 components:
   schemas:
+    OpaqueStatus:
+      title: Opaque Status
+      description: |
+        Opaque status to send back to controller
+      type: object
+      properties:
+        status:
+          type: string
+          format: byte
+
     PatchEnvelopeDescription:
       title: Patch Envelope description
       description: |

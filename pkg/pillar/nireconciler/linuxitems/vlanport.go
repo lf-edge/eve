@@ -140,16 +140,16 @@ func (v VLANPort) Dependencies() (deps []dg.Dependency) {
 	if v.BridgePort.VIFIfName != "" {
 		deps = append(deps, dg.Dependency{
 			RequiredItem: dg.ItemRef{
-				ItemType: generic.VIFTypename,
+				ItemType: VIFTypename,
 				ItemName: v.BridgePort.VIFIfName,
 			},
 			MustSatisfy: func(item dg.Item) bool {
-				vif, isVIF := item.(generic.VIF)
+				vif, isVIF := item.(VIF)
 				if !isVIF {
 					// unreachable
 					return false
 				}
-				return vif.MasterIfName == v.BridgeIfName
+				return vif.BridgeIfName == v.BridgeIfName
 			},
 			Description: "VIF must exist and it must be bridged",
 			Attributes: dg.DependencyAttributes{

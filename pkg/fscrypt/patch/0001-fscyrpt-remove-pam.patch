@@ -1,0 +1,73 @@
+From 51a7d643f93dfb517db5a778941689c731fb1e41 Mon Sep 17 00:00:00 2001
+From: Roman Penyaev <r.peniaev@gmail.com>
+Date: Sun, 3 Mar 2024 10:21:53 +0100
+Subject: [PATCH 1/2] fscyrpt: remove pam
+
+---
+ actions/callback.go |  5 +++--
+ cmd/fscrypt/keys.go | 26 ++------------------------
+ 2 files changed, 5 insertions(+), 26 deletions(-)
+
+diff --git a/actions/callback.go b/actions/callback.go
+index f15893db8cec..65ced0741279 100644
+--- a/actions/callback.go
++++ b/actions/callback.go
+@@ -102,8 +102,9 @@ func unwrapProtectorKey(info ProtectorInfo, keyFn KeyFunc) (*crypto.Key, error)
+ 		case crypto.ErrBadAuth:
+ 			// After the first failure, we let the callback know we are retrying.
+ 			log.Printf("invalid wrapping key for protector %s", info.Descriptor())
+-			retry = true
+-			continue
++			return nil, err
++			//retry = true
++			//continue
+ 		default:
+ 			return nil, err
+ 		}
+diff --git a/cmd/fscrypt/keys.go b/cmd/fscrypt/keys.go
+index b57c01d92e32..28171a47cafb 100644
+--- a/cmd/fscrypt/keys.go
++++ b/cmd/fscrypt/keys.go
+@@ -34,7 +34,6 @@ import (
+ 	"github.com/google/fscrypt/actions"
+ 	"github.com/google/fscrypt/crypto"
+ 	"github.com/google/fscrypt/metadata"
+-	"github.com/google/fscrypt/pam"
+ )
+ 
+ // The file descriptor for standard input
+@@ -153,29 +152,8 @@ func makeKeyFunc(supportRetry, shouldConfirm bool, prefix string) actions.KeyFun
+ 
+ 		switch info.Source() {
+ 		case metadata.SourceType_pam_passphrase:
+-			prompt := fmt.Sprintf("Enter %slogin passphrase for %s: ",
+-				prefix, formatUsername(info.UID()))
+-			key, err := getPassphraseKey(prompt)
+-			if err != nil {
+-				return nil, err
+-			}
+-
+-			// To confirm, check that the passphrase is the user's
+-			// login passphrase.
+-			if shouldConfirm {
+-				username, err := usernameFromID(info.UID())
+-				if err != nil {
+-					key.Wipe()
+-					return nil, err
+-				}
+-
+-				err = pam.IsUserLoginToken(username, key, quietFlag.Value)
+-				if err != nil {
+-					key.Wipe()
+-					return nil, err
+-				}
+-			}
+-			return key, nil
++			fmt.Println("This source type is not supported on this system")
++			return nil, ErrInvalidSource
+ 
+ 		case metadata.SourceType_custom_passphrase:
+ 			prompt := fmt.Sprintf("Enter %scustom passphrase for protector %q: ",
+-- 
+2.34.1
+

@@ -4,27 +4,48 @@ github.com/eriknordmark/ipinfo
 # github.com/euank/go-kmsg-parser v2.0.0+incompatible
 ## explicit
 github.com/euank/go-kmsg-parser/kmsgparser
-# github.com/fsnotify/fsnotify v1.5.1
-## explicit; go 1.13
+# github.com/fsnotify/fsnotify v1.6.0
+## explicit; go 1.16
 github.com/fsnotify/fsnotify
+# github.com/gabriel-vasile/mimetype v1.4.2
+## explicit; go 1.20
+github.com/gabriel-vasile/mimetype
+github.com/gabriel-vasile/mimetype/internal/charset
+github.com/gabriel-vasile/mimetype/internal/json
+github.com/gabriel-vasile/mimetype/internal/magic
 # github.com/go-ole/go-ole v1.2.6
 ## explicit; go 1.12
 github.com/go-ole/go-ole
 github.com/go-ole/go-ole/oleutil
-# github.com/golang/protobuf v1.5.2
+# github.com/go-playground/locales v0.14.1
+## explicit; go 1.17
+github.com/go-playground/locales
+github.com/go-playground/locales/currency
+# github.com/go-playground/universal-translator v0.18.1
+## explicit; go 1.18
+github.com/go-playground/universal-translator
+# github.com/go-playground/validator/v10 v10.15.5
+## explicit; go 1.18
+github.com/go-playground/validator/v10
+# github.com/golang/protobuf v1.5.3
 ## explicit; go 1.9
 github.com/golang/protobuf/ptypes/timestamp
-# github.com/google/go-cmp v0.5.9
+# github.com/google/go-cmp v0.6.0
 ## explicit; go 1.13
 github.com/google/go-cmp/cmp
 github.com/google/go-cmp/cmp/internal/diff
 github.com/google/go-cmp/cmp/internal/flags
 github.com/google/go-cmp/cmp/internal/function
 github.com/google/go-cmp/cmp/internal/value
-# github.com/google/go-containerregistry v0.8.0
-## explicit; go 1.14
+# github.com/google/go-containerregistry v0.14.0
+## explicit; go 1.18
 github.com/google/go-containerregistry/pkg/v1/types
-# github.com/lf-edge/eve-api/go v0.0.0-20230727134029-123abaf9479d
+# github.com/kr/pretty v0.3.1
+## explicit; go 1.12
+# github.com/leodido/go-urn v1.2.4
+## explicit; go 1.16
+github.com/leodido/go-urn
+# github.com/lf-edge/eve-api/go v0.0.0-20240229195728-6180247abbc1
 ## explicit; go 1.20
 github.com/lf-edge/eve-api/go/auth
 github.com/lf-edge/eve-api/go/certs
@@ -32,7 +53,9 @@ github.com/lf-edge/eve-api/go/config
 github.com/lf-edge/eve-api/go/evecommon
 github.com/lf-edge/eve-api/go/info
 github.com/lf-edge/eve-api/go/logs
-# github.com/lf-edge/eve/pkg/pillar v0.0.0-20230727061425-295cf5137a5c
+github.com/lf-edge/eve-api/go/metrics
+github.com/lf-edge/eve-api/go/profile
+# github.com/lf-edge/eve/pkg/pillar v0.0.0-20240229201048-a93b85069a10
 ## explicit; go 1.20
 github.com/lf-edge/eve/pkg/pillar/agentlog
 github.com/lf-edge/eve/pkg/pillar/base
@@ -43,8 +66,11 @@ github.com/lf-edge/eve/pkg/pillar/pubsub
 github.com/lf-edge/eve/pkg/pillar/pubsub/socketdriver
 github.com/lf-edge/eve/pkg/pillar/sriov
 github.com/lf-edge/eve/pkg/pillar/types
+github.com/lf-edge/eve/pkg/pillar/utils/cloudconfig
 github.com/lf-edge/eve/pkg/pillar/utils/file
+github.com/lf-edge/eve/pkg/pillar/utils/generics
 github.com/lf-edge/eve/pkg/pillar/utils/logging
+github.com/lf-edge/eve/pkg/pillar/utils/netutils
 github.com/lf-edge/eve/pkg/pillar/watch
 # github.com/satori/go.uuid v1.2.1-0.20180404165556-75cca531ea76
 ## explicit
@@ -53,10 +79,10 @@ github.com/satori/go.uuid
 ## explicit
 github.com/shirou/gopsutil/disk
 github.com/shirou/gopsutil/internal/common
-# github.com/sirupsen/logrus v1.9.0
+# github.com/sirupsen/logrus v1.9.3
 ## explicit; go 1.13
 github.com/sirupsen/logrus
-# github.com/vishvananda/netlink v1.1.1-0.20210924202909-187053b97868
+# github.com/vishvananda/netlink v1.2.1-beta.2
 ## explicit; go 1.12
 github.com/vishvananda/netlink
 github.com/vishvananda/netlink/nl
@@ -66,18 +92,32 @@ github.com/vishvananda/netns
 # github.com/yusufpapurcu/wmi v1.2.2
 ## explicit; go 1.16
 github.com/yusufpapurcu/wmi
-# golang.org/x/sys v0.5.0
-## explicit; go 1.17
-golang.org/x/sys/internal/unsafeheader
+# golang.org/x/crypto v0.19.0
+## explicit; go 1.18
+golang.org/x/crypto/sha3
+# golang.org/x/net v0.21.0
+## explicit; go 1.18
+golang.org/x/net/html
+golang.org/x/net/html/atom
+# golang.org/x/sys v0.17.0
+## explicit; go 1.18
+golang.org/x/sys/cpu
 golang.org/x/sys/unix
 golang.org/x/sys/windows
-# google.golang.org/protobuf v1.28.1
-## explicit; go 1.11
+# golang.org/x/text v0.14.0
+## explicit; go 1.18
+golang.org/x/text/internal/language
+golang.org/x/text/internal/language/compact
+golang.org/x/text/internal/tag
+golang.org/x/text/language
+# google.golang.org/protobuf v1.33.0
+## explicit; go 1.17
 google.golang.org/protobuf/encoding/prototext
 google.golang.org/protobuf/encoding/protowire
 google.golang.org/protobuf/internal/descfmt
 google.golang.org/protobuf/internal/descopts
 google.golang.org/protobuf/internal/detrand
+google.golang.org/protobuf/internal/editiondefaults
 google.golang.org/protobuf/internal/encoding/defval
 google.golang.org/protobuf/internal/encoding/messageset
 google.golang.org/protobuf/internal/encoding/tag
@@ -99,3 +139,6 @@ google.golang.org/protobuf/reflect/protoregistry
 google.golang.org/protobuf/runtime/protoiface
 google.golang.org/protobuf/runtime/protoimpl
 google.golang.org/protobuf/types/known/timestamppb
+# gopkg.in/yaml.v2 v2.4.0
+## explicit; go 1.15
+gopkg.in/yaml.v2
