@@ -10,6 +10,8 @@ const (
 	IPRuleTypename = "IPRule"
 	// BridgeTypename : typename for Linux bridges.
 	BridgeTypename = "Bridge"
+	// BridgePortTypename : typename for network interface added into a Linux bridge.
+	BridgePortTypename = "BridgePort"
 	// DummyIfTypename : typename for Linux dummy interface.
 	DummyIfTypename = "DummyInterface"
 	// VLANBridgeTypename : typename for (Linux bridge) enabled for VLANs.

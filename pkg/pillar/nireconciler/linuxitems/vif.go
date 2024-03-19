@@ -26,9 +26,6 @@ type VIF struct {
 	// in NetworkAdapter.Name.
 	// Unique in the scope of the application.
 	NetAdapterName string
-	// BridgeIfName : name of the bridge interface to which the VIF is connected.
-	// Empty if not bridged.
-	BridgeIfName string
 	// Variant : VIF should be one of the supported variants.
 	Variant VIFVariant
 }
@@ -76,7 +73,6 @@ func (v VIF) Equal(other dg.Item) bool {
 	}
 	return v.HostIfName == v2.HostIfName &&
 		v.NetAdapterName == v2.NetAdapterName &&
-		v.BridgeIfName == v2.BridgeIfName &&
 		v.Variant.External == v2.Variant.External &&
 		v.Variant.Veth.ForApp == v2.Variant.Veth.ForApp &&
 		v.Variant.Veth.AppIfName == v2.Variant.Veth.AppIfName &&
@@ -93,29 +89,20 @@ func (v VIF) External() bool {
 func (v VIF) String() string {
 	if v.External() {
 		return fmt.Sprintf(
-			"External VIF: {hostIfName: %s, netAdapterName: %s, bridgeIfName: %s}",
-			v.HostIfName, v.NetAdapterName, v.BridgeIfName)
+			"External VIF: {hostIfName: %s, netAdapterName: %s}",
+			v.HostIfName, v.NetAdapterName)
 	}
 	veth := v.Variant.Veth
 	return fmt.Sprintf(
-		"Veth VIF: {hostIfName: %s, netAdapterName: %s, bridgeIfName: %s, "+
+		"Veth VIF: {hostIfName: %s, netAdapterName: %s, "+
 			"app: %s, appNetNsName: %s, appIfName: %s, appIPs: %v",
-		v.HostIfName, v.NetAdapterName, v.BridgeIfName,
+		v.HostIfName, v.NetAdapterName,
 		veth.ForApp.ID, veth.ForApp.NetNsName, veth.AppIfName, veth.AppIPs)
 }
 
-// Dependencies returns bridge to which (non-external) VIF should be connected.
+// Dependencies returns no dependencies.
 func (v VIF) Dependencies() (deps []dg.Dependency) {
-	if !v.External() && v.BridgeIfName != "" {
-		deps = append(deps, dg.Dependency{
-			RequiredItem: dg.ItemRef{
-				ItemType: BridgeTypename,
-				ItemName: v.BridgeIfName,
-			},
-			Description: "Bridge must exist",
-		})
-	}
-	return deps
+	return nil
 }
 
 // GetAssignedIPs returns IP addresses assigned (by zedrouter) to the VIF interface.
@@ -168,12 +155,12 @@ func (c *VIFConfigurator) Create(ctx context.Context, item dg.Item) error {
 			}
 		}
 	}()
-	err = c.configureVethPeer("", vif.HostIfName, vif.BridgeIfName, nil, nil)
+	err = c.configureVethPeer("", vif.HostIfName, nil, nil)
 	if err != nil {
 		c.Log.Error(err)
 		return err
 	}
-	err = c.configureVethPeer(appPeer.ForApp.NetNsName, appPeer.AppIfName, "",
+	err = c.configureVethPeer(appPeer.ForApp.NetNsName, appPeer.AppIfName,
 		appPeer.AppIfMAC, appPeer.AppIPs)
 	if err != nil {
 		c.Log.Error(err)
@@ -183,7 +170,7 @@ func (c *VIFConfigurator) Create(ctx context.Context, item dg.Item) error {
 }
 
 func (c *VIFConfigurator) configureVethPeer(
-	netNs, ifName, bridgeIfName string, mac net.HardwareAddr, IPs []*net.IPNet) error {
+	netNs, ifName string, mac net.HardwareAddr, IPs []*net.IPNet) error {
 	// Get the interface link handle.
 	link, err := netlink.LinkByName(ifName)
 	if err != nil {
@@ -214,19 +201,6 @@ func (c *VIFConfigurator) configureVethPeer(
 		if err != nil {
 			return fmt.Errorf("failed to set MAC address %s for veth peer %s: %w",
 				mac, ifName, err)
-		}
-	}
-	if bridgeIfName != "" {
-		// Put veth peer under the bridge.
-		bridge, err := netlink.LinkByName(bridgeIfName)
-		if err != nil {
-			return fmt.Errorf("failed to get link for bridge %s: %w",
-				bridgeIfName, err)
-		}
-		err = netlink.LinkSetMaster(link, bridge)
-		if err != nil {
-			return fmt.Errorf("failed to put veth peer %s under bridge %s: %w",
-				ifName, bridgeIfName, err)
 		}
 	}
 	// Set link UP.
@@ -325,7 +299,6 @@ func (c *VIFConfigurator) NeedsRecreate(oldItem, newItem dg.Item) (recreate bool
 	}
 	return oldVif.HostIfName != newVif.HostIfName ||
 		oldVif.NetAdapterName != newVif.NetAdapterName ||
-		oldVif.BridgeIfName != newVif.BridgeIfName ||
 		oldVif.Variant.External != newVif.Variant.External ||
 		oldVif.Variant.Veth.ForApp != newVif.Variant.Veth.ForApp ||
 		oldVif.Variant.Veth.AppIfName != newVif.Variant.Veth.AppIfName

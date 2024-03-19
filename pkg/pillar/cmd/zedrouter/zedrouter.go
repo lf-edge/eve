@@ -963,7 +963,7 @@ func (z *zedrouter) processNIReconcileStatus(recStatus nireconciler.NIReconcileS
 			changed = true
 		}
 	} else {
-		if niStatus.HasError() {
+		if niStatus.HasError() && !niStatus.IPConflict {
 			niStatus.ClearError()
 			changed = true
 		}

@@ -1109,10 +1109,13 @@ func (r *LinuxNIReconciler) getSubgraphState(intSG, currSG dg.GraphR, forApp boo
 		if item.Type() == linux.VIFTypename {
 			return true
 		}
-		if item.Type() == linux.VLANPortTypename {
-			if item.(linux.VLANPort).BridgePort.VIFIfName != "" {
+		if item.Type() == linux.BridgePortTypename {
+			if item.(linux.BridgePort).Variant.VIFIfName != "" {
 				return true
 			}
+		}
+		if item.Type() == linux.VLANPortTypename {
+			return true
 		}
 		if route, isRoute := item.(linux.Route); isRoute {
 			if route.ForApp.ID != emptyUUID {
