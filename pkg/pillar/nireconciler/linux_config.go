@@ -88,11 +88,11 @@ import (
 //  |   |   +----------------------------------------------------+   |   |
 //  |   |   |                        L2                          |   |   |
 //  |   |   |                                                    |   |   |
-//  |   |   |              +----------------------+              |   |   |
-//  |   |   |              |        Bridge        |              |   |   |
-//  |   |   |              |  (L2 NI: external)   |              |   |   |
-//  |   |   |              |  (L3 NI: managed)    |              |   |   |
-//  |   |   |              +----------------------+              |   |   |
+//  |   |   |   +----------------------+    +----------------+   |   |   |
+//  |   |   |   |        Bridge        |    |  BridgePort    |   |   |   |
+//  |   |   |   |  (L2 NI: external)   |    |  (for uplink)  |   |   |   |
+//  |   |   |   |  (L3 NI: managed)    |    +----------------+   |   |   |
+//  |   |   |   +----------------------+                         |   |   |
 //  |   |   |                                                    |   |   |
 //  |   |   |      +---------------+    +-----------------+      |   |   |
 //  |   |   |      |  VLANBridge   |    |    VLANPort     |      |   |   |
@@ -134,14 +134,14 @@ import (
 //  |   |   |                (one for every VIF)                 |   |   |
 //  |   |   |                                                    |   |   |
 //  |   |   |       +---------------+   +---------------+        |   |   |
-//  |   |   |       |      VIF      |   |   VLANPort    |        |   |   |
-//  |   |   |       |   (external)  |   |  (for L2 NI)  |        |   |   |
+//  |   |   |       |      VIF      |   |   BridgePort  |        |   |   |
+//  |   |   |       |   (external)  |   |   (for VIF)   |        |   |   |
 //  |   |   |       +---------------+   +---------------+        |   |   |
 //  |   |   |                                                    |   |   |
-//  |   |   |                    +----------+                    |   |   |
-//  |   |   |                    |  IPSet   |                    |   |   |
-//  |   |   |                    |  (eids)  |                    |   |   |
-//  |   |   |                    +----------+                    |   |   |
+//  |   |   |       +---------------+    +----------+            |   |   |
+//  |   |   |       |  VLANPort     |    |  IPSet   |            |   |   |
+//  |   |   |       |  (for L2 NI)  |    |  (eids)  |            |   |   |
+//  |   |   |       +---------------+    +----------+            |   |   |
 //  |   |   |                                                    |   |   |
 //  |   |   |   +--------------------------------------------+   |   |   |
 //  |   |   |   |                   ACLs                     |   |   |   |
@@ -471,9 +471,12 @@ func (r *LinuxNIReconciler) getIntendedNICfg(niID uuid.UUID) dg.Graph {
 	if r.nis[niID] == nil || r.nis[niID].deleted {
 		return intendedCfg
 	}
-	intendedCfg.PutSubGraph(r.getIntendedNIL2Cfg(niID))
-	intendedCfg.PutSubGraph(r.getIntendedNIL3Cfg(niID))
-	intendedCfg.PutSubGraph(r.getIntendedNIServices(niID))
+	ni := r.nis[niID]
+	if !ni.bridge.IPConflict {
+		intendedCfg.PutSubGraph(r.getIntendedNIL2Cfg(niID))
+		intendedCfg.PutSubGraph(r.getIntendedNIL3Cfg(niID))
+		intendedCfg.PutSubGraph(r.getIntendedNIServices(niID))
+	}
 	for _, app := range r.apps {
 		if app.deleted {
 			continue
@@ -555,11 +558,15 @@ func (r *LinuxNIReconciler) getIntendedNIL2Cfg(niID uuid.UUID) dg.Graph {
 			break
 		}
 	}
-	intendedL2Cfg.PutItem(linux.VLANPort{
+	intendedL2Cfg.PutItem(linux.BridgePort{
 		BridgeIfName: ni.brIfName,
-		BridgePort: linux.BridgePort{
+		Variant: linux.BridgePortVariant{
 			UplinkIfName: uplinkPhysIfName(ni.bridge.Uplink.IfName),
 		},
+	}, nil)
+	intendedL2Cfg.PutItem(linux.VLANPort{
+		BridgeIfName: ni.brIfName,
+		PortIfName:   uplinkPhysIfName(ni.bridge.Uplink.IfName),
 		VLANConfig: linux.VLANConfig{
 			TrunkPort: &trunkPort,
 		},
@@ -1088,7 +1095,19 @@ func (r *LinuxNIReconciler) getIntendedAppConnCfg(niID uuid.UUID,
 	intendedAppConnCfg.PutItem(generic.VIF{
 		IfName:         vif.hostIfName,
 		NetAdapterName: vif.NetAdapterName,
-		MasterIfName:   ni.brIfName,
+	}, nil)
+	if ni.bridge.IPConflict {
+		// Do not configure ACLs if we have IP conflict with an uplink port.
+		// We could block management traffic by an accident.
+		// The bridge will not be created, and VIFs will be down. Therefore, all app
+		// traffic will be dropped anyway.
+		return intendedAppConnCfg
+	}
+	intendedAppConnCfg.PutItem(linux.BridgePort{
+		BridgeIfName: ni.brIfName,
+		Variant: linux.BridgePortVariant{
+			VIFIfName: vif.hostIfName,
+		},
 	}, nil)
 	if ni.config.Type == types.NetworkInstanceTypeSwitch {
 		var vlanConfig linux.VLANConfig
@@ -1101,10 +1120,8 @@ func (r *LinuxNIReconciler) getIntendedAppConnCfg(niID uuid.UUID,
 		}
 		intendedAppConnCfg.PutItem(linux.VLANPort{
 			BridgeIfName: ni.brIfName,
-			BridgePort: linux.BridgePort{
-				VIFIfName: vif.hostIfName,
-			},
-			VLANConfig: vlanConfig,
+			PortIfName:   vif.hostIfName,
+			VLANConfig:   vlanConfig,
 		}, nil)
 	}
 	// Create ipset with all the addresses from the DNSNameToIPList plus the VIF IP itself.
