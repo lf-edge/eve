@@ -713,15 +713,10 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 func gcUnusedInitObjects(ctx *volumemgrContext) {
 	log.Functionf("gcUnusedInitObjects")
 
-	// TODO: Need to handle GC for kubevirt eve
-	// There are images and blobs downloaded by kubernetes and eve is not aware of those
-	// We use same containerd repository to store those images.
-	// so for now block GC until we find a proper solution
-	if !ctx.hvTypeKube {
-		gcBlobStatus(ctx)
-		gcVerifyImageConfig(ctx)
-		gcImagesFromCAS(ctx)
-	}
+	gcBlobStatus(ctx)
+	gcVerifyImageConfig(ctx)
+	gcImagesFromCAS(ctx)
+
 }
 
 func handleVerifierRestarted(ctxArg interface{}, restartCounter int) {
