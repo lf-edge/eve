@@ -9,11 +9,11 @@ import (
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils"
 	uuid "github.com/satori/go.uuid"
 )
 
-func (z *zedrouter) doNetworkInstanceSanityCheck(
-	config *types.NetworkInstanceConfig) (niConflict bool, err error) {
+func (z *zedrouter) doNetworkInstanceSanityCheck(config *types.NetworkInstanceConfig) error {
 	z.log.Functionf("Sanity Checking NetworkInstance(%s-%s): type:%d, IpType:%d",
 		config.DisplayName, config.UUID, config.Type, config.IpType)
 
@@ -24,7 +24,7 @@ func (z *zedrouter) doNetworkInstanceSanityCheck(
 	case types.NetworkInstanceTypeSwitch:
 		// Do nothing
 	default:
-		return false, fmt.Errorf("network instance type %d is not supported", config.Type)
+		return fmt.Errorf("network instance type %d is not supported", config.Type)
 	}
 
 	// IpType - Check for valid types
@@ -33,63 +33,32 @@ func (z *zedrouter) doNetworkInstanceSanityCheck(
 		// Do nothing
 	case types.AddressTypeIPV4, types.AddressTypeIPV6,
 		types.AddressTypeCryptoIPV4, types.AddressTypeCryptoIPV6:
-		niConflict, err = z.doNetworkInstanceSubnetSanityCheck(config)
+		err := z.doNetworkInstanceSubnetSanityCheck(config)
 		if err != nil {
-			return niConflict, err
+			return err
 		}
 		err = z.doNetworkInstanceDhcpRangeSanityCheck(config)
 		if err != nil {
-			return false, err
+			return err
 		}
 		err = z.doNetworkInstanceGatewaySanityCheck(config)
 		if err != nil {
-			return false, err
+			return err
 		}
 
 	default:
-		return false, fmt.Errorf("IpType %d not supported", config.IpType)
+		return fmt.Errorf("IpType %d not supported", config.IpType)
 	}
-	return false, nil
+	return nil
 }
 
 func (z *zedrouter) doNetworkInstanceSubnetSanityCheck(
-	config *types.NetworkInstanceConfig) (niConflict bool, err error) {
+	config *types.NetworkInstanceConfig) error {
 	if config.Subnet.IP == nil || config.Subnet.IP.IsUnspecified() {
-		return false, fmt.Errorf("subnet unspecified for %s-%s: %+v",
+		return fmt.Errorf("subnet unspecified for %s-%s: %+v",
 			config.Key(), config.DisplayName, config.Subnet)
 	}
-
-	items := z.subNetworkInstanceConfig.GetAll()
-	for key2, config2 := range items {
-		niConfig2 := config2.(types.NetworkInstanceConfig)
-		if config.Key() == key2 {
-			continue
-		}
-
-		// We check for overlapping subnets by checking the
-		// SubnetAddr ( first address ) is not contained in the subnet of
-		// any other NI and vice-versa ( Other NI Subnet addrs are not
-		// contained in the current NI subnet)
-
-		// Check if config.Subnet is contained in iterStatusEntry.Subnet
-		if niConfig2.Subnet.Contains(config.Subnet.IP) {
-			return true, fmt.Errorf("subnet(%s, IP:%s) overlaps with another "+
-				"network instance(%s-%s) Subnet(%s)",
-				config.Subnet.String(), config.Subnet.IP.String(),
-				niConfig2.DisplayName, niConfig2.UUID,
-				niConfig2.Subnet.String())
-		}
-
-		// Reverse check: check if iterStatusEntry.Subnet is contained in config.subnet
-		if config.Subnet.Contains(niConfig2.Subnet.IP) {
-			return true, fmt.Errorf("another network instance(%s-%s) Subnet(%s) "+
-				"overlaps with Subnet(%s)",
-				niConfig2.DisplayName, niConfig2.UUID,
-				niConfig2.Subnet.String(),
-				config.Subnet.String())
-		}
-	}
-	return false, nil
+	return nil
 }
 
 func (z *zedrouter) doNetworkInstanceDhcpRangeSanityCheck(
@@ -127,6 +96,33 @@ func (z *zedrouter) doNetworkInstanceGatewaySanityCheck(
 		return fmt.Errorf("gateway(%s) is in DHCP Range(%v,%v)",
 			config.Gateway, config.DhcpRange.Start,
 			config.DhcpRange.End)
+	}
+	return nil
+}
+
+func (z *zedrouter) checkNetworkInstanceIPConflicts(
+	config *types.NetworkInstanceConfig) error {
+	// Check for overlapping subnets between NIs.
+	items := z.subNetworkInstanceConfig.GetAll()
+	for key2, config2 := range items {
+		niConfig2 := config2.(types.NetworkInstanceConfig)
+		if config.Key() == key2 {
+			continue
+		}
+		if utils.OverlappingSubnets(&config.Subnet, &niConfig2.Subnet) {
+			return fmt.Errorf("subnet (%s) overlaps with another "+
+				"network instance (%s-%s) subnet (%s)",
+				config.Subnet.String(), niConfig2.DisplayName, niConfig2.UUID,
+				niConfig2.Subnet.String())
+		}
+	}
+	// Check for overlapping subnets between the NI and device ports.
+	for _, port := range z.deviceNetworkStatus.Ports {
+		if utils.OverlappingSubnets(&config.Subnet, &port.Subnet) {
+			return fmt.Errorf("subnet (%s) overlaps with device port %s "+
+				"subnet (%s)", config.Subnet.String(), port.Logicallabel,
+				port.Subnet.String())
+		}
 	}
 	return nil
 }

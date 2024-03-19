@@ -97,6 +97,13 @@ type NIBridge struct {
 	// Uplink interface selected for this network instance.
 	// Zero value if network instance is air-gapped.
 	Uplink Uplink
+	// IPConflict is used to mark (Local) NI with IP subnet that overlaps with the network
+	// of one of the uplink ports.
+	// Currently, for conflicting NI, NIReconciler keeps only app VIFs configured, and even
+	// they are in the DOWN state to prevent any traffic getting through.
+	// In the future, we may improve isolation between NIs and uplinks using advanced
+	// policy-based routing or VRFs. This will enable conflicting NIs to remain functional.
+	IPConflict bool
 }
 
 // Uplink used by a network instance to provide external connectivity for applications.

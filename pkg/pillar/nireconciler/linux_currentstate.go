@@ -337,7 +337,7 @@ func (r *LinuxNIReconciler) updateCurrentVIFs(niID uuid.UUID) (changed bool) {
 					break
 				}
 			}
-			ifIndex, found, err := r.netMonitor.GetInterfaceIndex(vif.hostIfName)
+			_, found, err := r.netMonitor.GetInterfaceIndex(vif.hostIfName)
 			if err != nil {
 				r.log.Errorf("%s: updateCurrentVIFs: failed to get ifIndex "+
 					"for (VIF) %s: %v", LogAndErrPrefix, vif.hostIfName, err)
@@ -348,30 +348,9 @@ func (r *LinuxNIReconciler) updateCurrentVIFs(niID uuid.UUID) (changed bool) {
 				changed = r.updateSingleItem(prevVIF, nil, appConnSG) || changed
 				continue
 			}
-			ifAttrs, err := r.netMonitor.GetInterfaceAttrs(ifIndex)
-			if err != nil {
-				r.log.Errorf(
-					"%s: updateCurrentVIFs: failed to get interface %s "+
-						"(VIF) attributes: %v", LogAndErrPrefix, vif.hostIfName, err)
-				changed = r.updateSingleItem(prevVIF, nil, appConnSG) || changed
-				continue
-			}
-			var masterIfName string
-			if ifAttrs.Enslaved {
-				masterIfAttrs, err := r.netMonitor.GetInterfaceAttrs(ifAttrs.MasterIfIndex)
-				if err != nil {
-					r.log.Errorf("%s: updateCurrentVIFs: failed to get attrs "+
-						"for interface %s master (ifIndex: %d): %v",
-						LogAndErrPrefix, vif.hostIfName, ifAttrs.MasterIfIndex, err)
-					// Continue as if this VIF interface didn't have master...
-				} else {
-					masterIfName = masterIfAttrs.IfName
-				}
-			}
 			newVIF := generic.VIF{
 				IfName:         vif.hostIfName,
 				NetAdapterName: vif.NetAdapterName,
-				MasterIfName:   masterIfName,
 			}
 			changed = r.updateSingleItem(prevVIF, newVIF, appConnSG) || changed
 		}

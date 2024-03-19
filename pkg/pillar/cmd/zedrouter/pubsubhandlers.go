@@ -107,6 +107,10 @@ func (z *zedrouter) handleDNSImpl(ctxArg interface{}, key string,
 		z.initReconcileDone = true
 	}
 
+	// A new IP address may have been assigned to a device port, or a previously existing
+	// one may have been removed, potentially creating or resolving an IP conflict.
+	z.checkAllNetworkInstanceIPConflicts()
+
 	// Update uplink config for network instances.
 	// Also handle (dis)appearance of uplink interfaces.
 	// Note that even if uplink interface disappears, we do not revert activated NI.
@@ -176,11 +180,19 @@ func (z *zedrouter) handleNetworkInstanceCreate(ctxArg interface{}, key string,
 		return
 	}
 
-	if niConflict, err := z.doNetworkInstanceSanityCheck(&config); err != nil {
+	if err := z.doNetworkInstanceSanityCheck(&config); err != nil {
 		z.log.Error(err)
 		status.SetErrorNow(err.Error())
 		status.ChangeInProgress = types.ChangeInProgressTypeNone
-		status.NIConflict = niConflict
+		z.publishNetworkInstanceStatus(&status)
+		return
+	}
+
+	if err := z.checkNetworkInstanceIPConflicts(&config); err != nil {
+		z.log.Error(err)
+		status.SetErrorNow(err.Error())
+		status.ChangeInProgress = types.ChangeInProgressTypeNone
+		status.IPConflict = true
 		z.publishNetworkInstanceStatus(&status)
 		return
 	}
@@ -296,15 +308,25 @@ func (z *zedrouter) handleNetworkInstanceModify(ctxArg interface{}, key string,
 
 	prevPortLL := status.PortLogicalLabel
 	status.NetworkInstanceConfig = config
-	if niConflict, err := z.doNetworkInstanceSanityCheck(&config); err != nil {
+	if err := z.doNetworkInstanceSanityCheck(&config); err != nil {
 		z.log.Error(err)
 		status.SetErrorNow(err.Error())
 		status.WaitingForUplink = false
 		status.ChangeInProgress = types.ChangeInProgressTypeNone
-		status.NIConflict = niConflict
 		z.publishNetworkInstanceStatus(status)
 		return
 	}
+
+	if err := z.checkNetworkInstanceIPConflicts(&config); err != nil {
+		z.log.Error(err)
+		status.SetErrorNow(err.Error())
+		status.IPConflict = true
+		status.WaitingForUplink = false
+		status.ChangeInProgress = types.ChangeInProgressTypeNone
+		z.publishNetworkInstanceStatus(status)
+		return
+	}
+	status.IPConflict = false
 
 	// Get or (less likely) allocate a bridge number.
 	bridgeNumKey := types.UuidToNumKey{UUID: status.UUID}
@@ -394,8 +416,8 @@ func (z *zedrouter) handleNetworkInstanceModify(ctxArg interface{}, key string,
 		z.doUpdateActivatedNetworkInstance(config, status)
 	}
 
-	// Check if some inter-NI conflicts were resolved by this modification.
-	z.checkConflictingNetworkInstances()
+	// Check if some IP conflicts were resolved by this modification.
+	z.checkAllNetworkInstanceIPConflicts()
 	z.log.Functionf("handleNetworkInstanceModify(%s) done", key)
 }
 
@@ -412,8 +434,8 @@ func (z *zedrouter) handleNetworkInstanceDelete(ctxArg interface{}, key string,
 	z.publishNetworkInstanceStatus(status)
 
 	done := z.maybeDelOrInactivateNetworkInstance(status)
-	// Check if some inter-NI conflicts were resolved by this delete.
-	z.checkConflictingNetworkInstances()
+	// Check if some IP conflicts were resolved by this NI deletion.
+	z.checkAllNetworkInstanceIPConflicts()
 	z.log.Functionf("handleNetworkInstanceDelete(%s) done %t", key, done)
 }
 
