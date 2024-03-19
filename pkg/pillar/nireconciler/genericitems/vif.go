@@ -18,9 +18,6 @@ type VIF struct {
 	// in NetworkAdapter.Name.
 	// Unique in the scope of the application.
 	NetAdapterName string
-	// MasterIfName : name of the master interface under which this VIF is enslaved.
-	// Empty if not enslaved.
-	MasterIfName string
 }
 
 // Name returns the physical interface name.
@@ -54,8 +51,8 @@ func (v VIF) External() bool {
 
 // String describes VIF.
 func (v VIF) String() string {
-	return fmt.Sprintf("VIF: {ifName: %s, netAdapterName: %s, masterIfName: %s}",
-		v.IfName, v.NetAdapterName, v.MasterIfName)
+	return fmt.Sprintf("VIF: {ifName: %s, netAdapterName: %s}",
+		v.IfName, v.NetAdapterName)
 }
 
 // Dependencies returns nothing (external item).

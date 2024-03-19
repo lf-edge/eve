@@ -11,7 +11,6 @@ import (
 	dg "github.com/lf-edge/eve/libs/depgraph"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/netmonitor"
-	generic "github.com/lf-edge/eve/pkg/pillar/nireconciler/genericitems"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/vishvananda/netlink"
 )
@@ -25,19 +24,10 @@ const (
 type VLANPort struct {
 	// BridgeIfName : interface name of the bridge.
 	BridgeIfName string
-	// BridgePort references the bridged interface to configure VLANs for.
-	BridgePort BridgePort
+	// PortIfName : interface name of the bridge port.
+	PortIfName string
 	// VLANConfig : VLAN configuration to apply on the bridged interface.
 	VLANConfig VLANConfig
-}
-
-// BridgePort : port attached to a bridge.
-// Only one of these should be defined (this is like union).
-type BridgePort struct {
-	// UplinkIfName : bridged uplink interface.
-	UplinkIfName string
-	// VIFIfName : bridged VIF.
-	VIFIfName string
 }
 
 // VLANConfig : VLAN configuration to apply on the bridge port.
@@ -61,12 +51,12 @@ type AccessPort struct {
 // Name returns the interface name of the bridged port
 // (there can be at most one instance of VLANPort associated with a given bridged port).
 func (v VLANPort) Name() string {
-	return v.portIfName()
+	return v.PortIfName
 }
 
 // Label for VLANPort.
 func (v VLANPort) Label() string {
-	return v.portIfName() + " (VLAN port)"
+	return v.PortIfName + " (VLAN port)"
 }
 
 // Type of the item.
@@ -96,7 +86,7 @@ func (v VLANPort) Equal(other dg.Item) bool {
 		}
 	}
 	return v.BridgeIfName == v2.BridgeIfName &&
-		v.BridgePort == v2.BridgePort
+		v.PortIfName == v2.PortIfName
 }
 
 // External returns false.
@@ -106,13 +96,6 @@ func (v VLANPort) External() bool {
 
 // String describes VLANPort.
 func (v VLANPort) String() string {
-	var bridgePort string
-	if v.BridgePort.UplinkIfName != "" {
-		bridgePort = fmt.Sprintf("uplinkIfName: %s", v.BridgePort.UplinkIfName)
-	}
-	if v.BridgePort.VIFIfName != "" {
-		bridgePort = fmt.Sprintf("vifIfName: %s", v.BridgePort.VIFIfName)
-	}
 	var vlanConfig string
 	if v.VLANConfig.TrunkPort != nil {
 		vlanConfig = fmt.Sprintf("trunkPort: {allVIDs: %t, vids:%v}",
@@ -121,8 +104,8 @@ func (v VLANPort) String() string {
 	if v.VLANConfig.AccessPort != nil {
 		vlanConfig = fmt.Sprintf("accessPort: {vid: %d}", v.VLANConfig.AccessPort.VID)
 	}
-	return fmt.Sprintf("VLANPort: {bridgeIfName: %s, %s, %s}",
-		v.BridgeIfName, bridgePort, vlanConfig)
+	return fmt.Sprintf("VLANPort: {bridgeIfName: %s, portIfName: %s, %s}",
+		v.BridgeIfName, v.PortIfName, vlanConfig)
 }
 
 // Dependencies returns the (VLAN-enabled) bridge and the port as the dependencies.
@@ -137,56 +120,22 @@ func (v VLANPort) Dependencies() (deps []dg.Dependency) {
 			AutoDeletedByExternal: true,
 		},
 	})
-	if v.BridgePort.VIFIfName != "" {
-		deps = append(deps, dg.Dependency{
-			RequiredItem: dg.ItemRef{
-				ItemType: generic.VIFTypename,
-				ItemName: v.BridgePort.VIFIfName,
-			},
-			MustSatisfy: func(item dg.Item) bool {
-				vif, isVIF := item.(generic.VIF)
-				if !isVIF {
-					// unreachable
-					return false
-				}
-				return vif.MasterIfName == v.BridgeIfName
-			},
-			Description: "VIF must exist and it must be bridged",
-			Attributes: dg.DependencyAttributes{
-				AutoDeletedByExternal: true,
-			},
-		})
-	} else if v.BridgePort.UplinkIfName != "" {
-		deps = append(deps, dg.Dependency{
-			RequiredItem: dg.ItemRef{
-				ItemType: generic.UplinkTypename,
-				ItemName: v.BridgePort.UplinkIfName,
-			},
-			MustSatisfy: func(item dg.Item) bool {
-				uplink, isUplink := item.(generic.Uplink)
-				if !isUplink {
-					// unreachable
-					return false
-				}
-				return uplink.MasterIfName == v.BridgeIfName
-			},
-			Description: "Uplink must exist and it must be bridged",
-			Attributes: dg.DependencyAttributes{
-				AutoDeletedByExternal: true,
-			},
-		})
-	}
+	deps = append(deps, dg.Dependency{
+		RequiredItem: dg.ItemRef{
+			ItemType: BridgePortTypename,
+			ItemName: v.PortIfName,
+		},
+		MustSatisfy: func(item dg.Item) bool {
+			bridgePort, isBridgePort := item.(BridgePort)
+			if !isBridgePort {
+				// unreachable
+				return false
+			}
+			return bridgePort.BridgeIfName == v.BridgeIfName
+		},
+		Description: "Port must be attached to the bridge",
+	})
 	return deps
-}
-
-func (v VLANPort) portIfName() string {
-	if v.BridgePort.VIFIfName != "" {
-		return v.BridgePort.VIFIfName
-	}
-	if v.BridgePort.UplinkIfName != "" {
-		return v.BridgePort.UplinkIfName
-	}
-	return ""
 }
 
 // VLANPortConfigurator implements Configurator interface (libs/reconciler)
@@ -201,17 +150,29 @@ func (c *VLANPortConfigurator) Create(ctx context.Context, item dg.Item) error {
 	return c.createOrDelete(item, false)
 }
 
-func (c *VLANPortConfigurator) createOrDelete(item dg.Item, del bool) error {
+func (c *VLANPortConfigurator) createOrDelete(item dg.Item, del bool) (err error) {
+	defer func() {
+		if err != nil {
+			var linkNotFound netlink.LinkNotFoundError
+			if del && errors.As(err, &linkNotFound) {
+				// Port was already removed (by hypervisor or domainmgr),
+				// but we have not yet received netlink notification about the deletion.
+				// Ignore the error.
+				err = nil
+				return
+			}
+		}
+	}()
 	vlanPort, isVLANPort := item.(VLANPort)
 	if !isVLANPort {
 		return fmt.Errorf("invalid item type %T, expected VLANPort", item)
 	}
-	link, err := netlink.LinkByName(vlanPort.portIfName())
+	link, err := netlink.LinkByName(vlanPort.PortIfName)
 	if err != nil {
-		// Dependencies should prevent this.
 		err = fmt.Errorf("failed to get link for bridge port %s: %w",
-			vlanPort.portIfName(), err)
+			vlanPort.PortIfName, err)
 		c.Log.Error(err)
+		// Dependencies should prevent this.
 		return err
 	}
 	if vlanPort.VLANConfig.TrunkPort != nil {
