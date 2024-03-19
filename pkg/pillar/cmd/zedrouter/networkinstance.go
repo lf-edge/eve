@@ -66,6 +66,7 @@ func (z *zedrouter) getNIBridgeConfig(
 		MACAddress: status.BridgeMac,
 		IPAddress:  ipAddr,
 		Uplink:     z.getNIUplinkConfig(status),
+		IPConflict: status.IPConflict,
 	}
 }
 
@@ -297,26 +298,57 @@ func (z *zedrouter) delNetworkInstance(status *types.NetworkInstanceStatus) {
 	z.deleteNetworkInstanceMetrics(status.Key())
 }
 
-// Called when a NetworkInstance is deleted or modified to check if there are other
-// NIs that previously could not be configured due to inter-NI config conflicts.
-func (z *zedrouter) checkConflictingNetworkInstances() {
+// Called when a NetworkInstance is deleted or modified, or when a device port IP is
+// added or removed, to check if there are new IP conflicts or if some existing
+// have been resolved.
+func (z *zedrouter) checkAllNetworkInstanceIPConflicts() {
 	for _, item := range z.pubNetworkInstanceStatus.GetAll() {
 		niStatus := item.(types.NetworkInstanceStatus)
-		if !niStatus.NIConflict {
-			continue
-		}
 		niConfig := z.lookupNetworkInstanceConfig(niStatus.Key())
 		if niConfig == nil {
 			continue
 		}
-		niConflict, err := z.doNetworkInstanceSanityCheck(niConfig)
-		if err == nil && niConflict == false {
-			// Try to re-create the network instance now that the conflict is gone.
-			z.log.Noticef("Recreating NI %s (%s) now that inter-NI conflict "+
-				"is not present anymore", niConfig.UUID, niConfig.DisplayName)
-			// First release whatever has been already allocated for this NI.
-			z.delNetworkInstance(&niStatus)
-			z.handleNetworkInstanceCreate(nil, niConfig.Key(), *niConfig)
+		conflictErr := z.checkNetworkInstanceIPConflicts(niConfig)
+		if conflictErr == nil && niStatus.IPConflict {
+			// IP conflict was resolved.
+			if niStatus.Activated {
+				// Local NI was initially activated prior to the IP conflict.
+				// Subsequently, when the IP conflict arose, it was almost completely
+				// un-configured (only preserving app VIFs) to keep device connectivity
+				// unaffected. Now, it can be restored to full functionality.
+				z.log.Noticef("Updating NI %s (%s) now that IP conflict "+
+					"is not present anymore", niConfig.UUID, niConfig.DisplayName)
+				niStatus.IPConflict = false
+				niStatus.ClearError()
+				// This also publishes the new status.
+				z.doUpdateActivatedNetworkInstance(*niConfig, &niStatus)
+			} else {
+				// NI is not in an active state (nothing configured in the network stack).
+				// We can simply re-create the network instance now that the IP conflict
+				// is gone.
+				z.log.Noticef("Recreating NI %s (%s) now that IP conflict "+
+					"is not present anymore", niConfig.UUID, niConfig.DisplayName)
+				// First release whatever has been already allocated for this NI.
+				z.delNetworkInstance(&niStatus)
+				z.handleNetworkInstanceCreate(nil, niConfig.Key(), *niConfig)
+			}
+		}
+		if conflictErr != nil && !niStatus.IPConflict {
+			// New IP conflict arose.
+			z.log.Error(conflictErr)
+			niStatus.IPConflict = true
+			niStatus.SetErrorNow(conflictErr.Error())
+			z.publishNetworkInstanceStatus(&niStatus)
+			if niStatus.Activated {
+				// Local NI is already activated. Instead of removing it and halting
+				// all connected applications (which can lead to loss of data), we
+				// un-configure everything but app VIFs, which will be set DOWN
+				// on the host side. User has a chance to fix the configuration.
+				// When IP conflict is removed, NI will be automatically fully restored.
+				z.log.Noticef("Updating NI %s (%s) after detecting an IP conflict (%s)",
+					niConfig.UUID, niConfig.DisplayName, conflictErr)
+				z.doUpdateActivatedNetworkInstance(*niConfig, &niStatus)
+			}
 		}
 	}
 }
