@@ -187,6 +187,54 @@ trigger_k3s_selfextraction() {
 #Make sure all prereqs are set after /var/lib is mounted to get logging info
 setup_prereqs
 
+VMICONFIG_FILENAME="/run/zedkube/vmiVNC.run"
+VNC_RUNNING=false
+# run virtctl vnc
+check_and_run_vnc() {
+  pid=$(pgrep -f "/usr/bin/virtctl vnc" )
+  # if remote-console config file exist, and either has not started, or need to restart
+  if [ -f "$VMICONFIG_FILENAME" ] && { [ "$VNC_RUNNING" = false ] || [ -z "$pid" ]; } then
+    vmiName=""
+    vmiPort=""
+
+    # Read the file and extract values
+    while IFS= read -r line; do
+        case "$line" in
+            *"VMINAME:"*)
+                vmiName="${line#*VMINAME:}"   # Extract the part after "VMINAME:"
+                vmiName="${vmiName%%[[:space:]]*}"  # Remove leading/trailing whitespace
+                ;;
+            *"VNCPORT:"*)
+                vmiPort="${line#*VNCPORT:}"   # Extract the part after "VNCPORT:"
+                vmiPort="${vmiPort%%[[:space:]]*}"  # Remove leading/trailing whitespace
+                ;;
+        esac
+    done < "$VMICONFIG_FILENAME"
+
+    # Check if the 'vmiName' and 'vmiPort' values are empty, if so, log an error and return
+    if [ -z "$vmiName" ] || [ -z "$vmiPort" ]; then
+        logmsg "Error: VMINAME or VNCPORT is empty in $VMICONFIG_FILENAME"
+        return 1
+    fi
+
+    logmsg "virctl vnc on vmiName: $vmiName, port $vmiPort"
+    nohup /usr/bin/virtctl vnc "$vmiName" -n eve-kube-app --port "$vmiPort" --proxy-only &
+    VNC_RUNNING=true
+  else
+    if [ ! -f "$VMICONFIG_FILENAME" ]; then
+      if [ "$VNC_RUNNING" = true ]; then
+        if [ -n "$pid" ]; then
+            logmsg "Killing process with PID $pid"
+            kill -9 "$pid"
+        else
+            logmsg "Error: Process not found"
+        fi
+      fi
+      VNC_RUNNING=false
+    fi
+  fi
+}
+
 date >> $INSTALL_LOG
 
 #Forever loop every 15 secs
@@ -293,5 +341,8 @@ fi
                 cp "$CTRD_LOG" "${CTRD_LOG}.1"
                 truncate -s 0 "$CTRD_LOG"
         fi
+
+        # Check and run vnc
+        check_and_run_vnc
         sleep 15
 done
