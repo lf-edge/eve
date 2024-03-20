@@ -352,10 +352,6 @@ func (c *containerdCAS) IngestBlob(ctx context.Context, blobs ...types.BlobStatu
 		}
 		for i, m := range index.Manifests {
 			info.Labels[fmt.Sprintf("%s.%d", containerdGCRef, i)] = m.Digest.String()
-			if base.IsHVTypeKube() {
-				info.Labels["eve-downloaded"] = "true"
-				logrus.Infof("PRAMOD set eve-downloaded label on blob ")
-			}
 		}
 		if err := c.UpdateBlobInfo(info); err != nil {
 			err = fmt.Errorf("IngestBlob(%s): could not update labels on index: %v", info.Digest, err.Error())
@@ -377,7 +373,6 @@ func (c *containerdCAS) IngestBlob(ctx context.Context, blobs ...types.BlobStatu
 			info.Labels[fmt.Sprintf("%s.%d", containerdGCRef, i)] = m.Config.Digest.String()
 			if base.IsHVTypeKube() {
 				info.Labels["eve-downloaded"] = "true"
-				logrus.Infof("PRAMOD in manifest set eve-downloaded label on blob ")
 			}
 
 			if err := c.UpdateBlobInfo(info); err != nil {

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lf-edge/eve/pkg/pillar/base"
+	//"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/cas"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
@@ -476,27 +476,6 @@ func unpublishBlobStatus(ctx *volumemgrContext, blobs ...*types.BlobStatus) {
 		key := blob.Sha256
 		log.Functionf("unpublishBlobStatus(%s)", key)
 
-		// If this Blob is not downloaded by eve, ignore and continue
-		// In kubevirt eve, k3s specific images,blobs are not downloaded by eve.
-		/*
-			if base.IsHVTypeKube() {
-				blobInfo, err := ctx.casClient.GetBlobInfo(cas.CheckAndCorrectBlobHash(blob.Sha256))
-				if err != nil {
-					err := fmt.Errorf("unpublishBlobStatus: Exception while getting blob info %s: %s",
-						blob.Sha256, err.Error())
-					log.Errorf(err.Error())
-					continue
-				}
-				label := blobInfo.Labels
-				_, found := label["eve-downloaded"]
-				if !found {
-					log.Noticef("unplublishBlobStatus: PRAMOD Ignoring the blob %s not downloaded by eve", blob.Sha256)
-					continue
-				}
-
-			}
-		*/
-
 		// Drop references. Note that we never publish the resulting
 		// BlobStatus since we unpublish it below.
 		// But the BlobStatus pointer might appear several times in
@@ -555,6 +534,17 @@ func populateInitBlobStatus(ctx *volumemgrContext) {
 			log.Functionf("populateInitBlobStatus: blob %s in CAS could not get mediaType", blobInfo.Digest)
 			continue
 		}
+		// In Kubevirt eve, we share same user containerd repository between eve and k3s containers.
+		// So volumemgr should ignore publishing blobs which are not downloaded through eve download mechanism
+		// In /run/volumemgr/BlobStatus we should only see the blobs downloaded by eve.
+		if ctx.hvTypeKube {
+			label := blobInfo.Labels
+			_, found := label["eve-downloaded"]
+			if !found {
+				log.Noticef("populateInitBlobStatus: Ignoring the blob %s not downloaded by eve", blobInfo.Digest)
+				continue
+			}
+		}
 		if ctx.LookupBlobStatus(blobInfo.Digest) == nil {
 			log.Functionf("populateInitBlobStatus: Found blob %s in CAS", blobInfo.Digest)
 			blobStatus := &types.BlobStatus{
@@ -594,6 +584,7 @@ func gcBlobStatus(ctx *volumemgrContext) {
 	pub := ctx.pubBlobStatus
 	for _, blobStatusInt := range pub.GetAll() {
 		blobStatus := blobStatusInt.(types.BlobStatus)
+
 		if blobStatus.State == types.LOADED && blobStatus.RefCount == 0 {
 			log.Noticef("gcBlobStatus:  PRAMOD removing blob %s which has no refObjects", blobStatus.Sha256)
 			unpublishBlobStatus(ctx, &blobStatus)
@@ -619,10 +610,10 @@ func gcImagesFromCAS(ctx *volumemgrContext) {
 	for _, image := range casImages {
 		if _, ok := referenceMap[image]; !ok {
 
-			// In kubevirt eve k3s specific containers are not downloaded by EVE.
+			// In kubevirt eve k3s specific images are not downloaded by EVE.
 			// We cannot garbage collect those, so make sure this image was actually downloaded
 			// by eve, by checking label eve_downloaded=true
-			if base.IsHVTypeKube() {
+			if ctx.hvTypeKube {
 				label, err := ctx.casClient.GetImageLabel(image)
 				if err != nil {
 					log.Errorf("gcImagesFromCAS: error while getting image label from ctr %s", err)
@@ -631,13 +622,13 @@ func gcImagesFromCAS(ctx *volumemgrContext) {
 				_, found := label["eve-downloaded"]
 				if found {
 					// Garbage this image since it was downloaded by eve and not referenced.
-					log.Noticef("gcImagesFromCAS: PRAMOD removing image %s from CAS since no ContentTreeStatus ref found, label %v", image, label)
+					log.Noticef("gcImagesFromCAS: removing image %s from CAS since no ContentTreeStatus ref found, label %v", image, label)
 					if err := ctx.casClient.RemoveImage(image); err != nil {
 						log.Errorf("gcImagesFromCAS: Exception while removing image from CAS. %s", err)
 					}
 				}
 			} else {
-				log.Functionf("gcImagesFromCAS: PRAMOD else removing image %s from CAS since no ContentTreeStatus ref found", image)
+				log.Functionf("gcImagesFromCAS: removing image %s from CAS since no ContentTreeStatus ref found", image)
 				if err := ctx.casClient.RemoveImage(image); err != nil {
 					log.Errorf("gcImagesFromCAS: Exception while removing image from CAS. %s", err)
 				}
