@@ -70,6 +70,27 @@ IMGB_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30053
 CONF_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30054
 PERSIST_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30059
 
+# content of rootfs partition
+ROOTFS_IMG=/parts/rootfs.img
+# content of conf partition
+CONF_FILE=/parts/config.img
+# content of persist partition
+PERSIST_FILE=/parts/persist.img
+# EFI boot directory
+EFI_DIR=/parts/EFI
+# early bootloader directory (optional)
+BOOT_DIR=/parts/boot
+# content of initrd installer image (optional)
+INITRD_IMG=/parts/initrd.img
+# content of installer ECO (optional)
+INSTALLER_IMG=/parts/installer.img
+# GRUB cfg override for our installer
+INSTALLER_GRUB_CFG=/parts/grub.cfg
+# IMX8 flash blob that needs to be written to image
+IMX8_BLOB=/parts/imx8-flash.bin
+# IMX8 configuration file with flashing parameters
+IMX8_CONF=/parts/imx8-flash.conf
+
 # EFI partition size in bytes
 EFI_PART_SIZE=$((36 * 1024 * 1024))
 # rootfs partition size in bytes
@@ -84,6 +105,11 @@ INSTALLER_SYS_PART_SIZE=$(( 532 * 1024 * 1024 ))
 IMX8_BLOB_SIZE=$(( 8 * 1024 * 1024 ))
 # sector where the first partition starts on a blank disk
 FIRST_PART_SEC=2048
+
+# offset in the GPT partition table from which we can start our numbering
+PART_OFFSET=0
+# starting sector for our portion of the disk
+CUR_SEC="$FIRST_PART_SEC"
 
 sgdisk() {
   # filter out annoying messages we can't get rid of:
@@ -369,31 +395,6 @@ if [ ! -d /parts ] || [ -z "$(ls -A -- /parts)" ]; then
    (cd /parts ; bsdtar xzf -)
 fi
 
-# content of rootfs partition
-ROOTFS_IMG=/parts/rootfs.img
-# content of conf partition
-CONF_FILE=/parts/config.img
-# content of persist partition
-PERSIST_FILE=/parts/persist.img
-# EFI boot directory
-EFI_DIR=/parts/EFI
-# early bootloader directory (optional)
-BOOT_DIR=/parts/boot
-# content of initrd installer image (optional)
-INITRD_IMG=/parts/initrd.img
-# content of installer ECO (optional)
-INSTALLER_IMG=/parts/installer.img
-# GRUB cfg override for our installer
-INSTALLER_GRUB_CFG=/parts/grub.cfg
-# IMX8 flash blob that needs to be written to image
-IMX8_BLOB=/parts/imx8-flash.bin
-# IMX8 configuration file with flashing parameters
-IMX8_CONF=/parts/imx8-flash.conf
-
-# offset in the GPT partition table from which we can start our numbering
-PART_OFFSET=0
-# starting sector for our portion of the disk
-CUR_SEC="$FIRST_PART_SEC"
 
 if [ -f "$IMX8_BLOB" ] && [ -f "$IMX8_CONF" ]; then
   # For imx8 boards we need to write boot blob with the specified offset
