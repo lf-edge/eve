@@ -258,26 +258,22 @@ type Task interface {
 }
 
 type DomainStatus struct {
-	UUIDandVersion     UUIDandVersion
-	DisplayName        string
-	State              SwState // BOOTING and above?
-	Activated          bool    // XXX remove??
-	AppNum             int     // From networking; makes the name unique
-	PendingAdd         bool
-	PendingModify      bool
-	PendingDelete      bool
-	DomainName         string // Name of Xen domain
-	DomainId           int
-	BootTime           time.Time
-	DiskStatusList     []DiskStatus
-	VifList            []VifInfo
-	IoAdapterList      []IoAdapter
-	VirtualizationMode VmMode
-	EnableVnc          bool
-	VncDisplay         uint32
-	VncPasswd          string
-	DisableLogs        bool
-	TriedCount         int
+	UUIDandVersion UUIDandVersion
+	DisplayName    string
+	State          SwState // BOOTING and above?
+	Activated      bool    // XXX remove??
+	AppNum         int     // From networking; makes the name unique
+	PendingAdd     bool
+	PendingModify  bool
+	PendingDelete  bool
+	DomainName     string // Name of Xen domain
+	DomainId       int
+	BootTime       time.Time
+	DiskStatusList []DiskStatus
+	VifList        []VifInfo
+	IoAdapterList  []IoAdapter
+	DisableLogs    bool
+	TriedCount     int
 	// ErrorAndTime provides SetErrorNow() and ClearError()
 	ErrorAndTime
 	ConfigFailed   bool

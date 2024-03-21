@@ -1284,19 +1284,15 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 
 	// Start by marking with PendingAdd
 	status := types.DomainStatus{
-		UUIDandVersion:     config.UUIDandVersion,
-		PendingAdd:         true,
-		DisplayName:        config.DisplayName,
-		DomainName:         config.GetTaskName(),
-		AppNum:             config.AppNum,
-		VirtualizationMode: config.VirtualizationModeOrDefault(),
-		EnableVnc:          config.EnableVnc,
-		VncDisplay:         config.VncDisplay,
-		VncPasswd:          config.VncPasswd,
-		DisableLogs:        config.DisableLogs,
-		State:              types.INSTALLED,
-		VmConfig:           config.VmConfig,
-		Service:            config.Service,
+		UUIDandVersion: config.UUIDandVersion,
+		PendingAdd:     true,
+		DisplayName:    config.DisplayName,
+		DomainName:     config.GetTaskName(),
+		AppNum:         config.AppNum,
+		DisableLogs:    config.DisableLogs,
+		State:          types.INSTALLED,
+		VmConfig:       config.VmConfig,
+		Service:        config.Service,
 	}
 
 	status.VmConfig.CPUs = ""
