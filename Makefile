@@ -721,12 +721,12 @@ publish_sources: $(COLLECTED_SOURCES)
 
 $(LIVE).raw: $(BOOT_PART) $(EFI_PART) $(ROOTFS_IMG) $(CONFIG_IMG) $(PERSIST_IMG) $(BSP_IMX_PART) | $(INSTALLER)
 	./tools/prepare-platform.sh "$(PLATFORM)" "$(BUILD_DIR)" "$(INSTALLER)" || :
-	./tools/makeflash.sh "mkimage-raw-efi" -C 559 $| $@ $(PART_SPEC)
+	./tools/makeflash.sh "mkimage-raw-efi" -C $| $@ $(PART_SPEC)
 	$(QUIET): $@: Succeeded
 
 $(INSTALLER).raw: $(BOOT_PART) $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(INSTALLER_IMG) $(CONFIG_IMG) $(PERSIST_IMG) $(BSP_IMX_PART) | $(INSTALLER)
 	./tools/prepare-platform.sh "$(PLATFORM)" "$(BUILD_DIR)" "$(INSTALLER)" || :
-	./tools/makeflash.sh "mkimage-raw-efi" -C 592 $| $@ "conf_win installer inventory_win"
+	./tools/makeflash.sh "mkimage-raw-efi" -C $| $@ "conf_win installer inventory_win"
 	$(QUIET): $@: Succeeded
 
 $(INSTALLER).iso: $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(INSTALLER_IMG) $(CONFIG_IMG) $(PERSIST_IMG) | $(INSTALLER)
@@ -749,7 +749,7 @@ $(LIVE).parallels: $(LIVE).raw
 
 $(VERIFICATION).raw: $(BOOT_PART) $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(VERIFICATION_IMG) $(CONFIG_IMG) $(PERSIST_IMG) $(BSP_IMX_PART) | $(VERIFICATION)
 	./tools/prepare-platform.sh "$(PLATFORM)" "$(BUILD_DIR)" "$(VERIFICATION)" || :
-	./tools/makeflash.sh "mkverification-raw-efi" -C 850 $| $@ "conf_win verification inventory_win"
+	./tools/makeflash.sh "mkverification-raw-efi" -C $| $@ "conf_win verification inventory_win"
 	$(QUIET): $@: Succeeded
 
 $(VERIFICATION).net: $(EFI_PART) $(ROOTFS_TAR) $(ROOTFS_IMG) $(INITRD_IMG) $(VERIFICATION_IMG) $(CONFIG_IMG) $(PERSIST_IMG) | $(VERIFICATION)
