@@ -198,7 +198,7 @@ func (ctx xenContext) CreateDomConfig(domainName string, config types.DomainConf
 		file.WriteString(fmt.Sprintf("bootloader = \"%s\"\n",
 			bootLoader))
 	}
-	if config.EnableVnc {
+	if config.EnableVnc || config.EnableVncShimVm {
 		if config.VirtualizationMode == types.PV {
 			vncParams := []string{"vnc=1", "vnclisten=0.0.0.0"}
 			if config.VncDisplay != 0 {

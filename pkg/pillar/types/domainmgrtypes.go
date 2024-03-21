@@ -152,6 +152,7 @@ func (config DomainConfig) LogCreate(logBase *base.LogObject) {
 	}
 	logObject.CloneAndAddField("activate", config.Activate).
 		AddField("enable-vnc", config.EnableVnc).
+		AddField("enable-vnc-shim-vm", config.EnableVncShimVm).
 		Noticef("domain config create")
 }
 
@@ -165,12 +166,15 @@ func (config DomainConfig) LogModify(logBase *base.LogObject, old interface{}) {
 		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of DomainConfig type")
 	}
 	if oldConfig.Activate != config.Activate ||
-		oldConfig.EnableVnc != config.EnableVnc {
+		oldConfig.EnableVnc != config.EnableVnc ||
+		oldConfig.EnableVncShimVm != config.EnableVncShimVm {
 
 		logObject.CloneAndAddField("activate", config.Activate).
 			AddField("enable-vnc", config.EnableVnc).
+			AddField("enable-vnc-shim-vm", config.EnableVncShimVm).
 			AddField("old-activate", oldConfig.Activate).
 			AddField("old-enable-vnc", oldConfig.EnableVnc).
+			AddField("old-enable-vnc-shim-vm", oldConfig.EnableVncShimVm).
 			Noticef("domain config modify")
 	} else {
 		// XXX remove?
@@ -185,6 +189,7 @@ func (config DomainConfig) LogDelete(logBase *base.LogObject) {
 		config.UUIDandVersion.UUID, config.LogKey())
 	logObject.CloneAndAddField("activate", config.Activate).
 		AddField("enable-vnc", config.EnableVnc).
+		AddField("enable-vnc-shim-vm", config.EnableVncShimVm).
 		Noticef("domain config delete")
 
 	base.DeleteLogObject(logBase, config.LogKey())
@@ -229,6 +234,7 @@ type VmConfig struct {
 	VncPasswd          string
 	CPUsPinned         bool
 	VMMMaxMem          int // in kbytes
+	EnableVncShimVm    bool
 }
 
 type VmMode uint8
