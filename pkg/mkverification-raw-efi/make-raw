@@ -117,6 +117,10 @@ The operation has completed successfully.' | tr '\012' '|')$^" || :
   return $RET
 }
 
+imx8_exists() {
+  [ -f "$IMX8_BLOB" ] && [ -f "$IMX8_CONF" ]
+}
+
 cp_with_backup() {
   # shellcheck disable=SC2155
   local MD5_SUM=$(md5sum "$2" | cut -f1 -d\  )
@@ -195,6 +199,9 @@ do_verification() {
   mkdir -p /efifs/boot && cp -r "$BOOT_DIR"/* /efifs/boot/ 2>/dev/null
   cp "$INSTALLER_GRUB_CFG" /efifs/EFI/BOOT/grub.cfg
   cp "$PERSIST_FILE" "$INITRD_IMG" "$ROOTFS_IMG" "$VERIFICATION_IMG" /UsbInvocationScript.txt /efifs
+  if imx8_exists; then
+     cp "$IMX8_BLOB" "$IMX8_CONF" /efifs
+  fi
   touch /efifs/boot/.boot_repository
   od -An -x -N 16 /dev/random | tr -d ' ' > /efifs/boot/.uuid
   do_system_vfat_part "$1" "$VERIFICATION_SYS_PART_SIZE"
@@ -394,7 +401,7 @@ if [ ! -d /parts ] || [ -z "$(ls -A -- /parts)" ]; then
    (cd /parts ; bsdtar xzf -)
 fi
 
-if [ -f "$IMX8_BLOB" ] && [ -f "$IMX8_CONF" ]; then
+if imx8_exists; then
   # For imx8 boards we need to write boot blob with the specified offset
   IMX_BLOB_END_SEC=$(( IMX8_BLOB_SIZE / 512 ))
   CUR_SEC="$IMX_BLOB_END_SEC"

@@ -127,6 +127,10 @@ The operation has completed successfully.' | tr '\012' '|')$^" || :
   return $RET
 }
 
+imx8_exists() {
+  [ -f "$IMX8_BLOB" ] && [ -f "$IMX8_CONF" ]
+}
+
 cp_with_backup() {
   local MD5_SUM=$(md5sum "$2" | cut -f1 -d\  )
   [ -f "$2".$MD5_SUM ] || cp "$2" "$2".$MD5_SUM
@@ -200,7 +204,7 @@ do_installer() {
   mkdir -p /efifs/boot && cp -r "$BOOT_DIR"/* /efifs/boot/ 2>/dev/null
   cp "$INSTALLER_GRUB_CFG" /efifs/EFI/BOOT/grub.cfg
   cp "$PERSIST_FILE" "$INITRD_IMG" "$ROOTFS_IMG" "$INSTALLER_IMG" /UsbInvocationScript.txt /efifs
-  if [ -f "$IMX8_BLOB" ] && [ -f "$IMX8_CONF" ]; then
+  if imx8_exists; then
      cp "$IMX8_BLOB" "$IMX8_CONF" /efifs
   fi
   touch /efifs/boot/.boot_repository
@@ -396,7 +400,7 @@ if [ ! -d /parts ] || [ -z "$(ls -A -- /parts)" ]; then
 fi
 
 
-if [ -f "$IMX8_BLOB" ] && [ -f "$IMX8_CONF" ]; then
+if imx8_exists; then
   # For imx8 boards we need to write boot blob with the specified offset
   IMX_BLOB_END_SEC=$(( IMX8_BLOB_SIZE / 512 ))
   CUR_SEC="$IMX_BLOB_END_SEC"
