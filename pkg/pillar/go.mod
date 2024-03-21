@@ -23,7 +23,7 @@ require (
 	github.com/jackwakefield/gopac v1.0.2
 	github.com/jaypipes/ghw v0.8.0
 	github.com/lf-edge/edge-containers v0.0.0-20221025050409-93c34bebadd2
-	github.com/lf-edge/eve-api/go v0.0.0-20231011200019-cb3cb1275e0d
+	github.com/lf-edge/eve-api/go v0.0.0-20231219213132-d4c463c8b980
 	github.com/lf-edge/eve-libs v0.0.0-20231120160159-666ed2307f8e
 	github.com/lf-edge/go-qemu v0.0.0-20231121152149-4c467eda0c56
 	github.com/linuxkit/linuxkit/src/cmd/linuxkit v0.0.0-20220913135124-e532e7310810

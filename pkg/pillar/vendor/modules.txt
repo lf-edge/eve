@@ -466,7 +466,7 @@ github.com/kr/fs
 github.com/lf-edge/edge-containers/pkg/registry
 github.com/lf-edge/edge-containers/pkg/resolver
 github.com/lf-edge/edge-containers/pkg/tgz
-# github.com/lf-edge/eve-api/go v0.0.0-20231011200019-cb3cb1275e0d
+# github.com/lf-edge/eve-api/go v0.0.0-20231219213132-d4c463c8b980
 ## explicit; go 1.20
 github.com/lf-edge/eve-api/go/attest
 github.com/lf-edge/eve-api/go/auth
