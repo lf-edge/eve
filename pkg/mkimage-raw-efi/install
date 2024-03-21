@@ -299,6 +299,7 @@ eve_flavor=$(cat /root/etc/eve-hv-type)
 if [ "$eve_flavor" = "kubevirt" ]; then
    INSTALL_CLUSTERED_STORAGE=true
    INSTALL_ZFS=true
+   logmsg "Kubevirt image installing ZFS and EVE reserved storage sizeGB"
 fi
 
 

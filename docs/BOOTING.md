@@ -133,7 +133,7 @@ in grub.cfg with graphical GRUB menu to get the device to boot again.
     12. `eve_install_skip_zfs_checks` - install zfs by skipping minimum requirement checks.
     13. `eve_install_zfs_with_raid_level` - Sets raid level for zfs storage. Valid values are none,raid1,raid5,raid6. Default value is none. This option also applied for the first boot of a live image to prepare zfs persist pool instead of ext4.
     14. `eve_install_kubevirt_reserve_for_eve_sizeGB` - Amount of space in GB to reserve for eve services in kubevirt based images (This is highly experimental and not supported config, also its an optional parameter and defaults to 20GB if not set)
-    15. `eve_install_kubevirt_etcd_sizeGB` - Size in GB of the etcd-storage zvol.
+    15. `eve_install_kubevirt_etcd_sizeGB` - Size in GB of the etcd-storage zvol.  Defaults to 10GB.
 3. General kernel parameters may be adjusted with `set_global dom0_extra_args "$dom0_extra_args OPTION1=VAL1 OPTION2 "`.
    They will be added to kernel cmdline.
 
