@@ -41,7 +41,7 @@ MEDIA_SIZE=32768
 # Image type for final disk images
 IMG_FORMAT=qcow2
 # Filesystem type for rootfs image
-ROOTFS_FORMAT=squash
+ROOTFS_FORMAT?=squash
 # Image type for installer image
 INSTALLER_IMG_FORMAT=raw
 # Image type for verification image
@@ -659,8 +659,10 @@ $(ROOTFS_IMG): $(ROOTFS_TAR) | $(INSTALLER)
 	$(QUIET): $@: Begin
 	./tools/makerootfs.sh imagefromtar -t $(ROOTFS_TAR) -i $@ -f $(ROOTFS_FORMAT) -a $(ZARCH)
 	@echo "size of $@ is $$(wc -c < "$@")B"
+ifeq ($(ROOTFS_FORMAT),squash)
 	@[ $$(wc -c < "$@") -gt $$(( $(ROOTFS_MAXSIZE_MB) * 1024 * 1024 )) ] && \
 	        echo "ERROR: size of $@ is greater than $(ROOTFS_MAXSIZE_MB)MB (bigger than allocated partition)" && exit 1 || :
+endif
 	$(QUIET): $@: Succeeded
 
 sbom_info:
