@@ -45,7 +45,7 @@ github.com/google/go-containerregistry/pkg/v1/types
 # github.com/leodido/go-urn v1.2.4
 ## explicit; go 1.16
 github.com/leodido/go-urn
-# github.com/lf-edge/eve-api/go v0.0.0-20240229195728-6180247abbc1
+# github.com/lf-edge/eve-api/go v0.0.0-20240322135714-a2b011fedf87
 ## explicit; go 1.20
 github.com/lf-edge/eve-api/go/auth
 github.com/lf-edge/eve-api/go/certs

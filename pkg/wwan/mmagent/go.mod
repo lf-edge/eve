@@ -19,7 +19,7 @@ require (
 	github.com/google/go-cmp v0.5.9 // indirect
 	github.com/google/go-containerregistry v0.8.0 // indirect
 	github.com/google/go-tpm v0.3.0 // indirect
-	github.com/lf-edge/eve-api/go v0.0.0-20240229195728-6180247abbc1 // indirect
+	github.com/lf-edge/eve-api/go v0.0.0-20240322135714-a2b011fedf87 // indirect
 	github.com/satori/go.uuid v1.2.1-0.20180404165556-75cca531ea76 // indirect
 	github.com/shirou/gopsutil v3.21.11+incompatible // indirect
 	github.com/vishvananda/netns v0.0.0-20210104183010-2eb08e3e575f // indirect

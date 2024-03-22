@@ -26,7 +26,7 @@ github.com/google/go-containerregistry/pkg/v1/types
 github.com/google/go-tpm/tpm2
 github.com/google/go-tpm/tpmutil
 github.com/google/go-tpm/tpmutil/tbs
-# github.com/lf-edge/eve-api/go v0.0.0-20240229195728-6180247abbc1
+# github.com/lf-edge/eve-api/go v0.0.0-20240322135714-a2b011fedf87
 ## explicit; go 1.20
 github.com/lf-edge/eve-api/go/auth
 github.com/lf-edge/eve-api/go/certs
