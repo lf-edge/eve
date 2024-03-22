@@ -6,7 +6,7 @@ require (
 	github.com/euank/go-kmsg-parser v2.0.0+incompatible
 	github.com/golang/protobuf v1.5.3
 	github.com/google/go-cmp v0.6.0
-	github.com/lf-edge/eve-api/go v0.0.0-20240229195728-6180247abbc1
+	github.com/lf-edge/eve-api/go v0.0.0-20240322135714-a2b011fedf87
 	github.com/lf-edge/eve/pkg/pillar v0.0.0-20240229201048-a93b85069a10
 	github.com/sirupsen/logrus v1.9.3
 )
