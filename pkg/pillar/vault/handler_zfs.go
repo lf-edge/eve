@@ -27,11 +27,6 @@ const (
 	vaultFsType              string = "ext4"
 )
 
-var (
-	reserveEveStorageSizeGB uint32 = base.DefaultReserveEveStorageSizeGB
-	etcdSizeGb              uint32 = base.DefaultEtcdSizeGB
-)
-
 // ZFSHandler handles vault operations with ZFS
 type ZFSHandler struct {
 	log     *base.LogObject
@@ -64,9 +59,6 @@ func (h *ZFSHandler) SetupDeprecatedVaults() error {
 // SetHandlerOptions adjust handler options
 func (h *ZFSHandler) SetHandlerOptions(options HandlerOptions) {
 	h.options = options
-	if err := parseInstallSettings(); err != nil {
-		h.log.Errorf("Using defaults, parseInstallSettings failed: %v", err)
-	}
 }
 
 // GetVaultStatuses returns statuses of vault(s)
@@ -431,11 +423,6 @@ func CreateZvolVault(log *base.LogObject, datasetName string, zfsKeyFile string,
 		return fmt.Errorf("Dataset %s available bytes read error: %v", parentDatasetName, err)
 	}
 
-	if sizeBytes <= (uint64(reserveEveStorageSizeGB) * 1024 * 1024 * 1024) {
-		return fmt.Errorf("Remaining space not large enough for vault and reserve: %v bytes", sizeBytes)
-	}
-	sizeBytes = sizeBytes - (uint64(reserveEveStorageSizeGB) * 1024 * 1024 * 1024)
-
 	err = zfs.CreateVaultVolumeDataset(log, datasetName, zfsKeyFile, encrypted, sizeBytes, "zstd", zfs.VolBlockSize)
 	if err != nil {
 		return fmt.Errorf("Vault zvol creation error; %v", err)
@@ -460,9 +447,13 @@ func CreateZvolVault(log *base.LogObject, datasetName string, zfsKeyFile string,
 
 // CreateZvolEtcd Create and mount an empty vault dataset zvol
 func CreateZvolEtcd(log *base.LogObject, datasetName string, zfsKeyFile string, encrypted bool) error {
+	etcdSizeGb, err := getEtcdSizeSetting()
+	if err != nil {
+		log.Errorf("Using defaults, can't read etcd size setting: %v", err)
+	}
 	etcdSizeBytes := uint64(1024 * 1024 * 1024 * uint64(etcdSizeGb))
 
-	err := zfs.CreateVaultVolumeDataset(log, datasetName, zfsKeyFile, encrypted, etcdSizeBytes, "off", uint64(4*1024))
+	err = zfs.CreateVaultVolumeDataset(log, datasetName, zfsKeyFile, encrypted, etcdSizeBytes, "off", uint64(4*1024))
 	if err != nil {
 		return fmt.Errorf("Etcd zvol creation error: %v", err)
 	}
@@ -484,31 +475,23 @@ func CreateZvolEtcd(log *base.LogObject, datasetName string, zfsKeyFile string, 
 	return nil
 }
 
-func parseInstallSettings() error {
+func getEtcdSizeSetting() (uint32, error) {
+	size := base.DefaultEtcdSizeGB
 	data, err := os.ReadFile("/proc/cmdline")
 	if err != nil {
-		return err
+		return size, err
 	}
 	bootArgs := strings.Fields(string(data))
 	for _, arg := range bootArgs {
-		if strings.HasPrefix(arg, base.InstallOptionReserveEveStorageSizeGB) {
-			argSplitted := strings.Split(arg, "=")
-			if len(argSplitted) == 2 {
-				valGB, err := strconv.Atoi(argSplitted[1])
-				if err == nil {
-					reserveEveStorageSizeGB = uint32(valGB)
-				}
-			}
-		}
 		if strings.HasPrefix(arg, base.InstallOptionEtcdSizeGB) {
 			argSplitted := strings.Split(arg, "=")
 			if len(argSplitted) == 2 {
 				valGB, err := strconv.Atoi(argSplitted[1])
 				if err == nil {
-					etcdSizeGb = uint32(valGB)
+					return uint32(valGB), nil
 				}
 			}
 		}
 	}
-	return nil
+	return size, nil
 }

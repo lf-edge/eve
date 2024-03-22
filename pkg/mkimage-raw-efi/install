@@ -22,7 +22,6 @@
 #   eve_install_skip_rootfs
 #   eve_install_skip_zfs_checks
 #   eve_install_zfs_with_raid_level
-#   eve_install_kubevirt_reserve_for_eve_sizeGB
 #   eve_install_kubevirt_etcd_sizeGB
 #
 BAIL_FINAL_CMD=${BAIL_FINAL_CMD:-"exit 1"}
