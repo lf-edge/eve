@@ -22,7 +22,7 @@
 #   eve_install_skip_rootfs
 #   eve_install_skip_zfs_checks
 #   eve_install_zfs_with_raid_level
-#   eve_install_kubevirt_reserve_for_eve_sizeGB
+#   eve_install_kubevirt_etcd_sizeGB
 #
 BAIL_FINAL_CMD=${BAIL_FINAL_CMD:-"exit 1"}
 [ -n "$DEBUG" ] && set -x
@@ -140,7 +140,7 @@ collect_black_box() {
    pillar_run tpmmgr saveTpmInfo "$1"/tpminfo.txt
 }
 
-# prepare_mounts_and_zfs_pool POOL_CREATION_COMMAND_SUFFIX_SUFFIX INSTALL_CLUSTERED_STORAGE RESERVE_EVE_STORAGE_SIZEGB
+# prepare_mounts_and_zfs_pool POOL_CREATION_COMMAND_SUFFIX_SUFFIX INSTALL_CLUSTERED_STORAGE
 prepare_mounts_and_zfs_pool() {
   logmsg "Preparing ZFS pool and mounts"
   [ -e /root/sys ] || mkdir /root/sys && mount -t sysfs sysfs /root/sys
@@ -298,15 +298,7 @@ eve_flavor=$(cat /root/etc/eve-hv-type)
 if [ "$eve_flavor" = "kubevirt" ]; then
    INSTALL_CLUSTERED_STORAGE=true
    INSTALL_ZFS=true
-   RESERVE_EVE_STORAGE_SIZEGB=$(</proc/cmdline tr ' ' '\012' | sed -ne '/^eve_install_kubevirt_reserve_for_eve_sizeGB=/s#^.*=##p')
-
-   #If not set, default it to 20GB
-   # NOTE reserving 20GB for eve services is an experimental change and could be modified in future after analysing data.
-   if [ -z "$RESERVE_EVE_STORAGE_SIZEGB" ]; then
-      RESERVE_EVE_STORAGE_SIZEGB=20
-   fi
-
-   logmsg "Kubevirt image installing ZFS and EVE reserved storage sizeGB $RESERVE_EVE_STORAGE_SIZEGB"
+   logmsg "Kubevirt image installing ZFS and EVE reserved storage sizeGB"
 fi
 
 

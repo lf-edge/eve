@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -94,13 +95,13 @@ func (h *ZFSHandler) SetupDefaultVault() error {
 			if zfs.DatasetExist(h.log, types.SealedDataset) {
 				return MountVaultZvol(h.log, types.SealedDataset)
 			}
-			if err := CreateZvolVault(h.log, types.SealedDataset, "", false); err != nil {
-				return fmt.Errorf("error creating zfs non-tpm vault %s, error=%v",
-					types.SealedDataset, err)
-			}
 			if err := CreateZvolEtcd(h.log, types.EtcdZvol, "", false); err != nil {
 				return fmt.Errorf("error creating zfs etcd zvol %s, error=%v",
 					types.EtcdZvol, err)
+			}
+			if err := CreateZvolVault(h.log, types.SealedDataset, "", false); err != nil {
+				return fmt.Errorf("error creating zfs non-tpm vault %s, error=%v",
+					types.SealedDataset, err)
 			}
 			return nil
 		}
@@ -143,21 +144,12 @@ func (h *ZFSHandler) unlockVault(vaultPath string) error {
 
 	// zfs mount
 	if base.IsHVTypeKube() {
-		// Some earlier builds did not have an encrypted etcd vol.
-		// Attempting to load-key on that config will cause entire vault setup to error out.
-		encrypted, err := isDatasetEncrypted(types.EtcdZvol)
-		if err != nil {
-			h.log.Errorf("Error checking dataset encryption enabled: %v", err)
+		// zfs load-key here separately for types.EtcdZvol because we don't mount it here, only in kube.
+		args := []string{"load-key", types.EtcdZvol}
+		if stdOut, stdErr, err := execCmd(types.ZFSBinary, args...); err != nil {
+			h.log.Errorf("Error loading key for etcd vol vault: %v, %s, %s",
+				err, stdOut, stdErr)
 			return err
-		}
-		if encrypted {
-			// zfs load-key here separately for types.EtcdZvol because we don't mount it here, only in kube.
-			args := []string{"load-key", types.EtcdZvol}
-			if stdOut, stdErr, err := execCmd(types.ZFSBinary, args...); err != nil {
-				h.log.Errorf("Error loading key for etcd vol vault: %v, %s, %s",
-					err, stdOut, stdErr)
-				return err
-			}
 		}
 		if err := MountVaultZvol(h.log, vaultPath); err != nil {
 			h.log.Errorf("Error unlocking vault: %v", err)
@@ -185,12 +177,12 @@ func (h *ZFSHandler) createVault(vaultPath string) error {
 	defer unstage()
 
 	if base.IsHVTypeKube() {
+		if err := CreateZvolEtcd(h.log, types.EtcdZvol, zfsKeyFile, true); err != nil {
+			return fmt.Errorf("error creating zfs etcd zvol %s, error=%v", types.EtcdZvol, err)
+		}
 		if err := CreateZvolVault(h.log, vaultPath, zfsKeyFile, true); err != nil {
 			h.log.Errorf("Error creating zfs vault %s, error=%v", vaultPath, err)
 			return err
-		}
-		if err := CreateZvolEtcd(h.log, types.EtcdZvol, zfsKeyFile, true); err != nil {
-			return fmt.Errorf("error creating zfs etcd zvol %s, error=%v", types.EtcdZvol, err)
 		}
 	} else {
 		if err := zfs.CreateVaultDataset(vaultPath, zfsKeyFile); err != nil {
@@ -318,22 +310,6 @@ func (h *ZFSHandler) checkOperationalStatus(vaultPath string) error {
 	return nil
 }
 
-func isDatasetEncrypted(vaultPath string) (bool, error) {
-	dataset, err := libzfs.DatasetOpen(vaultPath)
-	if err != nil {
-		return false, err
-	}
-	defer dataset.Close()
-
-	encryption, err := dataset.GetProperty(libzfs.DatasetPropEncryption)
-	if err != nil {
-		return false, fmt.Errorf("DatasetExist(%s): Get property Encryption failed. %s",
-			vaultPath, err.Error())
-
-	}
-	return encryption.Value != "off", nil
-}
-
 // waitPath - Wait up to the requested number of seconds for path to exist or return error
 func waitPath(log *base.LogObject, path string, seconds int64) error {
 	beginTime := time.Now().Unix()
@@ -407,13 +383,6 @@ func CreateZvolVault(log *base.LogObject, datasetName string, zfsKeyFile string,
 		return fmt.Errorf("Dataset %s available bytes read error: %v", parentDatasetName, err)
 	}
 
-	if sizeBytes < zfs.ReserveEveStorageSizeGb {
-		//Bypass for dev/test VMs in eden
-		sizeBytes = sizeBytes - (zfs.VolBlockSize * 1024)
-	} else {
-		sizeBytes = sizeBytes - zfs.ReserveEveStorageSizeGb - (zfs.VolBlockSize * 1024)
-	}
-
 	err = zfs.CreateVaultVolumeDataset(log, datasetName, zfsKeyFile, encrypted, sizeBytes, "zstd", zfs.VolBlockSize)
 	if err != nil {
 		return fmt.Errorf("Vault zvol creation error; %v", err)
@@ -438,28 +407,15 @@ func CreateZvolVault(log *base.LogObject, datasetName string, zfsKeyFile string,
 
 // CreateZvolEtcd Create and mount an empty vault dataset zvol
 func CreateZvolEtcd(log *base.LogObject, datasetName string, zfsKeyFile string, encrypted bool) error {
-	// Remaining space in the pool
-	sizeBytes := uint64(0)
-	etcdSizeBytes := uint64(1024 * 1024 * 1024 * 1)
-
-	parentDatasetName := datasetName
-	if strings.Contains(parentDatasetName, "/") {
-		datasetParts := strings.Split(parentDatasetName, "/")
-		parentDatasetName = datasetParts[0]
-	}
-
-	sizeBytes, err := zfs.GetDatasetAvailableBytes(parentDatasetName)
+	etcdSizeGb, err := getEtcdSizeSetting()
 	if err != nil {
-		return fmt.Errorf("Dataset %s available bytes read error: %v", parentDatasetName, err)
+		log.Errorf("Using defaults, can't read etcd size setting: %v", err)
 	}
-
-	if sizeBytes > (1024 * 1024 * 1024 * 10) {
-		etcdSizeBytes = 1024 * 1024 * 1024 * 10
-	}
+	etcdSizeBytes := uint64(1024 * 1024 * 1024 * uint64(etcdSizeGb))
 
 	err = zfs.CreateVaultVolumeDataset(log, datasetName, zfsKeyFile, encrypted, etcdSizeBytes, "off", uint64(4*1024))
 	if err != nil {
-		return fmt.Errorf("Vault zvol creation error; %v", err)
+		return fmt.Errorf("Vault zvol creation error: %v", err)
 	}
 
 	devPath := zfs.GetZvolPath(datasetName)
@@ -473,4 +429,25 @@ func CreateZvolEtcd(log *base.LogObject, datasetName string, zfsKeyFile string, 
 		return fmt.Errorf("Vault zvol format error: %v", err)
 	}
 	return nil
+}
+
+func getEtcdSizeSetting() (uint32, error) {
+	size := base.DefaultEtcdSizeGB
+	data, err := os.ReadFile("/proc/cmdline")
+	if err != nil {
+		return size, err
+	}
+	bootArgs := strings.Fields(string(data))
+	for _, arg := range bootArgs {
+		if strings.HasPrefix(arg, base.InstallOptionEtcdSizeGB) {
+			argSplitted := strings.Split(arg, "=")
+			if len(argSplitted) == 2 {
+				valGB, err := strconv.Atoi(argSplitted[1])
+				if err == nil {
+					return uint32(valGB), nil
+				}
+			}
+		}
+	}
+	return size, nil
 }

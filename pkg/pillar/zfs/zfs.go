@@ -21,13 +21,8 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-const (
-	// VolBlockSize is the default dataset block size
-	VolBlockSize = uint64(16 * 1024)
-
-	// ReserveEveStorageSizeGb is the unused reserve taken from mkimage-raw-efi/install kubevirt RESERVE_EVE_STORAGE_SIZEGB
-	ReserveEveStorageSizeGb = uint64(20 * 1024 * 1024 * 1024)
-)
+// VolBlockSize is the default dataset block size
+const VolBlockSize = uint64(16 * 1024)
 
 // CreateDatasets - creates all the non-existing parent datasets.
 // Datasets created in this manner are automatically mounted
