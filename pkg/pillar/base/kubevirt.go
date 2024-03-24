@@ -23,6 +23,10 @@ const (
 	KubeAppNameUUIDSuffixLen = 5
 	// VMIPodNamePrefix : prefix added to name of every pod created to run VM.
 	VMIPodNamePrefix = "virt-launcher-"
+	// InstallOptionEtcdSizeGB grub option at install time.  Size of etcd volume in GB.
+	InstallOptionEtcdSizeGB = "eve_install_kubevirt_etcd_sizeGB"
+	// DefaultEtcdSizeGB default for InstallOptionEtcdSizeGB
+	DefaultEtcdSizeGB uint32 = 10
 )
 
 // IsHVTypeKube - return true if the EVE image is kube cluster type.
