@@ -71,6 +71,9 @@ type CAS interface {
 	//GetImageHash: returns a blob hash of format <algo>:<hash> (currently supporting only sha256:<hash>) which the given 'reference' is pointing to.
 	// Returns error if the given 'reference' is not found.
 	GetImageHash(reference string) (string, error)
+	//s  returns the labels set on the image.
+	//Returns error if the given reference is not found
+	GetImageLabels(reference string) (map[string]string, error)
 	//ListImages: returns a list of references
 	ListImages() ([]string, error)
 	//RemoveImage removes an reference from CAS
