@@ -214,17 +214,13 @@ func doUpdate(ctx *zedmanagerContext,
 			// might have been halted before the device was rebooted
 			if status.State == types.INSTALLED || status.State == types.START_DELAYED {
 				log.Noticef("doUpdate: kube mode, set halted, %v", status.State)
-				if !ctx.hvTypeKube {
-					status.State = types.HALTED
-				}
+				status.State = types.HALTED
 				changed = true
 			}
 		}
 		log.Functionf("Waiting for config.Activate for %s", uuidStr)
 		// XXX kube mode
-		if !ctx.hvTypeKube {
-			return changed
-		}
+		return changed
 	}
 	log.Functionf("Have config.Activate for %s", uuidStr)
 	c = doActivate(ctx, uuidStr, config, status)
@@ -818,19 +814,16 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 	// XXX compare with equal before setting changed?
 	status.IoAdapterList = ds.IoAdapterList
 	changed = true
-	if !ctx.hvTypeKube {
-		if ds.State < types.BOOTING {
-			log.Functionf("Waiting for DomainStatus to BOOTING for %s",
-				uuidStr)
-			return changed
-		}
-		if ds.Pending() {
-			log.Functionf("Waiting for DomainStatus !Pending for %s", uuidStr)
-			return changed
-		}
-		log.Functionf("Done with DomainStatus for %s", uuidStr)
+	if ds.State < types.BOOTING {
+		log.Functionf("Waiting for DomainStatus to BOOTING for %s",
+			uuidStr)
+		return changed
 	}
-	log.Noticef("doActiavate: hack, Done with DomainStatus") // XXX
+	if ds.Pending() {
+		log.Functionf("Waiting for DomainStatus !Pending for %s", uuidStr)
+		return changed
+	}
+	log.Functionf("Done with DomainStatus for %s", uuidStr)
 
 	if !status.Activated {
 		status.Activated = true

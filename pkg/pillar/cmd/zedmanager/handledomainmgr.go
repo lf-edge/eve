@@ -7,9 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"runtime"
-	"strings"
 
-	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
@@ -65,7 +63,7 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 		location := vrs.ActiveFileLocation
 		// Volumes in kubevirt eve are of PVC type and managed by kubernetes.
 		// There is no specific filelocation
-		if location == "" && !base.IsHVTypeKube() {
+		if location == "" && !ctx.hvTypeKube {
 			errStr := fmt.Sprintf("No ActiveFileLocation for %s", vrs.DisplayName)
 			log.Error(errStr)
 			return nil, errors.New(errStr)
@@ -81,6 +79,13 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 		disk.Target = vrs.Target
 		disk.CustomMeta = vrs.CustomMeta
 		dc.DiskConfigList = append(dc.DiskConfigList, disk)
+		// For kubevirt eve native containers (NOHYPER) we need set the KubeImageName in domainconfig
+		// pods will launched using that KubeImageName
+		if aiConfig.FixedResources.VirtualizationMode == types.NOHYPER && ctx.hvTypeKube {
+			dc.VirtualizationMode = types.NOHYPER
+			dc.KubeImageName = vrs.ReferenceName
+		}
+
 	}
 	// let's fill some of the default values (arguably we may want controller
 	// to do this for us and give us complete config, but it is easier to
@@ -158,34 +163,6 @@ func publishDomainConfig(ctx *zedmanagerContext,
 
 	key := config.Key()
 	log.Tracef("publishDomainConfig(%s)", key)
-	if ctx.hvTypeKube {
-		var imageName string
-		for _, disk := range config.DiskConfigList {
-			sub := ctx.subVolumeRefStatus
-			items := sub.GetAll()
-			for _, item := range items {
-				vrs := item.(types.VolumeRefStatus)
-				if strings.Contains(disk.VolumeKey, vrs.VolumeID.String()) {
-					if config.VirtualizationMode == types.KubeContainer {
-						imageName = vrs.ReferenceName
-					}
-					break
-				}
-			}
-			if imageName != "" {
-				break
-			}
-		}
-		config.KubeImageName = imageName
-		// set Activate to false if the config is waiting for image name
-		if config.VirtualizationMode == types.KubeContainer {
-			if config.KubeImageName == "" {
-				config.Activate = false
-			} else {
-				config.Activate = true
-			}
-		}
-	}
 	pub := ctx.pubDomainConfig
 	pub.Publish(key, *config)
 }

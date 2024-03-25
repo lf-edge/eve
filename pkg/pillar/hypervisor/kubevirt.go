@@ -152,11 +152,7 @@ func (ctx kubevirtContext) Name() string {
 }
 
 func (ctx kubevirtContext) Task(status *types.DomainStatus) types.Task {
-	if status.VirtualizationMode == types.NOHYPER {
-		return ctx.ctrdContext
-	} else {
-		return ctx
-	}
+	return ctx
 }
 
 // Use eve DomainConfig and DomainStatus and generate k3s VM instance
@@ -168,7 +164,7 @@ func (ctx kubevirtContext) Setup(status types.DomainStatus, config types.DomainC
 
 	logrus.Infof("PRAMOD Setup called for Domain: %s, vmmode %v", domainName, config.VirtualizationMode)
 
-	if config.VirtualizationMode == types.KubeContainer {
+	if config.VirtualizationMode == types.NOHYPER {
 		if err := ctx.CreatePodConfig(domainName, config, status, diskStatusList, aa, file); err != nil {
 			return logError("failed to build kube pod config: %v", err)
 		}

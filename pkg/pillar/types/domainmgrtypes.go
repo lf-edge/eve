@@ -241,7 +241,6 @@ const (
 	FML
 	NOHYPER
 	LEGACY
-	KubeContainer
 )
 
 // Task represents any runnable entity on EVE
