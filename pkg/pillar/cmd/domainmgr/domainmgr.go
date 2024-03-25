@@ -1393,7 +1393,7 @@ func doAssignIoAdaptersToDomain(ctx *domainContext, config types.DomainConfig,
 					ib.Phylabel, ib.UsbAddr, status.DomainName)
 				assignmentsUsb = addNoDuplicate(assignmentsUsb, ib.UsbAddr)
 			} else if ib.PciLong != "" && !ib.IsPCIBack {
-				if !(ctx.hvTypeKube && config.VirtualizationMode == types.KubeContainer) || ib.Type != types.IoNetEth {
+				if !(ctx.hvTypeKube && config.VirtualizationMode == types.NOHYPER) || ib.Type != types.IoNetEth {
 					log.Noticef("Assigning %s (%s) to %s",
 						ib.Phylabel, ib.PciLong, status.DomainName)
 					assignmentsPci = addNoDuplicate(assignmentsPci, ib.PciLong)
@@ -1916,7 +1916,7 @@ func releaseAdapters(ctx *domainContext, ioAdapterList []types.IoAdapter,
 			if ib == nil {
 				continue
 			}
-			if ctx.hvTypeKube && status != nil && status.VirtualizationMode == types.KubeContainer && ib.Type == types.IoNetEth {
+			if ctx.hvTypeKube && status != nil && status.VirtualizationMode == types.NOHYPER && ib.Type == types.IoNetEth {
 				continue
 			}
 			if ib.UsedByUUID != myUUID {
@@ -2081,7 +2081,7 @@ func reserveAdapters(ctx *domainContext, config types.DomainConfig) *types.Error
 			if ibp == nil {
 				continue
 			}
-			if ctx.hvTypeKube && config.VirtualizationMode == types.KubeContainer && ibp.Type == types.IoNetEth {
+			if ctx.hvTypeKube && config.VirtualizationMode == types.NOHYPER && ibp.Type == types.IoNetEth {
 				log.Noticef("reserveAdapters: ethernet io, skip reserve")
 				continue
 			}
