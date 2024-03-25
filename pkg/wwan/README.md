@@ -189,12 +189,26 @@ More information on the topic of IP connectivity setup in cellular modems can be
 ## Architecture
 
 Cellular connectivity in EVE involves multiple components operating across different layers
-in both user-space and kernel-space. It begins with a physical cellular modem connected via a USB
-interface, exchanging control messages with the host over a CDC-WMC channel, operated on the host
-side by the cdc-wdm driver. Kernel modules like qmi_wwan and cdc_mbim use this channel to facilitate
-communication between the user-space of the host and the cellular modem in the language of QMI/MBIM
-protocols, while user-space libraries libqmi and libmbim provide high-level client-facing C-bindings
-for these protocols.
+in both user-space and kernel-space. It begins with a physical cellular modem typically connected
+via a USB interface, exchanging control messages with the host over a CDC-WMC channel, operated
+on the host side by the cdc-wdm driver. Kernel modules like qmi_wwan and cdc_mbim use this channel
+to facilitate communication between the user-space of the host and the cellular modem in the language
+of QMI/MBIM protocols, while user-space libraries libqmi and libmbim provide high-level client-facing
+C-bindings for these protocols.
+
+With modern high-speed 4G and 5G modems, it is more and more common to connect the modem over the PCIe
+bus instead of USB bus. PCIe offers higher speed, lower latency and lower power consumption than
+USB equivalent, making it perfectly suitable for 5G high speed requirements (up to 20Gbps).
+PCI differs from USB in that PCI devices do not offer high level operations and concepts such
+as USB transfers, sub-devices and endpoints. Instead, PCI drivers are built on top of low level
+operations such as memory-mapped I/O and DMA transfers, making them generally more complex.
+To provide something similar to USB interfaces and endpoints, Qualcomm created the Modem-Host
+Interface ([MHI](https://docs.kernel.org/mhi/mhi.html)), which can be used by a host to communicate
+with any PCIe modem implementing this interface. Linux kernel provides drivers implementing the MHI
+interface since version 5.13. For example, `mhi_wwan_ctrl` is used to drive all control channels
+(QMI, MBIM, AT), while `mhi_net` facilitates packet flow between the host and the modem. EVE kernel
+is built with all these drivers included (available in EVE since version 12.0.0).
+
 The ModemManager user-space daemon serves as a central manager, handling modem initialization,
 network registration, and data connection management, ensuring a standardized and unified interface
 for cellular modem communication on Linux systems. It uses libqmi and libmbim libraries and in some
@@ -202,11 +216,19 @@ cases also AT command set to interact with and manage modems.
 On top of that, our `mmagent` acts as an adapter between the declarative EVE API and
 the imperative ModemManager API, plus it manages the IP settings of the wwan network interfaces
 in the Linux network stack.
+
 Moreover, there are some additional tools installed in the wwan container, such as mmcli, qmicli,
 mbimcli, which are provided solely for the troubleshooting purposes.
-Diagram belows depicts hierarchy and placements of all components and how they interact with each other:
 
-![wwan components](./pics/wwan.png)
+Diagram belows depicts hierarchy and placements of all components and how they interact with each other
+in case of USB modems:
+
+![wwan-usb components](./pics/wwan-usb.png)
+
+In case of PCIe modems, both control and data path use different drivers in the kernel, but the components
+and the interaction between them in the user-space is pretty much the same:
+
+![wwan-pcie components](./pics/wwan-pcie.png)
 
 Further information on the topic of cellular connectivity in Linux (not including EVE-specific components):
 
@@ -226,11 +248,10 @@ Further information on the topic of cellular connectivity in Linux (not includin
 * [This video presentation](https://www.youtube.com/watch?v=NPeMqK_vFFc) provides a brief overview of
   all major components and protocols involved in the cellular modem support in Linux, along with their
   evolution. This presentation also touches on the topic of modern high-speed 5G modems connected
-  over the PCI bus instead of the USB bus for even better performance. In this case, data are transmitted
+  over the PCIe bus instead of the USB bus for even better performance. In this case, data are transmitted
   between the host and the modem using the [MHI protocol](https://docs.kernel.org/mhi/mhi.html).
   Control-plane still relies on QMI/MBIM protocols, running on top of MHI, meaning that there is
-  very little change from the user-space perspective. However, it is important to note that testing
-  of 5G modems connected via PCI on EVE is still TBD.
+  very little change from the user-space perspective.
 * [This document](https://modemmanager.org/docs/modemmanager/ip-connectivity-setup-in-lte-modems/)
   describes IP connectivity setup in cellular modems and signaling between modem and network
   during the registration and connect procedures.
@@ -557,10 +578,14 @@ To use these commands, connect to a device over SSH or a console and type:
 
 ```console
 eve enter wwan
-# For QMI device:
+# For QMI device connected over USB bus:
 qmicli -p -d /dev/<cdc-wdm-device> <command>
-# For MBIM device:
+# For QMI device connected over PCIe:
+qmicli -p -d /dev/wwan<index>qmi<index> <command>
+# For MBIM device connected over USB bus:
 mbimcli -p -d /dev/<cdc-wdm-device> <command>
+# For MBIM device connected over PCIe:
+mbimcli -p -d /dev/wwan<index>mbim<index> <command>
 ```
 
 For example, to get the IP settings of the currently established data connection:
@@ -635,7 +660,11 @@ For example, the following may be a reasonable session to initialize your modem 
 
 ```console
 eve enter wwan
+# For USB modem:
 picocom -b 115200 /dev/ttyUSB2
+
+# For PCIe modem you would run instead something like:
+# picocom -b 115200 /dev/wwan0at0
 
 ati
 at!entercnd="A710"
