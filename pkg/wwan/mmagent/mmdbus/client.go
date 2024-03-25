@@ -749,8 +749,15 @@ func (c *Client) getModemPhysAddrs(modemObj dbus.BusObject) (
 	devPathSymlink := filepath.Join("/sys/class/usbmisc", primaryPort, "device")
 	devPath, err := filepath.EvalSymlinks(devPathSymlink)
 	if err != nil {
-		return addrs, proto, fmt.Errorf("failed to eval symlink %s: %w",
-			devPathSymlink, err)
+		// Maybe this modem uses PCIe interface as opposed to USB.
+		// This is more and more common for modern high-speed 4G and 5G modems.
+		var err2 error
+		devPathSymlink2 := filepath.Join("/sys/class/wwan", primaryPort, "device")
+		devPath, err2 = filepath.EvalSymlinks(devPathSymlink2)
+		if err2 != nil {
+			return addrs, proto, fmt.Errorf("failed to eval symlinks %s (%w) and %s (%v)",
+				devPathSymlink, err, devPathSymlink2, err2)
+		}
 	}
 	// Determine the network interface name.
 	netPath := filepath.Join(devPath, "net")
@@ -762,37 +769,22 @@ func (c *Client) getModemPhysAddrs(modemObj dbus.BusObject) (
 		addrs.Interface = netInterfaces[0].Name()
 	}
 	// Determine USB address.
-	parentPath := devPath
-	subSysSymlink := filepath.Join(parentPath, "subsystem")
-	for utils.FileExists(c.log, subSysSymlink) {
-		subSysPath, err := filepath.EvalSymlinks(subSysSymlink)
-		if err != nil {
-			return addrs, proto, fmt.Errorf("failed to eval symlink %s: %w",
-				subSysSymlink, err)
-		}
-		if filepath.Base(subSysPath) == "usb" {
-			addrs.USB = strings.Split(filepath.Base(parentPath), ":")[0]
-			addrs.USB = strings.ReplaceAll(addrs.USB, "-", ":")
-			break
-		}
-		parentPath = filepath.Dir(parentPath)
-		subSysSymlink = filepath.Join(parentPath, "subsystem")
+	addrs.USB, err = c.getSysDevAddr(devPath, "usb")
+	if err != nil {
+		return addrs, proto, err
+	}
+	if addrs.USB != "" {
+		// Return USB address as <bus>:<port>
+		// Note that USB paths in /sys/bus/usb/devices have format:
+		//    <bus>-<port>:<config>.<interface>
+		// We are not interested in the configuration and interface numbers.
+		addrs.USB = strings.Split(addrs.USB, ":")[0]
+		addrs.USB = strings.ReplaceAll(addrs.USB, "-", ":")
 	}
 	// Determine PCI address.
-	parentPath = devPath
-	subSysSymlink = filepath.Join(parentPath, "subsystem")
-	for utils.FileExists(c.log, subSysSymlink) {
-		subSysPath, err := filepath.EvalSymlinks(subSysSymlink)
-		if err != nil {
-			return addrs, proto, fmt.Errorf(
-				"failed to eval symlink %s: %w", subSysSymlink, err)
-		}
-		if filepath.Base(subSysPath) == "pci" {
-			addrs.PCI = filepath.Base(parentPath)
-			break
-		}
-		parentPath = filepath.Dir(parentPath)
-		subSysSymlink = filepath.Join(parentPath, "subsystem")
+	addrs.PCI, err = c.getSysDevAddr(devPath, "pci")
+	if err != nil {
+		return addrs, proto, err
 	}
 	// Find out which protocol is being used to control the modem.
 	var ports [][]interface{}
@@ -823,6 +815,29 @@ func (c *Client) getModemPhysAddrs(modemObj dbus.BusObject) (
 		}
 	}
 	return addrs, proto, nil
+}
+
+// Given device path from /sys, such as: /sys/devices/pci0000:00/0000:00:1c.0/0000:2c:00.0/mhi0/wwan/wwan0
+// it returns the address of the device on the given bus (e.g. "0000:2c:00.0" for "pci").
+// If the device is not on the particular bus, it returns an empty string (and not an error).
+func (c *Client) getSysDevAddr(sysDevPath, bus string) (addr string, err error) {
+	parentPath := sysDevPath
+	for parentPath != "/" {
+		// Not every parent directory contains "subsystem" link.
+		subSysSymlink := filepath.Join(parentPath, "subsystem")
+		if utils.FileExists(c.log, subSysSymlink) {
+			subSysPath, err := filepath.EvalSymlinks(subSysSymlink)
+			if err != nil {
+				return "", fmt.Errorf("failed to eval symlink %s: %w",
+					subSysSymlink, err)
+			}
+			if filepath.Base(subSysPath) == bus {
+				return filepath.Base(parentPath), nil
+			}
+		}
+		parentPath = filepath.Dir(parentPath)
+	}
+	return "", nil
 }
 
 // Get modem metrics.
@@ -1024,6 +1039,10 @@ func (c *Client) EnableRadio(modemPath string) error {
 		powerState = ModemPowerStateOn
 		err = c.callDBusMethod(modemObj, ModemMethodSetPowerState, nil, powerState)
 		if err != nil {
+			if err.Error() == "Invalid transition" {
+				// Modem is most likely FCC-locked.
+				err = fmt.Errorf("%w (Is modem FCC-locked?)", err)
+			}
 			return err
 		}
 	}
