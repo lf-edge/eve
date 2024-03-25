@@ -38,6 +38,9 @@ type DomainConfig struct {
 	DiskConfigList []DiskConfig
 	VifList        []VifConfig
 	IoAdapterList  []IoAdapter
+	// KubeImageName is the container image reference we pass to domainmgr to launch a native container
+	// in kubevirt eve
+	KubeImageName string
 
 	// XXX: to be deprecated, use CipherBlockStatus instead
 	CloudInitUserData *string `json:"pubsub-large-CloudInitUserData"` // base64-encoded
