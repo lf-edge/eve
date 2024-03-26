@@ -382,8 +382,10 @@ func CreateZvolVault(log *base.LogObject, datasetName string, zfsKeyFile string,
 	if err != nil {
 		return fmt.Errorf("Dataset %s available bytes read error: %v", parentDatasetName, err)
 	}
+	// Shift back to allow for alignUp space.
+	sizeBytes = sizeBytes - zfs.VolBlockSizeBytes
 
-	err = zfs.CreateVaultVolumeDataset(log, datasetName, zfsKeyFile, encrypted, sizeBytes, "zstd", zfs.VolBlockSize)
+	err = zfs.CreateVaultVolumeDataset(log, datasetName, zfsKeyFile, encrypted, sizeBytes, "zstd", zfs.VolBlockSizeBytes)
 	if err != nil {
 		return fmt.Errorf("Vault zvol creation error; %v", err)
 	}
@@ -409,24 +411,24 @@ func CreateZvolVault(log *base.LogObject, datasetName string, zfsKeyFile string,
 func CreateZvolEtcd(log *base.LogObject, datasetName string, zfsKeyFile string, encrypted bool) error {
 	etcdSizeGb, err := getEtcdSizeSetting()
 	if err != nil {
-		log.Errorf("Using defaults, can't read etcd size setting: %v", err)
+		log.Errorf("Using default %d GB, can't read etcd size setting: %v", etcdSizeGb, err)
 	}
 	etcdSizeBytes := uint64(1024 * 1024 * 1024 * uint64(etcdSizeGb))
 
-	err = zfs.CreateVaultVolumeDataset(log, datasetName, zfsKeyFile, encrypted, etcdSizeBytes, "off", uint64(4*1024))
+	err = zfs.CreateVaultVolumeDataset(log, datasetName, zfsKeyFile, encrypted, etcdSizeBytes, "off", base.EtcdVolBlockSizeBytes)
 	if err != nil {
-		return fmt.Errorf("Vault zvol creation error: %v", err)
+		return fmt.Errorf("Vault Etcd zvol creation error: %v", err)
 	}
 
 	devPath := zfs.GetZvolPath(datasetName)
 	// Sometimes we wait for /dev path to the zvol to appear
 	// Since this only occurs on first boot, we can afford to be patient
 	if err = waitPath(log, devPath, vaultZvolPathWaitSeconds); err != nil {
-		return fmt.Errorf("Vault zvol dev path missing: %v", err)
+		return fmt.Errorf("Vault Etcd zvol dev path missing: %v", err)
 	}
 
 	if err = formatZvol(log, devPath, vaultFsType); err != nil {
-		return fmt.Errorf("Vault zvol format error: %v", err)
+		return fmt.Errorf("Vault Etcd zvol format error: %v", err)
 	}
 	return nil
 }
@@ -446,6 +448,7 @@ func getEtcdSizeSetting() (uint32, error) {
 				if err == nil {
 					return uint32(valGB), nil
 				}
+				return size, err
 			}
 		}
 	}

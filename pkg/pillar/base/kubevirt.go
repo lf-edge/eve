@@ -27,6 +27,8 @@ const (
 	InstallOptionEtcdSizeGB = "eve_install_kubevirt_etcd_sizeGB"
 	// DefaultEtcdSizeGB default for InstallOptionEtcdSizeGB
 	DefaultEtcdSizeGB uint32 = 10
+	// EtcdVolBlockSizeBytes is the block size for the etcd volume
+	EtcdVolBlockSizeBytes = uint64(4 * 1024)
 )
 
 // IsHVTypeKube - return true if the EVE image is kube cluster type.
