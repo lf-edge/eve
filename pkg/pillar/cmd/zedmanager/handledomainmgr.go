@@ -79,9 +79,9 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 		disk.Target = vrs.Target
 		disk.CustomMeta = vrs.CustomMeta
 		dc.DiskConfigList = append(dc.DiskConfigList, disk)
-		// For kubevirt eve native containers (NOHYPER) we need set the KubeImageName in domainconfig
-		// pods will be launched using that KubeImageName
-		if aiConfig.FixedResources.VirtualizationMode == types.NOHYPER && ctx.hvTypeKube {
+		// For NOHYPER type virtualization mode pass the KubeImageName to domainmgr
+		// pods will be launched using that KubeImageName in kubevirt eve
+		if aiConfig.FixedResources.VirtualizationMode == types.NOHYPER {
 			dc.VirtualizationMode = types.NOHYPER
 			dc.KubeImageName = vrs.ReferenceName
 		}
