@@ -66,7 +66,7 @@ func (handler *volumeHandlerZVol) PrepareVolume() error {
 		}
 	}
 	zVolName := handler.status.ZVolName()
-	if err := zfs.CreateVolumeDataset(handler.log, zVolName, size, "zstd", zfs.VolBlockSize); err != nil {
+	if err := zfs.CreateVolumeDataset(handler.log, zVolName, size, "zstd", zfs.VolBlockSizeBytes); err != nil {
 		errStr := fmt.Sprintf("Error creating zfs zvol at %s, error=%v",
 			zVolName, err)
 		handler.log.Error(errStr)
