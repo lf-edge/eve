@@ -230,6 +230,9 @@ type zedagentContext struct {
 	fatalPtr    *bool
 	hangPtr     *bool
 
+	// Is Kubevirt eve
+	hvTypeKube bool
+
 	// Netdump
 	netDumper            *netdump.NetDumper // nil if netdump is disabled
 	netdumpInterval      time.Duration
@@ -608,6 +611,7 @@ func (zedagentCtx *zedagentContext) init() {
 
 	attestCtx.zedagentCtx = zedagentCtx
 	zedagentCtx.attestCtx = attestCtx
+	zedagentCtx.hvTypeKube = base.IsHVTypeKube()
 }
 
 func initializeDirs() {

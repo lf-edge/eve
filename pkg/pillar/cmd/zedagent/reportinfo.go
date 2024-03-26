@@ -630,6 +630,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext, dest destinationBitset) {
 	ReportDeviceInfo.RebootInprogress = ctx.rebootCmd || ctx.deviceReboot
 
 	ReportDeviceInfo.Capabilities = getCapabilities(ctx)
+	ReportDeviceInfo.OptionalCapabilities = getOptionalCapabilities(ctx)
 
 	devState := getDeviceState(ctx)
 	if ctx.devState != devState {
@@ -1259,6 +1260,12 @@ func getCapabilities(ctx *zedagentContext) *info.Capabilities {
 	return &info.Capabilities{
 		HWAssistedVirtualization: capabilities.HWAssistedVirtualization,
 		IOVirtualization:         capabilities.IOVirtualization,
+	}
+}
+
+func getOptionalCapabilities(ctx *zedagentContext) *info.OptionalCapabilities {
+	return &info.OptionalCapabilities{
+		HvTypeKubevirt: ctx.hvTypeKube,
 	}
 }
 
