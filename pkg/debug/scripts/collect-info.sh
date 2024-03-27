@@ -6,7 +6,7 @@
 
 # Script version, don't forget to bump up once something is changed
 
-VERSION=17
+VERSION=18
 # Add required packages here, it will be passed to "apk add".
 # Once something added here don't forget to add the same package
 # to the Dockerfile ('ENV PKGS' line) of the debug container,
@@ -373,6 +373,7 @@ ln -s /persist/netdump      "$DIR/persist-netdump"
 ln -s /persist/kcrashes     "$DIR/persist-kcrashes"
 ln -s /run                  "$DIR/root-run"
 cp -r /sys/fs/cgroup/memory "$DIR/sys-fs-cgroup-memory" >/dev/null 2>&1
+[ -f /persist/SMART_details.json ] && ln -s /persist/SMART_details* "$DIR/"
 
 # Network part
 collect_network_info
