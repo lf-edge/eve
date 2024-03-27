@@ -67,6 +67,17 @@ FROM scratch
 
 COPY --from=build /out/ /
 COPY init.sh /usr/bin/
+
+# HACK BEGIN
+# docker USER config here or in docker-compose in not working,
+# so make vtpm_server set uid and gid tpm-user, now it will run as a non-root
+# user and has access to /dev/tpm* via its group.
+RUN addgroup -g 7331 vtpm && adduser -D -H -u 1337 -G vtpm vtpm
+RUN chgrp 7331 /usr/bin/vtpm_server
+RUN chown 1337 /usr/bin/vtpm_server
+RUN chmod ug+s /usr/bin/vtpm_server
+# HACK END
+
 ENTRYPOINT []
 WORKDIR /
 CMD ["/usr/bin/init.sh"]

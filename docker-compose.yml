@@ -110,7 +110,7 @@ services:
 
     vtpm:
         image: ${VTPM_TAG}
-        privileged: true
+        #privileged: false
         volumes:
             - persist:/persist
             - config:/config

@@ -157,4 +157,7 @@ echo '{"BlinkCounter": 1}' > "$ZTMPDIR/LedBlinkCounter/ledconfig.json"
 
 mkdir -p $DPCDIR
 
+# change TPM devices group to tpm-user, so it is accessible without being root.
+chgrp 7331 /dev/tpm*
+
 echo "$(date -Ins -u) onboot.sh done"

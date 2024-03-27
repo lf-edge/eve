@@ -1,7 +1,7 @@
 #!/bin/sh
 
 #Launch the VTPM server
-mkdir jail; cd jail || exit;
+mkdir jail; chown vtpm jail; cd jail || exit;
 
 #Too much stdout noise from tpm2_tools and vtpm_server,
 #so redirecting stdout to /dev/null. But stderr will be
