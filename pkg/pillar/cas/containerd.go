@@ -371,7 +371,8 @@ func (c *containerdCAS) IngestBlob(ctx context.Context, blobs ...types.BlobStatu
 			}
 			i := len(m.Layers)
 			info.Labels[fmt.Sprintf("%s.%d", containerdGCRef, i)] = m.Config.Digest.String()
-
+			// set eve-downloaded label for this blob
+			info.Labels[types.EVEDownloadedLabel] = types.EVEDownloadedValue
 			if err := c.UpdateBlobInfo(info); err != nil {
 				err = fmt.Errorf("IngestBlob(%s): could not update labels on manifest: %v",
 					info.Digest, err.Error())
@@ -498,7 +499,7 @@ func (c *containerdCAS) CreateImage(reference, mediaType, blobHash string) error
 
 	image := images.Image{
 		Name:   reference,
-		Labels: nil,
+		Labels: getEVEDownloadedLabel(),
 		Target: spec.Descriptor{
 			MediaType: mediaType,
 			Digest:    digest.Digest(blobHash),
@@ -530,6 +531,20 @@ func (c *containerdCAS) GetImageHash(reference string) (string, error) {
 		return "", fmt.Errorf("GetImageHash: Exception while getting image: %s. %s", reference, err.Error())
 	}
 	return image.Target().Digest.String(), nil
+}
+
+// GetImageLabels returns the Image Labels of the reference
+// Returns error if the given 'reference' is not found.
+func (c *containerdCAS) GetImageLabels(reference string) (map[string]string, error) {
+	ctrdCtx, done := c.ctrdClient.CtrNewUserServicesCtx()
+	defer done()
+
+	image, err := c.ctrdClient.CtrGetImage(ctrdCtx, reference)
+	if errors.Is(err, containerderrdefs.ErrNotFound) {
+		return nil, ErrImageNotFound
+	}
+
+	return image.Labels(), nil
 }
 
 // ListImages: returns a list of references
@@ -574,7 +589,7 @@ func (c *containerdCAS) ReplaceImage(reference, mediaType, blobHash string) erro
 	}
 	image := images.Image{
 		Name:   reference,
-		Labels: nil,
+		Labels: getEVEDownloadedLabel(),
 		Target: spec.Descriptor{
 			MediaType: mediaType,
 			Digest:    digest.Digest(blobHash),
@@ -1140,4 +1155,17 @@ func getJSON(x interface{}) (string, error) {
 // GetRoofFsPath returns rootfs path
 func GetRoofFsPath(rootPath string) string {
 	return filepath.Join(rootPath, containerRootfsPath)
+}
+
+// getEVEDownloadedLabel returns the label eve-downloaded = true which can be set on images or blobs
+// This label can be applied on image and blobs downloaded by eve. In kubevirt eve some images are downloaded by k3s.
+// We will differentiate those by the presence of this label.
+// This label will be used in Garbage collection of eve downloaded images
+// NOTE: This label will be set for all images and blobs newly created on kvm eve too.
+func getEVEDownloadedLabel() map[string]string {
+
+	label := map[string]string{}
+	label[types.EVEDownloadedLabel] = types.EVEDownloadedValue
+
+	return label
 }

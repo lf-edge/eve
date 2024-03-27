@@ -536,6 +536,16 @@ func populateInitBlobStatus(ctx *volumemgrContext) {
 			log.Functionf("populateInitBlobStatus: blob %s in CAS could not get mediaType", blobInfo.Digest)
 			continue
 		}
+		// In Kubevirt eve, we share same user containerd repository between eve and k3s containers.
+		// So volumemgr should ignore publishing blobs which are not downloaded through eve download mechanism
+		// In /run/volumemgr/BlobStatus we should only see the blobs downloaded by eve.
+		if ctx.hvTypeKube {
+			label := blobInfo.Labels
+			if _, found := label[types.EVEDownloadedLabel]; !found {
+				log.Noticef("populateInitBlobStatus: Ignoring the blob %s not downloaded by eve", blobInfo.Digest)
+				continue
+			}
+		}
 		if ctx.LookupBlobStatus(blobInfo.Digest) == nil {
 			log.Functionf("populateInitBlobStatus: Found blob %s in CAS", blobInfo.Digest)
 			blobStatus := &types.BlobStatus{
@@ -599,6 +609,20 @@ func gcImagesFromCAS(ctx *volumemgrContext) {
 
 	for _, image := range casImages {
 		if _, ok := referenceMap[image]; !ok {
+			// In kubevirt eve k3s specific images are not downloaded by EVE.
+			// We cannot garbage collect those, so make sure this image was actually downloaded
+			// by eve, by checking label eve_downloaded=true
+			if ctx.hvTypeKube {
+				label, err := ctx.casClient.GetImageLabels(image)
+				if err != nil {
+					log.Errorf("gcImagesFromCAS: error while getting image label from ctr %s", err)
+					continue
+				}
+				if _, found := label[types.EVEDownloadedLabel]; !found {
+					continue
+				}
+			}
+
 			log.Functionf("gcImagesFromCAS: removing image %s from CAS since no ContentTreeStatus ref found", image)
 			if err := ctx.casClient.RemoveImage(image); err != nil {
 				log.Errorf("gcImagesFromCAS: Exception while removing image from CAS. %s", err)

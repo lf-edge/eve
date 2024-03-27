@@ -49,6 +49,13 @@ type BlobStatus struct {
 	ErrorAndTimeWithSource
 }
 
+const (
+	// EVEDownloadedLabel : Label to set on all eve downloaded images/blobs
+	EVEDownloadedLabel = "eve-downloaded"
+	// EVEDownloadedValue : Value to set on the label
+	EVEDownloadedValue = "true"
+)
+
 // Key returns the pubsub Key.
 func (status BlobStatus) Key() string {
 	return status.Sha256
