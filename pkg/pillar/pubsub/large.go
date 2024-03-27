@@ -184,6 +184,7 @@ func EnsureDir(dirname string) error {
 // readAddLarge walks the json and uses readfile to fill in those fields which
 // have a tagFile prefix.
 // If there is an error it returns the input
+// XXX where/when should we remove the file from /persist/pubsub-large?
 func readAddLarge(log *base.LogObject, b []byte) ([]byte, error) {
 	var tree jsonTree
 
@@ -269,6 +270,7 @@ func readAddTree(log *base.LogObject, tree jsonTree) (jsonTree, error) {
 				return nil, err
 			}
 		}
+		// XXX why do we miss this? Due to crash before subscriber reads? Multiple subscribers??
 		os.Remove(filename)
 		if len(b) == 0 {
 			continue

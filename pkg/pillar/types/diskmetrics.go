@@ -20,26 +20,38 @@ var ReportDiskPaths = []string{
 
 // ReportDirPaths  Report directory usage for these paths
 var ReportDirPaths = []string{
-	PersistDir + "/downloads", // XXX old to be removed
-	PersistDir + "/img",       // XXX old to be removed
-	PersistDir + "/containerd",
-	PersistDir + "/tmp",
+	PersistConfigDir,
+	PersistStatusDir,
+	CertificateDirname,
+	SealedDirName,
+	ClearDirName,
+	PersistDebugDir,
+	PersistInstallerDir,
+	IngestedDirname,
+	SnapshotsDirname,
+	PersistCachePatchEnvelopes,
+	PersistCachePatchEnvelopesUsage,
+	NewlogDir,
+	PersistDir + "/containerd", // Old location
+	PersistDir + "/tmp",        // Should not be used by anything
 	PersistDir + "/log",
-	PersistDir + "/newlog",
-	PersistDir + "/config",
-	PersistDir + "/status",
-	PersistDir + "/certs",
 	PersistDir + "/checkpoint",
+	PersistDir + "/containerd-system-root",
+	PersistDir + "/netdump",
+	PersistDir + "/pubsub-large",
+	PersistDir + "/reserved",
+	PersistDir + "/etcd-storage",
 }
 
 // AppPersistPaths  Application-related files live here
 // XXX do we need to exclude the ContentTrees used for eve image update?
-// If so how do we tell them apart
+// If so how do we tell them apart?
 var AppPersistPaths = []string{
 	VolumeEncryptedDirName,
 	VolumeClearDirName,
-	SealedDirName + "/downloader",
-	SealedDirName + "/verifier",
+	DownloaderDir,
+	VerifierDir,
+	ContainerdDir,
 }
 
 // DiskMetric holds metrics data per disk
