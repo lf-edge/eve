@@ -55,8 +55,8 @@ github.com/lf-edge/eve-api/go/info
 github.com/lf-edge/eve-api/go/logs
 github.com/lf-edge/eve-api/go/metrics
 github.com/lf-edge/eve-api/go/profile
-# github.com/lf-edge/eve/pkg/pillar v0.0.0-20240229201048-a93b85069a10
-## explicit; go 1.20
+# github.com/lf-edge/eve/pkg/pillar v0.0.0-20240313211456-74539b8217e0 => ../pillar
+## explicit; go 1.21
 github.com/lf-edge/eve/pkg/pillar/agentlog
 github.com/lf-edge/eve/pkg/pillar/base
 github.com/lf-edge/eve/pkg/pillar/flextimer
@@ -142,3 +142,4 @@ google.golang.org/protobuf/types/known/timestamppb
 # gopkg.in/yaml.v2 v2.4.0
 ## explicit; go 1.15
 gopkg.in/yaml.v2
+# github.com/lf-edge/eve/pkg/pillar => ../pillar
