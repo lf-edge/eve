@@ -11,8 +11,14 @@
 : "${hostname:=}"
 : "${router:=}"
 : "${mask:=}"
+: "${dns:=}"
 
 [ -z "$1" ] && echo 'Error: should be called from udhcpc' && exit 1
+
+# Nameservers collected separately per interface, then combined together
+# into resolv.conf of the container app.
+VM_RESOLV_CONF_DIR="/run/resolvconf"
+mkdir -p "${VM_RESOLV_CONF_DIR}"
 
 # create etc directory if not already done
 mkdir -p /mnt/rootfs/etc
@@ -21,10 +27,12 @@ mkdir -p /mnt/rootfs/etc
 CFG="/mnt/rootfs/etc/udhcpc.${interface}.cfg"
 
 RESOLV_CONF='/mnt/rootfs/etc/resolv.conf'
-RESOLV_OPTIONS="rotate timeout:10 attempts:5"
+TMP_RESOLV_CONF="${RESOLV_CONF}.tmp"
 
-# interface for which DNS is to be configured
-PEERDNS_IF=eth0
+# For "timeout" and "attempts" we currently use the default values,
+# which will trigger failover to another DNS server in a reasonable time.
+# See https://man7.org/linux/man-pages/man5/resolv.conf.5.html
+RESOLV_OPTIONS="rotate timeout:5 attempts:2"
 
 update_ip_hosts()
 {
@@ -67,6 +75,22 @@ install_classless_routes()
     done
 }
 
+# update_resolv_conf <interface> <domain> <dns-server>...
+# Updates /etc/resolv.conf to reflect DNS config changes for a given interface.
+update_resolv_conf() {
+    local interface="$1"
+    local domain="$2"
+    shift 2
+    rm -f "${VM_RESOLV_CONF_DIR}/${interface}"
+    [ -n "$domain" ] && echo "search $domain" >> "${VM_RESOLV_CONF_DIR}/${interface}"
+    for i in "$@" ; do
+      echo "nameserver $i" >> "${VM_RESOLV_CONF_DIR}/${interface}"
+    done
+    cat ${VM_RESOLV_CONF_DIR}/* > "$TMP_RESOLV_CONF"
+    echo "options ${RESOLV_OPTIONS}" >> "$TMP_RESOLV_CONF"
+    mv "$TMP_RESOLV_CONF" "$RESOLV_CONF"
+}
+
 case "$1" in
   deconfig)
     echo "udhcpc op deconfig interface ${interface}"
@@ -91,16 +115,8 @@ case "$1" in
     elif [ -n "$router" ] ; then
       route add default gw "${router}" dev "${interface}"
     fi
-    # setup dns
-    if [ "$interface" == "$PEERDNS_IF" ] ; then
-      # remove previous dns
-      rm -f $RESOLV_CONF
-      [ -n "$domain" ] && echo search $domain > $RESOLV_CONF
-      for i in $dns ; do
-        echo nameserver $i >> $RESOLV_CONF
-      done
-      echo "options ${RESOLV_OPTIONS}" >> $RESOLV_CONF
-    fi
+    # shellcheck disable=SC2086
+    update_resolv_conf "$interface" "$domain" $dns
     update_hosts
     ;;
   renew)
@@ -143,14 +159,9 @@ case "$1" in
       fi
       update_ip_hosts "$old_ip" $ip
     fi
-    if [ -n "$REDO_DNS" -a "$interface" == "$PEERDNS_IF" ] ; then
-      # remove previous dns
-      rm -f $RESOLV_CONF
-      [ -n "$domain" ] && echo search $domain > $RESOLV_CONF
-      for i in $dns ; do
-        echo nameserver $i >> $RESOLV_CONF
-      done
-      echo "options ${RESOLV_OPTIONS}" >> $RESOLV_CONF
+    if [ -n "$REDO_DNS" ] ; then
+      # shellcheck disable=SC2086
+      update_resolv_conf "$interface" "$domain" $dns
     fi
     if [ -n "$REDO_HOSTNAME" ]; then
       update_hosts
