@@ -164,7 +164,7 @@ maxupdateskew 100.0
 EOF
     /usr/sbin/chronyd -u root -f /etc/chrony/chrony.conf &&
         echo "chronyd started!" > /dev/kmsg ||
-        echo "chronyd NOT started!" > /dev/ksmg
+        echo "chronyd NOT started!" > /dev/kmsg
   else
     echo "PTP_KVM device is not available!" > /dev/kmsg
   fi
@@ -172,13 +172,17 @@ fi
 
 run_agetty_loop()
 {
-    while true; do
-        setsid agetty --autologin root --noclear hvc1 linux
-    done
+  console_name="$1"
+  while true; do
+    setsid agetty --autologin root --noclear "$console_name" linux
+  done
 }
 
 echo "Executing agetty"
-run_agetty_loop &
+# run agetty on the virtual console connected to the socket
+run_agetty_loop hvc1 &
+# run agetty on the virtual console available for VNC
+run_agetty_loop hvc2 &
 
 cmd=`cat /mnt/cmdline`
 echo "Executing $cmd"
