@@ -5,6 +5,13 @@ if test -f /proc/vmcore; then
     exit 0;
 fi
 
-#Starting memlogd as part as part of a cgroup
-mkdir -p /sys/fs/cgroup/memory/eve/memlogd
-sh -c 'echo $$ > /sys/fs/cgroup/memory/eve/memlogd/tasks && /usr/bin/memlogd -daemonize -max-line-len 8192'
+# Create 'memory' controller for the 'memlogd' making it part
+# of the eve/services
+mkdir -p /sys/fs/cgroup/memory/eve/services/memlogd
+
+# Add 'memlogd' to the 'memory' controller. Further 'memlogd'
+# cgroup changes happen in the 010-eve-cgroup, see all the
+# details there.
+echo $$ > /sys/fs/cgroup/memory/eve/services/memlogd/tasks
+
+/usr/bin/memlogd -daemonize -max-line-len 8192
