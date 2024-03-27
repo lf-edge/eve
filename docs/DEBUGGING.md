@@ -451,3 +451,7 @@ Further parsing and diffing the files is possible using tpm2-tools:
 >   Digests:
 [...]
 ```
+
+### TPM Key Extraction
+
+To extract the vault key from TPM, [recover-tpm.sh](pkg/debug/scripts/recover-tpm.sh) can be used. Note that key extraction is only possible if the device state (current PCR values) match the original state where key was seald. For more information check [recover-tpm](pkg/debug/recover-tpm/README.md).
