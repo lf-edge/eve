@@ -42,6 +42,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/cmd/watcher"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/wstunnelclient"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/zedagent"
+	"github.com/lf-edge/eve/pkg/pillar/cmd/zedkube"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/zedmanager"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/zedrouter"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/zfsmanager"
@@ -92,6 +93,7 @@ var (
 		"volumemgr":        {f: volumemgr.Run},
 		"waitforaddr":      {f: waitforaddr.Run, inline: inlineAlways},
 		"zedagent":         {f: zedagent.Run},
+		"zedkube":          {f: zedkube.Run},
 		"zedmanager":       {f: zedmanager.Run},
 		"zedrouter":        {f: zedrouter.Run},
 		"ipcmonitor":       {f: ipcmonitor.Run, inline: inlineAlways},
