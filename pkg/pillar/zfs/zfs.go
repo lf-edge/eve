@@ -21,7 +21,7 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-// VolBlockSize is the default dataset block size in bytes
+// VolBlockSizeBytes is the default dataset block size in bytes
 const VolBlockSizeBytes = uint64(16 * 1024)
 
 // CreateDatasets - creates all the non-existing parent datasets.

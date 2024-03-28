@@ -444,7 +444,7 @@ func getEtcdSizeSetting() (uint32, error) {
 		if strings.HasPrefix(arg, base.InstallOptionEtcdSizeGB) {
 			argSplitted := strings.Split(arg, "=")
 			if len(argSplitted) == 2 {
-				valGB, err := strconv.Atoi(argSplitted[1])
+				valGB, err := strconv.ParseUint(argSplitted[1], 10, 32)
 				if err == nil {
 					return uint32(valGB), nil
 				}
