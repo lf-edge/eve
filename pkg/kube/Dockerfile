@@ -27,6 +27,7 @@ COPY kubevirt-features.yaml /etc
 COPY kubevirt-operator.yaml /etc
 COPY config-k3s.toml /etc/containerd/
 COPY longhorn-generate-support-bundle.sh /usr/bin/
+COPY k3s-pod-logs.sh /usr/bin/
 COPY debuguser-role-binding.yaml /etc/
 COPY external-boot-image.tar /etc/
 COPY iscsid.conf /etc/iscsi/
