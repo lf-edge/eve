@@ -28,7 +28,7 @@ type essentialProto struct {
 	label          string
 	ingressMatch   []string
 	egressMatch    []string
-	mark           string
+	mark           uint32
 	markChainName  string
 	canOrigOutside bool // true if communication can be initiated from outside the edge node
 }
@@ -964,8 +964,10 @@ func (r *LinuxNIReconciler) getIntendedAppConnMangleIptables(vif vifInfo,
 			continue
 		}
 		markChain := markChainPrefix + proto.markChainName
+		mark := iptables.GetConnmark(
+			uint8(app.appNum), proto.mark, false, false)
 		if _, alreadyAdded := addedMarkChains[markChain]; !alreadyAdded {
-			items = append(items, getMarkingChainCfg(markChain, ipv6, proto.mark)...)
+			items = append(items, getMarkingChainCfg(markChain, ipv6, markToString(mark))...)
 			addedMarkChains[markChain] = struct{}{}
 		}
 		ingressRules = append(ingressRules, iptables.Rule{
@@ -996,7 +998,7 @@ func (r *LinuxNIReconciler) getIntendedAppConnMangleIptables(vif vifInfo,
 		}
 		markChain := markChainPrefix + strconv.Itoa(int(aclRule.RuleID))
 		mark := iptables.GetConnmark(
-			uint8(app.appNum), uint32(aclRule.RuleID), parsedRule.drop)
+			uint8(app.appNum), uint32(aclRule.RuleID), true, parsedRule.drop)
 		if _, alreadyAdded := addedMarkChains[markChain]; !alreadyAdded {
 			items = append(items,
 				getMarkingChainCfg(markChain, ipv6, markToString(mark))...)
@@ -1051,8 +1053,10 @@ mangleEgress:
 	// 2.1. Mark essential protocols allowed implicitly.
 	for _, proto := range essentialProtos {
 		markChain := markChainPrefix + proto.markChainName
+		mark := iptables.GetConnmark(
+			uint8(app.appNum), proto.mark, false, false)
 		if _, alreadyAdded := addedMarkChains[markChain]; !alreadyAdded {
-			items = append(items, getMarkingChainCfg(markChain, ipv6, proto.mark)...)
+			items = append(items, getMarkingChainCfg(markChain, ipv6, markToString(mark))...)
 			addedMarkChains[markChain] = struct{}{}
 		}
 		egressRules = append(egressRules, iptables.Rule{
@@ -1063,10 +1067,12 @@ mangleEgress:
 	}
 	// 2.2. Mark request from app to the metadata server
 	if !ipv6 && bridgeIP != nil {
-		httpMark := iptables.ControlProtocolMarkingIDMap["app_http"]
+		httpMark := iptables.GetConnmark(uint8(app.appNum),
+			iptables.ControlProtocolMarkingIDMap["app_http"], false, false)
 		markMetadataChain := markChainPrefix + "metadata"
 		if _, alreadyAdded := addedMarkChains[markMetadataChain]; !alreadyAdded {
-			items = append(items, getMarkingChainCfg(markMetadataChain, ipv6, httpMark)...)
+			items = append(items,
+				getMarkingChainCfg(markMetadataChain, ipv6, markToString(httpMark))...)
 			addedMarkChains[markMetadataChain] = struct{}{}
 		}
 		egressRules = append(egressRules, iptables.Rule{
@@ -1091,7 +1097,7 @@ mangleEgress:
 		}
 		markChain := markChainPrefix + strconv.Itoa(int(aclRule.RuleID))
 		mark := iptables.GetConnmark(
-			uint8(app.appNum), uint32(aclRule.RuleID), parsedRule.drop)
+			uint8(app.appNum), uint32(aclRule.RuleID), true, parsedRule.drop)
 		if _, alreadyAdded := addedMarkChains[markChain]; !alreadyAdded {
 			items = append(items,
 				getMarkingChainCfg(markChain, ipv6, markToString(mark))...)
@@ -1114,7 +1120,7 @@ mangleEgress:
 	if ni.config.Type == types.NetworkInstanceTypeLocal {
 		dropAllChain := markChainPrefix + "drop-all"
 		mark := iptables.GetConnmark(
-			uint8(app.appNum), iptables.DefaultDropAceID, true)
+			uint8(app.appNum), iptables.DefaultDropAceID, false, true)
 		items = append(items,
 			getMarkingChainCfg(dropAllChain, ipv6, markToString(mark))...)
 		defaultDropMark := iptables.Rule{

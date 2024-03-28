@@ -35,7 +35,7 @@ var (
 	builtinChains = []string{"INPUT", "OUTPUT", "FORWARD", "PREROUTING", "POSTROUTING"}
 	// Used as a constant.
 	builtinTargets = []string{"ACCEPT", "DROP", "REJECT", "LOG", "DNAT", "SNAT",
-		"MASQUERADE", "CONNMARK", "MARK"}
+		"MASQUERADE", "CONNMARK", "MARK", "RETURN"}
 )
 
 // RegisterItems : add Items and their Configurators into the provided registry.
