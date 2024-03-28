@@ -5,7 +5,7 @@
 #
 
 # Script version, don't forget to bump up once something is changed
-VERSION=14
+VERSION=15
 
 # Add required packages here, it will be passed to "apk add".
 # Once something added here don't forget to add the same package
@@ -299,6 +299,10 @@ collect_kube_info()
            echo "============"
            eve exec kube kubectl top pod -A --sum
            echo "============"
+           echo "/usr/bin/k3s-pod-logs.sh"
+           echo "============"
+           eve exec kube /usr/bin/k3s-pod-logs.sh
+           echo "============"
         } > "$DIR/kube-info"
     fi
 }
@@ -312,9 +316,9 @@ collect_longhorn_info()
     echo "- Collecting Longhorn specific info"
     {
         echo "  - longhorn support bundle "
-        # Longhorn issue reports have seen hangs generating this data 
-        # when nodes are down, or due to longhorn bugs.  
-        # Give up after 5min, and allow remaining system data to be collected.  
+        # Longhorn issue reports have seen hangs generating this data
+        # when nodes are down, or due to longhorn bugs.
+        # Give up after 5min, and allow remaining system data to be collected.
         timeout 300s eve exec kube /usr/bin/longhorn-generate-support-bundle.sh
     } > "$DIR/longhorn-info" 2>&1
 }
