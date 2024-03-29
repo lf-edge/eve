@@ -184,9 +184,13 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 	log.Functionf("processed GlobalConfig")
 
-	server, err := os.ReadFile(types.ServerFileName)
-	if err != nil {
-		log.Fatal(err)
+	var server []byte
+	for len(server) == 0 {
+		server, err = os.ReadFile(types.ServerFileName)
+		if err != nil {
+			log.Warn(err)
+			time.Sleep(10 * time.Second)
+		}
 	}
 	ctx.serverNameAndPort = strings.TrimSpace(string(server))
 	ctx.serverName = strings.Split(ctx.serverNameAndPort, ":")[0]
