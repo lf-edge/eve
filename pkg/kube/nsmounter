@@ -1,0 +1,46 @@
+#!/bin/bash
+
+PROC_DIR="/proc"
+
+os_distro_eve="eve"
+os_distro=""
+
+get_os_distro() {
+  local -r version_info=$(< $PROC_DIR/version)
+
+  [[ $version_info =~ $os_distro_eve ]] && os_distro=$os_distro_eve
+}
+
+target_pid=1
+
+get_pid() {
+  local process_name=$1
+  local pid
+  local status_file
+  local name
+
+  for dir in "$PROC_DIR"/*/; do
+    pid=$(basename "$dir")
+    status_file="$PROC_DIR/$pid/status"
+
+    if [ -f "$status_file" ]; then
+      while IFS= read -r line; do
+        if [[ $line == "Name:"* ]]; then
+          name="${line#*:}"
+          name="${name//[$'\t ']/}"  # Remove both spaces and tabs
+          break  # Exit the loop once the Name is found
+        fi
+      done < "$status_file"
+    fi
+
+    if [ "$name" = "$process_name" ]; then
+      target_pid=$pid
+    fi
+  done
+}
+
+get_os_distro
+
+[[ $os_distro = "$os_distro_eve" ]] && get_pid "cluster-init.sh"
+
+nsenter -t "$target_pid" -m -n -u -- "$@"

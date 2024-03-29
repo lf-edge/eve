@@ -3,9 +3,10 @@
 version = 2
 
 state = "/run/containerd-user"
+root = "/persist/vault/containerd"
 
 [plugins."io.containerd.internal.v1.opt"]
-  path = "/var/lib/rancher/k3s/agent/containerd/"
+  path = "/persist/vault/containerd"
 [plugins."io.containerd.grpc.v1.cri"]
   stream_server_address = "127.0.0.1"
   stream_server_port = "10010"
@@ -22,7 +23,7 @@ state = "/run/containerd-user"
   address = "/run/containerd-user/containerd.sock"
 
 [plugins."io.containerd.grpc.v1.cri".cni]
-  bin_dir = "/var/lib/rancher/k3s/data/c26e7571d760c5f199d18efd197114f1ca4ab1e6ffe494f96feb65c87fcb8cf0/bin"
+  bin_dir = "/var/lib/rancher/k3s/data/current/bin"
   conf_dir = "/var/lib/rancher/k3s/agent/etc/cni/net.d"
 
 [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc]
@@ -30,6 +31,5 @@ state = "/run/containerd-user"
 
 [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc.options]
   SystemdCgroup = false
-
 
 
