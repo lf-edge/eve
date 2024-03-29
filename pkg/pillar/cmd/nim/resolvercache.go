@@ -27,12 +27,20 @@ const (
 // The cached IP address can be used with SendOnIntf function to speed up
 // controller API calls by avoiding repeated hostname resolutions.
 func (n *nim) runResolverCacheForController() {
-	content, err := os.ReadFile(types.ServerFileName)
-	if err != nil {
-		n.Log.Errorf("Failed to read %s: %v; "+
-			"will not run resolver cache for the controller hostname",
-			types.ServerFileName, err)
-		return
+	var content []byte
+	var err error
+	for len(content) == 0 {
+		content, err = os.ReadFile(types.ServerFileName)
+		if err != nil {
+			n.Log.Errorf("Failed to read %s: %v; "+
+				"waiting for it",
+				types.ServerFileName, err)
+			time.Sleep(10 * time.Second)
+		} else if len(content) == 0 {
+			n.Log.Errorf("Empty %s file - waiting for it",
+				types.ServerFileName)
+			time.Sleep(10 * time.Second)
+		}
 	}
 	controllerHostname := string(content)
 	controllerHostname = strings.TrimSpace(controllerHostname)
