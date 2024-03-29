@@ -149,9 +149,6 @@ COPY --from=dnsmasq /usr/sbin/dnsmasq /out/opt/zededa/bin/dnsmasq
 # to avoid conflicts and speedup re-builds
 COPY --from=build /final /out
 
-# We have to make sure configs survive in some location, but they don't pollute
-# the default /config (since that is expected to be an empty mount point)
-ADD conf/root-certificate.pem conf/server conf/server.production /out/opt/zededa/examples/config/
 ADD scripts/device-steps.sh \
     scripts/onboot.sh \
     scripts/handlezedserverconfig.sh \
