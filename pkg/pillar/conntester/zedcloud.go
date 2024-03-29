@@ -51,7 +51,10 @@ func (t *ZedcloudConnectivityTester) TestConnectivity(dns types.DeviceNetworkSta
 
 	server, err := os.ReadFile(types.ServerFileName)
 	if err != nil {
-		t.Log.Fatal(err)
+		t.Log.Error(err)
+		// XXX should we return an indicating that the intf is unknown
+		// and not failed?
+		return intfStatusMap, nil, err
 	}
 	serverNameAndPort := strings.TrimSpace(string(server))
 

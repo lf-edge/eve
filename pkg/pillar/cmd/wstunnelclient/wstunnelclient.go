@@ -146,9 +146,14 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	wscCtx.subAppInstanceConfig = subAppInstanceConfig
 
 	//get server name
-	bytes, err := os.ReadFile(types.ServerFileName)
-	if err != nil {
-		log.Fatal(err)
+	var bytes []byte
+	for len(bytes) == 0 {
+		bytes, err = os.ReadFile(types.ServerFileName)
+		if err != nil {
+			log.Error(err)
+			time.Sleep(10 * time.Second)
+			ps.StillRunning(agentName, warningTime, errorTime)
+		}
 	}
 	wscCtx.serverNameAndPort = strings.TrimSpace(string(bytes))
 

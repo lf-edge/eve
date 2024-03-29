@@ -353,6 +353,9 @@ else
 fi
 if [ ! -s $CONFIGDIR/server ] || [ ! -s $CONFIGDIR/root-certificate.pem ]; then
     echo "$(date -Ins -u) No server or root-certificate to connect to. Done" | tee /dev/console
+    # XXX insert FDO client here
+    # Should we delay for 60 seconds and then copy files from /config/bak?
+    sleep inf
     exit 0
 fi
 
