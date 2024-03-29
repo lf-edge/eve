@@ -143,6 +143,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		}
 		ps.StillRunning(agentName, warningTime, errorTime)
 	}
+	sendCtxInit(ps, &loguploaderCtx)
 
 	subDeviceNetworkStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "nim",
@@ -196,7 +197,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	loguploaderCtx.subAppInstConfig = subAppInstConfig
 	subAppInstConfig.Activate()
 
-	sendCtxInit(&loguploaderCtx)
+	sendCtxInit(ps, &loguploaderCtx)
 
 	for loguploaderCtx.usableAddrCount == 0 {
 		select {
@@ -419,12 +420,23 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 }
 
-func sendCtxInit(ctx *loguploaderContext) {
+func sendCtxInit(ps *pubsub.PubSub, ctx *loguploaderContext) {
 	//get server name
-	bytes, err := os.ReadFile(types.ServerFileName)
-	if err != nil {
-		log.Fatalf("sendCtxInit: Failed to read ServerFileName(%s). Err: %s",
-			types.ServerFileName, err)
+	var bytes []byte
+	var err error
+	for len(bytes) == 0 {
+		bytes, err = os.ReadFile(types.ServerFileName)
+		if err != nil {
+			log.Errorf("sendCtxInit: Failed to read ServerFileName(%s). Err: %s",
+				types.ServerFileName, err)
+			time.Sleep(10 * time.Second)
+			ps.StillRunning(agentName, warningTime, errorTime)
+		} else if len(bytes) == 0 {
+			log.Warnf("Empty %s file - waiting for it",
+				types.ServerFileName)
+			time.Sleep(10 * time.Second)
+			ps.StillRunning(agentName, warningTime, errorTime)
+		}
 	}
 	// Preserve port
 	ctx.serverNameAndPort = strings.TrimSpace(string(bytes))
@@ -998,7 +1010,4 @@ func handleOnboardStatusImpl(ctxArg interface{}, key string,
 	ctx := ctxArg.(*loguploaderContext)
 
 	ctx.devUUID = status.DeviceUUID
-	if ctx.zedcloudCtx != nil {
-		sendCtxInit(ctx)
-	}
 }
