@@ -953,11 +953,19 @@ func (ctx kubevirtContext) CreatePodConfig(domainName string, config types.Domai
 	// Add Direct Attach Ethernet Port
 	for _, io := range config.IoAdapterList {
 		if io.Type == types.IoNetEth {
+			nadName := "host-" + io.Name
 			// even if ioAdapter does not exist, kubernetes will retry
 			netSelections = append(netSelections, netattdefv1.NetworkSelectionElement{
 				// TODO: Add method for generating NAD name of direct attach to pkg/kubeapi
-				Name: "host-" + io.Name,
+				Name: nadName,
 			})
+
+			// Check if the NAD is created in the cluster, return error if not
+			err := kubeapi.CheckEtherPassThroughNAD(nadName)
+			if err != nil {
+				logrus.Errorf("CreatePodConfig: check ether NAD failed, %v", err)
+				return err
+			}
 		}
 	}
 
