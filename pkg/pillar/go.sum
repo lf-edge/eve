@@ -1458,6 +1458,8 @@ github.com/lf-edge/eve-api/go v0.0.0-20240229195728-6180247abbc1 h1:zLZ778WcW/ab
 github.com/lf-edge/eve-api/go v0.0.0-20240229195728-6180247abbc1/go.mod h1:6XqpOM8p1HsluNIGw2ihYPYsaAisQ5CuJpbIKHXQo5w=
 github.com/lf-edge/eve-libs v0.0.0-20240207103937-2c1dfb073c07 h1:ujraUvdScxfIzzuqD324iZgeR7TtA0OUsrJay+WtxLA=
 github.com/lf-edge/eve-libs v0.0.0-20240207103937-2c1dfb073c07/go.mod h1:vujNUs0RNVJ8qscqiUhYPRRjeIkfLV1kAcAwAzUnCq0=
+github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20240315102754-0f6d1f182e0d h1:tUBb9M6u42LXwHAYHyh22wJeUUQlTpDkXwRXalpRqbo=
+github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20240315102754-0f6d1f182e0d/go.mod h1:Nn3juMJJ1G8dyHOebdZyS4jOB/fuxAd5fIajBaWjHr8=
 github.com/lf-edge/go-qemu v0.0.0-20231121152149-4c467eda0c56 h1:LmFp0jbNSwPLuxJA+nQ+mMQrQ53ESkvHP4CVMqR0zrY=
 github.com/lf-edge/go-qemu v0.0.0-20231121152149-4c467eda0c56/go.mod h1:Z1YRCAzPvFSjlmUGeVXQcMhGMajnD5hbcxob0ff/2tY=
 github.com/linuxkit/linuxkit/src/cmd/linuxkit v0.0.0-20240205114432-657b33805ef1 h1:wG7qsHX4XqabEfbNyXu/8yuOTfq8cNoKZjbQ17T7WuI=
