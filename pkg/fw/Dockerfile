@@ -158,6 +158,9 @@ COPY --from=build /nvidia-firmware/lib/firmware/tegra19x /lib/firmware/tegra19x
 COPY --from=build /nvidia-firmware/lib/firmware/tegra23x /lib/firmware/tegra23x
 COPY --from=build /lib/firmware/nvidia/tegra210 /lib/firmware/nvidia/tegra210
 COPY --from=build /rtw88/*.bin /lib/firmware/rtw88/
+# Intel ICE firmware.
+COPY --from=build /lib/firmware/intel/ice /lib/firmware/intel/ice
+
 
 FROM scratch
 ENTRYPOINT []
