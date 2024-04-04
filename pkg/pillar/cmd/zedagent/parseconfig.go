@@ -606,6 +606,7 @@ func parseAppInstanceConfig(getconfigCtx *getconfigContext,
 		appInstance.FixedResources.MaxCpus = int(cfgApp.Fixedresources.Maxcpus)
 		appInstance.FixedResources.VirtualizationMode = types.VmMode(cfgApp.Fixedresources.VirtualizationMode)
 		appInstance.FixedResources.EnableVnc = cfgApp.Fixedresources.EnableVnc
+		appInstance.FixedResources.EnableVncShimVM = cfgApp.Fixedresources.EnableVncShimVm
 		appInstance.FixedResources.VncDisplay = cfgApp.Fixedresources.VncDisplay
 		appInstance.FixedResources.VncPasswd = cfgApp.Fixedresources.VncPasswd
 		appInstance.DisableLogs = cfgApp.Fixedresources.DisableLogs
@@ -2610,6 +2611,12 @@ func checkAndPublishAppInstanceConfig(getconfigCtx *getconfigContext,
 	}
 	if config.Service && config.FixedResources.VirtualizationMode != types.NOHYPER {
 		err := fmt.Errorf("service app instance %s must have NOHYPER VirtualizationMode", config.UUIDandVersion.UUID)
+		log.Error(err)
+		config.Errors = append(config.Errors, err.Error())
+	}
+
+	if config.FixedResources.EnableVnc == false && config.FixedResources.EnableVncShimVM == true {
+		err := fmt.Errorf("VNC shim VM enabled but VNC disabled for app instance %s", config.UUIDandVersion.UUID)
 		log.Error(err)
 		config.Errors = append(config.Errors, err.Error())
 	}
