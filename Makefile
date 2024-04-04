@@ -40,8 +40,13 @@ DEV=n
 MEDIA_SIZE=32768
 # Image type for final disk images
 IMG_FORMAT=qcow2
+ifdef LIVE_PKG
+# For live pkg updates we support read-write FS, like ext4
+ROOTFS_FORMAT=ext4
+else
 # Filesystem type for rootfs image
 ROOTFS_FORMAT?=squash
+endif
 # Image type for installer image
 INSTALLER_IMG_FORMAT=raw
 # Image type for verification image
@@ -156,6 +161,7 @@ ROOTFS_COMPLETE=$(ROOTFS_FULL_NAME)-%-$(ZARCH).$(ROOTFS_FORMAT)
 ROOTFS_IMG=$(ROOTFS).img
 # ROOTFS_TAR is in BUILD_DIR, not installer, so it does not get installed
 ROOTFS_TAR=$(BUILD_DIR)/rootfs.tar
+ROOTFS_REDUCED_TAR=$(BUILD_DIR)/rootfs.reduced.tar
 CONFIG_IMG=$(INSTALLER)/config.img
 INITRD_IMG=$(INSTALLER)/initrd.img
 INSTALLER_IMG=$(INSTALLER)/installer.img
@@ -300,7 +306,12 @@ LINUXKIT_SOURCE=https://github.com/linuxkit/linuxkit.git
 LINUXKIT_OPTS=$(if $(strip $(EVE_HASH)),--hash) $(EVE_HASH) $(if $(strip $(EVE_REL)),--release) $(EVE_REL)
 LINUXKIT_PKG_TARGET=build
 LINUXKIT_PATCHES_DIR=tools/linuxkit/patches
+ifdef LIVE_PKG
+# Don't regenerate everything once generated
+RESCAN_DEPS=
+else
 RESCAN_DEPS=FORCE
+endif
 # set FORCE_BUILD to --force to enforce rebuild
 FORCE_BUILD=
 
@@ -611,7 +622,14 @@ rootfs: $(ROOTFS_TAR) $(ROOTFS_IMG) current
 rootfs.tar: $(ROOTFS_TAR)
 rootfstar: $(ROOTFS_TAR)
 sbom: $(SBOM)
-live: $(LIVE_IMG) $(BIOS_IMG) current	; $(QUIET): "$@: Succeeded, LIVE_IMG=$(LIVE_IMG)"
+ifdef LIVE_PKG
+live: $(LIVE_IMG) $(BIOS_IMG) current $(ROOTFS_REDUCED_TAR)
+#	Mount first rootfs and copy all files to / from reduced tar. One line magic.
+	guestfish -a $(BUILD_DIR)/live.qcow2 run : mount /dev/sda2 / : tar-in $(ROOTFS_REDUCED_TAR) /
+	$(QUIET): $@: Succeeded
+else
+live: $(LIVE_IMG) $(BIOS_IMG) current  ; $(QUIET): "$@: Succeeded, LIVE_IMG=$(LIVE_IMG)"
+endif
 live-%: $(LIVE).%		; $(QUIET): "$@: Succeeded, LIVE=$(LIVE)"
 installer: $(INSTALLER_IMG)
 installer-%: $(INSTALLER).% current ; @echo "$@: Succeeded, INSTALLER_IMG=$<"
@@ -636,6 +654,11 @@ $(PERSIST_IMG): | $(INSTALLER)
 
 $(ROOTFS)-%.img: $(ROOTFS_IMG)
 	@rm -f $@ && ln -s $(notdir $<) $@
+	$(QUIET): $@: Succeeded
+
+$(ROOTFS_REDUCED_TAR): images/out/rootfs-$(HV)-$(PLATFORM).yml.reduced
+	$(QUIET): $@: Begin
+	./tools/makerootfs.sh tar -y $< -t $@ -d $(INSTALLER) -a $(ZARCH)
 	$(QUIET): $@: Succeeded
 
 $(ROOTFS_TAR): images/out/rootfs-$(HV)-$(PLATFORM).yml | $(INSTALLER)
@@ -941,6 +964,9 @@ endif
 	qemu-img convert -c -f raw -O qcow2 $< $@
 	qemu-img resize $@ ${MEDIA_SIZE}M
 	$(QUIET): $@: Succeeded
+
+%.yml.reduced: %.yml.in FORCE | build-tools
+	$(QUIET)$(PARSE_PKGS) -p $(LIVE_PKG) $< > $@
 
 %.yml: %.yml.in $(RESCAN_DEPS) | build-tools
 	$(QUIET)$(PARSE_PKGS) $< > $@
