@@ -41,6 +41,9 @@ IMGFILE=/rootfs.img
   ROOTFS_FILE_SIZE_KB=$(du -sk . | awk '{print $1}')
   ROOTFS_PART_BLOCKS=$(( $ROOTFS_FILE_SIZE_KB / 4 + $ROOTFS_PART_HEADROOM_BLOCKS ))
   ROOTFS_PART_SIZE=$(( $ROOTFS_PART_BLOCKS * $ROOTFS_BLOCKSZ ))
+  # Increase fs size on 200MB. We need extra room for updating packages while
+  # building live image. See 'LIVE_PKG=<p> live' in the Makefile.
+  ROOTFS_PART_SIZE=$((ROOTFS_PART_SIZE + (200<<20)))
   ROOTFS_PART_SIZE_KB=$(((ROOTFS_PART_SIZE + 1023) / 1024))
 
   dd if=/dev/zero of=$IMGFILE bs=1024 seek="$ROOTFS_PART_SIZE_KB" count=0
