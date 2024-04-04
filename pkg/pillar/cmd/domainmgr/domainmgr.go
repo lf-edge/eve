@@ -2211,6 +2211,7 @@ func handleModify(ctx *domainContext, key string,
 func updateStatusFromConfig(status *types.DomainStatus, config types.DomainConfig) {
 	status.VirtualizationMode = config.VirtualizationModeOrDefault()
 	status.EnableVnc = config.EnableVnc
+	status.EnableVncShimVM = config.EnableVncShimVM
 	status.VncDisplay = config.VncDisplay
 	status.VncPasswd = config.VncPasswd
 	status.DisableLogs = config.DisableLogs
