@@ -532,6 +532,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext, dest destinationBitset) {
 		if ib.Error != "" {
 			errInfo := new(info.ErrorInfo)
 			errInfo.Description = ib.Error
+			errInfo.Severity = info.Severity_SEVERITY_ERROR
 			if !ib.ErrorTime.IsZero() {
 				protoTime, err := ptypes.TimestampProto(ib.ErrorTime)
 				if err == nil {
