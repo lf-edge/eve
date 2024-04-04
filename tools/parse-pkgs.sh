@@ -125,6 +125,27 @@ KUBE_TAG=${KUBE_TAG}
 EOF
 }
 
+keep_only_pkg() {
+  local pkg
+  pkg=$1
+
+  # Don't ask me how the stuff below works! Don't even try to reach me out.
+  # I swear I do not know. Everything copied from Stackoverflow and after
+  # a bunch of iteration I got what I wanted. Ok, Ok. What I do know is
+  # why we need sed at the end of the pipe. It's easy. We remove "- null"
+  # elements from array left there by 'yq' transform, which I do not know
+  # how to remove using yq.
+  if [ "$pkg" == "kernel" ]; then
+      cat | yq ".kernel.[] as \$i ireduce({}; setpath(\$i | path; \$i))" |
+          sed '/^\s\+-\s\+null\s*$/d'
+  else
+      cat | yq "( (.init.[] | select(. == \"lfedge/eve-$pkg:*\")),
+                ((.services, .onboot).[] | select(.image == \"lfedge/eve-$pkg:*\")) ) as
+                  \$i ireduce({}; setpath(\$i | path; \$i))" |
+          sed '/^\s\+-\s\+null\s*$/d'
+  fi
+}
+
 if [ -z "$DOCKER_ARCH_TAG" ] ; then
   case $(uname -m) in
     x86_64) ARCH=-amd64
@@ -182,9 +203,41 @@ KUBE_TAG=$(linuxkit_tag pkg/kube)
 # on the previous tags being already defined.
 EVE_TAG=$(synthetic_tag zededa/eve pkg/eve/Dockerfile.in)
 
+help() {
+  echo "Usage: $0 [<image.yml.in> [-p <pkg>]]" >&2
+  echo
+  echo "    substitutes *_TAG in the <image.yml.in> input file and outputs " >&2
+  echo "    results to stdout." >&2
+  echo
+  echo "  -p pkg   - Removes everything which is not the <pkg> from " >&2
+  echo "             the resulting output." >&2
+  echo
+  exit 1
+}
+
+unset pkg
+while getopts "p:h" o
+do
+  case $o in
+    p)
+      pkg=$(basename "$OPTARG")
+      ;;
+    h)
+      help
+      ;;
+    *)
+      ;;
+  esac
+done
+shift $((OPTIND-1))
+
 TAGS=$(gen_tags)
 if [ $# -ge 1 ]; then
-  resolve_tags "$TAGS" "$1"
+  out=$(resolve_tags "$TAGS" "$1")
+  if [ -n "$pkg" ]; then
+    out=$(echo "$out" | keep_only_pkg "$pkg")
+  fi
+  echo "$out"
 else
   echo "$TAGS"
 fi
