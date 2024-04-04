@@ -945,7 +945,7 @@ endif
 	qemu-img resize $@ ${MEDIA_SIZE}M
 	$(QUIET): $@: Succeeded
 
-%.yml: %.yml.in build-tools $(RESCAN_DEPS)
+%.yml: %.yml.in $(RESCAN_DEPS) | build-tools
 	$(QUIET)$(PARSE_PKGS) $< > $@
 	$(QUIET): $@: Succeeded
 
@@ -980,7 +980,7 @@ eve-%: pkg/%/Dockerfile build-tools $(RESCAN_DEPS)
 images/out:
 	mkdir -p $@
 
-images/out/rootfs-%.yml.in: images/rootfs.yml.in images/out FORCE
+images/out/rootfs-%.yml.in: images/rootfs.yml.in $(RESCAN_DEPS) | images/out
 	$(QUIET)tools/compose-image-yml.sh -b $< -v "$(ROOTFS_VERSION)-$*-$(ZARCH)" -o $@ -h $(HV) $(patsubst %,images/modifiers/%.yq,$(subst -, ,$*))
 
 test-images-patches: $(patsubst images/modifiers/%.yq,images/out/rootfs-%.yml.in,$(wildcard images/modifiers/*.yq))
