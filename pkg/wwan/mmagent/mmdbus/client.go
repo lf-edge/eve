@@ -1177,6 +1177,17 @@ func (c *Client) Connect(
 		return types.WwanIPSettings{}, err
 	}
 	// Activate the selected SIM slot if it is not already.
+	if args.SIMSlot == 0 {
+		// SIM slot is not selected by the user.
+		// Use whatever SIM slot is already set as primary, but prefer physical
+		// ports over unsupported eSIM.
+		err := c.preferPhysSimOverESim(modemObj)
+		if err != nil {
+			c.log.Error(err)
+			// Continue, below we will try to change settings for the initial
+			// EPS bearer, which could help with the UE registration.
+		}
+	}
 	if args.SIMSlot != 0 {
 		var primarySIM uint32
 		_ = getDBusProperty(c, modemObj, ModemPropertyPrimarySIMSlot, &primarySIM)
@@ -1277,7 +1288,10 @@ func (c *Client) runSimpleConnect(modemObj dbus.BusObject,
 	connProps map[string]interface{}) (types.WwanIPSettings, error) {
 	var ipSettings types.WwanIPSettings
 	var bearerPath dbus.ObjectPath
-	modem := c.modems[string(modemObj.Path())]
+	modem, exists := c.modems[string(modemObj.Path())]
+	if !exists {
+		return ipSettings, fmt.Errorf("unknown modem: %v", modemObj.Path())
+	}
 	err := c.callDBusMethod(modemObj, SimpleMethodConnect, &bearerPath, connProps)
 	var errIsUseless bool
 	if err != nil {
@@ -1446,6 +1460,50 @@ func (c *Client) setPreferredRATs(modemObj dbus.BusObject,
 	}
 	c.log.Noticef("Setting mode %v for modem %s", mode, modemObj.Path())
 	return c.callDBusMethod(modemObj, ModemMethodSetCurrentModes, nil, mode)
+}
+
+// If the user does not select a specific SIM slot, EVE will utilize whichever
+// SIM slot is already designated as primary (e.g., by the device manufacturer).
+// However, there is one exception: if the primary SIM is an eSIM (virtual
+// embedded SIM), EVE will default to using the first physical slot instead,
+// as eSIM is not supported. EVE will attempt to connect (and fail) with the eSIM
+// only if the user explicitly selects the eSIM slot.
+func (c *Client) preferPhysSimOverESim(modemObj dbus.BusObject) error {
+	modem, exists := c.modems[string(modemObj.Path())]
+	if !exists {
+		return fmt.Errorf("unknown modem: %v", modemObj.Path())
+	}
+	if len(modem.Status.SimCards) == 0 {
+		return fmt.Errorf("missing SIM card status for modem: %s", modem.Path)
+	}
+	var usesESim bool
+	var firstPhysSlot uint8 // slots starts with 1 (0 can be used as undefined)
+	for _, simCard := range modem.Status.SimCards {
+		switch simCard.Type {
+		case types.SimTypePhysical:
+			if firstPhysSlot == 0 || simCard.SlotNumber < firstPhysSlot {
+				firstPhysSlot = simCard.SlotNumber
+			}
+		case types.SimTypeEmbedded:
+			if simCard.SlotActivated {
+				usesESim = true
+			}
+		}
+	}
+	if !usesESim || firstPhysSlot == 0 {
+		// Nothing to do.
+		return nil
+	}
+	// Use the first physical SIM slot instead of eSIM.
+	c.log.Noticef("Automatically changing primary SIM slot for modem %s from eSIM to %d",
+		modem.Path, firstPhysSlot)
+	err := c.callDBusMethod(modemObj, ModemMethodSetPrimarySimSlot, nil,
+		uint32(firstPhysSlot))
+	if err != nil {
+		return err
+	}
+	return c.waitForModemState(
+		modemObj, ModemStateRegistered, changePrimarySIMTimeout)
 }
 
 // Disconnect terminates the modem connection.
