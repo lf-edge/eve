@@ -462,6 +462,7 @@ func mockWwan0Status(dpc types.DevicePortConfig, rs types.RadioSilence) types.Ww
 					{
 						ICCID: "89012703578345957137",
 						IMSI:  "310180933695713",
+						Type:  types.SimTypePhysical,
 					},
 				},
 				CurrentProvider: types.WwanProvider{
@@ -1136,6 +1137,7 @@ func TestWireless(test *testing.T) {
 	t.Expect(wwanDNS.Cellular.SimCards[0].Name).To(Equal("89012703578345957137")) // ICCID put by DoSanitize()
 	t.Expect(wwanDNS.Cellular.SimCards[0].ICCID).To(Equal("89012703578345957137"))
 	t.Expect(wwanDNS.Cellular.SimCards[0].IMSI).To(Equal("310180933695713"))
+	t.Expect(wwanDNS.Cellular.SimCards[0].Type).To(Equal(types.SimTypePhysical))
 	t.Expect(wwanDNS.Cellular.PhysAddrs.Interface).To(Equal("wwan0"))
 	t.Expect(wwanDNS.Cellular.PhysAddrs.USB).To(Equal("1:3.3"))
 	t.Expect(wwanDNS.Cellular.PhysAddrs.PCI).To(Equal("0000:f4:00.0"))
