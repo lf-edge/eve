@@ -942,6 +942,7 @@ func encodeSimCards(cellModule string, wwanSimCards []types.WwanSimCard) (simCar
 			CellModuleName: cellModule,
 			Imsi:           simCard.IMSI,
 			Iccid:          simCard.ICCID,
+			Type:           info.SimType(simCard.Type),
 			State:          simCard.State,
 			SlotNumber:     uint32(simCard.SlotNumber),
 			SlotActivated:  simCard.SlotActivated,
