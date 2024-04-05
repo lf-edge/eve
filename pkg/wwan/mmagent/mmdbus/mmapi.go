@@ -54,10 +54,26 @@ const (
 // ModemManager/SIM D-Bus interface
 // https://www.freedesktop.org/software/ModemManager/api/latest/ref-dbus-object-sim.html
 const (
-	SIMInterface      = MMInterface + ".Sim"
-	SIMPropertyActive = SIMInterface + ".Active"
-	SIMPropertyICCID  = SIMInterface + ".SimIdentifier"
-	SIMPropertyIMSI   = SIMInterface + ".Imsi"
+	SIMInterface          = MMInterface + ".Sim"
+	SIMPropertyActive     = SIMInterface + ".Active"
+	SIMPropertyICCID      = SIMInterface + ".SimIdentifier"
+	SIMPropertyIMSI       = SIMInterface + ".Imsi"
+	SIMPropertyType       = SIMInterface + ".SimType"
+	SIMPropertyESIMStatus = SIMInterface + ".EsimStatus"
+)
+
+// SIM type
+// https://www.freedesktop.org/software/ModemManager/doc/latest/ModemManager/ModemManager-Flags-and-Enumerations.html#MMSimType
+const (
+	SIMTypePhysical = 1
+	SIMTypeESIM     = 2
+)
+
+// ESIM status
+// https://www.freedesktop.org/software/ModemManager/doc/latest/ModemManager/ModemManager-Flags-and-Enumerations.html#MMSimEsimStatus
+const (
+	ESIMWithoutProfiles = 1
+	ESIMWithProfiles    = 2
 )
 
 // Modem control protocol
