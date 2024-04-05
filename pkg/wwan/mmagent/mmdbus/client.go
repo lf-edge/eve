@@ -545,45 +545,62 @@ func (c *Client) getModemStatus(modemObj dbus.BusObject) (
 		simCard := types.WwanSimCard{
 			SlotNumber:    slot,
 			SlotActivated: isPrimary,
+			Type:          types.SimTypePhysical,
 			State:         SIMStateAbsent,
 		}
 		if simPath.IsValid() && len(simPath) > 1 {
 			simPaths = append(simPaths, string(simPath))
-			// SIM card is present in this slot.
-			// But note that even if SIM card is present but the slot is inactive,
-			// ModemManager might report the card as absent, without providing any SIM
-			// object path to work with.
-			// On the other hand, with mbimcli we are able to distinguish between
-			// missing and inactive SIM card:
-			//     mbimcli -p -d /dev/cdc-wdm0 --ms-query-slot-info-status 0
-			//     [/dev/cdc-wdm0] Slot info status retrieved:
-			//	          Slot '0': 'state-off'
-			// (as opposed to 'state-empty')
-			// With qmicli we can also get this information:
-			//     qmicli -p -d /dev/cdc-wdm0 --uim-get-slot-status
-			//     [/dev/cdc-wdm0] 2 physical slots found:
-			//       Physical slot 1:
-			//          Card status: present
-			//          Slot status: active
-			//         Logical slot: 1
-			//                ICCID: 894921003198100584
-			//             Protocol: uicc
-			//             Num apps: 0
-			//             Is eUICC: no
-			//       Physical slot 2:
-			//          Card status: present
-			//          Slot status: inactive
-			//                ICCID: 89492029226029738490
-			//             Protocol: uicc
-			//             Num apps: 0
-			//             Is eUICC: no
-			// TODO: should we call mbimcli/qmicli ?
 			simObj := c.conn.Object(MMInterface, simPath)
 			_ = getDBusProperty(c, simObj, SIMPropertyActive, &simCard.SlotActivated)
 			_ = getDBusProperty(c, simObj, SIMPropertyICCID, &simCard.ICCID)
 			simCard.Name = simCard.ICCID
 			_ = getDBusProperty(c, simObj, SIMPropertyIMSI, &simCard.IMSI)
-			simCard.State = SIMStatePresent
+			var simType uint32
+			_ = getDBusProperty(c, simObj, SIMPropertyType, &simType)
+			switch simType {
+			case SIMTypeESIM:
+				// eSIM is not supported by EVE (or even by ModemManager) for connection
+				// establishment, but we still want to at least publish correct status
+				// information for the eSIM "slot".
+				simCard.Type = types.SimTypeEmbedded
+				var esimStatus uint32
+				_ = getDBusProperty(c, simObj, SIMPropertyESIMStatus, &esimStatus)
+				if esimStatus == ESIMWithProfiles {
+					simCard.State = SIMStatePresent
+				}
+			case SIMTypePhysical:
+				// Since we have valid dbus object for the physical SIM slot, it means
+				// that the SIM card is present.
+				// But note that even if SIM card is present but the slot is inactive,
+				// ModemManager might report the card as absent, without providing any SIM
+				// object path to work with.
+				// On the other hand, with mbimcli we are able to distinguish between
+				// missing and inactive SIM card:
+				//     mbimcli -p -d /dev/cdc-wdm0 --ms-query-slot-info-status 0
+				//     [/dev/cdc-wdm0] Slot info status retrieved:
+				//	          Slot '0': 'state-off'
+				// (as opposed to 'state-empty')
+				// With qmicli we can also get this information:
+				//     qmicli -p -d /dev/cdc-wdm0 --uim-get-slot-status
+				//     [/dev/cdc-wdm0] 2 physical slots found:
+				//       Physical slot 1:
+				//          Card status: present
+				//          Slot status: active
+				//         Logical slot: 1
+				//                ICCID: 894921003198100584
+				//             Protocol: uicc
+				//             Num apps: 0
+				//             Is eUICC: no
+				//       Physical slot 2:
+				//          Card status: present
+				//          Slot status: inactive
+				//                ICCID: 89492029226029738490
+				//             Protocol: uicc
+				//             Num apps: 0
+				//             Is eUICC: no
+				// TODO: should we call mbimcli/qmicli ?
+				simCard.State = SIMStatePresent
+			}
 			if !simCard.SlotActivated {
 				simCard.State = SIMStateInactive
 			}
@@ -1277,11 +1294,21 @@ func (c *Client) runSimpleConnect(modemObj dbus.BusObject,
 			if !simCard.SlotActivated {
 				continue
 			}
-			switch simCard.State {
-			case SIMStateAbsent:
-				return ipSettings, errors.New("SIM card is absent")
-			case SIMStateError:
-				return ipSettings, errors.New("SIM card is in failed state")
+			switch simCard.Type {
+			case SIMTypeESIM:
+				switch simCard.State {
+				case SIMStateAbsent:
+					return ipSettings, errors.New("eSIM card is without profile")
+				case SIMStateError:
+					return ipSettings, errors.New("eSIM card is in failed state")
+				}
+			default:
+				switch simCard.State {
+				case SIMStateAbsent:
+					return ipSettings, errors.New("SIM card is absent")
+				case SIMStateError:
+					return ipSettings, errors.New("SIM card is in failed state")
+				}
 			}
 		}
 		switch modem.Status.Module.OpMode {
