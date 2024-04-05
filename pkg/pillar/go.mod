@@ -9,7 +9,7 @@ require (
 	github.com/containerd/containerd v1.7.13
 	github.com/containerd/typeurl v1.0.2
 	github.com/cshari-zededa/eve-tpm2-tools v0.0.4
-	github.com/docker/docker v25.0.3+incompatible
+	github.com/docker/docker v25.0.5+incompatible
 	github.com/eriknordmark/ipinfo v0.0.0-20230728132417-2d8f4da903d7
 	github.com/eshard/uevent v1.0.1
 	github.com/fsnotify/fsnotify v1.6.0
@@ -30,6 +30,7 @@ require (
 	github.com/lf-edge/edge-containers v0.0.0-20240207093504-5dfda0619b80
 	github.com/lf-edge/eve-api/go v0.0.0-20240229195728-6180247abbc1
 	github.com/lf-edge/eve-libs v0.0.0-20240207103937-2c1dfb073c07
+	github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20240315102754-0f6d1f182e0d
 	github.com/lf-edge/go-qemu v0.0.0-20231121152149-4c467eda0c56
 	github.com/linuxkit/linuxkit/src/cmd/linuxkit v0.0.0-20240205114432-657b33805ef1
 	github.com/miekg/dns v1.1.43
@@ -165,7 +166,7 @@ require (
 	github.com/tklauser/go-sysconf v0.3.11 // indirect
 	github.com/tklauser/numcpus v0.6.0 // indirect
 	github.com/vbatts/tar-split v0.11.2 // indirect
-	github.com/vishvananda/netns v0.0.0-20210104183010-2eb08e3e575f // indirect
+	github.com/vishvananda/netns v0.0.0-20210104183010-2eb08e3e575f
 	github.com/xeipuuv/gojsonpointer v0.0.0-20190905194746-02993c407bfb // indirect
 	github.com/xeipuuv/gojsonreference v0.0.0-20180127040603-bd5ef7bd5415 // indirect
 	github.com/xeipuuv/gojsonschema v1.2.0 // indirect
@@ -198,7 +199,6 @@ require (
 require (
 	github.com/bicomsystems/go-libzfs v0.4.0 // indirect
 	github.com/imdario/mergo v0.3.13 // indirect
-	github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-00010101000000-000000000000 // indirect
 	github.com/openshift/api v0.0.0-20230503133300-8bbcb7ca7183 // indirect
 	github.com/openshift/custom-resource-status v1.1.2 // indirect
 	github.com/pborman/uuid v1.2.1 // indirect
@@ -213,6 +213,3 @@ require (
 	sigs.k8s.io/structured-merge-diff/v4 v4.4.1 // indirect
 	sigs.k8s.io/yaml v1.3.0 // indirect
 )
-
-// TODO: Remove the replace directive once cnirpc is merged.
-replace github.com/lf-edge/eve/pkg/kube/cnirpc => ../kube/cnirpc

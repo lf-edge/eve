@@ -1415,14 +1415,13 @@ func TestIPv4LocalAndSwitchNIs(test *testing.T) {
 	t.Expect(recUpdate.UpdateType).To(Equal(nirec.AppConnReconcileStatusChanged))
 	t.Expect(recUpdate.AppConnStatus.Equal(appStatus)).To(BeTrue())
 
-	// Simulate domainmgr creating all VIFs, but VIF3 will not be bridged yet.
+	// Simulate domainmgr creating all VIFs.
 	networkMonitor.AddOrUpdateInterface(app2VIF1)
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
 	t.Expect(recUpdate.UpdateType).To(Equal(nirec.CurrentStateChanged))
 	networkMonitor.AddOrUpdateInterface(app2VIF2)
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
 	t.Expect(recUpdate.UpdateType).To(Equal(nirec.CurrentStateChanged))
-	app2VIF3.Attrs.Enslaved = false
 	networkMonitor.AddOrUpdateInterface(app2VIF3)
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
 	t.Expect(recUpdate.UpdateType).To(Equal(nirec.CurrentStateChanged))
@@ -1434,11 +1433,7 @@ func TestIPv4LocalAndSwitchNIs(test *testing.T) {
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
 	t.Expect(recUpdate.UpdateType).To(Equal(nirec.AppConnReconcileStatusChanged))
 	for i := 0; i < 4; i++ {
-		if i == 2 {
-			t.Expect(recUpdate.AppConnStatus.VIFs[i].InProgress).To(BeTrue())
-		} else {
-			t.Expect(recUpdate.AppConnStatus.VIFs[i].InProgress).To(BeFalse())
-		}
+		t.Expect(recUpdate.AppConnStatus.VIFs[i].InProgress).To(BeFalse())
 		t.Expect(recUpdate.AppConnStatus.VIFs[i].FailedItems).To(BeEmpty())
 	}
 
@@ -1458,39 +1453,18 @@ func TestIPv4LocalAndSwitchNIs(test *testing.T) {
 	t.Expect(itemIsCreated(dg.Reference(
 		linuxitems.VLANPort{
 			BridgeIfName: "bn1",
-			BridgePort: linuxitems.BridgePort{
-				VIFIfName: "nbu1x2",
-			}}))).To(BeFalse())
+			PortIfName:   "nbu1x2",
+		}))).To(BeFalse())
 	t.Expect(itemIsCreated(dg.Reference(
 		linuxitems.VLANPort{
 			BridgeIfName: "eth1",
-			BridgePort: linuxitems.BridgePort{
-				VIFIfName: "nbu2x2",
-			}}))).To(BeTrue())
+			PortIfName:   "nbu2x2",
+		}))).To(BeTrue())
 	t.Expect(itemIsCreated(dg.Reference(
 		linuxitems.VLANPort{
 			BridgeIfName: "eth1",
-			BridgePort: linuxitems.BridgePort{
-				VIFIfName: "nbu3x2",
-			}}))).To(BeFalse())
-
-	// Now VIF3 is bridged as well
-	app2VIF3.Attrs.Enslaved = true
-	networkMonitor.AddOrUpdateInterface(app2VIF3)
-	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.CurrentStateChanged))
-	niReconciler.ResumeReconcile(ctx)
-
-	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.AppConnReconcileStatusChanged))
-	t.Expect(recUpdate.AppConnStatus.VIFs[2].InProgress).To(BeFalse())
-
-	t.Expect(itemIsCreated(dg.Reference(
-		linuxitems.VLANPort{
-			BridgeIfName: "eth1",
-			BridgePort: linuxitems.BridgePort{
-				VIFIfName: "nbu2x2",
-			}}))).To(BeTrue())
+			PortIfName:   "nbu3x2",
+		}))).To(BeTrue())
 
 	vif2Eidset := itemDescription(dg.Reference(linuxitems.IPSet{SetName: "ipv4.eids.nbu2x2"}))
 	t.Expect(vif2Eidset).To(ContainSubstring("entries: []"))
@@ -1826,9 +1800,7 @@ func TestIPv6LocalAndSwitchNIs(test *testing.T) {
 
 	vif2VLAN := linuxitems.VLANPort{
 		BridgeIfName: "eth2",
-		BridgePort: linuxitems.BridgePort{
-			VIFIfName: "nbu2x3",
-		},
+		PortIfName:   "nbu2x3",
 	}
 	t.Expect(itemIsCreated(dg.Reference(vif2VLAN))).To(BeTrue())
 	t.Expect(itemDescription(dg.Reference(vif2VLAN))).To(ContainSubstring(
@@ -2121,20 +2093,15 @@ func TestAirGappedLocalAndSwitchNIs(test *testing.T) {
 	t.Expect(itemIsCreated(dg.Reference(
 		linuxitems.VLANPort{
 			BridgeIfName: "bn1",
-			BridgePort: linuxitems.BridgePort{
-				VIFIfName: "nbu1x2",
-			}}))).To(BeFalse())
+			PortIfName:   "nbu1x2",
+		}))).To(BeFalse())
 	vif2VLANPort := linuxitems.VLANPort{
 		BridgeIfName: "bn2",
-		BridgePort: linuxitems.BridgePort{
-			VIFIfName: "nbu2x2",
-		},
+		PortIfName:   "nbu2x2",
 	}
 	vif3VLANPort := linuxitems.VLANPort{
 		BridgeIfName: "bn2",
-		BridgePort: linuxitems.BridgePort{
-			VIFIfName: "nbu3x2",
-		},
+		PortIfName:   "nbu3x2",
 	}
 	t.Expect(itemDescription(dg.Reference(vif2VLANPort))).To(ContainSubstring(
 		"accessPort: {vid: 10}"))
@@ -2469,7 +2436,6 @@ func TestCNI(test *testing.T) {
 	t.Expect(recUpdate.UpdateType).To(Equal(nirec.AppConnReconcileStatusChanged))
 
 	vifRef := dg.Reference(linuxitems.VIF{HostIfName: "nbu1x1"})
-	t.Expect(itemDescription(vifRef)).To(ContainSubstring("bridgeIfName: bn1"))
 	t.Expect(itemDescription(vifRef)).To(ContainSubstring("appIfName: net0"))
 	t.Expect(itemDescription(vifRef)).To(ContainSubstring("appIPs: []"))
 

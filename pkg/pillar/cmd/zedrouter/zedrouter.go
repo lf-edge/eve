@@ -244,14 +244,14 @@ func (z *zedrouter) init() (err error) {
 
 	z.peUsagePersist, err = persistcache.New(types.PersistCachePatchEnvelopesUsage)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	// restore cached patchEnvelopeUsage counters
 	for _, key := range z.peUsagePersist.Objects() {
 		cached, err := z.peUsagePersist.Get(key)
 		if err != nil {
-			log.Fatal(err)
+			return err
 		}
 		buf := bytes.NewBuffer(cached)
 		dec := gob.NewDecoder(buf)
@@ -259,7 +259,7 @@ func (z *zedrouter) init() (err error) {
 		var peUsage types.PatchEnvelopeUsage
 
 		if err := dec.Decode(&peUsage); err != nil {
-			log.Fatal(err)
+			return err
 		}
 
 		z.patchEnvelopesUsage.Store(key, peUsage)
@@ -963,7 +963,7 @@ func (z *zedrouter) processNIReconcileStatus(recStatus nireconciler.NIReconcileS
 			changed = true
 		}
 	} else {
-		if niStatus.HasError() {
+		if niStatus.HasError() && !niStatus.IPConflict {
 			niStatus.ClearError()
 			changed = true
 		}

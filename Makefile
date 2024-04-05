@@ -642,6 +642,18 @@ $(ROOTFS_TAR): images/out/rootfs-$(HV)-$(PLATFORM).yml | $(INSTALLER)
 	$(QUIET): $@: Begin
 	./tools/makerootfs.sh tar -y $< -t $@ -d $(INSTALLER) -a $(ZARCH)
 	$(QUIET): $@: Succeeded
+ifdef KERNEL_IMAGE
+	# Consider this as a cry from the heart: enormous amount of time is
+	# wasted during kernel rebuild on every small testing change. Now any
+	# kernel image can be used by providing path to a file. You heard it
+	# right: path-to-a-file. No docker. Yay!
+	$(eval KIMAGE = $$(realpath $(KERNEL_IMAGE)))
+	@echo "Replace kernel image in \"$@\" with \"$(KIMAGE)\""
+	# Delete /boot/kernel kernel image
+	tar --delete -f "$@" boot/kernel
+	# Append new kernel image and rename
+	tar -P -u --transform="flags=r;s|$(KIMAGE)|/boot/kernel|" -f "$@" "$(KIMAGE)"
+endif
 
 $(ROOTFS_IMG): $(ROOTFS_TAR) | $(INSTALLER)
 	$(QUIET): $@: Begin
