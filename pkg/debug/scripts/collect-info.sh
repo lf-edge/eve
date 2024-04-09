@@ -22,6 +22,7 @@ SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
 
 READ_LOGS_DEV=
 READ_LOGS_APP=
+TAR_WHOLE_SYS=
 
 usage()
 {
@@ -31,11 +32,12 @@ usage()
     echo ""
     echo "Read-logs mode:"
     echo "       -d                   - read device logs only"
+    echo "       -s                   - tar whole /sysfs"
     echo "       -a APPLICATION-UUID  - read specified application logs only"
     exit 1
 }
 
-while getopts "vha:d" o; do
+while getopts "vhsa:d" o; do
     case "$o" in
         h)
             usage
@@ -49,6 +51,9 @@ while getopts "vha:d" o; do
             ;;
         d)
             READ_LOGS_DEV=1
+            ;;
+        s)
+            TAR_WHOLE_SYS=1
             ;;
         :)
             usage
@@ -127,6 +132,21 @@ if nc -z -w 30 dl-cdn.alpinelinux.org 443 2>/dev/null; then
   # shellcheck disable=SC2086
   apk add $PKG_DEPS >/dev/null 2>&1
 fi
+
+check_tar_flags() {
+  tar --version | grep -q "GNU tar"
+}
+
+collect_sysfs()
+{
+    echo "- sysfs"
+    local tarball_file="$DIR/sysfs.tar"
+    if check_tar_flags; then
+        tar --ignore-failed-read --warning=none -czf "$tarball_file" "/sys" > /dev/null 2>&1 || true
+    else
+        tar -czf "$tarball_file" "/sys" > /dev/null 2>&1 || true
+    fi
+}
 
 collect_network_info()
 {
@@ -387,10 +407,9 @@ collect_zfs_info
 # Kube part
 collect_kube_info
 
-check_tar_flags() {
-  tar --version | grep -q "GNU tar"
-}
-
+if [ -n "$TAR_WHOLE_SYS" ]; then
+  collect_sysfs
+fi
 
 # Make a tarball
 # --exlude='root-run/run'              /run/run/run/.. exclude symbolic link loop
