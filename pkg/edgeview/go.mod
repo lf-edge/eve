@@ -5,8 +5,8 @@ go 1.20
 require (
 	github.com/gorilla/websocket v1.4.2
 	github.com/grandcat/zeroconf v1.0.0
-	github.com/lf-edge/eve-api/go v0.0.0-20230727134029-123abaf9479d
-	github.com/lf-edge/eve/pkg/pillar v0.0.0-20230727061425-295cf5137a5c
+	github.com/lf-edge/eve-api/go v0.0.0-20231011200019-cb3cb1275e0d
+	github.com/lf-edge/eve/pkg/pillar v0.0.0-20231025120317-b25d016a16bb
 	github.com/satori/go.uuid v1.2.1-0.20180404165556-75cca531ea76
 	github.com/shirou/gopsutil v3.21.11+incompatible
 	github.com/sirupsen/logrus v1.9.0
