@@ -2,7 +2,7 @@
 
 | Name | Type | Default | Description |
 | ---- | ---- | ------- | ----------- |
-| app.allow.vnc | boolean | false | allow access to the app using the VNC tcp port |
+| app.allow.vnc | boolean | false (only local access) | allow access to EVE's VNC ports from external IPs |
 | timer.config.interval | integer in seconds | 60 | how frequently device gets config |
 | timer.cert.interval | integer in seconds | 1 day (24*3600) | how frequently device checks for new controller certificates |
 | timer.metric.interval  | integer in seconds | 60 | how frequently device reports metrics |
