@@ -100,6 +100,17 @@ test: build-docker-test
 		--entrypoint /bin/sh $(DOCKER_TAG) \
 		/pillar/build-scripts/fuzz_test.sh
 
+test-profiling-create: build-docker-test
+	docker run --memory=800m --platform linux/$(ZARCH) -w /pillar \
+                --mount type=bind,source=./,target=/pillar/ \
+                --entrypoint /bin/sh $(DOCKER_TAG) \
+                /pillar/build-scripts/memprof_test.sh
+
+test-profiling: test-profiling-create
+	for i in *.profile; \
+                do go tool pprof -output "$${i}.png" -png "$${i}" ;\
+        done
+
 clean:
 	@rm -rf $(DISTDIR)
 
