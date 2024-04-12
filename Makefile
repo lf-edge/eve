@@ -397,6 +397,9 @@ test: $(LINUXKIT) test-images-patches | $(DIST)
 	cp pkg/pillar/results.xml $(DIST)/
 	$(QUIET): $@: Succeeded
 
+test-profiling:
+	make -C pkg/pillar test-profiling
+
 # wrap command into DOCKER_GO and propagate it to the pillar's Makefile
 # for example make pillar-fmt will run docker container based on
 # build-tools/src/scripts/Dockerfile
@@ -1022,6 +1025,7 @@ help:
 	@echo "Commonly used maintenance and development targets:"
 	@echo "   build-vm       prepare a build VM for EVE in qcow2 format"
 	@echo "   test           run EVE tests"
+	@echo "   test-profiling run pillar tests with memory profiler"
 	@echo "   clean          clean build artifacts in a current directory (doesn't clean Docker)"
 	@echo "   release        prepare branch for a release (VERSION=x.y.z required)"
 	@echo "   patch          make a patch release on a current branch (must be a release branch)"
