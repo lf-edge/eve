@@ -88,7 +88,7 @@ test: build-docker-test
 	rm -f results.xml
 	touch results.json
 	touch results.xml
-	docker run --platform linux/$(ZARCH) -w /pillar \
+	docker run --memory=800m --platform linux/$(ZARCH) -w /pillar \
 		--mount type=bind,source=./results.json,target=/pillar/results.json \
 		--mount type=bind,source=./results.xml,target=/pillar/results.xml \
 		--entrypoint /final/opt/gotestsum $(DOCKER_TAG) \
@@ -96,7 +96,7 @@ test: build-docker-test
 		--junitfile /pillar/results.xml \
 		--raw-command -- go test -tags kubevirt -coverprofile=coverage.txt -covermode=atomic -race -json \
 		./...
-	docker run --platform linux/$(ZARCH) -w /pillar \
+	docker run --memory=800m --platform linux/$(ZARCH) -w /pillar \
 		--entrypoint /bin/sh $(DOCKER_TAG) \
 		/pillar/build-scripts/fuzz_test.sh
 
