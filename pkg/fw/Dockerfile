@@ -71,7 +71,7 @@ ENV BUILD_PKGS iucode-tool
 RUN eve-alpine-deploy.sh
 
 # build intel microcode
-ENV INTEL_UCODE_VERSION=20231114
+ENV INTEL_UCODE_VERSION=20240312
 ADD "https://github.com/intel/Intel-Linux-Processor-Microcode-Data-Files/archive/microcode-$INTEL_UCODE_VERSION.tar.gz" /tmp/ucode/intel
 WORKDIR /tmp/ucode/intel
 RUN tar -xf "microcode-$INTEL_UCODE_VERSION.tar.gz" --strip=1
@@ -82,7 +82,7 @@ RUN find ./intel-ucode/ -maxdepth 1 -type f -print0 \
 RUN cp license /usr/share/licenses/ucode/intel-license.txt
 
 #build AMD microcode. We use a separate Linux firmware image for that
-ENV AMD_UCODE_VERSION=20231111
+ENV AMD_UCODE_VERSION=20240410
 ENV LINUX_FIRMWARE_URL https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/snapshot/linux-firmware
 ADD ${LINUX_FIRMWARE_URL}-${AMD_UCODE_VERSION}.tar.gz /linux-firmware-ucode.tar.gz
 RUN mkdir /tmp/ucode/amd/linux-firmware \
