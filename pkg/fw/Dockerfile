@@ -119,6 +119,11 @@ COPY --from=build /lib/firmware/iwlwifi-9260* /lib/firmware/
 # AX210 160MHZ
 COPY --from=build /lib/firmware/iwlwifi-ty-a0-gf-a0-59.ucode /lib/firmware/
 COPY --from=build /lib/firmware/intel/ibt-0041-0041* /lib/firmware/intel/
+# Intel AX211NGW
+COPY --from=build /lib/firmware/iwlwifi-so-a0-gf-a0* /lib/firmware/
+COPY --from=build /lib/firmware/intel/ibt-0040-0041* /lib/firmware/intel/
+# Intel AX201NGW
+COPY --from=build /lib/firmware/iwlwifi-so-a0-hr-b0* /lib/firmware/
 # Dell Edge Gateway 300x firmware
 COPY --from=build /lib/firmware/rsi* /lib/firmware/rsi/
 # Intel Corporation Cannon Point-LP CNVi [Wireless-AC] (rev 30)
