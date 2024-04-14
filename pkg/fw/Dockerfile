@@ -4,7 +4,7 @@ FROM lfedge/eve-alpine:2def1d097959bc9c8bf5d041a20b5e8ce060d4b7 as build
 ENV BUILD_PKGS tar make binutils zstd rdfind coreutils
 RUN eve-alpine-deploy.sh
 
-ENV WIRELESS_REGDB_VERSION 2022.06.06
+ENV WIRELESS_REGDB_VERSION 2024.01.23
 ENV WIRELESS_REGDB_REPO https://mirrors.edge.kernel.org/pub/software/network/wireless-regdb/wireless-regdb
 ADD ${WIRELESS_REGDB_REPO}-${WIRELESS_REGDB_VERSION}.tar.gz /wireless-regdb.tar.gz
 RUN mkdir /wireless-regdb &&\
