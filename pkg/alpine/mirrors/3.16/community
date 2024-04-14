@@ -37,6 +37,7 @@ py3-webencodings
 qemu
 qemu-img
 qemu-system-x86_64
+rdfind
 sudo
 sysstat
 tini
