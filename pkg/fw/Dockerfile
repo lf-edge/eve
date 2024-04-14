@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile-upstream:1.5.0-rc2-labs
-FROM lfedge/eve-alpine:57d6a8a768256bece2f03ae4fc0eedcb5bca41a6 as build
+FROM lfedge/eve-alpine:2def1d097959bc9c8bf5d041a20b5e8ce060d4b7 as build
 
-ENV BUILD_PKGS tar make binutils zstd
+ENV BUILD_PKGS tar make binutils zstd rdfind coreutils
 RUN eve-alpine-deploy.sh
 
 ENV WIRELESS_REGDB_VERSION 2022.06.06
@@ -25,20 +25,13 @@ RUN mkdir -p /nvidia-firmware && \
 ENV RTL8822_FW_VERSION ca9f4e199efbf8c377e8a1769ba5b05b23f92c82
 ADD https://github.com/lwfinger/rtw88.git#${RTL8822_FW_VERSION} /rtw88
 
-ENV LINUX_FIRMWARE_VERSION 20220708
+ENV LINUX_FIRMWARE_VERSION 20240410
 ENV LINUX_FIRMWARE_URL https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/snapshot/linux-firmware
 ADD ${LINUX_FIRMWARE_URL}-${LINUX_FIRMWARE_VERSION}.tar.gz /linux-firmware.tar.gz
 RUN mkdir /linux-firmware &&\
     tar -xz --strip-components=1 -C /linux-firmware -f /linux-firmware.tar.gz &&\
     make -C /linux-firmware FIRMWAREDIR="/lib/firmware" install
 
-# patch merged, but not released, remove this when update LINUX_FIRMWARE_VERSION
-RUN rm /lib/firmware/brcm/brcmfmac43455-sdio.AW-CM256SM.txt &&\
-    cp /linux-firmware/brcm/brcmfmac43455-sdio.AW-CM256SM.txt /lib/firmware/brcm &&\
-    ln -s brcmfmac43455-sdio.AW-CM256SM.txt /lib/firmware/brcm/brcmfmac43455-sdio.beagle,am5729-beagleboneai.txt &&\
-    ln -s brcmfmac43455-sdio.AW-CM256SM.txt /lib/firmware/brcm/brcmfmac43455-sdio.pine64,pinebook-pro.txt &&\
-    ln -s brcmfmac43455-sdio.AW-CM256SM.txt /lib/firmware/brcm/brcmfmac43455-sdio.pine64,pinephone-pro.txt &&\
-    ln -s brcmfmac43455-sdio.AW-CM256SM.txt /lib/firmware/brcm/brcmfmac43455-sdio.pine64,quartz64-b.txt
 # add compat links for pre-5.0 kernel
 RUN ln -s brcmfmac43455-sdio.raspberrypi,3-model-b-plus.txt /lib/firmware/brcm/brcmfmac43455-sdio.txt &&\
     ln -s brcmfmac43430-sdio.raspberrypi,3-model-b.txt /lib/firmware/brcm/brcmfmac43430-sdio.txt
