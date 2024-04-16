@@ -492,7 +492,8 @@ func publishVaultKey(ctx *vaultMgrContext, vaultName string) error {
 	var encryptedVaultKey []byte
 	//we try to fill EncryptedVaultKey only in case of tpm enabled
 	//otherwise we leave it empty
-	if etpm.IsTpmEnabled() {
+	isTpmEnabled := etpm.IsTpmEnabled()
+	if isTpmEnabled {
 		if !ctx.defaultVaultUnlocked {
 			log.Errorf("Vault is not yet unlocked, waiting for Controller key")
 			return nil
@@ -504,6 +505,7 @@ func publishVaultKey(ctx *vaultMgrContext, vaultName string) error {
 
 		encryptedKey, err := etpm.EncryptDecryptUsingTpm(keyBytes, true)
 		if err != nil {
+			// XXX should we still send with no key?
 			return fmt.Errorf("Failed to encrypt vault key %w", err)
 		}
 
@@ -524,6 +526,7 @@ func publishVaultKey(ctx *vaultMgrContext, vaultName string) error {
 	keyFromDevice := types.EncryptedVaultKeyFromDevice{}
 	keyFromDevice.Name = vaultName
 	keyFromDevice.EncryptedVaultKey = encryptedVaultKey
+	keyFromDevice.IsTpmEnabled = isTpmEnabled
 	key := keyFromDevice.Key()
 	log.Tracef("Publishing EncryptedVaultKeyFromDevice %s\n", key)
 	pub := ctx.pubVaultKeyFromDevice

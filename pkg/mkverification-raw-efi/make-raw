@@ -24,9 +24,9 @@
 # The script CLI UX is really not user friendly for now, since it is expected
 # to be called mostly from other scripts (and also linuxkit VMs).
 # The syntax is:
-#   [-r] <img> [part1...]
+#   [-C] <img> [part1...]
 #
-# -r          use random_disk_uuids (old behavior)
+# -C          recreate disk image
 # <img>       file name of the raw disk image (we expect it to be pre-created and
 #             sized correctly OR be an actual physical device)
 # [part1...]  list of partitions to be created: efi imga imgb conf persist
@@ -42,6 +42,15 @@
 #
 set -e
 [ -n "$DEBUG" ] && set -x
+
+while getopts C o
+do      case "$o" in
+        C)      CREATE_IMG=1;;
+        [?])    echo "Usage: $0 [-C] <img> [parts...]"
+                exit 1;;
+        esac
+done
+shift $((OPTIND-1))
 
 IMGFILE=$1
 shift
@@ -60,20 +69,51 @@ IMGB_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30053
 CONF_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30054
 PERSIST_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30059
 
+# content of rootfs partition
+ROOTFS_IMG=/parts/rootfs.img
+# content of conf partition
+CONF_FILE=/parts/config.img
+# content of persist partition
+PERSIST_FILE=/parts/persist.img
+# EFI boot directory
+EFI_DIR=/parts/EFI
+# early bootloader directory (optional)
+BOOT_DIR=/parts/boot
+# content of initrd installer image (optional)
+INITRD_IMG=/parts/initrd.img
+# content of verification ECO (optional)
+VERIFICATION_IMG=/parts/verification.img
+# GRUB cfg override for our installer
+INSTALLER_GRUB_CFG=/parts/grub.cfg
+# IMX8 flash blob that needs to be written to image
+IMX8_BLOB=/parts/imx8-flash.bin
+# IMX8 configuration file with flashing parameters
+IMX8_CONF=/parts/imx8-flash.conf
+
 # EFI partition size in bytes
 EFI_PART_SIZE=$((36 * 1024 * 1024))
-# rootfs partition size in bytes
-ROOTFS_PART_SIZE=$(( 800 * 1024 * 1024 ))
+# Min rootfs partition size in bytes
+# Warning: don't change the rootfs partition size, before
+# Warning: fixing the EVE upgrade logic, which should find
+# Warning: free space and rellocate all tables if image has
+# Warning: been bloated.
+ROOTFS_PART_SIZE_MIN=$((512 * 1024 * 1024))
 # conf partition size in bytes
 CONF_PART_SIZE=$((1024 * 1024))
 # installer inventory partition size in bytes
 WIN_INVENTORY_PART_SIZE=$((40240 * 1024))
-# installer system partition size in bytes
-VERIFICATION_SYS_PART_SIZE=$(( 800 * 1024 * 1024 ))
+# resulting installer FAT FS image size factor.
+# 1.5 is enough for FAT to keep all our files.
+VERIFICATION_PART_SIZE_FACTOR="1.5"
 # imx8 boot blob size in bytes
 IMX8_BLOB_SIZE=$(( 8 * 1024 * 1024 ))
 # sector where the first partition starts on a blank disk
 FIRST_PART_SEC=2048
+
+# offset in the GPT partition table from which we can start our numbering
+PART_OFFSET=0
+# starting sector for our portion of the disk
+CUR_SEC="$FIRST_PART_SEC"
 
 sgdisk() {
   # filter out annoying messages we can't get rid of:
@@ -91,6 +131,102 @@ The operation has completed successfully.' | tr '\012' '|')$^" || :
   return $RET
 }
 
+imx8_exists() {
+  [ -f "$IMX8_BLOB" ] && [ -f "$IMX8_CONF" ]
+}
+
+file_size() {
+  stat -L -c %s "$1" 2>/dev/null || echo "0"
+}
+
+calc_rootfs_part_size() {
+  local SIZE
+
+  SIZE=$(file_size "$ROOTFS_IMG")
+  # Take max
+  SIZE=$((SIZE > ROOTFS_PART_SIZE_MIN ? SIZE : ROOTFS_PART_SIZE_MIN))
+
+  echo $SIZE
+}
+
+calc_verification_part_size() {
+  local MB
+  local SIZE
+
+  MB=$((1<<20))
+  # Add extra 1MB to be on the safe side in all our calculations
+  SIZE=$MB
+
+  SIZE=$((SIZE + $(file_size "$PERSIST_FILE")))
+  SIZE=$((SIZE + $(file_size "$INITRD_IMG")))
+  SIZE=$((SIZE + $(file_size "$ROOTFS_IMG")))
+  SIZE=$((SIZE + $(file_size "$INSTALLER_IMG")))
+  SIZE=$((SIZE + $(file_size "$INSTALLER_GRUB_CFG")))
+  if imx8_exists; then
+      SIZE=$((SIZE + $(file_size "$IMX8_BLOB")))
+  fi
+  SIZE=$((SIZE + $(file_size "$IMX8_CONF")))
+
+  # Round up on 1MB
+  SIZE=$(((SIZE + MB - 1) / MB * MB))
+
+  # /1 for integer
+  echo "$SIZE * $VERIFICATION_PART_SIZE_FACTOR / 1" | bc
+}
+
+# calc_image_size() - calculates overall size required for the whole image
+#                     with specified partitions
+calc_image_size() {
+  local MB
+  local SIZE
+
+  SIZE=0
+  # Account every requested partition
+  for p in $PARTS ; do
+      case $p in
+          efi)
+              SIZE=$((SIZE + EFI_PART_SIZE))
+              ;;
+          conf_win | conf)
+              SIZE=$((SIZE + CONF_PART_SIZE))
+              ;;
+          inventory_win)
+              SIZE=$((SIZE + WIN_INVENTORY_PART_SIZE))
+              ;;
+          imga)
+              SIZE=$((SIZE + $(calc_rootfs_part_size)))
+              ;;
+          imgb)
+              SIZE=$((SIZE + $(calc_rootfs_part_size)))
+              ;;
+          verification)
+              SIZE=$((SIZE + $(calc_verification_part_size)))
+              ;;
+          persist)
+              SIZE=$((SIZE + $(file_size "$PERSIST_FILE")))
+              ;;
+          *)
+              echo "Unknown partition: $p"
+              exit 1
+              ;;
+      esac
+  done
+
+  # Account for IMX8 blob if needed
+  if imx8_exists; then
+      SIZE=$((SIZE + IMX8_BLOB_SIZE))
+  fi
+
+  MB=$((1<<20))
+  # Add extra 10MB to be on the safe side in all our calculations
+  SIZE=$((SIZE + 10*MB))
+
+  # Round up on 1MB
+  SIZE=$(((SIZE + MB - 1) / MB * MB))
+
+  echo $SIZE
+}
+
 cp_with_backup() {
   # shellcheck disable=SC2155
   local MD5_SUM=$(md5sum "$2" | cut -f1 -d\  )
@@ -100,14 +236,15 @@ cp_with_backup() {
 }
 
 grow_part() {
-  # (x+1024)/1024*1024 rounds up to multiple of 1024KB, or 2048
-  # sectors some firmwares get confused if the partitions are not
-  # aligned on 2048 blocks we will round up to the nearest multiple of
-  # 2048 blocks since each block is 512 bytes, we want the size to be
-  # a multiple of 2048 blocks * 512 bytes = 1048576 bytes = 1024KB
-  # The output is in sectors though, hence the final * 2
-  local IMAGE_SIZE_KB=$(( ( ( ($2 + 1024-1) / 1024 ) + 1024-1) / 1024 * 1024))
-  echo $(( $1 + 2 * IMAGE_SIZE_KB - 1))
+  local MB
+  local IMAGE_SIZE
+
+  # Round up to 1MB as a requirement of some firmwares
+  MB=$((1<<20))
+  IMAGE_SIZE=$((($2 + MB - 1) / MB * MB))
+
+  # The output is the last sector
+  echo $(($1 + (IMAGE_SIZE >> 9) - 1))
 }
 
 dir2vfat() {
@@ -168,16 +305,18 @@ do_verification() {
   mkdir -p /efifs/boot && cp -r "$BOOT_DIR"/* /efifs/boot/ 2>/dev/null
   cp "$INSTALLER_GRUB_CFG" /efifs/EFI/BOOT/grub.cfg
   cp "$PERSIST_FILE" "$INITRD_IMG" "$ROOTFS_IMG" "$VERIFICATION_IMG" /UsbInvocationScript.txt /efifs
+  if imx8_exists; then
+     cp "$IMX8_BLOB" "$IMX8_CONF" /efifs
+  fi
   touch /efifs/boot/.boot_repository
   od -An -x -N 16 /dev/random | tr -d ' ' > /efifs/boot/.uuid
-  do_system_vfat_part "$1" "$VERIFICATION_SYS_PART_SIZE"
+  do_system_vfat_part "$1" "$(calc_verification_part_size)"
 }
 
 do_rootfs() {
     eval SEC_START=\$"$1"
-    # shellcheck disable=SC2086
     # shellcheck disable=SC2155
-    local SEC_END=$(grow_part $SEC_START $ROOTFS_PART_SIZE)
+    local SEC_END=$(grow_part "$SEC_START" "$(calc_rootfs_part_size)")
     local NUM_PART
     LABEL="$2"
     IMG="$3"
@@ -367,33 +506,14 @@ if [ ! -d /parts ] || [ -z "$(ls -A -- /parts)" ]; then
    (cd /parts ; bsdtar xzf -)
 fi
 
-# content of rootfs partition
-ROOTFS_IMG=/parts/rootfs.img
-# content of conf partition
-CONF_FILE=/parts/config.img
-# content of persist partition
-PERSIST_FILE=/parts/persist.img
-# EFI boot directory
-EFI_DIR=/parts/EFI
-# early bootloader directory (optional)
-BOOT_DIR=/parts/boot
-# content of initrd installer image (optional)
-INITRD_IMG=/parts/initrd.img
-# content of verification ECO (optional)
-VERIFICATION_IMG=/parts/verification.img
-# GRUB cfg override for our installer
-INSTALLER_GRUB_CFG=/parts/grub.cfg
-# IMX8 flash blob that needs to be written to image
-IMX8_BLOB=/parts/imx8-flash.bin
-# IMX8 configuration file with flashing parameters
-IMX8_CONF=/parts/imx8-flash.conf
+# Create image file
+if [ -n "$CREATE_IMG" ]; then
+  SIZE=$(calc_image_size)
+  # Careful! This does not wipe out the image file if exists, only truncates
+  dd if=/dev/zero of="$IMGFILE" seek=$((SIZE - 1)) bs=1 count=1
+fi
 
-# offset in the GPT partition table from which we can start our numbering
-PART_OFFSET=0
-# starting sector for our portion of the disk
-CUR_SEC="$FIRST_PART_SEC"
-
-if [ -f "$IMX8_BLOB" ] && [ -f "$IMX8_CONF" ]; then
+if imx8_exists; then
   # For imx8 boards we need to write boot blob with the specified offset
   IMX_BLOB_END_SEC=$(( IMX8_BLOB_SIZE / 512 ))
   CUR_SEC="$IMX_BLOB_END_SEC"

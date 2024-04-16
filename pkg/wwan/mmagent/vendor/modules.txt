@@ -26,7 +26,7 @@ github.com/google/go-containerregistry/pkg/v1/types
 github.com/google/go-tpm/tpm2
 github.com/google/go-tpm/tpmutil
 github.com/google/go-tpm/tpmutil/tbs
-# github.com/lf-edge/eve-api/go v0.0.0-20231011200019-cb3cb1275e0d
+# github.com/lf-edge/eve-api/go v0.0.0-20240322135714-a2b011fedf87
 ## explicit; go 1.20
 github.com/lf-edge/eve-api/go/auth
 github.com/lf-edge/eve-api/go/certs
@@ -112,13 +112,14 @@ golang.org/x/tools/internal/packagesinternal
 golang.org/x/tools/internal/pkgbits
 golang.org/x/tools/internal/typeparams
 golang.org/x/tools/internal/typesinternal
-# google.golang.org/protobuf v1.30.0
-## explicit; go 1.11
+# google.golang.org/protobuf v1.33.0
+## explicit; go 1.17
 google.golang.org/protobuf/encoding/prototext
 google.golang.org/protobuf/encoding/protowire
 google.golang.org/protobuf/internal/descfmt
 google.golang.org/protobuf/internal/descopts
 google.golang.org/protobuf/internal/detrand
+google.golang.org/protobuf/internal/editiondefaults
 google.golang.org/protobuf/internal/encoding/defval
 google.golang.org/protobuf/internal/encoding/messageset
 google.golang.org/protobuf/internal/encoding/tag

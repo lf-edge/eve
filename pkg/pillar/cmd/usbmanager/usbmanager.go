@@ -86,7 +86,12 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	if ok {
 		usbCtx.subscribe(ps)
 	} else {
-		log.Warnf("usbmanager is disabled as hypervisor %s is used\n", currentHypervisor.Name())
+		if currentHypervisor == nil {
+			log.Warnf("usbmanager is disabled as hypervisor is not available")
+		} else {
+			log.Warnf("usbmanager is disabled as hypervisor %s is used",
+				currentHypervisor.Name())
+		}
 	}
 
 	usbCtx.process(ps)

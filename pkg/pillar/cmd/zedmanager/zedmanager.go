@@ -74,6 +74,8 @@ type zedmanagerContext struct {
 	// hypervisorPtr is the name of the hypervisor to use
 	hypervisorPtr      *string
 	assignableAdapters *types.AssignableAdapters
+	// Is it kubevirt eve
+	hvTypeKube bool
 }
 
 // AddAgentSpecificCLIFlags adds CLI options
@@ -93,6 +95,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	// Any state needed by handler functions
 	ctx := zedmanagerContext{
 		globalConfig: types.DefaultConfigItemValueMap(),
+		hvTypeKube:   base.IsHVTypeKube(),
 	}
 	agentbase.Init(&ctx, logger, log, agentName,
 		agentbase.WithArguments(arguments))
@@ -949,9 +952,12 @@ func updateSnapshotsInAIStatus(status *types.AppInstanceStatus, config types.App
 		}
 		status.SnapStatus.RequestedSnapshots = append(status.SnapStatus.RequestedSnapshots, newSnapshotStatus)
 	}
-	status.SnapStatus.SnapshotsToBeDeleted = snapshotsToBeDeleted
 	// Remove the snapshots marked for deletion from the list of available snapshots
 	for _, snapshot := range snapshotsToBeDeleted {
+		// If snapshot is not yet in the list of the snapshots to be deleted, add it there
+		if !isSnapshotDescInSlice(&status.SnapStatus.SnapshotsToBeDeleted, snapshot.SnapshotID) {
+			status.SnapStatus.SnapshotsToBeDeleted = append(status.SnapStatus.SnapshotsToBeDeleted, snapshot)
+		}
 		_ = removeSnapshotFromSlice(&status.SnapStatus.AvailableSnapshots, snapshot.SnapshotID)
 	}
 }

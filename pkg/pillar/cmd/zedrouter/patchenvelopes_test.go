@@ -80,31 +80,32 @@ func TestPatchEnvelopes(t *testing.T) {
 
 	peStoreMutex := sync.Mutex{}
 	go func() {
+		peStoreMutex.Lock()
+		defer peStoreMutex.Unlock()
+
 		for _, vs := range volumeStatuses {
-			peStoreMutex.Lock()
 			peStore.UpdateVolumeStatus(vs, false)
 			peStore.UpdateStateNotificationCh() <- struct{}{}
-			peStoreMutex.Unlock()
-		}
-	}()
-
-	go func() {
-		for _, ct := range contentStatuses {
-			peStoreMutex.Lock()
-			peStore.UpdateContentTree(ct, false)
-
-			peStore.UpdateStateNotificationCh() <- struct{}{}
-			peStoreMutex.Unlock()
 		}
 	}()
 
 	go func() {
 		peStoreMutex.Lock()
+		defer peStoreMutex.Unlock()
+
+		for _, ct := range contentStatuses {
+			peStore.UpdateContentTree(ct, false)
+
+			peStore.UpdateStateNotificationCh() <- struct{}{}
+		}
+	}()
+
+	go func() {
+		peStoreMutex.Lock()
+		defer peStoreMutex.Unlock()
+
 		peStore.UpdateEnvelopes(peInfo)
-
 		peStore.UpdateStateNotificationCh() <- struct{}{}
-		peStoreMutex.Unlock()
-
 	}()
 
 	finishedProcessing := make(chan struct{})
@@ -128,7 +129,7 @@ func TestPatchEnvelopes(t *testing.T) {
 		}
 	}()
 
-	deadline := 2 * time.Minute
+	deadline := 1 * time.Minute
 	g.Eventually(func() bool {
 		select {
 		case <-finishedProcessing:

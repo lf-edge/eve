@@ -532,6 +532,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext, dest destinationBitset) {
 		if ib.Error != "" {
 			errInfo := new(info.ErrorInfo)
 			errInfo.Description = ib.Error
+			errInfo.Severity = info.Severity_SEVERITY_ERROR
 			if !ib.ErrorTime.IsZero() {
 				protoTime, err := ptypes.TimestampProto(ib.ErrorTime)
 				if err == nil {
@@ -630,6 +631,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext, dest destinationBitset) {
 	ReportDeviceInfo.RebootInprogress = ctx.rebootCmd || ctx.deviceReboot
 
 	ReportDeviceInfo.Capabilities = getCapabilities(ctx)
+	ReportDeviceInfo.OptionalCapabilities = getOptionalCapabilities(ctx)
 
 	devState := getDeviceState(ctx)
 	if ctx.devState != devState {
@@ -940,6 +942,7 @@ func encodeSimCards(cellModule string, wwanSimCards []types.WwanSimCard) (simCar
 			CellModuleName: cellModule,
 			Imsi:           simCard.IMSI,
 			Iccid:          simCard.ICCID,
+			Type:           info.SimType(simCard.Type),
 			State:          simCard.State,
 			SlotNumber:     uint32(simCard.SlotNumber),
 			SlotActivated:  simCard.SlotActivated,
@@ -1259,6 +1262,12 @@ func getCapabilities(ctx *zedagentContext) *info.Capabilities {
 	return &info.Capabilities{
 		HWAssistedVirtualization: capabilities.HWAssistedVirtualization,
 		IOVirtualization:         capabilities.IOVirtualization,
+	}
+}
+
+func getOptionalCapabilities(ctx *zedagentContext) *info.OptionalCapabilities {
+	return &info.OptionalCapabilities{
+		HvTypeKubevirt: ctx.hvTypeKube,
 	}
 }
 

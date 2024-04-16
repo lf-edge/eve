@@ -155,10 +155,10 @@ func (lc *LinuxCollector) convertConntrackToFlow(
 	if timeOut > conntrackFlowExtraTimeout {
 		return ipFlow, true
 	}
-	appNum, aclID, drop := iptables.ParseConnmark(entry.Mark)
+	appNum, aclID, userAce, drop := iptables.ParseConnmark(entry.Mark)
 	// Only handle App related flows applied against user defined ACL rules or default
 	// drop rules.
-	if int(appNum) == 0 {
+	if int(appNum) == 0 || (!userAce && !drop) {
 		return ipFlow, true
 	}
 	vifs := lc.getVIFsByAppNum(int(appNum))
@@ -206,7 +206,12 @@ func (lc *LinuxCollector) convertConntrackToFlow(
 	}
 
 	if !forwSrcApp && !forwDstApp && !backSrcApp && !backDstApp {
-		// If app endpoint is not part of the flow, something is wrong.
+		if entry.Forward.DstIP.IsMulticast() || entry.Forward.DstIP.Equal(net.IPv4bcast) {
+			// Multicast/Broadcast packet sent from outside and forwarded to an app
+			// through a switch NI, but app is not responding to this.
+			// Just ignore this flow without any warning.
+			return ipFlow, true
+		}
 		lc.log.Warnf("%s: Flow entry without app IP address, "+
 			"appNum: %d, entry: %s", flowLogPrefix, appNum, entry.String())
 		return ipFlow, true

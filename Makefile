@@ -41,7 +41,7 @@ MEDIA_SIZE=32768
 # Image type for final disk images
 IMG_FORMAT=qcow2
 # Filesystem type for rootfs image
-ROOTFS_FORMAT=squash
+ROOTFS_FORMAT?=squash
 # Image type for installer image
 INSTALLER_IMG_FORMAT=raw
 # Image type for verification image
@@ -392,8 +392,9 @@ currentversion:
 
 test: $(LINUXKIT) test-images-patches | $(DIST)
 	@echo Running tests on $(GOMODULE)
-	$(QUIET)$(DOCKER_GO) "gotestsum --jsonfile $(DOCKER_DIST)/results.json --junitfile $(DOCKER_DIST)/results.xml --raw-command -- go test -coverprofile=coverage.txt -covermode=atomic -race -json ./..." $(GOTREE) $(GOMODULE)
-	$(QUIET)$(DOCKER_GO) "cd \"$(GOTREE)\"; find ./ -type d \! -path ./vendor/\* -exec go test -fuzz=^Fuzz -run=^Fuzz -fuzztime=30s "{}" \;" $(GOTREE) $(GOMODULE)
+	make -C pkg/pillar test
+	cp pkg/pillar/results.json $(DIST)/
+	cp pkg/pillar/results.xml $(DIST)/
 	$(QUIET): $@: Succeeded
 
 # wrap command into DOCKER_GO and propagate it to the pillar's Makefile
@@ -641,13 +642,27 @@ $(ROOTFS_TAR): images/out/rootfs-$(HV)-$(PLATFORM).yml | $(INSTALLER)
 	$(QUIET): $@: Begin
 	./tools/makerootfs.sh tar -y $< -t $@ -d $(INSTALLER) -a $(ZARCH)
 	$(QUIET): $@: Succeeded
+ifdef KERNEL_IMAGE
+	# Consider this as a cry from the heart: enormous amount of time is
+	# wasted during kernel rebuild on every small testing change. Now any
+	# kernel image can be used by providing path to a file. You heard it
+	# right: path-to-a-file. No docker. Yay!
+	$(eval KIMAGE = $$(realpath $(KERNEL_IMAGE)))
+	@echo "Replace kernel image in \"$@\" with \"$(KIMAGE)\""
+	# Delete /boot/kernel kernel image
+	tar --delete -f "$@" boot/kernel
+	# Append new kernel image and rename
+	tar -P -u --transform="flags=r;s|$(KIMAGE)|/boot/kernel|" -f "$@" "$(KIMAGE)"
+endif
 
 $(ROOTFS_IMG): $(ROOTFS_TAR) | $(INSTALLER)
 	$(QUIET): $@: Begin
 	./tools/makerootfs.sh imagefromtar -t $(ROOTFS_TAR) -i $@ -f $(ROOTFS_FORMAT) -a $(ZARCH)
 	@echo "size of $@ is $$(wc -c < "$@")B"
+ifeq ($(ROOTFS_FORMAT),squash)
 	@[ $$(wc -c < "$@") -gt $$(( $(ROOTFS_MAXSIZE_MB) * 1024 * 1024 )) ] && \
 	        echo "ERROR: size of $@ is greater than $(ROOTFS_MAXSIZE_MB)MB (bigger than allocated partition)" && exit 1 || :
+endif
 	$(QUIET): $@: Succeeded
 
 sbom_info:
@@ -665,11 +680,6 @@ $(SBOM): $(ROOTFS_TAR) | $(INSTALLER)
 	# this all can go away, and we can read the rootfs.tar
 	# see https://github.com/anchore/syft/issues/1400
 	tar xf $< -C $(TMP_ROOTDIR) --exclude "dev/*"
-	# kernel-*.spdx.json are now generated in eve-kernel repo and are stored in docker  image.
-	# Manually extract them to unpacked rootfs.
-	# Later linuxkit will get a support for SBOM in OCI metadata and this step as well as manual run of
-	# syft will be deprecated
-	docker export $(shell docker create $(KERNEL_TAG) create) | tar xv -C $(TMP_ROOTDIR) --wildcards --no-anchored '*.spdx.json'
 	docker run -v $(TMP_ROOTDIR):/rootdir:ro -v $(CURDIR)/.syft.yaml:/syft.yaml:ro $(SYFT_IMAGE) -c /syft.yaml --base-path /rootdir /rootdir > $@
 	rm -rf $(TMP_ROOTDIR)
 	$(QUIET): $@: Succeeded
@@ -713,12 +723,12 @@ publish_sources: $(COLLECTED_SOURCES)
 
 $(LIVE).raw: $(BOOT_PART) $(EFI_PART) $(ROOTFS_IMG) $(CONFIG_IMG) $(PERSIST_IMG) $(BSP_IMX_PART) | $(INSTALLER)
 	./tools/prepare-platform.sh "$(PLATFORM)" "$(BUILD_DIR)" "$(INSTALLER)" || :
-	./tools/makeflash.sh "mkimage-raw-efi" -C 559 $| $@ $(PART_SPEC)
+	./tools/makeflash.sh "mkimage-raw-efi" -C $| $@ $(PART_SPEC)
 	$(QUIET): $@: Succeeded
 
 $(INSTALLER).raw: $(BOOT_PART) $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(INSTALLER_IMG) $(CONFIG_IMG) $(PERSIST_IMG) $(BSP_IMX_PART) | $(INSTALLER)
 	./tools/prepare-platform.sh "$(PLATFORM)" "$(BUILD_DIR)" "$(INSTALLER)" || :
-	./tools/makeflash.sh "mkimage-raw-efi" -C 592 $| $@ "conf_win installer inventory_win"
+	./tools/makeflash.sh "mkimage-raw-efi" -C $| $@ "conf_win installer inventory_win"
 	$(QUIET): $@: Succeeded
 
 $(INSTALLER).iso: $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(INSTALLER_IMG) $(CONFIG_IMG) $(PERSIST_IMG) | $(INSTALLER)
@@ -741,7 +751,7 @@ $(LIVE).parallels: $(LIVE).raw
 
 $(VERIFICATION).raw: $(BOOT_PART) $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(VERIFICATION_IMG) $(CONFIG_IMG) $(PERSIST_IMG) $(BSP_IMX_PART) | $(VERIFICATION)
 	./tools/prepare-platform.sh "$(PLATFORM)" "$(BUILD_DIR)" "$(VERIFICATION)" || :
-	./tools/makeflash.sh "mkverification-raw-efi" -C 850 $| $@ "conf_win verification inventory_win"
+	./tools/makeflash.sh "mkverification-raw-efi" -C $| $@ "conf_win verification inventory_win"
 	$(QUIET): $@: Succeeded
 
 $(VERIFICATION).net: $(EFI_PART) $(ROOTFS_TAR) $(ROOTFS_IMG) $(INITRD_IMG) $(VERIFICATION_IMG) $(CONFIG_IMG) $(PERSIST_IMG) | $(VERIFICATION)
@@ -833,6 +843,9 @@ cache-export-docker-load-all: $(LINUXKIT) $(addsuffix -cache-export-docker-load,
 
 proto-vendor:
 	@$(DOCKER_GO) "cd pkg/pillar ; go mod vendor" $(CURDIR) proto
+
+bump-eve-api:
+	find . -type f -name "go.mod" -exec grep -q 'github.com/lf-edge/eve-api/go' {} \; -execdir go get -u github.com/lf-edge/eve-api/go \; -execdir go mod tidy \; -execdir go mod vendor \;
 
 .PHONY: proto-api-%
 
@@ -937,13 +950,16 @@ endif
 	$(QUIET)$(PARSE_PKGS) $< > $@
 	$(QUIET): $@: Succeeded
 
-# If DEV=y and file pkg/my_package/build-dev.yml returns the path to that file.
-# If RSTATS=y and file pkg/my_package/build-rstats.yml returns the path to that file.
+# If DEV=y and file pkg/my_package/build-dev.yml exists, returns the path to that file.
+# If RSTATS=y and file pkg/my_package/build-rstats.yml exists, returns the path to that file.
+# If HV=kubevirt and file pkg/my_package/build-kubevirt.yml exists, returns the path to that file.
 # Ortherwise returns pkg/my_package/build.yml.
-get_pkg_build_yml = $(if $(filter y,$(RSTATS)), $(call get_pkg_build_rstats_yml,$1), $(call get_pkg_build_def_yml,$1))
-get_pkg_build_def_yml = $(if $(filter y,$(DEV)),$(call get_pkg_build_dev_yml,$1),build.yml)
+get_pkg_build_yml = $(if $(filter kubevirt,$(HV)), $(call get_pkg_build_kubevirt_yml,$1), \
+                    $(if $(filter y,$(RSTATS)), $(call get_pkg_build_rstats_yml,$1), \
+                    $(if $(filter y,$(DEV)), $(call get_pkg_build_dev_yml,$1), build.yml)))
 get_pkg_build_dev_yml = $(if $(wildcard pkg/$1/build-dev.yml),build-dev.yml,build.yml)
 get_pkg_build_rstats_yml = $(if $(wildcard pkg/$1/build-rstats.yml),build-rstats.yml,build.yml)
+get_pkg_build_kubevirt_yml = $(if $(wildcard pkg/$1/build-kubevirt.yml),build-kubevirt.yml,build.yml)
 
 eve-%: pkg/%/Dockerfile build-tools $(RESCAN_DEPS)
 	$(QUIET): "$@: Begin: LINUXKIT_PKG_TARGET=$(LINUXKIT_PKG_TARGET)"
@@ -1013,6 +1029,9 @@ help:
 	@echo "   proto-vendor   update vendored API in packages that require it (e.g. pkg/pillar)"
 	@echo "   shell          drop into docker container setup for Go development"
 	@echo "   yetus          run Apache Yetus to check the quality of the source tree"
+	@echo
+	@echo "Seldom used maintenance and development targets:"
+	@echo "   bump-eve-api   bump eve-api in all subprojects"
 	@echo
 	@echo "Commonly used build targets:"
 	@echo "   build-tools      builds linuxkit utilities and installs under build-tools/bin"

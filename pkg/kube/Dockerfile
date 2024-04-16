@@ -1,15 +1,27 @@
 # syntax=docker/dockerfile-upstream:1.5.0-rc2-labs
 
-FROM lfedge/eve-alpine:57d6a8a768256bece2f03ae4fc0eedcb5bca41a6 as build
+FROM lfedge/eve-alpine:a76c418ea841a1c433e0ab562653c3801f494d8e as build
+ENV BUILD_PKGS go
 ENV PKGS alpine-baselayout musl-utils iproute2 iptables curl openrc \
-         open-iscsi libvirt libvirt-client util-linux grep findutils jq
+         open-iscsi libvirt libvirt-client util-linux grep findutils jq \
+         cni-plugins
 RUN eve-alpine-deploy.sh
+
+# Remove unused CNI plugins
+RUN for plugin in bandwidth ipvlan macvlan ptp static vlan firewall sbr tuning vrf; do \
+        rm /out/usr/libexec/cni/${plugin}; \
+    done
+
+COPY eve-bridge /plugins/eve-bridge
+WORKDIR /plugins/eve-bridge
+RUN GO111MODULE=on CGO_ENABLED=0 go build -v -ldflags "-s -w" -mod=vendor -o /out/usr/bin/eve-bridge .
 
 FROM scratch
 COPY --from=build /out/ /
 COPY cluster-init.sh /usr/bin/
 COPY cgconfig.conf /etc
 # kubevirt yaml files are patched files and will be removed later, look at cluster-init.sh
+COPY multus-daemonset.yaml /etc
 COPY kubevirt-operator.yaml /etc
 COPY kubevirt-features.yaml /etc
 RUN mkdir -p /etc/containerd

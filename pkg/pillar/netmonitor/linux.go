@@ -225,7 +225,10 @@ func (m *LinuxNetworkMonitor) GetInterfaceDNSInfo(ifIndex int) (info DNSInfo, er
 	ifName := attrs.IfName
 	resolvConf := devicenetwork.IfnameToResolvConf(ifName)
 	if resolvConf == "" {
-		m.Log.Warnf("No resolv.conf for %s", ifName)
+		// Interface without IP is expected to not have resolv.conf file.
+		// We should be therefore careful about the log level here to avoid
+		// many log messages.
+		m.Log.Functionf("No resolv.conf for %s", ifName)
 		return info, nil
 	}
 	info = m.parseDNSInfo(resolvConf)

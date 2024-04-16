@@ -30,7 +30,7 @@ github.com/gorilla/websocket
 # github.com/grandcat/zeroconf v1.0.0
 ## explicit; go 1.13
 github.com/grandcat/zeroconf
-# github.com/lf-edge/eve-api/go v0.0.0-20231011200019-cb3cb1275e0d
+# github.com/lf-edge/eve-api/go v0.0.0-20240322135714-a2b011fedf87
 ## explicit; go 1.20
 github.com/lf-edge/eve-api/go/auth
 github.com/lf-edge/eve-api/go/certs
@@ -106,13 +106,14 @@ golang.org/x/sys/windows
 # golang.org/x/time v0.3.0
 ## explicit
 golang.org/x/time/rate
-# google.golang.org/protobuf v1.28.1
-## explicit; go 1.11
+# google.golang.org/protobuf v1.33.0
+## explicit; go 1.17
 google.golang.org/protobuf/encoding/prototext
 google.golang.org/protobuf/encoding/protowire
 google.golang.org/protobuf/internal/descfmt
 google.golang.org/protobuf/internal/descopts
 google.golang.org/protobuf/internal/detrand
+google.golang.org/protobuf/internal/editiondefaults
 google.golang.org/protobuf/internal/encoding/defval
 google.golang.org/protobuf/internal/encoding/messageset
 google.golang.org/protobuf/internal/encoding/tag

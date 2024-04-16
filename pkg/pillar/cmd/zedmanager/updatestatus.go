@@ -283,6 +283,9 @@ func triggerSnapshotDeletion(snapshotsToBeDeleted []types.SnapshotDesc, ctx *zed
 			log.Noticef("It has already been triggered, so deleting the config and notifying volumemanager")
 			volumesSnapshotConfig.Action = types.VolumesSnapshotDelete
 			unpublishVolumesSnapshotConfig(ctx, volumesSnapshotConfig)
+			// Remove the snapshot from the list of snapshots to be deleted and publish the status
+			removeSnapshotDescFromSlice(&status.SnapStatus.SnapshotsToBeDeleted, snapshot.SnapshotID)
+			publishAppInstanceStatus(ctx, status)
 		}
 	}
 }

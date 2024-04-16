@@ -1,0 +1,111 @@
+From ae7d59897b12814768ef5945f0622d6e970492e7 Mon Sep 17 00:00:00 2001
+From: Roman Penyaev <r.peniaev@gmail.com>
+Date: Sun, 3 Mar 2024 10:26:51 +0100
+Subject: [PATCH 2/2] fscrypt: rotate raw key
+
+---
+ cmd/fscrypt/commands.go |  2 +-
+ cmd/fscrypt/flags.go    | 10 +++++++++-
+ cmd/fscrypt/keys.go     |  6 +++---
+ cmd/fscrypt/prompt.go   | 12 +++++++++---
+ 4 files changed, 22 insertions(+), 8 deletions(-)
+
+diff --git a/cmd/fscrypt/commands.go b/cmd/fscrypt/commands.go
+index 30aa3a7ae35d..86836d87b366 100644
+--- a/cmd/fscrypt/commands.go
++++ b/cmd/fscrypt/commands.go
+@@ -973,7 +973,7 @@ var changePassphrase = cli.Command{
+ 	Description: `This command takes a specified passphrase protector and
+ 		changes the corresponding passphrase. Note that this does not
+ 		create or destroy any protectors.`,
+-	Flags:  []cli.Flag{protectorFlag},
++	Flags:  []cli.Flag{protectorFlag, sourceFlag, keyFileFlag, oldKeyFileFlag},
+ 	Action: changePassphraseAction,
+ }
+ 
+diff --git a/cmd/fscrypt/flags.go b/cmd/fscrypt/flags.go
+index 7285133000e7..e3a5532a1584 100644
+--- a/cmd/fscrypt/flags.go
++++ b/cmd/fscrypt/flags.go
+@@ -115,7 +115,7 @@ var (
+ 	// TODO(joerichey) add presubmit rule to enforce this
+ 	allFlags = []prettyFlag{helpFlag, versionFlag, verboseFlag, quietFlag,
+ 		forceFlag, skipUnlockFlag, timeTargetFlag,
+-		sourceFlag, nameFlag, keyFileFlag, protectorFlag,
++		sourceFlag, nameFlag, keyFileFlag, oldKeyFileFlag, protectorFlag,
+ 		unlockWithFlag, policyFlag, allUsersLockFlag, allUsersSetupFlag,
+ 		noRecoveryFlag}
+ 	// universalFlags contains flags that should be on every command
+@@ -224,6 +224,14 @@ var (
+ 			formatted as raw binary and should be exactly 32 bytes
+ 			long.`,
+ 	}
++	oldKeyFileFlag = &stringFlag{
++		Name:    "old-key",
++		ArgName: "FILE",
++		Usage: `Use the contents of FILE as the wrapping key when
++			creating or unlocking raw_key protectors. FILE should be
++			formatted as raw binary and should be exactly 32 bytes
++			long.`,
++	}
+ 	userFlag = &stringFlag{
+ 		Name:    "user",
+ 		ArgName: "USERNAME",
+diff --git a/cmd/fscrypt/keys.go b/cmd/fscrypt/keys.go
+index 28171a47cafb..7533a3b8aad7 100644
+--- a/cmd/fscrypt/keys.go
++++ b/cmd/fscrypt/keys.go
+@@ -106,7 +106,7 @@ func getPassphraseKey(prompt string) (*crypto.Key, error) {
+ 	return crypto.NewKeyFromReader(passphraseReader{})
+ }
+ 
+-func makeRawKey(info actions.ProtectorInfo) (*crypto.Key, error) {
++func makeRawKey(info actions.ProtectorInfo, old bool) (*crypto.Key, error) {
+ 	// When running non-interactively and no key was provided,
+ 	// try to read it from stdin
+ 	if keyFileFlag.Value == "" && !term.IsTerminal(stdinFd) {
+@@ -116,7 +116,7 @@ func makeRawKey(info actions.ProtectorInfo) (*crypto.Key, error) {
+ 
+ 	prompt := fmt.Sprintf("Enter key file for protector %q: ", info.Name())
+ 	// Raw keys use a file containing the key data.
+-	file, err := promptForKeyFile(prompt)
++	file, err := promptForKeyFile(prompt, old)
+ 	if err != nil {
+ 		return nil, err
+ 	}
+@@ -185,7 +185,7 @@ func makeKeyFunc(supportRetry, shouldConfirm bool, prefix string) actions.KeyFun
+ 			if prefix != "" {
+ 				return nil, ErrNotPassphrase
+ 			}
+-			return makeRawKey(info)
++			return makeRawKey(info, (prefix == "old "))
+ 
+ 		default:
+ 			return nil, ErrInvalidSource
+diff --git a/cmd/fscrypt/prompt.go b/cmd/fscrypt/prompt.go
+index d34a18a96b3c..e02e34d9d112 100644
+--- a/cmd/fscrypt/prompt.go
++++ b/cmd/fscrypt/prompt.go
+@@ -216,10 +216,16 @@ func promptForSource(ctx *actions.Context) error {
+ 
+ // promptForKeyFile returns an open file that should be used to create or unlock
+ // a raw_key protector. Be sure to close the file when done.
+-func promptForKeyFile(prompt string) (*os.File, error) {
++func promptForKeyFile(prompt string, old bool) (*os.File, error) {
+ 	// If specified on the command line, we only try no open it once.
+-	if keyFileFlag.Value != "" {
+-		return os.Open(keyFileFlag.Value)
++	if old {
++		if (oldKeyFileFlag.Value != "") {
++			return os.Open(oldKeyFileFlag.Value)
++		}
++	} else {
++		if keyFileFlag.Value != "" {
++			return os.Open(keyFileFlag.Value)
++		}
+ 	}
+ 	if quietFlag.Value {
+ 		return nil, ErrSpecifyKeyFile
+-- 
+2.34.1
+

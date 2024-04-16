@@ -41,11 +41,11 @@ IMGFILE=/rootfs.img
   ROOTFS_FILE_SIZE_KB=$(du -sk . | awk '{print $1}')
   ROOTFS_PART_BLOCKS=$(( $ROOTFS_FILE_SIZE_KB / 4 + $ROOTFS_PART_HEADROOM_BLOCKS ))
   ROOTFS_PART_SIZE=$(( $ROOTFS_PART_BLOCKS * $ROOTFS_BLOCKSZ ))
-  ROOTFS_PART_SIZE_KB=$(( ( ($ROOTFS_PART_SIZE + 1024) / 1024 ) / 1024 * 1024 ))
-  ROOTFS_PART_SECTORS=$(( $ROOTFS_PART_SIZE_KB * 2 ))
+  ROOTFS_PART_SIZE_KB=$(((ROOTFS_PART_SIZE + 1023) / 1024))
 
   dd if=/dev/zero of=$IMGFILE bs=1024 seek="$ROOTFS_PART_SIZE_KB" count=0
   mkfs.ext4 -b 4096 -L eve_rootfs -U "$ROOTFS_UUID" -v "$IMGFILE"
+  mkdir -p /mnt
   mount -o loop $IMGFILE /mnt
   cp -R /tmp/rootfs/* /mnt
   umount /mnt

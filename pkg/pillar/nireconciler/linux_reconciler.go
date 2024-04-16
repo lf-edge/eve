@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"path"
 	"strconv"
 	"strings"
 	"sync"
@@ -14,6 +15,7 @@ import (
 
 	dg "github.com/lf-edge/eve-libs/depgraph"
 	"github.com/lf-edge/eve-libs/reconciler"
+	"github.com/lf-edge/eve/pkg/kube/cnirpc"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/conntrack"
 	"github.com/lf-edge/eve/pkg/pillar/iptables"
@@ -36,6 +38,8 @@ const (
 	// File where the intended state graph is exported (as DOT) after each reconcile.
 	// Can be used for troubleshooting purposes.
 	intendedStateFile = "/run/zedrouter-intended-state.dot"
+	// Directory with references to named network namespaces.
+	namedNsDir = "/var/run/netns"
 )
 
 var emptyUUID = uuid.UUID{} // used as a constant
@@ -50,8 +54,9 @@ type LinuxNIReconciler struct {
 	netMonitor      netmonitor.NetworkMonitor
 	metadataHandler http.Handler
 
-	exportCurrentState  bool
-	exportIntendedState bool
+	exportCurrentState       bool
+	exportIntendedState      bool
+	withKubernetesNetworking bool
 
 	// From GCP
 	disableAllOnesNetmask bool
@@ -116,10 +121,31 @@ type niInfo struct {
 
 type appInfo struct {
 	config    types.AppNetworkConfig
+	kubePod   appPod
 	appNum    int
 	deleted   bool
 	vifs      []vifInfo                        // maps 1:1 to config.AppNetAdapterList
 	vifStatus map[string]AppVIFReconcileStatus // key = net adapter name
+}
+
+type appPod struct {
+	name      string
+	netNsName string
+}
+
+func (ai *appInfo) setKubePod(kubePod cnirpc.AppPod) error {
+	ai.kubePod.name = kubePod.Name
+	if kubePod.NetNsPath != "" {
+		if path.Dir(kubePod.NetNsPath) != namedNsDir {
+			// We only support "named" network namespaces,
+			// because we need to be able to use "ip netns exec".
+			return fmt.Errorf(
+				"%s: App pod %s with net namespace not from /var/run/netns",
+				LogAndErrPrefix, kubePod.Name)
+		}
+		ai.kubePod.netNsName = path.Base(kubePod.NetNsPath)
+	}
+	return nil
 }
 
 type vifInfo struct {
@@ -134,14 +160,15 @@ type vifInfo struct {
 // on every change.
 func NewLinuxNIReconciler(log *base.LogObject, logger *logrus.Logger,
 	netMonitor netmonitor.NetworkMonitor, metadataHandler http.Handler,
-	exportCurrentState, exportIntendedState bool) *LinuxNIReconciler {
+	exportCurrentState, exportIntendedState, withKubernetesNetworking bool) *LinuxNIReconciler {
 	return &LinuxNIReconciler{
-		log:                 log,
-		logger:              logger,
-		netMonitor:          netMonitor,
-		metadataHandler:     metadataHandler,
-		exportCurrentState:  exportCurrentState,
-		exportIntendedState: exportIntendedState,
+		log:                      log,
+		logger:                   logger,
+		netMonitor:               netMonitor,
+		metadataHandler:          metadataHandler,
+		exportCurrentState:       exportCurrentState,
+		exportIntendedState:      exportIntendedState,
+		withKubernetesNetworking: withKubernetesNetworking,
 	}
 }
 
@@ -276,7 +303,7 @@ func (r *LinuxNIReconciler) runWatcher(netEvents <-chan netmonitor.Event) {
 				// Check if this is intended and/or current uplink, bridge or vif.
 				uplinkRef := dg.Reference(generic.Uplink{IfName: ifName})
 				brRef := dg.Reference(linux.Bridge{IfName: ifName})
-				vifRef := dg.Reference(generic.VIF{IfName: ifName})
+				vifRef := dg.Reference(linux.VIF{HostIfName: ifName})
 				graphs := []dg.GraphR{r.intendedState, r.currentState}
 				var found bool
 				for _, graph := range graphs {
@@ -885,14 +912,15 @@ func (r *LinuxNIReconciler) DelNI(ctx context.Context,
 	return niStatus, nil
 }
 
-// ConnectApp : make necessary changes inside the network stack to connect a new
+// AddAppConn : make necessary changes inside the network stack to connect a new
 // application into the desired set of network instance(s).
 // This is called by zedrouter before the guest VM is started, meaning that
-// some of the operations will be completed later from within ResumeReconcile() after
-// domainmgr starts the VM.
-func (r *LinuxNIReconciler) ConnectApp(ctx context.Context,
-	appNetConfig types.AppNetworkConfig, appNum int, vifs []AppVIF) (
-	AppConnReconcileStatus, error) {
+// some operations will be completed later from within ResumeReconcile() after
+// domainmgr starts the VM, or when UpdateAppConn is called from within Kubernetes CNI
+// plugin.
+func (r *LinuxNIReconciler) AddAppConn(ctx context.Context,
+	appNetConfig types.AppNetworkConfig, appNum int, kubePod cnirpc.AppPod,
+	vifs []AppVIF) (AppConnReconcileStatus, error) {
 	contWatcher := r.pauseWatcher()
 	defer contWatcher()
 	appID := appNetConfig.UUIDandVersion.UUID
@@ -904,6 +932,9 @@ func (r *LinuxNIReconciler) ConnectApp(ctx context.Context,
 	appInfo := &appInfo{
 		config: appNetConfig,
 		appNum: appNum,
+	}
+	if err := appInfo.setKubePod(kubePod); err != nil {
+		return appStatus, err
 	}
 	for _, vif := range vifs {
 		appInfo.vifs = append(appInfo.vifs, vifInfo{
@@ -929,20 +960,24 @@ func (r *LinuxNIReconciler) ConnectApp(ctx context.Context,
 	return appStatus, nil
 }
 
-// ReconnectApp : (re)connect application with changed config into the (possibly
-// changed) desired set of network instance(s).
-func (r *LinuxNIReconciler) ReconnectApp(ctx context.Context,
-	appNetConfig types.AppNetworkConfig, vifs []AppVIF) (AppConnReconcileStatus, error) {
+// UpdateAppConn : update application connectivity to reflect config changes.
+func (r *LinuxNIReconciler) UpdateAppConn(ctx context.Context,
+	appNetConfig types.AppNetworkConfig, kubePod cnirpc.AppPod,
+	vifs []AppVIF) (AppConnReconcileStatus, error) {
 	contWatcher := r.pauseWatcher()
 	defer contWatcher()
 	appID := appNetConfig.UUIDandVersion.UUID
 	appStatus := AppConnReconcileStatus{App: appID}
 	if _, exists := r.apps[appID]; !exists {
-		return appStatus, fmt.Errorf("%s: Cannot reconnect App %v: does not exist",
+		err := fmt.Errorf("%s: Cannot update app %v connectivity: does not exist",
 			LogAndErrPrefix, appID)
+		return appStatus, err
 	}
 	appInfo := r.apps[appID]
 	appInfo.config = appNetConfig
+	if err := appInfo.setKubePod(kubePod); err != nil {
+		return appStatus, err
+	}
 	prevVifs := appInfo.vifs
 	appInfo.vifs = nil
 	appInfo.vifStatus = nil
@@ -953,11 +988,11 @@ func (r *LinuxNIReconciler) ReconnectApp(ctx context.Context,
 		})
 	}
 	r.apps[appID] = appInfo
-	reconcileReason := fmt.Sprintf("reconnecting app (%v)", appID)
+	reconcileReason := fmt.Sprintf("updating app connectivity (%v)", appID)
 	// Rebuild and reconcile also global config to update the set of intended IPSets.
 	r.scheduleGlobalCfgRebuild(reconcileReason)
-	// Reconcile every NI that this app is either disconnecting from or trying
-	// to (re)connect into.
+	// Reconcile every NI that this app is disconnecting from, connecting to,
+	// or just updating its connection parameters with.
 	for _, vif := range prevVifs {
 		r.scheduleNICfgRebuild(vif.NI, reconcileReason)
 	}
@@ -974,8 +1009,8 @@ func (r *LinuxNIReconciler) ReconnectApp(ctx context.Context,
 	return appStatus, nil
 }
 
-// DisconnectApp : disconnect (removed) application from network instance(s).
-func (r *LinuxNIReconciler) DisconnectApp(ctx context.Context,
+// DelAppConn : disconnect (removed) application from network instance(s).
+func (r *LinuxNIReconciler) DelAppConn(ctx context.Context,
 	appID uuid.UUID) (AppConnReconcileStatus, error) {
 	contWatcher := r.pauseWatcher()
 	defer contWatcher()
@@ -1002,6 +1037,25 @@ func (r *LinuxNIReconciler) DisconnectApp(ctx context.Context,
 			appStatus = *update.AppConnStatus
 		}
 	}
+	return appStatus, nil
+}
+
+// GetAppConnStatus : get current status of app connectivity.
+func (r *LinuxNIReconciler) GetAppConnStatus(appID uuid.UUID) (AppConnReconcileStatus, error) {
+	contWatcher := r.pauseWatcher()
+	defer contWatcher()
+	appStatus := AppConnReconcileStatus{App: appID}
+	if _, exists := r.apps[appID]; !exists {
+		err := fmt.Errorf("%s: Cannot get app %v connectivity status: does not exist",
+			LogAndErrPrefix, appID)
+		return appStatus, err
+	}
+	appStatus.Deleted = r.apps[appID].deleted
+	for _, vifStatus := range r.apps[appID].vifStatus {
+		appStatus.VIFs = append(appStatus.VIFs, vifStatus)
+	}
+	// Sort VIF status for deterministic order and easier unit-testing.
+	appStatus.SortVIFs()
 	return appStatus, nil
 }
 
@@ -1052,11 +1106,24 @@ func (r *LinuxNIReconciler) getSubgraphState(intSG, currSG dg.GraphR, forApp boo
 	itemIsForApp := func(item dg.Item) bool {
 		// XXX Better would be to check if item is inside AppConn-* subgraph
 		// but depgraph API does not allow to do that.
-		if item.Type() == generic.VIFTypename {
+		if item.Type() == linux.VIFTypename {
 			return true
 		}
+		if item.Type() == linux.BridgePortTypename {
+			if item.(linux.BridgePort).Variant.VIFIfName != "" {
+				return true
+			}
+		}
 		if item.Type() == linux.VLANPortTypename {
-			if item.(linux.VLANPort).BridgePort.VIFIfName != "" {
+			return true
+		}
+		if route, isRoute := item.(linux.Route); isRoute {
+			if route.ForApp.ID != emptyUUID {
+				return true
+			}
+		}
+		if sysctlConf, isSysctl := item.(linux.Sysctl); isSysctl {
+			if sysctlConf.ForApp.ID != emptyUUID {
 				return true
 			}
 		}

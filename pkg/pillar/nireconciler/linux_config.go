@@ -88,11 +88,11 @@ import (
 //  |   |   +----------------------------------------------------+   |   |
 //  |   |   |                        L2                          |   |   |
 //  |   |   |                                                    |   |   |
-//  |   |   |              +----------------------+              |   |   |
-//  |   |   |              |        Bridge        |              |   |   |
-//  |   |   |              |  (L2 NI: external)   |              |   |   |
-//  |   |   |              |  (L3 NI: managed)    |              |   |   |
-//  |   |   |              +----------------------+              |   |   |
+//  |   |   |   +----------------------+    +----------------+   |   |   |
+//  |   |   |   |        Bridge        |    |  BridgePort    |   |   |   |
+//  |   |   |   |  (L2 NI: external)   |    |  (for uplink)  |   |   |   |
+//  |   |   |   |  (L3 NI: managed)    |    +----------------+   |   |   |
+//  |   |   |   +----------------------+                         |   |   |
 //  |   |   |                                                    |   |   |
 //  |   |   |      +---------------+    +-----------------+      |   |   |
 //  |   |   |      |  VLANBridge   |    |    VLANPort     |      |   |   |
@@ -133,15 +133,21 @@ import (
 //  |   |   |           AppConn-<UUID>-<adapter-name>            |   |   |
 //  |   |   |                (one for every VIF)                 |   |   |
 //  |   |   |                                                    |   |   |
-//  |   |   |       +---------------+   +---------------+        |   |   |
-//  |   |   |       |      VIF      |   |   VLANPort    |        |   |   |
-//  |   |   |       |   (external)  |   |  (for L2 NI)  |        |   |   |
-//  |   |   |       +---------------+   +---------------+        |   |   |
+//  |   |   |   +----------------------+    +--------------+     |   |   |
+//  |   |   |   |          VIF         |    |  BridgePort  |     |   |   |
+//  |   |   |   | (Non-Kube: external) |    |  (for VIF)   |     |   |   |
+//  |   |   |   | (Kube: VETH)         |    +--------------+     |   |   |
+//  |   |   |   +----------------------+                         |   |   |
 //  |   |   |                                                    |   |   |
-//  |   |   |                    +----------+                    |   |   |
-//  |   |   |                    |  IPSet   |                    |   |   |
-//  |   |   |                    |  (eids)  |                    |   |   |
-//  |   |   |                    +----------+                    |   |   |
+//  |   |   |   +----------------+        +------------------+   |   |   |
+//  |   |   |   |      Route     | ...    |      Sysctl      |   |   |   |
+//  |   |   |   | (For Kube Pod) |        |  (For Kube Pod)  |   |   |   |
+//  |   |   |   +----------------+        +------------------+   |   |   |
+//  |   |   |                                                    |   |   |
+//  |   |   |       +---------------+    +----------+            |   |   |
+//  |   |   |       |  VLANPort     |    |  IPSet   |            |   |   |
+//  |   |   |       |  (for L2 NI)  |    |  (eids)  |            |   |   |
+//  |   |   |       +---------------+    +----------+            |   |   |
 //  |   |   |                                                    |   |   |
 //  |   |   |   +--------------------------------------------+   |   |   |
 //  |   |   |   |                   ACLs                     |   |   |   |
@@ -395,10 +401,15 @@ func (r *LinuxNIReconciler) getIntendedBlackholeCfg() dg.Graph {
 		Description: "A place in the network where traffic matched by DROP ACLs is discarded",
 	}
 	intendedBlackholeCfg := dg.New(graphArgs)
-	intendedBlackholeCfg.PutItem(linux.DummyIf{
+	dummyIf := linux.DummyIf{
 		IfName: blackholeIfName,
 		ARPOff: true,
-	}, nil)
+	}
+	dummyIfRef := generic.NetworkIf{
+		IfName:  dummyIf.IfName,
+		ItemRef: dg.Reference(dummyIf),
+	}
+	intendedBlackholeCfg.PutItem(dummyIf, nil)
 	intendedBlackholeCfg.PutItem(linux.Route{
 		// ip route add default dev blackhole scope global table 400
 		Route: netlink.Route{
@@ -407,9 +418,7 @@ func (r *LinuxNIReconciler) getIntendedBlackholeCfg() dg.Graph {
 			Scope:    netlink.SCOPE_UNIVERSE,
 			Protocol: unix.RTPROT_STATIC,
 		},
-		OutputIf: linux.RouteOutIf{
-			DummyIfName: blackholeIfName,
-		},
+		OutputIf: dummyIfRef,
 	}, nil)
 	intendedBlackholeCfg.PutItem(linux.Route{
 		// ip -6 route add default dev blackhole scope global table 400
@@ -419,9 +428,7 @@ func (r *LinuxNIReconciler) getIntendedBlackholeCfg() dg.Graph {
 			Scope:    netlink.SCOPE_UNIVERSE,
 			Protocol: unix.RTPROT_STATIC,
 		},
-		OutputIf: linux.RouteOutIf{
-			DummyIfName: blackholeIfName,
-		},
+		OutputIf: dummyIfRef,
 	}, nil)
 	intendedBlackholeCfg.PutItem(linux.IPRule{
 		Priority: blackholePrio,
@@ -446,6 +453,19 @@ func (r *LinuxNIReconciler) getIntendedBlackholeCfg() dg.Graph {
 		Description: "Rule to ensure that packets marked with the drop action " +
 			"are indeed dropped and never sent out via downlink or uplink interfaces",
 	}, nil)
+	// Add NOOP "DROP-COUNTER" chain used in the place of the default DROP rule to merely
+	// count the to-be-dropped packets.
+	// The actual drop is performed by routing the matched packet towards the blackhole
+	// interface.
+	for _, table := range []string{"raw", "filter"} {
+		for _, forIPv6 := range []bool{false, true} {
+			intendedBlackholeCfg.PutItem(iptables.Chain{
+				ChainName: dropCounterChain,
+				Table:     table,
+				ForIPv6:   forIPv6,
+			}, nil)
+		}
+	}
 	return intendedBlackholeCfg
 }
 
@@ -458,9 +478,12 @@ func (r *LinuxNIReconciler) getIntendedNICfg(niID uuid.UUID) dg.Graph {
 	if r.nis[niID] == nil || r.nis[niID].deleted {
 		return intendedCfg
 	}
-	intendedCfg.PutSubGraph(r.getIntendedNIL2Cfg(niID))
-	intendedCfg.PutSubGraph(r.getIntendedNIL3Cfg(niID))
-	intendedCfg.PutSubGraph(r.getIntendedNIServices(niID))
+	ni := r.nis[niID]
+	if !ni.bridge.IPConflict {
+		intendedCfg.PutSubGraph(r.getIntendedNIL2Cfg(niID))
+		intendedCfg.PutSubGraph(r.getIntendedNIL3Cfg(niID))
+		intendedCfg.PutSubGraph(r.getIntendedNIServices(niID))
+	}
 	for _, app := range r.apps {
 		if app.deleted {
 			continue
@@ -542,11 +565,15 @@ func (r *LinuxNIReconciler) getIntendedNIL2Cfg(niID uuid.UUID) dg.Graph {
 			break
 		}
 	}
-	intendedL2Cfg.PutItem(linux.VLANPort{
+	intendedL2Cfg.PutItem(linux.BridgePort{
 		BridgeIfName: ni.brIfName,
-		BridgePort: linux.BridgePort{
+		Variant: linux.BridgePortVariant{
 			UplinkIfName: uplinkPhysIfName(ni.bridge.Uplink.IfName),
 		},
+	}, nil)
+	intendedL2Cfg.PutItem(linux.VLANPort{
+		BridgeIfName: ni.brIfName,
+		PortIfName:   uplinkPhysIfName(ni.bridge.Uplink.IfName),
 		VLANConfig: linux.VLANConfig{
 			TrunkPort: &trunkPort,
 		},
@@ -585,14 +612,17 @@ func (r *LinuxNIReconciler) getIntendedNIL3Cfg(niID uuid.UUID) dg.Graph {
 	// Copy routes relevant for this NI from the main routing table into per-NI RT.
 	srcTable := unix.RT_TABLE_MAIN
 	dstTable := devicenetwork.NIBaseRTIndex + ni.bridge.BrNum
-	outIfs := make(map[int]linux.RouteOutIf) // key: ifIndex
+	outIfs := make(map[int]generic.NetworkIf) // key: ifIndex
 	ifIndex, found, err := r.netMonitor.GetInterfaceIndex(ni.brIfName)
 	if err != nil {
 		r.log.Errorf("%s: getIntendedNIL3Cfg: failed to get ifIndex "+
 			"for (NI bridge) %s: %v", LogAndErrPrefix, ni.brIfName, err)
 	}
 	if err == nil && found {
-		outIfs[ifIndex] = linux.RouteOutIf{BridgeIfName: ni.brIfName}
+		outIfs[ifIndex] = generic.NetworkIf{
+			IfName:  ni.brIfName,
+			ItemRef: dg.Reference(linux.Bridge{IfName: ni.brIfName}),
+		}
 	}
 	uplink := ni.bridge.Uplink.IfName
 	if uplink != "" {
@@ -602,7 +632,10 @@ func (r *LinuxNIReconciler) getIntendedNIL3Cfg(niID uuid.UUID) dg.Graph {
 				"for (NI uplink) %s: %v", LogAndErrPrefix, uplink, err)
 		}
 		if err == nil && found {
-			outIfs[ifIndex] = linux.RouteOutIf{UplinkIfName: uplink}
+			outIfs[ifIndex] = generic.NetworkIf{
+				IfName:  uplink,
+				ItemRef: dg.Reference(generic.Uplink{IfName: uplink}),
+			}
 		}
 	}
 	// User-defined static default route will override the original default route
@@ -677,9 +710,15 @@ func (r *LinuxNIReconciler) getIntendedNIL3Cfg(niID uuid.UUID) dg.Graph {
 		if route.Gateway.To4() == nil {
 			family = netlink.FAMILY_V6
 		}
-		outputIf := linux.RouteOutIf{UplinkIfName: uplink}
+		outputIf := generic.NetworkIf{
+			IfName:  uplink,
+			ItemRef: dg.Reference(generic.Uplink{IfName: uplink}),
+		}
 		if isAppGW {
-			outputIf = linux.RouteOutIf{BridgeIfName: ni.brIfName}
+			outputIf = generic.NetworkIf{
+				IfName:  ni.brIfName,
+				ItemRef: dg.Reference(linux.Bridge{IfName: ni.brIfName}),
+			}
 		}
 		intendedL3Cfg.PutItem(linux.Route{
 			Route: netlink.Route{
@@ -866,6 +905,24 @@ func (r *LinuxNIReconciler) getIntendedDnsmasqCfg(niID uuid.UUID) (items []dg.It
 	}
 	ntpServers = generics.FilterDuplicatesFn(ntpServers, netutils.EqualIPs)
 	var propagateRoutes []types.IPRoute
+	// Use DHCP to propagate host routes towards user-configured NTP and DNS servers.
+	if bridgeIP != nil {
+		for _, ntpServer := range ntpServers {
+			propagateRoutes = append(propagateRoutes, types.IPRoute{
+				DstNetwork: netutils.HostSubnet(ntpServer),
+				Gateway:    bridgeIP.IP,
+			})
+		}
+		for _, dnsServer := range ni.config.DnsServers {
+			if netutils.EqualIPs(dnsServer, bridgeIP.IP) {
+				continue
+			}
+			propagateRoutes = append(propagateRoutes, types.IPRoute{
+				DstNetwork: netutils.HostSubnet(dnsServer),
+				Gateway:    bridgeIP.IP,
+			})
+		}
+	}
 	// Use DHCP to propagate user-configured IP routes.
 	for _, route := range ni.config.StaticRoutes {
 		if withDefaultRoute && route.IsDefaultRoute() {
@@ -918,6 +975,7 @@ func (r *LinuxNIReconciler) getIntendedDnsmasqCfg(niID uuid.UUID) (items []dg.It
 			})
 		}
 	}
+	propagateRoutes = generics.FilterDuplicatesFn(propagateRoutes, types.EqualIPRoutes)
 	dhcpCfg := generic.DHCPServer{
 		Subnet:         r.getNISubnet(ni),
 		AllOnesNetmask: !r.disableAllOnesNetmask,
@@ -1067,15 +1125,117 @@ func (r *LinuxNIReconciler) getIntendedRadvdCfg(niID uuid.UUID) (items []dg.Item
 func (r *LinuxNIReconciler) getIntendedAppConnCfg(niID uuid.UUID,
 	vif vifInfo, ul types.AppNetAdapterConfig) dg.Graph {
 	ni := r.nis[vif.NI]
+	app := r.apps[vif.App]
 	graphArgs := dg.InitArgs{
 		Name:        AppConnSGName(vif.App, vif.NetAdapterName),
 		Description: "Connection between application and network instance",
 	}
 	intendedAppConnCfg := dg.New(graphArgs)
-	intendedAppConnCfg.PutItem(generic.VIF{
-		IfName:         vif.hostIfName,
-		NetAdapterName: vif.NetAdapterName,
-		MasterIfName:   ni.brIfName,
+	itemForApp := linux.ContainerApp{
+		ID:        vif.App,
+		NetNsName: app.kubePod.netNsName,
+	}
+	if r.withKubernetesNetworking {
+		if app.kubePod.netNsName != "" && vif.PodVIF.GuestIfName != "" {
+			var appIPs []*net.IPNet
+			for _, ip := range vif.PodVIF.IPAM.IPs {
+				appIPs = append(appIPs, ip.Address)
+			}
+			intendedAppConnCfg.PutItem(linux.VIF{
+				HostIfName:     vif.hostIfName,
+				NetAdapterName: vif.NetAdapterName,
+				Variant: linux.VIFVariant{
+					Veth: linux.Veth{
+						ForApp:    itemForApp,
+						AppIfName: vif.PodVIF.GuestIfName,
+						AppIfMAC:  vif.GuestIfMAC,
+						AppIPs:    appIPs,
+					},
+				},
+			}, nil)
+			appVifRef := generic.NetworkIf{
+				IfName:  vif.PodVIF.GuestIfName,
+				ItemRef: dg.Reference(linux.VIF{HostIfName: vif.hostIfName}),
+			}
+			intendedAppConnCfg.PutItem(linux.Sysctl{
+				ForApp:          itemForApp,
+				NetIf:           appVifRef,
+				EnableDAD:       false,
+				EnableARPNotify: true,
+			}, nil)
+			// Gateways not covered by IP subnets should be routed explicitly
+			// using link-local routes.
+			// Note that by default, DHCP servers of local network instances
+			// are intentionally configured to grant IP leases with /32 mask,
+			// so these link-local routes are needed.
+			var routedGws []net.IP
+			for _, ip := range vif.PodVIF.IPAM.IPs {
+				if ip.Gateway == nil {
+					continue
+				}
+				family := netlink.FAMILY_V4
+				if ip.Gateway.To4() == nil {
+					family = netlink.FAMILY_V6
+				}
+				if !ip.Address.Contains(ip.Gateway) {
+					routedGws = append(routedGws, ip.Gateway)
+					intendedAppConnCfg.PutItem(linux.Route{
+						Route: netlink.Route{
+							Scope:    netlink.SCOPE_LINK,
+							Protocol: unix.RTPROT_STATIC,
+							Family:   family,
+							Dst:      netutils.HostSubnet(ip.Gateway),
+						},
+						OutputIf: appVifRef,
+						ForApp:   itemForApp,
+					}, nil)
+				}
+			}
+			for _, route := range vif.PodVIF.IPAM.Routes {
+				family := netlink.FAMILY_V4
+				if route.Dst != nil && route.Dst.IP.To4() == nil {
+					family = netlink.FAMILY_V6
+				}
+				if route.GW != nil && route.GW.To4() == nil {
+					family = netlink.FAMILY_V6
+				}
+				routedGw := generics.ContainsItemFn(routedGws, route.GW, netutils.EqualIPs)
+				intendedAppConnCfg.PutItem(linux.Route{
+					Route: netlink.Route{
+						Scope:    netlink.SCOPE_UNIVERSE,
+						Protocol: unix.RTPROT_STATIC,
+						Family:   family,
+						Dst:      route.Dst,
+						Gw:       route.GW,
+					},
+					OutputIf:       appVifRef,
+					GwViaLinkRoute: routedGw,
+					ForApp:         itemForApp,
+				}, nil)
+			}
+		}
+	} else {
+		// Not using Kubernetes, VIF is created externally by the hypervisor.
+		intendedAppConnCfg.PutItem(linux.VIF{
+			HostIfName:     vif.hostIfName,
+			NetAdapterName: vif.NetAdapterName,
+			Variant: linux.VIFVariant{
+				External: true,
+			},
+		}, nil)
+	}
+	if ni.bridge.IPConflict {
+		// Do not configure ACLs if we have IP conflict with an uplink port.
+		// We could block management traffic by an accident.
+		// The bridge will not be created, and VIFs will be down. Therefore, all app
+		// traffic will be dropped anyway.
+		return intendedAppConnCfg
+	}
+	intendedAppConnCfg.PutItem(linux.BridgePort{
+		BridgeIfName: ni.brIfName,
+		Variant: linux.BridgePortVariant{
+			VIFIfName: vif.hostIfName,
+		},
 	}, nil)
 	if ni.config.Type == types.NetworkInstanceTypeSwitch {
 		var vlanConfig linux.VLANConfig
@@ -1088,10 +1248,8 @@ func (r *LinuxNIReconciler) getIntendedAppConnCfg(niID uuid.UUID,
 		}
 		intendedAppConnCfg.PutItem(linux.VLANPort{
 			BridgeIfName: ni.brIfName,
-			BridgePort: linux.BridgePort{
-				VIFIfName: vif.hostIfName,
-			},
-			VLANConfig: vlanConfig,
+			PortIfName:   vif.hostIfName,
+			VLANConfig:   vlanConfig,
 		}, nil)
 	}
 	// Create ipset with all the addresses from the DNSNameToIPList plus the VIF IP itself.
@@ -1103,6 +1261,11 @@ func (r *LinuxNIReconciler) getIntendedAppConnCfg(niID uuid.UUID,
 	}
 	if vif.GuestIP != nil {
 		ips = append(ips, vif.GuestIP)
+	}
+	if r.withKubernetesNetworking {
+		for _, ip := range vif.PodVIF.IPAM.IPs {
+			ips = append(ips, ip.Address.IP)
+		}
 	}
 	ips = generics.FilterDuplicatesFn(ips, netutils.EqualIPs)
 	ipv4Eids := linux.IPSet{

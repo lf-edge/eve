@@ -12,6 +12,7 @@ import (
 	imagespec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/opencontainers/runtime-spec/specs-go"
 	log "github.com/sirupsen/logrus"
+	"github.com/syndtr/gocapability/capability"
 	"github.com/xeipuuv/gojsonschema"
 	"gopkg.in/yaml.v2"
 )
@@ -486,7 +487,7 @@ func mergeStrings(v1, v2 *[]string) *[]string {
 		return v2
 	}
 	// merge the two uniquely
-	ret := []string{}
+	var ret []string
 	m := make(map[string]bool)
 	for _, s := range *v1 {
 		if m[s] {
@@ -649,46 +650,15 @@ func assignStringEmpty4(v1, v2, v3, v4 string) string {
 	return v1
 }
 
-var allCaps = []string{
-	"CAP_AUDIT_CONTROL",
-	"CAP_AUDIT_READ",
-	"CAP_AUDIT_WRITE",
-	"CAP_BLOCK_SUSPEND",
-	"CAP_CHOWN",
-	"CAP_DAC_OVERRIDE",
-	"CAP_DAC_READ_SEARCH",
-	"CAP_FOWNER",
-	"CAP_FSETID",
-	"CAP_IPC_LOCK",
-	"CAP_IPC_OWNER",
-	"CAP_KILL",
-	"CAP_LEASE",
-	"CAP_LINUX_IMMUTABLE",
-	"CAP_MAC_ADMIN",
-	"CAP_MAC_OVERRIDE",
-	"CAP_MKNOD",
-	"CAP_NET_ADMIN",
-	"CAP_NET_BIND_SERVICE",
-	"CAP_NET_BROADCAST",
-	"CAP_NET_RAW",
-	"CAP_SETFCAP",
-	"CAP_SETGID",
-	"CAP_SETPCAP",
-	"CAP_SETUID",
-	"CAP_SYSLOG",
-	"CAP_SYS_ADMIN",
-	"CAP_SYS_BOOT",
-	"CAP_SYS_CHROOT",
-	"CAP_SYS_MODULE",
-	"CAP_SYS_NICE",
-	"CAP_SYS_PACCT",
-	"CAP_SYS_PTRACE",
-	"CAP_SYS_RAWIO",
-	"CAP_SYS_RESOURCE",
-	"CAP_SYS_TIME",
-	"CAP_SYS_TTY_CONFIG",
-	"CAP_WAKE_ALARM",
+func getAllCapabilities() []string {
+	var caps []string
+	for _, cap := range capability.List() {
+		caps = append(caps, "CAP_"+strings.ToUpper(cap.String()))
+	}
+	return caps
 }
+
+var allCaps = getAllCapabilities()
 
 func idNumeric(v interface{}, idMap map[string]uint32) (uint32, error) {
 	switch id := v.(type) {
@@ -768,7 +738,7 @@ func ConfigToOCI(yaml *Image, config imagespec.ImageConfig, idMap map[string]uin
 			return oci, runtime, fmt.Errorf("Cannot parse tmpfs, too many ':': %s", t)
 		}
 		dest := parts[0]
-		opts := []string{}
+		var opts []string
 		if len(parts) == 2 {
 			opts = strings.Split(parts[1], ",")
 		}
@@ -830,7 +800,7 @@ func ConfigToOCI(yaml *Image, config imagespec.ImageConfig, idMap map[string]uin
 		return mountList[i].Destination < mountList[j].Destination
 	})
 
-	namespaces := []specs.LinuxNamespace{}
+	var namespaces []specs.LinuxNamespace
 
 	// net, ipc, and uts namespaces: default to not creating a new namespace (usually host namespace)
 	netNS := assignStringEmpty3("root", label.Net, yaml.Net)
@@ -914,7 +884,7 @@ func ConfigToOCI(yaml *Image, config imagespec.ImageConfig, idMap map[string]uin
 		}
 		boundingSet[capability] = true
 	}
-	bounding := []string{}
+	var bounding []string
 	for capability := range boundingSet {
 		bounding = append(bounding, capability)
 	}
@@ -922,7 +892,7 @@ func ConfigToOCI(yaml *Image, config imagespec.ImageConfig, idMap map[string]uin
 	sort.Strings(bounding)
 
 	rlimitsString := assignStrings(label.Rlimits, yaml.Rlimits)
-	rlimits := []specs.POSIXRlimit{}
+	var rlimits []specs.POSIXRlimit
 	for _, limitString := range rlimitsString {
 		rs := strings.SplitN(limitString, ",", 3)
 		var limit string
@@ -993,7 +963,7 @@ func ConfigToOCI(yaml *Image, config imagespec.ImageConfig, idMap map[string]uin
 	if err != nil {
 		return oci, runtime, err
 	}
-	additionalGroups := []uint32{}
+	var additionalGroups []uint32
 	for _, id := range agIf {
 		ag, err := idNumeric(id, idMap)
 		if err != nil {

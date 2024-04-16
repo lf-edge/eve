@@ -149,6 +149,7 @@ func (m *DpcManager) updateDNS() {
 		if err != nil && dpc.State != types.DPCStateAsyncWait {
 			m.Log.Error(err)
 		}
+
 		// Get used default routers aka gateways from kernel
 		gws, err := m.NetworkMonitor.GetInterfaceDefaultGWs(ifindex)
 		if err != nil {

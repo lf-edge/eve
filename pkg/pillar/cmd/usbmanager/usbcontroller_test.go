@@ -4,8 +4,11 @@ package usbmanager
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 	"sync/atomic"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
@@ -81,8 +84,6 @@ func TestAddNonRuleIOBundle(t *testing.T) {
 	uc.addIOBundle(ioBundle)
 	uc.removeIOBundle(ioBundle)
 
-	uc.usbpassthroughs.ioBundles[ioBundle.Phylabel] = &ioBundle
-
 	vm := virtualmachine{
 		qmpSocketPath: "",
 		adapters:      []string{"Test"},
@@ -121,14 +122,16 @@ func TestRemovingVm(t *testing.T) {
 	if len(uc.usbpassthroughs.usbpassthroughs) != 1 {
 		t.Fatalf("invalid amount of usbpassthroughs registered")
 	}
-	if len(uc.usbpassthroughs.vms) != 1 || len(uc.usbpassthroughs.vmsByIoBundlePhyLabel) != 1 {
+	if len(uc.usbpassthroughs.vms) != 1 || uc.usbpassthroughs.vmByIOBundlePhyLabel(ioBundleLabel) == nil {
 		t.Fatalf("invalid amount of vms registered")
 	}
 	uc.removeVirtualmachine(vm)
-	if len(uc.usbpassthroughs.usbpassthroughs) != 0 {
-		t.Fatalf("invalid amount of usbpassthroughs registered")
+	for _, up := range uc.usbpassthroughs.usbpassthroughs {
+		if up.vm != nil {
+			t.Fatalf("usbpassthroughs registered where there shouldn't: %+v", up)
+		}
 	}
-	if len(uc.usbpassthroughs.vms) != 0 || len(uc.usbpassthroughs.vmsByIoBundlePhyLabel) != 0 {
+	if len(uc.usbpassthroughs.vms) != 0 || uc.usbpassthroughs.vmByIOBundlePhyLabel(ioBundleLabel) != nil {
 		t.Fatalf("invalid amount of vms registered")
 	}
 }
@@ -198,9 +201,11 @@ func TestReconnectUSBDevicesToQemu(t *testing.T) {
 	var countCurrentUSBPassthroughs atomic.Int32
 	countCurrentUSBPassthroughs.Store(0)
 	uc.connectUSBDeviceToQemu = func(up usbpassthrough) {
+		t.Logf("connecting %v", up)
 		countCurrentUSBPassthroughs.Add(1)
 	}
 	uc.disconnectUSBDeviceFromQemu = func(up usbpassthrough) {
+		t.Logf("disconnecting %v", up)
 		countCurrentUSBPassthroughs.Add(-1)
 	}
 
@@ -249,164 +254,6 @@ func TestConnectUSBDevicesToQemu(t *testing.T) {
 
 	if len(tet) != countUSBConnections {
 		t.Fatalf("expected %d connection attempts to qemu, but got %d", len(tet), countUSBConnections)
-	}
-}
-
-func TestIOBundleEmpty(t *testing.T) {
-	bundle := types.IoBundle{}
-
-	pr := ioBundle2PassthroughRule(bundle)
-
-	if pr != nil {
-		t.Fatalf("expected nil rule but got %+v", pr)
-	}
-}
-
-func TestIOBundlePCIForbidRule(t *testing.T) {
-	bundle := types.IoBundle{PciLong: "00:14.0"}
-
-	pr := ioBundle2PassthroughRule(bundle)
-
-	_, ok := pr.(*pciPassthroughForbidRule)
-	if !ok {
-		t.Fatalf("expected pciPassthroughForbidRule type but got %T %+v", pr, pr)
-	}
-}
-
-func TestIOBundlePCIAndUSBProduct(t *testing.T) {
-	bundle := types.IoBundle{
-		PciLong:    "0:0",
-		UsbProduct: "1:1",
-	}
-
-	pr := ioBundle2PassthroughRule(bundle)
-
-	hasPCIRule := false
-	hasUSBProductRule := false
-
-	cpr := pr.(*compositionPassthroughRule)
-	for _, rule := range cpr.rules {
-		switch rule.(type) {
-		case *pciPassthroughRule:
-			hasPCIRule = true
-		case *usbDevicePassthroughRule:
-			hasUSBProductRule = true
-		}
-	}
-
-	if !hasPCIRule {
-		t.Fatal("not pciPassthroughRule")
-	}
-	if !hasUSBProductRule {
-		t.Fatal("not usbDevicePassthroughRule")
-	}
-
-	ud := usbdevice{
-		usbControllerPCIAddress: "2:2",
-	}
-
-	action := pr.evaluate(ud)
-	if action != passthroughNo {
-		t.Fatalf("passthrough action should be passthroughNo, but got %v", action)
-	}
-
-	ud.vendorID = 1
-	ud.productID = 1
-	action = pr.evaluate(ud)
-	if action != passthroughNo {
-		t.Fatalf("passthrough action should be passthroughNo, but got %v", action)
-	}
-	ud.usbControllerPCIAddress = "0:0"
-	action = pr.evaluate(ud)
-	if action != passthroughDo {
-		t.Fatalf("passthrough action should be passthroughDo, but got %v", action)
-	}
-}
-
-func TestIOBundlePCIAndUSBAddress(t *testing.T) {
-	bundle := types.IoBundle{
-		PciLong: "0:0",
-		UsbAddr: "1:1",
-	}
-
-	pr := ioBundle2PassthroughRule(bundle)
-
-	ud := usbdevice{
-		usbControllerPCIAddress: "2:2",
-	}
-
-	action := pr.evaluate(ud)
-	if action != passthroughNo {
-		t.Fatalf("passthrough action should be passthroughNo, but got %v", action)
-	}
-
-	ud.busnum = 1
-	ud.portnum = "1"
-	action = pr.evaluate(ud)
-	if action != passthroughNo {
-		t.Fatalf("passthrough action should be passthroughNo, but got %v", action)
-	}
-	ud.usbControllerPCIAddress = "0:0"
-	action = pr.evaluate(ud)
-	if action != passthroughDo {
-		t.Fatalf("passthrough action should be passthroughDo, but got %v", action)
-	}
-}
-
-func TestIOBundleUSBProductAndUSBAddress(t *testing.T) {
-	bundle := types.IoBundle{
-		UsbAddr:    "1:1",
-		UsbProduct: "2:2",
-	}
-
-	pr := ioBundle2PassthroughRule(bundle)
-
-	ud := usbdevice{}
-
-	action := pr.evaluate(ud)
-	if action != passthroughNo {
-		t.Fatalf("passthrough action should be passthroughNo, but got %v", action)
-	}
-
-	for _, test := range []struct {
-		beforeFunc     func()
-		expectedAction passthroughAction
-	}{
-		{
-			beforeFunc:     func() { ud.busnum = 1 },
-			expectedAction: passthroughNo,
-		},
-		{
-			beforeFunc:     func() { ud.portnum = "1" },
-			expectedAction: passthroughNo,
-		},
-		{
-			beforeFunc:     func() { ud.vendorID = 2 },
-			expectedAction: passthroughNo,
-		},
-		{
-			beforeFunc:     func() { ud.productID = 2 },
-			expectedAction: passthroughDo,
-		},
-		{
-			beforeFunc: func() {
-				bundle.PciLong = "3:3" // passthrough is now tied to this pci controller
-				pr = ioBundle2PassthroughRule(bundle)
-
-				ud.usbControllerPCIAddress = "4:4"
-			},
-			expectedAction: passthroughNo,
-		},
-		{
-			beforeFunc:     func() { ud.usbControllerPCIAddress = "3:3" },
-			expectedAction: passthroughDo,
-		},
-	} {
-		test.beforeFunc()
-		action := pr.evaluate(ud)
-		if action != test.expectedAction {
-			t.Fatalf("passthrough action should be %v, but got %v; ud: %+v", test.expectedAction, action, ud)
-		}
 	}
 }
 
@@ -464,4 +311,513 @@ func newTestUsbmanagerController() *usbmanagerController {
 	uc.init()
 
 	return &uc
+}
+
+func TestAddIOBundleWithHigherPriority(t *testing.T) {
+	// add iobundle with higher priority, therefore usb device has to be removed from first vm
+	ioBundleLowPrio := types.IoBundle{
+		Phylabel: "lowprio",
+		UsbAddr:  "1:1",
+	}
+
+	ioBundleHighPrio := types.IoBundle{
+		Phylabel:   "highprio",
+		UsbAddr:    "1:1",
+		UsbProduct: "9:9",
+	}
+
+	vmLowPrio := virtualmachine{
+		qmpSocketPath: "/lowprio.socket",
+		adapters:      []string{"lowprio"},
+	}
+
+	vmHighPrio := virtualmachine{
+		qmpSocketPath: "/highprio.socket",
+		adapters:      []string{"highprio"},
+	}
+
+	uc := newTestUsbmanagerController()
+	uc.addIOBundle(ioBundleLowPrio)
+	uc.addVirtualmachine(vmLowPrio)
+	uc.addVirtualmachine(vmHighPrio)
+
+	countConnect := 0
+	countDisconnect := 0
+	expectedConnectQmpSocketPath := []string{
+		vmLowPrio.qmpSocketPath,
+		vmHighPrio.qmpSocketPath,
+		vmLowPrio.qmpSocketPath,
+	}
+	uc.connectUSBDeviceToQemu = func(up usbpassthrough) {
+		if up.vm.qmpSocketPath != expectedConnectQmpSocketPath[countConnect] {
+			t.Fatalf("usb device connected to wrong vm; expected %s, got %s", expectedConnectQmpSocketPath[countConnect], up.vm.qmpSocketPath)
+		}
+		countConnect++
+	}
+	uc.disconnectUSBDeviceFromQemu = func(up usbpassthrough) {
+		if up.vm.qmpSocketPath != expectedConnectQmpSocketPath[countConnect-1] {
+			t.Fatalf("usb device disconnected from wrong vm; expected %s, got %s", expectedConnectQmpSocketPath[countConnect-1], up.vm.qmpSocketPath)
+		}
+		countDisconnect++
+	}
+
+	ud := usbdevice{
+		busnum:     1,
+		portnum:    "1",
+		devnum:     0,
+		vendorID:   9,
+		productID:  9,
+		devicetype: "",
+	}
+
+	uc.addUSBDevice(ud)
+	if countConnect != 1 || countDisconnect != 0 {
+		t.Fatal("wrong amount of connects/disconnects")
+	}
+
+	uc.addIOBundle(ioBundleHighPrio)
+	if countConnect != 2 || countDisconnect != 1 {
+		t.Fatal("wrong amount of connects/disconnects")
+	}
+
+	uc.removeIOBundle(ioBundleLowPrio)
+	if countConnect != 2 || countDisconnect != 1 {
+		t.Fatal("wrong amount of connects/disconnects")
+	}
+	uc.addIOBundle(ioBundleLowPrio)
+	if countConnect != 2 || countDisconnect != 1 {
+		t.Fatal("wrong amount of connects/disconnects")
+	}
+
+	uc.removeIOBundle(ioBundleHighPrio)
+	if countConnect != 3 || countDisconnect != 2 {
+		t.Fatalf("wrong amount of connects/disconnects (%d/%d)", countConnect, countDisconnect)
+	}
+}
+
+func TestParentassigngrp(t *testing.T) {
+	ioBundlePCI := types.IoBundle{
+		Phylabel:        "usbcontroller",
+		AssignmentGroup: "USB Controller",
+		PciLong:         "00:0d.0",
+	}
+	ioBundleUSB := types.IoBundle{
+		Phylabel:              "usbmouse",
+		AssignmentGroup:       "USB Mouse",
+		ParentAssignmentGroup: "USB Controller",
+		UsbAddr:               "1:1",
+	}
+
+	vmLowPrio := virtualmachine{
+		qmpSocketPath: "/lowprio.socket",
+		adapters:      []string{"usbmouse"},
+	}
+
+	vmHighPrio := virtualmachine{
+		qmpSocketPath: "/highprio.socket",
+		adapters:      []string{"usbcontroller"},
+	}
+
+	uc := newTestUsbmanagerController()
+	var connectedVM string
+	uc.connectUSBDeviceToQemu = func(up usbpassthrough) {
+		connectedVM = up.vm.qmpSocketPath
+	}
+	uc.disconnectUSBDeviceFromQemu = func(up usbpassthrough) {
+		connectedVM = ""
+	}
+
+	ud := usbdevice{
+		busnum:                  1,
+		portnum:                 "1",
+		devnum:                  0,
+		vendorID:                9,
+		productID:               9,
+		devicetype:              "",
+		usbControllerPCIAddress: ioBundlePCI.PciLong,
+		ueventFilePath:          "",
+	}
+
+	uc.addUSBDevice(ud)
+	uc.addIOBundle(ioBundlePCI)
+
+	uc.addIOBundle(ioBundleUSB)
+	uc.addVirtualmachine(vmLowPrio)
+
+	// Expecting usbmouse is now connected to lowprio VM
+	if connectedVM != vmLowPrio.qmpSocketPath {
+		t.Fatal("device is not connected to VM")
+	}
+
+	// Expecting usbcontroller (with usbmouse) is now connected to highprio VM
+	uc.addVirtualmachine(vmHighPrio)
+	if connectedVM != "" {
+		t.Fatalf("device is connected to VM %s", connectedVM)
+	}
+
+	uc.removeVirtualmachine(vmHighPrio)
+
+	// Expecting usbmouse is now connected to lowprio VM again
+	if connectedVM != vmLowPrio.qmpSocketPath {
+		t.Fatal("device is not connected to VM")
+	}
+}
+
+func TestAddIOBundleWithSeveralPCIControllers(t *testing.T) {
+	ioBundles := []types.IoBundle{
+		{
+			Phylabel:              "3",
+			AssignmentGroup:       "3",
+			ParentAssignmentGroup: "2",
+			UsbAddr:               "2:2",
+		},
+		{
+			Phylabel:              "2",
+			AssignmentGroup:       "2",
+			ParentAssignmentGroup: "1",
+			UsbAddr:               "1:1",
+		},
+		{
+			Phylabel:              "1 - controller A",
+			AssignmentGroup:       "1",
+			ParentAssignmentGroup: "",
+			PciLong:               "00:14",
+		},
+		{
+			Phylabel:              "1 - controller B",
+			AssignmentGroup:       "1",
+			ParentAssignmentGroup: "",
+			PciLong:               "00:16",
+		},
+		{
+			Phylabel:              "0 - controller C",
+			AssignmentGroup:       "0",
+			ParentAssignmentGroup: "",
+			PciLong:               "00:18",
+		},
+	}
+
+	uc := newTestUsbmanagerController()
+	uc.ruleEngine.rules = make(map[string]passthroughRule)
+	uc.connectUSBDeviceToQemu = func(up usbpassthrough) {
+		t.Fatal("should not passthrough any usb device")
+	}
+	uc.disconnectUSBDeviceFromQemu = func(up usbpassthrough) {}
+
+	for _, ioBundle := range ioBundles {
+		uc.addIOBundle(ioBundle)
+	}
+
+	vmWithControllerA := virtualmachine{
+		qmpSocketPath: "/vm",
+		adapters:      []string{"1 - controller A"},
+	}
+
+	uc.addVirtualmachine(vmWithControllerA)
+
+	ud := usbdevice{
+		busnum:                  1,
+		portnum:                 "1",
+		devnum:                  1,
+		vendorID:                11,
+		productID:               12,
+		usbControllerPCIAddress: "00:16",
+	}
+
+	uc.addUSBDevice(ud)
+
+	vmWithUSB1 := virtualmachine{
+		qmpSocketPath: "/vmUSB",
+		adapters:      []string{"2"},
+	}
+	uc.addVirtualmachine(vmWithUSB1)
+
+	usbDeviceConnected := false
+	uc.connectUSBDeviceToQemu = func(up usbpassthrough) {
+		usbDeviceConnected = true
+	}
+	uc.removeVirtualmachine(vmWithControllerA)
+
+	if !usbDeviceConnected {
+		t.Fatal("usb device should have been connected, but didn't")
+	}
+
+}
+
+func TestSetForbidRuleActive(t *testing.T) {
+	bundle := types.IoBundle{PciLong: "00:14.0", Phylabel: "pci", Logicallabel: "pci"}
+	vm := virtualmachine{
+		qmpSocketPath: "/asdf",
+		adapters:      []string{"pci"},
+	}
+
+	uc := newTestUsbmanagerController()
+
+	uc.addVirtualmachine(vm)
+	uc.addIOBundle(bundle)
+
+	uc.removeVirtualmachine(virtualmachine{
+		qmpSocketPath: "/asdf",
+		adapters:      []string{"pci"},
+	})
+
+	for _, rule := range uc.ruleEngine.rules {
+		if rule.virtualMachine() != nil {
+			t.Fatal("rule shall not have any vm")
+		}
+	}
+}
+
+func FuzzUSBManagerController(f *testing.F) {
+	f.Fuzz(func(t *testing.T,
+		phyLabel1 string,
+		pciLong1 string,
+		usbaddr1 string,
+		usbproduct1 string,
+		assigngrp1 string,
+
+		phyLabel2 string,
+		pciLong2 string,
+		usbaddr2 string,
+		usbproduct2 string,
+		assigngrp2 string,
+
+		phyLabel3 string,
+		pciLong3 string,
+		usbaddr3 string,
+		usbproduct3 string,
+		assigngrp3 string,
+
+		phyLabel4 string,
+		pciLong4 string,
+		usbaddr4 string,
+		usbproduct4 string,
+		assigngrp4 string,
+
+		phyLabel5 string,
+		pciLong5 string,
+		usbaddr5 string,
+		usbproduct5 string,
+		assigngrp5 string,
+
+		delBundle1 uint,
+		delBundle1Pos uint,
+
+		delBundle2 uint,
+		delBundle2Pos uint,
+
+		delBundle3 uint,
+		delBundle3Pos uint,
+
+		addVm1Name string,
+		addVm1Adapter1 uint,
+		addVm1Adapter2 uint,
+		addVm1Adapter3 uint,
+		addVm1Pos uint,
+
+		addVm2Name string,
+		addVm2Adapter1 uint,
+		addVm2Adapter2 uint,
+		addVm2Adapter3 uint,
+		addVm2Pos uint,
+
+		delVm1Pos uint,
+		delVm2Pos uint,
+
+		addUSB1Dev uint,
+		addUSB1Pos uint,
+
+		addUSB2Dev uint,
+		addUSB2Pos uint,
+
+	) {
+
+		ioBundle1 := types.IoBundle{
+			Phylabel:        phyLabel1,
+			AssignmentGroup: assigngrp1,
+			PciLong:         pciLong1,
+			UsbAddr:         usbaddr1,
+			UsbProduct:      usbproduct1,
+		}
+
+		ioBundle2 := types.IoBundle{
+			Phylabel:        phyLabel2,
+			AssignmentGroup: assigngrp2,
+			PciLong:         pciLong2,
+			UsbAddr:         usbaddr2,
+			UsbProduct:      usbproduct2,
+		}
+
+		ioBundle3 := types.IoBundle{
+			Phylabel:        phyLabel3,
+			AssignmentGroup: assigngrp3,
+			PciLong:         pciLong3,
+			UsbAddr:         usbaddr3,
+			UsbProduct:      usbproduct3,
+		}
+
+		ioBundle4 := types.IoBundle{
+			Phylabel:        phyLabel4,
+			AssignmentGroup: assigngrp4,
+			PciLong:         pciLong4,
+			UsbAddr:         usbaddr4,
+			UsbProduct:      usbproduct4,
+		}
+
+		ioBundle5 := types.IoBundle{
+			Phylabel:        phyLabel5,
+			AssignmentGroup: assigngrp5,
+			PciLong:         pciLong5,
+			UsbAddr:         usbaddr5,
+			UsbProduct:      usbproduct5,
+		}
+
+		ioBundlesArray := []*types.IoBundle{&ioBundle1, &ioBundle2, &ioBundle3, &ioBundle4, &ioBundle5}
+		ioBundlesArrayLen := uint(len(ioBundlesArray))
+
+		for i := range ioBundlesArray {
+			_, size := utf8.DecodeLastRuneInString(ioBundlesArray[i].AssignmentGroup)
+			// set the parentassigngrp to the assigngrp without the last character
+			// this way it is guaranteed that ioBundles with the same assigngrp
+			// have the same parentassigngrp
+			parentassigngrp := ioBundlesArray[i].AssignmentGroup[:len(ioBundlesArray[i].AssignmentGroup)-size]
+
+			ioBundlesArray[i].ParentAssignmentGroup = parentassigngrp
+		}
+
+		addUSBCmd := []struct {
+			ud  usbdevice
+			pos uint
+		}{
+			{
+				ud:  createTestUSBDeviceFromIOBundle(ioBundlesArray[addUSB1Dev%ioBundlesArrayLen]),
+				pos: addUSB1Pos % ioBundlesArrayLen,
+			},
+			{
+				ud:  createTestUSBDeviceFromIOBundle(ioBundlesArray[addUSB2Dev%ioBundlesArrayLen]),
+				pos: addUSB2Pos % ioBundlesArrayLen,
+			},
+		}
+
+		addVMCmd := []struct {
+			vm  virtualmachine
+			pos uint
+		}{
+			{
+				vm:  createTestVM(addVm1Name, ioBundlesArray, addVm1Adapter1, addVm1Adapter2, addVm1Adapter3),
+				pos: addVm1Pos % ioBundlesArrayLen,
+			},
+			{
+				vm:  createTestVM(addVm2Name, ioBundlesArray, addVm2Adapter1, addVm2Adapter2, addVm2Adapter3),
+				pos: addVm2Pos % ioBundlesArrayLen,
+			},
+		}
+		if addVm1Name == addVm2Name {
+			t.Log("vm1 and vm2 have the same name")
+		}
+
+		delBundleCmd := []struct {
+			index uint
+			pos   uint
+		}{
+			{delBundle1, delBundle1Pos % ioBundlesArrayLen},
+			{delBundle2, delBundle2Pos % ioBundlesArrayLen},
+			{delBundle3, delBundle3Pos % ioBundlesArrayLen},
+		}
+
+		for i := range delBundleCmd {
+			delBundleCmd[i].index = delBundleCmd[i].index % ioBundlesArrayLen
+			delBundleCmd[i].pos = delBundleCmd[i].pos % ioBundlesArrayLen
+		}
+
+		umc := usbmanagerController{}
+		umc.init()
+		umc.connectUSBDeviceToQemu = func(up usbpassthrough) {
+			t.Logf("connect usbdevice: %+v", up)
+		}
+		umc.disconnectUSBDeviceFromQemu = func(up usbpassthrough) {
+			t.Logf("disconnect usbdevice: %+v", up)
+		}
+		for pos, ioBundle := range ioBundlesArray {
+			for _, dbc := range delBundleCmd {
+				if dbc.pos == uint(pos) {
+					removeIOBundle := ioBundlesArray[dbc.index]
+					if removeIOBundle != nil {
+						t.Logf("removing ioBundle label %s usbaddr: %s usbproduct: %s pcilong: %s",
+							ioBundle.Phylabel, removeIOBundle.UsbAddr, removeIOBundle.UsbProduct, removeIOBundle.PciLong)
+						umc.removeIOBundle(*removeIOBundle)
+					}
+				}
+			}
+
+			for _, avc := range addVMCmd {
+				if avc.pos == uint(pos) {
+					t.Logf("adding virtualmachine with adapters %+v", avc.vm.adapters)
+					umc.addVirtualmachine(avc.vm)
+				}
+			}
+
+			for _, udc := range addUSBCmd {
+				if int(udc.pos) == pos {
+					t.Logf("adding device %+v", udc.ud)
+					umc.addUSBDevice(udc.ud)
+				}
+			}
+
+			if delVm1Pos == uint(pos) {
+				t.Logf("removing virtualmachine with adapters %+v", addVMCmd[0].vm.adapters)
+				umc.removeVirtualmachine(addVMCmd[0].vm)
+			}
+			if delVm2Pos == uint(pos) {
+				t.Logf("removing virtualmachine with adapters %+v", addVMCmd[1].vm.adapters)
+				umc.removeVirtualmachine(addVMCmd[1].vm)
+			}
+
+			t.Logf("adding ioBundle label %s usbaddr: %s usbproduct: %s pcilong: %s",
+				ioBundle.Phylabel, ioBundle.UsbAddr, ioBundle.UsbProduct, ioBundle.PciLong)
+			umc.addIOBundle(*ioBundle)
+		}
+	})
+}
+
+func createTestUSBDeviceFromIOBundle(ioBundle *types.IoBundle) usbdevice {
+	var ud usbdevice
+
+	ud.usbControllerPCIAddress = ioBundle.PciLong
+	usbParts := strings.SplitN(ioBundle.UsbAddr, ":", 2)
+
+	busnum, _ := strconv.ParseUint(usbParts[0], 10, 16)
+
+	ud.busnum = uint16(busnum)
+	if len(usbParts) == 2 {
+		ud.portnum = usbParts[1]
+	}
+
+	usbParts = strings.SplitN(ioBundle.UsbProduct, ":", 2)
+
+	vendorID, _ := strconv.ParseUint(usbParts[0], 16, 32)
+	ud.vendorID = uint32(vendorID)
+
+	if len(usbParts) == 2 {
+		productID, _ := strconv.ParseUint(usbParts[1], 16, 32)
+		ud.productID = uint32(productID)
+	}
+
+	return ud
+}
+
+func createTestVM(vmName string, ioBundlesArray []*types.IoBundle, vmAdapter1 uint, vmAdapter2 uint, vmAdapter3 uint) virtualmachine {
+	vm := virtualmachine{
+		qmpSocketPath: vmName,
+		adapters:      []string{},
+	}
+	for _, adapterIndex := range []int{int(vmAdapter1), int(vmAdapter2), int(vmAdapter3)} {
+		pos := adapterIndex % len(ioBundlesArray)
+
+		if adapterIndex > 0 {
+			vm.addAdapter(ioBundlesArray[pos].Phylabel)
+		}
+	}
+
+	return vm
 }

@@ -303,28 +303,23 @@ func parseBaseOS(getconfigCtx *getconfigContext,
 		Activate:           baseOS.Activate,
 	}
 
-	// Check if the BaseOsConfig already exists
-	prevBaseOsConfig, _ := getconfigCtx.pubBaseOsConfig.Get(cfg.Key())
-	if prevBaseOsConfig == nil {
-		// If we don't have a BaseOsConfig with the same key already published, it's a new one
-		// Check for activation flag
-		if cfg.Activate {
-			activateNewBaseOSFlag = true
-		}
+	// Check if baseOS version has changed and the new baseOS is set to be activated
+	partName := getZbootCurrentPartition(getconfigCtx.zedagentCtx)
+	status := getZbootPartitionStatus(getconfigCtx.zedagentCtx, partName)
+	if status.ShortVersion != cfg.BaseOsVersion && cfg.Activate {
+		activateNewBaseOSFlag = true
+		log.Functionf("BaseOS version has changed. Previous version: %s, New version: %s", status.ShortVersion, cfg.BaseOsVersion)
+		log.Functionf("Activate flag is set to true. BaseOS will be activated.")
+	} else {
+		log.Functionf("BaseOS version has not changed or Activate flag is not set to true.")
 	}
 
 	// Go through all published BaseOsConfig's and delete the ones which are not in the config
-	// and detect if we have a BaseOsConfig which has changed from Activate=false to Activate=true
 	items := getconfigCtx.pubBaseOsConfig.GetAll()
 	for idStr := range items {
 		if idStr != cfg.Key() {
 			log.Functionf("parseBaseOS: deleting %s\n", idStr)
 			unpublishBaseOsConfig(getconfigCtx, idStr)
-		} else {
-			if !items[idStr].(types.BaseOsConfig).Activate && cfg.Activate {
-				log.Functionf("parseBaseOS: Activate set for %s", idStr)
-				activateNewBaseOSFlag = true
-			}
 		}
 	}
 	// publish new one
@@ -611,6 +606,7 @@ func parseAppInstanceConfig(getconfigCtx *getconfigContext,
 		appInstance.FixedResources.MaxCpus = int(cfgApp.Fixedresources.Maxcpus)
 		appInstance.FixedResources.VirtualizationMode = types.VmMode(cfgApp.Fixedresources.VirtualizationMode)
 		appInstance.FixedResources.EnableVnc = cfgApp.Fixedresources.EnableVnc
+		appInstance.FixedResources.EnableVncShimVM = cfgApp.Fixedresources.EnableVncShimVm
 		appInstance.FixedResources.VncDisplay = cfgApp.Fixedresources.VncDisplay
 		appInstance.FixedResources.VncPasswd = cfgApp.Fixedresources.VncPasswd
 		appInstance.DisableLogs = cfgApp.Fixedresources.DisableLogs
@@ -655,6 +651,8 @@ func parseAppInstanceConfig(getconfigCtx *getconfigContext,
 				ioa.EthVf = sriov.EthVF{
 					Mac:    hwaddr.String(),
 					VlanID: uint16(adapter.EthVf.VlanId)}
+			} else if ioa.Type == types.IoCAN || ioa.Type == types.IoVCAN || ioa.Type == types.IoLCAN {
+				log.Functionf("Got CAN adapter")
 			}
 			appInstance.IoAdapterList = append(appInstance.IoAdapterList, ioa)
 		}
@@ -1296,11 +1294,13 @@ func parseDeviceIoListConfig(getconfigCtx *getconfigContext,
 			continue
 		}
 		port := types.PhysicalIOAdapter{
-			Ptype:        ioDevicePtr.Ptype,
-			Phylabel:     ioDevicePtr.Phylabel,
-			Logicallabel: ioDevicePtr.Logicallabel,
-			Assigngrp:    ioDevicePtr.Assigngrp,
-			Usage:        ioDevicePtr.Usage,
+			Ptype:           ioDevicePtr.Ptype,
+			Phylabel:        ioDevicePtr.Phylabel,
+			Logicallabel:    ioDevicePtr.Logicallabel,
+			Assigngrp:       ioDevicePtr.Assigngrp,
+			Parentassigngrp: ioDevicePtr.Parentassigngrp,
+			Usage:           ioDevicePtr.Usage,
+			Cbattr:          ioDevicePtr.Cbattr,
 		}
 		if ioDevicePtr.UsagePolicy != nil {
 			// Need to keep this to make proper determination
@@ -2410,15 +2410,16 @@ func parseConfigItems(ctx *getconfigContext, config *zconfig.EdgeDevConfig,
 	}
 	configHash := h.Sum(nil)
 	same := bytes.Equal(configHash, itemsPrevConfigHash)
-	itemsPrevConfigHash = configHash
 	if same {
 		return
 	}
+
 	log.Functionf("parseConfigItems: Applying updated config "+
 		"prevSha: % x, "+
 		"NewSha : % x, "+
 		"items: %v",
 		itemsPrevConfigHash, configHash, items)
+	itemsPrevConfigHash = configHash
 
 	// Start with the defaults so that we revert to default when no data
 	// 1) Use the specified Value if no Errors
@@ -2610,6 +2611,12 @@ func checkAndPublishAppInstanceConfig(getconfigCtx *getconfigContext,
 	}
 	if config.Service && config.FixedResources.VirtualizationMode != types.NOHYPER {
 		err := fmt.Errorf("service app instance %s must have NOHYPER VirtualizationMode", config.UUIDandVersion.UUID)
+		log.Error(err)
+		config.Errors = append(config.Errors, err.Error())
+	}
+
+	if config.FixedResources.EnableVnc == false && config.FixedResources.EnableVncShimVM == true {
+		err := fmt.Errorf("VNC shim VM enabled but VNC disabled for app instance %s", config.UUIDandVersion.UUID)
 		log.Error(err)
 		config.Errors = append(config.Errors, err.Error())
 	}

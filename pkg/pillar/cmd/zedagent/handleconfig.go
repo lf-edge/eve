@@ -100,6 +100,7 @@ type getconfigContext struct {
 	pubDatastoreConfig        pubsub.Publication
 	pubNetworkInstanceConfig  pubsub.Publication
 	pubControllerCert         pubsub.Publication
+	pubCipherContext          pubsub.Publication
 	subContentTreeStatus      pubsub.Subscription
 	pubContentTreeConfig      pubsub.Publication
 	subVolumeStatus           pubsub.Subscription
@@ -161,8 +162,6 @@ type getconfigContext struct {
 	currentMetricInterval uint32
 
 	configEdgeview *types.EdgeviewConfig // edge-view config save
-
-	cipherContexts map[string]types.CipherContext
 }
 
 func (ctx *getconfigContext) getCachedResolvedIPs(hostname string) []types.CachedIP {
@@ -470,6 +469,9 @@ func configTimerTask(getconfigCtx *getconfigContext, handleChannel chan interfac
 			if getconfigCtx.configProcessingRV != configOK {
 				log.Noticef("config processing flag is not OK: %s", getconfigCtx.configProcessingRV)
 			}
+			if ctx.publishedEdgeNodeCerts && !ctx.publishedAttestEscrow {
+				log.Warning("Not yet published AttestEscrow")
+			}
 		}
 		ctx.ps.StillRunning(wdName, warningTime, errorTime)
 	}
@@ -608,14 +610,6 @@ func requestConfigByURL(getconfigCtx *getconfigContext, url string,
 	configProcessingRetval, []netdump.TracedNetRequest) {
 
 	log.Tracef("getLatestConfig(%s, %d)", url, iteration)
-	// On first boot, if we haven't yet published our certificates we defer
-	// to ensure that the controller has our certs and can add encrypted
-	// secrets to our config.
-	if getconfigCtx.zedagentCtx.bootReason == types.BootReasonFirst &&
-		!getconfigCtx.zedagentCtx.publishedEdgeNodeCerts {
-		log.Noticef("Defer fetching config until our EdgeNodeCerts have been published")
-		return deferConfig, nil
-	}
 	ctx := getconfigCtx.zedagentCtx
 	const bailOnHTTPErr = false // For 4xx and 5xx HTTP errors we try other interfaces
 	// except http.StatusForbidden(which returns error

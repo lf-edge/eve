@@ -31,7 +31,13 @@ build: $(APPS) $(APPS1)
 
 TAGS=
 ifeq ($(RSTATS),y)
-	TAGS:=-tags rstats
+	TAGS+=rstats
+endif
+ifneq ($(HV),)
+	TAGS+=$(HV)
+endif
+ifneq ($(TAGS),)
+	TAGS:=-tags "$(TAGS)"
 endif
 
 LDFLAGS=-X=main.Version=$(BUILD_VERSION)
@@ -74,8 +80,25 @@ enter-docker-dev: build-docker-dev
 build-docker-git:
 	git archive HEAD | docker build $(DOCKER_ARGS) -t $(DOCKER_TAG) -
 
-test:
-	go test -mod=vendor ./...
+build-docker-test:
+	docker build $(DOCKER_ARGS) --build-arg TEST_TOOLS=y -t $(DOCKER_TAG) . --target build
+
+test: build-docker-test
+	rm -f results.json
+	rm -f results.xml
+	touch results.json
+	touch results.xml
+	docker run --platform linux/$(ZARCH) -w /pillar \
+		--mount type=bind,source=./results.json,target=/pillar/results.json \
+		--mount type=bind,source=./results.xml,target=/pillar/results.xml \
+		--entrypoint /final/opt/gotestsum $(DOCKER_TAG) \
+		--jsonfile /pillar/results.json \
+		--junitfile /pillar/results.xml \
+		--raw-command -- go test -tags kubevirt -coverprofile=coverage.txt -covermode=atomic -race -json \
+		./...
+	docker run --platform linux/$(ZARCH) -w /pillar \
+		--entrypoint /bin/sh $(DOCKER_TAG) \
+		/pillar/build-scripts/fuzz_test.sh
 
 clean:
 	@rm -rf $(DISTDIR)
@@ -90,4 +113,4 @@ fmt-check-details:
 	@gofmt -d $(GOFILES)
 
 vet:
-	go vet ./...
+	go vet $(TAGS) ./...

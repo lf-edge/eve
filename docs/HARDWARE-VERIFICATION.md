@@ -87,12 +87,26 @@ the read performance of the available storage devices using
 ## Getting the results of the verification process
 
 The verification image prints the results of tests on the screen and stores
-them when possible (e.g., when we are using the raw version) in the
-**inventory partition** of the boot media. We can get the verification process
-results by running the command ```tools/extract_verification_info.sh <verification.raw>```
+them when possible (e.g., when we are using a USB or a raw file) in the
+**inventory partition** of the boot media. We can extract the logs of the
+verification process results by running the command
+```tools/extract-verification-info.sh <USB_device_name|verification_img>```
 on the `verification.raw` image file or on the USB stick. To achieve that, we must
-mount the USB stick or copy the image file to a PC and execute the script. The
+mount the USB stick or copy the image file to our PC and execute the script. The
 script copies, among other things, the logs of the tests, details about the
 hardware, etc. A file named ```summary.log``` contains a summary of the
 verification process results to help the user quickly understand potential
 problems.
+
+## Publishing the results of the verification processes
+
+Apart from extracting the logs of the verification process, we can upload
+the results of verification in a dedicated web application.
+For this, we need to plug the USB stick or copy the file containing the verification
+on our PC and execute the script `tools/publish-verification-info.sh`.
+Assuming the web application is running on `www.example.com:8999`, we can publish
+the results by running the script as follows:
+```./publish-verification-info.sh /dev/disk4 https://www.example.com:8999```
+or ```./publish-verification-info.sh verification.raw https://www.example.com:8999```.
+That way, we can access the logs of different verification processes in a centralized
+and user-friendly manner.

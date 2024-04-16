@@ -32,7 +32,6 @@ the edge-node, not globally.
 ### Physical network ports
 
 EVE supports ethernet NICs, WiFi modules and cellular modems.
-Support for [CAN devices is a work in-progress](https://wiki.lfedge.org/display/EVE/CAN+Bus+support).
 
 Physical network IO devices are listed as part of the device model. This should include
 all devices that will be used by EVE (for management) or by applications (directly or shared).

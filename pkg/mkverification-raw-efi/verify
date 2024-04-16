@@ -411,6 +411,11 @@ else
    echo "No watchdogs available" > "$REPORT/watchdogs.log"
 fi
 
+ARCH=$(uname -m)
+if [ "$ARCH" = "x86_64" ]; then
+    /vmcap > "$REPORT/vmcap.log"
+fi
+
 cat "$REPORT/summary.log"
 
 if [ -n "$REPORT" ]; then

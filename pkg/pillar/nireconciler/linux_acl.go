@@ -17,13 +17,18 @@ import (
 	uuid "github.com/satori/go.uuid"
 )
 
+const (
+	// dropCounterChain : chain with no rules, used merely to count dropped packets.
+	dropCounterChain = "DROP-COUNTER"
+)
+
 // Describes protocol that is allowed implicitly because it provides some essential
 // function for applications.
 type essentialProto struct {
 	label          string
 	ingressMatch   []string
 	egressMatch    []string
-	mark           string
+	mark           uint32
 	markChainName  string
 	canOrigOutside bool // true if communication can be initiated from outside the edge node
 }
@@ -64,8 +69,6 @@ var (
 		"mangle": {"PREROUTING", "POSTROUTING"},
 		"nat":    {"PREROUTING", "POSTROUTING"},
 	}
-	ingressLogArgs = []string{"--log-prefix", "FORWARD:TO:", "--log-level", "3"}
-	egressLogArgs  = []string{"--log-prefix", "FORWARD:FROM:", "--log-level", "3"}
 )
 
 func appChain(chain string) string {
@@ -504,6 +507,7 @@ func (r *LinuxNIReconciler) getIntendedAppConnACLs(niID uuid.UUID,
 	}
 	intendedAppConnACLs := dg.New(graphArgs)
 	for _, ipv6 := range []bool{true, false} {
+		// TODO: use IPv4RulesSG and IPv6RulesSG ?
 		if ni.config.Type == types.NetworkInstanceTypeLocal {
 			if ni.config.IsIPv6() != ipv6 {
 				continue
@@ -602,9 +606,10 @@ func (r *LinuxNIReconciler) getIntendedAppConnRawIptables(vif vifInfo,
 			if ni.config.Type == types.NetworkInstanceTypeSwitch {
 				iptablesRule.Target = "DROP"
 			} else {
-				// Dropped during the routing phase (using the blackhole interface).
-				iptablesRule.Target = "LOG"
-				iptablesRule.TargetOpts = egressLogArgs
+				// Add rule to only count the dropped packet, without actually dropping it.
+				// Flow is instead dropped during the routing phase (using the blackhole
+				// interface).
+				iptablesRule.Target = dropCounterChain
 			}
 		} else {
 			iptablesRule.Target = "ACCEPT"
@@ -621,11 +626,10 @@ func (r *LinuxNIReconciler) getIntendedAppConnRawIptables(vif vifInfo,
 			aclRules = append(aclRules, iptablesRule2)
 		}
 	}
-	// 4. Default drop rule at the end.
+	// 4. Packet counting rule for the default drop.
 	aclRules = append(aclRules, iptables.Rule{
-		RuleLabel:  "Log Default DROP",
-		Target:     "LOG",
-		TargetOpts: egressLogArgs,
+		RuleLabel: "Count packets matched by the Default DROP",
+		Target:    dropCounterChain,
 	})
 	if ni.config.Type == types.NetworkInstanceTypeSwitch {
 		// Switched traffic cannot be dropped using the blackhole - it requires routing.
@@ -651,10 +655,11 @@ func (r *LinuxNIReconciler) getIntendedAppConnRawIptables(vif vifInfo,
 }
 
 // Table FILTER, chain FORWARD is used to:
-//   - LOG to-be-dropped traffic *coming into* local NIs (dropped during the routing phase)
+//   - Count packets of to-be-dropped traffic *coming into* local NIs
+//     (dropped during the routing phase)
 //     XXX Isn't routing performed before filter/forward ?!
 //   - Apply rate-limit ACL rules (DROP extra ingress packets)
-//   - LOG + fully apply (incl. DROP) ACLs on traffic *coming into* switch NIs
+//   - Count packets + fully apply (incl. DROP) ACLs on traffic *coming into* switch NIs
 func (r *LinuxNIReconciler) getIntendedAppConnFilterIptables(vif vifInfo,
 	ul types.AppNetAdapterConfig, ipv6 bool) (items []dg.Item) {
 	ni := r.nis[vif.NI]
@@ -662,16 +667,19 @@ func (r *LinuxNIReconciler) getIntendedAppConnFilterIptables(vif vifInfo,
 	if ni.bridge.IPAddress != nil {
 		bridgeIP = ni.bridge.IPAddress.IP
 	}
-	if ni.bridge.Uplink.IfName == "" {
-		// Air-gapped - not possible to reach applications from outside.
-		return
-	}
 	// Put filter/FORWARD rules for this VIF into a separate table.
+	// Chain is configured also for air-gapped NIs even if not actually used.
+	// This is to prevent LinuxCollector.fetchIptablesCounters from failing to find
+	// the chain and logging many errors.
 	items = append(items, iptables.Chain{
 		Table:     "filter",
 		ChainName: vifChain("FORWARD", vif),
 		ForIPv6:   ipv6,
 	})
+	if ni.bridge.Uplink.IfName == "" {
+		// Air-gapped - not possible to reach applications from outside.
+		return
+	}
 	switch ni.config.Type {
 	case types.NetworkInstanceTypeSwitch:
 		items = append(items, iptables.Rule{
@@ -740,9 +748,10 @@ func (r *LinuxNIReconciler) getIntendedAppConnFilterIptables(vif vifInfo,
 			if ni.config.Type == types.NetworkInstanceTypeSwitch {
 				iptablesRule.Target = "DROP"
 			} else {
-				// Dropped during the routing phase (using the blackhole interface).
-				iptablesRule.Target = "LOG"
-				iptablesRule.TargetOpts = ingressLogArgs
+				// Add rule to only count the dropped packet, without actually dropping it.
+				// Flow is instead dropped during the routing phase (using the blackhole
+				// interface).
+				iptablesRule.Target = dropCounterChain
 			}
 		} else {
 			iptablesRule.Target = "ACCEPT"
@@ -759,11 +768,10 @@ func (r *LinuxNIReconciler) getIntendedAppConnFilterIptables(vif vifInfo,
 			aclRules = append(aclRules, iptablesRule2)
 		}
 	}
-	// 3. Default drop rule at the end.
+	// 3. Packet counting rule for the default drop.
 	aclRules = append(aclRules, iptables.Rule{
-		RuleLabel:  "Log Default DROP",
-		Target:     "LOG",
-		TargetOpts: ingressLogArgs,
+		RuleLabel: "Count packets matched by the Default DROP",
+		Target:    dropCounterChain,
 	})
 	if ni.config.Type == types.NetworkInstanceTypeSwitch {
 		// Switched traffic cannot be dropped using the blackhole - it requires routing.
@@ -956,8 +964,10 @@ func (r *LinuxNIReconciler) getIntendedAppConnMangleIptables(vif vifInfo,
 			continue
 		}
 		markChain := markChainPrefix + proto.markChainName
+		mark := iptables.GetConnmark(
+			uint8(app.appNum), proto.mark, false, false)
 		if _, alreadyAdded := addedMarkChains[markChain]; !alreadyAdded {
-			items = append(items, getMarkingChainCfg(markChain, ipv6, proto.mark)...)
+			items = append(items, getMarkingChainCfg(markChain, ipv6, markToString(mark))...)
 			addedMarkChains[markChain] = struct{}{}
 		}
 		ingressRules = append(ingressRules, iptables.Rule{
@@ -988,7 +998,7 @@ func (r *LinuxNIReconciler) getIntendedAppConnMangleIptables(vif vifInfo,
 		}
 		markChain := markChainPrefix + strconv.Itoa(int(aclRule.RuleID))
 		mark := iptables.GetConnmark(
-			uint8(app.appNum), uint32(aclRule.RuleID), parsedRule.drop)
+			uint8(app.appNum), uint32(aclRule.RuleID), true, parsedRule.drop)
 		if _, alreadyAdded := addedMarkChains[markChain]; !alreadyAdded {
 			items = append(items,
 				getMarkingChainCfg(markChain, ipv6, markToString(mark))...)
@@ -1043,8 +1053,10 @@ mangleEgress:
 	// 2.1. Mark essential protocols allowed implicitly.
 	for _, proto := range essentialProtos {
 		markChain := markChainPrefix + proto.markChainName
+		mark := iptables.GetConnmark(
+			uint8(app.appNum), proto.mark, false, false)
 		if _, alreadyAdded := addedMarkChains[markChain]; !alreadyAdded {
-			items = append(items, getMarkingChainCfg(markChain, ipv6, proto.mark)...)
+			items = append(items, getMarkingChainCfg(markChain, ipv6, markToString(mark))...)
 			addedMarkChains[markChain] = struct{}{}
 		}
 		egressRules = append(egressRules, iptables.Rule{
@@ -1055,10 +1067,12 @@ mangleEgress:
 	}
 	// 2.2. Mark request from app to the metadata server
 	if !ipv6 && bridgeIP != nil {
-		httpMark := iptables.ControlProtocolMarkingIDMap["app_http"]
+		httpMark := iptables.GetConnmark(uint8(app.appNum),
+			iptables.ControlProtocolMarkingIDMap["app_http"], false, false)
 		markMetadataChain := markChainPrefix + "metadata"
 		if _, alreadyAdded := addedMarkChains[markMetadataChain]; !alreadyAdded {
-			items = append(items, getMarkingChainCfg(markMetadataChain, ipv6, httpMark)...)
+			items = append(items,
+				getMarkingChainCfg(markMetadataChain, ipv6, markToString(httpMark))...)
 			addedMarkChains[markMetadataChain] = struct{}{}
 		}
 		egressRules = append(egressRules, iptables.Rule{
@@ -1083,7 +1097,7 @@ mangleEgress:
 		}
 		markChain := markChainPrefix + strconv.Itoa(int(aclRule.RuleID))
 		mark := iptables.GetConnmark(
-			uint8(app.appNum), uint32(aclRule.RuleID), parsedRule.drop)
+			uint8(app.appNum), uint32(aclRule.RuleID), true, parsedRule.drop)
 		if _, alreadyAdded := addedMarkChains[markChain]; !alreadyAdded {
 			items = append(items,
 				getMarkingChainCfg(markChain, ipv6, markToString(mark))...)
@@ -1106,7 +1120,7 @@ mangleEgress:
 	if ni.config.Type == types.NetworkInstanceTypeLocal {
 		dropAllChain := markChainPrefix + "drop-all"
 		mark := iptables.GetConnmark(
-			uint8(app.appNum), iptables.DefaultDropAceID, true)
+			uint8(app.appNum), iptables.DefaultDropAceID, false, true)
 		items = append(items,
 			getMarkingChainCfg(dropAllChain, ipv6, markToString(mark))...)
 		defaultDropMark := iptables.Rule{

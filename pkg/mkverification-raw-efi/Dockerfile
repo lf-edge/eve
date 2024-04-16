@@ -15,7 +15,7 @@ ENV BUILD_PKGS mkinitfs grep patch make coreutils musl-dev gcc g++ perl \
     util-linux-dev flex linux-headers glib-dev libxrandr-dev zlib-dev \
     libusb-dev kmod-dev curl eudev-dev libdrm-dev i2c-tools-dev hwinfo \
     binutils-dev libaio-dev zlib-static libvncserver-dev python3 pixman-dev \
-    py3-setuptools bash perl cmake m4 pkgconf autoconf-archive tpm2-tss-dev
+    py3-setuptools bash perl cmake m4 pkgconf autoconf-archive tpm2-tss-dev go
 ENV PKGS mtools dosfstools libarchive-tools sgdisk e2fsprogs util-linux \
     squashfs-tools coreutils tar dmidecode smartmontools libaio libaio-dev \
     perl glib zlib libusb curl xz pciutils usbutils hdparm util-linux \
@@ -38,7 +38,9 @@ ADD https://github.com/linuxhw/build-stuff/releases/download/1.6/hw-probe-1.6-AI
 #ADD https://cloud-images.ubuntu.com/minimal/releases/jammy/release/ubuntu-22.04-minimal-cloudimg-amd64.img /out/ubuntu-22.04-minimal-cloudimg-amd64.img
 ADD https://github.com/tpm2-software/tpm2-tools/archive/5.2.tar.gz /out/5.2.tar.gz
 
-COPY make-raw verify grub.cfg.in UsbInvocationScript.txt ./
+COPY make-raw verify grub.cfg.in UsbInvocationScript.txt vmcap.go ./
+
+RUN go build vmcap.go && rm vmcap.go
 
 RUN tar -xf hw-probe-1.6-AI.tar.gz \
     && tar -xf ddcutil-1.2.2.tar.gz \

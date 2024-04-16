@@ -145,15 +145,13 @@ func (s *ociSpec) AddLoader(volume string) error {
 			keyAndValueSlice := strings.SplitN(e, "=", 2)
 			if len(keyAndValueSlice) == 2 {
 				// handles Key=Value case
-				// Trim off (i.e., remove leading and trailing) spaces and
-				// double quotes, so we don't quote the value twice
-				val := strings.Trim(keyAndValueSlice[1], " \"")
-				envContent = envContent + fmt.Sprintf("export %s=\"%s\"\n", keyAndValueSlice[0], val)
+				envContent = envContent + fmt.Sprintf("export %s=\"%s\"\n", keyAndValueSlice[0], keyAndValueSlice[1])
 			} else {
 				// handles Key= case
 				envContent = envContent + fmt.Sprintf("export %s\n", e)
 			}
 		}
+
 		if err := os.WriteFile(filepath.Join(volumeRoot, "environment"), []byte(envContent), 0644); err != nil {
 			return err
 		}

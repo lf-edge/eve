@@ -234,7 +234,7 @@ print_usb_controllers() {
         grp="group$(pci_iommu_group "$USB")"
         cat <<__EOT__
     {
-      "ztype": 2,
+      "ztype": "IO_TYPE_USB_CONTROLLER",
       "phylabel": "USB${ID}",
       "assigngrp": "${grp}",
       "phyaddrs": {
@@ -257,7 +257,7 @@ __EOT__
     if [ -z "$ID" ] && [ "$(lsusb -t | wc -l)" -gt 0 ]; then
     cat <<__EOT__
     {
-      "ztype": 2,
+      "ztype": "IO_TYPE_USB_CONTROLLER",
       "phylabel": "USB",
       "assigngrp": "USB",
       "logicallabel": "USB",
@@ -300,7 +300,7 @@ print_usb_devices() {
     for i in $(find /sys/devices/ -name uevent | grep -E '/usb[0-9]/' | grep -E '/[0-9]-[0-9](\.[0-9]+)?/uevent')
     do
         local labelprefix="USB"
-        local ztype="IO_TYPE_UNSPECIFIED"
+        local ztype="IO_TYPE_USB_DEVICE"
         local ignore_dev=0
         local devicepath
         devicepath=$(dirname "$i")
@@ -382,6 +382,7 @@ print_usb_devices() {
       "ztype": "${ztype}",
       "phylabel": "${label}",
       "assigngrp": "${assigngrp}",
+      "parentassigngrp": "${parentassigngrp}",
       "cost": ${cost},
       "phyaddrs": {
         "usbaddr": "$usbaddr",
@@ -396,6 +397,7 @@ __EOT__
 
 if [ "$usb_devices" = "1" ]
 then
+    print_usb_controllers
     print_usb_devices
 else
     print_usb_controllers
@@ -527,6 +529,30 @@ __EOT__
      fi
      COMMA="},"
   fi
+done
+#enumerate physical CAN devices
+for CAN in /sys/class/net/*; do
+    TYPE=$(cat "${CAN}/type")
+    if [ "$TYPE" != 280 ]; then
+        continue
+    fi
+    ZTYPE="IO_TYPE_CAN"
+    IFNAME=$(basename "${CAN}")
+    cat <<__EOT__
+    ${COMMA}
+    {
+     "ztype": ${ZTYPE},
+     "phylabel": "${IFNAME}",
+     "phyaddrs": {
+       "Ifname": "${IFNAME}"
+      },
+      "logicallabel": "${IFNAME}",
+      "assigngrp": "",
+      "cbattr": {
+        "bitrate": "150000"
+      }
+__EOT__
+     COMMA="},"
 done
 #enumerate Audio
 ID=""

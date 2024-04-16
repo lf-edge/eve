@@ -66,7 +66,7 @@ func (handler *volumeHandlerZVol) PrepareVolume() error {
 		}
 	}
 	zVolName := handler.status.ZVolName()
-	if err := zfs.CreateVolumeDataset(handler.log, zVolName, size, "zstd"); err != nil {
+	if err := zfs.CreateVolumeDataset(handler.log, zVolName, size, "zstd", zfs.VolBlockSizeBytes); err != nil {
 		errStr := fmt.Sprintf("Error creating zfs zvol at %s, error=%v",
 			zVolName, err)
 		handler.log.Error(errStr)
@@ -270,26 +270,54 @@ func (handler *volumeHandlerZVol) getVolumeFilePath() (string, error) {
 }
 
 func (handler *volumeHandlerZVol) CreateSnapshot() (interface{}, time.Time, error) {
-	//TODO implement me
-	errStr := fmt.Sprintf("CreateSnapshot not implemented for zvol")
-	handler.log.Error(errStr)
-	err := errors.New(errStr)
-	timeCreated := time.Time{}
-	return "", timeCreated, err
+	handler.log.Noticef("CreateSnapshot for ZFS-based volume %s", handler.status.Key())
+	snapshotName, err := zfs.CreateSnapshot(handler.status.ZVolName())
+	if err != nil {
+		errStr := fmt.Sprintf("Error creating ZFS snapshot for %s: %v",
+			handler.status.Key(), err)
+		handler.log.Error(errStr)
+		return nil, time.Time{}, errors.New(errStr)
+	}
+	handler.log.Noticef("CreateSnapshot for ZFS-based volume %s: snapshot %s created", handler.status.Key(), snapshotName)
+	return snapshotName, time.Now(), nil
 }
 
 func (handler *volumeHandlerZVol) RollbackToSnapshot(snapshotMeta interface{}) error {
-	//TODO implement me
-	errStr := fmt.Sprintf("RollbackToSnapshot not implemented for zvol")
-	handler.log.Error(errStr)
-	err := errors.New(errStr)
-	return err
+	snapshotName, ok := snapshotMeta.(string)
+	if !ok {
+		errStr := fmt.Sprintf("RollbackToSnapshot failed for %s: invalid snapshotMeta",
+			handler.status.Key())
+		handler.log.Error(errStr)
+		return errors.New(errStr)
+	}
+	datasetName := handler.status.ZVolName()
+	err := zfs.RollbackToSnapshot(datasetName, snapshotName)
+	if err != nil {
+		errStr := fmt.Sprintf("RollbackToSnapshot failed for %s: %v",
+			handler.status.Key(), err)
+		handler.log.Error(errStr)
+		return errors.New(errStr)
+	}
+	handler.log.Noticef("RollbackToSnapshot for ZFS-based volume %s: snapshot %s rolled back", handler.status.Key(), snapshotName)
+	return nil
 }
 
 func (handler *volumeHandlerZVol) DeleteSnapshot(snapshotMeta interface{}) error {
-	//TODO implement me
-	errStr := fmt.Sprintf("DeleteSnapshot not implemented for zvol")
-	handler.log.Error(errStr)
-	err := errors.New(errStr)
-	return err
+	snapshotName, ok := snapshotMeta.(string)
+	if !ok {
+		errStr := fmt.Sprintf("DeleteSnapshot failed for %s: invalid snapshotMeta",
+			handler.status.Key())
+		handler.log.Error(errStr)
+		return errors.New(errStr)
+	}
+	err := zfs.DestroyDataset(snapshotName)
+	if err != nil {
+		errStr := fmt.Sprintf("DeleteSnapshot failed for %s: %v",
+			handler.status.Key(), err)
+		handler.log.Error(errStr)
+		return errors.New(errStr)
+
+	}
+	handler.log.Noticef("DeleteSnapshot for ZFS-based volume %s: snapshot %s deleted", handler.status.Key(), snapshotName)
+	return nil
 }

@@ -16,12 +16,13 @@ import (
 // PhysicalAddress - Structure that represents various attributes related
 // to the addressing of the Adapter
 type PhysicalAddress struct {
-	PciLong string
-	Ifname  string
-	Serial  string
-	Irq     string
-	Ioports string
-	UsbAddr string
+	PciLong    string
+	Ifname     string
+	Serial     string
+	Irq        string
+	Ioports    string
+	UsbAddr    string
+	UsbProduct string
 	// unknownType - If a type in config is unknown, store it here.
 	UnknownType string
 }
@@ -44,6 +45,7 @@ type PhysicalIOAdapter struct {
 	Assigngrp    string
 	Usage        zcommon.PhyIoMemberUsage
 	UsagePolicy  PhyIOUsagePolicy
+	//nolint:godox
 	// FIXME: cbattr - This needs to be thought through to be made into
 	//  a structure OR may be even various attributes in PhysicalIO structure
 	// itself.

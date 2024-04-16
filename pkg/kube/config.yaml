@@ -10,3 +10,4 @@ etcd-expose-metrics: true
 container-runtime-endpoint: "/run/containerd-user/containerd.sock"
 etcd-arg:
   - "quota-backend-bytes=8589934592"
+disable-network-policy: true

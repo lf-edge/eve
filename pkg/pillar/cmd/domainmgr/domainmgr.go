@@ -10,6 +10,7 @@ package domainmgr
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/base64"
 	"errors"
 	"flag"
@@ -23,10 +24,12 @@ import (
 
 	"github.com/containerd/cgroups"
 	"github.com/google/go-cmp/cmp"
+	envp "github.com/hashicorp/go-envparse"
 	zconfig "github.com/lf-edge/eve-api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/canbus"
 	"github.com/lf-edge/eve/pkg/pillar/cas"
 	"github.com/lf-edge/eve/pkg/pillar/cipher"
 	"github.com/lf-edge/eve/pkg/pillar/containerd"
@@ -1281,19 +1284,15 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 
 	// Start by marking with PendingAdd
 	status := types.DomainStatus{
-		UUIDandVersion:     config.UUIDandVersion,
-		PendingAdd:         true,
-		DisplayName:        config.DisplayName,
-		DomainName:         config.GetTaskName(),
-		AppNum:             config.AppNum,
-		VirtualizationMode: config.VirtualizationModeOrDefault(),
-		EnableVnc:          config.EnableVnc,
-		VncDisplay:         config.VncDisplay,
-		VncPasswd:          config.VncPasswd,
-		DisableLogs:        config.DisableLogs,
-		State:              types.INSTALLED,
-		VmConfig:           config.VmConfig,
-		Service:            config.Service,
+		UUIDandVersion: config.UUIDandVersion,
+		PendingAdd:     true,
+		DisplayName:    config.DisplayName,
+		DomainName:     config.GetTaskName(),
+		AppNum:         config.AppNum,
+		DisableLogs:    config.DisableLogs,
+		State:          types.INSTALLED,
+		VmConfig:       config.VmConfig,
+		Service:        config.Service,
 	}
 
 	status.VmConfig.CPUs = ""
@@ -1332,7 +1331,8 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 }
 
 // doAssignAdaptersToDomain assigns IO adapters to the newly created domain.
-// Note that the adapters are already reserved for the domain using reserveAdapters (UsedByUUID is set).
+// The adapters are reserved here for the domain
+// UsedByUUID is already set in reserveAdapters
 func doAssignIoAdaptersToDomain(ctx *domainContext, config types.DomainConfig,
 	status *types.DomainStatus) error {
 
@@ -1374,7 +1374,7 @@ func doAssignIoAdaptersToDomain(ctx *domainContext, config types.DomainConfig,
 				log.Functionf("Assigning %s (%s) to %s",
 					ib.Phylabel, ib.UsbAddr, status.DomainName)
 				assignmentsUsb = addNoDuplicate(assignmentsUsb, ib.UsbAddr)
-			} else if ib.PciLong != "" && !ib.IsPCIBack {
+			} else if ib.PciLong != "" && !ib.IsPCIBack && !ib.KeepInHost {
 				log.Functionf("Assigning %s (%s) to %s",
 					ib.Phylabel, ib.PciLong, status.DomainName)
 				assignmentsPci = addNoDuplicate(assignmentsPci, ib.PciLong)
@@ -1843,7 +1843,6 @@ func unmountContainers(ctx *domainContext, diskStatusList []types.DiskStatus, fo
 
 // releaseAdapters is called when the domain is done with the device and we
 // clear UsedByUUID
-// In addition, if KeepInHost is set, we move it back to the host.
 // If status is set, any errors are recorded in status
 func releaseAdapters(ctx *domainContext, ioAdapterList []types.IoAdapter,
 	myUUID uuid.UUID, status *types.DomainStatus) {
@@ -1874,7 +1873,7 @@ func releaseAdapters(ctx *domainContext, ioAdapterList []types.IoAdapter,
 					myUUID)
 				continue
 			}
-			if ib.PciLong != "" && ib.KeepInHost && ib.IsPCIBack {
+			if ib.PciLong != "" && ib.IsPCIBack {
 				log.Functionf("releaseAdapters removing %s (%s) from %s",
 					ib.Phylabel, ib.PciLong, myUUID)
 				assignments = addNoDuplicate(assignments, ib.PciLong)
@@ -2212,6 +2211,7 @@ func handleModify(ctx *domainContext, key string,
 func updateStatusFromConfig(status *types.DomainStatus, config types.DomainConfig) {
 	status.VirtualizationMode = config.VirtualizationModeOrDefault()
 	status.EnableVnc = config.EnableVnc
+	status.EnableVncShimVM = config.EnableVncShimVM
 	status.VncDisplay = config.VncDisplay
 	status.VncPasswd = config.VncPasswd
 	status.DisableLogs = config.DisableLogs
@@ -2586,17 +2586,27 @@ func fetchCloudInit(ctx *domainContext,
 // Key1=Val1
 // Key2=Val2 ...
 func parseEnvVariablesFromCloudInit(envPairs []string) (map[string]string, error) {
-
-	envList := make(map[string]string, 0)
+	var envStr string
 	for _, v := range envPairs {
 		pair := strings.SplitN(v, "=", 2)
 		if len(pair) != 2 {
-			errStr := fmt.Sprintf("Variable \"%s\" not defined properly\nKey value pair should be delimited by \"=\"", pair[0])
-			return nil, errors.New(errStr)
+			// We will check syntax errors later
+			envStr += v + "\n"
+			continue
 		}
-		envList[pair[0]] = pair[1]
+		// Trim off (i.e., remove leading and trailing) spaces and
+		// double quotes, so we allow declarations like "VAR=VALUE"
+		key := strings.Trim(pair[0], " \"")
+		value := strings.Trim(pair[1], " \"")
+		envStr += key + "=\"" + value + "\"\n"
 	}
 
+	// Use go-envparse to parse all environment variables and check for
+	// syntax errors. Fail if any invalid declaration is found
+	envList, err := envp.Parse(bytes.NewReader([]byte(envStr)))
+	if err != nil {
+		return nil, fmt.Errorf("Error processing environment variables: %s", err)
+	}
 	return envList, nil
 }
 
@@ -2806,6 +2816,24 @@ func handlePhysicalIOAdapterListImpl(ctxArg interface{}, key string,
 					}
 					aa.AddOrUpdateIoBundle(log, vfIb)
 				}
+			} else if ib.Type == types.IoVCAN {
+				// Initialize (create and enable) Virtual CAN device
+				err := setupVCAN(ib)
+				if err != nil {
+					err = fmt.Errorf("setupVCAN: %w", err)
+					log.Error(err)
+					ib.Error = err.Error()
+					ib.ErrorTime = time.Now()
+				}
+			} else if ib.Type == types.IoCAN {
+				// Initialize physical CAN device
+				err := setupCAN(ib)
+				if err != nil {
+					err = fmt.Errorf("setupCAN: %w", err)
+					log.Error(err)
+					ib.Error = err.Error()
+					ib.ErrorTime = time.Now()
+				}
 			}
 		}
 		log.Functionf("handlePhysicalIOAdapterListImpl: initialized to get len %d",
@@ -2993,6 +3021,9 @@ func updatePortAndPciBackIoBundle(ctx *domainContext, ib *types.IoBundle) (chang
 		if ib.Type == types.IoNetEthPF {
 			keepInHost = true
 		}
+		if ib.Type == types.IoCAN || ib.Type == types.IoVCAN {
+			keepInHost = true
+		}
 	}
 
 	log.Functionf("updatePortAndPciBackIoBundle(%d %s %s) isPort %t keepInHost %t members %d",
@@ -3091,13 +3122,9 @@ func updatePortAndPciBackIoMember(ctx *domainContext, ib *types.IoBundle, isPort
 			log.Noticef("Not assigning %s (%s) to pciback due to Testing",
 				ib.Phylabel, ib.PciLong)
 		} else if ib.PciLong != "" && ib.UsbAddr == "" {
-			log.Noticef("Assigning %s (%s) to pciback",
+			log.Noticef("Assigning %s (%s) later to pciback",
 				ib.Phylabel, ib.PciLong)
-			err := hyper.PCIReserve(ib.PciLong)
-			if err != nil {
-				return changed, err
-			}
-			ib.IsPCIBack = true
+
 			changed = true
 		}
 	}
@@ -3299,6 +3326,36 @@ func removeUSBfromKernel() bool {
 		}
 	}
 	return ret
+}
+
+// Initialize (create and enable) Virtual CAN device
+func setupVCAN(ib *types.IoBundle) error {
+	vcan, err := canbus.AddVCANLink(ib.Ifname)
+	if err != nil {
+		return err
+	}
+	err = canbus.LinkSetUp(vcan)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// Initialize physical CAN device
+func setupCAN(ib *types.IoBundle) error {
+	canIf, err := canbus.GetCANLink(ib.Ifname)
+	if err != nil {
+		return err
+	}
+	err = canbus.SetupCAN(canIf, ib.Cbattr)
+	if err != nil {
+		return err
+	}
+	err = canbus.LinkSetUp(canIf)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func doModprobe(driver string, add bool) error {

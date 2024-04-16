@@ -1,0 +1,182 @@
+---
+openapi: 3.0.3
+
+info:
+  title: ISC API
+  description: |
+    Do you want to update your edge applications running on EVE
+    Without need to rebuild edge application? Patch Envelopes API.
+    Check out https://github.com/lf-edge/eve to know what is EVE and Edge computing.
+    Check out https://github.com/lf-edge/eve/blob/master/docs/PATCH-ENVELOPES.md to know more about underlying patch envelopes.
+  version: 0.0.1
+
+servers:
+  - url: http://169.254.169.254/eve/v1
+    description: EVE Metadata endpoint
+
+tags:
+  - name: PatchEnvelopes
+    description: Things related to EVE PatchEnvelopes
+  - name: Status
+    description: Things related to EVE status
+
+paths:
+  /app/appCustomStatus:
+    post:
+      operationId: postOpaqueStatus
+      summary: Send status to controller.
+      description: |
+        Status is nothing more but a array of bytes send to controller.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OpaqueStatus'
+      tags:
+        - Status
+      responses:
+        '500':
+          description: Something happened during status processing
+        '204':
+          description: Cannot determine app instance id for given IP address
+        '200':
+          description: Successfully sent status
+
+
+  /patch/description.json:
+    get:
+      operationId: getAvailablePatchEnvelopes
+      summary: Returns list of available patch envelopes for edge app instance to download
+      description: |
+        Returned list is in JSON format, returns 422 when there is a problem with
+        processing patch envelopes (should never occur). And 204 when EVE cannot determine
+        App instance ID from given IP address (should also never occur normally)
+      tags:
+        - PatchEnvelopes
+      responses:
+        '200':  # JSON message if empty with message
+          description: Patch envelopes available for app instance
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PatchEnvelopeDescription'
+        '422':
+          description: Something happened during representing patch envelopes for app instance
+        '204':
+          description: Cannot determine app instance id for given IP address
+
+  /patch/download/{patchID}:
+    get:
+      operationId: downloadPatchArchive
+      summary: download patch envelope
+      description: |
+        Archives all artifacts and downloads them
+      tags:
+        - PatchEnvelopes
+      parameters:
+        - in: path
+          name: patchID
+          schema:
+            type: string
+          required: true
+          description: Patch UUID to download
+          example: 69bac069-f4c3-435a-b4e7-d635b60e9b5a
+      responses:
+        '200':
+          description: Returns stream of bytes of archive
+
+  /patch/download/{patchID}/{artifactName}:
+    get:
+      operationId: downloadPatchArchiveFile
+      summary: download patch envelope artifact
+      description: |
+        Download specific artifact of given patch envelope
+      tags:
+        - PatchEnvelopes
+      parameters:
+        - in: path
+          name: patchID
+          schema:
+            type: string
+          required: true
+          description: Patch UUID to get artifact from
+          example: 69bac069-f4c3-435a-b4e7-d635b60e9b5a
+        - in: path
+          name: artifactName
+          schema:
+            type: string
+          required: true
+          description: file name of artifact to download
+          example: config.yml
+      responses:
+        '200':
+          description: Returns stream of bytes of file
+
+components:
+  schemas:
+    OpaqueStatus:
+      title: Opaque Status
+      description: |
+        Opaque status to send back to controller
+      type: object
+      properties:
+        status:
+          type: string
+          format: byte
+
+    PatchEnvelopeDescription:
+      title: Patch Envelope description
+      description: |
+        Patch envelope contains of artifacts (binary blobs) which could be
+        anything you want (configuration files, binary executables, dynamic libraries, etc.)
+      type: object
+      properties:
+        PatchID:
+          type: string
+          description: Unique identifier of patch envelope
+          example: 69bac069-f4c3-435a-b4e7-d635b60e9b5a
+        Version:
+          type: string
+          description: Version of patch envelope
+          example: 1.0
+        BinaryBlobs:
+          type: array
+          items:
+            $ref: "#/components/schemas/BinaryBlob"
+
+    BinaryBlob:
+      title: Patch Envelope binary artifacts structure
+      description: |
+        Binary blobs (or artifacts) are the files exposed to app
+        instance through patch envelope. They are treated as files, each entry
+        contains artifact name, it's SHA and size, metadata related to file, user info.
+        Also it has URL to download this file.
+      type: object
+      properties:
+        fileName:
+          type: string
+          description: Name of binary artifact
+          example: config.yml
+        fileSha:
+          type: string
+          description: SHA-256 of the binary artifact
+          example: 406dfb89affce2858e26e209e092cd36358ef41d92c85c53b0dfbab5320174e8
+        fileMetaData:
+          type: string
+          description: base64-encoded metadata related to file, i.e. env variables, cli arguments
+          example: Zm9vYmFyCg==
+        artifactMetaData:
+          type: string
+          description: base64-encoded generic metadata, i.e. user info, description, etc.
+          example: YmF6aW5nYQo=
+        url:
+          type: string
+          description: URL to download this binary artifact
+          example: http://169.254.169.254/eve/v1/patch/download/69bac069-f4c3-435a-b4e7-d635b60e9b5a/config.yml
+        size:
+          type: integer
+          description: size of binary artifact in bytes
+          example: 42
