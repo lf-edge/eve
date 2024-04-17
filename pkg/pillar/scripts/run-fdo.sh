@@ -51,7 +51,8 @@ if [ -f $FDO_DIR/root-certificate.pem.txt ]; then
     mv $FDO_DIR/root-certificate.pem.txt $FDO_DIR/root-certificate.pem
 fi
 if ! [ -f $FDO_DIR/server ] && ! [ -f $FDO_DIR/root-certificate.pem ]; then
-    echo "$(date -Ins -u) FDO client - no files"
+    echo "$(date -Ins -u) FDO client - no files. Wait a bit"
+    sleep 10
     exit 1
 fi
 # Make available for subsequent boots
