@@ -5,7 +5,7 @@
 
 FDO_CLIENT=/opt/zededa/bin/fdo-alpine-3.16/linux-client
 FDO_DIR=/tmp/fdo-files
-# Files are deposited in CWD
+# Files are deposited in CWD. Really painful to not be able to specify an outdir
 rm -rf $FDO_DIR
 mkdir $FDO_DIR
 
@@ -40,6 +40,8 @@ unmount_partlabel() {
 
 
 echo "$(date -Ins -u) Starting FDO client"
+# Painful
+cp -rp /opt/zededa/bin/fdo-alpine-3.16/data $FDO_DIR
 (cd $FDO_DIR || exit 2; $FDO_CLIENT)
 echo "$(date -Ins -u) FDO client got files:" $FDO_DIR/*
 
