@@ -72,4 +72,9 @@ cp -p $FDO_DIR/root-certificate.pem /config/root-certificate.pem
 mount -o remount,ro /config
 
 echo "$(date -Ins -u) FDO client saved files:" /config/*
-exit 0
+if [ -f /config/server ] && [ -f /config/root-certificate.pem ]; then
+    exit 0
+else
+    sleep 60
+    exit 0
+fi
