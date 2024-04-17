@@ -141,6 +141,8 @@ COPY --from=dnsmasq /usr/sbin/dnsmasq /out/opt/zededa/bin/dnsmasq
 COPY --from=build /final /out
 
 ADD scripts/device-steps.sh \
+    scripts/run-fdo.sh \
+    scripts/fdo-demo-clean.sh \
     scripts/onboot.sh \
     scripts/handlezedserverconfig.sh \
     scripts/veth.sh \
