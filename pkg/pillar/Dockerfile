@@ -150,6 +150,12 @@ ADD scripts/device-steps.sh \
   /out/opt/zededa/bin/
 ADD conf/lisp.config.base /out/var/tmp/zededa/lisp.config.base
 
+# For FDO demo
+ADD fdo-alpine-3.16/linux-client /out/opt/zededa/bin/fdo-alpine-3.16/
+ADD fdo-alpine-3.16/data/* /out/opt/zededa/bin/fdo-alpine-3.16/data/
+
+RUN ls -lR /out/opt/zededa/bin/fdo-alpine-3.16
+
 # And now a few local tweaks
 COPY rootfs/ /out
 
