@@ -8,8 +8,12 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/lf-edge/eve/pkg/kube/cnirpc"
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/objtonum"
+	"github.com/lf-edge/eve/pkg/pillar/utils/netutils"
 	uuid "github.com/satori/go.uuid"
+	"github.com/sirupsen/logrus"
 )
 
 // AppNetworkConfig : network configuration for a given application.
@@ -102,10 +106,14 @@ type AppNetworkStatus struct {
 	PendingDelete  bool
 	ConfigInSync   bool
 	DisplayName    string
+	// AppPod is only valid in Kubernetes mode.
+	AppPod cnirpc.AppPod
 	// Copy from the AppNetworkConfig; used to delete when config is gone.
 	GetStatsIPAddr       net.IP
 	AppNetAdapterList    []AppNetAdapterStatus
 	AwaitNetworkInstance bool // If any Missing flag is set in the networks
+	// ID of the MAC generator variant that was used to generate MAC addresses for this app.
+	MACGenerator int
 	// Any errors from provisioning the network
 	// ErrorAndTime provides SetErrorNow() and ClearError()
 	ErrorAndTime
@@ -363,15 +371,6 @@ type NetworkInstanceInfo struct {
 	// Set of vifs on this bridge
 	Vifs []VifNameMac
 
-	// Vif metric map. This should have a union of currently existing
-	// vifs and previously deleted vifs.
-	// XXX When a vif is removed from bridge (app instance delete case),
-	// device might start reporting smaller statistic values. To avoid this
-	// from happening, we keep a list of all vifs that were ever connected
-	// to this bridge and their statistics.
-	// We add statistics from all vifs while reporting to cloud.
-	VifMetricMap map[string]NetworkMetric
-
 	// Maintain a map of all access vlan ids to their counts, used by apps
 	// connected to this network instance.
 	VlanMap map[uint32]uint32
@@ -450,6 +449,7 @@ type NetworkInstanceMetrics struct {
 	UUIDandVersion UUIDandVersion
 	DisplayName    string
 	Type           NetworkInstanceType
+	BridgeName     string
 	NetworkMetrics NetworkMetrics
 	ProbeMetrics   ProbeMetrics
 	VlanMetrics    VlanMetrics
@@ -658,9 +658,34 @@ type NetworkInstanceConfig struct {
 	DhcpRange       IPRange
 	DnsNameToIPList []DNSNameToIP // Used for DNS and ACL ipset
 
+	// Route configuration
+	PropagateConnRoutes bool
+	StaticRoutes        []IPRoute
+
 	// Any errors from the parser
 	// ErrorAndTime provides SetErrorNow() and ClearError()
 	ErrorAndTime
+}
+
+// IPRoute : single IP route entry.
+type IPRoute struct {
+	DstNetwork *net.IPNet
+	Gateway    net.IP
+}
+
+// IsDefaultRoute returns true if this is a default route, i.e. matches all destinations.
+func (r IPRoute) IsDefaultRoute() bool {
+	if r.DstNetwork == nil {
+		return true
+	}
+	ones, _ := r.DstNetwork.Mask.Size()
+	return r.DstNetwork.IP.IsUnspecified() && ones == 0
+}
+
+// EqualIPRoutes compares two IP routes.
+func EqualIPRoutes(route1, route2 IPRoute) bool {
+	return netutils.EqualIPs(route1.Gateway, route2.Gateway) &&
+		netutils.EqualIPNets(route1.DstNetwork, route2.DstNetwork)
 }
 
 // Key :
@@ -787,7 +812,10 @@ type NetworkInstanceStatus struct {
 	Activate uint64
 
 	ChangeInProgress ChangeInProgressType
-	NIConflict       bool // True if config conflicts with another NI
+
+	// True if NI IP subnet overlaps with the subnet of one the device ports
+	// or another NI.
+	IPConflict bool
 
 	// Activated is true if the network instance has been created in the network stack.
 	Activated bool
@@ -841,62 +869,6 @@ func (status NetworkInstanceStatus) LogDelete(logBase *base.LogObject) {
 // LogKey :
 func (status NetworkInstanceStatus) LogKey() string {
 	return string(base.NetworkInstanceStatusLogType) + "-" + status.Key()
-}
-
-// UpdateNetworkMetrics : update collected network metrics.
-// Tx/Rx of bridge is equal to the total of Tx/Rx on all member
-// virtual interfaces excluding the bridge itself.
-// Drops/Errors/AclDrops of bridge is equal to total of Drops/Errors/AclDrops
-// on all member virtual interface including the bridge.
-func (status *NetworkInstanceStatus) UpdateNetworkMetrics(log *base.LogObject,
-	nms *NetworkMetrics) (brNetMetric *NetworkMetric) {
-
-	brNetMetric = &NetworkMetric{IfName: status.BridgeName}
-	status.VifMetricMap = make(map[string]NetworkMetric) // clear previous metrics
-	for _, vif := range status.Vifs {
-		metric, found := nms.LookupNetworkMetrics(vif.Name)
-		if !found {
-			log.Tracef("No metrics found for interface %s",
-				vif.Name)
-			continue
-		}
-		status.VifMetricMap[vif.Name] = metric
-	}
-	for _, metric := range status.VifMetricMap {
-		brNetMetric.TxBytes += metric.TxBytes
-		brNetMetric.RxBytes += metric.RxBytes
-		brNetMetric.TxPkts += metric.TxPkts
-		brNetMetric.RxPkts += metric.RxPkts
-		brNetMetric.TxErrors += metric.TxErrors
-		brNetMetric.RxErrors += metric.RxErrors
-		brNetMetric.TxDrops += metric.TxDrops
-		brNetMetric.RxDrops += metric.RxDrops
-		brNetMetric.TxAclDrops += metric.TxAclDrops
-		brNetMetric.RxAclDrops += metric.RxAclDrops
-		brNetMetric.TxAclRateLimitDrops += metric.TxAclRateLimitDrops
-		brNetMetric.RxAclRateLimitDrops += metric.RxAclRateLimitDrops
-	}
-	return brNetMetric
-}
-
-// UpdateBridgeMetrics records metrics of the bridge interface itself.
-func (status *NetworkInstanceStatus) UpdateBridgeMetrics(log *base.LogObject,
-	nms *NetworkMetrics, netMetric *NetworkMetric) {
-	// Get bridge metrics
-	bridgeMetric, found := nms.LookupNetworkMetrics(status.BridgeName)
-	if !found {
-		log.Tracef("No metrics found for Bridge %s",
-			status.BridgeName)
-	} else {
-		netMetric.TxErrors += bridgeMetric.TxErrors
-		netMetric.RxErrors += bridgeMetric.RxErrors
-		netMetric.TxDrops += bridgeMetric.TxDrops
-		netMetric.RxDrops += bridgeMetric.RxDrops
-		netMetric.TxAclDrops += bridgeMetric.TxAclDrops
-		netMetric.RxAclDrops += bridgeMetric.RxAclDrops
-		netMetric.TxAclRateLimitDrops += bridgeMetric.TxAclRateLimitDrops
-		netMetric.RxAclRateLimitDrops += bridgeMetric.RxAclRateLimitDrops
-	}
 }
 
 // IsIpAssigned returns true if the given IP address is assigned to any app VIF.
@@ -1065,3 +1037,66 @@ type AppBlobsAvailable struct {
 type AppInfo struct {
 	AppBlobs []AppBlobsAvailable
 }
+
+// AppMACGenerator persistently stores ID of the MAC generator that was used to generate
+// MAC addresses for interfaces of a given app.
+type AppMACGenerator struct {
+	*UuidToNum
+}
+
+// New is used by objtonum.ObjNumPublisher.
+func (g *AppMACGenerator) New(objKey objtonum.ObjKey) objtonum.ObjNumContainer {
+	uuidToNum, ok := g.UuidToNum.New(objKey).(*UuidToNum)
+	if !ok {
+		logrus.Fatalf("Wrong type returned by UuidToNum.New()")
+	}
+	return &AppMACGenerator{
+		UuidToNum: uuidToNum,
+	}
+}
+
+// LogCreate logs newly added AppMACGenerator entry.
+func (g AppMACGenerator) LogCreate(logBase *base.LogObject) {
+	logObject := base.NewLogObject(logBase, base.AppMACGeneratorLogType, "",
+		g.UUID, g.LogKey())
+	logObject.Noticef("AppMACGenerator item create")
+}
+
+// LogModify logs modified AppMACGenerator entry.
+func (g AppMACGenerator) LogModify(logBase *base.LogObject, old interface{}) {
+	logObject := base.EnsureLogObject(logBase, base.AppMACGeneratorLogType, "",
+		g.UUID, g.LogKey())
+	oldEntry, ok := old.(AppMACGenerator)
+	if !ok {
+		logObject.Clone().Fatalf("LogModify: old object is not of AppMACGenerator type")
+	}
+	logObject.CloneAndAddField("diff", cmp.Diff(oldEntry, g)).
+		Noticef("AppMACGenerator item modify")
+}
+
+// LogDelete logs deleted AppMACGenerator entry.
+func (g AppMACGenerator) LogDelete(logBase *base.LogObject) {
+	logObject := base.EnsureLogObject(logBase, base.AppMACGeneratorLogType, "",
+		g.UUID, g.LogKey())
+	logObject.Noticef("AppMACGenerator item delete")
+	base.DeleteLogObject(logBase, g.LogKey())
+}
+
+// LogKey identifies AppMACGenerator entry for logging purposes.
+func (g AppMACGenerator) LogKey() string {
+	return string(base.AppMACGeneratorLogType) + "-" + g.Key()
+}
+
+// IDs assigned to different variants of MAC generators.
+const (
+	// MACGeneratorUnspecified : MAC generator is not specified.
+	MACGeneratorUnspecified = 0
+	// MACGeneratorNodeScoped generates MAC addresses which are guaranteed to be unique
+	// only within the scope of the given single device.
+	// The exception are MAC addresses generated for switch network instances,
+	// which are always generated with global scope.
+	MACGeneratorNodeScoped = 1
+	// MACGeneratorGloballyScoped generates MAC addresses which are with high probability
+	// unique globally, i.e. across entire fleet of devices.
+	MACGeneratorGloballyScoped = 2
+)

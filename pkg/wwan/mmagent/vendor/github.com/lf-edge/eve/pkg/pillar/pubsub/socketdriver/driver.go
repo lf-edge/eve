@@ -259,12 +259,14 @@ func GetBuffer() ([]byte, func()) {
 var lastLoggedAllocated uint32
 
 func maybeLogAllocated(log *base.LogObject) {
-	if lastLoggedAllocated == allocated {
+	currentAllocated := atomic.LoadUint32(&allocated)
+	currentLastAllocated := atomic.LoadUint32(&lastLoggedAllocated)
+	if currentLastAllocated == currentAllocated {
 		return
 	}
 	log.Functionf("pubsub buffer allocation changed from %d to  %d",
-		lastLoggedAllocated, allocated)
-	lastLoggedAllocated = allocated
+		currentLastAllocated, currentAllocated)
+	atomic.StoreUint32(&lastLoggedAllocated, currentAllocated)
 }
 
 // Poll to check if we should go away
