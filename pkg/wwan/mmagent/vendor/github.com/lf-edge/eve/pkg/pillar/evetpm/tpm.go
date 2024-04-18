@@ -15,7 +15,6 @@ import (
 	"io"
 	"math/big"
 	"os"
-	"path/filepath"
 	"sort"
 	"unsafe"
 
@@ -28,9 +27,6 @@ import (
 )
 
 const (
-	//TpmDevicePath is the TPM device file path
-	TpmDevicePath = "/dev/tpmrm0"
-
 	//TpmPasswdHdl is the well known TPM NVIndex for TPM Credentials
 	TpmPasswdHdl tpmutil.Handle = 0x1600000
 
@@ -73,26 +69,6 @@ const (
 	//EmptyPassword is an empty string
 	EmptyPassword  = ""
 	vaultKeyLength = 32 //Bytes
-
-	// savedSealingPcrsFile is the file that holds a copy of PCR values
-	// at the time of generating and sealing the disk key into the TPM.
-	savedSealingPcrsFile = types.PersistStatusDir + "/sealingpcrs"
-
-	// measurementLogSealSuccess is files that holds a copy of event log at the time
-	// of generating/sealing the disk key into the TPM.
-	measurementLogSealSuccess = types.PersistStatusDir + "/tpm_measurement_seal_success"
-
-	// measurementLogUnsealFail is files that holds a copy of event log at the time EVE
-	// fails to unseal the vault key from TPM.
-	measurementLogUnsealFail = types.PersistStatusDir + "/tpm_measurement_unseal_fail"
-
-	// measurementLogFile is a kernel exposed variable that contains the
-	// TPM measurements and events log.
-	measurementLogFile = "binary_bios_measurements"
-
-	// syfsTpmDir is directory that TPMs get mapped on sysfs, and it contains
-	// measurement logs.
-	syfsTpmDir = "/hostfs/sys/kernel/security/tpm*"
 )
 
 // PCRBank256Status stores info about support for
@@ -116,6 +92,33 @@ var (
 
 	//DiskKeySealingPCRs represents PCRs that we use for sealing
 	DiskKeySealingPCRs = tpm2.PCRSelection{Hash: tpm2.AlgSHA256, PCRs: []int{0, 1, 2, 3, 4, 6, 7, 8, 9, 13, 14}}
+
+	// TpmDevicePath is the TPM device file path, it is not a constant due to
+	// test usage.
+	TpmDevicePath = "/dev/tpmrm0"
+
+	// measurementLogFile is a kernel exposed variable that contains the
+	// TPM measurements and events log. it is not a constant due to test usage.
+	measurementLogFile = "/hostfs/sys/kernel/security/tpm0/binary_bios_measurements"
+
+	// savedSealingPcrsFile is the file that holds a copy of PCR values at the
+	// time of generating and sealing the disk key into the TPM. it is not a
+	// constant due to test usage.
+	savedSealingPcrsFile = types.PersistStatusDir + "/sealingpcrs"
+
+	// measurementLogSealSuccess is files that holds a copy of event log at the
+	// time of generating/sealing the disk key into the TPM. it is not a constant
+	// due to test usage.
+	measurementLogSealSuccess = types.PersistStatusDir + "/tpm_measurement_seal_success"
+
+	// measurementLogUnsealFail is files that holds a copy of event log at the
+	// time EVE fails to unseal the vault key from TPM. it is not a constant due
+	// to test usage.
+	measurementLogUnsealFail = types.PersistStatusDir + "/tpm_measurement_unseal_fail"
+
+	// measurefsTpmEventLog is the file containing the event log from the measure-config.
+	// it is not a constant due to test usage.
+	measurefsTpmEventLog = types.PersistStatusDir + "/measurefs_tpm_event_log"
 )
 
 // SealedKeyType holds different types of sealed key
@@ -450,13 +453,13 @@ func writeDiskKey(key []byte) error {
 		tpm2.AttrOwnerWrite|tpm2.AttrOwnerRead,
 		uint16(len(key)),
 	); err != nil {
-		return fmt.Errorf("NVDefineSpace failed: %v", err)
+		return fmt.Errorf("NVDefineSpace failed: %w", err)
 	}
 
 	// Write the data
 	if err := tpm2.NVWrite(rw, tpm2.HandleOwner, TpmDiskKeyHdl,
 		EmptyPassword, key, 0); err != nil {
-		return fmt.Errorf("NVWrite failed: %v", err)
+		return fmt.Errorf("NVWrite failed: %w", err)
 	}
 	return nil
 }
@@ -472,7 +475,7 @@ func readDiskKey() ([]byte, error) {
 	keyBytes, err := tpm2.NVReadEx(rw, TpmDiskKeyHdl,
 		tpm2.HandleOwner, EmptyPassword, 0)
 	if err != nil {
-		return nil, fmt.Errorf("NVReadEx failed: %v", err)
+		return nil, fmt.Errorf("NVReadEx failed: %w", err)
 	}
 	return keyBytes, nil
 }
@@ -592,12 +595,12 @@ func SealDiskKey(log *base.LogObject, key []byte, pcrSel tpm2.PCRSelection) erro
 
 	session, policy, err := PolicyPCRSession(rw, pcrSel)
 	if err != nil {
-		return fmt.Errorf("PolicyPCRSession failed: %v", err)
+		return fmt.Errorf("PolicyPCRSession failed: %w", err)
 	}
 
 	//Don't need the handle, we need only the policy for sealing
 	if err := tpm2.FlushContext(rw, session); err != nil {
-		return fmt.Errorf("flushing session handle %v failed: %v", session, err)
+		return fmt.Errorf("flushing session handle %v failed: %w", session, err)
 	}
 
 	priv, public, err := tpm2.Seal(rw, TpmSRKHdl, EmptyPassword, EmptyPassword, policy, key)
@@ -615,13 +618,13 @@ func SealDiskKey(log *base.LogObject, key []byte, pcrSel tpm2.PCRSelection) erro
 		tpm2.AttrOwnerWrite|tpm2.AttrOwnerRead,
 		uint16(len(priv)),
 	); err != nil {
-		return fmt.Errorf("NVDefineSpace %v failed: %v", TpmSealedDiskPrivHdl, err)
+		return fmt.Errorf("NVDefineSpace %v failed: %w", TpmSealedDiskPrivHdl, err)
 	}
 
 	// Write the private data
 	if err := tpm2.NVWrite(rw, tpm2.HandleOwner, TpmSealedDiskPrivHdl,
 		EmptyPassword, priv, 0); err != nil {
-		return fmt.Errorf("NVWrite %v failed: %v", TpmSealedDiskPrivHdl, err)
+		return fmt.Errorf("NVWrite %v failed: %w", TpmSealedDiskPrivHdl, err)
 	}
 
 	// Define space in NV storage
@@ -634,35 +637,34 @@ func SealDiskKey(log *base.LogObject, key []byte, pcrSel tpm2.PCRSelection) erro
 		tpm2.AttrOwnerWrite|tpm2.AttrOwnerRead,
 		uint16(len(public)),
 	); err != nil {
-		return fmt.Errorf("NVDefineSpace %v failed: %v", TpmSealedDiskPubHdl, err)
+		return fmt.Errorf("NVDefineSpace %v failed: %w", TpmSealedDiskPubHdl, err)
 	}
 	// Write the public data
 	if err := tpm2.NVWrite(rw, tpm2.HandleOwner, TpmSealedDiskPubHdl,
 		EmptyPassword, public, 0); err != nil {
-		return fmt.Errorf("NVWrite %v failed: %v", TpmSealedDiskPubHdl, err)
+		return fmt.Errorf("NVWrite %v failed: %w", TpmSealedDiskPubHdl, err)
 	}
 
 	// save a snapshot of current PCR values
-	if err := saveDiskKeySealingPCRs(savedSealingPcrsFile); err != nil {
+	if err := saveDiskKeySealingPCRs(); err != nil {
 		log.Warnf("saving snapshot of sealing PCRs failed: %s", err)
 	}
 
-	// Backup the previous pair of logs if any, so at most we have two pairs of
-	// measurement logs (per available tpm devices). This is needed because if the
-	// failing devices get connected to the controller and collects the backup key,
-	// we end up here again and will override the MeasurementLogSealSuccess  with
-	// current measurement log (which is same as the content of MeasurementLogSealFail)
-	// and lose the ability to diff and diagnose the issue.
+	// In order to not lose the ability to diff and diagnose the issue,
+	// first backup the previous pair of logs (if any). This is needed because
+	// once the failing devices get connected to the controller to fetch the
+	// backup key, we end up here again and it'll override the MeasurementLogSealSuccess
+	// file content with current tpm measurement logs (which is same as the
+	// content of MeasurementLogSealFail).
 	if err := backupCopiedMeasurementLogs(); err != nil {
-		log.Warnf("collecting previous snapshot of TPM event log failed: %s", err)
+		log.Warnf("copying previous snapshot of TPM event log failed: %s", err)
 	}
 
 	// fresh start, remove old copies of measurement logs.
-	if err := removeCopiedMeasurementLogs(); err != nil {
-		log.Warnf("removing old copies of TPM measurement log failed: %s", err)
-	}
+	removeCopiedMeasurementLogs()
 
-	// save a copy of the current measurement log
+	// save a copy of the current measurement log, this is also called
+	// if unseal fails to have copy when we fail to unlock the vault.
 	if err := copyMeasurementLog(measurementLogSealSuccess); err != nil {
 		log.Warnf("copying current TPM measurement log failed: %s", err)
 	}
@@ -699,13 +701,13 @@ func UnsealDiskKey(pcrSel tpm2.PCRSelection) ([]byte, error) {
 	priv, err := tpm2.NVReadEx(rw, TpmSealedDiskPrivHdl,
 		tpm2.HandleOwner, EmptyPassword, 0)
 	if err != nil {
-		return nil, fmt.Errorf("NVReadEx %v failed: %v", TpmSealedDiskPrivHdl, err)
+		return nil, fmt.Errorf("NVReadEx %v failed: %w", TpmSealedDiskPrivHdl, err)
 	}
 	// Read all of the data with NVReadEx
 	pub, err := tpm2.NVReadEx(rw, TpmSealedDiskPubHdl,
 		tpm2.HandleOwner, EmptyPassword, 0)
 	if err != nil {
-		return nil, fmt.Errorf("NVReadEx %v failed: %v", TpmSealedDiskPubHdl, err)
+		return nil, fmt.Errorf("NVReadEx %v failed: %w", TpmSealedDiskPubHdl, err)
 	}
 
 	sealedObjHandle, _, err := tpm2.Load(rw, TpmSRKHdl, "", pub, priv)
@@ -716,7 +718,7 @@ func UnsealDiskKey(pcrSel tpm2.PCRSelection) ([]byte, error) {
 
 	session, _, err := PolicyPCRSession(rw, pcrSel)
 	if err != nil {
-		return nil, fmt.Errorf("PolicyPCRSession failed: %v", err)
+		return nil, fmt.Errorf("PolicyPCRSession failed: %w", err)
 	}
 	defer tpm2.FlushContext(rw, session)
 
@@ -732,7 +734,7 @@ func UnsealDiskKey(pcrSel tpm2.PCRSelection) ([]byte, error) {
 		}
 
 		// try to find out the mismatching PCR index
-		mismatch, errPcrMiss := findMismatchingPCRs(savedSealingPcrsFile)
+		mismatch, errPcrMiss := findMismatchingPCRs()
 		if errPcrMiss != nil {
 			return nil, fmt.Errorf("UnsealWithSession failed: %w, %s, finding mismatching PCR failed: %v", err, evtLogStat, errPcrMiss)
 		}
@@ -754,7 +756,7 @@ func PolicyPCRSession(rw io.ReadWriteCloser, pcrSel tpm2.PCRSelection) (tpmutil.
 		/*symmetric=*/ tpm2.AlgNull,
 		/*authHash=*/ tpm2.AlgSHA256)
 	if err != nil {
-		return tpm2.HandleNull, nil, fmt.Errorf("StartAuthSession failed: %v", err)
+		return tpm2.HandleNull, nil, fmt.Errorf("StartAuthSession failed: %w", err)
 	}
 	defer func() {
 		if session != tpm2.HandleNull && err != nil {
@@ -763,7 +765,7 @@ func PolicyPCRSession(rw io.ReadWriteCloser, pcrSel tpm2.PCRSelection) (tpmutil.
 	}()
 
 	if err = tpm2.PolicyPCR(rw, session, nil, pcrSel); err != nil {
-		return session, nil, fmt.Errorf("PolicyPCR failed: %v", err)
+		return session, nil, fmt.Errorf("PolicyPCR failed: %w", err)
 	}
 
 	policy, err := tpm2.PolicyGetDigest(rw, session)
@@ -847,133 +849,60 @@ func pcrBankSHA256EnabledHelper() bool {
 	return err == nil
 }
 
-func getLogCopyPath(destination string, tpmIndex int) string {
-	return fmt.Sprintf("%s-tpm%d", destination, tpmIndex)
-}
-
-func getLogBackupPath(destination string) string {
-	return fmt.Sprintf("%s-backup", destination)
-}
-
-func getMappedTpmsPath() ([]string, error) {
-	paths, err := filepath.Glob(syfsTpmDir)
-	if err != nil {
-		return nil, fmt.Errorf("failed to enumerate TPM(s) in sysfs: %w", err)
-	} else if len(paths) == 0 {
-		return nil, fmt.Errorf("found no TPM in sysfs")
-	}
-
-	return paths, nil
-}
-
-func countMappedTpms() (int, error) {
-	paths, err := getMappedTpmsPath()
-	if err != nil {
-		return 0, fmt.Errorf("getMappedTpmsPath failed: %w", err)
-	}
-
-	return len(paths), nil
-}
-
-func getMeasurementLogFiles() ([]string, error) {
-	paths, err := getMappedTpmsPath()
-	if err != nil {
-		return nil, fmt.Errorf("getMappedTpmsPath failed: %w", err)
-	}
-
-	enumerated := make([]string, 0)
-	for _, path := range paths {
-		fullPath := filepath.Join(path, measurementLogFile)
-		if fileutils.FileExists(nil, fullPath) {
-			enumerated = append(enumerated, fullPath)
-		}
-	}
-
-	return enumerated, nil
-}
-
 func backupCopiedMeasurementLogs() error {
-	counted, err := countMappedTpms()
-	if err != nil {
-		return fmt.Errorf("countMappedTPMs failed: %w", err)
-	}
+	sealSuccessBackupPath := fmt.Sprintf("%s-backup", measurementLogSealSuccess)
+	unsealFailBackupPath := fmt.Sprintf("%s-backup", measurementLogUnsealFail)
 
-	leftToBackup := counted
-	for i := 0; i < counted; i++ {
-		sealSuccessPath := getLogCopyPath(measurementLogSealSuccess, i)
-		unsealFailPath := getLogCopyPath(measurementLogUnsealFail, i)
-		if fileutils.FileExists(nil, sealSuccessPath) && fileutils.FileExists(nil, unsealFailPath) {
-			sealSuccessBackupPath := getLogBackupPath(sealSuccessPath)
-			unsealFailBackupPath := getLogBackupPath(unsealFailPath)
-			if err := os.Rename(sealSuccessPath, sealSuccessBackupPath); err != nil {
-				fmt.Fprintf(os.Stderr, "failed to backup tpm%d \"seal success\" previously copied measurement log: %v", i, err)
-				continue
-			}
-			if err := os.Rename(unsealFailPath, unsealFailBackupPath); err != nil {
-				fmt.Fprintf(os.Stderr, "failed to backup tpm%d \"unseal fail\" previously copied measurement log: %v", i, err)
-				_ = os.Rename(sealSuccessBackupPath, sealSuccessPath)
-				continue
-			}
+	if fileutils.FileExists(nil, measurementLogSealSuccess) {
+		if err := os.Rename(measurementLogSealSuccess, sealSuccessBackupPath); err != nil {
+			return fmt.Errorf("failed to backup tpm \"seal success event\" previously copied measurement log: %w", err)
 		}
-
-		leftToBackup--
 	}
 
-	if leftToBackup != 0 {
-		return fmt.Errorf("failed to backup %d number of previously copied TPM measurement logs", leftToBackup)
+	if fileutils.FileExists(nil, measurementLogUnsealFail) {
+		if err := os.Rename(measurementLogUnsealFail, unsealFailBackupPath); err != nil {
+			_ = os.Rename(sealSuccessBackupPath, measurementLogSealSuccess)
+			return fmt.Errorf("failed to backup tpm \"unseal fail event\" previously copied measurement log: %w", err)
+		}
 	}
 
 	return nil
 }
 
-func removeCopiedMeasurementLogs() error {
-	counted, err := countMappedTpms()
-	if err != nil {
-		return fmt.Errorf("countMappedTPMs failed: %w", err)
-	}
-
-	for i := 0; i < counted; i++ {
-		sealSuccessPath := getLogCopyPath(measurementLogSealSuccess, i)
-		unsealFailPath := getLogCopyPath(measurementLogUnsealFail, i)
-		_ = os.Remove(sealSuccessPath)
-		_ = os.Remove(unsealFailPath)
-	}
-
-	return nil
+func removeCopiedMeasurementLogs() {
+	os.Remove(measurementLogSealSuccess)
+	os.Remove(measurementLogUnsealFail)
 }
 
 func copyMeasurementLog(dstPath string) error {
-	paths, err := getMeasurementLogFiles()
+	var appendErr error
+	tpmEventLog, err := os.ReadFile(measurementLogFile)
 	if err != nil {
-		return fmt.Errorf("enumSourceEventLogFiles failed: %w", err)
+		return fmt.Errorf("failed to read TPM measurements log file: %w", err)
 	}
 
-	leftToCopy := len(paths)
-	for i, path := range paths {
-		measurementLogContent, err := os.ReadFile(path)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "failed to read stored measurement log file: %v", err)
-			continue
-		}
-
-		copyPath := getLogCopyPath(dstPath, i)
-		err = fileutils.WriteRename(copyPath, measurementLogContent)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "failed to copy stored measurement log file: %v", err)
-			continue
-		}
-
-		leftToCopy--
+	measurefsEventLog, err := os.ReadFile(measurefsTpmEventLog)
+	if err == nil {
+		// append the measurefs event log to the tpm event log
+		tpmEventLog = append(tpmEventLog, measurefsEventLog...)
+	} else {
+		// don't fail yet, we might still be able to copy tpm event logs
+		appendErr = fmt.Errorf("failed to read measure-config measurements log file: %w", err)
 	}
 
-	if leftToCopy != 0 {
-		return fmt.Errorf("failed to copy %d number of stored measurement log files", leftToCopy)
+	err = fileutils.WriteRename(dstPath, tpmEventLog)
+	if err != nil {
+		if appendErr != nil {
+			return fmt.Errorf("failed to copy tpm and measurefs event logs: %w, %v", err, appendErr)
+		}
+
+		return fmt.Errorf("failed to copy tpm measurement log data: %w", err)
 	}
 
 	return nil
 }
 
-func saveDiskKeySealingPCRs(pcrsFile string) error {
+func saveDiskKeySealingPCRs() error {
 	trw, err := tpm2.OpenTPM(TpmDevicePath)
 	if err != nil {
 		return err
@@ -992,11 +921,11 @@ func saveDiskKeySealingPCRs(pcrsFile string) error {
 		return err
 	}
 
-	return fileutils.WriteRename(pcrsFile, buff.Bytes())
+	return fileutils.WriteRename(savedSealingPcrsFile, buff.Bytes())
 }
 
-func findMismatchingPCRs(savedPCRsFile string) ([]int, error) {
-	frw, err := os.Open(savedPCRsFile)
+func findMismatchingPCRs() ([]int, error) {
+	frw, err := os.Open(savedSealingPcrsFile)
 	if err != nil {
 		return nil, err
 	}
