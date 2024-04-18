@@ -320,7 +320,7 @@ if [ ! -d "/persist/verification" ]; then
 fi
 
 #extract basic info
-/usr/bin/hw-probe -all --show --verbose --check-extended --save $REPORT > "$REPORT/summary.log"
+/usr/bin/hw-probe -all --show --verbose --check-extended --save "$REPORT" > "$REPORT/summary.log"
 
 #storage device benchmarking
 mkdir "$REPORT/storage-performance/"
@@ -414,6 +414,17 @@ fi
 ARCH=$(uname -m)
 if [ "$ARCH" = "x86_64" ]; then
     /vmcap > "$REPORT/vmcap.log"
+fi
+
+# verify the TPM
+if [ -c $TPM_DEVICE_PATH ]; then
+   logmsg "TPM device is present, running some extra tests"
+   /verifytpm.sh | tee -a "$REPORT/tpmchecks.log" >/dev/console 2>&1
+   if ! grep -q "TPM checks PASSED" "$REPORT/tpmchecks.log"; then
+      echo "TPM checks FAILED, check tpmchecks.log for details" >> "$REPORT/summary.log";
+   fi
+else
+   logmsg "No TPM device, skipping extra TPM checks"
 fi
 
 cat "$REPORT/summary.log"

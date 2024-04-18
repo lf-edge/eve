@@ -8,6 +8,7 @@
 # has a fast path for stack unwinding. This also happens
 # to be a perfect place to put any other kind of debug info
 # into the package: see abuild/etc/abuild.conf.
+FROM lfedge/eve-recovertpm:0da17f65aba4fb09c83944cf5847dd7b523118b4 as recovertpm
 FROM lfedge/eve-alpine:1f7685f95a475c6bbe682f0b976f12180b6c8726 as build
 ENV BUILD_PKGS abuild curl tar make linux-headers patch g++ git gcc ncurses-dev autoconf
 # Feel free to add additional packages here, but be aware that
@@ -69,6 +70,10 @@ RUN mkdir -p ./etc/ssh ./root/.ssh && chmod 0700 ./root/.ssh
 RUN cp /etc/passwd /etc/group ./etc/
 RUN ln -s /run ./var/run
 RUN sed -i -e 's#AllowTcpForwarding.*$#AllowTcpForwarding yes#' ./etc/ssh/sshd_config
+
+# add recover-tpm to debug container
+WORKDIR /
+COPY --from=recovertpm /usr/bin/recovertpm /out/usr/bin/recovertpm
 
 FROM scratch
 ENTRYPOINT []
