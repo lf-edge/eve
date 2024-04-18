@@ -23,6 +23,9 @@ cairo
 cairo-dev
 ccache
 chrony
+clang-dev
+clang-libs
+clang-static
 cmake
 coreutils
 cryptsetup-dev
@@ -42,6 +45,7 @@ dtc
 dtc-dev
 e2fsprogs
 e2fsprogs-extra
+elfutils
 elfutils-dev
 ethtool
 eudev-dev
@@ -61,6 +65,7 @@ gnutls
 gnutls-dev
 gnutls-utils
 grep
+gtest-dev
 gtk-doc
 hdparm
 iasl
@@ -86,10 +91,10 @@ kmod-dev
 libaio-dev
 libarchive-tools
 libbz2
-libc-dev
-libc-utils
 libcap-ng-dev
+libc-dev
 libcrypto1.1
+libc-utils
 libdrm
 libdrm-dev
 libelf
@@ -123,6 +128,9 @@ libxrandr-dev
 libxtst-dev
 linux-headers
 linux-pam-dev
+llvm13-dev
+llvm13-libs
+llvm13-static
 lm-sensors
 lvm2
 lz4
@@ -139,11 +147,12 @@ multipath-tools
 musl
 musl-dev
 musl-libintl
+musl-obstack
 musl-utils
 nasm
 ncurses-dev
-net-snmp
 netcat-openbsd
+net-snmp
 nettle
 nfs-utils
 ninja
