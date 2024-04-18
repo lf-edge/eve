@@ -163,9 +163,9 @@ func (config DevicePortConfig) LogModify(logBase *base.LogObject, old interface{
 			config.LastSucceeded.After(oldConfig.LastFailed) &&
 			oldConfig.LastSucceeded.After(oldConfig.LastFailed) {
 			// if we have success again, reduce log level
-			logData.Function("DevicePortConfig port modify")
+			logData.Function("DevicePortConfig modify")
 		} else {
-			logData.Notice("DevicePortConfig port modify")
+			logData.Notice("DevicePortConfig modify")
 		}
 	}
 	// XXX which fields to compare/log?
@@ -187,11 +187,8 @@ func (config DevicePortConfig) LogModify(logBase *base.LogObject, old interface{
 				AddField("old-last-succeeded", op.LastSucceeded).
 				AddField("old-last-failed", op.LastFailed)
 			if p.HasError() == op.HasError() &&
-				p.LastFailed == op.LastFailed &&
-				p.LastError == op.LastError &&
-				p.LastSucceeded.After(op.LastFailed) &&
-				op.LastSucceeded.After(op.LastFailed) {
-				// if we have success again, reduce log level
+				p.LastError == op.LastError {
+				// if we have success or the same error again, reduce log level
 				logData.Function("DevicePortConfig port modify")
 			} else {
 				logData.Notice("DevicePortConfig port modify")

@@ -51,6 +51,13 @@ type IoBundle struct {
 	// If this is an empty string it means the IoBundle can not be assigned.
 	AssignmentGroup string
 
+	// Parent Assignment Group is there to reference the parent assignment group in order to make the device
+	// dependent on a different device.
+	// Currently the concrete reason to do this is to make a usb device dependent on the PCI address the USB
+	// controller is using to prevent passthrough of the USB controller in one application while trying to passthrough
+	// a USB device on this controller to another application.
+	ParentAssignmentGroup string
+
 	Usage zcommon.PhyIoMemberUsage
 
 	// Cost is zero for the free ports; less desirable ports have higher numbers
@@ -66,10 +73,11 @@ type IoBundle struct {
 	PciLong string // Specific PCI bus address in Domain:Bus:Device.Function syntax
 	// For non-PCI devices such as the ISA serial ports we have:
 	// XXX: Why is IRQ a string?? Should convert it into Int.
-	Irq     string // E.g., "5"
-	Ioports string // E.g., "2f8-2ff"
-	Serial  string // E.g., "/dev/ttyS1"
-	UsbAddr string // E.g., "1:2.3"
+	Irq        string // E.g., "5"
+	Ioports    string // E.g., "2f8-2ff"
+	Serial     string // E.g., "/dev/ttyS1"
+	UsbAddr    string // E.g., "1:2.3"
+	UsbProduct string // E.g., "0951:1666"
 
 	// Attributes Derived and assigned locally ( not from controller)
 
@@ -97,6 +105,8 @@ type IoBundle struct {
 	Vfs sriov.VFList
 	// Only used in PhyIoNetEthVF
 	VfParams VfInfo
+	// Used for additional attributes
+	Cbattr map[string]string
 }
 
 // VfInfo Stores information about Virtual Function (VF)
@@ -146,6 +156,11 @@ func (ib IoBundle) HasAdapterChanged(log *base.LogObject, phyAdapter PhysicalIOA
 			ib.UsbAddr, phyAdapter.Phyaddr.UsbAddr)
 		return true
 	}
+	if phyAdapter.Phyaddr.UsbProduct != ib.UsbProduct {
+		log.Functionf("USB product changed from %s to %s",
+			ib.UsbProduct, phyAdapter.Phyaddr.UsbProduct)
+		return true
+	}
 	if phyAdapter.Phyaddr.Irq != ib.Irq {
 		log.Functionf("Irq changed from %s to %s", ib.Irq, phyAdapter.Phyaddr.Irq)
 		return true
@@ -184,13 +199,16 @@ func IoBundleFromPhyAdapter(log *base.LogObject, phyAdapter PhysicalIOAdapter) *
 	ib.Phylabel = phyAdapter.Phylabel
 	ib.Logicallabel = phyAdapter.Logicallabel
 	ib.AssignmentGroup = phyAdapter.Assigngrp
+	ib.ParentAssignmentGroup = phyAdapter.Parentassigngrp
 	ib.Ifname = phyAdapter.Phyaddr.Ifname
 	ib.PciLong = phyAdapter.Phyaddr.PciLong
 	ib.UsbAddr = phyAdapter.Phyaddr.UsbAddr
+	ib.UsbProduct = phyAdapter.Phyaddr.UsbProduct
 	ib.Irq = phyAdapter.Phyaddr.Irq
 	ib.Ioports = phyAdapter.Phyaddr.Ioports
 	ib.Serial = phyAdapter.Phyaddr.Serial
 	ib.Usage = phyAdapter.Usage
+	ib.Cbattr = phyAdapter.Cbattr
 	// We're making deep copy
 	ib.Vfs.Data = make([]sriov.EthVF, len(phyAdapter.Vfs.Data))
 	copy(ib.Vfs.Data, phyAdapter.Vfs.Data)
@@ -205,6 +223,7 @@ func IoBundleFromPhyAdapter(log *base.LogObject, phyAdapter PhysicalIOAdapter) *
 			ib.Ifname = ib.Phylabel
 		}
 	}
+
 	return &ib
 }
 
@@ -222,12 +241,17 @@ const (
 	IoNetWWAN IoType = 6
 	IoHDMI    IoType = 7
 	// enum 8 is reserved for backward compatibility with controller API
-	IoNVMEStorage IoType = 9
-	IoSATAStorage IoType = 10
-	IoNetEthPF    IoType = 11
-	IoNetEthVF    IoType = 12
-	IoNVME        IoType = 255
-	IoOther       IoType = 255
+	IoNVMEStorage   IoType = 9
+	IoSATAStorage   IoType = 10
+	IoNetEthPF      IoType = 11
+	IoNetEthVF      IoType = 12
+	IoUSBController IoType = 13
+	IoUSBDevice     IoType = 14
+	IoCAN           IoType = 15
+	IoVCAN          IoType = 16
+	IoLCAN          IoType = 17
+	IoNVME          IoType = 255
+	IoOther         IoType = 255
 )
 
 // IsNet checks if the type is any of the networking types.
@@ -347,6 +371,11 @@ func (aa *AssignableAdapters) AddOrUpdateIoBundle(log *base.LogObject, ib IoBund
 			ib.Type, ib.Phylabel, ib.AssignmentGroup, curIbPtr.UsbAddr)
 		ib.UsbAddr = curIbPtr.UsbAddr
 	}
+	if curIbPtr.UsbProduct != "" {
+		log.Functionf("AddOrUpdateIoBundle(%d %s %s) preserve UsbProduct %v",
+			ib.Type, ib.Phylabel, ib.AssignmentGroup, curIbPtr.UsbProduct)
+		ib.UsbProduct = curIbPtr.UsbProduct
+	}
 	if curIbPtr.Unique != "" {
 		log.Functionf("AddOrUpdateIoBundle(%d %s %s) preserve Unique %v",
 			ib.Type, ib.Phylabel, ib.AssignmentGroup, curIbPtr.Unique)
@@ -356,6 +385,11 @@ func (aa *AssignableAdapters) AddOrUpdateIoBundle(log *base.LogObject, ib IoBund
 		log.Functionf("AddOrUpdateIoBundle(%d %s %s) preserve MacAddr %v",
 			ib.Type, ib.Phylabel, ib.AssignmentGroup, curIbPtr.MacAddr)
 		ib.MacAddr = curIbPtr.MacAddr
+	}
+	if len(curIbPtr.Cbattr) > 0 {
+		log.Functionf("AddOrUpdateIoBundle(%d %s %s) preserve cbattr",
+			ib.Type, ib.Phylabel, ib.AssignmentGroup)
+		ib.Cbattr = curIbPtr.Cbattr
 	}
 	*curIbPtr = ib
 }
@@ -433,6 +467,104 @@ func (aa *AssignableAdapters) LookupIoBundleIfName(ifname string) *IoBundle {
 	return nil
 }
 
+// CheckParentAssigngrp finds dependency loops between ioBundles
+func (aa *AssignableAdapters) CheckParentAssigngrp() bool {
+	assigngrp2parent := make(map[string]string)
+
+	var cycleDetectedAssigngrp string
+	for i := range aa.IoBundleList {
+		ioBundle := &aa.IoBundleList[i]
+
+		if ioBundle.AssignmentGroup == ioBundle.ParentAssignmentGroup && ioBundle.AssignmentGroup != "" {
+			ioBundle.Error = "IOBundle cannot be it's own parent"
+			ioBundle.ErrorTime = time.Now()
+			return true
+		}
+		parentassigngrp, ok := assigngrp2parent[ioBundle.AssignmentGroup]
+		if ok && parentassigngrp != ioBundle.ParentAssignmentGroup {
+			ioBundle.Error = "IOBundle with parentassigngrp mismatch found"
+			ioBundle.ErrorTime = time.Now()
+			return true
+		}
+
+		if ioBundle.AssignmentGroup == "" && ioBundle.ParentAssignmentGroup != "" {
+			ioBundle.Error = "IOBundle with empty assigngrp cannot have a parent"
+			ioBundle.ErrorTime = time.Now()
+			return true
+		}
+		assigngrp2parent[ioBundle.AssignmentGroup] = ioBundle.ParentAssignmentGroup
+	}
+
+	for assigngrp := range assigngrp2parent {
+		visitedAssigngrp := make(map[string]struct{})
+		visitedAssigngrp[assigngrp] = struct{}{}
+
+		for {
+			if assigngrp == "" {
+				break
+			}
+
+			assigngrp = assigngrp2parent[assigngrp]
+			_, visitedBefore := visitedAssigngrp[assigngrp]
+			if visitedBefore {
+				// cycle detected
+				cycleDetectedAssigngrp = assigngrp
+				break
+			}
+
+			visitedAssigngrp[assigngrp] = struct{}{}
+		}
+	}
+
+	if cycleDetectedAssigngrp == "" {
+		return false
+	}
+
+	for i := range aa.IoBundleList {
+		ioBundle := &aa.IoBundleList[i]
+		if ioBundle.AssignmentGroup == cycleDetectedAssigngrp {
+			ioBundle.Error = "Cycle detected, please check provided parentassigngrp/assigngrp"
+			ioBundle.ErrorTime = time.Now()
+		}
+	}
+
+	return true
+}
+
+// CheckBadUSBBundles sets ib.Error/ErrorTime if bundle collides in regards of USB
+func (aa *AssignableAdapters) CheckBadUSBBundles() {
+	usbProductsAddressMap := make(map[[4]string][]*IoBundle)
+	for i := range aa.IoBundleList {
+		ioBundle := &aa.IoBundleList[i]
+		if ioBundle.UsbAddr == "" && ioBundle.UsbProduct == "" && ioBundle.PciLong == "" {
+			continue
+		}
+
+		id := [4]string{ioBundle.UsbAddr, ioBundle.UsbProduct, ioBundle.PciLong, ioBundle.AssignmentGroup}
+		if usbProductsAddressMap[id] == nil {
+			usbProductsAddressMap[id] = make([]*IoBundle, 0)
+		}
+		usbProductsAddressMap[id] = append(usbProductsAddressMap[id], ioBundle)
+	}
+
+	for _, bundles := range usbProductsAddressMap {
+		if len(bundles) <= 1 {
+			continue
+		}
+
+		errStr := "ioBundle collision:||"
+
+		for _, bundle := range bundles {
+			errStr += fmt.Sprintf("phylabel %s - usbaddr: %s usbproduct: %s pcilong: %s assigngrp: %s||",
+				bundle.Phylabel, bundle.UsbAddr, bundle.UsbProduct, bundle.PciLong, bundle.AssignmentGroup)
+		}
+		for _, bundle := range bundles {
+			bundle.Error = errStr
+			bundle.ErrorTime = time.Now()
+		}
+	}
+}
+
 // CheckBadAssignmentGroups sets ib.Error/ErrorTime if two IoBundles in different
 // assignment groups have the same PCI ID (ignoring the PCI function number)
 // Returns true if there was a modification so caller can publish.
@@ -447,6 +579,13 @@ func (aa *AssignableAdapters) CheckBadAssignmentGroups(log *base.LogObject, PCIS
 			if ib.AssignmentGroup == "" || ib2.AssignmentGroup == ib.AssignmentGroup {
 				continue
 			}
+			// skip usb passthrough checking here
+			if ib.UsbAddr != "" || ib2.UsbAddr != "" {
+				continue
+			}
+			if ib.UsbProduct != "" || ib2.UsbProduct != "" {
+				continue
+			}
 			if PCISameController != nil && PCISameController(ib.PciLong, ib2.PciLong) {
 				err := fmt.Errorf("CheckBadAssignmentGroup: %s same PCI controller as %s; pci long %s vs %s",
 					ib2.Ifname, ib.Ifname, ib2.PciLong, ib.PciLong)
@@ -457,7 +596,8 @@ func (aa *AssignableAdapters) CheckBadAssignmentGroups(log *base.LogObject, PCIS
 			}
 		}
 	}
-	return changed
+
+	return changed || aa.CheckParentAssigngrp()
 }
 
 // ExpandControllers expands the list to include other PCI functions on the same PCI controller
@@ -479,6 +619,12 @@ func (aa *AssignableAdapters) ExpandControllers(log *base.LogObject, list []*IoB
 			if already {
 				log.Tracef("ExpandController already %s long %s",
 					ib2.Phylabel, ib2.PciLong)
+				continue
+			}
+			if ib.UsbAddr != "" || ib2.UsbAddr != "" {
+				continue
+			}
+			if ib.UsbProduct != "" || ib2.UsbProduct != "" {
 				continue
 			}
 			if PCISameController != nil && PCISameController(ib.PciLong, ib2.PciLong) {
