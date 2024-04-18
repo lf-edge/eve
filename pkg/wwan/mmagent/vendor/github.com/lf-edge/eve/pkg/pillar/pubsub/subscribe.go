@@ -165,12 +165,12 @@ func (sub *SubscriptionImpl) Iterate(function base.StrMapFunc) {
 
 // Restarted - Check if the Publisher has Restarted
 func (sub *SubscriptionImpl) Restarted() bool {
-	return sub.km.restartCounter != 0
+	return sub.km.restartCounter.Load() != 0
 }
 
 // RestartCounter - Check how many times the Publisher has Restarted
 func (sub *SubscriptionImpl) RestartCounter() int {
-	return sub.km.restartCounter
+	return int(sub.km.restartCounter.Load())
 }
 
 // Synchronized -
@@ -210,7 +210,7 @@ func (sub *SubscriptionImpl) dump(infoStr string) {
 		return true
 	}
 	sub.km.key.Range(dumper)
-	sub.log.Tracef("\trestarted %d\n", sub.km.restartCounter)
+	sub.log.Tracef("\trestarted %d\n", sub.km.restartCounter.Load())
 	sub.log.Tracef("\tsynchronized %t\n", sub.synchronized)
 }
 
@@ -308,11 +308,11 @@ func handleRestart(ctxArg interface{}, restartCounter int) {
 	name := sub.nameString()
 	sub.log.Tracef("pubsub.handleRestart(%s) restartCounter %d",
 		name, restartCounter)
-	if restartCounter == sub.km.restartCounter {
+	if restartCounter == int(sub.km.restartCounter.Load()) {
 		sub.log.Tracef("pubsub.handleRestart(%s) value unchanged\n", name)
 		return
 	}
-	sub.km.restartCounter = restartCounter
+	sub.km.restartCounter.Store(int64(restartCounter))
 	if sub.RestartHandler != nil {
 		(sub.RestartHandler)(sub.userCtx, restartCounter)
 	}

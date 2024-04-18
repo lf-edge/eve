@@ -41,6 +41,8 @@ const (
 	SnapshotInstanceStatusFilename = "snapshotInstanceStatus.json"
 	// PersistCachePatchEnvelopes - folder to store inline patch envelopes
 	PersistCachePatchEnvelopes = PersistDir + "/patchEnvelopesCache"
+	// PersistCachePatchEnvelopesUsage - folder to store patch envelopes usage stat per app
+	PersistCachePatchEnvelopesUsage = PersistDir + "/patchEnvelopesUsageCache"
 
 	// IdentityDirname - Config dir
 	IdentityDirname = "/config"
@@ -124,4 +126,6 @@ var (
 	VolumeClearZFSDataset = ClearDataset + "/volumes"
 	//VolumeEncryptedZFSDataset - dataset to create volumes with encryption
 	VolumeEncryptedZFSDataset = SealedDataset + "/volumes"
+	// EtcdZvol - zvol encrypted for etcd storage
+	EtcdZvol = PersistDataset + "/etcd-storage"
 )

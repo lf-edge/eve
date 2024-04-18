@@ -106,3 +106,34 @@ func ConnReadCheck(conn net.Conn) error {
 	}
 	return sysErr
 }
+
+// ChannelWatch describe a channel to watch and the callback to call
+type ChannelWatch struct {
+	// Chan is the channel to watch for incoming data
+	Chan reflect.Value
+	// Callback is the function to call with that data (or empty if no data)
+	Callback func(value interface{})
+}
+
+// MultiChannelWatch allows listening to several receiving channels of different types at the same time
+// this way the pubsub subscriptions can be managed in an array and be listened to all at once without
+// requiring to write a big select statement
+func MultiChannelWatch(watches []ChannelWatch) {
+	cases := make([]reflect.SelectCase, 0)
+	for _, watch := range watches {
+		cases = append(cases, reflect.SelectCase{
+			Dir:  reflect.SelectRecv,
+			Chan: watch.Chan,
+		})
+	}
+
+	for {
+		index, value, _ := reflect.Select(cases)
+		if value.CanInterface() {
+			watches[index].Callback(value.Interface())
+		} else {
+			watches[index].Callback(struct{}{})
+		}
+	}
+
+}

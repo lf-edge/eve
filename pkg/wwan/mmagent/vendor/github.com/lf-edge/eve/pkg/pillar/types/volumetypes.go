@@ -167,6 +167,15 @@ func (status VolumeStatus) PathName() string {
 		strings.ToLower(status.ContentFormat.String()))
 }
 
+// GetPVCName : returns the volume name for kubernetes(longhorn)
+// Kubernetes does not allow special characters like '#' in the object names.
+// so we need to generate a PVC name.
+func (status VolumeStatus) GetPVCName() string {
+	return fmt.Sprintf("%s-pvc-%d", status.VolumeID.String(),
+		status.GenerationCounter+status.LocalGenerationCounter)
+
+}
+
 // LogCreate :
 func (status VolumeStatus) LogCreate(logBase *base.LogObject) {
 	logObject := base.NewLogObject(logBase, base.VolumeStatusLogType, status.DisplayName,
@@ -398,6 +407,7 @@ type VolumeRefStatus struct {
 	VerifyOnly             bool
 	Target                 zconfig.Target
 	CustomMeta             string
+	ReferenceName          string
 
 	ErrorAndTimeWithSource
 }
