@@ -9,6 +9,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"syscall"
 
 	"github.com/containerd/containerd/mount"
 	"github.com/lf-edge/eve/pkg/pillar/base"
@@ -17,6 +18,17 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/zfs"
 	"github.com/shirou/gopsutil/disk"
 )
+
+// StatAllocatedBytes returns the allocated size of a file in bytes
+// This value will be less than fileInfo.Size() for thinly allocated files
+func StatAllocatedBytes(path string) (uint64, error) {
+	var stat syscall.Stat_t
+	err := syscall.Stat(path, &stat)
+	if err != nil {
+		return uint64(0), err
+	}
+	return uint64(stat.Blocks * int64(stat.Blksize)), nil
+}
 
 // SizeFromDir performs a du -s equivalent operation.
 // Didn't use os.ReadDir and filepath.Walk because they sort (quick_sort) all files per directory
@@ -57,8 +69,21 @@ func SizeFromDir(log *base.LogObject, dirname string) (uint64, error) {
 				log.Tracef("Dir %s size %d\n", filename, size)
 				totalUsed += size
 			} else {
-				log.Tracef("File %s Size %d\n", filename, location.Size())
-				totalUsed += uint64(location.Size())
+				// FileInfo.Size() returns the provisioned size
+				// Sparse files will have a smaller allocated size than provisioned
+				// Use full syscall.Stat_t to get the allocated size
+				allocatedBytes, err := StatAllocatedBytes(filename)
+				if err != nil {
+					log.Errorf("StatAllocatedBytes: %s failed %s treating as fully allocated\n", filename, err)
+					allocatedBytes = uint64(location.Size())
+				}
+				// Fully Allocated: don't use allocated bytes
+				// stat math of %b*%B as it will over-account space
+				if allocatedBytes >= uint64(location.Size()) {
+					allocatedBytes = uint64(location.Size())
+				}
+				log.Tracef("File %s Size %d\n", filename, allocatedBytes)
+				totalUsed += allocatedBytes
 			}
 		}
 	}
