@@ -19,7 +19,7 @@ FIRSTBOOT=
 TPM_DEVICE_PATH="/dev/tpmrm0"
 SECURITYFSPATH=/sys/kernel/security
 PATH=$BINDIR:$PATH
-DISKSPACE_RECOVERY_LIMIT=70
+MIN_DISKSPACE=4096 # MBytes
 
 echo "$(date -Ins -u) Starting onboot.sh"
 
@@ -115,32 +115,64 @@ if [ ! -d $PERSISTDIR/status ]; then
     mkdir $PERSISTDIR/status
 fi
 
-# Checking for low diskspace at bootup. If used percentage of
-# /persist directory is more than 70% then we will remove the
+# percent_used <dataset name> (without leading '/')
+percent_used() {
+    res=$(zfs list -pH -o available,used "$1")
+    # shellcheck disable=SC2181
+    if [ $? = 0 ]; then
+        # shellcheck disable=SC2086
+        avail=$(echo $res | cut -d\  -f1)
+        # shellcheck disable=SC2086
+        used=$(echo $res | cut -d\  -f2)
+        echo $((100*used/(avail+used)))
+    else
+        df --sync /"$1" |awk '{printf("%d",$5);}'
+    fi
+}
+
+# free_space <dataset name> (without leading '/')
+# return value is truncated to MBytes
+# Note that we use df even for zfs since the "available" property in zfs
+# includes unused space in child datasets
+free_space() {
+    ds="$1"
+    res=$(df --sync -k --output=avail "/$ds" | tail -1)
+    echo $((res/1024))
+}
+
+# Checking for low diskspace at bootup.
+# If there is less than 4Mbytes (MIN_DISKSPACE) then remove the content of the
+# following directories in order until we have that amount of available space
 # following sub directories:
-# /persist/log/*
-# /persist/newlog/appUpload/*
-# /persist/newlog/devUpload/*
-# /persist/newlog/keepSentQueue/*
-# /persist/newlog/failedUpload/*
-diskspace_used=$(df /persist |awk '/\/dev\//{printf("%d",$5);}')
-echo "Used percentage of /persist: $diskspace_used"
-if [ "$diskspace_used" -ge "$DISKSPACE_RECOVERY_LIMIT" ]
+PERSIST_CLEANUPS='log netdump kcrashes memory-monitor/output eve-info pubsub-large patchEnvelopesCache patchEnvelopesUsageCache newlog/keepSentQueue newlog/failedUpload newlog/appUpload newlog/devUpload containerd-system-root vault/downloader vault/verifier agentdebug'
+# NOTE that we can not cleanup /persist/containerd and /persist/{vault,clear}/volumes since those are used by applications.
+#
+# Note that we need to free up some space before Linuxkit starts containerd,
+# we need to wait a bit for ZFS deletes to take place, but we are not yet
+# running watchdogd to we need to hurry to not have the watchdog fire.
+# So we sleep a minimal of 2 seconds per directory.
+diskspace_free=$(free_space persist)
+echo "Free space in /persist: $diskspace_free MBytes" | tee /dev/console
+if [ "$diskspace_free" -lt "$MIN_DISKSPACE" ]
 then
-    echo "Used percentage of /persist is $diskspace_used more than the limit $DISKSPACE_RECOVERY_LIMIT"
-    for DIR in log newlog/keepSentQueue newlog/failedUpload newlog/appUpload newlog/devUpload
+    echo "Free space in /persist is only $diskspace_free hence below the limit $MIN_DISKSPACE MBytes" | tee /dev/console
+    for DIR in $PERSIST_CLEANUPS
     do
         dir_del=$PERSISTDIR/$DIR
         rm -rf "${dir_del:?}/"*
-        diskspace_used=$(df /persist |awk '/\/dev\//{printf("%d",$5);}')
-        echo "Used percentage of /persist is $diskspace_used after clearing $dir_del"
-        if [ "$diskspace_used" -le "$DISKSPACE_RECOVERY_LIMIT" ]
+        diskspace_free=$(free_space persist)
+        echo "Free space in /persist after clearing $dir_del: $diskspace_free MBytes" | tee /dev/console
+        # Need to wait for ZFS to free space
+        sleep 2
+        diskspace_free=$(free_space persist)
+        echo "Free space in /persist after clearing $dir_del and 2s sleep: $diskspace_free MBytes" | tee /dev/console
+        if [ "$diskspace_free" -ge "$MIN_DISKSPACE" ]
         then
             break
         fi
     done
-    diskspace_used=$(df /persist |awk '/\/dev\//{printf("%d",$5);}')
-    echo "Used percentage of /persist after recovery: $diskspace_used"
+    diskspace_free=$(free_space persist)
+    echo "Free space in /persist after recovery: $diskspace_free MBytes" | tee /dev/console
 fi
 
 # Run upgradeconverter
