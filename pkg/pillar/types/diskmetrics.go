@@ -28,8 +28,8 @@ var ReportDirPaths = []string{
 	PersistInstallerDir,
 	IngestedDirname,
 	NewlogDir,
-	PersistDir + "/containerd",
-	PersistDir + "/tmp",
+	PersistDir + "/containerd", // Old location
+	PersistDir + "/tmp",        // Should not be used by anything
 	PersistDir + "/log",
 	PersistDir + "/checkpoint",
 	PersistDir + "/containerd-system-root",
@@ -44,7 +44,7 @@ var ReportDirPaths = []string{
 
 // AppPersistPaths  Application-related files live here
 // XXX do we need to exclude the ContentTrees used for eve image update?
-// If so how do we tell them apart
+// If so how do we tell them apart?
 var AppPersistPaths = []string{
 	VolumeEncryptedDirName,
 	VolumeClearDirName,
