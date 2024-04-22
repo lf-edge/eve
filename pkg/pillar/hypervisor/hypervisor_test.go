@@ -11,7 +11,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
-var testDom = &types.DomainStatus{VirtualizationMode: types.HVM}
+var testDom = &types.DomainStatus{VmConfig: types.VmConfig{VirtualizationMode: types.HVM}}
 var hyper Hypervisor
 
 func TestGetHypervisor(t *testing.T) {

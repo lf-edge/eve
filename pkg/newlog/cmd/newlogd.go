@@ -19,6 +19,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 	"unicode"
@@ -103,8 +104,12 @@ var (
 
 	//domainUUID
 	domainUUID *base.LockedStringMap // App log, from domain-id to appDomain
-	// syslog/kmsg priority string definition
-	priorityStr = [8]string{"emerg", "alert", "crit", "err", "warning", "notice", "info", "debug"}
+	// Default log levels for some subsystems. Variables are updated and used
+	// from different goroutines, so in order to push the changes out of the
+	// goroutines local caches and correctly observe changed values in another
+	// goroutine sync/atomic synchronization is used. You've been warned.
+	syslogPrio = types.SyslogKernelLogLevelNum[types.SyslogKernelDefaultLogLevel]
+	kernelPrio = types.SyslogKernelLogLevelNum[types.SyslogKernelDefaultLogLevel]
 )
 
 // for app Domain-ID mapping into UUID and DisplayName
@@ -152,6 +157,16 @@ type devMeta struct {
 	uuid     string
 	imageVer string
 	curPart  string
+}
+
+// parse log level string
+func parseLogLevel(loglevel string) uint32 {
+	prio, ok := types.SyslogKernelLogLevelNum[loglevel]
+	if !ok {
+		prio = types.SyslogKernelLogLevelNum[types.SyslogKernelDefaultLogLevel]
+	}
+
+	return prio
 }
 
 // newlogd program
@@ -499,8 +514,25 @@ func handleGlobalConfigImp(ctxArg interface{}, key string, statusArg interface{}
 		if limitGzipFilesMbyts > uint32(persistMbytes/10) {
 			limitGzipFilesMbyts = uint32(persistMbytes / 10)
 		}
+
+		// parse syslog log level
+		syslogPrioStr := gcp.GlobalValueString(types.SyslogLogLevel)
+		atomic.StoreUint32(&syslogPrio, parseLogLevel(syslogPrioStr))
+
+		// parse kernel log level
+		kernelPrioStr := gcp.GlobalValueString(types.KernelLogLevel)
+		atomic.StoreUint32(&kernelPrio, parseLogLevel(kernelPrioStr))
 	}
 	log.Tracef("handleGlobalConfigModify done for %s, fastupload enabled %v", key, enableFastUpload)
+}
+
+func suppressMsg(entry inputEntry, cfgPrio uint32) bool {
+	pri, ok := types.SyslogKernelLogLevelNum[entry.severity]
+	if !ok {
+		pri = types.SyslogKernelLogLevelNum[types.SyslogKernelDefaultLogLevel]
+	}
+
+	return pri > cfgPrio
 }
 
 // getKmessages - goroutine to get from /dev/kmsg
@@ -515,12 +547,15 @@ func getKmessages(loggerChan chan inputEntry) {
 	for msg := range kmsg {
 		entry := inputEntry{
 			source:    "kernel",
-			severity:  "info",
+			severity:  types.SyslogKernelDefaultLogLevel,
 			content:   msg.Message,
 			timestamp: msg.Timestamp.Format(time.RFC3339Nano),
 		}
 		if msg.Priority >= 0 {
-			entry.severity = priorityStr[msg.Priority%8]
+			entry.severity = types.SyslogKernelLogLevelStr[msg.Priority%8]
+		}
+		if suppressMsg(entry, atomic.LoadUint32(&kernelPrio)) {
+			continue
 		}
 
 		logmetrics.NumKmessages++
@@ -1608,6 +1643,9 @@ func getSyslogMsg(loggerChan chan inputEntry) {
 			log.Error(err)
 			continue
 		}
+		if suppressMsg(entry, atomic.LoadUint32(&syslogPrio)) {
+			continue
+		}
 
 		logmetrics.NumSyslogMessages++
 		logmetrics.DevMetrics.NumInputEvent++
@@ -1652,7 +1690,7 @@ func newMessage(pkt []byte, size int, sysfmt *regexp.Regexp) (inputEntry, error)
 
 	msgReceived := time.Now()
 	p, _ := strconv.ParseInt(string(res[1]), 10, 64)
-	msgPriority = priorityStr[p%8]
+	msgPriority = types.SyslogKernelLogLevelStr[p%8]
 	misc := res[3]
 	// Check for either "hostname tagpid" or "tagpid"
 	a := bytes.SplitN(misc, []byte(" "), 2)

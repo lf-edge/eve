@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -94,13 +95,13 @@ func (h *ZFSHandler) SetupDefaultVault() error {
 			if zfs.DatasetExist(h.log, types.SealedDataset) {
 				return MountVaultZvol(h.log, types.SealedDataset)
 			}
+			if err := CreateZvolEtcd(h.log, types.EtcdZvol, "", false); err != nil {
+				return fmt.Errorf("error creating zfs etcd zvol %s, error=%v",
+					types.EtcdZvol, err)
+			}
 			if err := CreateZvolVault(h.log, types.SealedDataset, "", false); err != nil {
 				return fmt.Errorf("error creating zfs non-tpm vault %s, error=%v",
 					types.SealedDataset, err)
-			}
-			if err := CreateZvolEtcd(h.log, types.EtcdZvol); err != nil {
-				return fmt.Errorf("error creating zfs etcd zvol %s, error=%v",
-					types.EtcdZvol, err)
 			}
 			return nil
 		}
@@ -143,6 +144,13 @@ func (h *ZFSHandler) unlockVault(vaultPath string) error {
 
 	// zfs mount
 	if base.IsHVTypeKube() {
+		// zfs load-key here separately for types.EtcdZvol because we don't mount it here, only in kube.
+		args := []string{"load-key", types.EtcdZvol}
+		if stdOut, stdErr, err := execCmd(types.ZFSBinary, args...); err != nil {
+			h.log.Errorf("Error loading key for etcd vol vault: %v, %s, %s",
+				err, stdOut, stdErr)
+			return err
+		}
 		if err := MountVaultZvol(h.log, vaultPath); err != nil {
 			h.log.Errorf("Error unlocking vault: %v", err)
 			return err
@@ -169,12 +177,12 @@ func (h *ZFSHandler) createVault(vaultPath string) error {
 	defer unstage()
 
 	if base.IsHVTypeKube() {
+		if err := CreateZvolEtcd(h.log, types.EtcdZvol, zfsKeyFile, true); err != nil {
+			return fmt.Errorf("error creating zfs etcd zvol %s, error=%v", types.EtcdZvol, err)
+		}
 		if err := CreateZvolVault(h.log, vaultPath, zfsKeyFile, true); err != nil {
 			h.log.Errorf("Error creating zfs vault %s, error=%v", vaultPath, err)
 			return err
-		}
-		if err := CreateZvolEtcd(h.log, types.EtcdZvol); err != nil {
-			return fmt.Errorf("error creating zfs etcd zvol %s, error=%v", types.EtcdZvol, err)
 		}
 	} else {
 		if err := zfs.CreateVaultDataset(vaultPath, zfsKeyFile); err != nil {
@@ -374,8 +382,10 @@ func CreateZvolVault(log *base.LogObject, datasetName string, zfsKeyFile string,
 	if err != nil {
 		return fmt.Errorf("Dataset %s available bytes read error: %v", parentDatasetName, err)
 	}
+	// Shift back to allow for alignUp space.
+	sizeBytes = sizeBytes - zfs.VolBlockSizeBytes
 
-	err = zfs.CreateVaultVolumeDataset(log, datasetName, zfsKeyFile, encrypted, sizeBytes)
+	err = zfs.CreateVaultVolumeDataset(log, datasetName, zfsKeyFile, encrypted, sizeBytes, "zstd", zfs.VolBlockSizeBytes)
 	if err != nil {
 		return fmt.Errorf("Vault zvol creation error; %v", err)
 	}
@@ -398,40 +408,49 @@ func CreateZvolVault(log *base.LogObject, datasetName string, zfsKeyFile string,
 }
 
 // CreateZvolEtcd Create and mount an empty vault dataset zvol
-func CreateZvolEtcd(log *base.LogObject, datasetName string) error {
-	// Remaining space in the pool
-	sizeBytes := uint64(0)
-	etcdSizeBytes := uint64(1024 * 1024 * 1024 * 1)
-
-	parentDatasetName := datasetName
-	if strings.Contains(parentDatasetName, "/") {
-		datasetParts := strings.Split(parentDatasetName, "/")
-		parentDatasetName = datasetParts[0]
-	}
-
-	sizeBytes, err := zfs.GetDatasetAvailableBytes(parentDatasetName)
+func CreateZvolEtcd(log *base.LogObject, datasetName string, zfsKeyFile string, encrypted bool) error {
+	etcdSizeGb, err := getEtcdSizeSetting()
 	if err != nil {
-		return fmt.Errorf("Dataset %s available bytes read error: %v", parentDatasetName, err)
+		log.Errorf("Using default %d GB, can't read etcd size setting: %v", etcdSizeGb, err)
 	}
+	etcdSizeBytes := uint64(1024 * 1024 * 1024 * uint64(etcdSizeGb))
 
-	if sizeBytes > (1024 * 1024 * 1024 * 10) {
-		etcdSizeBytes = 1024 * 1024 * 1024 * 10
-	}
-
-	err = zfs.CreateVolumeDataset(log, datasetName, etcdSizeBytes, "off")
+	err = zfs.CreateVaultVolumeDataset(log, datasetName, zfsKeyFile, encrypted, etcdSizeBytes, "off", base.EtcdVolBlockSizeBytes)
 	if err != nil {
-		return fmt.Errorf("Vault zvol creation error; %v", err)
+		return fmt.Errorf("Vault Etcd zvol creation error: %v", err)
 	}
 
 	devPath := zfs.GetZvolPath(datasetName)
 	// Sometimes we wait for /dev path to the zvol to appear
 	// Since this only occurs on first boot, we can afford to be patient
 	if err = waitPath(log, devPath, vaultZvolPathWaitSeconds); err != nil {
-		return fmt.Errorf("Vault zvol dev path missing: %v", err)
+		return fmt.Errorf("Vault Etcd zvol dev path missing: %v", err)
 	}
 
 	if err = formatZvol(log, devPath, vaultFsType); err != nil {
-		return fmt.Errorf("Vault zvol format error: %v", err)
+		return fmt.Errorf("Vault Etcd zvol format error: %v", err)
 	}
 	return nil
+}
+
+func getEtcdSizeSetting() (uint32, error) {
+	size := base.DefaultEtcdSizeGB
+	data, err := os.ReadFile("/proc/cmdline")
+	if err != nil {
+		return size, err
+	}
+	bootArgs := strings.Fields(string(data))
+	for _, arg := range bootArgs {
+		if strings.HasPrefix(arg, base.InstallOptionEtcdSizeGB) {
+			argSplitted := strings.Split(arg, "=")
+			if len(argSplitted) == 2 {
+				valGB, err := strconv.ParseUint(argSplitted[1], 10, 32)
+				if err == nil {
+					return uint32(valGB), nil
+				}
+				return size, err
+			}
+		}
+	}
+	return size, nil
 }

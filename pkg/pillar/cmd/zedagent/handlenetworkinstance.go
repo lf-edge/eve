@@ -88,6 +88,7 @@ func prepareAndPublishNetworkInstanceInfoMsg(ctx *zedagentContext,
 			errInfo.Description = status.Error
 			errTime, _ := ptypes.TimestampProto(status.ErrorTime)
 			errInfo.Timestamp = errTime
+			errInfo.Severity = zinfo.Severity(status.ErrorSeverity)
 			info.NetworkErr = append(info.NetworkErr, errInfo)
 			info.State = zinfo.ZNetworkInstanceState_ZNETINST_STATE_ERROR
 		} else if status.ChangeInProgress != types.ChangeInProgressTypeNone {

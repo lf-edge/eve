@@ -545,45 +545,62 @@ func (c *Client) getModemStatus(modemObj dbus.BusObject) (
 		simCard := types.WwanSimCard{
 			SlotNumber:    slot,
 			SlotActivated: isPrimary,
+			Type:          types.SimTypePhysical,
 			State:         SIMStateAbsent,
 		}
 		if simPath.IsValid() && len(simPath) > 1 {
 			simPaths = append(simPaths, string(simPath))
-			// SIM card is present in this slot.
-			// But note that even if SIM card is present but the slot is inactive,
-			// ModemManager might report the card as absent, without providing any SIM
-			// object path to work with.
-			// On the other hand, with mbimcli we are able to distinguish between
-			// missing and inactive SIM card:
-			//     mbimcli -p -d /dev/cdc-wdm0 --ms-query-slot-info-status 0
-			//     [/dev/cdc-wdm0] Slot info status retrieved:
-			//	          Slot '0': 'state-off'
-			// (as opposed to 'state-empty')
-			// With qmicli we can also get this information:
-			//     qmicli -p -d /dev/cdc-wdm0 --uim-get-slot-status
-			//     [/dev/cdc-wdm0] 2 physical slots found:
-			//       Physical slot 1:
-			//          Card status: present
-			//          Slot status: active
-			//         Logical slot: 1
-			//                ICCID: 894921003198100584
-			//             Protocol: uicc
-			//             Num apps: 0
-			//             Is eUICC: no
-			//       Physical slot 2:
-			//          Card status: present
-			//          Slot status: inactive
-			//                ICCID: 89492029226029738490
-			//             Protocol: uicc
-			//             Num apps: 0
-			//             Is eUICC: no
-			// TODO: should we call mbimcli/qmicli ?
 			simObj := c.conn.Object(MMInterface, simPath)
 			_ = getDBusProperty(c, simObj, SIMPropertyActive, &simCard.SlotActivated)
 			_ = getDBusProperty(c, simObj, SIMPropertyICCID, &simCard.ICCID)
 			simCard.Name = simCard.ICCID
 			_ = getDBusProperty(c, simObj, SIMPropertyIMSI, &simCard.IMSI)
-			simCard.State = SIMStatePresent
+			var simType uint32
+			_ = getDBusProperty(c, simObj, SIMPropertyType, &simType)
+			switch simType {
+			case SIMTypeESIM:
+				// eSIM is not supported by EVE (or even by ModemManager) for connection
+				// establishment, but we still want to at least publish correct status
+				// information for the eSIM "slot".
+				simCard.Type = types.SimTypeEmbedded
+				var esimStatus uint32
+				_ = getDBusProperty(c, simObj, SIMPropertyESIMStatus, &esimStatus)
+				if esimStatus == ESIMWithProfiles {
+					simCard.State = SIMStatePresent
+				}
+			case SIMTypePhysical:
+				// Since we have valid dbus object for the physical SIM slot, it means
+				// that the SIM card is present.
+				// But note that even if SIM card is present but the slot is inactive,
+				// ModemManager might report the card as absent, without providing any SIM
+				// object path to work with.
+				// On the other hand, with mbimcli we are able to distinguish between
+				// missing and inactive SIM card:
+				//     mbimcli -p -d /dev/cdc-wdm0 --ms-query-slot-info-status 0
+				//     [/dev/cdc-wdm0] Slot info status retrieved:
+				//	          Slot '0': 'state-off'
+				// (as opposed to 'state-empty')
+				// With qmicli we can also get this information:
+				//     qmicli -p -d /dev/cdc-wdm0 --uim-get-slot-status
+				//     [/dev/cdc-wdm0] 2 physical slots found:
+				//       Physical slot 1:
+				//          Card status: present
+				//          Slot status: active
+				//         Logical slot: 1
+				//                ICCID: 894921003198100584
+				//             Protocol: uicc
+				//             Num apps: 0
+				//             Is eUICC: no
+				//       Physical slot 2:
+				//          Card status: present
+				//          Slot status: inactive
+				//                ICCID: 89492029226029738490
+				//             Protocol: uicc
+				//             Num apps: 0
+				//             Is eUICC: no
+				// TODO: should we call mbimcli/qmicli ?
+				simCard.State = SIMStatePresent
+			}
 			if !simCard.SlotActivated {
 				simCard.State = SIMStateInactive
 			}
@@ -749,8 +766,15 @@ func (c *Client) getModemPhysAddrs(modemObj dbus.BusObject) (
 	devPathSymlink := filepath.Join("/sys/class/usbmisc", primaryPort, "device")
 	devPath, err := filepath.EvalSymlinks(devPathSymlink)
 	if err != nil {
-		return addrs, proto, fmt.Errorf("failed to eval symlink %s: %w",
-			devPathSymlink, err)
+		// Maybe this modem uses PCIe interface as opposed to USB.
+		// This is more and more common for modern high-speed 4G and 5G modems.
+		var err2 error
+		devPathSymlink2 := filepath.Join("/sys/class/wwan", primaryPort, "device")
+		devPath, err2 = filepath.EvalSymlinks(devPathSymlink2)
+		if err2 != nil {
+			return addrs, proto, fmt.Errorf("failed to eval symlinks %s (%w) and %s (%v)",
+				devPathSymlink, err, devPathSymlink2, err2)
+		}
 	}
 	// Determine the network interface name.
 	netPath := filepath.Join(devPath, "net")
@@ -762,37 +786,22 @@ func (c *Client) getModemPhysAddrs(modemObj dbus.BusObject) (
 		addrs.Interface = netInterfaces[0].Name()
 	}
 	// Determine USB address.
-	parentPath := devPath
-	subSysSymlink := filepath.Join(parentPath, "subsystem")
-	for utils.FileExists(c.log, subSysSymlink) {
-		subSysPath, err := filepath.EvalSymlinks(subSysSymlink)
-		if err != nil {
-			return addrs, proto, fmt.Errorf("failed to eval symlink %s: %w",
-				subSysSymlink, err)
-		}
-		if filepath.Base(subSysPath) == "usb" {
-			addrs.USB = strings.Split(filepath.Base(parentPath), ":")[0]
-			addrs.USB = strings.ReplaceAll(addrs.USB, "-", ":")
-			break
-		}
-		parentPath = filepath.Dir(parentPath)
-		subSysSymlink = filepath.Join(parentPath, "subsystem")
+	addrs.USB, err = c.getSysDevAddr(devPath, "usb")
+	if err != nil {
+		return addrs, proto, err
+	}
+	if addrs.USB != "" {
+		// Return USB address as <bus>:<port>
+		// Note that USB paths in /sys/bus/usb/devices have format:
+		//    <bus>-<port>:<config>.<interface>
+		// We are not interested in the configuration and interface numbers.
+		addrs.USB = strings.Split(addrs.USB, ":")[0]
+		addrs.USB = strings.ReplaceAll(addrs.USB, "-", ":")
 	}
 	// Determine PCI address.
-	parentPath = devPath
-	subSysSymlink = filepath.Join(parentPath, "subsystem")
-	for utils.FileExists(c.log, subSysSymlink) {
-		subSysPath, err := filepath.EvalSymlinks(subSysSymlink)
-		if err != nil {
-			return addrs, proto, fmt.Errorf(
-				"failed to eval symlink %s: %w", subSysSymlink, err)
-		}
-		if filepath.Base(subSysPath) == "pci" {
-			addrs.PCI = filepath.Base(parentPath)
-			break
-		}
-		parentPath = filepath.Dir(parentPath)
-		subSysSymlink = filepath.Join(parentPath, "subsystem")
+	addrs.PCI, err = c.getSysDevAddr(devPath, "pci")
+	if err != nil {
+		return addrs, proto, err
 	}
 	// Find out which protocol is being used to control the modem.
 	var ports [][]interface{}
@@ -823,6 +832,29 @@ func (c *Client) getModemPhysAddrs(modemObj dbus.BusObject) (
 		}
 	}
 	return addrs, proto, nil
+}
+
+// Given device path from /sys, such as: /sys/devices/pci0000:00/0000:00:1c.0/0000:2c:00.0/mhi0/wwan/wwan0
+// it returns the address of the device on the given bus (e.g. "0000:2c:00.0" for "pci").
+// If the device is not on the particular bus, it returns an empty string (and not an error).
+func (c *Client) getSysDevAddr(sysDevPath, bus string) (addr string, err error) {
+	parentPath := sysDevPath
+	for parentPath != "/" {
+		// Not every parent directory contains "subsystem" link.
+		subSysSymlink := filepath.Join(parentPath, "subsystem")
+		if utils.FileExists(c.log, subSysSymlink) {
+			subSysPath, err := filepath.EvalSymlinks(subSysSymlink)
+			if err != nil {
+				return "", fmt.Errorf("failed to eval symlink %s: %w",
+					subSysSymlink, err)
+			}
+			if filepath.Base(subSysPath) == bus {
+				return filepath.Base(parentPath), nil
+			}
+		}
+		parentPath = filepath.Dir(parentPath)
+	}
+	return "", nil
 }
 
 // Get modem metrics.
@@ -1024,6 +1056,10 @@ func (c *Client) EnableRadio(modemPath string) error {
 		powerState = ModemPowerStateOn
 		err = c.callDBusMethod(modemObj, ModemMethodSetPowerState, nil, powerState)
 		if err != nil {
+			if err.Error() == "Invalid transition" {
+				// Modem is most likely FCC-locked.
+				err = fmt.Errorf("%w (Is modem FCC-locked?)", err)
+			}
 			return err
 		}
 	}
@@ -1141,6 +1177,17 @@ func (c *Client) Connect(
 		return types.WwanIPSettings{}, err
 	}
 	// Activate the selected SIM slot if it is not already.
+	if args.SIMSlot == 0 {
+		// SIM slot is not selected by the user.
+		// Use whatever SIM slot is already set as primary, but prefer physical
+		// ports over unsupported eSIM.
+		err := c.preferPhysSimOverESim(modemObj)
+		if err != nil {
+			c.log.Error(err)
+			// Continue, below we will try to change settings for the initial
+			// EPS bearer, which could help with the UE registration.
+		}
+	}
 	if args.SIMSlot != 0 {
 		var primarySIM uint32
 		_ = getDBusProperty(c, modemObj, ModemPropertyPrimarySIMSlot, &primarySIM)
@@ -1241,7 +1288,10 @@ func (c *Client) runSimpleConnect(modemObj dbus.BusObject,
 	connProps map[string]interface{}) (types.WwanIPSettings, error) {
 	var ipSettings types.WwanIPSettings
 	var bearerPath dbus.ObjectPath
-	modem := c.modems[string(modemObj.Path())]
+	modem, exists := c.modems[string(modemObj.Path())]
+	if !exists {
+		return ipSettings, fmt.Errorf("unknown modem: %v", modemObj.Path())
+	}
 	err := c.callDBusMethod(modemObj, SimpleMethodConnect, &bearerPath, connProps)
 	var errIsUseless bool
 	if err != nil {
@@ -1258,11 +1308,21 @@ func (c *Client) runSimpleConnect(modemObj dbus.BusObject,
 			if !simCard.SlotActivated {
 				continue
 			}
-			switch simCard.State {
-			case SIMStateAbsent:
-				return ipSettings, errors.New("SIM card is absent")
-			case SIMStateError:
-				return ipSettings, errors.New("SIM card is in failed state")
+			switch simCard.Type {
+			case SIMTypeESIM:
+				switch simCard.State {
+				case SIMStateAbsent:
+					return ipSettings, errors.New("eSIM card is without profile")
+				case SIMStateError:
+					return ipSettings, errors.New("eSIM card is in failed state")
+				}
+			default:
+				switch simCard.State {
+				case SIMStateAbsent:
+					return ipSettings, errors.New("SIM card is absent")
+				case SIMStateError:
+					return ipSettings, errors.New("SIM card is in failed state")
+				}
 			}
 		}
 		switch modem.Status.Module.OpMode {
@@ -1400,6 +1460,50 @@ func (c *Client) setPreferredRATs(modemObj dbus.BusObject,
 	}
 	c.log.Noticef("Setting mode %v for modem %s", mode, modemObj.Path())
 	return c.callDBusMethod(modemObj, ModemMethodSetCurrentModes, nil, mode)
+}
+
+// If the user does not select a specific SIM slot, EVE will utilize whichever
+// SIM slot is already designated as primary (e.g., by the device manufacturer).
+// However, there is one exception: if the primary SIM is an eSIM (virtual
+// embedded SIM), EVE will default to using the first physical slot instead,
+// as eSIM is not supported. EVE will attempt to connect (and fail) with the eSIM
+// only if the user explicitly selects the eSIM slot.
+func (c *Client) preferPhysSimOverESim(modemObj dbus.BusObject) error {
+	modem, exists := c.modems[string(modemObj.Path())]
+	if !exists {
+		return fmt.Errorf("unknown modem: %v", modemObj.Path())
+	}
+	if len(modem.Status.SimCards) == 0 {
+		return fmt.Errorf("missing SIM card status for modem: %s", modem.Path)
+	}
+	var usesESim bool
+	var firstPhysSlot uint8 // slots starts with 1 (0 can be used as undefined)
+	for _, simCard := range modem.Status.SimCards {
+		switch simCard.Type {
+		case types.SimTypePhysical:
+			if firstPhysSlot == 0 || simCard.SlotNumber < firstPhysSlot {
+				firstPhysSlot = simCard.SlotNumber
+			}
+		case types.SimTypeEmbedded:
+			if simCard.SlotActivated {
+				usesESim = true
+			}
+		}
+	}
+	if !usesESim || firstPhysSlot == 0 {
+		// Nothing to do.
+		return nil
+	}
+	// Use the first physical SIM slot instead of eSIM.
+	c.log.Noticef("Automatically changing primary SIM slot for modem %s from eSIM to %d",
+		modem.Path, firstPhysSlot)
+	err := c.callDBusMethod(modemObj, ModemMethodSetPrimarySimSlot, nil,
+		uint32(firstPhysSlot))
+	if err != nil {
+		return err
+	}
+	return c.waitForModemState(
+		modemObj, ModemStateRegistered, changePrimarySIMTimeout)
 }
 
 // Disconnect terminates the modem connection.

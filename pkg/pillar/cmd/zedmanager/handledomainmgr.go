@@ -61,7 +61,9 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 			continue
 		}
 		location := vrs.ActiveFileLocation
-		if location == "" {
+		// Volumes in kubevirt eve are of PVC type and managed by kubernetes.
+		// There is no specific filelocation
+		if location == "" && !ctx.hvTypeKube {
 			errStr := fmt.Sprintf("No ActiveFileLocation for %s", vrs.DisplayName)
 			log.Error(errStr)
 			return nil, errors.New(errStr)
@@ -77,6 +79,13 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 		disk.Target = vrs.Target
 		disk.CustomMeta = vrs.CustomMeta
 		dc.DiskConfigList = append(dc.DiskConfigList, disk)
+		// For NOHYPER type virtualization mode pass the KubeImageName to domainmgr
+		// pods will be launched using that KubeImageName in kubevirt eve
+		// Reference name can be empty for non-kubevirt eve and KubeImageName will be ignored in such cases.
+		if aiConfig.FixedResources.VirtualizationMode == types.NOHYPER {
+			dc.VirtualizationMode = types.NOHYPER
+			dc.KubeImageName = vrs.ReferenceName
+		}
 	}
 	// let's fill some of the default values (arguably we may want controller
 	// to do this for us and give us complete config, but it is easier to
@@ -150,12 +159,12 @@ func lookupDomainStatus(ctx *zedmanagerContext, key string) *types.DomainStatus 
 }
 
 func publishDomainConfig(ctx *zedmanagerContext,
-	status *types.DomainConfig) {
+	config *types.DomainConfig) {
 
-	key := status.Key()
+	key := config.Key()
 	log.Tracef("publishDomainConfig(%s)", key)
 	pub := ctx.pubDomainConfig
-	pub.Publish(key, *status)
+	pub.Publish(key, *config)
 }
 
 func unpublishDomainConfig(ctx *zedmanagerContext, uuidStr string) {

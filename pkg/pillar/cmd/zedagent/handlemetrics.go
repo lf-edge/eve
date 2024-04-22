@@ -147,6 +147,7 @@ func encodeTestResults(tr types.TestResults) *info.ErrorInfo {
 	if tr.HasError() {
 		timestamp = tr.LastFailed
 		errInfo.Description = tr.LastError
+		errInfo.Severity = info.Severity_SEVERITY_ERROR
 	} else {
 		timestamp = tr.LastSucceeded
 	}

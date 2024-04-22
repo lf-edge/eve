@@ -74,6 +74,8 @@ type zedmanagerContext struct {
 	// hypervisorPtr is the name of the hypervisor to use
 	hypervisorPtr      *string
 	assignableAdapters *types.AssignableAdapters
+	// Is it kubevirt eve
+	hvTypeKube bool
 }
 
 // AddAgentSpecificCLIFlags adds CLI options
@@ -93,6 +95,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	// Any state needed by handler functions
 	ctx := zedmanagerContext{
 		globalConfig: types.DefaultConfigItemValueMap(),
+		hvTypeKube:   base.IsHVTypeKube(),
 	}
 	agentbase.Init(&ctx, logger, log, agentName,
 		agentbase.WithArguments(arguments))

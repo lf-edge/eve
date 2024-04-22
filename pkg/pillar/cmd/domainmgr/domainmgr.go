@@ -1284,19 +1284,15 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 
 	// Start by marking with PendingAdd
 	status := types.DomainStatus{
-		UUIDandVersion:     config.UUIDandVersion,
-		PendingAdd:         true,
-		DisplayName:        config.DisplayName,
-		DomainName:         config.GetTaskName(),
-		AppNum:             config.AppNum,
-		VirtualizationMode: config.VirtualizationModeOrDefault(),
-		EnableVnc:          config.EnableVnc,
-		VncDisplay:         config.VncDisplay,
-		VncPasswd:          config.VncPasswd,
-		DisableLogs:        config.DisableLogs,
-		State:              types.INSTALLED,
-		VmConfig:           config.VmConfig,
-		Service:            config.Service,
+		UUIDandVersion: config.UUIDandVersion,
+		PendingAdd:     true,
+		DisplayName:    config.DisplayName,
+		DomainName:     config.GetTaskName(),
+		AppNum:         config.AppNum,
+		DisableLogs:    config.DisableLogs,
+		State:          types.INSTALLED,
+		VmConfig:       config.VmConfig,
+		Service:        config.Service,
 	}
 
 	status.VmConfig.CPUs = ""
@@ -2215,6 +2211,7 @@ func handleModify(ctx *domainContext, key string,
 func updateStatusFromConfig(status *types.DomainStatus, config types.DomainConfig) {
 	status.VirtualizationMode = config.VirtualizationModeOrDefault()
 	status.EnableVnc = config.EnableVnc
+	status.EnableVncShimVM = config.EnableVncShimVM
 	status.VncDisplay = config.VncDisplay
 	status.VncPasswd = config.VncPasswd
 	status.DisableLogs = config.DisableLogs

@@ -256,6 +256,10 @@ const (
 	DefaultLogLevel GlobalSettingKey = "debug.default.loglevel"
 	// DefaultRemoteLogLevel global setting key
 	DefaultRemoteLogLevel GlobalSettingKey = "debug.default.remote.loglevel"
+	// SyslogLogLevel global setting key
+	SyslogLogLevel GlobalSettingKey = "debug.syslog.loglevel"
+	// KernelLogLevel global setting key
+	KernelLogLevel GlobalSettingKey = "debug.kernel.loglevel"
 
 	// XXX Temporary flag to disable RFC 3442 classless static route usage
 	DisableDHCPAllOnesNetMask GlobalSettingKey = "debug.disable.dhcp.all-ones.netmask"
@@ -284,6 +288,14 @@ const (
 	// network traces for download requests.
 	// Beware: may contain secrets, such as datastore credentials.
 	NetDumpDownloaderHTTPWithFieldValue GlobalSettingKey = "netdump.downloader.http.with.fieldvalue"
+	// NetworkLocalLegacyMACAddress : Enables legacy MAC address generation for
+	// local network instances. The legacy generation is not "that" random and
+	// probability of repeating MAC addresses across nodes is high. Later the
+	// algorithm was changed and more randomness was introduced, but some
+	// applications may be already configured with already allocated MAC
+	// address, and MAC address change on EVE node upgrade (switch from old
+	// generation logic to new one) can cause problems with the guest network.
+	NetworkLocalLegacyMACAddress GlobalSettingKey = "network.local.legacy.mac.address"
 )
 
 // AgentSettingKey - keys for per-agent settings
@@ -315,6 +327,31 @@ const (
 	ConfigItemTypeString
 	// ConfigItemTypeTriState - for config item's who's value is a tristate
 	ConfigItemTypeTriState
+)
+
+var (
+	// SyslogKernelLogLevelStr is a string representation of syslog/kernel
+	// loglevels.
+	SyslogKernelLogLevelStr = [8]string{
+		"emerg", "alert", "crit", "err", "warning", "notice", "info", "debug",
+	}
+	// SyslogKernelLogLevelNum is a number representation of syslog/kernel
+	// loglevels.
+	SyslogKernelLogLevelNum = map[string]uint32{
+		"emerg":    0,
+		"alert":    1,
+		"crit":     2,
+		"critical": 2,
+		"err":      3,
+		"error":    3,
+		"warning":  4,
+		"warn":     4,
+		"notice":   5,
+		"info":     6,
+		"debug":    7,
+	}
+	// SyslogKernelDefaultLogLevel is a default loglevel for syslog and kernel.
+	SyslogKernelDefaultLogLevel = "info"
 )
 
 // ConfigItemSpec - Defines what a specification for a configuration should be
@@ -856,6 +893,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddBoolItem(ConsoleAccess, true) // Controller likely default to false
 	configItemSpecMap.AddBoolItem(EnableARPSnoop, true)
 	configItemSpecMap.AddBoolItem(WwanQueryVisibleProviders, false)
+	configItemSpecMap.AddBoolItem(NetworkLocalLegacyMACAddress, false)
 
 	// Add TriState Items
 	configItemSpecMap.AddTriStateItem(NetworkFallbackAnyEth, TS_DISABLED)
@@ -863,12 +901,14 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 
 	// Add String Items
 	configItemSpecMap.AddStringItem(SSHAuthorizedKeys, "", blankValidator)
-	configItemSpecMap.AddStringItem(DefaultLogLevel, "info", parseLevel)
-	configItemSpecMap.AddStringItem(DefaultRemoteLogLevel, "info", parseLevel)
+	configItemSpecMap.AddStringItem(DefaultLogLevel, "info", validateLogrusLevel)
+	configItemSpecMap.AddStringItem(DefaultRemoteLogLevel, "info", validateLogrusLevel)
+	configItemSpecMap.AddStringItem(SyslogLogLevel, "info", validateSyslogKernelLevel)
+	configItemSpecMap.AddStringItem(KernelLogLevel, "info", validateSyslogKernelLevel)
 
 	// Add Agent Settings
-	configItemSpecMap.AddAgentSettingStringItem(LogLevel, "info", parseLevel)
-	configItemSpecMap.AddAgentSettingStringItem(RemoteLogLevel, "info", parseLevel)
+	configItemSpecMap.AddAgentSettingStringItem(LogLevel, "info", validateLogrusLevel)
+	configItemSpecMap.AddAgentSettingStringItem(RemoteLogLevel, "info", validateLogrusLevel)
 
 	// Add NetDump settings
 	configItemSpecMap.AddBoolItem(NetDumpEnable, true)
@@ -877,13 +917,24 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddIntItem(NetDumpTopicMaxCount, 10, 1, 0xFFFFFFFF)
 	configItemSpecMap.AddBoolItem(NetDumpDownloaderPCAP, false)
 	configItemSpecMap.AddBoolItem(NetDumpDownloaderHTTPWithFieldValue, false)
+
 	return configItemSpecMap
 }
 
-// parseLevel - Wrapper that ignores the 'Level' output of the logrus.ParseLevel function
-func parseLevel(level string) error {
+// validateLogrusLevel - Wrapper for validating logrus loglevel
+func validateLogrusLevel(level string) error {
 	_, err := logrus.ParseLevel(level)
 	return err
+}
+
+// validateSyslogKernelLevel - Wrapper for validating syslog and kernel
+// loglevels.
+func validateSyslogKernelLevel(level string) error {
+	_, ok := SyslogKernelLogLevelNum[level]
+	if !ok {
+		return fmt.Errorf("validateSyslogKernelLevel: unknown loglevel '%v'", level)
+	}
+	return nil
 }
 
 // blankValidator - A validator that accepts any string

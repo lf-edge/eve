@@ -532,6 +532,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext, dest destinationBitset) {
 		if ib.Error != "" {
 			errInfo := new(info.ErrorInfo)
 			errInfo.Description = ib.Error
+			errInfo.Severity = info.Severity_SEVERITY_ERROR
 			if !ib.ErrorTime.IsZero() {
 				protoTime, err := ptypes.TimestampProto(ib.ErrorTime)
 				if err == nil {
@@ -941,6 +942,7 @@ func encodeSimCards(cellModule string, wwanSimCards []types.WwanSimCard) (simCar
 			CellModuleName: cellModule,
 			Imsi:           simCard.IMSI,
 			Iccid:          simCard.ICCID,
+			Type:           info.SimType(simCard.Type),
 			State:          simCard.State,
 			SlotNumber:     uint32(simCard.SlotNumber),
 			SlotActivated:  simCard.SlotActivated,

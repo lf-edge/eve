@@ -151,6 +151,26 @@ connectors depending on your antenna. Other modems like the EM7565 use MHF4 conn
 instead of u.fl. Remember that the longer the cable from your modem to the antenna, the more signal
 you will lose.
 
+### eSIM
+
+An eSIM (embedded SIM) is a form of SIM card that is embedded directly into a device. Instead of
+an integrated circuit located on a removable SIM card, an eSIM consists of software installed
+onto an eUICC chip permanently attached to a device.
+
+Currently, EVE does not support embedded SIM. A missing piece is the Local Profile Assistant (LPA),
+which is responsible for downloading eSIM profiles from an SM-DP+ (Subscription Manager Data
+Preparation) server, installing them in the device's eUICC, and managing switching between profiles
+(the digital equivalent of swapping SIM cards). ModemManager, utilized by EVE for cellular modem
+management, does not have an LPA built in. Consequently, we must explore alternative open-source
+projects that provide an LPA implementation and integrate one of them with our wwan microservice.
+
+At present, EVE can at least accurately report the eSIM status (such as slot index and profile
+presence). However, if the user has not specified the SIM slot to use, EVE prioritizes physical SIM
+cards over eSIM. Specifically, if the device is preconfigured (e.g., by the manufacturer) with eSIM
+as the primary slot and the user has not explicitly set the slot index via the controller, EVE
+automatically designates the first physical slot (with the lowest index) as the primary option.
+EVE will only attempt to connect with the eSIM if the user explicitly selects the eSIM slot.
+
 ## Radio Silence
 
 Radio silence is the act of disabling all radio transmission for safety or security reasons.

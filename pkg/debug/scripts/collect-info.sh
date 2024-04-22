@@ -6,7 +6,7 @@
 
 # Script version, don't forget to bump up once something is changed
 
-VERSION=17
+VERSION=20
 # Add required packages here, it will be passed to "apk add".
 # Once something added here don't forget to add the same package
 # to the Dockerfile ('ENV PKGS' line) of the debug container,
@@ -22,6 +22,8 @@ SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
 
 READ_LOGS_DEV=
 READ_LOGS_APP=
+TAR_WHOLE_SYS=
+OUT_LOGS_IN_JSON=
 
 usage()
 {
@@ -29,13 +31,27 @@ usage()
     echo "       -h   show this help"
     echo "       -v   show the script version"
     echo ""
+    echo "The script works in two modes depending on the location where it"
+    echo "is invoked:"
+    echo " 1. Script, being called from EVE, collects all the logs, states"
+    echo "    and makes a tarball. This mode is referenced as 'collect-logs mode',"
+    echo "    see some options described below."
+    echo " 2. Script, being called from untared tarball (collect-info.sh is"
+    echo "    included into the resulting tarball), outputs all the"
+    echo "    logs to the stdout. This mode is referenced as 'read-logs mode',"
+    echo "    see some options described below."
+    echo ""
+    echo "Collect-logs mode:"
+    echo "       -s tar whole /sysfs"
+    echo ""
     echo "Read-logs mode:"
     echo "       -d                   - read device logs only"
     echo "       -a APPLICATION-UUID  - read specified application logs only"
+    echo "       -j                   - output logs in json"
     exit 1
 }
 
-while getopts "vha:d" o; do
+while getopts "vhsa:dj" o; do
     case "$o" in
         h)
             usage
@@ -49,6 +65,12 @@ while getopts "vha:d" o; do
             ;;
         d)
             READ_LOGS_DEV=1
+            ;;
+        s)
+            TAR_WHOLE_SYS=1
+            ;;
+        j)
+            OUT_LOGS_IN_JSON=1
             ;;
         :)
             usage
@@ -66,7 +88,7 @@ sort_cat_jq()
     # Decompress if needed and output
     xargs --no-run-if-empty zcat -f | \
     # Add a new JSON entry "timestamp.str" which represents timestamp
-    # in a human readable `strftime` format: "%B %d %Y %I:%M:%S.%f".
+    # in a human readable `strftime` format: "%Y-%m-%d %I:%M:%S.%f".
     # The whole complexity lies in the JQ `strftime` implementation
     # which does not support milli/nano seconds ("%f" part), and for
     # me that means converting nanos# to a fraction of a float number.
@@ -77,7 +99,15 @@ sort_cat_jq()
     # Also:
     # "-R (. as $line | try fromjson)" means ignore a line if is not a JSON,
     # "(nanos // 0)" means return 0 if nanos is null
-    jq -R '(. as $line | try fromjson) | .timestamp.str.nanos = ((.timestamp.nanos // 0) + 1e9 | tostring | .[1:]) | .timestamp.str.human = (.timestamp.seconds | strftime("%B %d %Y %I:%M:%S")) | .timestamp.str = "\(.timestamp.str.human).\(.timestamp.str.nanos)"'
+    if [ -n "$OUT_LOGS_IN_JSON" ]; then
+        jq -R '(. as $line | try fromjson) | .timestamp.str.nanos = ((.timestamp.nanos // 0) + 1e9 | tostring | .[1:]) | .timestamp.str.human = (.timestamp.seconds | strftime("%Y-%m-%d %I:%M:%S")) | .timestamp.str = "\(.timestamp.str.human).\(.timestamp.str.nanos)"'
+    else
+        # "(.content as $cont | $cont | try (fromjson.msg) catch $cont)"
+        #     - we handle nested JSON, which is not always the case
+        # | awk /./
+        #     - remove blank lines, kernel log has additional \n at the end
+        jq -r -R '(. as $line | try fromjson) | .timestamp.str.nanos = ((.timestamp.nanos // 0) + 1e9 | tostring | .[1:4]) | .timestamp.str.human = (.timestamp.seconds | strftime("%Y-%m-%d %I:%M:%S")) | "\(.timestamp.str.human).\(.timestamp.str.nanos)|\(.severity)|\(.source)|\(.filename // "")| \(  (.content as $cont | $cont | try (fromjson.msg) catch $cont) )"' | awk /./
+    fi
 }
 
 # We are not on EVE? Switch to read-logs mode
@@ -127,6 +157,21 @@ if nc -z -w 30 dl-cdn.alpinelinux.org 443 2>/dev/null; then
   # shellcheck disable=SC2086
   apk add $PKG_DEPS >/dev/null 2>&1
 fi
+
+check_tar_flags() {
+  tar --version | grep -q "GNU tar"
+}
+
+collect_sysfs()
+{
+    echo "- sysfs"
+    local tarball_file="$DIR/sysfs.tar"
+    if check_tar_flags; then
+        tar --ignore-failed-read --warning=none -czf "$tarball_file" "/sys" > /dev/null 2>&1 || true
+    else
+        tar -czf "$tarball_file" "/sys" > /dev/null 2>&1 || true
+    fi
+}
 
 collect_network_info()
 {
@@ -373,6 +418,7 @@ ln -s /persist/netdump      "$DIR/persist-netdump"
 ln -s /persist/kcrashes     "$DIR/persist-kcrashes"
 ln -s /run                  "$DIR/root-run"
 cp -r /sys/fs/cgroup/memory "$DIR/sys-fs-cgroup-memory" >/dev/null 2>&1
+[ -f /persist/SMART_details.json ] && ln -s /persist/SMART_details* "$DIR/"
 
 # Network part
 collect_network_info
@@ -386,10 +432,9 @@ collect_zfs_info
 # Kube part
 collect_kube_info
 
-check_tar_flags() {
-  tar --version | grep -q "GNU tar"
-}
-
+if [ -n "$TAR_WHOLE_SYS" ]; then
+  collect_sysfs
+fi
 
 # Make a tarball
 # --exlude='root-run/run'              /run/run/run/.. exclude symbolic link loop

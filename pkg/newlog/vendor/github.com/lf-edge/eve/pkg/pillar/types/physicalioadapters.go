@@ -38,19 +38,16 @@ type PhyIOUsagePolicy struct {
 // PhysicalIOAdapter - Object used to store Adapter configuration (L1)
 // from controller for each Adapter.
 type PhysicalIOAdapter struct {
-	Ptype        zcommon.PhyIoType // Type of IO Device
-	Phylabel     string            // Label printed on the enclosure
-	Phyaddr      PhysicalAddress
-	Logicallabel string // Label assigned by model creator
-	Assigngrp    string
-	Usage        zcommon.PhyIoMemberUsage
-	UsagePolicy  PhyIOUsagePolicy
-	//nolint:godox
-	// FIXME: cbattr - This needs to be thought through to be made into
-	//  a structure OR may be even various attributes in PhysicalIO structure
-	// itself.
-	// map <string, string> cbattr = 8;
-	Vfs sriov.VFList // Used only for Physical Functions PFs
+	Ptype           zcommon.PhyIoType // Type of IO Device
+	Phylabel        string            // Label printed on the enclosure
+	Phyaddr         PhysicalAddress
+	Logicallabel    string // Label assigned by model creator
+	Assigngrp       string
+	Parentassigngrp string
+	Usage           zcommon.PhyIoMemberUsage
+	UsagePolicy     PhyIOUsagePolicy
+	Vfs             sriov.VFList      // Used only for Physical Functions PFs
+	Cbattr          map[string]string // Used for additional attributes
 }
 
 // PhysicalIOAdapterList - List of Physical Adapters to be used on the

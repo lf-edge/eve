@@ -862,9 +862,9 @@ func TestCreateDomConfigAmd64(t *testing.T) {
 	}
 	defer os.Remove(conf.Name())
 
-	disks := qemuDisks()
-	config, aa := domainConfigAndAssignableAdapters()
-	if err := kvmIntel.CreateDomConfig("test", config, types.DomainStatus{}, disks, &aa, conf); err != nil {
+	diskConfigs, diskStatuses := qemuDisks()
+	config, aa := domainConfigAndAssignableAdapters(diskConfigs)
+	if err := kvmIntel.CreateDomConfig("test", config, types.DomainStatus{}, diskStatuses, &aa, conf); err != nil {
 		t.Errorf("CreateDomConfig failed %v", err)
 	}
 	defer os.Truncate(conf.Name(), 0)
@@ -887,10 +887,10 @@ func TestCreateDomConfigAmd64Legacy(t *testing.T) {
 		t.Errorf("Can't create config file for a domain %v", err)
 	}
 	defer os.Remove(conf.Name())
-	disksLegacy := qemuDisksLegacy()
-	config, aa := domainConfigAndAssignableAdapters()
+	diskCondigsLegacy, diskStatusesLegacy := qemuDisksLegacy()
+	config, aa := domainConfigAndAssignableAdapters(diskCondigsLegacy)
 	config.VirtualizationMode = types.LEGACY
-	if err := kvmIntel.CreateDomConfig("test", config, types.DomainStatus{}, disksLegacy, &aa, conf); err != nil {
+	if err := kvmIntel.CreateDomConfig("test", config, types.DomainStatus{}, diskStatusesLegacy, &aa, conf); err != nil {
 		t.Errorf("CreateDomConfig failed %v", err)
 	}
 	defer os.Truncate(conf.Name(), 0)
@@ -912,11 +912,11 @@ func TestCreateDomConfigAmd64Fml(t *testing.T) {
 		t.Errorf("Can't create config file for a domain %v", err)
 	}
 	defer os.Remove(conf.Name())
-	disks := qemuDisks()
-	config, aa := domainConfigAndAssignableAdapters()
+	diskConfigs, diskStatuses := qemuDisks()
+	config, aa := domainConfigAndAssignableAdapters(diskConfigs)
 	config.VirtualizationMode = types.FML
 	addNonExistingAdapter(&config, &aa)
-	if err := kvmIntel.CreateDomConfig("test", config, types.DomainStatus{}, disks, &aa, conf); err != nil {
+	if err := kvmIntel.CreateDomConfig("test", config, types.DomainStatus{}, diskStatuses, &aa, conf); err != nil {
 		t.Errorf("CreateDomConfig failed %v", err)
 	}
 	aa.IoBundleList = aa.IoBundleList[:len(aa.IoBundleList)-1]
@@ -942,10 +942,10 @@ func TestCreateDomConfigArm64(t *testing.T) {
 	}
 	defer os.Remove(conf.Name())
 
-	config, aa := domainConfigAndAssignableAdapters()
+	diskConfigs, diskStatuses := qemuDisks()
+	config, aa := domainConfigAndAssignableAdapters(diskConfigs)
 	config.VirtualizationMode = types.HVM
-	disks := qemuDisks()
-	if err := kvmArm.CreateDomConfig("test", config, types.DomainStatus{}, disks, &aa, conf); err != nil {
+	if err := kvmArm.CreateDomConfig("test", config, types.DomainStatus{}, diskStatuses, &aa, conf); err != nil {
 		t.Errorf("CreateDomConfig failed %v", err)
 	}
 	defer os.Truncate(conf.Name(), 0)
@@ -976,8 +976,16 @@ func addNonExistingAdapter(config *types.DomainConfig, aa *types.AssignableAdapt
 	})
 }
 
-func qemuDisks() []types.DiskStatus {
-	disks := []types.DiskStatus{
+func qemuDisks() ([]types.DiskConfig, []types.DiskStatus) {
+	dc := []types.DiskConfig{
+		{Format: zconfig.Format_QCOW2, FileLocation: "/foo/bar.qcow2"},
+		{Format: zconfig.Format_CONTAINER, FileLocation: "/foo/container"},
+		{Format: zconfig.Format_RAW, FileLocation: "/foo/bar.raw"},
+		{Format: zconfig.Format_RAW, FileLocation: "/foo/cd.iso"},
+		{Format: zconfig.Format_CONTAINER, FileLocation: "/foo/volume"},
+		{Format: zconfig.Format_RAW, WWN: "naa.000000000000000a"},
+	}
+	ds := []types.DiskStatus{
 		{Format: zconfig.Format_QCOW2, FileLocation: "/foo/bar.qcow2", Devtype: "hdd"},
 		{Format: zconfig.Format_CONTAINER, FileLocation: "/foo/container", Devtype: "9P"},
 		{Format: zconfig.Format_RAW, FileLocation: "/foo/bar.raw", Devtype: "hdd"},
@@ -985,10 +993,10 @@ func qemuDisks() []types.DiskStatus {
 		{Format: zconfig.Format_CONTAINER, FileLocation: "/foo/volume", Devtype: ""},
 		{Format: zconfig.Format_RAW, WWN: "naa.000000000000000a", Devtype: "hdd"},
 	}
-	return disks
+	return dc, ds
 }
 
-func domainConfigAndAssignableAdapters() (types.DomainConfig, types.AssignableAdapters) {
+func domainConfigAndAssignableAdapters(dcl []types.DiskConfig) (types.DomainConfig, types.AssignableAdapters) {
 	id, err := uuid.NewV4()
 	if err != nil {
 		panic(fmt.Errorf("NewV4 failed: %v", err))
@@ -1005,7 +1013,8 @@ func domainConfigAndAssignableAdapters() (types.DomainConfig, types.AssignableAd
 			VncDisplay: 5,
 			VncPasswd:  "rosebud",
 		},
-		GPUConfig: "legacy",
+		GPUConfig:      "legacy",
+		DiskConfigList: dcl,
 		VifList: []types.VifConfig{
 			{Bridge: "bn0", Mac: net.HardwareAddr{0x6a, 0x00, 0x03, 0x61, 0xa6, 0x90}, Vif: "nbu1x1"},
 			{Bridge: "bn0", Mac: net.HardwareAddr{0x6a, 0x00, 0x03, 0x61, 0xa6, 0x91}, Vif: "nbu1x2"},
@@ -1048,8 +1057,16 @@ func domainConfigAndAssignableAdapters() (types.DomainConfig, types.AssignableAd
 	return config, aa
 }
 
-func qemuDisksLegacy() []types.DiskStatus {
-	disksLegacy := []types.DiskStatus{
+func qemuDisksLegacy() ([]types.DiskConfig, []types.DiskStatus) {
+	dc := []types.DiskConfig{
+		{Format: zconfig.Format_QCOW2, FileLocation: "/foo/bar.qcow2"},
+		{Format: zconfig.Format_CONTAINER, FileLocation: "/foo/container"},
+		{Format: zconfig.Format_RAW, FileLocation: "/foo/bar.raw"},
+		{Format: zconfig.Format_RAW, FileLocation: "/foo/cd.iso"},
+		{Format: zconfig.Format_CONTAINER, FileLocation: "/foo/volume"},
+		{Format: zconfig.Format_RAW, WWN: "naa.000000000000000a"},
+	}
+	ds := []types.DiskStatus{
 		{Format: zconfig.Format_QCOW2, FileLocation: "/foo/bar.qcow2", Devtype: "legacy"},
 		{Format: zconfig.Format_CONTAINER, FileLocation: "/foo/container", Devtype: "9P"},
 		{Format: zconfig.Format_RAW, FileLocation: "/foo/bar.raw", Devtype: "legacy"},
@@ -1057,7 +1074,7 @@ func qemuDisksLegacy() []types.DiskStatus {
 		{Format: zconfig.Format_CONTAINER, FileLocation: "/foo/volume", Devtype: ""},
 		{Format: zconfig.Format_RAW, WWN: "naa.000000000000000a", Devtype: "legacy"},
 	}
-	return disksLegacy
+	return dc, ds
 }
 
 func domConfigArm64() string {
@@ -2175,6 +2192,288 @@ func domConfigAmd64() string {
 `
 }
 
+func domConfigContainerVNC() string {
+	return `# This file is automatically generated by domainmgr
+[msg]
+  timestamp = "on"
+
+[machine]
+  type = "pc-q35-3.1"
+  dump-guest-core = "off"
+  accel = "kvm"
+  vmport = "off"
+  kernel-irqchip = "on"
+  kernel = "/boot/kernel"
+  initrd = "/boot/ramdisk"
+  append = "init=/bin/sh"
+
+
+[global]
+  driver = "kvm-pit"
+  property = "lost_tick_policy"
+  value = "delay"
+
+[global]
+  driver = "ICH9-LPC"
+  property = "disable_s3"
+  value = "1"
+
+[global]
+  driver = "ICH9-LPC"
+  property = "disable_s4"
+  value = "1"
+
+[rtc]
+  base = "localtime"
+  driftfix = "slew"
+
+[device]
+  driver = "intel-iommu"
+  caching-mode = "on"
+
+[realtime]
+  mlock = "off"
+
+[chardev "charmonitor"]
+  backend = "socket"
+  path = "/run/hypervisor/kvm/test/qmp"
+  server = "on"
+  wait = "off"
+
+[mon "monitor"]
+  chardev = "charmonitor"
+  mode = "control"
+
+[chardev "charlistener"]
+  backend = "socket"
+  path = "/run/hypervisor/kvm/test/listener.qmp"
+  server = "on"
+  wait = "off"
+
+[mon "listener"]
+  chardev = "charlistener"
+  mode = "control"
+
+[memory]
+  size = "10240"
+
+[smp-opts]
+  cpus = "2"
+  sockets = "1"
+  cores = "2"
+  threads = "1"
+
+[device]
+  driver = "virtio-serial"
+  addr = "3"
+
+[chardev "charserial0"]
+  backend = "socket"
+  mux = "on"
+  path = "/run/hypervisor/kvm/test/cons"
+  server = "on"
+  wait = "off"
+  logfile = "/dev/fd/1"
+  logappend = "on"
+
+[device]
+  driver = "virtconsole"
+  chardev = "charserial0"
+  name = "org.lfedge.eve.console.0"
+
+
+[chardev "charserial1"]
+  backend = "socket"
+  mux = "on"
+  path = "/run/hypervisor/kvm/test/prime-cons"
+  server = "on"
+  wait = "off"
+  logfile = "/dev/fd/1"
+  logappend = "on"
+
+[device]
+  driver = "virtconsole"
+  chardev = "charserial1"
+  name = "org.lfedge.eve.console.prime"
+[chardev "charserial2"]
+  backend = "vc"
+
+[device]
+  driver = "virtconsole"
+  chardev = "charserial2"
+  name = "org.lfedge.eve.console.prime.forvnc"
+
+
+[vnc "default"]
+  vnc = "0.0.0.0:5"
+  to = "99"
+  password = "on"
+#[device "video0"]
+#  driver = "qxl-vga"
+#  ram_size = "67108864"
+#  vram_size = "67108864"
+#  vram64_size_mb = "0"
+#  vgamem_mb = "16"
+#  max_outputs = "1"
+#  bus = "pcie.0"
+#  addr = "0x1"
+
+[device "video0"]
+  driver = "VGA"
+  vgamem_mb = "16"
+  bus = "pcie.0"
+  addr = "0x1"
+
+[device "pci.2"]
+  driver = "pcie-root-port"
+  port = "12"
+  chassis = "2"
+  bus = "pcie.0"
+  addr = "0x2"
+
+[device "usb"]
+  driver = "qemu-xhci"
+  p2 = "15"
+  p3 = "15"
+  bus = "pci.2"
+  addr = "0x0"
+
+[device "input0"]
+  driver = "usb-tablet"
+  bus = "usb.0"
+  port = "1"
+
+
+[fsdev "fsdev0"]
+  fsdriver = "local"
+  security_model = "none"
+  multidevs = "remap"
+  path = "/foo/container"
+
+[device "fs0"]
+  driver = "virtio-9p-pci"
+  fsdev = "fsdev0"
+  mount_tag = "share_dir"
+  addr = "0x4"
+
+
+[device "pci.5"]
+  driver = "pcie-root-port"
+  port = "15"
+  chassis = "5"
+  bus = "pcie.0"
+  addr = "0x5"
+
+[drive "drive-virtio-disk1"]
+  file = "/foo/bar.raw"
+  format = "raw"
+  aio = "io_uring"
+  cache = "writeback"
+  if = "none"
+
+[device "virtio-disk1"]
+  driver = "virtio-blk-pci"
+  scsi = "off"
+  bus = "pci.5"
+  addr = "0x0"
+  drive = "drive-virtio-disk1"
+
+
+[drive "drive-sata0-2"]
+  file = "/foo/cd.iso"
+  format = "raw"
+  if = "none"
+  media = "cdrom"
+  readonly = "on"
+
+[device "sata0-0"]
+  drive = "drive-sata0-2"
+  driver = "ide-cd"
+  bus = "ide.0"
+
+
+[device "pci.6"]
+  driver = "pcie-root-port"
+  port = "16"
+  chassis = "6"
+  bus = "pcie.0"
+  addr = "0x6"
+
+[device "vhost-disk3"]
+  driver = "vhost-scsi-pci"
+  max_sectors = "16384"
+  wwpn = "naa.000000000000000a"
+  bus = "pci.6"
+  addr = "0x0"
+  num_queues = "2"
+
+[device "pci.7"]
+  driver = "pcie-root-port"
+  port = "17"
+  chassis = "7"
+  bus = "pcie.0"
+  multifunction = "on"
+  addr = "0x7"
+
+[netdev "hostnet0"]
+  type = "tap"
+  ifname = "nbu1x1"
+  br = "bn0"
+  script = "/etc/xen/scripts/qemu-ifup"
+  downscript = "no"
+
+[device "net0"]
+  driver = "virtio-net-pci"
+  netdev = "hostnet0"
+  mac = "6a:00:03:61:a6:90"
+  bus = "pci.7"
+  addr = "0x0"
+
+[device "pci.8"]
+  driver = "pcie-root-port"
+  port = "18"
+  chassis = "8"
+  bus = "pcie.0"
+  multifunction = "on"
+  addr = "0x8"
+
+[netdev "hostnet1"]
+  type = "tap"
+  ifname = "nbu1x2"
+  br = "bn0"
+  script = "/etc/xen/scripts/qemu-ifup"
+  downscript = "no"
+
+[device "net1"]
+  driver = "virtio-net-pci"
+  netdev = "hostnet1"
+  mac = "6a:00:03:61:a6:91"
+  bus = "pci.8"
+  addr = "0x0"
+
+[device "pci.9"]
+  driver = "pcie-root-port"
+  port = "19"
+  chassis = "9"
+  bus = "pcie.0"
+  multifunction = "on"
+  addr = "0x9"
+
+[device]
+  driver = "vfio-pci"
+  host = "f3:00.0"
+  bus = "pci.9"
+  addr = "0x0"
+[chardev "charserial-usr0"]
+  backend = "tty"
+  path = "/dev/ttyS0"
+
+[device "serial-usr0"]
+  driver = "isa-serial"
+  chardev = "charserial-usr0"
+`
+}
+
 func TestCreateDom(t *testing.T) {
 	if exec.Command("qemu-system-x86_64", "--version").Run() != nil {
 		// skipping this test since we're clearly not in a presence of qemu
@@ -2317,5 +2616,38 @@ func TestCreateDom(t *testing.T) {
 	names, err = state.Readdirnames(0)
 	if err != nil || len(names) != 0 {
 		t.Errorf("can't read stat dir for test domain or state dir is not empty after all domains are gone %v", err)
+	}
+}
+
+func TestCreateDomConfigContainerVNC(t *testing.T) {
+	t.Parallel()
+
+	conf, err := os.CreateTemp("/tmp", "config")
+	if err != nil {
+		t.Errorf("Can't create config file for a domain %v", err)
+	}
+	defer os.Remove(conf.Name())
+
+	diskConfigs, diskStatuses := qemuDisks()
+	// remove the first disk, so that the container disk is the first one, resulting in IsOciContainer being true
+	diskConfigs = diskConfigs[1:]
+	diskStatuses = diskStatuses[1:]
+
+	config, aa := domainConfigAndAssignableAdapters(diskConfigs)
+	// enable VNC and VNC for shim VM
+	config.VmConfig.EnableVnc = true
+	config.VmConfig.EnableVncShimVM = true
+	if err := kvmIntel.CreateDomConfig("test", config, types.DomainStatus{}, diskStatuses, &aa, conf); err != nil {
+		t.Errorf("CreateDomConfig failed %v", err)
+	}
+	defer os.Truncate(conf.Name(), 0)
+
+	result, err := os.ReadFile(conf.Name())
+	if err != nil {
+		t.Errorf("reading conf file failed %v", err)
+	}
+
+	if string(result) != domConfigContainerVNC() {
+		t.Errorf("got an unexpected resulting config %s", string(result))
 	}
 }
