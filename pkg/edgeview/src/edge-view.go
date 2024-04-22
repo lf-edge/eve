@@ -37,6 +37,7 @@ var (
 	tcpRl            *rate.Limiter
 	disableRateLimit bool // ratelimit can be disabled by the message from dispatcher
 	lostClientPeer   bool // dispatcher will send 'no device online' if peer lost
+	IsHVTypeKube     bool // IsHVTypeKube hypervisor type is kubernetes
 )
 
 const (
@@ -117,6 +118,7 @@ func main() {
 	var fstatus fileCopyStatus
 	remotePorts := make(map[int]int)
 	var tcpclientCnt int
+	var kubecfg bool
 	var pqueryopt, pnetopt, psysopt, ppubsubopt, logopt, timeopt string
 	var jsonopt bool
 	typeopt := "all"
@@ -214,9 +216,16 @@ func main() {
 			psysopt = pqueryopt
 		} else if strings.HasPrefix(pqueryopt, "tcp/") {
 			var ok bool
-			ok, tcpclientCnt, remotePorts = processTCPcmd(pqueryopt, remotePorts)
+			ok, kubecfg, tcpclientCnt, remotePorts = processTCPcmd(pqueryopt, remotePorts)
 			if !ok {
 				return
+			}
+			if kubecfg {
+				fstatus.cType = copyKubeConfig
+				err := checkAndInstallKubeDecryptScript()
+				if err != nil {
+					return
+				}
 			}
 			pnetopt = pqueryopt
 		} else if strings.HasPrefix(pqueryopt, "cp/") {
@@ -301,6 +310,7 @@ func main() {
 	// 2) websocket client mode, runs on operator/laptop side
 	if runOnServer { // 1) websocket mode on device 'server' side
 
+		IsHVTypeKube = base.IsHVTypeKube()
 		err := initPolicy()
 		if err != nil {
 			log.Noticef("edgeview exit, init policy err. %v", err)
@@ -501,9 +511,11 @@ func main() {
 			waitPulish = false
 			doInfoPub(infoPub)
 		case <-done:
+			delKubeConfigFile(kubecfg)
 			tcpClientSendDone()
 			return
 		case <-intSignal:
+			delKubeConfigFile(kubecfg)
 			tcpClientSendDone()
 			return
 		}
