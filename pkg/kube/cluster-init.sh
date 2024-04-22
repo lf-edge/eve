@@ -10,7 +10,7 @@ CDI_VERSION=v1.56.0
 NODE_IP=""
 
 INSTALL_LOG=/var/lib/install.log
-CTRD_LOG=/var/lib/containerd.log
+CTRD_LOG=/var/lib/containerd-user.log
 LOG_SIZE=$((5*1024*1024))
 
 logmsg() {
@@ -142,12 +142,12 @@ check_start_containerd() {
                 ln -s /var/lib/rancher/k3s/data/current/bin/containerd-shim-runc-v2 /usr/bin/containerd-shim-runc-v2
         fi
 
-        if pgrep -f "containerd --config" >> $INSTALL_LOG 2>&1; then
-                logmsg "k3s-containerd is alive"
-        else
-                logmsg "Starting k3s-containerd"
+        pgrep -f "/var/lib/rancher/k3s/data/current/bin/containerd" > /dev/null 2>&1
+        if [ $? -eq 1 ]; then
                 mkdir -p /run/containerd-user
                 nohup /var/lib/rancher/k3s/data/current/bin/containerd --config /etc/containerd/config-k3s.toml > $CTRD_LOG 2>&1 &
+                containerd_pid=$!
+                logmsg "Started k3s-containerd at pid:$containerd_pid"
         fi
         if [ -f /etc/external-boot-image.tar ]; then
                 # NOTE: https://kubevirt.io/user-guide/virtual_machines/boot_from_external_source/
@@ -156,9 +156,7 @@ check_start_containerd() {
                 # This is very similar to what we do on kvm based eve to start container as a VM.
                 logmsg "Trying to install new external-boot-image"
                 # This import happens once per reboot
-                ctr -a /run/containerd-user/containerd.sock image import /etc/external-boot-image.tar docker.io/lfedge/eve-external-boot-image:latest
-                res=$?
-                if [ $res -eq 0 ]; then
+                if ctr -a /run/containerd-user/containerd.sock image import /etc/external-boot-image.tar docker.io/lfedge/eve-external-boot-image:latest; then
                         logmsg "Successfully installed external-boot-image"
                         rm -f /etc/external-boot-image.tar
                 fi
