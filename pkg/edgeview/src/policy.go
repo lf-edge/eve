@@ -255,17 +255,41 @@ func checkAddrKube(addr string) bool {
 		return false
 	}
 
-	_, subnet1, err := net.ParseCIDR("10.42.0.0/16")
+	// part of the cluster --cluster-cidr prefix block for this node
+	cni0Prefix, err := getCNIPrefix()
 	if err != nil {
 		return false
 	}
 
-	_, subnet2, err := net.ParseCIDR("10.43.0.0/16")
+	// this is the --service-cidr for kubernetes service prefix block,
+	// and default is 10.43/16
+	_, kubeServicePrefix, err := net.ParseCIDR("10.43.0.0/16")
 	if err != nil {
 		return false
 	}
+	return cni0Prefix.Contains(ipa) || kubeServicePrefix.Contains(ipa)
+}
 
-	return subnet1.Contains(ipa) || subnet2.Contains(ipa)
+// get the CNI0 interface IP prefix
+func getCNIPrefix() (*net.IPNet, error) {
+	iface, err := net.InterfaceByName("cni0")
+	if err != nil {
+		return nil, err
+	}
+
+	addrs, err := iface.Addrs()
+	if err != nil {
+		return nil, err
+	}
+
+	for _, addr := range addrs {
+		switch v := addr.(type) {
+		case *net.IPNet:
+			return v, nil
+		}
+	}
+
+	return nil, fmt.Errorf("no valid IPNet address found for cni0")
 }
 
 func checkAddrLocal(addr string) bool {

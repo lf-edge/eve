@@ -222,10 +222,6 @@ func main() {
 			}
 			if kubecfg {
 				fstatus.cType = copyKubeConfig
-				err := checkAndInstallKubeDecryptScript()
-				if err != nil {
-					return
-				}
 			}
 			pnetopt = pqueryopt
 		} else if strings.HasPrefix(pqueryopt, "cp/") {

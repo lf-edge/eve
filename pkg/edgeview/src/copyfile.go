@@ -7,7 +7,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -383,8 +382,6 @@ func recvCopyFile(msg []byte, fstatus *fileCopyStatus, mtype int) {
 			} else {
 				fmt.Printf("\nfile size %d, saved at %s\n", fstatus.currSize, fileCopyDir+fileNameClean)
 			}
-		} else if fstatus.cType == copyKubeConfig {
-			splitKubeConfigFiles(fstatus.filename)
 		}
 		transferStr := fmt.Sprintf("\n file %s size %d", fileNameClean, fstatus.currSize)
 		if serverSentSize != 0 && fstatus.currSize != int64(serverSentSize) {
@@ -443,77 +440,6 @@ func sendCopyDone(context string, err error) {
 	err = addEnvelopeAndWriteWss([]byte(context), true)
 	if err != nil {
 		fmt.Printf("sign and write error: %v\n", err)
-	}
-}
-
-// split files into key and encrypted files
-// since the edgeview copy operation only downloaded a combined file
-// you need your ssh private key to descript the symmetric key file, and use that
-// to decrypt the kubeconfig file
-func splitKubeConfigFiles(combFile string) {
-	fileStrs := strings.Split(combFile, ".")
-	if len(fileStrs) != 2 {
-		fmt.Printf("get file name incorrect %s\n", combFile)
-		return
-	}
-	numBytes := fileStrs[1]
-
-	bytesPlusOne, err := strconv.Atoi(numBytes)
-	if err != nil {
-		fmt.Printf("get file name incorrect num %s\n", numBytes)
-		return
-	}
-
-	// Open the combined file
-	combFilePath := filepath.Join(fileCopyDir, combFile)
-	cleanCombFilePath := filepath.Clean(combFilePath)
-	// To fix CodeQL warning, Check if the cleaned path is still within the intended directory
-	if !strings.HasPrefix(cleanCombFilePath, fileCopyDir) {
-		fmt.Println("potential path traversal attempt detected")
-		return
-	}
-
-	combFileHandle, err := os.Open(cleanCombFilePath)
-	if err != nil {
-		fmt.Printf("error opening combined file: %v\n", err)
-		return
-	}
-	defer combFileHandle.Close()
-
-	// Create the symKeyClientFile
-	symFileHandle, err := os.Create(symKeyClientFile)
-	if err != nil {
-		fmt.Printf("error creating sym file: %v\n", err)
-		return
-	}
-	defer symFileHandle.Close()
-
-	// Copy the first 'bytesPlusOne' bytes from the combined file to the symKeyClientFile
-	_, err = io.CopyN(symFileHandle, combFileHandle, int64(bytesPlusOne))
-	if err != nil {
-		fmt.Printf("error copying to sym file: %v\n", err)
-		return
-	}
-
-	// Create the kubeClientFile
-	kubeFileHandle, err := os.Create(kubeClientFile)
-	if err != nil {
-		fmt.Printf("error creating kube file: %v\n", err)
-		return
-	}
-	defer kubeFileHandle.Close()
-
-	// Copy the rest of the combined file to the kubeClientFile
-	_, err = io.Copy(kubeFileHandle, combFileHandle)
-	if err != nil {
-		fmt.Printf("error copying to kube file: %v\n", err)
-		return
-	}
-
-	// Remove the combined file
-	err = os.Remove(cleanCombFilePath)
-	if err != nil {
-		fmt.Printf("error removing combined file: %v\n", err)
 	}
 }
 

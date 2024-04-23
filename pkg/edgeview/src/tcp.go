@@ -5,16 +5,12 @@ package main
 
 import (
 	"bytes"
-	"crypto/rand"
-	"crypto/rsa"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"os"
-	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
@@ -23,7 +19,6 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"golang.org/x/crypto/ssh"
 )
 
 type wsMessage struct {
@@ -82,13 +77,10 @@ const (
 	tcpMaxMappingNUM  int           = 5
 	tcpIdleTimeoutSec float64       = 1800.0
 	tcpCheckTimeout   time.Duration = 300 * time.Second
-	tcpKubeEndpoint   string        = "localhost:6443"
 	kubeYamlFile      string        = "/run/.kube/k3s/user.yaml"
-	kubeConfigFile    string        = "kube-config-yaml"
-	kubeSymKeyFile    string        = "kube-symmetric-file.enc"
+	kubeConfigFile    string        = "kube-config.yaml"
 	kubeServerFile    string        = "/tmp/" + kubeConfigFile
 	kubeClientFile    string        = fileCopyDir + kubeConfigFile
-	symKeyClientFile  string        = fileCopyDir + kubeSymKeyFile
 )
 
 const (
@@ -298,13 +290,14 @@ func setAndStartProxyTCP(opt string) {
 	var ipAddrPort []string
 	var proxySvr *http.Server
 	var kubeport int
+	var err error
 	proxyServerDone := make(chan struct{})
 
 	mappingCnt := 1
 	ipAddrPort = make([]string, mappingCnt)
 
 	var hasProxy, hasKube bool
-	var proxyDNSIP string
+	var proxyDNSIP, kubeAddrPort string
 	kubenum := edgeviewInstID - 1
 	if strings.Contains(opt, "/") {
 		var gotProxy, gotKube bool
@@ -312,9 +305,12 @@ func setAndStartProxyTCP(opt string) {
 		mappingCnt = len(params)
 		ipAddrPort = make([]string, mappingCnt)
 		for i, ipport := range params {
-			gotProxy, gotKube, proxyDNSIP = getProxyOpt(ipport)
-			if !strings.Contains(opt, ":") && !gotProxy && !gotKube {
-				fmt.Printf("tcp option needs ipaddress:port format, or is 'proxy'\n")
+			gotProxy, gotKube, proxyDNSIP, kubeAddrPort, err = getProxyOpt(ipport)
+			if err != nil {
+				fmt.Printf("tcp option error %v\n", err)
+				return
+			} else if !strings.Contains(opt, ":") && !gotProxy && !gotKube {
+				fmt.Printf("tcp option needs ipaddress:port format, or in either 'proxy' or 'kube'\n")
 				return
 			}
 			ipAddrPort[i] = ipport
@@ -327,19 +323,22 @@ func setAndStartProxyTCP(opt string) {
 				}
 				hasKube = true
 				kubeport = 9001 + i + kubenum*types.EdgeviewMaxInstNum
-				ipAddrPort[i] = tcpKubeEndpoint
+				ipAddrPort[i] = kubeAddrPort
 			}
 			log.Tracef("setAndStartProxyTCP: (%d) ipport %s", i, ipport)
 		}
 	} else {
-		hasProxy, hasKube, proxyDNSIP = getProxyOpt(opt)
-		if !strings.Contains(opt, ":") && !hasProxy && !hasKube {
-			fmt.Printf("tcp option needs ipaddress:port format, or is 'proxy'\n")
+		hasProxy, hasKube, proxyDNSIP, kubeAddrPort, err = getProxyOpt(opt)
+		if err != nil {
+			fmt.Printf("tcp option error %v\n", err)
+			return
+		} else if !strings.Contains(opt, ":") && !hasProxy && !hasKube {
+			fmt.Printf("tcp option needs ipaddress:port format, or in either 'proxy' or 'kube'\n")
 			return
 		}
 		ipAddrPort[0] = opt
 		if hasKube {
-			ipAddrPort[0] = tcpKubeEndpoint
+			ipAddrPort[0] = kubeAddrPort
 			kubeport = 9001 + kubenum*types.EdgeviewMaxInstNum
 		} else {
 			ipAddrPort[0] = opt
@@ -369,7 +368,10 @@ func setAndStartProxyTCP(opt string) {
 			log.Errorf("setAndStartProxyTCP: copy kube file error %v", err)
 		}
 
-		_ = os.Remove(kubefileName)
+		err = os.Remove(kubefileName)
+		if err != nil {
+			log.Warn(err)
+		}
 		log.Tracef("setAndStartProxyTCP: copy kube file done, port %d", kubeport)
 	}
 
@@ -439,114 +441,7 @@ func setAndStartProxyTCP(opt string) {
 	}
 }
 
-// Generate a random 32-byte symmetric key for kubeconfig file encryption
-func generateSymmetricKey() ([]byte, error) {
-	key := make([]byte, 32) // 256-bit key for AES-256
-	_, err := rand.Read(key)
-	if err != nil {
-		return nil, err
-	}
-	hexKey := hex.EncodeToString(key) // 64-character hexadecimal string
-
-	// Generate a random byte
-	var b [1]byte
-	_, err = rand.Read(b[:])
-	if err != nil {
-		return nil, err
-	}
-
-	// Convert the byte to an integer and take the modulus to get it within the range 0-31
-	start := int(b[0]) % 32
-
-	// Return a 32-character substring starting from the random index
-	return []byte(hexKey[start : start+32]), nil
-}
-
-func encryptSymmetricKey(symKey []byte, publicKeyFile string) ([]byte, error) {
-	pubKeyData, err := os.ReadFile(publicKeyFile)
-	if err != nil {
-		return nil, err
-	}
-
-	parsed, _, _, _, err := ssh.ParseAuthorizedKey([]byte(pubKeyData))
-	if err != nil {
-		return nil, err
-	}
-	parsedCryptoKey := parsed.(ssh.CryptoPublicKey)
-	pubCrypto := parsedCryptoKey.CryptoPublicKey()
-	pub := pubCrypto.(*rsa.PublicKey)
-
-	encryptedBytes, err := rsa.EncryptPKCS1v15(
-		rand.Reader,
-		pub,
-		symKey,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	return encryptedBytes, nil
-}
-
-func opensslEncryptConfig(symKey []byte, yamlString string) ([]byte, error) {
-	// save the config into a tmp file
-	idStr := strconv.Itoa(edgeviewInstID)
-	tmpCfgFile := "/tmp/ev-kubecfg-tmp." + idStr
-	tmpCfgFileEnc := "/tmp/ev-kubecfg-enc-tmp." + idStr
-
-	// openssl encrypt input kubeconfig file
-	name := "/usr/bin/openssl"
-	args := []string{"enc",
-		"-aes-256-cbc",
-		"-salt",
-		"-k",
-		string(symKey),
-		"-in",
-		"-",
-		"-out",
-		tmpCfgFileEnc,
-	}
-	cmd := exec.Command(name, args...)
-	cmd.Stdin = bytes.NewBuffer([]byte(yamlString))
-	err := cmd.Run()
-	if err != nil {
-		log.Errorf("opensslEncryptConfig: run openssl, args %v, error %v", args, err)
-		err1 := os.Remove(tmpCfgFile)
-		if err1 != nil {
-			log.Errorf("opensslEncryptConfig: remove tmpCfgFile error %v", err1)
-		}
-		err2 := os.Remove(tmpCfgFileEnc)
-		if err2 != nil {
-			log.Errorf("opensslEncryptConfig: remove tmpCfgFileEnc error %v", err2)
-		}
-		return nil, err
-	}
-
-	// read content of the encrypted config file
-	encryptedData, err := os.ReadFile(tmpCfgFileEnc)
-	if err != nil {
-		err1 := os.Remove(tmpCfgFile)
-		if err1 != nil {
-			log.Errorf("opensslEncryptConfig: remove tmpCfgFile error %v", err1)
-		}
-		err2 := os.Remove(tmpCfgFileEnc)
-		if err2 != nil {
-			log.Errorf("opensslEncryptConfig: remove tmpCfgFileEnc error %v", err2)
-		}
-		return nil, err
-	}
-	err = os.Remove(tmpCfgFile)
-	if err != nil {
-		log.Errorf("opensslEncryptConfig: remove tmpCfgFile error %v", err)
-	}
-	err = os.Remove(tmpCfgFileEnc)
-	if err != nil {
-		log.Errorf("opensslEncryptConfig: remove tmpCfgFileEnc error %v", err)
-	}
-	return encryptedData, nil
-}
-
-// need to modify the kubeconfig file for maaping the edgeview local port for kubectl
+// need to modify the kubeconfig file for mapping the edgeview local port for kubectl
 func genKubeConfigFile(kubeport int) (string, error) {
 	// this kubeYamlFile is user.yaml, which is not the kubeconfig file
 	// it only identify the user as 'debugging-user', who has only the kubernetes
@@ -564,46 +459,14 @@ func genKubeConfigFile(kubeport int) (string, error) {
 
 	yamlString = pattern.ReplaceAllString(yamlString, newString)
 
-	pubkeyfile := "/run/authorized_keys"
-	fileInfo, err := os.Stat(pubkeyfile)
-	if err != nil || fileInfo.Size() == 0 {
-		err = fmt.Errorf("tcp kube requires ssh public key installed, error %v\n", err)
-		return "", err
-	}
-
-	// generate symmetric key, 32 bytes
-	symmetricKey, err := generateSymmetricKey()
+	err = os.WriteFile(kubeServerFile, []byte(yamlString), 0644)
 	if err != nil {
-		log.Errorf("genKubeConfigFile: symmetric key gen error %v", err)
+		log.Errorf("genKubeConfigFile: write file error %v", err)
 		return "", err
 	}
 
-	// encrypt kubeconfig file using the symmetric key
-	encfileBytes, err := opensslEncryptConfig(symmetricKey, yamlString)
-	if err != nil {
-		log.Errorf("genKubeConfigFile: openssl, kubeport %d, symkey %v, error %v", kubeport, symmetricKey, err)
-		return "", err
-	}
-
-	// encrypt symmetric key using the public key
-	symKeyBytes, err := encryptSymmetricKey(symmetricKey, pubkeyfile)
-	if err != nil {
-		log.Errorf("genKubeConfigFile: encrypt symmetric key file error %v", err)
-		return "", err
-	}
-
-	// write the encrypted symmetric key and kubeconfig file to a single file
-	// since the edgeview copy operation downloads only a single file
-	combinedBytes := append(symKeyBytes, encfileBytes...)
-	kubefileName := kubeServerFile + fmt.Sprintf(".%d", len(symKeyBytes))
-	err = os.WriteFile(kubefileName, combinedBytes, 0644)
-	if err != nil {
-		log.Errorf("genKubeConfigFile: combined file error %v", err)
-		return "", err
-	}
-
-	log.Noticef("genKubeConfigFile: convert done")
-	return kubefileName, nil
+	log.Noticef("genKubeConfigFile: write done")
+	return kubeServerFile, nil
 }
 
 func delKubeConfigFile(isKube bool) {
@@ -613,10 +476,6 @@ func delKubeConfigFile(isKube bool) {
 	err := os.Remove(kubeClientFile)
 	if err != nil {
 		fmt.Printf("delKubeConfigFile: delete file error %v\n", err)
-	}
-	err = os.Remove(symKeyClientFile)
-	if err != nil {
-		fmt.Printf("delKubeConfigFile: delete sym key file error %v\n", err)
 	}
 }
 
@@ -904,8 +763,8 @@ func tcpClientSendDone() {
 	sendCloseToWss()
 }
 
-func getProxyOpt(opt string) (bool, bool, string) {
-	var proxyDNSIP string
+func getProxyOpt(opt string) (bool, bool, string, string, error) {
+	var proxyDNSIP, kubeAPIAddrPort string
 	var hasProxy, hasKube bool
 	if strings.HasPrefix(opt, "proxy") {
 		hasProxy = true
@@ -916,9 +775,16 @@ func getProxyOpt(opt string) (bool, bool, string) {
 			}
 		}
 	} else if strings.HasPrefix(opt, "kube") {
-		hasKube = true
+		// get kubeConfig server's IP address and port
+		addrPort, err := getKubeServerIPandPort(kubeYamlFile)
+		if err == nil {
+			kubeAPIAddrPort = addrPort
+			hasKube = true
+		} else {
+			return false, false, "", "", fmt.Errorf("tcp kube option get cluster IP and port error %v", err)
+		}
 	}
-	return hasProxy, hasKube, proxyDNSIP
+	return hasProxy, hasKube, proxyDNSIP, kubeAPIAddrPort, nil
 }
 
 func processTCPcmd(opt string, remotePorts map[int]int) (bool, bool, int, map[int]int) {
