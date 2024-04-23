@@ -19,6 +19,10 @@ RUN GO111MODULE=on CGO_ENABLED=0 go build -v -ldflags "-s -w" -mod=vendor -o /ou
 FROM scratch
 COPY --from=build /out/ /
 COPY cluster-init.sh /usr/bin/
+COPY nsmounter /usr/bin/
+COPY longhorn-generate-support-bundle.sh /usr/bin/
+COPY k3s-pod-logs.sh /usr/bin/
+COPY iscsid.conf /etc/iscsi/
 COPY cgconfig.conf /etc
 # kubevirt yaml files are patched files and will be removed later, look at cluster-init.sh
 COPY multus-daemonset.yaml /etc
