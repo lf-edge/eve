@@ -492,20 +492,28 @@ func getAllAppIPs() []appIPvnc {
 		status := strings.TrimSuffix(string(retbytes1), "\n")
 		appIPs, appUUID := getAppIPs(status)
 		var oneAppIPs []appIPvnc
-		if len(appIPs) > 0 {
-			retbytes1, err := os.ReadFile("/run/zedagent/AppInstanceConfig/" + appUUID.String() + ".json")
-			if err != nil {
-				log.Errorf("getAllAppIPs: run appinstcfg %v", err)
-				continue
-			}
-			var appInstCfg types.AppInstanceConfig
-			err = json.Unmarshal(retbytes1, &appInstCfg)
-			if err != nil {
-				log.Errorf("getAllAppIPs: unmarshal %v", err)
-				continue
-			}
+		retbytes1, err = os.ReadFile("/run/zedagent/AppInstanceConfig/" + appUUID.String() + ".json")
+		if err != nil {
+			log.Errorf("getAllAppIPs: run appinstcfg %v", err)
+			continue
+		}
+		var appInstCfg types.AppInstanceConfig
+		err = json.Unmarshal(retbytes1, &appInstCfg)
+		if err != nil {
+			log.Errorf("getAllAppIPs: unmarshal %v", err)
+			continue
+		}
 
-			enableVNC := appInstCfg.FixedResources.EnableVnc
+		enableVNC := appInstCfg.FixedResources.EnableVnc
+		// Even if the app has no IP address, we still want to allow VNC if it is enabled
+		if len(appIPs) == 0 {
+			ipVNC := appIPvnc{
+				vncEnable: enableVNC,
+				appName:   appInstCfg.DisplayName,
+				vncPort:   int(appInstCfg.FixedResources.VncDisplay),
+			}
+			oneAppIPs = append(oneAppIPs, ipVNC)
+		} else {
 			for _, ipaddr := range appIPs {
 				ipVNC := appIPvnc{
 					ipAddr:    ipaddr,
