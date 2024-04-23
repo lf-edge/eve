@@ -5,7 +5,7 @@
 
 K3S_VERSION=v1.26.3+k3s1
 KUBEVIRT_VERSION=v0.59.0
-LONGHORN_VERSION=v1.4.2
+LONGHORN_VERSION=v1.6.0
 CDI_VERSION=v1.56.0
 NODE_IP=""
 
@@ -133,6 +133,28 @@ setup_prereqs () {
         mount_etcd_vol
 }
 
+apply_longhorn_disk_config() {
+        node=$1
+        kubectl label node "$node" node.longhorn.io/create-default-disk='config'
+        kubectl annotate node "$node" node.longhorn.io/default-disks-config='[ { "path":"/persist/vault/volumes", "allowScheduling":true }]'
+}
+
+check_overwrite_nsmounter() {
+        ### REMOVE ME+
+        # When https://github.com/longhorn/longhorn/issues/6857 is resolved, remove this 'REMOVE ME' section
+        # In addition to pkg/kube/nsmounter and the copy of it in pkg/kube/Dockerfile
+        longhornCsiPluginPods=$(kubectl -n longhorn-system get pod -o json | jq -r '.items[] | select(.metadata.labels.app=="longhorn-csi-plugin" and .status.phase=="Running") | .metadata.name')
+        for csiPod in $longhornCsiPluginPods; do
+                if ! kubectl -n longhorn-system exec "pod/${csiPod}" --container=longhorn-csi-plugin -- ls /usr/local/sbin/nsmounter.updated > /dev/null 2>@1; then
+                        if kubectl -n longhorn-system exec -i "pod/${csiPod}" --container=longhorn-csi-plugin -- tee /usr/local/sbin/nsmounter < /usr/bin/nsmounter; then
+                                logmsg "Updated nsmounter in longhorn pod ${csiPod}"
+                                kubectl -n longhorn-system exec "pod/${csiPod}" --container=longhorn-csi-plugin -- touch /usr/local/sbin/nsmounter.updated
+                        fi
+                fi
+        done
+        ### REMOVE ME-
+}
+
 check_start_containerd() {
         # Needed to get the pods to start
         if [ ! -L /usr/bin/runc ]; then
@@ -245,7 +267,15 @@ if [ ! -f /var/lib/all_components_initialized ]; then
 
         if [ ! -f /var/lib/longhorn_initialized ]; then
                 logmsg "Installing longhorn version ${LONGHORN_VERSION}"
-                kubectl apply -f  https://raw.githubusercontent.com/longhorn/longhorn/${LONGHORN_VERSION}/deploy/longhorn.yaml
+                apply_longhorn_disk_config "$(/bin/hostname)"
+                lhCfgPath=/var/lib/lh-cfg-${LONGHORN_VERSION}.yaml
+                if [ ! -e $lhCfgPath ]; then
+                        curl -k https://raw.githubusercontent.com/longhorn/longhorn/${LONGHORN_VERSION}/deploy/longhorn.yaml > "$lhCfgPath"
+                fi
+                if ! grep -q 'create-default-disk-labeled-nodes: true' "$lhCfgPath"; then
+                        sed -i '/  default-setting.yaml: |-/a\    create-default-disk-labeled-nodes: true' "$lhCfgPath"
+                fi
+                kubectl apply -f "$lhCfgPath"
                 touch /var/lib/longhorn_initialized
         fi
 
@@ -257,6 +287,9 @@ else
         check_start_containerd
         if pgrep k3s >> $INSTALL_LOG 2>&1; then
                 logmsg "k3s is alive "
+                if [ -e /var/lib/longhorn_initialized ]; then
+                        check_overwrite_nsmounter
+                fi
         else
                 ## Must be after reboot
                 ln -s /var/lib/k3s/bin/* /usr/bin
