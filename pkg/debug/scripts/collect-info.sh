@@ -6,7 +6,7 @@
 
 # Script version, don't forget to bump up once something is changed
 
-VERSION=21
+VERSION=22
 # Add required packages here, it will be passed to "apk add".
 # Once something added here don't forget to add the same package
 # to the Dockerfile ('ENV PKGS' line) of the debug container,
@@ -81,6 +81,10 @@ while getopts "vhsa:dj" o; do
     esac
 done
 
+is_in_debug_service() {
+    grep -q '/eve/services/debug' < /proc/self/cgroup
+}
+
 sort_cat_jq()
 {
     # Sort and extract a filename
@@ -141,6 +145,13 @@ if [ -d "$SCRIPT_DIR/persist-newlog" ]; then
         sort_cat_jq
 
     exit
+fi
+
+# We are on EVE? Switch to collect-info mode
+# but only if we are in debug container
+if ! is_in_debug_service; then
+    echo "$0 has to be started from debug container; use 'eve enter debug' to enter debug container"
+    exit 1
 fi
 
 # Create temporary dir
@@ -239,7 +250,7 @@ collect_pillar_memory_backtraces()
     echo "- pillar memory backtraces"
 
     eve http-debug > /dev/null 2>&1
-    eve exec debug curl --retry-all-errors --retry 5 -m 5 "http://127.1:6543/debug/pprof/heap?debug=1" > "$DIR/pillar-memory-backtraces" 2> /dev/null
+    curl --retry-all-errors --retry 3 --retry-delay 3 -m 5 -s "http://127.1:6543/debug/pprof/heap?debug=1" > "$DIR/pillar-memory-backtraces"
     eve http-debug stop > /dev/null 2>&1
 
     echo "- done pillar memory backtraces"
