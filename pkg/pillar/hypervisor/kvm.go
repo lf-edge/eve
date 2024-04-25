@@ -1051,87 +1051,17 @@ func (ctx KvmContext) Cleanup(domainName string) error {
 
 // PCIReserve reserves a PCI device
 func (ctx KvmContext) PCIReserve(long string) error {
-	logrus.Infof("PCIReserve long addr is %s", long)
-
-	overrideFile := filepath.Join(sysfsPciDevices, long, "driver_override")
-	driverPath := filepath.Join(sysfsPciDevices, long, "driver")
-	unbindFile := filepath.Join(driverPath, "unbind")
-
-	//Check if already bound to vfio-pci
-	driverPathInfo, driverPathErr := os.Stat(driverPath)
-	vfioDriverPathInfo, vfioDriverPathErr := os.Stat(vfioDriverPath)
-	if driverPathErr == nil && vfioDriverPathErr == nil &&
-		os.SameFile(driverPathInfo, vfioDriverPathInfo) {
-		logrus.Infof("Driver for %s is already bound to vfio-pci, skipping unbind", long)
-		return nil
-	}
-
-	//map vfio-pci as the driver_override for the device
-	if err := os.WriteFile(overrideFile, []byte("vfio-pci"), 0644); err != nil {
-		return logError("driver_override failure for PCI device %s: %v",
-			long, err)
-	}
-
-	//Unbind the current driver, whatever it is, if there is one
-	if _, err := os.Stat(unbindFile); err == nil {
-		if err := os.WriteFile(unbindFile, []byte(long), 0644); err != nil {
-			return logError("unbind failure for PCI device %s: %v",
-				long, err)
-		}
-	}
-
-	if err := os.WriteFile(sysfsPciDriversProbe, []byte(long), 0644); err != nil {
-		return logError("drivers_probe failure for PCI device %s: %v",
-			long, err)
-	}
-
-	return nil
+	return PCIReserveGeneric(long)
 }
 
 // PCIRelease releases the PCI device reservation
 func (ctx KvmContext) PCIRelease(long string) error {
-	logrus.Infof("PCIRelease long addr is %s", long)
-
-	overrideFile := filepath.Join(sysfsPciDevices, long, "driver_override")
-	unbindFile := filepath.Join(sysfsPciDevices, long, "driver/unbind")
-
-	//Write Empty string, to clear driver_override for the device
-	if err := os.WriteFile(overrideFile, []byte("\n"), 0644); err != nil {
-		logrus.Fatalf("driver_override failure for PCI device %s: %v",
-			long, err)
-	}
-
-	//Unbind vfio-pci, if unbind file is present
-	if _, err := os.Stat(unbindFile); err == nil {
-		if err := os.WriteFile(unbindFile, []byte(long), 0644); err != nil {
-			logrus.Fatalf("unbind failure for PCI device %s: %v",
-				long, err)
-		}
-	}
-
-	//Write PCI DDDD:BB:DD.FF to /sys/bus/pci/drivers_probe,
-	//as a best-effort to bring back original driver
-	if err := os.WriteFile(sysfsPciDriversProbe, []byte(long), 0644); err != nil {
-		logrus.Fatalf("drivers_probe failure for PCI device %s: %v",
-			long, err)
-	}
-
-	return nil
+	return PCIReleaseGeneric(long)
 }
 
 // PCISameController checks if two PCI controllers are the same
 func (ctx KvmContext) PCISameController(id1 string, id2 string) bool {
-	tag1, err := types.PCIGetIOMMUGroup(id1)
-	if err != nil {
-		return types.PCISameController(id1, id2)
-	}
-
-	tag2, err := types.PCIGetIOMMUGroup(id2)
-	if err != nil {
-		return types.PCISameController(id1, id2)
-	}
-
-	return tag1 == tag2
+	return PCISameControllerGeneric(id1, id2)
 }
 
 func usbBusPort(USBAddr string) (string, string) {

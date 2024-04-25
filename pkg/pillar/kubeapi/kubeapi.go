@@ -93,14 +93,17 @@ func GetNetClientSet() (*netclientset.Clientset, error) {
 }
 
 // GetKubevirtClientSet : Get handle to kubernetes kubevirt clientset
-func GetKubevirtClientSet() (KubevirtClientset, error) {
-	// Build the configuration from the provided kubeconfig file
-	c, err := GetKubeConfig()
-	if err != nil {
-		return nil, err
+func GetKubevirtClientSet(kubeconfig *rest.Config) (KubevirtClientset, error) {
+
+	if kubeconfig == nil {
+		c, err := GetKubeConfig()
+		if err != nil {
+			return nil, err
+		}
+		kubeconfig = c
 	}
 
-	config := *c
+	config := *kubeconfig
 	config.ContentConfig.GroupVersion = &kubevirtapi.GroupVersion
 	config.APIPath = "/apis"
 	config.NegotiatedSerializer = scheme.Codecs.WithoutConversion()
@@ -319,7 +322,7 @@ func waitForPVCReady(ctx context.Context, log *base.LogObject, pvcName string) e
 
 // CleanupStaleVMI : delete all VMIs. Used by domainmgr on startup.
 func CleanupStaleVMI() (int, error) {
-	clientset, err := GetKubevirtClientSet()
+	clientset, err := GetKubevirtClientSet(nil)
 	if err != nil {
 		return 0, fmt.Errorf("couldn't get the kubevirt clientset: %v", err)
 	}

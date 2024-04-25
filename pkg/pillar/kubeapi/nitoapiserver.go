@@ -7,6 +7,7 @@ package kubeapi
 
 import (
 	"context"
+	"fmt"
 
 	netattdefv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	"github.com/lf-edge/eve/pkg/pillar/base"
@@ -58,6 +59,24 @@ func CreateOrUpdateNAD(log *base.LogObject, nadName, jsonSpec string) error {
 	}
 	log.Errorf("CreateOrUpdateNAD: failed to update NAD %s: %v", nadName, err)
 	return err
+}
+
+// CheckEtherPassThroughNAD checks if network passthrough NetworkAttachmentDefinition is present
+func CheckEtherPassThroughNAD(nadName string) error {
+	netClientset, err := GetNetClientSet()
+	if err != nil {
+		return err
+	}
+
+	nad, err := netClientset.K8sCniCncfIoV1().NetworkAttachmentDefinitions(EVEKubeNameSpace).
+		Get(context.Background(), nadName, metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+	if nad.ObjectMeta.Name != nadName {
+		return fmt.Errorf("CheckEtherPassThroughNAD: NAD %s not found", nadName)
+	}
+	return nil
 }
 
 // DeleteNAD : delete NAD with the given name (NetworkAttachmentDefinition).

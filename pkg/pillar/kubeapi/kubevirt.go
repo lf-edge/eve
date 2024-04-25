@@ -120,3 +120,75 @@ func (v *vmis) Delete(ctx context.Context, name string, options *metav1.DeleteOp
 		Do(ctx).
 		Error()
 }
+
+// KubeVirt returns the KubevirtInterface
+func KubeVirt(restClient *rest.RESTClient, namespace string) KubeVirtInterface {
+	return &kv{
+		restClient: restClient,
+		namespace:  namespace,
+		resource:   "kubevirts",
+	}
+}
+
+type kv struct {
+	restClient *rest.RESTClient
+	namespace  string
+	resource   string
+}
+
+// Get the KubeVirt from the cluster by its name and namespace
+// Copied from https://github.com/kubevirt/client-go/blob/main/kubecli/kv.go
+func (o *kv) Get(name string, options *metav1.GetOptions) (*v1.KubeVirt, error) {
+	newKv := &v1.KubeVirt{}
+	err := o.restClient.Get().
+		Resource(o.resource).
+		Namespace(o.namespace).
+		Name(name).
+		VersionedParams(options, scheme.ParameterCodec).
+		Do(context.Background()).
+		Into(newKv)
+
+	newKv.SetGroupVersionKind(v1.KubeVirtGroupVersionKind)
+
+	return newKv, err
+}
+
+// Update the KubeVirt instance in the cluster in given namespace
+// Copied from https://github.com/kubevirt/client-go/blob/main/kubecli/kv.go
+func (o *kv) Update(vm *v1.KubeVirt) (*v1.KubeVirt, error) {
+	updatedVM := &v1.KubeVirt{}
+	err := o.restClient.Put().
+		Resource(o.resource).
+		Namespace(o.namespace).
+		Name(vm.Name).
+		Body(vm).
+		Do(context.Background()).
+		Into(updatedVM)
+
+	updatedVM.SetGroupVersionKind(v1.KubeVirtGroupVersionKind)
+
+	return updatedVM, err
+}
+
+// KubeVirtInterface returned by KubeVirt
+type KubeVirtInterface interface {
+	Get(name string, options *metav1.GetOptions) (*v1.KubeVirt, error)
+	Update(*v1.KubeVirt) (*v1.KubeVirt, error)
+}
+
+// GetKubeRESTClient : Get handle to Kubernetes REST client
+func GetKubeRESTClient() (*rest.RESTClient, error) {
+	// Build the configuration from the provided kubeconfig file
+	config, err := GetKubeConfig()
+	if err != nil {
+		return nil, err
+	}
+
+	// Create the Kubernetes REST client
+	client, err := rest.RESTClientFor(config)
+	if err != nil {
+		return nil, err
+	}
+
+	return client, nil
+}
