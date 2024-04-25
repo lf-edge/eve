@@ -145,6 +145,7 @@ ncurses-dev
 net-snmp
 netcat-openbsd
 nettle
+nfs-utils
 ninja
 numactl-dev
 open-iscsi
