@@ -27,9 +27,14 @@ if test -f /proc/vmcore; then
     makedumpfile --dump-dmesg /proc/vmcore /tmp/dmesg > /dev/null
     sed -n -e '/Kernel panic - not syncing/,$p' /tmp/dmesg > /tmp/backtrace
 
-    # Show backtrace from the dmesg of a crashed kernel
+    # Show backtrace from the dmesg of a crashed kernel. Print line by
+    # line with some reasonable sleep in-between lines to slow down the
+    # output on the console and give a chance to record the stack
+    # properly. Typical use case is BMC which records with very low
+    # frame rate so the video contains the bottom of the long stack
+    # only, but the top is missing.
     echo ">>>>>>>>>> Crashed kernel dmesg BEGIN <<<<<<<<<<" > /dev/kmsg
-    while read -r line; do echo "$line" > /dev/kmsg; done < /tmp/backtrace
+    while read -r line; do echo "$line" > /dev/kmsg; sleep 0.2; done < /tmp/backtrace
     echo ">>>>>>>>>> Crashed kernel dmesg END <<<<<<<<<<" > /dev/kmsg
 
     TS=$(date -Is)
