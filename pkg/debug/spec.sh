@@ -164,7 +164,7 @@ else
    MEM=$(awk '/MemTotal:/ { print int($2 / 1024); }' < /proc/meminfo)
 fi
 
-DISK=$(lsblk -b -o NAME,TYPE,TRAN,SIZE | grep disk | grep -v usb | awk '{ total += $4; } END { print int(total/(1024*1024*1024)); }')
+DISK=$(lsblk -b -o NAME,TYPE,TRAN,SIZE | grep disk | grep -v usb | awk '{ total += $NF; } END { print int(total/(1024*1024*1024)); }')
 WDT=$([ -e /dev/watchdog ] && echo true || echo false)
 HSM=$([ -e /dev/tpmrm0 ] && echo 1 || echo 0)
 
