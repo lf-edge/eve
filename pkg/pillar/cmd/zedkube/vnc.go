@@ -68,7 +68,7 @@ func runAppVNC(ctx *zedkubeContext, config *types.AppInstanceConfig) {
 }
 
 func getVMIdomainName(ctx *zedkubeContext, config *types.AppInstanceConfig) (string, error) {
-	clientset, err := kubeapi.GetKubevirtClientSet()
+	clientset, err := kubeapi.GetKubevirtClientSet(nil)
 	if err != nil {
 		log.Errorf("getVMIs: get virtclient error %v", err)
 		return "", err
