@@ -36,6 +36,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/cpuallocator"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/hypervisor"
+	"github.com/lf-edge/eve/pkg/pillar/kubeapi"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/sema"
@@ -125,6 +126,8 @@ type domainContext struct {
 	// CPUs management
 	cpuAllocator        *cpuallocator.CPUAllocator
 	cpuPinningSupported bool
+	// Is it kubevirt eve
+	hvTypeKube bool
 }
 
 // AddAgentSpecificCLIFlags adds CLI options
@@ -161,6 +164,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		pids:                make(map[int32]bool),
 		cipherMetrics:       cipher.NewAgentMetrics(agentName),
 		metricInterval:      10,
+		hvTypeKube:          base.IsHVTypeKube(),
 	}
 	agentbase.Init(&domainCtx, logger, log, agentName,
 		agentbase.WithArguments(arguments))
@@ -588,6 +592,20 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		log.Fatal(err)
 	}
 	log.Functionf("user containerd ready")
+
+	// wait for kubernetes to be ready in kubevirt mode, if gets error, move on
+	if domainCtx.hvTypeKube {
+		log.Noticef("Domainmgr run: wait for kubernetes")
+		err = kubeapi.WaitForKubernetes(agentName, ps, stillRunning)
+		if err != nil {
+			log.Errorf("Domainmgr: wait for kubernetes error %v", err)
+		} else {
+			// If device rebooted abruptly, kubernetes did not get time to stop the VMs.
+			// They will be in failed state, so clean them up if they exists.
+			count, err := kubeapi.CleanupStaleVMI()
+			log.Noticef("domainmgr cleanup vmi count %d, %v", count, err)
+		}
+	}
 
 	if domainCtx.casClient, err = cas.NewCAS(casClientType); err != nil {
 		err = fmt.Errorf("Run: exception while initializing CAS client: %s", err.Error())
@@ -1375,10 +1393,16 @@ func doAssignIoAdaptersToDomain(ctx *domainContext, config types.DomainConfig,
 					ib.Phylabel, ib.UsbAddr, status.DomainName)
 				assignmentsUsb = addNoDuplicate(assignmentsUsb, ib.UsbAddr)
 			} else if ib.PciLong != "" && !ib.IsPCIBack && !ib.KeepInHost {
-				log.Functionf("Assigning %s (%s) to %s",
-					ib.Phylabel, ib.PciLong, status.DomainName)
-				assignmentsPci = addNoDuplicate(assignmentsPci, ib.PciLong)
-				ib.IsPCIBack = true
+				if !(ctx.hvTypeKube && config.VirtualizationMode == types.NOHYPER) || ib.Type != types.IoNetEth {
+					log.Functionf("Assigning %s (%s) to %s",
+						ib.Phylabel, ib.PciLong, status.DomainName)
+					assignmentsPci = addNoDuplicate(assignmentsPci, ib.PciLong)
+					ib.IsPCIBack = true
+				} else {
+					// For native container with ethernet IO passthrough, we use the NAD for the Multus
+					// for the container to directly access the ethernet port through network mechanism
+					log.Noticef("doAssignIoAdaptersToDomain: skip IO assign %v", ib)
+				}
 			}
 		}
 		publishAssignableAdapters = len(assignmentsUsb) > 0 || len(assignmentsPci) > 0
@@ -1496,6 +1520,10 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 		case zconfig.Format_FmtUnknown:
 			// do nothing
 		case zconfig.Format_CONTAINER:
+			if ctx.hvTypeKube {
+				// do nothing. In Kubevirt eve we convert the container content to PVC in volumemanager.
+				continue
+			}
 			snapshotID := containerd.GetSnapshotID(ds.FileLocation)
 			rootPath := cas.GetRoofFsPath(ds.FileLocation)
 			if err := ctx.casClient.MountSnapshot(snapshotID, rootPath); err != nil {
@@ -1867,6 +1895,9 @@ func releaseAdapters(ctx *domainContext, ioAdapterList []types.IoAdapter,
 			if ib == nil {
 				continue
 			}
+			if ctx.hvTypeKube && status != nil && status.VirtualizationMode == types.NOHYPER && ib.Type == types.IoNetEth {
+				continue
+			}
 			if ib.UsedByUUID != myUUID {
 				log.Warnf("releaseAdapters IoBundle not ours by %s: %d %s for %s",
 					ib.UsedByUUID, adapter.Type, adapter.Name,
@@ -2029,6 +2060,10 @@ func reserveAdapters(ctx *domainContext, config types.DomainConfig) *types.Error
 			}
 			log.Functionf("reserveAdapters processing adapter %d %s phylabel %s",
 				adapter.Type, adapter.Name, ibp.Phylabel)
+			if ctx.hvTypeKube && config.VirtualizationMode == types.NOHYPER && ibp.Type == types.IoNetEth {
+				log.Noticef("reserveAdapters: ethernet io, skip reserve")
+				continue
+			}
 			if ibp.AssignmentGroup == "" {
 				description.Error = fmt.Sprintf("adapter %d %s phylabel %s is not assignable",
 					adapter.Type, adapter.Name, ibp.Phylabel)
@@ -2317,6 +2352,11 @@ func handleDelete(ctx *domainContext, key string, status *types.DomainStatus) {
 	unpublishDomainStatus(ctx, status)
 	// No point in publishing metrics any more
 	ctx.pubDomainMetric.Unpublish(status.Key())
+
+	err := hyper.Task(status).Delete(status.DomainName)
+	if err != nil {
+		log.Errorln(err)
+	}
 
 	log.Functionf("handleDelete(%v) DONE for %s",
 		status.UUIDandVersion, status.DisplayName)

@@ -1,0 +1,16 @@
+#!/bin/bash
+#
+# Copyright (c) 2024 Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+#
+# nsmounter: called by the longhorn-csi-plugin pod
+#   used to find the correct PID to nsenter into and
+#   mount RWX volumes for longhorn
+#
+target_pid=1
+kube_pid=$(pgrep -f "cluster-init.sh")
+if [ -n "$kube_pid" ]; then
+  target_pid=$kube_pid
+fi
+nsenter -t "$target_pid" -m -n -u -- "$@"

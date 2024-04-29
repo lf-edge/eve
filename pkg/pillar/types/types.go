@@ -48,6 +48,12 @@ const (
 	PURGING    // Purging due to config change
 	BROKEN     // Domain is still alive, but its device model has failed
 	UNKNOWN    // State of the domain can't be determined
+	// PENDING to start
+	PENDING
+	// SCHEDULING waiting to be scheduled
+	SCHEDULING
+	// FAILED to start
+	FAILED
 	MAXSTATE
 )
 
@@ -96,6 +102,12 @@ func (state SwState) String() string {
 		return "RESTARTING"
 	case PURGING:
 		return "PURGING"
+	case PENDING:
+		return "PENDING"
+	case FAILED:
+		return "FAILED"
+	case SCHEDULING:
+		return "SCHEDULING"
 	case BROKEN:
 		return "BROKEN"
 	case START_DELAYED:
@@ -169,6 +181,13 @@ func (state SwState) ZSwState() info.ZSwState {
 		return info.ZSwState_HALTING
 	case START_DELAYED:
 		return info.ZSwState_START_DELAYED
+	case FAILED:
+		return info.ZSwState_ERROR
+	case PENDING:
+		return info.ZSwState_PENDING
+	case SCHEDULING:
+		return info.ZSwState_SCHEDULING
+
 	// If we ever see UNKNOWN we return RUNNING assuming the state will change to something
 	// known soon.
 	case UNKNOWN:

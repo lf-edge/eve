@@ -486,9 +486,15 @@ func (ctx xenContext) Delete(domainName string) (result error) {
 		}
 	}()
 
-	logrus.Infof("xlDestroy %s\n", domainName)
+	logrus.Infof("xl destroy %s\n", domainName)
 	ctrdSystemCtx, done := ctx.ctrdClient.CtrNewSystemServicesCtx()
 	defer done()
+
+	container, _ := ctx.ctrdClient.CtrLoadContainer(ctrdSystemCtx, domainName)
+	if container == nil {
+		logrus.Infof("xl destroy %s assume previously deleted", domainName)
+		return nil
+	}
 	stdOut, stdErr, err := ctx.ctrdClient.CtrSystemExec(ctrdSystemCtx, "xen-tools",
 		[]string{"xl", "destroy", domainName})
 	if err != nil {

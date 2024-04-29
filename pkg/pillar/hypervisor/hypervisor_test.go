@@ -26,7 +26,7 @@ func TestGetHypervisor(t *testing.T) {
 
 func TestGetAvailableHypervisors(t *testing.T) {
 	all, enabled := GetAvailableHypervisors()
-	expected := []string{"xen", "kvm", "acrn", "containerd", "null"}
+	expected := []string{"xen", "kvm", "kubevirt", "acrn", "containerd", "null"}
 
 	if !reflect.DeepEqual(all, expected) {
 		t.Errorf("wrong list of available hypervisors: %+q vs. %+q", all, expected)

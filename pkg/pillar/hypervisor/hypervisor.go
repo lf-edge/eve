@@ -6,8 +6,10 @@ package hypervisor
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	uuid "github.com/satori/go.uuid"
 	"github.com/shirou/gopsutil/cpu"
@@ -43,6 +45,7 @@ type hypervisorDesc struct {
 var knownHypervisors = map[string]hypervisorDesc{
 	XenHypervisorName:        {constructor: newXen, dom0handle: "/proc/xen", hvTypeFileContent: "xen"},
 	KVMHypervisorName:        {constructor: newKvm, dom0handle: "/dev/kvm", hvTypeFileContent: "kvm"},
+	KubevirtHypervisorName:   {constructor: newKubevirt, dom0handle: "/dev/kvm", hvTypeFileContent: "kubevirt"},
 	ACRNHypervisorName:       {constructor: newAcrn, dom0handle: "/dev/acrn", hvTypeFileContent: "acrn"},
 	ContainerdHypervisorName: {constructor: newContainerd, dom0handle: "/run/containerd/containerd.sock"},
 	NullHypervisorName:       {constructor: newNull, dom0handle: "/"},
@@ -50,7 +53,7 @@ var knownHypervisors = map[string]hypervisorDesc{
 
 // this is a priority order to pick a default hypervisor if multiple are available (more to less likely)
 var hypervisorPriority = []string{
-	XenHypervisorName, KVMHypervisorName, ACRNHypervisorName, ContainerdHypervisorName, NullHypervisorName,
+	XenHypervisorName, KVMHypervisorName, KubevirtHypervisorName, ACRNHypervisorName, ContainerdHypervisorName, NullHypervisorName,
 }
 
 // GetHypervisor returns a particular hypervisor implementation
@@ -93,9 +96,18 @@ func BootTimeHypervisor() Hypervisor {
 // the advice of this function and always ask for the enabled one.
 func GetAvailableHypervisors() (all []string, enabled []string) {
 	all = hypervisorPriority
+	isHVTypeKube := base.IsHVTypeKube()
 	for _, v := range all {
 		if _, err := os.Stat(knownHypervisors[v].dom0handle); err == nil {
-			enabled = append(enabled, v)
+			// Both Kubevirt and KVM use same dom0handle.
+			// Lets differentiate by eve_flavor
+			if isHVTypeKube && strings.Compare(v, KVMHypervisorName) == 0 {
+				continue // kubevirt image don't set kvm
+			} else if !isHVTypeKube && strings.Compare(v, KubevirtHypervisorName) == 0 {
+				continue // kvm image don't set kubevirt
+			} else {
+				enabled = append(enabled, v)
+			}
 		}
 	}
 	return
@@ -148,4 +160,89 @@ func roundFromKbytesToMbytes(byteCount uint64) uint64 {
 func logError(format string, a ...interface{}) error {
 	logrus.Errorf(format, a...)
 	return fmt.Errorf(format, a...)
+}
+
+// PCIReserveGeneric : Common Reserve function used by both kvm and kubevirt
+func PCIReserveGeneric(long string) error {
+	logrus.Infof("PCIReserve long addr is %s", long)
+
+	overrideFile := filepath.Join(sysfsPciDevices, long, "driver_override")
+	driverPath := filepath.Join(sysfsPciDevices, long, "driver")
+	unbindFile := filepath.Join(driverPath, "unbind")
+
+	//Check if already bound to vfio-pci
+	driverPathInfo, driverPathErr := os.Stat(driverPath)
+	vfioDriverPathInfo, vfioDriverPathErr := os.Stat(vfioDriverPath)
+	if driverPathErr == nil && vfioDriverPathErr == nil &&
+		os.SameFile(driverPathInfo, vfioDriverPathInfo) {
+		logrus.Infof("Driver for %s is already bound to vfio-pci, skipping unbind", long)
+		return nil
+	}
+
+	//map vfio-pci as the driver_override for the device
+	if err := os.WriteFile(overrideFile, []byte("vfio-pci"), 0644); err != nil {
+		return logError("driver_override failure for PCI device %s: %v",
+			long, err)
+	}
+
+	//Unbind the current driver, whatever it is, if there is one
+	if _, err := os.Stat(unbindFile); err == nil {
+		if err := os.WriteFile(unbindFile, []byte(long), 0644); err != nil {
+			return logError("unbind failure for PCI device %s: %v",
+				long, err)
+		}
+	}
+
+	if err := os.WriteFile(sysfsPciDriversProbe, []byte(long), 0644); err != nil {
+		return logError("drivers_probe failure for PCI device %s: %v",
+			long, err)
+	}
+
+	return nil
+}
+
+// PCIReleaseGeneric :  Common function used by kvm and kubevirt
+func PCIReleaseGeneric(long string) error {
+	logrus.Infof("PCIRelease long addr is %s", long)
+
+	overrideFile := filepath.Join(sysfsPciDevices, long, "driver_override")
+	unbindFile := filepath.Join(sysfsPciDevices, long, "driver/unbind")
+
+	//Write Empty string, to clear driver_override for the device
+	if err := os.WriteFile(overrideFile, []byte("\n"), 0644); err != nil {
+		logrus.Fatalf("driver_override failure for PCI device %s: %v",
+			long, err)
+	}
+
+	//Unbind vfio-pci, if unbind file is present
+	if _, err := os.Stat(unbindFile); err == nil {
+		if err := os.WriteFile(unbindFile, []byte(long), 0644); err != nil {
+			logrus.Fatalf("unbind failure for PCI device %s: %v",
+				long, err)
+		}
+	}
+
+	//Write PCI DDDD:BB:DD.FF to /sys/bus/pci/drivers_probe,
+	//as a best-effort to bring back original driver
+	if err := os.WriteFile(sysfsPciDriversProbe, []byte(long), 0644); err != nil {
+		logrus.Fatalf("drivers_probe failure for PCI device %s: %v",
+			long, err)
+	}
+
+	return nil
+}
+
+// PCISameControllerGeneric : Common function for kvm and kubevirt
+func PCISameControllerGeneric(id1 string, id2 string) bool {
+	tag1, err := types.PCIGetIOMMUGroup(id1)
+	if err != nil {
+		return types.PCISameController(id1, id2)
+	}
+
+	tag2, err := types.PCIGetIOMMUGroup(id2)
+	if err != nil {
+		return types.PCISameController(id1, id2)
+	}
+
+	return tag1 == tag2
 }

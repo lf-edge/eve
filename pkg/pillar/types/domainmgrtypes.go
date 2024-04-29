@@ -38,7 +38,7 @@ type DomainConfig struct {
 	DiskConfigList []DiskConfig
 	VifList        []VifConfig
 	IoAdapterList  []IoAdapter
-	// KubeImageName is the container image reference we pass to domainmgr to launch a native container
+	// KubeImageName: is the container image reference we pass to domainmgr to launch a native container
 	// in kubevirt eve
 	KubeImageName string
 
@@ -144,6 +144,25 @@ func (config DomainConfig) VirtualizationModeOrDefault() VmMode {
 	default:
 		return PV
 	}
+}
+
+// GetPVCNameFromVolumeKey gets the pvcName from volume key
+func (status DiskStatus) GetPVCNameFromVolumeKey() (string, error) {
+	volumeIDAndGeneration := status.VolumeKey
+	generation := strings.Split(volumeIDAndGeneration, "#")
+	volUUID, err := uuid.FromString(generation[0])
+	if err != nil {
+		return "", fmt.Errorf("failed to parse volUUID: %w", err)
+	}
+
+	generationCounter, err := strconv.ParseInt(generation[1], 10, 64)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse GenerationCounter: %w", err)
+	}
+
+	pvcName := fmt.Sprintf("%s-pvc-%d", volUUID, generationCounter)
+
+	return pvcName, nil
 }
 
 // LogCreate :
