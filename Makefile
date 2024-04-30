@@ -295,11 +295,19 @@ DOCKER_GO = _() { $(SET_X); mkdir -p $(CURDIR)/.go/src/$${3:-dummy} ; mkdir -p $
 
 PARSE_PKGS=$(if $(strip $(EVE_HASH)),EVE_HASH=)$(EVE_HASH) DOCKER_ARCH_TAG=$(DOCKER_ARCH_TAG) KERNEL_TAG=$(KERNEL_TAG) ./tools/parse-pkgs.sh
 LINUXKIT=$(BUILDTOOLS_BIN)/linuxkit
-LINUXKIT_VERSION=3a0405298aab1632524a6ccd074969b417e1ee92
+LINUXKIT_VERSION=e6b0ae05eb3a2b99e84d9ffc03a3a5c9c3e7e371
 LINUXKIT_SOURCE=https://github.com/linuxkit/linuxkit.git
 LINUXKIT_OPTS=$(if $(strip $(EVE_HASH)),--hash) $(EVE_HASH) $(if $(strip $(EVE_REL)),--release) $(EVE_REL)
 LINUXKIT_PKG_TARGET=build
 LINUXKIT_PATCHES_DIR=tools/linuxkit/patches
+
+ifdef LIVE_FAST
+# Check the makerootfs.sh and the linuxkit tool invocation, the --input-tar
+# parameter specifically. This will create a new tar based on the old one
+# (already generated), which speeds tar generation up a bit.
+UPDATE_TAR=-u
+endif
+
 RESCAN_DEPS=FORCE
 # set FORCE_BUILD to --force to enforce rebuild
 FORCE_BUILD=
@@ -643,7 +651,7 @@ $(ROOTFS)-%.img: $(ROOTFS_IMG)
 
 $(ROOTFS_TAR): images/out/rootfs-$(HV)-$(PLATFORM).yml | $(INSTALLER)
 	$(QUIET): $@: Begin
-	./tools/makerootfs.sh tar -y $< -t $@ -d $(INSTALLER) -a $(ZARCH)
+	./tools/makerootfs.sh tar $(UPDATE_TAR) -y $< -t $@ -d $(INSTALLER) -a $(ZARCH)
 	$(QUIET): $@: Succeeded
 ifdef KERNEL_IMAGE
 	# Consider this as a cry from the heart: enormous amount of time is

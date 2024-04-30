@@ -41,9 +41,23 @@ do_tar() {
   if [ -n "$arch" ]; then
     ARCHARG="--arch ${arch}"
   fi
-  # sbom disabled for now; will be re-enabled later
-  # shellcheck disable=SC2086
-  linuxkit build --no-sbom --docker ${ARCHARG} --o "${tarfile}" "$ymlfile"
+  if [ -z "$updatetar" ] || [ ! -e "${tarfile}" ]; then
+    # sbom disabled for now; will be re-enabled later
+    # shellcheck disable=SC2086
+    linuxkit build --no-sbom --docker ${ARCHARG} --o "${tarfile}" "$ymlfile"
+  else
+    # sbom disabled for now; will be re-enabled later
+    # shellcheck disable=SC2086
+    linuxkit build --no-sbom --docker ${ARCHARG} --o "${tarfile}.new" --input-tar "${tarfile}"  "$ymlfile"
+    newmd5=$(md5sum "${tarfile}.new" | awk '{print $1}')
+    oldmd5=$(md5sum "${tarfile}" | awk '{print $1}')
+    # Don't touch the modification time if files are equal. Crucial for Makefile.
+    if [ "$newmd5" != "$oldmd5" ]; then
+      mv "${tarfile}.new" "${tarfile}"
+    else
+      rm "${tarfile}.new"
+    fi
+  fi
 }
 
 # mode 2 - generate image from tarfile
@@ -113,8 +127,8 @@ help() {
 mode="$1"
 shift
 
-unset tarfile imgfile arch format ymlfile execidr
-while getopts "t:i:a:f:y:d:h" o
+unset tarfile imgfile arch format ymlfile execidr updatetar
+while getopts "t:i:a:f:y:d:uh" o
 do
   case $o in
     t)
@@ -134,6 +148,9 @@ do
       ;;
     d)
       execdir=$(abspath "$OPTARG")
+      ;;
+    u)
+      updatetar=1
       ;;
     h)
       help
