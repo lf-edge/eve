@@ -67,10 +67,13 @@ This allows you to overwrite files in the EVE-OS config partition with
 your own local modifications of those files (must have the same name).
 
 Example:
-docker run -v $HOME/eve-overrides:/in --rm lfedge/eve:latest installer_raw > installer.raw
+docker run -v /path/to/eve/conf:/in --rm lfedge/eve:latest installer_raw > installer.raw
+or
+docker run -v /path/to/eve/conf/server:/in/server -v /path/to/eve/pkg/pillar/conf/root-certificate.pem:/in/root-certificate.pem --rm lfedge/eve:latest installer_raw > installer.raw
 
-Where your local "eve-overrides" directory contains one file "server"
-with one text string "some.eve-controller-url.com"
+Where your local "conf" directory contains files like server or root-certificate.pem that
+you want to use instead of the default ones in the image.
+You can also mount (multiple) single files.
 
  -v <full path to new local folder>:/out
 
@@ -246,8 +249,8 @@ ACTION="do_$1"
 [ "$(type -t "$ACTION")" = "$ACTION" ] || bail "Error: unsupported command '$1' - use 'help' command for more information."
 shift
 
-# If /in was provided, for now we assume it was to override configs
-if mountpoint -q /in; then
+# If /in has content, we assume it was put there to override configs
+if [ "$(ls -A /in)" ]; then
    mcopy -o -i /bits/config.img -s /in/* ::/
 fi
 
