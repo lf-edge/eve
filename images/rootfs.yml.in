@@ -25,11 +25,9 @@ onboot:
     capabilities:
       - CAP_SYS_ADMIN
       - CAP_NET_ADMIN
-  - name: modprobe
-    image: linuxkit/modprobe:ff76e806a0da0ea35f16951541cf3d24094b52c9
-    command: ["/bin/sh", "-c", "modprobe -a nct6775 w83627hf_wdt hpwdt wlcore_sdio wl18xx br_netfilter dwc3 rk808 rk808-regulator smsc75xx cp210x nicvf tpm_tis_spi rtc_rx8010 os-em32x regmap-i2c gpio_pca953x leds_gpio leds_siemens_ipc127 upboard-fpga pinctrl-upboard leds-upboard xhci_tegra 2>/dev/null || :"]
   # If you change the order of storage-init don't forget to
-  # change 003-installer in pkg/mkimage-raw-efi accordingly:
+  # change path to the "002-installer" in "pkg/mkimage-raw-efi/Dockerfile" and
+  # "pkg/mkverification-raw-efi/Dockerfile" accordingly:
   # storage-init must follow installer
   - name: storage-init
     image: STORAGE_INIT_TAG
@@ -37,9 +35,10 @@ onboot:
   - name: kdump
     image: KDUMP_TAG
   # If you change the order of pillar-onboot don't forget to
-  # change /containers/onboot/005-pillar-onboot/lower in pkg/mkimage-raw-efi accordingly:
-  # 005-pillar-onboot must follow the order number of pillar-onboot
-  # onboot part of pillar to prepare services to start
+  # change path to the "/containers/onboot/004-pillar-onboot/lower" in
+  # "pkg/mkimage-raw-efi/config.json" and "pkg/mkverification-raw-efi/config.json"
+  # accordingly: 004-pillar-onboot must follow the order number of pillar-onboot
+  # to prepare services to start
   - name: pillar-onboot
     image: PILLAR_TAG
     command: ["/opt/zededa/bin/onboot.sh"]

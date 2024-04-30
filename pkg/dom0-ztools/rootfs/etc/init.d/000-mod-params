@@ -36,3 +36,41 @@ zfs_set_default_parameters() {
 # Load ZFS and set parameters
 modprobe zfs
 zfs_set_default_parameters
+
+if ! test -f /proc/vmcore; then
+    #
+    # Load other modules for regular EVE kernel (not crashdump).
+    #
+    # FIXME: This was moved from the images/rootfs.yml.in, thus preserves
+    # FIXME: original indifference to any errors, which can happen while
+    # FIXME: loading on a machine, where particular hardware is missing.
+    # FIXME:
+    # FIXME: Future editor of this list, please take the trouble and at
+    # FIXME: least describe for what hardware and under what conditions
+    # FIXME: the module should be loaded.
+
+    modprobe nct6775              2>/dev/null
+    modprobe w83627hf_wdt         2>/dev/null
+    modprobe hpwdt                2>/dev/null
+    modprobe wlcore_sdio          2>/dev/null
+    modprobe wl18xx               2>/dev/null
+    modprboe br_netfilter         2>/dev/null
+    modprobe dwc3                 2>/dev/null
+    modprobe rk808                2>/dev/null
+    modprobe rk808-regulator      2>/dev/null
+    modprobe smsc75xx             2>/dev/null
+    modprobe cp210x               2>/dev/null
+    modprobe nct6775              2>/dev/null
+    modprobe nicvf                2>/dev/null
+    modprobe tpm_tis_spi          2>/dev/null
+    modprobe rtc_rx8010           2>/dev/null
+    modprobe os-em32x             2>/dev/null
+    modprobe regmap-i2c           2>/dev/null
+    modprobe gpio_pca953x         2>/dev/null
+    modprobe leds_gpio            2>/dev/null
+    modprobe leds_siemens_ipc127  2>/dev/null
+    modprobe upboard-fpga         2>/dev/null
+    modprobe pinctrl-upboard      2>/dev/null
+    modprobe leds-upboard         2>/dev/null
+    modprobe xhci_tegra           2>/dev/null
+fi

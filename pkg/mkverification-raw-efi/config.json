@@ -220,7 +220,7 @@
         {
             "destination": "/opt/pillar",
             "type": "bind",
-            "source": "/containers/onboot/005-pillar-onboot/lower",
+            "source": "/containers/onboot/004-pillar-onboot/lower",
             "options": [
                 "rw",
                 "rbind",
