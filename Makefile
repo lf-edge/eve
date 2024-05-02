@@ -40,8 +40,15 @@ DEV=n
 MEDIA_SIZE=32768
 # Image type for final disk images
 IMG_FORMAT=qcow2
+ifdef LIVE_UPDATE
+# For live updates we support read-write FS, like ext4
+ROOTFS_FORMAT=ext4
+# And generate tar faster
+LIVE_FAST=1
+else
 # Filesystem type for rootfs image
 ROOTFS_FORMAT?=squash
+endif
 # Image type for installer image
 INSTALLER_IMG_FORMAT=raw
 # Image type for verification image
@@ -666,7 +673,14 @@ ifdef KERNEL_IMAGE
 	tar -P -u --transform="flags=r;s|$(KIMAGE)|/boot/kernel|" -f "$@" "$(KIMAGE)"
 endif
 
+ifdef LIVE_UPDATE
+# Don't regenerate the whole image if tar was changed, but
+# do generate if does not exist. qcow2 target will handle
+# the rest
+$(ROOTFS_IMG): | $(ROOTFS_TAR) $(INSTALLER)
+else
 $(ROOTFS_IMG): $(ROOTFS_TAR) | $(INSTALLER)
+endif
 	$(QUIET): $@: Begin
 	./tools/makerootfs.sh imagefromtar -t $(ROOTFS_TAR) -i $@ -f $(ROOTFS_FORMAT) -a $(ZARCH)
 	@echo "size of $@ is $$(wc -c < "$@")B"
@@ -948,10 +962,35 @@ endif
 	rm -f $(dir $@)/disk.raw
 	$(QUIET): $(dir $@)/$(notdir $*).img.tar.gz: Succeeded
 
+ifdef LIVE_UPDATE
+# Target depends on rootfs tarbar directly, which gives possibility to
+# detect when qcow2 should be updated with a tarball and when it should
+# be recreated from scratch.
+%.qcow2: %.raw $(ROOTFS_TAR) | $(DIST)
+#	Detect if the first %.raw ($<) prerequisite is in the "$?" list,
+#	which means qcow has to be fully recreated. If not - just update
+#	with the existing tar.
+	$(eval RECREATE := $(if $(filter $<,$?),1,0))
+#	Convert raw to qcow or update rootfs with all files from tar:
+#	guestfish one line magic.
+	$(QUIET)if [ "$(RECREATE)" = "1" ]; then \
+		echo "Recreate $@:"; \
+		echo "	qemu-img convert ..."; \
+		qemu-img convert -c -f raw -O qcow2 $< $@; \
+		echo "	qemu-img resize ..."; \
+		qemu-img resize $@ ${MEDIA_SIZE}M; \
+	else \
+		echo "Update $@ with generated tarball:"; \
+		echo "	guestfish ..."; \
+		guestfish -a $@ run : mount /dev/sda2 / : tar-in $(ROOTFS_TAR) /; \
+	fi
+	$(QUIET): $@: Succeeded
+else
 %.qcow2: %.raw | $(DIST)
 	qemu-img convert -c -f raw -O qcow2 $< $@
 	qemu-img resize $@ ${MEDIA_SIZE}M
 	$(QUIET): $@: Succeeded
+endif
 
 %.yml: %.yml.in $(RESCAN_DEPS) | build-tools
 	$(QUIET)$(PARSE_PKGS) $< > $@
