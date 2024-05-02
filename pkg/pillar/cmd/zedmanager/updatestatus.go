@@ -1174,15 +1174,10 @@ func doInactivateHalt(ctx *zedmanagerContext,
 		changed = true
 	}
 	if ds.State != status.State {
-		switch status.State {
-		case types.RESTARTING, types.PURGING:
-			// Leave unchanged
-		default:
-			log.Functionf("Set State from DomainStatus from %d to %d",
-				status.State, ds.State)
-			status.State = ds.State
-			changed = true
-		}
+		log.Functionf("Set State from DomainStatus from %d to %d",
+			status.State, ds.State)
+		status.State = ds.State
+		changed = true
 	}
 	// Ignore errors during a halt
 	if ds.HasError() {
