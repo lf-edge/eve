@@ -40,6 +40,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
+	"github.com/lf-edge/eve/pkg/pillar/utils/persist"
 	"github.com/lf-edge/eve/pkg/pillar/vault"
 	"github.com/lf-edge/eve/pkg/pillar/zfs"
 	"github.com/sirupsen/logrus"
@@ -148,7 +149,7 @@ func initializeSelfPublishHandles(ps *pubsub.PubSub, ctx *vaultMgrContext) {
 func checkAndPublishVaultConfig(ctx *vaultMgrContext) bool {
 	// We do not have vault config, publish it
 	if vaultConfigInited == false {
-		persistFsType := vault.ReadPersistType()
+		persistFsType := persist.ReadPersistType()
 		tpmKeyOnly := false
 
 		switch persistFsType {

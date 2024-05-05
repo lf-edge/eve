@@ -17,7 +17,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
-	"github.com/lf-edge/eve/pkg/pillar/vault"
+	"github.com/lf-edge/eve/pkg/pillar/utils/persist"
 	"github.com/lf-edge/eve/pkg/pillar/zfs"
 	"github.com/sirupsen/logrus"
 )
@@ -385,7 +385,7 @@ func maybeUpdateConfigItems(ctx *zfsContext, newConfigItemValueMap *types.Config
 	log.Functionf("maybeUpdateConfigItems")
 	oldConfigItemValueMap := ctx.globalConfig
 
-	if vault.ReadPersistType() != types.PersistZFS {
+	if persist.ReadPersistType() != types.PersistZFS {
 		return
 	}
 	newStorageZfsReserved := newConfigItemValueMap.GlobalValueInt(types.StorageZfsReserved)

@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/vault"
+	"github.com/lf-edge/eve/pkg/pillar/utils/persist"
 )
 
 // getRemainingMemory returns how many bytes remain for app instance usage
@@ -42,7 +42,7 @@ func getRemainingMemory(ctxPtr *zedmanagerContext) (uint64, uint64, uint64, erro
 		}
 	}
 	memoryReservedForEve := uint64(ctxPtr.globalConfig.GlobalValueInt(types.EveMemoryLimitInBytes))
-	if vault.ReadPersistType() == types.PersistZFS {
+	if persist.ReadPersistType() == types.PersistZFS {
 		zfsArcMaxLimit, err := types.GetZFSArcMaxSizeInBytes()
 		if err != nil {
 			return 0, 0, 0, fmt.Errorf("failed to get data from zfs_arc_max. error: %v", err)
