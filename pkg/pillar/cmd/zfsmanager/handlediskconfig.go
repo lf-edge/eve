@@ -12,7 +12,7 @@ import (
 	libzfs "github.com/andrewd-zededa/go-libzfs"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils/disks"
-	"github.com/lf-edge/eve/pkg/pillar/vault"
+	"github.com/lf-edge/eve/pkg/pillar/utils/persist"
 	"github.com/lf-edge/eve/pkg/pillar/zfs"
 )
 
@@ -90,7 +90,7 @@ func processDisksTask(ctx *zfsContext) {
 }
 
 func processDisks(ctx *zfsContext) error {
-	if vault.ReadPersistType() != types.PersistZFS {
+	if persist.ReadPersistType() != types.PersistZFS {
 		return nil
 	}
 	disksConfigInterface, err := ctx.subDisksConfig.Get("global")

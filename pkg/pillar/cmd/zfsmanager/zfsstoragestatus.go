@@ -9,7 +9,7 @@ import (
 
 	libzfs "github.com/andrewd-zededa/go-libzfs"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/vault"
+	"github.com/lf-edge/eve/pkg/pillar/utils/persist"
 	"github.com/lf-edge/eve/pkg/pillar/zfs"
 )
 
@@ -18,7 +18,7 @@ const (
 )
 
 func storageStatusPublisher(ctxPtr *zfsContext) {
-	if vault.ReadPersistType() != types.PersistZFS {
+	if persist.ReadPersistType() != types.PersistZFS {
 		return
 	}
 	collectAndPublishStorageStatus(ctxPtr)

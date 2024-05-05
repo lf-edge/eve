@@ -8,7 +8,7 @@ import (
 
 	libzfs "github.com/andrewd-zededa/go-libzfs"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/vault"
+	"github.com/lf-edge/eve/pkg/pillar/utils/persist"
 	"github.com/lf-edge/eve/pkg/pillar/zfs"
 )
 
@@ -17,7 +17,7 @@ const (
 )
 
 func storageMetricsPublisher(ctxPtr *zfsContext) {
-	if vault.ReadPersistType() != types.PersistZFS {
+	if persist.ReadPersistType() != types.PersistZFS {
 		return
 	}
 	collectAndPublishStorageMetrics(ctxPtr)
@@ -56,7 +56,7 @@ func collectAndPublishStorageMetrics(ctxPtr *zfsContext) {
 					// we did not go to creating of volume, nothing to measure
 					continue
 				}
-				if !volumeStatus.UseZVolDisk(vault.ReadPersistType()) {
+				if !volumeStatus.UseZVolDisk(persist.ReadPersistType()) {
 					// we do not create zvol for that volumeStatus
 					continue
 				}

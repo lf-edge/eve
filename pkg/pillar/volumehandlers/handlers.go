@@ -4,11 +4,12 @@
 package volumehandlers
 
 import (
+	"time"
+
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/cas"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/vault"
-	"time"
+	"github.com/lf-edge/eve/pkg/pillar/utils/persist"
 )
 
 // VolumeHandler implements processing of different volumes types
@@ -69,7 +70,7 @@ func GetVolumeHandler(log *base.LogObject, volumeManager VolumeMgr, status *type
 	if status.IsContainer() {
 		return &volumeHandlerContainer{common}
 	}
-	if status.UseZVolDisk(vault.ReadPersistType()) {
+	if status.UseZVolDisk(persist.ReadPersistType()) {
 		return &volumeHandlerZVol{commonVolumeHandler: common, useVHost: useVhost(log, volumeManager)}
 	}
 	return &volumeHandlerFile{common}

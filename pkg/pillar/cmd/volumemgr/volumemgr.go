@@ -22,7 +22,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
-	"github.com/lf-edge/eve/pkg/pillar/vault"
+	"github.com/lf-edge/eve/pkg/pillar/utils/persist"
 	"github.com/lf-edge/eve/pkg/pillar/worker"
 	"github.com/lf-edge/eve/pkg/pillar/zfs"
 	"github.com/sirupsen/logrus"
@@ -143,7 +143,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		vdiskGCTime:        3600,
 		deferContentDelete: 0,
 		globalConfig:       types.DefaultConfigItemValueMap(),
-		persistType:        vault.ReadPersistType(),
+		persistType:        persist.ReadPersistType(),
 		hvTypeKube:         base.IsHVTypeKube(),
 	}
 	agentbase.Init(&ctx, logger, log, agentName,
