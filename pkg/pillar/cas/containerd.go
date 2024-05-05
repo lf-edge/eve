@@ -18,20 +18,18 @@ import (
 	containerderrdefs "github.com/containerd/containerd/errdefs"
 	"github.com/containerd/containerd/images"
 	"github.com/containerd/containerd/mount"
+	snapshot "github.com/containerd/containerd/snapshots"
+	v1 "github.com/google/go-containerregistry/pkg/v1"
+	v1types "github.com/google/go-containerregistry/pkg/v1/types"
 	"github.com/lf-edge/edge-containers/pkg/resolver"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/containerd"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/moby/sys/mountinfo"
 	"github.com/opencontainers/go-digest"
-	"golang.org/x/sys/unix"
-
-	snapshot "github.com/containerd/containerd/snapshots"
-	v1 "github.com/google/go-containerregistry/pkg/v1"
-	v1types "github.com/google/go-containerregistry/pkg/v1/types"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
-	spec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/sirupsen/logrus"
+	"golang.org/x/sys/unix"
 )
 
 const (
@@ -40,7 +38,8 @@ const (
 	containerRootfsPath = "rootfs/"
 	// container config file name
 	imageConfigFilename = "image-config.json"
-	// contains conatiner's image name.
+	// contains container's image name.
+	//nolint:unused,deadcode
 	imageNameFilename = "image-name"
 	// start of containerd gc ref label for children in content store
 	containerdGCRef = "containerd.io/gc.ref.content"
@@ -68,7 +67,7 @@ func (c *containerdCAS) SnapshotUsage(snapshotID string, parents bool) (int64, e
 	if parents {
 		snapshotInfoList, err := c.ctrdClient.CtrListSnapshotInfo(ctrdCtx)
 		if err != nil {
-			return 0, fmt.Errorf("SnapshotUsage: Exception while fetching snapshots: %s. %s", snapshotID, err)
+			return 0, fmt.Errorf("SnapshotUsage: Exception while fetching snapshots: %s. %w", snapshotID, err)
 		}
 		getSnapshotInfoByID := func(snapshotID string) *snapshot.Info {
 			for _, snap := range snapshotInfoList {
@@ -115,7 +114,7 @@ func (c *containerdCAS) SnapshotUsage(snapshotID string, parents bool) (int64, e
 	for _, snap := range snapshots {
 		su, err := c.ctrdClient.CtrGetSnapshotUsage(ctrdCtx, snap)
 		if err != nil {
-			return 0, fmt.Errorf("SnapshotUsage: Exception while fetching usage of snapshot: %s. %s", snapshotID, err)
+			return 0, fmt.Errorf("SnapshotUsage: Exception while fetching usage of snapshot: %s. %w", snapshotID, err)
 		}
 		size += su.Size
 	}
@@ -238,7 +237,7 @@ func (c *containerdCAS) IngestBlob(ctx context.Context, blobs ...types.BlobStatu
 	)
 	loadedBlobs := make([]types.BlobStatus, 0)
 
-	//Step 1: Load blobs into CAS
+	// Step 1: Load blobs into CAS
 	for _, blob := range blobs {
 		var (
 			r, contentReader io.Reader
@@ -258,7 +257,7 @@ func (c *containerdCAS) IngestBlob(ctx context.Context, blobs ...types.BlobStatu
 
 		logrus.Infof("IngestBlob(%s): Attempting to load blob", blob.Sha256)
 
-		//Step 1.1: Read the blob from verified dir or provided content
+		// Step 1.1: Read the blob from verified dir or provided content
 		switch {
 		case blobFile == "" && len(blob.Content) == 0:
 			err = fmt.Errorf("IngestBlob(%s): both blobFile and blobContent empty %s: %+s",
@@ -285,7 +284,7 @@ func (c *containerdCAS) IngestBlob(ctx context.Context, blobs ...types.BlobStatu
 			contentReader = bytes.NewReader(blob.Content)
 		}
 
-		//Step 1.2: Resolve blob type and if this is a manifest or index, we will need to process (parse) it accordingly
+		// Step 1.2: Resolve blob type and if this is a manifest or index, we will need to process (parse) it accordingly
 		switch {
 		case blob.IsIndex():
 			// read it in so we can process it
@@ -332,7 +331,7 @@ func (c *containerdCAS) IngestBlob(ctx context.Context, blobs ...types.BlobStatu
 			r = contentReader
 		}
 
-		//Step 1.3: Ingest the blob into CAS
+		// Step 1.3: Ingest the blob into CAS
 		if err := c.ctrdClient.CtrWriteBlob(ctx, sha, blob.Size, r); err != nil {
 			err = fmt.Errorf("IngestBlob(%s): could not load blob file into containerd at %s: %+s",
 				blob.Sha256, blobFile, err.Error())
@@ -344,7 +343,7 @@ func (c *containerdCAS) IngestBlob(ctx context.Context, blobs ...types.BlobStatu
 		loadedBlobs = append(loadedBlobs, blob)
 	}
 
-	//Step 2: Walk the tree from the root to add the necessary labels
+	// Step 2: Walk the tree from the root to add the necessary labels
 	if index != nil {
 		info := BlobInfo{
 			Digest: indexHash,
@@ -500,7 +499,7 @@ func (c *containerdCAS) CreateImage(reference, mediaType, blobHash string) error
 	image := images.Image{
 		Name:   reference,
 		Labels: getEVEDownloadedLabel(),
-		Target: spec.Descriptor{
+		Target: ocispec.Descriptor{
 			MediaType: mediaType,
 			Digest:    digest.Digest(blobHash),
 			Size:      size,
@@ -590,7 +589,7 @@ func (c *containerdCAS) ReplaceImage(reference, mediaType, blobHash string) erro
 	image := images.Image{
 		Name:   reference,
 		Labels: getEVEDownloadedLabel(),
-		Target: spec.Descriptor{
+		Target: ocispec.Descriptor{
 			MediaType: mediaType,
 			Digest:    digest.Digest(blobHash),
 			Size:      size,
@@ -631,7 +630,7 @@ func (c *containerdCAS) MountSnapshot(snapshotID, targetPath string) error {
 	defer done()
 
 	if err := c.ctrdClient.CtrMountSnapshot(ctrdCtx, snapshotID, targetPath); err != nil {
-		return fmt.Errorf("MountSnapshot: Exception while fetching mounts of snapshot: %s. %s", snapshotID, err)
+		return fmt.Errorf("MountSnapshot: Exception while fetching mounts of snapshot: %s. %w", snapshotID, err)
 	}
 	return nil
 }
@@ -672,23 +671,23 @@ func (c *containerdCAS) RemoveSnapshot(snapshotID string) error {
 //	rootPath/rootfs, rootPath/image-config.json
 //
 // The rootPath is expected to end in a basename that becomes the snapshotID
-func (c *containerdCAS) PrepareContainerRootDir(rootPath, reference, rootBlobSha string) error {
-	//Step 1: On device restart, the existing bundle is not deleted, we need to delete the
+func (c *containerdCAS) PrepareContainerRootDir(rootPath, reference, _ string) error {
+	// Step 1: On device restart, the existing bundle is not deleted, we need to delete the
 	// existing bundle of the container and recreate it. This is safe to run even
 	// when bundle doesn't exist
 	if c.RemoveContainerRootDir(rootPath) != nil {
 		logrus.Warnf("PrepareContainerRootDir: tried to clean up any existing state, hopefully it worked")
 	}
 
-	//Step 2: create snapshot of the image so that it can be mounted as container's rootfs.
+	// Step 2: create snapshot of the image so that it can be mounted as container's rootfs.
 	snapshotID := containerd.GetSnapshotID(rootPath)
 	if err := c.CreateSnapshotForImage(snapshotID, reference); err != nil {
-		err = fmt.Errorf("PrepareContainerRootDir: Could not create snapshot %s. %v", snapshotID, err)
+		err = fmt.Errorf("PrepareContainerRootDir: Could not create snapshot %s. %w", snapshotID, err)
 		logrus.Errorf(err.Error())
 		return err
 	}
 
-	//Step 3: write OCI image config/spec json under the container's rootPath.
+	// Step 3: write OCI image config/spec json under the container's rootPath.
 	clientImageSpec, err := getImageConfig(c, reference)
 	if err != nil {
 		err = fmt.Errorf("PrepareContainerRootDir: exception while fetching image config for reference %s: %s",
@@ -705,12 +704,13 @@ func (c *containerdCAS) PrepareContainerRootDir(rootPath, reference, rootBlobSha
 	}
 
 	if err := os.MkdirAll(rootPath, 0766); err != nil {
-		err = fmt.Errorf("PrepareContainerRootDir: Exception while creating rootPath dir. %v", err)
+		err = fmt.Errorf("PrepareContainerRootDir: Exception while creating rootPath dir. %w", err)
 		logrus.Errorf(err.Error())
 		return err
 	}
+	//nolint:gosec // we want this file to be 0666
 	if err := os.WriteFile(filepath.Join(rootPath, imageConfigFilename), []byte(clientImageSpecJSON), 0666); err != nil {
-		err = fmt.Errorf("PrepareContainerRootDir: Exception while writing image info to %v/%v. %v",
+		err = fmt.Errorf("PrepareContainerRootDir: Exception while writing image info to %v/%v. %w",
 			rootPath, imageConfigFilename, err)
 		logrus.Errorf(err.Error())
 		return err
@@ -724,7 +724,7 @@ func (c *containerdCAS) PrepareContainerRootDir(rootPath, reference, rootBlobSha
 	return nil
 }
 
-func (c *containerdCAS) prepareContainerRootDirForKubevirt(clientImageSpec *spec.Image, snapshotID string, rootPath string) error {
+func (c *containerdCAS) prepareContainerRootDirForKubevirt(clientImageSpec *ocispec.Image, snapshotID string, rootPath string) error {
 
 	// On kubevirt eve we also write the mountpoints and cmdline files to the rootPath.
 	// Once rootPath is populated with all necessary files, this rootPath directory will be
@@ -745,7 +745,7 @@ func (c *containerdCAS) prepareContainerRootDirForKubevirt(clientImageSpec *spec
 	// pkg/pillar/volumehandlers/csihandler.go
 	// Once qcow2 is successfully created, this directory will be unmounted in csihandler.go
 	if err := c.MountSnapshot(snapshotID, GetRoofFsPath(rootPath)); err != nil {
-		return fmt.Errorf("PrepareContainerRootDir error mount of snapshot: %s. %s", snapshotID, err)
+		return fmt.Errorf("PrepareContainerRootDir error mount of snapshot: %s. %w", snapshotID, err)
 	}
 
 	err := c.writeKubevirtMountpointsFile(mountpoints, rootPath)
@@ -754,22 +754,23 @@ func (c *containerdCAS) prepareContainerRootDirForKubevirt(clientImageSpec *spec
 	}
 
 	// create env manifest
-	envContent := ""
+	var envContent string
 	if workdir != "" {
 		envContent = fmt.Sprintf("export WORKDIR=\"%s\"\n", workdir)
 	} else {
-		envContent = fmt.Sprintf("export WORKDIR=/\n")
+		envContent = "export WORKDIR=/\n"
 	}
 	for _, e := range unProcessedEnv {
 		keyAndValueSlice := strings.SplitN(e, "=", 2)
 		if len(keyAndValueSlice) == 2 {
-			//handles Key=Value case
-			envContent = envContent + fmt.Sprintf("export %s=\"%s\"\n", keyAndValueSlice[0], keyAndValueSlice[1])
+			// handles Key=Value case
+			envContent += fmt.Sprintf("export %s=\"%s\"\n", keyAndValueSlice[0], keyAndValueSlice[1])
 		} else {
-			//handles Key= case
-			envContent = envContent + fmt.Sprintf("export %s\n", e)
+			// handles Key= case
+			envContent += fmt.Sprintf("export %s\n", e)
 		}
 	}
+	//nolint:gosec // we want this file to be 0644
 	if err := os.WriteFile(filepath.Join(rootPath, "environment"), []byte(envContent), 0644); err != nil {
 		return err
 	}
@@ -814,7 +815,7 @@ func (*containerdCAS) writeKubevirtMountpointsFile(mountpoints map[string]struct
 	if len(mountpoints) > 0 {
 		f, err := os.OpenFile(filepath.Join(rootPath, "mountPoints"), os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644)
 		if err != nil {
-			err = fmt.Errorf("PrepareContainerRootDir: Exception while creating file  mountpoints to %v %v",
+			err = fmt.Errorf("PrepareContainerRootDir: Exception while creating file  mountpoints to %v %w",
 				rootPath, err)
 			logrus.Error(err.Error())
 			return err
@@ -824,7 +825,7 @@ func (*containerdCAS) writeKubevirtMountpointsFile(mountpoints map[string]struct
 		for m := range mountpoints {
 			m += "\n"
 			if _, err := f.WriteString(m); err != nil {
-				err = fmt.Errorf("PrepareContainerRootDir: Exception while writing mountpoints to %v %v",
+				err = fmt.Errorf("PrepareContainerRootDir: Exception while writing mountpoints to %v %w",
 					rootPath, err)
 				logrus.Error(err.Error())
 				return err
@@ -846,7 +847,7 @@ func (c *containerdCAS) UnmountContainerRootDir(rootPath string, force bool) err
 		flag = unix.MNT_FORCE
 	}
 	if err := mount.Unmount(GetRoofFsPath(rootPath), flag); err != nil {
-		err = fmt.Errorf("UnmountContainerRootDir: exception while unmounting: %v/%v. %v",
+		err = fmt.Errorf("UnmountContainerRootDir: exception while unmounting: %v/%v. %w",
 			rootPath, containerRootfsPath, err)
 		logrus.Error(err.Error())
 		return err
@@ -857,27 +858,27 @@ func (c *containerdCAS) UnmountContainerRootDir(rootPath string, force bool) err
 // RemoveContainerRootDir removes contents of a container's rootPath and snapshot.
 func (c *containerdCAS) RemoveContainerRootDir(rootPath string) error {
 
-	//Step 1: Un-mount container's rootfs with force flag as we do not aware of content
+	// Step 1: Un-mount container's rootfs with force flag as we do not aware of content
 	if err := c.UnmountContainerRootDir(rootPath, true); err != nil {
-		err = fmt.Errorf("RemoveContainerRootDir: exception while unmounting: %v/%v. %v",
+		err = fmt.Errorf("RemoveContainerRootDir: exception while unmounting: %v/%v. %w",
 			rootPath, containerRootfsPath, err)
 		logrus.Error(err.Error())
 		// do not stop the flow here, we need to do cleanup regardless of mounting issues
 	}
 
-	//Step 2: Clean container rootPath
+	// Step 2: Clean container rootPath
 	if err := os.RemoveAll(rootPath); err != nil {
-		err = fmt.Errorf("RemoveContainerRootDir: exception while deleting: %v. %v", rootPath, err)
+		err = fmt.Errorf("RemoveContainerRootDir: exception while deleting: %v. %w", rootPath, err)
 		logrus.Error(err.Error())
 
 		return err
 
 	}
 
-	//Step 3: Remove snapshot created for the image
+	// Step 3: Remove snapshot created for the image
 	snapshotID := containerd.GetSnapshotID(rootPath)
 	if err := c.RemoveSnapshot(snapshotID); err != nil {
-		err = fmt.Errorf("RemoveContainerRootDir: unable to remove snapshot: %v. %v", snapshotID, err)
+		err = fmt.Errorf("RemoveContainerRootDir: unable to remove snapshot: %v. %w", snapshotID, err)
 		logrus.Error(err.Error())
 
 		return err
@@ -930,7 +931,7 @@ func (c *containerdCAS) IngestBlobsAndCreateImage(reference string, root types.B
 			return nil, err
 		}
 	} else if err != nil {
-		retErr := fmt.Errorf("getting image hash for reference %s, rootBlob %s failed: %+v", reference, rootBlobSha, err)
+		retErr := fmt.Errorf("getting image hash for reference %s, rootBlob %s failed: %w", reference, rootBlobSha, err)
 		logrus.Error(retErr)
 		return nil, retErr
 	} else {
@@ -982,7 +983,7 @@ func getIndexManifest(c *containerdCAS, blobSha256 string) (*v1.IndexManifest, e
 
 	reader, err := c.ReadBlob(ctrdCtx, blobSha256)
 	if err != nil {
-		return nil, fmt.Errorf("getIndexManifest: Exception while reading blob: %s. %s", blobSha256, err)
+		return nil, fmt.Errorf("getIndexManifest: Exception while reading blob: %s. %w", blobSha256, err)
 	}
 	index, err := v1.ParseIndexManifest(reader)
 	if err != nil {
@@ -1017,6 +1018,8 @@ func getManifest(c *containerdCAS, blobSha256 string) (*v1.Manifest, error) {
 }
 
 // getManifestBlobSha256FromIndex: return blobSha256 of an manifest for the current architecture
+//
+//nolint:unused
 func getManifestBlobSha256FromIndex(indexManifest *v1.IndexManifest) (string, error) {
 	if indexManifest.Manifests == nil {
 		return "", fmt.Errorf("getManifestBlobSha256FromIndex: No manifests found in index")
@@ -1038,7 +1041,7 @@ func isNotFoundError(err error) bool {
 func getBlobSize(c *containerdCAS, blobHash string) (int64, error) {
 	info, err := c.GetBlobInfo(blobHash)
 	if err != nil {
-		return 0, fmt.Errorf("unable to get blob info for %s: %v", blobHash, err)
+		return 0, fmt.Errorf("unable to get blob info for %s: %w", blobHash, err)
 	}
 	return info.Size, nil
 }
@@ -1049,7 +1052,7 @@ func getImageConfig(c *containerdCAS, reference string) (*ocispec.Image, error) 
 	manifests := ocispec.Manifest{}
 	imageConfig := ocispec.Image{}
 
-	//Step 1: Get the hash of parent blob
+	// Step 1: Get the hash of parent blob
 	imageParentHash, err := c.GetImageHash(reference)
 	if err != nil {
 		err = fmt.Errorf("getImageConfig: exception while fetching reference hash of %s: %s", reference, err.Error())
@@ -1060,7 +1063,7 @@ func getImageConfig(c *containerdCAS, reference string) (*ocispec.Image, error) 
 	ctrdCtx, done := c.ctrdClient.CtrNewUserServicesCtx()
 	defer done()
 
-	//Step 2: Read the parent blob data
+	// Step 2: Read the parent blob data
 	blobReader, err := c.ReadBlob(ctrdCtx, imageParentHash)
 	if err != nil {
 		err = fmt.Errorf("getImageConfig: exception while reading blob %s for reference %s: %s",
@@ -1076,11 +1079,11 @@ func getImageConfig(c *containerdCAS, reference string) (*ocispec.Image, error) 
 		return nil, err
 	}
 
-	//Step 3: Get the manifest of the image
+	// Step 3: Get the manifest of the image
 
-	//Step 3.1: Check if the blob is an index
+	// Step 3.1: Check if the blob is an index
 	if err := json.Unmarshal(blobData, &index); err != nil || index.Manifests == nil {
-		//Step 3.2: Check if the blob is an manifest
+		// Step 3.2: Check if the blob is an manifest
 		if err := json.Unmarshal(blobData, &manifests); err != nil {
 			err = fmt.Errorf("getImageConfig: could not read imageManifest %s for reference %s: %+s",
 				imageParentHash, reference, err.Error())
@@ -1088,9 +1091,9 @@ func getImageConfig(c *containerdCAS, reference string) (*ocispec.Image, error) 
 			return nil, err
 		}
 	} else {
-		//Step 3.1.1: Fetch manifest hash from index
+		// Step 3.1.1: Fetch manifest hash from index
 		for _, m := range index.Manifests {
-			//Step 3.1.2:  get the appropriate manifest has from index
+			// Step 3.1.2:  get the appropriate manifest has from index
 			if m.Platform.Architecture == runtime.GOARCH {
 				blobReader, err = c.ReadBlob(ctrdCtx, m.Digest.String())
 				if err != nil {
@@ -1099,7 +1102,7 @@ func getImageConfig(c *containerdCAS, reference string) (*ocispec.Image, error) 
 					logrus.Errorf(err.Error())
 					return nil, err
 				}
-				//Step 3.1.3: Read the manifest data
+				// Step 3.1.3: Read the manifest data
 				blobData, err = io.ReadAll(blobReader)
 				if err != nil {
 					err = fmt.Errorf("getImageConfig: could not parsr manifestBlob %s for reference %s: %+s",
@@ -1118,7 +1121,7 @@ func getImageConfig(c *containerdCAS, reference string) (*ocispec.Image, error) 
 		}
 	}
 
-	//Step 4: Get the config hash from manifest and read the config data
+	// Step 4: Get the config hash from manifest and read the config data
 	configHash := manifests.Config.Digest.String()
 	blobReader, err = c.ReadBlob(ctrdCtx, configHash)
 	if err != nil {
@@ -1147,7 +1150,7 @@ func getImageConfig(c *containerdCAS, reference string) (*ocispec.Image, error) 
 func getJSON(x interface{}) (string, error) {
 	b, err := json.MarshalIndent(x, "", "    ")
 	if err != nil {
-		return "", fmt.Errorf("getJSON: Exception while marshalling container spec JSON. %v", err)
+		return "", fmt.Errorf("getJSON: Exception while marshalling container spec JSON. %w", err)
 	}
 	return fmt.Sprint(string(b)), nil
 }
