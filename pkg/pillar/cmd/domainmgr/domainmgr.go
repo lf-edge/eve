@@ -45,6 +45,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/lf-edge/eve/pkg/pillar/utils/cloudconfig"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
+	"github.com/lf-edge/eve/pkg/pillar/utils/wait"
 	"github.com/opencontainers/runtime-spec/specs-go"
 	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
@@ -573,12 +574,12 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 
 	// Wait until we have been onboarded aka know our own UUID however we do not use the UUID
-	if err := utils.WaitForOnboarded(ps, log, agentName, warningTime, errorTime); err != nil {
+	if err := wait.WaitForOnboarded(ps, log, agentName, warningTime, errorTime); err != nil {
 		log.Fatal(err)
 	}
 	log.Noticef("device is onboarded")
 
-	if err := utils.WaitForVault(ps, log, agentName, warningTime, errorTime); err != nil {
+	if err := wait.WaitForVault(ps, log, agentName, warningTime, errorTime); err != nil {
 		log.Fatal(err)
 	}
 
@@ -588,7 +589,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		log.Fatalf("StartUserContainerdInstance: failed %v", err)
 	}
 
-	if err := utils.WaitForUserContainerd(ps, log, agentName, warningTime, errorTime); err != nil {
+	if err := wait.WaitForUserContainerd(ps, log, agentName, warningTime, errorTime); err != nil {
 		log.Fatal(err)
 	}
 	log.Functionf("user containerd ready")
