@@ -1,7 +1,7 @@
 // Copyright (c) 2023 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-package zedrouter
+package msrv
 
 import (
 	"encoding/json"
@@ -15,6 +15,10 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
 )
+
+// PatchEnvelopeURLPath is route used for patch envelopes
+// it is used in URL composing of patch envelopes
+const PatchEnvelopeURLPath = "/eve/v1/patch/"
 
 // PatchEnvelopes is a structure representing
 // Patch Envelopes exposed to App instances via metadata server
@@ -127,41 +131,35 @@ func (pes *PatchEnvelopes) updateState() {
 
 	keys = pes.envelopes.Keys()
 	for _, peUUID := range keys {
-		if peInfo, ok := pes.envelopes.Load(peUUID); ok {
-			pes.currentState.Store(peUUID, peInfo)
-
-			if pe, ok := pes.currentState.Load(peUUID); ok {
-				peState := types.PatchEnvelopeStateActive
-				for _, volRef := range pe.VolumeRefs {
-					if blob, blobState := pes.blobFromVolumeRef(volRef); blob != nil {
-						if blobState < peState {
-							peState = blobState
-						}
-						if idx := types.CompletedBinaryBlobIdxByName(pe.BinaryBlobs, blob.FileName); idx != -1 {
-							pe.BinaryBlobs[idx] = *blob
-						} else {
-							pe.BinaryBlobs = append(pe.BinaryBlobs, *blob)
-						}
+		if pe, ok := pes.envelopes.Load(peUUID); ok {
+			peState := types.PatchEnvelopeStateActive
+			for _, volRef := range pe.VolumeRefs {
+				if blob, blobState := pes.blobFromVolumeRef(volRef); blob != nil {
+					if blobState < peState {
+						peState = blobState
+					}
+					if idx := types.CompletedBinaryBlobIdxByName(pe.BinaryBlobs, blob.FileName); idx != -1 {
+						pe.BinaryBlobs[idx] = *blob
+					} else {
+						pe.BinaryBlobs = append(pe.BinaryBlobs, *blob)
 					}
 				}
-
-				// If controller forces us to store patch envelope and don't expose it
-				// to appInstance we keep it that way
-				if pe.State == types.PatchEnvelopeStateReady && peState == types.PatchEnvelopeStateActive {
-					peState = types.PatchEnvelopeStateReady
-				}
-
-				if len(pe.Errors) > 0 {
-					peState = types.PatchEnvelopeStateError
-				}
-
-				pe.State = peState
-				pes.currentState.Store(peUUID, pe)
-				pes.publishPatchEnvelopeInfo(&pe)
-
-			} else {
-				pes.log.Errorf("No entry in currentState for %v to update", peUUID)
 			}
+
+			// If controller forces us to store patch envelope and don't expose it
+			// to appInstance we keep it that way
+			if pe.State == types.PatchEnvelopeStateReady && peState == types.PatchEnvelopeStateActive {
+				peState = types.PatchEnvelopeStateReady
+			}
+
+			if len(pe.Errors) > 0 {
+				peState = types.PatchEnvelopeStateError
+				pes.log.Errorf("Errors: %v", pe.Errors)
+			}
+
+			pe.State = peState
+			pes.currentState.Store(peUUID, pe)
+			pes.publishPatchEnvelopeInfo(&pe)
 		} else {
 			pes.log.Errorf("No entry in envelopes for %v to fetch", peUUID)
 		}
@@ -311,14 +309,14 @@ func (pes *PatchEnvelopes) EnvelopesInUsage() []string {
 	return result
 }
 
-// PatchEnvelopeInfo contains fields that we don't want to expose to app instance (like AllowedApps), so we use
-// peInfoToDisplay and patchEnvelopesJSONFOrAppInstance to marshal PatchEnvelopeInfoList in a format, which is
-// suitable for app instance.
+// PeInfoToDisplay is used together with patchEnvelopesJSONFOrAppInstance to marshal
+// marshal PatchEnvelopeInfoList in a format, which is suitable for app instance.
+// Also,  PatchEnvelopeInfo contains fields that we don't want to expose to app instance (like AllowedApps)
 // We cannot use json:"-" structure tag to omit AllowedApps from json marshaling since we use PatchEnvelopeInfo between
 // zedagent and zedrouter to communicate new PatchEnvelopes from EdgeDevConfig. This communication is done via pubSub,
 // which uses json marshaling to communicate structures between processes. And using json:"-" will make AllowedApps "magically"
 // disappear on zedrouter
-type peInfoToDisplay struct {
+type PeInfoToDisplay struct {
 	PatchID     string
 	Version     string
 	BinaryBlobs []types.BinaryBlobCompleted
@@ -328,7 +326,7 @@ type peInfoToDisplay struct {
 // patchEnvelopesJSONForAppInstance returns json representation
 // of Patch Envelopes list which are shown to app instances
 func patchEnvelopesJSONForAppInstance(pe types.PatchEnvelopeInfoList) ([]byte, error) {
-	toDisplay := make([]peInfoToDisplay, len(pe.Envelopes))
+	toDisplay := make([]PeInfoToDisplay, len(pe.Envelopes))
 
 	for i, envelope := range pe.Envelopes {
 
@@ -344,7 +342,7 @@ func patchEnvelopesJSONForAppInstance(pe types.PatchEnvelopeInfoList) ([]byte, e
 			binaryBlobs[j].URL = url
 		}
 
-		toDisplay[i] = peInfoToDisplay{
+		toDisplay[i] = PeInfoToDisplay{
 			PatchID:     envelope.PatchID,
 			Version:     envelope.Version,
 			BinaryBlobs: binaryBlobs,
