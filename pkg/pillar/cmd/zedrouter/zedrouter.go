@@ -51,8 +51,8 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/uplinkprober"
-	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
+	"github.com/lf-edge/eve/pkg/pillar/utils/wait"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	"github.com/sirupsen/logrus"
 )
@@ -334,7 +334,7 @@ func (z *zedrouter) run(ctx context.Context) (err error) {
 
 	// Wait until we have been onboarded aka know our own UUID
 	// (even though zedrouter does not use the UUID).
-	err = utils.WaitForOnboarded(z.pubSub, z.log, agentName, warningTime, errorTime)
+	err = wait.WaitForOnboarded(z.pubSub, z.log, agentName, warningTime, errorTime)
 	if err != nil {
 		return err
 	}
