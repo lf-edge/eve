@@ -1,6 +1,7 @@
 package moby
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"sort"
@@ -8,13 +9,14 @@ import (
 	"strings"
 
 	"github.com/containerd/containerd/reference"
+	"github.com/linuxkit/linuxkit/src/cmd/linuxkit/spec"
 	"github.com/linuxkit/linuxkit/src/cmd/linuxkit/util"
 	imagespec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/opencontainers/runtime-spec/specs-go"
 	log "github.com/sirupsen/logrus"
 	"github.com/syndtr/gocapability/capability"
 	"github.com/xeipuuv/gojsonschema"
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 )
 
 // Moby is the type of a Moby config file
@@ -29,6 +31,10 @@ type Moby struct {
 	initRefs []*reference.Spec
 }
 
+func (m Moby) InitRefs() []*reference.Spec {
+	return m.initRefs
+}
+
 // KernelConfig is the type of the config for a kernel
 type KernelConfig struct {
 	Image   string  `yaml:"image" json:"image"`
@@ -38,6 +44,10 @@ type KernelConfig struct {
 	UCode   *string `yaml:"ucode,omitempty" json:"ucode,omitempty"`
 
 	ref *reference.Spec
+}
+
+func (k KernelConfig) Ref() *reference.Spec {
+	return k.ref
 }
 
 // File is the type of a file specification
@@ -59,6 +69,27 @@ type Image struct {
 	Name        string `yaml:"name" json:"name"`
 	Image       string `yaml:"image" json:"image"`
 	ImageConfig `yaml:",inline"`
+}
+
+// Equal check if another Image is functionally equal to this one.
+// Takes the easy path by marshaling both into yaml and then comparing the yaml.
+// There may be a more efficient way to do this, but this is simplest.
+func (i *Image) Equal(o *Image) bool {
+	// if we are going to compare, we must canonicalized both image names
+	i0 := i
+	i0.Image = util.ReferenceExpand(i.Image)
+	iy, err := yaml.Marshal(i0)
+	if err != nil {
+		return false
+	}
+
+	o0 := o
+	o0.Image = util.ReferenceExpand(o.Image)
+	oy, err := yaml.Marshal(o)
+	if err != nil {
+		return false
+	}
+	return bytes.Equal(iy, oy)
 }
 
 // ImageConfig is the configuration part of Image, it is the subset
@@ -102,6 +133,10 @@ type ImageConfig struct {
 	Runtime *Runtime `yaml:"runtime,omitempty" json:"runtime,omitempty"`
 
 	ref *reference.Spec
+}
+
+func (i ImageConfig) Ref() *reference.Spec {
+	return i.ref
 }
 
 // Device specifies a device to be exposed to the container.
@@ -214,7 +249,7 @@ func extractReferences(m *Moby) error {
 	return nil
 }
 
-func updateImages(m *Moby) {
+func UpdateImages(m *Moby) {
 	if m.Kernel.ref != nil {
 		m.Kernel.Image = m.Kernel.ref.String()
 	}
@@ -239,7 +274,7 @@ func updateImages(m *Moby) {
 }
 
 // NewConfig parses a config file
-func NewConfig(config []byte) (Moby, error) {
+func NewConfig(config []byte, packageFinder spec.PackageResolver) (Moby, error) {
 	m := Moby{}
 
 	// Parse raw yaml
@@ -265,6 +300,12 @@ func NewConfig(config []byte) (Moby, error) {
 			fmt.Printf("- %s\n", desc)
 		}
 		return m, fmt.Errorf("invalid configuration file")
+	}
+
+	// process the template fields
+	config, err = processTemplates(config, packageFinder)
+	if err != nil {
+		return m, err
 	}
 
 	// Parse yaml
@@ -660,7 +701,7 @@ func getAllCapabilities() []string {
 
 var allCaps = getAllCapabilities()
 
-func idNumeric(v interface{}, idMap map[string]uint32) (uint32, error) {
+func IDNumeric(v interface{}, idMap map[string]uint32) (uint32, error) {
 	switch id := v.(type) {
 	case nil:
 		return uint32(0), nil
@@ -955,17 +996,17 @@ func ConfigToOCI(yaml *Image, config imagespec.ImageConfig, idMap map[string]uin
 	uidIf := assignInterface(label.UID, yaml.UID)
 	gidIf := assignInterface(label.GID, yaml.GID)
 	agIf := assignInterfaceArray(label.AdditionalGids, yaml.AdditionalGids)
-	uid, err := idNumeric(uidIf, idMap)
+	uid, err := IDNumeric(uidIf, idMap)
 	if err != nil {
 		return oci, runtime, err
 	}
-	gid, err := idNumeric(gidIf, idMap)
+	gid, err := IDNumeric(gidIf, idMap)
 	if err != nil {
 		return oci, runtime, err
 	}
 	var additionalGroups []uint32
 	for _, id := range agIf {
-		ag, err := idNumeric(id, idMap)
+		ag, err := IDNumeric(id, idMap)
 		if err != nil {
 			return oci, runtime, err
 		}
@@ -1069,5 +1110,35 @@ func deviceCgroup(device specs.LinuxDevice) specs.LinuxDeviceCgroup {
 		Major:  &device.Major,
 		Minor:  &device.Minor,
 		Access: "rwm", // read, write, mknod
+	}
+}
+
+// processTemplates given a raw config []byte and a package finder, process the templates to find the packages.
+// This eventually should expand to other types of templates. Since we only have @pkg: for now,
+// this will do to start.
+func processTemplates(b []byte, packageFinder spec.PackageResolver) ([]byte, error) {
+	if packageFinder == nil {
+		return b, nil
+	}
+	var node yaml.Node
+	if err := yaml.Unmarshal(b, &node); err != nil {
+		return nil, err
+	}
+	handleTemplate(&node, packageFinder)
+	return yaml.Marshal(&node)
+}
+
+func handleTemplate(node *yaml.Node, packageFinder spec.PackageResolver) {
+	switch node.Kind {
+	case yaml.SequenceNode, yaml.MappingNode, yaml.DocumentNode:
+		for i := 0; i < len(node.Content); i++ {
+			handleTemplate(node.Content[i], packageFinder)
+		}
+	case yaml.ScalarNode:
+		val := node.Value
+		if resolved, err := packageFinder(node.Value); err == nil {
+			val = resolved
+		}
+		node.Value = val
 	}
 }

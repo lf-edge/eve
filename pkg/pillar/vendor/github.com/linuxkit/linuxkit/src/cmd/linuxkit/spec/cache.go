@@ -33,15 +33,20 @@ type CacheProvider interface {
 	IndexWrite(ref *reference.Spec, descriptors ...v1.Descriptor) (ImageSource, error)
 	// ImageLoad takes an OCI format image tar stream in the io.Reader and writes it to the cache. It should be
 	// efficient and only write missing blobs, based on their content hash.
-	ImageLoad(ref *reference.Spec, architecture string, r io.Reader) ([]v1.Descriptor, error)
+	ImageLoad(r io.Reader) ([]v1.Descriptor, error)
 	// DescriptorWrite writes a descriptor to the cache index; it validates that it has a name
 	// and replaces any existing one
 	DescriptorWrite(ref *reference.Spec, descriptors v1.Descriptor) (ImageSource, error)
 	// Push an image along with a multi-arch index from local cache to remote registry.
+	// name is the name as referenced in the local cache, remoteName is the name to give it remotely.
+	// If remoteName is empty, it is the same as name.
 	// if withManifest defined will push a multi-arch manifest
-	Push(name string, withManifest bool) error
+	Push(name, remoteName string, withManifest, override bool) error
 	// NewSource return an ImageSource for a specific ref and architecture in the cache.
 	NewSource(ref *reference.Spec, architecture string, descriptor *v1.Descriptor) ImageSource
+	// GetContent returns an io.Reader to the provided content as is, given a specific digest. It is
+	// up to the caller to validate it.
+	GetContent(hash v1.Hash) (io.ReadCloser, error)
 	// Store get content.Store referencing the cache
 	Store() (content.Store, error)
 }
