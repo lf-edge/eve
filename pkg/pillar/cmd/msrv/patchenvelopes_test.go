@@ -1,7 +1,7 @@
 // Copyright (c) 2023 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-package zedrouter_test
+package msrv_test
 
 import (
 	"sync"
@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
-	"github.com/lf-edge/eve/pkg/pillar/cmd/zedrouter"
+	"github.com/lf-edge/eve/pkg/pillar/cmd/msrv"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/onsi/gomega"
@@ -27,7 +27,7 @@ func TestPatchEnvelopes(t *testing.T) {
 	logger := logrus.StandardLogger()
 	log := base.NewSourceLogObject(logger, "petypes", 1234)
 	ps := pubsub.New(&pubsub.EmptyDriver{}, logger, log)
-	peStore := zedrouter.NewPatchEnvelopes(log, ps)
+	peStore := msrv.NewPatchEnvelopes(log, ps)
 
 	patch1UUID := "6ba7b810-9dad-11d1-80b4-000000000000"
 	app1UUID := "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
