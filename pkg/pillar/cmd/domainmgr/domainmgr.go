@@ -46,6 +46,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/utils/cloudconfig"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	"github.com/lf-edge/eve/pkg/pillar/utils/wait"
+	zfsutil "github.com/lf-edge/eve/pkg/pillar/utils/zfs"
 	"github.com/opencontainers/runtime-spec/specs-go"
 	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
@@ -3056,7 +3057,7 @@ func updatePortAndPciBackIoBundle(ctx *domainContext, ib *types.IoBundle) (chang
 				log.Error(err)
 			}
 		}
-		if ib.Type == types.IoNVME && types.NVMEIsUsed(log, ctx.subZFSPoolStatus.GetAll(), ib.PciLong) {
+		if ib.Type == types.IoNVME && zfsutil.NVMEIsUsed(log, ctx.subZFSPoolStatus.GetAll(), ib.PciLong) {
 			keepInHost = true
 		}
 		if ib.Type == types.IoNetEthPF {
