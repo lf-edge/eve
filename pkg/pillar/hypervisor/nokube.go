@@ -5,6 +5,8 @@
 
 package hypervisor
 
+import "github.com/sirupsen/logrus"
+
 const (
 	// KubevirtHypervisorName : Name of the kubevirt hypervisor
 	KubevirtHypervisorName = "kubevirt"
@@ -12,5 +14,6 @@ const (
 
 // newKubevirt in this file is just stub for non-kubevirt hypervisors.
 func newKubevirt() Hypervisor {
-	panic("Hypervisor for kubevirt is not built")
+	logrus.Warn("Kubevirt hypervisor is not enabled")
+	return nil
 }
