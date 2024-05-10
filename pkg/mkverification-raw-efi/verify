@@ -134,7 +134,7 @@ zfs_umount() {
 logmsg "EVE-OS verification started"
 # make rootfs of verification container and / writable
 mount -o remount,rw /dev/loop0 /
-mount -o remount,rw /containers/onboot/003-installer/rootfs
+mount -o remount,rw /containers/onboot/002-installer/rootfs
 # do this just in case
 modprobe usbhid && modprobe usbkbd
 # clean partition tables on disks defined to nuke
