@@ -14,7 +14,6 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"github.com/lf-edge/eve/pkg/pillar/base"
-	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/sirupsen/logrus"
@@ -51,22 +50,20 @@ func (ctx *DNSContext) AddAgentSpecificCLIFlags(flagSet *flag.FlagSet) {
 var logger *logrus.Logger
 var log *base.LogObject
 
-func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string) int {
+func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string, baseDir string) int {
 	logger = loggerArg
 	log = logArg
 
 	DNSctx := DNSContext{}
-	agentbase.Init(&DNSctx, logger, log, agentName,
-		agentbase.WithArguments(arguments))
+	args := []agentbase.AgentOpt{agentbase.WithArguments(arguments), agentbase.WithBaseDir(baseDir)}
+	if !*DNSctx.noPidPtr {
+		args = append(args, agentbase.WithPidFile())
+	}
+	agentbase.Init(&DNSctx, logger, log, agentName, args...)
 
 	if *DNSctx.versionPtr {
 		fmt.Printf("%s: %s\n", agentName, Version)
 		return 0
-	}
-	if !*DNSctx.noPidPtr {
-		if err := pidfile.CheckAndCreatePidfile(log, agentName); err != nil {
-			log.Fatal(err)
-		}
 	}
 
 	// Run a periodic timer so we always update StillRunning

@@ -71,7 +71,7 @@ const (
 
 // The function returns an exit value
 type entrypoint struct {
-	f      func(*pubsub.PubSub, *logrus.Logger, *base.LogObject, []string) int
+	f      types.AgentRunner
 	inline zedboxInline
 }
 
@@ -115,8 +115,8 @@ var (
 func main() {
 	// Check what service we are intending to start.
 	basename := filepath.Base(os.Args[0])
+	logger, log = agentlog.Init(basename)
 	if sep, ok := entrypoints[basename]; ok {
-		logger, log = agentlog.Init(basename)
 		inline := false
 		switch sep.inline {
 		case inlineAlways:
@@ -133,7 +133,6 @@ func main() {
 	// If this zedbox?
 	if basename == agentName {
 		sep := entrypoint{f: runZedbox, inline: inlineAlways}
-		logger, log = agentlog.Init(basename)
 		inline := true
 		err := zedcloud.InitializeCertDir(log)
 		if err != nil {
@@ -155,16 +154,16 @@ func runService(serviceName string, sep entrypoint, inline bool) int {
 		ps := pubsub.New(
 			&socketdriver.SocketDriver{Logger: logger, Log: log},
 			logger, log)
-		return sep.f(ps, logger, log, arguments)
+		return sep.f(ps, logger, log, arguments, "")
 	}
 	// Notify zedbox binary to start the agent/service
-	sericeInitStatus := types.ServiceInitStatus{
+	serviceInitStatus := types.ServiceInitStatus{
 		ServiceName: serviceName,
 		CmdArgs:     arguments,
 	}
 	log.Functionf("Notifying zedbox to start service %s with args %v",
-		sericeInitStatus.ServiceName, sericeInitStatus.CmdArgs)
-	if err := reverse.Publish(log, agentName, &sericeInitStatus); err != nil {
+		serviceInitStatus.ServiceName, serviceInitStatus.CmdArgs)
+	if err := reverse.Publish(log, agentName, &serviceInitStatus); err != nil {
 		// When we hit this it is most likely due to zedbox having hit a panic
 		// or fatal. Don't hide that as the reboot reason.
 		// If that is not the case, then watchdog will soon detect that this service
@@ -176,11 +175,12 @@ func runService(serviceName string, sep entrypoint, inline bool) int {
 }
 
 // runZedbox is the built-in starting of the main process
-func runZedbox(ps *pubsub.PubSub, logger *logrus.Logger, log *base.LogObject, arguments []string) int {
+func runZedbox(ps *pubsub.PubSub, logger *logrus.Logger, log *base.LogObject, arguments []string, baseDir string) int {
 	//Start zedbox
 	state := &agentbase.AgentBase{}
 	agentbase.Init(state, logger, log, agentName,
 		agentbase.WithPidFile(),
+		agentbase.WithBaseDir(baseDir),
 		agentbase.WithArguments(arguments))
 
 	stillRunning := time.NewTicker(15 * time.Second)
@@ -237,7 +237,8 @@ func handleService(serviceName string, cmdArgs []string) {
 func startAgentAndDone(sep entrypoint, agentName string, srvPs *pubsub.PubSub,
 	srvLogger *logrus.Logger, srvLog *base.LogObject, cmdArgs []string) {
 
-	retval := sep.f(srvPs, srvLogger, srvLog, cmdArgs)
+	// by definition, startAgentAndDone is not inline
+	retval := sep.f(srvPs, srvLogger, srvLog, cmdArgs, "")
 
 	ret := strconv.Itoa(retval)
 	if err := os.WriteFile(fmt.Sprintf("/run/%s.done", agentName),

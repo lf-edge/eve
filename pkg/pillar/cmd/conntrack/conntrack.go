@@ -45,12 +45,13 @@ func (state *connTrackAgentState) AddAgentSpecificCLIFlags(flagSet *flag.FlagSet
 	state.markMask = flagSet.Int("mask", 0, "Delete flow with Mark mask")
 }
 
-func Run(_ *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string) int {
+func Run(_ *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string, baseDir string) int {
 	logger = loggerArg
 	log = logArg
 
 	ctx := connTrackAgentState{}
 	agentbase.Init(&ctx, logger, log, agentName,
+		agentbase.WithBaseDir(baseDir),
 		agentbase.WithArguments(arguments))
 
 	// conntrack [-D <-s address> [-p proto][-P port][-m Mark]]

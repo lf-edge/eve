@@ -150,7 +150,7 @@ var logger *logrus.Logger
 var log *base.LogObject
 
 // Run - runs the main upgradeconverter process
-func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string) int {
+func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string, baseDir string) int {
 	logger = loggerArg
 	log = logArg
 	ctx := &ucContext{agentName: "upgradeconverter",
@@ -161,6 +161,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 	agentbase.Init(ctx, logger, log, agentName,
 		agentbase.WithPidFile(),
+		agentbase.WithBaseDir(baseDir),
 		agentbase.WithArguments(arguments))
 
 	ctx.persistDir = *ctx.persistPtr // XXX remove? Or use for tests?

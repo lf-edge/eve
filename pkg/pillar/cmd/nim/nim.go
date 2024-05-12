@@ -23,7 +23,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/dpcreconciler"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/netmonitor"
-	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
@@ -127,13 +126,15 @@ func (n *nim) ProcessAgentSpecificCLIFlags(_ *flag.FlagSet) {
 }
 
 // Run - Main function - invoked from zedbox.go
-func Run(ps *pubsub.PubSub, logger *logrus.Logger, log *base.LogObject, arguments []string) int {
+func Run(ps *pubsub.PubSub, logger *logrus.Logger, log *base.LogObject, arguments []string, baseDir string) int {
 	nim := &nim{
 		Log:    log,
 		PubSub: ps,
 		Logger: logger,
 	}
 	agentbase.Init(nim, logger, log, agentName,
+		agentbase.WithBaseDir(baseDir),
+		agentbase.WithPidFile(),
 		agentbase.WithArguments(arguments))
 
 	if err := nim.init(); err != nil {
@@ -200,9 +201,6 @@ func (n *nim) init() (err error) {
 }
 
 func (n *nim) run(ctx context.Context) (err error) {
-	if err = pidfile.CheckAndCreatePidfile(n.Log, agentName); err != nil {
-		return err
-	}
 	n.Log.Noticef("Starting %s", agentName)
 
 	// Start DPC Manager.

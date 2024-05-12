@@ -28,7 +28,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	etpm "github.com/lf-edge/eve/pkg/pillar/evetpm"
-	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
@@ -1383,26 +1382,37 @@ func initializeDirs() {
 // Run is the entry point for tpmmgr, from zedbox
 //
 //nolint:funlen,gocognit,gocyclo
-func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string) int {
+func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string, baseDir string) int {
 	logger = loggerArg
 	log = logArg
 
 	// Context to pass around
 	ctx := tpmMgrContext{}
-	agentbase.Init(&ctx, logger, log, agentName,
-		agentbase.WithArguments(arguments))
 
-	// if any args defined, will run command inline and return
-	if len(ctx.args) > 0 {
-		return runInline(ctx.args[0], ctx.args[1:])
+	// do we run a single command, or long-running service?
+	// if any args defined, will run that single command and exit.
+	// otherwise, will run the agent
+	var (
+		command string
+		args    []string
+	)
+	if len(arguments) > 0 {
+		command = arguments[0]
 	}
+	if len(arguments) > 1 {
+		args = arguments[1:]
+	}
+
+	// if an explicit command was given, run that command and return, else run the agent
+	if command != "" {
+		return runCommand(command, args)
+	}
+
+	agentArgs := []agentbase.AgentOpt{agentbase.WithBaseDir(baseDir), agentbase.WithArguments(arguments), agentbase.WithPidFile()}
+	agentbase.Init(&ctx, logger, log, agentName, agentArgs...)
 
 	// Create required directories if not present
 	initializeDirs()
-
-	if err := pidfile.CheckAndCreatePidfile(log, agentName); err != nil {
-		log.Fatal(err)
-	}
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(15 * time.Second)
@@ -1521,7 +1531,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 }
 
-func runInline(command string, args []string) int {
+func runCommand(command string, args []string) int {
 	var err error
 	switch command {
 	case "createDeviceCert":
@@ -1724,8 +1734,7 @@ func handleAttestNonceDelete(ctxArg interface{}, key string, statusArg interface
 	log.Functionf("handleAttestNonceDelete received")
 	ctx := ctxArg.(*tpmMgrContext)
 	pub := ctx.pubAttestQuote
-	st, _ := pub.Get(key)
-	if st != nil {
+	if st, _ := pub.Get(key); st != nil {
 		log.Functionf("Unpublishing quote for nonce %x", key)
 		pub := ctx.pubAttestQuote
 		pub.Unpublish(key)

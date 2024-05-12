@@ -116,7 +116,7 @@ var nilUUID uuid.UUID
 var logger *logrus.Logger
 var log *base.LogObject
 
-func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string) int {
+func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string, baseDir string) int { //nolint:gocyclo
 	logger = loggerArg
 	log = logArg
 	triggerPrintChan := make(chan string, 1)
@@ -126,6 +126,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		triggerPrintChan: triggerPrintChan,
 	}
 	agentbase.Init(&ctx, logger, log, agentName,
+		agentbase.WithBaseDir(baseDir),
 		agentbase.WithArguments(arguments))
 
 	ctx.forever = *ctx.foreverPtr
