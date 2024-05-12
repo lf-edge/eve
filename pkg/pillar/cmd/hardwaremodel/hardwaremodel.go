@@ -41,12 +41,13 @@ func (state *hardwareModelAgentState) AddAgentSpecificCLIFlags(flagSet *flag.Fla
 var logger *logrus.Logger
 var log *base.LogObject
 
-func Run(_ *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string) int {
+func Run(_ *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string, baseDir string) int {
 	logger = loggerArg
 	log = logArg
 
 	state := hardwareModelAgentState{}
 	agentbase.Init(&state, logger, log, agentName,
+		agentbase.WithBaseDir(baseDir),
 		agentbase.WithArguments(arguments))
 
 	outputFile := *state.outputFilePtr

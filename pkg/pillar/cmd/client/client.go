@@ -22,7 +22,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
-	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
@@ -116,7 +115,7 @@ var (
 	log               *base.LogObject
 )
 
-func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string) int { //nolint:gocyclo
+func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string, baseDir string) int { //nolint:gocyclo
 	logger = loggerArg
 	log = logArg
 
@@ -130,18 +129,16 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		},
 	}
 
-	agentbase.Init(&clientCtx, logger, log, agentName,
-		agentbase.WithArguments(arguments))
+	args := []agentbase.AgentOpt{agentbase.WithArguments(arguments), agentbase.WithBaseDir(baseDir)}
+	if !*clientCtx.noPidPtr {
+		args = append(args, agentbase.WithPidFile())
+	}
+	agentbase.Init(&clientCtx, logger, log, agentName, args...)
 
 	maxRetries := *clientCtx.maxRetriesPtr
 	if *clientCtx.versionPtr {
 		fmt.Printf("%s: %s\n", agentName, Version)
 		return 0
-	}
-	if !*clientCtx.noPidPtr {
-		if err := pidfile.CheckAndCreatePidfile(log, agentName); err != nil {
-			log.Fatal(err)
-		}
 	}
 
 	pub, err := ps.NewPublication(pubsub.PublicationOptions{

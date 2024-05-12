@@ -47,7 +47,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/nistate"
 	"github.com/lf-edge/eve/pkg/pillar/objtonum"
 	"github.com/lf-edge/eve/pkg/pillar/persistcache"
-	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/uplinkprober"
@@ -199,7 +198,7 @@ func (z *zedrouter) AddAgentSpecificCLIFlags(flagSet *flag.FlagSet) {
 	z.versionPtr = flagSet.Bool("v", false, "Version")
 }
 
-func Run(ps *pubsub.PubSub, logger *logrus.Logger, log *base.LogObject, args []string) int {
+func Run(ps *pubsub.PubSub, logger *logrus.Logger, log *base.LogObject, args []string, baseDir string) int {
 	zedrouter := zedrouter{
 		pubSub: ps,
 		logger: logger,
@@ -209,6 +208,8 @@ func Run(ps *pubsub.PubSub, logger *logrus.Logger, log *base.LogObject, args []s
 	}
 
 	agentbase.Init(&zedrouter, logger, log, agentName,
+		agentbase.WithPidFile(),
+		agentbase.WithBaseDir(baseDir),
 		agentbase.WithArguments(args))
 
 	if *zedrouter.versionPtr {
@@ -302,9 +303,6 @@ func (z *zedrouter) init() (err error) {
 
 func (z *zedrouter) run(ctx context.Context) (err error) {
 	z.runCtx = ctx
-	if err = pidfile.CheckAndCreatePidfile(z.log, agentName); err != nil {
-		return err
-	}
 	z.log.Noticef("Starting %s", agentName)
 
 	if base.IsHVTypeKube() {

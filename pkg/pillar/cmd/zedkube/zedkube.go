@@ -48,7 +48,7 @@ type zedkubeContext struct {
 }
 
 // Run - an zedkube run
-func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string) int {
+func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string, baseDir string) int {
 	logger = loggerArg
 	log = logArg
 

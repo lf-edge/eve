@@ -37,7 +37,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/hypervisor"
 	"github.com/lf-edge/eve/pkg/pillar/kubeapi"
-	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/sema"
 	"github.com/lf-edge/eve/pkg/pillar/sriov"
@@ -148,7 +147,7 @@ var hyper hypervisor.Hypervisor // Current hypervisor
 var logger *logrus.Logger
 var log *base.LogObject
 
-func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string) int {
+func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string, baseDir string) int { //nolint:gocyclo
 	logger = loggerArg
 	log = logArg
 
@@ -169,6 +168,8 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		hvTypeKube:          base.IsHVTypeKube(),
 	}
 	agentbase.Init(&domainCtx, logger, log, agentName,
+		agentbase.WithBaseDir(baseDir),
+		agentbase.WithPidFile(),
 		agentbase.WithArguments(arguments))
 
 	var err error
@@ -183,9 +184,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		log.Fatal(err)
 	}
 
-	if err := pidfile.CheckAndCreatePidfile(log, agentName); err != nil {
-		log.Fatal(err)
-	}
 	log.Functionf("Starting %s with %s hypervisor backend", agentName, hyper.Name())
 
 	// Run a periodic timer so we always update StillRunning

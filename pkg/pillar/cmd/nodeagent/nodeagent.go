@@ -152,12 +152,13 @@ func newNodeagentContext(ps *pubsub.PubSub, _ *logrus.Logger, _ *base.LogObject)
 var log *base.LogObject
 
 // Run : nodeagent run entry function
-func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string) int {
+func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string, baseDir string) int {
 	log = logArg
 
 	ctxPtr := newNodeagentContext(ps, loggerArg, logArg)
 	agentbase.Init(ctxPtr, loggerArg, logArg, agentName,
 		agentbase.WithPidFile(),
+		agentbase.WithBaseDir(baseDir),
 		agentbase.WithWatchdog(ps, warningTime, errorTime),
 		agentbase.WithArguments(arguments))
 

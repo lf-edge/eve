@@ -22,7 +22,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/hypervisor"
 	"github.com/lf-edge/eve/pkg/pillar/objtonum"
-	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
@@ -88,7 +87,7 @@ func (ctx *zedmanagerContext) AddAgentSpecificCLIFlags(flagSet *flag.FlagSet) {
 var logger *logrus.Logger
 var log *base.LogObject
 
-func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string) int {
+func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string, baseDir string) int {
 	logger = loggerArg
 	log = logArg
 
@@ -98,6 +97,8 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		hvTypeKube:   base.IsHVTypeKube(),
 	}
 	agentbase.Init(&ctx, logger, log, agentName,
+		agentbase.WithPidFile(),
+		agentbase.WithBaseDir(baseDir),
 		agentbase.WithArguments(arguments))
 
 	ctx.assignableAdapters = &types.AssignableAdapters{}
@@ -105,9 +106,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	if *ctx.versionPtr {
 		fmt.Printf("%s: %s\n", agentName, Version)
 		return 0
-	}
-	if err := pidfile.CheckAndCreatePidfile(log, agentName); err != nil {
-		log.Fatal(err)
 	}
 
 	// Run a periodic timer so we always update StillRunning
