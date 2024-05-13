@@ -49,12 +49,12 @@ COPY config-k3s.toml /etc/containerd/
 WORKDIR /
 
 # Actual k3s install and config happens when this container starts during EVE bootup, look at cluster-init.sh
-### NOTE: the following lines are commented out until the EVE partition size increases
-#ENV VIRTCTL_VERSION v0.59.0
-#ADD https://github.com/kubevirt/kubevirt/releases/download/${VIRTCTL_VERSION}/virtctl-${VIRTCTL_VERSION}-linux-amd64 .
-#RUN install virtctl-${VIRTCTL_VERSION}-linux-amd64 /usr/bin/virtctl
+### NOTE: the version of virtctl should match the version of kubevirt in cluster_init.sh, else PVC creation might fail due to incompatibility
+ENV VIRTCTL_VERSION v1.1.0
+ADD https://github.com/kubevirt/kubevirt/releases/download/${VIRTCTL_VERSION}/virtctl-${VIRTCTL_VERSION}-linux-amd64 .
+RUN install virtctl-${VIRTCTL_VERSION}-linux-amd64 /usr/bin/virtctl
 # We installed under /usr/bin. Remove the downloaded version
-#RUN rm -f ./virtctl-${VIRTCTL_VERSION}-linux-amd64
+RUN rm -f ./virtctl-${VIRTCTL_VERSION}-linux-amd64
 
 ENTRYPOINT []
 CMD ["/usr/bin/cluster-init.sh"]
