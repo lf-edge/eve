@@ -92,7 +92,7 @@ func updateVolumeSizes(log *base.LogObject, handler VolumeHandler, status *types
 
 // GetAllDataSets returns ImgInfo for each ZFS dataset
 func GetAllDataSets(log *base.LogObject, volumeManager VolumeMgr) ([]types.ImgInfo, error) {
-	if vault.ReadPersistType() != types.PersistZFS {
+	if persist.ReadPersistType() != types.PersistZFS {
 		return nil, nil
 	}
 	common := commonVolumeHandler{volumeManager: volumeManager, log: log}

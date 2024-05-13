@@ -251,7 +251,7 @@ func getcurrentDom0DiskUsage(log *base.LogObject) uint64 {
 	}
 	allUsed := allStat.Used
 	var subUsed uint64
-	if vault.ReadPersistType() != types.PersistZFS {
+	if persist.ReadPersistType() != types.PersistZFS {
 		for _, dir := range excludeDirs {
 			used, err := SizeFromDir(log, dir)
 			if err != nil {
