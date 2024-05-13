@@ -7,8 +7,6 @@ K3S_VERSION=v1.28.5+k3s1
 KUBEVIRT_VERSION=v1.1.0
 LONGHORN_VERSION=v1.6.0
 CDI_VERSION=v1.57.0
-EVE_EXTERNAL_BOOT_IMG_TAG=325e7463e093db2c1abc0da0260b193e73bcef5d
-EVE_EXTERNAL_BOOT_IMG=docker.io/lfedge/eve-external-boot-image:${EVE_EXTERNAL_BOOT_IMG_TAG}
 NODE_IP=""
 MAX_K3S_RESTARTS=10
 RESTART_COUNT=0
@@ -265,6 +263,7 @@ check_start_k3s() {
             sleep 5
           done
           ln -s /etc/rancher/k3s/k3s.yaml ~/.kube/config
+          mkdir -p /run/.kube/k3s
           cp /etc/rancher/k3s/k3s.yaml /run/.kube/k3s/k3s.yaml
           return 1
       fi
@@ -295,7 +294,7 @@ check_start_containerd() {
                 # This is very similar to what we do on kvm based eve to start container as a VM.
                 logmsg "Trying to install new external-boot-image"
                 # This import happens once per reboot
-                if ctr -a /run/containerd-user/containerd.sock image import /etc/external-boot-image.tar ${EVE_EXTERNAL_BOOT_IMG}; then
+                if ctr -a /run/containerd-user/containerd.sock image import /etc/external-boot-image.tar docker.io/lfedge/eve-external-boot-image:latest; then
                         logmsg "Successfully installed external-boot-image"
                         rm -f /etc/external-boot-image.tar
                 fi
