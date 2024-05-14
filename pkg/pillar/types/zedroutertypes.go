@@ -287,11 +287,12 @@ type AppNetAdapterConfig struct {
 	//	If there is a parsing error and this AppNetAdapterNetwork config cannot be
 	//	processed, set the error here. This allows the error to be propagated
 	//  back to zedcloud
-	Error        string
-	Network      uuid.UUID // Points to a NetworkInstance.
-	ACLs         []ACE
-	AccessVlanID uint32
-	IfIdx        uint32 // If we have multiple interfaces on that network, we will increase the index
+	Error           string
+	Network         uuid.UUID // Points to a NetworkInstance.
+	ACLs            []ACE
+	AccessVlanID    uint32
+	IfIdx           uint32 // If we have multiple interfaces on that network, we will increase the index
+	AllowToDiscover bool
 }
 
 // ACEDirection determines rule direction.

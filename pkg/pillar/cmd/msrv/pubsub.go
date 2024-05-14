@@ -15,6 +15,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/cipher"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
+	uuid "github.com/satori/go.uuid"
 )
 
 func (srv *Msrv) lookupAppNetworkStatusByAppIP(ip net.IP) *types.AppNetworkStatus {
@@ -460,4 +461,49 @@ func (srv *Msrv) handleAppInstDelete(ctxArg interface{}, key string,
 	// Clean up appInst Metadata
 	srv.unpublishAppInstMetadata(appInstMetadata)
 	srv.Log.Functionf("handleAppInstDelete(%s) done", key)
+}
+
+func (srv *Msrv) lookupAppInstStatusByAppIP(ip net.IP) (*types.AppInstanceStatus, bool) {
+	sub := srv.subAppInstanceStatus
+	items := sub.GetAll()
+	for _, sc := range items {
+		status := sc.(types.AppInstanceStatus)
+		for _, adapterStatus := range status.AppNetAdapters {
+			if adapterStatus.AllocatedIPv4Addr.Equal(ip) {
+				return &status, adapterStatus.AllowToDiscover
+			}
+		}
+	}
+
+	return nil, false
+}
+
+// AppInstDiscovery is a structure to show discoverable endpoints for App Instances
+type AppInstDiscovery struct {
+	Port    string `json:"port"`
+	Address string `json:"network-address"`
+}
+
+func (srv *Msrv) composeAppInstancesIPAddresses(UUIDToSkip uuid.UUID) map[string][]AppInstDiscovery {
+	res := make(map[string][]AppInstDiscovery, 0)
+
+	for _, st := range srv.subAppInstanceStatus.GetAll() {
+		status := st.(types.AppInstanceStatus)
+		if status.UUIDandVersion.UUID == UUIDToSkip {
+			continue
+		}
+		adapters := make([]AppInstDiscovery, 0)
+		for _, adapterStatus := range status.AppNetAdapters {
+			if adapterStatus.AllocatedIPv4Addr == nil || adapterStatus.AllocatedIPv4Addr.String() == "" {
+				continue
+			}
+			adapters = append(adapters, AppInstDiscovery{
+				Port:    adapterStatus.Vif,
+				Address: adapterStatus.AllocatedIPv4Addr.String(),
+			})
+		}
+		res[status.UUIDandVersion.UUID.String()] = adapters
+	}
+
+	return res
 }

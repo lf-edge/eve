@@ -642,6 +642,42 @@ func (msrv *Msrv) handlePatchFileDownload() func(http.ResponseWriter, *http.Requ
 	}
 }
 
+// handleAppInstanceDiscovery returns all IP addresses of each port
+// for each AppInstance if caller has allowToDiscover flag enabled
+func (msrv *Msrv) handleAppInstanceDiscovery() func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		remoteIP := net.ParseIP(strings.Split(r.RemoteAddr, ":")[0])
+		appStatus, allowToDiscover := msrv.lookupAppInstStatusByAppIP(remoteIP)
+		if appStatus == nil {
+			msg := fmt.Sprintf("No AppNetworkStatus for %s", remoteIP.String())
+			msrv.Log.Errorf("HandleAppInstanceDiscovery: %s", msg)
+			sendError(w, http.StatusNoContent, msg)
+			return
+		}
+
+		if !allowToDiscover {
+			msg := "This app instance is not allowed to discover"
+			msrv.Log.Errorf("HandleAppInstanceDiscovery: %s", msg)
+			sendError(w, http.StatusForbidden, msg)
+			return
+		}
+
+		appUUID := appStatus.UUIDandVersion.UUID
+		services := msrv.composeAppInstancesIPAddresses(appUUID)
+		marshalled, err := json.Marshal(services)
+		if err != nil {
+			msg := fmt.Sprintf("Error marshalling services %v", services)
+			msrv.Log.Errorf("HandleAppInstanceDiscovery: %s", msg)
+			sendError(w, http.StatusInternalServerError, msg)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write(marshalled)
+	}
+}
+
 // withPatchEnvelopesByIP is a middleware for Patch Envelopes which adds
 // to a context patchEnvelope variable containing available patch envelopes
 // for given IP address (it gets resolved to app instance UUID)

@@ -95,7 +95,7 @@ type Msrv struct {
 	// Configuration for application interfaces
 	subAppNetworkConfig   pubsub.Subscription
 	subAppNetworkConfigAg pubsub.Subscription // From zedagent
-	subAppInstanceConfig  pubsub.Subscription // From zedagent to cleanup appInstMetadata
+	subAppInstanceStatus  pubsub.Subscription // From zedagent to cleanup appInstMetadata
 
 	subLocationInfo pubsub.Subscription
 	subWwanStatus   pubsub.Subscription
@@ -315,14 +315,14 @@ func (msrv *Msrv) initSubscriptions() (err error) {
 	}
 
 	// Subscribe to AppInstConfig from zedagent
-	msrv.subAppInstanceConfig, err = msrv.PubSub.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:     "zedagent",
-		MyAgentName:   agentName,
-		TopicImpl:     types.AppInstanceConfig{},
-		Activate:      false,
-		DeleteHandler: msrv.handleAppInstDelete,
-		WarningTime:   warningTime,
-		ErrorTime:     errorTime,
+	msrv.subAppInstanceStatus, err = msrv.PubSub.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:   "zedmanager",
+		MyAgentName: agentName,
+		TopicImpl:   types.AppInstanceStatus{},
+		Activate:    false,
+		WarningTime: warningTime,
+		ErrorTime:   errorTime,
+		Persistent:  true,
 	})
 	if err != nil {
 		return err
@@ -459,7 +459,7 @@ func (msrv *Msrv) Activate() error {
 		msrv.subEdgeNodeCert,
 		msrv.subAppNetworkConfig,
 		msrv.subAppNetworkConfigAg,
-		msrv.subAppInstanceConfig,
+		msrv.subAppInstanceStatus,
 		msrv.subLocationInfo,
 		msrv.subWwanStatus,
 		msrv.subWwanMetrics,
@@ -542,6 +542,9 @@ func (msrv *Msrv) Run(ctx context.Context) (err error) {
 		case change := <-msrv.subWwanStatus.MsgChan():
 			msrv.subWwanStatus.ProcessChange(change)
 
+		case change := <-msrv.subAppInstanceStatus.MsgChan():
+			msrv.subAppInstanceStatus.ProcessChange(change)
+
 		case change := <-msrv.subWwanMetrics.MsgChan():
 			msrv.subWwanMetrics.ProcessChange(change)
 
@@ -595,6 +598,8 @@ func (msrv *Msrv) MakeMetadataHandler() http.Handler {
 			types.AppInstMetaDataCustomStatus))
 		r.Get("/location.json", msrv.handleLocationInfo())
 		r.Get("/diag", msrv.handleDiag())
+
+		r.Get("/discover-network.json", msrv.handleAppInstanceDiscovery())
 
 		r.Get("/wwan/status.json", msrv.handleWWANStatus())
 		r.Get("/wwan/metrics.json", msrv.handleWWANMeterics())
