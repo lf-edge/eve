@@ -13,13 +13,15 @@ enable_fcc_unlock() {
   for SCRIPT in "${SOURCE_DIR}"*; do
     if [ -f "$SCRIPT" ]; then
       SCRIPT_NAME="$(basename "$SCRIPT")"
+      case "$SCRIPT_NAME" in
+        "1eac:1002" | "2c7c:030a" | "2c7c:0311")
+          # For these modems we have our own custom scripts.
+          continue
+          ;;
+      esac
       ln -sf "$SCRIPT" "${TARGET_DIR}${SCRIPT_NAME}"
     fi
   done
-
-  # "Quectel EM05G Smart Gateway" (2c7c:0311) is compatible with the same
-  # FCC unlock script as used for the regular "Quectel EM05G" (2c7c:030a).
-  ln -sf "${SOURCE_DIR}2c7c:030a" "${TARGET_DIR}2c7c:0311"
 }
 
 echo "Loading kernel modules used by ModemManager"
