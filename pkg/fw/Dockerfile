@@ -12,7 +12,7 @@ RUN mkdir /wireless-regdb &&\
     cp /wireless-regdb/regulatory.db /wireless-regdb/regulatory.db.p7s /lib/firmware
 
 # Nvidia Firmware
-ENV NVIDIA_FW_TEGRA nvidia-l4t-firmware_35.1.0-20220810203728_arm64.deb
+ENV NVIDIA_FW_TEGRA nvidia-l4t-firmware_35.5.0-20240219203809_arm64.deb
 ADD https://repo.download.nvidia.com/jetson/t194/pool/main/n/nvidia-l4t-firmware/${NVIDIA_FW_TEGRA} /${NVIDIA_FW_TEGA}
 RUN mkdir -p /nvidia-firmware && \
     cd /nvidia-firmware ;\
