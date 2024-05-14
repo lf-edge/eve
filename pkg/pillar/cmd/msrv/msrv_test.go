@@ -166,3 +166,93 @@ func TestRequestPatchEnvelopes(t *testing.T) {
 	g.Expect(ok).To(gomega.BeTrue())
 	g.Expect(peUsage).To(gomega.BeEquivalentTo(expected))
 }
+
+func TestHandleAppInstanceDiscovery(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewGomegaWithT(t)
+
+	logger := logrus.StandardLogger()
+	log := base.NewSourceLogObject(logger, "pubsub", 1234)
+	ps := pubsub.New(pubsub.NewMemoryDriver(), logger, log)
+
+	u, err := uuid.FromString("6ba7b810-9dad-11d1-80b4-000000000000")
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+	u1, err := uuid.FromString("6ba7b810-9dad-11d1-80b4-000000000001")
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+
+	appInstanceStatus, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName:  "zedmanager",
+		TopicType:  types.AppInstanceStatus{},
+		Persistent: true,
+	})
+
+	a := types.AppInstanceStatus{
+		UUIDandVersion: types.UUIDandVersion{
+			UUID:    u,
+			Version: "1.0",
+		},
+		AppNetAdapters: []types.AppNetAdapterStatus{
+			{
+				AllocatedIPv4Addr: net.ParseIP("192.168.1.1"),
+				AppNetAdapterConfig: types.AppNetAdapterConfig{
+					IfIdx:           2,
+					AllowToDiscover: true,
+				},
+			},
+		},
+	}
+	err = appInstanceStatus.Publish(u.String(), a)
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+	discoverableNet := types.AppNetAdapterStatus{
+		AllocatedIPv4Addr: net.ParseIP("192.168.1.2"),
+		VifInfo:           types.VifInfo{VifConfig: types.VifConfig{Vif: "eth0"}},
+	}
+	a1 := types.AppInstanceStatus{
+		UUIDandVersion: types.UUIDandVersion{
+			UUID:    u1,
+			Version: "1.0",
+		},
+		AppNetAdapters: []types.AppNetAdapterStatus{discoverableNet},
+	}
+	err = appInstanceStatus.Publish(u1.String(), a1)
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+
+	srv := &msrv.Msrv{
+		Log:    log,
+		PubSub: ps,
+		Logger: logger,
+	}
+
+	dir, err := ioutil.TempDir("/tmp", "msrv_test")
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+	defer os.RemoveAll(dir)
+
+	err = srv.Init(dir)
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+
+	err = srv.Activate()
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+
+	handler := srv.MakeMetadataHandler()
+
+	descReq := httptest.NewRequest(http.MethodGet, "/eve/v1/discover-network.json", nil)
+	descReq.RemoteAddr = "192.168.1.1:0"
+	descResp := httptest.NewRecorder()
+
+	handler.ServeHTTP(descResp, descReq)
+	g.Expect(descResp.Code).To(gomega.Equal(http.StatusOK))
+
+	defer descResp.Body.Reset()
+	var got map[string][]msrv.AppInstDiscovery
+
+	err = json.NewDecoder(descResp.Body).Decode(&got)
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+
+	expected := map[string][]msrv.AppInstDiscovery{
+		u1.String(): {{
+			Port:    discoverableNet.Vif,
+			Address: discoverableNet.AllocatedIPv4Addr.String(),
+		}},
+	}
+	g.Expect(got).To(gomega.BeEquivalentTo(expected))
+}

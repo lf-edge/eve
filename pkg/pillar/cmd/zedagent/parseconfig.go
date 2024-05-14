@@ -2400,6 +2400,8 @@ func parseAppNetAdapterConfigEntry(
 	// XXX set adapterCfg.IntfOrder from API once available
 	adapterCfg.IntfOrder = intfOrder
 	adapterCfg.AccessVlanID = intfEnt.AccessVlanId
+	adapterCfg.AllowToDiscover = intfEnt.AllowToDiscover
+
 	return adapterCfg
 }
 
