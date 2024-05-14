@@ -468,6 +468,7 @@ func (msrv *Msrv) Activate() error {
 		msrv.subPatchEnvelopeInfo,
 		msrv.subVolumeStatus,
 		msrv.subContentTreeStatus,
+		msrv.subAppInstanceStatus,
 	}
 
 	for _, sub := range inactiveSubs {
