@@ -23,7 +23,7 @@ import (
 )
 
 func TestRequestPatchEnvelopes(t *testing.T) {
-	//	t.Parallel()
+	t.Parallel()
 	g := gomega.NewGomegaWithT(t)
 
 	logger := logrus.StandardLogger()
@@ -36,11 +36,11 @@ func TestRequestPatchEnvelopes(t *testing.T) {
 		TopicType:  types.AppNetworkStatus{},
 		Persistent: true,
 	})
-	g.Expect(err).To(gomega.BeNil())
+	g.Expect(err).ToNot(gomega.HaveOccurred())
 	u, err := uuid.FromString("6ba7b810-9dad-11d1-80b4-000000000000")
-	g.Expect(err).To(gomega.BeNil())
+	g.Expect(err).ToNot(gomega.HaveOccurred())
 
-	appNetworkStatus.Publish("6ba7b810-9dad-11d1-80b4-000000000001", types.AppNetworkStatus{
+	err = appNetworkStatus.Publish("6ba7b810-9dad-11d1-80b4-000000000001", types.AppNetworkStatus{
 		UUIDandVersion: types.UUIDandVersion{
 			UUID:    u,
 			Version: "1.0",
@@ -51,14 +51,15 @@ func TestRequestPatchEnvelopes(t *testing.T) {
 			},
 		},
 	})
+	g.Expect(err).ToNot(gomega.HaveOccurred())
 
 	peInfo, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName:  "zedagent",
 		TopicType:  types.PatchEnvelopeInfoList{},
 		Persistent: true,
 	})
-	g.Expect(err).To(gomega.BeNil())
-	peInfo.Publish("global", types.PatchEnvelopeInfoList{
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+	err = peInfo.Publish("global", types.PatchEnvelopeInfoList{
 		Envelopes: []types.PatchEnvelopeInfo{
 			{
 				Name:        "asdf",
@@ -76,6 +77,7 @@ func TestRequestPatchEnvelopes(t *testing.T) {
 			},
 		},
 	})
+	g.Expect(err).ToNot(gomega.HaveOccurred())
 
 	srv := &msrv.Msrv{
 		Log:    log,
@@ -84,14 +86,14 @@ func TestRequestPatchEnvelopes(t *testing.T) {
 	}
 
 	dir, err := ioutil.TempDir("/tmp", "msrv_test")
-	g.Expect(err).To(gomega.BeNil())
+	g.Expect(err).ToNot(gomega.HaveOccurred())
 	defer os.RemoveAll(dir)
 
 	err = srv.Init(dir)
-	g.Expect(err).To(gomega.BeNil())
+	g.Expect(err).ToNot(gomega.HaveOccurred())
 
 	err = srv.Activate()
-	g.Expect(err).To(gomega.BeNil())
+	g.Expect(err).ToNot(gomega.HaveOccurred())
 
 	g.Eventually(func() []types.PatchEnvelopeInfo {
 		return srv.PatchEnvelopes.Get("6ba7b810-9dad-11d1-80b4-000000000000").Envelopes
@@ -111,7 +113,7 @@ func TestRequestPatchEnvelopes(t *testing.T) {
 		var got []msrv.PeInfoToDisplay
 
 		err = json.NewDecoder(descResp.Body).Decode(&got)
-		g.Expect(err).To(gomega.BeNil())
+		g.Expect(err).ToNot(gomega.HaveOccurred())
 
 		g.Expect(got).To(gomega.BeEquivalentTo(
 			[]msrv.PeInfoToDisplay{
@@ -158,7 +160,7 @@ func TestRequestPatchEnvelopes(t *testing.T) {
 		Activate:    true,
 		Persistent:  true,
 	})
-	g.Expect(err).To(gomega.BeNil())
+	g.Expect(err).ToNot(gomega.HaveOccurred())
 	items := subPatchUsage.GetAll()
 	item, ok := items["patchEnvelopeUsage:6ba7b810-9dad-11d1-80b4-111111111111-v-asdf-app-6ba7b810-9dad-11d1-80b4-000000000000"]
 	g.Expect(ok).To(gomega.BeTrue())

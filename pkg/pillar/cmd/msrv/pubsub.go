@@ -478,7 +478,7 @@ func (srv *Msrv) lookupAppInstStatusByAppIP(ip net.IP) (*types.AppInstanceStatus
 	return nil, false
 }
 
-// AppInstDiscovery is a structure to show discoverable endpoints for App Instances
+// AppInstDiscovery is a struct which AppInstances see, when they request discoverable
 type AppInstDiscovery struct {
 	Port    string `json:"port"`
 	Address string `json:"network-address"`

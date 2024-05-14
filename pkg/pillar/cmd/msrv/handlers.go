@@ -533,7 +533,7 @@ func (msrv *Msrv) handlePatchDescription() func(http.ResponseWriter, *http.Reque
 		// WithPatchEnvelopesByIP middleware returns envelopes which are more than 0
 		appUUID := r.Context().Value(appUUIDContextKey)
 		if appUUID == nil {
-			sendError(w, http.StatusInternalServerError, "Can't determine App instance for %s")
+			sendError(w, http.StatusInternalServerError, "Can't determine App instance")
 			return
 		}
 
