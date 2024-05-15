@@ -59,8 +59,12 @@ var ControlProtocolMarkingIDMap = map[string]uint32{
 	"app_http": 11,
 	// ICMPv6 traffic to and from an application
 	"app_icmpv6": 12,
-	// for Kubernetes DNS, allowing coreDNS to talk to external DNS servers
-	"in_dns": 13,
+	// DNS requests from Kubernetes pods to CoreDNS and from CoreDNS to external DNS servers.
+	"kube_dns": 13,
+	// Traffic from Kubernetes pods to Kubernetes services.
+	"kube_svc": 14,
+	// Traffic directly forwarded between Kubernetes pods (not via services).
+	"kube_pod": 15,
 }
 
 // GetConnmark : create connection mark corresponding to the given attributes.
