@@ -47,9 +47,6 @@ const (
 // Really a constant
 var nilUUID uuid.UUID
 
-// Set from Makefile
-var Version = "No version specified"
-
 // Assumes the config files are in IdentityDirname, which is /config
 // by default. The files are
 //  root-certificate.pem	Root CA cert(s) for object signing
@@ -72,13 +69,11 @@ type clientContext struct {
 	zedcloudMetrics        *zedcloud.AgentMetrics
 	// cli options
 	operations    map[string]bool
-	versionPtr    *bool
 	maxRetriesPtr *int
 }
 
 // AddAgentSpecificCLIFlags adds CLI options
 func (ctxPtr *clientContext) AddAgentSpecificCLIFlags(flagSet *flag.FlagSet) {
-	ctxPtr.versionPtr = flagSet.Bool("v", false, "Version")
 	ctxPtr.maxRetriesPtr = flagSet.Int("r", 0, "Max retries")
 }
 
@@ -131,10 +126,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	agentbase.Init(&clientCtx, logger, log, agentName, args...)
 
 	maxRetries := *clientCtx.maxRetriesPtr
-	if *clientCtx.versionPtr {
-		fmt.Printf("%s: %s\n", agentName, Version)
-		return 0
-	}
 
 	pub, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName: agentName,

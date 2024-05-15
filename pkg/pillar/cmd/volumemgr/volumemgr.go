@@ -41,9 +41,6 @@ const (
 	blankVolumeFormat = zconfig.Format_RAW // format of blank volume TODO: make configurable
 )
 
-// Set from Makefile
-var Version = "No version specified"
-
 var volumeFormat = make(map[string]zconfig.Format)
 
 type volumemgrContext struct {
@@ -101,7 +98,6 @@ type volumemgrContext struct {
 	capabilities *types.Capabilities
 
 	// cli options
-	versionPtr *bool
 
 	// kube mode
 	hvTypeKube bool
@@ -125,7 +121,6 @@ func (ctxPtr *volumemgrContext) GetCasClient() cas.CAS {
 
 // AddAgentSpecificCLIFlags adds CLI options
 func (ctxPtr *volumemgrContext) AddAgentSpecificCLIFlags(flagSet *flag.FlagSet) {
-	ctxPtr.versionPtr = flagSet.Bool("v", false, "Version")
 }
 
 var logger *logrus.Logger
@@ -149,11 +144,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		agentbase.WithPidFile(),
 		agentbase.WithBaseDir(baseDir),
 		agentbase.WithArguments(arguments))
-
-	if *ctx.versionPtr {
-		fmt.Printf("%s: %s\n", agentName, Version)
-		return 0
-	}
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)

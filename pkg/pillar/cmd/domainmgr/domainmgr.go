@@ -67,9 +67,6 @@ const (
 // Really a constant
 var nilUUID = uuid.UUID{}
 
-// Set from Makefile
-var Version = "No version specified"
-
 func isPort(ctx *domainContext, ifname string) bool {
 	ctx.dnsLock.Lock()
 	defer ctx.dnsLock.Unlock()
@@ -122,7 +119,6 @@ type domainContext struct {
 	processCloudInitMultiPart bool
 	publishTicker             flextimer.FlexTickerHandle
 	// cli options
-	versionPtr    *bool
 	hypervisorPtr *string
 	// CPUs management
 	cpuAllocator        *cpuallocator.CPUAllocator
@@ -133,7 +129,6 @@ type domainContext struct {
 
 // AddAgentSpecificCLIFlags adds CLI options
 func (ctx *domainContext) AddAgentSpecificCLIFlags(flagSet *flag.FlagSet) {
-	ctx.versionPtr = flagSet.Bool("v", false, "Version")
 	allHypervisors, enabledHypervisors := hypervisor.GetAvailableHypervisors()
 	ctx.hypervisorPtr = flagSet.String("h", enabledHypervisors[0], fmt.Sprintf("Current hypervisor %+q", allHypervisors))
 }
@@ -175,10 +170,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	var err error
 	handlersInit()
 
-	if *domainCtx.versionPtr {
-		fmt.Printf("%s: %s\n", agentName, Version)
-		return 0
-	}
 	hyper, err = hypervisor.GetHypervisor(*domainCtx.hypervisorPtr)
 	if err != nil {
 		log.Fatal(err)

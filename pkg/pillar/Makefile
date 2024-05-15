@@ -40,7 +40,7 @@ ifneq ($(TAGS),)
 	TAGS:=-tags "$(TAGS)"
 endif
 
-LDFLAGS=-X=main.Version=$(BUILD_VERSION)
+LDFLAGS=
 ifneq ($(DEV),y)
 	LDFLAGS+=-s -w
 endif

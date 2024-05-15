@@ -44,9 +44,6 @@ var (
 	vHandler = makeVerifyHandler()
 )
 
-// Set from Makefile
-var Version = "No version specified"
-
 // Any state used by handlers goes here
 type verifierContext struct {
 	agentbase.AgentBase
@@ -57,12 +54,10 @@ type verifierContext struct {
 
 	GCInitialized bool
 	// cli options
-	versionPtr *bool
 }
 
 // AddAgentSpecificCLIFlags adds CLI options
 func (ctx *verifierContext) AddAgentSpecificCLIFlags(flagSet *flag.FlagSet) {
-	ctx.versionPtr = flagSet.Bool("v", false, "Version")
 }
 
 var logger *logrus.Logger
@@ -78,11 +73,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		agentbase.WithPidFile(),
 		agentbase.WithBaseDir(baseDir),
 		agentbase.WithArguments(arguments))
-
-	if *ctx.versionPtr {
-		fmt.Printf("%s: %s\n", agentName, Version)
-		return 0
-	}
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)

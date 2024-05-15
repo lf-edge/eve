@@ -39,7 +39,6 @@ const (
 var (
 	retryTime      = time.Duration(600) * time.Second // Unless from GlobalConfig
 	maxStalledTime = time.Duration(600) * time.Second // Unless from GlobalConfig
-	Version        = "No version specified"           // Set from Makefile
 	dHandler       = makeDownloadHandler()
 	resHandler     = makeResolveHandler()
 	logger         *logrus.Logger
@@ -60,11 +59,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		agentbase.WithPidFile(),
 		agentbase.WithBaseDir(baseDir),
 		agentbase.WithArguments(arguments))
-
-	if *ctx.versionPtr {
-		fmt.Printf("%s: %s\n", agentName, Version)
-		return 0
-	}
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)

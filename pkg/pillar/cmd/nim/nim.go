@@ -49,9 +49,6 @@ const (
 // Really a constant
 var nilUUID uuid.UUID
 
-// Version is set from the Makefile.
-var Version = "No version specified"
-
 // NIM - Network Interface Manager.
 // Manage (physical) network interfaces of the device based on configuration from
 // various sources (controller, override, last-resort, persisted config).
@@ -65,11 +62,9 @@ type nim struct {
 	PubSub *pubsub.PubSub
 
 	useStdout bool
-	version   bool
 
 	// CLI args
-	stdoutPtr  *bool
-	versionPtr *bool
+	stdoutPtr *bool
 
 	// NIM components
 	connTester     *conntester.ZedcloudConnectivityTester
@@ -115,14 +110,12 @@ type nim struct {
 
 // AddAgentSpecificCLIFlags adds CLI options
 func (n *nim) AddAgentSpecificCLIFlags(flagSet *flag.FlagSet) {
-	n.versionPtr = flagSet.Bool("v", false, "Print Version of the agent.")
 	n.stdoutPtr = flagSet.Bool("s", false, "Use stdout")
 }
 
 // ProcessAgentSpecificCLIFlags process received CLI options
 func (n *nim) ProcessAgentSpecificCLIFlags(_ *flag.FlagSet) {
 	n.useStdout = *n.stdoutPtr
-	n.version = *n.versionPtr
 }
 
 // Run - Main function - invoked from zedbox.go
@@ -147,10 +140,6 @@ func Run(ps *pubsub.PubSub, logger *logrus.Logger, log *base.LogObject, argument
 }
 
 func (n *nim) init() (err error) {
-	if n.version {
-		fmt.Printf("%s: %s\n", agentName, Version)
-		return nil
-	}
 
 	n.cipherMetrics = cipher.NewAgentMetrics(agentName)
 	n.zedcloudMetrics = zedcloud.NewAgentMetrics()

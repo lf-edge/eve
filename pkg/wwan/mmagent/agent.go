@@ -70,16 +70,12 @@ var (
 	emptyIPSettings  = types.WwanIPSettings{}
 )
 
-// Version is set from Makefile
-var Version = "No version specified"
-
 // MMAgent is an EVE microservice controlling ModemManager (https://modemmanager.org/).
 type MMAgent struct {
 	agentbase.AgentBase
-	logger     *logrus.Logger
-	log        *base.LogObject
-	ps         *pubsub.PubSub
-	versionPtr *bool
+	logger *logrus.Logger
+	log    *base.LogObject
+	ps     *pubsub.PubSub
 
 	// publications
 	pubWwanStatus        pubsub.Publication
@@ -151,7 +147,6 @@ func (m *ModemInfo) IsManaged() bool {
 
 // AddAgentSpecificCLIFlags defines the version argument.
 func (a *MMAgent) AddAgentSpecificCLIFlags(flagSet *flag.FlagSet) {
-	a.versionPtr = flagSet.Bool("v", false, "Version")
 }
 
 // Init performs initialization of the agent. Should be called before Run.
@@ -164,10 +159,6 @@ func (a *MMAgent) Init() (err error) {
 	agentbase.Init(a, a.logger, a.log, agentName,
 		agentbase.WithArguments(arguments), agentbase.WithPidFile(),
 		agentbase.WithWatchdog(a.ps, warningTime, errorTime))
-	if *a.versionPtr {
-		fmt.Printf("%s: %s\n", agentName, Version)
-		return nil
-	}
 	a.modemInfo = make(map[string]*ModemInfo)
 	if err = a.ensureDir(WwanResolvConfDir); err != nil {
 		return err

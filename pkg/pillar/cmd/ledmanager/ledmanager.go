@@ -52,14 +52,12 @@ type ledManagerContext struct {
 	blinkSendStop          chan string // Used by sender to stop the running forever blink routine
 	blinkRecvStop          chan string // Sender waits for the ack.
 	// cli options
-	versionPtr *bool
-	fatalPtr   *bool
-	hangPtr    *bool
+	fatalPtr *bool
+	hangPtr  *bool
 }
 
 // AddAgentSpecificCLIFlags adds CLI options
 func (ctxPtr *ledManagerContext) AddAgentSpecificCLIFlags(flagSet *flag.FlagSet) {
-	ctxPtr.versionPtr = flagSet.Bool("v", false, "Version")
 	ctxPtr.fatalPtr = flagSet.Bool("F", false, "Cause log.Fatal fault injection")
 	ctxPtr.hangPtr = flagSet.Bool("H", false, "Cause watchdog .touch fault injection")
 }
@@ -264,9 +262,6 @@ var mToF = []modelToFuncs{
 var logger *logrus.Logger
 var log *base.LogObject
 
-// Set from Makefile
-var Version = "No version specified"
-
 var appStatusDisplayFunc AppStatusDisplayFunc
 var appStatusArgs []string
 
@@ -284,10 +279,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 	fatalFlag := *ctx.fatalPtr
 	hangFlag := *ctx.hangPtr
-	if *ctx.versionPtr {
-		fmt.Printf("%s: %s\n", agentName, Version)
-		return 0
-	}
 	log.Functionf("Starting %s", agentName)
 
 	// Run a periodic timer so we always update StillRunning
