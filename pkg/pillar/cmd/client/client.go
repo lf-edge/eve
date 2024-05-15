@@ -73,14 +73,12 @@ type clientContext struct {
 	// cli options
 	operations    map[string]bool
 	versionPtr    *bool
-	noPidPtr      *bool
 	maxRetriesPtr *int
 }
 
 // AddAgentSpecificCLIFlags adds CLI options
 func (ctxPtr *clientContext) AddAgentSpecificCLIFlags(flagSet *flag.FlagSet) {
 	ctxPtr.versionPtr = flagSet.Bool("v", false, "Version")
-	ctxPtr.noPidPtr = flagSet.Bool("p", false, "Do not check for running client")
 	ctxPtr.maxRetriesPtr = flagSet.Int("r", 0, "Max retries")
 }
 
@@ -129,10 +127,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		},
 	}
 
-	args := []agentbase.AgentOpt{agentbase.WithArguments(arguments), agentbase.WithBaseDir(baseDir)}
-	if !*clientCtx.noPidPtr {
-		args = append(args, agentbase.WithPidFile())
-	}
+	args := []agentbase.AgentOpt{agentbase.WithArguments(arguments), agentbase.WithBaseDir(baseDir), agentbase.WithPidFile()}
 	agentbase.Init(&clientCtx, logger, log, agentName, args...)
 
 	maxRetries := *clientCtx.maxRetriesPtr
