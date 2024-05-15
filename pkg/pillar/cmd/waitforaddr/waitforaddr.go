@@ -38,13 +38,11 @@ type DNSContext struct {
 	subDeviceNetworkStatus pubsub.Subscription
 	// cli options
 	versionPtr *bool
-	noPidPtr   *bool
 }
 
 // AddAgentSpecificCLIFlags adds CLI options
 func (ctx *DNSContext) AddAgentSpecificCLIFlags(flagSet *flag.FlagSet) {
 	ctx.versionPtr = flagSet.Bool("v", false, "Version")
-	ctx.noPidPtr = flagSet.Bool("p", false, "Do not check for running agent")
 }
 
 var logger *logrus.Logger
@@ -55,10 +53,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	log = logArg
 
 	DNSctx := DNSContext{}
-	args := []agentbase.AgentOpt{agentbase.WithArguments(arguments), agentbase.WithBaseDir(baseDir)}
-	if !*DNSctx.noPidPtr {
-		args = append(args, agentbase.WithPidFile())
-	}
+	args := []agentbase.AgentOpt{agentbase.WithArguments(arguments), agentbase.WithBaseDir(baseDir), agentbase.WithPidFile()}
 	agentbase.Init(&DNSctx, logger, log, agentName, args...)
 
 	if *DNSctx.versionPtr {
