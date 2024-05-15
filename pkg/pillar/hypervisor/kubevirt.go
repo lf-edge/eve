@@ -296,7 +296,11 @@ func (ctx kubevirtContext) CreateVMIConfig(domainName string, config types.Domai
 				// https://kubevirt.io/user-guide/virtual_machines/boot_from_external_source/
 				// Since disks are virtio disks we assume /dev/vda is the boot disk
 				kernelArgs := "console=tty0 root=/dev/vda dhcp=1 rootfstype=ext4"
-				scratchImage := "docker.io/lfedge/eve-external-boot-image:latest"
+				eveRelease, err := os.ReadFile("/run/eve-release")
+				if err != nil {
+					return logError("Failed to fetch eve-release %v", err)
+				}
+				scratchImage := "docker.io/lfedge/eve-external-boot-image:" + string(eveRelease)
 				kernelPath := "/kernel"
 				initrdPath := "/runx-initrd"
 

@@ -294,7 +294,12 @@ check_start_containerd() {
                 # This is very similar to what we do on kvm based eve to start container as a VM.
                 logmsg "Trying to install new external-boot-image"
                 # This import happens once per reboot
-                if ctr -a /run/containerd-user/containerd.sock image import /etc/external-boot-image.tar docker.io/lfedge/eve-external-boot-image:latest; then
+                if ctr -a /run/containerd-user/containerd.sock image import /etc/external-boot-image.tar; then
+                        eve_external_boot_img_tag=$(cat /run/eve-release)
+                        eve_external_boot_img=docker.io/lfedge/eve-external-boot-image:"$eve_external_boot_img_tag"
+                        import_tag=$(cat /etc/external-boot-image.tag)
+                        ctr -a /run/containerd-user/containerd.sock image tag "docker.io/${import_tag}" "$eve_external_boot_img"
+
                         logmsg "Successfully installed external-boot-image"
                         rm -f /etc/external-boot-image.tar
                 fi

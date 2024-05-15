@@ -798,8 +798,8 @@ pkg/external-boot-image/build.yml: pkg/external-boot-image/build.yml.in
 pkg/external-boot-image: pkg/external-boot-image/build.yml
 pkg/kube: pkg/external-boot-image
 	$(MAKE) eve-external-boot-image
-	$(MAKE) cache-export IMAGE=$(shell $(LINUXKIT) pkg show-tag pkg/external-boot-image) OUTFILE=pkg/kube/external-boot-image.tar && \
-	$(MAKE) eve-kube && rm -f pkg/kube/external-boot-image.tar && rm -f pkg/external-boot-image/build.yml
+	$(MAKE) cache-export IMAGE=$(shell $(LINUXKIT) pkg show-tag pkg/external-boot-image | tee pkg/kube/external-boot-image.tag) OUTFILE=pkg/kube/external-boot-image.tar && \
+	$(MAKE) eve-kube && rm -f pkg/kube/external-boot-image.tar pkg/kube/external-boot-image.tag pkg/external-boot-image/build.yml
 	$(QUIET): $@: Succeeded
 pkg/pillar: pkg/dnsmasq pkg/gpt-tools pkg/dom0-ztools eve-pillar
 	$(QUIET): $@: Succeeded
