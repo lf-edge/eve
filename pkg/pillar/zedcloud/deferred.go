@@ -56,9 +56,9 @@ const longTime2 = time.Hour * 48
 // DeferredContext is part of ZedcloudContext
 type DeferredContext struct {
 	deferredItems          []*deferredItem
+	deferredItemsLock      *sync.Mutex
 	Ticker                 flextimer.FlexTickerHandle
 	priorityCheckFunctions []TypePriorityCheckFunction
-	lock                   *sync.Mutex
 	sentHandler            *SentHandlerFunction
 	zedcloudCtx            *ZedCloudContext
 	iteration              int
@@ -92,7 +92,7 @@ func CreateDeferredCtx(zedcloudCtx *ZedCloudContext,
 		})
 
 	ctx := &DeferredContext{
-		lock:                   &sync.Mutex{},
+		deferredItemsLock:      &sync.Mutex{},
 		Ticker:                 flextimer.NewRangeTicker(longTime1, longTime2),
 		sentHandler:            sentHandler,
 		priorityCheckFunctions: priorityCheckFunctions,
@@ -134,10 +134,10 @@ func (ctx *DeferredContext) processQueueTask(ps *pubsub.PubSub,
 
 // handleDeferred try to send all deferred items
 func (ctx *DeferredContext) handleDeferred() bool {
-	ctx.lock.Lock()
+	ctx.deferredItemsLock.Lock()
 	reqs := ctx.deferredItems
 	ctx.deferredItems = []*deferredItem{}
-	ctx.lock.Unlock()
+	ctx.deferredItemsLock.Unlock()
 
 	log := ctx.zedcloudCtx.log
 
@@ -235,13 +235,13 @@ func (ctx *DeferredContext) handleDeferred() bool {
 		}
 	}
 
-	ctx.lock.Lock()
+	ctx.deferredItemsLock.Lock()
 	// Merge with the incoming requests, recently added are in the tail
 	ctx.deferredItems = append(notSentReqs, ctx.deferredItems...)
 	if len(ctx.deferredItems) == 0 {
 		stopTimer(log, ctx)
 	}
-	ctx.lock.Unlock()
+	ctx.deferredItemsLock.Unlock()
 
 	allSent := len(notSentReqs) == 0
 
@@ -258,8 +258,8 @@ func (ctx *DeferredContext) handleDeferred() bool {
 func (ctx *DeferredContext) SetDeferred(
 	key string, buf *bytes.Buffer, size int64, url string, bailOnHTTPErr,
 	withNetTracing, ignoreErr bool, itemType interface{}) {
-	ctx.lock.Lock()
-	defer ctx.lock.Unlock()
+	ctx.deferredItemsLock.Lock()
+	defer ctx.deferredItemsLock.Unlock()
 
 	log := ctx.zedcloudCtx.log
 	log.Functionf("SetDeferred(%s) size %d items %d",
@@ -300,8 +300,8 @@ func (ctx *DeferredContext) SetDeferred(
 
 // RemoveDeferred removes key from deferred items if exists
 func (ctx *DeferredContext) RemoveDeferred(key string) {
-	ctx.lock.Lock()
-	defer ctx.lock.Unlock()
+	ctx.deferredItemsLock.Lock()
+	defer ctx.deferredItemsLock.Unlock()
 
 	log := ctx.zedcloudCtx.log
 	log.Functionf("RemoveDeferred(%s) items %d",
