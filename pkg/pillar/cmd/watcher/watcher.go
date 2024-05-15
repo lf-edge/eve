@@ -5,7 +5,6 @@ package watcher
 
 import (
 	"flag"
-	"fmt"
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/agentbase"
@@ -36,16 +35,11 @@ type watcherContext struct {
 
 	GCInitialized bool
 	// cli options
-	versionPtr *bool
 }
 
 // AddAgentSpecificCLIFlags adds CLI options
 func (ctx *watcherContext) AddAgentSpecificCLIFlags(flagSet *flag.FlagSet) {
-	ctx.versionPtr = flagSet.Bool("v", false, "Version")
 }
-
-// Version :
-var Version = "No version specified"
 
 var prevDiskNotification types.DiskNotification
 var prevMemNotification types.MemoryNotification
@@ -64,11 +58,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		agentbase.WithPidFile(),
 		agentbase.WithBaseDir(baseDir),
 		agentbase.WithArguments(arguments))
-
-	if *ctx.versionPtr {
-		fmt.Printf("%s: %s\n", agentName, Version)
-		return 0
-	}
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)

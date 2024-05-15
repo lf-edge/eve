@@ -35,9 +35,6 @@ const (
 	configRetryUpdateCounterFile = types.PersistStatusDir + "/config_retry_update_counter"
 )
 
-// Set from Makefile
-var Version = "No version specified"
-
 type baseOsMgrContext struct {
 	agentbase.AgentBase
 	pubBaseOsStatus    pubsub.Publication
@@ -59,13 +56,10 @@ type baseOsMgrContext struct {
 	configUpdateRetry    uint32    // UpdateRetryCounter from config; to avoid loop after reboot with failed testing
 
 	worker worker.Worker // For background work
-	// cli options
-	versionPtr *bool
 }
 
 // AddAgentSpecificCLIFlags adds CLI options
 func (ctxPtr *baseOsMgrContext) AddAgentSpecificCLIFlags(flagSet *flag.FlagSet) {
-	ctxPtr.versionPtr = flagSet.Bool("v", false, "Version")
 }
 
 var logger *logrus.Logger
@@ -83,11 +77,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		agentbase.WithPidFile(),
 		agentbase.WithBaseDir(baseDir),
 		agentbase.WithArguments(arguments))
-
-	if *ctx.versionPtr {
-		fmt.Printf("%s: %s\n", agentName, Version)
-		return 0
-	}
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)

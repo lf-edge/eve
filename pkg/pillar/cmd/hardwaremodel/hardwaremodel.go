@@ -19,21 +19,16 @@ const (
 	agentName = "hardwaremodel"
 )
 
-// Set from Makefile
-var Version = "No version specified"
-
 // Any state used by handlers goes here
 type hardwareModelAgentState struct {
 	agentbase.AgentBase
 	// cli options
-	versionPtr    *bool
 	cPtr          *bool
 	outputFilePtr *string
 }
 
 // AddAgentSpecificCLIFlags adds CLI options
 func (state *hardwareModelAgentState) AddAgentSpecificCLIFlags(flagSet *flag.FlagSet) {
-	state.versionPtr = flagSet.Bool("v", false, "Version")
 	state.cPtr = flagSet.Bool("c", false, "No CRLF")
 	state.outputFilePtr = flagSet.String("o", "/dev/tty", "file or device for output")
 }
@@ -51,10 +46,6 @@ func Run(_ *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arg
 		agentbase.WithArguments(arguments))
 
 	outputFile := *state.outputFilePtr
-	if *state.versionPtr {
-		fmt.Printf("%s: %s\n", agentName, Version)
-		return 0
-	}
 	model := hardware.GetHardwareModelNoOverride(log)
 	if *state.cPtr {
 		b := []byte(fmt.Sprintf("%s", model))

@@ -63,8 +63,6 @@ const (
 )
 
 var (
-	// Version : module version
-	Version           = "No version specified"
 	smartData         = types.NewSmartDataWithDefaults()
 	previousSmartData = types.NewSmartDataWithDefaults()
 )

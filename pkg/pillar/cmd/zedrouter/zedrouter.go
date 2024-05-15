@@ -69,9 +69,6 @@ const (
 	flowStaleSec int64 = 1800
 )
 
-// Version is set from Makefile
-var Version = "No version specified"
-
 // zedrouter creates and manages network instances - a set of virtual switches
 // providing connectivity and various network services for applications.
 type zedrouter struct {
@@ -82,7 +79,6 @@ type zedrouter struct {
 	runCtx context.Context
 
 	// CLI options
-	versionPtr         *bool
 	enableArpSnooping  bool // enable/disable switch NI arp snooping
 	localLegacyMACAddr bool // switch to legacy MAC address generation
 
@@ -195,7 +191,6 @@ type zedrouter struct {
 
 // AddAgentSpecificCLIFlags adds CLI options
 func (z *zedrouter) AddAgentSpecificCLIFlags(flagSet *flag.FlagSet) {
-	z.versionPtr = flagSet.Bool("v", false, "Version")
 }
 
 func Run(ps *pubsub.PubSub, logger *logrus.Logger, log *base.LogObject, args []string, baseDir string) int {
@@ -211,11 +206,6 @@ func Run(ps *pubsub.PubSub, logger *logrus.Logger, log *base.LogObject, args []s
 		agentbase.WithPidFile(),
 		agentbase.WithBaseDir(baseDir),
 		agentbase.WithArguments(args))
-
-	if *zedrouter.versionPtr {
-		fmt.Printf("%s: %s\n", agentName, Version)
-		return 0
-	}
 
 	if err := zedrouter.init(); err != nil {
 		log.Fatal(err)

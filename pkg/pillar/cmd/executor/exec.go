@@ -9,7 +9,6 @@ package executor
 import (
 	"context"
 	"flag"
-	"fmt"
 	"os/exec"
 	"syscall"
 	"time"
@@ -29,9 +28,6 @@ const (
 	warningTime = 40 * time.Second
 )
 
-// Version can be set from Makefile
-var Version = "No version specified"
-
 // Any state used by handlers goes here
 type executorContext struct {
 	agentbase.AgentBase
@@ -47,7 +43,6 @@ type executorContext struct {
 	timeLimit uint // In seconds
 
 	// CLI args
-	versionPtr   *bool
 	timeLimitPtr *uint // In seconds
 	fatalPtr     *bool
 	panicPtr     *bool
@@ -56,7 +51,6 @@ type executorContext struct {
 
 // AddAgentSpecificCLIFlags adds CLI options
 func (ctxPtr *executorContext) AddAgentSpecificCLIFlags(flagSet *flag.FlagSet) {
-	ctxPtr.versionPtr = flagSet.Bool("v", false, "Version")
 	ctxPtr.timeLimitPtr = flagSet.Uint("t", 120, "Maximum time to wait for command")
 	ctxPtr.fatalPtr = flagSet.Bool("F", false, "Cause log.Fatal fault injection")
 	ctxPtr.panicPtr = flagSet.Bool("P", false, "Cause golang panic fault injection")
@@ -81,10 +75,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	hangFlag := *execCtx.hangPtr
 	execCtx.timeLimit = *execCtx.timeLimitPtr
 
-	if *execCtx.versionPtr {
-		fmt.Printf("%s: %s\n", agentName, Version)
-		return 0
-	}
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
 	ps.StillRunning(agentName, warningTime, errorTime)

@@ -8,7 +8,6 @@ package waitforaddr
 
 import (
 	"flag"
-	"fmt"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
@@ -26,9 +25,6 @@ const (
 	warningTime = 40 * time.Second
 )
 
-// Set from Makefile
-var Version = "No version specified"
-
 // Context for handleDNSModify
 type DNSContext struct {
 	agentbase.AgentBase
@@ -37,12 +33,10 @@ type DNSContext struct {
 	DNSinitialized         bool // Received DeviceNetworkStatus
 	subDeviceNetworkStatus pubsub.Subscription
 	// cli options
-	versionPtr *bool
 }
 
 // AddAgentSpecificCLIFlags adds CLI options
 func (ctx *DNSContext) AddAgentSpecificCLIFlags(flagSet *flag.FlagSet) {
-	ctx.versionPtr = flagSet.Bool("v", false, "Version")
 }
 
 var logger *logrus.Logger
@@ -55,11 +49,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	DNSctx := DNSContext{}
 	args := []agentbase.AgentOpt{agentbase.WithArguments(arguments), agentbase.WithBaseDir(baseDir), agentbase.WithPidFile()}
 	agentbase.Init(&DNSctx, logger, log, agentName, args...)
-
-	if *DNSctx.versionPtr {
-		fmt.Printf("%s: %s\n", agentName, Version)
-		return 0
-	}
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
