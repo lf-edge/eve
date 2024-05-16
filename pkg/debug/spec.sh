@@ -478,7 +478,8 @@ for ETH in /sys/class/net/*; do
    COST=0
    ZTYPE=1
    isUSB=$(readlink "$ETH" | grep -Eo '/usb[0-9]/' || true)
-   if [ "$isUSB" != "" ]
+   isCAN=$(grep -Eo "280" < "$ETH"/type || true)
+   if [ "$isUSB" != "" ] || [ "$isCAN" != "" ]
    then
        continue
    fi
@@ -541,7 +542,7 @@ for CAN in /sys/class/net/*; do
     cat <<__EOT__
     ${COMMA}
     {
-     "ztype": ${ZTYPE},
+     "ztype": "${ZTYPE}",
      "phylabel": "${IFNAME}",
      "phyaddrs": {
        "Ifname": "${IFNAME}"
