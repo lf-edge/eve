@@ -802,15 +802,10 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 		}
 	}
 	if ds.State != status.State {
-		switch status.State {
-		case types.RESTARTING, types.PURGING:
-			// Leave unchanged
-		default:
-			log.Functionf("Set State from DomainStatus from %d to %d",
-				status.State, ds.State)
-			status.State = ds.State
-			changed = true
-		}
+		log.Functionf("Set State from DomainStatus from %d to %d",
+			status.State, ds.State)
+		status.State = ds.State
+		changed = true
 	}
 	// XXX compare with equal before setting changed?
 	status.IoAdapterList = ds.IoAdapterList
