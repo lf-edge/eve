@@ -2,8 +2,9 @@
 
 Currently EVE supports the following devices from NVIDIA's Jetson Xavier NX platform:
 
-1. Lenovo ThinkEdge SE70
-1. NVIDIA Jetson Xavier NX developer kit
+1. [Lenovo ThinkEdge SE70](#lenovo-thinkedge-se70)
+1. [Siemens SIMATIC IPC520A](#siemens-simatic-ipc520a)
+1. [NVIDIA Jetson Xavier NX developer kit](#jetson-xavier-nx-developer-kit)
 
 The Jetson Xavier NX platform has a complex boot flow[[1]](#references) that performs a lot of operations
 to setup all the hardware: initialize memory controller, power up CPUs, load firmware components, etc. The last stage of
@@ -48,6 +49,29 @@ If the installation succeed, the device will be powered off. Remove the USB Stic
 
 EVE should boot the live image and run from the USB Stick. **NOTE** that the NVMe SSD must not contain an EVE installation,
 otherwise it will conflict with the live image and **EVE will not run properly**.
+
+## Siemens SIMATIC IPC520A
+
+The bootloader of the SIMATIC IPC520A is already present on its internal memory and it also supports booting
+from an USB Stick. The SPM tool, provided by Siemens, can be used to flash the bootloader and the entire
+JetPack image when needed. In order to install EVE (or run it from a live image) the corresponding image must
+be written to an USB Stick and the device must be configured to try to boot first from external bootable
+devices. The boot order can be changed in the bootloader's setup interface with the following steps:
+
+1. Power on the device
+1. Press ESC during initialization to enter in the bootloader setup interface
+1. Inside the bootloader setup interface, navigate through the menus *Device Manager->NVIDIA Resource Configuration*
+1. In the field *"Add new devices to Top or bottom of boot order"* set the option *"Top"*
+1. Press F10 to save the new settings
+1. Exit the bootloader setup and reboot the device
+
+### Installing EVE on the SIMATIC IPC520A
+
+Exact the same process as for [ThinkEdge SE70](#installing-eve-on-the-thinkedge-se70).
+
+### Running a live image on the SIMATIC IPC520A
+
+Exact the same process as for [ThinkEdge SE70](#running-a-live-image-on-the-thinkedge-se70).
 
 ## Jetson Xavier NX developer kit
 
