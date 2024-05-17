@@ -13,11 +13,10 @@ RUN eve-alpine-deploy.sh
 
 ENV KVMTOOL_VERSION=90b2d3adadf218dfc6bdfdfcefe269843360223c
 
-ADD  https://git.kernel.org/pub/scm/linux/kernel/git/will/kvmtool.git/snapshot/kvmtool-${KVMTOOL_VERSION}.tar.gz /kvmtool.tar.gz
+ADD https://kernel.googlesource.com/pub/scm/linux/kernel/git/will/kvmtool.git/+archive/${KVMTOOL_VERSION}.tar.gz /kvmtool.tar.gz
 COPY *.patch /
 
-RUN tar xzvf kvmtool.tar.gz > /dev/null 2>&1 ;\
-    mv kvmtool-${KVMTOOL_VERSION} kvmtool
+RUN mkdir -p /kvmtool && tar xzvf kvmtool.tar.gz -C /kvmtool > /dev/null 2>&1
 
 WORKDIR /kvmtool
 
