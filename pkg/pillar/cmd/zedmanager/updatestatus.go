@@ -171,6 +171,7 @@ func doUpdate(ctx *zedmanagerContext,
 		log.Functionf("PurgeInprogress(%s) volumemgr done",
 			status.Key())
 		status.PurgeInprogress = types.BringDown
+		status.State = types.HALTING
 		changed = true
 		// Keep the old volumes in place
 		_, done := doRemove(ctx, status, false)
