@@ -309,10 +309,10 @@ check_start_containerd() {
                 if ctr -a /run/containerd-user/containerd.sock image import /etc/external-boot-image.tar; then
                         eve_external_boot_img_tag=$(cat /run/eve-release)
                         eve_external_boot_img=docker.io/lfedge/eve-external-boot-image:"$eve_external_boot_img_tag"
-                        import_tag=$(cat /etc/external-boot-image.tag)
-                        ctr -a /run/containerd-user/containerd.sock image tag "docker.io/${import_tag}" "$eve_external_boot_img"
+                        import_tag=$(tar -xOf /etc/external-boot-image.tar manifest.json | jq -r '.[0].RepoTags[0]')
+                        ctr -a /run/containerd-user/containerd.sock image tag "$import_tag" "$eve_external_boot_img"
 
-                        logmsg "Successfully installed external-boot-image"
+                        logmsg "Successfully installed external-boot-image $import_tag as $eve_external_boot_img"
                         rm -f /etc/external-boot-image.tar
                 fi
         fi

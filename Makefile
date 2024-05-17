@@ -795,11 +795,10 @@ pkgs: build-tools $(PKGS)
 
 pkg/external-boot-image/build.yml: pkg/external-boot-image/build.yml.in
 	$(QUIET)tools/compose-external-boot-image-yml.sh $< $@ $(shell echo ${KERNEL_TAG} | cut -d':' -f2) $(shell $(LINUXKIT) pkg show-tag pkg/xen-tools | cut -d':' -f2)
-pkg/external-boot-image: pkg/external-boot-image/build.yml
-pkg/kube: pkg/external-boot-image
-	$(MAKE) eve-external-boot-image
-	$(MAKE) cache-export IMAGE=$(shell $(LINUXKIT) pkg show-tag pkg/external-boot-image | tee pkg/kube/external-boot-image.tag) OUTFILE=pkg/kube/external-boot-image.tar && \
-	$(MAKE) eve-kube && rm -f pkg/kube/external-boot-image.tar pkg/kube/external-boot-image.tag pkg/external-boot-image/build.yml
+eve-external-boot-image: pkg/external-boot-image/build.yml
+pkg/kube/external-boot-image.tar: pkg/external-boot-image
+	$(MAKE) cache-export IMAGE=$(shell $(LINUXKIT) pkg show-tag pkg/external-boot-image) OUTFILE=pkg/kube/external-boot-image.tar
+pkg/kube: pkg/kube/external-boot-image.tar eve-kube
 	$(QUIET): $@: Succeeded
 pkg/pillar: pkg/dnsmasq pkg/gpt-tools pkg/dom0-ztools eve-pillar
 	$(QUIET): $@: Succeeded
