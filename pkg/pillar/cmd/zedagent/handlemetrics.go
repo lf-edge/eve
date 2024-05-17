@@ -25,7 +25,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
-	"github.com/lf-edge/eve/pkg/pillar/vault"
+	"github.com/lf-edge/eve/pkg/pillar/utils/persist"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	"github.com/shirou/gopsutil/host"
 	"google.golang.org/protobuf/proto"
@@ -662,7 +662,7 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 	ReportDeviceMetric.DormantTimeInSeconds = getDormantTime(ctx)
 
 	// Report metrics from ZFS
-	if vault.ReadPersistType() == types.PersistZFS {
+	if persist.ReadPersistType() == types.PersistZFS {
 		for _, el := range ctx.subZFSPoolMetrics.GetAll() {
 			zfsPoolMetrics := el.(types.ZFSPoolMetrics)
 			ReportDeviceMetric.StorageMetrics = append(ReportDeviceMetric.StorageMetrics,

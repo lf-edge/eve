@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -583,6 +584,22 @@ func listRecursiveFiles(path, pattern string) ([]string, error) {
 		return nil, err1
 	}
 	return jfiles, nil
+}
+
+// get the cluster api-server IP and port from kubeconfig file
+func getKubeServerIPandPort(kubeConfigFile string) (string, error) {
+	content, err := os.ReadFile(kubeConfigFile)
+	if err != nil {
+		return "", err
+	}
+
+	regex := regexp.MustCompile(`\s+server: https://([^ ]+)`)
+	matches := regex.FindStringSubmatch(string(content))
+	if len(matches) != 2 {
+		return "", fmt.Errorf("failed to find server in kubeconfig")
+	}
+
+	return strings.TrimSpace(matches[1]), nil
 }
 
 var helpStr = `eve-edgeview [ -token <session-token> ] [ -inst <instance-id> ] <query command>

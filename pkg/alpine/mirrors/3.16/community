@@ -1,9 +1,12 @@
+bcc-dev
+cereal
 cni-plugins
 fio
 fmt
 hwinfo
 i2c-tools-dev
 iw
+libbpf-dev
 libgudev-dev
 librados
 librbd
@@ -16,6 +19,7 @@ libvirt-lxc
 libvirt-qemu
 libvncserver
 libvncserver-dev
+pahole
 perf
 pkgconf
 py3-cachecontrol

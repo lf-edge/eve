@@ -27,13 +27,14 @@ type zedkubeContext struct {
 }
 
 // Run in this file is just stub for non-kubevirt hypervisors.
-func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string) int {
+func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string, baseDir string) int {
 	logger := loggerArg
 	log := logArg
 
 	zedkubeCtx := zedkubeContext{}
 	agentbase.Init(&zedkubeCtx, logger, log, agentName,
 		agentbase.WithPidFile(),
+		agentbase.WithBaseDir(baseDir),
 		agentbase.WithWatchdog(ps, warningTime, errorTime),
 		agentbase.WithArguments(arguments))
 

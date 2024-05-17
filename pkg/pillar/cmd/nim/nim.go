@@ -23,7 +23,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/dpcreconciler"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/netmonitor"
-	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
@@ -50,9 +49,6 @@ const (
 // Really a constant
 var nilUUID uuid.UUID
 
-// Version is set from the Makefile.
-var Version = "No version specified"
-
 // NIM - Network Interface Manager.
 // Manage (physical) network interfaces of the device based on configuration from
 // various sources (controller, override, last-resort, persisted config).
@@ -66,11 +62,9 @@ type nim struct {
 	PubSub *pubsub.PubSub
 
 	useStdout bool
-	version   bool
 
 	// CLI args
-	stdoutPtr  *bool
-	versionPtr *bool
+	stdoutPtr *bool
 
 	// NIM components
 	connTester     *conntester.ZedcloudConnectivityTester
@@ -116,24 +110,24 @@ type nim struct {
 
 // AddAgentSpecificCLIFlags adds CLI options
 func (n *nim) AddAgentSpecificCLIFlags(flagSet *flag.FlagSet) {
-	n.versionPtr = flagSet.Bool("v", false, "Print Version of the agent.")
 	n.stdoutPtr = flagSet.Bool("s", false, "Use stdout")
 }
 
 // ProcessAgentSpecificCLIFlags process received CLI options
 func (n *nim) ProcessAgentSpecificCLIFlags(_ *flag.FlagSet) {
 	n.useStdout = *n.stdoutPtr
-	n.version = *n.versionPtr
 }
 
 // Run - Main function - invoked from zedbox.go
-func Run(ps *pubsub.PubSub, logger *logrus.Logger, log *base.LogObject, arguments []string) int {
+func Run(ps *pubsub.PubSub, logger *logrus.Logger, log *base.LogObject, arguments []string, baseDir string) int {
 	nim := &nim{
 		Log:    log,
 		PubSub: ps,
 		Logger: logger,
 	}
 	agentbase.Init(nim, logger, log, agentName,
+		agentbase.WithBaseDir(baseDir),
+		agentbase.WithPidFile(),
 		agentbase.WithArguments(arguments))
 
 	if err := nim.init(); err != nil {
@@ -146,10 +140,6 @@ func Run(ps *pubsub.PubSub, logger *logrus.Logger, log *base.LogObject, argument
 }
 
 func (n *nim) init() (err error) {
-	if n.version {
-		fmt.Printf("%s: %s\n", agentName, Version)
-		return nil
-	}
 
 	n.cipherMetrics = cipher.NewAgentMetrics(agentName)
 	n.zedcloudMetrics = zedcloud.NewAgentMetrics()
@@ -200,9 +190,6 @@ func (n *nim) init() (err error) {
 }
 
 func (n *nim) run(ctx context.Context) (err error) {
-	if err = pidfile.CheckAndCreatePidfile(n.Log, agentName); err != nil {
-		return err
-	}
 	n.Log.Noticef("Starting %s", agentName)
 
 	// Start DPC Manager.

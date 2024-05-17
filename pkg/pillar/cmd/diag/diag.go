@@ -80,7 +80,6 @@ type diagContext struct {
 	usingOnboardCert        bool
 	devUUID                 uuid.UUID
 	// cli options
-	versionPtr             *bool
 	foreverPtr             *bool
 	pacContentsPtr         *bool
 	simulateDNSFailurePtr  *bool
@@ -95,7 +94,6 @@ type diagContext struct {
 
 // AddAgentSpecificCLIFlags adds CLI options
 func (ctxPtr *diagContext) AddAgentSpecificCLIFlags(flagSet *flag.FlagSet) {
-	ctxPtr.versionPtr = flagSet.Bool("v", false, "Version")
 	ctxPtr.foreverPtr = flagSet.Bool("f", false, "Forever flag")
 	ctxPtr.pacContentsPtr = flagSet.Bool("p", false, "Print PAC file contents")
 	ctxPtr.simulateDNSFailurePtr = flagSet.Bool("D", false, "simulateDnsFailure flag")
@@ -106,9 +104,6 @@ func (ctxPtr *diagContext) AddAgentSpecificCLIFlags(flagSet *flag.FlagSet) {
 	ctxPtr.columnPtr = flagSet.Int("c", 80, "Max number of columns")
 }
 
-// Set from Makefile
-var Version = "No version specified"
-
 var simulateDnsFailure = false
 var simulatePingFailure = false
 var outfile = os.Stdout
@@ -116,7 +111,7 @@ var nilUUID uuid.UUID
 var logger *logrus.Logger
 var log *base.LogObject
 
-func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string) int {
+func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string, baseDir string) int { //nolint:gocyclo
 	logger = loggerArg
 	log = logArg
 	triggerPrintChan := make(chan string, 1)
@@ -126,6 +121,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		triggerPrintChan: triggerPrintChan,
 	}
 	agentbase.Init(&ctx, logger, log, agentName,
+		agentbase.WithBaseDir(baseDir),
 		agentbase.WithArguments(arguments))
 
 	ctx.forever = *ctx.foreverPtr
@@ -136,10 +132,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	simulateDnsFailure = *ctx.simulateDNSFailurePtr
 	simulatePingFailure = *ctx.simulatePingFailurePtr
 	outFilename := *ctx.outFilenamePtr
-	if *ctx.versionPtr {
-		fmt.Printf("%s: %s\n", agentName, Version)
-		return 0
-	}
 	if outFilename != "" {
 		outfile, err = os.OpenFile(outFilename, os.O_APPEND|os.O_CREATE|os.O_WRONLY|syscall.O_NONBLOCK, 0644)
 		if err != nil {

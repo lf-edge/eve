@@ -37,7 +37,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/hypervisor"
 	"github.com/lf-edge/eve/pkg/pillar/kubeapi"
-	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/sema"
 	"github.com/lf-edge/eve/pkg/pillar/sriov"
@@ -45,6 +44,8 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/lf-edge/eve/pkg/pillar/utils/cloudconfig"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
+	"github.com/lf-edge/eve/pkg/pillar/utils/wait"
+	zfsutil "github.com/lf-edge/eve/pkg/pillar/utils/zfs"
 	"github.com/opencontainers/runtime-spec/specs-go"
 	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
@@ -65,9 +66,6 @@ const (
 
 // Really a constant
 var nilUUID = uuid.UUID{}
-
-// Set from Makefile
-var Version = "No version specified"
 
 func isPort(ctx *domainContext, ifname string) bool {
 	ctx.dnsLock.Lock()
@@ -121,7 +119,6 @@ type domainContext struct {
 	processCloudInitMultiPart bool
 	publishTicker             flextimer.FlexTickerHandle
 	// cli options
-	versionPtr    *bool
 	hypervisorPtr *string
 	// CPUs management
 	cpuAllocator        *cpuallocator.CPUAllocator
@@ -132,7 +129,6 @@ type domainContext struct {
 
 // AddAgentSpecificCLIFlags adds CLI options
 func (ctx *domainContext) AddAgentSpecificCLIFlags(flagSet *flag.FlagSet) {
-	ctx.versionPtr = flagSet.Bool("v", false, "Version")
 	allHypervisors, enabledHypervisors := hypervisor.GetAvailableHypervisors()
 	ctx.hypervisorPtr = flagSet.String("h", enabledHypervisors[0], fmt.Sprintf("Current hypervisor %+q", allHypervisors))
 }
@@ -146,7 +142,7 @@ var hyper hypervisor.Hypervisor // Current hypervisor
 var logger *logrus.Logger
 var log *base.LogObject
 
-func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string) int {
+func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string, baseDir string) int { //nolint:gocyclo
 	logger = loggerArg
 	log = logArg
 
@@ -167,23 +163,18 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		hvTypeKube:          base.IsHVTypeKube(),
 	}
 	agentbase.Init(&domainCtx, logger, log, agentName,
+		agentbase.WithBaseDir(baseDir),
+		agentbase.WithPidFile(),
 		agentbase.WithArguments(arguments))
 
 	var err error
 	handlersInit()
 
-	if *domainCtx.versionPtr {
-		fmt.Printf("%s: %s\n", agentName, Version)
-		return 0
-	}
 	hyper, err = hypervisor.GetHypervisor(*domainCtx.hypervisorPtr)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	if err := pidfile.CheckAndCreatePidfile(log, agentName); err != nil {
-		log.Fatal(err)
-	}
 	log.Functionf("Starting %s with %s hypervisor backend", agentName, hyper.Name())
 
 	// Run a periodic timer so we always update StillRunning
@@ -573,12 +564,12 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 
 	// Wait until we have been onboarded aka know our own UUID however we do not use the UUID
-	if err := utils.WaitForOnboarded(ps, log, agentName, warningTime, errorTime); err != nil {
+	if err := wait.WaitForOnboarded(ps, log, agentName, warningTime, errorTime); err != nil {
 		log.Fatal(err)
 	}
 	log.Noticef("device is onboarded")
 
-	if err := utils.WaitForVault(ps, log, agentName, warningTime, errorTime); err != nil {
+	if err := wait.WaitForVault(ps, log, agentName, warningTime, errorTime); err != nil {
 		log.Fatal(err)
 	}
 
@@ -588,7 +579,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		log.Fatalf("StartUserContainerdInstance: failed %v", err)
 	}
 
-	if err := utils.WaitForUserContainerd(ps, log, agentName, warningTime, errorTime); err != nil {
+	if err := wait.WaitForUserContainerd(ps, log, agentName, warningTime, errorTime); err != nil {
 		log.Fatal(err)
 	}
 	log.Functionf("user containerd ready")
@@ -3055,7 +3046,7 @@ func updatePortAndPciBackIoBundle(ctx *domainContext, ib *types.IoBundle) (chang
 				log.Error(err)
 			}
 		}
-		if ib.Type == types.IoNVME && types.NVMEIsUsed(log, ctx.subZFSPoolStatus.GetAll(), ib.PciLong) {
+		if ib.Type == types.IoNVME && zfsutil.NVMEIsUsed(log, ctx.subZFSPoolStatus.GetAll(), ib.PciLong) {
 			keepInHost = true
 		}
 		if ib.Type == types.IoNetEthPF {

@@ -22,7 +22,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
-	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
@@ -48,9 +47,6 @@ const (
 // Really a constant
 var nilUUID uuid.UUID
 
-// Set from Makefile
-var Version = "No version specified"
-
 // Assumes the config files are in IdentityDirname, which is /config
 // by default. The files are
 //  root-certificate.pem	Root CA cert(s) for object signing
@@ -73,15 +69,11 @@ type clientContext struct {
 	zedcloudMetrics        *zedcloud.AgentMetrics
 	// cli options
 	operations    map[string]bool
-	versionPtr    *bool
-	noPidPtr      *bool
 	maxRetriesPtr *int
 }
 
 // AddAgentSpecificCLIFlags adds CLI options
 func (ctxPtr *clientContext) AddAgentSpecificCLIFlags(flagSet *flag.FlagSet) {
-	ctxPtr.versionPtr = flagSet.Bool("v", false, "Version")
-	ctxPtr.noPidPtr = flagSet.Bool("p", false, "Do not check for running client")
 	ctxPtr.maxRetriesPtr = flagSet.Int("r", 0, "Max retries")
 }
 
@@ -116,7 +108,7 @@ var (
 	log               *base.LogObject
 )
 
-func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string) int { //nolint:gocyclo
+func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string, baseDir string) int { //nolint:gocyclo
 	logger = loggerArg
 	log = logArg
 
@@ -130,19 +122,10 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		},
 	}
 
-	agentbase.Init(&clientCtx, logger, log, agentName,
-		agentbase.WithArguments(arguments))
+	args := []agentbase.AgentOpt{agentbase.WithArguments(arguments), agentbase.WithBaseDir(baseDir), agentbase.WithPidFile()}
+	agentbase.Init(&clientCtx, logger, log, agentName, args...)
 
 	maxRetries := *clientCtx.maxRetriesPtr
-	if *clientCtx.versionPtr {
-		fmt.Printf("%s: %s\n", agentName, Version)
-		return 0
-	}
-	if !*clientCtx.noPidPtr {
-		if err := pidfile.CheckAndCreatePidfile(log, agentName); err != nil {
-			log.Fatal(err)
-		}
-	}
 
 	pub, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName: agentName,

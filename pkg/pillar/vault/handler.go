@@ -7,6 +7,7 @@ import (
 	"github.com/lf-edge/eve-api/go/info"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils/persist"
 )
 
 // HandlerOptions defines options for handler
@@ -28,7 +29,7 @@ type Handler interface {
 
 // GetHandler returns Handler implementation for the current persist type
 func GetHandler(log *base.LogObject) Handler {
-	persistFsType := ReadPersistType()
+	persistFsType := persist.ReadPersistType()
 	switch persistFsType {
 	case types.PersistZFS:
 		return &ZFSHandler{log: log}

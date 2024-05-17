@@ -10,6 +10,8 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -75,6 +77,10 @@ const (
 	tcpMaxMappingNUM  int           = 5
 	tcpIdleTimeoutSec float64       = 1800.0
 	tcpCheckTimeout   time.Duration = 300 * time.Second
+	kubeYamlFile      string        = "/run/.kube/k3s/user.yaml"
+	kubeConfigFile    string        = "kube-config.yaml"
+	kubeServerFile    string        = "/tmp/" + kubeConfigFile
+	kubeClientFile    string        = fileCopyDir + kubeConfigFile
 )
 
 const (
@@ -283,37 +289,60 @@ func recvServerData(mtype int, message []byte) {
 func setAndStartProxyTCP(opt string) {
 	var ipAddrPort []string
 	var proxySvr *http.Server
+	var kubeport int
+	var err error
 	proxyServerDone := make(chan struct{})
 
 	mappingCnt := 1
 	ipAddrPort = make([]string, mappingCnt)
 
-	var hasProxy bool
-	var proxyDNSIP string
+	var hasProxy, hasKube bool
+	var proxyDNSIP, kubeAddrPort string
+	kubenum := edgeviewInstID - 1
 	if strings.Contains(opt, "/") {
-		var gotProxy bool
+		var gotProxy, gotKube bool
 		params := strings.Split(opt, "/")
 		mappingCnt = len(params)
 		ipAddrPort = make([]string, mappingCnt)
 		for i, ipport := range params {
-			gotProxy, proxyDNSIP = getProxyOpt(ipport)
-			if !strings.Contains(opt, ":") && !gotProxy {
-				fmt.Printf("tcp option needs ipaddress:port format, or is 'proxy'\n")
+			gotProxy, gotKube, proxyDNSIP, kubeAddrPort, err = getProxyOpt(ipport)
+			if err != nil {
+				fmt.Printf("tcp option error %v\n", err)
+				return
+			} else if !strings.Contains(opt, ":") && !gotProxy && !gotKube {
+				fmt.Printf("tcp option needs ipaddress:port format, or in either 'proxy' or 'kube'\n")
 				return
 			}
 			ipAddrPort[i] = ipport
 			if gotProxy {
 				hasProxy = true
+			} else if gotKube {
+				if !IsHVTypeKube {
+					fmt.Printf("tcp kube option is only supported in kubevirt image\n")
+					return
+				}
+				hasKube = true
+				kubeport = 9001 + i + kubenum*types.EdgeviewMaxInstNum
+				ipAddrPort[i] = kubeAddrPort
 			}
 			log.Tracef("setAndStartProxyTCP: (%d) ipport %s", i, ipport)
 		}
 	} else {
-		hasProxy, proxyDNSIP = getProxyOpt(opt)
-		if !strings.Contains(opt, ":") && !hasProxy {
-			fmt.Printf("tcp option needs ipaddress:port format, or is 'proxy'\n")
+		hasProxy, hasKube, proxyDNSIP, kubeAddrPort, err = getProxyOpt(opt)
+		if err != nil {
+			fmt.Printf("tcp option error %v\n", err)
+			return
+		} else if !strings.Contains(opt, ":") && !hasProxy && !hasKube {
+			fmt.Printf("tcp option needs ipaddress:port format, or in either 'proxy' or 'kube'\n")
 			return
 		}
 		ipAddrPort[0] = opt
+		if hasKube {
+			ipAddrPort[0] = kubeAddrPort
+			kubeport = 9001 + kubenum*types.EdgeviewMaxInstNum
+		} else {
+			ipAddrPort[0] = opt
+		}
 		log.Tracef("setAndStartProxyTCP: opt %s", opt)
 	}
 
@@ -321,6 +350,29 @@ func setAndStartProxyTCP(opt string) {
 		log.Tracef("setAndStartProxyTCP: launch proxy server")
 		proxyServerEndpoint.Port += edgeviewInstID
 		proxySvr = proxyServer(proxyServerDone, proxyDNSIP)
+	}
+
+	if hasKube {
+		// XXX can check on this policy in the future if needed
+		//if !kubPolicy.Enabled {
+		//	fmt.Printf("tcp option for kubectl is not allowed")
+		//	return
+		//}
+		kubefileName, err := genKubeConfigFile(kubeport)
+		if err != nil {
+			fmt.Printf("tcp kube copy file error: %v\n", err)
+			return
+		}
+		err = runCopy("cp/"+kubefileName, nil)
+		if err != nil {
+			log.Errorf("setAndStartProxyTCP: copy kube file error %v", err)
+		}
+
+		err = os.Remove(kubefileName)
+		if err != nil {
+			log.Warn(err)
+		}
+		log.Tracef("setAndStartProxyTCP: copy kube file done, port %d", kubeport)
 	}
 
 	// send tcp-setup-ok to client side
@@ -386,6 +438,44 @@ func setAndStartProxyTCP(opt string) {
 			isTCPServer = false
 			return
 		}
+	}
+}
+
+// need to modify the kubeconfig file for mapping the edgeview local port for kubectl
+func genKubeConfigFile(kubeport int) (string, error) {
+	// this kubeYamlFile is user.yaml, which is not the kubeconfig file
+	// it only identify the user as 'debugging-user', who has only the kubernetes
+	// 'get', 'list' and 'watch' permissions
+	// thus the edgeview tcp/kube user can not change the kubernetes configuration
+	yamlBytes, err := os.ReadFile(kubeYamlFile)
+	if err != nil {
+		err = fmt.Errorf("tcp kube can not read/process kubeConfig yaml file. error %v\n", err)
+		return "", err
+	}
+
+	yamlString := string(yamlBytes)
+	pattern := regexp.MustCompile(`https://[\d\.]+:6443`)
+	newString := "https://localhost:" + strconv.Itoa(kubeport)
+
+	yamlString = pattern.ReplaceAllString(yamlString, newString)
+
+	err = os.WriteFile(kubeServerFile, []byte(yamlString), 0644)
+	if err != nil {
+		log.Errorf("genKubeConfigFile: write file error %v", err)
+		return "", err
+	}
+
+	log.Noticef("genKubeConfigFile: write done")
+	return kubeServerFile, nil
+}
+
+func delKubeConfigFile(isKube bool) {
+	if !isKube {
+		return
+	}
+	err := os.Remove(kubeClientFile)
+	if err != nil {
+		fmt.Printf("delKubeConfigFile: delete file error %v\n", err)
 	}
 }
 
@@ -673,9 +763,9 @@ func tcpClientSendDone() {
 	sendCloseToWss()
 }
 
-func getProxyOpt(opt string) (bool, string) {
-	var proxyDNSIP string
-	var hasProxy bool
+func getProxyOpt(opt string) (bool, bool, string, string, error) {
+	var proxyDNSIP, kubeAPIAddrPort string
+	var hasProxy, hasKube bool
 	if strings.HasPrefix(opt, "proxy") {
 		hasProxy = true
 		if strings.Contains(opt, "proxy@") {
@@ -684,15 +774,24 @@ func getProxyOpt(opt string) (bool, string) {
 				proxyDNSIP = strs[1]
 			}
 		}
+	} else if strings.HasPrefix(opt, "kube") {
+		// get kubeConfig server's IP address and port
+		addrPort, err := getKubeServerIPandPort(kubeYamlFile)
+		if err == nil {
+			kubeAPIAddrPort = addrPort
+			hasKube = true
+		} else {
+			return false, false, "", "", fmt.Errorf("tcp kube option get cluster IP and port error %v", err)
+		}
 	}
-	return hasProxy, proxyDNSIP
+	return hasProxy, hasKube, proxyDNSIP, kubeAPIAddrPort, nil
 }
 
-func processTCPcmd(opt string, remotePorts map[int]int) (bool, int, map[int]int) {
+func processTCPcmd(opt string, remotePorts map[int]int) (bool, bool, int, map[int]int) {
 	tcpopts := strings.SplitN(opt, "tcp/", 2)
 	if len(tcpopts) != 2 {
 		fmt.Printf("tcp options need to be specified\n")
-		return false, 0, map[int]int{}
+		return false, false, 0, map[int]int{}
 	}
 	tcpparam := tcpopts[1]
 
@@ -703,13 +802,14 @@ func processTCPcmd(opt string, remotePorts map[int]int) (bool, int, map[int]int)
 		tcpclientCnt = len(params)
 		if tcpclientCnt > tcpMaxMappingNUM {
 			fmt.Printf("tcp maximum mapping is: %d\n", tcpMaxMappingNUM)
-			return false, tcpclientCnt, map[int]int{}
+			return false, false, tcpclientCnt, map[int]int{}
 		}
 	} else {
 		params = append(params, tcpparam)
 	}
 
 	proxycnt := 0
+	hasKube := false
 	for i, pStr := range params {
 		if strings.Contains(pStr, ":") {
 			pPort := strings.Split(pStr, ":")
@@ -721,15 +821,19 @@ func processTCPcmd(opt string, remotePorts map[int]int) (bool, int, map[int]int)
 		} else if strings.HasPrefix(pStr, "proxy") {
 			if proxycnt > 0 {
 				fmt.Printf("can not setup multiple proxies\n")
-				return false, tcpclientCnt, map[int]int{}
+				return false, false, tcpclientCnt, map[int]int{}
 			}
 			remotePorts[i] = 0
 			proxycnt++
+		} else if strings.HasPrefix(pStr, "kube") {
+			remotePorts[i] = 0
+			hasKube = true
 		}
 	}
+
 	if len(remotePorts) != tcpclientCnt {
 		fmt.Printf("tcp port mapping not matching %d, %v\n", tcpclientCnt, remotePorts)
-		return false, tcpclientCnt, map[int]int{}
+		return false, false, tcpclientCnt, map[int]int{}
 	}
 
 	isTCPClient = true
@@ -743,7 +847,7 @@ func processTCPcmd(opt string, remotePorts map[int]int) (bool, int, map[int]int)
 		printColor(mapline, colorGREEN)
 	}
 
-	return true, tcpclientCnt, remotePorts
+	return true, hasKube, tcpclientCnt, remotePorts
 }
 
 func checkTCPRateLimit(msgSize int) bool {

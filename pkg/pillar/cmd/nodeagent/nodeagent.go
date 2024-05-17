@@ -32,8 +32,8 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/utils"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
+	"github.com/lf-edge/eve/pkg/pillar/utils/wait"
 	"github.com/lf-edge/eve/pkg/pillar/zboot"
 	"github.com/sirupsen/logrus"
 )
@@ -63,8 +63,6 @@ const (
 )
 
 var (
-	// Version : module version
-	Version           = "No version specified"
 	smartData         = types.NewSmartDataWithDefaults()
 	previousSmartData = types.NewSmartDataWithDefaults()
 )
@@ -152,12 +150,13 @@ func newNodeagentContext(ps *pubsub.PubSub, _ *logrus.Logger, _ *base.LogObject)
 var log *base.LogObject
 
 // Run : nodeagent run entry function
-func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string) int {
+func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string, baseDir string) int {
 	log = logArg
 
 	ctxPtr := newNodeagentContext(ps, loggerArg, logArg)
 	agentbase.Init(ctxPtr, loggerArg, logArg, agentName,
 		agentbase.WithPidFile(),
+		agentbase.WithBaseDir(baseDir),
 		agentbase.WithWatchdog(ps, warningTime, errorTime),
 		agentbase.WithArguments(arguments))
 
@@ -285,7 +284,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	subDomainStatus.Activate()
 
 	// Wait until we have been onboarded aka know our own UUID however we do not use the UUID
-	if err := utils.WaitForOnboarded(ps, log, agentName, warningTime, errorTime); err != nil {
+	if err := wait.WaitForOnboarded(ps, log, agentName, warningTime, errorTime); err != nil {
 		log.Fatal(err)
 	}
 	log.Functionf("Device is onboarded")

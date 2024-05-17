@@ -36,10 +36,10 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	uc "github.com/lf-edge/eve/pkg/pillar/cmd/upgradeconverter"
 	etpm "github.com/lf-edge/eve/pkg/pillar/evetpm"
-	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/utils"
+	"github.com/lf-edge/eve/pkg/pillar/utils/persist"
+	"github.com/lf-edge/eve/pkg/pillar/utils/wait"
 	"github.com/lf-edge/eve/pkg/pillar/vault"
 	"github.com/lf-edge/eve/pkg/pillar/zfs"
 	"github.com/sirupsen/logrus"
@@ -148,7 +148,7 @@ func initializeSelfPublishHandles(ps *pubsub.PubSub, ctx *vaultMgrContext) {
 func checkAndPublishVaultConfig(ctx *vaultMgrContext) bool {
 	// We do not have vault config, publish it
 	if vaultConfigInited == false {
-		persistFsType := vault.ReadPersistType()
+		persistFsType := persist.ReadPersistType()
 		tpmKeyOnly := false
 
 		switch persistFsType {
@@ -172,7 +172,7 @@ func checkAndPublishVaultConfig(ctx *vaultMgrContext) bool {
 }
 
 // Run is the entrypoint for running vaultmgr as a standalone program
-func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string) int {
+func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string, baseDir string) int {
 	logger = loggerArg
 	log = logArg
 
@@ -181,27 +181,39 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		ps:     ps,
 		ucChan: make(chan struct{}),
 	}
-	agentbase.Init(&ctx, logger, log, agentName,
-		agentbase.WithArguments(arguments))
+
+	// do we run a single command, or long-running service?
+	// if any args defined, will run that single command and exit.
+	// otherwise, will run the agent
+	var (
+		command string
+		args    []string
+	)
+	if len(arguments) > 0 {
+		command = arguments[0]
+	}
+	if len(arguments) > 1 {
+		args = arguments[1:]
+	}
+
+	// if an explicit command was given, run that command and return, else run the agent
+	if command != "" {
+		return runCommand(ps, command, args)
+	}
+
+	agentArgs := []agentbase.AgentOpt{agentbase.WithBaseDir(baseDir), agentbase.WithArguments(arguments), agentbase.WithPidFile()}
+	agentbase.Init(&ctx, logger, log, agentName, agentArgs...)
 
 	handler = vault.GetHandler(log)
 
-	// if any args defined, will run command inline and return
-	if len(ctx.args) > 0 {
-		return runInline(ps, ctx.args[0], ctx.args[1:])
-	}
-
 	log.Functionf("Starting %s\n", agentName)
 
-	if err := pidfile.CheckAndCreatePidfile(log, agentName); err != nil {
-		log.Fatal(err)
-	}
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(15 * time.Second)
 	ps.StillRunning(agentName, warningTime, errorTime)
 
 	// Wait until we have been onboarded aka know our own UUID, but we don't use the UUID
-	err := utils.WaitForOnboarded(ps, log, agentName, warningTime, errorTime)
+	err := wait.WaitForOnboarded(ps, log, agentName, warningTime, errorTime)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -309,7 +321,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 }
 
-func runInline(ps *pubsub.PubSub, command string, _ []string) int {
+func runCommand(ps *pubsub.PubSub, command string, _ []string) int {
 	switch command {
 	case "setupDeprecatedVaults":
 		if err := handler.SetupDeprecatedVaults(); err != nil {
@@ -317,7 +329,7 @@ func runInline(ps *pubsub.PubSub, command string, _ []string) int {
 			return 1
 		}
 	case "waitUnsealed":
-		if err := utils.WaitForVault(ps, log, agentName, warningTime, errorTime); err != nil {
+		if err := wait.WaitForVault(ps, log, agentName, warningTime, errorTime); err != nil {
 			log.Fatal(err)
 			return 1
 		}

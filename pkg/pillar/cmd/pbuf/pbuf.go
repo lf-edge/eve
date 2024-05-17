@@ -33,12 +33,13 @@ var logger *logrus.Logger
 var log *base.LogObject
 
 // Run is our main function called by zedbox
-func Run(_ *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string) int {
+func Run(_ *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string, baseDir string) int {
 	logger = loggerArg
 	log = logArg
 
 	state := pbufAgentState{}
 	agentbase.Init(&state, logger, log, agentName,
+		agentbase.WithBaseDir(baseDir),
 		agentbase.WithArguments(arguments))
 
 	for _, arg := range state.args {

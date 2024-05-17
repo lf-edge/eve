@@ -41,7 +41,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/netdump"
-	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
@@ -65,9 +64,6 @@ const (
 	// Factor by which the dormant time needs to be scaled up.
 	dormantTimeScaleFactor = 3
 )
-
-// Set from Makefile
-var Version = "No version specified"
 
 // XXX move to a context? Which? Used in handleconfig and handlemetrics!
 var deviceNetworkStatus = &types.DeviceNetworkStatus{}
@@ -224,7 +220,6 @@ type zedagentContext struct {
 
 	attestationTryCount int
 	// cli options
-	versionPtr  *bool
 	parsePtr    *string
 	validatePtr *bool
 	fatalPtr    *bool
@@ -243,7 +238,6 @@ type zedagentContext struct {
 
 // AddAgentSpecificCLIFlags adds CLI options
 func (zedagentCtx *zedagentContext) AddAgentSpecificCLIFlags(flagSet *flag.FlagSet) {
-	zedagentCtx.versionPtr = flagSet.Bool("v", false, "Version")
 	zedagentCtx.parsePtr = flagSet.String("p", "", "parse checkpoint file")
 	zedagentCtx.validatePtr = flagSet.Bool("V", false, "validate UTF-8 in checkpoint")
 	zedagentCtx.fatalPtr = flagSet.Bool("F", false, "Cause log.Fatal fault injection")
@@ -307,27 +301,22 @@ type infoForObjectKey struct {
 	infoDest  destinationBitset
 }
 
-func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string) int {
+func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string, baseDir string) int {
 	logger = loggerArg
 	log = logArg
 
 	zedagentCtx := &zedagentContext{}
 	agentbase.Init(zedagentCtx, logger, log, agentName,
+		agentbase.WithPidFile(),
+		agentbase.WithBaseDir(baseDir),
 		agentbase.WithArguments(arguments))
 
 	var err error
 	parse := *zedagentCtx.parsePtr
 	validate := *zedagentCtx.validatePtr
-	if *zedagentCtx.versionPtr {
-		fmt.Printf("%s: %s\n", agentName, Version)
-		return 0
-	}
 	if validate && parse == "" {
 		fmt.Printf("Setting -V requires -p\n")
 		return 1
-	}
-	if err := pidfile.CheckAndCreatePidfile(log, agentName); err != nil {
-		log.Fatal(err)
 	}
 
 	// Initialize zedagent context.

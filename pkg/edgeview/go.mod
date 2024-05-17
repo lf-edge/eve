@@ -29,6 +29,6 @@ require (
 	github.com/tklauser/numcpus v0.6.0 // indirect
 	github.com/vishvananda/netns v0.0.0-20210104183010-2eb08e3e575f // indirect
 	github.com/yusufpapurcu/wmi v1.2.2 // indirect
-	golang.org/x/net v0.23.0 // indirect
+	golang.org/x/net v0.19.0 // indirect
 	google.golang.org/protobuf v1.33.0 // indirect
 )

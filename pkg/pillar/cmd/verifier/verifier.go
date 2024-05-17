@@ -23,11 +23,10 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
-	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/utils"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
+	"github.com/lf-edge/eve/pkg/pillar/utils/wait"
 	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 )
@@ -45,9 +44,6 @@ var (
 	vHandler = makeVerifyHandler()
 )
 
-// Set from Makefile
-var Version = "No version specified"
-
 // Any state used by handlers goes here
 type verifierContext struct {
 	agentbase.AgentBase
@@ -58,40 +54,32 @@ type verifierContext struct {
 
 	GCInitialized bool
 	// cli options
-	versionPtr *bool
 }
 
 // AddAgentSpecificCLIFlags adds CLI options
 func (ctx *verifierContext) AddAgentSpecificCLIFlags(flagSet *flag.FlagSet) {
-	ctx.versionPtr = flagSet.Bool("v", false, "Version")
 }
 
 var logger *logrus.Logger
 var log *base.LogObject
 
-func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string) int {
+func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string, baseDir string) int {
 	logger = loggerArg
 	log = logArg
 
 	// Any state needed by handler functions
 	ctx := verifierContext{ps: ps}
 	agentbase.Init(&ctx, logger, log, agentName,
+		agentbase.WithPidFile(),
+		agentbase.WithBaseDir(baseDir),
 		agentbase.WithArguments(arguments))
-
-	if *ctx.versionPtr {
-		fmt.Printf("%s: %s\n", agentName, Version)
-		return 0
-	}
-	if err := pidfile.CheckAndCreatePidfile(log, agentName); err != nil {
-		log.Fatal(err)
-	}
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
 	ps.StillRunning(agentName, warningTime, errorTime)
 
 	// Wait until we have been onboarded aka know our own UUID, but we don't use the UUID
-	err := utils.WaitForOnboarded(ps, log, agentName, warningTime, errorTime)
+	err := wait.WaitForOnboarded(ps, log, agentName, warningTime, errorTime)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -158,7 +146,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 	log.Functionf("processed GlobalConfig")
 
-	if err := utils.WaitForVault(ps, log, agentName, warningTime, errorTime); err != nil {
+	if err := wait.WaitForVault(ps, log, agentName, warningTime, errorTime); err != nil {
 		log.Fatal(err)
 	}
 
@@ -243,8 +231,7 @@ func unpublishVerifyImageStatus(ctx *verifierContext,
 
 	pub := ctx.pubVerifyImageStatus
 	key := status.Key()
-	st, _ := pub.Get(key)
-	if st == nil {
+	if st, _ := pub.Get(key); st == nil {
 		log.Errorf("unpublishVerifyImageStatus(%s) not found", key)
 		return
 	}

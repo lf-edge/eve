@@ -25,7 +25,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/diskmetrics"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
-	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/sirupsen/logrus"
@@ -53,14 +52,12 @@ type ledManagerContext struct {
 	blinkSendStop          chan string // Used by sender to stop the running forever blink routine
 	blinkRecvStop          chan string // Sender waits for the ack.
 	// cli options
-	versionPtr *bool
-	fatalPtr   *bool
-	hangPtr    *bool
+	fatalPtr *bool
+	hangPtr  *bool
 }
 
 // AddAgentSpecificCLIFlags adds CLI options
 func (ctxPtr *ledManagerContext) AddAgentSpecificCLIFlags(flagSet *flag.FlagSet) {
-	ctxPtr.versionPtr = flagSet.Bool("v", false, "Version")
 	ctxPtr.fatalPtr = flagSet.Bool("F", false, "Cause log.Fatal fault injection")
 	ctxPtr.hangPtr = flagSet.Bool("H", false, "Cause watchdog .touch fault injection")
 }
@@ -265,13 +262,10 @@ var mToF = []modelToFuncs{
 var logger *logrus.Logger
 var log *base.LogObject
 
-// Set from Makefile
-var Version = "No version specified"
-
 var appStatusDisplayFunc AppStatusDisplayFunc
 var appStatusArgs []string
 
-func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string) int {
+func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string, baseDir string) int {
 	logger = loggerArg
 	log = logArg
 
@@ -279,17 +273,12 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		countChange: make(chan types.LedBlinkCount),
 	}
 	agentbase.Init(&ctx, logger, log, agentName,
+		agentbase.WithPidFile(),
+		agentbase.WithBaseDir(baseDir),
 		agentbase.WithArguments(arguments))
 
 	fatalFlag := *ctx.fatalPtr
 	hangFlag := *ctx.hangPtr
-	if *ctx.versionPtr {
-		fmt.Printf("%s: %s\n", agentName, Version)
-		return 0
-	}
-	if err := pidfile.CheckAndCreatePidfile(log, agentName); err != nil {
-		log.Fatal(err)
-	}
 	log.Functionf("Starting %s", agentName)
 
 	// Run a periodic timer so we always update StillRunning

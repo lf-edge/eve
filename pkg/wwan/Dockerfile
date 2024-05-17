@@ -13,6 +13,7 @@ ENV LIBMBIM_VERSION=1.30.0
 ENV LIBQMI_VERSION=1.34.0
 ENV LIBQRTR_VERSION=1.2.2
 ENV PICOCOM_COMMIT=1acf1ddabaf3576b4023c4f6f09c5a3e4b086fb8
+ENV LENOVO_WWAN_UNLOCK_COMMIT=058d555e79314b6c2afca44d30986744819e8160
 
 ADD --keep-git-dir=true https://gitlab.freedesktop.org/mobile-broadband/libqrtr-glib.git#${LIBQRTR_VERSION} /libqrtr
 WORKDIR /libqrtr
@@ -47,6 +48,14 @@ ADD --keep-git-dir=true https://github.com/npat-efault/picocom.git#${PICOCOM_COM
 WORKDIR /picocom
 # Need this patch to build with musl: https://github.com/npat-efault/picocom/commit/1acf1ddabaf3576b4023c4f6f09c5a3e4b086fb8
 RUN make -j "$(getconf _NPROCESSORS_ONLN)" && strip picocom && cp picocom /usr/bin/
+
+# Install FCC-unlock scripts/tools provided by device vendors
+ADD --keep-git-dir=true https://github.com/lenovo/lenovo-wwan-unlock.git#${LENOVO_WWAN_UNLOCK_COMMIT} /lenovo-wwan-unlock
+WORKDIR /lenovo-wwan-unlock
+RUN cp libmbimtools.so /out/usr/lib/ && chmod 444 /out/usr/lib/libmbimtools.so
+RUN mkdir -p /out/opt/lenovo/ && \
+    cp DPR_Fcc_unlock_service /out/opt/lenovo/ && chmod 544 /out/opt/lenovo/DPR_Fcc_unlock_service
+COPY --chown=root:root --chmod=500 fcc-unlock /out/usr/lib/ModemManager/fcc-unlock.d
 
 RUN strip /usr/bin/*cli /usr/libexec/*proxy
 

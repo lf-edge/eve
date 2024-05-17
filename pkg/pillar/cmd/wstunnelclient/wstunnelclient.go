@@ -15,11 +15,10 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
-	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
-	"github.com/satori/go.uuid"
+	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 )
 
@@ -29,9 +28,6 @@ const (
 	errorTime   = 3 * time.Minute
 	warningTime = 40 * time.Second
 )
-
-// Set from Makefile
-var Version = "No version specified"
 
 // Context for handleDNSModify
 type DNSContext struct {
@@ -53,32 +49,24 @@ type wstunnelclientContext struct {
 	// XXX add any output from scanAIConfigs()?
 
 	// cli options
-	versionPtr *bool
 }
 
 // AddAgentSpecificCLIFlags adds CLI options
 func (ctx *wstunnelclientContext) AddAgentSpecificCLIFlags(flagSet *flag.FlagSet) {
-	ctx.versionPtr = flagSet.Bool("v", false, "Version")
 }
 
 var logger *logrus.Logger
 var log *base.LogObject
 
-func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string) int {
+func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string, baseDir string) int {
 	logger = loggerArg
 	log = logArg
 
 	wscCtx := wstunnelclientContext{}
 	agentbase.Init(&wscCtx, logger, log, agentName,
+		agentbase.WithPidFile(),
+		agentbase.WithBaseDir(baseDir),
 		agentbase.WithArguments(arguments))
-
-	if *wscCtx.versionPtr {
-		fmt.Printf("%s: %s\n", agentName, Version)
-		return 0
-	}
-	if err := pidfile.CheckAndCreatePidfile(log, agentName); err != nil {
-		log.Fatal(err)
-	}
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)

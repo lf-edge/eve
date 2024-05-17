@@ -9,7 +9,6 @@ package executor
 import (
 	"context"
 	"flag"
-	"fmt"
 	"os/exec"
 	"syscall"
 	"time"
@@ -17,7 +16,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
-	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/sirupsen/logrus"
@@ -29,9 +27,6 @@ const (
 	errorTime   = 3 * time.Minute
 	warningTime = 40 * time.Second
 )
-
-// Version can be set from Makefile
-var Version = "No version specified"
 
 // Any state used by handlers goes here
 type executorContext struct {
@@ -48,7 +43,6 @@ type executorContext struct {
 	timeLimit uint // In seconds
 
 	// CLI args
-	versionPtr   *bool
 	timeLimitPtr *uint // In seconds
 	fatalPtr     *bool
 	panicPtr     *bool
@@ -57,7 +51,6 @@ type executorContext struct {
 
 // AddAgentSpecificCLIFlags adds CLI options
 func (ctxPtr *executorContext) AddAgentSpecificCLIFlags(flagSet *flag.FlagSet) {
-	ctxPtr.versionPtr = flagSet.Bool("v", false, "Version")
 	ctxPtr.timeLimitPtr = flagSet.Uint("t", 120, "Maximum time to wait for command")
 	ctxPtr.fatalPtr = flagSet.Bool("F", false, "Cause log.Fatal fault injection")
 	ctxPtr.panicPtr = flagSet.Bool("P", false, "Cause golang panic fault injection")
@@ -68,25 +61,19 @@ var logger *logrus.Logger
 var log *base.LogObject
 
 // Run is the main aka only entrypoint
-func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string) int {
+func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string, baseDir string) int {
 	logger = loggerArg
 	log = logArg
 	execCtx := executorContext{}
 	agentbase.Init(&execCtx, logger, log, agentName,
+		agentbase.WithPidFile(),
+		agentbase.WithBaseDir(baseDir),
 		agentbase.WithArguments(arguments))
 
 	fatalFlag := *execCtx.fatalPtr
 	panicFlag := *execCtx.panicPtr
 	hangFlag := *execCtx.hangPtr
 	execCtx.timeLimit = *execCtx.timeLimitPtr
-
-	if *execCtx.versionPtr {
-		fmt.Printf("%s: %s\n", agentName, Version)
-		return 0
-	}
-	if err := pidfile.CheckAndCreatePidfile(log, agentName); err != nil {
-		log.Fatal(err)
-	}
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)

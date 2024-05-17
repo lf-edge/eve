@@ -9,7 +9,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 
 	"github.com/lf-edge/eve-api/go/info"
 	"github.com/lf-edge/eve/pkg/pillar/base"
@@ -18,8 +17,6 @@ import (
 )
 
 const (
-	evePersistTypeFile = "/run/eve.persist_type"
-
 	// allowVaultCleanFile existence indicates that we want to recreate vault in case of no controller key
 	// we set it in installer and storage-init
 	// so path must be aligned
@@ -30,16 +27,6 @@ const (
 func GetOperationalInfo(log *base.LogObject) (info.DataSecAtRestStatus, string) {
 	h := GetHandler(log)
 	return h.GetOperationalInfo()
-}
-
-// ReadPersistType returns the persist filesystem
-func ReadPersistType() types.PersistType {
-	persistFsType := ""
-	pBytes, err := os.ReadFile(evePersistTypeFile)
-	if err == nil {
-		persistFsType = strings.TrimSpace(string(pBytes))
-	}
-	return types.ParsePersistType(persistFsType)
 }
 
 // DisallowVaultCleanup do not allow vault cleanup

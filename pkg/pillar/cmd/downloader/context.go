@@ -40,12 +40,10 @@ type downloaderContext struct {
 	netdumpWithPCAP          bool
 	netdumpWithHdrFieldVal   bool
 	// cli options
-	versionPtr *bool
 }
 
 // AddAgentSpecificCLIFlags adds CLI options
 func (ctx *downloaderContext) AddAgentSpecificCLIFlags(flagSet *flag.FlagSet) {
-	ctx.versionPtr = flagSet.Bool("v", false, "Version")
 }
 
 func (ctx *downloaderContext) registerHandlers(ps *pubsub.PubSub) error {

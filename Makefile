@@ -40,8 +40,15 @@ DEV=n
 MEDIA_SIZE=32768
 # Image type for final disk images
 IMG_FORMAT=qcow2
+ifdef LIVE_UPDATE
+# For live updates we support read-write FS, like ext4
+ROOTFS_FORMAT=ext4
+# And generate tar faster
+LIVE_FAST=1
+else
 # Filesystem type for rootfs image
 ROOTFS_FORMAT?=squash
+endif
 # Image type for installer image
 INSTALLER_IMG_FORMAT=raw
 # Image type for verification image
@@ -295,11 +302,19 @@ DOCKER_GO = _() { $(SET_X); mkdir -p $(CURDIR)/.go/src/$${3:-dummy} ; mkdir -p $
 
 PARSE_PKGS=$(if $(strip $(EVE_HASH)),EVE_HASH=)$(EVE_HASH) DOCKER_ARCH_TAG=$(DOCKER_ARCH_TAG) KERNEL_TAG=$(KERNEL_TAG) ./tools/parse-pkgs.sh
 LINUXKIT=$(BUILDTOOLS_BIN)/linuxkit
-LINUXKIT_VERSION=3a0405298aab1632524a6ccd074969b417e1ee92
+LINUXKIT_VERSION=e6b0ae05eb3a2b99e84d9ffc03a3a5c9c3e7e371
 LINUXKIT_SOURCE=https://github.com/linuxkit/linuxkit.git
 LINUXKIT_OPTS=$(if $(strip $(EVE_HASH)),--hash) $(EVE_HASH) $(if $(strip $(EVE_REL)),--release) $(EVE_REL)
 LINUXKIT_PKG_TARGET=build
 LINUXKIT_PATCHES_DIR=tools/linuxkit/patches
+
+ifdef LIVE_FAST
+# Check the makerootfs.sh and the linuxkit tool invocation, the --input-tar
+# parameter specifically. This will create a new tar based on the old one
+# (already generated), which speeds tar generation up a bit.
+UPDATE_TAR=-u
+endif
+
 RESCAN_DEPS=FORCE
 # set FORCE_BUILD to --force to enforce rebuild
 FORCE_BUILD=
@@ -643,7 +658,7 @@ $(ROOTFS)-%.img: $(ROOTFS_IMG)
 
 $(ROOTFS_TAR): images/out/rootfs-$(HV)-$(PLATFORM).yml | $(INSTALLER)
 	$(QUIET): $@: Begin
-	./tools/makerootfs.sh tar -y $< -t $@ -d $(INSTALLER) -a $(ZARCH)
+	./tools/makerootfs.sh tar $(UPDATE_TAR) -y $< -t $@ -d $(INSTALLER) -a $(ZARCH)
 	$(QUIET): $@: Succeeded
 ifdef KERNEL_IMAGE
 	# Consider this as a cry from the heart: enormous amount of time is
@@ -658,7 +673,14 @@ ifdef KERNEL_IMAGE
 	tar -P -u --transform="flags=r;s|$(KIMAGE)|/boot/kernel|" -f "$@" "$(KIMAGE)"
 endif
 
+ifdef LIVE_UPDATE
+# Don't regenerate the whole image if tar was changed, but
+# do generate if does not exist. qcow2 target will handle
+# the rest
+$(ROOTFS_IMG): | $(ROOTFS_TAR) $(INSTALLER)
+else
 $(ROOTFS_IMG): $(ROOTFS_TAR) | $(INSTALLER)
+endif
 	$(QUIET): $@: Begin
 	./tools/makerootfs.sh imagefromtar -t $(ROOTFS_TAR) -i $@ -f $(ROOTFS_FORMAT) -a $(ZARCH)
 	@echo "size of $@ is $$(wc -c < "$@")B"
@@ -776,8 +798,8 @@ pkg/external-boot-image/build.yml: pkg/external-boot-image/build.yml.in
 pkg/external-boot-image: pkg/external-boot-image/build.yml
 pkg/kube: pkg/external-boot-image
 	$(MAKE) eve-external-boot-image
-	$(MAKE) cache-export IMAGE=$(shell $(LINUXKIT) pkg show-tag pkg/external-boot-image) OUTFILE=pkg/kube/external-boot-image.tar && \
-	$(MAKE) eve-kube && rm -f pkg/kube/external-boot-image.tar && rm -f pkg/external-boot-image/build.yml
+	$(MAKE) cache-export IMAGE=$(shell $(LINUXKIT) pkg show-tag pkg/external-boot-image | tee pkg/kube/external-boot-image.tag) OUTFILE=pkg/kube/external-boot-image.tar && \
+	$(MAKE) eve-kube && rm -f pkg/kube/external-boot-image.tar pkg/kube/external-boot-image.tag pkg/external-boot-image/build.yml
 	$(QUIET): $@: Succeeded
 pkg/pillar: pkg/dnsmasq pkg/gpt-tools pkg/dom0-ztools eve-pillar
 	$(QUIET): $@: Succeeded
@@ -940,12 +962,37 @@ endif
 	rm -f $(dir $@)/disk.raw
 	$(QUIET): $(dir $@)/$(notdir $*).img.tar.gz: Succeeded
 
+ifdef LIVE_UPDATE
+# Target depends on rootfs tarbar directly, which gives possibility to
+# detect when qcow2 should be updated with a tarball and when it should
+# be recreated from scratch.
+%.qcow2: %.raw $(ROOTFS_TAR) | $(DIST)
+#	Detect if the first %.raw ($<) prerequisite is in the "$?" list,
+#	which means qcow has to be fully recreated. If not - just update
+#	with the existing tar.
+	$(eval RECREATE := $(if $(filter $<,$?),1,0))
+#	Convert raw to qcow or update rootfs with all files from tar:
+#	guestfish one line magic.
+	$(QUIET)if [ "$(RECREATE)" = "1" ]; then \
+		echo "Recreate $@:"; \
+		echo "	qemu-img convert ..."; \
+		qemu-img convert -c -f raw -O qcow2 $< $@; \
+		echo "	qemu-img resize ..."; \
+		qemu-img resize $@ ${MEDIA_SIZE}M; \
+	else \
+		echo "Update $@ with generated tarball:"; \
+		echo "	guestfish ..."; \
+		guestfish -a $@ run : mount /dev/sda2 / : tar-in $(ROOTFS_TAR) /; \
+	fi
+	$(QUIET): $@: Succeeded
+else
 %.qcow2: %.raw | $(DIST)
 	qemu-img convert -c -f raw -O qcow2 $< $@
 	qemu-img resize $@ ${MEDIA_SIZE}M
 	$(QUIET): $@: Succeeded
+endif
 
-%.yml: %.yml.in build-tools $(RESCAN_DEPS)
+%.yml: %.yml.in $(RESCAN_DEPS) | build-tools
 	$(QUIET)$(PARSE_PKGS) $< > $@
 	$(QUIET): $@: Succeeded
 
@@ -980,7 +1027,7 @@ eve-%: pkg/%/Dockerfile build-tools $(RESCAN_DEPS)
 images/out:
 	mkdir -p $@
 
-images/out/rootfs-%.yml.in: images/rootfs.yml.in images/out FORCE
+images/out/rootfs-%.yml.in: images/rootfs.yml.in $(RESCAN_DEPS) | images/out
 	$(QUIET)tools/compose-image-yml.sh -b $< -v "$(ROOTFS_VERSION)-$*-$(ZARCH)" -o $@ -h $(HV) $(patsubst %,images/modifiers/%.yq,$(subst -, ,$*))
 
 test-images-patches: $(patsubst images/modifiers/%.yq,images/out/rootfs-%.yml.in,$(wildcard images/modifiers/*.yq))
@@ -1038,19 +1085,22 @@ help:
 	@echo "   bump-eve-api   bump eve-api in all subprojects"
 	@echo
 	@echo "Commonly used build targets:"
-	@echo "   build-tools      builds linuxkit utilities and installs under build-tools/bin"
-	@echo "   config           builds a bundle with initial EVE configs"
-	@echo "   pkgs             builds all EVE packages"
-	@echo "   pkg/XXX          builds XXX EVE package"
-	@echo "   rootfs           builds default EVE rootfs image (upload it to the cloud as BaseImage)"
-	@echo "   live             builds a full disk image of EVE which can be function as a virtual device"
-	@echo "   live-XXX         builds a particular kind of EVE live image (raw, qcow2, gcp, vdi, parallels)"
-	@echo "   installer-raw    builds raw disk installer image (to be installed on bootable media)"
-	@echo "   installer-iso    builds an ISO installers image (to be installed on bootable media)"
-	@echo "   installer-net    builds a tarball of artifacts to be used for PXE booting"
-	@echo "   verification-raw builds raw disk verification image (to be installed on bootable media)"
-	@echo "   verification-net builds a tarball of artifacts to be used for PXE verification"
-	@echo "   verification-iso builds an ISO verification image (to be installed on bootable media)"
+	@echo "   build-tools          builds linuxkit utilities and installs under build-tools/bin"
+	@echo "   config               builds a bundle with initial EVE configs"
+	@echo "   pkgs                 builds all EVE packages"
+	@echo "   pkg/XXX              builds XXX EVE package"
+	@echo "   rootfs               builds default EVE rootfs image (upload it to the cloud as BaseImage)"
+	@echo "   live                 builds a full disk image of EVE which can be function as a virtual device"
+	@echo "   LIVE_UPDATE=1 live   updates existing qcow2 disk image of EVE with RW rootfs (ext4) by only"
+	@echo "                        copying generated rootfs tarball. This significantly reduced overall build"
+	@echo "                        time of the disk image. Used by developers only!"
+	@echo "   live-XXX             builds a particular kind of EVE live image (raw, qcow2, gcp, vdi, parallels)"
+	@echo "   installer-raw        builds raw disk installer image (to be installed on bootable media)"
+	@echo "   installer-iso        builds an ISO installers image (to be installed on bootable media)"
+	@echo "   installer-net        builds a tarball of artifacts to be used for PXE booting"
+	@echo "   verification-raw     builds raw disk verification image (to be installed on bootable media)"
+	@echo "   verification-net     builds a tarball of artifacts to be used for PXE verification"
+	@echo "   verification-iso     builds an ISO verification image (to be installed on bootable media)"
 	@echo
 	@echo "Commonly used run targets (note they don't automatically rebuild images they run):"
 	@echo "   run-compose          runs all EVE microservices via docker-compose deployment"

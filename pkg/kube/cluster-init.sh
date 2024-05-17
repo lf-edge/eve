@@ -3,17 +3,20 @@
 # Copyright (c) 2023 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-K3S_VERSION=v1.26.3+k3s1
-KUBEVIRT_VERSION=v0.59.0
+K3S_VERSION=v1.28.5+k3s1
+KUBEVIRT_VERSION=v1.1.0
 LONGHORN_VERSION=v1.6.0
 CDI_VERSION=v1.57.0
 NODE_IP=""
 MAX_K3S_RESTARTS=10
 RESTART_COUNT=0
-
-INSTALL_LOG=/var/lib/install.log
-CTRD_LOG=/var/lib/containerd-user.log
+K3S_LOG_DIR="/persist/newlog/kube"
+INSTALL_LOG="${K3S_LOG_DIR}/k3s-install.log"
+CTRD_LOG="${K3S_LOG_DIR}/containerd-user.log"
 LOG_SIZE=$((5*1024*1024))
+HOSTNAME=""
+VMICONFIG_FILENAME="/run/zedkube/vmiVNC.run"
+VNC_RUNNING=false
 
 logmsg() {
         local MSG
@@ -27,6 +30,33 @@ setup_cgroup () {
         echo "cgroup /sys/fs/cgroup cgroup defaults 0 0" >> /etc/fstab
 }
 
+check_log_file_size() {
+        currentSize=$(wc -c <"$K3S_LOG_DIR/$1")
+        if [ "$currentSize" -gt "$LOG_SIZE" ]; then
+                if [ -f "$K3S_LOG_DIR/$1.2" ]; then
+                        cp "$K3S_LOG_DIR/$1.2" "$K3S_LOG_DIR/$1.3"
+                fi
+                if [ -f "$K3S_LOG_DIR/$1.1" ]; then
+                        cp "$K3S_LOG_DIR/$1.1" "$K3S_LOG_DIR/$1.2"
+                fi
+                cp "$K3S_LOG_DIR/$1" "$K3S_LOG_DIR/$1.1"
+                truncate -s 0 "$K3S_LOG_DIR/$1"
+                logmsg "k3s logfile size $currentSize rotate"
+        fi
+}
+
+save_crash_log() {
+        if [ "$RESTART_COUNT" = "1" ]; then
+                return
+        fi
+        fileBaseName=$1
+        # This pattern will alias with older crashes, but also a simple way to contain log bloat
+        crashLogBaseName="${fileBaseName}.restart.${RESTART_COUNT}.gz"
+        if [ -e "${K3S_LOG_DIR}/${crashLogBaseName}" ]; then
+                rm "${K3S_LOG_DIR}/${crashLogBaseName}"
+        fi
+        gzip -k -9 "${K3S_LOG_DIR}/${fileBaseName}" -c > "${K3S_LOG_DIR}/${crashLogBaseName}"
+}
 
 check_network_connection () {
         while true; do
@@ -70,6 +100,31 @@ get_default_intf_IP_prefix() {
         ip_prefix="$NODE_IP/32"
         # Fill in the outbound external Interface IP prefix in multus config
         awk -v new_ip="$ip_prefix" '{gsub("IPAddressReplaceMe", new_ip)}1' /etc/multus-daemonset.yaml > /tmp/multus-daemonset.yaml
+}
+
+# kubernetes's name must be lower case and '-' instead of '_'
+convert_to_k8s_compatible() {
+        echo "$1" | tr '[:upper:]_' '[:lower:]-'
+}
+
+wait_for_device_name() {
+        logmsg "Waiting for DeviceName from controller..."
+        EdgeNodeInfoPath="/persist/status/zedagent/EdgeNodeInfo/global.json"
+        while [ ! -f $EdgeNodeInfoPath ]; do
+                sleep 5
+        done
+        dName=$(jq -r '.DeviceName' $EdgeNodeInfoPath)
+        if [ -n "$dName" ]; then
+                HOSTNAME=$(convert_to_k8s_compatible "$dName")
+        fi
+
+        # we should have the uuid since we got the device name
+        DEVUUID=$(/bin/hostname)
+
+        if ! grep -q node-name /etc/rancher/k3s/config.yaml; then
+                echo "node-name: $HOSTNAME" >> /etc/rancher/k3s/config.yaml
+        fi
+        logmsg "Hostname: $HOSTNAME"
 }
 
 apply_multus_cni() {
@@ -126,14 +181,43 @@ setup_prereqs () {
         modprobe iscsi_tcp
         #Needed for iscsi tools
         mkdir -p /run/lock
+        mkdir -p "$K3S_LOG_DIR"
         /usr/sbin/iscsid start
         mount --make-rshared /
         setup_cgroup
         #Check network and default routes are up
         wait_for_default_route
         check_network_connection
+        wait_for_device_name
+        chmod o+rw /dev/null
         wait_for_vault
         mount_etcd_vol
+}
+
+config_cluster_roles() {
+        # generate user debugging-user certificates
+        # 10 year expiration for now
+        if ! /usr/bin/cert-gen -l 315360000 --ca-cert /var/lib/rancher/k3s/server/tls/client-ca.crt \
+                --ca-key /var/lib/rancher/k3s/server/tls/client-ca.key \
+                -o k3s-debuguser --output-dir /tmp --cert-cn debugging-user --cert-o rbac; then
+                logmsg "Failed to generate debuguser cert"
+                return 1
+        fi
+        user_key_path=$(ls -c /tmp/k3s-debuguser*.key.pem)
+        user_crt_path=$(ls -c /tmp/k3s-debuguser*.cert.pem)
+        user_key_base64=$(base64 -w0 < "$user_key_path")
+        user_crt_base64=$(base64 -w0 < "$user_crt_path")
+
+        # generate kubeConfigure user for debugging-user
+        user_yaml_path=/var/lib/rancher/k3s/user.yaml
+        cp /etc/rancher/k3s/k3s.yaml "$user_yaml_path"
+        sed -i "s|client-certificate-data:.*|client-certificate-data: $user_crt_base64|g" "$user_yaml_path"
+        sed -i "s|client-key-data:.*|client-key-data: $user_key_base64|g" "$user_yaml_path"
+        cp "$user_yaml_path" /run/.kube/k3s/user.yaml
+
+        # apply kubernetes and kubevirt roles and binding to debugging-user
+        kubectl apply -f /etc/debuguser-role-binding.yaml
+        touch /var/lib/debuguser-initialized
 }
 
 apply_longhorn_disk_config() {
@@ -164,6 +248,7 @@ check_start_k3s() {
       if [ $RESTART_COUNT -lt $MAX_K3S_RESTARTS ]; then
           ## Must be after reboot, or from k3s restart
           RESTART_COUNT=$((RESTART_COUNT+1))
+          save_crash_log "k3s.log"
           ln -s /var/lib/k3s/bin/* /usr/bin
           logmsg "Starting k3s server, restart count: $RESTART_COUNT"
           # for now, always copy to get the latest
@@ -178,6 +263,7 @@ check_start_k3s() {
             sleep 5
           done
           ln -s /etc/rancher/k3s/k3s.yaml ~/.kube/config
+          mkdir -p /run/.kube/k3s
           cp /etc/rancher/k3s/k3s.yaml /run/.kube/k3s/k3s.yaml
           return 1
       fi
@@ -208,7 +294,12 @@ check_start_containerd() {
                 # This is very similar to what we do on kvm based eve to start container as a VM.
                 logmsg "Trying to install new external-boot-image"
                 # This import happens once per reboot
-                if ctr -a /run/containerd-user/containerd.sock image import /etc/external-boot-image.tar docker.io/lfedge/eve-external-boot-image:latest; then
+                if ctr -a /run/containerd-user/containerd.sock image import /etc/external-boot-image.tar; then
+                        eve_external_boot_img_tag=$(cat /run/eve-release)
+                        eve_external_boot_img=docker.io/lfedge/eve-external-boot-image:"$eve_external_boot_img_tag"
+                        import_tag=$(cat /etc/external-boot-image.tag)
+                        ctr -a /run/containerd-user/containerd.sock image tag "docker.io/${import_tag}" "$eve_external_boot_img"
+
                         logmsg "Successfully installed external-boot-image"
                         rm -f /etc/external-boot-image.tar
                 fi
@@ -233,6 +324,22 @@ trigger_k3s_selfextraction() {
         /usr/bin/k3s check-config >> $INSTALL_LOG 2>&1
 }
 
+# wait for debugging flag in /persist/k3s/wait_{flagname} if exist
+wait_for_item() {
+        filename="/persist/k3s/wait_$1"
+        processname="k3s server"
+        while [ -e "$filename" ]; do
+                k3sproc=""
+                if pgrep -x "$processname" > /dev/null; then
+                        k3sproc="k3s server is running"
+                else
+                        k3sproc="k3s server is NOT running"
+                fi
+                logmsg "Found $filename file. $k3sproc, Waiting for 60 seconds..."
+                sleep 60
+        done
+}
+
 # Return success if all pods are Running/Succeeded and Ready
 # Used in install time to control api server load
 # Return unix style 0 for success.  (Not 0 for false)
@@ -251,11 +358,6 @@ are_all_pods_ready() {
         return 0
 }
 
-#Make sure all prereqs are set after /var/lib is mounted to get logging info
-setup_prereqs
-
-VMICONFIG_FILENAME="/run/zedkube/vmiVNC.run"
-VNC_RUNNING=false
 # run virtctl vnc
 check_and_run_vnc() {
   pid=$(pgrep -f "/usr/bin/virtctl vnc" )
@@ -302,14 +404,18 @@ check_and_run_vnc() {
   fi
 }
 
-date >> $INSTALL_LOG
+setup_prereqs
+DATESTR=$(date)
+echo "========================== $DATESTR ==========================" >> $INSTALL_LOG
+echo "cluster-init.sh start for $HOSTNAME, uuid $DEVUUID" >> $INSTALL_LOG
+logmsg "Using ZFS persistent storage"
 
 #Forever loop every 15 secs
 while true;
 do
 if [ ! -f /var/lib/all_components_initialized ]; then
         if [ ! -f /var/lib/k3s_initialized ]; then
-                logmsg "Installing K3S version $K3S_VERSION on $(/bin/hostname)"
+                logmsg "Installing K3S version $K3S_VERSION on $HOSTNAME"
                 mkdir -p /var/lib/k3s/bin
                 /usr/bin/curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION=${K3S_VERSION} INSTALL_K3S_SKIP_ENABLE=true INSTALL_K3S_BIN_DIR=/var/lib/k3s/bin sh -
                 logmsg "Initializing K3S version $K3S_VERSION"
@@ -326,9 +432,14 @@ if [ ! -f /var/lib/all_components_initialized ]; then
                 continue
         fi
 
-        this_node_ready=$(kubectl get node "$(/bin/hostname)" -o json | jq '.status.conditions[] | select(.reason=="KubeletReady") | .status=="True"')
+        this_node_ready=$(kubectl get node "$HOSTNAME" -o json | jq '.status.conditions[] | select(.reason=="KubeletReady") | .status=="True"')
         if [ "$this_node_ready" != "true" ]; then
                 continue
+        fi
+        node_uuid_len=$(kubectl get nodes -l node-uuid="$DEVUUID" -o json | jq '.items | length')
+        if [ "$node_uuid_len" -eq 0 ]; then
+          logmsg "set node label with uuid $DEVUUID"
+          kubectl label node "$HOSTNAME" node-uuid="$DEVUUID"
         fi
 
         if ! are_all_pods_ready; then
@@ -348,12 +459,20 @@ if [ ! -f /var/lib/all_components_initialized ]; then
                 /opt/cni/bin/dhcp daemon &
         fi
 
+        # setup debug user credential, role and binding
+        if [ ! -f /var/lib/debuguser-initialized ]; then
+                config_cluster_roles
+                continue
+        fi
+
         if [ ! -f /var/lib/kubevirt_initialized ]; then
+                wait_for_item "kubevirt"
                 # This patched version will be removed once the following PR https://github.com/kubevirt/kubevirt/pull/9668 is merged
                 logmsg "Installing patched Kubevirt"
                 kubectl apply -f /etc/kubevirt-operator.yaml
                 kubectl apply -f https://github.com/kubevirt/kubevirt/releases/download/${KUBEVIRT_VERSION}/kubevirt-cr.yaml
 
+                wait_for_item "cdi"
                 #CDI (containerzed data importer) is need to convert qcow2/raw formats to Persistent Volumes and Data volumes
                 #Since CDI goes with kubevirt we install with that.
                 logmsg "Installing CDI version $CDI_VERSION"
@@ -367,8 +486,9 @@ if [ ! -f /var/lib/all_components_initialized ]; then
         fi
 
         if [ ! -f /var/lib/longhorn_initialized ]; then
+                wait_for_item "longhorn"
                 logmsg "Installing longhorn version ${LONGHORN_VERSION}"
-                apply_longhorn_disk_config "$(/bin/hostname)"
+                apply_longhorn_disk_config "$HOSTNAME"
                 lhCfgPath=/var/lib/lh-cfg-${LONGHORN_VERSION}.yaml
                 if [ ! -e $lhCfgPath ]; then
                         curl -k https://raw.githubusercontent.com/longhorn/longhorn/${LONGHORN_VERSION}/deploy/longhorn.yaml > "$lhCfgPath"
@@ -387,7 +507,7 @@ if [ ! -f /var/lib/all_components_initialized ]; then
 else
         check_start_containerd
         if ! check_start_k3s; then
-                while [ "$(kubectl get node "$(/bin/hostname)" -o json | jq '.status.conditions[] | select(.reason=="KubeletReady") | .status=="True"')" != "true" ];
+                while [ "$(kubectl get node "$HOSTNAME" -o json | jq '.status.conditions[] | select(.reason=="KubeletReady") | .status=="True"')" != "true" ];
                 do
                         sleep 5;
                 done
@@ -402,19 +522,24 @@ else
                         # launch CNI dhcp service
                         /opt/cni/bin/dhcp daemon &
                 fi
+                # setup debug user credential, role and binding
+                if [ ! -f /var/lib/debuguser-initialized ]; then
+                        config_cluster_roles
+                else
+                        cp /var/lib/rancher/k3s/user.yaml /run/.kube/k3s/user.yaml
+                fi
         else
                 if [ -e /var/lib/longhorn_initialized ]; then
                         check_overwrite_nsmounter
                 fi
         fi
 fi
-        currentSize=$(wc -c <"$CTRD_LOG")
-        if [ "$currentSize" -gt "$LOG_SIZE" ]; then
-                cp "$CTRD_LOG" "${CTRD_LOG}.1"
-                truncate -s 0 "$CTRD_LOG"
-        fi
-
-        # Check and run vnc
+        check_log_file_size "k3s.log"
+        check_log_file_size "multus.log"
+        check_log_file_size "k3s-install.log"
+        check_log_file_size "eve-bridge.log"
+        check_log_file_size "containerd-user.log"
         check_and_run_vnc
+        wait_for_item "wait"
         sleep 15
 done

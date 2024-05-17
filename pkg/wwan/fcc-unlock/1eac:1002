@@ -1,0 +1,18 @@
+#!/bin/sh
+
+# Copyright (c) 2024 Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Quectel EM160R-GL FCC Unlock Script
+
+ARCH="$(uname -m)"
+VENDOR="$(cat /sys/class/dmi/id/sys_vendor)"
+PRODUCT="$(cat /sys/class/dmi/id/product_family)"
+
+# Fallback to the open-source FCC unlock script when vendor-specific unlock tool
+# is not available or fails.
+# shellcheck disable=SC2015
+[ "$ARCH" = "x86_64" ] && [ "$VENDOR" = "LENOVO" ] && [ "$PRODUCT" = "ThinkEdge SE30" ] &&
+  /opt/lenovo/DPR_Fcc_unlock_service || /etc/ModemManager/fcc-unlock.d/1eac "$@"
+
+exit $?

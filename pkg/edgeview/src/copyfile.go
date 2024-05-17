@@ -36,6 +36,7 @@ const (
 	copyLogFiles
 	copyTarFiles
 	copyTechSupport
+	copyKubeConfig
 )
 
 var (

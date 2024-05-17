@@ -25,6 +25,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
+	"github.com/lf-edge/eve/pkg/pillar/utils/persist"
 	"github.com/lf-edge/eve/pkg/pillar/vault"
 	uuid "github.com/satori/go.uuid"
 	"github.com/shirou/gopsutil/host"
@@ -387,7 +388,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext, dest destinationBitset) {
 	}
 
 	// Reporting all zpools in Strorage Info
-	if vault.ReadPersistType() == types.PersistZFS {
+	if persist.ReadPersistType() == types.PersistZFS {
 		zfsPoolStatusMap := ctx.subZFSPoolStatus.GetAll()
 		for _, el := range zfsPoolStatusMap {
 			zfsPoolStatus := el.(types.ZFSPoolStatus)

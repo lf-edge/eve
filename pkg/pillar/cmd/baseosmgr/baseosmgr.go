@@ -15,10 +15,9 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
-	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/utils"
+	"github.com/lf-edge/eve/pkg/pillar/utils/wait"
 	"github.com/lf-edge/eve/pkg/pillar/worker"
 	"github.com/sirupsen/logrus"
 )
@@ -35,9 +34,6 @@ const (
 	// last value of baseOsMgrContext.configUpdateRetry for persistence
 	configRetryUpdateCounterFile = types.PersistStatusDir + "/config_retry_update_counter"
 )
-
-// Set from Makefile
-var Version = "No version specified"
 
 type baseOsMgrContext struct {
 	agentbase.AgentBase
@@ -60,19 +56,16 @@ type baseOsMgrContext struct {
 	configUpdateRetry    uint32    // UpdateRetryCounter from config; to avoid loop after reboot with failed testing
 
 	worker worker.Worker // For background work
-	// cli options
-	versionPtr *bool
 }
 
 // AddAgentSpecificCLIFlags adds CLI options
 func (ctxPtr *baseOsMgrContext) AddAgentSpecificCLIFlags(flagSet *flag.FlagSet) {
-	ctxPtr.versionPtr = flagSet.Bool("v", false, "Version")
 }
 
 var logger *logrus.Logger
 var log *base.LogObject
 
-func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string) int {
+func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string, baseDir string) int {
 	logger = loggerArg
 	log = logArg
 
@@ -81,22 +74,16 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		globalConfig: types.DefaultConfigItemValueMap(),
 	}
 	agentbase.Init(&ctx, logger, log, agentName,
+		agentbase.WithPidFile(),
+		agentbase.WithBaseDir(baseDir),
 		agentbase.WithArguments(arguments))
-
-	if *ctx.versionPtr {
-		fmt.Printf("%s: %s\n", agentName, Version)
-		return 0
-	}
-	if err := pidfile.CheckAndCreatePidfile(log, agentName); err != nil {
-		log.Fatal(err)
-	}
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
 	ps.StillRunning(agentName, warningTime, errorTime)
 
 	// Wait until we have been onboarded aka know our own UUID, but we don't use the UUID
-	err := utils.WaitForOnboarded(ps, log, agentName, warningTime, errorTime)
+	err := wait.WaitForOnboarded(ps, log, agentName, warningTime, errorTime)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -138,12 +125,12 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 	log.Functionf("processed GlobalConfig")
 
-	if err := utils.WaitForVault(ps, log, agentName, warningTime, errorTime); err != nil {
+	if err := wait.WaitForVault(ps, log, agentName, warningTime, errorTime); err != nil {
 		log.Fatal(err)
 	}
 	log.Functionf("processed Vault Status")
 
-	if err := utils.WaitForUserContainerd(ps, log, agentName, warningTime, errorTime); err != nil {
+	if err := wait.WaitForUserContainerd(ps, log, agentName, warningTime, errorTime); err != nil {
 		log.Fatal(err)
 	}
 	log.Functionf("user containerd ready")

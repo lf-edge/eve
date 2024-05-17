@@ -82,7 +82,7 @@ func (ctx *commandAgentState) AddAgentSpecificCLIFlags(flagSet *flag.FlagSet) {
 }
 
 // Run is the main aka only entrypoint
-func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string) int {
+func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string, baseDir string) int { //nolint:gocyclo
 	logger = loggerArg
 	log = logArg
 	// Report nano timestamps
@@ -94,7 +94,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	// Context to pass around
 	ctx := commandAgentState{}
 	agentbase.Init(&ctx, logger, log, agentName,
-		agentbase.WithArguments(arguments))
+		agentbase.WithArguments(arguments), agentbase.WithBaseDir(baseDir))
 
 	timeLimit = *ctx.timeLimitPtr
 	combinedOutput = *ctx.combinedPtr

@@ -14,7 +14,7 @@ import (
 	"github.com/containerd/containerd/mount"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/vault"
+	"github.com/lf-edge/eve/pkg/pillar/utils/persist"
 	"github.com/lf-edge/eve/pkg/pillar/zfs"
 	"github.com/shirou/gopsutil/disk"
 )
@@ -156,7 +156,7 @@ func FindLargestDisk(log *base.LogObject) string {
 // DirUsage calculates usage of directory
 // it checks if provided directory is zfs mountpoint and take usage from zfs in that case
 func DirUsage(log *base.LogObject, dir string) (uint64, error) {
-	if vault.ReadPersistType() != types.PersistZFS || !strings.HasPrefix(dir, types.PersistDir) {
+	if persist.ReadPersistType() != types.PersistZFS || !strings.HasPrefix(dir, types.PersistDir) {
 		return SizeFromDir(log, dir)
 	}
 	mi, err := mount.Lookup(dir)
@@ -198,7 +198,7 @@ func Dom0DiskReservedSize(log *base.LogObject, globalConfig *types.ConfigItemVal
 // usage of zvols and snapshots
 // Note that we subtract usage of persist/reserved dataset (about 20% of persist capacity)
 func PersistUsageStat(log *base.LogObject) (*types.UsageStat, error) {
-	if vault.ReadPersistType() != types.PersistZFS {
+	if persist.ReadPersistType() != types.PersistZFS {
 		deviceDiskUsage, err := disk.Usage(types.PersistDir)
 		if err != nil {
 			return nil, err

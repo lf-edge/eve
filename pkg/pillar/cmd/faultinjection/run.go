@@ -53,12 +53,13 @@ var logger *logrus.Logger
 var log *base.LogObject
 
 // Run is the main aka only entrypoint
-func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string) int {
+func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string, baseDir string) int {
 	logger = loggerArg
 	log = logArg
 	ctx := faultContext{}
 	agentbase.Init(&ctx, logger, log, agentName,
 		agentbase.WithPidFile(),
+		agentbase.WithBaseDir(baseDir),
 		agentbase.WithWatchdog(ps, warningTime, errorTime),
 		agentbase.WithArguments(arguments))
 

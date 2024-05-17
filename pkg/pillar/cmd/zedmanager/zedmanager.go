@@ -11,7 +11,6 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"github.com/lf-edge/eve/pkg/pillar/hypervisor"
 	"os"
 	"sort"
 	"time"
@@ -21,12 +20,12 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
+	"github.com/lf-edge/eve/pkg/pillar/hypervisor"
 	"github.com/lf-edge/eve/pkg/pillar/objtonum"
-	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/utils"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
+	"github.com/lf-edge/eve/pkg/pillar/utils/wait"
 	"github.com/sirupsen/logrus"
 )
 
@@ -36,9 +35,6 @@ const (
 	errorTime   = 3 * time.Minute
 	warningTime = 40 * time.Second
 )
-
-// Version can be set from Makefile
-var Version = "No version specified"
 
 // State used by handlers
 type zedmanagerContext struct {
@@ -70,7 +66,6 @@ type zedmanagerContext struct {
 	// The time from which the configured applications delays should be counted
 	delayBaseTime time.Time
 	// cli options
-	versionPtr *bool
 	// hypervisorPtr is the name of the hypervisor to use
 	hypervisorPtr      *string
 	assignableAdapters *types.AssignableAdapters
@@ -80,7 +75,6 @@ type zedmanagerContext struct {
 
 // AddAgentSpecificCLIFlags adds CLI options
 func (ctx *zedmanagerContext) AddAgentSpecificCLIFlags(flagSet *flag.FlagSet) {
-	ctx.versionPtr = flagSet.Bool("v", false, "Version")
 	allHypervisors, enabledHypervisors := hypervisor.GetAvailableHypervisors()
 	ctx.hypervisorPtr = flagSet.String("h", enabledHypervisors[0], fmt.Sprintf("Current hypervisor %+q", allHypervisors))
 }
@@ -88,7 +82,7 @@ func (ctx *zedmanagerContext) AddAgentSpecificCLIFlags(flagSet *flag.FlagSet) {
 var logger *logrus.Logger
 var log *base.LogObject
 
-func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string) int {
+func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string, baseDir string) int {
 	logger = loggerArg
 	log = logArg
 
@@ -98,24 +92,18 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		hvTypeKube:   base.IsHVTypeKube(),
 	}
 	agentbase.Init(&ctx, logger, log, agentName,
+		agentbase.WithPidFile(),
+		agentbase.WithBaseDir(baseDir),
 		agentbase.WithArguments(arguments))
 
 	ctx.assignableAdapters = &types.AssignableAdapters{}
-
-	if *ctx.versionPtr {
-		fmt.Printf("%s: %s\n", agentName, Version)
-		return 0
-	}
-	if err := pidfile.CheckAndCreatePidfile(log, agentName); err != nil {
-		log.Fatal(err)
-	}
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
 	ps.StillRunning(agentName, warningTime, errorTime)
 
 	// Wait until we have been onboarded aka know our own UUID, but we don't use the UUID
-	err := utils.WaitForOnboarded(ps, log, agentName, warningTime, errorTime)
+	err := wait.WaitForOnboarded(ps, log, agentName, warningTime, errorTime)
 	if err != nil {
 		log.Fatal(err)
 	}
