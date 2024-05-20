@@ -1058,6 +1058,7 @@ func (n *nim) includeLastResortPort(ifAttrs netmonitor.IfAttrs) bool {
 		strings.HasPrefix(ifName, "nbu") ||
 		strings.HasPrefix(ifName, "nbo") ||
 		strings.HasPrefix(ifName, "wlan") ||
+		strings.HasPrefix(ifName, "wwan") ||
 		strings.HasPrefix(ifName, "keth")
 	if exclude {
 		return false
