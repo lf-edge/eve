@@ -155,10 +155,10 @@ func (lc *LinuxCollector) convertConntrackToFlow(
 	if timeOut > conntrackFlowExtraTimeout {
 		return ipFlow, true
 	}
-	appNum, aclID, userAce, drop := iptables.ParseConnmark(entry.Mark)
+	appNum, aclID, drop := iptables.ParseConnmark(entry.Mark)
 	// Only handle App related flows applied against user defined ACL rules or default
 	// drop rules.
-	if int(appNum) == 0 || (!userAce && !drop) {
+	if int(appNum) == 0 {
 		return ipFlow, true
 	}
 	vifs := lc.getVIFsByAppNum(int(appNum))
