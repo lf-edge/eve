@@ -25,11 +25,12 @@ const (
 // Describes protocol that is allowed implicitly because it provides some essential
 // function for applications.
 type essentialProto struct {
-	label         string
-	ingressMatch  []string
-	egressMatch   []string
-	mark          uint32
-	markChainName string
+	label          string
+	ingressMatch   []string
+	egressMatch    []string
+	mark           uint32
+	markChainName  string
+	canOrigOutside bool // true if communication can be initiated from outside the edge node
 }
 
 // User-configured ACL rule.
@@ -162,11 +163,12 @@ func getEssentialIPv6Protos(niType types.NetworkInstanceType,
 	switch niType {
 	case types.NetworkInstanceTypeSwitch:
 		protos = append(protos, essentialProto{
-			label:         "ICMPv6",
-			egressMatch:   []string{"-p", "ipv6-icmp"},
-			ingressMatch:  []string{"-p", "ipv6-icmp"},
-			mark:          iptables.ControlProtocolMarkingIDMap["app_icmpv6"],
-			markChainName: "icmpv6",
+			label:          "ICMPv6",
+			egressMatch:    []string{"-p", "ipv6-icmp"},
+			ingressMatch:   []string{"-p", "ipv6-icmp"},
+			mark:           iptables.ControlProtocolMarkingIDMap["app_icmpv6"],
+			markChainName:  "icmpv6",
+			canOrigOutside: true,
 		})
 		protos = append(protos, essentialProto{
 			label:         "DHCPv6",
@@ -174,6 +176,8 @@ func getEssentialIPv6Protos(niType types.NetworkInstanceType,
 			ingressMatch:  []string{"-p", "udp", "--sport", "dhcpv6-server"},
 			mark:          iptables.ControlProtocolMarkingIDMap["app_dhcp"],
 			markChainName: "dhcpv6",
+			// RFC 6644 (DHCPv6 Reconfigure) allows the server to initiate communication.
+			canOrigOutside: true,
 		})
 		protos = append(protos, essentialProto{
 			label:         "DNS over UDP",
@@ -956,7 +960,7 @@ func (r *LinuxNIReconciler) getIntendedAppConnMangleIptables(vif vifInfo,
 	}
 	// 1.1. Mark essential protocols allowed implicitly.
 	for _, proto := range essentialProtos {
-		if proto.ingressMatch == nil {
+		if proto.ingressMatch == nil || !proto.canOrigOutside {
 			continue
 		}
 		markChain := markChainPrefix + proto.markChainName
