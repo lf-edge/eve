@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile-upstream:1.5.0-rc2-labs
-FROM lfedge/eve-alpine:2def1d097959bc9c8bf5d041a20b5e8ce060d4b7 as build
+FROM lfedge/eve-alpine:1f7685f95a475c6bbe682f0b976f12180b6c8726 as build
 
 ENV BUILD_PKGS tar make binutils zstd rdfind coreutils
 RUN eve-alpine-deploy.sh
@@ -56,7 +56,7 @@ ADD ${RPI_BT_FIRMWARE_URL}/${RPI_BT_FIRMWARE_VERSION}/broadcom/BCM4345C5.hcd .
 
 # generate initrd for Intel's and AMD's microcode
 # it makes sense only for x86_64 platform
-FROM --platform=${TARGETPLATFORM} lfedge/eve-alpine:57d6a8a768256bece2f03ae4fc0eedcb5bca41a6 as ucode-build-common
+FROM --platform=${TARGETPLATFORM} lfedge/eve-alpine:1f7685f95a475c6bbe682f0b976f12180b6c8726 as ucode-build-common
 RUN mkdir -p /boot /tmp/ucode/intel /tmp/ucode/amd /usr/share/licenses/ucode
 
 FROM ucode-build-common as ucode-build-amd64
@@ -97,7 +97,7 @@ FROM ucode-build-common as ucode-build-arm64
 FROM ucode-build-common as ucode-build-riscv64
 FROM ucode-build-${TARGETARCH} as ucode-build
 
-FROM lfedge/eve-alpine:9fb9b9cbf7d90066a70e4704d04a6fe248ff52bb as compactor
+FROM lfedge/eve-alpine:1f7685f95a475c6bbe682f0b976f12180b6c8726 as compactor
 ENTRYPOINT []
 WORKDIR /
 COPY --from=build /lib/firmware/regulatory* /lib/firmware/
