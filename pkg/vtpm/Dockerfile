@@ -11,7 +11,7 @@
 #    and the server
 
 #Build TPM2-TSS and TPM2-TOOLS
-FROM lfedge/eve-alpine:c114cf1d3ea51534f061f9aa949beb6ac5c12fb3 as build
+FROM lfedge/eve-alpine:1f7685f95a475c6bbe682f0b976f12180b6c8726 as build
 ENV BUILD_PKGS linux-headers git gcc g++ autoconf automake libtool doxygen make \
                openssl-dev protobuf-dev gnupg curl-dev patch json-c json-c-dev \
                util-linux-dev libcurl curl-dev
