@@ -545,7 +545,7 @@ func (c *Client) getModemStatus(modemObj dbus.BusObject) (
 		simCard := types.WwanSimCard{
 			SlotNumber:    slot,
 			SlotActivated: isPrimary,
-			Type:          types.SimTypePhysical,
+			Type:          types.SimTypeUnspecified,
 			State:         SIMStateAbsent,
 		}
 		if simPath.IsValid() && len(simPath) > 1 {
@@ -558,6 +558,12 @@ func (c *Client) getModemStatus(modemObj dbus.BusObject) (
 			var simType uint32
 			_ = getDBusProperty(c, simObj, SIMPropertyType, &simType)
 			switch simType {
+			case SIMTypeUnknown:
+				// If the SIM type is not recognized, consider SIM card as present
+				// if ICCID is not empty.
+				if simCard.ICCID != "" {
+					simCard.State = SIMStatePresent
+				}
 			case SIMTypeESIM:
 				// eSIM is not supported by EVE (or even by ModemManager) for connection
 				// establishment, but we still want to at least publish correct status
@@ -599,6 +605,7 @@ func (c *Client) getModemStatus(modemObj dbus.BusObject) (
 				//             Num apps: 0
 				//             Is eUICC: no
 				// TODO: should we call mbimcli/qmicli ?
+				simCard.Type = types.SimTypePhysical
 				simCard.State = SIMStatePresent
 			}
 			if !simCard.SlotActivated {

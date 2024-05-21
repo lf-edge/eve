@@ -65,6 +65,7 @@ const (
 // SIM type
 // https://www.freedesktop.org/software/ModemManager/doc/latest/ModemManager/ModemManager-Flags-and-Enumerations.html#MMSimType
 const (
+	SIMTypeUnknown  = 0
 	SIMTypePhysical = 1
 	SIMTypeESIM     = 2
 )
