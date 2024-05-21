@@ -1357,9 +1357,12 @@ func (c *Client) reconfigureEpsBearerIfNotRegistered(modemObj dbus.BusObject,
 	}
 	var currentSettings map[string]dbus.Variant
 	_ = getDBusProperty(c, modemObj, Modem3GPPPropertyInitialEpsBearer, &currentSettings)
+	maskedPasswd := interface{}("***")
+	maskedVariantPasswd := dbus.MakeVariant(maskedPasswd)
 	c.log.Warnf("Modem %s is failing to register, "+
 		"trying to apply settings %+v for the initial EPS bearer (previously: %+v)",
-		modemObj.Path(), newSettings, currentSettings)
+		modemObj.Path(), maskPassword(newSettings, maskedPasswd),
+		maskPassword(currentSettings, maskedVariantPasswd))
 	err = c.callDBusMethod(modemObj, Modem3GPPMethodSetInitialEpsBearer, nil, newSettings)
 	if err != nil {
 		err = fmt.Errorf(
@@ -1370,6 +1373,19 @@ func (c *Client) reconfigureEpsBearerIfNotRegistered(modemObj dbus.BusObject,
 	}
 	return true, c.waitForModemState(
 		modemObj, ModemStateRegistered, changeInitEPSBearerTimeout)
+}
+
+// maskPassword creates a copy of the original map with the "password" key's value masked
+func maskPassword[Type any](data map[string]Type, maskWith Type) map[string]Type {
+	maskedData := make(map[string]Type)
+	for key, value := range data {
+		if key == "password" {
+			maskedData[key] = maskWith
+		} else {
+			maskedData[key] = value
+		}
+	}
+	return maskedData
 }
 
 func (c *Client) setPreferredRATs(modemObj dbus.BusObject,
