@@ -242,6 +242,18 @@ check_overwrite_nsmounter() {
         ### REMOVE ME-
 }
 
+# A spot to do persistent configuration of longhorn
+# These are applied once per cluster
+longhorn_post_install_config() {
+        # Wait for longhorn objects to be available before patching them
+        lhSettingsAvailable=$(kubectl -n longhorn-system get settings -o json | jq '.items | length>0')
+        if [ "$lhSettingsAvailable" != "true" ]; then
+                return
+        fi
+        kubectl  -n longhorn-system patch settings.longhorn.io/upgrade-checker -p '[{"op":"replace","path":"/value","value":"false"}]' --type json
+        touch /var/lib/longhorn_configured
+}
+
 check_start_k3s() {
   pgrep -f "k3s server" > /dev/null 2>&1
   if [ $? -eq 1 ]; then
@@ -531,6 +543,9 @@ else
         else
                 if [ -e /var/lib/longhorn_initialized ]; then
                         check_overwrite_nsmounter
+                fi
+                if [ ! -e /var/lib/longhorn_configured ]; then
+                        longhorn_post_install_config
                 fi
         fi
 fi
