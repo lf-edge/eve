@@ -37,7 +37,6 @@ COPY multus-daemonset.yaml /etc
 COPY kubevirt-operator.yaml /etc
 COPY kubevirt-features.yaml /etc
 COPY external-boot-image.tar /etc/
-COPY external-boot-image.tag /etc/
 
 # Longhorn config
 COPY iscsid.conf /etc/iscsi/
