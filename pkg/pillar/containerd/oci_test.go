@@ -403,6 +403,7 @@ func TestOciSpec(t *testing.T) {
 	}
 
 	s := spec.Get()
+	assert.NotNil(t, s.Linux.Resources.Devices)
 	assert.Equal(t, int64(1234*1024), *s.Linux.Resources.Memory.Limit)
 	assert.Equal(t, float64(4), float64(*s.Linux.Resources.CPU.Quota)/float64(*s.Linux.Resources.CPU.Period))
 	assert.Equal(t, tmpdir+"/rootfs", s.Root.Path)
@@ -513,23 +514,21 @@ func TestCreateMountPointExecEnvFiles(t *testing.T) {
 		t.Errorf("createMountPointExecEnvFiles failed %v", err)
 	}
 
-	execpathStr := "\"/bin/sh\""
 	cmdlineFile := path.Join(rootDir, "cmdline")
 	cmdline, err := os.ReadFile(cmdlineFile)
 	if err != nil {
 		t.Errorf("createMountPointExecEnvFiles failed to create cmdline file %s %v", cmdlineFile, err)
 	}
-	if string(cmdline) != execpathStr {
+	if execpathStr := "\"/bin/sh\""; string(cmdline) != execpathStr {
 		t.Errorf("mismatched cmdline file content, actual '%s' expected '%s'", string(cmdline), execpathStr)
 	}
 
 	mountFile := path.Join(rootDir, "mountPoints")
-	mountExpected := ""
 	mounts, err := os.ReadFile(mountFile)
 	if err != nil {
 		t.Errorf("createMountPointExecEnvFiles failed to create mountPoints file %s %v", mountFile, err)
 	}
-	if string(mounts) != mountExpected {
+	if mountExpected := ""; string(mounts) != mountExpected {
 		t.Errorf("mismatched mountpoints file content, actual '%s' expected '%s'", string(mounts), mountExpected)
 	}
 
@@ -849,4 +848,44 @@ func deepCopy(in interface{}) interface{} {
 	val := reflect.ValueOf(output)
 	val = val.Elem()
 	return val.Interface()
+}
+
+func TestAllowAllDevicesInSpec(t *testing.T) {
+	t.Parallel()
+
+	// create a temp dir to hold resulting files
+	dir, _ := os.MkdirTemp("/tmp", "podfiles")
+	rootDir := path.Join(dir, "runx")
+	rootFsDir := path.Join(rootDir, "rootfs")
+	rsPath := path.Join(rootDir, ociRuntimeSpecFilename)
+	err := os.MkdirAll(rootFsDir, 0777)
+	if err != nil {
+		t.Errorf("failed to create temporary dir")
+	} else {
+		defer os.RemoveAll(dir)
+	}
+
+	// ...and a loader runtime spec
+	if err := os.WriteFile(rsPath, []byte(loaderRuntimeSpec), 0600); err != nil {
+		t.Errorf("failed to write to a runtime spec file %v", err)
+	}
+
+	client := &Client{}
+	spec, err := client.NewOciSpec("test", false)
+	if err != nil {
+		t.Errorf("failed to create new OCI spec %v", err)
+	}
+	if err := spec.UpdateFromVolume(rootDir); err != nil {
+		t.Errorf("failed to load OCI image spec %v", err)
+	}
+	spec.Get().Root.Path = rootFsDir
+	err = spec.AddLoader(rootDir)
+	if err != nil {
+		t.Errorf("AddLoader failed %v", err)
+	}
+
+	// Check that the devices are allowed
+	assert.NotNil(t, spec.Get().Linux)
+	assert.NotNil(t, spec.Get().Linux.Resources)
+	assert.Equal(t, []specs.LinuxDeviceCgroup{{Type: "a", Allow: true, Access: "rwm"}}, spec.Get().Linux.Resources.Devices)
 }
