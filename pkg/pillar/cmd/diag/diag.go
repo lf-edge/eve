@@ -891,6 +891,10 @@ func printOutput(ctx *diagContext, caller string) {
 			mgmtPorts++
 		}
 
+		var isValidStr string
+		if port.InvalidConfig {
+			isValidStr = " (invalid config)"
+		}
 		typeStr := "use: app-shared "
 		if isMgmt {
 			if priority == types.PortCostMin {
@@ -918,8 +922,8 @@ func printOutput(ctx *diagContext, caller string) {
 			ipCount++
 			noGeo := ipinfo.IPInfo{}
 			if dpcSuccess {
-				ctx.ph.Print("INFO: Port %s: %s%s%s%s\n",
-					ifname, macStr, linkStr, typeStr, ai.Addr)
+				ctx.ph.Print("INFO: Port %s%s: %s%s%s%s\n",
+					ifname, isValidStr, macStr, linkStr, typeStr, ai.Addr)
 			} else if ai.Geo == noGeo {
 				ctx.ph.Print("INFO: %s: IP address %s not geolocated\n",
 					ifname, ai.Addr)
@@ -929,8 +933,8 @@ func printOutput(ctx *diagContext, caller string) {
 			}
 		}
 		if ipCount == 0 {
-			ctx.ph.Print("INFO: Port %s: %s%s%sNo IP address\n",
-				ifname, macStr, linkStr, typeStr)
+			ctx.ph.Print("INFO: Port %s%s: %s%s%sNo IP address\n",
+				ifname, isValidStr, macStr, linkStr, typeStr)
 		}
 
 		// Skip details if we are connected to controller. Count
@@ -960,6 +964,13 @@ func printOutput(ctx *diagContext, caller string) {
 				ifname, port.NtpServer.String())
 		}
 		printProxy(ctx, port, ifname)
+		if port.HasError() {
+			if port.InvalidConfig {
+				ctx.ph.Print("ERROR: %s: invalid config: %s\n", ifname, port.LastError)
+			} else {
+				ctx.ph.Print("ERROR: %s: has error: %s\n", ifname, port.LastError)
+			}
+		}
 
 		if !isMgmt {
 			ctx.ph.Print("INFO: %s: not intended for EV controller; skipping those tests\n",

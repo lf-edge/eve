@@ -118,7 +118,12 @@ func (z *zedrouter) setSelectedUplink(uplinkLogicalLabel string,
 		// Wait for DPC update
 		return true, err
 	case 1:
-		// OK
+		if ports[0].InvalidConfig {
+			return false, fmt.Errorf("port %s has invalid config: %s", ports[0].Logicallabel,
+				ports[0].LastError)
+		}
+		// Selected port is OK
+		break
 	default:
 		err = fmt.Errorf("label of selected uplink matches multiple ports (%v)", ports)
 		return false, err
