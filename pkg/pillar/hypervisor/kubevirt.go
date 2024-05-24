@@ -35,6 +35,7 @@ import (
 	"k8s.io/client-go/rest"
 	metricsv "k8s.io/metrics/pkg/client/clientset/versioned"
 	v1 "kubevirt.io/api/core/v1"
+	"kubevirt.io/client-go/kubecli"
 )
 
 // KubevirtHypervisorName is a name of kubevirt hypervisor
@@ -217,7 +218,7 @@ func (ctx kubevirtContext) CreateVMIConfig(domainName string, config types.Domai
 		return err
 	}
 
-	kvClient, err := kubeapi.GetKubeRESTClient()
+	kvClient, err := kubecli.GetKubevirtClientFromRESTConfig(ctx.kubeConfig)
 
 	if err != nil {
 		logrus.Errorf("couldn't get the kubernetes client API config: %v", err)
@@ -300,7 +301,8 @@ func (ctx kubevirtContext) CreateVMIConfig(domainName string, config types.Domai
 				if err != nil {
 					return logError("Failed to fetch eve-release %v", err)
 				}
-				scratchImage := "docker.io/lfedge/eve-external-boot-image:" + string(eveRelease)
+				tag := strings.TrimRight(string(eveRelease), "\n")
+				scratchImage := "docker.io/lfedge/eve-external-boot-image:" + tag
 				kernelPath := "/kernel"
 				initrdPath := "/runx-initrd"
 
@@ -446,7 +448,7 @@ func (ctx kubevirtContext) Start(domainName string) error {
 	}
 
 	vmi := vmis.vmi
-	virtClient, err := kubeapi.GetKubevirtClientSet(kubeconfig)
+	virtClient, err := kubecli.GetKubevirtClientFromRESTConfig(kubeconfig)
 
 	if err != nil {
 		logrus.Errorf("couldn't get the kubernetes client API config: %v", err)
@@ -504,7 +506,7 @@ func (ctx kubevirtContext) Stop(domainName string, force bool) error {
 		err := StopPodContainer(kubeconfig, vmis.name)
 		return err
 	} else {
-		virtClient, err := kubeapi.GetKubevirtClientSet(kubeconfig)
+		virtClient, err := kubecli.GetKubevirtClientFromRESTConfig(kubeconfig)
 		if err != nil {
 			logrus.Errorf("couldn't get the kubernetes client API config: %v", err)
 			return err
@@ -541,7 +543,7 @@ func (ctx kubevirtContext) Delete(domainName string) (result error) {
 		err := StopPodContainer(kubeconfig, vmis.name)
 		return err
 	} else {
-		virtClient, err := kubeapi.GetKubevirtClientSet(kubeconfig)
+		virtClient, err := kubecli.GetKubevirtClientFromRESTConfig(kubeconfig)
 
 		if err != nil {
 			logrus.Errorf("couldn't get the kubernetes client API config: %v", err)
@@ -649,7 +651,13 @@ func convertToKubernetesFormat(b int) string {
 
 func getVMIStatus(vmiName string) (string, error) {
 
-	virtClient, err := kubeapi.GetKubevirtClientSet(nil)
+	kubeconfig, err := kubeapi.GetKubeConfig()
+	if err != nil {
+		return "", logError("couldn't get the Kube Config: %v", err)
+	}
+
+	virtClient, err := kubecli.GetKubevirtClientFromRESTConfig(kubeconfig)
+
 	if err != nil {
 		return "", logError("couldn't get the Kube client Config: %v", err)
 	}
@@ -1238,7 +1246,7 @@ func getConfig(ctx *kubevirtContext) error {
 // Register the host device with Kubevirt
 // Refer https://kubevirt.io/user-guide/virtual_machines/host-devices/#host-preparation-for-pci-passthrough
 // Refer https://kubevirt.io/user-guide/virtual_machines/host-devices/#usb-host-passthrough
-func registerWithKV(restClient *rest.RESTClient, vmi *v1.VirtualMachineInstance, pciAssignments []pciDevice) error {
+func registerWithKV(kvClient kubecli.KubevirtClient, vmi *v1.VirtualMachineInstance, pciAssignments []pciDevice) error {
 
 	logrus.Debugf("Entered registerWithKV  pcilen %d ", len(pciAssignments))
 	pcidevices := make([]v1.HostDevice, len(pciAssignments))
@@ -1246,10 +1254,9 @@ func registerWithKV(restClient *rest.RESTClient, vmi *v1.VirtualMachineInstance,
 	// Define the KubeVirt resource's name and namespace
 	kubeVirtName := "kubevirt"
 	kubeVirtNamespace := "kubevirt"
-	kv := kubeapi.KubeVirt(restClient, kubeVirtNamespace)
 
 	// Retrieve the KubeVirt resource
-	kubeVirt, err := kv.Get(kubeVirtName, &metav1.GetOptions{})
+	kubeVirt, err := kvClient.KubeVirt(kubeVirtNamespace).Get(kubeVirtName, &metav1.GetOptions{})
 	if err != nil {
 		return logError("can't fetch the PCI device info from kubevirt %v", err)
 	}
@@ -1287,7 +1294,7 @@ func registerWithKV(restClient *rest.RESTClient, vmi *v1.VirtualMachineInstance,
 			}
 			logrus.Infof("Registering PCI device %s as resource %s with kubevirt", pciVendorSelector, resname)
 			kubeVirt.Spec.Configuration.PermittedHostDevices.PciHostDevices = append(kubeVirt.Spec.Configuration.PermittedHostDevices.PciHostDevices, newpcidev)
-			_, err = kv.Update(kubeVirt)
+			_, err = kvClient.KubeVirt(kubeVirtNamespace).Update(kubeVirt)
 
 			if err != nil {
 				return logError("can't update the PCI device info from kubevirt %v", err)

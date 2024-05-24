@@ -18,12 +18,10 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/retry"
-
-	kubevirtapi "kubevirt.io/api/core/v1"
+	"kubevirt.io/client-go/kubecli"
 )
 
 const (
@@ -92,6 +90,9 @@ func GetNetClientSet() (*netclientset.Clientset, error) {
 	return nclientset, nil
 }
 
+/* NOTE: This code is commented out instead of deleting, just to keep a reference in case
+ * we decide to move back to using k8s API.
+ *
 // GetKubevirtClientSet : Get handle to kubernetes kubevirt clientset
 func GetKubevirtClientSet(kubeconfig *rest.Config) (KubevirtClientset, error) {
 
@@ -121,6 +122,7 @@ func GetKubevirtClientSet(kubeconfig *rest.Config) (KubevirtClientset, error) {
 
 	return &kubevirtClient{restClient: client, Clientset: coreClient}, nil
 }
+*/
 
 // WaitForKubernetes : Wait until kubernetes server is ready
 func WaitForKubernetes(agentName string, ps *pubsub.PubSub, stillRunning *time.Ticker) error {
@@ -322,9 +324,14 @@ func waitForPVCReady(ctx context.Context, log *base.LogObject, pvcName string) e
 
 // CleanupStaleVMI : delete all VMIs. Used by domainmgr on startup.
 func CleanupStaleVMI() (int, error) {
-	clientset, err := GetKubevirtClientSet(nil)
+	kubeconfig, err := GetKubeConfig()
 	if err != nil {
-		return 0, fmt.Errorf("couldn't get the kubevirt clientset: %v", err)
+		return 0, fmt.Errorf("couldn't get the Kube Config: %v", err)
+	}
+
+	clientset, err := kubecli.GetKubevirtClientFromRESTConfig(kubeconfig)
+	if err != nil {
+		return 0, fmt.Errorf("couldn't get the Kube client Config: %v", err)
 	}
 
 	ctx := context.Background()
