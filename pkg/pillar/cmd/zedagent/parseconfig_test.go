@@ -195,7 +195,7 @@ func TestDPCWithError(t *testing.T) {
 	g.Expect(dpc.LastFailed).ToNot(BeZero())
 	g.Expect(dpc.LastSucceeded).To(BeZero())
 	g.Expect(getPortError(&dpc, "adapter-shopfloor")).
-		To(ContainSubstring("UNKNOWN Network UUID"))
+		To(ContainSubstring("Port adapter-shopfloor configured with unknown Network UUID"))
 	g.Expect(dpc.Ports).To(HaveLen(1))
 	port := dpc.Ports[0]
 	g.Expect(port.Logicallabel).To(Equal("adapter-shopfloor"))
