@@ -94,6 +94,9 @@ func (t *ZedcloudConnectivityTester) TestConnectivity(dns types.DeviceNetworkSta
 	}
 	zedcloudCtx.TlsConfig = tlsConfig
 	for ix := range dns.Ports {
+		if dns.Ports[ix].InvalidConfig {
+			continue
+		}
 		ifName := dns.Ports[ix].IfName
 		err = devicenetwork.CheckAndGetNetworkProxy(t.Log, &dns, ifName, t.Metrics)
 		if err != nil {
