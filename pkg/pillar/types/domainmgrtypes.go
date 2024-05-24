@@ -405,6 +405,7 @@ type VifConfig struct {
 	Bridge string
 	Vif    string
 	Mac    net.HardwareAddr
+	MTU    uint16
 	// PodVif is only valid in the Kubernetes mode.
 	PodVif PodVIF
 }

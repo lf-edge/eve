@@ -82,6 +82,7 @@ func prepareAndPublishNetworkInstanceInfoMsg(ctx *zedagentContext,
 		info.Displayname = status.DisplayName
 		info.InstType = uint32(status.Type)
 		info.CurrentUplinkIntf = status.SelectedUplinkIntfName
+		info.Mtu = uint32(status.MTU)
 
 		if !status.ErrorTime.IsZero() {
 			errInfo := new(zinfo.ErrorInfo)
