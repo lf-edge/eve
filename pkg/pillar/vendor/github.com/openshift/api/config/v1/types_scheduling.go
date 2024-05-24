@@ -8,14 +8,8 @@ import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 // Scheduler holds cluster-wide config information to run the Kubernetes Scheduler
 // and influence its placement decisions. The canonical name for this config is `cluster`.
-//
-// Compatibility level 1: Stable within a major release for a minimum of 12 months or 3 minor releases (whichever is longer).
-// +openshift:compatibility-gen:level=1
 type Scheduler struct {
-	metav1.TypeMeta `json:",inline"`
-
-	// metadata is the standard object's metadata.
-	// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
+	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
 	// spec holds user settable values for configuration
@@ -41,7 +35,8 @@ type SchedulerSpec struct {
 	// Valid values are "LowNodeUtilization", "HighNodeUtilization", "NoScoring"
 	// Defaults to "LowNodeUtilization"
 	// +optional
-	Profile SchedulerProfile `json:"profile,omitempty"`
+	// +kubebuilder:default=LowNodeUtilization
+	Profile SchedulerProfile `json:"profile"`
 	// defaultNodeSelector helps set the cluster-wide default node selector to
 	// restrict pod placement to specific nodes. This is applied to the pods
 	// created in all namespaces and creates an intersection with any existing
@@ -98,13 +93,8 @@ type SchedulerStatus struct {
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
-// Compatibility level 1: Stable within a major release for a minimum of 12 months or 3 minor releases (whichever is longer).
-// +openshift:compatibility-gen:level=1
 type SchedulerList struct {
 	metav1.TypeMeta `json:",inline"`
-
-	// metadata is the standard list's metadata.
-	// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
 	metav1.ListMeta `json:"metadata"`
 
 	Items []Scheduler `json:"items"`
