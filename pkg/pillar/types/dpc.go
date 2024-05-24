@@ -87,6 +87,19 @@ const (
 	PortCostMax = uint8(255)
 )
 
+const (
+	// DefaultMTU : the default Ethernet MTU of 1500 bytes.
+	DefaultMTU = 1500
+	// MinMTU : minimum accepted MTU value.
+	// As per RFC 8200, the MTU must not be less than 1280 bytes to accommodate IPv6 packets.
+	MinMTU = 1280
+	// MaxMTU : maximum accepted MTU value.
+	// The Total Length field of IPv4 and the Payload Length field of IPv6 each have a size
+	// of 16 bits, thus allowing data of up to 65535 octets.
+	// For now, we will not support IPv6 jumbograms.
+	MaxMTU = 65535
+)
+
 // DevicePortConfig is a misnomer in that it includes the total test results
 // plus the test results for a given port. The complete status with
 // IP addresses lives in DeviceNetworkStatus
@@ -388,7 +401,8 @@ func (config *DevicePortConfig) MostlyEqual(config2 *DevicePortConfig) bool {
 			p1.Logicallabel != p2.Logicallabel ||
 			p1.Alias != p2.Alias ||
 			p1.IsMgmt != p2.IsMgmt ||
-			p1.Cost != p2.Cost {
+			p1.Cost != p2.Cost ||
+			p1.MTU != p2.MTU {
 			return false
 		}
 		if !reflect.DeepEqual(p1.DhcpConfig, p2.DhcpConfig) ||
@@ -520,6 +534,7 @@ type NetworkPortConfig struct {
 	// the subnet, etc.
 	InvalidConfig bool
 	Cost          uint8 // Zero is free
+	MTU           uint16
 	DhcpConfig
 	ProxyConfig
 	L2LinkConfig
@@ -940,6 +955,7 @@ type NetworkXObjectConfig struct {
 	DNSNameToIPList []DNSNameToIP // Used for DNS and ACL ipset
 	Proxy           *ProxyConfig
 	WirelessCfg     WirelessConfig
+	MTU             uint16
 	// Any errors from the parser
 	// ErrorAndTime provides SetErrorNow() and ClearError()
 	ErrorAndTime
