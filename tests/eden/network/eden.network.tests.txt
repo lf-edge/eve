@@ -1,3 +1,0 @@
-eden.escript.test -test.run TestEdenScripts/test_networking -test.timeout 40m
-
-eden.escript.test -test.run TestEdenScripts/vlans -test.timeout 40m

@@ -1,4 +1,0 @@
-eden.escript.test -test.run TestEdenScripts/hardware_usb_reboot
-eden.escript.test -test.run TestEdenScripts/hardware_2usb_reboot
-eden.escript.test -test.run TestEdenScripts/hardware_audio_reboot
-eden.escript.test -test.run TestEdenScripts/hardware_eth_reboot

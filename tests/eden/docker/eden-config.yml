@@ -1,7 +1,0 @@
----
-eden:
-    # test binary
-    test-bin: "eden.docker.test"
-
-    # test scenario
-    test-scenario: "eden.docker.tests.txt"
