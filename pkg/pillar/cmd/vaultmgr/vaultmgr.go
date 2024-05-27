@@ -196,6 +196,8 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		args = arguments[1:]
 	}
 
+	handler = vault.GetHandler(log)
+
 	// if an explicit command was given, run that command and return, else run the agent
 	if command != "" {
 		return runCommand(ps, command, args)
@@ -203,8 +205,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 	agentArgs := []agentbase.AgentOpt{agentbase.WithBaseDir(baseDir), agentbase.WithArguments(arguments), agentbase.WithPidFile()}
 	agentbase.Init(&ctx, logger, log, agentName, agentArgs...)
-
-	handler = vault.GetHandler(log)
 
 	log.Functionf("Starting %s\n", agentName)
 
