@@ -1,7 +1,0 @@
----
-eden:
-    # test binary
-    test-bin: "eden.vol.test"
-
-    # test scenario
-    test-scenario: "eden.vol.tests.txt"

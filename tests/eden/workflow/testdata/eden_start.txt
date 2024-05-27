@@ -1,7 +1,0 @@
-eden -t 5m start
-eden status
-stdout 'Adam.* status:.* running'
-stdout 'Redis.* status:.* running'
-stdout 'EServer.* status:.* running'
-! stderr .
-

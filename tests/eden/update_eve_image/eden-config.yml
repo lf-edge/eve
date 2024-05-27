@@ -1,5 +1,0 @@
----
-eden:
-
-    # test scenario
-    test-scenario: "eden.update_eve_image.tests.txt"

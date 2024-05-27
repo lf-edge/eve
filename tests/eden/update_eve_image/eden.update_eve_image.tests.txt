@@ -1,2 +1,0 @@
-eden.escript.test -test.run TestEdenScripts/update_eve_image_http -test.timeout 60m
-eden.escript.test -test.run TestEdenScripts/update_eve_image_oci -test.timeout 60m

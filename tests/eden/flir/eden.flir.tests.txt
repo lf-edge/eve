@@ -1,1 +1,0 @@
-eden.escript.test -test.run TestEdenScripts/test_flir
