@@ -189,10 +189,17 @@ func (r *LinuxNIReconciler) updateCurrentNIBridge(niID uuid.UUID) (changed bool)
 	if !found {
 		return r.updateSingleItem(prevExtBridge, nil, l2SG)
 	}
+	mtu, err := r.getBridgeMTU(niID)
+	if err != nil {
+		r.log.Errorf("%s: updateCurrentNIBridge: getBridgeMTU(%s) failed: %v",
+			LogAndErrPrefix, niID, err)
+		return r.updateSingleItem(prevExtBridge, nil, l2SG)
+	}
 	bridge := linux.Bridge{
 		IfName:       ni.brIfName,
 		CreatedByNIM: true,
 		MACAddress:   mac,
+		MTU:          mtu,
 	}
 	if ip != nil {
 		bridge.IPAddresses = append(bridge.IPAddresses, ip)
@@ -412,6 +419,32 @@ func (r *LinuxNIReconciler) getBridgeAddrs(niID uuid.UUID) (ipWithSubnet,
 	// unreachable
 	err = fmt.Errorf("unsupported NI type: %v", ni.config.Type)
 	return
+}
+
+func (r *LinuxNIReconciler) getBridgeMTU(niID uuid.UUID) (mtu uint16, err error) {
+	ni := r.nis[niID]
+	switch ni.config.Type {
+	case types.NetworkInstanceTypeSwitch:
+		if ni.bridge.Uplink.IfName != "" {
+			ifIndex, found, err := r.netMonitor.GetInterfaceIndex(ni.brIfName)
+			if !found {
+				err = fmt.Errorf("bridge %s does not exist", ni.brIfName)
+			}
+			if err != nil {
+				return 0, err
+			}
+			ifAttrs, err := r.netMonitor.GetInterfaceAttrs(ifIndex)
+			if err != nil {
+				return 0, err
+			}
+			return ifAttrs.MTU, nil
+		}
+		fallthrough // air-gapped switch NI
+	case types.NetworkInstanceTypeLocal:
+		return ni.bridge.MTU, nil
+	}
+	// unreachable
+	return 0, fmt.Errorf("unsupported NI type: %v", ni.config.Type)
 }
 
 func (r *LinuxNIReconciler) updateSingleItem(

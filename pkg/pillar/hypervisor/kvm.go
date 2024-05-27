@@ -337,6 +337,9 @@ const qemuNetTemplate = `
   mac = "{{.Mac}}"
   bus = "pci.{{.PCIId}}"
   addr = "0x0"
+{{- if and (eq .Driver "virtio-net-pci") (ne .MTU 0) }}
+  host_mtu = "{{.MTU}}"
+{{- end}}
 `
 
 const qemuPciPassthruTemplate = `
@@ -794,6 +797,7 @@ func (ctx KvmContext) CreateDomConfig(domainName string,
 		PCIId, NetID     int
 		Driver           string
 		Mac, Bridge, Vif string
+		MTU              uint16
 	}{PCIId: diskContext.PCIId, NetID: 0}
 	t, _ = template.New("qemuNet").Parse(qemuNetTemplate)
 	for _, net := range config.VifList {
@@ -805,6 +809,7 @@ func (ctx KvmContext) CreateDomConfig(domainName string,
 		} else {
 			netContext.Driver = "virtio-net-pci"
 		}
+		netContext.MTU = net.MTU
 		if err := t.Execute(file, netContext); err != nil {
 			return logError("can't write to config file %s (%v)", file.Name(), err)
 		}

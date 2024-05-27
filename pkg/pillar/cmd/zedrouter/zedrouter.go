@@ -379,7 +379,7 @@ func (z *zedrouter) run(ctx context.Context) (err error) {
 					z.publishNetworkInstanceStatus(niStatus)
 				}
 				if niConfig == nil && recUpdate.NIStatus.Deleted &&
-					niStatus != nil && !niStatus.HasError() &&
+					niStatus != nil && !niStatus.ReconcileErr.HasError() &&
 					niStatus.ChangeInProgress == types.ChangeInProgressTypeNone {
 					z.unpublishNetworkInstanceStatus(niStatus)
 				}
@@ -666,13 +666,13 @@ func (z *zedrouter) processNIReconcileStatus(recStatus nireconciler.NIReconcileS
 			failedItems = append(failedItems, fmt.Sprintf("%v (%v)", itemRef, itemErr))
 		}
 		err := fmt.Errorf("failed items: %s", strings.Join(failedItems, ";"))
-		if niStatus.Error != err.Error() {
-			niStatus.SetErrorNow(err.Error())
+		if niStatus.ReconcileErr.Error != err.Error() {
+			niStatus.ReconcileErr.SetErrorNow(err.Error())
 			changed = true
 		}
 	} else {
-		if niStatus.HasError() && !niStatus.IPConflict {
-			niStatus.ClearError()
+		if niStatus.ReconcileErr.HasError() {
+			niStatus.ReconcileErr.ClearError()
 			changed = true
 		}
 	}
@@ -826,6 +826,8 @@ func (z *zedrouter) lookupAppNetworkStatus(key string) *types.AppNetworkStatus {
 }
 
 func (z *zedrouter) publishNetworkInstanceStatus(status *types.NetworkInstanceStatus) {
+	// Publish all errors as one instance of ErrorAndTime.
+	status.ErrorAndTime = status.CombineErrors()
 	pub := z.pubNetworkInstanceStatus
 	err := pub.Publish(status.Key(), *status)
 	if err != nil {
@@ -902,8 +904,8 @@ func (z *zedrouter) publishNetworkInstanceMetricsAll(nms *types.NetworkMetrics) 
 	for _, ni := range niList {
 		status := ni.(types.NetworkInstanceStatus)
 		config := z.lookupNetworkInstanceConfig(status.Key())
-		if config == nil || !config.Activate {
-			// NI was deleted or is inactive - skip metrics publishing.
+		if config == nil || (!status.Activated || status.IPConflictErr.HasError()) {
+			// NI was deleted or is inactive/dysfunctional - skip metrics publishing.
 			continue
 		}
 		netMetrics := z.createNetworkInstanceMetrics(&status, nms)

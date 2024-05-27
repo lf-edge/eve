@@ -110,6 +110,9 @@ type NIBridge struct {
 	// In the future, we may improve isolation between NIs and uplinks using advanced
 	// policy-based routing or VRFs. This will enable conflicting NIs to remain functional.
 	IPConflict bool
+	// MTU : Maximum transmission unit size set for the bridge and all VIFs connected
+	// to it.
+	MTU uint16
 }
 
 // Uplink used by a network instance to provide external connectivity for applications.
@@ -117,6 +120,7 @@ type Uplink struct {
 	LogicalLabel string
 	IfName       string
 	IsMgmt       bool
+	MTU          uint16
 	DNSServers   []net.IP
 	NTPServers   []net.IP
 }
@@ -125,6 +129,7 @@ type Uplink struct {
 func (u Uplink) Equal(u2 Uplink) bool {
 	return u.LogicalLabel == u2.LogicalLabel &&
 		u.IfName == u2.IfName &&
+		u.MTU == u2.MTU &&
 		generics.EqualSetsFn(u.DNSServers, u2.DNSServers, netutils.EqualIPs) &&
 		generics.EqualSetsFn(u.NTPServers, u2.NTPServers, netutils.EqualIPs)
 }

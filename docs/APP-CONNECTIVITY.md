@@ -322,3 +322,86 @@ propagated by DHCP to connected applications, unless network instance is air-gap
 (without uplink) or the uplink is app-shared (not management) and does not have a default
 route of its own. In both cases, it is possible to enforce default route propagation
 by configuring a static default route for the network instance.
+
+### Network Instance MTU
+
+The user can adjust the Maximum Transmission Unit (MTU) size of the network instance
+bridge and all application interfaces connected to it.
+MTU determines the largest IP packet that the network instance is allowed to carry.
+A smaller MTU value is often used to avoid packet fragmentation when some form of packet
+encapsulation is being applied, while a larger MTU reduces the overhead associated with
+packet headers, improves network efficiency, and increases throughput by allowing more
+data to be transmitted in each packet (known as a jumbo frame).
+
+EVE uses the L3 MTU, meaning the value does not include the L2 header size (e.g., Ethernet
+header or VLAN tag size). The value is a 16-bit unsigned integer, representing the MTU size
+in bytes. The minimum accepted value for the MTU is 1280, which is the minimum link MTU
+needed to carry an IPv6 packet (see RFC 8200, "IPv6 minimum link MTU"). If the MTU for
+a network instance is not defined (zero value), EVE will set the default MTU size of 1500
+bytes.
+
+On the host side, MTU is set to bridge and app VIFs by EVE. On the guest (application)
+side, the responsibility to set the MTU lies either with EVE or with the user/app,
+depending on the network instance type (local or switch), app type (VM or container)
+and the type of interfaces used (virtio or something else).
+
+#### Container App VIF MTU
+
+For container applications running inside an EVE-created shim-VM, EVE initializes the MTU
+of interfaces during the shim-VM boot. MTUs of all interfaces are passed to the VM via kernel
+boot arguments (/proc/cmdline). The init script parses out these values and applies them
+to application interfaces (excluding direct assignments).
+Furthermore, interfaces connected to local network instances will have their MTUs
+automatically updated using DHCP if there is a change in the MTU configuration. To update
+the MTU of interfaces connected to switch network instances, user may run an external
+DHCP server in the network and publish MTU changes via DHCP option 26 (the DHCP client
+run by EVE inside shim-VM will pick them up and apply them).
+
+#### VM App VIF MTU
+
+In the case of VM applications, it is mostly the responsibility of the app/user to set
+and keep the MTUs up-to-date. When device provides HW-assisted virtualization capabilities,
+EVE (with kvm or kubevirt hypervisor) connects VM with network instances using para-virtualized
+virtio interfaces, which allow to propagate MTU value from the host to the guest.
+If the virtio driver used by the app supports the MTU propagation, the initial MTU values
+will be set using virtio (regardless of the network instance type).
+
+To determine if virtio driver used by an app supports MTU propagation, user must check
+if `VIRTIO_NET_F_MTU` feature flag is reported as `1`.
+Given that:
+
+```c
+#define VIRTIO_NET_F_MTU 3
+```
+
+Check the feature flag with (replace `enp1s0` with your interface name):
+
+```sh
+# the position argument of "cat" starts with 1, hence we have to do +1
+cat /sys/class/net/enp1s0/device/features | cut -c 4
+1 # if not supported, prints 0 instead
+```
+
+Please note that with the Xen hypervisor, the Xen's VIF driver does not support MTU
+propagation from host to guest.
+
+To support MTU change in run-time for interfaces connected to local network instances,
+VM app can run a DHCP client and receive the latest MTU via DHCP option 26.
+For switch network instances, the user can run his own external DHCP server in the network
+with the MTU option configured.
+
+With Kubevirt, MTU change after VMI is deployed is not possible. This is because the bridge
+and the (virtio) TAP created by Kubevirt to connect pod interface (VETH) with the VMI interface
+are fully managed by Kubevirt, which lacks the ability to detect and apply MTU changes.
+This means that even if the app updates MTU on its side (using e.g. DHCP), the path MTU may
+differ because the connection between the VMI and the underlying Pod will continue using
+the old MTU value.
+
+#### Network Instance MTU vs. Network Adapter MTU
+
+Please note that application traffic leaving or entering the device via a network
+adapter associated with the network instance is additionally limited by the MTU value
+of the adapter, configured within the NetworkConfig object. If the configured network
+instance MTU differs from the network adapter MTU, EVE will flag the network instance
+with an error and use the adapter's MTU for the network instance instead (to prevent
+traffic from being dropped or fragmented inside EVE).

@@ -86,16 +86,19 @@ type DHCPServer struct {
 	// PropagateRoutes : IP routes to propagate to applications using the DHCP option 121
 	// (classless route option).
 	PropagateRoutes []types.IPRoute
+	// MTU : Maximum transmission unit size to propagate to applications using the DHCP
+	// option 26.
+	MTU uint16
 }
 
 // String describes DHCPServer config.
 func (d DHCPServer) String() string {
 	return fmt.Sprintf("DHCPServer: {subnet: %s, allOnesNetmask: %t, ipRange: <%s-%s>, "+
 		"gatewayIP: %s, withDefaultRoute: %t, domainName: %s, dnsServers: %v, ntpServers: %v, "+
-		"staticEntries: %v, propagateRoutes: %v}",
+		"staticEntries: %v, propagateRoutes: %v, MTU: %d}",
 		d.Subnet, d.AllOnesNetmask, d.IPRange.FromIP, d.IPRange.ToIP, d.GatewayIP,
 		d.WithDefaultRoute, d.DomainName, d.DNSServers, d.NTPServers, d.StaticEntries,
-		d.PropagateRoutes)
+		d.PropagateRoutes, d.MTU)
 }
 
 // Equal compares two DHCPServer instances
@@ -111,7 +114,8 @@ func (d DHCPServer) Equal(d2 DHCPServer, withStaticEntries bool) bool {
 		generics.EqualSetsFn(d.NTPServers, d2.NTPServers, netutils.EqualIPs) &&
 		(!withStaticEntries ||
 			generics.EqualSetsFn(d.StaticEntries, d2.StaticEntries, equalMACToIP)) &&
-		generics.EqualSetsFn(d.PropagateRoutes, d2.PropagateRoutes, equalIPRoutes)
+		generics.EqualSetsFn(d.PropagateRoutes, d2.PropagateRoutes, equalIPRoutes) &&
+		d.MTU == d2.MTU
 }
 
 // DNSServer : part of the dnsmasq config specific to DNS server.
@@ -761,6 +765,15 @@ func (c *DnsmasqConfigurator) CreateDnsmasqConfig(buffer io.Writer, dnsmasq Dnsm
 		}
 		if _, err := io.WriteString(buffer, fmt.Sprintf("dhcp-range=%s,%s,60m\n",
 			dhcpRange, ipv4Netmask)); err != nil {
+			return writeErr(err)
+		}
+	}
+
+	// Propagate MTU to applications.
+	if dnsmasq.DHCPServer.MTU != 0 {
+		_, err := io.WriteString(buffer,
+			fmt.Sprintf("dhcp-option=26,%d\n", dnsmasq.DHCPServer.MTU))
+		if err != nil {
 			return writeErr(err)
 		}
 	}

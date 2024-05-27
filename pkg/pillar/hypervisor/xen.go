@@ -316,8 +316,8 @@ func (ctx xenContext) CreateDomConfig(domainName string,
 
 	vifString := ""
 	for _, net := range config.VifList {
-		oneVif := fmt.Sprintf("'bridge=%s,vifname=%s,mac=%s,type=%s'",
-			net.Bridge, net.Vif, net.Mac, vifType)
+		oneVif := fmt.Sprintf("'bridge=%s,vifname=%s,mac=%s,type=%s,mtu=%d'",
+			net.Bridge, net.Vif, net.Mac, vifType, net.MTU)
 		if vifString == "" {
 			vifString = oneVif
 		} else {
