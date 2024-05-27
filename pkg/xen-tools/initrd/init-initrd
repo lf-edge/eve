@@ -104,9 +104,19 @@ then
     echo "::1 localhost" >> /mnt/rootfs/etc/hosts
     for i in $(cd /sys/class/net && echo eth*); do
         ip link set dev "$i" up
-        udhcpc --interface="$i" --script=/udhcpc_script.sh -O staticroutes -b
+        udhcpc --interface="$i" --script=/udhcpc_script.sh -O staticroutes -O mtu -b
     done
 fi
+
+# Initialize MTU of ethernet interfaces connected to network instances (VIFs).
+# Note that directly assigned physical NICs are ordered after VIFs, and their MTUs
+# are not specified in /proc/cmdline.
+mtu_values="$(grep -o '\bmtu=[^ ]*' /proc/cmdline | cut -d = -f 2 | tr "," " ")"
+i=0
+for mtu in $mtu_values; do
+    ip link set mtu "$mtu" dev "eth$i"
+    i=$((i+1))
+done
 
 # Make modules available for hosting Vm
 mount --bind /mnt/modules /lib/modules

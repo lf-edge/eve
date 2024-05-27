@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"runtime"
+	"strconv"
+	"strings"
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
@@ -124,10 +126,14 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 	}
 	if ns != nil {
 		adapterCount := len(ns.AppNetAdapterList)
-
 		dc.VifList = make([]types.VifConfig, adapterCount)
+		mtuStrList := make([]string, adapterCount)
 		for i, adapter := range ns.AppNetAdapterList {
 			dc.VifList[i] = adapter.VifInfo.VifConfig
+			mtuStrList[i] = strconv.Itoa(int(adapter.MTU))
+		}
+		if dc.IsOCIContainer() && adapterCount > 0 {
+			dc.ExtraArgs += " mtu=" + strings.Join(mtuStrList, ",")
 		}
 	}
 	log.Functionf("MaybeAddDomainConfig done for %s", key)

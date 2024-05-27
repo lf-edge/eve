@@ -95,6 +95,7 @@ func (z *zedrouter) prepareConfigForVIFs(config types.AppNetworkConfig,
 			adapterStatus.Mac = z.generateAppMac(adapterNum, status, netInstStatus)
 		}
 		adapterStatus.HostName = config.Key()
+		adapterStatus.MTU = netInstStatus.MTU
 		guestIP, err := z.lookupOrAllocateIPv4ForVIF(
 			netInstStatus, *adapterStatus, status.UUIDandVersion.UUID)
 		if err != nil {

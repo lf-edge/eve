@@ -26,6 +26,8 @@ type Radvd struct {
 	ForNI uuid.UUID
 	// ListenIf : interface on which radvd should listen.
 	ListenIf NetworkIf
+	// MTU : Maximum transmission unit size to advertise.
+	MTU uint16
 }
 
 // Name returns the interface name on which radvd listens.
@@ -49,7 +51,8 @@ func (r Radvd) Type() string {
 func (r Radvd) Equal(other dg.Item) bool {
 	r2 := other.(Radvd)
 	return r.ForNI == r2.ForNI &&
-		r.ListenIf == r2.ListenIf
+		r.ListenIf == r2.ListenIf &&
+		r.MTU == r2.MTU
 }
 
 // External returns false.
@@ -59,8 +62,8 @@ func (r Radvd) External() bool {
 
 // String describes the radvd instance.
 func (r Radvd) String() string {
-	return fmt.Sprintf("Radvd: {NI: %s, listenIf: %s}",
-		r.ForNI, r.ListenIf.IfName)
+	return fmt.Sprintf("Radvd: {NI: %s, listenIf: %s, MTU: %d}",
+		r.ForNI, r.ListenIf.IfName, r.MTU)
 }
 
 // Dependencies returns returns the interface on which radvd listens
@@ -80,7 +83,7 @@ interface %s {
 	AdvSendAdvert on;
 	MaxRtrAdvInterval 1800;
 	AdvManagedFlag on;
-	AdvLinkMTU 1280;
+	AdvLinkMTU %d;
 	AdvDefaultPreference low;
 	route fd00::/8
 	{
@@ -163,7 +166,8 @@ func (c *RadvdConfigurator) createRadvdConfigFile(radvd Radvd) error {
 		return err
 	}
 	defer file.Close()
-	_, err = file.WriteString(fmt.Sprintf(radvdConfigTemplate, radvd.ListenIf.IfName))
+	_, err = file.WriteString(
+		fmt.Sprintf(radvdConfigTemplate, radvd.ListenIf.IfName, radvd.MTU))
 	if err != nil {
 		err = fmt.Errorf("failed to write radvd config to file %s: %w", cfgPath, err)
 		c.Log.Error(err)

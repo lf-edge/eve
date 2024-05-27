@@ -6,13 +6,13 @@ package linuxitems
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"net"
 
 	dg "github.com/lf-edge/eve-libs/depgraph"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/nireconciler/genericitems"
+	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
 	"github.com/lf-edge/eve/pkg/pillar/utils/netutils"
 	"github.com/vishvananda/netlink"
@@ -30,6 +30,8 @@ type Bridge struct {
 	// IPAddresses : a set of IP addresses allocated for the bridge itself (L3 NI),
 	// or already assigned by the DHCP client (NIM-created bridge, L2 NI).
 	IPAddresses []*net.IPNet
+	// MTU : Maximum transmission unit size.
+	MTU uint16
 }
 
 // Name returns the physical interface name.
@@ -56,7 +58,8 @@ func (b Bridge) Equal(other dg.Item) bool {
 	return b.IfName == b2.IfName &&
 		b.CreatedByNIM == b2.CreatedByNIM &&
 		bytes.Equal(b.MACAddress, b2.MACAddress) &&
-		generics.EqualSetsFn(b.IPAddresses, b2.IPAddresses, netutils.EqualIPNets)
+		generics.EqualSetsFn(b.IPAddresses, b2.IPAddresses, netutils.EqualIPNets) &&
+		b.MTU == b2.MTU
 }
 
 // External returns true if it was created by NIM and not be zedrouter.
@@ -67,8 +70,8 @@ func (b Bridge) External() bool {
 // String describes Bridge.
 func (b Bridge) String() string {
 	return fmt.Sprintf("Bridge: {ifName: %s, createdByNIM: %t, "+
-		"macAddress: %s, ipAddresses: %v}", b.IfName, b.CreatedByNIM,
-		b.MACAddress, b.IPAddresses)
+		"macAddress: %s, ipAddresses: %v, MTU: %d}", b.IfName, b.CreatedByNIM,
+		b.MACAddress, b.IPAddresses, b.MTU)
 }
 
 // Dependencies returns reservations of IPs that bridge should have assigned.
@@ -100,6 +103,14 @@ func (b Bridge) GetAssignedIPs() []*net.IPNet {
 	return b.IPAddresses
 }
 
+// GetMTU returns MTU configured for the bridge.
+func (b Bridge) GetMTU() uint16 {
+	if b.MTU == 0 {
+		return types.DefaultMTU
+	}
+	return b.MTU
+}
+
 // BridgeConfigurator implements Configurator interface (libs/reconciler) for Linux bridge.
 type BridgeConfigurator struct {
 	Log *base.LogObject
@@ -113,6 +124,7 @@ func (c *BridgeConfigurator) Create(ctx context.Context, item dg.Item) error {
 	}
 	attrs := netlink.NewLinkAttrs()
 	attrs.Name = bridge.IfName
+	attrs.MTU = int(bridge.GetMTU())
 	if len(bridge.MACAddress) > 0 {
 		attrs.HardwareAddr = bridge.MACAddress
 	}
@@ -154,9 +166,30 @@ func (c *BridgeConfigurator) Create(ctx context.Context, item dg.Item) error {
 	return nil
 }
 
-// Modify is not implemented.
-func (c *BridgeConfigurator) Modify(ctx context.Context, oldItem, newItem dg.Item) (err error) {
-	return errors.New("not implemented")
+// Modify is able to update the MTU attribute.
+func (c *BridgeConfigurator) Modify(_ context.Context, _, newItem dg.Item) (err error) {
+	bridge, isBridge := newItem.(Bridge)
+	if !isBridge {
+		return fmt.Errorf("invalid item type %T, expected Bridge", newItem)
+	}
+	link, err := netlink.LinkByName(bridge.IfName)
+	if err != nil {
+		err = fmt.Errorf("failed to get link for bridge %s: %w",
+			bridge.IfName, err)
+		c.Log.Error(err)
+		return err
+	}
+	if link.Attrs().MTU != int(bridge.GetMTU()) {
+		err = netlink.LinkSetMTU(link, int(bridge.GetMTU()))
+		if err != nil {
+			err = fmt.Errorf("failed to set MTU %d for bridge %s: %w",
+				bridge.GetMTU(), bridge.IfName, err)
+			c.Log.Error(err)
+			return err
+		}
+	}
+	return nil
+
 }
 
 // Delete removes Linux bridge.
@@ -181,7 +214,19 @@ func (c *BridgeConfigurator) Delete(ctx context.Context, item dg.Item) error {
 	return nil
 }
 
-// NeedsRecreate always returns true - Modify is not implemented.
+// NeedsRecreate returns true when bridge addresses change.
+// However, BridgeConfigurator is able to update MTU without re-creating the bridge.
 func (c *BridgeConfigurator) NeedsRecreate(oldItem, newItem dg.Item) (recreate bool) {
-	return true
+	oldCfg, isBridge := oldItem.(Bridge)
+	if !isBridge {
+		// unreachable
+		return false
+	}
+	newCfg, isBridge := newItem.(Bridge)
+	if !isBridge {
+		// unreachable
+		return false
+	}
+	return !bytes.Equal(oldCfg.MACAddress, newCfg.MACAddress) ||
+		!generics.EqualSetsFn(oldCfg.IPAddresses, newCfg.IPAddresses, netutils.EqualIPNets)
 }
