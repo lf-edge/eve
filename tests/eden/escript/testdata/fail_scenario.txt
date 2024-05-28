@@ -1,5 +1,0 @@
-! test eden.escript.test -test.run TestEdenScripts/fail_test -test.v -testdata {{EdenConfig "eden.tests"}}/escript/testdata/
-stdout 'Default test fail scenario'
-
-! test eden.escript.test -test.run TestEdenScripts/fail_test -test.v -testdata {{EdenConfig "eden.tests"}}/escript/testdata/ -fail_scenario custom.fail.scenario.txt
-stdout 'Custom test fail scenario'

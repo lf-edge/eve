@@ -545,7 +545,7 @@ func (c *Client) getModemStatus(modemObj dbus.BusObject) (
 		simCard := types.WwanSimCard{
 			SlotNumber:    slot,
 			SlotActivated: isPrimary,
-			Type:          types.SimTypePhysical,
+			Type:          types.SimTypeUnspecified,
 			State:         SIMStateAbsent,
 		}
 		if simPath.IsValid() && len(simPath) > 1 {
@@ -558,6 +558,12 @@ func (c *Client) getModemStatus(modemObj dbus.BusObject) (
 			var simType uint32
 			_ = getDBusProperty(c, simObj, SIMPropertyType, &simType)
 			switch simType {
+			case SIMTypeUnknown:
+				// If the SIM type is not recognized, consider SIM card as present
+				// if ICCID is not empty.
+				if simCard.ICCID != "" {
+					simCard.State = SIMStatePresent
+				}
 			case SIMTypeESIM:
 				// eSIM is not supported by EVE (or even by ModemManager) for connection
 				// establishment, but we still want to at least publish correct status
@@ -599,6 +605,7 @@ func (c *Client) getModemStatus(modemObj dbus.BusObject) (
 				//             Num apps: 0
 				//             Is eUICC: no
 				// TODO: should we call mbimcli/qmicli ?
+				simCard.Type = types.SimTypePhysical
 				simCard.State = SIMStatePresent
 			}
 			if !simCard.SlotActivated {
@@ -1350,9 +1357,12 @@ func (c *Client) reconfigureEpsBearerIfNotRegistered(modemObj dbus.BusObject,
 	}
 	var currentSettings map[string]dbus.Variant
 	_ = getDBusProperty(c, modemObj, Modem3GPPPropertyInitialEpsBearer, &currentSettings)
+	maskedPasswd := interface{}("***")
+	maskedVariantPasswd := dbus.MakeVariant(maskedPasswd)
 	c.log.Warnf("Modem %s is failing to register, "+
 		"trying to apply settings %+v for the initial EPS bearer (previously: %+v)",
-		modemObj.Path(), newSettings, currentSettings)
+		modemObj.Path(), maskPassword(newSettings, maskedPasswd),
+		maskPassword(currentSettings, maskedVariantPasswd))
 	err = c.callDBusMethod(modemObj, Modem3GPPMethodSetInitialEpsBearer, nil, newSettings)
 	if err != nil {
 		err = fmt.Errorf(
@@ -1363,6 +1373,19 @@ func (c *Client) reconfigureEpsBearerIfNotRegistered(modemObj dbus.BusObject,
 	}
 	return true, c.waitForModemState(
 		modemObj, ModemStateRegistered, changeInitEPSBearerTimeout)
+}
+
+// maskPassword creates a copy of the original map with the "password" key's value masked
+func maskPassword[Type any](data map[string]Type, maskWith Type) map[string]Type {
+	maskedData := make(map[string]Type)
+	for key, value := range data {
+		if key == "password" {
+			maskedData[key] = maskWith
+		} else {
+			maskedData[key] = value
+		}
+	}
+	return maskedData
 }
 
 func (c *Client) setPreferredRATs(modemObj dbus.BusObject,

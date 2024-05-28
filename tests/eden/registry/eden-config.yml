@@ -1,5 +1,0 @@
----
-eden:
-
-    # test scenario
-    test-scenario: "eden.registry.tests.txt"

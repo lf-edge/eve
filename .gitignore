@@ -19,5 +19,7 @@ conf/authorized_keys
 conf/grub.cfg
 conf/device.cert.pem
 conf/device.key.pem
+conf/soft_serial
 pkg/kube/external-boot-image.tar
 pkg/external-boot-image/build.yml
+tools/compare-sbom-sources/vendor

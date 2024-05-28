@@ -1,7 +1,0 @@
-eden status
-stdout 'Adam.* status:.* running'
-stdout 'Redis.* status:.* running'
-stdout 'EServer.* status:.* running'
-stdout 'EVE.* status:.* running'
-! stderr .
-

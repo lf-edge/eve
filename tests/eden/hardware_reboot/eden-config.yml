@@ -1,5 +1,0 @@
----
-eden:
-
-    # test scenario
-    test-scenario: "eden.hardware_reboot.tests.txt"

@@ -391,7 +391,8 @@ In Jetson nano, from January 22, 2021, it became possible to save the u-boot to 
 Currently EVE supports the following devices from NVIDIA's Jetson Xavier NX platform:
 
 1. Lenovo ThinkEdge SE70
-2. NVIDIA Jetson Xavier NX developer kit
+2. Siemens SIMATIC IPC520A
+3. NVIDIA Jetson Xavier NX developer kit
 
 See [NVIDIA-NX.md](./docs/NVIDIA-NX.md) for instructions on how to build and deploy EVE on these devices.
 

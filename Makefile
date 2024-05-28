@@ -321,7 +321,7 @@ FORCE_BUILD=
 
 # for the go build sources
 GOSOURCES=$(BUILDTOOLS_BIN)/go-sources-and-licenses
-GOSOURCES_VERSION=668fbc58b7b48e0202e106c45c2caaf9f5be189f
+GOSOURCES_VERSION=6047a068b2702ed2687cd13dcb7eaa2542d20344
 GOSOURCES_SOURCE=github.com/deitch/go-sources-and-licenses
 
 

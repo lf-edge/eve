@@ -11,14 +11,8 @@ import (
 // Console holds cluster-wide configuration for the web console, including the
 // logout URL, and reports the public URL of the console. The canonical name is
 // `cluster`.
-//
-// Compatibility level 1: Stable within a major release for a minimum of 12 months or 3 minor releases (whichever is longer).
-// +openshift:compatibility-gen:level=1
 type Console struct {
-	metav1.TypeMeta `json:",inline"`
-
-	// metadata is the standard object's metadata.
-	// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
+	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
 	// spec holds user settable values for configuration
@@ -45,13 +39,8 @@ type ConsoleStatus struct {
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
-// Compatibility level 1: Stable within a major release for a minimum of 12 months or 3 minor releases (whichever is longer).
-// +openshift:compatibility-gen:level=1
 type ConsoleList struct {
 	metav1.TypeMeta `json:",inline"`
-
-	// metadata is the standard list's metadata.
-	// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
 	metav1.ListMeta `json:"metadata"`
 
 	Items []Console `json:"items"`

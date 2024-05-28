@@ -219,10 +219,6 @@ func countRunningApps(getconfigCtx *getconfigContext) (runningCount uint) {
 		switch status.State {
 		case types.BOOTING, types.RUNNING, types.HALTING:
 			runningCount++
-		case types.PURGING, types.RESTARTING:
-			log.Noticef("countRunningApps: %s for %s in %s",
-				status.Key(), status.DisplayName, status.State)
-			runningCount++
 		}
 	}
 	return runningCount

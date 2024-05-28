@@ -1,7 +1,0 @@
-eden.escript.test -test.run TestEdenScripts/arg -args="test1=123,test2=456"
-eden.escript.test -test.run TestEdenScripts/template
-eden.escript.test -test.run TestEdenScripts/message
-eden.escript.test -test.run TestEdenScripts/nested_scripts
-eden.escript.test -test.run TestEdenScripts/time
-eden.escript.test -test.run TestEdenScripts/source
-eden.escript.test -test.run TestEdenScripts/fail_scenario

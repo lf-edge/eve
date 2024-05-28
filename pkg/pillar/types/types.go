@@ -18,7 +18,7 @@ import (
 
 // SwState started with enum names from OMA-TS-LWM2M_SwMgmt-V1_0-20151201-C
 // but now has many additions.
-// They are in order of progression (except for the RESTARTING and PURGING ones)
+// They are in order of progression
 // We map this to info.ZSwState
 type SwState uint8
 
@@ -44,10 +44,8 @@ const (
 	PAUSED
 	HALTING // being halted
 	HALTED
-	RESTARTING // Restarting due to config change or zcli
-	PURGING    // Purging due to config change
-	BROKEN     // Domain is still alive, but its device model has failed
-	UNKNOWN    // State of the domain can't be determined
+	BROKEN  // BROKEN means domain is still alive, but its device model has failed
+	UNKNOWN // UNKNOWN means state of the domain can't be determined
 	// PENDING to start
 	PENDING
 	// SCHEDULING waiting to be scheduled
@@ -98,10 +96,6 @@ func (state SwState) String() string {
 		return "HALTING"
 	case HALTED:
 		return "HALTED"
-	case RESTARTING:
-		return "RESTARTING"
-	case PURGING:
-		return "PURGING"
 	case PENDING:
 		return "PENDING"
 	case FAILED:
@@ -170,10 +164,6 @@ func (state SwState) ZSwState() info.ZSwState {
 		return info.ZSwState_HALTING
 	case HALTED:
 		return info.ZSwState_HALTED
-	case RESTARTING:
-		return info.ZSwState_RESTARTING
-	case PURGING:
-		return info.ZSwState_PURGING
 	// we map BROKEN to HALTING to indicate that EVE has an active
 	// role in reaping BROKEN domains and transitioning them to
 	// a final HALTED state

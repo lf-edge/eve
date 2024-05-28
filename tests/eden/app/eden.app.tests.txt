@@ -1,1 +1,0 @@
-eden.escript.test -test.run TestEdenScripts/2dockers_test

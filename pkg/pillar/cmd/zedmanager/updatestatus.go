@@ -171,6 +171,7 @@ func doUpdate(ctx *zedmanagerContext,
 		log.Functionf("PurgeInprogress(%s) volumemgr done",
 			status.Key())
 		status.PurgeInprogress = types.BringDown
+		status.State = types.HALTING
 		changed = true
 		// Keep the old volumes in place
 		_, done := doRemove(ctx, status, false)
@@ -802,15 +803,10 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 		}
 	}
 	if ds.State != status.State {
-		switch status.State {
-		case types.RESTARTING, types.PURGING:
-			// Leave unchanged
-		default:
-			log.Functionf("Set State from DomainStatus from %d to %d",
-				status.State, ds.State)
-			status.State = ds.State
-			changed = true
-		}
+		log.Functionf("Set State from DomainStatus from %d to %d",
+			status.State, ds.State)
+		status.State = ds.State
+		changed = true
 	}
 	// XXX compare with equal before setting changed?
 	status.IoAdapterList = ds.IoAdapterList
@@ -1174,15 +1170,10 @@ func doInactivateHalt(ctx *zedmanagerContext,
 		changed = true
 	}
 	if ds.State != status.State {
-		switch status.State {
-		case types.RESTARTING, types.PURGING:
-			// Leave unchanged
-		default:
-			log.Functionf("Set State from DomainStatus from %d to %d",
-				status.State, ds.State)
-			status.State = ds.State
-			changed = true
-		}
+		log.Functionf("Set State from DomainStatus from %d to %d",
+			status.State, ds.State)
+		status.State = ds.State
+		changed = true
 	}
 	// Ignore errors during a halt
 	if ds.HasError() {

@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile-upstream:1.5.0-rc2-labs
-FROM lfedge/eve-alpine:2def1d097959bc9c8bf5d041a20b5e8ce060d4b7 as build
+FROM lfedge/eve-alpine:1f7685f95a475c6bbe682f0b976f12180b6c8726 as build
 
 ENV BUILD_PKGS tar make binutils zstd rdfind coreutils
 RUN eve-alpine-deploy.sh
@@ -26,7 +26,7 @@ ENV RTL8822_FW_VERSION ca9f4e199efbf8c377e8a1769ba5b05b23f92c82
 ADD https://github.com/lwfinger/rtw88.git#${RTL8822_FW_VERSION} /rtw88
 
 ENV LINUX_FIRMWARE_VERSION 20240410
-ENV LINUX_FIRMWARE_URL https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/snapshot/linux-firmware
+ENV LINUX_FIRMWARE_URL https://cdn.kernel.org/pub/linux/kernel/firmware/linux-firmware
 ADD ${LINUX_FIRMWARE_URL}-${LINUX_FIRMWARE_VERSION}.tar.gz /linux-firmware.tar.gz
 RUN mkdir /linux-firmware &&\
     tar -xz --strip-components=1 -C /linux-firmware -f /linux-firmware.tar.gz &&\
@@ -56,7 +56,7 @@ ADD ${RPI_BT_FIRMWARE_URL}/${RPI_BT_FIRMWARE_VERSION}/broadcom/BCM4345C5.hcd .
 
 # generate initrd for Intel's and AMD's microcode
 # it makes sense only for x86_64 platform
-FROM --platform=${TARGETPLATFORM} lfedge/eve-alpine:57d6a8a768256bece2f03ae4fc0eedcb5bca41a6 as ucode-build-common
+FROM --platform=${TARGETPLATFORM} lfedge/eve-alpine:1f7685f95a475c6bbe682f0b976f12180b6c8726 as ucode-build-common
 RUN mkdir -p /boot /tmp/ucode/intel /tmp/ucode/amd /usr/share/licenses/ucode
 
 FROM ucode-build-common as ucode-build-amd64
@@ -76,7 +76,7 @@ RUN cp license /usr/share/licenses/ucode/intel-license.txt
 
 #build AMD microcode. We use a separate Linux firmware image for that
 ENV AMD_UCODE_VERSION=20240410
-ENV LINUX_FIRMWARE_URL https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/snapshot/linux-firmware
+ENV LINUX_FIRMWARE_URL https://cdn.kernel.org/pub/linux/kernel/firmware/linux-firmware
 ADD ${LINUX_FIRMWARE_URL}-${AMD_UCODE_VERSION}.tar.gz /linux-firmware-ucode.tar.gz
 RUN mkdir /tmp/ucode/amd/linux-firmware \
     && tar -xz --strip-components=1 -C /tmp/ucode/amd/linux-firmware -f /linux-firmware-ucode.tar.gz
@@ -97,7 +97,7 @@ FROM ucode-build-common as ucode-build-arm64
 FROM ucode-build-common as ucode-build-riscv64
 FROM ucode-build-${TARGETARCH} as ucode-build
 
-FROM lfedge/eve-alpine:9fb9b9cbf7d90066a70e4704d04a6fe248ff52bb as compactor
+FROM lfedge/eve-alpine:1f7685f95a475c6bbe682f0b976f12180b6c8726 as compactor
 ENTRYPOINT []
 WORKDIR /
 COPY --from=build /lib/firmware/regulatory* /lib/firmware/

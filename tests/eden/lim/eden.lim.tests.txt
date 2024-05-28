@@ -1,3 +1,0 @@
-eden.escript.test -test.run TestEdenScripts/log_test
-eden.escript.test -test.run TestEdenScripts/info_test
-eden.escript.test -test.run TestEdenScripts/metric_test

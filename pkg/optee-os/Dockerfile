@@ -4,7 +4,7 @@
 ARG BUILD_PKGS_BASE="autoconf automake bash binutils binutils-dev build-base bc bison curl dtc expat flex openssl-dev util-linux-dev swig gnutls-dev perl python3 python3-dev py3-setuptools py3-pycryptodome py3-elftools py3-cryptography"
 
 # we use the same image in several places
-ARG EVE_ALPINE_IMAGE=lfedge/eve-alpine:269db59bde11b9acd9a5485c98a7c1383a159613
+ARG EVE_ALPINE_IMAGE=lfedge/eve-alpine:1f7685f95a475c6bbe682f0b976f12180b6c8726
 
 # hadolint ignore=DL3006
 FROM ${EVE_ALPINE_IMAGE} as build-native
