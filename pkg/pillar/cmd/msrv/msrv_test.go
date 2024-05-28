@@ -89,7 +89,7 @@ func TestRequestPatchEnvelopes(t *testing.T) {
 	g.Expect(err).ToNot(gomega.HaveOccurred())
 	defer os.RemoveAll(dir)
 
-	err = srv.Init(dir)
+	err = srv.Init(dir, true)
 	g.Expect(err).ToNot(gomega.HaveOccurred())
 
 	err = srv.Activate()
@@ -229,7 +229,7 @@ func TestHandleAppInstanceDiscovery(t *testing.T) {
 	g.Expect(err).ToNot(gomega.HaveOccurred())
 	defer os.RemoveAll(dir)
 
-	err = srv.Init(dir)
+	err = srv.Init(dir, true)
 	g.Expect(err).ToNot(gomega.HaveOccurred())
 
 	err = srv.Activate()

@@ -183,7 +183,7 @@ func Run(ps *pubsub.PubSub, logger *logrus.Logger, log *base.LogObject, args []s
 	// but we will have to bridge LocalNIs to network namespace of metadata server
 	agentbase.Init(&zedrouter.metadataServer, logger, log, "msrv")
 
-	if err := zedrouter.metadataServer.Init(types.PersistCachePatchEnvelopesUsage); err != nil {
+	if err := zedrouter.metadataServer.Init(types.PersistCachePatchEnvelopesUsage, false); err != nil {
 		log.Fatal(err)
 	}
 	go func() {
