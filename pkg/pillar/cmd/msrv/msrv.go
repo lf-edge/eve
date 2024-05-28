@@ -137,7 +137,7 @@ func Run(ps *pubsub.PubSub, logger *logrus.Logger, log *base.LogObject, argument
 	agentbase.Init(msrv, logger, log, agentName,
 		agentbase.WithArguments(arguments))
 
-	if err := msrv.Init(types.PersistCachePatchEnvelopesUsage); err != nil {
+	if err := msrv.Init(types.PersistCachePatchEnvelopesUsage, false); err != nil {
 		log.Fatal(err)
 	}
 	if err := msrv.Run(context.Background()); err != nil {
@@ -147,13 +147,15 @@ func Run(ps *pubsub.PubSub, logger *logrus.Logger, log *base.LogObject, argument
 }
 
 // Init initializes metadata server
-func (msrv *Msrv) Init(cachePath string) (err error) {
+// persist flag is needed for testing. We don't want to store pubsubs
+// but because of how memdriver works, we want them to be persisted
+func (msrv *Msrv) Init(cachePath string, persist bool) (err error) {
 	msrv.patchEnvelopesUsage = generics.NewLockedMap[string, types.PatchEnvelopeUsage]()
 
 	if err = msrv.initPublications(); err != nil {
 		return err
 	}
-	if err = msrv.initSubscriptions(); err != nil {
+	if err = msrv.initSubscriptions(persist); err != nil {
 		return err
 	}
 
@@ -217,12 +219,12 @@ func (msrv *Msrv) initPublications() (err error) {
 	return nil
 }
 
-func (msrv *Msrv) initSubscriptions() (err error) {
+func (msrv *Msrv) initSubscriptions(persist bool) (err error) {
 	msrv.subGlobalConfig, err = msrv.PubSub.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "zedagent",
 		MyAgentName:   agentName,
 		TopicImpl:     types.ConfigItemValueMap{},
-		Persistent:    true,
+		Persistent:    persist,
 		Activate:      false,
 		CreateHandler: msrv.handleGlobalConfigCreate,
 		ModifyHandler: msrv.handleGlobalConfigModify,
@@ -239,7 +241,7 @@ func (msrv *Msrv) initSubscriptions() (err error) {
 		MyAgentName: agentName,
 		TopicImpl:   types.EdgeNodeInfo{},
 		Activate:    false,
-		Persistent:  true,
+		Persistent:  persist,
 	})
 	if err != nil {
 		return err
@@ -251,7 +253,7 @@ func (msrv *Msrv) initSubscriptions() (err error) {
 			MyAgentName: agentName,
 			TopicImpl:   types.NetworkInstanceStatus{},
 			Activate:    false,
-			Persistent:  true,
+			Persistent:  persist,
 		},
 	)
 	if err != nil {
@@ -266,7 +268,7 @@ func (msrv *Msrv) initSubscriptions() (err error) {
 		Activate:    false,
 		WarningTime: warningTime,
 		ErrorTime:   errorTime,
-		Persistent:  true,
+		Persistent:  persist,
 	})
 	if err != nil {
 		return err
@@ -280,7 +282,7 @@ func (msrv *Msrv) initSubscriptions() (err error) {
 		Activate:    false,
 		WarningTime: warningTime,
 		ErrorTime:   errorTime,
-		Persistent:  true,
+		Persistent:  persist,
 	})
 	if err != nil {
 		return err
@@ -294,7 +296,7 @@ func (msrv *Msrv) initSubscriptions() (err error) {
 		Activate:    false,
 		WarningTime: warningTime,
 		ErrorTime:   errorTime,
-		Persistent:  true,
+		Persistent:  persist,
 	})
 	if err != nil {
 		return err
@@ -308,13 +310,13 @@ func (msrv *Msrv) initSubscriptions() (err error) {
 		Activate:    false,
 		WarningTime: warningTime,
 		ErrorTime:   errorTime,
-		Persistent:  true,
+		Persistent:  persist,
 	})
 	if err != nil {
 		return err
 	}
 
-	// Subscribe to AppInstConfig from zedagent
+	// Subscribe to AppInstStatus from zedmanager
 	msrv.subAppInstanceStatus, err = msrv.PubSub.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:   "zedmanager",
 		MyAgentName: agentName,
@@ -322,7 +324,7 @@ func (msrv *Msrv) initSubscriptions() (err error) {
 		Activate:    false,
 		WarningTime: warningTime,
 		ErrorTime:   errorTime,
-		Persistent:  true,
+		Persistent:  persist,
 	})
 	if err != nil {
 		return err
@@ -336,7 +338,7 @@ func (msrv *Msrv) initSubscriptions() (err error) {
 		Activate:    false,
 		WarningTime: warningTime,
 		ErrorTime:   errorTime,
-		Persistent:  true,
+		Persistent:  persist,
 	})
 	if err != nil {
 		return err
@@ -350,7 +352,7 @@ func (msrv *Msrv) initSubscriptions() (err error) {
 		Activate:    false,
 		WarningTime: warningTime,
 		ErrorTime:   errorTime,
-		Persistent:  true,
+		Persistent:  persist,
 	})
 	if err != nil {
 		return err
@@ -364,7 +366,7 @@ func (msrv *Msrv) initSubscriptions() (err error) {
 		Activate:    false,
 		WarningTime: warningTime,
 		ErrorTime:   errorTime,
-		Persistent:  true,
+		Persistent:  persist,
 	})
 	if err != nil {
 		return err
@@ -377,7 +379,7 @@ func (msrv *Msrv) initSubscriptions() (err error) {
 		Activate:    false,
 		WarningTime: warningTime,
 		ErrorTime:   errorTime,
-		Persistent:  true,
+		Persistent:  persist,
 	})
 	if err != nil {
 		return err
@@ -390,7 +392,7 @@ func (msrv *Msrv) initSubscriptions() (err error) {
 		Activate:    false,
 		WarningTime: warningTime,
 		ErrorTime:   errorTime,
-		Persistent:  true,
+		Persistent:  persist,
 	})
 	if err != nil {
 		return err
@@ -407,7 +409,7 @@ func (msrv *Msrv) initSubscriptions() (err error) {
 		DeleteHandler: msrv.handlePatchEnvelopeDelete,
 		WarningTime:   warningTime,
 		ErrorTime:     errorTime,
-		Persistent:    true,
+		Persistent:    persist,
 	})
 	if err != nil {
 		return err
@@ -424,7 +426,7 @@ func (msrv *Msrv) initSubscriptions() (err error) {
 		DeleteHandler: msrv.handleVolumeStatusDelete,
 		WarningTime:   warningTime,
 		ErrorTime:     errorTime,
-		Persistent:    true,
+		Persistent:    persist,
 	})
 	if err != nil {
 		return err
@@ -441,7 +443,7 @@ func (msrv *Msrv) initSubscriptions() (err error) {
 		DeleteHandler: msrv.handleContentTreeStatusDelete,
 		WarningTime:   warningTime,
 		ErrorTime:     errorTime,
-		Persistent:    true,
+		Persistent:    persist,
 	})
 	if err != nil {
 		return err
