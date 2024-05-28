@@ -232,6 +232,18 @@ func (s *ociSpec) Load(file *os.File) error {
 	if s.Annotations == nil {
 		s.Annotations = map[string]string{}
 	}
+	// default OCI specs have all devices being denied by default,
+	// we flip it back to all allow for now, but later on we may
+	// need to get more fine-grained
+	if s.Linux == nil {
+		s.Linux = &specs.Linux{}
+	}
+	if s.Linux.Resources == nil {
+		s.Linux.Resources = &specs.LinuxResources{}
+	}
+	if s.Linux.Resources.Devices == nil {
+		s.Linux.Resources.Devices = []specs.LinuxDeviceCgroup{{Type: "a", Allow: true, Access: "rwm"}}
+	}
 	return nil
 }
 
