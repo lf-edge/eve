@@ -579,7 +579,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		log.Fatalf("StartUserContainerdInstance: failed %v", err)
 	}
 
-	if err := wait.WaitForUserContainerd(ps, log, agentName, warningTime, errorTime); err != nil {
+	if err := containerd.WaitForUserContainerd(ps, log, agentName, warningTime, errorTime); err != nil {
 		log.Fatal(err)
 	}
 	log.Functionf("user containerd ready")
