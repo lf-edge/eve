@@ -58,11 +58,12 @@ jobs:
       matrix:
         arch: [amd64]
         hv: [kvm]
+        platform: ["generic"]
     if: github.event.review.state == 'approved'
     uses: lf-edge/eden/.github/workflows/test.yml@0.9.8
     with:
       eve_image: "evebuild/pr:${{ github.event.pull_request.number  }}"
-      eve_artifact_name: eve-${{ matrix.hv }}-${{ matrix.arch }}
+      eve_artifact_name: eve-${{ matrix.hv }}-${{ matrix.arch }}-${{ matrix.platform }}
       artifact_run_id: ${{ needs.get-run-id.outputs.result }}
       eden_version: "0.9.8"
 
