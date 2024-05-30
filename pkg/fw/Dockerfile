@@ -37,6 +37,10 @@ RUN ln -s brcmfmac43455-sdio.raspberrypi,3-model-b-plus.txt /lib/firmware/brcm/b
     ln -s brcmfmac43430-sdio.raspberrypi,3-model-b.txt /lib/firmware/brcm/brcmfmac43430-sdio.txt
 # symlinks for Visionfive1 riscv64 boards
 RUN ln -s ../cypress/cyfmac43430-sdio.bin /lib/firmware/brcm/brcmfmac43430-sdio.starfive,visionfive-v1.bin
+# symlinks for kondor wifi device (brcmfmac4356)
+RUN ln -s brcmfmac4356-pcie.gpd-win-pocket.txt '/lib/firmware/brcm/brcmfmac4356-pcie.Kontron America-Agora Gateway 403.txt'
+RUN ln -s brcmfmac4356-pcie.bin '/lib/firmware/brcm/brcmfmac4356-pcie.Kontron America-.bin'
+RUN ln -s brcmfmac4356-pcie.gpd-win-pocket.txt /lib/firmware/brcm/brcmfmac4356-pcie.txt
 
 ENV RPI_FIRMWARE_VERSION 2c8f665254899a52260788dd902083bb57a99738
 ENV RPI_FIRMWARE_URL https://github.com/RPi-Distro/firmware-nonfree/archive
