@@ -1,12 +1,12 @@
 #!/bin/sh
 #
-# Copyright (c) 2023 Zededa, Inc.
+# Copyright (c) 2023-2024 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
 K3S_VERSION=v1.28.5+k3s1
 KUBEVIRT_VERSION=v1.1.0
-LONGHORN_VERSION=v1.6.0
-CDI_VERSION=v1.57.0
+LONGHORN_VERSION=v1.6.2
+CDI_VERSION=v1.54.0
 NODE_IP=""
 MAX_K3S_RESTARTS=10
 RESTART_COUNT=0
