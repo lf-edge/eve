@@ -77,9 +77,24 @@ jobs:
       matrix:
         arch: [arm64, amd64]
         hv: [xen, kvm]
+        platform: ["generic"]
         include:
           - arch: riscv64
             hv: mini
+            platform: "generic"
+          - arch: amd64
+            hv: kvm
+            platform: "rt"
+          - arch: arm64
+            hv: kvm
+            platform: "nvidia"
+          - arch: arm64
+            hv: kvm
+            platform: "imx8mp_pollux"
+          - arch: arm64
+            hv: kvm
+            platform: "imx8mp_epc_r3720"
+
     steps:
       - uses: actions/checkout@v4
         with:
@@ -122,9 +137,9 @@ jobs:
           echo "TAG=evebuild/pr:$PR_ID" >> $GITHUB_ENV
           echo "ARCH=${{ matrix.arch }}" >> "$GITHUB_ENV"
 
-      - name: Build EVE ${{ matrix.hv }}-${{ matrix.arch }}
+      - name: Build EVE ${{ matrix.hv }}-${{ matrix.arch }}-${{ matrix.platform }}
         run: |
-          make V=1 ROOTFS_VERSION="$VERSION" HV=${{ matrix.hv }} ZARCH=${{ matrix.arch }} pkgs eve  # note that this already loads it into docker
+          make V=1 ROOTFS_VERSION="$VERSION" PLATFORM=${{ matrix.platform }} HV=${{ matrix.hv }} ZARCH=${{ matrix.arch }} pkgs eve  # note that this already loads it into docker
       - name: Post eve build report
         run: |
           echo Disk usage
@@ -135,17 +150,17 @@ jobs:
           docker system df -v
       - name: Export docker container
         run: |
-          make cache-export ZARCH=${{ matrix.arch }} IMAGE=lfedge/eve:$VERSION-${{ matrix.hv }} OUTFILE=eve-${{ matrix.hv }}-${{ matrix.arch }}.tar IMAGE_NAME=$TAG-${{ matrix.hv }}-${{ matrix.arch }}
-      - name: Upload EVE ${{ matrix.hv }}-${{ matrix.arch }}
+          make cache-export ZARCH=${{ matrix.arch }} IMAGE=lfedge/eve:$VERSION-${{ matrix.hv }} OUTFILE=eve-${{ matrix.hv }}-${{ matrix.arch }}-${{ matrix.platform }}.tar IMAGE_NAME=$TAG-${{ matrix.hv }}-${{ matrix.arch }}
+      - name: Upload EVE ${{ matrix.hv }}-${{ matrix.arch }}-${{ matrix.platform }}
         uses: actions/upload-artifact@v4
         with:
-          name: eve-${{ matrix.hv }}-${{ matrix.arch }}
-          path: eve-${{ matrix.hv }}-${{ matrix.arch }}.tar
-      - name: Clean EVE ${{ matrix.hv }}-${{ matrix.arch }}
+          name: eve-${{ matrix.hv }}-${{ matrix.arch }}-${{ matrix.platform }}
+          path: eve-${{ matrix.hv }}-${{ matrix.arch }}-${{ matrix.platform }}.tar
+      - name: Clean EVE ${{ matrix.hv }}-${{ matrix.arch }}-${{ matrix.platform }}
         run: |
           make clean
           docker rmi "$TAG-${{ matrix.hv }}-${{ matrix.arch }}" "lfedge/eve:$VERSION-${{ matrix.hv }}" "lfedge/eve:$VERSION-${{ matrix.hv }}-${{ matrix.arch }}" ||:
-      - name: Post clean eve ${{ matrix.hv }}-${{ matrix.arch }} report
+      - name: Post clean eve ${{ matrix.hv }}-${{ matrix.arch }}-${{ matrix.platform }} report
         run: |
           echo Disk usage
           df -h

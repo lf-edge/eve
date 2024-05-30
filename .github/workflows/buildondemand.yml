@@ -89,9 +89,23 @@ jobs:
       matrix:
         arch: [arm64, amd64]
         hv: [xen, kvm]
+        platform: ["generic"]
         include:
           - arch: riscv64
             hv: mini
+            platform: "generic"
+          - arch: amd64
+            hv: kvm
+            platform: "rt"
+          - arch: arm64
+            hv: kvm
+            platform: "nvidia"
+          - arch: arm64
+            hv: kvm
+            platform: "imx8mp_pollux"
+          - arch: arm64
+            hv: kvm
+            platform: "imx8mp_epc_r3720"
     steps:
       - uses: actions/checkout@v4
         with:
@@ -107,7 +121,7 @@ jobs:
 
       - uses: ./.github/actions/run-make
         with:
-          command: "V=1 HV=${{ matrix.hv }} ZARCH=${{ matrix.arch }} LINUXKIT_PKG_TARGET=push $FORCE_BUILD eve"
+          command: "V=1 HV=${{ matrix.hv }} PLATFORM=${{ matrix.platform }} ZARCH=${{ matrix.arch }} LINUXKIT_PKG_TARGET=push $FORCE_BUILD eve"
           dockerhub-token: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
           dockerhub-account: ${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}
       - uses: ./.github/actions/run-make
