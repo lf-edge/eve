@@ -4,7 +4,7 @@ Copyright (c) 2023 Zededa, Inc.
 SPDX-License-Identifier: Apache-2.0
 
 This script does two things:
-1. Generates the kernel-commits.mk-new file with commit information from GitHub branches.
+1. Generates the kernel-commits.mk file with commit information from GitHub branches.
 2. Generates a commit message with commit subjects and corresponding commit hashes between
     old and new commits for each branch.
 
@@ -409,7 +409,7 @@ def print_user_tips():
     print("Please review the commit message and make any necessary changes.")
     print("Once you are satisfied with the commit message, run the following command:")
     print("  git add kernel-commits.mk")
-    print("  git commit --file kernel-update-commit-message.txt")
+    print("  git commit -s --file kernel-update-commit-message.txt")
 
 
 # Define the path to the configuration file
@@ -594,7 +594,7 @@ def main():
 
     commit_message = generate_commit_message(updated_branches, "lf-edge", "eve-kernel")
 
-    # dump updated commits to kernel-commits.mk-new
+    # dump updated commits to kernel-commits.mk
     with open(kernel_commits_mk_file, "w", encoding="utf-8") as new_file:
         for branch, commit in new_commits.items():
             new_file.write(branch_commit_to_variable(branch, commit))
