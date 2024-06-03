@@ -180,6 +180,7 @@ func TestNewConfigItemSpecMap(t *testing.T) {
 		UsbAccess,
 		VgaAccess,
 		ConsoleAccess,
+		VncShimVMAccess,
 		AllowAppVnc,
 		EveMemoryLimitInBytes,
 		VmmMemoryLimitInMiB,

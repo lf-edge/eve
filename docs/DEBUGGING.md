@@ -81,6 +81,10 @@ To enable USB keyboard and/or storage access post onboarding it is necessary to 
 
 Further, to enable any console input post onboarding it is necessary to set debug.enable.console to true as specified in [configuration properties](CONFIG-PROPERTIES.md). Note that this setting is persisted by the device across reboots, hence it is re-applied once the pillar container starts. To see output on a screen post onboarding it is necessary to set debug.enable.vga, which is also persisted and re-applied after a reboot.
 
+## VNC access to the shim VM
+
+For security reasons VNC access to the shim VM is disabled by default. To enable such access the `debug.enable.vnc.shim.vm` has to be set to true. The flag is global per node, see the [VNC doc](DEBUGGING.md) for details.
+
 ## Diagnostic output
 
 If the device has an attached console or screen per the above, then EVE will send textual output to that which summarizes the connectivity to the controller, the device status including remote attestation state, the application status and errors, and any download status and errors.

@@ -252,6 +252,8 @@ const (
 	SSHAuthorizedKeys GlobalSettingKey = "debug.enable.ssh"
 	// ConsoleAccess global setting key
 	ConsoleAccess GlobalSettingKey = "debug.enable.console"
+	// Shim VM VNC access global setting key
+	VncShimVMAccess GlobalSettingKey = "debug.enable.vnc.shim.vm"
 	// DefaultLogLevel global setting key
 	DefaultLogLevel GlobalSettingKey = "debug.default.loglevel"
 	// DefaultRemoteLogLevel global setting key
@@ -891,6 +893,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddBoolItem(DisableDHCPAllOnesNetMask, false)
 	configItemSpecMap.AddBoolItem(ProcessCloudInitMultiPart, false)
 	configItemSpecMap.AddBoolItem(ConsoleAccess, true) // Controller likely default to false
+	configItemSpecMap.AddBoolItem(VncShimVMAccess, false)
 	configItemSpecMap.AddBoolItem(EnableARPSnoop, true)
 	configItemSpecMap.AddBoolItem(WwanQueryVisibleProviders, false)
 	configItemSpecMap.AddBoolItem(NetworkLocalLegacyMACAddress, false)
