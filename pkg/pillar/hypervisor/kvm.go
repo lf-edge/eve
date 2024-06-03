@@ -672,7 +672,8 @@ func (ctx KvmContext) Setup(status types.DomainStatus, config types.DomainConfig
 	domainName := status.DomainName
 	domainUUID := status.UUIDandVersion.UUID
 	// first lets build the domain config
-	if err := ctx.CreateDomConfig(domainName, config, status, diskStatusList, aa, file); err != nil {
+	if err := ctx.CreateDomConfig(domainName, config, status, diskStatusList,
+		aa, globalConfig, file); err != nil {
 		return logError("failed to build domain config: %v", err)
 	}
 
@@ -721,9 +722,12 @@ func (ctx KvmContext) Setup(status types.DomainStatus, config types.DomainConfig
 	return nil
 }
 
-// CreateDomConfig creates a domain config (a qemu config file, typically named something like xen-%d.cfg)
-func (ctx KvmContext) CreateDomConfig(domainName string, config types.DomainConfig, status types.DomainStatus,
-	diskStatusList []types.DiskStatus, aa *types.AssignableAdapters, file *os.File) error {
+// CreateDomConfig creates a domain config (a qemu config file,
+// typically named something like xen-%d.cfg)
+func (ctx KvmContext) CreateDomConfig(domainName string,
+	config types.DomainConfig, status types.DomainStatus,
+	diskStatusList []types.DiskStatus, aa *types.AssignableAdapters,
+	globalConfig *types.ConfigItemValueMap, file *os.File) error {
 	tmplCtx := struct {
 		Machine string
 		types.DomainConfig

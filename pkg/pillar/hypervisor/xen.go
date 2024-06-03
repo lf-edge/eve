@@ -121,7 +121,8 @@ func (ctx xenContext) Task(status *types.DomainStatus) types.Task {
 func (ctx xenContext) Setup(status types.DomainStatus, config types.DomainConfig,
 	aa *types.AssignableAdapters, globalConfig *types.ConfigItemValueMap, file *os.File) error {
 	// first lets build the domain config
-	if err := ctx.CreateDomConfig(status.DomainName, config, status.DiskStatusList, aa, file); err != nil {
+	if err := ctx.CreateDomConfig(status.DomainName, config,
+		status.DiskStatusList, aa, globalConfig, file); err != nil {
 		return logError("failed to build domain config: %v", err)
 	}
 
@@ -145,8 +146,10 @@ func (ctx xenContext) Setup(status types.DomainStatus, config types.DomainConfig
 	return nil
 }
 
-func (ctx xenContext) CreateDomConfig(domainName string, config types.DomainConfig, diskStatusList []types.DiskStatus,
-	aa *types.AssignableAdapters, file *os.File) error {
+func (ctx xenContext) CreateDomConfig(domainName string,
+	config types.DomainConfig, diskStatusList []types.DiskStatus,
+	aa *types.AssignableAdapters, globalConfig *types.ConfigItemValueMap,
+	file *os.File) error {
 	xenType := "pvh"
 	rootDev := ""
 	extra := config.ExtraArgs
