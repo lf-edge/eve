@@ -8,6 +8,8 @@ However there is a special case for the container applications: the flag `Enable
 Please note that `EnableVncShimVm` can only be activated if `EnableVnc` is set to true.
 If both flags (`EnableVnc` and `EnableVncShimVm`) are enabled the user will be able to switch between the container and the shim VM session by pressing a key combination.
 
+The other option to enable VNC to the shim VM is to set the `debug.enable.vnc.shim.vm` to true, which acts as a global flag for the whole node, unlike the `EnableVncShimVm`, which is a per-application flag.
+
 ## Guacamole
 
 EVE has a [guacamole](https://guacamole.apache.org/) server running as a service, which allows the user to connect to the ECOs via a web browser.

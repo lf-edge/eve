@@ -31,6 +31,7 @@
 | debug.enable.vga | boolean | false | allow VGA console on device |
 | debug.enable.ssh | authorized ssh key | empty string(ssh disabled) | allow ssh to EVE |
 | debug.enable.console | boolean | false | allow console access to EVE (reboot required to disable) |
+| debug.enable.vnc.shim.vm | boolean | false | allow VNC access to the container application shim VM (reboot required to disable) |
 | debug.default.loglevel | string | info | min level saved in files on device. Used logrus log levels as described here ["https://pkg.go.dev/github.com/sirupsen/logrus"]: panic, fatal, error, warning, info, debug and trace.
 | debug.syslog.loglevel | string | info | min level of the syslog messages saved in files on device. System default loglevel string representation should be used as described here ["https://man7.org/linux/man-pages/man3/syslog.3.html"]: emerg, alert, crit, err, warning, notice, info, debug. |
 | debug.kernel.loglevel | string | info | min level of the kernel messages saved in files on device. System default loglevel string representation should be used as described here ["https://man7.org/linux/man-pages/man3/syslog.3.html"]: emerg, alert, crit, err, warning, notice, info, debug. |
