@@ -43,6 +43,9 @@ linters:
     - ireturn           # Returning interfaces is a common practise for constructors in defensive programming
     - exhaustive        # Complains even if struct has default branch
     - musttag           # pillar uses implicit tags for all structs
+    - maintidx          # Disable maintainability index
+    - ifshort
+    - dupl
 
 issues:
   max-issues-per-linter: 0
