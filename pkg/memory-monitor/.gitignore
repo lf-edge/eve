@@ -1,0 +1,7 @@
+*.out
+*.o
+zedbox
+obj
+bin
+dist
+results

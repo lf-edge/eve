@@ -1,0 +1,293 @@
+# Memory Monitor
+
+## About the memory limitations in the EVE system
+
+EVE uses cgroups to limit the memory usage of different components of the system.
+In particular, EVE creates a dedicated cgroup "eve" to limit the memory usage of
+its main components. This cgroup is further divided into several sub-cgroups,
+including "eve/services", and, in particular, "eve/services/pillar".
+
+So, a usual memory hierarchy in the EVE system looks like this:
+
+```shell
+$ tree /sys/fs/cgroup/memory/eve -d
+/sys/fs/cgroup/memory/eve <--- is set from dom0_mem kernel argument, usually 800Mb (or 8GB for ZFS)
+├── containerd
+└── services <---------------- is set from eve_mem kernel argument, usually 650Mb
+    ├── debug
+    ├── edgeview
+    ├── eve-edgeview
+    ├── guacd
+    ├── lisp
+    ├── memlogd
+    ├── newlogd
+    ├── pillar <-------------- is set from eve_mem kernel argument, usually 650Mb
+    ├── sshd
+    ├── vtpm
+    ├── watchdog
+    ├── wlan
+    ├── wwan
+    └── xen-tools
+```
+
+These limits are set within `pkg/dom0-ztools/rootfs/etc/init.d/010-eve-cgroup` script.
+The "eve" cgroup limit is set according to the `dom0_mem` kernel argument, and
+the "pillar" cgroup limit is set according the `eve_mem` kernel argument.
+
+In its turn, the "pillar" cgroup encapsulates several processes, the most
+important of which is `zedbox`:
+
+```shell
+$ for pid in $(cat /sys/fs/cgroup/memory/eve/services/pillar/cgroup.procs); do echo "CMD: $(cat /proc/$pid/cmdline | tr '\0' ' ')"; done
+CMD: /bin/sh /init.sh
+CMD: /bin/sh /opt/zededa/bin/device-steps.sh
+CMD: /opt/zededa/bin/zedbox <--- zedbox process
+CMD: /bin/sh /opt/zededa/bin/device-steps.sh
+CMD: cat
+CMD: dhcpcd: eth0 [ip4] [ip6]
+CMD: dhcpcd: eth1 [ip4] [ip6]
+CMD: /usr/sbin/ntpd -p pool.ntp.org
+CMD: /opt/zededa/bin/dnsmasq -C /run/zedrouter/dnsmasq.bn1.conf
+CMD: sleep 300
+```
+
+The other processes in the "pillar" cgroup are DHCP clients, NTP daemon, DNS
+server, and some other services.
+
+### RSS, cache, and the cgroup memory usage
+
+Each cgroup contains a file that shows the memory usage of the cgroup:
+`/sys/fs/cgroup/memory/*/memory.usage_in_bytes`. The same information is
+used by the cgroup events subsystem to trigger events. The memory usage of
+the cgroup is calculated as the sum of the memory usage of all processes
+in the cgroup.
+
+It is important to note that this value also includes cached memory. Cache is
+usually easy to reclaim, so it is not considered a problem if the cgroup memory
+usage is close to the limit. The problem arises when the Resident Set Size (RSS)
+of the process is close to the limit.
+
+Unfortunately, the cgroup memory threshold events are triggered based on the
+cgroup memory usage, which includes cache. During the threshold events handling,
+we take into account the cache size, not to report false positives.
+However, for better results we also monitor the RSS of the zedbox process
+separately in a dedicated thread, reading the `/proc/<zedbox_pid>/statm` file
+every 5 seconds.
+
+## What the tool is monitoring?
+
+The memory monitor is designed to track and respond to specific memory-related
+events related to the zedbox process.
+
+Here are the specific memory events that are being monitored:
+
+* **zedbox process memory usage**: The memory usage of the zedbox process is
+monitored. If the Resident Set Size (RSS) of the Zedbox process exceeds a
+predefined threshold, a handler script is triggered. The RSS is checked every 5
+seconds.
+* **eve cgroup memory usage**: The memory usage of the eve cgroup is monitored
+in two
+ways:
+  * **Threshold Event**: If the memory usage of the eve cgroup exceeds a certain
+    percentage (98% by default) of its memory limit, a handler script is
+    triggered.
+  * **Pressure Event**: If the memory pressure level of the EVE cgroup reaches
+    the "medium" level, a handler script is triggered. Memory pressure level is
+    a measure of how the system is reclaiming memory from the cgroup. We set the
+    level to "medium", not "low", to avoid triggering the event too often,
+    for example, when the system reclaims cache memory.
+* **Pillar Cgroup Memory Usage**: The memory usage of the pillar cgroup is also
+monitored in two ways:
+  * Threshold Event: If the memory usage of the pillar cgroup exceeds a
+    predefined threshold in bytes, a handler script is triggered. Here we
+    exclude cache from the memory usage calculation.
+  * Pressure Event: If the memory pressure level of the pillar cgroup reaches
+    the "low" level, a handler script is triggered.
+
+The handler script that is triggered in response to these events performs
+various actions to log and manage memory usage. It can, for example, dump memory
+allocation sites, trigger a heap dump, and log memory usage details.
+
+## Build and deploy the memory monitor
+
+To create all the necessary files to run the memory monitor, you need to build
+it. This can be done with the Makefile provided in the repository. To build the
+memory monitor, run the following command:
+
+```shell
+$ make dist
+```
+
+It will create a `dist` directory with all the necessary files to run the memory
+monitor. You can then copy the contents of the `dist` directory to the EVE
+system, in the `/persist/memory-monitor` directory.
+
+## How to run the memory monitor
+
+The memory monitor is a standalone tool that can be run on any EVE system. It
+expects to be located in the `/persist/memory-monitor` directory. The following
+files are required in the same directory to run the memory monitor:
+* `monitor`: The main binary that runs the memory monitor.
+* `monitor.conf`: The configuration file for the memory monitor.
+* `handler.sh`: The handler script that is triggered in response to memory
+  events.
+
+You can run the memory monitor just by executing the `monitor` binary. It then
+runs in the background as a daemon.
+
+To stop the memory monitor, you can kill the process, for example, by running:
+
+```shell
+$ killall monitor
+```
+
+### Note on the memory monitor and the memory cgroups
+
+During the initialization the tool removes itself from the current memory cgroup
+and moves to the root one, so it does not affect the memory usage  of the
+eve cgroup.
+
+Before the tool starts the handling script, part of which is to dump the memory
+usage of the pillar, accessing the internal golang debugging http server, it
+temporarily increases the memory limit of the pillar cgroup by 50Mb. This is
+done to avoid the situation when the memory usage of the pillar cgroup is close
+to the limit, and the handler script cannot run because of the lack of memory.
+After the handler script finishes, the memory limit of the pillar cgroup is
+restored to the original value.
+
+## Output of the memory monitor
+
+The memory events handling results are logged to the
+`/persist/memory-monitor/output` directory. The output directory is created
+automatically if it does not exist.
+
+The output directory contains:
+
+* Subdirectory for the last event triggered. The name of the subdirectory is
+  the timestamp of the event. The subdirectory contains:
+  * `event_info.txt`: A text file that contains metadata about the event. It
+    includes the type of the event and the EVE version that was running when the
+    event was triggered.
+  * `allocations_pillar.out`: A list of memory allocation sites of the zedbox
+    process.
+  * `heap_pillar.out`: A heap dump of the zedbox process. It's collected using
+    the built-in go tool. It's a text file that can be either read manually or,
+    even better, analyzed using the `pprof` tool. How to analyze the heap dump
+    is described in the next section.
+  * `memstats_pillar.out`: A memory usage report of the pillar cgroup. It
+    contains the total memory usage of the pillar cgroup according to the cgroup
+    itself, including the cache and the total Resident Set Size (RSS)
+    according to the smaps file of all processes in the cgroup. It also contains
+    the RSS of all processes in the pillar cgroup.
+  * `memstat_eve.out`: A memory usage report of the EVE cgroup. It contains the
+    total memory usage of the EVE cgroup according to the cgroup itself,
+    including the cache and the total Resident Set Size (RSS) according to the
+    smaps file. It also contains the RSS and per-mapping details of all the
+    processes in the EVE cgroup.
+  * `zedbox`: A symlink to the zedbox binary that was used to collect the heap
+    dump.
+* Tar archives of the previous event directories. The archives are created
+  automatically by the handler script when a new event is triggered. The
+  archives are created to save disk space (each event directory can be quite
+  large, ~5-15Mb, while the archive is usually ~1Mb). We keep not more than
+  100 Mb of archives: the oldest archives are deleted by the handler script
+  when the total size of the archives exceeds 100 Mb.
+  The archive does not contain the `zedbox` symlink.
+* `events.log`: A log file that contains a timestamped list of all memory
+  events, archives for which are still present in the output directory.
+* `handler.log`: A log file that contains the output of the handler script. It
+  is useful for debugging the handler script if it fails. It's cleared if the
+  handler script run is successful.
+
+### Logs of the memory monitor
+
+The memory monitor logs its output to the syslog. Unfortunately, the syslog
+logs are not shown with the `logread` command. Nevertheless, you can see them
+in the logs files in `/persist/newlogd` directory. The memory monitor logs
+are prefixed with the `memory-monitor` tag.
+
+### How to analyze the heap dump
+
+The heap dump (`heap_pillar.out`) is a text file that can be analyzed using
+`go tool pprof`. This tool is a part of the Go toolchain, so it is not
+necessary to install anything extra to use it. To run it, first copy the
+`heap_pillar.out` file and the `zedbox` binary to the same directory on your
+local machine. Then, run the following command:
+
+```shell
+$ go tool pprof /path/to/zedbox /path/to/output/<event_timestamp>/heap_pillar.out
+```
+
+## Configuration of the memory monitor
+
+The memory monitor is configured using the `monitor.conf` file, located in the
+same directory as the `monitor` binary: `/persist/memory-monitor/monitor.conf`.
+The configuration file should contain the following fields:
+
+```text
+CGROUP_PILLAR_THRESHOLD_MB=<threshold in MB>
+CGROUP_EVE_THRESHOLD_PERCENT=<threshold in percent>
+PROC_ZEDBOX_THRESHOLD_MB=<threshold in MB>
+```
+
+The fields are:
+
+* `CGROUP_PILLAR_THRESHOLD_MB`: The threshold in megabytes for the memory usage
+  of the Pillar cgroup. If the memory usage of the Pillar cgroup exceeds this
+  threshold (we exclude cache), the handler script is triggered.
+* `CGROUP_EVE_THRESHOLD_PERCENT`: The threshold for the memory usage of the EVE
+  cgroup. The threshold then is calculated as a percentage of the memory limit
+  of the eve cgroup, that is read from `/sys/fs/cgroup/memory/eve/memory.limit_in_bytes`
+  in runtime.
+* `PROC_ZEDBOX_THRESHOLD_MB`: The threshold in megabytes for the Resident Set
+  Size (RSS) of the zedbox process. It will be compared every 5 second to the
+  RSS of the zedbox process, read from the `/proc/<zedbox_pid>/statm` file.
+
+If some of the fields are missing in the configuration file, the default values
+will be used. The default values are:
+
+```text
+CGROUP_PILLAR_THRESHOLD_MB=400
+CGROUP_EVE_THRESHOLD_PERCENT=98
+PROC_ZEDBOX_THRESHOLD_MB=140
+```
+
+## Makefile targets
+
+You can find help on the Makefile targets by running:
+
+```shell
+$ make help
+```
+
+Worth mentioning that the Makefile has a list of targets that can be used to
+build, deploy, get and analyze the memory monitor output in a local setup with
+an instance of the EVE system running in a VM, accessible via SSH by local_eve
+alias. All these targets are prefixed with `local_`.
+
+## Pressure tool
+
+There is a tool `pressure` that can be used to allocate memory in the EVE system
+to trigger the memory monitor events. The tool can be built using the Makefile:
+
+```shell
+$ make pressure
+```
+
+It will create a `pressure` binary in the `bin` directory. The binary can be
+copied to the EVE system and run from any directory.
+
+The tool takes amount of memory to allocate in MB as an argument.
+
+For example, to allocate 100Mb of memory in the EVE system, run the following
+command:
+
+```shell
+pressure 100
+```
+
+It will allocate 100Mb of memory and release it after user presses Enter.
+
+It's worth mentioning that if you run the tool from an ssh session, it will
+allocate memory in the ssh session cgroup, that is exactly a part of the eve
+cgroup. So, it will trigger the eve cgroup memory event.
