@@ -175,13 +175,14 @@ static pthread_t run_procfs_monitor(config_t *config) {
     pid_file = fopen("/run/zedbox.pid", "r");
     if (pid_file == NULL) {
         syslog(LOG_ERR, "opening zedbox.pid: %s", strerror(errno));
-        return 1;
+        // Let's consider 0 as an invalid thread id
+        return 0;
     }
     char pid_str[10];
     if (fgets(pid_str, sizeof(pid_str), pid_file) == NULL) {
         syslog(LOG_ERR, "reading zedbox.pid: %s", strerror(errno));
         fclose(pid_file);
-        return 1;
+        return 0;
     }
     fclose(pid_file);
 
@@ -189,7 +190,7 @@ static pthread_t run_procfs_monitor(config_t *config) {
     pid = (int) strtodec(pid_str, &error);
     if (error) {
         syslog(LOG_ERR, "Invalid PID in zedbox.pid: %s", pid_str);
-        return 1;
+        return 0;
     }
 
     // Create a thread to watch the memory limit of the zedbox process every 10 seconds
@@ -201,7 +202,6 @@ static pthread_t run_procfs_monitor(config_t *config) {
     int result = pthread_create(&thread, NULL, (void *(*)(void *)) procfs_monitor_thread, args);
     if (result != 0) {
         syslog(LOG_WARNING, "pthread_create: %s", strerror(result));
-        // Let's consider 0 as an invalid thread id
         return 0;
     }
 
@@ -215,7 +215,8 @@ static pthread_t run_cgroups_events_monitor(config_t *config, fds_to_close_t *fd
     int result = cgroup_get_memory_limit(EVE_CGROUP, &eve_limit_bytes);
     if (result == -1) {
         syslog(LOG_INFO, "Failed to read the eve cgroup limit\n");
-        return 1;
+        // Let's consider 0 as an invalid thread id
+        return 0;
     }
     // Set the threshold to 95% of the limit
     eve_threshold_bytes = eve_limit_bytes / 100 * config->cgroup_eve_threshold_percent;
@@ -301,7 +302,6 @@ static pthread_t run_cgroups_events_monitor(config_t *config, fds_to_close_t *fd
     args->events_count = EVENTS_COUNT;
     if (pthread_create(&thread, NULL, cgroups_events_monitor_thread, args) != 0) {
         syslog(LOG_WARNING, "Failed to create a thread for the cgroups events monitor\n");
-        // Let's consider 0 as an invalid thread id
         return 0;
     }
 
@@ -317,7 +317,6 @@ static pthread_t run_cgroups_events_monitor(config_t *config, fds_to_close_t *fd
     }
 
     return thread;
-
 }
 
 void monitor(config_t *config, int handler_log_fd, fds_to_close_t *fds_to_close)
