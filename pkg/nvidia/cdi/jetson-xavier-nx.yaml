@@ -1,0 +1,3355 @@
+---
+cdiVersion: 0.5.0
+containerEdits:
+  env:
+    - NVIDIA_VISIBLE_DEVICES=void
+devices:
+  - containerEdits:
+      deviceNodes:
+        - path: /dev/fb0
+        - path: /dev/fb1
+        - path: /dev/nvhost-as-gpu
+        - path: /dev/nvhost-ctrl
+        - path: /dev/nvhost-ctrl-gpu
+        - path: /dev/nvhost-ctrl-nvdla0
+        - path: /dev/nvhost-ctrl-nvdla1
+        - path: /dev/nvhost-ctrl-pva0
+        - path: /dev/nvhost-ctrl-pva1
+        - path: /dev/nvhost-dbg-gpu
+        - path: /dev/nvhost-gpu
+        - path: /dev/nvhost-msenc
+        - path: /dev/nvhost-nvdec
+        - path: /dev/nvhost-nvdec1
+        - path: /dev/nvhost-nvdla0
+        - path: /dev/nvhost-nvdla1
+        - path: /dev/nvhost-nvenc1
+        - path: /dev/nvhost-nvjpg
+        - path: /dev/nvhost-prof-gpu
+        - path: /dev/nvhost-pva0
+        - path: /dev/nvhost-pva1
+        - path: /dev/nvhost-vic
+        - path: /dev/nvmap
+        - path: /dev/tegra_dc_0
+        - path: /dev/tegra_dc_1
+        - path: /dev/tegra_dc_ctrl
+        - path: /dev/nvgpu/igpu0/as
+        - path: /dev/nvgpu/igpu0/channel
+        - path: /dev/nvgpu/igpu0/ctrl
+        - path: /dev/nvgpu/igpu0/ctxsw
+        - path: /dev/nvgpu/igpu0/dbg
+        - path: /dev/nvgpu/igpu0/power
+        - path: /dev/nvgpu/igpu0/prof
+        - path: /dev/nvgpu/igpu0/prof-ctx
+        - path: /dev/nvgpu/igpu0/prof-dev
+        - path: /dev/nvgpu/igpu0/tsg
+      hooks:
+        - args:
+            - nvidia-ctk
+            - hook
+            - create-symlinks
+            - --link
+            - /usr/lib/aarch64-linux-gnu/tegra/nvidia_icd.json::/etc/vulkan/icd.d/nvidia_icd.json
+            - --link
+            - ../tegra/libnvidia-allocator.so::/usr/lib/aarch64-linux-gnu/gbm/nvidia-drm_gbm.so
+            - --link
+            - libnvidia-allocator.so.1::/usr/lib/aarch64-linux-gnu/tegra/libnvidia-allocator.so
+            - --link
+            - ../tegra/libnvidia-allocator.so::/usr/lib/aarch64-linux-gnu/gbm/tegra_gbm.so
+            - --link
+            - ../tegra/libnvidia-allocator.so::/usr/lib/aarch64-linux-gnu/gbm/tegra-udrm_gbm.so
+            - --link
+            - tegra/libcuda.so::/usr/lib/aarch64-linux-gnu/libcuda.so
+            - --link
+            - libcuda.so.1.1::/usr/lib/aarch64-linux-gnu/tegra/libcuda.so
+            - --link
+            - tegra/libnvcucompat.so::/usr/lib/aarch64-linux-gnu/libnvcucompat.so
+            - --link
+            - tegra/libnvv4l2.so::/usr/lib/aarch64-linux-gnu/libv4l2.so.0.0.999999
+            - --link
+            - tegra/libnvv4lconvert.so::/usr/lib/aarch64-linux-gnu/libv4lconvert.so.0.0.999999
+            - --link
+            - ../../../tegra/libv4l2_nvargus.so::/usr/lib/aarch64-linux-gnu/libv4l/plugins/nv/libv4l2_nvargus.so
+            - --link
+            - ../../../tegra/libv4l2_nvcuvidvideocodec.so::/usr/lib/aarch64-linux-gnu/libv4l/plugins/nv/libv4l2_nvcuvidvideocodec.so
+            - --link
+            - ../../../tegra/libv4l2_nvvideocodec.so::/usr/lib/aarch64-linux-gnu/libv4l/plugins/nv/libv4l2_nvvideocodec.so
+            - --link
+            - tegra/libvulkan.so.1.3.204::/usr/lib/aarch64-linux-gnu/libvulkan.so.1.3.204
+            - --link
+            - libcuda.so.1.1::/usr/lib/aarch64-linux-gnu/tegra/libcuda.so.1
+            - --link
+            - libgstnvcustomhelper.so.1.0.0::/usr/lib/aarch64-linux-gnu/tegra/libgstnvcustomhelper.so
+            - --link
+            - libgstnvdsseimeta.so.1.0.0::/usr/lib/aarch64-linux-gnu/tegra/libgstnvdsseimeta.so
+            - --link
+            - libnvbufsurface.so.1.0.0::/usr/lib/aarch64-linux-gnu/tegra/libnvbufsurface.so
+            - --link
+            - libnvbufsurftransform.so.1.0.0::/usr/lib/aarch64-linux-gnu/tegra/libnvbufsurftransform.so
+            - --link
+            - libnvdsbufferpool.so.1.0.0::/usr/lib/aarch64-linux-gnu/tegra/libnvdsbufferpool.so
+            - --link
+            - libnvidia-egl-gbm.so::/usr/lib/aarch64-linux-gnu/tegra/libnvidia-egl-gbm.so.1
+            - --link
+            - libnvidia-egl-wayland.so::/usr/lib/aarch64-linux-gnu/tegra/libnvidia-egl-wayland.so.1
+            - --link
+            - libnvidia-kms.so.35.5.0::/usr/lib/aarch64-linux-gnu/tegra/libnvidia-kms.so
+            - --link
+            - libnvidia-nvvm.so.35.5.0::/usr/lib/aarch64-linux-gnu/tegra/libnvidia-nvvm.so.4
+            - --link
+            - libnvidia-ptxjitcompiler.so.35.5.0::/usr/lib/aarch64-linux-gnu/tegra/libnvidia-ptxjitcompiler.so.1
+            - --link
+            - libnvidia-vksc-core.so.35.5.0::/usr/lib/aarch64-linux-gnu/tegra/libnvidia-vksc-core.so
+            - --link
+            - libnvid_mapper.so.1.0.0::/usr/lib/aarch64-linux-gnu/tegra/libnvid_mapper.so
+            - --link
+            - libnvscibuf.so.1::/usr/lib/aarch64-linux-gnu/tegra/libnvscibuf.so
+            - --link
+            - libnvscicommon.so.1::/usr/lib/aarch64-linux-gnu/tegra/libnvscicommon.so
+            - --link
+            - libnvscistream.so.1::/usr/lib/aarch64-linux-gnu/tegra/libnvscistream.so
+            - --link
+            - libnvscisync.so.1::/usr/lib/aarch64-linux-gnu/tegra/libnvscisync.so
+            - --link
+            - libnvv4l2.so::/usr/lib/aarch64-linux-gnu/tegra/libv4l2.so.0
+            - --link
+            - libnvv4lconvert.so::/usr/lib/aarch64-linux-gnu/tegra/libv4lconvert.so.0
+            - --link
+            - libvulkansc.so.1::/usr/lib/aarch64-linux-gnu/tegra/libvulkansc.so
+            - --link
+            - libvulkansc.so.1.0.10::/usr/lib/aarch64-linux-gnu/tegra/libvulkansc.so.1
+            - --link
+            - libvulkan.so.1.3.204::/usr/lib/aarch64-linux-gnu/tegra/libvulkan.so.1
+            - --link
+            - ../../../lib/aarch64-linux-gnu/tegra-egl/nvidia.json::/usr/share/glvnd/egl_vendor.d/10_nvidia.json
+            - --link
+            - libcuda.so.1::/usr/lib/aarch64-linux-gnu/tegra/libcuda.so
+            - --link
+            - libGLX_nvidia.so.0::/usr/lib/aarch64-linux-gnu/tegra/libGLX_indirect.so.0
+          hookName: createContainer
+          path: /usr/bin/nvidia-ctk
+        - args:
+            - nvidia-ctk
+            - hook
+            - update-ldcache
+            - --folder
+            - /usr/lib/aarch64-linux-gnu/tegra
+            - --folder
+            - /usr/lib/aarch64-linux-gnu/tegra/weston
+            - --folder
+            - /usr/lib/aarch64-linux-gnu
+            - --folder
+            - /usr/lib/aarch64-linux-gnu/gstreamer-1.0
+            - --folder
+            - /usr/lib/aarch64-linux-gnu/tegra-egl
+          hookName: createContainer
+          path: /usr/bin/nvidia-ctk
+      mounts:
+        - containerPath: /etc/nv_tegra_release
+          hostPath: /etc/nv_tegra_release
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /lib/firmware/tegra19x
+          hostPath: /lib/firmware/tegra19x
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /etc/vulkansc/icd.d/nvidia_icd_vksc.json
+          hostPath: /etc/vulkansc/icd.d/nvidia_icd_vksc.json
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/libgstnvegl-1.0.so.0
+          hostPath: /usr/lib/aarch64-linux-gnu/libgstnvegl-1.0.so.0
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/libgstnvexifmeta.so
+          hostPath: /usr/lib/aarch64-linux-gnu/libgstnvexifmeta.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/libgstnvivameta.so
+          hostPath: /usr/lib/aarch64-linux-gnu/libgstnvivameta.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/libnvsample_cudaprocess.so
+          hostPath: /usr/lib/aarch64-linux-gnu/libnvsample_cudaprocess.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/gstreamer-1.0/libgstnvarguscamerasrc.so
+          hostPath: /usr/lib/aarch64-linux-gnu/gstreamer-1.0/libgstnvarguscamerasrc.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/gstreamer-1.0/libgstnvcompositor.so
+          hostPath: /usr/lib/aarch64-linux-gnu/gstreamer-1.0/libgstnvcompositor.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/gstreamer-1.0/libgstnvdrmvideosink.so
+          hostPath: /usr/lib/aarch64-linux-gnu/gstreamer-1.0/libgstnvdrmvideosink.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/gstreamer-1.0/libgstnveglglessink.so
+          hostPath: /usr/lib/aarch64-linux-gnu/gstreamer-1.0/libgstnveglglessink.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/gstreamer-1.0/libgstnveglstreamsrc.so
+          hostPath: /usr/lib/aarch64-linux-gnu/gstreamer-1.0/libgstnveglstreamsrc.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/gstreamer-1.0/libgstnvegltransform.so
+          hostPath: /usr/lib/aarch64-linux-gnu/gstreamer-1.0/libgstnvegltransform.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/gstreamer-1.0/libgstnvivafilter.so
+          hostPath: /usr/lib/aarch64-linux-gnu/gstreamer-1.0/libgstnvivafilter.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/gstreamer-1.0/libgstnvjpeg.so
+          hostPath: /usr/lib/aarch64-linux-gnu/gstreamer-1.0/libgstnvjpeg.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/gstreamer-1.0/libgstnvtee.so
+          hostPath: /usr/lib/aarch64-linux-gnu/gstreamer-1.0/libgstnvtee.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/gstreamer-1.0/libgstnvv4l2camerasrc.so
+          hostPath: /usr/lib/aarch64-linux-gnu/gstreamer-1.0/libgstnvv4l2camerasrc.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/gstreamer-1.0/libgstnvvidconv.so
+          hostPath: /usr/lib/aarch64-linux-gnu/gstreamer-1.0/libgstnvvidconv.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/gstreamer-1.0/libgstnvvideo4linux2.so
+          hostPath: /usr/lib/aarch64-linux-gnu/gstreamer-1.0/libgstnvvideo4linux2.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/gstreamer-1.0/libgstnvvideosink.so
+          hostPath: /usr/lib/aarch64-linux-gnu/gstreamer-1.0/libgstnvvideosink.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/gstreamer-1.0/libgstnvvideosinks.so
+          hostPath: /usr/lib/aarch64-linux-gnu/gstreamer-1.0/libgstnvvideosinks.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra-egl/ld.so.conf
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra-egl/ld.so.conf
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra-egl/libEGL_nvidia.so.0
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra-egl/libEGL_nvidia.so.0
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra-egl/libGLESv1_CM_nvidia.so.1
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra-egl/libGLESv1_CM_nvidia.so.1
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra-egl/libGLESv2_nvidia.so.2
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra-egl/libGLESv2_nvidia.so.2
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra-egl/nvidia.json
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra-egl/nvidia.json
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/ld.so.conf
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/ld.so.conf
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libGLX_nvidia.so.0
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libGLX_nvidia.so.0
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libVkLayer_json_gen.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libVkLayer_json_gen.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libVkSCLayer_khronos_validation.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libVkSCLayer_khronos_validation.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libcuda.so.1.1
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libcuda.so.1.1
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libdrm.so.2
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libdrm.so.2
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libgstnvcustomhelper.so.1.0.0
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libgstnvcustomhelper.so.1.0.0
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libgstnvdsseimeta.so.1.0.0
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libgstnvdsseimeta.so.1.0.0
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libjetsonpower.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libjetsonpower.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvargus.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvargus.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvargus_socketclient.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvargus_socketclient.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvargus_socketserver.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvargus_socketserver.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvbuf_fdmap.so.1.0.0
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvbuf_fdmap.so.1.0.0
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvbufsurface.so.1.0.0
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvbufsurface.so.1.0.0
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvbufsurftransform.so.1.0.0
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvbufsurftransform.so.1.0.0
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvcam_imageencoder.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvcam_imageencoder.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvcameratools.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvcameratools.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvcamerautils.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvcamerautils.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvcamlog.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvcamlog.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvcamv4l2.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvcamv4l2.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvcapture.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvcapture.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvcolorutil.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvcolorutil.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvcucompat.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvcucompat.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvcuvidv4l2.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvcuvidv4l2.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvdc.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvdc.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvddk_2d_v2.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvddk_2d_v2.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvddk_vic.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvddk_vic.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvdecode2eglimage.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvdecode2eglimage.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvdla_compiler.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvdla_compiler.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvdla_runtime.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvdla_runtime.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvdsbufferpool.so.1.0.0
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvdsbufferpool.so.1.0.0
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnveglstreamproducer.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnveglstreamproducer.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnveventlib.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnveventlib.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvexif.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvexif.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvfnet.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvfnet.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvfnetstoredefog.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvfnetstoredefog.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvfnetstorehdfx.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvfnetstorehdfx.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvfusacap.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvfusacap.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvfusacapinterface.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvfusacapinterface.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvgov_boot.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvgov_boot.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvgov_camera.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvgov_camera.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvgov_force.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvgov_force.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvgov_generic.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvgov_generic.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvgov_gpucompute.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvgov_gpucompute.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvgov_graphics.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvgov_graphics.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvgov_il.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvgov_il.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvgov_spincircle.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvgov_spincircle.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvgov_tbc.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvgov_tbc.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvgov_ui.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvgov_ui.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvid_mapper.so.1.0.0
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvid_mapper.so.1.0.0
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvidia-allocator.so.1
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvidia-allocator.so.1
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvidia-egl-gbm.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvidia-egl-gbm.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvidia-egl-wayland.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvidia-egl-wayland.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvidia-eglcore.so.35.5.0
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvidia-eglcore.so.35.5.0
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvidia-glcore.so.35.5.0
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvidia-glcore.so.35.5.0
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvidia-glsi.so.35.5.0
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvidia-glsi.so.35.5.0
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvidia-glvkspirv.so.35.5.0
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvidia-glvkspirv.so.35.5.0
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvidia-kms.so.35.5.0
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvidia-kms.so.35.5.0
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvidia-nvvm.so.35.5.0
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvidia-nvvm.so.35.5.0
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvidia-ptxjitcompiler.so.35.5.0
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvidia-ptxjitcompiler.so.35.5.0
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvidia-rmapi-tegra.so.35.5.0
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvidia-rmapi-tegra.so.35.5.0
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvidia-rtcore.so.35.5.0
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvidia-rtcore.so.35.5.0
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvidia-tls.so.35.5.0
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvidia-tls.so.35.5.0
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvidia-vksc-core.so.35.5.0
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvidia-vksc-core.so.35.5.0
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvidia-vulkan-producer.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvidia-vulkan-producer.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvimp.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvimp.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvisp.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvisp.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvisp_utils.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvisp_utils.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvisppg.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvisppg.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvjpeg.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvjpeg.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvll.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvll.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmedia.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmedia.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmedia2d.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmedia2d.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmedia_2d.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmedia_2d.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmedia_dla.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmedia_dla.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmedia_eglstream.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmedia_eglstream.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmedia_ide_parser.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmedia_ide_parser.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmedia_ide_sci.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmedia_ide_sci.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmedia_iep_sci.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmedia_iep_sci.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmedia_ijpd_sci.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmedia_ijpd_sci.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmedia_ijpe_sci.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmedia_ijpe_sci.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmedia_iofa_sci.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmedia_iofa_sci.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmedia_isp_ext.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmedia_isp_ext.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmedia_sci_overlay.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmedia_sci_overlay.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmedia_tensor.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmedia_tensor.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmedialdc.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmedialdc.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmm.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmm.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmm_contentpipe.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmm_contentpipe.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmm_parser.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmm_parser.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmm_utils.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmm_utils.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmmlite.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmmlite.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmmlite_image.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmmlite_image.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmmlite_utils.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmmlite_utils.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmmlite_video.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmmlite_video.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvodm_imager.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvodm_imager.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvofsdk.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvofsdk.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvoggopus.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvoggopus.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvomx.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvomx.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvomxilclient.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvomxilclient.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvos.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvos.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvosd.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvosd.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvparser.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvparser.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvphs.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvphs.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvphsd.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvphsd.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvpva.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvpva.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvpva_algorithms.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvpva_algorithms.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvpvaintf.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvpvaintf.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvpvaumd.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvpvaumd.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvrm_chip.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvrm_chip.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvrm_gpu.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvrm_gpu.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvrm_host1x.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvrm_host1x.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvrm_mem.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvrm_mem.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvrm_stream.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvrm_stream.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvrm_surface.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvrm_surface.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvrm_sync.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvrm_sync.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvscf.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvscf.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvscibuf.so.1
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvscibuf.so.1
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvscicommon.so.1
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvscicommon.so.1
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvscievent.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvscievent.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvsciipc.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvsciipc.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvscistream.so.1
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvscistream.so.1
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvscisync.so.1
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvscisync.so.1
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvsocsys.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvsocsys.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvtracebuf.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvtracebuf.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvtvmr.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvtvmr.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvtvmr_2d.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvtvmr_2d.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvv4l2.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvv4l2.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvv4lconvert.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvv4lconvert.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvvic.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvvic.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvvideo.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvvideo.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvvideoencode_ppe.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvvideoencode_ppe.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libsensors.hal-client.nvs.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libsensors.hal-client.nvs.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libsensors.l4t.no_fusion.nvs.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libsensors.l4t.no_fusion.nvs.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libsensors_hal.nvs.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libsensors_hal.nvs.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libtegrav4l2.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libtegrav4l2.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libtegrawfd.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libtegrawfd.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libv4l2_nvargus.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libv4l2_nvargus.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libv4l2_nvcuvidvideocodec.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libv4l2_nvcuvidvideocodec.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libv4l2_nvvideocodec.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libv4l2_nvvideocodec.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libvulkan.so.1.3.204
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libvulkan.so.1.3.204
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libvulkansc.so.1.0.10
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libvulkansc.so.1.0.10
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/nvidia_icd.json
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/nvidia_icd.json
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/firmware/tegra19x/nvhost_nvdec040_ns.fw
+          hostPath: /lib/firmware/tegra19x/nvhost_nvdec040_ns.fw
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/firmware/tegra23x/nvhost_nvdec050_desc_prod.bin
+          hostPath: /lib/firmware/tegra23x/nvhost_nvdec050_desc_prod.bin
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/EGLWLInputEventExample
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/EGLWLInputEventExample
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/EGLWLMockNavigation
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/EGLWLMockNavigation
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/LayerManagerControl
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/LayerManagerControl
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/desktop-shell.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/desktop-shell.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/drm-backend.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/drm-backend.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/fullscreen-shell.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/fullscreen-shell.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/gl-renderer.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/gl-renderer.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/hmi-controller.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/hmi-controller.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/ivi-controller.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/ivi-controller.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/ivi-shell.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/ivi-shell.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/libilmClient.so.2.2.0
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/libilmClient.so.2.2.0
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/libilmCommon.so.2.2.0
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/libilmCommon.so.2.2.0
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/libilmControl.so.2.2.0
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/libilmControl.so.2.2.0
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/libilmInput.so.2.2.0
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/libilmInput.so.2.2.0
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/libweston-6.so.0
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/libweston-6.so.0
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/libweston-desktop-6.so.0
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/libweston-desktop-6.so.0
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/simple-weston-client
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/simple-weston-client
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/spring-tool
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/spring-tool
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/wayland-backend.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/wayland-backend.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-calibrator
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-calibrator
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-clickdot
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-clickdot
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-cliptest
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-cliptest
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-content-protection
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-content-protection
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-debug
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-debug
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-desktop-shell
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-desktop-shell
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-dnd
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-dnd
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-eventdemo
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-eventdemo
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-flower
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-flower
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-fullscreen
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-fullscreen
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-image
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-image
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-info
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-info
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-ivi-shell-user-interface
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-ivi-shell-user-interface
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-keyboard
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-keyboard
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-launch
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-launch
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-multi-resource
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-multi-resource
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-output-mode
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-output-mode
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-resizor
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-resizor
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-scaler
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-scaler
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-screenshooter
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-screenshooter
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-simple-dmabuf-egldevice
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-simple-dmabuf-egldevice
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-simple-egl
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-simple-egl
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-simple-shm
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-simple-shm
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-simple-touch
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-simple-touch
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-smoke
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-smoke
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-stacking
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-stacking
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-subsurfaces
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-subsurfaces
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-terminal
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-terminal
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-transformed
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-transformed
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+    name: '0'
+  - containerEdits:
+      deviceNodes:
+        - path: /dev/fb0
+        - path: /dev/fb1
+        - path: /dev/nvhost-as-gpu
+        - path: /dev/nvhost-ctrl
+        - path: /dev/nvhost-ctrl-gpu
+        - path: /dev/nvhost-ctrl-nvdla0
+        - path: /dev/nvhost-ctrl-nvdla1
+        - path: /dev/nvhost-ctrl-pva0
+        - path: /dev/nvhost-ctrl-pva1
+        - path: /dev/nvhost-dbg-gpu
+        - path: /dev/nvhost-gpu
+        - path: /dev/nvhost-msenc
+        - path: /dev/nvhost-nvdec
+        - path: /dev/nvhost-nvdec1
+        - path: /dev/nvhost-nvdla0
+        - path: /dev/nvhost-nvdla1
+        - path: /dev/nvhost-nvenc1
+        - path: /dev/nvhost-nvjpg
+        - path: /dev/nvhost-prof-gpu
+        - path: /dev/nvhost-pva0
+        - path: /dev/nvhost-pva1
+        - path: /dev/nvhost-vic
+        - path: /dev/nvmap
+        - path: /dev/tegra_dc_0
+        - path: /dev/tegra_dc_1
+        - path: /dev/tegra_dc_ctrl
+        - path: /dev/nvgpu/igpu0/as
+        - path: /dev/nvgpu/igpu0/channel
+        - path: /dev/nvgpu/igpu0/ctrl
+        - path: /dev/nvgpu/igpu0/ctxsw
+        - path: /dev/nvgpu/igpu0/dbg
+        - path: /dev/nvgpu/igpu0/power
+        - path: /dev/nvgpu/igpu0/prof
+        - path: /dev/nvgpu/igpu0/prof-ctx
+        - path: /dev/nvgpu/igpu0/prof-dev
+        - path: /dev/nvgpu/igpu0/tsg
+      hooks:
+        - args:
+            - nvidia-ctk
+            - hook
+            - create-symlinks
+            - --link
+            - /usr/lib/aarch64-linux-gnu/tegra/nvidia_icd.json::/etc/vulkan/icd.d/nvidia_icd.json
+            - --link
+            - ../tegra/libnvidia-allocator.so::/usr/lib/aarch64-linux-gnu/gbm/nvidia-drm_gbm.so
+            - --link
+            - libnvidia-allocator.so.1::/usr/lib/aarch64-linux-gnu/tegra/libnvidia-allocator.so
+            - --link
+            - ../tegra/libnvidia-allocator.so::/usr/lib/aarch64-linux-gnu/gbm/tegra_gbm.so
+            - --link
+            - ../tegra/libnvidia-allocator.so::/usr/lib/aarch64-linux-gnu/gbm/tegra-udrm_gbm.so
+            - --link
+            - tegra/libcuda.so::/usr/lib/aarch64-linux-gnu/libcuda.so
+            - --link
+            - libcuda.so.1.1::/usr/lib/aarch64-linux-gnu/tegra/libcuda.so
+            - --link
+            - tegra/libnvcucompat.so::/usr/lib/aarch64-linux-gnu/libnvcucompat.so
+            - --link
+            - tegra/libnvv4l2.so::/usr/lib/aarch64-linux-gnu/libv4l2.so.0.0.999999
+            - --link
+            - tegra/libnvv4lconvert.so::/usr/lib/aarch64-linux-gnu/libv4lconvert.so.0.0.999999
+            - --link
+            - ../../../tegra/libv4l2_nvargus.so::/usr/lib/aarch64-linux-gnu/libv4l/plugins/nv/libv4l2_nvargus.so
+            - --link
+            - ../../../tegra/libv4l2_nvcuvidvideocodec.so::/usr/lib/aarch64-linux-gnu/libv4l/plugins/nv/libv4l2_nvcuvidvideocodec.so
+            - --link
+            - ../../../tegra/libv4l2_nvvideocodec.so::/usr/lib/aarch64-linux-gnu/libv4l/plugins/nv/libv4l2_nvvideocodec.so
+            - --link
+            - tegra/libvulkan.so.1.3.204::/usr/lib/aarch64-linux-gnu/libvulkan.so.1.3.204
+            - --link
+            - libcuda.so.1.1::/usr/lib/aarch64-linux-gnu/tegra/libcuda.so.1
+            - --link
+            - libgstnvcustomhelper.so.1.0.0::/usr/lib/aarch64-linux-gnu/tegra/libgstnvcustomhelper.so
+            - --link
+            - libgstnvdsseimeta.so.1.0.0::/usr/lib/aarch64-linux-gnu/tegra/libgstnvdsseimeta.so
+            - --link
+            - libnvbufsurface.so.1.0.0::/usr/lib/aarch64-linux-gnu/tegra/libnvbufsurface.so
+            - --link
+            - libnvbufsurftransform.so.1.0.0::/usr/lib/aarch64-linux-gnu/tegra/libnvbufsurftransform.so
+            - --link
+            - libnvdsbufferpool.so.1.0.0::/usr/lib/aarch64-linux-gnu/tegra/libnvdsbufferpool.so
+            - --link
+            - libnvidia-egl-gbm.so::/usr/lib/aarch64-linux-gnu/tegra/libnvidia-egl-gbm.so.1
+            - --link
+            - libnvidia-egl-wayland.so::/usr/lib/aarch64-linux-gnu/tegra/libnvidia-egl-wayland.so.1
+            - --link
+            - libnvidia-kms.so.35.5.0::/usr/lib/aarch64-linux-gnu/tegra/libnvidia-kms.so
+            - --link
+            - libnvidia-nvvm.so.35.5.0::/usr/lib/aarch64-linux-gnu/tegra/libnvidia-nvvm.so.4
+            - --link
+            - libnvidia-ptxjitcompiler.so.35.5.0::/usr/lib/aarch64-linux-gnu/tegra/libnvidia-ptxjitcompiler.so.1
+            - --link
+            - libnvidia-vksc-core.so.35.5.0::/usr/lib/aarch64-linux-gnu/tegra/libnvidia-vksc-core.so
+            - --link
+            - libnvid_mapper.so.1.0.0::/usr/lib/aarch64-linux-gnu/tegra/libnvid_mapper.so
+            - --link
+            - libnvscibuf.so.1::/usr/lib/aarch64-linux-gnu/tegra/libnvscibuf.so
+            - --link
+            - libnvscicommon.so.1::/usr/lib/aarch64-linux-gnu/tegra/libnvscicommon.so
+            - --link
+            - libnvscistream.so.1::/usr/lib/aarch64-linux-gnu/tegra/libnvscistream.so
+            - --link
+            - libnvscisync.so.1::/usr/lib/aarch64-linux-gnu/tegra/libnvscisync.so
+            - --link
+            - libnvv4l2.so::/usr/lib/aarch64-linux-gnu/tegra/libv4l2.so.0
+            - --link
+            - libnvv4lconvert.so::/usr/lib/aarch64-linux-gnu/tegra/libv4lconvert.so.0
+            - --link
+            - libvulkansc.so.1::/usr/lib/aarch64-linux-gnu/tegra/libvulkansc.so
+            - --link
+            - libvulkansc.so.1.0.10::/usr/lib/aarch64-linux-gnu/tegra/libvulkansc.so.1
+            - --link
+            - libvulkan.so.1.3.204::/usr/lib/aarch64-linux-gnu/tegra/libvulkan.so.1
+            - --link
+            - ../../../lib/aarch64-linux-gnu/tegra-egl/nvidia.json::/usr/share/glvnd/egl_vendor.d/10_nvidia.json
+            - --link
+            - libcuda.so.1::/usr/lib/aarch64-linux-gnu/tegra/libcuda.so
+            - --link
+            - libGLX_nvidia.so.0::/usr/lib/aarch64-linux-gnu/tegra/libGLX_indirect.so.0
+          hookName: createContainer
+          path: /usr/bin/nvidia-ctk
+        - args:
+            - nvidia-ctk
+            - hook
+            - update-ldcache
+            - --folder
+            - /usr/lib/aarch64-linux-gnu/tegra
+            - --folder
+            - /usr/lib/aarch64-linux-gnu/tegra/weston
+            - --folder
+            - /usr/lib/aarch64-linux-gnu
+            - --folder
+            - /usr/lib/aarch64-linux-gnu/gstreamer-1.0
+            - --folder
+            - /usr/lib/aarch64-linux-gnu/tegra-egl
+          hookName: createContainer
+          path: /usr/bin/nvidia-ctk
+      mounts:
+        - containerPath: /etc/nv_tegra_release
+          hostPath: /etc/nv_tegra_release
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /lib/firmware/tegra19x
+          hostPath: /lib/firmware/tegra19x
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /etc/vulkansc/icd.d/nvidia_icd_vksc.json
+          hostPath: /etc/vulkansc/icd.d/nvidia_icd_vksc.json
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/libgstnvegl-1.0.so.0
+          hostPath: /usr/lib/aarch64-linux-gnu/libgstnvegl-1.0.so.0
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/libgstnvexifmeta.so
+          hostPath: /usr/lib/aarch64-linux-gnu/libgstnvexifmeta.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/libgstnvivameta.so
+          hostPath: /usr/lib/aarch64-linux-gnu/libgstnvivameta.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/libnvsample_cudaprocess.so
+          hostPath: /usr/lib/aarch64-linux-gnu/libnvsample_cudaprocess.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/gstreamer-1.0/libgstnvarguscamerasrc.so
+          hostPath: /usr/lib/aarch64-linux-gnu/gstreamer-1.0/libgstnvarguscamerasrc.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/gstreamer-1.0/libgstnvcompositor.so
+          hostPath: /usr/lib/aarch64-linux-gnu/gstreamer-1.0/libgstnvcompositor.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/gstreamer-1.0/libgstnvdrmvideosink.so
+          hostPath: /usr/lib/aarch64-linux-gnu/gstreamer-1.0/libgstnvdrmvideosink.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/gstreamer-1.0/libgstnveglglessink.so
+          hostPath: /usr/lib/aarch64-linux-gnu/gstreamer-1.0/libgstnveglglessink.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/gstreamer-1.0/libgstnveglstreamsrc.so
+          hostPath: /usr/lib/aarch64-linux-gnu/gstreamer-1.0/libgstnveglstreamsrc.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/gstreamer-1.0/libgstnvegltransform.so
+          hostPath: /usr/lib/aarch64-linux-gnu/gstreamer-1.0/libgstnvegltransform.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/gstreamer-1.0/libgstnvivafilter.so
+          hostPath: /usr/lib/aarch64-linux-gnu/gstreamer-1.0/libgstnvivafilter.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/gstreamer-1.0/libgstnvjpeg.so
+          hostPath: /usr/lib/aarch64-linux-gnu/gstreamer-1.0/libgstnvjpeg.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/gstreamer-1.0/libgstnvtee.so
+          hostPath: /usr/lib/aarch64-linux-gnu/gstreamer-1.0/libgstnvtee.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/gstreamer-1.0/libgstnvv4l2camerasrc.so
+          hostPath: /usr/lib/aarch64-linux-gnu/gstreamer-1.0/libgstnvv4l2camerasrc.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/gstreamer-1.0/libgstnvvidconv.so
+          hostPath: /usr/lib/aarch64-linux-gnu/gstreamer-1.0/libgstnvvidconv.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/gstreamer-1.0/libgstnvvideo4linux2.so
+          hostPath: /usr/lib/aarch64-linux-gnu/gstreamer-1.0/libgstnvvideo4linux2.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/gstreamer-1.0/libgstnvvideosink.so
+          hostPath: /usr/lib/aarch64-linux-gnu/gstreamer-1.0/libgstnvvideosink.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/gstreamer-1.0/libgstnvvideosinks.so
+          hostPath: /usr/lib/aarch64-linux-gnu/gstreamer-1.0/libgstnvvideosinks.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra-egl/ld.so.conf
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra-egl/ld.so.conf
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra-egl/libEGL_nvidia.so.0
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra-egl/libEGL_nvidia.so.0
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra-egl/libGLESv1_CM_nvidia.so.1
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra-egl/libGLESv1_CM_nvidia.so.1
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra-egl/libGLESv2_nvidia.so.2
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra-egl/libGLESv2_nvidia.so.2
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra-egl/nvidia.json
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra-egl/nvidia.json
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/ld.so.conf
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/ld.so.conf
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libGLX_nvidia.so.0
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libGLX_nvidia.so.0
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libVkLayer_json_gen.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libVkLayer_json_gen.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libVkSCLayer_khronos_validation.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libVkSCLayer_khronos_validation.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libcuda.so.1.1
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libcuda.so.1.1
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libdrm.so.2
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libdrm.so.2
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libgstnvcustomhelper.so.1.0.0
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libgstnvcustomhelper.so.1.0.0
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libgstnvdsseimeta.so.1.0.0
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libgstnvdsseimeta.so.1.0.0
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libjetsonpower.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libjetsonpower.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvargus.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvargus.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvargus_socketclient.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvargus_socketclient.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvargus_socketserver.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvargus_socketserver.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvbuf_fdmap.so.1.0.0
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvbuf_fdmap.so.1.0.0
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvbufsurface.so.1.0.0
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvbufsurface.so.1.0.0
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvbufsurftransform.so.1.0.0
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvbufsurftransform.so.1.0.0
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvcam_imageencoder.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvcam_imageencoder.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvcameratools.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvcameratools.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvcamerautils.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvcamerautils.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvcamlog.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvcamlog.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvcamv4l2.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvcamv4l2.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvcapture.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvcapture.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvcolorutil.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvcolorutil.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvcucompat.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvcucompat.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvcuvidv4l2.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvcuvidv4l2.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvdc.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvdc.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvddk_2d_v2.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvddk_2d_v2.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvddk_vic.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvddk_vic.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvdecode2eglimage.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvdecode2eglimage.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvdla_compiler.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvdla_compiler.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvdla_runtime.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvdla_runtime.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvdsbufferpool.so.1.0.0
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvdsbufferpool.so.1.0.0
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnveglstreamproducer.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnveglstreamproducer.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnveventlib.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnveventlib.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvexif.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvexif.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvfnet.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvfnet.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvfnetstoredefog.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvfnetstoredefog.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvfnetstorehdfx.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvfnetstorehdfx.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvfusacap.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvfusacap.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvfusacapinterface.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvfusacapinterface.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvgov_boot.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvgov_boot.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvgov_camera.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvgov_camera.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvgov_force.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvgov_force.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvgov_generic.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvgov_generic.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvgov_gpucompute.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvgov_gpucompute.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvgov_graphics.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvgov_graphics.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvgov_il.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvgov_il.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvgov_spincircle.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvgov_spincircle.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvgov_tbc.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvgov_tbc.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvgov_ui.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvgov_ui.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvid_mapper.so.1.0.0
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvid_mapper.so.1.0.0
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvidia-allocator.so.1
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvidia-allocator.so.1
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvidia-egl-gbm.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvidia-egl-gbm.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvidia-egl-wayland.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvidia-egl-wayland.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvidia-eglcore.so.35.5.0
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvidia-eglcore.so.35.5.0
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvidia-glcore.so.35.5.0
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvidia-glcore.so.35.5.0
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvidia-glsi.so.35.5.0
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvidia-glsi.so.35.5.0
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvidia-glvkspirv.so.35.5.0
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvidia-glvkspirv.so.35.5.0
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvidia-kms.so.35.5.0
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvidia-kms.so.35.5.0
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvidia-nvvm.so.35.5.0
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvidia-nvvm.so.35.5.0
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvidia-ptxjitcompiler.so.35.5.0
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvidia-ptxjitcompiler.so.35.5.0
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvidia-rmapi-tegra.so.35.5.0
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvidia-rmapi-tegra.so.35.5.0
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvidia-rtcore.so.35.5.0
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvidia-rtcore.so.35.5.0
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvidia-tls.so.35.5.0
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvidia-tls.so.35.5.0
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvidia-vksc-core.so.35.5.0
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvidia-vksc-core.so.35.5.0
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvidia-vulkan-producer.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvidia-vulkan-producer.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvimp.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvimp.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvisp.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvisp.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvisp_utils.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvisp_utils.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvisppg.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvisppg.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvjpeg.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvjpeg.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvll.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvll.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmedia.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmedia.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmedia2d.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmedia2d.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmedia_2d.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmedia_2d.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmedia_dla.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmedia_dla.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmedia_eglstream.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmedia_eglstream.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmedia_ide_parser.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmedia_ide_parser.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmedia_ide_sci.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmedia_ide_sci.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmedia_iep_sci.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmedia_iep_sci.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmedia_ijpd_sci.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmedia_ijpd_sci.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmedia_ijpe_sci.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmedia_ijpe_sci.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmedia_iofa_sci.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmedia_iofa_sci.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmedia_isp_ext.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmedia_isp_ext.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmedia_sci_overlay.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmedia_sci_overlay.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmedia_tensor.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmedia_tensor.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmedialdc.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmedialdc.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmm.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmm.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmm_contentpipe.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmm_contentpipe.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmm_parser.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmm_parser.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmm_utils.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmm_utils.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmmlite.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmmlite.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmmlite_image.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmmlite_image.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmmlite_utils.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmmlite_utils.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmmlite_video.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvmmlite_video.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvodm_imager.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvodm_imager.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvofsdk.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvofsdk.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvoggopus.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvoggopus.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvomx.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvomx.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvomxilclient.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvomxilclient.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvos.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvos.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvosd.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvosd.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvparser.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvparser.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvphs.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvphs.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvphsd.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvphsd.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvpva.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvpva.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvpva_algorithms.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvpva_algorithms.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvpvaintf.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvpvaintf.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvpvaumd.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvpvaumd.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvrm_chip.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvrm_chip.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvrm_gpu.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvrm_gpu.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvrm_host1x.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvrm_host1x.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvrm_mem.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvrm_mem.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvrm_stream.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvrm_stream.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvrm_surface.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvrm_surface.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvrm_sync.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvrm_sync.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvscf.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvscf.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvscibuf.so.1
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvscibuf.so.1
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvscicommon.so.1
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvscicommon.so.1
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvscievent.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvscievent.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvsciipc.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvsciipc.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvscistream.so.1
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvscistream.so.1
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvscisync.so.1
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvscisync.so.1
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvsocsys.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvsocsys.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvtracebuf.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvtracebuf.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvtvmr.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvtvmr.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvtvmr_2d.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvtvmr_2d.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvv4l2.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvv4l2.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvv4lconvert.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvv4lconvert.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvvic.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvvic.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvvideo.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvvideo.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libnvvideoencode_ppe.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libnvvideoencode_ppe.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libsensors.hal-client.nvs.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libsensors.hal-client.nvs.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libsensors.l4t.no_fusion.nvs.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libsensors.l4t.no_fusion.nvs.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libsensors_hal.nvs.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libsensors_hal.nvs.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libtegrav4l2.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libtegrav4l2.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libtegrawfd.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libtegrawfd.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libv4l2_nvargus.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libv4l2_nvargus.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libv4l2_nvcuvidvideocodec.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libv4l2_nvcuvidvideocodec.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libv4l2_nvvideocodec.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libv4l2_nvvideocodec.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libvulkan.so.1.3.204
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libvulkan.so.1.3.204
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/libvulkansc.so.1.0.10
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/libvulkansc.so.1.0.10
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/nvidia_icd.json
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/nvidia_icd.json
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/firmware/tegra19x/nvhost_nvdec040_ns.fw
+          hostPath: /lib/firmware/tegra19x/nvhost_nvdec040_ns.fw
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/firmware/tegra23x/nvhost_nvdec050_desc_prod.bin
+          hostPath: /lib/firmware/tegra23x/nvhost_nvdec050_desc_prod.bin
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/EGLWLInputEventExample
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/EGLWLInputEventExample
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/EGLWLMockNavigation
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/EGLWLMockNavigation
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/LayerManagerControl
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/LayerManagerControl
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/desktop-shell.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/desktop-shell.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/drm-backend.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/drm-backend.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/fullscreen-shell.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/fullscreen-shell.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/gl-renderer.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/gl-renderer.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/hmi-controller.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/hmi-controller.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/ivi-controller.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/ivi-controller.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/ivi-shell.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/ivi-shell.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/libilmClient.so.2.2.0
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/libilmClient.so.2.2.0
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/libilmCommon.so.2.2.0
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/libilmCommon.so.2.2.0
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/libilmControl.so.2.2.0
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/libilmControl.so.2.2.0
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/libilmInput.so.2.2.0
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/libilmInput.so.2.2.0
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/libweston-6.so.0
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/libweston-6.so.0
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/libweston-desktop-6.so.0
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/libweston-desktop-6.so.0
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/simple-weston-client
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/simple-weston-client
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/spring-tool
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/spring-tool
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/wayland-backend.so
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/wayland-backend.so
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-calibrator
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-calibrator
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-clickdot
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-clickdot
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-cliptest
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-cliptest
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-content-protection
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-content-protection
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-debug
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-debug
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-desktop-shell
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-desktop-shell
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-dnd
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-dnd
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-eventdemo
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-eventdemo
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-flower
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-flower
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-fullscreen
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-fullscreen
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-image
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-image
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-info
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-info
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-ivi-shell-user-interface
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-ivi-shell-user-interface
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-keyboard
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-keyboard
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-launch
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-launch
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-multi-resource
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-multi-resource
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-output-mode
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-output-mode
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-resizor
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-resizor
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-scaler
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-scaler
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-screenshooter
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-screenshooter
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-simple-dmabuf-egldevice
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-simple-dmabuf-egldevice
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-simple-egl
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-simple-egl
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-simple-shm
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-simple-shm
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-simple-touch
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-simple-touch
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-smoke
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-smoke
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-stacking
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-stacking
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-subsurfaces
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-subsurfaces
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-terminal
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-terminal
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+        - containerPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-transformed
+          hostPath: /usr/lib/aarch64-linux-gnu/tegra/weston/weston-transformed
+          options:
+            - ro
+            - nosuid
+            - nodev
+            - bind
+    name: all
+kind: nvidia.com/xavier-gpu
