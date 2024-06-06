@@ -319,48 +319,45 @@ static pthread_t run_cgroups_events_monitor(config_t *config, fds_to_close_t *fd
     return thread;
 }
 
-void monitor(config_t *config, int handler_log_fd, fds_to_close_t *fds_to_close)
+int monitor_start(config_t *config, int handler_log_fd, resources_to_cleanup_t *resources_to_cleanup)
 {
     handler_log_fd_g = handler_log_fd;
     bool monitor_runs = false;
 
     if (validate_script(HANDLER_SCRIPT) != 0) {
         syslog(LOG_ERR, "Invalid handler script\n");
-        return;
+        return 1;
     }
+
+    resources_to_cleanup->threads_to_finish.threads = malloc(sizeof(pthread_t) * 2);
+    resources_to_cleanup->threads_to_finish.threads[0] = 0;
+    resources_to_cleanup->threads_to_finish.threads[1] = 0;
 
     // Run a thread to watch memory limit of the zedbox process every 10 seconds and trigger the handler if the limit is reached
     pthread_t procfs_monitor_thread = run_procfs_monitor(config);
     if (procfs_monitor_thread == 0) {
         syslog(LOG_WARNING, "Failed to run the procfs monitor\n");
     } else {
+        resources_to_cleanup->threads_to_finish.threads[0] = procfs_monitor_thread;
+        resources_to_cleanup->threads_to_finish.count++;
         monitor_runs = true;
     }
 
     // Run a monitor for the cgroups events
-    pthread_t cgroups_monitor_thread = run_cgroups_events_monitor(config, fds_to_close);
+    pthread_t cgroups_monitor_thread = run_cgroups_events_monitor(config, &resources_to_cleanup->fds_to_close);
     if (cgroups_monitor_thread == 0) {
         syslog(LOG_WARNING, "Failed to run the cgroups events monitor\n");
     } else {
+        size_t i = resources_to_cleanup->threads_to_finish.count;
+        resources_to_cleanup->threads_to_finish.threads[i] = cgroups_monitor_thread;
+        resources_to_cleanup->threads_to_finish.count++;
         monitor_runs = true;
     }
 
     if (!monitor_runs) {
         syslog(LOG_ERR, "Failed to run any monitor\n");
-        return;
+        return 1;
     }
 
-    // Wait for the threads to finish
-    pthread_join(cgroups_monitor_thread, NULL);
-    // We need to close the fds that were opened by the event_register function
-    for (int i = 0; i < fds_to_close->count; i++) {
-        if (fds_to_close->fds[i] != -1) {
-            close(fds_to_close->fds[i]);
-        }
-        free(fds_to_close->fds);
-    }
-
-    pthread_join(procfs_monitor_thread, NULL);
-
-    // All the monitors are stopped (that should never happen)
+    return 0;
 }
