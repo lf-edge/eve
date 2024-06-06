@@ -378,7 +378,12 @@ ifeq ($(HV),kubevirt)
 else
         #kube container will not be in non-kubevirt builds
         PKGS_$(ZARCH)=$(shell find pkg -maxdepth 1 -type d | grep -Ev "eve|alpine|sources|kube|external-boot-image|verification$$")
-        ROOTFS_MAXSIZE_MB=250
+        # nvidia platform requires more space
+        ifeq ($(PLATFORM),nvidia)
+            ROOTFS_MAXSIZE_MB=450
+        else
+            ROOTFS_MAXSIZE_MB=250
+        endif
 endif
 
 PKGS_riscv64=pkg/ipxe pkg/mkconf pkg/mkimage-iso-efi pkg/grub     \
