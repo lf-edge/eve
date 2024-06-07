@@ -64,52 +64,148 @@ wait_for_touch() {
 }
 
 INPUTFILE=/run/nim/DeviceNetworkStatus/global.json
+# This one is actually a pool, not a single server.
+# So if going to change this, please don't forget
+# to change DEFAULT_NTPMODE below.
 DEFAULT_NTPSERVER=pool.ntp.org
+DEFAULT_NTPMODE=pool
+# Current NTP servers
+NTPSERVERS=
+
 # Return one line with all the NTP servers for all the ports
 get_ntp_servers() {
     if [ ! -f "$INPUTFILE" ];  then
         return
     fi
-    res=
-    i=0
-    while true; do
-        portInfo=$(jq -c .Ports[$i] < $INPUTFILE)
-        if [ "$portInfo" = "null" ] || [ -z "$portInfo" ]; then
-            break
-        fi
-        # Add statically configured NTP server.
-        ns="$(echo "$portInfo" | jq -r .NtpServer)"
-        res="$res $ns"
-        if [ -z "$ns" ]; then
-            # If NTP server is not statically configured, add the first NTP server
-            # advertised by DHCP server.
-            list=$(echo "$portInfo" | jq .NtpServers)
-            ns=$(echo "$list" | awk -F\" '{ if (NF > 2) { print $2}}')
-            res="$res $ns"
-        fi
-        i=$((i + 1))
+
+    # Select static NTP sources
+    ntp_static=$(jq -r  -c  \
+                '.Ports[] |
+                 select(.NtpServer != null and .NtpServer != "") |
+                 .NtpServer' $INPUTFILE)
+
+    # Select dynamic (from DHCP) NTP sources
+    ntp_dynamic=$(jq -r  -c  \
+                '.Ports[] |
+                 select(.NtpServers != null) |
+                 .NtpServers | .[]' $INPUTFILE)
+
+    # Concat all in one string
+    ntp_all="$ntp_static $ntp_dynamic"
+
+    # Make the following: "$mode $ntp" and separate
+    # each with \n for further processing in a caller
+    list=
+    for ntp in $ntp_all; do
+        list="$list server\n$ntp\n"
     done
-    out=
-    # Make uniform whitespace separator
-    for r in $res; do
-        if [ -z "$out" ]; then
-            out="$r"
-        else
-            out="$out $r"
-        fi
-    done
-    echo "$out"
+    ntp_all="$list"
+
+    # Fallback to default if nothing is configured
+    if [ -z "$ntp_all" ]; then
+        ntp_all="$DEFAULT_NTPMODE\n$DEFAULT_NTPSERVER\n"
+    fi
+
+    # shellcheck disable=SC3037
+    echo -n "$ntp_all"
 }
 
-# Return one (the first) ntp server with default if none
-get_ntp_server() {
-    res=$(get_ntp_servers)
-    one="$DEFAULT_NTPSERVER"
-    for first in $res; do
-        one=$first
-        break
+# Formats argument line for chrony prepending and appending
+# strings to each NTP server
+format_chrony_args() {
+    ntp_servers="$1"
+    prepend="$2"
+    append="$3"
+
+    # '-e' for echo to enable interpretation of \n
+    # shellcheck disable=SC3037
+    list=$(echo -e "$ntp_servers" | while read -r mode && read -r server; do
+        # shellcheck disable=SC3037
+        echo -n "\"$prepend $mode $server $append\" "
+    done)
+
+    # shellcheck disable=SC3037
+    echo -n "$list"
+}
+
+# Parse chrony conf printing out a single line without comments
+parse_chrony_conf() {
+    conffile="$1"
+
+    # Read conffile skipping empty lines and comments
+    list=$(awk /./ "$conffile" | grep -v '^ *#' | while read -r line; do
+               # shellcheck disable=SC3037
+               echo -n "\"$line\" "
+           done)
+
+    # shellcheck disable=SC3037
+    echo -n "$list"
+}
+
+# Make a single NTP measurement
+single_ntp_sync() {
+    NTPSERVERS=$(get_ntp_servers)
+    echo "$(date -Ins -u) Check for NTP config"
+    if [ -f /usr/sbin/chronyd ]; then
+        # Creates string of servers in "$mode $server iburst" format
+        args=$(format_chrony_args "$NTPSERVERS" "" "iburst")
+        # Parse config. This is required, since chrony does not parse
+        # config file in `-q` (client) mode.
+        conf=$(parse_chrony_conf "/etc/chrony/chrony.conf")
+        # Concat config and NTP servers
+        args="$conf $args"
+
+        # Wait until synchronized and force the clock to be set from ntp
+        echo "$(date -Ins -u) chronyd -u root -n -q $args"
+        echo "$args" | xargs /usr/sbin/chronyd -u root -n -q
+        ret_code=$?
+        echo "$(date -Ins -u) chronyd: $ret_code"
+    else
+        echo "$(date -Ins -u) ERROR: no NTP (chrony) on EVE"
+    fi
+}
+
+# Start NTP daemon
+start_ntp_daemon() {
+    NTPSERVERS=$(get_ntp_servers)
+    echo "$(date -Ins -u) Check for NTP config"
+    if [ -f /usr/sbin/chronyd ]; then
+        # Run chronyd to keep it in sync.
+        echo "$(date -Ins -u) chronyd -u root -f /etc/chrony/chrony.conf"
+        /usr/sbin/chronyd -u root -f /etc/chrony/chrony.conf
+        ret_code=$?
+        echo "$(date -Ins -u) chronyd: $ret_code"
+        # Add chronyd to watchdog
+        touch "$WATCHDOG_PID/chronyd.pid"
+
+        # Pass NTP server through the chronyc, unfortunately can't pass as
+        # an argument to the daemon itself.
+        if [ "$ret_code" = "0" ]; then
+            # Give some time for chronyd to start
+            sleep 1
+            # Creates string of servers in "add $mode $server iburst" format
+            args=$(format_chrony_args "$NTPSERVERS" "add" "iburst")
+            echo "$(date -Ins -u) chronyc -m $args"
+            echo "$args" | xargs /usr/bin/chronyc -m
+            ret_code=$?
+            echo "$(date -Ins -u) chronyc: $ret_code"
+        fi
+    else
+        echo "$(date -Ins -u) ERROR: no NTP (chrony) on EVE"
+    fi
+}
+
+# Restart NTP daemon
+restart_ntp_daemon() {
+    chronyd_pid="$(cat /run/chronyd.pid)"
+    kill "$chronyd_pid"
+    # Wait for it to go away before restarting
+    while kill -0 "$chronyd_pid"; do
+        echo "$(date -Ins -u) NTP (chronyd) server $chronyd_pid still running"
+        sleep 3
     done
-    echo "$one"
+    # Start NTP
+    start_ntp_daemon
 }
 
 # If zedbox is already running we don't have to start it.
@@ -264,24 +360,9 @@ if [ ! -s "$DEVICE_CERT_NAME" ] || [ $RTC = 0 ] || [ -n "$FIRSTBOOT" ]; then
     # Otherwise the cert may have start date in the future or in 1970
     # Did NIM get some NTP servers from DHCP? Pick the first one we find.
     # Otherwise we use the default
-    NTPSERVER=$(get_ntp_server)
-    echo "$(date -Ins -u) Check for NTP config"
-    if [ -f /usr/sbin/ntpd ]; then
-        # Wait until synchronized and force the clock to be set from ntp
-        echo "$(date -Ins -u) ntpd -q -n -g -p $NTPSERVER"
-        /usr/sbin/ntpd -q -n -g -p "$NTPSERVER"
-        ret_code=$?
-        echo "$(date -Ins -u) ntpd: $ret_code"
-        # Run ntpd to keep it in sync.
-        echo "$(date -Ins -u) ntpd -p $NTPSERVER"
-        /usr/sbin/ntpd -p "$NTPSERVER"
-        ret_code=$?
-        echo "$(date -Ins -u) ntpd: $ret_code"
-        # Add ndpd to watchdog
-        touch "$WATCHDOG_PID/ntpd.pid"
-    else
-        echo "$(date -Ins -u) No ntpd"
-    fi
+    single_ntp_sync
+    # Start NTP daemon
+    start_ntp_daemon
 
     # The device cert generation needs the current time. Some hardware
     # doesn't have a battery-backed clock
@@ -292,28 +373,16 @@ if [ ! -s "$DEVICE_CERT_NAME" ] || [ $RTC = 0 ] || [ -n "$FIRSTBOOT" ]; then
         YEAR=$(date +%Y)
     done
     if [ $RTC = 1 ]; then
-        # Update RTC based on time from ntpd so that after a reboot we have a
+        # Update RTC based on time from ntp so that after a reboot we have a
         # sane starting time. This fixes issues when the RTC was not in UTC
         hwclock -u -v --systohc
     fi
 else
-    # Start ntpd before network is up. Assumes it will synchronize later.
+    # Start NTP before network is up. Assumes it will synchronize later.
     # Did NIM get some NTP servers from DHCP? Otherwise use default.
     # If DHCP isn't done we don't get a server here. So we recheck
     # at the end of device-steps.sh
-    NTPSERVER=$(get_ntp_server)
-    if [ -f /usr/sbin/ntpd ]; then
-        # Run ntpd to keep it in sync. Allow a large initial jump in case clock
-        # had drifted more than 1000 seconds while the device was powered off
-        echo "$(date -Ins -u) ntpd -g -p $NTPSERVER"
-        /usr/sbin/ntpd -g -p "$NTPSERVER"
-        ret_code=$?
-        echo "$(date -Ins -u) ntpd: $ret_code"
-        # Add ndpd to watchdog
-        touch "$WATCHDOG_PID/ntpd.pid"
-    else
-        echo "$(date -Ins -u) No ntpd"
-    fi
+    start_ntp_daemon
 fi
 if [ ! -s "$DEVICE_CERT_NAME" ]; then
     echo "$(date -Ins -u) Generating a device key pair and self-signed cert (using TPM if available)"
@@ -428,23 +497,13 @@ echo "$(date -Ins -u) Done starting EVE version: $(cat /run/eve-release)"
 # and dump any diag information
 while true; do
     access_usb
-    # Check if NTP server changed
+    # Check if NTP servers changed
     # Note that this really belongs in a separate ntpd container
-    ns=$(get_ntp_server)
-    if [ -n "$ns" ] && [ "$ns" != "$NTPSERVER" ] && [ -f /run/ntpd.pid ]; then
-        echo "$(date -Ins -u) NTP server changed from $NTPSERVER to $ns"
-        NTPSERVER="$ns"
-        ntpd_pid="$(cat /run/ntpd.pid)"
-        kill "$ntpd_pid"
-        # Wait for it to go away before restarting
-        while kill -0 "$ntpd_pid"; do
-            echo "$(date -Ins -u) NTP server $ntpd_pid still running"
-            sleep 3
-        done
-        echo "$(date -Ins -u) ntpd -g -p $NTPSERVER"
-        /usr/sbin/ntpd -g -p "$NTPSERVER"
-        ret_code=$?
-        echo "$(date -Ins -u) ntpd: $ret_code"
+    ns=$(get_ntp_servers)
+    if [ -n "$ns" ] && [ "$ns" != "$NTPSERVERS" ]; then
+        echo "$(date -Ins -u) NTP server changed from \"$NTPSERVERS\" to \"$ns\", restarting NTP daemon"
+        # Restart NTP
+        restart_ntp_daemon
     fi
     sleep 300
 done
