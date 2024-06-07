@@ -11,10 +11,10 @@ BIN_DIR=bin
 MONITOR_DIR=$(SRC_DIR)/monitor
 MONITOR_SRC=$(wildcard $(MONITOR_DIR)/*.c)
 MONITOR_OBJ=$(patsubst $(SRC_DIR)/%.c,$(OBJ_DIR)/%.o,$(MONITOR_SRC))
-$(BIN_DIR)/monitor: $(MONITOR_OBJ)
+$(BIN_DIR)/memory-monitor: $(MONITOR_OBJ)
 	@mkdir -p $(BIN_DIR)
 	$(CC) $(CFLAGS) -o $@ $^
-monitor: $(BIN_DIR)/monitor
+memory-monitor: $(BIN_DIR)/memory-monitor
 
 PRESSURE_DIR=$(SRC_DIR)/pressure
 PRESSURE_SRC=$(wildcard $(PRESSURE_DIR)/*.c)
@@ -24,7 +24,7 @@ $(BIN_DIR)/pressure: $(PRESSURE_OBJ)
 	$(CC) $(CFLAGS) -o $@ $^
 pressure: $(BIN_DIR)/pressure
 
-TARGETS=monitor pressure
+TARGETS=memory-monitor pressure
 
 all: $(TARGETS)
 
@@ -38,14 +38,14 @@ clean:
 	rm -rf $(OBJ_DIR) $(BIN_DIR)
 
 HANDLER_SCRIPT=$(MONITOR_DIR)/handler.sh
-CONFIG_FILE=$(MONITOR_DIR)/monitor.conf
+CONFIG_FILE=$(MONITOR_DIR)/memory-monitor.conf
 APPARMOR_PROFILE=$(MONITOR_DIR)/persist.memory-monitor.handler
 
 MONITOR_DEPS=$(HANDLER_SCRIPT) $(CONFIG_FILE) $(APPARMOR_PROFILE)
 
-dist: $(BIN_DIR)/monitor $(MONITOR_DEPS)
+dist: $(BIN_DIR)/memory-monitor $(MONITOR_DEPS)
 	@mkdir -p $(DIST_DIR)
-	cp $(BIN_DIR)/monitor $(HANDLER_SCRIPT) $(CONFIG_FILE) $(APPARMOR_PROFILE) $(DIST_DIR)
+	cp $(BIN_DIR)/memory-monitor $(HANDLER_SCRIPT) $(CONFIG_FILE) $(APPARMOR_PROFILE) $(DIST_DIR)
 	@touch dist
 
 dist-clean: clean
@@ -56,7 +56,7 @@ dist-clean: clean
 RESULTS_DIR=results
 
 local-kill-monitor:
-	ssh local_eve killall -9 monitor || true
+	ssh local_eve killall -9 memory-monitor || true
 
 local-deploy: dist local-kill-monitor
 	ssh local_eve mkdir -p /persist/memory-monitor

@@ -5,7 +5,7 @@
 #define MM_CONFIG_H
 
 #define APP_DIR     "/persist/memory-monitor"
-#define CONFIG_FILE "monitor.conf"
+#define CONFIG_FILE "memory-monitor.conf"
 
 #define HANDLER_SCRIPT  "handler.sh"
 #define LOG_DIR         "output"
