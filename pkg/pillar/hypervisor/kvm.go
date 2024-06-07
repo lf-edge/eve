@@ -672,7 +672,8 @@ func (ctx KvmContext) Setup(status types.DomainStatus, config types.DomainConfig
 	domainName := status.DomainName
 	domainUUID := status.UUIDandVersion.UUID
 	// first lets build the domain config
-	if err := ctx.CreateDomConfig(domainName, config, status, diskStatusList, aa, file); err != nil {
+	if err := ctx.CreateDomConfig(domainName, config, status, diskStatusList,
+		aa, globalConfig, file); err != nil {
 		return logError("failed to build domain config: %v", err)
 	}
 
@@ -721,15 +722,33 @@ func (ctx KvmContext) Setup(status types.DomainStatus, config types.DomainConfig
 	return nil
 }
 
-// CreateDomConfig creates a domain config (a qemu config file, typically named something like xen-%d.cfg)
-func (ctx KvmContext) CreateDomConfig(domainName string, config types.DomainConfig, status types.DomainStatus,
-	diskStatusList []types.DiskStatus, aa *types.AssignableAdapters, file *os.File) error {
+// Coalesce per-app `EnableVncShimVM` flag and global `debug.enable.vnc.shim.vm`
+// debug flag, making sure we don't activate VNC for shim VM if VNC for
+// this application is disabled.
+func isVncShimVMEnabled(
+	globalConfig *types.ConfigItemValueMap, config types.DomainConfig) bool {
+	globalShimVnc := false
+	if globalConfig != nil {
+		item, ok := globalConfig.GlobalSettings[types.VncShimVMAccess]
+		globalShimVnc = ok && item.BoolValue
+	}
+	return config.EnableVnc && (config.EnableVncShimVM || globalShimVnc)
+}
+
+// CreateDomConfig creates a domain config (a qemu config file,
+// typically named something like xen-%d.cfg)
+func (ctx KvmContext) CreateDomConfig(domainName string,
+	config types.DomainConfig, status types.DomainStatus,
+	diskStatusList []types.DiskStatus, aa *types.AssignableAdapters,
+	globalConfig *types.ConfigItemValueMap, file *os.File) error {
 	tmplCtx := struct {
 		Machine string
 		types.DomainConfig
 		types.DomainStatus
 	}{ctx.devicemodel, config, status}
 	tmplCtx.DomainConfig.Memory = (config.Memory + 1023) / 1024
+	tmplCtx.DomainConfig.EnableVncShimVM =
+		isVncShimVMEnabled(globalConfig, config)
 	tmplCtx.DomainConfig.DisplayName = domainName
 
 	// render global device model settings

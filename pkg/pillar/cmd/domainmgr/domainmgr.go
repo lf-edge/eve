@@ -579,7 +579,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		log.Fatalf("StartUserContainerdInstance: failed %v", err)
 	}
 
-	if err := wait.WaitForUserContainerd(ps, log, agentName, warningTime, errorTime); err != nil {
+	if err := containerd.WaitForUserContainerd(ps, log, agentName, warningTime, errorTime); err != nil {
 		log.Fatal(err)
 	}
 	log.Functionf("user containerd ready")
@@ -1270,6 +1270,9 @@ func updateNonPinnedCPUs(ctx *domainContext, config *types.DomainConfig, status 
 	return nil
 }
 
+// assignCPUs assigns CPUs to the VM based on the configuration
+// By the assignment, we mean that the CPUs are assigned in the CPUAllocator context to the given VM
+// and the cpumask is updated in the *status*
 func assignCPUs(ctx *domainContext, config *types.DomainConfig, status *types.DomainStatus) error {
 	if config.VmConfig.CPUsPinned { // Pin the CPU
 		cpusToAssign, err := ctx.cpuAllocator.Allocate(config.UUIDandVersion.UUID, config.VCpus)
@@ -1283,6 +1286,17 @@ func assignCPUs(ctx *domainContext, config *types.DomainConfig, status *types.Do
 		status.VmConfig.CPUs = constructNonPinnedCpumaskString(ctx)
 	}
 	return nil
+}
+
+// releaseCPUs releases the CPUs that were previously assigned to the VM.
+// The cpumask in the *status* is updated accordingly, and the CPUs are released in the CPUAllocator context.
+func releaseCPUs(ctx *domainContext, config *types.DomainConfig, status *types.DomainStatus) {
+	if ctx.cpuPinningSupported && config.VmConfig.CPUsPinned && status.VmConfig.CPUs != "" {
+		if err := ctx.cpuAllocator.Free(config.UUIDandVersion.UUID); err != nil {
+			log.Errorf("Failed to free CPUs for %s: %s", config.DisplayName, err)
+		}
+	}
+	status.VmConfig.CPUs = ""
 }
 
 func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
@@ -1476,6 +1490,7 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 		status.PendingAdd = false
 		status.SetErrorDescription(*errDescription)
 		status.AdaptersFailed = true
+		releaseCPUs(ctx, &config, status)
 		publishDomainStatus(ctx, status)
 		releaseAdapters(ctx, config.IoAdapterList, config.UUIDandVersion.UUID,
 			nil)
@@ -1499,6 +1514,7 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 		status.PendingAdd = false
 		status.SetErrorNow(err.Error())
 		status.AdaptersFailed = true
+		releaseCPUs(ctx, &config, status)
 		publishDomainStatus(ctx, status)
 		releaseAdapters(ctx, config.IoAdapterList, config.UUIDandVersion.UUID,
 			nil)
@@ -1522,6 +1538,7 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 					snapshotID, config.UUIDandVersion.UUID, err)
 				log.Error(err.Error())
 				status.SetErrorNow(err.Error())
+				releaseCPUs(ctx, &config, status)
 				return
 			}
 
@@ -1550,6 +1567,7 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 					err := fmt.Errorf("doActivate: Failed to write cloud-init metadata file. Error %s", err)
 					log.Error(err.Error())
 					status.SetErrorNow(err.Error())
+					releaseCPUs(ctx, &config, status)
 					return
 				}
 
@@ -1560,6 +1578,7 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 						err := fmt.Errorf("doActivate: Failed to apply cloud-init config. Error %s", err)
 						log.Error(err.Error())
 						status.SetErrorNow(err.Error())
+						releaseCPUs(ctx, &config, status)
 						return
 					}
 				}
@@ -1575,6 +1594,7 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 			if err != nil {
 				log.Errorf("Failed to check disk format: %v", err.Error())
 				status.SetErrorNow(err.Error())
+				releaseCPUs(ctx, &config, status)
 				return
 			}
 		}
@@ -1592,6 +1612,7 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 		log.Errorf("Failed to create DomainStatus from %v: %s",
 			config, err)
 		status.SetErrorNow(err.Error())
+		releaseCPUs(ctx, &config, status)
 		return
 	}
 
@@ -1611,6 +1632,7 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 			log.Errorf("DomainCreate for %s: %s", status.DomainName, err)
 			status.BootFailed = true
 			status.SetErrorNow(err.Error())
+			releaseCPUs(ctx, &config, status)
 			publishDomainStatus(ctx, status)
 			return
 		}

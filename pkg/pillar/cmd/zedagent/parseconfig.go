@@ -2611,6 +2611,10 @@ func checkAndPublishAppInstanceConfig(getconfigCtx *getconfigContext,
 		config.Errors = append(config.Errors, err.Error())
 	}
 
+	// Be aware there is also a per-device global flag
+	// "debug.enable.vnc.shim.vm", which does not throw any
+	// errors if VNC is disabled, but silently ignores the
+	// flag that is set.
 	if config.FixedResources.EnableVnc == false && config.FixedResources.EnableVncShimVM == true {
 		err := fmt.Errorf("VNC shim VM enabled but VNC disabled for app instance %s", config.UUIDandVersion.UUID)
 		log.Error(err)

@@ -59,23 +59,23 @@ jobs:
         arch: [amd64]
         hv: [kvm]
     if: github.event.review.state == 'approved'
-    uses: lf-edge/eden/.github/workflows/test.yml@0.9.6
+    uses: lf-edge/eden/.github/workflows/test.yml@0.9.7
     with:
       eve_image: "evebuild/pr:${{ github.event.pull_request.number  }}"
       eve_artifact_name: eve-${{ matrix.hv }}-${{ matrix.arch }}
       artifact_run_id: ${{ needs.get-run-id.outputs.result }}
-      eden_version: "0.9.6"
+      eden_version: "0.9.7"
 
   test_suite_master:
     if: github.ref == 'refs/heads/master'
-    uses: lf-edge/eden/.github/workflows/test.yml@0.9.6
+    uses: lf-edge/eden/.github/workflows/test.yml@0.9.7
     with:
       eve_image: "lfedge/eve:snapshot"
-      eden_version: "0.9.6"
+      eden_version: "0.9.7"
 
   test_suite_tag:
     if: startsWith(github.ref, 'refs/tags')
-    uses: lf-edge/eden/.github/workflows/test.yml@0.9.6
+    uses: lf-edge/eden/.github/workflows/test.yml@0.9.7
     with:
       eve_image: "lfedge/eve:${{ github.ref_name }}"
-      eden_version: "0.9.6"
+      eden_version: "0.9.7"

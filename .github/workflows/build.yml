@@ -124,7 +124,7 @@ jobs:
 
       - name: Build EVE ${{ matrix.hv }}-${{ matrix.arch }}
         run: |
-          make V=1 ROOTFS_VERSION="$VERSION" HV=${{ matrix.hv }} ZARCH=${{ matrix.arch }} eve  # note that this already loads it into docker
+          make V=1 ROOTFS_VERSION="$VERSION" HV=${{ matrix.hv }} ZARCH=${{ matrix.arch }} pkgs eve  # note that this already loads it into docker
       - name: Post eve build report
         run: |
           echo Disk usage
