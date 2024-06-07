@@ -4,13 +4,17 @@
 #ifndef MM_CONFIG_H
 #define MM_CONFIG_H
 
-#define APP_DIR     "/persist/memory-monitor"
-#define CONFIG_FILE "memory-monitor.conf"
+#define APP_DIR "/persist/memory-monitor"
 
-#define HANDLER_SCRIPT  "handler.sh"
-#define LOG_DIR         "output"
-#define EVENT_LOG_FILE  "events.log"
-#define HANDLER_LOG_FILE "handler.log"
+#define CONFIG_RW_DIR      APP_DIR
+#define CONFIG_DEFAULT_DIR "/etc"
+#define CONFIG_FILE        "memory-monitor.conf"
+
+#define HANDLER_SCRIPT      "handler.sh"
+
+#define LOG_DIR             "output"
+#define EVENT_LOG_FILE      "events.log"
+#define HANDLER_LOG_FILE    "handler.log"
 #define EVENT_METADATA_FILE "event_info.txt"
 
 typedef struct {

@@ -22,10 +22,16 @@
 #define DEFAULT_PROC_ZEDBOX_THRESHOLD_MB 130
 
 void config_read(config_t *config) {
-    FILE *config_file = fopen(CONFIG_FILE, "r");
+
+    // Try to open the config file in a RW partition, that can be updated by the user
+    FILE *config_file = fopen(CONFIG_RW_DIR "/" CONFIG_FILE, "r");
     if (config_file == NULL) {
-        syslog(LOG_WARNING, "Failed to open config file: %s", strerror(errno));
-        return;
+        // If the file is not found, try to open the default config file
+        config_file = fopen(CONFIG_DEFAULT_DIR "/" CONFIG_FILE, "r");
+        if (config_file == NULL) {
+            syslog(LOG_ERR, "Failed to open config file: %s", strerror(errno));
+            return;
+        }
     }
 
     char line[MAX_LINE_LENGTH];
