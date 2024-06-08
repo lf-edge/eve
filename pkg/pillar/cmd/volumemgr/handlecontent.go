@@ -5,6 +5,7 @@ package volumemgr
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -14,7 +15,18 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/lf-edge/eve/pkg/pillar/vault"
+	uuid "github.com/satori/go.uuid"
 )
+
+// XXX hack for now to block and using hostname
+func handleContentTreeClusterForUs(config types.ContentTreeConfig) bool {
+	devUUIDStr, _ := os.Hostname()
+	if config.DesignatedNodeID != uuid.Nil && config.DesignatedNodeID.String() != devUUIDStr {
+		log.Noticef("handleContentTreeCreate(%s) not for us", config.Key())
+		return false
+	}
+	return true
+}
 
 func handleContentTreeCreate(ctxArg interface{}, key string,
 	configArg interface{}) {
@@ -22,6 +34,11 @@ func handleContentTreeCreate(ctxArg interface{}, key string,
 	log.Functionf("handleContentTreeCreate(%s)", key)
 	config := configArg.(types.ContentTreeConfig)
 	ctx := ctxArg.(*volumemgrContext)
+
+	ok := handleContentTreeClusterForUs(config)
+	if !ok {
+		return
+	}
 	// we received content tree configuration
 	// clean of vault is not safe from now
 	// note that we wait for vault before start this handler
@@ -39,6 +56,10 @@ func handleContentTreeModify(ctxArg interface{}, key string,
 	log.Functionf("handleContentTreeModify(%s)", key)
 	config := configArg.(types.ContentTreeConfig)
 	ctx := ctxArg.(*volumemgrContext)
+	ok := handleContentTreeClusterForUs(config)
+	if !ok {
+		return
+	}
 	status := ctx.LookupContentTreeStatus(config.Key())
 	if status == nil {
 		log.Fatalf("Missing ContentTreeStatus for %s", config.Key())
@@ -53,6 +74,10 @@ func handleContentTreeDelete(ctxArg interface{}, key string,
 	log.Functionf("handleContentTreeDelete(%s)", key)
 	config := configArg.(types.ContentTreeConfig)
 	ctx := ctxArg.(*volumemgrContext)
+	ok := handleContentTreeClusterForUs(config)
+	if !ok {
+		return
+	}
 	status := ctx.LookupContentTreeStatus(config.Key())
 	if status == nil {
 		log.Fatalf("Missing ContentTreeStatus for %s", config.Key())

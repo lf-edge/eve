@@ -10,6 +10,7 @@ import (
 	"flag"
 	"fmt"
 	"mime"
+	"net"
 	"net/http"
 	"os"
 	"strings"
@@ -70,6 +71,8 @@ type clientContext struct {
 	// cli options
 	operations    map[string]bool
 	maxRetriesPtr *int
+	// XXX hack for hvkube for local cluster
+	localClusterIP string
 }
 
 // AddAgentSpecificCLIFlags adds CLI options
@@ -95,6 +98,13 @@ func (ctxPtr *clientContext) getCachedResolvedIPs(hostname string) []types.Cache
 		return nil
 	}
 	if item, err := ctxPtr.subCachedResolvedIPs.Get(hostname); err == nil {
+		if ctxPtr.localClusterIP != "" && hostname == "zedcloud.local.zededa.net" {
+			cached := types.CachedIP{
+				IPAddress:  net.ParseIP(ctxPtr.localClusterIP),
+				ValidUntil: time.Now().Add(time.Hour),
+			}
+			return []types.CachedIP{cached}
+		}
 		return item.(types.CachedResolvedIPs).CachedIPs
 	}
 	return nil
@@ -126,6 +136,10 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	agentbase.Init(&clientCtx, logger, log, agentName, args...)
 
 	maxRetries := *clientCtx.maxRetriesPtr
+
+	// XXX hack for now
+	hvhube := base.IsHVTypeKube()
+	clientCtx.localClusterIP, _ = base.GetLocalClusterIP(hvhube)
 
 	pub, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName: agentName,

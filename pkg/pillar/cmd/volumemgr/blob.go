@@ -599,6 +599,9 @@ func gcImagesFromCAS(ctx *volumemgrContext) {
 	referenceMap := make(map[string]interface{})
 	for _, contentTreeStatus := range contentIDAndContentTreeStatus {
 		referenceMap[contentTreeStatus.ReferenceID()] = true
+		if ctx.hvTypeKube && contentTreeStatus.IsContainer() {
+			referenceMap[types.KubeContainerImagePrefix+contentTreeStatus.ReferenceID()] = true
+		}
 	}
 
 	casImages, err := ctx.casClient.ListImages()

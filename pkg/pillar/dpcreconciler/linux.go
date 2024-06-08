@@ -154,6 +154,8 @@ const (
 	kubePodCIDR = "10.42.0.0/16"
 	// CIDR used for IP allocation for K3s services.
 	kubeSvcCIDR = "10.43.0.0/16"
+	// XXX hack for now to see, need to get this prefix from edgenode cluster config
+	clusterCIDR = "10.244.244.0/28"
 )
 
 // LinuxDpcReconciler is a DPC-reconciler for Linux network stack,
@@ -1062,6 +1064,7 @@ func (r *LinuxDpcReconciler) getIntendedL3Cfg(dpc types.DevicePortConfig) dg.Gra
 	}
 	intendedL3 := dg.New(graphArgs)
 	intendedL3.PutSubGraph(r.getIntendedAdapters(dpc))
+	// XXX may need to comment out to see, pod/vmi gets 10.43 unreachable errors
 	intendedL3.PutSubGraph(r.getIntendedSrcIPRules(dpc))
 	intendedL3.PutSubGraph(r.getIntendedRoutes(dpc))
 	intendedL3.PutSubGraph(r.getIntendedArps(dpc))
@@ -1775,6 +1778,36 @@ func (r *LinuxDpcReconciler) getIntendedACLs(
 		TargetOpts:  []string{"--set-mark", controlProtoMark("kube_pod")},
 		Description: "Mark all traffic directly forwarded between Kubernetes pods",
 	}
+	markClusterPod := iptables.Rule{
+		RuleLabel:   "Kubernetes cluster prefix to pod cidr mark",
+		MatchOpts:   []string{"-s", clusterCIDR, "-d", kubePodCIDR},
+		Target:      "CONNMARK",
+		TargetOpts:  []string{"--set-mark", controlProtoMark("cluster_pod")},
+		Description: "Mark traffic from Kubernetes cluster prefix to pod cidr",
+	}
+	// Allow all traffic forwarded between Kubernetes pods.
+	markPodCluster := iptables.Rule{
+		RuleLabel:   "Kubernetes pod to cluster prefix mark",
+		MatchOpts:   []string{"-s", kubePodCIDR, "-d", clusterCIDR},
+		Target:      "CONNMARK",
+		TargetOpts:  []string{"--set-mark", controlProtoMark("pod_cluster")},
+		Description: "Mark all traffic directly forwarded between Kubernetes pods to cluster prefix",
+	}
+	markClusterSvc := iptables.Rule{
+		RuleLabel:   "Kubernetes cluster prefix to Svc cidr mark",
+		MatchOpts:   []string{"-s", clusterCIDR, "-d", kubeSvcCIDR},
+		Target:      "CONNMARK",
+		TargetOpts:  []string{"--set-mark", controlProtoMark("cluster_svc")},
+		Description: "Mark traffic from Kubernetes cluster prefix to pod cidr",
+	}
+	// Allow all traffic forwarded between Kubernetes pods.
+	markSvcCluster := iptables.Rule{
+		RuleLabel:   "Kubernetes Svc to cluster prefix mark",
+		MatchOpts:   []string{"-s", kubeSvcCIDR, "-d", clusterCIDR},
+		Target:      "CONNMARK",
+		TargetOpts:  []string{"--set-mark", controlProtoMark("svc_cluster")},
+		Description: "Mark all traffic directly forwarded between Kubernetes Svcs to cluster prefix",
+	}
 	// Allow all DNS requests made from the Kubernetes network.
 	markKubeDNS := iptables.Rule{
 		RuleLabel:     "Kubernetes DNS mark",
@@ -1785,11 +1818,83 @@ func (r *LinuxDpcReconciler) getIntendedACLs(
 		Description:   "Mark DNS requests made from the Kubernetes network",
 	}
 
+	// XXX some kube cluster rules
+	markK3s := iptables.Rule{
+		RuleLabel:   "K3s mark",
+		MatchOpts:   []string{"-p", "tcp", "--dport", "6443"},
+		Target:      "CONNMARK",
+		TargetOpts:  []string{"--set-mark", controlProtoMark("in_k3s")},
+		Description: "Mark K3S API server traffic for kubernetes",
+	}
+
+	markEtcd := iptables.Rule{
+		RuleLabel:   "Etcd mark",
+		MatchOpts:   []string{"-p", "tcp", "--dport", "2379:2381"},
+		Target:      "CONNMARK",
+		TargetOpts:  []string{"--set-mark", controlProtoMark("in_etcd")},
+		Description: "Mark K3S HA with embedded etcd traffic for kubernetes",
+	}
+
+	markFlannel := iptables.Rule{
+		RuleLabel:   "Flannel mark",
+		MatchOpts:   []string{"-p", "udp", "--dport", "8472"},
+		Target:      "CONNMARK",
+		TargetOpts:  []string{"--set-mark", controlProtoMark("in_flannel")},
+		Description: "Mark K3S with Flannel VxLan traffic for kubernetes",
+	}
+
+	markMetrics := iptables.Rule{
+		RuleLabel:   "Metrics mark",
+		MatchOpts:   []string{"-p", "tcp", "--dport", "10250"},
+		Target:      "CONNMARK",
+		TargetOpts:  []string{"--set-mark", controlProtoMark("in_metrics")},
+		Description: "Mark K3S metrics traffic for kubernetes",
+	}
+
+	markLongHornWebhook := iptables.Rule{
+		RuleLabel:   "Longhorn Webhook",
+		MatchOpts:   []string{"-p", "tcp", "--dport", "9501:9503"},
+		Target:      "CONNMARK",
+		TargetOpts:  []string{"--set-mark", controlProtoMark("in_lhweb")},
+		Description: "Mark K3S HA with longhorn webhook for kubernetes",
+	}
+	markLongHornInstMgr := iptables.Rule{
+		RuleLabel:   "Longhorn Instance Manager",
+		MatchOpts:   []string{"-p", "tcp", "--dport", "8500:8501"},
+		Target:      "CONNMARK",
+		TargetOpts:  []string{"--set-mark", controlProtoMark("in_lhinstmgr")},
+		Description: "Mark K3S HA with longhorn instance manager for kubernetes",
+	}
+	markIscsi := iptables.Rule{
+		RuleLabel:   "Iscsi",
+		MatchOpts:   []string{"-p", "tcp", "--dport", "3260"},
+		Target:      "CONNMARK",
+		TargetOpts:  []string{"--set-mark", controlProtoMark("in_iscsi")},
+		Description: "Mark K3S HA with longhorn iscsi for kubernetes",
+	}
+	markNFS := iptables.Rule{
+		RuleLabel:   "NFS",
+		MatchOpts:   []string{"-p", "tcp", "--dport", "2049"},
+		Target:      "CONNMARK",
+		TargetOpts:  []string{"--set-mark", controlProtoMark("in_nfs")},
+		Description: "Mark K3S HA with longhorn nfs for kubernetes",
+	}
+	markEncPub := iptables.Rule{ // XXX EncPubSub
+		RuleLabel:   "EncPubSub",
+		MatchOpts:   []string{"-p", "tcp", "--dport", "12345"},
+		Target:      "CONNMARK",
+		TargetOpts:  []string{"--set-mark", controlProtoMark("in_encpubsub")},
+		Description: "Mark EdgeNode PubSub traffic",
+	}
+
 	protoMarkV4Rules := []iptables.Rule{
 		markSSHAndGuacamole, markVnc, markIcmpV4, markDhcp,
 	}
 	if r.HVTypeKube {
-		protoMarkV4Rules = append(protoMarkV4Rules, markKubeDNS, markKubeSvc, markKubePod)
+		protoMarkV4Rules = append(protoMarkV4Rules, markKubeDNS, markKubeSvc, markKubePod,
+			markClusterPod, markPodCluster, markClusterSvc, markSvcCluster,
+			markK3s, markEtcd, markFlannel, markMetrics, markLongHornWebhook, markLongHornInstMgr,
+			markIscsi, markNFS, markEncPub)
 	}
 	protoMarkV6Rules := []iptables.Rule{
 		markSSHAndGuacamole, markVnc, markIcmpV6,
@@ -1972,31 +2077,7 @@ func (r *LinuxDpcReconciler) getIntendedACLs(
 			AppliedBefore: []string{denyNonAppForwarding.RuleLabel},
 			Description:   "Allow forwarding of DNS traffic inside the Kubernetes network",
 		}
-		intendedIPv4ACLs.PutItem(allowKubeDNSForwarding, nil)
-		allowKubeSvcForwarding := iptables.Rule{
-			RuleLabel: "Allow forwarding to Kubernetes services",
-			Table:     "mangle",
-			ChainName: "FORWARD" + iptables.DeviceChainSuffix,
-			MatchOpts: []string{"--match", "connmark", "--mark",
-				controlProtoMark("kube_svc")},
-			Target:        "ACCEPT",
-			AppliedBefore: []string{denyNonAppForwarding.RuleLabel},
-			Description: "Allow forwarding of all traffic from Kubernetes pods " +
-				"to Kubernetes services",
-		}
-		intendedIPv4ACLs.PutItem(allowKubeSvcForwarding, nil)
-		allowKubePodForwarding := iptables.Rule{
-			RuleLabel: "Allow forwarding between Kubernetes pods",
-			Table:     "mangle",
-			ChainName: "FORWARD" + iptables.DeviceChainSuffix,
-			MatchOpts: []string{"--match", "connmark", "--mark",
-				controlProtoMark("kube_pod")},
-			Target:        "ACCEPT",
-			AppliedBefore: []string{denyNonAppForwarding.RuleLabel},
-			Description:   "Allow forwarding of all traffic between Kubernetes pods",
-		}
-		intendedIPv4ACLs.PutItem(allowKubePodForwarding, nil)
-	}
+	*/
 
 	// Mark all un-marked local traffic generated by local services.
 	outputRules := []iptables.Rule{

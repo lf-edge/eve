@@ -4,6 +4,7 @@
 package base
 
 import (
+	"bufio"
 	"os"
 	"regexp"
 	"strings"
@@ -42,6 +43,41 @@ func IsHVTypeKube() bool {
 		return true
 	}
 	return false
+}
+
+// XXX get local cluster ip address
+func GetLocalClusterIP(isHVKube bool) (string, error) {
+	if !isHVKube {
+		return "", nil
+	}
+	file, err := os.Open("/config/server")
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	scanner.Scan()
+	firstLine := scanner.Text()
+
+	if strings.Contains(firstLine, "zedcloud.local.zededa.net") {
+		hostsFile, err := os.Open("/config/hosts")
+		if err != nil {
+			return "", nil // return empty string if hosts file is not there
+		}
+		defer hostsFile.Close()
+
+		hostsScanner := bufio.NewScanner(hostsFile)
+		for hostsScanner.Scan() {
+			line := hostsScanner.Text()
+			if strings.Contains(line, "zedcloud.local.zededa.net") {
+				ipAddress := strings.Fields(line)[0] // get the first field (IP address)
+				return ipAddress, nil
+			}
+		}
+	}
+
+	return "", nil // return empty string if no matching line is found
 }
 
 var (

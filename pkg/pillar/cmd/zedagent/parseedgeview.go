@@ -66,7 +66,8 @@ func parseEvConfig(ctx *getconfigContext, config *zconfig.EdgeDevConfig) {
 	ext := types.EvExtPolicy{}
 	if zcfgEv.ExtPolicy != nil {
 		ext = types.EvExtPolicy{
-			Enabled: zcfgEv.ExtPolicy.AllowExt,
+			//Enabled: zcfgEv.ExtPolicy.AllowExt,
+			Enabled: true, // XXX always true for now
 		}
 	}
 	evConfig.ExtPolicy = ext

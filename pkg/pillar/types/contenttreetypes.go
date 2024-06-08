@@ -29,6 +29,8 @@ type ContentTreeConfig struct {
 	GenerationCounter int64
 	DisplayName       string
 	CustomMeta        string
+	// XXX DesignatedNodeID
+	DesignatedNodeID uuid.UUID
 }
 
 // Key is content info UUID which will be unique

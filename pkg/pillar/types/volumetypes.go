@@ -28,6 +28,8 @@ type VolumeConfig struct {
 	HasNoAppReferences      bool
 	Target                  zconfig.Target
 	CustomMeta              string
+	// Cluster Designated Node Id
+	DesignatedNodeID uuid.UUID
 }
 
 // Key is volume UUID which will be unique

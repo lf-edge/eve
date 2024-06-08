@@ -27,6 +27,7 @@ func getEncryptionBlock(
 	decBlock.CellularNetUsername = zconfigDecBlockPtr.CellularNetUsername
 	decBlock.CellularNetPassword = zconfigDecBlockPtr.CellularNetPassword
 	decBlock.ProtectedUserData = zconfigDecBlockPtr.ProtectedUserData
+	decBlock.ClusterToken = zconfigDecBlockPtr.ClusterToken
 	return decBlock
 }
 

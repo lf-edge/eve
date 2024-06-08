@@ -16,12 +16,13 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/kubeapi"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 )
 
-// collectAppLogs - collect App logs from pods which covers both containers and virt-launcher pods
 func collectAppLogs(ctx *zedkubeContext) {
 	sub := ctx.subAppInstanceConfig
 	items := sub.GetAll()
@@ -36,6 +37,7 @@ func collectAppLogs(ctx *zedkubeContext) {
 		}
 		ctx.config = config
 	}
+
 	clientset, err := kubernetes.NewForConfig(ctx.config)
 	if err != nil {
 		log.Errorf("collectAppLogs: can't get clientset %v", err)
@@ -50,6 +52,9 @@ func collectAppLogs(ctx *zedkubeContext) {
 	sinceSec = logcollectInterval
 	for _, item := range items {
 		aiconfig := item.(types.AppInstanceConfig)
+		if aiconfig.DesignatedNodeID != uuid.Nil && aiconfig.DesignatedNodeID.String() != ctx.nodeuuid { // For now, only check DNiD, need to add migration part
+			continue
+		}
 		contName := base.GetAppKubeName(aiconfig.DisplayName, aiconfig.UUIDandVersion.UUID)
 
 		opt := &corev1.PodLogOptions{}
@@ -92,10 +97,81 @@ func collectAppLogs(ctx *zedkubeContext) {
 			aiLogger.Infof("%s", logLine)
 		}
 		if scanner.Err() != nil {
-			if scanner.Err() != io.EOF {
-				log.Errorf("collectAppLogs: pod %s, scanner error %v", contName, scanner.Err())
+			if scanner.Err() == io.EOF {
+				break // Break out of the loop when EOF is reached
 			}
-			break // Break out of the loop when EOF is reached or error occurs
+		}
+	}
+}
+
+func checkAppsStatus(ctx *zedkubeContext) {
+	sub := ctx.subAppInstanceConfig
+	items := sub.GetAll()
+	if len(items) == 0 {
+		return
+	}
+
+	if ctx.config == nil {
+		config, err := kubeapi.GetKubeConfig()
+		if err != nil {
+			log.Errorf("checkAppsStatus: can't get kubeconfig %v", err)
+			return
+		}
+		ctx.config = config
+	}
+
+	clientset, err := kubernetes.NewForConfig(ctx.config)
+	if err != nil {
+		log.Errorf("checkAppsStatus: can't get clientset %v", err)
+		return
+	}
+
+	labelSelector := metav1.LabelSelector{MatchLabels: map[string]string{"node-uuid": ctx.nodeuuid}}
+	options := metav1.ListOptions{LabelSelector: metav1.FormatLabelSelector(&labelSelector)}
+	pods, err := clientset.CoreV1().Pods(kubeapi.EVEKubeNameSpace).List(context.Background(), options)
+	if err != nil {
+		log.Errorf("checkAppsStatus: can't get pods %v", err)
+		return
+	}
+
+	pub := ctx.pubENClusterAppStatus
+	stItmes := pub.GetAll()
+	var oldStatus *types.ENClusterAppStatus
+	for _, item := range items {
+		aiconfig := item.(types.AppInstanceConfig)
+		if aiconfig.DesignatedNodeID != uuid.Nil { // if not for cluster app, skip
+			continue
+		}
+		encAppStatus := types.ENClusterAppStatus{
+			AppUUID: aiconfig.UUIDandVersion.UUID,
+			IsDNSet: aiconfig.DesignatedNodeID.String() == ctx.nodeuuid,
+		}
+		contName := base.GetAppKubeName(aiconfig.DisplayName, aiconfig.UUIDandVersion.UUID)
+
+		for _, pod := range pods.Items {
+			contVMIName := "virt-launcher-" + contName
+			if pod.Name == contName || pod.Name == contVMIName {
+				encAppStatus.ScheduledOnThisNode = true
+				if pod.Status.Phase == corev1.PodRunning {
+					encAppStatus.StatusRunning = true
+				}
+				break
+			}
+		}
+
+		for _, st := range stItmes {
+			aiStatus := st.(types.ENClusterAppStatus)
+			if aiStatus.AppUUID == aiconfig.UUIDandVersion.UUID {
+				oldStatus = &aiStatus
+				break
+			}
+		}
+		log.Noticef("checkAppsStatus: pod status %+v, old %+v", encAppStatus, oldStatus)
+
+		if oldStatus == nil || oldStatus.IsDNSet != encAppStatus.IsDNSet ||
+			oldStatus.ScheduledOnThisNode != encAppStatus.ScheduledOnThisNode || oldStatus.StatusRunning != encAppStatus.StatusRunning {
+			log.Noticef("checkAppsStatus: status differ, publish")
+			ctx.pubENClusterAppStatus.Publish(aiconfig.Key(), encAppStatus)
 		}
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/rand"
+	"net"
 	"net/http"
 	"os"
 	"strconv"
@@ -85,6 +86,8 @@ type loguploaderContext struct {
 	enableFastUpload       bool
 	scheduleTimer          *time.Timer
 	backoffExprTimer       *time.Timer
+	// XXX hack hvTypeKube for local cluster
+	localClusterIP string
 }
 
 func (ctx *loguploaderContext) getCachedResolvedIPs(hostname string) []types.CachedIP {
@@ -92,6 +95,13 @@ func (ctx *loguploaderContext) getCachedResolvedIPs(hostname string) []types.Cac
 		return nil
 	}
 	if item, err := ctx.subCachedResolvedIPs.Get(hostname); err == nil {
+		if ctx.localClusterIP != "" && hostname == "zedcloud.local.zededa.net" {
+			cached := types.CachedIP{
+				IPAddress:  net.ParseIP(ctx.localClusterIP),
+				ValidUntil: time.Now().Add(time.Hour),
+			}
+			return []types.CachedIP{cached}
+		}
 		return item.(types.CachedResolvedIPs).CachedIPs
 	}
 	return nil
@@ -115,6 +125,10 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(stillRunningInerval)
 	ps.StillRunning(agentName, warningTime, errorTime)
+
+	// XXX hack for now, get the local cluster ip address
+	isHVKube := base.IsHVTypeKube()
+	loguploaderCtx.localClusterIP, _ = base.GetLocalClusterIP(isHVKube)
 
 	// Wait until we have been onboarded aka know our own UUID
 	subOnboardStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{

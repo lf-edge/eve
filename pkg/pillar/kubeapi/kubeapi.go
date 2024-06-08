@@ -125,15 +125,22 @@ func GetKubevirtClientSet(kubeconfig *rest.Config) (KubevirtClientset, error) {
 */
 
 // WaitForKubernetes : Wait until kubernetes server is ready
-func WaitForKubernetes(agentName string, ps *pubsub.PubSub, stillRunning *time.Ticker) error {
+func WaitForKubernetes(agentName string, ps *pubsub.PubSub, sub pubsub.Subscription, stillRunning *time.Ticker) error {
 	checkTimer := time.NewTimer(5 * time.Second)
 	configFileExist := false
+	startTime := time.Now()
+	maxWaitTime := 10 * time.Minute
 
 	var config *rest.Config
 	// wait until the Kubernetes server is started
 	for !configFileExist {
 		select {
 		case <-checkTimer.C:
+			currentTime := time.Now()
+			if currentTime.Sub(startTime) > maxWaitTime {
+				err := fmt.Errorf("Time exceeded 10 minutes")
+				return err
+			}
 			if _, err := os.Stat(EVEkubeConfigFile); err == nil {
 				config, err = GetKubeConfig()
 				if err == nil {
@@ -143,6 +150,15 @@ func WaitForKubernetes(agentName string, ps *pubsub.PubSub, stillRunning *time.T
 			}
 			checkTimer = time.NewTimer(5 * time.Second)
 		case <-stillRunning.C:
+		case change, ok := <-func() <-chan pubsub.Change {
+			if sub != nil {
+				return sub.MsgChan()
+			}
+			return nil
+		}():
+			if ok {
+				sub.ProcessChange(change)
+			}
 		}
 		ps.StillRunning(agentName, warningTime, errorTime)
 	}
@@ -168,6 +184,15 @@ func WaitForKubernetes(agentName string, ps *pubsub.PubSub, stillRunning *time.T
 			kubeNodeReady = true
 			break
 		case <-stillRunning.C:
+		case change, ok := <-func() <-chan pubsub.Change {
+			if sub != nil {
+				return sub.MsgChan()
+			}
+			return nil
+		}():
+			if ok {
+				sub.ProcessChange(change)
+			}
 		}
 		ps.StillRunning(agentName, warningTime, errorTime)
 	}
@@ -265,6 +290,9 @@ func waitForNodeReady(client *kubernetes.Clientset, readyCh chan bool, devUUID s
 			}
 
 			err = waitForLonghornReady(client, hostname)
+			if err != nil {
+				time.Sleep(5 * time.Second)
+			}
 			return err
 		})
 
@@ -350,4 +378,30 @@ func CleanupStaleVMI() (int, error) {
 		count++
 	}
 	return count, nil
+}
+
+func GetNodeNameFromDevUUID(devUUID string) (string, error) {
+	client, err := GetClientSet()
+	if err != nil {
+		return "", err
+	}
+
+	labelSelector := metav1.LabelSelector{MatchLabels: map[string]string{"node-uuid": devUUID}}
+	options := metav1.ListOptions{LabelSelector: metav1.FormatLabelSelector(&labelSelector)}
+	nodes, err := client.CoreV1().Nodes().List(context.Background(), options)
+	if err != nil {
+		return "", err
+	}
+
+	var nodeName string
+	for _, node := range nodes.Items {
+		nodeName = node.Name
+		break
+	}
+
+	if nodeName == "" {
+		return "", fmt.Errorf("node not found by label uuid %s", devUUID)
+	}
+
+	return nodeName, nil
 }

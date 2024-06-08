@@ -96,6 +96,18 @@ func parseContentInfoConfig(ctx *getconfigContext,
 		contentConfig.MaxDownloadSize = cfgContentTree.GetMaxSizeBytes()
 		contentConfig.DisplayName = cfgContentTree.GetDisplayName()
 		contentConfig.CustomMeta = cfgContentTree.GetCustomMetaData()
+		if ctx.zedagentCtx.hvTypeKube { // XXX passing from volume to contenttree for DNid
+			item2 := ctx.pubVolumeConfig.GetAll()
+			for _, vc := range item2 {
+				volume := vc.(types.VolumeConfig)
+				if volume.ContentID == contentConfig.ContentID {
+					if volume.DesignatedNodeID != uuid.Nil {
+						contentConfig.DesignatedNodeID = volume.DesignatedNodeID
+						log.Noticef("parseContentInfo designated ID copy from volume config: %v, contentid %v, url %s", contentConfig.DesignatedNodeID, contentConfig.ContentID, contentConfig.RelativeURL)
+					}
+				}
+			}
+		}
 		publishContentTreeConfig(ctx, *contentConfig)
 	}
 	ctx.pubContentTreeConfig.SignalRestarted()

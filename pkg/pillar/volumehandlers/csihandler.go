@@ -173,23 +173,25 @@ func (handler *volumeHandlerCSI) CreateVolume() (string, error) {
 				return "", errors.New(errStr)
 			}
 
-			// Convert to PVC
-			pvcerr := kubeapi.RolloutDiskToPVC(createContext, handler.log, false, rawImgFile, pvcName, false)
+			/*
+				// Convert to PVC
+				pvcerr := kubeapi.RolloutDiskToPVC(createContext, handler.log, false, rawImgFile, pvcName, false)
 
-			// Since we succeeded or failed to create PVC above, no point in keeping the rawImgFile.
-			// Delete it to save space.
-			if err = os.RemoveAll(rawImgFile); err != nil {
-				errStr := fmt.Sprintf("CreateVolume: exception while deleting: %v. %v", rawImgFile, err)
-				handler.log.Error(errStr)
-				return pvcName, errors.New(errStr)
-			}
+				// Since we succeeded or failed to create PVC above, no point in keeping the rawImgFile.
+				// Delete it to save space.
+				if err = os.RemoveAll(rawImgFile); err != nil {
+					errStr := fmt.Sprintf("CreateVolume: exception while deleting: %v. %v", rawImgFile, err)
+					handler.log.Error(errStr)
+					return pvcName, errors.New(errStr)
+				}
 
-			if pvcerr != nil {
-				errStr := fmt.Sprintf("Error converting %s to PVC %s: %v",
-					rawImgFile, pvcName, pvcerr)
-				handler.log.Error(errStr)
-				return pvcName, errors.New(errStr)
-			}
+				if pvcerr != nil {
+					errStr := fmt.Sprintf("Error converting %s to PVC %s: %v",
+						rawImgFile, pvcName, pvcerr)
+					handler.log.Error(errStr)
+					return pvcName, errors.New(errStr)
+				}
+			*/
 		} else {
 			qcowFile, err := handler.getVolumeFilePath()
 			if err != nil {
@@ -224,15 +226,20 @@ func (handler *volumeHandlerCSI) CreateVolume() (string, error) {
 func (handler *volumeHandlerCSI) DestroyVolume() (string, error) {
 	pvcName := handler.status.GetPVCName()
 	handler.log.Noticef("DestroyVolume called for PVC %s", pvcName)
-	err := kubeapi.DeletePVC(pvcName, handler.log)
-	if err != nil {
-		// Its OK if not found since PVC might have been deleted already
-		if kerr.IsNotFound(err) {
-			handler.log.Noticef("PVC %s not found, might have been deleted", pvcName)
-			return pvcName, nil
-		} else {
-			return pvcName, err
+	// if this is a native container, no need to delete PVC
+	if !handler.status.IsContainer() {
+		err := kubeapi.DeletePVC(pvcName, handler.log)
+		if err != nil {
+			// Its OK if not found since PVC might have been deleted already
+			if kerr.IsNotFound(err) {
+				handler.log.Noticef("PVC %s not found, might have been deleted", pvcName)
+				return pvcName, nil
+			} else {
+				return pvcName, err
+			}
 		}
+	} else { // XXX for debug
+		handler.log.Noticef("DestroyVolume container skip delete PVC %s", pvcName)
 	}
 	return pvcName, nil
 }
@@ -295,6 +302,11 @@ func (handler *volumeHandlerCSI) CopyImgDirToRawImg(ctx context.Context, log *ba
 	args := []string{srcLocation, destFile}
 
 	log.Noticef("%s args %v", imageToQcowScript, args)
+	// if the image in destfile already exist, skip this step
+	if _, err := os.Stat(destFile); err == nil {
+		log.Noticef("CopyImgDirToRawImg: destFile %s already exists, skipping", destFile)
+		return nil
+	}
 
 	output, err := base.Exec(log, imageToQcowScript, args...).WithContext(ctx).WithUnlimitedTimeout(120 * time.Hour).CombinedOutput()
 

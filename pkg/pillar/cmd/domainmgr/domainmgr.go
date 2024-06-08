@@ -587,7 +587,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	// wait for kubernetes to be ready in kubevirt mode, if gets error, move on
 	if domainCtx.hvTypeKube {
 		log.Noticef("Domainmgr run: wait for kubernetes")
-		err = kubeapi.WaitForKubernetes(agentName, ps, stillRunning)
+		err = kubeapi.WaitForKubernetes(agentName, ps, nil, stillRunning)
 		if err != nil {
 			log.Errorf("Domainmgr: wait for kubernetes error %v", err)
 		} else {

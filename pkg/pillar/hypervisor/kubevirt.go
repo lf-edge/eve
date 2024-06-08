@@ -225,6 +225,16 @@ func (ctx kubevirtContext) CreateVMIConfig(domainName string, config types.Domai
 		return err
 	}
 
+	// Get the my node name from cluster
+	hostname, _ := os.Hostname()
+	nodeName, err := kubeapi.GetNodeNameFromDevUUID(hostname)
+	if err != nil {
+		logrus.Errorf("CreateVMIConfig: failed to get node name %v", err)
+		return err
+	} else {
+		logrus.Infof("CreateVMIConfig: got node name %s", nodeName)
+	}
+
 	kubeName := base.GetAppKubeName(config.DisplayName, config.UUIDandVersion.UUID)
 	// Get a VirtualMachineInstance object and populate the values from DomainConfig
 	vmi := v1.NewVMIReferenceFromNameWithNS(kubeapi.EVEKubeNameSpace, kubeName)
@@ -408,6 +418,27 @@ func (ctx kubevirtContext) CreateVMIConfig(domainName string, config types.Domai
 		}
 	}
 
+	// Set the affinity to this node the VMI is preferred to run on
+	affinity := &k8sv1.Affinity{
+		NodeAffinity: &k8sv1.NodeAffinity{
+			PreferredDuringSchedulingIgnoredDuringExecution: []k8sv1.PreferredSchedulingTerm{
+				{
+					Preference: k8sv1.NodeSelectorTerm{
+						MatchExpressions: []k8sv1.NodeSelectorRequirement{
+							{
+								Key:      "kubernetes.io/hostname",
+								Operator: "In",
+								Values:   []string{nodeName},
+							},
+						},
+					},
+					Weight: 100,
+				},
+			},
+		},
+	}
+
+	vmi.Spec.Affinity = affinity
 	vmi.Labels = make(map[string]string)
 	vmi.Labels[eveLabelKey] = domainName
 
@@ -503,7 +534,7 @@ func (ctx kubevirtContext) Stop(domainName string, force bool) error {
 		return logError("domain %s failed to get vmlist", domainName)
 	}
 	if vmis.isPod {
-		err := StopPodContainer(kubeconfig, vmis.name)
+		err := StopPodContainer(ctx, kubeconfig, vmis.name)
 		return err
 	} else {
 		virtClient, err := kubecli.GetKubevirtClientFromRESTConfig(kubeconfig)
@@ -540,7 +571,7 @@ func (ctx kubevirtContext) Delete(domainName string) (result error) {
 		return logError("delete domain %s failed to get vmlist", domainName)
 	}
 	if vmis.isPod {
-		err := StopPodContainer(kubeconfig, vmis.name)
+		err := StopPodContainer(ctx, kubeconfig, vmis.name)
 		return err
 	} else {
 		virtClient, err := kubecli.GetKubevirtClientFromRESTConfig(kubeconfig)
@@ -924,6 +955,22 @@ func (ctx kubevirtContext) CreatePodConfig(domainName string, config types.Domai
 	}
 	ociName := config.KubeImageName
 
+	// Get the my node name from cluster
+	hostname, _ := os.Hostname()
+	nodeName, err := kubeapi.GetNodeNameFromDevUUID(hostname)
+	if err != nil {
+		logrus.Errorf("CreatePodConfig: failed to get node name %v", err)
+		return err
+	} else {
+		logrus.Infof("CreatePodConfig: got node name %s", nodeName)
+	}
+	if err != nil {
+		logrus.Errorf("CreatePodConfig: failed to get node name %v", err)
+		return err
+	} else {
+		logrus.Infof("CreatePodConfig: got node name %s", nodeName)
+	}
+
 	var netSelections []netattdefv1.NetworkSelectionElement
 	for _, vif := range config.VifList {
 		netSelections = append(netSelections, netattdefv1.NetworkSelectionElement{
@@ -993,6 +1040,7 @@ func (ctx kubevirtContext) CreatePodConfig(domainName string, config types.Domai
 					},
 				},
 			},
+			RestartPolicy: k8sv1.RestartPolicyAlways,
 			DNSConfig: &k8sv1.PodDNSConfig{
 				Nameservers: []string{"8.8.8.8", "1.1.1.1"}, // XXX, temp, Add your desired DNS servers here
 			},
@@ -1000,6 +1048,72 @@ func (ctx kubevirtContext) CreatePodConfig(domainName string, config types.Domai
 	}
 	pod.Labels = make(map[string]string)
 	pod.Labels[eveLabelKey] = domainName
+	affinity := &k8sv1.Affinity{
+		NodeAffinity: &k8sv1.NodeAffinity{
+			PreferredDuringSchedulingIgnoredDuringExecution: []k8sv1.PreferredSchedulingTerm{
+				{
+					Preference: k8sv1.NodeSelectorTerm{
+						MatchExpressions: []k8sv1.NodeSelectorRequirement{
+							{
+								Key:      "kubernetes.io/hostname",
+								Operator: "In",
+								Values:   []string{nodeName},
+							},
+						},
+					},
+					Weight: 100,
+				},
+			},
+		},
+	}
+	pod.Spec.Affinity = affinity
+
+	// Add pod non-image volume disks
+	if len(diskStatusList) > 1 {
+		leng := len(diskStatusList) - 1
+		for _, ds := range diskStatusList[1:] {
+			if ds.Devtype == "9P" { // skip 9P volume type
+				if leng > 0 {
+					leng--
+				} else {
+					break
+				}
+			}
+		}
+		if leng > 0 {
+			volumes := make([]k8sv1.Volume, leng)
+			voldevs := make([]k8sv1.VolumeDevice, leng)
+			//mounts := make([]k8sv1.VolumeMount, leng)
+
+			i := 0
+			for _, ds := range diskStatusList[1:] {
+				if ds.Devtype == "9P" {
+					continue
+				}
+				voldispName := strings.ToLower(ds.DisplayName)
+				voldevs[i] = k8sv1.VolumeDevice{
+					Name:       voldispName,
+					DevicePath: ds.MountDir,
+				}
+				//mounts[i] = k8sv1.VolumeMount{
+				//	Name:      voldispName,
+				//	MountPath: ds.MountDir,
+				//}
+
+				volumes[i].Name = voldispName
+				volumes[i].VolumeSource = k8sv1.VolumeSource{
+					PersistentVolumeClaim: &k8sv1.PersistentVolumeClaimVolumeSource{
+						ClaimName: strings.ToLower(ds.DisplayName),
+						//ClaimName: ds.VolumeKey,
+					},
+				}
+				i++
+			}
+			pod.Spec.Containers[0].VolumeDevices = voldevs
+			//pod.Spec.Containers[0].VolumeMounts = mounts
+			pod.Spec.Volumes = volumes
+		}
+	}
 	logrus.Infof("CreatePodConfig: pod setup %+v", pod)
 
 	// Now we have VirtualMachine Instance object, save it to config file for debug purposes
@@ -1091,7 +1205,7 @@ func checkForPod(kubeconfig *rest.Config, podName string) error {
 }
 
 // StopPodContainer : Stops the running kubernetes pod
-func StopPodContainer(kubeconfig *rest.Config, podName string) error {
+func StopPodContainer(ctx kubevirtContext, kubeconfig *rest.Config, podName string) error {
 
 	clientset, err := kubernetes.NewForConfig(kubeconfig)
 	if err != nil {
@@ -1106,6 +1220,17 @@ func StopPodContainer(kubeconfig *rest.Config, podName string) error {
 		return err
 	}
 
+	// delete the pod from the vmiList mapping
+	for n, vmis := range ctx.vmiList {
+		if !vmis.isPod {
+			continue
+		}
+		if vmis.name == podName {
+			delete(ctx.vmiList, n)
+			break
+		}
+	}
+
 	logrus.Infof("StopPodContainer: Pod %s deleted", podName)
 	return nil
 }
@@ -1118,9 +1243,22 @@ func InfoPodContainer(kubeconfig *rest.Config, podName string) (string, error) {
 		return "", logError("InfoPodContainer: couldn't get the pod Config: %v", err)
 	}
 
+	hostname, _ := os.Hostname()
+	nodeName, err := kubeapi.GetNodeNameFromDevUUID(hostname)
+	if err != nil {
+		logrus.Errorf("InfoPodContainer: failed to get node name %v", err)
+		return "", err
+	}
 	pod, err := podclientset.CoreV1().Pods(kubeapi.EVEKubeNameSpace).Get(context.TODO(), podName, metav1.GetOptions{})
 	if err != nil {
 		return "", logError("InfoPodContainer: couldn't get the pod: %v", err)
+	}
+
+	if nodeName != pod.Spec.NodeName {
+		logrus.Infof("InfoPodContainer: pod %s, nodeName %v differ w/ hostname", podName, pod.Spec.NodeName)
+		return "", nil
+	} else {
+		logrus.Infof("InfoPodContainer: pod %s, nodeName %v, matches the hostname uuid", podName, pod.Spec.NodeName)
 	}
 
 	var res string
@@ -1139,7 +1277,7 @@ func InfoPodContainer(kubeconfig *rest.Config, podName string) (string, error) {
 	default:
 		res = "Scheduling"
 	}
-	logrus.Infof("InfoPodContainer: pod %s, status %s", podName, res)
+	logrus.Infof("InfoPodContainer: pod %s, nodeName %v, status %s", podName, pod.Spec.NodeName, res)
 
 	return res, nil
 }
@@ -1163,6 +1301,12 @@ func checkPodMetrics(ctx kubevirtContext, res map[string]types.DomainMetric, emp
 		return
 	}
 
+	hostname, _ := os.Hostname()
+	nodeName, err := kubeapi.GetNodeNameFromDevUUID(hostname)
+	if err != nil {
+		logrus.Errorf("checkPodMetrics: failed to get node name %v", err)
+		return
+	}
 	count := 0
 	for n, vmis := range ctx.vmiList {
 		if !vmis.isPod {
@@ -1180,6 +1324,10 @@ func checkPodMetrics(ctx kubevirtContext, res map[string]types.DomainMetric, emp
 		metrics, err := clientset.MetricsV1beta1().PodMetricses(kubeapi.EVEKubeNameSpace).Get(context.TODO(), podName, metav1.GetOptions{})
 		if err != nil {
 			logrus.Errorf("checkPodMetrics: get pod metrics error %v", err)
+			continue
+		}
+
+		if nodeName != pod.Spec.NodeName { // cluster, pod from other nodes
 			continue
 		}
 
@@ -1213,6 +1361,7 @@ func checkPodMetrics(ctx kubevirtContext, res map[string]types.DomainMetric, emp
 			MaxUsedMemory:     maxMemory / BytesInMegabyte,
 			AvailableMemory:   available / BytesInMegabyte,
 			UsedMemoryPercent: usedMemoryPercent,
+			NodeName:          pod.Spec.NodeName,
 		}
 		if count <= emptySlot {
 			res[n] = dm

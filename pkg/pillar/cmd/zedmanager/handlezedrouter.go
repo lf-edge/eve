@@ -19,7 +19,7 @@ func MaybeAddAppNetworkConfig(ctx *zedmanagerContext,
 	log.Functionf("MaybeAddAppNetworkConfig for %s displayName %s", key,
 		displayName)
 
-	effectiveActivate := effectiveActivateCurrentProfile(aiConfig, ctx.currentProfile)
+	effectiveActivate := effectiveActivateCombined(aiConfig, ctx)
 
 	changed := false
 	m := lookupAppNetworkConfig(ctx, key)

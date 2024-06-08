@@ -26,6 +26,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	"github.com/lf-edge/eve/pkg/pillar/utils/wait"
+	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 )
 
@@ -51,6 +52,7 @@ type zedmanagerContext struct {
 	subAppNetworkStatus       pubsub.Subscription
 	pubDomainConfig           pubsub.Publication
 	subDomainStatus           pubsub.Subscription
+	subENClusterAppStatus     pubsub.Subscription
 	subGlobalConfig           pubsub.Subscription
 	subHostMemory             pubsub.Subscription
 	subZedAgentStatus         pubsub.Subscription
@@ -71,6 +73,7 @@ type zedmanagerContext struct {
 	assignableAdapters *types.AssignableAdapters
 	// Is it kubevirt eve
 	hvTypeKube bool
+	nodeUUID   string
 }
 
 // AddAgentSpecificCLIFlags adds CLI options
@@ -375,6 +378,24 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	ctx.subVolumesSnapStatus = subVolumesSnapshotStatus
 	_ = subVolumesSnapshotStatus.Activate()
 
+	subENClusterAppStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "zedkube",
+		MyAgentName:   agentName,
+		TopicImpl:     types.ENClusterAppStatus{},
+		Activate:      false,
+		Ctx:           &ctx,
+		CreateHandler: handleENClusterAppStatusCreate,
+		ModifyHandler: handleENClusterAppStatusModify,
+		DeleteHandler: handleENClusterAppStatusDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.subENClusterAppStatus = subENClusterAppStatus
+	_ = subENClusterAppStatus.Activate()
+
 	ctx.subAssignableAdapters, err = ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "domainmgr",
 		MyAgentName:   agentName,
@@ -440,6 +461,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 		case change := <-subVolumesSnapshotStatus.MsgChan():
 			subVolumesSnapshotStatus.ProcessChange(change)
+
+		case change := <-subENClusterAppStatus.MsgChan():
+			subENClusterAppStatus.ProcessChange(change)
 
 		case change := <-ctx.subAssignableAdapters.MsgChan():
 			ctx.subAssignableAdapters.ProcessChange(change)
@@ -659,7 +683,7 @@ func publishAppInstanceSummary(ctxPtr *zedmanagerContext) {
 		effectiveActivate := false
 		config := lookupAppInstanceConfig(ctxPtr, status.Key(), true)
 		if config != nil {
-			effectiveActivate = effectiveActivateCurrentProfile(*config, ctxPtr.currentProfile)
+			effectiveActivate = effectiveActivateCombined(*config, ctxPtr)
 		}
 		// Only condition we did not count is EffectiveActive = true and Activated = false.
 		// That means customer either halted his app or did not activate it yet.
@@ -1177,7 +1201,7 @@ func handleModify(ctxArg interface{}, key string,
 
 	updateSnapshotsInAIStatus(status, config)
 
-	effectiveActivate := effectiveActivateCurrentProfile(config, ctx.currentProfile)
+	effectiveActivate := effectiveActivateCombined(config, ctx)
 
 	publishAppInstanceStatus(ctx, status)
 
@@ -1533,8 +1557,9 @@ func updateBasedOnProfile(ctx *zedmanagerContext, oldProfile string) {
 		if localConfig := lookupLocalAppInstanceConfig(ctx, config.Key()); localConfig != nil {
 			config = *localConfig
 		}
-		effectiveActivate := effectiveActivateCurrentProfile(config, ctx.currentProfile)
-		effectiveActivateOld := effectiveActivateCurrentProfile(config, oldProfile)
+		effectiveActivate := effectiveActivateCombined(config, ctx)
+		effectiveActivateOldTemp := effectiveActivateCurrentProfile(config, oldProfile)
+		effectiveActivateOld := getKubeAppActivateStatus(ctx, config, effectiveActivateOldTemp)
 		if effectiveActivateOld == effectiveActivate {
 			// no changes in effective activate
 			continue
@@ -1551,6 +1576,14 @@ func updateBasedOnProfile(ctx *zedmanagerContext, oldProfile string) {
 }
 
 // returns effective Activate status based on Activate from app instance config and current profile
+func effectiveActivateCombined(config types.AppInstanceConfig, ctx *zedmanagerContext) bool {
+	effectiveActivate := effectiveActivateCurrentProfile(config, ctx.currentProfile)
+	// Add cluster login in the activate state
+	combined := getKubeAppActivateStatus(ctx, config, effectiveActivate)
+	log.Noticef("effectiveActivateCombined: effectiveActivate %t, combined %t", effectiveActivate, combined)
+	return combined
+}
+
 func effectiveActivateCurrentProfile(config types.AppInstanceConfig, currentProfile string) bool {
 	if currentProfile == "" {
 		log.Functionf("effectiveActivateCurrentProfile(%s): empty current", config.Key())
@@ -1573,4 +1606,59 @@ func effectiveActivateCurrentProfile(config types.AppInstanceConfig, currentProf
 	log.Functionf("effectiveActivateCurrentProfile(%s): no match with current (%s)",
 		config.Key(), currentProfile)
 	return false
+}
+
+func getKubeAppActivateStatus(ctx *zedmanagerContext, aiConfig types.AppInstanceConfig, effectiveActivate bool) bool {
+
+	if !ctx.hvTypeKube || aiConfig.DesignatedNodeID == uuid.Nil {
+		return effectiveActivate
+	}
+
+	if ctx.nodeUUID == "" {
+		// XXX hack for now
+		hostname, err := os.Hostname()
+		if err != nil {
+			log.Errorf("zedmanager run: can't get hostname %v", err)
+		} else {
+			_, err := uuid.FromString(hostname)
+			if err == nil {
+				ctx.nodeUUID = hostname
+			}
+		}
+	}
+	sub := ctx.subENClusterAppStatus
+	items := sub.GetAll()
+
+	// 1) if the dnid is on this node
+	//    a) if the pod is not on this node, and the pod is running, return false
+	//    b) otherwise, return true
+	// 2) if the dnid is not on this node
+	//    a) if the pod is on this node, and status is running, return true
+	//    b) otherwise, return false
+	var onTheDevice bool
+	var statusRunning bool
+	for _, item := range items {
+		status := item.(types.ENClusterAppStatus)
+		if status.AppUUID == aiConfig.UUIDandVersion.UUID {
+			statusRunning = status.StatusRunning
+			if status.IsDNSet {
+				onTheDevice = true
+				break
+			}
+		}
+	}
+
+	log.Noticef("getKubeAppActivateStatus: ai %s, node %s, onTheDevice %v, statusRunning %v",
+		aiConfig.DesignatedNodeID.String(), ctx.nodeUUID, onTheDevice, statusRunning)
+	if aiConfig.DesignatedNodeID.String() == ctx.nodeUUID {
+		if statusRunning && !onTheDevice {
+			return false
+		}
+		return effectiveActivate
+	} else {
+		if statusRunning && onTheDevice {
+			return effectiveActivate
+		}
+		return false
+	}
 }

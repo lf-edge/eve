@@ -163,6 +163,9 @@ type getconfigContext struct {
 	currentMetricInterval uint32
 
 	configEdgeview *types.EdgeviewConfig // edge-view config save
+
+	// XXX hvkube local cluster
+	localClusterIP string
 }
 
 func (ctx *getconfigContext) getCachedResolvedIPs(hostname string) []types.CachedIP {
@@ -170,6 +173,13 @@ func (ctx *getconfigContext) getCachedResolvedIPs(hostname string) []types.Cache
 		return nil
 	}
 	if item, err := ctx.subCachedResolvedIPs.Get(hostname); err == nil {
+		if ctx.localClusterIP != "" && hostname == "zedcloud.local.zededa.net" {
+			cached := types.CachedIP{
+				IPAddress:  net.ParseIP(ctx.localClusterIP),
+				ValidUntil: time.Now().Add(time.Hour),
+			}
+			return []types.CachedIP{cached}
+		}
 		return item.(types.CachedResolvedIPs).CachedIPs
 	}
 	return nil

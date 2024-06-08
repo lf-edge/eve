@@ -2,7 +2,7 @@
 # k3s server config file.
 
 write-kubeconfig-mode: "0644"
-log: "/persist/newlog/kube/k3s.log"
+log: "/persist/kubelog/k3s.log"
 # Use longhorn storage
 disable: local-storage
 etcd-arg:

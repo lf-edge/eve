@@ -235,7 +235,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	// wait for kubernetes up if in kube mode, if gets error, move on
 	if ctx.hvTypeKube {
 		log.Noticef("volumemgr run: wait for kubernetes")
-		err := kubeapi.WaitForKubernetes(agentName, ps, stillRunning)
+		err := kubeapi.WaitForKubernetes(agentName, ps, nil, stillRunning)
 		if err != nil {
 			log.Errorf("volumemgr run: wait for kubernetes error %v", err)
 		} else {

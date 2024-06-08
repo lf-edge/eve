@@ -7,6 +7,7 @@ package kubeapi
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"strings"
@@ -17,6 +18,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/diskmetrics"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	corev1 "k8s.io/api/core/v1"
+	v1errors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -42,8 +44,11 @@ func CreatePVC(pvcName string, size uint64, log *base.LogObject) error {
 	result, err := clientset.CoreV1().PersistentVolumeClaims(pvc.Namespace).
 		Create(context.Background(), pvc, metav1.CreateOptions{})
 	if err != nil {
-		err = fmt.Errorf("failed to CreatePVC %s: %v", pvcName, err)
-		log.Error(err)
+		if v1errors.IsAlreadyExists(err) {
+			log.Errorf("Failed to CreatePVC %s error %v", pvcName, err)
+			errStr := fmt.Sprintf("Failed to CreatePVC %s error %v", pvcName, err)
+			return errors.New(errStr)
+		}
 		return err
 	}
 

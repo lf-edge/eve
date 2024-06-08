@@ -462,6 +462,7 @@ type DomainMetric struct {
 	UsedMemoryPercent float64
 	LastHeard         time.Time
 	Activated         bool
+	NodeName          string // kube app running on node
 }
 
 // Key returns the key for pubsub
