@@ -7,7 +7,7 @@
 #include <stdbool.h>
 #include <time.h>
 
-int validate_script(const char *script_path);
+int validate_script(const char *script_name);
 int convert_mb_to_bytes(unsigned long mb, unsigned long *bytes_out);
 int convert_mb_to_bytes_signed(long mb, long *bytes_out);
 int get_eve_release(char *eve_release);

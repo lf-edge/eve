@@ -22,7 +22,8 @@
 
 #define ADJUST_MEMORY_LIMIT 50
 
-static int handler_log_fd_g = -1;
+extern int handler_log_fd_g;
+extern char binary_location_g[PATH_MAX + 1];
 
 // The mutex is used to prevent the handler script from being executed multiple times
 // There are two ways to trigger the handler script: with the regular cgroup event and with the memory usage check
@@ -32,7 +33,6 @@ pthread_mutex_t handler_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 int run_handler(const char *script_name, const char *event_msg) {
     pthread_mutex_lock(&handler_mutex);
-    char cwd[PATH_MAX + 1];
     char script_path[PATH_MAX +1];
 
     // Get the timestamp, so it's the same for the event log and the output directory name
@@ -43,13 +43,6 @@ int run_handler(const char *script_name, const char *event_msg) {
 
     // Execute the script
     syslog(LOG_INFO, "Running handler script\n");
-
-    // Get the current working directory
-    if (getcwd(cwd, sizeof(cwd)) == NULL) {
-        syslog(LOG_ERR, "getcwd: %s", strerror(errno));
-        pthread_mutex_unlock(&handler_mutex);
-        return 1;
-    }
 
     // Create a name of the new output directory output/YYYY-MM-DD-HH-mm-SS
     char output_dir[256];
@@ -92,14 +85,14 @@ int run_handler(const char *script_name, const char *event_msg) {
     fclose(metadata_fp);
 
     // A check to use sprintf safely, so we can suppress the warning
-    if (strlen(cwd) + strlen(script_name) + 1 > sizeof(script_path)) {
+    if (strlen(binary_location_g) + strlen(script_name) + 1 > sizeof(script_path)) {
         syslog(LOG_ERR, "Path to the script is too long\n");
         pthread_mutex_unlock(&handler_mutex);
         return 1;
     }
 
     // Construct the path to the script
-    snprintf(script_path, sizeof(script_path), "%s/%s", cwd, script_name);
+    snprintf(script_path, sizeof(script_path), "%s/%s", binary_location_g, script_name);
 
     // Create the cmd to run the script: script_path output_dir
     char cmd[PATH_MAX + 1];
@@ -319,9 +312,8 @@ static pthread_t run_cgroups_events_monitor(config_t *config, fds_to_close_t *fd
     return thread;
 }
 
-int monitor_start(config_t *config, int handler_log_fd, resources_to_cleanup_t *resources_to_cleanup)
+int monitor_start(config_t *config, resources_to_cleanup_t *resources_to_cleanup)
 {
-    handler_log_fd_g = handler_log_fd;
     bool monitor_runs = false;
 
     if (validate_script(HANDLER_SCRIPT) != 0) {
