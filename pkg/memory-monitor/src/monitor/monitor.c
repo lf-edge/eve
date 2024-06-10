@@ -162,10 +162,15 @@ static pthread_t run_procfs_monitor(config_t *config) {
     // Create a thread to watch the memory limit of the zedbox process every 10 seconds
     // and trigger the handler if the limit is reached
 
+    // Wait for the zedbox process to start and write its PID to /run/zedbox.pid
+    while (access(ZEDBOX_PID_FILE_PATH, F_OK) == -1) {
+        sleep(1);
+    }
+
     // Get the PID of the zedbox process, read it from /run/zedbox.pid
     FILE *pid_file;
     int pid;
-    pid_file = fopen("/run/zedbox.pid", "r");
+    pid_file = fopen(ZEDBOX_PID_FILE_PATH, "r");
     if (pid_file == NULL) {
         syslog(LOG_ERR, "opening zedbox.pid: %s", strerror(errno));
         // Let's consider 0 as an invalid thread id

@@ -17,6 +17,8 @@
 #define HANDLER_LOG_FILE    "handler.log"
 #define EVENT_METADATA_FILE "event_info.txt"
 
+#define ZEDBOX_PID_FILE_PATH "/run/zedbox.pid"
+
 typedef struct {
     // Threshold for the cgroup memory/eve/services/pillar, in bytes
     unsigned long cgroup_pillar_threshold_bytes;
