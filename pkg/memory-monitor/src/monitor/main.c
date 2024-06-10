@@ -3,7 +3,10 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <libgen.h>
+#include <linux/limits.h>
 #include <signal.h>
+#include <stdio.h>
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
@@ -21,6 +24,9 @@ volatile bool syslog_opened = false;
 volatile bool semaphores_initialized = false;
 resources_to_cleanup_t resources_to_cleanup = {{NULL,0}, {NULL, 0}};
 sem_t reload_semaphore;
+
+int handler_log_fd_g = -1;
+char binary_location_g[PATH_MAX + 1];
 
 void onreload_cleanup() {
     // Stop the threads
@@ -71,8 +77,9 @@ void hup_handler(int signo) {
     onreload_cleanup();
 }
 
-int main() {
+int main(int argc, char *argv[]) {
     pid_t pid, sid;
+    (void)argc; // Unused
 
     // Fork off the parent process
     pid = fork();
@@ -96,6 +103,15 @@ int main() {
         exit(EXIT_FAILURE);
     }
 
+    // Save the binary location, as the handler script is in the same directory
+    // First, get the full path to the binary
+    char binary_full_path[PATH_MAX + 1];
+    if (realpath(argv[0], binary_full_path) == NULL) {
+        exit(EXIT_FAILURE);
+    }
+    //Then - copy the directory part into the global variable
+    strncpy(binary_location_g, dirname(binary_full_path), sizeof(binary_location_g) - 1);
+
     // Change the current working directory
     if ((chdir(APP_DIR)) < 0) {
         exit(EXIT_FAILURE);
@@ -115,14 +131,14 @@ int main() {
     }
 
     // Redirect the standard file descriptors to a dedicated file
-    int handler_log_fd = open(LOG_DIR "/" HANDLER_LOG_FILE, O_WRONLY | O_CREAT | O_APPEND, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
-    if (handler_log_fd == -1) {
+    handler_log_fd_g = open(LOG_DIR "/" HANDLER_LOG_FILE, O_WRONLY | O_CREAT | O_APPEND, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+    if (handler_log_fd_g == -1) {
         exit(EXIT_FAILURE);
     }
-    dup2(handler_log_fd, STDOUT_FILENO);
-    dup2(handler_log_fd, STDERR_FILENO);
-    if (handler_log_fd > STDERR_FILENO) {
-        close(handler_log_fd);
+    dup2(handler_log_fd_g, STDOUT_FILENO);
+    dup2(handler_log_fd_g, STDERR_FILENO);
+    if (handler_log_fd_g > STDERR_FILENO) {
+        close(handler_log_fd_g);
     }
 
     // Set the signal handler for signals sent to kill the process
@@ -155,7 +171,7 @@ int main() {
         config_read(&config);
         config_validate(&config);
 
-        if (monitor_start(&config, handler_log_fd, &resources_to_cleanup) != 0) {
+        if (monitor_start(&config, &resources_to_cleanup) != 0) {
             syslog(LOG_ERR, "Failed to run the monitor\n");
             exit(EXIT_FAILURE);
         }

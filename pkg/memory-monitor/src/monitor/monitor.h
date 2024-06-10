@@ -38,7 +38,7 @@ typedef struct resources_to_cleanup {
 } resources_to_cleanup_t;
 
 // Monitor the memory usage of the zedbox process and trigger the handler if the limit is reached
-int monitor_start(config_t *config, int handler_log_fd, resources_to_cleanup_t *resources_to_cleanup);
+int monitor_start(config_t *config, resources_to_cleanup_t *resources_to_cleanup);
 int run_handler(const char *script_name, const char* event_msg);
 
 #endif //MM_MONITOR_H

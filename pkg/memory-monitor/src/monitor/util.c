@@ -8,14 +8,28 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/stat.h>
 #include <syslog.h>
 #include <time.h>
 #include <unistd.h>
 
 #include "config.h"
 
-int validate_script(const char *script_path) {
+extern char binary_location_g[PATH_MAX + 1];
+
+int validate_script(const char *script_name) {
+    char script_path[PATH_MAX + 1];
+    // Check the length of the path to the script to ignore warning in the next sprintf
+    if (strlen(binary_location_g) + strlen(script_name) + 1 > sizeof(script_path)) {
+        syslog(LOG_ERR, "Path to the script is too long\n");
+        return 1;
+    }
+
+    // Construct the path to the script
+    #pragma GCC diagnostic push
+    #pragma GCC diagnostic ignored "-Wformat-truncation"
+    snprintf(script_path, sizeof(script_path) - 1, "%s/%s", binary_location_g, script_name);
+    #pragma GCC diagnostic pop
+
     // Check if the script exists
     if (access(script_path, X_OK) == -1) {
         syslog(LOG_ERR, "access script: %s", strerror(errno));
