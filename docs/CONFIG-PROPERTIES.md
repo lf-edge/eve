@@ -9,6 +9,7 @@
 | timer.metric.diskscan.interval  | integer in seconds | 300 | how frequently device should scan the disk for metrics |
 | timer.location.cloud.interval | integer in seconds | 1 hour | how frequently device reports geographic location information to controller |
 | timer.location.app.interval | integer in seconds | 20 | how frequently device reports geographic location information to applications (to local profile server and to other apps via meta-data server) |
+| timer.ntpsources.interval | integer in seconds | 10 minutes | how frequently device forcibly reports information about NTP sources to which EVE has established a connection for the NTP synchronization. Requests are also sent to the controller if the list of NTP peers or NTP peer fields, such as mode, state, have changed. |
 | timer.send.timeout | timer in seconds | 120 | time for each http/send |
 | timer.dial.timeout | timer in seconds | 10 | maximum time allowed to establish connection |
 | timer.reboot.no.network | integer in seconds | 7 days | reboot after no cloud connectivity |
