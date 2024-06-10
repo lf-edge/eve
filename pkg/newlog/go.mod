@@ -1,6 +1,6 @@
 module github.com/lf-edge/eve/pkg/newlog
 
-go 1.21
+go 1.21.0
 
 require (
 	github.com/euank/go-kmsg-parser v2.0.0+incompatible
