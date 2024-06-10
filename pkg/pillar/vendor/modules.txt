@@ -356,6 +356,9 @@ github.com/eriknordmark/ipinfo
 # github.com/eshard/uevent v1.0.1
 ## explicit
 github.com/eshard/uevent
+# github.com/facebook/time v0.0.0-20240605113323-bdee26e8523f
+## explicit; go 1.21
+github.com/facebook/time/ntp/chrony
 # github.com/felixge/httpsnoop v1.0.4
 ## explicit; go 1.13
 github.com/felixge/httpsnoop
