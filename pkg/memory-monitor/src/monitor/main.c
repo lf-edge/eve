@@ -112,6 +112,13 @@ int main(int argc, char *argv[]) {
     //Then - copy the directory part into the global variable
     strncpy(binary_location_g, dirname(binary_full_path), sizeof(binary_location_g) - 1);
 
+    // Create a new application directory, if it doesn't exist
+    if (access(APP_DIR, F_OK) == -1) {
+        if (mkdir(APP_DIR, 0755) == -1) {
+            exit(EXIT_FAILURE);
+        }
+    }
+
     // Change the current working directory
     if ((chdir(APP_DIR)) < 0) {
         exit(EXIT_FAILURE);
