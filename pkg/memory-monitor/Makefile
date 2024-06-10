@@ -37,7 +37,7 @@ $(OBJ_DIR)/%.o: $(SRC_DIR)/%.c
 clean:
 	rm -rf $(OBJ_DIR) $(BIN_DIR)
 
-HANDLER_SCRIPT=$(MONITOR_DIR)/handler.sh
+HANDLER_SCRIPT=$(MONITOR_DIR)/memory-monitor-handler.sh
 CONFIG_FILE=$(MONITOR_DIR)/memory-monitor.conf
 APPARMOR_PROFILE=$(MONITOR_DIR)/persist.memory-monitor.handler
 

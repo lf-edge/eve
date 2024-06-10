@@ -10,11 +10,11 @@
 #define CONFIG_DEFAULT_DIR "/etc"
 #define CONFIG_FILE        "memory-monitor.conf"
 
-#define HANDLER_SCRIPT      "handler.sh"
+#define HANDLER_SCRIPT "memory-monitor-handler.sh"
 
 #define LOG_DIR             "output"
 #define EVENT_LOG_FILE      "events.log"
-#define HANDLER_LOG_FILE    "handler.log"
+#define HANDLER_LOG_FILE    "memory-monitor-handler.log"
 #define EVENT_METADATA_FILE "event_info.txt"
 
 #define ZEDBOX_PID_FILE_PATH "/run/zedbox.pid"
