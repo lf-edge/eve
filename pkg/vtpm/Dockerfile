@@ -19,8 +19,8 @@ ENV PKGS alpine-baselayout musl-utils libcurl
 RUN eve-alpine-deploy.sh
 
 WORKDIR /
-ADD https://ftpmirror.gnu.org/autoconf-archive/autoconf-archive-2019.01.06.tar.xz /autoconf-archive-2019.01.06.tar.xz
-ADD https://ftpmirror.gnu.org/autoconf-archive/autoconf-archive-2019.01.06.tar.xz.sig /autoconf-archive-2019.01.06.tar.xz.sig
+ADD https://ftp.gnu.org/gnu/autoconf-archive/autoconf-archive-2019.01.06.tar.xz /autoconf-archive-2019.01.06.tar.xz
+ADD https://ftp.gnu.org/gnu/autoconf-archive/autoconf-archive-2019.01.06.tar.xz.sig /autoconf-archive-2019.01.06.tar.xz.sig
 ADD http://keyserver.ubuntu.com/pks/lookup?op=get&search=0x99089D72 /import-key.asc
 RUN gpg2 -q --import /import-key.asc && \
     gpg2 -q --verify autoconf-archive-2019.01.06.tar.xz.sig
