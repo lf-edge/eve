@@ -158,8 +158,8 @@ func TestReconcileWithEmptyArgs(test *testing.T) {
 	t.Expect(itemCountWithType(linux.LocalIPRuleTypename)).To(Equal(1))
 	t.Expect(itemCountWithType(iptables.ChainV4Typename)).To(Equal(12))
 	t.Expect(itemCountWithType(iptables.ChainV6Typename)).To(Equal(12))
-	t.Expect(itemCountWithType(iptables.RuleV4Typename)).To(Equal(32))
-	t.Expect(itemCountWithType(iptables.RuleV6Typename)).To(Equal(31)) // without markDhcp
+	t.Expect(itemCountWithType(iptables.RuleV4Typename)).To(Equal(33))
+	t.Expect(itemCountWithType(iptables.RuleV6Typename)).To(Equal(31)) // without markDhcp & allowDHCPForwarding
 	t.Expect(itemIsCreatedWithLabel("Block SSH")).To(BeTrue())
 
 	// Enable SSH access
