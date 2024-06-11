@@ -1867,6 +1867,27 @@ func (r *LinuxDpcReconciler) getIntendedACLs(
 	intendedIPv4ACLs.PutItem(denyNonAppForwarding, nil)
 	denyNonAppForwarding.ForIPv6 = true
 	intendedIPv6ACLs.PutItem(denyNonAppForwarding, nil)
+	// Allow forwarding of all DHCP traffic.
+	// Application-initiated DHCP requests can match the same conntrack entry
+	// as was created for DHCP requests sent by the DHCP client of EVE.
+	// This is because source/destination IPs are undefined or broadcast:
+	//  [72]: udp 17 src=0.0.0.0 dst=255.255.255.255 sport=68 dport=67
+	//        src=255.255.255.255 dst=0.0.0.0 sport=67 dport=68 mark=0xa
+	// However, this means that the application DHCP traffic may get mark "in_dhcp"
+	// (as opposed to "app_dhcp") and denyNonAppForwarding would match it with
+	// the nonAppMark filter and forbid forwarding (which is problem particularly
+	// for switch NI).
+	allowDHCPForwarding := iptables.Rule{
+		RuleLabel: "Allow DHCP forwarding",
+		Table:     "mangle",
+		ChainName: "FORWARD" + iptables.DeviceChainSuffix,
+		MatchOpts: []string{"--match", "connmark", "--mark",
+			controlProtoMark("in_dhcp")},
+		Target:        "ACCEPT",
+		AppliedBefore: []string{denyNonAppForwarding.RuleLabel},
+		Description:   "Allow forwarding of all DHCP traffic",
+	}
+	intendedIPv4ACLs.PutItem(allowDHCPForwarding, nil)
 	if r.HVTypeKube {
 		// Kubernetes network is an exception where we allow forwarding
 		// for most of the traffic.
