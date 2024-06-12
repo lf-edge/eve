@@ -278,13 +278,28 @@ Note that proxying of application traffic has to be configured on the applicatio
 
 ## Network Time Protocol (NTP)
 
-EVE always tries to keep its clock synchronized by embedding a NTP Client that synchronizes
+EVE always tries to keep its clock synchronized using NTP daemon (chronyd) that synchronizes
 the system's clock since the boot time.
 This is especially important on the very first boot to ensure that all device certificates
 are generated with valid timestamps. EVE will first try to use NTP servers either received
 from DHCP servers or statically configured in the network override configuration used for
 bootstrapping (see the next section for more info on the network bootstrapping process).
 If no NTP server is provided by DHCP or config, EVE will try to use `pool.ntp.org` by default.
+Every 5 min (see [pkg/pillar/scripts/device-steps.sh](../pkg/pillar/scripts/device-steps.sh)
+for details) EVE fetches NTP server configuration and restarts NTP daemon if
+configuration has been changed.
+
+Also EVE periodically sends information about NTP sources to the controller. NTP sources
+are peers to which EVE has established a connection for the NTP synchronization. The
+reporting period is defied as a runtime configuration property `timer.ntpsources.interval`
+and described in [CONFIG-PROPERTIES.md](CONFIG-PROPERTIES.md). NTP sources updates are also
+sent regardless of the specified interval if the list of NTP peers or NTP peer fields,
+such as mode, state, have changed.
+
+NTP sources reports consist of fields which are well described on the following resources:
+
+- <https://www.ntp.org/documentation/4.2.8-series/ntpq>, "Peer Variables" section
+- <https://chrony-project.org/doc/4.5/chronyc.html>, "Time sources" section
 
 For more info on clock synchronization, refer to [CLOCK-SYNCHRONIZATION.md](CLOCK-SYNCHRONIZATION.md).
 
