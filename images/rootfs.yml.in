@@ -77,6 +77,10 @@ services:
     image: PILLAR_TAG
     cgroupsPath: /eve/services/pillar
     oomScoreAdj: -999
+  - name: memory-monitor
+    image: MEMORY_MONITOR_TAG
+    cgroupsPath: /eve/services/memory-monitor
+    oomScoreAdj: -1000
   - name: vtpm
     image: VTPM_TAG
     cgroupsPath: /eve/services/vtpm

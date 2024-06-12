@@ -1,0 +1,18 @@
+image: eve-memory-monitor
+org: lfedge
+config:
+  binds:
+    - /persist:/persist # for the working directory and output directory
+    - /dev:/dev # for syslog (/dev/log)
+    - /run:/run:ro # for the zedbox pid file
+    - /sys/fs/cgroup/memory/:/sys/fs/cgroup/memory/ # to read and modify memory limits
+    - /proc:/proc #:ro to read memory usage in /proc/<PID> and RW for the eve command (???)
+    - /bin:/bin:ro # for the eve command
+    - /usr/bin:/usr/bin:ro # for the ctr command (it's a dependency of the eve command, bleeugh)
+  pid: host
+  capabilities:
+    - all
+  devices:
+    - path: all
+      type: a
+  privileged: yes
