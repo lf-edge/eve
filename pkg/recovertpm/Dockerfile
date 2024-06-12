@@ -3,7 +3,6 @@
 
 FROM lfedge/eve-alpine:cbf02c2c126f210933ec9bdb142eb080b400fd76 as build
 ENV BUILD_PKGS go
-ENV PKGS alpine-baselayout musl-utils
 RUN eve-alpine-deploy.sh
 
 # build the tpm-recovery tool
