@@ -2,13 +2,20 @@ version = 2
 state = "/run/containerd"
 root = "/persist/containerd-system-root"
 disabled_plugins = [
-    "io.containerd.grpc.v1.cri",
     "io.containerd.snapshotter.v1.btrfs",
     "io.containerd.snapshotter.v1.aufs",
     "io.containerd.internal.v1.opt",
     "io.containerd.internal.v1.tracing",
     "io.containerd.tracing.processor.v1.otlp"
 ]
+
+[plugins]
+  [plugins."io.containerd.grpc.v1.cri"]
+    enable_cdi = true
+    cdi_spec_dirs = ["/etc/cdi"]
+
+  [plugins."io.containerd.grpc.v1.cri".cni]
+    max_conf_num = 1
 
 [grpc]
   address = "/run/containerd/containerd.sock"
