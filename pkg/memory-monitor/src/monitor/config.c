@@ -97,4 +97,7 @@ void config_validate(config_t *config) {
         syslog(LOG_WARNING, "CGROUP_EVE_THRESHOLD_PERCENT is out of range, using default value");
         config->cgroup_eve_threshold_percent = DEFAULT_CGROUP_EVE_THRESHOLD_PERCENT;
     }
+
+    syslog(LOG_INFO, "Config:\n\tCGROUP_PILLAR_THRESHOLD_MB=%lu\n\tPROC_ZEDBOX_THRESHOLD_MB=%lu\n\tCGROUP_EVE_THRESHOLD_PERCENT=%u\n",
+              config->cgroup_pillar_threshold_bytes >> 20, config->proc_zedbox_threshold_bytes >> 20, config->cgroup_eve_threshold_percent);
 }
