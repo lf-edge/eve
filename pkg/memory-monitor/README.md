@@ -108,40 +108,50 @@ The handler script that is triggered in response to these events performs
 various actions to log and manage memory usage. It can, for example, dump memory
 allocation sites, trigger a heap dump, and log memory usage details.
 
-## Build and deploy the memory monitor
+## The tool integration
 
-To create all the necessary files to run the memory monitor, you need to build
-it. This can be done with the Makefile provided in the repository. To build the
-memory monitor, run the following command:
+The memory monitor is started as a daemon on the EVE system. It runs in the
+background and monitors the memory usage. It's started in a dedicated container
+"memory-monitor" that is created by the containerd service.
 
-```shell
-$ make dist
-```
+The monitor binary and the handler script are located in the container version
+of the `/sbin/` directory. The handler script is executed by the monitor binary
+when a memory event is triggered and expected to be in the same directory.
 
-It will create a `dist` directory with all the necessary files to run the memory
-monitor. You can then copy the contents of the `dist` directory to the EVE
-system, in the `/persist/memory-monitor` directory.
+The default configuration of the memory monitor is stored in the container version
+of the `/etc/` directory.
 
-## How to run the memory monitor
+Note, that these files are not seen in the host system, as they are located in
+the container filesystem.
 
-The memory monitor is a standalone tool that can be run on any EVE system. It
-expects to be located in the `/persist/memory-monitor` directory. The following
-files are required in the same directory to run the memory monitor:
-* `monitor`: The main binary that runs the memory monitor.
-* `monitor.conf`: The configuration file for the memory monitor.
-* `handler.sh`: The handler script that is triggered in response to memory
-  events.
-
-You can run the memory monitor just by executing the `monitor` binary. It then
-runs in the background as a daemon.
-
-To stop the memory monitor, you can kill the process, for example, by running:
+The container and its file system is available for investigation with the
+following command:
 
 ```shell
-$ killall monitor
+eve enter memory-monitor
 ```
 
-### Note on the memory monitor and the memory cgroups
+The tool than creates the output files in `/persist/memory-monitor/output`.
+The persistent storage is mounted to the container, so the output files are
+available in the host system.
+
+## Internals of the build and startup process
+
+To deploy the memory monitor to the EVE system, we create a corresponding
+container image. The container image is built using the `Dockerfile`. In the
+Dockerfile, we copy the necessary files to the container image and build the
+tool using the `make dist` command. The Makefile can be also used for building
+the tool locally, for example, to test it on a local setup.
+
+Later the container image is used by LinuxKit to deliver it to the EVE rootfs.
+We start the container in the "services" section of LinuxKit configuration.
+It means that the LinuxKit will start the container automatically when the EVE
+system boots. And it will expect the process in the container to run as
+foreground process and do not return control. Otherwise, the service will be
+considered failed and the container will be stopped. To achieve this, the memory
+monitor binary is started with the `-f` flag.
+
+## Note on the memory monitor and the memory cgroups
 
 During the initialization the tool removes itself from the current memory cgroup
 and moves to the root one, so it does not affect the memory usage  of the
@@ -154,6 +164,34 @@ done to avoid the situation when the memory usage of the pillar cgroup is close
 to the limit, and the handler script cannot run because of the lack of memory.
 After the handler script finishes, the memory limit of the pillar cgroup is
 restored to the original value.
+
+## Run as a standalone tool on older versions of EVE
+
+On the older versions of EVE, the memory monitor is not integrated into the
+system as a container. But it can be run as a standalone tool.
+
+To run it, you need to build the tool using the Makefile:
+
+```shell
+$ make dist
+```
+
+It will create a dist directory with the memory monitor binary, handler script,
+and configuration file. To run the memory monitor, you need to copy the dist
+directory to the EVE system and run the binary:
+
+```shell
+$ ./memory-monitor
+```
+
+The memory monitor will run daemonized in the background. To stop it, you can
+send the `SIGTERM` signal to the process:
+
+```shell
+$ pkill -SIGTERM memory-monitor
+```
+
+The tool will create the output files in the `/persist/memory-monitor/output`.
 
 ## Output of the memory monitor
 
@@ -195,9 +233,9 @@ The output directory contains:
   The archive does not contain the `zedbox` symlink.
 * `events.log`: A log file that contains a timestamped list of all memory
   events, archives for which are still present in the output directory.
-* `handler.log`: A log file that contains the output of the handler script. It
-  is useful for debugging the handler script if it fails. It's cleared if the
-  handler script run is successful.
+* `memory-monitor-handler.log`: A log file that contains the output of the
+  handler script. It  is useful for debugging the handler script if it fails.
+  It's cleared if the handler script run is successful.
 
 ### Logs of the memory monitor
 
@@ -220,8 +258,19 @@ $ go tool pprof /path/to/zedbox /path/to/output/<event_timestamp>/heap_pillar.ou
 
 ## Configuration of the memory monitor
 
-The memory monitor is configured using the `monitor.conf` file, located in the
-same directory as the `monitor` binary: `/persist/memory-monitor/monitor.conf`.
+The memory monitor is configured using the `memory-monitor.conf` file.
+The default configuration file is located in the `/etc/` directory of the
+container image. But it can be overridden by the user by placing the
+configuration file in the `/persist/memory-monitor/` directory.
+
+To use the custom configuration values, the user should restart the memory
+monitor tool by sending the `SIGHUP` signal to the memory monitor process. It
+can be done by running the following command:
+
+```shell
+pkill -SIGHUP /sbin/memory-monitor
+```
+
 The configuration file should contain the following fields:
 
 ```text
@@ -249,7 +298,7 @@ will be used. The default values are:
 ```text
 CGROUP_PILLAR_THRESHOLD_MB=400
 CGROUP_EVE_THRESHOLD_PERCENT=98
-PROC_ZEDBOX_THRESHOLD_MB=140
+PROC_ZEDBOX_THRESHOLD_MB=200
 ```
 
 ## Makefile targets
