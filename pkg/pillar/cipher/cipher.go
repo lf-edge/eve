@@ -107,7 +107,7 @@ func GetCipherData(ctx *DecryptCipherContext, status types.CipherBlockStatus,
 func handleCipherBlockCredError(ctx *DecryptCipherContext, status *types.CipherBlockStatus,
 	decBlock types.EncryptionBlock, err error, errtype types.CipherError) (types.CipherBlockStatus, types.EncryptionBlock, error) {
 
-	ctx.AgentMetrics.RecordFailure(ctx.Log, errtype)
+	//ctx.AgentMetrics.RecordFailure(ctx.Log, errtype) // XXX temp comment out this, due to crash XXX
 	if err != nil {
 		status.SetErrorNow(err.Error())
 		// we have already captured the error info above

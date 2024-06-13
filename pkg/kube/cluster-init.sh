@@ -95,7 +95,7 @@ assign_multus_nodeip() {
   if [ -f /var/lib/edge-node-cluster-mode ]; then
     NODE_IP=$1
     ip_prefix=$(ipcalc -n "$NODE_IP$ClusterPrefixMask" | cut -d "=" -f2)
-    #ip_prefix="$1/32"
+    ip_prefix="$ip_prefix$ClusterPrefixMask"
     logmsg "Cluster Node IP prefix to multus: $ip_prefix with node-ip $NODE_IP"
   else
     while [ -z "$NODE_IP" ]; do
@@ -112,6 +112,7 @@ assign_multus_nodeip() {
     logmsg "Single Node IP prefix to multus: $ip_prefix with node-ip $NODE_IP"
   fi
 
+  logmsg "Assign node-ip for multis with $ip_prefix"
   # fill in the outbound external Interface IP prefix in multus config
   awk -v new_ip="$ip_prefix" '{gsub("IPAddressReplaceMe", new_ip)}1' /etc/multus-daemonset.yaml > /etc/multus-daemonset-new.yaml
 }
