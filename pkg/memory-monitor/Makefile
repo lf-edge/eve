@@ -63,6 +63,8 @@ local-deploy: dist local-kill-monitor
 	scp -O -r $(DIST_DIR)/* local_eve:/persist/memory-monitor
 	# Add code to install the apparmor profile
 
+local-deploy-pressure: pressure
+	scp -O bin/pressure local_eve:/persist/memory-monitor
 
 local-clean-on-eve:
 	ssh local_eve rm -rf /persist/memory-monitor
