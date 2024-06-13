@@ -18,8 +18,8 @@
 #define DEFAULT_CGROUP_EVE_THRESHOLD_PERCENT 98
 // The memory limit for the cgroup pillar is usually 650MB, so let's try to detect when the memory usage is ~2/3 of the limit
 #define DEFAULT_CGROUP_PILLAR_THRESHOLD_MB 400
-// Usually the zedbox process uses around 100-120MB of memory, so we set the threshold to 130MB
-#define DEFAULT_PROC_ZEDBOX_THRESHOLD_MB 130
+// Usually the zedbox process uses around 100-120MB of memory, so we set the threshold to 200MB
+#define DEFAULT_PROC_ZEDBOX_THRESHOLD_MB 200
 
 void config_read(config_t *config) {
 
