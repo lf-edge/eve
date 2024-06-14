@@ -3,17 +3,18 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <getopt.h>
 #include <libgen.h>
 #include <linux/limits.h>
+#include <semaphore.h>
 #include <signal.h>
-#include <stdio.h>
 #include <stdbool.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <syslog.h>
 #include <unistd.h>
-#include <semaphore.h>
 
 #include "cgroups.h"
 #include "config.h"
@@ -79,29 +80,42 @@ void hup_handler(int signo) {
 
 int main(int argc, char *argv[]) {
     pid_t pid, sid;
-    (void)argc; // Unused
+    bool daemonize = true;
+    int opt;
 
-    // Fork off the parent process
-    pid = fork();
-    if (pid < 0) {
-        exit(EXIT_FAILURE);
+    while ((opt = getopt(argc, argv, "f")) != -1) {
+        switch (opt) {
+            case 'f':
+                daemonize = false;
+                break;
+            default:
+                exit(EXIT_FAILURE);
+        }
     }
-    // If we got a good PID, then we can exit the parent process
-    if (pid > 0) {
-        exit(EXIT_SUCCESS);
+
+    if (daemonize) {
+        // Fork off the parent process
+        pid = fork();
+        if (pid < 0) {
+            exit(EXIT_FAILURE);
+        }
+        // If we got a good PID, then we can exit the parent process
+        if (pid > 0) {
+            exit(EXIT_SUCCESS);
+        }
+
+        // Change the file mode mask
+        umask(0);
+
+        // Create a new SID for the child process
+        sid = setsid();
+        if (sid < 0) {
+            exit(EXIT_FAILURE);
+        }
     }
 
     // Move the process to the root cgroup
     cgroup_move_process_to_root_memory(getpid());
-
-    // Change the file mode mask
-    umask(0);
-
-    // Create a new SID for the child process
-    sid = setsid();
-    if (sid < 0) {
-        exit(EXIT_FAILURE);
-    }
 
     // Save the binary location, as the handler script is in the same directory
     // First, get the full path to the binary
