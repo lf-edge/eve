@@ -1424,8 +1424,8 @@ github.com/lf-edge/edge-containers v0.0.0-20240207093504-5dfda0619b80 h1:kiqB1Rk
 github.com/lf-edge/edge-containers v0.0.0-20240207093504-5dfda0619b80/go.mod h1:4yXdumKdTzF0URMtxOl8Xnzdxnoy1QR+2dzfOr4CIZY=
 github.com/lf-edge/eve-api/go v0.0.0-20240424223403-4feef58259f3 h1:WNtQVWdeyW6E/watqP061MUQjjk3KJ2nytqMqAScztM=
 github.com/lf-edge/eve-api/go v0.0.0-20240424223403-4feef58259f3/go.mod h1:ot6MhAhBXapUDl/hXklaX4kY88T3uC4PTg0D2wD8DzA=
-github.com/lf-edge/eve-libs v0.0.0-20240207103937-2c1dfb073c07 h1:ujraUvdScxfIzzuqD324iZgeR7TtA0OUsrJay+WtxLA=
-github.com/lf-edge/eve-libs v0.0.0-20240207103937-2c1dfb073c07/go.mod h1:vujNUs0RNVJ8qscqiUhYPRRjeIkfLV1kAcAwAzUnCq0=
+github.com/lf-edge/eve-libs v0.0.0-20240614221125-6913ec4213f9 h1:blXdD227+xDCsezw8gTlk5Kh0ONb5ZekkH4lLnV4J04=
+github.com/lf-edge/eve-libs v0.0.0-20240614221125-6913ec4213f9/go.mod h1:bz9uyBFalnRnzXl6A4oAsO7CLJfW01ZR/sT0Frqa6o8=
 github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20240315102754-0f6d1f182e0d h1:tUBb9M6u42LXwHAYHyh22wJeUUQlTpDkXwRXalpRqbo=
 github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20240315102754-0f6d1f182e0d/go.mod h1:Nn3juMJJ1G8dyHOebdZyS4jOB/fuxAd5fIajBaWjHr8=
 github.com/lf-edge/go-qemu v0.0.0-20231121152149-4c467eda0c56 h1:LmFp0jbNSwPLuxJA+nQ+mMQrQ53ESkvHP4CVMqR0zrY=
