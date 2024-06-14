@@ -279,14 +279,13 @@ func publishKubeConfigStatus(ctx *zedkubeContext, config *types.EdgeNodeClusterC
 }
 
 func decryptClusterToken(ctx *zedkubeContext, config *types.EdgeNodeClusterConfig) (string, error) {
-	var token string
 	if !config.CipherToken.IsCipher {
-		return token, fmt.Errorf("decryptClusterToken: cluster token is not encrypted")
+		return "", fmt.Errorf("decryptClusterToken: cluster token is not encrypted")
 	}
 
 	decryptAvailable := ctx.subControllerCert != nil && ctx.subEdgeNodeCert != nil
 	if !decryptAvailable {
-		return token, fmt.Errorf("decryptClusterToken: certificates are not available")
+		return "", fmt.Errorf("decryptClusterToken: certificates are not available")
 	}
 	status, decBlock, err := cipher.GetCipherCredentials(
 		&cipher.DecryptCipherContext{
@@ -300,12 +299,18 @@ func decryptClusterToken(ctx *zedkubeContext, config *types.EdgeNodeClusterConfi
 	if ctx.pubCipherBlockStatus != nil {
 		err2 := ctx.pubCipherBlockStatus.Publish(status.Key(), status)
 		if err2 != nil {
-			log.Errorf("decryptClusterToken: publish failed for %s: %v", status.Key(), err2)
+			return "", fmt.Errorf("decryptClusterToken: publish failed %v", err2)
 		}
 	}
 	if err != nil {
 		ctx.cipherMetrics.RecordFailure(log, types.DecryptFailed)
-		return token, fmt.Errorf("decryptClusterToken: failed to decrypt cluster token: %v", err)
+		return "", fmt.Errorf("decryptClusterToken: failed to decrypt cluster token: %v", err)
+	}
+
+	err = ctx.cipherMetrics.Publish(log, ctx.pubCipherMetrics, "global")
+	if err != nil {
+		log.Errorf("decryptClusterToken: publish failed for cipher metrics: %v", err)
+		return "", fmt.Errorf("decryptClusterToken: failed to publish cipher metrics: %v", err)
 	}
 
 	return decBlock.ClusterToken, nil

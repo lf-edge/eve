@@ -59,6 +59,7 @@ type zedkubeContext struct {
 	subEdgeNodeCert      pubsub.Subscription
 	cipherMetrics        *cipher.AgentMetrics
 	pubCipherBlockStatus pubsub.Publication
+	pubCipherMetrics     pubsub.Publication
 
 	pubEncPubToRemoteData    pubsub.Publication
 	pubEdgeNodeClusterStatus pubsub.Publication
@@ -120,7 +121,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		MyAgentName: agentName,
 		TopicImpl:   types.ControllerCert{},
 		Persistent:  true,
-		Activate:    false,
+		Activate:    true,
 		WarningTime: warningTime,
 		ErrorTime:   errorTime,
 	})
@@ -135,7 +136,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		MyAgentName: agentName,
 		TopicImpl:   types.EdgeNodeCert{},
 		Persistent:  true,
-		Activate:    false,
+		Activate:    true,
 		WarningTime: warningTime,
 		ErrorTime:   errorTime,
 	})
@@ -282,6 +283,17 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 	zedkubeCtx.pubEncPubToRemoteData = pubEncPubToRemoteData
 
+	zedkubeCtx.cipherMetrics = cipher.NewAgentMetrics(agentName)
+	pubCipherMetrics, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName: agentName,
+			TopicType: types.CipherMetrics{},
+		})
+	if err != nil {
+		log.Fatal(err)
+	}
+	zedkubeCtx.pubCipherMetrics = pubCipherMetrics
+
 	subDatastoreConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		CreateHandler: handleDatastoreConfigCreate,
 		ModifyHandler: handleDatastoreConfigModify,
@@ -321,8 +333,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	// we'll add ip prefix onto kethX interface instead of ethX interface
 	// and wait for the certs, which cluster config need to decrypt the token
 	var deviceNetStatusInitialized, controllerCertInitiazlized, edgenodeCertInitiazlized bool
-	for !deviceNetStatusInitialized && controllerCertInitiazlized && edgenodeCertInitiazlized {
-		log.Noticef("zedkube run: waiting for device network status")
+	for !deviceNetStatusInitialized || !controllerCertInitiazlized || !edgenodeCertInitiazlized {
+		log.Noticef("zedkube run: waiting for device network status, net %v, controller %v, edgenode %v",
+			deviceNetStatusInitialized, controllerCertInitiazlized, edgenodeCertInitiazlized)
 		select {
 		case change := <-subDeviceNetworkStatus.MsgChan():
 			subDeviceNetworkStatus.ProcessChange(change)
