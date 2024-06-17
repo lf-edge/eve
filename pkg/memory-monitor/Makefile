@@ -39,7 +39,7 @@ clean:
 
 HANDLER_SCRIPT=$(MONITOR_DIR)/memory-monitor-handler.sh
 CONFIG_FILE=$(MONITOR_DIR)/memory-monitor.conf
-APPARMOR_PROFILE=$(MONITOR_DIR)/persist.memory-monitor.handler
+APPARMOR_PROFILE=$(MONITOR_DIR)/sbin.memory-monitor-handler
 
 MONITOR_DEPS=$(HANDLER_SCRIPT) $(CONFIG_FILE) $(APPARMOR_PROFILE)
 

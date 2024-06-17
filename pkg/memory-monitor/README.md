@@ -151,6 +151,14 @@ foreground process and do not return control. Otherwise, the service will be
 considered failed and the container will be stopped. To achieve this, the memory
 monitor binary is started with the `-f` flag.
 
+### Apparmor profile
+
+There is an idea to use the apparmor profile for the memory monitor handler. It
+should add a layer of security to the handler script that is executed by the
+memory monitor by the `system()` call. The apparmor profile is not implemented
+yet, but its template is located in the `sbin.memory-monitor-handler` file. It's
+also copied to the dist directory, but not to the final container image.
+
 ## Note on the memory monitor and the memory cgroups
 
 During the initialization the tool removes itself from the current memory cgroup
