@@ -26,6 +26,7 @@ Welcome to EVE!
             http-debug
             dump-stacks
             dump-memory
+            memory-monitor-update-config
             firewall drop
             verbose on|off
             version
@@ -243,6 +244,10 @@ __EOT__
  dump-memory)
           dump_mem
           echo "Your information can be found in logread"
+          ;;
+ memory-monitor-update-config)
+          pkill -SIGHUP /sbin/memory-monitor
+          echo "Updated memory-monitor configuration"
           ;;
  verbose) # first lets find our piping process
           for PIPE in $(pgrep cat); do
