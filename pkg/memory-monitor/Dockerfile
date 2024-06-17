@@ -19,7 +19,9 @@ COPY --from=memory-monitor-build /out/ /
 COPY --from=memory-monitor-build /root/memory-monitor/dist/memory-monitor /sbin/
 COPY --from=memory-monitor-build /root/memory-monitor/dist/memory-monitor-handler.sh /sbin/
 COPY --from=memory-monitor-build /root/memory-monitor/dist/memory-monitor.conf /etc/
-# COPY --from=memory-monitor-build /root/memory-monitor/dist/sbin.memory-monitor.memory-monitor-handler /etc/apparmor.d/
+
+# TODO: Later we will use apparmor to confine the memory-monitor. The apparmor profile template is in dist directory.
+# COPY --from=memory-monitor-build /root/memory-monitor/dist/sbin.memory-monitor-handler /etc/apparmor.d/
 
 ENTRYPOINT []
 # Run the memory-monitor with the -f flag to run in foreground, so that the container does not exit
