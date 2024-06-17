@@ -8,6 +8,7 @@ package pidfile
 import (
 	"fmt"
 	"os"
+	"path"
 	"strconv"
 	"syscall"
 
@@ -15,20 +16,29 @@ import (
 )
 
 const (
-	rundir = "/run"
+	defaultRundir = "/run"
 )
 
 func writeMyPid(filename string) error {
 	pid := os.Getpid()
 	pidStr := fmt.Sprintf("%d", pid)
 	b := []byte(pidStr)
+	// if the directory does not exist, try to create it
+	if err := os.MkdirAll(path.Dir(filename), 0755); err != nil {
+		return err
+	}
 	return os.WriteFile(filename, b, 0644)
 }
 
 // CheckProcessExists returns true if agent process is running
 // returns string with description of check result
-func CheckProcessExists(log *base.LogObject, agentName string) (bool, string) {
-	filename := fmt.Sprintf("%s/%s.pid", rundir, agentName)
+func CheckProcessExists(log *base.LogObject, agentName string, options ...Option) (bool, string) {
+	opt := processOpts(options)
+	return checkProcessExists(log, agentName, opt)
+}
+
+func checkProcessExists(log *base.LogObject, agentName string, opt opt) (bool, string) {
+	filename := path.Join(opt.baseDir, agentName+".pid")
 	if _, err := os.Stat(filename); err != nil && os.IsNotExist(err) {
 		return false, err.Error()
 	}
@@ -54,13 +64,43 @@ func CheckProcessExists(log *base.LogObject, agentName string) (bool, string) {
 }
 
 // CheckAndCreatePidfile check if old process is not running and create new pid file
-func CheckAndCreatePidfile(log *base.LogObject, agentName string) error {
-	if exists, description := CheckProcessExists(log, agentName); exists {
+func CheckAndCreatePidfile(log *base.LogObject, agentName string, options ...Option) error {
+	opt := processOpts(options)
+	if exists, description := checkProcessExists(log, agentName, opt); exists {
 		return fmt.Errorf("checkAndCreatePidfile: %s", description)
 	}
-	filename := fmt.Sprintf("%s/%s.pid", rundir, agentName)
+	rundir := defaultRundir
+	if opt.baseDir != "" {
+		rundir = opt.baseDir
+	}
+	filename := path.Join(rundir, agentName+".pid")
 	if err := writeMyPid(filename); err != nil {
 		log.Fatalf("checkAndCreatePidfile: %s", err)
 	}
 	return nil
+}
+
+func processOpts(options []Option) opt {
+	opt := opt{}
+	for _, o := range options {
+		o(&opt)
+	}
+	if opt.baseDir == "" {
+		opt.baseDir = defaultRundir
+	}
+	return opt
+}
+
+type opt struct {
+	baseDir string
+}
+
+// Option option function to pass to pidfile functions
+type Option func(o *opt)
+
+// WithBaseDir set the base directory for pidfiles. Default is /run.
+func WithBaseDir(baseDir string) Option {
+	return func(o *opt) {
+		o.baseDir = baseDir
+	}
 }

@@ -10,10 +10,6 @@ github.com/gabriel-vasile/mimetype
 github.com/gabriel-vasile/mimetype/internal/charset
 github.com/gabriel-vasile/mimetype/internal/json
 github.com/gabriel-vasile/mimetype/internal/magic
-# github.com/go-ole/go-ole v1.2.6
-## explicit; go 1.12
-github.com/go-ole/go-ole
-github.com/go-ole/go-ole/oleutil
 # github.com/go-playground/locales v0.14.1
 ## explicit; go 1.17
 github.com/go-playground/locales
@@ -47,7 +43,7 @@ github.com/google/go-tpm/tpmutil/tbs
 # github.com/leodido/go-urn v1.2.4
 ## explicit; go 1.16
 github.com/leodido/go-urn
-# github.com/lf-edge/eve-api/go v0.0.0-20240424223403-4feef58259f3
+# github.com/lf-edge/eve-api/go v0.0.0-20240524134957-77df971d5756
 ## explicit; go 1.20
 github.com/lf-edge/eve-api/go/auth
 github.com/lf-edge/eve-api/go/certs
@@ -59,7 +55,7 @@ github.com/lf-edge/eve-api/go/profile
 # github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20240315102754-0f6d1f182e0d
 ## explicit; go 1.20
 github.com/lf-edge/eve/pkg/kube/cnirpc
-# github.com/lf-edge/eve/pkg/pillar v0.0.0-20240417234153-53dbc10640ca
+# github.com/lf-edge/eve/pkg/pillar v0.0.0-20240617095004-8ab085dd6a51
 ## explicit; go 1.21
 github.com/lf-edge/eve/pkg/pillar/agentbase
 github.com/lf-edge/eve/pkg/pillar/agentlog
@@ -85,10 +81,6 @@ github.com/miekg/dns
 # github.com/satori/go.uuid v1.2.1-0.20180404165556-75cca531ea76
 ## explicit
 github.com/satori/go.uuid
-# github.com/shirou/gopsutil v3.21.11+incompatible
-## explicit
-github.com/shirou/gopsutil/disk
-github.com/shirou/gopsutil/internal/common
 # github.com/sirupsen/logrus v1.9.3
 ## explicit; go 1.13
 github.com/sirupsen/logrus
@@ -102,9 +94,6 @@ github.com/vishvananda/netlink/nl
 # github.com/vishvananda/netns v0.0.0-20210104183010-2eb08e3e575f
 ## explicit; go 1.12
 github.com/vishvananda/netns
-# github.com/yusufpapurcu/wmi v1.2.2
-## explicit; go 1.16
-github.com/yusufpapurcu/wmi
 # golang.org/x/crypto v0.21.0
 ## explicit; go 1.18
 golang.org/x/crypto/sha3
