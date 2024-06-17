@@ -657,6 +657,7 @@ type NetworkInstanceConfig struct {
 	DnsServers      []net.IP // If not set we use Gateway as DNS server
 	DhcpRange       IPRange
 	DnsNameToIPList []DNSNameToIP // Used for DNS and ACL ipset
+	MTU             uint16        // IP MTU
 
 	// Route configuration
 	PropagateConnRoutes bool
