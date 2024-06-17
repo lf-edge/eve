@@ -249,12 +249,13 @@ func (ctx *DeferredContext) handleDeferred() bool {
 }
 
 // SetDeferred sets or replaces any item for the specified key and
-// starts the timer. Key is used for identifying the channel. Please
-// note that for deviceUUID key is used for attestUrl, which is not the
-// same for other Urls, where in other case, the key is very specific
-// for the object. If @ignoreErr is true the queue processing is not
-// stopped on any error and will continue, although all errors will be
-// passed to @sentHandler callback (see the CreateDeferredCtx()).
+// starts the timer. Key and url are used for identifying the
+// channel. Please note that for deviceUUID key is used for attestUrl,
+// which is not the same for other Urls, where in other case, the key
+// is very specific for the object. If @ignoreErr is true the queue
+// processing is not stopped on any error and will continue, although
+// all errors will be passed to @sentHandler callback (see the
+// CreateDeferredCtx()).
 func (ctx *DeferredContext) SetDeferred(
 	key string, buf *bytes.Buffer, size int64, url string, bailOnHTTPErr,
 	withNetTracing, ignoreErr bool, itemType interface{}) {
@@ -281,7 +282,7 @@ func (ctx *DeferredContext) SetDeferred(
 	ind := 0
 	var itemList *deferredItem
 	for ind, itemList = range ctx.deferredItems {
-		if itemList.key == key {
+		if itemList.key == key && itemList.url == url {
 			found = true
 			break
 		}
