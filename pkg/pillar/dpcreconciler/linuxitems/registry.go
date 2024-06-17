@@ -18,6 +18,7 @@ func RegisterItems(log *base.LogObject, registry *reconciler.DefaultRegistry,
 		t string
 	}
 	configurators := []configurator{
+		{c: &PhysIfConfigurator{Log: log}, t: genericitems.PhysIfTypename},
 		{c: &AdapterConfigurator{Log: log, NetworkMonitor: monitor}, t: genericitems.AdapterTypename},
 		{c: &ArpConfigurator{Log: log}, t: genericitems.ArpTypename},
 		{c: &BondConfigurator{Log: log, NetworkMonitor: monitor}, t: genericitems.BondTypename},

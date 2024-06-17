@@ -17,7 +17,6 @@ func RegisterItems(log *base.LogObject, registry *reconciler.DefaultRegistry,
 		t string
 	}
 	configurators := []configurator{
-		{c: &IOHandleConfigurator{Log: log}, t: IOHandleTypename},
 		{c: &DhcpcdConfigurator{Log: log}, t: DhcpcdTypename},
 		{c: &ResolvConfConfigurator{Log: log}, t: ResolvConfTypename},
 		{c: &SSHAuthKeysConfigurator{Log: log}, t: SSHAuthKeysTypename},

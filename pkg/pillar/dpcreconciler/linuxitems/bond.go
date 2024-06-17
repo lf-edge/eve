@@ -30,6 +30,8 @@ type Bond struct {
 	// Usage : How is the bond being used.
 	// A change in the usage will trigger bond recreate.
 	Usage genericitems.IOUsage // IOUsageBondAggrIf is not applicable
+	// MTU : Maximum transmission unit size.
+	MTU uint16
 }
 
 // Name returns the physical name of the Bond interface.
@@ -51,7 +53,8 @@ func (b Bond) Type() string {
 func (b Bond) Equal(other depgraph.Item) bool {
 	b2 := other.(Bond)
 	return reflect.DeepEqual(b.BondConfig, b2.BondConfig) &&
-		reflect.DeepEqual(b.AggregatedIfNames, b2.AggregatedIfNames)
+		reflect.DeepEqual(b.AggregatedIfNames, b2.AggregatedIfNames) &&
+		b.MTU == b2.MTU
 }
 
 // External returns false.
@@ -69,19 +72,27 @@ func (b Bond) Dependencies() (deps []depgraph.Dependency) {
 	for _, physIfName := range b.AggregatedIfNames {
 		deps = append(deps, depgraph.Dependency{
 			RequiredItem: depgraph.ItemRef{
-				ItemType: genericitems.IOHandleTypename,
+				ItemType: genericitems.PhysIfTypename,
 				ItemName: physIfName,
 			},
 			// Requires exclusive access to the physical interface.
 			MustSatisfy: func(item depgraph.Item) bool {
-				ioHandle := item.(genericitems.IOHandle)
-				return ioHandle.Usage == genericitems.IOUsageBondAggrIf &&
-					ioHandle.MasterIfName == b.IfName
+				physIf := item.(PhysIf)
+				return physIf.Usage == genericitems.IOUsageBondAggrIf &&
+					physIf.MasterIfName == b.IfName
 			},
 			Description: "Aggregated physical interface must exist",
 		})
 	}
 	return deps
+}
+
+// GetMTU returns MTU configured for the Bond.
+func (b Bond) GetMTU() uint16 {
+	if b.MTU == 0 {
+		return types.DefaultMTU
+	}
+	return b.MTU
 }
 
 // BondConfigurator implements Configurator interface (libs/reconciler) for bond interfaces.
@@ -134,6 +145,7 @@ func (c *BondConfigurator) Create(ctx context.Context, item depgraph.Item) error
 		bond.ArpInterval = int(bondCfg.ARPMonitor.Interval)
 		bond.ArpIpTargets = bondCfg.ARPMonitor.IPTargets
 	}
+	bond.MTU = int(bondCfg.GetMTU())
 	err := netlink.LinkAdd(bond)
 	if err != nil {
 		err = fmt.Errorf("failed to add bond: %v", err)
@@ -197,7 +209,7 @@ func (c *BondConfigurator) disaggregateInterface(aggrIfName string) error {
 	return nil
 }
 
-// Modify is able to change the set of aggregated interfaces.
+// Modify is able to change the set of aggregated interfaces and MTU.
 func (c *BondConfigurator) Modify(ctx context.Context, oldItem, newItem depgraph.Item) (err error) {
 	oldBondCfg := oldItem.(Bond)
 	newBondCfg := newItem.(Bond)
@@ -205,6 +217,16 @@ func (c *BondConfigurator) Modify(ctx context.Context, oldItem, newItem depgraph
 	if err != nil {
 		c.Log.Error(err)
 		return err
+	}
+	if bondLink.Type() == "bridge" {
+		// Most likely renamed to "k" + ifName by the Adapter.
+		bondLink, err = netlink.LinkByName("k" + oldBondCfg.IfName)
+		if err != nil {
+			err = fmt.Errorf("failed to get bond interface k%s link: %v",
+				oldBondCfg.IfName, err)
+			c.Log.Error(err)
+			return err
+		}
 	}
 	if bondLink.Type() != "bond" {
 		err = fmt.Errorf("interface %s is not Bond", oldBondCfg.IfName)
@@ -250,6 +272,17 @@ func (c *BondConfigurator) Modify(ctx context.Context, oldItem, newItem depgraph
 			}
 		}
 	}
+	// Update MTU.
+	mtu := newBondCfg.GetMTU()
+	if bond.MTU != int(mtu) {
+		err = netlink.LinkSetMTU(bondLink, int(mtu))
+		if err != nil {
+			err = fmt.Errorf("failed to set MTU %d for bond %s: %w",
+				mtu, oldBondCfg.IfName, err)
+			c.Log.Error(err)
+			return err
+		}
+	}
 	return nil
 }
 
@@ -283,7 +316,7 @@ func (c *BondConfigurator) Delete(ctx context.Context, item depgraph.Item) error
 }
 
 // NeedsRecreate returns true if Bond attributes or Usage have changed.
-// The set of aggregated interfaces can be changed without recreating Bond.
+// The set of aggregated interfaces and interface MTU can be changed without recreating Bond.
 func (c *BondConfigurator) NeedsRecreate(oldItem, newItem depgraph.Item) (recreate bool) {
 	oldBondCfg := oldItem.(Bond)
 	newBondCfg := newItem.(Bond)

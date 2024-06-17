@@ -5,7 +5,6 @@ package linuxitems
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/vishvananda/netlink"
@@ -31,6 +30,8 @@ type Vlan struct {
 	ParentL2Type types.L2LinkType
 	// VLAN ID.
 	ID uint16
+	// MTU : Maximum transmission unit size.
+	MTU uint16
 }
 
 // Name returns the physical name of the VLAN sub-interface.
@@ -53,7 +54,8 @@ func (v Vlan) Equal(other depgraph.Item) bool {
 	v2 := other.(Vlan)
 	return v.ParentIfName == v2.ParentIfName &&
 		v.ParentL2Type == v2.ParentL2Type &&
-		v.ID == v2.ID
+		v.ID == v2.ID &&
+		v.MTU == v2.MTU
 }
 
 // External returns false.
@@ -75,15 +77,33 @@ func (v Vlan) Dependencies() (deps []depgraph.Dependency) {
 		// Attached directly to a physical interface.
 		// In this case the physical IO has to be "allocated" for use
 		// as a VLAN parent interface.
-		depType = genericitems.IOHandleTypename
+		depType = genericitems.PhysIfTypename
 		mustSatisfy = func(item depgraph.Item) bool {
-			ioHandle := item.(genericitems.IOHandle)
-			return ioHandle.Usage == genericitems.IOUsageVlanParent
+			physIf, isPhysIf := item.(PhysIf)
+			if !isPhysIf {
+				// unreachable
+				return false
+			}
+			// The physical interface has to be "allocated" for use as a VLAN parent.
+			if physIf.Usage != genericitems.IOUsageVlanParent {
+				return false
+			}
+			// MTU of the parent interface must not be smaller.
+			return physIf.GetMTU() >= v.GetMTU()
 		}
 	case types.L2LinkTypeVLAN:
 		panic("unreachable")
 	case types.L2LinkTypeBond:
 		depType = genericitems.BondTypename
+		mustSatisfy = func(item depgraph.Item) bool {
+			bond, isBond := item.(Bond)
+			if !isBond {
+				// unreachable
+				return false
+			}
+			// MTU of the parent interface must not be smaller.
+			return bond.GetMTU() >= v.GetMTU()
+		}
 	}
 	return []depgraph.Dependency{
 		{
@@ -95,6 +115,14 @@ func (v Vlan) Dependencies() (deps []depgraph.Dependency) {
 			Description: "Parent interface must exist",
 		},
 	}
+}
+
+// GetMTU returns MTU configured for the Vlan.
+func (v Vlan) GetMTU() uint16 {
+	if v.MTU == 0 {
+		return types.DefaultMTU
+	}
+	return v.MTU
 }
 
 // VlanConfigurator implements Configurator interface (libs/reconciler) for VLAN sub-interfaces.
@@ -117,6 +145,7 @@ func (c *VlanConfigurator) Create(ctx context.Context, item depgraph.Item) error
 	vlan.ParentIndex = parentLink.Attrs().Index
 	vlan.Name = vlanCfg.IfName
 	vlan.VlanId = int(vlanCfg.ID)
+	vlan.MTU = int(vlanCfg.GetMTU())
 	err = netlink.LinkAdd(vlan)
 	if err != nil {
 		err = fmt.Errorf("failed to add VLAN sub-interface %s: %v",
@@ -134,9 +163,39 @@ func (c *VlanConfigurator) Create(ctx context.Context, item depgraph.Item) error
 	return nil
 }
 
-// Modify is not implemented.
-func (c *VlanConfigurator) Modify(_ context.Context, _, _ depgraph.Item) (err error) {
-	return errors.New("not implemented")
+// Modify is only able to change the MTU attribute.
+func (c *VlanConfigurator) Modify(_ context.Context, _, newItem depgraph.Item) (err error) {
+	vlan, isVlan := newItem.(Vlan)
+	if !isVlan {
+		return fmt.Errorf("invalid item type %T, expected Vlan", newItem)
+	}
+	vlanLink, err := netlink.LinkByName(vlan.IfName)
+	if err != nil {
+		err = fmt.Errorf("failed to get VLAN sub-interface %s link: %v", vlan.IfName, err)
+		c.Log.Error(err)
+		return err
+	}
+	if vlanLink.Type() == "bridge" {
+		// Most likely renamed to "k" + ifName by the Adapter.
+		vlanLink, err = netlink.LinkByName("k" + vlan.IfName)
+		if err != nil {
+			err = fmt.Errorf("failed to get VLAN sub-interface k%s link: %v",
+				vlan.IfName, err)
+			c.Log.Error(err)
+			return err
+		}
+	}
+	mtu := vlan.GetMTU()
+	if vlanLink.Attrs().MTU != int(mtu) {
+		err = netlink.LinkSetMTU(vlanLink, int(mtu))
+		if err != nil {
+			err = fmt.Errorf("failed to set MTU %d for VLAN sub-interface %s: %w",
+				mtu, vlan.IfName, err)
+			c.Log.Error(err)
+			return err
+		}
+	}
+	return nil
 }
 
 // Delete removes VLAN sub-interface.
@@ -161,7 +220,20 @@ func (c *VlanConfigurator) Delete(ctx context.Context, item depgraph.Item) error
 	return nil
 }
 
-// NeedsRecreate always returns true - Modify is not implemented.
+// NeedsRecreate return true if anything other than MTU changes.
+// Only MTU can be changed without recreating VLAN sub-interface.
 func (c *VlanConfigurator) NeedsRecreate(oldItem, newItem depgraph.Item) (recreate bool) {
-	return true
+	oldCfg, isVlan := oldItem.(Vlan)
+	if !isVlan {
+		// unreachable
+		return false
+	}
+	newCfg, isVlan := newItem.(Vlan)
+	if !isVlan {
+		// unreachable
+		return false
+	}
+	return oldCfg.ParentIfName != newCfg.ParentIfName ||
+		oldCfg.ParentL2Type != newCfg.ParentL2Type ||
+		oldCfg.ID != newCfg.ID
 }

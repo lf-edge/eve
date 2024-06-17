@@ -169,7 +169,8 @@ func (a IfAttrs) Equal(a2 IfAttrs) bool {
 		a.AdminUp == a2.AdminUp &&
 		a.LowerUp == a2.LowerUp &&
 		a.Enslaved == a2.Enslaved &&
-		a.MasterIfIndex == a2.MasterIfIndex
+		a.MasterIfIndex == a2.MasterIfIndex &&
+		a.MTU == a2.MTU
 }
 
 // DNSInfo : DNS information associated with an interface.

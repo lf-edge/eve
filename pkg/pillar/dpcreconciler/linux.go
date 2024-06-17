@@ -33,84 +33,86 @@ import (
 // Device connectivity configuration is modeled using dependency graph (see libs/depgraph).
 // Config graph with all sub-graphs and config item types used for Linux network stack:
 //
-//	+----------------------------------------------------------------------------------------+
-//	|                                    DeviceConnectivity                                  |
-//	|                                                                                        |
-//	|   +--------------------------------------+    +------------------------------------+   |
-//	|   |              PhysicalIO              |    |                Global              |   |
-//	|   |                                      |    |                                    |   |
-//	|   | +-----------+    +------------+      |    | +-------------+   +-------------+  |   |
-//	|   | | PhysIf    |    | PhysIf     |      |    | | ResolvConf  |   | LocalIPRule |  |   |
-//	|   | | (external)|    | (external) |  ... |    | | (singleton) |   | (singleton) |  |   |
-//	|   | +-----------+    +------------+      |    | +-------------+   +-------------+  |   |
-//	|   +--------------------------------------+    +------------------------------------+   |
-//	|                                                                                        |
-//	|   +--------------------------------------+    +------------------------------------+   |
-//	|   |              LogicalIO (L2)          |    |               Wireless             |   |
-//	|   |                                      |    |                                    |   |
-//	|   |            +----------+              |    | +-------------+   +-------------+  |   |
-//	|   |            | IOHandle | ...          |    | |    Wwan     |   |    Wlan     |  |   |
-//	|   |            +----------+              |    | | (singleton) |   | (singleton) |  |   |
-//	|   |       +------+      +------+         |    | +-------------+   +-------------+  |   |
-//	|   |       | Vlan | ...  | Bond | ...     |    +------------------------------------+   |
-//	|   |       +------+      +------+         |                                             |
-//	|   +--------------------------------------+                                             |
-//	|                                                                                        |
-//	|  +----------------------------------------------------------------------------------+  |
-//	|  |                                         L3                                       |  |
-//	|  |                                                                                  |  |
-//	|  |                                               +-------------------------------+  |  |
-//	|  |                                               |            IPRules            |  |  |
-//	|  |  +----------------------------------------+   |                               |  |  |
-//	|  |  |               Adapters                 |   | +---------+  +----------+     |  |  |
-//	|  |  |                                        |   | |SrcIPRule|  |SrcIPRule | ... |  |  |
-//	|  |  | +---------+      +---------+           |   | +---------+  +----------+     |  |  |
-//	|  |  | | Adapter |      | Adapter |  ...      |   +-------------------------------+  |  |
-//	|  |  | +---------+      +---------+           |                                      |  |
-//	|  |  | +------------+   +------------+        |   +-------------------------------+  |  |
-//	|  |  | | DhcpClient |   | DhcpClient | ...    |   |            Routes             |  |  |
-//	|  |  | +------------+   +------------+        |   |                               |  |  |
-//	|  |  | +------------------------------------+ |   | +-------+  +-------+          |  |  |
-//	|  |  | |            AdapterAddrs            | |   | | Route |  | Route | ...      |  |  |
-//	|  |  | |                                    | |   | +-------+  +-------+          |  |  |
-//	|  |  | |        +--------------+            | |   +-------------------------------+  |  |
-//	|  |  | |        | AdapterAddrs | ...        | |                                      |  |
-//	|  |  | |        |  (external)  |            | |   +-------------------------------+  |  |
-//	|  |  | |        +--------------+            | |   |             ARPs              |  |  |
-//	|  |  | +------------------------------------+ |   |                               |  |  |
-//	|  |  +----------------------------------------+   | +-----+  +-----+              |  |  |
-//	|  |                                               | | Arp |  | Arp | ...          |  |  |
-//	|  |                                               | +-----+  +-----+              |  |  |
-//	|  |                                               +-------------------------------+  |  |
-//	|  |                                                                                  |  |
-//	|  +----------------------------------------------------------------------------------+  |
-//	|                                                                                        |
-//	|  +----------------------------------------------------------------------------------+  |
-//	|  |                                       ACLs                                       |  |
-//	|  |                                                                                  |  |
-//	|  |                                +---------------+                                 |  |
-//	|  |                                |  SSHAuthKeys  |                                 |  |
-//	|  |                                |  (singleton)  |                                 |  |
-//	|  |                                +---------------+                                 |  |
-//	|  |     +--------------------------------+    +--------------------------------+     |  |
-//	|  |     |           IPv4Rules            |    |           IPv6Rules            |     |  |
-//	|  |     |                                |    |                                |     |  |
-//	|  |     |      +---------------+         |    |      +---------------+         |     |  |
-//	|  |     |      | IptablesChain | ...     |    |      | IptablesChain | ...     |     |  |
-//	|  |     |      +---------------+         |    |      +---------------+         |     |  |
-//	|  |     |      +---------------+         |    |      +---------------+         |     |  |
-//	|  |     |      | IptablesRule  | ...     |    |      | IptablesRule  | ...     |     |  |
-//	|  |     |      +---------------+         |    |      +---------------+         |     |  |
-//	|  |     +--------------------------------+    +--------------------------------+     |  |
-//	|  +----------------------------------------------------------------------------------+  |
-//	+----------------------------------------------------------------------------------------+
+// +----------------------------------------------------------------------------------------+
+// |                                    DeviceConnectivity                                  |
+// |                                                                                        |
+// |   +--------------------------------------+    +------------------------------------+   |
+// |   |              NetworkIO               |    |                Global              |   |
+// |   |                                      |    |                                    |   |
+// |   | +-----------+    +------------+      |    | +-------------+   +-------------+  |   |
+// |   | | NetIO     |    | NetIO      |      |    | | ResolvConf  |   | LocalIPRule |  |   |
+// |   | | (external)|    | (external) | ...  |    | | (singleton) |   | (singleton) |  |   |
+// |   | +-----------+    +------------+      |    | +-------------+   +-------------+  |   |
+// |   +--------------------------------------+    +------------------------------------+   |
+// |                                                                                        |
+// |   +-----------------+  +------------------+   +-------------------------------------+  |
+// |   |  PhysicalIfs    |  |  LogicalIO (L2)  |   |             Wireless                |  |
+// |   |                 |  |                  |   |                                     |  |
+// |   |  +--------+     |  |  +------+        |   |  +-------------+   +-------------+  |  |
+// |   |  | PhysIf | ... |  |  | Vlan | ...    |   |  |    Wwan     |   |    Wlan     |  |  |
+// |   |  +--------+     |  |  +------+        |   |  | (singleton) |   | (singleton) |  |  |
+// |   +-----------------+  |  +------+        |   |  +-------------+   +-------------+  |  |
+// |                        |  | Bond | ...    |   +-------------------------------------+  |
+// |                        |  +------+        |                                            |
+// |                        +------------------+                                            |
+// |                                                                                        |
+// |  +----------------------------------------------------------------------------------+  |
+// |  |                                         L3                                       |  |
+// |  |                                                                                  |  |
+// |  |                                               +-------------------------------+  |  |
+// |  |                                               |            IPRules            |  |  |
+// |  |  +----------------------------------------+   |                               |  |  |
+// |  |  |               Adapters                 |   | +---------+  +----------+     |  |  |
+// |  |  |                                        |   | |SrcIPRule|  |SrcIPRule | ... |  |  |
+// |  |  | +---------+      +---------+           |   | +---------+  +----------+     |  |  |
+// |  |  | | Adapter |      | Adapter | ...       |   +-------------------------------+  |  |
+// |  |  | +---------+      +---------+           |                                      |  |
+// |  |  | +------------+   +------------+        |   +-------------------------------+  |  |
+// |  |  | | DhcpClient |   | DhcpClient | ...    |   |            Routes             |  |  |
+// |  |  | +------------+   +------------+        |   |                               |  |  |
+// |  |  | +------------------------------------+ |   | +-------+  +-------+          |  |  |
+// |  |  | |            AdapterAddrs            | |   | | Route |  | Route | ...      |  |  |
+// |  |  | |                                    | |   | +-------+  +-------+          |  |  |
+// |  |  | |        +--------------+            | |   +-------------------------------+  |  |
+// |  |  | |        | AdapterAddrs | ...        | |                                      |  |
+// |  |  | |        |  (external)  |            | |   +-------------------------------+  |  |
+// |  |  | |        +--------------+            | |   |             ARPs              |  |  |
+// |  |  | +------------------------------------+ |   |                               |  |  |
+// |  |  +----------------------------------------+   | +-----+  +-----+              |  |  |
+// |  |                                               | | Arp |  | Arp | ...          |  |  |
+// |  |                                               | +-----+  +-----+              |  |  |
+// |  |                                               +-------------------------------+  |  |
+// |  |                                                                                  |  |
+// |  +----------------------------------------------------------------------------------+  |
+// |                                                                                        |
+// |  +----------------------------------------------------------------------------------+  |
+// |  |                                       ACLs                                       |  |
+// |  |                                                                                  |  |
+// |  |                                +---------------+                                 |  |
+// |  |                                |  SSHAuthKeys  |                                 |  |
+// |  |                                |  (singleton)  |                                 |  |
+// |  |                                +---------------+                                 |  |
+// |  |     +--------------------------------+    +--------------------------------+     |  |
+// |  |     |           IPv4Rules            |    |           IPv6Rules            |     |  |
+// |  |     |                                |    |                                |     |  |
+// |  |     |      +---------------+         |    |      +---------------+         |     |  |
+// |  |     |      | IptablesChain | ...     |    |      | IptablesChain | ...     |     |  |
+// |  |     |      +---------------+         |    |      +---------------+         |     |  |
+// |  |     |      +---------------+         |    |      +---------------+         |     |  |
+// |  |     |      | IptablesRule  | ...     |    |      | IptablesRule  | ...     |     |  |
+// |  |     |      +---------------+         |    |      +---------------+         |     |  |
+// |  |     +--------------------------------+    +--------------------------------+     |  |
+// |  +----------------------------------------------------------------------------------+  |
+// +----------------------------------------------------------------------------------------+
 const (
 	// GraphName : name of the graph with the managed state as a whole.
 	GraphName = "DeviceConnectivity"
 	// GlobalSG : name of the sub-graph with global configuration.
 	GlobalSG = "Global"
-	// PhysicalIoSG : name of the sub-graph with physical network interfaces.
-	PhysicalIoSG = "PhysicalIO"
+	// NetworkIoSG : name of the sub-graph with network IO devices.
+	NetworkIoSG = "NetworkIO"
+	// PhysicalIfsSG : sub-graph with network interfaces corresponding to physical NICs.
+	PhysicalIfsSG = "PhysicalInterfaces"
 	// LogicalIoSG : name of the sub-graph with logical network interfaces.
 	LogicalIoSG = "LogicalIO"
 	// WirelessSG : sub-graph with everything related to wireless connectivity.
@@ -195,6 +197,7 @@ type LinuxDpcReconciler struct {
 	prevStatus   ReconcileStatus
 	radioSilence types.RadioSilence
 	HVTypeKube   bool
+	intfMTU      map[string]uint16
 }
 
 type pendingReconcile struct {
@@ -290,10 +293,10 @@ func (r *LinuxDpcReconciler) watcher(netEvents <-chan netmonitor.Event) {
 				}
 			case netmonitor.IfChange:
 				if ev.Added || ev.Deleted {
-					changed := r.updateCurrentPhysicalIO(r.lastArgs.DPC, r.lastArgs.AA)
+					changed := r.updateCurrentNetworkIO(r.lastArgs.DPC, r.lastArgs.AA)
 					if changed {
 						r.addPendingReconcile(
-							PhysicalIoSG, "interface added/deleted", true)
+							NetworkIoSG, "interface added/deleted", true)
 					}
 				}
 				if ev.Deleted {
@@ -395,9 +398,9 @@ func (r *LinuxDpcReconciler) Reconcile(ctx context.Context, args Args) Reconcile
 			r.addPendingReconcile(ACLsSG, "GCP change", false)
 		}
 		if r.aaChanged(args.AA) {
-			changed := r.updateCurrentPhysicalIO(args.DPC, args.AA)
+			changed := r.updateCurrentNetworkIO(args.DPC, args.AA)
 			if changed {
-				r.addPendingReconcile(PhysicalIoSG, "AA change", false)
+				r.addPendingReconcile(NetworkIoSG, "AA change", false)
 			}
 			r.addPendingReconcile(WirelessSG, "AA change", false)
 		}
@@ -422,6 +425,7 @@ func (r *LinuxDpcReconciler) Reconcile(ctx context.Context, args Args) Reconcile
 	r.NetworkMonitor.ClearCache()
 	reconcileStartTime := time.Now()
 	if reconcileAll {
+		r.rebuildMTUMap(args.DPC)
 		r.updateIntendedState(args)
 		r.updateCurrentState(args)
 		r.Log.Noticef("Running a full state reconciliation, reasons: %s",
@@ -435,11 +439,16 @@ func (r *LinuxDpcReconciler) Reconcile(ctx context.Context, args Args) Reconcile
 		switch reconcileSG {
 		case GlobalSG:
 			intSG = r.getIntendedGlobalCfg(args.DPC)
-		case PhysicalIoSG:
-			intSG = r.getIntendedPhysicalIO(args.DPC)
+		case NetworkIoSG:
+			intSG = r.getIntendedNetworkIO(args.DPC)
+		case PhysicalIfsSG:
+			r.rebuildMTUMap(args.DPC)
+			intSG = r.getIntendedPhysicalIfs(args.DPC)
 		case LogicalIoSG:
+			r.rebuildMTUMap(args.DPC)
 			intSG = r.getIntendedLogicalIO(args.DPC)
 		case L3SG:
+			r.rebuildMTUMap(args.DPC)
 			intSG = r.getIntendedL3Cfg(args.DPC)
 		case WirelessSG:
 			intSG = r.getIntendedWirelessCfg(args.DPC, args.AA, args.RS)
@@ -659,12 +668,12 @@ func (r *LinuxDpcReconciler) updateCurrentState(args Args) (changed bool) {
 		adaptersSG := dg.InitArgs{Name: AdaptersSG, Subgraphs: []dg.InitArgs{addrsSG}}
 		routesSG := dg.InitArgs{Name: RoutesSG}
 		l3SG := dg.InitArgs{Name: L3SG, Subgraphs: []dg.InitArgs{adaptersSG, routesSG}}
-		physIoSG := dg.InitArgs{Name: PhysicalIoSG}
-		graph := dg.InitArgs{Name: GraphName, Subgraphs: []dg.InitArgs{physIoSG, l3SG}}
+		netIoSG := dg.InitArgs{Name: NetworkIoSG}
+		graph := dg.InitArgs{Name: GraphName, Subgraphs: []dg.InitArgs{netIoSG, l3SG}}
 		r.currentState = dg.New(graph)
 		changed = true
 	}
-	if ioChanged := r.updateCurrentPhysicalIO(args.DPC, args.AA); ioChanged {
+	if ioChanged := r.updateCurrentNetworkIO(args.DPC, args.AA); ioChanged {
 		changed = true
 	}
 	if addrsChanged := r.updateCurrentAdapterAddrs(args.DPC); addrsChanged {
@@ -676,9 +685,9 @@ func (r *LinuxDpcReconciler) updateCurrentState(args Args) (changed bool) {
 	return changed
 }
 
-func (r *LinuxDpcReconciler) updateCurrentPhysicalIO(
+func (r *LinuxDpcReconciler) updateCurrentNetworkIO(
 	dpc types.DevicePortConfig, aa types.AssignableAdapters) (changed bool) {
-	currentIO := dg.New(dg.InitArgs{Name: PhysicalIoSG})
+	currentIO := dg.New(dg.InitArgs{Name: NetworkIoSG})
 	for _, port := range dpc.Ports {
 		if port.L2Type != types.L2LinkTypeNone || port.IfName == "" {
 			continue
@@ -696,14 +705,14 @@ func (r *LinuxDpcReconciler) updateCurrentPhysicalIO(
 		}
 		_, found, err := r.NetworkMonitor.GetInterfaceIndex(port.IfName)
 		if err != nil {
-			r.Log.Errorf("updateCurrentPhysicalIO: failed to get ifIndex for %s: %v",
+			r.Log.Errorf("updateCurrentNetworkIO: failed to get ifIndex for %s: %v",
 				port.IfName, err)
 			continue
 		}
 		if !found {
 			continue
 		}
-		currentIO.PutItem(generic.PhysIf{
+		currentIO.PutItem(generic.NetIO{
 			LogicalLabel: port.Logicallabel,
 			IfName:       port.IfName,
 		}, &reconciler.ItemStateData{
@@ -711,7 +720,7 @@ func (r *LinuxDpcReconciler) updateCurrentPhysicalIO(
 			LastOperation: reconciler.OperationCreate,
 		})
 	}
-	prevSG := r.currentState.SubGraph(PhysicalIoSG)
+	prevSG := r.currentState.SubGraph(NetworkIoSG)
 	if len(prevSG.DiffItems(currentIO)) > 0 {
 		r.currentState.PutSubGraph(currentIO)
 		return true
@@ -846,7 +855,8 @@ func (r *LinuxDpcReconciler) updateIntendedState(args Args) {
 	}
 	r.intendedState = dg.New(graphArgs)
 	r.intendedState.PutSubGraph(r.getIntendedGlobalCfg(args.DPC))
-	r.intendedState.PutSubGraph(r.getIntendedPhysicalIO(args.DPC))
+	r.intendedState.PutSubGraph(r.getIntendedNetworkIO(args.DPC))
+	r.intendedState.PutSubGraph(r.getIntendedPhysicalIfs(args.DPC))
 	r.intendedState.PutSubGraph(r.getIntendedLogicalIO(args.DPC))
 	r.intendedState.PutSubGraph(r.getIntendedL3Cfg(args.DPC))
 	r.intendedState.PutSubGraph(r.getIntendedWirelessCfg(args.DPC, args.AA, args.RS))
@@ -891,10 +901,10 @@ func (r *LinuxDpcReconciler) getIntendedGlobalCfg(dpc types.DevicePortConfig) dg
 	return intendedCfg
 }
 
-func (r *LinuxDpcReconciler) getIntendedPhysicalIO(dpc types.DevicePortConfig) dg.Graph {
+func (r *LinuxDpcReconciler) getIntendedNetworkIO(dpc types.DevicePortConfig) dg.Graph {
 	graphArgs := dg.InitArgs{
-		Name:        PhysicalIoSG,
-		Description: "Physical network interfaces",
+		Name:        NetworkIoSG,
+		Description: "Network IO devices",
 	}
 	intendedIO := dg.New(graphArgs)
 	for _, port := range dpc.Ports {
@@ -902,13 +912,92 @@ func (r *LinuxDpcReconciler) getIntendedPhysicalIO(dpc types.DevicePortConfig) d
 			continue
 		}
 		if port.L2Type == types.L2LinkTypeNone {
-			intendedIO.PutItem(generic.PhysIf{
+			intendedIO.PutItem(generic.NetIO{
 				LogicalLabel: port.Logicallabel,
 				IfName:       port.IfName,
 			}, nil)
 		}
 	}
 	return intendedIO
+}
+
+func (r *LinuxDpcReconciler) rebuildMTUMap(dpc types.DevicePortConfig) {
+	r.intfMTU = make(map[string]uint16) // logical label -> MTU
+	for _, port := range dpc.Ports {
+		if port.InvalidConfig {
+			continue
+		}
+		portMTU := port.MTU
+		if portMTU == 0 {
+			portMTU = types.DefaultMTU
+		}
+		if portMTU > r.intfMTU[port.Logicallabel] {
+			r.intfMTU[port.Logicallabel] = portMTU
+		}
+		// Lower-layer ports should have the max MTU of all associated higher-layer ports.
+		switch port.L2Type {
+		case types.L2LinkTypeVLAN:
+			if portMTU > r.intfMTU[port.VLAN.ParentPort] {
+				r.intfMTU[port.VLAN.ParentPort] = portMTU
+			}
+		case types.L2LinkTypeBond:
+			for _, aggrPort := range port.Bond.AggregatedPorts {
+				if portMTU > r.intfMTU[aggrPort] {
+					r.intfMTU[aggrPort] = portMTU
+				}
+			}
+		}
+	}
+}
+
+func (r *LinuxDpcReconciler) getIntendedPhysicalIfs(dpc types.DevicePortConfig) dg.Graph {
+	graphArgs := dg.InitArgs{
+		Name:        PhysicalIfsSG,
+		Description: "Physical network interfaces",
+	}
+	intendedIfs := dg.New(graphArgs)
+	for _, port := range dpc.Ports {
+		if port.IfName == "" || port.InvalidConfig {
+			continue
+		}
+		switch port.L2Type {
+		case types.L2LinkTypeNone:
+			if port.IsL3Port {
+				intendedIfs.PutItem(linux.PhysIf{
+					PhysIfLL:     port.Logicallabel,
+					PhysIfName:   port.IfName,
+					Usage:        generic.IOUsageL3Adapter,
+					WirelessType: port.WirelessCfg.WType,
+					MTU:          r.intfMTU[port.Logicallabel],
+				}, nil)
+			}
+		case types.L2LinkTypeVLAN:
+			parent := dpc.LookupPortByLogicallabel(port.VLAN.ParentPort)
+			if parent != nil && parent.L2Type == types.L2LinkTypeNone {
+				intendedIfs.PutItem(linux.PhysIf{
+					PhysIfLL:     parent.Logicallabel,
+					PhysIfName:   parent.IfName,
+					Usage:        generic.IOUsageVlanParent,
+					WirelessType: port.WirelessCfg.WType,
+					MTU:          r.intfMTU[port.Logicallabel],
+				}, nil)
+			}
+		case types.L2LinkTypeBond:
+			for _, aggrPort := range port.Bond.AggregatedPorts {
+				if nps := dpc.LookupPortByLogicallabel(aggrPort); nps != nil {
+					intendedIfs.PutItem(linux.PhysIf{
+						PhysIfLL:     nps.Logicallabel,
+						PhysIfName:   nps.IfName,
+						Usage:        generic.IOUsageBondAggrIf,
+						MasterIfName: port.IfName,
+						WirelessType: port.WirelessCfg.WType,
+						MTU:          r.intfMTU[port.Logicallabel],
+					}, nil)
+				}
+			}
+		}
+	}
+	return intendedIfs
 }
 
 func (r *LinuxDpcReconciler) getIntendedLogicalIO(dpc types.DevicePortConfig) dg.Graph {
@@ -932,16 +1021,9 @@ func (r *LinuxDpcReconciler) getIntendedLogicalIO(dpc types.DevicePortConfig) dg
 					ParentIfName: parent.IfName,
 					ParentL2Type: parent.L2Type,
 					ID:           port.VLAN.ID,
+					MTU:          r.intfMTU[port.Logicallabel],
 				}
 				intendedIO.PutItem(vlan, nil)
-				if parent.L2Type == types.L2LinkTypeNone {
-					// Allocate the physical interface for use as a VLAN parent.
-					intendedIO.PutItem(generic.IOHandle{
-						PhysIfLL:   parent.Logicallabel,
-						PhysIfName: parent.IfName,
-						Usage:      generic.IOUsageVlanParent,
-					}, nil)
-				}
 			}
 
 		case types.L2LinkTypeBond:
@@ -949,13 +1031,6 @@ func (r *LinuxDpcReconciler) getIntendedLogicalIO(dpc types.DevicePortConfig) dg
 			for _, aggrPort := range port.Bond.AggregatedPorts {
 				if nps := dpc.LookupPortByLogicallabel(aggrPort); nps != nil {
 					aggrIfNames = append(aggrIfNames, nps.IfName)
-					// Allocate the physical interface for use by the bond.
-					intendedIO.PutItem(generic.IOHandle{
-						PhysIfLL:     nps.Logicallabel,
-						PhysIfName:   nps.IfName,
-						Usage:        generic.IOUsageBondAggrIf,
-						MasterIfName: port.IfName,
-					}, nil)
 				}
 			}
 			var usage generic.IOUsage
@@ -973,6 +1048,7 @@ func (r *LinuxDpcReconciler) getIntendedLogicalIO(dpc types.DevicePortConfig) dg
 				IfName:            port.IfName,
 				AggregatedIfNames: aggrIfNames,
 				Usage:             usage,
+				MTU:               r.intfMTU[port.Logicallabel],
 			}, nil)
 		}
 	}
@@ -1012,16 +1088,10 @@ func (r *LinuxDpcReconciler) getIntendedAdapters(dpc types.DevicePortConfig) dg.
 			LogicalLabel: port.Logicallabel,
 			IfName:       port.IfName,
 			L2Type:       port.L2Type,
+			WirelessType: port.WirelessCfg.WType,
+			MTU:          r.intfMTU[port.Logicallabel],
 		}
 		intendedAdapters.PutItem(adapter, nil)
-		if port.L2Type == types.L2LinkTypeNone {
-			// Allocate the physical interface for use by the adapter.
-			intendedAdapters.PutItem(generic.IOHandle{
-				PhysIfLL:   port.Logicallabel,
-				PhysIfName: port.IfName,
-				Usage:      generic.IOUsageL3Adapter,
-			}, nil)
-		}
 		if port.Dhcp != types.DhcpTypeNone &&
 			port.WirelessCfg.WType != types.WirelessTypeCellular {
 			intendedAdapters.PutItem(generic.Dhcpcd{
@@ -1446,6 +1516,7 @@ func (r *LinuxDpcReconciler) getIntendedWwanConfig(dpc types.DevicePortConfig,
 			AccessPoint:      *accessPoint,
 			Proxies:          port.Proxies,
 			Probe:            probeCfg,
+			MTU:              port.MTU,
 			LocationTracking: locationTracking,
 		}
 		config.Networks = append(config.Networks, network)

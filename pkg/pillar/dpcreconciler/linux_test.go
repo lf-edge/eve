@@ -239,7 +239,7 @@ func TestSingleEthInterface(test *testing.T) {
 	t.Expect(status.DNS.Servers).To(HaveKey("eth0"))
 	t.Expect(status.DNS.Servers["eth0"]).To(BeEmpty())
 
-	ioHandle := dg.Reference(generic.IOHandle{PhysIfName: "eth0"})
+	ioHandle := dg.Reference(linux.PhysIf{PhysIfName: "eth0"})
 	t.Expect(itemIsCreated(ioHandle)).To(BeTrue())
 	adapter := dg.Reference(linux.Adapter{IfName: "eth0"})
 	t.Expect(itemIsCreated(adapter)).To(BeTrue())
@@ -448,7 +448,7 @@ func TestMultipleEthsSameSubnet(test *testing.T) {
 	ctx := reconciler.MockRun(context.Background())
 	status := dpcReconciler.Reconcile(ctx, dpcrec.Args{GCP: *gcp, DPC: dpc, AA: aa})
 	t.Expect(status.Error).To(BeNil())
-	t.Expect(itemCountWithType(generic.IOHandleTypename)).To(Equal(2))
+	t.Expect(itemCountWithType(generic.PhysIfTypename)).To(Equal(2))
 	t.Expect(itemCountWithType(generic.AdapterTypename)).To(Equal(2))
 	t.Expect(itemCountWithType(generic.AdapterAddrsTypename)).To(Equal(2))
 	t.Expect(itemCountWithType(generic.DhcpcdTypename)).To(Equal(2))
@@ -660,7 +660,7 @@ func TestWireless(test *testing.T) {
 	t.Expect(itemDescription(wwan)).To(ContainSubstring("PhysAddrs:{Interface: USB:3:7.4 PCI: Dev:}"))
 	t.Expect(itemDescription(wwan)).To(ContainSubstring("LogicalLabel:mock-wwan0"))
 	t.Expect(itemDescription(wwan)).To(ContainSubstring("RadioSilence:false"))
-	t.Expect(itemCountWithType(generic.IOHandleTypename)).To(Equal(1))
+	t.Expect(itemCountWithType(generic.PhysIfTypename)).To(Equal(1))
 	t.Expect(itemCountWithType(generic.AdapterTypename)).To(Equal(1))
 	t.Expect(itemCountWithType(generic.AdapterAddrsTypename)).To(Equal(1))
 	t.Expect(itemCountWithType(generic.DhcpcdTypename)).To(Equal(1))
@@ -673,7 +673,7 @@ func TestWireless(test *testing.T) {
 	ctx = reconciler.MockRun(context.Background())
 	status = dpcReconciler.Reconcile(ctx, dpcrec.Args{GCP: *gcp, DPC: dpc, AA: aa})
 	t.Expect(status.Error).To(BeNil())
-	t.Expect(itemCountWithType(generic.IOHandleTypename)).To(Equal(2))
+	t.Expect(itemCountWithType(generic.PhysIfTypename)).To(Equal(2))
 	t.Expect(itemCountWithType(generic.AdapterTypename)).To(Equal(2))
 	t.Expect(itemCountWithType(generic.AdapterAddrsTypename)).To(Equal(2))
 	t.Expect(itemCountWithType(generic.DhcpcdTypename)).To(Equal(1))
@@ -696,7 +696,7 @@ func TestWireless(test *testing.T) {
 	t.Expect(itemDescription(wlan)).To(ContainSubstring("enable RF: false"))
 	t.Expect(itemDescription(wwan)).To(ContainSubstring("RadioSilence:true"))
 	t.Expect(itemDescription(wwan)).To(ContainSubstring(fmt.Sprintf("Timestamp:%v", rsTimestamp)))
-	t.Expect(itemCountWithType(generic.IOHandleTypename)).To(Equal(2))
+	t.Expect(itemCountWithType(generic.PhysIfTypename)).To(Equal(2))
 	t.Expect(itemCountWithType(generic.AdapterTypename)).To(Equal(2))
 	t.Expect(itemCountWithType(generic.AdapterAddrsTypename)).To(Equal(2))
 	t.Expect(itemCountWithType(generic.DhcpcdTypename)).To(Equal(1))
@@ -770,6 +770,7 @@ func TestVlansAndBonds(test *testing.T) {
 				Logicallabel: "shopfloor-vlan100",
 				IsL3Port:     true,
 				IsMgmt:       true,
+				MTU:          2000,
 				DhcpConfig: types.DhcpConfig{
 					Dhcp: types.DhcpTypeClient,
 					Type: types.NetworkTypeIPv4,
@@ -787,6 +788,7 @@ func TestVlansAndBonds(test *testing.T) {
 				Logicallabel: "shopfloor-vlan200",
 				IsL3Port:     true,
 				IsMgmt:       true,
+				MTU:          3000,
 				DhcpConfig: types.DhcpConfig{
 					Dhcp: types.DhcpTypeClient,
 					Type: types.NetworkTypeIPv4,
@@ -833,7 +835,7 @@ func TestVlansAndBonds(test *testing.T) {
 	status := dpcReconciler.Reconcile(ctx, dpcrec.Args{GCP: *gcp, DPC: dpc, AA: aa})
 	t.Expect(status.Error).To(BeNil())
 
-	t.Expect(itemCountWithType(generic.IOHandleTypename)).To(Equal(2))
+	t.Expect(itemCountWithType(generic.PhysIfTypename)).To(Equal(2))
 	t.Expect(itemCountWithType(generic.BondTypename)).To(Equal(1))
 	t.Expect(itemCountWithType(generic.VlanTypename)).To(Equal(2))
 	t.Expect(itemCountWithType(generic.AdapterTypename)).To(Equal(2))
@@ -854,6 +856,7 @@ func TestVlansAndBonds(test *testing.T) {
 	t.Expect(bond.MIIMonitor.Interval).To(BeEquivalentTo(400))
 	t.Expect(bond.MIIMonitor.UpDelay).To(BeEquivalentTo(800))
 	t.Expect(bond.MIIMonitor.DownDelay).To(BeEquivalentTo(1200))
+	t.Expect(bond.MTU).To(BeEquivalentTo(3000)) // max of VLAN sub-interfaces
 
 	vlan100Ref := dg.Reference(linux.Vlan{IfName: "shopfloor.100"})
 	item, _, _, found = currentState.Item(vlan100Ref)
@@ -863,6 +866,7 @@ func TestVlansAndBonds(test *testing.T) {
 	t.Expect(vlan100.ID).To(BeEquivalentTo(100))
 	t.Expect(vlan100.ParentLL).To(BeEquivalentTo("bond-shopfloor"))
 	t.Expect(vlan100.ParentIfName).To(BeEquivalentTo("bond0"))
+	t.Expect(vlan100.MTU).To(BeEquivalentTo(2000))
 
 	vlan200Ref := dg.Reference(linux.Vlan{IfName: "shopfloor.200"})
 	item, _, _, found = currentState.Item(vlan200Ref)
@@ -872,5 +876,41 @@ func TestVlansAndBonds(test *testing.T) {
 	t.Expect(vlan200.ID).To(BeEquivalentTo(200))
 	t.Expect(vlan200.ParentLL).To(BeEquivalentTo("bond-shopfloor"))
 	t.Expect(vlan200.ParentIfName).To(BeEquivalentTo("bond0"))
+	t.Expect(vlan200.MTU).To(BeEquivalentTo(3000))
+	release()
+
+	vlan100AdapterRef := dg.Reference(linux.Adapter{IfName: "shopfloor.100"})
+	item, _, _, found = currentState.Item(vlan100AdapterRef)
+	t.Expect(found).To(BeTrue())
+	vlan100Adapter := item.(linux.Adapter)
+	t.Expect(vlan100Adapter.IfName).To(Equal("shopfloor.100"))
+	t.Expect(vlan100Adapter.L2Type).To(BeEquivalentTo(types.L2LinkTypeVLAN))
+	t.Expect(vlan100Adapter.MTU).To(BeEquivalentTo(2000))
+
+	vlan200AdapterRef := dg.Reference(linux.Adapter{IfName: "shopfloor.200"})
+	item, _, _, found = currentState.Item(vlan200AdapterRef)
+	t.Expect(found).To(BeTrue())
+	vlan200Adapter := item.(linux.Adapter)
+	t.Expect(vlan200Adapter.IfName).To(Equal("shopfloor.200"))
+	t.Expect(vlan200Adapter.L2Type).To(BeEquivalentTo(types.L2LinkTypeVLAN))
+	t.Expect(vlan200Adapter.MTU).To(BeEquivalentTo(3000))
+
+	eth0Ref := dg.Reference(linux.PhysIf{PhysIfName: "eth0"})
+	item, _, _, found = currentState.Item(eth0Ref)
+	t.Expect(found).To(BeTrue())
+	eth0If := item.(linux.PhysIf)
+	t.Expect(eth0If.PhysIfName).To(Equal("eth0"))
+	t.Expect(eth0If.Usage).To(BeEquivalentTo(generic.IOUsageBondAggrIf))
+	t.Expect(eth0If.MasterIfName).To(BeEquivalentTo("bond0"))
+	t.Expect(eth0If.MTU).To(BeEquivalentTo(3000)) // max of all higher-layer ports
+
+	eth1Ref := dg.Reference(linux.PhysIf{PhysIfName: "eth1"})
+	item, _, _, found = currentState.Item(eth1Ref)
+	t.Expect(found).To(BeTrue())
+	eth1If := item.(linux.PhysIf)
+	t.Expect(eth1If.PhysIfName).To(Equal("eth1"))
+	t.Expect(eth1If.Usage).To(BeEquivalentTo(generic.IOUsageBondAggrIf))
+	t.Expect(eth1If.MasterIfName).To(BeEquivalentTo("bond0"))
+	t.Expect(eth1If.MTU).To(BeEquivalentTo(3000)) // max of all higher-layer ports
 	release()
 }
