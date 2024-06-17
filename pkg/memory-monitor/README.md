@@ -279,6 +279,12 @@ can be done by running the following command:
 pkill -SIGHUP /sbin/memory-monitor
 ```
 
+It can be also done by the eve cli command:
+
+```shell
+eve memory-monitor-update-config
+```
+
 The configuration file should contain the following fields:
 
 ```text
