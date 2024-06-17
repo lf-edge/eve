@@ -4,8 +4,11 @@
 package genericitems
 
 const (
-	// IOHandleTypename : typename for network interface handle.
-	IOHandleTypename = "IO-Handle"
+	// NetIOTypename : typename for network IO device.
+	NetIOTypename = "Network-IO"
+	// PhysIfTypename : typename for physical network interfaces.
+	// Not implemented in genericitems (implementation specific to network stack).
+	PhysIfTypename = "Physical-Interface"
 	// AdapterTypename : typename for network adapters
 	// Not implemented in genericitems (implementation specific to network stack).
 	AdapterTypename = "Adapter"
@@ -19,8 +22,6 @@ const (
 	BondTypename = "Bond"
 	// DhcpcdTypename : typename for dhcpcd program (a DHCP and DHCPv6 client).
 	DhcpcdTypename = "DHCP-Client"
-	// PhysIfTypename : typename for physical network interfaces.
-	PhysIfTypename = "Physical-Interface"
 	// ResolvConfTypename : typename for singleton item representing resolv.conf.
 	ResolvConfTypename = "Resolv-Conf"
 	// IPv4RouteTypename : typename for IPv4 route.

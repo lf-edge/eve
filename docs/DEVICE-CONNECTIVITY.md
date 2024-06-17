@@ -134,6 +134,24 @@ SystemAdapter determines the usage of the network port, which is one of:
 
 Network port directly assigned to an application is without SystemAdapter.
 
+### Network Adapter MTU
+
+The user can adjust the Maximum Transmission Unit (MTU) size of a network adapter.
+MTU determines the largest IP packet that the underlying link can and is allowed to carry.
+A smaller MTU value is often used to avoid packet fragmentation when some form of packet
+encapsulation is being applied, while a larger MTU reduces the overhead associated with
+packet headers, improves network efficiency, and increases throughput by allowing more
+data to be transmitted in each packet (known as a jumbo frame).
+
+EVE uses the L3 MTU, meaning the value does not include the L2 header size (e.g., Ethernet
+header or VLAN tag size). The value is a 16-bit unsigned integer, representing the MTU size
+in bytes. The minimum accepted value for the MTU is 1280, which is the minimum link MTU
+needed to carry an IPv6 packet (see RFC 8200, "IPv6 minimum link MTU"). If the MTU for
+a network adapter is not defined (zero value), EVE will set the default MTU size,
+which depends on the network adapter type. Ethernet and WiFi adapters default to 1500 bytes,
+while cellular modems typically receive their MTU value from the network provider,
+which EVE will use unless the user overrides the MTU value.
+
 ## Load spreading and failover
 
 Load spreading means that there are two or more similar uplink networks, for instance
