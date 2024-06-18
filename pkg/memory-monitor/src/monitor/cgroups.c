@@ -20,13 +20,31 @@
 
 #include "cgroups.h"
 
+// The longest line in the memory.stat file is the line with a key like "hierarchical_workingset_activate_anon" (37 bytes)
+// and the longest value is the dec representation of a 64-bit integer "18446744073709551615" (20 bytes), so the longest
+// line is 37 + 1 (for space) + 20 + 1 (for the newline character) = 58 bytes.
+// So, 256 is more than a safe value for the line length.
+// That's true for Linux kernel 6.1, and will be true for the future versions, as the kernel developers are unlikely to
+// change the format of the memory.stat file.
+#define MAX_MEMORY_STAT_LINE_LENGTH 256
+
+// The maximum length of the memory.usage_in_bytes / memory.limit_in_bytes file is the length of a 65-bit integer,
+// which is 20 bytes, plus the newline character, so 21 bytes is a safe value for the string length.
+// To be extra safe, we set the value to 256.
+#define MAX_MEMORY_STRING_LENGTH 256
+
 unsigned long cgroup_get_memory_usage(const char *cgroup_name) {
     char path[PATH_MAX + 1];
     int fd;
-    char str_usage[256];
+    char str_usage[MAX_MEMORY_STRING_LENGTH];
     unsigned long usage_bytes;
+    int printed;
 
-    snprintf(path, sizeof(path), "%s/%s/memory.usage_in_bytes", CGROUP_PATH_PREFIX, cgroup_name);
+    printed = snprintf(path, sizeof(path), "%s/%s/memory.usage_in_bytes", CGROUP_PATH_PREFIX, cgroup_name);
+    if (printed < 0 || printed >= sizeof(path)) {
+        syslog(LOG_ERR, "Path to the usage_in_bytes file is too long\n");
+        return 0;
+    }
     fd = open(path, O_RDONLY);
     if (fd == -1) {
         syslog(LOG_ERR, "opening usage_in_bytes: %s", strerror(errno));
@@ -55,16 +73,21 @@ unsigned long cgroup_get_memory_usage(const char *cgroup_name) {
 
 
 unsigned long cgroup_get_total_cache(const char *cgroup_name) {
-    char buf[256];
+    char path_str[PATH_MAX + 1];
     FILE *file;
-    char line[256];
+    char line[MAX_MEMORY_STAT_LINE_LENGTH];
     unsigned long total_cache = 0;
+    int printed;
 
     // Construct the path to the memory.stat file
-    snprintf(buf, sizeof(buf), "%s/%s/memory.stat", CGROUP_PATH_PREFIX, cgroup_name);
+    printed = snprintf(path_str, sizeof(path_str), "%s/%s/memory.stat", CGROUP_PATH_PREFIX, cgroup_name);
+    if (printed < 0 || printed >= sizeof(path_str)) {
+        syslog(LOG_ERR, "Path to the memory.stat file is too long\n");
+        return 0;
+    }
 
     // Open the file
-    file = fopen(buf, "r");
+    file = fopen(path_str, "r");
     if (file == NULL) {
         syslog(LOG_ERR, "opening memory.stat: %s", strerror(errno));
         return 0;
@@ -93,12 +116,17 @@ unsigned long cgroup_get_total_cache(const char *cgroup_name) {
 }
 
 int cgroup_validate(const char *cgroup_name) {
-    char buf[256];
+    char path_str[PATH_MAX + 1];
     int fd;
+    int printed;
 
     // Check if the cgroup exists
-    snprintf(buf, sizeof(buf), "%s/%s", CGROUP_PATH_PREFIX, cgroup_name);
-    fd = open(buf, O_RDONLY);
+    printed = snprintf(path_str, sizeof(path_str), "%s/%s", CGROUP_PATH_PREFIX, cgroup_name);
+    if (printed < 0 || printed >= sizeof(path_str)) {
+        syslog(LOG_ERR, "Path to the cgroup is too long\n");
+        return 1;
+    }
+    fd = open(path_str, O_RDONLY);
     if (fd == -1) {
         syslog(LOG_ERR, "open cgroup: %s", strerror(errno));
         return 1;
@@ -106,8 +134,12 @@ int cgroup_validate(const char *cgroup_name) {
     close(fd);
 
     // Check if the cgroup.event_control file exists
-    snprintf(buf, sizeof(buf), "%s/%s/cgroup.event_control", CGROUP_PATH_PREFIX, cgroup_name);
-    fd = open(buf, O_RDONLY);
+    printed = snprintf(path_str, sizeof(path_str), "%s/%s/cgroup.event_control", CGROUP_PATH_PREFIX, cgroup_name);
+    if (printed < 0 || printed >= sizeof(path_str)) {
+        syslog(LOG_ERR, "Path to the cgroup.event_control file is too long\n");
+        return 1;
+    }
+    fd = open(path_str, O_RDONLY);
     if (fd == -1) {
         syslog(LOG_ERR, "open cgroup.event_control: %s", strerror(errno));
         syslog(LOG_WARNING, "Note, that event control file is not available on the CONFIG_PREEMPT_RT enabled system\n");
@@ -116,8 +148,12 @@ int cgroup_validate(const char *cgroup_name) {
     close(fd);
 
     // Check if the memory.pressure_level file exists
-    snprintf(buf, sizeof(buf), "%s/%s/memory.pressure_level", CGROUP_PATH_PREFIX, cgroup_name);
-    fd = open(buf, O_RDONLY);
+    printed = snprintf(path_str, sizeof(path_str), "%s/%s/memory.pressure_level", CGROUP_PATH_PREFIX, cgroup_name);
+    if (printed < 0 || printed >= sizeof(path_str)) {
+        syslog(LOG_ERR, "Path to the memory.pressure_level file is too long\n");
+        return 1;
+    }
+    fd = open(path_str, O_RDONLY);
     if (fd == -1) {
         syslog(LOG_ERR, "open memory.pressure_level: %s", strerror(errno));
         return 1;
@@ -128,19 +164,24 @@ int cgroup_validate(const char *cgroup_name) {
 }
 
 int cgroup_get_memory_limit(const char *cgroup_name, unsigned long *limit) {
-    char limit_file[256];
+    char path_str[PATH_MAX + 1];
     int fd;
     ssize_t nread;
+    int printed;
 
     // Open memory.limit_in_bytes file
-    snprintf(limit_file, sizeof(limit_file), "%s/%s/memory.limit_in_bytes", CGROUP_PATH_PREFIX, cgroup_name);
-    fd = open(limit_file, O_RDONLY);
+    printed = snprintf(path_str, sizeof(path_str), "%s/%s/memory.limit_in_bytes", CGROUP_PATH_PREFIX, cgroup_name);
+    if (printed < 0 || printed >= sizeof(path_str)) {
+        syslog(LOG_ERR, "Path to the limit_in_bytes file is too long\n");
+        return -1;
+    }
+    fd = open(path_str, O_RDONLY);
     if (fd == -1) {
         syslog(LOG_ERR, "opening limit_in_bytes: %s", strerror(errno));
         return -1;
     }
 
-    char str_limit[256];
+    char str_limit[MAX_MEMORY_STRING_LENGTH];
 
     // Read the limit
     nread = read(fd, &str_limit, sizeof(str_limit));
@@ -223,7 +264,7 @@ void* cgroups_events_monitor_thread(void *args) {
     while (select(max_fd + 1, &event_fds, NULL, NULL, NULL) > 0) {
         uint64_t counter;
         bool handling_necessary = false;
-        char event_msg[256];
+        char event_msg[MAX_EVENT_MSG_LENGTH];
 
         for (int i = 0; i < events_count; i++) {
             event_desc_t event = events[i];
@@ -275,6 +316,7 @@ void* cgroups_events_monitor_thread(void *args) {
 
 bool cgroup_adjust_memory_limit(const char *cgroup_name, int adjust_by_mb)
 {
+    int printed;
     // Convert the limit in MB to bytes
     long adjust_by_bytes;
     if (convert_mb_to_bytes_signed(adjust_by_mb, &adjust_by_bytes) != 0) {
@@ -309,14 +351,18 @@ bool cgroup_adjust_memory_limit(const char *cgroup_name, int adjust_by_mb)
     ssize_t nwritten;
 
     // Open memory.limit_in_bytes file
-    snprintf(limit_file, sizeof(limit_file), "%s/%s/memory.limit_in_bytes", CGROUP_PATH_PREFIX, cgroup_name);
+    printed = snprintf(limit_file, sizeof(limit_file), "%s/%s/memory.limit_in_bytes", CGROUP_PATH_PREFIX, cgroup_name);
+    if (printed < 0 || printed >= sizeof(limit_file)) {
+        syslog(LOG_ERR, "Path to the limit_in_bytes file is too long\n");
+        return false;
+    }
     fd = open(limit_file, O_WRONLY);
     if (fd == -1) {
         syslog(LOG_ERR, "opening limit_in_bytes: %s", strerror(errno));
         return false;
     }
 
-    char str_limit[256];
+    char str_limit[MAX_MEMORY_STRING_LENGTH];
     snprintf(str_limit, sizeof(str_limit), "%lu", current_limit + adjust_by_bytes);
 
     // Write the new limit
