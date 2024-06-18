@@ -253,10 +253,13 @@ type destinationBitset uint
 
 // Destination types, where info should be sent
 const (
-	ControllerDest destinationBitset = 1
-	LPSDest                          = 2
-	LOCDest                          = 4
+	ControllerDest destinationBitset = (1 << 0)
+	LPSDest                          = (1 << 1)
+	LOCDest                          = (1 << 2)
 	AllDest                          = ControllerDest | LPSDest | LOCDest
+
+	// Request should be send anyway
+	ForceSend = (1 << 8)
 )
 
 // queueInfoToDest - queues "info" requests according to the specified
