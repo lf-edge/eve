@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile-upstream:1.5.0-rc2-labs
 FROM lfedge/eve-alpine:1f7685f95a475c6bbe682f0b976f12180b6c8726 as zfs
 ENV BUILD_PKGS git patch ca-certificates util-linux build-base gettext-dev libtirpc-dev automake autoconf \
     libtool linux-headers attr-dev e2fsprogs-dev glib-dev openssl-dev util-linux-dev coreutils
@@ -42,3 +43,18 @@ FROM scratch
 COPY --from=zfs /out/ /
 # hadolint ignore=DL3020
 ADD rootfs/ /
+### Create system-wide groups and users ###
+# add initial root user
+RUN touch /etc/group && touch /etc/passwd
+RUN addgroup -g 0 root
+RUN adduser -D -H -h /root -s /bin/sh -g "root" -G root -u 0 root
+# add nobody user and group
+RUN addgroup -g 65534 nobody
+RUN adduser -D -H -h /nonexistent -s /bin/false -g "nobody" -u 65534 -G nobody nobody
+# add tpms group so /dev/tpm* is accessible to non-root users via tpms group,
+# the group is set for /dev/tpm* in the mdev.conf file
+RUN addgroup -S tpms
+# setup user and group for vtpm container and allow TPM access via tpms group
+RUN addgroup -S vtpm
+RUN adduser -S -D -H -h /nonexistent -s /bin/false -g "vtpm" -G vtpm vtpm
+RUN addgroup vtpm tpms
