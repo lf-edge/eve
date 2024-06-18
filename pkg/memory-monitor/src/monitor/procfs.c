@@ -15,12 +15,19 @@
 
 #include "procfs.h"
 
+#define CHECK_INTERVAL_SEC 5
+
+// The longest interesting line in the status file is "VmRSS: <20 digits> kB\n", which is less than 256 characters.
+// So, 256 should be enough.
+#define LONGEST_INTERESTING_LINE 256
+
 static unsigned long procfs_get_rss(int pid) {
-    char path[PATH_MAX];
+    char path[PATH_MAX + 1];
     FILE *fp;
     unsigned long rss = 0;
 
     // Create the path to the status file for the process
+    // PID cannot be too long, so the path should not exceed PATH_MAX
     sprintf(path, "/proc/%d/status", pid);
 
     // Open the file
@@ -30,7 +37,10 @@ static unsigned long procfs_get_rss(int pid) {
         return 0;
     }
 
-    char line[256];
+    char line[LONGEST_INTERESTING_LINE];
+    // If the line is longer than LONGEST_INTERESTING_LINE, it will be truncated and read in parts.
+    // In any case, we will not skip the line of interest as it always fits into the buffer and starts with "VmRSS"
+    // and there is a newline character at the end of the previous line.
     while (fgets(line, sizeof(line), fp) != NULL) {
         // If the line starts with "VmRSS", extract the value
         if (strncmp(line, "VmRSS", strlen("VmRSS")) == 0) {
@@ -65,7 +75,7 @@ int procfs_check_rss(int pid, unsigned long threshold) {
             // The handler script has already been executed
             return 0;
         syslog(LOG_INFO, "----- Zedbox threshold is reached -----\n");
-        char event_msg[256];
+        char event_msg[MAX_EVENT_MSG_LENGTH];
         sprintf(event_msg, "Zedbox threshold is reached: RSS = %lu bytes (threshold = %lu bytes)\n", rss, threshold);
         // Execute the script
         handler_executed = true;
@@ -87,7 +97,7 @@ void* procfs_monitor_thread(void *args) {
     free(args);
     // Check the RSS of the process every 10 seconds
     while (!procfs_check_rss(pid, threshold)) {
-        sleep(5);
+        sleep(CHECK_INTERVAL_SEC);
     }
     // We should never reach this point
     syslog(LOG_ERR, "Exiting the procfs monitor thread\n");

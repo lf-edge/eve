@@ -22,6 +22,12 @@
 
 #define ADJUST_MEMORY_LIMIT 50
 
+
+// Usually, the maximum length of a PID is 32768 characters, but even if it's a 64-bit value, it's unlikely to be more
+// than 20 characters. So, let's use 32 characters as the maximum length.
+#define MAX_PID_LENGTH 32
+
+
 extern int handler_log_fd_g;
 extern char binary_location_g[PATH_MAX + 1];
 
@@ -34,6 +40,7 @@ pthread_mutex_t handler_mutex = PTHREAD_MUTEX_INITIALIZER;
 int run_handler(const char *script_name, const char *event_msg) {
     pthread_mutex_lock(&handler_mutex);
     char script_path[PATH_MAX +1];
+    int printed;
 
     // Get the timestamp, so it's the same for the event log and the output directory name
     time_t t = time(NULL);
@@ -45,12 +52,17 @@ int run_handler(const char *script_name, const char *event_msg) {
     syslog(LOG_INFO, "Running handler script\n");
 
     // Create a name of the new output directory output/YYYY-MM-DD-HH-mm-SS
-    char output_dir[256];
+    char output_dir[PATH_MAX + 1];
     struct tm tm = *localtime(&t);
-    snprintf(output_dir, sizeof(output_dir), "%s/%04d-%02d-%02d-%02d-%02d-%02d",
+    printed = snprintf(output_dir, sizeof(output_dir), "%s/%04d-%02d-%02d-%02d-%02d-%02d",
              LOG_DIR,
              tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
              tm.tm_hour, tm.tm_min, tm.tm_sec);
+    if (printed < 0 || printed >= sizeof(output_dir)) {
+        syslog(LOG_ERR, "Failed to create the output directory name\n");
+        pthread_mutex_unlock(&handler_mutex);
+        return 1;
+    }
 
     // Create the output directory
     if (mkdir(output_dir, 0755) == -1) {
@@ -59,50 +71,44 @@ int run_handler(const char *script_name, const char *event_msg) {
         return 1;
     }
 
-    #pragma GCC diagnostic push
-    #pragma GCC diagnostic ignored "-Wformat-truncation"
-
     // Put a metadata file with the event message to the output directory
     char metadata_file[PATH_MAX + 1];
-    if (strlen(output_dir) + strlen(EVENT_METADATA_FILE) + 1 > sizeof(metadata_file)) {
-        syslog(LOG_ERR, "Path to the metadata file is too long\n");
+
+    printed = snprintf(metadata_file, sizeof(metadata_file), "%s/%s", output_dir, EVENT_METADATA_FILE);
+    if (printed < 0 || printed >= sizeof(metadata_file)) {
+        syslog(LOG_ERR, "Failed to create the metadata file path\n");
         pthread_mutex_unlock(&handler_mutex);
         return 1;
     }
-
-    snprintf(metadata_file, sizeof(metadata_file), "%s/%s", output_dir, EVENT_METADATA_FILE);
     FILE *metadata_fp = fopen(metadata_file, "w");
     if (metadata_fp == NULL) {
         syslog(LOG_ERR, "fopen: %s", strerror(errno));
         pthread_mutex_unlock(&handler_mutex);
         return 1;
     }
-    char eve_version[256];
+    char eve_version[MAX_EVE_VERSION_LENGTH];
     if (get_eve_release(eve_version) == 0) {
         fprintf(metadata_fp, "EVE version: %s\n", eve_version);
     }
     fprintf(metadata_fp, "%s", event_msg);
     fclose(metadata_fp);
 
-    // A check to use sprintf safely, so we can suppress the warning
-    if (strlen(binary_location_g) + strlen(script_name) + 1 > sizeof(script_path)) {
-        syslog(LOG_ERR, "Path to the script is too long\n");
+    // Construct the path to the script
+    printed = snprintf(script_path, sizeof(script_path), "%s/%s", binary_location_g, script_name);
+    if (printed < 0 || printed >= sizeof(script_path)) {
+        syslog(LOG_ERR, "Failed to create the script path\n");
         pthread_mutex_unlock(&handler_mutex);
         return 1;
     }
-
-    // Construct the path to the script
-    snprintf(script_path, sizeof(script_path), "%s/%s", binary_location_g, script_name);
 
     // Create the cmd to run the script: script_path output_dir
     char cmd[PATH_MAX + 1];
-    if (strlen(script_path) + strlen(output_dir) + 1 > sizeof(cmd)) {
-        syslog(LOG_ERR, "Command to run the script is too long\n");
+    printed = snprintf(cmd, sizeof(cmd), "%s %s", script_path, output_dir);
+    if (printed < 0 || printed >= sizeof(cmd)) {
+        syslog(LOG_ERR, "Failed to create the command\n");
         pthread_mutex_unlock(&handler_mutex);
         return 1;
     }
-    snprintf(cmd, sizeof(cmd), "%s %s", script_path, output_dir);
-    #pragma GCC diagnostic pop
 
     // Check the handler log fd
     if (handler_log_fd_g == -1) {
@@ -176,7 +182,7 @@ static pthread_t run_procfs_monitor(config_t *config) {
         // Let's consider 0 as an invalid thread id
         return 0;
     }
-    char pid_str[10];
+    char pid_str[MAX_PID_LENGTH];
     if (fgets(pid_str, sizeof(pid_str), pid_file) == NULL) {
         syslog(LOG_ERR, "reading zedbox.pid: %s", strerror(errno));
         fclose(pid_file);
@@ -326,6 +332,7 @@ int monitor_start(config_t *config, resources_to_cleanup_t *resources_to_cleanup
         return 1;
     }
 
+    // 2 is for the procfs monitor and the cgroups events monitor
     resources_to_cleanup->threads_to_finish.threads = malloc(sizeof(pthread_t) * 2);
     resources_to_cleanup->threads_to_finish.threads[0] = 0;
     resources_to_cleanup->threads_to_finish.threads[1] = 0;
