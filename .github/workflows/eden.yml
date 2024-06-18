@@ -20,7 +20,6 @@ concurrency:
 
 jobs:
   get-run-id:
-    if: github.event.review.state == 'approved'
     runs-on: ubuntu-latest
     outputs:
       result: ${{ steps.get-run-id.outputs.result }}
@@ -58,13 +57,12 @@ jobs:
       matrix:
         arch: [amd64]
         hv: [kvm]
-    if: github.event.review.state == 'approved'
-    uses: lf-edge/eden/.github/workflows/test.yml@0.9.7
+    uses: lf-edge/eden/.github/workflows/test.yml@milan-eden-test
     with:
       eve_image: "evebuild/pr:${{ github.event.pull_request.number  }}"
       eve_artifact_name: eve-${{ matrix.hv }}-${{ matrix.arch }}
       artifact_run_id: ${{ needs.get-run-id.outputs.result }}
-      eden_version: "0.9.7"
+      eden_version: "milan-eden-test"
 
   test_suite_master:
     if: github.ref == 'refs/heads/master'
