@@ -43,7 +43,7 @@ normalize_pids() {
     sorted_processes_file=$2
     sort -u "$processes_file" -o "$processes_file"
     while read -r pid; do
-       eve exec debug ps -p "$pid" -o pid=,rss=
+       ps -p "$pid" -o pid=,rss=
     done < "$processes_file" | sort -k2,2 -n -r | awk '{print $1}' > "$sorted_processes_file"
 }
 
@@ -72,12 +72,12 @@ show_pid_mem_usage() {
       # Process is gone
       continue
     fi
-    name=$(eve exec debug ps -p "$pid" -o cmd=)
+    name=$(ps -p "$pid" -o cmd=)
     if [ "$detailed" -eq 1 ]; then
       echo "Process $name PID: $pid" >> "$output_file"
     fi
     # Get the memory usage according to ps
-    ps_rss=$(eve exec debug ps -p "$pid" -o rss= | tr -d ' ')
+    ps_rss=$(ps -p "$pid" -o rss= | tr -d ' ')
     # Read the smaps file line by line
     rss_pid=0
     tmp_smaps=$(mktemp)
@@ -159,7 +159,7 @@ logread | grep logMemAllocationSites > "$current_output_dir/allocations_pillar.o
 
 # ==== Trigger a heap dump for Pillar ====
 
-eve exec debug curl --retry-all-errors --retry 5 -m 5 "http://127.1:6543/debug/pprof/heap?debug=1" > "$current_output_dir/heap_pillar.out"
+curl --retry-all-errors --retry 5 -m 5 "http://127.1:6543/debug/pprof/heap?debug=1" > "$current_output_dir/heap_pillar.out"
 
 eve http-debug stop
 

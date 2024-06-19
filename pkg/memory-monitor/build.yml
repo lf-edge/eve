@@ -6,13 +6,14 @@ config:
     - /dev:/dev # for syslog (/dev/log)
     - /run:/run:ro # for the zedbox pid file
     - /sys/fs/cgroup/memory/:/sys/fs/cgroup/memory/ # to read and modify memory limits
-    - /proc:/proc #:ro to read memory usage in /proc/<PID> and RW for the eve command (???)
-    - /bin:/bin:ro # for the eve command
-    - /usr/bin:/usr/bin:ro # for the ctr command (it's a dependency of the eve command, bleeugh)
+    - /proc:/proc:ro #:ro to read memory usage in /proc/<PID>/*
+    - /bin/eve:/bin/eve
+    - /usr/bin/ctr:/usr/bin/ctr
+    - /usr/bin/logread:/usr/bin/logread
   pid: host
   capabilities:
-    - all
+    - CAP_DAC_OVERRIDE # to open cgroup.event_control files
+    - CAP_SYS_PTRACE # to read /proc/<PID>/*
   devices:
     - path: all
       type: a
-  privileged: yes
