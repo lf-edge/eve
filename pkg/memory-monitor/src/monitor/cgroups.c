@@ -252,6 +252,8 @@ void* cgroups_events_monitor_thread(void *args) {
     int max_fd = -1;
     for (int i = 0; i < events_count; i++) {
         event_desc_t event = events[i];
+        if (event.event_fd == -1)
+            continue;
         FD_SET(event.event_fd, &event_fds);
         if (event.event_fd > max_fd) {
             max_fd = event.event_fd;
@@ -305,6 +307,8 @@ void* cgroups_events_monitor_thread(void *args) {
         FD_ZERO(&event_fds);
         for (int i = 0; i < events_count; i++) {
             event_desc_t event = events[i];
+            if (event.event_fd == -1)
+                continue;
             FD_SET(event.event_fd, &event_fds);
         }
     }
