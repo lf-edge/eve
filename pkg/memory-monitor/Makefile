@@ -2,7 +2,15 @@
 # SPDX-License-Identifier: Apache-2.0
 
 CC=gcc
-CFLAGS=-Wall -static -O2
+CFLAGS_SEC=-fstack-protector-strong \
+           -fstack-clash-protection \
+           -fPIE \
+           -D_FORTIFY_SOURCE=2
+LDFLAGS_SEC=-Wl,-z,relro \
+            -Wl,-z,now \
+            -Wl,-z,noexecstack
+CFLAGS=-Wall -g -static -O2 $(CFLAGS_SEC)
+LDFLAGS=$(LDFLAGS_SEC)
 SRC_DIR=src
 OBJ_DIR=obj
 DIST_DIR=dist
@@ -13,7 +21,7 @@ MONITOR_SRC=$(wildcard $(MONITOR_DIR)/*.c)
 MONITOR_OBJ=$(patsubst $(SRC_DIR)/%.c,$(OBJ_DIR)/%.o,$(MONITOR_SRC))
 $(BIN_DIR)/memory-monitor: $(MONITOR_OBJ)
 	@mkdir -p $(BIN_DIR)
-	$(CC) $(CFLAGS) -o $@ $^
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^
 memory-monitor: $(BIN_DIR)/memory-monitor
 
 PRESSURE_DIR=$(SRC_DIR)/pressure
