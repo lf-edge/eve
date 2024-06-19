@@ -1,7 +1,9 @@
 FROM lfedge/eve-alpine:1f7685f95a475c6bbe682f0b976f12180b6c8726 as memory-monitor-build
 
 ENV BUILD_PKGS gcc musl-dev make linux-headers cmake build-base
-ENV PKGS alpine-baselayout musl-utils
+ENV PKGS alpine-baselayout curl strace
+ENV PKGS_arm64 procps
+ENV PKGS_amd64 procps
 RUN eve-alpine-deploy.sh
 
 COPY . /root/memory-monitor
@@ -19,9 +21,6 @@ COPY --from=memory-monitor-build /out/ /
 COPY --from=memory-monitor-build /root/memory-monitor/dist/memory-monitor /sbin/
 COPY --from=memory-monitor-build /root/memory-monitor/dist/memory-monitor-handler.sh /sbin/
 COPY --from=memory-monitor-build /root/memory-monitor/dist/memory-monitor.conf /etc/
-
-# TODO: Later we will use apparmor to confine the memory-monitor. The apparmor profile template is in dist directory.
-# COPY --from=memory-monitor-build /root/memory-monitor/dist/sbin.memory-monitor-handler /etc/apparmor.d/
 
 ENTRYPOINT []
 # Run the memory-monitor with the -f flag to run in foreground, so that the container does not exit
