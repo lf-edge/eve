@@ -877,7 +877,6 @@ func TestVlansAndBonds(test *testing.T) {
 	t.Expect(vlan200.ParentLL).To(BeEquivalentTo("bond-shopfloor"))
 	t.Expect(vlan200.ParentIfName).To(BeEquivalentTo("bond0"))
 	t.Expect(vlan200.MTU).To(BeEquivalentTo(3000))
-	release()
 
 	vlan100AdapterRef := dg.Reference(linux.Adapter{IfName: "shopfloor.100"})
 	item, _, _, found = currentState.Item(vlan100AdapterRef)
