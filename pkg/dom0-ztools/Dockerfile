@@ -49,12 +49,12 @@ RUN touch /etc/group && touch /etc/passwd
 RUN addgroup -g 0 root
 RUN adduser -D -H -h /root -s /bin/sh -g "root" -G root -u 0 root
 # add nobody user and group
-RUN addgroup -g 65534 nobody
-RUN adduser -D -H -h /nonexistent -s /bin/false -g "nobody" -u 65534 -G nobody nobody
+RUN addgroup -g 65534 nogroup
+RUN adduser -D -H -h /nonexistent -s /bin/false -g "nobody" -u 65534 -G nogroup nobody
 # add tpms group so /dev/tpm* is accessible to non-root users via tpms group,
 # the group is set for /dev/tpm* in the mdev.conf file
-RUN addgroup -S tpms
+RUN addgroup -g 100 tpms
 # setup user and group for vtpm container and allow TPM access via tpms group
-RUN addgroup -S vtpm
-RUN adduser -S -D -H -h /nonexistent -s /bin/false -g "vtpm" -G vtpm vtpm
+RUN addgroup -g 101 vtpm
+RUN adduser -D -H -h /nonexistent -s /bin/false -g "vtpm" -G vtpm -u 101 vtpm
 RUN addgroup vtpm tpms
