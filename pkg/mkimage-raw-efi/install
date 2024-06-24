@@ -168,7 +168,56 @@ zfs_umount() {
   umount /root/dev ||:
 }
 
+# XXX post_inventory needs to run in background - do inside client.go?
+# XXX change to /persist/inventory
+post_inventory() {
+    if [ ! -d /config/inventory ]; then
+        return
+    fi
+    cd /config/inventory || exit
+    inventory_server=$(cat ./server)
+    files=$(find . -type f -print | grep -v ^./server)
+    for f in $files; do
+        logmsg "device-steps: posting $f to $inventory_server"
+        curl -X POST "$inventory_server/$f" -H "Content-Type: text/plain" -d "@$f" || return
+    done
+    logmsg "device-steps: done posting $inventory_server"
+    cd || exit
+    rm -rf /config/inventory
+}
+
 logmsg "EVE-OS installation started"
+
+# XXX remove
+ip link show
+
+# Kick off network configuration on eth0 so we can run ntpd and later post
+# inventory
+mkdir -p /var/run/
+mkdir -p /etc/network/if-up.d/
+mkdir -p /etc/network/if-pre-up.d/
+mkdir -p /etc/network/interfaces.d/
+cat <<EOF >/etc/network/interfaces
+auto eth0
+iface eth0 inet dhcp
+EOF
+mkdir -p /etc/conf.d/
+cat <<EOF >/etc/conf.d/ntpd
+NTPD_OPTS="-s"
+EOF
+ifup -av
+# XXX remove
+ls -l /etc/network/interfaces*
+ifconfig
+ip route show
+
+# XXX This is bogus since not from udhcp
+# https://www.unix.com/man-page/suse/8/udhcpc/ - ntpsrv
+ls -l /usr/share/udhcpc/default.script
+ping -c 1 pool.ntp.org
+# Wait until synchronized and force the clock to be set from ntp
+/usr/sbin/ntpd -q -n -g -p pool.ntp.org
+
 # do this just in case
 modprobe usbhid && modprobe usbkbd
 # clean partition tables on disks defined to nuke
@@ -509,6 +558,27 @@ fi
 # Collect the device cert
 if [ -f $DEVICE_CERT_NAME ] && [ -n "$REPORT" ]; then
    cat $DEVICE_CERT_NAME > "$REPORT/device.cert.pem"
+fi
+
+# If we have an inventory server then save report so we can push on first
+# boot
+INVENTORY_SERVER=$(tr ' ' '\012' < /proc/cmdline | sed -n '/eve_inventory_server=/s#eve_inventory_server=##p')
+if [ -n "$INVENTORY_SERVER" ]; then
+    mkdir /config/inventory
+    echo "$INVENTORY_SERVER" >/config/inventory/server
+    cp -rp "$REPORT" /config/inventory/
+    # XXX
+    ls -lR /config/inventory
+    # Try once and if this fails EVE-OS will try again on boot
+    ping -c 1 192.168.1.2
+    ping -c 1 192.168.1.55
+    post_inventory
+    # XXX sleep and try again?
+    ping -c 1 192.168.1.2
+    ping -c 1 192.168.1.254
+    ip route show
+    sleep 5
+    post_inventory
 fi
 
 # finally check whether we are collecting a black box
