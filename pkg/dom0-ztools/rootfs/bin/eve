@@ -183,8 +183,9 @@ case "$1" in
           # Start tio
           tio "$PTY"
           ;;
-   enter) # shellcheck disable=SC2086
-          ${CTR_CMD} t exec -t --exec-id $(basename $(mktemp)) ${2:-pillar} ${3:-sh -l}
+   enter) PROMPT="[${2:-pillar}] \u@\h:\w\$ "
+          # shellcheck disable=SC2086
+          ${CTR_CMD} t exec -t --exec-id $(basename $(mktemp)) ${2:-pillar} ${3:-/bin/sh -lc "export PS1='$PROMPT'; exec /bin/sh"}
           ;;
    enter-user-app) [ -z "$2" ] && help
           # shellcheck disable=SC2046,SC2086
