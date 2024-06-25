@@ -9,7 +9,8 @@ RUN eve-alpine-deploy.sh
 
 # Build makedumpfile
 WORKDIR /tmp/makedumpfile/makedumpfile-1.7.1
-RUN curl -L https://github.com/makedumpfile/makedumpfile/archive/refs/tags/1.7.1.tar.gz | tar -C .. -xzvf -
+ADD https://github.com/makedumpfile/makedumpfile/archive/refs/tags/1.7.1.tar.gz 1.7.1.tar.gz
+RUN tar -C .. -xzvf 1.7.1.tar.gz
 RUN ln -s /usr/lib/libbz2.so.1 /usr/lib/libbz2.so && \
     make LINKTYPE=dynamic && \
     make DESTDIR=/out install
