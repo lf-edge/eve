@@ -10,7 +10,7 @@
 # d) extracting only required bits from tpm2-tss and tpm2-tools
 #    and the server
 
-FROM lfedge/eve-dom0-ztools:0e2f436441764689b37aeeffeb4bea64c3c5a46e as dom0
+FROM lfedge/eve-dom0-ztools:b8eaeec19d373228a4a842374e5de0d50f050853 as dom0
 FROM lfedge/eve-alpine:1f7685f95a475c6bbe682f0b976f12180b6c8726 as build
 ENV BUILD_PKGS linux-headers git gcc g++ autoconf automake libtool doxygen make \
                openssl-dev protobuf-dev gnupg curl-dev patch json-c json-c-dev \

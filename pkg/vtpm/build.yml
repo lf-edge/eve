@@ -1,8 +1,10 @@
 image: eve-vtpm
 org: lfedge
 config:
-  uid: vtpm
-  gid: vtpm
+  # these ids must match the corresponding container specific user/group
+  # created in pkg/dom0-ztools 
+  uid: 101
+  gid: 101
   binds:
     - /dev:/dev
     - /run:/run
