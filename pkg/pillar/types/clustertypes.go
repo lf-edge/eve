@@ -7,7 +7,8 @@ import (
 )
 
 const (
-	ClusterPubPort = "12345"
+	ClusterPubPort    = "12345"
+	ClusterStatusPort = "12346"
 )
 
 // ENClusterAPIConfig XXX temp struct from configitem from controller

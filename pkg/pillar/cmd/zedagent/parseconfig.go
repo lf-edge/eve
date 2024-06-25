@@ -153,7 +153,8 @@ func parseConfig(getconfigCtx *getconfigContext, config *zconfig.EdgeDevConfig,
 			activateNewBaseOS := parseBaseOS(getconfigCtx, config)
 
 			// Parse EdgeNode Cluster configuration
-			parseEdgeNodeClusterConfig(getconfigCtx, config)
+			// XXX comment this out for now
+			//parseEdgeNodeClusterConfig(getconfigCtx, config)
 
 			parseNetworkInstanceConfig(getconfigCtx, config)
 			parseContentInfoConfig(getconfigCtx, config)

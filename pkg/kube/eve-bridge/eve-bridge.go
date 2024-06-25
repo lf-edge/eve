@@ -84,7 +84,11 @@ func parseArgs(args *skel.CmdArgs) (stdinArgs rawJSONStruct, cniVersion,
 	}
 	podName = string(envArgs.K8S_POD_NAME)
 	isVMI = strings.HasPrefix(podName, vmiPodNamePrefix)
+
 	isEveApp = string(envArgs.K8S_POD_NAMESPACE) == eveKubeNamespace
+	if !isVMI && strings.Contains(podName, "-pvc-") && strings.HasPrefix(podName, "cdi-upload-") {
+		isEveApp = false
+	}
 	if envArgs.MAC != "" {
 		mac, err = net.ParseMAC(string(envArgs.MAC))
 		if err != nil {

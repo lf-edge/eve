@@ -24,6 +24,7 @@ search_multus_string="-net"
 config_file="/etc/rancher/k3s/config.yaml"
 k3s_config_file="/etc/rancher/k3s/k3s-config.yaml"
 k3s_last_start_time=""
+clusterStatusPort="12346"
 
 
 logmsg() {
@@ -270,6 +271,28 @@ apply_longhorn_disk_config() {
         node=$1
         kubectl label node "$node" node.longhorn.io/create-default-disk='config'
         kubectl annotate node "$node" node.longhorn.io/default-disks-config='[ { "path":"/persist/vault/volumes", "allowScheduling":true }]'
+}
+
+apply_node_uuid_lable () {
+        node_uuid_len=$(kubectl get nodes -l node-uuid="$DEVUUID" -o json | jq '.items | length')
+        if [ "$node_uuid_len" -eq 0 ]; then
+                logmsg "set node label with uuid $DEVUUID"
+                kubectl label node "$HOSTNAME" node-uuid="$DEVUUID"
+        fi
+}
+
+reapply_node_labes() {
+        apply_node_uuid_lable
+        apply_longhorn_disk_config() "$HOSTNAME"
+        # Check if the node with both labels exists, don't assume above apply worked
+        node_count=$(kubectl get nodes -l node-uuid="$DEVUUID",node.longhorn.io/create-default-disk=config -o json | jq '.items | length')
+
+        if [ "$node_count" -gt 0 ]; then
+                logmsg "Node labels re-applied successfully"
+                touch /var/lib/node-labels-initialized
+        else
+                logmsg "Failed to re-apply node labels"
+        fi
 }
 
 check_overwrite_nsmounter() {
@@ -639,6 +662,9 @@ check_cluster_config_change() {
           # remove previous multus config
           remove_multus_cni
 
+          # need to reapply node labels later
+          rm /var/lib/node-labels-initialized
+
           terminate_k3s
           # XXX needs to start the k3s server with the config and --cluster-reset flag
           # wait it to exit. then continue with normal loop
@@ -674,6 +700,9 @@ check_cluster_config_change() {
 
             # remove previous multus config
             remove_multus_cni
+
+            # need to reapply node labels later
+            rm /var/lib/node-labels-initialized
 
             # kill the process and let the loop to restart k3s
             terminate_k3s
@@ -770,7 +799,16 @@ EOF
         # Check if the join Server is available by kubernetes, wait here until it is ready
         while true; do
           if ! curl --insecure --max-time 2 "https://$join_serverIP:6443" >/dev/null 2>&1; then
-            # https://$join_serverIP:6443 is not responsive, waiting for 10 seconds
+            # get status from cluster server
+            status=$(curl -s "http://$join_serverIP:$clusterStatusPort/status")
+            if [ $? -ne 0 ]; then
+                //logmsg "Failed to connect to the server. Waiting for 10 seconds..."
+            elif [ "$status" != "cluster" ]; then
+                //logmsg "Server is not in 'cluster' status. Waiting for 10 seconds..."
+            else
+                logmsg "Server is in 'cluster' status."
+                break
+            fi
             sleep 10
           fi
           logmsg "curl to Endpoint https://$join_serverIP:6443 ready"
@@ -814,12 +852,13 @@ if [ ! -f /var/lib/all_components_initialized ]; then
         touch /var/lib/edge-node-cluster-mode
         break
     else
-      # if we are not edge-node cluster mode, wait for 5 minutes, then move forward
+      # if we are not edge-node cluster mode, wait for 1 minutes, then move forward
+      # this may not be needed
       if [ ! -f /var/lib/edge-node-cluster-mode ]; then
         current_time=$(date +%s)
         elapsed_time=$((current_time - start_time_wait))
 
-        if [ $elapsed_time -gt 120 ]; then
+        if [ $elapsed_time -gt 60 ]; then
           logmsg "Failed to get the EdgeNodeClusterStatus, exit now, run in single node"
           break
         fi
@@ -891,11 +930,9 @@ if [ ! -f /var/lib/all_components_initialized ]; then
         if [ $node_count_ready -ne 1 ]; then
             continue
         fi
-        node_uuid_len=$(kubectl get nodes -l node-uuid="$DEVUUID" -o json | jq '.items | length')
-        if [ "$node_uuid_len" -eq 0 ]; then
-          logmsg "set node label with uuid $DEVUUID"
-          kubectl label node "$HOSTNAME" node-uuid="$DEVUUID"
-        fi
+
+        # label the node with device uuid
+        apply_node_uuid_lable
 
         if ! are_all_pods_ready; then
                 continue
@@ -961,6 +998,7 @@ if [ ! -f /var/lib/all_components_initialized ]; then
 
         if [ -f /var/lib/kubevirt_initialized ] && [ -f /var/lib/longhorn_initialized ]; then
                 logmsg "All components initialized"
+                touch /var/lib/node-labels-initialized
                 touch /var/lib/all_components_initialized
         fi
 else
@@ -984,10 +1022,8 @@ else
                     continue
                 fi
         else
-                node_uuid_len=$(kubectl get nodes -l node-uuid="$DEVUUID" -o json | jq '.items | length')
-                if [ "$node_uuid_len" -eq 0 ]; then
-                        logmsg "set node label with uuid $DEVUUID"
-                        kubectl label node "$HOSTNAME" node-uuid="$DEVUUID"
+                if [ ! -f /var/lib/node-labels-initialized ]; then
+                        reapply_node_labes
                 fi
                 # Initialize CNI after k3s reboot
                 if [ ! -d /var/lib/cni/bin ] || [ ! -d /opt/cni/bin ]; then

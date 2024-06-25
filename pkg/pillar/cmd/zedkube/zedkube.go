@@ -7,6 +7,7 @@ package zedkube
 
 import (
 	"net"
+	"net/http"
 	"os"
 	"sync"
 	"time"
@@ -31,6 +32,7 @@ const (
 	logcollectInterval   = 30
 	// run VNC file
 	vmiVNCFileName = "/run/zedkube/vmiVNC.run"
+	kubeSvcPrefix  = "10.43.0.0/16"
 )
 
 var (
@@ -75,6 +77,8 @@ type zedkubeContext struct {
 	receiveMap               *ReceiveMap
 	stopMonitor              chan struct{}
 	clusterPubSubStarted     bool
+	quitServer               chan struct{}
+	statusServer             *http.Server
 }
 
 // Run - an zedkube run
@@ -94,6 +98,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	stillRunning := time.NewTicker(stillRunningInterval)
 
 	zedkubeCtx.stopMonitor = make(chan struct{})
+	zedkubeCtx.quitServer = make(chan struct{})
 	zedkubeCtx.appContainerLogger = agentlog.CustomLogInit(logrus.InfoLevel)
 
 	// Get AppInstanceConfig from zedagent
@@ -389,6 +394,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		case <-appLogTimer.C:
 			collectAppLogs(&zedkubeCtx)
 			checkAppsStatus(&zedkubeCtx)
+			checkSVCRoute(&zedkubeCtx)
 			appLogTimer = time.NewTimer(logcollectInterval * time.Second)
 
 		case change := <-subGlobalConfig.MsgChan():
