@@ -107,6 +107,8 @@ type Msrv struct {
 
 	subAppNetworkStatus pubsub.Subscription
 
+	subDeviceNetworkStatus pubsub.Subscription
+
 	// Subscriptions to gather information about
 	// patch envelopes from volumemgr and zedagent
 	// external envelopes have to be downloaded via
@@ -398,6 +400,18 @@ func (msrv *Msrv) initSubscriptions(persist bool) (err error) {
 		return err
 	}
 
+	msrv.subDeviceNetworkStatus, err = msrv.PubSub.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:   "nim",
+		MyAgentName: agentName,
+		TopicImpl:   types.DeviceNetworkStatus{},
+		Activate:    false,
+		WarningTime: warningTime,
+		ErrorTime:   errorTime,
+	})
+	if err != nil {
+		return err
+	}
+
 	// Information about patch envelopes
 	msrv.subPatchEnvelopeInfo, err = msrv.PubSub.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "zedagent",
@@ -467,6 +481,7 @@ func (msrv *Msrv) Activate() error {
 		msrv.subWwanMetrics,
 		msrv.subDomainStatus,
 		msrv.subAppNetworkStatus,
+		msrv.subDeviceNetworkStatus,
 		msrv.subPatchEnvelopeInfo,
 		msrv.subVolumeStatus,
 		msrv.subContentTreeStatus,
@@ -556,6 +571,9 @@ func (msrv *Msrv) Run(ctx context.Context) (err error) {
 
 		case change := <-msrv.subAppNetworkStatus.MsgChan():
 			msrv.subAppNetworkStatus.ProcessChange(change)
+
+		case change := <-msrv.subDeviceNetworkStatus.MsgChan():
+			msrv.subDeviceNetworkStatus.ProcessChange(change)
 
 		case change := <-msrv.subPatchEnvelopeInfo.MsgChan():
 			msrv.subPatchEnvelopeInfo.ProcessChange(change)

@@ -4,6 +4,7 @@
 package types
 
 import (
+	"fmt"
 	"net"
 	"strings"
 	"time"
@@ -1075,7 +1076,8 @@ type AppInstMetaData struct {
 
 // Key : App Instance Metadata unique key
 func (data AppInstMetaData) Key() string {
-	return data.AppInstUUID.String() + "-" + string(data.Type)
+	// because string(data.Type) would return empty string
+	return fmt.Sprintf("%s-%d", data.AppInstUUID.String(), data.Type)
 }
 
 // At the MinSubnetSize there is room for one app instance (.0 being reserved,

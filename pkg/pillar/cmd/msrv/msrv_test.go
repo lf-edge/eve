@@ -4,6 +4,7 @@
 package msrv_test
 
 import (
+	"bytes"
 	"encoding/json"
 	"io/ioutil"
 	"net"
@@ -21,6 +22,120 @@ import (
 	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 )
+
+func TestPostKubeconfig(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewGomegaWithT(t)
+
+	logger := logrus.StandardLogger()
+
+	log := base.NewSourceLogObject(logger, "pubsub", 1234)
+	ps := pubsub.New(pubsub.NewMemoryDriver(), logger, log)
+
+	appNetworkStatus, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName:  "zedrouter",
+		TopicType:  types.AppNetworkStatus{},
+		Persistent: true,
+	})
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+	u, err := uuid.FromString("6ba7b810-9dad-11d1-80b4-000000000000")
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+	err = appNetworkStatus.Publish("6ba7b810-9dad-11d1-80b4-000000000001", types.AppNetworkStatus{
+		UUIDandVersion: types.UUIDandVersion{
+			UUID:    u,
+			Version: "1.0",
+		},
+		AppNetAdapterList: []types.AppNetAdapterStatus{
+			{
+				AllocatedIPv4Addr: net.ParseIP("192.168.1.1"),
+			},
+		},
+	})
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+
+	devNetStatusPub, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName:  "nim",
+		TopicType:  types.DeviceNetworkStatus{},
+		Persistent: true,
+	})
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+	devNetStat := types.DeviceNetworkStatus{
+		Ports: []types.NetworkPortStatus{
+			{
+				IfName: "eth0",
+				AddrInfoList: []types.AddrInfo{
+					{
+						Addr: net.ParseIP("192.168.1.1"),
+					},
+				},
+			},
+		},
+	}
+	err = devNetStatusPub.Publish("6ba7b810-9dad-11d1-80b4-000000000002", devNetStat)
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+
+	netInstance, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName:  "zedrouter",
+		TopicType:  types.NetworkInstanceStatus{},
+		Persistent: true,
+	})
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+	niStatus := types.NetworkInstanceStatus{
+		NetworkInstanceInfo: types.NetworkInstanceInfo{
+			IPAssignments: map[string]types.AssignedAddrs{"k": {
+				IPv4Addr: net.ParseIP("192.168.1.1"),
+			}},
+		},
+		SelectedUplinkIntfName: "eth0",
+	}
+	err = netInstance.Publish("6ba7b810-9dad-11d1-80b4-000000000003", niStatus)
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+
+	srv := &msrv.Msrv{
+		Log:    log,
+		PubSub: ps,
+		Logger: logger,
+	}
+
+	dir, err := ioutil.TempDir("/tmp", "msrv_test")
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+	defer os.RemoveAll(dir)
+
+	err = srv.Init(dir, true)
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+
+	err = srv.Activate()
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+
+	handler := srv.MakeMetadataHandler()
+
+	var jsonStr = []byte(`{"hello":"world"}`)
+	descReq := httptest.NewRequest(http.MethodPost, "/eve/v1/kubeconfig", bytes.NewBuffer(jsonStr))
+	descReq.Header.Set("Content-Type", "application/json")
+	descReq.RemoteAddr = "192.168.1.1:0"
+	descResp := httptest.NewRecorder()
+
+	handler.ServeHTTP(descResp, descReq)
+	g.Expect(descResp.Code).To(gomega.Equal(http.StatusOK))
+
+	subPatchUsage, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:   "msrv",
+		MyAgentName: "test",
+		TopicImpl:   types.AppInstMetaData{},
+		Activate:    true,
+		Persistent:  true,
+	})
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+
+	items := subPatchUsage.GetAll()
+	expected := types.AppInstMetaData{
+		AppInstUUID: u,
+		Data:        jsonStr,
+		Type:        types.AppInstMetaDataTypeKubeConfig,
+	}
+
+	g.Expect(items[expected.Key()]).To(gomega.BeEquivalentTo(expected))
+}
 
 func TestRequestPatchEnvelopes(t *testing.T) {
 	t.Parallel()
