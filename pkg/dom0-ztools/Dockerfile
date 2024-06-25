@@ -58,3 +58,5 @@ RUN addgroup -g 100 tpms
 RUN addgroup -g 101 vtpm
 RUN adduser -D -H -h /nonexistent -s /bin/false -g "vtpm" -G vtpm -u 101 vtpm
 RUN addgroup vtpm tpms
+# setup group for disk access, mdev handling
+RUN addgroup -g 6 disk
