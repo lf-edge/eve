@@ -436,6 +436,9 @@ func checkSVCRoute(ctx *zedkubeContext) {
 		break
 	}
 
+	if config == nil {
+		return
+	}
 	exist, err := checkKubeSVCRouteExist(ctx, config)
 	if err != nil {
 		log.Errorf("checkSVCROutes: checkKubeSVCRouteExist failed: %v", err)
@@ -485,7 +488,7 @@ func statusHandler(w http.ResponseWriter, r *http.Request, ctx *zedkubeContext) 
 		fmt.Fprint(w, "")
 		return
 	}
-	labelSelector := metav1.LabelSelector{MatchLabels: map[string]string{"node-uuid": ctx.nodeuuid.String()}}
+	labelSelector := metav1.LabelSelector{MatchLabels: map[string]string{"node-uuid": ctx.nodeuuid}}
 	options := metav1.ListOptions{LabelSelector: metav1.FormatLabelSelector(&labelSelector)}
 	nodes, err := clientset.CoreV1().Nodes().List(context.Background(), options)
 	if err != nil {
