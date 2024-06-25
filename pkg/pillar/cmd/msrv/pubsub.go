@@ -43,7 +43,15 @@ func (srv *Msrv) getExternalIPForApp(remoteIP net.IP) (net.IP, int) {
 		// Nothing to report */
 		return nil, http.StatusNoContent
 	}
-	ip, err := types.GetLocalAddrAnyNoLinkLocal(*srv.deviceNetworkStatus,
+
+	dnStatus, err := srv.subDeviceNetworkStatus.Get("global")
+	if err != nil {
+		srv.Log.Error(fmt.Sprintf("cannot fetch device network status: %s", err))
+		return nil, http.StatusInternalServerError
+	}
+
+	dns := dnStatus.(types.DeviceNetworkStatus)
+	ip, err := types.GetLocalAddrAnyNoLinkLocal(dns,
 		0, netstatus.SelectedUplinkIntfName)
 	if err != nil {
 		srv.Log.Errorf("getExternalIPForApp: No externalIP for %s: %s",
