@@ -73,9 +73,11 @@ void term_handler(int signo) {
 
 void hup_handler(int signo) {
     (void)signo; // Unused
+    int backup_errno = errno;
     sem_post(&reload_semaphore);
     // Stop the thread
     onreload_cleanup();
+    errno = backup_errno;
 }
 
 int main(int argc, char *argv[]) {
