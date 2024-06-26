@@ -248,9 +248,9 @@ static pthread_t run_cgroups_events_monitor(config_t *config, fds_to_close_t *fd
             .cgroup_name = EVE_CGROUP,
             .control_fd = eve_control_fd,
             .type = PRESSURE_EVENT,
-            // Use "medium" pressure level for the eve cgroup, as "low" is triggered too often,
+            // Use "critical" pressure level for the eve cgroup, as "low" and "medium" are triggered too often,
             // for example, when the system reclaim the memory used by the cache
-            .pressure_level = PRESSURE_LEVEL_MEDIUM,
+            .pressure_level = PRESSURE_LEVEL_CRITICAL,
             .event_fd = -1, // will be set by the event_register function
             .trigger_fd = -1, // will be set by the event_register function
     };
