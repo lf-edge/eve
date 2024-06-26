@@ -20,6 +20,7 @@
 /pkg/kexec/                   @rouming
 /pkg/kube/                    @zedi-pramodh
 /pkg/measure-config/          @rucoder
+/pkg/memory-monitor/          @OhmSpectator
 /pkg/mkimage-raw-efi/         @jsfakian @zedi-pramodh
 /pkg/mkverification-raw-efi/  @jsfakian
 /pkg/new-kernel/              @rucoder @rene @rouming @shjala
