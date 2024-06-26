@@ -205,16 +205,11 @@ int cgroup_get_memory_limit(const char *cgroup_name, unsigned long *limit) {
         }
     }
 
-    // Convert the string to an unsigned long
-    char* endptr;
-    *limit = strtoul(str_limit, &endptr, 10);
-    if (errno == ERANGE && *limit == ULONG_MAX) {
-        syslog(LOG_ERR, "strtoul: %s", strerror(errno));
-        syslog(LOG_INFO, "Limit value is out of range\n");
-        close(fd);
-        return -1;
-    } else if (endptr == &str_limit[0]) {
-        syslog(LOG_ERR, "strtoul: %s", strerror(errno));
+    // Convert the string to the unsigned long
+    bool error;
+    *limit = strtoudec(str_limit, &error);
+    if (error) {
+        syslog(LOG_ERR, "strtoudec: %s", strerror(errno));
         close(fd);
         return -1;
     }
