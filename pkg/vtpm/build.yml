@@ -5,6 +5,8 @@ config:
   # created in pkg/dom0-ztools 
   uid: 101
   gid: 101
+  # give container access to the host TPM device via tpms group
+  additionalGids: [100]
   binds:
     - /dev:/dev
     - /run:/run
