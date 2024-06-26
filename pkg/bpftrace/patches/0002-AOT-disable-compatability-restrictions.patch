@@ -1,0 +1,79 @@
+From 98e7fbe94420452d5274372340c78be2c3f4c62e Mon Sep 17 00:00:00 2001
+From: Christoph Ostarek <christoph@zededa.com>
+Date: Mon, 4 Mar 2024 16:26:32 +0100
+Subject: [PATCH 2/3] AOT: disable compatability restrictions
+
+these don't apply to EVE as we create the code on
+the same kernel as on the destination device
+
+Signed-off-by: Christoph Ostarek <christoph@zededa.com>
+---
+ src/ast/passes/portability_analyser.cpp | 13 +++++++++----
+ 1 file changed, 9 insertions(+), 4 deletions(-)
+
+diff --git a/src/ast/passes/portability_analyser.cpp b/src/ast/passes/portability_analyser.cpp
+index e83a6e44..05e39f0b 100644
+--- a/src/ast/passes/portability_analyser.cpp
++++ b/src/ast/passes/portability_analyser.cpp
+@@ -47,11 +47,12 @@ void PortabilityAnalyser::visit(Builtin &builtin)
+   // `struct task_struct` is unstable across kernel versions and configurations.
+   // This makes it inherently unportable. We must block it until we support
+   // field access relocations.
+-  if (builtin.ident == "curtask")
+-  {
++  /*
++  if (builtin.ident == "curtask") {
+     LOG(ERROR, builtin.loc, err_)
+         << "AOT does not yet support accessing `curtask`";
+   }
++  */
+ }
+
+ void PortabilityAnalyser::visit(Call &call)
+@@ -71,11 +72,13 @@ void PortabilityAnalyser::visit(Call &call)
+   // resolved during codegen and the value embedded into the bytecode.  For AOT
+   // to support cgroupid(), the cgroupid must be resolved at runtime and fixed
+   // up during load time.
++  /*
+   if (call.func == "kaddr" || call.func == "uaddr" || call.func == "cgroupid")
+   {
+     LOG(ERROR, call.loc, err_)
+         << "AOT does not yet support " << call.func << "()";
+   }
++  */
+ }
+
+ void PortabilityAnalyser::visit(Cast &cast)
+@@ -87,7 +90,7 @@ void PortabilityAnalyser::visit(Cast &cast)
+   // portable. `args` for k[ret]funcs are type checked by the kernel and may
+   // also be considered stable. For AOT to fully support field accesses, we
+   // need to relocate field access at runtime.
+-  LOG(ERROR, cast.loc, err_) << "AOT does not yet support struct casts";
++//  LOG(ERROR, cast.loc, err_) << "AOT does not yet support struct casts";
+ }
+
+ void PortabilityAnalyser::visit(AttachPoint &ap)
+@@ -99,17 +102,19 @@ void PortabilityAnalyser::visit(AttachPoint &ap)
+   // and offsets and type information is embedded into the bytecode. For AOT
+   // support, this analyzing must be done during runtime and fixed up during
+   // load time.
++  /*
+   if (type == ProbeType::usdt)
+   {
+     LOG(ERROR, ap.loc, err_) << "AOT does not yet support USDT probes";
+   }
++  */
+   // While userspace watchpoint probes are technically portable from codegen
+   // point of view, they require a PID or path via cmdline to resolve address.
+   // watchpoint probes are also API-unstable and need a further change
+   // (see https://github.com/iovisor/bpftrace/issues/1683).
+   //
+   // So disable for now and re-evalulate at another point.
+-  else if (type == ProbeType::watchpoint || type == ProbeType::asyncwatchpoint)
++  if (type == ProbeType::watchpoint || type == ProbeType::asyncwatchpoint)
+   {
+     LOG(ERROR, ap.loc, err_) << "AOT does not yet support watchpoint probes";
+   }
+--
+2.45.1
+
