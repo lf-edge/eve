@@ -59,7 +59,13 @@ void config_read(config_t *config) {
                 config->cgroup_pillar_threshold_bytes = DEFAULT_CGROUP_PILLAR_THRESHOLD_MB << 20;
             }
         } else if (strcmp(key, "PROC_ZEDBOX_THRESHOLD_MB") == 0) {
-            threshold = strtoul(value, NULL, 10);
+            threshold = strtoudec(value, &error);
+            if (error) {
+                syslog(LOG_WARNING, "Invalid value for PROC_ZEDBOX_THRESHOLD_MB: %s, using default value", value);
+                config->proc_zedbox_threshold_bytes = DEFAULT_PROC_ZEDBOX_THRESHOLD_MB << 20;
+            } else {
+                config->proc_zedbox_threshold_bytes = threshold << 20;
+            }
             if (convert_mb_to_bytes(threshold, &config->proc_zedbox_threshold_bytes) != 0) {
                 syslog(LOG_WARNING, "Invalid value for PROC_ZEDBOX_THRESHOLD_MB: %s, using default value", value);
                 config->proc_zedbox_threshold_bytes = DEFAULT_PROC_ZEDBOX_THRESHOLD_MB << 20;
