@@ -59,12 +59,14 @@ jobs:
         arch: [amd64]
         hv: [kvm]
     if: github.event.review.state == 'approved'
-    uses: lf-edge/eden/.github/workflows/test.yml@0.9.8
+    uses: lf-edge/eden/.github/workflows/test.yml@pavel-test-branch
     with:
       eve_image: "evebuild/pr:${{ github.event.pull_request.number  }}"
       eve_artifact_name: eve-${{ matrix.hv }}-${{ matrix.arch }}
       artifact_run_id: ${{ needs.get-run-id.outputs.result }}
-      eden_version: "0.9.8"
+      eden_version: "pavel-test-branch"
+    secrets: inherit
+
 
   test_suite_master:
     if: github.ref == 'refs/heads/master'
