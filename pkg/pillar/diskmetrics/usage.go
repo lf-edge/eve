@@ -74,7 +74,6 @@ func SizeFromDir(log *base.LogObject, dirname string) (uint64, error) {
 				// Use full syscall.Stat_t to get the allocated size
 				allocatedBytes, err := StatAllocatedBytes(filename)
 				if err != nil {
-					log.Errorf("StatAllocatedBytes: %s failed %s treating as fully allocated\n", filename, err)
 					allocatedBytes = uint64(location.Size())
 				}
 				// Fully Allocated: don't use allocated bytes
