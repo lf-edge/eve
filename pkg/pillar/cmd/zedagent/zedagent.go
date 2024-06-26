@@ -1717,7 +1717,7 @@ func initPostOnboardSubs(zedagentCtx *zedagentContext) {
 	// before Modify handler is called by SubscriptionImpl.populate()
 	// (only needed for persistent subs).
 	zedagentCtx.subAppInstMetaData, err = ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:     "zedrouter",
+		AgentName:     "msrv",
 		MyAgentName:   agentName,
 		TopicImpl:     types.AppInstMetaData{},
 		Activate:      false,
@@ -1948,7 +1948,7 @@ func initPostOnboardSubs(zedagentCtx *zedagentContext) {
 		log.Fatal(err)
 	}
 	zedagentCtx.subPatchEnvelopeUsage, err = ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:   "zedrouter",
+		AgentName:   "msrv",
 		MyAgentName: agentName,
 		TopicImpl:   types.PatchEnvelopeUsage{},
 		Activate:    true,
@@ -1958,7 +1958,7 @@ func initPostOnboardSubs(zedagentCtx *zedagentContext) {
 	})
 
 	getconfigCtx.subPatchEnvelopeStatus, err = ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:     "zedrouter",
+		AgentName:     "msrv",
 		MyAgentName:   agentName,
 		TopicImpl:     types.PatchEnvelopeInfo{},
 		Activate:      true,
