@@ -1,6 +1,0 @@
-# linuxkit build template
-#
-# SPDX-License-Identifier: Apache-2.0
-org: lfedge
-image: eve-bpftrace
-network: no
