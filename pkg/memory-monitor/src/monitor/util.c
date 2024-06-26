@@ -103,7 +103,7 @@ long strtodec(const char *str, bool *error) {
     long val = strtol(str, &endptr, 10);
     if ( (errno == ERANGE && (val == LONG_MAX || val == LONG_MIN  )) || // overflow or underflow
          (errno != 0 && val == 0) || // conversion error
-         (*endptr != '\0') || // trailing characters
+         (*endptr != '\0' && *endptr != '\n') || // trailing characters
          (endptr == str) ) { // no digits were found
         syslog(LOG_ERR, "Invalid value: %s", str);
         *error = true;
@@ -119,7 +119,7 @@ unsigned long strtoudec(const char *str, bool *error) {
     unsigned long val = strtoul(str, &endptr, 10);
     if ( (errno == ERANGE && val == ULONG_MAX) || // overflow
          (errno != 0 && val == 0) || // conversion error
-         (*endptr != '\0') || // trailing characters
+         (*endptr != '\0' && *endptr != '\n') || // trailing characters
          (endptr == str) ) { // no digits were found
         syslog(LOG_ERR, "Invalid value: %s", str);
         *error = true;
