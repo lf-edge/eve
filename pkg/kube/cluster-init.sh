@@ -638,39 +638,48 @@ remove_multus_cni() {
 
 check_cluster_config_change() {
 
+    # only check the cluster change when it's fully initialized
+    if [ ! -f /var/lib/all_components_initialized ]; then
+        return 0
+    fi
+
     if [ ! -f "$enc_status_file" ]; then
       #logmsg "EdgeNodeClusterStatus file not found"
       if [ ! -f /var/lib/edge-node-cluster-mode ]; then
         return 0
       else
+        touch /var/lib/convert-to-single-node
+        reboot
         # we only move to single node mode if we have seen the ENC status before
-        if [ "$FoundENCStatus" = true ]; then
-          logmsg "EdgeNodeClusterStatus file not found, but it was seen before, transition to single node mode"
-          # remove the edge-node-cluster-mode file before changing the config file
-          rm /var/lib/edge-node-cluster-mode
+        # comment out this, and change to reboot and create a flag file
 
-          cp "$config_file" "$k3s_config_file"
-          #echo "cluster-reset: true" >> "$k3s_config_file"
-          echo "node-name: $HOSTNAME" >> "$k3s_config_file"
-          logmsg "Reset cluster, adding node-name to single-node config.yaml for $HOSTNAME"
-
-          #provision_cluster_config_file false
-          # rotate the token without given a specific token
-          cluster_token=""
-          change_to_new_token
-            
-          # remove previous multus config
-          remove_multus_cni
-
-          # need to reapply node labels later
-          rm /var/lib/node-labels-initialized
-
-          terminate_k3s
-          # XXX needs to start the k3s server with the config and --cluster-reset flag
-          # wait it to exit. then continue with normal loop
-          # back to single node mode, but the database will stay in etcd instead of sqlite
-          logmsg "WARNING: change the node back to single-node mode, done"
-        fi
+        #if [ "$FoundENCStatus" = true ]; then
+        #  logmsg "EdgeNodeClusterStatus file not found, but it was seen before, transition to single node mode"
+        #  # remove the edge-node-cluster-mode file before changing the config file
+        #  rm /var/lib/edge-node-cluster-mode
+        #
+        #  cp "$config_file" "$k3s_config_file"
+        #  #echo "cluster-reset: true" >> "$k3s_config_file"
+        #  echo "node-name: $HOSTNAME" >> "$k3s_config_file"
+        #  logmsg "Reset cluster, adding node-name to single-node config.yaml for $HOSTNAME"
+        #
+        #  #provision_cluster_config_file false
+        #  # rotate the token without given a specific token
+        #  cluster_token=""
+        #  change_to_new_token
+        #
+        #  # remove previous multus config
+        #  remove_multus_cni
+        #
+        #  # need to reapply node labels later
+        #  rm /var/lib/node-labels-initialized
+        #
+        #  terminate_k3s
+        #  # XXX needs to start the k3s server with the config and --cluster-reset flag
+        #  # wait it to exit. then continue with normal loop
+        #  # back to single node mode, but the database will stay in etcd instead of sqlite
+        #  logmsg "WARNING: change the node back to single-node mode, done"
+        #fi
       fi
     else
       # record we have seen this ENC status file
@@ -836,36 +845,44 @@ fi
 check_start_containerd
 logmsg "containerd started"
 
+if [ -f /var/lib/convert-to-single-node ]; then
+        logmsg "remove /var/lib and copy saved single node /var/lib"
+        rm -rf /var/lib/*
+        tar -xzf /persist/save_kube_var_lib_backup.tar.gz -C /var/lib
+fi
+
 # if this is the first time to run install, we may wait for the
 # cluster config and status
 if [ ! -f /var/lib/all_components_initialized ]; then
-  logmsg "First time for k3s install, wait for the EdgeNodeClusterStatus"
+  logmsg "First time for k3s install"
 
-  start_time_wait=$(date +%s)
+  #start_time_wait=$(date +%s)
   # when it's first time to get into k3s, we give 5 minutes, to see if we will be configured
   # into a cluster mode. If not, then precede to single node mode
   # read in the EdgeNodeClusterStatus
-  while true; do
-    if get_enc_status; then
-        logmsg "got the EdgeNodeClusterStatus successfully"
-        # mark it cluster mode before changing the config file
-        touch /var/lib/edge-node-cluster-mode
-        break
-    else
-      # if we are not edge-node cluster mode, wait for 1 minutes, then move forward
-      # this may not be needed
-      if [ ! -f /var/lib/edge-node-cluster-mode ]; then
-        current_time=$(date +%s)
-        elapsed_time=$((current_time - start_time_wait))
 
-        if [ $elapsed_time -gt 60 ]; then
-          logmsg "Failed to get the EdgeNodeClusterStatus, exit now, run in single node"
-          break
-        fi
-      fi
-      sleep 10
-    fi
-  done
+  # remove this logic, we always go into single mode first, to simplify the logic
+  #while true; do
+  #  if get_enc_status; then
+  #      logmsg "got the EdgeNodeClusterStatus successfully"
+  #      # mark it cluster mode before changing the config file
+  #      touch /var/lib/edge-node-cluster-mode
+  #      break
+  #  else
+  #    # if we are not edge-node cluster mode, wait for 1 minutes, then move forward
+  #    # this may not be needed
+  #    if [ ! -f /var/lib/edge-node-cluster-mode ]; then
+  #      current_time=$(date +%s)
+  #      elapsed_time=$((current_time - start_time_wait))
+  #
+  #      if [ $elapsed_time -gt 60 ]; then
+  #        logmsg "Failed to get the EdgeNodeClusterStatus, exit now, run in single node"
+  #        break
+  #      fi
+  #    fi
+  #    sleep 10
+  #  fi
+  #done
 
   # if we are in edge-node cluster mode prepare the config.yaml and bootstrap-config.yaml
   # for single node mode, we basically use the existing config.yaml
@@ -1000,6 +1017,8 @@ if [ ! -f /var/lib/all_components_initialized ]; then
                 logmsg "All components initialized"
                 touch /var/lib/node-labels-initialized
                 touch /var/lib/all_components_initialized
+                rm  /persist/save_kube_var_lib_backup.tar.gz
+                tar -czf /persist/save_kube_var_lib_backup.tar.gz -C /var/lib .
         fi
 else
         if ! check_start_k3s; then
