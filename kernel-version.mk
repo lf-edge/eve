@@ -36,7 +36,7 @@ ifeq ($(ZARCH), amd64)
 else ifeq ($(ZARCH), arm64)
     ifeq ($(PLATFORM), nvidia)
         KERNEL_FLAVOR=nvidia
-        KERNEL_VERSION=v5.10.104
+        KERNEL_VERSION=v5.10.192
     else
         KERNEL_FLAVOR=generic
         KERNEL_VERSION=v6.1.38
