@@ -9,6 +9,7 @@
 # to be a perfect place to put any other kind of debug info
 # into the package: see abuild/etc/abuild.conf.
 FROM lfedge/eve-recovertpm:0da17f65aba4fb09c83944cf5847dd7b523118b4 as recovertpm
+FROM lfedge/eve-bpftrace:64f87b9dfce42524b0364159a6cc3b88ae3445b2 AS bpftrace
 FROM lfedge/eve-alpine:1f7685f95a475c6bbe682f0b976f12180b6c8726 as build
 ENV BUILD_PKGS abuild curl tar make linux-headers patch g++ git gcc gpg ncurses-dev autoconf openssl-dev zlib-dev
 # Feel free to add additional packages here, but be aware that
@@ -116,6 +117,10 @@ RUN chmod 0700 ./root/.ssh
 RUN cp /etc/passwd /etc/group ./etc/
 RUN ln -s /run ./var/run
 
+RUN mkdir /bpftrace
+COPY --from=bpftrace / /bpftrace
+RUN mkdir -p /bpftrace/bpftrace-aotrt
+
 # add recover-tpm to debug container
 WORKDIR /
 COPY --from=recovertpm /usr/bin/recovertpm /out/usr/bin/recovertpm
@@ -125,5 +130,6 @@ ENTRYPOINT []
 WORKDIR /
 
 COPY --from=build /out/ /
+COPY --from=build /bpftrace/bpftrace-aotrt /
 
 CMD ["/sbin/tini", "/usr/bin/ssh.sh"]
