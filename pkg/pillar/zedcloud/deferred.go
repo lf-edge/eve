@@ -132,6 +132,33 @@ func (ctx *DeferredContext) processQueueTask(ps *pubsub.PubSub,
 	}
 }
 
+// mergeQueuesNoLock merges requests which were not sent (argument)
+// with incoming requests, accumulated in the `ctx.deferredItems`.
+// Context: `ctx.lock` held.
+func (ctx *DeferredContext) mergeQueuesNoLock(notSentReqs []*deferredItem) {
+	if len(ctx.deferredItems) > 0 {
+		// During the send new items land into the `ctx.deferredItems`
+		// queue, which keys can exist in the `notSentReqs` queue.
+		// Traverse requests which were not sent, find items with same
+		// keys in the `ctx.deferredItems` and replace item in the
+		// `notSentReqs`.
+		for i, oldItem := range notSentReqs {
+			for j, newItem := range ctx.deferredItems {
+				if oldItem.key == newItem.key {
+					// Replace item in head
+					notSentReqs[i] = newItem
+					// Remove from tail
+					ctx.deferredItems =
+						append(ctx.deferredItems[:j], ctx.deferredItems[j+1:]...)
+					break
+				}
+			}
+		}
+	}
+	// Merge the rest adding new items to the tail
+	ctx.deferredItems = append(notSentReqs, ctx.deferredItems...)
+}
+
 // handleDeferred try to send all deferred items
 func (ctx *DeferredContext) handleDeferred() bool {
 	ctx.lock.Lock()
@@ -236,8 +263,7 @@ func (ctx *DeferredContext) handleDeferred() bool {
 	}
 
 	ctx.lock.Lock()
-	// Merge with the incoming requests, recently added are in the tail
-	ctx.deferredItems = append(notSentReqs, ctx.deferredItems...)
+	ctx.mergeQueuesNoLock(notSentReqs)
 	if len(ctx.deferredItems) == 0 {
 		stopTimer(log, ctx)
 	}
