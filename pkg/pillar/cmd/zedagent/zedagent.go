@@ -293,7 +293,7 @@ func queueInfoToDest(ctx *zedagentContext, dest destinationBitset,
 			devUUID, "info")
 		// Ignore errors for all the LOC info messages
 		const ignoreErr = true
-		zedcloudCtx.DeferredPeriodicCtx.SetDeferred(key, buf, size, url,
+		zedcloudCtx.DeferredLOCPeriodicCtx.SetDeferred(key, buf, size, url,
 			bailOnHTTPErr, withNetTracing, ignoreErr, itemType)
 	}
 }
@@ -436,6 +436,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		getDeferredPriorityFunctions()...)
 	zedcloudCtx.DeferredPeriodicCtx = zedcloud.CreateDeferredCtx(zedcloudCtx,
 		zedagentCtx.ps, agentName, "DeferredPeriodic",
+		warningTime, errorTime, nil)
+	zedcloudCtx.DeferredLOCPeriodicCtx = zedcloud.CreateDeferredCtx(zedcloudCtx,
+		zedagentCtx.ps, agentName, "DeferredLOCPeriodic",
 		warningTime, errorTime, nil)
 	// XXX defer this until we have some config from cloud or saved copy
 	getconfigCtx.pubAppInstanceConfig.SignalRestarted()
