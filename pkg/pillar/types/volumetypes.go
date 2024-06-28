@@ -401,7 +401,6 @@ type VolumeRefStatus struct {
 	ReadOnly               bool
 	DisplayName            string
 	MaxVolSize             uint64
-	MountDir               string
 	PendingAdd             bool // Flag to identify whether volume ref config published or not
 	WWN                    string
 	VerifyOnly             bool

@@ -5,12 +5,13 @@ package zedmanager
 
 import (
 	"fmt"
-	"github.com/lf-edge/eve/pkg/pillar/hypervisor"
 	"time"
+
+	"github.com/lf-edge/eve/pkg/pillar/hypervisor"
+	uuid "github.com/satori/go.uuid"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/satori/go.uuid"
 )
 
 // Update this AppInstanceStatus generate config updates to
@@ -387,7 +388,6 @@ func doInstall(ctx *zedmanagerContext,
 			GenerationCounter:      vrc.GenerationCounter,
 			LocalGenerationCounter: vrc.LocalGenerationCounter,
 			RefCount:               vrc.RefCount,
-			MountDir:               vrc.MountDir,
 			PendingAdd:             true,
 			State:                  types.INITIAL,
 			VerifyOnly:             vrc.VerifyOnly,
@@ -494,10 +494,16 @@ func doInstallVolumeRef(ctx *zedmanagerContext, config types.AppInstanceConfig,
 	status *types.AppInstanceStatus, vrs *types.VolumeRefStatus) bool {
 
 	changed := false
+	vrc := getVolumeRefConfigFromAIConfig(&config, *vrs)
+	if vrc == nil {
+		log.Functionf("doInstallVolumeRef: VolumeRefConfig not found. key: %s", vrs.Key())
+		return changed
+	}
+
 	if vrs.PendingAdd {
 		MaybeAddVolumeRefConfig(ctx, config.UUIDandVersion.UUID,
 			vrs.VolumeID, vrs.GenerationCounter, vrs.LocalGenerationCounter,
-			vrs.MountDir, vrs.VerifyOnly)
+			vrc.MountDir, vrs.VerifyOnly)
 		vrs.PendingAdd = false
 		changed = true
 	}

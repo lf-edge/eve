@@ -1085,7 +1085,6 @@ func handleCreate(ctxArg interface{}, key string,
 		vrs.GenerationCounter = vrc.GenerationCounter
 		vrs.LocalGenerationCounter = vrc.LocalGenerationCounter
 		vrs.RefCount = vrc.RefCount
-		vrs.MountDir = vrc.MountDir
 		vrs.PendingAdd = true
 		vrs.State = types.INITIAL
 		vrs.VerifyOnly = true
