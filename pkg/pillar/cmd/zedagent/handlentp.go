@@ -261,6 +261,9 @@ func dialUnixWithChronyd(address string) (*chronyConn, error) {
 func getNTPSourcesInfo(ctx *zedagentContext) *info.ZInfoNTPSources {
 	conn, err := dialUnixWithChronyd(unixChronydPath)
 	if err != nil {
+		// Even there was an error, net.DialUnix() leaves trash behind.
+		// What a shame.
+		os.Remove(conn.local)
 		log.Errorf("getNTPSourcesInfo: can't connect to chronyd: %v", err)
 		return nil
 	}
