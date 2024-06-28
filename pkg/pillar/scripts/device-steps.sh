@@ -128,18 +128,12 @@ format_chrony_args() {
     echo -n "$list"
 }
 
-# Parse chrony conf printing out a single line without comments
-parse_chrony_conf() {
-    conffile="$1"
-
-    # Read conffile skipping empty lines and comments
-    list=$(awk /./ "$conffile" | grep -v '^ *#' | while read -r line; do
-               # shellcheck disable=SC3037
-               echo -n "\"$line\" "
-           done)
-
-    # shellcheck disable=SC3037
-    echo -n "$list"
+# Wait until NTP synchronised
+wait_ntp_sync() {
+    echo "$(date -Ins -u) Wait NTP sync for 1 min"
+    /usr/bin/chronyc waitsync 6
+    ret_code=$?
+    echo "$(date -Ins -u) chronyc: $ret_code"
 }
 
 # Make a single NTP measurement
@@ -356,13 +350,14 @@ if [ ! -s "$DEVICE_CERT_NAME" ] || [ $RTC = 0 ] || [ -n "$FIRSTBOOT" ]; then
     # Deposit any diag information from nim
     access_usb
 
+    # Start NTP daemon
+    start_ntp_daemon
+
     # We need to try our best to setup time *before* we generate the certifiacte.
     # Otherwise the cert may have start date in the future or in 1970
     # Did NIM get some NTP servers from DHCP? Pick the first one we find.
     # Otherwise we use the default
-    single_ntp_sync
-    # Start NTP daemon
-    start_ntp_daemon
+    wait_ntp_sync
 
     # The device cert generation needs the current time. Some hardware
     # doesn't have a battery-backed clock
