@@ -9,13 +9,13 @@
 # to be a perfect place to put any other kind of debug info
 # into the package: see abuild/etc/abuild.conf.
 FROM lfedge/eve-alpine:cbf02c2c126f210933ec9bdb142eb080b400fd76 as build
-ENV BUILD_PKGS abuild curl tar make linux-headers patch g++ git gcc ncurses-dev autoconf
+ENV BUILD_PKGS abuild curl tar make linux-headers patch g++ git gcc gpg ncurses-dev autoconf openssl-dev zlib-dev
 # Feel free to add additional packages here, but be aware that
 # EVE's rootfs image can be no larger than 300Mb (and don't
 # forget to check on all supported architectures: e.g. arm64
 # binaries are typically larger and amd64 ones).
 # RUN apk add --no-cache gdb valgrind
-ENV PKGS openssl openssh-client openssh-server tini util-linux ca-certificates pciutils usbutils vim tcpdump perf strace iproute2-minimal curl
+ENV PKGS openssl tini util-linux ca-certificates pciutils usbutils vim tcpdump perf strace iproute2-minimal curl zlib
 
 # These packages are not available on the riscv arch, so I have no idea how
 # deliver those, but still install them on other archs.
@@ -25,6 +25,7 @@ ENV PKGS_arm64 procps tar dmidecode iptables dhcpcd tio socat
 RUN eve-alpine-deploy.sh
 
 ENV LSHW_VERSION 02.19.2
+ENV OPENSSH_VERSION 9.8p1
 
 # setting up building account
 RUN adduser -G abuild -D builder || :
@@ -62,13 +63,56 @@ ADD https://github.com/pixel/hexedit/archive/refs/tags/1.5.tar.gz ../1.5.tar.gz
 RUN tar -C .. -xzvf ../1.5.tar.gz
 RUN ./autogen.sh && ./configure && make DESTDIR=/out install
 
+WORKDIR /usr/src
+ADD https://cdn.openbsd.org/pub/OpenBSD/OpenSSH/portable/openssh-${OPENSSH_VERSION}.tar.gz /usr/src
+ADD https://cdn.openbsd.org/pub/OpenBSD/OpenSSH/portable/openssh-${OPENSSH_VERSION}.tar.gz.asc /usr/src
+COPY ssh/RELEASE_KEY.asc /usr/src
+RUN gpg --import RELEASE_KEY.asc || :
+RUN gpg --verify openssh-${OPENSSH_VERSION}.tar.gz.asc openssh-${OPENSSH_VERSION}.tar.gz
+RUN tar xvf openssh-${OPENSSH_VERSION}.tar.gz
+WORKDIR /usr/src/openssh-${OPENSSH_VERSION}
+RUN ./configure \
+    --prefix=/usr \
+    --sysconfdir=/etc/ssh \
+    --libexecdir=/usr/lib/ssh \
+    --mandir=/usr/share/man \
+    --with-pid-dir=/run \
+    --with-mantype=doc \
+    --disable-utmp \
+    --disable-wtmp \
+    --disable-lastlog \
+    --disable-strip \
+    --with-privsep-path=/var/empty \
+    --with-xauth=/usr/bin/xauth \
+    --with-default-path='/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin' \
+    --with-privsep-user=sshd \
+    --with-ssl-engine
+
+RUN make -j "$(getconf _NPROCESSORS_ONLN)"
+RUN make install
+RUN HARNESS_JOBS="$(getconf _NPROCESSORS_ONLN)" make tests
+
+RUN /usr/bin/install -c -m 0755 -s ssh /out/usr/bin/ssh
+RUN /usr/bin/install -c -m 0755 -s scp /out/usr/bin/scp
+RUN /usr/bin/install -c -m 0755 -s ssh-keygen /out/usr/bin/ssh-keygen
+RUN /usr/bin/install -c -m 0755 -s sshd /out/usr/sbin/sshd
+RUN /usr/bin/install -c -m 0755 -s sshd-session /out/usr/libexec/sshd-session
+RUN /usr/bin/install -c -m 4711 -s ssh-keysign /out/usr/libexec/ssh-keysign
+RUN /usr/bin/install -c -m 0755 -s ssh-pkcs11-helper /out/usr/libexec/ssh-pkcs11-helper
+RUN /usr/bin/install -c -m 0755 -s ssh-sk-helper /out/usr/libexec/ssh-sk-helper
+RUN /usr/bin/install -c -m 0755 -s sftp /out/usr/bin/sftp
+RUN /usr/bin/install -c -m 0755 -s sftp-server /out/usr/libexec/sftp-server
+RUN mkdir -p /out/etc/ssh
+COPY ssh/* /out/etc/ssh/
+RUN mkdir -p /out/var/empty
+
 # tweaking various bit
 WORKDIR /out
 COPY ssh.sh spec.sh scripts/ ./usr/bin/
-RUN mkdir -p ./etc/ssh ./root/.ssh && chmod 0700 ./root/.ssh
+RUN mkdir -p ./etc/ssh ./root/.ssh
+RUN chmod 0700 ./root/.ssh
 RUN cp /etc/passwd /etc/group ./etc/
 RUN ln -s /run ./var/run
-RUN sed -i -e 's#AllowTcpForwarding.*$#AllowTcpForwarding yes#' ./etc/ssh/sshd_config
 
 FROM scratch
 ENTRYPOINT []
