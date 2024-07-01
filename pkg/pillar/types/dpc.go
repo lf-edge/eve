@@ -52,6 +52,9 @@ const (
 	// DPCStateAsyncWait : waiting for some config operations to finalize which are
 	// running asynchronously in the background.
 	DPCStateAsyncWait
+	// DPCStateWwanWait : waiting for the wwan microservice to apply the latest
+	// cellular configuration.
+	DPCStateWwanWait
 )
 
 // String returns the string name
@@ -75,6 +78,8 @@ func (status DPCState) String() string {
 		return "DPC_REMOTE_WAIT"
 	case DPCStateAsyncWait:
 		return "DPC_ASYNC_WAIT"
+	case DPCStateWwanWait:
+		return "DPC_WWAN_WAIT"
 	default:
 		return fmt.Sprintf("Unknown status %d", status)
 	}
@@ -726,9 +731,14 @@ func (ap CellularAccessPoint) Equal(ap2 CellularAccessPoint) bool {
 		ap.APN != ap2.APN {
 		return false
 	}
+	enc1 := ap.EncryptedCredentials
+	enc2 := ap2.EncryptedCredentials
 	if ap.AuthProtocol != ap2.AuthProtocol ||
-		// TODO (how to properly detect changed username/password ?)
-		!reflect.DeepEqual(ap.EncryptedCredentials, ap2.EncryptedCredentials) {
+		enc1.CipherBlockID != enc2.CipherBlockID ||
+		enc1.CipherContextID != enc2.CipherContextID ||
+		!bytes.Equal(enc1.InitialValue, enc2.InitialValue) ||
+		!bytes.Equal(enc1.CipherData, enc2.CipherData) ||
+		!bytes.Equal(enc1.ClearTextHash, enc2.ClearTextHash) {
 		return false
 	}
 	if !generics.EqualLists(ap.PreferredPLMNs, ap2.PreferredPLMNs) ||
