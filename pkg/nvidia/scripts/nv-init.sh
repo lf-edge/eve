@@ -4,6 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 VENDOR="/opt/vendor/nvidia"
+FANCTRL="${VENDOR}/bin/nvfanctrl"
 
 # This script is executed from pillar, so we need to export the variables
 # below to execute udevadm from hostfs
@@ -26,3 +27,8 @@ modprobe nvidia_modeset
 # port. These devices must be present because they are on the CDI spec.
 echo "add" > /sys/module/fb/uevent 2> /dev/null
 echo "add" > /sys/module/nvidia/uevent 2> /dev/null
+
+# Start FAN controller detached from terminal
+if [ -f "$FANCTRL" ]; then
+    "$FANCTRL" -m cool > /dev/kmsg 2>&1 &
+fi
