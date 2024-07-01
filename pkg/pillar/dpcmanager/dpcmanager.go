@@ -371,7 +371,8 @@ func (m *DpcManager) run(ctx context.Context) {
 						switch dpc.State {
 						case types.DPCStateIPDNSWait,
 							types.DPCStatePCIWait,
-							types.DPCStateIntfWait:
+							types.DPCStateIntfWait,
+							types.DPCStateWwanWait:
 							// Note that DPCStatePCIWait and DPCStateIntfWait can be returned
 							// also in scenarios where some ports are in PCIBack while others
 							// are waiting for IP addresses.
