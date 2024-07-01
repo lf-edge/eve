@@ -11,7 +11,7 @@ require (
 	github.com/cshari-zededa/eve-tpm2-tools v0.0.4
 	github.com/docker/docker v25.0.5+incompatible
 	github.com/eriknordmark/ipinfo v0.0.0-20230728132417-2d8f4da903d7
-	github.com/eshard/uevent v1.0.1
+	github.com/eshard/uevent v1.0.2-0.20220110110621-d8d2be286cec
 	github.com/facebook/time v0.0.0-20240605113323-bdee26e8523f
 	github.com/fsnotify/fsnotify v1.6.0
 	github.com/go-chi/chi/v5 v5.0.10
