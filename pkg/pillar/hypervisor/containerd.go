@@ -5,12 +5,13 @@ package hypervisor
 
 import (
 	"fmt"
-	"github.com/lf-edge/eve/pkg/pillar/containerd"
-	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/opencontainers/runtime-spec/specs-go"
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/lf-edge/eve/pkg/pillar/containerd"
+	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/opencontainers/runtime-spec/specs-go"
 
 	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
@@ -80,9 +81,11 @@ func (ctx ctrdContext) Task(status *types.DomainStatus) types.Task {
 func (ctx ctrdContext) setupSpec(status *types.DomainStatus, config *types.DomainConfig, volume string) (containerd.OCISpec, error) {
 	spec, err := ctx.ctrdClient.NewOciSpec(status.DomainName, config.Service)
 	if err != nil {
+		logError("failed to create OCI spec for domain %s: %v", status.DomainName, err)
 		return nil, err
 	}
 	if err := spec.UpdateFromVolume(volume); err != nil {
+		logError("failed to update OCI spec for domain %s: %v", status.DomainName, err)
 		return nil, err
 	}
 	spec.UpdateFromDomain(config, status)
