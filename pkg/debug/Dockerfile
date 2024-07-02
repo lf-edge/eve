@@ -75,6 +75,8 @@ RUN gpg --import RELEASE_KEY.asc || :
 RUN gpg --verify openssh-${OPENSSH_VERSION}.tar.gz.asc openssh-${OPENSSH_VERSION}.tar.gz
 RUN tar xvf openssh-${OPENSSH_VERSION}.tar.gz
 WORKDIR /usr/src/openssh-${OPENSSH_VERSION}
+COPY ssh/fix-utmpx-ipv6.patch .
+RUN git apply fix-utmpx-ipv6.patch
 RUN ./configure \
     --prefix=/usr \
     --sysconfdir=/etc/ssh \
