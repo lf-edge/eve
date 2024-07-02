@@ -75,10 +75,21 @@ RUN sed -i -e 's#AllowTcpForwarding.*$#AllowTcpForwarding yes#' ./etc/ssh/sshd_c
 WORKDIR /
 COPY --from=recovertpm /usr/bin/recovertpm /out/usr/bin/recovertpm
 
+# currently we cannot build bpftrace for riscv64 as of missing alpine dependencies
+# hadolint ignore=DL3029
+FROM --platform=amd64 lfedge/eve-bpftrace:f8effaa3169f9e7f1ee71b63c904da62ce0e0212-amd64 AS bpftrace-amd64
+# hadolint ignore=DL3029
+FROM --platform=arm64 lfedge/eve-bpftrace:f8effaa3169f9e7f1ee71b63c904da62ce0e0212-arm64 AS bpftrace-arm64
+# hadolint ignore=DL3029
+FROM --platform=riscv64 scratch AS bpftrace-riscv64
+# hadolint ignore=DL3006
+FROM bpftrace-${TARGETARCH} AS bpftrace
+
 FROM scratch
 ENTRYPOINT []
 WORKDIR /
 
 COPY --from=build /out/ /
+COPY --from=bpftrace / /
 
 CMD ["/sbin/tini", "/usr/bin/ssh.sh"]

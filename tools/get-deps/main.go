@@ -25,7 +25,6 @@ import (
 // Target information
 const (
 	TARGETOS      = "linux"
-	TARGETARCH    = "amd64"
 	TARGETVARIANT = ""
 )
 
@@ -33,6 +32,7 @@ var (
 	outputImgFile  string
 	outputMakeFile string
 	rootfsDeps     bool
+	targetArch     string
 )
 
 type printer interface {
@@ -98,7 +98,7 @@ func parseDockerfile(f io.Reader) []string {
 
 	buildPlatform := []ocispecs.Platform{platforms.DefaultSpec()}[0]
 	targetPlatform := ocispecs.Platform{
-		Architecture: TARGETARCH,
+		Architecture: targetArch,
 		OS:           TARGETOS,
 		Variant:      TARGETVARIANT,
 	}
@@ -129,6 +129,9 @@ func parseDockerfile(f io.Reader) []string {
 		pResult, err := shlex.ProcessWordWithMatches(st.BaseName, args)
 		if err != nil {
 			panic(err)
+		}
+		if st.Platform != "" && st.Platform != targetArch {
+			continue
 		}
 		targetsMap[pResult.Result] = struct{}{}
 	}
@@ -199,7 +202,7 @@ func filterPkg(deps []string) []string {
 	var depList []string
 	dpList := make(map[string]bool)
 
-	reLF  := regexp.MustCompile("lfedge/.*")
+	reLF := regexp.MustCompile("lfedge/.*")
 	rePkg := regexp.MustCompile("lfedge/(?:eve-)?(.*):.*")
 	for _, s := range deps {
 		// We are just interested on packages from lfegde (those that we
@@ -252,6 +255,7 @@ func main() {
 	}
 	flag.StringVar(&outputImgFile, "i", "", "Generate a PNG image file")
 	flag.StringVar(&outputMakeFile, "m", "", "Generate a Makefile auxiliary file")
+	flag.StringVar(&targetArch, "t", "amd64", "Target Architecture amd64|arm64|riscv64")
 	flag.BoolVar(&rootfsDeps, "r", false, "Also generates dependencies for rootfs image")
 	flag.Parse()
 
