@@ -5,11 +5,18 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 export PATH
 
 try() {
-   if ! "$@"; then
-      ip link del "$VIF_CTR" || :
-      ip link del "$VIF_NAME" || :
-      exit 1
-   fi
+    RETRIES=3
+    while [ "$RETRIES" -gt 0 ]; do
+        if ! "$@"; then
+            RETRIES="$(( RETRIES - 1 ))"
+            sleep 5
+        else
+            return 0
+        fi
+    done
+    ip link del "$VIF_CTR" || :
+    ip link del "$VIF_NAME" || :
+    exit 1
 }
 
 VIF_NS=$(jq '.pid')
@@ -25,7 +32,6 @@ case $1 in
       *) echo "ERROR: correct use is $0 up VIF_NAME VIF_BRIDGE [VIF_MAC] or $0 down VIF_NAME"
          exit 2
 esac
-
 
 try ip link add "$VIF_CTR" type veth peer name "$VIF_NAME"
 try ip link set "$VIF_CTR" netns "$VIF_NS"
