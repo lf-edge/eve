@@ -788,9 +788,11 @@ func getSavedImageInfo(containerPath string) (ocispec.Image, error) {
 
 	data, err := os.ReadFile(filepath.Join(containerPath, imageConfigFilename))
 	if err != nil {
+		logrus.Errorf("getSavedImageInfo: could not read image config file: %v", err)
 		return image, err
 	}
 	if err := json.Unmarshal(data, &image); err != nil {
+		logrus.Errorf("getSavedImageInfo: could not unmarshal image config: %v", err)
 		return image, err
 	}
 	return image, nil
