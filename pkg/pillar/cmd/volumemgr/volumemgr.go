@@ -72,6 +72,7 @@ type volumemgrContext struct {
 	pubVolumeCreatePending  pubsub.Publication
 	subVolumesSnapConfig    pubsub.Subscription
 	pubVolumesSnapStatus    pubsub.Publication
+	pubVolumeMgrStatus      pubsub.Publication
 	diskMetricsTickerHandle interface{}
 	gc                      *time.Ticker
 	deferDelete             *time.Ticker
@@ -555,6 +556,17 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		log.Fatal(err)
 	}
 	ctx.pubVolumesSnapStatus = pubVolumesSnapshotStatus
+
+	pubVolumeMgrStatus, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName: agentName,
+			TopicType: types.VolumeMgrStatus{},
+		},
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.pubVolumeMgrStatus = pubVolumeMgrStatus
 
 	if ctx.casClient, err = cas.NewCAS(casClientType); err != nil {
 		err = fmt.Errorf("Run: exception while initializing CAS client: %s", err.Error())

@@ -1,4 +1,4 @@
-// Copyright (c) 2018-2019 Zededa, Inc.
+// Copyright (c) 2018-2023 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 package diskmetrics
@@ -6,7 +6,9 @@ package diskmetrics
 import (
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -177,19 +179,114 @@ func DirUsage(log *base.LogObject, dir string) (uint64, error) {
 }
 
 // Dom0DiskReservedSize returns reserved space for EVE-OS
-func Dom0DiskReservedSize(log *base.LogObject, globalConfig *types.ConfigItemValueMap, deviceDiskSize uint64) uint64 {
+// We check that the currently used aka dynamic number does not exceed
+// the statically configured percentage and number
+func Dom0DiskReservedSize(log *base.LogObject, globalConfig *types.ConfigItemValueMap, deviceDiskSize uint64, dynamicUsedByDom0 uint64) uint64 {
 	dom0MinDiskUsagePercent := globalConfig.GlobalValueInt(
 		types.Dom0MinDiskUsagePercent)
 	diskReservedForDom0 := uint64(float64(deviceDiskSize) *
 		(float64(dom0MinDiskUsagePercent) * 0.01))
-	maxDom0DiskSize := uint64(globalConfig.GlobalValueInt(
+	staticMaxDom0DiskSize := uint64(globalConfig.GlobalValueInt(
 		types.Dom0DiskUsageMaxBytes))
-	if diskReservedForDom0 > maxDom0DiskSize {
-		log.Tracef("diskSizeReservedForDom0 - diskReservedForDom0 adjusted to "+
-			"maxDom0DiskSize (%d)", maxDom0DiskSize)
-		diskReservedForDom0 = maxDom0DiskSize
+	newlogReserved := uint64(globalConfig.GlobalValueInt(types.LogRemainToSendMBytes))
+	// Always leave space for /persist/newlogd
+	maxDom0DiskSize := newlogReserved
+	// Select the larger of the current overhead usage and the configured
+	// max overhead. If using the static then ensure that we do not exceed
+	// the dom0MinDiskUsagePercent percentage of /persist
+	if staticMaxDom0DiskSize < dynamicUsedByDom0 {
+		log.Noticef("XXX Dom0DiskReservedSize using dynamic %d",
+			dynamicUsedByDom0)
+		maxDom0DiskSize += dynamicUsedByDom0
+	} else if diskReservedForDom0 > staticMaxDom0DiskSize {
+		maxDom0DiskSize += staticMaxDom0DiskSize
+		log.Noticef("XXX Dom0DiskReservedSize using static %d",
+			staticMaxDom0DiskSize)
+	} else {
+		log.Noticef("XXX Dom0DiskReservedSize %d percent of %d = %d, HIT max %d",
+			dom0MinDiskUsagePercent, deviceDiskSize, diskReservedForDom0, maxDom0DiskSize)
+		maxDom0DiskSize += diskReservedForDom0
 	}
-	return diskReservedForDom0
+	// XXX delete getcurrent - debug comparison
+	currentDom0DiskUsage := getcurrentDom0DiskUsage(log)
+	log.Noticef("XXX static %d current %d percent %d",
+		staticMaxDom0DiskSize, currentDom0DiskUsage,
+		100*currentDom0DiskUsage/staticMaxDom0DiskSize)
+	log.Noticef("XXX static %d dynamic %d percent %d",
+		staticMaxDom0DiskSize, dynamicUsedByDom0,
+		100*dynamicUsedByDom0/staticMaxDom0DiskSize)
+	return maxDom0DiskSize
+}
+
+// XXX delete exclude*
+var excludeDirs = []string{
+	types.VolumeEncryptedDirName,
+	types.VolumeClearDirName,
+}
+
+var excludeDataSets = []string{
+	// XXX	types.PersistReservedDataset, already excluded
+	types.VolumeClearZFSDataset,
+	types.VolumeEncryptedZFSDataset,
+}
+
+// These are also excluded from the EVE overhead; separately NewlogDir's max
+// size is added.
+var excludeCommonDirs = []string{
+	types.NewlogDir,
+	types.DownloaderDir,
+	types.VerifierDir,
+	types.ContainerdDir,
+}
+
+// getcurrentDom0DiskUsage returns what is currently used in /persist except
+// /persist/{vault,clear,newlog}
+// XXX delete!
+func getcurrentDom0DiskUsage(log *base.LogObject) uint64 {
+	allStat, err := PersistUsageStat(log)
+	if err != nil {
+		log.Errorf("getCurrentDom0DiskUsage failed: %s", err)
+		return 0
+	}
+	allUsed := allStat.Used
+	var subUsed uint64
+	if persist.ReadPersistType() != types.PersistZFS {
+		for _, dir := range excludeDirs {
+			used, err := SizeFromDir(log, dir)
+			if err != nil {
+				log.Errorf("getCurrentDom0DiskUsage %s failed: %s",
+					dir, err)
+				return 0
+			}
+			subUsed += used
+		}
+	} else {
+		for _, ds := range excludeDataSets {
+			usageStat, err := zfs.GetDatasetUsageStat(ds)
+			if err != nil {
+				log.Errorf("getCurrentDom0DiskUsage %s failed: %s",
+					ds, err)
+				return 0
+			}
+			subUsed += usageStat.Used
+		}
+	}
+	for _, dir := range excludeCommonDirs {
+		used, err := SizeFromDir(log, dir)
+		if err != nil {
+			log.Errorf("getCurrentDom0DiskUsage %s failed: %s",
+				dir, err)
+			return 0
+		}
+		subUsed += used
+	}
+	log.Noticef("XXX getCurrentDom0DiskUsage all %d subtract %d result %d",
+		allUsed, subUsed, allUsed-subUsed)
+	if allUsed < subUsed {
+		return 0
+	} else {
+		return allUsed - subUsed
+	}
 }
 
 // PersistUsageStat returns usage stat for persist
@@ -224,4 +321,49 @@ func PersistUsageStat(log *base.LogObject) (*types.UsageStat, error) {
 		usageStat.Total -= usageStatReserved.Total
 	}
 	return usageStat, nil
+}
+
+// FoundLargeFiles is returned by FindLargeFiles
+type FoundLargeFiles struct {
+	Path string
+	Size int64
+}
+
+// FindLargeFiles walks a directory and reportes all large files unless
+// they are in an excluded directory
+func FindLargeFiles(root string, limit int64, excludePaths []string) ([]FoundLargeFiles, error) {
+	var list []FoundLargeFiles
+	walkErr := filepath.WalkDir(filepath.Clean(root), func(path string, di fs.DirEntry, err error) error {
+		// if there is any problem with path we stop
+		if err != nil {
+			return err
+		}
+
+		// Part of excludePath?
+		for _, ex := range excludePaths {
+			if filepath.HasPrefix(path, ex) {
+				return filepath.SkipDir
+			}
+		}
+		// We don't report any directories
+		if di.IsDir() {
+			return nil
+		}
+
+		info, err := os.Stat(path)
+		if err != nil {
+			if !os.IsNotExist(err) {
+				return err
+			}
+			// In case files disappear while we run
+			return nil
+		}
+		if info.Size() > limit {
+			list = append(list,
+				FoundLargeFiles{Path: path, Size: info.Size()})
+		}
+		return nil
+	})
+
+	return list, walkErr
 }
