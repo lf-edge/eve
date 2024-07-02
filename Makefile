@@ -1046,7 +1046,7 @@ images/out/rootfs-%.yml.in: images/rootfs.yml.in $(RESCAN_DEPS) | images/out
 	$(QUIET)tools/compose-image-yml.sh -b $< -v "$(ROOTFS_VERSION)-$*-$(ZARCH)" -o $@ -h $(HV) $(patsubst %,images/modifiers/%.yq,$(subst -, ,$*))
 
 pkg-deps.mk: $(GET_DEPS)
-	$(QUIET)$(GET_DEPS) $(ROOTFS_GET_DEPS) -m $@
+	$(QUIET)$(GET_DEPS) $(ROOTFS_GET_DEPS) -t $(ZARCH) -m $@
 
 test-images-patches: $(patsubst images/modifiers/%.yq,images/out/rootfs-%.yml.in,$(wildcard images/modifiers/*.yq))
 

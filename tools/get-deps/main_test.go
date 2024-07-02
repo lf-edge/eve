@@ -6,6 +6,7 @@ import (
 )
 
 func TestParseDockerfile(t *testing.T) {
+	targetArch = "amd64"
 	f := strings.NewReader(`
 			FROM abcd:12345 AS f
 			RUN echo \
