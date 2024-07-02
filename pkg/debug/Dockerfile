@@ -67,6 +67,8 @@ WORKDIR /usr/src
 ADD https://cdn.openbsd.org/pub/OpenBSD/OpenSSH/portable/openssh-9.8p1.tar.gz /usr/src
 RUN tar xvf openssh-9.8p1.tar.gz
 WORKDIR /usr/src/openssh-9.8p1
+COPY ssh/fix-utmpx-ipv6.patch .
+RUN git apply fix-utmpx-ipv6.patch
 RUN ./configure \
     --prefix=/usr \
     --sysconfdir=/etc/ssh \
