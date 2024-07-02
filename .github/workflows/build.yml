@@ -114,7 +114,7 @@ jobs:
           fail-on-cache-miss: true
       - name: load images we need from linuxkit cache into docker
         run: |
-          make cache-export-docker-load-all
+          make ZARCH=${{ matrix.arch }} cache-export-docker-load-all
       - name: clear linuxkit cache so we can load for target arch
         if: ${{ matrix.arch != 'amd64' }}  # because our runner arch is amd64; if that changes, this will have to change
         run: |
