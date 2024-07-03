@@ -139,19 +139,21 @@ wait_ntp_sync() {
 # Populate NTP sources from the string argument, which represents
 # \n separated list of servers
 populate_ntp_sources() {
-    servers="$1"
+    ns="$1"
     echo "$(date -Ins -u) Populate NTP with new sources"
     # Creates string of servers in "add $mode $server iburst" format
-    args=$(format_chrony_args "$servers" "add" "iburst")
+    args=$(format_chrony_args "$ns" "add" "iburst")
     echo "$(date -Ins -u) chronyc -m $args"
     echo "$args" | xargs /usr/bin/chronyc -m
     ret_code=$?
     echo "$(date -Ins -u) chronyc: $ret_code"
+    # Init global variable
+    NTPSERVERS="$ns"
 }
 
 # Start NTP daemon
 start_ntp_daemon() {
-    NTPSERVERS=$(get_ntp_servers)
+    ns=$(get_ntp_servers)
     echo "$(date -Ins -u) Check for NTP config"
     if [ -f /usr/sbin/chronyd ]; then
         # Run chronyd to keep it in sync.
@@ -167,7 +169,7 @@ start_ntp_daemon() {
         if [ "$ret_code" = "0" ]; then
             # Give some time for chronyd to start
             sleep 1
-            populate_ntp_sources "$NTPSERVERS"
+            populate_ntp_sources "$ns"
         fi
     else
         echo "$(date -Ins -u) ERROR: no NTP (chrony) on EVE"
@@ -176,6 +178,7 @@ start_ntp_daemon() {
 
 # Reload NTP sources
 reload_ntp_sources() {
+    ns="$1"
     echo "$(date -Ins -u) Remove all NTP sources from chronyd"
     while true; do
         # Get all sources, skip 2 lines header, take first line
@@ -192,7 +195,7 @@ reload_ntp_sources() {
             break
         fi
     done
-    populate_ntp_sources "$NTPSERVERS"
+    populate_ntp_sources "$ns"
 }
 
 # If zedbox is already running we don't have to start it.
@@ -491,7 +494,7 @@ while true; do
     if [ -n "$ns" ] && [ "$ns" != "$NTPSERVERS" ]; then
         echo "$(date -Ins -u) NTP server changed from \"$NTPSERVERS\" to \"$ns\", reload NTP sources"
         # Reload NTP sources
-        reload_ntp_sources
+        reload_ntp_sources "$ns"
     fi
     sleep 300
 done
