@@ -1,7 +1,9 @@
 ---
 name: PR build
 on:  # yamllint disable-line rule:truthy
-  pull_request:
+  pull_request_target:
+    paths-ignore:
+      - '.github/workflows/**'
     branches:
       - "master"
       - "[0-9]+.[0-9]+"
