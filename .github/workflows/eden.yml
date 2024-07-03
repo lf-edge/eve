@@ -60,7 +60,8 @@ jobs:
         hv: [kvm]
         platform: ["generic"]
     if: github.event.review.state == 'approved'
-    uses: lf-edge/eden/.github/workflows/test.yml@0.9.8
+    uses: lf-edge/eden/.github/workflows/test.yml@0.9.9
+    secrets: inherit
     with:
       eve_image: "evebuild/pr:${{ github.event.pull_request.number  }}"
       eve_artifact_name: eve-${{ matrix.hv }}-${{ matrix.arch }}-${{ matrix.platform }}
@@ -69,14 +70,16 @@ jobs:
 
   test_suite_master:
     if: github.ref == 'refs/heads/master'
-    uses: lf-edge/eden/.github/workflows/test.yml@0.9.8
+    uses: lf-edge/eden/.github/workflows/test.yml@0.9.9
+    secrets: inherit
     with:
       eve_image: "lfedge/eve:snapshot"
       eden_version: "0.9.9"
 
   test_suite_tag:
     if: startsWith(github.ref, 'refs/tags')
-    uses: lf-edge/eden/.github/workflows/test.yml@0.9.8
+    uses: lf-edge/eden/.github/workflows/test.yml@0.9.9
+    secrets: inherit
     with:
       eve_image: "lfedge/eve:${{ github.ref_name }}"
       eden_version: "0.9.9"
