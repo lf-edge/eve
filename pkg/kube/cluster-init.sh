@@ -224,6 +224,8 @@ setup_prereqs () {
         #Needed for iscsi tools
         mkdir -p /run/lock
         mkdir -p "$K3S_LOG_DIR"
+        rm -rf /var/log
+        ln -s "$K3S_LOG_DIR" /var/log
         /usr/sbin/iscsid start
         mount --make-rshared /
         setup_cgroup
