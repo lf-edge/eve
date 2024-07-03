@@ -83,14 +83,8 @@ var ControlProtocolMarkingIDMap = map[string]uint32{
 	"in_nfs": 23,
 	// hack, for enc pubsub
 	"in_encpubsub": 24,
-	// hack, for cluster to pod
-	"cluster_pod": 25,
-	// hack, for cluster to svc
-	"cluster_svc": 26,
-	// hack, for pod to cluster
-	"pod_cluster": 27,
-	// hack, for svc to cluster
-	"svc_cluster": 28,
+	// hack, for cluster bootstrap
+	"in_encbootstrap": 25,
 }
 
 // GetConnmark : create connection mark corresponding to the given attributes.

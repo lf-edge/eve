@@ -285,7 +285,7 @@ apply_node_uuid_lable () {
 
 reapply_node_labes() {
         apply_node_uuid_lable
-        apply_longhorn_disk_config() "$HOSTNAME"
+        apply_longhorn_disk_config "$HOSTNAME"
         # Check if the node with both labels exists, don't assume above apply worked
         node_count=$(kubectl get nodes -l node-uuid="$DEVUUID",node.longhorn.io/create-default-disk=config -o json | jq '.items | length')
 
@@ -293,8 +293,20 @@ reapply_node_labes() {
                 logmsg "Node labels re-applied successfully"
                 touch /var/lib/node-labels-initialized
         else
-                logmsg "Failed to re-apply node labels"
+                logmsg "Failed to re-apply node labels, on $HOSTNAME, uuid $DEVUUID"
         fi
+}
+
+# when transitioning from single node to cluster mode, the k3s.yaml file may need
+# to change with new certificates
+check_kubeconfig_yaml_files() {
+    file1="/etc/rancher/k3s/k3s.yaml"
+    file2="/run/.kube/k3s/k3s.yaml"
+
+    if ! cmp -s "$file1" "$file2"; then
+        logmsg "k3s.yaml files are different, copying $file1 to $file2"
+        cp "$file1" "$file2"
+    fi
 }
 
 check_overwrite_nsmounter() {
@@ -370,7 +382,6 @@ check_start_k3s() {
                 break
             fi
           done
-          ln -s /etc/rancher/k3s/k3s.yaml ~/.kube/config
           mkdir -p /run/.kube/k3s
           cp /etc/rancher/k3s/k3s.yaml /run/.kube/k3s/k3s.yaml
           return 1
@@ -652,36 +663,6 @@ check_cluster_config_change() {
       else
         touch /var/lib/convert-to-single-node
         reboot
-        # we only move to single node mode if we have seen the ENC status before
-        # comment out this, and change to reboot and create a flag file
-
-        #if [ "$FoundENCStatus" = true ]; then
-        #  logmsg "EdgeNodeClusterStatus file not found, but it was seen before, transition to single node mode"
-        #  # remove the edge-node-cluster-mode file before changing the config file
-        #  rm /var/lib/edge-node-cluster-mode
-        #
-        #  cp "$config_file" "$k3s_config_file"
-        #  #echo "cluster-reset: true" >> "$k3s_config_file"
-        #  echo "node-name: $HOSTNAME" >> "$k3s_config_file"
-        #  logmsg "Reset cluster, adding node-name to single-node config.yaml for $HOSTNAME"
-        #
-        #  #provision_cluster_config_file false
-        #  # rotate the token without given a specific token
-        #  cluster_token=""
-        #  change_to_new_token
-        #
-        #  # remove previous multus config
-        #  remove_multus_cni
-        #
-        #  # need to reapply node labels later
-        #  rm /var/lib/node-labels-initialized
-        #
-        #  terminate_k3s
-        #  # XXX needs to start the k3s server with the config and --cluster-reset flag
-        #  # wait it to exit. then continue with normal loop
-        #  # back to single node mode, but the database will stay in etcd instead of sqlite
-        #  logmsg "WARNING: change the node back to single-node mode, done"
-        #fi
       fi
     else
       # record we have seen this ENC status file
@@ -694,18 +675,6 @@ check_cluster_config_change() {
             # mark it cluster mode before changing the config file
             touch /var/lib/edge-node-cluster-mode
 
-            if [ "$is_bootstrap" = "true" ]; then
-              # provision this node to cluster mode with bootastrap config
-              provision_cluster_config_file true
-            else
-              # provision this node to cluster mode with server config, will wait for join-ip to be ready
-              provision_cluster_config_file false
-              # this does not seem to be needed
-              # romove the /var/lib/rancher/k3s/server/tls directory
-              #if [ -d /var/lib/rancher/k3s/server/tls ]; then
-              #  remove_server_tls_dir
-              #fi
-            fi
             # rotate the token with the new token
             change_to_new_token
 
@@ -723,6 +692,10 @@ check_cluster_config_change() {
               # redo the debugger user role binding since certs are changed
               rm /var/lib/debuguser-initialized
             fi
+
+            logmsg "privision config file for node to cluster mode"
+            provision_cluster_config_file true
+
             logmsg "WARNING: changing the node to cluster mode, done"
             break
           else
@@ -736,6 +709,35 @@ check_cluster_config_change() {
     logmsg "Check cluster config change done"
 }
 
+# save the /var/lib to /persist/kubelog/save-var-lib
+save_var_lib() {
+  local dest_dir="${K3S_LOG_DIR}/save-var-lib"
+  # Check if destination directory exists, if not create it
+  if [ ! -d "$dest_dir" ]; then
+    mkdir -p "$dest_dir"
+  fi
+
+  # Remove everything in the destination directory
+  rm -rf "${dest_dir:?}"/*
+
+  # Copy all contents from /var/lib to destination directory
+  cp -a /var/lib/. "$dest_dir"
+}
+
+# Function to restore contents from /persist/kube/log/save-var-lib back to /var/lib
+restore_var_lib() {
+  local source_dir="${K3S_LOG_DIR}/save-var-lib"
+  # Remove everything under /var/lib
+  rm -rf /var/lib/*
+
+  # Copy everything from /persist/kube/log/save-var-lib back to /var/lib
+  if [ -f "$source_dir" ]; then
+        cp -a "${source_dir}/." /var/lib
+  else
+        ## the saved files are missing, have do install again
+        install_and_unpack_k3s
+  fi
+}
 
 # provision the config.yaml and bootstrap-config.yaml for cluster node, passing $1 as k3s needs initailizing
 provision_cluster_config_file() {
@@ -770,31 +772,9 @@ EOF
                 echo "$bootstrapContent" >> "$k3s_config_file"
                 logmsg "bootstrap config.yaml configured with $join_serverIP and $HOSTNAME"
         else # if we are in restart case, and we are the bootstrap node, wait for some other nodes to join
-                start_time=$(date +%s)
-                while [ $(($(date +%s) - start_time)) -lt 60 ]; do
-                        # Get the last octet of the IP address and increment it
-                        # we assum the cluster prefix has continous IP address, we check our ip plus one
-                        # for enjoing the cluster
- 
-                        if curl --insecure --max-time 2 "https://$join_serverPlusOne:6443" >/dev/null 2>&1; then
-                                logmsg "curl to Endpoint https://$join_serverPlusOne:6443 ready"
-                                cp "$config_file" "$k3s_config_file"
-                                echo "$serverContent" >> "$k3s_config_file"
-                                return
-                        fi
-                        if curl --insecure --max-time 2 "https://$join_serverPlusTwo:6443" >/dev/null 2>&1; then
-                                logmsg "curl to Endpoint https://$join_serverPlusTwo:6443 ready"
-                                cp "$config_file" "$k3s_config_file"
-                                echo "$serverContent" >> "$k3s_config_file"
-                                return
-                        fi
-                        # https://$join_serverPlusOne:6443 is not responsive, waiting for 10 seconds
-                        logmsg "curl to Endpoint https://$join_serverPlusOne:6443 and https://$join_serverPlusTwo:6443 not ready, waiting for 10 seconds"
-                        sleep 10
-                done
                 # we go here, means we can not find node to join the cluster, we have waited long enough
                 # but still put in the server config.yaml for now
-                logmsg "Failed to find node to join the cluster, use server content anyway"
+                logmsg "join the cluster, use server content config.yaml"
                 cp "$config_file" "$k3s_config_file"
                 #echo "$bootstrapContent" >> "$k3s_config_file"
                 echo "$serverContent" >> "$k3s_config_file"
@@ -804,26 +784,31 @@ EOF
       #Bootstrap_Node=false
       cp "$config_file" "$k3s_config_file"
       echo "$serverContent" >> "$k3s_config_file"
-      logmsg "config.yaml configured with $join_serverIP and $HOSTNAME"
-      if [ "$1" == true]; then
-        logmsg "Check if the Endpoint https://$join_serverIP:6443 is responsive, and wait if not..."
+      logmsg "config.yaml configured with Join-ServerIP $join_serverIP and hostname $HOSTNAME"
+      if [ "$1" = true ]; then
+        logmsg "Check if the Endpoint https://$join_serverIP:6443 is in cluster mode, and wait if not..."
         # Check if the join Server is available by kubernetes, wait here until it is ready
+        counter=0
         while true; do
-          if ! curl --insecure --max-time 2 "https://$join_serverIP:6443" >/dev/null 2>&1; then
-            # get status from cluster server
-            status=$(curl -s "http://$join_serverIP:$clusterStatusPort/status")
+          if curl --insecure --max-time 2 "https://$join_serverIP:6443" >/dev/null 2>&1; then
+            counter=$((counter+1))
+            #logmsg "curl to Endpoint https://$join_serverIP:6443 ready, check cluster status"
+            # if we are here, check the bootstrap server is single or cluster mode
+            status=$(curl --max-time 2 -s "http://$join_serverIP:$clusterStatusPort/status")
             if [ $? -ne 0 ]; then
-                //logmsg "Failed to connect to the server. Waiting for 10 seconds..."
+                if [ $((counter % 30)) -eq 0 ]; then
+                        logmsg "Attempt $counter: Failed to connect to the server. Waiting for 10 seconds..."
+                fi
             elif [ "$status" != "cluster" ]; then
-                //logmsg "Server is not in 'cluster' status. Waiting for 10 seconds..."
+                if [ $((counter % 30)) -eq 0 ]; then
+                        logmsg "Attempt $counter: Server is not in 'cluster' status. Waiting for 10 seconds..."
+                fi
             else
-                logmsg "Server is in 'cluster' status."
+                logmsg "Server is in 'cluster' status. done"
                 break
             fi
-            sleep 10
           fi
-          logmsg "curl to Endpoint https://$join_serverIP:6443 ready"
-          break
+          sleep 10
         done
       else
         logmsg "restart case with k3s already installed, no need to wait"
@@ -849,42 +834,13 @@ logmsg "containerd started"
 
 if [ -f /var/lib/convert-to-single-node ]; then
         logmsg "remove /var/lib and copy saved single node /var/lib"
-        rm -rf /var/lib/*
-        tar -xzf /persist/save_kube_var_lib_backup.tar.gz -C /var/lib
+        restore_var_lib
 fi
 
 # if this is the first time to run install, we may wait for the
 # cluster config and status
 if [ ! -f /var/lib/all_components_initialized ]; then
   logmsg "First time for k3s install"
-
-  #start_time_wait=$(date +%s)
-  # when it's first time to get into k3s, we give 5 minutes, to see if we will be configured
-  # into a cluster mode. If not, then precede to single node mode
-  # read in the EdgeNodeClusterStatus
-
-  # remove this logic, we always go into single mode first, to simplify the logic
-  #while true; do
-  #  if get_enc_status; then
-  #      logmsg "got the EdgeNodeClusterStatus successfully"
-  #      # mark it cluster mode before changing the config file
-  #      touch /var/lib/edge-node-cluster-mode
-  #      break
-  #  else
-  #    # if we are not edge-node cluster mode, wait for 1 minutes, then move forward
-  #    # this may not be needed
-  #    if [ ! -f /var/lib/edge-node-cluster-mode ]; then
-  #      current_time=$(date +%s)
-  #      elapsed_time=$((current_time - start_time_wait))
-  #
-  #      if [ $elapsed_time -gt 60 ]; then
-  #        logmsg "Failed to get the EdgeNodeClusterStatus, exit now, run in single node"
-  #        break
-  #      fi
-  #    fi
-  #    sleep 10
-  #  fi
-  #done
 
   # if we are in edge-node cluster mode prepare the config.yaml and bootstrap-config.yaml
   # for single node mode, we basically use the existing config.yaml
@@ -895,7 +851,6 @@ if [ ! -f /var/lib/all_components_initialized ]; then
 
     # append the hostname to the config.yaml and bootstrap-config.yaml
     cp "$config_file" "$k3s_config_file"
-    echo "node-name: $HOSTNAME" >> "$k3s_config_file"
   fi
 
   # assing node-ip to multus
@@ -1019,8 +974,13 @@ if [ ! -f /var/lib/all_components_initialized ]; then
                 logmsg "All components initialized"
                 touch /var/lib/node-labels-initialized
                 touch /var/lib/all_components_initialized
-                rm  /persist/save_kube_var_lib_backup.tar.gz
-                tar -czf /persist/save_kube_var_lib_backup.tar.gz -C /var/lib .
+                sleep 5
+                logmsg "stop the k3s server and wait for copy /var/lib"
+                terminate_k3s
+                sync
+                sleep 5
+                save_var_lib
+                logmsg "saved the copy of /var/lib, done"
         fi
 else
         if ! check_start_k3s; then
@@ -1040,6 +1000,11 @@ else
                 done
                 if [ $node_count_ready -ne 1 ]; then
                     logmsg "Node not ready, continue to to check_start_k3s"
+
+                    # check if the cluster mode has changed, otherwise
+                    # when removing ourselves from the cluster, we'll stuck in the loop and
+                    # max out the restart counter, cannot move to single node mode
+                    check_cluster_config_change
                     continue
                 fi
         else
@@ -1084,6 +1049,7 @@ fi
         check_log_file_size "containerd-user.log"
         check_and_copy_multus_results
         check_cluster_config_change
+        check_kubeconfig_yaml_files
         check_and_run_vnc
         wait_for_item "wait"
         sleep 15

@@ -154,8 +154,6 @@ const (
 	kubePodCIDR = "10.42.0.0/16"
 	// CIDR used for IP allocation for K3s services.
 	kubeSvcCIDR = "10.43.0.0/16"
-	// XXX hack for now to see, need to get this prefix from edgenode cluster config
-	clusterCIDR = "10.244.244.0/28"
 )
 
 // LinuxDpcReconciler is a DPC-reconciler for Linux network stack,
@@ -1064,7 +1062,6 @@ func (r *LinuxDpcReconciler) getIntendedL3Cfg(dpc types.DevicePortConfig) dg.Gra
 	}
 	intendedL3 := dg.New(graphArgs)
 	intendedL3.PutSubGraph(r.getIntendedAdapters(dpc))
-	// XXX may need to comment out to see, pod/vmi gets 10.43 unreachable errors
 	intendedL3.PutSubGraph(r.getIntendedSrcIPRules(dpc))
 	intendedL3.PutSubGraph(r.getIntendedRoutes(dpc))
 	intendedL3.PutSubGraph(r.getIntendedArps(dpc))
@@ -1778,36 +1775,6 @@ func (r *LinuxDpcReconciler) getIntendedACLs(
 		TargetOpts:  []string{"--set-mark", controlProtoMark("kube_pod")},
 		Description: "Mark all traffic directly forwarded between Kubernetes pods",
 	}
-	markClusterPod := iptables.Rule{
-		RuleLabel:   "Kubernetes cluster prefix to pod cidr mark",
-		MatchOpts:   []string{"-s", clusterCIDR, "-d", kubePodCIDR},
-		Target:      "CONNMARK",
-		TargetOpts:  []string{"--set-mark", controlProtoMark("cluster_pod")},
-		Description: "Mark traffic from Kubernetes cluster prefix to pod cidr",
-	}
-	// Allow all traffic forwarded between Kubernetes pods.
-	markPodCluster := iptables.Rule{
-		RuleLabel:   "Kubernetes pod to cluster prefix mark",
-		MatchOpts:   []string{"-s", kubePodCIDR, "-d", clusterCIDR},
-		Target:      "CONNMARK",
-		TargetOpts:  []string{"--set-mark", controlProtoMark("pod_cluster")},
-		Description: "Mark all traffic directly forwarded between Kubernetes pods to cluster prefix",
-	}
-	markClusterSvc := iptables.Rule{
-		RuleLabel:   "Kubernetes cluster prefix to Svc cidr mark",
-		MatchOpts:   []string{"-s", clusterCIDR, "-d", kubeSvcCIDR},
-		Target:      "CONNMARK",
-		TargetOpts:  []string{"--set-mark", controlProtoMark("cluster_svc")},
-		Description: "Mark traffic from Kubernetes cluster prefix to pod cidr",
-	}
-	// Allow all traffic forwarded between Kubernetes pods.
-	markSvcCluster := iptables.Rule{
-		RuleLabel:   "Kubernetes Svc to cluster prefix mark",
-		MatchOpts:   []string{"-s", kubeSvcCIDR, "-d", clusterCIDR},
-		Target:      "CONNMARK",
-		TargetOpts:  []string{"--set-mark", controlProtoMark("svc_cluster")},
-		Description: "Mark all traffic directly forwarded between Kubernetes Svcs to cluster prefix",
-	}
 	// Allow all DNS requests made from the Kubernetes network.
 	markKubeDNS := iptables.Rule{
 		RuleLabel:     "Kubernetes DNS mark",
@@ -1887,14 +1854,21 @@ func (r *LinuxDpcReconciler) getIntendedACLs(
 		Description: "Mark EdgeNode PubSub traffic",
 	}
 
+	markEncBootstrap := iptables.Rule{ // XXX EncPubSub bootstrap status
+		RuleLabel:   "EncBootstrap",
+		MatchOpts:   []string{"-p", "tcp", "--dport", "12346"},
+		Target:      "CONNMARK",
+		TargetOpts:  []string{"--set-mark", controlProtoMark("in_encbootstrap")},
+		Description: "Mark EdgeNode Cluster bootstrap status traffic",
+	}
+
 	protoMarkV4Rules := []iptables.Rule{
 		markSSHAndGuacamole, markVnc, markIcmpV4, markDhcp,
 	}
 	if r.HVTypeKube {
 		protoMarkV4Rules = append(protoMarkV4Rules, markKubeDNS, markKubeSvc, markKubePod,
-			markClusterPod, markPodCluster, markClusterSvc, markSvcCluster,
 			markK3s, markEtcd, markFlannel, markMetrics, markLongHornWebhook, markLongHornInstMgr,
-			markIscsi, markNFS, markEncPub)
+			markIscsi, markNFS, markEncPub, markEncBootstrap)
 	}
 	protoMarkV6Rules := []iptables.Rule{
 		markSSHAndGuacamole, markVnc, markIcmpV6,
@@ -2077,7 +2051,152 @@ func (r *LinuxDpcReconciler) getIntendedACLs(
 			AppliedBefore: []string{denyNonAppForwarding.RuleLabel},
 			Description:   "Allow forwarding of DNS traffic inside the Kubernetes network",
 		}
-	*/
+		intendedIPv4ACLs.PutItem(allowKubeDNSForwarding, nil)
+		allowKubeSvcForwarding := iptables.Rule{
+			RuleLabel: "Allow forwarding to Kubernetes services",
+			Table:     "mangle",
+			ChainName: "FORWARD" + iptables.DeviceChainSuffix,
+			MatchOpts: []string{"--match", "connmark", "--mark",
+				controlProtoMark("kube_svc")},
+			Target:        "ACCEPT",
+			AppliedBefore: []string{denyNonAppForwarding.RuleLabel},
+			Description: "Allow forwarding of all traffic from Kubernetes pods " +
+				"to Kubernetes services",
+		}
+		intendedIPv4ACLs.PutItem(allowKubeSvcForwarding, nil)
+		allowKubePodForwarding := iptables.Rule{
+			RuleLabel: "Allow forwarding between Kubernetes pods",
+			Table:     "mangle",
+			ChainName: "FORWARD" + iptables.DeviceChainSuffix,
+			MatchOpts: []string{"--match", "connmark", "--mark",
+				controlProtoMark("kube_pod")},
+			Target:        "ACCEPT",
+			AppliedBefore: []string{denyNonAppForwarding.RuleLabel},
+			Description:   "Allow forwarding of all traffic between Kubernetes pods",
+		}
+		intendedIPv4ACLs.PutItem(allowKubePodForwarding, nil)
+
+		// cluster additions
+		allowK3sForwarding := iptables.Rule{
+			RuleLabel: "Allow forwarding between K3s api server",
+			Table:     "mangle",
+			ChainName: "FORWARD" + iptables.DeviceChainSuffix,
+			MatchOpts: []string{"--match", "connmark", "--mark",
+				controlProtoMark("in_k3s")},
+			Target:        "ACCEPT",
+			AppliedBefore: []string{denyNonAppForwarding.RuleLabel},
+			Description:   "Allow forwarding of all traffic between K3s api server",
+		}
+		intendedIPv4ACLs.PutItem(allowK3sForwarding, nil)
+
+		allowEtcdForwarding := iptables.Rule{
+			RuleLabel: "Allow forwarding between K3s etcd server",
+			Table:     "mangle",
+			ChainName: "FORWARD" + iptables.DeviceChainSuffix,
+			MatchOpts: []string{"--match", "connmark", "--mark",
+				controlProtoMark("in_etcd")},
+			Target:        "ACCEPT",
+			AppliedBefore: []string{denyNonAppForwarding.RuleLabel},
+			Description:   "Allow forwarding of all traffic between K3s etcd server",
+		}
+		intendedIPv4ACLs.PutItem(allowEtcdForwarding, nil)
+
+		allowFlannelForwarding := iptables.Rule{
+			RuleLabel: "Allow forwarding between K3s flannel server",
+			Table:     "mangle",
+			ChainName: "FORWARD" + iptables.DeviceChainSuffix,
+			MatchOpts: []string{"--match", "connmark", "--mark",
+				controlProtoMark("in_flannel")},
+			Target:        "ACCEPT",
+			AppliedBefore: []string{denyNonAppForwarding.RuleLabel},
+			Description:   "Allow forwarding of all traffic between K3s flannel server",
+		}
+		intendedIPv4ACLs.PutItem(allowFlannelForwarding, nil)
+
+		allowMetricsForwarding := iptables.Rule{
+			RuleLabel: "Allow forwarding between K3s metrics traffic",
+			Table:     "mangle",
+			ChainName: "FORWARD" + iptables.DeviceChainSuffix,
+			MatchOpts: []string{"--match", "connmark", "--mark",
+				controlProtoMark("in_metrics")},
+			Target:        "ACCEPT",
+			AppliedBefore: []string{denyNonAppForwarding.RuleLabel},
+			Description:   "Allow forwarding of all traffic between K3s metrics traffic",
+		}
+		intendedIPv4ACLs.PutItem(allowMetricsForwarding, nil)
+
+		allowLhWebHookForwarding := iptables.Rule{
+			RuleLabel: "Allow forwarding between longhorn webhook",
+			Table:     "mangle",
+			ChainName: "FORWARD" + iptables.DeviceChainSuffix,
+			MatchOpts: []string{"--match", "connmark", "--mark",
+				controlProtoMark("in_lhweb")},
+			Target:        "ACCEPT",
+			AppliedBefore: []string{denyNonAppForwarding.RuleLabel},
+			Description:   "Allow forwarding of all traffic between longhorn webhook",
+		}
+		intendedIPv4ACLs.PutItem(allowLhWebHookForwarding, nil)
+
+		allowLhInstMgrForwarding := iptables.Rule{
+			RuleLabel: "Allow forwarding between longhorn instance manager",
+			Table:     "mangle",
+			ChainName: "FORWARD" + iptables.DeviceChainSuffix,
+			MatchOpts: []string{"--match", "connmark", "--mark",
+				controlProtoMark("in_lhinstmgr")},
+			Target:        "ACCEPT",
+			AppliedBefore: []string{denyNonAppForwarding.RuleLabel},
+			Description:   "Allow forwarding of all traffic between longhorn instance manager",
+		}
+		intendedIPv4ACLs.PutItem(allowLhInstMgrForwarding, nil)
+
+		allowIscsiForwarding := iptables.Rule{
+			RuleLabel: "Allow forwarding between longhorn iscsi",
+			Table:     "mangle",
+			ChainName: "FORWARD" + iptables.DeviceChainSuffix,
+			MatchOpts: []string{"--match", "connmark", "--mark",
+				controlProtoMark("in_iscsi")},
+			Target:        "ACCEPT",
+			AppliedBefore: []string{denyNonAppForwarding.RuleLabel},
+			Description:   "Allow forwarding of all traffic between longhorn iscsi",
+		}
+		intendedIPv4ACLs.PutItem(allowIscsiForwarding, nil)
+
+		allowNFSForwarding := iptables.Rule{
+			RuleLabel: "Allow forwarding between longhorn nfs",
+			Table:     "mangle",
+			ChainName: "FORWARD" + iptables.DeviceChainSuffix,
+			MatchOpts: []string{"--match", "connmark", "--mark",
+				controlProtoMark("in_nfs")},
+			Target:        "ACCEPT",
+			AppliedBefore: []string{denyNonAppForwarding.RuleLabel},
+			Description:   "Allow forwarding of all traffic between longhorn nfs",
+		}
+		intendedIPv4ACLs.PutItem(allowNFSForwarding, nil)
+
+		allowEncPubForwarding := iptables.Rule{
+			RuleLabel: "Allow forwarding between EdgeNode PubSub traffic",
+			Table:     "mangle",
+			ChainName: "FORWARD" + iptables.DeviceChainSuffix,
+			MatchOpts: []string{"--match", "connmark", "--mark",
+				controlProtoMark("in_encpubsub")},
+			Target:        "ACCEPT",
+			AppliedBefore: []string{denyNonAppForwarding.RuleLabel},
+			Description:   "Allow forwarding of all traffic between EdgeNode PubSub traffic",
+		}
+		intendedIPv4ACLs.PutItem(allowEncPubForwarding, nil)
+
+		allowEncBootstrap := iptables.Rule{
+			RuleLabel: "Allow forwarding between EdgeNode Cluster bootstrap traffic",
+			Table:     "mangle",
+			ChainName: "FORWARD" + iptables.DeviceChainSuffix,
+			MatchOpts: []string{"--match", "connmark", "--mark",
+				controlProtoMark("in_encbootstrap")},
+			Target:        "ACCEPT",
+			AppliedBefore: []string{denyNonAppForwarding.RuleLabel},
+			Description:   "Allow forwarding of all traffic between EdgeNode Cluster bootstrap traffic",
+		}
+		intendedIPv4ACLs.PutItem(allowEncBootstrap, nil)
+	}
 
 	// Mark all un-marked local traffic generated by local services.
 	outputRules := []iptables.Rule{

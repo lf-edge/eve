@@ -634,8 +634,8 @@ func validateDeps(deps []Dependency) {
 			if deps[i].RequiredItem == deps[j].RequiredItem {
 				// Strictly speaking this is a programming error,
 				// so let's just lazily put panic in here.
-				panic(fmt.Sprintf("Duplicate dependencies (required item: %s)",
-					deps[i].RequiredItem))
+				panic(fmt.Sprintf("Duplicate dependencies (required item: i %s, j %s)",
+					deps[i].RequiredItem, deps[j].RequiredItem))
 			}
 		}
 	}

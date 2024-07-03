@@ -3058,14 +3058,15 @@ func parseEdgeNodeClusterConfig(getconfigCtx *getconfigContext,
 	ctx := getconfigCtx.zedagentCtx
 	zcfgCluster := config.GetCluster()
 	if zcfgCluster == nil {
-		log.Noticef("parseEdgeNodeClusterConfig: No EdgeNodeClusterConfig, Unpublishing")
+		log.Functionf("parseEdgeNodeClusterConfig: No EdgeNodeClusterConfig, Unpublishing")
 		// XXX if globel test enclusterconfig does not exist
 		gcp := ctx.globalConfig
 		gcpEncCfg := gcp.GlobalValueString(types.ENClusterConfig)
 		if gcpEncCfg == "" {
 			pub := ctx.pubEdgeNodeClusterConfig
 			items := pub.GetAll()
-			if len(items) == 0 {
+			if len(items) > 0 {
+				log.Functionf("parseEdgeNodeClusterConfig: Unpublishing EdgeNodeClusterConfig")
 				ctx.pubEdgeNodeClusterConfig.Unpublish("global")
 			}
 		}

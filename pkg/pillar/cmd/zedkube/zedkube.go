@@ -200,7 +200,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	zedkubeCtx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
 
-	// Look for global config such as log levels
+	// EdgeNodeClusterConfig subscription
 	subEdgeNodeClusterConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "zedagent",
 		MyAgentName:   agentName,
@@ -218,7 +218,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		log.Fatal(err)
 	}
 	zedkubeCtx.subEdgeNodeClusterConfig = subEdgeNodeClusterConfig
-	subEdgeNodeClusterConfig.Activate()
 
 	// Watch DNS to learn which ports are used for management.
 	subDeviceNetworkStatus, err := ps.NewSubscription(
@@ -360,6 +359,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 	log.Noticef("zedkube run: device network status initialized")
 	time.Sleep(5 * time.Second)
+	subEdgeNodeClusterConfig.Activate()
 
 	err = kubeapi.WaitForKubernetes(agentName, ps, subEdgeNodeClusterConfig, stillRunning)
 	if err != nil {
