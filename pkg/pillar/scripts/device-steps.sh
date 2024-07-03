@@ -73,7 +73,7 @@ DEFAULT_NTPMODE=pool
 NTPSERVERS=
 
 # Return one line with all the NTP servers for all the ports
-get_ntp_servers() {
+get_ntp_servers_from_nim() {
     if [ ! -f "$INPUTFILE" ];  then
         return
     fi
@@ -100,6 +100,13 @@ get_ntp_servers() {
         list="$list server\n$ntp\n"
     done
     ntp_all="$list"
+
+    # shellcheck disable=SC3037
+    echo -n "$ntp_all"
+}
+
+get_ntp_servers() {
+    ntp_all=$(get_ntp_servers_from_nim)
 
     # Fallback to default if nothing is configured
     if [ -z "$ntp_all" ]; then
