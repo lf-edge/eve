@@ -4,7 +4,7 @@ go 1.21
 
 require (
 	github.com/godbus/dbus/v5 v5.1.0
-	github.com/lf-edge/eve/pkg/pillar v0.0.0-20240617095004-8ab085dd6a51
+	github.com/lf-edge/eve/pkg/pillar v0.0.0-20240704121016-f208c6763fad
 	github.com/miekg/dns v1.1.55
 	github.com/sirupsen/logrus v1.9.3
 	github.com/tatsushid/go-fastping v0.0.0-20160109021039-d7bb493dee3e
@@ -24,7 +24,7 @@ require (
 	github.com/google/go-tpm v0.3.0 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/leodido/go-urn v1.2.4 // indirect
-	github.com/lf-edge/eve-api/go v0.0.0-20240524134957-77df971d5756 // indirect
+	github.com/lf-edge/eve-api/go v0.0.0-20240607171551-ab08ae4a8124 // indirect
 	github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20240315102754-0f6d1f182e0d // indirect
 	github.com/satori/go.uuid v1.2.1-0.20180404165556-75cca531ea76 // indirect
 	github.com/vishvananda/netns v0.0.0-20210104183010-2eb08e3e575f // indirect
