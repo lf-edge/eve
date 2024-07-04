@@ -4,7 +4,9 @@
 package types
 
 import (
+	"fmt"
 	"net"
+	"strings"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
@@ -287,11 +289,12 @@ type AppNetAdapterConfig struct {
 	//	If there is a parsing error and this AppNetAdapterNetwork config cannot be
 	//	processed, set the error here. This allows the error to be propagated
 	//  back to zedcloud
-	Error        string
-	Network      uuid.UUID // Points to a NetworkInstance.
-	ACLs         []ACE
-	AccessVlanID uint32
-	IfIdx        uint32 // If we have multiple interfaces on that network, we will increase the index
+	Error           string
+	Network         uuid.UUID // Points to a NetworkInstance.
+	ACLs            []ACE
+	AccessVlanID    uint32
+	IfIdx           uint32 // If we have multiple interfaces on that network, we will increase the index
+	AllowToDiscover bool
 }
 
 // ACEDirection determines rule direction.
@@ -809,19 +812,32 @@ const (
 //	Extracted from the protobuf NetworkInstanceConfig
 type NetworkInstanceStatus struct {
 	NetworkInstanceConfig
+	NetworkInstanceInfo
+
+	// Error set when NI has invalid config.
+	ValidationErr ErrorAndTime
+	// Errors set when there are not enough resources to create the NI.
+	AllocationErr ErrorAndTime
+
 	// Make sure the Activate from the config isn't exposed as a boolean
 	Activate uint64
-
-	ChangeInProgress ChangeInProgressType
-
-	// True if NI IP subnet overlaps with the subnet of one the device ports
-	// or another NI.
-	IPConflict bool
-
 	// Activated is true if the network instance has been created in the network stack.
 	Activated bool
+	// ChangeInProgress is used to make sure that other microservices do not read
+	// NI status until the latest Create/Modify/Delete operation completes.
+	ChangeInProgress ChangeInProgressType
 
-	NetworkInstanceInfo
+	// Error set when NI IP subnet overlaps with the subnet of one the device ports
+	// or another NI.
+	IPConflictErr ErrorAndTime
+
+	// MTU configured for the network instance and app interfaces connected to it.
+	// This can differ from the user-requested MTU in case it is invalid or conflicts
+	// with the device port MTU.
+	MTU uint16
+	// Error set when the MTU configured for NI is in conflict with the MTU configured
+	// for the associated port (e.g. NI MTU is higher than MTU of the uplink port).
+	MTUConflictErr ErrorAndTime
 
 	// Decided by local/remote probing
 	SelectedUplinkLogicalLabel string
@@ -830,8 +846,15 @@ type NetworkInstanceStatus struct {
 	// True if uplink probing is running
 	RunningUplinkProbing bool
 
-	// True if NI is not activated only because of (currently) missing uplink.
-	WaitingForUplink bool
+	// Error set when NI fails to use the configured uplink port for whatever reason.
+	UplinkErr ErrorAndTime
+
+	// Error set when the network instance config reconciliation fails.
+	ReconcileErr ErrorAndTime
+
+	// Final error reported for the NetworkInstance to the controller.
+	// It is a combination of all possible errors stored across *Err attributes.
+	ErrorAndTime
 }
 
 // LogCreate :
@@ -885,6 +908,42 @@ func (status *NetworkInstanceStatus) IsIpAssigned(ip net.IP) bool {
 		}
 	}
 	return false
+}
+
+// CombineErrors combines all errors raised for the network instance into one error.
+func (status *NetworkInstanceStatus) CombineErrors() (combinedErr ErrorAndTime) {
+	errorSlice := []ErrorAndTime{status.ValidationErr, status.AllocationErr,
+		status.IPConflictErr, status.MTUConflictErr, status.UplinkErr,
+		status.ReconcileErr}
+	var (
+		oldestTime      time.Time
+		highestSeverity ErrorSeverity
+		errorMsgs       []string
+	)
+	for _, err := range errorSlice {
+		if err.HasError() {
+			if oldestTime.IsZero() || err.ErrorTime.Before(oldestTime) {
+				oldestTime = err.ErrorTime
+			}
+			if err.ErrorSeverity > highestSeverity {
+				highestSeverity = err.ErrorSeverity
+			}
+			errorMsgs = append(errorMsgs, err.Error)
+		}
+	}
+	combinedErr.Error = strings.Join(errorMsgs, "\n")
+	combinedErr.ErrorSeverity = highestSeverity
+	combinedErr.ErrorTime = oldestTime
+	return combinedErr
+}
+
+// EligibleForActivate checks if there are no errors that prevent NI from being activated.
+// Note that MTUConflictErr does not block NI activation. When the port and NI MTU
+// are different, we flag the NI with an error but fall back to the port MTU and activate
+// the NI with that MTU value.
+func (status NetworkInstanceStatus) EligibleForActivate() bool {
+	return !status.ValidationErr.HasError() && !status.AllocationErr.HasError() &&
+		!status.IPConflictErr.HasError() && !status.UplinkErr.HasError()
 }
 
 // IPTuple :
@@ -1017,7 +1076,8 @@ type AppInstMetaData struct {
 
 // Key : App Instance Metadata unique key
 func (data AppInstMetaData) Key() string {
-	return data.AppInstUUID.String() + "-" + string(data.Type)
+	// because string(data.Type) would return empty string
+	return fmt.Sprintf("%s-%d", data.AppInstUUID.String(), data.Type)
 }
 
 // At the MinSubnetSize there is room for one app instance (.0 being reserved,
