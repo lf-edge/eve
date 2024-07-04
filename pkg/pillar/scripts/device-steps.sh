@@ -342,6 +342,10 @@ else
 fi
 if [ $RTC = 0 ]; then
     echo "$(date -Ins -u) No real-time clock"
+else
+    # Load time & date from RTC
+    hwclock --hctosys
+    echo "$(date -Ins -u) System time loaded from RTC"
 fi
 # On first boot (of boxes which have been powered off for a while) force
 # ntp setting of clock
