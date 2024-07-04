@@ -286,8 +286,9 @@ func (s *ociSpec) AdjustMemLimit(dom types.DomainConfig, addMemory int64) {
 
 // UpdateVifList creates VIF management hooks in OCI spec
 func (s *ociSpec) UpdateVifList(vifs []types.VifConfig) {
-	if s.service {
-		// we do not want to hook network for service
+	if s.service || len(vifs) == 0 {
+		// we do not want to hook network for service or for containers
+		// without any virtual interface
 		return
 	}
 	// use pre-start and post-stop hooks for networking
