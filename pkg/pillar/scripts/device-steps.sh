@@ -91,7 +91,8 @@ get_ntp_servers_from_nim() {
                  .NtpServers | .[]' $INPUTFILE)
 
     # Concat all in one string
-    ntp_all="$ntp_static $ntp_dynamic"
+    # shellcheck disable=SC3037
+    ntp_all=$(echo -e "$ntp_static\n$ntp_dynamic" | sort | uniq)
 
     # Make the following: "$mode $ntp" and separate
     # each with \n for further processing in a caller
