@@ -750,6 +750,8 @@ func (ctx KvmContext) Setup(status types.DomainStatus, config types.DomainConfig
 	spec.Get().Process.Args = args
 	logrus.Infof("Hypervisor args: %v", args)
 
+	spec.GrantFullAccessToDevices()
+
 	if err := spec.CreateContainer(true); err != nil {
 		return logError("Failed to create container for task %s from %v: %v", status.DomainName, config, err)
 	}
