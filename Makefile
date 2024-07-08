@@ -417,7 +417,7 @@ currentversion:
 	#echo $(shell readlink $(CURRENT) | sed -E 's/rootfs-(.*)\.[^.]*$/\1/')
 	@cat $(CURRENT_DIR)/installer/eve_version
 
-.PHONY: currentversion linuxkit
+.PHONY: currentversion linuxkit pkg/kernel
 
 test: $(LINUXKIT) test-images-patches | $(DIST)
 	@echo Running tests on $(GOMODULE)
@@ -705,7 +705,7 @@ endif
 	$(QUIET): $@: Succeeded
 
 $(GET_DEPS):
-	$(MAKE) -C $(GET_DEPS_DIR)
+	$(MAKE) -C $(GET_DEPS_DIR) GOOS=$(LOCAL_GOOS)
 
 sbom_info:
 	@echo "$(SBOM)"
@@ -815,11 +815,19 @@ pkgs: RESCAN_DEPS=
 pkgs: build-tools $(PKGS)
 	@echo Done building packages
 
+# No-op target for get-deps which looks at
+# external-boot-image and sees a dep for eve-kernel
+# and attempts to build pkg/kernel, which is in
+# lf-edge/eve-kernel and not built here.
+pkg/kernel:
+	$(QUIET): $@: No-op pkg/kernel
+
 pkg/external-boot-image/build.yml: pkg/external-boot-image/build.yml.in
 	$(QUIET)tools/compose-external-boot-image-yml.sh $< $@ $(shell echo ${KERNEL_TAG} | cut -d':' -f2) $(shell $(LINUXKIT) pkg show-tag pkg/xen-tools | cut -d':' -f2)
 eve-external-boot-image: pkg/external-boot-image/build.yml
 pkg/kube/external-boot-image.tar: pkg/external-boot-image
 	$(MAKE) cache-export IMAGE=$(shell $(LINUXKIT) pkg show-tag pkg/external-boot-image) OUTFILE=pkg/kube/external-boot-image.tar
+	rm -f pkg/external-boot-image/build.yml
 pkg/kube: pkg/kube/external-boot-image.tar eve-kube
 	$(QUIET): $@: Succeeded
 pkg/pillar: pkg/dnsmasq pkg/gpt-tools pkg/dom0-ztools eve-pillar
