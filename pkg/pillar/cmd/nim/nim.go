@@ -83,6 +83,8 @@ type nim struct {
 	subAssignableAdapters pubsub.Subscription
 	subOnboardStatus      pubsub.Subscription
 	subWwanStatus         pubsub.Subscription
+	// Cluster status subscriptions
+	subEdgeNodeClusterStatus pubsub.Subscription
 
 	// Publications
 	pubDummyDevicePortConfig pubsub.Publication // For logging
@@ -162,12 +164,15 @@ func (n *nim) init() (err error) {
 		Metrics:   n.zedcloudMetrics,
 	}
 	n.dpcReconciler = &dpcreconciler.LinuxDpcReconciler{
-		Log:                  n.Log,
-		ExportCurrentState:   true, // XXX make configurable
-		ExportIntendedState:  true, // XXX make configurable
-		AgentName:            agentName,
-		NetworkMonitor:       linuxNetMonitor,
-		SubControllerCert:    n.subControllerCert,
+		Log:                 n.Log,
+		ExportCurrentState:  true, // XXX make configurable
+		ExportIntendedState: true, // XXX make configurable
+		AgentName:           agentName,
+		NetworkMonitor:      linuxNetMonitor,
+		SubControllerCert:   n.subControllerCert,
+		// Cluster
+		SubEdgeNodeClusterStatus: n.subEdgeNodeClusterStatus,
+
 		SubEdgeNodeCert:      n.subEdgeNodeCert,
 		PubCipherBlockStatus: n.pubCipherBlockStatus,
 		PubWwanConfig:        n.pubWwanConfig,
@@ -229,6 +234,9 @@ func (n *nim) run(ctx context.Context) (err error) {
 		return err
 	}
 	if err = n.subOnboardStatus.Activate(); err != nil {
+		return err
+	}
+	if err = n.subEdgeNodeClusterStatus.Activate(); err != nil {
 		return err
 	}
 
@@ -317,6 +325,18 @@ func (n *nim) run(ctx context.Context) (err error) {
 		select {
 		case change := <-n.subControllerCert.MsgChan():
 			n.subControllerCert.ProcessChange(change)
+
+		case change := <-n.subEdgeNodeClusterStatus.MsgChan():
+			n.subEdgeNodeClusterStatus.ProcessChange(change)
+			subd := n.subDevicePortConfigA
+			if subd != nil {
+				item, err := subd.Get("zedagent")
+				if err == nil {
+					dpc := item.(types.DevicePortConfig)
+					n.Log.Noticef("Cluster status changed, getIntendedRoutes: dpc")
+					n.dpcManager.AddDPC(dpc)
+				}
+			}
 
 		case change := <-n.subEdgeNodeCert.MsgChan():
 			n.subEdgeNodeCert.ProcessChange(change)
@@ -650,6 +670,19 @@ func (n *nim) initSubscriptions() (err error) {
 		ModifyHandler: n.handleWwanStatusModify,
 		WarningTime:   warningTime,
 		ErrorTime:     errorTime,
+	})
+	if err != nil {
+		return err
+	}
+
+	// Cluster status
+	n.subEdgeNodeClusterStatus, err = n.PubSub.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:   "zedkube",
+		MyAgentName: agentName,
+		TopicImpl:   types.EdgeNodeClusterStatus{},
+		Activate:    false,
+		WarningTime: warningTime,
+		ErrorTime:   errorTime,
 	})
 	if err != nil {
 		return err

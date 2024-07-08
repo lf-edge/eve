@@ -179,6 +179,9 @@ type LinuxDpcReconciler struct {
 	CipherMetrics        *cipher.AgentMetrics
 	PubWwanConfig        pubsub.Publication
 
+	// Cluster status
+	SubEdgeNodeClusterStatus pubsub.Subscription
+
 	currentState  dg.Graph
 	intendedState dg.Graph
 
@@ -1162,6 +1165,8 @@ func (r *LinuxDpcReconciler) getIntendedRoutes(dpc types.DevicePortConfig) dg.Gr
 	// Routes are copied from the main table.
 	srcTable := syscall.RT_TABLE_MAIN
 	var cniRoutes []netmonitor.Route
+	var svcRoute *netlink.Route
+	var encConfig *types.EdgeNodeClusterStatus
 	if r.HVTypeKube {
 		ifIndex, found, err := r.NetworkMonitor.GetInterfaceIndex(kubeCNIBridge)
 		if err != nil {
@@ -1179,6 +1184,44 @@ func (r *LinuxDpcReconciler) getIntendedRoutes(dpc types.DevicePortConfig) dg.Gr
 				r.Log.Errorf("getIntendedRoutes: ListRoutes failed for ifIndex %d: %v",
 					ifIndex, err)
 			}
+		}
+
+		// set up the kube SVC route towards the cluster interface with nexthop being the
+		// cluster prefix IP address of the node. Get the EdgeNodeClusterStatus from the
+		// zedkube to get the interface, prefix.
+		// the main reason of this route is due to in cluster mode, the cluster interface
+		// can be dedicated only for kube, and may not have a default route to resolve
+		// the 10.43/16 service CIDR.
+		sub := r.SubEdgeNodeClusterStatus
+		if sub != nil {
+			items := sub.GetAll()
+			for _, item := range items {
+				s := item.(types.EdgeNodeClusterStatus)
+				encConfig = &s
+				break
+			}
+			if encConfig != nil {
+				link, err := netlink.LinkByName(encConfig.ClusterInterface)
+				if err != nil {
+					r.Log.Errorf("getIntendedRoutes: failed to get cluster link for %s: %v",
+						encConfig.ClusterInterface, err)
+				}
+				if err == nil && link != nil {
+					_, dst, _ := net.ParseCIDR(kubeSvcCIDR)
+					gw := encConfig.ClusterIPPrefix.IP
+					routes, err := netlink.RouteGet(gw)
+					if err == nil && len(routes) > 0 {
+						svcRoute = &netlink.Route{
+							LinkIndex: link.Attrs().Index,
+							Dst:       dst,
+							Table:     srcTable,
+							Gw:        gw,
+							Family:    netlink.FAMILY_V4,
+						}
+					}
+				}
+			}
+			r.Log.Noticef("getIntendedRoutes: CNI routes: %v, svc %v", cniRoutes, svcRoute) // XXX
 		}
 	}
 	for _, port := range dpc.Ports {
@@ -1223,6 +1266,15 @@ func (r *LinuxDpcReconciler) getIntendedRoutes(dpc types.DevicePortConfig) dg.Gr
 				Route:         rtCopy,
 				UnmanagedLink: true,
 			}, nil)
+		}
+
+		// add the svc route to the intended routes
+		if svcRoute != nil && encConfig != nil && encConfig.ClusterInterface == port.IfName {
+			intendedRoutes.PutItem(linux.Route{
+				Route:         *svcRoute,
+				UnmanagedLink: true,
+			}, nil)
+			r.Log.Noticef("getIntendedRoutes: svcRoute, port %v, dsttable %v, routes %v", port.IfName, dstTable, svcRoute) // XXX
 		}
 	}
 	return intendedRoutes

@@ -32,7 +32,6 @@ func runKubeConfig(ctx *zedkubeContext, config, oldconfig *types.EdgeNodeCluster
 			log.Errorf("runKubeConfig: kubeIntfIPRemove failed: %v", err)
 			// XXX: Should we continue with the new config?
 		}
-		deleteKubeSVCRoute(ctx, oldconfig)
 	}
 	if config == nil {
 		log.Errorf("getKubeConfig: config is nil")
@@ -48,7 +47,6 @@ func runKubeConfig(ctx *zedkubeContext, config, oldconfig *types.EdgeNodeCluster
 		if err != nil {
 			log.Errorf("getKubeConfig: kubeIntfIPRemove failed: %v", err)
 		}
-		deleteKubeSVCRoute(ctx, config)
 		sendQuitSignal(ctx)
 	} else {
 		err := kubeIntfIPCheckAdd(ctx, config)
@@ -58,7 +56,6 @@ func runKubeConfig(ctx *zedkubeContext, config, oldconfig *types.EdgeNodeCluster
 		} else {
 			monitorInterface(ctx, config)
 		}
-		addKubeSVCRoute(ctx, config)
 
 		var bootstrapNode bool
 		ipaddr := config.ClusterIPPrefix.IP
@@ -66,6 +63,7 @@ func runKubeConfig(ctx *zedkubeContext, config, oldconfig *types.EdgeNodeCluster
 			bootstrapNode = true
 		}
 
+		log.Noticef("runKubeConfig: add, bootstrapNode %v", bootstrapNode)
 		if bootstrapNode {
 			if ctx.statusServer == nil {
 				mux := http.NewServeMux()
@@ -468,112 +466,6 @@ func decryptClusterToken(ctx *zedkubeContext, config *types.EdgeNodeClusterConfi
 	return decBlock.ClusterToken, nil
 }
 
-// inject 10.43/16 route in main table towards cluster interface
-func addKubeSVCRoute(ctx *zedkubeContext, config *types.EdgeNodeClusterConfig) {
-	route, err := getKubeSVCRoute(ctx, config)
-	if err != nil {
-		log.Errorf("addKubeSVCRoute: getKubeSVCRoute failed: %v", err)
-		return
-	}
-
-	err = netlink.RouteAdd(route)
-	if err != nil {
-		log.Errorf("addKubeSVCRoute: RouteAdd failed: %v", err)
-	}
-	log.Noticef("addKubeSVCRoute: route added %+v", route)
-	return
-}
-
-func deleteKubeSVCRoute(ctx *zedkubeContext, config *types.EdgeNodeClusterConfig) {
-
-	route, err := getKubeSVCRoute(ctx, config)
-	if err != nil {
-		log.Errorf("deleteKubeSVCRoute: getKubeSVCRoute failed: %v", err)
-		return
-	}
-
-	err = netlink.RouteDel(route)
-	if err != nil {
-		log.Errorf("deleteKubeSVCRoute: RouteDel failed: %v", err)
-	}
-	return
-}
-
-func getKubeSVCRoute(ctx *zedkubeContext, config *types.EdgeNodeClusterConfig) (*netlink.Route, error) {
-	link, err := netlink.LinkByName(config.ClusterInterface)
-	if err != nil {
-		return nil, err
-	}
-
-	_, dstNet, err := net.ParseCIDR(kubeSvcPrefix)
-	if err != nil {
-		return nil, err
-	}
-
-	gw := config.ClusterIPPrefix.IP
-	route := &netlink.Route{
-		Dst:       dstNet,
-		Gw:        gw,
-		LinkIndex: link.Attrs().Index,
-	}
-	return route, nil
-}
-
-func checkKubeSVCRouteExist(ctx *zedkubeContext, config *types.EdgeNodeClusterConfig) (bool, error) {
-	route, err := getKubeSVCRoute(ctx, config)
-	if err != nil {
-		log.Errorf("checkKubeSVCRouteExist: getKubeSVCRoute failed: %v", err)
-		return false, err
-	}
-
-	link, err := netlink.LinkByName(config.ClusterInterface)
-	if err != nil {
-		return false, err
-	}
-
-	routes, err := netlink.RouteList(link, netlink.FAMILY_V4)
-	if err != nil {
-		log.Errorf("checkKubeSVCRouteExist: RouteList failed: %v", err)
-		return false, err
-	}
-
-	for _, r := range routes {
-		if r.Dst != nil && r.Dst.IP.Equal(route.Dst.IP) && r.Gw.Equal(route.Gw) {
-			return true, nil
-		}
-	}
-	return false, nil
-}
-
-// XXX temp solution to inject 10.43/16 route towards cluster interface
-// regardless if the default route exist for the cluster interface
-// this functionality needs to be moved to zedrouter
-func checkSVCRoute(ctx *zedkubeContext) {
-	sub := ctx.subEdgeNodeClusterConfig
-	items := sub.GetAll()
-
-	var config *types.EdgeNodeClusterConfig
-	for _, item := range items {
-		c := item.(types.EdgeNodeClusterConfig)
-		config = &c
-		break
-	}
-
-	if config == nil {
-		return
-	}
-	exist, err := checkKubeSVCRouteExist(ctx, config)
-	if err != nil {
-		log.Errorf("checkSVCROutes: checkKubeSVCRouteExist failed: %v", err)
-		return
-	}
-
-	if !exist {
-		log.Noticef("checkSVCROutes: route does not exist addKubeSVCRoute")
-		addKubeSVCRoute(ctx, config)
-	}
-}
-
 func handleClusterStatus(ctx *zedkubeContext) {
 
 	server := ctx.statusServer
@@ -607,7 +499,7 @@ func statusHandler(w http.ResponseWriter, r *http.Request, ctx *zedkubeContext) 
 
 	clientset, err := kubernetes.NewForConfig(ctx.config)
 	if err != nil {
-		log.Errorf("collectAppLogs: can't get clientset %v", err)
+		log.Errorf("statusHandler: can't get clientset %v", err)
 		fmt.Fprint(w, "")
 		return
 	}
@@ -621,6 +513,7 @@ func statusHandler(w http.ResponseWriter, r *http.Request, ctx *zedkubeContext) 
 
 	var isMaster, isEtcd bool
 	if len(nodes.Items) == 0 {
+		log.Errorf("statusHandler: can't find node uuid %s", ctx.nodeuuid)
 		fmt.Fprint(w, "")
 		return
 	}

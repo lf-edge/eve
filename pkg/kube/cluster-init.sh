@@ -135,12 +135,30 @@ wait_for_device_name() {
         fi
 
         # we should have the uuid since we got the device name
-        DEVUUID=$(/bin/hostname)
+        while true; do
+                DEVUUID=$(/bin/hostname)
+                if is_valid_uuid "$DEVUUID"; then
+                        logmsg "got valid Device UUID: $DEVUUID"
+                        break
+                else
+                        sleep 5
+                fi
+        done
 
         if ! grep -q node-name /etc/rancher/k3s/config.yaml; then
                 echo "node-name: $HOSTNAME" >> /etc/rancher/k3s/config.yaml
         fi
         logmsg "Hostname: $HOSTNAME"
+}
+
+# Function to check if a string is a valid UUID
+is_valid_uuid() {
+    local uuid=$1
+    if echo "$uuid" | grep -qE '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'; then
+        return 0 # Valid UUID
+    else
+        return 1 # Invalid UUID
+    fi
 }
 
 apply_multus_cni() {
@@ -276,11 +294,8 @@ apply_longhorn_disk_config() {
 }
 
 apply_node_uuid_lable () {
-        node_uuid_len=$(kubectl get nodes -l node-uuid="$DEVUUID" -o json | jq '.items | length')
-        if [ "$node_uuid_len" -eq 0 ]; then
-                logmsg "set node label with uuid $DEVUUID"
-                kubectl label node "$HOSTNAME" node-uuid="$DEVUUID"
-        fi
+        logmsg "set node label with uuid $DEVUUID"
+        kubectl label node "$HOSTNAME" node-uuid="$DEVUUID"
 }
 
 reapply_node_labes() {
@@ -796,11 +811,11 @@ EOF
             # if we are here, check the bootstrap server is single or cluster mode
             status=$(curl --max-time 2 -s "http://$join_serverIP:$clusterStatusPort/status")
             if [ $? -ne 0 ]; then
-                if [ $((counter % 30)) -eq 0 ]; then
+                if [ $((counter % 30)) -eq 1 ]; then
                         logmsg "Attempt $counter: Failed to connect to the server. Waiting for 10 seconds..."
                 fi
             elif [ "$status" != "cluster" ]; then
-                if [ $((counter % 30)) -eq 0 ]; then
+                if [ $((counter % 30)) -eq 1 ]; then
                         logmsg "Attempt $counter: Server is not in 'cluster' status. Waiting for 10 seconds..."
                 fi
             else

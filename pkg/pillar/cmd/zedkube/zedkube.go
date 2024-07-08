@@ -32,7 +32,6 @@ const (
 	logcollectInterval   = 30
 	// run VNC file
 	vmiVNCFileName = "/run/zedkube/vmiVNC.run"
-	kubeSvcPrefix  = "10.43.0.0/16"
 )
 
 var (
@@ -200,25 +199,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	zedkubeCtx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
 
-	// EdgeNodeClusterConfig subscription
-	subEdgeNodeClusterConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:     "zedagent",
-		MyAgentName:   agentName,
-		TopicImpl:     types.EdgeNodeClusterConfig{},
-		Persistent:    true,
-		Activate:      false,
-		Ctx:           &zedkubeCtx,
-		CreateHandler: handleEdgeNodeClusterConfigCreate,
-		ModifyHandler: handleEdgeNodeClusterConfigModify,
-		DeleteHandler: handleEdgeNodeClusterConfigDelete,
-		WarningTime:   warningTime,
-		ErrorTime:     errorTime,
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	zedkubeCtx.subEdgeNodeClusterConfig = subEdgeNodeClusterConfig
-
 	// Watch DNS to learn which ports are used for management.
 	subDeviceNetworkStatus, err := ps.NewSubscription(
 		pubsub.SubscriptionOptions{
@@ -359,6 +339,25 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 	log.Noticef("zedkube run: device network status initialized")
 	time.Sleep(5 * time.Second)
+
+	// EdgeNodeClusterConfig subscription
+	subEdgeNodeClusterConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "zedagent",
+		MyAgentName:   agentName,
+		TopicImpl:     types.EdgeNodeClusterConfig{},
+		Persistent:    true,
+		Activate:      false,
+		Ctx:           &zedkubeCtx,
+		CreateHandler: handleEdgeNodeClusterConfigCreate,
+		ModifyHandler: handleEdgeNodeClusterConfigModify,
+		DeleteHandler: handleEdgeNodeClusterConfigDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	zedkubeCtx.subEdgeNodeClusterConfig = subEdgeNodeClusterConfig
 	subEdgeNodeClusterConfig.Activate()
 
 	err = kubeapi.WaitForKubernetes(agentName, ps, subEdgeNodeClusterConfig, stillRunning)
@@ -394,7 +393,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		case <-appLogTimer.C:
 			collectAppLogs(&zedkubeCtx)
 			checkAppsStatus(&zedkubeCtx)
-			checkSVCRoute(&zedkubeCtx)
 			appLogTimer = time.NewTimer(logcollectInterval * time.Second)
 
 		case change := <-subGlobalConfig.MsgChan():
