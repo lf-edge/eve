@@ -52,6 +52,9 @@ const (
 	// DPCStateAsyncWait : waiting for some config operations to finalize which are
 	// running asynchronously in the background.
 	DPCStateAsyncWait
+	// DPCStateWwanWait : waiting for the wwan microservice to apply the latest
+	// cellular configuration.
+	DPCStateWwanWait
 )
 
 // String returns the string name
@@ -75,6 +78,8 @@ func (status DPCState) String() string {
 		return "DPC_REMOTE_WAIT"
 	case DPCStateAsyncWait:
 		return "DPC_ASYNC_WAIT"
+	case DPCStateWwanWait:
+		return "DPC_WWAN_WAIT"
 	default:
 		return fmt.Sprintf("Unknown status %d", status)
 	}
@@ -355,10 +360,12 @@ func (config *DevicePortConfig) DoSanitize(log *base.LogObject,
 
 // CountMgmtPorts returns the number of management ports
 // Exclude any broken ones with Dhcp = DhcpTypeNone
-func (config *DevicePortConfig) CountMgmtPorts() int {
+// Optionally exclude mgmt ports with invalid config
+func (config *DevicePortConfig) CountMgmtPorts(onlyValidConfig bool) int {
 	count := 0
 	for _, port := range config.Ports {
-		if port.IsMgmt && port.Dhcp != DhcpTypeNone {
+		if port.IsMgmt && port.Dhcp != DhcpTypeNone &&
+			!(onlyValidConfig && port.InvalidConfig) {
 			count++
 		}
 	}
@@ -434,7 +441,7 @@ func (config DevicePortConfig) IsDPCUntested() bool {
 // IsDPCUsable - checks whether something is invalid; no management IP
 // addresses means it isn't usable hence we return false if none.
 func (config DevicePortConfig) IsDPCUsable() bool {
-	mgmtCount := config.CountMgmtPorts()
+	mgmtCount := config.CountMgmtPorts(true)
 	return mgmtCount > 0
 }
 
@@ -511,9 +518,13 @@ type NetworkPortConfig struct {
 	Alias        string // From SystemAdapter's alias
 	// NetworkUUID - UUID of the Network Object configured for the port.
 	NetworkUUID uuid.UUID
-	IsMgmt      bool  // Used to talk to controller
-	IsL3Port    bool  // True if port is applicable to operate on the network layer
-	Cost        uint8 // Zero is free
+	IsMgmt      bool // Used to talk to controller
+	IsL3Port    bool // True if port is applicable to operate on the network layer
+	// InvalidConfig is used to flag port config which failed parsing or (static) validation
+	// checks, such as: malformed IP address, undefined required field, IP address not inside
+	// the subnet, etc.
+	InvalidConfig bool
+	Cost          uint8 // Zero is free
 	DhcpConfig
 	ProxyConfig
 	L2LinkConfig
@@ -720,9 +731,14 @@ func (ap CellularAccessPoint) Equal(ap2 CellularAccessPoint) bool {
 		ap.APN != ap2.APN {
 		return false
 	}
+	enc1 := ap.EncryptedCredentials
+	enc2 := ap2.EncryptedCredentials
 	if ap.AuthProtocol != ap2.AuthProtocol ||
-		// TODO (how to properly detect changed username/password ?)
-		!reflect.DeepEqual(ap.EncryptedCredentials, ap2.EncryptedCredentials) {
+		enc1.CipherBlockID != enc2.CipherBlockID ||
+		enc1.CipherContextID != enc2.CipherContextID ||
+		!bytes.Equal(enc1.InitialValue, enc2.InitialValue) ||
+		!bytes.Equal(enc1.CipherData, enc2.CipherData) ||
+		!bytes.Equal(enc1.ClearTextHash, enc2.ClearTextHash) {
 		return false
 	}
 	if !generics.EqualLists(ap.PreferredPLMNs, ap2.PreferredPLMNs) ||
