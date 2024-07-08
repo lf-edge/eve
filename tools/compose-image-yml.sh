@@ -3,7 +3,15 @@
 set -e
 
 yq() {
-  docker run -i --rm -v "${PWD}/":/workdir -w /workdir mikefarah/yq:4.40.5 "$@"
+  if yq --version | grep -cq v4.4
+  then
+    yq "$@"
+  elif go --version 2>/dev/null
+  then
+    go run github.com/mikefarah/yq/v4@v4.40.5 "$@"
+  else
+    docker run -i --rm -v "${PWD}/":/workdir -w /workdir mikefarah/yq:4.40.5 "$@"
+  fi
 }
 
 process-image-template() {
