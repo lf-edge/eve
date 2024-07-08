@@ -61,12 +61,6 @@ func handleVolumeModify(ctxArg interface{}, key string,
 				status.DisplayName, config.DisplayName, config.VolumeID)
 			status.DisplayName = config.DisplayName
 		}
-		if config.RefCount != status.RefCount {
-			log.Functionf("RefCount changed from %d to %d for %s",
-				status.RefCount, config.RefCount, config.DisplayName)
-			status.RefCount = config.RefCount
-			status.LastRefCountChangeTime = time.Now()
-		}
 		updateVolumeStatusRefCount(ctx, status)
 		publishVolumeStatus(ctx, status)
 		updateVolumeRefStatus(ctx, status)
@@ -116,7 +110,7 @@ func handleDeferredVolumeCreate(ctx *volumemgrContext, key string, config *types
 		LocalGenerationCounter:  config.LocalGenerationCounter,
 		Encrypted:               config.Encrypted,
 		DisplayName:             config.DisplayName,
-		RefCount:                config.RefCount,
+		RefCount:                1,
 		Target:                  config.Target,
 		CustomMeta:              config.CustomMeta,
 		LastRefCountChangeTime:  time.Now(),
@@ -328,22 +322,30 @@ func maybeSpaceAvailable(ctx *volumemgrContext) {
 }
 
 // updateVolumeStatusRefCount updates the refcount in volume status
-// Refcount in volume status is sum of refount in volume config and volume ref config
+// Refcount in volume status is the number of all received VolumeConfigs and VolumeRefConfigs
 func updateVolumeStatusRefCount(ctx *volumemgrContext, vs *types.VolumeStatus) {
 	log.Tracef("updateVolumeStatusRefCount(%s)", vs.Key())
-	var vcRefCount, vrcRefCount uint
+	var vcRefCount, vrcRefCount uint // initialize to 0
+
+	// count refcount from volume config itself (should be one at max)
 	vc := ctx.LookupVolumeConfig(vs.Key())
 	if vc == nil {
 		log.Functionf("updateVolumeStatusRefCount: VolumeConfig not present for %s", vs.Key())
 	} else {
-		vcRefCount = vc.RefCount
+		vcRefCount++
 	}
-	vrc := lookupVolumeRefConfig(ctx, vs.Key())
-	if vrc == nil {
-		log.Functionf("updateVolumeStatusRefCount: VolumeRefConfig not present for %s", vs.Key())
-	} else {
-		vrcRefCount = vrc.RefCount
+
+	// count references from apps
+	for _, s := range ctx.subVolumeRefConfig.GetAll() {
+		vrc := s.(types.VolumeRefConfig)
+		if vrc.VolumeKey() == vs.Key() {
+			vrcRefCount++
+		}
 	}
+	if vrcRefCount == 0 {
+		log.Functionf("updateVolumeStatusRefCount: no VolumeRefConfigs present for %s", vs.Key())
+	}
+
 	oldRefCount := vs.RefCount
 	newRefCount := vcRefCount + vrcRefCount
 	if newRefCount != oldRefCount {
