@@ -14,9 +14,11 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/opencontainers/runtime-spec/specs-go"
+	"golang.org/x/sys/unix"
 
 	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
+	"tags.cncf.io/container-device-interface/pkg/cdi"
 )
 
 const (
@@ -53,6 +55,38 @@ func newContainerd() Hypervisor {
 	}
 }
 
+func getDeviceInfo(path string) (specs.LinuxDevice, error) {
+	var statInfo unix.Stat_t
+	var devType string
+	ociDev := specs.LinuxDevice{}
+
+	err := unix.Stat(path, &statInfo)
+	if err != nil {
+		return ociDev, err
+	}
+
+	switch statInfo.Mode & unix.S_IFMT {
+	case unix.S_IFBLK:
+		devType = "b"
+	case unix.S_IFCHR:
+		devType = "c"
+	case unix.S_IFDIR:
+		devType = "d"
+	case unix.S_IFIFO:
+		devType = "p"
+	case unix.S_IFLNK:
+		devType = "l"
+	case unix.S_IFSOCK:
+		devType = "s"
+	}
+
+	ociDev.Path = path
+	ociDev.Type = devType
+	ociDev.Major = int64(unix.Major(statInfo.Rdev))
+	ociDev.Minor = int64(unix.Minor(statInfo.Rdev))
+	return ociDev, nil
+}
+
 // CountMemOverhead - returns the memory overhead for a domain.
 // This implementation is used for Xen as well
 func (ctx ctrdContext) CountMemOverhead(domainName string, domainUUID uuid.UUID, domainRAMMemory int64, vmmMaxMem int64,
@@ -80,12 +114,88 @@ func (ctx ctrdContext) Task(status *types.DomainStatus) types.Task {
 	return ctx
 }
 
-func (ctx ctrdContext) setupSpec(status *types.DomainStatus, config *types.DomainConfig, volume string) (containerd.OCISpec, error) {
+func (ctx ctrdContext) setupSpec(status *types.DomainStatus, config *types.DomainConfig,
+	aa *types.AssignableAdapters, globalConfig *types.ConfigItemValueMap,
+	volume string) (containerd.OCISpec, error) {
 	spec, err := ctx.ctrdClient.NewOciSpec(status.DomainName, config.Service)
 	if err != nil {
 		logError("failed to create OCI spec for domain %s: %v", status.DomainName, err)
 		return nil, err
 	}
+	ociSpec := spec.Get()
+
+	// Process I/O adapters
+	devList := []string{}
+	cdiList := []string{}
+	for _, adapter := range config.IoAdapterList {
+		logrus.Debugf("processing adapter %d %s\n", adapter.Type, adapter.Name)
+		list := aa.LookupIoBundleAny(adapter.Name)
+		// We reserved it in handleCreate so nobody could have stolen it
+		if len(list) == 0 {
+			logrus.Fatalf("IoBundle disappeared %d %s for %v\n",
+				adapter.Type, adapter.Name, status.DomainId)
+		}
+		for _, ib := range list {
+			if ib == nil {
+				continue
+			}
+			if ib.UsedByUUID != config.UUIDandVersion.UUID {
+				logrus.Fatalf("IoBundle not ours %s: %d %s for %v\n",
+					ib.UsedByUUID, adapter.Type, adapter.Name,
+					status.DomainId)
+			}
+
+			// Video devices
+			if ib.Type == types.IoHDMI {
+				// It's a CDI device?
+				cdiDev := ib.Cbattr["cdi"]
+				if cdiDev != "" {
+					logrus.Infof("Adding CDI device %s\n", cdiDev)
+					cdiList = append(cdiList, cdiDev)
+				}
+			}
+
+			// Serial devices
+			if ib.Type == types.IoCom && ib.Serial != "" {
+				logrus.Infof("Adding serial %s\n", ib.Serial)
+				devList = append(devList, ib.Serial)
+			}
+
+			// Generic devices
+			if ib.Type == types.IoOther && ib.Ifname != "" {
+				logrus.Infof("Adding generic device %s\n", ib.Ifname)
+				devList = append(devList, ib.Ifname)
+			}
+		}
+	}
+
+	if ociSpec.Linux == nil {
+		ociSpec.Linux = &specs.Linux{}
+	}
+	if ociSpec.Linux.Devices == nil {
+		ociSpec.Linux.Devices = make([]specs.LinuxDevice, 0)
+	}
+
+	// Process CDI device list
+	for _, dev := range cdiList {
+		_, err = cdi.GetRegistry().InjectDevices(ociSpec, dev)
+		if err != nil {
+			logrus.Errorf("could not resolve CDI device %s: %v", dev, err)
+			return nil, err
+		}
+	}
+
+	// I/O Adapter device access
+	for _, dev := range devList {
+		// Get information about the file device (type, major and minor number)
+		ociDev, err := getDeviceInfo(dev)
+		if err != nil {
+			logrus.Errorf("could not retrieve information about device file %s", dev)
+			continue
+		}
+		ociSpec.Linux.Devices = append(ociSpec.Linux.Devices, ociDev)
+	}
+
 	if err := spec.UpdateFromVolume(volume); err != nil {
 		logError("failed to update OCI spec for domain %s: %v", status.DomainName, err)
 		return nil, err
@@ -104,7 +214,7 @@ func (ctx ctrdContext) Setup(status types.DomainStatus, config types.DomainConfi
 		return logError("failed to run domain %s: not based on an OCI image", status.DomainName)
 	}
 
-	spec, err := ctx.setupSpec(&status, &config, status.OCIConfigDir)
+	spec, err := ctx.setupSpec(&status, &config, aa, globalConfig, status.OCIConfigDir)
 	if err != nil {
 		return logError("setting up OCI spec for domain %s failed %v", status.DomainName, err)
 	}

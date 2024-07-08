@@ -128,7 +128,11 @@ func (ctx xenContext) Setup(status types.DomainStatus, config types.DomainConfig
 		return logError("failed to build domain config: %v", err)
 	}
 
-	spec, err := ctx.setupSpec(&status, &config, status.OCIConfigDir)
+	spec, err := ctx.setupSpec(&status, &config, &types.AssignableAdapters{
+		Initialized:  false,
+		IoBundleList: []types.IoBundle{},
+	}, types.NewConfigItemValueMap(), status.OCIConfigDir)
+
 	if err != nil {
 		return logError("failed to load OCI spec for domain %s: %v", status.DomainName, err)
 	}

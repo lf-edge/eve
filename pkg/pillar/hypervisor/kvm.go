@@ -748,7 +748,11 @@ func (ctx KvmContext) Setup(status types.DomainStatus, config types.DomainConfig
 		"-readconfig", file.Name(),
 		"-pidfile", kvmStateDir+domainName+"/pid")
 
-	spec, err := ctx.setupSpec(&status, &config, status.OCIConfigDir)
+	spec, err := ctx.setupSpec(&status, &config, &types.AssignableAdapters{
+		Initialized:  false,
+		IoBundleList: []types.IoBundle{},
+	}, types.NewConfigItemValueMap(), status.OCIConfigDir)
+
 	if err != nil {
 		return logError("failed to load OCI spec for domain %s: %v", status.DomainName, err)
 	}
