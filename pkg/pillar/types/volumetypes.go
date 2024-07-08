@@ -144,10 +144,7 @@ func (status VolumeStatus) Key() string {
 // IsContainer will return true if content tree attached
 // to the volume is of container type
 func (status VolumeStatus) IsContainer() bool {
-	if status.ContentFormat == zconfig.Format_CONTAINER {
-		return true
-	}
-	return false
+	return status.ContentFormat == zconfig.Format_CONTAINER
 }
 
 // PathName returns the path of the volume
@@ -357,9 +354,9 @@ func (config VolumeRefConfig) LogModify(logBase *base.LogObject, old interface{}
 	if !ok {
 		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of VolumeRefConfig type")
 	}
-		// XXX remove?
-		logObject.CloneAndAddField("diff", cmp.Diff(oldConfig, config)).
-			Noticef("Volume ref config modify other change")
+	// XXX remove?
+	logObject.CloneAndAddField("diff", cmp.Diff(oldConfig, config)).
+		Noticef("Volume ref config modify other change")
 }
 
 // LogDelete :
@@ -415,10 +412,7 @@ func (status VolumeRefStatus) VolumeKey() string {
 // IsContainer will return true if content tree attached
 // to the volume ref is of container type
 func (status VolumeRefStatus) IsContainer() bool {
-	if status.ContentFormat == zconfig.Format_CONTAINER {
-		return true
-	}
-	return false
+	return status.ContentFormat == zconfig.Format_CONTAINER
 }
 
 // LogCreate :

@@ -165,7 +165,7 @@ func CheckAndCorrectBlobHash(blobHash string) string {
 // It's the caller/user's responsibility to close the respective client after use by calling CAS.CloseClient().
 func NewCAS(selectedCAS string) (CAS, error) {
 	if _, found := knownCASHandlers[selectedCAS]; !found {
-		return nil, fmt.Errorf("Unknown CAS handler %s", selectedCAS)
+		return nil, fmt.Errorf("unknown CAS handler %s", selectedCAS)
 	}
 	return knownCASHandlers[selectedCAS].constructor(), nil
 
