@@ -231,3 +231,7 @@ zstd
 zstd-dev
 zstd-libs
 zstd-static
+libcrypto3
+gdb
+expect
+tcl
