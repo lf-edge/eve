@@ -100,7 +100,6 @@ func parseVolumeConfig(ctx *getconfigContext,
 		}
 		volumeConfig.DisplayName = cfgVolume.GetDisplayName()
 		volumeConfig.ReadOnly = cfgVolume.GetReadonly()
-		volumeConfig.RefCount = 1
 		volumeConfig.HasNoAppReferences = checkVolumeHasNoAppReferences(ctx, cfgVolume, config)
 		volumeConfig.Target = cfgVolume.GetTarget()
 
