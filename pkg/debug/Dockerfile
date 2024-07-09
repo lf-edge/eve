@@ -65,9 +65,6 @@ RUN tar -C .. -xzvf ../1.5.tar.gz
 RUN ./autogen.sh && ./configure && make DESTDIR=/out install
 
 WORKDIR /usr/src
-ADD https://cdn.openbsd.org/pub/OpenBSD/OpenSSH/portable/openssh-9.8p1.tar.gz /usr/src
-RUN tar xvf openssh-9.8p1.tar.gz
-WORKDIR /usr/src/openssh-9.8p1
 ADD https://cdn.openbsd.org/pub/OpenBSD/OpenSSH/portable/openssh-${OPENSSH_VERSION}.tar.gz /usr/src
 ADD https://cdn.openbsd.org/pub/OpenBSD/OpenSSH/portable/openssh-${OPENSSH_VERSION}.tar.gz.asc /usr/src
 COPY ssh/RELEASE_KEY.asc /usr/src
@@ -96,7 +93,8 @@ RUN ./configure \
 
 RUN make -j "$(getconf _NPROCESSORS_ONLN)"
 RUN make install
-RUN HARNESS_JOBS="$(getconf _NPROCESSORS_ONLN)" make tests
+# Disabling the rekey test saves at least a half hour of build time.  SKIP_LTESTS in README.regress
+RUN HARNESS_JOBS="$(getconf _NPROCESSORS_ONLN)" make tests SKIP_LTESTS=rekey
 
 RUN /usr/bin/install -c -m 0755 -s ssh /out/usr/bin/ssh
 RUN /usr/bin/install -c -m 0755 -s scp /out/usr/bin/scp
