@@ -65,9 +65,6 @@ RUN tar -C .. -xzvf ../1.5.tar.gz
 RUN ./autogen.sh && ./configure && make DESTDIR=/out install
 
 WORKDIR /usr/src
-ADD https://cdn.openbsd.org/pub/OpenBSD/OpenSSH/portable/openssh-9.8p1.tar.gz /usr/src
-RUN tar xvf openssh-9.8p1.tar.gz
-WORKDIR /usr/src/openssh-9.8p1
 ADD https://cdn.openbsd.org/pub/OpenBSD/OpenSSH/portable/openssh-${OPENSSH_VERSION}.tar.gz /usr/src
 ADD https://cdn.openbsd.org/pub/OpenBSD/OpenSSH/portable/openssh-${OPENSSH_VERSION}.tar.gz.asc /usr/src
 COPY ssh/RELEASE_KEY.asc /usr/src
