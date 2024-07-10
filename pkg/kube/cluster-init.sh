@@ -940,6 +940,10 @@ if [ ! -f /var/lib/all_components_initialized ]; then
                 fi
         fi
         if ! pidof dhcp; then
+                # if the dhcp.sock exist, then the daemon can not be restarted
+                if [ -f /run/cni/dhcp.sock ]; then
+                        rm /run/cni/dhcp.sock
+                fi
                 # launch CNI dhcp service
                 /opt/cni/bin/dhcp daemon &
         fi
@@ -1037,6 +1041,10 @@ else
                         apply_multus_cni
                 fi
                 if ! pidof dhcp; then
+                        # if the dhcp.sock exist, then the daemon can not be restarted
+                        if [ -f /run/cni/dhcp.sock ]; then
+                                rm /run/cni/dhcp.sock
+                        fi
                         # launch CNI dhcp service
                         /opt/cni/bin/dhcp daemon &
                 fi
