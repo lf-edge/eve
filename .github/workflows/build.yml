@@ -106,7 +106,7 @@ jobs:
             platform: "imx8mp_epc_r3720"
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v3
         with:
           fetch-depth: 0
 
