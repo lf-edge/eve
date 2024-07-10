@@ -68,6 +68,9 @@ jobs:
           path: ~/.linuxkit/cache
           key: linuxkit-${{ matrix.arch }}-${{ github.sha }}
       - name: Build packages
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
         run: |
           make V=1 PRUNE=1 ZARCH=${{ matrix.arch }} pkgs
       - name: Post package report
