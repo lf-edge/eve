@@ -66,7 +66,6 @@ RUN git apply fix-utmpx-ipv6.patch
 RUN ./configure \
     --prefix=/usr \
     --sysconfdir=/etc/ssh \
-    --libexecdir=/usr/lib/ssh \
     --mandir=/usr/share/man \
     --with-pid-dir=/run \
     --with-mantype=doc \
