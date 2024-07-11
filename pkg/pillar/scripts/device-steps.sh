@@ -511,5 +511,5 @@ while true; do
         # Reload NTP sources
         reload_ntp_sources "$ns"
     fi
-    sleep 300
+    sleep 30
 done
