@@ -155,8 +155,11 @@ populate_ntp_sources() {
     echo "$args" | xargs /usr/bin/chronyc -m
     ret_code=$?
     echo "$(date -Ins -u) chronyc: $ret_code"
-    # Init global variable
-    NTPSERVERS="$ns"
+    if [ "$ret_code" = "0" ]; then
+        # Init global variable only in case of success.
+        # In case of failure we should repeat shortly.
+        NTPSERVERS="$ns"
+    fi
 }
 
 # Start NTP daemon
