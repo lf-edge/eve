@@ -302,11 +302,12 @@ DOCKER_GO = _() { $(SET_X); mkdir -p $(CURDIR)/.go/src/$${3:-dummy} ; mkdir -p $
 
 PARSE_PKGS=$(if $(strip $(EVE_HASH)),EVE_HASH=)$(EVE_HASH) DOCKER_ARCH_TAG=$(DOCKER_ARCH_TAG) KERNEL_TAG=$(KERNEL_TAG) ./tools/parse-pkgs.sh
 LINUXKIT=$(BUILDTOOLS_BIN)/linuxkit
-LINUXKIT_VERSION=e6b0ae05eb3a2b99e84d9ffc03a3a5c9c3e7e371
-LINUXKIT_SOURCE=https://github.com/linuxkit/linuxkit.git
+# linuxkit version. This **must** be a published semver version so it can be downloaded already compiled from
+# the release page at https://github.com/linuxkit/linuxkit/releases
+LINUXKIT_VERSION=v1.3.0
+LINUXKIT_SOURCE=https://github.com/linuxkit/linuxkit
 LINUXKIT_OPTS=$(if $(strip $(EVE_HASH)),--hash) $(EVE_HASH) $(if $(strip $(EVE_REL)),--release) $(EVE_REL)
 LINUXKIT_PKG_TARGET=build
-LINUXKIT_PATCHES_DIR=tools/linuxkit/patches
 
 ifdef LIVE_FAST
 # Check the makerootfs.sh and the linuxkit tool invocation, the --input-tar
@@ -864,12 +865,12 @@ endif
 ## exports an image from the linuxkit cache to stdout
 cache-export: image-set outfile-set $(LINUXKIT)
 	$(eval IMAGE_TAG_OPT := $(if $(IMAGE_NAME),--name $(IMAGE_NAME),))
-	$(LINUXKIT) $(DASH_V) cache export --arch $(ZARCH) --outfile $(OUTFILE) $(IMAGE_TAG_OPT) $(IMAGE)
+	$(LINUXKIT) $(DASH_V) cache export --format docker --arch $(ZARCH) --outfile $(OUTFILE) $(IMAGE_TAG_OPT) $(IMAGE)
 
 ## export an image from linuxkit cache and load it into docker.
 cache-export-docker-load: $(LINUXKIT)
 	$(eval TARFILE := $(shell mktemp))
-	$(MAKE) cache-export OUTFILE=${TARFILE} && cat ${TARFILE} | docker load
+	$(MAKE) cache-export --format docker OUTFILE=${TARFILE} && cat ${TARFILE} | docker load
 	rm -rf ${TARFILE}
 
 %-cache-export-docker-load: $(LINUXKIT)
@@ -928,31 +929,12 @@ shell: $(GOBUILDER)
 # Utility targets in support of our Dockerized build infrastrucutre
 #
 
-# file to store current linuxkit version
-# if version mismatch will delete linuxkit to rebuild
-# we clean all old saved versions here as well
-$(LINUXKIT).$(LINUXKIT_VERSION):
-	@rm -rf $(LINUXKIT)*
-	@touch $(LINUXKIT).$(LINUXKIT_VERSION)
-# build linuxkit for the host OS, not the container OS
-$(LINUXKIT): GOOS=$(LOCAL_GOOS)
-$(LINUXKIT): $(LINUXKIT).$(LINUXKIT_VERSION)
-$(LINUXKIT): | $(GOBUILDER)
-	$(QUIET)$(DOCKER_GO) \
-	"unset GOFLAGS; rm -rf /tmp/linuxkit && \
-	git clone $(LINUXKIT_SOURCE) /tmp/linuxkit && \
-	cd /tmp/linuxkit && \
-	git checkout $(LINUXKIT_VERSION) && \
-	if [ -e /eve/$(LINUXKIT_PATCHES_DIR) ]; then \
-	    patch -p1 < /eve/$(LINUXKIT_PATCHES_DIR)/*.patch; \
-	fi && \
-	cd /tmp/linuxkit/src/cmd/linuxkit && \
-	GO111MODULE=on CGO_ENABLED=0 go build -o /go/bin/linuxkit -mod=vendor . && \
-	cd && \
-	rm -rf /tmp/linuxkit" \
-	$(GOTREE) $(GOMODULE) $(BUILDTOOLS_BIN)
+# check to make sure linuxkit version is correct
+# if it does not exist, version is incorrect, or it cannot report `version --short`, download it
+$(LINUXKIT): FORCE
+	$(eval ACTUAL_LINUXKIT_VERSION := $(strip $(shell $@ version --short 2>/dev/null || echo "unknown")))
+	$(if $(filter $(LINUXKIT_VERSION),$(ACTUAL_LINUXKIT_VERSION)),,$(QUIET) curl -L -o $@ $(LINUXKIT_SOURCE)/releases/download/$(LINUXKIT_VERSION)/linuxkit-$(LOCAL_GOOS)-$(HOSTARCH) && chmod +x $@)
 	$(QUIET): $@: Succeeded
-
 
 $(GOBUILDER):
 	$(QUIET): "$@: Begin: GOBUILDER=$(GOBUILDER)"
