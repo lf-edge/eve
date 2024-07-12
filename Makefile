@@ -720,7 +720,12 @@ $(SBOM): $(ROOTFS_TAR) | $(INSTALLER)
 	# when syft supports reading straight from a tar archive with duplicate entries,
 	# this all can go away, and we can read the rootfs.tar
 	# see https://github.com/anchore/syft/issues/1400
-	tar xf $< -C $(TMP_ROOTDIR) --exclude "dev/*"
+	#
+	# the ROOTFS_TAR includes extended PAX headers, which GNU tar does not support.
+	# It does not break, but logs two lines of warnings for each file, which is a lot.
+	# For BSD tar, no need to do anything; for GNU tar, need to add `--warning=no-unknown-keyword`
+	$(eval TAR_OPTS = $(shell tar --version | grep -qi 'GNU tar' && echo --warning=no-unknown-keyword || echo))
+	tar $(TAR_OPTS) -xf $< -C $(TMP_ROOTDIR) --exclude "dev/*"
 	docker run -v $(TMP_ROOTDIR):/rootdir:ro -v $(CURDIR)/.syft.yaml:/syft.yaml:ro $(SYFT_IMAGE) -c /syft.yaml --base-path /rootdir /rootdir > $@
 	rm -rf $(TMP_ROOTDIR)
 	$(QUIET): $@: Succeeded
