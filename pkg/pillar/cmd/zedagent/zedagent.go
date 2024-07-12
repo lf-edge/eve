@@ -110,6 +110,7 @@ type zedagentContext struct {
 	triggerDeviceInfo         chan<- destinationBitset
 	triggerHwInfo             chan<- destinationBitset
 	triggerLocationInfo       chan<- destinationBitset
+	triggerNTPSourcesInfo     chan<- destinationBitset
 	triggerObjectInfo         chan<- infoForObjectKey
 	zbootRestarted            bool // published by baseosmgr
 	subOnboardStatus          pubsub.Subscription
@@ -253,10 +254,13 @@ type destinationBitset uint
 
 // Destination types, where info should be sent
 const (
-	ControllerDest destinationBitset = 1
-	LPSDest                          = 2
-	LOCDest                          = 4
+	ControllerDest destinationBitset = (1 << 0)
+	LPSDest                          = (1 << 1)
+	LOCDest                          = (1 << 2)
 	AllDest                          = ControllerDest | LPSDest | LOCDest
+
+	// Request should be send in any case
+	ForceSend = (1 << 8)
 )
 
 // queueInfoToDest - queues "info" requests according to the specified
@@ -289,7 +293,7 @@ func queueInfoToDest(ctx *zedagentContext, dest destinationBitset,
 			devUUID, "info")
 		// Ignore errors for all the LOC info messages
 		const ignoreErr = true
-		zedcloudCtx.DeferredPeriodicCtx.SetDeferred(key, buf, size, url,
+		zedcloudCtx.DeferredLOCPeriodicCtx.SetDeferred(key, buf, size, url,
 			bailOnHTTPErr, withNetTracing, ignoreErr, itemType)
 	}
 }
@@ -330,11 +334,13 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	triggerDeviceInfo := make(chan destinationBitset, 1)
 	triggerHwInfo := make(chan destinationBitset, 1)
 	triggerLocationInfo := make(chan destinationBitset, 1)
+	triggerNTPSourcesInfo := make(chan destinationBitset, 1)
 	triggerObjectInfo := make(chan infoForObjectKey, 1)
 	zedagentCtx.flowlogQueue = flowlogQueue
 	zedagentCtx.triggerDeviceInfo = triggerDeviceInfo
 	zedagentCtx.triggerHwInfo = triggerHwInfo
 	zedagentCtx.triggerLocationInfo = triggerLocationInfo
+	zedagentCtx.triggerNTPSourcesInfo = triggerNTPSourcesInfo
 	zedagentCtx.triggerObjectInfo = triggerObjectInfo
 
 	// Initialize all zedagent publications.
@@ -431,6 +437,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	zedcloudCtx.DeferredPeriodicCtx = zedcloud.CreateDeferredCtx(zedcloudCtx,
 		zedagentCtx.ps, agentName, "DeferredPeriodic",
 		warningTime, errorTime, nil)
+	zedcloudCtx.DeferredLOCPeriodicCtx = zedcloud.CreateDeferredCtx(zedcloudCtx,
+		zedagentCtx.ps, agentName, "DeferredLOCPeriodic",
+		warningTime, errorTime, nil)
 	// XXX defer this until we have some config from cloud or saved copy
 	getconfigCtx.pubAppInstanceConfig.SignalRestarted()
 
@@ -490,6 +499,11 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	go locationTimerTask(zedagentCtx, handleChannel, triggerLocationInfo)
 	getconfigCtx.locationCloudTickerHandle = <-handleChannel
 	getconfigCtx.locationAppTickerHandle = <-handleChannel
+
+	// start the NTP sources reporting task
+	log.Functionf("Creating %s at %s", "ntpTimerTask", agentlog.GetMyStack())
+	go ntpSourcesTimerTask(zedagentCtx, handleChannel, triggerNTPSourcesInfo)
+	getconfigCtx.ntpSourcesTickerHandle = <-handleChannel
 
 	//trigger channel for localProfile state machine
 	getconfigCtx.sideController.localProfileTrigger = make(chan Notify, 1)
@@ -1706,7 +1720,7 @@ func initPostOnboardSubs(zedagentCtx *zedagentContext) {
 	// before Modify handler is called by SubscriptionImpl.populate()
 	// (only needed for persistent subs).
 	zedagentCtx.subAppInstMetaData, err = ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:     "zedrouter",
+		AgentName:     "msrv",
 		MyAgentName:   agentName,
 		TopicImpl:     types.AppInstMetaData{},
 		Activate:      false,
@@ -1937,7 +1951,7 @@ func initPostOnboardSubs(zedagentCtx *zedagentContext) {
 		log.Fatal(err)
 	}
 	zedagentCtx.subPatchEnvelopeUsage, err = ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:   "zedrouter",
+		AgentName:   "msrv",
 		MyAgentName: agentName,
 		TopicImpl:   types.PatchEnvelopeUsage{},
 		Activate:    true,
@@ -1947,7 +1961,7 @@ func initPostOnboardSubs(zedagentCtx *zedagentContext) {
 	})
 
 	getconfigCtx.subPatchEnvelopeStatus, err = ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:     "zedrouter",
+		AgentName:     "msrv",
 		MyAgentName:   agentName,
 		TopicImpl:     types.PatchEnvelopeInfo{},
 		Activate:      true,
@@ -2006,6 +2020,15 @@ func triggerPublishLocationToDest(ctxPtr *zedagentContext, dest destinationBitse
 	}
 	log.Function("Triggered publishLocation")
 	ctxPtr.triggerLocationInfo <- dest
+}
+
+func triggerPublishNTPSourcesToDest(ctxPtr *zedagentContext, dest destinationBitset) {
+	if ctxPtr.getconfigCtx.ntpSourcesTickerHandle == nil {
+		// NTP sources reporting task is not yet running.
+		return
+	}
+	log.Function("Triggered publishNTPSources")
+	ctxPtr.triggerNTPSourcesInfo <- dest
 }
 
 func triggerPublishAllInfo(ctxPtr *zedagentContext, dest destinationBitset) {
@@ -2075,6 +2098,7 @@ func triggerPublishAllInfo(ctxPtr *zedagentContext, dest destinationBitset) {
 			}
 		}
 		triggerPublishLocationToDest(ctxPtr, dest)
+		triggerPublishNTPSourcesToDest(ctxPtr, dest)
 	}()
 }
 

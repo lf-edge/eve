@@ -83,6 +83,7 @@ type getconfigContext struct {
 	locationCloudTickerHandle interface{}
 	locationAppTickerHandle   interface{}
 	localProfileTickerHandle  interface{}
+	ntpSourcesTickerHandle    interface{}
 	pubDevicePortConfig       pubsub.Publication
 	pubPhysicalIOAdapters     pubsub.Publication
 	devicePortConfig          types.DevicePortConfig

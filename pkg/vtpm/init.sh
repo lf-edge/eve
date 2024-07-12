@@ -1,8 +1,6 @@
 #!/bin/sh
 
-#Launch the VTPM server
-mkdir jail; cd jail || exit;
-
+cd jail || exit;
 #Too much stdout noise from tpm2_tools and vtpm_server,
 #so redirecting stdout to /dev/null. But stderr will be
 #picked up by logging infra as usual

@@ -69,6 +69,7 @@ func (m *DpcManager) updateDNS() {
 		// Prefer errors recorded by DPC verification.
 		// New errors are recorded from this function only when there is none yet
 		// (HasError() == false).
+		m.deviceNetStatus.Ports[ix].InvalidConfig = port.InvalidConfig
 		m.deviceNetStatus.Ports[ix].TestResults = port.TestResults
 		m.deviceNetStatus.Ports[ix].WirelessStatus.WType = port.WirelessCfg.WType
 		// If this is a cellular network connectivity, add status information

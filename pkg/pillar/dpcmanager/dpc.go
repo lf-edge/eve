@@ -23,7 +23,7 @@ func (m *DpcManager) currentDPC() *types.DevicePortConfig {
 
 func (m *DpcManager) doAddDPC(ctx context.Context, dpc types.DevicePortConfig) {
 	m.setDiscoveredWwanIfNames(&dpc)
-	mgmtCount := dpc.CountMgmtPorts()
+	mgmtCount := dpc.CountMgmtPorts(false)
 	if mgmtCount == 0 {
 		// This DPC will be ignored when we check IsDPCUsable which
 		// is called from IsDPCTestable and IsDPCUntested.
@@ -233,12 +233,15 @@ func (m *DpcManager) ingestDPCList() (dpclPresentAtBoot bool) {
 	for _, portConfig := range storedDpcl.PortConfigList {
 		// Sanitize port labels and IsL3Port flag.
 		portConfig.DoSanitize(m.Log, false, false, "", true, true)
-		// Clear the errors from before reboot and start fresh.
+		// Clear runtime errors (not config validation errors) from before reboot
+		// and start fresh.
 		for i := 0; i < len(portConfig.Ports); i++ {
 			portPtr := &portConfig.Ports[i]
-			portPtr.Clear()
+			if !portPtr.InvalidConfig {
+				portPtr.Clear()
+			}
 		}
-		if portConfig.CountMgmtPorts() == 0 {
+		if portConfig.CountMgmtPorts(false) == 0 {
 			m.Log.Warnf("Stored DevicePortConfig key %s has no management ports; ignored",
 				portConfig.Key)
 			continue

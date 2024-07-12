@@ -4,7 +4,8 @@ For information about EVE see <https://www.lfedge.org/projects/eve/>
 
 The onboarding of devices is done by `scripts/device-steps.sh`, and after onboarding that script proceeds to start the agents implementing the various microservices. That script runs on each boot. Once the agents are running they are operated from the controller using the API specified in <https://github.com/lf-edge/eve-api>
 
-The agents are:
+All agents are located in [./cmd](./cmd/). A potentially
+incomplete list of the agents is:
 
 - ledmanager - make LEDs light/blink for feedback to the person installing the hardware
 - [nim](./docs/nim.md) - network interface manager (ensures that there is connectivity to the controller); manages [radio-silence](./docs/radio-silence.md)
@@ -29,7 +30,15 @@ In addition there are debugging tools like:
 - diag - prints the state of the connectivity on the console each time there is a change
 - ipcmonitor - subscribes to the agents/collections passed between the different microservices
 
-In order to conserve filesystem space, all of the agents above are built into a single executable (zedbox) and are differentiated based on the symbolic link (very similar to how BusyBox does it with traditional UNIX utilities).
+In order to conserve filesystem space, as well as memory usage in Linux, where multiple copies of an executable binary are loaded only once into read-only memory, all of the agents above are built into a single executable (zedbox) and are differentiated based on the symbolic link (very similar to how BusyBox does it with traditional UNIX utilities).
+
+The design pattern for each agent is documented in [./cmd/README.md](./cmd/README.md).
+To add a new agent:
+
+1. Create a directory for the agent in [./cmd](./cmd)
+1. Design the agent according to the pattern in [./cmd/README.md](./cmd/README.md)
+1. Add the agent to the list above
+1. Add the agent's exposed implementation of [types.AgentRunner](./types/agent.go) to the map of `entrypoints` in [zedbox.go](./zedbox/zedbox.go).
 
 ## Building
 

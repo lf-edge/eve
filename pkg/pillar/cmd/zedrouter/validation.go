@@ -127,6 +127,31 @@ func (z *zedrouter) checkNetworkInstanceIPConflicts(
 	return nil
 }
 
+func (z *zedrouter) checkNetworkInstanceMTUConflicts(config types.NetworkInstanceConfig,
+	status *types.NetworkInstanceStatus) (fallbackMTU uint16, err error) {
+	uplink := z.getNIUplinkConfig(status)
+	if uplink.LogicalLabel == "" {
+		// Air-gapped
+		return 0, nil
+	}
+	if uplink.MTU == 0 {
+		// Not yet known?
+		z.log.Warnf("Missing MTU for uplink port %s", uplink.LogicalLabel)
+		return 0, nil
+	}
+	niMTU := config.MTU
+	if niMTU == 0 {
+		niMTU = types.DefaultMTU
+	}
+	if niMTU != uplink.MTU {
+		return uplink.MTU, fmt.Errorf("MTU (%d) configured for the network instance "+
+			"differs from the MTU (%d) of the associated port %s. "+
+			"Will use port's MTU instead.",
+			niMTU, uplink.MTU, uplink.LogicalLabel)
+	}
+	return 0, nil
+}
+
 func (z *zedrouter) validateAppNetworkConfig(appNetConfig types.AppNetworkConfig) error {
 	z.log.Functionf("AppNetwork(%s), check for duplicate port map acls",
 		appNetConfig.DisplayName)
@@ -201,19 +226,19 @@ func (z *zedrouter) checkNetworkReferencesFromApp(config types.AppNetworkConfig)
 			// We use the AwaitNetworkInstance in AppNetworkStatus that is already present.
 			return false, err
 		}
-		if !netInstStatus.Activated {
-			err := fmt.Errorf("network instance %s needed by app %s/%s is not activated",
-				adapterConfig.Network.String(), config.UUIDandVersion, config.DisplayName)
-			z.log.Error(err)
-			return false, err
-		}
-		if netInstStatus.HasError() {
+		if netInstStatus.HasError() && !netInstStatus.EligibleForActivate() {
 			err := fmt.Errorf(
 				"network instance %s needed by app %s/%s is in error state: %s",
 				adapterConfig.Network.String(), config.UUIDandVersion, config.DisplayName,
 				netInstStatus.Error)
 			z.log.Error(err)
 			return true, err
+		}
+		if !netInstStatus.Activated {
+			err := fmt.Errorf("network instance %s needed by app %s/%s is not activated",
+				adapterConfig.Network.String(), config.UUIDandVersion, config.DisplayName)
+			z.log.Error(err)
+			return false, err
 		}
 	}
 	return false, nil

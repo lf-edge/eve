@@ -71,15 +71,20 @@ type ZedCloudContext struct {
 	serverSigningCertHash []byte
 	onBoardCertBytes      []byte
 	log                   *base.LogObject
-	// All HTTP requests which can't be dropped and send should be
-	// repeated in case of a transmission error are added to this
-	// queue.
+	// All controller HTTP requests which can't be dropped and send
+	// should be repeated in case of a transmission error are added to
+	// this queue.
 	DeferredEventCtx *DeferredContext
-	// All periodic HTTP requests are added to this queue, sending
-	// errors of which can be ignored. This means even the request has
-	// failed, it will be removed from the queue, so there is no need
-	// to `kick` this queue once connectivity has restored.
+	// All periodic controller HTTP requests are added to this queue,
+	// sending errors of which can be ignored. This means even the
+	// request has failed, it will be removed from the queue, so there
+	// is no need to `kick` this queue once connectivity has restored.
 	DeferredPeriodicCtx *DeferredContext
+	// All periodic LOC HTTP requests are added to this queue,
+	// sending errors of which can be ignored. This means even the
+	// request has failed, it will be removed from the queue, so there
+	// is no need to `kick` this queue once connectivity has restored.
+	DeferredLOCPeriodicCtx *DeferredContext
 }
 
 // ContextOptions - options to be passed at NewContext
@@ -335,6 +340,11 @@ func VerifyAllIntf(ctx *ZedCloudContext, url string, requiredSuccessCount uint,
 	// (aka dry-run).
 	for _, intf := range intfs {
 		portStatus := types.GetPort(*ctx.DeviceNetworkStatus, intf)
+		if portStatus.InvalidConfig {
+			// Do not try to test port with invalid config.
+			// Otherwise, the test would fail and the parsing error would get overwritten.
+			continue
+		}
 		// If we have enough uplinks with cloud connectivity, then the remaining
 		// interfaces (some of which might not be free) are verified using
 		// only local checks, without generating any traffic.

@@ -55,10 +55,14 @@ jobs:
           fi
           echo "ARCH=${{ matrix.arch }}" >> "$GITHUB_ENV"
           echo "TAG=$(echo "$REF" | sed -e 's#^.*/##' -e 's#master#snapshot#' -e 's#main#snapshot#')" >> "$GITHUB_ENV"
-      - name: Login to DockerHUB
-        run: |
-          echo "${{ secrets.RELEASE_DOCKERHUB_TOKEN }}" |\
-             docker login -u "${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}" --password-stdin
+
+      - name: Login to Docker Hub
+        if: ${{ github.event.repository.full_name }}== 'lf-edge/eve'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}
+          password: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
+
       - name: Build packages
         run: |
           SUCCESS=

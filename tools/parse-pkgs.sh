@@ -106,6 +106,7 @@ GPTTOOLS_TAG=${GPTTOOLS_TAG}
 NEWLOGD_TAG=${NEWLOGD_TAG}
 EDGEVIEW_TAG=${EDGEVIEW_TAG}
 WATCHDOG_TAG=${WATCHDOG_TAG}
+MEMORY_MONITOR_TAG=${MEMORY_MONITOR_TAG}
 MKRAW_TAG=${MKRAW_TAG}
 MKVERIFICATION_TAG=${MKVERIFICATION_TAG}
 MKISO_TAG=${MKISO_TAG}
@@ -118,10 +119,12 @@ KVMTOOLS_TAG=${KVMTOOLS_TAG}
 IPXE_TAG=${IPXE_TAG}
 KEXEC_TAG=${KEXEC_TAG}
 KDUMP_TAG=${KDUMP_TAG}
+BPFTRACE_TAG=${BPFTRACE_TAG}
 MEASURE_CONFIG_TAG=${MEASURE_CONFIG_TAG}
 BSP_IMX_TAG=${BSP_IMX_TAG}
 APPARMOR_TAG=${APPARMOR_TAG}
 KUBE_TAG=${KUBE_TAG}
+RECOVERTPM_TAG=${RECOVERTPM_TAG}
 EOF
 }
 
@@ -157,6 +160,7 @@ PILLAR_DEV_TAG=$(linuxkit_dev_tag pkg/pillar)
 STORAGE_INIT_TAG=$(linuxkit_tag pkg/storage-init)
 GPTTOOLS_TAG=$(linuxkit_tag pkg/gpt-tools)
 WATCHDOG_TAG=$(linuxkit_tag pkg/watchdog)
+MEMORY_MONITOR_TAG=$(linuxkit_tag pkg/memory-monitor)
 MKRAW_TAG=$(linuxkit_tag pkg/mkimage-raw-efi)
 MKVERIFICATION_TAG=$(linuxkit_tag pkg/mkverification-raw-efi)
 MKISO_TAG=$(linuxkit_tag pkg/mkimage-iso-efi)
@@ -168,10 +172,12 @@ KVMTOOLS_TAG=$(linuxkit_tag pkg/kvm-tools)
 IPXE_TAG=$(linuxkit_tag pkg/ipxe)
 KEXEC_TAG=$(linuxkit_tag pkg/kexec)
 KDUMP_TAG=$(linuxkit_tag pkg/kdump)
+BPFTRACE_TAG=$(linuxkit_tag pkg/bpftrace)
 MEASURE_CONFIG_TAG=$(linuxkit_tag pkg/measure-config)
 BSP_IMX_TAG=$(linuxkit_tag pkg/bsp-imx)
 APPARMOR_TAG=$(linuxkit_tag pkg/apparmor)
 KUBE_TAG=$(linuxkit_tag pkg/kube)
+RECOVERTPM_TAG=$(linuxkit_tag pkg/recovertpm)
 
 # Synthetic tags: the following tags are based on hashing
 # the contents of all the Dockerfile.in that we can find.

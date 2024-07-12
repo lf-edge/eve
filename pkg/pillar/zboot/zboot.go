@@ -64,8 +64,24 @@ func Poweroff(log *base.LogObject) {
 
 // If log is nil there is no logging
 func execWithRetry(log *base.LogObject, command string, args ...string) ([]byte, error) {
+	retrySignals := map[syscall.Signal]struct{}{
+		syscall.SIGUSR1: {},
+		syscall.SIGUSR2: {},
+	}
+
 	for {
 		out, done, err := execWithTimeout(log, command, args...)
+		execErr, isExecErr := err.(*exec.ExitError)
+		if isExecErr {
+			waitStatus := execErr.Sys().(syscall.WaitStatus)
+			_, doRetrySignal := retrySignals[waitStatus.Signal()]
+			if doRetrySignal {
+				if log != nil {
+					log.Errorf("Retrying %s %v because of signal %s", command, args, waitStatus.Signal())
+				}
+				continue
+			}
+		}
 		if err != nil {
 			return out, err
 		}

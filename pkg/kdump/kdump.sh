@@ -7,13 +7,10 @@ if test -f /proc/vmcore; then
     # We are in dump capture kernel, nice.
     #
 
-    # Maximum number of kernel dumps and dmesgs we keep in the folder.
-    # After each kernel crash 2 files are generated: dump and dmesg,
-    # so the divide MAX on number of files to get total number of
-    # kernel crashes which we keep persist.
+    # Maximum number of kernel dmesgs we keep in the folder.
     MAX=10
     # Number of generated files
-    N=2
+    N=1
     DIR=/persist/kcrashes
 
     # Create a folder
@@ -39,18 +36,13 @@ if test -f /proc/vmcore; then
 
     TS=$(date -Is)
 
-    # Collect a minimal kernel dump for security reasons
-    KDUMP_PATH="$DIR/kdump-$TS.dump"
-    makedumpfile -d 31 /proc/vmcore "$KDUMP_PATH" > /dev/null 2>&1
-    echo "kdump collected: $KDUMP_PATH" > /dev/kmsg
-
     # Collect dmesg
     DMESG_PATH="$DIR/dmesg-$TS.log"
     cp /tmp/dmesg "$DMESG_PATH"
     echo "dmesg collected: $DMESG_PATH" > /dev/kmsg
 
     # Prepare reboot-reason, reboot-stack and boot-reason
-    echo "kernel panic, kdump collected: $KDUMP_PATH" > /persist/reboot-reason
+    echo "kernel panic, dmesg collected: $DMESG_PATH" > /persist/reboot-reason
     cat /tmp/dmesg > /persist/reboot-stack
     echo "BootReasonKernel" > /persist/boot-reason
 

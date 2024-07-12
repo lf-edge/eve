@@ -16,11 +16,10 @@ down)
   umount "$VIF_TASK"/bin || :
   umount "$VIF_TASK"/usr/bin || :
   umount "$VIF_TASK"/sbin || :
-  rm -rf "$VIF_TASK"
+  rm -rf "$VIF_TASK"/etc/dhcpcd.conf
   ;;
 up)
   VIF_NS=$(jq '.pid')
-  mkdir -p "$VIF_TASK"
 
   # mount files and directories required to run dhcpcd
 

@@ -18,6 +18,7 @@ const (
 	waitForIfRetries    = 2
 	waitForAsyncRetries = 2
 	waitForIPDNSRetries = 5
+	waitForWwanRetries  = 3
 )
 
 func (m *DpcManager) restartVerify(ctx context.Context, reason string) {
@@ -110,7 +111,7 @@ func (m *DpcManager) runVerify(ctx context.Context, reason string) {
 			types.DPCStatePCIWait,
 			// verifyDPC has already published the new DNS for domainmgr.
 			// Wait until we hear from domainmgr or until PendTimer triggers.
-			types.DPCStateIPDNSWait, types.DPCStateIntfWait:
+			types.DPCStateIPDNSWait, types.DPCStateIntfWait, types.DPCStateWwanWait:
 			// Either addressChange or PendTimer will result in calling us again.
 			m.pendingDpcTimer = time.NewTimer(m.dpcTestDuration)
 			return
@@ -296,6 +297,22 @@ func (m *DpcManager) verifyDPC(ctx context.Context) (status types.DPCState) {
 			return status
 		}
 		// Continue...
+	}
+
+	// It may take some time to reconnect cellular modem.
+	// Wait for wwan microservice to apply the latest config if wwan interface is used
+	// for management.
+	if m.waitForWwanUpdate() {
+		if elapsed < waitForWwanRetries*m.dpcTestDuration {
+			m.Log.Noticef("DPC verify: cellular connectivity reconciliation "+
+				"is still in progress (waiting for %v)", elapsed)
+			status = types.DPCStateWwanWait
+			dpc.State = status
+			return status
+		}
+		// Continue...
+		m.Log.Warnf("DPC verify: Still do not have up-to-date wwan status (waited for %v)",
+			elapsed)
 	}
 
 	availablePorts, missingPorts := m.checkMgmtPortsPresence()
@@ -580,6 +597,26 @@ func (m *DpcManager) checkMgmtPortsPresence() (available, missing []string) {
 		}
 	}
 	return available, missing
+}
+
+func (m *DpcManager) waitForWwanUpdate() bool {
+	dpc := m.currentDPC()
+	if dpc == nil {
+		return false
+	}
+	var hasMgmtWwan bool
+	for _, port := range dpc.Ports {
+		if port.IsMgmt && port.WirelessCfg.WType == types.WirelessTypeCellular {
+			hasMgmtWwan = true
+			break
+		}
+	}
+	if !hasMgmtWwan {
+		return false
+	}
+	statusIsUpToDate := dpc.Key == m.wwanStatus.DPCKey &&
+		dpc.TimePriority.Equal(m.wwanStatus.DPCTimestamp)
+	return !statusIsUpToDate
 }
 
 // If error returned from connectivity test was wrapped into PortsNotReady,

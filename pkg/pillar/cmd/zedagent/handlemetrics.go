@@ -194,8 +194,12 @@ func metricsAndInfoTimerTask(ctx *zedagentContext, handleChannel chan interface{
 
 			locConfig := ctx.getconfigCtx.sideController.locConfig
 			if locConfig != nil {
-				// Publish all info by timer only for LOC
-				triggerPublishAllInfo(ctx, LOCDest)
+				// Publish all info by timer only for LOC. LOC is
+				// always special due its volatile nature, so set
+				// @ForceSend to be sure request will be send
+				// regardless of any checks applied to a request
+				// (check handlentp.go for details).
+				triggerPublishAllInfo(ctx, LOCDest|ForceSend)
 			}
 
 		case <-stillRunning.C:

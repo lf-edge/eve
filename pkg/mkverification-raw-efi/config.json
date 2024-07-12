@@ -238,6 +238,16 @@
             ]
         },
         {
+            "destination": "/opt/vtpm",
+            "type": "bind",
+            "source": "/containers/services/vtpm/lower",
+            "options": [
+                "rw",
+                "rbind",
+                "rshared"
+            ]
+        },
+        {
             "destination": "/lib/modules",
             "type": "bind",
             "source": "/lib/modules",

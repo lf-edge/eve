@@ -2,10 +2,11 @@ package agentbase
 
 import (
 	"flag"
+	"time"
+
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
-	"time"
 
 	"github.com/sirupsen/logrus"
 )
@@ -36,6 +37,7 @@ type AgentBase struct {
 	needWatchdog bool
 	needPidFile  bool
 	arguments    []string
+	baseDir      string
 }
 
 // AgentOpt function may be used to modify options
@@ -62,6 +64,13 @@ func WithWatchdog(pubSub *pubsub.PubSub, warningTime, errorTime time.Duration) A
 		a.warningTime = warningTime
 		a.errorTime = errorTime
 		a.needWatchdog = true
+	}
+}
+
+// WithBaseDir defines base directory for file-related activities, such as pidfile
+func WithBaseDir(baseDir string) AgentOpt {
+	return func(a *AgentBase) {
+		a.baseDir = baseDir
 	}
 }
 
@@ -119,7 +128,7 @@ func Init(agent Agent, logger *logrus.Logger, log *base.LogObject, agentName str
 		logger.SetLevel(logrus.InfoLevel)
 	}
 	if agentBase.needPidFile {
-		if err := pidfile.CheckAndCreatePidfile(log, agentBase.agentName); err != nil {
+		if err := pidfile.CheckAndCreatePidfile(log, agentBase.agentName, pidfile.WithBaseDir(agentBase.baseDir)); err != nil {
 			log.Fatal(err)
 		}
 	}

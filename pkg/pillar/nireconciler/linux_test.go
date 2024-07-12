@@ -2279,7 +2279,7 @@ func TestStaticAndConnectedRoutes(test *testing.T) {
 	t.Expect(itemDescription(dg.Reference(dnsmasqNI1))).To(ContainSubstring(
 		"propagateRoutes: [{132.163.96.5/32 10.10.10.1} {192.168.10.0/24 10.10.10.1}]"))
 	t.Expect(itemDescription(dg.Reference(dnsmasqNI5))).To(ContainSubstring(
-		"propagateRoutes: [{132.163.96.5/32 10.10.20.1} {1.1.1.1/32 10.10.20.1}]}"))
+		"propagateRoutes: [{132.163.96.5/32 10.10.20.1} {1.1.1.1/32 10.10.20.1}]"))
 
 	// Enable propagation of connected routes for NI5 as well.
 	ni5Config.PropagateConnRoutes = true

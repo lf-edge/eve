@@ -4,6 +4,7 @@
 package linuxitems
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 
 	dg "github.com/lf-edge/eve-libs/depgraph"
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
 	"github.com/lf-edge/eve/pkg/pillar/utils/netutils"
 	"github.com/vishvananda/netlink"
@@ -48,6 +50,8 @@ type Veth struct {
 	AppIfMAC net.HardwareAddr
 	// AppIPs : IP addresses assigned to Veth on the app side.
 	AppIPs []*net.IPNet
+	// MTU : Maximum transmission unit size.
+	MTU uint16
 }
 
 // Name returns the physical interface name on the host side.
@@ -76,6 +80,8 @@ func (v VIF) Equal(other dg.Item) bool {
 		v.Variant.External == v2.Variant.External &&
 		v.Variant.Veth.ForApp == v2.Variant.Veth.ForApp &&
 		v.Variant.Veth.AppIfName == v2.Variant.Veth.AppIfName &&
+		v.Variant.Veth.MTU == v2.Variant.Veth.MTU &&
+		bytes.Equal(v.Variant.Veth.AppIfMAC, v2.Variant.Veth.AppIfMAC) &&
 		generics.EqualSetsFn(v.Variant.Veth.AppIPs, v2.Variant.Veth.AppIPs,
 			netutils.EqualIPNets)
 }
@@ -95,9 +101,9 @@ func (v VIF) String() string {
 	veth := v.Variant.Veth
 	return fmt.Sprintf(
 		"Veth VIF: {hostIfName: %s, netAdapterName: %s, "+
-			"app: %s, appNetNsName: %s, appIfName: %s, appIPs: %v",
-		v.HostIfName, v.NetAdapterName,
-		veth.ForApp.ID, veth.ForApp.NetNsName, veth.AppIfName, veth.AppIPs)
+			"app: %s, appNetNsName: %s, appIfName: %s, appIfMAC: %v, appIPs: %v, MTU: %d",
+		v.HostIfName, v.NetAdapterName, veth.ForApp.ID, veth.ForApp.NetNsName,
+		veth.AppIfName, veth.AppIfMAC, veth.AppIPs, veth.MTU)
 }
 
 // Dependencies returns no dependencies.
@@ -111,6 +117,17 @@ func (v VIF) GetAssignedIPs() []*net.IPNet {
 		return nil
 	}
 	return v.Variant.Veth.AppIPs
+}
+
+// GetMTU returns MTU configured for the VIF.
+func (v VIF) GetMTU() uint16 {
+	if v.External() {
+		return 0
+	}
+	if v.Variant.Veth.MTU == 0 {
+		return types.DefaultMTU
+	}
+	return v.Variant.Veth.MTU
 }
 
 // VIFConfigurator implements Configurator interface for Veth VIF.
@@ -132,6 +149,7 @@ func (c *VIFConfigurator) Create(ctx context.Context, item dg.Item) error {
 	appPeer := vif.Variant.Veth
 	attrs := netlink.NewLinkAttrs()
 	attrs.Name = vif.HostIfName
+	attrs.MTU = int(vif.GetMTU())
 	link := &netlink.Veth{
 		LinkAttrs: attrs,
 		// TODO: generate temporary interface name to avoid conflicts with the host interfaces.
@@ -218,48 +236,88 @@ func (c *VIFConfigurator) configureVethPeer(
 	return nil
 }
 
-// Modify allows to change assigned IP addresses.
+// Modify allows to change assigned IP addresses and MTU.
 func (c *VIFConfigurator) Modify(ctx context.Context, oldItem, newItem dg.Item) (err error) {
 	oldVif, isVif := oldItem.(VIF)
 	if !isVif {
 		// Should be unreachable.
-		return fmt.Errorf("invalid item type %T, expected VIF", oldItem)
+		err = fmt.Errorf("invalid item type %T, expected VIF", oldItem)
+		c.Log.Error(err)
+		return err
 	}
 	newVif, isVif := newItem.(VIF)
 	if !isVif {
 		// Should be unreachable.
-		return fmt.Errorf("invalid item type %T, expected VIF", newItem)
+		err = fmt.Errorf("invalid item type %T, expected VIF", newItem)
+		c.Log.Error(err)
+		return err
 	}
 	oldVeth := oldVif.Variant.Veth
 	newVeth := newVif.Variant.Veth
 	appNetNs := newVeth.ForApp.NetNsName
+	hostIfName := newVif.HostIfName
 	appIfName := newVeth.AppIfName
+	mtu := newVif.GetMTU()
+	// If changed, modify MTU of the VETH peer in the host namespace.
+	link, err := netlink.LinkByName(hostIfName)
+	if err != nil {
+		err = fmt.Errorf("failed to get link for veth peer %s in the host ns: %w",
+			hostIfName, err)
+		c.Log.Error(err)
+		return err
+	}
+	if link.Attrs().MTU != int(mtu) {
+		err = netlink.LinkSetMTU(link, int(mtu))
+		if err != nil {
+			err = fmt.Errorf("failed to set MTU %d for VIF (Veth) %s: %w",
+				mtu, hostIfName, err)
+			c.Log.Error(err)
+			return err
+		}
+	}
 	// Continue configuring veth peer in the app namespace.
 	revertNs, err := switchToNamespace(c.Log, appNetNs)
 	if err != nil {
-		return fmt.Errorf("failed to switch to net namespace %s: %w", appNetNs, err)
+		err = fmt.Errorf("failed to switch to net namespace %s: %w", appNetNs, err)
+		c.Log.Error(err)
+		return err
 	}
 	defer revertNs()
 	// Get link for the peer in this namespace.
-	link, err := netlink.LinkByName(appIfName)
+	link, err = netlink.LinkByName(appIfName)
 	if err != nil {
-		return fmt.Errorf("failed to get link for veth peer %s in ns %s: %w",
+		err = fmt.Errorf("failed to get link for veth peer %s in ns %s: %w",
 			appIfName, appNetNs, err)
+		c.Log.Error(err)
+		return err
 	}
 	obsoleteIPs, newIPs := generics.DiffSetsFn(oldVeth.AppIPs, newVeth.AppIPs,
 		netutils.EqualIPNets)
 	for _, ipNet := range obsoleteIPs {
 		addr := &netlink.Addr{IPNet: ipNet}
 		if err := netlink.AddrDel(link, addr); err != nil {
-			return fmt.Errorf("failed to del addr %v from veth peer %s: %v",
+			err = fmt.Errorf("failed to del addr %v from veth peer %s: %v",
 				ipNet, appIfName, err)
+			c.Log.Error(err)
+			return err
 		}
 	}
 	for _, ipNet := range newIPs {
 		addr := &netlink.Addr{IPNet: ipNet}
 		if err := netlink.AddrAdd(link, addr); err != nil {
-			return fmt.Errorf("failed to add addr %v to veth peer %s: %v",
+			err = fmt.Errorf("failed to add addr %v to veth peer %s: %v",
 				ipNet, appIfName, err)
+			c.Log.Error(err)
+			return err
+		}
+	}
+	if link.Attrs().MTU != int(mtu) {
+		err = netlink.LinkSetMTU(link, int(mtu))
+		if err != nil {
+			err = fmt.Errorf("failed to set MTU %d for VIF (Veth) %s: %w",
+				mtu, appIfName, err)
+			c.Log.Error(err)
+			return err
 		}
 	}
 	return nil
@@ -285,7 +343,7 @@ func (c *VIFConfigurator) Delete(ctx context.Context, item dg.Item) error {
 	return nil
 }
 
-// NeedsRecreate returns true when anything other that Veth IPs change.
+// NeedsRecreate returns true when anything other than Veth IPs or MTU change.
 func (c *VIFConfigurator) NeedsRecreate(oldItem, newItem dg.Item) (recreate bool) {
 	oldVif, isVif := oldItem.(VIF)
 	if !isVif {
@@ -301,5 +359,6 @@ func (c *VIFConfigurator) NeedsRecreate(oldItem, newItem dg.Item) (recreate bool
 		oldVif.NetAdapterName != newVif.NetAdapterName ||
 		oldVif.Variant.External != newVif.Variant.External ||
 		oldVif.Variant.Veth.ForApp != newVif.Variant.Veth.ForApp ||
-		oldVif.Variant.Veth.AppIfName != newVif.Variant.Veth.AppIfName
+		oldVif.Variant.Veth.AppIfName != newVif.Variant.Veth.AppIfName ||
+		!bytes.Equal(oldVif.Variant.Veth.AppIfMAC, newVif.Variant.Veth.AppIfMAC)
 }

@@ -134,6 +134,24 @@ SystemAdapter determines the usage of the network port, which is one of:
 
 Network port directly assigned to an application is without SystemAdapter.
 
+### Network Adapter MTU
+
+The user can adjust the Maximum Transmission Unit (MTU) size of a network adapter.
+MTU determines the largest IP packet that the underlying link can and is allowed to carry.
+A smaller MTU value is often used to avoid packet fragmentation when some form of packet
+encapsulation is being applied, while a larger MTU reduces the overhead associated with
+packet headers, improves network efficiency, and increases throughput by allowing more
+data to be transmitted in each packet (known as a jumbo frame).
+
+EVE uses the L3 MTU, meaning the value does not include the L2 header size (e.g., Ethernet
+header or VLAN tag size). The value is a 16-bit unsigned integer, representing the MTU size
+in bytes. The minimum accepted value for the MTU is 1280, which is the minimum link MTU
+needed to carry an IPv6 packet (see RFC 8200, "IPv6 minimum link MTU"). If the MTU for
+a network adapter is not defined (zero value), EVE will set the default MTU size,
+which depends on the network adapter type. Ethernet and WiFi adapters default to 1500 bytes,
+while cellular modems typically receive their MTU value from the network provider,
+which EVE will use unless the user overrides the MTU value.
+
 ## Load spreading and failover
 
 Load spreading means that there are two or more similar uplink networks, for instance
@@ -260,13 +278,28 @@ Note that proxying of application traffic has to be configured on the applicatio
 
 ## Network Time Protocol (NTP)
 
-EVE always tries to keep its clock synchronized by embedding a NTP Client that synchronizes
+EVE always tries to keep its clock synchronized using NTP daemon (chronyd) that synchronizes
 the system's clock since the boot time.
 This is especially important on the very first boot to ensure that all device certificates
 are generated with valid timestamps. EVE will first try to use NTP servers either received
 from DHCP servers or statically configured in the network override configuration used for
 bootstrapping (see the next section for more info on the network bootstrapping process).
 If no NTP server is provided by DHCP or config, EVE will try to use `pool.ntp.org` by default.
+Every 5 min (see [pkg/pillar/scripts/device-steps.sh](../pkg/pillar/scripts/device-steps.sh)
+for details) EVE fetches NTP server configuration and restarts NTP daemon if
+configuration has been changed.
+
+Also EVE periodically sends information about NTP sources to the controller. NTP sources
+are peers to which EVE has established a connection for the NTP synchronization. The
+reporting period is defied as a runtime configuration property `timer.ntpsources.interval`
+and described in [CONFIG-PROPERTIES.md](CONFIG-PROPERTIES.md). NTP sources updates are also
+sent regardless of the specified interval if the list of NTP peers or NTP peer fields,
+such as mode, state, have changed.
+
+NTP sources reports consist of fields which are well described on the following resources:
+
+- <https://www.ntp.org/documentation/4.2.8-series/ntpq>, "Peer Variables" section
+- <https://chrony-project.org/doc/4.5/chronyc.html>, "Time sources" section
 
 For more info on clock synchronization, refer to [CLOCK-SYNCHRONIZATION.md](CLOCK-SYNCHRONIZATION.md).
 

@@ -5,11 +5,8 @@ package linuxitems
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net"
-	"os"
-	"strings"
 
 	"github.com/lf-edge/eve-libs/depgraph"
 	"github.com/lf-edge/eve/pkg/pillar/base"
@@ -30,6 +27,10 @@ type Adapter struct {
 	// L2Type : link type of the underlying interface.
 	// L2LinkTypeNone is used if adapter is directly attached to a physical interface.
 	L2Type types.L2LinkType
+	// WirelessType is used to distinguish between Ethernet, WiFi and cellular port.
+	WirelessType types.WirelessType
+	// MTU : Maximum transmission unit size.
+	MTU uint16
 }
 
 // Name uses the interface name to identify the adapter.
@@ -50,7 +51,9 @@ func (a Adapter) Type() string {
 // Equal is a comparison method for two equally-named adapter instances.
 func (a Adapter) Equal(other depgraph.Item) bool {
 	a2 := other.(Adapter)
-	return a.L2Type == a2.L2Type
+	return a.L2Type == a2.L2Type &&
+		a.WirelessType == a.WirelessType &&
+		a.MTU == a2.MTU
 }
 
 // External returns false.
@@ -72,10 +75,10 @@ func (a Adapter) Dependencies() (deps []depgraph.Dependency) {
 	case types.L2LinkTypeNone:
 		// Attached directly to a physical interface.
 		// In this case the interface has to be "allocated" for use as an L3 adapter.
-		depType = genericitems.IOHandleTypename
+		depType = genericitems.PhysIfTypename
 		mustSatisfy = func(item depgraph.Item) bool {
-			ioHandle := item.(genericitems.IOHandle)
-			return ioHandle.Usage == genericitems.IOUsageL3Adapter
+			physIf := item.(PhysIf)
+			return physIf.Usage == genericitems.IOUsageL3Adapter
 		}
 	case types.L2LinkTypeVLAN:
 		depType = genericitems.VlanTypename
@@ -92,6 +95,14 @@ func (a Adapter) Dependencies() (deps []depgraph.Dependency) {
 			Description: "Underlying network interface must exist",
 		},
 	}
+}
+
+// GetMTU returns MTU configured for the Adapter (applied to bridge).
+func (a Adapter) GetMTU() uint16 {
+	if a.MTU == 0 {
+		return types.DefaultMTU
+	}
+	return a.MTU
 }
 
 // AdapterConfigurator implements Configurator interface (libs/reconciler) for network adapters.
@@ -112,17 +123,22 @@ func (c *AdapterConfigurator) Create(ctx context.Context, item depgraph.Item) er
 		c.Log.Error(err)
 		return err
 	}
-	if !c.createBridge(adapter.IfName) {
-		// Do not put the interface under a bridge.
+	switch adapter.WirelessType {
+	case types.WirelessTypeNone:
+		// Continue below to put the Ethernet interface under a bridge.
+		break
+	case types.WirelessTypeWifi:
+		// Do not put the WiFi interface under a bridge.
 		// Just make sure that the interface is UP.
-		c.Log.Noticef("Not creating bridge for interface: %s, link type: %s",
-			adapter.IfName, link.Type())
 		if err := netlink.LinkSetUp(link); err != nil {
 			err = fmt.Errorf("netlink.LinkSetUp(%s) failed: %v",
 				adapter.IfName, err)
 			c.Log.Error(err)
 			return err
 		}
+		return nil
+	case types.WirelessTypeCellular:
+		// Managed by the wwan microservice, nothing to do here.
 		return nil
 	}
 	kernIfname := "k" + adapter.IfName
@@ -155,6 +171,7 @@ func (c *AdapterConfigurator) Create(ctx context.Context, item depgraph.Item) er
 	attrs := netlink.NewLinkAttrs()
 	attrs.Name = adapter.IfName
 	attrs.HardwareAddr = macAddr
+	attrs.MTU = int(adapter.GetMTU())
 	bridge := &netlink.Bridge{LinkAttrs: attrs}
 	if err := netlink.LinkAdd(bridge); err != nil {
 		err = fmt.Errorf("netlink.LinkAdd(%s) failed: %v",
@@ -186,15 +203,6 @@ func (c *AdapterConfigurator) Create(ctx context.Context, item depgraph.Item) er
 	return nil
 }
 
-func (c *AdapterConfigurator) createBridge(ifName string) bool {
-	_, err := os.Stat(fmt.Sprintf("/sys/class/net/%s/wireless", ifName))
-	if err == nil || strings.HasPrefix(ifName, "wwan") {
-		// Do not put wireless interface under a bridge.
-		return false
-	}
-	return true
-}
-
 // Create alternate MAC address with the group bit toggled.
 func (c *AdapterConfigurator) alternativeMAC(mac net.HardwareAddr) net.HardwareAddr {
 	var altMacAddr net.HardwareAddr
@@ -206,22 +214,45 @@ func (c *AdapterConfigurator) alternativeMAC(mac net.HardwareAddr) net.HardwareA
 	return altMacAddr
 }
 
-// Modify is not implemented.
-func (c *AdapterConfigurator) Modify(_ context.Context, _, _ depgraph.Item) (err error) {
-	return errors.New("not implemented")
+// Modify is able to update the MTU attribute.
+func (c *AdapterConfigurator) Modify(_ context.Context, _, newItem depgraph.Item) (err error) {
+	adapter, isAdapter := newItem.(Adapter)
+	if !isAdapter {
+		return fmt.Errorf("invalid item type %T, expected Adapter", newItem)
+	}
+	if adapter.WirelessType != types.WirelessTypeNone {
+		// wireless port, nothing to do here
+		return nil
+	}
+	adapterLink, err := netlink.LinkByName(adapter.IfName)
+	if err != nil {
+		err = fmt.Errorf("failed to get adapter %s link: %v", adapter.IfName, err)
+		c.Log.Error(err)
+		return err
+	}
+	mtu := adapter.GetMTU()
+	if adapterLink.Attrs().MTU != int(mtu) {
+		err = netlink.LinkSetMTU(adapterLink, int(mtu))
+		if err != nil {
+			err = fmt.Errorf("failed to set MTU %d for adapter %s: %w",
+				mtu, adapter.IfName, err)
+			c.Log.Error(err)
+			return err
+		}
+	}
+	return nil
 }
 
 // Delete undoes Create - i.e. moves MAC address and ifName back to the interface
 // and removes the bridge.
 func (c *AdapterConfigurator) Delete(ctx context.Context, item depgraph.Item) error {
 	adapter := item.(Adapter)
-	if !c.createBridge(adapter.IfName) {
-		// nothing to undo
+	if adapter.WirelessType != types.WirelessTypeNone {
+		// wireless port, nothing to do here
 		return nil
 	}
 	// After removing/renaming interfaces it is best to clear the cache.
 	defer c.NetworkMonitor.ClearCache()
-
 	kernIfname := "k" + adapter.IfName
 	kernLink, err := netlink.LinkByName(kernIfname)
 	if err != nil {
@@ -267,7 +298,18 @@ func (c *AdapterConfigurator) Delete(ctx context.Context, item depgraph.Item) er
 	return nil
 }
 
-// NeedsRecreate returns true - Modify is not implemented.
+// NeedsRecreate returns true if L2Type or WirelessType have changed.
+// On the other hand, Modify is able to update the MTU attribute.
 func (c *AdapterConfigurator) NeedsRecreate(oldItem, newItem depgraph.Item) (recreate bool) {
-	return true
+	oldCfg, isAdapter := oldItem.(Adapter)
+	if !isAdapter {
+		// unreachable
+		return false
+	}
+	newCfg, isAdapter := newItem.(Adapter)
+	if !isAdapter {
+		// unreachable
+		return false
+	}
+	return oldCfg.L2Type != newCfg.L2Type || oldCfg.WirelessType != newCfg.WirelessType
 }

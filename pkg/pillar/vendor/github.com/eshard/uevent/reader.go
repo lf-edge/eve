@@ -34,6 +34,11 @@ func (r *Reader) Read(p []byte) (n int, err error) {
 	if r.closed {
 		return 0, io.EOF
 	}
+
+	if n == -1 {
+		n = 0
+	}
+
 	return
 }
 

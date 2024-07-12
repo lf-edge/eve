@@ -1,0 +1,67 @@
+#include <tunables/global>
+
+/sbin/memory-monitor-handler.sh {
+  #include <abstractions/base>
+
+  # Allow read access to /proc and /sys filesystem
+  /proc/** r,
+  /proc/*/status r,
+  /proc/*/smaps r,
+  /proc/*/tasks r,
+  /sys/fs/cgroup/memory/** r,
+
+  # Allow execution of /bin/sh
+  /bin/sh ixr,
+
+  # Allow execution of eve commands
+  /usr/bin/eve ixr,
+
+  # Allow execution of ps command via eve exec debug
+  /usr/bin/ps ixr,
+
+  # Allow access to logread command
+  /usr/bin/logread ixr,
+
+  # Allow creation and deletion of temporary files
+  /tmp/** rwk,
+
+  # Allow creation of output directories and symlinks
+  /containers/services/pillar/rootfs/opt/zededa/bin/zedbox lrw,
+
+  # Allow file access within specified output directories
+  /persist/memory-monitor/output/** rwk,
+
+  # Allow access to tar command
+  /bin/tar ixr,
+
+  # Allow access to curl command via eve exec debug
+  /usr/bin/curl ixr,
+
+  # Allow access to basename command
+  /usr/bin/basename ixr,
+
+  # Allow access to mktemp command
+  /usr/bin/mktemp ixr,
+
+  # Allow access to grep command
+  /bin/grep ixr,
+
+  # Allow access to awk command
+  /usr/bin/awk ixr,
+
+  # Allow access to sort command
+  /usr/bin/sort ixr,
+
+  # Allow access to sed command
+  /bin/sed ixr,
+
+  # Allow access to stat command
+  /usr/bin/stat ixr,
+
+  # Allow access to du command
+  /usr/bin/du ixr,
+
+  # Allow network access for curl and eve commands
+  network inet stream,
+
+}

@@ -69,21 +69,36 @@ func SizeFromDir(log *base.LogObject, dirname string) (uint64, error) {
 				log.Tracef("Dir %s size %d\n", filename, size)
 				totalUsed += size
 			} else {
-				// FileInfo.Size() returns the provisioned size
-				// Sparse files will have a smaller allocated size than provisioned
-				// Use full syscall.Stat_t to get the allocated size
-				allocatedBytes, err := StatAllocatedBytes(filename)
-				if err != nil {
-					log.Errorf("StatAllocatedBytes: %s failed %s treating as fully allocated\n", filename, err)
-					allocatedBytes = uint64(location.Size())
+				// The selection of these two persist directories is intended to pick a balance
+				// between:
+				// 		- calling syscall.Stat() on every file which is heavy on time and compute
+				//		- not calling syscall.Stat() on anything which can overestimate storage allocated
+				//			because the difference between allocated and provisioned storage is
+				//			not accounted for.
+				//
+				// It is believed that the majority of sparsefile usage (by provisioned GB)
+				// will be in the clear and vault volumes base directories so a lot of compute time
+				// can be saved by not checking detailed allocated bytes information in deeper
+				// directories.
+				if dirname == types.VolumeEncryptedDirName || dirname == types.VolumeClearDirName {
+					// FileInfo.Size() returns the provisioned size
+					// Sparse files will have a smaller allocated size than provisioned
+					// Use full syscall.Stat_t to get the allocated size
+					allocatedBytes, err := StatAllocatedBytes(filename)
+					if err != nil {
+						allocatedBytes = uint64(location.Size())
+					}
+					// Fully Allocated: don't use allocated bytes
+					// stat math of %b*%B as it will over-account space
+					if allocatedBytes >= uint64(location.Size()) {
+						allocatedBytes = uint64(location.Size())
+					}
+					log.Tracef("File %s Size %d\n", filename, allocatedBytes)
+					totalUsed += allocatedBytes
+				} else {
+					log.Tracef("File %s Size %d\n", filename, location.Size())
+					totalUsed += uint64(location.Size())
 				}
-				// Fully Allocated: don't use allocated bytes
-				// stat math of %b*%B as it will over-account space
-				if allocatedBytes >= uint64(location.Size()) {
-					allocatedBytes = uint64(location.Size())
-				}
-				log.Tracef("File %s Size %d\n", filename, allocatedBytes)
-				totalUsed += allocatedBytes
 			}
 		}
 	}

@@ -17,6 +17,7 @@ linters:
     - golint            # covered by revive
     - interfacer        # deprecated
     - lll               # line length check
+    - mnd               # troublesome with little value
     - stylecheck        # covered by revive
     - typecheck         # See golangci/golangci-lint#419
     - varcheck          # unreliable

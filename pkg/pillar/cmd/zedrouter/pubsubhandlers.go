@@ -7,7 +7,6 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
 )
 
 func (z *zedrouter) handleRestart(ctxArg interface{}, restartCounter int) {
@@ -123,10 +122,6 @@ func (z *zedrouter) handleDNSImpl(ctxArg interface{}, key string,
 			z.log.Errorf("handleDNSImpl: failed to get config for NI %s", niStatus.UUID)
 			continue
 		}
-		if niStatus.HasError() && !niStatus.WaitingForUplink {
-			// Skip NI if it is in a failed state and the error is not about missing uplink.
-			continue
-		}
 		z.doUpdateNIUplink(niStatus.SelectedUplinkLogicalLabel, &niStatus, *niConfig)
 	}
 
@@ -157,6 +152,7 @@ func (z *zedrouter) handleNetworkInstanceCreate(ctxArg interface{}, key string,
 	config := configArg.(types.NetworkInstanceConfig)
 	z.log.Functionf("handleNetworkInstanceCreate: (UUID: %s, name:%s)",
 		key, config.DisplayName)
+	defer z.log.Functionf("handleNetworkInstanceCreate(%s) done", key)
 
 	if !z.initReconcileDone {
 		z.niReconciler.RunInitialReconcile(z.runCtx)
@@ -178,16 +174,17 @@ func (z *zedrouter) handleNetworkInstanceCreate(ctxArg interface{}, key string,
 	if config.HasError() {
 		z.log.Errorf("handleNetworkInstanceCreate(%s) returning parse error %s",
 			key, config.Error)
-		status.SetError(config.Error, config.ErrorTime)
+		status.ValidationErr = config.ErrorAndTime
+		// Do not continue with invalid config.
 		status.ChangeInProgress = types.ChangeInProgressTypeNone
 		z.publishNetworkInstanceStatus(&status)
-		z.log.Functionf("handleNetworkInstanceCreate(%s) done", key)
 		return
 	}
 
 	if err := z.doNetworkInstanceSanityCheck(&config); err != nil {
 		z.log.Error(err)
-		status.SetErrorNow(err.Error())
+		status.ValidationErr.SetErrorNow(err.Error())
+		// Do not continue with invalid config.
 		status.ChangeInProgress = types.ChangeInProgressTypeNone
 		z.publishNetworkInstanceStatus(&status)
 		return
@@ -195,11 +192,7 @@ func (z *zedrouter) handleNetworkInstanceCreate(ctxArg interface{}, key string,
 
 	if err := z.checkNetworkInstanceIPConflicts(&config); err != nil {
 		z.log.Error(err)
-		status.SetErrorNow(err.Error())
-		status.ChangeInProgress = types.ChangeInProgressTypeNone
-		status.IPConflict = true
-		z.publishNetworkInstanceStatus(&status)
-		return
+		status.IPConflictErr.SetErrorNow(err.Error())
 	}
 
 	// Allocate unique number for the bridge.
@@ -209,7 +202,8 @@ func (z *zedrouter) handleNetworkInstanceCreate(ctxArg interface{}, key string,
 		err := fmt.Errorf("failed to allocate number for network instance bridge %s: %v",
 			status.UUID, err)
 		z.log.Error(err)
-		status.SetErrorNow(err.Error())
+		status.AllocationErr.SetErrorNow(err.Error())
+		// Do not continue if allocation failed.
 		status.ChangeInProgress = types.ChangeInProgressTypeNone
 		z.publishNetworkInstanceStatus(&status)
 		return
@@ -233,44 +227,47 @@ func (z *zedrouter) handleNetworkInstanceCreate(ctxArg interface{}, key string,
 	if config.WithUplinkProbing() {
 		probeStatus, err := z.uplinkProber.StartNIProbing(config)
 		if err != nil {
-			err := fmt.Errorf("failed to start uplink probing for network instance %s: %v",
+			err = fmt.Errorf("failed to start uplink probing for network instance %s: %v",
 				status.UUID, err)
 			z.log.Error(err)
-			status.SetErrorNow(err.Error())
-			status.ChangeInProgress = types.ChangeInProgressTypeNone
-			z.publishNetworkInstanceStatus(&status)
-			return
+			status.UplinkErr.SetErrorNow(err.Error())
+		} else {
+			selectedUplinkLL = probeStatus.SelectedUplinkLL
+			status.RunningUplinkProbing = true
 		}
-		selectedUplinkLL = probeStatus.SelectedUplinkLL
-		status.RunningUplinkProbing = true
 	} else {
 		selectedUplinkLL = config.PortLogicalLabel
 	}
 
 	// Set selected uplink port.
-	waitForUplink, err := z.setSelectedUplink(selectedUplinkLL, &status)
-	if err != nil {
-		err := fmt.Errorf("failed to set selected uplink for network instance %s: %v",
-			status.UUID, err)
+	if !status.UplinkErr.HasError() {
+		err = z.setSelectedUplink(selectedUplinkLL, &status)
+		if err != nil {
+			err := fmt.Errorf("failed to set selected uplink for network instance %s: %v",
+				status.UUID, err)
+			z.log.Error(err)
+			status.UplinkErr.SetErrorNow(err.Error())
+		}
+	}
+
+	if fallbackMTU, err := z.checkNetworkInstanceMTUConflicts(config, &status); err != nil {
 		z.log.Error(err)
-		status.SetErrorNow(err.Error())
-		status.WaitingForUplink = waitForUplink
-		status.ChangeInProgress = types.ChangeInProgressTypeNone
-		z.publishNetworkInstanceStatus(&status)
-		return
+		status.MTUConflictErr.SetErrorNow(err.Error())
+		status.MTU = fallbackMTU
+	} else if config.MTU == 0 {
+		status.MTU = types.DefaultMTU
+	} else {
+		status.MTU = config.MTU
 	}
 
-	if !config.Activate {
+	if config.Activate && status.EligibleForActivate() {
+		z.doActivateNetworkInstance(config, &status)
+		// Update AppNetwork-s that depend on this network instance.
+		z.checkAndRecreateAppNetworks(config.UUID)
+	} else {
 		status.ChangeInProgress = types.ChangeInProgressTypeNone
 		z.publishNetworkInstanceStatus(&status)
-		return
 	}
-
-	z.doActivateNetworkInstance(config, &status)
-
-	// Update AppNetwork-s that depend on this network instance.
-	z.checkAndRecreateAppNetworks(config.UUID)
-	z.log.Functionf("handleNetworkInstanceCreate(%s) done", key)
 }
 
 func (z *zedrouter) handleNetworkInstanceModify(ctxArg interface{}, key string,
@@ -283,6 +280,7 @@ func (z *zedrouter) handleNetworkInstanceModify(ctxArg interface{}, key string,
 		z.log.Fatalf("handleNetworkInstanceModify(%s) no status", key)
 	}
 	z.log.Functionf("handleNetworkInstanceModify(%s)", key)
+	defer z.log.Functionf("handleNetworkInstanceModify(%s) done", key)
 	status.ChangeInProgress = types.ChangeInProgressTypeModify
 	z.publishNetworkInstanceStatus(status)
 
@@ -290,11 +288,10 @@ func (z *zedrouter) handleNetworkInstanceModify(ctxArg interface{}, key string,
 	if config.HasError() {
 		z.log.Errorf("handleNetworkInstanceModify(%s) returning parse error %s",
 			key, config.Error)
-		status.SetError(config.Error, config.ErrorTime)
-		status.WaitingForUplink = false
+		status.ValidationErr.SetError(config.Error, config.ErrorTime)
+		// Do not continue with invalid config.
 		status.ChangeInProgress = types.ChangeInProgressTypeNone
 		z.publishNetworkInstanceStatus(status)
-		z.log.Functionf("handleNetworkInstanceModify(%s) done", key)
 		return
 	}
 
@@ -303,11 +300,10 @@ func (z *zedrouter) handleNetworkInstanceModify(ctxArg interface{}, key string,
 		err := fmt.Errorf("changing Type of NetworkInstance from %d to %d is not supported",
 			status.Type, config.Type)
 		z.log.Errorf("handleNetworkInstanceModify(%s) %v", key, err)
-		status.SetErrorNow(err.Error())
-		status.WaitingForUplink = false
+		status.ValidationErr.SetErrorNow(err.Error())
+		// Do not continue with invalid config.
 		status.ChangeInProgress = types.ChangeInProgressTypeNone
 		z.publishNetworkInstanceStatus(status)
-		z.log.Functionf("handleNetworkInstanceModify(%s) done", key)
 		return
 	}
 
@@ -315,37 +311,29 @@ func (z *zedrouter) handleNetworkInstanceModify(ctxArg interface{}, key string,
 	status.NetworkInstanceConfig = config
 	if err := z.doNetworkInstanceSanityCheck(&config); err != nil {
 		z.log.Error(err)
-		status.SetErrorNow(err.Error())
-		status.WaitingForUplink = false
+		status.ValidationErr.SetErrorNow(err.Error())
+		// Do not continue with invalid config.
 		status.ChangeInProgress = types.ChangeInProgressTypeNone
 		z.publishNetworkInstanceStatus(status)
 		return
 	}
-
-	if err := z.checkNetworkInstanceIPConflicts(&config); err != nil {
-		z.log.Error(err)
-		status.SetErrorNow(err.Error())
-		status.IPConflict = true
-		status.WaitingForUplink = false
-		status.ChangeInProgress = types.ChangeInProgressTypeNone
-		z.publishNetworkInstanceStatus(status)
-		return
-	}
-	status.IPConflict = false
+	// NI config is proven to be valid beyond this point.
+	status.ValidationErr.ClearError()
 
 	// Get or (less likely) allocate a bridge number.
 	bridgeNumKey := types.UuidToNumKey{UUID: status.UUID}
 	bridgeNum, err := z.bridgeNumAllocator.GetOrAllocate(bridgeNumKey)
 	if err != nil {
-		err := fmt.Errorf("failed to allocate number for network instance bridge %s: %v",
+		err = fmt.Errorf("failed to allocate number for network instance bridge %s: %v",
 			status.UUID, err)
 		z.log.Error(err)
-		status.SetErrorNow(err.Error())
-		status.WaitingForUplink = false
+		status.AllocationErr.SetErrorNow(err.Error())
+		// Do not continue if allocation failed.
 		status.ChangeInProgress = types.ChangeInProgressTypeNone
 		z.publishNetworkInstanceStatus(status)
 		return
 	}
+	status.AllocationErr.ClearError()
 	status.BridgeNum = bridgeNum
 
 	// Generate MAC address for the bridge.
@@ -359,14 +347,22 @@ func (z *zedrouter) handleNetworkInstanceModify(ctxArg interface{}, key string,
 	if status.BridgeMac != nil {
 		delete(status.IPAssignments, status.BridgeMac.String())
 	}
-	if status.Gateway != nil {
+	if status.Gateway != nil && status.BridgeMac != nil {
 		addrs := types.AssignedAddrs{IPv4Addr: status.Gateway}
 		status.IPAssignments[status.BridgeMac.String()] = addrs
 		status.BridgeIPAddr = status.Gateway
 	}
 
+	if err := z.checkNetworkInstanceIPConflicts(&config); err != nil {
+		z.log.Error(err)
+		status.IPConflictErr.SetErrorNow(err.Error())
+	} else {
+		status.IPConflictErr.ClearError()
+	}
+
 	// Handle change of the configured port logical label.
 	if config.PortLogicalLabel != prevPortLL {
+		status.UplinkErr.ClearError()
 		if status.RunningUplinkProbing {
 			err = z.uplinkProber.StopNIProbing(status.UUID)
 			if err != nil {
@@ -380,39 +376,46 @@ func (z *zedrouter) handleNetworkInstanceModify(ctxArg interface{}, key string,
 		if config.WithUplinkProbing() {
 			probeStatus, err := z.uplinkProber.StartNIProbing(config)
 			if err != nil {
-				err := fmt.Errorf(
+				err = fmt.Errorf(
 					"failed to start uplink probing for network instance %s: %v",
 					status.UUID, err)
 				z.log.Error(err)
-				status.SetErrorNow(err.Error())
-				status.WaitingForUplink = false
-				status.ChangeInProgress = types.ChangeInProgressTypeNone
-				z.publishNetworkInstanceStatus(status)
-				return
+				status.UplinkErr.SetErrorNow(err.Error())
+			} else {
+				selectedUplinkLL = probeStatus.SelectedUplinkLL
+				status.RunningUplinkProbing = true
 			}
-			selectedUplinkLL = probeStatus.SelectedUplinkLL
-			status.RunningUplinkProbing = true
 		} else {
 			selectedUplinkLL = config.PortLogicalLabel
 		}
 		// Set selected uplink port.
-		waitForUplink, err := z.setSelectedUplink(selectedUplinkLL, status)
-		if err != nil {
-			err := fmt.Errorf("failed to set selected uplink for network instance %s: %v",
-				status.UUID, err)
-			z.log.Error(err)
-			status.SetErrorNow(err.Error())
-			status.WaitingForUplink = waitForUplink
-			status.ChangeInProgress = types.ChangeInProgressTypeNone
-			z.publishNetworkInstanceStatus(status)
-			return
+		if !status.UplinkErr.HasError() {
+			err = z.setSelectedUplink(selectedUplinkLL, status)
+			if err != nil {
+				err = fmt.Errorf("failed to set selected uplink for network instance %s: %v",
+					status.UUID, err)
+				z.log.Error(err)
+				status.UplinkErr.SetErrorNow(err.Error())
+			}
+		}
+	}
+
+	if fallbackMTU, err := z.checkNetworkInstanceMTUConflicts(config, status); err != nil {
+		z.log.Error(err)
+		status.MTUConflictErr.SetErrorNow(err.Error())
+		status.MTU = fallbackMTU
+	} else {
+		status.MTUConflictErr.ClearError()
+		if config.MTU == 0 {
+			status.MTU = types.DefaultMTU
+		} else {
+			status.MTU = config.MTU
 		}
 	}
 
 	// Handle changed activation status.
 	z.publishNetworkInstanceStatus(status)
-	if config.Activate && !status.Activated {
-		status.WaitingForUplink = false
+	if config.Activate && !status.Activated && status.EligibleForActivate() {
 		z.doActivateNetworkInstance(config, status)
 		z.checkAndRecreateAppNetworks(config.UUID)
 	} else if !config.Activate && status.Activated {
@@ -423,7 +426,6 @@ func (z *zedrouter) handleNetworkInstanceModify(ctxArg interface{}, key string,
 
 	// Check if some IP conflicts were resolved by this modification.
 	z.checkAllNetworkInstanceIPConflicts()
-	z.log.Functionf("handleNetworkInstanceModify(%s) done", key)
 }
 
 func (z *zedrouter) handleNetworkInstanceDelete(ctxArg interface{}, key string,
@@ -672,158 +674,4 @@ func (z *zedrouter) handleAppNetworkDelete(ctxArg interface{}, key string,
 	z.maybeScheduleRetry()
 	z.log.Functionf("handleAppNetworkDelete(%s) done for %s",
 		key, config.DisplayName)
-}
-
-func (z *zedrouter) handleAppInstDelete(ctxArg interface{}, key string,
-	configArg interface{}) {
-	z.log.Functionf("handleAppInstDelete(%s)", key)
-	appInstMetadata := z.lookupAppInstMetadata(key)
-	if appInstMetadata == nil {
-		z.log.Functionf("handleAppInstDelete: unknown %s", key)
-		return
-	}
-	// Clean up appInst Metadata
-	z.unpublishAppInstMetadata(appInstMetadata)
-	z.log.Functionf("handleAppInstDelete(%s) done", key)
-}
-
-func (z *zedrouter) handlePatchEnvelopeImpl(peInfo types.PatchEnvelopeInfoList) {
-	before := z.patchEnvelopes.EnvelopesInUsage()
-	z.patchEnvelopes.UpdateEnvelopes(peInfo.Envelopes)
-	z.triggerPEUpdate()
-
-	// Delete stale files
-	var after []string
-	for _, pe := range peInfo.Envelopes {
-		peUsages := types.PatchEnvelopeUsageFromInfo(pe)
-		for _, usage := range peUsages {
-			after = append(after, usage.Key())
-		}
-	}
-
-	toDelete, _ := generics.DiffSets(before, after)
-	for _, uuid := range toDelete {
-		z.patchEnvelopesUsage.Delete(uuid)
-		z.peUsagePersist.Delete(uuid)
-	}
-}
-
-func (z *zedrouter) handlePatchEnvelopeCreate(ctxArg interface{}, key string,
-	configArg interface{}) {
-	peInfo := configArg.(types.PatchEnvelopeInfoList)
-	z.log.Functionf("handlePatchEnvelopeCreate: (UUID: %s) %v", key, peInfo.Envelopes)
-
-	z.handlePatchEnvelopeImpl(peInfo)
-
-	z.log.Functionf("handlePatchEnvelopeCreate(%s) done", key)
-}
-
-func (z *zedrouter) handlePatchEnvelopeModify(ctxArg interface{}, key string,
-	statusArg interface{}, oldStatusArg interface{}) {
-	peInfo := statusArg.(types.PatchEnvelopeInfoList)
-	z.log.Functionf("handlePatchEnvelopeModify: (UUID: %s) %v", key, peInfo.Envelopes)
-
-	z.handlePatchEnvelopeImpl(peInfo)
-
-	z.log.Functionf("handlePatchEnvelopeModify(%s) done", key)
-}
-
-func (z *zedrouter) handlePatchEnvelopeDelete(ctxArg interface{}, key string,
-	statusArg interface{}) {
-	z.log.Functionf("handlePatchEnvelopeDelete: (UUID: %s)", key)
-
-	z.handlePatchEnvelopeImpl(types.PatchEnvelopeInfoList{})
-
-	z.log.Functionf("handlePatchEnvelopeDelete(%s) done", key)
-}
-
-func (z *zedrouter) handleContentTreeStatusCreate(ctxArg interface{}, key string,
-	statusArg interface{}) {
-	contentTree := statusArg.(types.ContentTreeStatus)
-	z.log.Functionf("handleContentTreeStatusCreate: (UUID: %s, name:%s)",
-		key, contentTree.DisplayName)
-
-	z.patchEnvelopes.UpdateContentTree(contentTree, false)
-
-	z.triggerPEUpdate()
-
-	z.log.Functionf("handleContentTreeStatusCreate(%s) done", key)
-}
-
-func (z *zedrouter) handleContentTreeStatusModify(ctxArg interface{}, key string,
-	statusArg interface{}, oldStatusArg interface{}) {
-
-	contentTree := statusArg.(types.ContentTreeStatus)
-	z.log.Functionf("handleContentTreeStatusModify: (UUID: %s), name:%s",
-		key, contentTree.DisplayName)
-
-	z.patchEnvelopes.UpdateContentTree(contentTree, false)
-
-	z.triggerPEUpdate()
-
-	z.log.Functionf("handleContentTreeStatusModify(%s) done", key)
-
-}
-
-func (z *zedrouter) handleContentTreeStatusDelete(ctxArg interface{}, key string,
-	statusArg interface{}) {
-	contentTree := statusArg.(types.ContentTreeStatus)
-	z.log.Functionf("handleVolumeStatusDelete: (UUID: %s, name:%s)",
-		key, contentTree.DisplayName)
-
-	z.patchEnvelopes.UpdateContentTree(contentTree, true)
-
-	z.triggerPEUpdate()
-
-	z.log.Functionf("handleContentTreeStatusDelete(%s) done", key)
-
-}
-
-func (z *zedrouter) handleVolumeStatusCreate(ctxArg interface{}, key string,
-	statusArg interface{}) {
-	volume := statusArg.(types.VolumeStatus)
-	z.log.Functionf("handleVolumeStatusCreate: (UUID: %s, name:%s)",
-		key, volume.DisplayName)
-
-	z.patchEnvelopes.UpdateVolumeStatus(volume, false)
-
-	z.triggerPEUpdate()
-
-	z.log.Functionf("handleVolumeStatusCreate(%s) done", key)
-}
-
-func (z *zedrouter) handleVolumeStatusModify(ctxArg interface{}, key string,
-	statusArg interface{}, oldStatusArg interface{}) {
-
-	volume := statusArg.(types.VolumeStatus)
-	z.log.Functionf("handleVolumeStatusModify: (UUID: %s), name:%s",
-		key, volume.DisplayName)
-
-	z.patchEnvelopes.UpdateVolumeStatus(volume, false)
-
-	z.triggerPEUpdate()
-
-	z.log.Functionf("handleVolumeStatusModify(%s) done", key)
-}
-
-func (z *zedrouter) handleVolumeStatusDelete(ctxArg interface{}, key string,
-	statusArg interface{}) {
-	volume := statusArg.(types.VolumeStatus)
-	z.log.Functionf("handleVolumeStatusDelete: (UUID: %s, name:%s)",
-		key, volume.DisplayName)
-
-	z.patchEnvelopes.UpdateVolumeStatus(volume, true)
-
-	z.triggerPEUpdate()
-
-	z.log.Functionf("handleVolumeStatusDelete(%s) done", key)
-}
-
-func (z *zedrouter) triggerPEUpdate() {
-	select {
-	case z.patchEnvelopes.UpdateStateNotificationCh() <- struct{}{}:
-		z.log.Function("triggerPEUpdate sent update")
-	default:
-		z.log.Warn("patchEnvelopes did not sent update. Slow handler?")
-	}
 }

@@ -52,6 +52,9 @@ const (
 	// DPCStateAsyncWait : waiting for some config operations to finalize which are
 	// running asynchronously in the background.
 	DPCStateAsyncWait
+	// DPCStateWwanWait : waiting for the wwan microservice to apply the latest
+	// cellular configuration.
+	DPCStateWwanWait
 )
 
 // String returns the string name
@@ -75,6 +78,8 @@ func (status DPCState) String() string {
 		return "DPC_REMOTE_WAIT"
 	case DPCStateAsyncWait:
 		return "DPC_ASYNC_WAIT"
+	case DPCStateWwanWait:
+		return "DPC_WWAN_WAIT"
 	default:
 		return fmt.Sprintf("Unknown status %d", status)
 	}
@@ -85,6 +90,19 @@ const (
 	PortCostMin = uint8(0)
 	// PortCostMax is the highest cost
 	PortCostMax = uint8(255)
+)
+
+const (
+	// DefaultMTU : the default Ethernet MTU of 1500 bytes.
+	DefaultMTU = 1500
+	// MinMTU : minimum accepted MTU value.
+	// As per RFC 8200, the MTU must not be less than 1280 bytes to accommodate IPv6 packets.
+	MinMTU = 1280
+	// MaxMTU : maximum accepted MTU value.
+	// The Total Length field of IPv4 and the Payload Length field of IPv6 each have a size
+	// of 16 bits, thus allowing data of up to 65535 octets.
+	// For now, we will not support IPv6 jumbograms.
+	MaxMTU = 65535
 )
 
 // DevicePortConfig is a misnomer in that it includes the total test results
@@ -355,10 +373,12 @@ func (config *DevicePortConfig) DoSanitize(log *base.LogObject,
 
 // CountMgmtPorts returns the number of management ports
 // Exclude any broken ones with Dhcp = DhcpTypeNone
-func (config *DevicePortConfig) CountMgmtPorts() int {
+// Optionally exclude mgmt ports with invalid config
+func (config *DevicePortConfig) CountMgmtPorts(onlyValidConfig bool) int {
 	count := 0
 	for _, port := range config.Ports {
-		if port.IsMgmt && port.Dhcp != DhcpTypeNone {
+		if port.IsMgmt && port.Dhcp != DhcpTypeNone &&
+			!(onlyValidConfig && port.InvalidConfig) {
 			count++
 		}
 	}
@@ -386,7 +406,8 @@ func (config *DevicePortConfig) MostlyEqual(config2 *DevicePortConfig) bool {
 			p1.Logicallabel != p2.Logicallabel ||
 			p1.Alias != p2.Alias ||
 			p1.IsMgmt != p2.IsMgmt ||
-			p1.Cost != p2.Cost {
+			p1.Cost != p2.Cost ||
+			p1.MTU != p2.MTU {
 			return false
 		}
 		if !reflect.DeepEqual(p1.DhcpConfig, p2.DhcpConfig) ||
@@ -434,7 +455,7 @@ func (config DevicePortConfig) IsDPCUntested() bool {
 // IsDPCUsable - checks whether something is invalid; no management IP
 // addresses means it isn't usable hence we return false if none.
 func (config DevicePortConfig) IsDPCUsable() bool {
-	mgmtCount := config.CountMgmtPorts()
+	mgmtCount := config.CountMgmtPorts(true)
 	return mgmtCount > 0
 }
 
@@ -511,9 +532,14 @@ type NetworkPortConfig struct {
 	Alias        string // From SystemAdapter's alias
 	// NetworkUUID - UUID of the Network Object configured for the port.
 	NetworkUUID uuid.UUID
-	IsMgmt      bool  // Used to talk to controller
-	IsL3Port    bool  // True if port is applicable to operate on the network layer
-	Cost        uint8 // Zero is free
+	IsMgmt      bool // Used to talk to controller
+	IsL3Port    bool // True if port is applicable to operate on the network layer
+	// InvalidConfig is used to flag port config which failed parsing or (static) validation
+	// checks, such as: malformed IP address, undefined required field, IP address not inside
+	// the subnet, etc.
+	InvalidConfig bool
+	Cost          uint8 // Zero is free
+	MTU           uint16
 	DhcpConfig
 	ProxyConfig
 	L2LinkConfig
@@ -720,9 +746,14 @@ func (ap CellularAccessPoint) Equal(ap2 CellularAccessPoint) bool {
 		ap.APN != ap2.APN {
 		return false
 	}
+	enc1 := ap.EncryptedCredentials
+	enc2 := ap2.EncryptedCredentials
 	if ap.AuthProtocol != ap2.AuthProtocol ||
-		// TODO (how to properly detect changed username/password ?)
-		!reflect.DeepEqual(ap.EncryptedCredentials, ap2.EncryptedCredentials) {
+		enc1.CipherBlockID != enc2.CipherBlockID ||
+		enc1.CipherContextID != enc2.CipherContextID ||
+		!bytes.Equal(enc1.InitialValue, enc2.InitialValue) ||
+		!bytes.Equal(enc1.CipherData, enc2.CipherData) ||
+		!bytes.Equal(enc1.ClearTextHash, enc2.ClearTextHash) {
 		return false
 	}
 	if !generics.EqualLists(ap.PreferredPLMNs, ap2.PreferredPLMNs) ||
@@ -934,6 +965,7 @@ type NetworkXObjectConfig struct {
 	DNSNameToIPList []DNSNameToIP // Used for DNS and ACL ipset
 	Proxy           *ProxyConfig
 	WirelessCfg     WirelessConfig
+	MTU             uint16
 	// Any errors from the parser
 	// ErrorAndTime provides SetErrorNow() and ClearError()
 	ErrorAndTime

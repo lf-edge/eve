@@ -438,7 +438,7 @@ func (p *UplinkProber) applyPendingDNS(pendingDNS types.DeviceNetworkStatus) {
 			continue
 		}
 		port := ports[0]
-		if !port.IsMgmt {
+		if !port.IsMgmt || port.InvalidConfig {
 			p.log.Noticef("UplinkProber: Removed %s from the list of probed uplinks",
 				uplinkLL)
 			delete(p.uplinkProbeStatus, uplinkLL)
@@ -446,7 +446,7 @@ func (p *UplinkProber) applyPendingDNS(pendingDNS types.DeviceNetworkStatus) {
 	}
 	// Add ports that have just appeared and update existing.
 	for _, port := range p.pendingDNS.Ports {
-		if !port.IsMgmt {
+		if !port.IsMgmt || port.InvalidConfig {
 			continue
 		}
 		uplinkStatus, haveStatus := p.uplinkProbeStatus[port.Logicallabel]

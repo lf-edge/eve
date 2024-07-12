@@ -11,7 +11,8 @@ require (
 	github.com/cshari-zededa/eve-tpm2-tools v0.0.4
 	github.com/docker/docker v25.0.5+incompatible
 	github.com/eriknordmark/ipinfo v0.0.0-20230728132417-2d8f4da903d7
-	github.com/eshard/uevent v1.0.1
+	github.com/eshard/uevent v1.0.2-0.20220110110621-d8d2be286cec
+	github.com/facebook/time v0.0.0-20240605113323-bdee26e8523f
 	github.com/fsnotify/fsnotify v1.6.0
 	github.com/go-chi/chi/v5 v5.0.10
 	github.com/go-playground/validator/v10 v10.15.5
@@ -28,8 +29,8 @@ require (
 	github.com/jaypipes/ghw v0.8.0
 	github.com/k8snetworkplumbingwg/network-attachment-definition-client v1.5.0
 	github.com/lf-edge/edge-containers v0.0.0-20240207093504-5dfda0619b80
-	github.com/lf-edge/eve-api/go v0.0.0-20240424223403-4feef58259f3
-	github.com/lf-edge/eve-libs v0.0.0-20240207103937-2c1dfb073c07
+	github.com/lf-edge/eve-api/go v0.0.0-20240607171551-ab08ae4a8124
+	github.com/lf-edge/eve-libs v0.0.0-20240614221125-6913ec4213f9
 	github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20240315102754-0f6d1f182e0d
 	github.com/lf-edge/go-qemu v0.0.0-20231121152149-4c467eda0c56
 	github.com/linuxkit/linuxkit/src/cmd/linuxkit v0.0.0-20240507172735-6d37353ca1ee
@@ -45,6 +46,7 @@ require (
 	github.com/shirou/gopsutil v3.21.11+incompatible
 	github.com/shjala/gostats v0.0.0-20230215094906-69a32327600f
 	github.com/sirupsen/logrus v1.9.3
+	github.com/spf13/cobra v1.8.0
 	github.com/stretchr/testify v1.8.4
 	github.com/tatsushid/go-fastping v0.0.0-20160109021039-d7bb493dee3e
 	github.com/vishvananda/netlink v1.2.1-beta.2
@@ -198,6 +200,7 @@ require (
 	github.com/golang/mock v1.6.0 // indirect
 	github.com/google/gnostic v0.5.7-v3refs // indirect
 	github.com/imdario/mergo v0.3.16 // indirect
+	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/kubernetes-csi/external-snapshotter/client/v4 v4.2.0 // indirect
 	github.com/openshift/api v0.0.0-20230503133300-8bbcb7ca7183 // indirect
 	github.com/openshift/client-go v0.0.0-20210112165513-ebc401615f47 // indirect

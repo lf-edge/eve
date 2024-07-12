@@ -353,9 +353,12 @@ github.com/emicklei/go-restful/v3/log
 # github.com/eriknordmark/ipinfo v0.0.0-20230728132417-2d8f4da903d7
 ## explicit
 github.com/eriknordmark/ipinfo
-# github.com/eshard/uevent v1.0.1
+# github.com/eshard/uevent v1.0.2-0.20220110110621-d8d2be286cec
 ## explicit
 github.com/eshard/uevent
+# github.com/facebook/time v0.0.0-20240605113323-bdee26e8523f
+## explicit; go 1.21
+github.com/facebook/time/ntp/chrony
 # github.com/felixge/httpsnoop v1.0.4
 ## explicit; go 1.13
 github.com/felixge/httpsnoop
@@ -555,6 +558,9 @@ github.com/hashicorp/go-envparse
 # github.com/imdario/mergo v0.3.16
 ## explicit; go 1.13
 github.com/imdario/mergo
+# github.com/inconshreveable/mousetrap v1.1.0
+## explicit; go 1.18
+github.com/inconshreveable/mousetrap
 # github.com/jackwakefield/gopac v1.0.2
 ## explicit
 github.com/jackwakefield/gopac
@@ -628,7 +634,7 @@ github.com/leodido/go-urn
 github.com/lf-edge/edge-containers/pkg/registry
 github.com/lf-edge/edge-containers/pkg/resolver
 github.com/lf-edge/edge-containers/pkg/tgz
-# github.com/lf-edge/eve-api/go v0.0.0-20240424223403-4feef58259f3
+# github.com/lf-edge/eve-api/go v0.0.0-20240607171551-ab08ae4a8124
 ## explicit; go 1.20
 github.com/lf-edge/eve-api/go/attest
 github.com/lf-edge/eve-api/go/auth
@@ -642,7 +648,7 @@ github.com/lf-edge/eve-api/go/logs
 github.com/lf-edge/eve-api/go/metrics
 github.com/lf-edge/eve-api/go/profile
 github.com/lf-edge/eve-api/go/register
-# github.com/lf-edge/eve-libs v0.0.0-20240207103937-2c1dfb073c07
+# github.com/lf-edge/eve-libs v0.0.0-20240614221125-6913ec4213f9
 ## explicit; go 1.20
 github.com/lf-edge/eve-libs/depgraph
 github.com/lf-edge/eve-libs/nettrace
@@ -824,6 +830,9 @@ github.com/shjala/gostats
 # github.com/sirupsen/logrus v1.9.3
 ## explicit; go 1.13
 github.com/sirupsen/logrus
+# github.com/spf13/cobra v1.8.0
+## explicit; go 1.15
+github.com/spf13/cobra
 # github.com/spf13/pflag v1.0.5
 ## explicit; go 1.12
 github.com/spf13/pflag

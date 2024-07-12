@@ -26,6 +26,7 @@ import (
 	"github.com/linuxkit/linuxkit/src/cmd/linuxkit/moby"
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/opencontainers/runtime-spec/specs-go"
+	"github.com/sirupsen/logrus"
 )
 
 const eveScript = "/bin/eve"
@@ -75,6 +76,7 @@ func (client *Client) NewOciSpec(name string, service bool) (OCISpec, error) {
 	ctrdCtx, done := client.CtrNewUserServicesCtx()
 	defer done()
 	if err := oci.WithDefaultSpec()(ctrdCtx, client.ctrdClient, &dummy, &s.Spec); err != nil {
+		logrus.Errorf("NewOciSpec: WithDefaultSpec error: %s", err.Error())
 		return nil, err
 	}
 	if s.Process == nil {
@@ -368,6 +370,7 @@ func (s *ociSpec) UpdateFromVolume(volume string) error {
 	if s.service {
 		imgInfoConfig, err := getSavedImageInfo(volume)
 		if err != nil {
+			logrus.Errorf("updateFromVolume: service %v getSavedImageInfo error: %s", s.service, err.Error())
 			return err
 		}
 		label := "org.mobyproject.config"
@@ -378,11 +381,13 @@ func (s *ociSpec) UpdateFromVolume(volume string) error {
 		}
 		imgInfo, err := moby.NewImage([]byte(labelString))
 		if err != nil {
+			logrus.Errorf("updateFromVolume: NewImage error: %s", err.Error())
 			return err
 		}
 
 		s.Spec, _, err = moby.ConfigToOCI(&imgInfo, imgInfoConfig.Config, map[string]uint32{})
 		if err != nil {
+			logrus.Errorf("updateFromVolume: ConfigToOCI error: %s", err.Error())
 			return err
 		}
 		s.Root.Path = volume + "/rootfs"
@@ -391,6 +396,7 @@ func (s *ociSpec) UpdateFromVolume(volume string) error {
 	if f, err := os.Open(filepath.Join(volume, ociRuntimeSpecFilename)); err == nil {
 		defer f.Close()
 		if err = s.Load(f); err != nil {
+			logrus.Errorf("updateFromVolume: Load error: %s", err.Error())
 			return err
 		}
 		s.Root.Path = volume + "/rootfs"
@@ -398,6 +404,7 @@ func (s *ociSpec) UpdateFromVolume(volume string) error {
 	}
 	imgInfo, err := getSavedImageInfo(volume)
 	if err != nil {
+		logrus.Errorf("updateFromVolume: service %v getSavedImageInfo error: %s", s.service, err.Error())
 		return err
 	}
 	s.Root.Path = volume + "/rootfs" // we need to set Root.Path before doing things with users/groups in spec

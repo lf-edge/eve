@@ -126,6 +126,8 @@ type ModemInfo struct {
 	prevConfig types.WwanNetworkConfig
 	// IP settings applied for the wwan* interface in the Linux network stack.
 	appliedIPSettings types.WwanIPSettings
+	// Last applied user-configured MTU.
+	appliedUserMTU uint16
 	// Decrypted username and password (from Config.AccessPoint.EncryptedCredentials).
 	decryptedUsername string
 	decryptedPassword string
@@ -873,10 +875,13 @@ func (a *MMAgent) reconcileModem(
 		}
 	}
 	if connErr == nil &&
-		!modem.appliedIPSettings.Equal(modem.Status.IPSettings) {
-		// IP settings between modem and Linux network stack are out-of-sync.
-		// This could happen if modem re-connects behind the scenes or maybe if network
-		// changes IP settings (never happens through this agent's own action).
+		!modem.appliedIPSettings.Equal(modem.Status.IPSettings) ||
+		modem.appliedUserMTU != modem.config.MTU {
+		// IP settings between modem (+ user intent) and Linux network stack are out-of-sync.
+		// This could happen if:
+		//  * modem re-connects behind the scenes, or
+		//  * if network changes IP settings in run-time, or
+		//  * if user changes MTU config
 		opReason := "IP settings are out-of-sync"
 		connErr = a.removeIPSettings(modem)
 		a.logReconcileOp(modem, "remove (obsolete) IP settings", opReason, connErr)
@@ -1175,6 +1180,7 @@ func (a *MMAgent) connectModem(modem *ModemInfo) error {
 
 func (a *MMAgent) applyIPSettings(modem *ModemInfo, ipSettings types.WwanIPSettings) error {
 	modem.appliedIPSettings = ipSettings
+	modem.appliedUserMTU = modem.config.MTU
 	wwanIfaceName := modem.Status.PhysAddrs.Interface
 	if ipSettings.Address == nil {
 		return fmt.Errorf(
@@ -1231,13 +1237,20 @@ func (a *MMAgent) applyIPSettings(modem *ModemInfo, ipSettings types.WwanIPSetti
 			"of the modem %s: %v", defaultRoute, wwanIfaceName,
 			modem.config.LogicalLabel, err)
 	}
-	if ipSettings.MTU != 0 {
-		err = netlink.LinkSetMTU(link, int(ipSettings.MTU))
-		if err != nil {
-			return fmt.Errorf(
-				"failed to set MTU %d for wwan interface %s of the modem %s: %w",
-				ipSettings.MTU, wwanIfaceName, modem.config.LogicalLabel, err)
+	mtu := modem.config.MTU
+	if mtu == 0 {
+		// MTU is not specified by the user.
+		// Prefer MTU received from the network over the default of 1500 bytes.
+		mtu = ipSettings.MTU
+		if mtu == 0 {
+			mtu = types.DefaultMTU
 		}
+	}
+	err = netlink.LinkSetMTU(link, int(mtu))
+	if err != nil {
+		return fmt.Errorf(
+			"failed to set MTU %d for wwan interface %s of the modem %s: %w",
+			mtu, wwanIfaceName, modem.config.LogicalLabel, err)
 	}
 	var resolvConfData bytes.Buffer
 	for _, dnsServer := range ipSettings.DNSServers {

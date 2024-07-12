@@ -7,12 +7,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/vishvananda/netlink"
 
 	dg "github.com/lf-edge/eve-libs/depgraph"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/netmonitor"
 	generic "github.com/lf-edge/eve/pkg/pillar/nireconciler/genericitems"
+	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/vishvananda/netlink"
 )
 
 // BridgePort : network interface added into a Linux bridge.
@@ -21,6 +22,8 @@ type BridgePort struct {
 	BridgeIfName string
 	// Variant : port should be one of the supported variants.
 	Variant BridgePortVariant
+	// MTU : Maximum transmission unit size.
+	MTU uint16
 }
 
 // BridgePortVariant is like union, only one option should have non-zero value.
@@ -62,8 +65,8 @@ func (p BridgePort) External() bool {
 
 // String describes BridgePort.
 func (p BridgePort) String() string {
-	return fmt.Sprintf("BridgePort: {bridgeIfName: %s, portIfName: %s}",
-		p.BridgeIfName, p.portIfName())
+	return fmt.Sprintf("BridgePort: {bridgeIfName: %s, portIfName: %s, MTU: %d}",
+		p.BridgeIfName, p.portIfName(), p.MTU)
 }
 
 // Dependencies returns the bridge and the port as the dependencies.
@@ -122,6 +125,14 @@ func (p BridgePort) portIfName() string {
 	return ""
 }
 
+// GetMTU returns MTU configured for the bridge port.
+func (p BridgePort) GetMTU() uint16 {
+	if p.MTU == 0 {
+		return types.DefaultMTU
+	}
+	return p.MTU
+}
+
 // BridgePortConfigurator implements Configurator interface (libs/reconciler)
 // for Linux bridge port.
 type BridgePortConfigurator struct {
@@ -160,6 +171,15 @@ func (c *BridgePortConfigurator) Create(ctx context.Context, item dg.Item) error
 		c.Log.Error(err)
 		return err
 	}
+	if link.Attrs().MTU != int(bridgePort.GetMTU()) {
+		err = netlink.LinkSetMTU(link, int(bridgePort.GetMTU()))
+		if err != nil {
+			err = fmt.Errorf("failed to set MTU %d for interface %s: %w",
+				bridgePort.GetMTU(), bridgePort.portIfName(), err)
+			c.Log.Error(err)
+			return err
+		}
+	}
 	err = netlink.LinkSetMaster(link, bridge)
 	if err != nil {
 		err = fmt.Errorf("failed to attach interface %s to bridge %s: %w",
@@ -170,9 +190,33 @@ func (c *BridgePortConfigurator) Create(ctx context.Context, item dg.Item) error
 	return nil
 }
 
-// Modify is not implemented.
-func (c *BridgePortConfigurator) Modify(ctx context.Context, oldItem, newItem dg.Item) (err error) {
-	return errors.New("not implemented")
+// Modify is able to change the MTU of the port.
+func (c *BridgePortConfigurator) Modify(_ context.Context, _, newItem dg.Item) (err error) {
+	bridgePort, isBridgePort := newItem.(BridgePort)
+	if !isBridgePort {
+		return fmt.Errorf("invalid item type %T, expected BridgePort", newItem)
+	}
+	if bridgePort.Variant.UplinkIfName != "" {
+		// NOOP for uplink - NIM is responsible for bridging uplink ports.
+		return nil
+	}
+	link, err := netlink.LinkByName(bridgePort.portIfName())
+	if err != nil {
+		err = fmt.Errorf("failed to get link for interface %s: %w",
+			bridgePort.portIfName(), err)
+		c.Log.Error(err)
+		return err
+	}
+	if link.Attrs().MTU != int(bridgePort.GetMTU()) {
+		err = netlink.LinkSetMTU(link, int(bridgePort.GetMTU()))
+		if err != nil {
+			err = fmt.Errorf("failed to set MTU %d for interface %s: %w",
+				bridgePort.GetMTU(), bridgePort.portIfName(), err)
+			c.Log.Error(err)
+			return err
+		}
+	}
+	return nil
 }
 
 // Delete detaches port from the bridge.
@@ -211,6 +255,15 @@ func (c *BridgePortConfigurator) Delete(ctx context.Context, item dg.Item) (err 
 		c.Log.Error(err)
 		return err
 	}
+	if link.Attrs().MTU != types.DefaultMTU {
+		err = netlink.LinkSetMTU(link, types.DefaultMTU)
+		if err != nil {
+			err = fmt.Errorf("failed to set default MTU %d for interface %s: %w",
+				types.DefaultMTU, bridgePort.portIfName(), err)
+			c.Log.Error(err)
+			return err
+		}
+	}
 	err = netlink.LinkSetDown(link)
 	if err != nil {
 		err = fmt.Errorf("failed to set interface %s DOWN: %w",
@@ -221,7 +274,18 @@ func (c *BridgePortConfigurator) Delete(ctx context.Context, item dg.Item) (err 
 	return nil
 }
 
-// NeedsRecreate returns true - Modify is not implemented.
+// NeedsRecreate returns true if the target bridge changes.
+// However, MTU can be changed without re-creating the bridge port.
 func (c *BridgePortConfigurator) NeedsRecreate(oldItem, newItem dg.Item) (recreate bool) {
-	return true
+	oldCfg, isBridgePort := oldItem.(BridgePort)
+	if !isBridgePort {
+		// unreachable
+		return false
+	}
+	newCfg, isBridgePort := newItem.(BridgePort)
+	if !isBridgePort {
+		// unreachable
+		return false
+	}
+	return oldCfg.BridgeIfName != newCfg.BridgeIfName
 }

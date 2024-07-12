@@ -455,3 +455,12 @@ Further parsing and diffing the files is possible using tpm2-tools:
 >   Digests:
 [...]
 ```
+
+### TPM Recovery
+
+Using `recovertpm` tool from debug container, it is possible to perform TPM hardware test, key re-generation, volume key extraction and more. Note that the extracted key is in **encrypted** wire format suitable for EVE controler, and key extraction is only possible if the device state (current PCR values) match the original state where key was seald. For complete list of available functionalities :
+
+```bash
+eve enter debug
+recovertpm -h
+```

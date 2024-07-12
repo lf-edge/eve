@@ -1,0 +1,19 @@
+image: eve-memory-monitor
+org: lfedge
+config:
+  binds:
+    - /persist:/persist # for the working directory and output directory
+    - /dev:/dev # for syslog (/dev/log)
+    - /run:/run:ro # for the zedbox pid file
+    - /sys/fs/cgroup/memory/:/sys/fs/cgroup/memory/ # to read and modify memory limits
+    - /proc:/proc:ro #:ro to read memory usage in /proc/<PID>/*
+    - /bin/eve:/bin/eve
+    - /usr/bin/ctr:/usr/bin/ctr
+    - /usr/bin/logread:/usr/bin/logread
+  pid: host
+  capabilities:
+    - CAP_DAC_OVERRIDE # to open cgroup.event_control files
+    - CAP_SYS_PTRACE # to read /proc/<PID>/*
+  devices:
+    - path: all
+      type: a

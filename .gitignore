@@ -7,6 +7,7 @@ build-tools/bin/
 images/out/
 .go/
 go.work*
+pkg-deps.mk
 tags
 tmp/
 mkdocs.yml
@@ -23,3 +24,5 @@ conf/soft_serial
 pkg/kube/external-boot-image.tar
 pkg/external-boot-image/build.yml
 tools/compare-sbom-sources/vendor
+tools/get-deps/get-deps
+tools/get-deps/vendor

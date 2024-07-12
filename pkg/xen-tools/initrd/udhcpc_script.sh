@@ -12,6 +12,7 @@
 : "${router:=}"
 : "${mask:=}"
 : "${dns:=}"
+: "${mtu:=}"
 
 [ -z "$1" ] && echo 'Error: should be called from udhcpc' && exit 1
 
@@ -109,6 +110,9 @@ case "$1" in
     # configure interface and routes
     ip addr flush dev $interface
     ip addr add "${ip}"/"${mask}" brd + dev "${interface}"
+    if [ -n "${mtu}" ] ; then
+      ip link set mtu "${mtu}" dev "${interface}"
+    fi
     if [ -n "$staticroutes" ] ; then
       # shellcheck disable=SC2086
       install_classless_routes $staticroutes
@@ -135,6 +139,9 @@ case "$1" in
           ;;
         hostname)
           REDO_HOSTNAME='yes'
+          ;;
+        mtu)
+          REDO_MTU='yes'
           ;;
       esac
     done
@@ -165,6 +172,11 @@ case "$1" in
     fi
     if [ -n "$REDO_HOSTNAME" ]; then
       update_hosts
+    fi
+    if [ -n "$REDO_MTU" ] ; then
+      if [ -n "${mtu}" ] ; then
+        ip link set mtu "${mtu}" dev "${interface}"
+      fi
     fi
     ;;
 esac

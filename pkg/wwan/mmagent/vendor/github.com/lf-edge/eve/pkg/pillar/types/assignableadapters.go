@@ -13,7 +13,6 @@ package types
 
 import (
 	"fmt"
-	"os"
 	"reflect"
 	"strings"
 	"time"
@@ -23,7 +22,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/sriov"
 	uuid "github.com/satori/go.uuid"
-	"github.com/shirou/gopsutil/disk"
 )
 
 type AssignableAdapters struct {
@@ -118,11 +116,6 @@ type VfInfo struct {
 
 // Really a constant
 var nilUUID = uuid.UUID{}
-
-// For NVMEIsMountedByEVE
-const sysfsPciDevices = "/sys/bus/pci/devices/"
-
-var zfsManagerDir = "/run/zfsmanager"
 
 // HasAdapterChanged - We store each Physical Adapter using the IoBundle object.
 // Compares IoBundle with Physical adapter and returns if they are the Same
@@ -635,62 +628,4 @@ func (aa *AssignableAdapters) ExpandControllers(log *base.LogObject, list []*IoB
 		}
 	}
 	return elist
-}
-
-func getDeviceNameFromPciID(pciID string) (string, error) {
-	// e.g., ls /sys/bus/pci/devices/<pciID>/nvme/
-	//  -> nvme0
-	deviceName := ""
-	nvmePath, err := os.ReadDir(sysfsPciDevices + pciID + "/nvme")
-	if err != nil {
-		return "", err
-	}
-	for _, file := range nvmePath {
-		deviceName = file.Name()
-	}
-	return deviceName, nil
-}
-
-// NVMEIsUsed checks if an NVME device is in a ZFS pool or mounted
-func NVMEIsUsed(log *base.LogObject, zfsPoolStatusMap map[string]interface{}, pciID string) bool {
-	if _, err := os.Stat(zfsManagerDir); os.IsNotExist(err) {
-		log.Noticef("ZFS manager is not initialized yet")
-		return true
-	}
-
-	// Get /dev/nvmX from pciID
-	deviceName, err := getDeviceNameFromPciID(pciID)
-	if err != nil {
-		log.Errorf("Can't determine nvme device name for %s (%v)", pciID, err)
-		return false
-	}
-
-	// Checking zfs pools
-	for _, el := range zfsPoolStatusMap {
-		zfsPoolStatus, ok := el.(ZFSPoolStatus)
-		if !ok {
-			log.Errorf("Could not convert to ZFSPoolStatus")
-			continue
-		}
-		for _, disk := range zfsPoolStatus.Disks {
-			if strings.Contains(disk.DiskName.LogicalName, deviceName) {
-				return true
-			}
-		}
-	}
-
-	// Checking mounted partitions
-	partitions, err := disk.Partitions(true)
-	if err != nil {
-		log.Errorf("Could not find mounted partitions error:%+v", err)
-		return false
-	}
-
-	for _, partition := range partitions {
-		if strings.Contains(partition.Device, deviceName) {
-			return true
-		}
-	}
-
-	return false
 }

@@ -196,6 +196,8 @@ const (
 	LocationCloudInterval GlobalSettingKey = "timer.location.cloud.interval"
 	// LocationAppInterval global setting key
 	LocationAppInterval GlobalSettingKey = "timer.location.app.interval"
+	// NTPSourcesInterval global setting key
+	NTPSourcesInterval GlobalSettingKey = "timer.ntpsources.interval"
 	// Dom0MinDiskUsagePercent global setting key
 	Dom0MinDiskUsagePercent GlobalSettingKey = "storage.dom0.disk.minusage.percent"
 	// Dom0DiskUsageMaxBytes - Max disk usage for Dom0. Dom0 can use
@@ -252,6 +254,8 @@ const (
 	SSHAuthorizedKeys GlobalSettingKey = "debug.enable.ssh"
 	// ConsoleAccess global setting key
 	ConsoleAccess GlobalSettingKey = "debug.enable.console"
+	// Shim VM VNC access global setting key
+	VncShimVMAccess GlobalSettingKey = "debug.enable.vnc.shim.vm"
 	// DefaultLogLevel global setting key
 	DefaultLogLevel GlobalSettingKey = "debug.default.loglevel"
 	// DefaultRemoteLogLevel global setting key
@@ -864,6 +868,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddIntItem(NetworkDialTimeout, 10, 0, 3600)
 	configItemSpecMap.AddIntItem(LocationCloudInterval, HourInSec, 5*MinuteInSec, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(LocationAppInterval, 20, 5, HourInSec)
+	configItemSpecMap.AddIntItem(NTPSourcesInterval, 10*MinuteInSec, MinuteInSec, 30*MinuteInSec)
 	configItemSpecMap.AddIntItem(Dom0MinDiskUsagePercent, 20, 20, 80)
 	configItemSpecMap.AddIntItem(AppContainerStatsInterval, 300, 1, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(VaultReadyCutOffTime, 300, 60, 0xFFFFFFFF)
@@ -891,6 +896,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddBoolItem(DisableDHCPAllOnesNetMask, false)
 	configItemSpecMap.AddBoolItem(ProcessCloudInitMultiPart, false)
 	configItemSpecMap.AddBoolItem(ConsoleAccess, true) // Controller likely default to false
+	configItemSpecMap.AddBoolItem(VncShimVMAccess, false)
 	configItemSpecMap.AddBoolItem(EnableARPSnoop, true)
 	configItemSpecMap.AddBoolItem(WwanQueryVisibleProviders, false)
 	configItemSpecMap.AddBoolItem(NetworkLocalLegacyMACAddress, false)

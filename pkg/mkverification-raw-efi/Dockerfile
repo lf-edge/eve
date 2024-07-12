@@ -29,7 +29,7 @@ RUN eve-alpine-deploy.sh
 WORKDIR /out
 RUN echo "mtools_skip_check=1" >> etc/mtools.conf; \
     mkdir -p efifs parts root bits config persist opt/pillar opt/debug \
-    lib/modules run sys
+    opt/vtpm lib/modules run sys
 
 ADD https://www.ddcutil.com/tarballs/ddcutil-1.2.2.tar.gz /out/ddcutil-1.2.2.tar.gz
 ADD http://sources.buildroot.net/edid-decode/edid-decode-188950472c19492547e298b27f9da0d72cf826df.tar.gz /out/edid-decode-188950472c19492547e298b27f9da0d72cf826df.tar.gz
@@ -38,7 +38,7 @@ ADD https://github.com/linuxhw/build-stuff/releases/download/1.6/hw-probe-1.6-AI
 #ADD https://cloud-images.ubuntu.com/minimal/releases/jammy/release/ubuntu-22.04-minimal-cloudimg-amd64.img /out/ubuntu-22.04-minimal-cloudimg-amd64.img
 ADD https://github.com/tpm2-software/tpm2-tools/archive/5.2.tar.gz /out/5.2.tar.gz
 
-COPY make-raw verify grub.cfg.in UsbInvocationScript.txt vmcap.go ./
+COPY make-raw verify verifytpm.sh grub.cfg.in UsbInvocationScript.txt vmcap.go ./
 
 RUN go build vmcap.go && rm vmcap.go
 

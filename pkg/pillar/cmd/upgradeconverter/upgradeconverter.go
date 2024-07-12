@@ -48,6 +48,10 @@ var preVaultconversionHandlers = []ConversionHandler{
 		description: "Move UUIDPairToNum to AppInterfaceToNum",
 		handlerFunc: convertUUIDPairToNum,
 	},
+	{
+		description: "Move /status/zedrouter/AppInstMetaData to /status/msrv/AppInstMetaData",
+		handlerFunc: movePersistPubsub,
+	},
 }
 
 // postVaultconversionHandlers run after vault is setup

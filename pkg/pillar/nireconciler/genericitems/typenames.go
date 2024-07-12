@@ -15,8 +15,6 @@ const (
 	UnsupportedRouteTypename = "Unsupported-Route"
 	// IPReserveTypename : typename for reserved IP address (for use with a bridge)
 	IPReserveTypename = "IPReserve"
-	// VIFTypename : typename for VIF.
-	VIFTypename = "VIF"
 	// UplinkTypename : typename for uplink interface.
 	UplinkTypename = "Uplink"
 	// HTTPServerTypename : typename for HTTP server.

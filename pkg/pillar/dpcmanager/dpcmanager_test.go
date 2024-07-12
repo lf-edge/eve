@@ -280,6 +280,7 @@ func globalConfig() types.ConfigItemValueMap {
 	gcp.SetGlobalValueInt(types.NetworkGeoRedoTime, 3)
 	gcp.SetGlobalValueInt(types.LocationCloudInterval, 10)
 	gcp.SetGlobalValueInt(types.LocationAppInterval, 2)
+	gcp.SetGlobalValueInt(types.NTPSourcesInterval, 5)
 	gcp.SetGlobalValueBool(types.NetDumpEnable, false)
 	return *gcp
 }
@@ -1085,34 +1086,28 @@ func TestWireless(test *testing.T) {
 	dpcManager.UpdateAA(aa)
 	dpcManager.AddDPC(dpc)
 
-	// Verification will wait for IP addresses.
+	// Verification will wait for wwan config to be applied.
 	t.Eventually(testingInProgressCb()).Should(BeTrue())
 	t.Eventually(dpcIdxCb()).Should(Equal(0))
 	t.Eventually(dpcKeyCb(0)).Should(Equal("zedagent"))
 	t.Eventually(dpcTimePrioCb(0, timePrio1)).Should(BeTrue())
 	t.Eventually(dnsKeyCb()).Should(Equal("zedagent"))
-	t.Expect(getDPC(0).State).To(Equal(types.DPCStateIPDNSWait))
+	t.Expect(getDPC(0).State).To(Equal(types.DPCStateWwanWait))
 
-	// Simulate working wlan connectivity.
-	wlan0 = mockWlan0() // with IP
-	networkMonitor.AddOrUpdateInterface(wlan0)
+	// Simulate working wwan connectivity.
+	rs := types.RadioSilence{}
+	wwan0Status := mockWwan0Status(dpc, rs)
+	dpcManager.ProcessWwanStatus(wwan0Status)
+	wwan0 = mockWwan0() // with IP
+	networkMonitor.AddOrUpdateInterface(wwan0)
 	t.Eventually(testingInProgressCb()).Should(BeFalse())
 	t.Eventually(dpcIdxCb()).Should(Equal(0))
 	t.Expect(getDPC(0).State).To(Equal(types.DPCStateSuccess))
-
-	// Simulate working wwan connectivity.
-	wwan0 = mockWwan0() // with IP
-	networkMonitor.AddOrUpdateInterface(wwan0)
 	t.Eventually(func() bool {
 		ports := getDNS().Ports
 		return len(ports) == 2 && len(ports[1].AddrInfoList) == 1 &&
 			ports[1].AddrInfoList[0].Addr.String() == "15.123.87.20"
 	}).Should(BeTrue())
-
-	// Simulate an event of receiving WwanStatus from the wwan microservice.
-	rs := types.RadioSilence{}
-	wwan0Status := mockWwan0Status(dpc, rs)
-	dpcManager.ProcessWwanStatus(wwan0Status)
 
 	// Check DNS content, it should include wwan state data.
 	t.Eventually(wwanOpModeCb(types.WwanOpModeConnected)).Should(BeTrue())
@@ -1141,6 +1136,15 @@ func TestWireless(test *testing.T) {
 	t.Expect(wwanDNS.Cellular.PhysAddrs.Interface).To(Equal("wwan0"))
 	t.Expect(wwanDNS.Cellular.PhysAddrs.USB).To(Equal("1:3.3"))
 	t.Expect(wwanDNS.Cellular.PhysAddrs.PCI).To(Equal("0000:f4:00.0"))
+
+	// Simulate working wlan connectivity.
+	wlan0 = mockWlan0() // with IP
+	networkMonitor.AddOrUpdateInterface(wlan0)
+	t.Eventually(func() bool {
+		ports := getDNS().Ports
+		return len(ports) == 2 && len(ports[0].AddrInfoList) == 1 &&
+			ports[0].AddrInfoList[0].Addr.String() == "192.168.77.2"
+	}).Should(BeTrue())
 
 	// Impose radio silence.
 	// But actually there is a config error coming from upper layers,

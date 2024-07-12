@@ -521,7 +521,7 @@ if imx8_exists; then
   # If offset was not specified, use 32 as default
   [ -z "$IMG_SEEK" ] && IMG_SEEK=32
   # Write blob to image file
-  dd if="$IMX8_BLOB" of="$IMGFILE" bs=1024 seek=$IMG_SEEK conv=notrunc
+  dd if="$IMX8_BLOB" of="$IMGFILE" bs=1024 seek="$IMG_SEEK" conv=notrunc
 fi
 
 # Lets see if GPT partition exists and it is one of the

@@ -37,6 +37,10 @@ RUN ln -s brcmfmac43455-sdio.raspberrypi,3-model-b-plus.txt /lib/firmware/brcm/b
     ln -s brcmfmac43430-sdio.raspberrypi,3-model-b.txt /lib/firmware/brcm/brcmfmac43430-sdio.txt
 # symlinks for Visionfive1 riscv64 boards
 RUN ln -s ../cypress/cyfmac43430-sdio.bin /lib/firmware/brcm/brcmfmac43430-sdio.starfive,visionfive-v1.bin
+# symlinks for Kontron wifi device (brcmfmac4356)
+RUN ln -s brcmfmac4356-pcie.gpd-win-pocket.txt '/lib/firmware/brcm/brcmfmac4356-pcie.Kontron America-Agora Gateway 403.txt'
+RUN ln -s brcmfmac4356-pcie.bin '/lib/firmware/brcm/brcmfmac4356-pcie.Kontron America-.bin'
+RUN ln -s brcmfmac4356-pcie.gpd-win-pocket.txt /lib/firmware/brcm/brcmfmac4356-pcie.txt
 
 ENV RPI_FIRMWARE_VERSION 2c8f665254899a52260788dd902083bb57a99738
 ENV RPI_FIRMWARE_URL https://github.com/RPi-Distro/firmware-nonfree/archive
@@ -53,6 +57,10 @@ ADD ${RPI_BT_FIRMWARE_URL}/${RPI_BT_FIRMWARE_VERSION}/broadcom/BCM43430A1.hcd .
 ADD ${RPI_BT_FIRMWARE_URL}/${RPI_BT_FIRMWARE_VERSION}/broadcom/BCM4345C0.hcd .
 ADD ${RPI_BT_FIRMWARE_URL}/${RPI_BT_FIRMWARE_VERSION}/broadcom/BCM43430B0.hcd .
 ADD ${RPI_BT_FIRMWARE_URL}/${RPI_BT_FIRMWARE_VERSION}/broadcom/BCM4345C5.hcd .
+
+# Hailo 8 GPU firmware
+ENV HAILO_FW_VERSION 4.16.0
+ADD https://hailo-hailort.s3.eu-west-2.amazonaws.com/Hailo8/${HAILO_FW_VERSION}/FW/hailo8_fw.${HAILO_FW_VERSION}.bin /lib/firmware/hailo/hailo8_fw.bin
 
 # generate initrd for Intel's and AMD's microcode
 # it makes sense only for x86_64 platform
@@ -158,7 +166,7 @@ COPY --from=build /lib/firmware/nvidia/tegra210 /lib/firmware/nvidia/tegra210
 COPY --from=build /rtw88/*.bin /lib/firmware/rtw88/
 # Intel ICE firmware.
 COPY --from=build /lib/firmware/intel/ice /lib/firmware/intel/ice
-
+COPY --from=build /lib/firmware/hailo /lib/firmware/hailo
 
 FROM scratch
 ENTRYPOINT []
