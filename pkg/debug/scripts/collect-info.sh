@@ -6,7 +6,7 @@
 
 # Script version, don't forget to bump up once something is changed
 
-VERSION=24
+VERSION=25
 # Add required packages here, it will be passed to "apk add".
 # Once something added here don't forget to add the same package
 # to the Dockerfile ('ENV PKGS' line) of the debug container,
@@ -369,6 +369,25 @@ collect_kube_info()
         } > "$DIR/kube-info"
     fi
 }
+
+collect_longhorn_info()
+{
+    type=$(cat /run/eve-hv-type)
+    if [ "$type" != "kubevirt" ]; then
+        return
+    fi
+    echo "- Collecting Longhorn specific info"
+    {
+        echo "  - longhorn support bundle: please wait up to 300 seconds."
+        # This step involves multiple network operations
+        # including an image pull and requests to other
+        # cluster nodes which can all see delays and timeouts
+        # when nodes are down.
+        # Give up after 5min, and allow remaining system data to be collected.
+        timeout 300s eve exec kube /usr/bin/longhorn-generate-support-bundle.sh
+    } > "$DIR/longhorn-info" 2>&1
+}
+
 # Copy itself
 cp "${0}" "$DIR"
 
@@ -457,6 +476,7 @@ collect_zfs_info
 
 # Kube part
 collect_kube_info
+collect_longhorn_info
 
 if [ -n "$TAR_WHOLE_SYS" ]; then
   collect_sysfs
