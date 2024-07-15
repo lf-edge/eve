@@ -562,7 +562,7 @@ func handleLastRebootReason(ctx *nodeagentContext) {
 					dateStr)
 				bootReason = types.BootReasonPowerFail
 			} else {
-				reason = fmt.Sprintf("Reboot reason - kernel crash (no kdump) - at %s",
+				reason = fmt.Sprintf("Reboot reason - system reset, reboot or kernel panic due to watchdog or kernel bug (no kdump) - at %s",
 					dateStr)
 				bootReason = types.BootReasonKernel
 			}
