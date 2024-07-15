@@ -428,14 +428,18 @@ check_start_containerd() {
                 # This is very similar to what we do on kvm based eve to start container as a VM.
                 logmsg "Trying to install new external-boot-image"
                 # This import happens once per reboot
-                if ctr -a /run/containerd-user/containerd.sock image import /etc/external-boot-image.tar; then
-                        eve_external_boot_img_tag=$(cat /run/eve-release)
-                        eve_external_boot_img=docker.io/lfedge/eve-external-boot-image:"$eve_external_boot_img_tag"
-                        import_tag=$(tar -xOf /etc/external-boot-image.tar manifest.json | jq -r '.[0].RepoTags[0]')
-                        ctr -a /run/containerd-user/containerd.sock image tag "$import_tag" "$eve_external_boot_img"
-
-                        logmsg "Successfully installed external-boot-image $import_tag as $eve_external_boot_img"
-                        rm -f /etc/external-boot-image.tar
+                import_name_tag=$(tar -xOf /etc/external-boot-image.tar manifest.json | jq -r '.[0].RepoTags[0]')
+                import_name=$(echo "$import_name_tag" | cut -d ':' -f 1)
+                eve_external_boot_img_name="docker.io/lfedge/eve-external-boot-image"
+                if [ "$import_name" = "$eve_external_boot_img_name" ]; then
+                        if ctr -a /run/containerd-user/containerd.sock image import /etc/external-boot-image.tar; then
+                                eve_external_boot_img_tag=$(cat /run/eve-release)
+                                eve_external_boot_img="${eve_external_boot_img_name}:${eve_external_boot_img_tag}"
+                                if ctr -a /run/containerd-user/containerd.sock image tag "$import_name_tag" "$eve_external_boot_img"; then
+                                        logmsg "Successfully installed external-boot-image $import_name_tag as $eve_external_boot_img"
+                                        rm -f /etc/external-boot-image.tar
+                                fi
+                        fi
                 fi
         fi
 }
