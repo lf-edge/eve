@@ -1091,6 +1091,11 @@ func (ctx kubevirtContext) CreatePodConfig(domainName string, config types.Domai
 				if ds.Devtype == "9P" {
 					continue
 				}
+				pvcName, err := ds.GetPVCNameFromVolumeKey()
+				if err != nil {
+					return logError("CreatePodConfig: Failed to fetch PVC Name from volumekey %v", ds.VolumeKey)
+				}
+
 				voldispName := strings.ToLower(ds.DisplayName)
 				voldevs[i] = k8sv1.VolumeDevice{
 					Name:       voldispName,
@@ -1104,8 +1109,7 @@ func (ctx kubevirtContext) CreatePodConfig(domainName string, config types.Domai
 				volumes[i].Name = voldispName
 				volumes[i].VolumeSource = k8sv1.VolumeSource{
 					PersistentVolumeClaim: &k8sv1.PersistentVolumeClaimVolumeSource{
-						ClaimName: strings.ToLower(ds.DisplayName),
-						//ClaimName: ds.VolumeKey,
+						ClaimName: pvcName,
 					},
 				}
 				i++

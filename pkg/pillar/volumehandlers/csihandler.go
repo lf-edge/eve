@@ -173,7 +173,8 @@ func (handler *volumeHandlerCSI) CreateVolume() (string, error) {
 				return "", errors.New(errStr)
 			}
 
-			/*
+			// if the container is native, skip converting to PVC
+			if !handler.status.IsNoHyper {
 				// Convert to PVC
 				pvcerr := kubeapi.RolloutDiskToPVC(createContext, handler.log, false, rawImgFile, pvcName, false)
 
@@ -191,7 +192,7 @@ func (handler *volumeHandlerCSI) CreateVolume() (string, error) {
 					handler.log.Error(errStr)
 					return pvcName, errors.New(errStr)
 				}
-			*/
+			}
 		} else {
 			qcowFile, err := handler.getVolumeFilePath()
 			if err != nil {
@@ -227,7 +228,7 @@ func (handler *volumeHandlerCSI) DestroyVolume() (string, error) {
 	pvcName := handler.status.GetPVCName()
 	handler.log.Noticef("DestroyVolume called for PVC %s", pvcName)
 	// if this is a native container, no need to delete PVC
-	if !handler.status.IsContainer() {
+	if !handler.status.IsNoHyper {
 		err := kubeapi.DeletePVC(pvcName, handler.log)
 		if err != nil {
 			// Its OK if not found since PVC might have been deleted already

@@ -110,6 +110,19 @@ func parseVolumeConfig(ctx *getconfigContext,
 		volumeConfig.DesignatedNodeID = devUUID
 		// XXX hack
 		if ctx.zedagentCtx.hvTypeKube {
+			appInstanceList := config.GetApps()
+			for _, ai := range appInstanceList {
+				if ai.Fixedresources.VirtualizationMode == zconfig.VmMode_NOHYPER {
+					for _, vr := range ai.VolumeRefList {
+						if vr.Uuid == volumeConfig.VolumeID.String() && volumeConfig.ContentID != uuid.Nil {
+							volumeConfig.IsNoHyper = true
+							log.Noticef("parseVolumeConfig: setting IsNoHyper for %s", volumeConfig.VolumeID.String())
+							break
+						}
+					}
+				}
+			}
+
 			pub := ctx.pubContentTreeConfig
 			items := pub.GetAll()
 			for _, item := range items {

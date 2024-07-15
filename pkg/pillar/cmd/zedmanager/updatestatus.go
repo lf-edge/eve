@@ -729,6 +729,34 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 		// if the VM already active or in restarting/purging state - continue with the doActivate logic
 	}
 
+	// delay this if referencename is not set
+	if ctx.hvTypeKube && config.FixedResources.VirtualizationMode == types.NOHYPER {
+		var findcontainer bool
+		for _, vrc := range config.VolumeRefConfigList {
+			vrs := lookupVolumeRefStatus(ctx, vrc.Key())
+			if vrs == nil || !vrs.IsContainer() {
+				continue
+			}
+			findcontainer = true
+			if vrs.ReferenceName == "" {
+				log.Noticef("doActivate: waiting for referencename ")
+				if status.State != types.START_DELAYED {
+					status.State = types.START_DELAYED
+					return true
+				}
+				return changed
+			}
+		}
+		if !findcontainer {
+			log.Noticef("doActivate: no container found, wait")
+			if status.State != types.START_DELAYED {
+				status.State = types.START_DELAYED
+				return true
+			}
+			return changed
+		}
+	}
+
 	// Make sure we have a DomainConfig
 	// We modify it below and then publish it
 	dc, err := MaybeAddDomainConfig(ctx, config, *status, ns)

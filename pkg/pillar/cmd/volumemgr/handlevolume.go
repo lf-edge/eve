@@ -140,6 +140,7 @@ func handleDeferredVolumeCreate(ctx *volumemgrContext, key string, config *types
 		LastRefCountChangeTime:  time.Now(),
 		LastUse:                 time.Now(),
 		State:                   types.INITIAL,
+		IsNoHyper:               config.IsNoHyper,
 	}
 	updateVolumeStatusRefCount(ctx, status)
 	log.Noticef("handleDeferredVolumeCreate(%s) setting contentFormat to %s", key, volumeFormat[status.Key()])

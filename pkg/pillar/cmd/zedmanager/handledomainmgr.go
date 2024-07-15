@@ -84,9 +84,17 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 		// For NOHYPER type virtualization mode pass the KubeImageName to domainmgr
 		// pods will be launched using that KubeImageName in kubevirt eve
 		// Reference name can be empty for non-kubevirt eve and KubeImageName will be ignored in such cases.
-		if aiConfig.FixedResources.VirtualizationMode == types.NOHYPER {
+		if aiConfig.FixedResources.VirtualizationMode == types.NOHYPER && vrs.IsContainer() {
+			referencename := vrs.ReferenceName
 			dc.VirtualizationMode = types.NOHYPER
-			dc.KubeImageName = vrs.ReferenceName
+			if referencename == "" {
+				vrs2 := lookupVolumeRefStatus(ctx, vrc.Key())
+				if vrs2 != nil && vrs2.ReferenceName != "" {
+					referencename = vrs2.ReferenceName
+					log.Noticef("MaybeAddDomainConfig: got referencenename %s", referencename)
+				}
+			}
+			dc.KubeImageName = referencename
 		}
 	}
 	// let's fill some of the default values (arguably we may want controller
