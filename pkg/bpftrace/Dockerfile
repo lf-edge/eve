@@ -2,9 +2,9 @@
 
 # Copyright (c) 2024 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
-FROM lfedge/eve-alpine:1f7685f95a475c6bbe682f0b976f12180b6c8726 AS build
+FROM lfedge/eve-alpine:e34284a8dd69c9c5ba7c52cd7b7d08fc2db1e0ac AS build
 
-ENV BUILD_PKGS make gcc g++ git perl linux-headers musl-dev cmake zlib-dev bcc-dev libbpf-dev cereal flex bison llvm13-libs llvm13-dev llvm13-static clang-dev clang-static pahole gtest-dev bash
+ENV BUILD_PKGS make gcc g++ git perl linux-headers musl-dev cmake zlib-dev bcc-dev libbpf libbpf-dev cereal flex bison llvm17-libs llvm17-dev llvm17-static llvm17-gtest clang-dev clang-static pahole gtest-dev bash libxml2 libxml2-dev
 
 RUN eve-alpine-deploy.sh
 
@@ -33,7 +33,7 @@ FROM scratch AS bin
 COPY --from=build /usr/bin/bpftrace /bpftrace/usr/bin/bpftrace
 
 COPY --from=build /usr/bin/bpftrace-aotrt /bpftrace-aotrt/usr/bin/bpftrace-aotrt
-COPY --from=build /usr/lib/libbpf.so.0 /bpftrace-aotrt/usr/lib/libbpf.so.0
+COPY --from=build /usr/lib/libbpf.so.1 /bpftrace-aotrt/usr/lib/libbpf.so.1
 COPY --from=build /usr/lib/libelf.so.1 /bpftrace-aotrt/usr/lib/libelf.so.1
 COPY --from=build /lib/libz.so.1 /bpftrace-aotrt/lib/libz.so.1
 COPY --from=build /usr/lib/libbcc_bpf.so.0 /bpftrace-aotrt/usr/lib/libbcc_bpf.so.0
