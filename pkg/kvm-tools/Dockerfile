@@ -1,4 +1,4 @@
-FROM lfedge/eve-alpine:1f7685f95a475c6bbe682f0b976f12180b6c8726 as build
+FROM lfedge/eve-alpine:e34284a8dd69c9c5ba7c52cd7b7d08fc2db1e0ac as build
 # Building qemu in strip-down mirovm only mode:
 # qemu 5.1 dependencies: python3 glib-dev pixman-dev
 # qemu 5.2+ dependencies: py3-setuptools bash perl
@@ -7,7 +7,7 @@ ENV BUILD_PKGS gcc make libc-dev binutils-dev patch libaio-dev zlib-dev zlib-sta
 ENV BUILD_PKGS_arm64 dtc dtc-dev
 # libgcc, pixman and glib are required for qemu
 # it maybe possible to get rid of libgcc & pixman
-ENV PKGS libgcc pixman glib libvncserver libaio musl-utils
+ENV PKGS libgcc pixman glib libvncserver libaio musl-utils binutils
 ENV PKGS_arm64 libfdt libstdc++
 RUN eve-alpine-deploy.sh
 
@@ -22,6 +22,7 @@ WORKDIR /kvmtool
 
 RUN patch -p1 < /0001-Makefile-Update-bfd-detection.patch ;\
     patch -p1 < /0002-alpine-define-workaround.patch      ;\
+    patch -p1 < /0003-vfio-Add-include-to-libgen.h-to-build-with-musl-libc.patch ;\
     make -j "$(getconf _NPROCESSORS_ONLN)" && make install DESTDIR=/usr HOME=
 
 # building ninja
@@ -40,7 +41,7 @@ RUN tar -C / -xJf /qemu-5.2.0.tar.xz
 COPY i386-softmmu.mak default-configs/devices/i386-softmmu.mak
 COPY meson.build hw/acpi/meson.build
 
-RUN patch -p1 < /0003-vhost-nvme.patch
+RUN patch -p1 < /0004-vhost-nvme.patch
 
 # systemtap is not available on Alpine, so we're putting together dtrace tooling
 # by hand. More instruction on qemu systemtap probes here:
