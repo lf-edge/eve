@@ -5,21 +5,12 @@
 #   /EFI/BOOT/grub.cfg - Chainloads main bootloader
 #   /UsbInvocationScript.txt - Enables USB boot on Dell 3000 series
 #
-FROM lfedge/eve-alpine:1f7685f95a475c6bbe682f0b976f12180b6c8726 AS build
+FROM lfedge/eve-alpine:e34284a8dd69c9c5ba7c52cd7b7d08fc2db1e0ac AS build
 SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
-ENV BUILD_PKGS grep patch git make gcc linux-headers musl-dev autoconf automake pkgconfig kmod-dev util-linux-dev cryptsetup-dev lddtree libgcc
+ENV BUILD_PKGS grep patch git make gcc linux-headers musl-dev autoconf automake pkgconfig kmod-dev util-linux-dev cryptsetup-dev lddtree libgcc mkinitfs
 ENV PKGS mtools dosfstools libarchive-tools sgdisk e2fsprogs util-linux squashfs-tools coreutils tar dmidecode \
-    kmod-libs cryptsetup-libs libblkid
+    kmod-libs cryptsetup-libs libblkid mkinitfs
 RUN eve-alpine-deploy.sh
-
-# get mkinitfs source from git and build it locally
-# it depends on mod-libs cryptsetup-libs libblkid at runtime and lddtree to run mkinitfs itself
-# we could build APK file ourselves but 'apk add' would failed because networking is disabled for almost all linuxkit images
-WORKDIR /tmp/mkinitfs
-ADD https://github.com/alpinelinux/mkinitfs.git#3.8.1 /tmp/mkinitfs
-RUN make -j "$(getconf _NPROCESSORS_ONLN)"
-WORKDIR /
-RUN make -C /tmp/mkinitfs install
 
 WORKDIR /out
 RUN echo "mtools_skip_check=1" >> etc/mtools.conf
