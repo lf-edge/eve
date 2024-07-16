@@ -28,6 +28,10 @@ Network adapters use logical labels for identification and for reference within 
 layers. Unlike higher-level objects like apps or network instances that use UUIDs, these labels
 are user-defined, simpler human-readable strings, which are only required to be unique within
 the edge-node, not globally.
+Additionally, (predefined or user-defined) "shared" labels are not unique and the same label
+can be assigned to multiple ports. This is currently used to reference and attach multiple
+ports into a local network instance. Also, IP route with multiple possible paths may reference
+a group of suitable output ports using an adapter shared label.
 
 ### Physical network ports
 
@@ -49,8 +53,6 @@ options to enable building of the driver.
 For cellular modems this is not required, however. Cellular modems are fairly complex
 self-contained units controlled through AT commands and/or API calls, for which drivers
 and libraries are already shipped with EVE and automatically loaded on boot.
-The only requirement is that the cellular modem is connected over the USB bus and not via PCI,
-which is not supported by EVE.
 For more detailed information on cellular connectivity, please refer to [WIRELESS.md](WIRELESS.md)
 
 ### HW-virtualized IO
@@ -107,7 +109,7 @@ EVE supports:
 - VLAN filtering for switch network instances. This is actually a feature of the Switch NI,
   VLAN network adapter is not used in this case.
 
-Both VLAN and LAG adapters can be used as uplinks for Local network instance and for EVE
+Both VLAN and LAG adapters can be used as ports for Local network instance and for EVE
 management traffic.
 
 Diagram below depicts almost all of these cases (except for LAG being used by EVE and NIs
@@ -118,8 +120,9 @@ directly, which is also supported):
 ### SystemAdapter
 
 SystemAdapter (term used in EVE API) assigns network config (DHCP, IP, DNS and NTP config)
-together with some logical attributes such as "usage" or [cost](#load-spreading-and-failover)
-to a physical network port or to a logical lower-layer network adapter (VLAN, LAG).
+together with some logical attributes such as "usage", [cost](#load-spreading-and-failover)
+and shared labels to a physical network port or to a logical lower-layer network adapter
+(VLAN, LAG).
 
 SystemAdapter can be used to elevate physical/L2-only adapter to an IP-ready network endpoint.
 SystemAdapter may either instruct EVE to run DHCP client for the network interface or to assign
