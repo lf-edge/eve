@@ -8,8 +8,8 @@
 # has a fast path for stack unwinding. This also happens
 # to be a perfect place to put any other kind of debug info
 # into the package: see abuild/etc/abuild.conf.
-FROM lfedge/eve-recovertpm:0da17f65aba4fb09c83944cf5847dd7b523118b4 as recovertpm
-FROM lfedge/eve-alpine:1f7685f95a475c6bbe682f0b976f12180b6c8726 as build
+FROM lfedge/eve-recovertpm:f3c35764a83afa240f3a5083b9fc4e507e689e62 as recovertpm
+FROM lfedge/eve-alpine:e34284a8dd69c9c5ba7c52cd7b7d08fc2db1e0ac as build
 ENV BUILD_PKGS abuild curl tar make linux-headers patch g++ git gcc gpg ncurses-dev autoconf openssl-dev zlib-dev
 # Feel free to add additional packages here, but be aware that
 # EVE's rootfs image can be no larger than 300Mb (and don't
@@ -31,11 +31,12 @@ ENV OPENSSH_VERSION 9.8p1
 # setting up building account
 RUN adduser -G abuild -D builder || :
 RUN su builder -c 'abuild-keygen -a -n'
+RUN cp /home/builder/.abuild/*.pub /etc/apk/keys/
 
 COPY --chown=builder:abuild abuild/ /
-ENV MUSL_VERSION v1.2.3
+ENV MUSL_VERSION 1.2.5
 ENV DISTFILES_MIRROR /tmp/mirror
-ADD --chown=builder:abuild https://git.musl-libc.org/cgit/musl/snapshot/${MUSL_VERSION}.tar.gz ${DISTFILES_MIRROR}/musl-${MUSL_VERSION}.tar.gz
+ADD --chown=builder:abuild https://musl.libc.org/releases/musl-${MUSL_VERSION}.tar.gz ${DISTFILES_MIRROR}/musl-${MUSL_VERSION}.tar.gz
 RUN su builder -c 'cd /musl && abuild checksum && abuild -r'
 
 # now install it locally so we can pick it up later on below
