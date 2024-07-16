@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile-upstream:1.5.0-rc2-labs
 
-FROM lfedge/eve-alpine:1f7685f95a475c6bbe682f0b976f12180b6c8726 as grub-build-base
+FROM lfedge/eve-alpine:e34284a8dd69c9c5ba7c52cd7b7d08fc2db1e0ac as grub-build-base
 ENV BUILD_PKGS automake \
                make \
                bison \
@@ -57,9 +57,7 @@ COPY patches /patches
 COPY patches-2.06  /patches-2.06
 COPY patches-aarch64-2.06 /patches-aarch64-2.06
 COPY patches-riscv64-2.06 /patches-riscv64-2.06
-# because python is not available
-RUN ln -s python3 /usr/bin/python && \
-    mkdir /grub-lib
+RUN mkdir /grub-lib
 
 ADD ${GRUB_REPO}/snapshot/grub-${GRUB_COMMIT}.tar.gz /grub.tar.gz
 ENV GNULIB_REVISION=d271f868a8df9bbec29049d01e056481b7a1a263
