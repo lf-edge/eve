@@ -49,6 +49,7 @@ elfutils
 elfutils-dev
 ethtool
 eudev-dev
+expect
 file
 findutils
 flex
@@ -94,6 +95,7 @@ libbz2
 libcap-ng-dev
 libc-dev
 libcrypto1.1
+libcrypto3
 libc-utils
 libdrm
 libdrm-dev
@@ -199,6 +201,7 @@ ssl_client
 strace
 swig
 tar
+tcl
 tcpdump
 texinfo
 u-boot-tools
