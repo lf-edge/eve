@@ -5,7 +5,8 @@
 Zedrouter manages network connectivity for application instances.
 It uses the underlying network stack and some open-source tools to provision virtual
 networks, aka *network instances*, providing connectivity services for applications,
-such as traffic routing/forwarding, DHCP, DNS, NAT, ACL, flow monitoring, etc.
+such as traffic routing/forwarding, DHCP, DNS, NAT, ACL, flow monitoring, multi-path
+routing with probing and automatic fail-over, etc.
 It works in conjunction with the NIM microservice to provide external connectivity
 for these network instances and applications that connect to them.
 If kvm or xen hypervisor is used, zedrouter cooperates with domainmgr to attach applications
@@ -82,9 +83,10 @@ DHCP/DNS config, etc.
   * an instance of the `NetworkInstanceConfig` structure
   * published by `zedagent` microservice
   * it specifies the network instance type (local / switch / ...)
-  * it references which port to use for external connectivity
-    * it can reference specific port (e.g. `eth0`) or a group of ports (`uplink`, `freeuplink`)
-      to fail-over between (load spreading not yet supported)
+  * it references which port(s) to use for external connectivity
+    * it can reference a specific port using its logical label (e.g. `eth0`)
+      or a group of ports using a shared label (`all`, `uplink`, `freeuplink`,
+      or a user-defined shared label)
   * it contains IP configuration (subnet network address, gateway IP), etc.
   * it may contain DNS configuration (upstream DNS servers to use, static DNS entries, etc.)
 * configuration for application connectivity
@@ -99,18 +101,22 @@ DHCP/DNS config, etc.
   * VIF configuration contains a list of ACLs (firewall rules) to apply
   * optionally, VIF configuration contains static MAC and IP addresses to assign
     to the VIF
-* various pubsub messages are additionally consumed by zedrouter just to extract
-  and expose all kinds of metadata, state data and metrics to applications via the Metadata
+* note that various pubsub messages are additionally consumed just to extract and expose
+  all kinds of metadata, state data and metrics to applications via the Metadata
   HTTP server running as part of each network instance (that has L3 endpoint in EVE).
+  However, this is done from a separate service [msrv](../cmd/msrv), started from within
+  zedrouter (the HTTP server itself is managed by zedrouter, while msrv implements the HTTP
+  handlers).
 
 **Zedrouter publishes** (see `zedrouter.initPublications()`):
 
 * Network Instance status
   * an instance of the `NetworkInstanceStatus` structure
   * it contains the same information as in `NetworkInstanceConfig` plus additional
-    state data, such as info about the port currently used for external connectivity,
+    state data, such as info about the ports currently used for external connectivity,
     list of VIFs connected to the network instance and their IP and MAC addresses,
-    error message if the network instance is in a failed state, etc.
+    list of routes installed in the (local) network instance routing table,
+    error message(s) if the network instance is in a failed state, etc.
 * application connectivity status
   * an instance of the `AppNetworkStatus` structure
   * it contains the same information as in `AppNetworkConfig` plus additional
@@ -119,7 +125,8 @@ DHCP/DNS config, etc.
 * network instance metrics
   * an instance of the `NetworkInstanceMetrics` structure
   * it contains various metrics for the network instance, such as number of packets
-    and bytes sent/received, number of ACL hits, external connectivity probing metrics, etc.
+    and bytes sent/received, number of ACL hits, external connectivity probing metrics
+    for every multi-path route, etc.
 * application flow logs
   * instances of the `IPFlow` structure
   * contains information about every application traffic flow, such as source
@@ -134,16 +141,13 @@ Refer to the [plugin documentation](../../kube/eve-bridge/README.md) for more in
 Internally, zedrouter is split into several components following the principle of separation
 of concerns. The interaction between these components is well-defined using Go interfaces.
 This allows to (unit-)test components individually and even to have them replaceable
-(with alternative implementations or with mock objects). For example, the default method
-of NI [uplink connectivity probing](#uplinkprober), based on a simple HTTP GET
-request made towards the controller URL, is wrapped by `ControllerReachProber`, implementing
-`ReachabilityProber` interface. Should a different connectivity testing method be required
-for a specific use-case, the default prober can be easily swapped with a different
-implementation without affecting the rest of the zedrouter microservice.
-Moreover, all interactions with the underlying network stack are limited to components
-[NIReconciler](#nireconciler), [NetworkMonitor](#networkmonitor) and [NI State Collector](#ni-state-collector).
+(with alternative implementations or with mock objects).
+
+All interactions with the underlying network stack are limited to components
+[NIReconciler](#nireconciler), [NetworkMonitor](#networkmonitor),
+[NI State Collector](#ni-state-collector) and [ReachabilityProber](#reachabilityprober).
 Therefore, in order to support an alternative to the Linux network stack (e.g. a 3rd party
-vswitch), only these 3 components need to be replaced.
+vswitch), only these 4 components need to be replaced.
 
 The following diagram depicts all zedrouter components and their interactions
 (defined by interfaces):
@@ -180,11 +184,12 @@ Inside the main event loop, zedrouter processes:
 * VIF IP assignment changes detected by [NI State Collector](#ni-state-collector). Zedrouter
   records these IP assignments in the corresponding network instance and application network
   statuses and publishes them via pubsub.
-* uplink selection updates from [UplinkProber](#uplinkprober). These updates inform zedrouter
-  about the current state of uplink connectivity probing and the currently selected uplink
-  for every (local, non air-gapped) network instance. On change, zedrouter updates
-  NI parameters passed to [NIReconciler](#nireconciler), which then performs all necessary
-  config changes in the network stack.
+* multi-path port selection updates from [PortProber](#portprober). These updates inform
+  zedrouter about the current state of port connectivity probing and the currently selected
+  port for every multi-path IP route (selected based on connectivity status, port cost, port
+  IP presence, etc.). On change, zedrouter updates NI parameters passed to [NIReconciler](#nireconciler),
+  which then performs all necessary config changes in the network stack (updates the routing
+  table of the (local) NI).
 * RPC calls from [eve-bridge CNI plugin](../../kube/eve-bridge/README.md)
   (only with kubevirt hypervisor).
 
@@ -218,24 +223,42 @@ sub-graph, which contains all configuration items that are either not specific t
 instance or are shared by multiple network instances. `Global` sub-graph needs to be reconciled
 pretty-much on every change in the intended state.
 
-### UplinkProber
+### PortProber
 
-[UplinkProber](../uplinkprober/uplinkprober.go) is responsible for probing uplink connectivity
-for every network instance configured with a group uplink label, such as `uplink` (use any
-management interface) or `freeuplink` (use any management interface with zero cost).
+[PortProber](../portprober/portprober.go) is responsible for probing port connectivity
+for every multi-path route configured inside a local network instance. IP route is multi-path
+if it uses a shared port label to match a group of ports, each being a suitable candidate
+to reach the destination network. There are already 3 predefined shared port labels:
 
-The probing algorithm of UplinkProber tries to determine the state of connectivity for every
-suitable port and then select the cheapest one with working connectivity.
+* `all`: assigned to every device network port
+* `uplink`: assigned to every management port
+* `freeuplink`: assigned to every management port with zero cost.
+
+Additionally, user is able to define a custom shared label and match a particular subset
+of network ports.
+
+The probing algorithm of PortProber tries to determine the state of connectivity for every
+port matched by a route label and then potentially use other criteria, such as port cost,
+wwan port signal quality, etc., to select the best port for the route.
 Additionally, it tries to avoid port flapping, i.e. switching between ports too often.
 For example, a certain number of continuous failures is required before a port is considered
 without connectivity. Similarly, a certain number of continuous successes is required before
-a port is selected over the previous one. See `Config` structure defined in `uplinkprober.go`
+a port is selected over the previous one. See `Config` structure defined in `portprober.go`
 for more details and how the behaviour can be tweaked through config options. However, note
 that the default configuration cannot be currently changed in run-time through `EdgeDevConfig`.
 
-Whenever the selected uplink for a given NI changes, zedrouter is notified by the prober.
-It is up to zedrouter to perform the re-routing from one port to another (and it does so
-with the help from NIReconciler).
+Whenever the selected output port for a given route changes, zedrouter is notified
+by the prober. It is up to zedrouter to perform the re-routing from one port to another
+(and it does so with the help from NIReconciler).
+
+#### ReachabilityProber
+
+ReachabilityProber is used by PortProber to test the reachability of device port's
+next hop(s) (the closest router(s)) and remote networks (Internet, cloud VPC, etc.).
+PortProber expects one ReachabilityProber for every probing method (ICMP, TCP, ...).
+There might be a different set of probers implemented for every supported network
+stack (currently only Linux networking is supported by EVE, see [linuxreachprober.go](../portprober/linuxreachprober.go)).
+A mock implementation is also provided for unit testing purposes.
 
 ### NetworkMonitor
 
@@ -281,14 +304,16 @@ From this JSON-formatted data, it is possible to learn:
 * the set of VIFs connected to the NI (with their interface names and MAC addresses)
 * the set of IP addresses assigned to endpoints connected to the NI (apart from app-side
   of VIFs it may also include the IP address of the NI bridge itself).
-* which uplink port is currently used by the NI (if any) - from field `SelectedUplinkLogicalLabel`
-* error message if NI is in a failed state
+* the set of ports used by the NI for external connectivity (empty for air-gapped NI)
+* the set of routes installed inside the (local) NI routing table
+  * for multi-path routes this provide info about the output port currently selected for each
+* error message(s) if NI is in a failed state
 
 Similarly, it is possible to retrieve network instance metrics with:
 `cat /run/zedrouter/NetworkInstanceMetrics/<UUID>.json  | jq`.
 This includes NI bridge interface counters, but also probe metrics (e.g. how many successful
-continuous probes were performed for a given uplink port) and essentially provides insights
-into the uplink selection decision made by UplinkProber at the given moment.
+continuous probes were performed for a given port) and essentially provides insights
+into the port selection decision (per-route) made by PortProber at the given moment.
 To get interface metrics for all interfaces (physical, VIFs, bridges) obtain the content of
 `/run/zedrouter/NetworkMetrics/global.json`.
 
@@ -316,30 +341,26 @@ Alternatively, generate an SVG image locally with:
 
 Log messages produced by [NIReconciler](#nireconciler) and therefore related to config
 reconciliation inside the network stack are prefixed with `NI Reconciler:`.
-Every time NI Reconciler recognizes that reconciliation is needed, it will inform about it
-before initiating the process:
+
+When the intended state changes NI Reconiler will inform about the change:
 
 ```text
-time="2023-04-27T09:38:47+01:00" level=info msg="NI Reconciler: Running state reconciliation for subgraph Global, reasons: initial reconciliation"
+time="2024-07-16 10:11:30" level=info msg="NI Reconciler: Rebuilding intended config for NI 9ca83da9-94e8-48b4-9ae8-3f188c5c694a, reasons: route change, port IP change"
 ```
 
-This log message describes which sub-graph is going to be reconciled (either `Global`
-or for a given NI) and the reason for reconciliation.
-For example, when config for a new NI has arrived from the controller, NIReconciler
-will log:
+The intended state may change because the config was changed by the user
+(e.g. NI was added/modified) or because the current state changed externally (e.g. a port
+received an IP address, kernel added a connected route, etc.) and the intended state
+needs to be updated to reflect the change (e.g. propagate connected route).
+Notice that the log message lists reasons for the intended state changes.
+
+Zedrouter is then notified about the intended and the current states being out-of-sync
+and as a result it will trigger reconciliation from inside the main event loop.
+A new reconciliation run starts with the log message:
 
 ```text
-time="2023-04-27T09:39:29+01:00" level=info msg="NI Reconciler: Running state reconciliation for subgraph NI-82a32003-09f8-44c1-989a-d0c676286ca5, reasons: adding new NI (82a32003-09f8-44c1-989a-d0c676286ca5)"
+time="2024-07-16 10:11:30" level=info msg="NI Reconciler: Running state reconciliation, reasons: rebuilt intended state for NI 9ca83da9-94e8-48b4-9ae8-3f188c5c694a"
 ```
-
-Config reconciliation may also be triggered because something changed in the current
-state (detected using NetworkMonitor):
-
-```text
-time="2023-04-27T09:39:58+01:00" level=info msg="NI Reconciler: Running state reconciliation for subgraph NI-82a32003-09f8-44c1-989a-d0c676286ca5, reasons: uplink IP change, route change"
-```
-
-Notice that there can be multiple reasons for the reconciliation, like in the log above.
 
 NIReconciler then informs about every individual configuration change (`create`,
 `modify`, `delete`) made during the reconciliation, for example:
@@ -372,34 +393,35 @@ time="2023-04-27T10:10:40+01:00" level=info msg="NI Reconciler: Started async ex
 And how it completed (and was followed-up on from another reconciliation run):
 
 ```text
-time="2023-04-27T10:10:42+01:00" level=info msg="NI Reconciler: Running state reconciliation for subgraph NI-82a32003-09f8-44c1-989a-d0c676286ca5, reasons: async op finalized"
+time="2023-04-27T10:10:42+01:00" level=info msg="NI Reconciler: Running state reconciliation, reasons: async op finalized"
 time="2023-04-27T10:10:42+01:00" level=info msg="NI Reconciler: Finalized async execution of create for Dnsmasq/bn1, content: Dnsmasq: {instanceName: bn1, listenIf: bn1, DHCPServer: {subnet: 10.11.12.0/24, allOnesNetmask: true, ipRange: <10.11.12.2-10.11.12.254>, gatewayIP: 10.11.12.1, domainName: , dnsServers: [10.11.12.1], ntpServers: [], staticEntries: [{00:16:3e:00:01:01 10.11.12.2 19418180-f61d-4d00-925b-c9c54a953798}]}, DNSServer: {listenIP: 10.11.12.1, uplinkIf: eth0, upstreamServers: [10.18.18.2], staticEntries: [{router 10.11.12.1} {eclient 10.11.12.2}], linuxIPSets: []}}"
 ...
 ```
 
-#### UplinkProber logs
+#### PortProber logs
 
-Log messages produced by [UplinkProber](#uplinkprober) and therefore related to uplink probing
-and uplink selection process are prefixed with `UplinkProber:`.
+Log messages produced by [PortProber](#portprober) and therefore related to port probing
+and port selection process for multi-path routes are prefixed with `PortProber:`.
 
-These are for example logs produced when uplink probing started for a new NI:
+These are for example logs produced when port probing started for a new multi-path route:
 
 ```text
-time="2023-04-27T09:38:48+01:00" level=info msg="UplinkProber: Added eth0 to list of probed uplinks"
-time="2023-04-27T09:38:48+01:00" level=info msg="UplinkProber: Added eth1 to list of probed uplinks"
-time="2023-04-27T09:38:48+01:00" level=info msg="UplinkProber: Initial NH status for uplink eth0: true (probe err: <nil>)"
-time="2023-04-27T09:38:48+01:00" level=info msg="UplinkProber: Initial Remote status for uplink eth0: true (probe err: <nil>)"
-time="2023-04-27T09:38:48+01:00" level=info msg="UplinkProber: Initial NH status for uplink eth1: true (probe err: <nil>)"
-time="2023-04-27T09:38:48+01:00" level=info msg="UplinkProber: Initial Remote status for uplink eth1: true (probe err: <nil>)"
-time="2023-04-27T09:39:29+01:00" level=info msg="UplinkProber: Started uplink probing for NI 82a32003-09f8-44c1-989a-d0c676286ca5"
-time="2023-04-27T09:39:29+01:00" level=info msg="UplinkProber: Selecting uplink eth0 for NI 82a32003-09f8-44c1-989a-d0c676286ca5 (cost = 0, UP count = 2)"
+time="2023-04-27T09:38:48+01:00" level=info msg="PortProber: Added eth0 to list of probed ports"
+time="2023-04-27T09:38:48+01:00" level=info msg="PortProber: Added eth1 to list of probed ports"
+time="2023-04-27T09:40:12+01:00" level=info msg="PortProber: Started port probing for route dst=0.0.0.0/0 NI=9ca83da9-94e8-48b4-9ae8-3f188c5c694a"
+time="2023-04-27T09:40:13+01:00" level=info msg="PortProber: Initial NH status for port eth0: true (probe err: <nil>)
+time="2023-04-27T09:40:13+01:00" level=info msg="PortProber: Initial User-probe tcp://my-controller.com:443 status for port eth0: true (probe err: <nil>)"
+time="2023-04-27T09:40:14+01:00" level=info msg="PortProber: Initial NH status for port eth1: true (probe err: <nil>)"
+time="2023-04-27T09:40:14+01:00" level=info msg="PortProber: Initial User-probe tcp://my-controller.com:443 status for port eth1: true (probe err: <nil>)"
+time="2023-04-27T09:40:14+01:00" level=info msg="PortProber: Selecting port eth0 for route dst=0.0.0.0/0 NI=9ca83da9-94e8-48b4-9ae8-3f188c5c694a (UP count = 2)"
 ```
 
 Fail-over from `eth0`, where broken connectivity was just detected, to `eth1`:
 
 ```text
-time="2023-04-27T13:21:19+01:00" level=info msg="UplinkProber: Setting NH to DOWN for uplink eth0 (continuously DOWN; probe err: uplink eth0 has no suitable next hop IP address)"
-time="2023-04-27T09:39:29+01:00" level=info msg="UplinkProber: Changing uplink from eth0 to eth1 for NI 3b75c981-f1d5-4b83-8135-8194a3808ff2 (cost = 0, UP count = 2)"
+time="2023-04-27T13:21:19+01:00" level=info msg="PortProber: Setting NH to DOWN for port eth0 (sudden change; probe err: no ping response received from 172.22.10.1)
+time="2023-04-27T13:21:20+01:00" level=info msg="PortProber: Setting User-probe tcp://my-controller.com:443 status to DOWN for port eth0 (continuously DOWN; probe err: TCP connect request to my-controller.com:443 failed: dial tcp: lookup my-controller.com: i/o timeout)
+time="2023-04-27T13:21:20+01:00" level=info msg="PortProber: Changing port from eth0 to eth2 for route dst=0.0.0.0/0 NI=9ca83da9-94e8-48b4-9ae8-3f188c5c694a (UP count = 2)
 ```
 
 #### NI State Collector logs

@@ -84,8 +84,10 @@ into the host network stack. It arrives via TAP/xen-backend and gets forwarded t
 Next, ACLs implemented using iptables are applied and the packet is either marked with "allow"
 or "drop" mark. Based on the mark and the src/dst addresses, IP rules either send the packet
 into the dummy blackhole interface (dropped), or route the packet according to the NI routing
-table. If the destination is external, packet will be transmitted out through the uplink port.
-Note that if NI is switch (L2 only), packet will be just forwarded through the uplink, not routed.
+table. If the destination is external, packet will be transmitted out through one of the network
+ports used by the network instance.
+Note that if NI is switch (L2 only), packet will be just forwarded through the (single) port,
+not routed.
 If the destination is another app (inside the same NI), packet's dst MAC address will be set
 to the dst app MAC, and it will be forwarded again through the same bridge into the corresponding
 VIF. Finally, the packet is transmitted from the host network stack into the guest network
@@ -94,7 +96,7 @@ The diagram below depicts all these packet-flow stages:
 
 ![packet-flow](./images/eve-app-packet-flow.png)
 
-Packet received from outside and destined to an application is received via network port
+Packet received from outside and destined to an application is received via a network port
 and matched against active flows tracked by the [Linux connection tracking subsystem](https://conntrack-tools.netfilter.org/manual.html).
 In case of an app-initiated flow and a local NI (L3, with NAT), inbound packets will match
 an existing contract entry and the NATed dst IP address and port number will be reversed back
@@ -106,7 +108,7 @@ and the dst address, IP rules either send the packet into the dummy blackhole in
 or route the packet according to the NI routing table. This will then match the link-local route
 of the NI bridge and gets forwarded via the bridge and the VIF into the application.
 Note that in case of a switch NI (L2 only), D-NAT and routing operations are not performed
-and inbound packets are simply forwarded from the uplink, through the bridge and VIF into
+and inbound packets are simply forwarded from the port, through the bridge and VIF into
 the application (still the ACLs do apply and can trigger routing into the blackhole interface).
 The diagram below depicts all these inbound packet-flow stages:
 
@@ -123,15 +125,15 @@ segment.
 Network instances are a feature of the EVE OS host networking build using various software tools.
 Applications connect to network instances using [virtual network interfaces](#virtual-network-interfaces).
 Directly assigned physical network ports or SR-IOV VFs bypass the host networking, thus cannot
-be part of network instances. Apart from VIFs, network instance can be connected to a physical
-or logical (e.g. VLAN) [uplink network port](#uplink-port) (inside the host) and provide
-applications external connectivity.
+be part of network instances. Apart from VIFs, network instance can be connected to one or more
+physical or logical (e.g. VLAN) [network ports](#network-instance-ports) (inside the host) and
+provide applications external connectivity.
 
 It is possible to deploy any number of network instances onto the same device. Applications
 connected to the same network instance will be able to talk to each other without having to use
 any physical network equipment. Reachability between applications in different network instances
 will be possible only if there is a routed/forwarded path between these network instances across
-physical uplinks and their networks. Application is allowed to be connected to multiple network
+physical ports and their networks. Application is allowed to be connected to multiple network
 instances and even to have multiple VIFs inside the same NI. In such cases, it is important to have
 the routing inside the app configured correctly to ensure that a given flow uses the right interface
 (see [Network Instance IP routing](#application-ip-routing)).
@@ -191,31 +193,31 @@ servers for applications.
 
 Additionally, DHCP server can be used to [propagate IP routes](#application-ip-routing)
 as well as IP addresses of NTP servers to applications. User is able to configure one NTP server
-IP per local network instance. This is then merged with NTP server(s) set for the NI uplink
-(received from external DHCP server or configured by the user), and propagated together
+IP per local network instance. This is then merged with NTP server(s) set for NI ports
+(received from external DHCP servers or configured by the user), and propagated together
 to the application using the DHCP option 42 (56 in DHCPv6).
 
 DNS server which EVE provides for every Local NI allows resolution of application names
 to their IP addresses. This is very handy when applications need to talk to each other but
 cannot predict how EVE will allocate IP addresses between them.
 Every other name resolution request is just forwarded to DNS servers associated with
-the uplink (received from external DHCP server or configured by the user).
+the NI ports (received from external DHCP servers or configured by the user).
 
 Applications connected to local NI are also provided with access to Metadata HTTP server,
 running on local-only IP address 169.254.169.254. This can be used by applications
 to retrieve cloud-init configuration, obtain information from EVE (e.g. device UUID,
-hostname, uplink IP address) or to download [patch envelopes](PATCH-ENVELOPES.md).
+hostname, external IP address) or to download [patch envelopes](PATCH-ENVELOPES.md).
 More information about metadata server can be found in [ECO-METADATA.md](ECO-METADATA.md).
 
 ### Switch Network Instance
 
 Switch Network Instance is a simple L2-only bridge between connected applications and
-(optionally) an uplink network adapter. Traffic is only forwarded by the host network stack.
+(optionally) a device network port. Traffic is only forwarded by the host network stack.
 This allows applications to directly access external endpoints and vice-versa.
-Switch network can be configured without uplink (i.e. as air-gapped), in which case it is merely
+Switch network can be configured without port (i.e. as air-gapped), in which case it is merely
 a bridge between application VIFs.
 
-EVE does not run DHCP server for Switch NI. Instead, external DHCP server from the uplink's
+EVE does not run DHCP server for Switch NI. Instead, external DHCP server from the port's
 network can be configured by the user to provide IP addresses to applications. In case of air-gap
 switch NI, one of the applications can run DHCP server for the network.
 
@@ -229,62 +231,106 @@ are still supported and must be configured to allow anything beyond just DNS and
 Since there is no NAT between applications and external endpoints, properly configured
 inbound ACL rules are that much more important.
 
-Metadata HTTP server is run for switch network instance only if it has uplink port with
-an IP address.
+A metadata HTTP server is run for a switch network instance only if it has a port attached
+that has an IP address.
 
-### Uplink Port
+### Network Instance Ports
 
-Network instances can be configured with an "uplink" network adapter, which will be used to provide
-external connectivity. The network adapter can be a physical network port (e.g. `eth0`) or a logical
-network adapter on top of physical port(s) (e.g. a VLAN sub-interface or a LAG). Moreover,
-instead of selecting a specific adapter referenced by its unique logical label, it is possible
-to use one of the special group labels to let EVE pick the best network adapter with a working
-connectivity. Group labels currently supported are:
+Network instances can be configured with one or more network adapters, which will be used
+to provide external connectivity. The network adapter can be a physical network port
+(e.g., `eth0`) or a logical network adapter on top of physical ports (e.g., a VLAN
+sub-interface or a LAG). In addition to selecting a specific adapter for NI by referencing
+its unique logical label, it is also possible to either use a predefined shared label
+or define a custom shared label selecting multiple ports for a network instance.
+Predefined shared labels are:
 
-* "uplink": use any *management* network adapter
-* "freeuplink": use any *management* network adapter with *zero cost*
+* `all`: assigned to every device network port
+* `uplink`: assigned to every management port
+* `freeuplink`: assigned to every management port with zero cost
 
-If group label is configured, EVE will perform periodic testing of all matched network adapters
-for working connectivity. Every 15 seconds, the adapter's next hop reachability is tested using
-ICMP ping. However, for non-zero cost adapters this test is disabled to avoid generating too much
-(costly) traffic. Additionally, every 2.5 minutes, EVE will try to connect to the controller
-over the interface (provided that the adapter is enabled for EVE management). Both of these tests
-must consecutively fail few times in a row for the adapter to be deemed disconnected. EVE will then
-switch all network instances with group uplink label that use the "broken" port to another
-matching adapter with working connectivity. The requirement for multiple consecutive test
-passes/failures prevents from uplink flapping, i.e. switching between adapters too often.
+Please note that switch network instance is currently limited to one port at most.
+However, the plan is to support attaching multiple ports to a single bridge and run
+Spanning Tree Protocol to avoid bridge loops and the broadcast storm that results
+from them.
 
-Network instance (both Local and Switch) can be configured without any uplink. In this case,
+Network instance (both Local and Switch) can be configured without any port. In this case,
 the network is "air-gapped", meaning that it is not reachable from outside and, likewise,
-it will not provide external connectivity to the applications. Air-gap NIs are used only to connect
-applications running on the same edge device.
+it will not provide external connectivity to the applications. Air-gap NIs are used only
+to connect applications running on the same edge device.
 
-### Flow Logging
+### Network Instance IP Routing
 
-EVE uses [Linux connection tracking](https://conntrack-tools.netfilter.org/manual.html)
-to periodically (every 2 minutes) record all application TCP and UDP flows. A flow record
-encapsulates application UUID, VIF name, open/close timestamps, src/dst IP/port/proto 5-tuple,
-packet and byte counters.
+Local Network Instance with multiple ports will have link-local and connected routes
+from all the ports present in its routing table. Additionally, user may configure
+[static IP routes](#application-ip-routing) which will be added into the routing table.
+A static route may reference a particular gateway IP as the next hop, or a logical label
+of a port to use as the output device, or use a shared label to match a subset of NI
+ports if there are multiple possible paths to reach the routed destination network.
 
-Additionally, EVE captures DNS packets to make a recording of every DNS request from application.
-This includes the request time, hostname that was being resolved and the returned IP address(es).
+#### Multi-Path IP Routing
 
-A batch of new flow records is published to the controller (POST `/api/v1/edgeDevice/flowlog`)
-inside `FlowMessage`.
+For every multi-path route with shared port label, EVE will perform periodic probing
+of all matched network ports to determine the connectivity status and select the best
+port to use for the route. Note that every multi-path route will have at most one output
+port selected and configured at any time - load-balancing is currently not supported.
 
-### Application IP routing
+The probing method can be customized by the user as part of the route configuration.
+If enabled, EVE will check the reachability of the port's next hop (the gateway IP)
+every 15 seconds using ICMP ping. The upside of using this probe is fairly quick
+fail-over when the currently used port for a given multi-path route looses connectivity.
+The downside is that it may generate quite a lot of traffic over time. User may limit
+the use of this probe to only ports with low cost or disable this probe altogether.
+Additionally, every 2.5 minutes, EVE will run user-defined probe if configured.
+This can be either an ICMP ping towards a given IP or hostname, or a TCP handshake
+against the given IP/hostname and port.
+
+A connectivity probe must consecutively success/fail few times in a row to determine
+the connectivity as being up/down. EVE will then consider changing the currently used
+port for a given route. The requirement for multiple consecutive test passes/failures
+prevents from port flapping, i.e. re-routing too often. This is important, because
+re-routing may break already established connections between apps and external endpoints.
+This is due to a change in the IP used for the NAT.
+
+Additionally to connectivity status, there are some other metrics that can affect
+the port selection decision. For example, user may enable lower-cost-preference
+for a given multi-path route. In that case, with multiple connected ports, EVE
+will select the lowest-cost port. Similarly, route that uses multiple wwan ports,
+can be configured to give preferential selection to cellular modem with better
+network signal strength.
+
+#### Network Instance Default IP Route
+
+A typical use case for multi-path routing is the default route. NI with multiple
+ports that have gateway IP defined cannot install default route for each of them
+into the NI routing table. Load-balancing is not supported and using different metrics
+(default behaviour in Linux with multiple default routes) would result in only
+one of these routes being used. It is better to use multi-path routing with the probing
+and fail-over capability for the default route.
+For example, user may add default route and use a shared label that matches only those
+ports that have Internet access.
+When user-defined default route is not configured but NI has multiple ports assigned,
+EVE will automatically create multi-path default route with next-hop probing enabled
+(for ports with zero cost).
+If the NI uses only uplink ports (i.e. mgmt ports), then additionally to next-hop
+probing, TCP handshake against the controller URL and the port 443 will be used in
+the place of the "user-defined probe".
+
+### Application IP Routing
 
 Most of the edge deployments will deploy applications that will have connectivity to both
 WAN (Internet) and LAN (e.g. shop floor, machine floor).
-There may be a single WAN interface and multiple LAN interfaces. With the IP route
-configurability of (Local) Network instances provided by EVE, we can automatically (zero-touch)
-provision routing for applications that have access to both the Internet and one or more LANs.
-This is possible because EVE allows to:
+There may be a single WAN port and multiple LAN ports.
+User has the option to either create a single local network instance with all those ports
+assigned and use the [IP routing capabilities of the network instance](#network-instance-ip-routing),
+or create a separate instance for every port and use DHCP-based propagation of IP routes
+into applications. The latter option, described below, is more difficult to configure
+but gives the application full control over IP routing.
 
-* use DHCP (option 121) to propagate the *connected routes* to applications (routes for external
-  networks that NI uplinks are connected to)
-* configure a set of *static IP routes* for a network instance and have them propagated
-  to applications also by DHCP
+EVE uses DHCP (option 121) to propagate:
+
+* *connected routes* to applications (routes for external networks that NI ports
+  are connected to), and
+* user-configured *static IP routes* to applications
 
 Picture below portrays an example of an application with two interfaces, connected via
 separate network instances to two different network ports. Blue color is used to highlight
@@ -295,33 +341,36 @@ user is able to configure static IP routes and let EVE propagate them to the app
 also using DHCP. Static routes are part of the network instance configuration. User configures
 destination IP subnets which the network instance will become the gateway for (from the app
 perspective). In the example below, the propagated static route is highlighted with the green
-color.
+color:
 
 ![ni-ip-routing](./images/eve-ip-routing.png)
 
-Another common case is using one application as a network gateway for other applications
-running on the same device. The gateway application may provide some network function(s),
-such as firewall, IDS, network monitoring, etc. Such application will connect on one side with
-the external network(s) using directly attached network adapter(s) or via switch network
-instance(s), and the other side will make use of an air-gap local network instance to connect
-with other applications running on the device. Propagated static IP routes are necessary
-to make the application traffic flow through the gateway app. In theory, multiple network
-functions can be chained together in this way using several air-gap network instances
-with static IP routes.
+Another common case for route propagation is using one application as a network gateway
+for other applications running on the same device. The gateway application may provide some
+network function(s), such as firewall, IDS, network monitoring, etc. Such application will
+connect on one side with the external network(s) using directly attached network adapter(s)
+or via switch network instance(s), and the other side will make use of an air-gap local
+network instance to connect with other applications running on the device. Propagated static
+IP routes are necessary to make the application traffic flow through the gateway app.
+In theory, multiple network functions can be chained together in this way using several
+air-gap network instances with static IP routes.
 
 In the example below, "Application 1" uses "Application 2" as a gateway for only one subnet,
 while "Application 3" uses the application gateway for all the traffic. Green color highlights
-static IP routes propagated to applications.
+static IP routes propagated to applications:
 
 ![ni-ip-routing-gw-app](./images/eve-ip-routing-app-gw.png)
 
-#### Default Route
+#### Application Default IP Route
 
 Network instance default route (with the NI bridge IP as the gateway) is automatically
-propagated by DHCP to connected applications, unless network instance is air-gapped
-(without uplink) or the uplink is app-shared (not management) and does not have a default
-route of its own. In both cases, it is possible to enforce default route propagation
-by configuring a static default route for the network instance.
+propagated by DHCP to connected applications. The exceptions are:
+
+* network instance is air-gapped (without port)
+* all ports are app-shared and without default route
+
+In both cases, it is possible to enforce default route propagation by configuring
+a static default route for the network instance.
 
 ### Network Instance MTU
 
@@ -400,8 +449,27 @@ the old MTU value.
 #### Network Instance MTU vs. Network Adapter MTU
 
 Please note that application traffic leaving or entering the device via a network
-adapter associated with the network instance is additionally limited by the MTU value
-of the adapter, configured within the NetworkConfig object. If the configured network
-instance MTU differs from the network adapter MTU, EVE will flag the network instance
-with an error and use the adapter's MTU for the network instance instead (to prevent
-traffic from being dropped or fragmented inside EVE).
+adapter associated with the network instance is additionally limited by MTU values
+of NI ports, configured within their `NetworkConfig` objects
+(see [DEVICE-CONNECTIVITY.md](DEVICE-CONNECTIVITY.md), section "Network Adapter MTU").
+If the configured network instance MTU is higher than MTU of any of the NI ports,
+EVE will flag the network instance with an error and use the lowest MTU among
+all the NI ports for the network instance instead. This is to prevent apps from sending
+packets exceeding the path MTU. Packets entering NI via port with a higher MTU and with
+size exceeding the NI MTU will get fragmented inside EVE (if allowed by IP header).
+By default (if MTU is not configured by the user, i.e. 'mtu' is zero), EVE uses 1500
+as MTU for air-gapped network instances and the lowest MTU among NI ports for NIs with
+external connectivity.
+
+### Flow Logging
+
+EVE uses [Linux connection tracking](https://conntrack-tools.netfilter.org/manual.html)
+to periodically (every 2 minutes) record all application TCP and UDP flows. A flow record
+encapsulates application UUID, VIF name, open/close timestamps, src/dst IP/port/proto 5-tuple,
+packet and byte counters.
+
+Additionally, EVE captures DNS packets to make a recording of every DNS request from application.
+This includes the request time, hostname that was being resolved and the returned IP address(es).
+
+A batch of new flow records is published to the controller (POST `/api/v1/edgeDevice/flowlog`)
+inside `FlowMessage`.

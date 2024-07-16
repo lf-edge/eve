@@ -1,15 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<mxfile host="app.diagrams.net" modified="2023-04-25T08:24:49.452Z" agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36" etag="DWVQqd3h6PjOISq_hGwY" version="21.2.1" type="google">
+<mxfile host="app.diagrams.net" modified="2024-07-16T09:28:42.054Z" agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36" etag="dVECtD8WSBDJPwK0-yYi" version="24.3.1" type="google">
   <diagram id="GzRIDoOry3U65DF7Gz-Z" name="Page-1">
-    <mxGraphModel dx="2210" dy="746" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+    <mxGraphModel dx="1979" dy="693" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
         <mxCell id="mHDy3mMdhTTft-WYP5wF-1" value="" style="rounded=0;whiteSpace=wrap;html=1;dashed=1;" parent="1" vertex="1">
-          <mxGeometry x="-190" y="420" width="650" height="150" as="geometry" />
-        </mxCell>
-        <mxCell id="mHDy3mMdhTTft-WYP5wF-2" value="" style="rounded=0;whiteSpace=wrap;html=1;dashed=1;" parent="1" vertex="1">
-          <mxGeometry x="500" y="420" width="330" height="150" as="geometry" />
+          <mxGeometry x="-190" y="420" width="960" height="150" as="geometry" />
         </mxCell>
         <mxCell id="mHDy3mMdhTTft-WYP5wF-3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" parent="1" source="mHDy3mMdhTTft-WYP5wF-7" target="mHDy3mMdhTTft-WYP5wF-9" edge="1">
           <mxGeometry relative="1" as="geometry" />
@@ -91,23 +88,20 @@
             <mxPoint x="730" y="420" as="targetPoint" />
           </mxGeometry>
         </mxCell>
-        <mxCell id="mHDy3mMdhTTft-WYP5wF-23" value="UplinkProber" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" parent="1" vertex="1">
+        <mxCell id="mHDy3mMdhTTft-WYP5wF-23" value="PortProber" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" parent="1" vertex="1">
           <mxGeometry x="605" y="160" width="120" height="60" as="geometry" />
         </mxCell>
-        <mxCell id="mHDy3mMdhTTft-WYP5wF-26" value="Watch uplink selection changes" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" parent="1" vertex="1">
-          <mxGeometry x="440" y="150" width="120" height="30" as="geometry" />
+        <mxCell id="mHDy3mMdhTTft-WYP5wF-26" value="Watch multi-path route port selection changes" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" parent="1" vertex="1">
+          <mxGeometry x="440" y="150" width="140" height="30" as="geometry" />
         </mxCell>
-        <mxCell id="mHDy3mMdhTTft-WYP5wF-27" value="&lt;div&gt;AddNI&lt;/div&gt;&lt;div&gt;DelNI&lt;/div&gt;&lt;div&gt;UpdateNI&lt;br&gt;&lt;/div&gt;&lt;div&gt;ConnectApp&lt;/div&gt;&lt;div&gt;ReconnectApp&lt;/div&gt;&lt;div&gt;DisconnectApp&lt;/div&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" parent="1" vertex="1">
+        <mxCell id="mHDy3mMdhTTft-WYP5wF-27" value="&lt;div&gt;AddNI&lt;/div&gt;&lt;div&gt;DelNI&lt;/div&gt;&lt;div&gt;UpdateNI&lt;br&gt;&lt;/div&gt;&lt;div&gt;AddAppConn&lt;/div&gt;&lt;div&gt;UpdateAppConn&lt;/div&gt;&lt;div&gt;DelAppConn&lt;/div&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" parent="1" vertex="1">
           <mxGeometry x="340" y="230.5" width="100" height="139" as="geometry" />
         </mxCell>
         <mxCell id="mHDy3mMdhTTft-WYP5wF-29" value="Watch to update the current state" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" parent="1" vertex="1">
           <mxGeometry x="180" y="431" width="100" height="35" as="geometry" />
         </mxCell>
         <mxCell id="mHDy3mMdhTTft-WYP5wF-31" value="&lt;div&gt;&lt;i&gt;Network-stack specific&lt;/i&gt;&lt;/div&gt;&lt;div&gt;&lt;i&gt;Replaceable&lt;br&gt;&lt;/i&gt;&lt;/div&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;dashed=1;" parent="1" vertex="1">
-          <mxGeometry x="60" y="530" width="140" height="30" as="geometry" />
-        </mxCell>
-        <mxCell id="mHDy3mMdhTTft-WYP5wF-32" value="&lt;div&gt;&lt;i&gt;Testing-method and Network-stack specific&lt;/i&gt;&lt;/div&gt;&lt;div&gt;&lt;i&gt;Replaceable&lt;br&gt;&lt;/i&gt;&lt;/div&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;dashed=1;" parent="1" vertex="1">
-          <mxGeometry x="595" y="530" width="140" height="30" as="geometry" />
+          <mxGeometry x="440" y="520" width="140" height="30" as="geometry" />
         </mxCell>
         <mxCell id="mHDy3mMdhTTft-WYP5wF-33" value="Reconciler" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#D3E8E7;strokeColor=#879493;" parent="1" vertex="1">
           <mxGeometry x="180" y="648" width="120" height="60" as="geometry" />
@@ -136,16 +130,16 @@
         <mxCell id="mHDy3mMdhTTft-WYP5wF-43" value="Collect stata data, metrics and application flows" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" parent="1" vertex="1">
           <mxGeometry x="-100" y="136" width="160" height="27" as="geometry" />
         </mxCell>
-        <mxCell id="mHDy3mMdhTTft-WYP5wF-44" value="Metadata&lt;br&gt;HTTP Handler" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" parent="1" vertex="1">
-          <mxGeometry x="120" y="270" width="105" height="60" as="geometry" />
+        <mxCell id="mHDy3mMdhTTft-WYP5wF-44" value="msrv" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" parent="1" vertex="1">
+          <mxGeometry x="100" y="285" width="95" height="30" as="geometry" />
         </mxCell>
-        <mxCell id="mHDy3mMdhTTft-WYP5wF-46" value="Instantiate" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" parent="1" vertex="1">
-          <mxGeometry x="175" y="200" width="70" height="50" as="geometry" />
+        <mxCell id="mHDy3mMdhTTft-WYP5wF-46" value="Instantiate&lt;div&gt;MakeMetadataHandler&lt;/div&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" parent="1" vertex="1">
+          <mxGeometry x="180" y="210" width="70" height="50" as="geometry" />
         </mxCell>
         <mxCell id="mHDy3mMdhTTft-WYP5wF-47" value="objtonum.Allocator&lt;br&gt;objtonum.Map" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" parent="1" vertex="1">
           <mxGeometry x="-60" y="270" width="115" height="60" as="geometry" />
         </mxCell>
-        <mxCell id="HwllGHelbZ9ob0iTIx3g-1" value="ReachabilityProber" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" parent="1" vertex="1">
+        <mxCell id="HwllGHelbZ9ob0iTIx3g-1" value="ReachabilityProber" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" parent="1" vertex="1">
           <mxGeometry x="605" y="445" width="120" height="50" as="geometry" />
         </mxCell>
         <mxCell id="ns74zINoUfiNlOSQjTI8-4" value="&lt;font style=&quot;font-size: 12px;&quot;&gt;Probe&lt;/font&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" parent="1" vertex="1">
