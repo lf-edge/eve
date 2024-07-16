@@ -7,7 +7,7 @@
 # The image of mkverification-raw-efi tests the compatibility of the underlying
 # hardware with EVE-OS. If the verification procedure is successful, EVE-OS
 # will operate without problems with the edge device that is being verified
-FROM lfedge/eve-alpine:c114cf1d3ea51534f061f9aa949beb6ac5c12fb3 AS build
+FROM lfedge/eve-alpine:e34284a8dd69c9c5ba7c52cd7b7d08fc2db1e0ac AS build
 SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
 
 ENV BUILD_PKGS mkinitfs grep patch make coreutils musl-dev gcc g++ perl \

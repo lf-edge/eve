@@ -1,4 +1,4 @@
-FROM lfedge/eve-alpine:1f7685f95a475c6bbe682f0b976f12180b6c8726 AS build
+FROM lfedge/eve-alpine:e34284a8dd69c9c5ba7c52cd7b7d08fc2db1e0ac AS build
 
 ENV PKGS mtools dosfstools
 RUN eve-alpine-deploy.sh
