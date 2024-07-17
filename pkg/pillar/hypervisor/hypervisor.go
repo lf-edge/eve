@@ -5,9 +5,11 @@ package hypervisor
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -237,4 +239,30 @@ func PCISameControllerGeneric(id1 string, id2 string) bool {
 	}
 
 	return tag1 == tag2
+}
+
+func LaunchSwtpmAndWait(id string, seconds int) (string, error) {
+	conn, err := net.Dial("unix", types.TpmdControlSocket)
+	if err != nil {
+		return "", err
+	}
+	defer conn.Close()
+
+	pidPath := fmt.Sprintf(types.SwtpmPidPath, id)
+	sockPath := fmt.Sprintf(types.SwtpmSocketPath, id)
+	// Send the id to the swtpm control socket, so it can launch the swtpm.
+	_, err = conn.Write([]byte(fmt.Sprintf("%s\n", id)))
+	if err != nil {
+		return "", err
+	}
+
+	// Wait 3 seconds for the swtpm to launch, check the pid file.
+	for i := 0; i < seconds; i++ {
+		if fileutils.FileExists(nil, pidPath) {
+			return sockPath, nil
+		}
+		time.Sleep(1 * time.Second)
+	}
+
+	return "", fmt.Errorf("failed to launch swtmp, execced maximum %d seconds wait time", seconds)
 }

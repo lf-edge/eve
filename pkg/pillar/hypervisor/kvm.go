@@ -395,10 +395,27 @@ const qemuCANBusTemplate = `
   if = "{{.HostIfName}}"
 `
 
+const qemuSwtpmConfig = `
+[chardev "swtpm"]
+  backend = "socket"
+  path = "%s"
+
+[tpmdev "tpm0"]
+  type = "emulator"
+  chardev = "swtpm"
+
+[device "tpm-tis"]
+  driver = "tpm-tis"
+  tpmdev = "tpm0"
+`
+
 const kvmStateDir = "/run/hypervisor/kvm/"
 const sysfsVfioPciBind = "/sys/bus/pci/drivers/vfio-pci/bind"
 const sysfsPciDriversProbe = "/sys/bus/pci/drivers_probe"
 const vfioDriverPath = "/sys/bus/pci/drivers/vfio-pci"
+
+// this will hold the swtpm config if everything goes well, otherwise empty.
+var qemuRunningSwtpmConfig = ""
 
 // KvmContext is a KVM domains map 0-1 to anchor device model UNIX processes (qemu or firecracker)
 // For every anchor process we maintain the following entry points in the
@@ -674,6 +691,18 @@ func (ctx KvmContext) Setup(status types.DomainStatus, config types.DomainConfig
 	diskStatusList := status.DiskStatusList
 	domainName := status.DomainName
 	domainUUID := status.UUIDandVersion.UUID
+
+	// Get the SWTPM config first, we need to make sure swtpm is alive and kicking
+	// before setting up the qemu config, otherwise the VM will fail to start in
+	// case of SWTPM failure.
+	swtpmConfig, err := getQemuSwtpmConfig(domainUUID.String())
+	if err != nil {
+		logError("VM will launch with no VTPM, failed to get SWTPM config domain %s: %v", domainName, err)
+	} else {
+		// this is a global variable used in CreateDomConfig
+		qemuRunningSwtpmConfig = swtpmConfig
+	}
+
 	// first lets build the domain config
 	if err := ctx.CreateDomConfig(domainName, config, status, diskStatusList,
 		aa, globalConfig, file); err != nil {
@@ -755,7 +784,7 @@ func (ctx KvmContext) CreateDomConfig(domainName string,
 	tmplCtx.DomainConfig.DisplayName = domainName
 
 	// render global device model settings
-	t, _ := template.New("qemu").Parse(qemuConfTemplate)
+	t, _ := template.New("qemu").Parse(qemuConfTemplate + qemuRunningSwtpmConfig)
 	if err := t.Execute(file, tmplCtx); err != nil {
 		return logError("can't write to config file %s (%v)", file.Name(), err)
 	}
@@ -1103,4 +1132,13 @@ func GetQmpExecutorSocket(domainName string) string {
 
 func getQmpListenerSocket(domainName string) string {
 	return filepath.Join(kvmStateDir, domainName, "listener.qmp")
+}
+
+func getQemuSwtpmConfig(domainId string) (string, error) {
+	swtpmSock, err := LaunchSwtpmAndWait(domainId, 3)
+	if err != nil {
+		return "", logError("failed to launch swtpm %v", err)
+	}
+
+	return fmt.Sprintf(qemuSwtpmConfig, swtpmSock), nill
 }
