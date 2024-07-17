@@ -1140,5 +1140,5 @@ func getQemuSwtpmConfig(domainId string) (string, error) {
 		return "", logError("failed to launch swtpm %v", err)
 	}
 
-	return fmt.Sprintf(qemuSwtpmConfig, swtpmSock), nill
+	return fmt.Sprintf(qemuSwtpmConfig, swtpmSock), nil
 }
