@@ -1,0 +1,11 @@
+--- a/misc/acrn-manager/acrnctl.c
++++ b/misc/acrn-manager/acrnctl.c
+@@ -771,7 +771,7 @@
+ {
+ 	char df_opt[16] = "VM_NAME";
+ 
+-	if (argc != 2 || ((argv + 1) && !strcmp(argv[1], "help"))) {
++	if (argc != 2 || !strcmp(argv[1], "help")) {
+ 		printf("acrnctl %s %s\n", cmd->cmd, df_opt);
+ 		return -1;
+ 	}
