@@ -883,7 +883,7 @@ cache-export: image-set outfile-set $(LINUXKIT)
 ## export an image from linuxkit cache and load it into docker.
 cache-export-docker-load: $(LINUXKIT)
 	$(eval TARFILE := $(shell mktemp))
-	$(MAKE) cache-export --format docker OUTFILE=${TARFILE} && cat ${TARFILE} | docker load
+	$(MAKE) cache-export OUTFILE=${TARFILE} && cat ${TARFILE} | docker load
 	rm -rf ${TARFILE}
 
 %-cache-export-docker-load: $(LINUXKIT)
