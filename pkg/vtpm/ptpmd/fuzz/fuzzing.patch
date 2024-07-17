@@ -1,0 +1,422 @@
+--- ../src/server.cpp	2023-07-17 08:26:37.035973227 +0000
++++ server.cpp	2023-07-17 17:32:13.817789555 +0000
+@@ -19,6 +19,7 @@
+ #include <atomic>
+ #include "vtpm_api.pb.h"
+ #include <list>
++#include <signal.h>
+ #include <google/protobuf/io/zero_copy_stream_impl.h>
+ 
+ using namespace std;
+@@ -42,6 +43,22 @@
+ std::atomic<int> _g_numConn(0);
+ string cmdOutputFile("cmd.output");
+ 
++// forward declaration of __gcov_dump()
++extern "C" void __gcov_dump();
++
++// signal handler definition which flushes coverage data
++void signal_handler(int signum)
++{
++    printf("\nDumping code coverage data...\n", signum);
++    __gcov_dump();
++    exit(1);
++}
++
++void simRecv(const uint8_t **Data, size_t *Size, size_t recvSize){
++    *Data = *Data + recvSize;
++    *Size = *Size - recvSize;
++}
++
+ //Protobufs are sent in CodedStream format.
+ //Read first CODED_STRM_HDR_LEN bytes to decode the length of
+ //the payload
+@@ -75,24 +92,6 @@
+ "tpm2_verifysignature",
+ };
+ 
+-//Helper callback to be used in nftw()
+-int
+-walkCb(const char *fpath, const struct stat *sb, int typeflag,
+-       struct FTW *ftwbuf)
+-{
+-    return remove(fpath);
+-}
+-
+-//Delete the given (possibly non-empty)directory
+-static void
+-rmClientWorkingDir(const char *path)
+-{
+-    if (nftw(path, walkCb, 64, FTW_DEPTH | FTW_PHYS) < 0) {
+-        int rc = errno;
+-        cerr << "nftw() failed, " << strerror(rc) << std::endl;
+-    }
+-}
+-
+ // Send the given response to the given socket, after converting
+ // response to Serialized Coded Stream.
+ // Returns non-zero error in case of failure.
+@@ -159,7 +158,7 @@
+ //response message accordingly, and return error to the
+ //caller
+ static int
+-sanitizeCmdRequest (int sock, eve_tools::EveTPMRequest &request,
++sanitizeCmdRequest (/* int sock, */ eve_tools::EveTPMRequest &request,
+                    eve_tools::EveTPMResponse &response)
+ {
+     int rc = success;
+@@ -171,8 +170,6 @@
+ 
+     //If command is not one of the allowed group, reject it.
+     if (!isCommandAllowed(command)) {
+-        cerr << "Not a legal command, bailing out" << std::endl;
+-        response.set_response(command + ":" + "Command is forbidden!");
+         rc = failure;
+         goto cleanup_and_exit;
+     }
+@@ -181,8 +178,6 @@
+     for (int i=0; i < request.expectedfiles_size(); i++) {
+         std::string expectedFile = request.expectedfiles(i);
+         if (isFileNameAPath(expectedFile)) {
+-            response.set_response(expectedFile + ":" +
+-                                  "output filename should not be a path!");
+             rc = failure;
+             goto cleanup_and_exit;
+         }
+@@ -190,8 +185,6 @@
+     for (int i=0; i < request.inputfiles_size(); i++) {
+         const eve_tools::File& file = request.inputfiles(i);
+         if (isFileNameAPath(file.name())) {
+-            response.set_response(file.name() + ":" +
+-                                  "input filename should not be a path!");
+             return rc;
+             goto cleanup_and_exit;
+         }
+@@ -223,18 +216,10 @@
+     cmdArgs[i] = nullptr;
+ 
+     if (i == (MAX_ARGS - 1)) {
+-        cerr << "More than acceptable number of args" << std::endl;
+-        response.set_response("Too many arguments");
+         rc = failure;
+         goto cleanup_and_exit;
+     }
+ 
+-    //print for debugging purposes
+-    cout << "Prepared command is :" << std::endl;
+-    while(cmdArgs[j]) {
+-      cout << cmdArgs[j++] << " ";
+-    }
+-    cout << std::endl;
+     return rc;
+ 
+ cleanup_and_exit:
+@@ -305,7 +290,7 @@
+ // Returns non-zero error code in case of failure, and fills up
+ // response.response() with appropriate error message.
+ static int
+-parseRequest(int sock,
++parseRequest(/* int sock, */ const uint8_t *Data, size_t DataSize,
+              google::protobuf::uint32 size,
+              eve_tools::EveTPMRequest &request,
+              eve_tools::EveTPMResponse &response,
+@@ -313,21 +298,13 @@
+ {
+     ssize_t byteCnt = 0;
+     ifstream cmdOut;
+-
+-    //We expect at least one byte to read here.
+-    if (size == 0) {
+-        response.set_response("Invalid request length:" + to_string(size));
+-        return failure;
+-    }
+-
+-    byteCnt = recv(sock, (void*)payload, size+CODED_STRM_HDR_LEN, MSG_WAITALL);
+-    if (byteCnt < 0) {
+-        int err = errno;
+-        cerr << "Error reading further payload bytes:"
+-             << strerror(err) << std::endl;
+-        response.set_response("recv() failure" + string(strerror(err)));
++	
++	if (DataSize < size+CODED_STRM_HDR_LEN) {
+         return failure;
+     }
++	
++	memcpy((void*)payload, Data, size+CODED_STRM_HDR_LEN);
++    simRecv(&Data, &DataSize, size+CODED_STRM_HDR_LEN);
+ 
+     //Convert CodedSInputStream into Protobuf fields
+     google::protobuf::io::ArrayInputStream arrayStrm(payload, size+CODED_STRM_HDR_LEN);
+@@ -336,8 +313,6 @@
+     google::protobuf::io::CodedInputStream::Limit msgLimit =
+         CodedStrmInput.PushLimit(size);
+     if (!request.ParseFromCodedStream(&CodedStrmInput)) {
+-        cerr << "Incorrect CodedStream format or read error" << std::endl;
+-        response.set_response("Incorrect request format");
+         return failure;
+     }
+     CodedStrmInput.PopLimit(msgLimit);
+@@ -349,7 +324,7 @@
+ //is given as input.
+ //Returns non-zero error on failure.
+ int
+-handleRequest (int sock, google::protobuf::uint32 size)
++handleRequest (/* int sock, */ const uint8_t *Data, size_t DataSize, google::protobuf::uint32 size)
+ {
+     eve_tools::EveTPMRequest request;
+     eve_tools::EveTPMResponse response;
+@@ -359,110 +334,24 @@
+ 
+     char *payload = new(nothrow) char [size+CODED_STRM_HDR_LEN];
+     if (payload == nullptr) {
+-        cerr << "Failed to allocate memory for requests payload" << std::endl;
+         rc = failure;
+         goto cleanup_and_exit;
+     }
+ 
+-    if (parseRequest(sock, size, request, response, payload) < 0) {
+-        sendResponse(sock, response);
++    if (parseRequest(/* sock, */ Data, DataSize, size, request, response, payload) < 0) {
+         rc = failure;
+         goto cleanup_and_exit;
+     }
+ 
+-    if (sanitizeCmdRequest(sock, request, response) != 0) {
+-        //send the error set by sanitizeCmdRequest to client.
+-        sendResponse(sock, response);
++    if (sanitizeCmdRequest(/* sock, */ request, response) != 0) {
+         rc = failure;
+         goto cleanup_and_exit;
+     }
+ 
+-    if (mkdir(clientWorkingDir.c_str(), 0700) < 0 ) {
+-        int rc = errno;
+-        cerr << "Unable to create client specific working dir "
+-             << clientWorkingDir << ": "
+-             << string(strerror(rc)) << std::endl;
+-        response.set_response("Unable to create client specific working dir: "
+-                               + string(strerror(rc)));
+-        sendResponse(sock, response);
+-        goto cleanup_and_exit;
+-    }
+-
+     if (prepareCommand(request.command(), cmdArgs, response) < 0) {
+-        sendResponse(sock, response);
+         rc = failure;
+         goto cleanup_and_exit;
+     }
+-    //Prepare input files expected by the command.
+-    for (int i=0; i < request.inputfiles_size(); i++) {
+-        const eve_tools::File& file = request.inputfiles(i);
+-        ofstream input_file;
+-        input_file.open(clientWorkingDir + "/" + file.name(),
+-                        ios::out|ios::binary);
+-        if (!input_file) {
+-            cerr << "Unable to open file for writing input contents: "
+-                 << file.name() << std::endl;
+-            response.set_response("Unable to open input file " + file.name());
+-            sendResponse(sock, response);
+-            rc = failure;
+-            goto cleanup_and_exit;
+-        }
+-        input_file << file.content();
+-        input_file.close();
+-    }
+-
+-    //sync all the input files.
+-    sync();
+-
+-    rc = execCmd(cmdArgs);
+-    if (rc != 0) {
+-        cerr << "Command invocation failed with rc " << rc << std::endl;
+-        response.set_response("Backend failure while serving the request: Error "
+-                               + to_string(rc));
+-        sendResponse(sock, response);
+-        rc = failure;
+-        goto cleanup_and_exit;
+-    }
+-
+-    //sync all the output files.
+-    sync();
+-
+-    //Pack stderr/stdout from command invocation.
+-    cmdOut.open(clientWorkingDir + "/" + cmdOutputFile, ios::in);
+-    if (cmdOut) {
+-        ostringstream cmdoutstream;
+-        //cmdOut could be empty, not an error.
+-        cmdoutstream << cmdOut.rdbuf();
+-        cout << "Command output is: " << std::endl
+-             << cmdoutstream.str() << std::endl;
+-        response.set_response(cmdoutstream.str());
+-        cmdOut.close();
+-    }
+-
+-    //Pack output files expected by the client, from the command.
+-    for (int i=0; i < request.expectedfiles_size(); i++) {
+-        std::string expectedFile = request.expectedfiles(i);
+-        ifstream output_file;
+-        output_file.open(clientWorkingDir + "/" + expectedFile,
+-                         ios::in| ios::binary);
+-        if (!output_file) {
+-            cerr << "Unexpected: expected file " << expectedFile
+-                <<  " is not present!" << std::endl;
+-            response.set_response("Expected file not found " + expectedFile);
+-            sendResponse(sock, response);
+-            rc = failure;
+-            goto cleanup_and_exit;
+-        } else {
+-            ostringstream expectedFileContent;
+-            expectedFileContent << output_file.rdbuf();
+-            eve_tools::File *outputFile = response.add_outputfiles();
+-            outputFile->set_name(expectedFile);
+-            outputFile->set_content(expectedFileContent.str());
+-            output_file.close();
+-        }
+-    }
+-    sendResponse(sock, response);
+-    //fall through for cleanup and exit
+ 
+ cleanup_and_exit:
+     if (cmdOut) {
+@@ -478,125 +367,38 @@
+             free((void *)cmdArgs[i]);
+     }
+ 
+-    // Remove the working directory
+-    rmClientWorkingDir(clientWorkingDir.c_str());
+     return rc;
+ }
+ 
+ //Starting point of client threads
+ static void
+-serveClient(int sock, sockaddr_in clientAddr)
++serveClient(const uint8_t *Data, size_t DataSize)
+ {
+     ssize_t recvBytes = 0;
+     struct timeval tv;
+     char hdrBuf[CODED_STRM_HDR_LEN];
+     char *pBuf = hdrBuf;
++    int signum;
+ 
+-    if (sock < 0) {
+-        _g_numConn--;
+-        return;
++    if (signal(SIGINT, signal_handler) == SIG_ERR) {
++        printf("couldn't set a handler for signal: %d\n", signum);
++        exit(1);
+     }
+ 
+-    //Don't block forever on reading. Have a timeout
+-    tv.tv_sec = CLIENT_READ_TIMEOUT;
+-    tv.tv_usec = 0;
+-    if (setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO,
+-              (const char*)&tv, sizeof tv) < 0) {
+-        int rc = errno;
+-        cerr << "Error setting recv timeout. client sock/err:"
+-             << sock << strerror(rc) << std::endl;
+-        _g_numConn--;
++    if (DataSize < CODED_STRM_HDR_LEN) {
+         return;
+     }
+ 
+-    //create a client specific directory of the form:
+-    //client_wd_x.x.x.x_yyyy, where x.x.x.x is source ip, and yyyy is source port.
+-    //e.g. client_wd_10.0.1.1_19834
+-    clientWorkingDir = "client_wd_" + string(inet_ntoa(clientAddr.sin_addr))
+-                        + "_" + to_string(clientAddr.sin_port);
++    memcpy(hdrBuf, Data, CODED_STRM_HDR_LEN);
++    // not simRecv here, this is just a MSG_PEEK
+ 
+-    recvBytes = recv(sock, pBuf, CODED_STRM_HDR_LEN, MSG_PEEK);
+-    if (recvBytes < 0) {
+-        int rc = errno;
+-        cerr << "recv() from " << inet_ntoa(clientAddr.sin_addr)
+-             << " failed with " << rc << std::endl;
+-    } else if (recvBytes == CODED_STRM_HDR_LEN) {
+-        google::protobuf::uint32 payloadSize = readHdr(hdrBuf);
+-        if (payloadSize > 0 && payloadSize <= (MAX_PAYLOAD_SIZE - CODED_STRM_HDR_LEN)) {
+-            if (handleRequest(sock, payloadSize) != 0) {
+-                cerr << "Failure processing the request" << std::endl;
+-            }
+-        }
+-        else {
+-            cerr << "Request size " << payloadSize << " is too large or small (maybe adjust MAX_PAYLOAD_SIZE)" << std::endl;
+-        }
+-    } else {
+-       cerr << "recv() received fewer than expected(" << recvBytes
+-            << ") bytes from: " << inet_ntoa(clientAddr.sin_addr)
+-            << std::endl;
++    google::protobuf::uint32 payloadSize = readHdr(hdrBuf);
++    if (payloadSize > 0 && payloadSize <= (MAX_PAYLOAD_SIZE - CODED_STRM_HDR_LEN)) {
++        handleRequest(/* sock */ Data, DataSize, payloadSize);
+     }
+-    _g_numConn--;
+-    close(sock);
+ }
+ 
+-int
+-main (int argc, char *argv[])
+-{
+-    int rc  = success;
+-    // socket address used to store client address
+-    struct sockaddr_in clientAddr;
+-    socklen_t clientAddrLen = sizeof(clientAddr);
+-
+-    // socket address used to store server address
+-    struct sockaddr_in serverAddr;
+-    memset(&serverAddr, 0, sizeof(serverAddr));
+-    serverAddr.sin_family = AF_INET;
+-    serverAddr.sin_port = htons(SERVER_PORT);
+-    serverAddr.sin_addr.s_addr = htonl(INADDR_ANY);
+-
+-    int listenSock;
+-    if ((listenSock = socket(PF_INET, SOCK_STREAM, 0)) < 0) {
+-        cerr << "could not create listen socket" << std::endl;
+-        return failure;
+-    }
+-
+-    if ((bind(listenSock, (struct sockaddr *)&serverAddr,
+-                    sizeof(serverAddr))) < 0) {
+-        cerr << "Bind failure, aborting" << std::endl;
+-        rc = failure;
+-        goto cleanup_and_exit;
+-    }
+-
+-    if (listen(listenSock, LISTEN_BACKLOG_LIMIT) < 0) {
+-        cerr << "Listen failure, aborting" << std::endl;
+-        rc = failure;
+-        goto cleanup_and_exit;
+-    }
+-
+-    while (true) {
+-        int sock;
+-        if ((sock = accept(listenSock, (struct sockaddr *)&clientAddr,
+-                        &clientAddrLen)) < 0) {
+-            cerr << "Error in accepting client connection" << std::endl;
+-        }
+-
+-        cout << "New connection from: " << inet_ntoa(clientAddr.sin_addr)
+-             << ":" << to_string(clientAddr.sin_port) << std::endl;
+-
+-        if (_g_numConn >= MAX_WORKERS) {
+-            eve_tools::EveTPMResponse response;
+-            response.set_response("Server busy, try again later.");
+-            sendResponse(sock, response);
+-            close(sock);
+-            continue;
+-        }
+-
+-        _g_numConn++;
+-        std::thread worker(serveClient, sock, clientAddr);
+-        worker.detach();
+-    }
+-
+-cleanup_and_exit:
+-    close(listenSock);
+-    return rc;
+-}
++extern "C" int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size) {
++  serveClient(Data, Size);
++  return 0;
++}
+\ No newline at end of file

@@ -8,8 +8,8 @@ FROM shahzededa/eve-alpine:latest as build
 ENV BUILD_PKGS gcc g++ autoconf automake libtool make openssl-dev libtasn1-dev \
                json-glib-dev gnutls bash expect gawk socat libseccomp-dev gmp-dev \
                musl-utils autoconf-archive git json-c json-c-dev libcurl curl-dev \
-               patch go
-ENV PKGS libseccomp socat libcurl
+               patch go protobuf-dev
+ENV PKGS libseccomp libcurl libstdc++ libprotobuf
 RUN eve-alpine-deploy.sh
 
 # build libtpms, it is needed by swtpm
@@ -50,7 +50,7 @@ RUN cp tools/.libs/tpm2 /out/usr/bin/
 
 # Build vtpmd
 WORKDIR /vtpmd-build
-COPY vtpmd/src/  /vtpmd-build/.
+COPY vtpmd/src/ /vtpmd-build/.
 COPY vtpmd/ /vtpmd-build/.
 ARG GOPKGVERSION
 SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
@@ -60,6 +60,11 @@ RUN echo "Running go vet" && go vet ./... && echo "Running go fmt" && \
     if [ -n "$ERR" ] ; then echo "go fmt Failed - ERR: $ERR"; exit 1 ; fi
 RUN GO111MODULE=on CGO_ENABLED=0 go build -ldflags "-s -w -X=main.Version=${GOPKGVERSION}" \
     -mod=vendor -o /out/usr/bin/vtpmd .
+
+# Build ptpmd
+WORKDIR /ptpmd-build
+COPY ptpmd /ptpmd-build/.
+RUN make -j$(nproc) && cp ptpmd /out/usr/bin/
 
 FROM scratch
 COPY --from=build /out/ /
