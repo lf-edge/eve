@@ -153,7 +153,7 @@ func handleRequest(conn net.Conn) {
 		return
 	}
 	id = strings.TrimSpace(id)
-	if runVirtualTpmInstance(id) != nil {
+	if err := runVirtualTpmInstance(id); err != nil {
 		log.Printf("Failed to run SWTPM instance: %v", err)
 		return
 	}
