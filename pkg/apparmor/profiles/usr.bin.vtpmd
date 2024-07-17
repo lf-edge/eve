@@ -1,0 +1,26 @@
+# Copyright (c) 2023 Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+#include <tunables/global>
+
+@{exec_path} = /usr/bin/vtpmd
+profile vtpmd @{exec_path} {
+    #include <abstractions/base>
+
+    # allow necessary access for operations
+    owner /usr/bin/vtpmd            rm,
+    owner /home/{,*,**}             rw,
+
+    # writes temporary tpm-state encryption key here.
+    owner /run/swtpm/{,*,**}        rw,
+
+    # crates the per-vm tpm-state dir here.
+   owner /persist/swtpm/{,*,**}     rw,
+
+    # access to host tpm to unseal the encryption key.
+    /dev/tpm0                       rw,
+    /dev/tpmrm0                     rw,
+
+    # allow executing swtpm
+    /usr/bin/swtpm                  Px,
+}
