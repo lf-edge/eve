@@ -256,12 +256,13 @@ func LaunchSwtpmAndWait(id string, seconds int) (string, error) {
 		return "", err
 	}
 
-	// Wait 3 seconds for the swtpm to launch, check the pid file.
-	for i := 0; i < seconds; i++ {
-		if fileutils.FileExists(nil, pidPath) {
-			return sockPath, nil
-		}
-		time.Sleep(1 * time.Second)
+	// It can happen that swtpm is launched, pid created (and checked) and then
+	// swtpm dies due to an error! In that case we don't want to prevent the vm
+	// form starting. So launch swtpm, wait a bit and then check the pid file to
+	// make sure it is still alive.
+	time.Sleep(1 * time.Second)
+	if fileutils.FileExists(nil, pidPath) {
+		return sockPath, nil
 	}
 
 	return "", fmt.Errorf("failed to launch swtmp, execced maximum %d seconds wait time", seconds)
