@@ -22,13 +22,13 @@ C_SEC_FLAGS = $(C_SEC_WARN) -D_FORTIFY_SOURCE=3 \
 -fstack-protector-strong -fstack-clash-protection -fPIE \
 -fsanitize=bounds -fsanitize-undefined-trap-on-error
 
-L_SEC_FLAGS = -Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack
+L_SEC_FLAGS = -Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack -Wl,--copy-dt-needed-entries
 
 $(TARGET): $(PROTO_OBJS) $(SERVER_OBJS)
-	$(CC) $(C_SEC_FLAGS) $(L_SEC_FLAGS) $(PROTO_OBJS) $(SERVER_OBJS) -o $@ -lprotobuf
+	$(CC) $(C_SEC_FLAGS) $(L_SEC_FLAGS) $(PROTO_OBJS) $(SERVER_OBJS) $(LDLIBS) -o $@
 
 $(SERVER_OBJS): $(PROTO_OBJS)
-	$(CC) $(C_SEC_FLAGS) $(INC_FLAGS) -std=c++11 -c src/server.cpp -o $@
+	$(CC) $(C_SEC_FLAGS) $(INC_FLAGS) -std=c++17 -c src/server.cpp -o $@
 
 protoc_files: proto/vtpm_api.proto
 	protoc --cpp_out=proto -Iproto vtpm_api.proto
