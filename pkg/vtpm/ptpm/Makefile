@@ -1,7 +1,7 @@
 # Copyright (c) 2019 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-TARGET ?= ptpmd
+TARGET ?= ptpm
 SRC_DIRS ?= ./src
 INC_DIR ?= ./proto
 PROTO_OBJS ?= api.pb.o
@@ -41,7 +41,7 @@ clean:
 
 .PHONY: clean protoc_files all test
 
-all: ptpmd
+all: ptpm
 
 test:
 

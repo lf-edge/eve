@@ -1,11 +1,11 @@
 # PTPM Server
 *(warning! soon to be deprecated and removed)*
 
-Proxy TPM (located in `pkg/vtpm/ptpmd`) is a server listening on port `8877` in EVE, exposing limited functionality of the host's TPM to the clients. PTPM allows clients to execute [tpm2-tools](https://github.com/tpm2-software/tpm2-tools) binaries from a list of hardcoded options (listed bellow).
+Proxy TPM (located in `pkg/vtpm/ptpm`) is a server listening on port `8877` in EVE, exposing limited functionality of the host's TPM to the clients. PTPM allows clients to execute [tpm2-tools](https://github.com/tpm2-software/tpm2-tools) binaries from a list of hardcoded options (listed bellow).
 
 ## Packet Structure
 
-PTPM server accepts `EveTPMRequest` commands and outputs `EveTPMResponse`. Both structures are defined in probuf format in a file located in `pkg/vtpm/ptpmd/proto/api.proto`.
+PTPM server accepts `EveTPMRequest` commands and outputs `EveTPMResponse`. Both structures are defined in probuf format in a file located in `pkg/vtpm/ptpm/proto/api.proto`.
 
 ## Communicating with PTPM
 

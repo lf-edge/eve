@@ -37,7 +37,7 @@ RUN ./bootstrap && \
     make install
 RUN cp /usr/local/lib/libtss2* /out/usr/lib/
 
-# build tpm2-tools, it is needed by ptpmd
+# build tpm2-tools, it is needed by ptpm
 WORKDIR /tpm2-tools
 ADD --keep-git-dir=true https://github.com/tpm2-software/tpm2-tools.git#5.5 /tpm2-tools
 COPY patch/patch-tpm2-tools.diff .
@@ -49,9 +49,9 @@ RUN cp lib/.libs/libcommon.so* /out/usr/lib/
 RUN cp tools/.libs/tpm2 /out/usr/bin/
 
 # Build vtpmd
-WORKDIR /vtpmd-build
-COPY vtpmd/src/ /vtpmd-build/.
-COPY vtpmd/ /vtpmd-build/.
+WORKDIR /vtpm-build
+COPY vtpm/src/ /vtpm-build/.
+COPY vtpm/ /vtpm-build/.
 ARG GOPKGVERSION
 SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
 # hadolint ignore=SC2046
@@ -62,9 +62,9 @@ RUN GO111MODULE=on CGO_ENABLED=0 go build -ldflags "-s -w -X=main.Version=${GOPK
     -mod=vendor -o /out/usr/bin/vtpmd .
 
 # Build ptpmd
-WORKDIR /ptpmd-build
-COPY ptpmd /ptpmd-build/.
-RUN make -j$(nproc) && cp ptpmd /out/usr/bin/
+WORKDIR /ptpm-build
+COPY ptpm /ptpm-build/.
+RUN make -j$(nproc) && cp ptpm /out/usr/bin/
 
 FROM scratch
 COPY --from=build /out/ /
