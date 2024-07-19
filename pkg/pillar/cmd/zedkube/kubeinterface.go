@@ -57,25 +57,18 @@ func runKubeConfig(ctx *zedkubeContext, config, oldconfig *types.EdgeNodeCluster
 			monitorInterface(ctx, config)
 		}
 
-		var bootstrapNode bool
 		ipaddr := config.ClusterIPPrefix.IP
-		if ipaddr.Equal(config.JoinServerIP) {
-			bootstrapNode = true
-		}
-
-		log.Noticef("runKubeConfig: add, bootstrapNode %v", bootstrapNode)
-		if bootstrapNode {
-			if ctx.statusServer == nil {
-				mux := http.NewServeMux()
-				mux.HandleFunc("/status", func(w http.ResponseWriter, r *http.Request) {
-					statusHandler(w, r, ctx)
-				})
-				ctx.statusServer = &http.Server{
-					Addr:    ipaddr.String() + ":" + types.ClusterStatusPort,
-					Handler: mux,
-				}
-				go handleClusterStatus(ctx)
+		log.Noticef("runKubeConfig: handle cluster query on %v", ipaddr)
+		if ctx.statusServer == nil {
+			mux := http.NewServeMux()
+			mux.HandleFunc("/status", func(w http.ResponseWriter, r *http.Request) {
+				statusHandler(w, r, ctx)
+			})
+			ctx.statusServer = &http.Server{
+				Addr:    ipaddr.String() + ":" + types.ClusterStatusPort,
+				Handler: mux,
 			}
+			go handleClusterStatus(ctx)
 		}
 	}
 	publishKubeConfigStatus(ctx, config)
