@@ -480,17 +480,15 @@ func handleClusterStatus(ctx *zedkubeContext) {
 }
 
 func statusHandler(w http.ResponseWriter, r *http.Request, ctx *zedkubeContext) {
-	if ctx.config == nil {
-		config, err := kubeapi.GetKubeConfig()
-		if err != nil {
-			fmt.Fprint(w, "")
-			log.Errorf("statusHandler: can't get kubeconfig %v", err)
-			return
-		}
-		ctx.config = config
+	config, err := kubeapi.GetKubeConfig()
+	if err != nil {
+		fmt.Fprint(w, "")
+		log.Errorf("statusHandler: can't get kubeconfig %v", err)
+		return
 	}
+	ctx.config = config
 
-	clientset, err := kubernetes.NewForConfig(ctx.config)
+	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		log.Errorf("statusHandler: can't get clientset %v", err)
 		fmt.Fprint(w, "")

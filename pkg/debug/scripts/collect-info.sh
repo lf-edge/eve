@@ -452,6 +452,8 @@ fi
 
 ln -s /persist/status       "$DIR/persist-status"
 ln -s /persist/log          "$DIR/persist-log"
+ln -s /persist/newlog       "$DIR/persist-newlog"
+[ -d /persist/kubelog ] && ln -s /persist/kubelog "$DIR/persist-kubelog"
 ln -s /persist/netdump      "$DIR/persist-netdump"
 ln -s /persist/kcrashes     "$DIR/persist-kcrashes"
 [ -d /persist/memory-monitor/output ] && ln -s /persist/memory-monitor/output "$DIR/persist-memory-monitor-output"
@@ -481,6 +483,7 @@ fi
 # Make a tarball
 # --exlude='root-run/run'              /run/run/run/.. exclude symbolic link loop
 # --exclude='root-run/containerd-user'  the k8s.io/*/rootfs paths go deep
+# --exclude='persist-kubelog/save-var-lib'  /persist/kubelog/save-var-lib/.. exclude the saved /var/lib
 # --ignore-failed-read --warning=none  ignore all errors, even if read fails
 # --dereference                        follow symlinks
 echo "- tar/gzip"
