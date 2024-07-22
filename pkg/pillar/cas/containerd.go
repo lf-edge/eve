@@ -25,6 +25,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/containerd"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	"github.com/moby/sys/mountinfo"
 	"github.com/opencontainers/go-digest"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -692,7 +693,7 @@ func (c *containerdCAS) PrepareContainerRootDir(rootPath, reference, _ string) e
 		logrus.Errorf(err.Error())
 		return err
 	}
-	clientImageSpecJSON, err := getJSON(clientImageSpec)
+	clientImageSpecJSON, err := json.MarshalIndent(clientImageSpec, "", "    ")
 	if err != nil {
 		err = fmt.Errorf("PrepareContainerRootDir: Could not build json of image: %v. %v",
 			reference, err.Error())
@@ -705,13 +706,20 @@ func (c *containerdCAS) PrepareContainerRootDir(rootPath, reference, _ string) e
 		logrus.Errorf(err.Error())
 		return err
 	}
-	//nolint:gosec // we want this file to be 0666
-	if err := os.WriteFile(filepath.Join(rootPath, imageConfigFilename), []byte(clientImageSpecJSON), 0666); err != nil {
-		err = fmt.Errorf("PrepareContainerRootDir: Exception while writing image info to %v/%v. %w",
-			rootPath, imageConfigFilename, err)
+	ociConfPath := filepath.Join(rootPath, imageConfigFilename)
+	if err := fileutils.WriteRename(ociConfPath, clientImageSpecJSON); err != nil {
+		err = fmt.Errorf("PrepareContainerRootDir: Exception while writing image info to %s. %w",
+			ociConfPath, err)
 		logrus.Errorf(err.Error())
 		return err
 	}
+	if err := os.Chmod(ociConfPath, 0666); err != nil {
+		err = fmt.Errorf("PrepareContainerRootDir: Exception while setting permissions on %s. %w",
+			ociConfPath, err)
+		logrus.Errorf(err.Error())
+		return err
+	}
+	logrus.Infof("written image config for reference %s. content: %s", reference, string(clientImageSpecJSON))
 	if base.IsHVTypeKube() {
 		err := c.prepareContainerRootDirForKubevirt(clientImageSpec, snapshotID, rootPath)
 		if err != nil {
@@ -1116,15 +1124,6 @@ func getImageConfig(c *containerdCAS, reference string) (*ocispec.Image, error) 
 		return nil, err
 	}
 	return &imageConfig, nil
-}
-
-// getJSON - returns input in JSON format
-func getJSON(x interface{}) (string, error) {
-	b, err := json.MarshalIndent(x, "", "    ")
-	if err != nil {
-		return "", fmt.Errorf("getJSON: Exception while marshalling container spec JSON. %w", err)
-	}
-	return fmt.Sprint(string(b)), nil
 }
 
 // GetRoofFsPath returns rootfs path
