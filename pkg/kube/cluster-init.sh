@@ -422,6 +422,16 @@ check_start_containerd() {
                 logmsg "Started k3s-containerd at pid:$containerd_pid"
         fi
         if [ -f /etc/external-boot-image.tar ]; then
+                # Give containerd a moment to start before importing
+                for i in 1 2 3; do
+                        reported_pid=$(/var/lib/k3s/bin/k3s ctr -a /run/containerd-user/containerd.sock info | jq .server.pid)
+                        if [ "$reported_pid" = "$containerd_pid" ]; then
+                                logmsg "containerd online, continue to import"
+                                break  
+                        fi
+                        sleep 1
+                done
+
                 # NOTE: https://kubevirt.io/user-guide/virtual_machines/boot_from_external_source/
                 # Install external-boot-image image to our eve user containerd registry.
                 # This image contains just kernel and initrd to bootstrap a container image as a VM.
@@ -432,10 +442,10 @@ check_start_containerd() {
                 import_name=$(echo "$import_name_tag" | cut -d ':' -f 1)
                 eve_external_boot_img_name="docker.io/lfedge/eve-external-boot-image"
                 if [ "$import_name" = "$eve_external_boot_img_name" ]; then
-                        if ctr -a /run/containerd-user/containerd.sock image import /etc/external-boot-image.tar; then
+                        if /var/lib/k3s/bin/k3s ctr -a /run/containerd-user/containerd.sock image import /etc/external-boot-image.tar; then
                                 eve_external_boot_img_tag=$(cat /run/eve-release)
                                 eve_external_boot_img="${eve_external_boot_img_name}:${eve_external_boot_img_tag}"
-                                if ctr -a /run/containerd-user/containerd.sock image tag "$import_name_tag" "$eve_external_boot_img"; then
+                                if /var/lib/k3s/bin/k3s ctr -a /run/containerd-user/containerd.sock image tag "$import_name_tag" "$eve_external_boot_img"; then
                                         logmsg "Successfully installed external-boot-image $import_name_tag as $eve_external_boot_img"
                                         rm -f /etc/external-boot-image.tar
                                 fi
