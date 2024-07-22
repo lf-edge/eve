@@ -1120,7 +1120,7 @@ func maybeRetryBoot(ctx *domainContext, status *types.DomainStatus) {
 
 	if err := hyper.Task(status).Setup(*status, *config, ctx.assignableAdapters, nil, file); err != nil {
 		//it is retry, so omit error
-		log.Errorf("Failed to create DomainStatus from %v: %s",
+		log.Errorf("Failed to create DomainStatus from %+v: %s",
 			config, err)
 	}
 
@@ -1330,7 +1330,7 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 		config.DisplayName)
 
 	if err := configToStatus(ctx, *config, &status); err != nil {
-		log.Errorf("Failed to create DomainStatus from %v: %s",
+		log.Errorf("Failed to create DomainStatus from %+v: %s",
 			config, err)
 		status.PendingAdd = false
 		// will retry in maybeRetryConfig
@@ -1609,7 +1609,7 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 
 	globalConfig := agentlog.GetGlobalConfig(log, ctx.subGlobalConfig)
 	if err := hyper.Task(status).Setup(*status, config, ctx.assignableAdapters, globalConfig, file); err != nil {
-		log.Errorf("Failed to create DomainStatus from %v: %s",
+		log.Errorf("Failed to create DomainStatus from %+v: %s",
 			config, err)
 		status.SetErrorNow(err.Error())
 		releaseCPUs(ctx, &config, status)
