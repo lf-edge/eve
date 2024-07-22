@@ -1024,7 +1024,7 @@ var (
 								Drop: false,
 							},
 						},
-						RuleID: 3,
+						RuleID: 4,
 					},
 					{
 						Matches: []types.ACEMatch{
@@ -1436,6 +1436,13 @@ func TestIPv4LocalAndSwitchNIs(test *testing.T) {
 	t.Expect(recUpdate.UpdateType).To(Equal(nirec.NIReconcileStatusChanged))
 	t.Expect(recUpdate.NIStatus.Equal(niStatus)).To(BeTrue())
 
+	// Flow logging is disabled - blocked traffic is immediately dropped by iptables,
+	// blackhole is not used.
+	dummyIf := linuxitems.DummyIf{
+		IfName: "blackhole",
+	}
+	t.Expect(itemIsCreated(dg.Reference(dummyIf))).To(BeFalse())
+
 	snatRuleNI1 := iptables.Rule{
 		RuleLabel: "SNAT traffic from NI 0d6a128b-b36f-4bd0-a71c-087ba2d71ebc leaving via port eth0",
 		Table:     "nat",
@@ -1674,6 +1681,386 @@ func TestIPv4LocalAndSwitchNIs(test *testing.T) {
 	app2VIFs[2].GuestIP = nil
 }
 
+func TestIPv4LocalAndSwitchNIsWithFlowlogging(test *testing.T) {
+	t := initTest(test, false)
+
+	ni1Config.EnableFlowlog = true
+	ni2Config.EnableFlowlog = true
+	ni5Config.EnableFlowlog = true
+
+	// Start with eth1 not having yet received IP address from an external DHCP server.
+	eth1IPs := eth1.IPAddrs
+	eth1.IPAddrs = nil
+	networkMonitor.AddOrUpdateInterface(eth0)
+	networkMonitor.AddOrUpdateInterface(keth1)
+	networkMonitor.AddOrUpdateInterface(eth1)
+	networkMonitor.AddOrUpdateInterface(keth1)
+	networkMonitor.AddOrUpdateInterface(eth3)
+	networkMonitor.AddOrUpdateInterface(keth3)
+	var routes []netmonitor.Route
+	routes = append(routes, eth0Routes...)
+	routes = append(routes, eth3Routes...)
+	networkMonitor.UpdateRoutes(routes)
+	ctx := reconciler.MockRun(context.Background())
+	updatesCh := niReconciler.WatchReconcilerUpdates()
+	niReconciler.RunInitialReconcile(ctx)
+
+	// Create 2 local network instances.
+	networkMonitor.AddOrUpdateInterface(ni1BridgeIf) // avoid separate notif for bridge if index
+	niStatus, err := niReconciler.AddNI(ctx, ni1Config, ni1Bridge)
+	t.Expect(err).ToNot(HaveOccurred())
+	t.Expect(niStatus.NI).To(Equal(ni1UUID.UUID))
+	t.Expect(niStatus.Deleted).To(BeFalse())
+	t.Expect(niStatus.InProgress).To(BeFalse())
+	t.Expect(niStatus.BrIfName).To(Equal("bn1"))
+	t.Expect(niStatus.FailedItems).To(BeEmpty())
+
+	var recUpdate nirec.ReconcilerUpdate
+	t.Eventually(updatesCh).Should(Receive(&recUpdate))
+	t.Expect(recUpdate.UpdateType).To(Equal(nirec.NIReconcileStatusChanged))
+	t.Expect(recUpdate.NIStatus.Equal(niStatus)).To(BeTrue())
+
+	networkMonitor.AddOrUpdateInterface(ni5BridgeIf)
+	niStatus, err = niReconciler.AddNI(ctx, ni5Config, ni5Bridge)
+	t.Expect(err).ToNot(HaveOccurred())
+	t.Eventually(updatesCh).Should(Receive(&recUpdate))
+	t.Expect(recUpdate.UpdateType).To(Equal(nirec.NIReconcileStatusChanged))
+	fmt.Println(recUpdate.NIStatus)
+	fmt.Println(niStatus)
+	t.Expect(recUpdate.NIStatus.Equal(niStatus)).To(BeTrue())
+
+	// Check Blackhole configuration.
+	dummyIf := linuxitems.DummyIf{
+		IfName: "blackhole",
+	}
+	t.Expect(itemIsCreated(dg.Reference(dummyIf))).To(BeTrue())
+	iprule := linuxitems.IPRule{
+		Priority: 1000,
+		Table:    400,
+		Mark:     0x800000,
+		Mask:     0x800000,
+	}
+	t.Expect(itemIsCreated(dg.Reference(iprule))).To(BeTrue())
+	netlinkUnreachV4Route := netlink.Route{
+		Table:    400,
+		Type:     unix.RTN_UNREACHABLE,
+		Family:   netlink.FAMILY_V4,
+		Protocol: unix.RTPROT_STATIC,
+	}
+	intendedUnreachV4Route := linuxitems.Route{
+		Route: netlinkUnreachV4Route,
+		OutputIf: genericitems.NetworkIf{
+			IfName:  "blackhole",
+			ItemRef: dg.Reference(genericitems.Port{IfName: "blackhole"}),
+		},
+	}
+	fmt.Println(dg.Reference(intendedUnreachV4Route))
+	t.Expect(itemIsCreated(dg.Reference(intendedUnreachV4Route))).To(BeTrue())
+
+	snatRuleNI1 := iptables.Rule{
+		RuleLabel: "SNAT traffic from NI 0d6a128b-b36f-4bd0-a71c-087ba2d71ebc leaving via port eth0",
+		Table:     "nat",
+		ChainName: "POSTROUTING-apps",
+	}
+	t.Expect(itemDescription(dg.Reference(snatRuleNI1))).To(ContainSubstring(
+		"-o eth0 -s 10.10.10.0/24 -j MASQUERADE"))
+	snatRuleNI2 := iptables.Rule{
+		RuleLabel: "SNAT traffic from NI 1664a775-9107-4663-976e-c6e3c37bf0e9 leaving via port eth1",
+		Table:     "nat",
+		ChainName: "POSTROUTING-apps",
+	}
+	t.Expect(itemDescription(dg.Reference(snatRuleNI2))).To(ContainSubstring(
+		"-o eth1 -s 10.10.20.0/24 -j MASQUERADE"))
+	snatRuleNI3 := iptables.Rule{
+		RuleLabel: "SNAT traffic from NI 1664a775-9107-4663-976e-c6e3c37bf0e9 leaving via port eth3",
+		Table:     "nat",
+		ChainName: "POSTROUTING-apps",
+	}
+	t.Expect(itemDescription(dg.Reference(snatRuleNI3))).To(ContainSubstring(
+		"-o eth3 -s 10.10.20.0/24 -j MASQUERADE"))
+	eth0Route := linuxitems.Route{
+		Route: netlink.Route{
+			Table:    801,
+			Dst:      &net.IPNet{IP: net.IP{0x0, 0x0, 0x0, 0x0}, Mask: net.IPMask{0x0, 0x0, 0x0, 0x0}},
+			Family:   netlink.FAMILY_V4,
+			Protocol: unix.RTPROT_STATIC,
+		},
+		OutputIf: genericitems.NetworkIf{
+			IfName:  "eth0",
+			ItemRef: dg.Reference(genericitems.Port{IfName: "eth0"}),
+		},
+	}
+	t.Expect(itemIsCreated(dg.Reference(eth0Route))).To(BeTrue())
+	eth1Route := linuxitems.Route{
+		Route: netlink.Route{
+			Table:    805,
+			Dst:      &net.IPNet{IP: net.IP{0x0, 0x0, 0x0, 0x0}, Mask: net.IPMask{0x0, 0x0, 0x0, 0x0}},
+			Family:   netlink.FAMILY_V4,
+			Protocol: unix.RTPROT_STATIC,
+		},
+		OutputIf: genericitems.NetworkIf{
+			IfName:  "eth1",
+			ItemRef: dg.Reference(genericitems.Port{IfName: "eth1"}),
+		},
+	}
+	// eth1 does not yet have IP address assigned
+	t.Expect(itemIsCreated(dg.Reference(eth1Route))).To(BeFalse())
+	eth3Route := linuxitems.Route{
+		Route: netlink.Route{
+			Table:    805,
+			Dst:      &net.IPNet{IP: net.IP{0x0, 0x0, 0x0, 0x0}, Mask: net.IPMask{0x0, 0x0, 0x0, 0x0}},
+			Family:   netlink.FAMILY_V4,
+			Protocol: unix.RTPROT_STATIC,
+		},
+		OutputIf: genericitems.NetworkIf{
+			IfName:  "eth3",
+			ItemRef: dg.Reference(genericitems.Port{IfName: "eth3"}),
+		},
+	}
+	t.Expect(itemIsCreated(dg.Reference(eth3Route))).To(BeTrue())
+
+	// Create switch network instance.
+	niStatus, err = niReconciler.AddNI(ctx, ni2Config, ni2Bridge)
+	t.Expect(err).ToNot(HaveOccurred())
+	t.Expect(niStatus.NI).To(Equal(ni2UUID.UUID))
+	t.Expect(niStatus.Deleted).To(BeFalse())
+	t.Expect(niStatus.InProgress).To(BeFalse())
+	t.Expect(niStatus.BrIfName).To(Equal("eth1"))
+	t.Expect(niStatus.FailedItems).To(BeEmpty())
+
+	t.Eventually(updatesCh).Should(Receive(&recUpdate))
+	t.Expect(recUpdate.UpdateType).To(Equal(nirec.NIReconcileStatusChanged))
+	t.Expect(recUpdate.NIStatus.Equal(niStatus)).To(BeTrue())
+
+	t.Expect(itemIsCreated(dg.Reference(
+		linuxitems.VLANBridge{BridgeIfName: "eth1"}))).To(BeTrue())
+	t.Expect(itemIsCreated(dg.Reference(
+		genericitems.HTTPServer{
+			ListenIf: genericitems.NetworkIf{IfName: "eth1"}, Port: 80,
+		}))).To(BeFalse())
+
+	// Simulate eth1 getting an IP address.
+	eth1.IPAddrs = eth1IPs
+	networkMonitor.AddOrUpdateInterface(eth1)
+	t.Eventually(updatesCh).Should(Receive(&recUpdate))
+	t.Expect(recUpdate.UpdateType).To(Equal(nirec.CurrentStateChanged))
+	routes = append(routes, eth0Routes...)
+	routes = append(routes, eth1Routes...)
+	routes = append(routes, eth3Routes...)
+	networkMonitor.UpdateRoutes(routes)
+	t.Eventually(updatesCh).Should(Receive(&recUpdate))
+	t.Expect(recUpdate.UpdateType).To(Equal(nirec.CurrentStateChanged))
+	niReconciler.ResumeReconcile(ctx)
+	t.Eventually(updatesCh).Should(Receive(&recUpdate))
+	t.Expect(recUpdate.UpdateType).To(Equal(nirec.NIReconcileStatusChanged))
+	t.Expect(recUpdate.NIStatus.NI).To(Equal(ni5UUID.UUID))
+	t.Expect(recUpdate.NIStatus.Routes).To(HaveLen(2)) // Now has routes for both eth1 and eth3
+
+	t.Expect(itemIsCreated(dg.Reference(eth1Route))).To(BeTrue())
+	t.Expect(itemIsCreated(dg.Reference(
+		genericitems.HTTPServer{
+			ListenIf: genericitems.NetworkIf{IfName: "eth1"}, Port: 80,
+		}))).To(BeTrue())
+
+	// Connect application into network instances.
+	// VIFs on the switch NI will receive IPs later.
+	appStatus, err := niReconciler.AddAppConn(ctx, app2NetConfig, app2Num, cnirpc.AppPod{}, app2VIFs)
+	t.Expect(err).ToNot(HaveOccurred())
+	t.Expect(appStatus.App).To(Equal(app2UUID.UUID))
+	t.Expect(appStatus.Deleted).To(BeFalse())
+	t.Expect(appStatus.VIFs).To(HaveLen(4))
+	t.Expect(appStatus.VIFs[0].NetAdapterName).To(Equal("adapter1"))
+	t.Expect(appStatus.VIFs[0].InProgress).To(BeTrue())
+	t.Expect(appStatus.VIFs[0].HostIfName).To(Equal("nbu1x2"))
+	t.Expect(appStatus.VIFs[0].FailedItems).To(BeEmpty())
+	t.Expect(appStatus.VIFs[1].NetAdapterName).To(Equal("adapter2"))
+	t.Expect(appStatus.VIFs[1].InProgress).To(BeTrue())
+	t.Expect(appStatus.VIFs[1].HostIfName).To(Equal("nbu2x2"))
+	t.Expect(appStatus.VIFs[1].FailedItems).To(BeEmpty())
+	t.Expect(appStatus.VIFs[2].NetAdapterName).To(Equal("adapter3"))
+	t.Expect(appStatus.VIFs[2].InProgress).To(BeTrue())
+	t.Expect(appStatus.VIFs[2].HostIfName).To(Equal("nbu3x2"))
+	t.Expect(appStatus.VIFs[2].FailedItems).To(BeEmpty())
+	t.Expect(appStatus.VIFs[3].NetAdapterName).To(Equal("adapter4"))
+	t.Expect(appStatus.VIFs[3].InProgress).To(BeTrue())
+	t.Expect(appStatus.VIFs[3].HostIfName).To(Equal("nbu4x2"))
+	t.Expect(appStatus.VIFs[3].FailedItems).To(BeEmpty())
+
+	t.Eventually(updatesCh).Should(Receive(&recUpdate))
+	t.Expect(recUpdate.UpdateType).To(Equal(nirec.AppConnReconcileStatusChanged))
+	t.Expect(recUpdate.AppConnStatus.Equal(appStatus)).To(BeTrue())
+
+	// Simulate domainmgr creating all VIFs.
+	networkMonitor.AddOrUpdateInterface(app2VIF1)
+	t.Eventually(updatesCh).Should(Receive(&recUpdate))
+	t.Expect(recUpdate.UpdateType).To(Equal(nirec.CurrentStateChanged))
+	networkMonitor.AddOrUpdateInterface(app2VIF2)
+	t.Eventually(updatesCh).Should(Receive(&recUpdate))
+	t.Expect(recUpdate.UpdateType).To(Equal(nirec.CurrentStateChanged))
+	networkMonitor.AddOrUpdateInterface(app2VIF3)
+	t.Eventually(updatesCh).Should(Receive(&recUpdate))
+	t.Expect(recUpdate.UpdateType).To(Equal(nirec.CurrentStateChanged))
+	networkMonitor.AddOrUpdateInterface(app2VIF4)
+	t.Eventually(updatesCh).Should(Receive(&recUpdate))
+	t.Expect(recUpdate.UpdateType).To(Equal(nirec.CurrentStateChanged))
+	niReconciler.ResumeReconcile(ctx)
+
+	t.Eventually(updatesCh).Should(Receive(&recUpdate))
+	t.Expect(recUpdate.UpdateType).To(Equal(nirec.AppConnReconcileStatusChanged))
+	for i := 0; i < 4; i++ {
+		t.Expect(recUpdate.AppConnStatus.VIFs[i].InProgress).To(BeFalse())
+		t.Expect(recUpdate.AppConnStatus.VIFs[i].FailedItems).To(BeEmpty())
+	}
+
+	ni1PortMapRule1 := iptables.Rule{
+		RuleLabel: "User-configured PORTMAP ACL rule 1 for port eth0 IP 192.168.10.5 from inside",
+		Table:     "nat",
+		ChainName: "PREROUTING-nbu1x2",
+	}
+	ni1PortMapRule2 := iptables.Rule{
+		RuleLabel: "User-configured PORTMAP ACL rule 1 for port eth0 IP 192.168.10.5 from outside",
+		Table:     "nat",
+		ChainName: "PREROUTING-nbu1x2",
+	}
+	t.Expect(itemIsCreated(dg.Reference(ni1PortMapRule1))).To(BeTrue())
+	t.Expect(itemIsCreated(dg.Reference(ni1PortMapRule2))).To(BeTrue())
+
+	t.Expect(itemIsCreated(dg.Reference(
+		linuxitems.VLANPort{
+			BridgeIfName: "bn1",
+			PortIfName:   "nbu1x2",
+		}))).To(BeFalse())
+	t.Expect(itemIsCreated(dg.Reference(
+		linuxitems.VLANPort{
+			BridgeIfName: "eth1",
+			PortIfName:   "nbu2x2",
+		}))).To(BeTrue())
+	t.Expect(itemIsCreated(dg.Reference(
+		linuxitems.VLANPort{
+			BridgeIfName: "eth1",
+			PortIfName:   "nbu3x2",
+		}))).To(BeTrue())
+
+	vif2Eidset := itemDescription(dg.Reference(linuxitems.IPSet{SetName: "ipv4.eids.nbu2x2"}))
+	t.Expect(vif2Eidset).To(ContainSubstring("entries: []"))
+	vif3Eidset := itemDescription(dg.Reference(linuxitems.IPSet{SetName: "ipv4.eids.nbu3x2"}))
+	t.Expect(vif3Eidset).To(ContainSubstring("entries: []"))
+
+	// Simulate VIF2 and VIF3 getting IP addresses from an external DHCP server.
+	app2VIFs[1].GuestIP = ipAddress("172.20.0.101")
+	app2VIFs[2].GuestIP = ipAddress("172.20.0.102")
+	appStatus, err = niReconciler.UpdateAppConn(ctx, app2NetConfig, cnirpc.AppPod{}, app2VIFs)
+	t.Expect(err).ToNot(HaveOccurred())
+	t.Expect(appStatus.App).To(Equal(app2UUID.UUID))
+	t.Expect(appStatus.Deleted).To(BeFalse())
+	t.Expect(appStatus.VIFs).To(HaveLen(4))
+	for i := 0; i < 4; i++ {
+		t.Expect(appStatus.VIFs[i].InProgress).To(BeFalse())
+		t.Expect(appStatus.VIFs[i].FailedItems).To(BeEmpty())
+	}
+
+	vif2Eidset = itemDescription(dg.Reference(linuxitems.IPSet{SetName: "ipv4.eids.nbu2x2"}))
+	t.Expect(vif2Eidset).To(ContainSubstring("entries: [172.20.0.101]"))
+	vif3Eidset = itemDescription(dg.Reference(linuxitems.IPSet{SetName: "ipv4.eids.nbu3x2"}))
+	t.Expect(vif3Eidset).To(ContainSubstring("entries: [172.20.0.102]"))
+
+	// Check rules used to mark traffic for flow-logging purposes.
+	vif1IPRule := iptables.Rule{
+		RuleLabel: "User-configured PORTMAP ACL rule 1 for port eth0 IP 192.168.10.5 from outside",
+		Table:     "mangle",
+		ChainName: "PREROUTING-nbu1x2-IN",
+		ForIPv6:   false,
+	}
+	t.Expect(itemDescription(dg.Reference(vif1IPRule))).To(ContainSubstring(
+		"-i eth0 -d 192.168.10.5 -p tcp --dport 2223 -j bn1-nbu1x2-1"))
+
+	vif2IPRuleIngress := iptables.Rule{
+		RuleLabel: "User-configured ALLOW ACL rule 1 for ingress port eth1",
+		Table:     "mangle",
+		ChainName: "PREROUTING-nbu2x2-IN",
+		ForIPv6:   false,
+	}
+	t.Expect(itemDescription(dg.Reference(vif2IPRuleIngress))).To(ContainSubstring(
+		"-i eth1 -s 0.0.0.0/0 -j eth1-nbu2x2-1"))
+	vif2IPRuleEgress := iptables.Rule{
+		RuleLabel: "User-configured ALLOW ACL rule 1",
+		Table:     "mangle",
+		ChainName: "PREROUTING-nbu2x2-OUT",
+		ForIPv6:   false,
+	}
+	t.Expect(itemDescription(dg.Reference(vif2IPRuleEgress))).To(ContainSubstring(
+		"-d 0.0.0.0/0 -j eth1-nbu2x2-1"))
+
+	vif3IPRuleIngress := iptables.Rule{
+		RuleLabel: "User-configured ALLOW ACL rule 1 for ingress port eth1",
+		Table:     "mangle",
+		ChainName: "PREROUTING-nbu3x2-IN",
+		ForIPv6:   false,
+	}
+	t.Expect(itemDescription(dg.Reference(vif3IPRuleIngress))).To(ContainSubstring(
+		"-i eth1 -s 0.0.0.0/0 -j eth1-nbu3x2-1"))
+	vif3IPRuleEgress := iptables.Rule{
+		RuleLabel: "User-configured ALLOW ACL rule 1",
+		Table:     "mangle",
+		ChainName: "PREROUTING-nbu3x2-OUT",
+		ForIPv6:   false,
+	}
+	t.Expect(itemDescription(dg.Reference(vif3IPRuleEgress))).To(ContainSubstring(
+		"-d 0.0.0.0/0 -j eth1-nbu3x2-1"))
+
+	vif4IPRule1 := iptables.Rule{
+		RuleLabel: "User-configured ALLOW ACL rule 1",
+		Table:     "mangle",
+		ChainName: "PREROUTING-nbu4x2-OUT",
+		ForIPv6:   false,
+	}
+	t.Expect(itemDescription(dg.Reference(vif4IPRule1))).To(ContainSubstring(
+		"-d 0.0.0.0/0 -j bn5-nbu4x2-1"))
+	vif4IPRule2 := iptables.Rule{
+		RuleLabel: "User-configured PORTMAP ACL rule 2 for port eth1 IP 172.20.0.40 from outside",
+		Table:     "mangle",
+		ChainName: "PREROUTING-nbu4x2-IN",
+		ForIPv6:   false,
+	}
+	t.Expect(itemDescription(dg.Reference(vif4IPRule2))).To(ContainSubstring(
+		"-i eth1 -d 172.20.0.40 -p tcp --dport 2223 -j bn5-nbu4x2-2"))
+
+	// Disconnect the application.
+	_, err = niReconciler.DelAppConn(ctx, app1UUID.UUID) // wrong UUID
+	t.Expect(err).To(HaveOccurred())
+	appStatus, err = niReconciler.DelAppConn(ctx, app2UUID.UUID)
+	t.Expect(err).ToNot(HaveOccurred())
+	t.Expect(appStatus.App).To(Equal(app2UUID.UUID))
+	t.Expect(appStatus.Deleted).To(BeTrue())
+	t.Expect(appStatus.VIFs).To(HaveLen(4))
+	for i := 0; i < 4; i++ {
+		t.Expect(appStatus.VIFs[i].InProgress).To(BeFalse())
+	}
+
+	// Delete network instances
+	niStatus, err = niReconciler.DelNI(ctx, ni1UUID.UUID)
+	t.Expect(err).ToNot(HaveOccurred())
+	t.Expect(niStatus.NI).To(Equal(ni1UUID.UUID))
+	t.Expect(niStatus.Deleted).To(BeTrue())
+	niStatus, err = niReconciler.DelNI(ctx, ni2UUID.UUID)
+	t.Expect(err).ToNot(HaveOccurred())
+	t.Expect(niStatus.NI).To(Equal(ni2UUID.UUID))
+	t.Expect(niStatus.Deleted).To(BeTrue())
+	niStatus, err = niReconciler.DelNI(ctx, ni5UUID.UUID)
+	t.Expect(err).ToNot(HaveOccurred())
+	t.Expect(niStatus.NI).To(Equal(ni5UUID.UUID))
+	t.Expect(niStatus.Deleted).To(BeTrue())
+
+	// Revert back to VIF2 and VIF3 not having IP addresses.
+	app2VIFs[1].GuestIP = nil
+	app2VIFs[2].GuestIP = nil
+
+	// Revert back to flow logging being disabled.
+	ni1Config.EnableFlowlog = false
+	ni2Config.EnableFlowlog = false
+	ni5Config.EnableFlowlog = false
+}
+
 func TestDisableAllOnesMask(test *testing.T) {
 	t := initTest(test, false)
 	networkMonitor.AddOrUpdateInterface(eth0)
@@ -1842,14 +2229,24 @@ func TestIPv6LocalAndSwitchNIs(test *testing.T) {
 	vif1Eidset := linuxitems.IPSet{SetName: "ipv6.eids.nbu1x3"}
 	t.Expect(itemDescription(dg.Reference(vif1Eidset))).To(ContainSubstring(
 		"entries: [2001:db8::1 2001::1111:2]"))
-	vif1IPRule := iptables.Rule{
+	vif1IPRuleIngress := iptables.Rule{
 		RuleLabel: "User configured ALLOW ACL rule 3",
-		Table:     "mangle",
-		ChainName: "PREROUTING-nbu1x3-OUT",
+		Table:     "filter",
+		ChainName: "FORWARD-nbu1x3",
 		ForIPv6:   true,
 	}
-	t.Expect(itemDescription(dg.Reference(vif1IPRule))).To(ContainSubstring(
-		"-d 2610:20:6f96:96::4/128 -j bn3-nbu1x3-3"))
+	t.Expect(itemDescription(dg.Reference(vif1IPRuleIngress))).To(ContainSubstring(
+		"-s 2610:20:6f96:96::4/128 -j ACCEPT"))
+	vif1IPRuleEgress := iptables.Rule{
+		RuleLabel: "User configured ALLOW ACL rule 3",
+		Table:     "raw",
+		ChainName: "PREROUTING-nbu1x3",
+		ForIPv6:   true,
+	}
+	t.Expect(itemDescription(dg.Reference(vif1IPRuleIngress))).To(ContainSubstring(
+		"-s 2610:20:6f96:96::4/128 -j ACCEPT"))
+	t.Expect(itemDescription(dg.Reference(vif1IPRuleEgress))).To(ContainSubstring(
+		"-d 2610:20:6f96:96::4/128 -j ACCEPT"))
 	ni3PortMapRuleIn := iptables.Rule{
 		RuleLabel: "User-configured PORTMAP ACL rule 5 for port eth2 IP 2001::20 from inside",
 		Table:     "nat",
@@ -1873,22 +2270,38 @@ func TestIPv6LocalAndSwitchNIs(test *testing.T) {
 	vif2Eidset := linuxitems.IPSet{SetName: "ipv6.eids.nbu2x3"}
 	t.Expect(itemDescription(dg.Reference(vif2Eidset))).To(ContainSubstring(
 		"entries: [2001::101]"))
-	vif2IPv6Rule := iptables.Rule{
+	vif2IPv6RuleIngress := iptables.Rule{
 		RuleLabel: "User configured ALLOW ACL rule 1",
-		Table:     "mangle",
-		ChainName: "PREROUTING-nbu2x3-OUT",
+		Table:     "filter",
+		ChainName: "FORWARD-nbu2x3",
 		ForIPv6:   true,
 	}
-	t.Expect(itemDescription(dg.Reference(vif2IPv6Rule))).To(ContainSubstring(
-		"-d ::/0 -j eth2-nbu2x3-1"))
-	vif2IPv4Rule := iptables.Rule{
+	t.Expect(itemDescription(dg.Reference(vif2IPv6RuleIngress))).To(ContainSubstring(
+		"-s ::/0 -j ACCEPT"))
+	vif2IPv6RuleEgress := iptables.Rule{
+		RuleLabel: "User configured ALLOW ACL rule 1",
+		Table:     "raw",
+		ChainName: "PREROUTING-nbu2x3",
+		ForIPv6:   true,
+	}
+	t.Expect(itemDescription(dg.Reference(vif2IPv6RuleEgress))).To(ContainSubstring(
+		"-d ::/0 -j ACCEPT"))
+	vif2IPv4RuleIngress := iptables.Rule{
 		RuleLabel: "User configured ALLOW ACL rule 2",
-		Table:     "mangle",
-		ChainName: "PREROUTING-nbu2x3-OUT",
+		Table:     "filter",
+		ChainName: "FORWARD-nbu2x3",
 		ForIPv6:   false,
 	}
-	t.Expect(itemDescription(dg.Reference(vif2IPv4Rule))).To(ContainSubstring(
-		"-d 0.0.0.0/0 -j eth2-nbu2x3-2"))
+	t.Expect(itemDescription(dg.Reference(vif2IPv4RuleIngress))).To(ContainSubstring(
+		"-s 0.0.0.0/0 -j ACCEPT"))
+	vif2IPv4RuleEgress := iptables.Rule{
+		RuleLabel: "User configured ALLOW ACL rule 2",
+		Table:     "raw",
+		ChainName: "PREROUTING-nbu2x3",
+		ForIPv6:   false,
+	}
+	t.Expect(itemDescription(dg.Reference(vif2IPv4RuleEgress))).To(ContainSubstring(
+		"-d 0.0.0.0/0 -j ACCEPT"))
 
 	// Do not run dnsmasq and radvd for the switch network instance.
 	t.Expect(itemCountWithType(genericitems.DnsmasqTypename)).To(Equal(1))

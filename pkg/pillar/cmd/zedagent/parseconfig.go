@@ -478,6 +478,7 @@ func publishNetworkInstanceConfig(ctx *getconfigContext,
 			IpType:              types.AddressType(apiConfigEntry.IpType),
 			PortLabel:           apiConfigEntry.Port.GetName(),
 			PropagateConnRoutes: apiConfigEntry.PropagateConnectedRoutes,
+			EnableFlowlog:       !apiConfigEntry.DisableFlowlog,
 		}
 		uuidStr := networkInstanceConfig.UUID.String()
 		log.Functionf("publishNetworkInstanceConfig: processing %s %s type %d activate %v",

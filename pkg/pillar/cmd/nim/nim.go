@@ -73,16 +73,17 @@ type nim struct {
 	networkMonitor netmonitor.NetworkMonitor
 
 	// Subscriptions
-	subGlobalConfig       pubsub.Subscription
-	subControllerCert     pubsub.Subscription
-	subEdgeNodeCert       pubsub.Subscription
-	subDevicePortConfigA  pubsub.Subscription
-	subDevicePortConfigO  pubsub.Subscription
-	subDevicePortConfigS  pubsub.Subscription
-	subZedAgentStatus     pubsub.Subscription
-	subAssignableAdapters pubsub.Subscription
-	subOnboardStatus      pubsub.Subscription
-	subWwanStatus         pubsub.Subscription
+	subGlobalConfig          pubsub.Subscription
+	subControllerCert        pubsub.Subscription
+	subEdgeNodeCert          pubsub.Subscription
+	subDevicePortConfigA     pubsub.Subscription
+	subDevicePortConfigO     pubsub.Subscription
+	subDevicePortConfigS     pubsub.Subscription
+	subZedAgentStatus        pubsub.Subscription
+	subAssignableAdapters    pubsub.Subscription
+	subOnboardStatus         pubsub.Subscription
+	subWwanStatus            pubsub.Subscription
+	subNetworkInstanceConfig pubsub.Subscription
 
 	// Publications
 	pubDummyDevicePortConfig pubsub.Publication // For logging
@@ -302,6 +303,9 @@ func (n *nim) run(ctx context.Context) (err error) {
 		if err = n.subWwanStatus.Activate(); err != nil {
 			return err
 		}
+		if err = n.subNetworkInstanceConfig.Activate(); err != nil {
+			return err
+		}
 		go n.runResolverCacheForController()
 		return nil
 	}
@@ -358,6 +362,10 @@ func (n *nim) run(ctx context.Context) (err error) {
 
 		case change := <-n.subWwanStatus.MsgChan():
 			n.subWwanStatus.ProcessChange(change)
+
+		case change := <-n.subNetworkInstanceConfig.MsgChan():
+			n.subNetworkInstanceConfig.ProcessChange(change)
+			n.handleNetworkInstanceUpdate()
 
 		case event := <-netEvents:
 			ifChange, isIfChange := event.(netmonitor.IfChange)
@@ -654,6 +662,19 @@ func (n *nim) initSubscriptions() (err error) {
 	if err != nil {
 		return err
 	}
+
+	// Used to find out if at least one NI has flowlog enabled.
+	n.subNetworkInstanceConfig, err = n.PubSub.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:   "zedagent",
+		MyAgentName: agentName,
+		TopicImpl:   types.NetworkInstanceConfig{},
+		Activate:    false,
+		WarningTime: warningTime,
+		ErrorTime:   errorTime,
+	})
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -844,6 +865,18 @@ func (n *nim) handleWwanStatusModify(_ interface{}, key string, statusArg, _ int
 func (n *nim) handleWwanStatusImpl(_ string, statusArg interface{}) {
 	status := statusArg.(types.WwanStatus)
 	n.dpcManager.ProcessWwanStatus(status)
+}
+
+func (n *nim) handleNetworkInstanceUpdate() {
+	var flowlogEnabled bool
+	for _, item := range n.subNetworkInstanceConfig.GetAll() {
+		niConfig := item.(types.NetworkInstanceConfig)
+		if niConfig.EnableFlowlog {
+			flowlogEnabled = true
+			break
+		}
+	}
+	n.dpcManager.UpdateFlowlogState(flowlogEnabled)
 }
 
 func (n *nim) isDeviceOnboarded() bool {
