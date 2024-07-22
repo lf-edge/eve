@@ -81,18 +81,21 @@ to instruct the app OS to perform DHCP on selected network interfaces.
 Data-plane of VIFs spans across both guest and host network stacks. Packet sent from an application
 is routed by the guest OS (Alpine Linux for container apps) and transmitted across a VIF
 into the host network stack. It arrives via TAP/xen-backend and gets forwarded to the NI bridge.
-Next, ACLs implemented using iptables are applied and the packet is either marked with "allow"
-or "drop" mark. Based on the mark and the src/dst addresses, IP rules either send the packet
+Next, ACLs implemented using iptables are applied and the packet is either allowed to continue
+or gets dropped. If [flow logging](#flow-logging) is enabled, this is done by marking the packet with
+"allow" or "drop" mark. Based on the mark and the src/dst addresses, IP rules either send the packet
 into the dummy blackhole interface (dropped), or route the packet according to the NI routing
-table. If the destination is external, packet will be transmitted out through one of the network
-ports used by the network instance.
+table. If flow logging is disabled, packet is allowed or dropped immediately using iptables
+actions.
+If the packet is allowed and the destination is external, packet will be transmitted out through
+one of the network ports used by the network instance.
 Note that if NI is switch (L2 only), packet will be just forwarded through the (single) port,
 not routed.
-If the destination is another app (inside the same NI), packet's dst MAC address will be set
-to the dst app MAC, and it will be forwarded again through the same bridge into the corresponding
-VIF. Finally, the packet is transmitted from the host network stack into the guest network
-stack of the destination application, where it will be processed for local delivery.
-The diagram below depicts all these packet-flow stages:
+If the packet is allowed and the destination is another app (inside the same NI), packet's dst
+MAC address will be set to the dst app MAC, and it will be forwarded again through the same bridge
+into the corresponding VIF. Finally, the packet is transmitted from the host network stack into
+the guest network stack of the destination application, where it will be processed for local
+delivery. The diagram below depicts all these packet-flow stages:
 
 ![packet-flow](./images/eve-app-packet-flow.png)
 
@@ -103,13 +106,17 @@ an existing contract entry and the NATed dst IP address and port number will be 
 to the application src address. In case of an outside-initiated flow, apps connected over local NIs
 can only be accessed over port forwarding rules. If a rule is matched, dst IP and port are
 D-NATed to the application address.
-Next, ACLs are applied. Packet is either marked with "allow" or "drop" mark. Based on the mark
-and the dst address, IP rules either send the packet into the dummy blackhole interface (dropped),
-or route the packet according to the NI routing table. This will then match the link-local route
-of the NI bridge and gets forwarded via the bridge and the VIF into the application.
+Next, ACLs are applied and the packet is either allowed to continue or gets dropped.
+If [flow logging](#flow-logging) is enabled, this is done by marking the packet with "allow"
+or "drop" mark. Based on the mark and the dst address, IP rules either send the packet
+into the dummy blackhole interface (dropped), or route the packet according to the NI routing
+table. If flow logging is disabled, packet is allowed or dropped immediately using iptables
+actions.
+If the packet is allowed, it will match the connected route of the NI bridge and gets forwarded
+via the bridge and the VIF into the application.
 Note that in case of a switch NI (L2 only), D-NAT and routing operations are not performed
 and inbound packets are simply forwarded from the port, through the bridge and VIF into
-the application (still the ACLs do apply and can trigger routing into the blackhole interface).
+the application (still the ACLs do apply).
 The diagram below depicts all these inbound packet-flow stages:
 
 ![packet-flow-inbound](./images/eve-app-packet-flow-inbound.png)
@@ -463,7 +470,7 @@ external connectivity.
 
 ### Flow Logging
 
-EVE uses [Linux connection tracking](https://conntrack-tools.netfilter.org/manual.html)
+If enabled for a given NI, EVE uses [Linux connection tracking](https://conntrack-tools.netfilter.org/manual.html)
 to periodically (every 2 minutes) record all application TCP and UDP flows. A flow record
 encapsulates application UUID, VIF name, open/close timestamps, src/dst IP/port/proto 5-tuple,
 packet and byte counters.
@@ -473,3 +480,7 @@ This includes the request time, hostname that was being resolved and the returne
 
 A batch of new flow records is published to the controller (POST `/api/v1/edgeDevice/flowlog`)
 inside `FlowMessage`.
+
+If flow logging is not needed, it is recommended to disable this feature as it can
+potentially generate a large amount of data, which is then uploaded to the controller.
+Depending on the implementation, it may also introduce additional packet processing overhead.

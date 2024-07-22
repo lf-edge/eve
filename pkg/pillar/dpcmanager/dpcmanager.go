@@ -93,6 +93,7 @@ type DpcManager struct {
 	rsStatus         types.RadioSilence
 	enableLastResort bool
 	devUUID          uuid.UUID
+	flowlogEnabled   bool
 	// Boot-time configuration
 	dpclPresentAtBoot bool
 
@@ -186,16 +187,18 @@ const (
 	commandUpdateRS
 	commandUpdateDevUUID
 	commandProcessWwanStatus
+	commandUpdateFlowlogState
 )
 
 type inputCommand struct {
-	cmd        command
-	dpc        types.DevicePortConfig   // for commandAddDPC and commandDelDPC
-	gcp        types.ConfigItemValueMap // for commandUpdateGCP
-	aa         types.AssignableAdapters // for commandUpdateAA
-	rs         types.RadioSilence       // for commandUpdateRS
-	devUUID    uuid.UUID                // for commandUpdateDevUUID
-	wwanStatus types.WwanStatus         // for commandProcessWwanStatus
+	cmd            command
+	dpc            types.DevicePortConfig   // for commandAddDPC and commandDelDPC
+	gcp            types.ConfigItemValueMap // for commandUpdateGCP
+	aa             types.AssignableAdapters // for commandUpdateAA
+	rs             types.RadioSilence       // for commandUpdateRS
+	devUUID        uuid.UUID                // for commandUpdateDevUUID
+	wwanStatus     types.WwanStatus         // for commandProcessWwanStatus
+	flowlogEnabled bool                     // for commandUpdateFlowlogState
 }
 
 type dpcVerify struct {
@@ -268,6 +271,8 @@ func (m *DpcManager) run(ctx context.Context) {
 				m.doUpdateDevUUID(ctx, inputCmd.devUUID)
 			case commandProcessWwanStatus:
 				m.processWwanStatus(ctx, inputCmd.wwanStatus)
+			case commandUpdateFlowlogState:
+				m.doUpdateFlowlogState(ctx, inputCmd.flowlogEnabled)
 			}
 			m.resumeVerifyIfAsyncDone(ctx)
 
@@ -400,9 +405,10 @@ func (m *DpcManager) run(ctx context.Context) {
 
 func (m *DpcManager) reconcilerArgs() dpcreconciler.Args {
 	args := dpcreconciler.Args{
-		GCP: m.globalCfg,
-		AA:  m.adapters,
-		RS:  m.rsConfig,
+		GCP:            m.globalCfg,
+		AA:             m.adapters,
+		RS:             m.rsConfig,
+		FlowlogEnabled: m.flowlogEnabled,
 	}
 	if m.currentDPC() != nil {
 		args.DPC = *m.currentDPC()
@@ -471,6 +477,14 @@ func (m *DpcManager) ProcessWwanStatus(wwanStatus types.WwanStatus) {
 	m.inputCommands <- inputCommand{
 		cmd:        commandProcessWwanStatus,
 		wwanStatus: wwanStatus,
+	}
+}
+
+// UpdateFlowlogState : handle flow logging being turned on/off.
+func (m *DpcManager) UpdateFlowlogState(flowlogEnabled bool) {
+	m.inputCommands <- inputCommand{
+		cmd:            commandUpdateFlowlogState,
+		flowlogEnabled: flowlogEnabled,
 	}
 }
 
@@ -606,4 +620,9 @@ func (m *DpcManager) reinitNetdumper() {
 		netDumper = nil
 	}
 	m.netDumper = netDumper
+}
+
+func (m *DpcManager) doUpdateFlowlogState(ctx context.Context, flowlogEnabled bool) {
+	m.flowlogEnabled = flowlogEnabled
+	m.reconcileStatus = m.DpcReconciler.Reconcile(ctx, m.reconcilerArgs())
 }

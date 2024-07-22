@@ -14,12 +14,18 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
 	"github.com/lf-edge/eve/pkg/pillar/utils/netutils"
-	uuid "github.com/satori/go.uuid"
 )
 
 const (
 	// dropCounterChain : chain with no rules, used merely to count dropped packets.
 	dropCounterChain = "DROP-COUNTER"
+)
+
+const (
+	// Iptables rule that allows forwarding between NICs attached to switch NI.
+	// This would be otherwise denied by rules installed by NIM (see denyL3FwdChain).
+	allowL2FwdChain             = "ALLOW-L2-FORWARD"
+	traverseL2FwdChainRuleLabel = "Traverse " + allowL2FwdChain
 )
 
 // Describes protocol that is allowed implicitly because it provides some essential
@@ -500,8 +506,74 @@ func (r *LinuxNIReconciler) getIntendedACLRootChains() dg.Graph {
 	return intendedACLChains
 }
 
-func (r *LinuxNIReconciler) getIntendedAppConnACLs(niID uuid.UUID,
-	vif vifInfo, ul types.AppNetAdapterConfig) dg.Graph {
+func (r *LinuxNIReconciler) withFlowlog() bool {
+	for _, ni := range r.nis {
+		if ni.config.EnableFlowlog {
+			return true
+		}
+	}
+	return false
+}
+
+func (r *LinuxNIReconciler) getIntendedL2FwdChain() dg.Graph {
+	graphArgs := dg.InitArgs{
+		Name:        ACLChainL2FwdSG,
+		Description: "iptables chain used to allow forwarding inside L2 NIs",
+	}
+	graph := dg.New(graphArgs)
+	graph.PutItem(iptables.Chain{
+		ChainName: allowL2FwdChain,
+		Table:     "filter",
+		ForIPv6:   false,
+	}, nil)
+	graph.PutItem(iptables.Chain{
+		ChainName: allowL2FwdChain,
+		Table:     "filter",
+		ForIPv6:   true,
+	}, nil)
+	rule := iptables.Rule{
+		RuleLabel:   traverseL2FwdChainRuleLabel,
+		Table:       "filter",
+		ChainName:   appChain("FORWARD"),
+		ForIPv6:     false,
+		Target:      allowL2FwdChain,
+		Description: "Traverse rules used to allow forwarding inside L2 NIs",
+	}
+	graph.PutItem(rule, nil)
+	ipv6Rule := rule
+	ipv6Rule.ForIPv6 = true
+	graph.PutItem(ipv6Rule, nil)
+	return graph
+}
+
+// Allow forwarding between the switch NI bridge ports.
+// Otherwise, it would be blocked by NIM.
+func (r *LinuxNIReconciler) getIntendedL2FwdRules(ni *niInfo) (items []dg.Item) {
+	if len(ni.bridge.Ports) == 0 {
+		// Air-gapped Switch NI.
+		// These rules are not needed.
+		return nil
+	}
+	label := fmt.Sprintf("Allow L2 forwarding inside L2 NI: %s", ni.config.UUID)
+	rule := iptables.Rule{
+		RuleLabel: label,
+		Table:     "filter",
+		ChainName: allowL2FwdChain,
+		ForIPv6:   false,
+		// This will apply to every bridged NIC:
+		MatchOpts:   []string{"-i", ni.brIfName, "-o", ni.brIfName},
+		Target:      "ACCEPT",
+		Description: label,
+	}
+	items = append(items, rule)
+	ipv6Rule := rule
+	ipv6Rule.ForIPv6 = true
+	items = append(items, ipv6Rule)
+	return items
+}
+
+func (r *LinuxNIReconciler) getIntendedAppConnACLs(vif vifInfo,
+	cfg types.AppNetAdapterConfig) dg.Graph {
 	graphArgs := dg.InitArgs{
 		Name:        AppConnACLsSG,
 		Description: "ACLs configured for application VIF",
@@ -527,36 +599,66 @@ func (r *LinuxNIReconciler) getIntendedAppConnACLs(niID uuid.UUID,
 		}
 	}
 	intendedAppConnACLs := dg.New(graphArgs)
+	ipv4Rules := dg.New(dg.InitArgs{
+		Name:        IPv4RulesSG,
+		Description: "iptables rules for IPv4 ACLs",
+	})
+	intendedAppConnACLs.PutSubGraph(ipv4Rules)
+	ipv6Rules := dg.New(dg.InitArgs{
+		Name:        IPv6RulesSG,
+		Description: "iptables rules for IPv6 ACLs",
+	})
+	intendedAppConnACLs.PutSubGraph(ipv6Rules)
 	for _, ipv6 := range []bool{true, false} {
-		// TODO: use IPv4RulesSG and IPv6RulesSG ?
+		var graph dg.Graph
+		if ipv6 {
+			graph = ipv6Rules
+		} else {
+			graph = ipv4Rules
+		}
 		if ni.config.Type == types.NetworkInstanceTypeLocal {
 			if ni.config.IsIPv6() != ipv6 {
 				continue
 			}
 		}
-		for _, item := range r.getIntendedAppConnRawIptables(vif, ul, ipv6) {
-			intendedAppConnACLs.PutItem(item, nil)
+		for _, item := range r.getIntendedAppConnRawIptables(vif, cfg, ipv6) {
+			graph.PutItem(item, nil)
 		}
-		for _, item := range r.getIntendedAppConnFilterIptables(vif, ul, ipv6) {
-			intendedAppConnACLs.PutItem(item, nil)
+		for _, item := range r.getIntendedAppConnFilterIptables(vif, cfg, ipv6) {
+			graph.PutItem(item, nil)
 		}
-		for _, item := range r.getIntendedAppConnNATIptables(vif, ul, ipv6, portIPs) {
-			intendedAppConnACLs.PutItem(item, nil)
+		for _, item := range r.getIntendedAppConnNATIptables(vif, cfg, ipv6, portIPs) {
+			graph.PutItem(item, nil)
 		}
-		for _, item := range r.getIntendedAppConnMangleIptables(vif, ul, ipv6, portIPs) {
-			intendedAppConnACLs.PutItem(item, nil)
+		if ni.config.EnableFlowlog {
+			rules := r.getIntendedAppConnMangleIptables(vif, cfg, ipv6, portIPs)
+			for _, item := range rules {
+				graph.PutItem(item, nil)
+			}
 		}
 	}
 	return intendedAppConnACLs
 }
 
 // Table RAW, chain PREROUTING is used to:
-//   - LOG to-be-dropped traffic *coming out* from local NIs (dropped during routing phase)
 //   - Apply rate-limit ACL rules (DROP extra egress packets)
-//   - LOG + fully apply (incl. DROP) ACL rules on traffic *coming out* from switch NIs
+//
+// And if flowlog is enabled:
+//   - Count to-be-dropped traffic *coming out* from application VIFs connected
+//     to Local NI
+//   - Count + fully apply (incl. DROP) ACL rules on traffic *coming out* from
+//     application VIFs connected to Switch NI
+//
+// But if flowlog is disabled:
+//   - Count + fully apply (incl. DROP) ACL rules on traffic *coming out* from
+//     applications VIFs (regardless of the NI type)
 func (r *LinuxNIReconciler) getIntendedAppConnRawIptables(vif vifInfo,
-	ul types.AppNetAdapterConfig, forIPv6 bool) (items []dg.Item) {
+	cfg types.AppNetAdapterConfig, forIPv6 bool) (items []dg.Item) {
 	ni := r.nis[vif.NI]
+	// DROP ACE is applied by the RAW table for switch NI or even for Local NI
+	// if flow logging is disabled.
+	applyDropAction := !ni.config.EnableFlowlog ||
+		ni.config.Type == types.NetworkInstanceTypeSwitch
 	var bridgeIP net.IP
 	if ni.bridge.IPAddress != nil {
 		bridgeIP = ni.bridge.IPAddress.IP
@@ -602,7 +704,7 @@ func (r *LinuxNIReconciler) getIntendedAppConnRawIptables(vif vifInfo,
 		})
 	}
 	// 3. User-configured ACL rules
-	for _, aclRule := range ul.ACLs {
+	for _, aclRule := range cfg.ACLs {
 		parsedRule, skip, err := parseUserACLRule(r.log, aclRule, ni, vif, forIPv6)
 		if err != nil {
 			r.log.Errorf("%s: parseUserACLRule failed: %v", LogAndErrPrefix, err)
@@ -621,7 +723,7 @@ func (r *LinuxNIReconciler) getIntendedAppConnRawIptables(vif vifInfo,
 				parsedRule.limitArgs...)
 		}
 		if parsedRule.drop {
-			if ni.config.Type == types.NetworkInstanceTypeSwitch {
+			if applyDropAction {
 				iptablesRule.Target = "DROP"
 			} else {
 				// Add rule to only count the dropped packet, without actually dropping it.
@@ -644,18 +746,18 @@ func (r *LinuxNIReconciler) getIntendedAppConnRawIptables(vif vifInfo,
 			aclRules = append(aclRules, iptablesRule2)
 		}
 	}
-	// 4. Packet counting rule for the default drop.
-	aclRules = append(aclRules, iptables.Rule{
-		RuleLabel: "Count packets matched by the Default DROP",
-		Target:    dropCounterChain,
-	})
-	if ni.config.Type == types.NetworkInstanceTypeSwitch {
-		// Switched traffic cannot be dropped using the blackhole - it requires routing.
-		// Therefore, we drop traffic for switch NIs already in the raw table, without
-		// recording flows.
+	// 4. By default, traffic not matched by any ACE is dropped.
+	if applyDropAction {
 		aclRules = append(aclRules, iptables.Rule{
 			RuleLabel: "Default DROP",
 			Target:    "DROP",
+		})
+	} else {
+		// Only count DROP action.
+		// The actual drop is performed by routing traffic into the blackhole interface.
+		aclRules = append(aclRules, iptables.Rule{
+			RuleLabel: "Count packets matched by the Default DROP",
+			Target:    dropCounterChain,
 		})
 	}
 	// Finally, put all rules together.
@@ -673,14 +775,24 @@ func (r *LinuxNIReconciler) getIntendedAppConnRawIptables(vif vifInfo,
 }
 
 // Table FILTER, chain FORWARD is used to:
-//   - Count packets of to-be-dropped traffic *coming into* local NIs
-//     (dropped during the routing phase)
-//     XXX Isn't routing performed before filter/forward ?!
 //   - Apply rate-limit ACL rules (DROP extra ingress packets)
-//   - Count packets + fully apply (incl. DROP) ACLs on traffic *coming into* switch NIs
+//
+// And if flow logging is enabled:
+//   - Count packets of to-be-dropped traffic *coming into* Local NI
+//     (dropped during the routing phase)
+//   - Count packets + fully apply (incl. DROP) ACLs on traffic *coming into*
+//     Switch NI
+//
+// But if flow logging is disabled:
+//   - Count packets + fully apply (incl. DROP) ACLs on traffic *coming into*
+//     the NI (regardless of the NI type)
 func (r *LinuxNIReconciler) getIntendedAppConnFilterIptables(vif vifInfo,
-	ul types.AppNetAdapterConfig, forIPv6 bool) (items []dg.Item) {
+	cfg types.AppNetAdapterConfig, forIPv6 bool) (items []dg.Item) {
 	ni := r.nis[vif.NI]
+	// DROP ACE is applied by the FILTER table for switch NI or even for Local NI
+	// if flow logging is disabled.
+	applyDropAction := !ni.config.EnableFlowlog ||
+		ni.config.Type == types.NetworkInstanceTypeSwitch
 	var bridgeIP net.IP
 	if ni.bridge.IPAddress != nil {
 		bridgeIP = ni.bridge.IPAddress.IP
@@ -707,7 +819,8 @@ func (r *LinuxNIReconciler) getIntendedAppConnFilterIptables(vif vifInfo,
 			ForIPv6:   forIPv6,
 			MatchOpts: []string{"-o", ni.brIfName,
 				"-m", "physdev", "--physdev-out", matchVifIfName(vif)},
-			Target: vifChain("FORWARD", vif),
+			Target:        vifChain("FORWARD", vif),
+			AppliedBefore: []string{traverseL2FwdChainRuleLabel},
 		})
 	case types.NetworkInstanceTypeLocal:
 		if vif.GuestIP == nil {
@@ -718,12 +831,13 @@ func (r *LinuxNIReconciler) getIntendedAppConnFilterIptables(vif vifInfo,
 			break
 		}
 		items = append(items, iptables.Rule{
-			RuleLabel: fmt.Sprintf("Traverse VIF %s ingress ACLs", vif.hostIfName),
-			Table:     "filter",
-			ChainName: appChain("FORWARD"),
-			ForIPv6:   forIPv6,
-			MatchOpts: []string{"-o", ni.brIfName, "-d", vif.GuestIP.String()},
-			Target:    vifChain("FORWARD", vif),
+			RuleLabel:     fmt.Sprintf("Traverse VIF %s ingress ACLs", vif.hostIfName),
+			Table:         "filter",
+			ChainName:     appChain("FORWARD"),
+			ForIPv6:       forIPv6,
+			MatchOpts:     []string{"-o", ni.brIfName, "-d", vif.GuestIP.String()},
+			Target:        vifChain("FORWARD", vif),
+			AppliedBefore: []string{traverseL2FwdChainRuleLabel},
 		})
 	}
 	// Put ACL rules into the VIF-specific chain.
@@ -748,7 +862,7 @@ func (r *LinuxNIReconciler) getIntendedAppConnFilterIptables(vif vifInfo,
 		})
 	}
 	// 2. User-configured ACL rules
-	for _, aclRule := range ul.ACLs {
+	for _, aclRule := range cfg.ACLs {
 		parsedRule, skip, err := parseUserACLRule(r.log, aclRule, ni, vif, forIPv6)
 		if err != nil {
 			r.log.Errorf("%s: parseUserACLRule failed: %v", LogAndErrPrefix, err)
@@ -767,7 +881,7 @@ func (r *LinuxNIReconciler) getIntendedAppConnFilterIptables(vif vifInfo,
 				parsedRule.limitArgs...)
 		}
 		if parsedRule.drop {
-			if ni.config.Type == types.NetworkInstanceTypeSwitch {
+			if applyDropAction {
 				iptablesRule.Target = "DROP"
 			} else {
 				// Add rule to only count the dropped packet, without actually dropping it.
@@ -790,17 +904,18 @@ func (r *LinuxNIReconciler) getIntendedAppConnFilterIptables(vif vifInfo,
 			aclRules = append(aclRules, iptablesRule2)
 		}
 	}
-	// 3. Packet counting rule for the default drop.
-	aclRules = append(aclRules, iptables.Rule{
-		RuleLabel: "Count packets matched by the Default DROP",
-		Target:    dropCounterChain,
-	})
-	if ni.config.Type == types.NetworkInstanceTypeSwitch {
-		// Switched traffic cannot be dropped using the blackhole - it requires routing.
-		// Therefore, we drop ingress traffic for switch NIs inside the filter table.
+	// 3. By default, traffic not matched by any ACE is dropped.
+	if applyDropAction {
 		aclRules = append(aclRules, iptables.Rule{
 			RuleLabel: "Default DROP",
 			Target:    "DROP",
+		})
+	} else {
+		// Only count DROP action.
+		// The actual drop is performed by routing traffic into the blackhole interface.
+		aclRules = append(aclRules, iptables.Rule{
+			RuleLabel: "Count packets matched by the Default DROP",
+			Target:    dropCounterChain,
 		})
 	}
 	// Finally, put all rules together.
@@ -940,8 +1055,10 @@ func (r *LinuxNIReconciler) getIntendedAppConnNATIptables(vif vifInfo,
 
 // Table MANGLE, chain PREROUTING is used to:
 //   - mark connections with the ID of the applied ACL rule
+//
+// It is only used if flow logging is enabled for the network instance.
 func (r *LinuxNIReconciler) getIntendedAppConnMangleIptables(vif vifInfo,
-	ul types.AppNetAdapterConfig, forIPv6 bool, portIPs map[string][]*net.IPNet) (items []dg.Item) {
+	cfg types.AppNetAdapterConfig, forIPv6 bool, portIPs map[string][]*net.IPNet) (items []dg.Item) {
 	ni := r.nis[vif.NI]
 	app := r.apps[vif.App]
 	var bridgeIP net.IP
@@ -1028,7 +1145,7 @@ func (r *LinuxNIReconciler) getIntendedAppConnMangleIptables(vif vifInfo,
 		})
 	}
 	// 1.2. User-configured ACL rules
-	for _, aclRule := range ul.ACLs {
+	for _, aclRule := range cfg.ACLs {
 		parsedRule, skip, err := parseUserACLRule(r.log, aclRule, ni, vif, forIPv6)
 		if err != nil {
 			r.log.Errorf("%s: parseUserACLRule failed: %v", LogAndErrPrefix, err)
@@ -1072,7 +1189,7 @@ func (r *LinuxNIReconciler) getIntendedAppConnMangleIptables(vif vifInfo,
 					// on the same network instance.
 					iptablesRule2 := iptables.Rule{
 						RuleLabel: fmt.Sprintf("User-configured PORTMAP ACL rule %d "+
-							"for port %s IP %s from inside", aclRule.RuleID, portIP,
+							"for port %s IP %s from inside", aclRule.RuleID, portIfname,
 							portIP.IP.String()),
 						MatchOpts: append([]string{
 							"-i", ni.brIfName,
@@ -1136,7 +1253,7 @@ mangleEgress:
 		})
 	}
 	// 2.3. User-configured ACL rules
-	for _, aclRule := range ul.ACLs {
+	for _, aclRule := range cfg.ACLs {
 		parsedRule, skip, err := parseUserACLRule(r.log, aclRule, ni, vif, forIPv6)
 		if err != nil {
 			r.log.Errorf("%s: parseUserACLRule failed: %v", LogAndErrPrefix, err)

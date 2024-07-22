@@ -79,6 +79,13 @@ import (
 //  |   |   |   |   +-------------------------------+        |   |   |   |
 //  |   |   |   +--------------------------------------------+   |   |   |
 //  |   |   +----------------------------------------------------+   |   |
+//  |   |                                                            |   |
+//  |   |      +----------------------------------------------+      |   |
+//  |   |      |                ACLChainL2Fwd                 |      |   |
+//  |   |      |    +---------------+   +---------------+     |      |   |
+//  |   |      |    | IptablesChain |   |  IptablesRule |     |      |   |
+//  |   |      |    +---------------+   +---------------+     |      |   |
+//  |   |      +----------------------------------------------+      |   |
 //  |   +------------------------------------------------------------+   |
 //  |                                                                    |
 //  |   +------------------------------------------------------------+   |
@@ -99,6 +106,11 @@ import (
 //  |   |   |      |  (for L2 NI)  |    |   (for L2 NI)   |      |   |   |
 //  |   |   |      +---------------+    |  (device port)  |      |   |   |
 //  |   |   |                           +-----------------+      |   |   |
+//  |   |   |                                                    |   |   |
+//  |   |   |      +--------------------------------------+      |   |   |
+//  |   |   |      |             IptablesRule             |      |   |   |
+//  |   |   |      |  (allow forwarding inside L2 Switch) |      |   |   |
+//  |   |   |      +--------------------------------------+      |   |   |
 //  |   |   +----------------------------------------------------+   |   |
 //  |   |                                                            |   |
 //  |   |   +----------------------------------------------------+   |   |
@@ -194,6 +206,9 @@ const (
 	// for application ACLs. From there, the traffic is guided further into
 	// VIF-specific chains (based on input/output interfaces, etc.).
 	ACLRootChainsSG = "ACLRootChains"
+	// ACLChainL2FwdSG : subgraph with config items creating an iptables chain
+	// which is used to allow packet forwarding inside L2 network instances.
+	ACLChainL2FwdSG = "ACLChainL2Fwd"
 	// IPv4ChainsSG : subgraph with iptables chains for IPv4 traffic.
 	// Used under ACLRootChains.
 	IPv4ChainsSG = "IPv4Chains"
@@ -303,8 +318,11 @@ func (r *LinuxNIReconciler) getIntendedGlobalState() dg.Graph {
 	intendedCfg := dg.New(graphArgs)
 	intendedCfg.PutSubGraph(r.getIntendedPorts())
 	intendedCfg.PutSubGraph(r.getIntendedGlobalIPSets())
-	intendedCfg.PutSubGraph(r.getIntendedBlackholeCfg())
+	if r.withFlowlog() {
+		intendedCfg.PutSubGraph(r.getIntendedBlackholeCfg())
+	}
 	intendedCfg.PutSubGraph(r.getIntendedACLRootChains())
+	intendedCfg.PutSubGraph(r.getIntendedL2FwdChain())
 	return intendedCfg
 }
 
@@ -578,6 +596,10 @@ func (r *LinuxNIReconciler) getIntendedNIL2Cfg(niID uuid.UUID) dg.Graph {
 			TrunkPort: &trunkPort,
 		},
 	}, nil)
+	// Allow forwarding between the bridge ports.
+	for _, item := range r.getIntendedL2FwdRules(ni) {
+		intendedL2Cfg.PutItem(item, nil)
+	}
 	return intendedL2Cfg
 }
 
@@ -861,8 +883,8 @@ func (r *LinuxNIReconciler) getIntendedMetadataSrvCfg(niID uuid.UUID) (items []d
 				"for L2 NI %s", ni.config.UUID),
 			Table:     "filter",
 			ChainName: appChain("INPUT"),
-			MatchOpts: []string{"-i", ni.brIfName, "-p", "tcp", "--dport", "80", "-m",
-				"physdev", "--physdev-in", portPhysIfName(ni.brIfName)},
+			MatchOpts: []string{"-i", ni.brIfName, "-p", "tcp", "--dport", "80",
+				"-m", "physdev", "--physdev-in", portPhysIfName(ni.brIfName)},
 			Target: "DROP",
 			Description: fmt.Sprintf("Do not allow external endpoints to use switch "+
 				"network instance to access the metadata server of NI %s",
@@ -1330,7 +1352,7 @@ func (r *LinuxNIReconciler) getIntendedAppConnCfg(niID uuid.UUID,
 	}
 	intendedAppConnCfg.PutItem(ipv4Eids, nil)
 	intendedAppConnCfg.PutItem(ipv6Eids, nil)
-	intendedAppConnCfg.PutSubGraph(r.getIntendedAppConnACLs(niID, vif, ul))
+	intendedAppConnCfg.PutSubGraph(r.getIntendedAppConnACLs(vif, ul))
 	return intendedAppConnCfg
 }
 

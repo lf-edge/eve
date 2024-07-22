@@ -118,9 +118,11 @@ distributions, and could be confusing even for experienced Linux users, for exam
 - Network adapter for ethernet port is implemented as a bridge which enslaves the port and takes
   its interface name and MAC address - this way we can then put application interfaces under this
   bridge to implement switch network instance
-- ACLs are implemented by iptables `mangle` table for the most part (not `filter`). Traffic flow
-  that should not be allowed is marked with a "DROP mark" and routed into a dummy `blackhole`
-  interface
+- If flow logging is enabled, ACLs are implemented by iptables `mangle` table for the most
+  part (not `filter`). Traffic flow that should not be allowed is marked with a "DROP mark"
+  and routed into a dummy `blackhole` interface. The purpose of this is to ensure that conntrack
+  entries are created even for dropped flows, allowing metadata collection for all application
+  network flows, including those denied by ACLs.
 - By default, DHCP servers of local network instances grant leases to applications with /32
   IP addresses, even if the actual subnet is larger and with more than just one IP. This is
   accompanied by a link-local route for the actual subnet and is used to force routing even in
