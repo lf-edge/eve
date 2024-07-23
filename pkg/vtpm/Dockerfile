@@ -48,7 +48,7 @@ RUN ./bootstrap && \
 RUN cp lib/.libs/libcommon.so* /out/usr/lib/
 RUN cp tools/.libs/tpm2 /out/usr/bin/
 
-# Build vtpmd
+# Build vtpm
 WORKDIR /vtpm-build
 COPY vtpm/src/ /vtpm-build/.
 COPY vtpm/ /vtpm-build/.
@@ -59,7 +59,7 @@ RUN echo "Running go vet" && go vet ./... && echo "Running go fmt" && \
     ERR=$(gofmt -e -l -s $(find . -name \*.go | grep -v /vendor/)) && \
     if [ -n "$ERR" ] ; then echo "go fmt Failed - ERR: $ERR"; exit 1 ; fi
 RUN GO111MODULE=on CGO_ENABLED=0 go build -ldflags "-s -w -X=main.Version=${GOPKGVERSION}" \
-    -mod=vendor -o /out/usr/bin/vtpmd .
+    -mod=vendor -o /out/usr/bin/vtpm .
 
 # Build ptpmd
 WORKDIR /ptpm-build
