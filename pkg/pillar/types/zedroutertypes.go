@@ -857,6 +857,30 @@ type NetworkInstanceStatus struct {
 	ErrorAndTime
 }
 
+// IPRouteInfo contains info about a single IP route from the NI routing table.
+// It is published to the controller as part of ZInfoNetworkInstance.
+type IPRouteInfo struct {
+	DstNetwork *net.IPNet
+	// Nil for connected route.
+	Gateway net.IP
+	// Logical label of the output device port for the routed traffic.
+	// Empty if the gateway is IP address of one of the applications.
+	// In that case, GatewayApp is defined instead.
+	OutputPort string
+	// UUID of the application used as the gateway for the route.
+	// Empty if the gateway is external (not one of the apps but outside the device).
+	// In that case, OutputPort is defined instead.
+	GatewayApp uuid.UUID
+}
+
+// Equal compares two IP routes for equality.
+func (r IPRouteInfo) Equal(r2 IPRouteInfo) bool {
+	return netutils.EqualIPs(r.Gateway, r2.Gateway) &&
+		netutils.EqualIPNets(r.DstNetwork, r2.DstNetwork) &&
+		r.OutputPort == r2.OutputPort &&
+		r.GatewayApp == r2.GatewayApp
+}
+
 // LogCreate :
 func (status NetworkInstanceStatus) LogCreate(logBase *base.LogObject) {
 	logObject := base.NewLogObject(logBase, base.NetworkInstanceStatusLogType, "",

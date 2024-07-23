@@ -256,7 +256,7 @@ func (m *MockNetworkMonitor) GetInterfaceDefaultGWs(ifIndex int) (gws []net.IP, 
 		if route.IfIndex != ifIndex {
 			continue
 		}
-		if route.Dst != nil {
+		if !route.IsDefaultRoute() {
 			continue
 		}
 		gws = append(gws, route.Gw)

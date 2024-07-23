@@ -22,7 +22,7 @@ import (
 
 // Refresh the state of external items inside the Global subgraph of the current
 // state depgraph.
-func (r *LinuxNIReconciler) updateCurrentGlobalState(uplinksOnly bool) (changed bool) {
+func (r *LinuxNIReconciler) updateCurrentGlobalState(onlyPortsChanged bool) (changed bool) {
 	var globalSG dg.Graph
 	if readHandle := r.currentState.SubGraph(GlobalSG); readHandle != nil {
 		globalSG = r.currentState.EditSubGraph(readHandle)
@@ -30,85 +30,83 @@ func (r *LinuxNIReconciler) updateCurrentGlobalState(uplinksOnly bool) (changed 
 		globalSG = dg.New(dg.InitArgs{Name: GlobalSG})
 		r.currentState.PutSubGraph(globalSG)
 	}
-	// Refresh the current state of uplinks.
-	currentUplinks := dg.New(dg.InitArgs{Name: UplinksSG})
+	// Refresh the current state of device ports.
+	currentPorts := dg.New(dg.InitArgs{Name: PortsSG})
 	for _, ni := range r.nis {
 		if ni.deleted {
 			continue
 		}
-		if ni.bridge.Uplink.IfName == "" {
-			// Air-gapped NI, no uplink.
-			continue
-		}
-		var uplinkIfName string
-		switch ni.config.Type {
-		case types.NetworkInstanceTypeSwitch:
-			// bridge.UplinkIfName should refer to bridge created by NIM
-			// for the uplink (wired, ethernet) interface.
-			// This bridge will be used by the network instance directly
-			// and Uplink config item will be used to refer to the bridged
-			// physical interface.
-			uplinkIfName = uplinkPhysIfName(ni.bridge.Uplink.IfName)
-		case types.NetworkInstanceTypeLocal:
-			// bridge.UplinkIfName refers to a bridge created by NIM for the uplink
-			// (wired, ethernet) interface or directly to a wireless physical interface.
-			// However, it does not matter which case it is, Local NI will have its own
-			// bridge and even if uplink refers to a bridge it will be used just as if it
-			// was a physical interface.
-			uplinkIfName = ni.bridge.Uplink.IfName
-		}
-		ifIndex, found, err := r.netMonitor.GetInterfaceIndex(uplinkIfName)
-		if err != nil {
-			r.log.Errorf("%s: updateCurrentGlobalState: failed to get ifIndex for %s: %v",
-				LogAndErrPrefix, uplinkIfName, err)
-			continue
-		}
-		if !found {
-			continue
-		}
-		ifAttrs, err := r.netMonitor.GetInterfaceAttrs(ifIndex)
-		if err != nil {
-			r.log.Errorf(
-				"%s: updateCurrentGlobalState: failed to get interface %s attrs: %v",
-				LogAndErrPrefix, uplinkIfName, err)
-			continue
-		}
-		var masterIfName string
-		if ifAttrs.Enslaved {
-			masterIfAttrs, err := r.netMonitor.GetInterfaceAttrs(ifAttrs.MasterIfIndex)
-			if err != nil {
-				r.log.Errorf("%s: updateCurrentGlobalState: failed to get attrs "+
-					"for interface %s master (ifIndex: %d): %v",
-					LogAndErrPrefix, uplinkIfName, ifAttrs.MasterIfIndex, err)
-				// Continue as if this uplink interface didn't have master...
-			} else {
-				masterIfName = masterIfAttrs.IfName
+		for _, port := range ni.bridge.Ports {
+			var portIfName string
+			switch ni.config.Type {
+			case types.NetworkInstanceTypeSwitch:
+				// bridge.PortIfName should refer to bridge created by NIM
+				// for the port (wired, ethernet) interface.
+				// This bridge will be used by the network instance directly
+				// and Port config item will be used to refer to the bridged
+				// physical interface.
+				portIfName = portPhysIfName(port.IfName)
+			case types.NetworkInstanceTypeLocal:
+				// bridge.PortIfName refers to a bridge created by NIM for the port
+				// (wired, ethernet) interface or directly to a wireless physical interface.
+				// However, it does not matter which case it is, Local NI will have its own
+				// bridge and even if port refers to a bridge it will be used just as if it
+				// was a physical interface.
+				portIfName = port.IfName
 			}
+			ifIndex, found, err := r.netMonitor.GetInterfaceIndex(portIfName)
+			if err != nil {
+				r.log.Errorf("%s: updateCurrentGlobalState: failed to get ifIndex for %s: %v",
+					LogAndErrPrefix, portIfName, err)
+				continue
+			}
+			if !found {
+				continue
+			}
+			ifAttrs, err := r.netMonitor.GetInterfaceAttrs(ifIndex)
+			if err != nil {
+				r.log.Errorf(
+					"%s: updateCurrentGlobalState: failed to get interface %s attrs: %v",
+					LogAndErrPrefix, portIfName, err)
+				continue
+			}
+			var masterIfName string
+			if ifAttrs.Enslaved {
+				masterIfAttrs, err := r.netMonitor.GetInterfaceAttrs(ifAttrs.MasterIfIndex)
+				if err != nil {
+					r.log.Errorf("%s: updateCurrentGlobalState: failed to get attrs "+
+						"for interface %s master (ifIndex: %d): %v",
+						LogAndErrPrefix, portIfName, ifAttrs.MasterIfIndex, err)
+					// Continue as if this port interface didn't have master...
+				} else {
+					masterIfName = masterIfAttrs.IfName
+				}
+			}
+			ips, _, err := r.netMonitor.GetInterfaceAddrs(ifIndex)
+			if err != nil {
+				r.log.Errorf(
+					"%s: updateCurrentGlobalState: failed to get interface %s addresses: %v",
+					LogAndErrPrefix, portIfName, err)
+				// Continue as if this port interface didn't have any IP addresses...
+			}
+			currentPorts.PutItem(generic.Port{
+				IfName:       portIfName,
+				LogicalLabel: port.LogicalLabel,
+				MasterIfName: masterIfName,
+				AdminUp:      ifAttrs.AdminUp,
+				IPAddresses:  ips,
+			}, &reconciler.ItemStateData{
+				State:         reconciler.ItemStateCreated,
+				LastOperation: reconciler.OperationCreate,
+			})
 		}
-		ips, _, err := r.netMonitor.GetInterfaceAddrs(ifIndex)
-		if err != nil {
-			r.log.Errorf(
-				"%s: updateCurrentGlobalState: failed to get interface %s addresses: %v",
-				LogAndErrPrefix, uplinkIfName, err)
-			// Continue as if this uplink interface didn't have any IP addresses...
-		}
-		currentUplinks.PutItem(generic.Uplink{
-			IfName:       uplinkIfName,
-			LogicalLabel: ni.bridge.Uplink.LogicalLabel,
-			MasterIfName: masterIfName,
-			AdminUp:      ifAttrs.AdminUp,
-			IPAddresses:  ips,
-		}, &reconciler.ItemStateData{
-			State:         reconciler.ItemStateCreated,
-			LastOperation: reconciler.OperationCreate,
-		})
 	}
-	prevUplinks := globalSG.SubGraph(UplinksSG)
-	if prevUplinks == nil || len(prevUplinks.DiffItems(currentUplinks)) > 0 {
-		globalSG.PutSubGraph(currentUplinks)
+	prevPorts := globalSG.SubGraph(PortsSG)
+	if prevPorts == nil || len(prevPorts.DiffItems(currentPorts)) > 0 {
+		globalSG.PutSubGraph(currentPorts)
 		changed = true
 	}
-	if !uplinksOnly || globalSG.SubGraph(ACLRootChainsSG) == nil {
+	if !onlyPortsChanged || globalSG.SubGraph(ACLRootChainsSG) == nil {
 		// Refresh the current state of external iptables chains.
 		// XXX For now assume that all application chains were created by NIM
 		// successfully. Later we could improve this and actually check for their
@@ -252,17 +250,16 @@ func (r *LinuxNIReconciler) updateCurrentNIRoutes(niID uuid.UUID) (changed bool)
 			ItemRef: dg.Reference(linux.Bridge{IfName: ni.brIfName}),
 		}
 	}
-	uplink := ni.bridge.Uplink.IfName
-	if uplink != "" {
-		ifIndex, found, err := r.netMonitor.GetInterfaceIndex(uplink)
+	for _, port := range ni.bridge.Ports {
+		ifIndex, found, err := r.netMonitor.GetInterfaceIndex(port.IfName)
 		if err != nil {
 			r.log.Errorf("%s: updateCurrentNIRoutes: failed to get ifIndex "+
-				"for (NI uplink) %s: %v", LogAndErrPrefix, uplink, err)
+				"for (NI port) %s: %v", LogAndErrPrefix, port.IfName, err)
 		}
 		if err == nil && found {
 			outIfs[ifIndex] = generic.NetworkIf{
-				IfName:  uplink,
-				ItemRef: dg.Reference(generic.Uplink{IfName: uplink}),
+				IfName:  port.IfName,
+				ItemRef: dg.Reference(generic.Port{IfName: port.IfName}),
 			}
 		}
 	}
@@ -383,7 +380,7 @@ func (r *LinuxNIReconciler) getBridgeAddrs(niID uuid.UUID) (ipWithSubnet,
 	ni := r.nis[niID]
 	switch ni.config.Type {
 	case types.NetworkInstanceTypeSwitch:
-		if ni.bridge.Uplink.IfName != "" {
+		if len(ni.bridge.Ports) == 1 {
 			var ifIndex int
 			ifIndex, found, err = r.netMonitor.GetInterfaceIndex(ni.brIfName)
 			if err != nil || !found {
@@ -425,7 +422,7 @@ func (r *LinuxNIReconciler) getBridgeMTU(niID uuid.UUID) (mtu uint16, err error)
 	ni := r.nis[niID]
 	switch ni.config.Type {
 	case types.NetworkInstanceTypeSwitch:
-		if ni.bridge.Uplink.IfName != "" {
+		if len(ni.bridge.Ports) == 1 {
 			ifIndex, found, err := r.netMonitor.GetInterfaceIndex(ni.brIfName)
 			if !found {
 				err = fmt.Errorf("bridge %s does not exist", ni.brIfName)

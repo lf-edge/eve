@@ -11,7 +11,6 @@ import (
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/nireconciler/genericitems"
-	"github.com/lf-edge/eve/pkg/pillar/types"
 	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 )
@@ -54,7 +53,7 @@ func exampleDnsmasqParams() genericitems.Dnsmasq {
 				Hostname: "app1",
 			},
 		},
-		PropagateRoutes: []types.IPRoute{
+		PropagateRoutes: []genericitems.IPRoute{
 			{
 				DstNetwork: &net.IPNet{
 					IP:   net.IP{192, 168, 1, 0},
@@ -73,10 +72,26 @@ func exampleDnsmasqParams() genericitems.Dnsmasq {
 	}
 	dnsmasq.DNSServer = genericitems.DNSServer{
 		ListenIP: net.IP{10, 0, 0, 1},
-		UplinkIf: genericitems.NetworkIf{
-			IfName: "eth0",
+		UpstreamServers: []genericitems.UpstreamDNSServer{
+			{
+				IPAddress: net.IP{1, 1, 1, 1},
+				Port: genericitems.NetworkIf{
+					IfName: "eth0",
+				},
+			},
+			{
+				IPAddress: net.IP{141, 1, 1, 1},
+				Port: genericitems.NetworkIf{
+					IfName: "eth0",
+				},
+			},
+			{
+				IPAddress: net.IP{208, 67, 220, 220},
+				Port: genericitems.NetworkIf{
+					IfName: "eth1",
+				},
+			},
 		},
-		UpstreamServers: []net.IP{{1, 1, 1, 1}, {141, 1, 1, 1}, {208, 67, 220, 220}},
 		StaticEntries: []genericitems.HostnameToIPs{
 			{
 				Hostname: "router",
@@ -130,7 +145,7 @@ dhcp-ttl=600
 dhcp-leasefile=/run/zedrouter/dnsmasq.leases/br0
 server=1.1.1.1@eth0
 server=141.1.1.1@eth0
-server=208.67.220.220@eth0
+server=208.67.220.220@eth1
 no-resolv
 ipset=/zededa.com/ipv4.zededa.com,ipv6.zededa.com
 ipset=/example.com/ipv4.example.com,ipv6.example.com
