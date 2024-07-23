@@ -15,8 +15,8 @@ const (
 	UnsupportedRouteTypename = "Unsupported-Route"
 	// IPReserveTypename : typename for reserved IP address (for use with a bridge)
 	IPReserveTypename = "IPReserve"
-	// UplinkTypename : typename for uplink interface.
-	UplinkTypename = "Uplink"
+	// PortTypename : typename for network port.
+	PortTypename = "Port"
 	// HTTPServerTypename : typename for HTTP server.
 	HTTPServerTypename = "HTTPServer"
 	// DnsmasqTypename : typename for dnsmasq program (DNS and DHCP server).

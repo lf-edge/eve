@@ -23,7 +23,7 @@ type Bridge struct {
 	// IfName : name of the bridge interface inside the network stack.
 	IfName string
 	// CreatedByNIM : true if this bridge was created by NIM to extend the bridge domain
-	// of an uplink interface. Such bridge is then directly used for L2 network instances.
+	// of a device network port. Such bridge is then directly used for L2 network instances.
 	CreatedByNIM bool
 	// MACAddress : MAC address allocated for (or already assigned by NIM to) the bridge.
 	MACAddress net.HardwareAddr

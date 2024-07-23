@@ -13,6 +13,7 @@ import (
 
 	"github.com/eriknordmark/ipinfo"
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
 	"github.com/lf-edge/eve/pkg/pillar/utils/netutils"
 )
 
@@ -43,7 +44,7 @@ type NetworkPortStatus struct {
 	Dhcp           DhcpType
 	Type           NetworkType // IPv4 or IPv6 or Dual stack
 	Subnet         net.IPNet
-	NtpServer      net.IP // This comes from network instance configuration
+	NtpServer      net.IP // This comes from network configuration
 	DomainName     string
 	DNSServers     []net.IP // If not set we use Gateway as DNS server
 	NtpServers     []net.IP // This comes from DHCP done on uplink port
@@ -266,7 +267,6 @@ func (status DeviceNetworkStatus) MostlyEqual(status2 DeviceNetworkStatus) bool 
 // unimportant like just an increase in the success timestamp, but detects
 // when a port changes to/from a failure.
 func (status *DeviceNetworkStatus) MostlyEqualStatus(status2 DeviceNetworkStatus) bool {
-
 	if !status.MostlyEqual(status2) {
 		return false
 	}
@@ -528,7 +528,6 @@ func CountDNSServers(dns DeviceNetworkStatus, ifname string) int {
 
 // GetDNSServers returns all, or the ones on one interface if ifname is set
 func GetDNSServers(dns DeviceNetworkStatus, ifname string) []net.IP {
-
 	var servers []net.IP
 	for _, us := range dns.Ports {
 		if !us.IsMgmt && ifname == "" {
@@ -539,32 +538,27 @@ func GetDNSServers(dns DeviceNetworkStatus, ifname string) []net.IP {
 		}
 		servers = append(servers, us.DNSServers...)
 	}
+	// Avoid duplicates.
+	servers = generics.FilterDuplicatesFn(servers, netutils.EqualIPs)
 	return servers
 }
 
 // GetNTPServers returns all, or the ones on one interface if ifname is set
 func GetNTPServers(dns DeviceNetworkStatus, ifname string) []net.IP {
-
 	var servers []net.IP
 	for _, us := range dns.Ports {
 		if ifname != "" && ifname != us.IfName {
 			continue
 		}
+		// NTP servers received via DHCP.
 		servers = append(servers, us.NtpServers...)
-		// Add statically configured NTP server as well, but avoid duplicates.
+		// Add statically configured NTP server as well.
 		if us.NtpServer != nil {
-			var found bool
-			for _, server := range servers {
-				if server.Equal(us.NtpServer) {
-					found = true
-					break
-				}
-			}
-			if !found {
-				servers = append(servers, us.NtpServer)
-			}
+			servers = append(servers, us.NtpServer)
 		}
 	}
+	// Avoid duplicates.
+	servers = generics.FilterDuplicatesFn(servers, netutils.EqualIPs)
 	return servers
 }
 

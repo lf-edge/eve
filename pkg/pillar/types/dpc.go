@@ -244,11 +244,10 @@ func (config DevicePortConfig) LogKey() string {
 
 // LookupPortByIfName returns port configuration for the given interface.
 func (config *DevicePortConfig) LookupPortByIfName(ifName string) *NetworkPortConfig {
-	if config != nil {
-		for _, port := range config.Ports {
-			if port.IfName == ifName {
-				return &port
-			}
+	for i := range config.Ports {
+		port := &config.Ports[i]
+		if ifName == port.IfName {
+			return port
 		}
 	}
 	return nil

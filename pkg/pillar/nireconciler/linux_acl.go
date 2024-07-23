@@ -44,20 +44,21 @@ type userACLRule struct {
 	limitArgs []string
 	// true if the action is "LIMIT"
 	isLimitRule bool
-	// true if the action is "PORTMAP"
-	isPortMap bool
 	// true if the action is "DROP"
 	drop bool
+	// arguments provided if the action is "PORTMAP"
+	portMap *portMap
 	// ALLOW | DROP | LIMIT | PORTMAP
 	actionLabel string
 }
 
 // Port-forwarding ACL rule.
 type portMap struct {
-	ruleID       int
 	protocol     string
 	externalPort string
 	targetPort   int
+	// interface names of network adapters to which the port-map rule should be limited
+	adapters []string
 }
 
 // These variables are used as constants.
@@ -241,7 +242,7 @@ func getEssentialIPv6Protos(niType types.NetworkInstanceType,
 
 // Return errors without LogAndErrPrefix - it is prepended inside callers.
 func parseUserACLRule(log *base.LogObject, aclRule types.ACE,
-	niType types.NetworkInstanceType, vif vifInfo,
+	ni *niInfo, vif vifInfo,
 	forIPv6 bool) (parsedRule userACLRule, skip bool, err error) {
 	if len(aclRule.Actions) > 1 {
 		return parsedRule, true, fmt.Errorf(
@@ -250,7 +251,6 @@ func parseUserACLRule(log *base.LogObject, aclRule types.ACE,
 	// Parse action.
 	// Default action (if not specified) is to allow traffic to continue.
 	parsedRule.actionLabel = "ALLOW"
-	var portMapTargetPort string
 	if len(aclRule.Actions) > 0 {
 		action := aclRule.Actions[0]
 		var actionCount int
@@ -261,14 +261,15 @@ func parseUserACLRule(log *base.LogObject, aclRule types.ACE,
 		}
 		if action.PortMap {
 			actionCount++
-			parsedRule.isPortMap = true
 			parsedRule.actionLabel = "PORTMAP"
 			if action.TargetPort == 0 {
 				err = fmt.Errorf("portmap ACL rule (%+v) with zero target port",
 					aclRule)
 				return parsedRule, true, err
 			}
-			portMapTargetPort = strconv.Itoa(action.TargetPort)
+			parsedRule.portMap = &portMap{
+				targetPort: action.TargetPort,
+			}
 		}
 		if action.Limit {
 			actionCount++
@@ -298,6 +299,7 @@ func parseUserACLRule(log *base.LogObject, aclRule types.ACE,
 		lport        string
 		fport        string
 	)
+	anyAdapter := true
 	for _, match := range aclRule.Matches {
 		switch match.Type {
 		case "ip":
@@ -330,7 +332,7 @@ func parseUserACLRule(log *base.LogObject, aclRule types.ACE,
 					LogAndErrPrefix, match.Value)
 				break
 			}
-			if niType == types.NetworkInstanceTypeSwitch {
+			if ni.config.Type == types.NetworkInstanceTypeSwitch {
 				err := fmt.Errorf("ACL rule with host is not supported "+
 					"on switch network instance (%+v)", aclRule)
 				return parsedRule, true, err
@@ -347,7 +349,7 @@ func parseUserACLRule(log *base.LogObject, aclRule types.ACE,
 				ipsetName = ipsetNamePrefixV4 + ipsetBasename
 			}
 		case "eidset":
-			if niType == types.NetworkInstanceTypeSwitch {
+			if ni.config.Type == types.NetworkInstanceTypeSwitch {
 				err := fmt.Errorf("ACL rule with eidset is not supported "+
 					"on switch network instance (%+v)", aclRule)
 				return parsedRule, true, err
@@ -358,6 +360,20 @@ func parseUserACLRule(log *base.LogObject, aclRule types.ACE,
 				return parsedRule, true, err
 			}
 			ipsetName = eidsIpsetName(vif, forIPv6)
+		case "adapter":
+			if parsedRule.portMap == nil {
+				err := fmt.Errorf("ACL rule with (%+v) 'adapter' match (%s) "+
+					"is not supported for egress traffic (only for ingress port-map rules)",
+					aclRule, match.Value)
+				return parsedRule, true, err
+			}
+			anyAdapter = false
+			for _, port := range ni.bridge.Ports {
+				if generics.ContainsItem(port.SharedLabels, match.Value) {
+					parsedRule.portMap.adapters = append(parsedRule.portMap.adapters,
+						port.IfName)
+				}
+			}
 		default:
 			err := fmt.Errorf("ACL rule (%+v) with unsupported match type: %s",
 				aclRule, match)
@@ -374,7 +390,7 @@ func parseUserACLRule(log *base.LogObject, aclRule types.ACE,
 			aclRule, fport)
 		return parsedRule, true, err
 	}
-	if parsedRule.isPortMap && lport == "" {
+	if parsedRule.portMap != nil && lport == "" {
 		err := fmt.Errorf("portmap ACL rule (%+v) without lport", aclRule)
 		return parsedRule, true, err
 	}
@@ -410,14 +426,16 @@ func parseUserACLRule(log *base.LogObject, aclRule types.ACE,
 			ingressMatch...)
 	}
 	if lport != "" {
-		if parsedRule.isPortMap {
+		if parsedRule.portMap != nil {
+			parsedRule.portMap.externalPort = lport
+			parsedRule.portMap.protocol = protocol // verified above that it is not empty
 			// egressMatch is before SNAT from app port to lport
 			parsedRule.egressMatch = append(parsedRule.egressMatch,
-				"--sport", portMapTargetPort)
+				"--sport", strconv.Itoa(parsedRule.portMap.targetPort))
 			parsedRule.preDNATIngressMatch = append(parsedRule.preDNATIngressMatch,
 				"--dport", lport)
 			parsedRule.postDNATIngressMatch = append(parsedRule.postDNATIngressMatch,
-				"--dport", portMapTargetPort)
+				"--dport", strconv.Itoa(parsedRule.portMap.targetPort))
 		} else {
 			parsedRule.egressMatch = append(parsedRule.egressMatch, "--sport", lport)
 			ingressMatch := []string{"--dport", lport}
@@ -435,6 +453,11 @@ func parseUserACLRule(log *base.LogObject, aclRule types.ACE,
 			ingressMatch...)
 		parsedRule.postDNATIngressMatch = append(parsedRule.postDNATIngressMatch,
 			ingressMatch...)
+	}
+	if parsedRule.portMap != nil && anyAdapter {
+		for _, port := range ni.bridge.Ports {
+			parsedRule.portMap.adapters = append(parsedRule.portMap.adapters, port.IfName)
+		}
 	}
 	return parsedRule, false, nil
 }
@@ -482,23 +505,23 @@ func (r *LinuxNIReconciler) getIntendedAppConnACLs(niID uuid.UUID,
 		Description: "ACLs configured for application VIF",
 	}
 	ni := r.nis[vif.NI]
-	var uplinkIPs []*net.IPNet
-	uplink := ni.bridge.Uplink.IfName
-	if uplink != "" {
-		ifIndex, found, err := r.netMonitor.GetInterfaceIndex(uplink)
+	portIPs := make(map[string][]*net.IPNet) // key: interface name
+	for _, port := range ni.bridge.Ports {
+		ifIndex, found, err := r.netMonitor.GetInterfaceIndex(port.IfName)
 		if err != nil {
 			r.log.Errorf("%s: getIntendedAppConnACLs: failed to get ifIndex "+
-				"for uplink %s: %v", LogAndErrPrefix, uplink, err)
+				"for port %s: %v", LogAndErrPrefix, port.IfName, err)
 		} else if found {
-			uplinkIPs, _, err = r.netMonitor.GetInterfaceAddrs(ifIndex)
+			ips, _, err := r.netMonitor.GetInterfaceAddrs(ifIndex)
 			if err != nil {
 				r.log.Errorf(
-					"%s: getIntendedAppConnACLs: failed to get uplink %s addresses: %v",
-					LogAndErrPrefix, uplink, err)
+					"%s: getIntendedAppConnACLs: failed to get port %s addresses: %v",
+					LogAndErrPrefix, port.IfName, err)
 			}
-			uplinkIPs = generics.FilterList(uplinkIPs, func(ipNet *net.IPNet) bool {
+			ips = generics.FilterList(ips, func(ipNet *net.IPNet) bool {
 				return ipNet.IP.IsGlobalUnicast()
 			})
+			portIPs[port.IfName] = ips
 		}
 	}
 	intendedAppConnACLs := dg.New(graphArgs)
@@ -509,19 +532,16 @@ func (r *LinuxNIReconciler) getIntendedAppConnACLs(niID uuid.UUID,
 				continue
 			}
 		}
-		uplinkIPvXs := generics.FilterList(uplinkIPs, func(ipNet *net.IPNet) bool {
-			return (ipNet.IP.To4() == nil) == ipv6
-		})
 		for _, item := range r.getIntendedAppConnRawIptables(vif, ul, ipv6) {
 			intendedAppConnACLs.PutItem(item, nil)
 		}
 		for _, item := range r.getIntendedAppConnFilterIptables(vif, ul, ipv6) {
 			intendedAppConnACLs.PutItem(item, nil)
 		}
-		for _, item := range r.getIntendedAppConnNATIptables(vif, ul, ipv6, uplinkIPvXs) {
+		for _, item := range r.getIntendedAppConnNATIptables(vif, ul, ipv6, portIPs) {
 			intendedAppConnACLs.PutItem(item, nil)
 		}
-		for _, item := range r.getIntendedAppConnMangleIptables(vif, ul, ipv6, uplinkIPvXs) {
+		for _, item := range r.getIntendedAppConnMangleIptables(vif, ul, ipv6, portIPs) {
 			intendedAppConnACLs.PutItem(item, nil)
 		}
 	}
@@ -581,7 +601,7 @@ func (r *LinuxNIReconciler) getIntendedAppConnRawIptables(vif vifInfo,
 	}
 	// 3. User-configured ACL rules
 	for _, aclRule := range ul.ACLs {
-		parsedRule, skip, err := parseUserACLRule(r.log, aclRule, ni.config.Type, vif, ipv6)
+		parsedRule, skip, err := parseUserACLRule(r.log, aclRule, ni, vif, ipv6)
 		if err != nil {
 			r.log.Errorf("%s: parseUserACLRule failed: %v", LogAndErrPrefix, err)
 			continue
@@ -672,7 +692,7 @@ func (r *LinuxNIReconciler) getIntendedAppConnFilterIptables(vif vifInfo,
 		ChainName: vifChain("FORWARD", vif),
 		ForIPv6:   ipv6,
 	})
-	if ni.bridge.Uplink.IfName == "" {
+	if len(ni.bridge.Ports) == 0 {
 		// Air-gapped - not possible to reach applications from outside.
 		return
 	}
@@ -723,7 +743,7 @@ func (r *LinuxNIReconciler) getIntendedAppConnFilterIptables(vif vifInfo,
 	}
 	// 2. User-configured ACL rules
 	for _, aclRule := range ul.ACLs {
-		parsedRule, skip, err := parseUserACLRule(r.log, aclRule, ni.config.Type, vif, ipv6)
+		parsedRule, skip, err := parseUserACLRule(r.log, aclRule, ni, vif, ipv6)
 		if err != nil {
 			r.log.Errorf("%s: parseUserACLRule failed: %v", LogAndErrPrefix, err)
 			continue
@@ -792,20 +812,20 @@ func (r *LinuxNIReconciler) getIntendedAppConnFilterIptables(vif vifInfo,
 }
 
 // Table NAT, chain PREROUTING is used to apply port-map ACL rules both for:
-//   - traffic coming from outside via uplink
+//   - traffic coming from outside via device port
 //   - traffic coming from another app on the same network instance
 //
 // Table NAT, chain POSTROUTING is used to:
 //   - for every port-map ACL rule, make sure that traffic going via NI bridge
 //     and towards the application is SNATed to bridge IP
 func (r *LinuxNIReconciler) getIntendedAppConnNATIptables(vif vifInfo,
-	ul types.AppNetAdapterConfig, ipv6 bool, uplinkIPs []*net.IPNet) (items []dg.Item) {
+	ul types.AppNetAdapterConfig, ipv6 bool, portIPs map[string][]*net.IPNet) (items []dg.Item) {
 	ni := r.nis[vif.NI]
 	if ni.config.Type != types.NetworkInstanceTypeLocal {
 		// Only local network instance uses port-mapping ACL rules.
 		return items
 	}
-	if len(uplinkIPs) == 0 || vif.GuestIP == nil || ni.bridge.IPAddress == nil {
+	if vif.GuestIP == nil || ni.bridge.IPAddress == nil {
 		// Missing one or more IPs needed for port forwarding.
 		return items
 	}
@@ -834,50 +854,61 @@ func (r *LinuxNIReconciler) getIntendedAppConnNATIptables(vif vifInfo,
 		ForIPv6:   ipv6,
 		Target:    vifChain("POSTROUTING", vif),
 	})
-	// Add DNAT rules for port-map ACLs.
-	portMapRules := collectPortMapRules(ul.ACLs)
-	for _, portMapRule := range portMapRules {
-		for _, uplinkIP := range uplinkIPs {
-			target := fmt.Sprintf("%s:%d", vif.GuestIP, portMapRule.targetPort)
-			items = append(items, iptables.Rule{
-				RuleLabel: fmt.Sprintf("User-configured PORTMAP ACL rule %d "+
-					"for uplink IP %s from outside", portMapRule.ruleID,
-					uplinkIP.IP.String()),
-				Table:     "nat",
-				ChainName: vifChain("PREROUTING", vif),
-				ForIPv6:   ipv6,
-				MatchOpts: []string{"-i", ni.bridge.Uplink.IfName,
-					"-p", portMapRule.protocol, "-d", uplinkIP.IP.String(),
-					"--dport", portMapRule.externalPort},
-				Target:     "DNAT",
-				TargetOpts: []string{"--to-destination", target},
-			})
-			items = append(items, iptables.Rule{
-				RuleLabel: fmt.Sprintf("User-configured PORTMAP ACL rule %d "+
-					"for uplink IP %s from inside", portMapRule.ruleID,
-					uplinkIP.IP.String()),
-				Table:     "nat",
-				ChainName: vifChain("PREROUTING", vif),
-				ForIPv6:   ipv6,
-				MatchOpts: []string{"-i", ni.brIfName,
-					"-p", portMapRule.protocol, "-d", uplinkIP.IP.String(),
-					"--dport", portMapRule.externalPort},
-				Target:     "DNAT",
-				TargetOpts: []string{"--to-destination", target},
-			})
+	for _, aclRule := range ul.ACLs {
+		parsedRule, skip, err := parseUserACLRule(r.log, aclRule, ni, vif, ipv6)
+		if err != nil {
+			r.log.Errorf("%s: parseUserACLRule failed: %v", LogAndErrPrefix, err)
+			continue
 		}
-	}
-	// Add SNAT rules for port-map ACLs.
-	for _, portMapRule := range portMapRules {
+		if skip {
+			continue
+		}
+		portMap := parsedRule.portMap
+		if portMap == nil {
+			continue
+		}
+		// Add DNAT rules for port-map ACL.
+		for _, portIfname := range portMap.adapters {
+			for _, portIP := range portIPs[portIfname] {
+				target := fmt.Sprintf("%s:%d", vif.GuestIP, portMap.targetPort)
+				items = append(items, iptables.Rule{
+					RuleLabel: fmt.Sprintf("User-configured PORTMAP ACL rule %d "+
+						"for port %s IP %s from outside", aclRule.RuleID, portIfname,
+						portIP.IP.String()),
+					Table:     "nat",
+					ChainName: vifChain("PREROUTING", vif),
+					ForIPv6:   ipv6,
+					MatchOpts: []string{"-i", portIfname,
+						"-p", portMap.protocol, "-d", portIP.IP.String(),
+						"--dport", portMap.externalPort},
+					Target:     "DNAT",
+					TargetOpts: []string{"--to-destination", target},
+				})
+				items = append(items, iptables.Rule{
+					RuleLabel: fmt.Sprintf("User-configured PORTMAP ACL rule %d "+
+						"for port %s IP %s from inside", aclRule.RuleID, portIfname,
+						portIP.IP.String()),
+					Table:     "nat",
+					ChainName: vifChain("PREROUTING", vif),
+					ForIPv6:   ipv6,
+					MatchOpts: []string{"-i", ni.brIfName,
+						"-p", portMap.protocol, "-d", portIP.IP.String(),
+						"--dport", portMap.externalPort},
+					Target:     "DNAT",
+					TargetOpts: []string{"--to-destination", target},
+				})
+			}
+		}
+		// Add SNAT rule for port-map ACL.
 		items = append(items, iptables.Rule{
 			RuleLabel: fmt.Sprintf("User-configured PORTMAP ACL rule %d",
-				portMapRule.ruleID),
+				aclRule.RuleID),
 			Table:     "nat",
 			ChainName: vifChain("POSTROUTING", vif),
 			ForIPv6:   ipv6,
 			MatchOpts: []string{"-o", ni.brIfName,
-				"-p", portMapRule.protocol, "-d", vif.GuestIP.String(),
-				"--dport", strconv.Itoa(portMapRule.targetPort)},
+				"-p", portMap.protocol, "-d", vif.GuestIP.String(),
+				"--dport", strconv.Itoa(portMap.targetPort)},
 			Target:     "SNAT",
 			TargetOpts: []string{"--to", ni.bridge.IPAddress.IP.String()},
 		})
@@ -888,7 +919,7 @@ func (r *LinuxNIReconciler) getIntendedAppConnNATIptables(vif vifInfo,
 // Table MANGLE, chain PREROUTING is used to:
 //   - mark connections with the ID of the applied ACL rule
 func (r *LinuxNIReconciler) getIntendedAppConnMangleIptables(vif vifInfo,
-	ul types.AppNetAdapterConfig, ipv6 bool, uplinkIPs []*net.IPNet) (items []dg.Item) {
+	ul types.AppNetAdapterConfig, ipv6 bool, portIPs map[string][]*net.IPNet) (items []dg.Item) {
 	ni := r.nis[vif.NI]
 	app := r.apps[vif.App]
 	var bridgeIP net.IP
@@ -950,7 +981,7 @@ func (r *LinuxNIReconciler) getIntendedAppConnMangleIptables(vif vifInfo,
 	// 1. Add ingress ACL rules
 	// Matched by input interface and possibly also by dst IP address.
 	var ingressRules []iptables.Rule
-	if ni.bridge.Uplink.IfName == "" {
+	if len(ni.bridge.Ports) == 0 {
 		// Air-gapped - not possible to reach applications from outside.
 		goto mangleEgress
 	}
@@ -976,7 +1007,7 @@ func (r *LinuxNIReconciler) getIntendedAppConnMangleIptables(vif vifInfo,
 	}
 	// 1.2. User-configured ACL rules
 	for _, aclRule := range ul.ACLs {
-		parsedRule, skip, err := parseUserACLRule(r.log, aclRule, ni.config.Type, vif, ipv6)
+		parsedRule, skip, err := parseUserACLRule(r.log, aclRule, ni, vif, ipv6)
 		if err != nil {
 			r.log.Errorf("%s: parseUserACLRule failed: %v", LogAndErrPrefix, err)
 			continue
@@ -986,10 +1017,7 @@ func (r *LinuxNIReconciler) getIntendedAppConnMangleIptables(vif vifInfo,
 		}
 		// Add marking rules only for traffic that can originate from outside.
 		// Inside-originating traffic is marked by egress rules.
-		if ni.config.Type != types.NetworkInstanceTypeSwitch && !parsedRule.isPortMap {
-			continue
-		}
-		if parsedRule.isPortMap && len(uplinkIPs) == 0 {
+		if ni.config.Type != types.NetworkInstanceTypeSwitch && parsedRule.portMap == nil {
 			continue
 		}
 		markChain := markChainPrefix + strconv.Itoa(int(aclRule.RuleID))
@@ -1000,47 +1028,51 @@ func (r *LinuxNIReconciler) getIntendedAppConnMangleIptables(vif vifInfo,
 				getMarkingChainCfg(markChain, ipv6, markToString(mark))...)
 			addedMarkChains[markChain] = struct{}{}
 		}
-		if parsedRule.isPortMap {
-			for _, uplinkIP := range uplinkIPs {
-				iptablesRule := iptables.Rule{
-					RuleLabel: fmt.Sprintf("User-configured PORTMAP ACL rule %d "+
-						"for uplink IP %s from outside", aclRule.RuleID,
-						uplinkIP.IP.String()),
-					MatchOpts: append([]string{
-						"-i", ni.bridge.Uplink.IfName,
-						"-d", uplinkIP.IP.String()},
-						parsedRule.preDNATIngressMatch...),
-					Target: markChain,
+		if parsedRule.portMap != nil {
+			for _, portIfname := range parsedRule.portMap.adapters {
+				for _, portIP := range portIPs[portIfname] {
+					iptablesRule := iptables.Rule{
+						RuleLabel: fmt.Sprintf("User-configured PORTMAP ACL rule %d "+
+							"for port %s IP %s from outside", aclRule.RuleID, portIfname,
+							portIP.IP.String()),
+						MatchOpts: append([]string{
+							"-i", portIfname,
+							"-d", portIP.IP.String()},
+							parsedRule.preDNATIngressMatch...),
+						Target: markChain,
+					}
+					ingressRules = append(ingressRules, iptablesRule)
+					// Also mark port-mapped traffic coming from other application
+					// on the same network instance.
+					iptablesRule2 := iptables.Rule{
+						RuleLabel: fmt.Sprintf("User-configured PORTMAP ACL rule %d "+
+							"for port %s IP %s from inside", aclRule.RuleID, portIP,
+							portIP.IP.String()),
+						MatchOpts: append([]string{
+							"-i", ni.brIfName,
+							"-d", portIP.IP.String()},
+							parsedRule.preDNATIngressMatch...),
+						Target: markChain,
+					}
+					ingressRules = append(ingressRules, iptablesRule2)
 				}
-				ingressRules = append(ingressRules, iptablesRule)
-				// Also mark port-mapped traffic coming from other application
-				// on the same network instance.
-				iptablesRule2 := iptables.Rule{
-					RuleLabel: fmt.Sprintf("User-configured PORTMAP ACL rule %d "+
-						"for uplink IP %s from inside", aclRule.RuleID,
-						uplinkIP.IP.String()),
-					MatchOpts: append([]string{
-						"-i", ni.brIfName,
-						"-d", uplinkIP.IP.String()},
-						parsedRule.preDNATIngressMatch...),
-					Target: markChain,
-				}
-				ingressRules = append(ingressRules, iptablesRule2)
 			}
 			continue
 		}
-		matchOpts := []string{"-i", ni.bridge.Uplink.IfName}
-		iptablesRule := iptables.Rule{
-			RuleLabel: fmt.Sprintf("User-configured %s ACL rule %d",
-				parsedRule.actionLabel, aclRule.RuleID),
-			MatchOpts: append(matchOpts, parsedRule.preDNATIngressMatch...),
-			Target:    markChain,
+		for _, port := range ni.bridge.Ports {
+			matchOpts := []string{"-i", port.IfName}
+			iptablesRule := iptables.Rule{
+				RuleLabel: fmt.Sprintf("User-configured %s ACL rule %d for ingress "+
+					"port %s", parsedRule.actionLabel, aclRule.RuleID, port.IfName),
+				MatchOpts: append(matchOpts, parsedRule.preDNATIngressMatch...),
+				Target:    markChain,
+			}
+			if parsedRule.isLimitRule {
+				iptablesRule.MatchOpts = append(iptablesRule.MatchOpts,
+					parsedRule.limitArgs...)
+			}
+			ingressRules = append(ingressRules, iptablesRule)
 		}
-		if parsedRule.isLimitRule {
-			iptablesRule.MatchOpts = append(iptablesRule.MatchOpts,
-				parsedRule.limitArgs...)
-		}
-		ingressRules = append(ingressRules, iptablesRule)
 	}
 
 mangleEgress:
@@ -1079,7 +1111,7 @@ mangleEgress:
 	}
 	// 2.3. User-configured ACL rules
 	for _, aclRule := range ul.ACLs {
-		parsedRule, skip, err := parseUserACLRule(r.log, aclRule, ni.config.Type, vif, ipv6)
+		parsedRule, skip, err := parseUserACLRule(r.log, aclRule, ni, vif, ipv6)
 		if err != nil {
 			r.log.Errorf("%s: parseUserACLRule failed: %v", LogAndErrPrefix, err)
 			continue
@@ -1087,7 +1119,7 @@ mangleEgress:
 		if skip {
 			continue
 		}
-		if parsedRule.isPortMap {
+		if parsedRule.portMap != nil {
 			// Initiated from outside hence marked by the ingress rule.
 			continue
 		}
@@ -1148,36 +1180,6 @@ mangleEgress:
 		items = append(items, rule)
 	}
 	return items
-}
-
-func collectPortMapRules(acls []types.ACE) (portMapRules []portMap) {
-	for _, aclRule := range acls {
-		portMapRule := portMap{ruleID: int(aclRule.RuleID)}
-		for _, match := range aclRule.Matches {
-			switch match.Type {
-			case "protocol":
-				portMapRule.protocol = match.Value
-			case "lport":
-				portMapRule.externalPort = match.Value
-			}
-		}
-		if portMapRule.protocol == "" || portMapRule.externalPort == "" {
-			// Error already reported by parseUserACLRule.
-			continue
-		}
-		for _, action := range aclRule.Actions {
-			if action.PortMap {
-				if action.TargetPort == 0 {
-					// Error already reported by parseUserACLRule.
-					continue
-				}
-				portMapRule.targetPort = action.TargetPort
-				portMapRules = append(portMapRules, portMapRule)
-				break
-			}
-		}
-	}
-	return
 }
 
 func markToString(mark uint32) string {

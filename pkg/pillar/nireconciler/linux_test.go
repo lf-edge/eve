@@ -242,10 +242,13 @@ func TestHostIpsetBasename(t *testing.T) {
   |      |------>|    (IPv4)    |       | (app-shared) |
   |      |----   +--------------+       +--------------+
   +------+   |                                 ^
-             |   +--------------+              |
-             --->| NI5 (local)  |---------------
-                 |    (IPv4)    |
-                 +--------------+
+             |   +------------------+          |
+             --->|   NI5 (local)    |-----------
+                 |      (IPv4)      |
+                 | (multiple ports) |     +--------------+
+                 |                  |---->|     eth3     |
+                 |                  |     | (app-shared) |
+                 +------------------+     +--------------+
 
   +------+       +--------------+       +--------+
   | app3 |------>| NI3 (local)  |------>|  eth2  |
@@ -259,7 +262,7 @@ func TestHostIpsetBasename(t *testing.T) {
 */
 
 var (
-	// Uplink interface "eth0"
+	// Device network port "eth0"
 	keth0 = netmonitor.MockInterface{
 		Attrs: netmonitor.IfAttrs{
 			IfIndex:       1,
@@ -311,7 +314,7 @@ var (
 		},
 	}
 
-	// Uplink interface "eth1"
+	// Device network port "eth1"
 	keth1 = netmonitor.MockInterface{
 		Attrs: netmonitor.IfAttrs{
 			IfIndex:       3,
@@ -362,7 +365,7 @@ var (
 		},
 	}
 
-	// Uplink interface "eth2" (IPv6 connectivity)
+	// Device network port "eth2" (IPv6 connectivity)
 	keth2 = netmonitor.MockInterface{
 		Attrs: netmonitor.IfAttrs{
 			IfIndex:       5,
@@ -410,6 +413,57 @@ var (
 		},
 	}
 
+	// Device network port "eth3"
+	keth3 = netmonitor.MockInterface{
+		Attrs: netmonitor.IfAttrs{
+			IfIndex:       7,
+			IfName:        "keth3",
+			IfType:        "device",
+			WithBroadcast: true,
+			AdminUp:       true,
+			LowerUp:       true,
+			Enslaved:      true,
+			MasterIfIndex: 8,
+		},
+		HwAddr: macAddress("02:00:00:00:00:04"),
+	}
+	eth3 = netmonitor.MockInterface{
+		Attrs: netmonitor.IfAttrs{
+			IfIndex:       8,
+			IfName:        "eth3",
+			IfType:        "bridge",
+			WithBroadcast: true,
+			AdminUp:       true,
+			LowerUp:       true,
+		},
+		IPAddrs: []*net.IPNet{ipAddressWithPrefix("172.30.30.40/24")},
+		DHCP: netmonitor.DHCPInfo{
+			Subnet: ipSubnet("172.30.30.0/24"),
+		},
+		DNS: netmonitor.DNSInfo{
+			ResolvConfPath: "/etc/eth3-resolv.conf",
+			Domains:        []string{"eth3-test-domain"},
+			DNSServers:     []net.IP{ipAddress("172.30.30.57")},
+		},
+		HwAddr: macAddress("02:00:00:00:01:04"),
+	}
+	eth3Routes = []netmonitor.Route{
+		{
+			IfIndex: 8,
+			Dst:     ipAddressWithPrefix("0.0.0.0/0"),
+			Gw:      ipAddress("172.30.30.1"),
+			Table:   unix.RT_TABLE_MAIN,
+			Data: netlink.Route{
+				LinkIndex: 8,
+				Dst:       nil,
+				Gw:        ipAddress("172.30.30.1"),
+				Table:     unix.RT_TABLE_MAIN,
+				Family:    netlink.FAMILY_V4,
+				Protocol:  unix.RTPROT_DHCP,
+			},
+		},
+	}
+
 	// Local IPv4 network instance "ni1"
 	ni1UUID   = makeUUID("0d6a128b-b36f-4bd0-a71c-087ba2d71ebc")
 	ni1Config = types.NetworkInstanceConfig{
@@ -424,17 +478,19 @@ var (
 		BrNum:      1,
 		MACAddress: macAddress("02:00:00:00:02:01"),
 		IPAddress:  ipAddressWithPrefix("10.10.10.1/24"),
-		Uplink: nirec.Uplink{
-			LogicalLabel: "ethernet0",
-			IfName:       "eth0",
-			IsMgmt:       true,
-			DNSServers:   []net.IP{ipAddress("8.8.8.8")},
-			NTPServers:   []net.IP{ipAddress("132.163.96.5")},
+		Ports: []nirec.Port{
+			{
+				LogicalLabel: "ethernet0",
+				IfName:       "eth0",
+				IsMgmt:       true,
+				DNSServers:   []net.IP{ipAddress("8.8.8.8")},
+				NTPServers:   []net.IP{ipAddress("132.163.96.5")},
+			},
 		},
 	}
 	ni1BridgeIf = netmonitor.MockInterface{
 		Attrs: netmonitor.IfAttrs{
-			IfIndex:       7,
+			IfIndex:       9,
 			IfName:        "bn1",
 			IfType:        "bridge",
 			WithBroadcast: true,
@@ -457,12 +513,14 @@ var (
 		NI:         ni2UUID.UUID,
 		BrNum:      2,
 		MACAddress: macAddress("02:00:00:00:01:02"), // eth1
-		Uplink: nirec.Uplink{
-			LogicalLabel: "ethernet1",
-			IfName:       "eth1",
-			IsMgmt:       false,
-			DNSServers:   []net.IP{ipAddress("8.8.8.8")},
-			NTPServers:   []net.IP{ipAddress("132.163.96.5")},
+		Ports: []nirec.Port{
+			{
+				LogicalLabel: "ethernet1",
+				IfName:       "eth1",
+				IsMgmt:       false,
+				DNSServers:   []net.IP{ipAddress("8.8.8.8")},
+				NTPServers:   []net.IP{ipAddress("132.163.96.5")},
+			},
 		},
 	}
 
@@ -487,17 +545,19 @@ var (
 		BrNum:      3,
 		MACAddress: macAddress("02:00:00:00:02:03"),
 		IPAddress:  ipAddressWithPrefix("2001::1111:1/112"),
-		Uplink: nirec.Uplink{
-			LogicalLabel: "ethernet2",
-			IfName:       "eth2",
-			IsMgmt:       true,
-			DNSServers:   []net.IP{ipAddress("2001:4860:4860::8888")},
-			NTPServers:   []net.IP{ipAddress("2610:20:6f15:15::27")},
+		Ports: []nirec.Port{
+			{
+				LogicalLabel: "ethernet2",
+				IfName:       "eth2",
+				IsMgmt:       true,
+				DNSServers:   []net.IP{ipAddress("2001:4860:4860::8888")},
+				NTPServers:   []net.IP{ipAddress("2610:20:6f15:15::27")},
+			},
 		},
 	}
 	ni3BridgeIf = netmonitor.MockInterface{
 		Attrs: netmonitor.IfAttrs{
-			IfIndex:       8,
+			IfIndex:       10,
 			IfName:        "bn3",
 			IfType:        "bridge",
 			WithBroadcast: true,
@@ -520,16 +580,18 @@ var (
 		NI:         ni4UUID.UUID,
 		BrNum:      4,
 		MACAddress: macAddress("02:00:00:00:01:03"), // eth2
-		Uplink: nirec.Uplink{
-			LogicalLabel: "ethernet2",
-			IfName:       "eth2",
-			IsMgmt:       true,
-			DNSServers:   []net.IP{ipAddress("2001:4860:4860::8888")},
-			NTPServers:   []net.IP{ipAddress("2610:0020:6f15:0015::0027")},
+		Ports: []nirec.Port{
+			{
+				LogicalLabel: "ethernet2",
+				IfName:       "eth2",
+				IsMgmt:       true,
+				DNSServers:   []net.IP{ipAddress("2001:4860:4860::8888")},
+				NTPServers:   []net.IP{ipAddress("2610:0020:6f15:0015::0027")},
+			},
 		},
 	}
 
-	// Local IPv4 network instance "ni5"
+	// Local IPv4 network instance "ni5" with multiple ports.
 	ni5UUID   = makeUUID("1664a775-9107-4663-976e-c6e3c37bf0e9")
 	ni5Config = types.NetworkInstanceConfig{
 		UUIDandVersion: ni5UUID,
@@ -543,17 +605,28 @@ var (
 		BrNum:      5,
 		MACAddress: macAddress("02:00:00:00:02:05"),
 		IPAddress:  ipAddressWithPrefix("10.10.20.1/24"),
-		Uplink: nirec.Uplink{
-			LogicalLabel: "ethernet1",
-			IfName:       "eth1",
-			IsMgmt:       false,
-			DNSServers:   []net.IP{ipAddress("8.8.8.8")},
-			NTPServers:   []net.IP{ipAddress("132.163.96.5")},
+		Ports: []nirec.Port{
+			{
+				LogicalLabel: "ethernet1",
+				IfName:       "eth1",
+				IsMgmt:       false,
+				SharedLabels: []string{"shopfloor", "portfwd"},
+				DNSServers:   []net.IP{ipAddress("8.8.8.8"), ipAddress("1.1.1.1")},
+				NTPServers:   []net.IP{ipAddress("132.163.96.5")},
+			},
+			{
+				LogicalLabel: "ethernet3",
+				IfName:       "eth3",
+				IsMgmt:       false,
+				SharedLabels: []string{"shopfloor"},
+				DNSServers:   []net.IP{ipAddress("172.30.30.57")},
+				NTPServers:   []net.IP{ipAddress("128.138.140.211")},
+			},
 		},
 	}
 	ni5BridgeIf = netmonitor.MockInterface{
 		Attrs: netmonitor.IfAttrs{
-			IfIndex:       9,
+			IfIndex:       11,
 			IfName:        "bn5",
 			IfType:        "bridge",
 			WithBroadcast: true,
@@ -656,14 +729,14 @@ var (
 	}
 	app1VIF1 = netmonitor.MockInterface{
 		Attrs: netmonitor.IfAttrs{
-			IfIndex:       10,
+			IfIndex:       12,
 			IfName:        "nbu1x1",
 			IfType:        "device",
 			WithBroadcast: true,
 			AdminUp:       true,
 			LowerUp:       true,
 			Enslaved:      true,
-			MasterIfIndex: 7,
+			MasterIfIndex: 9,
 		},
 		HwAddr: macAddress("02:00:00:00:03:01"), // host-side
 	}
@@ -766,6 +839,29 @@ var (
 						},
 						RuleID: 1,
 					},
+					{
+						Matches: []types.ACEMatch{
+							{
+								Type:  "protocol",
+								Value: "tcp",
+							},
+							{
+								Type:  "lport",
+								Value: "2223",
+							},
+							{
+								Type:  "adapter",
+								Value: "portfwd",
+							},
+						},
+						Actions: []types.ACEAction{
+							{
+								PortMap:    true,
+								TargetPort: 22,
+							},
+						},
+						RuleID: 2,
+					},
 				},
 			},
 		},
@@ -804,20 +900,20 @@ var (
 	}
 	app2VIF1 = netmonitor.MockInterface{
 		Attrs: netmonitor.IfAttrs{
-			IfIndex:       11,
+			IfIndex:       13,
 			IfName:        "nbu1x2",
 			IfType:        "device",
 			WithBroadcast: true,
 			AdminUp:       true,
 			LowerUp:       true,
 			Enslaved:      true,
-			MasterIfIndex: 7,
+			MasterIfIndex: 9,
 		},
 		HwAddr: macAddress("02:00:00:00:03:02"), // host-side
 	}
 	app2VIF2 = netmonitor.MockInterface{
 		Attrs: netmonitor.IfAttrs{
-			IfIndex:       12,
+			IfIndex:       14,
 			IfName:        "nbu2x2",
 			IfType:        "device",
 			WithBroadcast: true,
@@ -830,7 +926,7 @@ var (
 	}
 	app2VIF3 = netmonitor.MockInterface{
 		Attrs: netmonitor.IfAttrs{
-			IfIndex:       13,
+			IfIndex:       15,
 			IfName:        "nbu3x2",
 			IfType:        "device",
 			WithBroadcast: true,
@@ -843,14 +939,14 @@ var (
 	}
 	app2VIF4 = netmonitor.MockInterface{
 		Attrs: netmonitor.IfAttrs{
-			IfIndex:       16,
+			IfIndex:       18,
 			IfName:        "nbu4x2",
 			IfType:        "device",
 			WithBroadcast: true,
 			AdminUp:       true,
 			LowerUp:       true,
 			Enslaved:      true,
-			MasterIfIndex: 9,
+			MasterIfIndex: 11,
 		},
 		HwAddr: macAddress("02:00:00:00:03:07"), // host-side
 	}
@@ -1002,20 +1098,20 @@ var (
 	}
 	app3VIF1 = netmonitor.MockInterface{
 		Attrs: netmonitor.IfAttrs{
-			IfIndex:       14,
+			IfIndex:       16,
 			IfName:        "nbu1x3",
 			IfType:        "device",
 			WithBroadcast: true,
 			AdminUp:       true,
 			LowerUp:       true,
 			Enslaved:      true,
-			MasterIfIndex: 8,
+			MasterIfIndex: 10,
 		},
 		HwAddr: macAddress("02:00:00:00:03:05"),
 	}
 	app3VIF2 = netmonitor.MockInterface{
 		Attrs: netmonitor.IfAttrs{
-			IfIndex:       15,
+			IfIndex:       17,
 			IfName:        "nbu2x3",
 			IfType:        "device",
 			WithBroadcast: true,
@@ -1087,7 +1183,7 @@ func TestSingleLocalNI(test *testing.T) {
 		Route: netlinkDefRoute,
 		OutputIf: genericitems.NetworkIf{
 			IfName:  "eth0",
-			ItemRef: dg.Reference(genericitems.Uplink{IfName: "eth0"}),
+			ItemRef: dg.Reference(genericitems.Port{IfName: "eth0"}),
 		}}
 	t.Expect(itemIsCreated(dg.Reference(intendedDefRoute))).To(BeTrue())
 	netlinkUnreachV4Route := netlink.Route{
@@ -1142,12 +1238,12 @@ func TestSingleLocalNI(test *testing.T) {
 	t.Expect(recUpdate.AppConnStatus.Equal(appStatus)).To(BeTrue())
 
 	intendedPortMapRule1 := iptables.Rule{
-		RuleLabel: "User-configured PORTMAP ACL rule 4 for uplink IP 192.168.10.5 from inside",
+		RuleLabel: "User-configured PORTMAP ACL rule 4 for port eth0 IP 192.168.10.5 from inside",
 		Table:     "nat",
 		ChainName: "PREROUTING-nbu1x1",
 	}
 	intendedPortMapRule2 := iptables.Rule{
-		RuleLabel: "User-configured PORTMAP ACL rule 4 for uplink IP 192.168.10.5 from outside",
+		RuleLabel: "User-configured PORTMAP ACL rule 4 for port eth0 IP 192.168.10.5 from outside",
 		Table:     "nat",
 		ChainName: "PREROUTING-nbu1x1",
 	}
@@ -1173,7 +1269,7 @@ func TestSingleLocalNI(test *testing.T) {
 		t.Expect(appSG).ToNot(BeNil())
 	}
 
-	// Simulate uplink losing IP address.
+	// Simulate port losing IP address.
 	ips := eth0.IPAddrs
 	eth0.IPAddrs = nil
 	networkMonitor.AddOrUpdateInterface(eth0)
@@ -1200,7 +1296,7 @@ func TestSingleLocalNI(test *testing.T) {
 		netmonitorUnreachV6Route,
 	})
 
-	// Simulate uplink regaining IP address.
+	// Simulate port regaining IP address.
 	eth0.IPAddrs = ips
 	networkMonitor.AddOrUpdateInterface(eth0)
 	networkMonitor.UpdateRoutes(append([]netmonitor.Route{
@@ -1278,7 +1374,13 @@ func TestIPv4LocalAndSwitchNIs(test *testing.T) {
 	networkMonitor.AddOrUpdateInterface(eth0)
 	networkMonitor.AddOrUpdateInterface(keth1)
 	networkMonitor.AddOrUpdateInterface(eth1)
-	networkMonitor.UpdateRoutes(eth0Routes)
+	networkMonitor.AddOrUpdateInterface(keth1)
+	networkMonitor.AddOrUpdateInterface(eth3)
+	networkMonitor.AddOrUpdateInterface(keth3)
+	var routes []netmonitor.Route
+	routes = append(routes, eth0Routes...)
+	routes = append(routes, eth3Routes...)
+	networkMonitor.UpdateRoutes(routes)
 	ctx := reconciler.MockRun(context.Background())
 	updatesCh := niReconciler.WatchReconcilerUpdates()
 	niReconciler.RunInitialReconcile(ctx)
@@ -1307,19 +1409,26 @@ func TestIPv4LocalAndSwitchNIs(test *testing.T) {
 	networkMonitor.AddOrUpdateInterface(ni5BridgeIf)
 
 	snatRuleNI1 := iptables.Rule{
-		RuleLabel: "SNAT traffic from NI 0d6a128b-b36f-4bd0-a71c-087ba2d71ebc",
+		RuleLabel: "SNAT traffic from NI 0d6a128b-b36f-4bd0-a71c-087ba2d71ebc leaving via port eth0",
 		Table:     "nat",
 		ChainName: "POSTROUTING-apps",
 	}
 	t.Expect(itemDescription(dg.Reference(snatRuleNI1))).To(ContainSubstring(
 		"-o eth0 -s 10.10.10.0/24 -j MASQUERADE"))
 	snatRuleNI2 := iptables.Rule{
-		RuleLabel: "SNAT traffic from NI 1664a775-9107-4663-976e-c6e3c37bf0e9",
+		RuleLabel: "SNAT traffic from NI 1664a775-9107-4663-976e-c6e3c37bf0e9 leaving via port eth1",
 		Table:     "nat",
 		ChainName: "POSTROUTING-apps",
 	}
 	t.Expect(itemDescription(dg.Reference(snatRuleNI2))).To(ContainSubstring(
 		"-o eth1 -s 10.10.20.0/24 -j MASQUERADE"))
+	snatRuleNI3 := iptables.Rule{
+		RuleLabel: "SNAT traffic from NI 1664a775-9107-4663-976e-c6e3c37bf0e9 leaving via port eth3",
+		Table:     "nat",
+		ChainName: "POSTROUTING-apps",
+	}
+	t.Expect(itemDescription(dg.Reference(snatRuleNI3))).To(ContainSubstring(
+		"-o eth3 -s 10.10.20.0/24 -j MASQUERADE"))
 	eth0Route := linuxitems.Route{
 		Route: netlink.Route{
 			Table:    801,
@@ -1329,7 +1438,7 @@ func TestIPv4LocalAndSwitchNIs(test *testing.T) {
 		},
 		OutputIf: genericitems.NetworkIf{
 			IfName:  "eth0",
-			ItemRef: dg.Reference(genericitems.Uplink{IfName: "eth0"}),
+			ItemRef: dg.Reference(genericitems.Port{IfName: "eth0"}),
 		},
 	}
 	t.Expect(itemIsCreated(dg.Reference(eth0Route))).To(BeTrue())
@@ -1342,11 +1451,24 @@ func TestIPv4LocalAndSwitchNIs(test *testing.T) {
 		},
 		OutputIf: genericitems.NetworkIf{
 			IfName:  "eth1",
-			ItemRef: dg.Reference(genericitems.Uplink{IfName: "eth1"}),
+			ItemRef: dg.Reference(genericitems.Port{IfName: "eth1"}),
 		},
 	}
 	// eth1 does not yet have IP address assigned
 	t.Expect(itemIsCreated(dg.Reference(eth1Route))).To(BeFalse())
+	eth3Route := linuxitems.Route{
+		Route: netlink.Route{
+			Table:    805,
+			Dst:      &net.IPNet{IP: net.IP{0x0, 0x0, 0x0, 0x0}, Mask: net.IPMask{0x0, 0x0, 0x0, 0x0}},
+			Family:   netlink.FAMILY_V4,
+			Protocol: unix.RTPROT_STATIC,
+		},
+		OutputIf: genericitems.NetworkIf{
+			IfName:  "eth3",
+			ItemRef: dg.Reference(genericitems.Port{IfName: "eth3"}),
+		},
+	}
+	t.Expect(itemIsCreated(dg.Reference(eth3Route))).To(BeTrue())
 
 	// Create switch network instance.
 	niStatus, err = niReconciler.AddNI(ctx, ni2Config, ni2Bridge)
@@ -1373,9 +1495,9 @@ func TestIPv4LocalAndSwitchNIs(test *testing.T) {
 	networkMonitor.AddOrUpdateInterface(eth1)
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
 	t.Expect(recUpdate.UpdateType).To(Equal(nirec.CurrentStateChanged))
-	var routes []netmonitor.Route
 	routes = append(routes, eth0Routes...)
 	routes = append(routes, eth1Routes...)
+	routes = append(routes, eth3Routes...)
 	networkMonitor.UpdateRoutes(routes)
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
 	t.Expect(recUpdate.UpdateType).To(Equal(nirec.CurrentStateChanged))
@@ -1438,12 +1560,12 @@ func TestIPv4LocalAndSwitchNIs(test *testing.T) {
 	}
 
 	ni1PortMapRule1 := iptables.Rule{
-		RuleLabel: "User-configured PORTMAP ACL rule 1 for uplink IP 192.168.10.5 from inside",
+		RuleLabel: "User-configured PORTMAP ACL rule 1 for port eth0 IP 192.168.10.5 from inside",
 		Table:     "nat",
 		ChainName: "PREROUTING-nbu1x2",
 	}
 	ni1PortMapRule2 := iptables.Rule{
-		RuleLabel: "User-configured PORTMAP ACL rule 1 for uplink IP 192.168.10.5 from outside",
+		RuleLabel: "User-configured PORTMAP ACL rule 1 for port eth0 IP 192.168.10.5 from outside",
 		Table:     "nat",
 		ChainName: "PREROUTING-nbu1x2",
 	}
@@ -1550,166 +1672,6 @@ func TestDisableAllOnesMask(test *testing.T) {
 	dnsmasqConf = itemDescription(dg.Reference(
 		genericitems.Dnsmasq{ListenIf: genericitems.NetworkIf{IfName: "bn1"}}))
 	t.Expect(dnsmasqConf).To(ContainSubstring("allOnesNetmask: false"))
-
-	// Delete network instance
-	_, err = niReconciler.DelNI(ctx, ni1UUID.UUID)
-	t.Expect(err).ToNot(HaveOccurred())
-}
-
-func TestUplinkFailover(test *testing.T) {
-	t := initTest(test, false)
-	networkMonitor.AddOrUpdateInterface(eth0)
-	networkMonitor.AddOrUpdateInterface(eth1)
-	var routes []netmonitor.Route
-	routes = append(routes, eth0Routes...)
-	routes = append(routes, eth1Routes...)
-	networkMonitor.UpdateRoutes(routes)
-	ctx := reconciler.MockRun(context.Background())
-	updatesCh := niReconciler.WatchReconcilerUpdates()
-	niReconciler.RunInitialReconcile(ctx)
-
-	// Create local network instance.
-	_, err := niReconciler.AddNI(ctx, ni1Config, ni1Bridge)
-	t.Expect(err).ToNot(HaveOccurred())
-	var recUpdate nirec.ReconcilerUpdate
-	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.NIReconcileStatusChanged))
-	networkMonitor.AddOrUpdateInterface(ni1BridgeIf)
-
-	// Connect application into the network instance.
-	_, err = niReconciler.AddAppConn(ctx, app1NetConfig, app1Num, cnirpc.AppPod{}, app1VIFs)
-	t.Expect(err).ToNot(HaveOccurred())
-	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.AppConnReconcileStatusChanged))
-
-	// Simulate domainmgr creating the VIF.
-	networkMonitor.AddOrUpdateInterface(app1VIF1)
-	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.CurrentStateChanged))
-	niReconciler.ResumeReconcile(ctx)
-	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.AppConnReconcileStatusChanged))
-	t.Expect(recUpdate.AppConnStatus.VIFs[0].InProgress).To(BeFalse())
-
-	eth0PortMapRuleIn := iptables.Rule{
-		RuleLabel: "User-configured PORTMAP ACL rule 4 for uplink IP 192.168.10.5 from inside",
-		Table:     "nat",
-		ChainName: "PREROUTING-nbu1x1",
-	}
-	eth0PortMapRuleOut := iptables.Rule{
-		RuleLabel: "User-configured PORTMAP ACL rule 4 for uplink IP 192.168.10.5 from outside",
-		Table:     "nat",
-		ChainName: "PREROUTING-nbu1x1",
-	}
-	eth1PortMapRuleIn := iptables.Rule{
-		RuleLabel: "User-configured PORTMAP ACL rule 4 for uplink IP 172.20.0.40 from inside",
-		Table:     "nat",
-		ChainName: "PREROUTING-nbu1x1",
-	}
-	eth1PortMapRuleOut := iptables.Rule{
-		RuleLabel: "User-configured PORTMAP ACL rule 4 for uplink IP 172.20.0.40 from outside",
-		Table:     "nat",
-		ChainName: "PREROUTING-nbu1x1",
-	}
-	t.Expect(itemIsCreated(dg.Reference(eth0PortMapRuleIn))).To(BeTrue())
-	t.Expect(itemIsCreated(dg.Reference(eth0PortMapRuleOut))).To(BeTrue())
-	t.Expect(itemIsCreated(dg.Reference(eth1PortMapRuleIn))).To(BeFalse())
-	t.Expect(itemIsCreated(dg.Reference(eth1PortMapRuleOut))).To(BeFalse())
-
-	snatRule := iptables.Rule{
-		RuleLabel: "SNAT traffic from NI 0d6a128b-b36f-4bd0-a71c-087ba2d71ebc",
-		Table:     "nat",
-		ChainName: "POSTROUTING-apps",
-	}
-	t.Expect(itemDescription(dg.Reference(snatRule))).To(ContainSubstring(
-		"-o eth0 -s 10.10.10.0/24 -j MASQUERADE"))
-	dnsmasq := genericitems.Dnsmasq{ListenIf: genericitems.NetworkIf{IfName: "bn1"}}
-	t.Expect(itemDescription(dg.Reference(dnsmasq))).To(ContainSubstring(
-		"uplinkIf: eth0"))
-	t.Expect(itemDescription(dg.Reference(dnsmasq))).To(ContainSubstring(
-		"upstreamServers: [8.8.8.8]"))
-	eth0Route := linuxitems.Route{
-		Route: netlink.Route{
-			Table:    801,
-			Dst:      &net.IPNet{IP: net.IP{0x0, 0x0, 0x0, 0x0}, Mask: net.IPMask{0x0, 0x0, 0x0, 0x0}},
-			Family:   netlink.FAMILY_V4,
-			Protocol: unix.RTPROT_STATIC,
-		},
-		OutputIf: genericitems.NetworkIf{
-			IfName:  "eth0",
-			ItemRef: dg.Reference(genericitems.Uplink{IfName: "eth0"}),
-		},
-	}
-	eth1Route := linuxitems.Route{
-		Route: netlink.Route{
-			Table:    801,
-			Dst:      &net.IPNet{IP: net.IP{0x0, 0x0, 0x0, 0x0}, Mask: net.IPMask{0x0, 0x0, 0x0, 0x0}},
-			Family:   netlink.FAMILY_V4,
-			Protocol: unix.RTPROT_STATIC,
-		},
-		OutputIf: genericitems.NetworkIf{
-			IfName:  "eth1",
-			ItemRef: dg.Reference(genericitems.Uplink{IfName: "eth1"}),
-		},
-	}
-	t.Expect(itemIsCreated(dg.Reference(eth0Route))).To(BeTrue())
-	t.Expect(itemIsCreated(dg.Reference(eth1Route))).To(BeFalse())
-
-	// Simulate the scenario of uplink eth0 losing connectivity.
-	eth0Uplink := ni1Bridge.Uplink
-	ni1Bridge.Uplink = nirec.Uplink{
-		LogicalLabel: "ethernet1",
-		IfName:       "eth1",
-		// Note that in this test eth1 is used as mgmt interface. In others as app-shared.
-		IsMgmt:     true,
-		DNSServers: []net.IP{ipAddress("8.8.8.8"), ipAddress("1.1.1.1")},
-		NTPServers: []net.IP{ipAddress("132.163.97.5")},
-	}
-	niStatus, err := niReconciler.UpdateNI(ctx, ni1Config, ni1Bridge)
-	t.Expect(niStatus.NI).To(Equal(ni1UUID.UUID))
-	t.Expect(niStatus.Deleted).To(BeFalse())
-	t.Expect(niStatus.InProgress).To(BeFalse())
-	t.Expect(niStatus.BrIfName).To(Equal("bn1"))
-	t.Expect(niStatus.FailedItems).To(BeEmpty())
-
-	t.Expect(itemIsCreated(dg.Reference(eth0PortMapRuleIn))).To(BeFalse())
-	t.Expect(itemIsCreated(dg.Reference(eth0PortMapRuleOut))).To(BeFalse())
-	t.Expect(itemIsCreated(dg.Reference(eth1PortMapRuleIn))).To(BeTrue())
-	t.Expect(itemIsCreated(dg.Reference(eth1PortMapRuleOut))).To(BeTrue())
-	t.Expect(itemDescription(dg.Reference(snatRule))).To(ContainSubstring(
-		"-o eth1 -s 10.10.10.0/24 -j MASQUERADE"))
-	t.Expect(itemDescription(dg.Reference(dnsmasq))).To(ContainSubstring(
-		"uplinkIf: eth1"))
-	t.Expect(itemDescription(dg.Reference(dnsmasq))).To(ContainSubstring(
-		"upstreamServers: [8.8.8.8 1.1.1.1]"))
-	t.Expect(itemIsCreated(dg.Reference(eth0Route))).To(BeFalse())
-	t.Expect(itemIsCreated(dg.Reference(eth1Route))).To(BeTrue())
-
-	// Revert back to eth0 uplink.
-	ni1Bridge.Uplink = eth0Uplink
-	niStatus, err = niReconciler.UpdateNI(ctx, ni1Config, ni1Bridge)
-	t.Expect(niStatus.NI).To(Equal(ni1UUID.UUID))
-	t.Expect(niStatus.Deleted).To(BeFalse())
-	t.Expect(niStatus.InProgress).To(BeFalse())
-	t.Expect(niStatus.BrIfName).To(Equal("bn1"))
-	t.Expect(niStatus.FailedItems).To(BeEmpty())
-
-	t.Expect(itemIsCreated(dg.Reference(eth0PortMapRuleIn))).To(BeTrue())
-	t.Expect(itemIsCreated(dg.Reference(eth0PortMapRuleOut))).To(BeTrue())
-	t.Expect(itemIsCreated(dg.Reference(eth1PortMapRuleIn))).To(BeFalse())
-	t.Expect(itemIsCreated(dg.Reference(eth1PortMapRuleOut))).To(BeFalse())
-	t.Expect(itemDescription(dg.Reference(snatRule))).To(ContainSubstring(
-		"-o eth0 -s 10.10.10.0/24 -j MASQUERADE"))
-	t.Expect(itemDescription(dg.Reference(dnsmasq))).To(ContainSubstring(
-		"uplinkIf: eth0"))
-	t.Expect(itemDescription(dg.Reference(dnsmasq))).To(ContainSubstring(
-		"upstreamServers: [8.8.8.8]"))
-	t.Expect(itemIsCreated(dg.Reference(eth0Route))).To(BeTrue())
-	t.Expect(itemIsCreated(dg.Reference(eth1Route))).To(BeFalse())
-
-	// Disconnect the application.
-	_, err = niReconciler.DelAppConn(ctx, app1UUID.UUID)
-	t.Expect(err).ToNot(HaveOccurred())
 
 	// Delete network instance
 	_, err = niReconciler.DelNI(ctx, ni1UUID.UUID)
@@ -1824,7 +1786,7 @@ func TestIPv6LocalAndSwitchNIs(test *testing.T) {
 		Route: ni3NetlinkDefRoute,
 		OutputIf: genericitems.NetworkIf{
 			IfName:  "eth2",
-			ItemRef: dg.Reference(genericitems.Uplink{IfName: "eth2"}),
+			ItemRef: dg.Reference(genericitems.Port{IfName: "eth2"}),
 		}}
 	t.Expect(itemIsCreated(dg.Reference(ni3DefRoute))).To(BeTrue())
 	radvd := genericitems.Radvd{ListenIf: genericitems.NetworkIf{IfName: "bn3"}}
@@ -1858,13 +1820,13 @@ func TestIPv6LocalAndSwitchNIs(test *testing.T) {
 	t.Expect(itemDescription(dg.Reference(vif1IPRule))).To(ContainSubstring(
 		"-d 2610:20:6f96:96::4/128 -j bn3-nbu1x3-3"))
 	ni3PortMapRuleIn := iptables.Rule{
-		RuleLabel: "User-configured PORTMAP ACL rule 5 for uplink IP 2001::20 from inside",
+		RuleLabel: "User-configured PORTMAP ACL rule 5 for port eth2 IP 2001::20 from inside",
 		Table:     "nat",
 		ChainName: "PREROUTING-nbu1x3",
 		ForIPv6:   true,
 	}
 	ni3PortMapRuleOut := iptables.Rule{
-		RuleLabel: "User-configured PORTMAP ACL rule 5 for uplink IP 2001::20 from outside",
+		RuleLabel: "User-configured PORTMAP ACL rule 5 for port eth2 IP 2001::20 from outside",
 		Table:     "nat",
 		ChainName: "PREROUTING-nbu1x3",
 		ForIPv6:   true,
@@ -1917,19 +1879,13 @@ func TestIPv6LocalAndSwitchNIs(test *testing.T) {
 
 func TestAirGappedLocalAndSwitchNIs(test *testing.T) {
 	t := initTest(test, false)
-	networkMonitor.AddOrUpdateInterface(eth0)
-	networkMonitor.AddOrUpdateInterface(eth1)
-	var routes []netmonitor.Route
-	routes = append(routes, eth0Routes...)
-	routes = append(routes, eth1Routes...)
-	networkMonitor.UpdateRoutes(routes)
 	ctx := reconciler.MockRun(context.Background())
 	updatesCh := niReconciler.WatchReconcilerUpdates()
 	niReconciler.RunInitialReconcile(ctx)
 
 	// Create 2 local network instances but make them both air-gapped.
-	ni1Uplink := ni1Bridge.Uplink
-	ni1Bridge.Uplink = nirec.Uplink{}
+	ni1Ports := ni1Bridge.Ports
+	ni1Bridge.Ports = []nirec.Port{}
 	niStatus, err := niReconciler.AddNI(ctx, ni1Config, ni1Bridge)
 	t.Expect(err).ToNot(HaveOccurred())
 	t.Expect(niStatus.NI).To(Equal(ni1UUID.UUID))
@@ -1945,8 +1901,8 @@ func TestAirGappedLocalAndSwitchNIs(test *testing.T) {
 
 	networkMonitor.AddOrUpdateInterface(ni1BridgeIf)
 
-	ni5Uplink := ni5Bridge.Uplink
-	ni5Bridge.Uplink = nirec.Uplink{}
+	ni5Ports := ni5Bridge.Ports
+	ni5Bridge.Ports = []nirec.Port{}
 	niStatus, err = niReconciler.AddNI(ctx, ni5Config, ni5Bridge)
 	t.Expect(err).ToNot(HaveOccurred())
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
@@ -1976,7 +1932,7 @@ func TestAirGappedLocalAndSwitchNIs(test *testing.T) {
 		},
 		OutputIf: genericitems.NetworkIf{
 			IfName:  "eth0",
-			ItemRef: dg.Reference(genericitems.Uplink{IfName: "eth0"}),
+			ItemRef: dg.Reference(genericitems.Port{IfName: "eth0"}),
 		},
 	}
 	t.Expect(itemIsCreated(dg.Reference(eth0Route))).To(BeFalse())
@@ -1989,7 +1945,7 @@ func TestAirGappedLocalAndSwitchNIs(test *testing.T) {
 		},
 		OutputIf: genericitems.NetworkIf{
 			IfName:  "eth1",
-			ItemRef: dg.Reference(genericitems.Uplink{IfName: "eth1"}),
+			ItemRef: dg.Reference(genericitems.Port{IfName: "eth1"}),
 		},
 	}
 	t.Expect(itemIsCreated(dg.Reference(eth1Route))).To(BeFalse())
@@ -2005,8 +1961,8 @@ func TestAirGappedLocalAndSwitchNIs(test *testing.T) {
 		}))).To(BeTrue())
 
 	// Create switch network instance but make it air-gapped.
-	ni2Uplink := ni2Bridge.Uplink
-	ni2Bridge.Uplink = nirec.Uplink{}
+	ni2Ports := ni2Bridge.Ports
+	ni2Bridge.Ports = []nirec.Port{}
 	niStatus, err = niReconciler.AddNI(ctx, ni2Config, ni2Bridge)
 	t.Expect(err).ToNot(HaveOccurred())
 	t.Expect(niStatus.NI).To(Equal(ni2UUID.UUID))
@@ -2157,10 +2113,10 @@ func TestAirGappedLocalAndSwitchNIs(test *testing.T) {
 	t.Expect(niStatus.NI).To(Equal(ni5UUID.UUID))
 	t.Expect(niStatus.Deleted).To(BeTrue())
 
-	// Revert back to NI1, NI2 and NI5 having uplinks.
-	ni1Bridge.Uplink = ni1Uplink
-	ni2Bridge.Uplink = ni2Uplink
-	ni5Bridge.Uplink = ni5Uplink
+	// Revert back to NI1, NI2 and NI5 having external connectivity.
+	ni1Bridge.Ports = ni1Ports
+	ni2Bridge.Ports = ni2Ports
+	ni5Bridge.Ports = ni5Ports
 	app2VIF2.Attrs.MasterIfIndex = 4
 	app2VIF3.Attrs.MasterIfIndex = 4
 }
@@ -2169,9 +2125,11 @@ func TestStaticAndConnectedRoutes(test *testing.T) {
 	t := initTest(test, false)
 	networkMonitor.AddOrUpdateInterface(eth0)
 	networkMonitor.AddOrUpdateInterface(eth1)
+	networkMonitor.AddOrUpdateInterface(eth3)
 	var routes []netmonitor.Route
 	routes = append(routes, eth0Routes...)
 	routes = append(routes, eth1Routes...)
+	routes = append(routes, eth3Routes...)
 	networkMonitor.UpdateRoutes(routes)
 	ctx := reconciler.MockRun(context.Background())
 	updatesCh := niReconciler.WatchReconcilerUpdates()
@@ -2238,8 +2196,34 @@ func TestStaticAndConnectedRoutes(test *testing.T) {
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
 	t.Expect(recUpdate.UpdateType).To(Equal(nirec.AppConnReconcileStatusChanged))
 
+	// Check that port forwarding in NI5 is enabled only for eth1 (and not for eth3).
+	ni5PortMapRule1 := iptables.Rule{
+		RuleLabel: "User-configured PORTMAP ACL rule 2 for port eth1 IP 172.20.0.40 from inside",
+		Table:     "nat",
+		ChainName: "PREROUTING-nbu4x2",
+	}
+	ni5PortMapRule2 := iptables.Rule{
+		RuleLabel: "User-configured PORTMAP ACL rule 2 for port eth1 IP 172.20.0.40 from outside",
+		Table:     "nat",
+		ChainName: "PREROUTING-nbu4x2",
+	}
+	t.Expect(itemIsCreated(dg.Reference(ni5PortMapRule1))).To(BeTrue())
+	t.Expect(itemIsCreated(dg.Reference(ni5PortMapRule2))).To(BeTrue())
+	ni5PortMapRule3 := iptables.Rule{
+		RuleLabel: "User-configured PORTMAP ACL rule 2 for port eth3 IP 172.30.30.40 from inside",
+		Table:     "nat",
+		ChainName: "PREROUTING-nbu4x2",
+	}
+	ni5PortMapRule4 := iptables.Rule{
+		RuleLabel: "User-configured PORTMAP ACL rule 2 for port eth3 IP 172.30.30.40 from outside",
+		Table:     "nat",
+		ChainName: "PREROUTING-nbu4x2",
+	}
+	t.Expect(itemIsCreated(dg.Reference(ni5PortMapRule3))).ToNot(BeTrue())
+	t.Expect(itemIsCreated(dg.Reference(ni5PortMapRule4))).ToNot(BeTrue())
+
 	// Both N1 and N5 should publish default route.
-	// Even though N5 uses app-shared eth1, the uplink has default route.
+	// Even though N5 uses app-shared ports eth1 & eth3, these port both have default routes.
 	dnsmasqNI1 := genericitems.Dnsmasq{ListenIf: genericitems.NetworkIf{IfName: "bn1"}}
 	dnsmasqNI5 := genericitems.Dnsmasq{ListenIf: genericitems.NetworkIf{IfName: "bn5"}}
 	t.Expect(itemDescription(dg.Reference(dnsmasqNI1))).To(ContainSubstring(
@@ -2251,7 +2235,7 @@ func TestStaticAndConnectedRoutes(test *testing.T) {
 	t.Expect(itemDescription(dg.Reference(dnsmasqNI5))).To(ContainSubstring(
 		"withDefaultRoute: true"))
 
-	// When eth1 looses default route, N5 should stop propagating it.
+	// When eth1 & eth3 both loose the default route, N5 should stop propagating it.
 	networkMonitor.UpdateRoutes(eth0Routes)
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
 	t.Expect(recUpdate.UpdateType).To(Equal(nirec.CurrentStateChanged))
@@ -2265,12 +2249,23 @@ func TestStaticAndConnectedRoutes(test *testing.T) {
 	t.Expect(itemDescription(dg.Reference(dnsmasqNI5))).To(ContainSubstring(
 		"withDefaultRoute: false"))
 
+	// Once at least one of eth1 or eth3 obtains default route, NI5 should start
+	// propagating it again.
+	routes = nil
+	routes = append(routes, eth0Routes...)
+	routes = append(routes, eth1Routes...) // eth1 has default route again
+	networkMonitor.UpdateRoutes(routes)
+	t.Eventually(func() string {
+		niReconciler.ResumeReconcile(ctx)
+		return itemDescription(dg.Reference(dnsmasqNI5))
+	}).Should(ContainSubstring("withDefaultRoute: true"))
+
 	// Connected routes (of local NIs) should not be propagated to applications.
 	// Only host routes for DNS and NTP servers should be.
 	t.Expect(itemDescription(dg.Reference(dnsmasqNI1))).To(ContainSubstring(
 		"propagateRoutes: [{132.163.96.5/32 10.10.10.1}]"))
 	t.Expect(itemDescription(dg.Reference(dnsmasqNI5))).To(ContainSubstring(
-		"propagateRoutes: [{132.163.96.5/32 10.10.20.1} {1.1.1.1/32 10.10.20.1}]"))
+		"propagateRoutes: [{132.163.96.5/32 10.10.20.1} {128.138.140.211/32 10.10.20.1} {1.1.1.1/32 10.10.20.1}]"))
 
 	// Enable propagation of connected routes for NI1 (only).
 	ni1Config.PropagateConnRoutes = true
@@ -2279,7 +2274,7 @@ func TestStaticAndConnectedRoutes(test *testing.T) {
 	t.Expect(itemDescription(dg.Reference(dnsmasqNI1))).To(ContainSubstring(
 		"propagateRoutes: [{132.163.96.5/32 10.10.10.1} {192.168.10.0/24 10.10.10.1}]"))
 	t.Expect(itemDescription(dg.Reference(dnsmasqNI5))).To(ContainSubstring(
-		"propagateRoutes: [{132.163.96.5/32 10.10.20.1} {1.1.1.1/32 10.10.20.1}]"))
+		"propagateRoutes: [{132.163.96.5/32 10.10.20.1} {128.138.140.211/32 10.10.20.1} {1.1.1.1/32 10.10.20.1}]"))
 
 	// Enable propagation of connected routes for NI5 as well.
 	ni5Config.PropagateConnRoutes = true
@@ -2288,33 +2283,33 @@ func TestStaticAndConnectedRoutes(test *testing.T) {
 	t.Expect(itemDescription(dg.Reference(dnsmasqNI1))).To(ContainSubstring(
 		"propagateRoutes: [{132.163.96.5/32 10.10.10.1} {192.168.10.0/24 10.10.10.1}]"))
 	t.Expect(itemDescription(dg.Reference(dnsmasqNI5))).To(ContainSubstring(
-		"propagateRoutes: [{132.163.96.5/32 10.10.20.1} {1.1.1.1/32 10.10.20.1} " +
-			"{172.20.0.0/16 10.10.20.1}]"))
+		"propagateRoutes: [{132.163.96.5/32 10.10.20.1} {128.138.140.211/32 10.10.20.1} " +
+			"{1.1.1.1/32 10.10.20.1} {172.20.0.0/16 10.10.20.1} {172.30.30.0/24 10.10.20.1}]"))
 
 	// Make N1 air-gapped.
-	ni1Uplink := ni1Bridge.Uplink
-	ni1Bridge.Uplink = nirec.Uplink{}
+	ni1Ports := ni1Bridge.Ports
+	ni1Bridge.Ports = []nirec.Port{}
 	_, err = niReconciler.UpdateNI(ctx, ni1Config, ni1Bridge)
 	t.Expect(err).ToNot(HaveOccurred())
 	t.Expect(itemDescription(dg.Reference(dnsmasqNI1))).To(ContainSubstring(
 		"propagateRoutes: []"))
 	t.Expect(itemDescription(dg.Reference(dnsmasqNI5))).To(ContainSubstring(
-		"propagateRoutes: [{132.163.96.5/32 10.10.20.1} {1.1.1.1/32 10.10.20.1} " +
-			"{172.20.0.0/16 10.10.20.1}]"))
+		"propagateRoutes: [{132.163.96.5/32 10.10.20.1} {128.138.140.211/32 10.10.20.1} " +
+			"{1.1.1.1/32 10.10.20.1} {172.20.0.0/16 10.10.20.1} {172.30.30.0/24 10.10.20.1}]"))
 
 	// Add some static routes.
-	ni1Config.StaticRoutes = []types.IPRoute{
+	ni1Bridge.StaticRoutes = []nirec.IPRoute{
 		// GW is inside the NI subnet (app gateway).
 		{DstNetwork: ipAddressWithPrefix("10.50.1.0/24"), Gateway: ipAddress("10.10.10.100")},
 	}
 	_, err = niReconciler.UpdateNI(ctx, ni1Config, ni1Bridge)
 	t.Expect(err).ToNot(HaveOccurred())
-	ni5Config.StaticRoutes = []types.IPRoute{
+	ni5Bridge.StaticRoutes = []nirec.IPRoute{
 		{DstNetwork: ipAddressWithPrefix("10.50.1.0/24"), Gateway: ipAddress("172.20.1.1")},
-		// This one has GW outside uplink subnet and will be skipped:
+		// This one has GW outside eth1 and eth3 subnets and will be skipped:
 		{DstNetwork: ipAddressWithPrefix("10.50.2.0/24"), Gateway: ipAddress("172.21.1.1")},
-		// Override eth1 default route:
-		{DstNetwork: ipAddressWithPrefix("0.0.0.0/0"), Gateway: ipAddress("172.20.1.1")},
+		// Override default route:
+		{DstNetwork: ipAddressWithPrefix("0.0.0.0/0"), OutputPort: "ethernet1"},
 	}
 	_, err = niReconciler.UpdateNI(ctx, ni5Config, ni5Bridge)
 	t.Expect(err).ToNot(HaveOccurred())
@@ -2324,25 +2319,11 @@ func TestStaticAndConnectedRoutes(test *testing.T) {
 	t.Expect(itemDescription(dg.Reference(dnsmasqNI5))).To(ContainSubstring(
 		"withDefaultRoute: true"))
 	t.Expect(itemDescription(dg.Reference(dnsmasqNI5))).To(ContainSubstring(
-		"propagateRoutes: [{132.163.96.5/32 10.10.20.1} {1.1.1.1/32 10.10.20.1} " +
-			"{10.50.1.0/24 10.10.20.1} {172.20.0.0/16 10.10.20.1}]"))
+		"propagateRoutes: [{132.163.96.5/32 10.10.20.1} {128.138.140.211/32 10.10.20.1} " +
+			"{1.1.1.1/32 10.10.20.1} {10.50.1.0/24 10.10.20.1} {172.20.0.0/16 10.10.20.1} " +
+			"{172.30.30.0/24 10.10.20.1}]"))
 
 	// Check routing tables
-	t.Expect(itemCount(func(item dg.Item) bool {
-		route, isRoute := item.(linuxitems.Route)
-		if !isRoute {
-			return false
-		}
-		return route.Table == 801
-	})).To(Equal(2 + 1)) // subnet route + unreachable route + 1 static route
-	t.Expect(itemCount(func(item dg.Item) bool {
-		route, isRoute := item.(linuxitems.Route)
-		if !isRoute {
-			return false
-		}
-		return route.Table == 805
-	})).To(Equal(2 + 2)) // + 2 static routes
-
 	netlinkStaticRoute1 := netlink.Route{
 		LinkIndex: 4,
 		Dst:       ipAddressWithPrefix("10.50.1.0/24"),
@@ -2355,7 +2336,7 @@ func TestStaticAndConnectedRoutes(test *testing.T) {
 		Route: netlinkStaticRoute1,
 		OutputIf: genericitems.NetworkIf{
 			IfName:  "eth1",
-			ItemRef: dg.Reference(genericitems.Uplink{IfName: "eth1"}),
+			ItemRef: dg.Reference(genericitems.Port{IfName: "eth1"}),
 		},
 	}
 	t.Expect(itemIsCreated(dg.Reference(staticRoute1))).To(BeTrue())
@@ -2371,10 +2352,24 @@ func TestStaticAndConnectedRoutes(test *testing.T) {
 		Route: netlinkStaticRoute3,
 		OutputIf: genericitems.NetworkIf{
 			IfName:  "eth1",
-			ItemRef: dg.Reference(genericitems.Uplink{IfName: "eth1"}),
+			ItemRef: dg.Reference(genericitems.Port{IfName: "eth1"}),
 		},
 	}
 	t.Expect(itemIsCreated(dg.Reference(staticRoute3))).To(BeTrue())
+	t.Expect(itemCount(func(item dg.Item) bool {
+		route, isRoute := item.(linuxitems.Route)
+		if !isRoute {
+			return false
+		}
+		return route.Table == 801
+	})).To(Equal(2 + 1)) // subnet route + unreachable route + 1 static route
+	t.Expect(itemCount(func(item dg.Item) bool {
+		route, isRoute := item.(linuxitems.Route)
+		if !isRoute {
+			return false
+		}
+		return route.Table == 805
+	})).To(Equal(2 + 2)) // + 2 static routes
 
 	// Disconnect the application.
 	appStatus, err = niReconciler.DelAppConn(ctx, app2UUID.UUID)
@@ -2398,10 +2393,10 @@ func TestStaticAndConnectedRoutes(test *testing.T) {
 	t.Expect(niStatus.Deleted).To(BeTrue())
 
 	// Revert back config changes.
-	ni1Config.StaticRoutes = nil
-	ni5Config.StaticRoutes = nil
+	ni1Bridge.StaticRoutes = nil
+	ni5Bridge.StaticRoutes = nil
 	ni5Config.DnsServers = nil
-	ni1Bridge.Uplink = ni1Uplink
+	ni1Bridge.Ports = ni1Ports
 	ni1Config.PropagateConnRoutes = false
 	ni5Config.PropagateConnRoutes = false
 }

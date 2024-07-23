@@ -25,6 +25,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
+	"github.com/lf-edge/eve/pkg/pillar/utils/netutils"
 	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 	"github.com/vishvananda/netlink"
@@ -290,7 +291,14 @@ func (r *LinuxNIReconciler) runWatcher(netEvents <-chan netmonitor.Event) {
 						if ni.config.Type == types.NetworkInstanceTypeSwitch {
 							continue
 						}
-						if ifName == ni.brIfName || ifName == ni.bridge.Uplink.IfName {
+						var isNIPort bool
+						for _, port := range ni.bridge.Ports {
+							if ifName == port.IfName {
+								isNIPort = true
+								break
+							}
+						}
+						if ifName == ni.brIfName || isNIPort {
 							r.updateCurrentNIRoutes(ni.config.UUID)
 							r.scheduleNICfgRebuild(ni.config.UUID, "route change")
 							needReconcile = true
@@ -300,20 +308,20 @@ func (r *LinuxNIReconciler) runWatcher(netEvents <-chan netmonitor.Event) {
 
 			case netmonitor.IfChange:
 				ifName := ev.Attrs.IfName
-				// Check if this is intended and/or current uplink, bridge or vif.
-				uplinkRef := dg.Reference(generic.Uplink{IfName: ifName})
+				// Check if this is intended and/or current port, bridge or vif.
+				portRef := dg.Reference(generic.Port{IfName: ifName})
 				brRef := dg.Reference(linux.Bridge{IfName: ifName})
 				vifRef := dg.Reference(linux.VIF{HostIfName: ifName})
 				graphs := []dg.GraphR{r.intendedState, r.currentState}
 				var found bool
 				for _, graph := range graphs {
-					if _, _, _, found = graph.Item(uplinkRef); found {
-						uplinkChanged := r.updateCurrentGlobalState(true)
-						if uplinkChanged {
-							for _, ni := range r.getNIsUsingUplink(ifName) {
+					if _, _, _, found = graph.Item(portRef); found {
+						portChanged := r.updateCurrentGlobalState(true)
+						if portChanged {
+							for _, ni := range r.getNIsUsingPort(ifName) {
 								r.updateCurrentNIRoutes(ni.config.UUID)
 								r.scheduleNICfgRebuild(ni.config.UUID,
-									"uplink state change")
+									"port state change")
 								needReconcile = true
 							}
 						}
@@ -370,16 +378,16 @@ func (r *LinuxNIReconciler) runWatcher(netEvents <-chan netmonitor.Event) {
 						}
 					}
 				}
-				uplinkForNIs := r.getNIsUsingUplink(ifName)
-				if len(uplinkForNIs) > 0 {
-					// When uplink IP addresses change, port-map ACLs and the set of applied
+				portForNIs := r.getNIsUsingPort(ifName)
+				if len(portForNIs) > 0 {
+					// When port IP addresses change, port-map ACLs and the set of applied
 					// static routes might need to be updated.
-					uplinkChanged := r.updateCurrentGlobalState(true)
-					if uplinkChanged {
-						for _, ni := range uplinkForNIs {
+					portChanged := r.updateCurrentGlobalState(true)
+					if portChanged {
+						for _, ni := range portForNIs {
 							r.updateCurrentNIRoutes(ni.config.UUID)
 							r.scheduleNICfgRebuild(ni.config.UUID,
-								"uplink IP change")
+								"port IP change")
 							needReconcile = true
 						}
 					}
@@ -622,6 +630,7 @@ func (r *LinuxNIReconciler) updateNIStatus(
 		BrIfIndex:   brIfIndex,
 		InProgress:  inProgress,
 		FailedItems: failedItems,
+		Routes:      r.getNIRouteInfo(niID),
 	}
 	if !niInfo.status.Equal(niStatus) {
 		changed = true
@@ -815,6 +824,11 @@ func (r *LinuxNIReconciler) AddNI(ctx context.Context,
 	if _, duplicate := r.nis[niID]; duplicate {
 		return niStatus, fmt.Errorf("%s: NI %v is already added", LogAndErrPrefix, niID)
 	}
+	if len(br.Ports) > 1 && niConfig.Type == types.NetworkInstanceTypeSwitch {
+		return niStatus, fmt.Errorf(
+			"%s: switch NI (%v) with multiple ports is not supported",
+			LogAndErrPrefix, niID)
+	}
 	brIfName, err := r.generateBridgeIfName(niConfig, br)
 	if err != nil {
 		return niStatus, err
@@ -826,8 +840,8 @@ func (r *LinuxNIReconciler) AddNI(ctx context.Context,
 	}
 	reconcileReason := fmt.Sprintf("adding new NI (%v)", niID)
 	// Rebuild and reconcile also global config to update the set of intended/current
-	// uplinks.
-	r.updateCurrentGlobalState(true) // uplinks only
+	// ports.
+	r.updateCurrentGlobalState(true) // update only port state
 	// Get the current state of external items used by NI.
 	r.updateCurrentNIState(niID)
 	r.scheduleGlobalCfgRebuild(reconcileReason)
@@ -850,9 +864,14 @@ func (r *LinuxNIReconciler) UpdateNI(ctx context.Context,
 		return niStatus, fmt.Errorf("%s: Cannot update NI %v: does not exist",
 			LogAndErrPrefix, niID)
 	}
+	if len(br.Ports) > 1 && niConfig.Type == types.NetworkInstanceTypeSwitch {
+		return niStatus, fmt.Errorf(
+			"%s: switch NI (%v) with multiple ports is not supported",
+			LogAndErrPrefix, niID)
+	}
 	r.nis[niID].config = niConfig
 	r.nis[niID].bridge = br
-	// Re-generate bridge interface name to support change in the select uplink port
+	// Re-generate bridge interface name to support change in the selected port
 	// for switch network instances.
 	brIfName, err := r.generateBridgeIfName(niConfig, br)
 	if err != nil {
@@ -863,8 +882,8 @@ func (r *LinuxNIReconciler) UpdateNI(ctx context.Context,
 	// Get the current state of external items to be used by NI.
 	r.updateCurrentNIState(niID)
 	// Rebuild and reconcile also global config to update the set of intended/current
-	// uplinks.
-	r.updateCurrentGlobalState(true) // uplinks only
+	// ports.
+	r.updateCurrentGlobalState(true) // update only port state
 	r.scheduleGlobalCfgRebuild(reconcileReason)
 	r.scheduleNICfgRebuild(niID, reconcileReason)
 	updates := r.reconcile(ctx)
@@ -888,8 +907,8 @@ func (r *LinuxNIReconciler) DelNI(ctx context.Context,
 	niStatus = r.nis[niID].status
 	reconcileReason := fmt.Sprintf("deleting NI (%v)", niID)
 	// Rebuild and reconcile also global config to update the set of intended/current
-	// uplinks.
-	r.updateCurrentGlobalState(true) // uplinks only
+	// ports.
+	r.updateCurrentGlobalState(true) // update only port state
 	r.scheduleGlobalCfgRebuild(reconcileReason)
 	r.scheduleNICfgRebuild(niID, reconcileReason)
 	// Cancel any in-progress configuration changes previously
@@ -1059,16 +1078,20 @@ func (r *LinuxNIReconciler) GetAppConnStatus(appID uuid.UUID) (AppConnReconcileS
 	return appStatus, nil
 }
 
-func (r *LinuxNIReconciler) getNIsUsingUplink(ifName string) (nis []*niInfo) {
+func (r *LinuxNIReconciler) getNIsUsingPort(ifName string) (nis []*niInfo) {
 	for _, ni := range r.nis {
 		switch ni.config.Type {
 		case types.NetworkInstanceTypeSwitch:
-			if ifName == uplinkPhysIfName(ni.bridge.Uplink.IfName) {
-				nis = append(nis, ni)
+			if len(ni.bridge.Ports) == 1 {
+				if ifName == portPhysIfName(ni.bridge.Ports[0].IfName) {
+					nis = append(nis, ni)
+				}
 			}
 		case types.NetworkInstanceTypeLocal:
-			if ifName == ni.bridge.Uplink.IfName {
-				nis = append(nis, ni)
+			for _, port := range ni.bridge.Ports {
+				if ifName == port.IfName {
+					nis = append(nis, ni)
+				}
 			}
 		}
 	}
@@ -1079,8 +1102,10 @@ func (r *LinuxNIReconciler) getNIWithBridge(ifName string) *niInfo {
 	for _, ni := range r.nis {
 		switch ni.config.Type {
 		case types.NetworkInstanceTypeSwitch:
-			if ifName == ni.bridge.Uplink.IfName {
-				return ni
+			if len(ni.bridge.Ports) == 1 {
+				if ifName == ni.bridge.Ports[0].IfName {
+					return ni
+				}
 			}
 		case types.NetworkInstanceTypeLocal:
 			if ifName == ni.brIfName {
@@ -1188,4 +1213,81 @@ func (r *LinuxNIReconciler) getSubgraphState(intSG, currSG dg.GraphR, forApp boo
 		inProgress = true
 	}
 	return inProgress, failedItems
+}
+
+func (r *LinuxNIReconciler) getNIRouteInfo(niID uuid.UUID) (routes []types.IPRouteInfo) {
+	niInfo, exists := r.nis[niID]
+	if !exists {
+		return nil
+	}
+	niSG := r.currentState.SubGraph(NIToSGName(niID))
+	if niSG == nil {
+		return nil
+	}
+	l3SG := niSG.SubGraph(L3SG)
+	if l3SG == nil {
+		return nil
+	}
+	iter := l3SG.Items(true)
+	for iter.Next() {
+		item, state := iter.Item()
+		if item.Type() != generic.IPv4RouteTypename &&
+			item.Type() != generic.IPv6RouteTypename {
+			continue
+		}
+		if !state.IsCreated() {
+			continue
+		}
+		route, isRoute := item.(linux.Route)
+		if !isRoute {
+			// Should be unreachable.
+			continue
+		}
+		var portLL string
+		var appGW uuid.UUID
+		if route.Dst != nil && route.Dst.IP.IsLinkLocalUnicast() {
+			// Skip link-local route.
+			continue
+		}
+		switch route.OutputIf.IfName {
+		case "":
+			// Skip unreachable route.
+			continue
+		case niInfo.brIfName:
+			if netutils.IsEmptyIP(route.Gw) {
+				// Skip connected route for the bridge.
+				continue
+			}
+			// Route with an application gateway.
+			for appID, appInfo := range r.apps {
+				for _, vif := range appInfo.vifs {
+					if vif.NI != niID {
+						continue
+					}
+					if netutils.EqualIPs(vif.GuestIP, route.Gw) {
+						appGW = appID
+						break
+					}
+				}
+				if appGW != emptyUUID {
+					break
+				}
+			}
+		default:
+			// Route with an external gateway.
+			for _, port := range niInfo.bridge.Ports {
+				if route.OutputIf.IfName == port.IfName {
+					portLL = port.LogicalLabel
+					break
+				}
+			}
+		}
+		routes = append(routes, types.IPRouteInfo{
+			DstNetwork: route.Dst,
+			Gateway:    route.Gw,
+			OutputPort: portLL,
+			GatewayApp: appGW,
+		})
+	}
+	return routes
 }

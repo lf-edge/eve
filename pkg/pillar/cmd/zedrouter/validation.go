@@ -129,25 +129,27 @@ func (z *zedrouter) checkNetworkInstanceIPConflicts(
 
 func (z *zedrouter) checkNetworkInstanceMTUConflicts(config types.NetworkInstanceConfig,
 	status *types.NetworkInstanceStatus) (fallbackMTU uint16, err error) {
-	uplink := z.getNIUplinkConfig(status)
-	if uplink.LogicalLabel == "" {
+	ports := z.getNIPortConfig(status)
+	if len(ports) == 0 {
 		// Air-gapped
 		return 0, nil
 	}
-	if uplink.MTU == 0 {
+	// TODO: handle multiple ports
+	port := ports[0]
+	if port.MTU == 0 {
 		// Not yet known?
-		z.log.Warnf("Missing MTU for uplink port %s", uplink.LogicalLabel)
+		z.log.Warnf("Missing MTU for port %s", port.LogicalLabel)
 		return 0, nil
 	}
 	niMTU := config.MTU
 	if niMTU == 0 {
 		niMTU = types.DefaultMTU
 	}
-	if niMTU != uplink.MTU {
-		return uplink.MTU, fmt.Errorf("MTU (%d) configured for the network instance "+
+	if niMTU != port.MTU {
+		return port.MTU, fmt.Errorf("MTU (%d) configured for the network instance "+
 			"differs from the MTU (%d) of the associated port %s. "+
 			"Will use port's MTU instead.",
-			niMTU, uplink.MTU, uplink.LogicalLabel)
+			niMTU, port.MTU, port.LogicalLabel)
 	}
 	return 0, nil
 }

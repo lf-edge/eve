@@ -19,7 +19,6 @@ import (
 	"github.com/lf-edge/eve-libs/reconciler"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
-	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
 	"github.com/lf-edge/eve/pkg/pillar/utils/netutils"
 	uuid "github.com/satori/go.uuid"
@@ -85,7 +84,7 @@ type DHCPServer struct {
 	StaticEntries []MACToIP
 	// PropagateRoutes : IP routes to propagate to applications using the DHCP option 121
 	// (classless route option).
-	PropagateRoutes []types.IPRoute
+	PropagateRoutes []IPRoute
 	// MTU : Maximum transmission unit size to propagate to applications using the DHCP
 	// option 26.
 	MTU uint16
@@ -114,7 +113,7 @@ func (d DHCPServer) Equal(d2 DHCPServer, withStaticEntries bool) bool {
 		generics.EqualSetsFn(d.NTPServers, d2.NTPServers, netutils.EqualIPs) &&
 		(!withStaticEntries ||
 			generics.EqualSetsFn(d.StaticEntries, d2.StaticEntries, equalMACToIP)) &&
-		generics.EqualSetsFn(d.PropagateRoutes, d2.PropagateRoutes, equalIPRoutes) &&
+		generics.EqualSetsFn(d.PropagateRoutes, d2.PropagateRoutes, EqualIPRoutes) &&
 		d.MTU == d2.MTU
 }
 
@@ -123,12 +122,9 @@ type DNSServer struct {
 	// ListenIP : IP address (assigned to Dnsmasq.ListenIf) on which the DNS server
 	// should listen.
 	ListenIP net.IP
-	// UplinkIf : uplink interface used to contact UpstreamServers.
-	// Optional argument, leave zero value for NI without uplink.
-	UplinkIf NetworkIf
-	// UpstreamServers : list of IP addresses of public DNS servers to forward
-	// requests to (unless there is a static entry).
-	UpstreamServers []net.IP
+	// UpstreamServers : list of external DNS servers to forward requests to
+	// (unless there is a static or cached entry).
+	UpstreamServers []UpstreamDNSServer
 	// StaticEntries : list of hostname->IPs entries statically configured
 	// for the DNS server.
 	StaticEntries []HostnameToIPs
@@ -140,18 +136,31 @@ type DNSServer struct {
 	LinuxIPSets []LinuxIPSet
 }
 
+// UpstreamDNSServer : DNS server to which dnsmasq will forward queries that it is unable
+// to handle (from its cache or from the list of static entries).
+type UpstreamDNSServer struct {
+	// IP address of the upstream DNS server.
+	IPAddress net.IP
+	// Port to use to contact the upstream DNS server.
+	Port NetworkIf
+}
+
+func equalUpstreamDNSServer(a, b UpstreamDNSServer) bool {
+	return netutils.EqualIPs(a.IPAddress, b.IPAddress) &&
+		a.Port == b.Port
+}
+
 // String describes DNSServer config.
 func (d DNSServer) String() string {
-	return fmt.Sprintf("DNSServer: {listenIP: %s, uplinkIf: %s, upstreamServers: %v, "+
+	return fmt.Sprintf("DNSServer: {listenIP: %s, upstreamServers: %v, "+
 		"staticEntries: %v, linuxIPSets: %v}",
-		d.ListenIP, d.UplinkIf.IfName, d.UpstreamServers, d.StaticEntries, d.LinuxIPSets)
+		d.ListenIP, d.UpstreamServers, d.StaticEntries, d.LinuxIPSets)
 }
 
 // Equal compares two DNSServer instances
 func (d DNSServer) Equal(d2 DNSServer, withStaticEntries bool) bool {
 	return netutils.EqualIPs(d.ListenIP, d2.ListenIP) &&
-		d.UplinkIf == d2.UplinkIf &&
-		generics.EqualSetsFn(d.UpstreamServers, d2.UpstreamServers, netutils.EqualIPs) &&
+		generics.EqualSetsFn(d.UpstreamServers, d2.UpstreamServers, equalUpstreamDNSServer) &&
 		generics.EqualSetsFn(d.LinuxIPSets, d2.LinuxIPSets, equalLinuxIPSet) &&
 		(!withStaticEntries ||
 			generics.EqualSetsFn(d.StaticEntries, d2.StaticEntries, equalHostnameToIP))
@@ -178,7 +187,18 @@ func equalMACToIP(a, b MACToIP) bool {
 		a.Hostname == b.Hostname
 }
 
-func equalIPRoutes(a, b types.IPRoute) bool {
+// IPRoute : single IP route entry.
+type IPRoute struct {
+	// Destination network.
+	// Cannot be nil.
+	DstNetwork *net.IPNet
+	// Gateway IP address.
+	// Cannot be nil.
+	Gateway net.IP
+}
+
+// EqualIPRoutes compares two instances of IPRoute for equality.
+func EqualIPRoutes(a, b IPRoute) bool {
 	return netutils.EqualIPNets(a.DstNetwork, b.DstNetwork) &&
 		netutils.EqualIPs(a.Gateway, b.Gateway)
 }
@@ -261,8 +281,8 @@ func (d Dnsmasq) String() string {
 }
 
 // Dependencies returns:
-//   - the (downlink) interface and the IP on which the dnsmasq listens
-//   - the (uplink) interface used by dnsmasq to contact upstream DNS servers (if any)
+//   - the (bridge) interface and the IP on which the dnsmasq listens
+//   - the (device port) interface used by dnsmasq to contact upstream DNS servers (if any)
 //   - every referenced ipset
 func (d Dnsmasq) Dependencies() (deps []dg.Dependency) {
 	deps = append(deps, dg.Dependency{
@@ -284,11 +304,16 @@ func (d Dnsmasq) Dependencies() (deps []dg.Dependency) {
 			return false
 		},
 	})
-	if d.DNSServer.UplinkIf.IfName != "" {
+	var ports []NetworkIf
+	for _, upstreamSrv := range d.DNSServer.UpstreamServers {
+		ports = append(ports, upstreamSrv.Port)
+	}
+	ports = generics.FilterDuplicates(ports)
+	for _, port := range ports {
 		deps = append(deps, dg.Dependency{
-			RequiredItem: d.DNSServer.UplinkIf.ItemRef,
-			Description: "interface used by dnsmasq to contact upstream " +
-				"DNS servers must exist",
+			RequiredItem: port.ItemRef,
+			Description: "port used by dnsmasq to contact upstream " +
+				"DNS server must exist",
 		})
 	}
 	for _, ipset := range d.DNSServer.LinuxIPSets {
@@ -511,24 +536,17 @@ func (c *DnsmasqConfigurator) CreateDnsmasqConfig(buffer io.Writer, dnsmasq Dnsm
 	}
 
 	// Decide where dnsmasq should send DNS requests upstream.
-	// If we have no uplink for the associated network instance then this is nowhere.
-	// If we have an uplink but no UpstreamServers for it, then we let
-	// dnsmasq use the host's /etc/resolv.conf
-	uplink := dnsmasq.DNSServer.UplinkIf.IfName
-	if uplink == "" {
-		if _, err := io.WriteString(buffer, "no-resolv\n"); err != nil {
+	// If we have no port associated with the network instance (air-gapped),
+	// then this is nowhere.
+	for _, srv := range dnsmasq.DNSServer.UpstreamServers {
+		_, err := io.WriteString(buffer,
+			fmt.Sprintf("server=%s@%s\n", srv.IPAddress, srv.Port.IfName))
+		if err != nil {
 			return writeErr(err)
 		}
-	} else if len(dnsmasq.DNSServer.UpstreamServers) != 0 {
-		for _, s := range dnsmasq.DNSServer.UpstreamServers {
-			_, err := io.WriteString(buffer, fmt.Sprintf("server=%s@%s\n", s, uplink))
-			if err != nil {
-				return writeErr(err)
-			}
-		}
-		if _, err := io.WriteString(buffer, "no-resolv\n"); err != nil {
-			return writeErr(err)
-		}
+	}
+	if _, err := io.WriteString(buffer, "no-resolv\n"); err != nil {
+		return writeErr(err)
 	}
 
 	for _, ipset := range dnsmasq.DNSServer.LinuxIPSets {
@@ -631,18 +649,18 @@ func (c *DnsmasqConfigurator) CreateDnsmasqConfig(buffer io.Writer, dnsmasq Dnsm
 	}
 
 	// Prepare the set of all static routes to propagate to applications.
-	var staticRoutes []types.IPRoute
+	var staticRoutes []IPRoute
 	if !isIPv6 {
 		if dnsmasq.DHCPServer.AllOnesNetmask {
-			// Make the gateway reachable using a link-local route.
+			// Make the gateway reachable using a connected route.
 			if gatewayIP != nil {
-				staticRoutes = append(staticRoutes, types.IPRoute{
+				staticRoutes = append(staticRoutes, IPRoute{
 					DstNetwork: netutils.HostSubnet(gatewayIP),
 					Gateway:    net.IP{0, 0, 0, 0},
 				})
 			}
 			if subnet != nil && gatewayIP != nil {
-				staticRoutes = append(staticRoutes, types.IPRoute{
+				staticRoutes = append(staticRoutes, IPRoute{
 					DstNetwork: subnet,
 					Gateway:    gatewayIP,
 				})
@@ -651,7 +669,7 @@ func (c *DnsmasqConfigurator) CreateDnsmasqConfig(buffer io.Writer, dnsmasq Dnsm
 			// With all-ones netmask disabled we use forwarding between apps
 			// on the same NI.
 			if subnet != nil {
-				staticRoutes = append(staticRoutes, types.IPRoute{
+				staticRoutes = append(staticRoutes, IPRoute{
 					DstNetwork: subnet,
 					Gateway:    net.IP{0, 0, 0, 0},
 				})
@@ -677,7 +695,7 @@ func (c *DnsmasqConfigurator) CreateDnsmasqConfig(buffer io.Writer, dnsmasq Dnsm
 			// We keep the Router option for clients that do not support the Classless
 			// Static Routes option.
 			_, ipv4Any, _ := net.ParseCIDR("0.0.0.0/0")
-			staticRoutes = append(staticRoutes, types.IPRoute{
+			staticRoutes = append(staticRoutes, IPRoute{
 				DstNetwork: ipv4Any,
 				Gateway:    gatewayIP,
 			})
@@ -710,7 +728,7 @@ func (c *DnsmasqConfigurator) CreateDnsmasqConfig(buffer io.Writer, dnsmasq Dnsm
 		}
 	}
 	appGateways = generics.FilterDuplicatesFn(appGateways, netutils.EqualIPs)
-	enforceRouting := func(route types.IPRoute) types.IPRoute {
+	enforceRouting := func(route IPRoute) IPRoute {
 		if gatewayIP == nil || !dnsmasq.DHCPServer.AllOnesNetmask {
 			// Forwarding from app to app is inevitable.
 			return route
@@ -720,7 +738,7 @@ func (c *DnsmasqConfigurator) CreateDnsmasqConfig(buffer io.Writer, dnsmasq Dnsm
 			return route
 		}
 		// Traffic will go: app->bridge(L3)->app
-		return types.IPRoute{
+		return IPRoute{
 			DstNetwork: route.DstNetwork,
 			Gateway:    gatewayIP,
 		}
@@ -739,7 +757,7 @@ func (c *DnsmasqConfigurator) CreateDnsmasqConfig(buffer io.Writer, dnsmasq Dnsm
 	}
 	for _, appGatewayIP := range appGateways {
 		tag := c.getAppGatewayTag(appGatewayIP)
-		isRouteValid := func(route types.IPRoute) bool {
+		isRouteValid := func(route IPRoute) bool {
 			return !netutils.EqualIPs(route.Gateway, appGatewayIP)
 		}
 		gwRoutes := generics.FilterList(staticRoutes, isRouteValid)
@@ -884,7 +902,7 @@ func (c *DnsmasqConfigurator) getAppGatewayTag(hostIP net.IP) string {
 
 // Routes should be written to the dnsmasq config in one line, with comma separated
 // entries formatted as [<dst-net>,<gw>]
-func (c *DnsmasqConfigurator) formatRoutesForConfig(routes []types.IPRoute) string {
+func (c *DnsmasqConfigurator) formatRoutesForConfig(routes []IPRoute) string {
 	var cfgEntries []string
 	for _, route := range routes {
 		entry := fmt.Sprintf("%s,%s", route.DstNetwork, route.Gateway)
