@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 FROM lfedge/eve-dom0-ztools:b8eaeec19d373228a4a842374e5de0d50f050853 as dom0
-FROM shahzededa/eve-alpine:latest as build
+FROM lfedge/eve-alpine:fbf39533415522ac124a2da9a695fda686adedc3 as build
 ENV BUILD_PKGS gcc g++ autoconf automake libtool make openssl-dev libtasn1-dev \
                json-glib-dev gnutls bash expect gawk socat libseccomp-dev gmp-dev \
                musl-utils autoconf-archive git json-c json-c-dev libcurl curl-dev \
