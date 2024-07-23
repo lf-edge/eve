@@ -857,14 +857,14 @@ if [ ! -f /var/lib/k3s_installed_unpacked ]; then
     install_and_unpack_k3s
     logmsg "k3s installed and unpacked or copied"
 fi
-# since we can wait for long time, always start the containerd first
-check_start_containerd
-logmsg "containerd started"
 
 if [ -f /var/lib/convert-to-single-node ]; then
         logmsg "remove /var/lib and copy saved single node /var/lib"
         restore_var_lib
 fi
+# since we can wait for long time, always start the containerd first
+check_start_containerd
+logmsg "containerd started"
 
 # if this is the first time to run install, we may wait for the
 # cluster config and status
