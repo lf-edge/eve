@@ -1,0 +1,9 @@
+#!/bin/sh
+# Copyright (c) 2024 Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+mkdir -p "/run/udev/rules.d"
+
+# Start daemon
+udevd --daemon
+udevadm trigger
