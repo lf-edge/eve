@@ -1388,7 +1388,7 @@ func doAssignIoAdaptersToDomain(ctx *domainContext, config types.DomainConfig,
 				log.Functionf("Assigning %s (%s) to %s",
 					ib.Phylabel, ib.UsbAddr, status.DomainName)
 				assignmentsUsb = addNoDuplicate(assignmentsUsb, ib.UsbAddr)
-			} else if ib.PciLong != "" && !ib.IsPCIBack && !ib.KeepInHost {
+			} else if ib.PciLong != "" && !ib.IsPCIBack {
 				log.Functionf("Assigning %s (%s) to %s",
 					ib.Phylabel, ib.PciLong, status.DomainName)
 				assignmentsPci = addNoDuplicate(assignmentsPci, ib.PciLong)
