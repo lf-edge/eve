@@ -760,7 +760,7 @@ restore_var_lib() {
   rm -rf /var/lib/*
 
   # Copy everything from /persist/kube/log/save-var-lib back to /var/lib
-  if [ -f "$source_dir" ]; then
+  if [ -d "$source_dir" ]; then
         cp -a "${source_dir}/." /var/lib
   else
         ## the saved files are missing, have do install again
