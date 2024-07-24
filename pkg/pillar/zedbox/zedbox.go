@@ -58,7 +58,7 @@ import (
 const (
 	agentName   = "zedbox"
 	errorTime   = 3 * time.Minute
-	warningTime = 40 * time.Second
+	warningTime = 42 * time.Second
 )
 
 type zedboxInline uint8
