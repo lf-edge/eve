@@ -66,4 +66,3 @@ KERNEL_DOCKER_TAG = $(KERNEL_BRANCH)-$(KERNEL_COMMIT)-$(KERNEL_COMPILER)
 # one can override the whole tag from the command line and set it to
 # output of make -f Makefile.eve docker-tag-${KERNEL_COMPILER} in github.com/lf-edge/eve-kernel
 KERNEL_TAG ?= docker.io/lfedge/eve-kernel:$(KERNEL_DOCKER_TAG)
-$(info Using kernel from KERNEL_TAG=$(KERNEL_TAG))
