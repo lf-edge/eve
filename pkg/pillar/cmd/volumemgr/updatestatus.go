@@ -466,17 +466,36 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 		return false, true
 	}
 
-	verifyOnly := false
-	vrc := lookupVolumeRefConfig(ctx, status.Key())
-	if vrc != nil {
-		verifyOnly = vrc.VerifyOnly
-	} else {
+	// unless an app needs the volume, there is no need to create it
+	verifyOnly := true
+
+	vrcFound := false
+	for _, item := range ctx.subVolumeRefConfig.GetAll() {
+		vrc := item.(types.VolumeRefConfig)
+		if vrc.VolumeKey() == status.Key() {
+			vrcFound = true
+			// if at least one app instance needs the volume, we need to create it
+			if !vrc.VerifyOnly {
+				verifyOnly = false
+				break
+			}
+		}
+	}
+
+	if !vrcFound {
 		vc := ctx.LookupVolumeConfig(status.Key())
-		if vc != nil && !vc.HasNoAppReferences {
-			log.Functionf("doUpdateVol(%s) name %s has app references but no VolumeRefConfig found",
-				status.Key(), status.DisplayName)
-			// we have no ref config, so no information about its intent
-			verifyOnly = true
+		if vc != nil {
+			if vc.HasNoAppReferences {
+				log.Functionf("doUpdateVol(%s) name %s has no app references, and thus is only going to be verified, but no volume will be created",
+					status.Key(), status.DisplayName)
+				// seems like the volume is a standalone one, so just create it
+				verifyOnly = false
+			} else {
+				log.Functionf("doUpdateVol(%s) name %s has app references but no VolumeRefConfig found",
+					status.Key(), status.DisplayName)
+				// let's wait for the VolumeRefConfig to be created and tell us what to do with the volume
+				verifyOnly = true
+			}
 		}
 	}
 

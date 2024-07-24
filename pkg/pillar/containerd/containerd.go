@@ -791,8 +791,16 @@ func getSavedImageInfo(containerPath string) (ocispec.Image, error) {
 		logrus.Errorf("getSavedImageInfo: could not read image config file: %v", err)
 		return image, err
 	}
+	if len(data) == 0 {
+		files, err := os.ReadDir(filepath.Join(containerPath, "rootfs"))
+		if err != nil {
+			logrus.Errorf("%s is empty and rootfs directory also not present", imageConfigFilename)
+		} else {
+			logrus.Errorf("%s is empty, but rootfs is present and has %d files", imageConfigFilename, len(files))
+		}
+	}
 	if err := json.Unmarshal(data, &image); err != nil {
-		logrus.Errorf("getSavedImageInfo: could not unmarshal image config: %v", err)
+		logrus.Errorf("getSavedImageInfo: could not unmarshal image config: %v.\nOriginal file content (%d bytes): %s", err, len(data), data)
 		return image, err
 	}
 	return image, nil

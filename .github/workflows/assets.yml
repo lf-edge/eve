@@ -82,7 +82,7 @@ jobs:
           docker rm eve_sources
       - name: Create a GitHub release and clean up artifacts
         id: create-release
-        uses: actions/github-script@v3
+        uses: actions/github-script@v7
         with:
           result-encoding: string
           script: |
@@ -134,93 +134,33 @@ jobs:
 
             return release.upload_url
 
-      - name: Upload rootfs for the release
-        id: upload-rootfs-asset
-        uses: actions/upload-release-asset@v1
+      - name: Rename files for release
+        id: rename-files-for-release
+        run: |
+          mv assets/rootfs.img assets/${{ env.ARCH }}.rootfs.img
+          mv assets/kernel assets/${{ env.ARCH }}.kernel
+          mv assets/installer.img assets/${{ env.ARCH }}.installer.img
+          mv assets/initrd.img assets/${{ env.ARCH }}.initrd.img
+          mv assets/initrd.bits assets/${{ env.ARCH }}.initrd.bits
+          mv assets/ipxe.efi assets/${{ env.ARCH }}.ipxe.efi
+          mv assets/ipxe.efi.cfg assets/${{ env.ARCH }}.ipxe.efi.cfg
+          mv assets/ipxe.efi.ip.cfg assets/${{ env.ARCH }}.ipxe.efi.ip.cfg
+          mv assets/collected_sources.tar.gz assets/${{ env.ARCH }}.collected_sources.tar.gz
+
+      - name: Upload release files
+        id: upload-release-files
+        uses: softprops/action-gh-release@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        if: startsWith(github.ref, 'refs/tags/')
         with:
-          upload_url: ${{ steps.create-release.outputs.result }}
-          asset_path: assets/rootfs.img
-          asset_name: ${{ env.ARCH }}.rootfs.img
-          asset_content_type: application/octet-stream
-      - name: Upload kernel for the release
-        id: upload-kernel-asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create-release.outputs.result }}
-          asset_path: assets/kernel
-          asset_name: ${{ env.ARCH }}.kernel
-          asset_content_type: application/octet-stream
-      - name: Upload installer.img for the release
-        id: upload-installer-asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create-release.outputs.result }}
-          asset_path: assets/installer.img
-          asset_name: ${{ env.ARCH }}.installer.img
-          asset_content_type: application/octet-stream
-      - name: Upload initrd.img for the release
-        id: upload-initrd-asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create-release.outputs.result }}
-          asset_path: assets/initrd.img
-          asset_name: ${{ env.ARCH }}.initrd.img
-          asset_content_type: application/octet-stream
-      - name: Upload initrd.bits for the release
-        id: upload-initrd-bits-asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create-release.outputs.result }}
-          asset_path: assets/initrd.bits
-          asset_name: ${{ env.ARCH }}.initrd.bits
-          asset_content_type: application/octet-stream
-      - name: Upload ipxe.efi for the release
-        id: upload-ipxe-efi-asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create-release.outputs.result }}
-          asset_path: assets/ipxe.efi
-          asset_name: ${{ env.ARCH }}.ipxe.efi
-          asset_content_type: application/octet-stream
-      - name: Upload ipxe.efi.cfg for the release
-        id: upload-ipxe-efi-cfg-asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create-release.outputs.result }}
-          asset_path: assets/ipxe.efi.cfg
-          asset_name: ${{ env.ARCH }}.ipxe.efi.cfg
-          asset_content_type: application/octet-stream
-      - name: Upload ipxe.efi.ip.cfg for the release
-        id: upload-ipxe-efi-ip-cfg-asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create-release.outputs.result }}
-          asset_path: assets/ipxe.efi.ip.cfg
-          asset_name: ${{ env.ARCH }}.ipxe.efi.ip.cfg
-          asset_content_type: application/octet-stream
-      - name: Upload COLLECTED_SOURCES
-        id: upload-collected-sources-asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create-release.outputs.result }}
-          asset_path: assets/collected_sources.tar.gz
-          asset_name: ${{ env.ARCH }}.collected_sources.tar.gz
-          asset_content_type: application/octet-stream
+          files: |
+            assets/${{ env.ARCH }}.rootfs.img
+            assets/${{ env.ARCH }}.kernel
+            assets/${{ env.ARCH }}.installer.img
+            assets/${{ env.ARCH }}.initrd.img
+            assets/${{ env.ARCH }}.initrd.bits
+            assets/${{ env.ARCH }}.ipxe.efi
+            assets/${{ env.ARCH }}.ipxe.efi.cfg
+            assets/${{ env.ARCH }}.ipxe.efi.ip.cfg
+            assets/${{ env.ARCH }}.collected_sources.tar.gz

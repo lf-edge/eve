@@ -4,7 +4,6 @@
 package types
 
 import (
-	"errors"
 	"fmt"
 	"time"
 
@@ -12,7 +11,7 @@ import (
 	"github.com/lf-edge/eve-api/go/info"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/objtonum"
-	"github.com/satori/go.uuid"
+	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus" // OK for logrus.Fatal
 )
 
@@ -313,7 +312,7 @@ func ParseTriState(value string) (TriState, error) {
 	case "disabled", "disable", "off":
 		ts = TS_DISABLED
 	default:
-		err := errors.New(fmt.Sprintf("Bad value: %s", value))
+		err := fmt.Errorf("bad value: %s", value)
 		return ts, err
 	}
 	return ts, nil

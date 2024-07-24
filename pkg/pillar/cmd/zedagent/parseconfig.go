@@ -632,7 +632,7 @@ func parseAppInstanceConfig(getconfigCtx *getconfigContext,
 
 		appInstance.VolumeRefConfigList = make([]types.VolumeRefConfig,
 			len(cfgApp.VolumeRefList))
-		parseVolumeRefList(appInstance.VolumeRefConfigList, cfgApp.GetVolumeRefList())
+		parseVolumeRefList(appInstance.VolumeRefConfigList, cfgApp.GetVolumeRefList(), appInstance.UUIDandVersion.UUID)
 
 		// fill in the collect stats IP address of the App
 		appInstance.CollectStatsIPAddr = net.ParseIP(cfgApp.GetCollectStatsIPAddr())
@@ -1720,17 +1720,19 @@ func publishDatastoreConfig(ctx *getconfigContext,
 }
 
 func parseVolumeRefList(volumeRefConfigList []types.VolumeRefConfig,
-	volumeRefs []*zconfig.VolumeRef) {
+	volumeRefs []*zconfig.VolumeRef, appUUID uuid.UUID) {
 
 	var idx int
 	for _, volumeRef := range volumeRefs {
-		volume := new(types.VolumeRefConfig)
-		volume.VolumeID, _ = uuid.FromString(volumeRef.Uuid)
-		volume.GenerationCounter = volumeRef.GenerationCount
-		volume.RefCount = 1
-		volume.MountDir = volumeRef.GetMountDir()
-		volume.VerifyOnly = true
-		volumeRefConfigList[idx] = *volume
+		vrc := new(types.VolumeRefConfig)
+		vrc.VolumeID, _ = uuid.FromString(volumeRef.Uuid)
+		vrc.GenerationCounter = volumeRef.GenerationCount
+		vrc.AppUUID = appUUID
+		vrc.MountDir = volumeRef.GetMountDir()
+		// in the beginning all volumes need to be downloaded and verified
+		// later zedmanager will trigger their installation by setting this flag to false
+		vrc.VerifyOnly = true
+		volumeRefConfigList[idx] = *vrc
 		idx++
 	}
 }

@@ -18,24 +18,23 @@ import (
 	uuid "github.com/satori/go.uuid"
 )
 
-// MaybeAddVolumeRefConfig publishes volume ref config with refcount
-// to the volumemgr
+// MaybeAddVolumeRefConfig publishes VolumeRefConfig to the volumemgr
 func MaybeAddVolumeRefConfig(ctx *zedmanagerContext, appInstID uuid.UUID,
 	volumeID uuid.UUID, generationCounter, localGenerationCounter int64,
 	mountDir string, verifyOnly bool) {
 
-	key := fmt.Sprintf("%s#%d", volumeID.String(),
-		generationCounter+localGenerationCounter)
+	// construct the key as in VolumeRefConfig.Key()
+	key := fmt.Sprintf("%s#%d#%s", volumeID.String(),
+		generationCounter+localGenerationCounter, appInstID.String())
 	log.Functionf("MaybeAddVolumeRefConfig for %s", key)
 	m := lookupVolumeRefConfig(ctx, key)
 	if m != nil {
-		m.RefCount++
 		// only update from VerifyOnly to non-VerifyOnly
 		if m.VerifyOnly {
 			m.VerifyOnly = verifyOnly
 		}
-		log.Functionf("VolumeRefConfig exists for %s to refcount %d",
-			key, m.RefCount)
+		log.Functionf("VolumeRefConfig exists for %s. Setting verifyOnly to %v",
+			key, m.VerifyOnly)
 		publishVolumeRefConfig(ctx, m)
 	} else {
 		log.Tracef("MaybeAddVolumeRefConfig: add for %s", key)
@@ -43,7 +42,7 @@ func MaybeAddVolumeRefConfig(ctx *zedmanagerContext, appInstID uuid.UUID,
 			VolumeID:               volumeID,
 			GenerationCounter:      generationCounter,
 			LocalGenerationCounter: localGenerationCounter,
-			RefCount:               1,
+			AppUUID:                appInstID,
 			MountDir:               mountDir,
 			VerifyOnly:             verifyOnly,
 		}
@@ -54,32 +53,23 @@ func MaybeAddVolumeRefConfig(ctx *zedmanagerContext, appInstID uuid.UUID,
 	log.Functionf("MaybeAddVolumeRefConfig done for %s", key)
 }
 
-// MaybeRemoveVolumeRefConfig decreases the RefCount and deletes the VolumeRefConfig
-// when the RefCount reaches zero
+// MaybeRemoveVolumeRefConfig unpublishes VolumeRefConfig for volumemgr (AppInstanceConfig remains unchanged)
 func MaybeRemoveVolumeRefConfig(ctx *zedmanagerContext, appInstID uuid.UUID,
 	volumeID uuid.UUID, generationCounter, localGenerationCounter int64) {
 
-	key := fmt.Sprintf("%s#%d", volumeID.String(),
-		generationCounter+localGenerationCounter)
+	// construct the key as in VolumeRefConfig.Key()
+	key := fmt.Sprintf("%s#%d#%s", volumeID.String(),
+		generationCounter+localGenerationCounter, appInstID.String())
 	log.Functionf("MaybeRemoveVolumeRefConfig for %s", key)
 	m := lookupVolumeRefConfig(ctx, key)
 	if m == nil {
 		log.Functionf("MaybeRemoveVolumeRefConfig: config missing for %s", key)
 		return
 	}
-	if m.RefCount == 0 {
-		log.Fatalf("MaybeRemoveVolumeRefConfig: Attempting to reduce "+
-			"0 RefCount for %s", key)
-	}
-	m.RefCount--
-	if m.RefCount == 0 {
-		log.Functionf("MaybeRemoveVolumeRefConfig deleting %s", key)
-		unpublishVolumeRefConfig(ctx, key)
-	} else {
-		log.Functionf("MaybeRemoveVolumeRefConfig remaining RefCount %d for %s",
-			m.RefCount, key)
-		publishVolumeRefConfig(ctx, m)
-	}
+
+	log.Functionf("MaybeRemoveVolumeRefConfig deleting %s", key)
+	unpublishVolumeRefConfig(ctx, key)
+
 	base.NewRelationObject(log, base.DeleteRelationType, base.AppInstanceConfigLogType, appInstID.String(),
 		base.VolumeRefConfigLogType, key).Noticef("App instance to volume relation.")
 	log.Functionf("MaybeRemoveVolumeRefConfig done for %s", key)
@@ -204,13 +194,12 @@ func getVolumeRefStatusFromAIStatus(status *types.AppInstanceStatus,
 	log.Tracef("getVolumeRefStatusFromAIStatus(%v)", vrc.Key())
 	for i := range status.VolumeRefStatusList {
 		vrs := &status.VolumeRefStatusList[i]
-		if vrs.VolumeID == vrc.VolumeID &&
-			vrs.GenerationCounter == vrc.GenerationCounter &&
-			vrs.LocalGenerationCounter == vrc.LocalGenerationCounter {
+		if vrs.Key() == vrc.Key() {
 			log.Tracef("getVolumeRefStatusFromAIStatus(%v) found %s "+
-				"generationCounter %d localGenerationCounter %d",
+				"generationCounter %d localGenerationCounter %d "+
+				"appUUID %s",
 				vrs.Key(), vrs.DisplayName, vrs.GenerationCounter,
-				vrs.LocalGenerationCounter)
+				vrs.LocalGenerationCounter, vrs.AppUUID.String())
 			return vrs
 		}
 	}
@@ -224,13 +213,12 @@ func getVolumeRefConfigFromAIConfig(config *types.AppInstanceConfig,
 	log.Tracef("getVolumeRefConfigFromAIConfig(%v)", vrs.Key())
 	for i := range config.VolumeRefConfigList {
 		vrc := &config.VolumeRefConfigList[i]
-		if vrc.VolumeID == vrs.VolumeID &&
-			vrc.GenerationCounter == vrs.GenerationCounter &&
-			vrc.LocalGenerationCounter == vrs.LocalGenerationCounter {
+		if vrc.Key() == vrs.Key() {
 			log.Tracef("getVolumeRefConfigFromAIConfig(%v) found %s "+
-				"generationCounter %d localGenerationCounter %d",
+				"generationCounter %d localGenerationCounter %d "+
+				"appUUID %s",
 				vrs.Key(), vrs.DisplayName, vrs.GenerationCounter,
-				vrs.LocalGenerationCounter)
+				vrs.LocalGenerationCounter, vrs.AppUUID.String())
 			return vrc
 		}
 	}

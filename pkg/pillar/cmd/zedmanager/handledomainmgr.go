@@ -71,11 +71,11 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 			return nil, errors.New(errStr)
 		}
 		disk := types.DiskConfig{}
-		disk.VolumeKey = vrs.Key()
+		disk.VolumeKey = vrs.VolumeKey()
 		disk.FileLocation = location
 		disk.ReadOnly = vrs.ReadOnly
 		disk.Format = vrs.ContentFormat
-		disk.MountDir = vrs.MountDir
+		disk.MountDir = vrc.MountDir
 		disk.DisplayName = vrs.DisplayName
 		disk.WWN = vrs.WWN
 		disk.Target = vrs.Target

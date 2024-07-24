@@ -6,6 +6,8 @@ fmt
 hwinfo
 i2c-tools-dev
 iw
+json-glib
+json-glib-dev
 libbpf-dev
 libgudev-dev
 librados

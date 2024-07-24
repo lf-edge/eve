@@ -1084,10 +1084,10 @@ func handleCreate(ctxArg interface{}, key string,
 		vrs.VolumeID = vrc.VolumeID
 		vrs.GenerationCounter = vrc.GenerationCounter
 		vrs.LocalGenerationCounter = vrc.LocalGenerationCounter
-		vrs.RefCount = vrc.RefCount
-		vrs.MountDir = vrc.MountDir
+		vrs.AppUUID = vrc.AppUUID
 		vrs.PendingAdd = true
 		vrs.State = types.INITIAL
+		// in the beginning all volumes need to be downloaded and verified
 		vrs.VerifyOnly = true
 	}
 
