@@ -1054,7 +1054,7 @@ $(ROOTFS_FULL_NAME)-%-$(ZARCH).$(ROOTFS_FORMAT): $(ROOTFS_IMG)
 	$(QUIET): $@: Succeeded
 
 %-show-tag:
-	@$(LINUXKIT) pkg show-tag -canonical pkg/$*
+	@$(LINUXKIT) pkg show-tag --canonical pkg/$*
 
 %Gopkg.lock: %Gopkg.toml | $(GOBUILDER)
 	@$(DOCKER_GO) "dep ensure -update $(GODEP_NAME)" $(dir $@)
