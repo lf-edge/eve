@@ -8,6 +8,7 @@ ENV PKGS udev
 RUN eve-alpine-deploy.sh
 
 COPY etc/init.d/008-udevd /out/etc/init.d/
+COPY etc/udev/rules.d/* /out/etc/udev/rules.d/
 
 # Remove default rules from udev (we don't support many groups from these rules)
 RUN rm /out/lib/udev/rules.d/*
