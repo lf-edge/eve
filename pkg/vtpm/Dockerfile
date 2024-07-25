@@ -50,8 +50,8 @@ RUN cp tools/.libs/tpm2 /out/usr/bin/
 
 # Build vtpm
 WORKDIR /vtpm-build
-COPY vtpm/src/ /vtpm-build/.
-COPY vtpm/ /vtpm-build/.
+COPY swtpm-vtpm/src/ /vtpm-build/.
+COPY swtpm-vtpm/ /vtpm-build/.
 ARG GOPKGVERSION
 SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
 # hadolint ignore=SC2046
@@ -61,9 +61,11 @@ RUN echo "Running go vet" && go vet ./... && echo "Running go fmt" && \
 RUN GO111MODULE=on CGO_ENABLED=0 go build -ldflags "-s -w -X=main.Version=${GOPKGVERSION}" \
     -mod=vendor -o /out/usr/bin/vtpm .
 
-# Build ptpmd
+# Build ptpm
 WORKDIR /ptpm-build
-COPY ptpm /ptpm-build/.
+COPY Makefile /ptpm-build/
+COPY src/ /ptpm-build/src
+COPY proto/ /ptpm-build/proto
 RUN make -j$(nproc) && cp ptpm /out/usr/bin/
 
 FROM scratch
