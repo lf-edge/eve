@@ -1345,8 +1345,7 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 }
 
 // doAssignAdaptersToDomain assigns IO adapters to the newly created domain.
-// The adapters are reserved here for the domain
-// UsedByUUID is already set in reserveAdapters
+// Note that the adapters are already reserved for the domain using reserveAdapters (UsedByUUID is set).
 func doAssignIoAdaptersToDomain(ctx *domainContext, config types.DomainConfig,
 	status *types.DomainStatus) error {
 
@@ -1865,6 +1864,7 @@ func unmountContainers(ctx *domainContext, diskStatusList []types.DiskStatus, fo
 
 // releaseAdapters is called when the domain is done with the device and we
 // clear UsedByUUID
+// In addition, if KeepInHost is set, we move it back to the host.
 // If status is set, any errors are recorded in status
 func releaseAdapters(ctx *domainContext, ioAdapterList []types.IoAdapter,
 	myUUID uuid.UUID, status *types.DomainStatus) {
@@ -1895,7 +1895,7 @@ func releaseAdapters(ctx *domainContext, ioAdapterList []types.IoAdapter,
 					myUUID)
 				continue
 			}
-			if ib.PciLong != "" && ib.IsPCIBack {
+			if ib.PciLong != "" && ib.KeepInHost && ib.IsPCIBack {
 				log.Functionf("releaseAdapters removing %s (%s) from %s",
 					ib.Phylabel, ib.PciLong, myUUID)
 				assignments = addNoDuplicate(assignments, ib.PciLong)
@@ -3136,9 +3136,13 @@ func updatePortAndPciBackIoMember(ctx *domainContext, ib *types.IoBundle, isPort
 			log.Noticef("Not assigning %s (%s) to pciback due to Testing",
 				ib.Phylabel, ib.PciLong)
 		} else if ib.PciLong != "" && ib.UsbAddr == "" {
-			log.Noticef("Assigning %s (%s) later to pciback",
+			log.Noticef("Assigning %s (%s) to pciback",
 				ib.Phylabel, ib.PciLong)
-
+			err := hyper.PCIReserve(ib.PciLong)
+			if err != nil {
+				return changed, err
+			}
+			ib.IsPCIBack = true
 			changed = true
 		}
 	}
