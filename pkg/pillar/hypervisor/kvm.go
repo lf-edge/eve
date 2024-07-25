@@ -396,7 +396,6 @@ const qemuCANBusTemplate = `
 `
 
 const kvmStateDir = "/run/hypervisor/kvm/"
-const sysfsVfioPciBind = "/sys/bus/pci/drivers/vfio-pci/bind"
 const sysfsPciDriversProbe = "/sys/bus/pci/drivers_probe"
 const vfioDriverPath = "/sys/bus/pci/drivers/vfio-pci"
 
