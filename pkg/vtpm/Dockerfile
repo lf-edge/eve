@@ -70,6 +70,7 @@ RUN make -j$(nproc) && cp ptpm /out/usr/bin/
 
 FROM scratch
 COPY --from=build /out/ /
+COPY --from=build /out/ /
 COPY init.sh /usr/bin/
 COPY --from=dom0 /etc/group /etc/group
 COPY --from=dom0 /etc/passwd /etc/passwd
