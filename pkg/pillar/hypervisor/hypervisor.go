@@ -241,7 +241,7 @@ func PCISameControllerGeneric(id1 string, id2 string) bool {
 	return tag1 == tag2
 }
 
-func LaunchSwtpmAndWait(id string, seconds int) (string, error) {
+func launchSwtpmAndWait(id string, seconds int) (string, error) {
 	conn, err := net.Dial("unix", types.TpmdControlSocket)
 	if err != nil {
 		return "", err
@@ -260,7 +260,7 @@ func LaunchSwtpmAndWait(id string, seconds int) (string, error) {
 	// swtpm dies due to an error! In that case we don't want to prevent the vm
 	// form starting. So launch swtpm, wait a bit and then check the pid file to
 	// make sure it is still alive.
-	time.Sleep(1 * time.Second)
+	time.Sleep(time.Duration(seconds) * time.Second)
 	if fileutils.FileExists(nil, pidPath) {
 		return sockPath, nil
 	}

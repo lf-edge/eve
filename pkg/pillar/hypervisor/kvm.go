@@ -1135,7 +1135,7 @@ func getQmpListenerSocket(domainName string) string {
 }
 
 func getQemuSwtpmConfig(domainId string) (string, error) {
-	swtpmSock, err := LaunchSwtpmAndWait(domainId, 3)
+	swtpmSock, err := launchSwtpmAndWait(domainId, 3)
 	if err != nil {
 		return "", logError("failed to launch swtpm %v", err)
 	}

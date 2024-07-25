@@ -38,17 +38,13 @@ const (
 var liveInstances = 0
 
 func makeDirs(dir string) error {
-	if _, err := os.Stat(dir); os.IsNotExist(err) {
-		if err := os.MkdirAll(dir, 0755); err != nil {
-			return fmt.Errorf("Failed to create directory: %v", err)
-		}
-	} else if err != nil {
-		return fmt.Errorf("Failed to check directory: %v", err)
-	} else {
-		// dir exists, make sure it has the right permissions
-		if err := os.Chmod(dir, 0755); err != nil {
-			return fmt.Errorf("Failed to set permissions for  directory: %v", err)
-		}
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("failed to create directory: %v", err)
+	}
+
+	// make sure it has the right permissions, no harm!
+	if err := os.Chmod(dir, 0755); err != nil {
+		return fmt.Errorf("failed to set permissions for directory: %v", err)
 	}
 
 	return nil
@@ -61,7 +57,7 @@ func runVirtualTpmInstance(id string) error {
 	pidPath := fmt.Sprintf(SwtpmPidPath, id)
 
 	if err := makeDirs(statePath); err != nil {
-		return fmt.Errorf("Failed to create vtpm state directory: %v", err)
+		return fmt.Errorf("failed to create vtpm state directory: %v", err)
 	}
 
 	_, err := os.Stat(etpm.TpmDevicePath)
@@ -75,7 +71,7 @@ func runVirtualTpmInstance(id string) error {
 			"--pid", "file="+pidPath,
 			"--daemon")
 		if err := cmd.Run(); err != nil {
-			return fmt.Errorf("Failed to run swtpm: %v", err)
+			return fmt.Errorf("failed to run swtpm: %v", err)
 		}
 	} else {
 		log.Println("TPM is available, running swtpm with state encryption!")
@@ -87,11 +83,11 @@ func runVirtualTpmInstance(id string) error {
 
 		key, err := etpm.UnsealDiskKey(etpm.DiskKeySealingPCRs)
 		if err != nil {
-			return fmt.Errorf("Unseal operation failed with err: %v", err)
+			return fmt.Errorf("unseal operation failed with err: %v", err)
 		}
 
 		if err := ioutil.WriteFile(stateEncryptionKey, key, 0644); err != nil {
-			return fmt.Errorf("Failed to write key to file: %v", err)
+			return fmt.Errorf("failed to write key to file: %v", err)
 		}
 
 		cmd := exec.Command(swtpmPath, "socket", "--tpm2",
@@ -105,7 +101,7 @@ func runVirtualTpmInstance(id string) error {
 		if err := cmd.Run(); err != nil {
 			// this shall not fail 🧙🏽‍♂️
 			_ = os.Remove(stateEncryptionKey)
-			return fmt.Errorf("Failed to run swtpm: %v", err)
+			return fmt.Errorf("failed to run swtpm: %v", err)
 		}
 	}
 
