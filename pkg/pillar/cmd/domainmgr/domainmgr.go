@@ -1344,6 +1344,59 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 		config.UUIDandVersion, config.DisplayName)
 }
 
+// returns a map of PciLong to *types.IoBundle
+func usbControllersWithoutPCIReserve(ioBundles []types.IoBundle) map[string][]*types.IoBundle {
+	ret := make(map[string][]*types.IoBundle, 0)
+
+	usbControllerGroups := make(map[string][]*types.IoBundle) // assigngrp -> iobundle
+
+	for i, ioBundle := range ioBundles {
+		if ioBundle.Type != types.IoUSBController {
+			continue
+		}
+
+		if usbControllerGroups[ioBundle.AssignmentGroup] == nil {
+			usbControllerGroups[ioBundle.AssignmentGroup] = make([]*types.IoBundle, 0)
+		}
+
+		usbControllerGroups[ioBundle.AssignmentGroup] = append(usbControllerGroups[ioBundle.AssignmentGroup], &ioBundles[i])
+	}
+
+	for _, ioBundle := range ioBundles {
+		if ioBundle.UsbAddr == "" && ioBundle.UsbProduct == "" && ioBundle.Type != types.IoUSBDevice {
+			continue
+		}
+
+		if ioBundle.ParentAssignmentGroup == "" {
+			ret = make(map[string][]*types.IoBundle, 0)
+
+			for i, usbControllers := range usbControllerGroups {
+				for j, usbController := range usbControllers {
+					if ret[usbController.PciLong] == nil {
+						ret[usbController.PciLong] = make([]*types.IoBundle, 0)
+					}
+
+					ret[usbController.PciLong] = append(ret[usbController.PciLong], usbControllerGroups[i][j])
+				}
+			}
+
+			return ret
+		}
+
+		if usbControllerGroups[ioBundle.ParentAssignmentGroup] != nil {
+			for i, usbController := range usbControllerGroups[ioBundle.ParentAssignmentGroup] {
+				if ret[usbController.PciLong] == nil {
+					ret[usbController.PciLong] = make([]*types.IoBundle, 0)
+				}
+
+				ret[usbController.PciLong] = append(ret[usbController.PciLong], usbControllerGroups[ioBundle.ParentAssignmentGroup][i])
+			}
+		}
+	}
+
+	return ret
+}
+
 // doAssignAdaptersToDomain assigns IO adapters to the newly created domain.
 // Note that the adapters are already reserved for the domain using reserveAdapters (UsedByUUID is set).
 func doAssignIoAdaptersToDomain(ctx *domainContext, config types.DomainConfig,
@@ -1395,8 +1448,8 @@ func doAssignIoAdaptersToDomain(ctx *domainContext, config types.DomainConfig,
 			}
 		}
 		publishAssignableAdapters = len(assignmentsUsb) > 0 || len(assignmentsPci) > 0
-
 	}
+
 	for i, long := range assignmentsPci {
 		err := hyper.PCIReserve(long)
 		if err != nil {
@@ -2974,6 +3027,13 @@ func updatePortAndPciBackIoBundleAll(ctx *domainContext) {
 	if anyChanged {
 		ctx.publishAssignableAdapters()
 	}
+
+	keepInHostUsbControllers := usbControllersWithoutPCIReserve(ctx.assignableAdapters.IoBundleList)
+	for i := range keepInHostUsbControllers {
+		for j := range keepInHostUsbControllers[i] {
+			keepInHostUsbControllers[i][j].KeepInHost = true
+		}
+	}
 }
 
 // updatePortAndPciBackIoBundle determines whether IsPort should be set for
@@ -2992,6 +3052,9 @@ func updatePortAndPciBackIoBundle(ctx *domainContext, ib *types.IoBundle) (chang
 	} else {
 		list = append(list, ib)
 	}
+
+	keepInHostUsbControllers := usbControllersWithoutPCIReserve(ctx.assignableAdapters.IoBundleList)
+
 	// Is any member a network port?
 	// We look across all members in the assignment group (expanded below
 	// for safety when the model is incorrect) and if any member is a port
@@ -3038,6 +3101,10 @@ func updatePortAndPciBackIoBundle(ctx *domainContext, ib *types.IoBundle) (chang
 			keepInHost = true
 		}
 		if ib.Type == types.IoCAN || ib.Type == types.IoVCAN {
+			keepInHost = true
+		}
+		_, found := keepInHostUsbControllers[ib.PciLong]
+		if found {
 			keepInHost = true
 		}
 	}

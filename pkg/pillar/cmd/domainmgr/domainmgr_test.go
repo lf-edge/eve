@@ -483,6 +483,113 @@ func TestHandleMimeMultipart(t *testing.T) {
 	os.RemoveAll(dir)
 }
 
+func TestUsbControllersNoImmediatePCIReserve(t *testing.T) {
+	var pciLongs map[string]struct{}
+
+	noPCIReserve := []types.IoBundle{
+		{
+			Type:                  types.IoUSBController,
+			AssignmentGroup:       "",
+			ParentAssignmentGroup: "",
+			PciLong:               "00:01",
+		},
+	}
+
+	setPciLongs := func(ioBundles []types.IoBundle) {
+		pciLongs = make(map[string]struct{})
+		for p := range usbControllersWithoutPCIReserve(ioBundles) {
+			pciLongs[p] = struct{}{}
+		}
+	}
+	setPciLongs(noPCIReserve)
+	if len(pciLongs) > 0 {
+		t.Fatalf("expected no controllers that should be reserved, but got %+v", pciLongs)
+	}
+
+	noPCIReserve = append(noPCIReserve, types.IoBundle{
+		Type: types.IoUSBDevice,
+	})
+
+	setPciLongs(noPCIReserve)
+	if len(pciLongs) != 1 {
+		t.Fatalf("expected controller to be reserved for usb device, but got %+v", pciLongs)
+	}
+
+	noPCIReserveBecauseOfDifferentAssigngrp := []types.IoBundle{
+		{
+			Type:                  types.IoUSBController,
+			AssignmentGroup:       "one",
+			ParentAssignmentGroup: "",
+			PciLong:               "00:01",
+		},
+		{
+			Type:                  types.IoUSBDevice,
+			AssignmentGroup:       "",
+			ParentAssignmentGroup: "two",
+		},
+	}
+
+	setPciLongs(noPCIReserveBecauseOfDifferentAssigngrp)
+	if len(pciLongs) > 0 {
+		t.Fatalf("expected no controllers that should be reserved, but got %+v", pciLongs)
+	}
+
+	noPCIReserveBecauseOfDifferentAssigngrp = append(noPCIReserveBecauseOfDifferentAssigngrp, types.IoBundle{
+		Type: types.IoUSBDevice,
+	})
+	setPciLongs(noPCIReserveBecauseOfDifferentAssigngrp)
+	if len(pciLongs) != 1 {
+		t.Fatalf("expected controller to be reserved for usb device, but got %+v", pciLongs)
+	}
+
+	pciReserveBecauseOfMatchingAssigngrp := []types.IoBundle{
+		{
+			Type:                  types.IoUSBController,
+			AssignmentGroup:       "one",
+			ParentAssignmentGroup: "",
+			PciLong:               "00:01",
+		},
+		{
+			Type:                  types.IoUSBDevice,
+			AssignmentGroup:       "",
+			ParentAssignmentGroup: "one",
+		},
+	}
+	setPciLongs(pciReserveBecauseOfMatchingAssigngrp)
+	if len(pciLongs) != 1 {
+		t.Fatalf("expected controller to be reserved for usb device, but got %+v", pciLongs)
+	}
+
+	pciReserveBecauseOfMatchingAssigngrp = append(pciReserveBecauseOfMatchingAssigngrp, types.IoBundle{
+		Type:            types.IoUSBController,
+		AssignmentGroup: "one",
+		PciLong:         "00:02",
+	})
+	setPciLongs(pciReserveBecauseOfMatchingAssigngrp)
+	if len(pciLongs) != 2 {
+		t.Fatalf("expected both controllers to be reserved for usb device, but got %+v", pciLongs)
+	}
+
+	pciReserveBecauseOfMatchingAssigngrp = append(pciReserveBecauseOfMatchingAssigngrp, types.IoBundle{
+		Type:            types.IoUSBController,
+		AssignmentGroup: "two", // no usb device depends on it, therefore pci reservation can be done
+		PciLong:         "00:03",
+	})
+	setPciLongs(pciReserveBecauseOfMatchingAssigngrp)
+	if len(pciLongs) != 2 {
+		t.Fatalf("expected both controllers to be reserved for usb device, but got %+v", pciLongs)
+	}
+
+	pciReserveBecauseOfMatchingAssigngrp = append(pciReserveBecauseOfMatchingAssigngrp, types.IoBundle{
+		Type:                  types.IoUSBDevice,
+		ParentAssignmentGroup: "",
+	})
+	setPciLongs(pciReserveBecauseOfMatchingAssigngrp)
+	if len(pciLongs) != 3 {
+		t.Fatalf("expected all three controllers to be reserved for usb device, but got %+v", pciLongs)
+	}
+}
+
 func TestConfigEnableUsbUpdatePortAndPciBackIoBundle(t *testing.T) {
 	assignableAdapters := types.AssignableAdapters{
 		IoBundleList: []types.IoBundle{
