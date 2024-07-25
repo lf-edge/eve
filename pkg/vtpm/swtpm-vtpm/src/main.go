@@ -6,7 +6,6 @@ package main
 import (
 	"bufio"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"net"
 	"os"
@@ -39,12 +38,12 @@ var liveInstances = 0
 
 func makeDirs(dir string) error {
 	if err := os.MkdirAll(dir, 0755); err != nil {
-		return fmt.Errorf("failed to create directory: %v", err)
+		return fmt.Errorf("failed to create directory: %w", err)
 	}
 
 	// make sure it has the right permissions, no harm!
 	if err := os.Chmod(dir, 0755); err != nil {
-		return fmt.Errorf("failed to set permissions for directory: %v", err)
+		return fmt.Errorf("failed to set permissions for directory: %w", err)
 	}
 
 	return nil
@@ -55,53 +54,49 @@ func runVirtualTpmInstance(id string) error {
 	logPath := fmt.Sprintf(swtpmLogPath, id)
 	sockPath := fmt.Sprintf(SwtpmSocketPath, id)
 	pidPath := fmt.Sprintf(SwtpmPidPath, id)
+	swtpmArgs := []string{"socket", "--tpm2",
+		"--tpmstate", "dir=" + statePath,
+		"--ctrl", "type=unixio,path=" + sockPath + ",terminate",
+		// FIX-ME: lower the log level, or get rid of it
+		"--log", "file=" + logPath + ",level=20",
+		"--pid", "file=" + pidPath,
+		"--daemon"}
 
 	if err := makeDirs(statePath); err != nil {
-		return fmt.Errorf("failed to create vtpm state directory: %v", err)
+		return fmt.Errorf("failed to create vtpm state directory: %w", err)
 	}
 
 	_, err := os.Stat(etpm.TpmDevicePath)
 	if err != nil {
 		log.Println("TPM is not available, running swtpm without state encryption!")
 
-		cmd := exec.Command(swtpmPath, "socket", "--tpm2",
-			"--tpmstate", "dir="+statePath,
-			"--ctrl", "type=unixio,path="+sockPath+",terminate",
-			"--log", "file="+logPath+",level=20", // FIX-ME: lower the log level, or get rid of it
-			"--pid", "file="+pidPath,
-			"--daemon")
+		cmd := exec.Command(swtpmPath, swtpmArgs...)
 		if err := cmd.Run(); err != nil {
-			return fmt.Errorf("failed to run swtpm: %v", err)
+			return fmt.Errorf("failed to run swtpm: %w", err)
 		}
 	} else {
 		log.Println("TPM is available, running swtpm with state encryption!")
 		rw, err := tpm2.OpenTPM(etpm.TpmDevicePath)
 		if err != nil {
-			return fmt.Errorf("OpenTPM failed with err: %v", err)
+			return fmt.Errorf("OpenTPM failed with err: %w", err)
 		}
 		defer rw.Close()
 
 		key, err := etpm.UnsealDiskKey(etpm.DiskKeySealingPCRs)
 		if err != nil {
-			return fmt.Errorf("unseal operation failed with err: %v", err)
+			return fmt.Errorf("unseal operation failed with err: %w", err)
 		}
 
-		if err := ioutil.WriteFile(stateEncryptionKey, key, 0644); err != nil {
-			return fmt.Errorf("failed to write key to file: %v", err)
+		if err := os.WriteFile(stateEncryptionKey, key, 0644); err != nil {
+			return fmt.Errorf("failed to write key to file: %w", err)
 		}
 
-		cmd := exec.Command(swtpmPath, "socket", "--tpm2",
-			"--tpmstate", "dir="+statePath,
-			"--ctrl", "type=unixio,path="+sockPath+",terminate",
-			"--log", "file="+logPath+",level=20", // FIX-ME: lower the log level, or get rid of it
-			"--key", "file="+stateEncryptionKey+",format=binary,mode=aes-256-cbc,remove=true",
-			"--pid", "file="+pidPath,
-			"--daemon")
-
+		swtpmArgs = append(swtpmArgs, "--key", "file="+stateEncryptionKey+",format=binary,mode=aes-256-cbc,remove=true")
+		cmd := exec.Command(swtpmPath, swtpmArgs...)
 		if err := cmd.Run(); err != nil {
 			// this shall not fail 🧙🏽‍♂️
-			_ = os.Remove(stateEncryptionKey)
-			return fmt.Errorf("failed to run swtpm: %v", err)
+			newErr := os.Remove(stateEncryptionKey)
+			return fmt.Errorf("failed to run swtpm: %w, failed to remove key file %w", err, newErr)
 		}
 	}
 
