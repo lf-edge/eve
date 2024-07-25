@@ -110,7 +110,7 @@ const (
 	// ContainerdContentDir - path to containerd`s content store
 	ContainerdContentDir = SealedDirName + "/containerd/io.containerd.content.v1.content"
 
-	// TpmdControlSocket is UDS to aks vtpmd to luanch SWTP instances for VMS
+	// TpmdControlSocket is UDS to ask vtpmd to launch SWTP instances for VMs
 	TpmdControlSocket = "/run/swtpm/tpmlaunchd"
 	// SwtpmSocketPath is the prefix for the SWTPM socket
 	SwtpmSocketPath = "/run/swtpm/%s.sock"
