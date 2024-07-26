@@ -51,12 +51,12 @@ RUN adduser -D -H -h /root -s /bin/sh -g "root" -G root -u 0 root
 # add nobody user and group
 RUN addgroup -g 65534 nogroup
 RUN adduser -D -H -h /nonexistent -s /bin/false -g "nobody" -u 65534 -G nogroup nobody
-# add tpms group so /dev/tpm* is accessible to non-root users via tpms group,
+# add tss group so /dev/tpm* is accessible to non-root users via tss group,
 # the group is set for /dev/tpm* in the mdev.conf file
-RUN addgroup -g 100 tpms
-# setup user and group for vtpm container and allow TPM access via tpms group
+RUN addgroup -g 100 tss
+# setup user and group for vtpm container and allow TPM access via tss group
 RUN addgroup -g 101 vtpm
 RUN adduser -D -H -h /nonexistent -s /bin/false -g "vtpm" -G vtpm -u 101 vtpm
-RUN addgroup vtpm tpms
+RUN addgroup vtpm tss
 # setup group for disk access, mdev handling
 RUN addgroup -g 6 disk
