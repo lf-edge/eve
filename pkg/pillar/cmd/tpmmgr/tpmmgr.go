@@ -135,7 +135,7 @@ var (
 		},
 	}
 	//This is a restricted signing key, for vTPM guest usage
-	defaultAkTemplate = tpm2.Public{
+	defaultAikTemplate = tpm2.Public{
 		Type:    tpm2.AlgRSA,
 		NameAlg: tpm2.AlgSHA256,
 		Attributes: tpm2.FlagFixedTPM | tpm2.FlagFixedParent |
@@ -873,7 +873,7 @@ func createOtherKeys(override bool) error {
 	if err := createKey(etpm.TpmSRKHdl, tpm2.HandleOwner, defaultSrkTemplate, override); err != nil {
 		return fmt.Errorf("Error in creating SRK key: %w ", err)
 	}
-	if err := createKey(etpm.TpmAKHdl, tpm2.HandleOwner, defaultAkTemplate, override); err != nil {
+	if err := createKey(etpm.TpmAIKHdl, tpm2.HandleOwner, defaultAikTemplate, override); err != nil {
 		return fmt.Errorf("Error in creating Attestation key: %w ", err)
 	}
 	if err := createKey(etpm.TpmQuoteKeyHdl, tpm2.HandleOwner, defaultQuoteKeyTemplate, override); err != nil {
