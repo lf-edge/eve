@@ -136,6 +136,25 @@ in grub.cfg with graphical GRUB menu to get the device to boot again.
 3. General kernel parameters may be adjusted with `set_global dom0_extra_args "$dom0_extra_args OPTION1=VAL1 OPTION2 "`.
    They will be added to kernel cmdline.
 
+As an example of using serial port and VGA as a console for the Dom0 (in Xen terminology,
+but also applies for KVM, which means the "host" operating system) the following
+arguments should be used:
+
+```shell
+set_global dom0_console "console=ttyS0,115200 console=tty0"
+```
+
+Multiple `console=` options on the kernel command line define that output
+will appear on both devices: on serial console (1st serial port: ttyS0 or COM1)
+at 115200 baud and VGA console (tty0). The last device will be used when you
+open `/dev/console`.
+
+Details about serial console kernel arguments can be also seen on [official kernel documentation](https://www.kernel.org/doc/html/v6.1/admin-guide/serial-console.html).
+
+Worth to mention [keyboard](https://github.com/lf-edge/eve/blob/master/docs/DEBUGGING.md#keyboardconsole-access)
+and [console](https://github.com/lf-edge/eve/blob/master/docs/BOOTING.md#console-access)
+access topics, which are crucial for enabling input on the console.
+
 ## Booting under legacy PC BIOS (including virtualized environments using legacy PC BIOS)
 
 The first problem presented by a legacy PC BIOS is that it doesn't understand GPT partitioned disks,
