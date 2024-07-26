@@ -519,7 +519,10 @@ func (r *LinuxNIReconciler) getIntendedAppConnACLs(niID uuid.UUID,
 					LogAndErrPrefix, port.IfName, err)
 			}
 			ips = generics.FilterList(ips, func(ipNet *net.IPNet) bool {
-				return ipNet.IP.IsGlobalUnicast()
+				// Do not install port-forwarding rules for link-local and multicast IPs.
+				// Also, iptables returns error when we try to install rules for deprecated
+				// site-local IPv6 addresses, so let's skip them as well.
+				return ipNet.IP.IsGlobalUnicast() && !netutils.IsSiteLocalIPv6(ipNet.IP)
 			})
 			portIPs[port.IfName] = ips
 		}
@@ -1046,7 +1049,7 @@ func (r *LinuxNIReconciler) getIntendedAppConnMangleIptables(vif vifInfo,
 					// on the same network instance.
 					iptablesRule2 := iptables.Rule{
 						RuleLabel: fmt.Sprintf("User-configured PORTMAP ACL rule %d "+
-							"for port %s IP %s from inside", aclRule.RuleID, portIP,
+							"for port %s IP %s from inside", aclRule.RuleID, portIfname,
 							portIP.IP.String()),
 						MatchOpts: append([]string{
 							"-i", ni.brIfName,

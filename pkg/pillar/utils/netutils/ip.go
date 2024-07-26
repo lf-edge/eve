@@ -111,3 +111,13 @@ func OverlappingSubnets(subnet1, subnet2 *net.IPNet) bool {
 	}
 	return subnet1.Contains(subnet2.IP) || subnet2.Contains(subnet1.IP)
 }
+
+// IsSiteLocalIPv6 checks if the provided IP address is a site-local IPv6 address.
+func IsSiteLocalIPv6(ip net.IP) bool {
+	ip = ip.To16()
+	if ip == nil {
+		return false
+	}
+	// Check if the address falls within the site-local range (fec0::/10)
+	return ip[0] == 0xfe && (ip[1]&0xc0) == 0xc0
+}
