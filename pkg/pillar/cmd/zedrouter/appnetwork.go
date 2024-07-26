@@ -26,11 +26,16 @@ func (z *zedrouter) retryFailedAppNetworks() {
 		}
 		z.log.Functionf("retryFailedAppNetworks: retry AppNetworkConfigCreate(%s)",
 			status.Key())
-		// We wouldn't have even copied AppNetAdapter networks into status.
-		// This is as good as starting from scratch all over.
-		// App num that would have been allocated will be used this time also,
-		// since the app UUID does not change.
-		z.handleAppNetworkCreate(nil, status.Key(), *config)
+		if !status.Activated {
+			// We wouldn't have even copied AppNetAdapter networks into status.
+			// This is as good as starting from scratch all over.
+			// App num that would have been allocated will be used this time also,
+			// since the app UUID does not change.
+			z.handleAppNetworkCreate(nil, status.Key(), *config)
+		} else {
+			// Retry by running modify without any actual config change.
+			z.handleAppNetworkModify(nil, status.Key(), *config, *config)
+		}
 	}
 }
 
