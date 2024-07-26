@@ -1863,7 +1863,7 @@ func doCleanup(ctx *domainContext, status *types.DomainStatus) {
 	status.IoAdapterList = nil
 	publishDomainStatus(ctx, status)
 
-	log.Functionf("doClennup(%v) done for %s",
+	log.Functionf("doCleanup(%v) done for %s",
 		status.UUIDandVersion, status.DisplayName)
 }
 
