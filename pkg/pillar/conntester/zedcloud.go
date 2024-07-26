@@ -156,13 +156,13 @@ func (t *ZedcloudConnectivityTester) getPortsNotReady(
 		for _, attempt := range sendErr.Attempts {
 			var dnsErr *types.DNSNotAvailError
 			if errors.As(attempt.Err, &dnsErr) {
-				if port := dns.GetPortByIfName(dnsErr.IfName); port != nil {
+				if port := dns.LookupPortByIfName(dnsErr.IfName); port != nil {
 					portMap[port.Logicallabel] = struct{}{}
 				}
 			}
 			var ipErr *types.IPAddrNotAvailError
 			if errors.As(attempt.Err, &ipErr) {
-				if port := dns.GetPortByIfName(ipErr.IfName); port != nil {
+				if port := dns.LookupPortByIfName(ipErr.IfName); port != nil {
 					portMap[port.Logicallabel] = struct{}{}
 				}
 			}

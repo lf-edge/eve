@@ -1005,9 +1005,9 @@ func encodeSystemAdapterInfo(ctx *zedagentContext) *info.SystemAdapterInfo {
 			}
 			if i == dpcl.CurrentIndex {
 				// For the currently used DPC we publish the status (DeviceNetworkStatus).
-				portStatus := deviceNetworkStatus.GetPortsByLogicallabel(p.Logicallabel)
-				if len(portStatus) == 1 {
-					dps.Ports[j] = encodeNetworkPortStatus(ctx, portStatus[0], p.NetworkUUID)
+				portStatus := deviceNetworkStatus.LookupPortByLogicallabel(p.Logicallabel)
+				if portStatus != nil {
+					dps.Ports[j] = encodeNetworkPortStatus(ctx, portStatus, p.NetworkUUID)
 					continue
 				}
 			}

@@ -20,7 +20,7 @@ import (
 func CheckAndGetNetworkProxy(log *base.LogObject, dns *types.DeviceNetworkStatus,
 	ifname string, metrics *zedcloud.AgentMetrics) error {
 
-	portStatus := dns.GetPortByIfName(ifname)
+	portStatus := dns.LookupPortByIfName(ifname)
 	if portStatus == nil {
 		errStr := fmt.Sprintf("Missing port status for interface %s", ifname)
 		log.Errorln(errStr)

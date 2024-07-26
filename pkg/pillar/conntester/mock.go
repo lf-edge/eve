@@ -79,7 +79,7 @@ func (t *MockConnectivityTester) TestConnectivity(dns types.DeviceNetworkStatus,
 			intfStatusMap.RecordFailure(ifName, err.Error())
 			continue
 		}
-		port := dns.GetPortByIfName(ifName)
+		port := dns.LookupPortByIfName(ifName)
 		if !port.IsMgmt {
 			continue
 		}

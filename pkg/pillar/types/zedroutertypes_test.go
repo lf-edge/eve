@@ -354,7 +354,7 @@ func TestWasDPCWorking(t *testing.T) {
 	}
 }
 
-func TestGetPortByIfName(t *testing.T) {
+func TestLookupPortByIfName(t *testing.T) {
 	testMatrix := map[string]struct {
 		deviceNetworkStatus DeviceNetworkStatus
 		port                string
@@ -375,7 +375,7 @@ func TestGetPortByIfName(t *testing.T) {
 	}
 	for testname, test := range testMatrix {
 		t.Logf("Running test case %s", testname)
-		value := test.deviceNetworkStatus.GetPortByIfName(test.port)
+		value := test.deviceNetworkStatus.LookupPortByIfName(test.port)
 		assert.Equal(t, test.expectedValue, *value)
 	}
 }
