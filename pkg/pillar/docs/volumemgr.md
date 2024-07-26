@@ -133,9 +133,13 @@ In practice, to date, these have been the directories:
 For a OriginTypeDownload which is not a container, this consist of creating a read/write image in /persist/img through a simple copy.
 For a container this uses containerd to prepare the container for use.
 
+Each volume gets it's own reference count, which shows how many config instances point to (use) it. These configs are either VolumeConfigs or VolumeRefConfigs. The final sum of all configs pointing to the volume is recorded in VolumeStatus and updated each time a new config is added or removed.
+
 ### Destroying volumes
 
 When zedmanager or baseosmgr deletes a VolumeConfig, then volumemgr will destroy the volume (and delete the VolumeStatus). This includes dropping any reference counts it has on a DownloaderConfig, and/or VerifyImageConfig. Finally any Read/Write volume is deleted.
+
+The volume can only be deleted if the reference count is zero. In the case of persistent volumes (explicit volumes), all VolumeRefConfigs can be deleted, but the volume will not be deleted until the VolumeConfig is deleted. However, the container volumes will be unmounted from `/persist/*/volumes` and their contents will only be stored in CAS until another application instance that needs them is created and the volumes are mounted again.
 
 ### Garbage collection
 
