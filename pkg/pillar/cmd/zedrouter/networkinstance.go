@@ -91,7 +91,7 @@ func (z *zedrouter) getNIPortConfig(
 	if ifName == "" {
 		return nil
 	}
-	port := z.deviceNetworkStatus.GetPortByIfName(ifName)
+	port := z.deviceNetworkStatus.LookupPortByIfName(ifName)
 	if port == nil {
 		return nil
 	}
@@ -124,26 +124,18 @@ func (z *zedrouter) setSelectedUplink(uplinkLogicalLabel string,
 		// and uplink probing eventually finding a suitable uplink port.
 		return fmt.Errorf("no selected uplink port")
 	}
-	ports := z.deviceNetworkStatus.GetPortsByLogicallabel(uplinkLogicalLabel)
-	switch len(ports) {
-	case 0:
-		err := fmt.Errorf("label of selected uplink (%s) does not match any port (%v)",
-			uplinkLogicalLabel, ports)
+	port := z.deviceNetworkStatus.LookupPortByLogicallabel(uplinkLogicalLabel)
+	if port == nil {
+		err := fmt.Errorf("label of selected uplink (%s) does not match any port",
+			uplinkLogicalLabel)
 		// Wait for DPC update
 		return err
-	case 1:
-		if ports[0].InvalidConfig {
-			return fmt.Errorf("port %s has invalid config: %s", ports[0].Logicallabel,
-				ports[0].LastError)
-		}
-		// Selected port is OK
-		break
-	default:
-		// Note: soon we will support NI with multiple ports.
-		err := fmt.Errorf("label of selected uplink matches multiple ports (%v)", ports)
-		return err
 	}
-	ifName := ports[0].IfName
+	if port.InvalidConfig {
+		return fmt.Errorf("port %s has invalid config: %s", port.Logicallabel,
+			port.LastError)
+	}
+	ifName := port.IfName
 	status.SelectedUplinkIntfName = ifName
 	ifIndex, exists, _ := z.networkMonitor.GetInterfaceIndex(ifName)
 	if !exists {

@@ -428,7 +428,7 @@ func parseStaticRoute(route *zconfig.IPRoute, config *types.NetworkInstanceConfi
 	if gatewayIP.IsUnspecified() {
 		return errors.New("gateway IP address is all-zeroes")
 	}
-	config.StaticRoutes = append(config.StaticRoutes, types.IPRoute{
+	config.StaticRoutes = append(config.StaticRoutes, types.IPRouteConfig{
 		DstNetwork: dstNetwork,
 		Gateway:    gatewayIP,
 	})

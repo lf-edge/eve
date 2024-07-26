@@ -538,13 +538,13 @@ func (m *DpcManager) isInterfaceCrucial(ifName string) bool {
 		return false
 	}
 	// Is part of DPC at CurrentIndex in DPCL?
-	portStatus := portConfigList[currentIndex].GetPortByIfName(ifName)
-	if portStatus != nil {
+	portConfig := portConfigList[currentIndex].LookupPortByIfName(ifName)
+	if portConfig != nil {
 		return true
 	}
 	// Is part of DPC at index 0 in DPCL?
-	portStatus = portConfigList[0].GetPortByIfName(ifName)
-	if portStatus != nil {
+	portConfig = portConfigList[0].LookupPortByIfName(ifName)
+	if portConfig != nil {
 		return true
 	}
 	return false

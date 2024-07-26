@@ -54,14 +54,10 @@ func (p *ControllerReachProber) ProbeNextHopReach(ctx context.Context,
 	}
 	// Determine source and destination IP addresses for the ping.
 	var dstAddr, srcAddr net.IPAddr
-	ports := dns.GetPortsByLogicallabel(uplinkLL)
-	if len(ports) == 0 {
+	port := dns.LookupPortByLogicallabel(uplinkLL)
+	if port == nil {
 		return nil, fmt.Errorf("missing status for uplink interface %s", uplinkLL)
 	}
-	if len(ports) > 1 {
-		return nil, fmt.Errorf("multiple uplink interfaces match label %s", uplinkLL)
-	}
-	port := ports[0]
 	nextHopIP := p.getPortNextHop(port)
 	if nextHopIP == nil || nextHopIP.IsUnspecified() {
 		return nil, fmt.Errorf("uplink %s has no suitable next hop IP address", uplinkLL)
@@ -130,14 +126,10 @@ func (p *ControllerReachProber) ProbeRemoteReach(ctx context.Context,
 		AgentName:        p.agentName,
 		DevNetworkStatus: dns,
 	})
-	ports := dns.GetPortsByLogicallabel(uplinkLL)
-	if len(ports) == 0 {
+	port := dns.LookupPortByLogicallabel(uplinkLL)
+	if port == nil {
 		return probedEps, fmt.Errorf("missing status for uplink interface %s", uplinkLL)
 	}
-	if len(ports) > 1 {
-		return probedEps, fmt.Errorf("multiple uplink interfaces match label %s", uplinkLL)
-	}
-	port := ports[0]
 	rv, err := zedcloud.SendOnIntf(
 		ctx, &zcloudCtx, p.controllerURL.String(), port.IfName,
 		0, nil, allowProxy, useOnboard, withNetTracing, false)

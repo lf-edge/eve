@@ -49,6 +49,7 @@ func (m *DpcManager) updateDNS() {
 		m.deviceNetStatus.Ports[ix].IfName = port.IfName
 		m.deviceNetStatus.Ports[ix].Phylabel = port.Phylabel
 		m.deviceNetStatus.Ports[ix].Logicallabel = port.Logicallabel
+		m.deviceNetStatus.Ports[ix].SharedLabels = port.SharedLabels
 		m.deviceNetStatus.Ports[ix].Alias = port.Alias
 		m.deviceNetStatus.Ports[ix].IsMgmt = port.IsMgmt
 		m.deviceNetStatus.Ports[ix].IsL3Port = port.IsL3Port

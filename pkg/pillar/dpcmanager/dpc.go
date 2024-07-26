@@ -232,7 +232,13 @@ func (m *DpcManager) ingestDPCList() (dpclPresentAtBoot bool) {
 	var dpcl types.DevicePortConfigList
 	for _, portConfig := range storedDpcl.PortConfigList {
 		// Sanitize port labels and IsL3Port flag.
-		portConfig.DoSanitize(m.Log, false, false, "", true, true)
+		portConfig.DoSanitize(m.Log, types.DPCSanitizeArgs{
+			SanitizeTimePriority: false,
+			SanitizeKey:          false,
+			SanitizeName:         true,
+			SanitizeL3Port:       true,
+			SanitizeSharedLabels: true,
+		})
 		// Clear runtime errors (not config validation errors) from before reboot
 		// and start fresh.
 		for i := 0; i < len(portConfig.Ports); i++ {

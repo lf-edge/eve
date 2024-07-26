@@ -464,19 +464,25 @@ type VlanMetrics struct {
 	VlanCounts    map[uint32]uint32
 }
 
-// ProbeMetrics - NI probe metrics
+// ProbeMetrics - metrics published for a NI multipath route with probing-based
+// selection of the output port.
 type ProbeMetrics struct {
-	SelectedUplinkIntf string             // the uplink interface that probing picked
+	// Address of the destination network for which probing is used to select
+	// the output port.
+	DstNetwork string
+	// Logical label of the currently selected output port for the route.
+	SelectedPort       string
+	SelectedPortIfName string             // interface name of the port that probing picked
 	RemoteEndpoints    []string           // remote IP/URL addresses used for probing
 	LocalPingIntvl     uint32             // local ping interval in seconds
 	RemotePingIntvl    uint32             // remote probing interval in seconds
-	UplinkCount        uint32             // number of possible uplink interfaces
-	IntfProbeStats     []ProbeIntfMetrics // per dom0 intf uplink probing metrics
+	PortCount          uint32             // number of ports included in probing
+	IntfProbeStats     []ProbeIntfMetrics // metrics for all ports included in probing
 }
 
-// ProbeIntfMetrics - per dom0 network uplink interface probing
+// ProbeIntfMetrics - probe metrics for a device port (reported for a given NI)
 type ProbeIntfMetrics struct {
-	IntfName        string   // dom0 uplink interface name
+	IntfName        string   // interface name of the probed device port
 	NexthopIPs      []net.IP // interface local next-hop address(es) used for probing
 	NexthopUP       bool     // Is local next-hop in UP status
 	RemoteUP        bool     // Is remote endpoint in UP status
@@ -664,21 +670,111 @@ type NetworkInstanceConfig struct {
 
 	// Route configuration
 	PropagateConnRoutes bool
-	StaticRoutes        []IPRoute
+	StaticRoutes        []IPRouteConfig
 
 	// Any errors from the parser
 	// ErrorAndTime provides SetErrorNow() and ClearError()
 	ErrorAndTime
 }
 
-// IPRoute : single IP route entry.
-type IPRoute struct {
+// IPRouteConfig : single IP route config entry.
+type IPRouteConfig struct {
+	// Destination network.
+	// Guaranteed by zedagent not to be nil.
 	DstNetwork *net.IPNet
-	Gateway    net.IP
+	// Gateway IP address.
+	// Can be nil.
+	Gateway net.IP
+	// Output device port for the routed traffic.
+	// Either a single NI port referenced by its name (SystemAdapter.Name, aka logical label)
+	// or an adapter shared-label matching zero or more NI ports (multipath routing).
+	// Not used when gateway references one of the applications connected to the NI.
+	OutputPortLabel string
+	// Probe remote endpoint to determine connectivity status of each port and pick one
+	// with a working connectivity (and known gateway IP) for the route (preferring
+	// the currently used one if any).
+	// Provides automatic fail-over between ports.
+	// If OutputPortLabel is not defined or references only a single port (e.g. directly
+	// by the logical label), probing is skipped (nothing to fail-over to anyway).
+	PortProbe NIPortProbe
+	// When EVE is deciding which port to use for multipath route and multiple ports have
+	// working connectivity (or probing is disabled), port can be selected based on the cost
+	// If this option is enabled, EVE will prefer ports with lower costs.
+	PreferLowerCost bool
+	// When EVE is deciding which port to use for multipath route and there are multiple
+	// candidates among cellular modems, it might make sense to consider the current
+	// cellular network signal strength. If this option is enabled, EVE will prefer
+	// cellular ports with better signal (only among cellular ports).
+	PreferStrongerWwanSignal bool
+}
+
+// ConnectivityProbeMethod -  method to use to determine the connectivity status of a port.
+type ConnectivityProbeMethod uint8
+
+const (
+	// ConnectivityProbeMethodNone : connectivity probing is disabled.
+	ConnectivityProbeMethodNone ConnectivityProbeMethod = iota
+	// ConnectivityProbeMethodICMP : use ICMP ping against the probed endpoint to determine
+	// the connectivity status.
+	ConnectivityProbeMethodICMP
+	// ConnectivityProbeMethodTCP : try to establish TCP connection with the probed endpoint
+	// to determine the connectivity status.
+	ConnectivityProbeMethodTCP
+)
+
+// ConnectivityProbe : configuration for user-defined connectivity-testing probe.
+type ConnectivityProbe struct {
+	// Method to use to determine the connectivity status.
+	Method ConnectivityProbeMethod
+	// ProbeHost is either IP or hostname.
+	ProbeHost string
+	// ProbePort is required for L4 probing methods (e.g. ConnectivityProbeMethodTCP).
+	ProbePort uint16
+}
+
+// String returns human-readable description of the probe.
+func (r ConnectivityProbe) String() string {
+	probeStr := "<none>"
+	switch r.Method {
+	case ConnectivityProbeMethodICMP:
+		probeStr = fmt.Sprintf("icmp://%s", r.ProbeHost)
+	case ConnectivityProbeMethodTCP:
+		probeStr = fmt.Sprintf("tcp://%s:%d", r.ProbeHost,
+			r.ProbePort)
+	}
+	return probeStr
+}
+
+// NIPortProbe is used to determine connectivity status of a port to decide if it is suitable
+// for the default route of a network instance.
+type NIPortProbe struct {
+	// EVE uses ICMP ping against the port's gateway IP to determine connectivity status.
+	// User can disable this probe method. This is typically needed when the gateway router
+	// is configured to drop/ignore ICMP pings and therefore this probe would return false
+	// negatives.
+	EnabledGwPing bool
+	// Ports exceeding this cost will have the gateway probing disabled to reduce
+	// traffic generated by probing (only less-frequent user-defined probe will be performed).
+	GwPingMaxCost uint8
+	// User-defined method to use to determine the port connectivity status.
+	// Zedrouter runs this additionally to gateway pings (unless EnabledGwPing is false).
+	UserDefinedProbe ConnectivityProbe
+}
+
+// String returns human-readable description of the route.
+// Format does not matter, we use curly brackets just for the readability sake.
+func (r IPRouteConfig) String() string {
+	probe := fmt.Sprintf("{enabledGwPing=%t, gwPingMaxCost=%d, userProbe=%s}",
+		r.PortProbe.EnabledGwPing, r.PortProbe.GwPingMaxCost,
+		r.PortProbe.UserDefinedProbe.String())
+	return fmt.Sprintf("IPRoute: {dst=%s, gw=%s, port=%s, probe=%s, "+
+		"preferLowerCost=%t, preferStrongerWwanSignal=%t}",
+		r.DstNetwork.String(), r.Gateway.String(), r.OutputPortLabel, probe,
+		r.PreferLowerCost, r.PreferStrongerWwanSignal)
 }
 
 // IsDefaultRoute returns true if this is a default route, i.e. matches all destinations.
-func (r IPRoute) IsDefaultRoute() bool {
+func (r IPRouteConfig) IsDefaultRoute() bool {
 	if r.DstNetwork == nil {
 		return true
 	}
@@ -686,10 +782,14 @@ func (r IPRoute) IsDefaultRoute() bool {
 	return r.DstNetwork.IP.IsUnspecified() && ones == 0
 }
 
-// EqualIPRoutes compares two IP routes.
-func EqualIPRoutes(route1, route2 IPRoute) bool {
-	return netutils.EqualIPs(route1.Gateway, route2.Gateway) &&
-		netutils.EqualIPNets(route1.DstNetwork, route2.DstNetwork)
+// Equal compares two IP routes for equality.
+func (r IPRouteConfig) Equal(r2 IPRouteConfig) bool {
+	return netutils.EqualIPs(r.Gateway, r2.Gateway) &&
+		netutils.EqualIPNets(r.DstNetwork, r2.DstNetwork) &&
+		r.OutputPortLabel == r2.OutputPortLabel &&
+		r.PortProbe == r2.PortProbe &&
+		r.PreferLowerCost == r2.PreferLowerCost &&
+		r.PreferStrongerWwanSignal && r2.PreferStrongerWwanSignal
 }
 
 // Key :
@@ -756,7 +856,7 @@ func (config *NetworkInstanceConfig) IsIPv6() bool {
 func (config *NetworkInstanceConfig) WithUplinkProbing() bool {
 	switch config.Type {
 	case NetworkInstanceTypeLocal:
-		return IsSharedPortLabel(config.PortLogicalLabel)
+		return IsEveDefinedPortLabel(config.PortLogicalLabel)
 	default:
 		return false
 	}
@@ -772,28 +872,6 @@ func (config *NetworkInstanceConfig) IsUsingUplinkBridge() bool {
 	default:
 		return false
 	}
-}
-
-const (
-	// UplinkLabel references all management interfaces.
-	UplinkLabel = "uplink"
-	// FreeUplinkLabel references all management interfaces with 0 cost.
-	FreeUplinkLabel = "freeuplink"
-)
-
-// IsSharedPortLabel : returns true if the logical label references multiple
-// ports.
-// Currently used labels are:
-//   - "uplink": any management interface
-//   - "freeuplink": any management interface with 0 cost
-func IsSharedPortLabel(label string) bool {
-	switch label {
-	case UplinkLabel:
-		return true
-	case FreeUplinkLabel:
-		return true
-	}
-	return false
 }
 
 type ChangeInProgressType int32
