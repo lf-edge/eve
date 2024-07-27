@@ -26,10 +26,19 @@ import (
 	"unsafe"
 
 	"github.com/coreos/go-semver/semver"
+	"github.com/fsnotify/fsnotify"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/shirou/gopsutil/mem"
 	"github.com/shirou/gopsutil/process"
 	"golang.org/x/sys/unix"
+)
+
+const (
+	requestCollectInfoDir   = "/run/edgeview"
+	requestCollectInfoFile  = requestCollectInfoDir + "/edgeview-request-collect-info"
+	requestRemoveInfoGZFile = requestCollectInfoDir + "/edgeview-request-remove-tar-gz"
+	infoFilePatternPrefix   = "/persist/eve-info/eve-info-edgeview-"
+	infoFilePattern         = infoFilePatternPrefix + "v*.tar.gz"
 )
 
 var tarBlockDirs = []string{
@@ -73,6 +82,8 @@ func runSystem(cmds cmdOpt, sysOpt string) {
 			getDownload()
 		} else if strings.HasPrefix(opt, "ps/") || opt == "ps" {
 			runPS(opt)
+		} else if opt == "collectinfo" {
+			runCollectInfo()
 		} else if strings.HasPrefix(opt, "cp/") {
 			_ = runCopy(opt, nil)
 		} else if strings.HasPrefix(opt, "cat/") {
@@ -1304,6 +1315,162 @@ func runTechSupport(cmds cmdOpt, isLocal bool) {
 	if gzipfileName != "" {
 		_ = os.Remove(gzipfileName)
 	}
+}
+
+// edgeview request debug container to generate collect-info and
+// later to remove the tar.gz file
+// the protocol is for edgeview to create a file
+// /run/edgeview/edgeview-request-collect-info, and debug container
+// run 'collect-info.sh' to generate the tar.gz file, when the job is
+// done, remove the file /run/edgeview/edgeview-request-collect-info.
+// edgeview can also request to remove the tar.gz file by creating
+// /run/edgeview/edgeview-request-remove-tar.gz file, and debug container
+// will remove the generated tar.gz file.
+func runCollectInfo() {
+	// in an extreme case of two edgeview sessions both requesting collect-info at
+	// the exact same time, both will touch the same request file, and try to
+	// download/transfer the generated tar.gz file. The fast one will
+	// get the file, and the slow session will terminate the download due to
+	// the tarball is removed. The 2nd user just needs to retry later.
+	if _, err := os.Stat(requestCollectInfoFile); err == nil {
+		fmt.Printf("runCollectInfo, collect info request already in progress\n")
+		return
+	}
+
+	startTime := time.Now() // Record the start time
+
+	err := touchRequestFile(requestCollectInfoFile, "")
+	if err != nil {
+		fmt.Printf("runCollectInfo, can not create collect info request file: %v\n", err)
+		return
+	}
+
+	err = monitorFileDeletion(requestCollectInfoFile, startTime, 20*time.Minute)
+	if err != nil {
+		log.Errorf("runCollectInfo: monitor file deletion error %v", err)
+		fmt.Printf("runCollectInfo, monitor file deletion error %v\n", err)
+		return
+	}
+
+	targzFilename, err := findEveInfoFile(startTime)
+	if err != nil {
+		log.Errorf("runCollectInfo: can not find the eve info file, %v", err)
+		fmt.Printf("runCollectInfo, can not find the eve info file, %v\n", err)
+		return
+	}
+
+	// Copy the info tar.gz file to the client side
+	err = runCopy("cp/"+targzFilename, nil)
+	if err != nil {
+		log.Errorf("runCollectInfo: copy kube file error %v", err)
+	}
+
+	// ask to remove this tar.gz file through tarball filename suffix
+	trimmedFilename := strings.TrimPrefix(targzFilename, infoFilePatternPrefix)
+	err = touchRequestFile(requestRemoveInfoGZFile, trimmedFilename)
+	if err != nil {
+		log.Errorf("runCollectInfo: generate remove request file, %v", err)
+	}
+}
+
+func monitorFileDeletion(filePath string, startTime time.Time, timeout time.Duration) error {
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		return fmt.Errorf("monitorFileDeletion: %v", err)
+	}
+	defer watcher.Close()
+
+	done := make(chan error)
+	go func() {
+		for {
+			select {
+			case event, ok := <-watcher.Events:
+				if !ok {
+					done <- fmt.Errorf("monitorFileDeletion: watcher event not ok")
+					return
+				}
+				if event.Op&fsnotify.Remove == fsnotify.Remove && event.Name == filePath {
+					log.Noticef("monitorFileDeletion: File deleted: %s", event.Name)
+					done <- nil
+					return
+				}
+			case err, ok := <-watcher.Errors:
+				if !ok {
+					done <- fmt.Errorf("monitorFileDeletion: watcher error not ok: %v", err)
+					return
+				}
+				log.Noticef("monitorFileDeletion: error: %v", err)
+			case <-time.After(timeout - time.Since(startTime)):
+				done <- fmt.Errorf("monitorFileDeletion: Timeout exceeded after %v", timeout)
+				return
+			}
+		}
+	}()
+
+	dir := filepath.Dir(filePath)
+	if err := watcher.Add(dir); err != nil {
+		return fmt.Errorf("monitorFileDeletion: %v", err)
+	}
+
+	return <-done
+}
+
+func touchRequestFile(filename, content string) error {
+	// Create a temporary file in the /tmp directory
+	tempFile, err := os.CreateTemp(requestCollectInfoDir, "temp-*")
+	if err != nil {
+		return fmt.Errorf("error creating temp file: %w", err)
+	}
+	defer func() {
+		tempFile.Close()           // Ensure the temp file is closed
+		os.Remove(tempFile.Name()) // Ensure the temp file is removed
+	}()
+
+	if content != "" {
+		_, err = tempFile.WriteString(content)
+		if err != nil {
+			return fmt.Errorf("error writing to temp file: %w", err)
+		}
+	}
+
+	// Sync the temp file to ensure all data is written to disk
+	if err := tempFile.Sync(); err != nil {
+		return fmt.Errorf("error syncing temp file: %w", err)
+	}
+
+	// Close the temp file before renaming
+	if err := tempFile.Close(); err != nil {
+		return fmt.Errorf("error closing temp file: %w", err)
+	}
+
+	// Rename the temp file to the target filename
+	if err := os.Rename(tempFile.Name(), filename); err != nil {
+		return fmt.Errorf("error renaming temp file to %s: %w", filename, err)
+	}
+
+	return nil
+}
+
+func findEveInfoFile(createTime time.Time) (string, error) {
+	matches, err := filepath.Glob(infoFilePattern)
+	if err != nil {
+		return "", err // Return the error if any occurs during the file search
+	}
+
+	// Look for a the right file generated
+	for _, match := range matches {
+		fileInfo, err := os.Stat(match)
+		if err != nil {
+			continue // If we can't stat the file, skip it
+		}
+
+		// Check if the file was modified after the create time
+		if fileInfo.ModTime().After(createTime) {
+			return match, nil // Return the first recent file found
+		}
+	}
+
+	return "", fmt.Errorf("no files found matching the pattern")
 }
 
 func gzipTechSuppFile(ifileName string) (string, error) {
