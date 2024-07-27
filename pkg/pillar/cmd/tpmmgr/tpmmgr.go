@@ -872,19 +872,19 @@ func createOtherKeys(override bool) error {
 	defer rw.Close()
 
 	if err := CreateKey(rw, etpm.TpmEKHdl, tpm2.HandleEndorsement, DefaultEkTemplate, override); err != nil {
-		return fmt.Errorf("Error in creating Endorsement key: %w ", err)
+		return fmt.Errorf("error in creating Endorsement key: %w ", err)
 	}
 	if err := CreateKey(rw, etpm.TpmSRKHdl, tpm2.HandleOwner, DefaultSrkTemplate, override); err != nil {
-		return fmt.Errorf("Error in creating SRK key: %w ", err)
+		return fmt.Errorf("error in creating SRK key: %w ", err)
 	}
 	if err := CreateKey(rw, etpm.TpmAIKHdl, tpm2.HandleOwner, DefaultAikTemplate, override); err != nil {
-		return fmt.Errorf("Error in creating Attestation key: %w ", err)
+		return fmt.Errorf("error in creating Attestation key: %w ", err)
 	}
 	if err := CreateKey(rw, etpm.TpmQuoteKeyHdl, tpm2.HandleOwner, DefaultQuoteKeyTemplate, override); err != nil {
-		return fmt.Errorf("Error in creating Quote key: %w ", err)
+		return fmt.Errorf("error in creating Quote key: %w ", err)
 	}
 	if err := CreateKey(rw, etpm.TpmEcdhKeyHdl, tpm2.HandleOwner, DefaultEcdhKeyTemplate, override); err != nil {
-		return fmt.Errorf("Error in creating ECDH key: %w ", err)
+		return fmt.Errorf("error in creating ECDH key: %w ", err)
 	}
 	return nil
 }
