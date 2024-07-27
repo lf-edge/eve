@@ -111,7 +111,7 @@ RUN mkdir -p /out/var/empty
 
 # tweaking various bit
 WORKDIR /out
-COPY ssh.sh spec.sh scripts/ ./usr/bin/
+COPY debug-services.sh ssh-service.sh edgeview-collectinfo.sh spec.sh scripts/ ./usr/bin/
 RUN mkdir -p ./etc/ssh ./root/.ssh
 RUN chmod 0700 ./root/.ssh
 RUN cp /etc/passwd /etc/group ./etc/
@@ -132,4 +132,4 @@ WORKDIR /
 COPY --from=build /out/ /
 COPY --from=build /bpftrace/bpftrace-aotrt /
 
-CMD ["/sbin/tini", "/usr/bin/ssh.sh"]
+CMD ["/sbin/tini", "/usr/bin/debug-services.sh"]

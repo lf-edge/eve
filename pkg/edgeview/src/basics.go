@@ -94,6 +94,7 @@ func initOpts() {
 		"watcher",
 		"zedagent",
 		"zedclient",
+		"zedkube",
 		"zedmanager",
 		"zedrouter",
 		"zfsmanager"}
@@ -115,6 +116,7 @@ func initOpts() {
 		"app",
 		"configitem",
 		"cat",
+		"collectinfo",
 		"cp",
 		"datastore",
 		"dmesg",
@@ -686,6 +688,8 @@ func printHelp(opt string) {
 		// system
 		case "configitem":
 			helpOn("configitem", "display the device configitem settings, highlight the non-default values")
+		case "collectinfo":
+			helpOn("collectinfo", "collect the device information using collect-info.sh and download a compressed file in tar.gz format")
 		case "cp":
 			helpOn("cp/<path>", "copy file from the device to locally mounted directory by specify the path")
 			helpExample("cp//config/device.cert.pem", "copy the /config/device.cert.pem file to local directory", true)

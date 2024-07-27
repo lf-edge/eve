@@ -37,6 +37,7 @@ const (
 	copyTarFiles
 	copyTechSupport
 	copyKubeConfig
+	copyCollectInfo
 )
 
 var (

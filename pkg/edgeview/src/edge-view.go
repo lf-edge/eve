@@ -230,6 +230,9 @@ func main() {
 		} else if strings.HasPrefix(pqueryopt, "tar/") {
 			psysopt = pqueryopt
 			fstatus.cType = copyTarFiles
+		} else if strings.HasPrefix(pqueryopt, "collectinfo") {
+			psysopt = pqueryopt
+			fstatus.cType = copyCollectInfo
 		} else {
 			_, err := checkOpts(pqueryopt, netopts)
 			if err != nil {
