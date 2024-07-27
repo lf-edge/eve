@@ -182,13 +182,6 @@ var (
 	log    *base.LogObject
 )
 
-var toGoCurve = map[tpm2.EllipticCurve]elliptic.Curve{
-	tpm2.CurveNISTP224: elliptic.P224(),
-	tpm2.CurveNISTP256: elliptic.P256(),
-	tpm2.CurveNISTP384: elliptic.P384(),
-	tpm2.CurveNISTP521: elliptic.P521(),
-}
-
 // Helps creating various keys, according to the supplied template, and hierarchy
 func CreateKey(rw io.ReadWriteCloser, keyHandle, ownerHandle tpmutil.Handle, template tpm2.Public, overwrite bool) error {
 	if !overwrite {
