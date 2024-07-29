@@ -131,7 +131,8 @@ func getEssentialIPv4Protos(niType types.NetworkInstanceType,
 			mark:          iptables.ControlProtocolMarkingIDMap["app_dhcp"],
 			markChainName: "dhcpv4",
 		})
-		if bridgeIP != nil {
+		bridgeHasIPv4 := bridgeIP != nil && bridgeIP.To4() != nil
+		if bridgeHasIPv4 {
 			protos = append(protos, essentialProto{
 				label: "BOOTP and DHCPv4 with bridge dst IP",
 				egressMatch: []string{"-d", bridgeIP.String(),
@@ -207,7 +208,8 @@ func getEssentialIPv6Protos(niType types.NetworkInstanceType,
 			mark:          iptables.ControlProtocolMarkingIDMap["app_dhcp"],
 			markChainName: "dhcpv6",
 		})
-		if bridgeIP != nil {
+		bridgeHasIPv6 := bridgeIP != nil && bridgeIP.To4() == nil
+		if bridgeHasIPv6 {
 			protos = append(protos, essentialProto{
 				label:         "ICMPv6 with bridge dst IP",
 				egressMatch:   []string{"-d", bridgeIP.String(), "-p", "ipv6-icmp"},
@@ -553,7 +555,7 @@ func (r *LinuxNIReconciler) getIntendedAppConnACLs(niID uuid.UUID,
 //   - Apply rate-limit ACL rules (DROP extra egress packets)
 //   - LOG + fully apply (incl. DROP) ACL rules on traffic *coming out* from switch NIs
 func (r *LinuxNIReconciler) getIntendedAppConnRawIptables(vif vifInfo,
-	ul types.AppNetAdapterConfig, ipv6 bool) (items []dg.Item) {
+	ul types.AppNetAdapterConfig, forIPv6 bool) (items []dg.Item) {
 	ni := r.nis[vif.NI]
 	var bridgeIP net.IP
 	if ni.bridge.IPAddress != nil {
@@ -563,13 +565,13 @@ func (r *LinuxNIReconciler) getIntendedAppConnRawIptables(vif vifInfo,
 	items = append(items, iptables.Chain{
 		Table:     "raw",
 		ChainName: vifChain("PREROUTING", vif),
-		ForIPv6:   ipv6,
+		ForIPv6:   forIPv6,
 	})
 	items = append(items, iptables.Rule{
 		RuleLabel: fmt.Sprintf("Traverse VIF %s egress ACLs", vif.hostIfName),
 		Table:     "raw",
 		ChainName: appChain("PREROUTING"),
-		ForIPv6:   ipv6,
+		ForIPv6:   forIPv6,
 		MatchOpts: []string{"-i", ni.brIfName,
 			"-m", "physdev", "--physdev-in", matchVifIfName(vif)},
 		Target: vifChain("PREROUTING", vif),
@@ -579,7 +581,7 @@ func (r *LinuxNIReconciler) getIntendedAppConnRawIptables(vif vifInfo,
 	var aclRules []iptables.Rule
 	// 1. Essential protocols allowed implicitly.
 	var essentialProtos []essentialProto
-	if ipv6 {
+	if forIPv6 {
 		essentialProtos = getEssentialIPv6Protos(ni.config.Type, bridgeIP)
 	} else {
 		essentialProtos = getEssentialIPv4Protos(ni.config.Type, bridgeIP)
@@ -592,7 +594,7 @@ func (r *LinuxNIReconciler) getIntendedAppConnRawIptables(vif vifInfo,
 		})
 	}
 	// 2. Enable access to the metadata server
-	if !ipv6 && bridgeIP != nil {
+	if !forIPv6 && bridgeIP != nil {
 		aclRules = append(aclRules, iptables.Rule{
 			RuleLabel: "Allow access to Metadata server",
 			MatchOpts: []string{"-d", metadataSrvIP, "-p", "tcp", "--dport", "80"},
@@ -601,7 +603,7 @@ func (r *LinuxNIReconciler) getIntendedAppConnRawIptables(vif vifInfo,
 	}
 	// 3. User-configured ACL rules
 	for _, aclRule := range ul.ACLs {
-		parsedRule, skip, err := parseUserACLRule(r.log, aclRule, ni, vif, ipv6)
+		parsedRule, skip, err := parseUserACLRule(r.log, aclRule, ni, vif, forIPv6)
 		if err != nil {
 			r.log.Errorf("%s: parseUserACLRule failed: %v", LogAndErrPrefix, err)
 			continue
@@ -664,7 +666,7 @@ func (r *LinuxNIReconciler) getIntendedAppConnRawIptables(vif vifInfo,
 		if i < len(aclRules)-1 {
 			rule.AppliedBefore = []string{aclRules[i+1].RuleLabel}
 		}
-		rule.ForIPv6 = ipv6
+		rule.ForIPv6 = forIPv6
 		items = append(items, rule)
 	}
 	return items
@@ -677,7 +679,7 @@ func (r *LinuxNIReconciler) getIntendedAppConnRawIptables(vif vifInfo,
 //   - Apply rate-limit ACL rules (DROP extra ingress packets)
 //   - Count packets + fully apply (incl. DROP) ACLs on traffic *coming into* switch NIs
 func (r *LinuxNIReconciler) getIntendedAppConnFilterIptables(vif vifInfo,
-	ul types.AppNetAdapterConfig, ipv6 bool) (items []dg.Item) {
+	ul types.AppNetAdapterConfig, forIPv6 bool) (items []dg.Item) {
 	ni := r.nis[vif.NI]
 	var bridgeIP net.IP
 	if ni.bridge.IPAddress != nil {
@@ -690,7 +692,7 @@ func (r *LinuxNIReconciler) getIntendedAppConnFilterIptables(vif vifInfo,
 	items = append(items, iptables.Chain{
 		Table:     "filter",
 		ChainName: vifChain("FORWARD", vif),
-		ForIPv6:   ipv6,
+		ForIPv6:   forIPv6,
 	})
 	if len(ni.bridge.Ports) == 0 {
 		// Air-gapped - not possible to reach applications from outside.
@@ -702,7 +704,7 @@ func (r *LinuxNIReconciler) getIntendedAppConnFilterIptables(vif vifInfo,
 			RuleLabel: fmt.Sprintf("Traverse VIF %s ingress ACLs", vif.hostIfName),
 			Table:     "filter",
 			ChainName: appChain("FORWARD"),
-			ForIPv6:   ipv6,
+			ForIPv6:   forIPv6,
 			MatchOpts: []string{"-o", ni.brIfName,
 				"-m", "physdev", "--physdev-out", matchVifIfName(vif)},
 			Target: vifChain("FORWARD", vif),
@@ -711,11 +713,15 @@ func (r *LinuxNIReconciler) getIntendedAppConnFilterIptables(vif vifInfo,
 		if vif.GuestIP == nil {
 			break
 		}
+		guestHasIPv6 := vif.GuestIP.To4() == nil
+		if guestHasIPv6 != forIPv6 {
+			break
+		}
 		items = append(items, iptables.Rule{
 			RuleLabel: fmt.Sprintf("Traverse VIF %s ingress ACLs", vif.hostIfName),
 			Table:     "filter",
 			ChainName: appChain("FORWARD"),
-			ForIPv6:   ipv6,
+			ForIPv6:   forIPv6,
 			MatchOpts: []string{"-o", ni.brIfName, "-d", vif.GuestIP.String()},
 			Target:    vifChain("FORWARD", vif),
 		})
@@ -726,7 +732,7 @@ func (r *LinuxNIReconciler) getIntendedAppConnFilterIptables(vif vifInfo,
 	var aclRules []iptables.Rule
 	// 1. Essential protocols allowed implicitly.
 	var essentialProtos []essentialProto
-	if ipv6 {
+	if forIPv6 {
 		essentialProtos = getEssentialIPv6Protos(ni.config.Type, bridgeIP)
 	} else {
 		essentialProtos = getEssentialIPv4Protos(ni.config.Type, bridgeIP)
@@ -743,7 +749,7 @@ func (r *LinuxNIReconciler) getIntendedAppConnFilterIptables(vif vifInfo,
 	}
 	// 2. User-configured ACL rules
 	for _, aclRule := range ul.ACLs {
-		parsedRule, skip, err := parseUserACLRule(r.log, aclRule, ni, vif, ipv6)
+		parsedRule, skip, err := parseUserACLRule(r.log, aclRule, ni, vif, forIPv6)
 		if err != nil {
 			r.log.Errorf("%s: parseUserACLRule failed: %v", LogAndErrPrefix, err)
 			continue
@@ -805,7 +811,7 @@ func (r *LinuxNIReconciler) getIntendedAppConnFilterIptables(vif vifInfo,
 		if i < len(aclRules)-1 {
 			rule.AppliedBefore = []string{aclRules[i+1].RuleLabel}
 		}
-		rule.ForIPv6 = ipv6
+		rule.ForIPv6 = forIPv6
 		items = append(items, rule)
 	}
 	return items
@@ -819,43 +825,52 @@ func (r *LinuxNIReconciler) getIntendedAppConnFilterIptables(vif vifInfo,
 //   - for every port-map ACL rule, make sure that traffic going via NI bridge
 //     and towards the application is SNATed to bridge IP
 func (r *LinuxNIReconciler) getIntendedAppConnNATIptables(vif vifInfo,
-	ul types.AppNetAdapterConfig, ipv6 bool, portIPs map[string][]*net.IPNet) (items []dg.Item) {
+	ul types.AppNetAdapterConfig, forIPv6 bool, portIPs map[string][]*net.IPNet) (items []dg.Item) {
 	ni := r.nis[vif.NI]
 	if ni.config.Type != types.NetworkInstanceTypeLocal {
 		// Only local network instance uses port-mapping ACL rules.
 		return items
 	}
-	if vif.GuestIP == nil || ni.bridge.IPAddress == nil {
+	var bridgeIP net.IP
+	if ni.bridge.IPAddress != nil {
+		bridgeIP = ni.bridge.IPAddress.IP
+	}
+	if vif.GuestIP == nil || bridgeIP == nil {
 		// Missing one or more IPs needed for port forwarding.
+		return items
+	}
+	guestHasIPv6 := vif.GuestIP.To4() == nil
+	if guestHasIPv6 != forIPv6 {
+		// Target IP version for iptables rules is not matching the version of the VIF IP.
 		return items
 	}
 	// Put NAT/PREROUTING and POSTROUTING rules for this VIF into separate tables.
 	items = append(items, iptables.Chain{
 		Table:     "nat",
 		ChainName: vifChain("PREROUTING", vif),
-		ForIPv6:   ipv6,
+		ForIPv6:   forIPv6,
 	})
 	items = append(items, iptables.Chain{
 		Table:     "nat",
 		ChainName: vifChain("POSTROUTING", vif),
-		ForIPv6:   ipv6,
+		ForIPv6:   forIPv6,
 	})
 	items = append(items, iptables.Rule{
 		RuleLabel: fmt.Sprintf("Traverse VIF %s port maps", vif.hostIfName),
 		Table:     "nat",
 		ChainName: appChain("PREROUTING"),
-		ForIPv6:   ipv6,
+		ForIPv6:   forIPv6,
 		Target:    vifChain("PREROUTING", vif),
 	})
 	items = append(items, iptables.Rule{
 		RuleLabel: fmt.Sprintf("Traverse VIF %s port maps", vif.hostIfName),
 		Table:     "nat",
 		ChainName: appChain("POSTROUTING"),
-		ForIPv6:   ipv6,
+		ForIPv6:   forIPv6,
 		Target:    vifChain("POSTROUTING", vif),
 	})
 	for _, aclRule := range ul.ACLs {
-		parsedRule, skip, err := parseUserACLRule(r.log, aclRule, ni, vif, ipv6)
+		parsedRule, skip, err := parseUserACLRule(r.log, aclRule, ni, vif, forIPv6)
 		if err != nil {
 			r.log.Errorf("%s: parseUserACLRule failed: %v", LogAndErrPrefix, err)
 			continue
@@ -870,6 +885,10 @@ func (r *LinuxNIReconciler) getIntendedAppConnNATIptables(vif vifInfo,
 		// Add DNAT rules for port-map ACL.
 		for _, portIfname := range portMap.adapters {
 			for _, portIP := range portIPs[portIfname] {
+				isIPv6 := portIP.IP.To4() == nil
+				if isIPv6 != forIPv6 {
+					continue
+				}
 				target := fmt.Sprintf("%s:%d", vif.GuestIP, portMap.targetPort)
 				items = append(items, iptables.Rule{
 					RuleLabel: fmt.Sprintf("User-configured PORTMAP ACL rule %d "+
@@ -877,7 +896,7 @@ func (r *LinuxNIReconciler) getIntendedAppConnNATIptables(vif vifInfo,
 						portIP.IP.String()),
 					Table:     "nat",
 					ChainName: vifChain("PREROUTING", vif),
-					ForIPv6:   ipv6,
+					ForIPv6:   forIPv6,
 					MatchOpts: []string{"-i", portIfname,
 						"-p", portMap.protocol, "-d", portIP.IP.String(),
 						"--dport", portMap.externalPort},
@@ -890,7 +909,7 @@ func (r *LinuxNIReconciler) getIntendedAppConnNATIptables(vif vifInfo,
 						portIP.IP.String()),
 					Table:     "nat",
 					ChainName: vifChain("PREROUTING", vif),
-					ForIPv6:   ipv6,
+					ForIPv6:   forIPv6,
 					MatchOpts: []string{"-i", ni.brIfName,
 						"-p", portMap.protocol, "-d", portIP.IP.String(),
 						"--dport", portMap.externalPort},
@@ -900,18 +919,21 @@ func (r *LinuxNIReconciler) getIntendedAppConnNATIptables(vif vifInfo,
 			}
 		}
 		// Add SNAT rule for port-map ACL.
-		items = append(items, iptables.Rule{
-			RuleLabel: fmt.Sprintf("User-configured PORTMAP ACL rule %d",
-				aclRule.RuleID),
-			Table:     "nat",
-			ChainName: vifChain("POSTROUTING", vif),
-			ForIPv6:   ipv6,
-			MatchOpts: []string{"-o", ni.brIfName,
-				"-p", portMap.protocol, "-d", vif.GuestIP.String(),
-				"--dport", strconv.Itoa(portMap.targetPort)},
-			Target:     "SNAT",
-			TargetOpts: []string{"--to", ni.bridge.IPAddress.IP.String()},
-		})
+		bridgeHasIPv6 := bridgeIP.To4() == nil
+		if bridgeHasIPv6 == forIPv6 {
+			items = append(items, iptables.Rule{
+				RuleLabel: fmt.Sprintf("User-configured PORTMAP ACL rule %d",
+					aclRule.RuleID),
+				Table:     "nat",
+				ChainName: vifChain("POSTROUTING", vif),
+				ForIPv6:   forIPv6,
+				MatchOpts: []string{"-o", ni.brIfName,
+					"-p", portMap.protocol, "-d", vif.GuestIP.String(),
+					"--dport", strconv.Itoa(portMap.targetPort)},
+				Target:     "SNAT",
+				TargetOpts: []string{"--to", bridgeIP.String()},
+			})
+		}
 	}
 	return items
 }
@@ -919,7 +941,7 @@ func (r *LinuxNIReconciler) getIntendedAppConnNATIptables(vif vifInfo,
 // Table MANGLE, chain PREROUTING is used to:
 //   - mark connections with the ID of the applied ACL rule
 func (r *LinuxNIReconciler) getIntendedAppConnMangleIptables(vif vifInfo,
-	ul types.AppNetAdapterConfig, ipv6 bool, portIPs map[string][]*net.IPNet) (items []dg.Item) {
+	ul types.AppNetAdapterConfig, forIPv6 bool, portIPs map[string][]*net.IPNet) (items []dg.Item) {
 	ni := r.nis[vif.NI]
 	app := r.apps[vif.App]
 	var bridgeIP net.IP
@@ -929,7 +951,7 @@ func (r *LinuxNIReconciler) getIntendedAppConnMangleIptables(vif vifInfo,
 	markChainPrefix := fmt.Sprintf("%s-%s-", ni.brIfName, vif.hostIfName)
 	addedMarkChains := make(map[string]struct{})
 	var essentialProtos []essentialProto
-	if ipv6 {
+	if forIPv6 {
 		essentialProtos = getEssentialIPv6Protos(ni.config.Type, bridgeIP)
 	} else {
 		essentialProtos = getEssentialIPv4Protos(ni.config.Type, bridgeIP)
@@ -939,38 +961,38 @@ func (r *LinuxNIReconciler) getIntendedAppConnMangleIptables(vif vifInfo,
 	items = append(items, iptables.Chain{
 		Table:     "mangle",
 		ChainName: vifChain("PREROUTING", vif),
-		ForIPv6:   ipv6,
+		ForIPv6:   forIPv6,
 	})
 	items = append(items, iptables.Rule{
 		RuleLabel: fmt.Sprintf("Traverse VIF %s ACLs", vif.hostIfName),
 		Table:     "mangle",
 		ChainName: appChain("PREROUTING"),
-		ForIPv6:   ipv6,
+		ForIPv6:   forIPv6,
 		Target:    vifChain("PREROUTING", vif),
 	})
 	// This is further split into ingress and egress rules.
 	items = append(items, iptables.Chain{
 		Table:     "mangle",
 		ChainName: ingressVifChain("PREROUTING", vif),
-		ForIPv6:   ipv6,
+		ForIPv6:   forIPv6,
 	})
 	items = append(items, iptables.Chain{
 		Table:     "mangle",
 		ChainName: egressVifChain("PREROUTING", vif),
-		ForIPv6:   ipv6,
+		ForIPv6:   forIPv6,
 	})
 	ingressTraversal := iptables.Rule{
 		RuleLabel: fmt.Sprintf("Traverse VIF %s ingress ACLs", vif.hostIfName),
 		Table:     "mangle",
 		ChainName: vifChain("PREROUTING", vif),
-		ForIPv6:   ipv6,
+		ForIPv6:   forIPv6,
 		Target:    ingressVifChain("PREROUTING", vif),
 	}
 	egressTraversal := iptables.Rule{
 		RuleLabel: fmt.Sprintf("Traverse VIF %s egress ACLs", vif.hostIfName),
 		Table:     "mangle",
 		ChainName: vifChain("PREROUTING", vif),
-		ForIPv6:   ipv6,
+		ForIPv6:   forIPv6,
 		MatchOpts: []string{"-i", ni.brIfName,
 			"-m", "physdev", "--physdev-in", matchVifIfName(vif)},
 		Target:        egressVifChain("PREROUTING", vif),
@@ -994,7 +1016,7 @@ func (r *LinuxNIReconciler) getIntendedAppConnMangleIptables(vif vifInfo,
 		mark := iptables.GetConnmark(
 			uint8(app.appNum), proto.mark, false, false)
 		if _, alreadyAdded := addedMarkChains[markChain]; !alreadyAdded {
-			items = append(items, getMarkingChainCfg(markChain, ipv6, markToString(mark))...)
+			items = append(items, getMarkingChainCfg(markChain, forIPv6, markToString(mark))...)
 			addedMarkChains[markChain] = struct{}{}
 		}
 		ingressRules = append(ingressRules, iptables.Rule{
@@ -1007,7 +1029,7 @@ func (r *LinuxNIReconciler) getIntendedAppConnMangleIptables(vif vifInfo,
 	}
 	// 1.2. User-configured ACL rules
 	for _, aclRule := range ul.ACLs {
-		parsedRule, skip, err := parseUserACLRule(r.log, aclRule, ni, vif, ipv6)
+		parsedRule, skip, err := parseUserACLRule(r.log, aclRule, ni, vif, forIPv6)
 		if err != nil {
 			r.log.Errorf("%s: parseUserACLRule failed: %v", LogAndErrPrefix, err)
 			continue
@@ -1025,12 +1047,16 @@ func (r *LinuxNIReconciler) getIntendedAppConnMangleIptables(vif vifInfo,
 			uint8(app.appNum), uint32(aclRule.RuleID), true, parsedRule.drop)
 		if _, alreadyAdded := addedMarkChains[markChain]; !alreadyAdded {
 			items = append(items,
-				getMarkingChainCfg(markChain, ipv6, markToString(mark))...)
+				getMarkingChainCfg(markChain, forIPv6, markToString(mark))...)
 			addedMarkChains[markChain] = struct{}{}
 		}
 		if parsedRule.portMap != nil {
 			for _, portIfname := range parsedRule.portMap.adapters {
 				for _, portIP := range portIPs[portIfname] {
+					isIPv6 := portIP.IP.To4() == nil
+					if isIPv6 != forIPv6 {
+						continue
+					}
 					iptablesRule := iptables.Rule{
 						RuleLabel: fmt.Sprintf("User-configured PORTMAP ACL rule %d "+
 							"for port %s IP %s from outside", aclRule.RuleID, portIfname,
@@ -1084,7 +1110,7 @@ mangleEgress:
 		mark := iptables.GetConnmark(
 			uint8(app.appNum), proto.mark, false, false)
 		if _, alreadyAdded := addedMarkChains[markChain]; !alreadyAdded {
-			items = append(items, getMarkingChainCfg(markChain, ipv6, markToString(mark))...)
+			items = append(items, getMarkingChainCfg(markChain, forIPv6, markToString(mark))...)
 			addedMarkChains[markChain] = struct{}{}
 		}
 		egressRules = append(egressRules, iptables.Rule{
@@ -1094,13 +1120,13 @@ mangleEgress:
 		})
 	}
 	// 2.2. Mark request from app to the metadata server
-	if !ipv6 && bridgeIP != nil {
+	if !forIPv6 && bridgeIP != nil {
 		httpMark := iptables.GetConnmark(uint8(app.appNum),
 			iptables.ControlProtocolMarkingIDMap["app_http"], false, false)
 		markMetadataChain := markChainPrefix + "metadata"
 		if _, alreadyAdded := addedMarkChains[markMetadataChain]; !alreadyAdded {
 			items = append(items,
-				getMarkingChainCfg(markMetadataChain, ipv6, markToString(httpMark))...)
+				getMarkingChainCfg(markMetadataChain, forIPv6, markToString(httpMark))...)
 			addedMarkChains[markMetadataChain] = struct{}{}
 		}
 		egressRules = append(egressRules, iptables.Rule{
@@ -1111,7 +1137,7 @@ mangleEgress:
 	}
 	// 2.3. User-configured ACL rules
 	for _, aclRule := range ul.ACLs {
-		parsedRule, skip, err := parseUserACLRule(r.log, aclRule, ni, vif, ipv6)
+		parsedRule, skip, err := parseUserACLRule(r.log, aclRule, ni, vif, forIPv6)
 		if err != nil {
 			r.log.Errorf("%s: parseUserACLRule failed: %v", LogAndErrPrefix, err)
 			continue
@@ -1128,7 +1154,7 @@ mangleEgress:
 			uint8(app.appNum), uint32(aclRule.RuleID), true, parsedRule.drop)
 		if _, alreadyAdded := addedMarkChains[markChain]; !alreadyAdded {
 			items = append(items,
-				getMarkingChainCfg(markChain, ipv6, markToString(mark))...)
+				getMarkingChainCfg(markChain, forIPv6, markToString(mark))...)
 			addedMarkChains[markChain] = struct{}{}
 		}
 		iptablesRule := iptables.Rule{
@@ -1150,7 +1176,7 @@ mangleEgress:
 		mark := iptables.GetConnmark(
 			uint8(app.appNum), iptables.DefaultDropAceID, false, true)
 		items = append(items,
-			getMarkingChainCfg(dropAllChain, ipv6, markToString(mark))...)
+			getMarkingChainCfg(dropAllChain, forIPv6, markToString(mark))...)
 		defaultDropMark := iptables.Rule{
 			RuleLabel: "Default DROP mark",
 			Target:    dropAllChain,
@@ -1166,7 +1192,7 @@ mangleEgress:
 		if i < len(ingressRules)-1 {
 			rule.AppliedBefore = []string{ingressRules[i+1].RuleLabel}
 		}
-		rule.ForIPv6 = ipv6
+		rule.ForIPv6 = forIPv6
 		items = append(items, rule)
 	}
 	for i, rule := range egressRules {
@@ -1176,7 +1202,7 @@ mangleEgress:
 		if i < len(egressRules)-1 {
 			rule.AppliedBefore = []string{egressRules[i+1].RuleLabel}
 		}
-		rule.ForIPv6 = ipv6
+		rule.ForIPv6 = forIPv6
 		items = append(items, rule)
 	}
 	return items
@@ -1186,11 +1212,11 @@ func markToString(mark uint32) string {
 	return strconv.FormatUint(uint64(mark), 10)
 }
 
-func getMarkingChainCfg(chainName string, ipv6 bool, markStr string) (items []dg.Item) {
+func getMarkingChainCfg(chainName string, forIPv6 bool, markStr string) (items []dg.Item) {
 	items = append(items, iptables.Chain{
 		Table:     "mangle",
 		ChainName: chainName,
-		ForIPv6:   ipv6,
+		ForIPv6:   forIPv6,
 	})
 	rules := []iptables.Rule{
 		{
@@ -1225,7 +1251,7 @@ func getMarkingChainCfg(chainName string, ipv6 bool, markStr string) (items []dg
 		if i < len(rules)-1 {
 			rule.AppliedBefore = []string{rules[i+1].RuleLabel}
 		}
-		rule.ForIPv6 = ipv6
+		rule.ForIPv6 = forIPv6
 		items = append(items, rule)
 	}
 	return items
