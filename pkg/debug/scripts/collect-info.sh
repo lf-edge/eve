@@ -6,7 +6,7 @@
 
 # Script version, don't forget to bump up once something is changed
 
-VERSION=25
+VERSION=26
 # Add required packages here, it will be passed to "apk add".
 # Once something added here don't forget to add the same package
 # to the Dockerfile ('ENV PKGS' line) of the debug container,
@@ -245,44 +245,18 @@ collect_network_info()
     echo "- done network info"
 }
 
-collect_pillar_memory_backtraces()
+collect_pillar_backtraces()
 {
     echo "- pillar memory backtraces"
 
     eve http-debug > /dev/null 2>&1
-    curl --retry-all-errors --retry 3 --retry-delay 3 -m 5 -s "http://127.1:6543/debug/pprof/heap?debug=1" > "$DIR/pillar-memory-backtraces"
+    curl --retry-all-errors --retry 3 --retry-delay 3 -m 5 -s "http://127.1:6543/debug/pprof/heap?debug=1" | gzip > "$DIR/pillar-memory-backtraces.gz"
+    curl --retry-all-errors --retry 3 --retry-delay 3 -m 5 -s "http://127.1:6543/debug/pprof/goroutine?debug=2" | gzip > "$DIR/pillar-backtraces.gz"
     eve http-debug stop > /dev/null 2>&1
 
     echo "- done pillar memory backtraces"
 }
 
-collect_pillar_backtraces()
-{
-    echo "- pillar backtraces"
-    logread -f > "$DIR/pillar-backtraces" &
-    pid=$!
-
-    echo "  - pkill -USR1 /opt/zededa/bin/zedbox"
-    eve exec pillar pkill -USR1 /opt/zededa/bin/zedbox
-
-    iters=15
-    echo "  - wait for pillar backtraces"
-    until grep -q "sigusr" "$DIR/pillar-backtraces"; do
-        sleep 1s
-        if [ $iters -eq 0 ]; then
-            echo "      ERR: timeout! exit wait"
-            break
-        fi
-        iters=$((iters - 1))
-    done
-
-    # To be sure all backtraces are written
-    sleep 1s
-
-    kill $pid
-
-    echo "- done pillar backtraces"
-}
 collect_zfs_info()
 {
     type=$(cat /run/eve.persist_type)
@@ -469,7 +443,6 @@ collect_network_info
 
 # Pillar part
 collect_pillar_backtraces
-collect_pillar_memory_backtraces
 
 # ZFS part
 collect_zfs_info
