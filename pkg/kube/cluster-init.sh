@@ -54,6 +54,22 @@ check_log_file_size() {
         fi
 }
 
+# search and find the last occurrence of the k3s staring string in the file
+# and gzip the content from that line to the end of the file
+# do the entire file if the string is not found
+gzip_last_restart_part() {
+    fileBaseName=$1
+    targetFile=$2
+    searchString="Starting k3s $K3S_VERSION"
+
+    # Find the line number of the last occurrence of the search string, or 1 if not found
+    lastLine=$(grep -n -F "$searchString" "$fileBaseName" | tail -n 1 | cut -d: -f1)
+    lastLine=${lastLine:-1}
+
+    # Extract the content from the last occurrence of the search string to the end
+    tail -n +$lastLine "$fileBaseName" | gzip -k -9 -c > "$targetFile"
+}
+
 save_crash_log() {
         if [ "$RESTART_COUNT" = "1" ]; then
                 return
@@ -64,7 +80,7 @@ save_crash_log() {
         if [ -e "${K3S_LOG_DIR}/${crashLogBaseName}" ]; then
                 rm "${K3S_LOG_DIR}/${crashLogBaseName}"
         fi
-        gzip -k -9 "${K3S_LOG_DIR}/${fileBaseName}" -c > "${K3S_LOG_DIR}/${crashLogBaseName}"
+        gzip_last_restart_part "${K3S_LOG_DIR}/${fileBaseName}" "${K3S_LOG_DIR}/${crashLogBaseName}"
 }
 
 check_network_connection () {
@@ -738,6 +754,13 @@ check_cluster_config_change() {
     logmsg "Check cluster config change done"
 }
 
+monitor_cluster_config_change() {
+    while true; do
+        check_cluster_config_change
+        sleep 15
+    done
+}
+
 # save the /var/lib to /persist/kubelog/save-var-lib
 save_var_lib() {
   local dest_dir="${K3S_LOG_DIR}/save-var-lib"
@@ -865,6 +888,9 @@ fi
 # since we can wait for long time, always start the containerd first
 check_start_containerd
 logmsg "containerd started"
+
+# task to check if the cluster config has changed
+monitor_cluster_config_change &
 
 # if this is the first time to run install, we may wait for the
 # cluster config and status
@@ -1033,11 +1059,6 @@ else
                 done
                 if [ $node_count_ready -ne 1 ]; then
                     logmsg "Node not ready, continue to to check_start_k3s"
-
-                    # check if the cluster mode has changed, otherwise
-                    # when removing ourselves from the cluster, we'll stuck in the loop and
-                    # max out the restart counter, cannot move to single node mode
-                    check_cluster_config_change
                     continue
                 fi
         else
@@ -1085,7 +1106,6 @@ fi
         check_log_file_size "eve-bridge.log"
         check_log_file_size "containerd-user.log"
         check_and_copy_multus_results
-        check_cluster_config_change
         check_kubeconfig_yaml_files
         check_and_run_vnc
         wait_for_item "wait"

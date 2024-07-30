@@ -3,6 +3,8 @@
 
 write-kubeconfig-mode: "0644"
 log: "/persist/kubelog/k3s.log"
+# disable agent tunneling, we are on the same network
+egress-selector-mode: "disabled"
 # Use longhorn storage
 disable: local-storage
 etcd-arg:

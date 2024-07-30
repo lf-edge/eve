@@ -168,6 +168,13 @@ func drainAndDeleteNode(ctx *zedkubeContext) {
 	node := nodes.Items[0]
 	nodeName := node.Name
 
+	// cordon the node first
+	node.Spec.Unschedulable = true
+	_, err = clientset.CoreV1().Nodes().Update(context.Background(), &node, metav1.UpdateOptions{})
+	if err != nil {
+		log.Errorf("drainAndDeleteNode: cordon node %s failed: %v, continue the delete", nodeName, err)
+	}
+
 	// there is pkg: k8s.io/kubectl/pkg/drain, but it brings in many dependencies in vendor files
 	// implement here a simple 'drain', mainly to delete the pods on the node before we delete the node
 	// even if there are still pods on the node when deleting the node, we use replicaSet, and it is fine
