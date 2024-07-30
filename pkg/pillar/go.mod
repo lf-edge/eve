@@ -9,7 +9,7 @@ require (
 	github.com/containerd/containerd v1.7.13
 	github.com/containerd/typeurl v1.0.2
 	github.com/cshari-zededa/eve-tpm2-tools v0.0.4
-	github.com/docker/docker v25.0.5+incompatible
+	github.com/docker/docker v26.1.4+incompatible
 	github.com/eriknordmark/ipinfo v0.0.0-20230728132417-2d8f4da903d7
 	github.com/eshard/uevent v1.0.2-0.20220110110621-d8d2be286cec
 	github.com/facebook/time v0.0.0-20240605113323-bdee26e8523f
@@ -120,7 +120,7 @@ require (
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/google/gofuzz v1.2.0 // indirect
 	github.com/google/s2a-go v0.1.7 // indirect
-	github.com/google/uuid v1.6.0 // indirect
+	github.com/google/uuid v1.6.0
 	github.com/googleapis/enterprise-certificate-proxy v0.3.2 // indirect
 	github.com/googleapis/gax-go/v2 v2.12.0 // indirect
 	github.com/gorilla/mux v1.8.1 // indirect
@@ -202,6 +202,7 @@ require (
 	github.com/imdario/mergo v0.3.16 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/kubernetes-csi/external-snapshotter/client/v4 v4.2.0 // indirect
+	github.com/moby/docker-image-spec v1.3.1 // indirect
 	github.com/openshift/api v0.0.0-20230503133300-8bbcb7ca7183 // indirect
 	github.com/openshift/client-go v0.0.0-20210112165513-ebc401615f47 // indirect
 	github.com/openshift/custom-resource-status v1.1.2 // indirect
