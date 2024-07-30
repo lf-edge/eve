@@ -297,7 +297,7 @@ print_usb_devices() {
         local netdevpaths="$netdevpaths $devicepath"
     done
 
-    for i in $(find /sys/devices/ -name uevent | grep -E '/usb[0-9]/' | grep -E '/[0-9]-[0-9](\.[0-9]+)?/uevent')
+    for i in $(find /sys/devices/ -name uevent | grep -E '/usb[0-9]/' | grep -E '/[0-9]+-[0-9]+(\.[0-9]+)?/uevent')
     do
         local labelprefix="USB"
         local ztype="IO_TYPE_USB_DEVICE"
@@ -305,7 +305,7 @@ print_usb_devices() {
         local devicepath
         devicepath=$(dirname "$i")
         local busAndPort
-        busAndPort=$(echo "$i" | grep -Eo '/[0-9]-[0-9](\.[0-9]+)?/uevent' | grep -Eo '[0-9]-[0-9](\.[0-9]+)?')
+        busAndPort=$(echo "$i" | grep -Eo '/[0-9]+-[0-9]+(\.[0-9]+)?/uevent' | grep -Eo '[0-9]+-[0-9]+(\.[0-9]+)?')
         local assigngrp
         assigngrp="USB${busAndPort}"
 
@@ -477,7 +477,7 @@ for ETH in /sys/class/net/*; do
    # Does $LABEL start with wlan or wwan? Change ztype and cost
    COST=0
    ZTYPE=1
-   isUSB=$(readlink "$ETH" | grep -Eo '/usb[0-9]/' || true)
+   isUSB=$(readlink "$ETH" | grep -Eo '/usb[0-9]+/' || true)
    isCAN=$(grep -Eo "280" < "$ETH"/type || true)
    if [ "$isUSB" != "" ] || [ "$isCAN" != "" ]
    then
