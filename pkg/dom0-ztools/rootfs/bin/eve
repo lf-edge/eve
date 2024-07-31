@@ -251,8 +251,20 @@ __EOT__
           echo "Updated memory-monitor configuration"
           ;;
  verbose) # first lets find our piping process
-          for PIPE in $(pgrep cat); do
-             [ "$(readlink /proc/"$PIPE"/fd/0)" = /run/diag.pipe ] && break
+          PIPE=""
+          while [ "$PIPE" = "" ]
+          do
+              for pid in $(pgrep cat)
+              do
+                 if [ "$(readlink /proc/"$pid"/fd/0)" = /run/diag.pipe ]
+                 then
+                     PIPE="$pid"
+                 fi
+              done
+              if [ -z "$PIPE" ]
+              then
+                  sleep 1
+              fi
           done
           # now lets see what to do with it
           case "$2" in
