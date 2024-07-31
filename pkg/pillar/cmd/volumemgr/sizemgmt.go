@@ -15,8 +15,7 @@ import (
 // and content tree usage
 // disk usage (latter used if there isn't enough)
 func getRemainingDiskSpace(ctxPtr *volumemgrContext) (uint64, error) {
-
-	var totalDiskSize uint64
+	var reservedAppDiskUsage uint64
 
 	pubContentTree := ctxPtr.pubContentTreeStatus
 	itemsContentTree := pubContentTree.GetAll()
@@ -27,7 +26,7 @@ func getRemainingDiskSpace(ctxPtr *volumemgrContext) (uint64, error) {
 				iterContentTreeStatus.Key(), iterContentTreeStatus.State)
 			continue
 		}
-		totalDiskSize += uint64(iterContentTreeStatus.CurrentSize)
+		reservedAppDiskUsage += uint64(iterContentTreeStatus.CurrentSize)
 	}
 
 	pubVolume := ctxPtr.pubVolumeStatus
@@ -40,7 +39,7 @@ func getRemainingDiskSpace(ctxPtr *volumemgrContext) (uint64, error) {
 				iterVolumeStatus.Key(), iterVolumeStatus.State)
 			continue
 		}
-		totalDiskSize += volumehandlers.GetVolumeHandler(log, ctxPtr, &iterVolumeStatus).UsageFromStatus()
+		reservedAppDiskUsage += volumehandlers.GetVolumeHandler(log, ctxPtr, &iterVolumeStatus).UsageFromStatus()
 	}
 	deviceDiskUsage, err := diskmetrics.PersistUsageStat(log)
 	if err != nil {
@@ -48,8 +47,20 @@ func getRemainingDiskSpace(ctxPtr *volumemgrContext) (uint64, error) {
 		log.Error(err)
 		return 0, err
 	}
-	deviceDiskSize := deviceDiskUsage.Total
-	diskReservedForDom0 := diskmetrics.Dom0DiskReservedSize(log, ctxPtr.globalConfig, deviceDiskSize)
+	deviceDiskSize := deviceDiskUsage.Total // This excludes any ZFS reserved space
+	// Subtract the current storage for the volumes and content trees, and
+	// also /persist/newlog. Dom0DiskReservedSize will take into account
+	// the max size for /persist/newlog
+	appDiskUsage := currentAppDiskUsage(ctxPtr)
+	var usedByDom0 uint64
+	if deviceDiskUsage.Used < appDiskUsage {
+		// The appDiskUsage could be several minutes old hence stale
+		log.Noticef("dynamic dom0 disk overhead would be negative %d vs. %d",
+			deviceDiskUsage.Used, appDiskUsage)
+	} else {
+		usedByDom0 = deviceDiskUsage.Used - appDiskUsage
+	}
+	diskReservedForDom0 := diskmetrics.Dom0DiskReservedSize(log, ctxPtr.globalConfig, deviceDiskSize, usedByDom0)
 	var allowedDeviceDiskSize uint64
 	if deviceDiskSize < diskReservedForDom0 {
 		err = fmt.Errorf("Total Disk Size(%d) <=  diskReservedForDom0(%d)",
@@ -58,9 +69,37 @@ func getRemainingDiskSpace(ctxPtr *volumemgrContext) (uint64, error) {
 		return uint64(0), err
 	}
 	allowedDeviceDiskSize = deviceDiskSize - diskReservedForDom0
-	if allowedDeviceDiskSize < totalDiskSize {
+	log.Noticef("getRemainingDiskSpace device total %d used %d free %d, allowed %d reservedAppDiskUsage %d",
+		deviceDiskUsage.Total, deviceDiskUsage.Used, deviceDiskUsage.Free,
+		allowedDeviceDiskSize, reservedAppDiskUsage)
+	if allowedDeviceDiskSize < reservedAppDiskUsage {
+		log.Noticef("getRemainingDiskSpace: ZERO")
 		return 0, nil
 	} else {
-		return allowedDeviceDiskSize - totalDiskSize, nil
+		log.Noticef("getRemainingDiskSpace: %d",
+			allowedDeviceDiskSize-reservedAppDiskUsage)
+		return allowedDeviceDiskSize - reservedAppDiskUsage, nil
 	}
+}
+
+// Everything in /persist except these directories/datasets counts
+// as EVE overhead.
+// Note that we also exclude /persist/newlog here since it maintains its own
+// size limit (GlobalValueInt(types.LogRemainToSendMBytes)) the caller
+// needs to consider as EVE overhead.
+var excludeDirs = append(types.AppPersistPaths, types.NewlogDir)
+
+func currentAppDiskUsage(ctx *volumemgrContext) uint64 {
+	// Use the periodically updated DiskMetric
+	var appUsage uint64
+	for _, dir := range excludeDirs {
+		item, err := ctx.pubDiskMetric.Get(types.PathToKey(dir))
+		if err != nil {
+			log.Warnf("Missing AppUsage directory info for %s", dir)
+			continue
+		}
+		dm := item.(types.DiskMetric)
+		appUsage += dm.UsedBytes
+	}
+	return appUsage
 }
