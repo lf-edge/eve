@@ -156,7 +156,7 @@ fi
 
 # Create temporary dir
 echo "- basic setup"
-TMP_DIR=$(mktemp -d)
+TMP_DIR=$(mktemp -d -t -p /persist/tmp/)
 DIR="$TMP_DIR/$INFO_DIR"
 mkdir -p "$DIR"
 mkdir -p "$DIR/network"
