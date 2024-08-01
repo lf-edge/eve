@@ -19,10 +19,10 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
-
 	"github.com/lf-edge/eve/pkg/pillar/utils"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
+	"github.com/lf-edge/eve/pkg/pillar/utils/netutils"
+	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 )
 
 type middlewareKeys int
@@ -32,20 +32,19 @@ const (
 	appUUIDContextKey
 )
 
-func isEmptyIP(ip net.IP) bool {
-	return ip == nil || ip.Equal(net.IP{})
-}
-
 func (msrv *Msrv) handleNetwork() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		msrv.Log.Tracef("networkHandler.ServeHTTP")
 		remoteIP := net.ParseIP(strings.Split(r.RemoteAddr, ":")[0])
-		externalIP, code := msrv.getExternalIPForApp(remoteIP)
-		var ipStr string
+		externalIPs, code := msrv.getExternalIPsForApp(remoteIP)
+		var ipsStr []string
 		var hostname string
-		// Avoid returning the string <nil>
-		if !isEmptyIP(externalIP) {
-			ipStr = externalIP.String()
+		for _, ip := range externalIPs {
+			// Avoid returning the string <nil>
+			if netutils.IsEmptyIP(ip) {
+				continue
+			}
+			ipsStr = append(ipsStr, ip.String())
 		}
 		anStatus := msrv.lookupAppNetworkStatusByAppIP(remoteIP)
 		if anStatus != nil {
@@ -64,7 +63,7 @@ func (msrv *Msrv) handleNetwork() func(http.ResponseWriter, *http.Request) {
 		w.WriteHeader(code)
 		resp, _ := json.Marshal(map[string]interface{}{
 			"caller-ip":         r.RemoteAddr,
-			"external-ipv4":     ipStr,
+			"external-ipv4":     strings.Join(ipsStr, ","),
 			"hostname":          hostname, // Do not delete this line for backward compatibility
 			"app-instance-uuid": hostname,
 			"device-uuid":       enInfo.DeviceID,
@@ -83,13 +82,15 @@ func (msrv *Msrv) handleExternalIP() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		msrv.Log.Tracef("externalIPHandler.ServeHTTP")
 		remoteIP := net.ParseIP(strings.Split(r.RemoteAddr, ":")[0])
-		externalIP, code := msrv.getExternalIPForApp(remoteIP)
+		externalIPs, code := msrv.getExternalIPsForApp(remoteIP)
 		w.WriteHeader(code)
 		w.Header().Add("Content-Type", "text/plain")
-		// Avoid returning the string <nil>
-		if !isEmptyIP(externalIP) {
-			resp := []byte(externalIP.String() + "\n")
-			w.Write(resp)
+		for _, externalIP := range externalIPs {
+			// Avoid returning the string <nil>
+			if !netutils.IsEmptyIP(externalIP) {
+				resp := []byte(externalIP.String() + "\n")
+				w.Write(resp)
+			}
 		}
 	}
 }

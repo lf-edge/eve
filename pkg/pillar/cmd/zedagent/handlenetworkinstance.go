@@ -81,9 +81,24 @@ func prepareAndPublishNetworkInstanceInfoMsg(ctx *zedagentContext,
 	if !deleted {
 		info.Displayname = status.DisplayName
 		info.InstType = uint32(status.Type)
-		info.CurrentUplinkIntf = status.SelectedUplinkIntfName
+		// info.Ports is set for new controllers (that support NI with multiple ports),
+		// while we also continue to set info.CurrentUplinkIntf for backward-compatibility
+		// with older controllers.
+		info.Ports = status.Ports
+		if len(status.Ports) > 0 {
+			// Just report the first port from the list.
+			// Typically, there will be at most one port anyway.
+			info.CurrentUplinkIntf = status.Ports[0]
+		}
 		info.Mtu = uint32(status.MTU)
-
+		for _, route := range status.CurrentRoutes {
+			info.IpRoutes = append(info.IpRoutes, &zinfo.IPRoute{
+				DestinationNetwork: route.DstNetwork.String(),
+				Gateway:            route.Gateway.String(),
+				Port:               route.OutputPort,
+				GatewayApp:         route.GatewayApp.String(),
+			})
+		}
 		if !status.ErrorTime.IsZero() {
 			errInfo := new(zinfo.ErrorInfo)
 			errInfo.Description = status.Error
@@ -125,11 +140,10 @@ func prepareAndPublishNetworkInstanceInfoMsg(ctx *zedagentContext,
 			vi.AppID = v.AppID.String()
 			info.Vifs = append(info.Vifs, vi)
 		}
-		if status.SelectedUplinkIntfName != "" {
-			ifname := status.SelectedUplinkIntfName
-			ia := ctx.assignableAdapters.LookupIoBundleIfName(ifname)
+		for _, port := range info.Ports {
+			ia := ctx.assignableAdapters.LookupIoBundleLogicallabel(port)
 			if ia == nil {
-				log.Warnf("Missing adapter for ifname %s", ifname)
+				log.Warnf("Missing IoBundle for port %s", port)
 			} else {
 				reportAA := new(zinfo.ZioBundle)
 				reportAA.Type = zcommon.PhyIoType(ia.Type)

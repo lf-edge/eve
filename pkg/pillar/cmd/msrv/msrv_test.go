@@ -86,7 +86,6 @@ func TestPostKubeconfig(t *testing.T) {
 				IPv4Addr: net.ParseIP("192.168.1.1"),
 			}},
 		},
-		SelectedUplinkIntfName: "eth0",
 	}
 	err = netInstance.Publish("6ba7b810-9dad-11d1-80b4-000000000003", niStatus)
 	g.Expect(err).ToNot(gomega.HaveOccurred())

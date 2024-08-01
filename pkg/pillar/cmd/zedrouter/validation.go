@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/lf-edge/eve/pkg/pillar/nireconciler"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils/netutils"
 	uuid "github.com/satori/go.uuid"
@@ -128,42 +129,52 @@ func (z *zedrouter) checkNetworkInstanceIPConflicts(
 }
 
 func (z *zedrouter) checkNetworkInstanceMTUConflicts(config types.NetworkInstanceConfig,
-	status *types.NetworkInstanceStatus) (fallbackMTU uint16, err error) {
+	status *types.NetworkInstanceStatus) (mtuToUse uint16, err error) {
 	ports := z.getNIPortConfig(status)
-	if len(ports) == 0 {
-		// Air-gapped
-		return 0, nil
+	var portWithLowestMTU *nireconciler.Port
+	for i := range ports {
+		if ports[i].MTU == 0 {
+			// Not yet known?
+			z.log.Warnf("Missing MTU for NI port %s", ports[i].LogicalLabel)
+			continue
+		}
+		if portWithLowestMTU == nil || ports[i].MTU < portWithLowestMTU.MTU {
+			portWithLowestMTU = &ports[i]
+		}
 	}
-	// TODO: handle multiple ports
-	port := ports[0]
-	if port.MTU == 0 {
-		// Not yet known?
-		z.log.Warnf("Missing MTU for port %s", port.LogicalLabel)
-		return 0, nil
+	if portWithLowestMTU == nil {
+		// Air-gapped or MTU of ports not yet known.
+		if config.MTU != 0 {
+			mtuToUse = config.MTU
+		} else {
+			mtuToUse = types.DefaultMTU
+		}
+		return mtuToUse, nil
 	}
-	niMTU := config.MTU
-	if niMTU == 0 {
-		niMTU = types.DefaultMTU
+	if config.MTU > portWithLowestMTU.MTU {
+		return portWithLowestMTU.MTU, fmt.Errorf(
+			"MTU (%d) configured for the network instance is higher than the MTU (%d) "+
+				"of the port '%s'. Will use port's MTU instead.",
+			config.MTU, portWithLowestMTU.MTU, portWithLowestMTU.LogicalLabel)
 	}
-	if niMTU != port.MTU {
-		return port.MTU, fmt.Errorf("MTU (%d) configured for the network instance "+
-			"differs from the MTU (%d) of the associated port %s. "+
-			"Will use port's MTU instead.",
-			niMTU, port.MTU, port.LogicalLabel)
+	if config.MTU != 0 {
+		mtuToUse = config.MTU
+	} else {
+		mtuToUse = portWithLowestMTU.MTU
 	}
-	return 0, nil
+	return mtuToUse, nil
 }
 
 func (z *zedrouter) validateAppNetworkConfig(appNetConfig types.AppNetworkConfig) error {
-	z.log.Functionf("AppNetwork(%s), check for duplicate port map acls",
+	z.log.Functionf("AppNetwork(%s), check for overlapping port map acls",
 		appNetConfig.DisplayName)
-	// For App Networks, check for common port map rules
+	// For App Networks, check for overlapping port map rules
 	adapterCfgList1 := appNetConfig.AppNetAdapterList
 	if len(adapterCfgList1) == 0 {
 		return nil
 	}
 	if z.containsHangingACLPortMapRule(adapterCfgList1) {
-		return fmt.Errorf("network with no uplink, has portmap")
+		return fmt.Errorf("network with no port, has portmap")
 	}
 	sub := z.subAppNetworkConfig
 	items := sub.GetAll()
@@ -184,7 +195,7 @@ func (z *zedrouter) validateAppNetworkConfig(appNetConfig types.AppNetworkConfig
 			continue
 		}
 		if z.checkForPortMapOverlap(adapterCfgList1, adapterCfgList2) {
-			return fmt.Errorf("app %s and %s have duplicate portmaps",
+			return fmt.Errorf("apps %s and %s have overlapping portmaps",
 				appNetConfig.DisplayName, appNetStatus2.DisplayName)
 		}
 	}
@@ -246,13 +257,13 @@ func (z *zedrouter) checkNetworkReferencesFromApp(config types.AppNetworkConfig)
 	return false, nil
 }
 
-// Check if there is a portmap rule for a network instance with no uplink interface.
+// Check if there is a portmap rule for a network instance with no device port assigned.
 func (z *zedrouter) containsHangingACLPortMapRule(
 	adapterCfgList []types.AppNetAdapterConfig) bool {
 	for _, adapterCfg := range adapterCfgList {
 		network := adapterCfg.Network.String()
 		netInstStatus := z.lookupNetworkInstanceStatus(network)
-		if netInstStatus == nil || netInstStatus.PortLogicalLabel != "" {
+		if netInstStatus == nil || netInstStatus.PortLabel != "" {
 			continue
 		}
 		for _, ace := range adapterCfg.ACLs {
@@ -270,13 +281,13 @@ func (z *zedrouter) checkForPortMapOverlap(adapterCfgList1 []types.AppNetAdapter
 	adapterCfgList2 []types.AppNetAdapterConfig) bool {
 	for _, adapterCfg1 := range adapterCfgList1 {
 		network1 := adapterCfg1.Network
-		// Validate whether there are duplicate portmap rules within itself.
+		// Validate whether there are duplicate portmap rules within one VIF.
 		if z.detectPortMapConflictWithinAdapter(adapterCfg1.ACLs) {
 			return true
 		}
 		for _, adapterCfg2 := range adapterCfgList2 {
 			network2 := adapterCfg2.Network
-			if network1 == network2 || z.checkUplinkPortOverlap(network1, network2) {
+			if network1 == network2 || z.checkPortOverlap(network1, network2) {
 				if z.detectPortMapConflictAcrossAdapters(adapterCfg1.ACLs, adapterCfg2.ACLs) {
 					return true
 				}
@@ -286,14 +297,14 @@ func (z *zedrouter) checkForPortMapOverlap(adapterCfgList1 []types.AppNetAdapter
 	return false
 }
 
-// Check if network instances are sharing common uplink.
-func (z *zedrouter) checkUplinkPortOverlap(network1, network2 uuid.UUID) bool {
-	netInstStatus1 := z.lookupNetworkInstanceStatus(network1.String())
-	netInstStatus2 := z.lookupNetworkInstanceStatus(network2.String())
-	if netInstStatus1 == nil || netInstStatus2 == nil {
+// Check if network instances are using the same port label.
+func (z *zedrouter) checkPortOverlap(network1, network2 uuid.UUID) bool {
+	netInstConfig1 := z.lookupNetworkInstanceConfig(network1.String())
+	netInstConfig2 := z.lookupNetworkInstanceConfig(network2.String())
+	if netInstConfig1 == nil || netInstConfig2 == nil {
 		return false
 	}
-	return netInstStatus1.SelectedUplinkIntfName == netInstStatus2.SelectedUplinkIntfName
+	return netInstConfig1.PortLabel == netInstConfig2.PortLabel
 }
 
 // Caller should clear the appropriate status.Pending* if the caller will
@@ -321,7 +332,7 @@ func appendError(allErrors string, prefix string, lasterr string) (
 
 func (z *zedrouter) detectPortMapConflictWithinAdapter(ACLs []types.ACE) bool {
 	matchTypes1 := []string{"protocol"}
-	matchTypes2 := []string{"protocol", "lport"}
+	matchTypes2 := []string{"protocol", "lport", "adapter"}
 	idx1 := 0
 	ruleNum := len(ACLs)
 	for idx1 < ruleNum-1 {
@@ -363,7 +374,7 @@ func (z *zedrouter) detectPortMapConflictWithinAdapter(ACLs []types.ACE) bool {
 // For this, we will match the protocol/lport being same.
 func (z *zedrouter) detectPortMapConflictAcrossAdapters(
 	ACLs []types.ACE, ACLs1 []types.ACE) bool {
-	matchTypes := []string{"protocol", "lport"}
+	matchTypes := []string{"protocol", "lport", "adapter"}
 	for _, ace1 := range ACLs {
 		for _, action := range ace1.Actions {
 			// not a portmap rule
@@ -409,8 +420,7 @@ func (z *zedrouter) matchACEs(ace1 types.ACE, ace2 types.ACE,
 	}
 	for idx, value := range valueList1 {
 		value1 := valueList2[idx]
-		if value == "" || value1 == "" ||
-			value != value1 {
+		if value != value1 {
 			z.log.Functionf("difference for %d: value %s value1 %s",
 				idx, value, value1)
 			return false

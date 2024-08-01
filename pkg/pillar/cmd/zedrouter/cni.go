@@ -318,7 +318,7 @@ func (z *zedrouter) handleCheckPodConnectionRequest(
 }
 
 func (z *zedrouter) niWithDHCP(netInstStatus *types.NetworkInstanceStatus) bool {
-	airGapped := netInstStatus.PortLogicalLabel == ""
+	airGapped := netInstStatus.PortLabel == ""
 	switchNI := netInstStatus.Type == types.NetworkInstanceTypeSwitch
 	return !switchNI || !airGapped
 }

@@ -418,19 +418,34 @@ func parseStaticRoute(route *zconfig.IPRoute, config *types.NetworkInstanceConfi
 	if err != nil {
 		return fmt.Errorf("destination network is invalid: %w", err)
 	}
-	if route.Gateway == "" {
-		return errors.New("missing gateway IP address")
+	if route.Gateway == "" && route.Port == "" {
+		return errors.New("missing both gateway IP address and port label")
 	}
-	gatewayIP := net.ParseIP(route.Gateway)
-	if gatewayIP == nil {
-		return errors.New("gateway IP address is invalid")
+	var gatewayIP net.IP
+	if route.Gateway != "" {
+		gatewayIP = net.ParseIP(route.Gateway)
+		if gatewayIP == nil {
+			return errors.New("gateway IP address is invalid")
+		}
+		if gatewayIP.IsUnspecified() {
+			return errors.New("gateway IP address is all-zeroes")
+		}
 	}
-	if gatewayIP.IsUnspecified() {
-		return errors.New("gateway IP address is all-zeroes")
+	customProbe, err := parseConnectivityProbe(route.GetProbe().GetCustomProbe())
+	if err != nil {
+		return fmt.Errorf("invalid connectivity probe config: %v", err)
 	}
 	config.StaticRoutes = append(config.StaticRoutes, types.IPRouteConfig{
-		DstNetwork: dstNetwork,
-		Gateway:    gatewayIP,
+		DstNetwork:      dstNetwork,
+		Gateway:         gatewayIP,
+		OutputPortLabel: route.Port,
+		PortProbe: types.NIPortProbe{
+			EnabledGwPing:    route.GetProbe().GetEnableGwPing(),
+			GwPingMaxCost:    uint8(route.GetProbe().GetGwPingMaxCost()),
+			UserDefinedProbe: customProbe,
+		},
+		PreferLowerCost:          route.PreferLowerCost,
+		PreferStrongerWwanSignal: route.PreferStrongerWwanSignal,
 	})
 	return nil
 }
@@ -460,17 +475,14 @@ func publishNetworkInstanceConfig(ctx *getconfigContext,
 			DisplayName:         apiConfigEntry.Displayname,
 			Type:                types.NetworkInstanceType(apiConfigEntry.InstType),
 			Activate:            apiConfigEntry.Activate,
+			IpType:              types.AddressType(apiConfigEntry.IpType),
+			PortLabel:           apiConfigEntry.Port.GetName(),
 			PropagateConnRoutes: apiConfigEntry.PropagateConnectedRoutes,
 		}
 		uuidStr := networkInstanceConfig.UUID.String()
 		log.Functionf("publishNetworkInstanceConfig: processing %s %s type %d activate %v",
 			uuidStr, networkInstanceConfig.DisplayName,
 			networkInstanceConfig.Type, networkInstanceConfig.Activate)
-
-		if apiConfigEntry.Port != nil {
-			networkInstanceConfig.PortLogicalLabel = apiConfigEntry.Port.Name
-		}
-		networkInstanceConfig.IpType = types.AddressType(apiConfigEntry.IpType)
 
 		if networkInstanceConfig.Type == types.NetworkInstanceTypeSwitch {
 			// XXX controller should send AddressTypeNone type for switch
@@ -526,6 +538,39 @@ func publishNetworkInstanceConfig(ctx *getconfigContext,
 		ctx.pubNetworkInstanceConfig.Publish(networkInstanceConfig.UUID.String(),
 			networkInstanceConfig)
 	}
+}
+
+func parseConnectivityProbe(probe *zconfig.ConnectivityProbe) (
+	parsedProbe types.ConnectivityProbe, err error) {
+	if probe == nil {
+		return types.ConnectivityProbe{}, nil
+	}
+	switch probe.ProbeMethod {
+	case zconfig.ConnectivityProbeMethod_CONNECTIVITY_PROBE_METHOD_UNSPECIFIED:
+		parsedProbe.Method = types.ConnectivityProbeMethodNone
+	case zconfig.ConnectivityProbeMethod_CONNECTIVITY_PROBE_METHOD_ICMP:
+		parsedProbe.Method = types.ConnectivityProbeMethodICMP
+		parsedProbe.ProbeHost = probe.GetProbeEndpoint().GetHost()
+		if parsedProbe.ProbeHost == "" {
+			return parsedProbe, errors.New("missing endpoint host address for ICMP probe")
+		}
+	case zconfig.ConnectivityProbeMethod_CONNECTIVITY_PROBE_METHOD_TCP:
+		parsedProbe.Method = types.ConnectivityProbeMethodTCP
+		parsedProbe.ProbeHost = probe.GetProbeEndpoint().GetHost()
+		if parsedProbe.ProbeHost == "" {
+			return parsedProbe, errors.New("missing endpoint host address for TCP probe")
+		}
+		probePort := probe.GetProbeEndpoint().GetPort()
+		if probePort == 0 {
+			return parsedProbe, errors.New("missing endpoint port number for TCP probe")
+		}
+		if probePort > 65535 {
+			return parsedProbe, fmt.Errorf("TCP probe port number (%d) is out of range",
+				probePort)
+		}
+		parsedProbe.ProbePort = uint16(probePort)
+	}
+	return parsedProbe, nil
 }
 
 var networkInstancePrevConfigHash []byte
@@ -955,7 +1000,35 @@ func validateAndAssignNetPorts(dpc *types.DevicePortConfig, newPorts []*types.Ne
 		propagateFrom = propagateFromNext
 	}
 
-	// 4. Assign all non-duplicate, validated ports.
+	// 4. Validate shared labels.
+	for _, port := range validatedPorts {
+		var hasInvalidLabel bool
+		for _, label := range port.SharedLabels {
+			if types.IsEveDefinedPortLabel(label) {
+				errStr := fmt.Sprintf(
+					"Port %s: It is forbidden to assign reserved port label '%s'",
+					port.Logicallabel, label)
+				log.Error(errStr)
+				port.RecordFailure(errStr)
+				hasInvalidLabel = true
+			}
+			for _, port2 := range validatedPorts {
+				if label == port2.Logicallabel {
+					errStr := fmt.Sprintf(
+						"Port %s: It is forbidden to use port name '%s' as shared label",
+						port.Logicallabel, label)
+					log.Error(errStr)
+					port.RecordFailure(errStr)
+					hasInvalidLabel = true
+				}
+			}
+		}
+		if !hasInvalidLabel {
+			port.UpdateEveDefinedSharedLabels()
+		}
+	}
+
+	// 5. Assign all non-duplicate, validated ports.
 	for _, port := range validatedPorts {
 		if port.HasError() {
 			port.InvalidConfig = true
@@ -1069,6 +1142,7 @@ func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
 
 	port := &types.NetworkPortConfig{}
 	port.Logicallabel = sysAdapter.Name // XXX Rename field in protobuf?
+	port.SharedLabels = sysAdapter.SharedLabels
 	port.Alias = sysAdapter.Alias
 	port.IsL3Port = true // this one has SystemAdapter directly attached to it
 	lowerLayerName := sysAdapter.LowerLayerName

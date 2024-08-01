@@ -12,7 +12,7 @@ const (
 	DPCBaseRTIndex = 500
 
 	// NIBaseRTIndex : base index for per-NI (network instance) routing tables used
-	// for uplink connectivity (between applications and remote endpoints).
+	// for external connectivity (between applications and remote endpoints).
 	// Routing table ID is a sum of the base with the "bridge number" allocated
 	// (and persisted) for every network instance.
 	NIBaseRTIndex = 800
