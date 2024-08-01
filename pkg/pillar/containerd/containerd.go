@@ -475,16 +475,8 @@ func (client *Client) CtrContainerInfo(ctx context.Context, name string) (int, i
 	return int(t.Pid()), int(stat.ExitStatus), string(stat.Status), nil
 }
 
-// CtrCreateTask creates (but doesn't start) the default task in a pre-existing container and attaches its logging to memlogd
-func (client *Client) CtrCreateTask(ctx context.Context, domainName string) (int, error) {
-	if err := client.verifyCtr(ctx, true); err != nil {
-		return 0, fmt.Errorf("CtrStartContainer: exception while verifying ctrd client: %s", err.Error())
-	}
-	ctr, err := client.CtrLoadContainer(ctx, domainName)
-	if err != nil {
-		return 0, err
-	}
-
+// CtrLogIOCreator creates a cio.Creator with logger
+func (client *Client) CtrLogIOCreator(domainName string) cio.Creator {
 	logger := GetLog()
 
 	io := func(id string) (cio.IO, error) {
@@ -499,12 +491,33 @@ func (client *Client) CtrCreateTask(ctx context.Context, domainName string) (int
 			},
 		}, nil
 	}
-	task, err := ctr.NewTask(ctx, io)
+
+	return io
+}
+
+// CtrWriterCreator creates a cio.Creator with specific writer for stdout/stderr
+func (client *Client) CtrWriterCreator(stdout, stderr io.Writer) cio.Creator {
+	io := cio.NewCreator(cio.WithStreams(nil, stdout, stderr))
+
+	return io
+}
+
+// CtrCreateTask creates (but doesn't start) the default task in a pre-existing container and attaches its logging to memlogd
+func (client *Client) CtrCreateTask(ctx context.Context, domainName string, io cio.Creator) (containerd.Task, error) {
+	if err := client.verifyCtr(ctx, true); err != nil {
+		return nil, fmt.Errorf("CtrStartContainer: exception while verifying ctrd client: %s", err.Error())
+	}
+	ctr, err := client.CtrLoadContainer(ctx, domainName)
 	if err != nil {
-		return 0, err
+		return nil, fmt.Errorf("load container failed: %+v", err)
 	}
 
-	return int(task.Pid()), nil
+	task, err := ctr.NewTask(ctx, io)
+	if err != nil {
+		return nil, fmt.Errorf("new task failed: %+v", err)
+	}
+
+	return task, nil
 }
 
 // CtrListTaskIds returns a list of all known tasks
