@@ -162,6 +162,28 @@ populate_ntp_sources() {
     fi
 }
 
+# Reload NTP sources
+reload_ntp_sources() {
+    ns="$1"
+    echo "$(date -Ins -u) Remove all NTP sources from chronyd"
+    while true; do
+        # Get all sources, skip 2 lines header, take first line
+        ip=$(/usr/bin/chronyc -n sources | tail +3 | head -1 | awk '{print $2}')
+        if [ -z "$ip" ]; then
+            break
+        fi
+        # Delete IP
+        echo "$(date -Ins -u) chronyc delete \"$ip\""
+        /usr/bin/chronyc delete "$ip"
+        ret_code=$?
+        echo "$(date -Ins -u) chronyc: $ret_code"
+        if [ "$ret_code" != "0" ]; then
+            break
+        fi
+    done
+    populate_ntp_sources "$ns"
+}
+
 # Start NTP daemon
 start_ntp_daemon() {
     ns=$(get_ntp_servers)
@@ -185,28 +207,6 @@ start_ntp_daemon() {
     else
         echo "$(date -Ins -u) ERROR: no NTP (chrony) on EVE"
     fi
-}
-
-# Reload NTP sources
-reload_ntp_sources() {
-    ns="$1"
-    echo "$(date -Ins -u) Remove all NTP sources from chronyd"
-    while true; do
-        # Get all sources, skip 2 lines header, take first line
-        ip=$(/usr/bin/chronyc -n sources | tail +3 | head -1 | awk '{print $2}')
-        if [ -z "$ip" ]; then
-            break
-        fi
-        # Delete IP
-        echo "$(date -Ins -u) chronyc delete \"$ip\""
-        /usr/bin/chronyc delete "$ip"
-        ret_code=$?
-        echo "$(date -Ins -u) chronyc: $ret_code"
-        if [ "$ret_code" != "0" ]; then
-            break
-        fi
-    done
-    populate_ntp_sources "$ns"
 }
 
 # If zedbox is already running we don't have to start it.
