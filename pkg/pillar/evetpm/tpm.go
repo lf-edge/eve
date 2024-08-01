@@ -36,8 +36,8 @@ const (
 	//TpmSRKHdl is the well known TPM permanent handle for Storage key
 	TpmSRKHdl tpmutil.Handle = 0x81000002
 
-	//TpmAKHdl is the well known TPM permanent handle for AIK key
-	TpmAKHdl tpmutil.Handle = 0x81000003
+	//TpmAIKHdl is the well known TPM permanent handle for AIK key
+	TpmAIKHdl tpmutil.Handle = 0x81000003
 
 	//TpmQuoteKeyHdl is the well known TPM permanent handle for PCR Quote signing key
 	TpmQuoteKeyHdl tpmutil.Handle = 0x81000004

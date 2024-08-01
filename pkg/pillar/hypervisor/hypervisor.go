@@ -5,9 +5,11 @@ package hypervisor
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -237,4 +239,31 @@ func PCISameControllerGeneric(id1 string, id2 string) bool {
 	}
 
 	return tag1 == tag2
+}
+
+func launchSwtpmAndWait(id string, seconds int) (string, error) {
+	conn, err := net.Dial("unix", types.TpmdControlSocket)
+	if err != nil {
+		return "", err
+	}
+	defer conn.Close()
+
+	pidPath := fmt.Sprintf(types.SwtpmPidPath, id)
+	sockPath := fmt.Sprintf(types.SwtpmSocketPath, id)
+	// Send the id to the swtpm control socket, so it can launch the swtpm.
+	_, err = conn.Write([]byte(fmt.Sprintf("%s\n", id)))
+	if err != nil {
+		return "", err
+	}
+
+	// It can happen that swtpm is launched, pid created (and checked) and then
+	// swtpm dies due to an error! In that case we don't want to prevent the vm
+	// form starting. So launch swtpm, wait a bit and then check the pid file to
+	// make sure it is still alive.
+	time.Sleep(time.Duration(seconds) * time.Second)
+	if fileutils.FileExists(nil, pidPath) {
+		return sockPath, nil
+	}
+
+	return "", fmt.Errorf("failed to launch swtmp, execced maximum %d seconds wait time", seconds)
 }
