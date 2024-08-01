@@ -50,7 +50,6 @@
 /pkg/pillar/nireconciler/     @milan-zededa
 /pkg/pillar/nistate/          @milan-zededa
 /pkg/pillar/sriov/            @uncleDecart
-/pkg/pillar/uplinkprober/     @milan-zededa
 /pkg/pillar/portprober/       @milan-zededa
 /pkg/pillar/utils/            @milan-zededa
 /pkg/pillar/volumehandlers/   @OhmSpectator
