@@ -345,6 +345,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		AgentName:     "zedagent",
 		MyAgentName:   agentName,
 		TopicImpl:     types.EdgeNodeClusterConfig{},
+		Persistent:    true,
 		Activate:      false,
 		Ctx:           &zedkubeCtx,
 		CreateHandler: handleEdgeNodeClusterConfigCreate,
