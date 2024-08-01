@@ -6,7 +6,7 @@
 
 # Script version, don't forget to bump up once something is changed
 
-VERSION=26
+VERSION=27
 # Add required packages here, it will be passed to "apk add".
 # Once something added here don't forget to add the same package
 # to the Dockerfile ('ENV PKGS' line) of the debug container,
@@ -16,9 +16,10 @@ VERSION=26
 PKG_DEPS="procps tar dmidecode iptables dhcpcd"
 
 DATE=$(date "+%Y-%m-%d-%H-%M-%S")
-INFO_DIR="eve-info-v$VERSION-$DATE"
-TARBALL_FILE="/persist/$INFO_DIR.tar.gz"
+INFO_DIR_SUFFIX="eve-info/eve-info-v$VERSION-$DATE"
+TARBALL_FILE="/persist/$INFO_DIR_SUFFIX.tar.gz"
 SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
+mkdir -p "/persist/$INFO_DIR_SUFFIX"
 
 READ_LOGS_DEV=
 READ_LOGS_APP=
@@ -157,7 +158,7 @@ fi
 # Create temporary dir
 echo "- basic setup"
 TMP_DIR=$(mktemp -d -t -p /persist/tmp/)
-DIR="$TMP_DIR/$INFO_DIR"
+DIR="$TMP_DIR/$INFO_DIR_SUFFIX"
 mkdir -p "$DIR"
 mkdir -p "$DIR/network"
 
@@ -462,9 +463,9 @@ fi
 # --dereference                        follow symlinks
 echo "- tar/gzip"
 if check_tar_flags; then
-  tar -C "$TMP_DIR" --exclude='root-run/run' --exclude='root-run/containerd-user' --ignore-failed-read --warning=none --dereference -czf "$TARBALL_FILE" "$INFO_DIR"
+  tar -C "$TMP_DIR" --exclude='root-run/run' --exclude='root-run/containerd-user' --ignore-failed-read --warning=none --dereference -czf "$TARBALL_FILE" "$INFO_DIR_SUFFIX"
 else
-  tar -C "$TMP_DIR" --exclude='root-run/run' --exclude='root-run/containerd-user' --dereference -czf "$TARBALL_FILE" "$INFO_DIR"
+  tar -C "$TMP_DIR" --exclude='root-run/run' --exclude='root-run/containerd-user' --dereference -czf "$TARBALL_FILE" "$INFO_DIR_SUFFIX"
 fi
 rm -rf "$TMP_DIR"
 sync
