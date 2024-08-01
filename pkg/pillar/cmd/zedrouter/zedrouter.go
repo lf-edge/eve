@@ -27,7 +27,9 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -42,9 +44,10 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/nireconciler"
 	"github.com/lf-edge/eve/pkg/pillar/nistate"
 	"github.com/lf-edge/eve/pkg/pillar/objtonum"
+	"github.com/lf-edge/eve/pkg/pillar/portprober"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/uplinkprober"
+	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
 	"github.com/lf-edge/eve/pkg/pillar/utils/wait"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	"github.com/sirupsen/logrus"
@@ -76,6 +79,8 @@ type zedrouter struct {
 	enableArpSnooping  bool // enable/disable switch NI arp snooping
 	localLegacyMACAddr bool // switch to legacy MAC address generation
 
+	controllerHostname string
+	controllerPort     uint16
 	agentStartTime     time.Time
 	receivedConfigTime time.Time
 	triggerNumGC       bool // For appNum and bridgeNum
@@ -90,8 +95,9 @@ type zedrouter struct {
 	niStateCollector nistate.Collector
 	networkMonitor   netmonitor.NetworkMonitor
 	niReconciler     nireconciler.NIReconciler
-	reachProber      uplinkprober.ReachabilityProber
-	uplinkProber     *uplinkprober.UplinkProber
+	reachProberICMP  portprober.ReachabilityProber
+	reachProberTCP   portprober.ReachabilityProber
+	portProber       *portprober.PortProber
 
 	// Number allocators
 	appNumAllocator     *objtonum.Allocator
@@ -100,8 +106,9 @@ type zedrouter struct {
 	appIntfNumAllocator map[string]*objtonum.Allocator // key: network instance UUID as string
 	appMACGeneratorMap  objtonum.Map
 
-	// To collect uplink info
+	// To collect port info
 	subDeviceNetworkStatus pubsub.Subscription
+	subWwanMetrics         pubsub.Subscription
 
 	// Configuration for Network Instances
 	subNetworkInstanceConfig pubsub.Subscription
@@ -215,8 +222,19 @@ func (z *zedrouter) init() (err error) {
 	gcp := *types.DefaultConfigItemValueMap()
 	z.appContainerStatsInterval = gcp.GlobalValueInt(types.AppContainerStatsInterval)
 
+	content, err := os.ReadFile(types.ServerFileName)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to read the controller hostname from file %s: %v",
+			types.ServerFileName, err)
+	}
+	z.controllerHostname = string(content)
+	z.controllerHostname = strings.TrimSpace(z.controllerHostname)
+	z.controllerPort = 443
+	if host, port, err := net.SplitHostPort(z.controllerHostname); err == nil {
+		z.controllerHostname = host
+		if portNum, err := strconv.Atoi(port); err == nil && portNum <= 65535 {
+			z.controllerPort = uint16(portNum)
+		}
 	}
 
 	if err = z.ensureDir(runDirname); err != nil {
@@ -237,9 +255,8 @@ func (z *zedrouter) init() (err error) {
 	// Initialize Zedrouter components (for Linux network stack).
 	z.networkMonitor = &netmonitor.LinuxNetworkMonitor{Log: z.log}
 	z.niStateCollector = nistate.NewLinuxCollector(z.log)
-	controllerReachProber := uplinkprober.NewControllerReachProber(
-		z.log, agentName, z.zedcloudMetrics)
-	z.reachProber = controllerReachProber
+	z.reachProberICMP = &portprober.LinuxReachabilityProberICMP{}
+	z.reachProberTCP = &portprober.LinuxReachabilityProberTCP{}
 	z.niReconciler = nireconciler.NewLinuxNIReconciler(z.log, z.logger, z.networkMonitor,
 		z.metadataServer.MakeMetadataHandler(), true, true,
 		z.withKubeNetworking)
@@ -301,13 +318,14 @@ func (z *zedrouter) run(ctx context.Context) (err error) {
 	reconcilerUpdates := z.niReconciler.WatchReconcilerUpdates()
 	flowUpdates := z.niStateCollector.WatchFlows()
 	ipAssignUpdates := z.niStateCollector.WatchIPAssignments()
-	z.uplinkProber = uplinkprober.NewUplinkProber(
-		z.log, uplinkprober.DefaultConfig(), z.reachProber)
-	probeUpdates := z.uplinkProber.WatchProbeUpdates()
+	z.portProber = portprober.NewPortProber(
+		z.log, portprober.DefaultConfig(), z.reachProberICMP, z.reachProberTCP)
+	probeUpdates := z.portProber.WatchProbeUpdates()
 
 	// Activate all subscriptions.
 	inactiveSubs := []pubsub.Subscription{
 		z.subDeviceNetworkStatus,
+		z.subWwanMetrics,
 		z.subNetworkInstanceConfig,
 		z.subAppNetworkConfig,
 		z.subAppNetworkConfigAg,
@@ -335,6 +353,9 @@ func (z *zedrouter) run(ctx context.Context) (err error) {
 
 		case change := <-z.subDeviceNetworkStatus.MsgChan():
 			z.subDeviceNetworkStatus.ProcessChange(change)
+
+		case change := <-z.subWwanMetrics.MsgChan():
+			z.subWwanMetrics.ProcessChange(change)
 
 		case change := <-z.subNetworkInstanceConfig.MsgChan():
 			z.subNetworkInstanceConfig.ProcessChange(change)
@@ -455,7 +476,8 @@ func (z *zedrouter) run(ctx context.Context) (err error) {
 					z.log.Errorf("Failed to get config for network instance %s", niKey)
 					continue
 				}
-				z.doUpdateNIUplink(probeUpdate.SelectedUplinkLL, status, *config)
+				z.updateNIRoutePort(probeUpdate.MPRoute, probeUpdate.SelectedPortLL,
+					status, *config)
 			}
 			z.pubSub.CheckMaxTimeTopic(agentName, "probeUpdates", start,
 				warningTime, errorTime)
@@ -584,6 +606,20 @@ func (z *zedrouter) initSubscriptions() (err error) {
 		return err
 	}
 
+	z.subWwanMetrics, err = z.pubSub.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "wwan",
+		MyAgentName:   agentName,
+		TopicImpl:     types.WwanMetrics{},
+		CreateHandler: z.handleWwanMetricsCreate,
+		ModifyHandler: z.handleWwanMetricsModify,
+		Activate:      false,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
+	if err != nil {
+		return err
+	}
+
 	z.subNetworkInstanceConfig, err = z.pubSub.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "zedagent",
 		MyAgentName:   agentName,
@@ -676,6 +712,14 @@ func (z *zedrouter) processNIReconcileStatus(recStatus nireconciler.NIReconcileS
 			changed = true
 		}
 	}
+	if !generics.EqualSetsFn(niStatus.CurrentRoutes, recStatus.Routes,
+		func(r1, r2 types.IPRouteInfo) bool {
+			return r1.Equal(r2)
+		}) {
+		niStatus.CurrentRoutes = recStatus.Routes
+		changed = true
+	}
+
 	return changed
 }
 
@@ -918,7 +962,6 @@ func (z *zedrouter) publishNetworkInstanceMetricsAll(nms *types.NetworkMetrics) 
 
 func (z *zedrouter) createNetworkInstanceMetrics(status *types.NetworkInstanceStatus,
 	nms *types.NetworkMetrics) *types.NetworkInstanceMetrics {
-
 	niMetrics := types.NetworkInstanceMetrics{
 		UUIDandVersion: status.UUIDandVersion,
 		DisplayName:    status.DisplayName,
@@ -935,16 +978,12 @@ func (z *zedrouter) createNetworkInstanceMetrics(status *types.NetworkInstanceSt
 		}
 	}
 	niMetrics.NetworkMetrics = netMetrics
-
-	if status.WithUplinkProbing() {
-		probeMetrics, err := z.uplinkProber.GetProbeMetrics(status.UUID)
-		if err == nil {
-			niMetrics.ProbeMetrics = probeMetrics
-		} else {
-			z.log.Error(err)
-		}
+	probeMetrics, err := z.portProber.GetProbeMetrics(status.UUID)
+	if err == nil {
+		niMetrics.ProbeMetrics = probeMetrics
+	} else {
+		z.log.Error(err)
 	}
-
 	niMetrics.VlanMetrics.NumTrunkPorts = status.NumTrunkPorts
 	niMetrics.VlanMetrics.VlanCounts = status.VlanMap
 	return &niMetrics

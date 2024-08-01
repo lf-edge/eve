@@ -880,7 +880,7 @@ func printOutput(ctx *diagContext, caller string) {
 		// fields are set and Dhcp type; proxy info order
 		ifname := port.IfName
 		isMgmt := types.IsMgmtPort(*ctx.DeviceNetworkStatus, ifname)
-		priority := types.GetPortCost(*ctx.DeviceNetworkStatus,
+		cost := types.GetPortCost(*ctx.DeviceNetworkStatus,
 			ifname)
 		if isMgmt {
 			mgmtPorts++
@@ -892,12 +892,10 @@ func printOutput(ctx *diagContext, caller string) {
 		}
 		typeStr := "use: app-shared "
 		if isMgmt {
-			if priority == types.PortCostMin {
-				typeStr = "use: mgmt "
-			} else {
-				typeStr = fmt.Sprintf("use: mgmt (cost %d) ",
-					priority)
-			}
+			typeStr = "use: mgmt "
+		}
+		if cost > types.PortCostMin {
+			typeStr += fmt.Sprintf("(cost %d) ", cost)
 		}
 		macStr := ""
 		if len(port.MacAddr) != 0 {

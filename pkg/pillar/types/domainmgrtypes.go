@@ -396,8 +396,6 @@ type VlanInfo struct {
 	Start   uint32
 	End     uint32
 	IsTrunk bool
-	// Uplink interface of the corresponding switch NI.
-	SwitchUplink string
 }
 
 // VifConfig configure vif

@@ -120,7 +120,7 @@ func (z *zedrouter) lookupOrAllocateIPv4ForVIF(niStatus *types.NetworkInstanceSt
 	// Lookup to see if it is already allocated.
 	if ipAddr == nil {
 		addrs := niStatus.IPAssignments[adapterStatus.Mac.String()]
-		if !isEmptyIP(addrs.IPv4Addr) {
+		if !netutils.IsEmptyIP(addrs.IPv4Addr) {
 			z.log.Functionf("lookupOrAllocateIPv4(NI:%v, app:%v): found IP %v for MAC %v",
 				networkID, appID, addrs.IPv4Addr, adapterStatus.Mac)
 			ipAddr = addrs.IPv4Addr
@@ -189,7 +189,7 @@ func (z *zedrouter) recordAssignedIPsToAdapterStatus(adapter *types.AppNetAdapte
 		return
 	}
 	adapter.AllocatedIPv4Addr = vifAddrs.IPv4Addr
-	if !isEmptyIP(adapter.AppIPAddr) &&
+	if !netutils.IsEmptyIP(adapter.AppIPAddr) &&
 		!adapter.AppIPAddr.Equal(adapter.AllocatedIPv4Addr) {
 		// Config and status do not match.
 		adapter.IPAddrMisMatch = true
@@ -197,7 +197,7 @@ func (z *zedrouter) recordAssignedIPsToAdapterStatus(adapter *types.AppNetAdapte
 		adapter.IPAddrMisMatch = false
 	}
 	adapter.AllocatedIPv6List = vifAddrs.IPv6Addrs
-	adapter.IPv4Assigned = !isEmptyIP(vifAddrs.IPv4Addr)
+	adapter.IPv4Assigned = !netutils.IsEmptyIP(vifAddrs.IPv4Addr)
 }
 
 func (z *zedrouter) removeAssignedIPsFromAppNetStatus(status *types.AppNetworkStatus) {
@@ -212,8 +212,4 @@ func (z *zedrouter) removeAssignedIPsFromAdapterStatus(adapterStatus *types.AppN
 	adapterStatus.AllocatedIPv4Addr = nil
 	adapterStatus.IPAddrMisMatch = false
 	adapterStatus.IPv4Assigned = false
-}
-
-func isEmptyIP(ip net.IP) bool {
-	return ip == nil || ip.Equal(net.IP{})
 }

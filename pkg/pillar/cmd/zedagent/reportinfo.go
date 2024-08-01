@@ -645,7 +645,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext, dest destinationBitset) {
 	// We report the snapshot capability despite the fact that we support snapshots only
 	// for file-based volumes. If a controller tries to make a snapshot of ZFS-based volume
 	// device returns a runtime error.
-	ReportDeviceInfo.ApiCapability = info.APICapability_API_CAPABILITY_NETWORK_INSTANCE_ROUTING
+	ReportDeviceInfo.ApiCapability = info.APICapability_API_CAPABILITY_ADAPTER_USER_LABELS
 
 	// Report if there is a local override of profile
 	if ctx.getconfigCtx.sideController.currentProfile !=

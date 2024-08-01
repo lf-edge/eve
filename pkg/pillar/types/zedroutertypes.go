@@ -320,9 +320,10 @@ type ACE struct {
 
 // ACEMatch determines which traffic is matched by a given ACE.
 // The Type can be "ip" or "host" (aka domain name), "eidset", "protocol",
-// "fport", or "lport" for now. The ip and host matches the remote IP/hostname.
+// "fport", "lport" or "adapter" for now. The "ip" and "host" matches the remote IP/hostname.
 // The host matching is suffix-matching thus zededa.net matches *.zededa.net.
-// XXX Need "interface"... e.g. "uplink" or "eth1"? Implicit in network used?
+// "adapter" matches devices ports by user-configured or EVE-assigned shared port
+// labels and applies the ACE only to flows transmitted through them.
 // For now the matches are bidirectional.
 // XXX Add directionality? Different rate limits in different directions?
 // Value is always a string.
@@ -454,7 +455,7 @@ type NetworkInstanceMetrics struct {
 	Type           NetworkInstanceType
 	BridgeName     string
 	NetworkMetrics NetworkMetrics
-	ProbeMetrics   ProbeMetrics
+	ProbeMetrics   []ProbeMetrics
 	VlanMetrics    VlanMetrics
 }
 
@@ -653,9 +654,11 @@ type NetworkInstanceConfig struct {
 	// Activate - Activate the config.
 	Activate bool
 
-	// PortLogicalLabel - references port(s) from DevicePortConfig.
-	// Can be a specific logicallabel for an interface, or a tag like "uplink"
-	PortLogicalLabel string
+	// PortLabel references port(s) from DevicePortConfig to use for external
+	// connectivity.
+	// Can be a specific logicallabel matching a single port, or a shared label,
+	// such as "uplink", potentially matching multiple device ports.
+	PortLabel string
 
 	// IP configuration for the Application
 	IpType          AddressType
@@ -767,7 +770,7 @@ func (r IPRouteConfig) String() string {
 	probe := fmt.Sprintf("{enabledGwPing=%t, gwPingMaxCost=%d, userProbe=%s}",
 		r.PortProbe.EnabledGwPing, r.PortProbe.GwPingMaxCost,
 		r.PortProbe.UserDefinedProbe.String())
-	return fmt.Sprintf("IPRoute: {dst=%s, gw=%s, port=%s, probe=%s, "+
+	return fmt.Sprintf("IP Route: {dst=%s, gw=%s, port=%s, probe=%s, "+
 		"preferLowerCost=%t, preferStrongerWwanSignal=%t}",
 		r.DstNetwork.String(), r.Gateway.String(), r.OutputPortLabel, probe,
 		r.PreferLowerCost, r.PreferStrongerWwanSignal)
@@ -846,28 +849,12 @@ func (config *NetworkInstanceConfig) IsIPv6() bool {
 	return false
 }
 
-// WithUplinkProbing returns true if the network instance is eligible for uplink
-// probing (see pkg/pillar/uplinkprober).
-// Uplink probing is performed only for L3 networks with non-empty "shared" uplink
-// label, matching a subset of uplink ports.
-// Even if a network instance is eligible for probing as determined by this method,
-// the actual process of connectivity probing may still be inactive if there are
-// no uplink ports available that match the label.
-func (config *NetworkInstanceConfig) WithUplinkProbing() bool {
-	switch config.Type {
-	case NetworkInstanceTypeLocal:
-		return IsEveDefinedPortLabel(config.PortLogicalLabel)
-	default:
-		return false
-	}
-}
-
-// IsUsingUplinkBridge returns true if the network instance is using the bridge
-// created (by NIM) for the uplink port, instead of creating its own bridge.
-func (config *NetworkInstanceConfig) IsUsingUplinkBridge() bool {
+// IsUsingPortBridge returns true if the network instance is using the bridge
+// created (by NIM) for the selected port, instead of creating its own bridge.
+func (config *NetworkInstanceConfig) IsUsingPortBridge() bool {
 	switch config.Type {
 	case NetworkInstanceTypeSwitch:
-		airGapped := config.PortLogicalLabel == ""
+		airGapped := config.PortLabel == ""
 		return !airGapped
 	default:
 		return false
@@ -914,24 +901,53 @@ type NetworkInstanceStatus struct {
 	// with the device port MTU.
 	MTU uint16
 	// Error set when the MTU configured for NI is in conflict with the MTU configured
-	// for the associated port (e.g. NI MTU is higher than MTU of the uplink port).
+	// for the associated port (e.g. NI MTU is higher than MTU of an associated device
+	// port).
 	MTUConflictErr ErrorAndTime
 
-	// Decided by local/remote probing
-	SelectedUplinkLogicalLabel string
-	SelectedUplinkIntfName     string
+	// Labels of device ports used for external connectivity.
+	// The list is empty for air-gapped network instances.
+	Ports []string
+	// List of NTP servers published to applications connected to this network instance.
+	// This includes the NTP server from the NI config (if any) and all NTP servers
+	// associated with ports used by the network instance for external connectivity.
+	NTPServers []net.IP
+	// The intended state of the routing table.
+	// Includes user-configured static routes and potentially also automatically
+	// generated default route.
+	IntendedRoutes []IPRouteStatus
+	// The actual state of the routing table.
+	// This includes connected routes (for ports, not bridge), DHCP-received routes,
+	// user-defined static routes (NetworkInstanceConfig.static_routes) and the default
+	// route (if any). Note that some user-defined static routes might not be applied
+	// (and thus not reported here) if they do not match IP config of currently used
+	// device ports.
+	// Additionally, static routes with shared port labels (matching multiple ports)
+	// are reported here each with the logical label of the (single) port, currently
+	// selected for the route (selected based on connectivity status, port costs, wwan
+	// signal strength, etc.).
+	CurrentRoutes []IPRouteInfo
 
-	// True if uplink probing is running
-	RunningUplinkProbing bool
-
-	// Error set when NI fails to use the configured uplink port for whatever reason.
-	UplinkErr ErrorAndTime
+	// Error set when NI fails to use the configured device port(s) for whatever reason.
+	PortErr ErrorAndTime
 
 	// Error set when the network instance config reconciliation fails.
 	ReconcileErr ErrorAndTime
 
 	// Final error reported for the NetworkInstance to the controller.
 	// It is a combination of all possible errors stored across *Err attributes.
+	ErrorAndTime
+}
+
+// IPRouteStatus contains state data for a user-configured static route.
+type IPRouteStatus struct {
+	IPRouteConfig
+	// Logical label of the output device port for the routed traffic.
+	// Empty if no port has been selected yet.
+	SelectedPort string
+	// True if port probing is running.
+	RunningPortProbing bool
+	// Error set when zedrouter fails to apply this route.
 	ErrorAndTime
 }
 
@@ -949,6 +965,15 @@ type IPRouteInfo struct {
 	// Empty if the gateway is external (not one of the apps but outside the device).
 	// In that case, OutputPort is defined instead.
 	GatewayApp uuid.UUID
+}
+
+// IsDefaultRoute returns true if this is a default route, i.e. matches all destinations.
+func (r IPRouteInfo) IsDefaultRoute() bool {
+	if r.DstNetwork == nil {
+		return true
+	}
+	ones, _ := r.DstNetwork.Mask.Size()
+	return r.DstNetwork.IP.IsUnspecified() && ones == 0
 }
 
 // Equal compares two IP routes for equality.
@@ -1015,8 +1040,11 @@ func (status *NetworkInstanceStatus) IsIpAssigned(ip net.IP) bool {
 // CombineErrors combines all errors raised for the network instance into one error.
 func (status *NetworkInstanceStatus) CombineErrors() (combinedErr ErrorAndTime) {
 	errorSlice := []ErrorAndTime{status.ValidationErr, status.AllocationErr,
-		status.IPConflictErr, status.MTUConflictErr, status.UplinkErr,
+		status.IPConflictErr, status.MTUConflictErr, status.PortErr,
 		status.ReconcileErr}
+	for _, route := range status.IntendedRoutes {
+		errorSlice = append(errorSlice, route.ErrorAndTime)
+	}
 	var (
 		oldestTime      time.Time
 		highestSeverity ErrorSeverity
@@ -1043,9 +1071,11 @@ func (status *NetworkInstanceStatus) CombineErrors() (combinedErr ErrorAndTime) 
 // Note that MTUConflictErr does not block NI activation. When the port and NI MTU
 // are different, we flag the NI with an error but fall back to the port MTU and activate
 // the NI with that MTU value.
+// Also, route errors (IPRouteStatus.Error) are typically not very serious and do not block
+// NI from being activated.
 func (status NetworkInstanceStatus) EligibleForActivate() bool {
 	return !status.ValidationErr.HasError() && !status.AllocationErr.HasError() &&
-		!status.IPConflictErr.HasError() && !status.UplinkErr.HasError()
+		!status.IPConflictErr.HasError() && !status.PortErr.HasError()
 }
 
 // IPTuple :

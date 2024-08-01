@@ -228,7 +228,7 @@ func (lc *LinuxCollector) GetNetworkMetrics() (types.NetworkMetrics, error) {
 			ipVer = addrTypeToIPVer(lc.nis[br.NI].config.IpType)
 			brIfName = intf.Name
 		} else {
-			// Not part of any NI, probably uplink interface.
+			// Not part of any NI, probably device port.
 			metrics = append(metrics, metric)
 			continue
 		}
