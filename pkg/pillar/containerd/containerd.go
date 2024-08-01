@@ -499,7 +499,8 @@ func (client *Client) CtrLogIOCreator(domainName string) cio.Creator {
 
 // CtrWriterCreator creates a cio.Creator with specific writer for stdout/stderr
 func (client *Client) CtrWriterCreator(stdout, stderr io.Writer) cio.Creator {
-	io := cio.NewCreator(cio.WithStreams(nil, stdout, stderr))
+	cl := io.MultiReader()
+	io := cio.NewCreator(cio.WithStreams(cl, stdout, stderr))
 
 	return io
 }
@@ -561,9 +562,16 @@ func (client *Client) CtrNewContainerWithPersist(ctx context.Context, name strin
 		Readonly: false,
 	}
 
+	mount := specs.Mount{
+		Destination: "/persist",
+		Type:        "bind",
+		Source:      "/persist",
+		Options:     []string{"bind", "rw"},
+	}
 	specOpts := []oci.SpecOpts{
 		oci.WithDefaultSpec(),
 		oci.WithImageConfig(containerImage),
+		oci.WithMounts([]specs.Mount{mount}),
 		oci.WithDefaultUnixDevices,
 	}
 
