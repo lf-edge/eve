@@ -142,7 +142,9 @@ func (ctx ctrdContext) Create(domainName string, cfgFilename string, config *typ
 	defer done()
 	_ = ctx.ctrdClient.CtrStopContainer(ctrdCtx, domainName, true)
 
-	return ctx.ctrdClient.CtrCreateTask(ctrdCtx, domainName)
+	task, err := ctx.ctrdClient.CtrCreateTask(ctrdCtx, domainName, ctx.ctrdClient.CtrLogIOCreator(domainName))
+
+	return int(task.Pid()), err
 }
 
 func (ctx ctrdContext) Start(domainName string) error {
