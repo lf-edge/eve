@@ -106,6 +106,11 @@ local-analyze-results:
 	cat $(RESULTS_DIR)/*/allocations_pillar.out | cut -d";" -f3- | jq -r .msg | grep 'alloc' | awk '{bytes += $$2;} END {print "Total bytes allocated:", bytes, "bytes."}'
 	go tool pprof -http=:8080 $(RESULTS_DIR)/zedbox $(RESULTS_DIR)/*/heap_pillar.out
 
+local-install-psi-requirements:
+	pip3 install -r $(STATISTICS_COLLECTOR_DIR)/requirements.txt
+
+local-view-psi-stats: local-get-results local-install-psi-requirements
+	python3 $(STATISTICS_COLLECTOR_DIR)/visualize.py $(RESULTS_DIR)/psi_stats.txt
 
 # Help
 
@@ -126,5 +131,6 @@ help:
 	@echo "  local-clean-results: Remove the results from the local machine"
 	@echo "  local-clean-results-on-eve: Remove the results from the local EVE"
 	@echo "  local-analyze-results: Analyze the results that were fetched from the local EVE with the get-results target"
+	@echo "  local-view-psi-stats: Visualize the PSI statistics"
 
-.PHONY: all clean dist-clean local-kill-monitor local-deploy local-get-results local-clean-results local-clean-results-on-eve local-analyze-results
+.PHONY: all clean dist-clean local-kill-monitor local-deploy local-get-results local-clean-results local-clean-results-on-eve local-analyze-results local-view-psi-stats
