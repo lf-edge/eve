@@ -354,3 +354,44 @@ It will allocate 100Mb of memory and release it after user presses Enter.
 It's worth mentioning that if you run the tool from an ssh session, it will
 allocate memory in the ssh session cgroup, that is exactly a part of the eve
 cgroup. So, it will trigger the eve cgroup memory event.
+
+## PSI statistics collector
+
+There is a tool that can be used to collect the PSI statistics from the EVE.
+The PSI is a kernel feature that provides information about the pressure on the
+memory, CPU, and IO subsystems. In our case, we are interested in the memory
+pressure.
+
+The tool is built using the Makefile:
+
+```shell
+$ make statistics-collector
+```
+
+It will create a `statistics-collector` binary in the `bin` directory. The
+binary can be copied to the EVE system and run from the /persist directory.
+If used in local setup, the tool can be deployed to the EVE system using the
+`local-deploy-statistics-collector` target.
+
+The tool collects the PSI statistics every second and writes them to the
+output file in the `/persist/memory-monitor/output` directory. The output file
+is named `psi_stats.txt`.
+
+To analyze the PSI statistics, you can use the visualization tool that is
+located in the `statistics-visualizer` directory. The tool is written in Python
+and creates an interactive plot of the PSI statistics. To run the tool, you need
+to install the required Python packages:
+
+```shell
+$ pip install -r src/statistics-collector/requirements.txt
+```
+
+Then, you can run the tool:
+
+```shell
+$ python src/statistics-collector/statistics-collector/visualize.py /path/to/psi_stats.txt
+```
+
+In the local setup, the tool can be run using the `local-view-psi-stats` target.
+It will copy the `psi_stats.txt` file from the EVE system (using the
+`local-get-results` target) and run the visualization tool.
