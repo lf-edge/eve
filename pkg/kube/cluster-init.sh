@@ -8,7 +8,6 @@ KUBEVIRT_VERSION=v1.1.0
 LONGHORN_VERSION=v1.6.2
 CDI_VERSION=v1.54.0
 NODE_IP=""
-MAX_K3S_RESTARTS=10
 RESTART_COUNT=0
 K3S_LOG_DIR="/persist/kubelog"
 INSTALL_LOG="${K3S_LOG_DIR}/k3s-install.log"
@@ -30,6 +29,7 @@ INITIAL_WAIT_TIME=5
 MAX_WAIT_TIME=$((10 * 60)) # 10 minutes in seconds, exponential backoff for k3s restart
 current_wait_time=$INITIAL_WAIT_TIME
 SAVE_KUBE_VAR_LIB_DIR="/persist/kube-save-var-lib"
+CLUSTER_WAIT_FILE="/run/kube/cluster-change-wait-ongoing"
 
 logmsg() {
         local MSG
@@ -409,6 +409,15 @@ longhorn_post_install_config() {
 }
 
 check_start_k3s() {
+  # the cluster change code is in another task loop, so if the cluster wait is nogoing
+  # don't go to start k3s in this time. wait also
+  if [ -f "$CLUSTER_WAIT_FILE" ]; then
+        logmsg "Cluster wait ongoing, wait for it before starting k3s"
+        while [ -f "$CLUSTER_WAIT_FILE" ]; do
+                sleep 5
+        done
+  fi
+
   pgrep -f "k3s server" > /dev/null 2>&1
   if [ $? -eq 1 ]; then
         RESTART_COUNT=$((RESTART_COUNT+1))
@@ -757,7 +766,9 @@ check_cluster_config_change() {
             touch /var/lib/edge-node-cluster-mode
 
             # rotate the token with the new token
-            change_to_new_token
+            if [ "$is_bootstrap" = "true" ]; then
+                change_to_new_token
+            fi
 
             # remove previous multus config
             remove_multus_cni
@@ -877,6 +888,7 @@ EOF
         logmsg "Check if the Endpoint https://$join_serverIP:6443 is in cluster mode, and wait if not..."
         # Check if the join Server is available by kubernetes, wait here until it is ready
         counter=0
+        touch "$CLUSTER_WAIT_FILE"
         while true; do
           if curl --insecure --max-time 2 "https://$join_serverIP:6443" >/dev/null 2>&1; then
             counter=$((counter+1))
@@ -893,6 +905,7 @@ EOF
                 fi
             else
                 logmsg "Server is in 'cluster' status. done"
+                rm "$CLUSTER_WAIT_FILE"
                 break
             fi
           fi
