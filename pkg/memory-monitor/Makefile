@@ -32,7 +32,15 @@ $(BIN_DIR)/pressure: $(PRESSURE_OBJ)
 	$(CC) $(CFLAGS) -o $@ $^
 pressure: $(BIN_DIR)/pressure
 
-TARGETS=memory-monitor pressure
+STATISTICS_COLLECTOR_DIR=$(SRC_DIR)/statistics-collector
+STATISTICS_COLLECTOR_SRC=$(wildcard $(STATISTICS_COLLECTOR_DIR)/*.c)
+STATISTICS_COLLECTOR_OBJ=$(patsubst $(SRC_DIR)/%.c,$(OBJ_DIR)/%.o,$(STATISTICS_COLLECTOR_SRC))
+$(BIN_DIR)/statistics-collector: $(STATISTICS_COLLECTOR_OBJ)
+	@mkdir -p $(BIN_DIR)
+	$(CC) $(CFLAGS) -o $@ $^
+statistics-collector: $(BIN_DIR)/statistics-collector
+
+TARGETS=memory-monitor pressure statistics-collector
 
 all: $(TARGETS)
 
@@ -74,6 +82,12 @@ local-deploy: dist local-kill-monitor
 local-deploy-pressure: pressure
 	scp -O bin/pressure local_eve:/persist/memory-monitor
 
+local-kill-statistics-collector:
+	ssh local_eve killall -9 statistics-collector || true
+
+local-deploy-statistics-collector: statistics-collector local-kill-statistics-collector
+	scp -O bin/statistics-collector local_eve:/persist/memory-monitor/statistics-collector
+
 local-clean-on-eve:
 	ssh local_eve rm -rf /persist/memory-monitor
 
@@ -103,8 +117,11 @@ help:
 	@echo "  dist-clean: Remove the distribution directory"
 	@echo "  monitor: Build the monitor, put the binary in bin/monitor"
 	@echo "  pressure: Build the pressure tool, put the binary in bin/pressure"
+	@echo "  statistics-collector: Build the statistics collector, put the binary in bin/statistics-collector"
 	@echo "  local-kill-monitor: Kill the monitor on the local EVE"
 	@echo "  local-deploy: Deploy the monitor on the local EVE"
+	@echo "  local-deploy-pressure: Deploy the pressure tool on the local EVE"
+	@echo "  local-deploy-statistics-collector: Deploy the system-wide monitor on the local EVE"
 	@echo "  local-get-results: Get the results from the local EVE"
 	@echo "  local-clean-results: Remove the results from the local machine"
 	@echo "  local-clean-results-on-eve: Remove the results from the local EVE"
