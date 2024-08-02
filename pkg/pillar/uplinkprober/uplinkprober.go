@@ -191,7 +191,7 @@ func (p *UplinkProber) StartNIProbing(niConfig types.NetworkInstanceConfig) (
 	initialStatus NIProbeStatus, err error) {
 	p.Lock()
 	defer p.Unlock()
-	if !types.IsSharedPortLabel(niConfig.PortLogicalLabel) {
+	if !types.IsEveDefinedPortLabel(niConfig.PortLogicalLabel) {
 		return initialStatus, fmt.Errorf("cannot probe NI (%s) with non-shared label (%s)",
 			niConfig.UUID, niConfig.PortLogicalLabel)
 	}
@@ -287,9 +287,9 @@ func (p *UplinkProber) GetProbeMetrics(
 	}
 	uplink := status.SelectedUplinkLL
 	if uplink != "" {
-		ports := p.dns.GetPortsByLogicallabel(status.SelectedUplinkLL)
-		if len(ports) == 1 {
-			metrics.SelectedUplinkIntf = ports[0].IfName
+		port := p.dns.LookupPortByLogicallabel(status.SelectedUplinkLL)
+		if port != nil {
+			metrics.SelectedPortIfName = port.IfName
 		}
 		if uplinkStatus, exists := p.uplinkProbeStatus[uplink]; exists {
 			var remoteEps []string
@@ -307,7 +307,7 @@ func (p *UplinkProber) GetProbeMetrics(
 		if config.PortLogicalLabel == types.FreeUplinkLabel && uplinkStatus.cost > 0 {
 			continue
 		}
-		metrics.UplinkCount++
+		metrics.PortCount++
 		intfMetrics := types.ProbeIntfMetrics{
 			IntfName:        uplinkStatus.ifName,
 			NexthopIPs:      uplinkStatus.nextHops,
@@ -430,14 +430,13 @@ func (p *UplinkProber) applyPendingDNS(pendingDNS types.DeviceNetworkStatus) {
 	// Remove ports from uplinkProbeStatus that do not exist anymore
 	// or are no longer configured for management.
 	for uplinkLL := range p.uplinkProbeStatus {
-		ports := p.pendingDNS.GetPortsByLogicallabel(uplinkLL)
-		if len(ports) == 0 {
+		port := p.pendingDNS.LookupPortByLogicallabel(uplinkLL)
+		if port == nil {
 			p.log.Noticef("UplinkProber: Removed %s from the list of probed uplinks",
 				uplinkLL)
 			delete(p.uplinkProbeStatus, uplinkLL)
 			continue
 		}
-		port := ports[0]
 		if !port.IsMgmt || port.InvalidConfig {
 			p.log.Noticef("UplinkProber: Removed %s from the list of probed uplinks",
 				uplinkLL)

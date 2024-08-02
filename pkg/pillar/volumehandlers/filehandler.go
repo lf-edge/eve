@@ -14,6 +14,7 @@ import (
 	"github.com/lf-edge/edge-containers/pkg/registry"
 	zconfig "github.com/lf-edge/eve-api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/diskmetrics"
+	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
 type volumeHandlerFile struct {
@@ -251,4 +252,10 @@ func (handler *volumeHandlerFile) DeleteSnapshot(snapshotMeta interface{}) error
 		return err
 	}
 	return nil
+}
+
+func (handler *volumeHandlerFile) GetAllDataSets() ([]types.ImgInfo, error) {
+	errStr := fmt.Sprintf("GetAllDataSets not implemented for file volumes")
+	handler.log.Errorf(errStr)
+	return nil, fmt.Errorf(errStr)
 }

@@ -28,8 +28,8 @@ type BridgePort struct {
 
 // BridgePortVariant is like union, only one option should have non-zero value.
 type BridgePortVariant struct {
-	// UplinkIfName : bridged uplink interface.
-	UplinkIfName string
+	// PortIfName : bridged device network port.
+	PortIfName string
 	// VIFIfName : bridged VIF.
 	VIFIfName string
 }
@@ -89,24 +89,24 @@ func (p BridgePort) Dependencies() (deps []dg.Dependency) {
 				AutoDeletedByExternal: true,
 			},
 		})
-	} else if p.Variant.UplinkIfName != "" {
+	} else if p.Variant.PortIfName != "" {
 		deps = append(deps, dg.Dependency{
 			RequiredItem: dg.ItemRef{
-				ItemType: generic.UplinkTypename,
-				ItemName: p.Variant.UplinkIfName,
+				ItemType: generic.PortTypename,
+				ItemName: p.Variant.PortIfName,
 			},
 			MustSatisfy: func(item dg.Item) bool {
-				uplink, isUplink := item.(generic.Uplink)
-				if !isUplink {
+				port, isPort := item.(generic.Port)
+				if !isPort {
 					// unreachable
 					return false
 				}
-				// Bridging is actually done by NIM for uplink interfaces.
+				// Bridging is actually done by NIM for device ports.
 				// BridgePort is only used for dependency purposes in this case
 				// (VLANPort depends on BridgePort).
-				return uplink.MasterIfName == p.BridgeIfName
+				return port.MasterIfName == p.BridgeIfName
 			},
-			Description: "Uplink must exist and it must be bridged (by NIM)",
+			Description: "Port must exist and it must be bridged (by NIM)",
 			Attributes: dg.DependencyAttributes{
 				AutoDeletedByExternal: true,
 			},
@@ -119,8 +119,8 @@ func (p BridgePort) portIfName() string {
 	if p.Variant.VIFIfName != "" {
 		return p.Variant.VIFIfName
 	}
-	if p.Variant.UplinkIfName != "" {
-		return p.Variant.UplinkIfName
+	if p.Variant.PortIfName != "" {
+		return p.Variant.PortIfName
 	}
 	return ""
 }
@@ -146,8 +146,8 @@ func (c *BridgePortConfigurator) Create(ctx context.Context, item dg.Item) error
 	if !isBridgePort {
 		return fmt.Errorf("invalid item type %T, expected BridgePort", item)
 	}
-	if bridgePort.Variant.UplinkIfName != "" {
-		// NOOP for uplink - NIM is responsible for bridging uplink ports.
+	if bridgePort.Variant.PortIfName != "" {
+		// NOOP for port - NIM is responsible for bridging device ports.
 		return nil
 	}
 	link, err := netlink.LinkByName(bridgePort.portIfName())
@@ -196,8 +196,8 @@ func (c *BridgePortConfigurator) Modify(_ context.Context, _, newItem dg.Item) (
 	if !isBridgePort {
 		return fmt.Errorf("invalid item type %T, expected BridgePort", newItem)
 	}
-	if bridgePort.Variant.UplinkIfName != "" {
-		// NOOP for uplink - NIM is responsible for bridging uplink ports.
+	if bridgePort.Variant.PortIfName != "" {
+		// NOOP for port - NIM is responsible for bridging device ports.
 		return nil
 	}
 	link, err := netlink.LinkByName(bridgePort.portIfName())
@@ -237,8 +237,8 @@ func (c *BridgePortConfigurator) Delete(ctx context.Context, item dg.Item) (err 
 	if !isBridgePort {
 		return fmt.Errorf("invalid item type %T, expected BridgePort", item)
 	}
-	if bridgePort.Variant.UplinkIfName != "" {
-		// NOOP for uplink - NIM is responsible for bridging uplink ports.
+	if bridgePort.Variant.PortIfName != "" {
+		// NOOP for port - NIM is responsible for bridging device ports.
 		return nil
 	}
 	link, err := netlink.LinkByName(bridgePort.portIfName())

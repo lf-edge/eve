@@ -36,8 +36,8 @@ const (
 	//TpmSRKHdl is the well known TPM permanent handle for Storage key
 	TpmSRKHdl tpmutil.Handle = 0x81000002
 
-	//TpmAKHdl is the well known TPM permanent handle for AIK key
-	TpmAKHdl tpmutil.Handle = 0x81000003
+	//TpmAIKHdl is the well known TPM permanent handle for AIK key
+	TpmAIKHdl tpmutil.Handle = 0x81000003
 
 	//TpmQuoteKeyHdl is the well known TPM permanent handle for PCR Quote signing key
 	TpmQuoteKeyHdl tpmutil.Handle = 0x81000004
@@ -119,6 +119,109 @@ var (
 	// measurefsTpmEventLog is the file containing the event log from the measure-config.
 	// it is not a constant due to test usage.
 	measurefsTpmEventLog = types.PersistStatusDir + "/measurefs_tpm_event_log"
+
+	// PcrSelection is used as an entropy to generate keys and the selection
+	// of PCRs do not matter as well as the contents but PCR[7] is not changed often
+	// on our devices
+	PcrSelection = tpm2.PCRSelection{Hash: tpm2.AlgSHA256, PCRs: []int{7}}
+	// PcrListForQuote is PCR selection for Quote operation in attestation process.
+	PcrListForQuote = tpm2.PCRSelection{Hash: tpm2.AlgSHA256, PCRs: []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}}
+
+	// DefaultKeyParams is the default Key Template for TPM
+	DefaultKeyParams = tpm2.Public{
+		Type:    tpm2.AlgECC,
+		NameAlg: tpm2.AlgSHA256,
+		Attributes: tpm2.FlagSign | tpm2.FlagNoDA | tpm2.FlagDecrypt |
+			tpm2.FlagSensitiveDataOrigin |
+			tpm2.FlagUserWithAuth,
+		ECCParameters: &tpm2.ECCParams{
+			CurveID: tpm2.CurveNISTP256,
+		},
+	}
+	// DefaultEkTemplate is the default Ek Template as per
+	// https://trustedcomputinggroup.org/wp-content/uploads/Credential_Profile_EK_V2.0_R14_published.pdf
+	DefaultEkTemplate = tpm2.Public{
+		Type:    tpm2.AlgRSA,
+		NameAlg: tpm2.AlgSHA256,
+		Attributes: tpm2.FlagFixedTPM | tpm2.FlagFixedParent | tpm2.FlagSensitiveDataOrigin |
+			tpm2.FlagAdminWithPolicy | tpm2.FlagRestricted | tpm2.FlagDecrypt,
+		AuthPolicy: []byte{
+			0x83, 0x71, 0x97, 0x67, 0x44, 0x84,
+			0xB3, 0xF8, 0x1A, 0x90, 0xCC, 0x8D,
+			0x46, 0xA5, 0xD7, 0x24, 0xFD, 0x52,
+			0xD7, 0x6E, 0x06, 0x52, 0x0B, 0x64,
+			0xF2, 0xA1, 0xDA, 0x1B, 0x33, 0x14,
+			0x69, 0xAA,
+		},
+		RSAParameters: &tpm2.RSAParams{
+			Symmetric: &tpm2.SymScheme{
+				Alg:     tpm2.AlgAES,
+				KeyBits: 128,
+				Mode:    tpm2.AlgCFB,
+			},
+			KeyBits:    2048,
+			ModulusRaw: make([]byte, 256),
+		},
+	}
+	// DefaultSrkTemplate is for ActivateCredentials() usage (Decrypt key)
+	DefaultSrkTemplate = tpm2.Public{
+		Type:    tpm2.AlgRSA,
+		NameAlg: tpm2.AlgSHA256,
+		Attributes: tpm2.FlagFixedTPM | tpm2.FlagFixedParent |
+			tpm2.FlagSensitiveDataOrigin | tpm2.FlagUserWithAuth |
+			tpm2.FlagRestricted | tpm2.FlagDecrypt | tpm2.FlagNoDA,
+		RSAParameters: &tpm2.RSAParams{
+			Symmetric: &tpm2.SymScheme{
+				Alg:     tpm2.AlgAES,
+				KeyBits: 128,
+				Mode:    tpm2.AlgCFB,
+			},
+			KeyBits:    2048,
+			ModulusRaw: make([]byte, 256),
+		},
+	}
+	// DefaultAikTemplate is a restricted signing key, for vTPM guest usage
+	DefaultAikTemplate = tpm2.Public{
+		Type:    tpm2.AlgRSA,
+		NameAlg: tpm2.AlgSHA256,
+		Attributes: tpm2.FlagFixedTPM | tpm2.FlagFixedParent |
+			tpm2.FlagSensitiveDataOrigin | tpm2.FlagUserWithAuth |
+			tpm2.FlagRestricted | tpm2.FlagSign | tpm2.FlagNoDA,
+		RSAParameters: &tpm2.RSAParams{
+			Sign: &tpm2.SigScheme{
+				Alg:  tpm2.AlgRSASSA,
+				Hash: tpm2.AlgSHA256,
+			},
+			KeyBits:    2048,
+			ModulusRaw: make([]byte, 256),
+		},
+	}
+	// DefaultQuoteKeyTemplate is a restricted signing key, for PCR Quote and other such uses
+	DefaultQuoteKeyTemplate = tpm2.Public{
+		Type:    tpm2.AlgECC,
+		NameAlg: tpm2.AlgSHA256,
+		Attributes: tpm2.FlagFixedTPM | tpm2.FlagFixedParent |
+			tpm2.FlagSensitiveDataOrigin | tpm2.FlagUserWithAuth |
+			tpm2.FlagRestricted | tpm2.FlagSign | tpm2.FlagNoDA,
+		ECCParameters: &tpm2.ECCParams{
+			Sign: &tpm2.SigScheme{
+				Alg:  tpm2.AlgECDSA,
+				Hash: tpm2.AlgSHA256,
+			},
+			CurveID: tpm2.CurveNISTP256,
+		},
+	}
+	// DefaultEcdhKeyTemplate is used for deriving AES keys
+	DefaultEcdhKeyTemplate = tpm2.Public{
+		Type:    tpm2.AlgECC,
+		NameAlg: tpm2.AlgSHA256,
+		Attributes: tpm2.FlagSign | tpm2.FlagNoDA | tpm2.FlagDecrypt |
+			tpm2.FlagSensitiveDataOrigin |
+			tpm2.FlagUserWithAuth,
+		ECCParameters: &tpm2.ECCParams{
+			CurveID: tpm2.CurveNISTP256,
+		},
+	}
 )
 
 // SealedKeyType holds different types of sealed key
@@ -190,6 +293,50 @@ func (s TpmPrivateKey) Sign(r io.Reader, digest []byte, opts crypto.SignerOpts) 
 		return nil, err
 	}
 	return asn1.Marshal(ecdsaSignature{R, S})
+}
+
+// CreateKey helps creating various keys, according to the supplied template, and hierarchy,
+// we pass TPM path here because in some places we pass socket rather than char device.
+func CreateKey(log *base.LogObject, TpmPath string, keyHandle, ownerHandle tpmutil.Handle, template tpm2.Public, overwrite bool) error {
+	rw, err := tpm2.OpenTPM(TpmPath)
+	if err != nil {
+		log.Errorln(err)
+		return err
+	}
+	defer rw.Close()
+
+	if !overwrite {
+		//don't overwrite if key already exists, and if the attributes match up
+		pub, _, _, err := tpm2.ReadPublic(rw, keyHandle)
+		if err == nil && pub.Attributes == template.Attributes {
+			log.Noticef("Attributes match up, not re-creating 0x%X", keyHandle)
+			return nil
+		} else if err == nil {
+			//key is present, but attributes not matching
+			log.Noticef("Attribute mismatch, re-creating 0x%X", keyHandle)
+		} else {
+			//key is not present
+			log.Noticef("key is not present, re-creating 0x%X", keyHandle)
+		}
+	}
+	handle, _, err := tpm2.CreatePrimary(rw,
+		tpm2.HandleOwner,
+		PcrSelection,
+		EmptyPassword,
+		EmptyPassword,
+		template)
+	if err != nil {
+		return fmt.Errorf("create 0x%x failed: %s, do BIOS reset of TPM", keyHandle, err)
+	}
+	// This call tries to remove the old index if it exists,
+	// so no harm if it fails.
+	if err := tpm2.EvictControl(rw, EmptyPassword, tpm2.HandleOwner, keyHandle, keyHandle); err != nil {
+		fmt.Printf("EvictControl failed: %v", err)
+	}
+	if err := tpm2.EvictControl(rw, EmptyPassword, tpm2.HandleOwner, handle, keyHandle); err != nil {
+		return fmt.Errorf("EvictControl failed: %v, do BIOS reset of TPM", err)
+	}
+	return nil
 }
 
 // ReadOwnerCrdl returns credential specific to this device

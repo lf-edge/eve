@@ -38,6 +38,8 @@ type VolumeHandler interface {
 	RollbackToSnapshot(snapshotMeta interface{}) error
 	// DeleteSnapshot handles snapshot deletion
 	DeleteSnapshot(snapshotMeta interface{}) error
+	// GetAllDataSets returns any ZFS datasets
+	GetAllDataSets() ([]types.ImgInfo, error)
 }
 
 // VolumeMgr is an interface to obtain information required for volume processing
@@ -74,6 +76,16 @@ func GetVolumeHandler(log *base.LogObject, volumeManager VolumeMgr, status *type
 		return &volumeHandlerZVol{commonVolumeHandler: common, useVHost: useVhost(log, volumeManager)}
 	}
 	return &volumeHandlerFile{common}
+}
+
+// GetZFSVolumeHandler returns a ZFS handler (if /persist is ZFS)
+func GetZFSVolumeHandler(log *base.LogObject, volumeManager VolumeMgr) VolumeHandler {
+	if persist.ReadPersistType() == types.PersistZFS {
+		common := commonVolumeHandler{volumeManager: volumeManager, log: log}
+		return &volumeHandlerZVol{commonVolumeHandler: common,
+			useVHost: useVhost(log, volumeManager)}
+	}
+	return nil
 }
 
 func updateVolumeSizes(log *base.LogObject, handler VolumeHandler, status *types.VolumeStatus) {

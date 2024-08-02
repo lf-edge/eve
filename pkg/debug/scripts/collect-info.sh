@@ -6,7 +6,7 @@
 
 # Script version, don't forget to bump up once something is changed
 
-VERSION=24
+VERSION=27
 # Add required packages here, it will be passed to "apk add".
 # Once something added here don't forget to add the same package
 # to the Dockerfile ('ENV PKGS' line) of the debug container,
@@ -16,9 +16,10 @@ VERSION=24
 PKG_DEPS="procps tar dmidecode iptables dhcpcd"
 
 DATE=$(date "+%Y-%m-%d-%H-%M-%S")
-INFO_DIR="eve-info-v$VERSION-$DATE"
-TARBALL_FILE="/persist/$INFO_DIR.tar.gz"
+INFO_DIR_SUFFIX="eve-info/eve-info-v$VERSION-$DATE"
+TARBALL_FILE="/persist/$INFO_DIR_SUFFIX.tar.gz"
 SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
+mkdir -p "/persist/$INFO_DIR_SUFFIX"
 
 READ_LOGS_DEV=
 READ_LOGS_APP=
@@ -156,8 +157,8 @@ fi
 
 # Create temporary dir
 echo "- basic setup"
-TMP_DIR=$(mktemp -d)
-DIR="$TMP_DIR/$INFO_DIR"
+TMP_DIR=$(mktemp -d -t -p /persist/tmp/)
+DIR="$TMP_DIR/$INFO_DIR_SUFFIX"
 mkdir -p "$DIR"
 mkdir -p "$DIR/network"
 
@@ -245,44 +246,18 @@ collect_network_info()
     echo "- done network info"
 }
 
-collect_pillar_memory_backtraces()
+collect_pillar_backtraces()
 {
     echo "- pillar memory backtraces"
 
     eve http-debug > /dev/null 2>&1
-    curl --retry-all-errors --retry 3 --retry-delay 3 -m 5 -s "http://127.1:6543/debug/pprof/heap?debug=1" > "$DIR/pillar-memory-backtraces"
+    curl --retry-all-errors --retry 3 --retry-delay 3 -m 5 -s "http://127.1:6543/debug/pprof/heap?debug=1" | gzip > "$DIR/pillar-memory-backtraces.gz"
+    curl --retry-all-errors --retry 3 --retry-delay 3 -m 5 -s "http://127.1:6543/debug/pprof/goroutine?debug=2" | gzip > "$DIR/pillar-backtraces.gz"
     eve http-debug stop > /dev/null 2>&1
 
     echo "- done pillar memory backtraces"
 }
 
-collect_pillar_backtraces()
-{
-    echo "- pillar backtraces"
-    logread -f > "$DIR/pillar-backtraces" &
-    pid=$!
-
-    echo "  - pkill -USR1 /opt/zededa/bin/zedbox"
-    eve exec pillar pkill -USR1 /opt/zededa/bin/zedbox
-
-    iters=15
-    echo "  - wait for pillar backtraces"
-    until grep -q "sigusr" "$DIR/pillar-backtraces"; do
-        sleep 1s
-        if [ $iters -eq 0 ]; then
-            echo "      ERR: timeout! exit wait"
-            break
-        fi
-        iters=$((iters - 1))
-    done
-
-    # To be sure all backtraces are written
-    sleep 1s
-
-    kill $pid
-
-    echo "- done pillar backtraces"
-}
 collect_zfs_info()
 {
     type=$(cat /run/eve.persist_type)
@@ -369,6 +344,25 @@ collect_kube_info()
         } > "$DIR/kube-info"
     fi
 }
+
+collect_longhorn_info()
+{
+    type=$(cat /run/eve-hv-type)
+    if [ "$type" != "kubevirt" ]; then
+        return
+    fi
+    echo "- Collecting Longhorn specific info"
+    {
+        echo "  - longhorn support bundle: please wait up to 300 seconds."
+        # This step involves multiple network operations
+        # including an image pull and requests to other
+        # cluster nodes which can all see delays and timeouts
+        # when nodes are down.
+        # Give up after 5min, and allow remaining system data to be collected.
+        timeout 300s eve exec kube /usr/bin/longhorn-generate-support-bundle.sh
+    } > "$DIR/longhorn-info" 2>&1
+}
+
 # Copy itself
 cp "${0}" "$DIR"
 
@@ -450,13 +444,13 @@ collect_network_info
 
 # Pillar part
 collect_pillar_backtraces
-collect_pillar_memory_backtraces
 
 # ZFS part
 collect_zfs_info
 
 # Kube part
 collect_kube_info
+collect_longhorn_info
 
 if [ -n "$TAR_WHOLE_SYS" ]; then
   collect_sysfs
@@ -469,9 +463,9 @@ fi
 # --dereference                        follow symlinks
 echo "- tar/gzip"
 if check_tar_flags; then
-  tar -C "$TMP_DIR" --exclude='root-run/run' --exclude='root-run/containerd-user' --ignore-failed-read --warning=none --dereference -czf "$TARBALL_FILE" "$INFO_DIR"
+  tar -C "$TMP_DIR" --exclude='root-run/run' --exclude='root-run/containerd-user' --ignore-failed-read --warning=none --dereference -czf "$TARBALL_FILE" "$INFO_DIR_SUFFIX"
 else
-  tar -C "$TMP_DIR" --exclude='root-run/run' --exclude='root-run/containerd-user' --dereference -czf "$TARBALL_FILE" "$INFO_DIR"
+  tar -C "$TMP_DIR" --exclude='root-run/run' --exclude='root-run/containerd-user' --dereference -czf "$TARBALL_FILE" "$INFO_DIR_SUFFIX"
 fi
 rm -rf "$TMP_DIR"
 sync

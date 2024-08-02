@@ -40,6 +40,10 @@ func (handler *volumeHandlerZVol) GetVolumeDetails() (uint64, uint64, string, bo
 		imgInfo.DirtyFlag, nil
 }
 
+func (handler *volumeHandlerZVol) GetAllDataSets() ([]types.ImgInfo, error) {
+	return zfs.GetAllZFSVolumeInfo()
+}
+
 func (handler *volumeHandlerZVol) UsageFromStatus() uint64 {
 	// use MaxVolSize for zvol
 	handler.log.Noticef("UsageFromStatus: Use MaxVolSize for Volume %s",

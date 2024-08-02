@@ -1772,12 +1772,12 @@ func TestTransientDNSError(test *testing.T) {
 	t.Consistently(testingInProgressCb(), 8*time.Second).Should(BeTrue())
 	t.Expect(getDPC(0).State).To(Equal(types.DPCStateIPDNSWait))
 	dpc = getDPC(0)
-	dpcEth0 := dpc.GetPortByIfName("eth0")
+	dpcEth0 := dpc.LookupPortByIfName("eth0")
 	t.Expect(dpcEth0).ToNot(BeNil())
 	t.Expect(dpcEth0.HasError()).To(BeTrue())
 	t.Expect(dpcEth0.LastError).To(Equal("interface eth0: no DNS server available"))
 	dns := getDNS()
-	dnsEth0 := dns.GetPortByIfName("eth0")
+	dnsEth0 := dns.LookupPortByIfName("eth0")
 	t.Expect(dnsEth0).ToNot(BeNil())
 	t.Expect(dnsEth0.HasError()).To(BeTrue())
 	t.Expect(dnsEth0.LastError).To(Equal("interface eth0: no DNS server available"))
@@ -1787,12 +1787,12 @@ func TestTransientDNSError(test *testing.T) {
 	t.Eventually(testingInProgressCb()).Should(BeFalse())
 	t.Expect(getDPC(0).State).To(Equal(types.DPCStateSuccess))
 	dpc = getDPC(0)
-	dpcEth0 = dpc.GetPortByIfName("eth0")
+	dpcEth0 = dpc.LookupPortByIfName("eth0")
 	t.Expect(dpcEth0).ToNot(BeNil())
 	t.Expect(dpcEth0.HasError()).To(BeFalse())
 	t.Expect(dpcEth0.LastError).To(BeEmpty())
 	dns = getDNS()
-	dnsEth0 = dns.GetPortByIfName("eth0")
+	dnsEth0 = dns.LookupPortByIfName("eth0")
 	t.Expect(dnsEth0).ToNot(BeNil())
 	t.Expect(dnsEth0.HasError()).To(BeFalse())
 	t.Expect(dnsEth0.LastError).To(BeEmpty())
@@ -1821,7 +1821,13 @@ func TestOldDPC(test *testing.T) {
 
 	// This is run by nim for any input DPC to make sure that it is compliant
 	// with the latest EVE version.
-	dpc.DoSanitize(logObj, true, false, "", true, true)
+	dpc.DoSanitize(logObj, types.DPCSanitizeArgs{
+		SanitizeTimePriority: true,
+		SanitizeKey:          false,
+		SanitizeName:         true,
+		SanitizeL3Port:       true,
+		SanitizeSharedLabels: true,
+	})
 
 	dpcManager.AddDPC(dpc)
 

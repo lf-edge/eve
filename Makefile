@@ -94,7 +94,8 @@ endif
 
 REPO_BRANCH=$(shell git rev-parse --abbrev-ref HEAD | tr / _)
 REPO_SHA=$(shell git describe --match '$$^' --abbrev=8 --always --dirty)
-REPO_TAG=$(shell git describe --always --tags | grep -E '[0-9]*\.[0-9]*\.[0-9]*' || echo snapshot)
+# set this variable to the current tag only if we are building from a tag (annotated or not), otherwise set it to "snapshot", which means rootfs version will be constructed differently
+REPO_TAG=$(shell git describe --always --tags | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$$' || echo snapshot)
 REPO_DIRTY_TAG=$(if $(findstring -dirty,$(REPO_SHA)),-$(shell date -u +"%Y-%m-%d.%H.%M"))
 EVE_TREE_TAG = $(shell git describe --abbrev=8 --always --dirty --tags)
 
@@ -103,6 +104,7 @@ ifeq ($(DEV),y)
 endif
 
 # ROOTFS_VERSION used to construct the installer directory
+# set this to the current tag only if we are building from a tag
 ROOTFS_VERSION:=$(if $(findstring snapshot,$(REPO_TAG)),$(EVE_SNAPSHOT_VERSION)-$(REPO_BRANCH)-$(REPO_SHA)$(REPO_DIRTY_TAG)$(DEV_TAG),$(REPO_TAG))
 
 HOSTARCH:=$(subst aarch64,arm64,$(subst x86_64,amd64,$(shell uname -m)))
@@ -304,7 +306,7 @@ PARSE_PKGS=$(if $(strip $(EVE_HASH)),EVE_HASH=)$(EVE_HASH) DOCKER_ARCH_TAG=$(DOC
 LINUXKIT=$(BUILDTOOLS_BIN)/linuxkit
 # linuxkit version. This **must** be a published semver version so it can be downloaded already compiled from
 # the release page at https://github.com/linuxkit/linuxkit/releases
-LINUXKIT_VERSION=v1.3.0
+LINUXKIT_VERSION=v1.5.0
 LINUXKIT_SOURCE=https://github.com/linuxkit/linuxkit
 LINUXKIT_OPTS=$(if $(strip $(EVE_HASH)),--hash) $(EVE_HASH) $(if $(strip $(EVE_REL)),--release) $(EVE_REL)
 LINUXKIT_PKG_TARGET=build

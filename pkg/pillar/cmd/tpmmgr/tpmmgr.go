@@ -77,161 +77,9 @@ var (
 	//on devices without a TPM
 	quoteKeyFile = types.CertificateDirname + "/attest.key.pem"
 
-	// this PCRSelections is used as an entropy to generate keys and the selection
-	// of PCRs do not matter as well as the contents but PCR[7] is not changed often
-	// on our devices
-	pcrSelection     = tpm2.PCRSelection{Hash: tpm2.AlgSHA256, PCRs: []int{7}}
-	pcrListForQuote  = tpm2.PCRSelection{Hash: tpm2.AlgSHA256, PCRs: []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}}
-	defaultKeyParams = tpm2.Public{
-		Type:    tpm2.AlgECC,
-		NameAlg: tpm2.AlgSHA256,
-		Attributes: tpm2.FlagSign | tpm2.FlagNoDA | tpm2.FlagDecrypt |
-			tpm2.FlagSensitiveDataOrigin |
-			tpm2.FlagUserWithAuth,
-		ECCParameters: &tpm2.ECCParams{
-			CurveID: tpm2.CurveNISTP256,
-		},
-	}
-	//Default Ek Template as per
-	//https://trustedcomputinggroup.org/wp-content/uploads/Credential_Profile_EK_V2.0_R14_published.pdf
-	defaultEkTemplate = tpm2.Public{
-		Type:    tpm2.AlgRSA,
-		NameAlg: tpm2.AlgSHA256,
-		Attributes: tpm2.FlagFixedTPM | tpm2.FlagFixedParent | tpm2.FlagSensitiveDataOrigin |
-			tpm2.FlagAdminWithPolicy | tpm2.FlagRestricted | tpm2.FlagDecrypt,
-		AuthPolicy: []byte{
-			0x83, 0x71, 0x97, 0x67, 0x44, 0x84,
-			0xB3, 0xF8, 0x1A, 0x90, 0xCC, 0x8D,
-			0x46, 0xA5, 0xD7, 0x24, 0xFD, 0x52,
-			0xD7, 0x6E, 0x06, 0x52, 0x0B, 0x64,
-			0xF2, 0xA1, 0xDA, 0x1B, 0x33, 0x14,
-			0x69, 0xAA,
-		},
-		RSAParameters: &tpm2.RSAParams{
-			Symmetric: &tpm2.SymScheme{
-				Alg:     tpm2.AlgAES,
-				KeyBits: 128,
-				Mode:    tpm2.AlgCFB,
-			},
-			KeyBits:    2048,
-			ModulusRaw: make([]byte, 256),
-		},
-	}
-	//This is for ActivateCredentials() usage(Decrypt key)
-	defaultSrkTemplate = tpm2.Public{
-		Type:    tpm2.AlgRSA,
-		NameAlg: tpm2.AlgSHA256,
-		Attributes: tpm2.FlagFixedTPM | tpm2.FlagFixedParent |
-			tpm2.FlagSensitiveDataOrigin | tpm2.FlagUserWithAuth |
-			tpm2.FlagRestricted | tpm2.FlagDecrypt | tpm2.FlagNoDA,
-		RSAParameters: &tpm2.RSAParams{
-			Symmetric: &tpm2.SymScheme{
-				Alg:     tpm2.AlgAES,
-				KeyBits: 128,
-				Mode:    tpm2.AlgCFB,
-			},
-			KeyBits:    2048,
-			ModulusRaw: make([]byte, 256),
-		},
-	}
-	//This is a restricted signing key, for vTPM guest usage
-	defaultAkTemplate = tpm2.Public{
-		Type:    tpm2.AlgRSA,
-		NameAlg: tpm2.AlgSHA256,
-		Attributes: tpm2.FlagFixedTPM | tpm2.FlagFixedParent |
-			tpm2.FlagSensitiveDataOrigin | tpm2.FlagUserWithAuth |
-			tpm2.FlagRestricted | tpm2.FlagSign | tpm2.FlagNoDA,
-		RSAParameters: &tpm2.RSAParams{
-			Sign: &tpm2.SigScheme{
-				Alg:  tpm2.AlgRSASSA,
-				Hash: tpm2.AlgSHA256,
-			},
-			KeyBits:    2048,
-			ModulusRaw: make([]byte, 256),
-		},
-	}
-	//This is a restricted signing key, for PCR Quote and other such uses
-	defaultQuoteKeyTemplate = tpm2.Public{
-		Type:    tpm2.AlgECC,
-		NameAlg: tpm2.AlgSHA256,
-		Attributes: tpm2.FlagFixedTPM | tpm2.FlagFixedParent |
-			tpm2.FlagSensitiveDataOrigin | tpm2.FlagUserWithAuth |
-			tpm2.FlagRestricted | tpm2.FlagSign | tpm2.FlagNoDA,
-		ECCParameters: &tpm2.ECCParams{
-			Sign: &tpm2.SigScheme{
-				Alg:  tpm2.AlgECDSA,
-				Hash: tpm2.AlgSHA256,
-			},
-			CurveID: tpm2.CurveNISTP256,
-		},
-	}
-	defaultEcdhKeyTemplate = tpm2.Public{
-		Type:    tpm2.AlgECC,
-		NameAlg: tpm2.AlgSHA256,
-		Attributes: tpm2.FlagSign | tpm2.FlagNoDA | tpm2.FlagDecrypt |
-			tpm2.FlagSensitiveDataOrigin |
-			tpm2.FlagUserWithAuth,
-		ECCParameters: &tpm2.ECCParams{
-			CurveID: tpm2.CurveNISTP256,
-		},
-	}
 	logger *logrus.Logger
 	log    *base.LogObject
 )
-
-var toGoCurve = map[tpm2.EllipticCurve]elliptic.Curve{
-	tpm2.CurveNISTP224: elliptic.P224(),
-	tpm2.CurveNISTP256: elliptic.P256(),
-	tpm2.CurveNISTP384: elliptic.P384(),
-	tpm2.CurveNISTP521: elliptic.P521(),
-}
-
-// Helps creating various keys, according to the supplied template, and hierarchy
-func createKey(keyHandle, ownerHandle tpmutil.Handle, template tpm2.Public, overwrite bool) error {
-	rw, err := tpm2.OpenTPM(etpm.TpmDevicePath)
-	if err != nil {
-		log.Errorln(err)
-		return err
-	}
-	defer rw.Close()
-	if !overwrite {
-		//don't overwrite if key already exists, and if the attributes match up
-		pub, _, _, err := tpm2.ReadPublic(rw, keyHandle)
-		if err == nil && pub.Attributes == template.Attributes {
-			log.Noticef("Attributes match up, not re-creating 0x%X", keyHandle)
-			return nil
-		} else if err == nil {
-			//key is present, but attributes not matching
-			log.Noticef("Attribute mismatch, re-creating 0x%X", keyHandle)
-		} else {
-			//key is not present
-			log.Noticef("key is not present, re-creating 0x%X", keyHandle)
-		}
-	}
-	handle, _, err := tpm2.CreatePrimary(rw,
-		tpm2.HandleOwner,
-		pcrSelection,
-		etpm.EmptyPassword,
-		etpm.EmptyPassword,
-		template)
-	if err != nil {
-		log.Errorf("create 0x%x failed: %s, do BIOS reset of TPM", keyHandle, err)
-		return err
-	}
-	if err := tpm2.EvictControl(rw, etpm.EmptyPassword,
-		tpm2.HandleOwner,
-		keyHandle,
-		keyHandle); err != nil {
-		log.Tracef("EvictControl failed: %v", err)
-	}
-	if err := tpm2.EvictControl(rw, etpm.EmptyPassword,
-		tpm2.HandleOwner, handle,
-		keyHandle); err != nil {
-		log.Errorf("EvictControl failed: %v, do BIOS reset of TPM", err)
-		return err
-	}
-	return nil
-}
 
 func createDeviceKey() (crypto.PublicKey, error) {
 	rw, err := tpm2.OpenTPM(etpm.TpmDevicePath)
@@ -249,10 +97,10 @@ func createDeviceKey() (crypto.PublicKey, error) {
 	// We later retrieve the public key from the handle to create the cert.
 	signerHandle, newPubKey, err := tpm2.CreatePrimary(rw,
 		tpm2.HandleOwner,
-		pcrSelection,
+		etpm.PcrSelection,
 		etpm.EmptyPassword,
 		tpmOwnerPasswd,
-		defaultKeyParams)
+		etpm.DefaultKeyParams)
 
 	if err != nil {
 		log.Errorf("CreatePrimary failed: %s, do BIOS reset of TPM", err)
@@ -477,7 +325,7 @@ func getQuote(nonce []byte) ([]byte, []byte, []types.PCRValue, error) {
 		etpm.EmptyPassword,
 		etpm.EmptyPassword,
 		nonce,
-		pcrListForQuote,
+		etpm.PcrListForQuote,
 		tpm2.AlgNull)
 	if err != nil {
 		log.Errorf("TPM Quote cmd failed (%v), returning empty quote/PCRs", err)
@@ -867,20 +715,20 @@ func writeDeviceCertToFile(certBytes, keyBytes []byte) error {
 }
 
 func createOtherKeys(override bool) error {
-	if err := createKey(etpm.TpmEKHdl, tpm2.HandleEndorsement, defaultEkTemplate, override); err != nil {
-		return fmt.Errorf("Error in creating Endorsement key: %w ", err)
+	if err := etpm.CreateKey(log, etpm.TpmDevicePath, etpm.TpmEKHdl, tpm2.HandleEndorsement, etpm.DefaultEkTemplate, override); err != nil {
+		return fmt.Errorf("error in creating Endorsement key: %w ", err)
 	}
-	if err := createKey(etpm.TpmSRKHdl, tpm2.HandleOwner, defaultSrkTemplate, override); err != nil {
-		return fmt.Errorf("Error in creating SRK key: %w ", err)
+	if err := etpm.CreateKey(log, etpm.TpmDevicePath, etpm.TpmSRKHdl, tpm2.HandleOwner, etpm.DefaultSrkTemplate, override); err != nil {
+		return fmt.Errorf("error in creating SRK key: %w ", err)
 	}
-	if err := createKey(etpm.TpmAKHdl, tpm2.HandleOwner, defaultAkTemplate, override); err != nil {
-		return fmt.Errorf("Error in creating Attestation key: %w ", err)
+	if err := etpm.CreateKey(log, etpm.TpmDevicePath, etpm.TpmAIKHdl, tpm2.HandleOwner, etpm.DefaultAikTemplate, override); err != nil {
+		return fmt.Errorf("error in creating Attestation key: %w ", err)
 	}
-	if err := createKey(etpm.TpmQuoteKeyHdl, tpm2.HandleOwner, defaultQuoteKeyTemplate, override); err != nil {
-		return fmt.Errorf("Error in creating Quote key: %w ", err)
+	if err := etpm.CreateKey(log, etpm.TpmDevicePath, etpm.TpmQuoteKeyHdl, tpm2.HandleOwner, etpm.DefaultQuoteKeyTemplate, override); err != nil {
+		return fmt.Errorf("error in creating Quote key: %w ", err)
 	}
-	if err := createKey(etpm.TpmEcdhKeyHdl, tpm2.HandleOwner, defaultEcdhKeyTemplate, override); err != nil {
-		return fmt.Errorf("Error in creating ECDH key: %w ", err)
+	if err := etpm.CreateKey(log, etpm.TpmDevicePath, etpm.TpmEcdhKeyHdl, tpm2.HandleOwner, etpm.DefaultEcdhKeyTemplate, override); err != nil {
+		return fmt.Errorf("error in creating ECDH key: %w ", err)
 	}
 	return nil
 }

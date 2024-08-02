@@ -38,10 +38,10 @@ import (
 //  |   |                           Global                           |   |
 //  |   |                                                            |   |
 //  |   |   +--------------------------+   +---------------------+   |   |
-//  |   |   |       Uplinks            |   |      IPSets         |   |   |
+//  |   |   |        Ports             |   |      IPSets         |   |   |
 //  |   |   |                          |   |                     |   |   |
 //  |   |   |   +--------------+       |   |   +---------+       |   |   |
-//  |   |   |   |    Uplink    | ...   |   |   |  IPSet  | ...   |   |   |
+//  |   |   |   |     Port     | ...   |   |   |  IPSet  | ...   |   |   |
 //  |   |   |   |  (external)  | ...   |   |   +---------+       |   |   |
 //  |   |   |   +--------------+       |   |                     |   |   |
 //  |   |   +--------------------------+   +---------------------+   |   |
@@ -88,16 +88,16 @@ import (
 //  |   |   +----------------------------------------------------+   |   |
 //  |   |   |                        L2                          |   |   |
 //  |   |   |                                                    |   |   |
-//  |   |   |   +----------------------+    +----------------+   |   |   |
-//  |   |   |   |        Bridge        |    |  BridgePort    |   |   |   |
-//  |   |   |   |  (L2 NI: external)   |    |  (for uplink)  |   |   |   |
-//  |   |   |   |  (L3 NI: managed)    |    +----------------+   |   |   |
-//  |   |   |   +----------------------+                         |   |   |
+//  |   |   |   +----------------------+   +-----------------+   |   |   |
+//  |   |   |   |        Bridge        |   |   BridgePort    |   |   |   |
+//  |   |   |   |  (L2 NI: external)   |   |  (for L2 NI)    |   |   |   |
+//  |   |   |   |  (L3 NI: managed)    |   |  (device port)  |   |   |   |
+//  |   |   |   +----------------------+   +-----------------+   |   |   |
 //  |   |   |                                                    |   |   |
 //  |   |   |      +---------------+    +-----------------+      |   |   |
 //  |   |   |      |  VLANBridge   |    |    VLANPort     |      |   |   |
 //  |   |   |      |  (for L2 NI)  |    |   (for L2 NI)   |      |   |   |
-//  |   |   |      +---------------+    |    (uplink)     |      |   |   |
+//  |   |   |      +---------------+    |  (device port)  |      |   |   |
 //  |   |   |                           +-----------------+      |   |   |
 //  |   |   +----------------------------------------------------+   |   |
 //  |   |                                                            |   |
@@ -183,8 +183,8 @@ const (
 	GraphName = "ApplicationConnectivity"
 	// GlobalSG : name of the sub-graph with the global configuration.
 	GlobalSG = "Global"
-	// UplinksSG : name of the sub-graph with (external) uplink interfaces.
-	UplinksSG = "Uplinks"
+	// PortsSG : name of the sub-graph with (external) device network ports.
+	PortsSG = "Ports"
 	// IPSetsSG : subgraph with ipsets combined from all NIs.
 	IPSetsSG = "IPSets"
 	// BlackHoleSG : subgraph with config items creating a "black-hole" where traffic marked
@@ -275,7 +275,7 @@ func AppConnSGName(appID uuid.UUID, netAdapterName string) string {
 	return "AppConn-" + appID.String() + "-" + netAdapterName
 }
 
-func uplinkPhysIfName(bridgeName string) string {
+func portPhysIfName(bridgeName string) string {
 	return "k" + bridgeName
 }
 
@@ -301,45 +301,43 @@ func (r *LinuxNIReconciler) getIntendedGlobalState() dg.Graph {
 		Description: "Global configuration",
 	}
 	intendedCfg := dg.New(graphArgs)
-	intendedCfg.PutSubGraph(r.getIntendedUplinks())
+	intendedCfg.PutSubGraph(r.getIntendedPorts())
 	intendedCfg.PutSubGraph(r.getIntendedGlobalIPSets())
 	intendedCfg.PutSubGraph(r.getIntendedBlackholeCfg())
 	intendedCfg.PutSubGraph(r.getIntendedACLRootChains())
 	return intendedCfg
 }
 
-func (r *LinuxNIReconciler) getIntendedUplinks() dg.Graph {
+func (r *LinuxNIReconciler) getIntendedPorts() dg.Graph {
 	graphArgs := dg.InitArgs{
-		Name:        UplinksSG,
-		Description: "Uplink interfaces used by network instances",
+		Name:        PortsSG,
+		Description: "Physical network ports used by network instances",
 	}
-	intendedUplinks := dg.New(graphArgs)
+	intendedPorts := dg.New(graphArgs)
 	for _, ni := range r.nis {
 		if ni.deleted {
 			continue
 		}
-		if ni.bridge.Uplink.IfName == "" {
-			// Air-gapped NI, no uplink.
-			continue
+		for _, port := range ni.bridge.Ports {
+			var portIfName, masterIfName string
+			switch ni.config.Type {
+			case types.NetworkInstanceTypeSwitch:
+				portIfName = portPhysIfName(port.IfName)
+				masterIfName = port.IfName
+			case types.NetworkInstanceTypeLocal:
+				// Local NI will have its own bridge and even if port refers to a bridge
+				// it will be used just as if it was a physical interface.
+				portIfName = port.IfName
+			}
+			intendedPorts.PutItem(generic.Port{
+				IfName:       portIfName,
+				LogicalLabel: port.LogicalLabel,
+				MasterIfName: masterIfName,
+				AdminUp:      true,
+			}, nil)
 		}
-		var uplinkIfName, masterIfName string
-		switch ni.config.Type {
-		case types.NetworkInstanceTypeSwitch:
-			uplinkIfName = uplinkPhysIfName(ni.bridge.Uplink.IfName)
-			masterIfName = ni.bridge.Uplink.IfName
-		case types.NetworkInstanceTypeLocal:
-			// Local NI will have its own bridge and even if uplink refers to a bridge
-			// it will be used just as if it was a physical interface.
-			uplinkIfName = ni.bridge.Uplink.IfName
-		}
-		intendedUplinks.PutItem(generic.Uplink{
-			IfName:       uplinkIfName,
-			LogicalLabel: ni.bridge.Uplink.LogicalLabel,
-			MasterIfName: masterIfName,
-			AdminUp:      true,
-		}, nil)
 	}
-	return intendedUplinks
+	return intendedPorts
 }
 
 func (r *LinuxNIReconciler) getIntendedGlobalIPSets() dg.Graph {
@@ -437,7 +435,7 @@ func (r *LinuxNIReconciler) getIntendedBlackholeCfg() dg.Graph {
 		Mask:     iptables.AceDropAction,
 	}, nil)
 	// Install iptables rule to ensure that packets marked with the drop action
-	// are indeed dropped and never sent out via downlink or uplink interfaces.
+	// are indeed dropped and never sent out via downlink or port interfaces.
 	// Whereas routed packets marked by drop ACEs are blackholed into the dummy
 	// interface using a high-priority IP rule, packets which are only bridged
 	// and not routed by EVE escape this IP rule and would otherwise continue
@@ -451,7 +449,7 @@ func (r *LinuxNIReconciler) getIntendedBlackholeCfg() dg.Graph {
 			"!", "-o", blackholeIfName},
 		Target: "DROP",
 		Description: "Rule to ensure that packets marked with the drop action " +
-			"are indeed dropped and never sent out via downlink or uplink interfaces",
+			"are indeed dropped and never sent out via VIFs or device ports",
 	}, nil)
 	// Add NOOP "DROP-COUNTER" chain used in the place of the default DROP rule to merely
 	// count the to-be-dropped packets.
@@ -519,8 +517,8 @@ func (r *LinuxNIReconciler) getIntendedNIL2Cfg(niID uuid.UUID) dg.Graph {
 		MTU:          ni.bridge.MTU,
 	}, nil)
 	// For Switch NI also add the intended VLAN configuration.
-	// Here we put VLAN config only for the bridge itself and the uplink interface,
-	// downlinks have their config in AppConn-* subgraphs.
+	// Here we put VLAN config only for the bridge itself and the port interface,
+	// VIFs have their config in AppConn-* subgraphs.
 	if ni.config.Type != types.NetworkInstanceTypeSwitch {
 		return intendedL2Cfg
 	}
@@ -528,11 +526,11 @@ func (r *LinuxNIReconciler) getIntendedNIL2Cfg(niID uuid.UUID) dg.Graph {
 		BridgeIfName:        ni.brIfName,
 		EnableVLANFiltering: true,
 	}, nil)
-	if ni.bridge.Uplink.IfName == "" {
-		// Air-gapped, no uplink port to configure as trunk.
+	if len(ni.bridge.Ports) == 0 {
+		// Air-gapped, no port to configure as trunk.
 		return intendedL2Cfg
 	}
-	// Find out which VLAN IDs should be allowed for the uplink trunk port.
+	// Find out which VLAN IDs should be allowed for the trunk port.
 	var trunkPort linux.TrunkPort
 	for _, app := range r.apps {
 		if app.deleted {
@@ -569,13 +567,13 @@ func (r *LinuxNIReconciler) getIntendedNIL2Cfg(niID uuid.UUID) dg.Graph {
 	intendedL2Cfg.PutItem(linux.BridgePort{
 		BridgeIfName: ni.brIfName,
 		Variant: linux.BridgePortVariant{
-			UplinkIfName: uplinkPhysIfName(ni.bridge.Uplink.IfName),
+			PortIfName: portPhysIfName(ni.bridge.Ports[0].IfName),
 		},
 		MTU: ni.bridge.MTU,
 	}, nil)
 	intendedL2Cfg.PutItem(linux.VLANPort{
 		BridgeIfName: ni.brIfName,
-		PortIfName:   uplinkPhysIfName(ni.bridge.Uplink.IfName),
+		PortIfName:   portPhysIfName(ni.bridge.Ports[0].IfName),
 		VLANConfig: linux.VLANConfig{
 			TrunkPort: &trunkPort,
 		},
@@ -614,39 +612,33 @@ func (r *LinuxNIReconciler) getIntendedNIL3Cfg(niID uuid.UUID) dg.Graph {
 	// Copy routes relevant for this NI from the main routing table into per-NI RT.
 	srcTable := unix.RT_TABLE_MAIN
 	dstTable := devicenetwork.NIBaseRTIndex + ni.bridge.BrNum
-	outIfs := make(map[int]generic.NetworkIf) // key: ifIndex
+	type outIf struct {
+		IfName  string
+		ItemRef dg.ItemRef
+	}
+	outIfs := make(map[int]outIf) // key: ifIndex
 	ifIndex, found, err := r.netMonitor.GetInterfaceIndex(ni.brIfName)
 	if err != nil {
 		r.log.Errorf("%s: getIntendedNIL3Cfg: failed to get ifIndex "+
 			"for (NI bridge) %s: %v", LogAndErrPrefix, ni.brIfName, err)
 	}
 	if err == nil && found {
-		outIfs[ifIndex] = generic.NetworkIf{
+		outIfs[ifIndex] = outIf{
 			IfName:  ni.brIfName,
 			ItemRef: dg.Reference(linux.Bridge{IfName: ni.brIfName}),
 		}
 	}
-	uplink := ni.bridge.Uplink.IfName
-	if uplink != "" {
-		ifIndex, found, err := r.netMonitor.GetInterfaceIndex(uplink)
+	for _, port := range ni.bridge.Ports {
+		ifIndex, found, err := r.netMonitor.GetInterfaceIndex(port.IfName)
 		if err != nil {
 			r.log.Errorf("%s: getIntendedNIL3Cfg: failed to get ifIndex "+
-				"for (NI uplink) %s: %v", LogAndErrPrefix, uplink, err)
+				"for (NI port) %s: %v", LogAndErrPrefix, port.IfName, err)
 		}
 		if err == nil && found {
-			outIfs[ifIndex] = generic.NetworkIf{
-				IfName:  uplink,
-				ItemRef: dg.Reference(generic.Uplink{IfName: uplink}),
+			outIfs[ifIndex] = outIf{
+				IfName:  port.IfName,
+				ItemRef: dg.Reference(generic.Port{IfName: port.IfName}),
 			}
-		}
-	}
-	// User-defined static default route will override the original default route
-	// of the uplink interface.
-	var haveStaticDefRoute bool
-	for _, rt := range ni.config.StaticRoutes {
-		if rt.IsDefaultRoute() {
-			haveStaticDefRoute = true
-			break
 		}
 	}
 	for outIfIndex, rtOutIf := range outIfs {
@@ -663,8 +655,19 @@ func (r *LinuxNIReconciler) getIntendedNIL3Cfg(niID uuid.UUID) dg.Graph {
 		}
 		// Copy routes from the main table into the NI-specific table.
 		for _, rt := range routes {
-			if rt.IsDefaultRoute() && haveStaticDefRoute {
-				// User configured default route statically for this network instance.
+			var haveStaticRoute bool
+			for _, staticRt := range ni.bridge.StaticRoutes {
+				if rt.IsDefaultRoute() && staticRt.IsDefaultRoute() {
+					haveStaticRoute = true
+					break
+				}
+				if netutils.EqualIPNets(rt.Dst, staticRt.DstNetwork) {
+					haveStaticRoute = true
+					break
+				}
+			}
+			if haveStaticRoute {
+				// Route overwritten by user or zedrouter.
 				continue
 			}
 			rtCopy := rt.Data.(netlink.Route)
@@ -679,8 +682,11 @@ func (r *LinuxNIReconciler) getIntendedNIL3Cfg(niID uuid.UUID) dg.Graph {
 			}
 			rtCopy.Protocol = unix.RTPROT_STATIC
 			intendedL3Cfg.PutItem(linux.Route{
-				Route:          rtCopy,
-				OutputIf:       rtOutIf,
+				Route: rtCopy,
+				OutputIf: generic.NetworkIf{
+					IfName:  rtOutIf.IfName,
+					ItemRef: rtOutIf.ItemRef,
+				},
 				GwViaLinkRoute: gwViaLinkRoute(rt, routes),
 			}, nil)
 		}
@@ -690,43 +696,50 @@ func (r *LinuxNIReconciler) getIntendedNIL3Cfg(niID uuid.UUID) dg.Graph {
 	// - the bridge IP itself, or
 	// - one of the apps and traffic from one app to another is just
 	//   forwarded by the host, not routed.
-	for _, route := range ni.config.StaticRoutes {
-		if bridgeIPHost != nil && route.Gateway.Equal(bridgeIPHost.IP) {
+	for _, route := range ni.bridge.StaticRoutes {
+		gateway := route.Gateway
+		if bridgeIPHost != nil && gateway != nil && gateway.Equal(bridgeIPHost.IP) {
 			// Static route towards the bridge itself.
 			// We should not put this into the NI routing table, otherwise
 			// traffic would take the "input" path rather than being forwarded
-			// by an uplink route.
+			// by a port route.
 			continue
 		}
-		isAppGW := r.getNISubnet(ni).Contains(route.Gateway)
+		isAppGW := gateway != nil && r.getNISubnet(ni).Contains(gateway)
 		if isAppGW && r.disableAllOnesNetmask {
 			// Route is not needed inside the host, traffic is just forwarded
 			// by the bridge.
 			continue
 		}
-		if !isAppGW && !r.routeGwIsConnected(route, ni.bridge.Uplink) {
-			// GW is not routable with the current uplink.
-			continue
-		}
-		family := netlink.FAMILY_V4
-		if route.Gateway.To4() == nil {
-			family = netlink.FAMILY_V6
-		}
-		outputIf := generic.NetworkIf{
-			IfName:  uplink,
-			ItemRef: dg.Reference(generic.Uplink{IfName: uplink}),
-		}
+		var outputIf generic.NetworkIf
 		if isAppGW {
 			outputIf = generic.NetworkIf{
 				IfName:  ni.brIfName,
 				ItemRef: dg.Reference(linux.Bridge{IfName: ni.brIfName}),
 			}
+		} else {
+			var portIfName string
+			portIfName, gateway = r.getPortAndGwForRoute(ni, route)
+			if portIfName != "" {
+				outputIf = generic.NetworkIf{
+					IfName:  portIfName,
+					ItemRef: dg.Reference(generic.Port{IfName: portIfName}),
+				}
+			}
+		}
+		if gateway == nil || outputIf.IfName == "" {
+			// GW is not known or not routable.
+			continue
+		}
+		family := netlink.FAMILY_V4
+		if gateway.To4() == nil {
+			family = netlink.FAMILY_V6
 		}
 		intendedL3Cfg.PutItem(linux.Route{
 			Route: netlink.Route{
 				Scope:    netlink.SCOPE_UNIVERSE,
 				Dst:      route.DstNetwork,
-				Gw:       route.Gateway,
+				Gw:       gateway,
 				Protocol: unix.RTPROT_STATIC,
 				Family:   family,
 				Table:    dstTable,
@@ -774,19 +787,23 @@ func (r *LinuxNIReconciler) getIntendedNIL3Cfg(niID uuid.UUID) dg.Graph {
 		Table:    devicenetwork.NIBaseRTIndex + ni.bridge.BrNum,
 		Dst:      r.getNISubnet(ni),
 	}, nil)
-	// Add S-NAT iptables rule for the local network instance (only for IPv4).
+	// Add S-NAT iptables rules for the local network instance (only for IPv4).
 	if ni.config.Subnet.IP.To4() != nil {
-		if ni.config.Type == types.NetworkInstanceTypeLocal && uplink != "" {
-			intendedL3Cfg.PutItem(iptables.Rule{
-				RuleLabel: fmt.Sprintf("SNAT traffic from NI %s", ni.config.UUID),
-				Table:     "nat",
-				ChainName: appChain("POSTROUTING"),
-				MatchOpts: []string{"-o", uplink, "-s", ni.config.Subnet.String()},
-				Target:    "MASQUERADE",
-				Description: fmt.Sprintf("NAT traffic from the local network instance %s "+
-					"as it leaves node through the uplink %s", ni.config.DisplayName,
-					ni.bridge.Uplink.LogicalLabel),
-			}, nil)
+		if ni.config.Type == types.NetworkInstanceTypeLocal {
+			for _, port := range ni.bridge.Ports {
+				intendedL3Cfg.PutItem(iptables.Rule{
+					RuleLabel: fmt.Sprintf("SNAT traffic from NI %s leaving via port %s",
+						ni.config.UUID, port.IfName),
+					Table:     "nat",
+					ChainName: appChain("POSTROUTING"),
+					MatchOpts: []string{"-o", port.IfName, "-s", ni.config.Subnet.String()},
+					Target:    "MASQUERADE",
+					Description: fmt.Sprintf(
+						"SNAT traffic from the local network instance %s "+
+							"as it leaves node through the port %s", ni.config.DisplayName,
+						port.IfName),
+				}, nil)
+			}
 		}
 	}
 	return intendedL3Cfg
@@ -845,7 +862,7 @@ func (r *LinuxNIReconciler) getIntendedMetadataSrvCfg(niID uuid.UUID) (items []d
 			Table:     "filter",
 			ChainName: appChain("INPUT"),
 			MatchOpts: []string{"-i", ni.brIfName, "-p", "tcp", "--dport", "80", "-m",
-				"physdev", "--physdev-in", uplinkPhysIfName(ni.brIfName)},
+				"physdev", "--physdev-in", portPhysIfName(ni.brIfName)},
 			Target: "DROP",
 			Description: fmt.Sprintf("Do not allow external endpoints to use switch "+
 				"network instance to access the metadata server of NI %s",
@@ -880,37 +897,39 @@ func (r *LinuxNIReconciler) getIntendedDnsmasqCfg(niID uuid.UUID) (items []dg.It
 
 	// DHCP server configuration
 	// dnsmasq advertises a router (default route) for network instance, unless:
-	//  a) network instance is air-gapped (without uplink)
-	//  b) uplink is app-shared and without default route
+	//  a) network instance is air-gapped (without port)
+	//  b) all ports are app-shared and without default route
 	var gatewayIP net.IP
 	if bridgeIP != nil {
 		gatewayIP = bridgeIP.IP
 	}
 	var withDefaultRoute bool
-	airGap := ni.bridge.Uplink.IfName == ""
-	if !airGap && (ni.bridge.Uplink.IsMgmt || r.niHasDefRoute(ni)) {
-		withDefaultRoute = true
-	}
-	var uplinkIf generic.NetworkIf
-	if !airGap {
-		uplinkIf = generic.NetworkIf{
-			IfName:  ni.bridge.Uplink.IfName,
-			ItemRef: dg.Reference(generic.Uplink{IfName: ni.bridge.Uplink.IfName}),
+	for _, port := range ni.bridge.Ports {
+		if port.IsMgmt {
+			withDefaultRoute = true
+			break
 		}
 	}
-	// Combine NTP servers assigned to the uplink together with those statically
+	if !withDefaultRoute && len(ni.bridge.Ports) > 0 {
+		if r.niHasDefRoute(ni) {
+			withDefaultRoute = true
+		}
+	}
+	// Combine NTP servers assigned to the port(s) together with those statically
 	// configured for the network instance.
 	var ntpServers []net.IP
-	ntpServers = append(ntpServers, ni.bridge.Uplink.NTPServers...)
+	for _, port := range ni.bridge.Ports {
+		ntpServers = append(ntpServers, port.NTPServers...)
+	}
 	if ni.config.NtpServer != nil {
 		ntpServers = append(ntpServers, ni.config.NtpServer)
 	}
 	ntpServers = generics.FilterDuplicatesFn(ntpServers, netutils.EqualIPs)
-	var propagateRoutes []types.IPRoute
+	var propagateRoutes []generic.IPRoute
 	// Use DHCP to propagate host routes towards user-configured NTP and DNS servers.
 	if bridgeIP != nil {
 		for _, ntpServer := range ntpServers {
-			propagateRoutes = append(propagateRoutes, types.IPRoute{
+			propagateRoutes = append(propagateRoutes, generic.IPRoute{
 				DstNetwork: netutils.HostSubnet(ntpServer),
 				Gateway:    bridgeIP.IP,
 			})
@@ -919,65 +938,73 @@ func (r *LinuxNIReconciler) getIntendedDnsmasqCfg(niID uuid.UUID) (items []dg.It
 			if netutils.EqualIPs(dnsServer, bridgeIP.IP) {
 				continue
 			}
-			propagateRoutes = append(propagateRoutes, types.IPRoute{
+			propagateRoutes = append(propagateRoutes, generic.IPRoute{
 				DstNetwork: netutils.HostSubnet(dnsServer),
 				Gateway:    bridgeIP.IP,
 			})
 		}
 	}
 	// Use DHCP to propagate user-configured IP routes.
-	for _, route := range ni.config.StaticRoutes {
+	for _, route := range ni.bridge.StaticRoutes {
 		if withDefaultRoute && route.IsDefaultRoute() {
-			// User-specified default route for the uplink, possibly overriding
-			// the original default route of the uplink interface.
+			// User or zedrouter-specified default route for the port,
+			// possibly overriding an original default route of a port.
 			// Propagation of the default route from app to NI routing table
 			// is already taken care of by Dnsmasq when we set WithDefaultRoute=true
 			// (i.e. no need to propagate this).
 			continue
 		}
-		gwInsideNI := r.getNISubnet(ni) != nil && r.getNISubnet(ni).Contains(route.Gateway)
+		gwInsideNI := r.getNISubnet(ni) != nil && route.Gateway != nil &&
+			r.getNISubnet(ni).Contains(route.Gateway)
 		if gwInsideNI {
-			propagateRoutes = append(propagateRoutes, route)
-		} else if bridgeIP != nil && r.routeGwIsConnected(route, ni.bridge.Uplink) {
-			propagateRoutes = append(propagateRoutes, types.IPRoute{
+			propagateRoutes = append(propagateRoutes, generic.IPRoute{
 				DstNetwork: route.DstNetwork,
-				Gateway:    bridgeIP.IP,
+				Gateway:    route.Gateway,
 			})
+		} else if bridgeIP != nil {
+			port, gateway := r.getPortAndGwForRoute(ni, route)
+			gwIsConnected := port != "" && gateway != nil
+			if gwIsConnected {
+				propagateRoutes = append(propagateRoutes, generic.IPRoute{
+					DstNetwork: route.DstNetwork,
+					Gateway:    bridgeIP.IP,
+				})
+			}
 		}
 	}
 	// Use DHCP to propagate connected IP routes.
-	if ni.config.PropagateConnRoutes && !airGap && bridgeIP != nil {
-		uplink := ni.bridge.Uplink.IfName
-		ifIndex, found, err := r.netMonitor.GetInterfaceIndex(uplink)
-		if err != nil {
-			r.log.Errorf("%s: getIntendedDnsmasqCfg: failed to get ifIndex "+
-				"for (NI uplink) %s: %v", LogAndErrPrefix, uplink, err)
-		}
-		var uplinkIPs []*net.IPNet
-		if err == nil && found {
-			uplinkIPs, _, err = r.netMonitor.GetInterfaceAddrs(ifIndex)
+	if ni.config.PropagateConnRoutes && bridgeIP != nil {
+		for _, port := range ni.bridge.Ports {
+			ifIndex, found, err := r.netMonitor.GetInterfaceIndex(port.IfName)
 			if err != nil {
-				r.log.Errorf(
-					"%s: getIntendedDnsmasqCfg: failed to get interface %s addresses: %v",
-					LogAndErrPrefix, uplink, err)
-				// Continue as if this uplink interface didn't have any IP addresses...
+				r.log.Errorf("%s: getIntendedDnsmasqCfg: failed to get ifIndex "+
+					"for (NI port) %s: %v", LogAndErrPrefix, port.IfName, err)
 			}
-		}
-		for _, uplinkIP := range uplinkIPs {
-			if uplinkIP.IP.To4() == nil {
-				continue
+			var portIPs []*net.IPNet
+			if err == nil && found {
+				portIPs, _, err = r.netMonitor.GetInterfaceAddrs(ifIndex)
+				if err != nil {
+					r.log.Errorf("%s: getIntendedDnsmasqCfg: failed to get "+
+						"interface %s addresses: %v", LogAndErrPrefix, port.IfName, err)
+					// Continue as if this port didn't have any IP addresses...
+				}
 			}
-			subnet := &net.IPNet{
-				IP:   uplinkIP.IP.Mask(uplinkIP.Mask),
-				Mask: uplinkIP.Mask,
+			for _, portIP := range portIPs {
+				if portIP.IP.To4() == nil {
+					continue
+				}
+				subnet := &net.IPNet{
+					IP:   portIP.IP.Mask(portIP.Mask),
+					Mask: portIP.Mask,
+				}
+				propagateRoutes = append(propagateRoutes, generic.IPRoute{
+					DstNetwork: subnet,
+					Gateway:    bridgeIP.IP,
+				})
 			}
-			propagateRoutes = append(propagateRoutes, types.IPRoute{
-				DstNetwork: subnet,
-				Gateway:    bridgeIP.IP,
-			})
 		}
 	}
-	propagateRoutes = generics.FilterDuplicatesFn(propagateRoutes, types.EqualIPRoutes)
+	propagateRoutes = generics.FilterDuplicatesFn(propagateRoutes, generic.EqualIPRoutes)
 	dhcpCfg := generic.DHCPServer{
 		Subnet:         r.getNISubnet(ni),
 		AllOnesNetmask: !r.disableAllOnesNetmask,
@@ -1020,9 +1047,19 @@ func (r *LinuxNIReconciler) getIntendedDnsmasqCfg(niID uuid.UUID) (items []dg.It
 		listenIP = bridgeIP.IP
 	}
 	dnsCfg := generic.DNSServer{
-		ListenIP:        listenIP,
-		UplinkIf:        uplinkIf,
-		UpstreamServers: ni.bridge.Uplink.DNSServers,
+		ListenIP: listenIP,
+	}
+	for _, port := range ni.bridge.Ports {
+		for _, dnsSrv := range port.DNSServers {
+			dnsCfg.UpstreamServers = append(dnsCfg.UpstreamServers,
+				generic.UpstreamDNSServer{
+					IPAddress: dnsSrv,
+					Port: generic.NetworkIf{
+						IfName:  port.IfName,
+						ItemRef: dg.Reference(generic.Port{IfName: port.IfName}),
+					},
+				})
+		}
 	}
 	for _, staticEntry := range ni.config.DnsNameToIPList {
 		dnsCfg.StaticEntries = append(dnsCfg.StaticEntries, generic.HostnameToIPs{
@@ -1169,10 +1206,10 @@ func (r *LinuxNIReconciler) getIntendedAppConnCfg(niID uuid.UUID,
 				EnableARPNotify: true,
 			}, nil)
 			// Gateways not covered by IP subnets should be routed explicitly
-			// using link-local routes.
+			// using connected routes.
 			// Note that by default, DHCP servers of local network instances
 			// are intentionally configured to grant IP leases with /32 mask,
-			// so these link-local routes are needed.
+			// so these connected routes are needed.
 			var routedGws []net.IP
 			for _, ip := range vif.PodVIF.IPAM.IPs {
 				if ip.Gateway == nil {
@@ -1230,7 +1267,7 @@ func (r *LinuxNIReconciler) getIntendedAppConnCfg(niID uuid.UUID,
 		}, nil)
 	}
 	if ni.bridge.IPConflict {
-		// Do not configure ACLs if we have IP conflict with an uplink port.
+		// Do not configure ACLs if we have IP conflict with a device port.
 		// We could block management traffic by an accident.
 		// The bridge will not be created, and VIFs will be down. Therefore, all app
 		// traffic will be dropped anyway.
@@ -1302,8 +1339,8 @@ func (r *LinuxNIReconciler) generateBridgeIfName(
 	var brIfName string
 	switch niConfig.Type {
 	case types.NetworkInstanceTypeSwitch:
-		if br.Uplink.IfName != "" {
-			brIfName = br.Uplink.IfName
+		if len(br.Ports) != 0 {
+			brIfName = br.Ports[0].IfName
 			break
 		}
 		// Air-gapped, create bridge just like for local NI.
@@ -1323,7 +1360,7 @@ func (r *LinuxNIReconciler) generateVifHostIfName(vifNum, appNum int) string {
 
 func (r *LinuxNIReconciler) niBridgeIsCreatedByNIM(ni *niInfo) bool {
 	return ni.config.Type == types.NetworkInstanceTypeSwitch &&
-		ni.bridge.Uplink.IfName != ""
+		len(ni.bridge.Ports) != 0
 }
 
 func (r *LinuxNIReconciler) getNISubnet(ni *niInfo) *net.IPNet {
@@ -1338,70 +1375,125 @@ func (r *LinuxNIReconciler) getNISubnet(ni *niInfo) *net.IPNet {
 
 // Check if network instance has default route.
 func (r *LinuxNIReconciler) niHasDefRoute(ni *niInfo) bool {
-	uplink := ni.bridge.Uplink.IfName
-	if uplink == "" {
-		return false
-	}
-	ifIndex, found, err := r.netMonitor.GetInterfaceIndex(uplink)
-	if err != nil {
-		r.log.Errorf("%s: niHasDefRoute: failed to get ifIndex "+
-			"for (NI uplink) %s: %v", LogAndErrPrefix, uplink, err)
-		return false
-	}
-	if !found {
-		return false
-	}
-	routes, err := r.netMonitor.ListRoutes(netmonitor.RouteFilters{
-		FilterByTable: true,
-		Table:         unix.RT_TABLE_MAIN,
-		FilterByIf:    true,
-		IfIndex:       ifIndex,
-	})
-	if err != nil {
-		r.log.Errorf("%s: niHasDefRoute: ListRoutes failed for ifIndex %d: %v",
-			LogAndErrPrefix, ifIndex, err)
-		return false
-	}
-	for _, rt := range routes {
+	for _, rt := range ni.bridge.StaticRoutes {
 		if rt.IsDefaultRoute() {
 			return true
 		}
 	}
-	for _, rt := range ni.config.StaticRoutes {
-		if rt.IsDefaultRoute() {
-			return true
+	for _, port := range ni.bridge.Ports {
+		ifIndex, found, err := r.netMonitor.GetInterfaceIndex(port.IfName)
+		if err != nil {
+			r.log.Errorf("%s: niHasDefRoute: failed to get ifIndex "+
+				"for (NI port) %s: %v", LogAndErrPrefix, port.IfName, err)
+			continue
+		}
+		if !found {
+			continue
+		}
+		routes, err := r.netMonitor.ListRoutes(netmonitor.RouteFilters{
+			FilterByTable: true,
+			Table:         unix.RT_TABLE_MAIN,
+			FilterByIf:    true,
+			IfIndex:       ifIndex,
+		})
+		if err != nil {
+			r.log.Errorf("%s: niHasDefRoute: ListRoutes failed for ifIndex %d: %v",
+				LogAndErrPrefix, ifIndex, err)
+			continue
+		}
+		for _, rt := range routes {
+			if rt.IsDefaultRoute() {
+				return true
+			}
 		}
 	}
 	return false
 }
 
-// Check if route gateway is inside the subnet of the uplink port.
-func (r *LinuxNIReconciler) routeGwIsConnected(route types.IPRoute, uplink Uplink) bool {
-	if uplink.IfName == "" {
-		return false
+// Get output port and gateway IP matching the given IP route.
+func (r *LinuxNIReconciler) getPortAndGwForRoute(ni *niInfo, route IPRoute) (
+	portIfName string, gw net.IP) {
+	var ipv6 bool
+	if len(route.DstNetwork.IP) > 0 && route.DstNetwork.IP.To4() == nil {
+		ipv6 = true
 	}
-	ifIndex, found, err := r.netMonitor.GetInterfaceIndex(uplink.IfName)
+	var port *Port
+	if route.OutputPort != "" {
+		port = ni.bridge.GetPort(route.OutputPort)
+	} else if route.Gateway != nil {
+		for i := range ni.bridge.Ports {
+			if r.ipAddrIsConnected(route.Gateway, ni.bridge.Ports[i].IfName) {
+				port = &ni.bridge.Ports[i]
+				break
+			}
+		}
+	}
+	if port == nil {
+		return "", nil
+	}
+	gateway := route.Gateway
+	if gateway == nil {
+		gateway = r.getPortGateway(port.IfName, ipv6)
+	}
+	if gateway == nil {
+		return "", nil
+	}
+	if !r.ipAddrIsConnected(gateway, port.IfName) {
+		return "", nil
+	}
+	return port.IfName, gateway
+}
+
+// Returns IP address of the (default) gateway used by a given NI port.
+func (r *LinuxNIReconciler) getPortGateway(portIfName string, forIPv6 bool) net.IP {
+	ifIndex, found, err := r.netMonitor.GetInterfaceIndex(portIfName)
 	if err != nil {
-		r.log.Errorf("%s: routeGwIsConnected: failed to get ifIndex "+
-			"for (NI uplink) %s: %v", LogAndErrPrefix, uplink.IfName, err)
+		r.log.Errorf("%s: getPortGateway: failed to get ifIndex "+
+			"for (NI port) %s: %v", LogAndErrPrefix, portIfName, err)
+		return nil
+	}
+	if !found {
+		return nil
+	}
+	gws, err := r.netMonitor.GetInterfaceDefaultGWs(ifIndex)
+	if err != nil {
+		r.log.Errorf("%s: getPortGateway: failed to get gateway IP "+
+			"for (NI port) %s: %v", LogAndErrPrefix, portIfName, err)
+		return nil
+	}
+	for _, gw := range gws {
+		ipv6 := gw.To4() == nil
+		if forIPv6 == ipv6 {
+			return gw
+		}
+	}
+	return nil
+}
+
+// Check if the IP address is inside the subnet of the device port.
+func (r *LinuxNIReconciler) ipAddrIsConnected(ipAddr net.IP, portIfName string) bool {
+	ifIndex, found, err := r.netMonitor.GetInterfaceIndex(portIfName)
+	if err != nil {
+		r.log.Errorf("%s: ipAddrIsConnected: failed to get ifIndex "+
+			"for (NI port) %s: %v", LogAndErrPrefix, portIfName, err)
 		return false
 	}
 	if !found {
 		return false
 	}
-	uplinkIPs, _, err := r.netMonitor.GetInterfaceAddrs(ifIndex)
+	portIPs, _, err := r.netMonitor.GetInterfaceAddrs(ifIndex)
 	if err != nil {
 		r.log.Errorf(
-			"%s: routeGwIsConnected: failed to get interface %s addresses: %v",
-			LogAndErrPrefix, uplink.IfName, err)
-		// Continue as if this uplink interface didn't have any IP addresses...
+			"%s: ipAddrIsConnected: failed to get interface %s addresses: %v",
+			LogAndErrPrefix, portIfName, err)
+		// Continue as if this port didn't have any IP addresses...
 	}
-	for _, uplinkIP := range uplinkIPs {
+	for _, portIP := range portIPs {
 		subnet := &net.IPNet{
-			IP:   uplinkIP.IP.Mask(uplinkIP.Mask),
-			Mask: uplinkIP.Mask,
+			IP:   portIP.IP.Mask(portIP.Mask),
+			Mask: portIP.Mask,
 		}
-		if subnet.Contains(route.Gateway) {
+		if subnet.Contains(ipAddr) {
 			return true
 		}
 	}

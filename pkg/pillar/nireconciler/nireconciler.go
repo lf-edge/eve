@@ -82,7 +82,7 @@ type NIReconciler interface {
 }
 
 // NIBridge either references an already created bridge (by NIM) that Reconciler
-// should use for switch (L2) NI with uplink connectivity, or it describes parameters
+// should use for switch (L2) NI with external connectivity, or it describes parameters
 // of a bridge that Reconciler should create/update for air-gapped switch NI or for
 // local (L3, NATed) NI.
 type NIBridge struct {
@@ -100,14 +100,23 @@ type NIBridge struct {
 	// Used only with L3 network instances.
 	// Reconciler is expected to assign this address to the bridge that it will create.
 	IPAddress *net.IPNet
-	// Uplink interface selected for this network instance.
-	// Zero value if network instance is air-gapped.
-	Uplink Uplink
+	// Device network ports selected for this network instance to provide external
+	// connectivity.
+	// Empty list if network instance is air-gapped.
+	// Currently, at most one port is supported for switch network instance.
+	Ports []Port
+	// Set of static routes to configure inside the NI routing table.
+	// This are user-defined routes, plus zedrouter uses this to decide which port
+	// and gateway the default route should be using.
+	// This does not include link-local, DHCP-received and connected IP routes,
+	// all of which NI Reconciler automatically propagates from the global routing table
+	// for all NI ports (filtering out those which are overwritten by static routes).
+	StaticRoutes []IPRoute
 	// IPConflict is used to mark (Local) NI with IP subnet that overlaps with the network
-	// of one of the uplink ports.
+	// of one of the device network ports.
 	// Currently, for conflicting NI, NIReconciler keeps only app VIFs configured, and even
 	// they are in the DOWN state to prevent any traffic getting through.
-	// In the future, we may improve isolation between NIs and uplinks using advanced
+	// In the future, we may improve isolation between NIs and device ports using advanced
 	// policy-based routing or VRFs. This will enable conflicting NIs to remain functional.
 	IPConflict bool
 	// MTU : Maximum transmission unit size set for the bridge and all VIFs connected
@@ -115,9 +124,21 @@ type NIBridge struct {
 	MTU uint16
 }
 
-// Uplink used by a network instance to provide external connectivity for applications.
-type Uplink struct {
+// GetPort returns port with the given logical label.
+func (b NIBridge) GetPort(logicalLabel string) *Port {
+	for i := range b.Ports {
+		if b.Ports[i].LogicalLabel == logicalLabel {
+			return &b.Ports[i]
+		}
+	}
+	return nil
+}
+
+// Port is a physical network device used by a network instance to provide external
+// connectivity for applications.
+type Port struct {
 	LogicalLabel string
+	SharedLabels []string
 	IfName       string
 	IsMgmt       bool
 	MTU          uint16
@@ -125,13 +146,31 @@ type Uplink struct {
 	NTPServers   []net.IP
 }
 
-// Equal compares two uplinks for equality.
-func (u Uplink) Equal(u2 Uplink) bool {
-	return u.LogicalLabel == u2.LogicalLabel &&
-		u.IfName == u2.IfName &&
-		u.MTU == u2.MTU &&
-		generics.EqualSetsFn(u.DNSServers, u2.DNSServers, netutils.EqualIPs) &&
-		generics.EqualSetsFn(u.NTPServers, u2.NTPServers, netutils.EqualIPs)
+// Equal compares two ports for equality.
+func (p Port) Equal(p2 Port) bool {
+	return p.LogicalLabel == p2.LogicalLabel &&
+		generics.EqualSets(p.SharedLabels, p2.SharedLabels) &&
+		p.IfName == p2.IfName &&
+		p.IsMgmt == p2.IsMgmt &&
+		p.MTU == p2.MTU &&
+		generics.EqualSetsFn(p.DNSServers, p2.DNSServers, netutils.EqualIPs) &&
+		generics.EqualSetsFn(p.NTPServers, p2.NTPServers, netutils.EqualIPs)
+}
+
+// IPRoute is a static IP route configured inside the NI routing table.
+type IPRoute struct {
+	DstNetwork *net.IPNet // cannot be nil
+	Gateway    net.IP     // can be nil
+	OutputPort string     // logical label, empty if gateway is application running on EVE
+}
+
+// IsDefaultRoute returns true if this is a default route, i.e. matches all destinations.
+func (r IPRoute) IsDefaultRoute() bool {
+	if r.DstNetwork == nil {
+		return true
+	}
+	ones, _ := r.DstNetwork.Mask.Size()
+	return r.DstNetwork.IP.IsUnspecified() && ones == 0
 }
 
 // AppVIF : describes interface created to connect application with network instance.
@@ -169,7 +208,7 @@ const (
 	// to process them.
 	AsyncOpDone UpdateType = iota
 	// CurrentStateChanged is a signal for the zedrouter informing that the Reconciler
-	// detected a change in the current state (e.g. an uplink port appeared) and therefore
+	// detected a change in the current state (e.g. a device port appeared) and therefore
 	// NIReconciler.ResumeReconcile() should be called to reconcile the current and
 	// the intended states.
 	CurrentStateChanged
@@ -212,6 +251,9 @@ type NIReconcileStatus struct {
 	InProgress bool
 	// FailedItems : The set of configuration items currently in a failed state.
 	FailedItems map[dg.ItemRef]error
+	// Currently configured IP routes.
+	// Empty for switch network instance.
+	Routes []types.IPRouteInfo
 }
 
 // Equal compares two instances of NIReconcileStatus.

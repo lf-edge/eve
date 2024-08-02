@@ -388,8 +388,8 @@ func TestProbingSingleNI(test *testing.T) {
 
 	metrics, err := prober.GetProbeMetrics(ni1.UUID)
 	t.Expect(err).ToNot(HaveOccurred())
-	t.Expect(metrics.UplinkCount).To(BeEquivalentTo(2)) // without eth1
-	t.Expect(metrics.SelectedUplinkIntf).To(Equal("eth0"))
+	t.Expect(metrics.PortCount).To(BeEquivalentTo(2)) // without eth1
+	t.Expect(metrics.SelectedPortIfName).To(Equal("eth0"))
 	t.Expect(metrics.RemotePingIntvl).To(BeEquivalentTo(1))
 	t.Expect(metrics.LocalPingIntvl).To(BeEquivalentTo(0)) // less than 1 sec in UTs
 	t.Expect(metrics.RemoteEndpoints).To(BeEquivalentTo([]string{controllerAddr}))
@@ -453,8 +453,8 @@ func TestProbingSingleNI(test *testing.T) {
 	// Re-check metrics with the connectivity being DOWN.
 	metrics, err = prober.GetProbeMetrics(ni1.UUID)
 	t.Expect(err).ToNot(HaveOccurred())
-	t.Expect(metrics.UplinkCount).To(BeEquivalentTo(2)) // without eth1
-	t.Expect(metrics.SelectedUplinkIntf).To(Equal("wwan0"))
+	t.Expect(metrics.PortCount).To(BeEquivalentTo(2)) // without eth1
+	t.Expect(metrics.SelectedPortIfName).To(Equal("wwan0"))
 	t.Expect(metrics.RemotePingIntvl).To(BeEquivalentTo(1))
 	t.Expect(metrics.LocalPingIntvl).To(BeEquivalentTo(0)) // less than 1 sec in UTs
 	t.Expect(metrics.RemoteEndpoints).To(BeEquivalentTo([]string{controllerAddr}))

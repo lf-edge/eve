@@ -60,38 +60,50 @@ func (z *zedrouter) getNIBridgeConfig(
 			Mask: status.Subnet.Mask,
 		}
 	}
+	// TODO: multipath routes
+	var staticRoutes []nireconciler.IPRoute
+	for _, route := range status.StaticRoutes {
+		staticRoutes = append(staticRoutes, nireconciler.IPRoute{
+			DstNetwork: route.DstNetwork,
+			Gateway:    route.Gateway,
+		})
+	}
 	return nireconciler.NIBridge{
-		NI:         status.UUID,
-		BrNum:      status.BridgeNum,
-		MACAddress: status.BridgeMac,
-		IPAddress:  ipAddr,
-		Uplink:     z.getNIUplinkConfig(status),
-		IPConflict: status.IPConflictErr.HasError(),
-		MTU:        status.MTU,
+		NI:           status.UUID,
+		BrNum:        status.BridgeNum,
+		MACAddress:   status.BridgeMac,
+		IPAddress:    ipAddr,
+		Ports:        z.getNIPortConfig(status),
+		StaticRoutes: staticRoutes,
+		IPConflict:   status.IPConflictErr.HasError(),
+		MTU:          status.MTU,
 	}
 }
 
-func (z *zedrouter) getNIUplinkConfig(
-	status *types.NetworkInstanceStatus) nireconciler.Uplink {
+func (z *zedrouter) getNIPortConfig(
+	status *types.NetworkInstanceStatus) []nireconciler.Port {
 	if status.PortLogicalLabel == "" {
 		// Air-gapped
-		return nireconciler.Uplink{}
+		return nil
 	}
+	// TODO: multiple ports matched by shared label
 	ifName := status.SelectedUplinkIntfName
 	if ifName == "" {
-		return nireconciler.Uplink{}
+		return nil
 	}
-	port := z.deviceNetworkStatus.GetPortByIfName(ifName)
+	port := z.deviceNetworkStatus.LookupPortByIfName(ifName)
 	if port == nil {
-		return nireconciler.Uplink{}
+		return nil
 	}
-	return nireconciler.Uplink{
-		LogicalLabel: port.Logicallabel,
-		IfName:       ifName,
-		IsMgmt:       port.IsMgmt,
-		MTU:          port.MTU,
-		DNSServers:   types.GetDNSServers(*z.deviceNetworkStatus, ifName),
-		NTPServers:   types.GetNTPServers(*z.deviceNetworkStatus, ifName),
+	return []nireconciler.Port{
+		{
+			LogicalLabel: port.Logicallabel,
+			IfName:       ifName,
+			IsMgmt:       port.IsMgmt,
+			MTU:          port.MTU,
+			DNSServers:   types.GetDNSServers(*z.deviceNetworkStatus, ifName),
+			NTPServers:   types.GetNTPServers(*z.deviceNetworkStatus, ifName),
+		},
 	}
 }
 
@@ -112,26 +124,18 @@ func (z *zedrouter) setSelectedUplink(uplinkLogicalLabel string,
 		// and uplink probing eventually finding a suitable uplink port.
 		return fmt.Errorf("no selected uplink port")
 	}
-	ports := z.deviceNetworkStatus.GetPortsByLogicallabel(uplinkLogicalLabel)
-	switch len(ports) {
-	case 0:
-		err := fmt.Errorf("label of selected uplink (%s) does not match any port (%v)",
-			uplinkLogicalLabel, ports)
+	port := z.deviceNetworkStatus.LookupPortByLogicallabel(uplinkLogicalLabel)
+	if port == nil {
+		err := fmt.Errorf("label of selected uplink (%s) does not match any port",
+			uplinkLogicalLabel)
 		// Wait for DPC update
 		return err
-	case 1:
-		if ports[0].InvalidConfig {
-			return fmt.Errorf("port %s has invalid config: %s", ports[0].Logicallabel,
-				ports[0].LastError)
-		}
-		// Selected port is OK
-		break
-	default:
-		// Note: soon we will support NI with multiple ports.
-		err := fmt.Errorf("label of selected uplink matches multiple ports (%v)", ports)
-		return err
 	}
-	ifName := ports[0].IfName
+	if port.InvalidConfig {
+		return fmt.Errorf("port %s has invalid config: %s", port.Logicallabel,
+			port.LastError)
+	}
+	ifName := port.IfName
 	status.SelectedUplinkIntfName = ifName
 	ifIndex, exists, _ := z.networkMonitor.GetInterfaceIndex(ifName)
 	if !exists {

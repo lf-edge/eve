@@ -11,6 +11,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/cas"
 	"github.com/lf-edge/eve/pkg/pillar/containerd"
 	"github.com/lf-edge/eve/pkg/pillar/diskmetrics"
+	"github.com/lf-edge/eve/pkg/pillar/types"
 	utils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 )
 
@@ -111,4 +112,10 @@ func (handler *volumeHandlerContainer) DeleteSnapshot(snapshotMeta interface{}) 
 	errStr := fmt.Sprintf("DeleteSnapshot not implemented for container volumes")
 	handler.log.Errorf(errStr)
 	return fmt.Errorf(errStr)
+}
+
+func (handler *volumeHandlerContainer) GetAllDataSets() ([]types.ImgInfo, error) {
+	errStr := fmt.Sprintf("GetAllDataSets not implemented for container volumes")
+	handler.log.Errorf(errStr)
+	return nil, fmt.Errorf(errStr)
 }

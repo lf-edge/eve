@@ -1681,11 +1681,11 @@ func protoEncodeNetworkInstanceMetricProto(status types.NetworkInstanceMetrics) 
 
 func protoEncodeProbeMetrics(probeMetrics types.ProbeMetrics) *metrics.ZProbeNIMetrics {
 	protoMetrics := &metrics.ZProbeNIMetrics{
-		CurrentIntf:    probeMetrics.SelectedUplinkIntf,
+		CurrentIntf:    probeMetrics.SelectedPortIfName,
 		RemoteEndpoint: strings.Join(probeMetrics.RemoteEndpoints, ", "),
 		PingIntv:       probeMetrics.LocalPingIntvl,
 		RemotePingIntv: probeMetrics.RemotePingIntvl,
-		UplinkCnt:      probeMetrics.UplinkCount,
+		UplinkCnt:      probeMetrics.PortCount,
 	}
 	for _, intfStats := range probeMetrics.IntfProbeStats {
 		var nextHops []string

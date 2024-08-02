@@ -95,6 +95,8 @@ func lookupAppDiskMetric(ctx *volumemgrContext, key string) *types.AppDiskMetric
 }
 
 // diskMetricsTimerTask calculates and publishes disk metrics periodically
+// Also publishes remaining space so nodeagent can decide if we should
+// go into MaintenanceMode.
 func diskMetricsTimerTask(ctx *volumemgrContext, handleChannel chan interface{}) {
 	log.Functionln("starting report diskMetricsTimerTask timer task")
 
@@ -103,6 +105,7 @@ func diskMetricsTimerTask(ctx *volumemgrContext, handleChannel chan interface{})
 	ctx.ps.RegisterFileWatchdog(wdName)
 
 	createOrUpdateDiskMetrics(ctx, wdName)
+	generateAndPublishVolumeMgrStatus(ctx)
 
 	diskMetricInterval := time.Duration(ctx.globalConfig.GlobalValueInt(types.DiskScanMetricInterval)) * time.Second
 	max := float64(diskMetricInterval)
@@ -120,6 +123,7 @@ func diskMetricsTimerTask(ctx *volumemgrContext, handleChannel chan interface{})
 		case <-diskMetricTicker.C:
 			start := time.Now()
 			createOrUpdateDiskMetrics(ctx, wdName)
+			generateAndPublishVolumeMgrStatus(ctx)
 			ctx.ps.CheckMaxTimeTopic(wdName, "createOrUpdateDiskMetrics", start,
 				warningTime, errorTime)
 
@@ -127,6 +131,20 @@ func diskMetricsTimerTask(ctx *volumemgrContext, handleChannel chan interface{})
 		}
 		ctx.ps.StillRunning(wdName, warningTime, errorTime)
 	}
+}
+
+func generateAndPublishVolumeMgrStatus(ctx *volumemgrContext) {
+	remaining, err := getRemainingDiskSpace(ctx)
+	if err != nil {
+		log.Error(err)
+		return
+	}
+	st := types.VolumeMgrStatus{
+		Name:           agentName,
+		Initialized:    true,
+		RemainingSpace: remaining,
+	}
+	ctx.pubVolumeMgrStatus.Publish(st.Key(), st)
 }
 
 // createOrUpdateDiskMetrics creates or updates metrics for all disks, mountpaths and volumeStatuses
@@ -250,6 +268,44 @@ func createOrUpdateDiskMetrics(ctx *volumemgrContext, wdName string) {
 
 		diskMetricList = append(diskMetricList, metric)
 	}
+	// Walk all of /persist and look for files above 1 Mbyte in size which
+	// are not under one of the paths already reported.
+	var excludeDirs []string
+	excludeDirs = append(excludeDirs, types.ReportDirPaths...)
+	excludeDirs = append(excludeDirs, types.AppPersistPaths...)
+	list, err := diskmetrics.FindLargeFiles(types.PersistDir, 1024*1024,
+		excludeDirs)
+	if err != nil {
+		log.Errorf("FindLargeFiles Failed: %s", err)
+	} else {
+		for _, item := range list {
+			metric := &(types.DiskMetric{
+				DiskPath:  item.Path,
+				UsedBytes: uint64(item.Size),
+				IsDir:     false,
+			})
+			diskMetricList = append(diskMetricList, metric)
+		}
+	}
+
+	// If we have ZFS dataset, report their info from the ZFS perspective
+	if handler := volumehandlers.GetZFSVolumeHandler(log, ctx); handler != nil {
+		items, err := handler.GetAllDataSets()
+		if err != nil {
+			log.Error(err)
+		} else {
+			for _, img := range items {
+				metric := &types.DiskMetric{
+					DiskPath:   "dataset " + img.Filename,
+					TotalBytes: img.VirtualSize,
+					UsedBytes:  img.ActualSize,
+					IsDir:      true,
+				}
+				diskMetricList = append(diskMetricList, metric)
+			}
+		}
+	}
+
 	publishDiskMetrics(ctx, diskMetricList...)
 	for _, volumeStatus := range getAllVolumeStatus(ctx) {
 		ctx.ps.StillRunning(wdName, warningTime, errorTime)
