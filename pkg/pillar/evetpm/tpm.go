@@ -295,8 +295,16 @@ func (s TpmPrivateKey) Sign(r io.Reader, digest []byte, opts crypto.SignerOpts) 
 	return asn1.Marshal(ecdsaSignature{R, S})
 }
 
-// CreateKey helps creating various keys, according to the supplied template, and hierarchy
-func CreateKey(log *base.LogObject, rw io.ReadWriteCloser, keyHandle, ownerHandle tpmutil.Handle, template tpm2.Public, overwrite bool) error {
+// CreateKey helps creating various keys, according to the supplied template, and hierarchy,
+// we pass TPM path here because in some places we pass socket rather than char device.
+func CreateKey(log *base.LogObject, TpmPath string, keyHandle, ownerHandle tpmutil.Handle, template tpm2.Public, overwrite bool) error {
+	rw, err := tpm2.OpenTPM(TpmPath)
+	if err != nil {
+		log.Errorln(err)
+		return err
+	}
+	defer rw.Close()
+
 	if !overwrite {
 		//don't overwrite if key already exists, and if the attributes match up
 		pub, _, _, err := tpm2.ReadPublic(rw, keyHandle)
