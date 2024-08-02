@@ -715,26 +715,19 @@ func writeDeviceCertToFile(certBytes, keyBytes []byte) error {
 }
 
 func createOtherKeys(override bool) error {
-	rw, err := tpm2.OpenTPM(etpm.TpmDevicePath)
-	if err != nil {
-		log.Errorln(err)
-		return err
-	}
-	defer rw.Close()
-
-	if err := etpm.CreateKey(log, rw, etpm.TpmEKHdl, tpm2.HandleEndorsement, etpm.DefaultEkTemplate, override); err != nil {
+	if err := etpm.CreateKey(log, etpm.TpmDevicePath, etpm.TpmEKHdl, tpm2.HandleEndorsement, etpm.DefaultEkTemplate, override); err != nil {
 		return fmt.Errorf("error in creating Endorsement key: %w ", err)
 	}
-	if err := etpm.CreateKey(log, rw, etpm.TpmSRKHdl, tpm2.HandleOwner, etpm.DefaultSrkTemplate, override); err != nil {
+	if err := etpm.CreateKey(log, etpm.TpmDevicePath, etpm.TpmSRKHdl, tpm2.HandleOwner, etpm.DefaultSrkTemplate, override); err != nil {
 		return fmt.Errorf("error in creating SRK key: %w ", err)
 	}
-	if err := etpm.CreateKey(log, rw, etpm.TpmAIKHdl, tpm2.HandleOwner, etpm.DefaultAikTemplate, override); err != nil {
+	if err := etpm.CreateKey(log, etpm.TpmDevicePath, etpm.TpmAIKHdl, tpm2.HandleOwner, etpm.DefaultAikTemplate, override); err != nil {
 		return fmt.Errorf("error in creating Attestation key: %w ", err)
 	}
-	if err := etpm.CreateKey(log, rw, etpm.TpmQuoteKeyHdl, tpm2.HandleOwner, etpm.DefaultQuoteKeyTemplate, override); err != nil {
+	if err := etpm.CreateKey(log, etpm.TpmDevicePath, etpm.TpmQuoteKeyHdl, tpm2.HandleOwner, etpm.DefaultQuoteKeyTemplate, override); err != nil {
 		return fmt.Errorf("error in creating Quote key: %w ", err)
 	}
-	if err := etpm.CreateKey(log, rw, etpm.TpmEcdhKeyHdl, tpm2.HandleOwner, etpm.DefaultEcdhKeyTemplate, override); err != nil {
+	if err := etpm.CreateKey(log, etpm.TpmDevicePath, etpm.TpmEcdhKeyHdl, tpm2.HandleOwner, etpm.DefaultEcdhKeyTemplate, override); err != nil {
 		return fmt.Errorf("error in creating ECDH key: %w ", err)
 	}
 	return nil
