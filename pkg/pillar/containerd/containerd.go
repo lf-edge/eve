@@ -25,6 +25,7 @@ import (
 	"github.com/containerd/containerd/leases"
 	"github.com/containerd/containerd/mount"
 	"github.com/containerd/containerd/namespaces"
+	"github.com/containerd/containerd/oci"
 	"github.com/containerd/containerd/snapshots"
 	"github.com/containerd/typeurl"
 	"github.com/lf-edge/edge-containers/pkg/resolver"
@@ -33,6 +34,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/utils/persist"
 	"github.com/opencontainers/go-digest"
 	"github.com/opencontainers/image-spec/identity"
+	"github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/vishvananda/netlink"
 
 	v1stat "github.com/containerd/cgroups/stats/v1"
@@ -536,6 +538,42 @@ func (client *Client) CtrListTaskIds(ctx context.Context) ([]string, error) {
 		res = append(res, v.ID)
 	}
 	return res, nil
+}
+
+// CtrNewContainer starts a new container with a specific spec and specOpts
+func (client *Client) CtrNewContainer(ctx context.Context, spec specs.Spec, specOpts []oci.SpecOpts, name string, containerImage containerd.Image) (containerd.Container, error) {
+
+	opts := []containerd.NewContainerOpts{
+		containerd.WithImage(containerImage),
+		containerd.WithImageConfigLabels(containerImage),
+		containerd.WithNewSnapshot(name, containerImage),
+		containerd.WithSpec(&spec, specOpts...),
+	}
+
+	return client.ctrdClient.NewContainer(ctx, name, opts...)
+}
+
+// CtrNewContainerWithPersist starts a new container with /persist mounted
+func (client *Client) CtrNewContainerWithPersist(ctx context.Context, name string, containerImage containerd.Image) (containerd.Container, error) {
+	var spec specs.Spec
+
+	spec.Root = &specs.Root{
+		Readonly: false,
+	}
+
+	specOpts := []oci.SpecOpts{
+		oci.WithDefaultSpec(),
+		oci.WithImageConfig(containerImage),
+		oci.WithDefaultUnixDevices,
+	}
+
+	return client.CtrNewContainer(ctx, spec, specOpts, name, containerImage)
+}
+
+// CtrPull pulls a container
+func (client *Client) CtrPull(ctx context.Context, ref string) (containerd.Image, error) {
+	image, err := client.ctrdClient.Pull(ctx, ref, containerd.WithPullUnpack)
+	return image, err
 }
 
 // CtrStartTask starts the default task in a pre-existing container that was prepared by CtrCreateTask
