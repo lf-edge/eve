@@ -1,11 +1,11 @@
-FROM lfedge/eve-alpine:591df01e581889c3027514c8a91feaca1c8ad49f AS build-base
-ENV BUILD_PKGS bash binutils-dev build-base bc bison flex openssl-dev python3 swig dtc
+FROM lfedge/eve-alpine:591df01e581889c3027514c8a91feaca1c8ad49f as build-base
+ENV BUILD_PKGS bash binutils-dev build-base bc bison flex openssl-dev python3 swig dtc util-linux-dev gnutls-dev
 ENV BUILD_PKGS_amd64 python3-dev py-pip
 RUN eve-alpine-deploy.sh
 
 SHELL ["/bin/bash", "-eo", "pipefail", "-c"]
 
-ENV VERSION v2022.10
+ENV VERSION v2024.10-rc2
 ENV SOURCE_URL https://github.com/u-boot/u-boot/archive/${VERSION}.tar.gz
 ENV RASPBERRY_FIRMWARE_BLOBS_VERSION 1.20211007
 ENV RASPBERRY_FIRMWARE_BLOBS https://github.com/raspberrypi/firmware/raw/${RASPBERRY_FIRMWARE_BLOBS_VERSION}
@@ -36,7 +36,11 @@ COPY rpi /tmp/rpi
 ADD ${RASPBERRY_FIRMWARE_BLOBS}/boot/fixup4.dat /tmp/rpi/fixup4.dat
 # hadolint ignore=DL3020
 ADD ${RASPBERRY_FIRMWARE_BLOBS}/boot/start4.elf /tmp/rpi/start4.elf
-# hadolint ignore=SC3060
+# hadolint ignore=DL3020
+ADD ${RASPBERRY_FIRMWARE_BLOBS}/boot/bcm2711-rpi-cm4.dtb /tmp/rpi/bcm2711-rpi-cm4.dtb
+# hadolint ignore=DL3020
+ADD ${RASPBERRY_FIRMWARE_BLOBS}/boot/overlays/dwc2.dtbo /tmp/rpi/overlays/dwc2.dtbo
+# hadolint ignore=DL3020
 RUN  for i in /tmp/rpi/overlays/*.dts ; do                                         \
           dtc -@ -I dts -O dtb -o "${i/.dts/.dtbo}" "$i" && rm "$i"     ;\
        done                                                                         ;\
