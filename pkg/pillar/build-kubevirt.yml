@@ -5,7 +5,7 @@
 
 ---
 org: lfedge
-image: eve-pillar
+image: eve-pillar-kube
 config:
   binds:
     - /lib/modules:/lib/modules

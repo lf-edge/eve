@@ -19,16 +19,32 @@ process-image-template() {
     flags="$(sed -r 's/-dirty[0-9.\-]{18}//g' <<< "${flags}")"
     IFS='-' read -r -a bits <<< "${flags}"
 
+    local dev=0
+    local kubevirt=0
     for bit in "${bits[@]}"; do
         case "${bit}" in
             dev)
-                # shellcheck disable=SC2094
-                yq '(.onboot[] | select(.image == "PILLAR_TAG").image) |= "PILLAR_DEV_TAG"' < "${out_templ_path}" | spongefile "${out_templ_path}"
-                # shellcheck disable=SC2094
-                yq '(.services[] | select(.image == "PILLAR_TAG").image) |= "PILLAR_DEV_TAG"' < "${out_templ_path}" | spongefile "${out_templ_path}"
+                dev=1
+                ;;
+            kubevirt)
+                kubevirt=1
                 ;;
         esac
     done
+
+    local pillar_tag="PILLAR_TAG"
+    if [[ $dev -eq 1 && $kubevirt -eq 1 ]]; then
+      pillar_tag="PILLAR_KUBEVIRT_DEV_TAG"
+    elif [[ $dev -eq 1 ]]; then
+      pillar_tag="PILLAR_DEV_TAG"
+    elif [[ $kubevirt -eq 1 ]]; then
+      pillar_tag="PILLAR_KUBEVIRT_TAG"
+    fi
+
+    # shellcheck disable=SC2094
+    yq '(.onboot[] | select(.image == "PILLAR_TAG").image) |= "'"$pillar_tag"'"' < "${out_templ_path}" | spongefile "${out_templ_path}"
+    # shellcheck disable=SC2094
+    yq '(.services[] | select(.image == "PILLAR_TAG").image) |= "'"$pillar_tag"'"' < "${out_templ_path}" | spongefile "${out_templ_path}"
 }
 
 patch_hv() {
