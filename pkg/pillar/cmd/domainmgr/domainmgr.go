@@ -3023,7 +3023,7 @@ func updatePortAndPciBackIoBundle(ctx *domainContext, ib *types.IoBundle) (chang
 			// is assigned to an application, EVE will not be able to manage the state of the wireless device.
 			keepInHost = true
 		}
-		if ctx.usbAccess && ib.Type == types.IoUSB {
+		if ctx.usbAccess && (ib.Type == types.IoUSB || ib.Type == types.IoUSBController) {
 			keepInHost = true
 		}
 		if ctx.vgaAccess && ib.Type == types.IoHDMI {
