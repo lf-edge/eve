@@ -17,11 +17,28 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/hypervisor"
+	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils/cloudconfig"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 )
+
+func init() {
+	if logger == nil || log == nil {
+		logger, log = agentlog.Init(agentName)
+	}
+
+	if hyper == nil {
+		var err error
+		hyper, err = hypervisor.GetHypervisor("null")
+		if err != nil {
+			panic(err)
+		}
+	}
+}
 
 func TestFetchEnvVariablesFromCloudInit(t *testing.T) {
 	log = base.NewSourceLogObject(logrus.StandardLogger(), "domainmgr", 0)
@@ -464,4 +481,67 @@ func TestHandleMimeMultipart(t *testing.T) {
 		}
 	}
 	os.RemoveAll(dir)
+}
+
+func TestConfigEnableUsbUpdatePortAndPciBackIoBundle(t *testing.T) {
+	assignableAdapters := types.AssignableAdapters{
+		IoBundleList: []types.IoBundle{
+			{
+				Phylabel:        "IoUSB",
+				Type:            types.IoUSB,
+				KeepInHost:      false,
+				AssignmentGroup: "1",
+				PciLong:         "00:01",
+			},
+			{
+				Phylabel:        "IoUSBController",
+				Type:            types.IoUSBController,
+				KeepInHost:      false,
+				AssignmentGroup: "1",
+				PciLong:         "00:01",
+			},
+			{
+				Phylabel:              "IoUSBDevice",
+				Type:                  types.IoUSBDevice,
+				KeepInHost:            false,
+				AssignmentGroup:       "2",
+				ParentAssignmentGroup: "3",
+			},
+		},
+	}
+	ctx := &domainContext{
+		assignableAdapters: &assignableAdapters,
+		usbAccess:          true,
+	}
+	ib := &types.IoBundle{
+		AssignmentGroup: "1",
+	}
+
+	updatePortAndPciBackIoBundle(ctx, ib)
+
+	for _, ib := range ctx.assignableAdapters.IoBundleList {
+		if (ib.Phylabel == "IoUSB" || ib.Phylabel == "IoUSBController") && !ib.KeepInHost {
+			t.Fatalf("IoBundle %+v should be kept in host", ib)
+		}
+		if ib.Phylabel == "IoUSBDevice" && ib.KeepInHost {
+			t.Fatalf("IoBundle %+v should not be kept in host", ib)
+		}
+	}
+
+	for i := range ctx.assignableAdapters.IoBundleList {
+		ctx.assignableAdapters.IoBundleList[i].KeepInHost = false
+	}
+	ib.KeepInHost = false
+
+	ctx.usbAccess = false
+	updatePortAndPciBackIoBundle(ctx, ib)
+
+	for _, ib := range ctx.assignableAdapters.IoBundleList {
+		if (ib.Phylabel == "IoUSB" || ib.Phylabel == "IoUSBController") && ib.KeepInHost {
+			t.Fatalf("IoBundle %+v should be not kept in host", ib)
+		}
+		if ib.Phylabel == "IoUSBDevice" && ib.KeepInHost {
+			t.Fatalf("IoBundle %+v should not be kept in host", ib)
+		}
+	}
 }
