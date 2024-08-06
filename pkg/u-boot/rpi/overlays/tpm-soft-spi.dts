@@ -1,0 +1,63 @@
+// SPDX-License-Identifier: Apache-2.0
+/**
+ * Device Tree overlay adapted from:
+ * Repo: https://github.com/joholl/rpi4-uboot-tpm.git
+ * HEAD: 9cca7d12a3e023061c3d07ec54683b31dc0fd8bb
+ *
+ * Target: Nuvoton NPCT754xxx connected through SPI6
+ * Device: OnLogic FR201
+ */
+/*
+ * Device Tree overlay for the Infineon SLB9670 Trusted Platform Module add-on
+ * boards, which can be used as a secure key storage and hwrng.
+ * available as "Iridium SLB9670" by Infineon and "LetsTrust TPM" by pi3g.
+ */
+
+/dts-v1/;
+/plugin/;
+
+/ {
+	compatible = "brcm,bcm2835", "brcm,bcm2708", "brcm,bcm2709";
+
+	fragment@0 {
+		target = <&spi6>;
+		__overlay__ {
+			compatible = "spi-gpio";
+			pinctrl-names = "default";
+			pinctrl-0 = <&spi6_gpio18>;
+			gpio-sck = <&gpio 21 0>;
+			gpio-mosi = <&gpio 20 0>;
+			gpio-miso = <&gpio 19 0>;
+			cs-gpios = <&gpio 18 1>;
+			spi-delay-us = <0>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+			status = "okay";
+
+			/* for kernel driver */
+			sck-gpios = <&gpio 21 0>;
+			mosi-gpios = <&gpio 20 0>;
+			miso-gpios = <&gpio 19 0>;
+			num-chipselects = <1>;
+
+			npct754: npct754@0 {
+				compatible = "infineon,slb9670", "tis,tpm2-spi", "tcg,tpm_tis-spi";
+				reg = <0>;
+				#address-cells = <1>;
+				#size-cells = <0>;
+				status = "okay";
+
+				/* for kernel driver */
+				spi-max-frequency = <1000000>;
+			};
+		};
+	};
+
+	fragment@1 {
+		target = <&spi6_gpio18>;
+		__overlay__ {
+			brcm,pins = <18 19 20 21>;
+			brcm,function = <0>;
+		};
+	};
+};
