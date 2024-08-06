@@ -1,0 +1,29 @@
+// SMBIOS tables support for OnLogic FR201
+/dts-v1/;
+/plugin/;
+
+/ {
+	compatible = "brcm,bcm2711";
+	fragment@1 {
+		target-path = "/";
+		__overlay__ {
+			sysinfo {
+				compatible = "u-boot,sysinfo-smbios";
+				smbios {
+					system {
+						manufacturer = "OnLogic";
+						product = "FR201";
+					};
+					baseboard {
+						manufacturer = "OnLogic";
+						product = "FR201";
+					};
+					chassis {
+						manufacturer = "OnLogic";
+						product = "FR201";
+					};
+				};
+			};
+		};
+	};
+};
