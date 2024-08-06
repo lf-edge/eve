@@ -1,0 +1,15 @@
+diff --git a/tools/qemu-xen/configure b/tools/qemu-xen/configure
+index a62a3e6..c1b24ef 100755
+--- a/tools/qemu-xen/configure
++++ b/tools/qemu-xen/configure
+@@ -896,6 +896,10 @@ for opt do
+   ;;
+   --disable-vfio-user-server) vfio_user_server="disabled"
+   ;;
++--enable-vhost-scsi) vhost_scsi="yes"
++  ;;
++--enable-vhost-vsock) vhost_vsock="yes"
++  ;;
+   # everything else has the same name in configure and meson
+   --*) meson_option_parse "$opt" "$optarg"
+   ;;

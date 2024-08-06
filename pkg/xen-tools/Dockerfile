@@ -26,10 +26,12 @@ ENV BUILD_PKGS \
     gettext iasl util-linux-dev ncurses-dev glib-dev \
     pixman-dev libaio-dev yajl-dev argp-standalone \
     linux-headers git patch texinfo tar libcap-ng-dev \
-    attr-dev flex bison cmake libusb-dev zstd-dev
+    attr-dev flex bison cmake libusb-dev zstd-dev \
+    python3 build-base 
+
 ENV BUILD_PKGS_arm64 dtc-dev
 
-ENV PKGS alpine-baselayout musl-utils bash libaio libbz2 glib pixman yajl keyutils libusb xz-libs libuuid sudo zstd-libs
+ENV PKGS alpine-baselayout libgcc musl-utils bash libaio libbz2 glib pixman yajl keyutils libusb xz-libs libuuid sudo zstd-libs
 ENV PKGS_arm64 libfdt
 
 RUN eve-alpine-deploy.sh
@@ -56,12 +58,15 @@ RUN make src && make install DESTDIR=/out && make install
 RUN rm -rf /out/usr/man
 RUN strip /out/usr/lib/* || :
 
+
+
+
 # When changing this version, also update SEABIOS_UPSTREAM_REVISION to whatever is in `Config.mk` in the xen source
-ENV XEN_VERSION 4.15.0
+ENV XEN_VERSION 4.19.0-rc4
 ENV XEN_SOURCE=https://downloads.xenproject.org/release/xen/${XEN_VERSION}/xen-${XEN_VERSION}.tar.gz
 ENV EXTRA_QEMUU_CONFIGURE_ARGS="--enable-libusb --enable-linux-aio \
-    --enable-vhost-net --enable-vhost-vsock --enable-vhost-scsi --enable-vhost-kernel \
-    --enable-vhost-user --enable-linux-io-uring --enable-zstd"
+    --enable-vhost-net --enable-vhost-kernel \
+    --enable-vhost-user --enable-linux-io-uring --enable-zstd --enable-vhost-vsock --enable-vhost-scsi"
 
 WORKDIR /
 
@@ -74,13 +79,25 @@ RUN [ -f "$(basename ${XEN_SOURCE})" ] || tar --absolute-names -xz < /xen.tar.gz
 # Apply local patches
 COPY patches-${XEN_VERSION} /patches
 WORKDIR /xen
+
+#ADD https://github.com/ninja-build/ninja.git#release /ninja
+#WORKDIR /ninja
+#RUN python3 ./configure.py --bootstrap
+
+
 RUN cat /patches/*.patch /patches/"$(uname -m)"/*.patch | patch -p1
+
+
+#RUN patch -p1 < /patches/*.patch
+
+#RUN cat /patches/*.patch  | patch -p1
+
 
 # we will need this to build xen; without it, it will try and download directly
 # Note that Xen's `configure` command uses this env variable SEABIOS_UPSTREAM_URL to find the seabios source.
 ENV SEABIOS_UPSTREAM_URL /seabios.git
 # this revision should be kept in sync with the XEN_VERSION by reading `Config.mk` in the xen source
-ENV SEABIOS_UPSTREAM_REVISION rel-1.14.0
+ENV SEABIOS_UPSTREAM_REVISION rel-1.16.3
 ADD --keep-git-dir git://xenbits.xen.org/seabios.git#${SEABIOS_UPSTREAM_REVISION} ${SEABIOS_UPSTREAM_URL}
 # we need this because it will complain about ambiguous refs
 RUN git config --global core.warnambiguousrefs false
@@ -89,10 +106,21 @@ RUN mkdir -p /out
 
 # FEATURES="--enable-stubdom --enable-vtpm-stubdom --enable-vtpmmgr-stubdom"
 COPY gmp.patch /xen/stubdom
+
+
+#ADD https://github.com/ninja-build/ninja.git#release /ninja
+#WORKDIR /ninja
+#RUN python3 ./configure.py --bootstrap
 WORKDIR /xen
+
+
+
+
 # disable golang as it does not play well together with musl (stderr is defined as FILE* const and fails to compile)
+RUN apk add ninja
 RUN ./configure --prefix=/usr --disable-xen --disable-golang --disable-qemu-traditional --disable-docs --enable-9pfs \
-                --with-system-ovmf=/usr/lib/xen/boot/ovmf.bin --disable-stubdom
+                --with-system-ovmf=/usr/lib/xen/boot/ovmf.bin --disable-stubdom \
+		--enable-vhost-vsock --enable-vhost-scsi
 RUN make -j "$(getconf _NPROCESSORS_ONLN)" && make dist
 RUN dist/install.sh /out
 
@@ -108,6 +136,9 @@ COPY --from=uefi-build / /uefi/
 RUN mkdir -p /out/usr/lib/xen/boot && cp /uefi/OVMF.fd /out/usr/lib/xen/boot/ovmf.bin && \
   cp /uefi/OVMF_PVH.fd /out/usr/lib/xen/boot/ovmf-pvh.bin
 RUN if [ "$(uname -m)" = "x86_64" ]; then cp /uefi/*.rom /out/usr/lib/xen/boot/;fi
+
+#bobs patch ENTRYPOINT []
+#CMD ["/bin/bash"]
 
 FROM scratch
 COPY --from=build /out/ /
