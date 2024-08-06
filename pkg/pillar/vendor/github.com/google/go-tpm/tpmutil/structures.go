@@ -26,7 +26,7 @@ import (
 // from resulting in a massive memory allocation, potentially causing
 // an OOM condition on the system.
 // We expect no buffer from a TPM to approach 1Mb in size.
-const maxBytesBufferSize = 1024 * 1024 // 1Mb.
+const maxBytesBufferSize uint32 = 1024 * 1024 // 1Mb.
 
 // RawBytes is for Pack and RunCommand arguments that are already encoded.
 // Compared to []byte, RawBytes will not be prepended with slice length during
@@ -38,8 +38,8 @@ type U16Bytes []byte
 
 // TPMMarshal packs U16Bytes
 func (b *U16Bytes) TPMMarshal(out io.Writer) error {
-	size := uint16(len([]byte(*b)))
-	if err := binary.Write(out, binary.BigEndian, size); err != nil {
+	size := len([]byte(*b))
+	if err := binary.Write(out, binary.BigEndian, uint16(size)); err != nil {
 		return err
 	}
 
@@ -47,7 +47,7 @@ func (b *U16Bytes) TPMMarshal(out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	if n != int(size) {
+	if n != size {
 		return fmt.Errorf("unable to write all contents of U16Bytes")
 	}
 	return nil
@@ -82,8 +82,8 @@ type U32Bytes []byte
 
 // TPMMarshal packs U32Bytes
 func (b *U32Bytes) TPMMarshal(out io.Writer) error {
-	size := uint32(len([]byte(*b)))
-	if err := binary.Write(out, binary.BigEndian, size); err != nil {
+	size := len([]byte(*b))
+	if err := binary.Write(out, binary.BigEndian, uint32(size)); err != nil {
 		return err
 	}
 
@@ -91,7 +91,7 @@ func (b *U32Bytes) TPMMarshal(out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	if n != int(size) {
+	if n != size {
 		return fmt.Errorf("unable to write all contents of U32Bytes")
 	}
 	return nil
@@ -103,11 +103,12 @@ func (b *U32Bytes) TPMUnmarshal(in io.Reader) error {
 	if err := binary.Read(in, binary.BigEndian, &tmpSize); err != nil {
 		return err
 	}
-	size := int(tmpSize)
 
-	if size > maxBytesBufferSize {
+	if tmpSize > maxBytesBufferSize {
 		return bytes.ErrTooLarge
 	}
+	// We can now safely cast to an int on 32-bit or 64-bit machines
+	size := int(tmpSize)
 
 	if len(*b) >= size {
 		*b = (*b)[:size]
@@ -145,6 +146,9 @@ type ResponseCode uint32
 // 2.0.
 const RCSuccess ResponseCode = 0x000
 
+// RCRetry is response code for TPM is busy.
+const RCRetry ResponseCode = 0x922
+
 // A responseHeader is a header for TPM responses.
 type responseHeader struct {
 	Tag  Tag
@@ -155,9 +159,15 @@ type responseHeader struct {
 // A Handle is a reference to a TPM object.
 type Handle uint32
 
+// HandleValue returns the handle value. This behavior is intended to satisfy
+// an interface that can be implemented by other, more complex types as well.
+func (h Handle) HandleValue() uint32 {
+	return uint32(h)
+}
+
 type handleList []Handle
 
-func (l *handleList) TPMMarshal(out io.Writer) error {
+func (l *handleList) TPMMarshal(_ io.Writer) error {
 	return fmt.Errorf("TPMMarhsal on []Handle is not supported yet")
 }
 

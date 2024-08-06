@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/go-tpm/tpm2"
+	"github.com/google/go-tpm/legacy/tpm2"
 	"github.com/google/go-tpm/tpmutil"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
