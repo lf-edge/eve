@@ -1,0 +1,48 @@
+org: lfedge
+image: eve-interactive-installer
+network: no
+config:
+  pid: host
+  binds:
+    - /:/hostfs
+    - /lib/modules:/lib/modules
+    - /run:/run
+    - /tmp:/tmp
+    - /dev:/dev
+    - /persist:/persist:rshared,rbind
+    - /config:/config:rshared,rbind
+    - /containers:/containers:rshared,rbind
+    - /sys/devices:/sys/devices
+    - /sys/class:/sys/class
+  devices:
+    # all block devices
+    - path: all
+      type: b
+    - path: "/dev/console"
+      type: c
+      major: 5
+      minor: 1
+      mode: 0666
+    - path: "/dev/tty0"
+      type: c
+      major: 4
+      minor: 0
+      mode: 0666
+    - path: "/dev/ttyS0"
+      type: c
+      major: 4
+      minor: 64
+      mode: 0666
+    - path: "/dev/ttyAMA0"
+      type: c
+      major: 204
+      minor: 64
+      mode: 0666
+    - path: "/dev/hvc0"
+      type: c
+      major: 229
+      minor: 0
+      mode: 0666
+  capabilities:
+    - all
+  rootfsPropagation: shared
