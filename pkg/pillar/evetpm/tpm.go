@@ -331,11 +331,12 @@ func CreateKey(log *base.LogObject, TpmPath string, keyHandle, ownerHandle tpmut
 	// This call tries to remove the old index if it exists,
 	// so no harm if it fails.
 	if err := tpm2.EvictControl(rw, EmptyPassword, tpm2.HandleOwner, keyHandle, keyHandle); err != nil {
-		fmt.Printf("EvictControl failed: %v", err)
+		log.Warnf("EvictControl failed: %v", err)
 	}
 	if err := tpm2.EvictControl(rw, EmptyPassword, tpm2.HandleOwner, handle, keyHandle); err != nil {
 		return fmt.Errorf("EvictControl failed: %v, do BIOS reset of TPM", err)
 	}
+
 	return nil
 }
 
