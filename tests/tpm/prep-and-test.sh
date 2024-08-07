@@ -4,11 +4,8 @@
 # Copyright (c) 2023 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-# add more TPM tests here
-TESTS=(
-  "/pillar/evetpm"
-  )
 
+CWD=$(pwd)
 TPM_SRV_PORT=1337
 TPM_CTR_PORT=$((TPM_SRV_PORT + 1))
 ENDO_SEED=0x4000000B
@@ -20,7 +17,30 @@ EVE_TPM_SRV="$EVE_TPM_STATE/srv.sock"
 
 echo "[+] Installing swtpm and tpm2-tools ..."
 sudo apt-get -qq update -y > /dev/null
-sudo apt-get install swtpm tpm2-tools -y -qq > /dev/null
+sudo apt-get install curl swtpm tpm2-tools -y -qq > /dev/null
+
+
+echo "[+] Installing zfs (pillar dependency)..."
+ZFS_URL="https://github.com/openzfs/zfs/archive/refs/tags/zfs-2.2.2.tar.gz"
+mkdir -p /tmp/zfs
+cd /tmp/zfs
+curl -s -LO $ZFS_URL > /dev/null
+tar -xf zfs-2.2.2.tar.gz --strip-components=1 > /dev/null
+./autogen.sh > /dev/null 2>&1
+./configure \
+  --prefix=/usr \
+  --with-tirpc \
+  --sysconfdir=/etc \
+  --mandir=/usr/share/man \
+  --infodir=/usr/share/info \
+  --localstatedir=/var \
+  --with-config=user \
+  --with-udevdir=/lib/udev \
+  --disable-systemd \
+  --disable-static > /dev/null 2>&1
+./scripts/make_gitrev.sh > /dev/null 2>&1
+make -j "$(getconf _NPROCESSORS_ONLN)" > /dev/null 2>&1
+sudo make install-strip > /dev/null 2>&1
 
 echo "[+] preparing the environment ..."
 rm -rf $EVE_TPM_STATE
@@ -72,14 +92,12 @@ flushtpm
 # make persisted know-good-handles out of ek and srk
 tpm2 evictcontrol -C o -c ek.ctx $EK_HANDLE
 tpm2 evictcontrol -C o -c srk.ctx $SRK_HANDLE
+flushtpm
 
 # clean up
 rm session.ctx ek.ctx srk.pub srk.priv srk.ctx
 
-# just dump persistent handles, good for debugging§
-tpm2 getcap handles-persistent
-
-# kill swtpm
+# kill swtpm, we are going to start it again with unix sockets
 kill $PID
 
 # start swtpm again, but this time with unix sockets for tests to use.
@@ -89,11 +107,13 @@ swtpm socket --tpm2 \
     --server type=unixio,path="$EVE_TPM_SRV" \
     --ctrl type=unixio,path="$EVE_TPM_CTRL" \
     --tpmstate dir="$EVE_TPM_STATE" \
-    --log file="$EVE_TPM_STATE/swtpm.log"&
+    --log file="$EVE_TPM_STATE/swtpm.log" &
+
+PID=$!
 
 # copy test data, so it is accessible from the go tests
-cp "tests/tpm/testdata/binary_bios_measurement" $EVE_TPM_STATE
-cp "tests/tpm/testdata/measurefs_tpm_event_log" $EVE_TPM_STATE
+cp "$CWD/tests/tpm/testdata/binary_bios_measurement" $EVE_TPM_STATE
+cp "$CWD/tests/tpm/testdata/measurefs_tpm_event_log" $EVE_TPM_STATE
 
 # give swtpm time to start and init the TPM
 sleep 1
@@ -101,7 +121,10 @@ sleep 1
 # run tests
 echo "[+] Running tests ..."
 echo "========================================================"
-for T in "${TESTS[@]}"; do
-  name=$(basename "$T")
-  cd pkg$T && go test -v -coverprofile="$name.coverage.txt" -covermode=atomic
-done
+
+# we dont have many test that require the TPM, so hardcode test paths here.
+cd "$CWD/pkg/pillar/evetpm" && go test -v -coverprofile="evtpm.coverage.txt" -covermode=atomic
+cd "$CWD/pkg/pillar/cmd/msrv" && go test -v -test.run ^TestTpmActivateCred$ -coverprofile="actcred.coverage.txt" -covermode=atomic
+
+# we are done, kill the swtpm
+kill $PID

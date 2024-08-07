@@ -709,3 +709,80 @@ func (msrv *Msrv) withPatchEnvelopesByIP() func(http.Handler) http.Handler {
 		})
 	}
 }
+
+// handleActivateCredentialGet handles get request of the activate-credential exchange,
+// it returns a json containing the EK, AIK public keys and AIK name.
+func (msrv *Msrv) handleActivateCredentialGet() func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+		}
+
+		ekPubByte, aikPubByte, aiKnameMarshaled, err := getActivateCredentialParams()
+		if err != nil {
+			msrv.Log.Errorf("handleActivateCredentialGet: %v", err)
+			sendError(w, http.StatusInternalServerError, "Operation failed")
+			return
+		}
+
+		activateCred := ActivateCredTpmParam{
+			Ek:      base64.StdEncoding.EncodeToString(ekPubByte),
+			AikPub:  base64.StdEncoding.EncodeToString(aikPubByte),
+			AikName: base64.StdEncoding.EncodeToString(aiKnameMarshaled),
+		}
+		out, err := json.Marshal(activateCred)
+		if err != nil {
+			msrv.Log.Errorf("handleActivateCredentialGet: error marshaling JSON payload %v", err)
+			sendError(w, http.StatusInternalServerError, "Operation failed")
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write(out)
+	}
+}
+
+// handleActivateCredentialPost handles post request of the activate-credential exchange,
+// it returns a json containing the activated credential and signature of the data.
+func (msrv *Msrv) handleActivateCredentialPost() func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+		}
+
+		in, err := io.ReadAll(io.LimitReader(r.Body, SignerMaxSize+1))
+		if err != nil {
+			msrv.Log.Errorf("handleActivateCredential, ReadAll : %v", err)
+			sendError(w, http.StatusInternalServerError, "Operation failed")
+			return
+		}
+
+		if binary.Size(in) > SignerMaxSize {
+			msrv.Log.Errorf("handleActivateCredential, size exceeds limit. Expected <= %d", SignerMaxSize)
+			sendError(w, http.StatusBadRequest, "Operation failed")
+			return
+		}
+
+		cred, sig, err := activateCredential(in)
+		if err != nil {
+			msrv.Log.Errorf("handleActivateCredential, activateCredential: %v", err)
+			sendError(w, http.StatusInternalServerError, "Operation failed")
+			return
+		}
+
+		activateCred := ActivateCredActivated{
+			Secret: base64.StdEncoding.EncodeToString(cred),
+			Sig:    base64.StdEncoding.EncodeToString(sig),
+		}
+		out, err := json.Marshal(activateCred)
+		if err != nil {
+			msrv.Log.Errorf("handleActivateCredential, error marshaling JSON payload : %v", err)
+			sendError(w, http.StatusInternalServerError, "Operation failed")
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write(out)
+	}
+}
