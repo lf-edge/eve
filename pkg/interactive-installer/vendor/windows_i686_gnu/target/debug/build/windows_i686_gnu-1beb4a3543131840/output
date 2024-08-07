@@ -1,0 +1,1 @@
+cargo:rustc-link-search=native=/home/jsfakian/Documents/src/eve/pkg/interactive-installer/vendor/windows_i686_gnu/lib

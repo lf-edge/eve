@@ -1,0 +1,1 @@
+{"rustc":14544698727654534016,"features":"","declared_features":"","target":0,"profile":0,"path":0,"deps":[[8758168517230253352,"build_script_build",false,17439430026030359490]],"local":[{"RerunIfChanged":{"output":"debug/build/xcb-200ece1cec16db55/output","paths":["build.rs","rs_client.py","xml","xcbgen"]}}],"rustflags":[],"metadata":0,"config":0,"compile_kind":0}

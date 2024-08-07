@@ -1,0 +1,4 @@
+cargo:rerun-if-changed=/home/jsfakian/Documents/src/eve/pkg/interactive-installer/vendor/xcb/build.rs
+cargo:rerun-if-changed=/home/jsfakian/Documents/src/eve/pkg/interactive-installer/vendor/xcb/rs_client.py
+cargo:rerun-if-changed=/home/jsfakian/Documents/src/eve/pkg/interactive-installer/vendor/xcb/xml
+cargo:rerun-if-changed=/home/jsfakian/Documents/src/eve/pkg/interactive-installer/vendor/xcb/xcbgen
