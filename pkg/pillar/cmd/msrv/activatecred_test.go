@@ -59,7 +59,7 @@ func waitForTpmReadyState() error {
 func isTpmAvailable(path string) bool {
 	_, err := os.Stat(path)
 	if err != nil {
-		log.Errorf("TPM device %s is not available: %v", msrv.TPMDevicePath, err)
+		log.Warnf("TPM device %s is not available: %v", msrv.TPMDevicePath, err)
 		return false
 	}
 	return true
