@@ -629,6 +629,9 @@ func (msrv *Msrv) MakeMetadataHandler() http.Handler {
 
 		r.Post("/tpm/signer", msrv.handleSigner(&zedcloudCtx))
 
+		r.Post("/tpm/activatecredential/", msrv.handleActivateCredentialPost())
+		r.Get("/tpm/activatecredential/", msrv.handleActivateCredentialGet())
+
 		r.Route("/patch", func(r chi.Router) {
 			r.Use(msrv.withPatchEnvelopesByIP())
 
