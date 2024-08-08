@@ -1,0 +1,21 @@
+#!/bin/sh
+
+# DOES NOT WORK.
+# WIP
+
+# rbmenu_dmenu - wrapper around rbmenu to interface with dmenu
+# runs `rbmenu -l` 
+
+fail () {
+    printf "%s\n" "$1" >&2
+    exit 1
+}
+
+type rbmenu &>/dev/null || fail "rbmenu does not exist"
+type dmenu &>/dev/null || fail "dmenu does not exist"
+
+list=$(rbmenu -l)
+
+name=$(echo "$list" | awk '{print $2}' | dmenu -l 30 -p "Which bookmark ?") 
+
+echo "$list" | grep "$name" | awk '{print $3}' | xargs xdg-open

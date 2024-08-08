@@ -9,7 +9,7 @@ FROM lfedge/eve-alpine:1f7685f95a475c6bbe682f0b976f12180b6c8726 AS build
 SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
 ENV BUILD_PKGS grep patch git make gcc linux-headers musl-dev autoconf automake pkgconfig kmod-dev util-linux-dev cryptsetup-dev lddtree libgcc
 ENV PKGS mtools dosfstools libarchive-tools sgdisk e2fsprogs util-linux squashfs-tools coreutils tar dmidecode \
-    kmod-libs cryptsetup-libs libblkid
+    kmod-libs cryptsetup-libs libblkid ncurses-dev jq bash
 RUN eve-alpine-deploy.sh
 
 # get mkinitfs source from git and build it locally
@@ -23,16 +23,16 @@ RUN make -C /tmp/mkinitfs install
 
 WORKDIR /out
 RUN echo "mtools_skip_check=1" >> etc/mtools.conf
-RUN mkdir -p efifs parts root bits config persist opt/pillar opt/debug lib/modules run sys
-COPY make-raw install grub.cfg.in UsbInvocationScript.txt ./
+RUN mkdir -p efifs parts root bits config persist opt/pillar opt/debug opt/interactive-installer lib/modules run sys
+COPY make-raw install grub.cfg.in UsbInvocationScript.txt parse-interactive-installer-conf ./
 
 # Before changing something here please take a look into the
 # images/rootfs.yml.in onboot section: the installer should
 # precede the storage-init container.
 #
 # now lets create an edge container
-# FIXME: 002-installer? why not linuxkit build?
-WORKDIR /eco/media/root-rw/root/containers/onboot/002-installer
+# FIXME: 003-installer? why not linuxkit build?
+WORKDIR /eco/media/root-rw/root/containers/onboot/003-installer
 COPY runtime.json config.json ./
 RUN mv /out rootfs
 # hadolint ignore=DL3003

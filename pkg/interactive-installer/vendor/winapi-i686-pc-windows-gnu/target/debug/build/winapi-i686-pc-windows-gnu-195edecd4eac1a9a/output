@@ -1,0 +1,1 @@
+cargo:rerun-if-env-changed=WINAPI_NO_BUNDLED_LIBRARIES
