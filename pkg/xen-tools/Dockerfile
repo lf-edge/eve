@@ -27,8 +27,7 @@ ENV BUILD_PKGS \
     pixman-dev libaio-dev yajl-dev argp-standalone \
     linux-headers git patch texinfo tar libcap-ng-dev \
     attr-dev flex bison cmake libusb-dev zstd-dev \
-    python3 build-base 
-
+    python3 build-base
 ENV BUILD_PKGS_arm64 dtc-dev
 
 ENV PKGS alpine-baselayout libgcc musl-utils bash libaio libbz2 glib pixman yajl keyutils libusb xz-libs libuuid sudo zstd-libs
@@ -62,7 +61,7 @@ RUN strip /out/usr/lib/* || :
 
 
 # When changing this version, also update SEABIOS_UPSTREAM_REVISION to whatever is in `Config.mk` in the xen source
-ENV XEN_VERSION 4.19.0-rc4
+ENV XEN_VERSION 4.19.0
 ENV XEN_SOURCE=https://downloads.xenproject.org/release/xen/${XEN_VERSION}/xen-${XEN_VERSION}.tar.gz
 ENV EXTRA_QEMUU_CONFIGURE_ARGS="--enable-libusb --enable-linux-aio \
     --enable-vhost-net --enable-vhost-kernel \
@@ -119,8 +118,8 @@ WORKDIR /xen
 # disable golang as it does not play well together with musl (stderr is defined as FILE* const and fails to compile)
 RUN apk add ninja
 RUN ./configure --prefix=/usr --disable-xen --disable-golang --disable-qemu-traditional --disable-docs --enable-9pfs \
-                --with-system-ovmf=/usr/lib/xen/boot/ovmf.bin --disable-stubdom \
-		--enable-vhost-vsock --enable-vhost-scsi
+	--with-system-ovmf=/usr/lib/xen/boot/ovmf.bin --disable-stubdom \
+	--enable-vhost-vsock --enable-vhost-scsi
 RUN make -j "$(getconf _NPROCESSORS_ONLN)" && make dist
 RUN dist/install.sh /out
 

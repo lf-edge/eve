@@ -8,7 +8,7 @@ ENV BUILD_PKGS_arm64 u-boot-tools
 RUN eve-alpine-deploy.sh
 
 ENV XEN_UBOOT_ADDR 0x81000000
-ENV XEN_VERSION 4.19.0-rc4
+ENV XEN_VERSION 4.19.0
 ENV XEN_SOURCE=https://downloads.xenproject.org/release/xen/${XEN_VERSION}/xen-${XEN_VERSION}.tar.gz
 
 # Download and verify xen
