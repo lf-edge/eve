@@ -120,7 +120,7 @@ func activateCredential(jsonData []byte) ([]byte, []byte, error) {
 		tpm2.AlgNull,
 		tpm2.AlgSHA256)
 	if err != nil {
-		return nil, nil, fmt.Errorf("faild to start auth session: %w", err)
+		return nil, nil, fmt.Errorf("failed to start auth session: %w", err)
 	}
 
 	// set the auth session policy, this is equal to empty password, but needed anyways.
