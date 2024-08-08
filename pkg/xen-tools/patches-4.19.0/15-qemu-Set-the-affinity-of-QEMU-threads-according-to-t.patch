@@ -26,8 +26,83 @@ index 9cbc817..ab498e4 100644
 +        warn_report("Change a CPU affinity after the CPU may have been running for a while\n");
 +
 +    if (cpu->cpumask)
-+        qemu_thread_set_affinity(cpu->thread, cpu->cpumask, 0);
++        qemu_thread_set_affinity(cpu->thread, NULL, cpu->cpumask);
 +
      while (!cpu->created) {
          qemu_cond_wait(&qemu_cpu_cond, &qemu_global_mutex);
      }
+diff --git a/tools/qemu-xen/util/qemu-thread-posix.c b/tools/qemu-xen/util/qemu-thread-posix.c
+index b2e26e2..6298e9f 100644
+--- a/tools/qemu-xen/util/qemu-thread-posix.c
++++ b/tools/qemu-xen/util/qemu-thread-posix.c
+@@ -589,28 +589,56 @@ void qemu_thread_create(QemuThread *thread, const char *name,
+     pthread_attr_destroy(&attr);
+ }
+ 
++static inline unsigned get_max_cpu_in_mask(unsigned int cpumask)
++{
++	assert(cpumask != 0);
++        return (sizeof (cpumask) * BITS_PER_BYTE) - __builtin_clz (cpumask) - 1;
++}
++
++
+ int qemu_thread_set_affinity(QemuThread *thread, unsigned long *host_cpus,
+                              unsigned long nbits)
+ {
+ #if defined(CONFIG_PTHREAD_AFFINITY_NP)
+     const size_t setsize = CPU_ALLOC_SIZE(nbits);
+     unsigned long value;
+-    cpu_set_t *cpuset;
+     int err;
+-
+-    cpuset = CPU_ALLOC(nbits);
+-    g_assert(cpuset);
+-
+-    CPU_ZERO_S(setsize, cpuset);
+-    value = find_first_bit(host_cpus, nbits);
+-    while (value < nbits) {
+-        CPU_SET_S(value, setsize, cpuset);
+-        value = find_next_bit(host_cpus, nbits, value + 1);
++    size_t cpu_set_size;
++
++    unsigned int max_pcpu;
++    unsigned int cpumask, cpumask_tmp = (unsigned int) nbits;	
++    if(host_cpus == NULL){
++	    cpu_set_t cpu_set;
++	    CPU_ZERO(&cpu_set);
++      	    /* set the CPU_SET according to mask */
++	    int cur_pcpu = 0;
++            while(cpumask_tmp) {
++            	if (cpumask_tmp & 1)
++			CPU_SET (cur_pcpu, &cpu_set);
++       			cpumask_tmp >>= 1;
++      			 cur_pcpu += 1;
++     	    }
++    /* Count the size of the necessary CPU_SET */
++	   max_pcpu = get_max_cpu_in_mask(cpumask);
++           cpu_set_size = DIV_ROUND_UP(max_pcpu + 1, BITS_PER_BYTE);
++           err = pthread_setaffinity_np(thread->thread, cpu_set_size, &cpu_set);
++           if (err)
++             error_exit (err, __func__);
++    }
++    else{
++	    cpu_set_t *cpuset;
++	    cpuset = CPU_ALLOC(nbits);
++	    g_assert(cpuset);
++	    CPU_ZERO_S(setsize, cpuset);
++	    value = find_first_bit(host_cpus, nbits);
++	    while (value < nbits) {
++		    CPU_SET_S(value, setsize, cpuset);
++		    value = find_next_bit(host_cpus, nbits, value + 1);
++	    }
++	    err = pthread_setaffinity_np(thread->thread, setsize, cpuset);
++	    CPU_FREE(cpuset);
++	    return err;
+     }
+-
+-    err = pthread_setaffinity_np(thread->thread, setsize, cpuset);
+-    CPU_FREE(cpuset);
+-    return err;
+ #else
+     return -ENOSYS;
+ #endif
