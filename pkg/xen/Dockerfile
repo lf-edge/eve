@@ -11,26 +11,11 @@ ENV XEN_UBOOT_ADDR 0x81000000
 ENV XEN_VERSION 4.19.0-rc4
 ENV XEN_SOURCE=https://downloads.xenproject.org/release/xen/${XEN_VERSION}/xen-${XEN_VERSION}.tar.gz
 
-
-
-
-#ADD https://github.com/ninja-build/ninja.git#release /ninja
-#WORKDIR /ninja
-#RUN ./configure.py --bootstrap
-
-
 # Download and verify xen
 #TODO: verify Xen
 # hadolint ignore=DL3020
 ADD ${XEN_SOURCE} /xen.tar.gz
 RUN [ -f "$(basename ${XEN_SOURCE})" ] || tar --absolute-names -xz < /xen.tar.gz && mv "/xen-${XEN_VERSION}" /xen
-
-ADD https://github.com/ninja-build/ninja.git#release /ninja
-WORKDIR /ninja
-RUN python3 ./configure.py --bootstrap
-
-
-
 
 WORKDIR /xen/xen
 COPY *.patch arch /tmp/

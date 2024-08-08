@@ -66,7 +66,7 @@ ENV XEN_VERSION 4.19.0-rc4
 ENV XEN_SOURCE=https://downloads.xenproject.org/release/xen/${XEN_VERSION}/xen-${XEN_VERSION}.tar.gz
 ENV EXTRA_QEMUU_CONFIGURE_ARGS="--enable-libusb --enable-linux-aio \
     --enable-vhost-net --enable-vhost-kernel \
-    --enable-vhost-user --enable-linux-io-uring --enable-zstd --enable-vhost-vsock --enable-vhost-scsi"
+    --enable-vhost-user --enable-linux-io-uring --enable-zstd"
 
 WORKDIR /
 

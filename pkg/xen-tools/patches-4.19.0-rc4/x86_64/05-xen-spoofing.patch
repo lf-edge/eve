@@ -1,20 +1,20 @@
 diff --git a/tools/firmware/hvmloader/hvmloader.c b/tools/firmware/hvmloader/hvmloader.c
-index 598a226..0c3963a 100644
+index f8af88f..8dbb0cf 100644
 --- a/tools/firmware/hvmloader/hvmloader.c
 +++ b/tools/firmware/hvmloader/hvmloader.c
-@@ -135,9 +135,11 @@ static void init_hypercalls(void)
+@@ -136,10 +136,10 @@ static void init_hypercalls(void)
  
          if ( !strcmp("XenVMMXenVMM", signature) )
              break;
-+        if ( !strcmp("ZenZenZenZen", signature) )
-+            break;
++       if ( !strcmp("ZenZenZenZen", signature) )
++               break;
      }
  
 -    BUG_ON(strcmp("XenVMMXenVMM", signature) || ((eax - base) < 2));
-+    //BUG_ON( (strcmp("XenVMMXenVMM", signature) && strcmp("ZenZenZenZen", signature) ) || ((eax - base) < 2));
- 
+-
      /* Fill in hypercall transfer pages. */
      cpuid(base + 2, &eax, &ebx, &ecx, &edx);
+     for ( i = 0; i < eax; i++ )
 diff --git a/tools/libs/light/libxl_create.c b/tools/libs/light/libxl_create.c
 index 32d45dc..283b41b 100644
 --- a/tools/libs/light/libxl_create.c
