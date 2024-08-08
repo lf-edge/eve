@@ -118,8 +118,8 @@ WORKDIR /xen
 # disable golang as it does not play well together with musl (stderr is defined as FILE* const and fails to compile)
 RUN apk add ninja
 RUN ./configure --prefix=/usr --disable-xen --disable-golang --disable-qemu-traditional --disable-docs --enable-9pfs \
-	--with-system-ovmf=/usr/lib/xen/boot/ovmf.bin --disable-stubdom \
-	--enable-vhost-vsock --enable-vhost-scsi
+--with-system-ovmf=/usr/lib/xen/boot/ovmf.bin --disable-stubdom \
+--enable-vhost-vsock --enable-vhost-scsi
 RUN make -j "$(getconf _NPROCESSORS_ONLN)" && make dist
 RUN dist/install.sh /out
 
