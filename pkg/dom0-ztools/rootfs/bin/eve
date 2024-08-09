@@ -27,6 +27,7 @@ Welcome to EVE!
             dump-stacks
             dump-memory
             memory-monitor-update-config
+            psi-collector start|stop
             firewall drop
             verbose on|off
             version
@@ -116,6 +117,14 @@ dump_stacks() {
 
 dump_mem() {
     http_debug_request "/dump/memory"
+}
+
+psi_collector_start() {
+    http_debug_request "/memory-monitor/psi-collector/start"
+}
+
+psi_collector_stop() {
+    http_debug_request "/memory-monitor/psi-collector/stop"
 }
 
 is_in_debug_service() {
@@ -249,6 +258,21 @@ __EOT__
  memory-monitor-update-config)
           pkill -SIGHUP -o /sbin/memory-monitor
           echo "Updated memory-monitor configuration"
+          ;;
+ psi-collector)
+          case "$2" in
+            start)
+              echo "Sending request to start PSI collector..."
+              echo "If it succeeds, you will see the output in /persist/memory-monitor/output/psi.txt"
+              psi_collector_start
+                   ;;
+            stop)
+              echo "If collector was running, it should be stopped now and the output is in /persist/memory-monitor/output/psi.txt"
+              psi_collector_stop
+                   ;;
+            *) help
+               ;;
+          esac
           ;;
  verbose) # first lets find our piping process
           PIPE=""
