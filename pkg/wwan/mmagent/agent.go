@@ -46,7 +46,7 @@ const (
 	defRouteBaseMetric     = 65000
 	icmpProbeMaxRTT        = time.Second
 	icmpProbeMaxAttempts   = 3
-	proxyProbeTimeout      = 5 * time.Second
+	tcpProbeTimeout        = 5 * time.Second
 	dnsProbeTimeout        = 5 * time.Second
 	scanProvidersPeriod    = time.Hour
 )
@@ -1058,23 +1058,13 @@ func (a *MMAgent) probeModemConnectivity(modem *ModemInfo) error {
 			modem.config.LogicalLabel, time.Since(startTime))
 	}()
 	modemIP := modemAddr.IP
-	if probeConfig.Address != "" {
-		// User-configured ICMP probe address.
-		remoteIP := net.ParseIP(probeConfig.Address)
-		if remoteIP == nil {
-			return fmt.Errorf("failed to parse probe IP address %s", probeConfig.Address)
-		}
-		return a.runICMPProbe(modemIP, remoteIP)
-	}
-	// Default probing behaviour (probe address not configured by user).
 	// First try endpoints from inside the LTE network:
 	//  - TCP handshake with an IP-addressed proxy
 	//  - DNS request to a DNS server provided by the LTE network
-	// As a last resort, try to ping Google DNS (can be blocked by firewall).
 	var allErrors []string
-	proxyDialer := &net.Dialer{
+	tcpDialer := &net.Dialer{
 		LocalAddr: &net.TCPAddr{IP: modemIP},
-		Timeout:   proxyProbeTimeout,
+		Timeout:   tcpProbeTimeout,
 	}
 	for _, proxy := range modem.config.Proxies {
 		if proxyIP := net.ParseIP(proxy.Server); proxyIP == nil {
@@ -1082,7 +1072,7 @@ func (a *MMAgent) probeModemConnectivity(modem *ModemInfo) error {
 			continue
 		}
 		address := net.JoinHostPort(proxy.Server, strconv.Itoa(int(proxy.Port)))
-		conn, err := proxyDialer.Dial("tcp", address)
+		conn, err := tcpDialer.Dial("tcp", address)
 		if err == nil {
 			_ = conn.Close()
 			return nil
@@ -1108,13 +1098,46 @@ func (a *MMAgent) probeModemConnectivity(modem *ModemInfo) error {
 		}
 		allErrors = append(allErrors, err.Error())
 	}
-	// Try to ping Google DNS.
-	// This is a last-resort probing option.
-	// In a private LTE network ICMP requests headed towards public DNS servers
-	// may be blocked by the firewall and thus produce probing false negatives.
-	err := a.runICMPProbe(modemIP, defaultProbeAddr)
-	if err == nil {
-		return nil
+	// Next try to access remote endpoint (either user-configured or use Google DNS).
+	var err error
+	switch probeConfig.UserDefinedProbe.Method {
+	case types.ConnectivityProbeMethodNone:
+		// If user didn't specify remote IP to probe, try to ping Google DNS.
+		// However, please note that in a private LTE network, ICMP requests headed
+		// towards public DNS servers may be blocked by the firewall and thus produce
+		// probing false negatives.
+		err = a.runICMPProbe(modemIP, defaultProbeAddr)
+		if err == nil {
+			return nil
+		}
+	case types.ConnectivityProbeMethodICMP:
+		// User-configured ICMP probe address.
+		remoteIP := net.ParseIP(probeConfig.UserDefinedProbe.ProbeHost)
+		if remoteIP == nil {
+			err = fmt.Errorf("failed to parse probe IP address %s",
+				probeConfig.UserDefinedProbe.ProbeHost)
+		} else {
+			err = a.runICMPProbe(modemIP, remoteIP)
+			if err == nil {
+				return nil
+			}
+		}
+	case types.ConnectivityProbeMethodTCP:
+		// User-configured TCP probe address.
+		remoteIP := net.ParseIP(probeConfig.UserDefinedProbe.ProbeHost)
+		if remoteIP == nil {
+			err = fmt.Errorf("failed to parse probe IP address %s",
+				probeConfig.UserDefinedProbe.ProbeHost)
+		} else {
+			portStr := strconv.Itoa(int(probeConfig.UserDefinedProbe.ProbePort))
+			address := net.JoinHostPort(remoteIP.String(), portStr)
+			var conn net.Conn
+			conn, err = tcpDialer.Dial("tcp", address)
+			if err == nil {
+				_ = conn.Close()
+				return nil
+			}
+		}
 	}
 	allErrors = append(allErrors, err.Error())
 	return errors.New(strings.Join(allErrors, "; "))
