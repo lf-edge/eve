@@ -361,7 +361,7 @@ func getVolume() {
 			}
 			var vol1 types.VolumeConfig
 			_ = json.Unmarshal(retbytes, &vol1)
-			fmt.Printf("   name: %s, ID %s, RefCount: %d \n", vol1.DisplayName, vol1.VolumeID.String(), vol1.RefCount)
+			fmt.Printf("   name: %s, ID %s\n", vol1.DisplayName, vol1.VolumeID.String())
 
 			printColor("\n content tree config: "+vol1.ContentID.String(), colorBLUE)
 			retbytes, err = os.ReadFile("/run/zedagent/ContentTreeConfig/" + vol1.ContentID.String() + ".json")
