@@ -4,12 +4,18 @@
 package types
 
 import (
+	"fmt"
 	"net"
+	"strings"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/lf-edge/eve/pkg/kube/cnirpc"
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/objtonum"
+	"github.com/lf-edge/eve/pkg/pillar/utils/netutils"
 	uuid "github.com/satori/go.uuid"
+	"github.com/sirupsen/logrus"
 )
 
 // AppNetworkConfig : network configuration for a given application.
@@ -102,10 +108,14 @@ type AppNetworkStatus struct {
 	PendingDelete  bool
 	ConfigInSync   bool
 	DisplayName    string
+	// AppPod is only valid in Kubernetes mode.
+	AppPod cnirpc.AppPod
 	// Copy from the AppNetworkConfig; used to delete when config is gone.
 	GetStatsIPAddr       net.IP
 	AppNetAdapterList    []AppNetAdapterStatus
 	AwaitNetworkInstance bool // If any Missing flag is set in the networks
+	// ID of the MAC generator variant that was used to generate MAC addresses for this app.
+	MACGenerator int
 	// Any errors from provisioning the network
 	// ErrorAndTime provides SetErrorNow() and ClearError()
 	ErrorAndTime
@@ -279,11 +289,12 @@ type AppNetAdapterConfig struct {
 	//	If there is a parsing error and this AppNetAdapterNetwork config cannot be
 	//	processed, set the error here. This allows the error to be propagated
 	//  back to zedcloud
-	Error        string
-	Network      uuid.UUID // Points to a NetworkInstance.
-	ACLs         []ACE
-	AccessVlanID uint32
-	IfIdx        uint32 // If we have multiple interfaces on that network, we will increase the index
+	Error           string
+	Network         uuid.UUID // Points to a NetworkInstance.
+	ACLs            []ACE
+	AccessVlanID    uint32
+	IfIdx           uint32 // If we have multiple interfaces on that network, we will increase the index
+	AllowToDiscover bool
 }
 
 // ACEDirection determines rule direction.
@@ -309,9 +320,10 @@ type ACE struct {
 
 // ACEMatch determines which traffic is matched by a given ACE.
 // The Type can be "ip" or "host" (aka domain name), "eidset", "protocol",
-// "fport", or "lport" for now. The ip and host matches the remote IP/hostname.
+// "fport", "lport" or "adapter" for now. The "ip" and "host" matches the remote IP/hostname.
 // The host matching is suffix-matching thus zededa.net matches *.zededa.net.
-// XXX Need "interface"... e.g. "uplink" or "eth1"? Implicit in network used?
+// "adapter" matches devices ports by user-configured or EVE-assigned shared port
+// labels and applies the ACE only to flows transmitted through them.
 // For now the matches are bidirectional.
 // XXX Add directionality? Different rate limits in different directions?
 // Value is always a string.
@@ -362,15 +374,6 @@ type NetworkInstanceInfo struct {
 
 	// Set of vifs on this bridge
 	Vifs []VifNameMac
-
-	// Vif metric map. This should have a union of currently existing
-	// vifs and previously deleted vifs.
-	// XXX When a vif is removed from bridge (app instance delete case),
-	// device might start reporting smaller statistic values. To avoid this
-	// from happening, we keep a list of all vifs that were ever connected
-	// to this bridge and their statistics.
-	// We add statistics from all vifs while reporting to cloud.
-	VifMetricMap map[string]NetworkMetric
 
 	// Maintain a map of all access vlan ids to their counts, used by apps
 	// connected to this network instance.
@@ -450,8 +453,9 @@ type NetworkInstanceMetrics struct {
 	UUIDandVersion UUIDandVersion
 	DisplayName    string
 	Type           NetworkInstanceType
+	BridgeName     string
 	NetworkMetrics NetworkMetrics
-	ProbeMetrics   ProbeMetrics
+	ProbeMetrics   []ProbeMetrics
 	VlanMetrics    VlanMetrics
 }
 
@@ -461,19 +465,25 @@ type VlanMetrics struct {
 	VlanCounts    map[uint32]uint32
 }
 
-// ProbeMetrics - NI probe metrics
+// ProbeMetrics - metrics published for a NI multipath route with probing-based
+// selection of the output port.
 type ProbeMetrics struct {
-	SelectedUplinkIntf string             // the uplink interface that probing picked
+	// Address of the destination network for which probing is used to select
+	// the output port.
+	DstNetwork string
+	// Logical label of the currently selected output port for the route.
+	SelectedPort       string
+	SelectedPortIfName string             // interface name of the port that probing picked
 	RemoteEndpoints    []string           // remote IP/URL addresses used for probing
 	LocalPingIntvl     uint32             // local ping interval in seconds
 	RemotePingIntvl    uint32             // remote probing interval in seconds
-	UplinkCount        uint32             // number of possible uplink interfaces
-	IntfProbeStats     []ProbeIntfMetrics // per dom0 intf uplink probing metrics
+	PortCount          uint32             // number of ports included in probing
+	IntfProbeStats     []ProbeIntfMetrics // metrics for all ports included in probing
 }
 
-// ProbeIntfMetrics - per dom0 network uplink interface probing
+// ProbeIntfMetrics - probe metrics for a device port (reported for a given NI)
 type ProbeIntfMetrics struct {
-	IntfName        string   // dom0 uplink interface name
+	IntfName        string   // interface name of the probed device port
 	NexthopIPs      []net.IP // interface local next-hop address(es) used for probing
 	NexthopUP       bool     // Is local next-hop in UP status
 	RemoteUP        bool     // Is remote endpoint in UP status
@@ -644,9 +654,11 @@ type NetworkInstanceConfig struct {
 	// Activate - Activate the config.
 	Activate bool
 
-	// PortLogicalLabel - references port(s) from DevicePortConfig.
-	// Can be a specific logicallabel for an interface, or a tag like "uplink"
-	PortLogicalLabel string
+	// PortLabel references port(s) from DevicePortConfig to use for external
+	// connectivity.
+	// Can be a specific logicallabel matching a single port, or a shared label,
+	// such as "uplink", potentially matching multiple device ports.
+	PortLabel string
 
 	// IP configuration for the Application
 	IpType          AddressType
@@ -657,10 +669,130 @@ type NetworkInstanceConfig struct {
 	DnsServers      []net.IP // If not set we use Gateway as DNS server
 	DhcpRange       IPRange
 	DnsNameToIPList []DNSNameToIP // Used for DNS and ACL ipset
+	MTU             uint16        // IP MTU
+
+	// Route configuration
+	PropagateConnRoutes bool
+	StaticRoutes        []IPRouteConfig
 
 	// Any errors from the parser
 	// ErrorAndTime provides SetErrorNow() and ClearError()
 	ErrorAndTime
+}
+
+// IPRouteConfig : single IP route config entry.
+type IPRouteConfig struct {
+	// Destination network.
+	// Guaranteed by zedagent not to be nil.
+	DstNetwork *net.IPNet
+	// Gateway IP address.
+	// Can be nil.
+	Gateway net.IP
+	// Output device port for the routed traffic.
+	// Either a single NI port referenced by its name (SystemAdapter.Name, aka logical label)
+	// or an adapter shared-label matching zero or more NI ports (multipath routing).
+	// Not used when gateway references one of the applications connected to the NI.
+	OutputPortLabel string
+	// Probe remote endpoint to determine connectivity status of each port and pick one
+	// with a working connectivity (and known gateway IP) for the route (preferring
+	// the currently used one if any).
+	// Provides automatic fail-over between ports.
+	// If OutputPortLabel is not defined or references only a single port (e.g. directly
+	// by the logical label), probing is skipped (nothing to fail-over to anyway).
+	PortProbe NIPortProbe
+	// When EVE is deciding which port to use for multipath route and multiple ports have
+	// working connectivity (or probing is disabled), port can be selected based on the cost
+	// If this option is enabled, EVE will prefer ports with lower costs.
+	PreferLowerCost bool
+	// When EVE is deciding which port to use for multipath route and there are multiple
+	// candidates among cellular modems, it might make sense to consider the current
+	// cellular network signal strength. If this option is enabled, EVE will prefer
+	// cellular ports with better signal (only among cellular ports).
+	PreferStrongerWwanSignal bool
+}
+
+// ConnectivityProbeMethod -  method to use to determine the connectivity status of a port.
+type ConnectivityProbeMethod uint8
+
+const (
+	// ConnectivityProbeMethodNone : connectivity probing is disabled.
+	ConnectivityProbeMethodNone ConnectivityProbeMethod = iota
+	// ConnectivityProbeMethodICMP : use ICMP ping against the probed endpoint to determine
+	// the connectivity status.
+	ConnectivityProbeMethodICMP
+	// ConnectivityProbeMethodTCP : try to establish TCP connection with the probed endpoint
+	// to determine the connectivity status.
+	ConnectivityProbeMethodTCP
+)
+
+// ConnectivityProbe : configuration for user-defined connectivity-testing probe.
+type ConnectivityProbe struct {
+	// Method to use to determine the connectivity status.
+	Method ConnectivityProbeMethod
+	// ProbeHost is either IP or hostname.
+	ProbeHost string
+	// ProbePort is required for L4 probing methods (e.g. ConnectivityProbeMethodTCP).
+	ProbePort uint16
+}
+
+// String returns human-readable description of the probe.
+func (r ConnectivityProbe) String() string {
+	probeStr := "<none>"
+	switch r.Method {
+	case ConnectivityProbeMethodICMP:
+		probeStr = fmt.Sprintf("icmp://%s", r.ProbeHost)
+	case ConnectivityProbeMethodTCP:
+		probeStr = fmt.Sprintf("tcp://%s:%d", r.ProbeHost,
+			r.ProbePort)
+	}
+	return probeStr
+}
+
+// NIPortProbe is used to determine connectivity status of a port to decide if it is suitable
+// for the default route of a network instance.
+type NIPortProbe struct {
+	// EVE uses ICMP ping against the port's gateway IP to determine connectivity status.
+	// User can disable this probe method. This is typically needed when the gateway router
+	// is configured to drop/ignore ICMP pings and therefore this probe would return false
+	// negatives.
+	EnabledGwPing bool
+	// Ports exceeding this cost will have the gateway probing disabled to reduce
+	// traffic generated by probing (only less-frequent user-defined probe will be performed).
+	GwPingMaxCost uint8
+	// User-defined method to use to determine the port connectivity status.
+	// Zedrouter runs this additionally to gateway pings (unless EnabledGwPing is false).
+	UserDefinedProbe ConnectivityProbe
+}
+
+// String returns human-readable description of the route.
+// Format does not matter, we use curly brackets just for the readability sake.
+func (r IPRouteConfig) String() string {
+	probe := fmt.Sprintf("{enabledGwPing=%t, gwPingMaxCost=%d, userProbe=%s}",
+		r.PortProbe.EnabledGwPing, r.PortProbe.GwPingMaxCost,
+		r.PortProbe.UserDefinedProbe.String())
+	return fmt.Sprintf("IP Route: {dst=%s, gw=%s, port=%s, probe=%s, "+
+		"preferLowerCost=%t, preferStrongerWwanSignal=%t}",
+		r.DstNetwork.String(), r.Gateway.String(), r.OutputPortLabel, probe,
+		r.PreferLowerCost, r.PreferStrongerWwanSignal)
+}
+
+// IsDefaultRoute returns true if this is a default route, i.e. matches all destinations.
+func (r IPRouteConfig) IsDefaultRoute() bool {
+	if r.DstNetwork == nil {
+		return true
+	}
+	ones, _ := r.DstNetwork.Mask.Size()
+	return r.DstNetwork.IP.IsUnspecified() && ones == 0
+}
+
+// Equal compares two IP routes for equality.
+func (r IPRouteConfig) Equal(r2 IPRouteConfig) bool {
+	return netutils.EqualIPs(r.Gateway, r2.Gateway) &&
+		netutils.EqualIPNets(r.DstNetwork, r2.DstNetwork) &&
+		r.OutputPortLabel == r2.OutputPortLabel &&
+		r.PortProbe == r2.PortProbe &&
+		r.PreferLowerCost == r2.PreferLowerCost &&
+		r.PreferStrongerWwanSignal && r2.PreferStrongerWwanSignal
 }
 
 // Key :
@@ -717,54 +849,16 @@ func (config *NetworkInstanceConfig) IsIPv6() bool {
 	return false
 }
 
-// WithUplinkProbing returns true if the network instance is eligible for uplink
-// probing (see pkg/pillar/uplinkprober).
-// Uplink probing is performed only for L3 networks with non-empty "shared" uplink
-// label, matching a subset of uplink ports.
-// Even if a network instance is eligible for probing as determined by this method,
-// the actual process of connectivity probing may still be inactive if there are
-// no uplink ports available that match the label.
-func (config *NetworkInstanceConfig) WithUplinkProbing() bool {
-	switch config.Type {
-	case NetworkInstanceTypeLocal:
-		return IsSharedPortLabel(config.PortLogicalLabel)
-	default:
-		return false
-	}
-}
-
-// IsUsingUplinkBridge returns true if the network instance is using the bridge
-// created (by NIM) for the uplink port, instead of creating its own bridge.
-func (config *NetworkInstanceConfig) IsUsingUplinkBridge() bool {
+// IsUsingPortBridge returns true if the network instance is using the bridge
+// created (by NIM) for the selected port, instead of creating its own bridge.
+func (config *NetworkInstanceConfig) IsUsingPortBridge() bool {
 	switch config.Type {
 	case NetworkInstanceTypeSwitch:
-		airGapped := config.PortLogicalLabel == ""
+		airGapped := config.PortLabel == ""
 		return !airGapped
 	default:
 		return false
 	}
-}
-
-const (
-	// UplinkLabel references all management interfaces.
-	UplinkLabel = "uplink"
-	// FreeUplinkLabel references all management interfaces with 0 cost.
-	FreeUplinkLabel = "freeuplink"
-)
-
-// IsSharedPortLabel : returns true if the logical label references multiple
-// ports.
-// Currently used labels are:
-//   - "uplink": any management interface
-//   - "freeuplink": any management interface with 0 cost
-func IsSharedPortLabel(label string) bool {
-	switch label {
-	case UplinkLabel:
-		return true
-	case FreeUplinkLabel:
-		return true
-	}
-	return false
 }
 
 type ChangeInProgressType int32
@@ -783,26 +877,111 @@ const (
 //	Extracted from the protobuf NetworkInstanceConfig
 type NetworkInstanceStatus struct {
 	NetworkInstanceConfig
-	// Make sure the Activate from the config isn't exposed as a boolean
-	Activate uint64
-
-	ChangeInProgress ChangeInProgressType
-	NIConflict       bool // True if config conflicts with another NI
-
-	// Activated is true if the network instance has been created in the network stack.
-	Activated bool
-
 	NetworkInstanceInfo
 
-	// Decided by local/remote probing
-	SelectedUplinkLogicalLabel string
-	SelectedUplinkIntfName     string
+	// Error set when NI has invalid config.
+	ValidationErr ErrorAndTime
+	// Errors set when there are not enough resources to create the NI.
+	AllocationErr ErrorAndTime
 
-	// True if uplink probing is running
-	RunningUplinkProbing bool
+	// Make sure the Activate from the config isn't exposed as a boolean
+	Activate uint64
+	// Activated is true if the network instance has been created in the network stack.
+	Activated bool
+	// ChangeInProgress is used to make sure that other microservices do not read
+	// NI status until the latest Create/Modify/Delete operation completes.
+	ChangeInProgress ChangeInProgressType
 
-	// True if NI is not activated only because of (currently) missing uplink.
-	WaitingForUplink bool
+	// Error set when NI IP subnet overlaps with the subnet of one the device ports
+	// or another NI.
+	IPConflictErr ErrorAndTime
+
+	// MTU configured for the network instance and app interfaces connected to it.
+	// This can differ from the user-requested MTU in case it is invalid or conflicts
+	// with the device port MTU.
+	MTU uint16
+	// Error set when the MTU configured for NI is in conflict with the MTU configured
+	// for the associated port (e.g. NI MTU is higher than MTU of an associated device
+	// port).
+	MTUConflictErr ErrorAndTime
+
+	// Labels of device ports used for external connectivity.
+	// The list is empty for air-gapped network instances.
+	Ports []string
+	// List of NTP servers published to applications connected to this network instance.
+	// This includes the NTP server from the NI config (if any) and all NTP servers
+	// associated with ports used by the network instance for external connectivity.
+	NTPServers []net.IP
+	// The intended state of the routing table.
+	// Includes user-configured static routes and potentially also automatically
+	// generated default route.
+	IntendedRoutes []IPRouteStatus
+	// The actual state of the routing table.
+	// This includes connected routes (for ports, not bridge), DHCP-received routes,
+	// user-defined static routes (NetworkInstanceConfig.static_routes) and the default
+	// route (if any). Note that some user-defined static routes might not be applied
+	// (and thus not reported here) if they do not match IP config of currently used
+	// device ports.
+	// Additionally, static routes with shared port labels (matching multiple ports)
+	// are reported here each with the logical label of the (single) port, currently
+	// selected for the route (selected based on connectivity status, port costs, wwan
+	// signal strength, etc.).
+	CurrentRoutes []IPRouteInfo
+
+	// Error set when NI fails to use the configured device port(s) for whatever reason.
+	PortErr ErrorAndTime
+
+	// Error set when the network instance config reconciliation fails.
+	ReconcileErr ErrorAndTime
+
+	// Final error reported for the NetworkInstance to the controller.
+	// It is a combination of all possible errors stored across *Err attributes.
+	ErrorAndTime
+}
+
+// IPRouteStatus contains state data for a user-configured static route.
+type IPRouteStatus struct {
+	IPRouteConfig
+	// Logical label of the output device port for the routed traffic.
+	// Empty if no port has been selected yet.
+	SelectedPort string
+	// True if port probing is running.
+	RunningPortProbing bool
+	// Error set when zedrouter fails to apply this route.
+	ErrorAndTime
+}
+
+// IPRouteInfo contains info about a single IP route from the NI routing table.
+// It is published to the controller as part of ZInfoNetworkInstance.
+type IPRouteInfo struct {
+	DstNetwork *net.IPNet
+	// Nil for connected route.
+	Gateway net.IP
+	// Logical label of the output device port for the routed traffic.
+	// Empty if the gateway is IP address of one of the applications.
+	// In that case, GatewayApp is defined instead.
+	OutputPort string
+	// UUID of the application used as the gateway for the route.
+	// Empty if the gateway is external (not one of the apps but outside the device).
+	// In that case, OutputPort is defined instead.
+	GatewayApp uuid.UUID
+}
+
+// IsDefaultRoute returns true if this is a default route, i.e. matches all destinations.
+func (r IPRouteInfo) IsDefaultRoute() bool {
+	if r.DstNetwork == nil {
+		return true
+	}
+	ones, _ := r.DstNetwork.Mask.Size()
+	return r.DstNetwork.IP.IsUnspecified() && ones == 0
+}
+
+// Equal compares two IP routes for equality.
+func (r IPRouteInfo) Equal(r2 IPRouteInfo) bool {
+	return netutils.EqualIPs(r.Gateway, r2.Gateway) &&
+		netutils.EqualIPNets(r.DstNetwork, r2.DstNetwork) &&
+		r.OutputPort == r2.OutputPort &&
+		r.GatewayApp == r2.GatewayApp
 }
 
 // LogCreate :
@@ -843,62 +1022,6 @@ func (status NetworkInstanceStatus) LogKey() string {
 	return string(base.NetworkInstanceStatusLogType) + "-" + status.Key()
 }
 
-// UpdateNetworkMetrics : update collected network metrics.
-// Tx/Rx of bridge is equal to the total of Tx/Rx on all member
-// virtual interfaces excluding the bridge itself.
-// Drops/Errors/AclDrops of bridge is equal to total of Drops/Errors/AclDrops
-// on all member virtual interface including the bridge.
-func (status *NetworkInstanceStatus) UpdateNetworkMetrics(log *base.LogObject,
-	nms *NetworkMetrics) (brNetMetric *NetworkMetric) {
-
-	brNetMetric = &NetworkMetric{IfName: status.BridgeName}
-	status.VifMetricMap = make(map[string]NetworkMetric) // clear previous metrics
-	for _, vif := range status.Vifs {
-		metric, found := nms.LookupNetworkMetrics(vif.Name)
-		if !found {
-			log.Tracef("No metrics found for interface %s",
-				vif.Name)
-			continue
-		}
-		status.VifMetricMap[vif.Name] = metric
-	}
-	for _, metric := range status.VifMetricMap {
-		brNetMetric.TxBytes += metric.TxBytes
-		brNetMetric.RxBytes += metric.RxBytes
-		brNetMetric.TxPkts += metric.TxPkts
-		brNetMetric.RxPkts += metric.RxPkts
-		brNetMetric.TxErrors += metric.TxErrors
-		brNetMetric.RxErrors += metric.RxErrors
-		brNetMetric.TxDrops += metric.TxDrops
-		brNetMetric.RxDrops += metric.RxDrops
-		brNetMetric.TxAclDrops += metric.TxAclDrops
-		brNetMetric.RxAclDrops += metric.RxAclDrops
-		brNetMetric.TxAclRateLimitDrops += metric.TxAclRateLimitDrops
-		brNetMetric.RxAclRateLimitDrops += metric.RxAclRateLimitDrops
-	}
-	return brNetMetric
-}
-
-// UpdateBridgeMetrics records metrics of the bridge interface itself.
-func (status *NetworkInstanceStatus) UpdateBridgeMetrics(log *base.LogObject,
-	nms *NetworkMetrics, netMetric *NetworkMetric) {
-	// Get bridge metrics
-	bridgeMetric, found := nms.LookupNetworkMetrics(status.BridgeName)
-	if !found {
-		log.Tracef("No metrics found for Bridge %s",
-			status.BridgeName)
-	} else {
-		netMetric.TxErrors += bridgeMetric.TxErrors
-		netMetric.RxErrors += bridgeMetric.RxErrors
-		netMetric.TxDrops += bridgeMetric.TxDrops
-		netMetric.RxDrops += bridgeMetric.RxDrops
-		netMetric.TxAclDrops += bridgeMetric.TxAclDrops
-		netMetric.RxAclDrops += bridgeMetric.RxAclDrops
-		netMetric.TxAclRateLimitDrops += bridgeMetric.TxAclRateLimitDrops
-		netMetric.RxAclRateLimitDrops += bridgeMetric.RxAclRateLimitDrops
-	}
-}
-
 // IsIpAssigned returns true if the given IP address is assigned to any app VIF.
 func (status *NetworkInstanceStatus) IsIpAssigned(ip net.IP) bool {
 	for _, assignments := range status.IPAssignments {
@@ -912,6 +1035,47 @@ func (status *NetworkInstanceStatus) IsIpAssigned(ip net.IP) bool {
 		}
 	}
 	return false
+}
+
+// CombineErrors combines all errors raised for the network instance into one error.
+func (status *NetworkInstanceStatus) CombineErrors() (combinedErr ErrorAndTime) {
+	errorSlice := []ErrorAndTime{status.ValidationErr, status.AllocationErr,
+		status.IPConflictErr, status.MTUConflictErr, status.PortErr,
+		status.ReconcileErr}
+	for _, route := range status.IntendedRoutes {
+		errorSlice = append(errorSlice, route.ErrorAndTime)
+	}
+	var (
+		oldestTime      time.Time
+		highestSeverity ErrorSeverity
+		errorMsgs       []string
+	)
+	for _, err := range errorSlice {
+		if err.HasError() {
+			if oldestTime.IsZero() || err.ErrorTime.Before(oldestTime) {
+				oldestTime = err.ErrorTime
+			}
+			if err.ErrorSeverity > highestSeverity {
+				highestSeverity = err.ErrorSeverity
+			}
+			errorMsgs = append(errorMsgs, err.Error)
+		}
+	}
+	combinedErr.Error = strings.Join(errorMsgs, "\n")
+	combinedErr.ErrorSeverity = highestSeverity
+	combinedErr.ErrorTime = oldestTime
+	return combinedErr
+}
+
+// EligibleForActivate checks if there are no errors that prevent NI from being activated.
+// Note that MTUConflictErr does not block NI activation. When the port and NI MTU
+// are different, we flag the NI with an error but fall back to the port MTU and activate
+// the NI with that MTU value.
+// Also, route errors (IPRouteStatus.Error) are typically not very serious and do not block
+// NI from being activated.
+func (status NetworkInstanceStatus) EligibleForActivate() bool {
+	return !status.ValidationErr.HasError() && !status.AllocationErr.HasError() &&
+		!status.IPConflictErr.HasError() && !status.PortErr.HasError()
 }
 
 // IPTuple :
@@ -1044,7 +1208,8 @@ type AppInstMetaData struct {
 
 // Key : App Instance Metadata unique key
 func (data AppInstMetaData) Key() string {
-	return data.AppInstUUID.String() + "-" + string(data.Type)
+	// because string(data.Type) would return empty string
+	return fmt.Sprintf("%s-%d", data.AppInstUUID.String(), data.Type)
 }
 
 // At the MinSubnetSize there is room for one app instance (.0 being reserved,
@@ -1065,3 +1230,66 @@ type AppBlobsAvailable struct {
 type AppInfo struct {
 	AppBlobs []AppBlobsAvailable
 }
+
+// AppMACGenerator persistently stores ID of the MAC generator that was used to generate
+// MAC addresses for interfaces of a given app.
+type AppMACGenerator struct {
+	*UuidToNum
+}
+
+// New is used by objtonum.ObjNumPublisher.
+func (g *AppMACGenerator) New(objKey objtonum.ObjKey) objtonum.ObjNumContainer {
+	uuidToNum, ok := g.UuidToNum.New(objKey).(*UuidToNum)
+	if !ok {
+		logrus.Fatalf("Wrong type returned by UuidToNum.New()")
+	}
+	return &AppMACGenerator{
+		UuidToNum: uuidToNum,
+	}
+}
+
+// LogCreate logs newly added AppMACGenerator entry.
+func (g AppMACGenerator) LogCreate(logBase *base.LogObject) {
+	logObject := base.NewLogObject(logBase, base.AppMACGeneratorLogType, "",
+		g.UUID, g.LogKey())
+	logObject.Noticef("AppMACGenerator item create")
+}
+
+// LogModify logs modified AppMACGenerator entry.
+func (g AppMACGenerator) LogModify(logBase *base.LogObject, old interface{}) {
+	logObject := base.EnsureLogObject(logBase, base.AppMACGeneratorLogType, "",
+		g.UUID, g.LogKey())
+	oldEntry, ok := old.(AppMACGenerator)
+	if !ok {
+		logObject.Clone().Fatalf("LogModify: old object is not of AppMACGenerator type")
+	}
+	logObject.CloneAndAddField("diff", cmp.Diff(oldEntry, g)).
+		Noticef("AppMACGenerator item modify")
+}
+
+// LogDelete logs deleted AppMACGenerator entry.
+func (g AppMACGenerator) LogDelete(logBase *base.LogObject) {
+	logObject := base.EnsureLogObject(logBase, base.AppMACGeneratorLogType, "",
+		g.UUID, g.LogKey())
+	logObject.Noticef("AppMACGenerator item delete")
+	base.DeleteLogObject(logBase, g.LogKey())
+}
+
+// LogKey identifies AppMACGenerator entry for logging purposes.
+func (g AppMACGenerator) LogKey() string {
+	return string(base.AppMACGeneratorLogType) + "-" + g.Key()
+}
+
+// IDs assigned to different variants of MAC generators.
+const (
+	// MACGeneratorUnspecified : MAC generator is not specified.
+	MACGeneratorUnspecified = 0
+	// MACGeneratorNodeScoped generates MAC addresses which are guaranteed to be unique
+	// only within the scope of the given single device.
+	// The exception are MAC addresses generated for switch network instances,
+	// which are always generated with global scope.
+	MACGeneratorNodeScoped = 1
+	// MACGeneratorGloballyScoped generates MAC addresses which are with high probability
+	// unique globally, i.e. across entire fleet of devices.
+	MACGeneratorGloballyScoped = 2
+)

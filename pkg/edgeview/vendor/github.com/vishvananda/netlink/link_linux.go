@@ -1146,6 +1146,10 @@ func (h *Handle) LinkAdd(link Link) error {
 	return h.linkModify(link, unix.NLM_F_CREATE|unix.NLM_F_EXCL|unix.NLM_F_ACK)
 }
 
+func LinkModify(link Link) error {
+	return pkgHandle.LinkModify(link)
+}
+
 func (h *Handle) LinkModify(link Link) error {
 	return h.linkModify(link, unix.NLM_F_REQUEST|unix.NLM_F_ACK)
 }
@@ -1707,6 +1711,7 @@ func LinkDeserialize(hdr *unix.NlMsghdr, m []byte) (Link, error) {
 	base.RawFlags = msg.Flags
 	base.Flags = linkFlags(msg.Flags)
 	base.EncapType = msg.EncapType()
+	base.NetNsID = -1
 	if msg.Flags&unix.IFF_PROMISC != 0 {
 		base.Promisc = 1
 	}
@@ -2869,6 +2874,7 @@ func addIptunAttrs(iptun *Iptun, linkInfo *nl.RtAttr) {
 	data.AddRtAttr(nl.IFLA_IPTUN_ENCAP_FLAGS, nl.Uint16Attr(iptun.EncapFlags))
 	data.AddRtAttr(nl.IFLA_IPTUN_ENCAP_SPORT, htons(iptun.EncapSport))
 	data.AddRtAttr(nl.IFLA_IPTUN_ENCAP_DPORT, htons(iptun.EncapDport))
+	data.AddRtAttr(nl.IFLA_IPTUN_PROTO, nl.Uint8Attr(iptun.Proto))
 }
 
 func parseIptunData(link Link, data []syscall.NetlinkRouteAttr) {
@@ -2899,6 +2905,8 @@ func parseIptunData(link Link, data []syscall.NetlinkRouteAttr) {
 			iptun.EncapFlags = native.Uint16(datum.Value[0:2])
 		case nl.IFLA_IPTUN_COLLECT_METADATA:
 			iptun.FlowBased = true
+		case nl.IFLA_IPTUN_PROTO:
+			iptun.Proto = datum.Value[0]
 		}
 	}
 }
@@ -3221,8 +3229,9 @@ func parseVfInfo(data []syscall.NetlinkRouteAttr, id int) VfInfo {
 func addXfrmiAttrs(xfrmi *Xfrmi, linkInfo *nl.RtAttr) {
 	data := linkInfo.AddRtAttr(nl.IFLA_INFO_DATA, nil)
 	data.AddRtAttr(nl.IFLA_XFRM_LINK, nl.Uint32Attr(uint32(xfrmi.ParentIndex)))
-	data.AddRtAttr(nl.IFLA_XFRM_IF_ID, nl.Uint32Attr(xfrmi.Ifid))
-
+	if xfrmi.Ifid != 0 {
+		data.AddRtAttr(nl.IFLA_XFRM_IF_ID, nl.Uint32Attr(xfrmi.Ifid))
+	}
 }
 
 func parseXfrmiData(link Link, data []syscall.NetlinkRouteAttr) {

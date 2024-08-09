@@ -9,6 +9,7 @@ package pubsub
 import (
 	"fmt"
 	"reflect"
+	"sync/atomic"
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
@@ -54,7 +55,7 @@ type SubSyncHandler func(ctx interface{}, synchronized bool)
 // map of agentname, key to get a json string
 // We use StringMap with a RWlock to allow concurrent access.
 type keyMap struct {
-	restartCounter int
+	restartCounter atomic.Int64
 	key            *base.LockedStringMap
 }
 
