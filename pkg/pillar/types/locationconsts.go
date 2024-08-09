@@ -125,6 +125,13 @@ const (
 	SwtpmCtrlSocketPath = "/run/swtpm/%s.ctrl.sock"
 	// SwtpmPidPath is SWTPM per-vm pid file path, the format string is filled with the App UUID
 	SwtpmPidPath = "/run/swtpm/%s.pid"
+
+	// MemoryMonitorDir - directory for memory monitor
+	MemoryMonitorDir = PersistDir + "/memory-monitor"
+	// MemoryMonitorOutputDir - directory for memory monitor output
+	MemoryMonitorOutputDir = MemoryMonitorDir + "/output"
+	// MemoryMonitorPSIStatsFile - file to store memory PSI (Pressure Stall Information) statistics
+	MemoryMonitorPSIStatsFile = MemoryMonitorOutputDir + "/psi.txt"
 )
 
 var (
