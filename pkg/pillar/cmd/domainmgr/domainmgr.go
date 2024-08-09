@@ -20,6 +20,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/containerd/cgroups"
@@ -48,6 +49,7 @@ import (
 	zfsutil "github.com/lf-edge/eve/pkg/pillar/utils/zfs"
 	"github.com/opencontainers/runtime-spec/specs-go"
 	uuid "github.com/satori/go.uuid"
+	"github.com/shirou/gopsutil/process"
 	"github.com/sirupsen/logrus"
 	"github.com/vishvananda/netlink"
 )
@@ -3369,8 +3371,10 @@ func updateUsbAccess(ctx *domainContext) {
 	log.Functionf("updateUsbAccess(%t)", ctx.usbAccess)
 	if !ctx.usbAccess {
 		removeUSBfromKernel()
+		disableLocalKeyboardAccessToTty()
 	} else {
 		addUSBtoKernel()
+		enableLocalKeyboardAccessToTty()
 	}
 	updatePortAndPciBackIoBundleAll(ctx)
 	checkIoBundleAll(ctx)
@@ -3426,6 +3430,52 @@ func addUSBtoKernel() {
 		} else {
 			drv.loaded = types.TS_ENABLED
 		}
+	}
+}
+
+func disableLocalKeyboardAccessToTty() {
+	sendSignalToLogin(syscall.SIGSTOP)
+}
+
+func enableLocalKeyboardAccessToTty() {
+	sendSignalToLogin(syscall.SIGCONT)
+}
+
+func sendSignalToLogin(sig syscall.Signal) {
+	procs, err := process.Processes()
+	if err != nil {
+		log.Warnf("could not retrieve processes: %v", err)
+	}
+
+	var loginProc *process.Process
+	for _, proc := range procs {
+		cmdline, err := proc.CmdlineSlice()
+		if err != nil {
+			log.Warnf("could not retrieve cmdline of %v: %v", proc, err)
+		}
+
+		if strings.HasSuffix(cmdline[0], "/login") || cmdline[0] == "login" {
+			loginProc = proc
+			break
+		}
+	}
+	if loginProc == nil {
+		log.Warnf("could not find login process")
+		return
+	}
+
+	err = loginProc.SendSignal(sig)
+	if err != nil {
+		log.Warnf("could not send signal to login: %v", err)
+
+	}
+
+	childrenProcs, err := loginProc.Children()
+	if err != nil {
+		log.Warnf("could not retrieve children processes: %v", err)
+	}
+	for _, proc := range childrenProcs {
+		err = proc.SendSignal(sig)
 	}
 }
 
