@@ -56,11 +56,6 @@ zfs_set_arc_limits() {
     zfs_set_parameter zfs_dirty_data_max "${zfs_dirty_data_max}"
 }
 
-# set sequential mdev handler to avoid add-remove-add mis-order of zvols
-set_sequential_mdev() {
-  echo >/dev/mdev.seq
-}
-
 zfs_adjust_features() {
   # we had a bug with mismatch of libzfs and zfs module versions
   # let's set draid feature enabled as we started with zfs 2.1.x which supports this feature
@@ -196,7 +191,6 @@ if P3=$(findfs PARTLABEL=P3) && [ -n "$P3" ]; then
     echo "$(date -Ins -u) Using $P3 (formatted with $P3_FS_TYPE), for $PERSISTDIR"
 
     if [ "$P3_FS_TYPE" = zfs ]; then
-        set_sequential_mdev
         if ! chroot /hostfs zpool import -f persist; then
             # Don't re-format the fs if we are in kdump kernel
             if [ "$IS_IN_KDUMP_KERNEL" = 0 ]; then
@@ -241,7 +235,6 @@ if P3=$(findfs PARTLABEL=P3) && [ -n "$P3" ]; then
                       chroot /hostfs zfs set mountpoint="$PERSISTDIR" persist                                          && \
                       chroot /hostfs zfs set primarycache=metadata persist                                             && \
                       chroot /hostfs zfs create -p -o mountpoint="$PERSISTDIR/containerd/io.containerd.snapshotter.v1.zfs" persist/snapshots
-                      set_sequential_mdev
                    fi
                    ;;
     esac || echo "$(date -Ins -u) mount of $P3 as $P3_FS_TYPE failed"
@@ -257,7 +250,6 @@ if P3=$(findfs PARTLABEL=P3) && [ -n "$P3" ]; then
     fi
 else
     #in case of no P3 we may have EVE persist on another disks
-    set_sequential_mdev
     if chroot /hostfs zpool import -f persist; then
         echo "zfs" > /run/eve.persist_type
         zfs_adjust_features

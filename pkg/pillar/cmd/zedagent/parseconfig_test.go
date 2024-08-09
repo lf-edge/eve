@@ -1340,5 +1340,128 @@ func TestParsePatchEnvelope(t *testing.T) {
 	}))
 
 	os.RemoveAll(persistCacheFolder)
+}
 
+func TestParseSharedLabels(t *testing.T) {
+	g := NewGomegaWithT(t)
+	getconfigCtx := initGetConfigCtx(g)
+
+	const (
+		network1UUID = "572cd3bc-ade6-42ad-97a0-22cd24fed1a0"
+		network2UUID = "0c1a98fb-85fa-421d-943e-8d4e469bea8f"
+	)
+	config := &zconfig.EdgeDevConfig{
+		Networks: []*zconfig.NetworkConfig{
+			{
+				Id:   network1UUID,
+				Type: zconfig.NetworkType_V4,
+				Ip: &zconfig.Ipspec{
+					Dhcp: zconfig.DHCPType_Client,
+				},
+			},
+			{
+				Id:   network2UUID,
+				Type: zconfig.NetworkType_V4,
+				Ip: &zconfig.Ipspec{
+					Dhcp: zconfig.DHCPType_Client,
+				},
+			},
+		},
+		DeviceIoList: []*zconfig.PhysicalIO{
+			{
+				Ptype:        zcommon.PhyIoType_PhyIoNetEth,
+				Phylabel:     "ethernet0",
+				Logicallabel: "shopfloor",
+				Assigngrp:    "eth-grp-1",
+				Phyaddrs: map[string]string{
+					"ifname":  "eth0",
+					"pcilong": "0000:f4:00.0",
+				},
+				Usage: zcommon.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
+			},
+			{
+				Ptype:        zcommon.PhyIoType_PhyIoNetEth,
+				Phylabel:     "ethernet1",
+				Logicallabel: "warehouse",
+				Assigngrp:    "eth-grp-2",
+				Phyaddrs: map[string]string{
+					"ifname":  "eth1",
+					"pcilong": "0000:05:00.0",
+				},
+				Usage: zcommon.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
+			},
+		},
+		SystemAdapterList: []*zconfig.SystemAdapter{
+			{
+				Name:           "adapter-shopfloor",
+				Uplink:         true,
+				NetworkUUID:    network1UUID,
+				Alias:          "shopfloor-alias",
+				LowerLayerName: "shopfloor",
+				Cost:           0,
+				// error: "adapter-warehouse" is logical label
+				SharedLabels: []string{"portfwd", "netinst1", "adapter-warehouse"},
+			},
+			{
+				Name:           "adapter-warehouse",
+				Uplink:         true,
+				NetworkUUID:    network2UUID,
+				Alias:          "warehouse-alias",
+				LowerLayerName: "warehouse",
+				Cost:           10,
+				// error: "uplink" is reserved
+				SharedLabels: []string{"portfwd", "netinst2", "uplink"},
+			},
+		},
+	}
+
+	parseDeviceIoListConfig(getconfigCtx, config)
+	parseNetworkXObjectConfig(getconfigCtx, config)
+	parseSystemAdapterConfig(getconfigCtx, config, fromController, true)
+
+	portConfig, err := getconfigCtx.pubDevicePortConfig.Get("zedagent")
+	g.Expect(err).To(BeNil())
+	dpc := portConfig.(types.DevicePortConfig)
+	g.Expect(dpc.Version).To(Equal(types.DPCIsMgmt))
+	g.Expect(dpc.HasError()).To(BeTrue())
+	g.Expect(dpc.LastFailed).ToNot(BeZero())
+	g.Expect(dpc.LastSucceeded).To(BeZero())
+	g.Expect(getPortError(&dpc, "adapter-shopfloor")).
+		To(ContainSubstring("Port adapter-shopfloor: It is forbidden to use port name 'adapter-warehouse' as shared label"))
+	g.Expect(getPortError(&dpc, "adapter-warehouse")).
+		To(ContainSubstring("Port adapter-warehouse: It is forbidden to assign reserved port label 'uplink'"))
+
+	// EVE-defined labels are not added when user-defined labels are invalid.
+	g.Expect(dpc.Ports).To(HaveLen(2))
+	port := dpc.Ports[0]
+	g.Expect(port.Logicallabel).To(Equal("adapter-shopfloor"))
+	g.Expect(port.SharedLabels).To(Equal([]string{"portfwd", "netinst1", "adapter-warehouse"}))
+	g.Expect(port.InvalidConfig).To(BeTrue())
+	port = dpc.Ports[1]
+	g.Expect(port.Logicallabel).To(Equal("adapter-warehouse"))
+	g.Expect(port.SharedLabels).To(Equal([]string{"portfwd", "netinst2", "uplink"}))
+	g.Expect(port.InvalidConfig).To(BeTrue())
+
+	// Fix config errors.
+	config.SystemAdapterList[0].SharedLabels = []string{"portfwd", "netinst1"}
+	config.SystemAdapterList[1].SharedLabels = []string{"portfwd", "netinst2"}
+	parseSystemAdapterConfig(getconfigCtx, config, fromController, true)
+
+	portConfig, err = getconfigCtx.pubDevicePortConfig.Get("zedagent")
+	g.Expect(err).To(BeNil())
+	dpc = portConfig.(types.DevicePortConfig)
+	g.Expect(dpc.Version).To(Equal(types.DPCIsMgmt))
+	g.Expect(dpc.HasError()).To(BeFalse())
+	g.Expect(dpc.LastFailed).To(BeZero())
+
+	// EVE-defined labels were automatically added
+	g.Expect(dpc.Ports).To(HaveLen(2))
+	port = dpc.Ports[0]
+	g.Expect(port.Logicallabel).To(Equal("adapter-shopfloor"))
+	g.Expect(port.SharedLabels).To(Equal([]string{"portfwd", "netinst1", "all", "uplink", "freeuplink"}))
+	g.Expect(port.InvalidConfig).To(BeFalse())
+	port = dpc.Ports[1]
+	g.Expect(port.Logicallabel).To(Equal("adapter-warehouse"))
+	g.Expect(port.SharedLabels).To(Equal([]string{"portfwd", "netinst2", "all", "uplink"}))
+	g.Expect(port.InvalidConfig).To(BeFalse())
 }

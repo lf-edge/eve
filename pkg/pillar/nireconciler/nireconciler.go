@@ -266,9 +266,13 @@ func (s NIReconcileStatus) Equal(s2 NIReconcileStatus) bool {
 			return false
 		}
 	}
+	equalRoutes := generics.EqualSetsFn(s.Routes, s2.Routes,
+		func(r1, r2 types.IPRouteInfo) bool {
+			return r1.Equal(r2)
+		})
 	return s.NI == s2.NI && s.Deleted == s2.Deleted &&
-		s.BrIfName == s2.BrIfName &&
-		s.InProgress == s2.InProgress
+		s.BrIfName == s2.BrIfName && s.BrIfIndex == s2.BrIfIndex &&
+		s.InProgress == s2.InProgress && equalRoutes
 }
 
 // AppConnReconcileStatus : status of the config reconciliation related to application

@@ -6,7 +6,7 @@
 
 # Script version, don't forget to bump up once something is changed
 
-VERSION=27
+VERSION=28
 # Add required packages here, it will be passed to "apk add".
 # Once something added here don't forget to add the same package
 # to the Dockerfile ('ENV PKGS' line) of the debug container,
@@ -16,11 +16,10 @@ VERSION=27
 PKG_DEPS="procps tar dmidecode iptables dhcpcd"
 
 DATE=$(date "+%Y-%m-%d-%H-%M-%S")
-INFO_DIR_SUFFIX="eve-info/eve-info-v$VERSION-$DATE"
-TARBALL_FILE="/persist/$INFO_DIR_SUFFIX.tar.gz"
+INFO_DIR_SUFFIX="eve-info-v$VERSION-$DATE"
 SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
-mkdir -p "/persist/$INFO_DIR_SUFFIX"
 
+READ_LOGS_DAYS=
 READ_LOGS_DEV=
 READ_LOGS_APP=
 TAR_WHOLE_SYS=
@@ -48,11 +47,13 @@ usage()
     echo "Read-logs mode:"
     echo "       -d                   - read device logs only"
     echo "       -a APPLICATION-UUID  - read specified application logs only"
+    echo "       -t NUMBER-OF-DAYS    - read logs from the last NUMBER-OF-DAYS [1-30]"
+    echo "       -e                   - additional edgeview string in filename"
     echo "       -j                   - output logs in json"
     exit 1
 }
 
-while getopts "vhsa:dj" o; do
+while getopts "vhsa:djet:" o; do
     case "$o" in
         h)
             usage
@@ -64,8 +65,18 @@ while getopts "vhsa:dj" o; do
         a)
             READ_LOGS_APP="$OPTARG"
             ;;
+        t)
+            READ_LOGS_DAYS="$OPTARG"
+            if [ "$READ_LOGS_DAYS" -lt 1 ] || [ "$READ_LOGS_DAYS" -gt 30 ]; then
+                echo "Error: READ_LOGS_DAYS must be between 1 and 30."
+                exit 1
+            fi
+            ;;
         d)
             READ_LOGS_DEV=1
+            ;;
+        e)
+            INFO_DIR_SUFFIX="eve-info-edgeview-v$VERSION-$DATE"
             ;;
         s)
             TAR_WHOLE_SYS=1
@@ -81,6 +92,8 @@ while getopts "vhsa:dj" o; do
             ;;
     esac
 done
+
+TARBALL_FILE="/persist/eve-info/$INFO_DIR_SUFFIX.tar.gz"
 
 is_in_debug_service() {
     grep -q '/eve/services/debug' < /proc/self/cgroup
@@ -158,6 +171,7 @@ fi
 # Create temporary dir
 echo "- basic setup"
 TMP_DIR=$(mktemp -d -t -p /persist/tmp/)
+LOG_TMP_DIR="$TMP_DIR/dayslogs"
 DIR="$TMP_DIR/$INFO_DIR_SUFFIX"
 mkdir -p "$DIR"
 mkdir -p "$DIR/network"
@@ -427,9 +441,17 @@ find /sys/kernel/security -name "tpm*" | while read -r TPM; do
     fi
 done
 
+if [ -n "$READ_LOGS_DAYS" ]; then
+    mkdir -p "$LOG_TMP_DIR"
+    # Find and copy log files from /persist/newlog to $LOG_TMP_DIR in previous days
+    find /persist/newlog -type f -mtime -"$READ_LOGS_DAYS" -exec ln -s {} "$LOG_TMP_DIR" \;
+    ln -s "$LOG_TMP_DIR" "$DIR/persist-newlog"
+else
+    ln -s /persist/newlog "$DIR/persist-newlog"
+fi
+
 ln -s /persist/status       "$DIR/persist-status"
 ln -s /persist/log          "$DIR/persist-log"
-ln -s /persist/newlog       "$DIR/persist-newlog"
 ln -s /persist/netdump      "$DIR/persist-netdump"
 ln -s /persist/kcrashes     "$DIR/persist-kcrashes"
 [ -d /persist/memory-monitor/output ] && ln -s /persist/memory-monitor/output "$DIR/persist-memory-monitor-output"

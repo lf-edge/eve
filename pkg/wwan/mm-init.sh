@@ -34,12 +34,12 @@ mkdir -p /var/run/dbus
 dbus-daemon --system
 echo "D-Bus daemon started"
 
-echo "Starting Udev daemon"
-udevd --debug --daemon 2>/dev/null
 # Apply installed ModemManager udev rules.
+echo "Setting up udev rules"
+mkdir -p /run/udev/rules.d/
+cp /lib/udev/rules.d/* /run/udev/rules.d/
 udevadm control --reload
 udevadm trigger
-echo "Udev daemon started"
 
 echo "Starting Modem Manager"
 enable_fcc_unlock

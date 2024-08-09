@@ -141,7 +141,7 @@ wait_ntp_sync() {
     echo "$(date -Ins -u) Wait NTP sync for 1 min"
     /usr/bin/chronyc waitsync 6
     ret_code=$?
-    echo "$(date -Ins -u) chronyc: $ret_code"
+    echo "$(date -Ins -u) chronyc waitsync: $ret_code"
 }
 
 # Populate NTP sources from the string argument, which represents
@@ -159,31 +159,6 @@ populate_ntp_sources() {
         # Init global variable only in case of success.
         # In case of failure we should repeat shortly.
         NTPSERVERS="$ns"
-    fi
-}
-
-# Start NTP daemon
-start_ntp_daemon() {
-    ns=$(get_ntp_servers)
-    echo "$(date -Ins -u) Check for NTP config"
-    if [ -f /usr/sbin/chronyd ]; then
-        # Run chronyd to keep it in sync.
-        echo "$(date -Ins -u) chronyd -u root -f /etc/chrony/chrony.conf"
-        /usr/sbin/chronyd -u root -f /etc/chrony/chrony.conf
-        ret_code=$?
-        echo "$(date -Ins -u) chronyd: $ret_code"
-        # Add chronyd to watchdog
-        touch "$WATCHDOG_PID/chronyd.pid"
-
-        # Pass NTP server through the chronyc, unfortunately can't pass as
-        # an argument to the daemon itself.
-        if [ "$ret_code" = "0" ]; then
-            # Give some time for chronyd to start
-            sleep 1
-            populate_ntp_sources "$ns"
-        fi
-    else
-        echo "$(date -Ins -u) ERROR: no NTP (chrony) on EVE"
     fi
 }
 
@@ -207,6 +182,41 @@ reload_ntp_sources() {
         fi
     done
     populate_ntp_sources "$ns"
+}
+
+# Poll if NTP servers and reload if changed
+reload_ntp_sources_in_loop() {
+    while true; do
+        ns=$(get_ntp_servers)
+        if [ -n "$ns" ] && [ "$ns" != "$NTPSERVERS" ]; then
+            echo "$(date -Ins -u) NTP server changed from \"$NTPSERVERS\" to \"$ns\", reload NTP sources"
+            # Reload NTP sources
+            reload_ntp_sources "$ns"
+        fi
+        # Why strange number? Easy to spot in `ps` output and debug.
+        sleep 30.1
+    done
+}
+
+# Start NTP daemon
+start_ntp_daemon() {
+    echo "$(date -Ins -u) Check for NTP config"
+    if [ -f /usr/sbin/chronyd ]; then
+        # Run chronyd to keep it in sync.
+        echo "$(date -Ins -u) chronyd -u root -f /etc/chrony/chrony.conf"
+        /usr/sbin/chronyd -u root -f /etc/chrony/chrony.conf
+        ret_code=$?
+        echo "$(date -Ins -u) chronyd: $ret_code"
+        # Add chronyd to watchdog
+        touch "$WATCHDOG_PID/chronyd.pid"
+
+        if [ "$ret_code" = "0" ]; then
+            # Start reload of NTP sources in a loop asynchronously
+            reload_ntp_sources_in_loop &
+        fi
+    else
+        echo "$(date -Ins -u) ERROR: no NTP (chrony) on EVE"
+    fi
 }
 
 # If zedbox is already running we don't have to start it.
@@ -502,14 +512,7 @@ echo "$(date -Ins -u) Done starting EVE version: $(cat /run/eve-release)"
 # check for any usb.json with DevicePortConfig, deposit our identity,
 # and dump any diag information
 while true; do
-    access_usb
-    # Check if NTP servers changed
-    # Note that this really belongs in a separate ntpd container
-    ns=$(get_ntp_servers)
-    if [ -n "$ns" ] && [ "$ns" != "$NTPSERVERS" ]; then
-        echo "$(date -Ins -u) NTP server changed from \"$NTPSERVERS\" to \"$ns\", reload NTP sources"
-        # Reload NTP sources
-        reload_ntp_sources "$ns"
-    fi
-    sleep 30
+     access_usb
+     # Why strange number? Easy to spot in `ps` output and debug.
+     sleep 30.2
 done

@@ -4,8 +4,8 @@
 # SPDX-License-Identifier: Apache-2.0
 
 FROM lfedge/eve-alpine:1f7685f95a475c6bbe682f0b976f12180b6c8726 as build
-ENV BUILD_PKGS meson ninja git libc-dev glib-dev make gcc dbus-dev libgudev-dev go
-ENV PKGS alpine-baselayout dbus glib udev libgudev
+ENV BUILD_PKGS meson ninja git libc-dev glib-dev make gcc udev dbus-dev libgudev-dev go
+ENV PKGS alpine-baselayout dbus glib kmod-dev libgudev
 RUN eve-alpine-deploy.sh
 
 ENV MM_VERSION=1.22.0
@@ -88,6 +88,7 @@ COPY --from=build /usr/share/ModemManager /usr/share/ModemManager
 
 COPY --from=build /etc/dbus-1 /etc/dbus-1
 COPY --from=build /usr/share/dbus-1 /usr/share/dbus-1
+COPY --from=build /bin/udevadm /bin/udevadm
 COPY --from=build /lib/udev/rules.d /lib/udev/rules.d
 
 COPY mm-init.sh /usr/bin/mm-init.sh

@@ -502,6 +502,29 @@ The package `pillar` contains, unsurprisingly, the `pillar` services that are re
 
 `pillar` depends upon the latest versions of these being available at its compile time in its vendor directory at [pkg/pillar/vendor](../pkg/pillar/vendor). The target `make proto-vendor` will vendor them into [pkg/pillar/vendor](../pkg/pillar/vendor).
 
+##### pillar build variants
+
+The package pillar is built using the Makefile command: `make pkg/pillar [VAR1=value1 VAR2=value2 ...]`
+
+Depending on the values of optional variables, the following pillar build variants are currently available:
+
+* `make pkg/pillar`: Production version of pillar for the KVM or Xen hypervisor. There is no difference
+  in the pillar build between KVM and Xen hypervisors, and the default `HV=kvm` can be used for both.
+  The name of the built pillar container is `lfedge/eve-pillar:<tag>`.
+* `make pkg/pillar DEV=y`: Development version of pillar for the KVM or Xen hypervisor. Debug symbols
+  are preserved and seccomp is disabled in the pillar container.
+  The name of the built pillar container is `lfedge/eve-pillar-dev:<tag>`.
+* `make pkg/pillar HV=kubevirt`: Production version of pillar for the KubeVirt hypervisor (EVE using
+  K3s + KubeVirt to deploy applications as VMs inside Kubernetes Pods). Contains additional
+  microservices and Go package dependencies specific to Kubernetes.
+  The name of the built pillar container is `lfedge/eve-pillar-kube:<tag>`.
+* `make pkg/pillar HV=kubevirt DEV=y`: Development version of pillar for the KubeVirt hypervisor.
+  Debug symbols are preserved and seccomp is disabled in the pillar container.
+  The name of the built pillar container is `lfedge/eve-pillar-kube-dev:<tag>`.
+
+Only `lfedge/eve-pillar` is currently published to Dockerhub as part of `lf-edge/eve` Github actions
+for the master branch and EVE releases.
+
 ### Building packages
 
 Packages are built within a docker container as defined by the `Dockerfile` within the package directory. The `Dockerfile` also specifies how the package will be built within the container. Some packages have a separate script to built them which is then invoked using the `RUN` clause within the `Dockerfile`. For some others like the `kernel` package, the entire build script is specified within the `Dockerfile`. Finally, the built docker images are published [here](https://hub.docker.com/u/lfedge). Please note that since our organization on DockerHub is managed by Linux Foundation, we have to request that they create a new package namespace for us every time we add a new package. For example, if you're adding `pkg/eve-foo` you will have to request a `New Repository` named `https://hub.docker.com/r/lfedge/eve-foo` via [LF JIRA](https://jira.linuxfoundation.org/plugins/servlet/desk/portal/2). Don't forget to ask for permissions setting to be copied from `https://hub.docker.com/r/lfedge/eve`.

@@ -32,33 +32,45 @@ func (srv *Msrv) lookupAppNetworkStatusByAppIP(ip net.IP) *types.AppNetworkStatu
 	return nil
 }
 
-func (srv *Msrv) getExternalIPForApp(remoteIP net.IP) (net.IP, int) {
+func (srv *Msrv) getExternalIPsForApp(remoteIP net.IP) ([]net.IP, int) {
 	netstatus := srv.lookupNetworkInstanceStatusByAppIP(remoteIP)
 	if netstatus == nil {
-		srv.Log.Errorf("getExternalIPForApp: No NetworkInstanceStatus for %v", remoteIP)
+		srv.Log.Errorf("getExternalIPsForApp: No NetworkInstanceStatus for %v", remoteIP)
 		return nil, http.StatusNotFound
 	}
-	if netstatus.SelectedUplinkIntfName == "" {
-		srv.Log.Warnf("getExternalIPForApp: No SelectedUplinkIntfName for %v", remoteIP)
+	if len(netstatus.Ports) == 0 {
+		srv.Log.Warnf("getExternalIPsForApp: No Port for %v", remoteIP)
 		// Nothing to report */
 		return nil, http.StatusNoContent
 	}
-
 	dnStatus, err := srv.subDeviceNetworkStatus.Get("global")
 	if err != nil {
 		srv.Log.Error(fmt.Sprintf("cannot fetch device network status: %s", err))
 		return nil, http.StatusInternalServerError
 	}
 
+	var ips []net.IP
 	dns := dnStatus.(types.DeviceNetworkStatus)
-	ip, err := types.GetLocalAddrAnyNoLinkLocal(dns,
-		0, netstatus.SelectedUplinkIntfName)
-	if err != nil {
-		srv.Log.Errorf("getExternalIPForApp: No externalIP for %s: %s",
+	for _, port := range dns.Ports {
+		if generics.ContainsItem(netstatus.Ports, port.Logicallabel) {
+			for _, addr := range port.AddrInfoList {
+				ip := addr.Addr.To4()
+				if ip == nil {
+					continue
+				}
+				if ip.IsLinkLocalUnicast() {
+					continue
+				}
+				ips = append(ips, ip)
+			}
+		}
+	}
+	if len(ips) == 0 {
+		srv.Log.Errorf("getExternalIPsForApp: No externalIP for %s: %s",
 			remoteIP.String(), err)
 		return nil, http.StatusNoContent
 	}
-	return ip, http.StatusOK
+	return ips, http.StatusOK
 }
 
 func (srv *Msrv) lookupNetworkInstanceStatusByAppIP(

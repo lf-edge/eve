@@ -11,72 +11,113 @@ import (
 	"github.com/eshard/uevent"
 )
 
+type ueventListener struct {
+	isCancelled  atomic.Bool
+	ueventReader io.ReadCloser
+	usbdevices   map[string]*usbdevice
+	uc           *usbmanagerController
+}
+
 func (uc *usbmanagerController) listenUSBPorts() {
-	var isCancelled atomic.Bool
+	ul := ueventListener{
+		usbdevices: map[string]*usbdevice{},
+		uc:         uc,
+	}
+	ul.isCancelled.Store(false)
+	uc.listenUSBStopChan = make(chan struct{})
 
-	usbdevices := make(map[string]*usbdevice)
-	isCancelled.Store(false)
+	go ul.handleStop()
 
-	r, err := uevent.NewReader()
+	go func() {
+		retry := true
+		for retry {
+			retry = ul.readEvents()
+		}
+	}()
+}
+
+func (ul *ueventListener) handleStop() {
+	// cancelling uevent reader
+	<-ul.uc.listenUSBStopChan
+	ul.isCancelled.Store(true)
+	if ul.ueventReader != nil {
+		ul.ueventReader.Close()
+	}
+}
+
+func (ul *ueventListener) readEvents() bool {
+	var err error
+	ul.ueventReader, err = uevent.NewReader()
 	if err != nil {
-		log.Fatal(err)
+		log.Warnf("Opening uevent reader failed: %v - retrying", err)
+		return true
 	}
 
-	// goroutine for cancelling uevent reader
-	uc.listenUSBStopChan = make(chan struct{})
-	go func() {
-		<-uc.listenUSBStopChan
-		isCancelled.Store(true)
-		r.Close()
-		return
-	}()
+	ul.scanExistingUSBDevices()
 
-	go func() {
-		for _, ud := range walkUSBPorts() {
-			usbdevices[ud.ueventFilePath] = ud
-			log.Tracef("usb device from walking: %+v", ud)
-			uc.addUSBDevice(*ud)
+	defer ul.ueventReader.Close()
+
+	dec := uevent.NewDecoder(ul.ueventReader)
+
+	for {
+		evt, err := dec.Decode()
+		if errors.Is(err, io.EOF) && ul.isCancelled.Load() {
+			break
+		} else if err != nil {
+			log.Warnf("decoding uevent failed: %+v - retrying", err)
+			return true
 		}
 
-		defer r.Close()
+		ueventFilePath := filepath.Join(sysFSPath, evt.Devpath, "uevent")
+		ud := ueventFile2usbDevice(ueventFilePath)
+		if ud == nil {
+			ud = ul.usbdevices[ueventFilePath]
+		}
 
-		dec := uevent.NewDecoder(r)
+		if ud == nil {
+			continue
+		}
 
-		for {
-			evt, err := dec.Decode()
-			if errors.Is(err, io.EOF) && isCancelled.Load() {
-				return
-			} else if err != nil {
-				log.Fatal(err)
-			}
-
-			ueventFilePath := filepath.Join(sysFSPath, evt.Devpath, "uevent")
-			ud := ueventFile2usbDevice(ueventFilePath)
-			if ud == nil {
-				ud = usbdevices[ueventFilePath]
-			}
-
-			if ud == nil {
+		// bind, not add: https://github.com/olavmrk/usb-libvirt-hotplug/issues/4
+		if evt.Action == "bind" {
+			_, ok := ul.usbdevices[ud.ueventFilePath]
+			if ok {
 				continue
 			}
 
-			if evt.Action == "bind" {
-				// bind, not add: https://github.com/olavmrk/usb-libvirt-hotplug/issues/4
-				_, ok := usbdevices[ud.ueventFilePath]
-				if ok {
-					continue
-				}
-
-				usbdevices[ud.ueventFilePath] = ud
-				uc.addUSBDevice(*ud)
-			} else if evt.Action == "remove" {
-				ud, ok := usbdevices[ueventFilePath]
-				if ok {
-					uc.removeUSBDevice(*ud)
-					delete(usbdevices, ueventFilePath)
-				}
+			ul.usbdevices[ud.ueventFilePath] = ud
+			ul.uc.addUSBDevice(*ud)
+		} else if evt.Action == "remove" {
+			ud, ok := ul.usbdevices[ueventFilePath]
+			if ok {
+				ul.uc.removeUSBDevice(*ud)
+				delete(ul.usbdevices, ueventFilePath)
 			}
 		}
-	}()
+	}
+	return false
+}
 
+func (ul *ueventListener) scanExistingUSBDevices() {
+	newUsbdevices := make(map[string]*usbdevice)
+	for _, ud := range walkUSBPorts() {
+		newUsbdevices[ud.ueventFilePath] = ud
+	}
+	log.Tracef("previous usbdevices: %+v | new usbdevices: %+v", ul.usbdevices, newUsbdevices)
+	for ueventFilePath, ud := range newUsbdevices {
+		_, found := ul.usbdevices[ueventFilePath]
+		if !found {
+			log.Tracef("usb device from walking: %+v", ud)
+			ul.uc.addUSBDevice(*ud)
+		}
+	}
+	for ueventFilePath, ud := range ul.usbdevices {
+		_, found := newUsbdevices[ueventFilePath]
+		if !found {
+			log.Tracef("remove usb device from walking: %+v", ud)
+			ul.uc.removeUSBDevice(*ud)
+		}
+	}
+
+	ul.usbdevices = newUsbdevices
 }

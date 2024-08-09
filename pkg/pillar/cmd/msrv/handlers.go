@@ -19,10 +19,10 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
-
 	"github.com/lf-edge/eve/pkg/pillar/utils"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
+	"github.com/lf-edge/eve/pkg/pillar/utils/netutils"
+	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 )
 
 type middlewareKeys int
@@ -32,20 +32,19 @@ const (
 	appUUIDContextKey
 )
 
-func isEmptyIP(ip net.IP) bool {
-	return ip == nil || ip.Equal(net.IP{})
-}
-
 func (msrv *Msrv) handleNetwork() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		msrv.Log.Tracef("networkHandler.ServeHTTP")
 		remoteIP := net.ParseIP(strings.Split(r.RemoteAddr, ":")[0])
-		externalIP, code := msrv.getExternalIPForApp(remoteIP)
-		var ipStr string
+		externalIPs, code := msrv.getExternalIPsForApp(remoteIP)
+		var ipsStr []string
 		var hostname string
-		// Avoid returning the string <nil>
-		if !isEmptyIP(externalIP) {
-			ipStr = externalIP.String()
+		for _, ip := range externalIPs {
+			// Avoid returning the string <nil>
+			if netutils.IsEmptyIP(ip) {
+				continue
+			}
+			ipsStr = append(ipsStr, ip.String())
 		}
 		anStatus := msrv.lookupAppNetworkStatusByAppIP(remoteIP)
 		if anStatus != nil {
@@ -64,7 +63,7 @@ func (msrv *Msrv) handleNetwork() func(http.ResponseWriter, *http.Request) {
 		w.WriteHeader(code)
 		resp, _ := json.Marshal(map[string]interface{}{
 			"caller-ip":         r.RemoteAddr,
-			"external-ipv4":     ipStr,
+			"external-ipv4":     strings.Join(ipsStr, ","),
 			"hostname":          hostname, // Do not delete this line for backward compatibility
 			"app-instance-uuid": hostname,
 			"device-uuid":       enInfo.DeviceID,
@@ -83,13 +82,15 @@ func (msrv *Msrv) handleExternalIP() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		msrv.Log.Tracef("externalIPHandler.ServeHTTP")
 		remoteIP := net.ParseIP(strings.Split(r.RemoteAddr, ":")[0])
-		externalIP, code := msrv.getExternalIPForApp(remoteIP)
+		externalIPs, code := msrv.getExternalIPsForApp(remoteIP)
 		w.WriteHeader(code)
 		w.Header().Add("Content-Type", "text/plain")
-		// Avoid returning the string <nil>
-		if !isEmptyIP(externalIP) {
-			resp := []byte(externalIP.String() + "\n")
-			w.Write(resp)
+		for _, externalIP := range externalIPs {
+			// Avoid returning the string <nil>
+			if !netutils.IsEmptyIP(externalIP) {
+				resp := []byte(externalIP.String() + "\n")
+				w.Write(resp)
+			}
 		}
 	}
 }
@@ -707,5 +708,82 @@ func (msrv *Msrv) withPatchEnvelopesByIP() func(http.Handler) http.Handler {
 			r = r.WithContext(ctx)
 			next.ServeHTTP(w, r)
 		})
+	}
+}
+
+// handleActivateCredentialGet handles get request of the activate-credential exchange,
+// it returns a json containing the EK, AIK public keys and AIK name.
+func (msrv *Msrv) handleActivateCredentialGet() func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+		}
+
+		ekPubByte, aikPubByte, aiKnameMarshaled, err := getActivateCredentialParams()
+		if err != nil {
+			msrv.Log.Errorf("handleActivateCredentialGet: %v", err)
+			sendError(w, http.StatusInternalServerError, "Operation failed")
+			return
+		}
+
+		activateCred := ActivateCredTpmParam{
+			Ek:      base64.StdEncoding.EncodeToString(ekPubByte),
+			AikPub:  base64.StdEncoding.EncodeToString(aikPubByte),
+			AikName: base64.StdEncoding.EncodeToString(aiKnameMarshaled),
+		}
+		out, err := json.Marshal(activateCred)
+		if err != nil {
+			msrv.Log.Errorf("handleActivateCredentialGet: error marshaling JSON payload %v", err)
+			sendError(w, http.StatusInternalServerError, "Operation failed")
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write(out)
+	}
+}
+
+// handleActivateCredentialPost handles post request of the activate-credential exchange,
+// it returns a json containing the activated credential and signature of the data.
+func (msrv *Msrv) handleActivateCredentialPost() func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+		}
+
+		in, err := io.ReadAll(io.LimitReader(r.Body, SignerMaxSize+1))
+		if err != nil {
+			msrv.Log.Errorf("handleActivateCredential, ReadAll : %v", err)
+			sendError(w, http.StatusInternalServerError, "Operation failed")
+			return
+		}
+
+		if binary.Size(in) > SignerMaxSize {
+			msrv.Log.Errorf("handleActivateCredential, size exceeds limit. Expected <= %d", SignerMaxSize)
+			sendError(w, http.StatusBadRequest, "Operation failed")
+			return
+		}
+
+		cred, sig, err := activateCredential(in)
+		if err != nil {
+			msrv.Log.Errorf("handleActivateCredential, activateCredential: %v", err)
+			sendError(w, http.StatusInternalServerError, "Operation failed")
+			return
+		}
+
+		activateCred := ActivateCredActivated{
+			Secret: base64.StdEncoding.EncodeToString(cred),
+			Sig:    base64.StdEncoding.EncodeToString(sig),
+		}
+		out, err := json.Marshal(activateCred)
+		if err != nil {
+			msrv.Log.Errorf("handleActivateCredential, error marshaling JSON payload : %v", err)
+			sendError(w, http.StatusInternalServerError, "Operation failed")
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write(out)
 	}
 }

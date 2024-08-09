@@ -4,12 +4,15 @@
 package zedrouter
 
 import (
+	"bytes"
 	"fmt"
 	"net"
 
 	"github.com/lf-edge/eve/pkg/pillar/nireconciler"
 	"github.com/lf-edge/eve/pkg/pillar/nistate"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
+	"github.com/lf-edge/eve/pkg/pillar/utils/netutils"
 	uuid "github.com/satori/go.uuid"
 )
 
@@ -60,12 +63,18 @@ func (z *zedrouter) getNIBridgeConfig(
 			Mask: status.Subnet.Mask,
 		}
 	}
-	// TODO: multipath routes
 	var staticRoutes []nireconciler.IPRoute
-	for _, route := range status.StaticRoutes {
+	for _, route := range status.IntendedRoutes {
+		if route.RunningPortProbing && route.SelectedPort == "" {
+			continue
+		}
+		if route.Gateway == nil && route.SelectedPort == "" {
+			continue
+		}
 		staticRoutes = append(staticRoutes, nireconciler.IPRoute{
 			DstNetwork: route.DstNetwork,
 			Gateway:    route.Gateway,
+			OutputPort: route.SelectedPort,
 		})
 	}
 	return nireconciler.NIBridge{
@@ -81,123 +90,273 @@ func (z *zedrouter) getNIBridgeConfig(
 }
 
 func (z *zedrouter) getNIPortConfig(
-	status *types.NetworkInstanceStatus) []nireconciler.Port {
-	if status.PortLogicalLabel == "" {
+	status *types.NetworkInstanceStatus) (portConfigs []nireconciler.Port) {
+	if len(status.Ports) == 0 {
 		// Air-gapped
 		return nil
 	}
-	// TODO: multiple ports matched by shared label
-	ifName := status.SelectedUplinkIntfName
-	if ifName == "" {
-		return nil
-	}
-	port := z.deviceNetworkStatus.LookupPortByIfName(ifName)
-	if port == nil {
-		return nil
-	}
-	return []nireconciler.Port{
-		{
+	for _, portLL := range status.Ports {
+		port := z.deviceNetworkStatus.LookupPortByLogicallabel(portLL)
+		if port == nil {
+			continue
+		}
+		portConfigs = append(portConfigs, nireconciler.Port{
 			LogicalLabel: port.Logicallabel,
-			IfName:       ifName,
+			SharedLabels: port.SharedLabels,
+			IfName:       port.IfName,
 			IsMgmt:       port.IsMgmt,
 			MTU:          port.MTU,
-			DNSServers:   types.GetDNSServers(*z.deviceNetworkStatus, ifName),
-			NTPServers:   types.GetNTPServers(*z.deviceNetworkStatus, ifName),
-		},
+			DNSServers:   types.GetDNSServers(*z.deviceNetworkStatus, port.IfName),
+			NTPServers:   types.GetNTPServers(*z.deviceNetworkStatus, port.IfName),
+		})
 	}
+	return portConfigs
 }
 
-// Update NI status and set interface name of the selected uplink
-// referenced by a logical label.
-func (z *zedrouter) setSelectedUplink(uplinkLogicalLabel string,
-	status *types.NetworkInstanceStatus) error {
-	if status.PortLogicalLabel == "" {
-		// Air-gapped
-		status.SelectedUplinkLogicalLabel = ""
-		status.SelectedUplinkIntfName = ""
-		return nil
+// Update the selection of device ports matching the port label.
+func (z *zedrouter) updateNIPorts(status *types.NetworkInstanceStatus) (
+	changed bool, err error) {
+	var (
+		newPorts             []*types.NetworkPortStatus
+		newPortLogicalLabels []string
+		newNTPServers        []net.IP
+	)
+	if status.NtpServer != nil {
+		// The NTP server explicitly configured for the NI.
+		newNTPServers = append(newNTPServers, status.NtpServer)
 	}
-	status.SelectedUplinkLogicalLabel = uplinkLogicalLabel
-	if uplinkLogicalLabel == "" {
-		status.SelectedUplinkIntfName = ""
-		// This is potentially a transient state, wait for DPC update
-		// and uplink probing eventually finding a suitable uplink port.
-		return fmt.Errorf("no selected uplink port")
-	}
-	port := z.deviceNetworkStatus.LookupPortByLogicallabel(uplinkLogicalLabel)
-	if port == nil {
-		err := fmt.Errorf("label of selected uplink (%s) does not match any port",
-			uplinkLogicalLabel)
-		// Wait for DPC update
-		return err
-	}
-	if port.InvalidConfig {
-		return fmt.Errorf("port %s has invalid config: %s", port.Logicallabel,
-			port.LastError)
-	}
-	ifName := port.IfName
-	status.SelectedUplinkIntfName = ifName
-	ifIndex, exists, _ := z.networkMonitor.GetInterfaceIndex(ifName)
-	if !exists {
-		// Wait for uplink interface to appear in the network stack.
-		return fmt.Errorf("missing uplink interface '%s'", ifName)
-	}
-	if status.IsUsingUplinkBridge() {
-		_, ifMAC, _ := z.networkMonitor.GetInterfaceAddrs(ifIndex)
-		status.BridgeMac = ifMAC
-	}
-	return nil
-}
-
-// This function is called on DPC update or when UplinkProber changes uplink port
-// selected for network instance.
-func (z *zedrouter) doUpdateNIUplink(uplinkLogicalLabel string,
-	status *types.NetworkInstanceStatus, config types.NetworkInstanceConfig) {
-
-	// Update association between the NI and the selected device port.
-	uplinkErr := z.setSelectedUplink(uplinkLogicalLabel, status)
-	if uplinkErr == nil && status.UplinkErr.HasError() {
-		// Uplink issue was resolved.
-		status.UplinkErr.ClearError()
-		z.publishNetworkInstanceStatus(status)
-	}
-	if uplinkErr != nil &&
-		uplinkErr.Error() != status.UplinkErr.Error {
-		// New uplink issue arose or the error has changed.
-		z.log.Errorf("doUpdateNIUplink(%s) for %s failed: %v", uplinkLogicalLabel,
-			status.UUID, uplinkErr)
-		status.UplinkErr.SetErrorNow(uplinkErr.Error())
-		z.publishNetworkInstanceStatus(status)
-	}
-
-	// Re-check MTUs between the NI and the port.
-	fallbackMTU, mtuErr := z.checkNetworkInstanceMTUConflicts(config, status)
-	if mtuErr == nil && status.MTUConflictErr.HasError() {
-		// MTU conflict was resolved.
-		status.MTUConflictErr.ClearError()
-		if config.MTU == 0 {
-			status.MTU = types.DefaultMTU
-		} else {
-			status.MTU = config.MTU
+	if status.PortLabel != "" {
+		newPorts = z.deviceNetworkStatus.LookupPortsByLabel(status.PortLabel)
+		for _, port := range newPorts {
+			newPortLogicalLabels = append(newPortLogicalLabels, port.Logicallabel)
+			if port.NtpServer != nil {
+				// The NTP server explicitly configured for the port.
+				newNTPServers = append(newNTPServers, port.NtpServer)
+			}
+			// NTP servers received via DHCP.
+			newNTPServers = append(newNTPServers, port.NtpServers...)
 		}
-		z.publishNetworkInstanceStatus(status)
 	}
-	if mtuErr != nil &&
-		mtuErr.Error() != status.MTUConflictErr.Error {
-		// New MTU conflict arose or the error has changed.
-		z.log.Error(mtuErr)
-		status.MTUConflictErr.SetErrorNow(mtuErr.Error())
-		status.MTU = fallbackMTU
-		z.publishNetworkInstanceStatus(status)
+	newNTPServers = generics.FilterDuplicatesFn(newNTPServers, netutils.EqualIPs)
+	changed = changed || !generics.EqualSets(status.Ports, newPortLogicalLabels)
+	status.Ports = newPortLogicalLabels
+	changed = changed || !generics.EqualSetsFn(status.NTPServers, newNTPServers,
+		netutils.EqualIPs)
+	status.NTPServers = newNTPServers
+	if status.PortLabel != "" && len(status.Ports) == 0 {
+		// This is potentially a transient state, wait for DNS update.
+		return changed, fmt.Errorf("no port is matching label '%s'", status.PortLabel)
 	}
+	for _, port := range newPorts {
+		if port.InvalidConfig {
+			return changed, fmt.Errorf("port %s has invalid config: %s",
+				port.Logicallabel, port.LastError)
+		}
+	}
+	// Update BridgeMac for switch NI port created by NIM.
+	if status.IsUsingPortBridge() && len(newPorts) == 1 {
+		// Note that for switch NI we do not support multiple ports yet.
+		ifName := newPorts[0].IfName
+		if ifIndex, exists, _ := z.networkMonitor.GetInterfaceIndex(ifName); exists {
+			_, ifMAC, _ := z.networkMonitor.GetInterfaceAddrs(ifIndex)
+			changed = changed || !bytes.Equal(ifMAC, status.BridgeMac)
+			status.BridgeMac = ifMAC
+		}
+	}
+	return changed, nil
+}
 
-	// Apply uplink/MTU changes in the network stack.
+func (z *zedrouter) updateNIRoutes(status *types.NetworkInstanceStatus,
+	forceRecreate bool) (changed bool) {
+	if status.Type != types.NetworkInstanceTypeLocal {
+		return false
+	}
+	var hasDefaultRoute bool
+	var newRoutes []types.IPRouteConfig
+	for _, route := range status.StaticRoutes {
+		if route.IsDefaultRoute() {
+			hasDefaultRoute = true
+		}
+		newRoutes = append(newRoutes, route)
+	}
+	if !hasDefaultRoute {
+		var anyDst *net.IPNet
+		if status.Subnet.IP.To4() != nil {
+			_, anyDst, _ = net.ParseCIDR("0.0.0.0/0")
+		} else {
+			_, anyDst, _ = net.ParseCIDR("::/0")
+		}
+		switch status.PortLabel {
+		case types.UplinkLabel, types.FreeUplinkLabel:
+			// Backward-compatible default route configuration.
+			newRoutes = append(newRoutes, types.IPRouteConfig{
+				DstNetwork:      anyDst,
+				OutputPortLabel: status.PortLabel,
+				PortProbe: types.NIPortProbe{
+					EnabledGwPing: true,
+					GwPingMaxCost: 0,
+					UserDefinedProbe: types.ConnectivityProbe{
+						Method:    types.ConnectivityProbeMethodTCP,
+						ProbeHost: z.controllerHostname,
+						ProbePort: z.controllerPort,
+					},
+				},
+				PreferLowerCost:          true,
+				PreferStrongerWwanSignal: false,
+			})
+		default:
+			// XXX We could improve this condition and check if there are multiple
+			// ports which actually have gateway IP assigned.
+			if len(status.Ports) > 1 {
+				newRoutes = append(newRoutes, types.IPRouteConfig{
+					DstNetwork:      anyDst,
+					OutputPortLabel: status.PortLabel,
+					PortProbe: types.NIPortProbe{
+						EnabledGwPing: true,
+						GwPingMaxCost: 0,
+					},
+					PreferLowerCost:          true,
+					PreferStrongerWwanSignal: false,
+				})
+			}
+		}
+	}
+	// Remove or update existing routes.
+	var newIntended []types.IPRouteStatus
+	for _, routeStatus := range status.IntendedRoutes {
+		var (
+			newConfig *types.IPRouteConfig
+			newStatus *types.IPRouteStatus
+		)
+		for i := range newRoutes {
+			if netutils.EqualIPNets(routeStatus.DstNetwork, newRoutes[i].DstNetwork) {
+				newConfig = &newRoutes[i]
+				break
+			}
+		}
+		newStatus, changed = z.reconcileNIRouteProbing(
+			status, &routeStatus, newConfig, forceRecreate)
+		if newStatus != nil {
+			newIntended = append(newIntended, *newStatus)
+		}
+	}
+	// Next add new routes.
+	for _, newRoute := range newRoutes {
+		var routeStatus *types.IPRouteStatus
+		for _, route := range status.IntendedRoutes {
+			if netutils.EqualIPNets(newRoute.DstNetwork, route.DstNetwork) {
+				routeStatus = &route
+			}
+		}
+		if routeStatus == nil {
+			routeStatus, changed = z.reconcileNIRouteProbing(
+				status, nil, &newRoute, forceRecreate)
+			newIntended = append(newIntended, *routeStatus)
+		}
+	}
+	status.IntendedRoutes = newIntended
+	return changed
+}
+
+func (z *zedrouter) reconcileNIRouteProbing(niStatus *types.NetworkInstanceStatus,
+	routeStatus *types.IPRouteStatus, newConfig *types.IPRouteConfig,
+	forceRecreate bool) (newStatus *types.IPRouteStatus, changed bool) {
+	configChanged := routeStatus != nil && newConfig != nil &&
+		!routeStatus.IPRouteConfig.Equal(*newConfig)
+	stopProbing := routeStatus != nil && routeStatus.RunningPortProbing &&
+		(newConfig == nil || configChanged || forceRecreate)
+	if stopProbing {
+		changed = true
+		routeStatus.ClearError()
+		err := z.portProber.StopPortProbing(niStatus.UUID, routeStatus.DstNetwork)
+		if err != nil {
+			err = fmt.Errorf(
+				"failed to stop port probing for route: dst=%v, ni=%v",
+				routeStatus.DstNetwork, niStatus.UUID)
+			z.log.Error(err)
+			routeStatus.SetErrorNow(err.Error())
+		}
+		routeStatus.RunningPortProbing = false
+		routeStatus.SelectedPort = ""
+	}
+	startProbing := newConfig != nil && newConfig.OutputPortLabel != "" &&
+		(routeStatus == nil || configChanged || forceRecreate)
+	if routeStatus == nil {
+		routeStatus = &types.IPRouteStatus{
+			IPRouteConfig: *newConfig,
+		}
+	}
+	if startProbing {
+		changed = true
+		routeStatus.ClearError()
+		port := z.deviceNetworkStatus.LookupPortByLogicallabel(
+			newConfig.OutputPortLabel)
+		if port != nil {
+			// Uses single port referenced by a logical label.
+			// Not need to probe.
+			routeStatus.SelectedPort = port.Logicallabel
+		} else {
+			// Most likely a shared label for the output port.
+			probeStatus, err := z.portProber.StartPortProbing(
+				niStatus.UUID, niStatus.PortLabel, *newConfig)
+			if err != nil {
+				err = fmt.Errorf(
+					"failed to start port probing for route: dst=%v, ni=%v",
+					newConfig.DstNetwork, niStatus.UUID)
+				z.log.Error(err)
+				routeStatus.SetErrorNow(err.Error())
+			} else {
+				routeStatus.SelectedPort = probeStatus.SelectedPortLL
+				routeStatus.RunningPortProbing = true
+				if routeStatus.SelectedPort == "" {
+					err = fmt.Errorf("%v is not matching any port", newConfig)
+					z.log.Error(err)
+					routeStatus.SetErrorNow(err.Error())
+				}
+			}
+		}
+	}
+	if newConfig == nil {
+		// Route should be removed from the Intended route list.
+		routeStatus = nil
+	} else if configChanged {
+		// Update config
+		routeStatus.IPRouteConfig = *newConfig
+	}
+	return routeStatus, changed
+}
+
+// This function is called when PortProber changes port selected for a given
+// (multipath) route.
+func (z *zedrouter) updateNIRoutePort(route types.IPRouteConfig, port string,
+	status *types.NetworkInstanceStatus, config types.NetworkInstanceConfig) {
+	var routeStatus *types.IPRouteStatus
+	for i := range status.IntendedRoutes {
+		if netutils.EqualIPNets(status.IntendedRoutes[i].DstNetwork, route.DstNetwork) {
+			routeStatus = &status.IntendedRoutes[i]
+		}
+	}
+	if routeStatus == nil {
+		z.log.Warnf("Received port update for unknown route (ni: %s, route: %+v, port: %s)",
+			status.UUID, route, port)
+		return
+	}
+	if routeStatus.SelectedPort == port {
+		// No actual change.
+		return
+	}
+	routeStatus.SelectedPort = port
+	if routeStatus.SelectedPort == "" {
+		err := fmt.Errorf("%v is not matching any port", routeStatus.IPRouteConfig)
+		if routeStatus.Error != err.Error() {
+			z.log.Error(err)
+			routeStatus.SetErrorNow(err.Error())
+		}
+	} else {
+		routeStatus.ClearError()
+	}
 	if status.Activated {
 		z.doUpdateActivatedNetworkInstance(config, status)
-	}
-	if config.Activate && !status.Activated && status.EligibleForActivate() {
-		z.doActivateNetworkInstance(config, status)
-		z.checkAndRecreateAppNetworks(status.UUID)
 	}
 	z.publishNetworkInstanceStatus(status)
 }
@@ -313,10 +472,12 @@ func (z *zedrouter) delNetworkInstance(status *types.NetworkInstanceStatus) {
 	} else {
 		z.unpublishNetworkInstanceStatus(status)
 	}
-	if status.RunningUplinkProbing {
-		err := z.uplinkProber.StopNIProbing(status.UUID)
-		if err != nil {
-			z.log.Error(err)
+	for _, route := range status.IntendedRoutes {
+		if route.RunningPortProbing {
+			err := z.portProber.StopPortProbing(status.UUID, route.DstNetwork)
+			if err != nil {
+				z.log.Error(err)
+			}
 		}
 	}
 	if status.BridgeNum != 0 {

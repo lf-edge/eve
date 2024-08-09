@@ -1130,25 +1130,18 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 			networkInfo.DevName = *proto.String(name)
 			niStatus := appIfnameToNetworkInstance(ctx, aiStatus, ifname)
 			if niStatus != nil {
-				networkInfo.NtpServers = []string{}
-				if niStatus.NtpServer != nil {
+				for _, ntpServer := range niStatus.NTPServers {
 					networkInfo.NtpServers = append(networkInfo.NtpServers,
-						niStatus.NtpServer.String())
-				} else if niStatus.SelectedUplinkIntfName != "" {
-					ntpServers := types.GetNTPServers(*deviceNetworkStatus,
-						niStatus.SelectedUplinkIntfName)
-					for _, server := range ntpServers {
-						networkInfo.NtpServers = append(networkInfo.NtpServers, server.String())
-					}
+						ntpServer.String())
 				}
-
 				networkInfo.DefaultRouters = []string{niStatus.Gateway.String()}
 				networkInfo.Dns = &info.ZInfoDNS{
 					DNSservers: []string{},
 				}
 				networkInfo.Dns.DNSservers = []string{}
 				for _, dnsServer := range niStatus.DnsServers {
-					networkInfo.Dns.DNSservers = append(networkInfo.Dns.DNSservers, dnsServer.String())
+					networkInfo.Dns.DNSservers = append(networkInfo.Dns.DNSservers,
+						dnsServer.String())
 				}
 			}
 			ReportAppInfo.Network = append(ReportAppInfo.Network,
@@ -1675,12 +1668,16 @@ func protoEncodeNetworkInstanceMetricProto(status types.NetworkInstanceMetrics) 
 	vlanInfo.NumTrunkPorts = status.VlanMetrics.NumTrunkPorts
 	vlanInfo.VlanCounts = status.VlanMetrics.VlanCounts
 	protoEncodeGenericInstanceMetric(status, metric)
-	metric.ProbeMetric = protoEncodeProbeMetrics(status.ProbeMetrics)
+	for _, pm := range status.ProbeMetrics {
+		metric.ProbeMetrics = append(metric.ProbeMetrics, protoEncodeProbeMetrics(pm))
+	}
 	return metric
 }
 
 func protoEncodeProbeMetrics(probeMetrics types.ProbeMetrics) *metrics.ZProbeNIMetrics {
 	protoMetrics := &metrics.ZProbeNIMetrics{
+		DstNetwork:     probeMetrics.DstNetwork,
+		CurrentPort:    probeMetrics.SelectedPort,
 		CurrentIntf:    probeMetrics.SelectedPortIfName,
 		RemoteEndpoint: strings.Join(probeMetrics.RemoteEndpoints, ", "),
 		PingIntv:       probeMetrics.LocalPingIntvl,

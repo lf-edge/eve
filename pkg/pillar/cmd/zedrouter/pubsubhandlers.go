@@ -111,9 +111,9 @@ func (z *zedrouter) handleDNSImpl(ctxArg interface{}, key string,
 	// one may have been removed, potentially creating or resolving an IP conflict.
 	z.checkAllNetworkInstanceIPConflicts()
 
-	// Update uplink config for network instances.
-	// Also handle (dis)appearance of uplink interfaces.
-	// Note that even if uplink interface disappears, we do not revert activated NI.
+	// Update port config for network instances.
+	// Also handle (dis)appearance of device ports.
+	// Note that even if port disappears, we do not revert activated NI.
 	items := z.pubNetworkInstanceStatus.GetAll()
 	for key, st := range items {
 		niStatus := st.(types.NetworkInstanceStatus)
@@ -122,12 +122,49 @@ func (z *zedrouter) handleDNSImpl(ctxArg interface{}, key string,
 			z.log.Errorf("handleDNSImpl: failed to get config for NI %s", niStatus.UUID)
 			continue
 		}
-		z.doUpdateNIUplink(niStatus.SelectedUplinkLogicalLabel, &niStatus, *niConfig)
+		// Handle change of the configured port label.
+		niStatus.PortErr.ClearError()
+		changedPorts, portErr := z.updateNIPorts(&niStatus)
+		if portErr != nil {
+			portErr = fmt.Errorf(
+				"failed to update selection of ports for network instance %s: %v",
+				niStatus.UUID, portErr)
+			z.log.Error(portErr)
+			niStatus.PortErr.SetErrorNow(portErr.Error())
+		}
+
+		if changedPorts {
+			// Changing the number of ports may affect if a multi-path default route
+			// is needed or not.
+			_ = z.updateNIRoutes(&niStatus, false)
+		}
+
+		// Re-check MTUs between the NI and the selected ports.
+		mtuToUse, mtuErr := z.checkNetworkInstanceMTUConflicts(*niConfig, &niStatus)
+		niStatus.MTU = mtuToUse
+		if mtuErr == nil && niStatus.MTUConflictErr.HasError() {
+			// MTU conflict was resolved.
+			niStatus.MTUConflictErr.ClearError()
+		}
+		if mtuErr != nil &&
+			mtuErr.Error() != niStatus.MTUConflictErr.Error {
+			// New MTU conflict arose or the error has changed.
+			z.log.Error(mtuErr)
+			niStatus.MTUConflictErr.SetErrorNow(mtuErr.Error())
+		}
+
+		// Apply port/MTU changes in the network stack.
+		if niStatus.Activated {
+			z.doUpdateActivatedNetworkInstance(*niConfig, &niStatus)
+		}
+		if niConfig.Activate && !niStatus.Activated && niStatus.EligibleForActivate() {
+			z.doActivateNetworkInstance(*niConfig, &niStatus)
+			z.checkAndRecreateAppNetworks(niStatus.UUID)
+		}
+		z.publishNetworkInstanceStatus(&niStatus)
 	}
 
-	if z.uplinkProber != nil {
-		z.uplinkProber.ApplyDNSUpdate(status)
-	}
+	z.portProber.ApplyDNSUpdate(status)
 	z.log.Functionf("handleDNSImpl done for %s", key)
 }
 
@@ -144,6 +181,28 @@ func (z *zedrouter) handleDNSDelete(ctxArg interface{}, key string,
 	}
 	*ctx.deviceNetworkStatus = types.DeviceNetworkStatus{}
 	z.log.Functionf("handleDNSDelete done for %s", key)
+}
+
+func (z *zedrouter) handleWwanMetricsCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	z.handleWwanMetricsImpl(ctxArg, key, statusArg)
+}
+
+func (z *zedrouter) handleWwanMetricsModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	z.handleWwanMetricsImpl(ctxArg, key, statusArg)
+}
+
+func (z *zedrouter) handleWwanMetricsImpl(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	metrics := statusArg.(types.WwanMetrics)
+	if key != "global" {
+		z.log.Functionf("handleWwanMetricsImpl: ignoring %s", key)
+		return
+	}
+	z.log.Functionf("handleWwanMetricsImpl for %s", key)
+	z.portProber.ApplyWwanMetricsUpdate(metrics)
 }
 
 func (z *zedrouter) handleNetworkInstanceCreate(ctxArg interface{}, key string,
@@ -211,7 +270,7 @@ func (z *zedrouter) handleNetworkInstanceCreate(ctxArg interface{}, key string,
 	status.BridgeNum = bridgeNum
 
 	// Generate MAC address for the bridge.
-	if !status.IsUsingUplinkBridge() {
+	if !status.IsUsingPortBridge() {
 		status.BridgeMac = z.generateBridgeMAC(bridgeNum)
 	}
 
@@ -222,42 +281,23 @@ func (z *zedrouter) handleNetworkInstanceCreate(ctxArg interface{}, key string,
 		status.BridgeIPAddr = status.Gateway
 	}
 
-	// Find suitable uplink port.
-	var selectedUplinkLL string
-	if config.WithUplinkProbing() {
-		probeStatus, err := z.uplinkProber.StartNIProbing(config)
-		if err != nil {
-			err = fmt.Errorf("failed to start uplink probing for network instance %s: %v",
-				status.UUID, err)
-			z.log.Error(err)
-			status.UplinkErr.SetErrorNow(err.Error())
-		} else {
-			selectedUplinkLL = probeStatus.SelectedUplinkLL
-			status.RunningUplinkProbing = true
-		}
-	} else {
-		selectedUplinkLL = config.PortLogicalLabel
+	// Lookup ports matching the port label.
+	_, err = z.updateNIPorts(&status)
+	if err != nil {
+		err = fmt.Errorf("failed to select ports for network instance %s: %v",
+			status.UUID, err)
+		z.log.Error(err)
+		status.PortErr.SetErrorNow(err.Error())
 	}
 
-	// Set selected uplink port.
-	if !status.UplinkErr.HasError() {
-		err = z.setSelectedUplink(selectedUplinkLL, &status)
-		if err != nil {
-			err := fmt.Errorf("failed to set selected uplink for network instance %s: %v",
-				status.UUID, err)
-			z.log.Error(err)
-			status.UplinkErr.SetErrorNow(err.Error())
-		}
-	}
+	// Build a set of intended IP routes.
+	_ = z.updateNIRoutes(&status, true)
 
-	if fallbackMTU, err := z.checkNetworkInstanceMTUConflicts(config, &status); err != nil {
+	mtuToUse, err := z.checkNetworkInstanceMTUConflicts(config, &status)
+	status.MTU = mtuToUse
+	if err != nil {
 		z.log.Error(err)
 		status.MTUConflictErr.SetErrorNow(err.Error())
-		status.MTU = fallbackMTU
-	} else if config.MTU == 0 {
-		status.MTU = types.DefaultMTU
-	} else {
-		status.MTU = config.MTU
 	}
 
 	if config.Activate && status.EligibleForActivate() {
@@ -307,7 +347,7 @@ func (z *zedrouter) handleNetworkInstanceModify(ctxArg interface{}, key string,
 		return
 	}
 
-	prevPortLL := status.PortLogicalLabel
+	prevPortLabel := status.PortLabel
 	status.NetworkInstanceConfig = config
 	if err := z.doNetworkInstanceSanityCheck(&config); err != nil {
 		z.log.Error(err)
@@ -338,7 +378,7 @@ func (z *zedrouter) handleNetworkInstanceModify(ctxArg interface{}, key string,
 
 	// Generate MAC address for the bridge.
 	// If already done during NI Create, this returns the same value.
-	if !status.IsUsingUplinkBridge() {
+	if !status.IsUsingPortBridge() {
 		status.BridgeMac = z.generateBridgeMAC(bridgeNum)
 	}
 
@@ -360,57 +400,27 @@ func (z *zedrouter) handleNetworkInstanceModify(ctxArg interface{}, key string,
 		status.IPConflictErr.ClearError()
 	}
 
-	// Handle change of the configured port logical label.
-	if config.PortLogicalLabel != prevPortLL {
-		status.UplinkErr.ClearError()
-		if status.RunningUplinkProbing {
-			err = z.uplinkProber.StopNIProbing(status.UUID)
-			if err != nil {
-				z.log.Errorf("failed to stop uplink probing for network instance %s: %v",
-					status.UUID, err)
-				// Try to continue...
-			}
-			status.RunningUplinkProbing = false
-		}
-		var selectedUplinkLL string
-		if config.WithUplinkProbing() {
-			probeStatus, err := z.uplinkProber.StartNIProbing(config)
-			if err != nil {
-				err = fmt.Errorf(
-					"failed to start uplink probing for network instance %s: %v",
-					status.UUID, err)
-				z.log.Error(err)
-				status.UplinkErr.SetErrorNow(err.Error())
-			} else {
-				selectedUplinkLL = probeStatus.SelectedUplinkLL
-				status.RunningUplinkProbing = true
-			}
-		} else {
-			selectedUplinkLL = config.PortLogicalLabel
-		}
-		// Set selected uplink port.
-		if !status.UplinkErr.HasError() {
-			err = z.setSelectedUplink(selectedUplinkLL, status)
-			if err != nil {
-				err = fmt.Errorf("failed to set selected uplink for network instance %s: %v",
-					status.UUID, err)
-				z.log.Error(err)
-				status.UplinkErr.SetErrorNow(err.Error())
-			}
-		}
+	// Handle change of the configured port label.
+	status.PortErr.ClearError()
+	_, err = z.updateNIPorts(status)
+	if err != nil {
+		err = fmt.Errorf("failed to update selection of ports for network instance %s: %v",
+			status.UUID, err)
+		z.log.Error(err)
+		status.PortErr.SetErrorNow(err.Error())
 	}
 
-	if fallbackMTU, err := z.checkNetworkInstanceMTUConflicts(config, status); err != nil {
+	// Update the set of intended IP routes.
+	forceRecreate := status.PortLabel != prevPortLabel
+	_ = z.updateNIRoutes(status, forceRecreate)
+
+	mtuToUse, err := z.checkNetworkInstanceMTUConflicts(config, status)
+	status.MTU = mtuToUse
+	if err != nil {
 		z.log.Error(err)
 		status.MTUConflictErr.SetErrorNow(err.Error())
-		status.MTU = fallbackMTU
 	} else {
 		status.MTUConflictErr.ClearError()
-		if config.MTU == 0 {
-			status.MTU = types.DefaultMTU
-		} else {
-			status.MTU = config.MTU
-		}
 	}
 
 	// Handle changed activation status.

@@ -23,6 +23,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/nireconciler/genericitems"
 	"github.com/lf-edge/eve/pkg/pillar/nireconciler/linuxitems"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils/netutils"
 	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 	"github.com/vishvananda/netlink"
@@ -469,6 +470,7 @@ var (
 	ni1Config = types.NetworkInstanceConfig{
 		UUIDandVersion: ni1UUID,
 		DisplayName:    "ni1",
+		PortLabel:      "ethernet0",
 		Type:           types.NetworkInstanceTypeLocal,
 		IpType:         types.AddressTypeIPV4,
 		Subnet:         deref(ipAddressWithPrefix("10.10.10.0/24")),
@@ -506,6 +508,7 @@ var (
 	ni2Config = types.NetworkInstanceConfig{
 		UUIDandVersion: ni2UUID,
 		DisplayName:    "ni2",
+		PortLabel:      "ethernet1",
 		Type:           types.NetworkInstanceTypeSwitch,
 		IpType:         types.AddressTypeNone,
 	}
@@ -529,6 +532,7 @@ var (
 	ni3Config = types.NetworkInstanceConfig{
 		UUIDandVersion: ni3UUID,
 		DisplayName:    "ni3",
+		PortLabel:      "ethernet2",
 		Type:           types.NetworkInstanceTypeLocal,
 		IpType:         types.AddressTypeIPV6,
 		Subnet:         deref(ipAddressWithPrefix("2001::1111:0000/112")),
@@ -573,6 +577,7 @@ var (
 	ni4Config = types.NetworkInstanceConfig{
 		UUIDandVersion: ni4UUID,
 		DisplayName:    "ni4",
+		PortLabel:      "ethernet2",
 		Type:           types.NetworkInstanceTypeSwitch,
 		IpType:         types.AddressTypeNone,
 	}
@@ -596,6 +601,7 @@ var (
 	ni5Config = types.NetworkInstanceConfig{
 		UUIDandVersion: ni5UUID,
 		DisplayName:    "ni5",
+		PortLabel:      "shopfloor",
 		Type:           types.NetworkInstanceTypeLocal,
 		IpType:         types.AddressTypeIPV4,
 		Subnet:         deref(ipAddressWithPrefix("10.10.20.0/24")),
@@ -1143,7 +1149,11 @@ func TestSingleLocalNI(test *testing.T) {
 	t.Expect(niStatus.Deleted).To(BeFalse())
 	t.Expect(niStatus.InProgress).To(BeFalse())
 	t.Expect(niStatus.BrIfName).To(Equal("bn1"))
+	t.Expect(niStatus.BrIfIndex).To(Equal(-1)) // not yet known
 	t.Expect(niStatus.FailedItems).To(BeEmpty())
+	t.Expect(niStatus.Routes).To(HaveLen(1))
+	t.Expect(niStatus.Routes[0].IsDefaultRoute()).To(BeTrue())
+	t.Expect(netutils.EqualIPs(niStatus.Routes[0].Gateway, eth0Routes[0].Gw)).To(BeTrue())
 
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
 	t.Expect(recUpdate.UpdateType).To(Equal(nirec.NIReconcileStatusChanged))
@@ -1234,6 +1244,10 @@ func TestSingleLocalNI(test *testing.T) {
 	t.Expect(appStatus.VIFs[0].FailedItems).To(BeEmpty())
 
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
+	t.Expect(recUpdate.UpdateType).To(Equal(nirec.NIReconcileStatusChanged))
+	t.Expect(recUpdate.NIStatus.BrIfIndex).To(Equal(9))
+
+	t.Eventually(updatesCh).Should(Receive(&recUpdate))
 	t.Expect(recUpdate.UpdateType).To(Equal(nirec.AppConnReconcileStatusChanged))
 	t.Expect(recUpdate.AppConnStatus.Equal(appStatus)).To(BeTrue())
 
@@ -1284,7 +1298,12 @@ func TestSingleLocalNI(test *testing.T) {
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
 	t.Expect(recUpdate.UpdateType).To(Equal(nirec.CurrentStateChanged))
 	niReconciler.ResumeReconcile(ctx)
-	// Nothing really changed in NI status.
+
+	// Route not configured anymore.
+	t.Eventually(updatesCh).Should(Receive(&recUpdate))
+	t.Expect(recUpdate.UpdateType).To(Equal(nirec.NIReconcileStatusChanged))
+	t.Expect(recUpdate.NIStatus.Routes).To(BeEmpty())
+
 	t.Consistently(updatesCh).ShouldNot(Receive())
 	t.Expect(itemIsCreated(dg.Reference(intendedPortMapRule1))).To(BeFalse())
 	t.Expect(itemIsCreated(dg.Reference(intendedPortMapRule2))).To(BeFalse())
@@ -1309,8 +1328,14 @@ func TestSingleLocalNI(test *testing.T) {
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
 	t.Expect(recUpdate.UpdateType).To(Equal(nirec.CurrentStateChanged))
 	niReconciler.ResumeReconcile(ctx)
-	// Nothing really changed in NI status.
-	t.Consistently(updatesCh).ShouldNot(Receive())
+
+	// Route configured again.
+	t.Eventually(updatesCh).Should(Receive(&recUpdate))
+	t.Expect(recUpdate.UpdateType).To(Equal(nirec.NIReconcileStatusChanged))
+	t.Expect(recUpdate.NIStatus.Routes).To(HaveLen(1))
+	t.Expect(recUpdate.NIStatus.Routes[0].IsDefaultRoute()).To(BeTrue())
+	t.Expect(netutils.EqualIPs(recUpdate.NIStatus.Routes[0].Gateway, eth0Routes[0].Gw)).To(BeTrue())
+
 	t.Expect(itemIsCreated(dg.Reference(intendedPortMapRule1))).To(BeTrue())
 	t.Expect(itemIsCreated(dg.Reference(intendedPortMapRule2))).To(BeTrue())
 	t.Expect(itemIsCreated(dg.Reference(intendedDefRoute))).To(BeTrue())
@@ -1386,6 +1411,7 @@ func TestIPv4LocalAndSwitchNIs(test *testing.T) {
 	niReconciler.RunInitialReconcile(ctx)
 
 	// Create 2 local network instances.
+	networkMonitor.AddOrUpdateInterface(ni1BridgeIf) // avoid separate notif for bridge if index
 	niStatus, err := niReconciler.AddNI(ctx, ni1Config, ni1Bridge)
 	t.Expect(err).ToNot(HaveOccurred())
 	t.Expect(niStatus.NI).To(Equal(ni1UUID.UUID))
@@ -1393,20 +1419,22 @@ func TestIPv4LocalAndSwitchNIs(test *testing.T) {
 	t.Expect(niStatus.InProgress).To(BeFalse())
 	t.Expect(niStatus.BrIfName).To(Equal("bn1"))
 	t.Expect(niStatus.FailedItems).To(BeEmpty())
+	t.Expect(niStatus.Routes).To(HaveLen(1))
+	t.Expect(niStatus.Routes[0].IsDefaultRoute()).To(BeTrue())
+	t.Expect(netutils.EqualIPs(niStatus.Routes[0].Gateway, eth0Routes[0].Gw)).To(BeTrue())
 
 	var recUpdate nirec.ReconcilerUpdate
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
 	t.Expect(recUpdate.UpdateType).To(Equal(nirec.NIReconcileStatusChanged))
 	t.Expect(recUpdate.NIStatus.Equal(niStatus)).To(BeTrue())
 
-	networkMonitor.AddOrUpdateInterface(ni1BridgeIf)
-
+	networkMonitor.AddOrUpdateInterface(ni5BridgeIf)
 	niStatus, err = niReconciler.AddNI(ctx, ni5Config, ni5Bridge)
 	t.Expect(err).ToNot(HaveOccurred())
+	t.Expect(niStatus.Routes).To(HaveLen(1)) // route for eth3 only, eth1 is without IP
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
 	t.Expect(recUpdate.UpdateType).To(Equal(nirec.NIReconcileStatusChanged))
 	t.Expect(recUpdate.NIStatus.Equal(niStatus)).To(BeTrue())
-	networkMonitor.AddOrUpdateInterface(ni5BridgeIf)
 
 	snatRuleNI1 := iptables.Rule{
 		RuleLabel: "SNAT traffic from NI 0d6a128b-b36f-4bd0-a71c-087ba2d71ebc leaving via port eth0",
@@ -1502,6 +1530,10 @@ func TestIPv4LocalAndSwitchNIs(test *testing.T) {
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
 	t.Expect(recUpdate.UpdateType).To(Equal(nirec.CurrentStateChanged))
 	niReconciler.ResumeReconcile(ctx)
+	t.Eventually(updatesCh).Should(Receive(&recUpdate))
+	t.Expect(recUpdate.UpdateType).To(Equal(nirec.NIReconcileStatusChanged))
+	t.Expect(recUpdate.NIStatus.NI).To(Equal(ni5UUID.UUID))
+	t.Expect(recUpdate.NIStatus.Routes).To(HaveLen(2)) // Now has routes for both eth1 and eth3
 
 	t.Expect(itemIsCreated(dg.Reference(eth1Route))).To(BeTrue())
 	t.Expect(itemIsCreated(dg.Reference(
@@ -1688,6 +1720,7 @@ func TestIPv6LocalAndSwitchNIs(test *testing.T) {
 	niReconciler.RunInitialReconcile(ctx)
 
 	// Create local network instance.
+	networkMonitor.AddOrUpdateInterface(ni3BridgeIf)
 	niStatus, err := niReconciler.AddNI(ctx, ni3Config, ni3Bridge)
 	t.Expect(err).ToNot(HaveOccurred())
 	t.Expect(niStatus.NI).To(Equal(ni3UUID.UUID))
@@ -1700,8 +1733,6 @@ func TestIPv6LocalAndSwitchNIs(test *testing.T) {
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
 	t.Expect(recUpdate.UpdateType).To(Equal(nirec.NIReconcileStatusChanged))
 	t.Expect(recUpdate.NIStatus.Equal(niStatus)).To(BeTrue())
-
-	networkMonitor.AddOrUpdateInterface(ni3BridgeIf)
 
 	// Create switch network instance.
 	niStatus, err = niReconciler.AddNI(ctx, ni4Config, ni4Bridge)
@@ -1886,6 +1917,7 @@ func TestAirGappedLocalAndSwitchNIs(test *testing.T) {
 	// Create 2 local network instances but make them both air-gapped.
 	ni1Ports := ni1Bridge.Ports
 	ni1Bridge.Ports = []nirec.Port{}
+	networkMonitor.AddOrUpdateInterface(ni1BridgeIf)
 	niStatus, err := niReconciler.AddNI(ctx, ni1Config, ni1Bridge)
 	t.Expect(err).ToNot(HaveOccurred())
 	t.Expect(niStatus.NI).To(Equal(ni1UUID.UUID))
@@ -1899,16 +1931,14 @@ func TestAirGappedLocalAndSwitchNIs(test *testing.T) {
 	t.Expect(recUpdate.UpdateType).To(Equal(nirec.NIReconcileStatusChanged))
 	t.Expect(recUpdate.NIStatus.Equal(niStatus)).To(BeTrue())
 
-	networkMonitor.AddOrUpdateInterface(ni1BridgeIf)
-
 	ni5Ports := ni5Bridge.Ports
 	ni5Bridge.Ports = []nirec.Port{}
+	networkMonitor.AddOrUpdateInterface(ni5BridgeIf)
 	niStatus, err = niReconciler.AddNI(ctx, ni5Config, ni5Bridge)
 	t.Expect(err).ToNot(HaveOccurred())
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
 	t.Expect(recUpdate.UpdateType).To(Equal(nirec.NIReconcileStatusChanged))
 	t.Expect(recUpdate.NIStatus.Equal(niStatus)).To(BeTrue())
-	networkMonitor.AddOrUpdateInterface(ni5BridgeIf)
 
 	// There should not be MASQUERADE iptables rule or the default gateway route.
 	snatRuleNI1 := iptables.Rule{
@@ -1961,6 +1991,18 @@ func TestAirGappedLocalAndSwitchNIs(test *testing.T) {
 		}))).To(BeTrue())
 
 	// Create switch network instance but make it air-gapped.
+	ni2AirGappedBridgeIf := netmonitor.MockInterface{
+		Attrs: netmonitor.IfAttrs{
+			IfIndex:       99,
+			IfName:        "bn2",
+			IfType:        "bridge",
+			WithBroadcast: true,
+			AdminUp:       true,
+			LowerUp:       true,
+		},
+		HwAddr: macAddress("02:00:00:00:02:02"),
+	}
+	networkMonitor.AddOrUpdateInterface(ni2AirGappedBridgeIf)
 	ni2Ports := ni2Bridge.Ports
 	ni2Bridge.Ports = []nirec.Port{}
 	niStatus, err = niReconciler.AddNI(ctx, ni2Config, ni2Bridge)
@@ -1974,19 +2016,6 @@ func TestAirGappedLocalAndSwitchNIs(test *testing.T) {
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
 	t.Expect(recUpdate.UpdateType).To(Equal(nirec.NIReconcileStatusChanged))
 	t.Expect(recUpdate.NIStatus.Equal(niStatus)).To(BeTrue())
-
-	ni2AirGappedBridgeIf := netmonitor.MockInterface{
-		Attrs: netmonitor.IfAttrs{
-			IfIndex:       99,
-			IfName:        "bn2",
-			IfType:        "bridge",
-			WithBroadcast: true,
-			AdminUp:       true,
-			LowerUp:       true,
-		},
-		HwAddr: macAddress("02:00:00:00:02:02"),
-	}
-	networkMonitor.AddOrUpdateInterface(ni2AirGappedBridgeIf)
 
 	t.Expect(itemIsCreated(dg.Reference(
 		linuxitems.VLANBridge{BridgeIfName: "bn2"}))).To(BeTrue())
@@ -2136,23 +2165,23 @@ func TestStaticAndConnectedRoutes(test *testing.T) {
 	niReconciler.RunInitialReconcile(ctx)
 
 	// Create network instances used by app2.
+	networkMonitor.AddOrUpdateInterface(ni1BridgeIf)
 	_, err := niReconciler.AddNI(ctx, ni1Config, ni1Bridge)
 	t.Expect(err).ToNot(HaveOccurred())
 	var recUpdate nirec.ReconcilerUpdate
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
 	t.Expect(recUpdate.UpdateType).To(Equal(nirec.NIReconcileStatusChanged))
-	networkMonitor.AddOrUpdateInterface(ni1BridgeIf)
 	_, err = niReconciler.AddNI(ctx, ni2Config, ni2Bridge)
 	t.Expect(err).ToNot(HaveOccurred())
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
 	t.Expect(recUpdate.UpdateType).To(Equal(nirec.NIReconcileStatusChanged))
 	// NI5 will propagate user-configured DNS server to apps.
 	ni5Config.DnsServers = []net.IP{ipAddress("1.1.1.1")}
+	networkMonitor.AddOrUpdateInterface(ni5BridgeIf)
 	_, err = niReconciler.AddNI(ctx, ni5Config, ni5Bridge)
 	t.Expect(err).ToNot(HaveOccurred())
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
 	t.Expect(recUpdate.UpdateType).To(Equal(nirec.NIReconcileStatusChanged))
-	networkMonitor.AddOrUpdateInterface(ni5BridgeIf)
 
 	// Connect application into network instances.
 	// VIFs on the switch NI will receive IPs later.
@@ -2414,12 +2443,12 @@ func TestCNI(test *testing.T) {
 	niReconciler.RunInitialReconcile(ctx)
 
 	// Create local network instance.
+	networkMonitor.AddOrUpdateInterface(ni1BridgeIf)
 	_, err := niReconciler.AddNI(ctx, ni1Config, ni1Bridge)
 	t.Expect(err).ToNot(HaveOccurred())
 	var recUpdate nirec.ReconcilerUpdate
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
 	t.Expect(recUpdate.UpdateType).To(Equal(nirec.NIReconcileStatusChanged))
-	networkMonitor.AddOrUpdateInterface(ni1BridgeIf)
 
 	// Connect K3s Pod into the network instance.
 	// L2-only connection for now.
@@ -2474,7 +2503,6 @@ func TestCNI(test *testing.T) {
 		OutputIf: genericitems.NetworkIf{IfName: "net0"},
 		ForApp:   linuxitems.ContainerApp{ID: app1UUID.UUID},
 	})
-	fmt.Println(routeRef)
 	t.Expect(itemIsCreated(routeRef)).To(BeTrue())
 
 	// Disconnect the K3s Pod.
