@@ -88,7 +88,7 @@ func backupFile(fileName string) error {
 	return err
 }
 
-// WriteRename write data to a fmpfile and then rename it to a desired name
+// WriteRename write data to a tmpfile and then rename it to a desired name
 func WriteRename(fileName string, b []byte) error {
 	return writeRename(fileName, b, false)
 }
