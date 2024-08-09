@@ -1491,9 +1491,10 @@ func (r *LinuxDpcReconciler) getIntendedWwanConfig(dpc types.DevicePortConfig,
 					Activated: true,
 					APN:       cellCfg.APN,
 				}
-				probeCfg = types.WwanProbe{
-					Disable: cellCfg.DisableProbe,
-					Address: cellCfg.ProbeAddr,
+				probeCfg.Disable = cellCfg.DisableProbe
+				if cellCfg.ProbeAddr != "" {
+					probeCfg.UserDefinedProbe.Method = types.ConnectivityProbeMethodICMP
+					probeCfg.UserDefinedProbe.ProbeHost = cellCfg.ProbeAddr
 				}
 				locationTracking = cellCfg.LocationTracking
 				r.Log.Warnf("getIntendedWwanConfig: using deprecated WirelessCfg.Cellular")
