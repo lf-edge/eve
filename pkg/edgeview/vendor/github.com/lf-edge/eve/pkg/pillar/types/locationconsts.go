@@ -41,6 +41,8 @@ const (
 	SnapshotInstanceStatusFilename = "snapshotInstanceStatus.json"
 	// PersistCachePatchEnvelopes - folder to store inline patch envelopes
 	PersistCachePatchEnvelopes = PersistDir + "/patchEnvelopesCache"
+	// PersistCachePatchEnvelopesUsage - folder to store patch envelopes usage stat per app
+	PersistCachePatchEnvelopesUsage = PersistDir + "/patchEnvelopesUsageCache"
 
 	// IdentityDirname - Config dir
 	IdentityDirname = "/config"
@@ -105,8 +107,17 @@ const (
 	// ZFSArcMaxSizeFile - file with zfs_arc_max size in bytes
 	ZFSArcMaxSizeFile = "/hostfs/sys/module/zfs/parameters/zfs_arc_max"
 
+	// DownloaderDir - storage for downloader
+	DownloaderDir = SealedDirName + "/downloader"
+
+	// VerifierDir - storage for verifier
+	VerifierDir = SealedDirName + "/verifier"
+
+	// ContainerdDir - path to user containerd storage
+	ContainerdDir = SealedDirName + "/containerd"
+
 	// ContainerdContentDir - path to containerd`s content store
-	ContainerdContentDir = SealedDirName + "/containerd/io.containerd.content.v1.content"
+	ContainerdContentDir = ContainerdDir + "/io.containerd.content.v1.content"
 )
 
 var (
@@ -124,4 +135,6 @@ var (
 	VolumeClearZFSDataset = ClearDataset + "/volumes"
 	//VolumeEncryptedZFSDataset - dataset to create volumes with encryption
 	VolumeEncryptedZFSDataset = SealedDataset + "/volumes"
+	// EtcdZvol - zvol encrypted for etcd storage
+	EtcdZvol = PersistDataset + "/etcd-storage"
 )

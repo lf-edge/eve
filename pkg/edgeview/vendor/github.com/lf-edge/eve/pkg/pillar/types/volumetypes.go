@@ -21,7 +21,6 @@ type VolumeConfig struct {
 	VolumeContentOriginType zconfig.VolumeContentOriginType
 	MaxVolSize              uint64
 	ReadOnly                bool
-	RefCount                uint
 	GenerationCounter       int64
 	LocalGenerationCounter  int64
 	Encrypted               bool
@@ -46,7 +45,6 @@ func (config VolumeConfig) LogCreate(logBase *base.LogObject) {
 	}
 	logObject.CloneAndAddField("content-id", config.ContentID).
 		AddField("max-vol-size-int64", config.MaxVolSize).
-		AddField("refcount-int64", config.RefCount).
 		AddField("generation-counter-int64", config.GenerationCounter).
 		AddField("local-generation-counter-int64", config.LocalGenerationCounter).
 		Noticef("Volume config create")
@@ -62,15 +60,12 @@ func (config VolumeConfig) LogModify(logBase *base.LogObject, old interface{}) {
 		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of VolumeConfig type")
 	}
 	if oldConfig.ContentID != config.ContentID ||
-		oldConfig.MaxVolSize != config.MaxVolSize ||
-		oldConfig.RefCount != config.RefCount {
+		oldConfig.MaxVolSize != config.MaxVolSize {
 
 		logObject.CloneAndAddField("content-id", config.ContentID).
 			AddField("max-vol-size-int64", config.MaxVolSize).
-			AddField("refcount-int64", config.RefCount).
 			AddField("old-content-id", oldConfig.ContentID).
 			AddField("old-max-vol-size-int64", oldConfig.MaxVolSize).
-			AddField("old-refcount-int64", oldConfig.RefCount).
 			Noticef("Volume config modify")
 	} else {
 		// XXX remove?
@@ -85,7 +80,6 @@ func (config VolumeConfig) LogDelete(logBase *base.LogObject) {
 		config.VolumeID, config.LogKey())
 	logObject.CloneAndAddField("content-id", config.ContentID).
 		AddField("max-vol-size-int64", config.MaxVolSize).
-		AddField("refcount-int64", config.RefCount).
 		AddField("generation-counter-int64", config.GenerationCounter).
 		AddField("local-generation-counter-int64", config.LocalGenerationCounter).
 		Noticef("Volume config delete")
@@ -150,10 +144,7 @@ func (status VolumeStatus) Key() string {
 // IsContainer will return true if content tree attached
 // to the volume is of container type
 func (status VolumeStatus) IsContainer() bool {
-	if status.ContentFormat == zconfig.Format_CONTAINER {
-		return true
-	}
-	return false
+	return status.ContentFormat == zconfig.Format_CONTAINER
 }
 
 // PathName returns the path of the volume
@@ -165,6 +156,15 @@ func (status VolumeStatus) PathName() string {
 	return fmt.Sprintf("%s/%s#%d.%s", baseDir, status.VolumeID.String(),
 		status.GenerationCounter+status.LocalGenerationCounter,
 		strings.ToLower(status.ContentFormat.String()))
+}
+
+// GetPVCName : returns the volume name for kubernetes(longhorn)
+// Kubernetes does not allow special characters like '#' in the object names.
+// so we need to generate a PVC name.
+func (status VolumeStatus) GetPVCName() string {
+	return fmt.Sprintf("%s-pvc-%d", status.VolumeID.String(),
+		status.GenerationCounter+status.LocalGenerationCounter)
+
 }
 
 // LogCreate :
@@ -306,25 +306,28 @@ func (status VolumesSnapshotStatus) Key() string {
 	return status.SnapshotID
 }
 
-// VolumeRefConfig : Reference to a Volume specified separately in the API
-// If a volume is purged (re-created from scratch) it will either have a new
-// UUID or a new generationCount
+// VolumeRefConfig : Used for communication from zedagent to volumemgr, contains info from AppInstanceConfig
 type VolumeRefConfig struct {
+	// this part shows the link between the volume and the app
 	VolumeID               uuid.UUID
 	GenerationCounter      int64
 	LocalGenerationCounter int64
-	RefCount               uint
-	MountDir               string
-	VerifyOnly             bool
+	AppUUID                uuid.UUID
+
+	// this information comes from AppInstanceConfig and remains constant
+	MountDir string
+
+	// this part is for communication between zedmanager and volumemgr (set by zedmanager)
+	VerifyOnly bool // controls whether the volumemgr should only download and verify the volume (true) or also create it (false)
 }
 
-// Key : VolumeRefConfig unique key
+// Key : VolumeRefConfig unique key (used to uniquely identify the current struct, mostly for pubsub) - the same as for the corresponding VolumeRefStatus
 func (config VolumeRefConfig) Key() string {
-	return fmt.Sprintf("%s#%d", config.VolumeID.String(),
-		config.GenerationCounter+config.LocalGenerationCounter)
+	return fmt.Sprintf("%s#%d#%s", config.VolumeID.String(),
+		config.GenerationCounter+config.LocalGenerationCounter, config.AppUUID.String())
 }
 
-// VolumeKey : Unique key of volume referenced in VolumeRefConfig
+// VolumeKey : Unique key of volume referenced in VolumeRefConfig (used to uniquely identify the volume, attached to the app instance)
 func (config VolumeRefConfig) VolumeKey() string {
 	return fmt.Sprintf("%s#%d", config.VolumeID.String(),
 		config.GenerationCounter+config.LocalGenerationCounter)
@@ -337,8 +340,7 @@ func (config VolumeRefConfig) LogCreate(logBase *base.LogObject) {
 	if logObject == nil {
 		return
 	}
-	logObject.CloneAndAddField("refcount-int64", config.RefCount).
-		AddField("generation-counter-int64", config.GenerationCounter).
+	logObject.CloneAndAddField("generation-counter-int64", config.GenerationCounter).
 		AddField("local-generation-counter-int64", config.LocalGenerationCounter).
 		Noticef("Volume ref config create")
 }
@@ -352,23 +354,16 @@ func (config VolumeRefConfig) LogModify(logBase *base.LogObject, old interface{}
 	if !ok {
 		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of VolumeRefConfig type")
 	}
-	if oldConfig.RefCount != config.RefCount {
-		logObject.CloneAndAddField("refcount-int64", config.RefCount).
-			AddField("old-refcount-int64", oldConfig.RefCount).
-			Noticef("Volume ref config modify")
-	} else {
-		// XXX remove?
-		logObject.CloneAndAddField("diff", cmp.Diff(oldConfig, config)).
-			Noticef("Volume ref config modify other change")
-	}
+	// XXX remove?
+	logObject.CloneAndAddField("diff", cmp.Diff(oldConfig, config)).
+		Noticef("Volume ref config modify other change")
 }
 
 // LogDelete :
 func (config VolumeRefConfig) LogDelete(logBase *base.LogObject) {
 	logObject := base.EnsureLogObject(logBase, base.VolumeRefConfigLogType, "",
 		config.VolumeID, config.LogKey())
-	logObject.CloneAndAddField("refcount-int64", config.RefCount).
-		Noticef("Volume ref config delete")
+	logObject.Noticef("Volume ref config delete")
 
 	base.DeleteLogObject(logBase, config.LogKey())
 }
@@ -385,30 +380,30 @@ type VolumeRefStatus struct {
 	VolumeID               uuid.UUID
 	GenerationCounter      int64
 	LocalGenerationCounter int64
-	RefCount               uint
+	AppUUID                uuid.UUID
 	State                  SwState
 	ActiveFileLocation     string
 	ContentFormat          zconfig.Format
 	ReadOnly               bool
 	DisplayName            string
 	MaxVolSize             uint64
-	MountDir               string
 	PendingAdd             bool // Flag to identify whether volume ref config published or not
 	WWN                    string
 	VerifyOnly             bool
 	Target                 zconfig.Target
 	CustomMeta             string
+	ReferenceName          string
 
 	ErrorAndTimeWithSource
 }
 
-// Key : VolumeRefStatus unique key
+// Key : VolumeRefStatus unique key (used to uniquely identify the current struct, mostly for pubsub) - the same as for the corresponding VolumeRefConfig
 func (status VolumeRefStatus) Key() string {
-	return fmt.Sprintf("%s#%d", status.VolumeID.String(),
-		status.GenerationCounter+status.LocalGenerationCounter)
+	return fmt.Sprintf("%s#%d#%s", status.VolumeID.String(),
+		status.GenerationCounter+status.LocalGenerationCounter, status.AppUUID.String())
 }
 
-// VolumeKey : Unique key of volume referenced in VolumeRefStatus
+// VolumeKey : Unique key of volume referenced in VolumeRefStatus (used to uniquely identify the volume, attached to the app instance)
 func (status VolumeRefStatus) VolumeKey() string {
 	return fmt.Sprintf("%s#%d", status.VolumeID.String(),
 		status.GenerationCounter+status.LocalGenerationCounter)
@@ -417,10 +412,7 @@ func (status VolumeRefStatus) VolumeKey() string {
 // IsContainer will return true if content tree attached
 // to the volume ref is of container type
 func (status VolumeRefStatus) IsContainer() bool {
-	if status.ContentFormat == zconfig.Format_CONTAINER {
-		return true
-	}
-	return false
+	return status.ContentFormat == zconfig.Format_CONTAINER
 }
 
 // LogCreate :
@@ -430,8 +422,7 @@ func (status VolumeRefStatus) LogCreate(logBase *base.LogObject) {
 	if logObject == nil {
 		return
 	}
-	logObject.CloneAndAddField("refcount-int64", status.RefCount).
-		AddField("generation-counter-int64", status.GenerationCounter).
+	logObject.CloneAndAddField("generation-counter-int64", status.GenerationCounter).
 		AddField("local-generation-counter-int64", status.LocalGenerationCounter).
 		AddField("state", status.State.String()).
 		AddField("filelocation", status.ActiveFileLocation).
@@ -452,8 +443,7 @@ func (status VolumeRefStatus) LogModify(logBase *base.LogObject, old interface{}
 	if !ok {
 		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of VolumeRefStatus type")
 	}
-	if oldStatus.RefCount != status.RefCount ||
-		oldStatus.State != status.State ||
+	if oldStatus.State != status.State ||
 		oldStatus.ActiveFileLocation != status.ActiveFileLocation ||
 		oldStatus.ContentFormat != status.ContentFormat ||
 		oldStatus.ReadOnly != status.ReadOnly ||
@@ -461,15 +451,13 @@ func (status VolumeRefStatus) LogModify(logBase *base.LogObject, old interface{}
 		oldStatus.MaxVolSize != status.MaxVolSize ||
 		oldStatus.PendingAdd != status.PendingAdd {
 
-		logObject.CloneAndAddField("refcount-int64", status.RefCount).
-			AddField("state", status.State.String()).
+		logObject.CloneAndAddField("state", status.State.String()).
 			AddField("filelocation", status.ActiveFileLocation).
 			AddField("content-format", status.ContentFormat).
 			AddField("read-only-bool", status.ReadOnly).
 			AddField("displayname", status.DisplayName).
 			AddField("max-vol-size-int64", status.MaxVolSize).
 			AddField("pending-add-bool", status.PendingAdd).
-			AddField("refcount-int64", oldStatus.RefCount).
 			AddField("old-state", oldStatus.State.String()).
 			AddField("old-filelocation", oldStatus.ActiveFileLocation).
 			AddField("content-format", oldStatus.ContentFormat).
@@ -485,8 +473,7 @@ func (status VolumeRefStatus) LogModify(logBase *base.LogObject, old interface{}
 func (status VolumeRefStatus) LogDelete(logBase *base.LogObject) {
 	logObject := base.EnsureLogObject(logBase, base.VolumeRefStatusLogType, status.DisplayName,
 		status.VolumeID, status.LogKey())
-	logObject.CloneAndAddField("refcount-int64", status.RefCount).
-		AddField("generation-counter-int64", status.GenerationCounter).
+	logObject.CloneAndAddField("generation-counter-int64", status.GenerationCounter).
 		AddField("local-generation-counter-int64", status.LocalGenerationCounter).
 		AddField("state", status.State.String()).
 		AddField("filelocation", status.ActiveFileLocation).
@@ -605,4 +592,54 @@ func (status VolumeCreatePending) LogDelete(logBase *base.LogObject) {
 		Noticef("Volume create pending delete")
 
 	base.DeleteLogObject(logBase, status.LogKey())
+}
+
+// VolumeMgrStatus :
+type VolumeMgrStatus struct {
+	Name           string
+	Initialized    bool
+	RemainingSpace uint64 // In bytes. Takes into account "reserved" for dom0
+}
+
+// Key :
+func (status VolumeMgrStatus) Key() string {
+	return status.Name
+}
+
+// LogCreate :
+func (status VolumeMgrStatus) LogCreate(logBase *base.LogObject) {
+	logObject := base.NewLogObject(logBase, base.VolumeMgrStatusLogType, status.Name,
+		nilUUID, status.LogKey())
+	if logObject == nil {
+		return
+	}
+	logObject.Noticef("Zedagent status create")
+}
+
+// LogModify :
+func (status VolumeMgrStatus) LogModify(logBase *base.LogObject, old interface{}) {
+	logObject := base.EnsureLogObject(logBase, base.VolumeMgrStatusLogType, status.Name,
+		nilUUID, status.LogKey())
+
+	oldStatus, ok := old.(VolumeMgrStatus)
+	if !ok {
+		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of VolumeMgrStatus type")
+	}
+	// XXX remove?
+	logObject.CloneAndAddField("diff", cmp.Diff(oldStatus, status)).
+		Noticef("Zedagent status modify")
+}
+
+// LogDelete :
+func (status VolumeMgrStatus) LogDelete(logBase *base.LogObject) {
+	logObject := base.EnsureLogObject(logBase, base.VolumeMgrStatusLogType, status.Name,
+		nilUUID, status.LogKey())
+	logObject.Noticef("Zedagent status delete")
+
+	base.DeleteLogObject(logBase, status.LogKey())
+}
+
+// LogKey :
+func (status VolumeMgrStatus) LogKey() string {
+	return string(base.VolumeMgrStatusLogType) + "-" + status.Key()
 }

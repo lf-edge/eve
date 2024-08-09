@@ -80,5 +80,9 @@
 // which was passed to it at startup. These changes are in the format of
 // `pubsub.Change`, which encapsulates the change operation, key and value.
 //
+// To listen to several subscriptions at the same time MultiChannelWatch can
+// be used; to see how it can be used, have a look at
+// usbmanager/subscriptions.go
+//
 // See the documentation for the `DriverSubscriber` interface to learn more.
 package pubsub

@@ -122,7 +122,7 @@ func (s *SocketDriver) Publisher(global bool, name, topic string, persistent boo
 			sock, err := net.Dial("unixpacket", sockName)
 			if err == nil {
 				sock.Close()
-				s.Log.Fatalf("Can not publish %s since it it already used",
+				s.Log.Fatalf("Cannot publish %s since it is already used",
 					sockName)
 			}
 			if err := os.Remove(sockName); err != nil {
@@ -259,12 +259,14 @@ func GetBuffer() ([]byte, func()) {
 var lastLoggedAllocated uint32
 
 func maybeLogAllocated(log *base.LogObject) {
-	if lastLoggedAllocated == allocated {
+	currentAllocated := atomic.LoadUint32(&allocated)
+	currentLastAllocated := atomic.LoadUint32(&lastLoggedAllocated)
+	if currentLastAllocated == currentAllocated {
 		return
 	}
 	log.Functionf("pubsub buffer allocation changed from %d to  %d",
-		lastLoggedAllocated, allocated)
-	lastLoggedAllocated = allocated
+		currentLastAllocated, currentAllocated)
+	atomic.StoreUint32(&lastLoggedAllocated, currentAllocated)
 }
 
 // Poll to check if we should go away

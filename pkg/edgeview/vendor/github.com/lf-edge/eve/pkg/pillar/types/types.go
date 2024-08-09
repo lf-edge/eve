@@ -4,7 +4,6 @@
 package types
 
 import (
-	"errors"
 	"fmt"
 	"time"
 
@@ -12,13 +11,13 @@ import (
 	"github.com/lf-edge/eve-api/go/info"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/objtonum"
-	"github.com/satori/go.uuid"
+	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus" // OK for logrus.Fatal
 )
 
 // SwState started with enum names from OMA-TS-LWM2M_SwMgmt-V1_0-20151201-C
 // but now has many additions.
-// They are in order of progression (except for the RESTARTING and PURGING ones)
+// They are in order of progression
 // We map this to info.ZSwState
 type SwState uint8
 
@@ -44,10 +43,14 @@ const (
 	PAUSED
 	HALTING // being halted
 	HALTED
-	RESTARTING // Restarting due to config change or zcli
-	PURGING    // Purging due to config change
-	BROKEN     // Domain is still alive, but its device model has failed
-	UNKNOWN    // State of the domain can't be determined
+	BROKEN  // BROKEN means domain is still alive, but its device model has failed
+	UNKNOWN // UNKNOWN means state of the domain can't be determined
+	// PENDING to start
+	PENDING
+	// SCHEDULING waiting to be scheduled
+	SCHEDULING
+	// FAILED to start
+	FAILED
 	MAXSTATE
 )
 
@@ -92,10 +95,12 @@ func (state SwState) String() string {
 		return "HALTING"
 	case HALTED:
 		return "HALTED"
-	case RESTARTING:
-		return "RESTARTING"
-	case PURGING:
-		return "PURGING"
+	case PENDING:
+		return "PENDING"
+	case FAILED:
+		return "FAILED"
+	case SCHEDULING:
+		return "SCHEDULING"
 	case BROKEN:
 		return "BROKEN"
 	case START_DELAYED:
@@ -158,10 +163,6 @@ func (state SwState) ZSwState() info.ZSwState {
 		return info.ZSwState_HALTING
 	case HALTED:
 		return info.ZSwState_HALTED
-	case RESTARTING:
-		return info.ZSwState_RESTARTING
-	case PURGING:
-		return info.ZSwState_PURGING
 	// we map BROKEN to HALTING to indicate that EVE has an active
 	// role in reaping BROKEN domains and transitioning them to
 	// a final HALTED state
@@ -169,6 +170,13 @@ func (state SwState) ZSwState() info.ZSwState {
 		return info.ZSwState_HALTING
 	case START_DELAYED:
 		return info.ZSwState_START_DELAYED
+	case FAILED:
+		return info.ZSwState_ERROR
+	case PENDING:
+		return info.ZSwState_PENDING
+	case SCHEDULING:
+		return info.ZSwState_SCHEDULING
+
 	// If we ever see UNKNOWN we return RUNNING assuming the state will change to something
 	// known soon.
 	case UNKNOWN:
@@ -304,7 +312,7 @@ func ParseTriState(value string) (TriState, error) {
 	case "disabled", "disable", "off":
 		ts = TS_DISABLED
 	default:
-		err := errors.New(fmt.Sprintf("Bad value: %s", value))
+		err := fmt.Errorf("bad value: %s", value)
 		return ts, err
 	}
 	return ts, nil

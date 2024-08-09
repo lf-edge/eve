@@ -29,6 +29,8 @@ const (
 	EdgeViewAppPolicyPrefix = "EvAppPolicy:"
 	// EdgeViewExtPolicyPrefix - Edgeview external policy prefix string
 	EdgeViewExtPolicyPrefix = "EvExtPolicy:"
+	// EdgeViewKubPolicyPrefix - Edgeview kubernetes policy prefix string
+	EdgeViewKubPolicyPrefix = "EvKubPolicy:"
 	// EdgeViewGenIDPrefix - Edgeview generation-ID prefix string
 	EdgeViewGenIDPrefix = "EvGenID:"
 
@@ -48,6 +50,7 @@ type EdgeviewConfig struct {
 	DevPolicy   EvDevPolicy // device policy
 	AppPolicy   EvAppPolicy // app policy
 	ExtPolicy   EvExtPolicy // external policy
+	KubPolicy   EvKubPolicy // kubernetes policy
 	GenID       uint32      // number of time started
 }
 
@@ -70,6 +73,12 @@ type EvAppPolicy struct {
 // With Enable Ext, can expend later for other policies
 type EvExtPolicy struct {
 	Enabled bool `json:"enabled"` // allow access to external end-points
+}
+
+// EvKubPolicy - edge-view policy for kubernetes/kubectl access
+// the 'Enabled' controls all the tcp/kube operations are allowed or not
+type EvKubPolicy struct {
+	Enabled bool `json:"enabled"` // allow access to kubernetes api
 }
 
 // EvjwtAlgo - jwt algorithm

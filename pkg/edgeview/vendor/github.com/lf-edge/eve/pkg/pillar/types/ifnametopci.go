@@ -11,7 +11,9 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
@@ -22,10 +24,32 @@ import (
 const basePath = "/sys/class/net"
 const pciPath = "/sys/bus/pci/devices"
 
-// Returns the long PCI IDs
-func ifNameToPci(log *base.LogObject, ifName string) (string, error) {
+// ExtractUSBBusnumPort extracts busnum and port number out of a sysfs device path
+func ExtractUSBBusnumPort(path string) (uint16, string, error) {
+	var busnum uint16
+
+	re := regexp.MustCompile(`\/usb\d+(\/\d+\-[\d\.]+)*(\/(\d+)\-([\d\.]+))\/`)
+
+	matches := re.FindStringSubmatch(path)
+	if len(matches) < 3 {
+		return busnum, "", fmt.Errorf("could not extract usb portnum from %s", path)
+	}
+	port := matches[len(matches)-1]
+	busnumString := matches[len(matches)-2]
+	busnum64, err := strconv.ParseUint(busnumString, 10, 16)
+	if err != nil {
+		return 0, port, fmt.Errorf("could not extract usb busnum from %s", path)
+	}
+	busnum = uint16(busnum64)
+
+	return busnum, port, nil
+}
+
+// Returns the long PCI IDs and the USB address (if available)
+func ifNameToPciAndUsbAddr(log *base.LogObject, ifName string) (string, string, error) {
 	// Match for PCI IDs
 	re := regexp.MustCompile("([0-9a-f]){4}:([0-9a-f]){2}:([0-9a-f]){2}.[ls0-9a-f]")
+	var usbAddr string
 	ifPath := basePath + "/" + ifName
 	devPath := ifPath + "/device"
 	info, err := os.Lstat(devPath)
@@ -34,7 +58,7 @@ func ifNameToPci(log *base.LogObject, ifName string) (string, error) {
 			if !os.IsNotExist(err) {
 				log.Errorln(err)
 			}
-			return "", err
+			return "", usbAddr, err
 		}
 		// Try alternate since the PCI device can be kethN
 		// if ifName is ethN
@@ -46,47 +70,64 @@ func ifNameToPci(log *base.LogObject, ifName string) (string, error) {
 			if !os.IsNotExist(err) {
 				log.Errorln(err)
 			}
-			return "", err
+			return "", usbAddr, err
 		}
 		log.Noticef("ifNameToPci using alternate %s", ifName)
 	}
 	if (info.Mode() & os.ModeSymlink) == 0 {
 		log.Errorf("Skipping non-symlink %s\n", devPath)
-		return "", fmt.Errorf("Not a symlink %s", devPath)
+		return "", usbAddr, fmt.Errorf("Not a symlink %s", devPath)
 	}
 	link, err := os.Readlink(devPath)
 	if err != nil {
-		return "", err
+		return "", usbAddr, err
+	}
+
+	ifPathLink, err := os.Readlink(ifPath)
+	if err != nil {
+		log.Warnf("readlink of %s failed: %+v", ifPath, err)
+		ifPathLink = ifPath
+	}
+	// convert from /sys/class/net/... to path including PCI address and USB address
+	// (e.g.: /devices/pci0000:00/0000:00:14.0/usb2/)
+	absIfPathLink, err := filepath.Abs(filepath.Join(ifPathLink, link))
+	if err != nil {
+		absIfPathLink = link
+		log.Warnf("getting absolute path of %s failed: %+v", link, err)
+	}
+	busnum, portnum, err := ExtractUSBBusnumPort(absIfPathLink)
+	if err == nil {
+		usbAddr = fmt.Sprintf("%d:%s", busnum, portnum)
 	}
 	target := path.Base(link)
 	if re.MatchString(target) {
-		return target, nil
+		return target, usbAddr, nil
 	}
 	log.Noticef("Not PCI %s - try fallback for %s", target, ifName)
 	// Try fallback to handle nested virtualization
 	info, err = os.Lstat(ifPath)
 	if err != nil {
 		log.Noticef("Fallback failed: %s", err)
-		return target, fmt.Errorf("Not PCI %s", target)
+		return target, usbAddr, fmt.Errorf("Not PCI %s", target)
 	}
 	if (info.Mode() & os.ModeSymlink) == 0 {
 		log.Noticef("Fallback not symlink")
-		return target, fmt.Errorf("Not PCI %s", target)
+		return target, usbAddr, fmt.Errorf("Not PCI %s", target)
 	}
 	link, err = os.Readlink(ifPath)
 	if err != nil {
 		log.Noticef("Fallback readlink failed: %s", err)
-		return target, fmt.Errorf("Not PCI %s", target)
+		return target, usbAddr, fmt.Errorf("Not PCI %s", target)
 	}
 	link = path.Clean(link)
 	components := strings.Split(link, "/")
 	for _, c := range components {
 		if re.MatchString(c) {
 			log.Noticef("Fallback found %s", c)
-			return c, nil
+			return c, usbAddr, nil
 		}
 	}
-	return target, fmt.Errorf("Not PCI %s", target)
+	return target, usbAddr, fmt.Errorf("Not PCI %s", target)
 }
 
 // Returns the long PCI IDs for Virtual function
@@ -210,7 +251,7 @@ func IoBundleToPci(log *base.LogObject, ib *IoBundle) (string, error) { //nolint
 			if ib.Type == IoNetEthVF {
 				l, err = vfIfNameToPci(ib.Ifname)
 			} else {
-				l, err = ifNameToPci(log, ib.Ifname)
+				l, ib.UsbAddr, err = ifNameToPciAndUsbAddr(log, ib.Ifname)
 			}
 			rename := false
 			if err == nil {
@@ -239,7 +280,7 @@ func IoBundleToPci(log *base.LogObject, ib *IoBundle) (string, error) { //nolint
 				return long, err
 			}
 		} else {
-			long, err = ifNameToPci(log, ib.Ifname)
+			long, ib.UsbAddr, err = ifNameToPciAndUsbAddr(log, ib.Ifname)
 			if err != nil {
 				return long, err
 			}

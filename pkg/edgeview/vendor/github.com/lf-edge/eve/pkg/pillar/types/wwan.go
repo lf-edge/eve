@@ -115,6 +115,8 @@ type WwanNetworkConfig struct {
 	// Enable this option to have location info periodically obtained
 	// from this modem and published by wwan microservice via topic WwanLocationInfo.
 	LocationTracking bool
+	// Maximum transmission unit (IP MTU) to apply on the wwan interface.
+	MTU uint16
 }
 
 // WwanAuthProtocol : authentication protocol used by cellular network.
@@ -166,10 +168,9 @@ func (wnc WwanNetworkConfig) Equal(wnc2 WwanNetworkConfig) bool {
 	if !generics.EqualLists(wnc.Proxies, wnc2.Proxies) {
 		return false
 	}
-	if wnc.Probe != wnc2.Probe {
-		return false
-	}
-	if wnc.LocationTracking != wnc2.LocationTracking {
+	if wnc.Probe != wnc2.Probe ||
+		wnc.LocationTracking != wnc2.LocationTracking ||
+		wnc.MTU != wnc2.MTU {
 		return false
 	}
 	return true
@@ -372,12 +373,27 @@ type WwanSimCard struct {
 	// International Mobile Subscriber Identity.
 	// Empty if no SIM card is inserted into the slot or if the SIM card is not recognized.
 	IMSI string
+	// Type of the SIM card.
+	Type SimType
 	// The current state of the SIM card (absent, initialized, not recognized, etc.).
 	// This state is not modeled using enum because the set of possible values differs
 	// between QMI and MBIM protocols (used to control cellular modules) and there is
 	// no 1:1 mapping between them.
 	State string
 }
+
+// SimType : type of the SIM card.
+type SimType int32
+
+// The values here should be same as the ones defined in info.proto of EVE API.
+const (
+	// SimTypeUnspecified : SIM card type is not specified/known.
+	SimTypeUnspecified SimType = iota
+	// SimTypePhysical : physical SIM card.
+	SimTypePhysical
+	// SimTypeEmbedded : embedded SIM card (eSIM).
+	SimTypeEmbedded
+)
 
 // WwanProvider contains information about a cellular connectivity provider.
 type WwanProvider struct {
@@ -407,7 +423,7 @@ const (
 	WwanOpModeRadioOff WwanOpMode = "radio-off"
 	// WwanOpModeOffline : modem is offline
 	WwanOpModeOffline WwanOpMode = "offline"
-	// WwanOpModeUnrecognized : unrecongized operating mode
+	// WwanOpModeUnrecognized : unrecognized operating mode
 	WwanOpModeUnrecognized WwanOpMode = "unrecognized"
 )
 

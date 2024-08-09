@@ -94,6 +94,8 @@ const (
 	VolumeRefStatusLogType LogObjectType = "volume_ref_status"
 	// VolumeCreatePendingLogType:
 	VolumeCreatePendingLogType LogObjectType = "volume_create_pending"
+	// VolumeMgrStatusLogType:
+	VolumeMgrStatusLogType LogObjectType = "volumemgr_status"
 	// ServiceInitType:
 	ServiceInitLogType LogObjectType = "service_init"
 	// AppAndImageToHashLogType:
@@ -170,6 +172,8 @@ const (
 	EncryptedVaultKeyFromControllerLogType LogObjectType = "encrypted_vault_key_from_controller"
 	// CachedResolvedIPsLogType:
 	CachedResolvedIPsLogType LogObjectType = "cached_resolved_ips"
+	// AppMACGeneratorLogType : type for AppMACGenerator log entries
+	AppMACGeneratorLogType LogObjectType = "app_mac_generator"
 )
 
 // RelationObjectType :
