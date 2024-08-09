@@ -4,6 +4,7 @@
 package agentlog
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -225,7 +226,12 @@ func writeOrLog(log *base.LogObject, w io.Writer, msg string) {
 	}
 }
 
-var listenDebugRunning atomic.Bool
+var (
+	listenDebugRunning  atomic.Bool
+	psiCollectorRunning atomic.Bool
+	psiCollectorCtx     context.Context
+	psiCollectorCancel  context.CancelFunc
+)
 
 func listenDebug(log *base.LogObject, stacksDumpFileName, memDumpFileName string) {
 	if listenDebugRunning.Swap(true) {
@@ -286,6 +292,46 @@ func listenDebug(log *base.LogObject, stacksDumpFileName, memDumpFileName string
 		if r.Method == http.MethodPost {
 			dumpMemoryInfo(log, memDumpFileName)
 			response := fmt.Sprintf("Stacks can be found in logread or %s\n", memDumpFileName)
+			writeOrLog(log, w, response)
+		} else {
+			http.Error(w, "Did you want to use POST method?", http.StatusMethodNotAllowed)
+			return
+		}
+	}))
+	mux.Handle("/memory-monitor/psi-collector/start", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			if psiCollectorRunning.Swap(true) {
+				http.Error(w, "Memory PSI collector is already running", http.StatusConflict)
+				return
+			}
+			// Start the memoryPSICollector
+			psiCollectorCtx, cancel := context.WithCancel(context.Background())
+			psiCollectorCancel = cancel
+			go func() {
+				err := MemoryPSICollector(psiCollectorCtx, log)
+				defer psiCollectorRunning.Swap(false)
+				if err != nil {
+					log.Errorf("MemoryPSICollector failed: %+v", err)
+				}
+			}()
+			// Send a response to the client
+			response := "Memory PSI collector started.\n"
+			writeOrLog(log, w, response)
+		} else {
+			http.Error(w, "Did you want to use POST method?", http.StatusMethodNotAllowed)
+			return
+		}
+	}))
+	mux.Handle("/memory-monitor/psi-collector/stop", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			if !psiCollectorRunning.Swap(false) {
+				http.Error(w, "Memory PSI collector is not running", http.StatusNotFound)
+				return
+			}
+			// Stop the memoryPSICollector
+			psiCollectorCancel()
+			// Send a response to the client
+			response := "Memory PSI collector stopped.\n"
 			writeOrLog(log, w, response)
 		} else {
 			http.Error(w, "Did you want to use POST method?", http.StatusMethodNotAllowed)
