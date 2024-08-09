@@ -6,7 +6,13 @@ package netutils
 import (
 	"bytes"
 	"net"
+	"syscall"
 )
+
+// IsEmptyIP returns true if the IP address is not defined.
+func IsEmptyIP(ip net.IP) bool {
+	return ip == nil || ip.Equal(net.IP{})
+}
 
 // EqualIPs compares two IP addresses.
 func EqualIPs(ip1 net.IP, ip2 net.IP) bool {
@@ -78,4 +84,30 @@ func GetIPBroadcast(subnet net.IPNet) net.IP {
 		}
 	}
 	return net.IP{}
+}
+
+// HostFamily returns the address family for the given IP address
+func HostFamily(ip net.IP) int {
+	if ip.To4() != nil {
+		return syscall.AF_INET
+	}
+	return syscall.AF_INET6
+}
+
+// HostSubnet returns the subnet mask for the given IP address
+func HostSubnet(ip net.IP) *net.IPNet {
+	if ip.To4() != nil {
+		return &net.IPNet{IP: ip, Mask: net.CIDRMask(32, 32)}
+	}
+	return &net.IPNet{IP: ip, Mask: net.CIDRMask(128, 128)}
+}
+
+// OverlappingSubnets returns true if the given subnets share at least one IP address.
+func OverlappingSubnets(subnet1, subnet2 *net.IPNet) bool {
+	if subnet1 == nil || len(subnet1.IP) == 0 ||
+		subnet2 == nil || len(subnet2.IP) == 0 {
+		// One of the subnets or both are undefined.
+		return false
+	}
+	return subnet1.Contains(subnet2.IP) || subnet2.Contains(subnet1.IP)
 }
