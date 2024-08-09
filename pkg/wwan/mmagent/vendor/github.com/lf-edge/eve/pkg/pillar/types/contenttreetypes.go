@@ -153,10 +153,7 @@ func (status ContentTreeStatus) ResolveKey() string {
 
 // IsContainer will return true if content tree is of container type
 func (status ContentTreeStatus) IsContainer() bool {
-	if status.Format == zconfig.Format_CONTAINER {
-		return true
-	}
-	return false
+	return status.Format == zconfig.Format_CONTAINER
 }
 
 // ReferenceID get the image reference ID

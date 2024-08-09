@@ -30,7 +30,7 @@ type Context uintptr
 // Version of TPM being used by the application.
 type Version uint32
 
-// Flag indicates TPM verisions that are supported by the application.
+// Flag indicates TPM versions that are supported by the application.
 type Flag uint32
 
 // CommandPriority is used to determine which pending command to submit whenever the TPM is free.
@@ -145,7 +145,7 @@ func sliceAddress(s []byte) uintptr {
 	return uintptr(unsafe.Pointer(&(s[0])))
 }
 
-// Declaration of TPM_DEVICE_INFO from tbs.h
+// DeviceInfo is TPM_DEVICE_INFO from tbs.h
 type DeviceInfo struct {
 	StructVersion    uint32
 	TPMVersion       Version
@@ -153,12 +153,17 @@ type DeviceInfo struct {
 	TPMImpRevision   uint32
 }
 
+// GetDeviceInfo gets the DeviceInfo of the current TPM:
+// https://docs.microsoft.com/en-us/windows/win32/api/tbs/nf-tbs-tbsi_getdeviceinfo
 func GetDeviceInfo() (*DeviceInfo, error) {
 	info := DeviceInfo{}
 	// TBS_RESULT Tbsi_GetDeviceInfo(
 	//   UINT32 Size,
 	//   PVOID  Info
 	// );
+	if err := tbsGetDeviceInfo.Find(); err != nil {
+		return nil, err
+	}
 	result, _, _ := tbsGetDeviceInfo.Call(
 		unsafe.Sizeof(info),
 		uintptr(unsafe.Pointer(&info)),
@@ -178,6 +183,9 @@ func CreateContext(version Version, flag Flag) (Context, error) {
 	//   _In_  PCTBS_CONTEXT_PARAMS pContextParams,
 	//   _Out_ PTBS_HCONTEXT        *phContext
 	// );
+	if err := tbsCreateContext.Find(); err != nil {
+		return context, err
+	}
 	result, _, _ := tbsCreateContext.Call(
 		uintptr(unsafe.Pointer(&params)),
 		uintptr(unsafe.Pointer(&context)),
@@ -191,6 +199,9 @@ func (context Context) Close() error {
 	// TBS_RESULT Tbsip_Context_Close(
 	//   _In_ TBS_HCONTEXT hContext
 	// );
+	if err := tbsContextClose.Find(); err != nil {
+		return err
+	}
 	result, _, _ := tbsContextClose.Call(uintptr(context))
 	return getError(result)
 }
@@ -216,6 +227,9 @@ func (context Context) SubmitCommand(
 	//   _Out_         PBYTE                *pabResult,
 	//   _Inout_       UINT32               *pcbOutput
 	// );
+	if err := tbsSubmitCommand.Find(); err != nil {
+		return 0, err
+	}
 	result, _, _ := tbsSubmitCommand.Call(
 		uintptr(context),
 		uintptr(commandLocalityZero),
@@ -241,6 +255,9 @@ func (context Context) GetTCGLog(logBuffer []byte) (uint32, error) {
 	//   PBYTE        pOutputBuf,
 	//   PUINT32      pOutputBufLen
 	// );
+	if err := tbsGetTCGLog.Find(); err != nil {
+		return 0, err
+	}
 	result, _, _ := tbsGetTCGLog.Call(
 		uintptr(context),
 		sliceAddress(logBuffer),

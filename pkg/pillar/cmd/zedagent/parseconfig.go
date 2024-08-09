@@ -2091,8 +2091,27 @@ func parseNetworkWirelessConfig(ctx *getconfigContext, key string, netEnt *zconf
 			}
 			wconfig.CellularV2.AccessPoints = append(wconfig.CellularV2.AccessPoints, ap)
 		}
-		wconfig.CellularV2.Probe.Disable = cellNetConfig.Probe.GetDisable()
-		wconfig.CellularV2.Probe.Address = cellNetConfig.Probe.GetProbeAddress()
+		probeCfg := cellNetConfig.Probe
+		customProbe, err := parseConnectivityProbe(probeCfg.GetCustomProbe())
+		if err != nil {
+			log.Errorf("parseNetworkWirelessConfig: %v", err)
+		}
+		if customProbe.Method == types.ConnectivityProbeMethodNone || err != nil {
+			// For backward compatibility.
+			if probeCfg.GetProbeAddress() != "" {
+				customProbe = types.ConnectivityProbe{
+					Method:    types.ConnectivityProbeMethodICMP,
+					ProbeHost: probeCfg.GetProbeAddress(),
+				}
+			} else {
+				// Use default probing endpoint.
+				customProbe = types.ConnectivityProbe{}
+			}
+		}
+		wconfig.CellularV2.Probe = types.WwanProbe{
+			Disable:          probeCfg.GetDisable(),
+			UserDefinedProbe: customProbe,
+		}
 		wconfig.CellularV2.LocationTracking = cellNetConfig.GetLocationTracking()
 		log.Functionf("parseNetworkWirelessConfig: Wireless of type Cellular, %v",
 			wconfig.CellularV2)

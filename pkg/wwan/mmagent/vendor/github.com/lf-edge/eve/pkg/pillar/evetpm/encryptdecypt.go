@@ -15,7 +15,7 @@ import (
 	"fmt"
 	"math/big"
 
-	"github.com/google/go-tpm/tpm2"
+	"github.com/google/go-tpm/legacy/tpm2"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )

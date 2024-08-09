@@ -12,13 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package tpmutil provides common utility functions for both TPM 1.2 and TPM 2.0 devices.
+// Package tpmutil provides common utility functions for both TPM 1.2 and TPM
+// 2.0 devices.
 package tpmutil
 
 import (
 	"errors"
 	"io"
 	"os"
+	"time"
 )
 
 // maxTPMResponse is the largest possible response from the TPM. We need to know
@@ -27,50 +29,85 @@ import (
 // returning a header and a body in separate responses.
 const maxTPMResponse = 4096
 
+// RunCommandRaw executes the given raw command and returns the raw response.
+// Does not check the response code except to execute retry logic.
+func RunCommandRaw(rw io.ReadWriter, inb []byte) ([]byte, error) {
+	if rw == nil {
+		return nil, errors.New("nil TPM handle")
+	}
+
+	// f(t) = (2^t)ms, up to 2s
+	var backoffFac uint
+	var rh responseHeader
+	var outb []byte
+
+	for {
+		if _, err := rw.Write(inb); err != nil {
+			return nil, err
+		}
+
+		// If the TPM is a real device, it may not be ready for reading
+		// immediately after writing the command. Wait until the file
+		// descriptor is ready to be read from.
+		if f, ok := rw.(*os.File); ok {
+			if err := poll(f); err != nil {
+				return nil, err
+			}
+		}
+
+		outb = make([]byte, maxTPMResponse)
+		outlen, err := rw.Read(outb)
+		if err != nil {
+			return nil, err
+		}
+		// Resize the buffer to match the amount read from the TPM.
+		outb = outb[:outlen]
+
+		_, err = Unpack(outb, &rh)
+		if err != nil {
+			return nil, err
+		}
+
+		// If TPM is busy, retry the command after waiting a few ms.
+		if rh.Res == RCRetry {
+			if backoffFac < 11 {
+				dur := (1 << backoffFac) * time.Millisecond
+				time.Sleep(dur)
+				backoffFac++
+			} else {
+				return nil, err
+			}
+		} else {
+			break
+		}
+	}
+
+	return outb, nil
+}
+
 // RunCommand executes cmd with given tag and arguments. Returns TPM response
 // body (without response header) and response code from the header. Returned
 // error may be nil if response code is not RCSuccess; caller should check
 // both.
 func RunCommand(rw io.ReadWriter, tag Tag, cmd Command, in ...interface{}) ([]byte, ResponseCode, error) {
-	if rw == nil {
-		return nil, 0, errors.New("nil TPM handle")
-	}
-	ch := commandHeader{tag, 0, cmd}
-	inb, err := packWithHeader(ch, in...)
+	inb, err := packWithHeader(commandHeader{tag, 0, cmd}, in...)
 	if err != nil {
 		return nil, 0, err
 	}
 
-	if _, err := rw.Write(inb); err != nil {
-		return nil, 0, err
-	}
-
-	// If the TPM is a real device, it may not be ready for reading immediately after writing
-	// the command. Wait until the file descriptor is ready to be read from.
-	if f, ok := rw.(*os.File); ok {
-		if err = poll(f); err != nil {
-			return nil, 0, err
-		}
-	}
-
-	outb := make([]byte, maxTPMResponse)
-	outlen, err := rw.Read(outb)
+	outb, err := RunCommandRaw(rw, inb)
 	if err != nil {
 		return nil, 0, err
 	}
-	// Resize the buffer to match the amount read from the TPM.
-	outb = outb[:outlen]
 
 	var rh responseHeader
 	read, err := Unpack(outb, &rh)
 	if err != nil {
 		return nil, 0, err
 	}
-	outb = outb[read:]
-
 	if rh.Res != RCSuccess {
 		return nil, rh.Res, nil
 	}
 
-	return outb, rh.Res, nil
+	return outb[read:], rh.Res, nil
 }
