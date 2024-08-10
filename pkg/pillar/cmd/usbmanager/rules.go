@@ -3,6 +3,7 @@
 package usbmanager
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"os"
@@ -221,7 +222,8 @@ func (cpr *compositionORPassthroughRule) String() string {
 
 func (cpr *compositionORPassthroughRule) evaluate(ud usbdevice) (passthroughAction, uint8) {
 	if len(cpr.rules) == 0 {
-		panic("there has to be at least one rule")
+		log.Warnf("assertion failed, there has to be at least one rule")
+		return passthroughForbid, 0
 	}
 
 	var ret passthroughAction
@@ -326,7 +328,8 @@ func (*usbNetworkAdapterForbidPassthroughRule) netDevPathsImpl() []string {
 	netDir := filepath.Join(sysFSPath, "class", "net")
 	netDevfiles, err := os.ReadDir(netDir)
 	if err != nil {
-		panic(err)
+		log.Warnf("readdir of %s failed: %v", netDir, err)
+		return []string{}
 	}
 
 	netDevPaths := make([]string, 0)
@@ -334,14 +337,20 @@ func (*usbNetworkAdapterForbidPassthroughRule) netDevPathsImpl() []string {
 	for _, file := range netDevfiles {
 		// e.g. ../../devices/pci0000:00/0000:00:14.0/usb4/4-2/4-2.1/4-2.1:1.0/net/enp0s20f0u2u1/
 		relPath, err := os.Readlink(filepath.Join(netDir, file.Name()))
+		if errors.Is(err, os.ErrInvalid) {
+			continue
+		}
 		if err != nil {
-			panic(err)
+			log.Warnf("readlink of %s failed: %v", relPath, err)
+			continue
 		}
 
 		// remove net/enp0s20f0u2u1/ and prefix with sysfs dir
-		absPath, err := filepath.Abs(filepath.Join(netDir, relPath, "..", ".."))
+		netDirPath := filepath.Join(netDir, relPath, "..", "..")
+		absPath, err := filepath.Abs(netDirPath)
 		if err != nil {
-			panic(err)
+			log.Warnf("creating absolute filepath of %s failed: %v", netDirPath, err)
+			continue
 		}
 
 		netDevPaths = append(netDevPaths, absPath)

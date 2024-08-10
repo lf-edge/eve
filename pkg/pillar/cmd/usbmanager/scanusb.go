@@ -128,7 +128,8 @@ func ueventFile2usbDeviceImpl(ueventFilePath string, ueventFp io.Reader) *usbdev
 		if vals[0] == "BUSNUM" {
 			val64, err := strconv.ParseUint(vals[1], 10, 16)
 			if err != nil {
-				panic(err)
+				log.Warnf("could not parse BUSNUM %+v", vals)
+				return nil
 			}
 			busnum = uint16(val64)
 			busnumSet = true
@@ -136,7 +137,8 @@ func ueventFile2usbDeviceImpl(ueventFilePath string, ueventFp io.Reader) *usbdev
 		if vals[0] == "DEVNUM" {
 			val64, err := strconv.ParseUint(vals[1], 10, 16)
 			if err != nil {
-				panic(err)
+				log.Warnf("could not parse DEVNUM %+v", vals)
+				return nil
 			}
 			devnum = uint16(val64)
 			devnumSet = true
