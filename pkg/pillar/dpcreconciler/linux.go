@@ -1147,6 +1147,7 @@ func (r *LinuxDpcReconciler) getIntendedSrcIPRules(dpc types.DevicePortConfig) d
 				AdapterIfName: port.IfName,
 				IPAddr:        ipAddr.IP,
 				Priority:      devicenetwork.PbrLocalOrigPrio,
+				Table:         devicenetwork.DPCBaseRTIndex + ifIndex,
 			}, nil)
 		}
 	}
