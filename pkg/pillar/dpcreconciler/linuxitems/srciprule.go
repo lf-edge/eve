@@ -11,7 +11,6 @@ import (
 
 	"github.com/lf-edge/eve-libs/depgraph"
 	"github.com/lf-edge/eve/pkg/pillar/base"
-	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
 	"github.com/lf-edge/eve/pkg/pillar/dpcreconciler/genericitems"
 	"github.com/lf-edge/eve/pkg/pillar/netmonitor"
 	"github.com/lf-edge/eve/pkg/pillar/utils/netutils"
@@ -25,6 +24,7 @@ type SrcIPRule struct {
 	AdapterIfName string
 	IPAddr        net.IP
 	Priority      int
+	Table         int
 }
 
 // Name combines interface name with the IP address to construct
@@ -46,7 +46,7 @@ func (r SrcIPRule) Type() string {
 // Equal is a comparison method for two equally-named src-IP-rule instances.
 func (r SrcIPRule) Equal(other depgraph.Item) bool {
 	r2 := other.(SrcIPRule)
-	return r.Priority == r2.Priority
+	return r.Priority == r2.Priority && r.Table == r2.Table
 }
 
 // External returns false.
@@ -57,8 +57,8 @@ func (r SrcIPRule) External() bool {
 // String describes source-based IP rule.
 func (r SrcIPRule) String() string {
 	return fmt.Sprintf("Source-based IP rule: "+
-		"{adapter: %s, ifName: %s, ip: %s, prio: %d}",
-		r.AdapterLL, r.AdapterIfName, r.IPAddr, r.Priority)
+		"{adapter: %s, ifName: %s, ip: %s, prio: %d, table: %d}",
+		r.AdapterLL, r.AdapterIfName, r.IPAddr, r.Priority, r.Table)
 }
 
 // Dependencies lists the referenced adapter as the only dependency.
@@ -94,20 +94,7 @@ func (c *SrcIPRuleConfigurator) Create(ctx context.Context, item depgraph.Item) 
 
 func (c *SrcIPRuleConfigurator) makeNetlinkRule(rule SrcIPRule) (*netlink.Rule, error) {
 	r := netlink.NewRule()
-	ifIdx, exists, err := c.NetworkMonitor.GetInterfaceIndex(rule.AdapterIfName)
-	if !exists {
-		// Dependencies should prevent this.
-		err := fmt.Errorf("missing interface %s", rule.AdapterIfName)
-		c.Log.Error()
-		return nil, err
-	}
-	if err != nil {
-		err := fmt.Errorf("GetInterfaceIndex(%s) failed: %v",
-			rule.AdapterIfName, err)
-		c.Log.Error()
-		return nil, err
-	}
-	r.Table = devicenetwork.DPCBaseRTIndex + ifIdx
+	r.Table = rule.Table
 	r.Priority = rule.Priority
 	r.Family = netutils.HostFamily(rule.IPAddr)
 	r.Src = netutils.HostSubnet(rule.IPAddr)
