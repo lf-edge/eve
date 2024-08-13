@@ -89,7 +89,7 @@ table. If flow logging is disabled, packet is allowed or dropped immediately usi
 actions.
 If the packet is allowed and the destination is external, packet will be transmitted out through
 one of the network ports used by the network instance.
-Note that if NI is switch (L2 only), packet will be just forwarded through the (single) port,
+Note that if NI is switch (L2 only), packet will be just forwarded through one of the ports,
 not routed.
 If the packet is allowed and the destination is another app (inside the same NI), packet's dst
 MAC address will be set to the dst app MAC, and it will be forwarded again through the same bridge
@@ -115,7 +115,7 @@ actions.
 If the packet is allowed, it will match the connected route of the NI bridge and gets forwarded
 via the bridge and the VIF into the application.
 Note that in case of a switch NI (L2 only), D-NAT and routing operations are not performed
-and inbound packets are simply forwarded from the port, through the bridge and VIF into
+and inbound packets are simply forwarded from the input port, through the bridge and VIF into
 the application (still the ACLs do apply).
 The diagram below depicts all these inbound packet-flow stages:
 
@@ -219,7 +219,7 @@ More information about metadata server can be found in [ECO-METADATA.md](ECO-MET
 ### Switch Network Instance
 
 Switch Network Instance is a simple L2-only bridge between connected applications and
-(optionally) a device network port. Traffic is only forwarded by the host network stack.
+(optionally) one or more network ports. Traffic is only forwarded by the host network stack.
 This allows applications to directly access external endpoints and vice-versa.
 Switch network can be configured without port (i.e. as air-gapped), in which case it is merely
 a bridge between application VIFs.
@@ -255,17 +255,50 @@ Predefined shared labels are:
 * `uplink`: assigned to every management port
 * `freeuplink`: assigned to every management port with zero cost
 
-Please note that switch network instance is currently limited to one port at most.
-However, the plan is to support attaching multiple ports to a single bridge and run
-Spanning Tree Protocol to avoid bridge loops and the broadcast storm that results
-from them.
-
 Network instance (both Local and Switch) can be configured without any port. In this case,
 the network is "air-gapped", meaning that it is not reachable from outside and, likewise,
 it will not provide external connectivity to the applications. Air-gap NIs are used only
 to connect applications running on the same edge device.
 
-### Network Instance IP Routing
+### Multi-port Switch Network Instance
+
+A switch network instance with multiple ports enables the following:
+
+* Bridging multiple switches while adding redundant links. STP is used to prevent bridge loops.
+* Connecting end-devices (e.g. sensors) to the same Layer 2 segment as applications running
+  on the edge node.
+
+The user can use a shared label to select multiple network ports for a switch network
+instance. For a port to be eligible for bridging with other ports, it must be configured
+as app-shared and with DHCP passthrough - meaning it should not have a static IP address
+or run a DHCP client.
+
+EVE automatically runs the traditional IEEE 802.1D Spanning Tree Protocol (STP) for bridges
+with multiple ports to prevent bridge loops and the broadcast storms that would result from
+them. Users can enable BPDU guard on ports intended to connect end-devices, which are not
+expected to participate in the STP algorithm. Application VIFs always have BPDU guard enabled.
+
+### VLAN-aware Switch Network Instance
+
+By default, a Switch Network Instance does not apply any special handling to VLANs.
+It operates like a traditional Layer 2 switch, forwarding traffic based solely on MAC
+addresses without considering VLAN tags. This means that the bridge forwards both tagged
+and untagged frames without altering or interpreting the VLAN tags. As a result, any VLAN-tagged
+traffic will pass through the bridge unchanged, and no VLAN filtering or segregation will
+occur unless explicitly configured.
+
+To enable VLAN filtering and make the Switch Network Instance VLAN-aware, the user must
+designate at least one application VIF or NI port as a VLAN Access Port for a specific
+VLAN ID. Multiple applications connected to the same Switch Network Instance can either
+access the same VLAN - allowing direct communication with one another - or be separated
+into different virtual network segments. In the EVE API, access VLANs are assigned to NI
+ports within the NetworkInstanceConfig, while VLAN configurations for application interfaces
+are applied separately via the AppInstanceConfig.
+
+VIFs and NI ports that are not designated as VLAN access ports are configured by EVE
+as trunk ports, allowing all VLANs with at least one access port.
+
+### Local Network Instance IP Routing
 
 Local Network Instance with multiple ports will have link-local and connected routes
 from all the ports present in its routing table. Additionally, user may configure
@@ -307,7 +340,7 @@ network signal strength.
 
 #### Network Instance Default IP Route
 
-A typical use case for multi-path routing is the default route. NI with multiple
+A typical use case for multi-path routing is the default route. Local NI with multiple
 ports that have gateway IP defined cannot install default route for each of them
 into the NI routing table. Load-balancing is not supported and using different metrics
 (default behaviour in Linux with multiple default routes) would result in only
@@ -328,7 +361,7 @@ Most of the edge deployments will deploy applications that will have connectivit
 WAN (Internet) and LAN (e.g. shop floor, machine floor).
 There may be a single WAN port and multiple LAN ports.
 User has the option to either create a single local network instance with all those ports
-assigned and use the [IP routing capabilities of the network instance](#network-instance-ip-routing),
+assigned and use the [IP routing capabilities of the network instance](#local-network-instance-ip-routing),
 or create a separate instance for every port and use DHCP-based propagation of IP routes
 into applications. The latter option, described below, is more difficult to configure
 but gives the application full control over IP routing.
@@ -407,6 +440,7 @@ For container applications running inside an EVE-created shim-VM, EVE initialize
 of interfaces during the shim-VM boot. MTUs of all interfaces are passed to the VM via kernel
 boot arguments (/proc/cmdline). The init script parses out these values and applies them
 to application interfaces (excluding direct assignments).
+
 Furthermore, interfaces connected to local network instances will have their MTUs
 automatically updated using DHCP if there is a change in the MTU configuration. To update
 the MTU of interfaces connected to switch network instances, user may run an external

@@ -40,12 +40,14 @@ func (r *LinuxNIReconciler) updateCurrentGlobalState(onlyPortsChanged bool) (cha
 			var portIfName string
 			switch ni.config.Type {
 			case types.NetworkInstanceTypeSwitch:
-				// bridge.PortIfName should refer to bridge created by NIM
-				// for the port (wired, ethernet) interface.
-				// This bridge will be used by the network instance directly
+				// If the port is used with an IP address, bridge.PortIfName should refer
+				// to a bridge created by NIM for the port (wired, ethernet) interface.
+				// NIM-created bridge will be used by the network instance directly
 				// and Port config item will be used to refer to the bridged
 				// physical interface.
-				portIfName = portPhysIfName(port.IfName)
+				// L2-only ports are bridged by zedrouter (ports keep their original
+				// interface names).
+				portIfName = portPhysIfName(port)
 			case types.NetworkInstanceTypeLocal:
 				// bridge.PortIfName refers to a bridge created by NIM for the port
 				// (wired, ethernet) interface or directly to a wireless physical interface.
@@ -175,7 +177,7 @@ func (r *LinuxNIReconciler) updateCurrentNIBridge(niID uuid.UUID) (changed bool)
 			break
 		}
 	}
-	if !r.niBridgeIsCreatedByNIM(ni) {
+	if !r.niBridgeIsCreatedByNIM(ni.config, ni.bridge) {
 		return r.updateSingleItem(prevExtBridge, nil, l2SG)
 	}
 	ip, _, mac, found, err := r.getBridgeAddrs(niID)
@@ -198,6 +200,7 @@ func (r *LinuxNIReconciler) updateCurrentNIBridge(niID uuid.UUID) (changed bool)
 		CreatedByNIM: true,
 		MACAddress:   mac,
 		MTU:          mtu,
+		WithSTP:      false,
 	}
 	if ip != nil {
 		bridge.IPAddresses = append(bridge.IPAddresses, ip)
@@ -380,7 +383,7 @@ func (r *LinuxNIReconciler) getBridgeAddrs(niID uuid.UUID) (ipWithSubnet,
 	ni := r.nis[niID]
 	switch ni.config.Type {
 	case types.NetworkInstanceTypeSwitch:
-		if len(ni.bridge.Ports) == 1 {
+		if r.niBridgeIsCreatedByNIM(ni.config, ni.bridge) {
 			var ifIndex int
 			ifIndex, found, err = r.netMonitor.GetInterfaceIndex(ni.brIfName)
 			if err != nil || !found {
@@ -403,7 +406,7 @@ func (r *LinuxNIReconciler) getBridgeAddrs(niID uuid.UUID) (ipWithSubnet,
 			}
 			return
 		}
-		fallthrough // air-gapped switch NI
+		fallthrough // bridge created by zedrouter
 	case types.NetworkInstanceTypeLocal:
 		if ni.bridge.IPAddress != nil {
 			ipWithSubnet = ni.bridge.IPAddress
@@ -422,7 +425,7 @@ func (r *LinuxNIReconciler) getBridgeMTU(niID uuid.UUID) (mtu uint16, err error)
 	ni := r.nis[niID]
 	switch ni.config.Type {
 	case types.NetworkInstanceTypeSwitch:
-		if len(ni.bridge.Ports) == 1 {
+		if r.niBridgeIsCreatedByNIM(ni.config, ni.bridge) {
 			ifIndex, found, err := r.netMonitor.GetInterfaceIndex(ni.brIfName)
 			if !found {
 				err = fmt.Errorf("bridge %s does not exist", ni.brIfName)
@@ -436,7 +439,7 @@ func (r *LinuxNIReconciler) getBridgeMTU(niID uuid.UUID) (mtu uint16, err error)
 			}
 			return ifAttrs.MTU, nil
 		}
-		fallthrough // air-gapped switch NI
+		fallthrough // bridge created by zedrouter
 	case types.NetworkInstanceTypeLocal:
 		return ni.bridge.MTU, nil
 	}

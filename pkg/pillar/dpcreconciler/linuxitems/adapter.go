@@ -29,6 +29,9 @@ type Adapter struct {
 	L2Type types.L2LinkType
 	// WirelessType is used to distinguish between Ethernet, WiFi and cellular port.
 	WirelessType types.WirelessType
+	// DhcpType is used to determine the method used to obtain IP address for the network
+	// adapter.
+	DhcpType types.DhcpType
 	// MTU : Maximum transmission unit size.
 	MTU uint16
 }
@@ -52,7 +55,8 @@ func (a Adapter) Type() string {
 func (a Adapter) Equal(other depgraph.Item) bool {
 	a2 := other.(Adapter)
 	return a.L2Type == a2.L2Type &&
-		a.WirelessType == a.WirelessType &&
+		a.WirelessType == a2.WirelessType &&
+		a.DhcpType == a2.DhcpType &&
 		a.MTU == a2.MTU
 }
 
@@ -123,23 +127,20 @@ func (c *AdapterConfigurator) Create(ctx context.Context, item depgraph.Item) er
 		c.Log.Error(err)
 		return err
 	}
-	switch adapter.WirelessType {
-	case types.WirelessTypeNone:
-		// Continue below to put the Ethernet interface under a bridge.
-		break
-	case types.WirelessTypeWifi:
-		// Do not put the WiFi interface under a bridge.
-		// Just make sure that the interface is UP.
-		if err := netlink.LinkSetUp(link); err != nil {
-			err = fmt.Errorf("netlink.LinkSetUp(%s) failed: %v",
-				adapter.IfName, err)
-			c.Log.Error(err)
-			return err
-		}
-		return nil
-	case types.WirelessTypeCellular:
+	if adapter.WirelessType == types.WirelessTypeCellular {
 		// Managed by the wwan microservice, nothing to do here.
 		return nil
+	}
+	// Make sure that the interface is UP.
+	if err := netlink.LinkSetUp(link); err != nil {
+		err = fmt.Errorf("netlink.LinkSetUp(%s) failed: %v",
+			adapter.IfName, err)
+		c.Log.Error(err)
+		return err
+	}
+	if !c.isAdapterBridgedByNIM(adapter) {
+		// Do not proceed with bridging the adapter, just set the MTU.
+		return c.setAdapterMTU(adapter, link)
 	}
 	kernIfname := "k" + adapter.IfName
 	_, err = netlink.LinkByName(kernIfname)
@@ -203,6 +204,32 @@ func (c *AdapterConfigurator) Create(ctx context.Context, item depgraph.Item) er
 	return nil
 }
 
+// Return true if NIM is responsible for creating a Linux bridge for the adapter.
+// Bridge is NOT created by NIM if:
+//   - the adapter is wireless: it is not valid to put wireless adapter under a bridge,
+//   - or if the adapter is configured with DHCP passthrough: in that case, NIM does not
+//     have to apply IP config or test connectivity, and it can leave it up to zedrouter
+//     to bridge the port with applications (and possibly also with other ports) if requested
+//     by the user
+func (c *AdapterConfigurator) isAdapterBridgedByNIM(adapter Adapter) bool {
+	return adapter.WirelessType == types.WirelessTypeNone &&
+		(adapter.DhcpType == types.DhcpTypeClient || adapter.DhcpType == types.DhcpTypeStatic)
+}
+
+func (c *AdapterConfigurator) setAdapterMTU(adapter Adapter, link netlink.Link) error {
+	mtu := adapter.GetMTU()
+	if link.Attrs().MTU != int(mtu) {
+		err := netlink.LinkSetMTU(link, int(mtu))
+		if err != nil {
+			err = fmt.Errorf("failed to set MTU %d for adapter %s: %w",
+				mtu, adapter.IfName, err)
+			c.Log.Error(err)
+			return err
+		}
+	}
+	return nil
+}
+
 // Create alternate MAC address with the group bit toggled.
 func (c *AdapterConfigurator) alternativeMAC(mac net.HardwareAddr) net.HardwareAddr {
 	var altMacAddr net.HardwareAddr
@@ -220,8 +247,8 @@ func (c *AdapterConfigurator) Modify(_ context.Context, _, newItem depgraph.Item
 	if !isAdapter {
 		return fmt.Errorf("invalid item type %T, expected Adapter", newItem)
 	}
-	if adapter.WirelessType != types.WirelessTypeNone {
-		// wireless port, nothing to do here
+	if adapter.WirelessType == types.WirelessTypeCellular {
+		// Managed by the wwan microservice, nothing to do here.
 		return nil
 	}
 	adapterLink, err := netlink.LinkByName(adapter.IfName)
@@ -230,25 +257,15 @@ func (c *AdapterConfigurator) Modify(_ context.Context, _, newItem depgraph.Item
 		c.Log.Error(err)
 		return err
 	}
-	mtu := adapter.GetMTU()
-	if adapterLink.Attrs().MTU != int(mtu) {
-		err = netlink.LinkSetMTU(adapterLink, int(mtu))
-		if err != nil {
-			err = fmt.Errorf("failed to set MTU %d for adapter %s: %w",
-				mtu, adapter.IfName, err)
-			c.Log.Error(err)
-			return err
-		}
-	}
-	return nil
+	return c.setAdapterMTU(adapter, adapterLink)
 }
 
 // Delete undoes Create - i.e. moves MAC address and ifName back to the interface
 // and removes the bridge.
 func (c *AdapterConfigurator) Delete(ctx context.Context, item depgraph.Item) error {
 	adapter := item.(Adapter)
-	if adapter.WirelessType != types.WirelessTypeNone {
-		// wireless port, nothing to do here
+	if !c.isAdapterBridgedByNIM(adapter) {
+		// Adapter is not bridged by NIM, nothing to undo here.
 		return nil
 	}
 	// After removing/renaming interfaces it is best to clear the cache.
@@ -311,5 +328,7 @@ func (c *AdapterConfigurator) NeedsRecreate(oldItem, newItem depgraph.Item) (rec
 		// unreachable
 		return false
 	}
-	return oldCfg.L2Type != newCfg.L2Type || oldCfg.WirelessType != newCfg.WirelessType
+	return oldCfg.L2Type != newCfg.L2Type ||
+		oldCfg.WirelessType != newCfg.WirelessType ||
+		oldCfg.DhcpType != newCfg.DhcpType
 }

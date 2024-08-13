@@ -450,6 +450,19 @@ func parseStaticRoute(route *zconfig.IPRoute, config *types.NetworkInstanceConfi
 	return nil
 }
 
+func parseVlanAccessPort(accessPort *zconfig.VlanAccessPort,
+	config *types.NetworkInstanceConfig) error {
+	vlanID := accessPort.GetVlanId()
+	if vlanID < minVlanID || vlanID > maxVlanID {
+		return fmt.Errorf("VLAN ID out of range: %d", vlanID)
+	}
+	config.VlanAccessPorts = append(config.VlanAccessPorts, types.VlanAccessPort{
+		VlanID:    uint16(vlanID),
+		PortLabel: accessPort.GetAccessPort(),
+	})
+	return nil
+}
+
 func publishNetworkInstanceConfig(ctx *getconfigContext,
 	networkInstances []*zconfig.NetworkInstanceConfig) {
 
@@ -479,6 +492,9 @@ func publishNetworkInstanceConfig(ctx *getconfigContext,
 			PortLabel:           apiConfigEntry.Port.GetName(),
 			PropagateConnRoutes: apiConfigEntry.PropagateConnectedRoutes,
 			EnableFlowlog:       !apiConfigEntry.DisableFlowlog,
+			STPConfig: types.STPConfig{
+				PortsWithBpduGuard: apiConfigEntry.GetStp().GetPortsWithBpduGuard(),
+			},
 		}
 		uuidStr := networkInstanceConfig.UUID.String()
 		log.Functionf("publishNetworkInstanceConfig: processing %s %s type %d activate %v",
@@ -496,6 +512,15 @@ func publishNetworkInstanceConfig(ctx *getconfigContext,
 					types.AddressTypeNone)
 				// Let's relax the requirement until cloud side update the right IpType
 				networkInstanceConfig.IpType = types.AddressTypeNone
+			}
+			for _, accessPort := range apiConfigEntry.VlanAccessPorts {
+				err := parseVlanAccessPort(accessPort, &networkInstanceConfig)
+				if err != nil {
+					errStr := fmt.Sprintf("Invalid VLAN access port config: %v", err)
+					log.Errorf("publishNetworkInstanceConfig (%s): %s", uuidStr, errStr)
+					networkInstanceConfig.SetErrorNow(errStr)
+					// Proceed to send error back to controller
+				}
 			}
 		}
 

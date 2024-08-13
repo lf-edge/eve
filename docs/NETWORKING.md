@@ -82,11 +82,12 @@ EVE provides 2 types of network instances:
   - one or more network ports can be attached to network instance to provide
     external connectivity
 - **Switch**:
-  - simple L2-only switch between connected applications and a network port
-    (currently limited to one port at most)
+  - simple L2-only switch between connected applications and network ports
   - traffic is only forwarded
   - does not run DHCP server (but can be used in combination with external DHCP server)
-  - allows applications to directly connect to external network segments
+  - allows applications to directly connect to external network segments and, conversely,
+    permits external endpoints to directly access the applications, without routing or NAT
+    in between
 
 Both types of network instances can be air-gapped, i.e., without any network port attached
 and thus without external connectivity.
@@ -115,9 +116,10 @@ distributions, and could be confusing even for experienced Linux users, for exam
 - Main IP routing table (`ip route show table main`) is not used, instead every (IP-enabled)
   network adapter and every local network instance has its own routing table, which is selected
   using IP rules by the source IP address of a given packet (see `ip rule list`).
-- Network adapter for ethernet port is implemented as a bridge which enslaves the port and takes
-  its interface name and MAC address - this way we can then put application interfaces under this
-  bridge to implement switch network instance
+- (L3-enabled) Network adapter for ethernet port is implemented as a bridge which enslaves
+  the port and takes its interface name and MAC address - this way we can then use the bridge
+  as an IP endpoint and at the same time put application interfaces under this bridge
+  to implement (single-port) switch network instance
 - If flow logging is enabled, ACLs are implemented by iptables `mangle` table for the most
   part (not `filter`). Traffic flow that should not be allowed is marked with a "DROP mark"
   and routed into a dummy `blackhole` interface. The purpose of this is to ensure that conntrack

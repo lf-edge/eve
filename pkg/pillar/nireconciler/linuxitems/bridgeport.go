@@ -22,6 +22,8 @@ type BridgePort struct {
 	BridgeIfName string
 	// Variant : port should be one of the supported variants.
 	Variant BridgePortVariant
+	// True if the action of bridging the port is done outside zedrouter.
+	ExternallyBridged bool
 	// MTU : Maximum transmission unit size.
 	MTU uint16
 }
@@ -39,7 +41,7 @@ func (p BridgePort) Name() string {
 	return p.portIfName()
 }
 
-// Label for VLANPort.
+// Label for BridgePort.
 func (p BridgePort) Label() string {
 	return p.portIfName() + " (bridge port)"
 }
@@ -65,8 +67,9 @@ func (p BridgePort) External() bool {
 
 // String describes BridgePort.
 func (p BridgePort) String() string {
-	return fmt.Sprintf("BridgePort: {bridgeIfName: %s, portIfName: %s, MTU: %d}",
-		p.BridgeIfName, p.portIfName(), p.MTU)
+	return fmt.Sprintf("BridgePort: {bridgeIfName: %s, portIfName: %s, "+
+		"externallyBridged: %t, MTU: %d}",
+		p.BridgeIfName, p.portIfName(), p.ExternallyBridged, p.MTU)
 }
 
 // Dependencies returns the bridge and the port as the dependencies.
@@ -90,23 +93,28 @@ func (p BridgePort) Dependencies() (deps []dg.Dependency) {
 			},
 		})
 	} else if p.Variant.PortIfName != "" {
-		deps = append(deps, dg.Dependency{
-			RequiredItem: dg.ItemRef{
-				ItemType: generic.PortTypename,
-				ItemName: p.Variant.PortIfName,
-			},
-			MustSatisfy: func(item dg.Item) bool {
+		var mustSatisfy func(item dg.Item) bool
+		if p.ExternallyBridged {
+			// Bridging is actually done outside zedrouter (e.g. in NIM).
+			// BridgePort is only used for dependency purposes in this case
+			// (VLANPort and BPDUGuard depend on BridgePort).
+			mustSatisfy = func(item dg.Item) bool {
 				port, isPort := item.(generic.Port)
 				if !isPort {
 					// unreachable
 					return false
 				}
-				// Bridging is actually done by NIM for device ports.
-				// BridgePort is only used for dependency purposes in this case
-				// (VLANPort depends on BridgePort).
 				return port.MasterIfName == p.BridgeIfName
+			}
+		}
+		deps = append(deps, dg.Dependency{
+			RequiredItem: dg.ItemRef{
+				ItemType: generic.PortTypename,
+				ItemName: p.Variant.PortIfName,
 			},
-			Description: "Port must exist and it must be bridged (by NIM)",
+			MustSatisfy: mustSatisfy,
+			Description: "Port must exist, and if it is managed by NIM, " +
+				"it must already be bridged",
 			Attributes: dg.DependencyAttributes{
 				AutoDeletedByExternal: true,
 			},
@@ -146,8 +154,8 @@ func (c *BridgePortConfigurator) Create(ctx context.Context, item dg.Item) error
 	if !isBridgePort {
 		return fmt.Errorf("invalid item type %T, expected BridgePort", item)
 	}
-	if bridgePort.Variant.PortIfName != "" {
-		// NOOP for port - NIM is responsible for bridging device ports.
+	if bridgePort.ExternallyBridged {
+		// Port bridging is done outside zedrouter, NOOP here.
 		return nil
 	}
 	link, err := netlink.LinkByName(bridgePort.portIfName())
@@ -196,8 +204,8 @@ func (c *BridgePortConfigurator) Modify(_ context.Context, _, newItem dg.Item) (
 	if !isBridgePort {
 		return fmt.Errorf("invalid item type %T, expected BridgePort", newItem)
 	}
-	if bridgePort.Variant.PortIfName != "" {
-		// NOOP for port - NIM is responsible for bridging device ports.
+	if bridgePort.ExternallyBridged {
+		// Port bridging is done outside zedrouter, NOOP here.
 		return nil
 	}
 	link, err := netlink.LinkByName(bridgePort.portIfName())
@@ -237,8 +245,8 @@ func (c *BridgePortConfigurator) Delete(ctx context.Context, item dg.Item) (err 
 	if !isBridgePort {
 		return fmt.Errorf("invalid item type %T, expected BridgePort", item)
 	}
-	if bridgePort.Variant.PortIfName != "" {
-		// NOOP for port - NIM is responsible for bridging device ports.
+	if bridgePort.ExternallyBridged {
+		// Port bridging is done outside zedrouter, NOOP here.
 		return nil
 	}
 	link, err := netlink.LinkByName(bridgePort.portIfName())
@@ -287,5 +295,6 @@ func (c *BridgePortConfigurator) NeedsRecreate(oldItem, newItem dg.Item) (recrea
 		// unreachable
 		return false
 	}
-	return oldCfg.BridgeIfName != newCfg.BridgeIfName
+	return oldCfg.BridgeIfName != newCfg.BridgeIfName ||
+		oldCfg.ExternallyBridged != newCfg.ExternallyBridged
 }

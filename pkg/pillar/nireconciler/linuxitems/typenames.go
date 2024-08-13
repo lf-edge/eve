@@ -20,4 +20,6 @@ const (
 	VLANPortTypename = "VLANPort"
 	// SysctlTypename : typename for kernel config applied via sysctl.
 	SysctlTypename = "Sysctl"
+	// BPDUGuardTypename : typename for BPDU guard enabled on a bridge port.
+	BPDUGuardTypename = "BPDUGuard"
 )

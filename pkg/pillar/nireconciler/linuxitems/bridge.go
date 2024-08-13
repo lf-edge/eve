@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"os"
 
 	dg "github.com/lf-edge/eve-libs/depgraph"
 	"github.com/lf-edge/eve/pkg/pillar/base"
@@ -32,6 +33,8 @@ type Bridge struct {
 	IPAddresses []*net.IPNet
 	// MTU : Maximum transmission unit size.
 	MTU uint16
+	// WithSTP: enable to run the Spanning Tree Protocol (STP).
+	WithSTP bool
 }
 
 // Name returns the physical interface name.
@@ -59,7 +62,7 @@ func (b Bridge) Equal(other dg.Item) bool {
 		b.CreatedByNIM == b2.CreatedByNIM &&
 		bytes.Equal(b.MACAddress, b2.MACAddress) &&
 		generics.EqualSetsFn(b.IPAddresses, b2.IPAddresses, netutils.EqualIPNets) &&
-		b.MTU == b2.MTU
+		b.MTU == b2.MTU && b.WithSTP == b2.WithSTP
 }
 
 // External returns true if it was created by NIM and not be zedrouter.
@@ -70,8 +73,8 @@ func (b Bridge) External() bool {
 // String describes Bridge.
 func (b Bridge) String() string {
 	return fmt.Sprintf("Bridge: {ifName: %s, createdByNIM: %t, "+
-		"macAddress: %s, ipAddresses: %v, MTU: %d}", b.IfName, b.CreatedByNIM,
-		b.MACAddress, b.IPAddresses, b.MTU)
+		"macAddress: %s, ipAddresses: %v, MTU: %d, withSTP: %t}", b.IfName,
+		b.CreatedByNIM, b.MACAddress, b.IPAddresses, b.MTU, b.WithSTP)
 }
 
 // Dependencies returns reservations of IPs that bridge should have assigned.
@@ -149,6 +152,13 @@ func (c *BridgeConfigurator) Create(ctx context.Context, item dg.Item) error {
 		c.Log.Error(err)
 		return err
 	}
+	// Run STP if requested.
+	if bridge.WithSTP {
+		if err = c.startOrStopSTP(bridge.IfName, true); err != nil {
+			c.Log.Error(err)
+			return err
+		}
+	}
 	// Assign IP addresses.
 	link, err := netlink.LinkByName(bridge.IfName)
 	if err != nil {
@@ -166,7 +176,22 @@ func (c *BridgeConfigurator) Create(ctx context.Context, item dg.Item) error {
 	return nil
 }
 
-// Modify is able to update the MTU attribute.
+func (c *BridgeConfigurator) startOrStopSTP(brIfName string, start bool) error {
+	sysOptVal := "0"
+	action := "stop"
+	if start {
+		sysOptVal = "1"
+		action = "start"
+	}
+	sysOptPath := fmt.Sprintf("/sys/class/net/%s/bridge/stp_state", brIfName)
+	err := os.WriteFile(sysOptPath, []byte(sysOptVal), 0644)
+	if err != nil {
+		return fmt.Errorf("failed to %s STP for bridge %s: %w", action, brIfName, err)
+	}
+	return nil
+}
+
+// Modify is able to update the MTU attribute and start/stop STP.
 func (c *BridgeConfigurator) Modify(_ context.Context, _, newItem dg.Item) (err error) {
 	bridge, isBridge := newItem.(Bridge)
 	if !isBridge {
@@ -188,8 +213,11 @@ func (c *BridgeConfigurator) Modify(_ context.Context, _, newItem dg.Item) (err 
 			return err
 		}
 	}
+	if err = c.startOrStopSTP(bridge.IfName, bridge.WithSTP); err != nil {
+		c.Log.Error(err)
+		return err
+	}
 	return nil
-
 }
 
 // Delete removes Linux bridge.
@@ -215,7 +243,8 @@ func (c *BridgeConfigurator) Delete(ctx context.Context, item dg.Item) error {
 }
 
 // NeedsRecreate returns true when bridge addresses change.
-// However, BridgeConfigurator is able to update MTU without re-creating the bridge.
+// However, BridgeConfigurator is able to update MTU and the STP state without
+// re-creating the bridge.
 func (c *BridgeConfigurator) NeedsRecreate(oldItem, newItem dg.Item) (recreate bool) {
 	oldCfg, isBridge := oldItem.(Bridge)
 	if !isBridge {

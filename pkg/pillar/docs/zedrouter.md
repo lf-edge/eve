@@ -342,7 +342,7 @@ Alternatively, generate an SVG image locally with:
 Log messages produced by [NIReconciler](#nireconciler) and therefore related to config
 reconciliation inside the network stack are prefixed with `NI Reconciler:`.
 
-When the intended state changes NI Reconiler will inform about the change:
+When the intended state changes NI Reconciler will inform about the change:
 
 ```text
 time="2024-07-16 10:11:30" level=info msg="NI Reconciler: Rebuilding intended config for NI 9ca83da9-94e8-48b4-9ae8-3f188c5c694a, reasons: route change, port IP change"

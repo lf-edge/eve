@@ -10,9 +10,13 @@ import (
 
 	"github.com/lf-edge/eve/pkg/pillar/nireconciler"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
 	"github.com/lf-edge/eve/pkg/pillar/utils/netutils"
 	uuid "github.com/satori/go.uuid"
 )
+
+// Used as a constant.
+var emptyUUID = uuid.UUID{}
 
 func (z *zedrouter) doNetworkInstanceSanityCheck(config *types.NetworkInstanceConfig) error {
 	z.log.Functionf("Sanity Checking NetworkInstance(%s-%s): type:%d, IpType:%d",
@@ -427,4 +431,33 @@ func (z *zedrouter) matchACEs(ace1 types.ACE, ace2 types.ACE,
 		}
 	}
 	return true
+}
+
+// Check if there is a NI other than <thisNI> which already uses port with the given
+// logical label.
+// If <onlySwitch> is true, we consider only Switch NIs.
+// If <onlyMultiport> is true, we consider only NIs with multiple ports.
+func (z *zedrouter) checkIfPortUsedByAnotherNI(
+	thisNI uuid.UUID, portLL string, onlySwitch, onlyMultiport bool) (anotherNI uuid.UUID) {
+	for _, item := range z.pubNetworkInstanceStatus.GetAll() {
+		status := item.(types.NetworkInstanceStatus)
+		if status.UUID == thisNI {
+			continue
+		}
+		config := z.lookupNetworkInstanceConfig(status.Key())
+		if config == nil {
+			// NI is being deleted.
+			continue
+		}
+		if onlySwitch && status.Type != types.NetworkInstanceTypeSwitch {
+			continue
+		}
+		if onlyMultiport && len(status.Ports) <= 1 {
+			continue
+		}
+		if generics.ContainsItem(status.Ports, portLL) {
+			return status.UUID
+		}
+	}
+	return emptyUUID
 }
