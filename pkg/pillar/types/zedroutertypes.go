@@ -685,6 +685,17 @@ type NetworkInstanceConfig struct {
 	// because of this feature and thus introduce additional packet processing overhead.
 	EnableFlowlog bool
 
+	// Spanning Tree Protocol configuration.
+	// Only applied for Switch NI with multiple ports.
+	STPConfig STPConfig
+
+	// VLAN access ports configured for a switch network instance.
+	// For other types of network instances, this option is ignored.
+	// This setting applies to physical network ports attached to the network instance.
+	// VLAN configuration for application interfaces is applied separately via AppNetAdapterConfig
+	// (see AppNetAdapterConfig.AccessVlanID).
+	VlanAccessPorts []VlanAccessPort
+
 	// Any errors from the parser
 	// ErrorAndTime provides SetErrorNow() and ClearError()
 	ErrorAndTime
@@ -719,6 +730,22 @@ type IPRouteConfig struct {
 	// cellular network signal strength. If this option is enabled, EVE will prefer
 	// cellular ports with better signal (only among cellular ports).
 	PreferStrongerWwanSignal bool
+}
+
+// STPConfig : Spanning Tree Protocol configuration.
+// Only applied for Switch NI with multiple ports.
+type STPConfig struct {
+	// Either a single NI port referenced by its name (SystemAdapter.Name, aka logical label)
+	// or an adapter shared-label matching zero or more NI ports.
+	PortsWithBpduGuard string
+}
+
+// VlanAccessPort : config applied to physical port(s) attached to a Switch NI.
+type VlanAccessPort struct {
+	VlanID uint16
+	// Either a single NI port referenced by its name (SystemAdapter.Name, aka logical label)
+	// or an adapter shared-label matching zero or more NI ports.
+	PortLabel string
 }
 
 // ConnectivityProbeMethod -  method to use to determine the connectivity status of a port.
@@ -857,18 +884,6 @@ func (config *NetworkInstanceConfig) IsIPv6() bool {
 		return true
 	}
 	return false
-}
-
-// IsUsingPortBridge returns true if the network instance is using the bridge
-// created (by NIM) for the selected port, instead of creating its own bridge.
-func (config *NetworkInstanceConfig) IsUsingPortBridge() bool {
-	switch config.Type {
-	case NetworkInstanceTypeSwitch:
-		airGapped := config.PortLabel == ""
-		return !airGapped
-	default:
-		return false
-	}
 }
 
 type ChangeInProgressType int32

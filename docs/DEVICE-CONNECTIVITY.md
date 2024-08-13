@@ -30,8 +30,8 @@ are user-defined, simpler human-readable strings, which are only required to be 
 the edge-node, not globally.
 Additionally, (predefined or user-defined) "shared" labels are not unique and the same label
 can be assigned to multiple ports. This is currently used to reference and attach multiple
-ports into a local network instance. Also, IP route with multiple possible paths may reference
-a group of suitable output ports using an adapter shared label.
+ports into a local or a switch network instance. Also, IP route with multiple possible paths may
+reference a group of suitable output ports using an adapter shared label.
 
 ### Physical network ports
 
