@@ -52,6 +52,9 @@ const (
 	// DPCStateAsyncWait : waiting for some config operations to finalize which are
 	// running asynchronously in the background.
 	DPCStateAsyncWait
+	// DPCStateWwanWait : waiting for the wwan microservice to apply the latest
+	// cellular configuration.
+	DPCStateWwanWait
 )
 
 // String returns the string name
@@ -75,6 +78,8 @@ func (status DPCState) String() string {
 		return "DPC_REMOTE_WAIT"
 	case DPCStateAsyncWait:
 		return "DPC_ASYNC_WAIT"
+	case DPCStateWwanWait:
+		return "DPC_WWAN_WAIT"
 	default:
 		return fmt.Sprintf("Unknown status %d", status)
 	}
@@ -85,6 +90,19 @@ const (
 	PortCostMin = uint8(0)
 	// PortCostMax is the highest cost
 	PortCostMax = uint8(255)
+)
+
+const (
+	// DefaultMTU : the default Ethernet MTU of 1500 bytes.
+	DefaultMTU = 1500
+	// MinMTU : minimum accepted MTU value.
+	// As per RFC 8200, the MTU must not be less than 1280 bytes to accommodate IPv6 packets.
+	MinMTU = 1280
+	// MaxMTU : maximum accepted MTU value.
+	// The Total Length field of IPv4 and the Payload Length field of IPv6 each have a size
+	// of 16 bits, thus allowing data of up to 65535 octets.
+	// For now, we will not support IPv6 jumbograms.
+	MaxMTU = 65535
 )
 
 // DevicePortConfig is a misnomer in that it includes the total test results
@@ -163,9 +181,9 @@ func (config DevicePortConfig) LogModify(logBase *base.LogObject, old interface{
 			config.LastSucceeded.After(oldConfig.LastFailed) &&
 			oldConfig.LastSucceeded.After(oldConfig.LastFailed) {
 			// if we have success again, reduce log level
-			logData.Function("DevicePortConfig port modify")
+			logData.Function("DevicePortConfig modify")
 		} else {
-			logData.Notice("DevicePortConfig port modify")
+			logData.Notice("DevicePortConfig modify")
 		}
 	}
 	// XXX which fields to compare/log?
@@ -187,11 +205,8 @@ func (config DevicePortConfig) LogModify(logBase *base.LogObject, old interface{
 				AddField("old-last-succeeded", op.LastSucceeded).
 				AddField("old-last-failed", op.LastFailed)
 			if p.HasError() == op.HasError() &&
-				p.LastFailed == op.LastFailed &&
-				p.LastError == op.LastError &&
-				p.LastSucceeded.After(op.LastFailed) &&
-				op.LastSucceeded.After(op.LastFailed) {
-				// if we have success again, reduce log level
+				p.LastError == op.LastError {
+				// if we have success or the same error again, reduce log level
 				logData.Function("DevicePortConfig port modify")
 			} else {
 				logData.Notice("DevicePortConfig port modify")
@@ -229,11 +244,10 @@ func (config DevicePortConfig) LogKey() string {
 
 // LookupPortByIfName returns port configuration for the given interface.
 func (config *DevicePortConfig) LookupPortByIfName(ifName string) *NetworkPortConfig {
-	if config != nil {
-		for _, port := range config.Ports {
-			if port.IfName == ifName {
-				return &port
-			}
+	for i := range config.Ports {
+		port := &config.Ports[i]
+		if ifName == port.IfName {
+			return port
 		}
 	}
 	return nil
@@ -242,29 +256,31 @@ func (config *DevicePortConfig) LookupPortByIfName(ifName string) *NetworkPortCo
 // LookupPortByLogicallabel returns port configuration referenced by the logical label.
 func (config *DevicePortConfig) LookupPortByLogicallabel(
 	label string) *NetworkPortConfig {
-	for _, port := range config.Ports {
+	for i := range config.Ports {
+		port := &config.Ports[i]
 		if port.Logicallabel == label {
-			return &port
+			return port
 		}
 	}
 	return nil
 }
 
-// GetPortByIfName - DevicePortConfig method to get config pointer
-func (config *DevicePortConfig) GetPortByIfName(
-	ifname string) *NetworkPortConfig {
-	for indx := range config.Ports {
-		portPtr := &config.Ports[indx]
-		if ifname == portPtr.IfName {
-			return portPtr
+// LookupPortsByLabel returns all port configurations with the given label assigned
+// (can be logical label or shared label).
+func (config *DevicePortConfig) LookupPortsByLabel(
+	label string) (ports []*NetworkPortConfig) {
+	for i := range config.Ports {
+		port := &config.Ports[i]
+		if port.Logicallabel == label || generics.ContainsItem(port.SharedLabels, label) {
+			ports = append(ports, port)
 		}
 	}
-	return nil
+	return ports
 }
 
 // RecordPortSuccess - Record for given ifname in PortConfig
 func (config *DevicePortConfig) RecordPortSuccess(ifname string) {
-	portPtr := config.GetPortByIfName(ifname)
+	portPtr := config.LookupPortByIfName(ifname)
 	if portPtr != nil {
 		portPtr.RecordSuccess()
 	}
@@ -272,18 +288,33 @@ func (config *DevicePortConfig) RecordPortSuccess(ifname string) {
 
 // RecordPortFailure - Record for given ifname in PortConfig
 func (config *DevicePortConfig) RecordPortFailure(ifname string, errStr string) {
-	portPtr := config.GetPortByIfName(ifname)
+	portPtr := config.LookupPortByIfName(ifname)
 	if portPtr != nil {
 		portPtr.RecordFailure(errStr)
 	}
 }
 
-// DoSanitize -
-func (config *DevicePortConfig) DoSanitize(log *base.LogObject,
-	sanitizeTimePriority bool, sanitizeKey bool, key string,
-	sanitizeName, sanitizeL3Port bool) {
+// DPCSanitizeArgs : arguments for DevicePortConfig.DoSanitize().
+type DPCSanitizeArgs struct {
+	SanitizeTimePriority bool
+	SanitizeKey          bool
+	KeyToUseIfEmpty      string
+	SanitizeName         bool
+	SanitizeL3Port       bool
+	SanitizeSharedLabels bool
+}
 
-	if sanitizeTimePriority {
+// DoSanitize ensures that some of the DPC attributes that could be missing
+// in a user-injected override.json or after an EVE upgrade are filled in.
+func (config *DevicePortConfig) DoSanitize(log *base.LogObject, args DPCSanitizeArgs) {
+	if args.SanitizeKey {
+		if config.Key == "" {
+			config.Key = args.KeyToUseIfEmpty
+			log.Noticef("DoSanitize: Forcing Key for %s TS %v\n",
+				config.Key, config.TimePriority)
+		}
+	}
+	if args.SanitizeTimePriority {
 		zeroTime := time.Time{}
 		if config.TimePriority == zeroTime {
 			// A json override file should really contain a
@@ -294,9 +325,9 @@ func (config *DevicePortConfig) DoSanitize(log *base.LogObject,
 			// we use 1970; using the modify time of the file
 			// is too unpredictable.
 			_, err1 := os.Stat(fmt.Sprintf("%s/DevicePortConfig/%s.json",
-				TmpDirname, key))
+				TmpDirname, config.Key))
 			_, err2 := os.Stat(fmt.Sprintf("%s/DevicePortConfig/%s.json",
-				IdentityDirname, key))
+				IdentityDirname, config.Key))
 			if err1 == nil || err2 == nil {
 				config.TimePriority = time.Date(1980,
 					time.January, 1, 0, 0, 0, 0, time.UTC)
@@ -305,17 +336,10 @@ func (config *DevicePortConfig) DoSanitize(log *base.LogObject,
 					time.January, 1, 0, 0, 0, 0, time.UTC)
 			}
 			log.Warnf("DoSanitize: Forcing TimePriority for %s to %v",
-				key, config.TimePriority)
+				config.Key, config.TimePriority)
 		}
 	}
-	if sanitizeKey {
-		if config.Key == "" {
-			config.Key = key
-			log.Noticef("DoSanitize: Forcing Key for %s TS %v\n",
-				key, config.TimePriority)
-		}
-	}
-	if sanitizeName {
+	if args.SanitizeName {
 		// In case Phylabel isn't set we make it match IfName. Ditto for Logicallabel
 		// XXX still needed?
 		for i := range config.Ports {
@@ -323,16 +347,16 @@ func (config *DevicePortConfig) DoSanitize(log *base.LogObject,
 			if port.Phylabel == "" {
 				port.Phylabel = port.IfName
 				log.Functionf("XXX DoSanitize: Forcing Phylabel for %s ifname %s\n",
-					key, port.IfName)
+					config.Key, port.IfName)
 			}
 			if port.Logicallabel == "" {
 				port.Logicallabel = port.IfName
 				log.Functionf("XXX DoSanitize: Forcing Logicallabel for %s ifname %s\n",
-					key, port.IfName)
+					config.Key, port.IfName)
 			}
 		}
 	}
-	if sanitizeL3Port {
+	if args.SanitizeL3Port {
 		// IsL3Port flag was introduced to NetworkPortConfig in 7.3.0
 		// It is used to differentiate between L3 ports (with IP/DNS config)
 		// and intermediate L2-only ports (bond slaves, VLAN parents, etc.).
@@ -354,14 +378,23 @@ func (config *DevicePortConfig) DoSanitize(log *base.LogObject,
 			}
 		}
 	}
+	if args.SanitizeSharedLabels {
+		// When upgrading from older EVE version or importing override.json,
+		// shared labels can be missing.
+		for i := range config.Ports {
+			config.Ports[i].UpdateEveDefinedSharedLabels()
+		}
+	}
 }
 
 // CountMgmtPorts returns the number of management ports
 // Exclude any broken ones with Dhcp = DhcpTypeNone
-func (config *DevicePortConfig) CountMgmtPorts() int {
+// Optionally exclude mgmt ports with invalid config
+func (config *DevicePortConfig) CountMgmtPorts(onlyValidConfig bool) int {
 	count := 0
 	for _, port := range config.Ports {
-		if port.IsMgmt && port.Dhcp != DhcpTypeNone {
+		if port.IsMgmt && port.Dhcp != DhcpTypeNone &&
+			!(onlyValidConfig && port.InvalidConfig) {
 			count++
 		}
 	}
@@ -387,9 +420,11 @@ func (config *DevicePortConfig) MostlyEqual(config2 *DevicePortConfig) bool {
 			p1.USBAddr != p2.USBAddr ||
 			p1.Phylabel != p2.Phylabel ||
 			p1.Logicallabel != p2.Logicallabel ||
+			!generics.EqualSets(p1.SharedLabels, p2.SharedLabels) ||
 			p1.Alias != p2.Alias ||
 			p1.IsMgmt != p2.IsMgmt ||
-			p1.Cost != p2.Cost {
+			p1.Cost != p2.Cost ||
+			p1.MTU != p2.MTU {
 			return false
 		}
 		if !reflect.DeepEqual(p1.DhcpConfig, p2.DhcpConfig) ||
@@ -437,7 +472,7 @@ func (config DevicePortConfig) IsDPCUntested() bool {
 // IsDPCUsable - checks whether something is invalid; no management IP
 // addresses means it isn't usable hence we return false if none.
 func (config DevicePortConfig) IsDPCUsable() bool {
-	mgmtCount := config.CountMgmtPorts()
+	mgmtCount := config.CountMgmtPorts(true)
 	return mgmtCount > 0
 }
 
@@ -511,18 +546,69 @@ type NetworkPortConfig struct {
 	PCIAddr      string
 	Phylabel     string // Physical name set by controller/model
 	Logicallabel string // SystemAdapter's name which is logical label in phyio
+	// Unlike the logicallabel, which is defined in the device model and unique
+	// for each port, these user-configurable "shared" labels are potentially
+	// assigned to multiple ports so that they can be used all together with
+	// some config object (e.g. multiple ports assigned to NI).
+	// Some special shared labels, such as "uplink" or "freeuplink", are assigned
+	// to particular ports automatically.
+	SharedLabels []string
 	Alias        string // From SystemAdapter's alias
 	// NetworkUUID - UUID of the Network Object configured for the port.
 	NetworkUUID uuid.UUID
-	IsMgmt      bool  // Used to talk to controller
-	IsL3Port    bool  // True if port is applicable to operate on the network layer
-	Cost        uint8 // Zero is free
+	IsMgmt      bool // Used to talk to controller
+	IsL3Port    bool // True if port is applicable to operate on the network layer
+	// InvalidConfig is used to flag port config which failed parsing or (static) validation
+	// checks, such as: malformed IP address, undefined required field, IP address not inside
+	// the subnet, etc.
+	InvalidConfig bool
+	Cost          uint8 // Zero is free
+	MTU           uint16
 	DhcpConfig
 	ProxyConfig
 	L2LinkConfig
 	WirelessCfg WirelessConfig
 	// TestResults - Errors from parsing plus success/failure from testing
 	TestResults
+}
+
+// EVE-defined port labels.
+const (
+	// AllPortsLabel references all device ports.
+	AllPortsLabel = "all"
+	// UplinkLabel references all management ports.
+	UplinkLabel = "uplink"
+	// FreeUplinkLabel references all management ports with 0 cost.
+	FreeUplinkLabel = "freeuplink"
+)
+
+// IsEveDefinedPortLabel returns true if the given port label is defined by EVE
+// and not by the user.
+func IsEveDefinedPortLabel(label string) bool {
+	switch label {
+	case AllPortsLabel, UplinkLabel, FreeUplinkLabel:
+		return true
+	}
+	return false
+}
+
+// UpdateEveDefinedSharedLabels updates EVE-defined shared labels that this port
+// should have based on its properties.
+func (port *NetworkPortConfig) UpdateEveDefinedSharedLabels() {
+	// First remove any EVE-defined shared labels from the list.
+	isUserLabel := func(label string) bool {
+		return !IsEveDefinedPortLabel(label)
+	}
+	port.SharedLabels = generics.FilterList(port.SharedLabels, isUserLabel)
+	// (Re-)Add shared labels that this port should have based on its config.
+	port.SharedLabels = append(port.SharedLabels, AllPortsLabel)
+	if port.IsMgmt {
+		port.SharedLabels = append(port.SharedLabels, UplinkLabel)
+	}
+	if port.IsMgmt && port.Cost == 0 {
+		port.SharedLabels = append(port.SharedLabels, FreeUplinkLabel)
+	}
+	port.SharedLabels = generics.FilterDuplicates(port.SharedLabels)
 }
 
 // DhcpType decides how EVE should obtain IP address for a given network port.
@@ -723,9 +809,14 @@ func (ap CellularAccessPoint) Equal(ap2 CellularAccessPoint) bool {
 		ap.APN != ap2.APN {
 		return false
 	}
+	enc1 := ap.EncryptedCredentials
+	enc2 := ap2.EncryptedCredentials
 	if ap.AuthProtocol != ap2.AuthProtocol ||
-		// TODO (how to properly detect changed username/password ?)
-		!reflect.DeepEqual(ap.EncryptedCredentials, ap2.EncryptedCredentials) {
+		enc1.CipherBlockID != enc2.CipherBlockID ||
+		enc1.CipherContextID != enc2.CipherContextID ||
+		!bytes.Equal(enc1.InitialValue, enc2.InitialValue) ||
+		!bytes.Equal(enc1.CipherData, enc2.CipherData) ||
+		!bytes.Equal(enc1.ClearTextHash, enc2.ClearTextHash) {
 		return false
 	}
 	if !generics.EqualLists(ap.PreferredPLMNs, ap2.PreferredPLMNs) ||
@@ -937,6 +1028,7 @@ type NetworkXObjectConfig struct {
 	DNSNameToIPList []DNSNameToIP // Used for DNS and ACL ipset
 	Proxy           *ProxyConfig
 	WirelessCfg     WirelessConfig
+	MTU             uint16
 	// Any errors from the parser
 	// ErrorAndTime provides SetErrorNow() and ClearError()
 	ErrorAndTime

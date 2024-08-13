@@ -169,3 +169,13 @@ func AppendIfNotDuplicate[Type comparable](list []Type, item Type) []Type {
 	}
 	return list
 }
+
+// MapList return a new slice with results of applying the given function to every
+// item in the list.
+func MapList[Type1, Type2 any](list []Type1, mapFunc func(a Type1) Type2) []Type2 {
+	results := make([]Type2, 0, len(list))
+	for _, item := range list {
+		results = append(results, mapFunc(item))
+	}
+	return results
+}
