@@ -6,7 +6,7 @@
 
 # Script version, don't forget to bump up once something is changed
 
-VERSION=28
+VERSION=29
 # Add required packages here, it will be passed to "apk add".
 # Once something added here don't forget to add the same package
 # to the Dockerfile ('ENV PKGS' line) of the debug container,
@@ -173,6 +173,7 @@ echo "- basic setup"
 TMP_DIR=$(mktemp -d -t -p /persist/tmp/)
 LOG_TMP_DIR="$TMP_DIR/dayslogs"
 DIR="$TMP_DIR/$INFO_DIR_SUFFIX"
+mkdir -p "/persist/eve-info"
 mkdir -p "$DIR"
 mkdir -p "$DIR/network"
 
