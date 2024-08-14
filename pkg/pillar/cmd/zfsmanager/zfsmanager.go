@@ -4,8 +4,10 @@
 package zfsmanager
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -237,6 +239,7 @@ func processZVolDeviceEvents(ctxPtr *zfsContext) {
 			Device:  key,
 			Dataset: event.dataset,
 		}
+		log.Functionf("key %s event %+v", key, event)
 		if event.delete {
 			if el, _ := ctxPtr.zVolStatusPub.Get(zvolStatus.Key()); el == nil {
 				processedKeys = append(processedKeys, key)
@@ -247,6 +250,7 @@ func processZVolDeviceEvents(ctxPtr *zfsContext) {
 				return true
 			}
 			processedKeys = append(processedKeys, key)
+			log.Functionf("processed delete for %s", key)
 			return true
 		}
 		l, err := filepath.EvalSymlinks(key)
@@ -265,6 +269,7 @@ func processZVolDeviceEvents(ctxPtr *zfsContext) {
 			return true
 		}
 		processedKeys = append(processedKeys, key)
+		log.Functionf("processed add for %s", key)
 		return true
 	}
 	ctxPtr.zVolDeviceEvents.Range(checker)
@@ -273,7 +278,7 @@ func processZVolDeviceEvents(ctxPtr *zfsContext) {
 	}
 }
 
-func deviceWatcher(ctxPtr *zfsContext) {
+func deviceWatcherLoop(ctxPtr *zfsContext) {
 	w, err := fsnotify.NewWatcher()
 	if err != nil {
 		log.Fatalf("NewWatcher: %s", err)
@@ -296,6 +301,7 @@ func deviceWatcher(ctxPtr *zfsContext) {
 						log.Errorf("cannot determine dataset for device: %s", walkPath)
 						return nil
 					}
+					log.Functionf("adding dataset %s", dataset)
 					ctxPtr.zVolDeviceEvents.Store(walkPath, zVolDeviceEvent{
 						dataset: dataset,
 					})
@@ -305,8 +311,20 @@ func deviceWatcher(ctxPtr *zfsContext) {
 		})
 	}
 
-	if err := processRecursive(types.ZVolDevicePrefix); err != nil {
-		log.Errorf("Failed to Walk in %s: %s", types.ZVolDevicePrefix, err)
+	for {
+		// Wait for directory to appear if it isn't already there
+		waitForDir(types.ZVolDevicePrefix)
+
+		if err := processRecursive(types.ZVolDevicePrefix); err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				log.Warnf("Failed to Walk in %s: %s",
+					types.ZVolDevicePrefix, err)
+				continue
+			}
+			log.Errorf("Failed to Walk in %s: %s",
+				types.ZVolDevicePrefix, err)
+		}
+		break
 	}
 
 	for event := range w.Events {
@@ -314,12 +332,15 @@ func deviceWatcher(ctxPtr *zfsContext) {
 		fileName := event.Name
 		s, err := os.Stat(fileName)
 		if err == nil && s != nil && s.IsDir() {
+			// Make sure we watch recursively if the directory exists
 			if event.Op&fsnotify.Create != 0 {
 				if err := processRecursive(fileName); err != nil {
 					log.Errorf("Failed to Walk in %s: %s", fileName, err)
 				}
 			}
-			continue
+			// Proceed to handle create and remove
+			// Due to timing the Stat might succeed even when
+			// processing a remove event.
 		}
 		if event.Op&fsnotify.Create != 0 {
 			dataset := zfs.GetDatasetByDevice(fileName)
@@ -334,6 +355,54 @@ func deviceWatcher(ctxPtr *zfsContext) {
 			ctxPtr.zVolDeviceEvents.Store(fileName, zVolDeviceEvent{
 				delete: true,
 			})
+			if fileName == types.ZVolDevicePrefix {
+				// Need to restart to recreate watcher when ZVolDevicePrefix is recreated
+				break
+			}
+		}
+	}
+}
+
+func deviceWatcher(ctxPtr *zfsContext) {
+	for {
+		deviceWatcherLoop(ctxPtr)
+		log.Noticef("deviceWatcher restarting")
+	}
+}
+
+// wait for the directory to appear (if it isn't already there) by watching
+// for create in the parent dir
+func waitForDir(dir string) {
+	w, err := fsnotify.NewWatcher()
+	if err != nil {
+		log.Fatalf("NewWatcher: %s", err)
+	}
+	defer w.Close()
+	// Robust parentdir whether or not dir has a trailing "/"
+	parentDir := filepath.Dir(strings.TrimSuffix(dir, "/"))
+	if err := w.Add(parentDir); err != nil {
+		log.Fatalf("w.Add: %s", err)
+	}
+
+	// Does it already exist?
+	_, err = os.Stat(dir)
+	if err == nil {
+		log.Functionf("no need to wait for %s", dir)
+		return
+	}
+	start := time.Now()
+	log.Functionf("wait for %s to appear", dir)
+
+	for event := range w.Events {
+		if event.Op&fsnotify.Create != 0 {
+			log.Functionf("waitForDir: CREATE %s", event.Name)
+			if event.Name == dir {
+				log.Functionf("waited for %v for %s",
+					time.Since(start), dir)
+				return
+			}
+		} else if event.Op&fsnotify.Remove != 0 {
+			log.Functionf("waitForDir: REMOVE %s", event.Name)
 		}
 	}
 }
