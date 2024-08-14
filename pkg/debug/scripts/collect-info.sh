@@ -452,7 +452,6 @@ fi
 
 ln -s /persist/status       "$DIR/persist-status"
 ln -s /persist/log          "$DIR/persist-log"
-ln -s /persist/newlog       "$DIR/persist-newlog"
 [ -d /persist/kubelog ] && ln -s /persist/kubelog "$DIR/persist-kubelog"
 ln -s /persist/netdump      "$DIR/persist-netdump"
 ln -s /persist/kcrashes     "$DIR/persist-kcrashes"
