@@ -10,7 +10,7 @@ bail() {
 
 ALPINE_VERSION=$1
 
-if [ "$ALPINE_VERSION" != "edge" ]; then
+if [ "${ALPINE_VERSION#edge}" = "$ALPINE_VERSION" ]; then
   ALPINE_VERSION=v$1
 fi
 
