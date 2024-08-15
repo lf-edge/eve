@@ -7,6 +7,9 @@ See [EVE Wiki](https://wiki.lfedge.org/display/EVE/Community) for governance gui
 ## List of maintainers (in alphabetical order)
 
 * Avi Deitcher `avi@deitcher.net`
+* Nikolay Martyanov `nikolay@zededa.com`
 * Erik Nordmark `erik@zededa.com`
 * Milan Lenco `milan@zededa.com`
+* Roman Penyaev `romanp@zededa.com`
+* Renê Pinto `rene@zededa.com`
 * Roman Shaposhnik `rvs@apache.org`
