@@ -26,10 +26,6 @@ onboot:
     capabilities:
       - CAP_SYS_ADMIN
       - CAP_NET_ADMIN
-  # If you change the order of storage-init don't forget to
-  # change path to the "002-installer" in "pkg/mkimage-raw-efi/Dockerfile" and
-  # "pkg/mkverification-raw-efi/Dockerfile" accordingly:
-  # storage-init must follow installer
   - name: storage-init
     image: STORAGE_INIT_TAG
   # kdump goes strictly after storage-init

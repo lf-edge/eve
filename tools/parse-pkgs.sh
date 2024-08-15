@@ -148,6 +148,7 @@ APPARMOR_TAG=${APPARMOR_TAG}
 KUBE_TAG=${KUBE_TAG}
 RECOVERTPM_TAG=${RECOVERTPM_TAG}
 UDEV_TAG=${UDEV_TAG}
+INSTALLER_TAG=${INSTALLER_TAG}
 EOF
 }
 
@@ -204,6 +205,7 @@ APPARMOR_TAG=$(linuxkit_tag pkg/apparmor)
 KUBE_TAG=$(linuxkit_tag pkg/kube)
 RECOVERTPM_TAG=$(linuxkit_tag pkg/recovertpm)
 UDEV_TAG=$(linuxkit_tag pkg/udev)
+INSTALLER_TAG=$(linuxkit_tag pkg/installer)
 
 # Synthetic tags: the following tags are based on hashing
 # the contents of all the Dockerfile.in that we can find.

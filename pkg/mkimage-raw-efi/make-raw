@@ -85,7 +85,7 @@ BOOT_DIR=/parts/boot
 # content of initrd installer image (optional)
 INITRD_IMG=/parts/initrd.img
 # content of installer ECO (optional)
-INSTALLER_IMG=/parts/installer.img
+INSTALLERFLAG_IMG=/parts/installerflag.img
 # GRUB cfg override for our installer
 INSTALLER_GRUB_CFG=/parts/grub.cfg
 # IMX8 flash blob that needs to be written to image
@@ -163,7 +163,7 @@ calc_installer_part_size() {
   SIZE=$((SIZE + $(file_size "$PERSIST_FILE")))
   SIZE=$((SIZE + $(file_size "$INITRD_IMG")))
   SIZE=$((SIZE + $(file_size "$ROOTFS_IMG")))
-  SIZE=$((SIZE + $(file_size "$INSTALLER_IMG")))
+  SIZE=$((SIZE + $(file_size "$INSTALLERFLAG_IMG")))
   SIZE=$((SIZE + $(file_size "$INSTALLER_GRUB_CFG")))
   if imx8_exists; then
       SIZE=$((SIZE + $(file_size "$IMX8_BLOB")))
@@ -302,7 +302,7 @@ do_installer() {
   # Copy bootloaders to boot folder for installer
   mkdir -p /efifs/boot && cp -r "$BOOT_DIR"/* /efifs/boot/ 2>/dev/null
   cp "$INSTALLER_GRUB_CFG" /efifs/EFI/BOOT/grub.cfg
-  cp "$PERSIST_FILE" "$INITRD_IMG" "$ROOTFS_IMG" "$INSTALLER_IMG" /UsbInvocationScript.txt /efifs
+  cp "$PERSIST_FILE" "$INITRD_IMG" "$ROOTFS_IMG" "$INSTALLERFLAG_IMG" /UsbInvocationScript.txt /efifs
   if imx8_exists; then
      cp "$IMX8_BLOB" "$IMX8_CONF" /efifs
   fi

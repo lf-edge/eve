@@ -73,7 +73,7 @@ RUN ./bootstrap \
 #
 # now lets create an edge container
 # FIXME: 002-installer? why not linuxkit build?
-WORKDIR /eco/media/root-rw/root/containers/onboot/002-installer
+WORKDIR /eco/media/root-rw/root/containers/onboot/002-00verification
 COPY runtime.json config.json ./
 RUN mv /out rootfs
 # hadolint ignore=DL3003
