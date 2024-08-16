@@ -1,0 +1,12 @@
+#!/usr/bin/env bpftrace
+
+BEGIN
+{
+	printf("Tracing pcap mmap... Hit Ctrl-C to end.\n");
+}
+
+uprobe:/containers/services/pillar/rootfs/opt/zededa/bin/zedbox:github.com/packetcap/go-pcap.openLive
+{
+	printf("%s\n", ustack())
+}
+
