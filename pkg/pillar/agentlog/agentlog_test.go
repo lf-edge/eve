@@ -285,10 +285,16 @@ func matchPsiStats(line string) bool {
 	return re.MatchString(line)
 }
 
+// Mutex for PSI stats producer - let's avoid running multiple producers at the same time
+var psiProducerMutex sync.Mutex
+
 func emulateMemoryPressureStats() (cancel context.CancelFunc, err error) {
+	// Take the mutex on the producer creation and release it when the producer is done
+	psiProducerMutex.Lock()
 	// Create a new file for memory pressure stats
 	fakePSIFileHandler, err := os.CreateTemp("", "memory-pressure")
 	if err != nil {
+		psiProducerMutex.Unlock()
 		return nil, err
 	}
 
@@ -302,12 +308,6 @@ func emulateMemoryPressureStats() (cancel context.CancelFunc, err error) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	go func() {
-		defer ticker.Stop()
-		defer fakePSIFileHandler.Close()
-		defer os.Remove(fakePSIFileName)
-		defer func() {
-			agentlog.PressureMemoryFile = originalPressureMemoryFile
-		}()
 		PsiStats := agentlog.PressureStallInfo{
 			SomeAvg10:  0.00,
 			SomeAvg60:  0.00,
@@ -321,6 +321,7 @@ func emulateMemoryPressureStats() (cancel context.CancelFunc, err error) {
 		for {
 			select {
 			case <-ticker.C:
+				agentlog.PsiMutex.Lock()
 				PsiStats.SomeAvg10 = generateRandomAvgValue()
 				PsiStats.SomeAvg60 = generateRandomAvgValue()
 				PsiStats.SomeAvg300 = generateRandomAvgValue()
@@ -337,7 +338,16 @@ func emulateMemoryPressureStats() (cancel context.CancelFunc, err error) {
 				if err := os.WriteFile(fakePSIFileName, []byte(content), 0644); err != nil {
 					panic(err)
 				}
+				agentlog.PsiMutex.Unlock()
 			case <-ctx.Done():
+				ticker.Stop()
+				agentlog.PsiMutex.Lock()
+				fakePSIFileHandler.Close()
+				os.Remove(fakePSIFileName)
+				agentlog.PressureMemoryFile = originalPressureMemoryFile
+				agentlog.PsiMutex.Unlock()
+				// We destroy this producer, so release the mutex
+				psiProducerMutex.Unlock()
 				return
 			}
 		}
@@ -354,6 +364,8 @@ full avg10=2.00 avg60=0.20 avg300=0.02 total=2000`
 )
 
 func createFakePSIStatsFile() (cleanupFunc context.CancelFunc, err error) {
+	// Take the mutex on the producer creation and release it when the producer is done
+	psiProducerMutex.Lock()
 	// Create a new file for memory pressure stats
 	fakePSIFileHandler, err := os.CreateTemp("", "memory-pressure")
 	if err != nil {
@@ -365,23 +377,24 @@ func createFakePSIStatsFile() (cleanupFunc context.CancelFunc, err error) {
 	agentlog.PressureMemoryFile = fakePSIFileName
 
 	// Write some content to the file
+	agentlog.PsiMutex.Lock()
 	if err := os.WriteFile(fakePSIFileName, []byte(staticPSIStatsContent), 0644); err != nil {
+		agentlog.PsiMutex.Unlock()
 		return nil, err
 	}
+	agentlog.PsiMutex.Unlock()
 
 	ctx, cancel := context.WithCancel(context.Background())
 
 	go func() {
-		defer func() {
-			fakePSIFileHandler.Close()
-			os.Remove(fakePSIFileName)
-			agentlog.PressureMemoryFile = originalPressureMemoryFile
-
-		}()
-		select {
-		case <-ctx.Done():
-			return
-		}
+		<-ctx.Done()
+		agentlog.PsiMutex.Lock()
+		fakePSIFileHandler.Close()
+		os.Remove(fakePSIFileName)
+		agentlog.PressureMemoryFile = originalPressureMemoryFile
+		agentlog.PsiMutex.Unlock()
+		// We destroy this producer, so release the mutex
+		psiProducerMutex.Unlock()
 	}()
 
 	return cancel, nil
@@ -413,27 +426,22 @@ func startIntegratedPSICollectorAPI() (cancel context.CancelFunc, err error) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
-		defer func() {
-			if started {
-				http.Post("http://127.0.0.1:6543/stop", "", nil)
-				// Wait for the server to stop, check if it is still running
-				for i := 0; i < 100; i++ {
-					_, err := http.Get("http://127.0.0.1:6543")
-					if err != nil && strings.Contains(err.Error(), "connection refused") {
-						started = false
-						break
-					}
-					time.Sleep(100 * time.Millisecond)
+		<-ctx.Done()
+		if started {
+			http.Post("http://127.0.0.1:6543/stop", "", nil)
+			// Wait for the server to stop, check if it is still running
+			for i := 0; i < 100; i++ {
+				_, err := http.Get("http://127.0.0.1:6543")
+				if err != nil && strings.Contains(err.Error(), "connection refused") {
+					started = false
+					break
 				}
-				if started {
-					panic("could not stop the server in 10 seconds")
-				}
-				psiServerMutex.Unlock()
+				time.Sleep(100 * time.Millisecond)
 			}
-		}()
-		select {
-		case <-ctx.Done():
-			return
+			if started {
+				panic("could not stop the server in 10 seconds")
+			}
+			psiServerMutex.Unlock()
 		}
 	}()
 	return cancel, nil
