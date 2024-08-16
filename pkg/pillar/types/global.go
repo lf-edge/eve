@@ -306,6 +306,8 @@ const (
 	// address, and MAC address change on EVE node upgrade (switch from old
 	// generation logic to new one) can cause problems with the guest network.
 	NetworkLocalLegacyMACAddress GlobalSettingKey = "network.local.legacy.mac.address"
+	// KubevirtDrainTimeout : how long in hours is allowed for a node drain before a failure is returned
+	KubevirtDrainTimeout GlobalSettingKey = "kubevirt.drain.timeout"
 )
 
 // AgentSettingKey - keys for per-agent settings
@@ -931,6 +933,9 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddIntItem(NetDumpTopicMaxCount, 10, 1, 0xFFFFFFFF)
 	configItemSpecMap.AddBoolItem(NetDumpDownloaderPCAP, false)
 	configItemSpecMap.AddBoolItem(NetDumpDownloaderHTTPWithFieldValue, false)
+
+	// Add Kubevirt Settings
+	configItemSpecMap.AddIntItem(KubevirtDrainTimeout, 24, 1, 0xFFFFFFFF)
 
 	return configItemSpecMap
 }
