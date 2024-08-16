@@ -1064,18 +1064,26 @@ if [ ! -f /var/lib/all_components_initialized ]; then
         fi
 
         if [ ! -f /var/lib/longhorn_initialized ]; then
-                wait_for_item "longhorn"
-                logmsg "Installing longhorn version ${LONGHORN_VERSION}"
-                apply_longhorn_disk_config "$HOSTNAME"
-                lhCfgPath=/var/lib/lh-cfg-${LONGHORN_VERSION}.yaml
-                if [ ! -e $lhCfgPath ]; then
-                        curl -k https://raw.githubusercontent.com/longhorn/longhorn/${LONGHORN_VERSION}/deploy/longhorn.yaml > "$lhCfgPath"
+                if [ ! -f /var/lib/longhorn_installing ]; then
+                        wait_for_item "longhorn"
+                        logmsg "Installing longhorn version ${LONGHORN_VERSION}"
+                        apply_longhorn_disk_config "$HOSTNAME"
+                        lhCfgPath=/var/lib/lh-cfg-${LONGHORN_VERSION}.yaml
+                        if [ ! -e $lhCfgPath ]; then
+                                curl -k https://raw.githubusercontent.com/longhorn/longhorn/${LONGHORN_VERSION}/deploy/longhorn.yaml > "$lhCfgPath"
+                        fi
+                        if ! grep -q 'create-default-disk-labeled-nodes: true' "$lhCfgPath"; then
+                                sed -i '/  default-setting.yaml: |-/a\    create-default-disk-labeled-nodes: true' "$lhCfgPath"
+                        fi
+                        kubectl apply -f "$lhCfgPath"
+                        touch /var/lib/longhorn_installing
                 fi
-                if ! grep -q 'create-default-disk-labeled-nodes: true' "$lhCfgPath"; then
-                        sed -i '/  default-setting.yaml: |-/a\    create-default-disk-labeled-nodes: true' "$lhCfgPath"
+                lhStatus=$(kubectl -n longhorn-system get daemonsets -o json | jq '.items[].status | .numberReady==.desiredNumberScheduled' | tr -d '\n')
+                if [ "$lhStatus" = "truetruetrue" ]; then
+                        logmsg "longhorn ready"
+                        rm /var/lib/longhorn_installing
+                        touch /var/lib/longhorn_initialized
                 fi
-                kubectl apply -f "$lhCfgPath"
-                touch /var/lib/longhorn_initialized
         fi
 
         if [ -f /var/lib/kubevirt_initialized ] && [ -f /var/lib/longhorn_initialized ]; then
