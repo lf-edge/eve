@@ -12,6 +12,7 @@ import (
 	"os"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -128,6 +129,10 @@ func GetMemAllocationSites(reportZeroInUse bool) (int, []MemAllocationSite) {
 	return n, sites
 }
 
+// PsiMutex is the mutex to protect the access to the PSI files.
+// We need it to avoid a race condition with the PSI data emulator in tests.
+var PsiMutex sync.Mutex
+
 func isPSISupported() bool {
 	_, err := os.Stat(PressureMemoryFile)
 	if err != nil {
@@ -138,6 +143,8 @@ func isPSISupported() bool {
 }
 
 func collectMemoryPSI() (*PressureStallInfo, error) {
+	PsiMutex.Lock()
+	defer PsiMutex.Unlock()
 	if !isPSISupported() {
 		return nil, fmt.Errorf("PSI is not supported")
 	}
