@@ -122,7 +122,6 @@ func dumpMemoryInfo(log *base.LogObject, fileName string) {
 type mutexWriter struct {
 	w     io.Writer
 	mutex *sync.Mutex
-	done  chan struct{}
 }
 
 func (m mutexWriter) Write(p []byte) (n int, err error) {
@@ -134,9 +133,6 @@ func (m mutexWriter) Write(p []byte) (n int, err error) {
 		return 0, syscall.ENOENT
 	}
 	n, err = m.w.Write(p)
-	if err != nil {
-		m.done <- struct{}{}
-	}
 
 	return n, err
 }
@@ -145,7 +141,7 @@ type bpftraceHandler struct {
 	log *base.LogObject
 }
 
-func (b bpftraceHandler) runInDebugContainer(w io.Writer, args []string, timeout time.Duration) error {
+func (b bpftraceHandler) runInDebugContainer(clientCtx context.Context, w io.Writer, args []string, timeout time.Duration) error {
 	ctrd, err := containerd.NewContainerdClient(false)
 	if err != nil {
 		return fmt.Errorf("could not initialize containerd client: %+v\n", err)
@@ -179,7 +175,6 @@ func (b bpftraceHandler) runInDebugContainer(w io.Writer, args []string, timeout
 	mutexWriter := mutexWriter{
 		w:     w,
 		mutex: &sync.Mutex{},
-		done:  writingDone,
 	}
 	stdcio := ctrd.CtrWriterCreator(mutexWriter, &stderrBuf)
 
@@ -206,7 +201,7 @@ func (b bpftraceHandler) runInDebugContainer(w io.Writer, args []string, timeout
 
 	timeoutTimer := time.NewTimer(timeout)
 	select {
-	case <-writingDone:
+	case <-clientCtx.Done():
 		exitStatus.killedByTimeout = true
 		err := b.killProcess(ctx, process)
 		if err != nil {
@@ -323,7 +318,7 @@ func (b bpftraceHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 
 		args := []string{"/usr/bin/bpftrace-aotrt", "-f", "json", filename}
-		err = b.runInDebugContainer(w, args, time.Duration(timeoutSeconds)*time.Second)
+		err = b.runInDebugContainer(r.Context(), w, args, time.Duration(timeoutSeconds)*time.Second)
 		if err != nil {
 			fmt.Fprintf(w, "Error happened:\n%s\n", err.Error())
 			return
