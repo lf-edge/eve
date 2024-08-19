@@ -107,6 +107,10 @@ endif
 # set this to the current tag only if we are building from a tag
 ROOTFS_VERSION:=$(if $(findstring snapshot,$(REPO_TAG)),$(EVE_SNAPSHOT_VERSION)-$(REPO_BRANCH)-$(REPO_SHA)$(REPO_DIRTY_TAG)$(DEV_TAG),$(REPO_TAG))
 
+#if KERNEL_TAG is set, append it to the ROOTFS_VERSION but replace docker.io/lfedge/eve-kernel:eve-kernel- part with k-
+SHORT_KERNEL_TAG=$(subst docker.io/lfedge/eve-kernel:eve-kernel-,k-,$(KERNEL_TAG))
+ROOTFS_VERSION:=$(if $(SHORT_KERNEL_TAG),$(ROOTFS_VERSION)-$(SHORT_KERNEL_TAG),$(ROOTFS_VERSION))
+
 HOSTARCH:=$(subst aarch64,arm64,$(subst x86_64,amd64,$(shell uname -m)))
 # by default, take the host architecture as the target architecture, but can override with `make ZARCH=foo`
 #    assuming that the toolchain supports it, of course...
