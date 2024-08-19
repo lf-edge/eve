@@ -1,10 +1,10 @@
 # Copyright (c) 2019 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-TARGET ?= vtpm_server
+TARGET ?= ptpm
 SRC_DIRS ?= ./src
 INC_DIR ?= ./proto
-PROTO_OBJS ?= vtpm_api.pb.o
+PROTO_OBJS ?= api.pb.o
 SERVER_OBJS ?= server.o
 CC = g++
 DEPS := $(OBJS:.o=.d)
@@ -30,18 +30,18 @@ $(TARGET): $(PROTO_OBJS) $(SERVER_OBJS)
 $(SERVER_OBJS): $(PROTO_OBJS)
 	$(CC) $(C_SEC_FLAGS) $(INC_FLAGS) -std=c++11 -c src/server.cpp -o $@
 
-protoc_files: proto/vtpm_api.proto
-	protoc --cpp_out=proto -Iproto vtpm_api.proto
+protoc_files: proto/api.proto
+	protoc --cpp_out=proto -Iproto api.proto
 
 $(PROTO_OBJS): protoc_files
-	$(CC) $(C_SEC_FLAGS) -c proto/vtpm_api.pb.cc -o $(PROTO_OBJS)
+	$(CC) $(C_SEC_FLAGS) -c proto/api.pb.cc -o $(PROTO_OBJS)
 
 clean:
-	$(RM) $(TARGET) $(SERVER_OBJS) $(DEPS) $(INC_DIR)/vtpm_api.pb.cc $(INC_DIR)/vtpm_api.pb.h $(PROTO_OBJS)
+	$(RM) $(TARGET) $(SERVER_OBJS) $(DEPS) $(INC_DIR)/api.pb.cc $(INC_DIR)/api.pb.h $(PROTO_OBJS)
 
 .PHONY: clean protoc_files all test
 
-all: vtpm_server
+all: ptpm
 
 test:
 
