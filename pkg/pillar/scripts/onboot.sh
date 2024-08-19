@@ -18,6 +18,8 @@ FIRSTBOOTFILE="$ZTMPDIR/first-boot"
 FIRSTBOOT=
 TPM_DEVICE_PATH="/dev/tpmrm0"
 SECURITYFSPATH=/sys/kernel/security
+SWTPM_RUN_PATH=/run/swtpm
+SWTPM_PERSIST_PATH=/persist/swtpm
 PATH=$BINDIR:$PATH
 MIN_DISKSPACE=4096 # MBytes
 
@@ -188,5 +190,15 @@ mkdir -p "$ZTMPDIR/LedBlinkCounter"
 echo '{"BlinkCounter": 1}' > "$ZTMPDIR/LedBlinkCounter/ledconfig.json"
 
 mkdir -p $DPCDIR
+
+# This directories is used by swtpm to create its communication socket and save
+# its tpm states. 101:101 is actually vtpm:vtpm.
+# XXX : use names instead of numeric uid/gid
+mkdir -p $SWTPM_RUN_PATH
+mkdir -p $SWTPM_PERSIST_PATH
+chown 101:101 $SWTPM_RUN_PATH
+chown 101:101 $SWTPM_PERSIST_PATH
+chmod 740 $SWTPM_RUN_PATH
+chmod 740 $SWTPM_PERSIST_PATH
 
 echo "$(date -Ins -u) onboot.sh done"
