@@ -10,7 +10,7 @@ config:
   binds:
     - /dev:/dev
     - /run:/run
-    - /config:/config
+    - /persist:/persist
   devices:
     - path: all
       type: a
