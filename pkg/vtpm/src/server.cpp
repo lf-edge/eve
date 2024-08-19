@@ -17,7 +17,7 @@
 #include <fstream>
 #include <sstream>
 #include <atomic>
-#include "vtpm_api.pb.h"
+#include "api.pb.h"
 #include <list>
 #include <google/protobuf/io/zero_copy_stream_impl.h>
 
