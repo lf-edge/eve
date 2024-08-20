@@ -1,14 +1,26 @@
-# Copyright (c) 2023 Zededa, Inc.
+# Copyright (c) 2024 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
 #include <tunables/global>
 
-@{exec_path} = /usr/bin/vtpm_server
+@{exec_path} = /usr/bin/vtpm
 profile vtpm @{exec_path} {
     #include <abstractions/base>
 
     # allow necessary access for operations
-    /jail/{,*,**}    rw,
-    /usr/bin/tpm2   rPx,
-    network inet stream,
+    owner /usr/bin/vtpm            rm,
+    owner /home/{,*,**}             rw,
+
+    # writes temporary tpm-state encryption key here.
+    owner /run/swtpm/{,*,**}        rw,
+
+    # crates the per-vm tpm-state dir here.
+   owner /persist/swtpm/{,*,**}     rw,
+
+    # access to host tpm to unseal the encryption key.
+    /dev/tpm0                       rw,
+    /dev/tpmrm0                     rw,
+
+    # allow executing swtpm
+    /usr/bin/swtpm                  Px,
 }
