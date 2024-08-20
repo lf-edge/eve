@@ -19,3 +19,4 @@
 ^.+go.sum
 ^.+/vendor/.+
 ^.codespellignorelines
+eve-tools/bpftrace-compiler/examples/.+\.bt
