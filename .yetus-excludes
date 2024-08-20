@@ -15,3 +15,4 @@
 ^.+/vendor/.+
 ^tests/eden/eclient/testdata/maridb\.txt
 ^pkg/apparmor/etc/
+^eve-tools/bpftrace-compiler/examples/.+\.bt
