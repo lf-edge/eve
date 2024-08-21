@@ -10,4 +10,12 @@ if [ ! -f "$PID_FILE" ]; then
 fi
 
 PID=$(cat "$PID_FILE")
-nsenter -t "$PID" -m -u -i -n -p -r/mnt/rootfs -w/mnt/rootfs
+
+# Check if the first argument is provided, otherwise use /bin/sh as the default
+PROGRAM=${1:-/bin/sh}
+
+# Shift arguments if a program is provided, so "$@" contains the rest of the command-line arguments
+shift
+
+# Enter the namespaces and execute the specified program with its arguments
+nsenter -t "$PID" -m -u -i -n -p -r/mnt/rootfs -w/mnt/rootfs "$PROGRAM" "$@"
