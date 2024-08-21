@@ -17,15 +17,17 @@ const (
 	// (and persisted) for every network instance.
 	NIBaseRTIndex = 800
 
-	// PbrLocalDestPrio : IP rule priority for packets destined to locally owned addresses
-	PbrLocalDestPrio = 12000
-	// PbrLocalOrigPrio : IP rule priority for locally generated packets
-	PbrLocalOrigPrio = 15000
-
 	// PbrNatOutGatewayPrio : IP rule priority for packets destined to gateway(bridge ip) coming from apps.
 	PbrNatOutGatewayPrio = 9999
 	// PbrNatOutPrio : IP rule priority for packets destined to internet coming from apps
 	PbrNatOutPrio = 10000
 	// PbrNatInPrio : IP rule priority for external packets coming in towards apps
 	PbrNatInPrio = 11000
+	// PbrLocalDestPrio : IP rule priority for packets destined to locally owned addresses
+	PbrLocalDestPrio = 12000
+	// PbrKubeNetworkPrio : IP rule priority for traffic flowing through the Kubernetes
+	// network.
+	PbrKubeNetworkPrio = 13000
+	// PbrLocalOrigPrio : IP rule priority for locally (dom0) generated packets
+	PbrLocalOrigPrio = 15000
 )
