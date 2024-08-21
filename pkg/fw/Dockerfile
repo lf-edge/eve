@@ -25,7 +25,7 @@ RUN mkdir -p /nvidia-firmware && \
 ENV RTL8822_FW_VERSION ca9f4e199efbf8c377e8a1769ba5b05b23f92c82
 ADD https://github.com/lwfinger/rtw88.git#${RTL8822_FW_VERSION} /rtw88
 
-ENV LINUX_FIRMWARE_VERSION 20240410
+ENV LINUX_FIRMWARE_VERSION 20240811
 ENV LINUX_FIRMWARE_URL https://cdn.kernel.org/pub/linux/kernel/firmware/linux-firmware
 ADD ${LINUX_FIRMWARE_URL}-${LINUX_FIRMWARE_VERSION}.tar.gz /linux-firmware.tar.gz
 RUN mkdir /linux-firmware &&\
@@ -72,7 +72,7 @@ ENV BUILD_PKGS iucode-tool
 RUN eve-alpine-deploy.sh
 
 # build intel microcode
-ENV INTEL_UCODE_VERSION=20240312
+ENV INTEL_UCODE_VERSION=20240813
 ADD "https://github.com/intel/Intel-Linux-Processor-Microcode-Data-Files/archive/microcode-$INTEL_UCODE_VERSION.tar.gz" /tmp/ucode/intel
 WORKDIR /tmp/ucode/intel
 RUN tar -xf "microcode-$INTEL_UCODE_VERSION.tar.gz" --strip=1
@@ -83,7 +83,7 @@ RUN find ./intel-ucode/ -maxdepth 1 -type f -print0 \
 RUN cp license /usr/share/licenses/ucode/intel-license.txt
 
 #build AMD microcode. We use a separate Linux firmware image for that
-ENV AMD_UCODE_VERSION=20240410
+ENV AMD_UCODE_VERSION=20240811
 ENV LINUX_FIRMWARE_URL https://cdn.kernel.org/pub/linux/kernel/firmware/linux-firmware
 ADD ${LINUX_FIRMWARE_URL}-${AMD_UCODE_VERSION}.tar.gz /linux-firmware-ucode.tar.gz
 RUN mkdir /tmp/ucode/amd/linux-firmware \
