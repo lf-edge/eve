@@ -101,6 +101,8 @@ files:
     metadata: yaml
   - path: /etc/eve-hv-type
     contents: 'EVE_HV'
+  - path: /etc/issue
+    source: etc_issue
   - path: /opt/vendor
     directory: true
   - path: /etc/securetty
