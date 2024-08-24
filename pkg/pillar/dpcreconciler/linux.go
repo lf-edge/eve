@@ -407,6 +407,9 @@ func (r *LinuxDpcReconciler) Reconcile(ctx context.Context, args Args) Reconcile
 		if r.rsChanged(args.RS) {
 			r.addPendingReconcile(WirelessSG, "RS change", false)
 		}
+		if r.flowlogStateChanged(args.FlowlogEnabled) {
+			r.addPendingReconcile(ACLsSG, "Flowlog state change", false)
+		}
 	}
 	if r.pendingReconcile.isPending {
 		reconcileSG = r.pendingReconcile.forSubGraph
@@ -453,7 +456,7 @@ func (r *LinuxDpcReconciler) Reconcile(ctx context.Context, args Args) Reconcile
 		case WirelessSG:
 			intSG = r.getIntendedWirelessCfg(args.DPC, args.AA, args.RS)
 		case ACLsSG:
-			intSG = r.getIntendedACLs(args.DPC, args.GCP)
+			intSG = r.getIntendedACLs(args.DPC, args.GCP, args.FlowlogEnabled)
 		default:
 			// Only these top-level subgraphs are used for selective-reconcile for now.
 			r.Log.Fatalf("Unexpected SG select for reconcile: %s", reconcileSG)
@@ -661,6 +664,10 @@ func (r *LinuxDpcReconciler) gcpChanged(newGCP types.ConfigItemValueMap) bool {
 	return false
 }
 
+func (r *LinuxDpcReconciler) flowlogStateChanged(flowlogEnabled bool) bool {
+	return r.lastArgs.FlowlogEnabled != flowlogEnabled
+}
+
 func (r *LinuxDpcReconciler) updateCurrentState(args Args) (changed bool) {
 	if r.currentState == nil {
 		// Initialize only subgraphs with external items.
@@ -860,7 +867,7 @@ func (r *LinuxDpcReconciler) updateIntendedState(args Args) {
 	r.intendedState.PutSubGraph(r.getIntendedLogicalIO(args.DPC))
 	r.intendedState.PutSubGraph(r.getIntendedL3Cfg(args.DPC))
 	r.intendedState.PutSubGraph(r.getIntendedWirelessCfg(args.DPC, args.AA, args.RS))
-	r.intendedState.PutSubGraph(r.getIntendedACLs(args.DPC, args.GCP))
+	r.intendedState.PutSubGraph(r.getIntendedACLs(args.DPC, args.GCP, args.FlowlogEnabled))
 }
 
 func (r *LinuxDpcReconciler) getIntendedGlobalCfg(dpc types.DevicePortConfig) dg.Graph {
@@ -1147,6 +1154,7 @@ func (r *LinuxDpcReconciler) getIntendedSrcIPRules(dpc types.DevicePortConfig) d
 				AdapterIfName: port.IfName,
 				IPAddr:        ipAddr.IP,
 				Priority:      devicenetwork.PbrLocalOrigPrio,
+				Table:         devicenetwork.DPCBaseRTIndex + ifIndex,
 			}, nil)
 		}
 	}
@@ -1490,9 +1498,10 @@ func (r *LinuxDpcReconciler) getIntendedWwanConfig(dpc types.DevicePortConfig,
 					Activated: true,
 					APN:       cellCfg.APN,
 				}
-				probeCfg = types.WwanProbe{
-					Disable: cellCfg.DisableProbe,
-					Address: cellCfg.ProbeAddr,
+				probeCfg.Disable = cellCfg.DisableProbe
+				if cellCfg.ProbeAddr != "" {
+					probeCfg.UserDefinedProbe.Method = types.ConnectivityProbeMethodICMP
+					probeCfg.UserDefinedProbe.ProbeHost = cellCfg.ProbeAddr
 				}
 				locationTracking = cellCfg.LocationTracking
 				r.Log.Warnf("getIntendedWwanConfig: using deprecated WirelessCfg.Cellular")
@@ -1525,7 +1534,7 @@ func (r *LinuxDpcReconciler) getIntendedWwanConfig(dpc types.DevicePortConfig,
 }
 
 func (r *LinuxDpcReconciler) getIntendedACLs(
-	dpc types.DevicePortConfig, gcp types.ConfigItemValueMap) dg.Graph {
+	dpc types.DevicePortConfig, gcp types.ConfigItemValueMap, withFlowlog bool) dg.Graph {
 	graphArgs := dg.InitArgs{
 		Name:        ACLsSG,
 		Description: "Device-wide ACLs",
@@ -1544,13 +1553,16 @@ func (r *LinuxDpcReconciler) getIntendedACLs(
 	intendedIPv6ACLs := dg.New(graphArgs)
 	intendedACLs.PutSubGraph(intendedIPv6ACLs)
 
+	gcpSSHAuthKeys := gcp.GlobalValueString(types.SSHAuthorizedKeys)
+	intendedACLs.PutItem(generic.SSHAuthKeys{Keys: gcpSSHAuthKeys}, nil)
+
 	// Create chains for both device-wide ACLs as well as for application ACLs.
 	// Link them from top-level chains, with app ACLs always preceding device ACLs.
 	// Do this only for chains which are actually used.
 	usedChains := map[iptables.Chain]struct{ devACLs, appACLs bool }{
 		{Table: "raw", ChainName: "PREROUTING"}:     {devACLs: false, appACLs: true},
 		{Table: "filter", ChainName: "INPUT"}:       {devACLs: true, appACLs: true},
-		{Table: "filter", ChainName: "FORWARD"}:     {devACLs: false, appACLs: true},
+		{Table: "filter", ChainName: "FORWARD"}:     {devACLs: true, appACLs: true},
 		{Table: "mangle", ChainName: "PREROUTING"}:  {devACLs: true, appACLs: true},
 		{Table: "mangle", ChainName: "FORWARD"}:     {devACLs: true, appACLs: false},
 		{Table: "mangle", ChainName: "POSTROUTING"}: {devACLs: false, appACLs: true},
@@ -1605,7 +1617,17 @@ func (r *LinuxDpcReconciler) getIntendedACLs(
 		}
 	}
 
-	var filterV4Rules, filterV6Rules []iptables.Rule
+	r.getIntendedFilterRules(gcp, dpc, intendedIPv4ACLs, intendedIPv6ACLs)
+	if withFlowlog {
+		r.getIntendedMarkingRules(dpc, intendedIPv4ACLs, intendedIPv6ACLs)
+	}
+	return intendedACLs
+}
+
+func (r *LinuxDpcReconciler) getIntendedFilterRules(gcp types.ConfigItemValueMap,
+	dpc types.DevicePortConfig, intendedIPv4ACLs, intendedIPv6ACLs dg.Graph) {
+	// Prepare filter/INPUT rules.
+	var inputV4Rules, inputV6Rules []iptables.Rule
 
 	// Ports which are always blocked.
 	block8080 := iptables.Rule{
@@ -1615,8 +1637,8 @@ func (r *LinuxDpcReconciler) getIntendedACLs(
 		TargetOpts:  []string{"--reject-with", "tcp-reset"},
 		Description: "Port 8080 is always blocked",
 	}
-	filterV4Rules = append(filterV4Rules, block8080)
-	filterV6Rules = append(filterV6Rules, block8080)
+	inputV4Rules = append(inputV4Rules, block8080)
+	inputV6Rules = append(inputV6Rules, block8080)
 
 	// Allow Guacamole.
 	const (
@@ -1646,24 +1668,25 @@ func (r *LinuxDpcReconciler) getIntendedACLs(
 		TargetOpts:  []string{"--reject-with", "tcp-reset"},
 		Description: "Block attempts to connect to Guacamole server from outside",
 	}
-	filterV4Rules = append(filterV4Rules, allowLocalGuacamoleV4, blockNonLocalGuacamole)
-	filterV6Rules = append(filterV6Rules, allowLocalGuacamoleV6, blockNonLocalGuacamole)
+	inputV4Rules = append(inputV4Rules, allowLocalGuacamoleV4, blockNonLocalGuacamole)
+	inputV6Rules = append(inputV6Rules, allowLocalGuacamoleV6, blockNonLocalGuacamole)
 
 	// Allow/block SSH access.
-	gcpSSHAuthKeys := gcp.GlobalValueString(types.SSHAuthorizedKeys)
-	intendedACLs.PutItem(generic.SSHAuthKeys{Keys: gcpSSHAuthKeys}, nil)
 	gcpAllowSSH := gcp.GlobalValueString(types.SSHAuthorizedKeys) != ""
-	blockSSH := iptables.Rule{
-		RuleLabel:   "Block SSH",
-		MatchOpts:   []string{"-p", "tcp", "--dport", "22"},
-		Target:      "REJECT",
-		TargetOpts:  []string{"--reject-with", "tcp-reset"},
-		Description: "SSH access is not allowed by device config",
+	sshRule := iptables.Rule{
+		RuleLabel: "SSH Rule",
+		MatchOpts: []string{"-p", "tcp", "--dport", "22"},
 	}
-	if !gcpAllowSSH {
-		filterV4Rules = append(filterV4Rules, blockSSH)
-		filterV6Rules = append(filterV6Rules, blockSSH)
+	if gcpAllowSSH {
+		sshRule.Target = "ACCEPT"
+		sshRule.Description = "SSH access is allowed"
+	} else {
+		sshRule.Target = "REJECT"
+		sshRule.TargetOpts = []string{"--reject-with", "tcp-reset"}
+		sshRule.Description = "SSH access is not allowed by device config"
 	}
+	inputV4Rules = append(inputV4Rules, sshRule)
+	inputV6Rules = append(inputV6Rules, sshRule)
 
 	// Allow/block VNC access.
 	const (
@@ -1671,55 +1694,169 @@ func (r *LinuxDpcReconciler) getIntendedACLs(
 		remoteVNCRuleLabel = "Remote VNC"
 	)
 	gcpAllowRemoteVNC := gcp.GlobalValueBool(types.AllowAppVnc)
-	allowLocalVNCv4 := iptables.Rule{
-		RuleLabel: localVNCRuleLabel,
-		MatchOpts: []string{"-p", "tcp", "-s", "127.0.0.1", "-d", "127.0.0.1",
-			"--dport", "5900:5999"},
-		Target:      "ACCEPT",
-		Description: "Local VNC traffic is always allowed",
-	}
-	allowLocalVNCv6 := iptables.Rule{
-		RuleLabel: localVNCRuleLabel,
-		MatchOpts: []string{"-p", "tcp", "-s", "::1", "-d", "::1",
-			"--dport", "5900:5999"},
-		Target:      "ACCEPT",
-		Description: "Local VNC traffic is always allowed",
-	}
 	if !gcpAllowRemoteVNC {
-		// Remote VNC rules block any VNC traffic (incl. local), meaning that Local VNC
+		// Remote VNC rule applies to any VNC traffic (incl. local), meaning that Local VNC
 		// rules must precede them to work correctly.
-		allowLocalVNCv4.AppliedBefore = []string{remoteVNCRuleLabel}
-		allowLocalVNCv6.AppliedBefore = []string{remoteVNCRuleLabel}
-	}
-	filterV4Rules = append(filterV4Rules, allowLocalVNCv4)
-	filterV6Rules = append(filterV6Rules, allowLocalVNCv6)
-	if !gcpAllowRemoteVNC {
-		blockRemoteVNC := iptables.Rule{
-			RuleLabel:  remoteVNCRuleLabel,
-			MatchOpts:  []string{"-p", "tcp", "--dport", "5900:5999"},
-			Target:     "REJECT",
-			TargetOpts: []string{"--reject-with", "tcp-reset"},
-			Description: "VNC traffic originating from outside is not allowed " +
-				"by device config",
+		allowLocalVNCv4 := iptables.Rule{
+			RuleLabel: localVNCRuleLabel,
+			MatchOpts: []string{"-p", "tcp", "-s", "127.0.0.1", "-d", "127.0.0.1",
+				"--dport", "5900:5999"},
+			Target:        "ACCEPT",
+			AppliedBefore: []string{remoteVNCRuleLabel},
+			Description:   "Local VNC traffic is always allowed",
 		}
-		filterV4Rules = append(filterV4Rules, blockRemoteVNC)
-		filterV6Rules = append(filterV6Rules, blockRemoteVNC)
+		allowLocalVNCv6 := iptables.Rule{
+			RuleLabel: localVNCRuleLabel,
+			MatchOpts: []string{"-p", "tcp", "-s", "::1", "-d", "::1",
+				"--dport", "5900:5999"},
+			Target:        "ACCEPT",
+			AppliedBefore: []string{remoteVNCRuleLabel},
+			Description:   "Local VNC traffic is always allowed",
+		}
+		inputV4Rules = append(inputV4Rules, allowLocalVNCv4)
+		inputV6Rules = append(inputV6Rules, allowLocalVNCv6)
+	}
+	remoteVNCRule := iptables.Rule{
+		RuleLabel: remoteVNCRuleLabel,
+		MatchOpts: []string{"-p", "tcp", "--dport", "5900:5999"},
+	}
+	if gcpAllowRemoteVNC {
+		remoteVNCRule.Target = "ACCEPT"
+		remoteVNCRule.Description = "VNC traffic is allowed"
+	} else {
+		remoteVNCRule.Target = "REJECT"
+		remoteVNCRule.TargetOpts = []string{"--reject-with", "tcp-reset"}
+		remoteVNCRule.Description = "VNC traffic originating from outside is not allowed"
+	}
+	inputV4Rules = append(inputV4Rules, remoteVNCRule)
+	inputV6Rules = append(inputV6Rules, remoteVNCRule)
+
+	// Allow all traffic that belongs to an already established connection.
+	allowEstablishedConn := iptables.Rule{
+		RuleLabel:   "Allow established connection",
+		MatchOpts:   []string{"-m", "conntrack", "--ctstate", "ESTABLISHED,RELATED"},
+		Target:      "ACCEPT",
+		Description: "Allow all traffic that belongs to an already established connection",
+	}
+	allowEstablishedV4Conn := allowEstablishedConn
+	for _, inputV4Rule := range inputV4Rules {
+		allowEstablishedV4Conn.AppliedBefore = append(allowEstablishedV4Conn.AppliedBefore,
+			inputV4Rule.RuleLabel)
+	}
+	inputV4Rules = append(inputV4Rules, allowEstablishedV4Conn)
+	allowEstablishedV6Conn := allowEstablishedConn
+	for _, inputV6Rule := range inputV6Rules {
+		allowEstablishedV6Conn.AppliedBefore = append(allowEstablishedV6Conn.AppliedBefore,
+			inputV6Rule.RuleLabel)
+	}
+	inputV6Rules = append(inputV6Rules, allowEstablishedV6Conn)
+
+	// Drop all input traffic not matched by any rule above.
+	var defaultDropRules []iptables.Rule
+	for _, port := range dpc.Ports {
+		if port.IfName == "" || !port.IsL3Port || port.InvalidConfig {
+			continue
+		}
+		defaultInputDrop := iptables.Rule{
+			RuleLabel: fmt.Sprintf("Default input drop for port %s", port.IfName),
+			MatchOpts: []string{"-i", port.IfName},
+			Target:    "DROP",
+			Description: fmt.Sprintf("Drop input traffic received via port %s "+
+				"which is not explicitly allowed", port.IfName),
+		}
+		for i := range inputV4Rules {
+			inputV4Rules[i].AppliedBefore = append(inputV4Rules[i].AppliedBefore,
+				defaultInputDrop.RuleLabel)
+		}
+		for i := range inputV6Rules {
+			inputV6Rules[i].AppliedBefore = append(inputV6Rules[i].AppliedBefore,
+				defaultInputDrop.RuleLabel)
+		}
+		defaultDropRules = append(defaultDropRules, defaultInputDrop)
+	}
+	for _, rule := range defaultDropRules {
+		inputV4Rules = append(inputV4Rules, rule)
+		inputV6Rules = append(inputV6Rules, rule)
 	}
 
-	// Submit filtering rules.
-	for _, filterV4Rule := range filterV4Rules {
-		filterV4Rule.ChainName = "INPUT" + iptables.DeviceChainSuffix
-		filterV4Rule.Table = "filter"
-		filterV4Rule.ForIPv6 = false
-		intendedIPv4ACLs.PutItem(filterV4Rule, nil)
+	// Submit filtering INPUT rules.
+	for _, inputV4Rule := range inputV4Rules {
+		inputV4Rule.ChainName = "INPUT" + iptables.DeviceChainSuffix
+		inputV4Rule.Table = "filter"
+		inputV4Rule.ForIPv6 = false
+		intendedIPv4ACLs.PutItem(inputV4Rule, nil)
 	}
-	for _, filterV6Rule := range filterV6Rules {
-		filterV6Rule.ChainName = "INPUT" + iptables.DeviceChainSuffix
-		filterV6Rule.Table = "filter"
-		filterV6Rule.ForIPv6 = true
-		intendedIPv6ACLs.PutItem(filterV6Rule, nil)
+	for _, inputV6Rule := range inputV6Rules {
+		inputV6Rule.ChainName = "INPUT" + iptables.DeviceChainSuffix
+		inputV6Rule.Table = "filter"
+		inputV6Rule.ForIPv6 = true
+		intendedIPv6ACLs.PutItem(inputV6Rule, nil)
 	}
 
+	// Deny traffic hoping from one device port to another (e.g. from eth0 to eth1).
+	// Only switch NIs with multiple ports allows traffic forwarding between ports.
+	// Create a separate chains for this.
+	const denyL3FwdChain = "DENY-L3-FORWARD"
+	const denyL3FwdOutChain = denyL3FwdChain + "-OUTPUT"
+	for _, chain := range []string{denyL3FwdChain, denyL3FwdOutChain} {
+		intendedIPv4ACLs.PutItem(iptables.Chain{
+			ChainName: chain,
+			Table:     "filter",
+			ForIPv6:   false,
+		}, nil)
+		intendedIPv6ACLs.PutItem(iptables.Chain{
+			ChainName: chain,
+			Table:     "filter",
+			ForIPv6:   true,
+		}, nil)
+	}
+	traverseL3FwdChain := iptables.Rule{
+		RuleLabel:   "Traverse " + denyL3FwdChain,
+		Table:       "filter",
+		ChainName:   "FORWARD" + iptables.DeviceChainSuffix,
+		Target:      denyL3FwdChain,
+		Description: "Traverse rules used to prevent routing from one NIC to another",
+	}
+	intendedIPv4ACLs.PutItem(traverseL3FwdChain, nil)
+	traverseL3FwdChainV6 := traverseL3FwdChain
+	traverseL3FwdChainV6.ForIPv6 = true
+	intendedIPv6ACLs.PutItem(traverseL3FwdChainV6, nil)
+	for _, port := range dpc.Ports {
+		if port.IfName == "" || !port.IsL3Port || port.InvalidConfig {
+			continue
+		}
+		ruleLabel := fmt.Sprintf("Deny routing from %s to another NIC", port.IfName)
+		portInputRule := iptables.Rule{
+			RuleLabel:   ruleLabel,
+			Table:       "filter",
+			ChainName:   denyL3FwdChain,
+			MatchOpts:   []string{"-i", port.IfName},
+			Target:      denyL3FwdOutChain,
+			Description: ruleLabel,
+		}
+		intendedIPv4ACLs.PutItem(portInputRule, nil)
+		portInputRuleV6 := portInputRule
+		portInputRuleV6.ForIPv6 = true
+		intendedIPv6ACLs.PutItem(portInputRuleV6, nil)
+		ruleLabel = fmt.Sprintf("Deny routing to %s from another NIC", port.IfName)
+		portOutputRule := iptables.Rule{
+			RuleLabel:   ruleLabel,
+			Table:       "filter",
+			ChainName:   denyL3FwdOutChain,
+			MatchOpts:   []string{"-o", port.IfName},
+			Target:      "DROP",
+			Description: ruleLabel,
+		}
+		intendedIPv4ACLs.PutItem(portOutputRule, nil)
+		portOutputRuleV6 := portOutputRule
+		portOutputRuleV6.ForIPv6 = true
+		intendedIPv6ACLs.PutItem(portOutputRuleV6, nil)
+	}
+}
+
+// Marking rules are only used if at least one Network instance has flow logging enabled.
+func (r *LinuxDpcReconciler) getIntendedMarkingRules(dpc types.DevicePortConfig,
+	intendedIPv4ACLs, intendedIPv6ACLs dg.Graph) {
 	// Mark ingress control-flow traffic.
 	// For connections originating from outside we use App ID = 0.
 	markSSHAndGuacamole := iptables.Rule{
@@ -1757,7 +1894,7 @@ func (r *LinuxDpcReconciler) getIntendedACLs(
 		TargetOpts:  []string{"--set-mark", controlProtoMark("in_dhcp")},
 		Description: "Mark ingress DHCP traffic",
 	}
-	// Allow all traffic from Kubernetes pods to Kubernetes services.
+	// Mark all traffic from Kubernetes pods to Kubernetes services.
 	// Note that traffic originating from another node is already D-NATed
 	// and will get marked with the kube_pod mark.
 	markKubeSvc := iptables.Rule{
@@ -1767,7 +1904,7 @@ func (r *LinuxDpcReconciler) getIntendedACLs(
 		TargetOpts:  []string{"--set-mark", controlProtoMark("kube_svc")},
 		Description: "Mark traffic from Kubernetes pods to Kubernetes services",
 	}
-	// Allow all traffic forwarded between Kubernetes pods.
+	// Mark all traffic forwarded between Kubernetes pods.
 	markKubePod := iptables.Rule{
 		RuleLabel:   "Kubernetes pod mark",
 		MatchOpts:   []string{"-s", kubePodCIDR, "-d", kubePodCIDR},
@@ -1775,7 +1912,7 @@ func (r *LinuxDpcReconciler) getIntendedACLs(
 		TargetOpts:  []string{"--set-mark", controlProtoMark("kube_pod")},
 		Description: "Mark all traffic directly forwarded between Kubernetes pods",
 	}
-	// Allow all DNS requests made from the Kubernetes network.
+	// Mark all DNS requests made from the Kubernetes network.
 	markKubeDNS := iptables.Rule{
 		RuleLabel:     "Kubernetes DNS mark",
 		MatchOpts:     []string{"-s", kubePodCIDR, "-p", "udp", "--dport", "domain"},
@@ -1831,7 +1968,7 @@ func (r *LinuxDpcReconciler) getIntendedACLs(
 
 	// Mark ingress traffic not matched by the rules above with the DROP action.
 	// Create a separate chain for marking.
-	const dropIngressChain = "drop-ingress"
+	const dropIngressChain = "DROP-INGRESS"
 	intendedIPv4ACLs.PutItem(iptables.Chain{
 		ChainName: dropIngressChain,
 		Table:     "mangle",
@@ -1882,7 +2019,7 @@ func (r *LinuxDpcReconciler) getIntendedACLs(
 	// i.e. these rules are below protoMarkV4Rules/protoMarkV6Rules
 	var dropMarkRules []iptables.Rule
 	for _, port := range dpc.Ports {
-		if port.IfName == "" || port.InvalidConfig {
+		if port.IfName == "" || !port.IsL3Port || port.InvalidConfig {
 			continue
 		}
 		dropIngressRule := iptables.Rule{
@@ -1921,83 +2058,6 @@ func (r *LinuxDpcReconciler) getIntendedACLs(
 		intendedIPv6ACLs.PutItem(markRule, nil)
 	}
 
-	// Deny traffic forwarding between device ports (e.g. from eth0 to eth1).
-	// Simply drop all non-application forwarded traffic.
-	// Zero application mark means that the matched flow is not from/to application.
-	nonAppMark := fmt.Sprintf("0/%d", iptables.AppIDMask)
-	denyNonAppForwarding := iptables.Rule{
-		RuleLabel: "Drop traffic forwarded between ports",
-		Table:     "mangle",
-		ChainName: "FORWARD" + iptables.DeviceChainSuffix,
-		MatchOpts: []string{"--match", "connmark", "--mark", nonAppMark},
-		Target:    "DROP",
-		Description: "Rule to ensure that forwarding between device ports is not allowed " +
-			"(device cannot be used as a router to hop from one network to another)",
-	}
-	denyNonAppForwarding.ForIPv6 = false
-	intendedIPv4ACLs.PutItem(denyNonAppForwarding, nil)
-	denyNonAppForwarding.ForIPv6 = true
-	intendedIPv6ACLs.PutItem(denyNonAppForwarding, nil)
-	// Allow forwarding of all DHCP traffic.
-	// Application-initiated DHCP requests can match the same conntrack entry
-	// as was created for DHCP requests sent by the DHCP client of EVE.
-	// This is because source/destination IPs are undefined or broadcast:
-	//  [72]: udp 17 src=0.0.0.0 dst=255.255.255.255 sport=68 dport=67
-	//        src=255.255.255.255 dst=0.0.0.0 sport=67 dport=68 mark=0xa
-	// However, this means that the application DHCP traffic may get mark "in_dhcp"
-	// (as opposed to "app_dhcp") and denyNonAppForwarding would match it with
-	// the nonAppMark filter and forbid forwarding (which is problem particularly
-	// for switch NI).
-	allowDHCPForwarding := iptables.Rule{
-		RuleLabel: "Allow DHCP forwarding",
-		Table:     "mangle",
-		ChainName: "FORWARD" + iptables.DeviceChainSuffix,
-		MatchOpts: []string{"--match", "connmark", "--mark",
-			controlProtoMark("in_dhcp")},
-		Target:        "ACCEPT",
-		AppliedBefore: []string{denyNonAppForwarding.RuleLabel},
-		Description:   "Allow forwarding of all DHCP traffic",
-	}
-	intendedIPv4ACLs.PutItem(allowDHCPForwarding, nil)
-	if r.HVTypeKube {
-		// Kubernetes network is an exception where we allow forwarding
-		// for most of the traffic.
-		allowKubeDNSForwarding := iptables.Rule{
-			RuleLabel: "Allow Kubernetes DNS forwarding",
-			Table:     "mangle",
-			ChainName: "FORWARD" + iptables.DeviceChainSuffix,
-			MatchOpts: []string{"--match", "connmark", "--mark",
-				controlProtoMark("kube_dns")},
-			Target:        "ACCEPT",
-			AppliedBefore: []string{denyNonAppForwarding.RuleLabel},
-			Description:   "Allow forwarding of DNS traffic inside the Kubernetes network",
-		}
-		intendedIPv4ACLs.PutItem(allowKubeDNSForwarding, nil)
-		allowKubeSvcForwarding := iptables.Rule{
-			RuleLabel: "Allow forwarding to Kubernetes services",
-			Table:     "mangle",
-			ChainName: "FORWARD" + iptables.DeviceChainSuffix,
-			MatchOpts: []string{"--match", "connmark", "--mark",
-				controlProtoMark("kube_svc")},
-			Target:        "ACCEPT",
-			AppliedBefore: []string{denyNonAppForwarding.RuleLabel},
-			Description: "Allow forwarding of all traffic from Kubernetes pods " +
-				"to Kubernetes services",
-		}
-		intendedIPv4ACLs.PutItem(allowKubeSvcForwarding, nil)
-		allowKubePodForwarding := iptables.Rule{
-			RuleLabel: "Allow forwarding between Kubernetes pods",
-			Table:     "mangle",
-			ChainName: "FORWARD" + iptables.DeviceChainSuffix,
-			MatchOpts: []string{"--match", "connmark", "--mark",
-				controlProtoMark("kube_pod")},
-			Target:        "ACCEPT",
-			AppliedBefore: []string{denyNonAppForwarding.RuleLabel},
-			Description:   "Allow forwarding of all traffic between Kubernetes pods",
-		}
-		intendedIPv4ACLs.PutItem(allowKubePodForwarding, nil)
-	}
-
 	// Mark all un-marked local traffic generated by local services.
 	outputRules := []iptables.Rule{
 		{
@@ -2033,7 +2093,6 @@ func (r *LinuxDpcReconciler) getIntendedACLs(
 		outputRule.ForIPv6 = true
 		intendedIPv6ACLs.PutItem(outputRule, nil)
 	}
-	return intendedACLs
 }
 
 func controlProtoMark(protoName string) string {

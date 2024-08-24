@@ -19,6 +19,7 @@ import (
 	"github.com/google/gopacket/layers"
 	"github.com/lf-edge/eve/pkg/pillar/iptables"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
 	"github.com/packetcap/go-pcap"
 	"github.com/vishvananda/netlink"
 )
@@ -41,6 +42,12 @@ const (
 	// flowLogPrefix allows to filter logs specific to flow collecting
 	// and packet sniffing.
 	flowLogPrefix = LogAndErrPrefix + " (FlowStats)"
+
+	// Even when flow logging is disabled, we continue recording application DNS requests
+	// so that we can publish them in case the flow logging is later enabled.
+	// To prevent the DNS record list from growing indefinitely, each record is retained
+	// for a maximum of one day (a typical "long" TTL for DNS responses).
+	dnsRecordRetentionTime = 24 * time.Hour
 )
 
 type capturedPacket struct {
@@ -66,6 +73,17 @@ func (lc *LinuxCollector) collectFlows() (flows []types.IPFlow) {
 	var timeoutedFlows []flowRec
 	var totalFlow int
 
+	var flowlogEnabled bool
+	for _, niInfo := range lc.nis {
+		if niInfo.config.EnableFlowlog {
+			flowlogEnabled = true
+			break
+		}
+	}
+	if !flowlogEnabled {
+		return nil
+	}
+
 	// Get IPv4/v6 conntrack table flows
 	protocols := [2]netlink.InetFamily{syscall.AF_INET, syscall.AF_INET6}
 	for _, proto := range protocols {
@@ -89,6 +107,9 @@ func (lc *LinuxCollector) collectFlows() (flows []types.IPFlow) {
 
 	// Sort flows by VIFs.
 	for _, niInfo := range lc.nis {
+		if !niInfo.config.EnableFlowlog {
+			continue
+		}
 		var dnsReqs []dnsReq
 		dnsReqs = append(dnsReqs, niInfo.ipv4DNSReqs...)
 		dnsReqs = append(dnsReqs, niInfo.ipv6DNSReqs...)
@@ -733,13 +754,18 @@ func (lc *LinuxCollector) processDNSPacketInfo(
 		}
 	}
 	var checkedProto, isIPv4 bool
+	// Do not keep recording of a DNS request for more than a day.
+	currentTime := time.Now().UnixNano()
+	keepDNSRecord := func(req dnsReq) bool {
+		return time.Duration(currentTime-req.RequestTime) <= dnsRecordRetentionTime
+	}
 	// Note that DNS requests with multiple questions and nameservers supporting
 	// them is very rare and pretty much nonexistent (too much ambiguity).
 	dnsQ := dns.Questions[0]
 	dnsReq := dnsReq{
 		DNSReq: types.DNSReq{
 			HostName:    string(dnsQ.Name),
-			RequestTime: time.Now().UnixNano(),
+			RequestTime: currentTime,
 		},
 		appIP: dstIP,
 	}
@@ -759,8 +785,10 @@ func (lc *LinuxCollector) processDNSPacketInfo(
 	if len(dnsReq.Addrs) > 0 {
 		if isIPv4 {
 			niInfo.ipv4DNSReqs = append(niInfo.ipv4DNSReqs, dnsReq)
+			niInfo.ipv4DNSReqs = generics.FilterList(niInfo.ipv4DNSReqs, keepDNSRecord)
 		} else {
 			niInfo.ipv6DNSReqs = append(niInfo.ipv6DNSReqs, dnsReq)
+			niInfo.ipv6DNSReqs = generics.FilterList(niInfo.ipv6DNSReqs, keepDNSRecord)
 		}
 	}
 }

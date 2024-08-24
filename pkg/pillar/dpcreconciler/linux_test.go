@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -96,6 +97,20 @@ func itemIsCreatedWithLabel(label string) bool {
 	return false
 }
 
+func itemIsCreatedWithDescrSnippet(descrSnippet string) bool {
+	currentState, release := dpcReconciler.GetCurrentState()
+	defer release()
+	iter := currentState.Items(true)
+	for iter.Next() {
+		item, state := iter.Item()
+		fmt.Println(item.String())
+		if strings.Contains(item.String(), descrSnippet) {
+			return state.IsCreated()
+		}
+	}
+	return false
+}
+
 func itemDescription(itemRef dg.ItemRef) string {
 	currentState, release := dpcReconciler.GetCurrentState()
 	defer release()
@@ -156,11 +171,11 @@ func TestReconcileWithEmptyArgs(test *testing.T) {
 	t.Expect(status.DNS.Error).To(BeNil())
 	t.Expect(status.DNS.Servers).To(BeEmpty())
 	t.Expect(itemCountWithType(linux.LocalIPRuleTypename)).To(Equal(1))
-	t.Expect(itemCountWithType(iptables.ChainV4Typename)).To(Equal(12))
-	t.Expect(itemCountWithType(iptables.ChainV6Typename)).To(Equal(12))
-	t.Expect(itemCountWithType(iptables.RuleV4Typename)).To(Equal(33))
-	t.Expect(itemCountWithType(iptables.RuleV6Typename)).To(Equal(31)) // without markDhcp & allowDHCPForwarding
-	t.Expect(itemIsCreatedWithLabel("Block SSH")).To(BeTrue())
+	t.Expect(itemCountWithType(iptables.ChainV4Typename)).To(Equal(14))
+	t.Expect(itemCountWithType(iptables.ChainV6Typename)).To(Equal(14))
+	t.Expect(itemCountWithType(iptables.RuleV4Typename)).To(Equal(20))
+	t.Expect(itemCountWithType(iptables.RuleV6Typename)).To(Equal(20))
+	t.Expect(itemIsCreatedWithDescrSnippet("--dport 22 -j REJECT")).To(BeTrue())
 
 	// Enable SSH access
 	gcp := types.DefaultConfigItemValueMap()
@@ -168,7 +183,7 @@ func TestReconcileWithEmptyArgs(test *testing.T) {
 	ctx = reconciler.MockRun(context.Background())
 	status = dpcReconciler.Reconcile(ctx, dpcrec.Args{GCP: *gcp})
 	t.Expect(status.Error).To(BeNil())
-	t.Expect(itemIsCreatedWithLabel("Block SSH")).To(BeFalse())
+	t.Expect(itemIsCreatedWithDescrSnippet("--dport 22 -j ACCEPT")).To(BeTrue())
 
 	// Nothing changed - nothing to reconcile.
 	ctx = reconciler.MockRun(context.Background())

@@ -1,10 +1,10 @@
 module github.com/lf-edge/eve/pkg/wwan/mmagent
 
-go 1.21
+go 1.22
 
 require (
 	github.com/godbus/dbus/v5 v5.1.0
-	github.com/lf-edge/eve/pkg/pillar v0.0.0-20240704121016-f208c6763fad
+	github.com/lf-edge/eve/pkg/pillar v0.0.0-20240808182004-78201574b04a
 	github.com/miekg/dns v1.1.55
 	github.com/sirupsen/logrus v1.9.3
 	github.com/tatsushid/go-fastping v0.0.0-20160109021039-d7bb493dee3e
@@ -21,10 +21,10 @@ require (
 	github.com/go-playground/validator/v10 v10.15.5 // indirect
 	github.com/google/go-cmp v0.6.0 // indirect
 	github.com/google/go-containerregistry v0.14.0 // indirect
-	github.com/google/go-tpm v0.3.0 // indirect
+	github.com/google/go-tpm v0.9.1 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/leodido/go-urn v1.2.4 // indirect
-	github.com/lf-edge/eve-api/go v0.0.0-20240607171551-ab08ae4a8124 // indirect
+	github.com/lf-edge/eve-api/go v0.0.0-20240722173316-ed56da45126b // indirect
 	github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20240315102754-0f6d1f182e0d // indirect
 	github.com/satori/go.uuid v1.2.1-0.20180404165556-75cca531ea76 // indirect
 	github.com/vishvananda/netns v0.0.0-20210104183010-2eb08e3e575f // indirect
@@ -36,3 +36,9 @@ require (
 	google.golang.org/protobuf v1.33.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 )
+
+// This is only a temporary replace directive used until this commit is merged into master.
+// Without replace we would have to make changes in pillar and wwan separately.
+// However, between these separate PRs, wwan would be broken due to incompatibility
+// between pillar and mmagent.
+replace github.com/lf-edge/eve/pkg/pillar => ../../pillar

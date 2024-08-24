@@ -102,6 +102,13 @@ The currently supported ACE match types are:
   `fport` can be combined with any other match type. It is actually required to combine `fport` with `protocol` inside
   the same ACE. In other words, port without protocol is not valid.
 
+* `adapter`: value should be an adapter shared label (`SystemAdapter.Sharedlabels`).
+  It can be used for an inbound ACE to apply the rule only to packets arriving
+  via one of the matched network adapters. Typically used to activate a given
+  port-forwarding rule (PORTMAP) for only a subset of network adapters.
+  Adapter label cannot be used for outbound ACE. This is because the EVE firewall
+  is applied before routing, and the output network adapter is not yet known.
+
 ## Limitations
 
 Here is a summary of all limitations of the current ACL implementation:
@@ -121,9 +128,6 @@ Here is a summary of all limitations of the current ACL implementation:
 
 * currently `DROP` ACE action is not implemented for local networks. With the implicit reject-all ACE at the end of every ACL,
   it is expected that users will only need to list the set of endpoints that application is *allowed* to communicate with.
-
-* ACL filtering works irrespective of the uplink interface chosen. In other words, it is not possible to have different
-  ACL rules depending on which uplink interface is currently being used by a given network instance.
 
 * support for unidirectional filtering is not yet implemented. Instead, all rules (with the exception of `PORTMAP` ACEs)
   are installed as bidirectional. Configuration option for the ACE direction is prepared for the future.
@@ -172,6 +176,42 @@ Assuming that ECO runs an ssh daemon listening on the `tcp` port `22`, we can ex
         {
           "type": "lport",
           "value": "2222"
+        }
+      ],
+      "actions": [
+        {
+          "portmap": true,
+          "appPort": 22
+        }
+      ]
+    }
+  ]
+}
+```
+
+If application is connected to a network instance with multiple ports, the port forwarding
+rule can be limited to only a subset of those ports. This is done be assigning a custom
+shared label (`portfwd` in the example below) to ports where forwarding is desired and
+adding the `adapter` match with the value containing the shared label into the port-forwarding
+ACE definition:
+
+```json
+{
+  "acls": [
+    {
+      "id": 1,
+      "matches": [
+        {
+          "type": "protocol",
+          "value": "tcp"
+        },
+        {
+          "type": "lport",
+          "value": "2222"
+        },
+        {
+          "type": "adapter",
+          "value": "portfwd"
         }
       ],
       "actions": [

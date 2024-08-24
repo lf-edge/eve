@@ -30,6 +30,8 @@ type Args struct {
 	AA  types.AssignableAdapters
 	RS  types.RadioSilence
 	GCP types.ConfigItemValueMap
+	// True if flow logging is enabled in at least one network instance.
+	FlowlogEnabled bool
 }
 
 // ReconcileStatus : state data related to config reconciliation.

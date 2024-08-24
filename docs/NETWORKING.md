@@ -33,7 +33,7 @@ Picture below is a high-level depiction of a single edge device running EVE. Mul
 physical network IO ports are portrayed, some used for EVE only, other shared or exclusively
 used by applications. Virtual networks are deployed to allow applications communicating
 with each other. External connectivity is provided to an application either through a directly
-assigned network IO port, or via an uplink selected for the given virtual network.
+assigned network IO port, or via one or more network ports selected for the given virtual network.
 
 ![networking-arch](./images/eve-networking-arch-concepts.png)
 
@@ -47,7 +47,7 @@ See [DEVICE-CONNECTIVITY.md](./DEVICE-CONNECTIVITY.md), section "Physical networ
 ### Network adapter
 
 Network adapter denotes network configuration (MTU, MAC, IP, VLAN, etc.) and logical attributes
-(logical & interface names, cost, usage) attached to a physical network port.
+(logical & interface names, cost, usage, shared labels) attached to a physical network port.
 In EVE API, it is denoted more generically as `System Adapter` (to include all kinds of IO devices,
 not just for networking).
 More information can be find in [DEVICE-CONNECTIVITY.md](./DEVICE-CONNECTIVITY.md),
@@ -79,11 +79,17 @@ EVE provides 2 types of network instances:
   - from outside, applications can be accessed only through port forwarding rules
   - provides basic services like: DHCP (with its own IPAM), DNS, access-control,
     HTTP metadata server (e.g. for cloud-init)
+  - one or more network ports can be attached to network instance to provide
+    external connectivity
 - **Switch**:
-  - simple L2-only switch between connected applications and a network adapter
+  - simple L2-only switch between connected applications and a network port
+    (currently limited to one port at most)
   - traffic is only forwarded
   - does not run DHCP server (but can be used in combination with external DHCP server)
   - allows applications to directly connect to external network segments
+
+Both types of network instances can be air-gapped, i.e., without any network port attached
+and thus without external connectivity.
 
 For a comprehensive description of Network Instances, their properties, behavior
 and some implementation details, please consult [APP-CONNECTIVITY.md](APP-CONNECTIVITY.md).
@@ -93,8 +99,9 @@ Application then references UUIDs of network instances to which it should be con
 
 ### Uplink
 
-Uplink denotes network adapter that a network instance is connected to for external connectivity.
-Network instance can be air-gapped, i.e. without uplink, thus not providing external connectivity.
+Uplink refers to a network adapter used for EVE management, i.e. providing connectivity
+with the controller. Multiple adapters can be used for management, and EVE will automatically
+fail over between them if any adapter loses connectivity.
 
 ## Implementation
 
@@ -111,9 +118,11 @@ distributions, and could be confusing even for experienced Linux users, for exam
 - Network adapter for ethernet port is implemented as a bridge which enslaves the port and takes
   its interface name and MAC address - this way we can then put application interfaces under this
   bridge to implement switch network instance
-- ACLs are implemented by iptables `mangle` table for the most part (not `filter`). Traffic flow
-  that should not be allowed is marked with a "DROP mark" and routed into a dummy `blackhole`
-  interface
+- If flow logging is enabled, ACLs are implemented by iptables `mangle` table for the most
+  part (not `filter`). Traffic flow that should not be allowed is marked with a "DROP mark"
+  and routed into a dummy `blackhole` interface. The purpose of this is to ensure that conntrack
+  entries are created even for dropped flows, allowing metadata collection for all application
+  network flows, including those denied by ACLs.
 - By default, DHCP servers of local network instances grant leases to applications with /32
   IP addresses, even if the actual subnet is larger and with more than just one IP. This is
   accompanied by a link-local route for the actual subnet and is used to force routing even in
@@ -129,7 +138,8 @@ The process of configuring the data-plane and all its components is split betwee
 
 - [NIM](../pkg/pillar/docs/nim.md) takes care of everything related to device connectivity
   (network adapters, `dhcpcd`, network config testing & fallback procedure)
-- [zedrouter](../pkg/pillar/docs/zedrouter.md) deploys network instances
+- [zedrouter](../pkg/pillar/docs/zedrouter.md) deploys network instances and ensures connectivity
+  for applications
 - [wwan](../pkg/wwan/README.md) runs `ModemManager` and EVE's `mmagent` wrapper to establish
   and manage cellular connectivity
 - wlan runs `wpa_supplicant` to perform the WPA authentication for WiFi connectivity

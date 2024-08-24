@@ -118,6 +118,13 @@ const (
 
 	// ContainerdContentDir - path to containerd`s content store
 	ContainerdContentDir = ContainerdDir + "/io.containerd.content.v1.content"
+
+	// VtpmdCtrlSocket is UDS to ask vtpmd to launch SWTP instances for VMs
+	VtpmdCtrlSocket = "/run/swtpm/vtpmd.ctrl.sock"
+	// SwtpmCtrlSocketPath SWTPM per-vm socket path, the format string is filled with the App UUID
+	SwtpmCtrlSocketPath = "/run/swtpm/%s.ctrl.sock"
+	// SwtpmPidPath is SWTPM per-vm pid file path, the format string is filled with the App UUID
+	SwtpmPidPath = "/run/swtpm/%s.pid"
 )
 
 var (
