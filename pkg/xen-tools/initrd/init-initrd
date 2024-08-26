@@ -207,14 +207,9 @@ echo "Executing with uid gid: $ug"
 # process. File will be used for the `eve-enter-container` script.
 pid_file="/mnt/entrypoint-pid"
 
-if grep -q "console=tty0" /proc/cmdline; then
-  #shellcheck disable=SC2086
-  #we have tty0 console primary, so will add output to hvc0 for logging
-  eval /chroot2 /mnt/rootfs "${WORKDIR:-/}" $ug $pid_file $cmd 2>&1 | tee -i /dev/hvc0
-else
-  #shellcheck disable=SC2086
-  eval /chroot2 /mnt/rootfs "${WORKDIR:-/}" $ug $pid_file $cmd <> /dev/console 2>&1
-fi
+#shellcheck disable=SC2086
+# Chroot into the working directory and execute the container entrypoint command in a new PID namespace
+eval /chroot2 /mnt/rootfs "${WORKDIR:-/}" $ug $pid_file /dev/tty0 /dev/hvc0 $cmd
 chroot_ret=$?
 
 # Container exited, final lines
