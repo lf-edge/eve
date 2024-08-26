@@ -1,0 +1,35 @@
+# Copyright (c) 2024, Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+---
+name: Check SPDX License Headers
+
+on:  # yamllint disable-line rule:truthy
+  push:
+    branches:
+      - "master"
+      - "[0-9]+.[0-9]+"
+      - "[0-9]+.[0-9]+-stable"
+  pull_request:
+    branches:
+      - "master"
+      - "[0-9]+.[0-9]+"
+      - "[0-9]+.[0-9]+-stable"
+
+jobs:
+  spdx-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.base_ref }}
+          fetch-depth: 0
+
+      - name: Fetch the PR's head ref
+        run: |
+          git fetch origin ${{ github.event.pull_request.head.sha }}:${{ github.event.pull_request.head.ref }}
+          git checkout ${{ github.event.pull_request.head.ref }}
+
+      - name: Run SPDX check
+        run: |
+          ./tools/spdx-check.sh ${{ github.event.pull_request.base.sha }}
