@@ -60,6 +60,9 @@ nav:
   - Logging:
       - Introduction: 'docs/LOGGING.md'
       - 'Log levels': 'docs/LOG-LEVELS.md'
+  - Memory:
+      - 'Memory Settings': 'docs/MEMORY-SETTINGS.md'
+      - 'Memory Monitoring': 'pkg/memory-monitor/README.md'
   - Security:
       - Information: 'docs/SECURITY.md'
       - 'Object level encryption': 'docs/OBJECT-LEVEL-ENCRYPTION.md'
