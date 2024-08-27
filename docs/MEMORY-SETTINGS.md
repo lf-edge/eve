@@ -33,6 +33,8 @@ Cgroups are a Linux kernel feature that limits, accounts for, and isolates the
 resource usage of a collection of processes. Cgroups are used to control the
 memory, CPU, and I/O resources that a process can use.
 
+Official documentation: [cgroups](https://www.kernel.org/doc/Documentation/cgroup-v1/cgroups.txt)
+
 ### Cgroups memory limits
 
 Each cgroup has its own memory limits. In EVE OS, we use the memory limits of
@@ -172,6 +174,16 @@ GRUB override file.
 set_global hv_dom0_mem_settings "dom0_mem=<value>,max:<value>"
 set_global hv_eve_mem_settings "eve_mem=<value>,max:<value>"
 set_global hv_ctrd_mem_settings "ctrd_mem=<value>,max:<value>"
+```
+
+It can be done on the device by mounting the config partition and editing the
+`grub.cfg` file. The changes will be applied after the device reboot.
+
+```bash
+eve config mount /mnt
+echo "set_global hv_dom0_mem_settings \"dom0_mem=1G,max:2G\"" >> /mnt/grub.cfg
+eve config unmount /mnt
+reboot
 ```
 
 ## User applications memory settings
@@ -458,7 +470,7 @@ other user applications.
 An indication that the EVE services require more memory can be the situation
 when the EVE services are frequently hitting memory limits and the OOM killer is
 fired with constraint `CONSTRAINT_NONE` and the `oom_memcg` value set to one of
-the cgroups of the EVE services:
+the cgroups of the EVE services.
 
 #### Global vs app-specific VMM Overhead
 
@@ -493,3 +505,8 @@ it is not clear which exact process is responsible for that. Most likely, it is
 a case when several processes are consuming a lot of memory, while none of them
 is consuming too much to reach the memory limit. In this case step-by-step
 debugging is required to find the solution to the problem.
+
+## Where to find the OOM messages
+
+The OOM messages can be found in the dmesg logs. They are also exposed via the
+syslog subsystem, so they are aggregated in the controller logs.
