@@ -199,13 +199,18 @@ func filterPkg(deps []string) []string {
 	var depList []string
 	dpList := make(map[string]bool)
 
-	reLF  := regexp.MustCompile("lfedge/.*")
+	reLF := regexp.MustCompile("lfedge/.*")
 	rePkg := regexp.MustCompile("lfedge/(?:eve-)?(.*):.*")
 	for _, s := range deps {
 		// We are just interested on packages from lfegde (those that we
 		// published)
 		if reLF.MatchString(s) {
 			str := rePkg.ReplaceAllString(s, "pkg/$1")
+			// Check that the directory ./pkg/$1 exists.
+			// It doesn't exist for lfedge packages outside eve source tree e.g. eve-rust
+			if _, err := os.Stat(str); err != nil {
+				continue
+			}
 			if !dpList[str] {
 				dpList[str] = true
 				depList = append(depList, str)
