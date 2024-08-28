@@ -29,6 +29,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/cmd/ipcmonitor"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/ledmanager"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/loguploader"
+	"github.com/lf-edge/eve/pkg/pillar/cmd/monitor"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/nim"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/nodeagent"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/pbuf"
@@ -109,6 +110,7 @@ var (
 		"zfsmanager":       {f: zfsmanager.Run},
 		"usbmanager":       {f: usbmanager.Run},
 		"vcomlink":         {f: vcomlink.Run},
+		"monitor":          {f: monitor.Run},
 	}
 	logger *logrus.Logger
 	log    *base.LogObject
