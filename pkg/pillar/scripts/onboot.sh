@@ -100,11 +100,11 @@ if [ -c $TPM_DEVICE_PATH ] && ! [ -f $DEVICE_KEY_NAME ]; then
 fi
 
 if [ -f $PERSISTDIR/reboot-reason ]; then
-    echo "Reboot reason: $(cat $PERSISTDIR/reboot-reason)" | tee /dev/console
+    echo "Reboot reason: $(cat $PERSISTDIR/reboot-reason)" | tee /dev/tty
 elif [ -n "$FIRSTBOOT" ]; then
-    echo "Reboot reason: NORMAL: First boot of device - at $(date -Ins -u)" | tee /dev/console
+    echo "Reboot reason: NORMAL: First boot of device - at $(date -Ins -u)" | tee /dev/tty
 else
-    echo "Reboot reason: UNKNOWN: reboot reason - power failure or crash - at $(date -Ins -u)" | tee /dev/console
+    echo "Reboot reason: UNKNOWN: reboot reason - power failure or crash - at $(date -Ins -u)" | tee /dev/tty
 fi
 
 if [ ! -d $PERSISTDIR/log ]; then
