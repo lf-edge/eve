@@ -517,9 +517,10 @@ def adjust_branches_by_docker_tags(new_commits, updated_branches, docker_tags):
         docker_tags (dict): A dictionary containing the Docker tags.
 
     Returns:
-        None
+        bool: A boolean value indicating whether an error occurred.
     """
     for branch, docker_commit in docker_tags.items():
+        is_error = False
         # only for updated branches
         if branch not in updated_branches:
             continue
@@ -529,6 +530,7 @@ def adjust_branches_by_docker_tags(new_commits, updated_branches, docker_tags):
         current_gh_commit, latest_gh_commit = updated_branches[branch]
 
         if docker_commit != latest_gh_commit:
+            is_error = True
             msg = (
                 " :"
                 + Fore.LIGHTYELLOW_EX
@@ -553,6 +555,24 @@ def adjust_branches_by_docker_tags(new_commits, updated_branches, docker_tags):
 
         # always update to our source of truth
         new_commits[branch] = docker_commit
+
+        # if we have updated branches check that we have any docker tag for them
+        # it means that the branch is just added
+        saved_updated_branches = updated_branches.copy()
+        for branch in updated_branches:
+            if branch not in docker_tags:
+                is_error = True
+                print(
+                    Fore.RED
+                    + "[Error]"
+                    + Style.RESET_ALL
+                    + f" :{branch}: the image for commit {new_commits[branch]}"
+                    + "was not pushed to docker.\n\tNo docker tag found for the branch."
+                    " Is this a new branch?"
+                )
+                del saved_updated_branches[branch]
+        updated_branches = saved_updated_branches
+        return is_error
 
 
 def main():
@@ -580,7 +600,16 @@ def main():
     # fetch tags from docker hub and convert them to branch names
     docker_tags = fetch_docker_tags(verbose=args.verbose)
 
-    adjust_branches_by_docker_tags(new_commits, updated_branches, docker_tags)
+    is_error = adjust_branches_by_docker_tags(new_commits, updated_branches, docker_tags)
+
+    if is_error:
+        print(
+            Fore.RED
+            + "[Error]"
+            + Style.RESET_ALL
+            + ": Please fix the issues and rerun the script."
+        )
+        return
 
     if not updated_branches:
         print(
