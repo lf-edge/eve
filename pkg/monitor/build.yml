@@ -1,0 +1,57 @@
+# Copyright (c) 2024 Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+org: lfedge
+image: eve-monitor
+network: yes
+config:
+  pid: host
+  binds:
+    # for tty/console devices
+    - /dev:/dev
+    # for temporary files and UNIX socket
+    - /run:/run
+    # to save logs
+    - /persist:/persist:rshared,rbind
+
+  devices:
+    - path: "/dev/tty"
+      type: c
+      major: 5
+      minor: 0
+      mode: 0666
+    - path: "/dev/console"
+      type: c
+      major: 5
+      minor: 1
+      mode: 0666
+    - path: "/dev/tty0"
+      type: c
+      major: 4
+      minor: 0
+      mode: 0666
+    - path: "/dev/ttyS0"
+      type: c
+      major: 4
+      minor: 64
+      mode: 0666
+    - path: "/dev/ttyAMA0"
+      type: c
+      major: 204
+      minor: 64
+      mode: 0666
+    # we run the monitor on tty2
+    - path: "/dev/tty2"
+      type: c
+      major: 4
+      minor: 2
+      mode: 0666
+    # direct access to the kernel log
+    - path: "/dev/kmsg"
+      type: c
+      major: 1
+      minor: 11
+      mode: 0660
+  capabilities:
+    - all
+  rootfsPropagation: shared

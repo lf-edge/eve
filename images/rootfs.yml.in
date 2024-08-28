@@ -42,6 +42,10 @@ onboot:
   - name: measure-config
     image: MEASURE_CONFIG_TAG
 services:
+  - name: monitor
+    image: MONITOR_TAG
+    cgroupsPath: /eve/services/monitor
+    oomScoreAdj: -999
   - name: newlogd
     image: NEWLOGD_TAG
     cgroupsPath: /eve/services/newlogd
