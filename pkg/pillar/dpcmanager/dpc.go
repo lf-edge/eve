@@ -31,6 +31,12 @@ func (m *DpcManager) doAddDPC(ctx context.Context, dpc types.DevicePortConfig) {
 			"will be ignored", dpc.Key)
 	}
 
+	// always delete the existing manual DPC regardless of its time priority
+	// there can be only one!
+	if dpc.Key == ManualDPCKey {
+		m.removeAllDPCbyKey(ManualDPCKey)
+	}
+
 	// XXX really need to know whether anything with current or lower
 	// index has changed. We don't care about inserts at the end of the list.
 	configChanged := m.updateDPCListAndPublish(dpc, false)
@@ -194,6 +200,17 @@ func (m *DpcManager) removeDPC(dpc types.DevicePortConfig) {
 	m.dpcList.PortConfigList = newConfig
 }
 
+// Remove all entries by Key
+func (m *DpcManager) removeAllDPCbyKey(key string) {
+	var newConfig []types.DevicePortConfig
+	for _, port := range m.dpcList.PortConfigList {
+		if port.Key != key {
+			newConfig = append(newConfig, port)
+		}
+	}
+	m.dpcList.PortConfigList = newConfig
+}
+
 // First look for matching timestamp, then compare for identical content
 // This is needed since after a restart zedagent will provide new timestamps
 // even if we persisted the DevicePortConfig before the restart.
@@ -319,9 +336,9 @@ func (m *DpcManager) compressDPCL() {
 			m.Log.Tracef("compressDPCL: Adding Current Index: i = %d, dpc: %+v",
 				i, dpc)
 		} else {
-			// Retain the lastresort if enabled. Delete everything else.
-			if dpc.Key == LastResortKey && m.enableLastResort {
-				m.Log.Tracef("compressDPCL: Retaining last resort. i = %d, dpc: %+v",
+			// Retain the lastresort if enabled and manual if available. Delete everything else.
+			if (dpc.Key == LastResortKey && m.enableLastResort) || (dpc.Key == ManualDPCKey) {
+				m.Log.Tracef("compressDPCL: Retaining last resort or manual. i = %d, dpc: %+v",
 					i, dpc)
 				newConfig = append(newConfig, dpc)
 				continue

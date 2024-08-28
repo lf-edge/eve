@@ -31,6 +31,9 @@ const (
 // LastResortKey : key used for DPC used as a last-resort.
 const LastResortKey = "lastresort"
 
+// ManualDPCKey : key used for DPC set manually by the user.
+const ManualDPCKey = "manual"
+
 var nilUUID = uuid.UUID{} // used as a constant
 
 // DpcManager manages a list of received device port configurations.
