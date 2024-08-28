@@ -12,27 +12,19 @@ So, a usual memory hierarchy in the EVE system looks like this:
 ```shell
 $ tree /sys/fs/cgroup/memory/eve -d
 /sys/fs/cgroup/memory/eve <--- is set from dom0_mem kernel argument, usually 800Mb (or 8GB for ZFS)
-├── containerd
+├── containerd <-------------- is set from ctrd_mem kernel argument, usually 400Mb
 └── services <---------------- is set from eve_mem kernel argument, usually 650Mb
-    ├── debug
-    ├── edgeview
-    ├── eve-edgeview
-    ├── guacd
-    ├── lisp
-    ├── memlogd
-    ├── newlogd
+    ├── <some services>
     ├── pillar <-------------- is set from eve_mem kernel argument, usually 650Mb
-    ├── sshd
-    ├── vtpm
-    ├── watchdog
-    ├── wlan
-    ├── wwan
+    ├── <some other services>
     └── xen-tools
 ```
 
-These limits are set within `pkg/dom0-ztools/rootfs/etc/init.d/010-eve-cgroup` script.
-The "eve" cgroup limit is set according to the `dom0_mem` kernel argument, and
-the "pillar" cgroup limit is set according the `eve_mem` kernel argument.
+These limits are set within `pkg/dom0-ztools/rootfs/etc/init.d/010-eve-cgroup`
+script. The "eve" cgroup limit is set according to the `dom0_mem` kernel
+argument, and the "pillar" cgroup (along with the parent "services" cgroup
+and all other sub-cgroups of "services" cgroup) limit is set according the
+`eve_mem` kernel argument.
 
 In its turn, the "pillar" cgroup encapsulates several processes, the most
 important of which is `zedbox`:
