@@ -40,7 +40,7 @@ def check_commit_message(commit):
     body_lines = [line for line in body_lines if not line.lower().startswith("signed-off-by")]
 
     if not body_lines:
-        return False, f"Commit {commit.hexsha} has a body but only contains Signed-off-by."
+        return False, f"Commit {commit.hexsha} has no body."
 
     # Check if the body starts with a capital letter
     if not body_lines[0][0].isupper():
@@ -70,6 +70,9 @@ def main():
         valid, error_message = check_commit_message(commit)
         if not valid:
             print(error_message)
+            print(f"Commit message:\n{'-'*72}\n{commit.message}{'-'*72}")
+            print("For more details, see: "
+            "https://github.com/lf-edge/eve/blob/master/CONTRIBUTING.md#commit-messages")
             sys.exit(1)
 
     print("All commits are valid.")
