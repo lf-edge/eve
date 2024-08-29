@@ -77,7 +77,49 @@ type ACEMatch struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	// FIXME: We should convert this to enum
+	// Supported ACE match types:
+	//   - "ip": value should be an IP address of a remote endpoint. The match is satisfied
+	//     for outbound and inbound flow if the destination and the source IP address
+	//     matches the given value, respectively. Can be combined with any other match
+	//     type to further narrow down the selection criteria.
+	//   - "host": value should be a domain name of a remote endpoint. It can be either a fully
+	//     qualified, or a partially qualified domain name (FQDN or PQDN). A packet is
+	//     matched if it is destined to or originated from an IP address that was obtained
+	//     by a DNS query for that exact domain or any of its subdomains. For example,
+	//     match of type "host" with value "domain.com" will also apply to the endpoint
+	//     "subdomain.domain.com". Can be combined with other match types except for "eidset".
+	//   - "eidset": special match type for the overlay network. Matches IPs of all applications
+	//     deployed in the same network as well as all IPs with statically configured
+	//     DNS entries (under the config field NetworkInstanceConfig.Dns). For this type,
+	//     value field is not used. Can be combined with other match types except for
+	//     "host".
+	//   - "protocol": value should specify the protocol to match. Protocol can be one of "tcp",
+	//     "udp", "icmp", or "all", or it can be a numeric value, representing one
+	//     of these protocols or a different one. A protocol name from /etc/protocols
+	//     is also allowed. Protocol match can be combined with any other match type
+	//     (often combined with port numbers).
+	//   - "lport": value should be an application local port number. For filtering actions,
+	//     this is the source port for outbound traffic and destination port for inbound
+	//     traffic. For PORTMAP action, this represents application port as exposed
+	//     to the external network (i.e., if <edge-node-ip>:2222 is mapped to <app-ip>:22,
+	//     lport refers to 2222). lport can be combined with any other match type.
+	//     It is actually required to combine "lport" and "protocol" inside the same ACE.
+	//     In other words, port without protocol is not valid.
+	//   - "fport": value should be a remote endpoint port number (foreign port). Used for filtering
+	//     actions, but not for PORTMAP (do not confuse with "lport", which is still used to
+	//     represent the forwarded port - the forwarded port is still considered as local).
+	//     "fport" can be combined with any other match type. It is actually required
+	//     to combine "fport" with "protocol" inside the same ACE. In other words, port
+	//     without protocol is not valid.
+	//   - "adapter": value should be an adapter shared label (SystemAdapter.shared_labels).
+	//     It can be used for an inbound ACE to apply the rule only to packets arriving
+	//     via one of the matched network adapters. Typically used to activate a given
+	//     port-forwarding rule (PORTMAP) for only a subset of network adapters.
+	//     When not specified, the rule applies to every port attached to the network
+	//     instance (i.e. equivalent to setting "adapter" to the pre-defined shared
+	//     label "all").
+	//     Adapter label cannot be used for outbound ACE. This is because the EVE firewall
+	//     is applied before routing, and the output network adapter is not yet known.
 	Type  string `protobuf:"bytes,1,opt,name=type,proto3" json:"type,omitempty"`
 	Value string `protobuf:"bytes,2,opt,name=value,proto3" json:"value,omitempty"`
 }
@@ -235,6 +277,7 @@ type ACE struct {
 	//	for example
 	//	   1) host=www.example.com & port=http
 	//	   2) ip=8.8.8.8 & port=53 & proto=UDP
+	//	   3) adapter=uplink && port=8080 && proto=TCP
 	Matches []*ACEMatch `protobuf:"bytes,1,rep,name=matches,proto3" json:"matches,omitempty"`
 	// Expect only single action...repeated here is
 	// for future work.
