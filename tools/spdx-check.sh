@@ -4,9 +4,10 @@
 # SPDX-License-Identifier: Apache-2.0
 
 BASE_COMMIT=$1
+IGNORE_FILE=".spdxignore"
 
 # List of files to check, excluding vendor directories
-files=$(git diff --name-only --diff-filter=A "${BASE_COMMIT}"..HEAD | grep -v "vendor/")
+files=$(git diff --name-only --diff-filter=A "${BASE_COMMIT}"..HEAD)
 
 # SPDX License Identifier to check for
 license_identifiers=(
@@ -59,8 +60,23 @@ check_spdx() {
   return 1
 }
 
+ignore_paths=()
+if [[ -f "$IGNORE_FILE" ]]; then
+  while IFS= read -r line; do
+    ignore_paths+=("$line")
+  done < "$IGNORE_FILE"
+else
+  echo "No .spdxignore file found"
+fi
+
 file_to_be_checked() {
   local file="$1"
+  # Check if the file or directory is excluded
+  for ignore_path in "${ignore_paths[@]}"; do
+    if [[ "$file" == "$ignore_path" || "$file" == "$ignore_path"* ]]; then
+      return 1
+    fi
+  done
   # Check if the file is a source file that should have a license header
   for ext in "${file_extensions[@]}"; do
     if [[ "$file" == *.$ext ]]; then
