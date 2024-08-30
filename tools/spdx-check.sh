@@ -9,7 +9,18 @@ BASE_COMMIT=$1
 files=$(git diff --name-only --diff-filter=A "${BASE_COMMIT}"..HEAD | grep -v "vendor/")
 
 # SPDX License Identifier to check for
-license_identifier="SPDX-License-Identifier: Apache-2.0"
+license_identifiers=(
+  "Apache-2.0"
+  "MIT"
+  "BSD-2-Clause"
+  "BSD-3-Clause"
+  "ISC" # Internet Systems Consortium license
+  "Python-2.0"
+  "PostgreSQL"
+  "Zlib"
+  "BSL-1.0" # Boost Software License 1.0
+  "CC0-1.0" # Creative Commons Zero v1.0 Universal
+)
 
 # Array of file extensions to check for SPDX header
 file_extensions=(
@@ -33,11 +44,19 @@ all_files_contain_spdx=true
 
 check_spdx() {
   local file="$1"
-  # Check if the file contains the SPDX identifier
-  if ! grep -q -i "$license_identifier" "$file"; then
+  # Check that the file contains the SPDX-License-Identifier
+  if ! grep -q "SPDX-License-Identifier" "$file"; then
+    echo "missing SPDX-License-Identifier!"
     return 1
   fi
-  return 0
+  # Check if the file contains the SPDX identifier
+  for license_identifier in "${license_identifiers[@]}"; do
+    if grep -q -i "$license_identifier" "$file"; then
+      return 0
+    fi
+  done
+  echo "the SPDX-License-Identifier is not compatible with the allowed licenses"
+  return 1
 }
 
 file_to_be_checked() {
@@ -59,12 +78,11 @@ file_to_be_checked() {
 # Loop through the files and check for the SPDX header
 for file in $files; do
   if file_to_be_checked "$file"; then
-    echo -n "Checking $file ..."
+    echo -n "Checking $file ... "
     if ! check_spdx "$file"; then
-      echo " missing SPDX-License-Identifier."
       all_files_contain_spdx=false
     else
-      echo " OK"
+      echo "OK"
     fi
   fi
 done
