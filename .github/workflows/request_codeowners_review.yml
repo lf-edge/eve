@@ -4,6 +4,9 @@ name: Request Code Owners Review
 on:
   pull_request_target:
     types: ["opened", "synchronize"]
+    paths-ignore:
+      - '.github/workflows/request_codeowners_review.yml'
+
 
 jobs:
   auto_request_review:
