@@ -9,8 +9,7 @@ on:
       - "[0-9]+.[0-9]+"
       - "[0-9]+.[0-9]+-stable"
     paths-ignore:
-      - 'docs/**'
-      - 'pkg/pillar/docs/**'
+      - '**/*.md'
   pull_request_review:
     types: [submitted]
 
@@ -19,37 +18,90 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  get-run-id:
-    if: github.event.review.state == 'approved'
+  check_md_files:
+    if: ${{ github.event.review.state == 'approved' }}
     runs-on: ubuntu-latest
     outputs:
-      result: ${{ steps.get-run-id.outputs.result }}
+      only_md: ${{ steps.check_md.outputs.only_md }}
+      build_yml_modified: ${{ steps.check_md.outputs.build_yml_modified }}
     steps:
-      - name: Get run ID for the artifact upload
-        id: get-run-id
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const { data } = await github.rest.actions.listWorkflowRuns({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              workflow_id: 'build.yml',
-              head_sha: context.payload.pull_request.head.sha,
-              status: 'success'
-            });
-            if (data == null || data.workflow_runs.length == 0) {
-                throw new Error('No successful runs found');
-            }
-            const runId = data.workflow_runs[0].id; // Assuming the first one is the latest successful run
-            return runId;
-          result-encoding: string
+      - name: Check if only Markdown files are changed
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Get the list of modified files
+          PR_API_URL="${{ github.event.pull_request._links.self.href }}/files"
+          RESPONSE=$(curl -s -H "Authorization: token $GITHUB_TOKEN" $PR_API_URL)
+          # Check if the response is valid JSON
+          echo "$RESPONSE" | jq . > /dev/null || exit 1
+          MODIFIED_FILES=$(echo "$RESPONSE" | jq -r '.[].filename')
+          NON_MD_FILES=$(echo "$MODIFIED_FILES" | grep -v '\.md$' || true)
+          if [ -z "$NON_MD_FILES" ]; then
+            echo "All files are Markdown (.md) files."
+            echo "only_md=true" >> $GITHUB_ENV
+          else
+            echo "Non-Markdown files detected."
+            echo "only_md=false" >> $GITHUB_ENV
+          fi
+          # Check if build.yml is modified
+          if echo "$MODIFIED_FILES" | grep -q 'build.yml'; then
+            echo "build.yml is modified."
+            echo "build_yml_modified=true" >> $GITHUB_ENV
+          else
+            echo "build.yml is not modified."
+            echo "build_yml_modified=false" >> $GITHUB_ENV
+          fi
+      - name: Output result
+        id: check_md
+        run: |
+          echo "${{ env.only_md }}"
+          echo "only_md=${{ env.only_md }}" >> $GITHUB_OUTPUT
+          echo "${{ env.build_yml_modified }}"
+          echo "build_yml_modified=${{ env.build_yml_modified }}" >> $GITHUB_OUTPUT
+
+  get_run_id:
+    if: ${{ github.event.review.state == 'approved' && needs.check_md_files.outputs.only_md == 'false' && needs.check_md_files.outputs.build_yml_modified == 'false' }}
+    runs-on: ubuntu-latest
+    needs: check_md_files
+    outputs:
+      run_id: ${{ steps.get_run_id.outputs.run_id }}
+    steps:
+      - name: Get the GitHub context
+        run: echo "github context is $GITHUB_CONTEXT"
+        env:
+          GITHUB_CONTEXT: ${{ toJson(github) }}
+      - name: Print the head SHA
+        run: |
+          echo ${{ github.event.pull_request.head.sha }}
+      - name: Print pull request url
+        run: |
+          echo ${{ github.event.pull_request._links.self.href }}
+      - name: Get run ID for the artifact upload
+        id: get_run_id
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          RESPONSE=$(curl -s -L "https://api.github.com/repos/${{ github.repository }}/actions/workflows/build.yml/runs?head_sha=${{ github.event.pull_request.head.sha }}&status=success" \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github+json")
+          # Check if RESPONSE is empty
+          if [ -z "$RESPONSE" ]; then
+            echo "API call returned no response."
+            exit 1
+          fi
+          RUN_ID=$(echo $RESPONSE | jq -r '.workflow_runs[0].id')
+          # Check if the RUN_ID is empty
+          if [ "$RUN_ID" == "null" ] || [ -z "$RUN_ID" ]; then
+            echo "No successful runs found"
+            exit 1
+          fi
+          echo $RUN_ID
+          echo "run_id=$RUN_ID" >> $GITHUB_OUTPUT
       - name: Report Run ID  # useful for debugging
-        run: echo "Run ID is ${{ steps.get-run-id.outputs.result }}"
+        run: echo "Run ID is ${{ steps.get_run_id.outputs.result }}"
 
   test_suite_pr:
-    needs: get-run-id
+    needs: get_run_id
     strategy:
       fail-fast: false
       # we do not really need a matrix, as we only do amd64/kvm,
@@ -65,7 +117,7 @@ jobs:
     with:
       eve_image: "evebuild/pr:${{ github.event.pull_request.number  }}"
       eve_artifact_name: eve-${{ matrix.hv }}-${{ matrix.arch }}-${{ matrix.platform }}
-      artifact_run_id: ${{ needs.get-run-id.outputs.result }}
+      artifact_run_id: ${{ needs.get_run_id.outputs.result }}
       eden_version: "0.9.12"
 
   test_suite_master:
