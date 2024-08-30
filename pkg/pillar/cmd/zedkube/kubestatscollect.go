@@ -7,6 +7,7 @@ package zedkube
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/kubeapi"
@@ -14,6 +15,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
+	virtv1 "kubevirt.io/api/core/v1"
+	"kubevirt.io/client-go/kubecli"
 )
 
 func collectKubeStats(ctx *zedkubeContext) {
@@ -30,7 +33,9 @@ func collectKubeStats(ctx *zedkubeContext) {
 
 		var podsInfo []types.KubePodInfo
 		var nodesInfo []types.KubeNodeInfo
+		var vmisInfo []types.KubeVMIInfo
 
+		// get nodes
 		nodes, err := getKubeNodes(clientset)
 		if err != nil {
 			log.Errorf("collectKubeStats: can't get nodes %v", err)
@@ -41,20 +46,41 @@ func collectKubeStats(ctx *zedkubeContext) {
 			nodesInfo = append(nodesInfo, *nodeInfo)
 		}
 
+		// get app pods
 		pods, err := getAppKubePods(clientset)
 		if err != nil {
 			log.Errorf("collectKubeStats: can't get pods %v", err)
 			return
 		}
 		for _, pod := range pods {
+			if strings.HasPrefix(pod.ObjectMeta.Name, "virt-launcher-") { // skip virt-launcher pods
+				continue
+			}
 			podInfo := getKubePodInfo(pod)
 			podsInfo = append(podsInfo, *podInfo)
 		}
 
-		// Publish the cluster info, first w/ nodes and app pods
+		// get VMIs
+		virtClient, err := getVirtClient()
+		if err != nil {
+			log.Errorf("collectKubeStats: can't get virtClient %v", err)
+			return
+		}
+		vmis, err := getAppVMIs(virtClient)
+		if err != nil {
+			log.Errorf("collectKubeStats: can't get VMIs %v", err)
+			return
+		}
+		for _, vmi := range vmis {
+			vmiInfo := getAppVMIInfo(vmi)
+			vmisInfo = append(vmisInfo, *vmiInfo)
+		}
+
+		// Publish the cluster info, first w/ nodes and app pods and VMIs
 		clusterInfo := types.KubeClusterInfo{
 			Nodes:   nodesInfo,
 			AppPods: podsInfo,
+			AppVMIs: vmisInfo,
 		}
 		ctx.pubKubeClusterInfo.Publish("global", clusterInfo)
 	}
@@ -71,16 +97,16 @@ func getKubeNodes(clientset *kubernetes.Clientset) ([]corev1.Node, error) {
 
 func getKubeNodeInfo(node corev1.Node) *types.KubeNodeInfo {
 	//log.Noticef("getKubeNodeInfo: node %s", node.Name)
-	status := "Unknown"
+	status := types.KubeNodeStatusUnknown
 	var lastTransitionTime time.Time
 	for _, condition := range node.Status.Conditions {
 		if condition.Type == corev1.NodeReady {
 			if condition.Status == corev1.ConditionTrue {
-				status = "Ready"
+				status = types.KubeNodeStatusReady
 			} else if condition.Status == corev1.ConditionFalse {
-				status = "NotReady"
+				status = types.KubeNodeStatusNotReady
 			} else if condition.Status == corev1.ConditionUnknown {
-				status = "Unknown"
+				status = types.KubeNodeStatusNotReachable
 			}
 			lastTransitionTime = condition.LastTransitionTime.Time
 			break
@@ -114,12 +140,12 @@ func getKubeNodeInfo(node corev1.Node) *types.KubeNodeInfo {
 
 	// Check if the node is schedulable
 	schedulable := !node.Spec.Unschedulable
-	log.Functionf("getKubeNodeInfo: node %s, status %s, isMaster %v, isEtcd %v, creationTime %v, lastTrasitionTime %v, kubeletVersion %s, internalIP %s, externalIP %s, schedulable %v",
+	log.Functionf("getKubeNodeInfo: node %s, status %v, isMaster %v, isEtcd %v, creationTime %v, lastTrasitionTime %v, kubeletVersion %s, internalIP %s, externalIP %s, schedulable %v",
 		node.Name, status, isMaster, isEtcd, creationTimestamp, lastTransitionTime, kubeletVersion, internalIP, externalIP, schedulable)
 
 	nodeInfo := types.KubeNodeInfo{
 		Name:               node.Name,
-		Status:             convertStringToKubeNodeStatus(status),
+		Status:             status,
 		IsMaster:           isMaster,
 		IsEtcd:             isEtcd,
 		CreationTime:       creationTimestamp,
@@ -163,7 +189,7 @@ func getKubePodInfo(pod corev1.Pod) *types.KubePodInfo {
 
 	podInfo := types.KubePodInfo{
 		Name:              pod.Name,
-		Status:            convertStringToKubePodStatus(string(status)),
+		Status:            convertStringToKubePodStatus(status),
 		RestartCount:      restartCount,
 		RestartTimestamp:  restartTimestamp,
 		CreationTimestamp: CreationTimestamp,
@@ -173,33 +199,82 @@ func getKubePodInfo(pod corev1.Pod) *types.KubePodInfo {
 	return &podInfo
 }
 
-// convertStringToKubeNodeStatus converts a string status to a KubeNodeStatus.
-func convertStringToKubeNodeStatus(status string) types.KubeNodeStatus {
-	switch status {
-	case "Ready":
-		return types.KubeNodeStatusReady
-	case "NotReady":
-		return types.KubeNodeStatusNotReady
-	case "NotReachable":
-		return types.KubeNodeStatusNotReachable
-	default:
-		return types.KubeNodeStatusUnknown
+func getAppVMIs(virtClient kubecli.KubevirtClient) ([]virtv1.VirtualMachineInstance, error) {
+	// List pods in the namespace
+	vmiList, err := virtClient.VirtualMachineInstance(kubeapi.EVEKubeNameSpace).List(context.Background(), &metav1.ListOptions{})
+	if err != nil {
+		log.Errorf("getAppVMIs: can't get nodes %v", err)
+		return nil, err
 	}
+	return vmiList.Items, nil
+}
+
+func getAppVMIInfo(vmi virtv1.VirtualMachineInstance) *types.KubeVMIInfo {
+	// Extract information from the VMI
+	name := vmi.Name
+	creationTime := vmi.CreationTimestamp.Time
+	phase := vmi.Status.Phase
+	nodeName := vmi.Status.NodeName
+	ready := false
+	var lastTransitionTime time.Time
+	for _, condition := range vmi.Status.Conditions {
+		if condition.Type == virtv1.VirtualMachineInstanceReady && condition.Status == corev1.ConditionTrue {
+			lastTransitionTime = condition.LastTransitionTime.Time
+			ready = true
+			break
+		}
+	}
+
+	// Log the information
+	log.Functionf("getAppVMIInfo: VMI %s, createtime %v, phase %s, lastTransitionTime %v, nodeName %s, ready %t",
+		name, creationTime, phase, lastTransitionTime, nodeName, ready)
+
+	vmiInfo := types.KubeVMIInfo{
+		Name:               name,
+		Status:             convertStringToKubeVMIStatus(phase),
+		CreationTime:       creationTime,
+		LastTransitionTime: lastTransitionTime,
+		IsReady:            ready,
+		NodeName:           nodeName,
+	}
+
+	return &vmiInfo
 }
 
 // convertStringToKubePodStatus converts a string status to a KubePodStatus.
-func convertStringToKubePodStatus(status string) types.KubePodStatus {
-	switch status {
-	case "Pending":
+func convertStringToKubePodStatus(phase corev1.PodPhase) types.KubePodStatus {
+	switch phase {
+	case corev1.PodPending:
 		return types.KubePodStatusPending
-	case "Running":
+	case corev1.PodRunning:
 		return types.KubePodStatusRunning
-	case "Succeeded":
+	case corev1.PodSucceeded:
 		return types.KubePodStatusSucceeded
-	case "Failed":
+	case corev1.PodFailed:
 		return types.KubePodStatusFailed
 	default:
 		return types.KubePodStatusUnknown
+	}
+}
+
+func convertStringToKubeVMIStatus(status virtv1.VirtualMachineInstancePhase) types.KubeVMIStatus {
+	switch status {
+	case virtv1.VmPhaseUnset:
+		return types.KubeVMIStatusUnset
+	case virtv1.Pending:
+		return types.KubeVMIStatusPending
+	case virtv1.Scheduling:
+		return types.KubeVMIStatusScheduling
+	case virtv1.Scheduled:
+		return types.KubeVMIStatusScheduled
+	case virtv1.Running:
+		return types.KubeVMIStatusRunning
+	case virtv1.Succeeded:
+		return types.KubeVMIStatusSucceeded
+	case virtv1.Failed:
+		return types.KubeVMIStatusFailed
+	default:
+		return types.KubeVMIStatusUnknown
 	}
 }
 
@@ -216,4 +291,19 @@ func getKubeClientSet() (*kubernetes.Clientset, error) {
 		return nil, err
 	}
 	return clientset, nil
+}
+
+func getVirtClient() (kubecli.KubevirtClient, error) {
+	config, err := kubeapi.GetKubeConfig()
+	if err != nil {
+		log.Errorf("getVirtClient: can't get config %v", err)
+		return nil, err
+	}
+
+	virtClient, err := kubecli.GetKubevirtClientFromRESTConfig(config)
+	if err != nil {
+		log.Errorf("getVirtClient: can't get client %v", err)
+		return nil, err
+	}
+	return virtClient, nil
 }

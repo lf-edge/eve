@@ -47,7 +47,30 @@ type KubePodInfo struct {
 	NodeName          string
 }
 
+type KubeVMIStatus int8
+
+const (
+	KubeVMIStatusUnset KubeVMIStatus = iota
+	KubeVMIStatusPending
+	KubeVMIStatusScheduling
+	KubeVMIStatusScheduled
+	KubeVMIStatusRunning
+	KubeVMIStatusSucceeded
+	KubeVMIStatusFailed
+	KubeVMIStatusUnknown
+)
+
+type KubeVMIInfo struct {
+	Name               string
+	Status             KubeVMIStatus
+	CreationTime       time.Time
+	LastTransitionTime time.Time
+	IsReady            bool
+	NodeName           string
+}
+
 type KubeClusterInfo struct {
 	Nodes   []KubeNodeInfo // List of nodes in the cluster
 	AppPods []KubePodInfo  // List of EVE application pods
+	AppVMIs []KubeVMIInfo  // List of VirtualMachineInstance
 }
