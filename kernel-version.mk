@@ -30,19 +30,23 @@ ifeq (, $(findstring $(PLATFORM), $(PLATFORMS_$(ZARCH))))
 endif
 
 ifeq ($(ZARCH), amd64)
-    # either generic or rt
-    KERNEL_FLAVOR=$(PLATFORM)
-    KERNEL_VERSION=v6.1.38
+    ifeq ($(PLATFORM), rt)
+        KERNEL_FLAVOR=rt
+        KERNEL_VERSION=v6.1.105
+    else
+        KERNEL_FLAVOR=generic
+        KERNEL_VERSION=v6.1.106
+    endif
 else ifeq ($(ZARCH), arm64)
     ifeq ($(PLATFORM), nvidia)
         KERNEL_FLAVOR=nvidia
         KERNEL_VERSION=v5.10.192
     else
         KERNEL_FLAVOR=generic
-        KERNEL_VERSION=v6.1.38
+        KERNEL_VERSION=v6.1.106
     endif
 else ifeq ($(ZARCH), riscv64)
-    KERNEL_VERSION=v6.1.38
+    KERNEL_VERSION=v6.1.106
     KERNEL_FLAVOR=generic
 endif
 
