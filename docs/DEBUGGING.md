@@ -153,7 +153,7 @@ In order to attach to the console of the hosting Vm of the Container application
 
 The `prime-cons` console exists only for the Container applications and is always reachable for executing commands on the Vm which hosts corresponding container.
 
-Once terminal responds on the `prime-cons` console it is possible to enter container by executing the `eve-enter-container` command:
+Once terminal responds on the `prime-cons` console it is possible to enter container by executing the `eve-enter-container` command. The script takes an optional argument with the path to the program to run in the container (the path is relative to the root of the container filesystem). If no argument is provided, the script will try to call the shell (`/bin/sh`) in the container:
 
 ```bash
 ~ # eve-enter-container

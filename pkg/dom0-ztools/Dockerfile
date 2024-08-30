@@ -39,6 +39,9 @@ RUN rm -rf /tmp/zfs-out/usr/share && rm -rf /tmp/zfs-out/usr/src && \
 RUN find /tmp/zfs-out -mindepth 1|sed 's@/tmp/zfs-out@@'>/out/etc/zfs-files
 RUN cp -r /tmp/zfs-out/* /out
 
+# Add directory for CDI files
+RUN mkdir -p /out/etc/cdi
+
 FROM scratch
 COPY --from=zfs /out/ /
 # hadolint ignore=DL3020

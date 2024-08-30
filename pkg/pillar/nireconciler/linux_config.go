@@ -95,17 +95,23 @@ import (
 //  |   |   +----------------------------------------------------+   |   |
 //  |   |   |                        L2                          |   |   |
 //  |   |   |                                                    |   |   |
-//  |   |   |   +----------------------+   +-----------------+   |   |   |
-//  |   |   |   |        Bridge        |   |   BridgePort    |   |   |   |
-//  |   |   |   |  (L2 NI: external)   |   |  (for L2 NI)    |   |   |   |
-//  |   |   |   |  (L3 NI: managed)    |   |  (device port)  |   |   |   |
-//  |   |   |   +----------------------+   +-----------------+   |   |   |
+//  |   |   |   +----------------------+  +---------------+      |   |   |
+//  |   |   |   |        Bridge        |  |  BridgePort   |      |   |   |
+//  |   |   |   |  (L2 NI: external)   |  | (for L2 NI)   | ...  |   |   |
+//  |   |   |   |  (L3 NI: managed)    |  | (device port) |      |   |   |
+//  |   |   |   +----------------------+  +---------------+      |   |   |
 //  |   |   |                                                    |   |   |
 //  |   |   |      +---------------+    +-----------------+      |   |   |
 //  |   |   |      |  VLANBridge   |    |    VLANPort     |      |   |   |
-//  |   |   |      |  (for L2 NI)  |    |   (for L2 NI)   |      |   |   |
+//  |   |   |      |  (for L2 NI)  |    |   (for L2 NI)   | ...  |   |   |
 //  |   |   |      +---------------+    |  (device port)  |      |   |   |
 //  |   |   |                           +-----------------+      |   |   |
+//  |   |   |                                                    |   |   |
+//  |   |   |               +-----------------+                  |   |   |
+//  |   |   |               |    BPDUGuard    |                  |   |   |
+//  |   |   |               |   (for L2 NI)   | ...              |   |   |
+//  |   |   |               |  (device port)  |                  |   |   |
+//  |   |   |               +-----------------+                  |   |   |
 //  |   |   |                                                    |   |   |
 //  |   |   |      +--------------------------------------+      |   |   |
 //  |   |   |      |             IptablesRule             |      |   |   |
@@ -156,10 +162,10 @@ import (
 //  |   |   |   | (For Kube Pod) |        |  (For Kube Pod)  |   |   |   |
 //  |   |   |   +----------------+        +------------------+   |   |   |
 //  |   |   |                                                    |   |   |
-//  |   |   |       +---------------+    +----------+            |   |   |
-//  |   |   |       |  VLANPort     |    |  IPSet   |            |   |   |
-//  |   |   |       |  (for L2 NI)  |    |  (eids)  |            |   |   |
-//  |   |   |       +---------------+    +----------+            |   |   |
+//  |   |   |   +-------------+  +-------------+  +----------+   |   |   |
+//  |   |   |   | VLANPort    |  |  BPDUGuard  |  |  IPSet   |   |   |   |
+//  |   |   |   | (for L2 NI) |  | (for L2 NI) |  |  (eids)  |   |   |   |
+//  |   |   |   +-------------+  +-------------+  +----------+   |   |   |
 //  |   |   |                                                    |   |   |
 //  |   |   |   +--------------------------------------------+   |   |   |
 //  |   |   |   |                   ACLs                     |   |   |   |
@@ -290,8 +296,12 @@ func AppConnSGName(appID uuid.UUID, netAdapterName string) string {
 	return "AppConn-" + appID.String() + "-" + netAdapterName
 }
 
-func portPhysIfName(bridgeName string) string {
-	return "k" + bridgeName
+func portPhysIfName(port Port) string {
+	if port.UsedWithIP() {
+		// NIM renames the port and uses the original name for the bridge.
+		return "k" + port.IfName
+	}
+	return port.IfName
 }
 
 // Ipset with all the addresses from the DNSNameToIPList plus the VIF IP itself.
@@ -340,7 +350,7 @@ func (r *LinuxNIReconciler) getIntendedPorts() dg.Graph {
 			var portIfName, masterIfName string
 			switch ni.config.Type {
 			case types.NetworkInstanceTypeSwitch:
-				portIfName = portPhysIfName(port.IfName)
+				portIfName = portPhysIfName(port)
 				masterIfName = port.IfName
 			case types.NetworkInstanceTypeLocal:
 				// Local NI will have its own bridge and even if port refers to a bridge
@@ -527,12 +537,15 @@ func (r *LinuxNIReconciler) getIntendedNIL2Cfg(niID uuid.UUID) dg.Graph {
 	if bridgeIP != nil {
 		bridgeIPs = append(bridgeIPs, bridgeIP)
 	}
+	withSTP := ni.config.Type == types.NetworkInstanceTypeSwitch &&
+		len(ni.bridge.Ports) > 1
 	intendedL2Cfg.PutItem(linux.Bridge{
 		IfName:       ni.brIfName,
-		CreatedByNIM: r.niBridgeIsCreatedByNIM(ni),
+		CreatedByNIM: r.niBridgeIsCreatedByNIM(ni.config, ni.bridge),
 		MACAddress:   bridgeMAC,
 		IPAddresses:  bridgeIPs,
 		MTU:          ni.bridge.MTU,
+		WithSTP:      withSTP,
 	}, nil)
 	// For Switch NI also add the intended VLAN configuration.
 	// Here we put VLAN config only for the bridge itself and the port interface,
@@ -540,62 +553,67 @@ func (r *LinuxNIReconciler) getIntendedNIL2Cfg(niID uuid.UUID) dg.Graph {
 	if ni.config.Type != types.NetworkInstanceTypeSwitch {
 		return intendedL2Cfg
 	}
+	enableVLANFiltering, trunkPort := r.getVLANConfigForNI(ni)
 	intendedL2Cfg.PutItem(linux.VLANBridge{
 		BridgeIfName:        ni.brIfName,
-		EnableVLANFiltering: true,
+		EnableVLANFiltering: enableVLANFiltering,
 	}, nil)
 	if len(ni.bridge.Ports) == 0 {
-		// Air-gapped, no port to configure as trunk.
+		// Air-gapped, no port to configure as VLAN trunk or access.
 		return intendedL2Cfg
 	}
-	// Find out which VLAN IDs should be allowed for the trunk port.
-	var trunkPort linux.TrunkPort
-	for _, app := range r.apps {
-		if app.deleted {
+	for _, port := range ni.bridge.Ports {
+		intendedL2Cfg.PutItem(linux.BridgePort{
+			BridgeIfName: ni.brIfName,
+			Variant: linux.BridgePortVariant{
+				PortIfName: portPhysIfName(port),
+			},
+			ExternallyBridged: r.niBridgeIsCreatedByNIM(ni.config, ni.bridge),
+			MTU:               port.MTU,
+		}, nil)
+		portsWithBpduGuard := ni.config.STPConfig.PortsWithBpduGuard
+		if withSTP && portsWithBpduGuard != "" {
+			if portsWithBpduGuard == port.LogicalLabel ||
+				generics.ContainsItem(port.SharedLabels, portsWithBpduGuard) {
+				intendedL2Cfg.PutItem(linux.BPDUGuard{
+					BridgeIfName: ni.brIfName,
+					PortIfName:   portPhysIfName(port),
+					ForVIF:       false,
+				}, nil)
+			}
+		}
+		if !enableVLANFiltering {
 			continue
 		}
-		for _, ul := range app.config.AppNetAdapterList {
-			if ul.Network != niID {
-				continue
-			}
-			vid := uint16(ul.AccessVlanID)
-			if vid <= 1 {
-				// There is VIF used as a trunk port.
-				// Enable all valid VIDs.
-				trunkPort.VIDs = nil
-				trunkPort.AllVIDs = true
+		var isVlanAccessPort bool
+		for _, vlanAccessPort := range ni.config.VlanAccessPorts {
+			if vlanAccessPort.PortLabel == port.LogicalLabel ||
+				generics.ContainsItem(port.SharedLabels, vlanAccessPort.PortLabel) {
+				isVlanAccessPort = true
+				intendedL2Cfg.PutItem(linux.VLANPort{
+					BridgeIfName: ni.brIfName,
+					PortIfName:   portPhysIfName(port),
+					ForVIF:       false,
+					VLANConfig: linux.VLANConfig{
+						AccessPort: &linux.AccessPort{
+							VID: vlanAccessPort.VlanID,
+						},
+					},
+				}, nil)
 				break
-			} else {
-				var duplicate bool
-				for _, prevVID := range trunkPort.VIDs {
-					if prevVID == vid {
-						duplicate = true
-						break
-					}
-				}
-				if !duplicate {
-					trunkPort.VIDs = append(trunkPort.VIDs, vid)
-				}
 			}
 		}
-		if trunkPort.AllVIDs {
-			break
+		if !isVlanAccessPort {
+			intendedL2Cfg.PutItem(linux.VLANPort{
+				BridgeIfName: ni.brIfName,
+				PortIfName:   portPhysIfName(port),
+				ForVIF:       false,
+				VLANConfig: linux.VLANConfig{
+					TrunkPort: &trunkPort,
+				},
+			}, nil)
 		}
 	}
-	intendedL2Cfg.PutItem(linux.BridgePort{
-		BridgeIfName: ni.brIfName,
-		Variant: linux.BridgePortVariant{
-			PortIfName: portPhysIfName(ni.bridge.Ports[0].IfName),
-		},
-		MTU: ni.bridge.MTU,
-	}, nil)
-	intendedL2Cfg.PutItem(linux.VLANPort{
-		BridgeIfName: ni.brIfName,
-		PortIfName:   portPhysIfName(ni.bridge.Ports[0].IfName),
-		VLANConfig: linux.VLANConfig{
-			TrunkPort: &trunkPort,
-		},
-	}, nil)
 	// Allow forwarding between the bridge ports.
 	for _, item := range r.getIntendedL2FwdRules(ni) {
 		intendedL2Cfg.PutItem(item, nil)
@@ -611,7 +629,7 @@ func (r *LinuxNIReconciler) getIntendedNIL3Cfg(niID uuid.UUID) dg.Graph {
 	}
 	intendedL3Cfg := dg.New(graphArgs)
 	bridgeIPNet, bridgeIPHost, _, _, _ := r.getBridgeAddrs(niID)
-	if !r.niBridgeIsCreatedByNIM(ni) {
+	if !r.niBridgeIsCreatedByNIM(ni.config, ni.bridge) {
 		if bridgeIPNet != nil {
 			intendedL3Cfg.PutItem(generic.IPReserve{
 				AddrWithMask: bridgeIPNet,
@@ -877,14 +895,14 @@ func (r *LinuxNIReconciler) getIntendedMetadataSrvCfg(niID uuid.UUID) (items []d
 				"of the NI %v", metadataSrvIP, bridgeIP.IP, ni.config.DisplayName),
 		})
 	}
-	if r.niBridgeIsCreatedByNIM(ni) {
+	if r.niBridgeIsCreatedByNIM(ni.config, ni.bridge) {
 		items = append(items, iptables.Rule{
 			RuleLabel: fmt.Sprintf("Block access to metadata server from outside "+
 				"for L2 NI %s", ni.config.UUID),
 			Table:     "filter",
 			ChainName: appChain("INPUT"),
 			MatchOpts: []string{"-i", ni.brIfName, "-p", "tcp", "--dport", "80",
-				"-m", "physdev", "--physdev-in", portPhysIfName(ni.brIfName)},
+				"-m", "physdev", "--physdev-in", portPhysIfName(ni.bridge.Ports[0])},
 			Target: "DROP",
 			Description: fmt.Sprintf("Do not allow external endpoints to use switch "+
 				"network instance to access the metadata server of NI %s",
@@ -1188,6 +1206,7 @@ func (r *LinuxNIReconciler) getIntendedRadvdCfg(niID uuid.UUID) (items []dg.Item
 func (r *LinuxNIReconciler) getIntendedAppConnCfg(niID uuid.UUID,
 	vif vifInfo, ul types.AppNetAdapterConfig) dg.Graph {
 	ni := r.nis[vif.NI]
+	enableVLANFiltering, _ := r.getVLANConfigForNI(ni)
 	app := r.apps[vif.App]
 	graphArgs := dg.InitArgs{
 		Name:        AppConnSGName(vif.App, vif.NetAdapterName),
@@ -1303,19 +1322,30 @@ func (r *LinuxNIReconciler) getIntendedAppConnCfg(niID uuid.UUID,
 		MTU: ni.bridge.MTU,
 	}, nil)
 	if ni.config.Type == types.NetworkInstanceTypeSwitch {
-		var vlanConfig linux.VLANConfig
-		if ul.AccessVlanID <= 1 {
-			// Currently we do not allow to create application trunk port
-			// with a subset of (not all) VLANs.
-			vlanConfig.TrunkPort = &linux.TrunkPort{AllVIDs: true}
-		} else {
-			vlanConfig.AccessPort = &linux.AccessPort{VID: uint16(ul.AccessVlanID)}
+		if len(ni.bridge.Ports) > 1 {
+			// Applications are not allowed to participate in STP.
+			intendedAppConnCfg.PutItem(linux.BPDUGuard{
+				BridgeIfName: ni.brIfName,
+				PortIfName:   vif.hostIfName,
+				ForVIF:       true,
+			}, nil)
 		}
-		intendedAppConnCfg.PutItem(linux.VLANPort{
-			BridgeIfName: ni.brIfName,
-			PortIfName:   vif.hostIfName,
-			VLANConfig:   vlanConfig,
-		}, nil)
+		if enableVLANFiltering {
+			var vlanConfig linux.VLANConfig
+			if ul.AccessVlanID <= 1 {
+				// Currently we do not allow to create application trunk port
+				// with a subset of (not all) VLANs.
+				vlanConfig.TrunkPort = &linux.TrunkPort{AllVIDs: true}
+			} else {
+				vlanConfig.AccessPort = &linux.AccessPort{VID: uint16(ul.AccessVlanID)}
+			}
+			intendedAppConnCfg.PutItem(linux.VLANPort{
+				BridgeIfName: ni.brIfName,
+				PortIfName:   vif.hostIfName,
+				ForVIF:       true,
+				VLANConfig:   vlanConfig,
+			}, nil)
+		}
 	}
 	// Create ipset with all the addresses from the DNSNameToIPList plus the VIF IP itself.
 	var ips []net.IP
@@ -1361,11 +1391,13 @@ func (r *LinuxNIReconciler) generateBridgeIfName(
 	var brIfName string
 	switch niConfig.Type {
 	case types.NetworkInstanceTypeSwitch:
-		if len(br.Ports) != 0 {
+		if r.niBridgeIsCreatedByNIM(niConfig, br) {
+			// NI with single port used also for EVE mgmt or for Local NI
+			// (thus the associated bridge is managed by NIM).
 			brIfName = br.Ports[0].IfName
 			break
 		}
-		// Air-gapped, create bridge just like for local NI.
+		// Create bridge just like for local NI.
 		fallthrough
 	case types.NetworkInstanceTypeLocal:
 		brIfName = fmt.Sprintf("%s%d", bridgeIfNamePrefix, br.BrNum)
@@ -1380,9 +1412,47 @@ func (r *LinuxNIReconciler) generateVifHostIfName(vifNum, appNum int) string {
 	return fmt.Sprintf("%s%dx%d", vifIfNamePrefix, vifNum, appNum)
 }
 
-func (r *LinuxNIReconciler) niBridgeIsCreatedByNIM(ni *niInfo) bool {
-	return ni.config.Type == types.NetworkInstanceTypeSwitch &&
-		len(ni.bridge.Ports) != 0
+func (r *LinuxNIReconciler) niBridgeIsCreatedByNIM(
+	niConfig types.NetworkInstanceConfig, br NIBridge) bool {
+	// If Switch NI has single port which is also used for EVE mgmt or for Local NI,
+	// then the associated bridge is managed by NIM.
+	return niConfig.Type == types.NetworkInstanceTypeSwitch &&
+		len(br.Ports) == 1 && br.Ports[0].UsedWithIP()
+}
+
+func (r *LinuxNIReconciler) getVLANConfigForNI(ni *niInfo) (
+	enableVLANFiltering bool, trunkConfig linux.TrunkPort) {
+	var trunkPort linux.TrunkPort
+	for _, app := range r.apps {
+		if app.deleted {
+			continue
+		}
+		for _, ul := range app.config.AppNetAdapterList {
+			if ul.Network != ni.config.UUID {
+				continue
+			}
+			vid := uint16(ul.AccessVlanID)
+			if vid <= 1 {
+				// There is VIF used as a trunk port (or bridge is not VLAN-aware).
+				// Enable all valid VIDs.
+				trunkPort.VIDs = nil
+				trunkPort.AllVIDs = true
+			} else {
+				if !trunkPort.AllVIDs {
+					trunkPort.VIDs = append(trunkPort.VIDs, vid)
+				}
+				enableVLANFiltering = true
+			}
+		}
+	}
+	if !trunkPort.AllVIDs {
+		for _, vlanAccessPort := range ni.config.VlanAccessPorts {
+			trunkPort.VIDs = append(trunkPort.VIDs, vlanAccessPort.VlanID)
+			enableVLANFiltering = true
+		}
+	}
+	trunkPort.VIDs = generics.FilterDuplicates(trunkPort.VIDs)
+	return enableVLANFiltering, trunkPort
 }
 
 func (r *LinuxNIReconciler) getNISubnet(ni *niInfo) *net.IPNet {

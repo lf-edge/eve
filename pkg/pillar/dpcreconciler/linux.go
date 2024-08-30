@@ -1096,6 +1096,7 @@ func (r *LinuxDpcReconciler) getIntendedAdapters(dpc types.DevicePortConfig) dg.
 			IfName:       port.IfName,
 			L2Type:       port.L2Type,
 			WirelessType: port.WirelessCfg.WType,
+			DhcpType:     port.Dhcp,
 			MTU:          r.intfMTU[port.Logicallabel],
 		}
 		intendedAdapters.PutItem(adapter, nil)

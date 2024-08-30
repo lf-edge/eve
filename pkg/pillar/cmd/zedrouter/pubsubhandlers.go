@@ -110,59 +110,8 @@ func (z *zedrouter) handleDNSImpl(ctxArg interface{}, key string,
 	// A new IP address may have been assigned to a device port, or a previously existing
 	// one may have been removed, potentially creating or resolving an IP conflict.
 	z.checkAllNetworkInstanceIPConflicts()
-
-	// Update port config for network instances.
-	// Also handle (dis)appearance of device ports.
-	// Note that even if port disappears, we do not revert activated NI.
-	items := z.pubNetworkInstanceStatus.GetAll()
-	for key, st := range items {
-		niStatus := st.(types.NetworkInstanceStatus)
-		niConfig := z.lookupNetworkInstanceConfig(key)
-		if niConfig == nil {
-			z.log.Errorf("handleDNSImpl: failed to get config for NI %s", niStatus.UUID)
-			continue
-		}
-		// Handle change of the configured port label.
-		niStatus.PortErr.ClearError()
-		changedPorts, portErr := z.updateNIPorts(&niStatus)
-		if portErr != nil {
-			portErr = fmt.Errorf(
-				"failed to update selection of ports for network instance %s: %v",
-				niStatus.UUID, portErr)
-			z.log.Error(portErr)
-			niStatus.PortErr.SetErrorNow(portErr.Error())
-		}
-
-		if changedPorts {
-			// Changing the number of ports may affect if a multi-path default route
-			// is needed or not.
-			_ = z.updateNIRoutes(&niStatus, false)
-		}
-
-		// Re-check MTUs between the NI and the selected ports.
-		mtuToUse, mtuErr := z.checkNetworkInstanceMTUConflicts(*niConfig, &niStatus)
-		niStatus.MTU = mtuToUse
-		if mtuErr == nil && niStatus.MTUConflictErr.HasError() {
-			// MTU conflict was resolved.
-			niStatus.MTUConflictErr.ClearError()
-		}
-		if mtuErr != nil &&
-			mtuErr.Error() != niStatus.MTUConflictErr.Error {
-			// New MTU conflict arose or the error has changed.
-			z.log.Error(mtuErr)
-			niStatus.MTUConflictErr.SetErrorNow(mtuErr.Error())
-		}
-
-		// Apply port/MTU changes in the network stack.
-		if niStatus.Activated {
-			z.doUpdateActivatedNetworkInstance(*niConfig, &niStatus)
-		}
-		if niConfig.Activate && !niStatus.Activated && niStatus.EligibleForActivate() {
-			z.doActivateNetworkInstance(*niConfig, &niStatus)
-			z.checkAndRecreateAppNetworks(niStatus.UUID)
-		}
-		z.publishNetworkInstanceStatus(&niStatus)
-	}
+	// Handle (dis)appeared port, change in shared labels and change in port MTU.
+	z.updatePortsForAllNIs()
 
 	z.portProber.ApplyDNSUpdate(status)
 	z.log.Functionf("handleDNSImpl done for %s", key)
@@ -270,7 +219,7 @@ func (z *zedrouter) handleNetworkInstanceCreate(ctxArg interface{}, key string,
 	status.BridgeNum = bridgeNum
 
 	// Generate MAC address for the bridge.
-	if !status.IsUsingPortBridge() {
+	if !z.niBridgeIsCreatedByNIM(config) {
 		status.BridgeMac = z.generateBridgeMAC(bridgeNum)
 	}
 
@@ -282,7 +231,7 @@ func (z *zedrouter) handleNetworkInstanceCreate(ctxArg interface{}, key string,
 	}
 
 	// Lookup ports matching the port label.
-	_, err = z.updateNIPorts(&status)
+	_, err = z.updateNIPorts(config, &status)
 	if err != nil {
 		err = fmt.Errorf("failed to select ports for network instance %s: %v",
 			status.UUID, err)
@@ -378,7 +327,7 @@ func (z *zedrouter) handleNetworkInstanceModify(ctxArg interface{}, key string,
 
 	// Generate MAC address for the bridge.
 	// If already done during NI Create, this returns the same value.
-	if !status.IsUsingPortBridge() {
+	if !z.niBridgeIsCreatedByNIM(config) {
 		status.BridgeMac = z.generateBridgeMAC(bridgeNum)
 	}
 
@@ -402,7 +351,7 @@ func (z *zedrouter) handleNetworkInstanceModify(ctxArg interface{}, key string,
 
 	// Handle change of the configured port label.
 	status.PortErr.ClearError()
-	_, err = z.updateNIPorts(status)
+	_, err = z.updateNIPorts(config, status)
 	if err != nil {
 		err = fmt.Errorf("failed to update selection of ports for network instance %s: %v",
 			status.UUID, err)
@@ -436,6 +385,11 @@ func (z *zedrouter) handleNetworkInstanceModify(ctxArg interface{}, key string,
 
 	// Check if some IP conflicts were resolved by this modification.
 	z.checkAllNetworkInstanceIPConflicts()
+	if status.PortLabel != prevPortLabel {
+		// Check if some port-overlap is avoided now that the port selection
+		// for this NI changed.
+		z.updatePortsForAllNIs()
+	}
 }
 
 func (z *zedrouter) handleNetworkInstanceDelete(ctxArg interface{}, key string,
@@ -453,6 +407,8 @@ func (z *zedrouter) handleNetworkInstanceDelete(ctxArg interface{}, key string,
 	done := z.maybeDelOrInactivateNetworkInstance(status)
 	// Check if some IP conflicts were resolved by this NI deletion.
 	z.checkAllNetworkInstanceIPConflicts()
+	// Check if some port-overlap or MTU conflict is avoided now that this NI was deleted.
+	z.updatePortsForAllNIs()
 	z.log.Functionf("handleNetworkInstanceDelete(%s) done %t", key, done)
 }
 

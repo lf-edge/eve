@@ -4,6 +4,7 @@
 package agentlog
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -163,7 +164,7 @@ func handleSignals(log *base.LogObject, agentName string, agentPid int, sigs cha
 		case syscall.SIGUSR1:
 			dumpStacks(log, stacksDumpFileName)
 		case syscall.SIGUSR2:
-			go listenDebug(log, stacksDumpFileName, memDumpFileName)
+			go ListenDebug(log, stacksDumpFileName, memDumpFileName)
 		}
 	}
 }
@@ -225,9 +226,18 @@ func writeOrLog(log *base.LogObject, w io.Writer, msg string) {
 	}
 }
 
-var listenDebugRunning atomic.Bool
+var (
+	listenDebugRunning  atomic.Bool
+	psiCollectorRunning atomic.Bool
+	psiCollectorCancel  context.CancelFunc
+)
 
-func listenDebug(log *base.LogObject, stacksDumpFileName, memDumpFileName string) {
+// ListenDebug starts an HTTP server on localhost:6543 that provides various debugging capabilities.
+// It sets up several endpoints for profiling, memory monitoring, and stack dumping.
+// The server can only be started once and will run until a POST request is made to the /stop endpoint.
+// This function ensures that only one instance of the server is running at any given time.
+// For the API documentation, see the info string in the function.
+func ListenDebug(log *base.LogObject, stacksDumpFileName, memDumpFileName string) {
 	if listenDebugRunning.Swap(true) {
 		return
 	}
@@ -241,13 +251,48 @@ func listenDebug(log *base.LogObject, stacksDumpFileName, memDumpFileName string
 	}
 
 	info := `
-		This server exposes the net/http/pprof API.</br>
-		For examples on how to use it, see: <a href="https://pkg.go.dev/net/http/pprof">https://pkg.go.dev/net/http/pprof</a></br>
-	    <a href="debug/pprof/">pprof methods</a></br></br>
-	    To create a flamegraph, do: go tool pprof -raw -output=cpu.txt 'http://localhost:6543/debug/pprof/profile?seconds=5';</br>
-	    stackcollapse-go.pl cpu.txt | flamegraph.pl --width 4096 > flame.svg</br>
-	    (both scripts can be found <a href="https://github.com/brendangregg/FlameGraph">here</a>)
-		`
+	This server provides various debugging capabilities, including the <code>net/http/pprof</code> API and additional monitoring endpoints.</br></br>
+
+	<strong>Available Endpoints:</strong></br>
+	<ul>
+		<li><strong>pprof API</strong>:</br>
+			Endpoint: <code>GET /debug/pprof/</code></br>
+			Description: Exposes the <code>net/http/pprof</code> API for performance profiling.</br>
+			More Info: See the <a href="https://pkg.go.dev/net/http/pprof">official documentation</a>.</br>
+			Explore the available <a href="debug/pprof/">pprof methods</a>.</br></br>
+			<ul>
+				<li><strong>Flamegraph Creation</strong>:</br>
+					Command: <code>go tool pprof -raw -output=cpu.txt 'http://localhost:6543/debug/pprof/profile?seconds=5'</code></br>
+					Description: Generates raw profiling data for CPU usage. Use additional tools to create a flamegraph.</br>
+					More Info: Required scripts can be found <a href="https://github.com/brendangregg/FlameGraph">here</a>.</li>
+			</ul>
+		</li>
+
+		<li><strong>Memory PSI Collector - Start</strong>:</br>
+			Endpoint: <code>POST /memory-monitor/psi-collector/start</code></br>
+			Description: Starts the memory PSI (Pressure Stall Information) collector to monitor memory pressure.</br>
+			Output: The collected data is saved to <code>/persist/memory-monitor/output/psi.txt</code>.</br>
+			More Info: For more details on PSI, see the <a href="https://www.kernel.org/doc/Documentation/accounting/psi.txt">Linux documentation</a>.</li>
+
+		<li><strong>Memory PSI Collector - Stop</strong>:</br>
+			Endpoint: <code>POST /memory-monitor/psi-collector/stop</code></br>
+			Description: Stops the memory PSI collector.</li>
+
+		<li><strong>Stop Server</strong>:</br>
+			Endpoint: <code>POST /stop</code></br>
+			Description: Stops the server. The server can only be started once and will run until this endpoint is triggered.</li>
+
+		<li><strong>Dump Stacks</strong>:</br>
+			Endpoint: <code>POST /dump/stacks</code></br>
+			Description: Dumps the current stack traces.</li>
+
+		<li><strong>Dump Memory Info</strong>:</br>
+			Endpoint: <code>POST /dump/memory</code></br>
+			Description: Dumps current memory usage information.</li>
+	</ul></br>
+
+	<em>Note</em>: The server starts on <code>localhost:6543</code> and can only be initiated once. It will continue to run until a <code>POST /stop</code> request is received.
+	`
 
 	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
@@ -286,6 +331,46 @@ func listenDebug(log *base.LogObject, stacksDumpFileName, memDumpFileName string
 		if r.Method == http.MethodPost {
 			dumpMemoryInfo(log, memDumpFileName)
 			response := fmt.Sprintf("Stacks can be found in logread or %s\n", memDumpFileName)
+			writeOrLog(log, w, response)
+		} else {
+			http.Error(w, "Did you want to use POST method?", http.StatusMethodNotAllowed)
+			return
+		}
+	}))
+	mux.Handle("/memory-monitor/psi-collector/start", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			if psiCollectorRunning.Swap(true) {
+				http.Error(w, "Memory PSI collector is already running", http.StatusConflict)
+				return
+			}
+			// Start the memoryPSICollector
+			psiCollectorCtx, cancel := context.WithCancel(context.Background())
+			psiCollectorCancel = cancel
+			go func() {
+				err := MemoryPSICollector(psiCollectorCtx, log)
+				defer psiCollectorRunning.Swap(false)
+				if err != nil {
+					log.Errorf("MemoryPSICollector failed: %+v", err)
+				}
+			}()
+			// Send a response to the client
+			response := "Memory PSI collector started.\n"
+			writeOrLog(log, w, response)
+		} else {
+			http.Error(w, "Did you want to use POST method?", http.StatusMethodNotAllowed)
+			return
+		}
+	}))
+	mux.Handle("/memory-monitor/psi-collector/stop", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			if !psiCollectorRunning.Swap(false) {
+				http.Error(w, "Memory PSI collector is not running", http.StatusNotFound)
+				return
+			}
+			// Stop the memoryPSICollector
+			psiCollectorCancel()
+			// Send a response to the client
+			response := "Memory PSI collector stopped.\n"
 			writeOrLog(log, w, response)
 		} else {
 			http.Error(w, "Did you want to use POST method?", http.StatusMethodNotAllowed)

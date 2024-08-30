@@ -18,7 +18,6 @@ extra:
   version: 2.0
 nav:
   - Introduction: 'docs/README.md'
-  - 'Building EVE': 'docs/BUILD.md'
   - 'EVE Configuration': 'docs/CONFIG.md'
   - 'BIOS and Firmware management with EVE': 'docs/BIOS-FIRMWARE.md'
   - 'Deploying EVE-OS': 'docs/DEPLOYMENT.md'
@@ -32,6 +31,7 @@ nav:
   - 'Direct support of OCI containers': 'docs/CONTAINERS.md'
   - 'Edge Containers': 'docs/ECOS.md'
   - 'Edge-View Containers API': 'docs/EDGEVIEW-CONTAINER-API.md'
+  - 'Patch Envelopes': 'docs/PATCH-ENVELOPES.md'
   - Hypervisors: 'docs/HYPERVISORS.md'
   - IPC: 'docs/IPC.md'
   - 'Keys and Certificates': 'docs/KEYS-AND-CERTS.md'
@@ -45,6 +45,13 @@ nav:
   - 'Configuration properties': 'docs/CONFIG-PROPERTIES.md'
   - CI-CD: 'docs/CI-CD.md'
   - FAQ: 'docs/FAQ.md'
+  - 'Building EVE':
+      - 'How to build EVE': 'docs/BUILD.md'
+      - 'EVE image reproducibility': 'docs/EVE-IMAGE-REPRODUCIBILITY.md'
+      - 'EVE image sources': 'docs/EVE-IMAGE-SOURCES.md'
+      - 'Alpine': 'docs/ALPINE.md'
+      - 'Custom Build': 'docs/CUSTOM-BUILD.md'
+      - 'SBoM and Sources': 'docs/SBOM-AND-SOURCES.md'
   - Networking:
       - 'Overview': 'docs/NETWORKING.md'
       - 'Device Connectivity': 'docs/DEVICE-CONNECTIVITY.md'
@@ -54,25 +61,34 @@ nav:
       - 'NIM microservice': 'pkg/pillar/docs/nim.md'
       - 'zedrouter microservice': 'pkg/pillar/docs/zedrouter.md'
       - 'wwan microservice': 'pkg/wwan/README.md'
+      - 'Cloud-Init': 'docs/CLOUD-INIT.md'
   - 'ECO Initialization':
       - Initialization: 'docs/ECO-INIT.md'
       - 'ECO Metadata': 'docs/ECO-METADATA.md'
+      - VNC: 'docs/VNC.md'
   - Logging:
       - Introduction: 'docs/LOGGING.md'
       - 'Log levels': 'docs/LOG-LEVELS.md'
+  - Memory:
+      - 'Memory Settings': 'docs/MEMORY-SETTINGS.md'
+      - 'Memory Monitoring': 'pkg/memory-monitor/README.md'
   - Security:
       - Information: 'docs/SECURITY.md'
       - 'Object level encryption': 'docs/OBJECT-LEVEL-ENCRYPTION.md'
       - 'Fault injection': 'docs/FAULT-INJECTION.md'
+      - 'VTPM Server': 'docs/VTPM.md'
+      - 'Hardware Security Recommendation': 'docs/SECURITY-HARDWARE.md'
   - Storage:
       - 'RAID configuration': 'docs/STORAGE-RAID-CONFIGURATION.md'
       - ZFS: 'docs/ZFS.md'
       - 'Application Snapshot, API': 'docs/APP-SNAPSHOT.md'
   - Boards:
-      - 'NVIDIA Jetson': 'boards/nvidia/jetson/README.md'
+      - 'NVIDIA Jetson Xavier/Orin': 'docs/NVIDIA-NX.md'
+      - 'NVIDIA Jetson Nano': 'boards/nvidia/jetson/README.md'
   - Debugging:
       - Information: 'pkg/debug/abuild/README.md'
       - Debugging: 'docs/DEBUGGING.md'
+      - 'Kernel dump collection': 'docs/KERNEL-DUMPS.md'
   - API:
       - Information: 'api/README.md'
       - V1: 'api/APIv1.md'

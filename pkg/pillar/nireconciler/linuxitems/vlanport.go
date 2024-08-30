@@ -25,6 +25,9 @@ type VLANPort struct {
 	BridgeIfName string
 	// PortIfName : interface name of the bridge port.
 	PortIfName string
+	// ForVIF : true if this is VLAN config applied to application VIF
+	// (and not to device network port).
+	ForVIF bool
 	// VLANConfig : VLAN configuration to apply on the bridged interface.
 	VLANConfig VLANConfig
 }
@@ -85,7 +88,8 @@ func (v VLANPort) Equal(other dg.Item) bool {
 		}
 	}
 	return v.BridgeIfName == v2.BridgeIfName &&
-		v.PortIfName == v2.PortIfName
+		v.PortIfName == v2.PortIfName &&
+		v.ForVIF == v2.ForVIF
 }
 
 // External returns false.
@@ -103,8 +107,8 @@ func (v VLANPort) String() string {
 	if v.VLANConfig.AccessPort != nil {
 		vlanConfig = fmt.Sprintf("accessPort: {vid: %d}", v.VLANConfig.AccessPort.VID)
 	}
-	return fmt.Sprintf("VLANPort: {bridgeIfName: %s, portIfName: %s, %s}",
-		v.BridgeIfName, v.PortIfName, vlanConfig)
+	return fmt.Sprintf("VLANPort: {bridgeIfName: %s, portIfName: %s, forVIF: %t, %s}",
+		v.BridgeIfName, v.PortIfName, v.ForVIF, vlanConfig)
 }
 
 // Dependencies returns the (VLAN-enabled) bridge and the port as the dependencies.

@@ -1,8 +1,9 @@
 kernel:
   image: KERNEL_TAG
-  cmdline: "rootdelay=3"
+  # the unified_cgroup_hierarchy forces cgroupsv1, which is required until pillar is ready to support v2
+  cmdline: "rootdelay=3 linuxkit.unified_cgroup_hierarchy=0"
 init:
-  - linuxkit/init:07d37c3ae7fad5ddcb54c8dc65774ae050851f04
+  - linuxkit/init:e120ea2a30d906bd1ee1874973d6e4b1403b5ca3
   - linuxkit/runc:6062483d748609d505f2bcde4e52ee64a3329f5f
   - linuxkit/containerd:95d5f0d2d8dc63bd87e96b7b39cf026cb86125c9
   # pillar's logic rely on existence of getty and /etc/init.d/001-getty inside
@@ -101,6 +102,8 @@ files:
     metadata: yaml
   - path: /etc/eve-hv-type
     contents: 'EVE_HV'
+  - path: /etc/issue
+    source: etc_issue
   - path: /opt/vendor
     directory: true
   - path: /etc/securetty

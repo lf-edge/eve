@@ -29,6 +29,7 @@ func RegisterItems(log *base.LogObject, registry *reconciler.DefaultRegistry,
 		{c: &VLANPortConfigurator{Log: log, NetworkMonitor: monitor}, t: VLANPortTypename},
 		{c: &SysctlConfigurator{Log: log}, t: SysctlTypename},
 		{c: &VIFConfigurator{Log: log}, t: VIFTypename},
+		{c: &BPDUGuardConfigurator{Log: log}, t: BPDUGuardTypename},
 	}
 	for _, configurator := range configurators {
 		err := registry.Register(configurator.c, configurator.t)

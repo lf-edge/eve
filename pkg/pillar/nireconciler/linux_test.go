@@ -485,6 +485,7 @@ var (
 				LogicalLabel: "ethernet0",
 				IfName:       "eth0",
 				IsMgmt:       true,
+				DhcpType:     types.DhcpTypeClient,
 				DNSServers:   []net.IP{ipAddress("8.8.8.8")},
 				NTPServers:   []net.IP{ipAddress("132.163.96.5")},
 			},
@@ -521,6 +522,7 @@ var (
 				LogicalLabel: "ethernet1",
 				IfName:       "eth1",
 				IsMgmt:       false,
+				DhcpType:     types.DhcpTypeClient,
 				DNSServers:   []net.IP{ipAddress("8.8.8.8")},
 				NTPServers:   []net.IP{ipAddress("132.163.96.5")},
 			},
@@ -554,6 +556,7 @@ var (
 				LogicalLabel: "ethernet2",
 				IfName:       "eth2",
 				IsMgmt:       true,
+				DhcpType:     types.DhcpTypeClient,
 				DNSServers:   []net.IP{ipAddress("2001:4860:4860::8888")},
 				NTPServers:   []net.IP{ipAddress("2610:20:6f15:15::27")},
 			},
@@ -590,6 +593,7 @@ var (
 				LogicalLabel: "ethernet2",
 				IfName:       "eth2",
 				IsMgmt:       true,
+				DhcpType:     types.DhcpTypeClient,
 				DNSServers:   []net.IP{ipAddress("2001:4860:4860::8888")},
 				NTPServers:   []net.IP{ipAddress("2610:0020:6f15:0015::0027")},
 			},
@@ -616,6 +620,7 @@ var (
 				LogicalLabel: "ethernet1",
 				IfName:       "eth1",
 				IsMgmt:       false,
+				DhcpType:     types.DhcpTypeClient,
 				SharedLabels: []string{"shopfloor", "portfwd"},
 				DNSServers:   []net.IP{ipAddress("8.8.8.8"), ipAddress("1.1.1.1")},
 				NTPServers:   []net.IP{ipAddress("132.163.96.5")},
@@ -624,6 +629,7 @@ var (
 				LogicalLabel: "ethernet3",
 				IfName:       "eth3",
 				IsMgmt:       false,
+				DhcpType:     types.DhcpTypeStatic,
 				SharedLabels: []string{"shopfloor"},
 				DNSServers:   []net.IP{ipAddress("172.30.30.57")},
 				NTPServers:   []net.IP{ipAddress("128.138.140.211")},
@@ -2928,4 +2934,430 @@ func TestCNI(test *testing.T) {
 	// Delete network instance
 	_, err = niReconciler.DelNI(ctx, ni1UUID.UUID)
 	t.Expect(err).ToNot(HaveOccurred())
+}
+
+// This test uses it own network config, not the config globally defined.
+/*
+                                                  +-------------------+
+                                                  |  eth0 (EVE mgmt)  |
+                                                  |      (DHCP)       |
+                                                  +-------------------+
+                       +-----------+
+                       |           |
+                       |           |              +-------------------+
+                       |           |---<trunk>----| eth1 (app-shared) |
+                       |           |              | (No IP, L2-only)  |
+                       | Switch NI |              +-------------------+
+                       |           |
+ +------+              |           |              +-------------------+
+ | app1 |--<VLAN 100>--|           |--<VLAN 100>--| eth2 (app-shared) |
+ +------+              |           |              | (No IP, L2-only)  |
+                       |           |              +-------------------+
+ +------+              |           |
+ | app2 |--<VLAN 200>--|           |              +-------------------+
+ +------+              |           |--<VLAN 200>--| eth3 (app-shared) |
+                       |           |              | (No IP, L2-only)  |
+                       +-----------+              +-------------------+
+*/
+func TestSwitchNIWithMultiplePorts(test *testing.T) {
+	t := initTest(test, false)
+
+	// Prepare mock network interfaces (which are normally managed by NIM).
+	keth0 := netmonitor.MockInterface{
+		Attrs: netmonitor.IfAttrs{
+			IfIndex:       1,
+			IfName:        "keth0",
+			IfType:        "device",
+			WithBroadcast: true,
+			AdminUp:       true,
+			LowerUp:       true,
+			Enslaved:      true,
+			MasterIfIndex: 2,
+		},
+		HwAddr: macAddress("02:00:00:00:00:01"),
+	}
+	eth0 := netmonitor.MockInterface{
+		Attrs: netmonitor.IfAttrs{
+			IfIndex:       2,
+			IfName:        "eth0",
+			IfType:        "bridge",
+			WithBroadcast: true,
+			AdminUp:       true,
+			LowerUp:       true,
+		},
+		IPAddrs: []*net.IPNet{ipAddressWithPrefix("192.168.10.5/24")},
+		DHCP: netmonitor.DHCPInfo{
+			Subnet:     ipSubnet("192.168.10.0/24"),
+			NtpServers: []net.IP{ipAddress("132.163.96.5")},
+		},
+		DNS: netmonitor.DNSInfo{
+			ResolvConfPath: "/etc/eth0-resolv.conf",
+			Domains:        []string{"eth0-test-domain"},
+			DNSServers:     []net.IP{ipAddress("8.8.8.8")},
+		},
+		HwAddr: macAddress("02:00:00:00:01:01"),
+	}
+	eth1 := netmonitor.MockInterface{
+		Attrs: netmonitor.IfAttrs{
+			IfIndex:       3,
+			IfName:        "eth1",
+			IfType:        "device",
+			WithBroadcast: true,
+			AdminUp:       true,
+			LowerUp:       true,
+		},
+		HwAddr: macAddress("02:00:00:00:00:02"),
+	}
+	eth2 := netmonitor.MockInterface{
+		Attrs: netmonitor.IfAttrs{
+			IfIndex:       4,
+			IfName:        "eth2",
+			IfType:        "device",
+			WithBroadcast: true,
+			AdminUp:       true,
+			LowerUp:       true,
+		},
+		HwAddr: macAddress("02:00:00:00:00:03"),
+	}
+	eth3 := netmonitor.MockInterface{
+		Attrs: netmonitor.IfAttrs{
+			IfIndex:       5,
+			IfName:        "eth3",
+			IfType:        "device",
+			WithBroadcast: true,
+			AdminUp:       true,
+			LowerUp:       true,
+		},
+		HwAddr: macAddress("02:00:00:00:00:04"),
+	}
+	networkMonitor.AddOrUpdateInterface(keth0)
+	networkMonitor.AddOrUpdateInterface(eth0)
+	networkMonitor.AddOrUpdateInterface(eth1)
+	networkMonitor.AddOrUpdateInterface(eth2)
+	networkMonitor.AddOrUpdateInterface(eth3)
+
+	// Run initial reconciliation.
+	ctx := reconciler.MockRun(context.Background())
+	updatesCh := niReconciler.WatchReconcilerUpdates()
+	niReconciler.RunInitialReconcile(ctx)
+
+	// Create switch network instance with multiple ports.
+	niUUID := makeUUID("d17a2818-e5b2-4778-9d61-d5af17feec69")
+	niConfig := types.NetworkInstanceConfig{
+		UUIDandVersion: niUUID,
+		DisplayName:    "multiport-switch",
+		PortLabel:      "switch-port",
+		Type:           types.NetworkInstanceTypeSwitch,
+		IpType:         types.AddressTypeNone,
+		STPConfig: types.STPConfig{
+			PortsWithBpduGuard: "end-devices",
+		},
+		VlanAccessPorts: []types.VlanAccessPort{
+			{
+				VlanID:    100,
+				PortLabel: "ethernet2",
+			},
+			{
+				VlanID:    200,
+				PortLabel: "ethernet3",
+			},
+		},
+	}
+	niBridge := nirec.NIBridge{
+		NI:         niUUID.UUID,
+		BrNum:      1,
+		MACAddress: macAddress("02:00:00:00:02:01"),
+		Ports: []nirec.Port{
+			{
+				LogicalLabel: "ethernet1",
+				SharedLabels: []string{"switch-port"},
+				IfName:       "eth1",
+				IsMgmt:       true,
+				DhcpType:     types.DhcpTypeNone,
+			},
+			{
+				LogicalLabel: "ethernet2",
+				SharedLabels: []string{"switch-port", "end-devices"},
+				IfName:       "eth2",
+				IsMgmt:       true,
+				DhcpType:     types.DhcpTypeNone,
+			},
+			{
+				LogicalLabel: "ethernet3",
+				SharedLabels: []string{"switch-port", "end-devices"},
+				IfName:       "eth3",
+				IsMgmt:       true,
+				DhcpType:     types.DhcpTypeNone,
+			},
+		},
+	}
+	niBridgeIf := netmonitor.MockInterface{
+		Attrs: netmonitor.IfAttrs{
+			IfIndex:       6,
+			IfName:        "bn1",
+			IfType:        "bridge",
+			WithBroadcast: true,
+			AdminUp:       true,
+			LowerUp:       true,
+		},
+		HwAddr: macAddress("02:00:00:00:02:01"),
+	}
+	networkMonitor.AddOrUpdateInterface(niBridgeIf)
+	_, err := niReconciler.AddNI(ctx, niConfig, niBridge)
+	t.Expect(err).ToNot(HaveOccurred())
+	var recUpdate nirec.ReconcilerUpdate
+	t.Eventually(updatesCh).Should(Receive(&recUpdate))
+	t.Expect(recUpdate.UpdateType).To(Equal(nirec.NIReconcileStatusChanged))
+
+	// Check some of the configured items.
+	t.Expect(itemIsCreated(dg.Reference(
+		linuxitems.Bridge{IfName: "bn1"}))).To(BeTrue())
+	t.Expect(itemIsCreated(dg.Reference(
+		linuxitems.VLANBridge{BridgeIfName: "bn1"}))).To(BeTrue())
+	t.Expect(itemIsCreated(dg.Reference(
+		linuxitems.BridgePort{Variant: linuxitems.BridgePortVariant{PortIfName: "eth1"}}))).To(BeTrue())
+	t.Expect(itemIsCreated(dg.Reference(
+		linuxitems.BridgePort{Variant: linuxitems.BridgePortVariant{PortIfName: "eth2"}}))).To(BeTrue())
+	t.Expect(itemIsCreated(dg.Reference(
+		linuxitems.BridgePort{Variant: linuxitems.BridgePortVariant{PortIfName: "eth3"}}))).To(BeTrue())
+	t.Expect(itemDescription(dg.Reference(linuxitems.VLANPort{PortIfName: "eth1"}))).
+		To(ContainSubstring("trunkPort: {allVIDs: false, vids:[100 200]}}"))
+	t.Expect(itemDescription(dg.Reference(linuxitems.VLANPort{PortIfName: "eth2"}))).
+		To(ContainSubstring("accessPort: {vid: 100}"))
+	t.Expect(itemDescription(dg.Reference(linuxitems.VLANPort{PortIfName: "eth3"}))).
+		To(ContainSubstring("accessPort: {vid: 200}"))
+	t.Expect(itemIsCreated(dg.Reference(
+		linuxitems.BPDUGuard{PortIfName: "eth1"}))).To(BeFalse())
+	t.Expect(itemIsCreated(dg.Reference(
+		linuxitems.BPDUGuard{PortIfName: "eth3"}))).To(BeTrue())
+	t.Expect(itemIsCreated(dg.Reference(
+		linuxitems.BPDUGuard{PortIfName: "eth3"}))).To(BeTrue())
+
+	// Connect "app1"
+	app1UUID := makeUUID("f9a3acd0-85ae-4c1f-8fb2-0ac22b5dd312")
+	app1Num := 1
+	app1NetConfig := types.AppNetworkConfig{
+		UUIDandVersion: app1UUID,
+		DisplayName:    "app1",
+		Activate:       true,
+		AppNetAdapterList: []types.AppNetAdapterConfig{
+			{
+				Name:         "adapter1",
+				IntfOrder:    0,
+				Network:      niUUID.UUID,
+				AccessVlanID: 100,
+				ACLs: []types.ACE{
+					{
+						Matches: []types.ACEMatch{
+							{
+								Type:  "ip",
+								Value: "0.0.0.0/0",
+							},
+						},
+						Actions: []types.ACEAction{
+							{
+								Drop: false,
+							},
+						},
+						RuleID: 1,
+					},
+				},
+			},
+		},
+	}
+	app1VIFs := []nirec.AppVIF{
+		{
+			App:            app1UUID.UUID,
+			NI:             niUUID.UUID,
+			NetAdapterName: "adapter1",
+			VIFNum:         1,
+			GuestIfMAC:     macAddress("02:00:00:00:04:01"),
+			GuestIP:        ipAddress("10.10.100.2"),
+		},
+	}
+	app1VIF1 := netmonitor.MockInterface{
+		Attrs: netmonitor.IfAttrs{
+			IfIndex:       7,
+			IfName:        "nbu1x1",
+			IfType:        "device",
+			WithBroadcast: true,
+			AdminUp:       true,
+			LowerUp:       true,
+			Enslaved:      true,
+			MasterIfIndex: 6,
+		},
+		HwAddr: macAddress("02:00:00:00:03:01"), // host-side
+	}
+	appStatus, err := niReconciler.AddAppConn(ctx, app1NetConfig, app1Num, cnirpc.AppPod{}, app1VIFs)
+	t.Expect(err).ToNot(HaveOccurred())
+	t.Expect(appStatus.App).To(Equal(app1UUID.UUID))
+	t.Expect(appStatus.Deleted).To(BeFalse())
+	t.Expect(appStatus.VIFs).To(HaveLen(1))
+	t.Expect(appStatus.VIFs[0].NetAdapterName).To(Equal("adapter1"))
+	t.Expect(appStatus.VIFs[0].InProgress).To(BeTrue())
+	t.Expect(appStatus.VIFs[0].HostIfName).To(Equal("nbu1x1"))
+	t.Expect(appStatus.VIFs[0].FailedItems).To(BeEmpty())
+
+	t.Eventually(updatesCh).Should(Receive(&recUpdate))
+	t.Expect(recUpdate.UpdateType).To(Equal(nirec.AppConnReconcileStatusChanged))
+	t.Expect(recUpdate.AppConnStatus.Equal(appStatus)).To(BeTrue())
+
+	// domainmgr has not yet created the VIF.
+	t.Expect(itemIsCreated(dg.Reference(
+		linuxitems.BridgePort{Variant: linuxitems.BridgePortVariant{VIFIfName: "nbu1x1"}}))).To(BeFalse())
+
+	// Simulate domainmgr creating the VIF.
+	networkMonitor.AddOrUpdateInterface(app1VIF1)
+	t.Eventually(updatesCh).Should(Receive(&recUpdate))
+	t.Expect(recUpdate.UpdateType).To(Equal(nirec.CurrentStateChanged))
+	niReconciler.ResumeReconcile(ctx)
+
+	t.Eventually(updatesCh).Should(Receive(&recUpdate))
+	t.Expect(recUpdate.UpdateType).To(Equal(nirec.AppConnReconcileStatusChanged))
+	t.Expect(recUpdate.AppConnStatus.VIFs[0].InProgress).To(BeFalse())
+	t.Expect(recUpdate.AppConnStatus.VIFs[0].FailedItems).To(BeEmpty())
+
+	t.Expect(itemIsCreated(dg.Reference(
+		linuxitems.BridgePort{Variant: linuxitems.BridgePortVariant{VIFIfName: "nbu1x1"}}))).To(BeTrue())
+	t.Expect(itemDescription(dg.Reference(linuxitems.VLANPort{PortIfName: "nbu1x1"}))).
+		To(ContainSubstring("accessPort: {vid: 100}"))
+	t.Expect(itemIsCreated(dg.Reference(
+		linuxitems.BPDUGuard{PortIfName: "nbu1x1"}))).To(BeTrue())
+
+	// Connect "app2"
+	app2UUID := makeUUID("d7152df0-fc94-4da7-af8a-e73cb8dc2760")
+	app2Num := 2
+	app2NetConfig := types.AppNetworkConfig{
+		UUIDandVersion: app2UUID,
+		DisplayName:    "app2",
+		Activate:       true,
+		AppNetAdapterList: []types.AppNetAdapterConfig{
+			{
+				Name:         "adapter1",
+				IntfOrder:    0,
+				Network:      niUUID.UUID,
+				AccessVlanID: 200,
+				ACLs: []types.ACE{
+					{
+						Matches: []types.ACEMatch{
+							{
+								Type:  "ip",
+								Value: "0.0.0.0/0",
+							},
+						},
+						Actions: []types.ACEAction{
+							{
+								Drop: false,
+							},
+						},
+						RuleID: 1,
+					},
+				},
+			},
+		},
+	}
+	app2VIFs := []nirec.AppVIF{
+		{
+			App:            app2UUID.UUID,
+			NI:             niUUID.UUID,
+			NetAdapterName: "adapter1",
+			VIFNum:         1,
+			GuestIfMAC:     macAddress("02:00:00:00:04:02"),
+			GuestIP:        ipAddress("10.10.200.2"),
+		},
+	}
+	app2VIF1 := netmonitor.MockInterface{
+		Attrs: netmonitor.IfAttrs{
+			IfIndex:       8,
+			IfName:        "nbu1x2",
+			IfType:        "device",
+			WithBroadcast: true,
+			AdminUp:       true,
+			LowerUp:       true,
+			Enslaved:      true,
+			MasterIfIndex: 6,
+		},
+		HwAddr: macAddress("02:00:00:00:03:02"), // host-side
+	}
+
+	appStatus, err = niReconciler.AddAppConn(ctx, app2NetConfig, app2Num, cnirpc.AppPod{}, app2VIFs)
+	t.Expect(err).ToNot(HaveOccurred())
+	t.Expect(appStatus.App).To(Equal(app2UUID.UUID))
+	t.Expect(appStatus.Deleted).To(BeFalse())
+	t.Expect(appStatus.VIFs).To(HaveLen(1))
+	t.Expect(appStatus.VIFs[0].NetAdapterName).To(Equal("adapter1"))
+	t.Expect(appStatus.VIFs[0].InProgress).To(BeTrue())
+	t.Expect(appStatus.VIFs[0].HostIfName).To(Equal("nbu1x2"))
+	t.Expect(appStatus.VIFs[0].FailedItems).To(BeEmpty())
+
+	t.Eventually(updatesCh).Should(Receive(&recUpdate))
+	t.Expect(recUpdate.UpdateType).To(Equal(nirec.AppConnReconcileStatusChanged))
+	t.Expect(recUpdate.AppConnStatus.Equal(appStatus)).To(BeTrue())
+
+	// domainmgr has not yet created the VIF.
+	t.Expect(itemIsCreated(dg.Reference(
+		linuxitems.BridgePort{Variant: linuxitems.BridgePortVariant{VIFIfName: "nbu1x2"}}))).To(BeFalse())
+
+	// Simulate domainmgr creating the VIF.
+	networkMonitor.AddOrUpdateInterface(app2VIF1)
+	t.Eventually(updatesCh).Should(Receive(&recUpdate))
+	t.Expect(recUpdate.UpdateType).To(Equal(nirec.CurrentStateChanged))
+	niReconciler.ResumeReconcile(ctx)
+
+	t.Eventually(updatesCh).Should(Receive(&recUpdate))
+	t.Expect(recUpdate.UpdateType).To(Equal(nirec.AppConnReconcileStatusChanged))
+	t.Expect(recUpdate.AppConnStatus.VIFs[0].InProgress).To(BeFalse())
+	t.Expect(recUpdate.AppConnStatus.VIFs[0].FailedItems).To(BeEmpty())
+
+	t.Expect(itemIsCreated(dg.Reference(
+		linuxitems.BridgePort{Variant: linuxitems.BridgePortVariant{VIFIfName: "nbu1x2"}}))).To(BeTrue())
+	t.Expect(itemDescription(dg.Reference(linuxitems.VLANPort{PortIfName: "nbu1x2"}))).
+		To(ContainSubstring("accessPort: {vid: 200}"))
+	t.Expect(itemIsCreated(dg.Reference(
+		linuxitems.BPDUGuard{PortIfName: "nbu1x2"}))).To(BeTrue())
+
+	// Disconnect the applications.
+	appStatus, err = niReconciler.DelAppConn(ctx, app1UUID.UUID)
+	t.Expect(err).ToNot(HaveOccurred())
+	t.Expect(appStatus.App).To(Equal(app1UUID.UUID))
+	t.Expect(appStatus.Deleted).To(BeTrue())
+	t.Expect(appStatus.VIFs).To(HaveLen(1))
+	t.Expect(appStatus.VIFs[0].NetAdapterName).To(Equal("adapter1"))
+	t.Expect(appStatus.VIFs[0].InProgress).To(BeFalse())
+	t.Expect(appStatus.VIFs[0].HostIfName).To(Equal("nbu1x1"))
+	t.Expect(appStatus.VIFs[0].FailedItems).To(BeEmpty())
+
+	t.Eventually(updatesCh).Should(Receive(&recUpdate))
+	t.Expect(recUpdate.UpdateType).To(Equal(nirec.AppConnReconcileStatusChanged))
+	t.Expect(recUpdate.AppConnStatus.Equal(appStatus)).To(BeTrue())
+
+	networkMonitor.DelInterface(app1VIF1.Attrs.IfName)
+	t.Eventually(updatesCh).Should(Receive(&recUpdate))
+	t.Expect(recUpdate.UpdateType).To(Equal(nirec.CurrentStateChanged))
+	niReconciler.ResumeReconcile(ctx)
+
+	appStatus, err = niReconciler.DelAppConn(ctx, app2UUID.UUID)
+	t.Expect(err).ToNot(HaveOccurred())
+	t.Expect(appStatus.App).To(Equal(app2UUID.UUID))
+	t.Expect(appStatus.Deleted).To(BeTrue())
+	t.Expect(appStatus.VIFs).To(HaveLen(1))
+	t.Expect(appStatus.VIFs[0].NetAdapterName).To(Equal("adapter1"))
+	t.Expect(appStatus.VIFs[0].InProgress).To(BeFalse())
+	t.Expect(appStatus.VIFs[0].HostIfName).To(Equal("nbu1x2"))
+	t.Expect(appStatus.VIFs[0].FailedItems).To(BeEmpty())
+
+	t.Eventually(updatesCh).Should(Receive(&recUpdate))
+	t.Expect(recUpdate.UpdateType).To(Equal(nirec.AppConnReconcileStatusChanged))
+	t.Expect(recUpdate.AppConnStatus.Equal(appStatus)).To(BeTrue())
+
+	networkMonitor.DelInterface(app2VIF1.Attrs.IfName)
+	t.Eventually(updatesCh).Should(Receive(&recUpdate))
+	t.Expect(recUpdate.UpdateType).To(Equal(nirec.CurrentStateChanged))
+	niReconciler.ResumeReconcile(ctx)
+
+	// Delete network instance
+	niStatus, err := niReconciler.DelNI(ctx, niUUID.UUID)
+	t.Expect(err).ToNot(HaveOccurred())
+	t.Expect(niStatus.NI).To(Equal(niUUID.UUID))
+	t.Expect(niStatus.Deleted).To(BeTrue())
 }

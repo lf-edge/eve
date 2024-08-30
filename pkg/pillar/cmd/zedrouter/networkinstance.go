@@ -5,8 +5,10 @@ package zedrouter
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"net"
+	"strings"
 
 	"github.com/lf-edge/eve/pkg/pillar/nireconciler"
 	"github.com/lf-edge/eve/pkg/pillar/nistate"
@@ -106,6 +108,7 @@ func (z *zedrouter) getNIPortConfig(
 			IfName:       port.IfName,
 			IsMgmt:       port.IsMgmt,
 			MTU:          port.MTU,
+			DhcpType:     port.Dhcp,
 			DNSServers:   types.GetDNSServers(*z.deviceNetworkStatus, port.IfName),
 			NTPServers:   types.GetNTPServers(*z.deviceNetworkStatus, port.IfName),
 		})
@@ -114,56 +117,172 @@ func (z *zedrouter) getNIPortConfig(
 }
 
 // Update the selection of device ports matching the port label.
-func (z *zedrouter) updateNIPorts(status *types.NetworkInstanceStatus) (
+func (z *zedrouter) updateNIPorts(niConfig types.NetworkInstanceConfig,
+	niStatus *types.NetworkInstanceStatus) (
 	changed bool, err error) {
 	var (
-		newPorts             []*types.NetworkPortStatus
-		newPortLogicalLabels []string
-		newNTPServers        []net.IP
+		newPorts         []*types.NetworkPortStatus
+		validatedPortLLs []string
+		newNTPServers    []net.IP
+		errorMsgs        []string
 	)
-	if status.NtpServer != nil {
+	if niStatus.NtpServer != nil {
 		// The NTP server explicitly configured for the NI.
-		newNTPServers = append(newNTPServers, status.NtpServer)
+		newNTPServers = append(newNTPServers, niStatus.NtpServer)
 	}
-	if status.PortLabel != "" {
-		newPorts = z.deviceNetworkStatus.LookupPortsByLabel(status.PortLabel)
-		for _, port := range newPorts {
-			newPortLogicalLabels = append(newPortLogicalLabels, port.Logicallabel)
-			if port.NtpServer != nil {
-				// The NTP server explicitly configured for the port.
-				newNTPServers = append(newNTPServers, port.NtpServer)
-			}
-			// NTP servers received via DHCP.
-			newNTPServers = append(newNTPServers, port.NtpServers...)
-		}
-	}
-	newNTPServers = generics.FilterDuplicatesFn(newNTPServers, netutils.EqualIPs)
-	changed = changed || !generics.EqualSets(status.Ports, newPortLogicalLabels)
-	status.Ports = newPortLogicalLabels
-	changed = changed || !generics.EqualSetsFn(status.NTPServers, newNTPServers,
-		netutils.EqualIPs)
-	status.NTPServers = newNTPServers
-	if status.PortLabel != "" && len(status.Ports) == 0 {
-		// This is potentially a transient state, wait for DNS update.
-		return changed, fmt.Errorf("no port is matching label '%s'", status.PortLabel)
+	if niStatus.PortLabel != "" {
+		newPorts = z.deviceNetworkStatus.LookupPortsByLabel(niStatus.PortLabel)
 	}
 	for _, port := range newPorts {
+		// Check if port is valid for the network instance.
 		if port.InvalidConfig {
-			return changed, fmt.Errorf("port %s has invalid config: %s",
-				port.Logicallabel, port.LastError)
+			errorMsgs = append(errorMsgs,
+				fmt.Sprintf("port %s has invalid config: %s",
+					port.Logicallabel, port.LastError))
+			continue
 		}
+		if port.IfName == "" {
+			errorMsgs = append(errorMsgs,
+				fmt.Sprintf("missing interface name for port %s", port.Logicallabel))
+			continue
+		}
+		var checkOnlySwitchOverlap, checkOnlyMultiportOverlap bool
+		switch niStatus.Type {
+		case types.NetworkInstanceTypeLocal:
+			if port.Dhcp != types.DhcpTypeStatic && port.Dhcp != types.DhcpTypeClient {
+				errorMsgs = append(errorMsgs,
+					fmt.Sprintf(
+						"L2-only port %s cannot be used in Local Network Instance",
+						port.Logicallabel))
+				continue
+			}
+			// The same port can be used by multiple Local NIs.
+			// Also, Local NI(s) can share port with a single-port Switch NI.
+			checkOnlySwitchOverlap = true
+			checkOnlyMultiportOverlap = true
+		case types.NetworkInstanceTypeSwitch:
+			if port.WirelessCfg.WType != types.WirelessTypeNone {
+				errorMsgs = append(errorMsgs,
+					fmt.Sprintf("wireless port %s cannot be used in Switch Network Instance",
+						port.Logicallabel))
+				continue
+			}
+			if len(newPorts) > 1 && port.Dhcp != types.DhcpTypeNone {
+				errorMsgs = append(errorMsgs,
+					fmt.Sprintf(
+						"L3 port %s cannot be used in multi-port Switch Network Instance",
+						port.Logicallabel))
+				continue
+			}
+			if len(newPorts) > 1 {
+				// Port used by multi-port Switch NI cannot be used by any other NI.
+				checkOnlySwitchOverlap = false
+				checkOnlyMultiportOverlap = false
+			} else {
+				// Single-port Switch NI can share port with Local NIs.
+				// Multiple Switch NIs trying to use the same port is not valid, however.
+				checkOnlySwitchOverlap = true
+				checkOnlyMultiportOverlap = false
+			}
+		}
+		anotherNI := z.checkIfPortUsedByAnotherNI(niConfig.UUID, port.Logicallabel,
+			checkOnlySwitchOverlap, checkOnlyMultiportOverlap)
+		if anotherNI != emptyUUID {
+			errorMsgs = append(errorMsgs,
+				fmt.Sprintf(
+					"port %s is already used by Network Instance %s",
+					port.Logicallabel, anotherNI))
+			continue
+		}
+		// Port is valid for this network instance.
+		validatedPortLLs = append(validatedPortLLs, port.Logicallabel)
+		if port.NtpServer != nil {
+			// The NTP server explicitly configured for the port.
+			newNTPServers = append(newNTPServers, port.NtpServer)
+		}
+		// NTP servers received via DHCP.
+		newNTPServers = append(newNTPServers, port.NtpServers...)
 	}
-	// Update BridgeMac for switch NI port created by NIM.
-	if status.IsUsingPortBridge() && len(newPorts) == 1 {
-		// Note that for switch NI we do not support multiple ports yet.
+	if niStatus.PortLabel != "" && len(newPorts) == 0 {
+		// This is potentially a transient state, wait for DNS update.
+		errorMsgs = append(errorMsgs,
+			fmt.Sprintf("no port is matching label '%s'", niStatus.PortLabel))
+	}
+	newNTPServers = generics.FilterDuplicatesFn(newNTPServers, netutils.EqualIPs)
+	changed = changed || !generics.EqualSets(niStatus.Ports, validatedPortLLs)
+	niStatus.Ports = validatedPortLLs
+	changed = changed || !generics.EqualSetsFn(niStatus.NTPServers, newNTPServers,
+		netutils.EqualIPs)
+	niStatus.NTPServers = newNTPServers
+	// Update BridgeMac for Switch NI bridge created by NIM.
+	if z.niBridgeIsCreatedByNIM(niConfig) {
+		// Only switch NI with single port may have the bridge created by NIM.
 		ifName := newPorts[0].IfName
 		if ifIndex, exists, _ := z.networkMonitor.GetInterfaceIndex(ifName); exists {
 			_, ifMAC, _ := z.networkMonitor.GetInterfaceAddrs(ifIndex)
-			changed = changed || !bytes.Equal(ifMAC, status.BridgeMac)
-			status.BridgeMac = ifMAC
+			changed = changed || !bytes.Equal(ifMAC, niStatus.BridgeMac)
+			niStatus.BridgeMac = ifMAC
 		}
 	}
-	return changed, nil
+	if len(errorMsgs) > 0 {
+		err = errors.New(strings.Join(errorMsgs, "\n"))
+	}
+	return changed, err
+}
+
+// Update port selection for all network instances.
+// Also handle (dis)appearance of device ports.
+// Note that even if port disappears, we do not revert activated NI.
+func (z *zedrouter) updatePortsForAllNIs() {
+	items := z.pubNetworkInstanceStatus.GetAll()
+	for key, st := range items {
+		niStatus := st.(types.NetworkInstanceStatus)
+		niConfig := z.lookupNetworkInstanceConfig(key)
+		if niConfig == nil {
+			z.log.Errorf("updatePortsForAllNIs: failed to get config for NI %s",
+				niStatus.UUID)
+			continue
+		}
+		niStatus.PortErr.ClearError()
+		changedPorts, portErr := z.updateNIPorts(*niConfig, &niStatus)
+		if portErr != nil {
+			portErr = fmt.Errorf(
+				"failed to update selection of ports for network instance %s: %v",
+				niStatus.UUID, portErr)
+			z.log.Error(portErr)
+			niStatus.PortErr.SetErrorNow(portErr.Error())
+		}
+
+		if changedPorts {
+			// Changing the number of ports may affect if a multi-path default route
+			// is needed or not.
+			_ = z.updateNIRoutes(&niStatus, false)
+		}
+
+		// Re-check MTUs between the NI and the selected ports.
+		mtuToUse, mtuErr := z.checkNetworkInstanceMTUConflicts(*niConfig, &niStatus)
+		niStatus.MTU = mtuToUse
+		if mtuErr == nil && niStatus.MTUConflictErr.HasError() {
+			// MTU conflict was resolved.
+			niStatus.MTUConflictErr.ClearError()
+		}
+		if mtuErr != nil &&
+			mtuErr.Error() != niStatus.MTUConflictErr.Error {
+			// New MTU conflict arose or the error has changed.
+			z.log.Error(mtuErr)
+			niStatus.MTUConflictErr.SetErrorNow(mtuErr.Error())
+		}
+
+		// Apply port/MTU changes in the network stack.
+		if niStatus.Activated {
+			z.doUpdateActivatedNetworkInstance(*niConfig, &niStatus)
+		}
+		if niConfig.Activate && !niStatus.Activated && niStatus.EligibleForActivate() {
+			z.doActivateNetworkInstance(*niConfig, &niStatus)
+			z.checkAndRecreateAppNetworks(niStatus.UUID)
+		}
+		z.publishNetworkInstanceStatus(&niStatus)
+	}
 }
 
 func (z *zedrouter) updateNIRoutes(status *types.NetworkInstanceStatus,
@@ -549,4 +668,26 @@ func (z *zedrouter) checkAllNetworkInstanceIPConflicts() {
 			}
 		}
 	}
+}
+
+// If Switch NI has single port which is also used for EVE mgmt or for Local NI,
+// then the associated bridge is managed by NIM.
+func (z *zedrouter) niBridgeIsCreatedByNIM(niConfig types.NetworkInstanceConfig) bool {
+	if niConfig.Type != types.NetworkInstanceTypeSwitch {
+		// Zedrouter creates bridge for Local NI.
+		return false
+	}
+	if niConfig.PortLabel == "" {
+		// Zedrouter creates bridge for air-gapped switch NI.
+		return false
+	}
+	singlePort := z.deviceNetworkStatus.LookupPortByLogicallabel(niConfig.PortLabel)
+	if singlePort == nil {
+		// niConfig.PortLabel is likely a shared label.
+		// Zedrouter creates bridge for switch NI with multiple ports.
+		return false
+	}
+	// If the (single) port is also used for mgmt or Local NI, NIM is responsible
+	// for bridging the port.
+	return singlePort.Dhcp == types.DhcpTypeStatic || singlePort.Dhcp == types.DhcpTypeClient
 }

@@ -366,7 +366,7 @@ func (r *LinuxNIReconciler) runWatcher(netEvents <-chan netmonitor.Event) {
 				ifName := attrs.IfName
 				brForNI := r.getNIWithBridge(ifName)
 				if brForNI != nil {
-					if r.niBridgeIsCreatedByNIM(brForNI) {
+					if r.niBridgeIsCreatedByNIM(brForNI.config, brForNI.bridge) {
 						// When bridge used by switch NI gets IP address from external
 						// DHCP server, zedrouter can start HTTP server with app metadata.
 						// Also, DHCP ACLs need to be updated.
@@ -824,11 +824,6 @@ func (r *LinuxNIReconciler) AddNI(ctx context.Context,
 	if _, duplicate := r.nis[niID]; duplicate {
 		return niStatus, fmt.Errorf("%s: NI %v is already added", LogAndErrPrefix, niID)
 	}
-	if len(br.Ports) > 1 && niConfig.Type == types.NetworkInstanceTypeSwitch {
-		return niStatus, fmt.Errorf(
-			"%s: switch NI (%v) with multiple ports is not supported",
-			LogAndErrPrefix, niID)
-	}
 	brIfName, err := r.generateBridgeIfName(niConfig, br)
 	if err != nil {
 		return niStatus, err
@@ -862,11 +857,6 @@ func (r *LinuxNIReconciler) UpdateNI(ctx context.Context,
 	niID := niConfig.UUID
 	if _, exists := r.nis[niID]; !exists {
 		return niStatus, fmt.Errorf("%s: Cannot update NI %v: does not exist",
-			LogAndErrPrefix, niID)
-	}
-	if len(br.Ports) > 1 && niConfig.Type == types.NetworkInstanceTypeSwitch {
-		return niStatus, fmt.Errorf(
-			"%s: switch NI (%v) with multiple ports is not supported",
 			LogAndErrPrefix, niID)
 	}
 	r.nis[niID].config = niConfig
@@ -1082,8 +1072,8 @@ func (r *LinuxNIReconciler) getNIsUsingPort(ifName string) (nis []*niInfo) {
 	for _, ni := range r.nis {
 		switch ni.config.Type {
 		case types.NetworkInstanceTypeSwitch:
-			if len(ni.bridge.Ports) == 1 {
-				if ifName == portPhysIfName(ni.bridge.Ports[0].IfName) {
+			for _, port := range ni.bridge.Ports {
+				if ifName == portPhysIfName(port) {
 					nis = append(nis, ni)
 				}
 			}
@@ -1100,17 +1090,8 @@ func (r *LinuxNIReconciler) getNIsUsingPort(ifName string) (nis []*niInfo) {
 
 func (r *LinuxNIReconciler) getNIWithBridge(ifName string) *niInfo {
 	for _, ni := range r.nis {
-		switch ni.config.Type {
-		case types.NetworkInstanceTypeSwitch:
-			if len(ni.bridge.Ports) == 1 {
-				if ifName == ni.bridge.Ports[0].IfName {
-					return ni
-				}
-			}
-		case types.NetworkInstanceTypeLocal:
-			if ifName == ni.brIfName {
-				return ni
-			}
+		if ifName == ni.brIfName {
+			return ni
 		}
 	}
 	return nil
@@ -1140,7 +1121,14 @@ func (r *LinuxNIReconciler) getSubgraphState(intSG, currSG dg.GraphR, forApp boo
 			}
 		}
 		if item.Type() == linux.VLANPortTypename {
-			return true
+			if item.(linux.VLANPort).ForVIF {
+				return true
+			}
+		}
+		if item.Type() == linux.BPDUGuardTypename {
+			if item.(linux.BPDUGuard).ForVIF {
+				return true
+			}
 		}
 		if route, isRoute := item.(linux.Route); isRoute {
 			if route.ForApp.ID != emptyUUID {

@@ -33,7 +33,7 @@ IMGFILE=/rootfs.img
   #
   CMDLINE="$(cat boot/cmdline)"
 
-  sed -i'' -e "/set *linuxkit_cmdline=/s#=.*\$#=$CMDLINE#" EFI/BOOT/grub.cfg
+  sed -i'' -e '/set *linuxkit_cmdline=/s#=.*$#="'"$CMDLINE"'"#' EFI/BOOT/grub.cfg
 
   ROOTFS_BLOCKSZ=4096
   ROOTFS_PART_HEADROOM_BLOCKS=16000
