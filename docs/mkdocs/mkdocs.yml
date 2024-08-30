@@ -130,6 +130,7 @@ nav:
       - NIM: 'pkg/pillar/docs/nim.md'
       - 'Radio silence': 'pkg/pillar/docs/radio-silence.md'
       - tpmmgr: 'pkg/pillar/docs/tpmmgr.md'
+      - vcomlink: 'pkg/pillar/docs/vcomlink.md'
       - vaultmgr: 'pkg/pillar/docs/vaultmgr.md'
       - volumemgr: 'pkg/pillar/docs/volumemgr.md'
       - zedmanager: 'pkg/pillar/docs/zedmanager.md'
