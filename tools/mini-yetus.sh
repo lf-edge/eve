@@ -77,13 +77,17 @@ if ! git rev-parse --verify "$DST_BRANCH" >/dev/null 2>&1; then
     exit 1
 fi
 
+MISSING_FILE_REPORTED=false
 SRC_DIR=$(mktemp -d)
 git diff --name-only "$SRC_BRANCH".."$DST_BRANCH" | grep -v '/vendor/' | while IFS= read -r file; do
     if [ -e "$file" ]; then
         cp --parents -r "$PWD/$file" "$SRC_DIR/" || { echo "Failed to copy $file"; exit 1; }
     else
+        if [ "$MISSING_FILE_REPORTED" = false ]; then
+            echo "[*] Some files are missing from current branch, if you are comparing against main/master, a rebase might be needed."
+            MISSING_FILE_REPORTED=true
+        fi
         echo "[!] File does not exist: $PWD/$file"
-        exit 1
     fi
 done
 
@@ -111,7 +115,7 @@ if [ "$FULL" = true ]; then
     echo "[+] Full results:"
     if [ "$(uname)" = "Darwin" ]; then
         if ! command -v gsed >/dev/null 2>&1; then
-            echo "[*] GNU sed not found. install it to have the best experience."
+            echo "[*] GNU sed not found. Install it to have the best experience."
             cat "$SRC_DIR/yetus-output/results-full.txt"
         else
             gsed -e '/^\./!s|^|/|' "$SRC_DIR/yetus-output/results-full.txt"
@@ -123,4 +127,4 @@ if [ "$FULL" = true ]; then
     fi
 fi
 
-echo "[+] results stored in $SRC_DIR/yetus-output"
+echo "[+] Results stored in $SRC_DIR/yetus-output"
