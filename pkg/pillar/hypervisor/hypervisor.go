@@ -1,13 +1,18 @@
 // Copyright (c) 2017-2020 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+// Package hypervisor contains the Hypervisor interface and the implementation of the
+// interface for different hypervisors.
 package hypervisor
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -60,10 +65,10 @@ var hypervisorPriority = []string{
 // GetHypervisor returns a particular hypervisor implementation
 func GetHypervisor(hint string) (Hypervisor, error) {
 	if _, found := knownHypervisors[hint]; !found {
-		return nil, fmt.Errorf("Unknown hypervisor %s", hint)
-	} else {
-		return knownHypervisors[hint].constructor(), nil
+		return nil, fmt.Errorf("unknown hypervisor %s", hint)
 	}
+
+	return knownHypervisors[hint].constructor(), nil
 }
 
 func bootTimeHypervisorWithHVFilePath(hvFilePath string) Hypervisor {
@@ -237,4 +242,52 @@ func PCISameControllerGeneric(id1 string, id2 string) bool {
 	}
 
 	return tag1 == tag2
+}
+
+func launchSwtpm(id string, timeoutSeconds uint) (string, error) {
+	conn, err := net.Dial("unix", types.VtpmdCtrlSocket)
+	if err != nil {
+		return "", fmt.Errorf("failed to connect to vtpmd control socket: %w", err)
+	}
+	defer conn.Close()
+
+	pidPath := fmt.Sprintf(types.SwtpmPidPath, id)
+	sockPath := fmt.Sprintf(types.SwtpmCtrlSocketPath, id)
+
+	// Send the id to the swtpm control socket,ask it to launch swtpm instance.
+	_, err = conn.Write([]byte(fmt.Sprintf("%s\n", id)))
+	if err != nil {
+		return "", fmt.Errorf("failed to write to vtpmd control socket: %w", err)
+	}
+
+	// loop and wait for swtpm to launch
+	startTime := time.Now()
+	for {
+		if time.Since(startTime).Seconds() >= float64(timeoutSeconds) {
+			return "", fmt.Errorf("timeout reached while waiting for swtpm to launch")
+		}
+
+		// check if swtpm is running by checking the pid file
+		if fileutils.FileExists(nil, pidPath) {
+			break
+		}
+
+		time.Sleep(1 * time.Second)
+	}
+
+	// read the pid file and make sure the process is running
+	content, err := os.ReadFile(pidPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to read swtpm pid file: %w", err)
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(content)))
+	if err != nil {
+		return "", fmt.Errorf("failed to parse swtpm pid: %w", err)
+	}
+	_, err = os.FindProcess(pid)
+	if err != nil {
+		return "", fmt.Errorf("swtpm process not found: %w", err)
+	}
+
+	return sockPath, nil
 }
