@@ -25,6 +25,7 @@ import (
 // KVMHypervisorName is a name of kvm hypervisor
 const KVMHypervisorName = "kvm"
 const minUringKernelTag = uint64((5 << 16) | (4 << 8) | (72 << 0))
+const swtpmTimeout = 5 // seconds
 
 var clientCid = uint32(unix.VMADDR_CID_HOST + 1)
 
@@ -406,6 +407,20 @@ const qemuVsockTemplate = `
   guest-cid = "{{.GuestCID}}"
 `
 
+const qemuSwtpmTemplate = `
+[chardev "swtpm"]
+  backend = "socket"
+  path = "{{.CtrlSocket}}"
+
+[tpmdev "tpm0"]
+  type = "emulator"
+  chardev = "swtpm"
+
+[device "tpm-tis"]
+  driver = "tpm-tis"
+  tpmdev = "tpm0"
+`
+
 const kvmStateDir = "/run/hypervisor/kvm/"
 const sysfsPciDriversProbe = "/sys/bus/pci/drivers_probe"
 const vfioDriverPath = "/sys/bus/pci/drivers/vfio-pci"
@@ -684,9 +699,17 @@ func (ctx KvmContext) Setup(status types.DomainStatus, config types.DomainConfig
 	diskStatusList := status.DiskStatusList
 	domainName := status.DomainName
 	domainUUID := status.UUIDandVersion.UUID
+
+	swtpmCtrlSock, err := launchSwtpm(domainUUID.String(), swtpmTimeout)
+	if err != nil {
+		// let the vm start without TPM
+		logError("failed to launch swtpm for domain %s: %v", domainName, err)
+		swtpmCtrlSock = ""
+	}
+
 	// first lets build the domain config
 	if err := ctx.CreateDomConfig(domainName, config, status, diskStatusList,
-		aa, globalConfig, file); err != nil {
+		aa, globalConfig, swtpmCtrlSock, file); err != nil {
 		return logError("failed to build domain config: %v", err)
 	}
 
@@ -753,7 +776,7 @@ func isVncShimVMEnabled(
 func (ctx KvmContext) CreateDomConfig(domainName string,
 	config types.DomainConfig, status types.DomainStatus,
 	diskStatusList []types.DiskStatus, aa *types.AssignableAdapters,
-	globalConfig *types.ConfigItemValueMap, file *os.File) error {
+	globalConfig *types.ConfigItemValueMap, swtpmCtrlSock string, file *os.File) error {
 	tmplCtx := struct {
 		Machine string
 		types.DomainConfig
@@ -768,6 +791,17 @@ func (ctx KvmContext) CreateDomConfig(domainName string,
 	t, _ := template.New("qemu").Parse(qemuConfTemplate)
 	if err := t.Execute(file, tmplCtx); err != nil {
 		return logError("can't write to config file %s (%v)", file.Name(), err)
+	}
+
+	// render swtpm settings
+	if swtpmCtrlSock != "" {
+		swtpmContext := struct {
+			CtrlSocket string
+		}{swtpmCtrlSock}
+		t, _ = template.New("qemuSwtpm").Parse(qemuSwtpmTemplate)
+		if err := t.Execute(file, swtpmContext); err != nil {
+			return logError("can't write to config file %s (%v)", file.Name(), err)
+		}
 	}
 
 	// render disk device model settings
