@@ -131,14 +131,14 @@ func (c *AdapterConfigurator) Create(ctx context.Context, item depgraph.Item) er
 		// Managed by the wwan microservice, nothing to do here.
 		return nil
 	}
-	// Make sure that the interface is UP.
-	if err := netlink.LinkSetUp(link); err != nil {
-		err = fmt.Errorf("netlink.LinkSetUp(%s) failed: %v",
-			adapter.IfName, err)
-		c.Log.Error(err)
-		return err
-	}
 	if !c.isAdapterBridgedByNIM(adapter) {
+		// Make sure that the interface is UP.
+		if err := netlink.LinkSetUp(link); err != nil {
+			err = fmt.Errorf("netlink.LinkSetUp(%s) failed: %v",
+				adapter.IfName, err)
+			c.Log.Error(err)
+			return err
+		}
 		// Do not proceed with bridging the adapter, just set the MTU.
 		return c.setAdapterMTU(adapter, link)
 	}
@@ -195,9 +195,18 @@ func (c *AdapterConfigurator) Create(ctx context.Context, item depgraph.Item) er
 		c.Log.Error(err)
 		return err
 	}
+	// Make sure that corresponding bridge and interface are UP right
+	// after MAC address assignment and interface rename. Order matters,
+	// otherwise host returns `Device or resource busy`.
 	if err := netlink.LinkSetUp(bridge); err != nil {
 		err = fmt.Errorf("netlink.LinkSetUp(%s) failed: %v",
 			adapter.IfName, err)
+		c.Log.Error(err)
+		return err
+	}
+	if err := netlink.LinkSetUp(kernLink); err != nil {
+		err = fmt.Errorf("netlink.LinkSetUp(%s) failed: %v",
+			kernIfname, err)
 		c.Log.Error(err)
 		return err
 	}
