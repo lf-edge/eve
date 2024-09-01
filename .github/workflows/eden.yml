@@ -98,7 +98,7 @@ jobs:
           echo $RUN_ID
           echo "run_id=$RUN_ID" >> $GITHUB_OUTPUT
       - name: Report Run ID  # useful for debugging
-        run: echo "Run ID is ${{ steps.get_run_id.outputs.result }}"
+        run: echo "Run ID is ${{ steps.get_run_id.outputs.run_id }}"
 
   test_suite_pr:
     needs: get_run_id
@@ -117,7 +117,7 @@ jobs:
     with:
       eve_image: "evebuild/pr:${{ github.event.pull_request.number  }}"
       eve_artifact_name: eve-${{ matrix.hv }}-${{ matrix.arch }}-${{ matrix.platform }}
-      artifact_run_id: ${{ needs.get_run_id.outputs.result }}
+      artifact_run_id: ${{ needs.get_run_id.outputs.run_id }}
       eden_version: "0.9.12"
 
   test_suite_master:
