@@ -66,6 +66,7 @@ def main():
 
     print(f"Checking {len(commits)} commits between {base_hash} and HEAD...")
 
+    all_valid = True
     for commit in commits:
         valid, error_message = check_commit_message(commit)
         if not valid:
@@ -73,7 +74,10 @@ def main():
             print(f"Commit message:\n{'-'*72}\n{commit.message}{'-'*72}")
             print("For more details, see: "
             "https://github.com/lf-edge/eve/blob/master/CONTRIBUTING.md#commit-messages")
-            sys.exit(1)
+            all_valid = False
+
+    if not all_valid:
+        sys.exit(1)
 
     print("All commits are valid.")
 
