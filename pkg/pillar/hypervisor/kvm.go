@@ -25,7 +25,7 @@ import (
 // KVMHypervisorName is a name of kvm hypervisor
 const KVMHypervisorName = "kvm"
 const minUringKernelTag = uint64((5 << 16) | (4 << 8) | (72 << 0))
-const swtpmTimeout = 5 // seconds
+const swtpmTimeout = 10 // seconds
 
 var clientCid = uint32(unix.VMADDR_CID_HOST + 1)
 
