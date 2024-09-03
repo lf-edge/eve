@@ -40,8 +40,8 @@ file_names=(
   "Makefile"
 )
 
-# Flag to check if all files contain the SPDX header
-all_files_contain_spdx=true
+# Flag to check if all files fulfill the license requirements
+all_files_proper_licensed=true
 
 check_spdx() {
   local file="$1"
@@ -58,6 +58,27 @@ check_spdx() {
   done
   echo "the SPDX-License-Identifier is not compatible with the allowed licenses"
   return 1
+}
+
+check_copyright() {
+  local file="$1"
+  local current_year
+
+  current_year=$(date +"%Y")
+
+  # Check if the file contains the copyright
+  if ! grep -iq "Copyright (c)" "$file"; then
+    echo "does not have the copyright!"
+    return 1
+  fi
+
+  # Check if the file contains the current year
+  if ! grep -iq "Copyright (c) .*$current_year" "$file"; then
+    echo "does not have the current year $current_year in the copyright notice!"
+    return 1
+  fi
+
+  return 0
 }
 
 ignore_paths=()
@@ -94,17 +115,24 @@ file_to_be_checked() {
 # Loop through the files and check for the SPDX header
 for file in $files; do
   if file_to_be_checked "$file"; then
-    echo -n "Checking $file ... "
-    if ! check_spdx "$file"; then
-      all_files_contain_spdx=false
-    else
+    echo "Checking $file"
+    echo -n "  - SPDX-License-Identifier: "
+    if check_spdx "$file"; then
       echo "OK"
+    else
+      all_files_proper_licensed=false
+    fi
+    echo -n "  - Copyright: "
+    if check_copyright "$file"; then
+      echo "OK"
+    else
+      all_files_proper_licensed=false
     fi
   fi
 done
 
-if [ "$all_files_contain_spdx" = true ]; then
-  echo "All files contain SPDX-License-Identifier."
+if [ "$all_files_proper_licensed" = true ]; then
+  echo "All files are properly licensed!"
   exit 0
 else
   exit 1
