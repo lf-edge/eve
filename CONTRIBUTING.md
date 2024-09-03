@@ -95,11 +95,10 @@ the first try, don't get discouraged!
 
 Each commit message includes a subject and a body, separated by an empty line.
 The subject should be a brief summary of the changes, and the body should
-provide a more detailed explanation. The body must start with a capital letter.
-Additionally, each commit message must include a "Signed-off-by" line at the
-end, certifying that the contributor has the right to submit the patch under the
-open-source license. This line can be automatically added by using the `-s` flag
-with the `git commit` command.
+provide a more detailed explanation. Additionally, each commit message must
+include a "Signed-off-by" line at the end, certifying that the contributor has
+the right to submit the patch under the open-source license. This line can be
+automatically added by using the `-s` flag with the `git commit` command.
 
 Commit messages should follow best practices, including explaining the context
 of the problem and how it was solved, including in caveats or follow up changes
