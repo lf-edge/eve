@@ -10,8 +10,8 @@ config:
   additionalGids: [100]
   binds:
     - /dev:/dev
-    - /run:/run
-    - /persist:/persist
+    - /run/swtpm:/run/swtpm
+    - /persist/swtpm:/persist/swtpm
   devices:
     - path: all
       type: a
