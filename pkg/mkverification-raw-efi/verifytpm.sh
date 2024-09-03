@@ -24,7 +24,7 @@ PCR_INDEX="0, 1, 2, 3, 4, 6, 7, 8, 9, 13, 14"
 TPM_RECOV="/opt/debug/usr/bin/recovertpm"
 VTPM_PATH="/opt/vtpm/"
 TPM_TOOL="$VTPM_PATH""usr/bin/tpm2"
-TPM_TOOL_LIB="$VTPM_PATH""usr/local/lib/"
+TPM_TOOL_LIB="$VTPM_PATH""usr/lib/"
 
 # we don't install tpm2-abrmd, so tell tpm-tools to use tpmrm0.
 export TPM2TOOLS_TCTI="device:/dev/tpmrm0"
