@@ -166,4 +166,4 @@ jobs:
     needs: [manifest, verification, eve]
     uses: lf-edge/eve/.github/workflows/assets.yml@master
     with:
-      tag_ref: ${{ github.ref }}
+      tag_ref: ${{ github.ref_name }}
