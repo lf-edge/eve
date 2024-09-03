@@ -463,13 +463,12 @@ func newKvm() Hypervisor {
 			ctrdContext:  *ctrdCtx,
 			devicemodel:  "virt",
 			dmExec:       "/usr/lib/xen/bin/qemu-system-aarch64",
-			dmArgs:       []string{"-display", "none", "-S", "-no-user-config", "-nodefaults", "-no-shutdown", "-overcommit", "mem-lock=on", "-overcommit", "cpu-pm=on", "-serial", "chardev:charserial0"},
+			dmArgs:       []string{"-display", "none", "-S", "-no-user-config", "-nodefaults", "-no-shutdown", "-serial", "chardev:charserial0"},
 			dmCPUArgs:    []string{"-cpu", "host"},
 			dmFmlCPUArgs: []string{"-cpu", "host"},
 		}
 	case "amd64":
 		return KvmContext{
-			//nolint:godox // FIXME: Removing "-overcommit", "mem-lock=on", "-overcommit" for now, revisit it later as part of resource partitioning
 			ctrdContext:  *ctrdCtx,
 			devicemodel:  "pc-q35-3.1",
 			dmExec:       "/usr/lib/xen/bin/qemu-system-x86_64",
