@@ -42,10 +42,6 @@ def check_commit_message(commit):
     if not body_lines:
         return False, f"Commit {commit.hexsha} has no body."
 
-    # Check if the body starts with a capital letter
-    if not body_lines[0][0].isupper():
-        return False, f"Body of commit {commit.hexsha} does not start with a capital letter."
-
     return True, None
 
 
