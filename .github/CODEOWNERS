@@ -66,3 +66,4 @@
 /pkg/xen/                     @OhmSpectator @rucoder @rene @shjala
 /tests/eden/                  @milan-zededa @uncleDecart
 /tools/                       @deitch @jsfakian
+.github/workflows/            @deitch @uncleDecart @yash-zededa
