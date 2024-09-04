@@ -3,6 +3,7 @@ module bpftrace-compiler
 go 1.22.5
 
 require (
+	github.com/creack/pty v1.1.18
 	github.com/linuxkit/linuxkit/src/cmd/linuxkit v0.0.0-20240829191519-fa3207c86e64
 	github.com/opencontainers/image-spec v1.1.0-rc5
 	github.com/pkg/errors v0.9.1
