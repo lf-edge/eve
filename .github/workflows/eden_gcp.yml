@@ -144,7 +144,7 @@ jobs:
         run: |
           git reset --hard '${{ github.event.workflow_run.head_sha }}'
           git clean -f -x -d
-          echo "EVE_TAG=$(make version)" >> "$GITHUB_ENV"
+          echo "EVE_TAG=$(make version | tail -n1)" >> "$GITHUB_ENV"
           echo "EVE_REGISTRY=lfedge/eve" >> "$GITHUB_ENV"
       - name: Prepare EVE (manual run)
         if: github.event_name == 'workflow_dispatch'
