@@ -1,0 +1,132 @@
+From git@z Thu Jan  1 00:00:00 1970
+Subject: [PATCH] x86: acpi: use offset instead of pointer when using
+ build_header()
+From: Igor Mammedov <imammedo@redhat.com>
+Date: Tue, 13 Apr 2021 07:14:00 -0400
+Message-Id: <20210413111400.3778820-1-imammedo@redhat.com>
+MIME-Version: 1.0
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: 7bit
+
+Do the same as in commit
+ (4d027afeb3a97 Virt: ACPI: fix qemu assert due to re-assigned table data address)
+for remaining tables that happen to use saved at
+the beginning pointer to build header to avoid assert
+when table_data is relocated due to implicit re-size.
+
+Reported-in: https://bugs.launchpad.net/bugs/1923497
+Signed-off-by: Igor Mammedov <imammedo@redhat.com>
+Buglink: https://bugs.launchpad.net/qemu/+bug/1921138
+Acked-by: Michael S. Tsirkin <mst@redhat.com>
+Fixes: 243bdb79fb0b2ed hw/arm/virt-acpi-build: Generate RSDT table
+Fixes: cb51ac2ffe3649e hw/arm/virt: generate 64-bit addressable ACPI objects
+Fixes: 4338416064303aa acpi: Move build_tpm2() in the generic part
+Fixes: 72c194f7e75cb64 i386: ACPI table generation code from seabios
+Fixes: 711b20b479aa96e Add ACPI tables for TPM
+---
+PS:
+ I have build_header() refactoring patch that requires offset
+ instead of pointer, to make it harder to misuse but it's
+ a bit intrusive for last minute fixes. So here goes simplified
+ variant, and I'll post refactoring patch for 6.1. later.
+---
+diff --git a/tools/qemu-xen/hw/acpi/aml-build.c b/tools/qemu-xen/hw/acpi/aml-build.c
+index f6fbc9b..7215573 100644
+--- a/tools/qemu-xen/hw/acpi/aml-build.c
++++ b/tools/qemu-xen/hw/acpi/aml-build.c
+@@ -1669,6 +1669,7 @@ build_rsdt(GArray *table_data, BIOSLinker *linker, GArray *table_offsets,
+     int i;
+     unsigned rsdt_entries_offset;
+     AcpiRsdtDescriptorRev1 *rsdt;
++    int rsdt_start = table_data->len;
+     const unsigned table_data_len = (sizeof(uint32_t) * table_offsets->len);
+     const unsigned rsdt_entry_size = sizeof(rsdt->table_offset_entry[0]);
+     const size_t rsdt_len = sizeof(*rsdt) + table_data_len;
+@@ -1685,7 +1686,8 @@ build_rsdt(GArray *table_data, BIOSLinker *linker, GArray *table_offsets,
+             ACPI_BUILD_TABLE_FILE, ref_tbl_offset);
+     }
+     build_header(linker, table_data,
+-                 (void *)rsdt, "RSDT", rsdt_len, 1, oem_id, oem_table_id);
++                 (void *)(table_data->data + rsdt_start),
++                 "RSDT", rsdt_len, 1, oem_id, oem_table_id);
+ }
+ 
+ /* Build xsdt table */
+@@ -1696,6 +1698,7 @@ build_xsdt(GArray *table_data, BIOSLinker *linker, GArray *table_offsets,
+     int i;
+     unsigned xsdt_entries_offset;
+     AcpiXsdtDescriptorRev2 *xsdt;
++    int xsdt_start = table_data->len;
+     const unsigned table_data_len = (sizeof(uint64_t) * table_offsets->len);
+     const unsigned xsdt_entry_size = sizeof(xsdt->table_offset_entry[0]);
+     const size_t xsdt_len = sizeof(*xsdt) + table_data_len;
+@@ -1712,7 +1715,8 @@ build_xsdt(GArray *table_data, BIOSLinker *linker, GArray *table_offsets,
+             ACPI_BUILD_TABLE_FILE, ref_tbl_offset);
+     }
+     build_header(linker, table_data,
+-                 (void *)xsdt, "XSDT", xsdt_len, 1, oem_id, oem_table_id);
++                 (void *)(table_data->data + xsdt_start),
++                 "XSDT", xsdt_len, 1, oem_id, oem_table_id);
+ }
+ 
+ void build_srat_memory(AcpiSratMemoryAffinity *numamem, uint64_t base,
+@@ -1890,10 +1894,9 @@ void build_tpm2(GArray *table_data, BIOSLinker *linker, GArray *tcpalog)
+     uint64_t control_area_start_address;
+     TPMIf *tpmif = tpm_find();
+     uint32_t start_method;
+-    void *tpm2_ptr;
+ 
+     tpm2_start = table_data->len;
+-    tpm2_ptr = acpi_data_push(table_data, sizeof(AcpiTableHeader));
++    acpi_data_push(table_data, sizeof(AcpiTableHeader));
+ 
+     /* Platform Class */
+     build_append_int_noprefix(table_data, TPM2_ACPI_CLASS_CLIENT, 2);
+@@ -1932,7 +1935,8 @@ void build_tpm2(GArray *table_data, BIOSLinker *linker, GArray *tcpalog)
+                                    log_addr_offset, 8,
+                                    ACPI_BUILD_TPMLOG_FILE, 0);
+     build_header(linker, table_data,
+-                 tpm2_ptr, "TPM2", table_data->len - tpm2_start, 4, NULL, NULL);
++                 (void *)(table_data->data + tpm2_start),
++                 "TPM2", table_data->len - tpm2_start, 4, NULL, NULL);
+ }
+ 
+ /* ACPI 5.0: 6.4.3.8.2 Serial Bus Connection Descriptors */
+diff --git a/tools/qemu-xen/hw/i386/acpi-build.c b/tools/qemu-xen/hw/i386/acpi-build.c
+index b7bcbbb..7ff5435 100644
+--- a/tools/qemu-xen/hw/i386/acpi-build.c
++++ b/tools/qemu-xen/hw/i386/acpi-build.c
+@@ -1881,6 +1881,7 @@ static void
+ build_hpet(GArray *table_data, BIOSLinker *linker)
+ {
+     Acpi20Hpet *hpet;
++    int hpet_start = table_data->len;
+ 
+     hpet = acpi_data_push(table_data, sizeof(*hpet));
+     /* Note timer_block_id value must be kept in sync with value advertised by
+@@ -1889,12 +1890,14 @@ build_hpet(GArray *table_data, BIOSLinker *linker)
+     hpet->timer_block_id = cpu_to_le32(0x8086a201);
+     hpet->addr.address = cpu_to_le64(HPET_BASE);
+     build_header(linker, table_data,
+-                 (void *)hpet, "HPET", sizeof(*hpet), 1, NULL, NULL);
++                 (void *)(table_data->data + hpet_start),
++                 "HPET", sizeof(*hpet), 1, NULL, NULL);
+ }
+ 
+ static void
+ build_tpm_tcpa(GArray *table_data, BIOSLinker *linker, GArray *tcpalog)
+ {
++    int tcpa_start = table_data->len;
+     Acpi20Tcpa *tcpa = acpi_data_push(table_data, sizeof *tcpa);
+     unsigned log_addr_size = sizeof(tcpa->log_area_start_address);
+     unsigned log_addr_offset =
+@@ -1913,7 +1916,8 @@ build_tpm_tcpa(GArray *table_data, BIOSLinker *linker, GArray *tcpalog)
+         ACPI_BUILD_TPMLOG_FILE, 0);
+ 
+     build_header(linker, table_data,
+-                 (void *)tcpa, "TCPA", sizeof(*tcpa), 2, NULL, NULL);
++                 (void *)(table_data->data + tcpa_start),
++                 "TCPA", sizeof(*tcpa), 2, NULL, NULL);
+ }
+ 
+ #define HOLE_640K_START  (640 * KiB)
