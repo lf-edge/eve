@@ -29,6 +29,26 @@ architecture and kernel and run `bpftrace` in it to compile your bpftrace script
 go build
 ```
 
+## Usage
+
+`bpftrace-compiler` offers several ways of use:
+
+* `compile` - to compile only
+* `run-via-ssh` to compile and run the compiled script via a ssh connection to EVE
+* `run-via-http` to compile and run the compiled script via a http connection to EVE's http-debug
+* `run-via-edgeview` to compile and run the compiled script via a edgeview connection to EVE
+
+### Userspace probes
+
+If the bpftrace script is using userspace probes, it needs to know which container to include
+during compilation. For this `-u` can be used, f.e.:
+
+```bash
+./bpftrace-compiler run-via-edgeview -u service,pillar ~/Downloads/run.edgeview.sh examples/pcap_mmap-trace.bt
+```
+
+This will include `pillar` as a service container as `pcap_mmap-trace.bt` is using a userspace-probe.
+
 ## Example Usage With Local EVE in Qemu
 
 Run EVE:
@@ -66,6 +86,15 @@ Stop http-debug on EVE:
 ```sh
 eve http-debug stop
 ```
+
+### Via Edgeview
+
+```bash
+./bpftrace compiler run-via-edgeview ~/Downloads/run.\*.sh examples/undump.bt
+```
+
+If you use globbing (as `\*` in the example above) it will automatically use the newest script.
+This comes in handy if you have several downloaded scripts for the same EVE node.
 
 ## List available probes
 

@@ -5,6 +5,7 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -132,17 +133,17 @@ func (hr *httpRun) runBpftrace(aotFile string, timeout time.Duration) error {
 	for scanner.Scan() {
 		fmt.Printf("%s\n", scanner.Text())
 	}
-	if err := scanner.Err(); err != nil {
-		log.Fatalf("could not read response body: %v", err)
+	if err := scanner.Err(); err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
+		log.Fatalf("could not scan response body: %v", err)
 	}
 
 	err = <-errChan
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("received err: %v", err)
 	}
 	err = multipartWriter.Close()
-	if err != nil {
-		log.Fatal(err)
+	if err != nil && !strings.Contains(err.Error(), "io: read/write on closed pipe") {
+		log.Fatalf("closing multipart writer failed: %v %T", err, err)
 	}
 
 	return nil
