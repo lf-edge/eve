@@ -104,8 +104,10 @@ file_to_be_checked() {
       return 0
     fi
   done
+  # Extract the file name from the path
+  file_name=$(basename "$file")
   for name in "${file_names[@]}"; do
-    if [[ "$1" == "$name" ]]; then
+    if [[ "$file_name" == "$name" ]]; then
       return 0
     fi
   done
