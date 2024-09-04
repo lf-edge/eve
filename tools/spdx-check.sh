@@ -67,13 +67,13 @@ check_copyright() {
   current_year=$(date +"%Y")
 
   # Check if the file contains the copyright
-  if ! grep -iq "Copyright (c)" "$file"; then
+  if ! grep -iq "Copyright[ ]*(c)" "$file"; then
     echo "does not have the copyright!"
     return 1
   fi
 
   # Check if the file contains the current year
-  if ! grep -iq "Copyright (c) .*$current_year" "$file"; then
+  if ! grep -iq "Copyright[ ]*(c) .*$current_year" "$file"; then
     echo "does not have the current year $current_year in the copyright notice!"
     return 1
   fi
