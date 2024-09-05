@@ -29,6 +29,8 @@ typedef struct {
     unsigned int cgroup_eve_threshold_percent;
     // Threshold for the proc zedbox, in bytes
     unsigned long proc_zedbox_threshold_bytes;
+    // Threshold for the PSI, in percent
+    unsigned int psi_threshold_percent;
 } config_t;
 
 // About the difference between pillar and zedbox

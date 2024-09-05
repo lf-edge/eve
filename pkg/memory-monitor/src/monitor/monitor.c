@@ -16,6 +16,7 @@
 #include "config.h"
 #include "event.h"
 #include "procfs.h"
+#include "psi.h"
 #include "util.h"
 
 #include "monitor.h"
@@ -26,6 +27,12 @@
 // Usually, the maximum length of a PID is 32768 characters, but even if it's a 64-bit value, it's unlikely to be more
 // than 20 characters. So, let's use 32 characters as the maximum length.
 #define MAX_PID_LENGTH 32
+
+// There are extra 3 threads that are used to monitor the system:
+// * procfs monitor thread: to check stats of the zedbox process
+// * cgroups eventfd polling thread: to check the memory usage of the eve and pillar cgroups
+// * PSI (Pressure Stall Information) monitoring thread: to check the memory pressure of the entire system
+#define MONITORING_THREADS_COUNT 3
 
 
 extern int handler_log_fd_g;
@@ -325,6 +332,32 @@ static pthread_t run_cgroups_events_monitor(config_t *config, fds_to_close_t *fd
     return thread;
 }
 
+static pthread_t run_psi_monitor(config_t *config) {
+    // Check that PSI is enabled
+    if (!psi_is_enabled()) {
+        syslog(LOG_WARNING, "PSI is not enabled in the kernel config\n");
+        return 0;
+    }
+
+    // Create a thread to monitor the PSI events
+    monitor_psi_args_t *args = malloc(sizeof(monitor_psi_args_t));
+    if (args == NULL) {
+        syslog(LOG_ERR, "Failed to allocate memory for the PSI monitor args\n");
+        return 0;
+    }
+    args->threshold = config->psi_threshold_percent;
+
+    pthread_t thread;
+    if (pthread_create(&thread, NULL, psi_monitor_thread, args) != 0) {
+        syslog(LOG_WARNING, "Failed to create a thread for the PSI monitor\n");
+        free(args);
+        return 0;
+    }
+
+    return thread;
+}
+
+
 int monitor_start(config_t *config, resources_to_cleanup_t *resources_to_cleanup)
 {
     bool monitor_runs = false;
@@ -334,10 +367,14 @@ int monitor_start(config_t *config, resources_to_cleanup_t *resources_to_cleanup
         return 1;
     }
 
-    // 2 is for the procfs monitor and the cgroups events monitor
-    resources_to_cleanup->threads_to_finish.threads = malloc(sizeof(pthread_t) * 2);
-    resources_to_cleanup->threads_to_finish.threads[0] = 0;
-    resources_to_cleanup->threads_to_finish.threads[1] = 0;
+    resources_to_cleanup->threads_to_finish.threads = malloc(sizeof(pthread_t) * MONITORING_THREADS_COUNT);
+    if (resources_to_cleanup->threads_to_finish.threads == NULL) {
+        syslog(LOG_ERR, "Failed to allocate memory for the threads to finish\n");
+        return 1;
+    }
+    for (size_t i = 0; i < MONITORING_THREADS_COUNT; i++) {
+        resources_to_cleanup->threads_to_finish.threads[i] = 0;
+    }
 
     // Run a thread to watch memory limit of the zedbox process every 10 seconds and trigger the handler if the limit is reached
     pthread_t procfs_monitor_thread = run_procfs_monitor(config);
@@ -356,6 +393,17 @@ int monitor_start(config_t *config, resources_to_cleanup_t *resources_to_cleanup
     } else {
         size_t i = resources_to_cleanup->threads_to_finish.count;
         resources_to_cleanup->threads_to_finish.threads[i] = cgroups_monitor_thread;
+        resources_to_cleanup->threads_to_finish.count++;
+        monitor_runs = true;
+    }
+
+    // Run a monitor for the PSI events
+    pthread_t psi_monitor_thread = run_psi_monitor(config);
+    if (psi_monitor_thread == 0) {
+        syslog(LOG_WARNING, "Failed to run the PSI monitor\n");
+    } else {
+        size_t i = resources_to_cleanup->threads_to_finish.count;
+        resources_to_cleanup->threads_to_finish.threads[i] = psi_monitor_thread;
         resources_to_cleanup->threads_to_finish.count++;
         monitor_runs = true;
     }
