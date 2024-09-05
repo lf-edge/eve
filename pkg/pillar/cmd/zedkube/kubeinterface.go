@@ -1,3 +1,8 @@
+// Copyright (c) 2024 Zededa, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
+//go:build kubevirt
+
 package zedkube
 
 import (
@@ -5,7 +10,6 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"os"
 	"reflect"
 	"time"
 
@@ -13,7 +17,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/kubeapi"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/vishvananda/netlink"
-	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 )
@@ -74,60 +77,6 @@ func runKubeConfig(ctx *zedkubeContext, config, oldconfig *types.EdgeNodeCluster
 	publishKubeConfigStatus(ctx, config)
 }
 
-type Drainer struct {
-	Client              *kubernetes.Clientset
-	Force               bool
-	IgnoreAllDaemonSets bool
-	DeleteEmptyDirData  bool
-	GracePeriodSeconds  int64
-	Timeout             time.Duration
-	Out                 *os.File
-	ErrOut              *os.File
-	LabelSelector       string
-}
-
-func RunNodeDrain(drainer *Drainer, nodeName string) error {
-	pods, err := drainer.Client.CoreV1().Pods("").List(context.Background(), metav1.ListOptions{
-		LabelSelector: drainer.LabelSelector,
-		FieldSelector: "spec.nodeName=" + nodeName,
-	})
-	if err != nil {
-		return err
-	}
-
-	for _, pod := range pods.Items {
-		if !drainer.IgnoreAllDaemonSets && isDaemonSet(&pod) {
-			continue
-		}
-
-		propagationPolicy := metav1.DeletePropagationForeground
-		if drainer.Force {
-			propagationPolicy = metav1.DeletePropagationBackground
-		}
-
-		err := drainer.Client.CoreV1().Pods(pod.Namespace).Delete(context.Background(), pod.Name, metav1.DeleteOptions{
-			GracePeriodSeconds: &drainer.GracePeriodSeconds,
-			PropagationPolicy:  &propagationPolicy,
-		})
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func isDaemonSet(pod *corev1.Pod) bool {
-	if pod.OwnerReferences != nil && len(pod.OwnerReferences) > 0 {
-		for _, ref := range pod.OwnerReferences {
-			if ref.Kind == "DaemonSet" {
-				return true
-			}
-		}
-	}
-	return false
-}
-
 // to prevent multiple calls to signal and hang, use the select statement
 func sendQuitSignal(ctx *zedkubeContext) {
 	select {
@@ -136,67 +85,6 @@ func sendQuitSignal(ctx *zedkubeContext) {
 	default:
 		// Skip if ctx.quitServer is full.
 	}
-}
-
-// try to drain and delete the node before we remove the cluster config and
-// transition into single-node mode. Otherwise, if the node is later added to
-// the cluster again, it will not be allowed due to duplicate node names.
-func drainAndDeleteNode(ctx *zedkubeContext) {
-	config, err := kubeapi.GetKubeConfig()
-	if err != nil {
-		log.Errorf("drainAndDeleteNode: can't get kubeconfig %v", err)
-		return
-	}
-
-	clientset, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		log.Errorf("drainAndDeleteNode: can't get clientset %v", err)
-		return
-	}
-
-	labelSelector := metav1.LabelSelector{MatchLabels: map[string]string{"node-uuid": ctx.nodeuuid}}
-	options := metav1.ListOptions{LabelSelector: metav1.FormatLabelSelector(&labelSelector)}
-	nodes, err := clientset.CoreV1().Nodes().List(context.Background(), options)
-	if err != nil {
-		log.Errorf("drainAndDeleteNode: can't get nodes %v, on uuid %s", err, ctx.nodeuuid)
-		return
-	}
-	if len(nodes.Items) == 0 {
-		log.Errorf("drainAndDeleteNode: can't find node")
-		return
-	}
-	node := nodes.Items[0]
-	nodeName := node.Name
-
-	// cordon the node first
-	node.Spec.Unschedulable = true
-	_, err = clientset.CoreV1().Nodes().Update(context.Background(), &node, metav1.UpdateOptions{})
-	if err != nil {
-		log.Errorf("drainAndDeleteNode: cordon node %s failed: %v, continue the delete", nodeName, err)
-	}
-
-	// there is pkg: k8s.io/kubectl/pkg/drain, but it brings in many dependencies in vendor files
-	// implement here a simple 'drain', mainly to delete the pods on the node before we delete the node
-	// even if there are still pods on the node when deleting the node, we use replicaSet, and it is fine
-	// to delete the pod of the set.
-	drainer := &Drainer{
-		Client:              clientset,
-		Force:               true,
-		IgnoreAllDaemonSets: true,
-		DeleteEmptyDirData:  true,
-		GracePeriodSeconds:  -1,
-		Timeout:             30 * time.Second,
-		Out:                 os.Stdout,
-		ErrOut:              os.Stderr,
-	}
-	if err := RunNodeDrain(drainer, nodeName); err != nil {
-		log.Errorf("drainAndDeleteNode: RunNodeDrain failed: %v", err)
-	}
-
-	if err := clientset.CoreV1().Nodes().Delete(context.Background(), nodeName, metav1.DeleteOptions{}); err != nil {
-		log.Errorf("drainAndDeleteNode: clientset.CoreV1().Nodes().Delete failed: %v", err)
-	}
-	log.Noticef("drainAndDeleteNode: node %s drained and deleted", nodeName)
 }
 
 // compareClusterCfgs compares the new and old cluster configs, returns true if they are different

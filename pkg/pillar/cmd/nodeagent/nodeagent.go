@@ -77,6 +77,7 @@ type nodeagentContext struct {
 	subDomainStatus             pubsub.Subscription
 	subVaultStatus              pubsub.Subscription
 	subVolumeMgrStatus          pubsub.Subscription
+	subNodeDrainStatus          pubsub.Subscription
 	pubZbootConfig              pubsub.Publication
 	pubNodeAgentStatus          pubsub.Publication
 	curPart                     string
@@ -91,6 +92,8 @@ type nodeagentContext struct {
 	updateComplete              bool
 	testComplete                bool
 	testInprogress              bool
+	drainInProgress             bool
+	drainComplete               bool
 	timeTickCount               uint32 // Don't get confused by NTP making time jump by tracking our own progression
 	rebootCmd                   bool   // Are we rebooting?
 	shutdownCmd                 bool   // Are we shutting down all apps?
@@ -364,6 +367,8 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	ctxPtr.subZedAgentStatus = subZedAgentStatus
 	subZedAgentStatus.Activate()
 
+	initNodeDrainPubSub(ps, ctxPtr)
+
 	log.Functionf("zedbox event loop")
 	for {
 		select {
@@ -387,6 +392,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 		case change := <-subVolumeMgrStatus.MsgChan():
 			subVolumeMgrStatus.ProcessChange(change)
+
+		case change := <-ctxPtr.subNodeDrainStatus.MsgChan():
+			ctxPtr.subNodeDrainStatus.ProcessChange(change)
 
 		case <-ctxPtr.stillRunning.C:
 		}
@@ -722,6 +730,7 @@ func publishNodeAgentStatus(ctxPtr *nodeagentContext) {
 		LocalMaintenanceMode:       ctxPtr.maintMode,
 		LocalMaintenanceModeReason: ctxPtr.maintModeReason,
 		HVTypeKube:                 ctxPtr.hvTypeKube,
+		DrainInProgress:            ctxPtr.drainInProgress,
 	}
 	ctxPtr.lastLock.Unlock()
 	pub.Publish(agentName, status)

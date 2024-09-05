@@ -50,6 +50,9 @@ type baseOsMgrContext struct {
 	subContentTreeStatus pubsub.Subscription
 	subNodeAgentStatus   pubsub.Subscription
 	subZedAgentStatus    pubsub.Subscription
+	subNodeDrainStatus   pubsub.Subscription
+	pubNodeDrainRequest  pubsub.Publication
+	deferredBaseOsID     string
 	rebootReason         string    // From last reboot
 	rebootTime           time.Time // From last reboot
 	rebootImage          string    // Image from which the last reboot happened
@@ -136,6 +139,8 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 	log.Functionf("user containerd ready")
 
+	initNodeDrainPubSub(ps, &ctx)
+
 	// start the forever loop for event handling
 	for {
 		select {
@@ -156,6 +161,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 		case change := <-ctx.subZedAgentStatus.MsgChan():
 			ctx.subZedAgentStatus.ProcessChange(change)
+
+		case change := <-ctx.subNodeDrainStatus.MsgChan():
+			ctx.subNodeDrainStatus.ProcessChange(change)
 
 		case res := <-ctx.worker.MsgChan():
 			res.Process(&ctx, true)

@@ -58,6 +58,7 @@
 | network.switch.enable.arpsnoop | boolean | true | enable ARP Snooping on switch Network Instance, may need a device reboot to take effect |
 | wwan.query.visible.providers | bool | false | enable to periodically (once per hour) query the set of visible cellular service providers and publish them under WirelessStatus (for every modem) |
 | network.local.legacy.mac.address | bool | false | enables legacy MAC address generation for local network instances for those EVE nodes where changing MAC addresses in applications will lead to incorrect network configuration |
+| kubevirt.drain.timeout | integer | 24 | hours to allow kubernetes to drain a node |
 
 In addition, there can be per-agent settings.
 The Per-agent settings begin with "agent.*agentname*.*setting*"
