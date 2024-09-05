@@ -78,7 +78,7 @@ if ! git rev-parse --verify "$DST_BRANCH" >/dev/null 2>&1; then
 fi
 
 MISSING_FILE_REPORTED=false
-SRC_DIR=$(mktemp -d)
+SRC_DIR=$(mktemp -d --tmpdir yetus.XXXXXXXXXX)
 git diff --name-only "$SRC_BRANCH".."$DST_BRANCH" | grep -v '/vendor/' | while IFS= read -r file; do
     if [ -e "$file" ]; then
         cp --parents -r "$PWD/$file" "$SRC_DIR/" || { echo "Failed to copy $file"; exit 1; }
