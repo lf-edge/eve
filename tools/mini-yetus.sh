@@ -91,9 +91,10 @@ git diff --name-only "$SRC_BRANCH".."$DST_BRANCH" | grep -v '/vendor/' | while I
     fi
 done
 
-# copy all the dot files from root to the SRC_DIR, this includes all
+# copy all the dot files from root to the SRC_DIR and .yetus, this includes all
 # the yetus configuration files.
 find . -maxdepth 1 -type f -name '.*' -exec cp --parents {} "$SRC_DIR/" \;
+cp -Rf .yetus "$SRC_DIR/"
 
 cd "$SRC_DIR" && \
     git init >/dev/null 2>&1 && \
