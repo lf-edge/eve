@@ -15,8 +15,6 @@
 
 #include "procfs.h"
 
-#define CHECK_INTERVAL_SEC 5
-
 // The longest interesting line in the status file is "VmRSS: <20 digits> kB\n", which is less than 256 characters.
 // So, 256 should be enough.
 #define LONGEST_INTERESTING_LINE 256
