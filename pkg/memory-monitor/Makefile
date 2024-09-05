@@ -105,6 +105,7 @@ help:
 	@echo "  pressure: Build the pressure tool, put the binary in bin/pressure"
 	@echo "  local-kill-monitor: Kill the monitor on the local EVE"
 	@echo "  local-deploy: Deploy the monitor on the local EVE"
+	@echo "  local-deploy-pressure: Deploy the pressure tool on the local EVE"
 	@echo "  local-get-results: Get the results from the local EVE"
 	@echo "  local-clean-results: Remove the results from the local machine"
 	@echo "  local-clean-results-on-eve: Remove the results from the local EVE"
