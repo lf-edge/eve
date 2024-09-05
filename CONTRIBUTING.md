@@ -30,6 +30,8 @@ composed of the following members:
 * Avi Deitcher <avi@deitcher.net>
 * Erik Nordmark <erik@zededa.com>
 * Roman Shaposhnik <rvs@apache.org>
+* Jim Teal <James.Teal@rockwellautomation.com>
+* Thanassis Zografos <tzografos@gmail.com>
 
 while the following members remain as Emeritus TSC (you can find out more about
 the Emeritus status [here](https://wiki.lfedge.org/display/EVE/Community):
