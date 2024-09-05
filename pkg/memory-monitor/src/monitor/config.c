@@ -20,6 +20,8 @@
 #define DEFAULT_CGROUP_PILLAR_THRESHOLD_MB 400
 // Usually the zedbox process uses around 100-120MB of memory, so we set the threshold to 200MB
 #define DEFAULT_PROC_ZEDBOX_THRESHOLD_MB 200
+// Regular PSI values on spikes are around 20-30%, so let's set the threshold to 90%
+#define DEFAULT_PSI_THRESHOLD_PERCENT 90
 
 void config_read(config_t *config) {
 
@@ -78,6 +80,14 @@ void config_read(config_t *config) {
             } else {
                 config->cgroup_eve_threshold_percent = threshold;
             }
+        } else if (strcmp(key, "PSI_THRESHOLD_PERCENT") == 0) {
+            threshold = strtodec(value, &error);
+            if (error) {
+                syslog(LOG_WARNING, "Invalid value for PSI_THRESHOLD_PERCENT: %s, using default value", value);
+                config->psi_threshold_percent = DEFAULT_PSI_THRESHOLD_PERCENT;
+            } else {
+                config->psi_threshold_percent = threshold;
+            }
         } else {
             syslog(LOG_WARNING, "Unknown config key: %s", key);
         }
@@ -104,6 +114,13 @@ void config_validate(config_t *config) {
         config->cgroup_eve_threshold_percent = DEFAULT_CGROUP_EVE_THRESHOLD_PERCENT;
     }
 
-    syslog(LOG_INFO, "Config:\n\tCGROUP_PILLAR_THRESHOLD_MB=%lu\n\tPROC_ZEDBOX_THRESHOLD_MB=%lu\n\tCGROUP_EVE_THRESHOLD_PERCENT=%u\n",
-              config->cgroup_pillar_threshold_bytes >> 20, config->proc_zedbox_threshold_bytes >> 20, config->cgroup_eve_threshold_percent);
+    if (config->psi_threshold_percent < 1 || config->psi_threshold_percent > 100) {
+        syslog(LOG_WARNING, "PSI_THRESHOLD_PERCENT is out of range, using default value");
+        config->psi_threshold_percent = DEFAULT_PSI_THRESHOLD_PERCENT;
+    }
+
+    syslog(LOG_INFO,
+           "Config:\n\tCGROUP_PILLAR_THRESHOLD_MB=%lu\n\tPROC_ZEDBOX_THRESHOLD_MB=%lu\n\tCGROUP_EVE_THRESHOLD_PERCENT=%u\n\tPSI_THRESHOLD_PERCENT=%u\n",
+           config->cgroup_pillar_threshold_bytes >> 20, config->proc_zedbox_threshold_bytes >> 20,
+           config->cgroup_eve_threshold_percent, config->psi_threshold_percent);
 }
