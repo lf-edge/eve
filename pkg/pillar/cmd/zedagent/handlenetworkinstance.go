@@ -92,11 +92,20 @@ func prepareAndPublishNetworkInstanceInfoMsg(ctx *zedagentContext,
 		}
 		info.Mtu = uint32(status.MTU)
 		for _, route := range status.CurrentRoutes {
+			// Gateway and GatewayApp can be each empty (for e.g. connected route).
+			// Avoid returning "<nil>" and UUID with all zeroes.
+			var gwIP, gwApp string
+			if route.Gateway != nil {
+				gwIP = route.Gateway.String()
+			}
+			if route.GatewayApp != nilUUID {
+				gwApp = route.GatewayApp.String()
+			}
 			info.IpRoutes = append(info.IpRoutes, &zinfo.IPRoute{
 				DestinationNetwork: route.DstNetwork.String(),
-				Gateway:            route.Gateway.String(),
+				Gateway:            gwIP,
 				Port:               route.OutputPort,
-				GatewayApp:         route.GatewayApp.String(),
+				GatewayApp:         gwApp,
 			})
 		}
 		if !status.ErrorTime.IsZero() {
