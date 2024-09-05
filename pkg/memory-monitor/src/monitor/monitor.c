@@ -205,6 +205,7 @@ static pthread_t run_procfs_monitor(config_t *config) {
     args->threshold = threshold;
     int result = pthread_create(&thread, NULL, (void *(*)(void *)) procfs_monitor_thread, args);
     if (result != 0) {
+        free(args);
         syslog(LOG_WARNING, "pthread_create: %s", strerror(result));
         return 0;
     }
@@ -305,6 +306,7 @@ static pthread_t run_cgroups_events_monitor(config_t *config, fds_to_close_t *fd
     args->events = (event_desc_t*)events_descs;
     args->events_count = EVENTS_COUNT;
     if (pthread_create(&thread, NULL, cgroups_events_monitor_thread, args) != 0) {
+        free(args);
         syslog(LOG_WARNING, "Failed to create a thread for the cgroups events monitor\n");
         return 0;
     }
