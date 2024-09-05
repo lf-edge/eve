@@ -1,3 +1,4 @@
+---
 # the output format(s) of the SBOM report (options: table, text, json, spdx, ...)
 # same as -o, --output, and SYFT_OUTPUT env var
 # to specify multiple output files in differing formats, use a list:
