@@ -22,6 +22,11 @@ typedef struct {
     size_t events_count;
 } monitor_cgroups_events_args_t;
 
+typedef struct {
+    // The threshold to trigger the event, in percent
+    unsigned int threshold;
+} monitor_psi_args_t;
+
 typedef struct threads_to_finish {
     pthread_t *threads;
     size_t count;
