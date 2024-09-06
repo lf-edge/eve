@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"time"
 )
 
@@ -33,7 +34,7 @@ func (r *run) run(bpfFile string, uc userspaceContainer, timeout time.Duration) 
 
 	arch := cleanArch(r.arch())
 	lkConf := r.lkConf()
-	err = compile(arch, lkConf, uc, bpfFile, outputFile)
+	err = compileWithCache(arch, lkConf, uc, bpfFile, outputFile)
 	if err != nil {
 		log.Fatalf("compiling for %s/%s failed: %v", arch, lkConf, err)
 	}
@@ -44,6 +45,47 @@ func (r *run) run(bpfFile string, uc userspaceContainer, timeout time.Duration) 
 		log.Fatalf("compiling for %s/%s on %s failed: %v", arch, lkConf, outputFile, err)
 	}
 
+}
+
+func compileWithCache(arch string, lkConf lkConf, uc userspaceContainer, bpfFile string, outputFile string) error {
+	if bpftraceCompilerDir == "" {
+		return compile(arch, lkConf, uc, bpfFile, outputFile)
+	}
+
+	ucString := ""
+	if uc != nil {
+		ucString = uc.String()
+	}
+	hash := hashDir([]string{"root"}, arch, lkConf.String(), ucString, bpfFile)
+
+	hashPath := filepath.Join(bpftraceCompilerDir, "cache", hash)
+
+	compileAndStoreInCache := func() error {
+		err := compile(arch, lkConf, uc, bpfFile, outputFile)
+		if err != nil {
+			return err
+		}
+		err = copyFile(outputFile, hashPath)
+		if err != nil {
+			log.Printf("could not store in cache (%s): %v", hashPath, err)
+		}
+
+		return nil
+
+	}
+	_, err := os.Stat(hashPath)
+	if err != nil {
+		log.Printf("could not find compiled script in cache, compiling now ...")
+		return compileAndStoreInCache()
+	}
+	err = copyFile(hashPath, outputFile)
+	if err != nil {
+		log.Printf("copying %s to %s failed: %err, compiling now ...", hashPath, outputFile, err)
+		return compileAndStoreInCache()
+	}
+	log.Printf("found compiled script in cache ...")
+
+	return nil
 }
 
 func compile(arch string, lkConf lkConf, uc userspaceContainer, bpfFile string, outputFile string) error {

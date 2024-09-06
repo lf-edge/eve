@@ -28,6 +28,8 @@ func shutdown() {
 	}
 }
 
+var bpftraceCompilerDir string
+
 func main() {
 	var sshKey string
 	var timeout time.Duration
@@ -54,6 +56,15 @@ func main() {
 	}
 	execName = filepath.Base(execName)
 
+	homedir, err := os.UserHomeDir()
+	if err == nil {
+		bpftraceCompilerDir = filepath.Join(homedir, ".bpftrace-compiler")
+	}
+}
+
+func main() {
+	var err error
+
 	rootCmd := &cobra.Command{
 		Use:   "bpftrace-compiler",
 		Short: "Compiles bpftrace scripts for EVE",
@@ -71,7 +82,7 @@ func main() {
 			lkConf := lkConf{
 				kernel: args[1],
 			}
-			err := compile(args[0], lkConf, nil, args[2], args[3])
+			err := compileWithCache(args[0], lkConf, nil, args[2], args[3])
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -223,6 +234,40 @@ func main() {
 		},
 	}
 
+	cacheCmd := &cobra.Command{
+		Use:     "cache - manage bpftrace-compiler cache",
+		Aliases: []string{"c"},
+	}
+
+	cacheEnableCmd := &cobra.Command{
+		Use:     "enable - enable cache",
+		Aliases: []string{"e"},
+		Short:   fmt.Sprintf("creates a cache directory under %s/.bpftrace-compiler", bpftraceCompilerDir),
+		Args:    cobra.NoArgs,
+		Run: func(cmd *cobra.Command, args []string) {
+			cacheDir := filepath.Join(bpftraceCompilerDir, "cache")
+			err := os.MkdirAll(cacheDir, 0700)
+			if err != nil {
+				log.Fatalf("could not create cache dir %s: %v", cacheDir, err)
+			}
+		},
+	}
+	cacheDisableCmd := &cobra.Command{
+		Use:     "disable - disable and purge cache",
+		Aliases: []string{"e"},
+		Short:   fmt.Sprintf("deletes the cache directory under %s/.bpftrace-compiler", bpftraceCompilerDir),
+		Long:    "if bpftrace-compiler cannot find a cache directory, no cache will be used",
+		Args:    cobra.NoArgs,
+		Run: func(cmd *cobra.Command, args []string) {
+			cacheDir := filepath.Join(bpftraceCompilerDir, "cache")
+			err := os.RemoveAll(cacheDir)
+			if err != nil {
+				log.Fatalf("could not remove cache dir %s: %v", cacheDir, err)
+			}
+		},
+	}
+	cacheCmd.AddCommand(cacheEnableCmd, cacheDisableCmd)
+
 	runSSHCmd.PersistentFlags().StringVarP(&sshKey, "identity-file", "i", "", "")
 	runSSHCmd.PersistentFlags().DurationVarP(&timeout, "timeout", "t", 10*time.Second, "")
 
@@ -235,6 +280,9 @@ func main() {
 	userspaceContainerListFlag = listCmd.PersistentFlags().StringSliceP("userspace", "u", []string{}, "onboot|service,name,image")
 
 	rootCmd.AddCommand(compileCmd, runSSHCmd, runHTTPCmd, runEdgeviewCmd, listCmd, debugShellCmd)
+	if bpftraceCompilerDir != "" {
+		rootCmd.AddCommand(cacheCmd)
+	}
 
 	err = rootCmd.Execute()
 	if err != nil {
