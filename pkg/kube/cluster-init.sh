@@ -1038,7 +1038,10 @@ if [ ! -f /var/lib/all_components_initialized ]; then
                 # This patched version will be removed once the following PR https://github.com/kubevirt/kubevirt/pull/9668 is merged
                 logmsg "Installing patched Kubevirt"
                 kubectl apply -f /etc/kubevirt-operator.yaml
+		logmsg "Updating replica to 1 for virt-operator and virt-controller"
+		kubectl patch deployment virt-operator -n kubevirt --patch '{"spec":{"replicas": 1 }}'
                 kubectl apply -f https://github.com/kubevirt/kubevirt/releases/download/${KUBEVIRT_VERSION}/kubevirt-cr.yaml
+		kubectl patch KubeVirt kubevirt -n kubevirt --patch '{"spec": {"infra": {"replicas": 1}}}' --type='merge'
 
                 wait_for_item "cdi"
                 #CDI (containerzed data importer) is need to convert qcow2/raw formats to Persistent Volumes and Data volumes
