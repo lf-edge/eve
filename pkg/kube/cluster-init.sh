@@ -169,7 +169,7 @@ assign_multus_nodeip() {
     logmsg "Single Node IP prefix to multus: $ip_prefix with node-ip $NODE_IP"
   fi
 
-  logmsg "Assign node-ip for multis with $ip_prefix"
+  logmsg "Assign node-ip for multus with $ip_prefix"
   # fill in the outbound external Interface IP prefix in multus config
   awk -v new_ip="$ip_prefix" '{gsub("IPAddressReplaceMe", new_ip)}1' /etc/multus-daemonset.yaml > /etc/multus-daemonset-new.yaml
 }
@@ -621,22 +621,7 @@ join_serverIP=""
 cluster_token=""
 cluster_node_ip=""
 # for bootstrap node, after reboot to get neighbor node to join
-join_serverPlusOne=""
-join_serverPlusTwo=""
 FoundENCStatus=false
-
-get_prefix_plus_one_ip() {
-        ip=$join_serverIP
-        # Split the IP address into two parts
-        x=$(echo $ip | cut -d'.' -f1-3)
-        y=$(echo $ip | cut -d'.' -f4)
-
-        # Increment last octet y and concatenate it to x
-        y=$((y + 1))
-        join_serverPlusOne="$x.$y"
-        y=$((y + 1))
-        join_serverPlusTwo="$x.$y"
-}
 
 # get the EdgeNodeClusterStatus from zedkube publication
 get_enc_status() {
@@ -652,7 +637,6 @@ get_enc_status() {
     cluster_token=$(echo "$enc_data" | jq -r '.EncryptedClusterToken')
     cluster_node_ip=$(echo "$enc_data" | jq -r '.ClusterIPPrefix.IP')
     if [ -n "$cluster_intf" ] && [ -n "$join_serverIP" ] && [ -n "$cluster_token" ] && [ -n "$cluster_node_ip" ] && ( [ "$is_bootstrap" = "true" ] || [ "$is_bootstrap" = "false" ] ); then
-      get_prefix_plus_one_ip
       return 0
     else
       return 1
@@ -772,6 +756,10 @@ check_cluster_config_change() {
 
             # remove previous multus config
             remove_multus_cni
+
+            # redo the multus config file in /etc/multus-daemonset-new.yaml
+            logmsg "Reapply Multus CNI for clusternodeip: $cluster_node_ip"
+            assign_multus_nodeip "$cluster_node_ip"
 
             # need to reapply node labels later
             rm /var/lib/node-labels-initialized
@@ -933,6 +921,8 @@ fi
 if [ -f /var/lib/convert-to-single-node ]; then
         logmsg "remove /var/lib and copy saved single node /var/lib"
         restore_var_lib
+        # assign node-ip to multus nodeIP for yaml config file
+        assign_multus_nodeip
 fi
 # since we can wait for long time, always start the containerd first
 check_start_containerd

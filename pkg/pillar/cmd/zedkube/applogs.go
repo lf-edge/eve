@@ -8,6 +8,7 @@ package zedkube
 import (
 	"bufio"
 	"context"
+	"fmt"
 	"io"
 	"regexp"
 	"strings"
@@ -20,7 +21,6 @@ import (
 	"github.com/sirupsen/logrus"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
 )
 
 func collectAppLogs(ctx *zedkubeContext) {
@@ -30,17 +30,15 @@ func collectAppLogs(ctx *zedkubeContext) {
 		return
 	}
 
-	if ctx.config == nil {
-		config, err := kubeapi.GetKubeConfig()
-		if err != nil {
-			return
-		}
-		ctx.config = config
-	}
-
-	clientset, err := kubernetes.NewForConfig(ctx.config)
+	clientset, err := getKubeClientSet()
 	if err != nil {
 		log.Errorf("collectAppLogs: can't get clientset %v", err)
+		return
+	}
+
+	err = getnodeNameAndUUID(ctx)
+	if err != nil {
+		log.Errorf("collectAppLogs: can't get edgeNodeInfo %v", err)
 		return
 	}
 
@@ -111,23 +109,21 @@ func checkAppsStatus(ctx *zedkubeContext) {
 		return
 	}
 
-	if ctx.config == nil {
-		config, err := kubeapi.GetKubeConfig()
-		if err != nil {
-			log.Errorf("checkAppsStatus: can't get kubeconfig %v", err)
-			return
-		}
-		ctx.config = config
+	err := getnodeNameAndUUID(ctx)
+	if err != nil {
+		log.Errorf("checkAppsStatus: can't get edgeNodeInfo %v", err)
+		return
 	}
 
-	clientset, err := kubernetes.NewForConfig(ctx.config)
+	clientset, err := getKubeClientSet()
 	if err != nil {
 		log.Errorf("checkAppsStatus: can't get clientset %v", err)
 		return
 	}
 
-	labelSelector := metav1.LabelSelector{MatchLabels: map[string]string{"node-uuid": ctx.nodeuuid}}
-	options := metav1.ListOptions{LabelSelector: metav1.FormatLabelSelector(&labelSelector)}
+	options := metav1.ListOptions{
+		FieldSelector: fmt.Sprintf("spec.nodeName=%s", ctx.nodeName),
+	}
 	pods, err := clientset.CoreV1().Pods(kubeapi.EVEKubeNameSpace).List(context.Background(), options)
 	if err != nil {
 		log.Errorf("checkAppsStatus: can't get pods %v", err)
@@ -174,4 +170,18 @@ func checkAppsStatus(ctx *zedkubeContext) {
 			ctx.pubENClusterAppStatus.Publish(aiconfig.Key(), encAppStatus)
 		}
 	}
+}
+
+func getnodeNameAndUUID(ctx *zedkubeContext) error {
+	if ctx.nodeuuid == "" || ctx.nodeName == "" {
+		NodeInfo, err := ctx.subEdgeNodeInfo.Get("global")
+		if err != nil {
+			log.Errorf("getnodeNameAndUUID: can't get edgeNodeInfo %v", err)
+			return err
+		}
+		enInfo := NodeInfo.(types.EdgeNodeInfo)
+		ctx.nodeName = enInfo.DeviceName
+		ctx.nodeuuid = enInfo.DeviceID.String()
+	}
+	return nil
 }

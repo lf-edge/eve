@@ -375,35 +375,28 @@ func handleClusterStatus(ctx *zedkubeContext) {
 }
 
 func statusHandler(w http.ResponseWriter, r *http.Request, ctx *zedkubeContext) {
-	config, err := kubeapi.GetKubeConfig()
-	if err != nil {
-		fmt.Fprint(w, "")
-		log.Errorf("statusHandler: can't get kubeconfig %v", err)
-		return
-	}
-	ctx.config = config
-
-	clientset, err := kubernetes.NewForConfig(config)
+	clientset, err := getKubeClientSet()
 	if err != nil {
 		log.Errorf("statusHandler: can't get clientset %v", err)
 		fmt.Fprint(w, "")
 		return
 	}
-	labelSelector := metav1.LabelSelector{MatchLabels: map[string]string{"node-uuid": ctx.nodeuuid}}
-	options := metav1.ListOptions{LabelSelector: metav1.FormatLabelSelector(&labelSelector)}
-	nodes, err := clientset.CoreV1().Nodes().List(context.Background(), options)
+
+	err = getnodeNameAndUUID(ctx)
 	if err != nil {
-		log.Errorf("statusHandler: can't get nodes %v", err)
+		log.Errorf("statusHandler: Error getting nodeName and nodeUUID")
+		fmt.Fprint(w, "")
+		return
+	}
+
+	node, err := clientset.CoreV1().Nodes().Get(context.Background(), ctx.nodeName, metav1.GetOptions{})
+	if err != nil {
+		log.Errorf("statusHandler: can't get node %v, for %s", err, ctx.nodeName)
+		fmt.Fprint(w, "")
 		return
 	}
 
 	var isMaster, isEtcd bool
-	if len(nodes.Items) == 0 {
-		log.Errorf("statusHandler: can't find node uuid %s", ctx.nodeuuid)
-		fmt.Fprint(w, "")
-		return
-	}
-	node := nodes.Items[0]
 	labels := node.GetLabels()
 	if _, ok := labels["node-role.kubernetes.io/master"]; ok {
 		log.Noticef("statusHandler: master")

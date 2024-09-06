@@ -55,6 +55,8 @@ type zedkubeContext struct {
 	subVolumeConfig          pubsub.Subscription
 	subDatastoreConfig       pubsub.Subscription
 	subContentTreeConfig     pubsub.Subscription
+	subEdgeNodeInfo          pubsub.Subscription
+	subZedAgentStatus        pubsub.Subscription
 
 	subControllerCert    pubsub.Subscription
 	subEdgeNodeCert      pubsub.Subscription
@@ -65,6 +67,7 @@ type zedkubeContext struct {
 	pubEncPubToRemoteData    pubsub.Publication
 	pubEdgeNodeClusterStatus pubsub.Publication
 	pubENClusterAppStatus    pubsub.Publication
+	pubKubeClusterInfo       pubsub.Publication
 
 	subNodeDrainRequestZA  pubsub.Subscription
 	subNodeDrainRequestBoM pubsub.Subscription
@@ -77,6 +80,11 @@ type zedkubeContext struct {
 	appContainerLogger       *logrus.Logger
 	encNodeIPAddress         *net.IP
 	nodeuuid                 string
+	nodeName                 string
+	isKubeStatsLeader        bool
+	inKubeLeaderElection     bool
+	electionStartCh          chan struct{}
+	electionStopCh           chan struct{}
 	pubResendTimer           *time.Timer
 	drainOverrideTimer       *time.Timer
 	receiveMap               *ReceiveMap
@@ -187,6 +195,16 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		log.Fatal(err)
 	}
 	zedkubeCtx.pubENClusterAppStatus = pubENClusterAppStatus
+
+	pubKubeClusterInfo, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName: agentName,
+			TopicType: types.KubeClusterInfo{},
+		})
+	if err != nil {
+		log.Fatal(err)
+	}
+	zedkubeCtx.pubKubeClusterInfo = pubKubeClusterInfo
 
 	// Look for global config such as log levels
 	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
@@ -320,6 +338,11 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	zedkubeCtx.subContentTreeConfig = subContentTreeConfig
 	subContentTreeConfig.Activate()
 
+	// start the leader election
+	zedkubeCtx.electionStartCh = make(chan struct{})
+	zedkubeCtx.electionStopCh = make(chan struct{})
+	go handleLeaderElection(&zedkubeCtx)
+
 	// Wait for device network status to be initialized, this is need for
 	// provisionting the 2nd ip address on the cluster interface, otherwise
 	// we'll add ip prefix onto kethX interface instead of ethX interface
@@ -422,6 +445,38 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	zedkubeCtx.subEdgeNodeClusterConfig = subEdgeNodeClusterConfig
 	subEdgeNodeClusterConfig.Activate()
 
+	// Look for edge node info
+	subEdgeNodeInfo, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:   "zedagent",
+		MyAgentName: agentName,
+		TopicImpl:   types.EdgeNodeInfo{},
+		Persistent:  true,
+		Activate:    true,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	zedkubeCtx.subEdgeNodeInfo = subEdgeNodeInfo
+
+	// subscribe to zedagent status events, for controller connection status
+	subZedAgentStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "zedagent",
+		MyAgentName:   agentName,
+		TopicImpl:     types.ZedAgentStatus{},
+		Activate:      false,
+		Ctx:           &zedkubeCtx,
+		CreateHandler: handleZedAgentStatusCreate,
+		ModifyHandler: handleZedAgentStatusModify,
+		DeleteHandler: handleZedAgentStatusDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	zedkubeCtx.subZedAgentStatus = subZedAgentStatus
+	subZedAgentStatus.Activate()
+
 	if len(subEdgeNodeClusterConfig.GetAll()) != 0 {
 		// Handle persistent existing cluster config
 		publishNodeDrainStatus(&zedkubeCtx, kubeapi.NOTREQUESTED)
@@ -475,6 +530,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		case <-appLogTimer.C:
 			collectAppLogs(&zedkubeCtx)
 			checkAppsStatus(&zedkubeCtx)
+			collectKubeStats(&zedkubeCtx)
 			appLogTimer = time.NewTimer(logcollectInterval * time.Second)
 
 		case change := <-subGlobalConfig.MsgChan():
@@ -505,6 +561,12 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		case change := <-subEdgeNodeCert.MsgChan():
 			subEdgeNodeCert.ProcessChange(change)
 
+		case change := <-subEdgeNodeInfo.MsgChan():
+			subEdgeNodeInfo.ProcessChange(change)
+
+		case change := <-subZedAgentStatus.MsgChan():
+			subZedAgentStatus.ProcessChange(change)
+
 		case change := <-zedkubeCtx.subNodeDrainRequestZA.MsgChan():
 			zedkubeCtx.subNodeDrainRequestZA.ProcessChange(change)
 
@@ -517,6 +579,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 				zedkubeCtx.pubNodeDrainStatus.Publish("global", override)
 			}
 			zedkubeCtx.drainOverrideTimer.Reset(5 * time.Minute)
+
 		case <-stillRunning.C:
 		}
 		ps.StillRunning(agentName, warningTime, errorTime)
@@ -667,6 +730,32 @@ func handleEdgeNodeClusterConfigDelete(ctxArg interface{}, key string,
 	ctx.pubEdgeNodeClusterStatus.Unpublish("global")
 
 	publishNodeDrainStatus(ctx, kubeapi.NOTSUPPORTED)
+}
+
+// handle zedagent status events, for cloud connectivity
+func handleZedAgentStatusCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleZedAgentStatusImpl(ctxArg, key, statusArg)
+}
+
+func handleZedAgentStatusModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleZedAgentStatusImpl(ctxArg, key, statusArg)
+}
+
+func handleZedAgentStatusImpl(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	ctxPtr := ctxArg.(*zedkubeContext)
+	status := statusArg.(types.ZedAgentStatus)
+	handleControllerStatusChange(ctxPtr, &status)
+	log.Functionf("handleZedAgentStatusImpl: for Leader status %v, done", status)
+}
+
+func handleZedAgentStatusDelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	// do nothing
+	log.Functionf("handleZedAgentStatusDelete(%s) done", key)
 }
 
 func newReceiveMap() *ReceiveMap {
