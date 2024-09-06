@@ -31,12 +31,16 @@ func shutdown() {
 var bpftraceCompilerDir string
 
 func main() {
+	var err error
 	var sshKey string
 	var timeout time.Duration
 	var userspaceContainerDebugFlag *[]string
 	var userspaceContainerListFlag *[]string
 	var userspaceContainerHTTPFlag *[]string
 	var userspaceContainerEVFlag *[]string
+	var userspaceContainerSSHFlag *[]string
+
+	var kernelModulesDebugFlag *[]string
 
 	defer shutdown()
 
@@ -60,10 +64,6 @@ func main() {
 	if err == nil {
 		bpftraceCompilerDir = filepath.Join(homedir, ".bpftrace-compiler")
 	}
-}
-
-func main() {
-	var err error
 
 	rootCmd := &cobra.Command{
 		Use:   "bpftrace-compiler",
@@ -82,7 +82,7 @@ func main() {
 			lkConf := lkConf{
 				kernel: args[1],
 			}
-			err := compileWithCache(args[0], lkConf, nil, args[2], args[3])
+			err := compileWithCache(args[0], lkConf, nil, []string{}, args[2], args[3])
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -97,11 +97,20 @@ func main() {
 		Example:    fmt.Sprintf("%s run-via-ssh 127.1:2222 examples/opensnoop.bt", execName),
 		Args:       cobra.ExactArgs(2),
 		Run: func(cmd *cobra.Command, args []string) {
+			var uc userspaceContainer
+			if len(*userspaceContainerSSHFlag) == 2 {
+				switch (*userspaceContainerSSHFlag)[0] {
+				case "onboot":
+					uc = onbootContainer((*userspaceContainerSSHFlag)[1])
+				case "service":
+					uc = serviceContainer((*userspaceContainerSSHFlag)[1])
+				}
+			}
 			sr, err := newSSHRun(args[0], sshKey)
 			if err != nil {
 				log.Fatal(err)
 			}
-			sr.run(args[1], nil, timeout)
+			sr.run(args[1], uc, []string{}, timeout)
 			defers = append(defers, func() { sr.end() })
 		},
 	}
@@ -124,7 +133,7 @@ func main() {
 				}
 			}
 			hr := newHTTPRun(args[0])
-			hr.run(args[1], uc, timeout)
+			hr.run(args[1], uc, []string{}, timeout)
 			defers = append(defers, func() { hr.end() })
 		},
 	}
@@ -167,7 +176,7 @@ func main() {
 
 			hr := newHTTPRun(fmt.Sprintf("localhost:%d", port))
 			defers = append(defers, func() { hr.end(); ev.shutdown() })
-			hr.run(args[1], uc, timeout)
+			hr.run(args[1], uc, []string{}, timeout)
 		},
 	}
 
@@ -193,6 +202,10 @@ func main() {
 				qr = newQemuAmd64Runner(imageDir, "", "")
 			}
 			qr.timeout = 0
+
+			if kernelModulesDebugFlag != nil && len(*kernelModulesDebugFlag) > 0 {
+				qr.withLoadKernelModule(*kernelModulesDebugFlag)
+			}
 
 			err = qr.runDebug(shareFolder)
 			if err != nil {
@@ -274,6 +287,9 @@ func main() {
 	runHTTPCmd.PersistentFlags().DurationVarP(&timeout, "timeout", "t", 10*time.Second, "")
 	userspaceContainerHTTPFlag = runHTTPCmd.PersistentFlags().StringSliceP("userspace", "u", []string{}, "onboot|service,name")
 	userspaceContainerEVFlag = runEdgeviewCmd.PersistentFlags().StringSliceP("userspace", "u", []string{}, "onboot|service,name")
+	userspaceContainerSSHFlag = runSSHCmd.PersistentFlags().StringSliceP("userspace", "u", []string{}, "onboot|service,name")
+
+	kernelModulesDebugFlag = debugShellCmd.PersistentFlags().StringSliceP("kernel-modules", "k", []string{}, "dm_crypt")
 
 	userspaceContainerDebugFlag = debugShellCmd.PersistentFlags().StringSliceP("userspace", "u", []string{}, "onboot|service,name,image")
 

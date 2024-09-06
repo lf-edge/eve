@@ -1,3 +1,5 @@
+github.com/pmorjan/kmod v1.1.1 h1:Vfw6bMaOg/sYSBCqJPT9TbqHHf5zK00GbaL5JQLO4r0=
+github.com/pmorjan/kmod v1.1.1/go.mod h1:jR4fVosEpQ6b5U0rpxaqoShTDPvCjLIP8vEESZyvnqQ=
 golang.org/x/sync v0.7.0 h1:YsImfSBoP9QPYL0xyKJPq0gcaJdG3rInoqxTWbfQu9M=
 golang.org/x/sync v0.7.0/go.mod h1:Czt+wKu1gCyEFDUtn0jG5QVvpJ6rzVqr5aXyt9drQfk=
 golang.org/x/sys v0.21.0 h1:rF+pYz3DAGSQAxAu1CbC7catZg4ebC4UIeIhKxBZvws=

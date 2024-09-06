@@ -9,6 +9,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -23,7 +24,7 @@ type remoteRun interface {
 	end()
 }
 
-func (r *run) run(bpfFile string, uc userspaceContainer, timeout time.Duration) {
+func (r *run) run(bpfFile string, uc userspaceContainer, kernelModules []string, timeout time.Duration) {
 	fh, err := os.CreateTemp("/var/tmp", "bpftrace-aot")
 	if err != nil {
 		log.Fatalf("could not create temp file: %v", err)
@@ -34,7 +35,7 @@ func (r *run) run(bpfFile string, uc userspaceContainer, timeout time.Duration) 
 
 	arch := cleanArch(r.arch())
 	lkConf := r.lkConf()
-	err = compileWithCache(arch, lkConf, uc, bpfFile, outputFile)
+	err = compileWithCache(arch, lkConf, uc, kernelModules, bpfFile, outputFile)
 	if err != nil {
 		log.Fatalf("compiling for %s/%s failed: %v", arch, lkConf, err)
 	}
@@ -47,21 +48,21 @@ func (r *run) run(bpfFile string, uc userspaceContainer, timeout time.Duration) 
 
 }
 
-func compileWithCache(arch string, lkConf lkConf, uc userspaceContainer, bpfFile string, outputFile string) error {
+func compileWithCache(arch string, lkConf lkConf, uc userspaceContainer, kernelModules []string, bpfFile string, outputFile string) error {
 	if bpftraceCompilerDir == "" {
-		return compile(arch, lkConf, uc, bpfFile, outputFile)
+		return compile(arch, lkConf, uc, kernelModules, bpfFile, outputFile)
 	}
 
 	ucString := ""
 	if uc != nil {
 		ucString = uc.String()
 	}
-	hash := hashDir([]string{"root"}, arch, lkConf.String(), ucString, bpfFile)
+	hash := hashDir([]string{"root"}, arch, lkConf.String(), ucString, strings.Join(kernelModules, ","), bpfFile)
 
 	hashPath := filepath.Join(bpftraceCompilerDir, "cache", hash)
 
 	compileAndStoreInCache := func() error {
-		err := compile(arch, lkConf, uc, bpfFile, outputFile)
+		err := compile(arch, lkConf, uc, kernelModules, bpfFile, outputFile)
 		if err != nil {
 			return err
 		}
@@ -88,7 +89,7 @@ func compileWithCache(arch string, lkConf lkConf, uc userspaceContainer, bpfFile
 	return nil
 }
 
-func compile(arch string, lkConf lkConf, uc userspaceContainer, bpfFile string, outputFile string) error {
+func compile(arch string, lkConf lkConf, uc userspaceContainer, kernelModules []string, bpfFile string, outputFile string) error {
 	arch = cleanArch(arch)
 	imageDir, err := os.MkdirTemp("/var/tmp", "bpftrace-image")
 	if err != nil {
@@ -103,6 +104,8 @@ func compile(arch string, lkConf lkConf, uc userspaceContainer, bpfFile string, 
 	} else if arch == "amd64" {
 		qr = newQemuAmd64Runner(imageDir, bpfFile, outputFile)
 	}
+
+	qr.withLoadKernelModule(kernelModules)
 
 	qemuOutput, err := qr.run()
 	if err != nil {
