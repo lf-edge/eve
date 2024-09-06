@@ -1732,6 +1732,31 @@ func (r *LinuxDpcReconciler) getIntendedFilterRules(gcp types.ConfigItemValueMap
 	inputV4Rules = append(inputV4Rules, remoteVNCRule)
 	inputV6Rules = append(inputV6Rules, remoteVNCRule)
 
+	// Allow traffic initiated by DHCP server to enter the device.
+	// Most of the DHCP communication is initiated by the client and replies
+	// from the server will be accepted by the allowEstablishedConn rule.
+	// But in some rare cases, such as DHCPFORCERENEW defined in RFC 3203,
+	// the server might be the initiator and we should allow it.
+	dhcpRule := iptables.Rule{
+		RuleLabel:   "Allow DHCP",
+		MatchOpts:   []string{"-p", "udp", "--dport", "bootps:bootpc"},
+		Target:      "ACCEPT",
+		Description: "Allow traffic initiated by DHCP server to enter the device",
+	}
+	inputV4Rules = append(inputV4Rules, dhcpRule)
+
+	// Allow all ICMP traffic to enter the device from outside.
+	icmpRule := iptables.Rule{
+		RuleLabel:   "Allow ICMP",
+		MatchOpts:   []string{"-p", "icmp"},
+		Target:      "ACCEPT",
+		Description: "Allow ICMP traffic to enter the device from outside",
+	}
+	inputV4Rules = append(inputV4Rules, icmpRule)
+	icmpV6Rule := icmpRule // copy
+	icmpV6Rule.MatchOpts = []string{"-p", "ipv6-icmp"}
+	inputV6Rules = append(inputV6Rules, icmpV6Rule)
+
 	// Allow all traffic that belongs to an already established connection.
 	allowEstablishedConn := iptables.Rule{
 		RuleLabel:   "Allow established connection",
