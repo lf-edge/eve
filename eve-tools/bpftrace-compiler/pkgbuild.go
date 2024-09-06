@@ -48,11 +48,11 @@ func createImage(arch string, lc lkConf, uc userspaceContainer, outputDir string
 	ib.userspace = uc
 	err = ib.buildPkgs([]string{"root"})
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("building pkgs 'root' failed: %v", err)
 	}
 	err = ib.buildImg()
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("building image failed: %v", err)
 	}
 
 	ib.cleanup()
