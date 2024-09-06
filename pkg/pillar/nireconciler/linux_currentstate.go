@@ -236,69 +236,63 @@ func (r *LinuxNIReconciler) updateCurrentNIRoutes(niID uuid.UUID) (changed bool)
 			l3SG.DelItem(itemRef)
 			changed = true
 		}
+		if changed {
+			r.log.Noticef("%s: Current state of IP routes of NI %s has been updated",
+				LogAndErrPrefix, niID)
+		}
 	}()
 	// Switch NI does not use routes.
 	if ni.config.Type == types.NetworkInstanceTypeSwitch {
 		return changed
 	}
-	outIfs := make(map[int]generic.NetworkIf) // key: ifIndex
-	ifIndex, found, err := r.netMonitor.GetInterfaceIndex(ni.brIfName)
+	table := devicenetwork.NIBaseRTIndex + ni.bridge.BrNum
+	routes, err := r.netMonitor.ListRoutes(netmonitor.RouteFilters{
+		FilterByTable: true,
+		Table:         table,
+	})
 	if err != nil {
-		r.log.Errorf("%s: updateCurrentNIRoutes: failed to get ifIndex "+
-			"for (NI bridge) %s: %v", LogAndErrPrefix, ni.brIfName, err)
+		r.log.Errorf("%s: updateCurrentNIRoutes: ListRoutes failed for table %d: %v",
+			LogAndErrPrefix, table, err)
 	}
-	if err == nil && found {
-		outIfs[ifIndex] = generic.NetworkIf{
-			IfName:  ni.brIfName,
-			ItemRef: dg.Reference(linux.Bridge{IfName: ni.brIfName}),
-		}
-	}
-	for _, port := range ni.bridge.Ports {
-		ifIndex, found, err := r.netMonitor.GetInterfaceIndex(port.IfName)
-		if err != nil {
-			r.log.Errorf("%s: updateCurrentNIRoutes: failed to get ifIndex "+
-				"for (NI port) %s: %v", LogAndErrPrefix, port.IfName, err)
-		}
-		if err == nil && found {
-			outIfs[ifIndex] = generic.NetworkIf{
-				IfName:  port.IfName,
-				ItemRef: dg.Reference(generic.Port{IfName: port.IfName}),
+	for _, rt := range routes {
+		var rtOutIf generic.NetworkIf
+		if rt.IfIndex > 0 {
+			ifAttrs, err := r.netMonitor.GetInterfaceAttrs(rt.IfIndex)
+			if err != nil {
+				r.log.Errorf("%s: updateCurrentNIRoutes: failed to get attributes "+
+					"for interface with index %d: %v", LogAndErrPrefix, rt.IfIndex, err)
+				continue
+			}
+			if ifAttrs.IfName == ni.brIfName {
+				// Output interface for this route is bridge.
+				rtOutIf = generic.NetworkIf{
+					IfName:  ni.brIfName,
+					ItemRef: dg.Reference(linux.Bridge{IfName: ni.brIfName}),
+				}
+			} else {
+				// Output interface for this route is a physical network port.
+				rtOutIf = generic.NetworkIf{
+					IfName:  ifAttrs.IfName,
+					ItemRef: dg.Reference(generic.Port{IfName: ifAttrs.IfName}),
+				}
 			}
 		}
-	}
-	// Also dump routes with unreachable destination.
-	outIfs[0] = generic.NetworkIf{}
-	for outIfIndex, rtOutIf := range outIfs {
-		table := devicenetwork.NIBaseRTIndex + ni.bridge.BrNum
-		routes, err := r.netMonitor.ListRoutes(netmonitor.RouteFilters{
-			FilterByTable: true,
-			Table:         table,
-			FilterByIf:    true,
-			IfIndex:       outIfIndex,
-		})
-		if err != nil {
-			r.log.Errorf("%s: updateCurrentNIRoutes: ListRoutes failed for ifIndex %d: %v",
-				LogAndErrPrefix, outIfIndex, err)
-			continue
+		route := linux.Route{
+			Route:          rt.Data.(netlink.Route),
+			OutputIf:       rtOutIf,
+			GwViaLinkRoute: gwViaLinkRoute(rt, routes),
 		}
-		for _, rt := range routes {
-			route := linux.Route{
-				Route:          rt.Data.(netlink.Route),
-				OutputIf:       rtOutIf,
-				GwViaLinkRoute: gwViaLinkRoute(rt, routes),
-			}
-			prevRoute := prevRoutes[dg.Reference(route)]
-			if prevRoute == nil || !prevRoute.Equal(route) {
-				l3SG.PutItem(route, &reconciler.ItemStateData{
-					State:         reconciler.ItemStateCreated,
-					LastOperation: reconciler.OperationCreate,
-				})
-				changed = true
-			}
-			// Remove from the list of no-longer-existing routes,
-			// which are deleted from the graph by defer function (see above).
-			delete(prevRoutes, dg.Reference(route))
+		prevRoute := prevRoutes[dg.Reference(route)]
+		if prevRoute == nil || !prevRoute.Equal(route) {
+			l3SG.PutItem(route, &reconciler.ItemStateData{
+				State:         reconciler.ItemStateCreated,
+				LastOperation: reconciler.OperationCreate,
+			})
+			changed = true
 		}
+		// Remove from the list of no-longer-existing routes,
+		// which are deleted from the graph by defer function (see above).
+		delete(prevRoutes, dg.Reference(route))
 	}
 	return changed
 }
