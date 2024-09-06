@@ -727,7 +727,7 @@ func waitUntilDNSReady(zedagentCtx *zedagentContext, stillRunning *time.Ticker) 
 				// immediately. We don't bother to kick the periodic
 				// queue, because failed requests will be dropped
 				// from the queue.
-				zedcloudCtx.DeferredEventCtx.KickTimer()
+				zedcloudCtx.DeferredEventCtx.KickTimerNow()
 				dnsCtx.triggerHandleDeferred = false
 			}
 
@@ -842,7 +842,7 @@ func mainEventLoop(zedagentCtx *zedagentContext, stillRunning *time.Ticker) {
 				// immediately. We don't bother to kick the periodic
 				// queue, because failed requests will be dropped
 				// from the queue.
-				zedcloudCtx.DeferredEventCtx.KickTimer()
+				zedcloudCtx.DeferredEventCtx.KickTimerNow()
 				dnsCtx.triggerHandleDeferred = false
 			}
 			if dnsCtx.triggerRadioPOST {
