@@ -781,6 +781,7 @@ func (r *LinuxNIReconciler) getIntendedNIL3Cfg(niID uuid.UUID) dg.Graph {
 				Dst:      route.DstNetwork,
 				Gw:       gateway,
 				Protocol: unix.RTPROT_STATIC,
+				Type:     unix.RTN_UNICAST,
 				Family:   family,
 				Table:    dstTable,
 			},
@@ -805,6 +806,14 @@ func (r *LinuxNIReconciler) getIntendedNIL3Cfg(niID uuid.UUID) dg.Graph {
 			Family:   netlink.FAMILY_V6,
 			Type:     unix.RTN_UNREACHABLE,
 			Protocol: unix.RTPROT_STATIC,
+		},
+		OutputIf: generic.NetworkIf{
+			// Linux automatically adds "dev lo" to unreachable IPv6 routes.
+			// Let's include this in the intended state to prevent discrepancies
+			// between the intended and actual states, avoiding unnecessary route
+			// re-creation during each reconciliation.
+			IfName:  "lo",
+			ItemRef: dg.Reference(generic.Port{IfName: "lo"}),
 		},
 	}, nil)
 	// Add IPRules to select routing table for traffic coming in or out to/from
@@ -1266,6 +1275,7 @@ func (r *LinuxNIReconciler) getIntendedAppConnCfg(niID uuid.UUID,
 						Route: netlink.Route{
 							Scope:    netlink.SCOPE_LINK,
 							Protocol: unix.RTPROT_STATIC,
+							Type:     unix.RTN_UNICAST,
 							Family:   family,
 							Dst:      netutils.HostSubnet(ip.Gateway),
 						},
@@ -1287,6 +1297,7 @@ func (r *LinuxNIReconciler) getIntendedAppConnCfg(niID uuid.UUID,
 					Route: netlink.Route{
 						Scope:    netlink.SCOPE_UNIVERSE,
 						Protocol: unix.RTPROT_STATIC,
+						Type:     unix.RTN_UNICAST,
 						Family:   family,
 						Dst:      route.Dst,
 						Gw:       route.GW,

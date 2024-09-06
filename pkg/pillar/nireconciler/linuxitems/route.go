@@ -149,7 +149,16 @@ func (r Route) Equal(other dg.Item) bool {
 	if !isRoute {
 		return false
 	}
-	return r.normalizedNetlinkRoute().Equal(r2.normalizedNetlinkRoute()) &&
+	netlinkRoute1 := r.normalizedNetlinkRoute()
+	netlinkRoute2 := r2.normalizedNetlinkRoute()
+	// Route.LinkIndex can be entered as zero in the intended config, leaving
+	// it to RouteConfigurator to found out the index of Route.OutputIf.IfName.
+	// However, when syncing the current state, we get route from netlink with
+	// LinkIndex defined. Therefore, we will compare intended vs. current OutputIf
+	// but ignore LinkIndex.
+	netlinkRoute1.LinkIndex = 0
+	netlinkRoute2.LinkIndex = 0
+	return netlinkRoute1.Equal(netlinkRoute2) &&
 		r.OutputIf == r2.OutputIf &&
 		r.GwViaLinkRoute == r2.GwViaLinkRoute &&
 		r.ForApp == r2.ForApp
@@ -211,7 +220,7 @@ func (r Route) Dependencies() (deps []dg.Dependency) {
 		}
 		return true
 	}
-	if r.OutputIf.IfName != "" {
+	if r.OutputIf.IfName != "" && r.OutputIf.IfName != "lo" {
 		deps = append(deps, dg.Dependency{
 			RequiredItem: r.OutputIf.ItemRef,
 			Attributes: dg.DependencyAttributes{
