@@ -42,7 +42,7 @@ func linuxkitYml2KernelConf(ymlBytes []byte) lkConf {
 	var y lkConfYaml
 	err := yaml.Unmarshal(ymlBytes, &y)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("unmarshalling from yaml failed: %v", err)
 	}
 
 	l := lkConf{

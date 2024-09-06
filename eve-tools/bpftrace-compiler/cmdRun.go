@@ -50,7 +50,7 @@ func compile(arch string, lkConf lkConf, uc userspaceContainer, bpfFile string, 
 	arch = cleanArch(arch)
 	imageDir, err := os.MkdirTemp("/var/tmp", "bpftrace-image")
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("creating image dir %s failed: %v", imageDir, err)
 	}
 	defer os.RemoveAll(imageDir)
 	createImage(arch, lkConf, uc, imageDir)
