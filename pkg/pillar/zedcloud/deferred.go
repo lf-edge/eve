@@ -356,7 +356,8 @@ func startTimer(log *base.LogObject, ctx *DeferredContext) {
 	log.Functionf("startTimer()")
 	min := 1 * time.Minute
 	max := 15 * time.Minute
-	ctx.Ticker.UpdateExpTicker(min, max, 0.3)
+	noise := min
+	ctx.Ticker.UpdateExpTicker(min, max, noise)
 }
 
 func stopTimer(log *base.LogObject, ctx *DeferredContext) {
