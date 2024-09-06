@@ -723,11 +723,11 @@ func waitUntilDNSReady(zedagentCtx *zedagentContext, stillRunning *time.Ticker) 
 			dnsCtx.subDeviceNetworkStatus.ProcessChange(change)
 			if dnsCtx.triggerHandleDeferred {
 				// Connectivity has been restored so kick the queue
-				// in order to process all deferred requests
-				// immediately. We don't bother to kick the periodic
-				// queue, because failed requests will be dropped
-				// from the queue.
-				zedcloudCtx.DeferredEventCtx.KickTimerNow()
+				// in order to process all deferred requests faster,
+				// within minute. We don't bother to kick the periodic
+				// queue, because failed requests will be dropped from
+				// the queue anyway.
+				zedcloudCtx.DeferredEventCtx.KickTimerWithinMinute()
 				dnsCtx.triggerHandleDeferred = false
 			}
 
@@ -838,11 +838,11 @@ func mainEventLoop(zedagentCtx *zedagentContext, stillRunning *time.Ticker) {
 			}
 			if dnsCtx.triggerHandleDeferred {
 				// Connectivity has been restored so kick the queue
-				// in order to process all deferred requests
-				// immediately. We don't bother to kick the periodic
-				// queue, because failed requests will be dropped
-				// from the queue.
-				zedcloudCtx.DeferredEventCtx.KickTimerNow()
+				// in order to process all deferred requests faster,
+				// within minute. We don't bother to kick the periodic
+				// queue, because failed requests will be dropped from
+				// the queue anyway.
+				zedcloudCtx.DeferredEventCtx.KickTimerWithinMinute()
 				dnsCtx.triggerHandleDeferred = false
 			}
 			if dnsCtx.triggerRadioPOST {
