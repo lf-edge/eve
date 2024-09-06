@@ -32,6 +32,16 @@ func baseOsHandleStatusUpdateUUID(ctx *baseOsMgrContext, id string) {
 		return
 	}
 
+	// We want to wait to drain until we're sure we actually have a usable image local.
+	// So wait until the status meets LOADING which it is set to after VERIFIED.
+	// If we drained earlier it could be premature due to image download failures.
+	if status.State == types.LOADING || status.State == types.LOADED {
+		deferUpdate := shouldDeferForNodeDrain(ctx, id, config, status)
+		if deferUpdate {
+			return
+		}
+	}
+
 	// handle the change event for this base os config
 	baseOsHandleStatusUpdate(ctx, config, status)
 }

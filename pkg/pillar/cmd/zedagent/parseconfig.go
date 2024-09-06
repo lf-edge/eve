@@ -20,6 +20,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	zconfig "github.com/lf-edge/eve-api/go/config"
 	zevecommon "github.com/lf-edge/eve-api/go/evecommon"
+	"github.com/lf-edge/eve/pkg/pillar/kubeapi"
 	"github.com/lf-edge/eve/pkg/pillar/objtonum"
 	"github.com/lf-edge/eve/pkg/pillar/sriov"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -2962,6 +2963,43 @@ func scheduleDeviceOperation(getconfigCtx *getconfigContext, opsCmd *zconfig.Dev
 			ctx.shutdownCmdDeferred = true
 		}
 		return false
+	}
+	drainStatus := kubeapi.GetNodeDrainStatus(ctx.subNodeDrainStatus)
+	switch drainStatus.Status {
+	case kubeapi.UNKNOWN:
+		log.Error("scheduleDeviceOperation EARLY boot request, zedkube not up yet")
+	case kubeapi.NOTSUPPORTED:
+		log.Function("scheduleDeviceOperation drain not supported, skipping")
+	case kubeapi.NOTREQUESTED:
+		err := kubeapi.RequestNodeDrain(ctx.pubNodeDrainRequest, kubeapi.DEVICEOP)
+		if err != nil {
+			log.Errorf("scheduleDeviceOperation: can't request node drain: %v", err)
+			return *prevReturn
+		}
+		// Wait until drained
+		log.Notice("scheduleDeviceOperation drain requested defer")
+		switch op {
+		case types.DeviceOperationReboot:
+			ctx.rebootCmdDeferred = true
+		case types.DeviceOperationShutdown:
+			ctx.shutdownCmdDeferred = true
+		}
+		getconfigCtx.drainInProgress = true
+		return false
+	case kubeapi.REQUESTED:
+		// Wait until drained
+		log.Function("scheduleDeviceOperation drain in-progress defer")
+		switch op {
+		case types.DeviceOperationReboot:
+			ctx.rebootCmdDeferred = true
+		case types.DeviceOperationShutdown:
+			ctx.shutdownCmdDeferred = true
+		}
+		getconfigCtx.drainInProgress = true
+		return false
+	case kubeapi.COMPLETE:
+		//Finally...
+		log.Notice("scheduleDeviceOperation drain complete, goodbye")
 	}
 
 	infoStr := fmt.Sprintf("NORMAL: controller %s", op.String())
