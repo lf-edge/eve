@@ -1238,7 +1238,7 @@ func (r *LinuxNIReconciler) getNIRouteInfo(niID uuid.UUID) (routes []types.IPRou
 			continue
 		}
 		switch route.OutputIf.IfName {
-		case "":
+		case "", "lo":
 			// Skip unreachable route.
 			continue
 		case niInfo.brIfName:
