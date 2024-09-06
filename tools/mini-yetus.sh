@@ -8,6 +8,9 @@
 # vendor changes) and output the results, much faster than running it on the
 # entire codebase with `make yetus`.
 
+RED='\033[0;31m'
+RESET='\033[0m'
+
 FULL=false
 
 usage() {
@@ -77,19 +80,39 @@ if ! git rev-parse --verify "$DST_BRANCH" >/dev/null 2>&1; then
     exit 1
 fi
 
+behind=$(git log "$DST_BRANCH".."$SRC_BRANCH" --oneline)
+if [ -n "$behind" ]; then
+    echo "${RED}[!] Seems like $DST_BRANCH is behind $SRC_BRANCH, a rebase might be required.${RESET}"
+fi
+
 MISSING_FILE_REPORTED=false
 SRC_DIR=$(mktemp -d --tmpdir yetus.XXXXXXXXXX)
-git diff --name-only "$SRC_BRANCH".."$DST_BRANCH" | grep -v '/vendor/' | while IFS= read -r file; do
-    if [ -e "$file" ]; then
-        cp --parents -r "$PWD/$file" "$SRC_DIR/" || { echo "Failed to copy $file"; exit 1; }
-    else
-        if [ "$MISSING_FILE_REPORTED" = false ]; then
-            echo "[*] Some files are missing from current branch, if you are comparing against main/master, a rebase might be needed."
-            MISSING_FILE_REPORTED=true
+
+all_files=$( {
+    # Committed changes between branches
+    git diff --name-only "$SRC_BRANCH".."$DST_BRANCH"
+    # Unstaged changes (modified and deleted files)
+    git diff --name-only
+    # Staged changes (modified, deleted, and added files)
+    git diff --name-only --cached
+} | grep -v '/vendor/' | sort -u)
+
+process_files() {
+    while IFS= read -r file; do
+        if [ -e "$file" ]; then
+            cp --parents -r "$PWD/$file" "$SRC_DIR/" || { echo "Failed to copy $file"; exit 1; }
+        else
+            if [ "$MISSING_FILE_REPORTED" = false ]; then
+                echo "[*] Some files are missing from the current branch, if you are comparing against main/master, a rebase might be needed."
+                MISSING_FILE_REPORTED=true
+            fi
+            echo "[!] File does not exist: $PWD/$file"
         fi
-        echo "[!] File does not exist: $PWD/$file"
-    fi
-done
+    done
+}
+
+# copy all modified, added files to the SRC_DIR
+echo "$all_files" | process_files
 
 # copy all the dot files from root to the SRC_DIR and .yetus, this includes all
 # the yetus configuration files.
