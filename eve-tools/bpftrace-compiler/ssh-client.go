@@ -34,9 +34,7 @@ func (s *eveSSHClient) startSftpClientWithCustomPath(path string) error {
 		return err
 	}
 
-	var b bytes.Buffer
-	sshCommand := "/usr/libexec/sftp-server"
-	s.sftpClientSession.Stdout = &b
+	sshCommand := path
 	rStdout, wStdout := io.Pipe()
 	rStdin, wStdin := io.Pipe()
 
