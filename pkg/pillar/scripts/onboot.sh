@@ -115,6 +115,12 @@ if [ ! -d $PERSISTDIR/status ]; then
     mkdir $PERSISTDIR/status
 fi
 
+
+# /persist/pubsub-large does not need to be persisted across reboots, but
+# is in /persist to avoid using overlayfs aka memory for content which might
+# be Megabytes in size
+rm -rf /persist/pubsub-large
+
 # Checking for low diskspace at bootup. If used percentage of
 # /persist directory is more than 70% then we will remove the
 # following sub directories:
