@@ -119,8 +119,8 @@ func (z *zedrouter) lookupOrAllocateIPv4ForVIF(niStatus *types.NetworkInstanceSt
 
 	// Lookup to see if it is already allocated.
 	if ipAddr == nil {
-		addrs := niStatus.IPAssignments[adapterStatus.Mac.String()]
-		if !netutils.IsEmptyIP(addrs.IPv4Addr) {
+		addrs, found := niStatus.GetIPAssignments(adapterStatus.Mac.String())
+		if found && !netutils.IsEmptyIP(addrs.IPv4Addr) {
 			z.log.Functionf("lookupOrAllocateIPv4(NI:%v, app:%v): found IP %v for MAC %v",
 				networkID, appID, addrs.IPv4Addr, adapterStatus.Mac)
 			ipAddr = addrs.IPv4Addr
@@ -164,9 +164,17 @@ func (z *zedrouter) lookupOrAllocateIPv4ForVIF(niStatus *types.NetworkInstanceSt
 	// Later will be overwritten with addresses received from nistate.Collector,
 	// which snoops DHCP traffic and watches DNS server leases to learn the *actual*
 	// IP address assignments.
-	addrs := niStatus.IPAssignments[adapterStatus.Mac.String()] // preserve IPv6 addresses
-	addrs.IPv4Addr = ipAddr
-	niStatus.IPAssignments[adapterStatus.Mac.String()] = addrs
+	addrs, found := niStatus.GetIPAssignments(adapterStatus.Mac.String())
+	// preserve IPv6 addresses
+	if found {
+		addrs.IPv4Addr = ipAddr
+	} else {
+		addrs = &types.AssignedAddrs{
+			MacAddr:  adapterStatus.Mac.String(),
+			IPv4Addr: ipAddr,
+		}
+	}
+	niStatus.UpdateIPAssignments(*addrs)
 	z.publishNetworkInstanceStatus(niStatus)
 	z.log.Functionf("lookupOrAllocateIPv4(NI:%v, app:%v): allocated IP %v for MAC %v",
 		networkID, appID, ipAddr, adapterStatus.Mac)

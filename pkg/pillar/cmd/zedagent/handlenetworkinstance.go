@@ -122,9 +122,10 @@ func prepareAndPublishNetworkInstanceInfoMsg(ctx *zedagentContext,
 			info.BridgeIPAddr = status.BridgeIPAddr.String()
 		}
 
-		for mac, addrs := range status.IPAssignments {
+		for i := range status.IPAssignments {
+			addrs := status.IPAssignments[i]
 			assignment := new(zinfo.ZmetIPAssignmentEntry)
-			assignment.MacAddress = mac
+			assignment.MacAddress = addrs.MacAddr
 			if !addrs.IPv4Addr.Equal(net.IP{}) {
 				assignment.IpAddress = append(assignment.IpAddress, addrs.IPv4Addr.String())
 			}

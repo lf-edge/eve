@@ -1485,3 +1485,216 @@ func TestGetLocalAddrList(t *testing.T) {
 		}
 	}
 }
+
+const (
+	mac1  = "00:11:22:33:44:55"
+	mac2  = "01:01:01:01:01:01"
+	mac3  = "02:02:02:02:02:02"
+	ip1   = "1.2.3.4"
+	ip2   = "5.6.7.8"
+	ip3   = "3.3.3.3"
+	ipv61 = "fe80::1"
+	ipv62 = "fe80::2"
+	ipv63 = "fe80::3"
+)
+
+var (
+	mac1Addr1 = AssignedAddrs{
+		MacAddr:   mac1,
+		IPv4Addr:  net.ParseIP(ip1),
+		IPv6Addrs: []net.IP{net.ParseIP(ipv61)},
+	}
+	mac1Addr2 = AssignedAddrs{
+		MacAddr:   mac1,
+		IPv4Addr:  net.ParseIP(ip2),
+		IPv6Addrs: []net.IP{net.ParseIP(ipv62)},
+	}
+	mac1Addr3 = AssignedAddrs{
+		MacAddr:   mac1,
+		IPv4Addr:  net.ParseIP(ip3),
+		IPv6Addrs: []net.IP{net.ParseIP(ipv63)},
+	}
+	mac2Addr1 = AssignedAddrs{
+		MacAddr:   mac2,
+		IPv4Addr:  net.ParseIP(ip1),
+		IPv6Addrs: []net.IP{net.ParseIP(ipv61)},
+	}
+	mac2Addr2 = AssignedAddrs{
+		MacAddr:   mac2,
+		IPv4Addr:  net.ParseIP(ip2),
+		IPv6Addrs: []net.IP{net.ParseIP(ipv62)},
+	}
+	mac2Addr3 = AssignedAddrs{
+		MacAddr:   mac2,
+		IPv4Addr:  net.ParseIP(ip3),
+		IPv6Addrs: []net.IP{net.ParseIP(ipv63)},
+	}
+	mac3Addr1 = AssignedAddrs{
+		MacAddr:   mac3,
+		IPv4Addr:  net.ParseIP(ip1),
+		IPv6Addrs: []net.IP{net.ParseIP(ipv61)},
+	}
+	mac3Addr2 = AssignedAddrs{
+		MacAddr:   mac3,
+		IPv4Addr:  net.ParseIP(ip2),
+		IPv6Addrs: []net.IP{net.ParseIP(ipv62)},
+	}
+	mac3Addr3 = AssignedAddrs{
+		MacAddr:   mac3,
+		IPv4Addr:  net.ParseIP(ip3),
+		IPv6Addrs: []net.IP{net.ParseIP(ipv63)},
+	}
+)
+
+func TestUpdateIPAssignments(t *testing.T) {
+	status := NetworkInstanceStatus{}
+	testMatrix := map[string]struct {
+		initial  []AssignedAddrs
+		update   AssignedAddrs
+		expected []AssignedAddrs
+	}{
+		"Add to empty": {
+			update:   mac2Addr1,
+			expected: []AssignedAddrs{mac2Addr1},
+		},
+		"UnchangedExisting": {
+			initial:  []AssignedAddrs{mac1Addr1},
+			update:   mac1Addr1,
+			expected: []AssignedAddrs{mac1Addr1},
+		},
+		"ModifyExisting": {
+			initial:  []AssignedAddrs{mac1Addr1},
+			update:   mac1Addr2,
+			expected: []AssignedAddrs{mac1Addr2},
+		},
+		"Add before": {
+			initial:  []AssignedAddrs{mac2Addr2},
+			update:   mac1Addr1,
+			expected: []AssignedAddrs{mac1Addr1, mac2Addr2},
+		},
+		"Add after": {
+			initial:  []AssignedAddrs{mac1Addr1},
+			update:   mac2Addr2,
+			expected: []AssignedAddrs{mac1Addr1, mac2Addr2},
+		},
+		"Unchanged update 1st": {
+			initial:  []AssignedAddrs{mac1Addr1, mac2Addr2},
+			update:   mac1Addr3,
+			expected: []AssignedAddrs{mac1Addr3, mac2Addr2},
+		},
+		"Unchanged update 2nd": {
+			initial:  []AssignedAddrs{mac1Addr1, mac2Addr2},
+			update:   mac2Addr3,
+			expected: []AssignedAddrs{mac1Addr1, mac2Addr3},
+		},
+		"Add middle": {
+			initial:  []AssignedAddrs{mac1Addr1, mac3Addr3},
+			update:   mac2Addr2,
+			expected: []AssignedAddrs{mac1Addr1, mac2Addr2, mac3Addr3},
+		},
+	}
+	for testname, test := range testMatrix {
+		t.Logf("Running test case %s", testname)
+		status.IPAssignments = test.initial
+		status.UpdateIPAssignments(test.update)
+		assert.Equal(t, test.expected, status.IPAssignments)
+	}
+}
+
+func TestDropIPAssignments(t *testing.T) {
+	status := NetworkInstanceStatus{}
+	testMatrix := map[string]struct {
+		initial  []AssignedAddrs
+		drop     AssignedAddrs
+		expected []AssignedAddrs
+	}{
+		"Drop from empty": {
+			drop: mac2Addr1,
+		},
+		"Drop from zero length": {
+			initial:  []AssignedAddrs{},
+			drop:     mac2Addr1,
+			expected: []AssignedAddrs{},
+		},
+		"Drop single": {
+			initial:  []AssignedAddrs{mac1Addr1},
+			drop:     mac1Addr1,
+			expected: []AssignedAddrs{},
+		},
+		"Drop first": {
+			initial:  []AssignedAddrs{mac1Addr1, mac2Addr2},
+			drop:     mac1Addr1,
+			expected: []AssignedAddrs{mac2Addr2},
+		},
+		"Drop last": {
+			initial:  []AssignedAddrs{mac1Addr1, mac2Addr2},
+			drop:     mac2Addr2,
+			expected: []AssignedAddrs{mac1Addr1},
+		},
+		"Add middle": {
+			initial:  []AssignedAddrs{mac1Addr1, mac2Addr2, mac3Addr3},
+			drop:     mac2Addr2,
+			expected: []AssignedAddrs{mac1Addr1, mac3Addr3},
+		},
+	}
+	for testname, test := range testMatrix {
+		t.Logf("Running test case %s", testname)
+		status.IPAssignments = test.initial
+		status.DropIPAssignments(test.drop.MacAddr)
+		assert.Equal(t, test.expected, status.IPAssignments)
+	}
+}
+
+func TestGetIPAssignments(t *testing.T) {
+	status := NetworkInstanceStatus{}
+	testMatrix := map[string]struct {
+		initial  []AssignedAddrs
+		key      string
+		found    bool
+		expected AssignedAddrs
+	}{
+		"Get from empty": {
+			key:   mac2,
+			found: false,
+		},
+		"Get from zero length": {
+			initial: []AssignedAddrs{},
+			key:     mac2,
+			found:   false,
+		},
+		"Get single": {
+			initial:  []AssignedAddrs{mac1Addr1},
+			key:      mac1,
+			found:    true,
+			expected: mac1Addr1,
+		},
+		"Get first": {
+			initial:  []AssignedAddrs{mac1Addr1, mac2Addr2},
+			key:      mac1,
+			found:    true,
+			expected: mac1Addr1,
+		},
+		"Get last": {
+			initial:  []AssignedAddrs{mac1Addr1, mac2Addr2},
+			key:      mac2,
+			found:    true,
+			expected: mac2Addr2,
+		},
+		"Get middle": {
+			initial:  []AssignedAddrs{mac1Addr1, mac2Addr2, mac3Addr3},
+			key:      mac2,
+			found:    true,
+			expected: mac2Addr2,
+		},
+	}
+	for testname, test := range testMatrix {
+		t.Logf("Running test case %s", testname)
+		status.IPAssignments = test.initial
+		res, found := status.GetIPAssignments(test.key)
+		assert.Equal(t, test.found, found)
+		if found {
+			assert.NotNil(t, res)
+			assert.Equal(t, test.expected, *res)
+		}
+	}
+}

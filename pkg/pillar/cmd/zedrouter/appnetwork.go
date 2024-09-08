@@ -173,11 +173,12 @@ func (z *zedrouter) updateNIStatusAfterAppNetworkActivate(status *types.AppNetwo
 		}
 		netInstStatus.AddVif(z.log, adapterStatus.Vif, adapterStatus.Mac,
 			status.UUIDandVersion.UUID)
-		netInstStatus.IPAssignments[adapterStatus.Mac.String()] =
+		netInstStatus.UpdateIPAssignments(
 			types.AssignedAddrs{
+				MacAddr:   adapterStatus.Mac.String(),
 				IPv4Addr:  adapterStatus.AllocatedIPv4Addr,
 				IPv6Addrs: adapterStatus.AllocatedIPv6List,
-			}
+			})
 		z.publishNetworkInstanceStatus(netInstStatus)
 	}
 }
@@ -200,7 +201,7 @@ func (z *zedrouter) updateNIStatusAfterAppNetworkInactivate(
 			}
 		}
 		netInstStatus.RemoveVif(z.log, adapterStatus.Vif)
-		delete(netInstStatus.IPAssignments, adapterStatus.Mac.String())
+		netInstStatus.DropIPAssignments(adapterStatus.Mac.String())
 		z.publishNetworkInstanceStatus(netInstStatus)
 	}
 }

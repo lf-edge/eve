@@ -80,11 +80,14 @@ func TestPostKubeconfig(t *testing.T) {
 		Persistent: true,
 	})
 	g.Expect(err).ToNot(gomega.HaveOccurred())
+	addrs := []types.AssignedAddrs{{
+		MacAddr:  "k",
+		IPv4Addr: net.ParseIP("192.168.1.1"),
+	}}
+
 	niStatus := types.NetworkInstanceStatus{
 		NetworkInstanceInfo: types.NetworkInstanceInfo{
-			IPAssignments: map[string]types.AssignedAddrs{"k": {
-				IPv4Addr: net.ParseIP("192.168.1.1"),
-			}},
+			IPAssignments: addrs,
 		},
 	}
 	err = netInstance.Publish("6ba7b810-9dad-11d1-80b4-000000000003", niStatus)

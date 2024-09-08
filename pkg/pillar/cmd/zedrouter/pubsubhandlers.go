@@ -170,8 +170,7 @@ func (z *zedrouter) handleNetworkInstanceCreate(ctxArg interface{}, key string,
 	status := types.NetworkInstanceStatus{
 		NetworkInstanceConfig: config,
 		NetworkInstanceInfo: types.NetworkInstanceInfo{
-			IPAssignments: make(map[string]types.AssignedAddrs),
-			VlanMap:       make(map[uint32]uint32),
+			VlanMap: make(map[uint32]uint32),
 		},
 	}
 	z.getOrAddAppIntfAllocator(status.UUID)
@@ -225,8 +224,11 @@ func (z *zedrouter) handleNetworkInstanceCreate(ctxArg interface{}, key string,
 
 	// Set bridge IP address.
 	if status.Gateway != nil {
-		addrs := types.AssignedAddrs{IPv4Addr: status.Gateway}
-		status.IPAssignments[status.BridgeMac.String()] = addrs
+		addrs := types.AssignedAddrs{
+			MacAddr:  status.BridgeMac.String(),
+			IPv4Addr: status.Gateway,
+		}
+		status.UpdateIPAssignments(addrs)
 		status.BridgeIPAddr = status.Gateway
 	}
 
@@ -334,11 +336,14 @@ func (z *zedrouter) handleNetworkInstanceModify(ctxArg interface{}, key string,
 	// Reset bridge IP address (in case it changed).
 	status.BridgeIPAddr = nil
 	if status.BridgeMac != nil {
-		delete(status.IPAssignments, status.BridgeMac.String())
+		status.DropIPAssignments(status.BridgeMac.String())
 	}
 	if status.Gateway != nil && status.BridgeMac != nil {
-		addrs := types.AssignedAddrs{IPv4Addr: status.Gateway}
-		status.IPAssignments[status.BridgeMac.String()] = addrs
+		addrs := types.AssignedAddrs{
+			MacAddr:  status.BridgeMac.String(),
+			IPv4Addr: status.Gateway,
+		}
+		status.UpdateIPAssignments(addrs)
 		status.BridgeIPAddr = status.Gateway
 	}
 

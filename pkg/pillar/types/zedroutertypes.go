@@ -6,6 +6,7 @@ package types
 import (
 	"fmt"
 	"net"
+	"sort"
 	"strings"
 	"time"
 
@@ -369,14 +370,15 @@ type NetworkInstanceInfo struct {
 	BridgeMac     net.HardwareAddr
 	BridgeIfindex int
 
-	// Collection of address assignments; from MAC address to IP address
-	IPAssignments map[string]AssignedAddrs
+	// Array (sorted by MacAddr) of IP address assignments
+	IPAssignments []AssignedAddrs
 
 	// Set of vifs on this bridge
 	Vifs []VifNameMac
 
 	// Maintain a map of all access vlan ids to their counts, used by apps
 	// connected to this network instance.
+	// XXX move to metrics? config counters and not packet counters.
 	VlanMap map[uint32]uint32
 	// Counts the number of trunk ports attached to this network instance
 	NumTrunkPorts uint32
@@ -384,8 +386,45 @@ type NetworkInstanceInfo struct {
 
 // AssignedAddrs : IP addresses assigned to application network adapter.
 type AssignedAddrs struct {
+	MacAddr   string
 	IPv4Addr  net.IP
 	IPv6Addrs []net.IP
+}
+
+// UpdateIPAssignments: Add or update an entry while maintaining sort order
+func (instanceInfo *NetworkInstanceInfo) UpdateIPAssignments(new AssignedAddrs) {
+	aa := instanceInfo.IPAssignments
+	pos := sort.Search(len(aa), func(i int) bool { return aa[i].MacAddr >= new.MacAddr })
+	if pos < len(aa) && aa[pos].MacAddr == new.MacAddr {
+		aa[pos] = new
+		return
+	}
+	aa = append(aa, AssignedAddrs{})
+	copy(aa[pos+1:], aa[pos:])
+	aa[pos] = new
+	instanceInfo.IPAssignments = aa
+}
+
+// DropIPAssignments: remove an entry while maintaining sort order
+func (instanceInfo *NetworkInstanceInfo) DropIPAssignments(key string) {
+	aa := instanceInfo.IPAssignments
+	pos := sort.Search(len(aa), func(i int) bool { return aa[i].MacAddr >= key })
+	if pos < len(aa) && aa[pos].MacAddr == key {
+		copy(aa[pos:], aa[pos+1:])
+		instanceInfo.IPAssignments = aa[:len(aa)-1]
+		return
+	}
+	// Silent on not found
+}
+
+// GetIPAssignments: returns entry and found boolean
+func (instanceInfo *NetworkInstanceInfo) GetIPAssignments(key string) (*AssignedAddrs, bool) {
+	aa := instanceInfo.IPAssignments
+	pos := sort.Search(len(aa), func(i int) bool { return aa[i].MacAddr >= key })
+	if pos < len(aa) && aa[pos].MacAddr == key {
+		return &aa[pos], true
+	}
+	return nil, false
 }
 
 // VifNameMac : name and MAC address assigned to app VIF.
