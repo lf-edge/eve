@@ -19,6 +19,8 @@ package flextimer
 import (
 	"math/rand"
 	"time"
+
+	"github.com/sirupsen/logrus"
 )
 
 // Take min, max, exp bool
@@ -55,6 +57,9 @@ func NewRangeTicker(minTime time.Duration, maxTime time.Duration) FlexTickerHand
 }
 
 func NewExpTicker(minTime time.Duration, maxTime time.Duration, randomFactor float64) FlexTickerHandle {
+	if minTime == 0 {
+		logrus.Fatal("NewExpTicker(): minTime expected to be non zero!")
+	}
 	initialConfig := flexTickerConfig{minTime: minTime,
 		maxTime: maxTime, exponential: true,
 		randomFactor: randomFactor}
@@ -100,6 +105,9 @@ func TickNow(hdl interface{}) {
 }
 
 func (f FlexTickerHandle) UpdateExpTicker(minTime time.Duration, maxTime time.Duration, randomFactor float64) {
+	if minTime == 0 {
+		logrus.Fatal("UpdateExpTicker(): minTime expected to be non zero!")
+	}
 	config := flexTickerConfig{minTime: minTime,
 		maxTime: maxTime, exponential: true,
 		randomFactor: randomFactor}
