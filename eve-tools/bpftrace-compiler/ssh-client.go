@@ -89,8 +89,7 @@ func (s *eveSSHClient) startSSHClient(sshHost string, privKey string) {
 		panic("$HOME not set")
 	}
 
-	authPrivKeys := []ssh.AuthMethod{}
-
+	signers := []ssh.Signer{}
 	addPrivKey := func(privKeyPath string) {
 		key, err := os.ReadFile(privKeyPath)
 		if errors.Is(err, os.ErrNotExist) {
@@ -105,7 +104,7 @@ func (s *eveSSHClient) startSSHClient(sshHost string, privKey string) {
 			log.Fatalf("unable to parse private key: %v", err)
 		}
 
-		authPrivKeys = append(authPrivKeys, ssh.PublicKeys(signer))
+		signers = append(signers, signer)
 
 	}
 
@@ -130,7 +129,7 @@ func (s *eveSSHClient) startSSHClient(sshHost string, privKey string) {
 	}
 	config := &ssh.ClientConfig{
 		User: "root",
-		Auth: authPrivKeys,
+		Auth: []ssh.AuthMethod{ssh.PublicKeys(signers...)},
 		HostKeyCallback: func(hostname string, remote net.Addr, key ssh.PublicKey) error {
 			err := hostKeyCallback(hostname, remote, key)
 			if err != nil {
