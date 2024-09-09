@@ -53,6 +53,11 @@ type deferredItem struct {
 const longTime1 = time.Hour * 24
 const longTime2 = time.Hour * 48
 
+// Used for exponential backoff when queue is active
+const shortTime1 = time.Minute * 1
+const shortTime2 = time.Minute * 15
+const noise = shortTime1
+
 // DeferredContext is part of ZedcloudContext
 type DeferredContext struct {
 	deferredItems          []*deferredItem
@@ -354,10 +359,7 @@ func (ctx *DeferredContext) KickTimer() {
 func startTimer(log *base.LogObject, ctx *DeferredContext) {
 
 	log.Functionf("startTimer()")
-	min := 1 * time.Minute
-	max := 15 * time.Minute
-	noise := min
-	ctx.Ticker.UpdateExpTicker(min, max, noise)
+	ctx.Ticker.UpdateExpTicker(shortTime1, shortTime2, noise)
 }
 
 func stopTimer(log *base.LogObject, ctx *DeferredContext) {
