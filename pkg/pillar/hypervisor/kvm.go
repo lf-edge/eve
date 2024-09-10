@@ -5,6 +5,7 @@ package hypervisor
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -16,16 +17,24 @@ import (
 	zconfig "github.com/lf-edge/eve-api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/containerd"
+	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils"
 	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/sys/unix"
 )
 
-// KVMHypervisorName is a name of kvm hypervisor
-const KVMHypervisorName = "kvm"
-const minUringKernelTag = uint64((5 << 16) | (4 << 8) | (72 << 0))
-const swtpmTimeout = 10 // seconds
+const (
+	// KVMHypervisorName is a name of kvm hypervisor
+	KVMHypervisorName = "kvm"
+	minUringKernelTag = uint64((5 << 16) | (4 << 8) | (72 << 0))
+	swtpmTimeout      = 10 // seconds
+	qemuTimeout       = 3  // seconds
+	vtpmPurgePrefix   = "purge;"
+	vtpmdeletePrefix  = "terminate;"
+	vtpmlaunchPrefix  = "launch;"
+)
 
 var clientCid = uint32(unix.VMADDR_CID_HOST + 1)
 
@@ -699,11 +708,10 @@ func (ctx KvmContext) Setup(status types.DomainStatus, config types.DomainConfig
 	domainName := status.DomainName
 	domainUUID := status.UUIDandVersion.UUID
 
-	swtpmCtrlSock, err := launchSwtpm(domainUUID.String(), swtpmTimeout)
-	if err != nil {
-		// let the vm start without TPM
-		logError("failed to launch swtpm for domain %s: %v", domainName, err)
-		swtpmCtrlSock = ""
+	// check if vTPM is enabled
+	swtpmCtrlSock := ""
+	if status.VirtualTPM {
+		swtpmCtrlSock = fmt.Sprintf(types.SwtpmCtrlSocketPath, domainName)
 	}
 
 	// first lets build the domain config
@@ -1167,4 +1175,93 @@ func GetQmpExecutorSocket(domainName string) string {
 
 func getQmpListenerSocket(domainName string) string {
 	return filepath.Join(kvmStateDir, domainName, "listener.qmp")
+}
+
+// VirtualTPMSetup launches a vTPM instance for the domain
+func (ctx KvmContext) VirtualTPMSetup(domainName, agentName string, ps *pubsub.PubSub, warnTime, errTime time.Duration) error {
+	if ps != nil {
+		wk := utils.NewWatchdogKick(ps, agentName, warnTime, errTime)
+		return requestVtpmLaunch(domainName, wk, swtpmTimeout)
+	}
+
+	return fmt.Errorf("invalid watchdog configuration")
+}
+
+// VirtualTPMTerminate terminates the vTPM instance
+func (ctx KvmContext) VirtualTPMTerminate(domainName string) error {
+	if err := requestVtpmTermination(domainName); err != nil {
+		return fmt.Errorf("failed to terminate vTPM for domain %s: %w", domainName, err)
+	}
+	return nil
+}
+
+// VirtualTPMTeardown purges the vTPM instance.
+func (ctx KvmContext) VirtualTPMTeardown(domainName string) error {
+	if err := requestVtpmPurge(domainName); err != nil {
+		return fmt.Errorf("failed to purge vTPM for domain %s: %w", domainName, err)
+	}
+
+	return nil
+}
+
+func requestVtpmLaunch(id string, wk *utils.WatchdogKick, timeoutSeconds uint) error {
+	conn, err := net.Dial("unix", types.VtpmdCtrlSocket)
+	if err != nil {
+		return fmt.Errorf("failed to connect to vtpmd control socket: %w", err)
+	}
+	defer conn.Close()
+
+	pidPath := fmt.Sprintf(types.SwtpmPidPath, id)
+
+	// Send the request to the vTPM control socket, ask it to launch a swtpm instance.
+	_, err = conn.Write([]byte(fmt.Sprintf("%s%s\n", vtpmlaunchPrefix, id)))
+	if err != nil {
+		return fmt.Errorf("failed to write to vtpmd control socket: %w", err)
+	}
+
+	// Loop and wait for SWTPM to start.
+	pid, err := utils.GetPidFromFileTimeout(pidPath, timeoutSeconds, wk)
+	if err != nil {
+		return fmt.Errorf("failed to get pid from file %s: %w", pidPath, err)
+	}
+
+	// One last time, check SWTPM is not dead right after launch.
+	if !utils.IsProcAlive(pid) {
+		return fmt.Errorf("SWTPM (pid: %d) is dead", pid)
+	}
+
+	return nil
+}
+
+func requestVtpmPurge(id string) error {
+	conn, err := net.Dial("unix", types.VtpmdCtrlSocket)
+	if err != nil {
+		return fmt.Errorf("failed to connect to vtpmd control socket: %w", err)
+	}
+	defer conn.Close()
+
+	// Send a request to vTPM control socket, ask it to purge the instance
+	// and all its data.
+	_, err = conn.Write([]byte(fmt.Sprintf("%s%s\n", vtpmPurgePrefix, id)))
+	if err != nil {
+		return fmt.Errorf("failed to write to vtpmd control socket: %w", err)
+	}
+
+	return nil
+}
+
+func requestVtpmTermination(id string) error {
+	conn, err := net.Dial("unix", types.VtpmdCtrlSocket)
+	if err != nil {
+		return fmt.Errorf("failed to connect to vtpmd control socket: %w", err)
+	}
+	defer conn.Close()
+
+	// Send a request to the vTPM control socket, ask it to delete the instance.
+	_, err = conn.Write([]byte(fmt.Sprintf("%s%s\n", vtpmdeletePrefix, id)))
+	if err != nil {
+		return fmt.Errorf("failed to write to vtpmd control socket: %w", err)
+	}
+
+	return nil
 }

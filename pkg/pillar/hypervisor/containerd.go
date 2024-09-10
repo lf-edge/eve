@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/containerd"
+	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/opencontainers/runtime-spec/specs-go"
 
@@ -317,4 +318,16 @@ func (ctx ctrdContext) GetDomsCPUMem() (map[string]types.DomainMetric, error) {
 		}
 	}
 	return res, nil
+}
+
+func (ctx ctrdContext) VirtualTPMSetup(domainName, agentName string, ps *pubsub.PubSub, warnTime, errTime time.Duration) error {
+	return fmt.Errorf("not implemented")
+}
+
+func (ctx ctrdContext) VirtualTPMTerminate(domainName string) error {
+	return fmt.Errorf("not implemented")
+}
+
+func (ctx ctrdContext) VirtualTPMTeardown(domainName string) error {
+	return fmt.Errorf("not implemented")
 }
