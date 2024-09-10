@@ -5,8 +5,11 @@ package hypervisor
 
 import (
 	"fmt"
-	"github.com/lf-edge/eve/pkg/pillar/types"
 	"os"
+	"time"
+
+	"github.com/lf-edge/eve/pkg/pillar/pubsub"
+	"github.com/lf-edge/eve/pkg/pillar/types"
 
 	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
@@ -169,4 +172,16 @@ func (ctx nullContext) GetHostCPUMem() (types.HostMemory, error) {
 
 func (ctx nullContext) GetDomsCPUMem() (map[string]types.DomainMetric, error) {
 	return nil, nil
+}
+
+func (ctx nullContext) VirtualTPMSetup(domainName, agentName string, ps *pubsub.PubSub, warnTime, errTime time.Duration) error {
+	return fmt.Errorf("not implemented")
+}
+
+func (ctx nullContext) VirtualTPMTerminate(domainName string) error {
+	return fmt.Errorf("not implemented")
+}
+
+func (ctx nullContext) VirtualTPMTeardown(domainName string) error {
+	return fmt.Errorf("not implemented")
 }

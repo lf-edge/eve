@@ -1118,13 +1118,24 @@ func maybeRetryBoot(ctx *domainContext, status *types.DomainStatus) {
 	}
 	defer file.Close()
 
+	if err := hyper.Task(status).VirtualTPMSetup(status.DomainName, agentName, ctx.ps, warningTime, errorTime); err != nil {
+		log.Errorf("Failed to setup virtual TPM for %s: %s", status.DomainName, err)
+		status.VirtualTPM = false
+	} else {
+		status.VirtualTPM = true
+	}
+
 	if err := hyper.Task(status).Setup(*status, *config, ctx.assignableAdapters, nil, file); err != nil {
 		//it is retry, so omit error
 		log.Errorf("Failed to create DomainStatus from %+v: %s",
 			config, err)
+
+		if err := hyper.Task(status).VirtualTPMTerminate(status.DomainName); err != nil {
+			log.Errorf("Failed to terminate virtual TPM for %s: %s", status.DomainName, err)
+		}
 	}
 
-	status.TriedCount += 1
+	status.TriedCount++
 
 	ctx.createSema.V(1)
 	domainID, err := DomainCreate(ctx, *status)
@@ -1659,12 +1670,24 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 	}
 	defer file.Close()
 
+	if err := hyper.Task(status).VirtualTPMSetup(status.DomainName, agentName, ctx.ps, warningTime, errorTime); err != nil {
+		log.Errorf("Failed to setup virtual TPM for %s: %s", status.DomainName, err)
+		status.VirtualTPM = false
+	} else {
+		status.VirtualTPM = true
+	}
+
 	globalConfig := agentlog.GetGlobalConfig(log, ctx.subGlobalConfig)
 	if err := hyper.Task(status).Setup(*status, config, ctx.assignableAdapters, globalConfig, file); err != nil {
 		log.Errorf("Failed to create DomainStatus from %+v: %s",
 			config, err)
 		status.SetErrorNow(err.Error())
 		releaseCPUs(ctx, &config, status)
+
+		if err := hyper.Task(status).VirtualTPMTerminate(status.DomainName); err != nil {
+			log.Errorf("Failed to terminate virtual TPM for %s: %s", status.DomainName, err)
+		}
+
 		return
 	}
 
@@ -1672,7 +1695,7 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 	var domainID int
 	// Invoke domain create; try 3 times with a timeout
 	for {
-		status.TriedCount += 1
+		status.TriedCount++
 		var err error
 		ctx.createSema.V(1)
 		domainID, err = DomainCreate(ctx, *status)
@@ -2421,6 +2444,10 @@ func handleDelete(ctx *domainContext, key string, status *types.DomainStatus) {
 
 	err := hyper.Task(status).Delete(status.DomainName)
 	if err != nil {
+		log.Errorln(err)
+	}
+
+	if err := hyper.Task(status).VirtualTPMTeardown(status.DomainName); err != nil {
 		log.Errorln(err)
 	}
 
