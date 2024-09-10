@@ -4,7 +4,9 @@
 package nistate
 
 import (
+	"bytes"
 	"fmt"
+	"net"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -40,13 +42,169 @@ type LinuxCollector struct {
 }
 
 type niInfo struct {
-	config      types.NetworkInstanceConfig
-	bridge      NIBridge
-	vifs        VIFAddrsList
-	ipLeases    dnsmasqIPLeases
-	cancelPCAP  context.CancelFunc
-	ipv4DNSReqs []dnsReq
-	ipv6DNSReqs []dnsReq
+	config          types.NetworkInstanceConfig
+	bridge          NIBridge
+	vifs            []*vifInfo
+	ipLeases        dnsmasqIPLeases
+	cancelPCAP      context.CancelFunc
+	pcapWG          sync.WaitGroup
+	ipv4DNSReqs     []dnsReq
+	ipv6DNSReqs     []dnsReq
+	arpSnoopEnabled bool
+}
+
+// lookupVIFByGuestMAC : Lookup VIF by the MAC address of the guest interface.
+func (ni *niInfo) lookupVIFByGuestMAC(mac net.HardwareAddr) *vifInfo {
+	for _, vif := range ni.vifs {
+		if bytes.Equal(vif.GuestIfMAC, mac) {
+			return vif
+		}
+	}
+	return nil
+}
+
+type detectedAddr struct {
+	types.AssignedAddr
+	validUntil time.Time // zero timestamp if validity is not known/limited
+}
+
+func (addr detectedAddr) hasExpired() bool {
+	return !addr.validUntil.IsZero() && time.Now().After(addr.validUntil)
+}
+
+func (addr detectedAddr) fromDHCP() bool {
+	return addr.AssignedBy == types.AddressSourceInternalDHCP ||
+		addr.AssignedBy == types.AddressSourceExternalDHCP
+}
+
+type vifInfo struct {
+	AppVIF
+	ipv4Addrs []detectedAddr
+	ipv6Addrs []detectedAddr
+}
+
+func (vif *vifInfo) exportVIFAddrs() VIFAddrs {
+	var assignedAddrs types.AssignedAddrs
+	for _, addr := range vif.ipv4Addrs {
+		assignedAddrs.IPv4Addrs = append(assignedAddrs.IPv4Addrs,
+			types.AssignedAddr{
+				Address:    addr.Address,
+				AssignedBy: addr.AssignedBy,
+			})
+	}
+	for _, addr := range vif.ipv6Addrs {
+		assignedAddrs.IPv6Addrs = append(assignedAddrs.IPv6Addrs,
+			types.AssignedAddr{
+				Address:    addr.Address,
+				AssignedBy: addr.AssignedBy,
+			})
+	}
+	return VIFAddrs{
+		AssignedAddrs: assignedAddrs,
+		VIF:           vif.AppVIF,
+	}
+}
+
+func (vif *vifInfo) hasIP(ip net.IP) bool {
+	for _, ipv4Addr := range vif.ipv4Addrs {
+		if ip.Equal(ipv4Addr.Address) {
+			return true
+		}
+	}
+	for _, ipv6Addr := range vif.ipv6Addrs {
+		if ip.Equal(ipv6Addr.Address) {
+			return true
+		}
+	}
+	return false
+}
+
+// addIP adds or updates detected/leased IP address into the list of assigned addresses.
+func (vif *vifInfo) addIP(ip net.IP, source types.AddressSource,
+	validUntil time.Time) (update *VIFAddrsUpdate) {
+	ipList := vif.ipv4Addrs
+	if ip.To4() == nil {
+		ipList = vif.ipv6Addrs
+	}
+	var alreadyExists, changed bool
+	prevAddrs := vif.exportVIFAddrs()
+	for i := range ipList {
+		if ipList[i].Address.Equal(ip) {
+			// IP address is already known for this VIF.
+			// Just update the source and the expiration time.
+			alreadyExists = true
+			if source == types.AddressSourceStatic && ipList[i].fromDHCP() {
+				// Prefer info from DHCP snooping over ARP snooping.
+				// Ignore this update.
+				return nil
+			}
+			ipList[i].validUntil = validUntil
+			if ipList[i].AssignedBy != source {
+				// LinuxCollector will publish VIFAddrsUpdate only to update
+				// the IP address source.
+				changed = true
+				ipList[i].AssignedBy = source
+			}
+			break
+		}
+	}
+	if !alreadyExists {
+		// Newly detected IP address.
+		changed = true
+		ipList = append(ipList, detectedAddr{
+			AssignedAddr: types.AssignedAddr{
+				Address:    ip,
+				AssignedBy: source,
+			},
+			validUntil: validUntil,
+		})
+	}
+	if ip.To4() == nil {
+		vif.ipv6Addrs = ipList
+	} else {
+		vif.ipv4Addrs = ipList
+	}
+	if !changed {
+		return nil
+	}
+	newAddrs := vif.exportVIFAddrs()
+	return &VIFAddrsUpdate{
+		Prev: prevAddrs,
+		New:  newAddrs,
+	}
+}
+
+// delIPs removes all or only some IPs based on the source and the expiration.
+func (vif *vifInfo) delIPs(sourceMask int, onlyExpired bool) *VIFAddrsUpdate {
+	var changed bool
+	var filteredV4Addrs, filteredV6Addrs []detectedAddr
+	for _, addr := range vif.ipv4Addrs {
+		if (sourceMask&int(addr.AssignedBy) > 0) &&
+			(!onlyExpired || addr.hasExpired()) {
+			changed = true
+			continue
+		}
+		filteredV4Addrs = append(filteredV4Addrs, addr)
+	}
+	for _, addr := range vif.ipv6Addrs {
+		if (sourceMask&int(addr.AssignedBy) > 0) &&
+			(!onlyExpired || addr.hasExpired()) {
+			changed = true
+			continue
+		}
+		filteredV6Addrs = append(filteredV6Addrs, addr)
+	}
+	if !changed {
+		return nil
+	}
+	prevAddrs := vif.exportVIFAddrs()
+	vif.ipv4Addrs = filteredV4Addrs
+	vif.ipv6Addrs = filteredV6Addrs
+	newAddrs := vif.exportVIFAddrs()
+	return &VIFAddrsUpdate{
+		Prev: prevAddrs,
+		New:  newAddrs,
+	}
 }
 
 // NewLinuxCollector is a constructor for LinuxCollector.
@@ -83,15 +241,17 @@ func (lc *LinuxCollector) StartCollectingForNI(
 	}
 	pcapCtx, cancelPCAP := context.WithCancel(context.Background())
 	ni := &niInfo{
-		config:     niConfig,
-		bridge:     br,
-		cancelPCAP: cancelPCAP,
+		config:          niConfig,
+		bridge:          br,
+		cancelPCAP:      cancelPCAP,
+		arpSnoopEnabled: enableARPSnoop,
 	}
 	for _, vif := range vifs {
-		ni.vifs = append(ni.vifs, VIFAddrs{VIF: vif})
+		ni.vifs = append(ni.vifs, &vifInfo{AppVIF: vif})
 	}
 	lc.nis[niConfig.UUID] = ni
-	go lc.sniffDNSandDHCP(pcapCtx, br, niConfig.Type, enableARPSnoop)
+	ni.pcapWG.Add(1)
+	go lc.sniffDNSandDHCP(pcapCtx, &ni.pcapWG, br, niConfig.Type, enableARPSnoop)
 	lc.log.Noticef("%s: Started collecting state data for NI %v "+
 		"(br: %+v, vifs: %+v)", LogAndErrPrefix, niConfig.UUID, br, vifs)
 	return nil
@@ -104,7 +264,7 @@ func (lc *LinuxCollector) StartCollectingForNI(
 // Note that not every change in network instance config is supported. For example,
 // network instance type (switch / local) cannot change.
 func (lc *LinuxCollector) UpdateCollectingForNI(
-	niConfig types.NetworkInstanceConfig, vifs []AppVIF) error {
+	niConfig types.NetworkInstanceConfig, vifs []AppVIF, enableARPSnoop bool) error {
 	lc.mu.Lock()
 	defer lc.mu.Unlock()
 	if _, exists := lc.nis[niConfig.UUID]; !exists {
@@ -112,17 +272,27 @@ func (lc *LinuxCollector) UpdateCollectingForNI(
 	}
 	ni := lc.nis[niConfig.UUID]
 	ni.config = niConfig
-	// Preserve already known IP assignments.
-	prevVIFs := ni.vifs
-	ni.vifs = nil
+	var newVifs []*vifInfo
 	for _, vif := range vifs {
-		vifWithAddrs := VIFAddrs{VIF: vif}
-		prevVIF := prevVIFs.LookupByGuestMAC(vif.GuestIfMAC)
-		if prevVIF != nil && prevVIF.VIF.App == vif.App && prevVIF.VIF.NI == vif.NI {
-			vifWithAddrs.IPv4Addr = prevVIF.IPv4Addr
-			vifWithAddrs.IPv6Addrs = prevVIF.IPv6Addrs
+		newVif := &vifInfo{AppVIF: vif}
+		// Preserve already known IP assignments.
+		prevVIF := ni.lookupVIFByGuestMAC(vif.GuestIfMAC)
+		if prevVIF != nil && prevVIF.App == vif.App && prevVIF.NI == vif.NI {
+			newVif.ipv4Addrs = prevVIF.ipv4Addrs
+			newVif.ipv6Addrs = prevVIF.ipv6Addrs
 		}
-		ni.vifs = append(ni.vifs, vifWithAddrs)
+		newVifs = append(newVifs, newVif)
+	}
+	ni.vifs = newVifs
+	if ni.arpSnoopEnabled != enableARPSnoop {
+		// Restart packet capture with changed BPF filter.
+		ni.cancelPCAP()
+		ni.pcapWG.Wait()
+		pcapCtx, cancelPCAP := context.WithCancel(context.Background())
+		ni.cancelPCAP = cancelPCAP
+		ni.pcapWG.Add(1)
+		go lc.sniffDNSandDHCP(pcapCtx, &ni.pcapWG, ni.bridge, niConfig.Type, enableARPSnoop)
+		ni.arpSnoopEnabled = enableARPSnoop
 	}
 	lc.log.Noticef("%s: Updated state collecting for NI %v "+
 		"(br: %+v, vifs: %+v)", LogAndErrPrefix, niConfig.UUID, ni.bridge, ni.vifs)
@@ -137,7 +307,9 @@ func (lc *LinuxCollector) StopCollectingForNI(niID uuid.UUID) error {
 	if _, exists := lc.nis[niID]; !exists {
 		return ErrUnknownNI{NI: niID}
 	}
-	lc.nis[niID].cancelPCAP()
+	ni := lc.nis[niID]
+	ni.cancelPCAP()
+	ni.pcapWG.Wait()
 	delete(lc.nis, niID)
 	lc.log.Noticef("%s: Stopped collecting state data for NI %v", LogAndErrPrefix, niID)
 	return nil
@@ -152,7 +324,11 @@ func (lc *LinuxCollector) GetIPAssignments(niID uuid.UUID) (VIFAddrsList, error)
 	if !exists {
 		return nil, ErrUnknownNI{NI: niID}
 	}
-	return niInfo.vifs, nil
+	var addrList VIFAddrsList
+	for _, vif := range niInfo.vifs {
+		addrList = append(addrList, vif.exportVIFAddrs())
+	}
+	return addrList, nil
 }
 
 // WatchIPAssignments : watch for changes in IP assignments to VIFs across
@@ -263,7 +439,7 @@ func (lc *LinuxCollector) WatchFlows() <-chan types.IPFlow {
 // Run periodic and on-change state data collecting for network instances
 // from a separate Go routine.
 func (lc *LinuxCollector) runStateCollecting() {
-	gcIPLeases := time.NewTicker(time.Minute)
+	gcIPAssignments := time.NewTicker(time.Minute)
 	fmax := float64(flowCollectInterval)
 	fmin := fmax * 0.9
 	flowCollectTimer := flextimer.NewRangeTicker(time.Duration(fmin), time.Duration(fmax))
@@ -297,19 +473,31 @@ func (lc *LinuxCollector) runStateCollecting() {
 					}
 				}
 			}
-		case <-gcIPLeases.C:
+		case <-gcIPAssignments.C:
 			lc.mu.Lock()
 			var addrChanges []VIFAddrsUpdate
 			for _, ni := range lc.nis {
+				// First remove IP leases which are no longer reported by the internal
+				// DHCP server.
 				removedAny := lc.gcIPLeases(ni)
 				if removedAny {
 					addrChanges = append(addrChanges, lc.processIPLeases(ni)...)
+				}
+				// Next remove expired IP leases granted from external DHCP servers
+				// or statically configured IPs with ARP not seen for more than 10 minutes.
+				for _, vif := range ni.vifs {
+					sourceMask := int(types.AddressSourceExternalDHCP) |
+						int(types.AddressSourceStatic)
+					update := vif.delIPs(sourceMask, true)
+					if update != nil {
+						addrChanges = append(addrChanges, *update)
+					}
 				}
 			}
 			watchers := lc.ipAssignWatchers
 			lc.mu.Unlock()
 			if len(addrChanges) != 0 {
-				lc.logAddrChanges("IP Lease GC event", addrChanges)
+				lc.logAddrChanges("IP Assignment GC event", addrChanges)
 				for _, watcherCh := range watchers {
 					watcherCh <- addrChanges
 				}
@@ -358,18 +546,18 @@ func (lc *LinuxCollector) logAddrChanges(event string, changes []VIFAddrsUpdate)
 func (lc *LinuxCollector) getVIFByIfName(ifName string) (vif AppVIF, found bool) {
 	for _, niState := range lc.nis {
 		for _, niVIF := range niState.vifs {
-			if niVIF.VIF.HostIfName == ifName {
-				return niVIF.VIF, true
+			if niVIF.HostIfName == ifName {
+				return niVIF.AppVIF, true
 			}
 		}
 	}
 	return vif, false
 }
 
-func (lc *LinuxCollector) getVIFsByAppNum(appNum int) (vifs VIFAddrsList) {
+func (lc *LinuxCollector) getVIFsByAppNum(appNum int) (vifs []*vifInfo) {
 	for _, niState := range lc.nis {
 		for _, niVIF := range niState.vifs {
-			if niVIF.VIF.AppNum != appNum {
+			if niVIF.AppNum != appNum {
 				continue
 			}
 			vifs = append(vifs, niVIF)

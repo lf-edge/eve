@@ -1104,16 +1104,18 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 		for _, ifname := range ifNames {
 			networkInfo := new(info.ZInfoNetwork)
 			networkInfo.LocalName = *proto.String(ifname)
-			ipv4Addr, ipv6Addrs, allocated, macAddr, ipAddrMismatch :=
-				getAppIP(ctx, aiStatus, ifname)
-			if ipv4Addr != nil {
-				networkInfo.IPAddrs = append(networkInfo.IPAddrs, ipv4Addr.String())
+			addrs, hasIPv4Addr, macAddr, ipAddrMismatch :=
+				getAppIPs(ctx, aiStatus, ifname)
+			for _, ipv4Addr := range addrs.IPv4Addrs {
+				networkInfo.IPAddrs = append(networkInfo.IPAddrs,
+					ipv4Addr.Address.String())
 			}
-			for _, ipv6Addr := range ipv6Addrs {
-				networkInfo.IPAddrs = append(networkInfo.IPAddrs, ipv6Addr.String())
+			for _, ipv6Addr := range addrs.IPv6Addrs {
+				networkInfo.IPAddrs = append(networkInfo.IPAddrs,
+					ipv6Addr.Address.String())
 			}
 			networkInfo.MacAddr = *proto.String(macAddr.String())
-			networkInfo.Ipv4Up = allocated
+			networkInfo.Ipv4Up = hasIPv4Addr
 			networkInfo.IpAddrMisMatch = ipAddrMismatch
 			name := appIfnameToName(aiStatus, ifname)
 			log.Tracef("app %s/%s localName %s devName %s",
@@ -1559,21 +1561,22 @@ func sendMetricsProtobuf(ctx *getconfigContext,
 
 // Use the ifname/vifname to find the AppNetAdapter status
 // and from there the (ip, allocated, mac) addresses for the app
-func getAppIP(ctx *zedagentContext, aiStatus *types.AppInstanceStatus,
-	vifname string) (net.IP, []net.IP, bool, net.HardwareAddr, bool) {
+func getAppIPs(ctx *zedagentContext, aiStatus *types.AppInstanceStatus,
+	vifname string) (types.AssignedAddrs, bool, net.HardwareAddr, bool) {
 
 	log.Tracef("getAppIP(%s, %s)", aiStatus.Key(), vifname)
 	for _, adapterStatus := range aiStatus.AppNetAdapters {
 		if adapterStatus.VifUsed != vifname {
 			continue
 		}
-		log.Tracef("getAppIP(%s, %s) found AppIP v4: %s, v6: %s, ipv4 assigned %v mac %s",
-			aiStatus.Key(), vifname, adapterStatus.AllocatedIPv4Addr,
-			adapterStatus.AllocatedIPv6List, adapterStatus.IPv4Assigned, adapterStatus.Mac)
-		return adapterStatus.AllocatedIPv4Addr, adapterStatus.AllocatedIPv6List, adapterStatus.IPv4Assigned,
+		log.Tracef("getAppIP(%s, %s) found AppIPs v4: %v, v6: %v, ipv4 assigned %v mac %s",
+			aiStatus.Key(), vifname, adapterStatus.AssignedAddresses.IPv4Addrs,
+			adapterStatus.AssignedAddresses.IPv6Addrs, adapterStatus.IPv4Assigned,
+			adapterStatus.Mac)
+		return adapterStatus.AssignedAddresses, adapterStatus.IPv4Assigned,
 			adapterStatus.Mac, adapterStatus.IPAddrMisMatch
 	}
-	return nil, nil, false, nil, false
+	return types.AssignedAddrs{}, false, nil, false
 }
 
 func createVolumeInstanceMetrics(ctx *zedagentContext, reportMetrics *metrics.ZMetricMsg) {

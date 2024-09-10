@@ -62,7 +62,8 @@ func (z *zedrouter) updateVIFsForStateCollecting(
 		}
 		_, vifs, err := z.getArgsForNIStateCollecting(network)
 		if err == nil {
-			err = z.niStateCollector.UpdateCollectingForNI(*netConfig, vifs)
+			err = z.niStateCollector.UpdateCollectingForNI(*netConfig, vifs,
+				z.enableArpSnooping)
 		}
 		if err != nil {
 			z.log.Error(err)
@@ -167,10 +168,7 @@ func (z *zedrouter) updateNIStatusAfterAppNetworkActivate(status *types.AppNetwo
 		netInstStatus.AddVif(z.log, adapterStatus.Vif, adapterStatus.Mac,
 			status.UUIDandVersion.UUID)
 		netInstStatus.IPAssignments[adapterStatus.Mac.String()] =
-			types.AssignedAddrs{
-				IPv4Addr:  adapterStatus.AllocatedIPv4Addr,
-				IPv6Addrs: adapterStatus.AllocatedIPv6List,
-			}
+			adapterStatus.AssignedAddresses
 		z.publishNetworkInstanceStatus(netInstStatus)
 	}
 }

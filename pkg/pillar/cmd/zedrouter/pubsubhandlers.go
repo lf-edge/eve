@@ -50,7 +50,33 @@ func (z *zedrouter) handleGlobalConfigImpl(ctxArg interface{}, key string,
 			}
 			z.metricInterval = metricInterval
 		}
-		z.enableArpSnooping = gcp.GlobalValueBool(types.EnableARPSnoop)
+		enableArpSnooping := gcp.GlobalValueBool(types.EnableARPSnoop)
+		if z.enableArpSnooping != enableArpSnooping {
+			z.enableArpSnooping = enableArpSnooping
+			// Start/Stop ARP snooping in every activated Switch NI.
+			for _, item := range z.pubNetworkInstanceStatus.GetAll() {
+				niStatus := item.(types.NetworkInstanceStatus)
+				if !niStatus.Activated {
+					continue
+				}
+				if niStatus.Type != types.NetworkInstanceTypeSwitch {
+					// ARP snooping is only used in Switch NIs.
+					continue
+				}
+				niConfig := z.lookupNetworkInstanceConfig(niStatus.Key())
+				if niConfig == nil {
+					continue
+				}
+				_, vifs, err := z.getArgsForNIStateCollecting(niConfig.UUID)
+				if err == nil {
+					err = z.niStateCollector.UpdateCollectingForNI(
+						*niConfig, vifs, z.enableArpSnooping)
+				}
+				if err != nil {
+					z.log.Error(err)
+				}
+			}
+		}
 		z.localLegacyMACAddr = gcp.GlobalValueBool(types.NetworkLocalLegacyMACAddress)
 		z.niReconciler.ApplyUpdatedGCP(z.runCtx, *gcp)
 	}
@@ -222,7 +248,13 @@ func (z *zedrouter) handleNetworkInstanceCreate(ctxArg interface{}, key string,
 
 	// Set bridge IP address.
 	if status.Gateway != nil {
-		addrs := types.AssignedAddrs{IPv4Addr: status.Gateway}
+		addrs := types.AssignedAddrs{
+			IPv4Addrs: []types.AssignedAddr{
+				{
+					Address:    status.Gateway,
+					AssignedBy: types.AddressSourceEVEInternal,
+				}},
+		}
 		status.IPAssignments[status.BridgeMac.String()] = addrs
 		status.BridgeIPAddr = status.Gateway
 	}
@@ -358,8 +390,14 @@ func (z *zedrouter) handleNetworkInstanceModify(ctxArg interface{}, key string,
 	if status.BridgeMac != nil {
 		delete(status.IPAssignments, status.BridgeMac.String())
 	}
-	if status.Gateway != nil {
-		addrs := types.AssignedAddrs{IPv4Addr: status.Gateway}
+	if status.Gateway != nil && status.BridgeMac != nil {
+		addrs := types.AssignedAddrs{
+			IPv4Addrs: []types.AssignedAddr{
+				{
+					Address:    status.Gateway,
+					AssignedBy: types.AddressSourceEVEInternal,
+				}},
+		}
 		status.IPAssignments[status.BridgeMac.String()] = addrs
 		status.BridgeIPAddr = status.Gateway
 	}
