@@ -24,26 +24,29 @@ index b06f13e..a4b4f11 100644
      AccelState *accelerator;
      CPUArchIdList *possible_cpus;
 diff --git a/tools/qemu-xen/include/hw/core/cpu.h b/tools/qemu-xen/include/hw/core/cpu.h
-index 8f14573..628b31a 100644
+index 397fd3a..1bf357b 100644
 --- a/tools/qemu-xen/include/hw/core/cpu.h
 +++ b/tools/qemu-xen/include/hw/core/cpu.h
-@@ -374,6 +374,8 @@ struct CPUState {
+@@ -344,6 +344,9 @@ struct CPUState {
      bool created;
      bool stop;
      bool stopped;
 +    bool pinned;
 +    uint64_t cpumask;
-     bool unplug;
-     bool crash_occurred;
-     bool exit_request;
++
+ 
+     /* Should CPU start in powered-off state? */
+     bool start_powered_off;
+
 diff --git a/tools/qemu-xen/softmmu/cpus.c b/tools/qemu-xen/softmmu/cpus.c
-index a802e89..da56052 100644
+index 9cbc817..2867325 100644
 --- a/tools/qemu-xen/softmmu/cpus.c
 +++ b/tools/qemu-xen/softmmu/cpus.c
-@@ -2011,6 +2011,23 @@ static void qemu_dummy_start_vcpu(CPUState *cpu)
-                        QEMU_THREAD_JOINABLE);
- }
+@@ -72,6 +72,25 @@ static QemuMutex qemu_global_mutex;
+  */
+ static const AccelOpsClass *cpus_accel;
  
++
 +static inline void cpumask_clear_bit(uint64_t *mask, uint8_t bit)
 +{
 +    *mask &= ~(1ul << bit);
@@ -52,7 +55,7 @@ index a802e89..da56052 100644
 +static inline long cpumask_get_min_bit(uint64_t mask)
 +{
 +  return __builtin_ffsll(mask) - 1;
-+}
++  }
 +
 +static long pick_pcpu(uint64_t *cpumask)
 +{
@@ -61,13 +64,14 @@ index a802e89..da56052 100644
 +    return ret;
 +}
 +
- void qemu_init_vcpu(CPUState *cpu)
++
+ bool cpu_is_stopped(CPUState *cpu)
  {
-     MachineState *ms = MACHINE(qdev_get_machine());
-@@ -2019,6 +2036,20 @@ void qemu_init_vcpu(CPUState *cpu)
-     cpu->nr_threads =  ms->smp.threads;
+     return cpu->stopped || !runstate_is_running();
+@@ -635,6 +654,21 @@ void qemu_init_vcpu(CPUState *cpu)
      cpu->stopped = true;
      cpu->random_seed = qemu_guest_random_seed_thread_part1();
+ 
 +    cpu->pinned = ms->cpu_pin;
 +    static uint64_t vm_cpumask;
 +    uint64_t vcpu_cpumask;
@@ -82,15 +86,18 @@ index a802e89..da56052 100644
 +    }
 +
 +    cpu->cpumask = vcpu_cpumask;
- 
++
      if (!cpu->as) {
          /* If the target cpu hasn't set up any address spaces itself,
+          * give it the default one.
+
+         
 diff --git a/tools/qemu-xen/softmmu/vl.c b/tools/qemu-xen/softmmu/vl.c
-index c7c8abc..f514f59 100644
+index ea20b23..98287f4 100644
 --- a/tools/qemu-xen/softmmu/vl.c
 +++ b/tools/qemu-xen/softmmu/vl.c
-@@ -2829,6 +2829,68 @@ static void create_default_memdev(MachineState *ms, const char *path)
-                             &error_fatal);
+@@ -2631,6 +2631,68 @@ void qmp_x_exit_preconfig(Error **errp)
+     }
  }
  
 +static inline void cpumask_set_bit(uint64_t *mask, uint8_t bit)
@@ -107,15 +114,15 @@ index c7c8abc..f514f59 100644
 +    const char *cur = cpumask_str;
 +    bool range = false;
 +
-+    assert(cpumask_str != NULL);
++   assert(cpumask_str != NULL);
 +
 +    if (strcmp(cpumask_str, "") == 0)
 +        return 0;
 +
 +    if (cpumask_str[0] == '-') {
-+        warn_report("The CPU mask cannot start with -\n");
++       warn_report("The CPU mask cannot start with -\n");
 +        return 0;
-+    }
++   }
 +
 +    uint8_t last_set;
 +    while (*cur) {
@@ -124,7 +131,7 @@ index c7c8abc..f514f59 100644
 +        if (*cur == '-') {
 +            cur++;
 +            range = true;
-+            continue;
++           continue;
 +        }
 +        if (*cur == ',') {
 +            cur++;
@@ -138,7 +145,7 @@ index c7c8abc..f514f59 100644
 +        }
 +        if (end != cur) {
 +            if (num == 0 || num > sizeof(cpumask) * BITS_PER_BYTE)
-+                return 0;
++               return 0;
 +            if (range) {
 +                range = false;
 +                for (int i = last_set + 1; i < num; i++)
@@ -155,14 +162,24 @@ index c7c8abc..f514f59 100644
 +    return cpumask;
 +}
 +
- void qemu_init(int argc, char **argv, char **envp)
+ void qemu_init(int argc, char **argv)
  {
-     int i;
-@@ -4306,6 +4368,19 @@ void qemu_init(int argc, char **argv, char **envp)
- 
-     current_machine->boot_order = boot_order;
- 
-+    current_machine->cpumask = 0;
+     QemuOpts *opts;
+@@ -3357,6 +3419,7 @@ void qemu_init(int argc, char **argv)
+             case QEMU_OPTION_only_migratable:
+                 only_migratable = 1;
+                 break;
++	    	
+             case QEMU_OPTION_nodefaults:
+                 has_defaults = 0;
+                 break;
+@@ -3596,6 +3659,21 @@ void qemu_init(int argc, char **argv)
+     if (cpu_option) {
+         current_machine->cpu_type = parse_cpu_option(cpu_option);
+     }
++
++
++        current_machine->cpumask = 0;
 +    if (current_machine->cpumask_str) {
 +        current_machine->cpumask = cpumask_parse(current_machine->cpumask_str);
 +        if (!current_machine->cpumask) {
@@ -175,9 +192,11 @@ index c7c8abc..f514f59 100644
 +        }
 +    }
 +
-     /* parse features once if machine provides default cpu_type */
-     current_machine->cpu_type = machine_class->default_cpu_type;
-     if (cpu_option) {
+     /* NB: for machine none cpu_type could STILL be NULL here! */
+ 
+     qemu_resolve_machine_memdev();
+
+
 -- 
 2.35.1
 

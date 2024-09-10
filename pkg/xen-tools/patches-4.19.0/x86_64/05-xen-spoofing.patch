@@ -1,20 +1,20 @@
 diff --git a/tools/firmware/hvmloader/hvmloader.c b/tools/firmware/hvmloader/hvmloader.c
-index 598a226..0c3963a 100644
+index f8af88f..8dbb0cf 100644
 --- a/tools/firmware/hvmloader/hvmloader.c
 +++ b/tools/firmware/hvmloader/hvmloader.c
-@@ -135,9 +135,11 @@ static void init_hypercalls(void)
+@@ -136,10 +136,10 @@ static void init_hypercalls(void)
  
          if ( !strcmp("XenVMMXenVMM", signature) )
              break;
-+        if ( !strcmp("ZenZenZenZen", signature) )
-+            break;
++       if ( !strcmp("ZenZenZenZen", signature) )
++               break;
      }
  
 -    BUG_ON(strcmp("XenVMMXenVMM", signature) || ((eax - base) < 2));
-+    //BUG_ON( (strcmp("XenVMMXenVMM", signature) && strcmp("ZenZenZenZen", signature) ) || ((eax - base) < 2));
- 
+-
      /* Fill in hypercall transfer pages. */
      cpuid(base + 2, &eax, &ebx, &ecx, &edx);
+     for ( i = 0; i < eax; i++ )
 diff --git a/tools/libs/light/libxl_create.c b/tools/libs/light/libxl_create.c
 index 32d45dc..283b41b 100644
 --- a/tools/libs/light/libxl_create.c
@@ -153,19 +153,7 @@ index 97499a0..b500095 100644
          break;
  
      case 1:
-diff --git a/xen/include/asm-x86/hvm/domain.h b/xen/include/asm-x86/hvm/domain.h
-index bcc5621..a506710 100644
---- a/xen/include/asm-x86/hvm/domain.h
-+++ b/xen/include/asm-x86/hvm/domain.h
-@@ -159,6 +159,8 @@ struct hvm_domain {
-     bool_t                 mem_sharing_enabled;
-     bool_t                 qemu_mapcache_invalidate;
-     bool_t                 is_s3_suspended;
-+    bool_t                 spoof_xen;
-+    bool_t                 spoof_viridian;
- 
-     /*
-      * TSC value that VCPUs use to calculate their tsc_offset value.
+
 diff --git a/xen/include/public/arch-x86/cpuid.h b/xen/include/public/arch-x86/cpuid.h
 index ce46305..7e63c55 100644
 --- a/xen/include/public/arch-x86/cpuid.h
@@ -182,21 +170,21 @@ index ce46305..7e63c55 100644
   * Leaf 2 (0x40000x01)
   * EAX[31:16]: Xen major version.
 diff --git a/xen/include/public/hvm/params.h b/xen/include/public/hvm/params.h
-index 36832e4..2be4178 100644
+index 99c40b4..5bec661 100644
 --- a/xen/include/public/hvm/params.h
 +++ b/xen/include/public/hvm/params.h
-@@ -302,7 +302,10 @@
+@@ -290,7 +290,9 @@
  #define HVM_PARAM_MCA_CAP 38
  #define XEN_HVM_MCA_CAP_LMCE   (xen_mk_ullong(1) << 0)
  #define XEN_HVM_MCA_CAP_MASK   XEN_HVM_MCA_CAP_LMCE
-+#define HVM_PARAM_SPOOF_XEN    39
++#define HVM_PARAM_SPOOF_XEN 39
  
 -#define HVM_NR_PARAMS 39
-+#define HVM_PARAM_SPOOF_VIRIDIAN    40
-+
-+#define HVM_NR_PARAMS          41
++#define HVM_PARAM_SPOOF_VIRIDIAN 40
++#define HVM_NR_PARAMS 41
  
  #endif /* __XEN_PUBLIC_HVM_PARAMS_H__ */
+
 diff --git a/tools/xl/xl_parse.c b/tools/xl/xl_parse.c
 index 36832e4..2be4178 100644
 --- a/tools/xl/xl_parse.c
@@ -212,3 +200,18 @@ index 36832e4..2be4178 100644
          switch (xlu_cfg_get_list(config, "viridian",
                                   &viridian, &num_viridian, 1))
          {
+
+diff --git a/xen/arch/x86/include/asm/hvm/domain.h b/xen/arch/x86/include/asm/hvm/domain.h
+index dd9d837..9f2e863 100644
+--- a/xen/arch/x86/include/asm/hvm/domain.h
++++ b/xen/arch/x86/include/asm/hvm/domain.h
+@@ -106,6 +106,9 @@ struct hvm_domain {
+ 
+     bool                   is_s3_suspended;
+ 
++    bool                  spoof_xen;
++    bool                  spoof_virdian;
++
+     /* Compatibility setting for a bug in x2APIC LDR */
+     bool bug_x2apic_ldr_vcpu_id;
+

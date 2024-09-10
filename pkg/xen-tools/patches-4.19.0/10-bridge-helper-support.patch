@@ -1,6 +1,8 @@
+diff --git a/tools/qemu-xen/net/tap.c b/tools/qemu-xen/net/tap.c
+index 1bf085d..1887c4a 100644
 --- a/tools/qemu-xen/net/tap.c
 +++ b/tools/qemu-xen/net/tap.c
-@@ -62,7 +62,7 @@
+@@ -63,7 +63,7 @@ typedef struct TAPState {
      Notifier exit;
  } TAPState;
  
@@ -9,7 +11,7 @@
                            int fd, Error **errp);
  
  static void tap_send(void *opaque);
-@@ -300,7 +300,7 @@
+@@ -323,7 +323,7 @@ static void tap_exit_notify(Notifier *notifier, void *data)
      Error *err = NULL;
  
      if (s->down_script[0]) {
@@ -18,7 +20,7 @@
          if (err) {
              error_report_err(err);
          }
-@@ -397,7 +397,7 @@
+@@ -431,7 +431,7 @@ static TAPState *net_tap_fd_init(NetClientState *peer,
      return s;
  }
  
@@ -27,7 +29,7 @@
                            int fd, Error **errp)
  {
      int pid, status;
-@@ -422,6 +422,7 @@
+@@ -456,6 +456,7 @@ static void launch_script(const char *setup_script, const char *ifname,
          parg = args;
          *parg++ = (char *)setup_script;
          *parg++ = (char *)ifname;
@@ -35,16 +37,18 @@
          *parg = NULL;
          execv(setup_script, args);
          _exit(1);
-@@ -607,7 +608,7 @@
+@@ -648,8 +649,8 @@ int net_init_bridge(const Netdev *netdev, const char *name,
+ }
  
  static int net_tap_init(const NetdevTapOptions *tap, int *vnet_hdr,
-                         const char *setup_script, char *ifname,
+-                        const char *setup_script, char *ifname,
 -                        size_t ifname_sz, int mq_required, Error **errp)
++                        const char *setup_script, char *ifname, 
 +                        size_t ifname_sz, const char *bridge, int mq_required, Error **errp)
  {
      Error *err = NULL;
      int fd, vnet_hdr_required;
-@@ -629,7 +630,7 @@
+@@ -671,7 +672,7 @@ static int net_tap_init(const NetdevTapOptions *tap, int *vnet_hdr,
      if (setup_script &&
          setup_script[0] != '\0' &&
          strcmp(setup_script, "no") != 0) {
@@ -53,14 +57,20 @@
          if (err) {
              error_propagate(errp, err);
              close(fd);
-@@ -918,7 +919,9 @@
- 
+@@ -1003,8 +1004,14 @@ free_fail:
+         }
+
          for (i = 0; i < queues; i++) {
-             fd = net_tap_init(tap, &vnet_hdr, i >= 1 ? "no" : script,
+-            fd = net_tap_init(tap, &vnet_hdr, i >= 1 ? "no" : script,
 -                              ifname, sizeof ifname, queues > 1, errp);
-+                              ifname, sizeof ifname, 
-+			      tap->has_br ? tap->br : "bn1",
-+			      queues > 1, errp);
++
++           if(tap->br == NULL)
++                   fd = net_tap_init(tap, &vnet_hdr, i >= 1 ? "no" : script,
++                              ifname, sizeof ifname, "bn1" , queues > 1, errp);
++           else
++                    fd = net_tap_init(tap, &vnet_hdr, i >= 1 ? "no" : script,
++                              ifname, sizeof ifname, tap->br , queues > 1, errp);
++
              if (fd == -1) {
                  return -1;
              }
