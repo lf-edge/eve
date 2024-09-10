@@ -18,6 +18,10 @@ ADD ${XEN_SOURCE} /xen.tar.gz
 RUN [ -f "$(basename ${XEN_SOURCE})" ] || tar --absolute-names -xz < /xen.tar.gz && mv "/xen-${XEN_VERSION}" /xen
 
 WORKDIR /xen/xen
+COPY *.patch arch /tmp/
+#RUN cat /tmp/"$(uname -m)"/*.patch | patch -p1
+RUN cp /tmp/"$(uname -m)"/*.patch /tmp/
+RUN for p in /tmp/*.patch ; do patch -p1 < "$p" || exit 1 ; done
 RUN chmod +x scripts/* || :
 
 RUN make defconfig && \
