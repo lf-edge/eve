@@ -1,8 +1,8 @@
-diff --git a/arch/x86/hvm/hvm.c b/xen/arch/x86/hvm/hvm.c
-index 4723f5d..311e8a5 100644
+diff --git a/arch/x86/hvm/hvm.c b/arch/x86/hvm/hvm.c
+index f49e29f..54da255 100644
 --- a/arch/x86/hvm/hvm.c
 +++ b/arch/x86/hvm/hvm.c
-@@ -4256,6 +4256,12 @@
+@@ -4332,6 +4332,12 @@ static int hvm_set_param(struct domain *d, uint32_t index, uint64_t value)
      case HVM_PARAM_IOREQ_SERVER_PFN:
          d->arch.hvm.ioreq_gfn.base = value;
          break;
@@ -15,89 +15,97 @@ index 4723f5d..311e8a5 100644
      case HVM_PARAM_NR_IOREQ_SERVER_PAGES:
      {
          unsigned int i;
-diff --git a/arch/x86/hvm/viridian/viridian.c b/xen/arch/x86/hvm/viridian/viridian.c
-index 44c8e6c..b45bdbf 100644
+
+diff --git a/arch/x86/hvm/viridian/viridian.c b/arch/x86/hvm/viridian/viridian.c
+index 21480d9..6a54abf 100644
 --- a/arch/x86/hvm/viridian/viridian.c
 +++ b/arch/x86/hvm/viridian/viridian.c
-@@ -121,9 +121,9 @@ void cpuid_viridian_leaves(const struct vcpu *v, uint32_t leaf,
+@@ -124,10 +124,10 @@ void cpuid_viridian_leaves(const struct vcpu *v, uint32_t leaf,
      {
      case 0:
          res->a = 0x40000006; /* Maximum leaf */
 -        memcpy(&res->b, "Micr", 4);
 -        memcpy(&res->c, "osof", 4);
 -        memcpy(&res->d, "t Hv", 4);
-+        memcpy(&res->b, "Wetw", 4);
-+        memcpy(&res->c, "era ", 4);
-+        memcpy(&res->d, "Labs", 4);
-         break;
+-        break;
++       memcpy(&res->b, "Wetw", 4);
++       memcpy(&res->c, "era ", 4);
++       memcpy(&res->d, "Labs", 4);
++       break;
  
      case 1:
-diff --git a/arch/x86/traps.c b/xen/arch/x86/traps.c
-index 97499a0..b500095 100644
+         memcpy(&res->a, "Hv#1", 4);
+
+diff --git a/arch/x86/traps.c b/arch/x86/traps.c
+index 708136f..33a02e9 100644
 --- a/arch/x86/traps.c
 +++ b/arch/x86/traps.c
-@@ -892,9 +892,17 @@ void cpuid_hypervisor_leaves(const struct vcpu *v, uint32_t leaf,
+@@ -1075,10 +1075,18 @@ void cpuid_hypervisor_leaves(const struct vcpu *v, uint32_t leaf,
      {
      case 0:
          res->a = base + limit; /* Largest leaf */
 -        res->b = XEN_CPUID_SIGNATURE_EBX;
 -        res->c = XEN_CPUID_SIGNATURE_ECX;
 -        res->d = XEN_CPUID_SIGNATURE_EDX;
+-        break;
 +        if (!d->arch.hvm.spoof_xen ) {
-+               res->b = XEN_CPUID_SIGNATURE_EBX;
-+               res->c = XEN_CPUID_SIGNATURE_ECX;
-+               res->d = XEN_CPUID_SIGNATURE_EDX;
-+        } else
++                 res->b = XEN_CPUID_SIGNATURE_EBX;
++                 res->c = XEN_CPUID_SIGNATURE_ECX;
++                 res->d = XEN_CPUID_SIGNATURE_EDX;
++         }
++        else
 +        {
-+               res->b = ZEN_CPUID_SIGNATURE_EBX;
-+               res->c = ZEN_CPUID_SIGNATURE_ECX;
-+               res->d = ZEN_CPUID_SIGNATURE_EDX;
++                res->b = ZEN_CPUID_SIGNATURE_EBX;
++                res->c = ZEN_CPUID_SIGNATURE_ECX;
++                res->d = ZEN_CPUID_SIGNATURE_EDX;
 +        }
-+
-         break;
++       break;
  
      case 1:
-diff --git a/include/asm-x86/hvm/domain.h b/xen/include/asm-x86/hvm/domain.h
-index bcc5621..a506710 100644
---- a/include/asm-x86/hvm/domain.h
-+++ b/include/asm-x86/hvm/domain.h
-@@ -166,6 +166,8 @@
+         res->a = (xen_major_version() << 16) | xen_minor_version();
+
+diff --git a/arch/x86/include/asm/hvm/domain.h b/arch/x86/include/asm/hvm/domain.h
+index dd9d837..357cfb7 100644
+--- a/arch/x86/include/asm/hvm/domain.h
++++ b/arch/x86/include/asm/hvm/domain.h
+@@ -105,6 +105,8 @@ struct hvm_domain {
+     bool                   is_in_uc_mode;
  
-     bool_t                 qemu_mapcache_invalidate;
-     bool_t                 is_s3_suspended;
-+    bool_t                 spoof_xen;
-+    bool_t                 spoof_viridian;
+     bool                   is_s3_suspended;
++    bool                  spoof_xen;
++    bool                   spoof_viridian;
  
-     /*
-      * TSC value that VCPUs use to calculate their tsc_offset value.
-diff --git a/include/public/arch-x86/cpuid.h b/xen/include/public/arch-x86/cpuid.h
-index ce46305..7e63c55 100644
+     /* Compatibility setting for a bug in x2APIC LDR */
+     bool bug_x2apic_ldr_vcpu_id;
+
+
+diff --git a/include/public/arch-x86/cpuid.h b/include/public/arch-x86/cpuid.h
+index 3bb0dd2..a77edf2 100644
 --- a/include/public/arch-x86/cpuid.h
 +++ b/include/public/arch-x86/cpuid.h
-@@ -53,6 +53,10 @@
+@@ -35,6 +35,9 @@
+ #define XEN_CPUID_SIGNATURE_EBX 0x566e6558 /* "XenV" */
  #define XEN_CPUID_SIGNATURE_ECX 0x65584d4d /* "MMXe" */
  #define XEN_CPUID_SIGNATURE_EDX 0x4d4d566e /* "nVMM" */
- 
 +#define ZEN_CPUID_SIGNATURE_EBX 0x5A6e655A /* "ZenZ" */
 +#define ZEN_CPUID_SIGNATURE_ECX 0x655A6e65 /* "enZe" */
 +#define ZEN_CPUID_SIGNATURE_EDX 0x6e655A6e /* "nZen" */
-+
+ 
  /*
   * Leaf 2 (0x40000x01)
-  * EAX[31:16]: Xen major version.
-diff --git a/include/public/hvm/params.h b/xen/include/public/hvm/params.h
-index 36832e4..2be4178 100644
+
+diff --git a/include/public/hvm/params.h b/include/public/hvm/params.h
+index 99c40b4..f1c77e2 100644
 --- a/include/public/hvm/params.h
 +++ b/include/public/hvm/params.h
-@@ -302,7 +302,10 @@
+@@ -290,7 +290,8 @@
  #define HVM_PARAM_MCA_CAP 38
  #define XEN_HVM_MCA_CAP_LMCE   (xen_mk_ullong(1) << 0)
  #define XEN_HVM_MCA_CAP_MASK   XEN_HVM_MCA_CAP_LMCE
-+#define HVM_PARAM_SPOOF_XEN    39
- 
+-
 -#define HVM_NR_PARAMS 39
++#define HVM_PARAM_SPOOF_XEN    39
 +#define HVM_PARAM_SPOOF_VIRIDIAN    40
-+
 +#define HVM_NR_PARAMS          41
  
  #endif /* __XEN_PUBLIC_HVM_PARAMS_H__ */

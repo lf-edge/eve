@@ -5,7 +5,7 @@
 
 FROM lfedge/eve-uefi:d821658883d6748d8bbf0d6640c62288e3ce8c6f as uefi-build
 
-FROM lfedge/eve-alpine:82df60e43ab9f8c935584b8c7b4d0a4b0271d608 as runx-build
+FROM lfedge/eve-alpine:1f7685f95a475c6bbe682f0b976f12180b6c8726 as runx-build
 ENV BUILD_PKGS mkinitfs gcc musl-dev e2fsprogs chrony agetty
 RUN eve-alpine-deploy.sh
 
@@ -20,16 +20,18 @@ RUN gcc -s -o /chroot2 /tmp/chroot2.c -Wall -Werror
 RUN gcc -s -o /hacf /tmp/hacf.c -Wall -Werror
 RUN mkinitfs -n -F base -i /init-initrd -o /runx-initrd
 
-FROM lfedge/eve-alpine:82df60e43ab9f8c935584b8c7b4d0a4b0271d608 as build
+FROM lfedge/eve-alpine:1f7685f95a475c6bbe682f0b976f12180b6c8726 as build
 ENV BUILD_PKGS \
     gcc make libc-dev dev86 xz-dev perl bash python3-dev \
     gettext iasl util-linux-dev ncurses-dev glib-dev \
     pixman-dev libaio-dev yajl-dev argp-standalone \
     linux-headers git patch texinfo tar libcap-ng-dev \
-    attr-dev flex bison cmake libusb-dev zstd-dev
+    attr-dev flex bison cmake libusb-dev zstd-dev \
+    python3 build-base ninja
+
 ENV BUILD_PKGS_arm64 dtc-dev
 
-ENV PKGS alpine-baselayout musl-utils bash libaio libbz2 glib pixman yajl keyutils libusb xz-libs libuuid sudo zstd-libs
+ENV PKGS alpine-baselayout libgcc bash musl-utils libaio libbz2 glib pixman yajl keyutils libusb xz-libs libuuid zstd-libs util-linux-misc
 ENV PKGS_arm64 libfdt
 
 RUN eve-alpine-deploy.sh
@@ -57,11 +59,11 @@ RUN rm -rf /out/usr/man
 RUN strip /out/usr/lib/* || :
 
 # When changing this version, also update SEABIOS_UPSTREAM_REVISION to whatever is in `Config.mk` in the xen source
-ENV XEN_VERSION 4.15.0
+ENV XEN_VERSION 4.19.0
 ENV XEN_SOURCE=https://downloads.xenproject.org/release/xen/${XEN_VERSION}/xen-${XEN_VERSION}.tar.gz
 ENV EXTRA_QEMUU_CONFIGURE_ARGS="--enable-libusb --enable-linux-aio \
-    --enable-vhost-net --enable-vhost-vsock --enable-vhost-scsi --enable-vhost-kernel \
-    --enable-vhost-user --enable-linux-io-uring --enable-zstd"
+--enable-vhost-net --enable-vhost-kernel \
+--enable-vhost-user --enable-linux-io-uring --enable-zstd"
 
 WORKDIR /
 
@@ -80,7 +82,7 @@ RUN cat /patches/*.patch /patches/"$(uname -m)"/*.patch | patch -p1
 # Note that Xen's `configure` command uses this env variable SEABIOS_UPSTREAM_URL to find the seabios source.
 ENV SEABIOS_UPSTREAM_URL /seabios.git
 # this revision should be kept in sync with the XEN_VERSION by reading `Config.mk` in the xen source
-ENV SEABIOS_UPSTREAM_REVISION rel-1.14.0
+ENV SEABIOS_UPSTREAM_REVISION rel-1.16.3
 ADD --keep-git-dir git://xenbits.xen.org/seabios.git#${SEABIOS_UPSTREAM_REVISION} ${SEABIOS_UPSTREAM_URL}
 # we need this because it will complain about ambiguous refs
 RUN git config --global core.warnambiguousrefs false
@@ -89,10 +91,13 @@ RUN mkdir -p /out
 
 # FEATURES="--enable-stubdom --enable-vtpm-stubdom --enable-vtpmmgr-stubdom"
 COPY gmp.patch /xen/stubdom
+
 WORKDIR /xen
+
 # disable golang as it does not play well together with musl (stderr is defined as FILE* const and fails to compile)
 RUN ./configure --prefix=/usr --disable-xen --disable-golang --disable-qemu-traditional --disable-docs --enable-9pfs \
-                --with-system-ovmf=/usr/lib/xen/boot/ovmf.bin --disable-stubdom
+ --with-system-ovmf=/usr/lib/xen/boot/ovmf.bin --disable-stubdom \
+ --enable-vhost-vsock --enable-vhost-scsi
 RUN make -j "$(getconf _NPROCESSORS_ONLN)" && make dist
 RUN dist/install.sh /out
 
