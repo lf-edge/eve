@@ -47,7 +47,14 @@ func TestPostKubeconfig(t *testing.T) {
 		},
 		AppNetAdapterList: []types.AppNetAdapterStatus{
 			{
-				AllocatedIPv4Addr: net.ParseIP("192.168.1.1"),
+				AssignedAddresses: types.AssignedAddrs{
+					IPv4Addrs: []types.AssignedAddr{
+						{
+							Address: net.ParseIP("192.168.1.1"),
+						},
+					},
+					IPv6Addrs: nil,
+				},
 			},
 		},
 	})
@@ -83,7 +90,11 @@ func TestPostKubeconfig(t *testing.T) {
 	niStatus := types.NetworkInstanceStatus{
 		NetworkInstanceInfo: types.NetworkInstanceInfo{
 			IPAssignments: map[string]types.AssignedAddrs{"k": {
-				IPv4Addr: net.ParseIP("192.168.1.1"),
+				IPv4Addrs: []types.AssignedAddr{
+					{
+						Address: net.ParseIP("192.168.1.1"),
+					},
+				},
 			}},
 		},
 	}
@@ -161,7 +172,14 @@ func TestRequestPatchEnvelopes(t *testing.T) {
 		},
 		AppNetAdapterList: []types.AppNetAdapterStatus{
 			{
-				AllocatedIPv4Addr: net.ParseIP("192.168.1.1"),
+				AssignedAddresses: types.AssignedAddrs{
+					IPv4Addrs: []types.AssignedAddr{
+						{
+							Address: net.ParseIP("192.168.1.1"),
+						},
+					},
+					IPv6Addrs: nil,
+				},
 			},
 		},
 	})
@@ -309,7 +327,14 @@ func TestHandleAppInstanceDiscovery(t *testing.T) {
 		},
 		AppNetAdapters: []types.AppNetAdapterStatus{
 			{
-				AllocatedIPv4Addr: net.ParseIP("192.168.1.1"),
+				AssignedAddresses: types.AssignedAddrs{
+					IPv4Addrs: []types.AssignedAddr{
+						{
+							Address: net.ParseIP("192.168.1.1"),
+						},
+					},
+					IPv6Addrs: nil,
+				},
 				AppNetAdapterConfig: types.AppNetAdapterConfig{
 					IfIdx:           2,
 					AllowToDiscover: true,
@@ -320,8 +345,15 @@ func TestHandleAppInstanceDiscovery(t *testing.T) {
 	err = appInstanceStatus.Publish(u.String(), a)
 	g.Expect(err).ToNot(gomega.HaveOccurred())
 	discoverableNet := types.AppNetAdapterStatus{
-		AllocatedIPv4Addr: net.ParseIP("192.168.1.2"),
-		VifInfo:           types.VifInfo{VifConfig: types.VifConfig{Vif: "eth0"}},
+		AssignedAddresses: types.AssignedAddrs{
+			IPv4Addrs: []types.AssignedAddr{
+				{
+					Address: net.ParseIP("192.168.1.2"),
+				},
+			},
+			IPv6Addrs: nil,
+		},
+		VifInfo: types.VifInfo{VifConfig: types.VifConfig{Vif: "eth0"}},
 	}
 	a1 := types.AppInstanceStatus{
 		UUIDandVersion: types.UUIDandVersion{
@@ -367,7 +399,7 @@ func TestHandleAppInstanceDiscovery(t *testing.T) {
 	expected := map[string][]msrv.AppInstDiscovery{
 		u1.String(): {{
 			Port:    discoverableNet.Vif,
-			Address: discoverableNet.AllocatedIPv4Addr.String(),
+			Address: discoverableNet.AssignedAddresses.IPv4Addrs[0].Address.String(),
 		}},
 	}
 	g.Expect(got).To(gomega.BeEquivalentTo(expected))

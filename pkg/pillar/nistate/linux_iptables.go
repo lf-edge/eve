@@ -56,7 +56,7 @@ func (lc *LinuxCollector) fetchIptablesCounters() []aclCounters {
 	for _, niState := range lc.nis {
 		for _, niVif := range niState.vifs {
 			vifs = append(vifs, vif{
-				ifName: niVif.VIF.HostIfName,
+				ifName: niVif.HostIfName,
 				bridge: niState.bridge.BrIfName,
 			})
 		}

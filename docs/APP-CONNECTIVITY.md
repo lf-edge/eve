@@ -216,6 +216,25 @@ to retrieve cloud-init configuration, obtain information from EVE (e.g. device U
 hostname, external IP address) or to download [patch envelopes](PATCH-ENVELOPES.md).
 More information about metadata server can be found in [ECO-METADATA.md](ECO-METADATA.md).
 
+#### IPAM
+
+Every Local Network Instance must be configured with an IPv4 network subnet and an IP
+range within this subnet for automatic IP allocations. Host IP addresses from this subnet
+that do not fall within the IP range are available for manual assignment.
+
+Whether an IP address is selected manually or dynamically assigned by EVE from the configured
+IP range, an internal DHCP server is used to distribute these IP addresses to applications.
+Container applications are deployed inside a "shim VM", which EVE prepares, ensuring that
+a DHCP client is running for every virtual interface connected to a network instance
+This guarantees that the IP address is received and applied before the application starts.
+In contrast, VM applications are responsible for starting their own DHCP client and applying
+the received IP addresses.
+
+Regardless of the application type, EVE does not automatically assume that the allocated
+IP address is actually in use. Instead, it monitors the set of IP leases granted by the internal
+DHCP server and updates the set of application IP addresses in the published info messages
+accordingly.
+
 ### Switch Network Instance
 
 Switch Network Instance is a simple L2-only bridge between connected applications and
@@ -240,6 +259,52 @@ inbound ACL rules are that much more important.
 
 A metadata HTTP server is run for a switch network instance only if it has a port attached
 that has an IP address.
+
+#### IP address detection
+
+Unlike a Local Network Instance, a switch network instance is configured without any IP
+configuration, and EVE does not run an internal DHCP server. Instead, if IP connectivity
+is required, IP addresses must be assigned statically within the connected applications
+or provided by an external DHCP server or another application offering DHCP services.
+
+Since EVE is not in control of IP address allocations and leases, it must monitor application
+traffic to learn which IP addresses are being used and report this information to the controller.
+
+In the case of an external DHCP server (IPv4), EVE captures the DHCPACK packet from the server,
+which confirms the leased IP address. Because EVE manages MAC address allocations, it knows
+the MAC address of every application's virtual interface (VIF). It can then map the CHADDR
+(Client Hardware Address) attribute to the corresponding application VIF and learn the assigned
+IP address from the YIADDR (your, i.e. client, IP Address) attribute. Additionally, EVE reads
+the DHCP option 51 (Lease Time), if available, to determine how long the leased IP address
+is valid. If EVE does not observe an IP renewal within this period, it assumes that the IP address
+is no longer in use and reports this change to the controller.
+
+For statically assigned IPv4 addresses, EVE captures both ARP reply and request packets to learn
+the application VIF IP assignment from either Sender IP + MAC or Target IP + MAC attribute
+pairs. Since ARP cache entries have a limited lifetime — typically around 2 minutes — EVE expects
+to see at least one ARP packet for every assigned IP within a 10-minute window (this is not
+configurable). If no ARP packet is observed within this period for a previously detected IP
+assignment, EVE assumes that the IP address has been removed and reports this change to
+the controller. EVE also captures ARP packets for IP addresses configured via DHCP, but these
+are ignored as the information from the previously captured DHCPACK takes precedence.
+Note that ARP-based IP detection is enabled by default but can be disabled by setting
+the configuration item `network.switch.enable.arpsnoop` to `false`. Change in this config
+options will apply to already deployed switch network instances.
+
+For an external DHCPv6 server, EVE captures DHCPv6 REPLY messages. It learns the target MAC
+address from the DUID option (Client Identifier, option code 1), while the IPv6 address
+and its valid lifetime are provided by the IA Address (option code 5).
+
+To learn IPv6 addresses assigned using SLAAC (Stateless Address Auto Configuration),
+EVE captures unicast ICMPv6 Neighbor Solicitation messages. These are sent from the interface
+with the assigned IPv6 address to check if the address is free or already in use by another
+host — a process known as Duplicate Address Detection (DAD). The ICMPv6 packet sent to detect
+IP duplicates for a particular VIF IP will have the VIF MAC address as the source address
+in the Ethernet header. EVE uses this, along with the "Target Address" field from the ICMPv6
+header, to identify the assigned IPv6 address.
+
+EVE is capable of detecting multiple IPs assigned to the same VIF MAC address. This is commonly
+seen when applications use VLAN sub-interfaces, which share the parent interface's MAC address.
 
 ### Network Instance Ports
 
