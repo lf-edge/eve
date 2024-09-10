@@ -30,9 +30,6 @@ import (
 // is in the same units as min and max. When config is all zeros,
 // then stop and close channel
 
-// XXX test that it can handle the TCP timeout and space out the next timers
-// based on processing time ...
-
 // Ticker handle for caller
 type FlexTickerHandle struct {
 	C           <-chan time.Time
