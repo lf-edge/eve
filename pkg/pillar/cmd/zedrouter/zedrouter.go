@@ -520,10 +520,7 @@ func (z *zedrouter) run(ctx context.Context) (err error) {
 						niKey, vif.NetAdapterName)
 					continue
 				}
-				netStatus.IPAssignments[mac] = types.AssignedAddrs{
-					IPv4Addr:  newAddrs.IPv4Addr,
-					IPv6Addrs: newAddrs.IPv6Addrs,
-				}
+				netStatus.IPAssignments[mac] = newAddrs.AssignedAddrs
 				z.publishNetworkInstanceStatus(netStatus)
 				appKey := vif.App.String()
 				appStatus := z.lookupAppNetworkStatus(appKey)
@@ -1099,11 +1096,13 @@ func (z *zedrouter) lookupNetworkInstanceStatusByAppIP(
 	for _, st := range items {
 		status := st.(types.NetworkInstanceStatus)
 		for _, addrs := range status.IPAssignments {
-			if ip.Equal(addrs.IPv4Addr) {
-				return &status
+			for _, assignedIP := range addrs.IPv4Addrs {
+				if ip.Equal(assignedIP.Address) {
+					return &status
+				}
 			}
-			for _, nip := range addrs.IPv6Addrs {
-				if ip.Equal(nip) {
+			for _, assignedIP := range addrs.IPv6Addrs {
+				if ip.Equal(assignedIP.Address) {
 					return &status
 				}
 			}
@@ -1286,8 +1285,15 @@ func (z *zedrouter) lookupAppNetworkStatusByAppIP(ip net.IP) *types.AppNetworkSt
 	for _, st := range items {
 		status := st.(types.AppNetworkStatus)
 		for _, adapterStatus := range status.AppNetAdapterList {
-			if adapterStatus.AllocatedIPv4Addr.Equal(ip) {
-				return &status
+			for _, adapterIP := range adapterStatus.AssignedAddresses.IPv4Addrs {
+				if adapterIP.Address.Equal(ip) {
+					return &status
+				}
+			}
+			for _, adapterIP := range adapterStatus.AssignedAddresses.IPv6Addrs {
+				if adapterIP.Address.Equal(ip) {
+					return &status
+				}
 			}
 		}
 	}
