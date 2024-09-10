@@ -40,7 +40,14 @@ func TestMemoryDriverPubSub(t *testing.T) {
 		},
 		AppNetAdapterList: []types.AppNetAdapterStatus{
 			{
-				AllocatedIPv4Addr: net.ParseIP("192.168.1.1"),
+				AssignedAddresses: types.AssignedAddrs{
+					IPv4Addrs: []types.AssignedAddr{
+						{
+							Address:    net.ParseIP("192.168.1.1"),
+							AssignedBy: types.AddressSourceInternalDHCP,
+						},
+					},
+				},
 			},
 		},
 	}

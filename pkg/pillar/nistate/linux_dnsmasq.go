@@ -123,26 +123,21 @@ func (lc *LinuxCollector) processIPLeases(niInfo *niInfo) (
 			LogAndErrPrefix, niInfo)
 		return nil
 	}
-	for i := range niInfo.vifs {
-		vifAddrs := &niInfo.vifs[i]
-		vif := vifAddrs.VIF
+	for _, vif := range niInfo.vifs {
 		ipLease := niInfo.ipLeases.findLease(vif.App.String(), vif.GuestIfMAC, true)
-		if ipLease == nil && vifAddrs.IPv4Addr != nil {
-			prevAddrs := *vifAddrs
-			vifAddrs.IPv4Addr = nil
-			newAddrs := *vifAddrs
-			addrUpdates = append(addrUpdates, VIFAddrsUpdate{
-				Prev: prevAddrs,
-				New:  newAddrs,
-			})
-		} else if ipLease != nil && !ipLease.ipAddr.Equal(vifAddrs.IPv4Addr) {
-			prevAddrs := *vifAddrs
-			vifAddrs.IPv4Addr = ipLease.ipAddr
-			newAddrs := *vifAddrs
-			addrUpdates = append(addrUpdates, VIFAddrsUpdate{
-				Prev: prevAddrs,
-				New:  newAddrs,
-			})
+		if ipLease == nil {
+			// Remove all recorded internally-granted IP leases for this VIF.
+			sourceMask := int(types.AddressSourceInternalDHCP)
+			update := vif.delIPs(sourceMask, false)
+			if update != nil {
+				addrUpdates = append(addrUpdates, *update)
+			}
+		} else if ipLease != nil {
+			update := vif.addIP(ipLease.ipAddr, types.AddressSourceInternalDHCP,
+				ipLease.leaseTime)
+			if update != nil {
+				addrUpdates = append(addrUpdates, *update)
+			}
 		}
 	}
 	return addrUpdates

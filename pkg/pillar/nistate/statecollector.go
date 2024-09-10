@@ -10,7 +10,6 @@
 package nistate
 
 import (
-	"bytes"
 	"fmt"
 	"net"
 
@@ -40,7 +39,7 @@ type Collector interface {
 	// Note that not every change in network instance config is supported. For example,
 	// network instance type (switch / local) cannot change.
 	UpdateCollectingForNI(
-		niConfig types.NetworkInstanceConfig, vifs []AppVIF) error
+		niConfig types.NetworkInstanceConfig, vifs []AppVIF, enableArpSnoop bool) error
 
 	// StopCollectingForNI : stop collecting state data for network instance.
 	// It is called by zedrouter whenever a network instance is about to be deleted.
@@ -135,45 +134,11 @@ func (vifs VIFAddrsList) LookupByAdapterName(
 	return nil
 }
 
-// LookupByGuestMAC : Lookup VIF by the MAC address of the guest interface.
-func (vifs VIFAddrsList) LookupByGuestMAC(mac net.HardwareAddr) *VIFAddrs {
-	for i := range vifs {
-		if bytes.Equal(vifs[i].VIF.GuestIfMAC, mac) {
-			return &vifs[i]
-		}
-	}
-	return nil
-}
-
-// LookupByIP : Lookup VIF by the IP address assigned to the guest interface.
-// Returns first match.
-func (vifs VIFAddrsList) LookupByIP(ip net.IP) *VIFAddrs {
-	for i := range vifs {
-		if vifs[i].HasIP(ip) {
-			return &vifs[i]
-		}
-	}
-	return nil
-}
-
 // VIFAddrs lists IP addresses assigned to a VIF on the guest side
 // (inside the app). This is provided to zedrouter by Collector.
 type VIFAddrs struct {
 	types.AssignedAddrs
 	VIF AppVIF
-}
-
-// HasIP returns true if the given IP address is assigned to this VIF.
-func (vif VIFAddrs) HasIP(ip net.IP) bool {
-	if ip.Equal(vif.IPv4Addr) {
-		return true
-	}
-	for _, ipv6Addr := range vif.IPv6Addrs {
-		if ip.Equal(ipv6Addr) {
-			return true
-		}
-	}
-	return false
 }
 
 // VIFAddrsUpdate describes a change in the address assignment for a single VIF.

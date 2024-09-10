@@ -8,7 +8,6 @@ package zedagent
 import (
 	"bytes"
 	"fmt"
-	"net"
 	"time"
 
 	"github.com/golang/protobuf/ptypes/timestamp"
@@ -134,11 +133,13 @@ func prepareAndPublishNetworkInstanceInfoMsg(ctx *zedagentContext,
 		for mac, addrs := range status.IPAssignments {
 			assignment := new(zinfo.ZmetIPAssignmentEntry)
 			assignment.MacAddress = mac
-			if !addrs.IPv4Addr.Equal(net.IP{}) {
-				assignment.IpAddress = append(assignment.IpAddress, addrs.IPv4Addr.String())
+			for _, assignedIP := range addrs.IPv4Addrs {
+				assignment.IpAddress = append(assignment.IpAddress,
+					assignedIP.Address.String())
 			}
-			for _, ip := range addrs.IPv6Addrs {
-				assignment.IpAddress = append(assignment.IpAddress, ip.String())
+			for _, assignedIP := range addrs.IPv6Addrs {
+				assignment.IpAddress = append(assignment.IpAddress,
+					assignedIP.Address.String())
 			}
 			info.IpAssignments = append(info.IpAssignments, assignment)
 		}

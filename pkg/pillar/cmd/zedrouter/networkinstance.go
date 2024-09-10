@@ -542,7 +542,7 @@ func (z *zedrouter) doUpdateActivatedNetworkInstance(config types.NetworkInstanc
 	z.processNIReconcileStatus(niRecStatus, status)
 	_, vifs, err := z.getArgsForNIStateCollecting(config.UUID)
 	if err == nil {
-		err = z.niStateCollector.UpdateCollectingForNI(config, vifs)
+		err = z.niStateCollector.UpdateCollectingForNI(config, vifs, z.enableArpSnooping)
 	}
 	if err != nil {
 		z.log.Error(err)
