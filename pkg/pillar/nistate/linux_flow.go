@@ -8,8 +8,10 @@ package nistate
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"net"
 	"strconv"
+	"sync"
 	"syscall"
 	"time"
 
@@ -41,6 +43,10 @@ const (
 	// flowLogPrefix allows to filter logs specific to flow collecting
 	// and packet sniffing.
 	flowLogPrefix = LogAndErrPrefix + " (FlowStats)"
+
+	// Statically configured IP address, detected using ARP snooping, is considered
+	// valid until we do not see any more ARPs for this IP for more than 10 minutes.
+	staticIPValidDuration = 10 * time.Minute
 )
 
 type capturedPacket struct {
@@ -98,8 +104,8 @@ func (lc *LinuxCollector) collectFlows() (flows []types.IPFlow) {
 			var sequence int
 			ipFlow := types.IPFlow{
 				Scope: types.FlowScope{
-					AppUUID:        vif.VIF.App,
-					NetAdapterName: vif.VIF.NetAdapterName,
+					AppUUID:        vif.App,
+					NetAdapterName: vif.NetAdapterName,
 					BrIfName:       niInfo.bridge.BrIfName,
 					NetUUID:        niInfo.config.UUID,
 				},
@@ -117,8 +123,8 @@ func (lc *LinuxCollector) collectFlows() (flows []types.IPFlow) {
 				sequence++
 			}
 			for _, flowrec := range timeoutedFlows {
-				if flowrec.vif.App != vif.VIF.App ||
-					flowrec.vif.NetAdapterName != vif.VIF.NetAdapterName {
+				if flowrec.vif.App != vif.App ||
+					flowrec.vif.NetAdapterName != vif.NetAdapterName {
 					continue
 				}
 				ipFlow.Flows = append(ipFlow.Flows, flowrec.FlowRec)
@@ -129,7 +135,7 @@ func (lc *LinuxCollector) collectFlows() (flows []types.IPFlow) {
 
 			// Append DNS flows corresponding to this app.
 			for _, dnsReq := range dnsReqs {
-				if !vif.HasIP(dnsReq.appIP) {
+				if !vif.hasIP(dnsReq.appIP) {
 					continue
 				}
 				ipFlow.DNSReqs = append(ipFlow.DNSReqs, dnsReq.DNSReq)
@@ -190,16 +196,16 @@ func (lc *LinuxCollector) convertConntrackToFlow(
 	// refers to a remote endpoint, even for outside initiated flows, meaning
 	// that "src" and "dst" is indeed a very confusing naming (already used
 	// in EVE API therefore not easy to change).
-	vif := vifs.LookupByIP(entry.Forward.SrcIP)
+	vif := lookupVIFByIP(entry.Forward.SrcIP, vifs)
 	forwSrcApp = vif != nil
 	if !forwSrcApp {
-		vif = vifs.LookupByIP(entry.Forward.DstIP)
+		vif = lookupVIFByIP(entry.Forward.DstIP, vifs)
 		forwDstApp = vif != nil
 		if !forwDstApp {
-			vif = vifs.LookupByIP(entry.Reverse.SrcIP)
+			vif = lookupVIFByIP(entry.Reverse.SrcIP, vifs)
 			backSrcApp = vif != nil
 			if !backSrcApp {
-				vif = vifs.LookupByIP(entry.Reverse.DstIP)
+				vif = lookupVIFByIP(entry.Reverse.DstIP, vifs)
 				backDstApp = vif != nil
 			}
 		}
@@ -222,7 +228,7 @@ func (lc *LinuxCollector) convertConntrackToFlow(
 	// similar to RFC5130 to merge two bidirectional flow using the method of "Perimeter",
 	// here we define the flow src is always the local App endpoint, the flow dst will
 	// be the opposite endpoint.
-	ipFlow.vif = vif.VIF
+	ipFlow.vif = vif.AppVIF
 	ipFlow.Flow.Proto = int32(entry.Forward.Protocol)
 	if forwSrcApp {
 		// Src initiated flow, forward-src is the src, reverse-src is the flow dst
@@ -277,8 +283,9 @@ func (lc *LinuxCollector) convertConntrackToFlow(
 // This function is merely capturing packets and then sending them to runStateCollecting,
 // so that all state collecting and processing happens from the main event loop
 // (to simplify and avoid race conditions...).
-func (lc *LinuxCollector) sniffDNSandDHCP(ctx context.Context,
+func (lc *LinuxCollector) sniffDNSandDHCP(ctx context.Context, wg *sync.WaitGroup,
 	br NIBridge, niType types.NetworkInstanceType, enableArpSnoop bool) {
+	defer wg.Done()
 	var (
 		err         error
 		snapshotLen int32 = 1280             // draft-madi-dnsop-udp4dns-00
@@ -502,13 +509,13 @@ func (lc *LinuxCollector) processARPPacket(
 		return nil
 	}
 
-	var vif *VIFAddrs
+	var vif *vifInfo
 	var weAreSource bool
 	var gotAddress []byte
 	if arp.Operation == layers.ARPReply || arp.Operation == layers.ARPRequest {
-		vif = niInfo.vifs.LookupByGuestMAC(arp.DstHwAddress)
+		vif = niInfo.lookupVIFByGuestMAC(arp.DstHwAddress)
 		if vif == nil {
-			vif = niInfo.vifs.LookupByGuestMAC(arp.SourceHwAddress)
+			vif = niInfo.lookupVIFByGuestMAC(arp.SourceHwAddress)
 			if vif != nil {
 				weAreSource = true
 			}
@@ -520,21 +527,16 @@ func (lc *LinuxCollector) processARPPacket(
 		return nil
 	}
 
-	prevAddrs := *vif
 	if weAreSource {
 		gotAddress = arp.SourceProtAddress
 	} else {
 		gotAddress = arp.DstProtAddress
 	}
-	if vif.IPv4Addr.Equal(gotAddress) {
-		return nil
+	validUntil := time.Now().Add(staticIPValidDuration)
+	update := vif.addIP(gotAddress, types.AddressSourceStatic, validUntil)
+	if update != nil {
+		addrUpdates = append(addrUpdates, *update)
 	}
-	vif.IPv4Addr = gotAddress
-	newAddrs := *vif
-	addrUpdates = append(addrUpdates, VIFAddrsUpdate{
-		Prev: prevAddrs,
-		New:  newAddrs,
-	})
 	return addrUpdates
 }
 
@@ -559,7 +561,7 @@ func (lc *LinuxCollector) processDHCPPacket(
 			// need to check those in payload to see if it's for an app.
 			isBroadcast = true
 		} else {
-			foundDstMac = niInfo.vifs.LookupByGuestMAC(etherPkt.DstMAC) != nil
+			foundDstMac = niInfo.lookupVIFByGuestMAC(etherPkt.DstMAC) != nil
 		}
 	}
 	if !foundDstMac && !isBroadcast {
@@ -579,16 +581,22 @@ func (lc *LinuxCollector) processDHCPPacket(
 		}
 		dhcpv4 := dhcpLayer.(*layers.DHCPv4)
 		var isReplyAck bool
+		var validUntil time.Time
 		if dhcpv4.Operation == layers.DHCPOpReply {
 			opts := dhcpv4.Options
 			for _, opt := range opts {
-				if opt.Type == layers.DHCPOptMessageType &&
-					int(opt.Data[0]) == int(layers.DHCPMsgTypeAck) {
-					isReplyAck = true
-					break
+				switch opt.Type {
+				case layers.DHCPOptMessageType:
+					if int(opt.Data[0]) == int(layers.DHCPMsgTypeAck) {
+						isReplyAck = true
+					}
+				case layers.DHCPOptLeaseTime:
+					leaseTimeSecs := binary.BigEndian.Uint32(opt.Data)
+					validUntil = time.Now().Add(time.Duration(leaseTimeSecs) * time.Second)
 				}
 			}
 		}
+
 		if !isReplyAck {
 			// This is indeed a DHCP packet but not the DHCP Reply type.
 			return nil, true
@@ -607,20 +615,15 @@ func (lc *LinuxCollector) processDHCPPacket(
 			return nil, true
 		}
 
-		vif := niInfo.vifs.LookupByGuestMAC(dhcpv4.ClientHWAddr)
+		vif := niInfo.lookupVIFByGuestMAC(dhcpv4.ClientHWAddr)
 		if vif == nil {
 			return nil, true
 		}
-		if vif.IPv4Addr.Equal(dhcpv4.YourClientIP) {
-			return nil, true
+		update := vif.addIP(dhcpv4.YourClientIP, types.AddressSourceExternalDHCP,
+			validUntil)
+		if update != nil {
+			addrUpdates = append(addrUpdates, *update)
 		}
-		prevAddrs := *vif
-		vif.IPv4Addr = dhcpv4.YourClientIP
-		newAddrs := *vif
-		addrUpdates = append(addrUpdates, VIFAddrsUpdate{
-			Prev: prevAddrs,
-			New:  newAddrs,
-		})
 		return addrUpdates, true
 	}
 
@@ -640,29 +643,32 @@ func (lc *LinuxCollector) processDHCPPacket(
 		// This is indeed a DHCP packet but not the DHCP Reply type.
 		return nil, true
 	}
+	var vif *vifInfo
+	var validUntil time.Time
 	for _, opt := range dhcpv6.Options {
-		if opt.Code != layers.DHCPv6OptClientID {
-			continue
+		switch opt.Code {
+		case layers.DHCPv6OptClientID:
+			clientOption := &layers.DHCPv6DUID{}
+			clientOption.DecodeFromBytes(opt.Data)
+			vif = niInfo.lookupVIFByGuestMAC(clientOption.LinkLayerAddress)
+		case layers.DHCPv6OptIAAddr:
+			// Parse IA Address option to get valid-lifetime.
+			if len(opt.Data) >= 24 {
+				// Valid-lifetime is at offset 20-23 (4 bytes).
+				validLifetimeSecs := binary.BigEndian.Uint32(opt.Data[20:24])
+				validUntil = time.Now().Add(time.Duration(validLifetimeSecs) * time.Second)
+			}
 		}
-		clientOption := &layers.DHCPv6DUID{}
-		clientOption.DecodeFromBytes(opt.Data)
-		vif := niInfo.vifs.LookupByGuestMAC(clientOption.LinkLayerAddress)
-		if vif == nil {
-			return nil, true
-		}
-		if isAddrPresent(vif.IPv6Addrs, dhcpv6.LinkAddr) {
-			return nil, true
-		}
-		prevAddrs := *vif
-		vif.IPv6Addrs = append(vif.IPv6Addrs, dhcpv6.LinkAddr)
-		newAddrs := *vif
-		addrUpdates = append(addrUpdates, VIFAddrsUpdate{
-			Prev: prevAddrs,
-			New:  newAddrs,
-		})
-		return addrUpdates, true
 	}
-	return nil, true
+	if vif == nil {
+		return nil, true
+	}
+	update := vif.addIP(dhcpv6.LinkAddr, types.AddressSourceExternalDHCP,
+		validUntil)
+	if update != nil {
+		addrUpdates = append(addrUpdates, *update)
+	}
+	return addrUpdates, true
 }
 
 // Process captured ICMPv6 NS packet for a switched network instance to learn
@@ -671,10 +677,10 @@ func (lc *LinuxCollector) processDHCPPacket(
 // by processing this packet.
 func (lc *LinuxCollector) processDADProbe(
 	niInfo *niInfo, packet gopacket.Packet) (addrUpdates []VIFAddrsUpdate) {
-	var vif *VIFAddrs
+	var vif *vifInfo
 	if etherLayer := packet.Layer(layers.LayerTypeEthernet); etherLayer != nil {
 		etherPkt := etherLayer.(*layers.Ethernet)
-		vif = niInfo.vifs.LookupByGuestMAC(etherPkt.SrcMAC)
+		vif = niInfo.lookupVIFByGuestMAC(etherPkt.SrcMAC)
 	}
 	if vif == nil {
 		return
@@ -695,16 +701,15 @@ func (lc *LinuxCollector) processDADProbe(
 		return
 	}
 	icmp6 := icmp6Layer.(*layers.ICMPv6NeighborSolicitation)
-	if isAddrPresent(vif.IPv6Addrs, icmp6.TargetAddress) {
-		return nil
+	// DAD is not performed periodically, therefore we should not remove the IP address
+	// from the list after some time duration just because we have not seen another
+	// ICMPv6 NS packet.
+	undefinedValidity := time.Time{}
+	update := vif.addIP(icmp6.TargetAddress, types.AddressSourceSLAAC,
+		undefinedValidity)
+	if update != nil {
+		addrUpdates = append(addrUpdates, *update)
 	}
-	prevAddrs := *vif
-	vif.IPv6Addrs = append(vif.IPv6Addrs, icmp6.TargetAddress)
-	newAddrs := *vif
-	addrUpdates = append(addrUpdates, VIFAddrsUpdate{
-		Prev: prevAddrs,
-		New:  newAddrs,
-	})
 	return addrUpdates
 }
 
@@ -765,11 +770,11 @@ func (lc *LinuxCollector) processDNSPacketInfo(
 	}
 }
 
-func isAddrPresent(list []net.IP, addr net.IP) bool {
-	for i := 0; i < len(list); i++ {
-		if addr.Equal(list[i]) {
-			return true
+func lookupVIFByIP(ip net.IP, vifs []*vifInfo) *vifInfo {
+	for _, vif := range vifs {
+		if vif.hasIP(ip) {
+			return vif
 		}
 	}
-	return false
+	return nil
 }
