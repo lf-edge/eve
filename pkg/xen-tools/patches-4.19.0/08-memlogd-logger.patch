@@ -155,7 +155,7 @@ index dac1b8ddb8..a368fe6ba0 100644
      if (rc) return rc;
  
 diff --git a/tools/xl/xl_utils.c b/tools/xl/xl_utils.c
-index 4503ac7ea0..1f646c6400 100644
+index b0d23b2..949d281 100644
 --- a/tools/xl/xl_utils.c
 +++ b/tools/xl/xl_utils.c
 @@ -27,6 +27,8 @@
@@ -164,10 +164,10 @@ index 4503ac7ea0..1f646c6400 100644
  
 +#include "../libs/light/xentoollog_external.h"
 +
- void dolog(const char *file, int line, const char *func, char *fmt, ...)
- {
-     va_list ap;
-@@ -264,14 +266,17 @@ int do_daemonize(char *name, const char *pidfile)
+ #ifndef O_CLOEXEC
+ #define O_CLOEXEC 0
+ #endif
+@@ -268,14 +270,16 @@ int do_daemonize(const char *name, const char *pidfile)
  
      postfork();
  
@@ -175,20 +175,19 @@ index 4503ac7ea0..1f646c6400 100644
 -    if (ret) {
 -        LOG("failed to open logfile %s: %s",fullname,strerror(errno));
 -        exit(-1);
--    }
-+    logfile = xtl_logger_create_external(name);
++    logfile = xtl_logger_create_external((char *)name);
 +    if (logfile < 0) {
-+        ret = libxl_create_logfile(ctx, name, &fullname);
-+        if (ret) {
-+            LOG("failed to open logfile %s: %s",fullname,strerror(errno));
-+            exit(-1);
-+        }
- 
--    CHK_SYSCALL(logfile = open(fullname, O_WRONLY|O_CREAT|O_APPEND, 0644));
++           ret = libxl_create_logfile(ctx, name, &fullname);
++           if (ret) {
++               LOG("failed to open logfile %s: %s",fullname,strerror(errno));
++               exit(-1);
++           }
++          CHK_SYSCALL(logfile = open(fullname, O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0644));
++          free(fullname);
+     }
+-
+-    CHK_SYSCALL(logfile = open(fullname, O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0644));
 -    free(fullname);
-+        CHK_SYSCALL(logfile = open(fullname, O_WRONLY|O_CREAT|O_APPEND, 0644));
-+        free(fullname);
-+    }
      assert(logfile >= 3);
  
      CHK_SYSCALL(nullfd = open("/dev/null", O_RDONLY));

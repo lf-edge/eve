@@ -123,26 +123,27 @@ index 708583b..a33ee1e 100644
      "-k language     use keyboard layout (for example 'fr' for French)\n",
      QEMU_ARCH_ALL)
 diff --git a/tools/qemu-xen/softmmu/vl.c b/tools/qemu-xen/softmmu/vl.c
-index 4eb9d1f..c7c8abc 100644
+index ea20b23..59ff7c7 100644
 --- a/tools/qemu-xen/softmmu/vl.c
 +++ b/tools/qemu-xen/softmmu/vl.c
-@@ -2868,6 +2868,7 @@ void qemu_init(int argc, char **argv, char **envp)
-     BlockdevOptionsQueue bdo_queue = QSIMPLEQ_HEAD_INITIALIZER(bdo_queue);
-     QemuPluginList plugin_list = QTAILQ_HEAD_INITIALIZER(plugin_list);
-     int mem_prealloc = 0; /* force preallocation of physical target memory */
-+    bool cpu_pin = false;
- 
-     os_set_line_buffering();
- 
-@@ -3638,6 +3639,9 @@ void qemu_init(int argc, char **argv, char **envp)
+@@ -173,6 +173,7 @@ static QemuPluginList plugin_list = QTAILQ_HEAD_INITIALIZER(plugin_list);
+ static BlockdevOptionsQueue bdo_queue = QSIMPLEQ_HEAD_INITIALIZER(bdo_queue);
+ static bool nographic = false;
+ static int mem_prealloc; /* force preallocation of physical target memory */
++static bool cpu_pin = false;
+ static const char *vga_model = NULL;
+ static DisplayOptions dpy;
+ static int num_serial_hds;
+@@ -3360,6 +3361,10 @@ void qemu_init(int argc, char **argv)
              case QEMU_OPTION_nodefaults:
                  has_defaults = 0;
                  break;
 +	    case QEMU_OPTION_cpu_pin:
 +		cpu_pin = true;
 +		break;
++
              case QEMU_OPTION_xen_domid:
-                 if (!(xen_available())) {
+                 if (!(accel_find("xen")) && !(accel_find("kvm"))) {
                      error_report("Option not supported for this target");
 
 base-commit: 9c55fdd5e54c5ea4bf238cee787f13a03eac1c86
