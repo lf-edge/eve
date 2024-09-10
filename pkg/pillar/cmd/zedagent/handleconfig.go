@@ -1200,8 +1200,22 @@ func updateLocalServerMap(getconfigCtx *getconfigContext, localServerURL string)
 				continue
 			}
 			if localServerIP != nil {
-				// check if the defined IP of localServer equals the allocated IP of the app
-				if adapterStatus.AllocatedIPv4Addr.Equal(localServerIP) {
+				// Check if the defined IP of localServer equals one of the IPs
+				// allocated to the app.
+				var matchesApp bool
+				for _, ip := range adapterStatus.AssignedAddresses.IPv4Addrs {
+					if ip.Address.Equal(localServerIP) {
+						matchesApp = true
+						break
+					}
+				}
+				for _, ip := range adapterStatus.AssignedAddresses.IPv6Addrs {
+					if ip.Address.Equal(localServerIP) {
+						matchesApp = true
+						break
+					}
+				}
+				if matchesApp {
 					srvAddr := localServerAddr{
 						localServerAddr: localServerURL,
 						bridgeIP:        adapterStatus.BridgeIPAddr,
