@@ -1,0 +1,19 @@
+# Copyright (c) 2024 Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+#include <tunables/global>
+
+@{exec_path} = /usr/bin/swtpm
+profile swtpm @{exec_path} {
+    #include <abstractions/base>
+
+    # allow necessary access for operations
+    /usr/bin/swtpm                  rm,
+
+    # to rw socket, log, etc files.
+    owner /run/swtpm/{,*,**}        rwk,
+
+    # to save/load tpm state for vms.
+    owner /persist/swtpm/{,*,**}    rwk,
+
+}

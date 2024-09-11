@@ -18,6 +18,8 @@ FIRSTBOOTFILE="$ZTMPDIR/first-boot"
 FIRSTBOOT=
 TPM_DEVICE_PATH="/dev/tpmrm0"
 SECURITYFSPATH=/sys/kernel/security
+SWTPM_RUN_PATH=/run/swtpm
+SWTPM_PERSIST_PATH=/persist/swtpm
 PATH=$BINDIR:$PATH
 MIN_DISKSPACE=4096 # MBytes
 
@@ -130,6 +132,11 @@ percent_used() {
     fi
 }
 
+# /persist/pubsub-large does not need to be persisted across reboots, but
+# is in /persist to avoid using overlayfs aka memory for content which might
+# be Megabytes in size
+rm -rf /persist/pubsub-large
+
 # free_space <dataset name> (without leading '/')
 # return value is truncated to MBytes
 # Note that we use df even for zfs since the "available" property in zfs
@@ -144,7 +151,7 @@ free_space() {
 # If there is less than 4Mbytes (MIN_DISKSPACE) then remove the content of the
 # following directories in order until we have that amount of available space
 # following sub directories:
-PERSIST_CLEANUPS='log netdump kcrashes memory-monitor/output eve-info pubsub-large patchEnvelopesCache patchEnvelopesUsageCache newlog/keepSentQueue newlog/failedUpload newlog/appUpload newlog/devUpload containerd-system-root vault/downloader vault/verifier agentdebug'
+PERSIST_CLEANUPS='log netdump kcrashes memory-monitor/output eve-info patchEnvelopesCache patchEnvelopesUsageCache newlog/keepSentQueue newlog/failedUpload newlog/appUpload newlog/devUpload containerd-system-root vault/downloader vault/verifier agentdebug'
 # NOTE that we can not cleanup /persist/containerd and /persist/{vault,clear}/volumes since those are used by applications.
 #
 # Note that we need to free up some space before Linuxkit starts containerd,
@@ -188,5 +195,15 @@ mkdir -p "$ZTMPDIR/LedBlinkCounter"
 echo '{"BlinkCounter": 1}' > "$ZTMPDIR/LedBlinkCounter/ledconfig.json"
 
 mkdir -p $DPCDIR
+
+# This directories is used by swtpm to create its communication socket and save
+# its tpm states. 101:101 is actually vtpm:vtpm.
+# XXX : use names instead of numeric uid/gid
+mkdir -p $SWTPM_RUN_PATH
+mkdir -p $SWTPM_PERSIST_PATH
+chown 101:101 $SWTPM_RUN_PATH
+chown 101:101 $SWTPM_PERSIST_PATH
+chmod 740 $SWTPM_RUN_PATH
+chmod 740 $SWTPM_PERSIST_PATH
 
 echo "$(date -Ins -u) onboot.sh done"

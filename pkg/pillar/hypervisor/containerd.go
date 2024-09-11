@@ -5,6 +5,7 @@ package hypervisor
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"time"
@@ -142,7 +143,12 @@ func (ctx ctrdContext) Create(domainName string, cfgFilename string, config *typ
 	defer done()
 	_ = ctx.ctrdClient.CtrStopContainer(ctrdCtx, domainName, true)
 
-	return ctx.ctrdClient.CtrCreateTask(ctrdCtx, domainName)
+	task, err := ctx.ctrdClient.CtrCreateTask(ctrdCtx, domainName, ctx.ctrdClient.CtrLogIOCreator(domainName))
+	if err != nil {
+		return math.MinInt, logError("failed to create task: %v", err)
+	}
+
+	return int(task.Pid()), err
 }
 
 func (ctx ctrdContext) Start(domainName string) error {

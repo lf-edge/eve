@@ -1,0 +1,48 @@
+From ae6ba8002197ca6fcf67b8979e173e1f66dc2157 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Ren=C3=AA=20de=20Souza=20Pinto?= <rene@renesp.com.br>
+Date: Tue, 11 Jun 2024 15:52:11 +0000
+Subject: [PATCH] Allow to build commands for musl libc
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Perform some changes in order to build nvidia-ctk for alpine:
+
+- Build static binaries
+- Remove RTLD_DEEPBIND (musl doesn't support it), so use RTLD_GLOBAL which
+  will make the symbols of the loading object available for symbols
+  resolution of subsequently loaded shared objects by dl_open().
+
+Signed-off-by: Renê de Souza Pinto <rene@renesp.com.br>
+---
+ Makefile                                            | 2 +-
+ vendor/github.com/NVIDIA/go-nvml/pkg/dl/dl_linux.go | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/Makefile b/Makefile
+index e694f6c..adaaf78 100644
+--- a/Makefile
++++ b/Makefile
+@@ -60,7 +60,7 @@ endif
+ cmds: $(CMD_TARGETS)
+ 
+ ifneq ($(shell uname),Darwin)
+-EXTLDFLAGS = -Wl,--export-dynamic -Wl,--unresolved-symbols=ignore-in-object-files
++EXTLDFLAGS = -Wl,--export-dynamic -Wl,--unresolved-symbols=ignore-in-object-files -static
+ else
+ EXTLDFLAGS = -Wl,-undefined,dynamic_lookup
+ endif
+diff --git a/vendor/github.com/NVIDIA/go-nvml/pkg/dl/dl_linux.go b/vendor/github.com/NVIDIA/go-nvml/pkg/dl/dl_linux.go
+index ae3acd0..4900784 100644
+--- a/vendor/github.com/NVIDIA/go-nvml/pkg/dl/dl_linux.go
++++ b/vendor/github.com/NVIDIA/go-nvml/pkg/dl/dl_linux.go
+@@ -22,5 +22,5 @@ package dl
+ import "C"
+ 
+ const (
+-	RTLD_DEEPBIND = C.RTLD_DEEPBIND
++	RTLD_DEEPBIND = C.RTLD_GLOBAL
+ )
+-- 
+2.43.0
+

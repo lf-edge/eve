@@ -18,7 +18,7 @@ ZTMPDIR=/run/global
 DPCDIR=$ZTMPDIR/DevicePortConfig
 FIRSTBOOTFILE=$ZTMPDIR/first-boot
 FIRSTBOOT=
-AGENTS="diag zedagent ledmanager nim nodeagent domainmgr loguploader tpmmgr vaultmgr zedmanager zedrouter downloader verifier baseosmgr wstunnelclient volumemgr watcher zfsmanager usbmanager zedkube"
+AGENTS="diag zedagent ledmanager nim nodeagent domainmgr loguploader tpmmgr vaultmgr zedmanager zedrouter downloader verifier baseosmgr wstunnelclient volumemgr watcher zfsmanager usbmanager zedkube vcomlink"
 TPM_DEVICE_PATH="/dev/tpmrm0"
 PATH=$BINDIR:$PATH
 TPMINFOTEMPFILE=/var/tmp/tpminfo.txt
@@ -447,10 +447,10 @@ if [ ! -s "$DEVICE_CERT_NAME" ]; then
 else
     echo "$(date -Ins -u) Using existing device key pair"
 fi
-if [ ! -s $CONFIGDIR/server ] || [ ! -s $CONFIGDIR/root-certificate.pem ]; then
-    echo "$(date -Ins -u) No server or root-certificate to connect to. Done" | tee /dev/console
-    exit 0
-fi
+while [ ! -s $CONFIGDIR/server ] || [ ! -s $CONFIGDIR/root-certificate.pem ]; do
+    echo "$(date -Ins -u) No server or root-certificate to connect to. Wait for them" | tee /dev/console
+    sleep 10
+done
 
 if [ -c $TPM_DEVICE_PATH ] && ! [ -f $DEVICE_KEY_NAME ]; then
     echo "$(date -Ins -u) device-steps: TPM device, creating additional security certificates"

@@ -217,7 +217,7 @@ def generate_commit_message(branches, repo_owner, repo_name, verbose=False):
         commit_message += "\n"
 
     arch_list = f"[{', '.join(get_short_arch_flavor(branch) for branch in branches)}]"
-    commit_subject = f"Kernel update - {arch_list}\n\n"
+    commit_subject = f"Kernel update - {arch_list}\n\nThis commit changes:\n"
 
     commit_message = commit_subject + commit_message
     return commit_message

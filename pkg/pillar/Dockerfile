@@ -8,7 +8,7 @@ ARG BUILD_PKGS_BASE="git gcc linux-headers libc-dev make linux-pam-dev m4 findut
                      libintl libuuid libtirpc libblkid libcrypto1.1 zlib tar"
 
 # we use the same image in several places
-ARG EVE_ALPINE_IMAGE=lfedge/eve-alpine:1f7685f95a475c6bbe682f0b976f12180b6c8726
+ARG EVE_ALPINE_IMAGE=lfedge/eve-alpine:82df60e43ab9f8c935584b8c7b4d0a4b0271d608
 
 FROM lfedge/eve-dom0-ztools:09f378d92d6c8ada04fb8e9cf5d45fc8fdf934f9 as zfs
 RUN mkdir /out
@@ -149,9 +149,6 @@ COPY --from=dnsmasq /usr/sbin/dnsmasq /out/opt/zededa/bin/dnsmasq
 # to avoid conflicts and speedup re-builds
 COPY --from=build /final /out
 
-# We have to make sure configs survive in some location, but they don't pollute
-# the default /config (since that is expected to be an empty mount point)
-ADD conf/root-certificate.pem conf/server conf/server.production /out/opt/zededa/examples/config/
 ADD scripts/device-steps.sh \
     scripts/onboot.sh \
     scripts/handlezedserverconfig.sh \

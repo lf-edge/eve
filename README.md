@@ -281,7 +281,7 @@ Since a full Raspberry Pi 4 support is only available in upstream Linux kernels 
 
 1. Make sure you have a clean build directory (since this is a non-standard build) `rm -rf dist/arm64`
 2. Build a live image `make ZARCH=arm64 HV=kvm live-raw` (or `make ZARCH=arm64 HV=xen live-raw` if you want XEN by default)
-3. Flash the `dist/arm64/current/live.raw` live EVE image onto your SD card by [following these instructions](#how-to-write-eve-image-and-installer-onto-an-sd-card-or-an-installer-medium)
+3. Flash the `dist/arm64/current/live.raw` live EVE image onto your SD card by [following these instructions](#how-to-write-the-eve-image-and-installer-onto-storage-media)
 
 Once your Raspberry Pi 4 is happily running an EVE image you can start using EVE controller for further updates (so that you don't ever have to take an SD card out of your board). Build your rootfs by running `make ZARCH=arm64 HV=xen rootfs` (or `make ZARCH=arm64 HV=kvm rootfs` if you want KVM by default) and give resulting `dist/arm64/current/installer/rootfs.img` to the controller.
 
@@ -291,7 +291,7 @@ Unlike Raspberry Pi boards, HiKey boards come with a built-in flash, so we will 
 
 1. Start by cloning EVE git repository `git clone https://github.com/lf-edge/eve.git`
 2. Build an installer image `cd eve ; make ZARCH=arm64 installer`
-3. Flash the `dist/arm64/current/installer.raw` onto the USB stick by [following these instructions](#how-to-write-eve-image-and-installer-onto-an-sd-card-or-an-installer-medium)
+3. Flash the `dist/arm64/current/installer.raw` onto the USB stick by [following these instructions](#how-to-write-the-eve-image-and-installer-onto-storage-media)
 
 Since by default HiKey is using WiFi for all its networking, you will also
 have to provide SSID and password for your WiFi network. On Mac OS X you
@@ -384,7 +384,7 @@ In Jetson nano, from January 22, 2021, it became possible to save the u-boot to 
 1. Follow steps in [instruction](https://github.com/lf-edge/eve/blob/master/boards/nvidia/jetson/) for flash jetson boot flow partitions to qspi.
 2. Make sure you have a clean build directory (since this is a non-standard build) `rm -rf dist/arm64`
 3. Build a live image `make ZARCH=arm64 HV=kvm live-raw` (Only KVM is supported)
-4. Flash the `dist/arm64/current/live.raw` live EVE image onto your SD card by [following these instructions](#how-to-write-eve-image-and-installer-onto-an-sd-card-or-an-installer-medium)
+4. Flash the `dist/arm64/current/live.raw` live EVE image onto your SD card by [following these instructions](#how-to-write-the-eve-image-and-installer-onto-storage-media)
 
 ## How to use on a Jetson Xavier NX platform
 
@@ -400,7 +400,7 @@ See [NVIDIA-NX.md](./docs/NVIDIA-NX.md) for instructions on how to build and dep
 
 1. Set SW801 to 1100 for switch boot device to SD card.
 2. Build a live image `make ZARCH=arm64 HV=kvm PLATFORM=imx8mq_evk live-raw` (Only KVM is supported)
-3. Flash the `dist/arm64/current/live.raw` live EVE image onto your SD card by [following these instructions](#how-to-write-eve-image-and-installer-onto-an-sd-card-or-an-installer-medium)
+3. Flash the `dist/arm64/current/live.raw` live EVE image onto your SD card by [following these instructions](#how-to-write-the-eve-image-and-installer-onto-storage-media)
 
 ## How to use on an i.MX 8M Plus Phytec phyBOARD-Pollux board
 
@@ -408,12 +408,12 @@ See [NVIDIA-NX.md](./docs/NVIDIA-NX.md) for instructions on how to build and dep
 
 1. Set bootmode switch (S3) to boot device from an SD card (positions 1,2,3,4 set to ON,OFF,OFF,OFF).
 2. Build a live image `make ZARCH=arm64 HV=kvm PLATFORM=imx8mp_pollux live-raw` (Only KVM is supported)
-3. Flash the `dist/arm64/current/live.raw` live EVE image onto your SD card by [following these instructions](#how-to-write-eve-image-and-installer-onto-an-sd-card-or-an-installer-medium)
+3. Flash the `dist/arm64/current/live.raw` live EVE image onto your SD card by [following these instructions](#how-to-write-the-eve-image-and-installer-onto-storage-media)
 
 ### Installing on eMMC (phyBOARD-Pollux)
 
 1. Build an installation raw image `make ZARCH=arm64 HV=kvm PLATFORM=imx8mp_pollux installer-raw` (Only KVM is supported)
-2. Flash the `dist/arm64/current/installer.raw` install EVE image onto your SD card by [following these instructions](#how-to-write-eve-image-and-installer-onto-an-sd-card-or-an-installer-medium)
+2. Flash the `dist/arm64/current/installer.raw` install EVE image onto your SD card by [following these instructions](#how-to-write-the-eve-image-and-installer-onto-storage-media)
 3. Set bootmode switch (S3) to boot device from an SD card (positions 1,2,3,4 set to ON,OFF,OFF,OFF).
 4. Boot the device from SD Card. Installation process should initialize automatically, the device will be powered off when the process is done
 5. Remove the SD Card from the device
@@ -430,12 +430,12 @@ according to the main boot device: SD Card or eMMC.
 
 1. Set [Boot Select switch (SW1)](http://ess-wiki.advantech.com.tw/view/File:RSB-3720_connector_location_2021-10-21_143853.jpg) to boot device from an SD card (positions 1,2,3,4 set to ON,ON,OFF,OFF).
 2. Build a live image `make ZARCH=arm64 HV=kvm PLATFORM=imx8mp_epc_r3720 live-raw` (Only KVM is supported)
-3. Flash the `dist/arm64/current/live.raw` live EVE image onto your SD card by [following these instructions](#how-to-write-eve-image-and-installer-onto-an-sd-card-or-an-installer-medium)
+3. Flash the `dist/arm64/current/live.raw` live EVE image onto your SD card by [following these instructions](#how-to-write-the-eve-image-and-installer-onto-storage-media)
 
 ### Installing on eMMC (EPC-R3720)
 
 1. Build an installation raw image `make ZARCH=arm64 HV=kvm PLATFORM=imx8mp_epc_r3720 installer-raw` (Only KVM is supported)
-2. Flash the `dist/arm64/current/installer.raw` install EVE image onto your SD card by [following these instructions](#how-to-write-eve-image-and-installer-onto-an-sd-card-or-an-installer-medium)
+2. Flash the `dist/arm64/current/installer.raw` install EVE image onto your SD card by [following these instructions](#how-to-write-the-eve-image-and-installer-onto-storage-media)
 3. Set [Boot Select switch (SW1)](http://ess-wiki.advantech.com.tw/view/File:RSB-3720_connector_location_2021-10-21_143853.jpg) to boot device from an SD card (positions 1,2,3,4 set to ON,ON,OFF,OFF).
 4. Boot the device from SD Card. Installation process should initialize automatically, the device will be powered off when the process is done
 5. Remove the SD Card from the device
@@ -448,7 +448,7 @@ The following steps have been tested on Intel UP Squared Board (AAEON UP-APL01) 
 
 1. Start by cloning EVE git repository `git clone https://github.com/lf-edge/eve.git`
 2. Build an installer image `cd eve ; make ZARCH=amd64 installer`
-3. Flash the `dist/amd64/current/installer.raw` onto the USB stick by [following these instructions](#how-to-write-eve-image-and-installer-onto-an-sd-card-or-an-installer-medium)
+3. Flash the `dist/amd64/current/installer.raw` onto the USB stick by [following these instructions](#how-to-write-the-eve-image-and-installer-onto-storage-media)
 4. Now plug the USB Disk on your UP Squared Board and the installer should now replace the existing OS on the UP Squared board with EVE
 
 You will see an installation sequence scroll on screen and the output that indicates a successful install will look like this:
@@ -467,47 +467,93 @@ NOTICE: Device will now power off. Remove the USB stick and power it back on to 
 
 At this point you should remove your USB Disk from the UP Squared Board slot and reboot the board. If everything went as planned you will boot right into the running system.
 
-## How to write EVE image and installer onto an SD card or an installer medium
+## How to write the EVE image and installer onto storage media
 
-EVE is an very low-level engine that requires producing USB sticks and SD cards that are formatted in a very particular way in order to make EVE install and/or run on a given Edge Node. This, in turn, requires EVE hackers to be comfortable with following instructions which, with a simple typo, can completely destroy the system you're running them on (by overwriting your own disk instead of SD card or a USB stick).
+These instructions show you how to install EVE or the installer onto an installation medium, such as disk or USB or SD card.
+
+EVE is an operating system with installer with particular requirements for the storage on which it is installed.
+It installs to the entire medium. You must be careful to enter commands correctly and be sure the selected
+devices are correct. If you select the wrong target device, you can completely overwrite the main storage disk and operating
+system system you're running on, instead of the target storage device.
 
 PROCEED AT YOUR OWN RISK
 
-If you want to write any binary artifact foo.bin produced by an EVE build onto an SD card (or any other installation medium) try the following:
+To install any binary EVE artifact, such as `installer.img`, onto an installation medium, do the following. Be sure to replace
+`installer.img` with the name of the artifact.
 
-Find the device that you will be writing to using
+1. Prepare the artifact.
+1. Find the target device.
+1. Flash the image to the device.
 
-### On Ubuntu
+### 1. Prepare the artifact
+
+Prepare the artifact, either by downloading from the [releases page](http://github.com/lf-edge/eve/releases) or running the EVE
+docker command `docker run lfedge/eve <command>`. For example, `docker run lfedge/eve` will show the help message.
+
+If you want a raw disk image to install, which is useful for SD cards and USB, run:
+
+```sh
+docker run lfedge/eve installer_raw > installer.img
+```
+
+For an ISO, useful for CD/DVD:
+
+```sh
+docker run lfedge/eve installer_iso > installer.iso
+```
+
+### 2. Find the target device
+
+Discover the target device to which you will be writing.
+
+#### Target device on Linux
 
 ```bash
 fdisk -l
 ```
 
-### On OSX
+#### Target device on macOS
 
 ```bash
 diskutil list
 ```
 
-Now format the USB Disk and run the following commands
+### 3. Flash the image to the device
 
-### Linux / Ubuntu
+Flash the disk image to the USB stick, SD card, or CD/DVD.
 
-```bash
-umount /dev/sdXXX
-sudo dd if=dist/XXX/foo.bin of=/dev/sdXXX
-eject /dev/sdXXX
-```
+#### Flash image on Linux
 
-### OSX
+If the target device is `/dev/sdX`, where `X` is the device letter, and the image is `installer.img`, run:
 
 ```bash
-diskutil unmountDisk /dev/sdXXX
-sudo dd if=dist/XXX/foo.bin of=/dev/sdXXX
-diskutil eject /dev/sdXXX
+umount /dev/sdX
+sudo dd if=installer.img of=/dev/sdX
+eject /dev/sdX
 ```
 
-Alternatively the image can be written with tools like [Balena's Etcher](https://www.balena.io/etcher/)
+#### Flash image on macOS
+
+If the target device is `/dev/disk8`, and the image is `installer.img`, run:
+
+```bash
+diskutil unmountDisk /dev/disk8
+sudo dd if=installer.bin of=/dev/disk8
+diskutil eject /dev/disk8
+```
+
+#### Graphical interface
+
+Alternatively, the image can be flashed with interactive graphical tools like:
+
+* [unetbootin](https://unetbootin.github.io/) - Linux, Windows, macOS
+* [imageUSB](https://www.osforensics.com/tools/write-usb-images.html) - Windows
+* [rufus](https://rufus.ie/en/) - Windows
+* [ventoy](https://www.ventoy.net/en/index.html) - Linux, Windows
+* [Disk Utility](https://support.apple.com/guide/disk-utility/welcome/mac) - macOS
+
+**Disclaimer:** The above tools are third-party software and are not maintained by the EVE project. The EVE project and lf-edge
+take no responsibility for those tools. Evaluate and use them at your own risk.
 
 ## A quick note on linuxkit
 

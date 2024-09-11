@@ -9,7 +9,7 @@ profile tpm2 @{exec_path} {
 
     # allow necessary access for operations
     /usr/bin/tpm2           rm,
-    /jail/{,*,**}           rw,
+    /home/{,*,**}           rw,
 
     # allow access to tpm device
     /dev/tpm0               rw,

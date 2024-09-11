@@ -378,7 +378,12 @@ ifeq ($(HV),kubevirt)
 else
         #kube container will not be in non-kubevirt builds
         PKGS_$(ZARCH)=$(shell find pkg -maxdepth 1 -type d | grep -Ev "eve|alpine|sources|kube|external-boot-image|verification$$")
-        ROOTFS_MAXSIZE_MB=250
+        # nvidia platform requires more space
+        ifeq ($(PLATFORM),nvidia)
+            ROOTFS_MAXSIZE_MB=450
+        else
+            ROOTFS_MAXSIZE_MB=250
+        endif
 endif
 
 PKGS_riscv64=pkg/ipxe pkg/mkconf pkg/mkimage-iso-efi pkg/grub     \
@@ -430,6 +435,7 @@ test: $(LINUXKIT) test-images-patches | $(DIST)
 	make -C pkg/pillar test
 	cp pkg/pillar/results.json $(DIST)/
 	cp pkg/pillar/results.xml $(DIST)/
+	make -C eve-tools/bpftrace-compiler test
 	$(QUIET): $@: Succeeded
 
 test-profiling:
@@ -458,6 +464,10 @@ yetus:
 		--empty-patch \
 		--plugins=all \
 		--patch-dir=/src/yetus-output
+
+mini-yetus:
+	@echo Running mini-yetus
+	./tools/mini-yetus.sh $(if $(MYETUS_VERBOSE),-f) $(if $(MYETUS_SBRANCH),-s $(MYETUS_SBRANCH)) $(if $(MYETUS_DBRANCH),-d $(MYETUS_DBRANCH))
 
 build-tools: $(LINUXKIT)
 	@echo Done building $<
@@ -1101,6 +1111,13 @@ help:
 	@echo "   proto-vendor   update vendored API in packages that require it (e.g. pkg/pillar)"
 	@echo "   shell          drop into docker container setup for Go development"
 	@echo "   yetus          run Apache Yetus to check the quality of the source tree"
+	@echo "   mini-yetus     run Apache Yetus to check the quality of the source tree"
+	@echo "                  only on the files that have changed in the source branch"
+	@echo "                  compared to the destination branch, by default master is"
+	@echo "                  the source and current branch the destination, but this"
+	@echo "                  can be changed by setting the MYETUS_SBRANCH and"
+	@echo "                  MYETUS_DBRANCH, in addition if MYETUS_VERBOSE is set to"
+	@echo "                  Y, the output will be echoed to the console"
 	@echo
 	@echo "Seldom used maintenance and development targets:"
 	@echo "   bump-eve-api   bump eve-api in all subprojects"

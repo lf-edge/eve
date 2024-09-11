@@ -19,6 +19,8 @@
 
 #define ZEDBOX_PID_FILE_PATH "/run/zedbox.pid"
 
+#define CHECK_INTERVAL_SEC 5
+
 typedef struct {
     // Threshold for the cgroup memory/eve/services/pillar, in bytes
     unsigned long cgroup_pillar_threshold_bytes;
@@ -27,6 +29,8 @@ typedef struct {
     unsigned int cgroup_eve_threshold_percent;
     // Threshold for the proc zedbox, in bytes
     unsigned long proc_zedbox_threshold_bytes;
+    // Threshold for the PSI, in percent
+    unsigned int psi_threshold_percent;
 } config_t;
 
 // About the difference between pillar and zedbox

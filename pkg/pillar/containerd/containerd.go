@@ -25,6 +25,7 @@ import (
 	"github.com/containerd/containerd/leases"
 	"github.com/containerd/containerd/mount"
 	"github.com/containerd/containerd/namespaces"
+	"github.com/containerd/containerd/oci"
 	"github.com/containerd/containerd/snapshots"
 	"github.com/containerd/typeurl"
 	"github.com/lf-edge/edge-containers/pkg/resolver"
@@ -33,6 +34,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/utils/persist"
 	"github.com/opencontainers/go-digest"
 	"github.com/opencontainers/image-spec/identity"
+	"github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/vishvananda/netlink"
 
 	v1stat "github.com/containerd/cgroups/stats/v1"
@@ -475,16 +477,8 @@ func (client *Client) CtrContainerInfo(ctx context.Context, name string) (int, i
 	return int(t.Pid()), int(stat.ExitStatus), string(stat.Status), nil
 }
 
-// CtrCreateTask creates (but doesn't start) the default task in a pre-existing container and attaches its logging to memlogd
-func (client *Client) CtrCreateTask(ctx context.Context, domainName string) (int, error) {
-	if err := client.verifyCtr(ctx, true); err != nil {
-		return 0, fmt.Errorf("CtrStartContainer: exception while verifying ctrd client: %s", err.Error())
-	}
-	ctr, err := client.CtrLoadContainer(ctx, domainName)
-	if err != nil {
-		return 0, err
-	}
-
+// CtrLogIOCreator creates a cio.Creator with logger
+func (client *Client) CtrLogIOCreator(domainName string) cio.Creator {
 	logger := GetLog()
 
 	io := func(id string) (cio.IO, error) {
@@ -499,12 +493,34 @@ func (client *Client) CtrCreateTask(ctx context.Context, domainName string) (int
 			},
 		}, nil
 	}
-	task, err := ctr.NewTask(ctx, io)
+
+	return io
+}
+
+// CtrWriterCreator creates a cio.Creator with specific writer for stdout/stderr
+func (client *Client) CtrWriterCreator(stdout, stderr io.Writer) cio.Creator {
+	cl := io.MultiReader()
+	io := cio.NewCreator(cio.WithStreams(cl, stdout, stderr))
+
+	return io
+}
+
+// CtrCreateTask creates (but doesn't start) the default task in a pre-existing container and attaches its logging to memlogd
+func (client *Client) CtrCreateTask(ctx context.Context, domainName string, io cio.Creator) (containerd.Task, error) {
+	if err := client.verifyCtr(ctx, true); err != nil {
+		return nil, fmt.Errorf("CtrStartContainer: exception while verifying ctrd client: %s", err.Error())
+	}
+	ctr, err := client.CtrLoadContainer(ctx, domainName)
 	if err != nil {
-		return 0, err
+		return nil, fmt.Errorf("load container failed: %+v", err)
 	}
 
-	return int(task.Pid()), nil
+	task, err := ctr.NewTask(ctx, io)
+	if err != nil {
+		return nil, fmt.Errorf("new task failed: %+v", err)
+	}
+
+	return task, nil
 }
 
 // CtrListTaskIds returns a list of all known tasks
@@ -523,6 +539,49 @@ func (client *Client) CtrListTaskIds(ctx context.Context) ([]string, error) {
 		res = append(res, v.ID)
 	}
 	return res, nil
+}
+
+// CtrNewContainer starts a new container with a specific spec and specOpts
+func (client *Client) CtrNewContainer(ctx context.Context, spec specs.Spec, specOpts []oci.SpecOpts, name string, containerImage containerd.Image) (containerd.Container, error) {
+
+	opts := []containerd.NewContainerOpts{
+		containerd.WithImage(containerImage),
+		containerd.WithImageConfigLabels(containerImage),
+		containerd.WithNewSnapshot(name, containerImage),
+		containerd.WithSpec(&spec, specOpts...),
+	}
+
+	return client.ctrdClient.NewContainer(ctx, name, opts...)
+}
+
+// CtrNewContainerWithPersist starts a new container with /persist mounted
+func (client *Client) CtrNewContainerWithPersist(ctx context.Context, name string, containerImage containerd.Image) (containerd.Container, error) {
+	var spec specs.Spec
+
+	spec.Root = &specs.Root{
+		Readonly: false,
+	}
+
+	mount := specs.Mount{
+		Destination: "/persist",
+		Type:        "bind",
+		Source:      "/persist",
+		Options:     []string{"bind", "rw"},
+	}
+	specOpts := []oci.SpecOpts{
+		oci.WithDefaultSpec(),
+		oci.WithImageConfig(containerImage),
+		oci.WithMounts([]specs.Mount{mount}),
+		oci.WithDefaultUnixDevices,
+	}
+
+	return client.CtrNewContainer(ctx, spec, specOpts, name, containerImage)
+}
+
+// CtrPull pulls a container
+func (client *Client) CtrPull(ctx context.Context, ref string) (containerd.Image, error) {
+	image, err := client.ctrdClient.Pull(ctx, ref, containerd.WithPullUnpack)
+	return image, err
 }
 
 // CtrStartTask starts the default task in a pre-existing container that was prepared by CtrCreateTask

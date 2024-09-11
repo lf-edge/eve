@@ -109,6 +109,8 @@ liblogging-dev
 libpcap-dev
 libpciaccess
 libpciaccess-dev
+libmd
+libmd-dev
 libpng
 libpng-dev
 librelp-dev

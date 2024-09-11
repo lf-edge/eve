@@ -36,6 +36,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/cmd/upgradeconverter"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/usbmanager"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/vaultmgr"
+	"github.com/lf-edge/eve/pkg/pillar/cmd/vcomlink"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/verifier"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/volumemgr"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/waitforaddr"
@@ -107,6 +108,7 @@ var (
 		"watcher":          {f: watcher.Run},
 		"zfsmanager":       {f: zfsmanager.Run},
 		"usbmanager":       {f: usbmanager.Run},
+		"vcomlink":         {f: vcomlink.Run},
 	}
 	logger *logrus.Logger
 	log    *base.LogObject

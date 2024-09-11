@@ -357,9 +357,18 @@ func initZedcloudContext(getconfigCtx *getconfigContext,
 	agentMetrics *zedcloud.AgentMetrics) *zedcloud.ZedCloudContext {
 
 	// get the server name
-	bytes, err := os.ReadFile(types.ServerFileName)
-	if err != nil {
-		log.Fatal(err)
+	var bytes []byte
+	var err error
+	for len(bytes) == 0 {
+		bytes, err = os.ReadFile(types.ServerFileName)
+		if err != nil {
+			log.Error(err)
+			time.Sleep(10 * time.Second)
+		} else if len(bytes) == 0 {
+			log.Warnf("Empty %s file - waiting for it",
+				types.ServerFileName)
+			time.Sleep(10 * time.Second)
+		}
 	}
 	serverNameAndPort = strings.TrimSpace(string(bytes))
 

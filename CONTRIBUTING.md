@@ -30,6 +30,8 @@ composed of the following members:
 * Avi Deitcher <avi@deitcher.net>
 * Erik Nordmark <erik@zededa.com>
 * Roman Shaposhnik <rvs@apache.org>
+* Jim Teal <James.Teal@rockwellautomation.com>
+* Thanassis Zografos <tzografos@gmail.com>
 
 while the following members remain as Emeritus TSC (you can find out more about
 the Emeritus status [here](https://wiki.lfedge.org/display/EVE/Community):
@@ -93,9 +95,12 @@ the first try, don't get discouraged!
 
 ### Commit Messages
 
-Commit messages must start with a capitalized and short summary (max. 50 chars)
-written in the imperative, followed by an optional, more detailed explanatory
-text which is separated from the summary by an empty line.
+Each commit message includes a subject and a body, separated by an empty line.
+The subject should be a brief summary of the changes, and the body should
+provide a more detailed explanation. Additionally, each commit message must
+include a "Signed-off-by" line at the end, certifying that the contributor has
+the right to submit the patch under the open-source license. This line can be
+automatically added by using the `-s` flag with the `git commit` command.
 
 Commit messages should follow best practices, including explaining the context
 of the problem and how it was solved, including in caveats or follow up changes

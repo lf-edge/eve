@@ -206,14 +206,25 @@ include the argument ```eve_install_server=FQDN_OF_YOUR_CONTROLLER``` in the iPX
 
 ### Running the installer image from a boot media
 
-Running the installer image from a boot media involves:
+To run an installer image from boot media:
 
-1. producing a disk-based installer image (by running ```docker run lfedge/eve:latest installer_raw > installer.raw``` command)
-2. burning the resulting ```installer.raw``` image file onto a USB stick and inserting it into the edge node
-3. instructing the edge node BIOS to boot from USB (don't forget to enable VT-d, VT-x and TPM in BIOS while you are at it)
+1. Produce a disk-based installer image ```docker run lfedge/eve:latest installer_raw > installer.raw```
+2. Determine the target install media, such as USB stick or SD card via `fdisk -l` (Linux) or `diskutil list` (macOS)
+3. Burn ```installer.raw``` image file onto the installation media via `dd`
+4. Insert the installation media into the edge node
+5. Instruct the edge node BIOS to boot from USB. Don't forget to enable VT-d, VT-x and TPM in BIOS before booting.
 
-Since flashing a USB stick via system utilities like "dd" running on the command line can be daunting, we recommend
-GUI based applications like [Etcher](https://www.balena.io/etcher/) for the job.
+If flashing a USB stick via system utilities is daunting, we suggest using widely-available graphical applications for your
+particular operating system. Some of them are:
+
+* [unetbootin](https://unetbootin.github.io/) - Linux, Windows, macOS
+* [imageUSB](https://www.osforensics.com/tools/write-usb-images.html) - Windows
+* [rufus](https://rufus.ie/en/) - Windows
+* [ventoy](https://www.ventoy.net/en/index.html) - Linux, Windows
+* [Disk Utility](https://support.apple.com/guide/disk-utility/welcome/mac) - macOS
+
+**Disclaimer:** The above tools are third-party software and are not maintained by the EVE project. The EVE project and lf-edge
+take no responsibility for those tools. Evaluate and use them at your own risk.
 
 In rare cases (such as using HPE iLO or Dell DRAC) your BIOS will not be able
 to boot from a disk-based image. The fallback here could be an ISO image. The only

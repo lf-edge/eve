@@ -850,7 +850,7 @@ func deepCopy(in interface{}) interface{} {
 	return val.Interface()
 }
 
-func TestAllowAllDevicesInSpec(t *testing.T) {
+func TestDenyAllDevicesInSpec(t *testing.T) {
 	t.Parallel()
 
 	// create a temp dir to hold resulting files
@@ -887,5 +887,5 @@ func TestAllowAllDevicesInSpec(t *testing.T) {
 	// Check that the devices are allowed
 	assert.NotNil(t, spec.Get().Linux)
 	assert.NotNil(t, spec.Get().Linux.Resources)
-	assert.Equal(t, []specs.LinuxDeviceCgroup{{Type: "a", Allow: true, Access: "rwm"}}, spec.Get().Linux.Resources.Devices)
+	assert.Nil(t, spec.Get().Linux.Resources.Devices)
 }

@@ -1078,7 +1078,7 @@ func TestManageStatFileSizeTargetSizesAvgThreshold(t *testing.T) {
 	assert.NotEqual(t, avgSize, 0)
 
 	duration := timeEnd.Sub(timeStart)
-	assert.True(t, duration < 1*time.Second)
+	assert.Truef(t, duration < 1*time.Second, "expected duration to be less than 1 second, but got %v", duration)
 	t.Logf("Duration: %v", duration)
 	t.Logf("AvgSize: %v", avgSize)
 

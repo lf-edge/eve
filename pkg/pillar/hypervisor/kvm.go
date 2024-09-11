@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"text/template"
 	"time"
 
@@ -18,11 +19,15 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
+	"golang.org/x/sys/unix"
 )
 
 // KVMHypervisorName is a name of kvm hypervisor
 const KVMHypervisorName = "kvm"
 const minUringKernelTag = uint64((5 << 16) | (4 << 8) | (72 << 0))
+const swtpmTimeout = 10 // seconds
+
+var clientCid = uint32(unix.VMADDR_CID_HOST + 1)
 
 // We build device model around PCIe topology according to best practices
 //    https://github.com/qemu/qemu/blob/master/docs/pcie.txt
@@ -395,6 +400,27 @@ const qemuCANBusTemplate = `
   if = "{{.HostIfName}}"
 `
 
+const qemuVsockTemplate = `
+[device "eve-vsock0"]
+  driver = "vhost-vsock-pci"
+  disable-legacy = "on"
+  guest-cid = "{{.GuestCID}}"
+`
+
+const qemuSwtpmTemplate = `
+[chardev "swtpm"]
+  backend = "socket"
+  path = "{{.CtrlSocket}}"
+
+[tpmdev "tpm0"]
+  type = "emulator"
+  chardev = "swtpm"
+
+[device "tpm-tis"]
+  driver = "tpm-tis"
+  tpmdev = "tpm0"
+`
+
 const kvmStateDir = "/run/hypervisor/kvm/"
 const sysfsPciDriversProbe = "/sys/bus/pci/drivers_probe"
 const vfioDriverPath = "/sys/bus/pci/drivers/vfio-pci"
@@ -437,13 +463,12 @@ func newKvm() Hypervisor {
 			ctrdContext:  *ctrdCtx,
 			devicemodel:  "virt",
 			dmExec:       "/usr/lib/xen/bin/qemu-system-aarch64",
-			dmArgs:       []string{"-display", "none", "-S", "-no-user-config", "-nodefaults", "-no-shutdown", "-overcommit", "mem-lock=on", "-overcommit", "cpu-pm=on", "-serial", "chardev:charserial0"},
+			dmArgs:       []string{"-display", "none", "-S", "-no-user-config", "-nodefaults", "-no-shutdown", "-serial", "chardev:charserial0"},
 			dmCPUArgs:    []string{"-cpu", "host"},
 			dmFmlCPUArgs: []string{"-cpu", "host"},
 		}
 	case "amd64":
 		return KvmContext{
-			//nolint:godox // FIXME: Removing "-overcommit", "mem-lock=on", "-overcommit" for now, revisit it later as part of resource partitioning
 			ctrdContext:  *ctrdCtx,
 			devicemodel:  "pc-q35-3.1",
 			dmExec:       "/usr/lib/xen/bin/qemu-system-x86_64",
@@ -673,9 +698,17 @@ func (ctx KvmContext) Setup(status types.DomainStatus, config types.DomainConfig
 	diskStatusList := status.DiskStatusList
 	domainName := status.DomainName
 	domainUUID := status.UUIDandVersion.UUID
+
+	swtpmCtrlSock, err := launchSwtpm(domainUUID.String(), swtpmTimeout)
+	if err != nil {
+		// let the vm start without TPM
+		logError("failed to launch swtpm for domain %s: %v", domainName, err)
+		swtpmCtrlSock = ""
+	}
+
 	// first lets build the domain config
 	if err := ctx.CreateDomConfig(domainName, config, status, diskStatusList,
-		aa, globalConfig, file); err != nil {
+		aa, globalConfig, swtpmCtrlSock, file); err != nil {
 		return logError("failed to build domain config: %v", err)
 	}
 
@@ -717,6 +750,8 @@ func (ctx KvmContext) Setup(status types.DomainStatus, config types.DomainConfig
 	spec.Get().Process.Args = args
 	logrus.Infof("Hypervisor args: %v", args)
 
+	spec.GrantFullAccessToDevices()
+
 	if err := spec.CreateContainer(true); err != nil {
 		return logError("Failed to create container for task %s from %v: %v", status.DomainName, config, err)
 	}
@@ -742,7 +777,7 @@ func isVncShimVMEnabled(
 func (ctx KvmContext) CreateDomConfig(domainName string,
 	config types.DomainConfig, status types.DomainStatus,
 	diskStatusList []types.DiskStatus, aa *types.AssignableAdapters,
-	globalConfig *types.ConfigItemValueMap, file *os.File) error {
+	globalConfig *types.ConfigItemValueMap, swtpmCtrlSock string, file *os.File) error {
 	tmplCtx := struct {
 		Machine string
 		types.DomainConfig
@@ -757,6 +792,17 @@ func (ctx KvmContext) CreateDomConfig(domainName string,
 	t, _ := template.New("qemu").Parse(qemuConfTemplate)
 	if err := t.Execute(file, tmplCtx); err != nil {
 		return logError("can't write to config file %s (%v)", file.Name(), err)
+	}
+
+	// render swtpm settings
+	if swtpmCtrlSock != "" {
+		swtpmContext := struct {
+			CtrlSocket string
+		}{swtpmCtrlSock}
+		t, _ = template.New("qemuSwtpm").Parse(qemuSwtpmTemplate)
+		if err := t.Execute(file, swtpmContext); err != nil {
+			return logError("can't write to config file %s (%v)", file.Name(), err)
+		}
 	}
 
 	// render disk device model settings
@@ -938,6 +984,25 @@ func (ctx KvmContext) CreateDomConfig(domainName string,
 				return logError("can't write CAN Bus assignment to config file %s (%v)", file.Name(), err)
 			}
 		}
+	}
+
+	// render vsock settings, this should go last to avoid
+	// PCI ID conflicts, let qemu assign PCI ID for vsock.
+	vsockContext := struct {
+		GuestCID string
+	}{
+		// currently we don't save the clientCid/AppUUID pair since
+		// we there is no need for it, but in the future when wen
+		// we add channels for vms to report things like CPU/Mem usage
+		// then it makes sense to keep track of who is who.
+		GuestCID: fmt.Sprintf("%d",
+			// clientCid needs atomic add to avoid race condition
+			// in case CreateDomConfig is called concurrently, which
+			// happens at least in unit tests.
+			atomic.AddUint32(&clientCid, 1))}
+	t, _ = template.New("qemuVsock").Parse(qemuVsockTemplate)
+	if err := t.Execute(file, vsockContext); err != nil {
+		return logError("can't write to config file %s (%v)", file.Name(), err)
 	}
 
 	return nil

@@ -187,6 +187,10 @@ done
 total_size=$(du -s | awk '{print $1}') # Size in KB
 # Subtract the size of the handler log file
 total_size=$((total_size - $(stat -c %s memory-monitor-handler.log) / 1024))
+# Subtract the size of the psi.txt file (if it exists) as it size is regulated by the PSICollector
+if [ -f psi.txt ]; then
+  total_size=$((total_size - $(stat -c %s psi.txt) / 1024))
+fi
 while [ "$total_size" -gt 102400 ]; do
   found_archives=$(find . -type f -name "*.tar.gz" -print | sort -n)
   if [ -z "$found_archives" ]; then

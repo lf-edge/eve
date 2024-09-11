@@ -227,7 +227,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	// re-running client.
 	t1 := time.NewTimer(5 * time.Second)
 
-	ticker := flextimer.NewExpTicker(time.Second, maxDelay, 0.0)
+	ticker := flextimer.NewExpTicker(time.Second, maxDelay, 0)
 
 	server, err := os.ReadFile(types.ServerFileName)
 	if err != nil {

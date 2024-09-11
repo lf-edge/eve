@@ -133,12 +133,14 @@ func (ctx xenContext) Setup(status types.DomainStatus, config types.DomainConfig
 	if err = spec.AddLoader("/containers/services/xen-tools"); err != nil {
 		return logError("failed to add xen hypervisor loader to domain %s: %v", status.DomainName, err)
 	}
-
-	// finally we can start it up
 	spec.Get().Process.Args = []string{"/etc/xen/scripts/xen-start", status.DomainName, file.Name()}
 	if config.MetaDataType == types.MetaDataOpenStack {
 		spec.Get().Process.Args = append(spec.Get().Process.Args, "smbios_product")
 	}
+
+	spec.GrantFullAccessToDevices()
+
+	// finally we can start it up
 	if err := spec.CreateContainer(true); err != nil {
 		return logError("Failed to create container for task %s from %v: %v", status.DomainName, config, err)
 	}

@@ -1,0 +1,10 @@
+pkg/edgeview/vendor/
+pkg/kube/eve-bridge/vendor/
+pkg/measure-config/vendor/
+pkg/newlog/vendor/
+pkg/nvidia/cdi/
+pkg/pillar/vendor/
+pkg/recovertpm/src/vendor/
+pkg/rngd/cmd/rngd/vendor/
+pkg/wwan/mmagent/vendor/
+tools/get-deps/vendor/

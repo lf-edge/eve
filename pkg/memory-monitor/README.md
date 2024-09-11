@@ -66,10 +66,47 @@ However, for better results we also monitor the RSS of the zedbox process
 separately in a dedicated thread, reading the `/proc/<zedbox_pid>/statm` file
 every 5 seconds.
 
+## Process Stall Information (PSI)
+
+The PSI metrics are a set of metrics that can be used to detect when the system
+is under memory pressure. They are tracked and exposed by the kernel. The
+metrics show how much time the system is stalled on memory reclaim.
+
+The PSI metrics are available in the `/proc/pressure`. In fact the PSI
+metrics are available for CPU, memory, and IO, but in the scope of the
+memory monitor we are interested in the memory PSI metrics.
+
+### Format of the PSI metrics
+
+The PSI metrics are available in the `/proc/pressure/memory` file. The file
+contains the following fields:
+
+```text
+some avg10 avg60 avg300 total
+full avg10 avg60 avg300 total
+```
+
+The `some` line shows the percentage of time at least one process in the system
+is stalled on memory reclaim for the last 10, 60, and 300 seconds. The `full`
+line shows the same, but for the whole system. The `total` field shows the
+total number of the corresponding stall events.
+
+### Additional information on the PSI metrics in EVE
+
+More information about the PSI metrics can be found in the
+[kernel documentation](https://www.kernel.org/doc/Documentation/accounting/psi.txt).
+
+Also, EVE provides a tool `psi-collector` that can be used to collect the PSI
+statistics. Documentation on the `psi-collector` tool can be found in the
+[psi-collector README](../../pkg/pillar/agentlog/cmd/psi-collector/README.md).
+Another tool that can be used to visualize the PSI metrics is `psi-visualizer`.
+The documentation on the `psi-visualizer` tool can be found in the
+[psi-visualizer README](../../tools/psi-visualizer/README.md).
+
 ## What the tool is monitoring?
 
 The memory monitor is designed to track and respond to specific memory-related
-events related to the zedbox process.
+events related to the zedbox process or the entire EVE system.
 
 Here are the specific memory events that are being monitored:
 
@@ -95,6 +132,19 @@ monitored in two ways:
     exclude cache from the memory usage calculation.
   * Pressure Event: If the memory pressure level of the pillar cgroup reaches
     the "low" level, a handler script is triggered.
+* **PSI Metrics**: The PSI metrics are monitored. If the `full avg10` value of
+  the PSI metrics exceeds a predefined threshold (90% by default), a handler
+  script is triggered.
+
+  The `full_avg10` metric is particularly useful for detecting situations where
+  all processes are stalled due to memory pressure, making it an effective
+  indicator of imminent OOM, especially in cases of rapid memory exhaustion
+  ("fast" OOMs). We focus on `full_avg10` because `some_avg10` can spike when
+  only some processes are experiencing memory pressure, which doesn’t
+  necessarily lead to an OOM. Using `some_avg10` would be too sensitive and
+  could result in false alarms, so we prioritize `full_avg10` for more accurate
+  detection. Longer intervals like 60- and 300-second averages are not as
+  reactive and may miss fast-approaching OOM conditions.
 
 The handler script that is triggered in response to these events performs
 various actions to log and manage memory usage. It can, for example, dump memory
@@ -263,6 +313,13 @@ The default configuration file is located in the `/etc/` directory of the
 container image. But it can be overridden by the user by placing the
 configuration file in the `/persist/memory-monitor/` directory.
 
+To copy the default configuration file to the `/persist/memory-monitor/` for
+editing, run the following command:
+
+```shell
+eve exec memory-monitor cp /etc/memory-monitor.conf /persist/memory-monitor/
+```
+
 To use the custom configuration values, the user should restart the memory
 monitor tool by sending the `SIGHUP` signal to the memory monitor process. It
 can be done by running the following command:
@@ -283,6 +340,7 @@ The configuration file should contain the following fields:
 CGROUP_PILLAR_THRESHOLD_MB=<threshold in MB>
 CGROUP_EVE_THRESHOLD_PERCENT=<threshold in percent>
 PROC_ZEDBOX_THRESHOLD_MB=<threshold in MB>
+PSI_THRESHOLD_PERCENT=<threshold in percent>
 ```
 
 The fields are:
@@ -297,6 +355,8 @@ The fields are:
 * `PROC_ZEDBOX_THRESHOLD_MB`: The threshold in megabytes for the Resident Set
   Size (RSS) of the zedbox process. It will be compared every 5 second to the
   RSS of the zedbox process, read from the `/proc/<zedbox_pid>/statm` file.
+* `PSI_THRESHOLD_PERCENT`: The threshold for the `full avg10` value of the PSI
+  metrics. See the PSI section for more information.
 
 If some of the fields are missing in the configuration file, the default values
 will be used. The default values are:
@@ -305,6 +365,7 @@ will be used. The default values are:
 CGROUP_PILLAR_THRESHOLD_MB=400
 CGROUP_EVE_THRESHOLD_PERCENT=98
 PROC_ZEDBOX_THRESHOLD_MB=200
+PSI_THRESHOLD_PERCENT=90
 ```
 
 ## Makefile targets
