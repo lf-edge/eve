@@ -10,102 +10,40 @@ import (
 	"crypto/rsa"
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"strings"
 	"testing"
-	"time"
 
 	"github.com/google/go-tpm/legacy/tpm2"
 	"github.com/google/go-tpm/legacy/tpm2/credactivation"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/msrv"
-	etpm "github.com/lf-edge/eve/pkg/pillar/evetpm"
+	"github.com/lf-edge/eve/pkg/pillar/evetpm"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/onsi/gomega"
 	"github.com/sirupsen/logrus"
 )
-
-const TpmSimPath = "/tmp/eve-tpm/srv.sock"
-
-var log = base.NewSourceLogObject(logrus.StandardLogger(), "acitavatecred", 1234)
-
-func waitForTpmReadyState() error {
-	for i := 0; i < 10; i++ {
-		rw, err := tpm2.OpenTPM(msrv.TPMDevicePath)
-		if err != nil {
-			return fmt.Errorf("Failed to open TPM: %w", err)
-		}
-
-		_, _, err = tpm2.GetCapability(rw, tpm2.CapabilityHandles, 1, uint32(tpm2.HandleTypeTransient)<<24)
-		if err != nil {
-			// this is RCRetry, so retry
-			if strings.Contains(err.Error(), "code 0x22") {
-				time.Sleep(100 * time.Millisecond)
-				continue
-			} else {
-				return fmt.Errorf("Something is wrong with the TPM : %w", err)
-			}
-		} else {
-			return nil
-		}
-	}
-
-	return fmt.Errorf("TPM did't become ready after 10 attempts, failing the test")
-}
-
-func isTpmAvailable(path string) bool {
-	_, err := os.Stat(path)
-	if err != nil {
-		log.Warnf("TPM device %s is not available: %v", msrv.TPMDevicePath, err)
-		return false
-	}
-	return true
-}
-
-func prepareTPM() error {
-	//Make sure the TPM is ready for use, swtpm takes some time to become ready
-	if err := waitForTpmReadyState(); err != nil {
-		return fmt.Errorf("Failed to wait for TPM ready state: %w", err)
-	}
-
-	// Create EK and AIK in case it is not already created
-	err := etpm.CreateKey(log, msrv.TPMDevicePath, etpm.TpmEKHdl, tpm2.HandleEndorsement, etpm.DefaultEkTemplate, false)
-	if err != nil {
-		return fmt.Errorf("error in creating Endorsement key: %w ", err)
-	}
-	err = etpm.CreateKey(log, msrv.TPMDevicePath, etpm.TpmAIKHdl, tpm2.HandleOwner, etpm.DefaultAikTemplate, false)
-	if err != nil {
-		return fmt.Errorf("error in creating Attestation key: %w ", err)
-	}
-
-	return nil
-}
 
 // TestTpmActivateCred contains TPM kong-fu, not for the faint of heart.
 func TestTpmActivateCred(t *testing.T) {
 	t.Parallel()
 	g := gomega.NewGomegaWithT(t)
 
-	if !isTpmAvailable(msrv.TPMDevicePath) {
-		// no TPM device available, check for TPM socket, see if we ended up
-		// here from tests/tpm/prep-and-test.sh script.
-		if !isTpmAvailable(TpmSimPath) {
-			t.Skip("Neither HW or SW TPM device available, skipping the test")
-		}
+	// we should end up here from tests/tpm/prep-and-test.sh script,
+	// so set the TPM device path to swtpm socket path.
+	msrv.TPMDevicePath = evetpm.SimTpmPath
 
-		// set the TPM device path to swtpm socket path
-		msrv.TPMDevicePath = TpmSimPath
-
-		// make sure TPM is prepare it before running the test.
-		err := prepareTPM()
-		g.Expect(err).ToNot(gomega.HaveOccurred())
+	if !evetpm.SimTpmAvailable() {
+		t.Skip("SWTPM device not available, skipping the test")
 	}
 
+	// make sure TPM is prepare it before running the test.
+	err := evetpm.SimTpmWaitForTpmReadyState()
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+
 	logger := logrus.StandardLogger()
-	log := base.NewSourceLogObject(logger, "pubsub", 1234)
+	log := base.NewSourceLogObject(logger, "acitavatecred_test", os.Getpid())
 	ps := pubsub.New(pubsub.NewMemoryDriver(), logger, log)
 
 	srv := &msrv.Msrv{

@@ -41,7 +41,7 @@ func handleTpmGetEk() ([]byte, error) {
 }
 
 func getEkPub() (string, error) {
-	rw, err := tpm2.OpenTPM(etpm.TpmDevicePath)
+	rw, err := tpm2.OpenTPM(TpmDevicePath)
 	if err != nil {
 		return "", fmt.Errorf("unable to open TPM: %w", err)
 	}

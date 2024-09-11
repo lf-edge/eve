@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/evetpm"
 	"github.com/lf-edge/eve/pkg/pillar/vcom"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/sys/unix"
@@ -74,14 +75,24 @@ func connect() (int, error) {
 	return sockfd, nil
 }
 
-func isTPMAvailable() bool {
-	_, err := os.Stat("/dev/tpm0")
-	return err == nil
-}
-
 func TestMain(m *testing.M) {
 	log = base.NewSourceLogObject(logrus.StandardLogger(), "vcomlink_test", os.Getpid())
 	res := 1
+
+	if !evetpm.SimTpmAvailable() {
+		fmt.Println("TPM not available, skipping test")
+		os.Exit(0)
+	}
+
+	// make sure TPM is prepare it before running the test.
+	err := evetpm.SimTpmWaitForTpmReadyState()
+	if err != nil {
+		fmt.Printf("Failed to wait for TPM ready state: %v", err)
+		os.Exit(1)
+	}
+
+	// use sim tpm for testing
+	TpmDevicePath = evetpm.SimTpmPath
 
 	// we can't connect to a vsock listener host<->host, so we use a tcp listener
 	// for testing.
@@ -101,10 +112,6 @@ func TestMain(m *testing.M) {
 }
 
 func TestValidTPMRequest(t *testing.T) {
-	if !isTPMAvailable() {
-		t.Skip("TPM not available, skipping test")
-	}
-
 	request := &vcom.TpmRequest{
 		Base:    vcom.Base{Channel: int(vcom.ChannelTpm)},
 		Request: uint(vcom.RequestTpmGetEk),
@@ -151,10 +158,6 @@ func TestValidTPMRequest(t *testing.T) {
 }
 
 func TestInvalidRequest(t *testing.T) {
-	if !isTPMAvailable() {
-		t.Skip("TPM not available, skipping test")
-	}
-
 	request := &vcom.Base{
 		Channel: math.MaxUint32,
 	}
