@@ -1,8 +1,7 @@
-// Copyright (c) 2020 Zededa, Inc.
+// Copyright (c) 2020-2024 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-// unit-tests for evetpm
-
+// unit-tests for evetpm package
 package evetpm
 
 import (
@@ -22,30 +21,27 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-var log = base.NewSourceLogObject(logrus.StandardLogger(), "test", 1234)
+var log = base.NewSourceLogObject(logrus.StandardLogger(), "evetpm", os.Getpid())
 
 func TestMain(m *testing.M) {
 	log.Tracef("Setup test environment")
 
 	// setup variables
-	TpmDevicePath = "/tmp/eve-tpm/srv.sock"
+	TpmDevicePath = SimTpmPath
 	measurementLogFile = "/tmp/eve-tpm/binary_bios_measurement"
 	measurefsTpmEventLog = "/tmp/eve-tpm/measurefs_tpm_event_log"
 	savedSealingPcrsFile = "/tmp/eve-tpm/sealingpcrs"
 	measurementLogSealSuccess = "/tmp/eve-tpm/tpm_measurement_seal_success"
 	measurementLogUnsealFail = "/tmp/eve-tpm/tpm_measurement_unseal_fail"
 
-	// check if we are running under the correct context and we end up here
-	// from tests/tpm/prep-and-test.sh.
-	_, err := os.Stat(TpmDevicePath)
-	if err != nil {
-		log.Warnf("Neither TPM device nor swtpm is available, skipping the test.")
-		return
+	if !SimTpmAvailable() {
+		log.Warnf("TPM is not available, skipping the test.")
+		os.Exit(0)
 	}
 
-	// for some reason unknown to me, TPM might return RCRetry for the first
+	// for some reason TPM might return RCRetry for the first
 	// few operations, so we need to wait for it to become ready.
-	if err := waitForTpmReadyState(); err != nil {
+	if err := SimTpmWaitForTpmReadyState(); err != nil {
 		log.Fatalf("Failed to wait for TPM ready state: %v", err)
 	}
 
