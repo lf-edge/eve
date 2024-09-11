@@ -86,6 +86,7 @@ func getAllLocalAddr() []string {
 	var localIPs []string
 	localIPs = getLocalIPs()
 	localIPs = append(localIPs, "0.0.0.0")
+	localIPs = append(localIPs, "127.0.0.1")
 	localIPs = append(localIPs, "localhost")
 	return localIPs
 }
