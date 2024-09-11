@@ -104,6 +104,8 @@ func main() {
 					uc = onbootContainer((*userspaceContainerSSHFlag)[1])
 				case "service":
 					uc = serviceContainer((*userspaceContainerSSHFlag)[1])
+				default:
+					log.Fatalf("unknown userspace container type %s", (*userspaceContainerSSHFlag)[0])
 				}
 			}
 			sr, err := newSSHRun(args[0], sshKey)
@@ -130,6 +132,8 @@ func main() {
 					uc = onbootContainer((*userspaceContainerHTTPFlag)[1])
 				case "service":
 					uc = serviceContainer((*userspaceContainerHTTPFlag)[1])
+				default:
+					log.Fatalf("unknown userspace container type %s", (*userspaceContainerHTTPFlag)[0])
 				}
 			}
 			hr := newHTTPRun(args[0])
@@ -304,14 +308,13 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-
 }
 
 func interpretDebugCmdArgs(args []string, ucFlag *[]string) (string, lkConf, userspaceContainer) {
 	var uc userspaceContainer
 
 	if len(*ucFlag) != 0 && len(*ucFlag) != 3 {
-		panic("wrong userspace flag usage")
+		log.Fatal("wrong userspace flag usage")
 	}
 
 	arch := cleanArch(args[0])
@@ -333,6 +336,8 @@ func interpretDebugCmdArgs(args []string, ucFlag *[]string) (string, lkConf, use
 			lkConf.services = map[string]string{
 				(*ucFlag)[1]: (*ucFlag)[2],
 			}
+		default:
+			log.Fatalf("unknown userspace container type %s", (*ucFlag)[0])
 		}
 	}
 	return arch, lkConf, uc
