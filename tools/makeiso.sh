@@ -1,15 +1,18 @@
 #!/bin/sh
+
+[ -n "$DEBUG" ] && set -x
+
 EVE="$(cd "$(dirname "$0")" && pwd)/../"
 PATH="$EVE/build-tools/bin:$PATH"
+INSTALLER_TAR="$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"
 MKIMAGE_TAG="$(linuxkit pkg show-tag "$EVE/pkg/mkimage-iso-efi")"
-SOURCE="$(cd "$1" && pwd)"
 ISO="$(cd "$(dirname "$2")" && pwd)/$(basename "$2")"
 
-if [ ! -d "$SOURCE" ] || [ $# -lt 2 ]; then
-   echo "Usage: $0 <input dir> <output iso image file> [installer]"
+if [ ! -f "$INSTALLER_TAR" ] || [ $# -lt 2 ]; then
+   echo "Usage: $0 <input tar> <output iso image file> [installer]"
    exit 1
 fi
 
 : > "$ISO"
 # shellcheck disable=SC2086
-docker run --rm -v "$SOURCE:/bits" -v "$ISO:/output.iso" "$MKIMAGE_TAG" $3
+cat $INSTALLER_TAR | docker run -i --rm -e DEBUG="$DEBUG" -e VOLUME_LABEL=EVEISO -v "$ISO:/output.iso" "$MKIMAGE_TAG" $3
