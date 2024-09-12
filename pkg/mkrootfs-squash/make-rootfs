@@ -26,15 +26,6 @@ IMGFILE=/rootfs.img
   # UUID when creating the final image. This will allow us to have
   # a static grub configuration.
   ROOTFS_UUID=$(cat /proc/sys/kernel/random/uuid)
-
-  # In what can only be described as a horrible thing, create grub.cfg
-  # here. The only place we have to unpack the cmdline given by the
-  # yml image is here.
-  #
-  CMDLINE="$(cat boot/cmdline)"
-
-  sed -i'' -e '/set *linuxkit_cmdline=/s#=.*$#="'"$CMDLINE"'"#' EFI/BOOT/grub.cfg
-
   ROOTFS_BLOCKSZ=4096
   ROOTFS_PART_HEADROOM_BLOCKS=16000
 
