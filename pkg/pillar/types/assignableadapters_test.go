@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/google/go-cmp/cmp"
 	zcommon "github.com/lf-edge/eve-api/go/evecommon"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/sirupsen/logrus"
@@ -353,10 +354,10 @@ var aa2 = AssignableAdapters{
 
 // Same indices as above
 var aa2Errors = []string{
-	"CheckBadAssignmentGroup: eth3 same PCI controller as eth0; pci long 0000:f2:00.1 vs 0000:f2:00.0",
-	"CheckBadAssignmentGroup: eth3 same PCI controller as eth1; pci long 0000:f2:00.1 vs 0000:f2:00.0",
-	"CheckBadAssignmentGroup: eth3 same PCI controller as eth2; pci long 0000:f2:00.1 vs 0000:f2:00.0",
-	"CheckBadAssignmentGroup: eth2 same PCI controller as eth3; pci long 0000:f2:00.0 vs 0000:f2:00.1",
+	"CheckBadAssignmentGroup: eth2 same PCI controller as eth0; pci long 0000:f2:00.0 vs 0000:f2:00.0; CheckBadAssignmentGroup: eth3 same PCI controller as eth0; pci long 0000:f2:00.1 vs 0000:f2:00.0",
+	"CheckBadAssignmentGroup: eth2 same PCI controller as eth1; pci long 0000:f2:00.0 vs 0000:f2:00.0; CheckBadAssignmentGroup: eth3 same PCI controller as eth1; pci long 0000:f2:00.1 vs 0000:f2:00.0",
+	"CheckBadAssignmentGroup: eth0 same PCI controller as eth2; pci long 0000:f2:00.0 vs 0000:f2:00.0; CheckBadAssignmentGroup: eth1 same PCI controller as eth2; pci long 0000:f2:00.0 vs 0000:f2:00.0; CheckBadAssignmentGroup: eth3 same PCI controller as eth2; pci long 0000:f2:00.1 vs 0000:f2:00.0",
+	"CheckBadAssignmentGroup: eth0 same PCI controller as eth3; pci long 0000:f2:00.0 vs 0000:f2:00.1; CheckBadAssignmentGroup: eth1 same PCI controller as eth3; pci long 0000:f2:00.0 vs 0000:f2:00.1; CheckBadAssignmentGroup: eth2 same PCI controller as eth3; pci long 0000:f2:00.0 vs 0000:f2:00.1",
 	"",
 	"",
 	"",
@@ -384,7 +385,7 @@ func TestCheckBadAssignmentGroups(t *testing.T) {
 	assert.Equal(t, len(aa2.IoBundleList), len(aa2Errors))
 	for i, ib := range aa2.IoBundleList {
 		t.Logf("Running test case TestCheckBadAssignmentGroups[%d]", i)
-		assert.Equal(t, aa2Errors[i], ib.Error)
+		assert.Equal(t, aa2Errors[i], ib.Error.String())
 	}
 }
 
@@ -494,14 +495,91 @@ func alternativeCheckBadUSBBundlesImpl(bundles []IoBundle) {
 				}
 			}
 
-			bundles[i].Error = errStr
-			bundles[j].Error = errStr
+			if errStr != "" {
+				bundles[i].Error.Append(fmt.Errorf(errStr))
+				bundles[j].Error.Append(fmt.Errorf(errStr))
+			}
+		}
+	}
+}
+
+func TestClearingCycleErrors(t *testing.T) {
+	t.Parallel()
+
+	aa := AssignableAdapters{}
+	bundles := make([]IoBundle, 2)
+
+	bundles[0].Phylabel = "usb1"
+	bundles[1].Phylabel = "usb2"
+
+	bundles[0].UsbAddr = "1:1"
+	bundles[1].UsbAddr = "1:2"
+
+	bundles[0].AssignmentGroup = "a1"
+	bundles[1].AssignmentGroup = "a2"
+
+	bundles[0].ParentAssignmentGroup = "a2"
+	bundles[1].ParentAssignmentGroup = "a1"
+
+	aa.IoBundleList = bundles
+
+	aa.CheckParentAssigngrp()
+
+	errFound := func() bool {
+		found := false
+		for _, ioBundle := range aa.IoBundleList {
+			if ioBundle.Error.String() != "" {
+				found = true
+			}
+		}
+		return found
+	}
+
+	if !errFound() {
+		t.Fatalf("no error found although there is a cycle: %+v", aa.IoBundleList)
+	}
+
+	aa.IoBundleList[1].ParentAssignmentGroup = "p2"
+	aa.CheckParentAssigngrp()
+	if errFound() {
+		t.Fatalf("error found although there is no cycle anymore: %+v", aa.IoBundleList)
+	}
+}
+
+func TestClearingUSBCollision(t *testing.T) {
+	t.Parallel()
+	aa := AssignableAdapters{}
+	bundles := make([]IoBundle, 2)
+
+	bundles[0].Phylabel = "usb1"
+	bundles[1].Phylabel = "usb2"
+
+	bundles[0].UsbAddr = "1:1"
+	bundles[1].UsbAddr = bundles[0].UsbAddr
+	aa.IoBundleList = bundles
+
+	aa.CheckBadUSBBundles()
+
+	for _, ioBundle := range aa.IoBundleList {
+		t.Logf("%s / %s", ioBundle.Phylabel, ioBundle.Error.String())
+		if ioBundle.Error.String() == "" {
+			t.Fatalf("expected collision for ioBundle %s", ioBundle.Phylabel)
+		}
+	}
+
+	aa.IoBundleList[0].UsbAddr = "1:2"
+	aa.IoBundleList[0].Error.Clear()
+
+	aa.CheckBadUSBBundles()
+	for _, ioBundle := range aa.IoBundleList {
+		t.Logf("%s / %s", ioBundle.Phylabel, ioBundle.Error.String())
+		if ioBundle.Error.String() != "" {
+			t.Fatalf("expected no collision for ioBundle %s", ioBundle.Phylabel)
 		}
 	}
 }
 
 func FuzzCheckBadUSBBundles(f *testing.F) {
-
 	f.Fuzz(func(t *testing.T,
 		// ioBundle 1
 		pciLong1 string,
@@ -552,10 +630,10 @@ func FuzzCheckBadUSBBundles(f *testing.F) {
 
 		failed := false
 		for i := 0; i < len(bundles); i++ {
-			if bundles[i].Error != "" && alternativeCheckBundles[i].Error != "" {
+			if bundles[i].Error.String() != "" && alternativeCheckBundles[i].Error.String() != "" {
 				continue
 			}
-			if bundles[i].Error == "" && alternativeCheckBundles[i].Error == "" {
+			if bundles[i].Error.String() == "" && alternativeCheckBundles[i].Error.String() == "" {
 				continue
 			}
 
@@ -565,7 +643,7 @@ func FuzzCheckBadUSBBundles(f *testing.F) {
 		if failed {
 			for i := 0; i < len(bundles); i++ {
 				t.Logf("'%s' '%s' '%s' : '%s' <-> '%s'", bundles[i].PciLong, bundles[i].UsbAddr, bundles[i].UsbProduct,
-					bundles[i].Error, alternativeCheckBundles[i].Error)
+					bundles[i].Error.String(), alternativeCheckBundles[i].Error.String())
 			}
 			t.Fatal("fail - check log")
 		}
@@ -593,7 +671,7 @@ func TestCheckBadParentAssigngrp(t *testing.T) {
 
 	errorSet := false
 	for _, ioBundle := range aa.IoBundleList {
-		if ioBundle.Error == "IOBundle with parentassigngrp mismatch found" {
+		if ioBundle.Error.String() == "IOBundle with parentassigngrp mismatch found" {
 			errorSet = true
 			break
 		}
@@ -625,7 +703,7 @@ func TestCheckBadParentAssigngrpLoop(t *testing.T) {
 
 	for _, ioBundle := range aa.IoBundleList {
 		if ioBundle.Phylabel == "2" {
-			if ioBundle.Error != "IOBundle cannot be it's own parent" {
+			if ioBundle.Error.String() != "IOBundle cannot be it's own parent" {
 				t.Fatal("wrong error message")
 			}
 		}
@@ -648,7 +726,7 @@ func TestCheckBadParentAssigngrpLoop(t *testing.T) {
 
 	errorSet := false
 	for _, ioBundle := range aa.IoBundleList {
-		if ioBundle.Error == "Cycle detected, please check provided parentassigngrp/assigngrp" {
+		if ioBundle.Error.String() == "Cycle detected, please check provided parentassigngrp/assigngrp" {
 			errorSet = true
 			break
 		}
@@ -746,10 +824,84 @@ func TestCheckBadUSBBundles(t *testing.T) {
 		aa.CheckBadUSBBundles()
 
 		for i, bundleWithErr := range testCase.bundleWithError {
-			if bundles[i].Error != bundleWithErr.expectedError {
+			if bundles[i].Error.String() != bundleWithErr.expectedError {
 				t.Fatalf("bundle %s expected error \n'%s', got error \n'%s'",
-					bundleWithErr.bundle.Phylabel, bundleWithErr.expectedError, bundles[i].Error)
+					bundleWithErr.bundle.Phylabel, bundleWithErr.expectedError, bundles[i].Error.String())
 			}
 		}
 	}
+}
+
+type (
+	testErr1 struct{}
+	testErr2 struct{}
+	testErr3 struct {
+		error
+	}
+	testErr4 struct {
+		error
+	}
+)
+
+func (testErr1) Error() string {
+	return "err1"
+}
+
+func (testErr2) Error() string {
+	return "err2"
+}
+
+func TestIoBundleError(t *testing.T) {
+	iobe := ioBundleError{}
+
+	iobe.Append(testErr1{})
+
+	if !iobe.hasError(testErr1{}) {
+		t.Fatal("has not error testErr1")
+	}
+	if iobe.hasError(testErr2{}) {
+		t.Fatal("has error testErr2, but shouldn't")
+	}
+
+	if iobe.String() != "err1" {
+		t.Fatalf("expected error string to be 'err1', but got '%s'", iobe.String())
+	}
+
+	iobe.Append(testErr2{})
+
+	if iobe.String() != "err1; err2" {
+		t.Fatalf("expected error string to be 'err1; err2', but got '%s'", iobe.String())
+	}
+
+	iobe.Append(testErr1{})
+
+	iobe.removeByType(testErr1{})
+
+	if iobe.String() != "err2" {
+		t.Fatalf("expected error string to be 'err2', but got '%s'", iobe.String())
+	}
+	if !iobe.hasError(testErr2{}) {
+		t.Fatal("has not error testErr2")
+	}
+
+	err3 := testErr3{fmt.Errorf("err3")}
+	err4 := testErr4{fmt.Errorf("err4")}
+	iobe.Append(err3)
+	iobe.Append(err4)
+
+	if iobe.String() != "err2; err3; err4" {
+		t.Fatalf("expected error string to be 'err2; err3; err4', but got '%s'", iobe.String())
+	}
+
+	iobe.removeByType(testErr3{})
+	if iobe.String() != "err2; err4" {
+		t.Fatalf("expected error string to be 'err2; err4', but got '%s'", iobe.String())
+	}
+}
+
+func TestIoBundleCmpable(t *testing.T) {
+	io1 := IoBundle{}
+	io2 := IoBundle{}
+
+	cmp.Diff(io1, io2)
 }
