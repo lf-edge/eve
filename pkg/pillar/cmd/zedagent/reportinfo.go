@@ -529,12 +529,12 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext, dest destinationBitset) {
 		} else if ib.KeepInHost {
 			reportAA.UsedByBaseOS = true
 		}
-		if ib.Error != "" {
+		if !ib.Error.Empty() {
 			errInfo := new(info.ErrorInfo)
-			errInfo.Description = ib.Error
+			errInfo.Description = ib.Error.String()
 			errInfo.Severity = info.Severity_SEVERITY_ERROR
-			if !ib.ErrorTime.IsZero() {
-				protoTime, err := ptypes.TimestampProto(ib.ErrorTime)
+			if !ib.Error.ErrorTime().IsZero() {
+				protoTime, err := ptypes.TimestampProto(ib.Error.ErrorTime())
 				if err == nil {
 					errInfo.Timestamp = protoTime
 				}
