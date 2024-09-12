@@ -25,10 +25,10 @@ RUN eve-alpine-deploy.sh
 # list of grub modules that are portable between x86_64 and aarch64
 ENV GRUB_MODULES_PORT="part_gpt fat ext2 iso9660 squash4 gzio linux acpi normal cpio crypto disk boot crc64 \
 search_disk_uuid search_part_label search_label xzio xfs video gfxterm serial gptprio chain probe reboot regexp smbios \
-part_msdos cat echo test configfile loopback true"
+part_msdos cat echo test configfile loopback net tftp http true"
 
 FROM grub-build-base AS grub-build-amd64
-ENV GRUB_MODULES="multiboot multiboot2 efi_uga efi_gop linuxefi gpt verify gcry_sha256 measurefs"
+ENV GRUB_MODULES="multiboot multiboot2 efi_uga efi_gop linuxefi gpt verify gcry_sha256 measurefs efinet"
 ENV GRUB_MODULES_i386_pc="multiboot multiboot2 biosdisk gpt verify"
 ENV GRUB_COMMIT=71f9e4ac44142af52c3fc1860436cf9e432bf764
 ENV GRUB_PATCHES=patches
@@ -37,13 +37,13 @@ ENV GRUB_PATCHES=patches
 ENV GRUB_PLATFORM="efi pc:--disable-efiemu"
 
 FROM grub-build-base AS grub-build-arm64
-ENV GRUB_MODULES="xen_boot efi_gop gpt gcry_sha256 measurefs"
+ENV GRUB_MODULES="xen_boot efi_gop gpt gcry_sha256 measurefs efinet"
 ENV GRUB_COMMIT=2.06
 ENV GRUB_PATCHES="patches-${GRUB_COMMIT} patches-aarch64-${GRUB_COMMIT}"
 ENV GRUB_PLATFORM=efi
 
 FROM grub-build-base AS grub-build-riscv64
-ENV GRUB_MODULES=""
+ENV GRUB_MODULES="efinet"
 ENV GRUB_COMMIT=2.06
 ENV GRUB_PATCHES="patches-${GRUB_COMMIT} patches-riscv64-${GRUB_COMMIT}"
 ENV GRUB_PLATFORM=efi
