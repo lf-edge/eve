@@ -1,5 +1,6 @@
 #!/bin/sh
 set -e
+[ -n "$DEBUG" ] && set -x
 
 exec 3>&1
 exec 1>&2
@@ -127,7 +128,7 @@ do_rootfs() {
 }
 
 do_version() {
-  echo /bits/*.squash | sed -e 's#/bits/rootfs-##' -e 's#.squash##' >&3
+  cat /bits/eve_version >&3
 }
 
 do_build_config() {
@@ -152,7 +153,7 @@ do_live() {
 }
 
 do_installer_raw() {
-  create_efi_raw "${1:-592}" "conf_win installer inventory_win"
+  create_efi_raw "${1:-592}" "efi conf_win installer inventory_win"
   dump "$OUTPUT_IMG" installer.raw
 }
 
@@ -163,28 +164,28 @@ do_installer_iso() {
 }
 
 do_installer_net() {
-  # FIXME: this will also go away once we rationalize
-  # how we're managing config for things like netboot
-  (cd "$(mktemp -d)" && mkdir -p media/root-rw/boot
-   cp /bits/config.img /bits/persist.img media/root-rw
-   echo netboot > media/root-rw/boot/.uuid
-   find . | sort | cpio --quiet -o -H newc) | gzip > /initrd.bits
-  ln -s /bits/* /
-  unsquashfs -d /tmp/kernel rootfs.img boot/kernel
-  mv /tmp/kernel/boot/kernel /
-  tar --mode=644 -C / -chvf /output.net ipxe.efi.cfg ipxe.efi kernel initrd.img installer.img initrd.bits rootfs.img
-  if [ "$(uname -m)" = aarch64 ]
-  then
-  cat > /tmp/boot.scr <<__EOT__
-dhcp
-tftpboot \${kernel_addr_r} ipxe.efi
-bootefi \${kernel_addr_r}
-__EOT__
-    mkimage -A arm64 -O linux -T script -C none -a 0 -e 0 -n "U-Boot Script" -d /tmp/boot.scr /boot.scr.uimg
-    ln -fs /bits/boot/* /
-    tar -C / -rhvf /output.net boot.scr.uimg overlays u-boot.bin bcm2711-rpi-4-b.dtb config.txt fixup4.dat start4.elf
-  fi
-  dump /output.net installer.net
+  # net installer depends on installer.iso
+  rm -rf /parts
+  mkdir -p /parts
+  /make-efi installer
+  mv /output.iso /parts/installer.iso
+
+  # all of this is taken straight from ../../tools/makenet.sh
+  # it should be unified somehow
+  cp /bits/ipxe.efi.cfg /parts
+   mkdir -p /parts/EFI/BOOT
+   cp /bits/EFI/BOOT/BOOT*EFI /parts/EFI/BOOT/
+   # by default, BOOT*.EFI looks for grub.cfg in its source location at EFI/BOOT/grub.cfg, so put it there
+   cat <<'EOF' > /parts/EFI/BOOT/grub.cfg
+echo "Downloading installer. This may take some time. Please wait patiently."
+loopback loop0 ($cmddevice)/installer.iso
+set root=loop0
+set isnetboot=true
+export isnetboot
+configfile ($root)/EFI/BOOT/grub.cfg
+EOF
+  tar -C /parts -chvf /output.tar .
+  dump /output.tar installer.net
 }
 
 do_sbom() {
