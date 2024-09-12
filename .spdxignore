@@ -1,4 +1,5 @@
 pkg/edgeview/vendor/
+pkg/installer/src/vendor/
 pkg/kube/eve-bridge/vendor/
 pkg/measure-config/vendor/
 pkg/newlog/vendor/
