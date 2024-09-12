@@ -1,5 +1,8 @@
 # Booting EVE
 
+**Note:** This document primarily describes booting installed EVE. For details on
+how EVE installer boots, see [./BOOT-INSTALLER.md](BOOT-INSTALLER.md).
+
 Every time an Edge Node running EVE is powered on or rebooted, the first piece of software
 that gets executed is firmware code. The job of the firmware code is to initialize the
 hardware just enough to pass control to a custom, operating system specific bootloader
