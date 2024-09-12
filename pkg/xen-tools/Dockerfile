@@ -31,7 +31,7 @@ ENV BUILD_PKGS \
 
 ENV BUILD_PKGS_arm64 dtc-dev
 
-ENV PKGS alpine-baselayout libgcc bash musl-utils libaio libbz2 glib pixman keyutils libusb xz-libs libuuid zstd-libs sudo yajl
+ENV PKGS alpine-baselayout libgcc bash musl-utils libaio libbz2 glib pixman yajl keyutils libusb xz-libs libuuid zstd-libs sudo util-linux-misc
 ENV PKGS_arm64 libfdt
 
 RUN eve-alpine-deploy.sh
