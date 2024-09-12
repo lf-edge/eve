@@ -23,6 +23,7 @@ nav:
   - 'Deploying EVE-OS': 'docs/DEPLOYMENT.md'
   - 'Verifying EVE-OS': 'docs/HARDWARE-VERIFICATION.md'
   - 'Booting EVE': 'docs/BOOTING.md'
+  - 'Booting Installer': 'docs/BOOT-INSTALLER.md'
   - Communications: 'docs/COMMS.md'
   - 'CAN Bus': 'docs/CANBus.md'
   - Registration: 'docs/REGISTRATION.md'
