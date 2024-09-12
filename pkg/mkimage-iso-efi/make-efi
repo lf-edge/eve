@@ -16,20 +16,13 @@ copy() {
 #
 # Extract partitions from stdin or look them up in /bits
 #
-mkdir /parts 2>/dev/null || :
+mkdir -p /parts 2>/dev/null || :
 cd /parts
 if [ -d /bits ]; then
    ln -s /bits/* .
    rm \* >/dev/null 2>&1 || :
 else
    bsdtar xzf -
-fi
-
-# for installer we need to add a uuid and override grub.cfg
-if [ "$1" = installer ] || [ "$1" = verification ]; then
-   mkdir -p boot && touch boot/.boot_repository
-   od -An -x -N 16 /dev/random | tr -d ' ' > boot/.uuid
-   cp grub.cfg EFI/BOOT/
 fi
 
 # create a ISO with a EFI boot partition
@@ -43,11 +36,52 @@ mmd -i boot.img ::/EFI
 mmd -i boot.img ::/EFI/BOOT
 mcopy -i boot.img EFI/BOOT/* ::/EFI/BOOT/
 
-# pay attentio to the -f option: it follows symlinks which is exactly
+# for installer we need to add a uuid and override the grub.cfg
+if [ "$1" = installer ]; then
+   mkdir -p boot
+   touch boot/.boot_repository
+   od -An -x -N 16 /dev/random | tr -d ' ' > boot/.uuid
+   # do not try overriding grub.cfg inside the fat32 image.
+   # UEFI does not make it available to the EFI filesystem, it just loads from
+   # wherever it sees its $prefix.
+   # However, some UEFI implementations *might* do it, so we insert one there that just
+   # loads the next one.
+   cat > /tmp/grub.cfg <<'EOF'
+install_part="$cmddevice"
+set dev=$install_part
+
+set root=$dev
+configfile ($dev)/EFI/BOOT/grub.cfg
+EOF
+   mcopy -i boot.img -o /tmp/grub.cfg ::/EFI/BOOT/
+fi
+
+# was a volume label set? If so, also create an initrd.img that can find that label
+# unfortunately, the kernel does not support ISO label as a root= option
+# see all of the options https://github.com/torvalds/linux/blob/b831f83e40a24f07c8dcba5be408d93beedc820f/block/early-lookup.c#L216-L244
+VOL_LABEL=""
+if [ -n "$VOLUME_LABEL" ]; then
+   VOL_LABEL="-V $VOLUME_LABEL"
+fi
+
+if [ ! -e boot/initrd.img ]; then
+   # all of the things we need to make a simple initrd
+   mkdir -p /tmp/initrd
+   (cd /tmp/initrd
+   mkdir -p bin lib sbin etc proc sys newroot
+   cp /initrd.sh init
+   cp /bin/busybox bin/
+   cp /lib/ld-musl* lib/
+   /bin/busybox --install -s /tmp/initrd/bin
+   find . | cpio -H newc -o | gzip > /tmp/initrd.img)
+   mv /tmp/initrd.img boot/initrd.img
+fi
+
+# pay attention to the -f option: it follows symlinks which is exactly
 # what we need for installer construction but could be dangerous in the
 # generic case for this container
 xorriso -as mkisofs \
-        -m rootfs-\* -f -R -e boot.img -hide boot.img -hide boot.catalog -no-emul-boot -o /tmp/disk.iso .
+        -m rootfs-\* -f -R -e boot.img -hide boot.img -hide boot.catalog -no-emul-boot ${VOL_LABEL} -o /tmp/disk.iso .
 copy /tmp/disk.iso /output.iso
 
 # How to build a VHDX. Commented out because we are currently not using it

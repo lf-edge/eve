@@ -7,7 +7,7 @@
 #
 FROM lfedge/eve-alpine:82df60e43ab9f8c935584b8c7b4d0a4b0271d608 AS build
 SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
-ENV BUILD_PKGS grep patch git make gcc linux-headers musl-dev autoconf automake pkgconfig kmod-dev util-linux-dev cryptsetup-dev lddtree libgcc
+ENV BUILD_PKGS grep patch git make gcc linux-headers musl-dev autoconf automake pkgconfig kmod-dev util-linux-dev cryptsetup-dev lddtree libgcc mkinitfs
 ENV PKGS mtools dosfstools libarchive-tools sgdisk e2fsprogs util-linux squashfs-tools coreutils tar dmidecode \
     kmod-libs cryptsetup-libs libblkid
 RUN eve-alpine-deploy.sh
@@ -24,20 +24,7 @@ RUN make -C /tmp/mkinitfs install
 WORKDIR /out
 RUN echo "mtools_skip_check=1" >> etc/mtools.conf
 RUN mkdir -p efifs parts root bits config persist opt/pillar opt/debug lib/modules run sys
-COPY make-raw install grub.cfg.in UsbInvocationScript.txt ./
-
-# Before changing something here please take a look into the
-# images/rootfs.yml.in onboot section: the installer should
-# precede the storage-init container.
-#
-# now lets create an edge container
-# FIXME: 002-installer? why not linuxkit build?
-WORKDIR /eco/media/root-rw/root/containers/onboot/002-installer
-COPY runtime.json config.json ./
-RUN mv /out rootfs
-# hadolint ignore=DL3003
-RUN (cd /eco && find . -xdev | grep -v installer.img | sort | cpio --quiet -o -H newc) | gzip > rootfs/installer.img
-RUN mv rootfs /out
+COPY make-raw UsbInvocationScript.txt ./
 
 # bootstrap Alpine's initrd
 WORKDIR /
