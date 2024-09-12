@@ -8,8 +8,6 @@ FROM MKISO_TAG as iso
 FROM IPXE_TAG as ipxe
 # hadolint ignore=DL3006
 FROM MKRAW_TAG as raw
-# we need to get rid of embedded initrd & installer.img since we will get them from outside
-RUN rm /initrd.img /installer.img
 # hadolint ignore=DL3006
 FROM MKCONF_TAG as conf
 
