@@ -23,4 +23,4 @@ SOURCE="$(cd "$1" && pwd)"
 IMAGE="$(cd "$(dirname "$2")" && pwd)/$(basename "$2")"
 shift 2
 
-docker run --rm -v "$SOURCE:/parts" -v "$IMAGE:/output.img" "$MKFLASH_TAG" "$CREATE_IMG_ARG" /output.img "$@"
+docker run --rm -e DEBUG="$DEBUG" -v "$SOURCE:/parts" -v "$IMAGE:/output.img" "$MKFLASH_TAG" "$CREATE_IMG_ARG" /output.img "$@"
