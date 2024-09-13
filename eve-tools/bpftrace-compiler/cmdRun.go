@@ -49,6 +49,7 @@ func (r *run) run(bpfFile string, uc userspaceContainer, kernelModules []string,
 }
 
 func compileWithCache(arch string, lkConf lkConf, uc userspaceContainer, kernelModules []string, bpfFile string, outputFile string) error {
+	var err error
 	if bpftraceCompilerDir == "" {
 		return compile(arch, lkConf, uc, kernelModules, bpfFile, outputFile)
 	}
