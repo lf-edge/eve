@@ -185,6 +185,96 @@ In this case it would make sense to try with:
     }
 ```
 
+## Container Device Interface support for GPUs
+
+Some devices, specially those integrated to a System on a Chip (SoC), might require complex setup in order to be exposed
+to Edge Applications. Additionally, if the device is not connected to a PCIe bus and/or the SoC doesn't implement an
+IOMMU (or SMMU on ARM), it cannot be exposed (passthrough) to Edge Applications using the VFIO mechanism. For example,
+the GPU present on NVIDIA Jetson devices is not connected through the PCIe bus, so it cannot be exposed to any Virtual
+Machine.
+
+For such specific cases, EVE-OS supports the Container Device Interface (CDI) mechanism that can be used to exposed a
+GPU device to a bare metal container. This approach makes the CDI solution 100% compatible with the current passthrough
+mechanism and it requires no changes neither in the API nor in the controller side. It operates as follows:
+
+1. A CDI (yaml) file is provided at /etc/cdi on the rootfs. This file contains all the specific setup to expose a GPU to
+   bare metal containers, such as access to file devices, host libraries that needs to be mounted inside the container,
+   custom actions to be performed, like creation of symbolic links, etc.
+1. Each setup is identified by a name in the format "vendor.com/device" inside the CDI file. For instance, a device with
+   two integrated GPUs might have defined "vendor.com/gpu=0" and "vendor.com/gpu=1".
+1. An HDMI I/O adapter must be specified in the device model, configuring the CDI string using the "cbattr" attribute.
+   This CDI string acts as a hardware ID (such as the PCI Bus Address or the interface name for network adapters), but
+   it's translated and processed according to the CDI file in order to generate the final OCI spec.
+1. Some GPUs can be accessed by multiple containers during runtime, for such cases, a single HDMI I/O adapter should be
+   created per container.
+1. The Edge Application (bare metal container) is deployed with the corresponding I/O adapter attached to the container.
+
+An HDMI I/O adapter (ztype 7) with CDI support can be defined as the following:
+
+```json
+{
+    "ztype": 7,
+    "phylabel": "GPU0",
+    "phyaddrs": {},
+    "logicallabel": "GPU0",
+    "assigngrp": "group1",
+    "usage": "ADAPTER_USAGE_UNSPECIFIED",
+    "cbattr": {
+        "cdi": "vendor.com/gpu=0"
+    },
+    "usagePolicy": {},
+    "cost": 0,
+    "vfs": null,
+    "parentassigngrp": ""
+}
+```
+
+If two containers need to access the same GPU (when supported), two I/O adapters must be defined. For instance, two
+containers can access the GPU on a Jetson Xavier platform through the following I/O adapters:
+
+```json
+{
+    "ztype": 7,
+    "phylabel": "GPU0",
+    "assigngrp": "group1",
+    "logicallabel": "GPU0",
+    "usagePolicy": {},
+    "cbattr": {
+        "cdi" : "nvidia.com/xavier-gpu=0"
+    }
+},
+{
+    "ztype": 7,
+    "phylabel": "GPU1",
+    "assigngrp": "group10",
+    "logicallabel": "GPU1",
+    "usagePolicy": {},
+    "cbattr": {
+        "cdi" : "nvidia.com/xavier-gpu=0"
+    }
+}
+```
+
+Notice that the CDI mechanism is available only for container Edge Applications running through the __HV_NOHYPER__
+virtualization mode (bare metal). Since it's intend to be used for GPU direct access, only I/O adapters of type HDMI can
+use the CDI string in the device model. Serial devices can also be exposed to bare metal containers in the same way done
+for VMs. Other devices can be exposed to containers using the ztype 255 (PhyIoOther). For instance, if a webcamera under
+/dev/video0 needs to be accessed by a container, the following I/O adapter can be defined:
+
+```json
+{
+    "ztype": 255,
+    "phylabel": "video0",
+    "phyaddrs": {
+        "Ifname": "/dev/video0"
+    },
+    "logicallabel": "video0",
+    "assigngrp": "group20",
+    "usage": "ADAPTER_USAGE_UNSPECIFIED",
+    "usagePolicy": {}
+}
+```
+
 ## Testing
 
 The model file as well as other hardware functions used by EVE-OS should be tested before submitting a pull request to add the model file.
