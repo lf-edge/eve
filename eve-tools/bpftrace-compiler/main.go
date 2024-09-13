@@ -78,7 +78,7 @@ func main() {
 		Short:      "compile only",
 		Example:    fmt.Sprintf("%s compile amd64 docker.io/lfedge/eve-kernel:eve-kernel-amd64-v6.1.38-generic-fb31ce85306c-gcc examples/opensnoop.bt opensnoop.aot", execName),
 		Args:       cobra.ExactArgs(4),
-		Run: func(cmd *cobra.Command, args []string) {
+		Run: func(_ *cobra.Command, args []string) {
 			lkConf := lkConf{
 				kernel: args[1],
 			}
@@ -261,7 +261,7 @@ func main() {
 		Aliases: []string{"e"},
 		Short:   fmt.Sprintf("creates a cache directory under %s/.bpftrace-compiler", bpftraceCompilerDir),
 		Args:    cobra.NoArgs,
-		Run: func(cmd *cobra.Command, args []string) {
+		Run: func(_ *cobra.Command, _ []string) {
 			cacheDir := filepath.Join(bpftraceCompilerDir, "cache")
 			err := os.MkdirAll(cacheDir, 0700)
 			if err != nil {
@@ -275,7 +275,7 @@ func main() {
 		Short:   fmt.Sprintf("deletes the cache directory under %s/.bpftrace-compiler", bpftraceCompilerDir),
 		Long:    "if bpftrace-compiler cannot find a cache directory, no cache will be used",
 		Args:    cobra.NoArgs,
-		Run: func(cmd *cobra.Command, args []string) {
+		Run: func(_ *cobra.Command, _ []string) {
 			cacheDir := filepath.Join(bpftraceCompilerDir, "cache")
 			err := os.RemoveAll(cacheDir)
 			if err != nil {
