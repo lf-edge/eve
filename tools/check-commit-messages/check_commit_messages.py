@@ -44,6 +44,27 @@ def check_commit_message(commit):
 
     return True, None
 
+def check_branch_rebased(repo, base_hash):
+    """
+    Check if the current branch is rebased on top of base_hash.
+    """
+    try:
+        # Get the current commit (HEAD)
+        head_commit = repo.head.commit
+        # Get the base commit
+        base_commit = repo.commit(base_hash)
+        # Find the merge base between HEAD and base_commit
+        merge_base = repo.merge_base(head_commit, base_commit)
+        if not merge_base:
+            print(f"Cannot find a common ancestor between HEAD and {base_hash}.")
+            return False
+        # Check if the base_commit is an ancestor of HEAD
+        if merge_base[0] != base_commit:
+            return False
+        return True
+    except git.BadName:
+        print(f"The base hash {base_hash} is invalid.")
+        return False
 
 def main():
     """
@@ -53,6 +74,13 @@ def main():
 
     # Base hash should be provided as an argument
     base_hash = sys.argv[1]
+
+    rebased = check_branch_rebased(repo, base_hash)
+
+    if not rebased:
+        print("Current branch is not rebased on top of the base branch!")
+        print("Please rebase the branch!")
+        print("The check will be performed on an incorrect set of commits.")
 
     commits = list(repo.iter_commits(f'{base_hash}..HEAD'))
 
@@ -73,6 +101,9 @@ def main():
             all_valid = False
 
     if not all_valid:
+        if not rebased:
+            print("The error(s) above might be due to the branch not being rebased.")
+            print("Please rebase the branch!")
         sys.exit(1)
 
     print("All commits are valid.")
