@@ -69,6 +69,8 @@ export TPM2TOOLS_TCTI="swtpm:host=localhost,port=$TPM_SRV_PORT"
 # start fresh
 tpm2 clear
 
+# The ek, srk and aik are created here based on what we do in createOtherKeys
+# in pkg/pillar/cmd/tpmmgr/tpmmgr.go.
 # create Endorsement Key
 tpm2 createek -c ek.ctx
 

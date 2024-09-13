@@ -714,6 +714,9 @@ func writeDeviceCertToFile(certBytes, keyBytes []byte) error {
 	return os.WriteFile(types.DeviceCertName, certBytes, 0644)
 }
 
+// These keys template and hierarchy are used in the tests/tpm/prep-and-test.sh
+// to create same keys and run tpm required unit-tests, in a unlikely event of
+// changing these values dont forget to update the test script.
 func createOtherKeys(override bool) error {
 	if err := etpm.CreateKey(log, etpm.TpmDevicePath, etpm.TpmEKHdl, tpm2.HandleEndorsement, etpm.DefaultEkTemplate, override); err != nil {
 		return fmt.Errorf("error in creating Endorsement key: %w ", err)
