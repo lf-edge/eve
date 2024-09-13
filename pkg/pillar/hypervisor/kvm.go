@@ -426,7 +426,14 @@ const qemuSwtpmTemplate = `
   chardev = "swtpm"
 
 [device "tpm-tis"]
+# 'virt' refers to aarch64
+# 'tpm-tis-device' for aarch64 versus 'tpm-tis' for x86
+# Reference: https://listman.redhat.com/archives/libvir-list/2021-February/msg00647.html
+{{- if eq .Machine "virt"}}
+  driver = "tpm-tis-device"
+{{- else}}
   driver = "tpm-tis"
+{{- end}}
   tpmdev = "tpm0"
 `
 
