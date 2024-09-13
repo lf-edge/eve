@@ -812,8 +812,9 @@ func (ctx KvmContext) CreateDomConfig(domainName string,
 	// render swtpm settings
 	if swtpmCtrlSock != "" {
 		swtpmContext := struct {
+			Machine    string
 			CtrlSocket string
-		}{swtpmCtrlSock}
+		}{ctx.devicemodel, swtpmCtrlSock}
 		t, _ = template.New("qemuSwtpm").Parse(qemuSwtpmTemplate)
 		if err := t.Execute(file, swtpmContext); err != nil {
 			return logError("can't write to config file %s (%v)", file.Name(), err)
