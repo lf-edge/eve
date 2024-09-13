@@ -49,6 +49,7 @@ func (r *run) run(bpfFile string, uc userspaceContainer, kernelModules []string,
 }
 
 func compileWithCache(arch string, lkConf lkConf, uc userspaceContainer, kernelModules []string, bpfFile string, outputFile string) error {
+	var err error
 	if bpftraceCompilerDir == "" {
 		return compile(arch, lkConf, uc, kernelModules, bpfFile, outputFile)
 	}
@@ -57,7 +58,11 @@ func compileWithCache(arch string, lkConf lkConf, uc userspaceContainer, kernelM
 	if uc != nil {
 		ucString = uc.String()
 	}
-	hash := hashDir([]string{"root"}, arch, lkConf.String(), ucString, strings.Join(kernelModules, ","), bpfFile)
+	bpfFileContent, err := os.ReadFile(bpfFile)
+	if err != nil {
+		return fmt.Errorf("Could not read '%s': %v", bpfFile, err)
+	}
+	hash := hashDir([]string{"root"}, arch, lkConf.String(), ucString, strings.Join(kernelModules, ","), string(bpfFileContent))
 
 	hashPath := filepath.Join(bpftraceCompilerDir, "cache", hash)
 
@@ -74,7 +79,7 @@ func compileWithCache(arch string, lkConf lkConf, uc userspaceContainer, kernelM
 		return nil
 
 	}
-	_, err := os.Stat(hashPath)
+	_, err = os.Stat(hashPath)
 	if err != nil {
 		log.Printf("could not find compiled script in cache, compiling now ...")
 		return compileAndStoreInCache()

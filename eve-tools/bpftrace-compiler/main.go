@@ -180,14 +180,36 @@ func main() {
 	}
 }
 
+type flags struct {
+	timeout                      time.Duration
+	userspaceContainerFlag       *[]string
+	userspaceContainerVersioning bool
+	kernelModulesFlag            *[]string
+}
+
+func (f *flags) setFlags(cmd *cobra.Command) {
+	cmd.PersistentFlags().DurationVarP(&f.timeout, "timeout", "t", 10*time.Second, "")
+	if f.userspaceContainerVersioning {
+		f.userspaceContainerFlag = cmd.PersistentFlags().StringSliceP("userspace", "u", []string{}, "onboot|service,name,image")
+	} else {
+		f.userspaceContainerFlag = cmd.PersistentFlags().StringSliceP("userspace", "u", []string{}, "onboot|service,name")
+	}
+	f.kernelModulesFlag = cmd.PersistentFlags().StringSliceP("kernel-modules", "k", []string{}, "dm_crypt")
+}
+
 func newListCmd() *cobra.Command {
-	var userspaceContainerFlag *[]string
+	f := flags{
+		timeout:                      0,
+		userspaceContainerFlag:       &[]string{},
+		userspaceContainerVersioning: true,
+		kernelModulesFlag:            &[]string{},
+	}
 	cmd := &cobra.Command{
 		Use:     "list-probes <arm64|amd64> <eve kernel docker image> <binary path|>",
 		Aliases: []string{"l", "list"},
 		Args:    cobra.RangeArgs(2, 3),
-		Run: func(cmd *cobra.Command, args []string) {
-			arch, lkConf, uc := interpretDebugCmdArgs(args, userspaceContainerFlag)
+		Run: func(_ *cobra.Command, args []string) {
+			arch, lkConf, uc := interpretDebugCmdArgs(args, f.userspaceContainerFlag)
 
 			imageDir, err := os.MkdirTemp("/var/tmp", "bpftrace-image")
 			if err != nil {
@@ -196,12 +218,8 @@ func newListCmd() *cobra.Command {
 			defer os.RemoveAll(imageDir)
 			createImage(arch, lkConf, uc, imageDir)
 
-			var qr *qemuRunner
-			if arch == "arm64" {
-				qr = newQemuArm64Runner(imageDir, "", "")
-			} else if arch == "amd64" {
-				qr = newQemuAmd64Runner(imageDir, "", "")
-			}
+			qr := newQemuRunner(arch, imageDir)
+			qr.withLoadKernelModule(*f.kernelModulesFlag)
 
 			listArg := ""
 			if len(args) == 3 {
@@ -215,20 +233,25 @@ func newListCmd() *cobra.Command {
 			fmt.Printf("%s", string(output))
 		},
 	}
-	userspaceContainerFlag = cmd.PersistentFlags().StringSliceP("userspace", "u", []string{}, "onboot|service,name,image")
+	f.setFlags(cmd)
+
 	return cmd
 }
 
 func newDebugShellCmd() *cobra.Command {
-	var userspaceContainerFlag *[]string
-	var kernelModulesFlag *[]string
+	f := flags{
+		timeout:                      0,
+		userspaceContainerFlag:       &[]string{},
+		userspaceContainerVersioning: true,
+		kernelModulesFlag:            &[]string{},
+	}
 	cmd := &cobra.Command{
 		Use:  "debug <arm64|amd64> <eve kernel docker image> <folder>",
 		Args: cobra.ExactArgs(3),
 		Run: func(_ *cobra.Command, args []string) {
 			shareFolder := args[2]
 
-			arch, lkConf, uc := interpretDebugCmdArgs(args, userspaceContainerFlag)
+			arch, lkConf, uc := interpretDebugCmdArgs(args, f.userspaceContainerFlag)
 
 			imageDir, err := os.MkdirTemp("/var/tmp", "bpftrace-image")
 			if err != nil {
@@ -245,8 +268,8 @@ func newDebugShellCmd() *cobra.Command {
 			}
 			qr.timeout = 0
 
-			if kernelModulesFlag != nil && len(*kernelModulesFlag) > 0 {
-				qr.withLoadKernelModule(*kernelModulesFlag)
+			if f.kernelModulesFlag != nil && len(*f.kernelModulesFlag) > 0 {
+				qr.withLoadKernelModule(*f.kernelModulesFlag)
 			}
 
 			err = qr.runDebug(shareFolder)
@@ -255,14 +278,19 @@ func newDebugShellCmd() *cobra.Command {
 			}
 		},
 	}
-	userspaceContainerFlag = cmd.PersistentFlags().StringSliceP("userspace", "u", []string{}, "onboot|service,name,image")
-	kernelModulesFlag = cmd.PersistentFlags().StringSliceP("kernel-modules", "k", []string{}, "dm_crypt")
+	f.setFlags(cmd)
+
 	return cmd
 }
 
 func newRunHTTPCmd() *cobra.Command {
-	var timeout time.Duration
-	var userspaceContainerFlag *[]string
+	f := flags{
+		timeout:                      0,
+		userspaceContainerFlag:       &[]string{},
+		userspaceContainerVersioning: false,
+		kernelModulesFlag:            &[]string{},
+	}
+
 	cmd := &cobra.Command{
 		Use:        "run-via-http <host:port> <bpftrace script>",
 		Aliases:    []string{"rh", "run-http"},
@@ -272,30 +300,34 @@ func newRunHTTPCmd() *cobra.Command {
 		Args:       cobra.ExactArgs(2),
 		Run: func(_ *cobra.Command, args []string) {
 			var uc userspaceContainer
-			if len(*userspaceContainerFlag) == 2 {
-				switch (*userspaceContainerFlag)[0] {
+			if len(*f.userspaceContainerFlag) == 2 {
+				switch (*f.userspaceContainerFlag)[0] {
 				case "onboot":
-					uc = onbootContainer((*userspaceContainerFlag)[1])
+					uc = onbootContainer((*f.userspaceContainerFlag)[1])
 				case "service":
-					uc = serviceContainer((*userspaceContainerFlag)[1])
+					uc = serviceContainer((*f.userspaceContainerFlag)[1])
 				default:
-					log.Fatalf("unknown userspace container type %s", (*userspaceContainerFlag)[0])
+					log.Fatalf("unknown userspace container type %s", (*f.userspaceContainerFlag)[0])
 				}
 			}
 			hr := newHTTPRun(args[0])
-			hr.run(args[1], uc, []string{}, timeout)
+			hr.run(args[1], uc, *f.kernelModulesFlag, f.timeout)
 			hr.end()
 		},
 	}
-	cmd.PersistentFlags().DurationVarP(&timeout, "timeout", "t", 10*time.Second, "")
-	userspaceContainerFlag = cmd.PersistentFlags().StringSliceP("userspace", "u", []string{}, "onboot|service,name")
+	f.setFlags(cmd)
+
 	return cmd
 }
 
 func newRunSSHCmd() *cobra.Command {
-	var userspaceContainerFlag *[]string
+	f := flags{
+		timeout:                      0,
+		userspaceContainerFlag:       &[]string{},
+		userspaceContainerVersioning: false,
+		kernelModulesFlag:            &[]string{},
+	}
 	var sshKey string
-	var timeout time.Duration
 	cmd := &cobra.Command{
 		Use:        "run-via-ssh <host:port> <bpftrace script>",
 		Aliases:    []string{"rs", "run-ssh"},
@@ -305,27 +337,27 @@ func newRunSSHCmd() *cobra.Command {
 		Args:       cobra.ExactArgs(2),
 		Run: func(_ *cobra.Command, args []string) {
 			var uc userspaceContainer
-			if len(*userspaceContainerFlag) == 2 {
-				switch (*userspaceContainerFlag)[0] {
+			if len(*f.userspaceContainerFlag) == 2 {
+				switch (*f.userspaceContainerFlag)[0] {
 				case "onboot":
-					uc = onbootContainer((*userspaceContainerFlag)[1])
+					uc = onbootContainer((*f.userspaceContainerFlag)[1])
 				case "service":
-					uc = serviceContainer((*userspaceContainerFlag)[1])
+					uc = serviceContainer((*f.userspaceContainerFlag)[1])
 				default:
-					log.Fatalf("unknown userspace container type %s", (*userspaceContainerFlag)[0])
+					log.Fatalf("unknown userspace container type %s", (*f.userspaceContainerFlag)[0])
 				}
 			}
 			sr, err := newSSHRun(args[0], sshKey)
 			if err != nil {
 				log.Fatal(err)
 			}
-			sr.run(args[1], uc, []string{}, timeout)
+			sr.run(args[1], uc, []string{}, f.timeout)
 			sr.end()
 		},
 	}
-	userspaceContainerFlag = cmd.PersistentFlags().StringSliceP("userspace", "u", []string{}, "onboot|service,name")
 	cmd.PersistentFlags().StringVarP(&sshKey, "identity-file", "i", "", "")
-	cmd.PersistentFlags().DurationVarP(&timeout, "timeout", "t", 10*time.Second, "")
+	f.setFlags(cmd)
+
 	return cmd
 }
 
@@ -360,4 +392,17 @@ func interpretDebugCmdArgs(args []string, ucFlag *[]string) (string, lkConf, use
 		}
 	}
 	return arch, lkConf, uc
+}
+
+func newQemuRunner(arch string, imageDir string) *qemuRunner {
+	var qr *qemuRunner
+	switch arch {
+	case "arm64":
+		qr = newQemuArm64Runner(imageDir, "", "")
+	case "amd64":
+		qr = newQemuAmd64Runner(imageDir, "", "")
+	default:
+		log.Fatalf("unknown architecture %s", arch)
+	}
+	return qr
 }
