@@ -14,3 +14,5 @@ $(EXECUTABLE): $(SOURCES) $(MODULES)
 clean:
 	rm -f $(EXECUTABLE)
 
+test: $(SOURCES)
+	go test
