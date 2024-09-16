@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 FROM lfedge/eve-fscrypt:0b7cc0d9d620e47fc54e21d56cb8a5cd224f9c9b as fscrypt
 
+FROM lfedge/eve-uefi:d821658883d6748d8bbf0d6640c62288e3ce8c6f as uefi-build
 FROM lfedge/eve-dom0-ztools:417d4ff6a57d2317c9e65166274b0ea6f6da16e2 as zfs
 RUN mkdir /out
 # copy zfs-related files from dom0-ztools using prepared list of files
@@ -79,6 +80,9 @@ RUN set -e && for patch in /sys-patches/*.patch; do \
         echo "Applying $patch"; \
         patch -p0 --no-backup-if-mismatch -r /tmp/deleteme.rej < "$patch"; \
     done
+
+RUN mkdir -p /out/usr/lib/xen/boot
+COPY --from=uefi-build /OVMF_VARS.fd /out/usr/lib/xen/boot/ovmf_vars.bin
 
 # we need zfs files on running system
 COPY --from=zfs /out /out
