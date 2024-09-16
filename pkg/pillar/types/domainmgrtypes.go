@@ -195,15 +195,16 @@ func (config DomainConfig) LogKey() string {
 // StorageConfigList. For example, a Target of "kernel" means to set/override
 // the Kernel attribute below.
 type VmConfig struct {
-	Kernel     string // default ""
-	Ramdisk    string // default ""
-	Memory     int    // in kbytes; Rounded up to Mbytes for xen
-	MaxMem     int    // in kbytes; Default equal to 'Memory', so no ballooning for xen
-	VCpus      int    // default 1
-	MaxCpus    int    // default VCpus
-	RootDev    string // default "/dev/xvda1"
-	ExtraArgs  string // added to bootargs
-	BootLoader string // default ""
+	Kernel                 string // default ""
+	Ramdisk                string // default ""
+	Memory                 int    // in kbytes; Rounded up to Mbytes for xen
+	MaxMem                 int    // in kbytes; Default equal to 'Memory', so no ballooning for xen
+	VCpus                  int    // default 1
+	MaxCpus                int    // default VCpus
+	RootDev                string // default "/dev/xvda1"
+	ExtraArgs              string // added to bootargs
+	BootLoader             string // default ""
+	BootLoaderSettingsFile string // used to pass bootloader settings file, for example OVMF_VARS.fd
 	// For CPU pinning
 	CPUs string // default "", list of "1,2"
 	// Needed for device passthru
