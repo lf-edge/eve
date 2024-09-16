@@ -132,6 +132,11 @@ const (
 	MemoryMonitorOutputDir = MemoryMonitorDir + "/output"
 	// MemoryMonitorPSIStatsFile - file to store memory PSI (Pressure Stall Information) statistics
 	MemoryMonitorPSIStatsFile = MemoryMonitorOutputDir + "/psi.txt"
+
+	// OVMFSettingsDir - directory for OVMF settings, they are stored in per-domain files
+	OVMFSettingsDir = SealedDirName + "/ovmf"
+	// OVMFSettingsTemplate - template file for OVMF settings
+	OVMFSettingsTemplate = "/usr/lib/xen/boot/ovmf_vars.bin"
 )
 
 var (
