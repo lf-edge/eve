@@ -157,3 +157,16 @@ func waitForKeyFromStdin(timeout time.Duration) bool {
 		return false
 	}
 }
+
+func newQemuRunner(arch string, imageDir string, bpfFile, outputFile string) *qemuRunner {
+	var qr *qemuRunner
+	switch arch {
+	case "arm64":
+		qr = newQemuArm64Runner(imageDir, bpfFile, outputFile)
+	case "amd64":
+		qr = newQemuAmd64Runner(imageDir, bpfFile, outputFile)
+	default:
+		log.Fatalf("unknown architecture %s", arch)
+	}
+	return qr
+}

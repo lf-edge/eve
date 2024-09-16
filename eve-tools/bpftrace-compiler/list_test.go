@@ -18,12 +18,7 @@ func testList(arch string, kernel string, t *testing.T, kernelModules []string, 
 	defer os.RemoveAll(imageDir)
 	createImage(arch, lkConf{kernel: kernel}, nil, imageDir)
 
-	var qr *qemuRunner
-	if arch == "amd64" {
-		qr = newQemuAmd64Runner(imageDir, "", "")
-	} else if arch == "arm64" {
-		qr = newQemuArm64Runner(imageDir, "", "")
-	}
+	qr := newQemuRunner(arch, imageDir, "", "")
 	qr.withLoadKernelModule(kernelModules)
 
 	output, err := qr.runList("")
