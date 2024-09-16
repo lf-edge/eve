@@ -104,12 +104,7 @@ func compile(arch string, lkConf lkConf, uc userspaceContainer, kernelModules []
 	defer os.RemoveAll(imageDir)
 	createImage(arch, lkConf, uc, imageDir)
 
-	var qr *qemuRunner
-	if arch == "arm64" {
-		qr = newQemuArm64Runner(imageDir, bpfFile, outputFile)
-	} else if arch == "amd64" {
-		qr = newQemuAmd64Runner(imageDir, bpfFile, outputFile)
-	}
+	qr := newQemuRunner(arch, imageDir, bpfFile, outputFile)
 
 	qr.withLoadKernelModule(kernelModules)
 
