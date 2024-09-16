@@ -30,19 +30,26 @@ func shutdown() {
 
 var bpftraceCompilerDir string
 
+var execName string
+
+func init() {
+	var err error
+	execName, err = os.Executable()
+	if err != nil {
+		log.Fatal(err)
+	}
+	execName = filepath.Base(execName)
+
+	homedir, err := os.UserHomeDir()
+	if err == nil {
+		bpftraceCompilerDir = filepath.Join(homedir, ".bpftrace-compiler")
+	}
+}
+
 func main() {
 	var err error
-	var sshKey string
 	var timeout time.Duration
-	var userspaceContainerDebugFlag *[]string
-	var userspaceContainerListFlag *[]string
-	var userspaceContainerHTTPFlag *[]string
 	var userspaceContainerEVFlag *[]string
-	var userspaceContainerSSHFlag *[]string
-
-	var kernelModulesDebugFlag *[]string
-
-	defer shutdown()
 
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
@@ -53,17 +60,6 @@ func main() {
 		shutdown()
 		os.Exit(0)
 	}()
-
-	execName, err := os.Executable()
-	if err != nil {
-		log.Fatal(err)
-	}
-	execName = filepath.Base(execName)
-
-	homedir, err := os.UserHomeDir()
-	if err == nil {
-		bpftraceCompilerDir = filepath.Join(homedir, ".bpftrace-compiler")
-	}
 
 	rootCmd := &cobra.Command{
 		Use:   "bpftrace-compiler",
@@ -89,58 +85,9 @@ func main() {
 		},
 	}
 
-	runSSHCmd := &cobra.Command{
-		Use:        "run-via-ssh <host:port> <bpftrace script>",
-		Aliases:    []string{"rs", "run-ssh"},
-		SuggestFor: []string{},
-		Short:      "run bpftrace script on host via ssh",
-		Example:    fmt.Sprintf("%s run-via-ssh 127.1:2222 examples/opensnoop.bt", execName),
-		Args:       cobra.ExactArgs(2),
-		Run: func(cmd *cobra.Command, args []string) {
-			var uc userspaceContainer
-			if len(*userspaceContainerSSHFlag) == 2 {
-				switch (*userspaceContainerSSHFlag)[0] {
-				case "onboot":
-					uc = onbootContainer((*userspaceContainerSSHFlag)[1])
-				case "service":
-					uc = serviceContainer((*userspaceContainerSSHFlag)[1])
-				default:
-					log.Fatalf("unknown userspace container type %s", (*userspaceContainerSSHFlag)[0])
-				}
-			}
-			sr, err := newSSHRun(args[0], sshKey)
-			if err != nil {
-				log.Fatal(err)
-			}
-			sr.run(args[1], uc, []string{}, timeout)
-			defers = append(defers, func() { sr.end() })
-		},
-	}
+	runSSHCmd := newRunSSHCmd()
 
-	runHTTPCmd := &cobra.Command{
-		Use:        "run-via-http <host:port> <bpftrace script>",
-		Aliases:    []string{"rh", "run-http"},
-		SuggestFor: []string{},
-		Short:      "run bpftrace script on host via http debug",
-		Example:    fmt.Sprintf("%s run-via-http 127.1:6543 examples/opensnoop.bt", execName),
-		Args:       cobra.ExactArgs(2),
-		Run: func(cmd *cobra.Command, args []string) {
-			var uc userspaceContainer
-			if len(*userspaceContainerHTTPFlag) == 2 {
-				switch (*userspaceContainerHTTPFlag)[0] {
-				case "onboot":
-					uc = onbootContainer((*userspaceContainerHTTPFlag)[1])
-				case "service":
-					uc = serviceContainer((*userspaceContainerHTTPFlag)[1])
-				default:
-					log.Fatalf("unknown userspace container type %s", (*userspaceContainerHTTPFlag)[0])
-				}
-			}
-			hr := newHTTPRun(args[0])
-			hr.run(args[1], uc, []string{}, timeout)
-			defers = append(defers, func() { hr.end() })
-		},
-	}
+	runHTTPCmd := newRunHTTPCmd()
 
 	runEdgeviewCmd := &cobra.Command{
 		Use:        "run-via-edgeview <path to edgeview script> <bpftrace script>",
@@ -184,72 +131,9 @@ func main() {
 		},
 	}
 
-	debugShellCmd := &cobra.Command{
-		Use:  "debug <arm64|amd64> <eve kernel docker image> <folder>",
-		Args: cobra.ExactArgs(3),
-		Run: func(cmd *cobra.Command, args []string) {
-			shareFolder := args[2]
+	debugShellCmd := newDebugShellCmd()
 
-			arch, lkConf, uc := interpretDebugCmdArgs(args, userspaceContainerDebugFlag)
-
-			imageDir, err := os.MkdirTemp("/var/tmp", "bpftrace-image")
-			if err != nil {
-				log.Fatal(err)
-			}
-			defer os.RemoveAll(imageDir)
-			createImage(arch, lkConf, uc, imageDir)
-
-			var qr *qemuRunner
-			if arch == "arm64" {
-				qr = newQemuArm64Runner(imageDir, "", "")
-			} else if arch == "amd64" {
-				qr = newQemuAmd64Runner(imageDir, "", "")
-			}
-			qr.timeout = 0
-
-			if kernelModulesDebugFlag != nil && len(*kernelModulesDebugFlag) > 0 {
-				qr.withLoadKernelModule(*kernelModulesDebugFlag)
-			}
-
-			err = qr.runDebug(shareFolder)
-			if err != nil {
-				fmt.Println(err)
-			}
-		},
-	}
-	listCmd := &cobra.Command{
-		Use:     "list-probes <arm64|amd64> <eve kernel docker image> <binary path|>",
-		Aliases: []string{"l", "list"},
-		Args:    cobra.RangeArgs(2, 3),
-		Run: func(cmd *cobra.Command, args []string) {
-			arch, lkConf, uc := interpretDebugCmdArgs(args, userspaceContainerListFlag)
-
-			imageDir, err := os.MkdirTemp("/var/tmp", "bpftrace-image")
-			if err != nil {
-				log.Fatal(err)
-			}
-			defer os.RemoveAll(imageDir)
-			createImage(arch, lkConf, uc, imageDir)
-
-			var qr *qemuRunner
-			if arch == "arm64" {
-				qr = newQemuArm64Runner(imageDir, "", "")
-			} else if arch == "amd64" {
-				qr = newQemuAmd64Runner(imageDir, "", "")
-			}
-
-			listArg := ""
-			if len(args) == 3 {
-				listArg = args[2]
-			}
-			output, err := qr.runList(listArg)
-			if err != nil {
-				fmt.Println(err)
-			}
-
-			fmt.Printf("%s", string(output))
-		},
-	}
+	listCmd := newListCmd()
 
 	cacheCmd := &cobra.Command{
 		Use:     "cache - manage bpftrace-compiler cache",
@@ -285,20 +169,6 @@ func main() {
 	}
 	cacheCmd.AddCommand(cacheEnableCmd, cacheDisableCmd)
 
-	runSSHCmd.PersistentFlags().StringVarP(&sshKey, "identity-file", "i", "", "")
-	runSSHCmd.PersistentFlags().DurationVarP(&timeout, "timeout", "t", 10*time.Second, "")
-
-	runHTTPCmd.PersistentFlags().DurationVarP(&timeout, "timeout", "t", 10*time.Second, "")
-	userspaceContainerHTTPFlag = runHTTPCmd.PersistentFlags().StringSliceP("userspace", "u", []string{}, "onboot|service,name")
-	userspaceContainerEVFlag = runEdgeviewCmd.PersistentFlags().StringSliceP("userspace", "u", []string{}, "onboot|service,name")
-	userspaceContainerSSHFlag = runSSHCmd.PersistentFlags().StringSliceP("userspace", "u", []string{}, "onboot|service,name")
-
-	kernelModulesDebugFlag = debugShellCmd.PersistentFlags().StringSliceP("kernel-modules", "k", []string{}, "dm_crypt")
-
-	userspaceContainerDebugFlag = debugShellCmd.PersistentFlags().StringSliceP("userspace", "u", []string{}, "onboot|service,name,image")
-
-	userspaceContainerListFlag = listCmd.PersistentFlags().StringSliceP("userspace", "u", []string{}, "onboot|service,name,image")
-
 	rootCmd.AddCommand(compileCmd, runSSHCmd, runHTTPCmd, runEdgeviewCmd, listCmd, debugShellCmd)
 	if bpftraceCompilerDir != "" {
 		rootCmd.AddCommand(cacheCmd)
@@ -308,6 +178,155 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+}
+
+func newListCmd() *cobra.Command {
+	var userspaceContainerFlag *[]string
+	cmd := &cobra.Command{
+		Use:     "list-probes <arm64|amd64> <eve kernel docker image> <binary path|>",
+		Aliases: []string{"l", "list"},
+		Args:    cobra.RangeArgs(2, 3),
+		Run: func(cmd *cobra.Command, args []string) {
+			arch, lkConf, uc := interpretDebugCmdArgs(args, userspaceContainerFlag)
+
+			imageDir, err := os.MkdirTemp("/var/tmp", "bpftrace-image")
+			if err != nil {
+				log.Fatal(err)
+			}
+			defer os.RemoveAll(imageDir)
+			createImage(arch, lkConf, uc, imageDir)
+
+			var qr *qemuRunner
+			if arch == "arm64" {
+				qr = newQemuArm64Runner(imageDir, "", "")
+			} else if arch == "amd64" {
+				qr = newQemuAmd64Runner(imageDir, "", "")
+			}
+
+			listArg := ""
+			if len(args) == 3 {
+				listArg = args[2]
+			}
+			output, err := qr.runList(listArg)
+			if err != nil {
+				fmt.Println(err)
+			}
+
+			fmt.Printf("%s", string(output))
+		},
+	}
+	userspaceContainerFlag = cmd.PersistentFlags().StringSliceP("userspace", "u", []string{}, "onboot|service,name,image")
+	return cmd
+}
+
+func newDebugShellCmd() *cobra.Command {
+	var userspaceContainerFlag *[]string
+	var kernelModulesFlag *[]string
+	cmd := &cobra.Command{
+		Use:  "debug <arm64|amd64> <eve kernel docker image> <folder>",
+		Args: cobra.ExactArgs(3),
+		Run: func(_ *cobra.Command, args []string) {
+			shareFolder := args[2]
+
+			arch, lkConf, uc := interpretDebugCmdArgs(args, userspaceContainerFlag)
+
+			imageDir, err := os.MkdirTemp("/var/tmp", "bpftrace-image")
+			if err != nil {
+				log.Fatal(err)
+			}
+			defer os.RemoveAll(imageDir)
+			createImage(arch, lkConf, uc, imageDir)
+
+			var qr *qemuRunner
+			if arch == "arm64" {
+				qr = newQemuArm64Runner(imageDir, "", "")
+			} else if arch == "amd64" {
+				qr = newQemuAmd64Runner(imageDir, "", "")
+			}
+			qr.timeout = 0
+
+			if kernelModulesFlag != nil && len(*kernelModulesFlag) > 0 {
+				qr.withLoadKernelModule(*kernelModulesFlag)
+			}
+
+			err = qr.runDebug(shareFolder)
+			if err != nil {
+				fmt.Println(err)
+			}
+		},
+	}
+	userspaceContainerFlag = cmd.PersistentFlags().StringSliceP("userspace", "u", []string{}, "onboot|service,name,image")
+	kernelModulesFlag = cmd.PersistentFlags().StringSliceP("kernel-modules", "k", []string{}, "dm_crypt")
+	return cmd
+}
+
+func newRunHTTPCmd() *cobra.Command {
+	var timeout time.Duration
+	var userspaceContainerFlag *[]string
+	cmd := &cobra.Command{
+		Use:        "run-via-http <host:port> <bpftrace script>",
+		Aliases:    []string{"rh", "run-http"},
+		SuggestFor: []string{},
+		Short:      "run bpftrace script on host via http debug",
+		Example:    fmt.Sprintf("%s run-via-http 127.1:6543 examples/opensnoop.bt", execName),
+		Args:       cobra.ExactArgs(2),
+		Run: func(_ *cobra.Command, args []string) {
+			var uc userspaceContainer
+			if len(*userspaceContainerFlag) == 2 {
+				switch (*userspaceContainerFlag)[0] {
+				case "onboot":
+					uc = onbootContainer((*userspaceContainerFlag)[1])
+				case "service":
+					uc = serviceContainer((*userspaceContainerFlag)[1])
+				default:
+					log.Fatalf("unknown userspace container type %s", (*userspaceContainerFlag)[0])
+				}
+			}
+			hr := newHTTPRun(args[0])
+			hr.run(args[1], uc, []string{}, timeout)
+			hr.end()
+		},
+	}
+	cmd.PersistentFlags().DurationVarP(&timeout, "timeout", "t", 10*time.Second, "")
+	userspaceContainerFlag = cmd.PersistentFlags().StringSliceP("userspace", "u", []string{}, "onboot|service,name")
+	return cmd
+}
+
+func newRunSSHCmd() *cobra.Command {
+	var userspaceContainerFlag *[]string
+	var sshKey string
+	var timeout time.Duration
+	cmd := &cobra.Command{
+		Use:        "run-via-ssh <host:port> <bpftrace script>",
+		Aliases:    []string{"rs", "run-ssh"},
+		SuggestFor: []string{},
+		Short:      "run bpftrace script on host via ssh",
+		Example:    fmt.Sprintf("%s run-via-ssh 127.1:2222 examples/opensnoop.bt", execName),
+		Args:       cobra.ExactArgs(2),
+		Run: func(_ *cobra.Command, args []string) {
+			var uc userspaceContainer
+			if len(*userspaceContainerFlag) == 2 {
+				switch (*userspaceContainerFlag)[0] {
+				case "onboot":
+					uc = onbootContainer((*userspaceContainerFlag)[1])
+				case "service":
+					uc = serviceContainer((*userspaceContainerFlag)[1])
+				default:
+					log.Fatalf("unknown userspace container type %s", (*userspaceContainerFlag)[0])
+				}
+			}
+			sr, err := newSSHRun(args[0], sshKey)
+			if err != nil {
+				log.Fatal(err)
+			}
+			sr.run(args[1], uc, []string{}, timeout)
+			sr.end()
+		},
+	}
+	userspaceContainerFlag = cmd.PersistentFlags().StringSliceP("userspace", "u", []string{}, "onboot|service,name")
+	cmd.PersistentFlags().StringVarP(&sshKey, "identity-file", "i", "", "")
+	cmd.PersistentFlags().DurationVarP(&timeout, "timeout", "t", 10*time.Second, "")
+	return cmd
 }
 
 func interpretDebugCmdArgs(args []string, ucFlag *[]string) (string, lkConf, userspaceContainer) {
