@@ -179,7 +179,7 @@ func newListCmd() *cobra.Command {
 			defer os.RemoveAll(imageDir)
 			createImage(arch, lkConf, uc, imageDir)
 
-			qr := newQemuRunner(arch, imageDir)
+			qr := newQemuRunner(arch, imageDir, "", "")
 			qr.withLoadKernelModule(*f.kernelModulesFlag)
 
 			listArg := ""
@@ -275,12 +275,7 @@ func newDebugShellCmd() *cobra.Command {
 			defer os.RemoveAll(imageDir)
 			createImage(arch, lkConf, uc, imageDir)
 
-			var qr *qemuRunner
-			if arch == "arm64" {
-				qr = newQemuArm64Runner(imageDir, "", "")
-			} else if arch == "amd64" {
-				qr = newQemuAmd64Runner(imageDir, "", "")
-			}
+			qr := newQemuRunner(arch, imageDir, "", "")
 			qr.timeout = 0
 
 			if f.kernelModulesFlag != nil && len(*f.kernelModulesFlag) > 0 {
@@ -407,17 +402,4 @@ func interpretDebugCmdArgs(args []string, ucFlag *[]string) (string, lkConf, use
 		}
 	}
 	return arch, lkConf, uc
-}
-
-func newQemuRunner(arch string, imageDir string) *qemuRunner {
-	var qr *qemuRunner
-	switch arch {
-	case "arm64":
-		qr = newQemuArm64Runner(imageDir, "", "")
-	case "amd64":
-		qr = newQemuAmd64Runner(imageDir, "", "")
-	default:
-		log.Fatalf("unknown architecture %s", arch)
-	}
-	return qr
 }
