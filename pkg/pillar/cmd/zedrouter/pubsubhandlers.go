@@ -370,7 +370,11 @@ func (z *zedrouter) handleNetworkInstanceModify(ctxArg interface{}, key string,
 	}
 	if status.Gateway != nil && status.BridgeMac != nil {
 		addrs := types.AssignedAddrs{
-			IPv4Addrs: []types.AssignedAddr{{Address: status.Gateway}},
+			IPv4Addrs: []types.AssignedAddr{
+				{
+					Address:    status.Gateway,
+					AssignedBy: types.AddressSourceEVEInternal,
+				}},
 		}
 		status.IPAssignments[status.BridgeMac.String()] = addrs
 		status.BridgeIPAddr = status.Gateway
