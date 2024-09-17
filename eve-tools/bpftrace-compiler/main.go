@@ -241,6 +241,7 @@ func newEdgeviewCmd() *cobra.Command {
 					time.Sleep(time.Second)
 					continue
 				}
+				break
 			}
 
 			hr := newHTTPRun(fmt.Sprintf("localhost:%d", port))
