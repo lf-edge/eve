@@ -779,6 +779,14 @@ func (ctx KvmContext) Setup(status types.DomainStatus, config types.DomainConfig
 	domainName := status.DomainName
 	domainUUID := status.UUIDandVersion.UUID
 
+	// this needs to be reworked to fit into the OVMF_VAR changes.
+	res, err := getFmlCustomResolution(&status, globalConfig)
+	if err != nil {
+		logError("failed to get fml custom resolution: %v", err)
+	} else {
+		logError("fml custom resolution is set to: %s", res)
+	}
+
 	// check if vTPM is enabled
 	swtpmCtrlSock := ""
 	if status.VirtualTPM {
@@ -865,6 +873,31 @@ func isVncShimVMEnabled(
 		globalShimVnc = ok && item.BoolValue
 	}
 	return config.EnableVnc && (config.EnableVncShimVM || globalShimVnc)
+}
+
+func getFmlCustomResolution(status *types.DomainStatus, globalConfig *types.ConfigItemValueMap) (string, error) {
+	fmlResolutions := status.FmlCustomResolution
+	// if not set in the domain status, try to get it from the global config
+	if fmlResolutions == types.FmlResolutionUnset {
+		if globalConfig != nil {
+			item, ok := globalConfig.GlobalSettings[types.FmlCustomResolution]
+			if ok {
+				fmlResolutions = item.StringValue()
+			}
+		}
+	}
+
+	// validate the resolution
+	switch fmlResolutions {
+	case types.FmlResolution800x600,
+		types.FmlResolution1024x768,
+		types.FmlResolution1280x800,
+		types.FmlResolution1920x1080,
+		types.FmlResolutionUnset:
+		return fmlResolutions, nil
+	}
+
+	return "", fmt.Errorf("invalid fml resolution %s", fmlResolutions)
 }
 
 // CreateDomConfig creates a domain config (a qemu config file,

@@ -318,6 +318,9 @@ type DomainStatus struct {
 	// VirtualTPM is a flag to signal the hypervisor implementation
 	// that vTPM is available for the domain.
 	VirtualTPM bool
+	// FmlCustomResolution is the custom resolution for FML mode,
+	// xxx: this should be moved to VmConfig
+	FmlCustomResolution string
 }
 
 func (status DomainStatus) Key() string {
