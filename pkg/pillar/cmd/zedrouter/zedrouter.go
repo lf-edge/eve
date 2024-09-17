@@ -446,10 +446,7 @@ func (z *zedrouter) run(ctx context.Context) (err error) {
 						niKey, vif.NetAdapterName)
 					continue
 				}
-				netStatus.IPAssignments[mac] = types.AssignedAddrs{
-					IPv4Addr:  newAddrs.IPv4Addr,
-					IPv6Addrs: newAddrs.IPv6Addrs,
-				}
+				netStatus.IPAssignments[mac] = newAddrs.AssignedAddrs
 				z.publishNetworkInstanceStatus(netStatus)
 				appKey := vif.App.String()
 				appStatus := z.lookupAppNetworkStatus(appKey)

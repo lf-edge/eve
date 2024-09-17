@@ -24,12 +24,40 @@ func (srv *Msrv) lookupAppNetworkStatusByAppIP(ip net.IP) *types.AppNetworkStatu
 	for _, st := range items {
 		status := st.(types.AppNetworkStatus)
 		for _, adapterStatus := range status.AppNetAdapterList {
-			if adapterStatus.AllocatedIPv4Addr.Equal(ip) {
-				return &status
+			for _, adapterIP := range adapterStatus.AssignedAddresses.IPv4Addrs {
+				if adapterIP.Address.Equal(ip) {
+					return &status
+				}
+			}
+			for _, adapterIP := range adapterStatus.AssignedAddresses.IPv6Addrs {
+				if adapterIP.Address.Equal(ip) {
+					return &status
+				}
 			}
 		}
 	}
 	return nil
+}
+
+func (srv *Msrv) lookupAppInstStatusByAppIP(ip net.IP) (*types.AppInstanceStatus, bool) {
+	sub := srv.subAppInstanceStatus
+	items := sub.GetAll()
+	for _, sc := range items {
+		status := sc.(types.AppInstanceStatus)
+		for _, adapterStatus := range status.AppNetAdapters {
+			for _, adapterIP := range adapterStatus.AssignedAddresses.IPv4Addrs {
+				if adapterIP.Address.Equal(ip) {
+					return &status, true
+				}
+			}
+			for _, adapterIP := range adapterStatus.AssignedAddresses.IPv6Addrs {
+				if adapterIP.Address.Equal(ip) {
+					return &status, true
+				}
+			}
+		}
+	}
+	return nil, false
 }
 
 func (srv *Msrv) getExternalIPsForApp(remoteIP net.IP) ([]net.IP, int) {
@@ -80,11 +108,13 @@ func (srv *Msrv) lookupNetworkInstanceStatusByAppIP(
 	for _, st := range items {
 		status := st.(types.NetworkInstanceStatus)
 		for _, addrs := range status.IPAssignments {
-			if ip.Equal(addrs.IPv4Addr) {
-				return &status
+			for _, assignedIP := range addrs.IPv4Addrs {
+				if ip.Equal(assignedIP.Address) {
+					return &status
+				}
 			}
-			for _, nip := range addrs.IPv6Addrs {
-				if ip.Equal(nip) {
+			for _, assignedIP := range addrs.IPv6Addrs {
+				if ip.Equal(assignedIP.Address) {
 					return &status
 				}
 			}
@@ -483,21 +513,6 @@ func (srv *Msrv) handleAppInstDelete(ctxArg interface{}, key string,
 	srv.Log.Functionf("handleAppInstDelete(%s) done", key)
 }
 
-func (srv *Msrv) lookupAppInstStatusByAppIP(ip net.IP) (*types.AppInstanceStatus, bool) {
-	sub := srv.subAppInstanceStatus
-	items := sub.GetAll()
-	for _, sc := range items {
-		status := sc.(types.AppInstanceStatus)
-		for _, adapterStatus := range status.AppNetAdapters {
-			if adapterStatus.AllocatedIPv4Addr.Equal(ip) {
-				return &status, adapterStatus.AllowToDiscover
-			}
-		}
-	}
-
-	return nil, false
-}
-
 // AppInstDiscovery is a struct which AppInstances see, when they request discoverable
 type AppInstDiscovery struct {
 	Port    string `json:"port"`
@@ -514,13 +529,18 @@ func (srv *Msrv) composeAppInstancesIPAddresses(UUIDToSkip uuid.UUID) map[string
 		}
 		adapters := make([]AppInstDiscovery, 0)
 		for _, adapterStatus := range status.AppNetAdapters {
-			if adapterStatus.AllocatedIPv4Addr == nil || adapterStatus.AllocatedIPv4Addr.String() == "" {
-				continue
+			for _, ip := range adapterStatus.AssignedAddresses.IPv4Addrs {
+				adapters = append(adapters, AppInstDiscovery{
+					Port:    adapterStatus.Vif,
+					Address: ip.Address.String(),
+				})
 			}
-			adapters = append(adapters, AppInstDiscovery{
-				Port:    adapterStatus.Vif,
-				Address: adapterStatus.AllocatedIPv4Addr.String(),
-			})
+			for _, ip := range adapterStatus.AssignedAddresses.IPv6Addrs {
+				adapters = append(adapters, AppInstDiscovery{
+					Port:    adapterStatus.Vif,
+					Address: ip.Address.String(),
+				})
+			}
 		}
 		res[status.UUIDandVersion.UUID.String()] = adapters
 	}

@@ -8,11 +8,13 @@
 CWD=$(pwd)
 TPM_SRV_PORT=1337
 TPM_CTR_PORT=$((TPM_SRV_PORT + 1))
-ENDO_SEED=0x4000000B
 EK_HANDLE=0x81000001
 SRK_HANDLE=0x81000002
+AIK_HANDLE=0x81000003
 EVE_TPM_STATE=/tmp/eve-tpm
 EVE_TPM_CTRL="$EVE_TPM_STATE/ctrl.sock"
+# this path is hardcoded in the pkg/pillar/evetpm/testhelper.go, so if you change
+# it here, change it there too.
 EVE_TPM_SRV="$EVE_TPM_STATE/srv.sock"
 
 echo "[+] Installing swtpm and tpm2-tools ..."
@@ -56,17 +58,19 @@ swtpm socket --tpm2 \
     --server port="$TPM_SRV_PORT" \
     --ctrl type=tcp,port="$TPM_CTR_PORT" \
     --tpmstate dir="$EVE_TPM_STATE" \
-    --flags not-need-init,startup-clear &
+    --flags startup-clear &
 
 PID=$!
 
-# set Transmission Interface (TCTI) swtpm socket, so tpm2-tools use it
+# Set Transmission Interface (TCTI) swtpm socket, so tpm2-tools use it
 # instead of the default char device interface.
 export TPM2TOOLS_TCTI="swtpm:host=localhost,port=$TPM_SRV_PORT"
 
 # start fresh
 tpm2 clear
 
+# The ek, srk and aik are created here based on what we do in createOtherKeys
+# in pkg/pillar/cmd/tpmmgr/tpmmgr.go.
 # create Endorsement Key
 tpm2 createek -c ek.ctx
 
@@ -74,28 +78,25 @@ tpm2 createek -c ek.ctx
 # "out of memory for object contexts", so flush everything to be safe.
 flushtpm
 
-# create Storage Root Key
-tpm2 startauthsession --policy-session -S session.ctx
-tpm2 policysecret -S session.ctx -c $ENDO_SEED
-tpm2 create -C ek.ctx -P "session:session.ctx" -G rsa2048 -u srk.pub -r srk.priv \
-            -a 'restricted|decrypt|fixedtpm|fixedparent|sensitivedataorigin|userwithauth'
-tpm2 flushcontext session.ctx
+# create srk
+tpm2 createprimary -C o -G rsa2048:aes128cfb -g sha256 -c srk.ctx \
+                   -a 'restricted|decrypt|fixedtpm|fixedparent|sensitivedataorigin|userwithauth'
 flushtpm
 
-# load the srk
-tpm2 startauthsession --policy-session -S session.ctx
-tpm2 policysecret -S session.ctx -c $ENDO_SEED
-tpm2 load -C ek.ctx -P "session:session.ctx" -u srk.pub -r srk.priv -c srk.ctx
-tpm2 flushcontext session.ctx
+# create aik
+tpm2 createprimary -C o -G rsa:rsassa-sha256:null -g sha256 -c aik.ctx \
+                   -a 'fixedtpm|fixedparent|sensitivedataorigin|userwithauth|restricted|sign|noda'
 flushtpm
 
-# make persisted know-good-handles out of ek and srk
+
+# make persisted know-good-handles out of ek, srk and aik
 tpm2 evictcontrol -C o -c ek.ctx $EK_HANDLE
 tpm2 evictcontrol -C o -c srk.ctx $SRK_HANDLE
+tpm2 evictcontrol -C o -c aik.ctx $AIK_HANDLE
 flushtpm
 
 # clean up
-rm session.ctx ek.ctx srk.pub srk.priv srk.ctx
+rm ek.ctx srk.ctx aik.ctx
 
 # kill swtpm, we are going to start it again with unix sockets
 kill $PID
@@ -123,8 +124,9 @@ echo "[+] Running tests ..."
 echo "========================================================"
 
 # we dont have many test that require the TPM, so hardcode test paths here.
-cd "$CWD/pkg/pillar/evetpm" && go test -v -coverprofile="evtpm.coverage.txt" -covermode=atomic
+cd "$CWD/pkg/pillar/evetpm" && go test -v -coverprofile="evetpm.coverage.txt" -covermode=atomic
 cd "$CWD/pkg/pillar/cmd/msrv" && go test -v -test.run ^TestTpmActivateCred$ -coverprofile="actcred.coverage.txt" -covermode=atomic
+cd "$CWD/pkg/pillar/cmd/vcomlink" && go test -v -coverprofile="vcomlink.coverage.txt" -covermode=atomic
 
 # we are done, kill the swtpm
 kill $PID

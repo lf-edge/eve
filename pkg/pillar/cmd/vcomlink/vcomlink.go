@@ -10,6 +10,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	etpm "github.com/lf-edge/eve/pkg/pillar/evetpm"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/sirupsen/logrus"
@@ -31,6 +32,9 @@ var (
 	logger   *logrus.Logger
 	log      *base.LogObject
 	listener SocketListener = vsockListener
+	// TpmDevicePath is the path to the TPM device, this is a variable so that
+	// it can be overridden in tests.
+	TpmDevicePath = etpm.TpmDevicePath
 )
 
 type vcomLinkContext struct {

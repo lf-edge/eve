@@ -353,10 +353,9 @@ type AppNetAdapterStatus struct {
 	AppNetAdapterConfig
 	VifInfo
 	BridgeMac         net.HardwareAddr
-	BridgeIPAddr      net.IP   // The address for DNS/DHCP service in zedrouter
-	AllocatedIPv4Addr net.IP   // Assigned to domU
-	AllocatedIPv6List []net.IP // IPv6 addresses assigned to domU
-	IPv4Assigned      bool     // Set to true once DHCP has assigned it to domU
+	BridgeIPAddr      net.IP        // The address for DNS/DHCP service in zedrouter
+	AssignedAddresses AssignedAddrs // IPv4 and IPv6 addresses assigned to domU
+	IPv4Assigned      bool          // Set to true once DHCP has assigned it to domU
 	IPAddrMisMatch    bool
 	HostName          string
 }
@@ -384,8 +383,48 @@ type NetworkInstanceInfo struct {
 
 // AssignedAddrs : IP addresses assigned to application network adapter.
 type AssignedAddrs struct {
-	IPv4Addr  net.IP
-	IPv6Addrs []net.IP
+	IPv4Addrs []AssignedAddr
+	IPv6Addrs []AssignedAddr
+}
+
+// GetInternallyLeasedIPv4Addr returns IPv4 address leased by EVE using
+// an internally run DHCP server.
+func (aa AssignedAddrs) GetInternallyLeasedIPv4Addr() net.IP {
+	for _, addr := range aa.IPv4Addrs {
+		if addr.AssignedBy == AddressSourceInternalDHCP {
+			return addr.Address
+		}
+	}
+	return nil
+}
+
+// AddressSource determines the source of an IP address assigned to an app VIF.
+// Values are power of two and therefore can be used with a bit mask.
+type AddressSource uint8
+
+const (
+	// AddressSourceUndefined : IP address source is not defined
+	AddressSourceUndefined AddressSource = 0
+	// AddressSourceEVEInternal : IP address is used only internally by EVE
+	// (i.e. inside dom0).
+	AddressSourceEVEInternal AddressSource = 1 << iota
+	// AddressSourceInternalDHCP : IP address is leased to an app by an internal DHCP server
+	// run by EVE.
+	AddressSourceInternalDHCP
+	// AddressSourceExternalDHCP : IP address is leased to an app by an external DHCP server.
+	AddressSourceExternalDHCP
+	// AddressSourceSLAAC : Stateless Address Autoconfiguration (SLAAC) was used by the client
+	// to generate a unique IPv6 address.
+	AddressSourceSLAAC
+	// AddressSourceStatic : IP address is assigned to an app statically
+	// (using e.g. cloud-init).
+	AddressSourceStatic
+)
+
+// AssignedAddr : IP address assigned to an application interface (on the guest side).
+type AssignedAddr struct {
+	Address    net.IP
+	AssignedBy AddressSource
 }
 
 // VifNameMac : name and MAC address assigned to app VIF.
@@ -1050,11 +1089,13 @@ func (status NetworkInstanceStatus) LogKey() string {
 // IsIpAssigned returns true if the given IP address is assigned to any app VIF.
 func (status *NetworkInstanceStatus) IsIpAssigned(ip net.IP) bool {
 	for _, assignments := range status.IPAssignments {
-		if ip.Equal(assignments.IPv4Addr) {
-			return true
+		for _, assignedIP := range assignments.IPv4Addrs {
+			if ip.Equal(assignedIP.Address) {
+				return true
+			}
 		}
-		for _, nip := range assignments.IPv6Addrs {
-			if ip.Equal(nip) {
+		for _, assignedIP := range assignments.IPv6Addrs {
+			if ip.Equal(assignedIP.Address) {
 				return true
 			}
 		}

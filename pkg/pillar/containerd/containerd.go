@@ -481,18 +481,22 @@ func (client *Client) CtrContainerInfo(ctx context.Context, name string) (int, i
 func (client *Client) CtrLogIOCreator(domainName string) cio.Creator {
 	logger := GetLog()
 
-	io := func(id string) (cio.IO, error) {
-		stdoutFile := logger.Path("guest_vm-" + domainName)
-		stderrFile := logger.Path("guest_vm_err-" + domainName)
-		return &logio{
-			cio.Config{
-				Stdin:    "/dev/null",
-				Stdout:   stdoutFile,
-				Stderr:   stderrFile,
-				Terminal: false,
-			},
-		}, nil
+	// Create the named pipes for stdout and stderr
+	stdoutFile := logger.Path("guest_vm-" + domainName)
+	stderrFile := logger.Path("guest_vm_err-" + domainName)
+	pipeStdout, err := os.OpenFile(stdoutFile, os.O_WRONLY, 0)
+	if err != nil {
+		logrus.Errorf("CtrLogIOCreator: Error opening file %s with: %s", stdoutFile, err)
 	}
+	pipeStderr, err := os.OpenFile(stderrFile, os.O_WRONLY, 0)
+	if err != nil {
+		logrus.Errorf("CtrLogIOCreator: Error opening file %s with: %s", stderrFile, err)
+	}
+
+	// Create a fake stdin, so we won't break any interactive application
+	fakeStdin, _ := io.Pipe()
+
+	io := cio.NewCreator(cio.WithStreams(fakeStdin, pipeStdout, pipeStderr))
 
 	return io
 }

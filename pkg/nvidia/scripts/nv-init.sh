@@ -30,5 +30,5 @@ echo "add" > /sys/module/nvidia/uevent 2> /dev/null
 
 # Start FAN controller detached from terminal
 if [ -f "$FANCTRL" ]; then
-    "$FANCTRL" -m cool > /dev/kmsg 2>&1 &
+    "$FANCTRL" -m quiet > /dev/kmsg 2>&1 &
 fi

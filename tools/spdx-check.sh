@@ -9,6 +9,19 @@ IGNORE_FILE=".spdxignore"
 # List of files to check, excluding vendor directories
 files=$(git diff --name-only --diff-filter=A "${BASE_COMMIT}"..HEAD)
 
+check_branch_rebased() {
+  local base_commit="$1"
+  local merge_base
+
+  merge_base=$(git merge-base HEAD "$base_commit")
+  base_commit=$(git rev-parse "$base_commit")
+
+  if [ "$merge_base" != "$base_commit" ]; then
+    return 1
+  fi
+  return 0
+}
+
 # SPDX License Identifier to check for
 license_identifiers=(
   "Apache-2.0"
@@ -114,6 +127,15 @@ file_to_be_checked() {
   return 1
 }
 
+check_branch_rebased "$BASE_COMMIT"
+rebased=$?
+
+if [ $rebased -ne 0 ]; then
+  echo "The branch is not rebased on top of base branch!"
+  echo "Rebase the branch!"
+  echo "The check might run on a wrong set of files!"
+fi
+
 # Loop through the files and check for the SPDX header
 for file in $files; do
   if file_to_be_checked "$file"; then
@@ -137,5 +159,10 @@ if [ "$all_files_proper_licensed" = true ]; then
   echo "All files are properly licensed!"
   exit 0
 else
+  echo "Some files are not properly licensed!"
+  if [ $rebased -ne 0 ]; then
+    echo "The error might appear on files that are not part of the branch!"
+    echo "Rebase the branch!"
+  fi
   exit 1
 fi

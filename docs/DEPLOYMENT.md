@@ -42,6 +42,8 @@ The installer image is essentially a live image that writes itself, using this e
 Hence, the installer image is only booted once on a given edge node. After the
 installer's image-writing portion of the script is complete, it shuts down the edge node.
 Thereafter, the live image is available on the storage device so there's no need to run the installer anymore.
+Note that the installer image can interfere with the live image during boot,
+so we must unplug the installer medium from the system after the installation is finished.
 
 In general, once deployed, EVE-OS assumes a hands-free environment that does not rely on a human
 operator. No one is required to configure initial settings "at the console". Any
