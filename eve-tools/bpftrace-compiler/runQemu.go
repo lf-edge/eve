@@ -114,6 +114,12 @@ func (q *qemuRunner) runList(listArg string) ([]byte, error) {
 	return stdout, err
 }
 
+func (q *qemuRunner) withLoadKernelModule(modules []string) {
+	for _, mod := range modules {
+		q.units = append(q.units, fmt.Sprintf("insmod=%s", mod))
+	}
+}
+
 func (q *qemuRunner) run() ([]byte, error) {
 	shareDir, err := os.MkdirTemp("/var/tmp", "bpftrace-9pshare")
 	if err != nil {

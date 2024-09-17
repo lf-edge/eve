@@ -36,7 +36,7 @@ func testCompile(t *testing.T, arch, eveKernel string) {
 	defer aotFh.Close()
 	defer os.Remove(aotFilename)
 
-	err = compile(arch, lkConf{kernel: eveKernel}, nil, btFilename, aotFilename)
+	err = compile(arch, lkConf{kernel: eveKernel}, nil, []string{}, btFilename, aotFilename)
 	if err != nil {
 		t.Fatalf("compiling failed: %v", err)
 	}
