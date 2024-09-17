@@ -193,6 +193,7 @@ func TestNewConfigItemSpecMap(t *testing.T) {
 		SSHAuthorizedKeys,
 		DefaultLogLevel,
 		DefaultRemoteLogLevel,
+		FmlCustomResolution,
 		DisableDHCPAllOnesNetMask,
 		ProcessCloudInitMultiPart,
 		EdgeViewToken,
