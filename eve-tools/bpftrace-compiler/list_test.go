@@ -4,10 +4,19 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
+	"errors"
+	"fmt"
+	"io/fs"
+	"log"
 	"os"
 	"os/exec"
+	"regexp"
+	"strings"
 	"testing"
+
+	"golang.org/x/mod/semver"
 )
 
 type eveKernelWithArch struct {
@@ -32,7 +41,7 @@ func testList(arch string, kernel string, t *testing.T, kernelModules []string, 
 	}
 
 	if !bytes.Contains(output, []byte(expectedTracepoint)) {
-		t.Fatalf("output does not contain %s probe", expectedTracepoint)
+		t.Fatalf("output does not contain %s probe, arch: %s, kernel: %s", expectedTracepoint, arch, kernel)
 	}
 }
 
@@ -86,4 +95,104 @@ func TestListKernelProbesAmd64WithModules(t *testing.T) {
 	expectedTracepoint := "kprobe:zfs_open"
 
 	testList(arch, kernel, t, kernelModules, expectedTracepoint)
+}
+
+func testKernels() []eveKernelWithArch {
+	var err error
+
+	ret := make([]eveKernelWithArch, 0)
+	paths := []string{
+		"kernel-commits.mk",
+		"../kernel-commits.mk",
+		"../../kernel-commits.mk",
+	}
+
+	var fh *os.File
+	for _, path := range paths {
+		fh, err = os.Open(path)
+		if errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			log.Fatalf("could not open %s: %v", path, err)
+		}
+	}
+
+	if fh == nil {
+		log.Fatalf("could not read %+v: %v", paths, err)
+	}
+
+	defer fh.Close()
+
+	// e.g.: KERNEL_COMMIT_amd64_v5.10.186_generic = d61682724485
+	rex := regexp.MustCompile(`^\s*KERNEL_COMMIT_(?P<arch>[^_\s]+)_(?P<version>[^_\s]+)_(?P<flavor>[^_\s]+)\s*=\s*(?P<commit>\S+)\s*$`)
+	scanner := bufio.NewScanner(fh)
+	for scanner.Scan() {
+		line := scanner.Text()
+		line = strings.TrimSpace(line)
+
+		match := rex.FindStringSubmatch(line)
+		result := make(map[string]string)
+		for i, name := range rex.SubexpNames() {
+			if i < 1 || name == "" {
+				continue
+			}
+
+			result[name] = match[i]
+		}
+
+		version := result["version"]
+		flavor := result["flavor"]
+		arch := result["arch"]
+		commit := result["commit"]
+		compiler := "gcc"
+
+		skip := false
+		for _, str := range []string{
+			version, flavor, arch, commit, compiler,
+		} {
+			if str == "" {
+				skip = true
+				break
+			}
+		}
+		if skip {
+			continue
+		}
+		if arch != "amd64" && arch != "arm64" {
+			continue
+		}
+		if semver.Compare(version, "v6.0.0") < 0 {
+			continue
+		}
+
+		kernelBranch := fmt.Sprintf("eve-kernel-%s-%s-%s", arch, version, flavor)
+
+		kernelDockerTag := fmt.Sprintf("docker.io/lfedge/eve-kernel:%s-%s-%s", kernelBranch, commit, compiler)
+
+		ret = append(ret, eveKernelWithArch{
+			image: kernelDockerTag,
+			arch:  arch,
+		})
+	}
+
+	err = scanner.Err()
+	if err != nil {
+		log.Fatalf("scanning %s failed: %v", fh.Name(), err)
+	}
+
+	return ret
+}
+
+func TestCurrentKernels(t *testing.T) {
+	if skip(t) {
+		return
+	}
+
+	kernels := testKernels()
+
+	expectedTracepoint := "tracepoint:syscalls:sys_enter_ptrace"
+	for _, kernel := range kernels {
+		testList(kernel.arch, kernel.image, t, []string{}, expectedTracepoint)
+	}
 }
