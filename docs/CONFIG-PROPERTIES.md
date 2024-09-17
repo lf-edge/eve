@@ -3,6 +3,7 @@
 | Name | Type | Default | Description |
 | ---- | ---- | ------- | ----------- |
 | app.allow.vnc | boolean | false (only local access) | allow access to EVE's VNC ports from external IPs |
+| app.fml.resolution | string | notset | Set system-wide value of forced resolution for applications running in FML mode, it can be one of [predefined](/pkg/pillar/types/global.go) FmlResolution* values. |
 | timer.config.interval | integer in seconds | 60 | how frequently device gets config |
 | timer.cert.interval | integer in seconds | 1 day (24*3600) | how frequently device checks for new controller certificates |
 | timer.metric.interval  | integer in seconds | 60 | how frequently device reports metrics |
