@@ -693,6 +693,14 @@ func (ctx kvmContext) Setup(status types.DomainStatus, config types.DomainConfig
 	domainName := status.DomainName
 	domainUUID := status.UUIDandVersion.UUID
 
+	// this needs to be reworked to fit into the OVMF_VAR changes.
+	res, err := getFmlCustomResolution(&status, globalConfig)
+	if err != nil {
+		logError("failed to get fml custom resolution: %v", err)
+	} else {
+		logError("fml custom resolution is set to: %s", res)
+	}
+
 	// Before we start building the domain config, we need to prepare the OVMF settings.
 	// Currently, we only support OVMF settings for FML mode on x86_64 architecture.
 	// To support OVMF settings for ARM, we need to add fix OVFM build for ARM to
@@ -753,6 +761,31 @@ func (ctx kvmContext) Setup(status types.DomainStatus, config types.DomainConfig
 	}
 
 	return nil
+}
+
+func getFmlCustomResolution(status *types.DomainStatus, globalConfig *types.ConfigItemValueMap) (string, error) {
+	fmlResolutions := status.FmlCustomResolution
+	// if not set in the domain status, try to get it from the global config
+	if fmlResolutions == types.FmlResolutionUnset {
+		if globalConfig != nil {
+			item, ok := globalConfig.GlobalSettings[types.FmlCustomResolution]
+			if ok {
+				fmlResolutions = item.StringValue()
+			}
+		}
+	}
+
+	// validate the resolution
+	switch fmlResolutions {
+	case types.FmlResolution800x600,
+		types.FmlResolution1024x768,
+		types.FmlResolution1280x800,
+		types.FmlResolution1920x1080,
+		types.FmlResolutionUnset:
+		return fmlResolutions, nil
+	}
+
+	return "", fmt.Errorf("invalid fml resolution %s", fmlResolutions)
 }
 
 func (ctx kvmContext) CreateDomConfig(domainName string, config types.DomainConfig, status types.DomainStatus,

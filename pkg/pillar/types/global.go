@@ -250,6 +250,8 @@ const (
 	DefaultLogLevel GlobalSettingKey = "debug.default.loglevel"
 	// DefaultRemoteLogLevel global setting key
 	DefaultRemoteLogLevel GlobalSettingKey = "debug.default.remote.loglevel"
+	// FmlCustomResolution global setting key
+	FmlCustomResolution GlobalSettingKey = "app.fml.resolution"
 
 	// XXX Temporary flag to disable RFC 3442 classless static route usage
 	DisableDHCPAllOnesNetMask GlobalSettingKey = "debug.disable.dhcp.all-ones.netmask"
@@ -299,6 +301,19 @@ const (
 	ConfigItemTypeString
 	// ConfigItemTypeTriState - for config item's who's value is a tristate
 	ConfigItemTypeTriState
+)
+
+var (
+	// FmlResolutionUnset is a string to indicate that custom resolution is not set
+	FmlResolutionUnset = ""
+	// FmlResolution800x600 is a string to indicate 800x600 resolution
+	FmlResolution800x600 = "800x600"
+	// FmlResolution1024x768 is a string to indicate 1024x768 resolution
+	FmlResolution1024x768 = "1024x768"
+	// FmlResolution1280x800 is a string to indicate 1280x720 resolution
+	FmlResolution1280x800 = "1280x800"
+	// FmlResolution1920x1080 is a string to indicate 1280x720 resolution
+	FmlResolution1920x1080 = "1920x1080"
 )
 
 // ConfigItemSpec - Defines what a specification for a configuration should be
@@ -846,6 +861,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddStringItem(SSHAuthorizedKeys, "", blankValidator)
 	configItemSpecMap.AddStringItem(DefaultLogLevel, "info", parseLevel)
 	configItemSpecMap.AddStringItem(DefaultRemoteLogLevel, "info", parseLevel)
+	configItemSpecMap.AddStringItem(FmlCustomResolution, FmlResolutionUnset, blankValidator)
 
 	// Add Agent Settings
 	configItemSpecMap.AddAgentSettingStringItem(LogLevel, "info", parseLevel)
