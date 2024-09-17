@@ -28,16 +28,11 @@ func shutdown() {
 	}
 }
 
-func main() {
-	var sshKey string
-	var timeout time.Duration
-	var userspaceContainerDebugFlag *[]string
-	var userspaceContainerListFlag *[]string
-	var userspaceContainerHTTPFlag *[]string
-	var userspaceContainerEVFlag *[]string
-	var kernelModulesDebugFlag *[]string
+var bpftraceCompilerDir string
+var execName string
 
-	defer shutdown()
+func init() {
+	var err error
 
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
@@ -49,11 +44,30 @@ func main() {
 		os.Exit(0)
 	}()
 
-	execName, err := os.Executable()
+	execName, err = os.Executable()
 	if err != nil {
 		log.Fatal(err)
 	}
 	execName = filepath.Base(execName)
+
+	homedir, err := os.UserHomeDir()
+	if err == nil {
+		bpftraceCompilerDir = filepath.Join(homedir, ".bpftrace-compiler")
+	}
+}
+
+func main() {
+	var err error
+	var sshKey string
+	var timeout time.Duration
+	var userspaceContainerDebugFlag *[]string
+	var userspaceContainerListFlag *[]string
+	var userspaceContainerHTTPFlag *[]string
+	var userspaceContainerEVFlag *[]string
+	var userspaceContainerSSHFlag *[]string
+	var kernelModulesDebugFlag *[]string
+
+	defer shutdown()
 
 	rootCmd := &cobra.Command{
 		Use:   "bpftrace-compiler",
@@ -87,11 +101,20 @@ func main() {
 		Example:    fmt.Sprintf("%s run-via-ssh 127.1:2222 examples/opensnoop.bt", execName),
 		Args:       cobra.ExactArgs(2),
 		Run: func(cmd *cobra.Command, args []string) {
+			var uc userspaceContainer
+			if len(*userspaceContainerSSHFlag) == 2 {
+				switch (*userspaceContainerSSHFlag)[0] {
+				case "onboot":
+					uc = onbootContainer((*userspaceContainerSSHFlag)[1])
+				case "service":
+					uc = serviceContainer((*userspaceContainerSSHFlag)[1])
+				}
+			}
 			sr, err := newSSHRun(args[0], sshKey)
 			if err != nil {
 				log.Fatal(err)
 			}
-			sr.run(args[1], nil, []string{}, timeout)
+			sr.run(args[1], uc, []string{}, timeout)
 			defers = append(defers, func() { sr.end() })
 		},
 	}
@@ -230,12 +253,47 @@ func main() {
 		},
 	}
 
+	cacheCmd := &cobra.Command{
+		Use:     "cache - manage bpftrace-compiler cache",
+		Aliases: []string{"c"},
+	}
+
+	cacheEnableCmd := &cobra.Command{
+		Use:     "enable - enable cache",
+		Aliases: []string{"e"},
+		Short:   fmt.Sprintf("creates a cache directory under %s/.bpftrace-compiler", bpftraceCompilerDir),
+		Args:    cobra.NoArgs,
+		Run: func(cmd *cobra.Command, args []string) {
+			cacheDir := filepath.Join(bpftraceCompilerDir, "cache")
+			err := os.MkdirAll(cacheDir, 0700)
+			if err != nil {
+				log.Fatalf("could not create cache dir %s: %v", cacheDir, err)
+			}
+		},
+	}
+	cacheDisableCmd := &cobra.Command{
+		Use:     "disable - disable and purge cache",
+		Aliases: []string{"e"},
+		Short:   fmt.Sprintf("deletes the cache directory under %s/.bpftrace-compiler", bpftraceCompilerDir),
+		Long:    "if bpftrace-compiler cannot find a cache directory, no cache will be used",
+		Args:    cobra.NoArgs,
+		Run: func(cmd *cobra.Command, args []string) {
+			cacheDir := filepath.Join(bpftraceCompilerDir, "cache")
+			err := os.RemoveAll(cacheDir)
+			if err != nil {
+				log.Fatalf("could not remove cache dir %s: %v", cacheDir, err)
+			}
+		},
+	}
+	cacheCmd.AddCommand(cacheEnableCmd, cacheDisableCmd)
+
 	runSSHCmd.PersistentFlags().StringVarP(&sshKey, "identity-file", "i", "", "")
 	runSSHCmd.PersistentFlags().DurationVarP(&timeout, "timeout", "t", 10*time.Second, "")
 
 	runHTTPCmd.PersistentFlags().DurationVarP(&timeout, "timeout", "t", 10*time.Second, "")
 	userspaceContainerHTTPFlag = runHTTPCmd.PersistentFlags().StringSliceP("userspace", "u", []string{}, "onboot|service,name")
 	userspaceContainerEVFlag = runEdgeviewCmd.PersistentFlags().StringSliceP("userspace", "u", []string{}, "onboot|service,name")
+	userspaceContainerSSHFlag = runSSHCmd.PersistentFlags().StringSliceP("userspace", "u", []string{}, "onboot|service,name")
 
 	kernelModulesDebugFlag = debugShellCmd.PersistentFlags().StringSliceP("kernel-modules", "k", []string{}, "dm_crypt")
 
@@ -244,6 +302,9 @@ func main() {
 	userspaceContainerListFlag = listCmd.PersistentFlags().StringSliceP("userspace", "u", []string{}, "onboot|service,name,image")
 
 	rootCmd.AddCommand(compileCmd, runSSHCmd, runHTTPCmd, runEdgeviewCmd, listCmd, debugShellCmd)
+	if bpftraceCompilerDir != "" {
+		rootCmd.AddCommand(cacheCmd)
+	}
 
 	err = rootCmd.Execute()
 	if err != nil {

@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -33,7 +35,7 @@ func (r *run) run(bpfFile string, uc userspaceContainer, kernelModules []string,
 
 	arch := cleanArch(r.arch())
 	lkConf := r.lkConf()
-	err = compile(arch, lkConf, uc, kernelModules, bpfFile, outputFile)
+	err = compileWithCache(arch, lkConf, uc, kernelModules, bpfFile, outputFile)
 	if err != nil {
 		log.Fatalf("compiling for %s/%s failed: %v", arch, lkConf, err)
 	}
@@ -44,6 +46,52 @@ func (r *run) run(bpfFile string, uc userspaceContainer, kernelModules []string,
 		log.Fatalf("compiling for %s/%s on %s failed: %v", arch, lkConf, outputFile, err)
 	}
 
+}
+
+func compileWithCache(arch string, lkConf lkConf, uc userspaceContainer, kernelModules []string, bpfFile string, outputFile string) error {
+	if bpftraceCompilerDir == "" {
+		return compile(arch, lkConf, uc, kernelModules, bpfFile, outputFile)
+	}
+
+	ucString := ""
+	if uc != nil {
+		ucString = uc.String()
+	}
+
+	bpfFileContent, err := os.ReadFile(bpfFile)
+	if err != nil {
+		return fmt.Errorf("Could not read '%s': %v", bpfFile, err)
+	}
+	hash := hashDir([]string{"root"}, arch, lkConf.String(), ucString, strings.Join(kernelModules, ","), string(bpfFileContent))
+
+	hashPath := filepath.Join(bpftraceCompilerDir, "cache", hash)
+
+	compileAndStoreInCache := func() error {
+		err := compile(arch, lkConf, uc, kernelModules, bpfFile, outputFile)
+		if err != nil {
+			return err
+		}
+		err = copyFile(outputFile, hashPath)
+		if err != nil {
+			log.Printf("could not store in cache (%s): %v", hashPath, err)
+		}
+
+		return nil
+
+	}
+	_, err = os.Stat(hashPath)
+	if err != nil {
+		log.Printf("could not find compiled script in cache, compiling now ...")
+		return compileAndStoreInCache()
+	}
+	err = copyFile(hashPath, outputFile)
+	if err != nil {
+		log.Printf("copying %s to %s failed: %err, compiling now ...", hashPath, outputFile, err)
+		return compileAndStoreInCache()
+	}
+	log.Printf("found compiled script in cache ...")
+
+	return nil
 }
 
 func compile(arch string, lkConf lkConf, uc userspaceContainer, kernelModules []string, bpfFile string, outputFile string) error {
