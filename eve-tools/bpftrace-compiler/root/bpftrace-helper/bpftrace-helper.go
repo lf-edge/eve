@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"github.com/pmorjan/kmod"
 	"io/fs"
 	"log"
 	"os"
@@ -192,6 +193,14 @@ func main() {
 		if unit == "list" {
 			bpftraceListKernelUnit()
 		}
+		if strings.HasPrefix(unit, "insmod=") {
+			split := strings.SplitN(unit, "=", 2)
+			if len(split) != 2 {
+				log.Printf("could not parse %s", unit)
+				break
+			}
+			bpftraceLoadKernelModule(split[1])
+		}
 		if strings.HasPrefix(unit, "list@") {
 			split := strings.SplitN(unit, "@", 2)
 			if len(split) != 2 {
@@ -297,4 +306,18 @@ func bpftraceCompileUnit() {
 		log.Printf("Rename failed: %+v\nbpftrace output was: %s\nStderr: %s\n", err, cmdStdoutBuf.String(), cmdStderrBuf.String())
 	}
 
+}
+
+func bpftraceLoadKernelModule(module string) {
+	k, err := kmod.New()
+	if err != nil {
+		log.Printf("could not create kernel module loader: %v", err)
+		return
+	}
+
+	err = k.Load(module, "", 0)
+	if err != nil {
+		log.Printf("could not load '%s' kernel module: %v", module, err)
+		return
+	}
 }

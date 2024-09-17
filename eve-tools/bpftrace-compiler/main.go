@@ -35,6 +35,7 @@ func main() {
 	var userspaceContainerListFlag *[]string
 	var userspaceContainerHTTPFlag *[]string
 	var userspaceContainerEVFlag *[]string
+	var kernelModulesDebugFlag *[]string
 
 	defer shutdown()
 
@@ -71,7 +72,7 @@ func main() {
 			lkConf := lkConf{
 				kernel: args[1],
 			}
-			err := compile(args[0], lkConf, nil, args[2], args[3])
+			err := compile(args[0], lkConf, nil, []string{}, args[2], args[3])
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -90,7 +91,7 @@ func main() {
 			if err != nil {
 				log.Fatal(err)
 			}
-			sr.run(args[1], nil, timeout)
+			sr.run(args[1], nil, []string{}, timeout)
 			defers = append(defers, func() { sr.end() })
 		},
 	}
@@ -115,7 +116,7 @@ func main() {
 				}
 			}
 			hr := newHTTPRun(args[0])
-			hr.run(args[1], uc, timeout)
+			hr.run(args[1], uc, []string{}, timeout)
 			defers = append(defers, func() { hr.end() })
 		},
 	}
@@ -158,7 +159,7 @@ func main() {
 
 			hr := newHTTPRun(fmt.Sprintf("localhost:%d", port))
 			defers = append(defers, func() { hr.end(); ev.shutdown() })
-			hr.run(args[1], uc, timeout)
+			hr.run(args[1], uc, []string{}, timeout)
 		},
 	}
 
@@ -184,6 +185,10 @@ func main() {
 				qr = newQemuAmd64Runner(imageDir, "", "")
 			}
 			qr.timeout = 0
+
+			if kernelModulesDebugFlag != nil && len(*kernelModulesDebugFlag) > 0 {
+				qr.withLoadKernelModule(*kernelModulesDebugFlag)
+			}
 
 			err = qr.runDebug(shareFolder)
 			if err != nil {
@@ -231,6 +236,8 @@ func main() {
 	runHTTPCmd.PersistentFlags().DurationVarP(&timeout, "timeout", "t", 10*time.Second, "")
 	userspaceContainerHTTPFlag = runHTTPCmd.PersistentFlags().StringSliceP("userspace", "u", []string{}, "onboot|service,name")
 	userspaceContainerEVFlag = runEdgeviewCmd.PersistentFlags().StringSliceP("userspace", "u", []string{}, "onboot|service,name")
+
+	kernelModulesDebugFlag = debugShellCmd.PersistentFlags().StringSliceP("kernel-modules", "k", []string{}, "dm_crypt")
 
 	userspaceContainerDebugFlag = debugShellCmd.PersistentFlags().StringSliceP("userspace", "u", []string{}, "onboot|service,name,image")
 
