@@ -132,8 +132,9 @@ func (er *edgeviewRun) stopHTTPDebugPort() {
 func (er *edgeviewRun) forwardHTTPDebugPort() error {
 	var err error
 
+	hostForward := "localhost:6543"
 	er.ctx, er.cancel = context.WithTimeout(context.Background(), 5*time.Minute)
-	er.cmd = exec.CommandContext(er.ctx, "bash", er.path, "tcp/127.0.0.1:6543")
+	er.cmd = exec.CommandContext(er.ctx, "bash", er.path, fmt.Sprintf("tcp/%s", hostForward))
 
 	er.tty, err = pty.Start(er.cmd)
 	if err != nil {
@@ -150,7 +151,7 @@ func (er *edgeviewRun) forwardHTTPDebugPort() error {
 			line := scanner.Text()
 			output += line + "\n"
 
-			if strings.Contains(line, "127.0.0.1:6543") {
+			if strings.Contains(line, hostForward) {
 				forwardLine = strings.TrimFunc(line, func(r rune) bool {
 					return !unicode.IsGraphic(r)
 				})
