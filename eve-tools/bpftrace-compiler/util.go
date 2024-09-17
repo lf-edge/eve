@@ -24,6 +24,10 @@ type lkConf struct {
 	services map[string]string // name -> image
 }
 
+func (l lkConf) String() string {
+	return fmt.Sprintf("kernel: %s onboot: %+q services: %+q", l.kernel, l.onboot, l.services)
+}
+
 type lkConfYaml struct {
 	Kernel struct {
 		Image string `yaml:"image"`
