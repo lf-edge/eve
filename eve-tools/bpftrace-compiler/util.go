@@ -7,14 +7,18 @@ import (
 	"bufio"
 	"crypto/md5"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
 	"log"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"time"
 
+	"golang.org/x/mod/semver"
 	"gopkg.in/yaml.v2"
 )
 
@@ -169,4 +173,102 @@ func newQemuRunner(arch string, imageDir string, bpfFile, outputFile string) *qe
 		log.Fatalf("unknown architecture %s", arch)
 	}
 	return qr
+}
+
+type eveKernelWithArch struct {
+	image string
+	arch  string
+}
+
+func testKernels() []eveKernelWithArch {
+	var err error
+
+	ret := make([]eveKernelWithArch, 0)
+	paths := []string{
+		"kernel-commits.mk",
+		"../../kernel-commits.mk",
+	}
+
+	var fh *os.File
+	for _, path := range paths {
+		fh, err = os.Open(path)
+		if errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			log.Fatalf("could not open %s: %v", path, err)
+		}
+	}
+
+	if fh == nil {
+		log.Fatalf("could not read %+v: %v", paths, err)
+	}
+
+	defer fh.Close()
+
+	// e.g.: KERNEL_COMMIT_amd64_v5.10.186_generic = d61682724485
+	rex := regexp.MustCompile(`^\s*KERNEL_COMMIT_(?P<arch>[^_\s]+)_(?P<version>[^_\s]+)_(?P<flavor>[^_\s]+)\s*=\s*(?P<commit>\S+)\s*$`)
+	scanner := bufio.NewScanner(fh)
+	for scanner.Scan() {
+		line := scanner.Text()
+		line = strings.TrimSpace(line)
+
+		match := rex.FindStringSubmatch(line)
+		result := make(map[string]string)
+		for i, name := range rex.SubexpNames() {
+			if i < 1 || name == "" {
+				continue
+			}
+
+			result[name] = match[i]
+		}
+
+		version := result["version"]
+		flavor := result["flavor"]
+		arch := result["arch"]
+		commit := result["commit"]
+		compiler := "gcc"
+
+		skip := false
+		for _, str := range []string{
+			version, flavor, arch, commit, compiler,
+		} {
+			if str == "" {
+				skip = true
+				break
+			}
+		}
+		if skip {
+			continue
+		}
+		if flavor == "nvidia" {
+			continue
+		}
+		if arch != "amd64" && arch != "arm64" {
+			continue
+		}
+		if semver.Compare(version, "v6.0.0") < 0 {
+			continue
+		}
+
+		//fmt.Printf("- %s\n", line)
+		kernelBranch := fmt.Sprintf("eve-kernel-%s-%s-%s", arch, version, flavor)
+
+		//fmt.Printf("\tkernel branch: %s\n", kernelBranch)
+
+		kernelDockerTag := fmt.Sprintf("docker.io/lfedge/eve-kernel:%s-%s-%s", kernelBranch, commit, compiler)
+		//		fmt.Printf("\tkernel docker tag: %s || ver: %s\n", kernelDockerTag, version)
+
+		ret = append(ret, eveKernelWithArch{
+			image: kernelDockerTag,
+			arch:  arch,
+		})
+	}
+
+	err = scanner.Err()
+	if err != nil {
+		log.Fatalf("scanning %s failed: %v", fh.Name(), err)
+	}
+
+	return ret
 }

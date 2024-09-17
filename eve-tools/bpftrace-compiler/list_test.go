@@ -27,7 +27,7 @@ func testList(arch string, kernel string, t *testing.T, kernelModules []string, 
 	}
 
 	if !bytes.Contains(output, []byte(expectedTracepoint)) {
-		t.Fatalf("output does not contain %s probe", expectedTracepoint)
+		t.Fatalf("output does not contain %s probe, arch: %s, kernel: %s", expectedTracepoint, arch, kernel)
 	}
 }
 
@@ -81,4 +81,13 @@ func TestListKernelProbesAmd64WithModules(t *testing.T) {
 	expectedTracepoint := "kprobe:zfs_open"
 
 	testList(arch, kernel, t, kernelModules, expectedTracepoint)
+}
+
+func TestCurrentKernels(t *testing.T) {
+	kernels := testKernels()
+
+	expectedTracepoint := "tracepoint:syscalls:sys_enter_ptrace"
+	for _, kernel := range kernels {
+		testList(kernel.arch, kernel.image, t, []string{}, expectedTracepoint)
+	}
 }
