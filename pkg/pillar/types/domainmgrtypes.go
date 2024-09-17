@@ -277,6 +277,9 @@ type DomainStatus struct {
 	EnvVariables   map[string]string // List of environment variables to be set in container
 	VmConfig                         // From DomainConfig
 	Service        bool
+	// FmlCustomResolution is the custom resolution for FML mode,
+	// xxx: this should be moved to VmConfig
+	FmlCustomResolution string
 }
 
 func (status DomainStatus) Key() string {

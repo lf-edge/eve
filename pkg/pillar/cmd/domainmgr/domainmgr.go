@@ -45,6 +45,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
+	"gopkg.in/yaml.v2"
 )
 
 const (
@@ -2017,6 +2018,11 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 			return fmt.Errorf("failed to fetch cloud-init userdata: %s",
 				err)
 		}
+
+		if isCloudConfig(ciStr) {
+			setFmlCustomResolution(ciStr, status)
+		}
+
 		if status.OCIConfigDir != "" {
 			envList, err := parseEnvVariablesFromCloudInit(ciStr)
 			if err != nil {
@@ -2044,6 +2050,22 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 		})
 	}
 	return nil
+}
+
+func setFmlCustomResolution(config string, status *types.DomainStatus) {
+	var cloudinit map[string]interface{}
+	err := yaml.Unmarshal([]byte(config), &cloudinit)
+	if err != nil {
+		log.Errorf("error parsing cloud-config YAML: %v", err)
+		return
+	}
+
+	if val, ok := cloudinit[string(types.FmlCustomResolution)]; ok {
+		if fmlCustomResolution, valid := val.(string); valid {
+			status.FmlCustomResolution = fmlCustomResolution
+		}
+	}
+	log.Noticef("FML resolution is set to: %s", status.FmlCustomResolution)
 }
 
 // Check for errors and reserve any assigned adapters.
@@ -2609,6 +2631,15 @@ func getCloudInitUserData(ctx *domainContext,
 		ctx.cipherMetrics.RecordFailure(log, types.NoData)
 	}
 	return decBlock, nil
+}
+
+func isCloudConfig(ci string) bool {
+	// check if the first line is #cloud-config
+	lines := strings.Split(ci, "\n")
+	if len(lines) == 0 {
+		return false
+	}
+	return strings.HasPrefix(lines[0], "#cloud-config")
 }
 
 // fetch the cloud init content
