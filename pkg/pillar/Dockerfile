@@ -82,7 +82,7 @@ RUN set -e && for patch in /sys-patches/*.patch; do \
     done
 
 RUN mkdir -p /out/usr/lib/xen/boot
-COPY --from=uefi-build /OVMF_VARS.fd /out/usr/lib/xen/boot/ovmf_vars.bin
+COPY --from=uefi-build /OVMF_VARS.fd /out/usr/lib/xen/boot/OVMF_VARS.fd
 
 # we need zfs files on running system
 COPY --from=zfs /out /out
