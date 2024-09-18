@@ -136,7 +136,7 @@ const (
 	// OVMFSettingsDir - directory for OVMF settings, they are stored in per-domain files
 	OVMFSettingsDir = SealedDirName + "/ovmf"
 	// OVMFSettingsTemplate - template file for OVMF settings
-	OVMFSettingsTemplate = "/usr/lib/xen/boot/ovmf_vars.bin"
+	OVMFSettingsTemplate = "/usr/lib/xen/boot/OVMF_VARS.fd"
 )
 
 var (
