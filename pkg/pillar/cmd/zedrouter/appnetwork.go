@@ -410,3 +410,29 @@ func (z *zedrouter) doAppNetworkModifyAppIntfNum(appID uuid.UUID,
 	}
 	return nil
 }
+
+// For app already deployed (before node reboot), keep using the same MAC address
+// generator. Changing MAC addresses could break network config inside the app.
+func (z *zedrouter) selectMACGeneratorForApp(status *types.AppNetworkStatus) error {
+	appKey := types.UuidToNumKey{UUID: status.UUIDandVersion.UUID}
+	macGenerator, _, err := z.appMACGeneratorMap.Get(appKey)
+	if err != nil || macGenerator == types.MACGeneratorUnspecified {
+		// New app or an existing app but without MAC generator ID persisted.
+		if z.localLegacyMACAddr {
+			// Use older node-scoped MAC address generator.
+			macGenerator = types.MACGeneratorNodeScoped
+		} else {
+			// Use newer (and preferred) globally-scoped MAC address generator.
+			macGenerator = types.MACGeneratorGloballyScoped
+		}
+		// Remember which MAC generator is being used for this app.
+		err = z.appMACGeneratorMap.Assign(appKey, macGenerator, false)
+		if err != nil {
+			err = fmt.Errorf("failed to persist MAC generator ID for app %s/%s: %v",
+				status.UUIDandVersion.UUID, status.DisplayName, err)
+			return err
+		}
+	}
+	status.MACGenerator = macGenerator
+	return nil
+}
