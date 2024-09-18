@@ -371,7 +371,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
 	})
 
 	config.VirtualizationMode = types.FML
-	config.BootLoader = "/usr/lib/xen/boot/ovmf.bin"
+	config.BootLoader = "/usr/lib/xen/boot/OVMF_CODE.fd"
 	t.Run("amd64-fml", func(t *testing.T) {
 		conf.Seek(0, 0)
 		if err := kvmIntel.CreateDomConfig(DefaultDomainName, config, types.DomainStatus{},
@@ -428,7 +428,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
   format = "raw"
   readonly = "on"
   unit = "0"
-  file = "/usr/lib/xen/boot/ovmf.bin"
+  file = "/usr/lib/xen/boot/OVMF_CODE.fd"
 
 [drive "drive-ovmf-vars"]
   if = "pflash"
@@ -976,7 +976,7 @@ func TestCreateDomConfigAmd64Fml(t *testing.T) {
 	diskConfigs, diskStatuses := qemuDisks()
 	config, aa := domainConfigAndAssignableAdapters(diskConfigs)
 	config.VirtualizationMode = types.FML
-	config.BootLoader = "/usr/lib/xen/boot/ovmf.bin"
+	config.BootLoader = "/usr/lib/xen/boot/OVMF_CODE.fd"
 	addNonExistingAdapter(&config, &aa)
 	if err := kvmIntel.CreateDomConfig(DefaultDomainName, config, types.DomainStatus{},
 		diskStatuses, &aa, nil, swtpmCtrlSock, conf); err != nil {
@@ -1451,7 +1451,7 @@ func domConfigAmd64FML() string {
   format = "raw"
   readonly = "on"
   unit = "0"
-  file = "/usr/lib/xen/boot/ovmf.bin"
+  file = "/usr/lib/xen/boot/OVMF_CODE.fd"
 
 [drive "drive-ovmf-vars"]
   if = "pflash"

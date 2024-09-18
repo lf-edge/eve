@@ -143,7 +143,7 @@ RUN set -e && for patch in /sys-patches/*.patch; do \
     done
 
 RUN mkdir -p /out/usr/lib/xen/boot
-COPY --from=uefi-build /OVMF_VARS.fd /out/usr/lib/xen/boot/ovmf_vars.bin
+COPY --from=uefi-build /OVMF_VARS.fd /out/usr/lib/xen/boot/OVMF_VARS.fd
 
 COPY --from=zfs /out /out
 COPY --from=fscrypt /opt/zededa/bin /out/opt/zededa/bin
