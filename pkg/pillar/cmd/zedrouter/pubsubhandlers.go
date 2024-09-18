@@ -534,29 +534,12 @@ func (z *zedrouter) handleAppNetworkCreate(ctxArg interface{}, key string,
 	}
 	status.AppNum = appNum
 
-	// For app already deployed (before node reboot), keep using the same MAC address
-	// generator. Changing MAC addresses could break network config inside the app.
-	macGenerator, _, err := z.appMACGeneratorMap.Get(appNumKey)
-	if err != nil || macGenerator == types.MACGeneratorUnspecified {
-		// New app or an existing app but without MAC generator ID persisted.
-		if z.localLegacyMACAddr {
-			// Use older node-scoped MAC address generator.
-			macGenerator = types.MACGeneratorNodeScoped
-		} else {
-			// Use newer (and preferred) globally-scoped MAC address generator.
-			macGenerator = types.MACGeneratorGloballyScoped
-		}
-		// Remember which MAC generator is being used for this app.
-		err = z.appMACGeneratorMap.Assign(appNumKey, macGenerator, false)
-		if err != nil {
-			err = fmt.Errorf("failed to persist MAC generator ID for app %s/%s: %v",
-				config.UUIDandVersion.UUID, config.DisplayName, err)
-			z.log.Errorf("handleAppNetworkCreate(%v): %v", config.UUIDandVersion.UUID, err)
-			z.addAppNetworkError(&status, "handleAppNetworkCreate", err)
-			return
-		}
+	err = z.selectMACGeneratorForApp(&status)
+	if err != nil {
+		z.log.Errorf("handleAppNetworkCreate(%v): %v", config.UUIDandVersion.UUID, err)
+		z.addAppNetworkError(&status, "handleAppNetworkCreate", err)
+		return
 	}
-	status.MACGenerator = macGenerator
 	z.publishAppNetworkStatus(&status)
 
 	// Allocate application numbers on network instances.
@@ -616,6 +599,26 @@ func (z *zedrouter) handleAppNetworkModify(ctxArg interface{}, key string,
 		z.addAppNetworkError(status, "handleAppNetworkModify", err)
 		return
 	}
+
+	// Get or (less likely) allocate number to identify the application instance.
+	appNumKey := types.UuidToNumKey{UUID: newConfig.UUIDandVersion.UUID}
+	appNum, err := z.appNumAllocator.GetOrAllocate(appNumKey)
+	if err != nil {
+		err = fmt.Errorf("failed to allocate appNum for %s/%s: %v",
+			newConfig.UUIDandVersion.UUID, newConfig.DisplayName, err)
+		z.log.Errorf("handleAppNetworkModify(%v): %v", newConfig.UUIDandVersion.UUID, err)
+		z.addAppNetworkError(status, "handleAppNetworkModify", err)
+		return
+	}
+	status.AppNum = appNum
+
+	err = z.selectMACGeneratorForApp(status)
+	if err != nil {
+		z.log.Errorf("handleAppNetworkModify(%v): %v", newConfig.UUIDandVersion.UUID, err)
+		z.addAppNetworkError(status, "handleAppNetworkModify", err)
+		return
+	}
+	z.publishAppNetworkStatus(status)
 
 	// Update numbers allocated for application interfaces.
 	z.checkAppNetworkModifyAppIntfNums(newConfig, status)
