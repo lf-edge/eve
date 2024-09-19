@@ -150,8 +150,8 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
   driver = "intel-iommu"
   caching-mode = "on"
 
-[realtime]
-  mlock = "off"
+[overcommit]
+  mem-lock = "off"
 
 [chardev "charmonitor"]
   backend = "socket"
@@ -436,8 +436,8 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
   unit = "1"
   file = "/persist/vault/ovmf/%s_OVMF_VARS.fd"
 
-[realtime]
-  mlock = "off"
+[overcommit]
+  mem-lock = "off"
 
 [chardev "charmonitor"]
   backend = "socket"
@@ -687,8 +687,8 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
   append = "init=/bin/sh"
 
 
-[realtime]
-  mlock = "off"
+[overcommit]
+  mem-lock = "off"
 
 [chardev "charmonitor"]
   backend = "socket"
@@ -1160,8 +1160,8 @@ func domConfigArm64() string {
   append = "init=/bin/sh"
 
 
-[realtime]
-  mlock = "off"
+[overcommit]
+  mem-lock = "off"
 
 [chardev "charmonitor"]
   backend = "socket"
@@ -1459,8 +1459,8 @@ func domConfigAmd64FML() string {
   unit = "1"
   file = "/persist/vault/ovmf/%s_OVMF_VARS.fd"
 
-[realtime]
-  mlock = "off"
+[overcommit]
+  mem-lock = "off"
 
 [chardev "charmonitor"]
   backend = "socket"
@@ -1756,8 +1756,8 @@ func domConfigAmd64Legacy() string {
   driver = "intel-iommu"
   caching-mode = "on"
 
-[realtime]
-  mlock = "off"
+[overcommit]
+  mem-lock = "off"
 
 [chardev "charmonitor"]
   backend = "socket"
@@ -2044,8 +2044,8 @@ func domConfigAmd64() string {
   driver = "intel-iommu"
   caching-mode = "on"
 
-[realtime]
-  mlock = "off"
+[overcommit]
+  mem-lock = "off"
 
 [chardev "charmonitor"]
   backend = "socket"
@@ -2328,8 +2328,8 @@ func domConfigContainerVNC() string {
   driver = "intel-iommu"
   caching-mode = "on"
 
-[realtime]
-  mlock = "off"
+[overcommit]
+  mem-lock = "off"
 
 [chardev "charmonitor"]
   backend = "socket"
@@ -2635,8 +2635,8 @@ func TestCreateDom(t *testing.T) {
   property = "disable_s4"
   value = "1"
 
-[realtime]
-  mlock = "off"
+[overcommit]
+  mem-lock = "off"
 
 [rtc]
   base = "localtime"
