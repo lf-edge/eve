@@ -102,6 +102,8 @@ const (
 	OVMFSettingsDir = SealedDirName + "/ovmf"
 	// OVMFSettingsTemplate - template file for OVMF settings
 	OVMFSettingsTemplate = "/usr/lib/xen/boot/OVMF_VARS.fd"
+	// CustomOVMFSettingsDir - directory for custom OVMF settings (for different resolutions)
+	CustomOVMFSettingsDir = "/hostfs/etc/ovmf"
 )
 
 var (

@@ -652,19 +652,36 @@ func getOVMFSettingsFilename(domainName string) (string, error) {
 	return types.OVMFSettingsDir + "/" + domainUUID.String() + "_OVMF_VARS.fd", nil
 }
 
-func prepareOVMFSettings(domainName string) error {
+func prepareOVMFSettings(config types.DomainConfig, status types.DomainStatus, globalConfig *types.ConfigItemValueMap) error {
 	// Create the OVMF settings directory if it does not exist
 	if err := os.MkdirAll(types.OVMFSettingsDir, 0755); err != nil {
 		return logError("failed to create OVMF settings directory: %v", err)
 	}
 	// Create a copy of the ovmf_vars.bin file in <domainName>_ovmf_vars.bin
-	ovmfSettingsFile, err := getOVMFSettingsFilename(domainName)
+	ovmfSettingsFile, err := getOVMFSettingsFilename(status.DomainName)
 	if err != nil {
 		return logError("failed to get OVMF settings file: %v", err)
 	}
+	// Check if we need custom OVMF settings for the domain (the resolution)
+	fmlResolution := types.FmlResolutionUnset
+	if config.VirtualizationMode == types.FML {
+		// if we are not getting the resolution from the cloud-init, check the
+		// global config.
+		fmlResolution = status.FmlCustomResolution
+		if fmlResolution == types.FmlResolutionUnset {
+			if fmlResolution, err = getFmlCustomResolution(&status, globalConfig); err != nil {
+				return logError("failed to get custom resolution for domain %s: %v", status.DomainName, err)
+			}
+		}
+	}
+	// Find the necessary OVMF settings file
+	ovmfSettingsFileSrc := types.OVMFSettingsTemplate
+	if fmlResolution != types.FmlResolutionUnset {
+		ovmfSettingsFileSrc = types.CustomOVMFSettingsDir + "/OVMF_VARS_" + fmlResolution + ".fd"
+	}
 	if _, err := os.Stat(ovmfSettingsFile); os.IsNotExist(err) {
-		if err := fileutils.CopyFile(types.OVMFSettingsTemplate, ovmfSettingsFile); err != nil {
-			return logError("failed to copy ovmf_vars.bin file: %v", err)
+		if err := fileutils.CopyFile(ovmfSettingsFileSrc, ovmfSettingsFile); err != nil {
+			return logError("failed to copy OVMF_VARS file: %v", err)
 		}
 	}
 	// Set the RW permissions for the OVMF settings file
@@ -693,14 +710,6 @@ func (ctx kvmContext) Setup(status types.DomainStatus, config types.DomainConfig
 	domainName := status.DomainName
 	domainUUID := status.UUIDandVersion.UUID
 
-	// this needs to be reworked to fit into the OVMF_VAR changes.
-	res, err := getFmlCustomResolution(&status, globalConfig)
-	if err != nil {
-		logError("failed to get fml custom resolution: %v", err)
-	} else {
-		logError("fml custom resolution is set to: %s", res)
-	}
-
 	// Before we start building the domain config, we need to prepare the OVMF settings.
 	// Currently, we only support OVMF settings for FML mode on x86_64 architecture.
 	// To support OVMF settings for ARM, we need to add fix OVFM build for ARM to
@@ -708,7 +717,7 @@ func (ctx kvmContext) Setup(status types.DomainStatus, config types.DomainConfig
 	// for ARM produces a single QEMU_EFI.fd file that contains both OVMF_VARS.fd
 	// and OVMF_CODE.fd.
 	if config.VirtualizationMode == types.FML && runtime.GOARCH == "amd64" {
-		if err := prepareOVMFSettings(domainName); err != nil {
+		if err := prepareOVMFSettings(config, status, globalConfig); err != nil {
 			return logError("failed to setup OVMF settings for domain %s: %v", status.DomainName, err)
 		}
 	}
