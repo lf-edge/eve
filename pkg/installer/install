@@ -477,7 +477,7 @@ if [ "$INSTALL_ZFS" = true ]; then
       done
   fi
 else
-  P3="$(find_part P3 "$INSTALL_DEV")"
+  P3="$(find_part P3 "$INSTALL_PERSIST")"
   [ -z "$P3" ] && bail "Installation failed. Cannot found P3. Entering shell..."
   # attempt to zero the first and last 5Mb of the P3 (to get rid of any residual prior data)
   dd if=/dev/zero of="/dev/$P3" bs=512 count=10240 2>/dev/null
@@ -486,7 +486,7 @@ else
   mkfs -t ext4 -v -F -F -O encrypt "/dev/$P3"
   mkdir -p /persist
   # now the disk is ready - mount partitions
-  mount_part P3 "$INSTALL_DEV" /persist 2>/dev/null
+  mount_part P3 "$INSTALL_PERSIST" /persist 2>/dev/null
 fi
 
 
