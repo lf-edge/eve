@@ -1,0 +1,73 @@
+From: Roja Eswaran <roja@zededa.com>
+Date: Mon, 19 Sep 2024 11:20:00 +0530
+Subject: [PATCH] 20-return_zero_close_if_special_file.patch removes a CVE fix
+
+diff --git a/tools/qemu-xen/fsdev/virtfs-proxy-helper.c b/tools/qemu-xen/fsdev/virtfs-proxy-helper.c
+index d9511f4..657b632 100644
+--- a/tools/qemu-xen/fsdev/virtfs-proxy-helper.c
++++ b/tools/qemu-xen/fsdev/virtfs-proxy-helper.c
+@@ -354,10 +354,6 @@ static int open_regular(const char *pathname, int flags, mode_t mode)
+         return fd;
+     }
+ 
+-    if (close_if_special_file(fd) < 0) {
+-        return -1;
+-    }
+-
+     return fd;
+ }
+ 
+diff --git a/tools/qemu-xen/hw/9pfs/9p-util.h b/tools/qemu-xen/hw/9pfs/9p-util.h
+index df1b583..b8ce93f 100644
+--- a/tools/qemu-xen/hw/9pfs/9p-util.h
++++ b/tools/qemu-xen/hw/9pfs/9p-util.h
+@@ -111,38 +111,6 @@ static inline void close_preserve_errno(int fd)
+     errno = serrno;
+ }
+ 
+-/**
+- * close_if_special_file() - Close @fd if neither regular file nor directory.
+- *
+- * @fd: file descriptor of open file
+- * Return: 0 on regular file or directory, -1 otherwise
+- *
+- * CVE-2023-2861: Prohibit opening any special file directly on host
+- * (especially device files), as a compromised client could potentially gain
+- * access outside exported tree under certain, unsafe setups. We expect
+- * client to handle I/O on special files exclusively on guest side.
+- */
+-static inline int close_if_special_file(int fd)
+-{
+-    struct stat stbuf;
+-
+-    if (qemu_fstat(fd, &stbuf) < 0) {
+-        close_preserve_errno(fd);
+-        return -1;
+-    }
+-    if (!S_ISREG(stbuf.st_mode) && !S_ISDIR(stbuf.st_mode)) {
+-        error_report_once(
+-            "9p: broken or compromised client detected; attempt to open "
+-            "special file (i.e. neither regular file, nor directory)"
+-        );
+-        close(fd);
+-        errno = ENXIO;
+-        return -1;
+-    }
+-
+-    return 0;
+-}
+-
+ static inline int openat_dir(int dirfd, const char *name)
+ {
+     return qemu_openat(dirfd, name,
+@@ -177,10 +145,6 @@ again:
+         return -1;
+     }
+ 
+-    if (close_if_special_file(fd) < 0) {
+-        return -1;
+-    }
+-
+     serrno = errno;
+     /* O_NONBLOCK was only needed to open the file. Let's drop it. We don't
+      * do that with O_PATH since fcntl(F_SETFL) isn't supported, and openat()
