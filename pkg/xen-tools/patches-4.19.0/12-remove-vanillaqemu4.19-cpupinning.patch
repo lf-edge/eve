@@ -1,0 +1,201 @@
+From: Roja Eswaran <roja@zededa.com>
+Date: Mon, 19 Sep 2024 11:00:50 +0530
+Subject: [PATCH] 12-remove-vanillaqemu4.19-cpupinning.patch removes new qemu_thread_set_affinity implementation (QEMU 8.0.4)
+
+diff --git a/tools/qemu-xen/include/qemu/thread.h b/tools/qemu-xen/include/qemu/thread.h
+index dd3822d..a5b9ca8 100644
+--- a/tools/qemu-xen/include/qemu/thread.h
++++ b/tools/qemu-xen/include/qemu/thread.h
+@@ -189,10 +189,6 @@ void qemu_event_destroy(QemuEvent *ev);
+ void qemu_thread_create(QemuThread *thread, const char *name,
+                         void *(*start_routine)(void *),
+                         void *arg, int mode);
+-int qemu_thread_set_affinity(QemuThread *thread, unsigned long *host_cpus,
+-                             unsigned long nbits);
+-int qemu_thread_get_affinity(QemuThread *thread, unsigned long **host_cpus,
+-                             unsigned long *nbits);
+ void *qemu_thread_join(QemuThread *thread);
+ void qemu_thread_get_self(QemuThread *thread);
+ bool qemu_thread_is_self(QemuThread *thread);
+diff --git a/tools/qemu-xen/util/qemu-thread-posix.c b/tools/qemu-xen/util/qemu-thread-posix.c
+index b2e26e2..0a563ba 100644
+--- a/tools/qemu-xen/util/qemu-thread-posix.c
++++ b/tools/qemu-xen/util/qemu-thread-posix.c
+@@ -589,75 +589,6 @@ void qemu_thread_create(QemuThread *thread, const char *name,
+     pthread_attr_destroy(&attr);
+ }
+ 
+-int qemu_thread_set_affinity(QemuThread *thread, unsigned long *host_cpus,
+-                             unsigned long nbits)
+-{
+-#if defined(CONFIG_PTHREAD_AFFINITY_NP)
+-    const size_t setsize = CPU_ALLOC_SIZE(nbits);
+-    unsigned long value;
+-    cpu_set_t *cpuset;
+-    int err;
+-
+-    cpuset = CPU_ALLOC(nbits);
+-    g_assert(cpuset);
+-
+-    CPU_ZERO_S(setsize, cpuset);
+-    value = find_first_bit(host_cpus, nbits);
+-    while (value < nbits) {
+-        CPU_SET_S(value, setsize, cpuset);
+-        value = find_next_bit(host_cpus, nbits, value + 1);
+-    }
+-
+-    err = pthread_setaffinity_np(thread->thread, setsize, cpuset);
+-    CPU_FREE(cpuset);
+-    return err;
+-#else
+-    return -ENOSYS;
+-#endif
+-}
+-
+-int qemu_thread_get_affinity(QemuThread *thread, unsigned long **host_cpus,
+-                             unsigned long *nbits)
+-{
+-#if defined(CONFIG_PTHREAD_AFFINITY_NP)
+-    unsigned long tmpbits;
+-    cpu_set_t *cpuset;
+-    size_t setsize;
+-    int i, err;
+-
+-    tmpbits = CPU_SETSIZE;
+-    while (true) {
+-        setsize = CPU_ALLOC_SIZE(tmpbits);
+-        cpuset = CPU_ALLOC(tmpbits);
+-        g_assert(cpuset);
+-
+-        err = pthread_getaffinity_np(thread->thread, setsize, cpuset);
+-        if (err) {
+-            CPU_FREE(cpuset);
+-            if (err != -EINVAL) {
+-                return err;
+-            }
+-            tmpbits *= 2;
+-        } else {
+-            break;
+-        }
+-    }
+-
+-    /* Convert the result into a proper bitmap. */
+-    *nbits = tmpbits;
+-    *host_cpus = bitmap_new(tmpbits);
+-    for (i = 0; i < tmpbits; i++) {
+-        if (CPU_ISSET(i, cpuset)) {
+-            set_bit(i, *host_cpus);
+-        }
+-    }
+-    CPU_FREE(cpuset);
+-    return 0;
+-#else
+-    return -ENOSYS;
+-#endif
+-}
+-
+ void qemu_thread_get_self(QemuThread *thread)
+ {
+     thread->thread = pthread_self();
+diff --git a/tools/qemu-xen/util/qemu-thread-win32.c b/tools/qemu-xen/util/qemu-thread-win32.c
+index a7fe3cc..2c02a1b 100644
+--- a/tools/qemu-xen/util/qemu-thread-win32.c
++++ b/tools/qemu-xen/util/qemu-thread-win32.c
+@@ -507,18 +507,6 @@ void qemu_thread_create(QemuThread *thread, const char *name,
+     thread->data = data;
+ }
+ 
+-int qemu_thread_set_affinity(QemuThread *thread, unsigned long *host_cpus,
+-                             unsigned long nbits)
+-{
+-    return -ENOSYS;
+-}
+-
+-int qemu_thread_get_affinity(QemuThread *thread, unsigned long **host_cpus,
+-                             unsigned long *nbits)
+-{
+-    return -ENOSYS;
+-}
+-
+ void qemu_thread_get_self(QemuThread *thread)
+ {
+     thread->data = qemu_thread_data;
+diff --git a/tools/qemu-xen/util/thread-context.c b/tools/qemu-xen/util/thread-context.c
+index 2bc7883..ba443f5 100644
+--- a/tools/qemu-xen/util/thread-context.c
++++ b/tools/qemu-xen/util/thread-context.c
+@@ -113,21 +113,7 @@ static void thread_context_set_cpu_affinity(Object *obj, Visitor *v,
+         set_bit(l->value, bitmap);
+     }
+ 
+-    if (tc->thread_id != -1) {
+-        /*
+-         * Note: we won't be adjusting the affinity of any thread that is still
+-         * around, but only the affinity of the context thread.
+-         */
+-        ret = qemu_thread_set_affinity(&tc->thread, bitmap, nbits);
+-        if (ret) {
+-            error_setg(errp, "Setting CPU affinity failed: %s", strerror(ret));
+-        }
+-    } else {
+-        tc->init_cpu_bitmap = bitmap;
+-        bitmap = NULL;
+-        tc->init_cpu_nbits = nbits;
+-    }
+-out:
++    out:
+     g_free(bitmap);
+     qapi_free_uint16List(host_cpus);
+ }
+@@ -147,12 +133,6 @@ static void thread_context_get_cpu_affinity(Object *obj, Visitor *v,
+         return;
+     }
+ 
+-    ret = qemu_thread_get_affinity(&tc->thread, &bitmap, &nbits);
+-    if (ret) {
+-        error_setg(errp, "Getting CPU affinity failed: %s", strerror(ret));
+-        return;
+-    }
+-
+     value = find_first_bit(bitmap, nbits);
+     while (value < nbits) {
+         QAPI_LIST_APPEND(tail, value);
+@@ -213,21 +193,7 @@ static void thread_context_set_node_affinity(Object *obj, Visitor *v,
+         goto out;
+     }
+ 
+-    if (tc->thread_id != -1) {
+-        /*
+-         * Note: we won't be adjusting the affinity of any thread that is still
+-         * around for now, but only the affinity of the context thread.
+-         */
+-        ret = qemu_thread_set_affinity(&tc->thread, bitmap, nbits);
+-        if (ret) {
+-            error_setg(errp, "Setting CPU affinity failed: %s", strerror(ret));
+-        }
+-    } else {
+-        tc->init_cpu_bitmap = bitmap;
+-        bitmap = NULL;
+-        tc->init_cpu_nbits = nbits;
+-    }
+-out:
++   out:
+     g_free(bitmap);
+     qapi_free_uint16List(host_nodes);
+ #else
+@@ -262,15 +228,6 @@ static void thread_context_instance_complete(UserCreatable *uc, Error **errp)
+         qemu_sem_wait(&tc->sem);
+     }
+ 
+-    if (tc->init_cpu_bitmap) {
+-        ret = qemu_thread_set_affinity(&tc->thread, tc->init_cpu_bitmap,
+-                                       tc->init_cpu_nbits);
+-        if (ret) {
+-            error_setg(errp, "Setting CPU affinity failed: %s", strerror(ret));
+-        }
+-        g_free(tc->init_cpu_bitmap);
+-        tc->init_cpu_bitmap = NULL;
+-    }
+ }
+ 
+ static void thread_context_class_init(ObjectClass *oc, void *data)
