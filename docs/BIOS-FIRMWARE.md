@@ -95,3 +95,80 @@ For example, for an industrial HAT produced by Advantech [UNO-220](https://www.a
 here's how [EVE specific device tree](../pkg/new-kernel/patches-5.10.x/0021-Add-uno-220-dts.patch)
 and a [u-boot specific overlay](../pkg/u-boot/rpi/overlays/raspberrypi-uno-220.dts)
 would look like.
+
+## Using OVMF with EVE
+
+### What is OVMF?
+
+OVMF (Open Virtual Machine Firmware) is a project that provides a UEFI firmware
+implementation for virtual machines. It is part of the TianoCore open-source
+UEFI development project. OVMF allows virtual machines to leverage UEFI
+features, offering a modern firmware interface compared to traditional BIOS.
+
+### When is OVMF Used?
+
+In the context of EVE, OVMF is used for:
+
+1. Applications Running in FML Mode.
+1. Applications running on ARM Devices.
+
+### OVMF Files
+
+OVMF firmware consists of several files, including:
+
+1. `OVMF_CODE.fd`: Contains the firmware code.
+1. `OVMF_VARS.fd`: Contains the firmware variables.
+1. `OVMF.fd`: A combined firmware image that includes both the code and
+   variables.
+
+In EVE, we use both approaches, depending on the application's requirements:
+the combined `OVMF.fd` file, or separate `OVMF_CODE.fd` and `OVMF_VARS.fd` files.
+
+### OVMF Settings (_VARS File)
+
+OVMF uses a variable store file, commonly named `OVMF_VARS.fd`, to
+persist UEFI variables across reboots. This file contains essential firmware
+settings, including boot entries, framebuffer resolution, and other UEFI
+configurations.
+
+In the context of EVE, we use the separate `OVMF_VARS.fd` and `OVMF_CODE.fd`
+files to customize the firmware settings. Having separate files allows us to
+provide a customized `_VARS` file when we need to provide some specific
+predefined settings. At the moment, we provide a custom `_VARS` file only
+for setting the framebuffer resolution.
+
+#### How We Store OVMF Settings Files
+
+In EVE, we store the OVMF settings per application in the `persist/vault/ovmf`
+directory. Each application has its own `_VARS` file, which is a copy of the
+original `OVMF_VARS.fd` file.
+
+#### Generating OVMF Settings Files
+
+At the moment, we customize the OVMF settings manually to provide a way to
+choose a specific resolution for the framebuffer. For that purpose, we build
+the original OVMF_VARS.fd file from the edk2 sources, which are compiled as part
+of the UEFI package in our build system and based on this file vary the
+settings as needed.
+
+1. Build an original OVMF_VAR file from the edk2 sources
+1. Start a virtual machine using the freshly built OVMF_CODE.fd and OVMF_VARS.fd
+   files to initialize the UEFI environment.
+1. Access the OVMF UEFI setup menu during the VM's boot sequence.
+1. Navigate through the menu to set the necessary firmware configurations
+   required by EVE.
+1. Clean the unnecessary settings. It is important to remove any auto-detected
+   boot entries to prevent another VM from booting into an unintended path.
+1. Commit the changes to the OVMF_VARS.fd file and save it as the customized
+   _VARS file.
+
+By pre-configuring the _VARS file, we eliminate the need for manual UEFI
+configuration on each VM instance, streamlining the deployment process.
+
+#### Alternative Approach for OVMF Settings
+
+In the future, we plan to provide a more automated way to generate the OVMF
+settings files. We can achieve this by creating a tool that allows EVE to set
+the necessary firmware configurations programmatically. An example of such a
+tool can be found in some popular Linux distributions. Technically, it is the
+same as the manual approach, but it is automated and can be run as a script.
