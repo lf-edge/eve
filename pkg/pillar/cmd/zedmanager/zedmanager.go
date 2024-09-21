@@ -1431,6 +1431,17 @@ func quantifyChanges(config types.AppInstanceConfig, oldConfig types.AppInstance
 	return needPurge, needRestart, purgeReason, restartReason
 }
 
+func configureGOGC(gcp *types.ConfigItemValueMap) {
+	lim := gcp.GlobalValueInt(types.GOGCMemoryLimitInBytes)
+	per := gcp.GlobalValueInt(types.GOGCPercent)
+	plim, pper, err := types.ConfigureGOGC(int64(lim), int(per))
+	if err != nil {
+		log.Warningf("configureGOGC: failed '%v'", err)
+	} else {
+		log.Functionf("configureGOGC: memory limit set to '%v' (previous '%v'), GC percent set to '%v' (previous '%v')", lim, plim, per, pper)
+	}
+}
+
 func handleGlobalConfigCreate(ctxArg interface{}, key string,
 	statusArg interface{}) {
 	handleGlobalConfigImpl(ctxArg, key, statusArg)
@@ -1456,6 +1467,7 @@ func handleGlobalConfigImpl(ctxArg interface{}, key string,
 		ctx.globalConfig = gcp
 		ctx.GCInitialized = true
 	}
+	configureGOGC(gcp)
 	log.Functionf("handleGlobalConfigImpl done for %s", key)
 }
 
