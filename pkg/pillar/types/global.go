@@ -231,6 +231,10 @@ const (
 	EveMemoryLimitInBytes GlobalSettingKey = "memory.eve.limit.bytes"
 	// How much memory overhead is allowed for VMM needs
 	VmmMemoryLimitInMiB GlobalSettingKey = "memory.vmm.limit.MiB"
+	// GOGCMemoryLimitInBytes global setting key
+	GOGCMemoryLimitInBytes GlobalSettingKey = "gogc.memory.limit.bytes"
+	// GOGCPercent global setting key
+	GOGCPercent GlobalSettingKey = "gogc.percent"
 	// IgnoreMemoryCheckForApps global setting key
 	IgnoreMemoryCheckForApps GlobalSettingKey = "memory.apps.ignore.check"
 	// IgnoreDiskCheckForApps global setting key
@@ -892,7 +896,10 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 		100*1024*1024, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(StorageZfsReserved, 20, 1, 99)
 	configItemSpecMap.AddIntItem(ForceFallbackCounter, 0, 0, 0xFFFFFFFF)
-
+	// Default GOGC memory limit is 0
+	configItemSpecMap.AddIntItem(GOGCMemoryLimitInBytes, 0, 0, 0xFFFFFFFF)
+	// Default GOGC target percentage is 100, 0 means disable GC
+	configItemSpecMap.AddIntItem(GOGCPercent, 100, 0, 500)
 	configItemSpecMap.AddIntItem(EveMemoryLimitInBytes, uint32(eveMemoryLimitInBytes),
 		uint32(eveMemoryLimitInBytes), 0xFFFFFFFF)
 	// Limit manual vmm overhead override to 1 PiB
