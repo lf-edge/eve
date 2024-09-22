@@ -186,6 +186,40 @@ eve config unmount /mnt
 reboot
 ```
 
+## Golang runtime garbage collector settings
+
+Golang runtime provides two parameters which impacts garbage collector (GC)
+behavior, which are available through the EVE debug settings:
+
+1. `gogc.memory.limit.bytes` provides the runtime with a soft memory limit.
+   The runtime undertakes several processes to try to respect this memory
+   limit, including adjustments to the frequency of garbage collections and
+   returning memory to the underlying system more aggressively. The Go API
+   call is described [here](https://pkg.go.dev/runtime/debug#SetMemoryLimit)
+
+   By default, EVE setting is disabled (set to 0), meaning the Golang runtime
+   memory limit will be set according to the following equation based on the
+   `memory.limit_in_bytes` hard memory limit provided by the pillar `cgroups`:
+
+   `limit = memory.limit_in_bytes * 0.6`
+
+   The constant 0.6 was chosen empirically and is explained by simple logic:
+   `memory.limit_in_bytes` is a hard limit for the whole pillar cgroup, meaning
+   when reached, likely one of the processes will be killed by OOM. In turn
+   Golang runtime memory limit is a soft limit, so the difference must be
+   significant to ensure that after the soft limit is reached, there will be
+   enough memory for the Go garbage collector to do its job and, fortunately,
+   not to hit the hard limit.
+
+2. `gogc.percent` sets the garbage collection target percentage: a collection
+   is triggered when the ratio of freshly allocated data to live data remaining
+   after the previous collection reaches this percentage. The Go API call is
+   described [here](https://pkg.go.dev/runtime/debug#SetGCPercent)
+
+Changing these parameters is recommended as a last resort, for example to debug
+an OOM kill due to a bloated `zedbox` process. Before changing the values,
+please read the [documentation](https://tip.golang.org/doc/gc-guide) carefully.
+
 ## User applications memory settings
 
 Besides the obvious memory settings of RAM that comes from the controller, there
