@@ -32,6 +32,8 @@ type Args struct {
 	GCP types.ConfigItemValueMap
 	// True if flow logging is enabled in at least one network instance.
 	FlowlogEnabled bool
+	// Cluster network status used when edge node is part of a kubernetes cluster.
+	ClusterStatus types.EdgeNodeClusterStatus
 }
 
 // ReconcileStatus : state data related to config reconciliation.

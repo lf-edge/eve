@@ -85,6 +85,7 @@ type nim struct {
 	subOnboardStatus         pubsub.Subscription
 	subWwanStatus            pubsub.Subscription
 	subNetworkInstanceConfig pubsub.Subscription
+	subEdgeNodeClusterStatus pubsub.Subscription
 
 	// Publications
 	pubDummyDevicePortConfig pubsub.Publication // For logging
@@ -325,6 +326,9 @@ func (n *nim) run(ctx context.Context) (err error) {
 		select {
 		case change := <-n.subControllerCert.MsgChan():
 			n.subControllerCert.ProcessChange(change)
+
+		case change := <-n.subEdgeNodeClusterStatus.MsgChan():
+			n.subEdgeNodeClusterStatus.ProcessChange(change)
 
 		case change := <-n.subEdgeNodeCert.MsgChan():
 			n.subEdgeNodeCert.ProcessChange(change)
@@ -697,6 +701,23 @@ func (n *nim) initSubscriptions() (err error) {
 	if err != nil {
 		return err
 	}
+
+	// Subscribe to EdgeNodeClusterStatus to get the cluster interface and the cluster
+	// IP address which DPC Reconciler should assign statically.
+	n.subEdgeNodeClusterStatus, err = n.PubSub.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "zedkube",
+		MyAgentName:   agentName,
+		TopicImpl:     types.EdgeNodeClusterStatus{},
+		Activate:      false,
+		CreateHandler: n.handleEdgeNodeClusterStatusCreate,
+		ModifyHandler: n.handleEdgeNodeClusterStatusModify,
+		DeleteHandler: n.handleEdgeNodeClusterStatusDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -906,6 +927,23 @@ func (n *nim) handleNetworkInstanceUpdate() {
 		}
 	}
 	n.dpcManager.UpdateFlowlogState(flowlogEnabled)
+}
+
+func (n *nim) handleEdgeNodeClusterStatusCreate(_ interface{}, _ string,
+	statusArg interface{}) {
+	status := statusArg.(types.EdgeNodeClusterStatus)
+	n.dpcManager.UpdateClusterStatus(status)
+}
+
+func (n *nim) handleEdgeNodeClusterStatusModify(_ interface{}, _ string,
+	statusArg, _ interface{}) {
+	status := statusArg.(types.EdgeNodeClusterStatus)
+	n.dpcManager.UpdateClusterStatus(status)
+}
+
+func (n *nim) handleEdgeNodeClusterStatusDelete(_ interface{}, _ string, _ interface{}) {
+	// Apply empty cluster status, which effectively removes the cluster IP.
+	n.dpcManager.UpdateClusterStatus(types.EdgeNodeClusterStatus{})
 }
 
 func (n *nim) isDeviceOnboarded() bool {
