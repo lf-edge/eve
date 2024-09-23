@@ -9,7 +9,7 @@
 
 #storage device benchmarking
 mkdir "$REPORT/storage-performance/"
-for i in $(lsblk -anlb -o "TYPE,NAME,SIZE" | grep "^disk" | awk '$3 { print $2;}'); do
+for i in $(lsblk -anlb -o "TYPE,NAME,SIZE" | grep "^disk" | awk '$3 { print $2;}' | grep -v "^ram.*"); do
    echo  "Verifying disk /dev/$i"
    #if dd if="/dev/$i" of=/dev/null bs=512 count=34 >/dev/null 2>&1; then
    # echo "Read from device $i succeeded" >> "$REPORT/storage-check.log"
