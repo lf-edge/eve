@@ -27,6 +27,8 @@ import (
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/sirupsen/logrus"
+	"golang.org/x/sys/unix"
+	"tags.cncf.io/container-device-interface/pkg/cdi"
 )
 
 const eveScript = "/bin/eve"
@@ -65,6 +67,7 @@ type OCISpec interface {
 	UpdateFromVolume(string) error
 	UpdateMounts([]types.DiskStatus) error
 	UpdateEnvVar(map[string]string)
+	UpdateWithIoBundles(config *types.DomainConfig, aa *types.AssignableAdapters, domainID int) error
 	GrantFullAccessToDevices()
 }
 
@@ -274,6 +277,114 @@ func (s *ociSpec) AdjustMemLimit(dom types.DomainConfig, addMemory int64) {
 		m := int64(dom.Memory)*1024 + addMemory
 		s.Linux.Resources.Memory.Limit = &m
 	}
+}
+
+func getDeviceInfo(path string) (specs.LinuxDevice, error) {
+	var statInfo unix.Stat_t
+	var devType string
+	ociDev := specs.LinuxDevice{}
+
+	err := unix.Stat(path, &statInfo)
+	if err != nil {
+		return ociDev, err
+	}
+
+	switch statInfo.Mode & unix.S_IFMT {
+	case unix.S_IFBLK:
+		devType = "b"
+	case unix.S_IFCHR:
+		devType = "c"
+	case unix.S_IFDIR:
+		devType = "d"
+	case unix.S_IFIFO:
+		devType = "p"
+	case unix.S_IFLNK:
+		devType = "l"
+	case unix.S_IFSOCK:
+		devType = "s"
+	}
+
+	ociDev.Path = path
+	ociDev.Type = devType
+	ociDev.Major = int64(unix.Major(statInfo.Rdev))
+	ociDev.Minor = int64(unix.Minor(statInfo.Rdev))
+	return ociDev, nil
+}
+
+func (s *ociSpec) UpdateWithIoBundles(config *types.DomainConfig, aa *types.AssignableAdapters, domainID int) error {
+	// Process I/O adapters
+	devList := []string{}
+	cdiList := []string{}
+	for _, adapter := range config.IoAdapterList {
+		logrus.Debugf("processing adapter %d %s\n", adapter.Type, adapter.Name)
+		list := aa.LookupIoBundleAny(adapter.Name)
+
+		if len(list) == 0 {
+			// We reserved it in handleCreate so nobody could have stolen it
+			logrus.Fatalf("IoBundle disappeared %d %s for %v\n",
+				adapter.Type, adapter.Name, domainID)
+		}
+		for _, ib := range list {
+			if ib == nil {
+				continue
+			}
+			if ib.UsedByUUID != config.UUIDandVersion.UUID {
+				logrus.Fatalf("IoBundle not ours %s: %d %s for %v\n",
+					ib.UsedByUUID, adapter.Type, adapter.Name,
+					domainID)
+			}
+
+			// Video devices
+			if ib.Type == types.IoHDMI {
+				// It's a CDI device?
+				cdiDev := ib.Cbattr["cdi"]
+				if cdiDev != "" {
+					logrus.Infof("Adding CDI device %s\n", cdiDev)
+					cdiList = append(cdiList, cdiDev)
+				}
+			}
+
+			// Serial devices
+			if ib.Type == types.IoCom && ib.Serial != "" {
+				logrus.Infof("Adding serial %s\n", ib.Serial)
+				devList = append(devList, ib.Serial)
+			}
+
+			// Generic devices
+			if ib.Type == types.IoOther && ib.Ifname != "" {
+				logrus.Infof("Adding generic device %s\n", ib.Ifname)
+				devList = append(devList, ib.Ifname)
+			}
+		}
+	}
+
+	if s.Linux == nil {
+		s.Linux = &specs.Linux{}
+	}
+	if s.Linux.Devices == nil {
+		s.Linux.Devices = make([]specs.LinuxDevice, 0)
+	}
+
+	// Process CDI device list
+	for _, dev := range cdiList {
+		_, err := cdi.GetRegistry().InjectDevices(&s.Spec, dev)
+		if err != nil {
+			logrus.Errorf("could not resolve CDI device %s: %v", dev, err)
+			return err
+		}
+	}
+
+	// I/O Adapter device access
+	for _, dev := range devList {
+		// Get information about the file device (type, major and minor number)
+		ociDev, err := getDeviceInfo(dev)
+		if err != nil {
+			logrus.Errorf("could not retrieve information about device file %s", dev)
+			continue
+		}
+		s.Linux.Devices = append(s.Linux.Devices, ociDev)
+	}
+	return nil
 }
 
 // UpdateVifList creates VIF management hooks in OCI spec
