@@ -127,6 +127,7 @@ func (hr *httpRun) runBpftrace(aotFile string, timeout time.Duration) error {
 	if err != nil {
 		log.Fatalf("received response %v with error %v", resp, err)
 	}
+	defer resp.Body.Close()
 	log.Printf("http multiform resp is %+v\n", resp)
 
 	scanner := bufio.NewScanner(resp.Body)

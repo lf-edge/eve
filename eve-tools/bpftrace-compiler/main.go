@@ -230,13 +230,18 @@ func newEdgeviewCmd() *cobra.Command {
 				log.Fatalf("could not start edgeview for bpftrace: %v", err)
 			}
 
+			edgeviewHostPort := fmt.Sprintf("127.0.0.1:%d", port)
 			for i := 0; i < 10; i++ {
+				var resp *http.Response
 				u := url.URL{
 					Scheme: "http",
-					Host:   fmt.Sprintf("127.0.0.1:%d", port),
+					Host:   edgeviewHostPort,
 					Path:   "/",
 				}
-				resp, err := http.Get(u.String())
+				resp, err = http.Get(u.String())
+				if err == nil {
+					resp.Body.Close()
+				}
 				if err != nil || resp.StatusCode != http.StatusOK {
 					time.Sleep(time.Second)
 					continue
@@ -244,7 +249,11 @@ func newEdgeviewCmd() *cobra.Command {
 				break
 			}
 
-			hr := newHTTPRun(fmt.Sprintf("localhost:%d", port))
+			if err != nil {
+				log.Fatalf("could not reach %s: %v", edgeviewHostPort, err)
+			}
+
+			hr := newHTTPRun(edgeviewHostPort)
 			defers = append(defers, func() { hr.end(); ev.shutdown() })
 			hr.run(args[1], uc, *f.kernelModulesFlag, f.timeout)
 		},
