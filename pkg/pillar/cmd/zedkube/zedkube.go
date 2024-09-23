@@ -325,9 +325,11 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	zedkubeCtx.subZedAgentStatus = subZedAgentStatus
 	subZedAgentStatus.Activate()
 
-	// This will wait for kubernetes, longhorn, etc. to be ready
-	// XXX temp, this will be changed in later cluster PR
-	err = kubeapi.WaitForKubernetes(agentName, ps, stillRunning)
+	err = kubeapi.WaitForKubernetes(agentName, ps, stillRunning,
+		// Make sure we keep ClusterIPIsReady up to date while we wait
+		// for Kubernetes to come up.
+		pubsub.WatchAndProcessSubChanges(subEdgeNodeClusterConfig),
+		pubsub.WatchAndProcessSubChanges(subDeviceNetworkStatus))
 	if err != nil {
 		log.Errorf("zedkube: WaitForKubenetes %v", err)
 	}

@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"reflect"
 	"strings"
 	"time"
 
@@ -125,26 +126,48 @@ func GetKubevirtClientSet(kubeconfig *rest.Config) (KubevirtClientset, error) {
 */
 
 // WaitForKubernetes : Wait until kubernetes server is ready
-func WaitForKubernetes(agentName string, ps *pubsub.PubSub, stillRunning *time.Ticker) error {
-	checkTimer := time.NewTimer(5 * time.Second)
-	configFileExist := false
+func WaitForKubernetes(agentName string, ps *pubsub.PubSub, stillRunning *time.Ticker,
+	alsoWatch ...pubsub.ChannelWatch) (err error) {
+
+	var watches []pubsub.ChannelWatch
+	stillRunningWatch := pubsub.ChannelWatch{
+		Chan: reflect.ValueOf(stillRunning.C),
+		Callback: func(_ interface{}) (exit bool) {
+			ps.StillRunning(agentName, warningTime, errorTime)
+			return false
+		},
+	}
+	watches = append(watches, stillRunningWatch)
 
 	var config *rest.Config
-	// wait until the Kubernetes server is started
-	for !configFileExist {
-		select {
-		case <-checkTimer.C:
+	checkTicker := time.NewTicker(5 * time.Second)
+	startTime := time.Now()
+	const maxWaitTime = 10 * time.Minute
+	watches = append(watches, pubsub.ChannelWatch{
+		Chan: reflect.ValueOf(checkTicker.C),
+		Callback: func(_ interface{}) (exit bool) {
+			currentTime := time.Now()
+			if currentTime.Sub(startTime) > maxWaitTime {
+				err = fmt.Errorf("time exceeded 10 minutes")
+				return true
+			}
 			if _, err := os.Stat(EVEkubeConfigFile); err == nil {
 				config, err = GetKubeConfig()
 				if err == nil {
-					configFileExist = true
-					break
+					return true
 				}
 			}
-			checkTimer = time.NewTimer(5 * time.Second)
-		case <-stillRunning.C:
-		}
-		ps.StillRunning(agentName, warningTime, errorTime)
+			return false
+		},
+	})
+
+	watches = append(watches, alsoWatch...)
+
+	// wait until the Kubernetes server is started
+	pubsub.MultiChannelWatch(watches)
+
+	if err != nil {
+		return err
 	}
 
 	client, err := kubernetes.NewForConfig(config)
@@ -161,17 +184,16 @@ func WaitForKubernetes(agentName string, ps *pubsub.PubSub, stillRunning *time.T
 	readyCh := make(chan bool)
 	go waitForNodeReady(client, readyCh, devUUID)
 
-	kubeNodeReady := false
-	for !kubeNodeReady {
-		select {
-		case <-readyCh:
-			kubeNodeReady = true
-			break
-		case <-stillRunning.C:
-		}
-		ps.StillRunning(agentName, warningTime, errorTime)
-	}
-
+	watches = nil
+	watches = append(watches, stillRunningWatch)
+	watches = append(watches, pubsub.ChannelWatch{
+		Chan: reflect.ValueOf(readyCh),
+		Callback: func(_ interface{}) (exit bool) {
+			return true
+		},
+	})
+	watches = append(watches, alsoWatch...)
+	pubsub.MultiChannelWatch(watches)
 	return nil
 }
 

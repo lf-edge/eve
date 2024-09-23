@@ -14,8 +14,8 @@ import (
 )
 
 // WaitForKubernetes in this file is just stub for non-kubevirt hypervisors.
-func WaitForKubernetes(
-	string, *pubsub.PubSub, *time.Ticker) error {
+func WaitForKubernetes(string, *pubsub.PubSub, *time.Ticker,
+	...pubsub.ChannelWatch) error {
 	panic("WaitForKubernetes is not built")
 }
 

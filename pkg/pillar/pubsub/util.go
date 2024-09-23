@@ -111,8 +111,9 @@ func ConnReadCheck(conn net.Conn) error {
 type ChannelWatch struct {
 	// Chan is the channel to watch for incoming data
 	Chan reflect.Value
-	// Callback is the function to call with that data (or empty if no data)
-	Callback func(value interface{})
+	// Callback is the function to call with that data (or empty if no data).
+	// Return true to terminate MultiChannelWatch.
+	Callback func(value interface{}) (exitWatch bool)
 }
 
 // MultiChannelWatch allows listening to several receiving channels of different types at the same time
@@ -130,10 +131,31 @@ func MultiChannelWatch(watches []ChannelWatch) {
 	for {
 		index, value, _ := reflect.Select(cases)
 		if value.CanInterface() {
-			watches[index].Callback(value.Interface())
+			exit := watches[index].Callback(value.Interface())
+			if exit {
+				return
+			}
 		} else {
-			watches[index].Callback(struct{}{})
+			exit := watches[index].Callback(struct{}{})
+			if exit {
+				return
+			}
 		}
 	}
+}
 
+// WatchAndProcessSubChanges returns ChannelWatch for use with MultiChannelWatch,
+// which simply watches for subscription changes and calls Subscription.ProcessChange()
+// to process each.
+func WatchAndProcessSubChanges(sub Subscription) ChannelWatch {
+	return ChannelWatch{
+		Chan: reflect.ValueOf(sub.MsgChan()),
+		Callback: func(value interface{}) (exit bool) {
+			change, ok := value.(Change)
+			if ok {
+				sub.ProcessChange(change)
+			}
+			return false
+		},
+	}
 }

@@ -416,29 +416,22 @@ func (ctx *monitor) process(ps *pubsub.PubSub) {
 	watches := make([]pubsub.ChannelWatch, 0)
 	for i := range ctx.subscriptions {
 		sub := ctx.subscriptions[i]
-		watches = append(watches, pubsub.ChannelWatch{
-			Chan: reflect.ValueOf(sub.MsgChan()),
-			Callback: func(value interface{}) {
-				change, ok := value.(pubsub.Change)
-				if !ok {
-					return
-				}
-				sub.ProcessChange(change)
-			},
-		})
+		watches = append(watches, pubsub.WatchAndProcessSubChanges(sub))
 	}
 
 	watches = append(watches, pubsub.ChannelWatch{
 		Chan: reflect.ValueOf(stillRunning.C),
-		Callback: func(_ interface{}) {
+		Callback: func(_ interface{}) (exit bool) {
 			ps.StillRunning(agentName, warningTime, errorTime)
+			return false
 		},
 	})
 
 	watches = append(watches, pubsub.ChannelWatch{
 		Chan: reflect.ValueOf(ctx.clientConnected),
-		Callback: func(_ interface{}) {
+		Callback: func(_ interface{}) (exit bool) {
 			ctx.handleClientConnected()
+			return false
 		},
 	})
 
