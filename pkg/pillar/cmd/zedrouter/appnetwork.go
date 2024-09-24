@@ -418,7 +418,9 @@ func (z *zedrouter) selectMACGeneratorForApp(status *types.AppNetworkStatus) err
 	macGenerator, _, err := z.appMACGeneratorMap.Get(appKey)
 	if err != nil || macGenerator == types.MACGeneratorUnspecified {
 		// New app or an existing app but without MAC generator ID persisted.
-		if z.localLegacyMACAddr {
+		if z.withKubeNetworking {
+			macGenerator = types.MACGeneratorClusterDeterministic
+		} else if z.localLegacyMACAddr {
 			// Use older node-scoped MAC address generator.
 			macGenerator = types.MACGeneratorNodeScoped
 		} else {
