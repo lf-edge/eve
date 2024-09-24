@@ -99,15 +99,15 @@ in grub.cfg with graphical GRUB menu to get the device to boot again.
 1. Cgroup related options. Please follow the [example](README.md#eve-cgroups) to write
    these values in the correct GRUB variables:
     1. `dom0_mem` option of `hv_dom0_mem_settings` variable - memory limit for eve cgroup
-       (default is `set_global hv_dom0_mem_settings "dom0_mem=800M,max:800M"`)
+       (default is `set_global hv_dom0_mem_settings "dom0_mem=640M,max:800M"`)
     2. `dom0_max_vcpus` option of `hv_dom0_cpu_settings` variable - cpu limit for eve cgroup
        (default is `set_global hv_dom0_cpu_settings "dom0_max_vcpus=1"`)
     3. `eve_mem` - memory limit for cgroups with services of EVE
-       (default is `set_global hv_eve_mem_settings "eve_mem=650M,max:650M"`)
+       (default is `set_global hv_eve_mem_settings "eve_mem=520M,max:650M"`)
     4. `eve_max_vcpus` option of `hv_eve_mem_settings` variable - cpu limit for cgroups with services of EVE
        (default is `set_global hv_eve_cpu_settings "eve_max_vcpus=1""`)
     5. `ctrd_mem` option of `hv_ctrd_mem_settings` variable - memory limit for cgroups with containerd-shims of EVE
-       (default is `set_global hv_ctrd_mem_settings "ctrd_mem=400M,max:400M"`)
+       (default is `set_global hv_ctrd_mem_settings "ctrd_mem=320M,max:400M"`)
     6. `ctrd_max_vcpus` option of `hv_ctrd_cpu_settings` variable - cpu limit for cgroups with containerd-shims of EVE
        (default is `set_global hv_ctrd_cpu_settings "ctrd_max_vcpus=1"`)
 2. Installer options. These options are used during [the installation](DEPLOYMENT.md) process and may be set by adding

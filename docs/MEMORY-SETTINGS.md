@@ -99,6 +99,12 @@ We use explicit memory settings for several of the cgroups. Namely, we set
 memory limits for the `eve`, `eve/containerd`, `pillar`, and all the sub-cgroups
 of the `eve-user-apps` cgroup.
 
+By default, we set the soft memory limits to 80% of the hard memory limits. It's
+done to give the Kernel target value for the memory usage of the cgroup.
+When memory rebalancing is needed, the kernel will try to keep the memory usage
+of the cgroup at the soft limit. The rebalancing is triggered in different
+situations, for example, when the system is under memory pressure.
+
 For the EVE-related cgroups, we set the memory limits in the kernel command line
 arguments. For the user applications, we set the memory in runtime using the
 values of RAM.
@@ -142,12 +148,12 @@ If the hard limit is not specified, the soft limit is used as the hard limit.
 The mapping of the `<cmd_component_name>` to the cgroup is not straightforward
 and is misleading. The following table shows the mapping:
 
-| Component   | cgroup            | default value |
-|-------------|-------------------|---------------|
-| `dom0`      | `eve`             | 800M          |
-| `ctrd`      | `eve/containerd/` | 400M          |
-| `eve`       | `eve/services/`   | 650M          |
-| `eve`       | `eve/services/*`  | 650M          |
+| Component   | cgroup            | default soft limit | default hard limit |
+|-------------|-------------------|--------------------|--------------------|
+| `dom0`      | `eve`             | 640M               | 800M               |
+| `ctrd`      | `eve/containerd/` | 320M               | 400M               |
+| `eve`       | `eve/services/`   | 520M               | 650M               |
+| `eve`       | `eve/services/*`  | 520M               | 650M               |
 
 That way, the `dom0_mem` setting sets the memory limits for the `eve` cgroup,
 the `ctrd_mem` setting sets the memory limits for the `eve/containerd` cgroup,
@@ -276,14 +282,6 @@ Below are recommendations on how to use the memory settings for different
 components in EVE OS. For each setting, we provide guidelines on when it makes
 sense to increase or decrease the values, as well as the potential impact of
 setting them too high or too low.
-
-### Note on soft and hard limits
-
-Currently, the soft and hard limits are set to the same value. Theoretically,
-the soft limit should be set to a value that is lower than the hard limit, and
-it can be used to handle the memory pressure in the system more effectively.
-However, in practice, we have not tested this configuration yet and do not
-have precise recommendations on how to set the soft limit.
 
 ### dom0_mem
 

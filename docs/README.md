@@ -366,10 +366,10 @@ Memory and CPU limits of `eve`, `eve/services` and `eve/containerd` cgroups can 
 Example:
 
 ```text
-set_global hv_dom0_mem_settings "dom0_mem=800M,max:800M"
+set_global hv_dom0_mem_settings "dom0_mem=640M,max:800M"
 set_global hv_dom0_cpu_settings "dom0_max_vcpus=1 dom0_vcpus_pin"
-set_global hv_eve_mem_settings "eve_mem=650M,max:650M"
+set_global hv_eve_mem_settings "eve_mem=520M,max:650M"
 set_global hv_eve_cpu_settings "eve_max_vcpus=1"
-set_global hv_ctrd_mem_settings "ctrd_mem=400M,max:400M"
+set_global hv_ctrd_mem_settings "ctrd_mem=320M,max:400M"
 set_global hv_ctrd_cpu_settings "ctrd_max_vcpus=1"
 ```
