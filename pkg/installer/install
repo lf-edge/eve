@@ -196,6 +196,9 @@ spec() {
    DEBUG="$DEBUG" /spec.sh "$@"
 }
 
+# we may be asked to pause before install procedure
+cmdline eve_pause_before_install && pause "start the installation"
+
 logmsg "EVE-OS installation started"
 # do this just in case
 modprobe usbhid && modprobe usbkbd
@@ -323,9 +326,6 @@ ln -s /bits/* ${ARTIFACTS_DIR} 2>/dev/null
 for i in rootfs config persist; do
    cmdline "eve_install_skip_$i" && trunc "${ARTIFACTS_DIR}/$i.img"
 done
-
-# we may be asked to pause before install procedure
-cmdline eve_pause_before_install && pause "formatting the /dev/$INSTALL_DEV"
 
 # Do we want random or fixed disk and partition UUIDs?
 RANDOM_DISK_UUIDS=
