@@ -27,11 +27,11 @@ ENV BUILD_PKGS \
     pixman-dev libaio-dev yajl-dev argp-standalone \
     linux-headers git patch texinfo tar libcap-ng-dev \
     attr-dev flex bison cmake libusb-dev zstd-dev \
-    python3 build-base ninja
+    python3 build-base ninja gnutls-dev
 
 ENV BUILD_PKGS_arm64 dtc-dev
 
-ENV PKGS alpine-baselayout libgcc bash musl-utils libaio libbz2 glib pixman yajl keyutils libusb xz-libs libuuid zstd-libs util-linux-misc
+ENV PKGS alpine-baselayout libgcc bash musl-utils libaio libbz2 glib pixman yajl keyutils libusb xz-libs libuuid zstd-libs util-linux-misc gnutls
 ENV PKGS_arm64 libfdt
 
 RUN eve-alpine-deploy.sh
