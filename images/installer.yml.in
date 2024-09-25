@@ -19,6 +19,7 @@ onboot:
     image: INSTALLER_TAG
     binds.add:
     - mkimage-raw-efi:/mkimage:ro       # so that it has access to make-raw
+    - uboot:/uboot:ro                   # additional necessary parts for boot, appear inside image as /boot and /u-boot, so need to have in separate path
     - /rootfs.img:/bits/rootfs.img:ro   # this is the rootfs it will install
     - /persist.img:/bits/persist.img:ro # this is the persist image
     - /config.img:/bits/config.img:ro   # this is the config image
@@ -28,6 +29,9 @@ onboot:
 volumes:
 - name: mkimage-raw-efi
   image: MKRAW_TAG
+  readonly: true
+- name: uboot
+  image: UBOOT_TAG
   readonly: true
 files:
   - path: /etc/eve-release
