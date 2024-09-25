@@ -272,11 +272,6 @@ dir2vfat() {
   echo $IMG
 }
 
-mkefifs() {
-  rm -rf /efifs/*
-  cp -Lr "$EFI_DIR" /efifs/EFI
-}
-
 do_system_vfat_part() {
   eval "local SEC_START=\$$1"
   local SEC_END="$(grow_part "$SEC_START" "$2")"
@@ -304,7 +299,11 @@ do_system_vfat_part() {
 do_efi() {
   eval "local SEC_START=\$$1"
   local customparts=$2
-  mkefifs
+
+  # Create EFI partition and include the bootloaders
+  rm -rf /efifs/*
+  cp -Lr "$EFI_DIR" /efifs/EFI
+
   # the grub.cfg.in is embedded in the script to avoid any external filesystem dependency for this make-raw script
   sed -e 's#@PATH_TO_GRUB@#'"$(cd /efifs; echo EFI/BOOT/BOOT*EFI)"'#' > /efifs/EFI/BOOT/grub.cfg <<'EOF'
 # this finds the next available bootable partition in GPT, with the highest priority
@@ -349,7 +348,6 @@ efi_installer_extension() {
   fi
   # Copy bootloaders to boot folder for installer
   mkdir -p /efifs/boot
-  cp -r "$BOOT_DIR"/* /efifs/boot/ 2>/dev/null
   touch /efifs/boot/.boot_repository
   od -An -x -N 16 /dev/random | tr -d ' ' > /efifs/boot/.uuid
   cp /UsbInvocationScript.txt /efifs
