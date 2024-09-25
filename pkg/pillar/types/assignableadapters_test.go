@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/google/go-cmp/cmp"
 	zcommon "github.com/lf-edge/eve-api/go/evecommon"
@@ -888,14 +889,14 @@ func (testErr2) Error() string {
 }
 
 func TestIoBundleError(t *testing.T) {
-	iobe := ioBundleError{}
+	iobe := IOBundleError{}
 
 	iobe.Append(testErr1{})
 
-	if !iobe.hasError(testErr1{}) {
+	if !iobe.HasErrorByType(testErr1{}) {
 		t.Fatal("has not error testErr1")
 	}
-	if iobe.hasError(testErr2{}) {
+	if iobe.HasErrorByType(testErr2{}) {
 		t.Fatal("has error testErr2, but shouldn't")
 	}
 
@@ -916,7 +917,7 @@ func TestIoBundleError(t *testing.T) {
 	if iobe.String() != "err2" {
 		t.Fatalf("expected error string to be 'err2', but got '%s'", iobe.String())
 	}
-	if !iobe.hasError(testErr2{}) {
+	if !iobe.HasErrorByType(testErr2{}) {
 		t.Fatal("has not error testErr2")
 	}
 
@@ -940,4 +941,34 @@ func TestIoBundleCmpable(t *testing.T) {
 	io2 := IoBundle{}
 
 	cmp.Diff(io1, io2)
+}
+
+func TestIoBundleErrorRemove(t *testing.T) {
+	errs := []error{
+		fmt.Errorf("some error"),
+		ErrOwnParent{},
+		ErrParentAssigngrpMismatch{},
+		ErrEmptyAssigngrpWithParent{},
+		ErrCycleDetected{},
+		newIoBundleCollisionErr(),
+	}
+	iob := IoBundle{
+		Error: IOBundleError{
+			TimeOfError: time.Time{},
+		},
+	}
+
+	for _, err := range errs {
+		iob.Error.Append(err)
+	}
+
+	iob.Error.removeByType(ErrOwnParent{})
+
+	if len(iob.Error.Errors) != 5 {
+		for _, err := range iob.Error.Errors {
+			t.Logf("\t- %s -- %v", err.TypeStr, err)
+		}
+
+		t.Fatalf("expected only 5 errors, but got %d", len(iob.Error.Errors))
+	}
 }
