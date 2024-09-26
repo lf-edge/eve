@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"sync"
 	"time"
 
 	"github.com/containerd/cgroups"
@@ -56,6 +57,39 @@ var prevMemNotification types.MemoryNotification
 var logger *logrus.Logger
 var log *base.LogObject
 
+var gogcForcedLock sync.Mutex
+var gogcForcedIntervalInSec uint32
+var gogcForcedGrowthMemInMiB uint32
+var gogcForcedGrowthMemPerc uint32
+
+func getForcedGOGCParams() (time.Duration, uint64, uint64) {
+	var minGrowthMemAbs, minGrowthMemPerc uint64
+	var interval time.Duration
+
+	gogcForcedLock.Lock()
+	interval = time.Second * time.Duration(gogcForcedIntervalInSec)
+	minGrowthMemAbs = uint64(gogcForcedGrowthMemInMiB << 20)
+	minGrowthMemPerc = uint64(gogcForcedGrowthMemPerc)
+	gogcForcedLock.Unlock()
+
+	return interval, minGrowthMemAbs, minGrowthMemPerc
+}
+
+func setForcedGOGCParams(ctx *watcherContext) {
+	gcp := agentlog.GetGlobalConfig(log, ctx.subGlobalConfig)
+	if gcp == nil {
+		return
+	}
+	gogcForcedLock.Lock()
+	gogcForcedIntervalInSec =
+		gcp.GlobalValueInt(types.GOGCForcedIntervalInSec)
+	gogcForcedGrowthMemInMiB =
+		gcp.GlobalValueInt(types.GOGCForcedGrowthMemInMiB)
+	gogcForcedGrowthMemPerc =
+		gcp.GlobalValueInt(types.GOGCForcedGrowthMemPerc)
+	gogcForcedLock.Unlock()
+}
+
 // Listens to root cgroup in hierarchy mode (events always propagate
 // up to the root) and call Go garbage collector with reasonable
 // interval when certain amount of memory has been allocated (presumably
@@ -76,19 +110,9 @@ func handleMemoryPressureEvents() {
 
 	buf := make([]byte, 8)
 
-	var minGrowthMemAbs, minGrowthMemPerc uint64
 	var before, after runtime.MemStats
 	var expected uint64
 	var ts time.Time
-
-	// GC is called explicitly no more than once every @interval, and
-	// only if the application has already growth at least
-	// @minGrowthMemAbs and certain fraction from the last reclaim, so
-	// shortly:
-	//     limit = MAX(minGrowthMemAbs, reclaimed * minGrowthMemPerc / 100)
-	interval := time.Second * 10
-	minGrowthMemAbs = 50 << 20
-	minGrowthMemPerc = 20
 
 	// Infinite loop until error or death
 	for {
@@ -96,7 +120,14 @@ func handleMemoryPressureEvents() {
 			log.Warnf("handleMemoryPressureEvents(): can't read eventfd, exiting loop")
 			return
 		}
-		if time.Now().Sub(ts) < interval {
+		// GC is called explicitly no more than once every @interval,
+		// and only if the application has already growth at least
+		// @minGrowthMemAbs and certain fraction from the last
+		// reclaim, so shortly:
+		//     limit = MAX(minGrowthMemAbs, reclaimed * minGrowthMemPerc / 100)
+		interval, minGrowthMemAbs, minGrowthMemPerc := getForcedGOGCParams()
+
+		if interval == 0 || time.Now().Sub(ts) < interval {
 			// Don't call GC frequently in case of many sequential events
 			continue
 		}
@@ -254,6 +285,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		select {
 		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
+			setForcedGOGCParams(&ctx)
 		case change := <-subHostMemory.MsgChan():
 			subHostMemory.ProcessChange(change)
 		case change := <-subDiskMetric.MsgChan():
