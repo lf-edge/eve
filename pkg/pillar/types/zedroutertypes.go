@@ -1018,6 +1018,7 @@ type IPRouteStatus struct {
 // IPRouteInfo contains info about a single IP route from the NI routing table.
 // It is published to the controller as part of ZInfoNetworkInstance.
 type IPRouteInfo struct {
+	IPVersion  AddressType
 	DstNetwork *net.IPNet
 	// Nil for connected route.
 	Gateway net.IP
@@ -1042,7 +1043,8 @@ func (r IPRouteInfo) IsDefaultRoute() bool {
 
 // Equal compares two IP routes for equality.
 func (r IPRouteInfo) Equal(r2 IPRouteInfo) bool {
-	return netutils.EqualIPs(r.Gateway, r2.Gateway) &&
+	return r.IPVersion == r2.IPVersion &&
+		netutils.EqualIPs(r.Gateway, r2.Gateway) &&
 		netutils.EqualIPNets(r.DstNetwork, r2.DstNetwork) &&
 		r.OutputPort == r2.OutputPort &&
 		r.GatewayApp == r2.GatewayApp

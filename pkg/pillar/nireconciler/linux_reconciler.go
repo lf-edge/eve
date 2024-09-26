@@ -4,10 +4,13 @@
 package nireconciler
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"net"
 	"net/http"
 	"path"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -43,7 +46,12 @@ const (
 	namedNsDir = "/var/run/netns"
 )
 
-var emptyUUID = uuid.UUID{} // used as a constant
+// Used as constants.
+var (
+	emptyUUID     = uuid.UUID{}
+	_, ipv4Any, _ = net.ParseCIDR("0.0.0.0/0")
+	_, ipv6Any, _ = net.ParseCIDR("::/0")
+)
 
 // LinuxNIReconciler is a network instance reconciler for Linux network stack,
 // i.e. it configures and uses Linux networking to provide application connectivity.
@@ -1270,12 +1278,54 @@ func (r *LinuxNIReconciler) getNIRouteInfo(niID uuid.UUID) (routes []types.IPRou
 				}
 			}
 		}
+		var ipVer types.AddressType
+		switch route.Type() {
+		case generic.IPv4RouteTypename:
+			ipVer = types.AddressTypeIPV4
+		case generic.IPv6RouteTypename:
+			ipVer = types.AddressTypeIPV6
+		}
+		// Avoid returning nil destination network.
+		// nil is used for route destination by netlink for default routes.
+		dstNet := route.Dst
+		if dstNet == nil {
+			switch route.Type() {
+			case generic.IPv4RouteTypename:
+				dstNet = ipv4Any
+			case generic.IPv6RouteTypename:
+				dstNet = ipv6Any
+			}
+		}
 		routes = append(routes, types.IPRouteInfo{
-			DstNetwork: route.Dst,
+			IPVersion:  ipVer,
+			DstNetwork: dstNet,
 			Gateway:    route.Gw,
 			OutputPort: portLL,
 			GatewayApp: appGW,
 		})
 	}
+	// Return routes in a deterministic and easy-to-read order.
+	// First IPv4 routes will be listed, then IPv6 routes.
+	// Inside the set of routes of the same IP version, default routes appear
+	// first for clarity, followed by other routes ordered by prefix length,
+	// with more specific routes (longer prefixes) listed before broader ones.
+	// This is at least how Linux lists the routes of a routing table.
+	sort.Slice(routes, func(i, j int) bool {
+		if routes[i].IPVersion != routes[j].IPVersion {
+			return routes[i].IPVersion < routes[j].IPVersion
+		}
+		if routes[i].IsDefaultRoute() {
+			return true
+		}
+		if routes[j].IsDefaultRoute() {
+			return false
+		}
+		iPrefixLen, _ := routes[i].DstNetwork.Mask.Size()
+		jPrefixLen, _ := routes[j].DstNetwork.Mask.Size()
+		if iPrefixLen == jPrefixLen {
+			return bytes.Compare(routes[i].DstNetwork.IP, routes[j].DstNetwork.IP) == -1
+		}
+		return iPrefixLen > jPrefixLen
+	})
 	return routes
 }
