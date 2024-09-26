@@ -220,6 +220,37 @@ Changing these parameters is recommended as a last resort, for example to debug
 an OOM kill due to a bloated `zedbox` process. Before changing the values,
 please read the [documentation](https://tip.golang.org/doc/gc-guide) carefully.
 
+## Forced execution of the Golang runtime garbage collector settings
+
+Setting a soft limit for Golang garbage collector may not be enough:
+the whole system may experience memory pressure due to other
+applications in the same of other memory cgroups. In such cases, GC
+can be forced from the memory pressure event handler. The following
+parameters are available for configuring this algorithm in order to
+minimize frequent GC calls:
+
+1. `gogc.forced.interval.seconds` sets minimum interval of forced GC
+    loop in seconds, meaning that GC is called explicitly no more than
+    once every 10 seconds.  Default value is 10 seconds. Setting
+    interval to 0 disables the forced GC.
+
+2. `gogc.forced.growth.mem.MiB` sets absolute amount of allocated
+   memory since last reclaim, meaning that GC will be called again only
+   if desired amount was allocated. Default value is 50 MiB.
+
+3. `gogc.forced.growth.mem.percent` sets percent of last reclaimed
+   memory, which should be allocated, meaning that GC will be called
+   again only if desired percentage of reclaimed memory is allocated
+   back. Default value is 20%.
+
+Options 2 and 3 can be shortly described as the following limit and
+`expected` value after which GC will be called again:
+
+```text
+   limit = MAX(50MB, reclaimed * 20%)
+   expected = m.Alloc + limit
+```
+
 ## User applications memory settings
 
 Besides the obvious memory settings of RAM that comes from the controller, there
