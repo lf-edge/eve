@@ -233,6 +233,12 @@ const (
 	GOGCMemoryLimitInBytes GlobalSettingKey = "gogc.memory.limit.bytes"
 	// GOGCPercent global setting key
 	GOGCPercent GlobalSettingKey = "gogc.percent"
+	// GOGCForcedIntervalInSec global setting key
+	GOGCForcedIntervalInSec GlobalSettingKey = "gogc.forced.interval.seconds"
+	// GOGCForcedGrowthMemInMiB global setting key
+	GOGCForcedGrowthMemInMiB GlobalSettingKey = "gogc.forced.growth.memory.MiB"
+	// GOGCForcedGrowthMemPerc global setting key
+	GOGCForcedGrowthMemPerc GlobalSettingKey = "gogc.forced.growth.memory.percent"
 	// IgnoreMemoryCheckForApps global setting key
 	IgnoreMemoryCheckForApps GlobalSettingKey = "memory.apps.ignore.check"
 	// IgnoreDiskCheckForApps global setting key
@@ -847,10 +853,20 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 		100*1024*1024, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(StorageZfsReserved, 20, 1, 99)
 	configItemSpecMap.AddIntItem(ForceFallbackCounter, 0, 0, 0xFFFFFFFF)
+	//
+	// Go garbage collector configuration section
+	//
 	// Default GOGC memory limit is 0
 	configItemSpecMap.AddIntItem(GOGCMemoryLimitInBytes, 0, 0, 0xFFFFFFFF)
 	// Default GOGC target percentage is 100, 0 means disable GC
 	configItemSpecMap.AddIntItem(GOGCPercent, 100, 0, 500)
+	// Default forced GOGC interval in seconds, 0 means disable forced GC
+	configItemSpecMap.AddIntItem(GOGCForcedIntervalInSec, 10, 0, 1000)
+	// Default forced GOGC growth memory in MiB
+	configItemSpecMap.AddIntItem(GOGCForcedGrowthMemInMiB, 50, 10, 1024)
+	// Default forced GOGC growth memory percent
+	configItemSpecMap.AddIntItem(GOGCForcedGrowthMemPerc, 20, 5, 300)
+	//
 	configItemSpecMap.AddIntItem(EveMemoryLimitInBytes, uint32(eveMemoryLimitInBytes),
 		uint32(eveMemoryLimitInBytes), 0xFFFFFFFF)
 	// Limit manual vmm overhead override to 1 PiB
