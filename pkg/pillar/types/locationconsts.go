@@ -101,7 +101,7 @@ const (
 	// PillarHardMemoryLimitFile - hard memory reserved for pillar
 	PillarHardMemoryLimitFile = "/hostfs/sys/fs/cgroup/memory/eve/services/pillar/memory.limit_in_bytes"
 	// EveMemoryLimitFile - stores memory reserved for eve
-	EveMemoryLimitFile = "/hostfs/sys/fs/cgroup/memory/eve/memory.soft_limit_in_bytes"
+	EveMemoryLimitFile = "/hostfs/sys/fs/cgroup/memory/eve/memory.limit_in_bytes"
 	// EveMemoryUsageFile - current usage
 	EveMemoryUsageFile = "/hostfs/sys/fs/cgroup/memory/eve/memory.usage_in_bytes"
 	// EveKmemUsageFile - current kernel usage
