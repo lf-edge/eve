@@ -64,8 +64,8 @@ logmsg() {
 }
 
 pause() {
-   echo "Pausing before $1. Entering shell. Type 'exit' to proceed to $1"
-   sh
+   echo "Pausing before $1. Entering shell. Type 'exit' to proceed to $1" > /dev/console 2>&1
+   sh < /dev/console > /dev/console 2>&1
 }
 
 bail() {
