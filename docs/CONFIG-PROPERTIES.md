@@ -43,6 +43,11 @@
 | newlog.allow.fastupload | boolean | false | allow faster upload gzip logfiles to controller |
 | memory.apps.ignore.check | boolean | false | Ignore memory usage check for Apps|
 | memory.vmm.limit.MiB | integer | 0 | Manually override how much overhead is allocated for each running VMM |
+| gogc.memory.limit.bytes | integer | 0 | Golang runtime soft memory limit, see details in API doc ["https://pkg.go.dev/runtime/debug#SetMemoryLimit"] |
+| gogc.percent | integer | 100 | Golang runtime garbage collector target percentage, see details in API doc ["https://pkg.go.dev/runtime/debug#SetGCPercent"] |
+| gogc.forced.interval.seconds | integer in seconds | 10 | minimum interval of forced execution of the GC. Forced GC is disabled when interval is set to 0 |
+| gogc.forced.growth.memory.MiB | integer in Mbytes | 50 | minimum allocated memory in MiB required for the next GC execution |
+| gogc.forced.growth.memory.percent | integer | 20 | minimum allocated memory percentage from last reclaim required for the next GC execution |
 | newlog.gzipfiles.ondisk.maxmegabytes | integer in Mbytes | 2048 | the quota for keepig newlog gzip files on device |
 | process.cloud-init.multipart | boolean | false | help VMs which do not handle mime multi-part themselves |
 | netdump.enable | boolean | true | enable publishing of network diagnostics (as tgz archives to /persist/netdump) |
