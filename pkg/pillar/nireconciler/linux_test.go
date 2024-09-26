@@ -2752,15 +2752,52 @@ func TestStaticAndConnectedRoutes(test *testing.T) {
 	}
 	_, err = niReconciler.UpdateNI(ctx, ni1Config, ni1Bridge)
 	t.Expect(err).ToNot(HaveOccurred())
+
 	ni5Bridge.StaticRoutes = []nirec.IPRoute{
 		{DstNetwork: ipAddressWithPrefix("10.50.1.0/24"), Gateway: ipAddress("172.20.1.1")},
+		{DstNetwork: ipAddressWithPrefix("10.50.14.0/26"), Gateway: ipAddress("172.30.30.15")},
+		// This one uses app2 as GW:
+		{DstNetwork: ipAddressWithPrefix("10.50.19.0/30"), Gateway: ipAddress("10.10.20.2")},
+		// This one also uses app2 as GW:
+		{DstNetwork: ipAddressWithPrefix("10.50.5.0/30"), Gateway: ipAddress("10.10.20.2")},
 		// This one has GW outside eth1 and eth3 subnets and will be skipped:
 		{DstNetwork: ipAddressWithPrefix("10.50.2.0/24"), Gateway: ipAddress("172.21.1.1")},
 		// Override default route:
 		{DstNetwork: ipAddressWithPrefix("0.0.0.0/0"), OutputPort: "ethernet1"},
 	}
-	_, err = niReconciler.UpdateNI(ctx, ni5Config, ni5Bridge)
+	recStatus, err := niReconciler.UpdateNI(ctx, ni5Config, ni5Bridge)
 	t.Expect(err).ToNot(HaveOccurred())
+	t.Expect(recStatus.Routes).To(HaveLen(5))
+	t.Expect(recStatus.Routes[0].Equal(types.IPRouteInfo{
+		IPVersion:  types.AddressTypeIPV4,
+		DstNetwork: ipAddressWithPrefix("0.0.0.0/0"),
+		Gateway:    ipAddress("172.20.0.1"),
+		OutputPort: "ethernet1",
+	})).To(BeTrue())
+	t.Expect(recStatus.Routes[1].Equal(types.IPRouteInfo{
+		IPVersion:  types.AddressTypeIPV4,
+		DstNetwork: ipAddressWithPrefix("10.50.5.0/30"),
+		Gateway:    ipAddress("10.10.20.2"),
+		GatewayApp: app2UUID.UUID,
+	})).To(BeTrue())
+	t.Expect(recStatus.Routes[2].Equal(types.IPRouteInfo{
+		IPVersion:  types.AddressTypeIPV4,
+		DstNetwork: ipAddressWithPrefix("10.50.19.0/30"),
+		Gateway:    ipAddress("10.10.20.2"),
+		GatewayApp: app2UUID.UUID,
+	})).To(BeTrue())
+	t.Expect(recStatus.Routes[3].Equal(types.IPRouteInfo{
+		IPVersion:  types.AddressTypeIPV4,
+		DstNetwork: ipAddressWithPrefix("10.50.14.0/26"),
+		Gateway:    ipAddress("172.30.30.15"),
+		OutputPort: "ethernet3",
+	})).To(BeTrue())
+	t.Expect(recStatus.Routes[4].Equal(types.IPRouteInfo{
+		IPVersion:  types.AddressTypeIPV4,
+		DstNetwork: ipAddressWithPrefix("10.50.1.0/24"),
+		Gateway:    ipAddress("172.20.1.1"),
+		OutputPort: "ethernet1",
+	})).To(BeTrue())
 
 	t.Expect(itemDescription(dg.Reference(dnsmasqNI1))).To(ContainSubstring(
 		"propagateRoutes: [{10.50.1.0/24 10.10.10.100}]"))
@@ -2768,7 +2805,8 @@ func TestStaticAndConnectedRoutes(test *testing.T) {
 		"withDefaultRoute: true"))
 	t.Expect(itemDescription(dg.Reference(dnsmasqNI5))).To(ContainSubstring(
 		"propagateRoutes: [{132.163.96.5/32 10.10.20.1} {128.138.140.211/32 10.10.20.1} " +
-			"{1.1.1.1/32 10.10.20.1} {10.50.1.0/24 10.10.20.1} {172.20.0.0/16 10.10.20.1} " +
+			"{1.1.1.1/32 10.10.20.1} {10.50.1.0/24 10.10.20.1} {10.50.14.0/26 10.10.20.1} " +
+			"{10.50.19.0/30 10.10.20.2} {10.50.5.0/30 10.10.20.2} {172.20.0.0/16 10.10.20.1} " +
 			"{172.30.30.0/24 10.10.20.1}]"))
 
 	// Check routing tables
@@ -2817,7 +2855,7 @@ func TestStaticAndConnectedRoutes(test *testing.T) {
 			return false
 		}
 		return route.Table == 805
-	})).To(Equal(2 + 2)) // + 2 static routes
+	})).To(Equal(2 + 5)) // + 5 static routes
 
 	// Disconnect the application.
 	appStatus, err = niReconciler.DelAppConn(ctx, app2UUID.UUID)
