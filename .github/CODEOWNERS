@@ -22,7 +22,6 @@
 /pkg/measure-config/          @rucoder
 /pkg/memory-monitor/          @OhmSpectator
 /pkg/mkimage-raw-efi/         @jsfakian @zedi-pramodh
-/pkg/mkverification-raw-efi/  @jsfakian
 /pkg/new-kernel/              @rucoder @rene @rouming @shjala
 /pkg/newlog/                  @deitch @naiming-zededa
 /pkg/optee-os/                @rene
@@ -59,7 +58,7 @@
 /pkg/storage-init/            @rouming
 /pkg/u-boot/                  @rene
 /pkg/uefi/                    @rucoder
-/pkg/verification/            @jsfakian
+/pkg/verifier-rs/             @jsfakian
 /pkg/vtpm/                    @shjala
 /pkg/wwan/                    @milan-zededa
 /pkg/xen-tools/               @OhmSpectator @rucoder @rene @shjala
