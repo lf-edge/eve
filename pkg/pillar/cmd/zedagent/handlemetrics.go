@@ -149,6 +149,10 @@ func encodeTestResults(tr types.TestResults) *info.ErrorInfo {
 		errInfo.Description = tr.LastError
 	} else {
 		timestamp = tr.LastSucceeded
+		if tr.HasWarning() {
+			errInfo.Description = tr.LastWarning
+			errInfo.Severity = info.Severity_SEVERITY_WARNING
+		}
 	}
 	if !timestamp.IsZero() {
 		protoTime, err := ptypes.TimestampProto(timestamp)

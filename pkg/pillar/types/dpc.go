@@ -119,12 +119,14 @@ func (config DevicePortConfig) LogCreate(logBase *base.LogObject) {
 		AddField("last-failed", config.LastFailed).
 		AddField("last-succeeded", config.LastSucceeded).
 		AddField("last-error", config.LastError).
+		AddField("last-warning", config.LastWarning).
 		AddField("state", config.State.String()).
 		Noticef("DevicePortConfig create")
 	for _, p := range config.Ports {
 		// XXX different logobject for a particular port?
 		logObject.CloneAndAddField("ifname", p.IfName).
 			AddField("last-error", p.LastError).
+			AddField("last-warning", p.LastWarning).
 			AddField("last-succeeded", p.LastSucceeded).
 			AddField("last-failed", p.LastFailed).
 			Noticef("DevicePortConfig port create")
@@ -144,21 +146,25 @@ func (config DevicePortConfig) LogModify(logBase *base.LogObject, old interface{
 		oldConfig.LastFailed != config.LastFailed ||
 		oldConfig.LastSucceeded != config.LastSucceeded ||
 		oldConfig.LastError != config.LastError ||
+		oldConfig.LastWarning != config.LastWarning ||
 		oldConfig.State != config.State {
 
 		logData := logObject.CloneAndAddField("ports-int64", len(config.Ports)).
 			AddField("last-failed", config.LastFailed).
 			AddField("last-succeeded", config.LastSucceeded).
 			AddField("last-error", config.LastError).
+			AddField("last-warning", config.LastWarning).
 			AddField("state", config.State.String()).
 			AddField("old-ports-int64", len(oldConfig.Ports)).
 			AddField("old-last-failed", oldConfig.LastFailed).
 			AddField("old-last-succeeded", oldConfig.LastSucceeded).
 			AddField("old-last-error", oldConfig.LastError).
+			AddField("old-last-warning", oldConfig.LastWarning).
 			AddField("old-state", oldConfig.State.String())
 		if len(oldConfig.Ports) == len(config.Ports) &&
 			config.LastFailed == oldConfig.LastFailed &&
 			config.LastError == oldConfig.LastError &&
+			config.LastWarning == oldConfig.LastWarning &&
 			oldConfig.State == config.State &&
 			config.LastSucceeded.After(oldConfig.LastFailed) &&
 			oldConfig.LastSucceeded.After(oldConfig.LastFailed) {
@@ -178,16 +184,20 @@ func (config DevicePortConfig) LogModify(logBase *base.LogObject, old interface{
 		if p.HasError() != op.HasError() ||
 			p.LastFailed != op.LastFailed ||
 			p.LastSucceeded != op.LastSucceeded ||
-			p.LastError != op.LastError {
+			p.LastError != op.LastError ||
+			p.LastWarning != op.LastWarning {
 			logData := logObject.CloneAndAddField("ifname", p.IfName).
 				AddField("last-error", p.LastError).
+				AddField("last-warning", p.LastWarning).
 				AddField("last-succeeded", p.LastSucceeded).
 				AddField("last-failed", p.LastFailed).
 				AddField("old-last-error", op.LastError).
+				AddField("old-last-warning", op.LastWarning).
 				AddField("old-last-succeeded", op.LastSucceeded).
 				AddField("old-last-failed", op.LastFailed)
 			if p.HasError() == op.HasError() &&
-				p.LastError == op.LastError {
+				p.LastError == op.LastError &&
+				p.LastWarning == op.LastWarning {
 				// if we have success or the same error again, reduce log level
 				logData.Function("DevicePortConfig port modify")
 			} else {
@@ -205,12 +215,14 @@ func (config DevicePortConfig) LogDelete(logBase *base.LogObject) {
 		AddField("last-failed", config.LastFailed).
 		AddField("last-succeeded", config.LastSucceeded).
 		AddField("last-error", config.LastError).
+		AddField("last-warning", config.LastWarning).
 		AddField("state", config.State.String()).
 		Noticef("DevicePortConfig delete")
 	for _, p := range config.Ports {
 		// XXX different logobject for a particular port?
 		logObject.CloneAndAddField("ifname", p.IfName).
 			AddField("last-error", p.LastError).
+			AddField("last-warning", p.LastWarning).
 			AddField("last-succeeded", p.LastSucceeded).
 			AddField("last-failed", p.LastFailed).
 			Noticef("DevicePortConfig port delete")
