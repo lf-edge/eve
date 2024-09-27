@@ -400,6 +400,19 @@ func VerifyAllIntf(ctx *ZedCloudContext, url string, requiredSuccessCount uint,
 					continue
 				}
 			}
+			var noDNSErr *types.DNSNotAvailError
+			if errors.As(err, &noDNSErr) {
+				// The interface link is up and an IP address is assigned, but no DNS
+				// server is configured. This is not necessarily a failure for an app-shared
+				// interface. Some applications might not require DNS for external hostnames
+				// and may only use internal DNS servers to resolve the names of other apps
+				// running on the same device. However, we should still issue a warning about
+				// this potential issue.
+				if !portStatus.IsMgmt {
+					verifyRV.IntfStatusMap.RecordSuccessWithWarning(intf, err.Error())
+					continue
+				}
+			}
 			log.Errorf("Zedcloud un-reachable via interface %s: %s",
 				intf, err)
 			if sendErr, ok := err.(*SendError); ok && len(sendErr.Attempts) > 0 {
