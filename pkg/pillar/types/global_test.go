@@ -187,6 +187,7 @@ func TestNewConfigItemSpecMap(t *testing.T) {
 		GOGCForcedGrowthMemInMiB,
 		GOGCForcedGrowthMemPerc,
 		EveMemoryLimitInBytes,
+		EveMemoryLimitInMiB,
 		VmmMemoryLimitInMiB,
 		IgnoreMemoryCheckForApps,
 		IgnoreDiskCheckForApps,
