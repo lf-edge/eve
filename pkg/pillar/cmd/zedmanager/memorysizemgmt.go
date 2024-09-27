@@ -11,6 +11,30 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/utils/persist"
 )
 
+// getMemoryReservedForEveInBytes returns the amount of memory reserved for eve
+// in bytes. There are two sources for this value:
+// 1. Global config value `EveMemoryLimitInBytes`
+// 2. Global config value `EveMemoryLimitInMiB`
+// The first onve is the legacy config, as it does not support values more than 4GB.
+// But we still support it for backward compatibility. If it's set to valid value,
+// we use it. If it's set to 0 (which means the value set might be too high),
+// we fallback to the second one.
+func getMemoryReservedForEveInBytes(ctxPtr *zedmanagerContext) (uint64, error) {
+	// First, check the legacy config
+	memoryReservedForEveInBytes := ctxPtr.globalConfig.GlobalValueInt(types.EveMemoryLimitInBytes)
+	if memoryReservedForEveInBytes != 0 {
+		return uint64(memoryReservedForEveInBytes), nil
+	}
+	// If the legacy config is not set, or contains 0 (which means the value set might be too high),
+	// fallback to the new config
+	memoryReservedForEveInMiB := ctxPtr.globalConfig.GlobalValueInt(types.EveMemoryLimitInMiB)
+	if memoryReservedForEveInMiB != 0 {
+		return uint64(memoryReservedForEveInMiB) << 20, nil
+	}
+	return 0, fmt.Errorf("memoryReservedForEveInMiB is not set")
+
+}
+
 // getRemainingMemory returns how many bytes remain for app instance usage
 // which is based on the running and about to run app instances.
 // It also returns a count for the app instances which are not in those
@@ -41,7 +65,10 @@ func getRemainingMemory(ctxPtr *zedmanagerContext) (uint64, uint64, uint64, erro
 			latentMemorySize += mem
 		}
 	}
-	memoryReservedForEve := uint64(ctxPtr.globalConfig.GlobalValueInt(types.EveMemoryLimitInBytes))
+	memoryReservedForEve, err := getMemoryReservedForEveInBytes(ctxPtr)
+	if err != nil {
+		return 0, 0, 0, fmt.Errorf("getMemoryReservedForEveInBytes failed: %v", err)
+	}
 	if persist.ReadPersistType() == types.PersistZFS {
 		zfsArcMaxLimit, err := types.GetZFSArcMaxSizeInBytes()
 		if err != nil {
