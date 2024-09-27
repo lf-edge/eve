@@ -2087,7 +2087,9 @@ func parseNetworkWirelessConfig(ctx *getconfigContext, key string, netEnt *zconf
 				log.Errorf("parseNetworkWirelessConfig: unrecognized AuthProtocol: %+v",
 					accessPoint)
 			}
-			ap.EncryptedCredentials = parseCipherBlock(ctx, key, accessPoint.GetCipherData())
+			if ap.AuthProtocol != types.WwanAuthProtocolNone {
+				ap.EncryptedCredentials = parseCipherBlock(ctx, key, accessPoint.GetCipherData())
+			}
 			for _, plmn := range accessPoint.PreferredPlmns {
 				ap.PreferredPLMNs = append(ap.PreferredPLMNs, plmn)
 			}
