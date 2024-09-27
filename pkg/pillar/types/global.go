@@ -225,7 +225,12 @@ const (
 	VgaAccess GlobalSettingKey = "debug.enable.vga"
 	// AllowAppVnc global setting key
 	AllowAppVnc GlobalSettingKey = "app.allow.vnc"
-	// EveMemoryLimitInBytes global setting key
+	// EveMemoryLimitInMiB global setting key, memory limit for EVE in MiB
+	EveMemoryLimitInMiB GlobalSettingKey = "memory.eve.limit.MiB"
+	// EveMemoryLimitInBytes global setting key, memory limit for EVE in bytes
+	// Deprecated: Use EveMemoryLimitInMiB. This config is limited to 4GB
+	// as it is stored as uint32. Nevertheles, for backward compatibility,
+	// this config is still supported and has higher priority than EveMemoryLimitInMiB.
 	EveMemoryLimitInBytes GlobalSettingKey = "memory.eve.limit.bytes"
 	// How much memory overhead is allowed for VMM needs
 	VmmMemoryLimitInMiB GlobalSettingKey = "memory.vmm.limit.MiB"
@@ -828,6 +833,8 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	if err != nil {
 		logrus.Errorf("getEveMemoryLimitInBytes failed: %v", err)
 	}
+	// Round up to the nearest MiB
+	eveMemoryLimitInMiB := uint32((eveMemoryLimitInBytes + 1024*1024 - 1) / (1024 * 1024))
 	var configItemSpecMap ConfigItemSpecMap
 	configItemSpecMap.GlobalSettings = make(map[GlobalSettingKey]ConfigItemSpec)
 	configItemSpecMap.AgentSettings = make(map[AgentSettingKey]ConfigItemSpec)
@@ -882,6 +889,8 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddIntItem(GOGCPercent, 100, 0, 500)
 	configItemSpecMap.AddIntItem(EveMemoryLimitInBytes, uint32(eveMemoryLimitInBytes),
 		uint32(eveMemoryLimitInBytes), 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(EveMemoryLimitInMiB, eveMemoryLimitInMiB,
+		eveMemoryLimitInMiB, 0xFFFFFFFF)
 	// Limit manual vmm overhead override to 1 PiB
 	configItemSpecMap.AddIntItem(VmmMemoryLimitInMiB, 0, 0, uint32(1024*1024*1024))
 	// LogRemainToSendMBytes - Default is 2 Gbytes, minimum is 10 Mbytes
