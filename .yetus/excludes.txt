@@ -9,6 +9,7 @@
 ^pkg/kvm-tools/include
 ^pkg/kvm-tools/dtrace
 ^pkg/kube/kubevirt-operator.yaml
+^pkg/installer/vendor/
 ^api/python/
 ^api/go/
 ^api/images/
