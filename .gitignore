@@ -26,3 +26,4 @@ pkg/external-boot-image/build.yml
 tools/compare-sbom-sources/vendor
 tools/get-deps/get-deps
 tools/get-deps/vendor
+pkg/installer/target

@@ -1,0 +1,69 @@
+.TH RBMENU 1 rbmenu\-0.3.0
+.SH NAME
+rbmenu \- Rust Bookmark (d)Menu
+.SH SYNOPSIS
+.B rbmenu
+.RB [ \-i
+.IR insert ]
+.RB [ \-n
+.IR name ]
+.RB [ \-l
+.IR list ]
+.RB [ \-r
+.IR remove ]
+.SH DESCRIPTION
+.B rbmenu 
+is a bookmark menu written in rust. It stores the bookmarks in json format.
+.SH OPTIONS
+.TP
+.B \-V
+Print version information
+.TP
+.B \-h, \-\-help
+Print help information
+.TP
+.B \-i
+Insert a new bookmark. Uses the value of
+.B \-n
+(if available) for name of the bookmark. If 
+.B \-n
+is not available, then the name is parsed from the URL using a regular expressions.
+.TP
+.B \-l
+Lists all bookmarks available. If value of
+.B \-n
+is not provided, all bookmarks are shown. Value of
+.B \-n
+can be a regular expression to match against the bookmarks
+.TP
+.B \-n
+Name of the bookmark. Required for
+.B \-i 
+Optional argument to
+.B \-l
+for regex matching. If the value contains spaces, it is converted to underscores. 
+.TP
+.B \-r
+Remove bookmark with the given id. Exits if bookmark with the given id is not found.
+.SH USAGE
+.TP
+.B rbmenu -i 'https://devhypercoder.com' -n 'website'
+Adds a bookmark with name 
+.IR website
+and link
+.IR https://devhypercoder.com
+.TP 
+.B rbmenu -l 
+Displays all the bookmarks saved in a "space" seperated value. This allows for easy scripting using awk, sed etc. Names are in underscores always.
+.TP
+.B rbmenu -ln 'git*'
+Displays all the bookmarks that match the given regular expression pattern.
+.TP
+.B rbemnu -r 1
+Removes the bookmark with id = 1
+.SH FILES
+.TP
+.B ~/.local/share/rbmenu/bookmark.json
+All bookmarks are stored here. Directory will be created if it does not exist.
+.SH AUTHORS
+DevHyperCoder <arduinoleo88@gmail.com>
