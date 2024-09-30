@@ -1,10 +1,10 @@
-// SMBIOS tables support for OnLogic FR201
+// SMBIOS tables & USB2 ports support for OnLogic FR201
 /dts-v1/;
 /plugin/;
 
 / {
 	compatible = "brcm,bcm2711";
-	fragment@1 {
+	fragment@0 {
 		target-path = "/";
 		__overlay__ {
 			sysinfo {
@@ -24,6 +24,13 @@
 					};
 				};
 			};
+		};
+	};
+	fragment@1 {
+		target = <&xhci>;
+		__overlay__ {
+			compatible = "generic-xhci\0brcm,generic-xhci";
+			status = "okay";
 		};
 	};
 };
