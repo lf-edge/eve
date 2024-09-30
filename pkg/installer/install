@@ -29,8 +29,9 @@
 #
 
 # script to check if cmdline contains a string
+CMDLINEFILE=/proc/cmdline
 cmdline() {
-   grep -q "$1" /proc/cmdline
+   grep -q "$1" "$CMDLINEFILE"
 }
 
 BAIL_FINAL_CMD=${BAIL_FINAL_CMD:-"exit 1"}
@@ -200,11 +201,26 @@ spec() {
 cmdline eve_pause_before_install && pause "start the installation"
 
 logmsg "EVE-OS installation started"
+if cmdline interactive; then
+  echo "stop rungetty.sh to not re-run login"
+  killall -STOP rungetty.sh
+  echo "killing login"
+  killall login
+  echo "Running RUST installer"
+  RUST_BACKTRACE=full /sbin/installer
+  echo "resume rungetty.sh"
+  killall -CONT rungetty.sh
+
+  logmsg "Interactive mode"
+  bash ./parse-installer-conf.sh
+  CMDLINEFILE=/tmp/newcmdline
+fi
+
 # do this just in case
 modprobe usbhid && modprobe usbkbd
 # clean partition tables on disks defined to nuke
 if cmdline eve_nuke_disks; then
-  NUKE_DISKS=$(</proc/cmdline tr ' ' '\012' | sed -ne '/^eve_nuke_disks=/s#^.*=##p')
+  NUKE_DISKS=$(<"$CMDLINEFILE" tr ' ' '\012' | sed -ne '/^eve_nuke_disks=/s#^.*=##p')
   printf '%s' "Nuking partition tables on:"
   for dev in $(echo "$NUKE_DISKS" | tr ',' ' '); do
       printf ' %s' "$dev"
@@ -253,7 +269,7 @@ ROOT_DEV=$(root_dev)
 
 # lets see if we're told on which disk to install from boot cmdline options
 # shellcheck disable=SC2002
-INSTALL_DEV=$(cat /proc/cmdline | tr ' ' '\012' | sed -ne '/^eve_install_disk=/s#^.*=##p')
+INSTALL_DEV=$(cat "$CMDLINEFILE" | tr ' ' '\012' | sed -ne '/^eve_install_disk=/s#^.*=##p')
 
 # ...if not we will try to guess, and...
 if [ -z "$INSTALL_DEV" ] ; then
@@ -266,6 +282,7 @@ if [ -z "$INSTALL_DEV" ] ; then
 
    # if there's more than one free disk, install on the first one but warn about all of them
    echo "$FREE_DISKS" | awk '{ if (NF > 1) { printf("WARNING: found multiple free disks %s, installing on the first one\n", $0); } }'
+   # shellcheck disable=SC2086
    INSTALL_DEV=$(set ${FREE_DISKS:-""} ; echo "$1")
 fi
 
@@ -275,7 +292,7 @@ logmsg "Installing EVE-OS on device $INSTALL_DEV"
 [ -z "$INSTALL_DEV" ] && bail "FATAL: didn't find a single free disk"
 
 # we allow for P3 partition to reside on a separate disk
-INSTALL_PERSIST=$(</proc/cmdline tr ' ' '\012' | sed -ne '/^eve_persist_disk=/s#^.*=##p')
+INSTALL_PERSIST=$(<"$CMDLINEFILE" tr ' ' '\012' | sed -ne '/^eve_persist_disk=/s#^.*=##p')
 INSTALL_PERSIST=${INSTALL_PERSIST:-$INSTALL_DEV}
 
 logmsg "Installing persist on disk(s) $INSTALL_PERSIST"
@@ -301,7 +318,7 @@ fi
 
 # If the cmdline has eve_install_server, we will use that as the target. If not, we fall back to
 # $INSTALL_SERVER_FILE. If either of those is not empty, put it in the config filesystem as /server
-tr ' ' '\012' < /proc/cmdline | sed -ne '/^eve_install_server=/s#^.*=##p' > $INSTALL_SERVER_FILE
+tr ' ' '\012' < "$CMDLINEFILE" | sed -ne '/^eve_install_server=/s#^.*=##p' > $INSTALL_SERVER_FILE
 [ ! -s $INSTALL_SERVER_FILE ] || mcopy -i $CONFIG_IMG -o $INSTALL_SERVER_FILE ::/server
 # report the target server on the install console
 if [ ! -s $INSTALL_SERVER_FILE ]; then
@@ -361,7 +378,7 @@ if [ "$INSTALL_ZFS" = true ]; then
    # User explicitly asked to install ZFS so skip the zfs minimum requirement checks.
    # We will do checks only when user just provides multiple disks for persist and did not expliclty ask to install zfs
    SKIP_ZFS_CHECKS=true
-   RAID_LEVEL=$(</proc/cmdline tr ' ' '\012' | sed -ne '/^eve_install_zfs_with_raid_level=/s#^.*=##p')
+   RAID_LEVEL=$(<"$CMDLINEFILE" tr ' ' '\012' | sed -ne '/^eve_install_zfs_with_raid_level=/s#^.*=##p')
    logmsg "ZFS raid level: $RAID_LEVEL"
    #If installing eve and zfs on same drive set DISK_WITH_P3
    if [ "$INSTALL_DEV" = "$INSTALL_PERSIST" ]; then
@@ -493,7 +510,7 @@ fi
 # Note that /config is read only once the installer is done
 if mount_part CONFIG "$INSTALL_DEV" /config -t vfat -o iocharset=iso8859-1; then
    # uuidgen | sed -e 's#^.*-##'
-   SOFT_SERIAL=$(tr ' ' '\012' < /proc/cmdline | sed -n '/eve_soft_serial=/s#eve_soft_serial=##p')
+   SOFT_SERIAL=$(tr ' ' '\012' < "$CMDLINEFILE" | sed -n '/eve_soft_serial=/s#eve_soft_serial=##p')
    [ -n "$SOFT_SERIAL" ] || [ ! -f /config/soft_serial ] || SOFT_SERIAL=$(cat /config/soft_serial)
    SOFT_SERIAL=${SOFT_SERIAL:-$(uuidgen)}
    logmsg "SOFT_SERIAL = $SOFT_SERIAL"
@@ -620,12 +637,12 @@ cp /sbin/poweroff /sbin/reboot /bin/sleep /run
 # we also maybe asked to reboot after install
 if cmdline eve_reboot_after_install; then
   echo "NOTICE: Device will now reboot." >/dev/console
-  /run/sleep 5
+  sleep 5
 
-  /run/reboot -f
+  reboot -f
 else
   echo "NOTICE: Device will now power off. Remove the USB stick and power it back on to complete the installation." >/dev/console
-  /run/sleep 5
+  sleep 5
 
-  /run/poweroff -f
+  poweroff -f
 fi
