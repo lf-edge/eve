@@ -39,8 +39,6 @@ ADD ${RASPBERRY_FIRMWARE_BLOBS}/boot/start4.elf /tmp/rpi/start4.elf
 # hadolint ignore=DL3020
 ADD ${RASPBERRY_FIRMWARE_BLOBS}/boot/bcm2711-rpi-cm4.dtb /tmp/rpi/bcm2711-rpi-cm4.dtb
 # hadolint ignore=DL3020
-ADD ${RASPBERRY_FIRMWARE_BLOBS}/boot/overlays/dwc2.dtbo /tmp/rpi/overlays/dwc2.dtbo
-# hadolint ignore=DL3020
 RUN  for i in /tmp/rpi/overlays/*.dts ; do                                         \
           dtc -@ -I dts -O dtb -o "${i/.dts/.dtbo}" "$i" && rm "$i"     ;\
        done                                                                         ;\
