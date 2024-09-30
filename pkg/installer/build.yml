@@ -4,6 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0
 org: lfedge
 image: eve-installer
+network: no
 config:
   binds:
     - /dev:/dev
@@ -11,7 +12,6 @@ config:
     - /etc/resolv.conf:/etc/resolv.conf
     - /run:/run
     - /:/root
-  net: host
   capabilities:
     - all
   pid: host

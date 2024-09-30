@@ -1,5 +1,32 @@
+# syntax=docker/dockerfile:1.10.0
 # Copyright (c) 2024 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
+
+# Interactive mode for the installer
+FROM --platform=$BUILDPLATFORM lfedge/eve-rust:1.80.1 AS rust-host
+ARG TARGETARCH
+
+# map Docker's $TARGETARCH to Rust target
+FROM rust-host AS target-amd64
+ENV CARGO_BUILD_TARGET="x86_64-unknown-linux-musl"
+
+FROM rust-host AS target-arm64
+ENV CARGO_BUILD_TARGET="aarch64-unknown-linux-musl"
+
+FROM rust-host AS target-riscv64
+ENV CARGO_BUILD_TARGET="riscv64gc-unknown-linux-gnu"
+
+# hadolint ignore=DL3006
+FROM target-$TARGETARCH AS rust
+
+WORKDIR /usr/local/my-installer
+COPY . .
+
+# tools already in place
+RUN cargo build --release --verbose
+RUN cargo sbom > sbom.spdx.json
+
+RUN cp "/usr/local/my-installer/target/$CARGO_BUILD_TARGET/release/installer" /usr/local/my-installer/target/installer
 
 # Dockerfile to build installer img initrd
 FROM lfedge/eve-alpine:c114cf1d3ea51534f061f9aa949beb6ac5c12fb3 AS build
@@ -9,14 +36,14 @@ ENV BUILD_PKGS mkinitfs grep patch make coreutils musl-dev gcc g++ perl \
     util-linux-dev flex linux-headers glib-dev libxrandr-dev zlib-dev \
     libusb-dev kmod-dev curl eudev-dev libdrm-dev i2c-tools-dev hwinfo \
     binutils-dev libaio-dev zlib-static libvncserver-dev python3 pixman-dev \
-    py3-setuptools bash perl cmake m4 pkgconf pkgconfig autoconf-archive tpm2-tss-dev \
+    py3-setuptools bash cmake m4 pkgconf pkgconfig autoconf-archive tpm2-tss-dev \
     cryptsetup-dev go lddtree git
 ENV PKGS mtools dosfstools libarchive-tools sgdisk e2fsprogs util-linux \
     squashfs-tools coreutils tar dmidecode smartmontools libaio libaio-dev \
-    perl glib zlib libusb curl xz pciutils usbutils hdparm util-linux \
-    wireless-tools libxrandr eudev-libs libusb sudo fio iperf3 sysstat \
-    lm-sensors acpi iw libdrm hwinfo dhclient dmidecode smartmontools \
-    pciutils libgcc pixman glib libvncserver musl-utils dhclient \
+    perl glib zlib libusb curl xz pciutils usbutils hdparm ncurses-dev jq \
+    wireless-tools libxrandr eudev-libs sudo fio iperf3 sysstat \
+    lm-sensors acpi iw libdrm hwinfo dhclient e2fsprogs-extra \
+    libgcc pixman libvncserver musl-utils \
     qemu-system-x86_64 tpm2-tss-dev tpm2-tss-esys tpm2-tss-fapi tpm2-tss-rc \
     kmod-libs tpm2-tss-sys tpm2-tss-tctildr tpm2-abrmd libblkid cryptsetup-libs
 RUN eve-alpine-deploy.sh
@@ -61,10 +88,13 @@ RUN ./bootstrap \
     && rm -rf /out/edid-decode-188950472c19492547e298b27f9da0d72cf826df \
     /out/ddcutil-1.2.2 /out/hw-probe-1.6-AI /out/tpm2-tools-5.2
 
+COPY --from=rust /usr/local/my-installer/target/installer /out/sbin/installer
+COPY --from=rust /usr/local/my-installer/sbom.spdx.json /out/sbin/sbom.spdx.json
+
 FROM scratch
 COPY --from=build /out/ /
-COPY install /
-COPY spec.sh verify verifytpm.sh /
+COPY install parse-installer-conf.sh spec.sh verify verifytpm.sh /
+ENV RUST_BACKTRACE full
 
 WORKDIR /
 RUN echo "mtools_skip_check=1" >> etc/mtools.conf
@@ -75,4 +105,4 @@ ENV PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 # hadolint ignore=DL3002
 USER 0:0
 
-ENTRYPOINT [ "/install" ]
+ENTRYPOINT [ "/bin/sh", "-c", "/install </dev/console >/dev/console 2>&1" ]
