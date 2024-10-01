@@ -846,6 +846,20 @@ func (ctx KvmContext) Setup(status types.DomainStatus, config types.DomainConfig
 		"-readconfig", file.Name(),
 		"-pidfile", kvmStateDir+domainName+"/pid")
 
+	// Add CPUs affinity as a parameter to qemu.
+	// It's not supported to be configured in the .ini file so we need to add it here.
+	// The arguments are in the format of: -object thread-context,id=tc1,cpu-affinity=0-1,cpu-affinity=6-7
+	// The thread-context object is introduced in qemu 7.2
+	if config.CPUsPinned {
+		// Create the thread-context object string
+		threadContext := "thread-context,id=tc1"
+		for _, cpu := range status.CPUs {
+			// Add the cpu-affinity arguments to the thread-context object
+			threadContext += fmt.Sprintf(",cpu-affinity=%d", cpu)
+		}
+		args = append(args, "-object", threadContext)
+	}
+
 	spec, err := ctx.setupSpec(&status, &config, status.OCIConfigDir)
 
 	if err != nil {
