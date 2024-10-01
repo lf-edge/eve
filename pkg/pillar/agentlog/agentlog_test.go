@@ -422,6 +422,7 @@ func startIntegratedPSICollectorAPI() (cancel context.CancelFunc, err error) {
 		time.Sleep(100 * time.Millisecond)
 	}
 	if !started {
+		psiServerMutex.Unlock()
 		return nil, fmt.Errorf("could not start the server in 10 seconds")
 	}
 	ctx, cancel := context.WithCancel(context.Background())
