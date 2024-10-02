@@ -1362,6 +1362,17 @@ func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
 		log.Errorf("parseSystemAdapterConfig: %s", errStr)
 		port.RecordFailure(errStr)
 	}
+	// Make sure that even without wireless network config attached,
+	// EVE microservices properly recognize wireless network ports
+	// using the WType attribute.
+	if port.WirelessCfg.IsEmpty() && phyio != nil {
+		switch phyio.Ptype {
+		case zevecommon.PhyIoType_PhyIoNetWLAN:
+			port.WirelessCfg.WType = types.WirelessTypeWifi
+		case zevecommon.PhyIoType_PhyIoNetWWAN:
+			port.WirelessCfg.WType = types.WirelessTypeCellular
+		}
+	}
 	ports = append(ports, port)
 	return ports, nil // there can still be error recorded inside individual ports
 }
