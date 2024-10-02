@@ -4,6 +4,10 @@
 package devicenetwork
 
 const (
+	// KubeSvcRT : index of the routing table used for the Kubernetes service prefix.
+	// Only used in the Kubevirt mode.
+	KubeSvcRT = 400
+
 	// DPCBaseRTIndex : base index for per-port routing tables used for device
 	// connectivity (between EVE and remote endpoints, such as the controller),
 	// i.e. used for DevicePortConfig (abbreviated to DPC).
