@@ -1365,7 +1365,8 @@ func (r *LinuxDpcReconciler) getIntendedWlanConfig(
 	dpc types.DevicePortConfig, radioSilence types.RadioSilence) dg.Item {
 	var wifiPort *types.NetworkPortConfig
 	for _, portCfg := range dpc.Ports {
-		if portCfg.WirelessCfg.WType == types.WirelessTypeWifi {
+		if portCfg.WirelessCfg.WType == types.WirelessTypeWifi &&
+			!portCfg.WirelessCfg.IsEmpty() {
 			wifiPort = &portCfg
 			break
 		}
@@ -1457,7 +1458,8 @@ func (r *LinuxDpcReconciler) getIntendedWwanConfig(dpc types.DevicePortConfig,
 		if port.InvalidConfig {
 			continue
 		}
-		if port.WirelessCfg.WType != types.WirelessTypeCellular {
+		if port.WirelessCfg.WType != types.WirelessTypeCellular ||
+			port.WirelessCfg.IsEmpty() {
 			continue
 		}
 		if !aa.Initialized {

@@ -738,6 +738,18 @@ type WirelessConfig struct {
 	Cellular []DeprecatedCellConfig
 }
 
+// IsEmpty returns true if the wireless config is empty.
+func (wc WirelessConfig) IsEmpty() bool {
+	switch wc.WType {
+	case WirelessTypeWifi:
+		return len(wc.Wifi) == 0
+	case WirelessTypeCellular:
+		return len(wc.CellularV2.AccessPoints) == 0 &&
+			len(wc.Cellular) == 0
+	}
+	return true
+}
+
 // WifiConfig - Wifi structure
 type WifiConfig struct {
 	SSID      string            // wifi SSID
