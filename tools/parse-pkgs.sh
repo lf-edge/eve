@@ -12,7 +12,7 @@ EVE="$(cd "$(dirname "$0")" && pwd)/../"
 PATH="$EVE/build-tools/bin:$PATH"
 
 get_git_tag() {
-  echo ${EVE_HASH:-$(git tag -l --points-at HEAD | grep '[0-9]*\.[0-9]*\.[0-9]*' | head -1)}
+  echo "${EVE_HASH:-$(git tag -l --points-at HEAD | grep '[0-9]*\.[0-9]*\.[0-9]*' | head -1)}"
 }
 
 linuxkit_tag() {
@@ -61,9 +61,9 @@ immutable_tag() {
   # we have to resolve symbolic tags like x.y.z or snapshot to something immutable
   # so that we can detect when the symbolic tag starts pointing a different immutable
   # object and thus trigger a new SHA for things like EVE
-  echo $(docker inspect --format='{{.Id}}' "$1" 2>/dev/null ||
+  docker inspect --format='{{.Id}}' "$1" 2>/dev/null ||
          docker inspect --format='{{index .RepoDigests 0}}' "$1" 2>/dev/null ||
-         echo "$1")
+         echo "$1"
 }
 
 external_tag() {
@@ -71,7 +71,8 @@ external_tag() {
   # thus the best we can do is:
   #    1. if we're building a release from a tag, we expect external tag to be the same
   #    2. if we're NOT building from a tag, the external tag is simply snapshot
-  local TAG="`get_git_tag`"
+  local TAG
+  TAG="$(get_git_tag)"
   PKG="$1:${TAG:-snapshot}${ARCH}"
 
   # for external packages we have to always try to pull first - otherwise
@@ -81,7 +82,7 @@ external_tag() {
     echo "$PKG"
   else
     echo "WARNING: failed to obtain $PKG - using $2 instead" >&2
-    echo $2
+    echo "$2"
   fi
 }
 
@@ -89,6 +90,7 @@ synthetic_tag() {
   NAME=$1
   shift 1
   # ignore undefined EVE_TAG in resolve_tags because not defined yet
+  # shellcheck disable=SC2086
   echo ${NAME}:${EVE_HASH:-$( (cat "$@" ; git rev-parse HEAD) | resolve_tags | git hash-object --stdin)}"$ARCH"
 }
 
@@ -124,6 +126,7 @@ WWAN_TAG=${WWAN_TAG}
 WLAN_TAG=${WLAN_TAG}
 GUACD_TAG=${GUACD_TAG}
 GRUB_TAG=${GRUB_TAG}
+UBOOT_TAG=${UBOOT_TAG}
 GPTTOOLS_TAG=${GPTTOOLS_TAG}
 NEWLOGD_TAG=${NEWLOGD_TAG}
 NVIDIA_TAG=${NVIDIA_TAG}
@@ -131,7 +134,6 @@ EDGEVIEW_TAG=${EDGEVIEW_TAG}
 WATCHDOG_TAG=${WATCHDOG_TAG}
 MEMORY_MONITOR_TAG=${MEMORY_MONITOR_TAG}
 MKRAW_TAG=${MKRAW_TAG}
-MKVERIFICATION_TAG=${MKVERIFICATION_TAG}
 MKISO_TAG=${MKISO_TAG}
 MKCONF_TAG=${MKCONF_TAG}
 DEBUG_TAG=${DEBUG_TAG}
@@ -149,6 +151,7 @@ APPARMOR_TAG=${APPARMOR_TAG}
 KUBE_TAG=${KUBE_TAG}
 RECOVERTPM_TAG=${RECOVERTPM_TAG}
 UDEV_TAG=${UDEV_TAG}
+INSTALLER_TAG=${INSTALLER_TAG}
 EOF
 }
 
@@ -171,6 +174,7 @@ XENTOOLS_TAG=$(linuxkit_tag pkg/xen-tools)
 XEN_TAG=$(linuxkit_tag pkg/xen)
 ACRN_TAG=$(linuxkit_tag pkg/acrn)
 GRUB_TAG=$(linuxkit_tag pkg/grub)
+UBOOT_TAG=$(linuxkit_tag pkg/u-boot)
 DNSMASQ_TAG=$(linuxkit_tag pkg/dnsmasq)
 DOM0ZTOOLS_TAG=$(linuxkit_tag pkg/dom0-ztools)
 RNGD_TAG=$(linuxkit_tag pkg/rngd)
@@ -188,7 +192,6 @@ GPTTOOLS_TAG=$(linuxkit_tag pkg/gpt-tools)
 WATCHDOG_TAG=$(linuxkit_tag pkg/watchdog)
 MEMORY_MONITOR_TAG=$(linuxkit_tag pkg/memory-monitor)
 MKRAW_TAG=$(linuxkit_tag pkg/mkimage-raw-efi)
-MKVERIFICATION_TAG=$(linuxkit_tag pkg/mkverification-raw-efi)
 MKISO_TAG=$(linuxkit_tag pkg/mkimage-iso-efi)
 MKCONF_TAG=$(linuxkit_tag pkg/mkconf)
 NVIDIA_TAG=$(linuxkit_tag pkg/nvidia)
@@ -206,6 +209,7 @@ APPARMOR_TAG=$(linuxkit_tag pkg/apparmor)
 KUBE_TAG=$(linuxkit_tag pkg/kube)
 RECOVERTPM_TAG=$(linuxkit_tag pkg/recovertpm)
 UDEV_TAG=$(linuxkit_tag pkg/udev)
+INSTALLER_TAG=$(linuxkit_tag pkg/installer)
 
 # Synthetic tags: the following tags are based on hashing
 # the contents of all the Dockerfile.in that we can find.

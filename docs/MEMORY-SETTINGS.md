@@ -99,6 +99,12 @@ We use explicit memory settings for several of the cgroups. Namely, we set
 memory limits for the `eve`, `eve/containerd`, `pillar`, and all the sub-cgroups
 of the `eve-user-apps` cgroup.
 
+By default, we set the soft memory limits to 80% of the hard memory limits. It's
+done to give the Kernel target value for the memory usage of the cgroup.
+When memory rebalancing is needed, the kernel will try to keep the memory usage
+of the cgroup at the soft limit. The rebalancing is triggered in different
+situations, for example, when the system is under memory pressure.
+
 For the EVE-related cgroups, we set the memory limits in the kernel command line
 arguments. For the user applications, we set the memory in runtime using the
 values of RAM.
@@ -142,12 +148,12 @@ If the hard limit is not specified, the soft limit is used as the hard limit.
 The mapping of the `<cmd_component_name>` to the cgroup is not straightforward
 and is misleading. The following table shows the mapping:
 
-| Component   | cgroup            | default value |
-|-------------|-------------------|---------------|
-| `dom0`      | `eve`             | 800M          |
-| `ctrd`      | `eve/containerd/` | 400M          |
-| `eve`       | `eve/services/`   | 650M          |
-| `eve`       | `eve/services/*`  | 650M          |
+| Component   | cgroup            | default soft limit | default hard limit |
+|-------------|-------------------|--------------------|--------------------|
+| `dom0`      | `eve`             | 640M               | 800M               |
+| `ctrd`      | `eve/containerd/` | 320M               | 400M               |
+| `eve`       | `eve/services/`   | 520M               | 650M               |
+| `eve`       | `eve/services/*`  | 520M               | 650M               |
 
 That way, the `dom0_mem` setting sets the memory limits for the `eve` cgroup,
 the `ctrd_mem` setting sets the memory limits for the `eve/containerd` cgroup,
@@ -184,6 +190,71 @@ eve config mount /mnt
 echo "set_global hv_dom0_mem_settings \"dom0_mem=1G,max:2G\"" >> /mnt/grub.cfg
 eve config unmount /mnt
 reboot
+```
+
+## Golang runtime garbage collector settings
+
+Golang runtime provides two parameters which impacts garbage collector (GC)
+behavior, which are available through the EVE debug settings:
+
+1. `gogc.memory.limit.bytes` provides the runtime with a soft memory limit.
+   The runtime undertakes several processes to try to respect this memory
+   limit, including adjustments to the frequency of garbage collections and
+   returning memory to the underlying system more aggressively. The Go API
+   call is described [here](https://pkg.go.dev/runtime/debug#SetMemoryLimit)
+
+   By default, EVE setting is disabled (set to 0), meaning the Golang runtime
+   memory limit will be set according to the following equation based on the
+   `memory.limit_in_bytes` hard memory limit provided by the pillar `cgroups`:
+
+   `limit = memory.limit_in_bytes * 0.6`
+
+   The constant 0.6 was chosen empirically and is explained by simple logic:
+   `memory.limit_in_bytes` is a hard limit for the whole pillar cgroup, meaning
+   when reached, likely one of the processes will be killed by OOM. In turn
+   Golang runtime memory limit is a soft limit, so the difference must be
+   significant to ensure that after the soft limit is reached, there will be
+   enough memory for the Go garbage collector to do its job and, fortunately,
+   not to hit the hard limit.
+
+2. `gogc.percent` sets the garbage collection target percentage: a collection
+   is triggered when the ratio of freshly allocated data to live data remaining
+   after the previous collection reaches this percentage. The Go API call is
+   described [here](https://pkg.go.dev/runtime/debug#SetGCPercent)
+
+Changing these parameters is recommended as a last resort, for example to debug
+an OOM kill due to a bloated `zedbox` process. Before changing the values,
+please read the [documentation](https://tip.golang.org/doc/gc-guide) carefully.
+
+## Forced execution of the Golang runtime garbage collector settings
+
+Setting a soft limit for Golang garbage collector may not be enough:
+the whole system may experience memory pressure due to other
+applications in the same of other memory cgroups. In such cases, GC
+can be forced from the memory pressure event handler. The following
+parameters are available for configuring this algorithm in order to
+minimize frequent GC calls:
+
+1. `gogc.forced.interval.seconds` sets minimum interval of forced GC
+    loop in seconds, meaning that GC is called explicitly no more than
+    once every 10 seconds.  Default value is 10 seconds. Setting
+    interval to 0 disables the forced GC.
+
+2. `gogc.forced.growth.mem.MiB` sets absolute amount of allocated
+   memory since last reclaim, meaning that GC will be called again only
+   if desired amount was allocated. Default value is 50 MiB.
+
+3. `gogc.forced.growth.mem.percent` sets percent of last reclaimed
+   memory, which should be allocated, meaning that GC will be called
+   again only if desired percentage of reclaimed memory is allocated
+   back. Default value is 20%.
+
+Options 2 and 3 can be shortly described as the following limit and
+`expected` value after which GC will be called again:
+
+```text
+   limit = MAX(50MB, reclaimed * 20%)
+   expected = m.Alloc + limit
 ```
 
 ## User applications memory settings
@@ -242,14 +313,6 @@ Below are recommendations on how to use the memory settings for different
 components in EVE OS. For each setting, we provide guidelines on when it makes
 sense to increase or decrease the values, as well as the potential impact of
 setting them too high or too low.
-
-### Note on soft and hard limits
-
-Currently, the soft and hard limits are set to the same value. Theoretically,
-the soft limit should be set to a value that is lower than the hard limit, and
-it can be used to handle the memory pressure in the system more effectively.
-However, in practice, we have not tested this configuration yet and do not
-have precise recommendations on how to set the soft limit.
 
 ### dom0_mem
 

@@ -1,0 +1,21 @@
+# linuxkit build template
+#
+# Copyright (c) 2024 Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+org: lfedge
+image: eve-installer
+network: no
+config:
+  binds:
+    - /dev:/dev
+    - /lib/modules:/lib/modules
+    - /etc/resolv.conf:/etc/resolv.conf
+    - /run:/run
+    - /:/root
+  capabilities:
+    - all
+  pid: host
+  rootfsPropagation: shared
+  devices:
+    - path: all
+      type: a

@@ -5,8 +5,12 @@ package watcher
 
 import (
 	"flag"
+	"os"
+	"runtime"
+	"sync"
 	"time"
 
+	"github.com/containerd/cgroups"
 	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
@@ -45,6 +49,112 @@ var prevDiskNotification types.DiskNotification
 var prevMemNotification types.MemoryNotification
 var logger *logrus.Logger
 var log *base.LogObject
+
+var gogcForcedLock sync.Mutex
+var gogcForcedIntervalInSec uint32
+var gogcForcedGrowthMemInMiB uint32
+var gogcForcedGrowthMemPerc uint32
+
+func getForcedGOGCParams() (time.Duration, uint64, uint64) {
+	var minGrowthMemAbs, minGrowthMemPerc uint64
+	var interval time.Duration
+
+	gogcForcedLock.Lock()
+	interval = time.Second * time.Duration(gogcForcedIntervalInSec)
+	minGrowthMemAbs = uint64(gogcForcedGrowthMemInMiB << 20)
+	minGrowthMemPerc = uint64(gogcForcedGrowthMemPerc)
+	gogcForcedLock.Unlock()
+
+	return interval, minGrowthMemAbs, minGrowthMemPerc
+}
+
+func setForcedGOGCParams(ctx *watcherContext) {
+	gcp := agentlog.GetGlobalConfig(log, ctx.subGlobalConfig)
+	if gcp == nil {
+		return
+	}
+	gogcForcedLock.Lock()
+	gogcForcedIntervalInSec =
+		gcp.GlobalValueInt(types.GOGCForcedIntervalInSec)
+	gogcForcedGrowthMemInMiB =
+		gcp.GlobalValueInt(types.GOGCForcedGrowthMemInMiB)
+	gogcForcedGrowthMemPerc =
+		gcp.GlobalValueInt(types.GOGCForcedGrowthMemPerc)
+	gogcForcedLock.Unlock()
+}
+
+// Listens to root cgroup in hierarchy mode (events always propagate
+// up to the root) and call Go garbage collector with reasonable
+// interval when certain amount of memory has been allocated (presumably
+// there is something to reclaim) by an application.
+func handleMemoryPressureEvents() {
+	controller, err := cgroups.Load(cgroups.V1, cgroups.StaticPath(""))
+	if err != nil {
+		log.Warnf("handleMemoryPressureEvents(): failed to find root cgroups directory")
+		return
+	}
+	defer controller.Delete()
+	event := cgroups.MemoryPressureEvent(cgroups.MediumPressure,
+		cgroups.HierarchyMode)
+	efd, err := controller.RegisterMemoryEvent(event)
+
+	fd := os.NewFile(efd, "efd")
+	defer fd.Close()
+
+	buf := make([]byte, 8)
+
+	var before, after runtime.MemStats
+	var expected uint64
+	var ts time.Time
+
+	// Infinite loop until error or death
+	for {
+		if _, err := fd.Read(buf); err != nil {
+			log.Warnf("handleMemoryPressureEvents(): can't read eventfd, exiting loop")
+			return
+		}
+		// GC is called explicitly no more than once every @interval,
+		// and only if the application has already growth at least
+		// @minGrowthMemAbs and certain fraction from the last
+		// reclaim, so shortly:
+		//     limit = MAX(minGrowthMemAbs, reclaimed * minGrowthMemPerc / 100)
+		interval, minGrowthMemAbs, minGrowthMemPerc := getForcedGOGCParams()
+
+		if interval == 0 || time.Now().Sub(ts) < interval {
+			// Don't call GC frequently in case of many sequential events
+			continue
+		}
+		runtime.ReadMemStats(&before)
+		if before.Alloc < expected {
+			// Not enough allocated since last GC call, skip this event
+			continue
+		}
+		runtime.GC()
+		runtime.ReadMemStats(&after)
+
+		var reclaimed uint64
+		// Careful, unlikely but can be negative if nothing was
+		// reclaimed but allocation has happened just in between the
+		// GC call and stats collection
+		reclaimed = 0
+		if before.Alloc > after.Alloc {
+			reclaimed = before.Alloc - after.Alloc
+		}
+		// Limit on both criteria: absolute and relative to @reclaimed
+		limit := reclaimed * minGrowthMemPerc / 100
+		if limit < minGrowthMemAbs {
+			limit = minGrowthMemAbs
+		}
+		expected = after.Alloc + limit
+		ts = time.Now()
+
+		log.Warnf("Received memory pressure event, before GC MemStats.Alloc=%vKB, after GC MemStats.Alloc=%vKB, reclaimed %vKB, next GC when MemStats.Alloc=%vKB is reached",
+			before.Alloc>>10,
+			after.Alloc>>10,
+			reclaimed>>10,
+			expected>>10)
+	}
+}
 
 // Run :
 func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string, baseDir string) int {
@@ -155,10 +265,14 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 	log.Functionf("processed Vault Status")
 
+	// Handle memory pressure events by calling GC explicitly
+	go handleMemoryPressureEvents()
+
 	for {
 		select {
 		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
+			setForcedGOGCParams(&ctx)
 		case change := <-subHostMemory.MsgChan():
 			subHostMemory.ProcessChange(change)
 		case change := <-subDiskMetric.MsgChan():

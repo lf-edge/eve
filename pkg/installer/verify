@@ -1,0 +1,115 @@
+#!/bin/sh
+# shellcheck shell=dash
+
+[ -n "$DEBUG" ] && set -x
+
+
+#extract basic info
+/usr/bin/hw-probe -all --show --verbose --check-extended --save "$REPORT" > "$REPORT/summary.log"
+
+#storage device benchmarking
+mkdir "$REPORT/storage-performance/"
+for i in $(lsblk -anlb -o "TYPE,NAME,SIZE" | grep "^disk" | awk '$3 { print $2;}' | grep -v "^ram.*"); do
+   echo  "Verifying disk /dev/$i"
+   #if dd if="/dev/$i" of=/dev/null bs=512 count=34 >/dev/null 2>&1; then
+   # echo "Read from device $i succeeded" >> "$REPORT/storage-check.log"
+   #else
+   #   echo "Read from device $i failed" >> "$REPORT/storage-check.log"
+   #fi
+   /usr/bin/fio --filename="/dev/$i" --direct=1 --rw=randread --bs=4k --ioengine=libaio --runtime=10 --numjobs=4 --time_based --name=test --filesize=10M > "$REPORT/storage-performance/$i.log"
+   cat "$REPORT/storage-performance/$i.log"
+done
+
+#networking benchmarking
+dhclient
+nics=$(ifconfig -a | grep eth | awk '{print $1}')
+mkdir "$REPORT/networking-checks/"
+
+for nic in $nics
+do
+   ifconfig "$nic" up
+   #check dhcp
+   if curl "www.google.com" > /dev/null 2>&1; then
+      echo "Network connectivity successful" > "$REPORT/networking-checks/dhcp-$nic.log";
+      echo "$nic with dhcp is working properly" >> "$REPORT/summary.log";
+   else
+      echo "Network connectivity failed" > "$REPORT/networking-checks/dhcp-$nic.log";
+      echo "$nic with dhcp is NOT working properly" >> "$REPORT/summary.log";
+   fi
+
+   network=$(ip a show "$nic" | awk '/inet / {print $2}' | cut -d"." -f1-3)
+   # Loop through all possible IP addresses in the network range
+   for ip in $(seq 1 255)
+   do
+      # Check if the IP address is available
+      if ! ping -c1 -W1 "$network.$ip" > /dev/null 2>&1; then
+         ip route add default via "$network.$ip" dev "$nic"
+         break
+      fi
+   done
+
+   #check static
+   if curl "www.google.com" > /dev/null 2>&1; then
+      echo "Network connectivity successful" > "$REPORT/networking-checks/static-$nic.log";
+      echo "$nic with static configuration is working properly" >> "$REPORT/summary.log";
+   else
+      echo "Network connectivity failed" > "$REPORT/networking-checks/static-$nic.log";
+      echo "$nic with static configuration is NOT working" >> "$REPORT/summary.log";
+   fi
+done
+
+if false; # Temporarily commented out
+then
+   # Testing qemu and passthrough
+   qemu_exec=/usr/bin/qemu-system-$(uname -m)
+   machine=$($qemu_exec -machine help | awk '{if (NR==2) print $1}')
+   $qemu_exec -m 1024 -smp 2 -display none -serial mon:stdio -global ICH9-LPC.noreboot=false \
+      -watchdog-action reset -rtc base=utc,clock=rt -machine "$machine" -cpu SandyBridge \
+      -drive file=/ubuntu-22.04-minimal-cloudimg-amd64.img,format=qcow2 &
+
+   # shellcheck disable=SC2181
+   if [ "$?" -eq 0 ]; then
+      kill %1
+      echo "start VM success" > "$REPORT/guest-checks.log"
+      echo "Start of an edge application successful" >> "$REPORT/summary.log";
+   else
+      echo "start VM failed" > "$REPORT/guest-checks.log"
+      echo "Start of an edge application failed" >> "$REPORT/summary.log";
+   fi
+fi
+
+echo "start VM test unavailable" > "$REPORT/guest-checks.log"
+
+tpm2_pcrread >> "$REPORT/summary.log"
+
+cp "/root/etc/eve-release" "$REPORT"
+
+find /sys/kernel/iommu_groups/ -type l > "$REPORT/iommu_groups.out"
+
+watchdogs=$(find /dev -name "watchdog*" | grep -vw "/dev/watchdog")
+watchdogs_count=$(echo "$watchdogs" | wc -l)
+if [ "${watchdogs_count}" -gt "1" ]; then
+   echo "Warning: ${watchdogs_count} watchdogs available" > "$REPORT/watchdogs.log"
+elif [ "${watchdogs_count}" -eq "1" ]; then
+   wdctl "${watchdogs}" >> "$REPORT/watchdogs.log"
+else
+   echo "No watchdogs available" > "$REPORT/watchdogs.log"
+fi
+
+ARCH=$(uname -m)
+if [ "$ARCH" = "x86_64" ]; then
+    /vmcap > "$REPORT/vmcap.log"
+fi
+
+# verify the TPM
+if [ -c "$TPM_DEVICE_PATH" ]; then
+   echo "TPM device is present, running some extra tests"
+   /verifytpm.sh | tee -a "$REPORT/tpmchecks.log" >/dev/console 2>&1
+   if ! grep -q "TPM checks PASSED" "$REPORT/tpmchecks.log"; then
+      echo "TPM checks FAILED, check tpmchecks.log for details" >> "$REPORT/summary.log";
+   fi
+else
+   echo "No TPM device, skipping extra TPM checks"
+fi
+
+cat "$REPORT/summary.log"

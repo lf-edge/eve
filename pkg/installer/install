@@ -1,0 +1,648 @@
+#!/bin/sh
+# shellcheck shell=dash
+#
+# This script is an entry point for a standalone installer.
+# It is expected to probe for the destination installation
+# media and arrange for source files to be in /parts. Some
+# of these files will be supplied from outside of the container
+# in /bits, some will be constructed on the fly depending
+# on settings that were passed via kernel command line:
+#
+#   eve_install_debug
+#   eve_blackbox
+#   eve_nuke_disks
+#   eve_nuke_all_disks
+#   eve_install_disk
+#   eve_persist_disk
+#   eve_install_server
+#   eve_pause_before_install
+#   eve_pause_after_install
+#   eve_reboot_after_install
+#   eve_install_random_disk_uuids
+#   eve_install_skip_config
+#   eve_install_skip_persist
+#   eve_install_skip_rootfs
+#   eve_install_skip_zfs_checks
+#   eve_install_zfs_with_raid_level
+#   eve_install_kubevirt_etcd_sizeGB
+#   eve_disable_verify
+#
+
+# script to check if cmdline contains a string
+CMDLINEFILE=/proc/cmdline
+cmdline() {
+   grep -q "$1" "$CMDLINEFILE"
+}
+
+BAIL_FINAL_CMD=${BAIL_FINAL_CMD:-"exit 1"}
+
+# set DEBUG=1 to enable debug output, can be via env var or via kernel cmdline
+cmdline eve_install_debug && DEBUG=1
+[ -n "$DEBUG" ] && set -x
+
+# artifacts should be in /parts, because that is where mkimage-raw-efi expects them to be
+# at install time
+ARTIFACTS_DIR=/parts
+CONFIG_IMG="${ARTIFACTS_DIR}/config.img"
+ROOTFS_IMG="${ARTIFACTS_DIR}/rootfs.img"
+INSTALL_SERVER_FILE="${ARTIFACTS_DIR}/eve_install_server"
+EFI_DIR="${ARTIFACTS_DIR}/EFI"
+BOOT_DIR="${ARTIFACTS_DIR}/boot"
+
+
+# This is a temp file to capture various stages of install
+# the contents of this file are saved to $REPORT/installer.log
+# After the USB install, users can see the installation status under /Volumes/INVENTORY/<serial#>/installer.log
+LOGFILE_DIR="/run"
+LOGFILE="$LOGFILE_DIR/installer.log"
+# logs to both console and a file.
+logmsg() {
+   local MSG
+   local TIME
+   MSG="$*"
+   TIME=$(date +"%F %T")
+   echo "$TIME : $MSG" | tee -a $LOGFILE >/dev/console 2>&1
+}
+
+pause() {
+   echo "Pausing before $1. Entering shell. Type 'exit' to proceed to $1" > /dev/console 2>&1
+   sh < /dev/console > /dev/console 2>&1
+}
+
+bail() {
+   if mount_part INVENTORY "${ROOT_DEV}" /run/INVENTORY -t vfat -o iocharset=iso8859-1; then
+      collect_black_box /run/INVENTORY 2>/dev/null
+   fi
+   logmsg "$*"
+   $BAIL_FINAL_CMD
+}
+
+trunc() {
+  rm "$1"
+  touch "$1"
+}
+
+# mounted_dev determine which device has $1 mounted, similar to df
+mounted_dev() {
+   local STAT
+   STAT=$(stat -c '%d' "$1" )
+   # shellcheck disable=SC2035
+   DEV=$(cd /sys/block && grep -l '^'$(( STAT / 256 )):$(( STAT % 256 ))'$' */dev */*/dev 2>/dev/null | sed -ne 's#\([^/]*\)/dev#\1#p')
+   [ -e "/dev/$DEV" ] || DEV=null
+   echo "$DEV"
+}
+
+# root_dev determine which device has root mounted
+# tries first to see if /dev/root exists and is a link, else looks for the device mounted on /bits
+# why /bits? Because.
+root_dev() {
+   local MAJOR
+   local MINOR
+   local DEV
+   if [ -L /dev/root ] ; then
+      DEV=$(readlink -f /dev/root)
+      MAJOR=$(( 0x$(stat -c '%t' "$DEV") + 0 ))
+      MINOR=$(( 0x$(stat -c '%T' "$DEV") + 0 ))
+   else
+      MAJOR=$(( $(stat -c '%d' /bits ) / 256))
+      MINOR=$(( $(stat -c '%d' /bits ) - MAJOR * 256 ))
+   fi
+   DEV_MM="$MAJOR:$MINOR"
+   # shellcheck disable=SC2035
+   (cd /sys/block && grep -l '^'$DEV_MM'$' */dev */*/dev 2>/dev/null || echo null/) | cut -f1 -d/
+}
+
+# find_part LABEL BLOCK_DEV
+# BLOCK_DEV is expected to be devicename only (ie sda not /dev/sda)
+find_part() {
+   local LABEL="$1"
+   local BLOCK_DEV="$2"
+   PARTS=$(lsblk -anl -o "NAME,PARTLABEL" /dev/"$BLOCK_DEV" 2>/dev/null | sed -ne "/$LABEL"'$/s#'"[[:space:]]*$LABEL##p")
+   for p in $PARTS ; do
+      [ -f "/sys/block/$BLOCK_DEV/$p/dev" ] && echo "$p" && exit 0
+   done
+}
+
+# mount_part PART_NAME DISK TARGET [mount opts]
+mount_part() {
+   local PART="$1"
+   local DISK="$2"
+   local TARGET="$3"
+   local ID
+   shift 3
+
+   logmsg "mount_part PART = $PART DISK = $DISK TARGET = $TARGET"
+   ID="$(find_part "$PART" "$DISK")"
+   [ -z "$ID" ] && return 1
+
+   mkdir -p "$TARGET"
+   mount "$@" "/dev/$ID" "$TARGET"
+}
+
+# collect_black_box FOLDER_TO_PUT_BLACK_BOX
+collect_black_box() {
+   lsblk > "$1/lsblk.txt"
+   dmesg > "$1/dmesg.txt"
+   tar -C /proc -cjf "$1/procfs.tar.bz2" cpuinfo meminfo
+   tar -C /sys -cjf "$1/sysfs.tar.bz2" .
+   tar -C /config -cjf "$1/config.tar.bz2" .
+   tar -C /persist -cjf "$1/persist.tar.bz2" status newlog log config checkpoint certs agentdebug
+   /tpmmgr saveTpmInfo "$1"/tpminfo.txt
+}
+
+# prepare_mounts_and_zfs_pool POOL_CREATION_COMMAND_SUFFIX_SUFFIX INSTALL_CLUSTERED_STORAGE
+prepare_mounts_and_zfs_pool() {
+  logmsg "Preparing ZFS pool and mounts"
+  [ -e /root/sys ] || mkdir /root/sys && mount -t sysfs sysfs /root/sys
+  [ -e /root/proc ] || mkdir /root/proc && mount -t proc proc /root/proc
+  [ -e /root/dev ] || mkdir /root/dev && mount -t devtmpfs -o size=10m,nr_inodes=248418,mode=755,nosuid,noexec,relatime devtmpfs /root/dev
+  POOL_CREATION_COMMAND="chroot /root zpool create -f -m none -o feature@encryption=enabled -O atime=off -O overlay=on persist $1"
+  eval "$POOL_CREATION_COMMAND"
+  chroot /root zfs create -o refreservation="$(chroot /root zfs get -o value -Hp available persist | awk '{ print ($1/1024/1024)/5 }')"m persist/reserved
+  chroot /root zfs set mountpoint="/persist" persist
+  chroot /root zfs set primarycache=metadata persist
+  # we need this mount to propagate persist from /root/persist after call to zfs command in changed root
+  [ -e /persist ] || mkdir /persist && mount --rbind --make-rslave /root/persist /persist
+
+  if [ "$2" = false ]; then
+    # kubevirt persist/vault is an ext4 zvol
+    chroot /root zfs create -o mountpoint="/persist/containerd/io.containerd.snapshotter.v1.zfs" persist/snapshots
+  fi
+}
+
+zfs_umount() {
+  umount -R /persist ||:
+  chroot /root zfs unmount persist ||:
+  umount /root/sys ||:
+  umount /root/proc ||:
+  umount /root/dev ||:
+}
+
+# make_raw run the command /make-raw, which is the entrypoint of mkimage-raw-efi container.
+make_raw() {
+   if ! command -v /mkimage/make-raw >/dev/null; then
+      echo "would run"
+      echo "make-raw $*"
+      exit 0
+   fi
+   DEBUG="$DEBUG" /mkimage/make-raw "$@"
+}
+
+spec() {
+   if ! command -v /spec.sh >/dev/null; then
+      echo "would run"
+      echo "/spec.sh $*"
+      exit 0
+   fi
+   DEBUG="$DEBUG" /spec.sh "$@"
+}
+
+# we may be asked to pause before install procedure
+cmdline eve_pause_before_install && pause "start the installation"
+
+logmsg "EVE-OS installation started"
+if cmdline interactive; then
+  echo "stop rungetty.sh to not re-run login"
+  killall -STOP rungetty.sh
+  echo "killing login"
+  killall login
+  echo "Running RUST installer"
+  RUST_BACKTRACE=full /sbin/installer
+  echo "resume rungetty.sh"
+  killall -CONT rungetty.sh
+
+  logmsg "Interactive mode"
+  bash ./parse-installer-conf.sh
+  CMDLINEFILE=/tmp/newcmdline
+fi
+
+# do this just in case
+modprobe usbhid && modprobe usbkbd
+# clean partition tables on disks defined to nuke
+if cmdline eve_nuke_disks; then
+  NUKE_DISKS=$(<"$CMDLINEFILE" tr ' ' '\012' | sed -ne '/^eve_nuke_disks=/s#^.*=##p')
+  printf '%s' "Nuking partition tables on:"
+  for dev in $(echo "$NUKE_DISKS" | tr ',' ' '); do
+      printf ' %s' "$dev"
+      dd if=/dev/zero of="/dev/$dev" bs=512 count=34 >/dev/null 2>&1
+      logmsg "Nuked partition tables on $dev"
+  done
+  sync; sleep 5; sync
+  echo " done!"
+fi
+
+
+# The static UUIDs for the disk and the partitions
+# Also in make-raw and storage-init.sh
+# we disable shellcheck "unused" check here, because these are used in other scripts
+# at some point, these should be unified
+DISK_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30050
+EFI_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30051
+# shellcheck disable=SC2034
+IMGA_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30052
+# shellcheck disable=SC2034
+IMGB_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30053
+# shellcheck disable=SC2034
+CONF_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30054
+PERSIST_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30059
+# shellcheck disable=SC2034
+INSTALLER_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30060
+
+# measure of last resort: we nuke all partition tables
+# so that we can get to a blank state. NOTE that this
+# may damage installer image itself, but we don't really
+# care since that is trivial to re-create
+if cmdline eve_nuke_all_disks; then
+   echo -n "Nuking partition tables on:"
+   for i in $(lsblk -anlb -o "TYPE,NAME,SIZE" | grep "^disk" | awk '$3 { print $2;}'); do
+      echo -n " $i"
+      dd if=/dev/zero of="/dev/$i" bs=512 count=34 >/dev/null 2>&1
+      logmsg "Nuked partition tables on $i"
+   done
+   sync; sleep 5; sync
+   echo " done!"
+   logmsg "Poweroff triggered after nuking all disks"
+   poweroff -f
+fi
+
+ROOT_DEV=$(root_dev)
+
+# lets see if we're told on which disk to install from boot cmdline options
+# shellcheck disable=SC2002
+INSTALL_DEV=$(cat "$CMDLINEFILE" | tr ' ' '\012' | sed -ne '/^eve_install_disk=/s#^.*=##p')
+
+# ...if not we will try to guess, and...
+if [ -z "$INSTALL_DEV" ] ; then
+   # now lets see what sources of installation material are there
+   # we sort disks by transport, so it will be sorted with order nvme->sata->usb
+   FREE_DISKS_ALL=$(lsblk -anlb -o "TYPE,NAME,SIZE,TRAN" | grep "^disk"| sort -k4 | awk '$3 { print $2;}' | grep -v "${ROOT_DEV:-$^}")
+   for d in $FREE_DISKS_ALL; do
+      [ -e "/sys/devices/virtual/block/$d" ] || FREE_DISKS="$FREE_DISKS $d"
+   done
+
+   # if there's more than one free disk, install on the first one but warn about all of them
+   echo "$FREE_DISKS" | awk '{ if (NF > 1) { printf("WARNING: found multiple free disks %s, installing on the first one\n", $0); } }'
+   # shellcheck disable=SC2086
+   INSTALL_DEV=$(set ${FREE_DISKS:-""} ; echo "$1")
+fi
+
+logmsg "Installing EVE-OS on device $INSTALL_DEV"
+
+# ...if we didn't find a single free disk - bail
+[ -z "$INSTALL_DEV" ] && bail "FATAL: didn't find a single free disk"
+
+# we allow for P3 partition to reside on a separate disk
+INSTALL_PERSIST=$(<"$CMDLINEFILE" tr ' ' '\012' | sed -ne '/^eve_persist_disk=/s#^.*=##p')
+INSTALL_PERSIST=${INSTALL_PERSIST:-$INSTALL_DEV}
+
+logmsg "Installing persist on disk(s) $INSTALL_PERSIST"
+
+# now lets figure out whether we have installation material
+
+# determine if this device already has a CONFIG partition; if so, use that as the source
+# for our configuration filesystem, and copy it out to $CONFIG_IMG.
+# if not, try /bits/config.img, which is where the installer sometimes has it.
+# else, just create a new FAT32 filesystem in $CONFIG_IMG and copy the contents of /config into it.
+CONFIG_PART=$(find_part CONFIG "${ROOT_DEV}")
+# this one is a bit hard to read, but it basically means:
+# - if CONFIGPART is set (from previous step), prefix it with /dev/, e.g. CONFIG_PART=hd0p1 becomes CONFIGPART=/dev/hd0p1
+# - if CONFIGPART is not set, use /bits/config.img, e.g. CONFIGPART="" becomes CONFIGPART=/bits/config.img
+CONFIG_PART="${CONFIG_PART:+"/dev/"}${CONFIG_PART:-"/bits/config.img"}"
+if [ -e "$CONFIG_PART" ]; then
+   dd if="$CONFIG_PART" of=$CONFIG_IMG bs=1M
+else
+   mkfs.vfat -v -n CONFIG -C $CONFIG_IMG 1024
+   # /config is bind-mounted into here from the host
+   mcopy -i $CONFIG_IMG -s /config/* ::/
+fi
+
+# If the cmdline has eve_install_server, we will use that as the target. If not, we fall back to
+# $INSTALL_SERVER_FILE. If either of those is not empty, put it in the config filesystem as /server
+tr ' ' '\012' < "$CMDLINEFILE" | sed -ne '/^eve_install_server=/s#^.*=##p' > $INSTALL_SERVER_FILE
+[ ! -s $INSTALL_SERVER_FILE ] || mcopy -i $CONFIG_IMG -o $INSTALL_SERVER_FILE ::/server
+# report the target server on the install console
+if [ ! -s $INSTALL_SERVER_FILE ]; then
+   logmsg "EVE install server : $(cat $INSTALL_SERVER_FILE)"
+fi
+
+# if there's something in /bits -- that's the ultimate source
+# before we do, let's list what we have, for the log
+ls -la /bits
+df /bits
+ls -la ${ARTIFACTS_DIR}
+df ${ARTIFACTS_DIR}
+ln -s /bits/* ${ARTIFACTS_DIR} 2>/dev/null
+
+# and now a few measures of last resort - make sure the ${ARTIFACTS_DIR}/* we need exist, or else
+# symlink to the root filesystem
+[ -e ${ROOTFS_IMG} ] || { echo "ERROR: no rootfs.img found"; exit 1; }
+[ -e ${EFI_DIR} ] || ln -s /root/EFI ${EFI_DIR}
+[ -e ${BOOT_DIR} ] || ln -s /uboot/boot ${BOOT_DIR}
+
+# finally lets see if we were given any overrides
+for i in rootfs config persist; do
+   cmdline "eve_install_skip_$i" && trunc "${ARTIFACTS_DIR}/$i.img"
+done
+
+# Do we want random or fixed disk and partition UUIDs?
+RANDOM_DISK_UUIDS=
+cmdline eve_install_random_disk_uuids && RANDOM_DISK_UUIDS="-r"
+logmsg "INFO: RANDOM_DISK_UUIDS = $RANDOM_DISK_UUIDS"
+
+# User may have requested to skip the zfs requirements checks.
+SKIP_ZFS_CHECKS=false
+cmdline eve_install_skip_zfs_checks && SKIP_ZFS_CHECKS=true
+
+logmsg "SKIP_ZFS_CHECKS = $SKIP_ZFS_CHECKS"
+P3_ON_BOOT_PLACEHOLDER="P3_ON_BOOT_PLACEHOLDER"
+POOL_CREATION_COMMAND_SUFFIX=""
+DISK_WITH_P3=""
+DISKS_TO_MERGE_COUNT=0
+PDEV_LIST=""
+MULTIPLE_DISKS=false
+INSTALL_ZFS=false
+INSTALL_CLUSTERED_STORAGE=false
+cmdline eve_install_zfs_with_raid_level && INSTALL_ZFS=true
+RAID_LEVEL="none"
+
+eve_flavor=$(cat /root/etc/eve-hv-type)
+
+if [ "$eve_flavor" = "kubevirt" ]; then
+   INSTALL_CLUSTERED_STORAGE=true
+   INSTALL_ZFS=true
+   logmsg "Kubevirt image installing ZFS"
+fi
+
+
+if [ "$INSTALL_ZFS" = true ]; then
+   # User explicitly asked to install ZFS so skip the zfs minimum requirement checks.
+   # We will do checks only when user just provides multiple disks for persist and did not expliclty ask to install zfs
+   SKIP_ZFS_CHECKS=true
+   RAID_LEVEL=$(<"$CMDLINEFILE" tr ' ' '\012' | sed -ne '/^eve_install_zfs_with_raid_level=/s#^.*=##p')
+   logmsg "ZFS raid level: $RAID_LEVEL"
+   #If installing eve and zfs on same drive set DISK_WITH_P3
+   if [ "$INSTALL_DEV" = "$INSTALL_PERSIST" ]; then
+      DISK_WITH_P3=$INSTALL_PERSIST
+      POOL_CREATION_COMMAND_SUFFIX="$POOL_CREATION_COMMAND_SUFFIX $P3_ON_BOOT_PLACEHOLDER"
+      logmsg "Installing EVE and ZFS on same drive $DISK_WITH_P3"
+   fi
+fi
+
+if [ "$INSTALL_DEV" != "$INSTALL_PERSIST" ]; then
+   if echo "$INSTALL_PERSIST"| grep -q ","; then
+     MULTIPLE_DISKS=true
+     INSTALL_ZFS=true
+     MAKE_RAW_PARTS="efi imga imgb conf"
+     for dev in $(echo "$INSTALL_PERSIST" | tr ',' ' '); do
+        if [ "$dev" = "$INSTALL_DEV" ]; then
+           # in case we want to have one of P3 on the bootable disk
+           MAKE_RAW_PARTS="efi imga imgb conf persist"
+           DISK_WITH_P3="$dev"
+           POOL_CREATION_COMMAND_SUFFIX="$POOL_CREATION_COMMAND_SUFFIX $P3_ON_BOOT_PLACEHOLDER"
+           DISKS_TO_MERGE_COUNT=$((DISKS_TO_MERGE_COUNT+1))
+        else
+           if [ -f "/sys/block/$dev/dev" ]; then
+              PDEV="/dev/$dev"
+              dd if=/dev/zero of="$PDEV" bs=512 count=1 conv=notrunc && sync
+              sgdisk -Z --clear "$PDEV" 2>/dev/null || :
+              POOL_CREATION_COMMAND_SUFFIX="$POOL_CREATION_COMMAND_SUFFIX $PDEV"
+              DISKS_TO_MERGE_COUNT=$((DISKS_TO_MERGE_COUNT+1))
+              PDEV_LIST="$PDEV_LIST $PDEV"
+           else
+              echo "WARNING: Cannot find /sys/block/$dev/dev, will skip it"
+           fi
+        fi
+     done
+
+     if [ "$SKIP_ZFS_CHECKS" = false ]; then
+        # Do ZFS minimum requirements checks (64GB memory and 3 physical drives in INSTALL_PERSIST)
+        # If requirements are not met, fallback to ext4 filesystem.
+        system_memory_GB="$(/usr/bin/free -g | grep Mem | awk '{print $2}')"
+
+        if [ "$system_memory_GB" -lt 64 ] || [ $DISKS_TO_MERGE_COUNT -lt 3 ]; then
+           # The following setting will install ext4 persist
+           INSTALL_ZFS=false
+           logmsg "WARNING: ZFS installation minimum requirements are not met, installing ext4 filesystem instead."
+        fi
+     fi
+
+     if [ $DISKS_TO_MERGE_COUNT -eq 0 ] || [ "$INSTALL_ZFS" = false ]; then
+          # in case of only comma provided or zfs requirements are not met
+          MAKE_RAW_PARTS="efi imga imgb conf persist"
+          DISK_WITH_P3="$INSTALL_DEV"
+          POOL_CREATION_COMMAND_SUFFIX=$P3_ON_BOOT_PLACEHOLDER
+          DISKS_TO_MERGE_COUNT=1
+     fi
+   else
+     # apparently sgdisk -Z doesn't clear MBR and keeps complaining
+     PDEV="/dev/$INSTALL_PERSIST"
+     dd if=/dev/zero of="$PDEV" bs=512 count=1 conv=notrunc
+     sgdisk -Z --clear "$PDEV" 2>/dev/null || :
+     sgdisk --new 1:2048:0 --typecode=1:5f24425a-2dfa-11e8-a270-7b663faccc2c --change-name=1:P3 "$PDEV"
+     sgdisk -v "$PDEV"
+     if [ -z "$RANDOM_DISK_UUIDS" ]; then
+        sgdisk --partition-guid="1:$PERSIST_UUID" "$PDEV"
+     fi
+     # force make-raw to skip persist
+     MAKE_RAW_PARTS="efi imga imgb conf"
+     # We will be here if persist is being installed on single disk. In ZFS case update pool creation command
+     if [ "$INSTALL_ZFS" = true ]; then
+         POOL_CREATION_COMMAND_SUFFIX=$PDEV
+     fi
+   fi
+fi
+
+if [ "$INSTALL_ZFS" = true ]; then
+   logmsg "Installing ZFS filesystem, MULTIPLE_DISKS = $MULTIPLE_DISKS"
+else
+   logmsg "Installing ext4 filesystem, MULTIPLE_DISKS = $MULTIPLE_DISKS"
+fi
+
+# do the install (unless we're only here to collect the black box)
+# the old way for MAKE_RAW_PARTS was:
+# MAKE_RAW_PARTS="efi imga imgb conf persist" or MAKE_RAW_PARTS="efi imga imgb conf"
+# for some reason, it now is blank.
+# shellcheck disable=SC2086
+cmdline eve_blackbox || make_raw $RANDOM_DISK_UUIDS "/dev/$INSTALL_DEV" $MAKE_RAW_PARTS || bail "Installation failed. Entering shell..."
+
+if [ "$INSTALL_ZFS" = true ]; then
+  if [ "$DISK_WITH_P3" != "" ]; then
+    P3_ID="$(find_part P3 "$DISK_WITH_P3")"
+    [ -z "$P3_ID" ] && bail "Installation failed. Cannot found P3. Entering shell..."
+    POOL_CREATION_COMMAND_SUFFIX=$(echo "$POOL_CREATION_COMMAND_SUFFIX" | sed "s#$P3_ON_BOOT_PLACEHOLDER#/dev/$P3_ID#g")
+    echo "WARNING: Will use /dev/$P3_ID instead of /dev/$DISK_WITH_P3 for P3 because of bootable parts needed"
+  fi
+  # Set the raid level requested by user, if nothing is set, default will be no raid persist pool
+  if [ "$RAID_LEVEL" = "raid1" ]; then
+      POOL_CREATION_COMMAND_SUFFIX="mirror $POOL_CREATION_COMMAND_SUFFIX"
+  elif [ "$RAID_LEVEL" = "raid5" ]; then
+      POOL_CREATION_COMMAND_SUFFIX="raidz1 $POOL_CREATION_COMMAND_SUFFIX"
+  elif [ "$RAID_LEVEL" = "raid6" ]; then
+      POOL_CREATION_COMMAND_SUFFIX="raidz2 $POOL_CREATION_COMMAND_SUFFIX"
+  fi
+
+  logmsg "Creating ZFS pool with raid level: $RAID_LEVEL"
+  logmsg "Pool creation command: $POOL_CREATION_COMMAND_SUFFIX $INSTALL_CLUSTERED_STORAGE $RESERVE_EVE_STORAGE_SIZEGB"
+  prepare_mounts_and_zfs_pool "$POOL_CREATION_COMMAND_SUFFIX" "$INSTALL_CLUSTERED_STORAGE" "$RESERVE_EVE_STORAGE_SIZEGB"
+  if [ -z "$RANDOM_DISK_UUIDS" ]; then
+      # Walk disks and set fixed UUIDs
+      # We assume that as part of adding to the zpool there is partition 1 and 9
+      for dev in $PDEV_LIST; do
+          sgdisk --disk-guid=$DISK_UUID "$dev"
+          sgdisk --partition-guid="1:$EFI_UUID" "$dev"
+          sgdisk --partition-guid="9:$PERSIST_UUID" "$dev"
+      done
+  fi
+else
+  P3="$(find_part P3 "$INSTALL_PERSIST")"
+  [ -z "$P3" ] && bail "Installation failed. Cannot found P3. Entering shell..."
+  # attempt to zero the first and last 5Mb of the P3 (to get rid of any residual prior data)
+  dd if=/dev/zero of="/dev/$P3" bs=512 count=10240 2>/dev/null
+  dd if=/dev/zero of="/dev/$P3" bs=512 seek=$(( $(blockdev --getsz "/dev/$P3") - 10240 )) count=10240 2>/dev/null
+  # Use -F option twice, to avoid any user confirmation in mkfs
+  mkfs -t ext4 -v -F -F -O encrypt "/dev/$P3"
+  mkdir -p /persist
+  # now the disk is ready - mount partitions
+  mount_part P3 "$INSTALL_PERSIST" /persist 2>/dev/null
+fi
+
+
+# Note that /config is read only once the installer is done
+if mount_part CONFIG "$INSTALL_DEV" /config -t vfat -o iocharset=iso8859-1; then
+   # uuidgen | sed -e 's#^.*-##'
+   SOFT_SERIAL=$(tr ' ' '\012' < "$CMDLINEFILE" | sed -n '/eve_soft_serial=/s#eve_soft_serial=##p')
+   [ -n "$SOFT_SERIAL" ] || [ ! -f /config/soft_serial ] || SOFT_SERIAL=$(cat /config/soft_serial)
+   SOFT_SERIAL=${SOFT_SERIAL:-$(uuidgen)}
+   logmsg "SOFT_SERIAL = $SOFT_SERIAL"
+   cmdline eve_blackbox || echo "$SOFT_SERIAL" > /config/soft_serial
+fi
+
+REPORT=
+# collect information about the node
+if mount_part INVENTORY "${ROOT_DEV}" /run/INVENTORY -t vfat -o iocharset=iso8859-1; then
+   REPORT="/run/INVENTORY/$(cat /config/soft_serial 2>/dev/null)"
+   logmsg "EVE-OS installation will store report to USB inside /INVENTORY/$(cat /config/soft_serial 2>/dev/null)"
+else
+   REPORT="/persist/installer"
+   logmsg "EVE-OS installation will store report to $REPORT"
+fi
+
+mkdir -p "$REPORT"
+
+# first lets look at hardware model
+dmidecode > "$REPORT/hardwaremodel.txt"
+
+# try to generate model json file
+spec > "$REPORT/controller-model.json"
+spec -v > "$REPORT/controller-model-verbose.json"
+spec -u > "$REPORT/controller-model-usb.json"
+
+# Save to help figure out if RTC is not in UTC
+(hwclock -v -u; date -Is -u ) > "$REPORT/clock"
+
+# The creation of the 4 key pairs on the TPM below can take significant
+# time. Make sure a hardware watchdog will not fire.
+wdctl
+watchdog -F /dev/watchdog &
+
+TPM_DEVICE_PATH="/dev/tpmrm0"
+DEVICE_CERT_NAME="/config/device.cert.pem"
+DEVICE_KEY_NAME="/config/device.key.pem"
+
+# The device cert generation needs the current time. Some hardware
+# doesn't have a battery-backed clock so we check the year makes some sense
+# In that case we defer until first boot of EVE to run ntp and generate
+# the device certificate
+YEAR=$(date +%Y)
+if [ "$YEAR" -gt 2020 ] && [ ! -f $DEVICE_CERT_NAME ]; then
+   if [ -c $TPM_DEVICE_PATH ] && ! [ -f $DEVICE_KEY_NAME ]; then
+      logmsg "Generating TPM device certificate"
+      if ! /tpmmgr createDeviceCert; then
+         logmsg "Failed generating device certificate on TPM; fallback to soft"
+         # The future existence of /config/device.key.pem indicates not using TPM
+         sync
+      else
+         logmsg "Generated a TPM device certificate"
+         if ! /tpmmgr createCerts; then
+            logmsg "Failed to create additional certificates on TPM"
+         fi
+      fi
+   else
+      logmsg "No TPM; Generating soft device certificate"
+   fi
+   if [ ! -f $DEVICE_CERT_NAME ]; then
+      if ! /tpmmgr createSoftDeviceCert; then
+         logmsg "Failed to generate soft device certificate"
+      elif ! /tpmmgr createSoftCerts; then
+         logmsg "Failed to create additional certificates"
+      fi
+   fi
+   sync
+   mount -o remount,flush,ro /config
+   sleep 5
+fi
+# Collect the device cert
+if [ -f $DEVICE_CERT_NAME ] && [ -n "$REPORT" ]; then
+   cat $DEVICE_CERT_NAME > "$REPORT/device.cert.pem"
+fi
+
+# finally check whether we are collecting a black box
+if [ -n "$REPORT" ]; then
+   # then we can collect our black box
+   cmdline eve_blackbox && collect_black_box "$REPORT" 2>/dev/null
+fi
+
+## if verification is enabled, run verifier script
+cmdline eve_disable_verify || DEBUG="$DEBUG" REPORT="$REPORT" /verify
+
+# we also maybe asked to pause after
+cmdline eve_pause_after_install && pause "shutting the node down"
+
+if [ -n "$REPORT" ]; then
+   # Copy the LOGFILE under REPORT"
+   logmsg "EVE-OS installation completed, device will now reboot/poweroff"
+   cat $LOGFILE > "$REPORT/installer.log"
+fi
+
+# if we store report to USB copy installer.log to persist explicitly
+if [ ! -d "/persist/installer" ]; then
+  mkdir "/persist/installer"
+  cat $LOGFILE > "/persist/installer/installer.log"
+fi
+
+#store file to indicate first boot after installer
+touch /persist/installer/first-boot
+
+# store file to indicate that EVE will clean vault
+# in case of no key received from controller
+mkdir -p /persist/status
+touch /persist/status/allow-vault-clean
+
+# lets hope this is enough to flush the caches
+sync; sleep 5; sync
+
+if [ "$INSTALL_ZFS" = true ]; then
+   zfs_umount
+else
+   umount /persist 2>/dev/null
+fi
+
+# lets hope this is enough to flush the caches
+sync; sleep 5; sync
+umount /config 2>/dev/null
+umount /run/INVENTORY 2>/dev/null
+
+# we need a copy of these in tmpfs so that a block device with rootfs can be yanked
+cp /sbin/poweroff /sbin/reboot /bin/sleep /run
+# we also maybe asked to reboot after install
+if cmdline eve_reboot_after_install; then
+  echo "NOTICE: Device will now reboot." >/dev/console
+  sleep 5
+
+  reboot -f
+else
+  echo "NOTICE: Device will now power off. Remove the USB stick and power it back on to complete the installation." >/dev/console
+  sleep 5
+
+  poweroff -f
+fi

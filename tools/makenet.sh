@@ -1,28 +1,49 @@
 #!/bin/sh
+
+# makenet.sh builds a tar file with everything you need to boot EVE installer over iPXE.
+# The expected process is to untar the resulting file in the serving directory of a TFTP server and
+# then boot the target machine using iPXE pointing at the serving directory.
+
+# the boot is controlled by the contents of ipxe.efi.cfg.
+
+set -e
+[ -n "$DEBUG" ] && set -x
+
 EVE="$(cd "$(dirname "$0")" && pwd)/../"
 PATH="$EVE/build-tools/bin:$PATH"
 SOURCE="$(cd "$1" && pwd)"
-ROOTFSTAR="$2"
-IMG="$3"
-NET="$(cd "$(dirname "$4")" && pwd)/$(basename "$4")"
+IMG="$2"
+IMGNAME=$(basename "${IMG}")
+OUTPUT="$(cd "$(dirname "$3")" && pwd)/$(basename "$3")"
 
-if [ ! -d "$SOURCE" ] || [ $# -lt 4 ]; then
-   echo "Usage: $0 <input dir> <rootfs tarball> <image file name> <output tar image file>"
+if [ ! -d "$SOURCE" ] || [ $# -lt 3 ]; then
+   echo "Usage: $0 <input dir> <installer image> <output tar image file>"
    exit 1
 fi
 
-: > "$NET"
+: > "$OUTPUT"
 
-#  # FIXME: this will also go away once we rationalize
-#  # how we're managing config for things like netboot
-cat <<__EOT__ | docker run --rm -v "$SOURCE:/bits" -v "$ROOTFSTAR:/rootfs.tar" -v "$NET:/output.tar" -i alpine:3.13 sh
-   cd "\$(mktemp -d)"
-   mkdir -p media/root-rw/boot /rootfs
-   tar -xf /rootfs.tar boot/kernel -C /rootfs/
-   cp /rootfs/boot/kernel /bits/
-   cp /bits/config.img /bits/persist.img media/root-rw
-   echo netboot > media/root-rw/boot/.uuid
-   find . | sort | cpio --quiet -o -H newc | gzip > /initrd.bits
-   ln -s /bits/* /
-   tar -C / -chvf /output.tar ipxe.efi.cfg kernel initrd.img "$IMG" initrd.bits rootfs.img
-__EOT__
+# using simple Alpine, we build a directory with everything we need,
+# and then tar it up.
+# - ipxe.efi
+# - ipxe.efi.cfg
+# - installer image (whatever it is called), normally installer.iso)
+# - grub EFI boot file, arch-specific e.g. BOOTX64.EFI or BOOTAA64.EFI, into EFI/BOOT
+# - special-purpose grub config file constructed inside this container, into EFI/BOOT
+cat <<'EOT' | docker run --rm -e DEBUG="$DEBUG" -v "$SOURCE:/bits" -v "$IMG:/installer/${IMGNAME}" -v "$OUTPUT:/output.tar" -i alpine:3.20 sh
+   set -e
+   [ -n "$DEBUG" ] && set -x
+   cp /bits/ipxe.efi.cfg /installer
+   mkdir -p /installer/EFI/BOOT
+   cp /bits/EFI/BOOT/BOOT*EFI /installer/EFI/BOOT/
+   # by default, BOOT*.EFI looks for grub.cfg in its source location at EFI/BOOT/grub.cfg, so put it there
+   cat <<'EOF' > /installer/EFI/BOOT/grub.cfg
+echo "Downloading installer. This may take some time. Please wait patiently."
+loopback loop0 ($cmddevice)/installer.iso
+set root=loop0
+set isnetboot=true
+export isnetboot
+configfile ($root)/EFI/BOOT/grub.cfg
+EOF
+   tar -C /installer -chvf /output.tar .
+EOT

@@ -80,12 +80,14 @@ func (ctx ctrdContext) Task(status *types.DomainStatus) types.Task {
 	return ctx
 }
 
-func (ctx ctrdContext) setupSpec(status *types.DomainStatus, config *types.DomainConfig, volume string) (containerd.OCISpec, error) {
+func (ctx ctrdContext) setupSpec(status *types.DomainStatus, config *types.DomainConfig,
+	volume string) (containerd.OCISpec, error) {
 	spec, err := ctx.ctrdClient.NewOciSpec(status.DomainName, config.Service)
 	if err != nil {
 		logError("failed to create OCI spec for domain %s: %v", status.DomainName, err)
 		return nil, err
 	}
+
 	if err := spec.UpdateFromVolume(volume); err != nil {
 		logError("failed to update OCI spec for domain %s: %v", status.DomainName, err)
 		return nil, err
@@ -107,6 +109,11 @@ func (ctx ctrdContext) Setup(status types.DomainStatus, config types.DomainConfi
 	spec, err := ctx.setupSpec(&status, &config, status.OCIConfigDir)
 	if err != nil {
 		return logError("setting up OCI spec for domain %s failed %v", status.DomainName, err)
+	}
+
+	err = spec.UpdateWithIoBundles(&config, aa, status.DomainId)
+	if err != nil {
+		return fmt.Errorf("updating spec with ioBundles failed: %v", err)
 	}
 
 	// we use patched version of dhcpcd with /etc/resolv.conf.new

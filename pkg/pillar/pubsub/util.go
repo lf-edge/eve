@@ -14,7 +14,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/base"
 )
 
-// deepCopy returns the same type as what is passed as input
+// DeepCopy returns the same type as what is passed as input
 // Warning: only public fields will be exported
 // Note why json marshalling is used:
 // Type casting and associated type assertions in golang are only
@@ -24,7 +24,7 @@ import (
 // Golang doesn't have support for a deep copy. Once can build it
 // oneself using reflect package, but it ends up doing the same thing
 // as json encode+decode apart from the exported fields check.
-func deepCopy(log *base.LogObject, in interface{}) interface{} {
+func DeepCopy(log *base.LogObject, in interface{}) interface{} {
 	b, err := json.Marshal(in)
 	if err != nil {
 		log.Fatal("json Marshal in deepCopy", err)

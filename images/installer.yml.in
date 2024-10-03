@@ -1,0 +1,80 @@
+kernel:
+  image: KERNEL_TAG
+  # the unified_cgroup_hierarchy forces cgroupsv1, which is required until pillar is ready to support v2
+  cmdline: "rootdelay=3 linuxkit.unified_cgroup_hierarchy=0"
+init:
+  - linuxkit/init:e120ea2a30d906bd1ee1874973d6e4b1403b5ca3
+  - linuxkit/runc:6062483d748609d505f2bcde4e52ee64a3329f5f
+  # pillar's logic rely on existence of getty and /etc/init.d/001-getty inside
+  - linuxkit/getty:e74e6cad132403d1a6d6cd25b136a7c69c99f3f7
+  - linuxkit/memlogd:1ded209c4cc10aa8de2099f4156164b59df14e3c
+  - GRUB_TAG
+onboot:
+  - name: sysctl
+    image: linuxkit/sysctl:c6f23919b8610c7645a89a89f863c6209bc84bee
+    binds:
+      - /etc/sysctl.d:/etc/sysctl.d
+    capabilities:
+      - CAP_SYS_ADMIN
+      - CAP_NET_ADMIN
+  - name: installer
+    image: INSTALLER_TAG
+    binds.add:
+    - mkimage-raw-efi:/mkimage:ro       # so that it has access to make-raw
+    - uboot:/uboot:ro                   # additional necessary parts for boot, appear inside image as /boot and /u-boot, so need to have in separate path
+    - /rootfs.img:/bits/rootfs.img:ro   # this is the rootfs it will install
+    - /persist.img:/bits/persist.img:ro # this is the persist image
+    - /config.img:/bits/config.img:ro   # this is the config image
+  - name: poweroff
+    image: linuxkit/poweroff:401dc53c604c0b2179ed0369a6968fd4179cc176
+    command: ["/bin/sh", "/poweroff.sh", "10"]
+volumes:
+- name: mkimage-raw-efi
+  image: MKRAW_TAG
+  readonly: true
+- name: uboot
+  image: UBOOT_TAG
+  readonly: true
+files:
+  - path: /etc/eve-release
+    source: eve_version
+  - path: etc/linuxkit-eve-config.yml
+    metadata: yaml
+  - path: /etc/eve-hv-type
+    contents: 'EVE_HV'
+  - path: /etc/issue
+    source: etc_issue
+  - path: /rootfs.img
+    source: rootfs.img
+  - path: /persist.img
+    source: persist.img
+  - path: /config.img
+    source: config.img
+  - path: /EFI/BOOT/grub_include.cfg
+    source: grub_installer.cfg
+  - path: /etc/securetty
+    contents: |
+      console
+      tty0
+      tty1
+      tty2
+      tty3
+      tty4
+      tty5
+      tty6
+      tty7
+      tty8
+      tty9
+      tty10
+      tty11
+      hvc0
+      ttyS0
+      ttyS1
+      ttyS2
+      ttyAMA0
+      ttyAMA1
+      ttyTCU0
+      ttyTHS0
+      ttyTHS1
+      ttymxc0
+      ttymxc2

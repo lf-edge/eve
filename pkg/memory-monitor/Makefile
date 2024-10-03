@@ -15,6 +15,8 @@ SRC_DIR=src
 OBJ_DIR=obj
 DIST_DIR=dist
 BIN_DIR=bin
+TAR_DIR=dist-tar
+TARBALL=memory-monitor.tar.bz2
 
 MONITOR_DIR=$(SRC_DIR)/monitor
 MONITOR_SRC=$(wildcard $(MONITOR_DIR)/*.c)
@@ -56,8 +58,16 @@ dist: $(BIN_DIR)/memory-monitor $(MONITOR_DEPS)
 	cp $(BIN_DIR)/memory-monitor $(HANDLER_SCRIPT) $(CONFIG_FILE) $(APPARMOR_PROFILE) $(DIST_DIR)
 	@touch dist
 
+dist-tarball: dist
+	@echo "Generating tarball $(TARBALL) ..."
+	@mkdir -p $(TAR_DIR)/persist/memory-monitor
+	@cp $(DIST_DIR)/* $(TAR_DIR)/persist/memory-monitor/
+	@tar -cvjf $(TARBALL) -C $(TAR_DIR)/ .
+	@rm -rf $(TAR_DIR)
+	@echo "Done."
+
 dist-clean: clean
-	rm -rf $(DIST_DIR)
+	rm -rf $(DIST_DIR) $(TARBALL)
 
 # Target for local testing
 
@@ -100,6 +110,7 @@ help:
 	@echo "  all: Build all targets (monitor and pressure)"
 	@echo "  clean: Remove all build artifacts"
 	@echo "  dist: Create a directory with all distribution artifacts: monitor, handler.sh, monitor.conf, persist.memory-monitor.handler"
+	@echo "  dist-tarball: Create a tarball that can be extracted direct on the EVE device"
 	@echo "  dist-clean: Remove the distribution directory"
 	@echo "  monitor: Build the monitor, put the binary in bin/monitor"
 	@echo "  pressure: Build the pressure tool, put the binary in bin/pressure"

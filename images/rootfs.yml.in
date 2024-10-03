@@ -27,20 +27,11 @@ onboot:
     capabilities:
       - CAP_SYS_ADMIN
       - CAP_NET_ADMIN
-  # If you change the order of storage-init don't forget to
-  # change path to the "002-installer" in "pkg/mkimage-raw-efi/Dockerfile" and
-  # "pkg/mkverification-raw-efi/Dockerfile" accordingly:
-  # storage-init must follow installer
   - name: storage-init
     image: STORAGE_INIT_TAG
   # kdump goes strictly after storage-init
   - name: kdump
     image: KDUMP_TAG
-  # If you change the order of pillar-onboot don't forget to
-  # change path to the "/containers/onboot/004-pillar-onboot/lower" in
-  # "pkg/mkimage-raw-efi/config.json" and "pkg/mkverification-raw-efi/config.json"
-  # accordingly: 004-pillar-onboot must follow the order number of pillar-onboot
-  # to prepare services to start
   - name: pillar-onboot
     image: PILLAR_TAG
     command: ["/opt/zededa/bin/onboot.sh"]

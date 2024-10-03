@@ -24,6 +24,10 @@ type lkConf struct {
 	services map[string]string // name -> image
 }
 
+func (l lkConf) String() string {
+	return fmt.Sprintf("kernel: %s onboot: %+q services: %+q", l.kernel, l.onboot, l.services)
+}
+
 type lkConfYaml struct {
 	Kernel struct {
 		Image string `yaml:"image"`
@@ -42,7 +46,7 @@ func linuxkitYml2KernelConf(ymlBytes []byte) lkConf {
 	var y lkConfYaml
 	err := yaml.Unmarshal(ymlBytes, &y)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("unmarshalling from yaml failed: %v", err)
 	}
 
 	l := lkConf{
@@ -152,4 +156,17 @@ func waitForKeyFromStdin(timeout time.Duration) bool {
 	case <-time.After(timeout):
 		return false
 	}
+}
+
+func newQemuRunner(arch string, imageDir string, bpfFile, outputFile string) *qemuRunner {
+	var qr *qemuRunner
+	switch arch {
+	case "arm64":
+		qr = newQemuArm64Runner(imageDir, bpfFile, outputFile)
+	case "amd64":
+		qr = newQemuAmd64Runner(imageDir, bpfFile, outputFile)
+	default:
+		log.Fatalf("unknown architecture %s", arch)
+	}
+	return qr
 }

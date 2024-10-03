@@ -63,8 +63,11 @@ jobs:
           # the following weird statement is here to speed up the happy path
           # if the default server is responding -- we can skip apt update
           $APT_INSTALL || { sudo apt update && $APT_INSTALL ; }
+      # The next step explicitly use actions/cache, rather than actions/cache/save at the end.
+      # If we rerun a job without changing the sha, we should not have to rebuild anything.
+      # Since the cache is keyed on the head sha, it will retrieve it.
       - name: update linuxkit cache if available
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: ~/.linuxkit/cache
           key: linuxkit-${{ matrix.arch }}-${{ github.event.pull_request.head.sha }}
@@ -120,6 +123,21 @@ jobs:
           username: ${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}
           password: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
 
+      - name: Arch Runner is Matrix
+        id: arch_runner_equals_matrix
+        run: |
+          RUNNER_ARCH=${{ runner.arch }}
+          [ "$RUNNER_ARCH" = "X64" ] && RUNNER_ARCH="amd64"
+          [ "$RUNNER_ARCH" = "ARM64" ] && RUNNER_ARCH="arm64"
+          [ "$RUNNER_ARCH" = "X86" ] && RUNNER_ARCH="i386"
+          [ "$RUNNER_ARCH" = "ARM" ] && RUNNER_ARCH="arm"
+          MATCHED="false"
+          [ "$RUNNER_ARCH" = "${{ matrix.arch }}" ] && MATCHED="true"
+          # report for good measure
+          echo "runner_arch=${RUNNER_ARCH}"
+          echo "matrix_arch=${{ matrix.arch }}"
+          echo "matched=${MATCHED}"
+          echo "matched=${MATCHED}" >> "$GITHUB_OUTPUT"
       # the next three steps - cache_for_docker, load images, and cache_for_packages -
       # having nothing to do with the content of the final eve image. Instead, it is because we are running
       # on amd64, and we need some of the tools in order to compose the final eve image for the target arch.
@@ -128,7 +146,7 @@ jobs:
       # load them into docker, and then clear the cache so we can load the cache for the target arch.
       - name: update linuxkit cache for runner arch so we can get desired images
         id: cache_for_docker
-        uses: actions/cache/restore@v3
+        uses: actions/cache/restore@v4
         with:
           path: ~/.linuxkit/cache
           key: linuxkit-amd64-${{ github.event.pull_request.head.sha }}
@@ -137,14 +155,14 @@ jobs:
         run: |
           make cache-export-docker-load-all
       - name: clear linuxkit cache so we can load for target arch
-        if: ${{ matrix.arch != 'amd64' }}  # because our runner arch is amd64; if that changes, this will have to change
+        if: ${{ steps.arch_runner_equals_matrix.outputs.matched != 'true' }}
         run: |
           rm -rf ~/.linuxkit
       # With the "load into docker" complete, now we can restore the packages into the cache for the target arch (as opposed to the runner arch)
       - name: update linuxkit cache for our arch
         id: cache_for_packages
-        if: ${{ matrix.arch != 'amd64' }}  # because our runner arch is amd64; if that changes, this will have to change
-        uses: actions/cache/restore@v3
+        if: ${{ steps.arch_runner_equals_matrix.outputs.matched != 'true' }}
+        uses: actions/cache/restore@v4
         with:
           path: ~/.linuxkit/cache
           key: linuxkit-${{ matrix.arch }}-${{ github.event.pull_request.head.sha }}

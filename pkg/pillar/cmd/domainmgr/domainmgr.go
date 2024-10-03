@@ -50,6 +50,7 @@ import (
 	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 	"github.com/vishvananda/netlink"
+	"gopkg.in/yaml.v2"
 )
 
 const (
@@ -2067,6 +2068,14 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 			return fmt.Errorf("failed to fetch cloud-init userdata: %s",
 				err)
 		}
+
+		// Set FML custom resolution if it is set in cloud-init config,
+		// xxx : this is hack and this should be removed, this should be
+		// part of the vm config, but desprate times call for desprate measures.
+		if cloudconfig.IsCloudConfig(ciStr) {
+			setFmlCustomResolution(ciStr, status)
+		}
+
 		if status.OCIConfigDir != "" { // If AppInstance is a container, we need to parse cloud-init config and apply the supported parts
 			if cloudconfig.IsCloudConfig(ciStr) { // treat like the cloud-init config
 				cc, err := cloudconfig.ParseCloudConfig(ciStr)
@@ -2111,6 +2120,22 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 		})
 	}
 	return nil
+}
+
+func setFmlCustomResolution(config string, status *types.DomainStatus) {
+	var cloudinit map[string]interface{}
+	err := yaml.Unmarshal([]byte(config), &cloudinit)
+	if err != nil {
+		log.Errorf("error parsing cloud-config YAML: %v", err)
+		return
+	}
+
+	if val, ok := cloudinit[string(types.FmlCustomResolution)]; ok {
+		if fmlCustomResolution, valid := val.(string); valid {
+			status.FmlCustomResolution = fmlCustomResolution
+			log.Noticef("FML resolution is set to: %s", status.FmlCustomResolution)
+		}
+	}
 }
 
 // Check for errors and reserve any assigned adapters.

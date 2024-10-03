@@ -127,6 +127,7 @@ func (hr *httpRun) runBpftrace(aotFile string, timeout time.Duration) error {
 	if err != nil {
 		log.Fatalf("received response %v with error %v", resp, err)
 	}
+	defer resp.Body.Close()
 	log.Printf("http multiform resp is %+v\n", resp)
 
 	scanner := bufio.NewScanner(resp.Body)
@@ -139,11 +140,11 @@ func (hr *httpRun) runBpftrace(aotFile string, timeout time.Duration) error {
 
 	err = <-errChan
 	if err != nil {
-		log.Fatalf("received err: %v", err)
+		log.Fatalf("received error from http: %v", err)
 	}
 	err = multipartWriter.Close()
 	if err != nil && !strings.Contains(err.Error(), "io: read/write on closed pipe") {
-		log.Fatalf("closing multipart writer failed: %v %T", err, err)
+		log.Fatalf("closing multipart writer failed: %v", err)
 	}
 
 	return nil

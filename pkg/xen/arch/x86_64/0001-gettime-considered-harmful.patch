@@ -1,19 +1,9 @@
-From: Roman Shaposhnik <rvs@zededa.com>
-Date: Mon, 24 Aug 2020 12:04:57 +0530
-Subject: [PATCH] UEFI GetTime() is considered harmful
-
-As per thread here: https://lists.archive.carbon60.com/xen/devel/408709
-it is best to avoid calling GetTime()
-
-Please follow Xen upstream discussion here:
-   https://lists.xenproject.org/archives/html/xen-devel/2020-08/msg01018.html
-
-diff --git a/arch/x86/time.c b/xen/arch/x86/time.c
-index 4723f5d..311e8a5 100644
+diff --git a/arch/x86/time.c b/arch/x86/time.c
+index a97d784..c25fdf7 100644
 --- a/arch/x86/time.c
 +++ b/arch/x86/time.c
-@@ -1040,19 +1040,12 @@
- 
+@@ -1247,19 +1247,12 @@ static void __get_cmos_time(struct rtc_time *rtc)
+
  static unsigned long get_cmos_time(void)
  {
 -    unsigned long res, flags;
@@ -22,7 +12,7 @@ index 4723f5d..311e8a5 100644
      unsigned int seconds = 60;
      static bool __read_mostly cmos_rtc_probe;
      boolean_param("cmos-rtc-probe", cmos_rtc_probe);
- 
+
 -    if ( efi_enabled(EFI_RS) )
 -    {
 -        res = efi_get_time();
