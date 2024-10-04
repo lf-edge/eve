@@ -66,8 +66,6 @@ gw=`cat /proc/cmdline | grep -o '\bgw=[^ ]*' | cut -d = -f 2`
 route=`cat /proc/cmdline | grep -o '\broute=[^ ]*' | cut -d = -f 2`
 pvcalls=`cat /proc/cmdline | grep  'pvcalls=1'`
 dhcp=`cat /proc/cmdline | grep  'dhcp=1'`
-# shellcheck disable=SC2002,SC2006
-chrony=`cat /proc/cmdline | grep 'chrony=1'`
 if test "$pvcalls"
 then
         mkdir -p /mnt/rootfs/etc
@@ -158,8 +156,9 @@ fi
 echo "Run acpid daemon"
 acpid -l /proc/self/fd/1
 
-# Start chrony daemon for clock synchronization through PTP_KVM device
-if test "$chrony" -o "$EVE_ENABLE_CHRONY" = "1"; then
+# Start chrony daemon for clock synchronization through PTP_KVM device,
+# this option is enabled by default
+if [ ! "$EVE_ENABLE_CHRONY" = "0" ]; then
   # PTP_KVM is only available with KVM
   if test -c /dev/ptp0; then
     echo "Starting chrony daemon..." > /dev/kmsg
