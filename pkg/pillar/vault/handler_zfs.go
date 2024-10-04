@@ -247,6 +247,11 @@ func (h *ZFSHandler) getVaultStatus(vaultName, vaultPath string) *types.VaultSta
 		if err := h.checkOperationalStatus(vaultPath); err != nil {
 			h.log.Errorf("Status failed, %s", err)
 			status.Status = info.DataSecAtRestStatus_DATASEC_AT_REST_ERROR
+			if status.PCRStatus == info.PCRStatus_PCR_ENABLED {
+				if pcrs, err := etpm.FindMismatchingPCRs(); err == nil {
+					status.MismatchingPCRs = pcrs
+				}
+			}
 			status.SetErrorDescription(types.ErrorDescription{Error: err.Error()})
 		} else {
 			h.log.Functionf("checkOperStatus returns ok for %s", vaultPath)
