@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile-upstream:1.5.0-rc2-labs
 FROM lfedge/eve-alpine:82df60e43ab9f8c935584b8c7b4d0a4b0271d608 as zfs
 ENV BUILD_PKGS git patch ca-certificates util-linux build-base gettext-dev libtirpc-dev automake autoconf \
-    libtool linux-headers attr-dev e2fsprogs-dev glib-dev openssl-dev util-linux-dev coreutils
+    libtool linux-headers attr-dev e2fsprogs-dev glib-dev openssl-dev util-linux-dev coreutils gnu-efi gnu-efi-dev mtools
 ENV PKGS ca-certificates util-linux libintl libuuid libtirpc libblkid libcrypto1.1 zlib
 RUN eve-alpine-deploy.sh
 
@@ -41,6 +41,26 @@ RUN cp -r /tmp/zfs-out/* /out
 
 # Add directory for CDI files
 RUN mkdir -p /out/etc/cdi
+
+# build dosfstools, the one that is in alpine (busybox) is too old
+# and doesn't support creating small FAT filesystems.
+WORKDIR /mkfs
+ADD https://github.com/dosfstools/dosfstools.git#v4.2 dosfstools
+RUN cd dosfstools && \
+    ./autogen.sh && \
+    ./configure --prefix=/mkfs/dosfstools/bin && \
+    make && \
+    make install
+WORKDIR /efi
+COPY efi/ .
+RUN make all && \
+    mkdir -p /out/etc/ovmf && \
+    cp efi_run.sh /out/etc/ovmf/ && \
+    chmod +x /out/etc/ovmf/efi_run.sh && \
+    dd if=/dev/zero of=/out/etc/ovmf/eve_efi.img bs=1M count=1 && \
+    /mkfs/dosfstools/bin/sbin/mkfs.fat /out/etc/ovmf/eve_efi.img && \
+    mcopy -i /out/etc/ovmf/eve_efi.img startup.nsh :: && \
+    mcopy -i /out/etc/ovmf/eve_efi.img efi_eveutil.efi ::
 
 FROM scratch
 COPY --from=zfs /out/ /
