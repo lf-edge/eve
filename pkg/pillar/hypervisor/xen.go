@@ -11,9 +11,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
-	"time"
 
-	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/shirou/gopsutil/cpu"
 	"github.com/shirou/gopsutil/mem"
@@ -121,7 +119,7 @@ func (ctx xenContext) Task(status *types.DomainStatus) types.Task {
 }
 
 func (ctx xenContext) Setup(status types.DomainStatus, config types.DomainConfig,
-	aa *types.AssignableAdapters, globalConfig *types.ConfigItemValueMap, file *os.File) error {
+	aa *types.AssignableAdapters, globalConfig *types.ConfigItemValueMap, file *os.File, extra *types.ExtraArgs) error {
 	// first lets build the domain config
 	if err := ctx.CreateDomConfig(status.DomainName, config,
 		status.DiskStatusList, aa, globalConfig, file); err != nil {
@@ -877,7 +875,7 @@ func fallbackDomainMetric() map[string]types.DomainMetric {
 	return dmList
 }
 
-func (ctx xenContext) VirtualTPMSetup(domainName, agentName string, ps *pubsub.PubSub, warnTime, errTime time.Duration) error {
+func (ctx xenContext) VirtualTPMSetup(domainName string, extra *types.ExtraArgs) error {
 	return fmt.Errorf("not implemented")
 }
 

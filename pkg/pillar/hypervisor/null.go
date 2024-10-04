@@ -6,9 +6,7 @@ package hypervisor
 import (
 	"fmt"
 	"os"
-	"time"
 
-	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 
 	uuid "github.com/satori/go.uuid"
@@ -69,7 +67,7 @@ func (ctx nullContext) Task(status *types.DomainStatus) types.Task {
 }
 
 func (ctx nullContext) Setup(types.DomainStatus, types.DomainConfig,
-	*types.AssignableAdapters, *types.ConfigItemValueMap, *os.File) error {
+	*types.AssignableAdapters, *types.ConfigItemValueMap, *os.File, *types.ExtraArgs) error {
 	return nil
 }
 
@@ -174,7 +172,7 @@ func (ctx nullContext) GetDomsCPUMem() (map[string]types.DomainMetric, error) {
 	return nil, nil
 }
 
-func (ctx nullContext) VirtualTPMSetup(domainName, agentName string, ps *pubsub.PubSub, warnTime, errTime time.Duration) error {
+func (ctx nullContext) VirtualTPMSetup(domainName string, extra *types.ExtraArgs) error {
 	return fmt.Errorf("not implemented")
 }
 

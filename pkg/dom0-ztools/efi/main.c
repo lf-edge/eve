@@ -602,7 +602,7 @@ GetResolutionConfig(
 
 _Return:
   FreePool(ConfigValue);
-  return EFI_SUCCESS;
+  return Status;
 }
 
 EFI_STATUS

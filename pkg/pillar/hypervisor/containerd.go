@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/containerd"
-	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/opencontainers/runtime-spec/specs-go"
 
@@ -101,7 +100,7 @@ func (ctx ctrdContext) setupSpec(status *types.DomainStatus, config *types.Domai
 }
 
 func (ctx ctrdContext) Setup(status types.DomainStatus, config types.DomainConfig,
-	aa *types.AssignableAdapters, globalConfig *types.ConfigItemValueMap, file *os.File) error {
+	aa *types.AssignableAdapters, globalConfig *types.ConfigItemValueMap, file *os.File, extra *types.ExtraArgs) error {
 	if status.OCIConfigDir == "" {
 		return logError("failed to run domain %s: not based on an OCI image", status.DomainName)
 	}
@@ -327,7 +326,7 @@ func (ctx ctrdContext) GetDomsCPUMem() (map[string]types.DomainMetric, error) {
 	return res, nil
 }
 
-func (ctx ctrdContext) VirtualTPMSetup(domainName, agentName string, ps *pubsub.PubSub, warnTime, errTime time.Duration) error {
+func (ctx ctrdContext) VirtualTPMSetup(domainName string, extra *types.ExtraArgs) error {
 	return fmt.Errorf("not implemented")
 }
 

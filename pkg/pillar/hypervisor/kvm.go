@@ -4,9 +4,11 @@
 package hypervisor
 
 import (
+	"bytes"
 	"fmt"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -17,7 +19,6 @@ import (
 	zconfig "github.com/lf-edge/eve-api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/containerd"
-	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
@@ -738,35 +739,18 @@ func getOVMFSettingsFilename(domainName string) (string, error) {
 	return types.OVMFSettingsDir + "/" + domainUUID.String() + "_OVMF_VARS.fd", nil
 }
 
-func prepareOVMFSettings(config types.DomainConfig, status types.DomainStatus, globalConfig *types.ConfigItemValueMap) error {
+func prepareOVMFSettings(status types.DomainStatus) error {
 	// Create the OVMF settings directory if it does not exist
 	if err := os.MkdirAll(types.OVMFSettingsDir, 0755); err != nil {
 		return logError("failed to create OVMF settings directory: %v", err)
 	}
-	// Create a copy of the ovmf_vars.bin file in <domainName>_ovmf_vars.bin
+	// Get the path for a copy of the ovmf_vars.bin file form of <domainName>_OVMF_VARS.fd
 	ovmfSettingsFile, err := getOVMFSettingsFilename(status.DomainName)
 	if err != nil {
 		return logError("failed to get OVMF settings file: %v", err)
 	}
-	// Check if we need custom OVMF settings for the domain (the resolution)
-	fmlResolution := types.FmlResolutionUnset
-	if config.VirtualizationMode == types.FML {
-		// if we are not getting the resolution from the cloud-init, check the
-		// global config.
-		fmlResolution = status.FmlCustomResolution
-		if fmlResolution == types.FmlResolutionUnset {
-			if fmlResolution, err = getFmlCustomResolution(&status, globalConfig); err != nil {
-				return logError("failed to get custom resolution for domain %s: %v", status.DomainName, err)
-			}
-		}
-	}
-	// Find the necessary OVMF settings file
-	ovmfSettingsFileSrc := types.OVMFSettingsTemplate
-	if fmlResolution != types.FmlResolutionUnset {
-		ovmfSettingsFileSrc = types.CustomOVMFSettingsDir + "/OVMF_VARS_" + fmlResolution + ".fd"
-	}
 	if _, err := os.Stat(ovmfSettingsFile); os.IsNotExist(err) {
-		if err := fileutils.CopyFile(ovmfSettingsFileSrc, ovmfSettingsFile); err != nil {
+		if err := fileutils.CopyFile(types.OVMFSettingsTemplate, ovmfSettingsFile); err != nil {
 			return logError("failed to copy OVMF_VARS file: %v", err)
 		}
 	}
@@ -790,7 +774,7 @@ func cleanupOVMFSettings(domainName string) error {
 
 // Setup sets up kvm
 func (ctx KvmContext) Setup(status types.DomainStatus, config types.DomainConfig,
-	aa *types.AssignableAdapters, globalConfig *types.ConfigItemValueMap, file *os.File) error {
+	aa *types.AssignableAdapters, globalConfig *types.ConfigItemValueMap, file *os.File, extra *types.ExtraArgs) error {
 
 	diskStatusList := status.DiskStatusList
 	domainName := status.DomainName
@@ -814,8 +798,28 @@ func (ctx KvmContext) Setup(status types.DomainStatus, config types.DomainConfig
 	// for ARM produces a single QEMU_EFI.fd file that contains both OVMF_VARS.fd
 	// and OVMF_CODE.fd.
 	if config.VirtualizationMode == types.FML && runtime.GOARCH == "amd64" {
-		if err := prepareOVMFSettings(config, status, globalConfig); err != nil {
+		// Copy the OVMF_VARS file and the eve_efi.img file to the domain directory
+		err := prepareOVMFSettings(status)
+		if err != nil {
 			return logError("failed to setup OVMF settings for domain %s: %v", status.DomainName, err)
+		}
+
+		fmlResolution := status.FmlCustomResolution
+		if fmlResolution == types.FmlResolutionUnset {
+			if fmlResolution, err = getFmlCustomResolution(&status, globalConfig); err != nil {
+				return logError("failed to get custom resolution for domain %s: %v", status.DomainName, err)
+			}
+		}
+		if fmlResolution != types.FmlResolutionUnset {
+			cfg := []string{
+				"eve.fml.resolution:" + fmlResolution,
+			}
+
+			logError("setOvmfVariables before call")
+			err := ctx.setOvmfVariables(cfg, status.DomainName, extra)
+			if err != nil {
+				return logError("failed to set OVMF variables for domain %s: %v", status.DomainName, err)
+			}
 		}
 	}
 
@@ -845,6 +849,14 @@ func (ctx KvmContext) Setup(status types.DomainStatus, config types.DomainConfig
 		"-uuid", domainUUID.String(),
 		"-readconfig", file.Name(),
 		"-pidfile", kvmStateDir+domainName+"/pid")
+
+	if config.VirtualizationMode == types.FML && runtime.GOARCH == "amd64" {
+		args = append(args, "-drive", "file=/run/kvm/eve_efi.img,format=raw,if=none,id=drive-eve-efi")
+		args = append(args, "-device", "virtio-blk-pci,drive=drive-eve-efi")
+		args = append(args, "-smbios", "type=11,value=eve.try.all.boot.options:true")
+	}
+
+	logError("guest args: %v", args)
 
 	spec, err := ctx.setupSpec(&status, &config, status.OCIConfigDir)
 
@@ -1330,9 +1342,9 @@ func getQmpListenerSocket(domainName string) string {
 }
 
 // VirtualTPMSetup launches a vTPM instance for the domain
-func (ctx KvmContext) VirtualTPMSetup(domainName, agentName string, ps *pubsub.PubSub, warnTime, errTime time.Duration) error {
-	if ps != nil {
-		wk := utils.NewWatchdogKick(ps, agentName, warnTime, errTime)
+func (ctx KvmContext) VirtualTPMSetup(domainName string, extra *types.ExtraArgs) error {
+	if extra.Ps != nil {
+		wk := utils.NewWatchdogKick(extra.Ps, extra.AgentName, extra.WarnTime, extra.ErrTime)
 		domainUUID, _, _, err := types.DomainnameToUUID(domainName)
 		if err != nil {
 			return fmt.Errorf("failed to extract UUID from domain name (vTPM setup): %v", err)
@@ -1425,6 +1437,71 @@ func requestVtpmTermination(id uuid.UUID) error {
 	_, err = conn.Write([]byte(fmt.Sprintf("%s%s\n", vtpmDeletePrefix, id.String())))
 	if err != nil {
 		return fmt.Errorf("failed to write to vTPM control socket: %w", err)
+	}
+
+	return nil
+}
+
+// This is janky and hacky, but it is OK for testing
+func (ctx KvmContext) setOvmfVariables(config []string, domainName string, extra *types.ExtraArgs) error {
+	cmd := exec.Command("/hostfs/usr/bin/ctr", "--namespace", "services.linuxkit", "t", "ls")
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	if err := cmd.Run(); err != nil {
+		return logError("setOvmfVariables error running ctr: %s\n", err)
+	}
+	output := out.String()
+	lines := strings.Split(output, "\n")
+	var xenToolsPID string
+	for _, line := range lines {
+		columns := strings.Fields(line)
+		if len(columns) > 2 && columns[0] == "xen-tools" {
+			xenToolsPID = columns[1]
+			break
+		}
+	}
+	if xenToolsPID != "" {
+		logError("setOvmfVariables The PID of xen-tools is: %s\n", xenToolsPID)
+	} else {
+		return logError("setOvmfVariables xen-tools not found.")
+	}
+
+	ovmfSettingsFile, err := getOVMFSettingsFilename(domainName)
+	if err != nil {
+		return logError("setOvmfVariables failed to get OVMF settings file: %v", err)
+	}
+
+	args := []string{"-F", "-a", "-t", xenToolsPID,
+		"/hostfs/etc/ovmf/efi_run.sh",
+		ovmfSettingsFile,
+		"eve.fml.resolution:1920x1080",
+	}
+
+	logError("setOvmfVariables args: nsenter %v", args)
+	cmd = exec.Command("nsenter", args...)
+	if err := cmd.Start(); err != nil {
+		return logError("setOvmfVariables error starting nsenter: %s\n", err)
+	}
+	done := make(chan error, 1)
+	go func() {
+		done <- cmd.Wait()
+	}()
+
+waitLoop:
+	for {
+		select {
+		case err := <-done:
+			if err != nil {
+				logError("setOvmfVariables Process exited with error: %s\n", err)
+			} else {
+				logError("setOvmfVariables Process completed successfully.")
+			}
+			break waitLoop
+		default:
+			extra.Ps.StillRunning(extra.AgentName, extra.WarnTime, extra.ErrTime)
+			logError("setOvmfVariables still waiting.")
+			time.Sleep(1 * time.Second)
+		}
 	}
 
 	return nil

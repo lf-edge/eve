@@ -261,6 +261,14 @@ type VmConfig struct {
 	EnableVncShimVM    bool
 }
 
+// ExtraArgs contains the extra arguments for the domain
+type ExtraArgs struct {
+	AgentName string
+	Ps        *pubsub.PubSub
+	WarnTime  time.Duration
+	ErrTime   time.Duration
+}
+
 // VmMode is the type for the virtualization mode
 type VmMode uint8
 
@@ -276,10 +284,10 @@ const (
 // Task represents any runnable entity on EVE
 type Task interface {
 	Setup(DomainStatus, DomainConfig, *AssignableAdapters,
-		*ConfigItemValueMap, *os.File) error
-	VirtualTPMSetup(domainName, agentName string, ps *pubsub.PubSub, warnTime, errTime time.Duration) error
-	VirtualTPMTerminate(domainName string) error
-	VirtualTPMTeardown(domainName string) error
+		*ConfigItemValueMap, *os.File, *ExtraArgs) error
+	VirtualTPMSetup(string, *ExtraArgs) error
+	VirtualTPMTerminate(string) error
+	VirtualTPMTeardown(string) error
 	Create(string, string, *DomainConfig) (int, error)
 	Start(string) error
 	Stop(string, bool) error

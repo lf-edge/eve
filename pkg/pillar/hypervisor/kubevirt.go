@@ -22,7 +22,6 @@ import (
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
-	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 
 	netattdefv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
@@ -185,7 +184,7 @@ func (ctx kubevirtContext) Task(status *types.DomainStatus) types.Task {
 
 // Use eve DomainConfig and DomainStatus and generate k3s VMI config or a Pod config
 func (ctx kubevirtContext) Setup(status types.DomainStatus, config types.DomainConfig,
-	aa *types.AssignableAdapters, globalConfig *types.ConfigItemValueMap, file *os.File) error {
+	aa *types.AssignableAdapters, globalConfig *types.ConfigItemValueMap, file *os.File, extra *types.ExtraArgs) error {
 
 	diskStatusList := status.DiskStatusList
 	domainName := status.DomainName
@@ -1362,7 +1361,7 @@ func (ctx kubevirtContext) PCISameController(id1 string, id2 string) bool {
 	return PCISameControllerGeneric(id1, id2)
 }
 
-func (ctx kubevirtContext) VirtualTPMSetup(domainName, agentName string, ps *pubsub.PubSub, warnTime, errTime time.Duration) error {
+func (ctx kubevirtContext) VirtualTPMSetup(domainName string, extra *types.ExtraArgs) error {
 	return fmt.Errorf("not implemented")
 }
 
