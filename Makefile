@@ -827,20 +827,11 @@ proto-vendor:
 
 .PHONY: proto-api-%
 
-check-patch-%:
-	@if ! echo $* | grep -Eq '^[0-9]+\.[0-9]+$$'; then echo "ERROR: must be on a release branch X.Y"; exit 1; fi
-	@if ! echo $(EVE_TREE_TAG) | grep -Eq '^$*.[0-9]+-'; then echo "ERROR: can't find previous release's tag X.Y.Z"; exit 1; fi
+rc-release:
+	./tools/rc-release.sh
 
-patch-%: check-patch-%
-	@$(eval PATCH_TAG:=$*.$(shell echo $$((`echo $(EVE_TREE_TAG) | sed -e 's#-.*$$##' | cut -f3 -d.` + 1))))
-
-patch-%-stable: patch-%
-	@$(eval PATCH_TAG:=$(PATCH_TAG)-lts)
-
-patch: patch-$(REPO_BRANCH)
-	@git tag -a -m"Release $(PATCH_TAG)" $(PATCH_TAG)
-	@echo "Done tagging $(PATCH_TAG) patch release. Check the branch with git log and then run"
-	@echo "  git push origin $(REPO_BRANCH) $(PATCH_TAG)"
+lts-release:
+	./tools/lts-release.sh
 
 release:
 	@bail() { echo "ERROR: $$@" ; exit 1 ; } ;\
@@ -997,7 +988,12 @@ help:
 	@echo "   test           run EVE tests"
 	@echo "   clean          clean build artifacts in a current directory (doesn't clean Docker)"
 	@echo "   release        prepare branch for a release (VERSION=x.y.z required)"
-	@echo "   patch          make a patch release on a current branch (must be a release branch)"
+	@echo "   rc-release     make a rc release on a current branch (must be a release branch)"
+	@echo "                  If the latest lts tag is 14.4.0 then running make rc-release will"
+	@echo "                  create 14.4.0-rc1 tag and if the latest tag is 14.4.1-lts then"
+	@echo "   lts-release    make a lts release on a current branch (must be a release branch)"
+	@echo "                  If the latest lts tag is 14.4.0-lts then running make lts-release
+	@echo "                  will create a new lts release 14.4.1-lts"
 	@echo "   proto          generates Go and Python source from protobuf API definitions"
 	@echo "   proto-vendor   update vendored API in packages that require it (e.g. pkg/pillar)"
 	@echo "   shell          drop into docker container setup for Go development"
