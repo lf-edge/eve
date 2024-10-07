@@ -1072,7 +1072,7 @@ help:
 	@echo "                  If the latest lts tag is 14.4.0 then running make rc-release will"
 	@echo "                  create 14.4.0-rc1 tag and if the latest tag is 14.4.1-lts then"
 	@echo "   lts-release    make a lts release on a current branch (must be a release branch)"
-	@echo "                  If the latest lts tag is 14.4.0-lts then running make lts-release
+	@echo "                  If the latest lts tag is 14.4.0-lts then running make lts-release"
 	@echo "                  will create a new lts release 14.4.1-lts"
 	@echo "   proto          generates Go and Python source from protobuf API definitions"
 	@echo "   proto-vendor   update vendored API in packages that require it (e.g. pkg/pillar)"
