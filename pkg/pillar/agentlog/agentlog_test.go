@@ -273,9 +273,7 @@ func increaseTotalRandomly(total int64) int64 {
 
 func generateRandomAvgValue() float64 {
 	// Avg is a float of format 0.00 in range [0.00, 100.00]
-	seed := time.Now().UnixNano()
-	r := rand.New(rand.NewSource(seed))
-	return r.Float64() * 100
+	return rand.Float64() * 100
 }
 
 func matchPsiStats(line string) bool {
