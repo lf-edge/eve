@@ -5,11 +5,11 @@
 
 FROM lfedge/eve-dom0-ztools:b8eaeec19d373228a4a842374e5de0d50f050853 as dom0
 FROM lfedge/eve-alpine:82df60e43ab9f8c935584b8c7b4d0a4b0271d608 as build
-ENV BUILD_PKGS gcc g++ autoconf automake libtool make openssl-dev libtasn1-dev \
-               json-glib-dev gnutls bash expect gawk socat libseccomp-dev gmp-dev \
-               musl-utils autoconf-archive git json-c json-c-dev libcurl curl-dev \
-               patch go protobuf-dev
-ENV PKGS libseccomp libcurl libstdc++ libprotobuf
+ENV BUILD_PKGS="gcc g++ autoconf automake libtool make openssl-dev libtasn1-dev \
+    json-glib-dev gnutls bash expect gawk socat libseccomp-dev gmp-dev \
+    musl-utils autoconf-archive git json-c json-c-dev libcurl curl-dev \
+    patch go protobuf-dev"
+ENV PKGS="libseccomp libcurl libstdc++ libprotobuf"
 RUN eve-alpine-deploy.sh
 
 # build libtpms, it is needed by swtpm
@@ -19,6 +19,7 @@ RUN ./autogen.sh --prefix=/usr --with-tpm2
 RUN make -j$(nproc)
 RUN make -j$(nproc) install
 RUN cp /usr/lib/libtpms.so.* /out/usr/lib/
+RUN strip --strip-unneeded /out/usr/lib/libtpms.so.*
 
 # build swtpm
 WORKDIR /swtpm
@@ -27,6 +28,7 @@ RUN ./autogen.sh --prefix=/out/usr
 RUN make -j$(nproc)
 RUN make -j$(nproc) install
 RUN cp /out/usr/lib/swtpm/* /out/usr/lib/
+RUN strip --strip-unneeded /out/usr/lib/swtpm/*.so*
 
 # build tpm2-tss, it is needed by tpm2-tools
 WORKDIR /tpm2-tss
@@ -36,6 +38,7 @@ RUN ./bootstrap && \
     make -j$(nproc) && \
     make install
 RUN cp /usr/local/lib/libtss2* /out/usr/lib/
+RUN strip --strip-unneeded /out/usr/lib/libtss2*.so*
 
 # build tpm2-tools, it is needed by ptpm
 WORKDIR /tpm2-tools
@@ -47,6 +50,7 @@ RUN ./bootstrap && \
     make -j$(nproc)
 RUN cp lib/.libs/libcommon.so* /out/usr/lib/
 RUN cp tools/.libs/tpm2 /out/usr/bin/
+RUN strip --strip-unneeded /out/usr/lib/*.so*
 
 # Build vtpm
 WORKDIR /vtpm-build
@@ -67,6 +71,11 @@ COPY Makefile /ptpm-build/
 COPY src/ /ptpm-build/src
 COPY proto/ /ptpm-build/proto
 RUN make -j$(nproc) && cp ptpm /out/usr/bin/
+RUN strip --strip-unneeded /out/usr/bin/ptpm
+
+# remove static libraries and libtool libraries
+RUN find /out/usr/lib/ -name '*.la' -delete
+RUN find /out/usr/lib/ -name '*.a' -delete
 
 FROM scratch
 COPY --from=build /out/ /
