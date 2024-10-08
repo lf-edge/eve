@@ -13,6 +13,15 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
+const (
+	// LegacyBIOS Legacy BIOS binary firmware
+	LegacyBIOS = "/usr/lib/xen/boot/seabios.bin"
+	// OVMFBIOSCombined UEFI OVMF BIOS firmware (code + variables)
+	OVMFBIOSCombined = "/usr/lib/xen/boot/ovmf.bin"
+	// OVMFBIOSCode UEFI OVMF BIOS firmware (only code)
+	OVMFBIOSCode = "/usr/lib/xen/boot/OVMF_CODE.fd"
+)
+
 // MaybeAddDomainConfig makes sure we have a DomainConfig
 // Note that it does not publish it since caller often tweaks it; caller must
 // call publishDomainConfig() when done with tweaks.
@@ -115,14 +124,18 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 		}
 		if dc.BootLoader == "" {
 			if runtime.GOARCH == "amd64" {
-				dc.BootLoader = "/usr/lib/xen/boot/seabios.bin"
+				dc.BootLoader = LegacyBIOS
 			} else {
-				dc.BootLoader = "/usr/lib/xen/boot/ovmf.bin"
+				dc.BootLoader = OVMFBIOSCombined
 			}
 		}
 	}
-	if dc.BootLoader == "" && (dc.VirtualizationModeOrDefault() == types.FML || runtime.GOARCH == "arm64") {
-		dc.BootLoader = "/usr/lib/xen/boot/OVMF_CODE.fd"
+	if dc.BootLoader == "" {
+		if dc.VirtualizationModeOrDefault() == types.FML {
+			dc.BootLoader = OVMFBIOSCode
+		} else if runtime.GOARCH == "arm64" {
+			dc.BootLoader = OVMFBIOSCombined
+		}
 	}
 	if ns != nil {
 		adapterCount := len(ns.AppNetAdapterList)
