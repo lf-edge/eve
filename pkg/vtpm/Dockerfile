@@ -66,9 +66,7 @@ RUN GO111MODULE=on CGO_ENABLED=0 go build -ldflags "-s -w -X=main.Version=${GOPK
 
 # Build ptpm
 WORKDIR /ptpm-build
-COPY Makefile /ptpm-build/
-COPY src/ /ptpm-build/src
-COPY proto/ /ptpm-build/proto
+ADD ptpm/ /ptpm-build
 RUN make -j$(nproc) && cp ptpm /out/usr/bin/
 
 FROM scratch
