@@ -16,4 +16,6 @@ profile swtpm @{exec_path} {
     # to save/load tpm state for vms.
     owner /persist/swtpm/{,*,**}    rwk,
 
+    # allow swtpm to receive term signal from vtpm
+    signal (receive) set=(term) peer=vtpm,
 }
