@@ -40,8 +40,11 @@ RUN cp /usr/local/lib/libtss2* /out/usr/lib/
 # build tpm2-tools, it is needed by ptpm
 WORKDIR /tpm2-tools
 ADD --keep-git-dir=true https://github.com/tpm2-software/tpm2-tools.git#5.5 /tpm2-tools
-COPY patch/patch-tpm2-tools.diff .
-RUN patch -p1 < patch-tpm2-tools.diff
+COPY patches/ /patches/
+RUN for patch in /patches/*.patch; do \
+        echo "Applying $patch"; \
+        patch -d /tpm2-tools -p1 < "$patch" || exit 1 ; \
+    done
 RUN ./bootstrap && \
     ./configure && \
     make -j$(nproc)
