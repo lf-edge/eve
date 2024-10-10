@@ -23,4 +23,7 @@ profile vtpm @{exec_path} {
 
     # allow executing swtpm
     /usr/bin/swtpm                  Px,
+
+    # allow vtpm to send term signal to swtpm
+    signal (send) peer=swtpm,
 }
