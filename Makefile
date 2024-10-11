@@ -342,6 +342,9 @@ COMPARE_SOURCE=./tools/compare-sbom-sources
 GET_DEPS_DIR=./tools/get-deps
 GET_DEPS=./tools/get-deps/get-deps
 
+DOCKERFILE_FROM_CHECKER_DIR=./tools/dockerfile-from-checker/
+DOCKERFILE_FROM_CHECKER=$(DOCKERFILE_FROM_CHECKER_DIR)/dockerfile-from-checker
+
 SYFT_VERSION:=v0.85.0
 SYFT_IMAGE:=docker.io/anchore/syft:$(SYFT_VERSION)
 
@@ -451,6 +454,30 @@ pillar-%: $(GOBUILDER) | $(DIST)
 
 clean:
 	rm -rf $(DIST) images/out pkg-deps.mk
+
+$(DOCKERFILE_FROM_CHECKER): $(DOCKERFILE_FROM_CHECKER)
+	make -C $(DOCKERFILE_FROM_CHECKER_DIR)
+
+.PHONY: check-docker-hashes-consistency
+check-docker-hashes-consistency: $(DOCKERFILE_FROM_CHECKER)
+	@echo "Checking Dockerfiles for inconsistencies"
+	$(DOCKERFILE_FROM_CHECKER) ./ \
+		-i ./eve-tools/bpftrace-compiler/Dockerfile \
+		-i ./eve-tools/bpftrace-compiler/root/Dockerfile \
+		-i pkg/bsp-imx/Dockerfile \
+		-i pkg/vtpm/Dockerfile \
+		-i pkg/optee-os/Dockerfile \
+		-i pkg/installer/Dockerfile \
+		-i pkg/wwan/Dockerfile \
+		-i pkg/wlan/Dockerfile \
+		-i pkg/watchdog/Dockerfile \
+		-i pkg/uefi/Dockerfile \
+		-i pkg/acrn/Dockerfile \
+		-i pkg/acrn-kernel/Dockerfile \
+		-i pkg/u-boot/Dockerfile \
+		-i pkg/udev/Dockerfile \
+		-i pkg/xen-tools/Dockerfile \
+		-i pkg/xen/Dockerfile
 
 yetus:
 	@echo Running yetus
@@ -1065,28 +1092,29 @@ help:
 	@echo "all the execution is done via qemu."
 	@echo
 	@echo "Commonly used maintenance and development targets:"
-	@echo "   build-vm       prepare a build VM for EVE in qcow2 format"
-	@echo "   test           run EVE tests"
-	@echo "   test-profiling run pillar tests with memory profiler"
-	@echo "   clean          clean build artifacts in a current directory (doesn't clean Docker)"
-	@echo "   release        prepare branch for a release (VERSION=x.y.z required)"
-	@echo "   rc-release     make a rc release on a current branch (must be a release branch)"
-	@echo "                  If the latest lts tag is 14.4.0 then running make rc-release will"
-	@echo "                  create 14.4.0-rc1 tag and if the latest tag is 14.4.1-lts then"
-	@echo "   lts-release    make a lts release on a current branch (must be a release branch)"
-	@echo "                  If the latest lts tag is 14.4.0-lts then running make lts-release"
-	@echo "                  will create a new lts release 14.4.1-lts"
-	@echo "   proto          generates Go and Python source from protobuf API definitions"
-	@echo "   proto-vendor   update vendored API in packages that require it (e.g. pkg/pillar)"
-	@echo "   shell          drop into docker container setup for Go development"
-	@echo "   yetus          run Apache Yetus to check the quality of the source tree"
-	@echo "   mini-yetus     run Apache Yetus to check the quality of the source tree"
-	@echo "                  only on the files that have changed in the source branch"
-	@echo "                  compared to the destination branch, by default master is"
-	@echo "                  the source and current branch the destination, but this"
-	@echo "                  can be changed by setting the MYETUS_SBRANCH and"
-	@echo "                  MYETUS_DBRANCH, in addition if MYETUS_VERBOSE is set to"
-	@echo "                  Y, the output will be echoed to the console"
+	@echo "   build-vm                         prepare a build VM for EVE in qcow2 format"
+	@echo "   test                             run EVE tests"
+	@echo "   test-profiling                   run pillar tests with memory profiler"
+	@echo "   clean                            clean build artifacts in a current directory (doesn't clean Docker)"
+	@echo "   release                          prepare branch for a release (VERSION=x.y.z required)"
+	@echo "   rc-release                       make a rc release on a current branch (must be a release branch)"
+	@echo "                                    If the latest lts tag is 14.4.0 then running make rc-release will"
+	@echo "                                    create 14.4.0-rc1 tag and if the latest tag is 14.4.1-lts then"
+	@echo "   lts-release                      make a lts release on a current branch (must be a release branch)"
+	@echo "                                    If the latest lts tag is 14.4.0-lts then running make lts-release"
+	@echo "                                    will create a new lts release 14.4.1-lts"
+	@echo "   proto                            generates Go and Python source from protobuf API definitions"
+	@echo "   proto-vendor                     update vendored API in packages that require it (e.g. pkg/pillar)"
+	@echo "   shell                            drop into docker container setup for Go development"
+	@echo "   yetus                            run Apache Yetus to check the quality of the source tree"
+	@echo "   mini-yetus                       run Apache Yetus to check the quality of the source tree"
+	@echo "                                    only on the files that have changed in the source branch"
+	@echo "                                    compared to the destination branch, by default master is"
+	@echo "                                    the source and current branch the destination, but this"
+	@echo "                                    can be changed by setting the MYETUS_SBRANCH and"
+	@echo "                                    MYETUS_DBRANCH, in addition if MYETUS_VERBOSE is set to"
+	@echo "                                    Y, the output will be echoed to the console"
+	@echo "   check-docker-hashes-consistency  check for Dockerfile image inconsistencies"
 	@echo
 	@echo "Seldom used maintenance and development targets:"
 	@echo "   bump-eve-api   bump eve-api in all subprojects"
