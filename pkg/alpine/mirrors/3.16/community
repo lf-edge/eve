@@ -3,7 +3,9 @@ cereal
 cni-plugins
 fio
 fmt
+hwinfo-libs
 hwinfo
+i2c-tools
 i2c-tools-dev
 iw
 json-glib
@@ -53,7 +55,13 @@ tpm2-tss
 tpm2-tss-dev
 tpm2-tss-esys
 tpm2-tss-fapi
+tpm2-tss-mu
 tpm2-tss-rc
 tpm2-tss-sys
+tpm2-tss-tcti-cmd
+tpm2-tss-tcti-device
+tpm2-tss-tcti-mssim
+tpm2-tss-tcti-pcap
+tpm2-tss-tcti-swtpm
 tpm2-tss-tctildr
 yq
