@@ -372,6 +372,9 @@ const qemuNetTemplate = `
   br = "{{.Bridge}}"
   script = "/etc/xen/scripts/qemu-ifup"
   downscript = "no"
+{{- if eq .Driver "virtio-net-pci" }}
+  vhost = "on"
+{{- end}}
 
 [device "net{{.NetID}}"]
   driver = "{{.Driver}}"
