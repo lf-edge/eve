@@ -458,26 +458,19 @@ clean:
 $(DOCKERFILE_FROM_CHECKER): $(DOCKERFILE_FROM_CHECKER_DIR)/*.go $(DOCKERFILE_FROM_CHECKER_DIR)/go.*
 	make -C $(DOCKERFILE_FROM_CHECKER_DIR)
 
+# this next section checks that the FROM hashes for any image in any dockerfile anywhere here are consistent.
+# For example, one Dockerfile has foo:abc and the next has foo:def, it will flag them.
+# These are the packages that we are ignoring for now
+IGNORE_DOCKERFILE_HASHES_PKGS=bsp-imx vtpm optee-os installer wwan wlan watchdog uefi acrn acrn-kernel u-boot udev xen-tools xen alpine
+IGNORE_DOCKERFILE_HASHES_EVE_TOOLS=bpftrace-compiler
+
+IGNORE_DOCKERFILE_HASHES_PKGS_ARGS=$(foreach pkg,$(IGNORE_DOCKERFILE_HASHES_PKGS),-i pkg/$(pkg)/Dockerfile)
+IGNORE_DOCKERFILE_HASHES_EVE_TOOLS_ARGS=$(foreach tool,$(IGNORE_DOCKERFILE_HASHES_EVE_TOOLS),$(addprefix -i ,$(shell find eve-tools/$(tool) -path '*/vendor' -prune -o -name Dockerfile -print)))
+
 .PHONY: check-docker-hashes-consistency
 check-docker-hashes-consistency: $(DOCKERFILE_FROM_CHECKER)
 	@echo "Checking Dockerfiles for inconsistencies"
-	$(DOCKERFILE_FROM_CHECKER) ./ \
-		-i ./eve-tools/bpftrace-compiler/Dockerfile \
-		-i ./eve-tools/bpftrace-compiler/root/Dockerfile \
-		-i pkg/bsp-imx/Dockerfile \
-		-i pkg/vtpm/Dockerfile \
-		-i pkg/optee-os/Dockerfile \
-		-i pkg/installer/Dockerfile \
-		-i pkg/wwan/Dockerfile \
-		-i pkg/wlan/Dockerfile \
-		-i pkg/watchdog/Dockerfile \
-		-i pkg/uefi/Dockerfile \
-		-i pkg/acrn/Dockerfile \
-		-i pkg/acrn-kernel/Dockerfile \
-		-i pkg/u-boot/Dockerfile \
-		-i pkg/udev/Dockerfile \
-		-i pkg/xen-tools/Dockerfile \
-		-i pkg/xen/Dockerfile
+	$(DOCKERFILE_FROM_CHECKER) ./ $(IGNORE_DOCKERFILE_HASHES_PKGS_ARGS) $(IGNORE_DOCKERFILE_HASHES_EVE_TOOLS_ARGS)
 
 yetus:
 	@echo Running yetus
