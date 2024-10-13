@@ -453,7 +453,7 @@ pillar-%: $(GOBUILDER) | $(DIST)
 clean:
 	rm -rf $(DIST) images/out pkg-deps.mk
 
-$(DOCKERFILE_FROM_CHECKER): $(DOCKERFILE_FROM_CHECKER)
+$(DOCKERFILE_FROM_CHECKER): $(DOCKERFILE_FROM_CHECKER_DIR)/*.go $(DOCKERFILE_FROM_CHECKER_DIR)/go.*
 	make -C $(DOCKERFILE_FROM_CHECKER_DIR)
 
 .PHONY: check-docker-hashes-consistency
