@@ -187,7 +187,7 @@ func doAppNet(status, appstr string, isSummary bool) string {
 		}
 
 		fmt.Printf("\n = bridge: %s, VIF: %s, VIF IP: %v, VIF MAC: %s\n",
-			item.Bridge, item.Vif, item.AllocatedIPv4Addr, item.Mac)
+			item.Bridge, item.Vif, item.AssignedAddresses.IPv4Addrs, item.Mac)
 
 		for _, portLL := range niStatus.Ports {
 			var portIPs []net.IP
@@ -205,23 +205,18 @@ func doAppNet(status, appstr string, isSummary bool) string {
 			continue
 		}
 
-		var appIP string
-		if item.AllocatedIPv4Addr != nil {
-			appIP = item.AllocatedIPv4Addr.String()
+		var appIP []string
+		for _, assignedip := range item.AssignedAddresses.IPv4Addrs {
+			appIP = append(appIP, assignedip.Address.String())
 		}
 		appMAC := item.Mac.String()
 
-		if appIP != "" {
-			printColor("\n - ping app ip address: "+appIP, colorRED)
-			pingIPHost(appIP, "")
+		if len(appIP) > 0 {
+			joinedAppIPs := strings.Join(appIP, ", ")
+			printColor("\n - ping app ip address: "+joinedAppIPs, colorRED)
 		}
 
 		if niStatus.Type != types.NetworkInstanceTypeSwitch {
-			if appIP != "" {
-				printColor("\n - check open ports for "+appIP, colorRED)
-				// TODO: nmap package
-			}
-
 			files, err := listRecursiveFiles("/run/zedrouter", ".inet")
 			if err == nil {
 				printColor("\n - dhcp host file:\n", colorGREEN)
@@ -255,8 +250,10 @@ func doAppNet(status, appstr string, isSummary bool) string {
 				}
 			}
 
-			if appIP != "" {
-				getAppNetTable(appIP, &niStatus)
+			if len(appIP) > 0 {
+				for _, ip := range appIP {
+					getAppNetTable(ip, &niStatus)
+				}
 			}
 		}
 
@@ -555,8 +552,8 @@ func getAppIPs(status string) ([]string, uuid.UUID) {
 	var appIPs []string
 	appUUID := appStatus.UUIDandVersion.UUID
 	for _, item := range appStatus.AppNetAdapterList {
-		if item.AllocatedIPv4Addr != nil {
-			appIPs = append(appIPs, item.AllocatedIPv4Addr.String())
+		for _, assignedip := range item.AssignedAddresses.IPv4Addrs {
+			appIPs = append(appIPs, assignedip.Address.String())
 		}
 	}
 	return appIPs, appUUID
