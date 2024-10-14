@@ -1,6 +1,6 @@
 # image was bootstraped using FROM lfedge/eve-alpine-base:fad44e3702708a8d044663a20fd98d933dddb41e AS cache
 # to update please see https://github.com/lf-edge/eve/blob/master/docs/BUILD.md#how-to-update-eve-alpine-package
-FROM lfedge/eve-alpine:2ed33236f1eea746532f612d6c4b7779c5da2193 AS cache
+FROM lfedge/eve-alpine:c114cf1d3ea51534f061f9aa949beb6ac5c12fb3 AS cache
 
 ARG ALPINE_VERSION=3.16
 # this is only needed once, when this package
