@@ -37,7 +37,7 @@ HV=$(HV_DEFAULT)
 # Enable development build (disabled by default)
 DEV=n
 # How large to we want the disk to be in Mb
-MEDIA_SIZE=32768
+MEDIA_SIZE?=32768
 # Image type for final disk images
 IMG_FORMAT=qcow2
 ifdef LIVE_UPDATE
@@ -234,7 +234,7 @@ QEMU_OPTS_NET1_FIRST_IP=192.168.1.10
 QEMU_OPTS_NET2=192.168.2.0/24
 QEMU_OPTS_NET2_FIRST_IP=192.168.2.10
 
-QEMU_MEMORY:=4096
+QEMU_MEMORY?=4096
 QEMU_EVE_SERIAL?=31415926
 
 PFLASH_amd64=y
@@ -341,6 +341,9 @@ COMPARE_SOURCE=./tools/compare-sbom-sources
 # tool for scan docker package dependencies
 GET_DEPS_DIR=./tools/get-deps
 GET_DEPS=./tools/get-deps/get-deps
+
+DOCKERFILE_FROM_CHECKER_DIR=./tools/dockerfile-from-checker/
+DOCKERFILE_FROM_CHECKER=$(DOCKERFILE_FROM_CHECKER_DIR)/dockerfile-from-checker
 
 SYFT_VERSION:=v0.85.0
 SYFT_IMAGE:=docker.io/anchore/syft:$(SYFT_VERSION)
@@ -449,6 +452,23 @@ pillar-%: $(GOBUILDER) | $(DIST)
 
 clean:
 	rm -rf $(DIST) images/out pkg-deps.mk
+
+$(DOCKERFILE_FROM_CHECKER): $(DOCKERFILE_FROM_CHECKER_DIR)/*.go $(DOCKERFILE_FROM_CHECKER_DIR)/go.*
+	make -C $(DOCKERFILE_FROM_CHECKER_DIR)
+
+# this next section checks that the FROM hashes for any image in any dockerfile anywhere here are consistent.
+# For example, one Dockerfile has foo:abc and the next has foo:def, it will flag them.
+# These are the packages that we are ignoring for now
+IGNORE_DOCKERFILE_HASHES_PKGS=bsp-imx vtpm optee-os installer wwan wlan watchdog uefi acrn acrn-kernel u-boot udev xen-tools xen alpine
+IGNORE_DOCKERFILE_HASHES_EVE_TOOLS=bpftrace-compiler
+
+IGNORE_DOCKERFILE_HASHES_PKGS_ARGS=$(foreach pkg,$(IGNORE_DOCKERFILE_HASHES_PKGS),-i pkg/$(pkg)/Dockerfile)
+IGNORE_DOCKERFILE_HASHES_EVE_TOOLS_ARGS=$(foreach tool,$(IGNORE_DOCKERFILE_HASHES_EVE_TOOLS),$(addprefix -i ,$(shell find eve-tools/$(tool) -path '*/vendor' -prune -o -name Dockerfile -print)))
+
+.PHONY: check-docker-hashes-consistency
+check-docker-hashes-consistency: $(DOCKERFILE_FROM_CHECKER)
+	@echo "Checking Dockerfiles for inconsistencies"
+	$(DOCKERFILE_FROM_CHECKER) ./ $(IGNORE_DOCKERFILE_HASHES_PKGS_ARGS) $(IGNORE_DOCKERFILE_HASHES_EVE_TOOLS_ARGS)
 
 yetus:
 	@echo Running yetus
@@ -887,20 +907,11 @@ bump-eve-api:
 
 .PHONY: proto-api-%
 
-check-patch-%:
-	@if ! echo $* | grep -Eq '^[0-9]+\.[0-9]+$$'; then echo "ERROR: must be on a release branch X.Y"; exit 1; fi
-	@if ! echo $(EVE_TREE_TAG) | grep -Eq '^$*.[0-9]+-'; then echo "ERROR: can't find previous release's tag X.Y.Z"; exit 1; fi
+rc-release:
+	./tools/rc-release.sh
 
-patch-%: check-patch-%
-	@$(eval PATCH_TAG:=$*.$(shell echo $$((`echo $(EVE_TREE_TAG) | sed -e 's#-.*$$##' | cut -f3 -d.` + 1))))
-
-patch-%-stable: patch-%
-	@$(eval PATCH_TAG:=$(PATCH_TAG)-lts)
-
-patch: patch-$(REPO_BRANCH)
-	@git tag -a -m"Release $(PATCH_TAG)" $(PATCH_TAG)
-	@echo "Done tagging $(PATCH_TAG) patch release. Check the branch with git log and then run"
-	@echo "  git push origin $(REPO_BRANCH) $(PATCH_TAG)"
+lts-release:
+	./tools/lts-release.sh
 
 release:
 	@bail() { echo "ERROR: $$@" ; exit 1 ; } ;\
@@ -1072,23 +1083,29 @@ help:
 	@echo "all the execution is done via qemu."
 	@echo
 	@echo "Commonly used maintenance and development targets:"
-	@echo "   build-vm       prepare a build VM for EVE in qcow2 format"
-	@echo "   test           run EVE tests"
-	@echo "   test-profiling run pillar tests with memory profiler"
-	@echo "   clean          clean build artifacts in a current directory (doesn't clean Docker)"
-	@echo "   release        prepare branch for a release (VERSION=x.y.z required)"
-	@echo "   patch          make a patch release on a current branch (must be a release branch)"
-	@echo "   proto          generates Go and Python source from protobuf API definitions"
-	@echo "   proto-vendor   update vendored API in packages that require it (e.g. pkg/pillar)"
-	@echo "   shell          drop into docker container setup for Go development"
-	@echo "   yetus          run Apache Yetus to check the quality of the source tree"
-	@echo "   mini-yetus     run Apache Yetus to check the quality of the source tree"
-	@echo "                  only on the files that have changed in the source branch"
-	@echo "                  compared to the destination branch, by default master is"
-	@echo "                  the source and current branch the destination, but this"
-	@echo "                  can be changed by setting the MYETUS_SBRANCH and"
-	@echo "                  MYETUS_DBRANCH, in addition if MYETUS_VERBOSE is set to"
-	@echo "                  Y, the output will be echoed to the console"
+	@echo "   build-vm                         prepare a build VM for EVE in qcow2 format"
+	@echo "   test                             run EVE tests"
+	@echo "   test-profiling                   run pillar tests with memory profiler"
+	@echo "   clean                            clean build artifacts in a current directory (doesn't clean Docker)"
+	@echo "   release                          prepare branch for a release (VERSION=x.y.z required)"
+	@echo "   rc-release                       make a rc release on a current branch (must be a release branch)"
+	@echo "                                    If the latest lts tag is 14.4.0 then running make rc-release will"
+	@echo "                                    create 14.4.0-rc1 tag and if the latest tag is 14.4.1-lts then"
+	@echo "   lts-release                      make a lts release on a current branch (must be a release branch)"
+	@echo "                                    If the latest lts tag is 14.4.0-lts then running make lts-release"
+	@echo "                                    will create a new lts release 14.4.1-lts"
+	@echo "   proto                            generates Go and Python source from protobuf API definitions"
+	@echo "   proto-vendor                     update vendored API in packages that require it (e.g. pkg/pillar)"
+	@echo "   shell                            drop into docker container setup for Go development"
+	@echo "   yetus                            run Apache Yetus to check the quality of the source tree"
+	@echo "   mini-yetus                       run Apache Yetus to check the quality of the source tree"
+	@echo "                                    only on the files that have changed in the source branch"
+	@echo "                                    compared to the destination branch, by default master is"
+	@echo "                                    the source and current branch the destination, but this"
+	@echo "                                    can be changed by setting the MYETUS_SBRANCH and"
+	@echo "                                    MYETUS_DBRANCH, in addition if MYETUS_VERBOSE is set to"
+	@echo "                                    Y, the output will be echoed to the console"
+	@echo "   check-docker-hashes-consistency  check for Dockerfile image inconsistencies"
 	@echo
 	@echo "Seldom used maintenance and development targets:"
 	@echo "   bump-eve-api   bump eve-api in all subprojects"

@@ -165,18 +165,18 @@ do_installer_iso() {
 
 do_installer_net() {
   # net installer depends on installer.iso
-  rm -rf /parts
-  mkdir -p /parts
+  rm -rf /installer /parts
+  mkdir -p /installer
+  cp /bits/ipxe.efi.cfg /installer
+  mkdir -p /installer/EFI/BOOT
+  cp /bits/EFI/BOOT/BOOT*EFI /installer/EFI/BOOT/
   /make-efi installer
-  mv /output.iso /parts/installer.iso
+  mv /output.iso /installer/installer.iso
 
   # all of this is taken straight from ../../tools/makenet.sh
   # it should be unified somehow
-  cp /bits/ipxe.efi.cfg /parts
-   mkdir -p /parts/EFI/BOOT
-   cp /bits/EFI/BOOT/BOOT*EFI /parts/EFI/BOOT/
-   # by default, BOOT*.EFI looks for grub.cfg in its source location at EFI/BOOT/grub.cfg, so put it there
-   cat <<'EOF' > /parts/EFI/BOOT/grub.cfg
+  # by default, BOOT*.EFI looks for grub.cfg in its source location at EFI/BOOT/grub.cfg, so put it there
+  cat <<'EOF' > /installer/EFI/BOOT/grub.cfg
 echo "Downloading installer. This may take some time. Please wait patiently."
 loopback loop0 ($cmddevice)/installer.iso
 set root=loop0
@@ -184,7 +184,7 @@ set isnetboot=true
 export isnetboot
 configfile ($root)/EFI/BOOT/grub.cfg
 EOF
-  tar -C /parts -chvf /output.tar .
+  tar -C /installer -chvf /output.tar .
   dump /output.tar installer.net
 }
 

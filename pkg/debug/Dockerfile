@@ -8,34 +8,34 @@
 # has a fast path for stack unwinding. This also happens
 # to be a perfect place to put any other kind of debug info
 # into the package: see abuild/etc/abuild.conf.
-FROM lfedge/eve-recovertpm:0da17f65aba4fb09c83944cf5847dd7b523118b4 as recovertpm
+FROM lfedge/eve-recovertpm:0da17f65aba4fb09c83944cf5847dd7b523118b4 AS recovertpm
 FROM lfedge/eve-bpftrace:64f87b9dfce42524b0364159a6cc3b88ae3445b2 AS bpftrace
-FROM lfedge/eve-alpine:82df60e43ab9f8c935584b8c7b4d0a4b0271d608 as build
-ENV BUILD_PKGS abuild curl tar make linux-headers patch g++ git gcc gpg ncurses-dev autoconf openssl-dev zlib-dev
+FROM lfedge/eve-alpine:82df60e43ab9f8c935584b8c7b4d0a4b0271d608 AS build
+ENV BUILD_PKGS="abuild curl tar make linux-headers patch g++ git gcc gpg ncurses-dev autoconf openssl-dev zlib-dev"
 # Feel free to add additional packages here, but be aware that
 # EVE's rootfs image can be no larger than 300Mb (and don't
 # forget to check on all supported architectures: e.g. arm64
 # binaries are typically larger and amd64 ones).
 # RUN apk add --no-cache gdb valgrind
-ENV PKGS openssl tini util-linux ca-certificates pciutils usbutils vim tcpdump perf strace iproute2-minimal curl zlib
+ENV PKGS="openssl tini util-linux ca-certificates pciutils usbutils vim tcpdump perf strace iproute2-minimal curl zlib"
 
 # These packages are not available on the riscv arch, so I have no idea how
 # deliver those, but still install them on other archs.
-ENV PKGS_amd64 procps tar dmidecode iptables dhcpcd tio socat
-ENV PKGS_arm64 procps tar dmidecode iptables dhcpcd tio socat
+ENV PKGS_amd64="procps tar dmidecode iptables dhcpcd tio socat"
+ENV PKGS_arm64="procps tar dmidecode iptables dhcpcd tio socat"
 
 RUN eve-alpine-deploy.sh
 
-ENV LSHW_VERSION 02.19.2
-ENV OPENSSH_VERSION 9.8p1
+ENV LSHW_VERSION="02.19.2"
+ENV OPENSSH_VERSION="9.8p1"
 
 # setting up building account
 RUN adduser -G abuild -D builder || :
 RUN su builder -c 'abuild-keygen -a -n'
 
 COPY --chown=builder:abuild abuild/ /
-ENV MUSL_VERSION v1.2.3
-ENV DISTFILES_MIRROR /tmp/mirror
+ENV MUSL_VERSION="v1.2.3"
+ENV DISTFILES_MIRROR="/tmp/mirror"
 ADD --chown=builder:abuild https://git.musl-libc.org/cgit/musl/snapshot/${MUSL_VERSION}.tar.gz ${DISTFILES_MIRROR}/musl-${MUSL_VERSION}.tar.gz
 RUN su builder -c 'cd /musl && abuild checksum && abuild -r'
 
@@ -53,10 +53,10 @@ COPY lshw/ lshw-B.${LSHW_VERSION}/
 WORKDIR /lshw-B.${LSHW_VERSION}
 
 RUN for patch in *.patch; do \
-   patch -p1 < "$patch"; \
- done && \
- make -C src RPM_OPT_FLAGS=-DNONLS static && \
- cp src/lshw-static /out/usr/bin/lshw && strip /out/usr/bin/lshw
+    patch -p1 < "$patch"; \
+    done && \
+    make -C src RPM_OPT_FLAGS=-DNONLS static && \
+    cp src/lshw-static /out/usr/bin/lshw && strip /out/usr/bin/lshw
 
 # building hexedit
 WORKDIR /tmp/hexedit/hexedit-1.5

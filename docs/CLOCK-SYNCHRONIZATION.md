@@ -69,9 +69,9 @@ clock drifts when NTP is not available, one of the following options are
 recommended:
 
 - Use the virtual PTP kvm clock. EVE enables the chrony daemon
-  automatically for containers when the environment variable
-  EVE_ENABLE_CHRONY=1 is defined. This variable can be setup for each Edge
-  Application through the remote controller. For regulars VMs, the chrony
+  automatically for containers (it can be disabled defining the environment
+  variable EVE_ENABLE_CHRONY=0, this variable can be setup for each Edge
+  Application through the remote controller). For regulars VMs, the chrony
   daemon must be installed and configured to sync the guest's clock with
   the device /dev/ptp0 or /dev/ptp_kvm. The kernel must also support the
   virtual PTP device driver.
