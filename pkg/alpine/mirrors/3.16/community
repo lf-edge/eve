@@ -14,6 +14,7 @@ libbpf-dev
 libgudev-dev
 librados
 librbd
+libtss2-tcti-armbd
 libvirt
 libvirt-client
 libvirt-common-drivers
