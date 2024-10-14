@@ -37,7 +37,7 @@ HV=$(HV_DEFAULT)
 # Enable development build (disabled by default)
 DEV=n
 # How large to we want the disk to be in Mb
-MEDIA_SIZE=32768
+MEDIA_SIZE?=32768
 # Image type for final disk images
 IMG_FORMAT=qcow2
 ifdef LIVE_UPDATE
@@ -234,7 +234,7 @@ QEMU_OPTS_NET1_FIRST_IP=192.168.1.10
 QEMU_OPTS_NET2=192.168.2.0/24
 QEMU_OPTS_NET2_FIRST_IP=192.168.2.10
 
-QEMU_MEMORY:=4096
+QEMU_MEMORY?=4096
 QEMU_EVE_SERIAL?=31415926
 
 PFLASH_amd64=y
