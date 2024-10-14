@@ -508,7 +508,7 @@ func newKvm() Hypervisor {
 			ctrdContext:  *ctrdCtx,
 			devicemodel:  "pc-q35-3.1",
 			dmExec:       "/usr/lib/xen/bin/qemu-system-x86_64",
-			dmArgs:       []string{"-display", "none", "-S", "-no-user-config", "-nodefaults", "-no-shutdown", "-serial", "chardev:charserial0", "-no-hpet"},
+			dmArgs:       []string{"-display", "none", "-S", "-no-user-config", "-nodefaults", "-no-shutdown", "-serial", "chardev:charserial0", "-machine", "hpet=off"},
 			dmCPUArgs:    []string{"-cpu", "host"},
 			dmFmlCPUArgs: []string{"-cpu", "host,hv_time,hv_relaxed,hv_vendor_id=eveitis,hypervisor=off,kvm=off"},
 		}
