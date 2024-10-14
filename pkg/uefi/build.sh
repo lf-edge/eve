@@ -26,8 +26,6 @@ case $(uname -m) in
      x86_64) build -b ${TARGET} -t GCC5 -a X64 -p OvmfPkg/OvmfPkgX64.dsc -D TPM_ENABLE=TRUE -D TPM_CONFIG_ENABLE=TRUE
              cp Build/OvmfX64/${TARGET}_*/FV/OVMF*.fd .
              build -b ${TARGET} -t GCC5 -a X64 -p OvmfPkg/OvmfXen.dsc
-             BaseTools/Source/C/bin/EfiRom -f 0x1F96 -i 0x0778 -e Build/OvmfX64/${TARGET}_*/X64/IgdAssignmentDxe.efi
-             cp Build/OvmfX64/${TARGET}_*/X64/IgdAssignmentDxe.rom IgdAssignmentDxe.rom
              cp Build/OvmfXen/${TARGET}_*/FV/OVMF.fd OVMF_PVH.fd
              ;;
           *) echo "Unsupported architecture $(uname). Bailing."

@@ -67,9 +67,6 @@ RUN rm -rf /out && mkdir /out && cp /edk2/OVMF*.fd /out
 
 # some architecture specific cases. There probably is a cleaner dockerfile-native way to do this.
 RUN case $(uname -m) in \
-    x86_64) \
-        cp /edk2/*.rom /out/ \
-        ;; \
     aarch64) \
         cp -r /rpi /out/ \
         ;; \
