@@ -11,23 +11,11 @@ find_pids_of_cgroup() {
     path=$1
     tempfile=$2
 
-    # Get a copy of the list of tasks in the cgroup, not to block the cgroup while handling
-    tmp_tasks=$(mktemp)
-    cat "$path"/tasks > "$tmp_tasks"
-
-    # List all tasks, filter out unique PIDs
-    while read -r tid; do
-      if [ -z "$tid" ]; then
-        continue
-      fi
-      # Find the main PID for each TID
-      pid=$(awk '/^Tgid:/ {print $2}' "/proc/$tid/status" 2>/dev/null)
-      if [ -n "$pid" ]; then
+    # Get the PIDs of the cgroup
+    pids=$(cat "$path"/cgroup.procs)
+    for pid in $pids; do
         echo "$pid" >> "$tempfile"
-      fi
-    done < "$tmp_tasks"
-
-    rm "$tmp_tasks"
+    done
 
     # Recurse into subdirectories
     for subdir in "$path"/*/; do
