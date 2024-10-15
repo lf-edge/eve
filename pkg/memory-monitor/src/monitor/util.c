@@ -143,3 +143,66 @@ int convert_mb_to_bytes_signed(long mb, long *bytes_out) {
     }
     return 0;
 }
+
+char *get_tail(const char *file_path, size_t num_lines) {
+    // Open the file
+    FILE *file = fopen(file_path, "r");
+    if (file == NULL) {
+        syslog(LOG_ERR, "Failed to open file: %s", strerror(errno));
+        return NULL;
+    }
+
+    // Seek to the end of the file
+    fseek(file, 0, SEEK_END);
+    long file_size = ftell(file);
+    if (file_size == -1) {
+        syslog(LOG_ERR, "Failed to get file size: %s", strerror(errno));
+        fclose(file);
+        return NULL;
+    }
+
+    // Start reading the file backwards to find the last `num_lines` lines
+    int lines_read = 0;
+    long i;
+    char c;
+    for (i = file_size - 1; i >= 0; i--) {
+        fseek(file, i, SEEK_SET);
+        c = fgetc(file);
+        if (c == '\n') {
+            lines_read++;
+            if (lines_read == num_lines + 1) { // +1 to include the current line
+                break;
+            }
+        }
+    }
+
+    // If we didn't find enough lines, reset i to start of file
+    if (i < 0) {
+        i = 0;
+    } else {
+        i += 2; // Move past the '\n' we stopped at
+    }
+
+    // Allocate memory for the buffer to hold the result
+    size_t buffer_size = file_size - i + 1; // Include space for null terminator
+    char *buffer = (char *) malloc(buffer_size);
+    if (buffer == NULL) {
+        syslog(LOG_ERR, "Failed to allocate memory: %s", strerror(errno));
+        fclose(file);
+        return NULL;
+    }
+
+    // Read from the file from the correct position
+    fseek(file, i, SEEK_SET);
+    size_t bytes_read = fread(buffer, 1, buffer_size - 1, file);
+    if (bytes_read != buffer_size - 1) {
+        syslog(LOG_ERR, "Failed to read file: %s", strerror(errno));
+        free(buffer);
+        fclose(file);
+        return NULL;
+    }
+    buffer[buffer_size - 1] = '\0'; // Null-terminate the buffer
+
+    fclose(file);
+    return buffer;
+}
