@@ -12,6 +12,7 @@
 
 #define HANDLER_SCRIPT "memory-monitor-handler.sh"
 
+// The paths here should correspond to the paths in src/monitor/memory-monitor-handler.sh
 #define LOG_DIR             "output"
 #define EVENT_LOG_FILE      "events.log"
 #define HANDLER_LOG_FILE    "memory-monitor-handler.log"
