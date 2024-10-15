@@ -6,6 +6,63 @@
 set -x
 set -e
 
+# The paths here should correspond to the paths in the src/monitor/config.h
+MEMORY_MONITOR_HANDLER_LOG_FILE="memory-monitor-handler.log"
+EVENT_LOG_FILE="events.log"
+PSI_FILE="psi.txt"
+
+MAX_OUTPUT_SIZE_MB=1 # 100 MB
+MAX_OUTPUT_SIZE_KB=$((MAX_OUTPUT_SIZE_MB * 1024))
+
+tar_old_output() {
+  # Tar directory with previous output to save space, but keep the latest output as is for easy access
+  # It's necessary as one output directory takes around 15 Mb. In archive, it's compressed to 1-2 Mb.
+  for dir in */; do
+    if [ "$dir" != "$timestamp/" ]; then
+      #Remove / from the end of the directory name
+      tar_name=${dir%/}
+      find "$dir" -type f -print0 | tar -czf "$tar_name.tar.gz" --files-from=-
+      rm -rf "$dir"
+    fi
+  done
+}
+
+cleanup() {
+  # Disable the script debug messages, so that the caller of the script can print the
+  # last lines of the log file that most likely contain the error message
+  set +x
+
+  cd output
+  tar_old_output
+  # Clean up the temporary file
+  rm "$sorted_eve_processes"
+  rm "$sorted_pillar_processes"
+
+  # Remove old archives, do not keep more than 100 MB of archives
+  total_size=$(du -s | awk '{print $1}') # Size in KB
+  # Subtract the size of the handler log file and convert it to KB
+  total_size=$((total_size - $(stat -c %s "$MEMORY_MONITOR_HANDLER_LOG_FILE") / 1024))
+  # Subtract the size of the psi.txt file (if it exists) as it size is regulated by the PSICollector
+  if [ -f "$PSI_FILE" ]; then
+    total_size=$((total_size - $(stat -c %s "$PSI_FILE") / 1024))
+  fi
+  while [ "$total_size" -gt "$MAX_OUTPUT_SIZE_KB" ]; do
+    found_archives=$(find . -type f -name "*.tar.gz" -print | sort -n)
+    if [ -z "$found_archives" ]; then
+      break
+    fi
+    oldest_archive=$(echo "$found_archives" | head -n 1)
+    rm "$oldest_archive"
+    # Remove the first line from the events.log file: it contains the oldest event info
+    sed -i '1d' "$EVENT_LOG_FILE"
+    total_size=$(du -s | awk '{print $1}')
+    total_size=$((total_size - $(stat -c %s "$MEMORY_MONITOR_HANDLER_LOG_FILE") / 1024))
+  done
+}
+
+# Trap the cleanup function
+trap cleanup EXIT
+
 # Define the function to recursively process each cgroup
 find_pids_of_cgroup() {
     path=$1
@@ -113,6 +170,12 @@ pillar_processes=$(mktemp)
 sorted_eve_processes=$(mktemp)
 sorted_pillar_processes=$(mktemp)
 
+# Create the output directory if necessary
+current_output_dir=$1
+# Get the timestamp from the directory name (it's the last part of the path)
+timestamp=$(basename "$current_output_dir")
+mkdir -p "$current_output_dir"
+
 # Process the cgroup and its subgroups
 find_pids_of_cgroup "$cgroup_eve" "$eve_processes"
 normalize_pids "$eve_processes" "$sorted_eve_processes"
@@ -125,12 +188,6 @@ rm "$pillar_processes"
 # Trigger a heap dump
 # TODO How to deal with the older eve versions that do not support the debug command?
 eve http-debug
-
-# Create the output directory if necessary
-current_output_dir=$1
-# Get the timestamp from the directory name (it's the last part of the path)
-timestamp=$(basename "$current_output_dir")
-mkdir -p "$current_output_dir"
 
 # ==== Handle the Pillar memory usage ====
 
@@ -155,41 +212,4 @@ eve http-debug stop
 
 ln -s /containers/services/pillar/rootfs/opt/zededa/bin/zedbox "$current_output_dir/zedbox"
 
-# Clean up the temporary file
-rm "$sorted_eve_processes"
-rm "$sorted_pillar_processes"
-
-# Tar directory with previous output to save space, but keep the latest output as is for easy access
-# It's necessary as one output directory takes around 15 Mb. In archive, it's compressed to 1-2 Mb.
-cd output || exit
-for dir in */; do
-  if [ "$dir" != "$timestamp/" ]; then
-    #Remove / from the end of the directory name
-    tar_name=${dir%/}
-    find "$dir" -type f -print0 | tar -czf "$tar_name.tar.gz" --files-from=-
-    rm -rf "$dir"
-  fi
-done
-
-MEMORY_MONITOR_HANDLER_LOG_FILE="memory-monitor-handler.log"
-
-# Remove old archives, do not keep more than 100 MB of archives
-total_size=$(du -s | awk '{print $1}') # Size in KB
-# Subtract the size of the handler log file
-total_size=$((total_size - $(stat -c %s "$MEMORY_MONITOR_HANDLER_LOG_FILE") / 1024))
-# Subtract the size of the psi.txt file (if it exists) as it size is regulated by the PSICollector
-if [ -f psi.txt ]; then
-  total_size=$((total_size - $(stat -c %s psi.txt) / 1024))
-fi
-while [ "$total_size" -gt 102400 ]; do
-  found_archives=$(find . -type f -name "*.tar.gz" -print | sort -n)
-  if [ -z "$found_archives" ]; then
-    break
-  fi
-  oldest_archive=$(echo "$found_archives" | head -n 1)
-  rm "$oldest_archive"
-  # Remove the first line from the events.log file: it contains the oldest event info
-  sed -i '1d' events.log
-  total_size=$(du -s | awk '{print $1}')
-  total_size=$((total_size - $(stat -c %s "$MEMORY_MONITOR_HANDLER_LOG_FILE") / 1024))
-done
+# cleanup function will be called here automatically
