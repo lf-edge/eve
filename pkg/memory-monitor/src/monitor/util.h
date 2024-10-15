@@ -36,5 +36,6 @@ int get_eve_release(char *eve_release);
 void log_event(const time_t *t, const char *format, ...);
 long strtodec(const char *str, bool *error);
 unsigned long strtoudec(const char *str, bool *error);
+char* get_tail(const char *file_path, size_t lines);
 
 #endif //MM_UTILS_H
