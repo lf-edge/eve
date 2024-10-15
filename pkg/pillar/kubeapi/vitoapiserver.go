@@ -313,6 +313,92 @@ func RolloutDiskToPVC(ctx context.Context, log *base.LogObject, exists bool,
 	return nil
 }
 
+// GetPVFromPVC : Returns volume name (PV) from the PVC name
+func GetPVFromPVC(pvcName string, log *base.LogObject) (string, error) {
+	// Get the Kubernetes clientset
+	clientset, err := GetClientSet()
+	if err != nil {
+		err = fmt.Errorf("failed to get clientset: %v", err)
+		log.Error(err)
+		return "", err
+	}
+	// Get the PersistentVolumeClaim (PVC)
+	pvc, err := clientset.CoreV1().PersistentVolumeClaims(EVEKubeNameSpace).Get(context.TODO(), pvcName, metav1.GetOptions{})
+	if err != nil {
+		err = fmt.Errorf("Error fetching PersistentVolumeClaim %s: %v", pvcName, err)
+		log.Error(err)
+		return "", err
+	}
+
+	// Get the associated PersistentVolume (PV) name
+	volumeName := pvc.Spec.VolumeName
+
+	log.Noticef("PersistentVolume %s is associated with PVC %s", volumeName, pvcName)
+
+	return volumeName, nil
+}
+
+// GetVolumeAttachmentFromPV : Return volume attachment if any for that PV along with nodename.
+// longhorn attaches to the PV to serve to the apps. This API returns the attachment name and nodename.
+// We use that attachment name to delete the attachment during failover.
+// Basically the attachment of previous node needs to be deleted to attach to current node.
+func GetVolumeAttachmentFromPV(volName string, log *base.LogObject) (string, string, error) {
+	// Get the Kubernetes clientset
+	clientset, err := GetClientSet()
+	if err != nil {
+		err = fmt.Errorf("failed to get clientset: %v", err)
+		log.Error(err)
+		return "", "", err
+	}
+	// List all VolumeAttachments and find the one corresponding to the PV
+	volumeAttachments, err := clientset.StorageV1().VolumeAttachments().List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		err = fmt.Errorf("Error listing VolumeAttachments: %v", err)
+		log.Error(err)
+		return "", "", err
+	}
+
+	// Iterate through VolumeAttachments to find one that references the PV's CSI volume handle
+	for _, va := range volumeAttachments.Items {
+		if va.Spec.Source.PersistentVolumeName != nil && *va.Spec.Source.PersistentVolumeName == volName {
+			log.Noticef("VolumeAttachment for vol %s found: %s (attached to node: %s)\n", volName, va.Name, va.Spec.NodeName)
+			return va.Name, va.Spec.NodeName, nil
+		}
+	}
+
+	return "", "", nil
+}
+
+// DeleteVolumeAttachment : Delete the volumeattachment of given name
+func DeleteVolumeAttachment(vaName string, log *base.LogObject) error {
+	// Get the Kubernetes clientset
+	clientset, err := GetClientSet()
+	if err != nil {
+		err = fmt.Errorf("failed to get clientset: %v", err)
+		log.Error(err)
+		return err
+	}
+
+	// Force delete the VolumeAttachment with grace period set to 0
+	// This will ensure attachment is really deleted before its assigned to some other node.
+	deletePolicy := metav1.DeletePropagationForeground
+	deleteOptions := metav1.DeleteOptions{
+		GracePeriodSeconds: new(int64), // Set grace period to 0 for force deletion
+		PropagationPolicy:  &deletePolicy,
+	}
+
+	// Delete the VolumeAttachment
+	err = clientset.StorageV1().VolumeAttachments().Delete(context.TODO(), vaName, deleteOptions)
+	if err != nil {
+		err = fmt.Errorf("Error deleting VolumeAttachment %s: %v", vaName, err)
+		log.Error(err)
+		return err
+	}
+
+	log.Noticef("Deleted volumeattachment %s", vaName)
+	return nil
+}
+
 func stringPtr(str string) *string {
 	return &str
 }
