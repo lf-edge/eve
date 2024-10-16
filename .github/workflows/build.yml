@@ -90,7 +90,7 @@ jobs:
       fail-fast: false
       matrix:
         arch: [arm64, amd64]
-        hv: [xen, kvm]
+        hv: [xen, kvm, kubevirt]
         platform: ["generic"]
         include:
           - arch: riscv64
@@ -108,6 +108,10 @@ jobs:
           - arch: arm64
             hv: kvm
             platform: "imx8mp_epc_r3720"
+        exclude:
+          - arch: arm64
+            hv: kubevirt
+            platform: "generic"
 
     steps:
       - uses: actions/checkout@v4
