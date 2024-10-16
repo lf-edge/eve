@@ -5,7 +5,6 @@
 
 K3S_VERSION=v1.28.5+k3s1
 KUBEVIRT_VERSION=v1.1.0
-LONGHORN_VERSION=v1.6.2
 CDI_VERSION=v1.54.0
 NODE_IP=""
 MAX_K3S_RESTARTS=10
@@ -17,6 +16,11 @@ LOG_SIZE=$((5*1024*1024))
 HOSTNAME=""
 VMICONFIG_FILENAME="/run/zedkube/vmiVNC.run"
 VNC_RUNNING=false
+
+# shellcheck source=pkg/kube/descheduler-utils.sh
+. /usr/bin/descheduler-utils.sh
+# shellcheck source=pkg/kube/longhorn-utils.sh
+. /usr/bin/longhorn-utils.sh
 
 logmsg() {
         local MSG
@@ -220,40 +224,6 @@ config_cluster_roles() {
         touch /var/lib/debuguser-initialized
 }
 
-apply_longhorn_disk_config() {
-        node=$1
-        kubectl label node "$node" node.longhorn.io/create-default-disk='config'
-        kubectl annotate node "$node" node.longhorn.io/default-disks-config='[ { "path":"/persist/vault/volumes", "allowScheduling":true }]'
-}
-
-check_overwrite_nsmounter() {
-        ### REMOVE ME+
-        # When https://github.com/longhorn/longhorn/issues/6857 is resolved, remove this 'REMOVE ME' section
-        # In addition to pkg/kube/nsmounter and the copy of it in pkg/kube/Dockerfile
-        longhornCsiPluginPods=$(kubectl -n longhorn-system get pod -o json | jq -r '.items[] | select(.metadata.labels.app=="longhorn-csi-plugin" and .status.phase=="Running") | .metadata.name')
-        for csiPod in $longhornCsiPluginPods; do
-                if ! kubectl -n longhorn-system exec "pod/${csiPod}" --container=longhorn-csi-plugin -- ls /usr/local/sbin/nsmounter.updated > /dev/null 2>@1; then
-                        if kubectl -n longhorn-system exec -i "pod/${csiPod}" --container=longhorn-csi-plugin -- tee /usr/local/sbin/nsmounter < /usr/bin/nsmounter; then
-                                logmsg "Updated nsmounter in longhorn pod ${csiPod}"
-                                kubectl -n longhorn-system exec "pod/${csiPod}" --container=longhorn-csi-plugin -- touch /usr/local/sbin/nsmounter.updated
-                        fi
-                fi
-        done
-        ### REMOVE ME-
-}
-
-# A spot to do persistent configuration of longhorn
-# These are applied once per cluster
-longhorn_post_install_config() {
-        # Wait for longhorn objects to be available before patching them
-        lhSettingsAvailable=$(kubectl -n longhorn-system get settings -o json | jq '.items | length>0')
-        if [ "$lhSettingsAvailable" != "true" ]; then
-                return
-        fi
-        kubectl  -n longhorn-system patch settings.longhorn.io/upgrade-checker -p '[{"op":"replace","path":"/value","value":"false"}]' --type json
-        touch /var/lib/longhorn_configured
-}
-
 check_start_k3s() {
   pgrep -f "k3s server" > /dev/null 2>&1
   if [ $? -eq 1 ]; then
@@ -283,6 +253,48 @@ check_start_k3s() {
   return 0
 }
 
+external_boot_image_import() {
+        # NOTE: https://kubevirt.io/user-guide/virtual_machines/boot_from_external_source/
+        # Install external-boot-image image to our eve user containerd registry.
+        # This image contains just kernel and initrd to bootstrap a container image as a VM.
+        # This is very similar to what we do on kvm based eve to start container as a VM.
+
+        boot_img_path="/etc/external-boot-image.tar"
+
+        # Is containerd up?
+        if ! /var/lib/k3s/bin/k3s ctr -a /run/containerd-user/containerd.sock info > /dev/null 2>&1; then
+                logmsg "k3s-containerd not yet running for image import"
+                return 1
+        fi
+
+        eve_external_boot_img_name="docker.io/lfedge/eve-external-boot-image"
+        eve_external_boot_img_tag=$(cat /run/eve-release)
+        eve_external_boot_img="${eve_external_boot_img_name}:${eve_external_boot_img_tag}"
+        if /var/lib/k3s/bin/k3s crictl --runtime-endpoint=unix:///run/containerd-user/containerd.sock inspecti "$eve_external_boot_img"; then
+                # Already imported
+                return 0
+        fi
+
+        import_name_tag=$(tar -xOf "$boot_img_path" manifest.json | jq -r '.[0].RepoTags[0]')
+        import_name=$(echo "$import_name_tag" | cut -d ':' -f 1)
+        if [ "$import_name" != "$eve_external_boot_img_name" ]; then
+                logmsg "external-boot-image.tar is corrupt"
+                return 1
+        fi
+
+        if ! /var/lib/k3s/bin/k3s ctr -a /run/containerd-user/containerd.sock image import "$boot_img_path"; then
+                logmsg "import $boot_img_path failed"
+                return 1
+        fi
+
+        if ! /var/lib/k3s/bin/k3s ctr -a /run/containerd-user/containerd.sock image tag "$import_name_tag" "$eve_external_boot_img"; then
+                logmsg "re-tag external-boot-image failed"
+                return 1
+        fi
+        logmsg "Successfully installed external-boot-image $import_name_tag as $eve_external_boot_img"
+        return 0
+}
+
 check_start_containerd() {
         # Needed to get the pods to start
         if [ ! -L /usr/bin/runc ]; then
@@ -298,23 +310,6 @@ check_start_containerd() {
                 nohup /var/lib/rancher/k3s/data/current/bin/containerd --config /etc/containerd/config-k3s.toml > $CTRD_LOG 2>&1 &
                 containerd_pid=$!
                 logmsg "Started k3s-containerd at pid:$containerd_pid"
-        fi
-        if [ -f /etc/external-boot-image.tar ]; then
-                # NOTE: https://kubevirt.io/user-guide/virtual_machines/boot_from_external_source/
-                # Install external-boot-image image to our eve user containerd registry.
-                # This image contains just kernel and initrd to bootstrap a container image as a VM.
-                # This is very similar to what we do on kvm based eve to start container as a VM.
-                logmsg "Trying to install new external-boot-image"
-                # This import happens once per reboot
-                if ctr -a /run/containerd-user/containerd.sock image import /etc/external-boot-image.tar; then
-                        eve_external_boot_img_tag=$(cat /run/eve-release)
-                        eve_external_boot_img=docker.io/lfedge/eve-external-boot-image:"$eve_external_boot_img_tag"
-                        import_tag=$(tar -xOf /etc/external-boot-image.tar manifest.json | jq -r '.[0].RepoTags[0]')
-                        ctr -a /run/containerd-user/containerd.sock image tag "$import_tag" "$eve_external_boot_img"
-
-                        logmsg "Successfully installed external-boot-image $import_tag as $eve_external_boot_img"
-                        rm -f /etc/external-boot-image.tar
-                fi
         fi
 }
 trigger_k3s_selfextraction() {
@@ -440,6 +435,9 @@ if [ ! -f /var/lib/all_components_initialized ]; then
         sleep 1
 
         check_start_containerd
+        if ! external_boot_image_import; then
+                continue
+        fi
         if ! check_start_k3s; then
                 continue
         fi
@@ -497,22 +495,30 @@ if [ ! -f /var/lib/all_components_initialized ]; then
                 continue
         fi
 
-        if [ ! -f /var/lib/longhorn_initialized ]; then
-                wait_for_item "longhorn"
-                logmsg "Installing longhorn version ${LONGHORN_VERSION}"
-                apply_longhorn_disk_config "$HOSTNAME"
-                lhCfgPath=/var/lib/lh-cfg-${LONGHORN_VERSION}.yaml
-                if [ ! -e $lhCfgPath ]; then
-                        curl -k https://raw.githubusercontent.com/longhorn/longhorn/${LONGHORN_VERSION}/deploy/longhorn.yaml > "$lhCfgPath"
-                fi
-                if ! grep -q 'create-default-disk-labeled-nodes: true' "$lhCfgPath"; then
-                        sed -i '/  default-setting.yaml: |-/a\    create-default-disk-labeled-nodes: true' "$lhCfgPath"
-                fi
-                kubectl apply -f "$lhCfgPath"
-                touch /var/lib/longhorn_initialized
+        #
+        # Longhorn
+        #
+        wait_for_item "longhorn"
+        if ! longhorn_install "$HOSTNAME"; then
+                continue
+        fi
+        if ! longhorn_is_ready; then
+                # It can take a moment for the new pods to get to ContainerCreating
+                # Just back off until they are caught by the earlier are_all_pods_ready
+                sleep 30
+                continue
+        fi
+        logmsg "longhorn ready"
+
+        #
+        # Descheduler
+        #
+        wait_for_item "descheduler"
+        if ! descheduler_install; then
+                continue
         fi
 
-        if [ -f /var/lib/k3s_initialized ] && [ -f /var/lib/kubevirt_initialized ] && [ -f /var/lib/longhorn_initialized ]; then
+        if [ -f /var/lib/k3s_initialized ] && [ -f /var/lib/kubevirt_initialized ]; then
                 logmsg "All components initialized"
                 touch /var/lib/all_components_initialized
         fi
@@ -541,7 +547,7 @@ else
                         cp /var/lib/rancher/k3s/user.yaml /run/.kube/k3s/user.yaml
                 fi
         else
-                if [ -e /var/lib/longhorn_initialized ]; then
+                if longhorn_is_ready; then
                         check_overwrite_nsmounter
                 fi
                 if [ ! -e /var/lib/longhorn_configured ]; then
