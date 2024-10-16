@@ -300,20 +300,34 @@ check_start_containerd() {
                 logmsg "Started k3s-containerd at pid:$containerd_pid"
         fi
         if [ -f /etc/external-boot-image.tar ]; then
+                # Give containerd a moment to start before importing
+                for _ in 1 2 3; do
+                        reported_pid=$(/var/lib/k3s/bin/k3s ctr -a /run/containerd-user/containerd.sock info | jq .server.pid)
+                        if [ "$reported_pid" = "$containerd_pid" ]; then
+                                logmsg "containerd online, continue to import"
+                                break
+                        fi
+                        sleep 1
+                done
+
                 # NOTE: https://kubevirt.io/user-guide/virtual_machines/boot_from_external_source/
                 # Install external-boot-image image to our eve user containerd registry.
                 # This image contains just kernel and initrd to bootstrap a container image as a VM.
                 # This is very similar to what we do on kvm based eve to start container as a VM.
                 logmsg "Trying to install new external-boot-image"
                 # This import happens once per reboot
-                if ctr -a /run/containerd-user/containerd.sock image import /etc/external-boot-image.tar; then
-                        eve_external_boot_img_tag=$(cat /run/eve-release)
-                        eve_external_boot_img=docker.io/lfedge/eve-external-boot-image:"$eve_external_boot_img_tag"
-                        import_tag=$(tar -xOf /etc/external-boot-image.tar manifest.json | jq -r '.[0].RepoTags[0]')
-                        ctr -a /run/containerd-user/containerd.sock image tag "$import_tag" "$eve_external_boot_img"
-
-                        logmsg "Successfully installed external-boot-image $import_tag as $eve_external_boot_img"
-                        rm -f /etc/external-boot-image.tar
+                import_name_tag=$(tar -xOf /etc/external-boot-image.tar manifest.json | jq -r '.[0].RepoTags[0]')
+                import_name=$(echo "$import_name_tag" | cut -d ':' -f 1)
+                eve_external_boot_img_name="docker.io/lfedge/eve-external-boot-image"
+                if [ "$import_name" = "$eve_external_boot_img_name" ]; then
+                        if /var/lib/k3s/bin/k3s ctr -a /run/containerd-user/containerd.sock image import /etc/external-boot-image.tar; then
+                                eve_external_boot_img_tag=$(cat /run/eve-release)
+                                eve_external_boot_img="${eve_external_boot_img_name}:${eve_external_boot_img_tag}"
+                                if /var/lib/k3s/bin/k3s ctr -a /run/containerd-user/containerd.sock image tag "$import_name_tag" "$eve_external_boot_img"; then
+                                        logmsg "Successfully installed external-boot-image $import_name_tag as $eve_external_boot_img"
+                                        rm -f /etc/external-boot-image.tar
+                                fi
+                        fi
                 fi
         fi
 }
@@ -498,21 +512,41 @@ if [ ! -f /var/lib/all_components_initialized ]; then
         fi
 
         if [ ! -f /var/lib/longhorn_initialized ]; then
-                wait_for_item "longhorn"
-                logmsg "Installing longhorn version ${LONGHORN_VERSION}"
-                apply_longhorn_disk_config "$HOSTNAME"
-                lhCfgPath=/var/lib/lh-cfg-${LONGHORN_VERSION}.yaml
-                if [ ! -e $lhCfgPath ]; then
-                        curl -k https://raw.githubusercontent.com/longhorn/longhorn/${LONGHORN_VERSION}/deploy/longhorn.yaml > "$lhCfgPath"
+                if [ ! -f /var/lib/longhorn_installing ]; then
+                        wait_for_item "longhorn"
+                        logmsg "Installing longhorn version ${LONGHORN_VERSION}"
+                        apply_longhorn_disk_config "$HOSTNAME"
+                        lhCfgPath=/var/lib/lh-cfg-${LONGHORN_VERSION}.yaml
+                        if [ ! -e $lhCfgPath ]; then
+                                curl -k https://raw.githubusercontent.com/longhorn/longhorn/${LONGHORN_VERSION}/deploy/longhorn.yaml > "$lhCfgPath"
+                        fi
+                        if ! grep -q 'create-default-disk-labeled-nodes: true' "$lhCfgPath"; then
+                                sed -i '/  default-setting.yaml: |-/a\    create-default-disk-labeled-nodes: true' "$lhCfgPath"
+                        fi
+                        kubectl apply -f "$lhCfgPath"
+                        touch /var/lib/longhorn_installing
                 fi
-                if ! grep -q 'create-default-disk-labeled-nodes: true' "$lhCfgPath"; then
-                        sed -i '/  default-setting.yaml: |-/a\    create-default-disk-labeled-nodes: true' "$lhCfgPath"
+                lhStatus=$(kubectl -n longhorn-system get daemonsets -o json | jq '.items[].status | .numberReady==.desiredNumberScheduled' | tr -d '\n')
+                if [ "$lhStatus" = "truetruetrue" ]; then
+                        logmsg "longhorn ready"
+                        rm /var/lib/longhorn_installing
+                        touch /var/lib/longhorn_initialized
                 fi
-                kubectl apply -f "$lhCfgPath"
-                touch /var/lib/longhorn_initialized
         fi
 
-        if [ -f /var/lib/k3s_initialized ] && [ -f /var/lib/kubevirt_initialized ] && [ -f /var/lib/longhorn_initialized ]; then
+        #
+        # Descheduler
+        #
+        if [ ! -f /var/lib/descheduler_initialized ]; then
+                wait_for_item "descheduler"
+                logmsg "Installing Descheduler"
+                DESCHEDULER_VERSION="v0.29.0"
+                kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/descheduler/${DESCHEDULER_VERSION}/kubernetes/base/rbac.yaml
+                kubectl apply -f /etc/descheduler-policy-configmap.yaml
+                touch /var/lib/descheduler_initialized
+        fi
+
+        if [ -f /var/lib/k3s_initialized ] && [ -f /var/lib/kubevirt_initialized ] && [ -f /var/lib/longhorn_initialized ] && [ -f /var/lib/descheduler_initialized ]; then
                 logmsg "All components initialized"
                 touch /var/lib/all_components_initialized
         fi
