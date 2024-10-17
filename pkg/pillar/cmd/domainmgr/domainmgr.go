@@ -1243,38 +1243,24 @@ func setCgroupCpuset(config *types.DomainConfig, status *types.DomainStatus) err
 		log.Warnf("Failed to find cgroups directory for %s", config.DisplayName)
 		return nil
 	}
-	err = controller.Update(&specs.LinuxResources{CPU: &specs.LinuxCPU{Cpus: status.VmConfig.CPUs}})
+	// Convert a list of CPUs to a CPU string
+	cpuStrings := make([]string, 0)
+	for _, cpu := range status.VmConfig.CPUs {
+		cpuStrings = append(cpuStrings, strconv.Itoa(cpu))
+	}
+	cpuMask := strings.Join(cpuStrings, ",")
+
+	err = controller.Update(&specs.LinuxResources{CPU: &specs.LinuxCPU{Cpus: cpuMask}})
 	if err != nil {
 		log.Warnf("Failed to update CPU set for %s", config.DisplayName)
 		return err
 	}
-	log.Functionf("Adjust the cgroups cpuset of %s to %s", config.DisplayName, status.VmConfig.CPUs)
+	log.Functionf("Adjust the cgroups cpuset of %s to %v", config.DisplayName, status.VmConfig.CPUs)
 	return nil
 }
 
-// constructNonPinnedCpumaskString returns a cpumask that contains at least CPUs reserved for the system
-// services. Hence, it can never be empty.
-func constructNonPinnedCpumaskString(ctx *domainContext) string {
-	result := ""
-	for _, cpu := range ctx.cpuAllocator.GetAllFree() {
-		addToMask(cpu, &result)
-	}
-	return result
-}
-
-func addToMask(cpu int, s *string) {
-	if s == nil {
-		return
-	}
-	if *s == "" {
-		*s = fmt.Sprintf("%d", cpu)
-	} else {
-		*s = fmt.Sprintf("%s,%d", *s, cpu)
-	}
-}
-
 func updateNonPinnedCPUs(ctx *domainContext, config *types.DomainConfig, status *types.DomainStatus) error {
-	status.VmConfig.CPUs = constructNonPinnedCpumaskString(ctx)
+	status.VmConfig.CPUs = ctx.cpuAllocator.GetAllFree()
 	err := setCgroupCpuset(config, status)
 	if err != nil {
 		return errors.New("failed to redistribute CPUs between VMs, can affect the inter-VM isolation")
@@ -1292,10 +1278,10 @@ func assignCPUs(ctx *domainContext, config *types.DomainConfig, status *types.Do
 			return errors.New("failed to allocate necessary amount of CPUs")
 		}
 		for _, cpu := range cpusToAssign {
-			addToMask(cpu, &status.VmConfig.CPUs)
+			status.VmConfig.CPUs = append(status.VmConfig.CPUs, cpu)
 		}
 	} else { // VM has no pinned CPUs, assign all the CPUs from the shared set
-		status.VmConfig.CPUs = constructNonPinnedCpumaskString(ctx)
+		status.VmConfig.CPUs = ctx.cpuAllocator.GetAllFree()
 	}
 	return nil
 }
@@ -1303,12 +1289,12 @@ func assignCPUs(ctx *domainContext, config *types.DomainConfig, status *types.Do
 // releaseCPUs releases the CPUs that were previously assigned to the VM.
 // The cpumask in the *status* is updated accordingly, and the CPUs are released in the CPUAllocator context.
 func releaseCPUs(ctx *domainContext, config *types.DomainConfig, status *types.DomainStatus) {
-	if ctx.cpuPinningSupported && config.VmConfig.CPUsPinned && status.VmConfig.CPUs != "" {
+	if ctx.cpuPinningSupported && config.VmConfig.CPUsPinned && status.VmConfig.CPUs != nil {
 		if err := ctx.cpuAllocator.Free(config.UUIDandVersion.UUID); err != nil {
 			log.Errorf("Failed to free CPUs for %s: %s", config.DisplayName, err)
 		}
 	}
-	status.VmConfig.CPUs = ""
+	status.VmConfig.CPUs = nil
 }
 
 func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
@@ -1330,7 +1316,7 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 		Service:        config.Service,
 	}
 
-	status.VmConfig.CPUs = ""
+	status.VmConfig.CPUs = make([]int, 0)
 
 	// Note that the -emu interface doesn't exist until after boot of the domU, but we
 	// initialize the VifList here with the VifUsed.
@@ -1545,7 +1531,7 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 			publishDomainStatus(ctx, status)
 			return
 		}
-		log.Functionf("CPUs for %s assigned: %s", config.DisplayName, status.VmConfig.CPUs)
+		log.Functionf("CPUs for %s assigned: %v", config.DisplayName, status.VmConfig.CPUs)
 	}
 
 	if errDescription := reserveAdapters(ctx, config); errDescription != nil {
@@ -1932,7 +1918,7 @@ func doCleanup(ctx *domainContext, status *types.DomainStatus) {
 			}
 			triggerCPUNotification()
 		}
-		status.VmConfig.CPUs = ""
+		status.VmConfig.CPUs = nil
 	}
 	releaseAdapters(ctx, status.IoAdapterList, status.UUIDandVersion.UUID,
 		status)

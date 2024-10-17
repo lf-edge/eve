@@ -260,8 +260,12 @@ func (ctx xenContext) CreateDomConfig(domainName string,
 		maxCpus = vCpus
 	}
 	file.WriteString(fmt.Sprintf("maxvcpus = %d\n", maxCpus))
-	if config.CPUs != "" {
-		file.WriteString(fmt.Sprintf("cpus = \"%s\"\n", config.CPUs))
+	if len(config.CPUs) > 0 {
+		cpusString := make([]string, 0)
+		for _, curCPU := range config.CPUs {
+			cpusString = append(cpusString, strconv.Itoa(curCPU))
+		}
+		file.WriteString(fmt.Sprintf("cpus = \"%s\"\n", strings.Join(cpusString, ",")))
 	}
 	if config.DeviceTree != "" {
 		file.WriteString(fmt.Sprintf("device_tree = \"%s\"\n",
