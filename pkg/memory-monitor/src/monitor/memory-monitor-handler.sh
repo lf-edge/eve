@@ -88,8 +88,19 @@ normalize_pids() {
     sorted_processes_file=$2
     sort -u "$processes_file" -o "$processes_file"
     while read -r pid; do
-       ps -p "$pid" -o pid=,rss=
+      # Check if the process still exists, skip if it does not
+      if ! ps -p "$pid" -o pid=,rss= ; then
+        continue
+      fi
     done < "$processes_file" | sort -k2,2 -n -r | awk '{print $1}' > "$sorted_processes_file"
+}
+
+print_process_gone() {
+  detailed=$1
+  if [ "$detailed" -eq 1 ]; then
+    echo "  process is gone during the handling, ignore it" >> "$output_file"
+    echo "" >> "$output_file"
+  fi
 }
 
 show_pid_mem_usage() {
@@ -117,16 +128,31 @@ show_pid_mem_usage() {
       # Process is gone
       continue
     fi
-    name=$(ps -p "$pid" -o cmd=)
+    if ! name=$(ps -p "$pid" -o cmd=) ; then
+      # Process is gone. We have not yet printed any information about the process
+      # so we can skip it without any explicit message in the output
+      continue
+    fi
     if [ "$detailed" -eq 1 ]; then
       echo "Process $name PID: $pid" >> "$output_file"
+      # Since now we have printed the process header in the detailed view, hence
+      # if the process is gone later, we should reflect that in the output
     fi
     # Get the memory usage according to ps
-    ps_rss=$(ps -p "$pid" -o rss= | tr -d ' ')
+    if ! ps_rss=$(ps -p "$pid" -o rss= | tr -d ' ') ; then
+      # Process is gone
+      print_process_gone "$detailed"
+      continue
+    fi
     # Read the smaps file line by line
     rss_pid=0
     tmp_smaps=$(mktemp)
-    cat /proc/"$pid"/smaps > "$tmp_smaps"
+    if ! cat /proc/"$pid"/smaps > "$tmp_smaps" ; then
+      # Process is gone
+      rm "$tmp_smaps"
+      print_process_gone "$detailed"
+      continue
+    fi
     while read -r line; do
       # Check for lines containing 'Pss:'
       # shellcheck disable=SC3010 # we use the busybox version of sh, which does support the [[ operator
