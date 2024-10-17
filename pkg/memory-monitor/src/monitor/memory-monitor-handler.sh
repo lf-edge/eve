@@ -11,7 +11,7 @@ MEMORY_MONITOR_HANDLER_LOG_FILE="memory-monitor-handler.log"
 EVENT_LOG_FILE="events.log"
 PSI_FILE="psi.txt"
 
-MAX_OUTPUT_SIZE_MB=1 # 100 MB
+MAX_OUTPUT_SIZE_MB=100 # 100 MB
 MAX_OUTPUT_SIZE_KB=$((MAX_OUTPUT_SIZE_MB * 1024))
 
 tar_old_output() {
