@@ -3,6 +3,11 @@
 TARGET=RELEASE
 
 make -C BaseTools
+OVMF_COMMON_FLAGS="-DNETWORK_TLS_ENABLE"
+OVMF_COMMON_FLAGS+=" -DSECURE_BOOT_ENABLE=TRUE"
+OVMF_COMMON_FLAGS+=" -DTPM2_CONFIG_ENABLE=TRUE"
+OVMF_COMMON_FLAGS+=" -DTPM2_ENABLE=TRUE"
+OVMF_COMMON_FLAGS+=" -DFD_SIZE_4MB"
 
 # shellcheck disable=SC1091
 . edksetup.sh
@@ -23,11 +28,10 @@ case $(uname -m) in
              build -b ${TARGET} -t GCC5 -a AARCH64  -p ArmVirtPkg/ArmVirtXen.dsc
              cp Build/ArmVirtXen-AARCH64/${TARGET}_*/FV/XEN_EFI.fd OVMF_PVH.fd
              ;;
-     x86_64) build -b ${TARGET} -t GCC5 -a X64 -p OvmfPkg/OvmfPkgX64.dsc -D TPM_ENABLE=TRUE -D TPM_CONFIG_ENABLE=TRUE
+     # shellcheck disable=SC2086
+     x86_64) build -b ${TARGET} -t GCC5 -a X64 -p OvmfPkg/OvmfPkgX64.dsc ${OVMF_COMMON_FLAGS}
              cp Build/OvmfX64/${TARGET}_*/FV/OVMF*.fd .
              build -b ${TARGET} -t GCC5 -a X64 -p OvmfPkg/OvmfXen.dsc
-             BaseTools/Source/C/bin/EfiRom -f 0x1F96 -i 0x0778 -e Build/OvmfX64/${TARGET}_*/X64/IgdAssignmentDxe.efi
-             cp Build/OvmfX64/${TARGET}_*/X64/IgdAssignmentDxe.rom IgdAssignmentDxe.rom
              cp Build/OvmfXen/${TARGET}_*/FV/OVMF.fd OVMF_PVH.fd
              ;;
           *) echo "Unsupported architecture $(uname). Bailing."

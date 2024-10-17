@@ -29,8 +29,8 @@ COPY rpi /rpi
 
 FROM build AS build-amd64-versions
 
-ENV EDK_VERSION edk2-stable202005
-ENV EDK_COMMIT ca407c7246bf405da6d9b1b9d93e5e7f17b4b1f9
+ENV EDK_VERSION edk2-stable202408
+ENV EDK_COMMIT b158dad150bf02879668f72ce306445250838201
 
 FROM build-${TARGETARCH}-versions AS build-edk2
 
@@ -67,9 +67,6 @@ RUN rm -rf /out && mkdir /out && cp /edk2/OVMF*.fd /out
 
 # some architecture specific cases. There probably is a cleaner dockerfile-native way to do this.
 RUN case $(uname -m) in \
-    x86_64) \
-        cp /edk2/*.rom /out/ \
-        ;; \
     aarch64) \
         cp -r /rpi /out/ \
         ;; \
