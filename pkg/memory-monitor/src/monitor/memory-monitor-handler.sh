@@ -88,7 +88,10 @@ normalize_pids() {
     sorted_processes_file=$2
     sort -u "$processes_file" -o "$processes_file"
     while read -r pid; do
-       ps -p "$pid" -o pid=,rss=
+      # Check if the process still exists, skip if it does not
+      if ! ps -p "$pid" -o pid=,rss= ; then
+        continue
+      fi
     done < "$processes_file" | sort -k2,2 -n -r | awk '{print $1}' > "$sorted_processes_file"
 }
 
@@ -117,16 +120,26 @@ show_pid_mem_usage() {
       # Process is gone
       continue
     fi
-    name=$(ps -p "$pid" -o cmd=)
+    if ! name=$(ps -p "$pid" -o cmd=) ; then
+      # Process is gone
+      continue
+    fi
     if [ "$detailed" -eq 1 ]; then
       echo "Process $name PID: $pid" >> "$output_file"
     fi
     # Get the memory usage according to ps
-    ps_rss=$(ps -p "$pid" -o rss= | tr -d ' ')
+    if ! ps_rss=$(ps -p "$pid" -o rss= | tr -d ' ') ; then
+      # Process is gone
+      continue
+    fi
     # Read the smaps file line by line
     rss_pid=0
     tmp_smaps=$(mktemp)
-    cat /proc/"$pid"/smaps > "$tmp_smaps"
+    if ! cat /proc/"$pid"/smaps > "$tmp_smaps" ; then
+      # Process is gone
+      rm "$tmp_smaps"
+      continue
+    fi
     while read -r line; do
       # Check for lines containing 'Pss:'
       # shellcheck disable=SC3010 # we use the busybox version of sh, which does support the [[ operator
