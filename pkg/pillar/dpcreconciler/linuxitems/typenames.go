@@ -4,8 +4,6 @@
 package linuxitems
 
 const (
-	// LocalIPRuleTypename : typename for singleton item representing IP rule for local RT.
-	LocalIPRuleTypename = "Local-IP-Rule"
-	// SrcIPRuleTypename : typename for source-based IP rules.
-	SrcIPRuleTypename = "Src-IP-Rule"
+	// IPRuleTypename : typename for Linux IP rules.
+	IPRuleTypename = "IPRule"
 )
