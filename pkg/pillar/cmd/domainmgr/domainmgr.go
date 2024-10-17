@@ -1119,14 +1119,21 @@ func maybeRetryBoot(ctx *domainContext, status *types.DomainStatus) {
 	}
 	defer file.Close()
 
-	if err := hyper.Task(status).VirtualTPMSetup(status.DomainName, agentName, ctx.ps, warningTime, errorTime); err != nil {
+	extra := types.ExtraArgs{
+		AgentName: agentName,
+		Ps:        ctx.ps,
+		WarnTime:  warningTime,
+		ErrTime:   errorTime,
+	}
+
+	if err := hyper.Task(status).VirtualTPMSetup(status.DomainName, &extra); err != nil {
 		log.Errorf("Failed to setup virtual TPM for %s: %s", status.DomainName, err)
 		status.VirtualTPM = false
 	} else {
 		status.VirtualTPM = true
 	}
 
-	if err := hyper.Task(status).Setup(*status, *config, ctx.assignableAdapters, nil, file); err != nil {
+	if err := hyper.Task(status).Setup(*status, *config, ctx.assignableAdapters, nil, file, &extra); err != nil {
 		//it is retry, so omit error
 		log.Errorf("Failed to create DomainStatus from %+v: %s",
 			config, err)
@@ -1671,7 +1678,14 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 	}
 	defer file.Close()
 
-	if err := hyper.Task(status).VirtualTPMSetup(status.DomainName, agentName, ctx.ps, warningTime, errorTime); err != nil {
+	extra := types.ExtraArgs{
+		AgentName: agentName,
+		Ps:        ctx.ps,
+		WarnTime:  warningTime,
+		ErrTime:   errorTime,
+	}
+
+	if err := hyper.Task(status).VirtualTPMSetup(status.DomainName, &extra); err != nil {
 		log.Errorf("Failed to setup virtual TPM for %s: %s", status.DomainName, err)
 		status.VirtualTPM = false
 	} else {
@@ -1679,7 +1693,7 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 	}
 
 	globalConfig := agentlog.GetGlobalConfig(log, ctx.subGlobalConfig)
-	if err := hyper.Task(status).Setup(*status, config, ctx.assignableAdapters, globalConfig, file); err != nil {
+	if err := hyper.Task(status).Setup(*status, config, ctx.assignableAdapters, globalConfig, file, &extra); err != nil {
 		log.Errorf("Failed to create DomainStatus from %+v: %s",
 			config, err)
 		status.SetErrorNow(err.Error())
