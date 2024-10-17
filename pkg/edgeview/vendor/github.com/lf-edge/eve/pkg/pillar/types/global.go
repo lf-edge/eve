@@ -227,10 +227,25 @@ const (
 	VgaAccess GlobalSettingKey = "debug.enable.vga"
 	// AllowAppVnc global setting key
 	AllowAppVnc GlobalSettingKey = "app.allow.vnc"
-	// EveMemoryLimitInBytes global setting key
+	// EveMemoryLimitInMiB global setting key, memory limit for EVE in MiB
+	EveMemoryLimitInMiB GlobalSettingKey = "memory.eve.limit.MiB"
+	// EveMemoryLimitInBytes global setting key, memory limit for EVE in bytes
+	// Deprecated: Use EveMemoryLimitInMiB. This config is limited to 4GB
+	// as it is stored as uint32. Nevertheles, for backward compatibility,
+	// this config is still supported and has higher priority than EveMemoryLimitInMiB.
 	EveMemoryLimitInBytes GlobalSettingKey = "memory.eve.limit.bytes"
 	// How much memory overhead is allowed for VMM needs
 	VmmMemoryLimitInMiB GlobalSettingKey = "memory.vmm.limit.MiB"
+	// GOGCMemoryLimitInBytes global setting key
+	GOGCMemoryLimitInBytes GlobalSettingKey = "gogc.memory.limit.bytes"
+	// GOGCPercent global setting key
+	GOGCPercent GlobalSettingKey = "gogc.percent"
+	// GOGCForcedIntervalInSec global setting key
+	GOGCForcedIntervalInSec GlobalSettingKey = "gogc.forced.interval.seconds"
+	// GOGCForcedGrowthMemInMiB global setting key
+	GOGCForcedGrowthMemInMiB GlobalSettingKey = "gogc.forced.growth.memory.MiB"
+	// GOGCForcedGrowthMemPerc global setting key
+	GOGCForcedGrowthMemPerc GlobalSettingKey = "gogc.forced.growth.memory.percent"
 	// IgnoreMemoryCheckForApps global setting key
 	IgnoreMemoryCheckForApps GlobalSettingKey = "memory.apps.ignore.check"
 	// IgnoreDiskCheckForApps global setting key
@@ -264,6 +279,8 @@ const (
 	SyslogLogLevel GlobalSettingKey = "debug.syslog.loglevel"
 	// KernelLogLevel global setting key
 	KernelLogLevel GlobalSettingKey = "debug.kernel.loglevel"
+	// FmlCustomResolution global setting key
+	FmlCustomResolution GlobalSettingKey = "app.fml.resolution"
 
 	// XXX Temporary flag to disable RFC 3442 classless static route usage
 	DisableDHCPAllOnesNetMask GlobalSettingKey = "debug.disable.dhcp.all-ones.netmask"
@@ -356,6 +373,19 @@ var (
 	}
 	// SyslogKernelDefaultLogLevel is a default loglevel for syslog and kernel.
 	SyslogKernelDefaultLogLevel = "info"
+)
+
+var (
+	// FmlResolutionUnset is a string to indicate that custom resolution is not set
+	FmlResolutionUnset = ""
+	// FmlResolution800x600 is a string to indicate 800x600 resolution
+	FmlResolution800x600 = "800x600"
+	// FmlResolution1024x768 is a string to indicate 1024x768 resolution
+	FmlResolution1024x768 = "1024x768"
+	// FmlResolution1280x800 is a string to indicate 1280x720 resolution
+	FmlResolution1280x800 = "1280x800"
+	// FmlResolution1920x1080 is a string to indicate 1280x720 resolution
+	FmlResolution1920x1080 = "1920x1080"
 )
 
 // ConfigItemSpec - Defines what a specification for a configuration should be
@@ -828,6 +858,8 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	if err != nil {
 		logrus.Errorf("getEveMemoryLimitInBytes failed: %v", err)
 	}
+	// Round up to the nearest MiB
+	eveMemoryLimitInMiB := uint32((eveMemoryLimitInBytes + 1024*1024 - 1) / (1024 * 1024))
 	var configItemSpecMap ConfigItemSpecMap
 	configItemSpecMap.GlobalSettings = make(map[GlobalSettingKey]ConfigItemSpec)
 	configItemSpecMap.AgentSettings = make(map[AgentSettingKey]ConfigItemSpec)
@@ -877,9 +909,24 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 		100*1024*1024, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(StorageZfsReserved, 20, 1, 99)
 	configItemSpecMap.AddIntItem(ForceFallbackCounter, 0, 0, 0xFFFFFFFF)
-
+	//
+	// Go garbage collector configuration section
+	//
+	// Default GOGC memory limit is 0
+	configItemSpecMap.AddIntItem(GOGCMemoryLimitInBytes, 0, 0, 0xFFFFFFFF)
+	// Default GOGC target percentage is 100, 0 means disable GC
+	configItemSpecMap.AddIntItem(GOGCPercent, 100, 0, 500)
+	// Default forced GOGC interval in seconds, 0 means disable forced GC
+	configItemSpecMap.AddIntItem(GOGCForcedIntervalInSec, 10, 0, 1000)
+	// Default forced GOGC growth memory in MiB
+	configItemSpecMap.AddIntItem(GOGCForcedGrowthMemInMiB, 50, 10, 1024)
+	// Default forced GOGC growth memory percent
+	configItemSpecMap.AddIntItem(GOGCForcedGrowthMemPerc, 20, 5, 300)
+	//
 	configItemSpecMap.AddIntItem(EveMemoryLimitInBytes, uint32(eveMemoryLimitInBytes),
 		uint32(eveMemoryLimitInBytes), 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(EveMemoryLimitInMiB, eveMemoryLimitInMiB,
+		eveMemoryLimitInMiB, 0xFFFFFFFF)
 	// Limit manual vmm overhead override to 1 PiB
 	configItemSpecMap.AddIntItem(VmmMemoryLimitInMiB, 0, 0, uint32(1024*1024*1024))
 	// LogRemainToSendMBytes - Default is 2 Gbytes, minimum is 10 Mbytes
@@ -911,6 +958,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddStringItem(DefaultRemoteLogLevel, "info", validateLogrusLevel)
 	configItemSpecMap.AddStringItem(SyslogLogLevel, "info", validateSyslogKernelLevel)
 	configItemSpecMap.AddStringItem(KernelLogLevel, "info", validateSyslogKernelLevel)
+	configItemSpecMap.AddStringItem(FmlCustomResolution, FmlResolutionUnset, blankValidator)
 
 	// Add Agent Settings
 	configItemSpecMap.AddAgentSettingStringItem(LogLevel, "info", validateLogrusLevel)

@@ -29,6 +29,100 @@ type AssignableAdapters struct {
 	IoBundleList []IoBundle
 }
 
+type ioBundleErrorBase struct {
+	ErrStr  string
+	TypeStr string
+}
+
+func (i ioBundleErrorBase) Error() string {
+	return i.ErrStr
+}
+
+// IOBundleError is an error stored in IoBundles that can be marshalled
+type IOBundleError struct {
+	Errors      []ioBundleErrorBase
+	TimeOfError time.Time
+}
+
+// ErrorTime returns the time of the last error added
+func (iobe *IOBundleError) ErrorTime() time.Time {
+	return iobe.TimeOfError
+}
+
+func (iobe *IOBundleError) String() string {
+	if len(iobe.Errors) == 0 {
+		return ""
+	}
+	errorStrings := make([]string, 0, len(iobe.Errors))
+	for _, err := range iobe.Errors {
+		errorStrings = append(errorStrings, err.Error())
+	}
+	return strings.Join(errorStrings, "; ")
+}
+
+// Append converts an error to ioBundleErrorBase and adds it
+func (iobe *IOBundleError) Append(err error) {
+	if iobe.Errors == nil {
+		iobe.Errors = make([]ioBundleErrorBase, 0, 1)
+	}
+
+	typeStr := reflect.TypeOf(err).String()
+	baseErr := ioBundleErrorBase{
+		ErrStr:  err.Error(),
+		TypeStr: typeStr,
+	}
+
+	iobe.Errors = append(iobe.Errors, baseErr)
+
+	iobe.TimeOfError = time.Now()
+}
+
+// Empty returns true if no error has been added
+func (iobe *IOBundleError) Empty() bool {
+	if iobe.Errors == nil || len(iobe.Errors) == 0 {
+		return true
+	}
+
+	return false
+}
+
+// HasErrorByType returns true if error of the same type is found
+func (iobe *IOBundleError) HasErrorByType(e error) bool {
+	typeStr := reflect.TypeOf(e).String()
+	base, ok := e.(ioBundleErrorBase)
+	if ok {
+		typeStr = base.TypeStr
+	}
+	for _, err := range iobe.Errors {
+		if typeStr == err.TypeStr {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (iobe *IOBundleError) removeByType(e error) {
+	typeStr := reflect.TypeOf(e).String()
+	toRemoveIndices := []int{}
+	for i, err := range iobe.Errors {
+		if typeStr == err.TypeStr {
+			toRemoveIndices = append(toRemoveIndices, i)
+		}
+	}
+
+	for i := len(toRemoveIndices) - 1; i >= 0; i-- {
+		toRemove := toRemoveIndices[i]
+		iobe.Errors = append(iobe.Errors[:toRemove], iobe.Errors[toRemove+1:]...)
+	}
+}
+
+// Clear clears all errors
+func (iobe *IOBundleError) Clear() {
+	iobe.Errors = make([]ioBundleErrorBase, 0)
+	iobe.TimeOfError = time.Time{}
+}
+
 // IoBundle has one entry per individual receptacle with a reference
 // to a group name. Those sharing a group name needs to be assigned
 // together.
@@ -96,8 +190,7 @@ type IoBundle struct {
 	// Do not put device under pciBack, instead keep it in dom0 as long as it is not assigned to any application.
 	// In other words, this does not prevent assignments but keeps unassigned devices visible to EVE.
 	KeepInHost bool
-	Error      string
-	ErrorTime  time.Time
+	Error      IOBundleError
 
 	// Only used in PhyIoNetEthPF
 	Vfs sriov.VFList
@@ -410,7 +503,6 @@ func (aa *AssignableAdapters) LookupIoBundleLogicallabel(label string) *IoBundle
 // LookupIoBundleGroup returns an empty slice if not found
 // Returns pointers into aa
 func (aa *AssignableAdapters) LookupIoBundleGroup(group string) []*IoBundle {
-
 	var list []*IoBundle
 	if group == "" {
 		return list
@@ -430,7 +522,6 @@ func (aa *AssignableAdapters) LookupIoBundleGroup(group string) []*IoBundle {
 // a member phylabel, logicallabel, or a group
 // Returns pointers into aa
 func (aa *AssignableAdapters) LookupIoBundleAny(name string) []*IoBundle {
-
 	list := aa.LookupIoBundleGroup(name)
 	if len(list) != 0 {
 		return list
@@ -460,29 +551,66 @@ func (aa *AssignableAdapters) LookupIoBundleIfName(ifname string) *IoBundle {
 	return nil
 }
 
-// CheckParentAssigngrp finds dependency loops between ioBundles
+// ErrOwnParent describes an error where an IoBundle is parent of itself
+type ErrOwnParent struct{}
+
+func (ErrOwnParent) Error() string {
+	return "IOBundle cannot be it's own parent"
+}
+
+// ErrParentAssigngrpMismatch describes an error where an IoBundle has a mismatch with the parentassigngrp
+type ErrParentAssigngrpMismatch struct{}
+
+func (ErrParentAssigngrpMismatch) Error() string {
+	return "IOBundle with parentassigngrp mismatch found"
+}
+
+// ErrEmptyAssigngrpWithParent describes an error where an IoBundle without assigngrp has a parentassingrp
+type ErrEmptyAssigngrpWithParent struct{}
+
+func (ErrEmptyAssigngrpWithParent) Error() string {
+	return "IOBundle with empty assigngrp cannot have a parent"
+}
+
+// ErrCycleDetected describes an error where an IoBundle has cycles with parentassigngrp
+type ErrCycleDetected struct{}
+
+func (ErrCycleDetected) Error() string {
+	return "Cycle detected, please check provided parentassigngrp/assigngrp"
+}
+
+// CheckParentAssigngrp finds dependency loops between ioBundles and sets/clears the error
 func (aa *AssignableAdapters) CheckParentAssigngrp() bool {
 	assigngrp2parent := make(map[string]string)
+
+	for i := range aa.IoBundleList {
+		ioBundle := &aa.IoBundleList[i]
+		for _, parentAssigngrpErr := range []error{
+			ErrOwnParent{},
+			ErrParentAssigngrpMismatch{},
+			ErrEmptyAssigngrpWithParent{},
+			ErrCycleDetected{},
+		} {
+			ioBundle.Error.removeByType(parentAssigngrpErr)
+		}
+	}
 
 	var cycleDetectedAssigngrp string
 	for i := range aa.IoBundleList {
 		ioBundle := &aa.IoBundleList[i]
 
 		if ioBundle.AssignmentGroup == ioBundle.ParentAssignmentGroup && ioBundle.AssignmentGroup != "" {
-			ioBundle.Error = "IOBundle cannot be it's own parent"
-			ioBundle.ErrorTime = time.Now()
+			ioBundle.Error.Append(ErrOwnParent{})
 			return true
 		}
 		parentassigngrp, ok := assigngrp2parent[ioBundle.AssignmentGroup]
 		if ok && parentassigngrp != ioBundle.ParentAssignmentGroup {
-			ioBundle.Error = "IOBundle with parentassigngrp mismatch found"
-			ioBundle.ErrorTime = time.Now()
+			ioBundle.Error.Append(ErrParentAssigngrpMismatch{})
 			return true
 		}
 
 		if ioBundle.AssignmentGroup == "" && ioBundle.ParentAssignmentGroup != "" {
-			ioBundle.Error = "IOBundle with empty assigngrp cannot have a parent"
-			ioBundle.ErrorTime = time.Now()
+			ioBundle.Error.Append(ErrEmptyAssigngrpWithParent{})
 			return true
 		}
 		assigngrp2parent[ioBundle.AssignmentGroup] = ioBundle.ParentAssignmentGroup
@@ -516,17 +644,57 @@ func (aa *AssignableAdapters) CheckParentAssigngrp() bool {
 	for i := range aa.IoBundleList {
 		ioBundle := &aa.IoBundleList[i]
 		if ioBundle.AssignmentGroup == cycleDetectedAssigngrp {
-			ioBundle.Error = "Cycle detected, please check provided parentassigngrp/assigngrp"
-			ioBundle.ErrorTime = time.Now()
+			ioBundle.Error.Append(ErrCycleDetected{})
 		}
 	}
 
 	return true
 }
 
-// CheckBadUSBBundles sets ib.Error/ErrorTime if bundle collides in regards of USB
+// IOBundleCollision has the members IoBundles can collide on
+type IOBundleCollision struct {
+	Phylabel   string
+	USBAddr    string
+	USBProduct string
+	PCILong    string
+	Assigngrp  string
+}
+
+func (i IOBundleCollision) String() string {
+	return fmt.Sprintf("phylabel %s - usbaddr: %s usbproduct: %s pcilong: %s assigngrp: %s", i.Phylabel, i.USBAddr, i.USBProduct, i.PCILong, i.Assigngrp)
+}
+
+// ErrIOBundleCollision describes an error where an IoBundle collides with another IoBundle
+type ErrIOBundleCollision struct {
+	Collisions []IOBundleCollision
+}
+
+func (i ErrIOBundleCollision) Error() string {
+	collisionErrStrPrefix := "ioBundle collision:"
+
+	collisionStrs := make([]string, 0, len(i.Collisions))
+	for _, collision := range i.Collisions {
+		collisionStrs = append(collisionStrs, collision.String())
+	}
+	collisionErrStrBody := strings.Join(collisionStrs, "||")
+
+	return fmt.Sprintf("%s||%s||", collisionErrStrPrefix, collisionErrStrBody)
+}
+
+func newIoBundleCollisionErr() ErrIOBundleCollision {
+	return ErrIOBundleCollision{
+		Collisions: []IOBundleCollision{},
+	}
+}
+
+// CheckBadUSBBundles sets and clears ib.Error/ErrorTime if bundle collides in regards of USB
 func (aa *AssignableAdapters) CheckBadUSBBundles() {
 	usbProductsAddressMap := make(map[[4]string][]*IoBundle)
+	for i := range aa.IoBundleList {
+		ioBundle := &aa.IoBundleList[i]
+		ioBundle.Error.removeByType(ErrIOBundleCollision{})
+	}
+
 	for i := range aa.IoBundleList {
 		ioBundle := &aa.IoBundleList[i]
 		if ioBundle.UsbAddr == "" && ioBundle.UsbProduct == "" && ioBundle.PciLong == "" {
@@ -545,15 +713,19 @@ func (aa *AssignableAdapters) CheckBadUSBBundles() {
 			continue
 		}
 
-		errStr := "ioBundle collision:||"
+		collisionErr := newIoBundleCollisionErr()
 
 		for _, bundle := range bundles {
-			errStr += fmt.Sprintf("phylabel %s - usbaddr: %s usbproduct: %s pcilong: %s assigngrp: %s||",
-				bundle.Phylabel, bundle.UsbAddr, bundle.UsbProduct, bundle.PciLong, bundle.AssignmentGroup)
+			collisionErr.Collisions = append(collisionErr.Collisions, IOBundleCollision{
+				Phylabel:   bundle.Phylabel,
+				USBAddr:    bundle.UsbAddr,
+				USBProduct: bundle.UsbProduct,
+				PCILong:    bundle.PciLong,
+				Assigngrp:  bundle.AssignmentGroup,
+			})
 		}
 		for _, bundle := range bundles {
-			bundle.Error = errStr
-			bundle.ErrorTime = time.Now()
+			bundle.Error.Append(collisionErr)
 		}
 	}
 }
@@ -583,8 +755,7 @@ func (aa *AssignableAdapters) CheckBadAssignmentGroups(log *base.LogObject, PCIS
 				err := fmt.Errorf("CheckBadAssignmentGroup: %s same PCI controller as %s; pci long %s vs %s",
 					ib2.Ifname, ib.Ifname, ib2.PciLong, ib.PciLong)
 				log.Error(err)
-				ib.Error = err.Error()
-				ib.ErrorTime = time.Now()
+				ib.Error.Append(err)
 				changed = true
 			}
 		}

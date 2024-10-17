@@ -17,10 +17,11 @@ import (
 	zconfig "github.com/lf-edge/eve-api/go/config"
 	"github.com/lf-edge/eve/pkg/kube/cnirpc"
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/utils/cloudconfig"
 )
 
-// The information DomainManager needs to boot and halt domains
+// DomainConfig contains information DomainManager needs to boot and halt domains
 // If the the version (in UUIDandVersion) changes then the domain needs to
 // halted and booted?? NO, because an ACL change from ZedControl would bump
 // the version. Who determines which changes require halt+reboot?
@@ -132,6 +133,7 @@ func DomainnameToUUID(name string) (uuid.UUID, string, int, error) {
 	return id, res[1], appNum, nil
 }
 
+// Key returns domain UUID string
 func (config DomainConfig) Key() string {
 	return config.UUIDandVersion.UUID.String()
 }
@@ -222,7 +224,7 @@ func (config DomainConfig) LogKey() string {
 	return string(base.DomainConfigLogType) + "-" + config.Key()
 }
 
-// Some of these items can be overridden by matching Targets in
+// VmConfig, Some of these items can be overridden by matching Targets in
 // StorageConfigList. For example, a Target of "kernel" means to set/override
 // the Kernel attribute below.
 //
@@ -259,6 +261,7 @@ type VmConfig struct {
 	EnableVncShimVM    bool
 }
 
+// VmMode is the type for the virtualization mode
 type VmMode uint8
 
 const (
@@ -274,6 +277,9 @@ const (
 type Task interface {
 	Setup(DomainStatus, DomainConfig, *AssignableAdapters,
 		*ConfigItemValueMap, *os.File) error
+	VirtualTPMSetup(domainName, agentName string, ps *pubsub.PubSub, warnTime, errTime time.Duration) error
+	VirtualTPMTerminate(domainName string) error
+	VirtualTPMTeardown(domainName string) error
 	Create(string, string, *DomainConfig) (int, error)
 	Start(string) error
 	Stop(string, bool) error
@@ -309,6 +315,12 @@ type DomainStatus struct {
 	WritableFiles  []cloudconfig.WritableFile // List of files from CloudInit scripts to be created in container
 	VmConfig                                  // From DomainConfig
 	Service        bool
+	// VirtualTPM is a flag to signal the hypervisor implementation
+	// that vTPM is available for the domain.
+	VirtualTPM bool
+	// FmlCustomResolution is the custom resolution for FML mode,
+	// xxx: this should be moved to VmConfig
+	FmlCustomResolution string
 }
 
 func (status DomainStatus) Key() string {
