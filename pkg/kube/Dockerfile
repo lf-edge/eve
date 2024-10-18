@@ -23,6 +23,7 @@ RUN GO111MODULE=on CGO_ENABLED=0 go build -v -ldflags "-s -w" -o /out/usr/bin/ce
 FROM scratch
 COPY --from=build /out/ /
 COPY cluster-init.sh /usr/bin/
+COPY cluster-utils.sh /usr/bin/
 COPY cgconfig.conf /etc
 
 # k3s
