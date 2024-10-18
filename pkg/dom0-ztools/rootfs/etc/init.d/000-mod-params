@@ -73,4 +73,5 @@ if ! test -f /proc/vmcore; then
     modprobe pinctrl-upboard      2>/dev/null
     modprobe leds-upboard         2>/dev/null
     modprobe xhci_tegra           2>/dev/null
+    modprobe rtc_pcf85063         2>/dev/null
 fi

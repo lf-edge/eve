@@ -1,0 +1,36 @@
+// SMBIOS tables & USB2 ports support for OnLogic FR201
+/dts-v1/;
+/plugin/;
+
+/ {
+	compatible = "brcm,bcm2711";
+	fragment@0 {
+		target-path = "/";
+		__overlay__ {
+			sysinfo {
+				compatible = "u-boot,sysinfo-smbios";
+				smbios {
+					system {
+						manufacturer = "OnLogic";
+						product = "FR201";
+					};
+					baseboard {
+						manufacturer = "OnLogic";
+						product = "FR201";
+					};
+					chassis {
+						manufacturer = "OnLogic";
+						product = "FR201";
+					};
+				};
+			};
+		};
+	};
+	fragment@1 {
+		target = <&xhci>;
+		__overlay__ {
+			compatible = "generic-xhci\0brcm,generic-xhci";
+			status = "okay";
+		};
+	};
+};
