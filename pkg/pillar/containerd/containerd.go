@@ -32,7 +32,6 @@ import (
 	"github.com/lf-edge/edge-containers/pkg/resolver"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/utils/persist"
 	"github.com/opencontainers/go-digest"
 	"github.com/opencontainers/image-spec/identity"
 	runtimespecs "github.com/opencontainers/runtime-spec/specs-go"
@@ -98,10 +97,6 @@ func GetServicesNamespace() string {
 
 func init() {
 	logrus.Info("Containerd Init")
-	// see if we need to use zfs snapshotter based on what flavor of storage persist partition is
-	if persist.ReadPersistType() == types.PersistZFS {
-		defaultSnapshotter = types.ZFSSnapshotter
-	}
 
 	if base.IsHVTypeKube() {
 		defaultSnapshotter = "overlayfs"
