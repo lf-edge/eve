@@ -43,6 +43,10 @@ COPY iscsid.conf /etc/iscsi/
 COPY longhorn-generate-support-bundle.sh /usr/bin/
 COPY nsmounter /usr/bin/
 
+# descheduler
+COPY descheduler-job.yaml /etc/
+COPY descheduler-policy-configmap.yaml /etc/
+
 # Containerd config
 RUN mkdir -p /etc/containerd
 COPY config-k3s.toml /etc/containerd/
