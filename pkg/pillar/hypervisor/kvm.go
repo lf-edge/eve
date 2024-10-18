@@ -390,7 +390,7 @@ const qemuNetTemplate = `
 {{- end}}
 `
 
-const qemuPciPassthruTemplate = `
+const qemuRootPortPciPassthruTemplate = `
 [device "pci.{{.PCIId}}"]
   driver = "pcie-root-port"
   port = "1{{.PCIId}}"
@@ -398,7 +398,9 @@ const qemuPciPassthruTemplate = `
   bus = "pcie.0"
   multifunction = "on"
   addr = "{{printf "0x%x" .PCIId}}"
+`
 
+const qemuPciPassthruTemplate = `
 [device]
   driver = "vfio-pci"
   host = "{{.PciShortAddr}}"
@@ -411,6 +413,7 @@ const qemuPciPassthruTemplate = `
   x-igd-opregion = "on"
 {{- end -}}
 `
+
 const qemuSerialTemplate = `
 [chardev "charserial-usr{{.ID}}"]
   backend = "serial"
@@ -1079,7 +1082,8 @@ func (ctx KvmContext) CreateDomConfig(domainName string,
 			Xopregion    bool
 		}{PCIId: netContext.PCIId, PciShortAddr: "", Xvga: false, Xopregion: false}
 
-		t, _ = template.New("qemuPciPT").Parse(qemuPciPassthruTemplate)
+		tRootPortPCI, _ := template.New("qemuPciPT").Parse(qemuRootPortPciPassthruTemplate)
+		tPCI, _ := template.New("qemuPciPT").Parse(qemuPciPassthruTemplate)
 		for _, pa := range pciAssignments {
 			short := types.PCILongToShort(pa.pciLong)
 			pciPTContext.Xvga = pa.isVGA()
@@ -1096,7 +1100,10 @@ func (ctx KvmContext) CreateDomConfig(domainName string,
 			}
 
 			pciPTContext.PciShortAddr = short
-			if err := t.Execute(file, pciPTContext); err != nil {
+			if err := tRootPortPCI.Execute(file, pciPTContext); err != nil {
+				return logError("can't write Root Port PCI Passthrough to config file %s (%v)", file.Name(), err)
+			}
+			if err := tPCI.Execute(file, pciPTContext); err != nil {
 				return logError("can't write PCI Passthrough to config file %s (%v)", file.Name(), err)
 			}
 			pciPTContext.Xvga = false
