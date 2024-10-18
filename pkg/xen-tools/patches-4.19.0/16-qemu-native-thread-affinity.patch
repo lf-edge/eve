@@ -1,0 +1,25 @@
+From: Roja Eswaran <roja@zededa.com>
+Date: Mon, 19 Sep 2024 11:00:50 +0530
+Subject: [PATCH] 16-qemu-native-thread-affinity.patch to include native thread affinity
+
+
+diff --git a/tools/qemu-xen/softmmu/cpus.c b/tools/qemu-xen/softmmu/cpus.c
+index da56052..000df00 100644
+--- a/tools/qemu-xen/softmmu/cpus.c
++++ b/tools/qemu-xen/softmmu/cpus.c
+@@ -2073,6 +2073,12 @@ void qemu_init_vcpu(CPUState *cpu)
+         qemu_dummy_start_vcpu(cpu);
+     }
+ 
++    if(cpu_can_run(cpu))
++        warn_report("Change a CPU affinity after the CPU may have been running for a while\n");
++
++    if (cpu->cpumask)
++        qemu_thread_set_affinity(cpu->thread, cpu->cpumask);
++
+     while (!cpu->created) {
+         qemu_cond_wait(&qemu_cpu_cond, &qemu_global_mutex);
+     }
+-- 
+2.35.1
+
