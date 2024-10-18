@@ -70,6 +70,7 @@ gtest-dev
 gtk-doc
 hdparm
 iasl
+ifupdown-ng
 installkernel
 ip6tables
 ip6tables-openrc

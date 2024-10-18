@@ -604,14 +604,15 @@ func (m *DpcManager) waitForWwanUpdate() bool {
 	if dpc == nil {
 		return false
 	}
-	var hasMgmtWwan bool
+	var hasUsedMgmtWwan bool
 	for _, port := range dpc.Ports {
-		if port.IsMgmt && port.WirelessCfg.WType == types.WirelessTypeCellular {
-			hasMgmtWwan = true
+		if port.IsMgmt && port.WirelessCfg.WType == types.WirelessTypeCellular &&
+			!port.WirelessCfg.IsEmpty() {
+			hasUsedMgmtWwan = true
 			break
 		}
 	}
-	if !hasMgmtWwan {
+	if !hasUsedMgmtWwan {
 		return false
 	}
 	statusIsUpToDate := dpc.Key == m.wwanStatus.DPCKey &&

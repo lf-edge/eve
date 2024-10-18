@@ -10,8 +10,10 @@ i2c-tools-dev
 iw
 json-glib
 json-glib-dev
+libbpf
 libbpf-dev
 libgudev-dev
+libproc
 librados
 librbd
 libtss2-tcti-armbd

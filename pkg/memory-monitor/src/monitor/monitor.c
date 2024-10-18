@@ -162,6 +162,15 @@ int run_handler(const char *script_name, const char *event_msg) {
                 pthread_mutex_unlock(&handler_mutex);
                 return 1;
             }
+        } else {
+            // If the status is not 0, print several lines from the end of the log file
+            char *tail = get_tail(LOG_DIR "/" HANDLER_LOG_FILE, 10);
+            if (tail != NULL) {
+                syslog(LOG_ERR, "Handler script output (last 10 lines):\n%s\n", tail);
+                free(tail);
+            } else {
+                syslog(LOG_ERR, "Failed to read the handler log file\n");
+            }
         }
     } else {
         syslog(LOG_INFO, "Handler script exited abnormally by signal %d\n", WTERMSIG(status));

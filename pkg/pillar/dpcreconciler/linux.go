@@ -14,6 +14,8 @@ import (
 	"syscall"
 	"time"
 
+	"golang.org/x/sys/unix"
+
 	dg "github.com/lf-edge/eve-libs/depgraph"
 	"github.com/lf-edge/eve-libs/reconciler"
 	"github.com/lf-edge/eve/pkg/pillar/base"
@@ -40,10 +42,15 @@ import (
 // |   |              NetworkIO               |    |                Global              |   |
 // |   |                                      |    |                                    |   |
 // |   | +-----------+    +------------+      |    | +-------------+   +-------------+  |   |
-// |   | | NetIO     |    | NetIO      |      |    | | ResolvConf  |   | LocalIPRule |  |   |
-// |   | | (external)|    | (external) | ...  |    | | (singleton) |   | (singleton) |  |   |
+// |   | | NetIO     |    | NetIO      |      |    | | ResolvConf  |   |   IPRule    |  |   |
+// |   | | (external)|    | (external) | ...  |    | | (singleton) |   | (Local RT)  |  |   |
 // |   | +-----------+    +------------+      |    | +-------------+   +-------------+  |   |
-// |   +--------------------------------------+    +------------------------------------+   |
+// |   +--------------------------------------+    | +-------------------+              |   |
+// |                                               | |      IPRule       | ...          |   |
+// |                                               | | (for HV=kubevirt) |              |   |
+// |                                               | +-------------------+              |   |
+// |                                               +------------------------------------+   |
+// |                                                                                        |
 // |                                                                                        |
 // |   +-----------------+  +------------------+   +-------------------------------------+  |
 // |   |  PhysicalIfs    |  |  LogicalIO (L2)  |   |             Wireless                |  |
@@ -62,9 +69,9 @@ import (
 // |  |                                               +-------------------------------+  |  |
 // |  |                                               |            IPRules            |  |  |
 // |  |  +----------------------------------------+   |                               |  |  |
-// |  |  |               Adapters                 |   | +---------+  +----------+     |  |  |
-// |  |  |                                        |   | |SrcIPRule|  |SrcIPRule | ... |  |  |
-// |  |  | +---------+      +---------+           |   | +---------+  +----------+     |  |  |
+// |  |  |               Adapters                 |   | +-------+  +--------+         |  |  |
+// |  |  |                                        |   | |IPRule |  | IPRule | ...     |  |  |
+// |  |  | +---------+      +---------+           |   | +-------+  +--------+         |  |  |
 // |  |  | | Adapter |      | Adapter | ...       |   +-------------------------------+  |  |
 // |  |  | +---------+      +---------+           |                                      |  |
 // |  |  | +------------+   +------------+        |   +-------------------------------+  |  |
@@ -146,14 +153,11 @@ const (
 	intendedStateFile = "/run/nim-intended-state.dot"
 )
 
-const (
-	// Network bridge used by Kubernetes CNI.
-	// Currently, this is hardcoded for the Flannel CNI plugin.
-	kubeCNIBridge = "cni0"
+var (
 	// CIDR used for IP allocation for K3s pods.
-	kubePodCIDR = "10.42.0.0/16"
+	_, kubePodCIDR, _ = net.ParseCIDR("10.42.0.0/16")
 	// CIDR used for IP allocation for K3s services.
-	kubeSvcCIDR = "10.43.0.0/16"
+	_, kubeSvcCIDR, _ = net.ParseCIDR("10.43.0.0/16")
 )
 
 // LinuxDpcReconciler is a DPC-reconciler for Linux network stack,
@@ -778,17 +782,6 @@ func (r *LinuxDpcReconciler) updateCurrentAdapterAddrs(
 func (r *LinuxDpcReconciler) updateCurrentRoutes(dpc types.DevicePortConfig) (changed bool) {
 	sgPath := dg.NewSubGraphPath(L3SG, RoutesSG)
 	currentRoutes := dg.New(dg.InitArgs{Name: RoutesSG})
-	cniIfIndex := -1
-	if r.HVTypeKube {
-		ifIndex, found, err := r.NetworkMonitor.GetInterfaceIndex(kubeCNIBridge)
-		if err != nil {
-			r.Log.Errorf("getIntendedRoutes: failed to get ifIndex for %s: %v",
-				kubeCNIBridge, err)
-		}
-		if err == nil && found {
-			cniIfIndex = ifIndex
-		}
-	}
 	for _, port := range dpc.Ports {
 		if port.IfName == "" || port.InvalidConfig {
 			continue
@@ -823,29 +816,6 @@ func (r *LinuxDpcReconciler) updateCurrentRoutes(dpc types.DevicePortConfig) (ch
 				LastOperation: reconciler.OperationCreate,
 			})
 		}
-
-		if cniIfIndex != -1 {
-			cniRoutes, err := r.NetworkMonitor.ListRoutes(netmonitor.RouteFilters{
-				FilterByTable: true,
-				Table:         table,
-				FilterByIf:    true,
-				IfIndex:       cniIfIndex,
-			})
-			if err != nil {
-				r.Log.Errorf("updateCurrentRoutes: ListRoutes failed for ifIndex %d: %v",
-					cniIfIndex, err)
-			}
-			for _, rt := range cniRoutes {
-				currentRoutes.PutItem(linux.Route{
-					Route:         rt.Data.(netlink.Route),
-					UnmanagedLink: true,
-				}, &reconciler.ItemStateData{
-					State:         reconciler.ItemStateCreated,
-					LastOperation: reconciler.OperationCreate,
-				})
-			}
-
-		}
 	}
 	prevSG := dg.GetSubGraph(r.currentState, sgPath)
 	if len(prevSG.DiffItems(currentRoutes)) > 0 {
@@ -877,7 +847,22 @@ func (r *LinuxDpcReconciler) getIntendedGlobalCfg(dpc types.DevicePortConfig) dg
 	}
 	intendedCfg := dg.New(graphArgs)
 	// Move IP rule that matches local destined packets below network instance rules.
-	intendedCfg.PutItem(linux.LocalIPRule{Priority: devicenetwork.PbrLocalDestPrio}, nil)
+	intendedCfg.PutItem(linux.IPRule{
+		Priority: devicenetwork.PbrLocalDestPrio,
+		Table:    unix.RT_TABLE_LOCAL,
+	}, nil)
+	if r.HVTypeKube {
+		intendedCfg.PutItem(linux.IPRule{
+			Dst:      kubePodCIDR,
+			Priority: devicenetwork.PbrKubeNetworkPrio,
+			Table:    unix.RT_TABLE_MAIN,
+		}, nil)
+		intendedCfg.PutItem(linux.IPRule{
+			Dst:      kubeSvcCIDR,
+			Priority: devicenetwork.PbrKubeNetworkPrio,
+			Table:    unix.RT_TABLE_MAIN,
+		}, nil)
+	}
 	if len(dpc.Ports) == 0 {
 		return intendedCfg
 	}
@@ -1150,12 +1135,10 @@ func (r *LinuxDpcReconciler) getIntendedSrcIPRules(dpc types.DevicePortConfig) d
 			continue
 		}
 		for _, ipAddr := range ipAddrs {
-			intendedRules.PutItem(linux.SrcIPRule{
-				AdapterLL:     port.Logicallabel,
-				AdapterIfName: port.IfName,
-				IPAddr:        ipAddr.IP,
-				Priority:      devicenetwork.PbrLocalOrigPrio,
-				Table:         devicenetwork.DPCBaseRTIndex + ifIndex,
+			intendedRules.PutItem(linux.IPRule{
+				Src:      netutils.HostSubnet(ipAddr.IP),
+				Priority: devicenetwork.PbrLocalOrigPrio,
+				Table:    devicenetwork.DPCBaseRTIndex + ifIndex,
 			}, nil)
 		}
 	}
@@ -1170,26 +1153,6 @@ func (r *LinuxDpcReconciler) getIntendedRoutes(dpc types.DevicePortConfig) dg.Gr
 	intendedRoutes := dg.New(graphArgs)
 	// Routes are copied from the main table.
 	srcTable := syscall.RT_TABLE_MAIN
-	var cniRoutes []netmonitor.Route
-	if r.HVTypeKube {
-		ifIndex, found, err := r.NetworkMonitor.GetInterfaceIndex(kubeCNIBridge)
-		if err != nil {
-			r.Log.Errorf("getIntendedRoutes: failed to get ifIndex for %s: %v",
-				kubeCNIBridge, err)
-		}
-		if err == nil && found {
-			cniRoutes, err = r.NetworkMonitor.ListRoutes(netmonitor.RouteFilters{
-				FilterByTable: true,
-				Table:         srcTable,
-				FilterByIf:    true,
-				IfIndex:       ifIndex,
-			})
-			if err != nil {
-				r.Log.Errorf("getIntendedRoutes: ListRoutes failed for ifIndex %d: %v",
-					ifIndex, err)
-			}
-		}
-	}
 	for _, port := range dpc.Ports {
 		if port.IfName == "" || port.InvalidConfig {
 			continue
@@ -1222,15 +1185,6 @@ func (r *LinuxDpcReconciler) getIntendedRoutes(dpc types.DevicePortConfig) dg.Gr
 				Route:         rtCopy,
 				AdapterIfName: port.IfName,
 				AdapterLL:     port.Logicallabel,
-			}, nil)
-		}
-		for _, rt := range cniRoutes {
-			rtCopy := rt.Data.(netlink.Route)
-			rtCopy.Table = dstTable
-			r.prepareRouteForCopy(&rtCopy)
-			intendedRoutes.PutItem(linux.Route{
-				Route:         rtCopy,
-				UnmanagedLink: true,
 			}, nil)
 		}
 	}
@@ -1365,7 +1319,8 @@ func (r *LinuxDpcReconciler) getIntendedWlanConfig(
 	dpc types.DevicePortConfig, radioSilence types.RadioSilence) dg.Item {
 	var wifiPort *types.NetworkPortConfig
 	for _, portCfg := range dpc.Ports {
-		if portCfg.WirelessCfg.WType == types.WirelessTypeWifi {
+		if portCfg.WirelessCfg.WType == types.WirelessTypeWifi &&
+			!portCfg.WirelessCfg.IsEmpty() {
 			wifiPort = &portCfg
 			break
 		}
@@ -1457,7 +1412,8 @@ func (r *LinuxDpcReconciler) getIntendedWwanConfig(dpc types.DevicePortConfig,
 		if port.InvalidConfig {
 			continue
 		}
-		if port.WirelessCfg.WType != types.WirelessTypeCellular {
+		if port.WirelessCfg.WType != types.WirelessTypeCellular ||
+			port.WirelessCfg.IsEmpty() {
 			continue
 		}
 		if !aa.Initialized {
@@ -1920,39 +1876,9 @@ func (r *LinuxDpcReconciler) getIntendedMarkingRules(dpc types.DevicePortConfig,
 		TargetOpts:  []string{"--set-mark", controlProtoMark("in_dhcp")},
 		Description: "Mark ingress DHCP traffic",
 	}
-	// Mark all traffic from Kubernetes pods to Kubernetes services.
-	// Note that traffic originating from another node is already D-NATed
-	// and will get marked with the kube_pod mark.
-	markKubeSvc := iptables.Rule{
-		RuleLabel:   "Kubernetes service mark",
-		MatchOpts:   []string{"-i", kubeCNIBridge, "-s", kubePodCIDR, "-d", kubeSvcCIDR},
-		Target:      "CONNMARK",
-		TargetOpts:  []string{"--set-mark", controlProtoMark("kube_svc")},
-		Description: "Mark traffic from Kubernetes pods to Kubernetes services",
-	}
-	// Mark all traffic forwarded between Kubernetes pods.
-	markKubePod := iptables.Rule{
-		RuleLabel:   "Kubernetes pod mark",
-		MatchOpts:   []string{"-s", kubePodCIDR, "-d", kubePodCIDR},
-		Target:      "CONNMARK",
-		TargetOpts:  []string{"--set-mark", controlProtoMark("kube_pod")},
-		Description: "Mark all traffic directly forwarded between Kubernetes pods",
-	}
-	// Mark all DNS requests made from the Kubernetes network.
-	markKubeDNS := iptables.Rule{
-		RuleLabel:     "Kubernetes DNS mark",
-		MatchOpts:     []string{"-s", kubePodCIDR, "-p", "udp", "--dport", "domain"},
-		Target:        "CONNMARK",
-		TargetOpts:    []string{"--set-mark", controlProtoMark("kube_dns")},
-		AppliedBefore: []string{markKubeSvc.RuleLabel, markKubePod.RuleLabel},
-		Description:   "Mark DNS requests made from the Kubernetes network",
-	}
 
 	protoMarkV4Rules := []iptables.Rule{
 		markSSHAndGuacamole, markVnc, markIcmpV4, markDhcp,
-	}
-	if r.HVTypeKube {
-		protoMarkV4Rules = append(protoMarkV4Rules, markKubeDNS, markKubeSvc, markKubePod)
 	}
 	protoMarkV6Rules := []iptables.Rule{
 		markSSHAndGuacamole, markVnc, markIcmpV6,

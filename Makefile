@@ -366,11 +366,12 @@ ifeq ($(LINUXKIT_PKG_TARGET),push)
   endif
 endif
 
-# Though the partition size is set to 512MB lets check for ROOTFS_MAXSIZE_MB not exceeding 450MB for kubevirt.
-# That seems to be the direction taken for existing kvm systems where partition size is 300MB but
-# rootfs size is limited to 250MB. That helps in catching image size increases earlier than at later stage.
-# We are currently filtering out a few packages from bulk builds
-# since they are not getting published in Docker HUB
+# The rootfs partition size is set to 512MB after 10.2.0 release (see commit 719b4d516)
+# Before 10.2.0 it was 300MB. We must maintain compatibility with older versions so rootfs size cannot exceed 300MB.
+# kubevirt and nvidia are not affected by this limitation because there no installation of kubevirt prior to 10.2.0
+# Nethertheless lets check for ROOTFS_MAXSIZE_MB not exceeding 450MB for kubevirt and ARM and 270MB for x86_64
+# That helps in catching image size increases earlier than at later stage.
+# We are currently filtering out a few packages from bulk builds since they are not getting published in Docker HUB
 ifeq ($(HV),kubevirt)
         PKGS_$(ZARCH)=$(shell find pkg -maxdepth 1 -type d | grep -Ev "eve|alpine|sources$$")
         ROOTFS_MAXSIZE_MB=450
@@ -381,7 +382,7 @@ else
         ifeq ($(PLATFORM),nvidia)
             ROOTFS_MAXSIZE_MB=450
         else
-            ROOTFS_MAXSIZE_MB=250
+            ROOTFS_MAXSIZE_MB=270
         endif
 endif
 
@@ -459,7 +460,7 @@ $(DOCKERFILE_FROM_CHECKER): $(DOCKERFILE_FROM_CHECKER_DIR)/*.go $(DOCKERFILE_FRO
 # this next section checks that the FROM hashes for any image in any dockerfile anywhere here are consistent.
 # For example, one Dockerfile has foo:abc and the next has foo:def, it will flag them.
 # These are the packages that we are ignoring for now
-IGNORE_DOCKERFILE_HASHES_PKGS=bsp-imx vtpm optee-os installer wwan wlan watchdog uefi acrn acrn-kernel u-boot udev xen-tools xen alpine
+IGNORE_DOCKERFILE_HASHES_PKGS=alpine
 IGNORE_DOCKERFILE_HASHES_EVE_TOOLS=bpftrace-compiler
 
 IGNORE_DOCKERFILE_HASHES_PKGS_ARGS=$(foreach pkg,$(IGNORE_DOCKERFILE_HASHES_PKGS),-i pkg/$(pkg)/Dockerfile)

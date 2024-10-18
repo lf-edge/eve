@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2023 Zededa, Inc.
+// Copyright (c) 2017-2024 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 package hypervisor
@@ -508,7 +508,7 @@ func newKvm() Hypervisor {
 			ctrdContext:  *ctrdCtx,
 			devicemodel:  "pc-q35-3.1",
 			dmExec:       "/usr/lib/xen/bin/qemu-system-x86_64",
-			dmArgs:       []string{"-display", "none", "-S", "-no-user-config", "-nodefaults", "-no-shutdown", "-serial", "chardev:charserial0", "-no-hpet"},
+			dmArgs:       []string{"-display", "none", "-S", "-no-user-config", "-nodefaults", "-no-shutdown", "-serial", "chardev:charserial0", "-machine", "hpet=off"},
 			dmCPUArgs:    []string{"-cpu", "host"},
 			dmFmlCPUArgs: []string{"-cpu", "host,hv_time,hv_relaxed,hv_vendor_id=eveitis,hypervisor=off,kvm=off"},
 		}
@@ -1158,36 +1158,24 @@ func (ctx KvmContext) CreateDomConfig(domainName string,
 	return nil
 }
 
+// waitForQmp does the waiting/retry in getQemuStatus, and ignores its returned
+// status.
 func waitForQmp(domainName string, available bool) error {
-	maxDelay := time.Second * 10
-	delay := time.Second
-	var waited time.Duration
 	var err error
-
-	for {
-		logrus.Infof("waitForQmp for %s %t: waiting for %v", domainName, available, delay)
-		if delay != 0 {
-			time.Sleep(delay)
-			waited += delay
-		}
-		sock := GetQmpExecutorSocket(domainName)
-		if _, err = getQemuStatus(sock); available == (err == nil) {
-			logrus.Infof("waitForQmp for %s %t done", domainName, available)
-			return nil
-		}
-		if waited > maxDelay {
-			// Give up
-			logrus.Warnf("waitForQmp for %s %t: giving up", domainName, available)
-			if available {
-				return logError("Giving up waiting to connect to QEMU Monitor Protocol socket %s from VM %s, error: %v", sock, domainName, err)
-			}
-			return logError("Giving up waiting to cleanup VM %s, QEMU Monitor Protocol socket %s is still available", domainName, sock)
-		}
-		delay = 2 * delay
-		if delay > time.Minute {
-			delay = time.Minute
-		}
+	sock := GetQmpExecutorSocket(domainName)
+	logrus.Infof("waitForQmp for %s %t",
+		domainName, available)
+	if _, err = getQemuStatus(sock); available == (err == nil) {
+		logrus.Infof("waitForQmp for %s %t done", domainName, available)
+		return nil
 	}
+	if available {
+		return logError("Giving up waiting to connect to QEMU Monitor Protocol socket %s from VM %s, error: %v",
+			sock, domainName, err)
+	}
+	return logError("Giving up waiting to cleanup VM %s, QEMU Monitor Protocol socket %s is still available",
+		domainName, sock)
+
 }
 
 // Start starts a domain

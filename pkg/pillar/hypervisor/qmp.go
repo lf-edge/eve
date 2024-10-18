@@ -1,3 +1,6 @@
+// Copyright (c) 2020-2024 Zededa, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 package hypervisor
 
 import (
@@ -15,71 +18,88 @@ import (
 // this package implements subset of
 //     https://qemu.weilnetz.de/doc/qemu-qmp-ref.html
 
-const sockTimeout = 10 * time.Second
+const (
+	sockTimeout   = 10 * time.Second
+	qmpRetries    = 5
+	qmpRetrySleep = 3 * time.Second
+)
 
-func execRawCmd(socket, cmd string) ([]byte, error) {
-	var retry = 3
+// execRawCmd will retry (if doReply is set) for qmpRetries times sleeping
+// qmpRetrySleep between attempts
+func execRawCmd(socket, cmd string, doRetry bool) ([]byte, error) {
+	var retry int
 	logrus.Debugf("executing QMP command: %s", cmd)
 	var err error
 	var monitor *qmp.SocketMonitor
 
-	for retry >= 0 {
-		if monitor, err = qmp.NewSocketMonitor("unix", socket, sockTimeout); err == nil {
-			break
-		}
-		retry = retry - 1
-		time.Sleep(time.Second)
+	if doRetry {
+		retry = qmpRetries
 	}
-
+	for retry >= 0 {
+		if monitor, err = qmp.NewSocketMonitor("unix", socket, sockTimeout); err != nil {
+			retry = retry - 1
+			time.Sleep(qmpRetrySleep)
+			continue
+		}
+		break
+	}
 	if err != nil {
 		return nil, err
 	}
-
-	if err = monitor.Connect(); err != nil {
+	// We might have reached retry zero in the above loop, in which case
+	// we will still try the Connect once.
+	for retry >= 0 {
+		if err = monitor.Connect(); err != nil {
+			retry = retry - 1
+			time.Sleep(qmpRetrySleep)
+			continue
+		}
+		defer monitor.Disconnect()
+		break
+	}
+	if err != nil {
 		return nil, err
 	}
-	defer monitor.Disconnect()
-
 	return monitor.Run([]byte(cmd))
 }
 
 func execContinue(socket string) error {
-	_, err := execRawCmd(socket, `{ "execute": "cont" }`)
+	_, err := execRawCmd(socket, `{ "execute": "cont" }`, true)
 	return err
 }
 
 func execStop(socket string) error {
-	_, err := execRawCmd(socket, `{ "execute": "stop" }`)
+	_, err := execRawCmd(socket, `{ "execute": "stop" }`, true)
 	return err
 }
 
 func execShutdown(socket string) error {
-	_, err := execRawCmd(socket, `{ "execute": "system_powerdown" }`)
+	_, err := execRawCmd(socket, `{ "execute": "system_powerdown" }`, true)
 	return err
 }
 
 func execQuit(socket string) error {
-	_, err := execRawCmd(socket, `{ "execute": "quit" }`)
+	_, err := execRawCmd(socket, `{ "execute": "quit" }`, true)
 	return err
 }
 
 func execVNCPassword(socket string, password string) error {
 	vncSetPwd := fmt.Sprintf(`{ "execute": "change-vnc-password", "arguments": { "password": "%s" } }`, password)
-	_, err := execRawCmd(socket, vncSetPwd)
+	_, err := execRawCmd(socket, vncSetPwd, true)
 	return err
 }
 
 // QmpExecDeviceDelete removes a device
 func QmpExecDeviceDelete(socket, id string) error {
 	qmpString := fmt.Sprintf(`{ "execute": "device_del", "arguments": { "id": "%s"}}`, id)
-	_, err := execRawCmd(socket, qmpString)
+	_, err := execRawCmd(socket, qmpString, true)
 	return err
 }
 
 // QmpExecDeviceAdd adds a usb device via busnum/devnum
 func QmpExecDeviceAdd(socket, id string, busnum, devnum uint16) error {
 	qmpString := fmt.Sprintf(`{ "execute": "device_add", "arguments": { "driver": "usb-host", "hostbus": %d, "hostaddr": %d, "id": "%s"} }`, busnum, devnum, id)
-	_, err := execRawCmd(socket, qmpString)
+	_, err := execRawCmd(socket, qmpString, true)
 	return err
 }
 
@@ -121,13 +141,14 @@ func getQemuStatus(socket string) (types.SwState, error) {
 	// the status is unexpected, EVE stops QEMU and game over.
 	var errs error
 	state := types.UNKNOWN
-	for attempt := 1; attempt <= 3; attempt++ {
-		raw, err := execRawCmd(socket, `{ "execute": "query-status" }`)
+	for attempt := 1; attempt <= qmpRetries; attempt++ {
+		raw, err := execRawCmd(socket, `{ "execute": "query-status" }`,
+			false)
 		if err != nil {
 			err = fmt.Errorf("[attempt %d] qmp status failed for QMP socket '%s': err: '%v'; (JSON response: '%s')",
 				attempt, socket, err, raw)
 			errs = joinErrors(errs, err)
-			time.Sleep(time.Second)
+			time.Sleep(qmpRetrySleep)
 			continue
 		}
 
@@ -146,7 +167,7 @@ func getQemuStatus(socket string) (types.SwState, error) {
 			err = fmt.Errorf("[attempt %d] failed to parse QMP status response for QMP socket '%s': err: '%v'; (JSON response: '%s')",
 				attempt, socket, err, raw)
 			errs = joinErrors(errs, err)
-			time.Sleep(time.Second)
+			time.Sleep(qmpRetrySleep)
 			continue
 		}
 		var matched bool
@@ -154,7 +175,7 @@ func getQemuStatus(socket string) (types.SwState, error) {
 			err = fmt.Errorf("[attempt %d] unknown QMP status '%s' for QMP socket '%s'; (JSON response: '%s')",
 				attempt, result.Return.Status, socket, raw)
 			errs = joinErrors(errs, err)
-			time.Sleep(time.Second)
+			time.Sleep(qmpRetrySleep)
 			continue
 		}
 
