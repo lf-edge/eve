@@ -11,6 +11,8 @@ on:  # yamllint disable-line rule:truthy
       - '.github/**'
     tags:
       - "[0-9]+\\.[0-9]+\\.[0-9]+"
+      - "[0-9]+.[0-9]+.[0-9]+-lts"
+      - "[0-9]+.[0-9]+.[0-9]+-rc[0-9]+"
 
 jobs:
   packages:
