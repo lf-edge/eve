@@ -399,11 +399,7 @@ const qemuPciPassthruTemplate = `
 `
 const qemuSerialTemplate = `
 [chardev "charserial-usr{{.ID}}"]
-{{- if eq .Machine "virt"}}
   backend = "serial"
-{{- else}}
-  backend = "tty"
-{{- end}}
   path = "{{.SerialPortName}}"
 
 [device "serial-usr{{.ID}}"]
