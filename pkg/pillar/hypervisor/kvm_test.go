@@ -1,6 +1,7 @@
 package hypervisor
 
 import (
+	"bytes"
 	"fmt"
 	"net"
 	"os"
@@ -8,6 +9,7 @@ import (
 	"regexp"
 	"testing"
 
+	"github.com/google/go-cmp/cmp"
 	zconfig "github.com/lf-edge/eve-api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	uuid "github.com/satori/go.uuid"
@@ -2754,5 +2756,55 @@ func TestCreateDomConfigContainerVNC(t *testing.T) {
 	result = setStaticVsockCid(result)
 	if string(result) != domConfigContainerVNC() {
 		t.Errorf("got an unexpected resulting config %s", string(result))
+	}
+}
+
+func expectedMultifunctionDevice() string {
+	return `
+[device "pci.0"]
+  driver = "pcie-root-port"
+  port = "10"
+  chassis = "0"
+  bus = "pcie.0"
+  multifunction = "on"
+  addr = "0x0"
+
+[device]
+  driver = "vfio-pci"
+  host = "0d.0"
+  bus = "pci.0"
+  addr = "0x0"
+[device "pci.1"]
+  driver = "pcie-root-port"
+  port = "11"
+  chassis = "1"
+  bus = "pcie.0"
+  multifunction = "on"
+  addr = "0x1"
+
+[device]
+  driver = "vfio-pci"
+  host = "0d.2"
+  bus = "pci.1"
+  addr = "0x0"`
+}
+
+func TestPCIAssignmentsTemplateFillMultifunctionDevice(t *testing.T) {
+	pciAssignments := []pciDevice{
+		{
+			pciLong: "00:0d.0",
+			ioType:  0,
+		},
+		{
+			pciLong: "00:0d.2",
+			ioType:  0,
+		},
+	}
+
+	wr := bytes.Buffer{}
+	pciAssignmentsTemplateFill(&wr, pciAssignments, 0)
+
+	if wr.String() != expectedMultifunctionDevice() {
+		t.Fatalf("not equal, diff: \n%s\n", cmp.Diff(wr.String(), expectedMultifunctionDevice()))
 	}
 }
