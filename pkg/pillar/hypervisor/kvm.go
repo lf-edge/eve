@@ -932,6 +932,50 @@ func getFmlCustomResolution(status *types.DomainStatus, globalConfig *types.Conf
 	return "", fmt.Errorf("invalid fml resolution %s", fmlResolutions)
 }
 
+func pciAssignmentsTemplateFill(file io.Writer, pciAssignments []pciDevice, pciID int) error {
+	if len(pciAssignments) == 0 {
+		return nil
+	}
+
+	pciPTContext := struct {
+		PCIId        int
+		PciShortAddr string
+		Xvga         bool
+		Xopregion    bool
+	}{PCIId: pciID, PciShortAddr: "", Xvga: false, Xopregion: false}
+
+	tRootPortPCI, _ := template.New("qemuPciPT").Parse(qemuRootPortPciPassthruTemplate)
+	tPCI, _ := template.New("qemuPciPT").Parse(qemuPciPassthruTemplate)
+	for _, pa := range pciAssignments {
+		short := types.PCILongToShort(pa.pciLong)
+		pciPTContext.Xvga = pa.isVGA()
+
+		if vendor, err := pa.vid(); err == nil {
+			// check for Intel vendor
+			if vendor == "0x8086" {
+				if pciPTContext.Xvga {
+					// we set opregion for Intel vga
+					// https://github.com/qemu/qemu/blob/stable-5.0/docs/igd-assign.txt#L91-L96
+					pciPTContext.Xopregion = true
+				}
+			}
+		}
+
+		pciPTContext.PciShortAddr = short
+		if err := tRootPortPCI.Execute(file, pciPTContext); err != nil {
+			return logError("can't write Root Port PCI Passthrough to config file (%v)", err)
+		}
+		if err := tPCI.Execute(file, pciPTContext); err != nil {
+			return logError("can't write PCI Passthrough to config file (%v)", err)
+		}
+		pciPTContext.Xvga = false
+		pciPTContext.Xopregion = false
+		pciPTContext.PCIId = pciPTContext.PCIId + 1
+	}
+
+	return nil
+}
+
 // CreateDomConfig creates a domain config (a qemu config file,
 // typically named something like xen-%d.cfg)
 func (ctx KvmContext) CreateDomConfig(domainName string,
@@ -1082,42 +1126,9 @@ func (ctx KvmContext) CreateDomConfig(domainName string,
 			}
 		}
 	}
-	if len(pciAssignments) != 0 {
-		pciPTContext := struct {
-			PCIId        int
-			PciShortAddr string
-			Xvga         bool
-			Xopregion    bool
-		}{PCIId: netContext.PCIId, PciShortAddr: "", Xvga: false, Xopregion: false}
-
-		tRootPortPCI, _ := template.New("qemuPciPT").Parse(qemuRootPortPciPassthruTemplate)
-		tPCI, _ := template.New("qemuPciPT").Parse(qemuPciPassthruTemplate)
-		for _, pa := range pciAssignments {
-			short := types.PCILongToShort(pa.pciLong)
-			pciPTContext.Xvga = pa.isVGA()
-
-			if vendor, err := pa.vid(); err == nil {
-				// check for Intel vendor
-				if vendor == "0x8086" {
-					if pciPTContext.Xvga {
-						// we set opregion for Intel vga
-						// https://github.com/qemu/qemu/blob/stable-5.0/docs/igd-assign.txt#L91-L96
-						pciPTContext.Xopregion = true
-					}
-				}
-			}
-
-			pciPTContext.PciShortAddr = short
-			if err := tRootPortPCI.Execute(file, pciPTContext); err != nil {
-				return logError("can't write Root Port PCI Passthrough to config file %s (%v)", file.Name(), err)
-			}
-			if err := tPCI.Execute(file, pciPTContext); err != nil {
-				return logError("can't write PCI Passthrough to config file %s (%v)", file.Name(), err)
-			}
-			pciPTContext.Xvga = false
-			pciPTContext.Xopregion = false
-			pciPTContext.PCIId = pciPTContext.PCIId + 1
-		}
+	err = pciAssignmentsTemplateFill(file, pciAssignments, netContext.PCIId)
+	if err != nil {
+		return fmt.Errorf("writing to template file %s failed: %w", file.Name(), err)
 	}
 	if len(serialAssignments) != 0 {
 		serialPortContext := struct {
