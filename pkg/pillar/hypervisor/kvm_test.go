@@ -995,7 +995,7 @@ func TestCreateDomConfigAmd64Fml(t *testing.T) {
 
 	result = setStaticVsockCid(result)
 	if string(result) != domConfigAmd64FML() {
-		t.Errorf("got an unexpected resulting config %s", string(result))
+		t.Errorf("got an unexpected resulting config %s", cmp.Diff(string(result), domConfigAmd64FML()))
 	}
 }
 
@@ -2771,7 +2771,7 @@ func expectedMultifunctionDevice() string {
 
 [device]
   driver = "vfio-pci"
-  host = "0d.0"
+  host = "00:0a.0"
   bus = "pci.0"
   addr = "0x0"
 [device "pci.1"]
@@ -2782,29 +2782,104 @@ func expectedMultifunctionDevice() string {
   multifunction = "on"
   addr = "0x1"
 
+[device "pcie-bridge.1"]
+  driver = "pcie-pci-bridge"
+  bus = "pci.1"
+  addr = "0x0"
+
 [device]
   driver = "vfio-pci"
-  host = "0d.2"
-  bus = "pci.1"
-  addr = "0x0"`
+  host = "00:0d.0"
+  bus = "pcie-bridge.1"
+  addr = "0x1"
+[device "pci.2"]
+  driver = "pcie-root-port"
+  port = "12"
+  chassis = "2"
+  bus = "pcie.0"
+  multifunction = "on"
+  addr = "0x2"
+
+[device]
+  driver = "vfio-pci"
+  host = "00:0b.0"
+  bus = "pci.2"
+  addr = "0x0"
+[device]
+  driver = "vfio-pci"
+  host = "00:0d.2"
+  bus = "pcie-bridge.1"
+  addr = "0x2"`
 }
 
 func TestPCIAssignmentsTemplateFillMultifunctionDevice(t *testing.T) {
 	pciAssignments := []pciDevice{
 		{
-			pciLong: "00:0d.0",
+			pciLong: "0000:00:0a.0",
 			ioType:  0,
 		},
 		{
-			pciLong: "00:0d.2",
+			pciLong: "0000:00:0d.0",
+			ioType:  0,
+		},
+		{
+			pciLong: "0000:00:0b.0",
+			ioType:  0,
+		},
+		{
+			pciLong: "0000:00:0d.2",
 			ioType:  0,
 		},
 	}
 
 	wr := bytes.Buffer{}
-	pciAssignmentsTemplateFill(&wr, pciAssignments, 0)
+	p := pciAssignmentsTemplateFiller{
+		multifunctionDevices: multifunctionDevGroup(pciAssignments),
+		file:                 &wr,
+	}
+	p.do(&wr, pciAssignments, 0)
 
 	if wr.String() != expectedMultifunctionDevice() {
-		t.Fatalf("not equal, diff: \n%s\n", cmp.Diff(wr.String(), expectedMultifunctionDevice()))
+		t.Fatalf("not equal, diff: \n%s\ncomplete:\n%s", cmp.Diff(wr.String(), expectedMultifunctionDevice()), wr.String())
+	}
+}
+
+func TestConvertToMultifunctionPCIDevices(t *testing.T) {
+	pciAssignments := []pciDevice{
+		{
+			pciLong: "0000:00:0d.0",
+			ioType:  0,
+		},
+		{
+			pciLong: "0000:00:aa.8",
+			ioType:  0,
+		},
+		{
+			pciLong: "0000:00:0d.2",
+			ioType:  0,
+		},
+		{
+			pciLong: "0000:00:0d.f",
+			ioType:  0,
+		},
+	}
+
+	mds := multifunctionDevGroup(pciAssignments)
+
+	if len(mds) != 2 {
+		t.Fatalf("expected two multifunction pci assignments, but got %d", len(mds))
+	}
+
+	t.Log(mds)
+	for i, pci := range []string{"0000:00:0d.0", "0000:00:0d.2", "0000:00:0d.f"} {
+		functionPCIDev := mds["0000:00:0d"].devs[i].pciLong
+		if functionPCIDev != pci {
+			t.Logf("expected %s got %s", pci, functionPCIDev)
+			t.Fail()
+		}
+	}
+
+	if len(mds["0000:00:aa"].devs) != 1 {
+		t.Fatal("expected one device")
 	}
 }
