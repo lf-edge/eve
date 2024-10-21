@@ -1,4 +1,4 @@
-FROM lfedge/eve-alpine:591df01e581889c3027514c8a91feaca1c8ad49f as build-base
+FROM lfedge/eve-alpine:591df01e581889c3027514c8a91feaca1c8ad49f AS build-base
 ENV BUILD_PKGS bash binutils-dev build-base bc bison flex openssl-dev python3 swig dtc util-linux-dev gnutls-dev
 ENV BUILD_PKGS_amd64 python3-dev py-pip
 RUN eve-alpine-deploy.sh
@@ -38,7 +38,7 @@ ADD ${RASPBERRY_FIRMWARE_BLOBS}/boot/fixup4.dat /tmp/rpi/fixup4.dat
 ADD ${RASPBERRY_FIRMWARE_BLOBS}/boot/start4.elf /tmp/rpi/start4.elf
 # hadolint ignore=DL3020
 ADD ${RASPBERRY_FIRMWARE_BLOBS}/boot/bcm2711-rpi-cm4.dtb /tmp/rpi/bcm2711-rpi-cm4.dtb
-# hadolint ignore=DL3020
+# hadolint ignore=DL3020,SC3060
 RUN  for i in /tmp/rpi/overlays/*.dts ; do                                         \
           dtc -@ -I dts -O dtb -o "${i/.dts/.dtbo}" "$i" && rm "$i"     ;\
        done                                                                         ;\
