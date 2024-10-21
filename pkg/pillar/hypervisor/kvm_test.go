@@ -353,7 +353,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
   addr = "0x0"
 
 [chardev "charserial-usr0"]
-  backend = "tty"
+  backend = "serial"
   path = "/dev/ttyS0"
 
 [device "serial-usr0"]
@@ -639,7 +639,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
   addr = "0x0"
 
 [chardev "charserial-usr0"]
-  backend = "tty"
+  backend = "serial"
   path = "/dev/ttyS0"
 
 [device "serial-usr0"]
@@ -1704,7 +1704,7 @@ func domConfigAmd64FML() string {
   bus = "pci.11"
   addr = "0x0"
 [chardev "charserial-usr0"]
-  backend = "tty"
+  backend = "serial"
   path = "/dev/ttyS0"
 
 [device "serial-usr0"]
@@ -1992,7 +1992,7 @@ func domConfigAmd64Legacy() string {
   bus = "pci.10"
   addr = "0x0"
 [chardev "charserial-usr0"]
-  backend = "tty"
+  backend = "serial"
   path = "/dev/ttyS0"
 
 [device "serial-usr0"]
@@ -2276,7 +2276,7 @@ func domConfigAmd64() string {
   bus = "pci.10"
   addr = "0x0"
 [chardev "charserial-usr0"]
-  backend = "tty"
+  backend = "serial"
   path = "/dev/ttyS0"
 
 [device "serial-usr0"]
@@ -2562,7 +2562,7 @@ func domConfigContainerVNC() string {
   bus = "pci.9"
   addr = "0x0"
 [chardev "charserial-usr0"]
-  backend = "tty"
+  backend = "serial"
   path = "/dev/ttyS0"
 
 [device "serial-usr0"]
