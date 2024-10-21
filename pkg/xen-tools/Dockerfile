@@ -27,7 +27,7 @@ ENV BUILD_PKGS \
     pixman-dev libaio-dev yajl-dev argp-standalone \
     linux-headers git patch texinfo tar libcap-ng-dev \
     attr-dev flex bison cmake libusb-dev zstd-dev \
-    python3 build-base ninja gnutls-dev
+    python3 build-base ninja gnutls-dev agetty
 
 ENV BUILD_PKGS_arm64 dtc-dev
 
