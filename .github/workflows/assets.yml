@@ -83,15 +83,9 @@ jobs:
       - name: Rename files for release
         id: rename-files-for-release
         run: |
-          mv assets/rootfs.img assets/${{ env.ARCH }}.rootfs.img
-          mv assets/kernel assets/${{ env.ARCH }}.kernel
-          mv assets/installer.img assets/${{ env.ARCH }}.installer.img
-          mv assets/initrd.img assets/${{ env.ARCH }}.initrd.img
-          mv assets/initrd.bits assets/${{ env.ARCH }}.initrd.bits
-          mv assets/ipxe.efi assets/${{ env.ARCH }}.ipxe.efi
-          mv assets/ipxe.efi.cfg assets/${{ env.ARCH }}.ipxe.efi.cfg
-          mv assets/ipxe.efi.ip.cfg assets/${{ env.ARCH }}.ipxe.efi.ip.cfg
-          mv assets/collected_sources.tar.gz assets/${{ env.ARCH }}.collected_sources.tar.gz
+          for asset in assets/*; do
+            mv "$asset" "assets/${{ env.ARCH }}.$(basename "$asset")"
+          done
       - name: Upload release files
         id: upload-release-files
         uses: softprops/action-gh-release@v2
@@ -101,12 +95,4 @@ jobs:
           tag_name: ${{ inputs.tag_ref }}
           make_latest: false
           files: |
-            assets/${{ env.ARCH }}.rootfs.img
-            assets/${{ env.ARCH }}.kernel
-            assets/${{ env.ARCH }}.installer.img
-            assets/${{ env.ARCH }}.initrd.img
-            assets/${{ env.ARCH }}.initrd.bits
-            assets/${{ env.ARCH }}.ipxe.efi
-            assets/${{ env.ARCH }}.ipxe.efi.cfg
-            assets/${{ env.ARCH }}.ipxe.efi.ip.cfg
-            assets/${{ env.ARCH }}.collected_sources.tar.gz
+            assets/${{ env.ARCH }}.*
