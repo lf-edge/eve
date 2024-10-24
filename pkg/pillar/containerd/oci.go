@@ -486,8 +486,12 @@ func (s *ociSpec) UpdateFromDomain(dom *types.DomainConfig, status *types.Domain
 		s.Linux.Resources.Memory.Limit = &m
 		s.Linux.Resources.CPU.Period = &p
 		s.Linux.Resources.CPU.Quota = &q
-		if status.VmConfig.CPUs != "" {
-			s.Linux.Resources.CPU.Cpus = status.VmConfig.CPUs
+		if len(status.VmConfig.CPUs) != 0 {
+			cpusAsString := make([]string, len(status.VmConfig.CPUs))
+			for i, cpu := range status.VmConfig.CPUs {
+				cpusAsString[i] = fmt.Sprintf("%d", cpu)
+			}
+			s.Linux.Resources.CPU.Cpus = strings.Join(cpusAsString, ",")
 		}
 
 		s.Linux.CgroupsPath = fmt.Sprintf("/%s/%s", ctrdServicesNamespace, dom.GetTaskName())
