@@ -17,3 +17,5 @@
 ^pkg/apparmor/etc/
 ^eve-tools/bpftrace-compiler/examples/.+\.bt
 ^pkg/installer/vendor/
+^pkg/kube/lh-cfg-v1.6.2.yaml
+^pkg/kube/descheduler_rbac.yaml
