@@ -4,9 +4,12 @@
 package main
 
 import (
+	"context"
 	"crypto/rand"
 	"fmt"
+	"io"
 	"net"
+	"net/http"
 	"os"
 	"testing"
 	"time"
@@ -16,6 +19,8 @@ import (
 )
 
 const baseDir = "/tmp/swtpm/test"
+
+var client = &http.Client{}
 
 func TestMain(m *testing.M) {
 	log = base.NewSourceLogObject(logrus.StandardLogger(), "vtpm", os.Getpid())
@@ -28,60 +33,57 @@ func TestMain(m *testing.M) {
 	swtpmPidPath = baseDir + "/%s.pid"
 	vtpmdCtrlSockPath = baseDir + "/vtpmd.ctrl.sock"
 
-	go serviceLoop()
-	defer func() {
-		_ = os.Remove(vtpmdCtrlSockPath)
-	}()
+	client = &http.Client{
+		Transport: UnixSocketTransport(vtpmdCtrlSockPath),
+		Timeout:   5 * time.Second,
+	}
 
+	go startServing()
 	time.Sleep(1 * time.Second)
 	m.Run()
 }
 
-func sendLaunchRequest(id string) error {
-	conn, err := net.Dial("unix", vtpmdCtrlSockPath)
-	if err != nil {
-		return fmt.Errorf("failed to connect to vTPM control socket: %w", err)
+func UnixSocketTransport(socketPath string) *http.Transport {
+	return &http.Transport{
+		DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
+			return net.Dial("unix", socketPath)
+		},
 	}
-	defer conn.Close()
-
-	_, err = conn.Write([]byte(fmt.Sprintf("%s;%s\n", launchReq, id)))
-	if err != nil {
-		return fmt.Errorf("failed to write to vTPM control socket: %w", err)
-	}
-
-	return nil
 }
 
-func sendPurgeRequest(id string) error {
-	conn, err := net.Dial("unix", vtpmdCtrlSockPath)
+func makeRequest(client *http.Client, endpoint, id string) (string, int, error) {
+	url := fmt.Sprintf("http://unix/%s?id=%s", endpoint, id)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
-		return fmt.Errorf("failed to connect to vTPM control socket: %w", err)
+		return "", -1, fmt.Errorf("error when creating request: %v", err)
 	}
-	defer conn.Close()
-
-	_, err = conn.Write([]byte(fmt.Sprintf("%s;%s\n", purgeReq, id)))
+	resp, err := client.Do(req)
 	if err != nil {
-		return fmt.Errorf("failed to write to vTPM control socket: %w", err)
+		return "", -1, fmt.Errorf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", -1, fmt.Errorf("error when reading response body: %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return string(body), resp.StatusCode, fmt.Errorf("received status code %d \n", resp.StatusCode)
 	}
 
-	time.Sleep(1 * time.Second)
-	return nil
+	return string(body), resp.StatusCode, nil
 }
 
-func sendTerminateRequest(id string) error {
-	conn, err := net.Dial("unix", vtpmdCtrlSockPath)
-	if err != nil {
-		return fmt.Errorf("failed to connect to vTPM control socket: %w", err)
-	}
-	defer conn.Close()
+func sendLaunchRequest(id string) (string, int, error) {
+	return makeRequest(client, "launch", id)
+}
 
-	_, err = conn.Write([]byte(fmt.Sprintf("%s;%s\n", terminateReq, id)))
-	if err != nil {
-		return fmt.Errorf("failed to write to vTPM control socket: %w", err)
-	}
+func sendPurgeRequest(id string) (string, int, error) {
+	return makeRequest(client, "purge", id)
+}
 
-	time.Sleep(1 * time.Second)
-	return nil
+func sendTerminateRequest(id string) (string, int, error) {
+	return makeRequest(client, "terminate", id)
 }
 
 func testLaunchAndPurge(t *testing.T, id string) {
@@ -90,9 +92,9 @@ func testLaunchAndPurge(t *testing.T, id string) {
 	// 2. check number of live instances, it should be 1
 	// 3. send purge request
 	// 4. check number of live instances, it should be 0
-	err := sendLaunchRequest(id)
+	b, _, err := sendLaunchRequest(id)
 	if err != nil {
-		t.Fatalf("failed to handle request: %v", err)
+		t.Fatalf("failed to send request: %v, body : %s", err, b)
 	}
 	time.Sleep(1 * time.Second)
 
@@ -100,10 +102,11 @@ func testLaunchAndPurge(t *testing.T, id string) {
 		t.Fatalf("expected liveInstances to be 1, got %d", liveInstances)
 	}
 
-	err = sendPurgeRequest(id)
+	b, _, err = sendPurgeRequest(id)
 	if err != nil {
-		t.Fatalf("failed to handle request: %v", err)
+		t.Fatalf("failed to send request: %v, body : %s", err, b)
 	}
+	time.Sleep(1 * time.Second)
 
 	if liveInstances != 0 {
 		t.Fatalf("expected liveInstances to be 0, got %d", liveInstances)
@@ -112,27 +115,28 @@ func testLaunchAndPurge(t *testing.T, id string) {
 
 func testExhaustSwtpmInstances(t *testing.T, id string) {
 	for i := 0; i < maxInstances; i++ {
-		err := sendLaunchRequest(fmt.Sprintf("%s-%d", id, i))
+		b, _, err := sendLaunchRequest(fmt.Sprintf("%s-%d", id, i))
 		if err != nil {
-			t.Errorf("failed to send request: %v", err)
+			t.Fatalf("failed to send request: %v, body : %s", err, b)
 		}
 	}
 	time.Sleep(5 * time.Second)
 
 	// this should have no effect as we have reached max instances
-	err := sendLaunchRequest(id)
-	if err != nil {
-		t.Errorf("failed to send request: %v", err)
+	b, res, err := sendLaunchRequest(id)
+	if res != http.StatusTooManyRequests {
+		t.Fatalf("expected status code to be %d, got %d, err : %v, body: %s", http.StatusTooManyRequests, res, err, b)
 	}
 
 	if liveInstances != maxInstances {
 		t.Errorf("expected liveInstances to be %d, got %d", maxInstances, liveInstances)
 	}
 
-	err = sendPurgeRequest(fmt.Sprintf("%s-0", id))
+	b, _, err = sendPurgeRequest(fmt.Sprintf("%s-0", id))
 	if err != nil {
-		t.Errorf("failed to handle request: %v", err)
+		t.Fatalf("failed to send request: %v, body : %s", err, b)
 	}
+	time.Sleep(1 * time.Second)
 
 	if liveInstances != maxInstances-1 {
 		t.Errorf("expected liveInstances to be %d, got %d", maxInstances-1, liveInstances)
@@ -140,10 +144,11 @@ func testExhaustSwtpmInstances(t *testing.T, id string) {
 
 	// clean up
 	for i := 0; i < maxInstances; i++ {
-		err := sendPurgeRequest(fmt.Sprintf("%s-%d", id, i))
+		b, _, err := sendPurgeRequest(fmt.Sprintf("%s-%d", id, i))
 		if err != nil {
-			t.Errorf("failed to handle request: %v", err)
+			t.Fatalf("failed to send request: %v, body : %s", err, b)
 		}
+		time.Sleep(1 * time.Second)
 	}
 }
 
@@ -210,9 +215,15 @@ func TestSwtpmStateChange(t *testing.T) {
 	}
 
 	// this mark the instance to be encrypted
-	err := sendLaunchRequest(id)
+	b, _, err := sendLaunchRequest(id)
 	if err != nil {
-		t.Fatalf("failed to handle request: %v", err)
+		t.Fatalf("failed to send request: %v, body : %s", err, b)
+	}
+	time.Sleep(1 * time.Second)
+
+	b, _, err = sendTerminateRequest(id)
+	if err != nil {
+		t.Fatalf("failed to send request: %v, body : %s", err, b)
 	}
 	time.Sleep(1 * time.Second)
 
@@ -221,18 +232,20 @@ func TestSwtpmStateChange(t *testing.T) {
 		return false
 	}
 
-	// this should fail since this id was marked as encrypted
-	err = sendLaunchRequest(id)
-	if err != nil {
-		t.Fatalf("failed to handle request: %v", err)
+	// this should fail since it was instance was marked as encrypted and now TPM is not available anymore
+	b, _, err = sendLaunchRequest(id)
+	if err == nil {
+		t.Fatalf("expected error, got nil")
 	}
+	t.Logf("expected error: %v, body: %s", err, b)
+
 	if liveInstances > 1 {
 		t.Fatalf("expected liveInstances to be 1, got %d", liveInstances)
 	}
 
-	err = sendPurgeRequest(id)
+	b, _, err = sendPurgeRequest(id)
 	if err != nil {
-		t.Fatalf("failed to handle request: %v", err)
+		t.Fatalf("failed to send request: %v, body : %s", err, b)
 	}
 }
 
@@ -245,15 +258,16 @@ func TestDeleteRequest(t *testing.T) {
 		return false
 	}
 
-	err := sendLaunchRequest(id)
+	b, _, err := sendLaunchRequest(id)
 	if err != nil {
-		t.Fatalf("failed to handle request: %v", err)
+		t.Fatalf("failed to send request: %v, body : %s", err, b)
 	}
 
-	err = sendTerminateRequest(id)
+	b, _, err = sendTerminateRequest(id)
 	if err != nil {
-		t.Fatalf("failed to handle request: %v", err)
+		t.Fatalf("failed to send request: %v, body : %s", err, b)
 	}
+	time.Sleep(1 * time.Second)
 
 	if liveInstances != 0 {
 		t.Fatalf("expected liveInstances to be 0, got %d", liveInstances)
