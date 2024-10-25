@@ -110,7 +110,7 @@ func (pub *PublicationImpl) Publish(key string, item interface{}) error {
 		pub.log.Fatalf("Publish got a pointer for %s", name)
 	}
 	// Perform a deepCopy in case the caller might change a map etc
-	newItem := deepCopy(pub.log, item)
+	newItem := DeepCopy(pub.log, item)
 	if m, ok := pub.km.key.Load(key); ok {
 		if cmp.Equal(m, newItem) {
 			pub.log.Tracef("Publish(%s/%s) unchanged\n", name, key)
@@ -190,7 +190,7 @@ func (pub *PublicationImpl) ClearRestarted() error {
 func (pub *PublicationImpl) Get(key string) (interface{}, error) {
 	m, ok := pub.km.key.Load(key)
 	if ok {
-		newIntf := deepCopy(pub.log, m)
+		newIntf := DeepCopy(pub.log, m)
 		return newIntf, nil
 	} else {
 		name := pub.nameString()
@@ -203,7 +203,7 @@ func (pub *PublicationImpl) Get(key string) (interface{}, error) {
 func (pub *PublicationImpl) GetAll() map[string]interface{} {
 	result := make(map[string]interface{})
 	assigner := func(key string, val interface{}) bool {
-		newVal := deepCopy(pub.log, val)
+		newVal := DeepCopy(pub.log, val)
 		result[key] = newVal
 		return true
 	}
