@@ -28,7 +28,7 @@ import (
 const (
 	swtpmPath      = "/usr/bin/swtpm"
 	maxInstances   = 10
-	maxPidWaitTime = 3 //seconds
+	maxPidWaitTime = 1 //seconds
 )
 
 var (
@@ -53,6 +53,13 @@ var (
 	}
 )
 
+func isAlive(pid int) bool {
+	if err := syscall.Kill(pid, 0); err != nil {
+		return false
+	}
+	return true
+}
+
 func cleanupFiles(id string) {
 	os.RemoveAll(fmt.Sprintf(swtpmStatePath, id))
 	os.Remove(fmt.Sprintf(swtpmCtrlSockPath, id))
@@ -75,19 +82,28 @@ func makeDirs(dir string) error {
 	return nil
 }
 
+func readPidFile(pidPath string) (int, error) {
+	pid := 0
+	pidStr, err := os.ReadFile(pidPath)
+	if err == nil {
+		pid, err = strconv.Atoi(strings.TrimSpace(string(pidStr)))
+		if err == nil {
+			return pid, nil
+		}
+	}
+
+	return 0, fmt.Errorf("failed to read pid file: %w", err)
+}
+
 func getSwtpmPid(pidPath string, timeoutSeconds uint) (int, error) {
 	startTime := time.Now()
 	for {
 		if time.Since(startTime).Seconds() >= float64(timeoutSeconds) {
-			return 0, fmt.Errorf("timeout reached")
+			return 0, fmt.Errorf("timeout reached after %d seconds", int(time.Since(startTime).Seconds()))
 		}
 
-		pidStr, err := os.ReadFile(pidPath)
-		if err == nil {
-			pid, err := strconv.Atoi(strings.TrimSpace(string(pidStr)))
-			if err == nil {
-				return pid, nil
-			}
+		if pid, err := readPidFile(pidPath); err == nil {
+			return pid, nil
 		}
 
 		time.Sleep(500 * time.Millisecond)
@@ -191,16 +207,35 @@ func handleLaunch(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err, http.StatusBadRequest)
 		return
 	}
-	// If we have SWTPM instance with the same id running, it means either the
-	// domain got rebooted or something went wrong on the dommain manager side!
-	// it the later case it should have sent a terminate request if VM crashed or
-	// there was any other VM related errors. Anyway, refuse to launch a new
+	// If we have a record of SWTPM instance with the requested id,
+	// check if it's still alive. if it is alive, refuse to launch a new
 	// instance with the same id as this might corrupt the state.
 	if _, ok := pids[id]; ok {
-		log.Warnf("SWTPM instance with id %s already running", id)
-		// technically request is satisfied
-		w.WriteHeader(http.StatusOK)
-		return
+		pidPath := fmt.Sprintf(swtpmPidPath, id)
+		// if pid file does not exist, it means the SWTPM instance gracefully
+		// terminated and we can start a new one.
+		if _, err := os.Stat(pidPath); err == nil {
+			pid, err := getSwtpmPid(pidPath, maxPidWaitTime)
+			if err != nil {
+				err := fmt.Sprintf("vTPM failed to read pid file of SWTPM with id %s", id)
+				http.Error(w, err, http.StatusExpectationFailed)
+				return
+			}
+
+			// if the SWTPM instance is still alive, we can move on.
+			if isAlive(pid) {
+				log.Noticef("vTPM SWTPM instance with id %s is already running with pid %d", id, pid)
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+		} else if !os.IsNotExist(err) {
+			err := fmt.Sprintf("vTPM failed to check pid file of SWTPM with id %s: %v", id, err)
+			http.Error(w, err, http.StatusFailedDependency)
+			return
+		}
+
+		liveInstances--
+		delete(pids, id)
 	}
 
 	pid, err := runSwtpm(id)
@@ -218,8 +253,8 @@ func handleLaunch(w http.ResponseWriter, r *http.Request) {
 }
 
 // Domain manager is sending a terminate request because it hit an error while
-// starting the app (i.e. qemu crashed), so just kill SWTPM instance,
-// remove it's pid from the list and decrease the liveInstances count.
+// starting the app, so just kill SWTPM instance, remove it's pid from the list
+// and decrease the liveInstances count.
 func handleTerminate(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		err := fmt.Sprintf("Method %s not allowed", r.Method)
@@ -237,8 +272,6 @@ func handleTerminate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err, http.StatusBadRequest)
 		return
 	}
-	// We expect the SWTPM to be terminated at this point, but just in case send
-	// a term signal.
 	pid, ok := pids[id]
 	if ok {
 		if err := syscall.Kill(pid, syscall.SIGTERM); err != nil {
