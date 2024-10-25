@@ -678,6 +678,92 @@ at!reset
 # Press CTRL-A, then CTRL-X to exit
 ```
 
+### Capturing control-plane traffic
+
+[QCSuper](https://github.com/P1sec/QCSuper) allows to capture raw 2G/3G/4G (and for certain
+models also 5G) control-plane radio frames from Qualcomm-based modems.
+
+It is necessary to first enable the modem Diag port using an AT command:
+
+```console
+eve enter wwan
+# Use "mmcli -L" to find out the index of your modem.
+mmcli -m <modem-index> --command="AT$QCDMG"
+```
+
+If this command fails, then your modem is either not Qualcomm-based or the Diag port is not
+available and this pcap method will not work.
+
+The Diag port should be accessible as a serial-over-USB device at `/dev/ttyUSB{0-9}`.
+The modem may expose multiple such devices, with one or more dedicated to AT commands,
+another for streaming GNSS location data, and one specifically reserved for Diagnostics/Debugging
+(aka Diag).
+
+Using `mmcli -m <modem-index>` you may find out the role of each of these ports.
+However, the Diag port can be reported as "ignored":
+
+```console
+  System   |                  device: /sys/devices/pci0000:00/0000:00:14.0/usb1/1-5
+           |                 physdev: /sys/devices/pci0000:00/0000:00:14.0/usb1/1-5
+           |                 drivers: option, qmi_wwan
+           |                  plugin: quectel
+           |            primary port: cdc-wdm0
+           |                   ports: cdc-wdm0 (qmi), ttyUSB0 (ignored), ttyUSB1 (gps),
+           |                          ttyUSB2 (at), ttyUSB3 (at), wwan0 (net)
+```
+
+The QCSuper tool requires python and some other dependencies which are not available
+in EVE. However, we can relay access to the `/dev/ttyUSB{0-9}` device over the network
+using socat and run QCSuper from another computer with python installed.
+
+On EVE, execute:
+
+```console
+# Open access to port 12345 which we will use for relaying.
+# After the packet capture is done, it is required to reboot the machine to bring back
+# the firewall rules.
+eve firewall drop
+# socat is available in the debug container, no need to install anything.
+# Replace "/dev/ttyUSB0" with the path to the Diag device of your modem.
+eve enter debug
+socat TCP-LISTEN:12345,reuseaddr,fork /dev/ttyUSB0,raw,echo=0
+```
+
+On another computer, install QCSuper with all the dependencies.
+For example, if the computer is running Ubuntu, execute:
+
+```console
+sudo apt install python3-pip wireshark
+sudo pip3 install --upgrade pyserial pyusb crcmod https://github.com/P1sec/pycrate/archive/master.zip
+sudo pip3 install --upgrade qcsuper
+# This is needed for wireshark to not complain about "permission denied":
+sudo chmod +x /usr/bin/dumpcap
+```
+
+Then establish Diag port relay with:
+
+```console
+# Replace <eve-node-ip> with the IP address of your EVE node.
+sudo socat PTY,link=/dev/virtualTTY0,raw,echo=0 TCP:<eve-node-ip>:12345
+# This is needed to run qcsuper without root privileges, which in turn is needed
+# to avoid Wireshark complaining:
+sudo chmod 666 /dev/virtualTTY0
+```
+
+Start packet-capture with live Wireshark display using:
+
+```console
+# It is necessary to avoid having ModemManager running on your computer
+# used for packet capture, otherwise qcsuper complains about possible interference
+# and does not want to initiate the pcap.
+sudo systemctl stop ModemManager.service
+qcsuper --usb-modem /dev/virtualTTY0 --wireshark-live --reassemble-sibs --decrypt-nas --include-ip-traffic
+```
+
+After the packet capture is done, you can bring the ModemManager on your device
+back with `sudo systemctl start ModemManager.service`, stop socat processes on both
+ends and reboot the EVE edge-node to bring back the firewall rules.
+
 ## Enabling a new cellular modem
 
 Go through the following steps (more detailed description below):
