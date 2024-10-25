@@ -166,8 +166,8 @@ func (ctx nullContext) PCISameController(id1 string, id2 string) bool {
 	return types.PCISameController(id1, id2)
 }
 
-func (ctx nullContext) GetHostCPUMem() (types.HostMemory, error) {
-	return selfDomCPUMem()
+func (ctx nullContext) GetHostCPUMem(reportPhyCores bool) (types.HostMemory, error) {
+	return selfDomCPUMem(reportPhyCores)
 }
 
 func (ctx nullContext) GetDomsCPUMem() (map[string]types.DomainMetric, error) {

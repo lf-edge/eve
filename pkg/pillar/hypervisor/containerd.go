@@ -278,8 +278,8 @@ func (ctx ctrdContext) PCISameController(id1 string, id2 string) bool {
 	return types.PCISameController(id1, id2)
 }
 
-func (ctx ctrdContext) GetHostCPUMem() (types.HostMemory, error) {
-	return selfDomCPUMem()
+func (ctx ctrdContext) GetHostCPUMem(reportPhyCores bool) (types.HostMemory, error) {
+	return selfDomCPUMem(reportPhyCores)
 }
 
 const nanoSecToSec uint64 = 1000000000

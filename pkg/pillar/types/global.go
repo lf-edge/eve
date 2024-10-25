@@ -256,6 +256,8 @@ const (
 	EnableARPSnoop GlobalSettingKey = "network.switch.enable.arpsnoop"
 	// WwanQueryVisibleProviders : periodically query visible cellular service providers
 	WwanQueryVisibleProviders GlobalSettingKey = "wwan.query.visible.providers"
+	// CPUStatsPhysicalCoreEnable: report Ncpus as Physical Cores instead of Hyperthread/SMT
+	CPUStatsPhysicalCoreEnable GlobalSettingKey = "cpu.stats.physicalcore.enable"
 
 	// TriState Items
 	// NetworkFallbackAnyEth global setting key
@@ -947,6 +949,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddBoolItem(EnableARPSnoop, true)
 	configItemSpecMap.AddBoolItem(WwanQueryVisibleProviders, false)
 	configItemSpecMap.AddBoolItem(NetworkLocalLegacyMACAddress, false)
+	configItemSpecMap.AddBoolItem(CPUStatsPhysicalCoreEnable, false)
 
 	// Add TriState Items
 	configItemSpecMap.AddTriStateItem(NetworkFallbackAnyEth, TS_DISABLED)
