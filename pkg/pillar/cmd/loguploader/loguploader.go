@@ -36,7 +36,6 @@ const (
 	warningTime = 40 * time.Second
 
 	failSendDir = types.NewlogDir + "/failedUpload"
-
 	keepSentDir = types.NewlogKeepSentQueueDir
 
 	backoffMaxUploadIntv   = 300
@@ -284,8 +283,15 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	loguploaderCtx.metrics.CurrUploadIntvSec = defaultUploadIntv
 	uploadTimer := time.NewTimer(time.Duration(loguploaderCtx.metrics.CurrUploadIntvSec) * time.Second)
 
+	// create the necceary directories upfront
 	if _, err := os.Stat(keepSentDir); os.IsNotExist(err) {
 		if err := os.MkdirAll(keepSentDir, 0755); err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	if _, err := os.Stat(failSendDir); os.IsNotExist(err) {
+		if err := os.MkdirAll(failSendDir, 0755); err != nil {
 			log.Fatal(err)
 		}
 	}
@@ -676,10 +682,20 @@ func doFetchSend(ctx *loguploaderContext, zipDir string, iter *int) int {
 			}
 			log.Errorf("doFetchSend: %v got error sending http: %v", ctx.metrics.FailSentStartTime.String(), err)
 		} else {
-			if _, err := os.Stat(gziplogfile); err == nil {
-				moveToFile := keepSentDir + "/" + gotFileName
-				if err := os.Rename(gziplogfile, moveToFile); err != nil {
-					log.Errorf("doFetchSend: can not move gziplogfile, %v", err)
+			if isApp {
+				// keep the sent out app log files on device
+				if _, err := os.Stat(gziplogfile); err == nil {
+					moveToFile := keepSentDir + "/" + gotFileName
+					if err := os.Rename(gziplogfile, moveToFile); err != nil {
+						log.Errorf("doFetchSend: can not move gziplogfile, %v", err)
+					}
+				}
+			} else {
+				// remove the sent out dev log files, since there is a different mechanism to keep them handled by newlogd
+				if _, err := os.Stat(gziplogfile); err == nil {
+					if err := os.Remove(gziplogfile); err != nil {
+						log.Errorf("doFetchSend: can not remove gziplogfile, %v", err)
+					}
 				}
 			}
 
@@ -754,9 +770,10 @@ func getTimeNumber(isApp bool, fName string) (bool, int) {
 		}
 	} else {
 		if strings.HasPrefix(fName, types.DevPrefix) && strings.HasSuffix(fName, ".gz") {
-			fStr1 := strings.TrimPrefix(fName, types.DevPrefix)
-			fStr2 := strings.TrimSuffix(fStr1, ".gz")
-			fTime, err := strconv.Atoi(fStr2)
+			fName = strings.TrimPrefix(fName, types.DevPrefixUpload)
+			fName = strings.TrimPrefix(fName, types.DevPrefix) // this is needed for compatibility - if the name doens't have the prefix, it's not trimmed
+			fName = strings.TrimSuffix(fName, ".gz")
+			fTime, err := strconv.Atoi(fName)
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -962,11 +979,6 @@ func handle4xxlogfile(ctx *loguploaderContext, fName string, isApp bool) {
 
 	if relocate {
 		var srcFile, dstFile string
-		if _, err := os.Stat(failSendDir); err != nil {
-			if err := os.MkdirAll(failSendDir, 0755); err != nil {
-				log.Fatal(err)
-			}
-		}
 
 		if isApp {
 			srcFile = types.NewlogUploadAppDir + "/" + fName

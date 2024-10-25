@@ -1,7 +1,7 @@
-// Copyright (c) 2018 Zededa, Inc.
+// Copyright (c) 2018-2024 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-// Provide randomized timers - botn based on range and binary exponential
+// Provide randomized timers - both based on range and binary exponential
 // backoff.
 // Usage:
 //  ticker := NewRangeTicker(min, max)
@@ -9,9 +9,9 @@
 //  ticker.UpdateRangeTicker(newmin, newmix)
 //  ticker.StopTicker()
 // Usage:
-//  ticker := NewExpTicker(start, max, randomFactor)
+//  ticker := NewExpTicker(start, max, noise)
 //  select ticker.C
-//  ticker.UpdateRangeTicker(newstart, newmax, newRandomFactor)
+//  ticker.UpdateExpTicker(newstart, newmax, newNoise)
 //  ticker.StopTicker()
 
 package flextimer
@@ -19,16 +19,16 @@ package flextimer
 import (
 	"math/rand"
 	"time"
+
+	"github.com/sirupsen/logrus"
 )
 
 // Take min, max, exp bool
-// If exp false then [min, max] is random range
+// If exp false then [min, max] is random range.
 // If exp true then start at min and do binary exponential backoff
-// until hitting max, then stay at max. Randomize +/- randomFactor
-// When config is all zeros, then stop and close channel
-
-// XXX test that it can handle the TCP timeout and space out the next timers
-// based on processing time ...
+// until hitting max, then stay at max. Randomize +/- noise, which
+// is in the same units as min and max. When config is all zeros,
+// then stop and close channel
 
 // Ticker handle for caller
 type FlexTickerHandle struct {
@@ -39,10 +39,10 @@ type FlexTickerHandle struct {
 
 // Arguments fed over configChan
 type flexTickerConfig struct {
-	exponential  bool
-	minTime      time.Duration
-	maxTime      time.Duration
-	randomFactor float64
+	exponential bool
+	minTime     time.Duration
+	maxTime     time.Duration
+	noise       time.Duration
 }
 
 func NewRangeTicker(minTime time.Duration, maxTime time.Duration) FlexTickerHandle {
@@ -54,10 +54,16 @@ func NewRangeTicker(minTime time.Duration, maxTime time.Duration) FlexTickerHand
 	return FlexTickerHandle{C: tickChan, privateChan: tickChan, configChan: configChan}
 }
 
-func NewExpTicker(minTime time.Duration, maxTime time.Duration, randomFactor float64) FlexTickerHandle {
-	initialConfig := flexTickerConfig{minTime: minTime,
-		maxTime: maxTime, exponential: true,
-		randomFactor: randomFactor}
+func NewExpTicker(minTime, maxTime, noise time.Duration) FlexTickerHandle {
+	if minTime == 0 {
+		logrus.Fatal("NewExpTicker(): minTime expected to be non zero!")
+	}
+	initialConfig := flexTickerConfig{
+		minTime:     minTime,
+		maxTime:     maxTime,
+		exponential: true,
+		noise:       noise,
+	}
 	configChan := make(chan flexTickerConfig, 1)
 	tickChan := newFlexTicker(configChan)
 	configChan <- initialConfig
@@ -99,10 +105,16 @@ func TickNow(hdl interface{}) {
 	f.TickNow()
 }
 
-func (f FlexTickerHandle) UpdateExpTicker(minTime time.Duration, maxTime time.Duration, randomFactor float64) {
-	config := flexTickerConfig{minTime: minTime,
-		maxTime: maxTime, exponential: true,
-		randomFactor: randomFactor}
+func (f FlexTickerHandle) UpdateExpTicker(minTime, maxTime, noise time.Duration) {
+	if minTime == 0 {
+		logrus.Fatal("UpdateExpTicker(): minTime expected to be non zero!")
+	}
+	config := flexTickerConfig{
+		minTime:     minTime,
+		maxTime:     maxTime,
+		exponential: true,
+		noise:       noise,
+	}
 	f.configChan <- config
 }
 
@@ -123,28 +135,28 @@ func flexTicker(config <-chan flexTickerConfig, tick chan<- time.Time) {
 	r1 := rand.New(s1)
 	// Wait for initial config
 	c := <-config
-	expFactor := 1
+	var expFactor int64 = 1
 	for {
 		var d time.Duration
 		if c.exponential {
-			rf := c.randomFactor
-			if rf == 0 {
-				rf = 1.0
-			} else if rf > 1.0 {
-				rf = 1.0 / rf
-			}
-			min := float64(c.minTime) * float64(expFactor) * rf
-			max := float64(c.minTime) * float64(expFactor) / rf
-			base := float64(c.minTime) * float64(expFactor)
+			noise := int64(c.noise)
+			min := int64(c.minTime)
+			base := min * expFactor
 			if time.Duration(base) < c.maxTime {
 				expFactor *= 2
-			}
-			if max == min {
-				d = time.Duration(min)
 			} else {
-				r := r1.Int63n(int64(max-min)) + int64(min)
-				d = time.Duration(r)
+				base = int64(c.maxTime)
 			}
+			// Make sure we don't get negative
+			if base < noise/2 {
+				base = noise / 2
+			}
+			// This generates random number in closed interval
+			// [base - noise/2, base + noise/2] if noise is even.
+			// The interval will be half-open if noise is odd
+			// (base - noise/2, base + noise/2]
+			r := base + r1.Int63n(noise+1) - noise/2
+			d = time.Duration(r)
 		} else {
 			r := r1.Int63n(int64(c.maxTime-c.minTime)) + int64(c.minTime)
 			d = time.Duration(r)

@@ -48,8 +48,8 @@ func (lm *LockedMap[K, V]) Store(key K, value V) {
 
 // Keys return copy of keys for locked map
 func (lm *LockedMap[K, V]) Keys() []K {
-	lm.Lock()
-	defer lm.Unlock()
+	lm.RLock()
+	defer lm.RUnlock()
 
 	result := make([]K, 0, len(lm.locked))
 	for k := range lm.locked {
