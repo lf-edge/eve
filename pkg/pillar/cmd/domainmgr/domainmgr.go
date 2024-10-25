@@ -1119,21 +1119,28 @@ func maybeRetryBoot(ctx *domainContext, status *types.DomainStatus) {
 	}
 	defer file.Close()
 
-	if err := hyper.Task(status).VirtualTPMSetup(status.DomainName, agentName, ctx.ps, warningTime, errorTime); err != nil {
-		log.Errorf("Failed to setup virtual TPM for %s: %s", status.DomainName, err)
-		status.VirtualTPM = false
-	} else {
+	err = hyper.Task(status).VirtualTPMSetup(status.DomainName, agentName, ctx.ps, warningTime, errorTime)
+	if err == nil {
 		status.VirtualTPM = true
+		defer func(status *types.DomainStatus) {
+			if status.BootFailed || status.HasError() {
+				log.Noticef("Terminating vTPM for domain %s, BootFailed : %v, HasError: %v",
+					status.DomainName, status.BootFailed, status.HasError())
+
+				if err := hyper.Task(status).VirtualTPMTerminate(status.DomainName); err != nil {
+					log.Errorf("Failed to terminate vTPM for %s: %s", status.DomainName, err)
+				}
+			}
+		}(status)
+	} else {
+		status.VirtualTPM = false
+		log.Errorf("Failed to setup vTPM for %s: %s", status.DomainName, err)
 	}
 
 	if err := hyper.Task(status).Setup(*status, *config, ctx.assignableAdapters, nil, file); err != nil {
 		//it is retry, so omit error
 		log.Errorf("Failed to create DomainStatus from %+v: %s",
 			config, err)
-
-		if err := hyper.Task(status).VirtualTPMTerminate(status.DomainName); err != nil {
-			log.Errorf("Failed to terminate virtual TPM for %s: %s", status.DomainName, err)
-		}
 	}
 
 	status.TriedCount++
@@ -1671,11 +1678,22 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 	}
 	defer file.Close()
 
-	if err := hyper.Task(status).VirtualTPMSetup(status.DomainName, agentName, ctx.ps, warningTime, errorTime); err != nil {
-		log.Errorf("Failed to setup virtual TPM for %s: %s", status.DomainName, err)
-		status.VirtualTPM = false
-	} else {
+	err = hyper.Task(status).VirtualTPMSetup(status.DomainName, agentName, ctx.ps, warningTime, errorTime)
+	if err == nil {
 		status.VirtualTPM = true
+		defer func(status *types.DomainStatus) {
+			if status.BootFailed || status.HasError() {
+				log.Noticef("Terminating vTPM for domain %s, BootFailed : %v, HasError: %v",
+					status.DomainName, status.BootFailed, status.HasError())
+
+				if err := hyper.Task(status).VirtualTPMTerminate(status.DomainName); err != nil {
+					log.Errorf("Failed to terminate vTPM for %s: %s", status.DomainName, err)
+				}
+			}
+		}(status)
+	} else {
+		status.VirtualTPM = false
+		log.Errorf("Failed to setup vTPM for %s: %s", status.DomainName, err)
 	}
 
 	globalConfig := agentlog.GetGlobalConfig(log, ctx.subGlobalConfig)
@@ -1684,11 +1702,6 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 			config, err)
 		status.SetErrorNow(err.Error())
 		releaseCPUs(ctx, &config, status)
-
-		if err := hyper.Task(status).VirtualTPMTerminate(status.DomainName); err != nil {
-			log.Errorf("Failed to terminate virtual TPM for %s: %s", status.DomainName, err)
-		}
-
 		return
 	}
 
