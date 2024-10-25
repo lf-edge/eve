@@ -4,8 +4,11 @@
 package hypervisor
 
 import (
+	"context"
 	"fmt"
+	"io"
 	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -28,16 +31,22 @@ import (
 
 const (
 	// KVMHypervisorName is a name of kvm hypervisor
-	KVMHypervisorName = "kvm"
-	minUringKernelTag = uint64((5 << 16) | (4 << 8) | (72 << 0))
-	swtpmTimeout      = 10 // seconds
-	qemuTimeout       = 3  // seconds
-	vtpmPurgePrefix   = "purge;"
-	vtpmDeletePrefix  = "terminate;"
-	vtpmLaunchPrefix  = "launch;"
+	KVMHypervisorName  = "kvm"
+	minUringKernelTag  = uint64((5 << 16) | (4 << 8) | (72 << 0))
+	swtpmTimeout       = 10 // seconds
+	qemuTimeout        = 3  // seconds
+	vtpmPurgeEndpoint  = "purge"
+	vtpmTermEndpoint   = "terminate"
+	vtpmLaunchEndpoint = "launch"
 )
 
-var clientCid = uint32(unix.VMADDR_CID_HOST + 1)
+var (
+	clientCid  = uint32(unix.VMADDR_CID_HOST + 1)
+	vTPMClient = &http.Client{
+		Transport: vtpmClientUDSTransport(),
+		Timeout:   2 * time.Second,
+	}
+)
 
 // We build device model around PCIe topology according to best practices
 //    https://github.com/qemu/qemu/blob/master/docs/pcie.txt
@@ -1327,21 +1336,21 @@ func (ctx KvmContext) VirtualTPMSetup(domainName, agentName string, ps *pubsub.P
 		wk := utils.NewWatchdogKick(ps, agentName, warnTime, errTime)
 		domainUUID, _, _, err := types.DomainnameToUUID(domainName)
 		if err != nil {
-			return fmt.Errorf("failed to extract UUID from domain name (vTPM setup): %v", err)
+			return fmt.Errorf("failed to extract UUID from domain name: %v", err)
 		}
-		return requestVtpmLaunch(domainUUID, wk, swtpmTimeout)
+		return requestvTPMLaunch(domainUUID, wk, swtpmTimeout)
 	}
 
-	return fmt.Errorf("invalid watchdog configuration (vTPM setup)")
+	return fmt.Errorf("invalid watchdog configuration")
 }
 
 // VirtualTPMTerminate terminates the vTPM instance
 func (ctx KvmContext) VirtualTPMTerminate(domainName string) error {
 	domainUUID, _, _, err := types.DomainnameToUUID(domainName)
 	if err != nil {
-		return fmt.Errorf("failed to extract UUID from domain name (vTPM terminate): %v", err)
+		return fmt.Errorf("failed to extract UUID from domain name: %v", err)
 	}
-	if err := requestVtpmTermination(domainUUID); err != nil {
+	if err := requestvTPMTermination(domainUUID); err != nil {
 		return fmt.Errorf("failed to terminate vTPM for domain %s: %w", domainName, err)
 	}
 	return nil
@@ -1351,31 +1360,55 @@ func (ctx KvmContext) VirtualTPMTerminate(domainName string) error {
 func (ctx KvmContext) VirtualTPMTeardown(domainName string) error {
 	domainUUID, _, _, err := types.DomainnameToUUID(domainName)
 	if err != nil {
-		return fmt.Errorf("failed to extract UUID from domain name (vTPM teardown): %v", err)
+		return fmt.Errorf("failed to extract UUID from domain name: %v", err)
 	}
-	if err := requestVtpmPurge(domainUUID); err != nil {
+	if err := requestvTPMPurge(domainUUID); err != nil {
 		return fmt.Errorf("failed to purge vTPM for domain %s: %w", domainName, err)
 	}
 
 	return nil
 }
 
-func requestVtpmLaunch(id uuid.UUID, wk *utils.WatchdogKick, timeoutSeconds uint) error {
-	conn, err := net.Dial("unix", types.VtpmdCtrlSocket)
-	if err != nil {
-		return fmt.Errorf("failed to connect to vTPM control socket: %w", err)
+// This is the Unix Domain Socket (UDS) transport for vTPM requests.
+func vtpmClientUDSTransport() *http.Transport {
+	return &http.Transport{
+		DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
+			return net.Dial("unix", types.VtpmdCtrlSocket)
+		},
 	}
-	defer conn.Close()
+}
 
+func makeRequest(client *http.Client, endpoint, id string) (string, error) {
+	url := fmt.Sprintf("http://unix/%s?id=%s", endpoint, id)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return "", fmt.Errorf("error when creating request: %v", err)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("error when reading response body: %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return string(body), fmt.Errorf("received status code %d", resp.StatusCode)
+	}
+
+	return string(body), nil
+}
+
+func requestvTPMLaunch(id uuid.UUID, wk *utils.WatchdogKick, timeoutSeconds uint) error {
+	body, err := makeRequest(vTPMClient, vtpmLaunchEndpoint, id.String())
+	if err != nil {
+		return fmt.Errorf("failed to launch vTPM instance: %w (%s)", err, body)
+	}
+
+	// Wait for SWTPM to start.
 	pidPath := fmt.Sprintf(types.SwtpmPidPath, id.String())
-
-	// Send the request to the vTPM control socket, ask it to launch a swtpm instance.
-	_, err = conn.Write([]byte(fmt.Sprintf("%s%s\n", vtpmLaunchPrefix, id.String())))
-	if err != nil {
-		return fmt.Errorf("failed to write to vTPM control socket: %w", err)
-	}
-
-	// Loop and wait for SWTPM to start.
 	pid, err := utils.GetPidFromFileTimeout(pidPath, timeoutSeconds, wk)
 	if err != nil {
 		return fmt.Errorf("failed to get pid from file %s: %w", pidPath, err)
@@ -1389,34 +1422,22 @@ func requestVtpmLaunch(id uuid.UUID, wk *utils.WatchdogKick, timeoutSeconds uint
 	return nil
 }
 
-func requestVtpmPurge(id uuid.UUID) error {
-	conn, err := net.Dial("unix", types.VtpmdCtrlSocket)
-	if err != nil {
-		return fmt.Errorf("failed to connect to vTPM control socket: %w", err)
-	}
-	defer conn.Close()
-
+func requestvTPMPurge(id uuid.UUID) error {
 	// Send a request to vTPM control socket, ask it to purge the instance
 	// and all its data.
-	_, err = conn.Write([]byte(fmt.Sprintf("%s%s\n", vtpmPurgePrefix, id.String())))
+	body, err := makeRequest(vTPMClient, vtpmPurgeEndpoint, id.String())
 	if err != nil {
-		return fmt.Errorf("failed to write to vTPM control socket: %w", err)
+		return fmt.Errorf("failed to purge vTPM instance: %w (%s)", err, body)
 	}
 
 	return nil
 }
 
-func requestVtpmTermination(id uuid.UUID) error {
-	conn, err := net.Dial("unix", types.VtpmdCtrlSocket)
+func requestvTPMTermination(id uuid.UUID) error {
+	// Send a request to vTPM control socket, ask it to terminate the instance.
+	body, err := makeRequest(vTPMClient, vtpmTermEndpoint, id.String())
 	if err != nil {
-		return fmt.Errorf("failed to connect to vTPM control socket: %w", err)
-	}
-	defer conn.Close()
-
-	// Send a request to the vTPM control socket, ask it to delete the instance.
-	_, err = conn.Write([]byte(fmt.Sprintf("%s%s\n", vtpmDeletePrefix, id.String())))
-	if err != nil {
-		return fmt.Errorf("failed to write to vTPM control socket: %w", err)
+		return fmt.Errorf("failed to terminate vTPM instance: %w (%s)", err, body)
 	}
 
 	return nil
