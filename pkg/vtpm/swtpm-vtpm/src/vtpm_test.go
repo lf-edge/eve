@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 )
 
@@ -41,6 +42,11 @@ func TestMain(m *testing.M) {
 	go startServing()
 	time.Sleep(1 * time.Second)
 	m.Run()
+}
+
+func generateUUID() uuid.UUID {
+	id, _ := uuid.NewV4()
+	return id
 }
 
 func UnixSocketTransport(socketPath string) *http.Transport {
@@ -74,19 +80,19 @@ func makeRequest(client *http.Client, endpoint, id string) (string, int, error) 
 	return string(body), resp.StatusCode, nil
 }
 
-func sendLaunchRequest(id string) (string, int, error) {
-	return makeRequest(client, "launch", id)
+func sendLaunchRequest(id uuid.UUID) (string, int, error) {
+	return makeRequest(client, "launch", id.String())
 }
 
-func sendPurgeRequest(id string) (string, int, error) {
-	return makeRequest(client, "purge", id)
+func sendPurgeRequest(id uuid.UUID) (string, int, error) {
+	return makeRequest(client, "purge", id.String())
 }
 
-func sendTerminateRequest(id string) (string, int, error) {
-	return makeRequest(client, "terminate", id)
+func sendTerminateRequest(id uuid.UUID) (string, int, error) {
+	return makeRequest(client, "terminate", id.String())
 }
 
-func testLaunchAndPurge(t *testing.T, id string) {
+func testLaunchAndPurge(t *testing.T, id uuid.UUID) {
 	// test logic :
 	// 1. send launch request
 	// 2. check number of live instances, it should be 1
@@ -113,17 +119,21 @@ func testLaunchAndPurge(t *testing.T, id string) {
 	}
 }
 
-func testExhaustSwtpmInstances(t *testing.T, id string) {
+func testExhaustSwtpmInstances(t *testing.T) {
+	ids := make([]uuid.UUID, 0)
 	for i := 0; i < maxInstances; i++ {
-		b, _, err := sendLaunchRequest(fmt.Sprintf("%s-%d", id, i))
+		id := generateUUID()
+		b, _, err := sendLaunchRequest(id)
 		if err != nil {
 			t.Fatalf("failed to send request: %v, body : %s", err, b)
 		}
+		defer cleanupFiles(id)
+		ids = append(ids, id)
 	}
 	time.Sleep(5 * time.Second)
 
 	// this should have no effect as we have reached max instances
-	b, res, err := sendLaunchRequest(id)
+	b, res, err := sendLaunchRequest(generateUUID())
 	if res != http.StatusTooManyRequests {
 		t.Fatalf("expected status code to be %d, got %d, err : %v, body: %s", http.StatusTooManyRequests, res, err, b)
 	}
@@ -132,7 +142,7 @@ func testExhaustSwtpmInstances(t *testing.T, id string) {
 		t.Errorf("expected liveInstances to be %d, got %d", maxInstances, liveInstances)
 	}
 
-	b, _, err = sendPurgeRequest(fmt.Sprintf("%s-0", id))
+	b, _, err = sendPurgeRequest(ids[0])
 	if err != nil {
 		t.Fatalf("failed to send request: %v, body : %s", err, b)
 	}
@@ -144,7 +154,7 @@ func testExhaustSwtpmInstances(t *testing.T, id string) {
 
 	// clean up
 	for i := 0; i < maxInstances; i++ {
-		b, _, err := sendPurgeRequest(fmt.Sprintf("%s-%d", id, i))
+		b, _, err := sendPurgeRequest(ids[i])
 		if err != nil {
 			t.Fatalf("failed to send request: %v, body : %s", err, b)
 		}
@@ -153,7 +163,7 @@ func testExhaustSwtpmInstances(t *testing.T, id string) {
 }
 
 func TestLaunchAndPurgeWithoutStateEncryption(t *testing.T) {
-	id := "test"
+	id := generateUUID()
 	defer cleanupFiles(id)
 	isTPMAvailable = func() bool {
 		return false
@@ -163,7 +173,7 @@ func TestLaunchAndPurgeWithoutStateEncryption(t *testing.T) {
 }
 
 func TestLaunchAndPurgeWithStateEncryption(t *testing.T) {
-	id := "test"
+	id := generateUUID()
 	defer cleanupFiles(id)
 	isTPMAvailable = func() bool {
 		return true
@@ -178,18 +188,14 @@ func TestLaunchAndPurgeWithStateEncryption(t *testing.T) {
 }
 
 func TestExhaustSwtpmInstancesWithoutStateEncryption(t *testing.T) {
-	id := "test"
-	defer cleanupFiles(id)
 	isTPMAvailable = func() bool {
 		return false
 	}
 
-	testExhaustSwtpmInstances(t, id)
+	testExhaustSwtpmInstances(t)
 }
 
 func TestExhaustSwtpmInstancesWithStateEncryption(t *testing.T) {
-	id := "test"
-	defer cleanupFiles(id)
 	isTPMAvailable = func() bool {
 		return true
 	}
@@ -199,11 +205,11 @@ func TestExhaustSwtpmInstancesWithStateEncryption(t *testing.T) {
 		return key, nil
 	}
 
-	testExhaustSwtpmInstances(t, id)
+	testExhaustSwtpmInstances(t)
 }
 
 func TestSwtpmStateChange(t *testing.T) {
-	id := "test"
+	id := generateUUID()
 	defer cleanupFiles(id)
 	isTPMAvailable = func() bool {
 		return true
@@ -250,7 +256,7 @@ func TestSwtpmStateChange(t *testing.T) {
 }
 
 func TestDeleteRequest(t *testing.T) {
-	id := "test"
+	id := generateUUID()
 	defer cleanupFiles(id)
 
 	// this doesn't matter

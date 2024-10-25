@@ -22,6 +22,7 @@ import (
 	etpm "github.com/lf-edge/eve/pkg/pillar/evetpm"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	utils "github.com/lf-edge/eve/pkg/pillar/utils/file"
+	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 )
 
@@ -35,7 +36,7 @@ var (
 	liveInstances int
 	m             sync.Mutex
 	log           *base.LogObject
-	pids          = make(map[string]int, 0)
+	pids          = make(map[uuid.UUID]int, 0)
 	// XXX : move the paths to types so we have everything EVE creates in one place.
 	// These are defined as vars to be able to mock them in tests
 	stateEncryptionKey   = "/run/swtpm/%s.binkey"
@@ -60,7 +61,8 @@ func isAlive(pid int) bool {
 	return true
 }
 
-func cleanupFiles(id string) {
+func cleanupFiles(uuid uuid.UUID) {
+	id := uuid.String()
 	os.RemoveAll(fmt.Sprintf(swtpmStatePath, id))
 	os.Remove(fmt.Sprintf(swtpmCtrlSockPath, id))
 	os.Remove(fmt.Sprintf(swtpmPidPath, id))
@@ -110,7 +112,8 @@ func getSwtpmPid(pidPath string, timeoutSeconds uint) (int, error) {
 	}
 }
 
-func runSwtpm(id string) (int, error) {
+func runSwtpm(uuid uuid.UUID) (int, error) {
+	id := uuid.String()
 	statePath := fmt.Sprintf(swtpmStatePath, id)
 	ctrlSockPath := fmt.Sprintf(swtpmCtrlSockPath, id)
 	binKeyPath := fmt.Sprintf(stateEncryptionKey, id)
@@ -177,8 +180,6 @@ func runSwtpm(id string) (int, error) {
 		return 0, fmt.Errorf("failed to get SWTPM pid: %w", err)
 	}
 
-	// Add it to the list.
-	pids[id] = pid
 	return pid, nil
 }
 
@@ -201,9 +202,10 @@ func handleLaunch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id := r.URL.Query().Get("id")
-	if id == "" {
-		err := "vTPM launch request failed, id is required"
+	reqID := r.URL.Query().Get("id")
+	id := uuid.FromStringOrNil(reqID)
+	if id == uuid.Nil {
+		err := fmt.Sprintf("vTPM launch request failed, id \"%s\" is invalid", reqID)
 		http.Error(w, err, http.StatusBadRequest)
 		return
 	}
@@ -248,6 +250,7 @@ func handleLaunch(w http.ResponseWriter, r *http.Request) {
 	log.Noticef("vTPM launched SWTPM instance with id: %s, pid: %d", id, pid)
 
 	// Send a success response.
+	pids[id] = pid
 	liveInstances++
 	w.WriteHeader(http.StatusOK)
 }
@@ -266,9 +269,10 @@ func handleTerminate(w http.ResponseWriter, r *http.Request) {
 	m.Lock()
 	defer m.Unlock()
 
-	id := r.URL.Query().Get("id")
-	if id == "" {
-		err := "vTPM terminate request failed, id is required"
+	reqID := r.URL.Query().Get("id")
+	id := uuid.FromStringOrNil(reqID)
+	if id == uuid.Nil {
+		err := fmt.Sprintf("vTPM launch request failed, id \"%s\" is invalid", reqID)
 		http.Error(w, err, http.StatusBadRequest)
 		return
 	}
@@ -307,9 +311,10 @@ func handlePurge(w http.ResponseWriter, r *http.Request) {
 	m.Lock()
 	defer m.Unlock()
 
-	id := r.URL.Query().Get("id")
-	if id == "" {
-		err := "vTPM purge request failed, id is required"
+	reqID := r.URL.Query().Get("id")
+	id := uuid.FromStringOrNil(reqID)
+	if id == uuid.Nil {
+		err := fmt.Sprintf("vTPM launch request failed, id \"%s\" is invalid", reqID)
 		http.Error(w, err, http.StatusBadRequest)
 		return
 	}
