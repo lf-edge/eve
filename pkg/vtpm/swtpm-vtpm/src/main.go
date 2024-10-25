@@ -7,14 +7,14 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
 	"net"
+	"net/http"
 	"os"
 	"os/exec"
-	"os/signal"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -26,21 +26,18 @@ import (
 )
 
 const (
-	swtpmPath    = "/usr/bin/swtpm"
-	purgeReq     = "purge"
-	terminateReq = "terminate"
-	launchReq    = "launch"
-	maxInstances = 10
-	maxIDLen     = 128
-	maxWaitTime  = 3 //seconds
+	swtpmPath      = "/usr/bin/swtpm"
+	maxInstances   = 10
+	maxPidWaitTime = 3 //seconds
 )
 
 var (
 	liveInstances int
+	m             sync.Mutex
 	log           *base.LogObject
 	pids          = make(map[string]int, 0)
+	// XXX : move the paths to types so we have everything EVE creates in one place.
 	// These are defined as vars to be able to mock them in tests
-	// XXX : move this to types so we have everything EVE creates in one place.
 	stateEncryptionKey   = "/run/swtpm/%s.binkey"
 	swtpmIsEncryptedPath = "/persist/swtpm/%s.encrypted"
 	swtpmStatePath       = "/persist/swtpm/tpm-state-%s"
@@ -56,35 +53,11 @@ var (
 	}
 )
 
-func parseRequest(id string) (string, string, error) {
-	id = strings.TrimSpace(id)
-	if id == "" || len(id) > maxIDLen {
-		return "", "", fmt.Errorf("invalid SWTPM ID received")
-	}
-
-	// breake the string and get the request type
-	split := strings.Split(id, ";")
-	if len(split) != 2 {
-		return "", "", fmt.Errorf("invalid SWTPM ID received (no request)")
-	}
-
-	if split[1] == "" {
-		return "", "", fmt.Errorf("invalid SWTPM ID received (no id)")
-	}
-
-	// request, id
-	return split[0], split[1], nil
-}
-
 func cleanupFiles(id string) {
-	statePath := fmt.Sprintf(swtpmStatePath, id)
-	ctrlSockPath := fmt.Sprintf(swtpmCtrlSockPath, id)
-	pidPath := fmt.Sprintf(swtpmPidPath, id)
-	isEncryptedPath := fmt.Sprintf(swtpmIsEncryptedPath, id)
-	os.RemoveAll(statePath)
-	os.Remove(ctrlSockPath)
-	os.Remove(pidPath)
-	os.Remove(isEncryptedPath)
+	os.RemoveAll(fmt.Sprintf(swtpmStatePath, id))
+	os.Remove(fmt.Sprintf(swtpmCtrlSockPath, id))
+	os.Remove(fmt.Sprintf(swtpmPidPath, id))
+	os.Remove(fmt.Sprintf(swtpmIsEncryptedPath, id))
 }
 
 func makeDirs(dir string) error {
@@ -144,7 +117,7 @@ func runSwtpm(id string) (int, error) {
 		// if SWTPM state for app marked as as encrypted, and TPM is not available
 		// anymore, fail because this will corrupt the SWTPM state.
 		if utils.FileExists(log, isEncryptedPath) {
-			return 0, fmt.Errorf("state encryption was enabled for app, but TPM is no longer available")
+			return 0, fmt.Errorf("state encryption was enabled for SWTPM, but TPM is no longer available")
 		}
 
 		cmd := exec.Command(swtpmPath, swtpmArgs...)
@@ -159,7 +132,7 @@ func runSwtpm(id string) (int, error) {
 			return 0, fmt.Errorf("failed to get SWTPM state encryption key : %w", err)
 		}
 
-		// we are about to write the key to the disk, so mark the app SWTPM state
+		// we are about to write the key to the disk, so mark the SWTPM state
 		// as encrypted
 		if !utils.FileExists(log, isEncryptedPath) {
 			if err := utils.WriteRename(isEncryptedPath, []byte("Y")); err != nil {
@@ -183,121 +156,87 @@ func runSwtpm(id string) (int, error) {
 		}
 	}
 
-	pid, err := getSwtpmPid(pidPath, maxWaitTime)
+	pid, err := getSwtpmPid(pidPath, maxPidWaitTime)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get SWTPM pid: %w", err)
 	}
 
-	// Add to the list.
+	// Add it to the list.
 	pids[id] = pid
 	return pid, nil
 }
 
-func main() {
-	log = base.NewSourceLogObject(logrus.StandardLogger(), "vtpm", os.Getpid())
-	if log == nil {
-		fmt.Println("Failed to create log object")
-		os.Exit(1)
-	}
-
-	serviceLoop()
-}
-
-func serviceLoop() {
-	uds, err := net.Listen("unix", vtpmdCtrlSockPath)
-	if err != nil {
-		log.Errorf("failed to create vtpm control socket: %v", err)
+// Domain manager is requesting to launch a new VM/App, run a new SWTPM
+// instance with the given id.
+func handleLaunch(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		err := fmt.Sprintf("Method %s not allowed", r.Method)
+		http.Error(w, err, http.StatusMethodNotAllowed)
 		return
 	}
-	defer uds.Close()
 
-	// Make sure we remove the socket file on exit.
-	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
-	go func() {
-		<-sigs
-		os.Remove(vtpmdCtrlSockPath)
-		os.Exit(0)
-	}()
+	// pids and liveInstances is shared, take care of them.
+	m.Lock()
+	defer m.Unlock()
 
-	for {
-		// xxx : later get peer creds (getpeereid) and check if the caller is
-		// the domain manager to avoid any other process from sending requests.
-		conn, err := uds.Accept()
-		if err != nil {
-			log.Errorf("failed to accept connection over vtpmd control socket: %v", err)
-			continue
-		}
-
-		id, err := bufio.NewReader(conn).ReadString('\n')
-		if err != nil {
-			log.Errorf("failed to read SWTPM ID from connection: %v", err)
-			continue
-		}
-
-		// Close the connection as soon as we read the ID,
-		// handle one request at a time.
-		conn.Close()
-
-		// Don't launch go routines, instead serve requests one by one to avoid
-		// using any locks, handle* functions access pids global variable.
-		err = handleRequest(id)
-		if err != nil {
-			log.Errorf("failed to handle request: %v", err)
-		}
-	}
-}
-
-func handleRequest(id string) error {
-	request, id, err := parseRequest(id)
-	if err != nil {
-		return fmt.Errorf("failed to parse request: %w", err)
-	}
-
-	switch request {
-	case launchReq:
-		// Domain manager is requesting to launch a new VM/App, run a new SWTPM
-		// instance with the given id.
-		return handleLaunch(id)
-	case purgeReq:
-		// VM/App is being deleted, domain manager is sending a purge request,
-		// delete the SWTPM instance and clean up all the files.
-		return handlePurge(id)
-	case terminateReq:
-		// Domain manager is sending a terminate request because it hit an error while
-		// starting the app (i.e. qemu crashed), so just remove kill SWTPM instance,
-		// remove it's pid for the list and decrease the liveInstances count.
-		return handleTerminate(id)
-	default:
-		return fmt.Errorf("invalid request received")
-	}
-}
-
-func handleLaunch(id string) error {
 	if liveInstances >= maxInstances {
-		return fmt.Errorf("max number of vTPM instances reached %d", liveInstances)
+		err := fmt.Sprintf("vTPM max number of SWTPM instances reached %d", liveInstances)
+		http.Error(w, err, http.StatusTooManyRequests)
+		return
+	}
+
+	id := r.URL.Query().Get("id")
+	if id == "" {
+		err := "vTPM launch request failed, id is required"
+		http.Error(w, err, http.StatusBadRequest)
+		return
 	}
 	// If we have SWTPM instance with the same id running, it means either the
-	// domain got rebooted or something went wrong on the dommain manager side!!
-	// it the later case it should have sent a delete request if VM crashed or
+	// domain got rebooted or something went wrong on the dommain manager side!
+	// it the later case it should have sent a terminate request if VM crashed or
 	// there was any other VM related errors. Anyway, refuse to launch a new
 	// instance with the same id as this might corrupt the state.
 	if _, ok := pids[id]; ok {
-		return fmt.Errorf("SWTPM instance with id %s already running", id)
+		log.Warnf("SWTPM instance with id %s already running", id)
+		// technically request is satisfied
+		w.WriteHeader(http.StatusOK)
+		return
 	}
 
 	pid, err := runSwtpm(id)
 	if err != nil {
-		return fmt.Errorf("failed to start SWTPM instance: %v", err)
+		err := fmt.Sprintf("vTPM failed to start SWTPM instance: %v", err)
+		http.Error(w, err, http.StatusFailedDependency)
+		return
 	}
 
-	log.Noticef("SWTPM instance with id %s is running with pid %d", id, pid)
+	log.Noticef("vTPM launched SWTPM instance with id: %s, pid: %d", id, pid)
 
+	// Send a success response.
 	liveInstances++
-	return nil
+	w.WriteHeader(http.StatusOK)
 }
 
-func handleTerminate(id string) error {
+// Domain manager is sending a terminate request because it hit an error while
+// starting the app (i.e. qemu crashed), so just kill SWTPM instance,
+// remove it's pid from the list and decrease the liveInstances count.
+func handleTerminate(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		err := fmt.Sprintf("Method %s not allowed", r.Method)
+		http.Error(w, err, http.StatusMethodNotAllowed)
+		return
+	}
+
+	// pids and liveInstances is shared, take care of it.
+	m.Lock()
+	defer m.Unlock()
+
+	id := r.URL.Query().Get("id")
+	if id == "" {
+		err := "vTPM terminate request failed, id is required"
+		http.Error(w, err, http.StatusBadRequest)
+		return
+	}
 	// We expect the SWTPM to be terminated at this point, but just in case send
 	// a term signal.
 	pid, ok := pids[id]
@@ -305,20 +244,43 @@ func handleTerminate(id string) error {
 		if err := syscall.Kill(pid, syscall.SIGTERM); err != nil {
 			if err != syscall.ESRCH {
 				// This should not happen, but log it just in case.
-				log.Errorf("failed to kill SWTPM instance (terminate request): %v", err)
+				log.Errorf("vTPM failed to kill SWTPM instance (terminate request): %v", err)
 			}
 		}
 		delete(pids, id)
 		liveInstances--
 	} else {
-		return fmt.Errorf("terminate request failed, SWTPM instance with id %s not found", id)
+		err := fmt.Sprintf("vTPM terminate request failed, SWTPM instance with id %s not found", id)
+		http.Error(w, err, http.StatusNotFound)
+		return
 	}
 
-	return nil
+	log.Noticef("vTPM terminated SWTPM instance with id: %s, pid: %d", id, pid)
+
+	// send a success response.
+	w.WriteHeader(http.StatusOK)
 }
 
-func handlePurge(id string) error {
-	log.Noticef("Purging SWTPM instance with id: %s", id)
+// VM/App is being deleted, domain manager is sending a purge request,
+// delete the SWTPM instance and clean up all the files.
+func handlePurge(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		err := fmt.Sprintf("Method %s not allowed", r.Method)
+		http.Error(w, err, http.StatusMethodNotAllowed)
+		return
+	}
+
+	// pids and liveInstances is shared, take care of it.
+	m.Lock()
+	defer m.Unlock()
+
+	id := r.URL.Query().Get("id")
+	if id == "" {
+		err := "vTPM purge request failed, id is required"
+		http.Error(w, err, http.StatusBadRequest)
+		return
+	}
+
 	// we actually expect the SWTPM to be terminated at this point, because qemu
 	// either sends CMD_SHUTDOWN through the control socket or in case of qemu
 	// crashing, SWTPM terminates itself when the control socket is closed since
@@ -331,12 +293,44 @@ func handlePurge(id string) error {
 				log.Errorf("failed to kill SWTPM instance (purge request): %v", err)
 			}
 		}
-
 		delete(pids, id)
 		liveInstances--
 	}
 
-	// clean up files if exists
+	log.Noticef("vTPM purged SWTPM instance with id: %s, pid: %d", id, pid)
+
+	// clean up the files and send a success response.
 	cleanupFiles(id)
-	return nil
+	w.WriteHeader(http.StatusOK)
+}
+
+func startServing() {
+	if _, err := os.Stat(vtpmdCtrlSockPath); err == nil {
+		os.Remove(vtpmdCtrlSockPath)
+	}
+	listener, err := net.Listen("unix", vtpmdCtrlSockPath)
+	if err != nil {
+		log.Fatalf("Error creating Unix socket: %v", err)
+	}
+	defer listener.Close()
+
+	os.Chmod(vtpmdCtrlSockPath, 0600)
+	mux := http.NewServeMux()
+	mux.HandleFunc("/launch", handleLaunch)
+	mux.HandleFunc("/terminate", handleTerminate)
+	mux.HandleFunc("/purge", handlePurge)
+
+	log.Noticef("vTPM server is listening on Unix socket: %s", vtpmdCtrlSockPath)
+	http.Serve(listener, mux)
+}
+
+func main() {
+	log = base.NewSourceLogObject(logrus.StandardLogger(), "vtpm", os.Getpid())
+	if log == nil {
+		fmt.Println("Failed to create log object")
+		os.Exit(1)
+	}
+
+	// this never returns, ideally.
+	startServing()
 }
