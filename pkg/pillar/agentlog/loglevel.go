@@ -6,6 +6,8 @@
 package agentlog
 
 import (
+	"io"
+
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -39,7 +41,7 @@ func getLogLevelImpl(log *base.LogObject, sub pubsub.Subscription, agentName str
 
 	m, err := sub.Get("global")
 	if err != nil {
-		log.Errorf("GetLogLevel- failed to get global. Err: %s", err)
+		log.Errorf("getLogLevelImpl: failed to get global. Err: %s", err)
 		return "", false, false
 	}
 	gc := m.(types.ConfigItemValueMap)
@@ -61,46 +63,6 @@ func getLogLevelImpl(log *base.LogObject, sub pubsub.Subscription, agentName str
 	}
 	log.Errorf("***getLogLevelImpl: DefaultLogLevel not found. returning info")
 	return "info", false, false
-}
-
-// Returns (value, ok)
-func GetRemoteLogLevel(log *base.LogObject, sub pubsub.Subscription, agentName string) (string, bool) {
-	return getRemoteLogLevelImpl(log, sub, agentName, true)
-}
-
-func GetRemoteLogLevelNoDefault(log *base.LogObject, sub pubsub.Subscription, agentName string) (string, bool) {
-	return getRemoteLogLevelImpl(log, sub, agentName, false)
-}
-
-func getRemoteLogLevelImpl(log *base.LogObject, sub pubsub.Subscription, agentName string,
-	allowDefault bool) (string, bool) {
-
-	m, err := sub.Get("global")
-	if err != nil {
-		log.Errorf("GetRemoteLogLevel failed %s\n", err)
-		return "", false
-	}
-	gc := m.(types.ConfigItemValueMap)
-	// Do we have an entry for this agent?
-	loglevel := gc.AgentSettingStringValue(agentName, types.RemoteLogLevel)
-	if loglevel != "" {
-		log.Tracef("getRemoteLogLevelImpl: loglevel=%s", loglevel)
-		return loglevel, true
-	}
-	if !allowDefault {
-		log.Tracef("getRemoteLogLevelImpl: loglevel not found. allowDefault False")
-		return "", false
-	}
-	// Agent specific setting  not available. Get it from Global Setting
-	loglevel = gc.GlobalValueString(types.DefaultRemoteLogLevel)
-	if loglevel != "" {
-		log.Tracef("getRemoteLogLevelImpl: returning DefaultRemoteLogLevel (%s)",
-			loglevel)
-		return loglevel, true
-	}
-	log.Errorf("***getRemoteLogLevelImpl: DefaultRemoteLogLevel not found. " +
-		"returning info")
-	return "info", false
 }
 
 func LogLevel(gc *types.ConfigItemValueMap, agentName string) string {
@@ -131,17 +93,25 @@ func handleGlobalConfigImpl(log *base.LogObject, sub pubsub.Subscription, agentN
 		level = logrus.TraceLevel
 		log.Functionf("handleGlobalConfigImpl: debugOverride set. set loglevel to debug")
 	} else if loglevel, ok, def := getLogLevelImpl(log, sub, agentName, allowDefault); ok {
-		l, err := logrus.ParseLevel(loglevel)
-		if err != nil {
-			log.Errorf("***ParseLevel %s failed: %s\n", loglevel, err)
-		} else {
-			level = l
-			log.Functionf("HandleGlobalConfigImpl: level %v\n",
-				level)
-		}
-		if def {
-			// XXX hack to set default logger
-			logrus.SetLevel(level)
+		switch loglevel {
+		case "none":
+			logger.SetOutput(io.Discard)
+			return gcp
+		case "all":
+			level = logrus.TraceLevel
+		default:
+			l, err := logrus.ParseLevel(loglevel)
+			if err != nil {
+				log.Errorf("***ParseLevel %s failed: %s\n", loglevel, err)
+			} else {
+				level = l
+				log.Functionf("HandleGlobalConfigImpl: level %v\n",
+					level)
+			}
+			if def {
+				// XXX hack to set default logger
+				logrus.SetLevel(level)
+			}
 		}
 	} else {
 		log.Errorf("***handleGlobalConfigImpl: Failed to get loglevel")

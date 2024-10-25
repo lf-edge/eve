@@ -9,6 +9,11 @@ import (
 	"syscall"
 )
 
+// IsEmptyIP returns true if the IP address is not defined.
+func IsEmptyIP(ip net.IP) bool {
+	return ip == nil || ip.Equal(net.IP{})
+}
+
 // EqualIPs compares two IP addresses.
 func EqualIPs(ip1 net.IP, ip2 net.IP) bool {
 	if ip1 == nil {

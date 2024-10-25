@@ -115,6 +115,8 @@ type WwanNetworkConfig struct {
 	// Enable this option to have location info periodically obtained
 	// from this modem and published by wwan microservice via topic WwanLocationInfo.
 	LocationTracking bool
+	// Maximum transmission unit (IP MTU) to apply on the wwan interface.
+	MTU uint16
 }
 
 // WwanAuthProtocol : authentication protocol used by cellular network.
@@ -149,9 +151,10 @@ const (
 
 // WwanProbe : cellular connectivity verification probe.
 type WwanProbe struct {
+	// If true, then probing is disabled.
 	Disable bool
-	// IP/FQDN address to periodically probe to determine connection status.
-	Address string
+	// User-defined probe for cellular connectivity testing.
+	UserDefinedProbe ConnectivityProbe
 }
 
 // Equal compares two instances of WwanNetworkConfig for equality.
@@ -166,10 +169,9 @@ func (wnc WwanNetworkConfig) Equal(wnc2 WwanNetworkConfig) bool {
 	if !generics.EqualLists(wnc.Proxies, wnc2.Proxies) {
 		return false
 	}
-	if wnc.Probe != wnc2.Probe {
-		return false
-	}
-	if wnc.LocationTracking != wnc2.LocationTracking {
+	if wnc.Probe != wnc2.Probe ||
+		wnc.LocationTracking != wnc2.LocationTracking ||
+		wnc.MTU != wnc2.MTU {
 		return false
 	}
 	return true

@@ -13,6 +13,7 @@ import (
 
 	"github.com/eriknordmark/ipinfo"
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
 	"github.com/lf-edge/eve/pkg/pillar/utils/netutils"
 )
 
@@ -29,17 +30,28 @@ type DeviceNetworkStatus struct {
 }
 
 type NetworkPortStatus struct {
-	IfName         string
-	Phylabel       string // Physical name set by controller/model
-	Logicallabel   string
-	Alias          string // From SystemAdapter's alias
-	IsMgmt         bool   // Used to talk to controller
-	IsL3Port       bool   // True if port is applicable to operate on the network layer
+	IfName       string
+	Phylabel     string // Physical name set by controller/model
+	Logicallabel string
+	// Unlike the logicallabel, which is defined in the device model and unique
+	// for each port, these user-configurable "shared" labels are potentially
+	// assigned to multiple ports so that they can be used all together with
+	// some config object (e.g. multiple ports assigned to NI).
+	// Some special shared labels, such as "uplink" or "freeuplink", are assigned
+	// to particular ports automatically.
+	SharedLabels []string
+	Alias        string // From SystemAdapter's alias
+	IsMgmt       bool   // Used to talk to controller
+	IsL3Port     bool   // True if port is applicable to operate on the network layer
+	// InvalidConfig is used to flag port config which failed parsing or (static) validation
+	// checks, such as: malformed IP address, undefined required field, IP address not inside
+	// the subnet, etc.
+	InvalidConfig  bool
 	Cost           uint8
 	Dhcp           DhcpType
 	Type           NetworkType // IPv4 or IPv6 or Dual stack
 	Subnet         net.IPNet
-	NtpServer      net.IP // This comes from network instance configuration
+	NtpServer      net.IP // This comes from network configuration
 	DomainName     string
 	DNSServers     []net.IP // If not set we use Gateway as DNS server
 	NtpServers     []net.IP // This comes from DHCP done on uplink port
@@ -104,6 +116,7 @@ func (status DeviceNetworkStatus) LogCreate(logBase *base.LogObject) {
 		// XXX different logobject for a particular port?
 		logObject.CloneAndAddField("ifname", p.IfName).
 			AddField("last-error", p.LastError).
+			AddField("last-warning", p.LastWarning).
 			AddField("last-succeeded", p.LastSucceeded).
 			AddField("last-failed", p.LastFailed).
 			Noticef("DeviceNetworkStatus port create")
@@ -151,16 +164,20 @@ func (status DeviceNetworkStatus) LogModify(logBase *base.LogObject, old interfa
 		if p.HasError() != op.HasError() ||
 			p.LastFailed != op.LastFailed ||
 			p.LastSucceeded != op.LastSucceeded ||
-			p.LastError != op.LastError {
+			p.LastError != op.LastError ||
+			p.LastWarning != op.LastWarning {
 			logData := logObject.CloneAndAddField("ifname", p.IfName).
 				AddField("last-error", p.LastError).
+				AddField("last-warning", p.LastWarning).
 				AddField("last-succeeded", p.LastSucceeded).
 				AddField("last-failed", p.LastFailed).
 				AddField("old-last-error", op.LastError).
+				AddField("old-last-warning", op.LastWarning).
 				AddField("old-last-succeeded", op.LastSucceeded).
 				AddField("old-last-failed", op.LastFailed)
 			if p.HasError() == op.HasError() &&
-				p.LastError == op.LastError {
+				p.LastError == op.LastError &&
+				p.LastWarning == op.LastWarning {
 				// if we have success or the same error again, reduce log level
 				logData.Function("DeviceNetworkStatus port modify")
 			} else {
@@ -182,6 +199,7 @@ func (status DeviceNetworkStatus) LogDelete(logBase *base.LogObject) {
 		// XXX different logobject for a particular port?
 		logObject.CloneAndAddField("ifname", p.IfName).
 			AddField("last-error", p.LastError).
+			AddField("last-warning", p.LastWarning).
 			AddField("last-succeeded", p.LastSucceeded).
 			AddField("last-failed", p.LastFailed).
 			Noticef("DeviceNetworkStatus port delete")
@@ -207,10 +225,13 @@ func (status DeviceNetworkStatus) MostlyEqual(status2 DeviceNetworkStatus) bool 
 		if p1.IfName != p2.IfName ||
 			p1.Phylabel != p2.Phylabel ||
 			p1.Logicallabel != p2.Logicallabel ||
+			!generics.EqualSets(p1.SharedLabels, p2.SharedLabels) ||
 			p1.Alias != p2.Alias ||
 			p1.IsMgmt != p2.IsMgmt ||
 			p1.IsL3Port != p2.IsL3Port ||
-			p1.Cost != p2.Cost {
+			p1.InvalidConfig != p2.InvalidConfig ||
+			p1.Cost != p2.Cost ||
+			p1.MTU != p2.MTU {
 			return false
 		}
 		if p1.Dhcp != p2.Dhcp ||
@@ -260,7 +281,6 @@ func (status DeviceNetworkStatus) MostlyEqual(status2 DeviceNetworkStatus) bool 
 // unimportant like just an increase in the success timestamp, but detects
 // when a port changes to/from a failure.
 func (status *DeviceNetworkStatus) MostlyEqualStatus(status2 DeviceNetworkStatus) bool {
-
 	if !status.MostlyEqual(status2) {
 		return false
 	}
@@ -281,50 +301,41 @@ func (status *DeviceNetworkStatus) MostlyEqualStatus(status2 DeviceNetworkStatus
 	return true
 }
 
-// GetPortByIfName - Get Port Status for port with given Ifname
-func (status *DeviceNetworkStatus) GetPortByIfName(
+// LookupPortByIfName returns status for port with the given interface name.
+func (status *DeviceNetworkStatus) LookupPortByIfName(
 	ifname string) *NetworkPortStatus {
 	for i := range status.Ports {
-		if status.Ports[i].IfName == ifname {
-			return &status.Ports[i]
+		port := &status.Ports[i]
+		if port.IfName == ifname {
+			return port
 		}
 	}
 	return nil
 }
 
-// GetPortsByLogicallabel - Get Port Status for all ports matching the given label.
-func (status *DeviceNetworkStatus) GetPortsByLogicallabel(
-	label string) (ports []*NetworkPortStatus) {
-	// Check for shared labels first.
-	switch label {
-	case UplinkLabel:
-		for i := range status.Ports {
-			if status.Version >= DPCIsMgmt && !status.Ports[i].IsMgmt {
-				continue
-			}
-			ports = append(ports, &status.Ports[i])
-		}
-		return ports
-	case FreeUplinkLabel:
-		for i := range status.Ports {
-			if status.Version >= DPCIsMgmt && !status.Ports[i].IsMgmt {
-				continue
-			}
-			if status.Ports[i].Cost > 0 {
-				continue
-			}
-			ports = append(ports, &status.Ports[i])
-		}
-		return ports
-	}
-	// Label is referencing single port.
+// LookupPortByLogicallabel returns port configuration referenced by the logical label.
+func (status *DeviceNetworkStatus) LookupPortByLogicallabel(
+	label string) *NetworkPortStatus {
 	for i := range status.Ports {
-		if status.Ports[i].Logicallabel == label {
-			ports = append(ports, &status.Ports[i])
-			return ports
+		port := &status.Ports[i]
+		if port.Logicallabel == label {
+			return port
 		}
 	}
 	return nil
+}
+
+// LookupPortsByLabel returns status for every port which has the given label assigned
+// (can be logical label or shared label).
+func (status *DeviceNetworkStatus) LookupPortsByLabel(
+	label string) (ports []*NetworkPortStatus) {
+	for i := range status.Ports {
+		port := &status.Ports[i]
+		if port.Logicallabel == label || generics.ContainsItem(port.SharedLabels, label) {
+			ports = append(ports, port)
+		}
+	}
+	return ports
 }
 
 // HasErrors - DeviceNetworkStatus has errors on any of it's ports?
@@ -339,7 +350,7 @@ func (status DeviceNetworkStatus) HasErrors() bool {
 
 // GetPortAddrInfo returns address info for a given interface and its IP address.
 func (status DeviceNetworkStatus) GetPortAddrInfo(ifname string, addr net.IP) *AddrInfo {
-	portStatus := status.GetPortByIfName(ifname)
+	portStatus := status.LookupPortByIfName(ifname)
 	if portStatus == nil {
 		return nil
 	}
@@ -349,6 +360,17 @@ func (status DeviceNetworkStatus) GetPortAddrInfo(ifname string, addr net.IP) *A
 		}
 	}
 	return nil
+}
+
+// IsPortUsedAsVlanParent - returns true if port with the given logical label
+// is used as a VLAN parent interface.
+func (status DeviceNetworkStatus) IsPortUsedAsVlanParent(portLabel string) bool {
+	for _, port2 := range status.Ports {
+		if port2.L2Type == L2LinkTypeVLAN && port2.VLAN.ParentPort == portLabel {
+			return true
+		}
+	}
+	return false
 }
 
 func rotate(arr []string, amount int) []string {
@@ -522,7 +544,6 @@ func CountDNSServers(dns DeviceNetworkStatus, ifname string) int {
 
 // GetDNSServers returns all, or the ones on one interface if ifname is set
 func GetDNSServers(dns DeviceNetworkStatus, ifname string) []net.IP {
-
 	var servers []net.IP
 	for _, us := range dns.Ports {
 		if !us.IsMgmt && ifname == "" {
@@ -533,32 +554,27 @@ func GetDNSServers(dns DeviceNetworkStatus, ifname string) []net.IP {
 		}
 		servers = append(servers, us.DNSServers...)
 	}
+	// Avoid duplicates.
+	servers = generics.FilterDuplicatesFn(servers, netutils.EqualIPs)
 	return servers
 }
 
 // GetNTPServers returns all, or the ones on one interface if ifname is set
 func GetNTPServers(dns DeviceNetworkStatus, ifname string) []net.IP {
-
 	var servers []net.IP
 	for _, us := range dns.Ports {
 		if ifname != "" && ifname != us.IfName {
 			continue
 		}
+		// NTP servers received via DHCP.
 		servers = append(servers, us.NtpServers...)
-		// Add statically configured NTP server as well, but avoid duplicates.
+		// Add statically configured NTP server as well.
 		if us.NtpServer != nil {
-			var found bool
-			for _, server := range servers {
-				if server.Equal(us.NtpServer) {
-					found = true
-					break
-				}
-			}
-			if !found {
-				servers = append(servers, us.NtpServer)
-			}
+			servers = append(servers, us.NtpServer)
 		}
 	}
+	// Avoid duplicates.
+	servers = generics.FilterDuplicatesFn(servers, netutils.EqualIPs)
 	return servers
 }
 

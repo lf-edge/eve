@@ -1,7 +1,5 @@
-/*
- * Copyright (c) 2020. Zededa, Inc.
- * SPDX-License-Identifier: Apache-2.0
- */
+// Copyright (c) 2020-2024. Zededa, Inc.
+// SPDX-License-Identifier: Apache-2.0
 
 package types
 
@@ -13,33 +11,50 @@ import (
 
 // ReportDiskPaths Report disk usage for these paths
 var ReportDiskPaths = []string{
-	"/",
+	"/",       // overlayfs inside EVE
+	"/hostfs", // actual IMGx inside EVE
 	IdentityDirname,
 	PersistDir,
 }
 
 // ReportDirPaths  Report directory usage for these paths
 var ReportDirPaths = []string{
-	PersistDir + "/downloads", // XXX old to be removed
-	PersistDir + "/img",       // XXX old to be removed
-	PersistDir + "/containerd",
-	PersistDir + "/tmp",
+	PersistConfigDir,
+	PersistStatusDir,
+	CertificateDirname,
+	SealedDirName,
+	ClearDirName,
+	PersistDebugDir,
+	PersistInstallerDir,
+	IngestedDirname,
+	NewlogDir,
+	MemoryMonitorOutputDir,
+	PersistDir + "/containerd", // Old location
+	PersistDir + "/tmp",        // Should not be used by anything
 	PersistDir + "/log",
-	PersistDir + "/newlog",
-	PersistDir + "/config",
-	PersistDir + "/status",
-	PersistDir + "/certs",
 	PersistDir + "/checkpoint",
+	PersistDir + "/containerd-system-root",
+	PersistDir + "/netdump",
+	PersistDir + "/pubsub-large",
+	PersistDir + "/reserved",
+	PersistDir + "/etcd-storage",
+	PersistDir + "/kcrashes",
+	PersistDir + "/eve-info",
+	PersistDir + "/kubelog",
 }
 
 // AppPersistPaths  Application-related files live here
 // XXX do we need to exclude the ContentTrees used for eve image update?
-// If so how do we tell them apart
+// If so how do we tell them apart?
 var AppPersistPaths = []string{
 	VolumeEncryptedDirName,
 	VolumeClearDirName,
-	SealedDirName + "/downloader",
-	SealedDirName + "/verifier",
+	DownloaderDir,
+	VerifierDir,
+	ContainerdDir,
+	SnapshotsDirname,
+	PersistCachePatchEnvelopes,
+	PersistCachePatchEnvelopesUsage,
 }
 
 // DiskMetric holds metrics data per disk

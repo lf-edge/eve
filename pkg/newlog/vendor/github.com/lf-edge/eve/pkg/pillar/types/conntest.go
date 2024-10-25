@@ -15,6 +15,7 @@ type TestResults struct {
 	LastFailed    time.Time
 	LastSucceeded time.Time
 	LastError     string // Set when LastFailed is updated
+	LastWarning   string // test succeeded but there is a potential issue
 }
 
 // RecordSuccess records a success
@@ -22,6 +23,15 @@ type TestResults struct {
 func (trPtr *TestResults) RecordSuccess() {
 	trPtr.LastSucceeded = time.Now()
 	trPtr.LastError = ""
+	trPtr.LastWarning = ""
+}
+
+// RecordSuccessWithWarning records a test success but warns user about a potential issue.
+// Keeps the LastFailed in place as history
+func (trPtr *TestResults) RecordSuccessWithWarning(warnStr string) {
+	trPtr.LastSucceeded = time.Now()
+	trPtr.LastError = ""
+	trPtr.LastWarning = warnStr
 }
 
 // RecordFailure records a failure
@@ -32,6 +42,7 @@ func (trPtr *TestResults) RecordFailure(errStr string) {
 	}
 	trPtr.LastFailed = time.Now()
 	trPtr.LastError = errStr
+	trPtr.LastWarning = ""
 }
 
 // HasError returns true if there is an error
@@ -40,18 +51,25 @@ func (trPtr *TestResults) HasError() bool {
 	return trPtr.LastFailed.After(trPtr.LastSucceeded)
 }
 
+// HasWarning returns true if test succeeded but there is a warning reported.
+func (trPtr *TestResults) HasWarning() bool {
+	return !trPtr.HasError() && trPtr.LastWarning != ""
+}
+
 // Update uses the src to add info to the results
 // If src has newer information for the 'other' part we update that as well.
 func (trPtr *TestResults) Update(src TestResults) {
 	if src.HasError() {
 		trPtr.LastFailed = src.LastFailed
 		trPtr.LastError = src.LastError
+		trPtr.LastWarning = ""
 		if src.LastSucceeded.After(trPtr.LastSucceeded) {
 			trPtr.LastSucceeded = src.LastSucceeded
 		}
 	} else {
 		trPtr.LastSucceeded = src.LastSucceeded
 		trPtr.LastError = ""
+		trPtr.LastWarning = src.LastWarning
 		if src.LastFailed.After(trPtr.LastFailed) {
 			trPtr.LastFailed = src.LastFailed
 		}
@@ -63,6 +81,7 @@ func (trPtr *TestResults) Clear() {
 	trPtr.LastFailed = time.Time{}
 	trPtr.LastSucceeded = time.Time{}
 	trPtr.LastError = ""
+	trPtr.LastWarning = ""
 }
 
 // IntfStatusMap - Used to return per-interface test results (success and failures)
@@ -97,6 +116,17 @@ func (intfMap *IntfStatusMap) RecordFailure(ifName string, errStr string) {
 		tr = TestResults{}
 	}
 	tr.RecordFailure(errStr)
+	intfMap.StatusMap[ifName] = tr
+}
+
+// RecordSuccessWithWarning records a verification success but warns user about
+// a potential issue.
+func (intfMap *IntfStatusMap) RecordSuccessWithWarning(ifName, warnStr string) {
+	tr, ok := intfMap.StatusMap[ifName]
+	if !ok {
+		tr = TestResults{}
+	}
+	tr.RecordSuccessWithWarning(warnStr)
 	intfMap.StatusMap[ifName] = tr
 }
 
