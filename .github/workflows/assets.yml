@@ -20,6 +20,30 @@ on:  # yamllint disable-line rule:truthy
         type: string
 
 jobs:
+  create_release:
+    runs-on: ubuntu-latest
+    outputs:
+      release_id: ${{ steps.create_release.outputs.release_id }}
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+    steps:
+      - name: Create GitHub Release
+        id: create_release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          response=$(curl -s -X POST \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "tag_name": "${{ inputs.tag_ref }}",
+              "name": "${{ inputs.tag_ref }}",
+              "draft": false,
+              "prerelease": true
+            }' https://api.github.com/repos/${{ github.repository }}/releases)
+          release_id=$(echo "$response" | jq -r .id)
+          upload_url=$(echo "$response" | jq -r .upload_url | sed -e "s/{?name,label}//")
+          echo "release_id=$release_id" >> "$GITHUB_OUTPUT"
+          echo "upload_url=$upload_url" >> "$GITHUB_OUTPUT"
   build:
     runs-on: ubuntu-20.04
     strategy:
@@ -80,147 +104,29 @@ jobs:
           docker create --name eve_sources "$EVE_SOURCES" bash
           docker export --output assets/collected_sources.tar.gz eve_sources
           docker rm eve_sources
-      - name: Create a GitHub release and clean up artifacts
-        id: create-release
-        uses: actions/github-script@v3
-        with:
-          result-encoding: string
-          script: |
-            console.log(context)
-            const {TAG} = process.env
-
-            // first create a release -- it is OK if that fails,
-            // since it means the release is already there
-            try {
-              const raw = (await github.repos.createRelease({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                tag_name: `${TAG}`,
-                name: `Release ${TAG}`,
-                prerelease: true,
-              })).data
-              console.log(raw)
-            } catch (e) {}
-
-            // get the release ID
-            const release = (await github.repos.getReleaseByTag({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              tag: `${TAG}`,
-            })).data
-
-            // get assets for that ID
-            const assets = (await github.repos.listReleaseAssets({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              release_id: release.id,
-            })).data
-
-            // remove all assets (since we will be uploading new ones)
-            // note that we only consider assets coming from the same
-            // architecture we're running on -- this is because GH
-            // release assets can only be flat (no folders allowed)
-            if (Array.isArray(assets) && assets.length > 0) {
-              for (const asset of assets) {
-                if (asset.name.startsWith('${{ env.ARCH }}')) {
-                  await github.repos.deleteReleaseAsset({
-                    owner: context.repo.owner,
-                    repo: context.repo.repo,
-                    asset_id: asset.id,
-                  })
-                }
-              }
-            }
-
-            return release.upload_url
-
-      - name: Upload rootfs for the release
-        id: upload-rootfs-asset
-        uses: actions/upload-release-asset@v1
+      - name: Create SHA256 checksum, rename, and upload files
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create-release.outputs.result }}
-          asset_path: assets/rootfs.img
-          asset_name: ${{ env.ARCH }}.rootfs.img
-          asset_content_type: application/octet-stream
-      - name: Upload kernel for the release
-        id: upload-kernel-asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create-release.outputs.result }}
-          asset_path: assets/kernel
-          asset_name: ${{ env.ARCH }}.kernel
-          asset_content_type: application/octet-stream
-      - name: Upload installer.img for the release
-        id: upload-installer-asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create-release.outputs.result }}
-          asset_path: assets/installer.img
-          asset_name: ${{ env.ARCH }}.installer.img
-          asset_content_type: application/octet-stream
-      - name: Upload initrd.img for the release
-        id: upload-initrd-asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create-release.outputs.result }}
-          asset_path: assets/initrd.img
-          asset_name: ${{ env.ARCH }}.initrd.img
-          asset_content_type: application/octet-stream
-      - name: Upload initrd.bits for the release
-        id: upload-initrd-bits-asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create-release.outputs.result }}
-          asset_path: assets/initrd.bits
-          asset_name: ${{ env.ARCH }}.initrd.bits
-          asset_content_type: application/octet-stream
-      - name: Upload ipxe.efi for the release
-        id: upload-ipxe-efi-asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create-release.outputs.result }}
-          asset_path: assets/ipxe.efi
-          asset_name: ${{ env.ARCH }}.ipxe.efi
-          asset_content_type: application/octet-stream
-      - name: Upload ipxe.efi.cfg for the release
-        id: upload-ipxe-efi-cfg-asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create-release.outputs.result }}
-          asset_path: assets/ipxe.efi.cfg
-          asset_name: ${{ env.ARCH }}.ipxe.efi.cfg
-          asset_content_type: application/octet-stream
-      - name: Upload ipxe.efi.ip.cfg for the release
-        id: upload-ipxe-efi-ip-cfg-asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create-release.outputs.result }}
-          asset_path: assets/ipxe.efi.ip.cfg
-          asset_name: ${{ env.ARCH }}.ipxe.efi.ip.cfg
-          asset_content_type: application/octet-stream
-      - name: Upload COLLECTED_SOURCES
-        id: upload-collected-sources-asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create-release.outputs.result }}
-          asset_path: assets/collected_sources.tar.gz
-          asset_name: ${{ env.ARCH }}.collected_sources.tar.gz
-          asset_content_type: application/octet-stream
+          RELEASE_ID: ${{ needs.create_release.outputs.release_id }}
+          UPLOAD_URL: ${{ needs.create_release.outputs.upload_url }}
+        run: |
+          # Create SHA256 checksum for rootfs.img
+          sha256sum "assets/rootfs.img" | awk '{ print $1 }' > "assets/rootfs.img.sha256"
+          for file in assets/*; do
+            base_name=$(basename "$asset")
+            # Add ARCH prefix
+            new_name="${ARCH}.${base_name}"
+            # Rename the file
+            mv "$asset" "assets/$new_name"
+            echo "Uploading assets/$new_name as $new_name..."
+            upload_response=$(curl -s -X POST \
+              -H "Authorization: Bearer $GITHUB_TOKEN" \
+              -H "Content-Type: application/octet-stream" \
+              --data-binary @"assets/$new_name" \
+              "$UPLOAD_URL?name=$new_name")
+            if echo "$upload_response" | jq -e .id > /dev/null; then
+              echo "$file_name uploaded successfully."
+            else
+              echo "Error uploading $file_name: $upload_response"
+            fi
+          done
