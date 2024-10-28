@@ -29,7 +29,7 @@ import (
 const (
 	swtpmPath      = "/usr/bin/swtpm"
 	maxInstances   = 10
-	maxPidWaitTime = 1 //seconds
+	maxPidWaitTime = 5 //seconds
 )
 
 var (
