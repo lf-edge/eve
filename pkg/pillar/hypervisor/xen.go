@@ -11,9 +11,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
-	"time"
 
-	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/shirou/gopsutil/cpu"
 	"github.com/shirou/gopsutil/mem"
@@ -877,14 +875,14 @@ func fallbackDomainMetric() map[string]types.DomainMetric {
 	return dmList
 }
 
-func (ctx xenContext) VirtualTPMSetup(domainName, agentName string, ps *pubsub.PubSub, warnTime, errTime time.Duration) error {
+func (ctx xenContext) VirtualTPMSetup(domainName string, wp *types.WatchdogParam) error {
 	return fmt.Errorf("not implemented")
 }
 
-func (ctx xenContext) VirtualTPMTerminate(domainName string) error {
+func (ctx xenContext) VirtualTPMTerminate(domainName string, wp *types.WatchdogParam) error {
 	return fmt.Errorf("not implemented")
 }
 
-func (ctx xenContext) VirtualTPMTeardown(domainName string) error {
+func (ctx xenContext) VirtualTPMTeardown(domainName string, wp *types.WatchdogParam) error {
 	return fmt.Errorf("not implemented")
 }
