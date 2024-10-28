@@ -1119,19 +1119,20 @@ func maybeRetryBoot(ctx *domainContext, status *types.DomainStatus) {
 	}
 	defer file.Close()
 
-	err = hyper.Task(status).VirtualTPMSetup(status.DomainName, agentName, ctx.ps, warningTime, errorTime)
+	wp := &types.WatchdogParam{Ps: ctx.ps, AgentName: agentName, WarnTime: warningTime, ErrTime: errorTime}
+	err = hyper.Task(status).VirtualTPMSetup(status.DomainName, wp)
 	if err == nil {
 		status.VirtualTPM = true
-		defer func(status *types.DomainStatus) {
-			if status.BootFailed || status.HasError() {
-				log.Noticef("Terminating vTPM for domain %s, BootFailed : %v, HasError: %v",
-					status.DomainName, status.BootFailed, status.HasError())
-
-				if err := hyper.Task(status).VirtualTPMTerminate(status.DomainName); err != nil {
+		defer func(status *types.DomainStatus, wp *types.WatchdogParam) {
+			// this means we failed to boot the VM.
+			if !status.Activated {
+				log.Noticef("Failed to activate domain: %s, terminating vTPM", status.DomainName)
+				if err := hyper.Task(status).VirtualTPMTerminate(status.DomainName, wp); err != nil {
+					// this is not a critical failure so just log it
 					log.Errorf("Failed to terminate vTPM for %s: %s", status.DomainName, err)
 				}
 			}
-		}(status)
+		}(status, wp)
 	} else {
 		status.VirtualTPM = false
 		log.Errorf("Failed to setup vTPM for %s: %s", status.DomainName, err)
@@ -1678,19 +1679,20 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 	}
 	defer file.Close()
 
-	err = hyper.Task(status).VirtualTPMSetup(status.DomainName, agentName, ctx.ps, warningTime, errorTime)
+	wp := &types.WatchdogParam{Ps: ctx.ps, AgentName: agentName, WarnTime: warningTime, ErrTime: errorTime}
+	err = hyper.Task(status).VirtualTPMSetup(status.DomainName, wp)
 	if err == nil {
 		status.VirtualTPM = true
-		defer func(status *types.DomainStatus) {
-			if status.BootFailed || status.HasError() {
-				log.Noticef("Terminating vTPM for domain %s, BootFailed : %v, HasError: %v",
-					status.DomainName, status.BootFailed, status.HasError())
-
-				if err := hyper.Task(status).VirtualTPMTerminate(status.DomainName); err != nil {
+		defer func(status *types.DomainStatus, wp *types.WatchdogParam) {
+			// this means we failed to boot the VM.
+			if !status.Activated {
+				log.Noticef("Failed to activate domain: %s, terminating vTPM", status.DomainName)
+				if err := hyper.Task(status).VirtualTPMTerminate(status.DomainName, wp); err != nil {
+					// this is not a critical failure so just log it
 					log.Errorf("Failed to terminate vTPM for %s: %s", status.DomainName, err)
 				}
 			}
-		}(status)
+		}(status, wp)
 	} else {
 		status.VirtualTPM = false
 		log.Errorf("Failed to setup vTPM for %s: %s", status.DomainName, err)
@@ -2485,7 +2487,8 @@ func handleDelete(ctx *domainContext, key string, status *types.DomainStatus) {
 		log.Errorln(err)
 	}
 
-	if err := hyper.Task(status).VirtualTPMTeardown(status.DomainName); err != nil {
+	wp := &types.WatchdogParam{Ps: ctx.ps, AgentName: agentName, WarnTime: warningTime, ErrTime: errorTime}
+	if err := hyper.Task(status).VirtualTPMTeardown(status.DomainName, wp); err != nil {
 		log.Errorln(err)
 	}
 

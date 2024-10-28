@@ -279,9 +279,9 @@ const (
 type Task interface {
 	Setup(DomainStatus, DomainConfig, *AssignableAdapters,
 		*ConfigItemValueMap, *os.File) error
-	VirtualTPMSetup(domainName, agentName string, ps *pubsub.PubSub, warnTime, errTime time.Duration) error
-	VirtualTPMTerminate(domainName string) error
-	VirtualTPMTeardown(domainName string) error
+	VirtualTPMSetup(domainName string, wp *WatchdogParam) error
+	VirtualTPMTerminate(domainName string, wp *WatchdogParam) error
+	VirtualTPMTeardown(domainName string, wp *WatchdogParam) error
 	Create(string, string, *DomainConfig) (int, error)
 	Start(string) error
 	Stop(string, bool) error
@@ -587,4 +587,13 @@ type Capabilities struct {
 	IOVirtualization         bool // I/O Virtualization support
 	CPUPinning               bool // CPU Pinning support
 	UseVHost                 bool // vHost support
+}
+
+// WatchdogParam is used in some proc functions that have a timeout,
+// to tell the watchdog agent is still alive.
+type WatchdogParam struct {
+	Ps        *pubsub.PubSub
+	AgentName string
+	WarnTime  time.Duration
+	ErrTime   time.Duration
 }
