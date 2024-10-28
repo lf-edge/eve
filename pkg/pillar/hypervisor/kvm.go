@@ -20,7 +20,6 @@ import (
 	zconfig "github.com/lf-edge/eve-api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/containerd"
-	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
@@ -44,9 +43,15 @@ var (
 	clientCid  = uint32(unix.VMADDR_CID_HOST + 1)
 	vTPMClient = &http.Client{
 		Transport: vtpmClientUDSTransport(),
-		Timeout:   2 * time.Second,
+		Timeout:   5 * time.Second,
 	}
 )
+
+// vtpmRequestResult holds the result of a vTPM request.
+type vtpmRequestResult struct {
+	Body  string
+	Error error
+}
 
 // We build device model around PCIe topology according to best practices
 //    https://github.com/qemu/qemu/blob/master/docs/pcie.txt
@@ -1331,38 +1336,46 @@ func getQmpListenerSocket(domainName string) string {
 }
 
 // VirtualTPMSetup launches a vTPM instance for the domain
-func (ctx KvmContext) VirtualTPMSetup(domainName, agentName string, ps *pubsub.PubSub, warnTime, errTime time.Duration) error {
-	if ps != nil {
-		wk := utils.NewWatchdogKick(ps, agentName, warnTime, errTime)
-		domainUUID, _, _, err := types.DomainnameToUUID(domainName)
-		if err != nil {
-			return fmt.Errorf("failed to extract UUID from domain name: %v", err)
-		}
-		return requestvTPMLaunch(domainUUID, wk, swtpmTimeout)
+func (ctx KvmContext) VirtualTPMSetup(domainName string, wp *types.WatchdogParam) error {
+	if wp == nil {
+		return fmt.Errorf("invalid watchdog configuration")
 	}
 
-	return fmt.Errorf("invalid watchdog configuration")
-}
-
-// VirtualTPMTerminate terminates the vTPM instance
-func (ctx KvmContext) VirtualTPMTerminate(domainName string) error {
 	domainUUID, _, _, err := types.DomainnameToUUID(domainName)
 	if err != nil {
 		return fmt.Errorf("failed to extract UUID from domain name: %v", err)
 	}
-	if err := requestvTPMTermination(domainUUID); err != nil {
+	return requestvTPMLaunch(domainUUID, wp, swtpmTimeout)
+
+}
+
+// VirtualTPMTerminate terminates the vTPM instance
+func (ctx KvmContext) VirtualTPMTerminate(domainName string, wp *types.WatchdogParam) error {
+	if wp == nil {
+		return fmt.Errorf("invalid watchdog configuration")
+	}
+
+	domainUUID, _, _, err := types.DomainnameToUUID(domainName)
+	if err != nil {
+		return fmt.Errorf("failed to extract UUID from domain name: %v", err)
+	}
+	if err := requestvTPMTermination(domainUUID, wp); err != nil {
 		return fmt.Errorf("failed to terminate vTPM for domain %s: %w", domainName, err)
 	}
 	return nil
 }
 
 // VirtualTPMTeardown purges the vTPM instance.
-func (ctx KvmContext) VirtualTPMTeardown(domainName string) error {
+func (ctx KvmContext) VirtualTPMTeardown(domainName string, wp *types.WatchdogParam) error {
+	if wp == nil {
+		return fmt.Errorf("invalid watchdog configuration")
+	}
+
 	domainUUID, _, _, err := types.DomainnameToUUID(domainName)
 	if err != nil {
 		return fmt.Errorf("failed to extract UUID from domain name: %v", err)
 	}
-	if err := requestvTPMPurge(domainUUID); err != nil {
+	if err := requestvTPMPurge(domainUUID, wp); err != nil {
 		return fmt.Errorf("failed to purge vTPM for domain %s: %w", domainName, err)
 	}
 
@@ -1378,54 +1391,74 @@ func vtpmClientUDSTransport() *http.Transport {
 	}
 }
 
-func makeRequest(client *http.Client, endpoint, id string) (string, error) {
+func makeRequestAsync(client *http.Client, endpoint, id string, rChan chan<- vtpmRequestResult) {
 	url := fmt.Sprintf("http://unix/%s?id=%s", endpoint, id)
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
-		return "", fmt.Errorf("error when creating request: %v", err)
+		rChan <- vtpmRequestResult{Error: fmt.Errorf("error when creating request to %s endpoint: %v", url, err)}
+		return
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("request failed: %v", err)
+		rChan <- vtpmRequestResult{Error: fmt.Errorf("error when sending request to %s endpoint: %v", url, err)}
+		return
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", fmt.Errorf("error when reading response body: %v", err)
+		rChan <- vtpmRequestResult{Error: fmt.Errorf("error when reading response body from %s endpoint: %v", url, err)}
+		return
 	}
 	if resp.StatusCode != http.StatusOK {
-		return string(body), fmt.Errorf("received status code %d", resp.StatusCode)
+		rChan <- vtpmRequestResult{Error: fmt.Errorf("received status code %d from %s endpoint", resp.StatusCode, url), Body: string(body)}
+		return
 	}
 
-	return string(body), nil
+	rChan <- vtpmRequestResult{Body: string(body)}
 }
 
-func requestvTPMLaunch(id uuid.UUID, wk *utils.WatchdogKick, timeoutSeconds uint) error {
-	body, err := makeRequest(vTPMClient, vtpmLaunchEndpoint, id.String())
+func makeRequest(client *http.Client, wk *utils.WatchdogKicker, endpoint, id string) (body string, err error) {
+	rChan := make(chan vtpmRequestResult)
+	go makeRequestAsync(client, endpoint, id, rChan)
+
+	startTime := time.Now()
+	for {
+		select {
+		case res := <-rChan:
+			return res.Body, res.Error
+		default:
+			utils.KickWatchdog(wk)
+			if time.Since(startTime).Seconds() >= float64(client.Timeout.Seconds()) {
+				return "", fmt.Errorf("timeout")
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+	}
+}
+
+func requestvTPMLaunch(id uuid.UUID, wp *types.WatchdogParam, timeoutSeconds uint) error {
+	wk := utils.NewWatchdogKicker(wp.Ps, wp.AgentName, wp.WarnTime, wp.ErrTime)
+	body, err := makeRequest(vTPMClient, wk, vtpmLaunchEndpoint, id.String())
 	if err != nil {
 		return fmt.Errorf("failed to launch vTPM instance: %w (%s)", err, body)
 	}
 
 	// Wait for SWTPM to start.
 	pidPath := fmt.Sprintf(types.SwtpmPidPath, id.String())
-	pid, err := utils.GetPidFromFileTimeout(pidPath, timeoutSeconds, wk)
+	_, err = utils.GetPidFromFileTimeout(pidPath, timeoutSeconds, wk)
 	if err != nil {
 		return fmt.Errorf("failed to get pid from file %s: %w", pidPath, err)
-	}
-
-	// One last time, check SWTPM is not dead right after launch.
-	if !utils.IsProcAlive(pid) {
-		return fmt.Errorf("SWTPM (pid: %d) is dead", pid)
 	}
 
 	return nil
 }
 
-func requestvTPMPurge(id uuid.UUID) error {
+func requestvTPMPurge(id uuid.UUID, wp *types.WatchdogParam) error {
 	// Send a request to vTPM control socket, ask it to purge the instance
 	// and all its data.
-	body, err := makeRequest(vTPMClient, vtpmPurgeEndpoint, id.String())
+	wk := utils.NewWatchdogKicker(wp.Ps, wp.AgentName, wp.WarnTime, wp.ErrTime)
+	body, err := makeRequest(vTPMClient, wk, vtpmPurgeEndpoint, id.String())
 	if err != nil {
 		return fmt.Errorf("failed to purge vTPM instance: %w (%s)", err, body)
 	}
@@ -1433,9 +1466,10 @@ func requestvTPMPurge(id uuid.UUID) error {
 	return nil
 }
 
-func requestvTPMTermination(id uuid.UUID) error {
+func requestvTPMTermination(id uuid.UUID, wp *types.WatchdogParam) error {
 	// Send a request to vTPM control socket, ask it to terminate the instance.
-	body, err := makeRequest(vTPMClient, vtpmTermEndpoint, id.String())
+	wk := utils.NewWatchdogKicker(wp.Ps, wp.AgentName, wp.WarnTime, wp.ErrTime)
+	body, err := makeRequest(vTPMClient, wk, vtpmTermEndpoint, id.String())
 	if err != nil {
 		return fmt.Errorf("failed to terminate vTPM instance: %w (%s)", err, body)
 	}
