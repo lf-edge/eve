@@ -15,23 +15,28 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 )
 
-// WatchdogKick is used in some proc functions that have a timeout,
+// WatchdogKicker is used in some proc functions that have a timeout,
 // to tell the watchdog agent is still alive.
-type WatchdogKick struct {
+type WatchdogKicker struct {
 	ps        *pubsub.PubSub
 	agentName string
 	warnTime  time.Duration
 	errTime   time.Duration
 }
 
-// NewWatchdogKick creates a new WatchdogKick.
-func NewWatchdogKick(ps *pubsub.PubSub, agentName string, warnTime time.Duration, errTime time.Duration) *WatchdogKick {
-	return &WatchdogKick{
+// NewWatchdogKicker creates a new WatchdogKick.
+func NewWatchdogKicker(ps *pubsub.PubSub, agentName string, warnTime time.Duration, errTime time.Duration) *WatchdogKicker {
+	return &WatchdogKicker{
 		ps:        ps,
 		agentName: agentName,
 		warnTime:  warnTime,
 		errTime:   errTime,
 	}
+}
+
+// KickWatchdog tells the watchdog agent is still alive.
+func KickWatchdog(wk *WatchdogKicker) {
+	wk.ps.StillRunning(wk.agentName, wk.warnTime, wk.errTime)
 }
 
 // PkillArgs does a pkill
@@ -85,7 +90,7 @@ func GetPidFromFile(pidFile string) (int, error) {
 }
 
 // GetPidFromFileTimeout reads a pid from a file with a timeout.
-func GetPidFromFileTimeout(pidFile string, timeoutSeconds uint, wk *WatchdogKick) (int, error) {
+func GetPidFromFileTimeout(pidFile string, timeoutSeconds uint, wk *WatchdogKicker) (int, error) {
 	startTime := time.Now()
 	for {
 		if time.Since(startTime).Seconds() >= float64(timeoutSeconds) {
@@ -118,7 +123,7 @@ func IsProcAlive(pid int) bool {
 }
 
 // IsProcAliveTimeout checks if a process is alive for a given timeout.
-func IsProcAliveTimeout(pid int, timeoutSeconds uint, wk *WatchdogKick) bool {
+func IsProcAliveTimeout(pid int, timeoutSeconds uint, wk *WatchdogKicker) bool {
 	startTime := time.Now()
 	for {
 		if time.Since(startTime).Seconds() >= float64(timeoutSeconds) {
