@@ -48,7 +48,7 @@ func (r *request) validate() error {
 		return errors.New("RequestData is nil")
 	}
 	// check supported request types
-	if r.RequestType != "SetDPC" {
+	if (r.RequestType != "SetDPC") && (r.RequestType != "SetServer") {
 		return errors.New("Unsupported RequestType " + r.RequestType)
 	}
 	return nil
@@ -226,6 +226,15 @@ func (r *request) handleRequest(ctx *monitor) *response {
 		// publish the DPC
 		if err := ctx.pubDevicePortConfig.Publish(dpc.Key, dpc); err != nil {
 			return r.errResponse("Failed to publish DPC", err)
+		}
+		return r.okResponse()
+	case "SetServer":
+		var server string
+		if err := json.Unmarshal(r.RequestData, &server); err != nil {
+			return r.malformedRequestResponse(err)
+		}
+		if err := ctx.updateServerFile(server); err != nil {
+			return r.errResponse("Failed to update server file", err)
 		}
 		return r.okResponse()
 
