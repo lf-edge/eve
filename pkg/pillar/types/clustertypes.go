@@ -49,6 +49,8 @@ type ENClusterAppStatus struct {
 	ScheduledOnThisNode bool      // App is running on this device
 	StatusRunning       bool      // Status of the app in "Running" state
 	IsVolumeDetached    bool      // Are volumes detached after failover ?
+	AppIsVMI            bool      // Is this a VMI app, vs a Pod app
+	AppKubeName         string    // Kube name of the app, either VMI or Pod
 }
 
 // Key - returns the key for the config of EdgeNodeClusterConfig
