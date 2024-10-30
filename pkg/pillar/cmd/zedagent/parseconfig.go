@@ -151,6 +151,10 @@ func parseConfig(getconfigCtx *getconfigContext, config *zconfig.EdgeDevConfig,
 
 		if source != fromBootstrap {
 			activateNewBaseOS := parseBaseOS(getconfigCtx, config)
+			parseEdgeNodeClusterConfig(getconfigCtx, config)
+
+			// Parse EdgeNode Cluster configuration
+
 			parseNetworkInstanceConfig(getconfigCtx, config)
 			parseContentInfoConfig(getconfigCtx, config)
 			parseVolumeConfig(getconfigCtx, config)
@@ -763,6 +767,10 @@ func parseAppInstanceConfig(getconfigCtx *getconfigContext,
 
 		// Add config submitted via local profile server.
 		addLocalAppConfig(getconfigCtx, &appInstance)
+
+		// XXX add Designated ID to the appInstance
+		// XXX Keep this here for now to allow the kubevirt single-node working, the later PR to EVE main will remove this
+		appInstance.DesignatedNodeID = devUUID
 
 		// Verify that it fits and if not publish with error
 		checkAndPublishAppInstanceConfig(getconfigCtx, appInstance)
@@ -3205,4 +3213,54 @@ func handleDeviceOperation(ctxPtr *zedagentContext, op types.DeviceOperation) {
 	// shutdown the application instances
 	shutdownAppsGlobal(ctxPtr)
 	// nothing else to be done
+}
+
+func parseEdgeNodeClusterConfig(getconfigCtx *getconfigContext,
+	config *zconfig.EdgeDevConfig) {
+
+	ctx := getconfigCtx.zedagentCtx
+	zcfgCluster := config.GetCluster()
+	if zcfgCluster == nil {
+		log.Functionf("parseEdgeNodeClusterConfig: No EdgeNodeClusterConfig, Unpublishing")
+		pub := ctx.pubEdgeNodeClusterConfig
+		items := pub.GetAll()
+		if len(items) > 0 {
+			log.Functionf("parseEdgeNodeClusterConfig: Unpublishing EdgeNodeClusterConfig")
+			ctx.pubEdgeNodeClusterConfig.Unpublish("global")
+		}
+		return
+	}
+	ipAddr, ipNet, err := net.ParseCIDR(zcfgCluster.GetClusterIpPrefix())
+	if err != nil {
+		log.Errorf("parseEdgeNodeClusterConfig: ParseCIDR failed %s", err)
+		return
+	}
+	ipNet.IP = ipAddr
+
+	joinServerIP := net.ParseIP(zcfgCluster.GetJoinServerIp())
+	var isJoinNode bool
+	// deduce the bootstrap node status from clusterIPPrefix and joinServerIP
+	if ipAddr.Equal(joinServerIP) { // deduce the bootstrap node status from
+		isJoinNode = true
+	}
+
+	id, err := uuid.FromString(zcfgCluster.GetClusterId())
+	if err != nil {
+		log.Errorf("parseEdgeNodeClusterConfig: failed to parse UUID: %v", err)
+		return
+	}
+	enClusterConfig := types.EdgeNodeClusterConfig{
+		ClusterName:      zcfgCluster.GetClusterName(),
+		ClusterID:        types.UUIDandVersion{UUID: id},
+		ClusterInterface: zcfgCluster.GetClusterInterface(),
+		ClusterIPPrefix:  ipNet,
+		IsWorkerNode:     zcfgCluster.GetIsWorkerNode(),
+		JoinServerIP:     joinServerIP,
+		BootstrapNode:    isJoinNode,
+		// XXX EncryptedClusterToken is only for gcp config
+	}
+	enClusterConfig.CipherToken = parseCipherBlock(getconfigCtx,
+		enClusterConfig.Key(), zcfgCluster.GetEncryptedClusterToken())
+	log.Functionf("parseEdgeNodeClusterConfig: ENCluster API, Config %+v, %v", zcfgCluster, enClusterConfig)
+	ctx.pubEdgeNodeClusterConfig.Publish("global", enClusterConfig)
 }

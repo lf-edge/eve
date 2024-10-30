@@ -229,6 +229,9 @@ type zedagentContext struct {
 	// Is Kubevirt eve
 	hvTypeKube bool
 
+	// EN cluster config
+	pubEdgeNodeClusterConfig pubsub.Publication
+
 	// Netdump
 	netDumper            *netdump.NetDumper // nil if netdump is disabled
 	netdumpInterval      time.Duration
@@ -1102,6 +1105,16 @@ func initPublications(zedagentCtx *zedagentContext) {
 		log.Fatal(err)
 	}
 	getconfigCtx.pubZedAgentStatus.ClearRestarted()
+
+	zedagentCtx.pubEdgeNodeClusterConfig, err = ps.NewPublication(pubsub.PublicationOptions{
+		AgentName:  agentName,
+		Persistent: true,
+		TopicType:  types.EdgeNodeClusterConfig{},
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	zedagentCtx.pubEdgeNodeClusterConfig.ClearRestarted()
 
 	getconfigCtx.pubPhysicalIOAdapters, err = ps.NewPublication(pubsub.PublicationOptions{
 		AgentName: agentName,

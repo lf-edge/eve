@@ -282,8 +282,8 @@ func waitForNodeReady(client *kubernetes.Clientset, readyCh chan bool, devUUID s
 			if err != nil {
 				return err
 			}
-			if len(pods.Items) < 6 {
-				return fmt.Errorf("kubevirt running pods less than 6")
+			if len(pods.Items) < 4 { // need at least 4 pods to be running
+				return fmt.Errorf("kubevirt running pods less than 4")
 			}
 
 			err = waitForLonghornReady(client, hostname)
