@@ -333,6 +333,10 @@ func (z *zedrouter) getAppByPodName(
 	for _, item := range z.pubAppNetworkStatus.GetAll() {
 		appStatus := item.(types.AppNetworkStatus)
 		appUUID := appStatus.UUIDandVersion.UUID
+		repPodName, isReplicaPod := base.GetReplicaPodName(appStatus.DisplayName, podName, appUUID)
+		if isReplicaPod {
+			appKubeName = repPodName
+		}
 		if base.GetAppKubeName(appStatus.DisplayName, appUUID) == appKubeName {
 			appConfig := z.lookupAppNetworkConfig(appStatus.Key())
 			if appConfig == nil {
