@@ -42,6 +42,8 @@ type DomainConfig struct {
 	// KubeImageName: is the container image reference we pass to domainmgr to launch a native container
 	// in kubevirt eve
 	KubeImageName string
+	// if this node is the DNiD of the App
+	IsDNidNode bool
 
 	// XXX: to be deprecated, use CipherBlockStatus instead
 	CloudInitUserData *string `json:"pubsub-large-CloudInitUserData"` // base64-encoded
@@ -321,6 +323,11 @@ type DomainStatus struct {
 	// FmlCustomResolution is the custom resolution for FML mode,
 	// xxx: this should be moved to VmConfig
 	FmlCustomResolution string
+	// if this node is the DNiD of the App
+	IsDNidNode bool
+	// the device name is used for kube node name
+	// Need to pass in from domainmgr to hypervisor context commands
+	NodeName string
 }
 
 func (status DomainStatus) Key() string {
@@ -474,6 +481,7 @@ type DomainMetric struct {
 	UsedMemoryPercent float64
 	LastHeard         time.Time
 	Activated         bool
+	NodeName          string // the name of the kubernetes node on which the app is currently running
 }
 
 // Key returns the key for pubsub

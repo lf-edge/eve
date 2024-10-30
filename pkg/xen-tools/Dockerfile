@@ -3,8 +3,7 @@
 # Copyright (c) 2023 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-FROM lfedge/eve-uefi:d821658883d6748d8bbf0d6640c62288e3ce8c6f AS uefi-build
-
+FROM lfedge/eve-uefi:1f971167cc8866c306ffc7f4157665a1a2e6d95d as uefi-build
 FROM lfedge/eve-alpine:591df01e581889c3027514c8a91feaca1c8ad49f AS runx-build
 ENV BUILD_PKGS mkinitfs gcc musl-dev e2fsprogs chrony agetty
 RUN eve-alpine-deploy.sh
@@ -27,7 +26,7 @@ ENV BUILD_PKGS \
     pixman-dev libaio-dev yajl-dev argp-standalone \
     linux-headers git patch texinfo tar libcap-ng-dev \
     attr-dev flex bison cmake libusb-dev zstd-dev \
-    python3 build-base ninja gnutls-dev
+    python3 build-base ninja gnutls-dev agetty
 
 ENV BUILD_PKGS_arm64 dtc-dev
 
@@ -113,7 +112,6 @@ COPY --from=uefi-build / /uefi/
 RUN mkdir -p /out/usr/lib/xen/boot && cp /uefi/OVMF.fd /out/usr/lib/xen/boot/ovmf.bin && \
   cp /uefi/OVMF_PVH.fd /out/usr/lib/xen/boot/ovmf-pvh.bin && \
   [ -f /uefi/OVMF_CODE.fd ] && cp /uefi/OVMF_CODE.fd /out/usr/lib/xen/boot/OVMF_CODE.fd || :
-RUN if [ "$(uname -m)" = "x86_64" ]; then cp /uefi/*.rom /out/usr/lib/xen/boot/;fi
 
 FROM scratch
 COPY --from=build /out/ /

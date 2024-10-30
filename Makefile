@@ -93,7 +93,7 @@ endif
 REPO_BRANCH=$(shell git rev-parse --abbrev-ref HEAD | tr / _)
 REPO_SHA=$(shell git describe --match '$$^' --abbrev=8 --always --dirty)
 # set this variable to the current tag only if we are building from a tag (annotated or not), otherwise set it to "snapshot", which means rootfs version will be constructed differently
-REPO_TAG=$(shell git describe --always --tags | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$$' || echo snapshot)
+REPO_TAG=$(shell git describe --always --tags | grep -E '^[0-9]+\.[0-9]+\.[0-9]+(-lts|-rc[0-9]+)?$$' || echo snapshot)
 REPO_DIRTY_TAG=$(if $(findstring -dirty,$(REPO_SHA)),-$(shell date -u +"%Y-%m-%d.%H.%M"))
 EVE_TREE_TAG = $(shell git describe --abbrev=8 --always --dirty --tags)
 

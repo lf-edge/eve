@@ -116,21 +116,25 @@ installer image locally in a hardware lab. Note the changes made to both ```url`
 #!ipxe
 # set url https://github.com/lf-edge/eve/releases/download/snapshot/amd64.
 set url https://10.0.0.2/eve/releases/download/snapshot/amd64.
-# set eve_args eve_soft_serial=${ip} eve_reboot_after_install
-set eve_args eve_soft_serial=${ip} eve_install_server=zedcontrol.hummingbird.zededa.net eve_reboot_after_install
-
-# you are not expected to go below this line
 set console console=ttyS0 console=ttyS1 console=ttyS2 console=ttyAMA0 console=ttyAMA1 console=tty0
+set eve_args eve_soft_serial=${ip} eve_install_server=zedcontrol.hummingbird.zededa.net eve_reboot_after_install getty
 set installer_args root=/initrd.image find_boot=netboot overlaytmpfs fastboot
 
-# you need to be this ^ tall to go beyond this point
-kernel ${url}kernel ${eve_args} ${installer_args} ${console} ${platform_tweaks} initrd=amd64.initrd.img initrd=amd64.installer.img initrd=amd64.initrd.bits initrd=amd64.rootfs.img
-initrd ${url}initrd.img
-initrd ${url}installer.img
-initrd ${url}initrd.bits
-initrd ${url}rootfs.img
+# a few vendor tweaks (mostly an example, although they DO work on Equinix Metal servers)
+iseq ${smbios/manufacturer} Huawei && set console console=ttyAMA0,115200n8 ||
+iseq ${smbios/manufacturer} Huawei && set platform_tweaks pcie_aspm=off pci=pcie_bus_perf ||
+iseq ${smbios/manufacturer} Supermicro && set console console=ttyS1,115200n8 ||
+iseq ${smbios/manufacturer} QEMU && set console console=hvc0 console=ttyS0 ||
+
+iseq ${buildarch} x86_64 && chain ${url}EFI/BOOT/BOOTX64.EFI
+iseq ${buildarch} aarch64 && chain ${url}EFI/BOOT/BOOTAA64.EFI
+iseq ${buildarch} riscv64 && chain ${url}EFI/BOOT/BOOTRISCV64.EFI
+
 boot
 ```
+
+The above is identical to the actual [`ipxe.cfg`](../pkg/eve/installer/ipxe.efi.cfg) distributed with EVE releases,
+using the IP address instead of the mac address as the soft serial number.
 
 Most of the time you wouldn't need to edit ```ipxe.cfg``` since the default values provide
 adequate out-of-the-box behavior of the installer. In fact, you can simply supply the URL
