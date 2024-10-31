@@ -656,6 +656,11 @@ func getMemlogMsg(logChan chan inputEntry, panicFileChan chan []byte) {
 			pidStr = strconv.Itoa(logInfo.Pid)
 		}
 
+		// not to upload 'kube' container logs, one can find in /persist/kubelog for detail
+		if logInfo.Source == "kube" {
+			continue
+		}
+
 		entry := inputEntry{
 			source:    logInfo.Source,
 			content:   logInfo.Msg,
