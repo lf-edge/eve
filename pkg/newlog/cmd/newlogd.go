@@ -48,14 +48,6 @@ const (
 	fastlogfileDelay       = 10  // faster to close log file if fastUpload is enabled
 	stillRunningInerval    = 25 * time.Second
 
-	collectDir      = types.NewlogCollectDir
-	uploadDevDir    = types.NewlogUploadDevDir
-	uploadAppDir    = types.NewlogUploadAppDir
-	keepSentDir     = types.NewlogKeepSentQueueDir
-	failSendDir     = types.NewlogDir + "/failedUpload"
-	panicFileDir    = types.NewlogDir + "/panicStacks"
-	symlinkFile     = collectDir + "/current.device.log"
-	tmpSymlink      = collectDir + "/tmp-sym.dev.log"
 	devPrefix       = types.DevPrefix
 	devPrefixKeep   = types.DevPrefixKeep
 	devPrefixUpload = types.DevPrefixUpload
@@ -76,6 +68,15 @@ const (
 var (
 	logger *logrus.Logger
 	log    *base.LogObject
+
+	collectDir   = types.NewlogCollectDir
+	uploadDevDir = types.NewlogUploadDevDir
+	uploadAppDir = types.NewlogUploadAppDir
+	keepSentDir  = types.NewlogKeepSentQueueDir
+	failSendDir  = types.NewlogDir + "/failedUpload"
+	panicFileDir = types.NewlogDir + "/panicStacks"
+	symlinkFile  = collectDir + "/current.device.log"
+	tmpSymlink   = collectDir + "/tmp-sym.dev.log"
 
 	msgIDDevCnt   uint64              = 1 // every log message increments the msg-id by 1
 	logmetrics    types.NewlogMetrics     // the log metric, publishes to zedagent
@@ -857,6 +858,18 @@ func writelogFile(logChan <-chan inputEntry, moveChan chan fileChanInfo) {
 	defer devStatsKeep.file.Close()
 	devStatsKeep.notUpload = true
 
+	oldestLogEntry, err := getOldestLog()
+	if err != nil {
+		log.Errorf("could not set OldestSavedDeviceLog metric due to getLatestLog error: %v", err)
+	} else {
+		if oldestLogEntry == nil {
+			// no log entry found, set the oldest log time to now
+			logmetrics.OldestSavedDeviceLog = time.Now()
+		} else {
+			logmetrics.OldestSavedDeviceLog = time.Unix(oldestLogEntry.Timestamp.Seconds, int64(oldestLogEntry.Timestamp.Nanos))
+		}
+	}
+
 	devSourceBytes = base.NewLockedStringMap()
 	appStatsMap = make(map[string]statsLogFile)
 	checklogTimer := time.NewTimer(5 * time.Second)
@@ -1085,41 +1098,48 @@ func checkKeepQuota() {
 	maxSize := int64(limitGzipFilesMbyts * 1000000)
 	sfiles := make(map[string]gfileStats)
 
-	key0, size0, err := checkDirGZFiles(sfiles, keepSentDir)
+	filesKeepSent, sizeKeepSent, err := checkDirGZFiles(sfiles, keepSentDir)
 	if err != nil {
 		log.Errorf("checkKeepQuota: keepSentDir %v", err)
 	}
-	key1, size1, err := checkDirGZFiles(sfiles, uploadAppDir)
+	filesAppUpload, sizeAppUpload, err := checkDirGZFiles(sfiles, uploadAppDir)
 	if err != nil {
 		log.Errorf("checkKeepQuota: AppDir %v", err)
 	}
-	key2, size2, err := checkDirGZFiles(sfiles, uploadDevDir)
+	filesDevUpload, sizeDevUpload, err := checkDirGZFiles(sfiles, uploadDevDir)
 	if err != nil {
 		log.Errorf("checkKeepQuota: DevDir %v", err)
 	}
-	key3, size3, err := checkDirGZFiles(sfiles, failSendDir)
+	fileFailSend, sizeFailSend, err := checkDirGZFiles(sfiles, failSendDir)
 	if err != nil && !os.IsNotExist(err) {
 		log.Errorf("checkKeepQuota: FailToSendDir %v", err)
 	}
 
-	totalsize := size0 + size1 + size2 + size3
-	totalCount := len(key0) + len(key1) + len(key2) + len(key3)
+	totalsize := sizeKeepSent + sizeAppUpload + sizeDevUpload + sizeFailSend
+	totalCount := len(filesKeepSent) + len(filesAppUpload) + len(filesDevUpload) + len(fileFailSend)
 	removed := 0
 	// limit file count to not as they can have less size than expected
 	// we can have enormous number of files
 	maxCount := int(maxSize / maxGzipFileSize)
 	if totalsize > maxSize || totalCount > maxCount {
-		keys := key0
-		keys = append(keys, key1...)
-		keys = append(keys, key2...)
-		keys = append(keys, key3...)
-		sort.Strings(keys)
+		allFiles := filesKeepSent
+		allFiles = append(allFiles, filesAppUpload...)
+		allFiles = append(allFiles, filesDevUpload...)
+		allFiles = append(allFiles, fileFailSend...)
 
-		for _, key := range keys {
-			if _, ok := sfiles[key]; !ok {
+		// please notice that the files will be removed in alphabetical order,
+		// starting from the oldest (lowest) timestamp
+		// app.log...gz
+		// dev.log.keep...gz
+		// dev.log.upload....gz
+		// TODO: declare a clear order of removal by directory
+		sort.Strings(allFiles)
+
+		for _, filename := range allFiles {
+			if _, ok := sfiles[filename]; !ok {
 				continue
 			}
-			fs := sfiles[key]
+			fs := sfiles[filename]
 			filePath := filepath.Join(fs.logDir, fs.filename)
 			if _, err := os.Stat(filePath); err != nil {
 				continue
@@ -1127,6 +1147,12 @@ func checkKeepQuota() {
 			if err := os.Remove(filePath); err != nil {
 				log.Errorf("checkKeepQuota: remove failed %s, %v", filePath, err)
 				continue
+			}
+			if fs.logDir == keepSentDir {
+				// since the files are sorted by name and we delete the oldest files first,
+				// we can assume that the latest available log (from the file that is next in line to be deleted)
+				// has the timestamp of the file that was just deleted
+				logmetrics.OldestSavedDeviceLog = getTimestampFromGzip(fs.filename)
 			}
 			if !fs.isSent {
 				logmetrics.NumGZipFileRemoved++
@@ -1140,6 +1166,94 @@ func checkKeepQuota() {
 		}
 		log.Tracef("checkKeepQuota: %d gzip files removed", removed)
 	}
+	logmetrics.TotalSizeLogs = uint64(totalsize)
+}
+
+func getTimestampFromGzip(fName string) time.Time {
+	fName = strings.TrimPrefix(fName, types.DevPrefixKeep)
+	fName = strings.TrimPrefix(fName, types.DevPrefix)
+	fName = strings.TrimSuffix(fName, ".gz")
+	fTime, err := strconv.Atoi(fName)
+	if err != nil {
+		log.Fatal(err)
+	}
+	return time.Unix(0, int64(fTime)*int64(time.Millisecond))
+}
+
+func getOldestLog() (*logs.LogEntry, error) {
+	// Compile a regex to match the log file pattern and extract the timestamp
+	re := regexp.MustCompile(`^dev\.log\.keep\.(\d+)\.gz$`)
+
+	// Read the directory and filter log files
+	files, err := os.ReadDir(keepSentDir)
+	if err != nil {
+		return nil, fmt.Errorf("error reading directory: %w", err)
+	}
+
+	type logFile struct {
+		name      string
+		timestamp string
+	}
+
+	var devLogFiles []logFile
+	for _, file := range files {
+		if file.IsDir() {
+			continue
+		}
+		matches := re.FindStringSubmatch(file.Name())
+		if matches != nil {
+			devLogFiles = append(devLogFiles, logFile{
+				name:      file.Name(),
+				timestamp: matches[1],
+			})
+		}
+	}
+
+	if len(devLogFiles) == 0 {
+		log.Function("getLatestLog: no log files found.")
+		return nil, nil
+	}
+
+	// Sort the log files by timestamp (ascending order)
+	sort.Slice(devLogFiles, func(i, j int) bool {
+		return devLogFiles[i].timestamp < devLogFiles[j].timestamp
+	})
+
+	// Open the oldest log file
+	oldestFile := filepath.Join(keepSentDir, devLogFiles[0].name)
+	file, err := os.Open(oldestFile)
+	if err != nil {
+		return nil, fmt.Errorf("error opening file: %w", err)
+	}
+	defer file.Close()
+
+	// Create a gzip reader
+	gzReader, err := gzip.NewReader(file)
+	if err != nil {
+		return nil, fmt.Errorf("error creating gzip reader: %w", err)
+	}
+	defer gzReader.Close()
+
+	// Read lines from the gzip file
+	scanner := bufio.NewScanner(gzReader)
+	scanner.Scan()
+	firstLine := scanner.Text() // we assume the first line to be the oldest log entry
+
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("error reading gzip file: %w", err)
+	}
+
+	if firstLine == "" {
+		log.Functionf("gzip log file %s is empty", oldestFile)
+		return nil, nil
+	}
+
+	var entry logs.LogEntry
+	if err = json.Unmarshal([]byte(firstLine), &entry); err != nil {
+		return nil, fmt.Errorf("error unmarshalling JSON: %w", err)
+	}
+
+	return &entry, nil
 }
 
 func doMoveCompressFile(ps *pubsub.PubSub, tmplogfileInfo fileChanInfo) {
