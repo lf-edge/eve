@@ -13,6 +13,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
 	"github.com/lf-edge/eve/pkg/pillar/netmonitor"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"go.uber.org/goleak"
 )
 
 func createNetmonitorMockInterface() []netmonitor.MockInterface {
@@ -160,7 +161,7 @@ func TestDnsResolveTimeout(t *testing.T) {
 }
 
 func TestResolveWithPortsLambda(t *testing.T) {
-	t.Parallel()
+	defer goleak.VerifyNone(t, goleak.IgnoreAnyFunction("go.opencensus.io/stats/view.(*worker).start"), goleak.IgnoreCurrent())
 
 	expectedIP := net.IP{1, 2, 3, 4}
 
