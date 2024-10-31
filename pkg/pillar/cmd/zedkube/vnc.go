@@ -21,7 +21,7 @@ import (
 )
 
 // runAppVNC - run vnc for kubevirt VMI remote console
-func runAppVNC(ctx *zedkubeContext, config *types.AppInstanceConfig) {
+func (z *zedkube) runAppVNC(config *types.AppInstanceConfig) {
 	vmconfig := config.FixedResources
 
 	//vmiName := findXenCfgName(config.UUIDandVersion.UUID.String())
@@ -29,7 +29,7 @@ func runAppVNC(ctx *zedkubeContext, config *types.AppInstanceConfig) {
 	i := 5
 	for {
 		var err error
-		vmiName, err = getVMIdomainName(ctx, config)
+		vmiName, err = z.getVMIdomainName(config)
 		if err != nil {
 			log.Functionf("runAppVNC: get vmi domainname error %v", err)
 			if i >= 0 {
@@ -68,16 +68,16 @@ func runAppVNC(ctx *zedkubeContext, config *types.AppInstanceConfig) {
 	log.Functionf("runAppVNC: %v, done", vmiName)
 }
 
-func getVMIdomainName(ctx *zedkubeContext, config *types.AppInstanceConfig) (string, error) {
-	if ctx.config == nil {
+func (z *zedkube) getVMIdomainName(config *types.AppInstanceConfig) (string, error) {
+	if z.config == nil {
 		config, err := kubeapi.GetKubeConfig()
 		if err != nil {
 			log.Errorf("getVMIs: config is nil")
 			return "", fmt.Errorf("getVMIs: config get failed error %v", err)
 		}
-		ctx.config = config
+		z.config = config
 	}
-	virtClient, err := kubecli.GetKubevirtClientFromRESTConfig(ctx.config)
+	virtClient, err := kubecli.GetKubevirtClientFromRESTConfig(z.config)
 	if err != nil {
 		log.Errorf("getVMIs: get virtclient error %v", err)
 		return "", err

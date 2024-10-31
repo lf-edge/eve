@@ -16,12 +16,12 @@ import (
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
 )
 
-func handleLeaderElection(ctx *zedkubeContext) {
+func (z *zedkube) handleLeaderElection() {
 	var cancelFunc context.CancelFunc
 	for {
 		log.Functionf("handleLeaderElection: Waiting for signal") // XXX
 		select {
-		case <-ctx.electionStartCh:
+		case <-z.electionStartCh:
 
 			// Create a cancellable context
 			baseCtx, cancel := context.WithCancel(context.Background())
@@ -29,14 +29,14 @@ func handleLeaderElection(ctx *zedkubeContext) {
 
 			clientset, err := getKubeClientSet()
 			if err != nil {
-				ctx.inKubeLeaderElection = false
+				z.inKubeLeaderElection = false
 				log.Errorf("handleLeaderElection: can't get clientset %v", err)
 				return
 			}
 
-			err = getnodeNameAndUUID(ctx)
+			err = z.getnodeNameAndUUID()
 			if err != nil {
-				ctx.inKubeLeaderElection = false
+				z.inKubeLeaderElection = false
 				log.Errorf("handleLeaderElection: can't get nodeName and UUID %v", err)
 				return
 			}
@@ -49,7 +49,7 @@ func handleLeaderElection(ctx *zedkubeContext) {
 				},
 				Client: clientset.CoordinationV1(),
 				LockConfig: resourcelock.ResourceLockConfig{
-					Identity: ctx.nodeName,
+					Identity: z.nodeName,
 				},
 			}
 
@@ -62,11 +62,11 @@ func handleLeaderElection(ctx *zedkubeContext) {
 				ReleaseOnCancel: true,
 				Callbacks: leaderelection.LeaderCallbacks{
 					OnStartedLeading: func(baseCtx context.Context) {
-						ctx.isKubeStatsLeader = true
+						z.isKubeStatsLeader = true
 						log.Functionf("handleLeaderElection: Started leading")
 					},
 					OnStoppedLeading: func() {
-						ctx.isKubeStatsLeader = false
+						z.isKubeStatsLeader = false
 						log.Functionf("handleLeaderElection: Stopped leading")
 					},
 					OnNewLeader: func(identity string) {
@@ -77,11 +77,11 @@ func handleLeaderElection(ctx *zedkubeContext) {
 
 			// Start the leader election in a separate goroutine
 			go leaderelection.RunOrDie(baseCtx, lec)
-			log.Noticef("handleLeaderElection: Started leader election for %s", ctx.nodeName)
+			log.Noticef("handleLeaderElection: Started leader election for %s", z.nodeName)
 
-		case <-ctx.electionStopCh:
-			ctx.isKubeStatsLeader = false
-			ctx.inKubeLeaderElection = false
+		case <-z.electionStopCh:
+			z.isKubeStatsLeader = false
+			z.inKubeLeaderElection = false
 			log.Noticef("handleLeaderElection: Stopped leading signal received")
 			if cancelFunc != nil {
 				cancelFunc()
@@ -91,39 +91,39 @@ func handleLeaderElection(ctx *zedkubeContext) {
 	}
 }
 
-// Function to signal the start of leader election
-func SignalStartLeaderElection(ctx *zedkubeContext) {
-	ctx.inKubeLeaderElection = true
+// SignalStartLeaderElection - to signal the start of leader election
+func (z *zedkube) SignalStartLeaderElection() {
+	z.inKubeLeaderElection = true
 	select {
-	case ctx.electionStartCh <- struct{}{}:
+	case z.electionStartCh <- struct{}{}:
 		log.Functionf("SignalStartLeaderElection: Signal sent successfully")
 	default:
 		log.Warningf("SignalStartLeaderElection: Channel is full, signal not sent")
 	}
 }
 
-// Function to signal the stop of leader election
-func SignalStopLeaderElection(ctx *zedkubeContext) {
+// SignalStopLeaderElection - to signal the stop of leader election
+func (z *zedkube) SignalStopLeaderElection() {
 	select {
-	case ctx.electionStopCh <- struct{}{}:
+	case z.electionStopCh <- struct{}{}:
 		log.Functionf("SignalStopLeaderElection: Signal sent successfully")
 	default:
 		log.Warningf("SignalStopLeaderElection: Channel is full, signal not sent")
 	}
 }
 
-func handleControllerStatusChange(ctx *zedkubeContext, status *types.ZedAgentStatus) {
+func (z *zedkube) handleControllerStatusChange(status *types.ZedAgentStatus) {
 	configStatus := status.ConfigGetStatus
 
 	log.Functionf("handleControllerStatusChange: Leader enter, status %v", configStatus)
 	switch configStatus {
 	case types.ConfigGetSuccess, types.ConfigGetReadSaved: // either read success or read from saved config
-		if !ctx.inKubeLeaderElection {
-			SignalStartLeaderElection(ctx)
+		if !z.inKubeLeaderElection {
+			z.SignalStartLeaderElection()
 		}
 	default:
-		if ctx.inKubeLeaderElection {
-			SignalStopLeaderElection(ctx)
+		if z.inKubeLeaderElection {
+			z.SignalStopLeaderElection()
 		}
 	}
 }

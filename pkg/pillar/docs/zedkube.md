@@ -2,7 +2,7 @@
 
 ## Overview
 
-zedkube is a service in pillar/cmd/zedkube. The main purpose of the service is to interact with the kubernetes cluster in the container 'kube' and supply some of the pillar commands to the cluster, and relay some information from the cluster to the pillar. It handles some of the actions for the cluster which not belong to 'volumemgr' or 'domainmgr'.
+zedkube is a service in pillar/cmd/zedkube. The main purpose of the service is to interact with the kubernetes cluster in the container 'kube' and supply some of the pillar commands to the cluster, and relay some information from the cluster to the pillar. It handles some of the actions for the cluster which do not belong to 'volumemgr' or 'domainmgr' services.
 
 ## Components
 
@@ -32,7 +32,7 @@ In the Kubernetes cluster mode with multiple HA servers, when it starts up, it n
 
 ### App Ethernet Passthrough
 
-When the application uses passthrough on ethernet ports, zedkube creates a special NAD, Network Attachment Definition, for the direct connection, uses the name 'host-eth1' for example. It creates the NAD to the kubernetes cluster, and the domainmgr will use this NAD when setup the application configure to kubernetes.
+When the application uses passthrough on ethernet ports, zedkube creates a special NAD, Network Attachment Definition, for the direct connection, uses the name 'host-eth1' for example. It creates the NAD to the kubernetes cluster, and in the case of native container applications, the domainmgr will use this NAD when setup the application configure to kubernetes.
 
 ### Kubernetes Stats Collection
 
