@@ -174,7 +174,10 @@ func ResolveWithPortsLambda(domain string,
 		close(wgChan)
 	}()
 
-	defer close(quit)
+	defer func() {
+		close(quit)
+		<-wgChan
+	}()
 	select {
 	case <-wgChan:
 		var responses []DNSResponse
