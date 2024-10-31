@@ -143,6 +143,10 @@ type AppInstanceConfig struct {
 
 	// allow AppInstance to discover other AppInstances attached to its network instances
 	AllowToDiscover bool
+
+	// XXX Cluster Designated Node Id
+	// temp, this will be changed to bool in later PR
+	DesignatedNodeID uuid.UUID
 }
 
 type AppInstanceOpsCmd struct {
