@@ -23,8 +23,9 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-func collectAppLogs(ctx *zedkubeContext) {
-	sub := ctx.subAppInstanceConfig
+// collect App logs from pods which covers both containers and virt-launcher pods
+func (z *zedkube) collectAppLogs() {
+	sub := z.subAppInstanceConfig
 	items := sub.GetAll()
 	if len(items) == 0 {
 		return
@@ -36,13 +37,7 @@ func collectAppLogs(ctx *zedkubeContext) {
 		return
 	}
 
-	err = getnodeNameAndUUID(ctx)
-	if err != nil {
-		log.Errorf("collectAppLogs: can't get edgeNodeInfo %v", err)
-		return
-	}
-
-	err = getnodeNameAndUUID(ctx)
+	err = z.getnodeNameAndUUID()
 	if err != nil {
 		log.Errorf("collectAppLogs: can't get edgeNodeInfo %v", err)
 		return
@@ -59,18 +54,18 @@ func collectAppLogs(ctx *zedkubeContext) {
 		if aiconfig.FixedResources.VirtualizationMode != types.NOHYPER {
 			continue
 		}
-		if aiconfig.DesignatedNodeID != uuid.Nil && aiconfig.DesignatedNodeID.String() != ctx.nodeuuid {
+		if aiconfig.DesignatedNodeID != uuid.Nil && aiconfig.DesignatedNodeID.String() != z.nodeuuid {
 			continue
 		}
 		kubeName := base.GetAppKubeName(aiconfig.DisplayName, aiconfig.UUIDandVersion.UUID)
 		contName := kubeName
 		opt := &corev1.PodLogOptions{}
-		if ctx.appLogStarted {
+		if z.appLogStarted {
 			opt = &corev1.PodLogOptions{
 				SinceSeconds: &sinceSec,
 			}
 		} else {
-			ctx.appLogStarted = true
+			z.appLogStarted = true
 		}
 
 		pods, err := clientset.CoreV1().Pods(kubeapi.EVEKubeNameSpace).List(context.TODO(), metav1.ListOptions{
@@ -110,7 +105,7 @@ func collectAppLogs(ctx *zedkubeContext) {
 				timeStr = nowStr
 			}
 			// Process and print the log line here
-			aiLogger := ctx.appContainerLogger.WithFields(logrus.Fields{
+			aiLogger := z.appContainerLogger.WithFields(logrus.Fields{
 				"appuuid":       aiconfig.UUIDandVersion.UUID.String(),
 				"containername": contName,
 				"eventtime":     timeStr,
@@ -125,20 +120,20 @@ func collectAppLogs(ctx *zedkubeContext) {
 	}
 }
 
-func checkAppsStatus(ctx *zedkubeContext) {
-	sub := ctx.subAppInstanceConfig
+func (z *zedkube) checkAppsStatus() {
+	sub := z.subAppInstanceConfig
 	items := sub.GetAll()
 	if len(items) == 0 {
 		return
 	}
 
-	err := getnodeNameAndUUID(ctx)
+	err := z.getnodeNameAndUUID()
 	if err != nil {
 		log.Errorf("checkAppsStatus: can't get edgeNodeInfo %v", err)
 		return
 	}
 
-	u, err := uuid.FromString(ctx.nodeuuid)
+	u, err := uuid.FromString(z.nodeuuid)
 	if err != nil {
 		return
 	}
@@ -150,7 +145,7 @@ func checkAppsStatus(ctx *zedkubeContext) {
 	}
 
 	options := metav1.ListOptions{
-		FieldSelector: fmt.Sprintf("spec.nodeName=%s", ctx.nodeName),
+		FieldSelector: fmt.Sprintf("spec.nodeName=%s", z.nodeName),
 	}
 	pods, err := clientset.CoreV1().Pods(kubeapi.EVEKubeNameSpace).List(context.TODO(), options)
 	if err != nil {
@@ -158,7 +153,7 @@ func checkAppsStatus(ctx *zedkubeContext) {
 		return
 	}
 
-	pub := ctx.pubENClusterAppStatus
+	pub := z.pubENClusterAppStatus
 	stItmes := pub.GetAll()
 	var oldStatus *types.ENClusterAppStatus
 	for _, item := range items {
@@ -191,26 +186,26 @@ func checkAppsStatus(ctx *zedkubeContext) {
 				break
 			}
 		}
-		log.Functionf("checkAppsStatus: devname %s, pod (%d) status %+v, old %+v", ctx.nodeName, len(pods.Items), encAppStatus, oldStatus)
+		log.Functionf("checkAppsStatus: devname %s, pod (%d) status %+v, old %+v", z.nodeName, len(pods.Items), encAppStatus, oldStatus)
 
 		if oldStatus == nil || oldStatus.IsDNidNode != encAppStatus.IsDNidNode ||
 			oldStatus.ScheduledOnThisNode != encAppStatus.ScheduledOnThisNode || oldStatus.StatusRunning != encAppStatus.StatusRunning {
 			log.Functionf("checkAppsStatus: status differ, publish")
-			ctx.pubENClusterAppStatus.Publish(aiconfig.Key(), encAppStatus)
+			z.pubENClusterAppStatus.Publish(aiconfig.Key(), encAppStatus)
 		}
 	}
 }
 
-func getnodeNameAndUUID(ctx *zedkubeContext) error {
-	if ctx.nodeuuid == "" || ctx.nodeName == "" {
-		NodeInfo, err := ctx.subEdgeNodeInfo.Get("global")
+func (z *zedkube) getnodeNameAndUUID() error {
+	if z.nodeuuid == "" || z.nodeName == "" {
+		NodeInfo, err := z.subEdgeNodeInfo.Get("global")
 		if err != nil {
 			log.Errorf("getnodeNameAndUUID: can't get edgeNodeInfo %v", err)
 			return err
 		}
 		enInfo := NodeInfo.(types.EdgeNodeInfo)
-		ctx.nodeName = strings.ToLower(enInfo.DeviceName)
-		ctx.nodeuuid = enInfo.DeviceID.String()
+		z.nodeName = strings.ToLower(enInfo.DeviceName)
+		z.nodeuuid = enInfo.DeviceID.String()
 	}
 	return nil
 }

@@ -19,10 +19,10 @@ import (
 	"kubevirt.io/client-go/kubecli"
 )
 
-func collectKubeStats(ctx *zedkubeContext) {
+func (z *zedkube) collectKubeStats() {
 	// we are the elected leader, start collecting kube stats
 	// regardless if we are in cluster or single node mode
-	if ctx.isKubeStatsLeader {
+	if z.isKubeStatsLeader {
 		log.Functionf("collectKubeStats: Started collecting kube stats")
 
 		clientset, err := getKubeClientSet()
@@ -82,7 +82,7 @@ func collectKubeStats(ctx *zedkubeContext) {
 			AppPods: podsInfo,
 			AppVMIs: vmisInfo,
 		}
-		ctx.pubKubeClusterInfo.Publish("global", clusterInfo)
+		z.pubKubeClusterInfo.Publish("global", clusterInfo)
 	}
 }
 

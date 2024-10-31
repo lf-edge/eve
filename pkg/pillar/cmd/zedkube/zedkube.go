@@ -11,7 +11,6 @@ import (
 	"sync"
 	"time"
 
-	// "github.com/lf-edge/eve/pkg/newlog/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.22.5.darwin-amd64/src/strings"
 	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
@@ -39,7 +38,7 @@ var (
 	log    *base.LogObject
 )
 
-type zedkubeContext struct {
+type zedkube struct {
 	agentbase.AgentBase
 	globalConfig             *types.ConfigItemValueMap
 	subAppInstanceConfig     pubsub.Subscription
@@ -82,7 +81,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	logger = loggerArg
 	log = logArg
 
-	zedkubeCtx := zedkubeContext{
+	zedkubeCtx := zedkube{
 		globalConfig: types.DefaultConfigItemValueMap(),
 	}
 	agentbase.Init(&zedkubeCtx, logger, log, agentName,
@@ -204,7 +203,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	zedkubeCtx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
 
-	// Watch DNS to learn which ports are used for management.
+	// Watch DNS to learn if the Cluster Interface and Cluster Prefix is ready to use
 	subDeviceNetworkStatus, err := ps.NewSubscription(
 		pubsub.SubscriptionOptions{
 			AgentName:     "nim",
@@ -237,7 +236,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	// start the leader election
 	zedkubeCtx.electionStartCh = make(chan struct{})
 	zedkubeCtx.electionStopCh = make(chan struct{})
-	go handleLeaderElection(&zedkubeCtx)
+	go zedkubeCtx.handleLeaderElection()
 
 	// Wait for the certs, which are needed to decrypt the token inside the cluster config.
 	var controllerCertInitialized, edgenodeCertInitialized bool
@@ -259,8 +258,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		ps.StillRunning(agentName, warningTime, errorTime)
 	}
 	log.Noticef("zedkube run: controller and edge node certs are ready")
-
-	time.Sleep(5 * time.Second)
 
 	// EdgeNodeClusterConfig subscription
 	subEdgeNodeClusterConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
@@ -348,9 +345,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 			subAppInstanceConfig.ProcessChange(change)
 
 		case <-appLogTimer.C:
-			collectAppLogs(&zedkubeCtx)
-			checkAppsStatus(&zedkubeCtx)
-			collectKubeStats(&zedkubeCtx)
+			zedkubeCtx.collectAppLogs()
+			zedkubeCtx.checkAppsStatus()
+			zedkubeCtx.collectKubeStats()
 			appLogTimer = time.NewTimer(logcollectInterval * time.Second)
 
 		case change := <-subGlobalConfig.MsgChan():
@@ -379,30 +376,30 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 func handleAppInstanceConfigCreate(ctxArg interface{}, key string,
 	configArg interface{}) {
-	ctx := ctxArg.(*zedkubeContext)
+	z := ctxArg.(*zedkube)
 	config := configArg.(types.AppInstanceConfig)
 
 	log.Functionf("handleAppInstanceConfigCreate(%v) spec for %s",
 		config.UUIDandVersion, config.DisplayName)
 
-	err := checkIoAdapterEthernet(ctx, &config)
+	err := z.checkIoAdapterEthernet(&config)
 	log.Functionf("handleAppInstancConfigModify: genAISpec %v", err)
 }
 
 func handleAppInstanceConfigModify(ctxArg interface{}, key string,
 	configArg interface{}, oldConfigArg interface{}) {
-	ctx := ctxArg.(*zedkubeContext)
+	z := ctxArg.(*zedkube)
 	config := configArg.(types.AppInstanceConfig)
 	oldconfig := oldConfigArg.(types.AppInstanceConfig)
 
 	log.Functionf("handleAppInstancConfigModify(%v) spec for %s",
 		config.UUIDandVersion, config.DisplayName)
 
-	err := checkIoAdapterEthernet(ctx, &config)
+	err := z.checkIoAdapterEthernet(&config)
 
 	if oldconfig.RemoteConsole != config.RemoteConsole {
 		log.Functionf("handleAppInstancConfigModify: new remote console %v", config.RemoteConsole)
-		go runAppVNC(ctx, &config)
+		go z.runAppVNC(&config)
 	}
 	log.Functionf("handleAppInstancConfigModify: genAISpec %v", err)
 }
@@ -411,19 +408,19 @@ func handleAppInstanceConfigDelete(ctxArg interface{}, key string,
 	configArg interface{}) {
 
 	log.Functionf("handleAppInstanceConfigDelete(%s)", key)
-	ctx := ctxArg.(*zedkubeContext)
+	z := ctxArg.(*zedkube)
 	config := configArg.(types.AppInstanceConfig)
 
-	checkDelIoAdapterEthernet(ctx, &config)
+	z.checkDelIoAdapterEthernet(&config)
 	log.Functionf("handleAppInstanceConfigDelete(%s) done", key)
 
 	// remove the cluster app status publication
-	pub := ctx.pubENClusterAppStatus
+	pub := z.pubENClusterAppStatus
 	stItmes := pub.GetAll()
 	for _, st := range stItmes {
 		aiStatus := st.(types.ENClusterAppStatus)
 		if aiStatus.AppUUID == config.UUIDandVersion.UUID {
-			ctx.pubENClusterAppStatus.Unpublish(config.UUIDandVersion.UUID.String())
+			z.pubENClusterAppStatus.Unpublish(config.UUIDandVersion.UUID.String())
 			break
 		}
 	}
@@ -442,14 +439,14 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 func handleGlobalConfigImpl(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
-	ctx := ctxArg.(*zedkubeContext)
+	z := ctxArg.(*zedkube)
 	if key != "global" {
 		log.Functionf("handleGlobalConfigImpl: ignoring %s", key)
 		return
 	}
 	log.Functionf("handleGlobalConfigImpl for %s", key)
-	_ = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
-		ctx.CLIParams().DebugOverride, ctx.Logger())
+	_ = agentlog.HandleGlobalConfig(log, z.subGlobalConfig, agentName,
+		z.CLIParams().DebugOverride, z.Logger())
 	log.Functionf("handleGlobalConfigImpl(%s): done", key)
 }
 
@@ -476,20 +473,20 @@ func handleEdgeNodeClusterConfigImpl(ctxArg interface{}, key string,
 		oldConfigPtr = &oldconfig
 	}
 
-	ctx := ctxArg.(*zedkubeContext)
+	z := ctxArg.(*zedkube)
 	log.Functionf("handleEdgeNodeClusterConfigImpl for %s, config %+v, oldconfig %+v",
 		key, config, oldconfig)
 
-	applyClusterConfig(ctx, &config, oldConfigPtr)
+	z.applyClusterConfig(&config, oldConfigPtr)
 }
 
 func handleEdgeNodeClusterConfigDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
-	ctx := ctxArg.(*zedkubeContext)
+	z := ctxArg.(*zedkube)
 	log.Functionf("handleEdgeNodeClusterConfigDelete for %s", key)
 	config := statusArg.(types.EdgeNodeClusterConfig)
-	applyClusterConfig(ctx, nil, &config)
-	ctx.pubEdgeNodeClusterStatus.Unpublish("global")
+	z.applyClusterConfig(nil, &config)
+	z.pubEdgeNodeClusterStatus.Unpublish("global")
 }
 
 // handle zedagent status events, for cloud connectivity
@@ -506,9 +503,9 @@ func handleZedAgentStatusModify(ctxArg interface{}, key string,
 func handleZedAgentStatusImpl(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
-	ctxPtr := ctxArg.(*zedkubeContext)
+	z := ctxArg.(*zedkube)
 	status := statusArg.(types.ZedAgentStatus)
-	handleControllerStatusChange(ctxPtr, &status)
+	z.handleControllerStatusChange(&status)
 	log.Functionf("handleZedAgentStatusImpl: for Leader status %v, done", status)
 }
 
@@ -530,15 +527,15 @@ func handleEdgeNodeInfoModify(ctxArg interface{}, key string,
 
 func handleEdgeNodeInfoImpl(ctxArg interface{}, key string,
 	statusArg interface{}) {
-	ctxPtr := ctxArg.(*zedkubeContext)
+	z := ctxArg.(*zedkube)
 	nodeInfo := statusArg.(types.EdgeNodeInfo)
-	if err := getnodeNameAndUUID(ctxPtr); err != nil {
+	if err := z.getnodeNameAndUUID(); err != nil {
 		log.Errorf("handleEdgeNodeInfoImpl: getnodeNameAndUUID failed: %v", err)
 		return
 	}
 
-	ctxPtr.nodeName = strings.ToLower(nodeInfo.DeviceName)
-	ctxPtr.nodeuuid = nodeInfo.DeviceID.String()
+	z.nodeName = strings.ToLower(nodeInfo.DeviceName)
+	z.nodeuuid = nodeInfo.DeviceID.String()
 }
 
 func handleEdgeNodeInfoDelete(ctxArg interface{}, key string,
