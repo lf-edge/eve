@@ -35,7 +35,7 @@ const (
 )
 
 const (
-	logfileDir    = "/persist/newlog/kube/"
+	logfileDir    = "/persist/kubelog/"
 	logfile       = logfileDir + "eve-bridge.log"
 	logMaxSize    = 100 // 100 Mbytes in size
 	logMaxBackups = 3   // old log files to retain
@@ -84,7 +84,11 @@ func parseArgs(args *skel.CmdArgs) (stdinArgs rawJSONStruct, cniVersion,
 	}
 	podName = string(envArgs.K8S_POD_NAME)
 	isVMI = strings.HasPrefix(podName, vmiPodNamePrefix)
+
 	isEveApp = string(envArgs.K8S_POD_NAMESPACE) == eveKubeNamespace
+	if !isVMI && strings.Contains(podName, "-pvc-") && strings.HasPrefix(podName, "cdi-upload-") {
+		isEveApp = false
+	}
 	if envArgs.MAC != "" {
 		mac, err = net.ParseMAC(string(envArgs.MAC))
 		if err != nil {

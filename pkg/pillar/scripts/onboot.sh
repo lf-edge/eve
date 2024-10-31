@@ -151,7 +151,7 @@ free_space() {
 # If there is less than 4Mbytes (MIN_DISKSPACE) then remove the content of the
 # following directories in order until we have that amount of available space
 # following sub directories:
-PERSIST_CLEANUPS='log netdump kcrashes memory-monitor/output eve-info patchEnvelopesCache patchEnvelopesUsageCache newlog/keepSentQueue newlog/failedUpload newlog/appUpload newlog/devUpload containerd-system-root vault/downloader vault/verifier agentdebug'
+PERSIST_CLEANUPS='log netdump kcrashes memory-monitor/output eve-info patchEnvelopesCache patchEnvelopesUsageCache newlog/keepSentQueue newlog/failedUpload newlog/appUpload newlog/devUpload kubelog containerd-system-root vault/downloader vault/verifier agentdebug'
 # NOTE that we can not cleanup /persist/containerd and /persist/{vault,clear}/volumes since those are used by applications.
 #
 # Note that we need to free up some space before Linuxkit starts containerd,
