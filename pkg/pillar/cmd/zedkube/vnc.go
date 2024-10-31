@@ -69,6 +69,14 @@ func runAppVNC(ctx *zedkubeContext, config *types.AppInstanceConfig) {
 }
 
 func getVMIdomainName(ctx *zedkubeContext, config *types.AppInstanceConfig) (string, error) {
+	if ctx.config == nil {
+		config, err := kubeapi.GetKubeConfig()
+		if err != nil {
+			log.Errorf("getVMIs: config is nil")
+			return "", fmt.Errorf("getVMIs: config get failed error %v", err)
+		}
+		ctx.config = config
+	}
 	virtClient, err := kubecli.GetKubevirtClientFromRESTConfig(ctx.config)
 	if err != nil {
 		log.Errorf("getVMIs: get virtclient error %v", err)
