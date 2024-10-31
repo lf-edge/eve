@@ -8,6 +8,7 @@ require (
 	github.com/google/go-cmp v0.6.0
 	github.com/lf-edge/eve-api/go v0.0.0-20241126174545-53f139cd5166
 	github.com/lf-edge/eve/pkg/pillar v0.0.0-20241126215939-16062e81d553
+	github.com/onsi/gomega v1.29.0
 	github.com/sirupsen/logrus v1.9.3
 )
 
