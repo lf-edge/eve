@@ -14,7 +14,7 @@ import (
 )
 
 // checkIoAdapterEthernet - check and create NAD for direct-attached ethernet
-func checkIoAdapterEthernet(ctx *zedkubeContext, aiConfig *types.AppInstanceConfig) error {
+func (z *zedkube) checkIoAdapterEthernet(aiConfig *types.AppInstanceConfig) error {
 
 	if aiConfig.FixedResources.VirtualizationMode != types.NOHYPER {
 		return nil
@@ -23,14 +23,14 @@ func checkIoAdapterEthernet(ctx *zedkubeContext, aiConfig *types.AppInstanceConf
 	for _, io := range ioAdapter {
 		if io.Type == types.IoNetEth {
 			nadname := "host-" + io.Name
-			_, ok := ctx.networkInstanceStatusMap.Load(nadname)
+			_, ok := z.networkInstanceStatusMap.Load(nadname)
 			if !ok {
 				bringupInterface(io.Name)
-				err := ioEtherCreate(ctx, &io)
+				err := z.ioEtherCreate(&io)
 				if err != nil {
 					log.Errorf("checkIoAdapterEthernet: create io adapter error %v", err)
 				}
-				ctx.ioAdapterMap.Store(nadname, true)
+				z.ioAdapterMap.Store(nadname, true)
 				log.Functionf("ccheckIoAdapterEthernet: nad created %v", nadname)
 			} else {
 				log.Functionf("checkIoAdapterEthernet: nad already exist %v", nadname)
@@ -40,7 +40,7 @@ func checkIoAdapterEthernet(ctx *zedkubeContext, aiConfig *types.AppInstanceConf
 	return nil
 }
 
-func checkDelIoAdapterEthernet(ctx *zedkubeContext, aiConfig *types.AppInstanceConfig) {
+func (z *zedkube) checkDelIoAdapterEthernet(aiConfig *types.AppInstanceConfig) {
 
 	if aiConfig.FixedResources.VirtualizationMode != types.NOHYPER {
 		return
@@ -49,10 +49,10 @@ func checkDelIoAdapterEthernet(ctx *zedkubeContext, aiConfig *types.AppInstanceC
 	for _, io := range ioAdapter {
 		if io.Type == types.IoNetEth {
 			nadname := "host-" + io.Name
-			_, ok := ctx.ioAdapterMap.Load(nadname)
+			_, ok := z.ioAdapterMap.Load(nadname)
 			if ok {
 				// remove the syncMap entry
-				ctx.ioAdapterMap.Delete(nadname)
+				z.ioAdapterMap.Delete(nadname)
 			}
 			// delete the NAD in kubernetes
 			kubeapi.DeleteNAD(log, nadname)
@@ -62,7 +62,7 @@ func checkDelIoAdapterEthernet(ctx *zedkubeContext, aiConfig *types.AppInstanceC
 }
 
 // ioEtherCreate - create and send NAD for direct-attached ethernet
-func ioEtherCreate(ctx *zedkubeContext, ioAdapt *types.IoAdapter) error {
+func (z *zedkube) ioEtherCreate(ioAdapt *types.IoAdapter) error {
 	name := ioAdapt.Name
 	spec := fmt.Sprintf(
 		`{

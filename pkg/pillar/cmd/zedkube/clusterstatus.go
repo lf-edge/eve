@@ -19,35 +19,35 @@ import (
 )
 
 func handleDNSCreate(ctxArg interface{}, _ string, statusArg interface{}) {
-	ctx := ctxArg.(*zedkubeContext)
+	z := ctxArg.(*zedkube)
 	dns := statusArg.(types.DeviceNetworkStatus)
-	applyDNS(ctx, dns)
+	z.applyDNS(dns)
 }
 
 func handleDNSModify(ctxArg interface{}, _ string, statusArg interface{}, _ interface{}) {
-	ctx := ctxArg.(*zedkubeContext)
+	z := ctxArg.(*zedkube)
 	dns := statusArg.(types.DeviceNetworkStatus)
-	applyDNS(ctx, dns)
+	z.applyDNS(dns)
 }
 
-func applyDNS(ctx *zedkubeContext, dns types.DeviceNetworkStatus) {
-	ctx.deviceNetworkStatus = dns
-	changed := updateClusterIPReadiness(ctx)
+func (z *zedkube) applyDNS(dns types.DeviceNetworkStatus) {
+	z.deviceNetworkStatus = dns
+	changed := z.updateClusterIPReadiness()
 	if changed {
-		if ctx.clusterIPIsReady {
-			if ctx.statusServer == nil {
-				startClusterStatusServer(ctx)
+		if z.clusterIPIsReady {
+			if z.statusServer == nil {
+				z.startClusterStatusServer()
 			}
 		} else {
-			if ctx.statusServer != nil {
-				stopClusterStatusServer(ctx)
+			if z.statusServer != nil {
+				z.stopClusterStatusServer()
 			}
 		}
-		publishKubeConfigStatus(ctx)
+		z.publishKubeConfigStatus()
 	}
 }
 
-func applyClusterConfig(ctx *zedkubeContext, config, oldconfig *types.EdgeNodeClusterConfig) {
+func (z *zedkube) applyClusterConfig(config, oldconfig *types.EdgeNodeClusterConfig) {
 	noChange := reflect.DeepEqual(config, oldconfig)
 	if noChange {
 		log.Noticef("getKubeConfig: no change in cluster config")
@@ -56,39 +56,39 @@ func applyClusterConfig(ctx *zedkubeContext, config, oldconfig *types.EdgeNodeCl
 	if config == nil {
 		// Before we let NIM to remove the cluster IP, we need to remove the node
 		// from the cluster.
-		stopClusterStatusServer(ctx)
-		ctx.clusterConfig = types.EdgeNodeClusterConfig{}
+		z.stopClusterStatusServer()
+		z.clusterConfig = types.EdgeNodeClusterConfig{}
 		return
 	} else {
-		clusterIPChanged := !netutils.EqualIPNets(ctx.clusterConfig.ClusterIPPrefix,
+		clusterIPChanged := !netutils.EqualIPNets(z.clusterConfig.ClusterIPPrefix,
 			config.ClusterIPPrefix)
-		ctx.clusterConfig = *config
+		z.clusterConfig = *config
 		if clusterIPChanged {
-			stopClusterStatusServer(ctx)
-			updateClusterIPReadiness(ctx)
-			if ctx.clusterIPIsReady {
-				startClusterStatusServer(ctx)
+			z.stopClusterStatusServer()
+			z.updateClusterIPReadiness()
+			if z.clusterIPIsReady {
+				z.startClusterStatusServer()
 			}
 		}
 	}
-	publishKubeConfigStatus(ctx)
+	z.publishKubeConfigStatus()
 }
 
 // publishKubeConfigStatus publishes the cluster config status
-func publishKubeConfigStatus(ctx *zedkubeContext) {
+func (z *zedkube) publishKubeConfigStatus() {
 	status := types.EdgeNodeClusterStatus{
-		ClusterName:      ctx.clusterConfig.ClusterName,
-		ClusterID:        ctx.clusterConfig.ClusterID,
-		ClusterInterface: ctx.clusterConfig.ClusterInterface,
-		ClusterIPPrefix:  ctx.clusterConfig.ClusterIPPrefix,
-		ClusterIPIsReady: ctx.clusterIPIsReady,
-		IsWorkerNode:     ctx.clusterConfig.IsWorkerNode,
-		JoinServerIP:     ctx.clusterConfig.JoinServerIP,
-		BootstrapNode:    ctx.clusterConfig.BootstrapNode,
+		ClusterName:      z.clusterConfig.ClusterName,
+		ClusterID:        z.clusterConfig.ClusterID,
+		ClusterInterface: z.clusterConfig.ClusterInterface,
+		ClusterIPPrefix:  z.clusterConfig.ClusterIPPrefix,
+		ClusterIPIsReady: z.clusterIPIsReady,
+		IsWorkerNode:     z.clusterConfig.IsWorkerNode,
+		JoinServerIP:     z.clusterConfig.JoinServerIP,
+		BootstrapNode:    z.clusterConfig.BootstrapNode,
 	}
 
-	if ctx.clusterConfig.CipherToken.IsCipher {
-		decToken, err := decryptClusterToken(ctx)
+	if z.clusterConfig.CipherToken.IsCipher {
+		decToken, err := z.decryptClusterToken()
 		if err != nil {
 			log.Errorf("publishKubeConfigStatus: failed to decrypt cluster token: %v", err)
 			status.Error = types.ErrorDescription{
@@ -102,15 +102,15 @@ func publishKubeConfigStatus(ctx *zedkubeContext) {
 		log.Errorf("publishKubeConfigStatus: cluster token is not from configitme or encrypted")
 	}
 	// publish the cluster status for the kube container
-	ctx.pubEdgeNodeClusterStatus.Publish("global", status)
+	z.pubEdgeNodeClusterStatus.Publish("global", status)
 }
 
-func decryptClusterToken(ctx *zedkubeContext) (string, error) {
-	if !ctx.clusterConfig.CipherToken.IsCipher {
+func (z *zedkube) decryptClusterToken() (string, error) {
+	if !z.clusterConfig.CipherToken.IsCipher {
 		return "", fmt.Errorf("decryptClusterToken: cluster token is not encrypted")
 	}
 
-	decryptAvailable := ctx.subControllerCert != nil && ctx.subEdgeNodeCert != nil
+	decryptAvailable := z.subControllerCert != nil && z.subEdgeNodeCert != nil
 	if !decryptAvailable {
 		return "", fmt.Errorf("decryptClusterToken: certificates are not available")
 	}
@@ -118,23 +118,23 @@ func decryptClusterToken(ctx *zedkubeContext) (string, error) {
 		&cipher.DecryptCipherContext{
 			Log:                  log,
 			AgentName:            agentName,
-			AgentMetrics:         ctx.cipherMetrics,
-			PubSubControllerCert: ctx.subControllerCert,
-			PubSubEdgeNodeCert:   ctx.subEdgeNodeCert,
+			AgentMetrics:         z.cipherMetrics,
+			PubSubControllerCert: z.subControllerCert,
+			PubSubEdgeNodeCert:   z.subEdgeNodeCert,
 		},
-		ctx.clusterConfig.CipherToken)
-	if ctx.pubCipherBlockStatus != nil {
-		err2 := ctx.pubCipherBlockStatus.Publish(status.Key(), status)
+		z.clusterConfig.CipherToken)
+	if z.pubCipherBlockStatus != nil {
+		err2 := z.pubCipherBlockStatus.Publish(status.Key(), status)
 		if err2 != nil {
 			return "", fmt.Errorf("decryptClusterToken: publish failed %v", err2)
 		}
 	}
 	if err != nil {
-		ctx.cipherMetrics.RecordFailure(log, types.DecryptFailed)
+		z.cipherMetrics.RecordFailure(log, types.DecryptFailed)
 		return "", fmt.Errorf("decryptClusterToken: failed to decrypt cluster token: %v", err)
 	}
 
-	err = ctx.cipherMetrics.Publish(log, ctx.pubCipherMetrics, "global")
+	err = z.cipherMetrics.Publish(log, z.pubCipherMetrics, "global")
 	if err != nil {
 		log.Errorf("decryptClusterToken: publish failed for cipher metrics: %v", err)
 		return "", fmt.Errorf("decryptClusterToken: failed to publish cipher metrics: %v", err)
@@ -143,20 +143,20 @@ func decryptClusterToken(ctx *zedkubeContext) (string, error) {
 	return decBlock.ClusterToken, nil
 }
 
-func updateClusterIPReadiness(ctx *zedkubeContext) (changed bool) {
+func (z *zedkube) updateClusterIPReadiness() (changed bool) {
 	var ready bool
-	haveClusterIPConfig := ctx.clusterConfig.ClusterInterface != "" &&
-		ctx.clusterConfig.ClusterIPPrefix != nil
+	haveClusterIPConfig := z.clusterConfig.ClusterInterface != "" &&
+		z.clusterConfig.ClusterIPPrefix != nil
 	if haveClusterIPConfig {
-		for _, port := range ctx.deviceNetworkStatus.Ports {
+		for _, port := range z.deviceNetworkStatus.Ports {
 			if port.InvalidConfig || port.IfName == "" {
 				continue
 			}
-			if port.Logicallabel != ctx.clusterConfig.ClusterInterface {
+			if port.Logicallabel != z.clusterConfig.ClusterInterface {
 				continue
 			}
 			for _, addr := range port.AddrInfoList {
-				if addr.Addr.Equal(ctx.clusterConfig.ClusterIPPrefix.IP) {
+				if addr.Addr.Equal(z.clusterConfig.ClusterIPPrefix.IP) {
 					ready = true
 					break
 				}
@@ -166,59 +166,70 @@ func updateClusterIPReadiness(ctx *zedkubeContext) (changed bool) {
 			}
 		}
 	}
-	if ctx.clusterIPIsReady != ready {
-		ctx.clusterIPIsReady = ready
+	if z.clusterIPIsReady != ready {
+		z.clusterIPIsReady = ready
 		return true
 	}
 	return false
 }
 
-func startClusterStatusServer(ctx *zedkubeContext) {
-	if ctx.statusServer != nil {
+func (z *zedkube) startClusterStatusServer() {
+	if z.statusServer != nil {
 		// Already running.
 		return
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/status", func(w http.ResponseWriter, r *http.Request) {
-		clusterStatusHTTPHandler(w, r, ctx)
+		z.clusterStatusHTTPHandler(w, r)
 	})
-	ctx.statusServer = &http.Server{
-		Addr:    ctx.clusterConfig.ClusterIPPrefix.IP.String() + ":" + types.ClusterStatusPort,
+	z.statusServer = &http.Server{
+		// Listen on the ClusterIPPrefix IP and the ClusterStatusPort
+		// the firewall rule is explicitly added to allow traffic to this port in kubevirt
+		// this is documented in pkg/pillar/docs/zedkube.md section "Cluster Status Server"
+		Addr:    z.clusterConfig.ClusterIPPrefix.IP.String() + ":" + types.ClusterStatusPort,
 		Handler: mux,
 	}
-	ctx.statusServerWG.Add(1)
+	z.statusServerWG.Add(1)
 
 	// Start the server in a goroutine
 	go func() {
-		defer ctx.statusServerWG.Done()
-		if err := ctx.statusServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		defer z.statusServerWG.Done()
+		if err := z.statusServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Errorf("Cluster status server ListenAndServe failed: %v", err)
 		}
 		log.Noticef("Cluster status server stopped")
 	}()
 }
 
-func stopClusterStatusServer(ctx *zedkubeContext) {
-	if ctx.statusServer == nil {
+func (z *zedkube) stopClusterStatusServer() {
+	if z.statusServer == nil {
 		return
 	}
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	if err := ctx.statusServer.Shutdown(shutdownCtx); err != nil {
+	if err := z.statusServer.Shutdown(shutdownCtx); err != nil {
 		log.Errorf("Cluster status server shutdown failed: %v", err)
 	} else {
 		log.Noticef("Cluster status server shutdown completed")
 	}
 
 	// Wait for the server goroutine to finish
-	ctx.statusServerWG.Wait()
-	ctx.statusServer = nil
+	z.statusServerWG.Wait()
+	z.statusServer = nil
 	log.Noticef("Cluster status server goroutine has stopped")
 }
 
-func clusterStatusHTTPHandler(w http.ResponseWriter, r *http.Request, ctx *zedkubeContext) {
+func (z *zedkube) clusterStatusHTTPHandler(w http.ResponseWriter, r *http.Request) {
+	// Check if the request method is GET
+	if r.Method != http.MethodGet {
+		// Respond with 405 Method Not Allowed if the method is not GET
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		w.Write([]byte("405 - Method Not Allowed"))
+		return
+	}
+
 	clientset, err := getKubeClientSet()
 	if err != nil {
 		log.Errorf("clusterStatusHTTPHandler: can't get clientset %v", err)
@@ -226,16 +237,16 @@ func clusterStatusHTTPHandler(w http.ResponseWriter, r *http.Request, ctx *zedku
 		return
 	}
 
-	err = getnodeNameAndUUID(ctx)
+	err = z.getnodeNameAndUUID()
 	if err != nil {
 		log.Errorf("clusterStatusHTTPHandler: Error getting nodeName and nodeUUID")
 		fmt.Fprint(w, "")
 		return
 	}
 
-	node, err := clientset.CoreV1().Nodes().Get(context.Background(), ctx.nodeName, metav1.GetOptions{})
+	node, err := clientset.CoreV1().Nodes().Get(context.Background(), z.nodeName, metav1.GetOptions{})
 	if err != nil {
-		log.Errorf("clusterStatusHTTPHandler: can't get node %v, for %s", err, ctx.nodeName)
+		log.Errorf("clusterStatusHTTPHandler: can't get node %v, for %s", err, z.nodeName)
 		fmt.Fprint(w, "")
 		return
 	}
