@@ -5,6 +5,7 @@ package watcher
 
 import (
 	"flag"
+	"math"
 	"os"
 	"runtime"
 	"sync"
@@ -156,6 +157,148 @@ func handleMemoryPressureEvents() {
 	}
 }
 
+func movingAverage(data []int, windowSize int) []float64 {
+	// Validates the window size
+	if windowSize <= 0 {
+		windowSize = 1 // Do not smooth the data
+	}
+
+	if windowSize > len(data) {
+		windowSize = len(data)
+	}
+
+	if len(data) == 0 {
+		return nil
+	}
+
+	smoothed := make([]float64, len(data)-windowSize+1)
+	var windowSum int
+
+	// Calculates the sum of the first window
+	for i := 0; i < windowSize; i++ {
+		windowSum += data[i]
+	}
+	smoothed[0] = float64(windowSum) / float64(windowSize)
+
+	// Slides the window through the data
+	for i := 1; i < len(smoothed); i++ {
+		windowSum = windowSum - data[i-1] + data[i+windowSize-1]
+		smoothed[i] = float64(windowSum) / float64(windowSize)
+	}
+
+	return smoothed
+}
+
+// calculateMeanStdDev calculates the mean and standard deviation of a slice of float64 numbers.
+func calculateMeanStdDev(data []float64) (mean, stdDev float64) {
+	n := float64(len(data))
+	var sum, sumSq float64
+	for _, value := range data {
+		sum += value
+		sumSq += value * value
+	}
+	mean = sum / n
+	variance := (sumSq / n) - (mean * mean)
+	stdDev = math.Sqrt(variance)
+	return
+}
+
+// detectGoroutineLeaks detects if there's a potential goroutine leak over time.
+// Returns true if a leak is detected, false otherwise.
+func detectGoroutineLeaks(stats []int) (bool, []float64) {
+
+	if len(stats) < 10 {
+		// Not enough data to determine trend
+		return false, nil
+	}
+
+	// The window size for the moving average
+	windowSize := len(stats) / 10
+
+	// Step 1: Smooth the data
+	smoothedData := movingAverage(stats, windowSize)
+
+	if len(smoothedData) < 2 {
+		// Not enough data to determine trend
+		return false, smoothedData
+	}
+
+	// Step 2: Calculate the rate of change
+	rateOfChange := make([]float64, len(smoothedData)-1)
+	for i := 1; i < len(smoothedData); i++ {
+		rateOfChange[i-1] = smoothedData[i] - smoothedData[i-1]
+	}
+
+	// Step 3: Calculate mean and standard deviation of the rate of change
+	mean, stdDev := calculateMeanStdDev(rateOfChange)
+
+	// Step 4: Determine the dynamic threshold
+	threshold := 0.0 + stdDev
+
+	// Step 5: Check if the latest rate of change exceeds the threshold
+	latestChange := rateOfChange[len(rateOfChange)-1]
+	if mean > threshold && latestChange > threshold {
+		log.Warnf("Potential goroutine leak detected: latest increase of %.2f exceeds dynamic threshold of %.2f.", latestChange, threshold)
+		return true, smoothedData
+	}
+	return false, smoothedData
+}
+
+func handlePotentialGoroutineLeak() {
+	// Dump the stack traces of all goroutines
+	agentlog.DumpAllStacks(log, agentName)
+}
+
+func goroutinesMonitor(goroutinesThreshold int, checkInterval, checkStatsFor, keepStatsFor, cooldownPeriod time.Duration) {
+	entriesToKeep := int(keepStatsFor / checkInterval)
+	entriesToCheck := int(checkStatsFor / checkInterval)
+	stats := make([]int, 0, entriesToKeep+1)
+	var lastLeakHandled time.Time
+	for {
+		time.Sleep(checkInterval)
+		numGoroutines := runtime.NumGoroutine()
+		// First check for the threshold
+		if numGoroutines > goroutinesThreshold {
+			log.Warnf("Number of goroutines exceeds threshold: %d", numGoroutines)
+			if time.Since(lastLeakHandled) < cooldownPeriod {
+				// Skip if we've handled a leak recently
+				log.Warnf("Skipping stacks dumping due to cooldown period")
+				continue
+			}
+			handlePotentialGoroutineLeak()
+			lastLeakHandled = time.Now()
+			continue
+		}
+		stats = append(stats, numGoroutines)
+		// Keep the stats for the last keepStatsFor duration
+		if len(stats) > entriesToKeep {
+			stats = stats[1:]
+		}
+
+		// If we have enough data, detect goroutine leaks
+		if len(stats) > entriesToCheck {
+			// Analyze the data for the last check window
+			entriesInLastCheckWindow := stats[len(stats)-entriesToCheck:]
+			leakDetected, _ := detectGoroutineLeaks(entriesInLastCheckWindow)
+			if leakDetected {
+				// Count the number of goroutines that were created in the last check window
+				numGoroutinesCheckWindowAgo := stats[len(stats)-entriesToCheck]
+				leakCount := numGoroutines - numGoroutinesCheckWindowAgo
+				minutesInCheckWindow := int(checkStatsFor.Minutes())
+				log.Warnf("Potential goroutine leak! Created in the last %d minutes: %d, total: %d",
+					minutesInCheckWindow, leakCount, numGoroutines)
+				if time.Since(lastLeakHandled) < cooldownPeriod {
+					// Skip detailed handling if we've handled a leak recently
+					log.Warnf("Skipping stacks dumping due to cooldown period")
+					continue
+				}
+				handlePotentialGoroutineLeak()
+				lastLeakHandled = time.Now()
+			}
+		}
+	}
+}
+
 // Run :
 func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string, baseDir string) int {
 	logger = loggerArg
@@ -267,6 +410,22 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 	// Handle memory pressure events by calling GC explicitly
 	go handleMemoryPressureEvents()
+
+	// Detect goroutine leaks
+	const (
+		// Threshold for the number of goroutines
+		// When reached, we assume there's a potential goroutine leak
+		goroutinesThreshold = 1000
+		// Check interval for the number of goroutines
+		checkInterval = 1 * time.Minute
+		// Check window. On each check, we analyze the stats for that period
+		checkWindow = 1 * time.Hour
+		// Keep statistic for that long
+		keepStatsFor = 24 * time.Hour
+		// Cooldown period for the leak detection
+		cooldownPeriod = 10 * time.Minute
+	)
+	go goroutinesMonitor(goroutinesThreshold, checkInterval, checkWindow, keepStatsFor, cooldownPeriod)
 
 	for {
 		select {
