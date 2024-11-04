@@ -1,5 +1,5 @@
 FROM lfedge/eve-alpine:591df01e581889c3027514c8a91feaca1c8ad49f AS build-base
-ENV BUILD_PKGS bash binutils-dev build-base bc bison flex openssl-dev python3 swig dtc util-linux-dev gnutls-dev
+ENV BUILD_PKGS bash binutils-dev build-base bc bison flex openssl-dev python3 swig dtc
 ENV BUILD_PKGS_amd64 python3-dev py-pip
 RUN eve-alpine-deploy.sh
 
@@ -22,6 +22,7 @@ RUN mkdir /boot
 
 FROM build-base AS build-amd64
 ENV TARGET qemu-x86_64_defconfig
+RUN for p in /tmp/patches/patches-"${VERSION}"/*.patch ; do patch -p1 < "$p" || exit 1 ; done
 # FIXME: we need to get to the bottom of this weird workaround on x86/Alpine
 RUN sed -ie 's#CONFIG_IS_ENABLED(X86_64)#1#' ./arch/x86/include/asm/byteorder.h
 
