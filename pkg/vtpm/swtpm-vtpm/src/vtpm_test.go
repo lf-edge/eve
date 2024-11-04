@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"syscall"
 	"testing"
 	"time"
 
@@ -270,6 +271,94 @@ func TestDeleteRequest(t *testing.T) {
 	}
 
 	b, _, err = sendTerminateRequest(id)
+	if err != nil {
+		t.Fatalf("failed to send request: %v, body : %s", err, b)
+	}
+	time.Sleep(1 * time.Second)
+
+	if liveInstances != 0 {
+		t.Fatalf("expected liveInstances to be 0, got %d", liveInstances)
+	}
+}
+
+func TestSwtpmAbruptTerminationRequest(t *testing.T) {
+	// this test verify that if swtpm is terminated without vTPM notice,
+	// no stale id is left in the vtpm internal bookkeeping and vtpm
+	// can launch new instance with the same id.
+	// test logic :
+	// 1. send launch request
+	// 2. read swtpm pid file and terminate it
+	// 3. send launch request again, this should not fail
+	id := generateUUID()
+	defer cleanupFiles(id)
+
+	// this doesn't matter
+	isTPMAvailable = func() bool {
+		return false
+	}
+
+	b, _, err := sendLaunchRequest(id)
+	if err != nil {
+		t.Fatalf("failed to send request: %v, body : %s", err, b)
+	}
+
+	pid, err := readPidFile(fmt.Sprintf(swtpmPidPath, id))
+	if err != nil {
+		t.Fatalf("failed to read pid file: %v", err)
+	}
+	if err := syscall.Kill(pid, syscall.SIGTERM); err != nil {
+		t.Fatalf("failed to kill process: %v", err)
+
+	}
+
+	// this should not fail
+	b, _, err = sendLaunchRequest(id)
+	if err != nil {
+		t.Fatalf("failed to send request: %v, body : %s", err, b)
+	}
+
+	b, _, err = sendTerminateRequest(id)
+	if err != nil {
+		t.Fatalf("failed to send request: %v, body : %s", err, b)
+	}
+	time.Sleep(1 * time.Second)
+
+	if liveInstances != 0 {
+		t.Fatalf("expected liveInstances to be 0, got %d", liveInstances)
+	}
+}
+
+func TestSwtpmMultipleLaucnhRequest(t *testing.T) {
+	// this test verify that if swtpm is launched multiple times with the same id,
+	// only one instance is created and other requests are ignored.
+	// test logic :
+	// 1. send launch request multiple times, it all should succeed
+	// 2. clean up
+	id := generateUUID()
+	defer cleanupFiles(id)
+
+	// this doesn't matter
+	isTPMAvailable = func() bool {
+		return false
+	}
+
+	for i := 0; i < 5; i++ {
+		b, _, err := sendLaunchRequest(id)
+		if err != nil {
+			t.Fatalf("failed to send request: %v, body : %s", err, b)
+		}
+	}
+
+	pid, err := readPidFile(fmt.Sprintf(swtpmPidPath, id))
+	if err != nil {
+		t.Fatalf("failed to read pid file: %v", err)
+	}
+	if err := syscall.Kill(pid, syscall.SIGTERM); err != nil {
+		t.Fatalf("failed to kill process: %v", err)
+
+	}
+
+	b, _, err := sendTerminateRequest(id)
 	if err != nil {
 		t.Fatalf("failed to send request: %v, body : %s", err, b)
 	}
