@@ -15,14 +15,15 @@ import (
 
 // The key/index to this is the ImageSha256 which is allocated by the controller or resolver.
 type DownloaderConfig struct {
-	ImageSha256     string
-	DatastoreIDList []uuid.UUID
-	Name            string
-	Target          string // file path where to download the file
-	NameIsURL       bool   // If not we form URL based on datastore info
-	Size            uint64 // In bytes
-	FinalObjDir     string // final Object Store
-	RefCount        uint
+	ImageSha256            string
+	DatastoreIDList        []uuid.UUID
+	Name                   string
+	Target                 string // file path where to download the file
+	NameIsURL              bool   // If not we form URL based on datastore info
+	Size                   uint64 // In bytes
+	FinalObjDir            string // final Object Store
+	RefCount               uint
+	BlobDownloadRetryCount uint
 }
 
 func (config DownloaderConfig) Key() string {
@@ -119,6 +120,8 @@ type DownloaderStatus struct {
 	RetryCount int
 	// We save the original error when we do a retry
 	OrigError string
+	// Used only when blob verification fails after the download
+	BlobDownloadRetryCount uint
 }
 
 func (status DownloaderStatus) Key() string {

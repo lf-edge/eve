@@ -227,6 +227,22 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 				blobErrorEntities = append(blobErrorEntities, &types.ErrorEntity{EntityID: blob.Sha256, EntityType: types.ErrorEntityContentBlob})
 
 				leftToProcess = true
+				if blob.IsErrorSource(types.VerifyImageStatus{}) && blob.RetryCount < blobDownloadMaxRetries {
+
+					// Remove VerifyImage config and retry download
+					MaybeRemoveVerifyImageConfig(ctx, blobSha)
+					retryDownload(ctx, blobSha)
+
+					// Increment retry count
+					blob.RetryCount++
+					blob.State = types.DOWNLOADING
+					// Remove VerifyImageConfig reference
+					blob.HasVerifierRef = false
+					blob.ClearErrorWithSource()
+
+					log.Errorf("EVE failed to verify Blob(%s), retrying %d/%d ...", blobSha, blob.RetryCount, blobDownloadMaxRetries)
+					publishBlobStatus(ctx, blob)
+				}
 			}
 		}
 
