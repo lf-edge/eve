@@ -38,12 +38,12 @@ COPY alpine.patch /
 RUN patch -p1 < alpine.patch
 
 ENV LIBURING_VERSION 0.7
-ENV LIBURING_SOURCE=https://git.kernel.dk/cgit/liburing/snapshot/liburing-${LIBURING_VERSION}.tar.bz2
+ENV LIBURING_SOURCE=https://git.kernel.org/pub/scm/linux/kernel/git/axboe/liburing.git/snapshot/liburing-${LIBURING_VERSION}.tar.gz
 
 # Download and verify liburing
 # hadolint ignore=DL3020
-ADD ${LIBURING_SOURCE} /liburing.tar.bz2
-RUN tar --absolute-names -xj < /liburing.tar.bz2 && mv "/liburing-${LIBURING_VERSION}" /liburing
+ADD ${LIBURING_SOURCE} /liburing.tar.gz
+RUN tar --absolute-names -xz < /liburing.tar.gz && mv "/liburing-${LIBURING_VERSION}" /liburing
 
 WORKDIR /liburing
 RUN ./configure --prefix=/usr
