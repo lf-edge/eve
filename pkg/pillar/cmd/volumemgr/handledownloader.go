@@ -64,6 +64,7 @@ func AddOrRefcountDownloaderConfig(ctx *volumemgrContext, blob types.BlobStatus)
 		Size:            size,
 		Target:          locFilename,
 		RefCount:        refCount,
+		DoRetry:         false,
 	}
 	log.Functionf("AddOrRefcountDownloaderConfig: DownloaderConfig: %+v", n)
 	publishDownloaderConfig(ctx, &n)
@@ -103,6 +104,24 @@ func MaybeRemoveDownloaderConfig(ctx *volumemgrContext, imageSha string) {
 
 	publishDownloaderConfig(ctx, m)
 	log.Functionf("MaybeRemoveDownloaderConfig done for %s", imageSha)
+}
+
+func retryDownload(ctx *volumemgrContext, imageSha string) {
+	m := lookupDownloaderConfig(ctx, imageSha)
+	if m == nil {
+		log.Functionf("retryDownload: config missing for %s",
+			imageSha)
+		return
+	}
+	if m.RefCount == 0 {
+		log.Fatalf("retryDownload: Attempting to retry when "+
+			"RefCount is 0. Image Details - Name: %s, ImageSha: %s, ",
+			m.Name, m.ImageSha256)
+	}
+	m.DoRetry = true
+
+	publishDownloaderConfig(ctx, m)
+	log.Functionf("retryDownload done for %s", imageSha)
 }
 
 func publishDownloaderConfig(ctx *volumemgrContext,

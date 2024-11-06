@@ -23,6 +23,7 @@ type DownloaderConfig struct {
 	Size            uint64 // In bytes
 	FinalObjDir     string // final Object Store
 	RefCount        uint
+	DoRetry         bool
 }
 
 func (config DownloaderConfig) Key() string {
