@@ -42,7 +42,10 @@ const (
 	blankVolumeFormat = zconfig.Format_RAW // format of blank volume TODO: make configurable
 )
 
-var volumeFormat = make(map[string]zconfig.Format)
+var (
+	blobDownloadMaxRetries uint32 = 5 // Unless from GlobalConfig
+	volumeFormat                  = make(map[string]zconfig.Format)
+)
 
 type volumemgrContext struct {
 	agentbase.AgentBase
@@ -746,6 +749,10 @@ func handleGlobalConfigImpl(ctxArg interface{}, key string,
 	gcp := agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
 		ctx.CLIParams().DebugOverride, logger)
 	if gcp != nil {
+		// Set max retries for blob download from global config
+		if gcp.GlobalValueInt(types.BlobDownloadMaxRetries) != 0 {
+			blobDownloadMaxRetries = gcp.GlobalValueInt(types.BlobDownloadMaxRetries)
+		}
 		maybeUpdateConfigItems(ctx, gcp)
 		ctx.globalConfig = gcp
 		ctx.GCInitialized = true
