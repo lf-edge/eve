@@ -86,7 +86,8 @@ func MaybeAddVerifyImageConfigBlob(ctx *volumemgrContext, blob types.BlobStatus)
 // However, MaybeAddVerifyImageConfig can be called to increment the refcount
 // since the handshake with the verifier will not conclude until the
 // VerifyImageConfig is unpublished
-func MaybeRemoveVerifyImageConfig(ctx *volumemgrContext, imageSha string) {
+func MaybeRemoveVerifyImageConfig(ctx *volumemgrContext, blob *types.BlobStatus) {
+	imageSha := blob.Sha256
 
 	log.Functionf("MaybeRemoveVerifyImageConfig(%s)", imageSha)
 
@@ -111,6 +112,9 @@ func MaybeRemoveVerifyImageConfig(ctx *volumemgrContext, imageSha string) {
 		publishVerifyImageConfig(ctx, m)
 	}
 	log.Functionf("MaybeRemoveVerifyImageConfig done for %s", imageSha)
+
+	// Remove the has verifier reference from blob status
+	blob.HasVerifierRef = false
 }
 
 // deleteVerifyImageConfig checks the refcount and if it is zero it

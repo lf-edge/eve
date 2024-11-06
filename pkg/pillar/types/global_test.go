@@ -176,6 +176,7 @@ func TestNewConfigItemSpecMap(t *testing.T) {
 		ForceFallbackCounter,
 		LogRemainToSendMBytes,
 		DownloadMaxPortCost,
+		BlobDownloadMaxRetries,
 		// Bool Items
 		UsbAccess,
 		VgaAccess,
