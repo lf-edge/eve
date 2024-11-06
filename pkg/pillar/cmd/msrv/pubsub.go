@@ -47,12 +47,12 @@ func (srv *Msrv) lookupAppInstStatusByAppIP(ip net.IP) (*types.AppInstanceStatus
 		for _, adapterStatus := range status.AppNetAdapters {
 			for _, adapterIP := range adapterStatus.AssignedAddresses.IPv4Addrs {
 				if adapterIP.Address.Equal(ip) {
-					return &status, true
+					return &status, adapterStatus.AllowToDiscover
 				}
 			}
 			for _, adapterIP := range adapterStatus.AssignedAddresses.IPv6Addrs {
 				if adapterIP.Address.Equal(ip) {
-					return &status, true
+					return &status, adapterStatus.AllowToDiscover
 				}
 			}
 		}
