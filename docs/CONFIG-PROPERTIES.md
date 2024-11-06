@@ -27,6 +27,7 @@
 | timer.port.testbetterinterval | timer in seconds | 600 | test a higher prio port config |
 | network.fallback.any.eth | "enabled" or "disabled" | disabled (enabled forcefully during onboarding if no network config) | if no connectivity try any Ethernet, WiFi, or LTE with DHCP client |
 | network.download.max.cost | 0-255 | 0 | [max port cost for download](DEVICE-CONNECTIVITY.md) to avoid e.g., LTE ports |
+| blob.download.max.retries | 1-10 | 5 | max download retries when image verification fails.|
 | debug.enable.usb | boolean | false | allow USB e.g. keyboards on device |
 | debug.enable.vga | boolean | false | allow VGA console on device |
 | debug.enable.ssh | authorized ssh key | empty string(ssh disabled) | allow ssh to EVE |

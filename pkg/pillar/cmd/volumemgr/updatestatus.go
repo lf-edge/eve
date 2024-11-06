@@ -227,6 +227,20 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 				blobErrorEntities = append(blobErrorEntities, &types.ErrorEntity{EntityID: blob.Sha256, EntityType: types.ErrorEntityContentBlob})
 
 				leftToProcess = true
+				if blob.IsErrorSource(types.VerifyImageStatus{}) && blob.RetryCount < blobDownloadMaxRetries {
+
+					// Remove VerifyImage config and retry download
+					MaybeRemoveVerifyImageConfig(ctx, blob)
+					retryDownload(ctx, blobSha)
+
+					// Increment retry count
+					blob.RetryCount++
+					blob.State = types.DOWNLOADING
+					blob.ClearErrorWithSource()
+
+					log.Errorf("EVE failed to verify Blob(%s), retrying %d/%d ...", blobSha, blob.RetryCount, blobDownloadMaxRetries)
+					publishBlobStatus(ctx, blob)
+				}
 			}
 		}
 
@@ -412,15 +426,13 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 			if blob.HasDownloaderRef {
 				log.Functionf("doUpdateContentTree(%s): removing downloaderRef from Blob %s",
 					status.Key(), blob.Sha256)
-				MaybeRemoveDownloaderConfig(ctx, blob.Sha256)
-				blob.HasDownloaderRef = false
+				MaybeRemoveDownloaderConfig(ctx, blob)
 			}
 			if blob.HasVerifierRef {
 				log.Functionf("doUpdateContentTree(%s): removing verifyRef from Blob %s",
 					status.Key(), blob.Sha256)
-				MaybeRemoveVerifyImageConfig(ctx, blob.Sha256)
+				MaybeRemoveVerifyImageConfig(ctx, blob)
 				// Set the path to "" as we delete the verifier path
-				blob.HasVerifierRef = false
 				blob.Path = ""
 			}
 			publishBlobStatus(ctx, blob)
