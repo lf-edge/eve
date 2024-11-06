@@ -773,7 +773,7 @@ func (r *LinuxNIReconciler) getIntendedNIL3Cfg(niID uuid.UUID) dg.Graph {
 			continue
 		}
 		isAppGW := gateway != nil && r.getNISubnet(ni).Contains(gateway)
-		if isAppGW && r.disableAllOnesNetmask {
+		if isAppGW {
 			// Route is not needed inside the host, traffic is just forwarded
 			// by the bridge.
 			continue
@@ -1082,8 +1082,7 @@ func (r *LinuxNIReconciler) getIntendedDnsmasqCfg(niID uuid.UUID) (items []dg.It
 	}
 	propagateRoutes = generics.FilterDuplicatesFn(propagateRoutes, generic.EqualIPRoutes)
 	dhcpCfg := generic.DHCPServer{
-		Subnet:         r.getNISubnet(ni),
-		AllOnesNetmask: !r.disableAllOnesNetmask,
+		Subnet: r.getNISubnet(ni),
 		IPRange: generic.IPRange{
 			FromIP: ni.config.DhcpRange.Start,
 			ToIP:   ni.config.DhcpRange.End,

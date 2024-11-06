@@ -298,7 +298,12 @@ const (
 	// FmlCustomResolution global setting key
 	FmlCustomResolution GlobalSettingKey = "app.fml.resolution"
 
-	// XXX Temporary flag to disable RFC 3442 classless static route usage
+	// DisableDHCPAllOnesNetMask option is deprecated and has no effect.
+	// Zedrouter no longer uses the all-ones netmask as it adds unnecessary complexity,
+	// causes confusion for some applications, and is no longer required for any EVE
+	// functionality (previously it was supposedly needed for ACLs and flow logging).
+	// We keep the option defined to avoid reporting errors in ZInfoDevice.ConfigItemStatus
+	// for older deployments where this option is still configured.
 	DisableDHCPAllOnesNetMask GlobalSettingKey = "debug.disable.dhcp.all-ones.netmask"
 
 	// ProcessCloudInitMultiPart to help VMs which do not handle mime multi-part themselves

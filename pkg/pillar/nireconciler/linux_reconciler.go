@@ -67,9 +67,6 @@ type LinuxNIReconciler struct {
 	exportIntendedState      bool
 	withKubernetesNetworking bool
 
-	// From GCP
-	disableAllOnesNetmask bool
-
 	reconcileMu   sync.Mutex
 	currentState  dg.Graph
 	intendedState dg.Graph
@@ -801,25 +798,7 @@ func (r *LinuxNIReconciler) ResumeReconcile(ctx context.Context) {
 // ApplyUpdatedGCP : apply change in the global config properties.
 func (r *LinuxNIReconciler) ApplyUpdatedGCP(ctx context.Context,
 	newGCP types.ConfigItemValueMap) {
-	contWatcher := r.pauseWatcher()
-	defer contWatcher()
-	disableAllOnesNetmask := newGCP.GlobalValueBool(types.DisableDHCPAllOnesNetMask)
-	if r.disableAllOnesNetmask == disableAllOnesNetmask {
-		// No change in GCP relevant for network instances.
-		return
-	}
-	r.disableAllOnesNetmask = disableAllOnesNetmask
-	for niID, ni := range r.nis {
-		if ni.config.Type == types.NetworkInstanceTypeSwitch {
-			// Not running DHCP server for switch NI inside EVE.
-			continue
-		}
-		r.scheduleNICfgRebuild(niID,
-			fmt.Sprintf("global config property %s changed to %t",
-				types.DisableDHCPAllOnesNetMask, r.disableAllOnesNetmask))
-	}
-	updates := r.reconcile(ctx)
-	r.publishReconcilerUpdates(updates...)
+	// NOOP
 }
 
 // AddNI : create this new network instance inside the network stack.
