@@ -6,7 +6,6 @@ package msrv_test
 import (
 	"bytes"
 	"encoding/json"
-	"io/ioutil"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -107,7 +106,7 @@ func TestPostKubeconfig(t *testing.T) {
 		Logger: logger,
 	}
 
-	dir, err := ioutil.TempDir("/tmp", "msrv_test")
+	dir, err := os.MkdirTemp("/tmp", "msrv_test")
 	g.Expect(err).ToNot(gomega.HaveOccurred())
 	defer os.RemoveAll(dir)
 
@@ -217,7 +216,7 @@ func TestRequestPatchEnvelopes(t *testing.T) {
 		Logger: logger,
 	}
 
-	dir, err := ioutil.TempDir("/tmp", "msrv_test")
+	dir, err := os.MkdirTemp("/tmp", "msrv_test")
 	g.Expect(err).ToNot(gomega.HaveOccurred())
 	defer os.RemoveAll(dir)
 
@@ -371,7 +370,7 @@ func TestHandleAppInstanceDiscovery(t *testing.T) {
 		Logger: logger,
 	}
 
-	dir, err := ioutil.TempDir("/tmp", "msrv_test")
+	dir, err := os.MkdirTemp("/tmp", "msrv_test")
 	g.Expect(err).ToNot(gomega.HaveOccurred())
 	defer os.RemoveAll(dir)
 
