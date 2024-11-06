@@ -36,8 +36,7 @@ func exampleDnsmasqParams() genericitems.Dnsmasq {
 	dnsmasq.ListenIf.IfName = "br0"
 	_, subnet, _ := net.ParseCIDR("10.0.0.0/24")
 	dnsmasq.DHCPServer = genericitems.DHCPServer{
-		Subnet:         subnet,
-		AllOnesNetmask: true,
+		Subnet: subnet,
 		IPRange: genericitems.IPRange{
 			FromIP: net.IP{10, 0, 0, 2},
 			ToIP:   net.IP{10, 0, 0, 123},
@@ -156,10 +155,10 @@ hostsdir=/run/zedrouter/hosts.br0
 dhcp-hostsdir=/run/zedrouter/dhcp-hosts.br0
 dhcp-option=option:dns-server,10.0.0.1,1.1.1.1
 dhcp-option=option:ntp-server,94.130.35.4,94.16.114.254
-dhcp-option=option:netmask,255.255.255.255
+dhcp-option=option:netmask,255.255.255.0
 dhcp-option=option:router,10.0.0.1
-dhcp-option=tag:endpoint,option:classless-static-route,10.0.0.1/32,0.0.0.0,10.0.0.0/24,10.0.0.1,192.168.1.0/24,10.0.0.1,172.30.0.0/16,10.0.0.1,0.0.0.0/0,10.0.0.1
-dhcp-option=tag:gateway-10-0-0-100,option:classless-static-route,10.0.0.1/32,0.0.0.0,10.0.0.0/24,10.0.0.1,192.168.1.0/24,10.0.0.1,0.0.0.0/0,10.0.0.1
+dhcp-option=tag:endpoint,option:classless-static-route,10.0.0.0/24,0.0.0.0,192.168.1.0/24,10.0.0.1,172.30.0.0/16,10.0.0.100,0.0.0.0/0,10.0.0.1
+dhcp-option=tag:gateway-10-0-0-100,option:classless-static-route,10.0.0.0/24,0.0.0.0,192.168.1.0/24,10.0.0.1,0.0.0.0/0,10.0.0.1
 dhcp-range=10.0.0.2,10.0.0.123,255.255.255.0,60m
 `
 	if configExpected != config {
@@ -202,23 +201,6 @@ func TestCreateDnsmasqConfigWithoutGateway(t *testing.T) {
 
 	dhcpRangeRex := "(?m)^dhcp-range=10.0.0.2,10.0.0.123,255.255.255.0,60m$"
 	ok, err = regexp.MatchString(dhcpRangeRex, config)
-	if err != nil {
-		panic(err)
-	}
-	if !ok {
-		t.Fatalf("expected to match '%s', but got '%s'", dhcpRangeRex, config)
-	}
-}
-
-func TestCreateDnsmasqConfigWithDisabledAllOnesNetmask(t *testing.T) {
-	t.Parallel()
-
-	dnsmasq := exampleDnsmasqParams()
-	dnsmasq.DHCPServer.AllOnesNetmask = false
-	config := createDnsmasqConfig(dnsmasq)
-
-	dhcpRangeRex := "(?m)^dhcp-range=10.0.0.2,10.0.0.123,255.255.255.0,60m$"
-	ok, err := regexp.MatchString(dhcpRangeRex, config)
 	if err != nil {
 		panic(err)
 	}

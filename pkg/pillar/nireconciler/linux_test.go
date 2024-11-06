@@ -2067,42 +2067,6 @@ func TestIPv4LocalAndSwitchNIsWithFlowlogging(test *testing.T) {
 	ni5Config.EnableFlowlog = false
 }
 
-func TestDisableAllOnesMask(test *testing.T) {
-	t := initTest(test, false)
-	networkMonitor.AddOrUpdateInterface(eth0)
-	networkMonitor.UpdateRoutes(eth0Routes)
-	ctx := reconciler.MockRun(context.Background())
-	updatesCh := niReconciler.WatchReconcilerUpdates()
-	niReconciler.RunInitialReconcile(ctx)
-
-	// Create local network instance.
-	_, err := niReconciler.AddNI(ctx, ni1Config, ni1Bridge)
-	t.Expect(err).ToNot(HaveOccurred())
-	var recUpdate nirec.ReconcilerUpdate
-	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.NIReconcileStatusChanged))
-	networkMonitor.AddOrUpdateInterface(ni1BridgeIf)
-
-	// dnsmasq should advertise mask with all bits set to one.
-	dnsmasqConf := itemDescription(dg.Reference(
-		genericitems.Dnsmasq{ListenIf: genericitems.NetworkIf{IfName: "bn1"}}))
-	t.Expect(dnsmasqConf).To(ContainSubstring("allOnesNetmask: true"))
-
-	// Update global config to disable all ones mask.
-	gcp := types.DefaultConfigItemValueMap()
-	gcp.SetGlobalValueBool(types.DisableDHCPAllOnesNetMask, true)
-	niReconciler.ApplyUpdatedGCP(ctx, *gcp)
-
-	// dnsmasq should now use the mask configured for the NI subnet.
-	dnsmasqConf = itemDescription(dg.Reference(
-		genericitems.Dnsmasq{ListenIf: genericitems.NetworkIf{IfName: "bn1"}}))
-	t.Expect(dnsmasqConf).To(ContainSubstring("allOnesNetmask: false"))
-
-	// Delete network instance
-	_, err = niReconciler.DelNI(ctx, ni1UUID.UUID)
-	t.Expect(err).ToNot(HaveOccurred())
-}
-
 func TestIPv6LocalAndSwitchNIs(test *testing.T) {
 	t := initTest(test, false)
 	networkMonitor.AddOrUpdateInterface(keth2)
@@ -2767,7 +2731,9 @@ func TestStaticAndConnectedRoutes(test *testing.T) {
 	}
 	recStatus, err := niReconciler.UpdateNI(ctx, ni5Config, ni5Bridge)
 	t.Expect(err).ToNot(HaveOccurred())
-	t.Expect(recStatus.Routes).To(HaveLen(5))
+	// The list does not include routes with application as a gateway. In those cases,
+	// the traffic is simply forwarded by the bridge, not routed.
+	t.Expect(recStatus.Routes).To(HaveLen(3))
 	t.Expect(recStatus.Routes[0].Equal(types.IPRouteInfo{
 		IPVersion:  types.AddressTypeIPV4,
 		DstNetwork: ipAddressWithPrefix("0.0.0.0/0"),
@@ -2776,23 +2742,11 @@ func TestStaticAndConnectedRoutes(test *testing.T) {
 	})).To(BeTrue())
 	t.Expect(recStatus.Routes[1].Equal(types.IPRouteInfo{
 		IPVersion:  types.AddressTypeIPV4,
-		DstNetwork: ipAddressWithPrefix("10.50.5.0/30"),
-		Gateway:    ipAddress("10.10.20.2"),
-		GatewayApp: app2UUID.UUID,
-	})).To(BeTrue())
-	t.Expect(recStatus.Routes[2].Equal(types.IPRouteInfo{
-		IPVersion:  types.AddressTypeIPV4,
-		DstNetwork: ipAddressWithPrefix("10.50.19.0/30"),
-		Gateway:    ipAddress("10.10.20.2"),
-		GatewayApp: app2UUID.UUID,
-	})).To(BeTrue())
-	t.Expect(recStatus.Routes[3].Equal(types.IPRouteInfo{
-		IPVersion:  types.AddressTypeIPV4,
 		DstNetwork: ipAddressWithPrefix("10.50.14.0/26"),
 		Gateway:    ipAddress("172.30.30.15"),
 		OutputPort: "ethernet3",
 	})).To(BeTrue())
-	t.Expect(recStatus.Routes[4].Equal(types.IPRouteInfo{
+	t.Expect(recStatus.Routes[2].Equal(types.IPRouteInfo{
 		IPVersion:  types.AddressTypeIPV4,
 		DstNetwork: ipAddressWithPrefix("10.50.1.0/24"),
 		Gateway:    ipAddress("172.20.1.1"),
@@ -2848,14 +2802,14 @@ func TestStaticAndConnectedRoutes(test *testing.T) {
 			return false
 		}
 		return route.Table == 801
-	})).To(Equal(2 + 1)) // subnet route + unreachable route + 1 static route
+	})).To(Equal(2)) // only IPv4 + IPv6 unreachable routes (N1 is air-gapped)
 	t.Expect(itemCount(func(item dg.Item) bool {
 		route, isRoute := item.(linuxitems.Route)
 		if !isRoute {
 			return false
 		}
 		return route.Table == 805
-	})).To(Equal(2 + 5)) // + 5 static routes
+	})).To(Equal(2 + 3)) // unreachable IPv4/IPv6 routes + static routes
 
 	// Disconnect the application.
 	appStatus, err = niReconciler.DelAppConn(ctx, app2UUID.UUID)
