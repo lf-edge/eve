@@ -312,6 +312,8 @@ func TestHandleAppInstanceDiscovery(t *testing.T) {
 	g.Expect(err).ToNot(gomega.HaveOccurred())
 	u1, err := uuid.FromString("6ba7b810-9dad-11d1-80b4-000000000001")
 	g.Expect(err).ToNot(gomega.HaveOccurred())
+	u2, err := uuid.FromString("6ba7b810-9dad-11d1-80b4-000000000002")
+	g.Expect(err).ToNot(gomega.HaveOccurred())
 
 	appInstanceStatus, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName:  "zedmanager",
@@ -343,6 +345,33 @@ func TestHandleAppInstanceDiscovery(t *testing.T) {
 	}
 	err = appInstanceStatus.Publish(u.String(), a)
 	g.Expect(err).ToNot(gomega.HaveOccurred())
+
+	// AppInstance which is not allowed to discover
+	b := types.AppInstanceStatus{
+		UUIDandVersion: types.UUIDandVersion{
+			UUID:    u2,
+			Version: "1.0",
+		},
+		AppNetAdapters: []types.AppNetAdapterStatus{
+			{
+				AssignedAddresses: types.AssignedAddrs{
+					IPv4Addrs: []types.AssignedAddr{
+						{
+							Address: net.ParseIP("192.168.1.3"),
+						},
+					},
+					IPv6Addrs: nil,
+				},
+				AppNetAdapterConfig: types.AppNetAdapterConfig{
+					IfIdx:           2,
+					AllowToDiscover: false,
+				},
+			},
+		},
+	}
+	err = appInstanceStatus.Publish(u2.String(), b)
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+
 	discoverableNet := types.AppNetAdapterStatus{
 		AssignedAddresses: types.AssignedAddrs{
 			IPv4Addrs: []types.AssignedAddr{
@@ -400,6 +429,17 @@ func TestHandleAppInstanceDiscovery(t *testing.T) {
 			Port:    discoverableNet.Vif,
 			Address: discoverableNet.AssignedAddresses.IPv4Addrs[0].Address.String(),
 		}},
+
+		u2.String(): {{
+			Port:    "",
+			Address: b.AppNetAdapters[0].AssignedAddresses.IPv4Addrs[0].Address.String(),
+		}},
 	}
 	g.Expect(got).To(gomega.BeEquivalentTo(expected))
+
+	descReq = httptest.NewRequest(http.MethodGet, "/eve/v1/discover-network.json", nil)
+	descReq.RemoteAddr = "192.168.1.3:0"
+	descResp = httptest.NewRecorder()
+	handler.ServeHTTP(descResp, descReq)
+	g.Expect(descResp.Code).To(gomega.Equal(http.StatusForbidden))
 }
