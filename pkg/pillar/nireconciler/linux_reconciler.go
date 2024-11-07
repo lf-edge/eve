@@ -961,7 +961,8 @@ func (r *LinuxNIReconciler) AddAppConn(ctx context.Context,
 	}
 	r.apps[appID] = appInfo
 	reconcileReason := fmt.Sprintf("connecting new app (%v)", appID)
-	// Rebuild and reconcile also global config to update the set of intended IPSets.
+	// Rebuild and reconcile also global config to update the set of intended IPSets
+	// and sysctl settings.
 	r.scheduleGlobalCfgRebuild(reconcileReason)
 	// Rebuild and reconcile config of every NI that this app is trying to connect into.
 	for _, vif := range vifs {
@@ -1006,7 +1007,8 @@ func (r *LinuxNIReconciler) UpdateAppConn(ctx context.Context,
 	}
 	r.apps[appID] = appInfo
 	reconcileReason := fmt.Sprintf("updating app connectivity (%v)", appID)
-	// Rebuild and reconcile also global config to update the set of intended IPSets.
+	// Rebuild and reconcile also global config to update the set of intended IPSets
+	// and sysctl settings.
 	r.scheduleGlobalCfgRebuild(reconcileReason)
 	// Reconcile every NI that this app is disconnecting from, connecting to,
 	// or just updating its connection parameters with.
@@ -1039,7 +1041,8 @@ func (r *LinuxNIReconciler) DelAppConn(ctx context.Context,
 	// Deleted from the map when removal is completed successfully (incl. async ops).
 	r.apps[appID].deleted = true
 	reconcileReason := fmt.Sprintf("disconnecting app (%v)", appID)
-	// Rebuild and reconcile also global config to update the set of intended IPSets.
+	// Rebuild and reconcile also global config to update the set of intended IPSets
+	// and sysctl settings.
 	r.scheduleGlobalCfgRebuild(reconcileReason)
 	// Reconcile every NI that this app is trying to disconnect from.
 	for _, vif := range r.apps[appID].vifs {

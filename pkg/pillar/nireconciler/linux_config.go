@@ -37,12 +37,17 @@ import (
 //  |   +------------------------------------------------------------+   |
 //  |   |                           Global                           |   |
 //  |   |                                                            |   |
+//  |   |              +------------------------------+              |   |
+//  |   |              |           Sysctl             |              |   |
+//  |   |              | (enable iptables for bridge) |              |   |
+//  |   |              +------------------------------+              |   |
+//  |   |                                                            |   |
 //  |   |   +--------------------------+   +---------------------+   |   |
 //  |   |   |        Ports             |   |      IPSets         |   |   |
 //  |   |   |                          |   |                     |   |   |
 //  |   |   |   +--------------+       |   |   +---------+       |   |   |
 //  |   |   |   |     Port     | ...   |   |   |  IPSet  | ...   |   |   |
-//  |   |   |   |  (external)  | ...   |   |   +---------+       |   |   |
+//  |   |   |   |  (external)  |       |   |   +---------+       |   |   |
 //  |   |   |   +--------------+       |   |                     |   |   |
 //  |   |   +--------------------------+   +---------------------+   |   |
 //  |   |                                                            |   |
@@ -326,6 +331,7 @@ func (r *LinuxNIReconciler) getIntendedGlobalState() dg.Graph {
 		Description: "Global configuration",
 	}
 	intendedCfg := dg.New(graphArgs)
+	intendedCfg.PutItem(r.getIntendedHostSysctl(), nil)
 	intendedCfg.PutSubGraph(r.getIntendedPorts())
 	intendedCfg.PutSubGraph(r.getIntendedGlobalIPSets())
 	if r.withFlowlog() {
@@ -334,6 +340,27 @@ func (r *LinuxNIReconciler) getIntendedGlobalState() dg.Graph {
 	intendedCfg.PutSubGraph(r.getIntendedACLRootChains())
 	intendedCfg.PutSubGraph(r.getIntendedL2FwdChain())
 	return intendedCfg
+}
+
+func (r *LinuxNIReconciler) getIntendedHostSysctl() linux.Sysctl {
+	var bridgeCallIptables, bridgeCallIp6tables bool
+	if r.withFlowlog() {
+		// Enforce the use of iptables in order to get conntrack entry
+		// created for every flow, which is then used to obtain flow metadata.
+		bridgeCallIptables = true
+		bridgeCallIp6tables = true
+		return linux.Sysctl{
+			BridgeCallIptables:  &bridgeCallIptables,
+			BridgeCallIp6tables: &bridgeCallIp6tables,
+		}
+	}
+	allIpv4TrafficAllowed, allIpv6TrafficAllowed := r.doACLsAllowAllTraffic()
+	bridgeCallIptables = !allIpv4TrafficAllowed
+	bridgeCallIp6tables = !allIpv6TrafficAllowed
+	return linux.Sysctl{
+		BridgeCallIptables:  &bridgeCallIptables,
+		BridgeCallIp6tables: &bridgeCallIp6tables,
+	}
 }
 
 func (r *LinuxNIReconciler) getIntendedPorts() dg.Graph {
@@ -1249,11 +1276,13 @@ func (r *LinuxNIReconciler) getIntendedAppConnCfg(niID uuid.UUID,
 				IfName:  vif.PodVIF.GuestIfName,
 				ItemRef: dg.Reference(linux.VIF{HostIfName: vif.hostIfName}),
 			}
+			enableDAD := false
+			enableARPNotify := true
 			intendedAppConnCfg.PutItem(linux.Sysctl{
 				ForApp:          itemForApp,
 				NetIf:           appVifRef,
-				EnableDAD:       false,
-				EnableARPNotify: true,
+				EnableDAD:       &enableDAD,
+				EnableARPNotify: &enableARPNotify,
 			}, nil)
 			// Gateways not covered by IP subnets should be routed explicitly
 			// using connected routes.
