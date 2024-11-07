@@ -179,7 +179,7 @@ func download(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 		}
 	}
 
-	var respChan = make(chan *zedUpload.DronaRequest, 1)
+	var respChan = make(chan *zedUpload.DronaRequest)
 
 	log.Functionf("%s syncOp for dpath:<%s>, region: <%s>, filename: <%s>, "+
 		"downloadURL: <%s>, maxsize: %d, ifname: %s, ipSrc: %+v, locFilename: %s",
