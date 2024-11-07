@@ -265,9 +265,11 @@ func TestGoroutinesMonitorNoLeak(t *testing.T) {
 	logger.SetOutput(w)
 	defer logger.SetOutput(backupOut)
 
-	go func() {
-		goroutinesMonitor(goroutinesThreshold, checkInterval, checkStatsFor, keepStatsFor, cooldownPeriod)
-	}()
+	// Create context with default parameters
+	ctx := &watcherContext{}
+	ctx.GRLDParams.Set(goroutinesThreshold, checkInterval, checkStatsFor, keepStatsFor, cooldownPeriod)
+
+	go goroutinesMonitor(ctx)
 
 	timeStart := time.Now()
 	for {
@@ -308,9 +310,11 @@ func TestGoroutinesMonitorLeak(t *testing.T) {
 	logger.SetOutput(w)
 	defer logger.SetOutput(backupOut)
 
-	go func() {
-		goroutinesMonitor(goroutinesThreshold, checkInterval, checkStatsFor, keepStatsFor, cooldownPeriod)
-	}()
+	// Create context with default parameters
+	ctx := &watcherContext{}
+	ctx.GRLDParams.Set(goroutinesThreshold, checkInterval, checkStatsFor, keepStatsFor, cooldownPeriod)
+
+	go goroutinesMonitor(ctx)
 
 	timeStart := time.Now()
 	for {
@@ -334,5 +338,4 @@ func TestGoroutinesMonitorLeak(t *testing.T) {
 	if !strings.Contains(string(output), "leak detected") {
 		t.Errorf("Expected log output to contain 'leak detected'")
 	}
-
 }

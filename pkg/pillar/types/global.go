@@ -257,6 +257,22 @@ const (
 	// WwanQueryVisibleProviders : periodically query visible cellular service providers
 	WwanQueryVisibleProviders GlobalSettingKey = "wwan.query.visible.providers"
 
+	// GoroutineLeakDetectionThreshold amount of goroutines, reaching which will trigger leak detection
+	// regardless of growth rate.
+	GoroutineLeakDetectionThreshold GlobalSettingKey = "goroutine.leak.detection.threshold"
+	// GoroutineLeakDetectionCheckIntervalMinutes interval in minutes between the measurements of the
+	// goroutine count.
+	GoroutineLeakDetectionCheckIntervalMinutes GlobalSettingKey = "goroutine.leak.detection.check.interval.minutes"
+	// GoroutineLeakDetectionCheckWindowMinutes interval in minutes for which the leak analysis is performed.
+	// It should contain at least 10 measurements, so no less than 10 * GoroutineLeakDetectionCheckIntervalMinutes.
+	GoroutineLeakDetectionCheckWindowMinutes GlobalSettingKey = "goroutine.leak.detection.check.window.minutes"
+	// GoroutineLeakDetectionKeepStatsHours amount of hours to keep the stats for the leak detection. We keep more
+	// stats than the check window to be able to react to settings a bigger check window via configuration.
+	GoroutineLeakDetectionKeepStatsHours GlobalSettingKey = "goroutine.leak.detection.keep.stats.hours"
+	// GoroutineLeakDetectionCooldownMinutes cooldown period in minutes after the leak detection is triggered. During
+	// this period no stack traces are collected, only warning messages are logged.
+	GoroutineLeakDetectionCooldownMinutes GlobalSettingKey = "goroutine.leak.detection.cooldown.minutes"
+
 	// TriState Items
 	// NetworkFallbackAnyEth global setting key
 	NetworkFallbackAnyEth GlobalSettingKey = "network.fallback.any.eth"
@@ -932,6 +948,13 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	// LogRemainToSendMBytes - Default is 2 Gbytes, minimum is 10 Mbytes
 	configItemSpecMap.AddIntItem(LogRemainToSendMBytes, 2048, 10, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(DownloadMaxPortCost, 0, 0, 255)
+
+	// Goroutine Leak Detection section
+	configItemSpecMap.AddIntItem(GoroutineLeakDetectionThreshold, 5000, 1, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(GoroutineLeakDetectionCheckIntervalMinutes, 1, 1, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(GoroutineLeakDetectionCheckWindowMinutes, 10, 10, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(GoroutineLeakDetectionKeepStatsHours, 24, 1, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(GoroutineLeakDetectionCooldownMinutes, 5, 1, 0xFFFFFFFF)
 
 	// Add Bool Items
 	configItemSpecMap.AddBoolItem(UsbAccess, true) // Controller likely default to false

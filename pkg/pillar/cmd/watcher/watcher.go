@@ -28,6 +28,73 @@ const (
 	usageThreshold = 2
 )
 
+// GoroutineLeakDetectionParams holds the global goroutine leak detection parameters
+type GoroutineLeakDetectionParams struct {
+	mutex          sync.Mutex
+	threshold      int
+	checkInterval  time.Duration
+	checkStatsFor  time.Duration
+	keepStatsFor   time.Duration
+	cooldownPeriod time.Duration
+}
+
+func validateGoroutineLeakDetectionParams(threshold int, checkInterval, checkStatsFor, keepStatsFor, cooldownPeriod time.Duration) bool {
+	if threshold < 1 {
+		log.Warnf("Invalid threshold: %d", threshold)
+		return false
+	}
+	if checkInterval < 0 {
+		log.Warnf("Invalid check interval: %v", checkInterval)
+		return false
+	}
+	if checkStatsFor < checkInterval*10 {
+		log.Warnf("Invalid check window: %v", checkStatsFor)
+		log.Warnf("Check window must be at least 10 times the check interval (%v)", checkInterval)
+		return false
+	}
+	if keepStatsFor < checkStatsFor {
+		log.Warnf("Invalid keep stats duration: %v", keepStatsFor)
+		log.Warnf("Keep stats duration must be greater than a check window (%v)", checkStatsFor)
+		return false
+	}
+	if cooldownPeriod < checkInterval {
+		log.Warnf("Invalid cooldown period: %v", cooldownPeriod)
+		log.Warnf("Cooldown period must be greater than a check interval (%v)", checkInterval)
+		return false
+	}
+	return true
+}
+
+// Set atomically sets the global goroutine leak detection parameters
+func (gldp *GoroutineLeakDetectionParams) Set(threshold int, checkInterval, checkStatsFor, keepStatsFor, cooldownPeriod time.Duration) {
+	if !validateGoroutineLeakDetectionParams(threshold, checkInterval, checkStatsFor, keepStatsFor, cooldownPeriod) {
+		return
+	}
+	gldp.mutex.Lock()
+	gldp.threshold = threshold
+	gldp.checkInterval = checkInterval
+	gldp.checkStatsFor = checkStatsFor
+	gldp.keepStatsFor = keepStatsFor
+	gldp.cooldownPeriod = cooldownPeriod
+	gldp.mutex.Unlock()
+}
+
+// Get atomically gets the global goroutine leak detection parameters
+func (gldp *GoroutineLeakDetectionParams) Get() (int, time.Duration, time.Duration, time.Duration, time.Duration) {
+	var threshold int
+	var checkInterval, checkStatsFor, keepStatsFor, cooldownPeriod time.Duration
+
+	gldp.mutex.Lock()
+	threshold = gldp.threshold
+	checkInterval = gldp.checkInterval
+	checkStatsFor = gldp.checkStatsFor
+	keepStatsFor = gldp.keepStatsFor
+	cooldownPeriod = gldp.cooldownPeriod
+	gldp.mutex.Unlock()
+
+	return threshold, checkInterval, checkStatsFor, keepStatsFor, cooldownPeriod
+}
+
 type watcherContext struct {
 	agentbase.AgentBase
 	ps              *pubsub.PubSub
@@ -40,6 +107,9 @@ type watcherContext struct {
 
 	GCInitialized bool
 	// cli options
+
+	// Global goroutine leak detection parameters
+	GRLDParams GoroutineLeakDetectionParams
 }
 
 // AddAgentSpecificCLIFlags adds CLI options
@@ -82,6 +152,22 @@ func setForcedGOGCParams(ctx *watcherContext) {
 	gogcForcedGrowthMemPerc =
 		gcp.GlobalValueInt(types.GOGCForcedGrowthMemPerc)
 	gogcForcedLock.Unlock()
+}
+
+// Read the global goroutine leak detection parameters to the context
+func readGlobalGoroutineLeakDetectionParams(ctx *watcherContext) {
+	gcp := agentlog.GetGlobalConfig(log, ctx.subGlobalConfig)
+	if gcp == nil {
+		return
+	}
+
+	threshold := int(gcp.GlobalValueInt(types.GoroutineLeakDetectionThreshold))
+	checkInterval := time.Duration(gcp.GlobalValueInt(types.GoroutineLeakDetectionCheckIntervalMinutes)) * time.Minute
+	checkStatsFor := time.Duration(gcp.GlobalValueInt(types.GoroutineLeakDetectionCheckWindowMinutes)) * time.Minute
+	keepStatsFor := time.Duration(gcp.GlobalValueInt(types.GoroutineLeakDetectionKeepStatsHours)) * time.Hour
+	cooldownPeriod := time.Duration(gcp.GlobalValueInt(types.GoroutineLeakDetectionCooldownMinutes)) * time.Minute
+
+	ctx.GRLDParams.Set(threshold, checkInterval, checkStatsFor, keepStatsFor, cooldownPeriod)
 }
 
 // Listens to root cgroup in hierarchy mode (events always propagate
@@ -249,12 +335,27 @@ func handlePotentialGoroutineLeak() {
 	agentlog.DumpAllStacks(log, agentName)
 }
 
-func goroutinesMonitor(goroutinesThreshold int, checkInterval, checkStatsFor, keepStatsFor, cooldownPeriod time.Duration) {
+// goroutinesMonitor monitors the number of goroutines and detects potential goroutine leaks.
+func goroutinesMonitor(ctx *watcherContext) {
+	// Get the initial goroutine leak detection parameters to create the stats slice
+	goroutinesThreshold, checkInterval, checkStatsFor, keepStatsFor, cooldownPeriod := ctx.GRLDParams.Get()
 	entriesToKeep := int(keepStatsFor / checkInterval)
-	entriesToCheck := int(checkStatsFor / checkInterval)
 	stats := make([]int, 0, entriesToKeep+1)
 	var lastLeakHandled time.Time
 	for {
+		// Check if we have to resize the stats slice
+		goroutinesThreshold, checkInterval, checkStatsFor, keepStatsFor, cooldownPeriod = ctx.GRLDParams.Get()
+		newEntriesToKeep := int(keepStatsFor / checkInterval)
+		if newEntriesToKeep != entriesToKeep {
+			entriesToKeep = newEntriesToKeep
+			log.Functionf("Resizing stats slice to %d", entriesToKeep)
+			if len(stats) > entriesToKeep {
+				log.Functionf("Removing %d oldest entries", len(stats)-entriesToKeep)
+				stats = stats[len(stats)-entriesToKeep:]
+			}
+		}
+		entriesToCheck := int(checkStatsFor / checkInterval)
+		// Wait for the next check interval
 		time.Sleep(checkInterval)
 		numGoroutines := runtime.NumGoroutine()
 		// First check for the threshold
@@ -411,21 +512,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	// Handle memory pressure events by calling GC explicitly
 	go handleMemoryPressureEvents()
 
-	// Detect goroutine leaks
-	const (
-		// Threshold for the number of goroutines
-		// When reached, we assume there's a potential goroutine leak
-		goroutinesThreshold = 1000
-		// Check interval for the number of goroutines
-		checkInterval = 1 * time.Minute
-		// Check window. On each check, we analyze the stats for that period
-		checkWindow = 1 * time.Hour
-		// Keep statistic for that long
-		keepStatsFor = 24 * time.Hour
-		// Cooldown period for the leak detection
-		cooldownPeriod = 10 * time.Minute
-	)
-	go goroutinesMonitor(goroutinesThreshold, checkInterval, checkWindow, keepStatsFor, cooldownPeriod)
+	go goroutinesMonitor(&ctx)
 
 	for {
 		select {
@@ -646,6 +733,8 @@ func handleGlobalConfigImpl(ctxArg interface{}, key string,
 	if gcp != nil {
 		ctx.GCInitialized = true
 	}
+	// Update the global goroutine leak detection parameters
+	readGlobalGoroutineLeakDetectionParams(ctx)
 	log.Functionf("handleGlobalConfigImpl done for %s", key)
 }
 

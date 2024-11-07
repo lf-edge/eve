@@ -215,6 +215,11 @@ func TestNewConfigItemSpecMap(t *testing.T) {
 		NetDumpTopicPostOnboardInterval,
 		NetDumpDownloaderPCAP,
 		NetDumpDownloaderHTTPWithFieldValue,
+		GoroutineLeakDetectionThreshold,
+		GoroutineLeakDetectionCheckIntervalMinutes,
+		GoroutineLeakDetectionCheckWindowMinutes,
+		GoroutineLeakDetectionKeepStatsHours,
+		GoroutineLeakDetectionCooldownMinutes,
 	}
 	if len(specMap.GlobalSettings) != len(gsKeys) {
 		t.Errorf("GlobalSettings has more (%d) than expected keys (%d)",

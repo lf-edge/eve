@@ -85,3 +85,8 @@ To prevent repeated handling of the same issue within a short time frame, we
 incorporate a cooldown period in the `goroutinesMonitor` function. This ensures
 that resources are not wasted on redundant operations and that the monitoring
 system remains efficient.
+
+The goroutine leak detector is dynamically configurable via global configuration
+parameters. They are documented in the
+[CONFIG-PROPERTIES.md](../../../docs/CONFIG-PROPERTIES.md) and all have
+`goroutine.leak.detection` prefix.
