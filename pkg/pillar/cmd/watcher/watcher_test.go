@@ -4,7 +4,9 @@
 package watcher
 
 import (
+	"fmt"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
+	"github.com/sirupsen/logrus"
 	"io"
 	"math"
 	"os"
@@ -337,5 +339,126 @@ func TestGoroutinesMonitorLeak(t *testing.T) {
 	// Check if the log output contains the expected message
 	if !strings.Contains(string(output), "leak detected") {
 		t.Errorf("Expected log output to contain 'leak detected'")
+	}
+}
+
+// Adjust stats slice size dynamically based on updated parameters
+func TestGoroutinesMonitorUpdateParamsKeepStatsDecrease(t *testing.T) {
+	backupOut := logger.Out
+	backupLevel := logger.Level
+	// Create a pipe to capture log output
+	r, w, _ := os.Pipe()
+	logger.SetOutput(w)
+	logger.SetLevel(logrus.TraceLevel)
+	defer func() {
+		logger.SetOutput(backupOut)
+		logger.SetLevel(backupLevel)
+	}()
+
+	// Define a context with default parameters
+	ctx := &watcherContext{}
+
+	// Define parameters
+	goroutinesThreshold := 100
+	checkInterval := 1 * time.Millisecond
+	checkStatsFor := 10 * time.Millisecond
+	keepStatsFor := 24 * 60 * time.Millisecond
+	cooldownPeriod := 5 * time.Millisecond
+
+	// Set the parameters
+	ctx.GRLDParams.Set(goroutinesThreshold, checkInterval, checkStatsFor, keepStatsFor, cooldownPeriod)
+
+	go goroutinesMonitor(ctx)
+
+	// Wait until we fill the stats slice
+	time.Sleep(2 * keepStatsFor)
+
+	// Count the expected size of the stats slice
+	oldSize := int(keepStatsFor / checkInterval)
+
+	// Change the keepStatsFor parameter to force resizing of the stats slice
+	keepStatsFor /= 2
+
+	ctx.GRLDParams.Set(goroutinesThreshold, checkInterval, checkStatsFor, keepStatsFor, cooldownPeriod)
+
+	// Wait for several check intervals to allow the new context to be updated
+	time.Sleep(checkInterval * 100)
+
+	// Close the pipe
+	_ = w.Close()
+	output, _ := io.ReadAll(r)
+
+	expectedNewSize := int(keepStatsFor / checkInterval)
+	expectedRemovedEntries := oldSize - expectedNewSize
+
+	// Define the expected log output with the new size
+	msgResize := fmt.Sprintf("Resizing stats slice to %d", expectedNewSize)
+	msgRemove := fmt.Sprintf("Removing %d oldest entries", expectedRemovedEntries)
+
+	expectedMsgs := []string{msgResize, msgRemove}
+
+	// Check if the log output contains the expected messages
+	for _, expectedMsg := range expectedMsgs {
+		if !strings.Contains(string(output), expectedMsg) {
+			t.Errorf("Expected log output to contain '%s'", expectedMsg)
+		}
+	}
+}
+
+// Adjust stats slice size dynamically based on updated parameters
+func TestGoroutinesMonitorUpdateParamsKeepStatsIncrease(t *testing.T) {
+	backupOut := logger.Out
+	backupLevel := logger.Level
+	// Create a pipe to capture log output
+	r, w, _ := os.Pipe()
+	logger.SetOutput(w)
+	logger.SetLevel(logrus.TraceLevel)
+	defer func() {
+		logger.SetOutput(backupOut)
+		logger.SetLevel(backupLevel)
+	}()
+
+	// Define a context with default parameters
+	ctx := &watcherContext{}
+
+	// Define parameters
+	goroutinesThreshold := 100
+	checkInterval := 1 * time.Millisecond
+	checkStatsFor := 10 * time.Millisecond
+	keepStatsFor := 24 * 60 * time.Millisecond
+	cooldownPeriod := 5 * time.Millisecond
+
+	// Set the parameters
+	ctx.GRLDParams.Set(goroutinesThreshold, checkInterval, checkStatsFor, keepStatsFor, cooldownPeriod)
+
+	go goroutinesMonitor(ctx)
+
+	// Wait until we fill the stats slice
+	time.Sleep(2 * keepStatsFor)
+
+	// Change the keepStatsFor parameter to force resizing of the stats slice
+	keepStatsFor *= 2
+
+	ctx.GRLDParams.Set(goroutinesThreshold, checkInterval, checkStatsFor, keepStatsFor, cooldownPeriod)
+
+	// Wait for several check intervals to allow the new context to be updated
+	time.Sleep(checkInterval * 100)
+
+	// Close the pipe
+	_ = w.Close()
+	output, _ := io.ReadAll(r)
+
+	expectedNewSize := int(keepStatsFor / checkInterval)
+
+	// Define the expected log output with the new size
+	msgResize := fmt.Sprintf("Resizing stats slice to %d", expectedNewSize)
+
+	expectedMsgs := []string{msgResize}
+
+	// Check if the log output contains the expected messages
+	for _, expectedMsg := range expectedMsgs {
+		if !strings.Contains(string(output), expectedMsg) {
+			t.Errorf("Expected log output to contain '%s'", expectedMsg)
+		}
 	}
 }
