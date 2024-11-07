@@ -17,6 +17,12 @@ theme:
 extra:
   version: 2.0
 nav:
+  - 'Project Information':
+      - 'Overview': 'README.md'
+      - 'Contributions': 'CONTRIBUTING.md'
+      - 'Current EVE Adopters': 'ADOPTERS.md'
+      - 'Current maintainers': 'MAINTAINERS.md'
+      - 'Submitting security issues': 'docs/SECURITY.md'
   - Introduction: 'docs/README.md'
   - 'EVE Configuration': 'docs/CONFIG.md'
   - 'BIOS and Firmware management with EVE': 'docs/BIOS-FIRMWARE.md'
