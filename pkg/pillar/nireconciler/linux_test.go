@@ -785,6 +785,20 @@ var (
 						},
 						RuleID: 1,
 					},
+					{
+						Matches: []types.ACEMatch{
+							{
+								Type:  "ip",
+								Value: "0.0.0.0/0",
+							},
+						},
+						Actions: []types.ACEAction{
+							{
+								Drop: false,
+							},
+						},
+						RuleID: 2,
+					},
 				},
 			},
 			// Put two VIFs into the same switch NI (just to cover this scenario).
@@ -2972,6 +2986,122 @@ func TestCNI(test *testing.T) {
 	// Delete network instance
 	_, err = niReconciler.DelNI(ctx, ni1UUID.UUID)
 	t.Expect(err).ToNot(HaveOccurred())
+}
+
+func TestHostSysctl(test *testing.T) {
+	t := initTest(test, false)
+	networkMonitor.AddOrUpdateInterface(eth0)
+	networkMonitor.AddOrUpdateInterface(keth0)
+	networkMonitor.AddOrUpdateInterface(eth1)
+	networkMonitor.AddOrUpdateInterface(keth1)
+	networkMonitor.AddOrUpdateInterface(eth3)
+	networkMonitor.AddOrUpdateInterface(keth3)
+	var routes []netmonitor.Route
+	routes = append(routes, eth0Routes...)
+	routes = append(routes, eth1Routes...)
+	routes = append(routes, eth3Routes...)
+	networkMonitor.UpdateRoutes(routes)
+	ctx := reconciler.MockRun(context.Background())
+	updatesCh := niReconciler.WatchReconcilerUpdates()
+	niReconciler.RunInitialReconcile(ctx)
+
+	// Create 2 local and 1 switch network instance.
+	var recUpdate nirec.ReconcilerUpdate
+	networkMonitor.AddOrUpdateInterface(ni1BridgeIf)
+	niStatus, err := niReconciler.AddNI(ctx, ni1Config, ni1Bridge)
+	t.Expect(err).ToNot(HaveOccurred())
+	t.Eventually(updatesCh).Should(Receive(&recUpdate))
+	t.Expect(recUpdate.UpdateType).To(Equal(nirec.NIReconcileStatusChanged))
+	t.Expect(recUpdate.NIStatus.Equal(niStatus)).To(BeTrue())
+
+	niStatus, err = niReconciler.AddNI(ctx, ni2Config, ni2Bridge)
+	t.Expect(err).ToNot(HaveOccurred())
+	t.Eventually(updatesCh).Should(Receive(&recUpdate))
+	t.Expect(recUpdate.UpdateType).To(Equal(nirec.NIReconcileStatusChanged))
+	t.Expect(recUpdate.NIStatus.Equal(niStatus)).To(BeTrue())
+
+	networkMonitor.AddOrUpdateInterface(ni5BridgeIf)
+	niStatus, err = niReconciler.AddNI(ctx, ni5Config, ni5Bridge)
+	t.Expect(err).ToNot(HaveOccurred())
+	t.Eventually(updatesCh).Should(Receive(&recUpdate))
+	t.Expect(recUpdate.UpdateType).To(Equal(nirec.NIReconcileStatusChanged))
+	t.Expect(recUpdate.NIStatus.Equal(niStatus)).To(BeTrue())
+
+	// Flow logging is disabled in all network instances and there are
+	// no apps deployed hence bridges do not need iptables.
+	hostSysctlRef := dg.Reference(linuxitems.Sysctl{})
+	t.Expect(itemDescription(hostSysctlRef)).To(
+		ContainSubstring("bridgeCallIptables: false"))
+	t.Expect(itemDescription(hostSysctlRef)).To(
+		ContainSubstring("bridgeCallIp6tables: false"))
+
+	// Connection application with allow-all for IPv4 + portmap rules.
+	// This does not require to trigger iptables from bridge, but ip6tables
+	// should be triggered (still we get performance improvement at least for IPv4).
+	appStatus, err := niReconciler.AddAppConn(ctx, app2NetConfig, app2Num, cnirpc.AppPod{}, app2VIFs)
+	t.Expect(err).ToNot(HaveOccurred())
+	t.Eventually(updatesCh).Should(Receive(&recUpdate))
+	t.Expect(recUpdate.UpdateType).To(Equal(nirec.AppConnReconcileStatusChanged))
+	t.Expect(recUpdate.AppConnStatus.Equal(appStatus)).To(BeTrue())
+
+	t.Expect(itemDescription(hostSysctlRef)).To(
+		ContainSubstring("bridgeCallIptables: false"))
+	t.Expect(itemDescription(hostSysctlRef)).To(
+		ContainSubstring("bridgeCallIp6tables: true"))
+
+	// Connect application with a LIMIT rule.
+	appStatus, err = niReconciler.AddAppConn(ctx, app1NetConfig, app1Num, cnirpc.AppPod{}, app1VIFs)
+	t.Expect(err).ToNot(HaveOccurred())
+	t.Eventually(updatesCh).Should(Receive(&recUpdate))
+	t.Expect(recUpdate.UpdateType).To(Equal(nirec.AppConnReconcileStatusChanged))
+	t.Expect(recUpdate.AppConnStatus.Equal(appStatus)).To(BeTrue())
+
+	// With LIMIT rule present, iptables should be called from the bridge.
+	t.Expect(itemDescription(hostSysctlRef)).To(
+		ContainSubstring("bridgeCallIptables: true"))
+	t.Expect(itemDescription(hostSysctlRef)).To(
+		ContainSubstring("bridgeCallIp6tables: true"))
+
+	// Remove app with the LIMIT rule. For IPv4 bridge should not call iptables anymore.
+	appStatus, err = niReconciler.DelAppConn(ctx, app1UUID.UUID)
+	t.Expect(err).ToNot(HaveOccurred())
+	t.Eventually(updatesCh).Should(Receive(&recUpdate))
+	t.Expect(recUpdate.UpdateType).To(Equal(nirec.AppConnReconcileStatusChanged))
+	t.Expect(recUpdate.AppConnStatus.Equal(appStatus)).To(BeTrue())
+
+	t.Expect(itemDescription(hostSysctlRef)).To(
+		ContainSubstring("bridgeCallIptables: false"))
+	t.Expect(itemDescription(hostSysctlRef)).To(
+		ContainSubstring("bridgeCallIp6tables: true"))
+
+	// Enable flow logging in one of the network instances.
+	// This enforces the use of iptables from bridge for both IPv4 and IPv6.
+	ni2Config.EnableFlowlog = true
+	_, err = niReconciler.UpdateNI(ctx, ni2Config, ni2Bridge)
+	t.Expect(err).ToNot(HaveOccurred())
+
+	t.Expect(itemDescription(hostSysctlRef)).To(
+		ContainSubstring("bridgeCallIptables: true"))
+	t.Expect(itemDescription(hostSysctlRef)).To(
+		ContainSubstring("bridgeCallIp6tables: true"))
+
+	// Delete everything.
+	_, err = niReconciler.DelAppConn(ctx, app2UUID.UUID)
+	t.Expect(err).ToNot(HaveOccurred())
+	_, err = niReconciler.DelNI(ctx, ni1UUID.UUID)
+	t.Expect(err).ToNot(HaveOccurred())
+	_, err = niReconciler.DelNI(ctx, ni2UUID.UUID)
+	t.Expect(err).ToNot(HaveOccurred())
+	_, err = niReconciler.DelNI(ctx, ni5UUID.UUID)
+	t.Expect(err).ToNot(HaveOccurred())
+
+	t.Expect(itemDescription(hostSysctlRef)).To(
+		ContainSubstring("bridgeCallIptables: false"))
+	t.Expect(itemDescription(hostSysctlRef)).To(
+		ContainSubstring("bridgeCallIp6tables: false"))
+
+	// Revert back to flow logging being disabled.
+	ni2Config.EnableFlowlog = false
 }
 
 // This test uses it own network config, not the config globally defined.
