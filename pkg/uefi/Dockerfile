@@ -29,8 +29,8 @@ COPY rpi /rpi
 
 FROM build AS build-amd64-versions
 
-ENV EDK_VERSION edk2-stable202408
-ENV EDK_COMMIT b158dad150bf02879668f72ce306445250838201
+ENV EDK_VERSION edk2-stable202408.01
+ENV EDK_COMMIT 4dfdca63a93497203f197ec98ba20e2327e4afe4
 
 FROM build-${TARGETARCH}-versions AS build-edk2
 
