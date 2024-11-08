@@ -1424,6 +1424,8 @@ func TestIPv4LocalAndSwitchNIs(test *testing.T) {
 	t.Expect(niStatus.Deleted).To(BeFalse())
 	t.Expect(niStatus.InProgress).To(BeFalse())
 	t.Expect(niStatus.BrIfName).To(Equal("bn1"))
+	// Traffic mirroring for Local NI is not implemented.
+	t.Expect(niStatus.MirrorIfName).To(BeEmpty())
 	t.Expect(niStatus.FailedItems).To(BeEmpty())
 	t.Expect(niStatus.Routes).To(HaveLen(1))
 	t.Expect(niStatus.Routes[0].IsDefaultRoute()).To(BeTrue())
@@ -1518,6 +1520,7 @@ func TestIPv4LocalAndSwitchNIs(test *testing.T) {
 	t.Expect(niStatus.Deleted).To(BeFalse())
 	t.Expect(niStatus.InProgress).To(BeFalse())
 	t.Expect(niStatus.BrIfName).To(Equal("eth1"))
+	t.Expect(niStatus.MirrorIfName).To(Equal("eth1-m"))
 	t.Expect(niStatus.FailedItems).To(BeEmpty())
 
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
@@ -1530,6 +1533,10 @@ func TestIPv4LocalAndSwitchNIs(test *testing.T) {
 		genericitems.HTTPServer{
 			ListenIf: genericitems.NetworkIf{IfName: "eth1"}, Port: 80,
 		}))).To(BeFalse())
+	t.Expect(itemIsCreated(dg.Reference(
+		linuxitems.DummyIf{IfName: "eth1-m"}))).To(BeTrue())
+	t.Expect(itemCountWithType(linuxitems.TCIngressTypename)).To(Equal(1))
+	t.Expect(itemCountWithType(linuxitems.TCMirrorTypename)).To(Equal(4))
 
 	// Simulate eth1 getting an IP address.
 	eth1.IPAddrs = eth1IPs
@@ -1582,6 +1589,9 @@ func TestIPv4LocalAndSwitchNIs(test *testing.T) {
 	t.Expect(recUpdate.UpdateType).To(Equal(nirec.AppConnReconcileStatusChanged))
 	t.Expect(recUpdate.AppConnStatus.Equal(appStatus)).To(BeTrue())
 
+	t.Expect(itemCountWithType(linuxitems.TCIngressTypename)).To(Equal(1))
+	t.Expect(itemCountWithType(linuxitems.TCMirrorTypename)).To(Equal(4))
+
 	// Simulate domainmgr creating all VIFs.
 	networkMonitor.AddOrUpdateInterface(app2VIF1)
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
@@ -1603,6 +1613,10 @@ func TestIPv4LocalAndSwitchNIs(test *testing.T) {
 		t.Expect(recUpdate.AppConnStatus.VIFs[i].InProgress).To(BeFalse())
 		t.Expect(recUpdate.AppConnStatus.VIFs[i].FailedItems).To(BeEmpty())
 	}
+
+	// 2 VIFs and one device port are connected to switch NI.
+	t.Expect(itemCountWithType(linuxitems.TCIngressTypename)).To(Equal(1 * 3))
+	t.Expect(itemCountWithType(linuxitems.TCMirrorTypename)).To(Equal(4 * 3))
 
 	ni1PortMapRule1 := iptables.Rule{
 		RuleLabel: "User-configured PORTMAP ACL rule 1 for port eth0 IP 192.168.10.5 from inside",

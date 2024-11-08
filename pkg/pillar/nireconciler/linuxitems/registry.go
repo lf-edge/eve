@@ -30,6 +30,8 @@ func RegisterItems(log *base.LogObject, registry *reconciler.DefaultRegistry,
 		{c: &SysctlConfigurator{Log: log}, t: SysctlTypename},
 		{c: &VIFConfigurator{Log: log}, t: VIFTypename},
 		{c: &BPDUGuardConfigurator{Log: log}, t: BPDUGuardTypename},
+		{c: &TCIngressConfigurator{Log: log}, t: TCIngressTypename},
+		{c: &TCMirrorConfigurator{Log: log}, t: TCMirrorTypename},
 	}
 	for _, configurator := range configurators {
 		err := registry.Register(configurator.c, configurator.t)

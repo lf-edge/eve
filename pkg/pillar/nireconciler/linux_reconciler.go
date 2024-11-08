@@ -121,11 +121,12 @@ const (
 )
 
 type niInfo struct {
-	config   types.NetworkInstanceConfig
-	bridge   NIBridge
-	brIfName string
-	deleted  bool
-	status   NIReconcileStatus
+	config       types.NetworkInstanceConfig
+	bridge       NIBridge
+	brIfName     string
+	mirrorIfName string
+	deleted      bool
+	status       NIReconcileStatus
 }
 
 type appInfo struct {
@@ -632,13 +633,14 @@ func (r *LinuxNIReconciler) updateNIStatus(
 	intSG := r.intendedState.SubGraph(sgName)
 	inProgress, failedItems := r.getSubgraphState(intSG, currSG, false)
 	niStatus = NIReconcileStatus{
-		NI:          niID,
-		Deleted:     deleted,
-		BrIfName:    brIfName,
-		BrIfIndex:   brIfIndex,
-		InProgress:  inProgress,
-		FailedItems: failedItems,
-		Routes:      r.getNIRouteInfo(niID),
+		NI:           niID,
+		Deleted:      deleted,
+		BrIfName:     brIfName,
+		BrIfIndex:    brIfIndex,
+		MirrorIfName: niInfo.mirrorIfName,
+		InProgress:   inProgress,
+		FailedItems:  failedItems,
+		Routes:       r.getNIRouteInfo(niID),
 	}
 	if !niInfo.status.Equal(niStatus) {
 		changed = true
@@ -836,10 +838,17 @@ func (r *LinuxNIReconciler) AddNI(ctx context.Context,
 	if err != nil {
 		return niStatus, err
 	}
+	// Mirroring for efficient monitoring purposes is only implemented for the Switch
+	// network instance.
+	var mirrorIfName string
+	if niConfig.Type == types.NetworkInstanceTypeSwitch {
+		mirrorIfName = r.mirrorIfName(brIfName)
+	}
 	r.nis[niID] = &niInfo{
-		config:   niConfig,
-		bridge:   br,
-		brIfName: brIfName,
+		config:       niConfig,
+		bridge:       br,
+		brIfName:     brIfName,
+		mirrorIfName: mirrorIfName,
 	}
 	reconcileReason := fmt.Sprintf("adding new NI (%v)", niID)
 	// Rebuild and reconcile also global config to update the set of intended/current
@@ -876,6 +885,9 @@ func (r *LinuxNIReconciler) UpdateNI(ctx context.Context,
 		return niStatus, err
 	}
 	r.nis[niID].brIfName = brIfName
+	if niConfig.Type == types.NetworkInstanceTypeSwitch {
+		r.nis[niID].mirrorIfName = r.mirrorIfName(brIfName)
+	}
 	reconcileReason := fmt.Sprintf("updating NI (%v)", niID)
 	// Get the current state of external items to be used by NI.
 	r.updateCurrentNIState(niID)
@@ -1145,6 +1157,16 @@ func (r *LinuxNIReconciler) getSubgraphState(intSG, currSG dg.GraphR, forApp boo
 		}
 		if sysctlConf, isSysctl := item.(linux.Sysctl); isSysctl {
 			if sysctlConf.ForApp.ID != emptyUUID {
+				return true
+			}
+		}
+		if tcIngress, isTcIngress := item.(linux.TCIngress); isTcIngress {
+			if tcIngress.NetIf.ItemRef.ItemType == linux.VIFTypename {
+				return true
+			}
+		}
+		if tcMirror, isTcMirror := item.(linux.TCMirror); isTcMirror {
+			if tcMirror.FromNetIf.ItemRef.ItemType == linux.VIFTypename {
 				return true
 			}
 		}
