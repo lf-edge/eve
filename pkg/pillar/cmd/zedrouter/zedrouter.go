@@ -697,6 +697,10 @@ func (z *zedrouter) processNIReconcileStatus(recStatus nireconciler.NIReconcileS
 		niStatus.BridgeName = recStatus.BrIfName
 		changed = true
 	}
+	if niStatus.MirrorIfName != recStatus.MirrorIfName {
+		niStatus.MirrorIfName = recStatus.MirrorIfName
+		changed = true
+	}
 	if !recStatus.InProgress {
 		if niStatus.ChangeInProgress != types.ChangeInProgressTypeNone {
 			niStatus.ChangeInProgress = types.ChangeInProgressTypeNone

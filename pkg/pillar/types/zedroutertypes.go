@@ -368,6 +368,11 @@ type NetworkInstanceInfo struct {
 	BridgeMac     net.HardwareAddr
 	BridgeIfindex int
 
+	// Name of a (dummy) interface where ICMP, ARP, DNS and DHCP packets
+	// are mirrored from the bridge and can be used for monitoring purposes.
+	// Empty if mirroring is not available.
+	MirrorIfName string
+
 	// Collection of address assignments; from MAC address to IP address
 	IPAssignments map[string]AssignedAddrs
 

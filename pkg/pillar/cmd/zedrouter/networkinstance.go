@@ -29,6 +29,7 @@ func (z *zedrouter) getArgsForNIStateCollecting(niID uuid.UUID) (
 	br.NI = niID
 	br.BrNum = niStatus.BridgeNum
 	br.BrIfName = niStatus.BridgeName
+	br.MirrorIfName = niStatus.MirrorIfName
 	br.BrIfMAC = niStatus.BridgeMac
 	// Find all app instances that (actively) use this network.
 	apps := z.pubAppNetworkStatus.GetAll()
