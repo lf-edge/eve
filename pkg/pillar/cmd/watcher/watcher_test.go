@@ -270,8 +270,10 @@ func TestGoroutinesMonitorNoLeak(t *testing.T) {
 	// Create context with default parameters
 	ctx := &watcherContext{}
 	ctx.GRLDParams.Set(goroutinesThreshold, checkInterval, checkStatsFor, keepStatsFor, cooldownPeriod)
+	ctx.GRLDParams.MakeStoppable()
 
 	go goroutinesMonitor(ctx)
+	defer ctx.GRLDParams.Stop()
 
 	timeStart := time.Now()
 	for {
@@ -315,8 +317,10 @@ func TestGoroutinesMonitorLeak(t *testing.T) {
 	// Create context with default parameters
 	ctx := &watcherContext{}
 	ctx.GRLDParams.Set(goroutinesThreshold, checkInterval, checkStatsFor, keepStatsFor, cooldownPeriod)
+	ctx.GRLDParams.MakeStoppable()
 
 	go goroutinesMonitor(ctx)
+	defer ctx.GRLDParams.Stop()
 
 	timeStart := time.Now()
 	for {
@@ -367,8 +371,10 @@ func TestGoroutinesMonitorUpdateParamsKeepStatsDecrease(t *testing.T) {
 
 	// Set the parameters
 	ctx.GRLDParams.Set(goroutinesThreshold, checkInterval, checkStatsFor, keepStatsFor, cooldownPeriod)
+	ctx.GRLDParams.MakeStoppable()
 
 	go goroutinesMonitor(ctx)
+	defer ctx.GRLDParams.Stop()
 
 	// Wait until we fill the stats slice
 	time.Sleep(2 * keepStatsFor)
@@ -430,8 +436,10 @@ func TestGoroutinesMonitorUpdateParamsKeepStatsIncrease(t *testing.T) {
 
 	// Set the parameters
 	ctx.GRLDParams.Set(goroutinesThreshold, checkInterval, checkStatsFor, keepStatsFor, cooldownPeriod)
+	ctx.GRLDParams.MakeStoppable()
 
 	go goroutinesMonitor(ctx)
+	defer ctx.GRLDParams.Stop()
 
 	// Wait until we fill the stats slice
 	time.Sleep(2 * keepStatsFor)
@@ -461,4 +469,95 @@ func TestGoroutinesMonitorUpdateParamsKeepStatsIncrease(t *testing.T) {
 			t.Errorf("Expected log output to contain '%s'", expectedMsg)
 		}
 	}
+}
+
+func TestGoroutineMonitorStops(t *testing.T) {
+	keepStatsFor := 24 * 60 * time.Millisecond
+	goroutinesThreshold := 100
+	checkInterval := 1 * time.Millisecond
+	checkStatsFor := 10 * time.Millisecond
+	cooldownPeriod := 5 * time.Millisecond
+
+	backupOut := logger.Out
+	backupLevel := logger.Level
+	// Create a pipe to capture log output
+	r, w, _ := os.Pipe()
+	logger.SetOutput(w)
+	logger.SetLevel(logrus.TraceLevel)
+	defer func() {
+		logger.SetOutput(backupOut)
+		logger.SetLevel(backupLevel)
+	}()
+
+	// Create context with default parameters
+	ctx := &watcherContext{}
+	ctx.GRLDParams.Set(goroutinesThreshold, checkInterval, checkStatsFor, keepStatsFor, cooldownPeriod)
+	ctx.GRLDParams.MakeStoppable()
+
+	go goroutinesMonitor(ctx)
+
+	// Let the monitor run for a while
+	time.Sleep(keepStatsFor * 2)
+
+	ctx.GRLDParams.Stop()
+
+	// Wait for several check intervals to allow the monitor to stop
+	time.Sleep(checkInterval * 100)
+
+	// Close the pipe
+	_ = w.Close()
+
+	// Read the log output
+	output, _ := io.ReadAll(r)
+
+	msgStart := "Starting goroutines monitor (stoppable: true)"
+	msgStop := "Stopping goroutines monitor"
+	expectedMsgs := []string{msgStart, msgStop}
+	for _, expectedMsg := range expectedMsgs {
+		if !strings.Contains(string(output), expectedMsg) {
+			t.Errorf("Expected log output to contain '%s'", expectedMsg)
+		}
+	}
+}
+
+func TestGoroutineMonitorRunsFineUnstoppable(t *testing.T) {
+	keepStatsFor := 24 * 60 * time.Millisecond
+	goroutinesThreshold := 100
+	checkInterval := 1 * time.Millisecond
+	checkStatsFor := 10 * time.Millisecond
+	cooldownPeriod := 5 * time.Millisecond
+
+	backupOut := logger.Out
+	backupLevel := logger.Level
+	// Create a pipe to capture log output
+	r, w, _ := os.Pipe()
+	logger.SetOutput(w)
+	logger.SetLevel(logrus.TraceLevel)
+	defer func() {
+		logger.SetOutput(backupOut)
+		logger.SetLevel(backupLevel)
+	}()
+
+	// Create context with default parameters
+	ctx := &watcherContext{}
+	ctx.GRLDParams.Set(goroutinesThreshold, checkInterval, checkStatsFor, keepStatsFor, cooldownPeriod)
+
+	go goroutinesMonitor(ctx)
+
+	time.Sleep(keepStatsFor * 2)
+
+	// Close the pipe
+	_ = w.Close()
+
+	// Read the log output
+	output, _ := io.ReadAll(r)
+
+	msgStart := "Starting goroutines monitor (stoppable: false)"
+	expectedMsgs := []string{msgStart}
+	for _, expectedMsg := range expectedMsgs {
+		if !strings.Contains(string(output), expectedMsg) {
+			t.Errorf("Expected log output to contain '%s'", expectedMsg)
+		}
+	}
+
 }

@@ -4,6 +4,7 @@
 package watcher
 
 import (
+	"context"
 	"flag"
 	"math"
 	"os"
@@ -36,6 +37,9 @@ type GoroutineLeakDetectionParams struct {
 	checkStatsFor  time.Duration
 	keepStatsFor   time.Duration
 	cooldownPeriod time.Duration
+	// Context to make the monitoring goroutine cancellable
+	context context.Context
+	stop    context.CancelFunc
 }
 
 func validateGoroutineLeakDetectionParams(threshold int, checkInterval, checkStatsFor, keepStatsFor, cooldownPeriod time.Duration) bool {
@@ -77,6 +81,34 @@ func (gldp *GoroutineLeakDetectionParams) Set(threshold int, checkInterval, chec
 	gldp.keepStatsFor = keepStatsFor
 	gldp.cooldownPeriod = cooldownPeriod
 	gldp.mutex.Unlock()
+}
+
+// MakeStoppable creates a cancellable context and a stop function
+func (gldp *GoroutineLeakDetectionParams) MakeStoppable() {
+	gldp.context, gldp.stop = context.WithCancel(context.Background())
+}
+
+func (gldp *GoroutineLeakDetectionParams) isStoppable() bool {
+	return gldp.context != nil
+}
+
+func (gldp *GoroutineLeakDetectionParams) checkStopCondition() bool {
+	if gldp.context != nil {
+		select {
+		case <-gldp.context.Done():
+			return true
+		default:
+			return false
+		}
+	}
+	return false
+}
+
+// Stop cancels the context to stop the monitoring goroutine
+func (gldp *GoroutineLeakDetectionParams) Stop() {
+	if gldp.stop != nil {
+		gldp.stop()
+	}
 }
 
 // Get atomically gets the global goroutine leak detection parameters
@@ -337,12 +369,18 @@ func handlePotentialGoroutineLeak() {
 
 // goroutinesMonitor monitors the number of goroutines and detects potential goroutine leaks.
 func goroutinesMonitor(ctx *watcherContext) {
+	log.Functionf("Starting goroutines monitor (stoppable: %v)", ctx.GRLDParams.isStoppable())
 	// Get the initial goroutine leak detection parameters to create the stats slice
 	goroutinesThreshold, checkInterval, checkStatsFor, keepStatsFor, cooldownPeriod := ctx.GRLDParams.Get()
 	entriesToKeep := int(keepStatsFor / checkInterval)
 	stats := make([]int, 0, entriesToKeep+1)
 	var lastLeakHandled time.Time
 	for {
+		// Check if we have to stop
+		if ctx.GRLDParams.checkStopCondition() {
+			log.Functionf("Stopping goroutines monitor")
+			return
+		}
 		// Check if we have to resize the stats slice
 		goroutinesThreshold, checkInterval, checkStatsFor, keepStatsFor, cooldownPeriod = ctx.GRLDParams.Get()
 		newEntriesToKeep := int(keepStatsFor / checkInterval)
