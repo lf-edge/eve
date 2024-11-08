@@ -49,13 +49,14 @@ import (
 //  |   |        +-----------------------------------------+         |   |
 //  |   |        |                   BlackHole             |         |   |
 //  |   |        |                                         |         |   |
-//  |   |        |       +-----------+   +---------+       |         |   |
-//  |   |        |       |  DummyIf  |   |  Route  |       |         |   |
-//  |   |        |       +-----------+   +---------+       |         |   |
+//  |   |        |   +-------------------+   +---------+   |         |   |
+//  |   |        |   |      DummyIf      |   |  Route  |   |         |   |
+//  |   |        |   | (for packet drop) |   +---------+   |         |   |
+//  |   |        |   +-------------------+                 |         |   |
 //  |   |        |                                         |         |   |
-//  |   |        |    +----------------+   +----------+    |         |   |
-//  |   |        |    |  IptablesRule  |   |  IPRule  |    |         |   |
-//  |   |        |    +----------------+   +----------+    |         |   |
+//  |   |        |   +----------------+     +----------+   |         |   |
+//  |   |        |   |  IptablesRule  |     |  IPRule  |   |         |   |
+//  |   |        |   +----------------+     +----------+   |         |   |
 //  |   |        +-----------------------------------------+         |   |
 //  |   |                                                            |   |
 //  |   |   +----------------------------------------------------+   |   |
@@ -134,6 +135,20 @@ import (
 //  |   |   +----------------------------------------------------+   |   |
 //  |   |                                                            |   |
 //  |   |   +----------------------------------------------------+   |   |
+//  |   |   |            Mirroring (for Switch NI)               |   |   |
+//  |   |   |                                                    |   |   |
+//  |   |   |            +------------------------+              |   |   |
+//  |   |   |            |        DummyIf         |              |   |   |
+//  |   |   |            | (for mirrored packets) |              |   |   |
+//  |   |   |            +------------------------+              |   |   |
+//  |   |   |                                                    |   |   |
+//  |   |   |    +---------------+      +---------------+        |   |   |
+//  |   |   |    |   TCIngress   |      |   TCMirror    |        |   |   |
+//  |   |   |    | (device port) | ...  | (device port) | ...    |   |   |
+//  |   |   |    +---------------+      +---------------+        |   |   |
+//  |   |   +----------------------------------------------------+   |   |
+//  |   |                                                            |   |
+//  |   |   +----------------------------------------------------+   |   |
 //  |   |   |                     Services                       |   |   |
 //  |   |   |                                                    |   |   |
 //  |   |   |   +---------------+    +-----------------------+   |   |   |
@@ -166,6 +181,12 @@ import (
 //  |   |   |   | VLANPort    |  |  BPDUGuard  |  |  IPSet   |   |   |   |
 //  |   |   |   | (for L2 NI) |  | (for L2 NI) |  |  (eids)  |   |   |   |
 //  |   |   |   +-------------+  +-------------+  +----------+   |   |   |
+//  |   |   |                                                    |   |   |
+//  |   |   |   +-----------------+   +------------------+       |   |   |
+//  |   |   |   |    TCIngress    |   |     TCMirror     |       |   |   |
+//  |   |   |   |    (for VIF)    |   |     (for VIF)    | ...   |   |   |
+//  |   |   |   | (for Switch NI) |   |  (for Switch NI) | ...   |   |   |
+//  |   |   |   +-----------------+   +------------------+       |   |   |
 //  |   |   |                                                    |   |   |
 //  |   |   |   +--------------------------------------------+   |   |   |
 //  |   |   |   |                   ACLs                     |   |   |   |
@@ -230,6 +251,9 @@ const (
 	// L3SG : subgraph with configuration items for a given NI related to Layer3
 	// of the ISO/OSI model.
 	L3SG = "L3"
+	// NIMirroringSG : subgraph with items belonging to a given NI that collectively
+	// implement mirroring of some traffic for monitoring purposes.
+	NIMirroringSG = "Mirroring"
 	// NIServicesSG : subgraph with items belonging to a given NI that collectively
 	// provide various services for connected applications, such as DHCP, DNS, cloud-init
 	// metadata, etc.
@@ -508,6 +532,9 @@ func (r *LinuxNIReconciler) getIntendedNICfg(niID uuid.UUID) dg.Graph {
 	if !ni.bridge.IPConflict {
 		intendedCfg.PutSubGraph(r.getIntendedNIL2Cfg(niID))
 		intendedCfg.PutSubGraph(r.getIntendedNIL3Cfg(niID))
+		if ni.config.Type == types.NetworkInstanceTypeSwitch {
+			intendedCfg.PutSubGraph(r.getIntendedNIMirroring(niID))
+		}
 		intendedCfg.PutSubGraph(r.getIntendedNIServices(niID))
 	}
 	for _, app := range r.apps {
@@ -856,6 +883,116 @@ func (r *LinuxNIReconciler) getIntendedNIL3Cfg(niID uuid.UUID) dg.Graph {
 		}
 	}
 	return intendedL3Cfg
+}
+
+// Mirror small portion of the traffic for monitoring
+// (learning app IPs, logging DNS requests, etc.).
+func (r *LinuxNIReconciler) getIntendedNIMirroring(niID uuid.UUID) dg.Graph {
+	ni := r.nis[niID]
+	graphArgs := dg.InitArgs{
+		Name:        NIMirroringSG,
+		Description: "Network instance packet mirroring (for DHCP, DNS, ICMP and ARP)",
+	}
+	intendedNIMirroring := dg.New(graphArgs)
+	intendedNIMirroring.PutItem(linux.DummyIf{IfName: ni.mirrorIfName}, nil)
+	for _, port := range ni.bridge.Ports {
+		ifName := portPhysIfName(port)
+		portIfRef := generic.NetworkIf{
+			IfName:  ifName,
+			ItemRef: dg.Reference(generic.Port{IfName: ifName}),
+		}
+		intendedNIMirroring.PutItem(linux.TCIngress{NetIf: portIfRef}, nil)
+		for _, mirrorRule := range r.getIntendedNIMirrorRules(niID, portIfRef) {
+			intendedNIMirroring.PutItem(mirrorRule, nil)
+		}
+	}
+	return intendedNIMirroring
+}
+
+func (r *LinuxNIReconciler) getIntendedNIMirrorRules(niID uuid.UUID,
+	fromNetIf generic.NetworkIf) []linux.TCMirror {
+	var rules []linux.TCMirror
+	ni := r.nis[niID]
+	mirrorIfRef := generic.NetworkIf{
+		IfName:  ni.mirrorIfName,
+		ItemRef: dg.Reference(linux.DummyIf{IfName: ni.mirrorIfName}),
+	}
+	// Protocol numbers (https://www.iana.org/assignments/protocol-numbers/protocol-numbers.xhtml)
+	udp := uint8(17)
+	tcp := uint8(6)
+	icmpv6 := uint8(58)
+	// Rule 1: mirror DHCP replies.
+	rules = append(rules, linux.TCMirror{
+		RulePriority:      1,
+		FromNetIf:         fromNetIf,
+		ToNetIf:           mirrorIfRef,
+		Protocol:          linux.TCMatchProtoIPv4,
+		TransportProtocol: &udp,
+		TransportSrcPort:  67,
+	})
+	// Rule 2: mirror DHCPv6 replies.
+	rules = append(rules, linux.TCMirror{
+		RulePriority:      2,
+		FromNetIf:         fromNetIf,
+		ToNetIf:           mirrorIfRef,
+		Protocol:          linux.TCMatchProtoIPv6,
+		TransportProtocol: &udp,
+		TransportSrcPort:  547,
+	})
+	// Rules 3-6: mirror DNS replies.
+	// Configured only if flow logging is enabled.
+	if ni.config.EnableFlowlog {
+		rules = append(rules, linux.TCMirror{
+			RulePriority:      3,
+			FromNetIf:         fromNetIf,
+			ToNetIf:           mirrorIfRef,
+			Protocol:          linux.TCMatchProtoIPv4,
+			TransportProtocol: &udp,
+			TransportSrcPort:  53,
+		})
+		rules = append(rules, linux.TCMirror{
+			RulePriority:      4,
+			FromNetIf:         fromNetIf,
+			ToNetIf:           mirrorIfRef,
+			Protocol:          linux.TCMatchProtoIPv4,
+			TransportProtocol: &tcp,
+			TransportSrcPort:  53,
+		})
+		rules = append(rules, linux.TCMirror{
+			RulePriority:      5,
+			FromNetIf:         fromNetIf,
+			ToNetIf:           mirrorIfRef,
+			Protocol:          linux.TCMatchProtoIPv6,
+			TransportProtocol: &udp,
+			TransportSrcPort:  53,
+		})
+		rules = append(rules, linux.TCMirror{
+			RulePriority:      6,
+			FromNetIf:         fromNetIf,
+			ToNetIf:           mirrorIfRef,
+			Protocol:          linux.TCMatchProtoIPv6,
+			TransportProtocol: &tcp,
+			TransportSrcPort:  53,
+		})
+	}
+	// Rule 7: mirror all ARP packets.
+	rules = append(rules, linux.TCMirror{
+		RulePriority: 7,
+		FromNetIf:    fromNetIf,
+		ToNetIf:      mirrorIfRef,
+		Protocol:     linux.TCMatchProtoARP,
+	})
+	// Rule 8: mirror ICMPv6 Neighbor Solicitation messages.
+	neighSolicitation := uint8(135)
+	rules = append(rules, linux.TCMirror{
+		RulePriority:      8,
+		FromNetIf:         fromNetIf,
+		ToNetIf:           mirrorIfRef,
+		Protocol:          linux.TCMatchProtoIPv6,
+		TransportProtocol: &icmpv6,
+		ICMPType:          &neighSolicitation,
+	})
+	return rules
 }
 
 func (r *LinuxNIReconciler) getIntendedNIServices(niID uuid.UUID) dg.Graph {
@@ -1357,6 +1494,16 @@ func (r *LinuxNIReconciler) getIntendedAppConnCfg(niID uuid.UUID,
 				VLANConfig:   vlanConfig,
 			}, nil)
 		}
+		// Mirror small portion of the traffic for monitoring
+		// (learning app IPs, logging DNS requests, etc.).
+		vifRef := generic.NetworkIf{
+			IfName:  vif.hostIfName,
+			ItemRef: dg.Reference(linux.VIF{HostIfName: vif.hostIfName}),
+		}
+		intendedAppConnCfg.PutItem(linux.TCIngress{NetIf: vifRef}, nil)
+		for _, mirrorRule := range r.getIntendedNIMirrorRules(niID, vifRef) {
+			intendedAppConnCfg.PutItem(mirrorRule, nil)
+		}
 	}
 	// Create ipset with all the addresses from the DNSNameToIPList plus the VIF IP itself.
 	var ips []net.IP
@@ -1417,6 +1564,13 @@ func (r *LinuxNIReconciler) generateBridgeIfName(
 			LogAndErrPrefix, niConfig.Type, niConfig.UUID)
 	}
 	return brIfName, nil
+}
+
+// Interface name for dummy interface where ARP, ICMP, DNS and DHCP packets
+// are mirrored for monitoring purposes.
+func (r *LinuxNIReconciler) mirrorIfName(brIfName string) string {
+	// Keep it short, Linux limits interface name to 15 characters.
+	return brIfName + "-m"
 }
 
 func (r *LinuxNIReconciler) generateVifHostIfName(vifNum, appNum int) string {
