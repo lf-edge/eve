@@ -1122,46 +1122,41 @@ func checkKeepQuota() {
 	// we can have enormous number of files
 	maxCount := int(maxSize / maxGzipFileSize)
 	if totalsize > maxSize || totalCount > maxCount {
-		allFiles := filesKeepSent
-		allFiles = append(allFiles, filesAppUpload...)
-		allFiles = append(allFiles, filesDevUpload...)
-		allFiles = append(allFiles, fileFailSend...)
+		removalPriority := [][]string{filesKeepSent, fileFailSend, filesAppUpload, filesDevUpload}
 
-		// please notice that the files will be removed in alphabetical order,
-		// starting from the oldest (lowest) timestamp
-		// app.log...gz
-		// dev.log.keep...gz
-		// dev.log.upload....gz
-		// TODO: declare a clear order of removal by directory
-		sort.Strings(allFiles)
+		for _, dirFiles := range removalPriority {
+			// sort the files in alphabetical order: this way the files with the oldest (smallest) timestamps will be removed first
+			// side effect: in keepSentQueue, app logs will be removed before device logs, which is okay since those are always synced with the controller
+			sort.Strings(dirFiles)
 
-		for _, filename := range allFiles {
-			if _, ok := sfiles[filename]; !ok {
-				continue
-			}
-			fs := sfiles[filename]
-			filePath := filepath.Join(fs.logDir, fs.filename)
-			if _, err := os.Stat(filePath); err != nil {
-				continue
-			}
-			if err := os.Remove(filePath); err != nil {
-				log.Errorf("checkKeepQuota: remove failed %s, %v", filePath, err)
-				continue
-			}
-			if fs.logDir == keepSentDir {
-				// since the files are sorted by name and we delete the oldest files first,
-				// we can assume that the latest available log (from the file that is next in line to be deleted)
-				// has the timestamp of the file that was just deleted
-				logmetrics.OldestSavedDeviceLog = getTimestampFromGzip(fs.filename)
-			}
-			if !fs.isSent {
-				logmetrics.NumGZipFileRemoved++
-			}
-			removed++
-			totalsize -= fs.filesize
-			totalCount--
-			if totalsize < maxSize && totalCount < maxCount {
-				break
+			for _, filename := range dirFiles {
+				if _, ok := sfiles[filename]; !ok {
+					continue
+				}
+				fs := sfiles[filename]
+				filePath := filepath.Join(fs.logDir, fs.filename)
+				if _, err := os.Stat(filePath); err != nil {
+					continue
+				}
+				if err := os.Remove(filePath); err != nil {
+					log.Errorf("checkKeepQuota: remove failed %s, %v", filePath, err)
+					continue
+				}
+				if fs.logDir == keepSentDir {
+					// since the files are sorted by name and we delete the oldest files first,
+					// we can assume that the latest available log (from the file that is next in line to be deleted)
+					// has the timestamp of the file that was just deleted
+					logmetrics.OldestSavedDeviceLog = getTimestampFromGzip(fs.filename)
+				}
+				if !fs.isSent {
+					logmetrics.NumGZipFileRemoved++
+				}
+				removed++
+				totalsize -= fs.filesize
+				totalCount--
+				if totalsize < maxSize && totalCount < maxCount {
+					break
+				}
 			}
 		}
 		log.Tracef("checkKeepQuota: %d gzip files removed", removed)
