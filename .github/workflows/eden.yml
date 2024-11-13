@@ -120,7 +120,7 @@ jobs:
       eve_log_level: "debug"
       eve_artifact_name: eve-${{ matrix.hv }}-${{ matrix.arch }}-${{ matrix.platform }}
       artifact_run_id: ${{ needs.get_run_id.outputs.run_id }}
-      eden_version: "0.9.12"
+      eden_version: "0.9.13"
 
   test_suite_master:
     if: github.ref == 'refs/heads/master'
@@ -128,7 +128,7 @@ jobs:
     secrets: inherit
     with:
       eve_image: "lfedge/eve:snapshot"
-      eden_version: "0.9.12"
+      eden_version: "0.9.13"
 
   test_suite_tag:
     if: startsWith(github.ref, 'refs/tags')
@@ -136,4 +136,4 @@ jobs:
     secrets: inherit
     with:
       eve_image: "lfedge/eve:${{ github.ref_name }}"
-      eden_version: "0.9.12"
+      eden_version: "0.9.13"
