@@ -290,6 +290,38 @@ to learn IP assignments for Switch network instances, sniffs DNS traffic to coll
 records of DNS queries, reads conntrack table to build records of network flows and
 finally uses `github.com/shirou/gopsutil/net` package to collect interface counters.
 
+#### Packet sniffing
+
+Inside Switch network instances, where EVE is not in control of IPAM, NI State Collector
+captures DHCP(v6) replies, ICMPv6 Neighbor Solicitation messages and all ARP packets to learn
+application IP addresses. This includes IP addresses:
+
+* Assigned statically within the application,
+* Provided by an external DHCP(v6) server,
+* Assigned by a DHCP(v6) server running inside one of the applications, or
+* IPv6 addresses configured using SLAAC.
+
+Additionally, when flow logging is enabled, the Collector captures DNS replies across all
+network instances (including Local ones) to collect DNS request information.
+
+Packets are captured by the AF_PACKET socket and processed using the `github.com/packetcap/go-pcap`
+Go library. In older EVE versions (pre-13.7.0), packet capture was performed directly on the network
+instance bridge. This required to set the bridge into the promiscuous mode (otherwise we would only
+capture multicast packets and unicast packets destined to the bridge MAC address). However, performance
+testing revealed a significant overhead: *every* packet forwarded by the bridge was `skb_clone`-d inside
+the kernel for local delivery (see the kernel repository, file `net/bridge/br_forward.c`, function
+`br_forward()`). This happens before the BPF filter installed on the AF-PACKET socket and
+matching only DHCP(v6)/ICMPv6/ARP/DNS packets is applied. This is a fairly costly overhead added
+to processing of every packet, despite the NI State Collector only capturing a small fraction
+of application traffic.
+
+Since EVE version 13.7.0, [tc-mirred](https://man7.org/linux/man-pages/man8/tc-mirred.8.html)
+has been used to mirror DHCP(v6)/ICMPv6/ARP/DNS traffic from the ingress qdisc of each NI port
+and application VIF into a dummy interface (named `<bridge>-m`), from which the mirrored packets
+are captured (using the same library and AF-PACKET). The TC-based approach introduces minimal
+packet processing overhead while avoiding the additional skb cloning inside Linux bridges,
+significantly improving overall network performance.
+
 ## Debugging
 
 ### PubSub
