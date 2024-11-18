@@ -19,6 +19,9 @@ const (
 	IOUsageL3Adapter
 	// IOUsageVlanParent : network IO is used as VLAN parent interface.
 	IOUsageVlanParent
+	// IOUsageVlanParentAndL3Adapter : network IO is used as a VLAN parent interface
+	// and at the same time as an L3 endpoint (for untagged traffic).
+	IOUsageVlanParentAndL3Adapter
 	// IOUsageBondAggrIf : network IO is aggregated by Bond interface.
 	IOUsageBondAggrIf
 )

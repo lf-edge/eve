@@ -954,7 +954,7 @@ func (r *LinuxDpcReconciler) getIntendedPhysicalIfs(dpc types.DevicePortConfig) 
 		}
 		switch port.L2Type {
 		case types.L2LinkTypeNone:
-			if port.IsL3Port {
+			if port.IsL3Port && !dpc.IsPortUsedAsVlanParent(port.Logicallabel) {
 				intendedIfs.PutItem(linux.PhysIf{
 					PhysIfLL:     port.Logicallabel,
 					PhysIfName:   port.IfName,
@@ -965,11 +965,15 @@ func (r *LinuxDpcReconciler) getIntendedPhysicalIfs(dpc types.DevicePortConfig) 
 			}
 		case types.L2LinkTypeVLAN:
 			parent := dpc.LookupPortByLogicallabel(port.VLAN.ParentPort)
+			usage := generic.IOUsageVlanParent
+			if parent.IsL3Port {
+				usage = generic.IOUsageVlanParentAndL3Adapter
+			}
 			if parent != nil && parent.L2Type == types.L2LinkTypeNone {
 				intendedIfs.PutItem(linux.PhysIf{
 					PhysIfLL:     parent.Logicallabel,
 					PhysIfName:   parent.IfName,
-					Usage:        generic.IOUsageVlanParent,
+					Usage:        usage,
 					WirelessType: port.WirelessCfg.WType,
 					MTU:          r.intfMTU[port.Logicallabel],
 				}, nil)
@@ -1007,13 +1011,14 @@ func (r *LinuxDpcReconciler) getIntendedLogicalIO(dpc types.DevicePortConfig) dg
 			parent := dpc.LookupPortByLogicallabel(port.VLAN.ParentPort)
 			if parent != nil {
 				vlan := linux.Vlan{
-					LogicalLabel: port.Logicallabel,
-					IfName:       port.IfName,
-					ParentLL:     port.VLAN.ParentPort,
-					ParentIfName: parent.IfName,
-					ParentL2Type: parent.L2Type,
-					ID:           port.VLAN.ID,
-					MTU:          r.intfMTU[port.Logicallabel],
+					LogicalLabel:   port.Logicallabel,
+					IfName:         port.IfName,
+					ParentLL:       port.VLAN.ParentPort,
+					ParentIfName:   parent.IfName,
+					ParentL2Type:   parent.L2Type,
+					ParentIsL3Port: parent.IsL3Port,
+					ID:             port.VLAN.ID,
+					MTU:            r.intfMTU[port.Logicallabel],
 				}
 				intendedIO.PutItem(vlan, nil)
 			}
@@ -1026,13 +1031,14 @@ func (r *LinuxDpcReconciler) getIntendedLogicalIO(dpc types.DevicePortConfig) dg
 				}
 			}
 			var usage generic.IOUsage
-			if port.IsL3Port {
+			if dpc.IsPortUsedAsVlanParent(port.Logicallabel) {
+				if port.IsL3Port {
+					usage = generic.IOUsageVlanParentAndL3Adapter
+				} else {
+					usage = generic.IOUsageVlanParent
+				}
+			} else if port.IsL3Port {
 				usage = generic.IOUsageL3Adapter
-			} else {
-				// Nothing other than VLAN is supported at the higher-layer currently.
-				// It is also possible that the bond is not being used at all, but we
-				// do not need to treat that case differently.
-				usage = generic.IOUsageVlanParent
 			}
 			intendedIO.PutItem(linux.Bond{
 				BondConfig:        port.Bond,
@@ -1077,12 +1083,13 @@ func (r *LinuxDpcReconciler) getIntendedAdapters(dpc types.DevicePortConfig) dg.
 			continue
 		}
 		adapter := linux.Adapter{
-			LogicalLabel: port.Logicallabel,
-			IfName:       port.IfName,
-			L2Type:       port.L2Type,
-			WirelessType: port.WirelessCfg.WType,
-			DhcpType:     port.Dhcp,
-			MTU:          r.intfMTU[port.Logicallabel],
+			LogicalLabel:     port.Logicallabel,
+			IfName:           port.IfName,
+			L2Type:           port.L2Type,
+			WirelessType:     port.WirelessCfg.WType,
+			UsedAsVlanParent: dpc.IsPortUsedAsVlanParent(port.Logicallabel),
+			DhcpType:         port.Dhcp,
+			MTU:              r.intfMTU[port.Logicallabel],
 		}
 		intendedAdapters.PutItem(adapter, nil)
 		if port.Dhcp != types.DhcpTypeNone &&

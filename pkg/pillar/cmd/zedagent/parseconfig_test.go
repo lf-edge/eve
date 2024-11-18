@@ -6,6 +6,7 @@ package zedagent
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -362,6 +363,40 @@ func TestParseVlans(t *testing.T) {
 	g.Expect(port.L2LinkConfig.L2Type).To(Equal(types.L2LinkTypeNone))
 	g.Expect(port.WirelessCfg.WType).To(Equal(types.WirelessTypeNone))
 
+	// With VLAN sub-interfaces configured, the parent interface can be used
+	// for the untagged traffic.
+	config.SystemAdapterList = append(config.SystemAdapterList, &zconfig.SystemAdapter{
+		Name:           "adapter-shopfloor-untagged",
+		Uplink:         false,
+		NetworkUUID:    network1UUID,
+		LowerLayerName: "shopfloor",
+		Cost:           5,
+	})
+	parseSystemAdapterConfig(getconfigCtx, config, fromController, true)
+	portConfig, err = getconfigCtx.pubDevicePortConfig.Get("zedagent")
+	g.Expect(err).To(BeNil())
+	dpc = portConfig.(types.DevicePortConfig)
+	g.Expect(dpc.HasError()).To(BeFalse())
+	// The number of ports has not changed, just the shopfloor ethernet port was
+	// elevated to L3.
+	g.Expect(dpc.Ports).To(HaveLen(3))
+	sortDPCPorts(&dpc)
+	port = dpc.Ports[0]
+	g.Expect(port.Logicallabel).To(Equal("adapter-shopfloor-untagged"))
+	g.Expect(port.Phylabel).To(Equal("ethernet0"))
+	g.Expect(port.IsL3Port).To(BeTrue()) // This changed from false to true
+	g.Expect(port.IfName).To(Equal("eth0"))
+	g.Expect(port.NetworkUUID.String()).To(Equal(network1UUID))
+	g.Expect(port.Cost).To(BeEquivalentTo(5))
+	g.Expect(port.DhcpConfig.Type).To(BeEquivalentTo(types.NetworkTypeIPv4))
+	g.Expect(port.DhcpConfig.Dhcp).To(Equal(types.DhcpTypeClient))
+	g.Expect(port.L2LinkConfig.L2Type).To(Equal(types.L2LinkTypeNone))
+	g.Expect(port.WirelessCfg.WType).To(Equal(types.WirelessTypeNone))
+	port = dpc.Ports[1]
+	g.Expect(port.Logicallabel).To(Equal("adapter-shopfloor-vlan100"))
+	port = dpc.Ports[2]
+	g.Expect(port.Logicallabel).To(Equal("adapter-shopfloor-vlan200"))
+
 	// Add adapter for "warehouse-vlan100"
 	config.SystemAdapterList = append(config.SystemAdapterList, &zconfig.SystemAdapter{
 		Name:           "adapter-warehouse-vlan100",
@@ -372,7 +407,6 @@ func TestParseVlans(t *testing.T) {
 		Addr:           "192.168.1.150",
 	})
 	parseSystemAdapterConfig(getconfigCtx, config, fromController, true)
-
 	portConfig, err = getconfigCtx.pubDevicePortConfig.Get("zedagent")
 	g.Expect(err).To(BeNil())
 	dpc = portConfig.(types.DevicePortConfig)
@@ -381,7 +415,7 @@ func TestParseVlans(t *testing.T) {
 	g.Expect(dpc.Ports).To(HaveLen(5))
 	sortDPCPorts(&dpc)
 	// VLAN warehouse.100
-	port = dpc.Ports[2]
+	port = dpc.Ports[3]
 	g.Expect(port.Logicallabel).To(Equal("adapter-warehouse-vlan100"))
 	g.Expect(port.Phylabel).To(BeEmpty())
 	g.Expect(port.IsL3Port).To(BeTrue())
@@ -530,6 +564,24 @@ func TestParseBonds(t *testing.T) {
 	g.Expect(port.DhcpConfig.Dhcp).To(Equal(types.DhcpTypeNOOP))
 	g.Expect(port.L2LinkConfig.L2Type).To(Equal(types.L2LinkTypeNone))
 	g.Expect(port.WirelessCfg.WType).To(Equal(types.WirelessTypeNone))
+
+	// It is not allowed to use physical port with IP if it is under a bond.
+	config.SystemAdapterList = append(config.SystemAdapterList, &zconfig.SystemAdapter{
+		Name:        "shopfloor0",
+		Uplink:      true,
+		NetworkUUID: networkUUID,
+	})
+	parseSystemAdapterConfig(getconfigCtx, config, fromController, true)
+	portConfig, err = getconfigCtx.pubDevicePortConfig.Get("zedagent")
+	g.Expect(err).To(BeNil())
+	dpc = portConfig.(types.DevicePortConfig)
+	g.Expect(dpc.Ports).To(HaveLen(3))
+	sortDPCPorts(&dpc)
+	// underlying physical "shopfloor0" adapter
+	port = dpc.Ports[1]
+	g.Expect(port.HasError()).To(BeTrue())
+	g.Expect(port.LastError).To(Equal(
+		"Port shopfloor0 aggregated by bond (adapter-shopfloor) cannot be used with IP configuration"))
 }
 
 func TestParseVlansOverBonds(t *testing.T) {
@@ -717,6 +769,72 @@ func TestParseVlansOverBonds(t *testing.T) {
 	g.Expect(port.DhcpConfig.Dhcp).To(Equal(types.DhcpTypeNOOP))
 	g.Expect(port.L2LinkConfig.L2Type).To(Equal(types.L2LinkTypeNone))
 	g.Expect(port.WirelessCfg.WType).To(Equal(types.WirelessTypeNone))
+
+	// With VLAN sub-interfaces configured, the parent interface can be used
+	// for the untagged traffic.
+	config.SystemAdapterList = append(config.SystemAdapterList, &zconfig.SystemAdapter{
+		Name:           "adapter-shopfloor-untagged",
+		Uplink:         false,
+		NetworkUUID:    network1UUID,
+		LowerLayerName: "bond-shopfloor",
+		Cost:           2,
+	})
+	parseSystemAdapterConfig(getconfigCtx, config, fromController, true)
+	portConfig, err = getconfigCtx.pubDevicePortConfig.Get("zedagent")
+	g.Expect(err).To(BeNil())
+	dpc = portConfig.(types.DevicePortConfig)
+	g.Expect(dpc.HasError()).To(BeFalse())
+	// The number of ports has not changed, just the shopfloor bond was elevated to L3.
+	g.Expect(dpc.Ports).To(HaveLen(5))
+	sortDPCPorts(&dpc)
+	port = dpc.Ports[0]
+	g.Expect(port.Logicallabel).To(Equal("adapter-shopfloor-untagged"))
+	g.Expect(port.Phylabel).To(BeEmpty())
+	g.Expect(port.IsL3Port).To(BeTrue())
+	g.Expect(port.IsMgmt).To(BeFalse())
+	g.Expect(port.IfName).To(Equal("bond"))
+	g.Expect(port.NetworkUUID.String()).To(Equal(network1UUID))
+	g.Expect(port.Cost).To(BeEquivalentTo(2))
+	g.Expect(port.DhcpConfig.Type).To(BeEquivalentTo(types.NetworkTypeIPv4))
+	g.Expect(port.DhcpConfig.Dhcp).To(Equal(types.DhcpTypeClient))
+	g.Expect(port.L2LinkConfig.L2Type).To(Equal(types.L2LinkTypeBond))
+	g.Expect(port.L2LinkConfig.Bond.AggregatedPorts).To(Equal([]string{"shopfloor1", "shopfloor0"}))
+	g.Expect(port.L2LinkConfig.Bond.Mode).To(Equal(types.BondModeActiveBackup))
+	g.Expect(port.L2LinkConfig.Bond.MIIMonitor.Enabled).To(BeTrue())
+	g.Expect(port.L2LinkConfig.Bond.MIIMonitor.Interval).To(BeEquivalentTo(400))
+	g.Expect(port.L2LinkConfig.Bond.MIIMonitor.UpDelay).To(BeEquivalentTo(800))
+	g.Expect(port.L2LinkConfig.Bond.MIIMonitor.DownDelay).To(BeEquivalentTo(1200))
+	g.Expect(port.L2LinkConfig.Bond.ARPMonitor.Enabled).To(BeFalse())
+	g.Expect(port.WirelessCfg.WType).To(Equal(types.WirelessTypeNone))
+	port = dpc.Ports[1]
+	g.Expect(port.Logicallabel).To(Equal("adapter-shopfloor-vlan100"))
+	port = dpc.Ports[2]
+	g.Expect(port.Logicallabel).To(Equal("adapter-shopfloor-vlan200"))
+	port = dpc.Ports[3]
+	g.Expect(port.Logicallabel).To(Equal("shopfloor0"))
+	port = dpc.Ports[4]
+	g.Expect(port.Logicallabel).To(Equal("shopfloor1"))
+
+	// It is not allowed to use physical port with IP if it is under a bond.
+	config.SystemAdapterList = append(config.SystemAdapterList, &zconfig.SystemAdapter{
+		Name:           "adapter-ethernet0",
+		Uplink:         true,
+		LowerLayerName: "shopfloor0",
+		NetworkUUID:    network1UUID,
+	})
+	parseSystemAdapterConfig(getconfigCtx, config, fromController, true)
+	portConfig, err = getconfigCtx.pubDevicePortConfig.Get("zedagent")
+	g.Expect(err).To(BeNil())
+	dpc = portConfig.(types.DevicePortConfig)
+	g.Expect(dpc.Ports).To(HaveLen(5))
+	sortDPCPorts(&dpc)
+	port = dpc.Ports[0]
+	fmt.Printf("%+v\n", dpc)
+	g.Expect(port.Logicallabel).To(Equal("adapter-ethernet0"))
+	g.Expect(port.HasError()).To(BeTrue())
+	g.Expect(port.LastError).To(Equal(
+		"Port adapter-ethernet0 aggregated by bond (adapter-shopfloor-untagged) cannot be used with IP configuration"))
+
 }
 
 func TestInvalidLowerLayerReferences(t *testing.T) {
@@ -799,9 +917,9 @@ func TestInvalidLowerLayerReferences(t *testing.T) {
 	dpc := portConfig.(types.DevicePortConfig)
 	g.Expect(dpc.HasError()).To(BeTrue())
 	g.Expect(getPortError(&dpc, "adapter1")).
-		To(ContainSubstring("Port collides with another port"))
+		To(ContainSubstring("Port collides with another port with the same interface name"))
 	g.Expect(getPortError(&dpc, "adapter2")).
-		To(ContainSubstring("Port collides with another port"))
+		To(ContainSubstring("Port collides with another port with the same interface name"))
 	g.Expect(dpc.Ports).To(HaveLen(2))
 
 	// fix:
@@ -889,7 +1007,7 @@ func TestInvalidLowerLayerReferences(t *testing.T) {
 	g.Expect(dpc.HasError()).To(BeFalse())
 	g.Expect(dpc.Ports).To(HaveLen(3))
 
-	// Scenario 4: interface referenced by both a system adapter and a L2 object
+	// Scenario 4: interface referenced by both a system adapter and a bond
 	config = &zconfig.EdgeDevConfig{
 		Bonds: []*zconfig.BondAdapter{
 			{
@@ -921,10 +1039,8 @@ func TestInvalidLowerLayerReferences(t *testing.T) {
 	dpc = portConfig.(types.DevicePortConfig)
 	g.Expect(dpc.HasError()).To(BeTrue())
 	g.Expect(getPortError(&dpc, "adapter-warehouse")).
-		To(ContainSubstring("Port collides with another port"))
-	g.Expect(getPortError(&dpc, "adapter-bond-shopfloor")).
-		To(ContainSubstring("Port collides with another port"))
-	g.Expect(dpc.Ports).To(HaveLen(4))
+		To(Equal("Port adapter-warehouse aggregated by bond (adapter-bond-shopfloor) cannot be used with IP configuration"))
+	g.Expect(dpc.Ports).To(HaveLen(3))
 
 	// fix:
 	config.Bonds[0].LowerLayerNames = []string{"shopfloor"}
@@ -1136,6 +1252,67 @@ func TestInvalidLowerLayerReferences(t *testing.T) {
 	config.Vlans[0].VlanId = 1000
 	parseBonds(getconfigCtx, config)
 	parseVlans(getconfigCtx, config)
+	parseSystemAdapterConfig(getconfigCtx, config, fromController, true)
+	portConfig, err = getconfigCtx.pubDevicePortConfig.Get("zedagent")
+	g.Expect(err).To(BeNil())
+	dpc = portConfig.(types.DevicePortConfig)
+	g.Expect(dpc.HasError()).To(BeFalse())
+	g.Expect(dpc.Ports).To(HaveLen(2))
+
+	// Scenario 10: System adapters referencing the same underlying port by physical addresses
+	// Note that we allow only wwan ports to be defined without interface name.
+	config = &zconfig.EdgeDevConfig{
+		DeviceIoList: []*zconfig.PhysicalIO{
+			{
+				Ptype:        zcommon.PhyIoType_PhyIoNetWWAN,
+				Phylabel:     "ethernet0",
+				Logicallabel: "shopfloor",
+				Phyaddrs: map[string]string{
+					"pcilong": "0000:f4:00.0",
+				},
+				Usage: zcommon.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
+			},
+			{
+				Ptype:        zcommon.PhyIoType_PhyIoNetWWAN,
+				Phylabel:     "ethernet1",
+				Logicallabel: "warehouse",
+				Phyaddrs: map[string]string{
+					"pcilong": "0000:05:00.0",
+				},
+				Usage: zcommon.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
+			},
+		},
+		SystemAdapterList: []*zconfig.SystemAdapter{
+			{
+				Name:           "adapter1",
+				Uplink:         true,
+				NetworkUUID:    network1UUID,
+				LowerLayerName: "shopfloor",
+				Cost:           10,
+			},
+			{
+				Name:           "adapter2",
+				Uplink:         true,
+				NetworkUUID:    network2UUID,
+				LowerLayerName: "shopfloor",
+				Cost:           20,
+			},
+		},
+	}
+	parseDeviceIoListConfig(getconfigCtx, config)
+	parseSystemAdapterConfig(getconfigCtx, config, fromController, true)
+	portConfig, err = getconfigCtx.pubDevicePortConfig.Get("zedagent")
+	g.Expect(err).To(BeNil())
+	dpc = portConfig.(types.DevicePortConfig)
+	g.Expect(dpc.HasError()).To(BeTrue())
+	g.Expect(getPortError(&dpc, "adapter1")).
+		To(ContainSubstring("Port collides with another port with the same physical address"))
+	g.Expect(getPortError(&dpc, "adapter2")).
+		To(ContainSubstring("Port collides with another port with the same physical address"))
+	g.Expect(dpc.Ports).To(HaveLen(2))
+
+	// fix:
+	config.SystemAdapterList[1].LowerLayerName = "warehouse"
 	parseSystemAdapterConfig(getconfigCtx, config, fromController, true)
 	portConfig, err = getconfigCtx.pubDevicePortConfig.Get("zedagent")
 	g.Expect(err).To(BeNil())
