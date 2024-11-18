@@ -29,6 +29,11 @@ type Adapter struct {
 	L2Type types.L2LinkType
 	// WirelessType is used to distinguish between Ethernet, WiFi and cellular port.
 	WirelessType types.WirelessType
+	// UsedAsVlanParent is true if the network adapter is not only used as L3 endpoint
+	// but also as a parent interface for VLAN sub-interfaces.
+	// In such case the network adapter is not put under a bridge (and cannot be used
+	// with Switch NI).
+	UsedAsVlanParent bool
 	// DhcpType is used to determine the method used to obtain IP address for the network
 	// adapter.
 	DhcpType types.DhcpType
@@ -56,6 +61,7 @@ func (a Adapter) Equal(other depgraph.Item) bool {
 	a2 := other.(Adapter)
 	return a.L2Type == a2.L2Type &&
 		a.WirelessType == a2.WirelessType &&
+		a.UsedAsVlanParent == a2.UsedAsVlanParent &&
 		a.DhcpType == a2.DhcpType &&
 		a.MTU == a2.MTU
 }
@@ -75,6 +81,10 @@ func (a Adapter) String() string {
 func (a Adapter) Dependencies() (deps []depgraph.Dependency) {
 	var depType string
 	var mustSatisfy func(item depgraph.Item) bool
+	expectedParentUsage := genericitems.IOUsageL3Adapter
+	if a.UsedAsVlanParent {
+		expectedParentUsage = genericitems.IOUsageVlanParentAndL3Adapter
+	}
 	switch a.L2Type {
 	case types.L2LinkTypeNone:
 		// Attached directly to a physical interface.
@@ -82,12 +92,16 @@ func (a Adapter) Dependencies() (deps []depgraph.Dependency) {
 		depType = genericitems.PhysIfTypename
 		mustSatisfy = func(item depgraph.Item) bool {
 			physIf := item.(PhysIf)
-			return physIf.Usage == genericitems.IOUsageL3Adapter
+			return physIf.Usage == expectedParentUsage
 		}
 	case types.L2LinkTypeVLAN:
 		depType = genericitems.VlanTypename
 	case types.L2LinkTypeBond:
 		depType = genericitems.BondTypename
+		mustSatisfy = func(item depgraph.Item) bool {
+			bond := item.(Bond)
+			return bond.Usage == expectedParentUsage
+		}
 	}
 	return []depgraph.Dependency{
 		{
@@ -225,12 +239,13 @@ func (c *AdapterConfigurator) Create(ctx context.Context, item depgraph.Item) er
 // Return true if NIM is responsible for creating a Linux bridge for the adapter.
 // Bridge is NOT created by NIM if:
 //   - the adapter is wireless: it is not valid to put wireless adapter under a bridge,
+//   - or if the adapter has VLAN sub-interfaces and therefore cannot be bridged,
 //   - or if the adapter is configured with DHCP passthrough: in that case, NIM does not
 //     have to apply IP config or test connectivity, and it can leave it up to zedrouter
 //     to bridge the port with applications (and possibly also with other ports) if requested
 //     by the user
 func (c *AdapterConfigurator) isAdapterBridgedByNIM(adapter Adapter) bool {
-	return adapter.WirelessType == types.WirelessTypeNone &&
+	return adapter.WirelessType == types.WirelessTypeNone && !adapter.UsedAsVlanParent &&
 		(adapter.DhcpType == types.DhcpTypeClient || adapter.DhcpType == types.DhcpTypeStatic)
 }
 
@@ -357,5 +372,6 @@ func (c *AdapterConfigurator) NeedsRecreate(oldItem, newItem depgraph.Item) (rec
 	}
 	return oldCfg.L2Type != newCfg.L2Type ||
 		oldCfg.WirelessType != newCfg.WirelessType ||
+		oldCfg.UsedAsVlanParent != newCfg.UsedAsVlanParent ||
 		oldCfg.DhcpType != newCfg.DhcpType
 }

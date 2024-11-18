@@ -825,12 +825,50 @@ func parseSystemAdapterConfig(getconfigCtx *getconfigContext, config *zconfig.Ed
 		portConfig.Key = "bootstrap" // Instead of "zedagent".
 	}
 	var newPorts []*types.NetworkPortConfig
+	logicalLabelToAdapterName := make(map[string]string)
+	for _, sysAdapter := range sysAdapters {
+		if sysAdapter.LowerLayerName != "" {
+			logicalLabelToAdapterName[sysAdapter.LowerLayerName] = sysAdapter.Name
+		} else {
+			logicalLabelToAdapterName[sysAdapter.Name] = sysAdapter.Name
+		}
+	}
 	for _, sysAdapter := range sysAdapters {
 		ports, err := parseOneSystemAdapterConfig(getconfigCtx, sysAdapter, version)
 		if err != nil {
 			portConfig.RecordFailure(err.Error())
 		}
-		newPorts = append(newPorts, ports...)
+		for _, port := range ports {
+			if port.Logicallabel != sysAdapter.Name {
+				// If a referenced lower-layer port has its own SystemAdapter assigned,
+				// skip it here and let it be parsed by its own dedicated
+				// parseOneSystemAdapterConfig call.
+				_, hasAdapter := logicalLabelToAdapterName[port.Logicallabel]
+				if hasAdapter {
+					continue
+				}
+			}
+			newPorts = append(newPorts, port)
+		}
+	}
+	// Make sure that references to lower-layer ports with a SystemAdapter assigned
+	// use the SystemAdapter.Name, which differs from the LogicalLabel of the port
+	// when SystemAdapter.Name differs from SystemAdapter.LowerLayerName.
+	for _, port := range newPorts {
+		vlanParent := port.L2LinkConfig.VLAN.ParentPort
+		if vlanParent != "" {
+			adapterName := logicalLabelToAdapterName[vlanParent]
+			if adapterName != "" {
+				port.L2LinkConfig.VLAN.ParentPort = adapterName
+			}
+		}
+		for i := range port.L2LinkConfig.Bond.AggregatedPorts {
+			aggregatedPort := port.L2LinkConfig.Bond.AggregatedPorts[i]
+			adapterName := logicalLabelToAdapterName[aggregatedPort]
+			if adapterName != "" {
+				port.L2LinkConfig.Bond.AggregatedPorts[i] = adapterName
+			}
+		}
 	}
 	validateAndAssignNetPorts(portConfig, newPorts)
 
@@ -925,6 +963,16 @@ func validateAndAssignNetPorts(dpc *types.DevicePortConfig, newPorts []*types.Ne
 				port2.RecordFailure(errStr)
 				break
 			}
+			if port.IfName == "" &&
+				port.PCIAddr == port2.PCIAddr && port.USBAddr == port2.USBAddr {
+				errStr := fmt.Sprintf(
+					"Port collides with another port with the same physical address (%s, %s)",
+					port.PCIAddr, port.USBAddr)
+				log.Error(errStr)
+				port.RecordFailure(errStr)
+				port2.RecordFailure(errStr)
+				break
+			}
 		}
 		if skip {
 			continue
@@ -984,6 +1032,14 @@ func validateAndAssignNetPorts(dpc *types.DevicePortConfig, newPorts []*types.Ne
 			port.RecordFailure(errStr)
 			continue
 		}
+		if len(l2Refs.bondMasters) > 0 && port.IsL3Port {
+			errStr := fmt.Sprintf(
+				"Port %s aggregated by bond (%s) cannot be used with IP configuration",
+				port.Logicallabel, l2Refs.bondMasters[0].Logicallabel)
+			log.Error(errStr)
+			port.RecordFailure(errStr)
+			continue
+		}
 		for i, vlanSubIntf := range l2Refs.vlanSubIntfs {
 			for j := 0; j < i; j++ {
 				if vlanSubIntf.VLAN.ID == l2Refs.vlanSubIntfs[j].VLAN.ID {
@@ -1003,7 +1059,7 @@ func validateAndAssignNetPorts(dpc *types.DevicePortConfig, newPorts []*types.Ne
 	for len(propagateFrom) > 0 {
 		var propagateFromNext []*types.NetworkPortConfig
 		for _, port := range propagateFrom {
-			if port.IsL3Port || !port.HasError() {
+			if !port.HasError() {
 				continue
 			}
 			l2Refs := invertedRefs[port.Logicallabel]
