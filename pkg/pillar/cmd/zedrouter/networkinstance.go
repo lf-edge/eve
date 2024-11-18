@@ -167,6 +167,14 @@ func (z *zedrouter) updateNIPorts(niConfig types.NetworkInstanceConfig,
 						port.Logicallabel))
 				continue
 			}
+			if z.deviceNetworkStatus.IsPortUsedAsVlanParent(port.Logicallabel) {
+				// It is not supported/valid to bridge port which has VLAN
+				// sub-interfaces configured.
+				errorMsgs = append(errorMsgs,
+					fmt.Sprintf("port %s with VLAN sub-interfaces cannot be used "+
+						"in Switch Network Instance", port.Logicallabel))
+				continue
+			}
 			if len(newPorts) > 1 && port.Dhcp != types.DhcpTypeNone {
 				errorMsgs = append(errorMsgs,
 					fmt.Sprintf(

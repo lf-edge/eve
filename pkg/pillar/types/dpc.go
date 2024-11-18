@@ -15,6 +15,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
+	"github.com/lf-edge/eve/pkg/pillar/utils/netutils"
 	uuid "github.com/satori/go.uuid"
 )
 
@@ -304,6 +305,17 @@ func (config *DevicePortConfig) RecordPortFailure(ifname string, errStr string) 
 	if portPtr != nil {
 		portPtr.RecordFailure(errStr)
 	}
+}
+
+// IsPortUsedAsVlanParent - returns true if port with the given logical label
+// is used as a VLAN parent interface.
+func (config DevicePortConfig) IsPortUsedAsVlanParent(portLabel string) bool {
+	for _, port2 := range config.Ports {
+		if port2.L2Type == L2LinkTypeVLAN && port2.VLAN.ParentPort == portLabel {
+			return true
+		}
+	}
+	return false
 }
 
 // DPCSanitizeArgs : arguments for DevicePortConfig.DoSanitize().
@@ -946,6 +958,13 @@ type BondArpMonitor struct {
 	Enabled   bool
 	Interval  uint32
 	IPTargets []net.IP
+}
+
+// Equal compares two BondArpMonitor configs for equality.
+func (m BondArpMonitor) Equal(m2 BondArpMonitor) bool {
+	return m.Enabled == m2.Enabled &&
+		m.Interval == m2.Interval &&
+		generics.EqualSetsFn(m.IPTargets, m2.IPTargets, netutils.EqualIPs)
 }
 
 // DevicePortConfigList is an array in timestamp aka priority order;

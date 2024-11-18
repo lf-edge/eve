@@ -28,6 +28,9 @@ type Vlan struct {
 	ParentIfName string
 	// ParentL2Type : link type of the parent interface (bond or physical).
 	ParentL2Type types.L2LinkType
+	// ParentIsL3Port is true when the parent port is used both as a VLAN parent
+	// and a L3 endpoint (for untagged traffic) at the same time.
+	ParentIsL3Port bool
 	// VLAN ID.
 	ID uint16
 	// MTU : Maximum transmission unit size.
@@ -54,6 +57,7 @@ func (v Vlan) Equal(other depgraph.Item) bool {
 	v2 := other.(Vlan)
 	return v.ParentIfName == v2.ParentIfName &&
 		v.ParentL2Type == v2.ParentL2Type &&
+		v.ParentIsL3Port == v2.ParentIsL3Port &&
 		v.ID == v2.ID &&
 		v.MTU == v2.MTU
 }
@@ -72,6 +76,10 @@ func (v Vlan) String() string {
 func (v Vlan) Dependencies() (deps []depgraph.Dependency) {
 	var depType string
 	var mustSatisfy func(item depgraph.Item) bool
+	expectedParentUsage := genericitems.IOUsageVlanParent
+	if v.ParentIsL3Port {
+		expectedParentUsage = genericitems.IOUsageVlanParentAndL3Adapter
+	}
 	switch v.ParentL2Type {
 	case types.L2LinkTypeNone:
 		// Attached directly to a physical interface.
@@ -85,7 +93,7 @@ func (v Vlan) Dependencies() (deps []depgraph.Dependency) {
 				return false
 			}
 			// The physical interface has to be "allocated" for use as a VLAN parent.
-			if physIf.Usage != genericitems.IOUsageVlanParent {
+			if physIf.Usage != expectedParentUsage {
 				return false
 			}
 			// MTU of the parent interface must not be smaller.
@@ -99,6 +107,10 @@ func (v Vlan) Dependencies() (deps []depgraph.Dependency) {
 			bond, isBond := item.(Bond)
 			if !isBond {
 				// unreachable
+				return false
+			}
+			// The bond interface has to be "allocated" for use as a VLAN parent.
+			if bond.Usage != expectedParentUsage {
 				return false
 			}
 			// MTU of the parent interface must not be smaller.
@@ -235,5 +247,6 @@ func (c *VlanConfigurator) NeedsRecreate(oldItem, newItem depgraph.Item) (recrea
 	}
 	return oldCfg.ParentIfName != newCfg.ParentIfName ||
 		oldCfg.ParentL2Type != newCfg.ParentL2Type ||
+		oldCfg.ParentIsL3Port != newCfg.ParentIsL3Port ||
 		oldCfg.ID != newCfg.ID
 }

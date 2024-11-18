@@ -108,6 +108,8 @@ EVE supports:
 - VLAN sub-interfaces with a LAG as the parent
 - VLAN filtering for switch network instances. This is actually a feature of the Switch NI,
   VLAN network adapter is not used in this case.
+- Separating VLANs from untagged network traffic: VLAN sub-interfaces enable access to tagged
+  VLANs, while the parent port can serve as an L3 endpoint for the untagged segment of the network
 
 Both VLAN and LAG adapters can be used as ports for Local network instance and for EVE
 management traffic.
