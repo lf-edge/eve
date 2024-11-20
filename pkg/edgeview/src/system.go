@@ -160,10 +160,12 @@ func getLogStats() {
 				isDev = true
 			}
 
-			time1 := getFileTime(l.Name())
-			if time1 == 0 {
+			timestamp, err := types.GetTimestampFromGzipName(l.Name())
+			if err != nil {
 				continue
 			}
+			time1 := timestamp.Unix() // convert to seconds
+
 			if isDev && (tmin == 0 || tmin > time1) {
 				tmin = time1
 			}
@@ -306,22 +308,6 @@ func du(currentPath string, info os.FileInfo) int64 {
 	}
 
 	return size
-}
-
-func getFileTime(filename string) int64 {
-	var fn []string
-	if strings.Contains(filename, ".gz") && strings.Contains(filename, ".log.") {
-		fn = strings.Split(filename, ".gz")
-	}
-	if len(fn) < 2 {
-		return 0
-	}
-	fn = strings.Split(fn[0], ".log.")
-	if len(fn) < 2 {
-		return 0
-	}
-	filetime, _ := strconv.Atoi(fn[1])
-	return int64(filetime / 1000)
 }
 
 func getVolume() {

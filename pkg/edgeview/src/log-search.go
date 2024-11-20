@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -17,6 +18,12 @@ import (
 	"time"
 
 	"github.com/lf-edge/eve-api/go/logs"
+	"github.com/lf-edge/eve/pkg/pillar/types"
+)
+
+var (
+	newlogDir  = "/persist/newlog"
+	collectDir = newlogDir + "/collect"
 )
 
 type logfiletime struct {
@@ -75,7 +82,7 @@ func runLogSearch(cmds cmdOpt) {
 		return
 	}
 
-	gfiles := walkLogDirs(t1, t2, now)
+	gfiles := walkLogDirs(t1, t2)
 	prog1 := "zcat"
 	prog2 := "grep"
 	arg2 := []string{"-E", pattern}
@@ -106,66 +113,52 @@ func runLogSearch(cmds cmdOpt) {
 	fmt.Println()
 }
 
-func walkLogDirs(t1, t2, now int64) []logfiletime {
+func walkLogDirs(toTimestamp, fromTimestamp int64) []logfiletime {
 	var getfiles []logfiletime
 
-	files, err := os.ReadDir("/persist/newlog")
+	subdirs, err := os.ReadDir(newlogDir)
 	if err != nil {
-		fmt.Printf("read /persist/newlog error %v\n", err)
+		fmt.Printf("read %s error %v\n", newlogDir, err)
 		return getfiles
 	}
 
-	gzfiles := make(map[string][]string)
-	for _, dir := range files {
-		if !dir.IsDir() {
+	excludeDirs := []string{"collect", "panic", "devUpload"}
+	if querytype == "dev" {
+		excludeDirs = append(excludeDirs, "appUpload")
+	}
+	excludeFiles := []string{}
+	if querytype == "app" {
+		excludeFiles = append(excludeFiles, "dev")
+	}
+	if querytype == "dev" {
+		excludeFiles = append(excludeFiles, "app")
+	}
+
+	for _, dir := range subdirs {
+		if filterDir(dir, excludeDirs) {
 			continue
 		}
-		if strings.Contains(dir.Name(), "collect") || strings.Contains(dir.Name(), "panic") {
-			continue
-		}
-		if strings.Contains(dir.Name(), "devUpload") && querytype == "app" {
-			continue
-		}
-		if strings.Contains(dir.Name(), "appUpload") && querytype == "dev" {
-			continue
-		}
-		files1, err := os.ReadDir("/persist/newlog/" + dir.Name())
+
+		files, err := os.ReadDir(path.Join(newlogDir, dir.Name()))
 		if err != nil {
+			fmt.Printf("read %s error %v\n", path.Join(newlogDir, dir.Name()), err)
 			continue
 		}
-		var groupfiles []string
-		for _, f := range files1 {
-			info, err := f.Info()
+		for _, f := range files {
+			if filterFile(f, excludeFiles) {
+				continue
+			}
+
+			timestamp, err := types.GetTimestampFromGzipName(f.Name())
 			if err != nil {
 				continue
 			}
-			if info.ModTime().Unix() > t1 || info.ModTime().Unix() < t2 {
-				continue
-			}
-			groupfiles = append(groupfiles, f.Name())
-		}
-		gzfiles["/persist/newlog/"+dir.Name()] = groupfiles
-	}
+			ftime := timestamp.Unix() // convert to seconds
 
-	for k, g := range gzfiles {
-		for _, l := range g {
-			if !strings.Contains(l, "dev") && !strings.Contains(l, "app") {
-				continue
-			}
-			if querytype == "app" && !strings.Contains(l, "app") {
-				continue
-			}
-			if querytype == "dev" && !strings.Contains(l, "dev") {
-				continue
-			}
-			ftime := getFileTime(l)
-			if ftime == 0 {
-				continue
-			}
-			if ftime >= t2 && ftime <= t1 {
-				file1 := strings.TrimPrefix(l, "./")
+			if ftime >= fromTimestamp && ftime <= toTimestamp {
+				file1 := strings.TrimPrefix(f.Name(), "./")
 				gfile := logfiletime{
-					filepath: k + "/" + file1,
+					filepath: path.Join(newlogDir, dir.Name(), file1),
 					filesec:  ftime,
 				}
 				getfiles = append(getfiles, gfile)
@@ -180,18 +173,52 @@ func walkLogDirs(t1, t2, now int64) []logfiletime {
 	return getfiles
 }
 
+func filterDir(dir os.DirEntry, filter []string) bool {
+	if !dir.IsDir() {
+		return true
+	}
+	for _, name := range filter {
+		if strings.Contains(dir.Name(), name) {
+			return true
+		}
+	}
+	return false
+}
+
+func filterFile(file os.DirEntry, filter []string) bool {
+	if file.IsDir() {
+		return true
+	}
+	for _, name := range filter {
+		if strings.Contains(file.Name(), name) {
+			return true
+		}
+	}
+	return false
+}
+
 func searchLiveLogs(pattern string, now int64, typeStr string, idx *int, logjson bool) {
-	files, err := os.ReadDir("/persist/newlog/collect")
-	if err != nil {
-		fmt.Printf("read /persist/newlog/collect error %v\n", err)
-		return
+	var filesToGrep []string
+	switch typeStr {
+	case "dev":
+		filesToGrep = append(filesToGrep, path.Join(collectDir, "current.device.log"))
+	case "app":
+		files, err := os.ReadDir(collectDir)
+		if err != nil {
+			fmt.Printf("searchLiveLogs: read %s: error %v\n", collectDir, err)
+			return
+		}
+
+		for _, l := range files {
+			if strings.HasPrefix(l.Name(), "app") {
+				filesToGrep = append(filesToGrep, path.Join(collectDir, l.Name()))
+			}
+		}
+	default:
+		fmt.Printf("searchLiveLogs: invalid typeStr %v\n", typeStr)
 	}
 
-	for _, l := range files {
-		if !strings.HasPrefix(l.Name(), typeStr) {
-			continue
-		}
-		file := "/persist/newlog/collect/" + l.Name()
+	for _, file := range filesToGrep {
 		searchCurrentLogs(pattern, file, typeStr, now, idx, logjson)
 	}
 }
@@ -199,7 +226,7 @@ func searchLiveLogs(pattern string, now int64, typeStr string, idx *int, logjson
 func searchCurrentLogs(pattern, path, typeStr string, now int64, idx *int, logjson bool) {
 	contents, err := os.ReadFile(path)
 	if err != nil {
-		fmt.Printf("read %s file error: %v\n", path, err)
+		fmt.Printf("searchCurrentLogs: read %s file error: %v\n", path, err)
 	}
 	lines := bytes.SplitAfter(contents, []byte("\n"))
 	var selectlines string

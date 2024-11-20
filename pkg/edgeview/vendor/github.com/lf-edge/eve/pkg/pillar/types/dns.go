@@ -362,6 +362,17 @@ func (status DeviceNetworkStatus) GetPortAddrInfo(ifname string, addr net.IP) *A
 	return nil
 }
 
+// IsPortUsedAsVlanParent - returns true if port with the given logical label
+// is used as a VLAN parent interface.
+func (status DeviceNetworkStatus) IsPortUsedAsVlanParent(portLabel string) bool {
+	for _, port2 := range status.Ports {
+		if port2.L2Type == L2LinkTypeVLAN && port2.VLAN.ParentPort == portLabel {
+			return true
+		}
+	}
+	return false
+}
+
 func rotate(arr []string, amount int) []string {
 	if len(arr) == 0 {
 		return []string{}

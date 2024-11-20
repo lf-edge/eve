@@ -10,7 +10,6 @@ import (
 	"math/rand"
 	"net/http"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 
@@ -636,10 +635,16 @@ func doFetchSend(ctx *loguploaderContext, zipDir string, iter *int) int {
 		if f.IsDir() {
 			continue
 		}
-		isgzip, fTime := getTimeNumber(isApp, f.Name())
-		if !isgzip {
+
+		if !strings.HasSuffix(f.Name(), ".gz") {
 			continue
 		}
+		timestamp, err := types.GetTimestampFromGzipName(f.Name())
+		if err != nil {
+			continue
+		}
+		fTime := int(timestamp.Unix() * 1000) // convert to milliseconds
+
 		numGzipfiles++
 		if fileTime == 0 || fileTime > fTime {
 			fileTime = fTime
@@ -750,37 +755,6 @@ func isInAppUUIDMap(urlStr string) bool {
 		return false
 	}
 	return true
-}
-
-func getTimeNumber(isApp bool, fName string) (bool, int) {
-	if isApp {
-		if strings.HasPrefix(fName, types.AppPrefix) && strings.HasSuffix(fName, ".gz") {
-			fStr1 := strings.TrimPrefix(fName, types.AppPrefix)
-			fStr := strings.Split(fStr1, types.AppSuffix)
-			if len(fStr) != 2 {
-				err := fmt.Errorf("app split is not 2")
-				log.Fatal(err)
-			}
-			fStr2 := strings.TrimSuffix(fStr[1], ".gz")
-			fTime, err := strconv.Atoi(fStr2)
-			if err != nil {
-				log.Fatal(err)
-			}
-			return true, fTime
-		}
-	} else {
-		if strings.HasPrefix(fName, types.DevPrefix) && strings.HasSuffix(fName, ".gz") {
-			fName = strings.TrimPrefix(fName, types.DevPrefixUpload)
-			fName = strings.TrimPrefix(fName, types.DevPrefix) // this is needed for compatibility - if the name doens't have the prefix, it's not trimmed
-			fName = strings.TrimSuffix(fName, ".gz")
-			fTime, err := strconv.Atoi(fName)
-			if err != nil {
-				log.Fatal(err)
-			}
-			return true, fTime
-		}
-	}
-	return false, 0
 }
 
 func sendToCloud(ctx *loguploaderContext, data []byte, iter int, fName string, fTime int, isApp bool) (bool, error) {
