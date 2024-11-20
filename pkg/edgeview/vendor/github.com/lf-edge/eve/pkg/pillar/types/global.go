@@ -257,6 +257,22 @@ const (
 	// WwanQueryVisibleProviders : periodically query visible cellular service providers
 	WwanQueryVisibleProviders GlobalSettingKey = "wwan.query.visible.providers"
 
+	// GoroutineLeakDetectionThreshold amount of goroutines, reaching which will trigger leak detection
+	// regardless of growth rate.
+	GoroutineLeakDetectionThreshold GlobalSettingKey = "goroutine.leak.detection.threshold"
+	// GoroutineLeakDetectionCheckIntervalMinutes interval in minutes between the measurements of the
+	// goroutine count.
+	GoroutineLeakDetectionCheckIntervalMinutes GlobalSettingKey = "goroutine.leak.detection.check.interval.minutes"
+	// GoroutineLeakDetectionCheckWindowMinutes interval in minutes for which the leak analysis is performed.
+	// It should contain at least 10 measurements, so no less than 10 * GoroutineLeakDetectionCheckIntervalMinutes.
+	GoroutineLeakDetectionCheckWindowMinutes GlobalSettingKey = "goroutine.leak.detection.check.window.minutes"
+	// GoroutineLeakDetectionKeepStatsHours amount of hours to keep the stats for the leak detection. We keep more
+	// stats than the check window to be able to react to settings a bigger check window via configuration.
+	GoroutineLeakDetectionKeepStatsHours GlobalSettingKey = "goroutine.leak.detection.keep.stats.hours"
+	// GoroutineLeakDetectionCooldownMinutes cooldown period in minutes after the leak detection is triggered. During
+	// this period no stack traces are collected, only warning messages are logged.
+	GoroutineLeakDetectionCooldownMinutes GlobalSettingKey = "goroutine.leak.detection.cooldown.minutes"
+
 	// TriState Items
 	// NetworkFallbackAnyEth global setting key
 	NetworkFallbackAnyEth GlobalSettingKey = "network.fallback.any.eth"
@@ -271,18 +287,27 @@ const (
 	ConsoleAccess GlobalSettingKey = "debug.enable.console"
 	// Shim VM VNC access global setting key
 	VncShimVMAccess GlobalSettingKey = "debug.enable.vnc.shim.vm"
-	// DefaultLogLevel global setting key
+	// DefaultLogLevel default level of logs produced by EVE microservices
 	DefaultLogLevel GlobalSettingKey = "debug.default.loglevel"
-	// DefaultRemoteLogLevel global setting key
+	// DefaultRemoteLogLevel default level of logs sent by EVE microservices to the controller
 	DefaultRemoteLogLevel GlobalSettingKey = "debug.default.remote.loglevel"
-	// SyslogLogLevel global setting key
+	// SyslogLogLevel level of the produced syslog messages
 	SyslogLogLevel GlobalSettingKey = "debug.syslog.loglevel"
-	// KernelLogLevel global setting key
+	// SyslogRemoteLogLevel level of the syslog messages sent to the controller
+	SyslogRemoteLogLevel GlobalSettingKey = "debug.syslog.remote.loglevel"
+	// KernelLogLevel level of the produced kernel messages
 	KernelLogLevel GlobalSettingKey = "debug.kernel.loglevel"
+	// KernelRemoteLogLevel level of the kernel messages sent to the controller
+	KernelRemoteLogLevel GlobalSettingKey = "debug.kernel.remote.loglevel"
 	// FmlCustomResolution global setting key
 	FmlCustomResolution GlobalSettingKey = "app.fml.resolution"
 
-	// XXX Temporary flag to disable RFC 3442 classless static route usage
+	// DisableDHCPAllOnesNetMask option is deprecated and has no effect.
+	// Zedrouter no longer uses the all-ones netmask as it adds unnecessary complexity,
+	// causes confusion for some applications, and is no longer required for any EVE
+	// functionality (previously it was supposedly needed for ACLs and flow logging).
+	// We keep the option defined to avoid reporting errors in ZInfoDevice.ConfigItemStatus
+	// for older deployments where this option is still configured.
 	DisableDHCPAllOnesNetMask GlobalSettingKey = "debug.disable.dhcp.all-ones.netmask"
 
 	// ProcessCloudInitMultiPart to help VMs which do not handle mime multi-part themselves
@@ -359,17 +384,19 @@ var (
 	// SyslogKernelLogLevelNum is a number representation of syslog/kernel
 	// loglevels.
 	SyslogKernelLogLevelNum = map[string]uint32{
-		"emerg":    0,
-		"alert":    1,
-		"crit":     2,
-		"critical": 2,
-		"err":      3,
-		"error":    3,
-		"warning":  4,
-		"warn":     4,
-		"notice":   5,
-		"info":     6,
-		"debug":    7,
+		"none":     0,
+		"emerg":    1,
+		"alert":    2,
+		"crit":     3,
+		"critical": 3,
+		"err":      4,
+		"error":    4,
+		"warning":  5,
+		"warn":     5,
+		"notice":   6,
+		"info":     7,
+		"debug":    8,
+		"all":      99,
 	}
 	// SyslogKernelDefaultLogLevel is a default loglevel for syslog and kernel.
 	SyslogKernelDefaultLogLevel = "info"
@@ -933,6 +960,13 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddIntItem(LogRemainToSendMBytes, 2048, 10, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(DownloadMaxPortCost, 0, 0, 255)
 
+	// Goroutine Leak Detection section
+	configItemSpecMap.AddIntItem(GoroutineLeakDetectionThreshold, 5000, 1, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(GoroutineLeakDetectionCheckIntervalMinutes, 1, 1, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(GoroutineLeakDetectionCheckWindowMinutes, 10, 10, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(GoroutineLeakDetectionKeepStatsHours, 24, 1, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(GoroutineLeakDetectionCooldownMinutes, 5, 1, 0xFFFFFFFF)
+
 	// Add Bool Items
 	configItemSpecMap.AddBoolItem(UsbAccess, true) // Controller likely default to false
 	configItemSpecMap.AddBoolItem(VgaAccess, true) // Controller likely default to false
@@ -954,15 +988,17 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 
 	// Add String Items
 	configItemSpecMap.AddStringItem(SSHAuthorizedKeys, "", blankValidator)
-	configItemSpecMap.AddStringItem(DefaultLogLevel, "info", validateLogrusLevel)
-	configItemSpecMap.AddStringItem(DefaultRemoteLogLevel, "info", validateLogrusLevel)
+	configItemSpecMap.AddStringItem(DefaultLogLevel, "info", validateLogLevel)
+	configItemSpecMap.AddStringItem(DefaultRemoteLogLevel, "info", validateLogLevel)
 	configItemSpecMap.AddStringItem(SyslogLogLevel, "info", validateSyslogKernelLevel)
 	configItemSpecMap.AddStringItem(KernelLogLevel, "info", validateSyslogKernelLevel)
+	configItemSpecMap.AddStringItem(SyslogRemoteLogLevel, "info", validateSyslogKernelLevel)
+	configItemSpecMap.AddStringItem(KernelRemoteLogLevel, "info", validateSyslogKernelLevel)
 	configItemSpecMap.AddStringItem(FmlCustomResolution, FmlResolutionUnset, blankValidator)
 
 	// Add Agent Settings
-	configItemSpecMap.AddAgentSettingStringItem(LogLevel, "info", validateLogrusLevel)
-	configItemSpecMap.AddAgentSettingStringItem(RemoteLogLevel, "info", validateLogrusLevel)
+	configItemSpecMap.AddAgentSettingStringItem(LogLevel, "info", validateLogLevel)
+	configItemSpecMap.AddAgentSettingStringItem(RemoteLogLevel, "info", validateLogLevel)
 
 	// Add NetDump settings
 	configItemSpecMap.AddBoolItem(NetDumpEnable, true)
@@ -975,10 +1011,15 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	return configItemSpecMap
 }
 
-// validateLogrusLevel - Wrapper for validating logrus loglevel
-func validateLogrusLevel(level string) error {
-	_, err := logrus.ParseLevel(level)
-	return err
+// validateLogLevel - make sure the log level has one of the supported values
+func validateLogLevel(level string) error {
+	switch level {
+	case "none", "all":
+		return nil
+	default:
+		_, err := logrus.ParseLevel(level)
+		return err
+	}
 }
 
 // validateSyslogKernelLevel - Wrapper for validating syslog and kernel
