@@ -1146,7 +1146,12 @@ func checkKeepQuota() {
 					// since the files are sorted by name and we delete the oldest files first,
 					// we can assume that the latest available log (from the file that is next in line to be deleted)
 					// has the timestamp of the file that was just deleted
-					logmetrics.OldestSavedDeviceLog = getTimestampFromGzip(fs.filename)
+					oldestSavedDeviceLog, err := types.GetTimestampFromGzipName(fs.filename)
+					if err != nil {
+						log.Errorf("checkKeepQuota: %v", err)
+					} else {
+						logmetrics.OldestSavedDeviceLog = oldestSavedDeviceLog
+					}
 				}
 				if !fs.isSent {
 					logmetrics.NumGZipFileRemoved++
@@ -1162,17 +1167,6 @@ func checkKeepQuota() {
 		log.Tracef("checkKeepQuota: %d gzip files removed", removed)
 	}
 	logmetrics.TotalSizeLogs = uint64(totalsize)
-}
-
-func getTimestampFromGzip(fName string) time.Time {
-	fName = strings.TrimPrefix(fName, types.DevPrefixKeep)
-	fName = strings.TrimPrefix(fName, types.DevPrefix)
-	fName = strings.TrimSuffix(fName, ".gz")
-	fTime, err := strconv.Atoi(fName)
-	if err != nil {
-		log.Fatal(err)
-	}
-	return time.Unix(0, int64(fTime)*int64(time.Millisecond))
 }
 
 func getOldestLog() (*logs.LogEntry, error) {

@@ -7,6 +7,7 @@ package agentlog
 
 import (
 	"io"
+	"os"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
@@ -93,10 +94,15 @@ func handleGlobalConfigImpl(log *base.LogObject, sub pubsub.Subscription, agentN
 		level = logrus.TraceLevel
 		log.Functionf("handleGlobalConfigImpl: debugOverride set. set loglevel to debug")
 	} else if loglevel, ok, def := getLogLevelImpl(log, sub, agentName, allowDefault); ok {
-		switch loglevel {
-		case "none":
+		// we need a special case for loglevel "none" since it doesn't just set the loglevel
+		if loglevel == "none" {
 			logger.SetOutput(io.Discard)
 			return gcp
+		} else {
+			// set output to stdout
+			logger.SetOutput(os.Stdout)
+		}
+		switch loglevel {
 		case "all":
 			level = logrus.TraceLevel
 		default:

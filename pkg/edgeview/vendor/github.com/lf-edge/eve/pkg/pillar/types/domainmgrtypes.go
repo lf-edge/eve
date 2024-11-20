@@ -42,6 +42,8 @@ type DomainConfig struct {
 	// KubeImageName: is the container image reference we pass to domainmgr to launch a native container
 	// in kubevirt eve
 	KubeImageName string
+	// if this node is the DNiD of the App
+	IsDNidNode bool
 
 	// XXX: to be deprecated, use CipherBlockStatus instead
 	CloudInitUserData *string `json:"pubsub-large-CloudInitUserData"` // base64-encoded
@@ -242,7 +244,7 @@ type VmConfig struct {
 	ExtraArgs  string // added to bootargs
 	BootLoader string // default ""
 	// For CPU pinning
-	CPUs string // default "", list of "1,2"
+	CPUs []int // default nil, list of [1,2]
 	// Needed for device passthru
 	DeviceTree string // default ""; sets device_tree
 	// Example: device_tree="guest-gpio.dtb"
@@ -277,9 +279,9 @@ const (
 type Task interface {
 	Setup(DomainStatus, DomainConfig, *AssignableAdapters,
 		*ConfigItemValueMap, *os.File) error
-	VirtualTPMSetup(domainName, agentName string, ps *pubsub.PubSub, warnTime, errTime time.Duration) error
-	VirtualTPMTerminate(domainName string) error
-	VirtualTPMTeardown(domainName string) error
+	VirtualTPMSetup(domainName string, wp *WatchdogParam) error
+	VirtualTPMTerminate(domainName string, wp *WatchdogParam) error
+	VirtualTPMTeardown(domainName string, wp *WatchdogParam) error
 	Create(string, string, *DomainConfig) (int, error)
 	Start(string) error
 	Stop(string, bool) error
@@ -321,6 +323,11 @@ type DomainStatus struct {
 	// FmlCustomResolution is the custom resolution for FML mode,
 	// xxx: this should be moved to VmConfig
 	FmlCustomResolution string
+	// if this node is the DNiD of the App
+	IsDNidNode bool
+	// the device name is used for kube node name
+	// Need to pass in from domainmgr to hypervisor context commands
+	NodeName string
 }
 
 func (status DomainStatus) Key() string {
@@ -474,6 +481,7 @@ type DomainMetric struct {
 	UsedMemoryPercent float64
 	LastHeard         time.Time
 	Activated         bool
+	NodeName          string // the name of the kubernetes node on which the app is currently running
 }
 
 // Key returns the key for pubsub
@@ -579,4 +587,13 @@ type Capabilities struct {
 	IOVirtualization         bool // I/O Virtualization support
 	CPUPinning               bool // CPU Pinning support
 	UseVHost                 bool // vHost support
+}
+
+// WatchdogParam is used in some proc functions that have a timeout,
+// to tell the watchdog agent is still alive.
+type WatchdogParam struct {
+	Ps        *pubsub.PubSub
+	AgentName string
+	WarnTime  time.Duration
+	ErrTime   time.Duration
 }
