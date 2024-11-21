@@ -22,7 +22,7 @@ to move to the most recent, aka the highest-priority configuration.
   * DPC is received from different sources, such as zedagent (bootstrap config
     or config from the controller), the `/config` partition with `override.json`,
     specially formatted USB stick with `usb.json` and even from NIM itself,
-    which builds and publishes the *last-resort* config if enabled
+    which builds and publishes the *last-resort* config if enabled. If `monitor` application is enabled the user can also change current network settings manually from the local TUI. In this case [monitor](./monitor.md) service sets a DPC with a key set to `manual`. Only one instance of the DPC with key `manual` may exists at a given time thus it is always overwritten when the user changes network settings
 * global configuration properties
   * an instance of `ConfigItemValueMap` struct received from zedagent
   * used to determine if last-resort should be enabled, also to obtain time
