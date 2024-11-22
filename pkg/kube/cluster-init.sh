@@ -29,6 +29,8 @@ CLUSTER_WAIT_FILE="/run/kube/cluster-change-wait-ongoing"
 # Source the utility script, Dockerfile copies the script to /usr/bin
 # shellcheck source=/dev/null
 . /usr/bin/cluster-utils.sh
+# shellcheck source=pkg/kube/cluster-update.sh
+. /usr/bin/cluster-update.sh
 
 # get cluster IP address from the cluster status file
 get_cluster_node_ip() {
