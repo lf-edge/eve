@@ -26,6 +26,8 @@ COPY cluster-init.sh /usr/bin/
 COPY cluster-utils.sh /usr/bin/
 COPY cgconfig.conf /etc
 
+COPY cluster-update.sh /usr/bin/
+
 # k3s
 COPY install-etcdctl.sh /usr/bin/
 RUN mkdir -p /etc/rancher/k3s
