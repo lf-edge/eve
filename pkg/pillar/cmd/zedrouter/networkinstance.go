@@ -124,12 +124,12 @@ func (z *zedrouter) updateNIPorts(niConfig types.NetworkInstanceConfig,
 	var (
 		newPorts         []*types.NetworkPortStatus
 		validatedPortLLs []string
-		newNTPServers    []net.IP
+		newNTPServers    []string
 		errorMsgs        []string
 	)
-	if niStatus.NtpServer != nil {
+	if niStatus.NtpServers != nil {
 		// The NTP server explicitly configured for the NI.
-		newNTPServers = append(newNTPServers, niStatus.NtpServer)
+		newNTPServers = append(newNTPServers, niStatus.NtpServers...)
 	}
 	if niStatus.PortLabel != "" {
 		newPorts = z.deviceNetworkStatus.LookupPortsByLabel(niStatus.PortLabel)
@@ -205,23 +205,26 @@ func (z *zedrouter) updateNIPorts(niConfig types.NetworkInstanceConfig,
 		}
 		// Port is valid for this network instance.
 		validatedPortLLs = append(validatedPortLLs, port.Logicallabel)
-		if port.NtpServer != nil {
+		if port.ConfiguredNtpServers != nil {
 			// The NTP server explicitly configured for the port.
-			newNTPServers = append(newNTPServers, port.NtpServer)
+			newNTPServers = append(newNTPServers, port.ConfiguredNtpServers...)
 		}
 		// NTP servers received via DHCP.
-		newNTPServers = append(newNTPServers, port.NtpServers...)
+		if !port.IgnoreDhcpNtpServers {
+			for _, dhcpNtpserver := range port.DhcpNtpServers {
+				newNTPServers = append(newNTPServers, dhcpNtpserver.String())
+			}
+		}
 	}
 	if niStatus.PortLabel != "" && len(newPorts) == 0 {
 		// This is potentially a transient state, wait for DNS update.
 		errorMsgs = append(errorMsgs,
 			fmt.Sprintf("no port is matching label '%s'", niStatus.PortLabel))
 	}
-	newNTPServers = generics.FilterDuplicatesFn(newNTPServers, netutils.EqualIPs)
+	newNTPServers = generics.FilterDuplicates(newNTPServers)
 	changed = changed || !generics.EqualSets(niStatus.Ports, validatedPortLLs)
 	niStatus.Ports = validatedPortLLs
-	changed = changed || !generics.EqualSetsFn(niStatus.NTPServers, newNTPServers,
-		netutils.EqualIPs)
+	changed = changed || !generics.EqualSets(niStatus.NTPServers, newNTPServers)
 	niStatus.NTPServers = newNTPServers
 	// Update BridgeMac for Switch NI bridge created by NIM.
 	if z.niBridgeIsCreatedByNIM(niConfig) {

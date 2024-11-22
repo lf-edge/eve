@@ -487,7 +487,7 @@ var (
 				IsMgmt:       true,
 				DhcpType:     types.DhcpTypeClient,
 				DNSServers:   []net.IP{ipAddress("8.8.8.8")},
-				NTPServers:   []net.IP{ipAddress("132.163.96.5")},
+				NTPServers:   []string{"132.163.96.5"},
 			},
 		},
 	}
@@ -524,7 +524,7 @@ var (
 				IsMgmt:       false,
 				DhcpType:     types.DhcpTypeClient,
 				DNSServers:   []net.IP{ipAddress("8.8.8.8")},
-				NTPServers:   []net.IP{ipAddress("132.163.96.5")},
+				NTPServers:   []string{"132.163.96.5"},
 			},
 		},
 	}
@@ -558,7 +558,7 @@ var (
 				IsMgmt:       true,
 				DhcpType:     types.DhcpTypeClient,
 				DNSServers:   []net.IP{ipAddress("2001:4860:4860::8888")},
-				NTPServers:   []net.IP{ipAddress("2610:20:6f15:15::27")},
+				NTPServers:   []string{"2610:20:6f15:15::27"},
 			},
 		},
 	}
@@ -595,7 +595,7 @@ var (
 				IsMgmt:       true,
 				DhcpType:     types.DhcpTypeClient,
 				DNSServers:   []net.IP{ipAddress("2001:4860:4860::8888")},
-				NTPServers:   []net.IP{ipAddress("2610:0020:6f15:0015::0027")},
+				NTPServers:   []string{"2610:0020:6f15:0015::0027"},
 			},
 		},
 	}
@@ -623,7 +623,7 @@ var (
 				DhcpType:     types.DhcpTypeClient,
 				SharedLabels: []string{"shopfloor", "portfwd"},
 				DNSServers:   []net.IP{ipAddress("8.8.8.8"), ipAddress("1.1.1.1")},
-				NTPServers:   []net.IP{ipAddress("132.163.96.5")},
+				NTPServers:   []string{"132.163.96.5"},
 			},
 			{
 				LogicalLabel: "ethernet3",
@@ -632,7 +632,7 @@ var (
 				DhcpType:     types.DhcpTypeStatic,
 				SharedLabels: []string{"shopfloor"},
 				DNSServers:   []net.IP{ipAddress("172.30.30.57")},
-				NTPServers:   []net.IP{ipAddress("128.138.140.211")},
+				NTPServers:   []string{"128.138.140.211"},
 			},
 		},
 	}
