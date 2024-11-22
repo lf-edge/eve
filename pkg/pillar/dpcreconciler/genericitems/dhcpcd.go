@@ -324,13 +324,14 @@ func (c *DhcpcdConfigurator) dhcpcdArgs(config types.DhcpConfig) (op string, arg
 				fmt.Sprintf("domain_name_servers=%s",
 					strings.Join(dnsServers, " ")))
 		}
-		if config.NTPServer != nil && !config.NTPServer.IsUnspecified() {
-			args = append(args, "--static",
-				fmt.Sprintf("ntp_servers=%s",
-					config.NTPServer.String()))
+		if config.NTPServers != nil {
+			for _, ntpServer := range config.NTPServers {
+				args = append(args, "--static", fmt.Sprintf("ntp_servers=%s", ntpServer))
+				args = append(args, extras...)
+			}
 		}
-		args = append(args, extras...)
 	}
+
 	return op, args
 }
 

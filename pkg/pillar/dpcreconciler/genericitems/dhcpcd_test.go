@@ -25,7 +25,7 @@ func TestDhcpcdEqual(t *testing.T) {
 					AddrSubnet: "192.168.1.44/24",          // irrelevant
 					Gateway:    net.ParseIP("192.168.1.1"), // irrelevant
 					DomainName: "mydomain",                 // irrelevant
-					NTPServer:  net.ParseIP("192.168.1.1"), // irrelevant
+					NTPServers: []string{"192.168.1.1"},    // irrelevant
 					Type:       types.NetworkTypeIpv4Only,  // must match
 				},
 			},
@@ -93,7 +93,7 @@ func TestDhcpcdEqual(t *testing.T) {
 					Dhcp:       types.DhcpTypeStatic,
 					AddrSubnet: "192.168.1.44/24",
 					DomainName: "mydomain",
-					NTPServer:  net.ParseIP("192.168.1.1"),
+					NTPServers: []string{"192.168.1.1"},
 					DNSServers: []net.IP{net.ParseIP("8.8.8.8")},
 					Type:       types.NetworkTypeIpv4Only, // irrelevant
 				},
@@ -103,7 +103,7 @@ func TestDhcpcdEqual(t *testing.T) {
 					Dhcp:       types.DhcpTypeStatic,
 					AddrSubnet: "192.168.1.44/24",
 					DomainName: "mydomain",
-					NTPServer:  net.ParseIP("192.168.1.1"),
+					NTPServers: []string{"192.168.1.1"},
 					DNSServers: []net.IP{net.ParseIP("8.8.8.8")},
 					Type:       types.NetworkTypeIPv4, // irrelevant
 				},
@@ -117,7 +117,7 @@ func TestDhcpcdEqual(t *testing.T) {
 					Dhcp:       types.DhcpTypeStatic,
 					AddrSubnet: "192.168.1.44/24",
 					DomainName: "mydomain",
-					NTPServer:  net.ParseIP("192.168.1.1"),
+					NTPServers: []string{"192.168.1.1"},
 					DNSServers: []net.IP{net.ParseIP("8.8.8.8")}, // does not match
 				},
 			},
@@ -126,7 +126,7 @@ func TestDhcpcdEqual(t *testing.T) {
 					Dhcp:       types.DhcpTypeStatic,
 					AddrSubnet: "192.168.1.44/24",
 					DomainName: "mydomain",
-					NTPServer:  net.ParseIP("192.168.1.1"),
+					NTPServers: []string{"192.168.1.1"},
 					DNSServers: []net.IP{net.ParseIP("1.1.1.1")}, // does not match
 				},
 			},
