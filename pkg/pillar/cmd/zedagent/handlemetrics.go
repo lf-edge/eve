@@ -1106,10 +1106,7 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 			networkInfo.DevName = *proto.String(name)
 			niStatus := appIfnameToNetworkInstance(ctx, aiStatus, ifname)
 			if niStatus != nil {
-				for _, ntpServer := range niStatus.NTPServers {
-					networkInfo.NtpServers = append(networkInfo.NtpServers,
-						ntpServer.String())
-				}
+				networkInfo.NtpServers = append(networkInfo.NtpServers, niStatus.NTPServers...)
 				networkInfo.DefaultRouters = []string{niStatus.Gateway.String()}
 				networkInfo.Dns = &info.ZInfoDNS{
 					DNSservers: []string{},

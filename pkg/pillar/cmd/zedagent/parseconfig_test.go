@@ -147,7 +147,7 @@ func TestParsePhysicalNetworkAdapters(t *testing.T) {
 	g.Expect(port.DhcpConfig.AddrSubnet).To(BeEmpty())
 	g.Expect(port.DhcpConfig.DNSServers).To(BeEmpty())
 	g.Expect(port.DhcpConfig.Gateway).To(BeNil())
-	g.Expect(port.DhcpConfig.NTPServer).To(BeNil())
+	g.Expect(port.DhcpConfig.NTPServers).To(BeNil())
 	g.Expect(port.ProxyConfig.Proxies).To(BeEmpty())
 	g.Expect(port.L2LinkConfig.L2Type).To(Equal(types.L2LinkTypeNone))
 	g.Expect(port.WirelessCfg.WType).To(Equal(types.WirelessTypeNone))
