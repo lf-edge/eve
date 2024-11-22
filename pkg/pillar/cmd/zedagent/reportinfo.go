@@ -885,8 +885,10 @@ func encodeNetInfo(port types.NetworkPortStatus) *info.ZInfoNetwork {
 
 	networkInfo.Proxy = encodeProxyStatus(&port.ProxyConfig)
 	networkInfo.NtpServers = []string{}
-	for _, server := range port.NtpServers {
-		networkInfo.NtpServers = append(networkInfo.NtpServers, server.String())
+	if !port.IgnoreDhcpNtpServers {
+		for _, server := range port.DhcpNtpServers {
+			networkInfo.NtpServers = append(networkInfo.NtpServers, server.String())
+		}
 	}
 	return networkInfo
 }
@@ -1035,12 +1037,25 @@ func encodeNetworkPortStatus(ctx *zedagentContext,
 	devicePort.Up = port.Up
 	devicePort.Mtu = uint32(port.MTU)
 	devicePort.Domainname = port.DomainName
-	// TODO: modify EVE APIs and allow to publish full list of NTP servers
-	if port.NtpServer != nil {
-		devicePort.NtpServer = port.NtpServer.String()
-	} else if len(port.NtpServers) > 0 {
-		devicePort.NtpServer = port.NtpServers[0].String()
+	ntpServers := make([]string, 0)
+	if port.ConfiguredNtpServers != nil {
+		ntpServers = append(ntpServers, port.ConfiguredNtpServers...)
 	}
+	if len(port.DhcpNtpServers) > 0 && !port.IgnoreDhcpNtpServers {
+		ntpServers = append(ntpServers, port.DhcpNtpServers[0].String())
+		if len(port.DhcpNtpServers) > 1 {
+			for _, ntpServer := range port.DhcpNtpServers[1:] {
+				ntpServers = append(ntpServers, ntpServer.String())
+			}
+		}
+	}
+	if len(ntpServers) > 0 {
+		devicePort.NtpServer = ntpServers[0]
+	}
+	if len(ntpServers) > 1 {
+		devicePort.MoreNtpServers = ntpServers[1:]
+	}
+
 	devicePort.Proxy = encodeProxyStatus(&port.ProxyConfig)
 	devicePort.MacAddr = port.MacAddr.String()
 	for _, ipAddr := range port.AddrInfoList {
@@ -1143,7 +1158,13 @@ func encodeNetworkPortConfig(ctx *zedagentContext,
 	dp.DefaultRouters = make([]string, 0)
 	dp.DefaultRouters = append(dp.DefaultRouters, npc.Gateway.String())
 
-	dp.NtpServer = npc.NTPServer.String()
+	if npc.NTPServers != nil && len(npc.NTPServers) > 0 {
+		dp.NtpServer = npc.NTPServers[0]
+
+		if len(npc.NTPServers) > 1 {
+			dp.MoreNtpServers = append(dp.MoreNtpServers, npc.NTPServers[1:]...)
+		}
+	}
 
 	dp.Dns = new(info.ZInfoDNS)
 	dp.Dns.DNSdomain = npc.DomainName

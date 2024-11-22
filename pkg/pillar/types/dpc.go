@@ -683,7 +683,7 @@ type DhcpConfig struct {
 	AddrSubnet string   // In CIDR e.g., 192.168.1.44/24
 	Gateway    net.IP
 	DomainName string
-	NTPServer  net.IP
+	NTPServers []string
 	DNSServers []net.IP    // If not set we use Gateway as DNS server
 	Type       NetworkType // IPv4 or IPv6 or Dual stack
 }
@@ -1065,7 +1065,7 @@ type NetworkXObjectConfig struct {
 	Subnet          net.IPNet
 	Gateway         net.IP
 	DomainName      string
-	NTPServer       net.IP
+	NTPServers      []string
 	DNSServers      []net.IP // If not set we use Gateway as DNS server
 	DhcpRange       IPRange
 	DNSNameToIPList []DNSNameToIP // Used for DNS and ACL ipset

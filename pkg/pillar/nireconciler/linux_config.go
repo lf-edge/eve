@@ -1095,6 +1095,30 @@ func (r *LinuxNIReconciler) getIntendedMetadataSrvCfg(niID uuid.UUID) (items []d
 	return items
 }
 
+func (r *LinuxNIReconciler) resolveNTPServers(ntpServers []string) []net.IP {
+	ret := make([]net.IP, 0)
+	for _, ntpServer := range ntpServers {
+		ip := net.ParseIP(ntpServer)
+		if ip != nil {
+			ret = append(ret, ip)
+			continue
+		}
+
+		// TODO: discuss with Milan how to use:
+		// devicenetwork.ResolveWithPortsLambda(ntpServer, XXX, devicenetwork.ResolveWithSrcIP)
+		// TODO: add timeout or resolve in background
+		ips, err := net.LookupIP(ntpServer)
+		if err != nil {
+			r.log.Warnf("could not lookup '%s': %v, skipping", ntpServer, err)
+			continue
+		}
+		ret = append(ret, ips...)
+	}
+
+	ret = generics.FilterDuplicatesFn(ret, netutils.EqualIPs)
+	return ret
+}
+
 func (r *LinuxNIReconciler) getIntendedDnsmasqCfg(niID uuid.UUID) (items []dg.Item) {
 	ni := r.nis[niID]
 	if ni.config.Type == types.NetworkInstanceTypeSwitch {
@@ -1130,18 +1154,19 @@ func (r *LinuxNIReconciler) getIntendedDnsmasqCfg(niID uuid.UUID) (items []dg.It
 	}
 	// Combine NTP servers assigned to the port(s) together with those statically
 	// configured for the network instance.
-	var ntpServers []net.IP
+	var ntpServers []string
 	for _, port := range ni.bridge.Ports {
 		ntpServers = append(ntpServers, port.NTPServers...)
 	}
-	if ni.config.NtpServer != nil {
-		ntpServers = append(ntpServers, ni.config.NtpServer)
+	if ni.config.NtpServers != nil {
+		ntpServers = append(ntpServers, ni.config.NtpServers...)
 	}
-	ntpServers = generics.FilterDuplicatesFn(ntpServers, netutils.EqualIPs)
+	ntpServers = generics.FilterDuplicates(ntpServers)
+	ntpServerIPs := r.resolveNTPServers(ntpServers)
 	var propagateRoutes []generic.IPRoute
 	// Use DHCP to propagate host routes towards user-configured NTP and DNS servers.
 	if bridgeIP != nil {
-		for _, ntpServer := range ntpServers {
+		for _, ntpServer := range ntpServerIPs {
 			propagateRoutes = append(propagateRoutes, generic.IPRoute{
 				DstNetwork: netutils.HostSubnet(ntpServer),
 				Gateway:    bridgeIP.IP,
@@ -1228,7 +1253,7 @@ func (r *LinuxNIReconciler) getIntendedDnsmasqCfg(niID uuid.UUID) (items []dg.It
 		WithDefaultRoute: withDefaultRoute,
 		DomainName:       ni.config.DomainName,
 		DNSServers:       ni.config.DnsServers,
-		NTPServers:       ntpServers,
+		NTPServers:       ntpServerIPs,
 		PropagateRoutes:  propagateRoutes,
 		MTU:              ni.bridge.MTU,
 	}
