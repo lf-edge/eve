@@ -6,8 +6,6 @@ package linuxitems
 import (
 	"context"
 	"fmt"
-	"reflect"
-
 	"github.com/vishvananda/netlink"
 
 	"github.com/lf-edge/eve-libs/depgraph"
@@ -15,6 +13,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/dpcreconciler/genericitems"
 	"github.com/lf-edge/eve/pkg/pillar/netmonitor"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
 )
 
 // Bond : Bond interface.
@@ -52,8 +51,12 @@ func (b Bond) Type() string {
 // Equal is a comparison method for two equally-named Bond instances.
 func (b Bond) Equal(other depgraph.Item) bool {
 	b2 := other.(Bond)
-	return reflect.DeepEqual(b.BondConfig, b2.BondConfig) &&
-		reflect.DeepEqual(b.AggregatedIfNames, b2.AggregatedIfNames) &&
+	return b.LacpRate == b2.LacpRate &&
+		b.MIIMonitor == b2.MIIMonitor &&
+		b.Mode == b2.Mode &&
+		b.ARPMonitor.Equal(b2.ARPMonitor) &&
+		generics.EqualSets(b.AggregatedIfNames, b2.AggregatedIfNames) &&
+		b.Usage == b2.Usage &&
 		b.MTU == b2.MTU
 }
 
@@ -320,7 +323,10 @@ func (c *BondConfigurator) Delete(ctx context.Context, item depgraph.Item) error
 func (c *BondConfigurator) NeedsRecreate(oldItem, newItem depgraph.Item) (recreate bool) {
 	oldBondCfg := oldItem.(Bond)
 	newBondCfg := newItem.(Bond)
-	if !reflect.DeepEqual(oldBondCfg.BondConfig, newBondCfg.BondConfig) {
+	if oldBondCfg.LacpRate != newBondCfg.LacpRate ||
+		oldBondCfg.MIIMonitor != newBondCfg.MIIMonitor ||
+		oldBondCfg.Mode != newBondCfg.Mode ||
+		!oldBondCfg.ARPMonitor.Equal(newBondCfg.ARPMonitor) {
 		return true
 	}
 	if oldBondCfg.Usage != newBondCfg.Usage {
