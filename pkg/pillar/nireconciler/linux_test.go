@@ -1,7 +1,7 @@
 // Copyright (c) 2023 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-package nireconciler_test
+package nireconciler
 
 import (
 	"context"
@@ -19,7 +19,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/iptables"
 	"github.com/lf-edge/eve/pkg/pillar/netmonitor"
-	nirec "github.com/lf-edge/eve/pkg/pillar/nireconciler"
 	"github.com/lf-edge/eve/pkg/pillar/nireconciler/genericitems"
 	"github.com/lf-edge/eve/pkg/pillar/nireconciler/linuxitems"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -31,7 +30,7 @@ import (
 )
 
 var (
-	niReconciler   *nirec.LinuxNIReconciler
+	niReconciler   *LinuxNIReconciler
 	networkMonitor *netmonitor.MockNetworkMonitor
 )
 
@@ -45,7 +44,7 @@ func initTest(test *testing.T, withKube bool) *GomegaWithT {
 		Log:    log,
 		MainRT: unix.RT_TABLE_MAIN,
 	}
-	niReconciler = nirec.NewLinuxNIReconciler(log, logger, networkMonitor, nil,
+	niReconciler = NewLinuxNIReconciler(log, logger, networkMonitor, nil,
 		false, false, withKube)
 	return t
 }
@@ -216,11 +215,11 @@ func TestHostIpsetBasename(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.testname, func(t *testing.T) {
-			if len(test.expIPSetBasename)+len("ipvX.") > nirec.IPSetNameLenLimit {
+			if len(test.expIPSetBasename)+len("ipvX.") > IPSetNameLenLimit {
 				t.Errorf("expected ipset basename '%s' is unexpectedly long"+
 					" - mistake in the test?", test.expIPSetBasename)
 			}
-			ipsetBasename := nirec.HostIPSetBasename(test.hostname)
+			ipsetBasename := HostIPSetBasename(test.hostname)
 			if ipsetBasename != test.expIPSetBasename {
 				t.Errorf("failed for: hostname=%s\n"+
 					"expected ipset basename:\n\t%q\ngot ipset basename:\n\t%q",
@@ -475,12 +474,12 @@ var (
 		IpType:         types.AddressTypeIPV4,
 		Subnet:         deref(ipAddressWithPrefix("10.10.10.0/24")),
 	}
-	ni1Bridge = nirec.NIBridge{
+	ni1Bridge = NIBridge{
 		NI:         ni1UUID.UUID,
 		BrNum:      1,
 		MACAddress: macAddress("02:00:00:00:02:01"),
 		IPAddress:  ipAddressWithPrefix("10.10.10.1/24"),
-		Ports: []nirec.Port{
+		Ports: []Port{
 			{
 				LogicalLabel: "ethernet0",
 				IfName:       "eth0",
@@ -513,11 +512,11 @@ var (
 		Type:           types.NetworkInstanceTypeSwitch,
 		IpType:         types.AddressTypeNone,
 	}
-	ni2Bridge = nirec.NIBridge{
+	ni2Bridge = NIBridge{
 		NI:         ni2UUID.UUID,
 		BrNum:      2,
 		MACAddress: macAddress("02:00:00:00:01:02"), // eth1
-		Ports: []nirec.Port{
+		Ports: []Port{
 			{
 				LogicalLabel: "ethernet1",
 				IfName:       "eth1",
@@ -546,12 +545,12 @@ var (
 			},
 		},
 	}
-	ni3Bridge = nirec.NIBridge{
+	ni3Bridge = NIBridge{
 		NI:         ni3UUID.UUID,
 		BrNum:      3,
 		MACAddress: macAddress("02:00:00:00:02:03"),
 		IPAddress:  ipAddressWithPrefix("2001::1111:1/112"),
-		Ports: []nirec.Port{
+		Ports: []Port{
 			{
 				LogicalLabel: "ethernet2",
 				IfName:       "eth2",
@@ -584,11 +583,11 @@ var (
 		Type:           types.NetworkInstanceTypeSwitch,
 		IpType:         types.AddressTypeNone,
 	}
-	ni4Bridge = nirec.NIBridge{
+	ni4Bridge = NIBridge{
 		NI:         ni4UUID.UUID,
 		BrNum:      4,
 		MACAddress: macAddress("02:00:00:00:01:03"), // eth2
-		Ports: []nirec.Port{
+		Ports: []Port{
 			{
 				LogicalLabel: "ethernet2",
 				IfName:       "eth2",
@@ -610,12 +609,12 @@ var (
 		IpType:         types.AddressTypeIPV4,
 		Subnet:         deref(ipAddressWithPrefix("10.10.20.0/24")),
 	}
-	ni5Bridge = nirec.NIBridge{
+	ni5Bridge = NIBridge{
 		NI:         ni5UUID.UUID,
 		BrNum:      5,
 		MACAddress: macAddress("02:00:00:00:02:05"),
 		IPAddress:  ipAddressWithPrefix("10.10.20.1/24"),
-		Ports: []nirec.Port{
+		Ports: []Port{
 			{
 				LogicalLabel: "ethernet1",
 				IfName:       "eth1",
@@ -729,7 +728,7 @@ var (
 			},
 		},
 	}
-	app1VIFs = []nirec.AppVIF{
+	app1VIFs = []AppVIF{
 		{
 			App:            app1UUID.UUID,
 			NI:             ni1UUID.UUID,
@@ -892,7 +891,7 @@ var (
 			},
 		},
 	}
-	app2VIFs = []nirec.AppVIF{
+	app2VIFs = []AppVIF{
 		{
 			App:            app2UUID.UUID,
 			NI:             ni1UUID.UUID,
@@ -1105,7 +1104,7 @@ var (
 			},
 		},
 	}
-	app3VIFs = []nirec.AppVIF{
+	app3VIFs = []AppVIF{
 		{
 			App:            app3UUID.UUID,
 			NI:             ni3UUID.UUID,
@@ -1159,7 +1158,7 @@ func TestSingleLocalNI(test *testing.T) {
 	updatesCh := niReconciler.WatchReconcilerUpdates()
 	ctx := reconciler.MockRun(context.Background())
 	niReconciler.RunInitialReconcile(ctx)
-	var recUpdate nirec.ReconcilerUpdate
+	var recUpdate ReconcilerUpdate
 	t.Consistently(updatesCh).ShouldNot(Receive(&recUpdate))
 
 	// Create local network instance.
@@ -1176,7 +1175,7 @@ func TestSingleLocalNI(test *testing.T) {
 	t.Expect(netutils.EqualIPs(niStatus.Routes[0].Gateway, eth0Routes[0].Gw)).To(BeTrue())
 
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.NIReconcileStatusChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(NIReconcileStatusChanged))
 	t.Expect(recUpdate.NIStatus.Equal(niStatus)).To(BeTrue())
 
 	networkMonitor.AddOrUpdateInterface(ni1BridgeIf)
@@ -1264,11 +1263,11 @@ func TestSingleLocalNI(test *testing.T) {
 	t.Expect(appStatus.VIFs[0].FailedItems).To(BeEmpty())
 
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.NIReconcileStatusChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(NIReconcileStatusChanged))
 	t.Expect(recUpdate.NIStatus.BrIfIndex).To(Equal(9))
 
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.AppConnReconcileStatusChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(AppConnReconcileStatusChanged))
 	t.Expect(recUpdate.AppConnStatus.Equal(appStatus)).To(BeTrue())
 
 	intendedPortMapRule1 := iptables.Rule{
@@ -1287,19 +1286,19 @@ func TestSingleLocalNI(test *testing.T) {
 	// Simulate domainmgr creating the VIF.
 	networkMonitor.AddOrUpdateInterface(app1VIF1)
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.CurrentStateChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(CurrentStateChanged))
 	niReconciler.ResumeReconcile(ctx)
 
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.AppConnReconcileStatusChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(AppConnReconcileStatusChanged))
 	t.Expect(recUpdate.AppConnStatus.VIFs[0].InProgress).To(BeFalse())
 	t.Expect(recUpdate.AppConnStatus.VIFs[0].FailedItems).To(BeEmpty())
 
 	graphs := []dg.GraphR{niReconciler.GetIntendedState(), niReconciler.GetCurrentState()}
 	for _, graph := range graphs {
-		niSG := graph.SubGraph(nirec.NIToSGName(ni1UUID.UUID))
+		niSG := graph.SubGraph(NIToSGName(ni1UUID.UUID))
 		t.Expect(niSG).ToNot(BeNil())
-		appSG := niSG.SubGraph(nirec.AppConnSGName(app1UUID.UUID, app1VIFs[0].NetAdapterName))
+		appSG := niSG.SubGraph(AppConnSGName(app1UUID.UUID, app1VIFs[0].NetAdapterName))
 		t.Expect(appSG).ToNot(BeNil())
 	}
 
@@ -1314,14 +1313,14 @@ func TestSingleLocalNI(test *testing.T) {
 	})
 	// Should receive CurrentStateChanged twice - for route and addr update.
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.CurrentStateChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(CurrentStateChanged))
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.CurrentStateChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(CurrentStateChanged))
 	niReconciler.ResumeReconcile(ctx)
 
 	// Route not configured anymore.
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.NIReconcileStatusChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(NIReconcileStatusChanged))
 	t.Expect(recUpdate.NIStatus.Routes).To(BeEmpty())
 
 	t.Consistently(updatesCh).ShouldNot(Receive())
@@ -1344,14 +1343,14 @@ func TestSingleLocalNI(test *testing.T) {
 	}, eth0Routes...))
 	// Should receive CurrentStateChanged twice - for route and addr update.
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.CurrentStateChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(CurrentStateChanged))
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.CurrentStateChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(CurrentStateChanged))
 	niReconciler.ResumeReconcile(ctx)
 
 	// Route configured again.
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.NIReconcileStatusChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(NIReconcileStatusChanged))
 	t.Expect(recUpdate.NIStatus.Routes).To(HaveLen(1))
 	t.Expect(recUpdate.NIStatus.Routes[0].IsDefaultRoute()).To(BeTrue())
 	t.Expect(netutils.EqualIPs(recUpdate.NIStatus.Routes[0].Gateway, eth0Routes[0].Gw)).To(BeTrue())
@@ -1374,19 +1373,19 @@ func TestSingleLocalNI(test *testing.T) {
 	t.Expect(appStatus.VIFs[0].FailedItems).To(BeEmpty())
 
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.AppConnReconcileStatusChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(AppConnReconcileStatusChanged))
 	t.Expect(recUpdate.AppConnStatus.Equal(appStatus)).To(BeTrue())
 
 	networkMonitor.DelInterface(app1VIF1.Attrs.IfName)
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.CurrentStateChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(CurrentStateChanged))
 	niReconciler.ResumeReconcile(ctx)
 
 	graphs = []dg.GraphR{niReconciler.GetIntendedState(), niReconciler.GetCurrentState()}
 	for _, graph := range graphs {
-		niSG := graph.SubGraph(nirec.NIToSGName(ni1UUID.UUID))
+		niSG := graph.SubGraph(NIToSGName(ni1UUID.UUID))
 		t.Expect(niSG).ToNot(BeNil())
-		appSG := niSG.SubGraph(nirec.AppConnSGName(app1UUID.UUID, app1VIFs[0].NetAdapterName))
+		appSG := niSG.SubGraph(AppConnSGName(app1UUID.UUID, app1VIFs[0].NetAdapterName))
 		t.Expect(appSG).To(BeNil())
 	}
 
@@ -1401,12 +1400,12 @@ func TestSingleLocalNI(test *testing.T) {
 	networkMonitor.DelInterface(ni1BridgeIf.Attrs.IfName)
 
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.NIReconcileStatusChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(NIReconcileStatusChanged))
 	t.Expect(recUpdate.NIStatus.Equal(niStatus)).To(BeTrue())
 
 	graphs = []dg.GraphR{niReconciler.GetIntendedState(), niReconciler.GetCurrentState()}
 	for _, graph := range graphs {
-		niSG := graph.SubGraph(nirec.NIToSGName(ni1UUID.UUID))
+		niSG := graph.SubGraph(NIToSGName(ni1UUID.UUID))
 		t.Expect(niSG).To(BeNil())
 	}
 }
@@ -1445,9 +1444,9 @@ func TestIPv4LocalAndSwitchNIs(test *testing.T) {
 	t.Expect(niStatus.Routes[0].IsDefaultRoute()).To(BeTrue())
 	t.Expect(netutils.EqualIPs(niStatus.Routes[0].Gateway, eth0Routes[0].Gw)).To(BeTrue())
 
-	var recUpdate nirec.ReconcilerUpdate
+	var recUpdate ReconcilerUpdate
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.NIReconcileStatusChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(NIReconcileStatusChanged))
 	t.Expect(recUpdate.NIStatus.Equal(niStatus)).To(BeTrue())
 
 	networkMonitor.AddOrUpdateInterface(ni5BridgeIf)
@@ -1455,7 +1454,7 @@ func TestIPv4LocalAndSwitchNIs(test *testing.T) {
 	t.Expect(err).ToNot(HaveOccurred())
 	t.Expect(niStatus.Routes).To(HaveLen(1)) // route for eth3 only, eth1 is without IP
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.NIReconcileStatusChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(NIReconcileStatusChanged))
 	t.Expect(recUpdate.NIStatus.Equal(niStatus)).To(BeTrue())
 
 	// Flow logging is disabled - blocked traffic is immediately dropped by iptables,
@@ -1538,7 +1537,7 @@ func TestIPv4LocalAndSwitchNIs(test *testing.T) {
 	t.Expect(niStatus.FailedItems).To(BeEmpty())
 
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.NIReconcileStatusChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(NIReconcileStatusChanged))
 	t.Expect(recUpdate.NIStatus.Equal(niStatus)).To(BeTrue())
 
 	t.Expect(itemIsCreated(dg.Reference(
@@ -1556,16 +1555,16 @@ func TestIPv4LocalAndSwitchNIs(test *testing.T) {
 	eth1.IPAddrs = eth1IPs
 	networkMonitor.AddOrUpdateInterface(eth1)
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.CurrentStateChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(CurrentStateChanged))
 	routes = append(routes, eth0Routes...)
 	routes = append(routes, eth1Routes...)
 	routes = append(routes, eth3Routes...)
 	networkMonitor.UpdateRoutes(routes)
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.CurrentStateChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(CurrentStateChanged))
 	niReconciler.ResumeReconcile(ctx)
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.NIReconcileStatusChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(NIReconcileStatusChanged))
 	t.Expect(recUpdate.NIStatus.NI).To(Equal(ni5UUID.UUID))
 	t.Expect(recUpdate.NIStatus.Routes).To(HaveLen(2)) // Now has routes for both eth1 and eth3
 
@@ -1600,7 +1599,7 @@ func TestIPv4LocalAndSwitchNIs(test *testing.T) {
 	t.Expect(appStatus.VIFs[3].FailedItems).To(BeEmpty())
 
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.AppConnReconcileStatusChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(AppConnReconcileStatusChanged))
 	t.Expect(recUpdate.AppConnStatus.Equal(appStatus)).To(BeTrue())
 
 	t.Expect(itemCountWithType(linuxitems.TCIngressTypename)).To(Equal(1))
@@ -1609,20 +1608,20 @@ func TestIPv4LocalAndSwitchNIs(test *testing.T) {
 	// Simulate domainmgr creating all VIFs.
 	networkMonitor.AddOrUpdateInterface(app2VIF1)
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.CurrentStateChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(CurrentStateChanged))
 	networkMonitor.AddOrUpdateInterface(app2VIF2)
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.CurrentStateChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(CurrentStateChanged))
 	networkMonitor.AddOrUpdateInterface(app2VIF3)
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.CurrentStateChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(CurrentStateChanged))
 	networkMonitor.AddOrUpdateInterface(app2VIF4)
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.CurrentStateChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(CurrentStateChanged))
 	niReconciler.ResumeReconcile(ctx)
 
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.AppConnReconcileStatusChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(AppConnReconcileStatusChanged))
 	for i := 0; i < 4; i++ {
 		t.Expect(recUpdate.AppConnStatus.VIFs[i].InProgress).To(BeFalse())
 		t.Expect(recUpdate.AppConnStatus.VIFs[i].FailedItems).To(BeEmpty())
@@ -1749,16 +1748,16 @@ func TestIPv4LocalAndSwitchNIsWithFlowlogging(test *testing.T) {
 	t.Expect(niStatus.BrIfName).To(Equal("bn1"))
 	t.Expect(niStatus.FailedItems).To(BeEmpty())
 
-	var recUpdate nirec.ReconcilerUpdate
+	var recUpdate ReconcilerUpdate
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.NIReconcileStatusChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(NIReconcileStatusChanged))
 	t.Expect(recUpdate.NIStatus.Equal(niStatus)).To(BeTrue())
 
 	networkMonitor.AddOrUpdateInterface(ni5BridgeIf)
 	niStatus, err = niReconciler.AddNI(ctx, ni5Config, ni5Bridge)
 	t.Expect(err).ToNot(HaveOccurred())
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.NIReconcileStatusChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(NIReconcileStatusChanged))
 	fmt.Println(recUpdate.NIStatus)
 	fmt.Println(niStatus)
 	t.Expect(recUpdate.NIStatus.Equal(niStatus)).To(BeTrue())
@@ -1863,7 +1862,7 @@ func TestIPv4LocalAndSwitchNIsWithFlowlogging(test *testing.T) {
 	t.Expect(niStatus.FailedItems).To(BeEmpty())
 
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.NIReconcileStatusChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(NIReconcileStatusChanged))
 	t.Expect(recUpdate.NIStatus.Equal(niStatus)).To(BeTrue())
 
 	t.Expect(itemIsCreated(dg.Reference(
@@ -1877,16 +1876,16 @@ func TestIPv4LocalAndSwitchNIsWithFlowlogging(test *testing.T) {
 	eth1.IPAddrs = eth1IPs
 	networkMonitor.AddOrUpdateInterface(eth1)
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.CurrentStateChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(CurrentStateChanged))
 	routes = append(routes, eth0Routes...)
 	routes = append(routes, eth1Routes...)
 	routes = append(routes, eth3Routes...)
 	networkMonitor.UpdateRoutes(routes)
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.CurrentStateChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(CurrentStateChanged))
 	niReconciler.ResumeReconcile(ctx)
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.NIReconcileStatusChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(NIReconcileStatusChanged))
 	t.Expect(recUpdate.NIStatus.NI).To(Equal(ni5UUID.UUID))
 	t.Expect(recUpdate.NIStatus.Routes).To(HaveLen(2)) // Now has routes for both eth1 and eth3
 
@@ -1921,26 +1920,26 @@ func TestIPv4LocalAndSwitchNIsWithFlowlogging(test *testing.T) {
 	t.Expect(appStatus.VIFs[3].FailedItems).To(BeEmpty())
 
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.AppConnReconcileStatusChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(AppConnReconcileStatusChanged))
 	t.Expect(recUpdate.AppConnStatus.Equal(appStatus)).To(BeTrue())
 
 	// Simulate domainmgr creating all VIFs.
 	networkMonitor.AddOrUpdateInterface(app2VIF1)
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.CurrentStateChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(CurrentStateChanged))
 	networkMonitor.AddOrUpdateInterface(app2VIF2)
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.CurrentStateChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(CurrentStateChanged))
 	networkMonitor.AddOrUpdateInterface(app2VIF3)
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.CurrentStateChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(CurrentStateChanged))
 	networkMonitor.AddOrUpdateInterface(app2VIF4)
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.CurrentStateChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(CurrentStateChanged))
 	niReconciler.ResumeReconcile(ctx)
 
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.AppConnReconcileStatusChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(AppConnReconcileStatusChanged))
 	for i := 0; i < 4; i++ {
 		t.Expect(recUpdate.AppConnStatus.VIFs[i].InProgress).To(BeFalse())
 		t.Expect(recUpdate.AppConnStatus.VIFs[i].FailedItems).To(BeEmpty())
@@ -2114,9 +2113,9 @@ func TestIPv6LocalAndSwitchNIs(test *testing.T) {
 	t.Expect(niStatus.BrIfName).To(Equal("bn3"))
 	t.Expect(niStatus.FailedItems).To(BeEmpty())
 
-	var recUpdate nirec.ReconcilerUpdate
+	var recUpdate ReconcilerUpdate
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.NIReconcileStatusChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(NIReconcileStatusChanged))
 	t.Expect(recUpdate.NIStatus.Equal(niStatus)).To(BeTrue())
 
 	// Create switch network instance.
@@ -2129,7 +2128,7 @@ func TestIPv6LocalAndSwitchNIs(test *testing.T) {
 	t.Expect(niStatus.FailedItems).To(BeEmpty())
 
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.NIReconcileStatusChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(NIReconcileStatusChanged))
 	t.Expect(recUpdate.NIStatus.Equal(niStatus)).To(BeTrue())
 
 	t.Expect(itemIsCreated(dg.Reference(
@@ -2160,19 +2159,19 @@ func TestIPv6LocalAndSwitchNIs(test *testing.T) {
 	t.Expect(appStatus.VIFs[1].FailedItems).To(BeEmpty())
 
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.AppConnReconcileStatusChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(AppConnReconcileStatusChanged))
 	t.Expect(recUpdate.AppConnStatus.Equal(appStatus)).To(BeTrue())
 
 	// Simulate domainmgr creating both VIFs.
 	networkMonitor.AddOrUpdateInterface(app3VIF1)
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.CurrentStateChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(CurrentStateChanged))
 	networkMonitor.AddOrUpdateInterface(app3VIF2)
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.CurrentStateChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(CurrentStateChanged))
 	niReconciler.ResumeReconcile(ctx)
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.AppConnReconcileStatusChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(AppConnReconcileStatusChanged))
 	t.Expect(recUpdate.AppConnStatus.VIFs[0].InProgress).To(BeFalse())
 	t.Expect(recUpdate.AppConnStatus.VIFs[1].InProgress).To(BeFalse())
 
@@ -2327,7 +2326,7 @@ func TestAirGappedLocalAndSwitchNIs(test *testing.T) {
 
 	// Create 2 local network instances but make them both air-gapped.
 	ni1Ports := ni1Bridge.Ports
-	ni1Bridge.Ports = []nirec.Port{}
+	ni1Bridge.Ports = []Port{}
 	networkMonitor.AddOrUpdateInterface(ni1BridgeIf)
 	niStatus, err := niReconciler.AddNI(ctx, ni1Config, ni1Bridge)
 	t.Expect(err).ToNot(HaveOccurred())
@@ -2337,18 +2336,18 @@ func TestAirGappedLocalAndSwitchNIs(test *testing.T) {
 	t.Expect(niStatus.BrIfName).To(Equal("bn1"))
 	t.Expect(niStatus.FailedItems).To(BeEmpty())
 
-	var recUpdate nirec.ReconcilerUpdate
+	var recUpdate ReconcilerUpdate
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.NIReconcileStatusChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(NIReconcileStatusChanged))
 	t.Expect(recUpdate.NIStatus.Equal(niStatus)).To(BeTrue())
 
 	ni5Ports := ni5Bridge.Ports
-	ni5Bridge.Ports = []nirec.Port{}
+	ni5Bridge.Ports = []Port{}
 	networkMonitor.AddOrUpdateInterface(ni5BridgeIf)
 	niStatus, err = niReconciler.AddNI(ctx, ni5Config, ni5Bridge)
 	t.Expect(err).ToNot(HaveOccurred())
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.NIReconcileStatusChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(NIReconcileStatusChanged))
 	t.Expect(recUpdate.NIStatus.Equal(niStatus)).To(BeTrue())
 
 	// There should not be MASQUERADE iptables rule or the default gateway route.
@@ -2415,7 +2414,7 @@ func TestAirGappedLocalAndSwitchNIs(test *testing.T) {
 	}
 	networkMonitor.AddOrUpdateInterface(ni2AirGappedBridgeIf)
 	ni2Ports := ni2Bridge.Ports
-	ni2Bridge.Ports = []nirec.Port{}
+	ni2Bridge.Ports = []Port{}
 	niStatus, err = niReconciler.AddNI(ctx, ni2Config, ni2Bridge)
 	t.Expect(err).ToNot(HaveOccurred())
 	t.Expect(niStatus.NI).To(Equal(ni2UUID.UUID))
@@ -2425,7 +2424,7 @@ func TestAirGappedLocalAndSwitchNIs(test *testing.T) {
 	t.Expect(niStatus.FailedItems).To(BeEmpty())
 
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.NIReconcileStatusChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(NIReconcileStatusChanged))
 	t.Expect(recUpdate.NIStatus.Equal(niStatus)).To(BeTrue())
 
 	t.Expect(itemIsCreated(dg.Reference(
@@ -2459,7 +2458,7 @@ func TestAirGappedLocalAndSwitchNIs(test *testing.T) {
 	t.Expect(appStatus.VIFs[3].FailedItems).To(BeEmpty())
 
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.AppConnReconcileStatusChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(AppConnReconcileStatusChanged))
 	t.Expect(recUpdate.AppConnStatus.Equal(appStatus)).To(BeTrue())
 
 	// Simulate domainmgr creating all VIFs.
@@ -2467,20 +2466,20 @@ func TestAirGappedLocalAndSwitchNIs(test *testing.T) {
 	app2VIF3.Attrs.MasterIfIndex = 99 // using air-gapped bridge instead of eth1
 	networkMonitor.AddOrUpdateInterface(app2VIF1)
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.CurrentStateChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(CurrentStateChanged))
 	networkMonitor.AddOrUpdateInterface(app2VIF2)
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.CurrentStateChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(CurrentStateChanged))
 	networkMonitor.AddOrUpdateInterface(app2VIF3)
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.CurrentStateChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(CurrentStateChanged))
 	networkMonitor.AddOrUpdateInterface(app2VIF4)
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.CurrentStateChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(CurrentStateChanged))
 	niReconciler.ResumeReconcile(ctx)
 
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.AppConnReconcileStatusChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(AppConnReconcileStatusChanged))
 	for i := 0; i < 4; i++ {
 		t.Expect(recUpdate.AppConnStatus.VIFs[i].InProgress).To(BeFalse())
 		t.Expect(recUpdate.AppConnStatus.VIFs[i].FailedItems).To(BeEmpty())
@@ -2579,46 +2578,46 @@ func TestStaticAndConnectedRoutes(test *testing.T) {
 	networkMonitor.AddOrUpdateInterface(ni1BridgeIf)
 	_, err := niReconciler.AddNI(ctx, ni1Config, ni1Bridge)
 	t.Expect(err).ToNot(HaveOccurred())
-	var recUpdate nirec.ReconcilerUpdate
+	var recUpdate ReconcilerUpdate
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.NIReconcileStatusChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(NIReconcileStatusChanged))
 	_, err = niReconciler.AddNI(ctx, ni2Config, ni2Bridge)
 	t.Expect(err).ToNot(HaveOccurred())
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.NIReconcileStatusChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(NIReconcileStatusChanged))
 	// NI5 will propagate user-configured DNS server to apps.
 	ni5Config.DnsServers = []net.IP{ipAddress("1.1.1.1")}
 	networkMonitor.AddOrUpdateInterface(ni5BridgeIf)
 	_, err = niReconciler.AddNI(ctx, ni5Config, ni5Bridge)
 	t.Expect(err).ToNot(HaveOccurred())
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.NIReconcileStatusChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(NIReconcileStatusChanged))
 
 	// Connect application into network instances.
 	// VIFs on the switch NI will receive IPs later.
 	appStatus, err := niReconciler.AddAppConn(ctx, app2NetConfig, app2Num, cnirpc.AppPod{}, app2VIFs)
 	t.Expect(err).ToNot(HaveOccurred())
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.AppConnReconcileStatusChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(AppConnReconcileStatusChanged))
 	t.Expect(recUpdate.AppConnStatus.Equal(appStatus)).To(BeTrue())
 
 	// Simulate domainmgr creating all VIFs.
 	networkMonitor.AddOrUpdateInterface(app2VIF1)
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.CurrentStateChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(CurrentStateChanged))
 	networkMonitor.AddOrUpdateInterface(app2VIF2)
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.CurrentStateChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(CurrentStateChanged))
 	networkMonitor.AddOrUpdateInterface(app2VIF3)
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.CurrentStateChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(CurrentStateChanged))
 	networkMonitor.AddOrUpdateInterface(app2VIF4)
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.CurrentStateChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(CurrentStateChanged))
 	niReconciler.ResumeReconcile(ctx)
 
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.AppConnReconcileStatusChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(AppConnReconcileStatusChanged))
 	for i := 0; i < 4; i++ {
 		t.Expect(recUpdate.AppConnStatus.VIFs[i].InProgress).To(BeFalse())
 		t.Expect(recUpdate.AppConnStatus.VIFs[i].FailedItems).To(BeEmpty())
@@ -2634,7 +2633,7 @@ func TestStaticAndConnectedRoutes(test *testing.T) {
 		t.Expect(appStatus.VIFs[i].FailedItems).To(BeEmpty())
 	}
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.AppConnReconcileStatusChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(AppConnReconcileStatusChanged))
 
 	// Check that port forwarding in NI5 is enabled only for eth1 (and not for eth3).
 	ni5PortMapRule1 := iptables.Rule{
@@ -2678,7 +2677,7 @@ func TestStaticAndConnectedRoutes(test *testing.T) {
 	// When eth1 & eth3 both loose the default route, N5 should stop propagating it.
 	networkMonitor.UpdateRoutes(eth0Routes)
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.CurrentStateChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(CurrentStateChanged))
 	niReconciler.ResumeReconcile(ctx)
 	t.Expect(itemDescription(dg.Reference(dnsmasqNI1))).To(ContainSubstring(
 		"gatewayIP: 10.10.10.1"))
@@ -2728,7 +2727,7 @@ func TestStaticAndConnectedRoutes(test *testing.T) {
 
 	// Make N1 air-gapped.
 	ni1Ports := ni1Bridge.Ports
-	ni1Bridge.Ports = []nirec.Port{}
+	ni1Bridge.Ports = []Port{}
 	_, err = niReconciler.UpdateNI(ctx, ni1Config, ni1Bridge)
 	t.Expect(err).ToNot(HaveOccurred())
 	t.Expect(itemDescription(dg.Reference(dnsmasqNI1))).To(ContainSubstring(
@@ -2738,14 +2737,14 @@ func TestStaticAndConnectedRoutes(test *testing.T) {
 			"{1.1.1.1/32 10.10.20.1} {172.20.0.0/16 10.10.20.1} {172.30.30.0/24 10.10.20.1}]"))
 
 	// Add some static routes.
-	ni1Bridge.StaticRoutes = []nirec.IPRoute{
+	ni1Bridge.StaticRoutes = []IPRoute{
 		// GW is inside the NI subnet (app gateway).
 		{DstNetwork: ipAddressWithPrefix("10.50.1.0/24"), Gateway: ipAddress("10.10.10.100")},
 	}
 	_, err = niReconciler.UpdateNI(ctx, ni1Config, ni1Bridge)
 	t.Expect(err).ToNot(HaveOccurred())
 
-	ni5Bridge.StaticRoutes = []nirec.IPRoute{
+	ni5Bridge.StaticRoutes = []IPRoute{
 		{DstNetwork: ipAddressWithPrefix("10.50.1.0/24"), Gateway: ipAddress("172.20.1.1")},
 		{DstNetwork: ipAddressWithPrefix("10.50.14.0/26"), Gateway: ipAddress("172.30.30.15")},
 		// This one uses app2 as GW:
@@ -2885,9 +2884,9 @@ func TestCNI(test *testing.T) {
 	networkMonitor.AddOrUpdateInterface(ni1BridgeIf)
 	_, err := niReconciler.AddNI(ctx, ni1Config, ni1Bridge)
 	t.Expect(err).ToNot(HaveOccurred())
-	var recUpdate nirec.ReconcilerUpdate
+	var recUpdate ReconcilerUpdate
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.NIReconcileStatusChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(NIReconcileStatusChanged))
 
 	// Connect K3s Pod into the network instance.
 	// L2-only connection for now.
@@ -2900,10 +2899,10 @@ func TestCNI(test *testing.T) {
 		GuestIfName: "net0",
 		IPAM:        cnirpc.PodIPAMConfig{},
 	}
-	_, err = niReconciler.AddAppConn(ctx, app1NetConfig, app1Num, pod, []nirec.AppVIF{vif})
+	_, err = niReconciler.AddAppConn(ctx, app1NetConfig, app1Num, pod, []AppVIF{vif})
 	t.Expect(err).ToNot(HaveOccurred())
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.AppConnReconcileStatusChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(AppConnReconcileStatusChanged))
 
 	vifRef := dg.Reference(linuxitems.VIF{HostIfName: "nbu1x1"})
 	t.Expect(itemDescription(vifRef)).To(ContainSubstring("appIfName: net0"))
@@ -2931,10 +2930,10 @@ func TestCNI(test *testing.T) {
 			},
 		},
 	}
-	_, err = niReconciler.UpdateAppConn(ctx, app1NetConfig, pod, []nirec.AppVIF{vif})
+	_, err = niReconciler.UpdateAppConn(ctx, app1NetConfig, pod, []AppVIF{vif})
 	t.Expect(err).ToNot(HaveOccurred())
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.AppConnReconcileStatusChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(AppConnReconcileStatusChanged))
 
 	t.Expect(itemDescription(vifRef)).To(ContainSubstring("appIPs: [10.10.10.2/24]"))
 	routeRef := dg.Reference(linuxitems.Route{
@@ -2974,25 +2973,25 @@ func TestHostSysctl(test *testing.T) {
 	niReconciler.RunInitialReconcile(ctx)
 
 	// Create 2 local and 1 switch network instance.
-	var recUpdate nirec.ReconcilerUpdate
+	var recUpdate ReconcilerUpdate
 	networkMonitor.AddOrUpdateInterface(ni1BridgeIf)
 	niStatus, err := niReconciler.AddNI(ctx, ni1Config, ni1Bridge)
 	t.Expect(err).ToNot(HaveOccurred())
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.NIReconcileStatusChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(NIReconcileStatusChanged))
 	t.Expect(recUpdate.NIStatus.Equal(niStatus)).To(BeTrue())
 
 	niStatus, err = niReconciler.AddNI(ctx, ni2Config, ni2Bridge)
 	t.Expect(err).ToNot(HaveOccurred())
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.NIReconcileStatusChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(NIReconcileStatusChanged))
 	t.Expect(recUpdate.NIStatus.Equal(niStatus)).To(BeTrue())
 
 	networkMonitor.AddOrUpdateInterface(ni5BridgeIf)
 	niStatus, err = niReconciler.AddNI(ctx, ni5Config, ni5Bridge)
 	t.Expect(err).ToNot(HaveOccurred())
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.NIReconcileStatusChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(NIReconcileStatusChanged))
 	t.Expect(recUpdate.NIStatus.Equal(niStatus)).To(BeTrue())
 
 	// Flow logging is disabled in all network instances and there are
@@ -3009,7 +3008,7 @@ func TestHostSysctl(test *testing.T) {
 	appStatus, err := niReconciler.AddAppConn(ctx, app2NetConfig, app2Num, cnirpc.AppPod{}, app2VIFs)
 	t.Expect(err).ToNot(HaveOccurred())
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.AppConnReconcileStatusChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(AppConnReconcileStatusChanged))
 	t.Expect(recUpdate.AppConnStatus.Equal(appStatus)).To(BeTrue())
 
 	t.Expect(itemDescription(hostSysctlRef)).To(
@@ -3021,7 +3020,7 @@ func TestHostSysctl(test *testing.T) {
 	appStatus, err = niReconciler.AddAppConn(ctx, app1NetConfig, app1Num, cnirpc.AppPod{}, app1VIFs)
 	t.Expect(err).ToNot(HaveOccurred())
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.AppConnReconcileStatusChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(AppConnReconcileStatusChanged))
 	t.Expect(recUpdate.AppConnStatus.Equal(appStatus)).To(BeTrue())
 
 	// With LIMIT rule present, iptables should be called from the bridge.
@@ -3034,7 +3033,7 @@ func TestHostSysctl(test *testing.T) {
 	appStatus, err = niReconciler.DelAppConn(ctx, app1UUID.UUID)
 	t.Expect(err).ToNot(HaveOccurred())
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.AppConnReconcileStatusChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(AppConnReconcileStatusChanged))
 	t.Expect(recUpdate.AppConnStatus.Equal(appStatus)).To(BeTrue())
 
 	t.Expect(itemDescription(hostSysctlRef)).To(
@@ -3199,11 +3198,11 @@ func TestSwitchNIWithMultiplePorts(test *testing.T) {
 			},
 		},
 	}
-	niBridge := nirec.NIBridge{
+	niBridge := NIBridge{
 		NI:         niUUID.UUID,
 		BrNum:      1,
 		MACAddress: macAddress("02:00:00:00:02:01"),
-		Ports: []nirec.Port{
+		Ports: []Port{
 			{
 				LogicalLabel: "ethernet1",
 				SharedLabels: []string{"switch-port"},
@@ -3241,9 +3240,9 @@ func TestSwitchNIWithMultiplePorts(test *testing.T) {
 	networkMonitor.AddOrUpdateInterface(niBridgeIf)
 	_, err := niReconciler.AddNI(ctx, niConfig, niBridge)
 	t.Expect(err).ToNot(HaveOccurred())
-	var recUpdate nirec.ReconcilerUpdate
+	var recUpdate ReconcilerUpdate
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.NIReconcileStatusChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(NIReconcileStatusChanged))
 
 	// Check some of the configured items.
 	t.Expect(itemIsCreated(dg.Reference(
@@ -3301,7 +3300,7 @@ func TestSwitchNIWithMultiplePorts(test *testing.T) {
 			},
 		},
 	}
-	app1VIFs := []nirec.AppVIF{
+	app1VIFs := []AppVIF{
 		{
 			App:            app1UUID.UUID,
 			NI:             niUUID.UUID,
@@ -3335,7 +3334,7 @@ func TestSwitchNIWithMultiplePorts(test *testing.T) {
 	t.Expect(appStatus.VIFs[0].FailedItems).To(BeEmpty())
 
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.AppConnReconcileStatusChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(AppConnReconcileStatusChanged))
 	t.Expect(recUpdate.AppConnStatus.Equal(appStatus)).To(BeTrue())
 
 	// domainmgr has not yet created the VIF.
@@ -3345,11 +3344,11 @@ func TestSwitchNIWithMultiplePorts(test *testing.T) {
 	// Simulate domainmgr creating the VIF.
 	networkMonitor.AddOrUpdateInterface(app1VIF1)
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.CurrentStateChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(CurrentStateChanged))
 	niReconciler.ResumeReconcile(ctx)
 
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.AppConnReconcileStatusChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(AppConnReconcileStatusChanged))
 	t.Expect(recUpdate.AppConnStatus.VIFs[0].InProgress).To(BeFalse())
 	t.Expect(recUpdate.AppConnStatus.VIFs[0].FailedItems).To(BeEmpty())
 
@@ -3392,7 +3391,7 @@ func TestSwitchNIWithMultiplePorts(test *testing.T) {
 			},
 		},
 	}
-	app2VIFs := []nirec.AppVIF{
+	app2VIFs := []AppVIF{
 		{
 			App:            app2UUID.UUID,
 			NI:             niUUID.UUID,
@@ -3427,7 +3426,7 @@ func TestSwitchNIWithMultiplePorts(test *testing.T) {
 	t.Expect(appStatus.VIFs[0].FailedItems).To(BeEmpty())
 
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.AppConnReconcileStatusChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(AppConnReconcileStatusChanged))
 	t.Expect(recUpdate.AppConnStatus.Equal(appStatus)).To(BeTrue())
 
 	// domainmgr has not yet created the VIF.
@@ -3437,11 +3436,11 @@ func TestSwitchNIWithMultiplePorts(test *testing.T) {
 	// Simulate domainmgr creating the VIF.
 	networkMonitor.AddOrUpdateInterface(app2VIF1)
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.CurrentStateChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(CurrentStateChanged))
 	niReconciler.ResumeReconcile(ctx)
 
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.AppConnReconcileStatusChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(AppConnReconcileStatusChanged))
 	t.Expect(recUpdate.AppConnStatus.VIFs[0].InProgress).To(BeFalse())
 	t.Expect(recUpdate.AppConnStatus.VIFs[0].FailedItems).To(BeEmpty())
 
@@ -3464,12 +3463,12 @@ func TestSwitchNIWithMultiplePorts(test *testing.T) {
 	t.Expect(appStatus.VIFs[0].FailedItems).To(BeEmpty())
 
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.AppConnReconcileStatusChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(AppConnReconcileStatusChanged))
 	t.Expect(recUpdate.AppConnStatus.Equal(appStatus)).To(BeTrue())
 
 	networkMonitor.DelInterface(app1VIF1.Attrs.IfName)
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.CurrentStateChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(CurrentStateChanged))
 	niReconciler.ResumeReconcile(ctx)
 
 	appStatus, err = niReconciler.DelAppConn(ctx, app2UUID.UUID)
@@ -3483,12 +3482,12 @@ func TestSwitchNIWithMultiplePorts(test *testing.T) {
 	t.Expect(appStatus.VIFs[0].FailedItems).To(BeEmpty())
 
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.AppConnReconcileStatusChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(AppConnReconcileStatusChanged))
 	t.Expect(recUpdate.AppConnStatus.Equal(appStatus)).To(BeTrue())
 
 	networkMonitor.DelInterface(app2VIF1.Attrs.IfName)
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.CurrentStateChanged))
+	t.Expect(recUpdate.UpdateType).To(Equal(CurrentStateChanged))
 	niReconciler.ResumeReconcile(ctx)
 
 	// Delete network instance
