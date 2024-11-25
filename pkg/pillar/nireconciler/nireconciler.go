@@ -143,7 +143,7 @@ type Port struct {
 	MTU          uint16
 	DhcpType     types.DhcpType
 	DNSServers   []net.IP
-	NTPServers   []string
+	NTPServers   []net.IP
 }
 
 // Equal compares two ports for equality.
@@ -155,7 +155,7 @@ func (p Port) Equal(p2 Port) bool {
 		p.MTU == p2.MTU &&
 		p.DhcpType == p2.DhcpType &&
 		generics.EqualSetsFn(p.DNSServers, p2.DNSServers, netutils.EqualIPs) &&
-		generics.EqualSets(p.NTPServers, p2.NTPServers)
+		generics.EqualSetsFn(p.NTPServers, p2.NTPServers, netutils.EqualIPs)
 }
 
 // UsedWithIP returns true if the port is (potentially) used with an IP address.

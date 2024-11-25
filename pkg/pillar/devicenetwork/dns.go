@@ -5,6 +5,7 @@ package devicenetwork
 
 import (
 	"fmt"
+	"math"
 	"net"
 	"os"
 	"path/filepath"
@@ -94,6 +95,50 @@ func ResolveWithSrcIP(domain string, dnsServerIP net.IP, srcIP net.IP) ([]DNSRes
 	}
 
 	return response, nil
+}
+
+type cachedDNSResponses struct {
+	dnsResponses []DNSResponse
+	validUntil   time.Time
+}
+
+type cachedDNSResponseKey struct {
+	domain string
+	srcIP  string
+}
+
+var resolveCache = map[cachedDNSResponseKey]cachedDNSResponses{}
+
+// ResolveCacheWrap wraps around a resolve func (e.g. ResolveWithSrcIP) and caches DNS entries
+func ResolveCacheWrap(resolve func(string, net.IP, net.IP) ([]DNSResponse, error)) func(domain string, dnsServerIP net.IP, srcIP net.IP) ([]DNSResponse, error) {
+	return func(domain string, dnsServerIP net.IP, srcIP net.IP) ([]DNSResponse, error) {
+
+		cacheKey := cachedDNSResponseKey{
+			domain: domain,
+			srcIP:  srcIP.String(),
+		}
+		dnsResponses, found := resolveCache[cacheKey]
+		if !found || !dnsResponses.validUntil.After(time.Now()) {
+			dnsResponses, err := resolve(domain, dnsServerIP, srcIP)
+			if err == nil {
+				minValidUntil := uint32(math.MaxUint32)
+				for _, dnsResponse := range dnsResponses {
+					if dnsResponse.TTL < uint32(minValidUntil) {
+						minValidUntil = dnsResponse.TTL
+					}
+				}
+				validUntil := time.Now().Add(time.Duration(minValidUntil * uint32(time.Second)))
+				resolveCache[cacheKey] = cachedDNSResponses{
+					dnsResponses: dnsResponses,
+					validUntil:   validUntil,
+				}
+			}
+
+			return dnsResponses, err
+		}
+
+		return dnsResponses.dnsResponses, nil
+	}
 }
 
 // ResolveWithPortsLambda resolves a domain by using source IPs and dns servers from DeviceNetworkStatus
