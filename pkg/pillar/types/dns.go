@@ -562,8 +562,9 @@ func GetDNSServers(dns DeviceNetworkStatus, ifname string) []net.IP {
 }
 
 // GetNTPServers returns all, or the ones on one interface if ifname is set
-func GetNTPServers(dns DeviceNetworkStatus, ifname string) []string {
-	var servers []string
+func GetNTPServers(dns DeviceNetworkStatus, ifname string) ([]net.IP, []string) {
+	var serverDomainsOrIPs []string
+	var serverIPs []net.IP
 	for _, us := range dns.Ports {
 		if ifname != "" && ifname != us.IfName {
 			continue
@@ -575,16 +576,16 @@ func GetNTPServers(dns DeviceNetworkStatus, ifname string) []string {
 				logrus.Warnf("parsing ntp server '%v' failed", ntpServer)
 				continue
 			}
-			servers = append(servers, ntpServer.String())
+			serverIPs = append(serverIPs, ntpServer)
 		}
 		// Add statically configured NTP server as well.
 		if us.ConfiguredNtpServers != nil {
-			servers = append(servers, us.ConfiguredNtpServers...)
+			serverDomainsOrIPs = append(serverDomainsOrIPs, us.ConfiguredNtpServers...)
 		}
 	}
 	// Avoid duplicates.
-	servers = generics.FilterDuplicates(servers)
-	return servers
+	serverDomainsOrIPs = generics.FilterDuplicates(serverDomainsOrIPs)
+	return serverIPs, serverDomainsOrIPs
 }
 
 // CountLocalIPv4AddrAnyNoLinkLocalIf is like CountLocalAddrAnyNoLinkLocalIf but
