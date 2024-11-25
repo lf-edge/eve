@@ -1095,30 +1095,6 @@ func (r *LinuxNIReconciler) getIntendedMetadataSrvCfg(niID uuid.UUID) (items []d
 	return items
 }
 
-func (r *LinuxNIReconciler) resolveNTPServers(ntpServers []string) []net.IP {
-	ret := make([]net.IP, 0)
-	for _, ntpServer := range ntpServers {
-		ip := net.ParseIP(ntpServer)
-		if ip != nil {
-			ret = append(ret, ip)
-			continue
-		}
-
-		// TODO: discuss with Milan how to use:
-		// devicenetwork.ResolveWithPortsLambda(ntpServer, XXX, devicenetwork.ResolveWithSrcIP)
-		// TODO: add timeout or resolve in background
-		ips, err := net.LookupIP(ntpServer)
-		if err != nil {
-			r.log.Warnf("could not lookup '%s': %v, skipping", ntpServer, err)
-			continue
-		}
-		ret = append(ret, ips...)
-	}
-
-	ret = generics.FilterDuplicatesFn(ret, netutils.EqualIPs)
-	return ret
-}
-
 func (r *LinuxNIReconciler) getIntendedDnsmasqCfg(niID uuid.UUID) (items []dg.Item) {
 	ni := r.nis[niID]
 	if ni.config.Type == types.NetworkInstanceTypeSwitch {
@@ -1154,15 +1130,11 @@ func (r *LinuxNIReconciler) getIntendedDnsmasqCfg(niID uuid.UUID) (items []dg.It
 	}
 	// Combine NTP servers assigned to the port(s) together with those statically
 	// configured for the network instance.
-	var ntpServers []string
+	ntpServerIPs := make([]net.IP, 0)
 	for _, port := range ni.bridge.Ports {
-		ntpServers = append(ntpServers, port.NTPServers...)
+		ntpServerIPs = append(ntpServerIPs, port.NTPServers...)
 	}
-	if ni.config.NtpServers != nil {
-		ntpServers = append(ntpServers, ni.config.NtpServers...)
-	}
-	ntpServers = generics.FilterDuplicates(ntpServers)
-	ntpServerIPs := r.resolveNTPServers(ntpServers)
+	generics.FilterDuplicatesFn(ntpServerIPs, netutils.EqualIPs)
 	var propagateRoutes []generic.IPRoute
 	// Use DHCP to propagate host routes towards user-configured NTP and DNS servers.
 	if bridgeIP != nil {

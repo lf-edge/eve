@@ -10,6 +10,7 @@ import (
 	"net"
 	"strings"
 
+	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
 	"github.com/lf-edge/eve/pkg/pillar/nireconciler"
 	"github.com/lf-edge/eve/pkg/pillar/nistate"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -92,6 +93,41 @@ func (z *zedrouter) getNIBridgeConfig(
 	}
 }
 
+func (z *zedrouter) attachNTPServersToPortConfigs(portConfigs []nireconciler.Port) {
+	for i := range portConfigs {
+		pc := &portConfigs[i]
+		ntpServerIPs, ntpServerDomainsOrIPs := types.GetNTPServers(*z.deviceNetworkStatus, pc.IfName)
+
+		ntpServers := make([]net.IP, 0, len(ntpServerDomainsOrIPs))
+		for _, ntpServer := range ntpServerDomainsOrIPs {
+			ip := net.ParseIP(ntpServer)
+			if ip != nil {
+				ntpServers = append(ntpServers, ip)
+				continue
+			}
+			z.pubSub.StillRunning(agentName, warningTime, errorTime)
+			dnsResponses, err := devicenetwork.ResolveWithPortsLambda(
+				ntpServer,
+				*z.deviceNetworkStatus,
+				devicenetwork.ResolveCacheWrap(devicenetwork.ResolveWithSrcIP),
+			)
+			if err != nil {
+				z.log.Warnf("could not resolve '%s': %v", ntpServer, err)
+			}
+
+			for _, dnsResponse := range dnsResponses {
+				ntpServers = append(ntpServers, dnsResponse.IP)
+			}
+		}
+
+		ntpServers = append(ntpServers, ntpServerIPs...)
+		generics.FilterDuplicatesFn(ntpServers, netutils.EqualIPs)
+
+		pc.NTPServers = ntpServers
+	}
+}
+
+// NTP servers are set separately with z.attachNTPServersToPortConfigs
 func (z *zedrouter) getNIPortConfig(
 	status *types.NetworkInstanceStatus) (portConfigs []nireconciler.Port) {
 	if len(status.Ports) == 0 {
@@ -111,7 +147,6 @@ func (z *zedrouter) getNIPortConfig(
 			MTU:          port.MTU,
 			DhcpType:     port.Dhcp,
 			DNSServers:   types.GetDNSServers(*z.deviceNetworkStatus, port.IfName),
-			NTPServers:   types.GetNTPServers(*z.deviceNetworkStatus, port.IfName),
 		})
 	}
 	return portConfigs
@@ -495,8 +530,10 @@ func (z *zedrouter) updateNIRoutePort(route types.IPRouteConfig, port string,
 func (z *zedrouter) doActivateNetworkInstance(config types.NetworkInstanceConfig,
 	status *types.NetworkInstanceStatus) {
 	// Create network instance inside the network stack.
+	bridgeConfig := z.getNIBridgeConfig(status)
+	z.attachNTPServersToPortConfigs(bridgeConfig.Ports)
 	niRecStatus, err := z.niReconciler.AddNI(
-		z.runCtx, config, z.getNIBridgeConfig(status))
+		z.runCtx, config, bridgeConfig)
 	if err != nil {
 		z.log.Errorf("Failed to activate network instance %s: %v", status.UUID, err)
 		status.ReconcileErr.SetErrorNow(err.Error())
@@ -540,8 +577,10 @@ func (z *zedrouter) doInactivateNetworkInstance(status *types.NetworkInstanceSta
 
 func (z *zedrouter) doUpdateActivatedNetworkInstance(config types.NetworkInstanceConfig,
 	status *types.NetworkInstanceStatus) {
+	bridgeConfig := z.getNIBridgeConfig(status)
+	z.attachNTPServersToPortConfigs(bridgeConfig.Ports)
 	niRecStatus, err := z.niReconciler.UpdateNI(
-		z.runCtx, config, z.getNIBridgeConfig(status))
+		z.runCtx, config, bridgeConfig)
 	if err != nil {
 		z.log.Errorf("Failed to update activated network instance %s: %v",
 			status.UUID, err)
