@@ -53,6 +53,7 @@ type NetworkPortStatus struct {
 	Type                 NetworkType // IPv4 or IPv6 or Dual stack
 	Subnet               net.IPNet
 	ConfiguredNtpServers []string // This comes from network configuration
+	IgnoreDhcpNtpServers bool
 	DomainName           string
 	DNSServers           []net.IP // If not set we use Gateway as DNS server
 	DhcpNtpServers       []net.IP // This comes from DHCP done on uplink port
