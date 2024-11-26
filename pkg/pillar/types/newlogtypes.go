@@ -4,6 +4,9 @@
 package types
 
 import (
+	"fmt"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -80,4 +83,23 @@ type NewlogMetrics struct {
 	// Dev and App file metrics
 	DevMetrics logfileMetrics // Device metrics
 	AppMetrics logfileMetrics // App metrics
+}
+
+// GetTimestampFromGzipName - get timestamp from gzip file name
+func GetTimestampFromGzipName(fName string) (time.Time, error) {
+	// here are example file names:
+	// app.6656f860-7563-4bbf-8bba-051f5942982b.log.1730464687367.gz
+	// dev.log.keep.1730404601953.gz
+	// dev.log.upload.1730404601953.gz
+	// the timestamp is the number between the last two dots
+	nameParts := strings.Split(fName, ".")
+	if len(nameParts) < 2 {
+		return time.Time{}, fmt.Errorf("getTimestampFromGzipName: invalid log file name %s", fName)
+	}
+	timeStr := nameParts[len(nameParts)-2]
+	fTime, err := strconv.Atoi(timeStr)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("getTimestampFromGzipName: %w", err)
+	}
+	return time.Unix(0, int64(fTime)*int64(time.Millisecond)), nil
 }
