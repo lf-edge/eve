@@ -287,14 +287,18 @@ const (
 	ConsoleAccess GlobalSettingKey = "debug.enable.console"
 	// Shim VM VNC access global setting key
 	VncShimVMAccess GlobalSettingKey = "debug.enable.vnc.shim.vm"
-	// DefaultLogLevel global setting key
+	// DefaultLogLevel default level of logs produced by EVE microservices
 	DefaultLogLevel GlobalSettingKey = "debug.default.loglevel"
-	// DefaultRemoteLogLevel global setting key
+	// DefaultRemoteLogLevel default level of logs sent by EVE microservices to the controller
 	DefaultRemoteLogLevel GlobalSettingKey = "debug.default.remote.loglevel"
-	// SyslogLogLevel global setting key
+	// SyslogLogLevel level of the produced syslog messages
 	SyslogLogLevel GlobalSettingKey = "debug.syslog.loglevel"
-	// KernelLogLevel global setting key
+	// SyslogRemoteLogLevel level of the syslog messages sent to the controller
+	SyslogRemoteLogLevel GlobalSettingKey = "debug.syslog.remote.loglevel"
+	// KernelLogLevel level of the produced kernel messages
 	KernelLogLevel GlobalSettingKey = "debug.kernel.loglevel"
+	// KernelRemoteLogLevel level of the kernel messages sent to the controller
+	KernelRemoteLogLevel GlobalSettingKey = "debug.kernel.remote.loglevel"
 	// FmlCustomResolution global setting key
 	FmlCustomResolution GlobalSettingKey = "app.fml.resolution"
 
@@ -380,17 +384,19 @@ var (
 	// SyslogKernelLogLevelNum is a number representation of syslog/kernel
 	// loglevels.
 	SyslogKernelLogLevelNum = map[string]uint32{
-		"emerg":    0,
-		"alert":    1,
-		"crit":     2,
-		"critical": 2,
-		"err":      3,
-		"error":    3,
-		"warning":  4,
-		"warn":     4,
-		"notice":   5,
-		"info":     6,
-		"debug":    7,
+		"none":     0,
+		"emerg":    1,
+		"alert":    2,
+		"crit":     3,
+		"critical": 3,
+		"err":      4,
+		"error":    4,
+		"warning":  5,
+		"warn":     5,
+		"notice":   6,
+		"info":     7,
+		"debug":    8,
+		"all":      99,
 	}
 	// SyslogKernelDefaultLogLevel is a default loglevel for syslog and kernel.
 	SyslogKernelDefaultLogLevel = "info"
@@ -982,15 +988,17 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 
 	// Add String Items
 	configItemSpecMap.AddStringItem(SSHAuthorizedKeys, "", blankValidator)
-	configItemSpecMap.AddStringItem(DefaultLogLevel, "info", validateLogrusLevel)
-	configItemSpecMap.AddStringItem(DefaultRemoteLogLevel, "info", validateLogrusLevel)
+	configItemSpecMap.AddStringItem(DefaultLogLevel, "info", validateLogLevel)
+	configItemSpecMap.AddStringItem(DefaultRemoteLogLevel, "info", validateLogLevel)
 	configItemSpecMap.AddStringItem(SyslogLogLevel, "info", validateSyslogKernelLevel)
 	configItemSpecMap.AddStringItem(KernelLogLevel, "info", validateSyslogKernelLevel)
+	configItemSpecMap.AddStringItem(SyslogRemoteLogLevel, "info", validateSyslogKernelLevel)
+	configItemSpecMap.AddStringItem(KernelRemoteLogLevel, "info", validateSyslogKernelLevel)
 	configItemSpecMap.AddStringItem(FmlCustomResolution, FmlResolutionUnset, blankValidator)
 
 	// Add Agent Settings
-	configItemSpecMap.AddAgentSettingStringItem(LogLevel, "info", validateLogrusLevel)
-	configItemSpecMap.AddAgentSettingStringItem(RemoteLogLevel, "info", validateLogrusLevel)
+	configItemSpecMap.AddAgentSettingStringItem(LogLevel, "info", validateLogLevel)
+	configItemSpecMap.AddAgentSettingStringItem(RemoteLogLevel, "info", validateLogLevel)
 
 	// Add NetDump settings
 	configItemSpecMap.AddBoolItem(NetDumpEnable, true)
@@ -1003,10 +1011,15 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	return configItemSpecMap
 }
 
-// validateLogrusLevel - Wrapper for validating logrus loglevel
-func validateLogrusLevel(level string) error {
-	_, err := logrus.ParseLevel(level)
-	return err
+// validateLogLevel - make sure the log level has one of the supported values
+func validateLogLevel(level string) error {
+	switch level {
+	case "none", "all":
+		return nil
+	default:
+		_, err := logrus.ParseLevel(level)
+		return err
+	}
 }
 
 // validateSyslogKernelLevel - Wrapper for validating syslog and kernel
