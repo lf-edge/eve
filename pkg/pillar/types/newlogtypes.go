@@ -8,8 +8,12 @@ import (
 )
 
 const (
-	// DevPrefix - device log file prefix string
+	// DevPrefix - general file prefix string for device log files
 	DevPrefix = "dev.log."
+	// DevPrefixUpload - file prefix string for device log files to upload
+	DevPrefixUpload = "dev.log.upload."
+	// DevPrefixKeep - file prefix string for device log files to keep on device
+	DevPrefixKeep = "dev.log.keep."
 	// AppPrefix - app log file prefix string
 	AppPrefix = "app."
 	// AppSuffix - app log file suffix string, the appuuid is between the AppPrefix and AppSuffix
@@ -65,6 +69,8 @@ type NewlogMetrics struct {
 	NumKmessages          uint64            // total input kmessages
 	NumSyslogMessages     uint64            // total input syslog message
 	DevTop10InputBytesPCT map[string]uint32 // top 10 sources device log input in percentage
+	TotalSizeLogs         uint64            // total size of logs on device
+	OldestSavedDeviceLog  time.Time         // timestamp of the latest device log saved on device
 
 	// upload latency
 	Latency cloudDelay
