@@ -53,6 +53,7 @@ type NetworkPortStatus struct {
 	Type                 NetworkType // IPv4 or IPv6 or Dual stack
 	Subnet               net.IPNet
 	ConfiguredNtpServers []string // This comes from network configuration
+	IgnoreDhcpNtpServers bool
 	DomainName           string
 	DNSServers           []net.IP // If not set we use Gateway as DNS server
 	DhcpNtpServers       []net.IP // This comes from DHCP done on uplink port
@@ -568,13 +569,15 @@ func GetNTPServers(dns DeviceNetworkStatus, ifname string) []string {
 			continue
 		}
 		// NTP servers received via DHCP.
-		for _, ntpServer := range us.DhcpNtpServers {
-			// from golang/src/net/ip.go
-			if len(ntpServer) != net.IPv4len && len(ntpServer) != net.IPv6len {
-				logrus.Warnf("parsing ntp server '%v' failed", ntpServer)
-				continue
+		if !us.IgnoreDhcpNtpServers {
+			for _, ntpServer := range us.DhcpNtpServers {
+				// from golang/src/net/ip.go
+				if len(ntpServer) != net.IPv4len && len(ntpServer) != net.IPv6len {
+					logrus.Warnf("parsing ntp server '%v' failed", ntpServer)
+					continue
+				}
+				serverIPs = append(serverIPs, ntpServer)
 			}
-			servers = append(servers, ntpServer.String())
 		}
 		// Add statically configured NTP server as well.
 		if us.ConfiguredNtpServers != nil {
