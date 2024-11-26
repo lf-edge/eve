@@ -1384,6 +1384,7 @@ func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
 			port.DNSServers = network.DNSServers
 			// Need to be careful since zedcloud can feed us bad Dhcp type
 			port.Dhcp = network.Dhcp
+			port.IgnoreDhcpNtpServers = network.IgnoreDhcpNtpServers
 			switch port.Dhcp {
 			case types.DhcpTypeStatic:
 				if sysAdapter.Addr == "" {
@@ -2265,6 +2266,13 @@ func parseIpspecNetworkXObject(ipspec *zconfig.Ipspec, config *types.NetworkXObj
 	if len(ntpServers) > 0 && ntpServers[0] != "" {
 		config.NTPServers = ntpServers
 	}
+
+	config.IgnoreDhcpNtpServers = false
+	dhcpOptionsIgnore := ipspec.GetDhcpOptionsIgnore()
+	if dhcpOptionsIgnore != nil {
+		config.IgnoreDhcpNtpServers = dhcpOptionsIgnore.NtpServerExclusively
+	}
+
 	for _, dsStr := range ipspec.GetDns() {
 		ds := net.ParseIP(dsStr)
 		if ds == nil {

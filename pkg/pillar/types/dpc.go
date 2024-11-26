@@ -594,6 +594,7 @@ type NetworkPortConfig struct {
 	WirelessCfg WirelessConfig
 	// TestResults - Errors from parsing plus success/failure from testing
 	TestResults
+	IgnoreDhcpNtpServers bool
 }
 
 // EVE-defined port labels.
@@ -1059,19 +1060,20 @@ func (config DevicePortConfigList) LogKey() string {
 // from protobuf API into DevicePortConfig.
 // XXX replace by inline once we have device model
 type NetworkXObjectConfig struct {
-	UUID            uuid.UUID
-	Type            NetworkType
-	Dhcp            DhcpType // If DhcpTypeStatic or DhcpTypeClient use below
-	Subnet          net.IPNet
-	Gateway         net.IP
-	DomainName      string
-	NTPServers      []string
-	DNSServers      []net.IP // If not set we use Gateway as DNS server
-	DhcpRange       IPRange
-	DNSNameToIPList []DNSNameToIP // Used for DNS and ACL ipset
-	Proxy           *ProxyConfig
-	WirelessCfg     WirelessConfig
-	MTU             uint16
+	UUID                 uuid.UUID
+	Type                 NetworkType
+	Dhcp                 DhcpType // If DhcpTypeStatic or DhcpTypeClient use below
+	Subnet               net.IPNet
+	Gateway              net.IP
+	DomainName           string
+	NTPServers           []string
+	IgnoreDhcpNtpServers bool
+	DNSServers           []net.IP // If not set we use Gateway as DNS server
+	DhcpRange            IPRange
+	DNSNameToIPList      []DNSNameToIP // Used for DNS and ACL ipset
+	Proxy                *ProxyConfig
+	WirelessCfg          WirelessConfig
+	MTU                  uint16
 	// Any errors from the parser
 	// ErrorAndTime provides SetErrorNow() and ClearError()
 	ErrorAndTime

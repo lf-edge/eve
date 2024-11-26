@@ -87,7 +87,7 @@ get_ntp_servers_from_nim() {
     # Select dynamic (from DHCP) NTP sources
     ntp_dynamic=$(jq -r  -c  \
                 '.Ports[] |
-                 select(.DhcpNtpServers != null) |
+                 select(.DhcpNtpServers != null and .IgnoreDhcpNtpServers == false) |
                  .DhcpNtpServers | .[]' $INPUTFILE)
 
     # Concat all in one string
