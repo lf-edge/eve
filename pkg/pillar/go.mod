@@ -29,7 +29,7 @@ require (
 	github.com/jaypipes/ghw v0.8.0
 	github.com/k8snetworkplumbingwg/network-attachment-definition-client v1.5.0
 	github.com/lf-edge/edge-containers v0.0.0-20240207093504-5dfda0619b80
-	github.com/lf-edge/eve-api/go v0.0.0-20240829123634-7c8ebda876ff
+	github.com/lf-edge/eve-api/go v0.0.0-20241125213346-b026f21b3e75
 	github.com/lf-edge/eve-libs v0.0.0-20240614221125-6913ec4213f9
 	github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20240315102754-0f6d1f182e0d
 	github.com/lf-edge/go-qemu v0.0.0-20231121152149-4c467eda0c56
@@ -50,6 +50,7 @@ require (
 	github.com/stretchr/testify v1.8.4
 	github.com/tatsushid/go-fastping v0.0.0-20160109021039-d7bb493dee3e
 	github.com/vishvananda/netlink v1.2.1-beta.2
+	go.uber.org/goleak v1.3.0
 	golang.org/x/crypto v0.21.0
 	golang.org/x/net v0.23.0
 	golang.org/x/sys v0.18.0
@@ -210,7 +211,6 @@ require (
 	github.com/pborman/uuid v1.2.1 // indirect
 	github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring v0.68.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
-	go.uber.org/goleak v1.3.0 // indirect
 	k8s.io/apiextensions-apiserver v0.28.1 // indirect
 	k8s.io/klog/v2 v2.110.1 // indirect
 	k8s.io/kube-openapi v0.0.0-20231010175941-2dd684a91f00 // indirect
