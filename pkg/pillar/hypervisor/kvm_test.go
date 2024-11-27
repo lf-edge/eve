@@ -1403,6 +1403,7 @@ func domConfigArm64() string {
   host = "f3:00.0"
   bus = "pci.10"
   addr = "0x0"
+
 [chardev "charserial-usr0"]
   backend = "serial"
   path = "/dev/ttyS0"
@@ -1702,6 +1703,7 @@ func domConfigAmd64FML() string {
   host = "f3:00.0"
   bus = "pci.10"
   addr = "0x0"
+
 [device "pci.11"]
   driver = "pcie-root-port"
   port = "111"
@@ -1715,6 +1717,7 @@ func domConfigAmd64FML() string {
   host = "f4:00.0"
   bus = "pci.11"
   addr = "0x0"
+
 [chardev "charserial-usr0"]
   backend = "serial"
   path = "/dev/ttyS0"
@@ -2003,6 +2006,7 @@ func domConfigAmd64Legacy() string {
   host = "f3:00.0"
   bus = "pci.10"
   addr = "0x0"
+
 [chardev "charserial-usr0"]
   backend = "serial"
   path = "/dev/ttyS0"
@@ -2289,6 +2293,7 @@ func domConfigAmd64() string {
   host = "f3:00.0"
   bus = "pci.10"
   addr = "0x0"
+
 [chardev "charserial-usr0"]
   backend = "serial"
   path = "/dev/ttyS0"
@@ -2577,6 +2582,7 @@ func domConfigContainerVNC() string {
   host = "f3:00.0"
   bus = "pci.9"
   addr = "0x0"
+
 [chardev "charserial-usr0"]
   backend = "serial"
   path = "/dev/ttyS0"
@@ -2788,6 +2794,7 @@ func expectedMultifunctionDevice() string {
   host = "00:0a.0"
   bus = "pci.0"
   addr = "0x0"
+
 [device "pci.1"]
   driver = "pcie-root-port"
   port = "11"
@@ -2806,6 +2813,7 @@ func expectedMultifunctionDevice() string {
   host = "00:0d.0"
   bus = "pcie-bridge.1"
   addr = "0x1"
+
 [device "pci.2"]
   driver = "pcie-root-port"
   port = "12"
@@ -2819,11 +2827,13 @@ func expectedMultifunctionDevice() string {
   host = "00:0b.0"
   bus = "pci.2"
   addr = "0x0"
+
 [device]
   driver = "vfio-pci"
   host = "00:0d.2"
   bus = "pcie-bridge.1"
-  addr = "0x2"`
+  addr = "0x2"
+`
 }
 
 func TestPCIAssignmentsTemplateFillMultifunctionDevice(t *testing.T) {
