@@ -282,7 +282,7 @@ type AppNetAdapterConfig struct {
 	Name       string           // From proto message
 	AppMacAddr net.HardwareAddr // If set use it for vif
 	AppIPAddr  net.IP           // If set use DHCP to assign to app
-	IntfOrder  int32            // XXX need to get from API
+	IntfOrder  uint32           // Order wrt. other virtual and also directly assigned network adapters
 
 	// XXX Shouldn't we use ErrorAndTime here
 	// Error
