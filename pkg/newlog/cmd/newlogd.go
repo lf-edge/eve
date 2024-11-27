@@ -7,10 +7,12 @@ import (
 	"bufio"
 	"bytes"
 	"compress/gzip"
+	"encoding/base64"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
+	"math/rand"
 	"net"
 	"os"
 	"path"
@@ -39,33 +41,14 @@ import (
 )
 
 const (
-	agentName              = "newlogd"
-	errorTime              = 3 * time.Minute
-	warningTime            = 40 * time.Second
-	metricsPublishInterval = 300 * time.Second
-	logfileDelay           = 300 // maximum delay 5 minutes for log file collection
-	fastlogfileDelay       = 10  // faster to close log file if fastUpload is enabled
-	stillRunningInerval    = 25 * time.Second
-
-	collectDir   = types.NewlogCollectDir
-	uploadDevDir = types.NewlogUploadDevDir
-	uploadAppDir = types.NewlogUploadAppDir
-	keepSentDir  = types.NewlogKeepSentQueueDir
-	failSendDir  = types.NewlogDir + "/failedUpload"
-	panicFileDir = types.NewlogDir + "/panicStacks"
-	symlinkFile  = collectDir + "/current.device.log"
-	tmpSymlink   = collectDir + "/tmp-sym.dev.log"
-	devPrefix    = types.DevPrefix
-	appPrefix    = types.AppPrefix
-	tmpPrefix    = "TempFile"
-	skipUpload   = "skipTx."
-
-	maxLogFileSize   int32 = 550000 // maximum collect file size in bytes
-	maxGzipFileSize  int64 = 50000  // maximum gzipped file size for upload in bytes
-	gzipFileFooter   int64 = 12     // size of gzip footer to use in calculations
-	defaultSyncCount       = 30     // default log events flush/sync to disk file
-
-	maxToSendMbytes uint32 = 2048 // default 2 Gbytes for log files remains on disk
+	agentName                     = "newlogd"
+	errorTime                     = 3 * time.Minute
+	warningTime                   = 40 * time.Second
+	metricsPublishInterval        = 300 * time.Second
+	logfileDelay                  = 300 // maximum delay 5 minutes for log file collection
+	fastlogfileDelay              = 10  // faster to close log file if fastUpload is enabled
+	stillRunningInerval           = 25 * time.Second
+	maxToSendMbytes        uint32 = 2048 // default 2 Gbytes for log files remains on disk
 
 	ansi = "[\u0009\u001B\u009B][[\\]()#;?]*(?:(?:(?:[a-zA-Z\\d]*(?:;[a-zA-Z\\d]*)*)?\u0007)|(?:(?:\\d{1,4}(?:;\\d{0,4})*)?[\\dA-PRZcf-ntqry=><~]))"
 )
@@ -110,7 +93,36 @@ var (
 	// goroutine sync/atomic synchronization is used. You've been warned.
 	syslogPrio = types.SyslogKernelLogLevelNum[types.SyslogKernelDefaultLogLevel]
 	kernelPrio = types.SyslogKernelLogLevelNum[types.SyslogKernelDefaultLogLevel]
+
+	// these are constant in principle, but we need to be able to change them
+	// for testing.
+	collectDir   = types.NewlogCollectDir
+	uploadDevDir = types.NewlogUploadDevDir
+	uploadAppDir = types.NewlogUploadAppDir
+	keepSentDir  = types.NewlogKeepSentQueueDir
+	failSendDir  = types.NewlogDir + "/failedUpload"
+	panicFileDir = types.NewlogDir + "/panicStacks"
+	symlinkFile  = collectDir + "/current.device.log"
+	tmpSymlink   = collectDir + "/tmp-sym.dev.log"
+	devPrefix    = types.DevPrefix
+	appPrefix    = types.AppPrefix
+	tmpPrefix    = "TempFile"
+	skipUpload   = "skipTx."
+
+	maxLogFileSize   int32 = 550000 // maximum collect file size in bytes
+	maxGzipFileSize  int64 = 50000  // maximum gzipped file size for upload in bytes
+	gzipFileFooter   int64 = 12     // size of gzip footer to use in calculations
+	defaultSyncCount       = 30     // default log events flush/sync to disk file
+
+	// for log verification
+	secLog secLogMetadata
 )
+
+type secLogMetadata struct {
+	key     []byte
+	keyIter uint64
+	enabled bool
+}
 
 // for app Domain-ID mapping into UUID and DisplayName
 type appDomain struct {
@@ -209,6 +221,20 @@ func main() {
 
 	// handle linux Syslog /dev/log messages
 	go getSyslogMsg(loggerChan)
+
+	// initialize secure logging key
+	// this is fixed key, in practice we generate a random key and
+	// store it in the TPM just like we do the volume storage key.
+	secLog.key = []byte{
+		0x12, 0x34, 0x56, 0x78,
+		0x9A, 0xBC, 0xDE, 0xF0,
+		0x11, 0x22, 0x33, 0x44,
+		0x55, 0x66, 0x77, 0x88,
+	}
+	// evolve the key, so the initial key is gone from memory.
+	// no need to be random, but looks cool.
+	secLog.keyIter = uint64(rand.Intn(100))
+	secLog.key = evolveKey(secLog.key, secLog.keyIter)
 
 	stillRunning := time.NewTicker(stillRunningInerval)
 	ps.StillRunning(agentName, warningTime, errorTime)
@@ -335,7 +361,11 @@ func main() {
 
 		case tmpLogfileInfo := <-movefileChan:
 			// handle logfile to gzip conversion work
-			doMoveCompressFile(&ps, tmpLogfileInfo)
+			if secLog.enabled {
+				doMoveCompressFileSecure(&ps, tmpLogfileInfo)
+			} else {
+				doMoveCompressFile(&ps, tmpLogfileInfo)
+			}
 
 		case panicBuf := <-panicFileChan:
 			// save panic stack into files
@@ -522,6 +552,10 @@ func handleGlobalConfigImp(ctxArg interface{}, key string, statusArg interface{}
 		// parse kernel log level
 		kernelPrioStr := gcp.GlobalValueString(types.KernelLogLevel)
 		atomic.StoreUint32(&kernelPrio, parseLogLevel(kernelPrioStr))
+
+		// enable secure logging
+		// secLog.enabled = gcp.GlobalValueBool(types.EnableSecureLogging)
+		secLog.enabled = true
 	}
 	log.Tracef("handleGlobalConfigModify done for %s, fastupload enabled %v", key, enableFastUpload)
 }
@@ -1121,7 +1155,7 @@ func doMoveCompressFile(ps *pubsub.PubSub, tmplogfileInfo fileChanInfo) {
 		// note: bytesWritten may be updated eventually because of gzip implementation
 		// potentially we cannot account maxGzipFileSize less than windowsize of gzip 32768
 		if underlayWriter.bytesWritten+gzipFileFooter+int64(len(newLine)) >= maxGzipFileSize {
-			newSize += finalizeGzipToOutTempFile(gw, oTmpFile, outfile)
+			newSize += finalizeGzipToOutTempFile(gw, nil, oTmpFile, outfile)
 			logmetrics.NumBreakGZipFile++
 			fileID++
 			outfile = gzipFileNameGet(isApp, timeNowNum+fileID, dirName, appuuid, tmplogfileInfo.notUpload)
@@ -1135,7 +1169,210 @@ func doMoveCompressFile(ps *pubsub.PubSub, tmplogfileInfo fileChanInfo) {
 	if scanner.Err() != nil {
 		log.Fatal("doMoveCompressFile: reading file failed", scanner.Err())
 	}
-	newSize += finalizeGzipToOutTempFile(gw, oTmpFile, outfile)
+	newSize += finalizeGzipToOutTempFile(gw, nil, oTmpFile, outfile)
+	fileID++
+
+	// store variable to check for the new file name generator
+	lastLogNum = timeNowNum + fileID
+
+	if isApp {
+		logmetrics.AppMetrics.NumGZipBytesWrite += uint64(newSize)
+		if tmplogfileInfo.notUpload {
+			logmetrics.NumSkipUploadAppFile += uint32(fileID)
+		}
+	} else {
+		logmetrics.DevMetrics.NumGZipBytesWrite += uint64(newSize)
+	}
+
+	_ = iFile.Close()
+	// done gzip conversion, get rid of the temp log file in collect directory
+	err = os.Remove(tmplogfileInfo.tmpfile)
+	if err != nil {
+		log.Fatal("doMoveCompressFile: remove file failed", err)
+	}
+}
+
+func sequenceLogEntry(entry []byte, seq int) ([]byte, error) {
+	jsonMap := make(map[string]interface{})
+	err := json.Unmarshal(entry, &jsonMap)
+	if err != nil {
+		return nil, err
+	}
+
+	jsonMap["seqNum"] = seq
+	out, err := json.Marshal(jsonMap)
+	if err != nil {
+		return nil, err
+	}
+
+	return out, nil
+}
+
+func addSecureLogMetadata(metadata string, aggSig []byte, keyIter uint64) (string, error) {
+	jsonMap := make(map[string]interface{})
+	err := json.Unmarshal([]byte(metadata), &jsonMap)
+	if err != nil {
+		return "", err
+	}
+
+	jsonMap["aggSig"] = base64.StdEncoding.EncodeToString(aggSig)
+	jsonMap["keyIter"] = keyIter
+	out, err := json.Marshal(jsonMap)
+	if err != nil {
+		return "", err
+	}
+
+	return string(out), nil
+}
+
+// doMoveCompressFileSecure process logs just like doMoveCompressFile but also
+// calculates the aggregate signature for logs and adds necessary information
+// to the log metadata so logs can be verified later.
+func doMoveCompressFileSecure(ps *pubsub.PubSub, tmplogfileInfo fileChanInfo) {
+	isApp := tmplogfileInfo.isApp
+	dirName, appuuid := getFileInfo(tmplogfileInfo)
+
+	now := time.Now()
+	timeNowNum := int(now.UnixNano() / int64(time.Millisecond)) // in msec
+	if timeNowNum < lastLogNum {
+		// adjust variable for file name generation to not overlap with the old one
+		timeNowNum = lastLogNum + 1
+	}
+	outfile := gzipFileNameGet(isApp, timeNowNum, dirName, appuuid, tmplogfileInfo.notUpload)
+
+	// open input file
+	iFile, err := os.Open(tmplogfileInfo.tmpfile)
+	if err != nil {
+		log.Fatal(err)
+	}
+	scanner := bufio.NewScanner(iFile)
+	// check if we cannot scan
+	// check valid json header for device log we will use later
+	if !scanner.Scan() || (!isApp && !json.Valid(scanner.Bytes())) {
+		_ = iFile.Close()
+		err = fmt.Errorf("doMoveCompressFile: can't get metadata on first line, remove %s", tmplogfileInfo.tmpfile)
+		log.Error(err)
+		if scanner.Err() != nil {
+			log.Error(scanner.Err())
+		}
+		err = os.Remove(tmplogfileInfo.tmpfile)
+		if err != nil {
+			log.Fatal("doMoveCompressFile: remove file failed", err)
+		}
+		return
+	}
+
+	// assign the metadata in the first line of the logfile
+	tmplogfileInfo.header = scanner.Text()
+
+	// prepare writers to save gzipped logs
+	gw, underlayWriter, oTmpFile := prepareGzipToOutTempFile(filepath.Dir(outfile), tmplogfileInfo, now)
+
+	fileID := 0
+	wdTime := time.Now()
+	var newSize int64
+
+	// each log is processed, tagged with sequence number and then palced in
+	// the processedLogs slice. the log are later written into the gzip file
+	// in a call to finalizeGzipToOutTempFile.
+	var processedLogs = make([][]byte, 0)
+	// each log entry in a batch gets a sequence number, can be used to
+	// sort the logs for verification.
+	var logSeq = 0
+	// batchKeyIter is what iteration of the key we start with, to calculate
+	// log entrieys HMAC and the aggregate signature.
+	var batchKeyIter = secLog.keyIter
+	// aggregateSig is the aggregate signature of all the logs in a batch
+	// that are processed.
+	var aggregateSig []byte
+
+	for scanner.Scan() {
+		if time.Since(wdTime) >= (15 * time.Second) {
+			ps.StillRunning(agentName, warningTime, errorTime)
+			wdTime = time.Now()
+		}
+		newLine := scanner.Bytes()
+		//trim non-graphic symbols
+		newLine = bytes.TrimFunc(newLine, func(r rune) bool {
+			return !unicode.IsGraphic(r)
+		})
+		if len(newLine) == 0 {
+			continue
+		}
+		if !json.Valid(newLine) {
+			log.Errorf("doMoveCompressFile: found broken line: %s", string(newLine))
+			continue
+		}
+		// assume that next line is incompressible to be safe
+		// note: bytesWritten may be updated eventually because of gzip implementation
+		// potentially we cannot account maxGzipFileSize less than windowsize of gzip 32768
+		if underlayWriter.bytesWritten+gzipFileFooter+int64(len(newLine)) >= maxGzipFileSize {
+			// we have reached the size limit of the gzip file, so before starting
+			// a new batch of logs, finalze the current batch of logs, add aggregate
+			// signature and key iteration to the gzip metadata, giving the verifier
+			// the information needed to verify the logs.
+			verifMetadate, err := addSecureLogMetadata(gw.Comment, aggregateSig, batchKeyIter)
+			if err != nil {
+				log.Errorf("doMoveCompressFile: addSecureLogMetadata failed: %v", err)
+			} else {
+				gw.Comment = verifMetadate
+			}
+
+			// write the processed logs to the gzip file and finalize the gzip file.
+			newSize += finalizeGzipToOutTempFile(gw, processedLogs, oTmpFile, outfile)
+
+			// reset the variables for the next gzip file
+			processedLogs = processedLogs[:0]
+			aggregateSig = []byte{}
+			batchKeyIter = secLog.keyIter
+			logSeq = 0
+
+			// update the metrics
+			logmetrics.NumBreakGZipFile++
+			fileID++
+
+			// start a new batch
+			outfile = gzipFileNameGet(isApp, timeNowNum+fileID, dirName, appuuid, tmplogfileInfo.notUpload)
+			gw, underlayWriter, oTmpFile = prepareGzipToOutTempFile(filepath.Dir(outfile), tmplogfileInfo, now)
+		}
+
+		// tag the log entry with sequence number and collect it
+		sequencedEntry, err := sequenceLogEntry(newLine, logSeq)
+		if err != nil {
+			log.Fatalf("doMoveCompressFile: sequenceLogEntry failed: %v", err)
+		}
+		logSeq++
+
+		// calculate the aggregate signature of the log entry, update the key and
+		// iteration counter.
+		secLog.key, aggregateSig = fssAggSig(secLog.key, aggregateSig, sequencedEntry)
+		secLog.keyIter++
+
+		// we are not writing the log entry to the gzip file yet, since it will
+		// write the header (metadata) of the gzip file in the first write(),
+		// but we are not ready yet, there might be more logs to process,
+		// signature to calculate and so on. so we just collect the log entries
+		// at this stage.
+		processedLogs = append(processedLogs, sequencedEntry)
+	}
+	if scanner.Err() != nil {
+		log.Fatal("doMoveCompressFile: reading file failed", scanner.Err())
+	}
+
+	// logs are processed, add aggregate signature and key iteration to the gzip
+	// metadata, giving the verifier the information needed to verify the logs.
+	// If you're wondering whether we should sign the device ID in the log batch with
+	// the TPM-based device key: we don't. Logs are wrapped in an auth container,
+	// this ensures the cloud knows these logs are from this device.
+	verifMetadate, err := addSecureLogMetadata(gw.Comment, aggregateSig, batchKeyIter)
+	if err != nil {
+		log.Errorf("doMoveCompressFile: addSecureLogMetadata failed: %v", err)
+	} else {
+		gw.Comment = verifMetadate
+	}
+
+	// write the processed logs to the gzip file and finalize the gzip file.
+	newSize += finalizeGzipToOutTempFile(gw, processedLogs, oTmpFile, outfile)
 	fileID++
 
 	// store variable to check for the new file name generator
@@ -1205,7 +1442,15 @@ func prepareGzipToOutTempFile(gzipDirName string, fHdr fileChanInfo, now time.Ti
 	return gw, writer, oTmpFile
 }
 
-func finalizeGzipToOutTempFile(gw *gzip.Writer, oTmpFile *os.File, outfile string) int64 {
+func finalizeGzipToOutTempFile(gw *gzip.Writer, logs [][]byte, oTmpFile *os.File, outfile string) int64 {
+	// this is non-empty only if when we are in secure log mode
+	for _, l := range logs {
+		_, err := gw.Write(append(l, '\n'))
+		if err != nil {
+			log.Fatal("finalizeGzipToOutTempFile: cannot write log", err)
+		}
+	}
+
 	err := gw.Close()
 	if err != nil {
 		log.Fatal("finalizeGzipToOutTempFile: cannot close file", err)
