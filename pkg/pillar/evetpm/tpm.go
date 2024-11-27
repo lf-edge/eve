@@ -643,8 +643,8 @@ func FetchSealedVaultKey(log *base.LogObject) ([]byte, error) {
 	}
 
 	//gain some knowledge about existing environment
-	sealedKeyPresent := isSealedKeyPresent()
-	legacyKeyPresent := isLegacyKeyPresent()
+	sealedKeyPresent := isSealedDiskKeyPresent()
+	legacyKeyPresent := isLegacyDiskKeyPresent()
 
 	if !sealedKeyPresent && !legacyKeyPresent {
 		log.Noticef("neither legacy nor sealed disk key present, generating a fresh key")
@@ -669,7 +669,7 @@ func FetchSealedVaultKey(log *base.LogObject) ([]byte, error) {
 		if err != nil {
 			return nil, fmt.Errorf("GetRandom failed: %w", err)
 		}
-		err = SealDiskKey(log, key, DiskKeySealingPCRs)
+		err = TpmSealData(log, key, DiskKeySealingPCRs, TpmSealedDiskPrivHdl, TpmSealedDiskPubHdl, true)
 		if err != nil {
 			return nil, fmt.Errorf("sealing the fresh disk key failed: %w", err)
 		}
@@ -696,7 +696,7 @@ func FetchSealedVaultKey(log *base.LogObject) ([]byte, error) {
 
 		log.Noticef("try to convert the legacy key into a sealed key")
 
-		err = SealDiskKey(log, key, DiskKeySealingPCRs)
+		err = TpmSealData(log, key, DiskKeySealingPCRs, TpmSealedDiskPrivHdl, TpmSealedDiskPubHdl, true)
 		if err != nil {
 			return nil, fmt.Errorf("sealing the legacy disk key into TPM failed: %w", err)
 		}
@@ -707,7 +707,7 @@ func FetchSealedVaultKey(log *base.LogObject) ([]byte, error) {
 		log.Noticef("sealed disk key present int TPM, about to unseal it")
 	}
 	//By this, we have a key sealed into TPM
-	key, err := UnsealDiskKey(DiskKeySealingPCRs)
+	key, err := TpmUnsealData(DiskKeySealingPCRs, TpmSealedDiskPrivHdl, TpmSealedDiskPubHdl, true)
 	if err == nil {
 		// be more verbose, lets celebrate
 		log.Noticef("successfully unsealed the disk key from TPM")
@@ -716,8 +716,8 @@ func FetchSealedVaultKey(log *base.LogObject) ([]byte, error) {
 	return key, err
 }
 
-// SealDiskKey seals key into TPM2.0, with provided PCRs
-func SealDiskKey(log *base.LogObject, key []byte, pcrSel tpm2.PCRSelection) error {
+// TpmSealData seals private date (a key) into TPM2.0, with provided PCRs
+func TpmSealData(log *base.LogObject, key []byte, pcrSel tpm2.PCRSelection, privHdl, pubHdl tpmutil.Handle, saveTpmLogs bool) error {
 	rw, err := tpm2.OpenTPM(TpmDevicePath)
 	if err != nil {
 		return err
@@ -725,10 +725,10 @@ func SealDiskKey(log *base.LogObject, key []byte, pcrSel tpm2.PCRSelection) erro
 	defer rw.Close()
 
 	tpm2.NVUndefineSpace(rw, EmptyPassword,
-		tpm2.HandleOwner, TpmSealedDiskPubHdl)
+		tpm2.HandleOwner, pubHdl)
 
 	tpm2.NVUndefineSpace(rw, EmptyPassword,
-		tpm2.HandleOwner, TpmSealedDiskPrivHdl)
+		tpm2.HandleOwner, privHdl)
 
 	//Note on any abrupt power failure at this point, and the result of it
 	//We should be ok, since the key supplied here can be
@@ -759,68 +759,70 @@ func SealDiskKey(log *base.LogObject, key []byte, pcrSel tpm2.PCRSelection) erro
 	// Define space in NV storage and clean up afterwards or subsequent runs will fail.
 	if err := tpm2.NVDefineSpace(rw,
 		tpm2.HandleOwner,
-		TpmSealedDiskPrivHdl,
+		privHdl,
 		EmptyPassword,
 		EmptyPassword,
 		nil,
 		tpm2.AttrOwnerWrite|tpm2.AttrOwnerRead,
 		uint16(len(priv)),
 	); err != nil {
-		return fmt.Errorf("NVDefineSpace %v failed: %w", TpmSealedDiskPrivHdl, err)
+		return fmt.Errorf("NVDefineSpace %v failed: %w", privHdl, err)
 	}
 
 	// Write the private data
-	if err := tpm2.NVWrite(rw, tpm2.HandleOwner, TpmSealedDiskPrivHdl,
+	if err := tpm2.NVWrite(rw, tpm2.HandleOwner, privHdl,
 		EmptyPassword, priv, 0); err != nil {
-		return fmt.Errorf("NVWrite %v failed: %w", TpmSealedDiskPrivHdl, err)
+		return fmt.Errorf("NVWrite %v failed: %w", privHdl, err)
 	}
 
 	// Define space in NV storage
 	if err := tpm2.NVDefineSpace(rw,
 		tpm2.HandleOwner,
-		TpmSealedDiskPubHdl,
+		pubHdl,
 		EmptyPassword,
 		EmptyPassword,
 		nil,
 		tpm2.AttrOwnerWrite|tpm2.AttrOwnerRead,
 		uint16(len(public)),
 	); err != nil {
-		return fmt.Errorf("NVDefineSpace %v failed: %w", TpmSealedDiskPubHdl, err)
+		return fmt.Errorf("NVDefineSpace %v failed: %w", pubHdl, err)
 	}
 	// Write the public data
-	if err := tpm2.NVWrite(rw, tpm2.HandleOwner, TpmSealedDiskPubHdl,
+	if err := tpm2.NVWrite(rw, tpm2.HandleOwner, pubHdl,
 		EmptyPassword, public, 0); err != nil {
-		return fmt.Errorf("NVWrite %v failed: %w", TpmSealedDiskPubHdl, err)
+		return fmt.Errorf("NVWrite %v failed: %w", pubHdl, err)
 	}
 
-	// save a snapshot of current PCR values
-	if err := saveDiskKeySealingPCRs(); err != nil {
-		log.Warnf("saving snapshot of sealing PCRs failed: %s", err)
-	}
+	if saveTpmLogs {
+		// save a snapshot of current PCR values
+		if err := saveDiskKeySealingPCRs(); err != nil {
+			log.Warnf("saving snapshot of sealing PCRs failed: %s", err)
+		}
 
-	// In order to not lose the ability to diff and diagnose the issue,
-	// first backup the previous pair of logs (if any). This is needed because
-	// once the failing devices get connected to the controller to fetch the
-	// backup key, we end up here again and it'll override the MeasurementLogSealSuccess
-	// file content with current tpm measurement logs (which is same as the
-	// content of MeasurementLogSealFail).
-	if err := backupCopiedMeasurementLogs(); err != nil {
-		log.Warnf("copying previous snapshot of TPM event log failed: %s", err)
-	}
+		// In order to not lose the ability to diff and diagnose the issue,
+		// first backup the previous pair of logs (if any). This is needed because
+		// once the failing devices get connected to the controller to fetch the
+		// backup key, we end up here again and it'll override the MeasurementLogSealSuccess
+		// file content with current tpm measurement logs (which is same as the
+		// content of MeasurementLogSealFail).
+		if err := backupCopiedMeasurementLogs(); err != nil {
+			log.Warnf("copying previous snapshot of TPM event log failed: %s", err)
+		}
 
-	// fresh start, remove old copies of measurement logs.
-	removeCopiedMeasurementLogs()
+		// fresh start, remove old copies of measurement logs.
+		removeCopiedMeasurementLogs()
 
-	// save a copy of the current measurement log, this is also called
-	// if unseal fails to have copy when we fail to unlock the vault.
-	if err := copyMeasurementLog(measurementLogSealSuccess); err != nil {
-		log.Warnf("copying current TPM measurement log failed: %s", err)
+		// save a copy of the current measurement log, this is also called
+		// if unseal fails to have copy when we fail to unlock the vault.
+		if err := copyMeasurementLog(measurementLogSealSuccess); err != nil {
+			log.Warnf("copying current TPM measurement log failed: %s", err)
+		}
 	}
 
 	return nil
 }
 
-func isSealedKeyPresent() bool {
+func isSealedDiskKeyPresent() bool {
 	rw, err := tpm2.OpenTPM(TpmDevicePath)
 	if err != nil {
 		return false
@@ -832,13 +834,13 @@ func isSealedKeyPresent() bool {
 	return err == nil
 }
 
-func isLegacyKeyPresent() bool {
+func isLegacyDiskKeyPresent() bool {
 	_, err := readDiskKey()
 	return err == nil
 }
 
-// UnsealDiskKey unseals key from TPM2.0
-func UnsealDiskKey(pcrSel tpm2.PCRSelection) ([]byte, error) {
+// TpmUnsealData unseals private data (a key) from TPM2.0
+func TpmUnsealData(pcrSel tpm2.PCRSelection, privHdl, pubHdl tpmutil.Handle, saveTpmLogs bool) ([]byte, error) {
 	rw, err := tpm2.OpenTPM(TpmDevicePath)
 	if err != nil {
 		return nil, err
@@ -846,16 +848,16 @@ func UnsealDiskKey(pcrSel tpm2.PCRSelection) ([]byte, error) {
 	defer rw.Close()
 
 	// Read all of the data with NVReadEx
-	priv, err := tpm2.NVReadEx(rw, TpmSealedDiskPrivHdl,
+	priv, err := tpm2.NVReadEx(rw, privHdl,
 		tpm2.HandleOwner, EmptyPassword, 0)
 	if err != nil {
-		return nil, fmt.Errorf("NVReadEx %v failed: %w", TpmSealedDiskPrivHdl, err)
+		return nil, fmt.Errorf("NVReadEx %v failed: %w", privHdl, err)
 	}
 	// Read all of the data with NVReadEx
-	pub, err := tpm2.NVReadEx(rw, TpmSealedDiskPubHdl,
+	pub, err := tpm2.NVReadEx(rw, pubHdl,
 		tpm2.HandleOwner, EmptyPassword, 0)
 	if err != nil {
-		return nil, fmt.Errorf("NVReadEx %v failed: %w", TpmSealedDiskPubHdl, err)
+		return nil, fmt.Errorf("NVReadEx %v failed: %w", pubHdl, err)
 	}
 
 	sealedObjHandle, _, err := tpm2.Load(rw, TpmSRKHdl, "", pub, priv)
@@ -872,13 +874,18 @@ func UnsealDiskKey(pcrSel tpm2.PCRSelection) ([]byte, error) {
 
 	key, err := tpm2.UnsealWithSession(rw, session, sealedObjHandle, EmptyPassword)
 	if err != nil {
-		// We get here mostly because of RCPolicyFail error, so first try to save
-		// a copy of TPM measurement log, it comes handy for diagnosing the issue.
-		evtLogStat := "copied (failed unseal) TPM measurement log"
-		if errEvtLog := copyMeasurementLog(measurementLogUnsealFail); errEvtLog != nil {
-			// just report the failure, still give findMismatchingPCRs a chance so
-			// we can at least have some partial information about why unseal failed.
-			evtLogStat = fmt.Sprintf("copying (failed unseal) TPM measurement log failed: %v", errEvtLog)
+		var evtLogStat string
+		if !saveTpmLogs {
+			evtLogStat = "TPM measurement log not copied (saveTpmLogs=false)"
+		} else {
+			// We get here mostly because of RCPolicyFail error, so first try to save
+			// a copy of TPM measurement log, it comes handy for diagnosing the issue.
+			evtLogStat = "copied (failed unseal) TPM measurement log"
+			if errEvtLog := copyMeasurementLog(measurementLogUnsealFail); errEvtLog != nil {
+				// just report the failure, still give findMismatchingPCRs a chance so
+				// we can at least have some partial information about why unseal failed.
+				evtLogStat = fmt.Sprintf("copying (failed unseal) TPM measurement log failed: %v", errEvtLog)
+			}
 		}
 
 		// try to find out the mismatching PCR index
@@ -926,7 +933,7 @@ func PolicyPCRSession(rw io.ReadWriteCloser, pcrSel tpm2.PCRSelection) (tpmutil.
 // CompareLegacyandSealedKey compares legacy and sealed keys
 // to record if we are using a new key for sealed vault
 func CompareLegacyandSealedKey() SealedKeyType {
-	if !isSealedKeyPresent() {
+	if !isSealedDiskKeyPresent() {
 		return SealedKeyTypeUnprotected
 	}
 	legacyKey, err := readDiskKey()
@@ -934,7 +941,7 @@ func CompareLegacyandSealedKey() SealedKeyType {
 		//no cloning case, return SealedKeyTypeNew
 		return SealedKeyTypeNew
 	}
-	unsealedKey, err := UnsealDiskKey(DiskKeySealingPCRs)
+	unsealedKey, err := TpmUnsealData(DiskKeySealingPCRs, TpmSealedDiskPrivHdl, TpmSealedDiskPubHdl, true)
 	if err != nil {
 		//key is present but can't unseal it
 		//but legacy key is present

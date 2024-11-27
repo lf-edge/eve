@@ -50,7 +50,7 @@ func TestMain(m *testing.M) {
 
 func waitForTpmReadyState() error {
 	for i := 0; i < 10; i++ {
-		if err := SealDiskKey(log, []byte("secret"), DiskKeySealingPCRs); err != nil {
+		if err := TpmSealData(log, []byte("secret"), DiskKeySealingPCRs, TpmSealedDiskPrivHdl, TpmSealedDiskPubHdl, true); err != nil {
 			// this is RCRetry, so retry
 			if strings.Contains(err.Error(), "code 0x22") {
 				time.Sleep(100 * time.Millisecond)
@@ -73,11 +73,11 @@ func TestSealUnseal(t *testing.T) {
 	}
 
 	dataToSeal := []byte("secret")
-	if err := SealDiskKey(log, dataToSeal, DiskKeySealingPCRs); err != nil {
+	if err := TpmSealData(log, dataToSeal, DiskKeySealingPCRs, TpmSealedDiskPrivHdl, TpmSealedDiskPubHdl, true); err != nil {
 		t.Fatalf("Seal operation failed with err: %v", err)
 	}
 
-	unsealedData, err := UnsealDiskKey(DiskKeySealingPCRs)
+	unsealedData, err := TpmUnsealData(DiskKeySealingPCRs, TpmSealedDiskPrivHdl, TpmSealedDiskPubHdl, true)
 	if err != nil {
 		t.Fatalf("Unseal operation failed with err: %v", err)
 	}
@@ -99,7 +99,7 @@ func TestSealUnsealMismatchReport(t *testing.T) {
 	defer rw.Close()
 
 	dataToSeal := []byte("secret")
-	if err := SealDiskKey(log, dataToSeal, DiskKeySealingPCRs); err != nil {
+	if err := TpmSealData(log, dataToSeal, DiskKeySealingPCRs, TpmSealedDiskPrivHdl, TpmSealedDiskPubHdl, true); err != nil {
 		t.Fatalf("Seal operation failed with err: %v", err)
 	}
 
@@ -111,7 +111,7 @@ func TestSealUnsealMismatchReport(t *testing.T) {
 		}
 	}
 
-	_, err = UnsealDiskKey(DiskKeySealingPCRs)
+	_, err = TpmUnsealData(DiskKeySealingPCRs, TpmSealedDiskPrivHdl, TpmSealedDiskPubHdl, true)
 	if err == nil {
 		t.Fatalf("Expected error from UnsealDiskKey, got nil")
 	}
@@ -135,7 +135,7 @@ func TestSealUnsealTpmEventLogCollect(t *testing.T) {
 
 	// this should write tpm event log to measurementLogSealSuccess file
 	dataToSeal := []byte("secret")
-	if err := SealDiskKey(log, dataToSeal, DiskKeySealingPCRs); err != nil {
+	if err := TpmSealData(log, dataToSeal, DiskKeySealingPCRs, TpmSealedDiskPrivHdl, TpmSealedDiskPubHdl, true); err != nil {
 		t.Fatalf("Seal operation failed with err: %v", err)
 	}
 
@@ -146,7 +146,7 @@ func TestSealUnsealTpmEventLogCollect(t *testing.T) {
 	}
 
 	// this should fail and result in saving creating measurementLogUnsealFail
-	_, err = UnsealDiskKey(DiskKeySealingPCRs)
+	_, err = TpmUnsealData(DiskKeySealingPCRs, TpmSealedDiskPrivHdl, TpmSealedDiskPubHdl, true)
 	if err == nil {
 		t.Fatalf("Expected error from UnsealDiskKey, got nil")
 	}
@@ -159,7 +159,7 @@ func TestSealUnsealTpmEventLogCollect(t *testing.T) {
 	}
 
 	// this should trigger backing up previously saved tpm event logs
-	if err := SealDiskKey(log, dataToSeal, DiskKeySealingPCRs); err != nil {
+	if err := TpmSealData(log, dataToSeal, DiskKeySealingPCRs, TpmSealedDiskPrivHdl, TpmSealedDiskPubHdl, true); err != nil {
 		t.Fatalf("Seal operation failed with err: %v", err)
 	}
 
