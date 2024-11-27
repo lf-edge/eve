@@ -689,6 +689,8 @@ func parseAppInstanceConfig(getconfigCtx *getconfigContext,
 		appInstance.FixedResources.EnableVncShimVM = cfgApp.Fixedresources.EnableVncShimVm
 		appInstance.FixedResources.VncDisplay = cfgApp.Fixedresources.VncDisplay
 		appInstance.FixedResources.VncPasswd = cfgApp.Fixedresources.VncPasswd
+		appInstance.FixedResources.EnforceNetworkInterfaceOrder =
+			cfgApp.Fixedresources.EnforceNetworkInterfaceOrder
 		appInstance.DisableLogs = cfgApp.Fixedresources.DisableLogs
 		appInstance.MetaDataType = types.MetaDataType(cfgApp.MetaDataType)
 		appInstance.Delay = time.Duration(cfgApp.StartDelayInSeconds) * time.Second
@@ -733,6 +735,9 @@ func parseAppInstanceConfig(getconfigCtx *getconfigContext,
 					VlanID: uint16(adapter.EthVf.VlanId)}
 			} else if ioa.Type == types.IoCAN || ioa.Type == types.IoVCAN || ioa.Type == types.IoLCAN {
 				log.Functionf("Got CAN adapter")
+			}
+			if ioa.Type.IsNet() && appInstance.FixedResources.EnforceNetworkInterfaceOrder {
+				ioa.IntfOrder = adapter.GetInterfaceOrder()
 			}
 			appInstance.IoAdapterList = append(appInstance.IoAdapterList, ioa)
 		}
@@ -2439,11 +2444,12 @@ func parseAppNetAdapterConfig(appInstance *types.AppInstanceConfig,
 				intfEnt.Name, adapterCfg.Error)
 		}
 	}
-	// sort based on intfOrder
-	// XXX remove? Debug?
-	if len(appInstance.AppNetAdapterList) > 1 {
-		log.Functionf("XXX pre sort %+v", appInstance.AppNetAdapterList)
-	}
+
+	// Sort based on IntfOrder. When EnforceNetworkInterfaceOrder is enabled, this is done
+	// only for troubleshooting purposes to make the pubsub messages containing application
+	// interface list easier to read. Interface order is still determined by the IntfOrder
+	// attribute, and that includes direct attachments, not based on the order of items
+	// inside AppNetAdapterList.
 	sort.Slice(appInstance.AppNetAdapterList[:],
 		func(i, j int) bool {
 			return appInstance.AppNetAdapterList[i].IntfOrder <
@@ -2490,8 +2496,6 @@ func parseAppNetAdapterConfigEntry(
 
 	adapterCfg := new(types.AppNetAdapterConfig)
 	adapterCfg.Name = intfEnt.Name
-	// XXX set adapterCfg.IntfOrder from API once available
-	var intfOrder int32
 	// Lookup NetworkInstance ID
 	networkInstanceEntry := lookupNetworkInstanceId(intfEnt.NetworkId,
 		cfgNetworkInstances)
@@ -2553,6 +2557,7 @@ func parseAppNetAdapterConfigEntry(
 		}
 	}
 
+	var aclIntfOrder uint32
 	adapterCfg.ACLs = make([]types.ACE, len(intfEnt.Acls))
 	for aclIdx, acl := range intfEnt.Acls {
 		aclCfg := new(types.ACE)
@@ -2561,9 +2566,11 @@ func parseAppNetAdapterConfigEntry(
 		aclCfg.Actions = make([]types.ACEAction,
 			len(acl.Actions))
 		aclCfg.RuleID = acl.Id
-		// XXX temporary until we get an intfOrder in the API
-		if intfOrder == 0 {
-			intfOrder = acl.Id
+		// When EnforceNetworkInterfaceOrder is disabled, we fall back to the previous
+		// interface ordering method, where virtual interfaces are ordered according to ACL
+		// IDs and direct attachments come after virtual interfaces.
+		if aclIntfOrder == 0 && acl.Id > 0 {
+			aclIntfOrder = uint32(acl.Id)
 		}
 		aclCfg.Name = acl.Name
 		aclCfg.Dir = types.ACEDirection(acl.Dir)
@@ -2587,8 +2594,11 @@ func parseAppNetAdapterConfigEntry(
 		}
 		adapterCfg.ACLs[aclIdx] = *aclCfg
 	}
-	// XXX set adapterCfg.IntfOrder from API once available
-	adapterCfg.IntfOrder = intfOrder
+	if cfgApp.Fixedresources.EnforceNetworkInterfaceOrder {
+		adapterCfg.IntfOrder = intfEnt.GetInterfaceOrder()
+	} else {
+		adapterCfg.IntfOrder = aclIntfOrder
+	}
 	adapterCfg.AccessVlanID = intfEnt.AccessVlanId
 	adapterCfg.AllowToDiscover = intfEnt.AllowToDiscover
 
@@ -2820,6 +2830,37 @@ func checkAndPublishAppInstanceConfig(getconfigCtx *getconfigContext,
 		err := fmt.Errorf("VNC shim VM enabled but VNC disabled for app instance %s", config.UUIDandVersion.UUID)
 		log.Error(err)
 		config.Errors = append(config.Errors, err.Error())
+	}
+
+	// If EnforceNetworkInterfaceOrder is enabled, check that every network interface
+	// has unique order number.
+	if config.FixedResources.EnforceNetworkInterfaceOrder {
+		intfOrderMap := make(map[uint32]string)
+		for _, adapter := range config.AppNetAdapterList {
+			if adapter2, duplicate := intfOrderMap[adapter.IntfOrder]; duplicate {
+				err := fmt.Errorf("virtual network adapter %s has the same interface "+
+					"order (%d) configured as adapter %s", adapter.Name, adapter.IntfOrder,
+					adapter2)
+				log.Error(err)
+				config.Errors = append(config.Errors, err.Error())
+				continue
+			}
+			intfOrderMap[adapter.IntfOrder] = adapter.Name
+		}
+		for _, adapter := range config.IoAdapterList {
+			if !adapter.Type.IsNet() {
+				continue
+			}
+			if adapter2, duplicate := intfOrderMap[adapter.IntfOrder]; duplicate {
+				err := fmt.Errorf("directly attached network adapter %s has the same "+
+					"interface order (%d) configured as adapter %s", adapter.Name,
+					adapter.IntfOrder, adapter2)
+				log.Error(err)
+				config.Errors = append(config.Errors, err.Error())
+				continue
+			}
+			intfOrderMap[adapter.IntfOrder] = adapter.Name
+		}
 	}
 
 	pub.Publish(key, config)

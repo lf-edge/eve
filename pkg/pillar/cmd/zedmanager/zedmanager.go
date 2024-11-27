@@ -1095,7 +1095,7 @@ func handleCreate(ctxArg interface{}, key string,
 	if len(config.Errors) > 0 {
 		// Combine all errors from Config parsing state and send them in Status
 		for i, errStr := range config.Errors {
-			allErrors += errStr
+			allErrors += errStr + "\n"
 			log.Errorf("App Instance %s-%s: Error(%d): %s",
 				config.DisplayName, config.UUIDandVersion.UUID, i, errStr)
 		}
