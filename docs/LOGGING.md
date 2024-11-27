@@ -38,17 +38,54 @@ The following diagram shows the flow of logs from containers to newlogd and to c
 
 ## Log Aggregation, Reformatting and Compression for Persistent Log Files
 
-All logs collected from various containers/services/kernel in the system will reach newlogd daemon. Newlogd formats the log entries and writes into temporary log files(with temporary file name suffix, e.g. 12345678) on disk in /persist/newlog/collect directory. The logs from device host side will be saved to file with name prefix with 'dev.log.' (filename dev.log.12345678) and logs from application/guest side will be saved to files with name prefix with 'app.APP-UUID.log.' (file app.APP-UUID.log.12345678) where APP-UUID is the application UUID assigned to guest application. The temporary file is kept on the disk until either the file size has exceeded 400 KBytes or the elapsed time on the file has been opened for longer than 5 minutes.
+All logs collected from various containers/services/kernel in the system will reach newlogd daemon.
+Newlogd formats the log entries and writes into temporary log files(with temporary file name suffix, e.g. 12345678) on disk in /persist/newlog/collect directory.
+The logs that are meant to be sent to the controller will be saved with prefix dev.log.upload and the ones intended to stay on device host side will be saved to file with name prefix with 'dev.log.keep' (e.g. filename dev.log.keep.12345678) and logs from application/guest side will be saved to files with name prefix with 'app.APP-UUID.log.' (file app.APP-UUID.log.12345678) where APP-UUID is the application UUID assigned to guest application.
+The temporary file is kept on the disk until either the file size has exceeded 400 KBytes or the elapsed time on the file has been opened for longer than 5 minutes.
 
-There is a symbolic link '/persist/newlog/collect/current.device.log' points to the currently opened device logfile in the /persist/newlog/collect directory. One can use 'tail -F' on this symbolic link file to monitor the output of all the device side (not application side) logs.
+There is a symbolic link '/persist/newlog/collect/current.device.log' points to the temporary "keep" device logfile in the /persist/newlog/collect directory.
+One can use 'tail -F' on this symbolic link file to monitor the output of all the device side (not application side) logs.
 
-When the above log file is closed either due to size or time limit has reached, it will be moved and compressed with gzip protocol into either 'devUpload' or 'appUpload' directory. The size of the gzip file is limited to 50 KBytes due to the northbound queueing configuration. If the compressed file is larger than the limit, it will be split and compressed into two separate gzip files. The gzip filename is encoded with current timestamp in Unix milliseconds, such as 'dev.log.1600831551491.gz' for device log, and with timestamp and application UUID such as 'app.62195aa9-7db4-4ac0-86d3-d8abe0ff0ea9.log.1599186248917.gz' for application logs. The metadata such as device-UUID, the image partition, and image version or app Name for application are encoded as part of the gzip metadata header along with the gzip file.
+When the above log files are closed either due to size or time limit reached, they will be moved and compressed with gzip protocol into
+
+* either 'devUpload' or 'appUpload' directory for the "upload" files
+* or to 'keepSentQueue' directory for the "keep" files
+
+The size of the gzip file is limited to 50 KBytes due to the northbound queueing configuration.
+If the compressed file is larger than the limit, it will be split and compressed into two separate gzip files.
+The gzip filename is encoded with current timestamp in Unix milliseconds, such as 'dev.log.upload.1600831551491.gz' for device log, and with timestamp and application UUID such as 'app.62195aa9-7db4-4ac0-86d3-d8abe0ff0ea9.log.1599186248917.gz' for application logs.
+The metadata such as device-UUID, the image partition, and image version or app Name for application are encoded as part of the gzip metadata header along with the gzip file.
 
 Upon the device restart, any unfinished temporary log files of previous life left in /persist/newlog/collect directory will be first moved and compressed by newlogd daemon into their upload gzip directories before any current log events are written onto the disk.
 
-Once the gzip log files are uploaded to the cloud, the gzip files still available on the device in /persist/newlog/keepSentQueue directory. For any log files are still waiting to be uploaded, they are in the '/persist/newlog/devUpload' and '/persist/newlog/appUpload' directories. In the case the network connection to the cloud is good, but the logfile has repeatedly failed to upload, it will be moved out of the 'Upload' directory to '/persist/newlog/failedUpload' directory. EVE developers who have enabled ssh to the device for debugging purposes can look at the log entries in those directories by using "zcat" utility.
+Once the "upload" gzip log files are uploaded to the cloud, they will be removed.
+For any log files are still waiting to be uploaded, they are in the '/persist/newlog/devUpload' and '/persist/newlog/appUpload' directories.
+In the case the network connection to the cloud is good, but the logfile has repeatedly failed to upload, it will be moved out of the 'Upload' directory to '/persist/newlog/failedUpload' directory.
+EVE developers can use e.g. [egde-view](https://lf-edge.atlassian.net/wiki/spaces/EVE/pages/14584760/Edge-View+Architecture#Log-Search) to query the logs in those directories.
 
-User can use config-properties to set a log file maximum quota in Mbytes on the device, using the 'newlog.gzipfiles.ondisk.maxmegabytes' config-item, the default is 2048 Mbytes, the configurable range is within (10, 4294967295) Mbytes and the quota is capped at 10% of '/persist' disk size. Since the device retains logs in the 'collect', 'appUpload', 'devUpload', 'keepSentQueue' and 'failedUpload' directories which together form a circular buffer, when the quota is exceeded on the device, the log files are removed starting from the oldest in the 'keepSentQueue' directory until the total log file size is below the quota.
+User can use config-properties to set a log file maximum quota in Mbytes on the device, using the 'newlog.gzipfiles.ondisk.maxmegabytes' config-item, the default is 2048 Mbytes, the configurable range is within (10, 4294967295) Mbytes and the quota is capped at 10% of '/persist' disk size.
+Since the device retains logs in the 'collect', 'appUpload', 'devUpload', 'keepSentQueue' and 'failedUpload' directories which together form a circular buffer, when the quota is exceeded on the device, the log files are removed until the quota is met.
+The removal process goes by directory and removes files there starting from the oldest.
+Once a directory has no files anymore the process moves on to the next directory.
+The order of directories is as follows (starting from higher - more likely to be removed to lower - less likely to be removed):
+
+1. `keepSentQueue`
+2. `failedUpload`
+3. `devUpload`
+4. `appUpload`
+
+## Log Levels
+
+Here is the diagram explaining how log level settings work for logs generated by the device itself:
+
+![Log Level Diagram](images/eve-log-levels.drawio.png)
+
+**Note:** As can be seen from the flow diagram, the remote log levels (`debug.default.remote.loglevel`, `agent.agentname.debug.remote.loglevel`, `debug.kernel.remote.loglevel` and `debug.syslog.remote.loglevel`) should be set to levels equal to or less verbose than the baseline log levels.
+Setting them to a more verbose level wouldn't result in additional logs being uploaded since those logs aren't generated at lower verbosity levels.
+
+There are no granularity nobs for the edge apps' log levels - all logs generated by the edge apps are sent to the controller OR kept on the device, depending on the `VmConfig.disableLogs` value (see this [section](#policy-for-application-logging-export-to-cloud-or-stay-on-device)).
+
+For the full list of log level parameters and the possible values, see the [config-properties](CONFIG-PROPERTIES.md#log-levels) doc.
 
 ## Log export to cloud
 
@@ -78,7 +115,8 @@ The uploading is controlled on a scheduled timer. When the timer fires, the "log
 
 The "loguploader" collects stats of round-trip delay, controller CPU load percentage and log batch processing time. The current EVE implementation does not use those stats in calculating the uploading timer values.
 
-The already uploaded gzip files are moved to /persist/newlog/keepSentQueue directory. This directory and together with 'collect', 'appUpload', 'devUpload' directories form a circular buffer and will be kept up to the quota limit (default is 2 Gbytes and can be changed by user config-item).
+The already uploaded gzip files with app logs are moved to /persist/newlog/keepSentQueue directory or removed in case of dev.log.upload files.
+This directory and together with 'collect', 'appUpload', 'devUpload' directories form a circular buffer and will be kept up to the quota limit (default is 2 Gbytes and can be changed by user config-item).
 
 To prevent the log messages grow without bounds over time, the 'failedUpload' directory will only keep up to 1000 gzip files, each with maximum of 50K, to be under 50M in the directory. The '/persist' partition space is monitored, and if the available space is under 100M, the 'newlogd' will kick in the gzip file recycle operation just as the controller uplink is unreachable.
 

@@ -34,10 +34,6 @@
 | debug.enable.ssh | authorized ssh key | empty string(ssh disabled) | allow ssh to EVE |
 | debug.enable.console | boolean | false | allow console access to EVE (reboot required to disable) |
 | debug.enable.vnc.shim.vm | boolean | false | allow VNC access to the container application shim VM (reboot required to disable) |
-| debug.default.loglevel | string | info | min level saved in files on device. Used logrus log levels as described here ["https://pkg.go.dev/github.com/sirupsen/logrus"]: panic, fatal, error, warning, info, debug and trace.
-| debug.syslog.loglevel | string | info | min level of the syslog messages saved in files on device. System default loglevel string representation should be used as described here ["https://man7.org/linux/man-pages/man3/syslog.3.html"]: emerg, alert, crit, err, warning, notice, info, debug. |
-| debug.kernel.loglevel | string | info | min level of the kernel messages saved in files on device. System default loglevel string representation should be used as described here ["https://man7.org/linux/man-pages/man3/syslog.3.html"]: emerg, alert, crit, err, warning, notice, info, debug. |
-| debug.default.remote.loglevel | string | warning | min level sent to controller. Should be used log levels as described in "debug.syslog.loglevel" settings. |
 | storage.dom0.disk.minusage.percent | integer percent | 20 | min. percent of persist partition reserved for dom0 |
 | storage.zfs.reserved.percent | integer percent | 20 | min. percent of persist partition reserved for zfs performance |
 | storage.apps.ignore.disk.check | boolean | false | Ignore disk usage check for Apps. Allows apps to create images bigger than available disk|
@@ -70,11 +66,66 @@
 | goroutine.leak.detection.keep.stats.hours | integer (hours) | 24 | Amount of hours to keep the stats for leak detection. We keep more stats than the check window to be able to react to settings with a bigger check window via configuration. |
 | goroutine.leak.detection.cooldown.minutes | integer (minutes) | 5 | Cooldown period in minutes after the leak detection is triggered. During this period, no stack traces are collected; only warning messages are logged. |
 
-In addition, there can be per-agent settings.
-The Per-agent settings begin with "agent.*agentname*.*setting*"
-The following per-agent settings override the corresponding default ones:
+## Log levels
+
+Log level can be set for three different components of EVE: EVE microservices, syslog, and kernel.
+The log levels set this way are used to control the verbosity of the logs produced by the corresponding components.
+All logs produced this way will be saved locally in /persist/newlog/keepSentQueue/ directory and will be subject to rotation based on the max total size of stored logs.
+
+Due to implementation specifics, there are two different sets of log levels that can be set: logrus and syslog levels.
+Logrus levels are used by the EVE microservices, while syslog levels are used by syslog and kernel.
+
+* the logrus levels are as follows: panic, fatal, error, warning, info, debug, and trace ["https://pkg.go.dev/github.com/sirupsen/logrus"].
+* the syslog levels are as follows: emerg, alert, crit, err, warning, notice, info, debug ["https://man7.org/linux/man-pages/man3/syslog.3.html"].
+
+Additionally all log levels can be set to "none" to disable logging for the corresponding component or to "all" to enable all log levels.
+
+Furthermore, the "remote" log levels control which subset of the generated logs are sent to the controller.
+A corresponding "remote" log level can be set for each of the three components: EVE microservices, syslog, and kernel.
+
+| Name | Type | Default | Description |
+| ---- | ---- | ------- | ----------- |
+| debug.default.loglevel | string | debug | default level of logs produced by EVE microservices. Can be overwritten by agent.*agentname*.debug.loglevel. Uses logrus log levels as described here ["https://pkg.go.dev/github.com/sirupsen/logrus"]: panic, fatal, error, warning, info, debug and trace.
+| debug.default.remote.loglevel | string | warning | default level of logs sent by EVE microservices to the controller. Can be overwritten by agent.*agentname*.debug.remote.loglevel. Uses logrus log levels as described here ["https://pkg.go.dev/github.com/sirupsen/logrus"]: panic, fatal, error, warning, info, debug and trace. |
+| debug.syslog.loglevel | string | info | level of the produced syslog messages. System default loglevel string representation should be used as described here ["https://man7.org/linux/man-pages/man3/syslog.3.html"]: emerg, alert, crit, err, warning, notice, info, debug. |
+| debug.syslog.remote.loglevel | string | info | level of the syslog messages sent to the controller. System default loglevel string representation should be used as described here ["https://man7.org/linux/man-pages/man3/syslog.3.html"]: emerg, alert, crit, err, warning, notice, info, debug. |
+| debug.kernel.loglevel | string | info | level of the produced kernel log messages. System default loglevel string representation should be used as described here ["https://man7.org/linux/man-pages/man3/syslog.3.html"]: emerg, alert, crit, err, warning, notice, info, debug. |
+| debug.kernel.remote.loglevel | string | info | level of the kernel log messages sent to the controller. System default loglevel string representation should be used as described here ["https://man7.org/linux/man-pages/man3/syslog.3.html"]: emerg, alert, crit, err, warning, notice, info, debug. |
+
+In addition, there can be per-agent settings to overwrite the default log level set for EVE microservices.
+These use the same log levels as the default log level settings (logrus).
+The per-agent settings begin with "agent.*agentname*.*setting*":
 
 | Name | Type | Description |
 | ---- | ---- | ----------- |
-| agent.*agentname*.loglevel | string | if set overrides debug.default.loglevel | (Legacy setting debug.*agentname*.loglevel still supported)
-| agent.*agentname*.remote.loglevel | string | if set overrides debug.default.remote.loglevel | (Legacy setting debug.*agentname*.remote.loglevel)
+| agent.*agentname*.debug.loglevel | string | if set overrides debug.default.loglevel for this particular agent | (Legacy setting debug.*agentname*.loglevel still supported)
+| agent.*agentname*.debug.remote.loglevel | string | if set overrides debug.default.remote.loglevel for this particular agent | (Legacy setting debug.*agentname*.remote.loglevel)
+
+Right now the following agents support per-agent log level settings:
+
+* newlogd
+* wwan
+* nodeagent
+* downloader
+* tpmmgr
+* client
+* vcomlink
+* executor
+* vaultmgr
+* baseosmgr
+* zedagent
+* verifier
+* wstunnelclient
+* zfsmanager
+* zedkube
+* ledmanager
+* faultinjection
+* zedmanager
+* nim
+* loguploader
+* watcher
+* volumemgr
+* zedrouter
+* msrv
+* domainmgr
+* diag
