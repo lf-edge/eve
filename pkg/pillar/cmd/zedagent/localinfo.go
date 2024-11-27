@@ -13,7 +13,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/golang/protobuf/ptypes"
 	"github.com/lf-edge/eve-api/go/info"
 	"github.com/lf-edge/eve-api/go/profile"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
@@ -22,6 +21,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	uuid "github.com/satori/go.uuid"
 	"github.com/shirou/gopsutil/host"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 const (
@@ -688,9 +688,8 @@ func prepareLocalDevInfo(ctx *zedagentContext) *profile.LocalDevInfo {
 	if err != nil {
 		log.Errorf("host.Info(): %s", err)
 	} else {
-		bootTime, _ := ptypes.TimestampProto(
+		msg.BootTime = timestamppb.New(
 			time.Unix(int64(hinfo.BootTime), 0).UTC())
-		msg.BootTime = bootTime
 	}
 	msg.LastBootReason = info.BootReason(ctx.bootReason)
 	msg.LastCmdTimestamp = ctx.getconfigCtx.sideController.lastDevCmdTimestamp

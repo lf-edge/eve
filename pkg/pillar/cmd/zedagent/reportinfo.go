@@ -15,7 +15,6 @@ import (
 
 	"github.com/containerd/containerd/mount"
 	"github.com/eriknordmark/ipinfo"
-	"github.com/golang/protobuf/ptypes"
 	"github.com/lf-edge/eve-api/go/evecommon"
 	"github.com/lf-edge/eve-api/go/info"
 	etpm "github.com/lf-edge/eve/pkg/pillar/evetpm"
@@ -220,7 +219,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext, dest destinationBitset) {
 	ReportInfo.Ztype = *deviceType
 	deviceUUID := devUUID.String()
 	ReportInfo.DevId = *proto.String(deviceUUID)
-	ReportInfo.AtTimeStamp = ptypes.TimestampNow()
+	ReportInfo.AtTimeStamp = timestamppb.Now()
 	log.Functionf("PublishDeviceInfoToZedCloud uuid %s", deviceUUID)
 
 	ReportDeviceInfo := new(info.ZInfoDevice)
@@ -535,10 +534,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext, dest destinationBitset) {
 			errInfo.Description = ib.Error.String()
 			errInfo.Severity = info.Severity_SEVERITY_ERROR
 			if !ib.Error.ErrorTime().IsZero() {
-				protoTime, err := ptypes.TimestampProto(ib.Error.ErrorTime())
-				if err == nil {
-					errInfo.Timestamp = protoTime
-				}
+				errInfo.Timestamp = timestamppb.New(ib.Error.ErrorTime())
 			}
 			reportAA.Err = errInfo
 		}
@@ -556,9 +552,8 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext, dest destinationBitset) {
 		hinfo.Uptime, hinfo.Uptime/(3600*24))
 	log.Tracef("Booted at %v", time.Unix(int64(hinfo.BootTime), 0).UTC())
 
-	bootTime, _ := ptypes.TimestampProto(
+	ReportDeviceInfo.BootTime = timestamppb.New(
 		time.Unix(int64(hinfo.BootTime), 0).UTC())
-	ReportDeviceInfo.BootTime = bootTime
 	hostname, err := os.Hostname()
 	if err != nil {
 		log.Errorf("HostName failed: %s", err)
@@ -576,8 +571,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext, dest destinationBitset) {
 
 	ReportDeviceInfo.LastRebootStack = ctx.rebootStack
 	if !ctx.rebootTime.IsZero() {
-		rebootTime, _ := ptypes.TimestampProto(ctx.rebootTime)
-		ReportDeviceInfo.LastRebootTime = rebootTime
+		ReportDeviceInfo.LastRebootTime = timestamppb.New(ctx.rebootTime)
 	}
 
 	ReportDeviceInfo.SystemAdapter = encodeSystemAdapterInfo(ctx)
@@ -721,7 +715,7 @@ func PublishAppInstMetaDataToZedCloud(ctx *zedagentContext,
 	*contentType = info.ZInfoTypes_ZiAppInstMetaData
 	ReportInfo.Ztype = *contentType
 	ReportInfo.DevId = *proto.String(devUUID.String())
-	ReportInfo.AtTimeStamp = ptypes.TimestampNow()
+	ReportInfo.AtTimeStamp = timestamppb.Now()
 
 	ReportAppInstMetaData := new(info.ZInfoAppInstMetaData)
 	ReportAppInstMetaData.Uuid = appInstId
@@ -987,15 +981,12 @@ func encodeSystemAdapterInfo(ctx *zedagentContext) *info.SystemAdapterInfo {
 		dps := new(info.DevicePortStatus)
 		dps.Version = uint32(dpc.Version)
 		dps.Key = dpc.Key
-		ts, _ := ptypes.TimestampProto(dpc.TimePriority)
-		dps.TimePriority = ts
+		dps.TimePriority = timestamppb.New(dpc.TimePriority)
 		if !dpc.LastFailed.IsZero() {
-			ts, _ := ptypes.TimestampProto(dpc.LastFailed)
-			dps.LastFailed = ts
+			dps.LastFailed = timestamppb.New(dpc.LastFailed)
 		}
 		if !dpc.LastSucceeded.IsZero() {
-			ts, _ := ptypes.TimestampProto(dpc.LastSucceeded)
-			dps.LastSucceeded = ts
+			dps.LastSucceeded = timestamppb.New(dpc.LastSucceeded)
 		}
 		dps.LastError = dpc.LastError
 

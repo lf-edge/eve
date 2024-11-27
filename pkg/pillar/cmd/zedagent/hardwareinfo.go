@@ -8,11 +8,11 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/golang/protobuf/ptypes"
 	"github.com/lf-edge/eve-api/go/info"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 func hardwareInfoTask(ctxPtr *zedagentContext, triggerHwInfo <-chan destinationBitset) {
@@ -48,7 +48,7 @@ func PublishHardwareInfoToZedCloud(ctx *zedagentContext, dest destinationBitset)
 	*hwType = info.ZInfoTypes_ZiHardware
 	ReportHwInfo.Ztype = *hwType
 	ReportHwInfo.DevId = *proto.String(devUUID.String())
-	ReportHwInfo.AtTimeStamp = ptypes.TimestampNow()
+	ReportHwInfo.AtTimeStamp = timestamppb.Now()
 	log.Functionf("PublishHardwareInfoToZedCloud uuid %s", hwInfoKey)
 
 	hwInfo := new(info.ZInfoHardware)
