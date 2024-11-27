@@ -49,24 +49,24 @@ func startVcomServer(listener SocketListener) {
 	}
 	defer unix.Close(fd)
 
-	// Set read timeout and write timeout
-	err = unix.SetsockoptTimeval(fd, unix.SOL_SOCKET, unix.SO_RCVTIMEO, &unix.Timeval{Sec: readTimeout})
-	if err != nil {
-		log.Errorf("Error setting read timeout: %v", err)
-		return
-	}
-	err = unix.SetsockoptTimeval(fd, unix.SOL_SOCKET, unix.SO_SNDTIMEO, &unix.Timeval{Sec: writeTimeout})
-	if err != nil {
-		log.Errorf("Error setting write timeout: %v", err)
-		return
-	}
-
 	for {
 		conn, _, err := unix.Accept(fd)
 		if err != nil {
 			// lets be less verbose with non-critical errors
 			log.Noticef("failed to accept connection: %v", err)
 			continue
+		}
+
+		// Set read timeout and write timeout
+		err = unix.SetsockoptTimeval(conn, unix.SOL_SOCKET, unix.SO_RCVTIMEO, &unix.Timeval{Sec: readTimeout})
+		if err != nil {
+			log.Errorf("error setting read timeout: %v", err)
+			return
+		}
+		err = unix.SetsockoptTimeval(conn, unix.SOL_SOCKET, unix.SO_SNDTIMEO, &unix.Timeval{Sec: writeTimeout})
+		if err != nil {
+			log.Errorf("error setting write timeout: %v", err)
+			return
 		}
 
 		go handleConnection(conn)
