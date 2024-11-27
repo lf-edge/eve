@@ -12,6 +12,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	zconfig "github.com/lf-edge/eve-api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	. "github.com/onsi/gomega"
 	uuid "github.com/satori/go.uuid"
 )
 
@@ -2857,11 +2858,20 @@ func TestPCIAssignmentsTemplateFillMultifunctionDevice(t *testing.T) {
 	}
 
 	wr := bytes.Buffer{}
+	multifunctionDevices := multifunctionDevGroup(pciAssignments)
+	addrAllocator := pciAddressAllocator{
+		pciAssignments:       pciAssignments,
+		multifunctionDevices: multifunctionDevices,
+	}
+	if err := addrAllocator.allocate(); err != nil {
+		t.Error(err)
+	}
+
 	p := pciAssignmentsTemplateFiller{
-		multifunctionDevices: multifunctionDevGroup(pciAssignments),
+		multifunctionDevices: multifunctionDevices,
 		file:                 &wr,
 	}
-	p.do(&wr, pciAssignments, 0)
+	p.do(pciAssignments)
 
 	if wr.String() != expectedMultifunctionDevice() {
 		t.Fatalf("not equal, diff: \n%s\ncomplete:\n%s", cmp.Diff(wr.String(), expectedMultifunctionDevice()), wr.String())
@@ -2906,4 +2916,383 @@ func TestConvertToMultifunctionPCIDevices(t *testing.T) {
 	if len(mds["0000:00:aa"].devs) != 1 {
 		t.Fatal("expected one device")
 	}
+}
+
+func TestPCIAddressAllocator(t *testing.T) {
+	g := NewGomegaWithT(t)
+	virtualNetworks := []virtualNetwork{
+		{
+			VifConfig: types.VifConfig{
+				Bridge:   "br1",
+				Vif:      "nbu1x1",
+				Mac:      net.HardwareAddr{0x02, 0x16, 0x3e, 0x00, 0x00, 0x01},
+				MTU:      1500,
+				VifOrder: 1,
+			},
+			networkID: 0,
+		},
+		{
+			VifConfig: types.VifConfig{
+				Bridge:   "br2",
+				Vif:      "nbu2x1",
+				Mac:      net.HardwareAddr{0x02, 0x16, 0x3e, 0x00, 0x00, 0x02},
+				MTU:      1500,
+				VifOrder: 4,
+			},
+			networkID: 1,
+		},
+	}
+	pciAssignments := []pciDevice{
+		{
+			pciLong:      "0000:06:00.0",
+			ioType:       types.IoNetEth,
+			netIntfOrder: 2,
+		},
+		{
+			pciLong: "0000:00:15.0",
+			ioType:  types.IoUSB,
+		},
+		{
+			pciLong: "0000:06:00.2",
+			ioType:  types.IoOther,
+		},
+		{
+			pciLong:      "0000:06:00.1",
+			ioType:       types.IoNetEth,
+			netIntfOrder: 3,
+		},
+		{
+			pciLong:      "0000:08:00.0",
+			ioType:       types.IoNetWWAN,
+			netIntfOrder: 0,
+		},
+	}
+	multifunctionDevices := multifunctionDevGroup(pciAssignments)
+	g.Expect(multifunctionDevices).To(HaveLen(3))
+	addrAllocator := pciAddressAllocator{
+		pciAssignments:       pciAssignments,
+		virtualNetworks:      virtualNetworks,
+		multifunctionDevices: multifunctionDevices,
+		firstFreePCIID:       5,
+		// First test the legacy order.
+		enforceNetInterfaceOrder: false,
+	}
+	err := addrAllocator.allocate()
+	g.Expect(err).ToNot(HaveOccurred())
+
+	g.Expect(virtualNetworks[0].pciDeviceID).To(Equal(5))
+	g.Expect(virtualNetworks[1].pciDeviceID).To(Equal(6))
+	g.Expect(pciAssignments[0].pciBridgeID).To(Equal(7))
+	g.Expect(pciAssignments[0].pciDeviceID).To(Equal(1))
+	g.Expect(pciAssignments[1].pciBridgeID).To(Equal(0))
+	g.Expect(pciAssignments[1].pciDeviceID).To(Equal(8))
+	g.Expect(pciAssignments[2].pciBridgeID).To(Equal(7))
+	g.Expect(pciAssignments[2].pciDeviceID).To(Equal(2))
+	g.Expect(pciAssignments[3].pciBridgeID).To(Equal(7))
+	g.Expect(pciAssignments[3].pciDeviceID).To(Equal(3))
+	g.Expect(pciAssignments[4].pciBridgeID).To(Equal(0))
+	g.Expect(pciAssignments[4].pciDeviceID).To(Equal(9))
+
+	// Check generated config with the legacy order.
+	buffer := bytes.Buffer{}
+	vnFiller := virtNetworkTemplateFiller{
+		file: &buffer,
+	}
+	err = vnFiller.do(virtualNetworks, types.HVM)
+	g.Expect(err).ToNot(HaveOccurred())
+	paFiller := pciAssignmentsTemplateFiller{
+		multifunctionDevices: multifunctionDevices,
+		file:                 &buffer,
+	}
+	err = paFiller.do(pciAssignments)
+	g.Expect(err).ToNot(HaveOccurred())
+	expectedConfig := `
+[device "pci.5"]
+  driver = "pcie-root-port"
+  port = "15"
+  chassis = "5"
+  bus = "pcie.0"
+  multifunction = "on"
+  addr = "0x5"
+
+[netdev "hostnet0"]
+  type = "tap"
+  ifname = "nbu1x1"
+  br = "br1"
+  script = "/etc/xen/scripts/qemu-ifup"
+  downscript = "no"
+  vhost = "on"
+
+[device "net0"]
+  driver = "virtio-net-pci"
+  netdev = "hostnet0"
+  mac = "02:16:3e:00:00:01"
+  bus = "pci.5"
+  addr = "0x0"
+  host_mtu = "1500"
+
+[device "pci.6"]
+  driver = "pcie-root-port"
+  port = "16"
+  chassis = "6"
+  bus = "pcie.0"
+  multifunction = "on"
+  addr = "0x6"
+
+[netdev "hostnet1"]
+  type = "tap"
+  ifname = "nbu2x1"
+  br = "br2"
+  script = "/etc/xen/scripts/qemu-ifup"
+  downscript = "no"
+  vhost = "on"
+
+[device "net1"]
+  driver = "virtio-net-pci"
+  netdev = "hostnet1"
+  mac = "02:16:3e:00:00:02"
+  bus = "pci.6"
+  addr = "0x0"
+  host_mtu = "1500"
+
+[device "pci.7"]
+  driver = "pcie-root-port"
+  port = "17"
+  chassis = "7"
+  bus = "pcie.0"
+  multifunction = "on"
+  addr = "0x7"
+
+[device "pcie-bridge.7"]
+  driver = "pcie-pci-bridge"
+  bus = "pci.7"
+  addr = "0x0"
+
+[device]
+  driver = "vfio-pci"
+  host = "06:00.0"
+  bus = "pcie-bridge.7"
+  addr = "0x1"
+
+[device "pci.8"]
+  driver = "pcie-root-port"
+  port = "18"
+  chassis = "8"
+  bus = "pcie.0"
+  multifunction = "on"
+  addr = "0x8"
+
+[device]
+  driver = "vfio-pci"
+  host = "00:15.0"
+  bus = "pci.8"
+  addr = "0x0"
+
+[device]
+  driver = "vfio-pci"
+  host = "06:00.2"
+  bus = "pcie-bridge.7"
+  addr = "0x2"
+
+[device]
+  driver = "vfio-pci"
+  host = "06:00.1"
+  bus = "pcie-bridge.7"
+  addr = "0x3"
+
+[device "pci.9"]
+  driver = "pcie-root-port"
+  port = "19"
+  chassis = "9"
+  bus = "pcie.0"
+  multifunction = "on"
+  addr = "0x9"
+
+[device]
+  driver = "vfio-pci"
+  host = "08:00.0"
+  bus = "pci.9"
+  addr = "0x0"
+`
+	g.Expect(buffer.String()).To(Equal(expectedConfig))
+
+	// Test enforced user-defined network interface order.
+	addrAllocator.enforceNetInterfaceOrder = true
+	err = addrAllocator.allocate()
+	g.Expect(err).ToNot(HaveOccurred())
+
+	g.Expect(virtualNetworks[0].pciDeviceID).To(Equal(6))
+	g.Expect(virtualNetworks[1].pciDeviceID).To(Equal(8))
+	g.Expect(pciAssignments[0].pciBridgeID).To(Equal(7))
+	g.Expect(pciAssignments[0].pciDeviceID).To(Equal(1))
+	g.Expect(pciAssignments[1].pciBridgeID).To(Equal(0))
+	g.Expect(pciAssignments[1].pciDeviceID).To(Equal(9))
+	g.Expect(pciAssignments[2].pciBridgeID).To(Equal(7))
+	g.Expect(pciAssignments[2].pciDeviceID).To(Equal(3))
+	g.Expect(pciAssignments[3].pciBridgeID).To(Equal(7))
+	g.Expect(pciAssignments[3].pciDeviceID).To(Equal(2))
+	g.Expect(pciAssignments[4].pciBridgeID).To(Equal(0))
+	g.Expect(pciAssignments[4].pciDeviceID).To(Equal(5))
+
+	// Check generated config with the user-defined order.
+	buffer.Reset()
+	err = vnFiller.do(virtualNetworks, types.HVM)
+	g.Expect(err).ToNot(HaveOccurred())
+	err = paFiller.do(pciAssignments)
+	g.Expect(err).ToNot(HaveOccurred())
+	expectedConfig = `
+[device "pci.6"]
+  driver = "pcie-root-port"
+  port = "16"
+  chassis = "6"
+  bus = "pcie.0"
+  multifunction = "on"
+  addr = "0x6"
+
+[netdev "hostnet0"]
+  type = "tap"
+  ifname = "nbu1x1"
+  br = "br1"
+  script = "/etc/xen/scripts/qemu-ifup"
+  downscript = "no"
+  vhost = "on"
+
+[device "net0"]
+  driver = "virtio-net-pci"
+  netdev = "hostnet0"
+  mac = "02:16:3e:00:00:01"
+  bus = "pci.6"
+  addr = "0x0"
+  host_mtu = "1500"
+
+[device "pci.8"]
+  driver = "pcie-root-port"
+  port = "18"
+  chassis = "8"
+  bus = "pcie.0"
+  multifunction = "on"
+  addr = "0x8"
+
+[netdev "hostnet1"]
+  type = "tap"
+  ifname = "nbu2x1"
+  br = "br2"
+  script = "/etc/xen/scripts/qemu-ifup"
+  downscript = "no"
+  vhost = "on"
+
+[device "net1"]
+  driver = "virtio-net-pci"
+  netdev = "hostnet1"
+  mac = "02:16:3e:00:00:02"
+  bus = "pci.8"
+  addr = "0x0"
+  host_mtu = "1500"
+
+[device "pci.7"]
+  driver = "pcie-root-port"
+  port = "17"
+  chassis = "7"
+  bus = "pcie.0"
+  multifunction = "on"
+  addr = "0x7"
+
+[device "pcie-bridge.7"]
+  driver = "pcie-pci-bridge"
+  bus = "pci.7"
+  addr = "0x0"
+
+[device]
+  driver = "vfio-pci"
+  host = "06:00.0"
+  bus = "pcie-bridge.7"
+  addr = "0x1"
+
+[device "pci.9"]
+  driver = "pcie-root-port"
+  port = "19"
+  chassis = "9"
+  bus = "pcie.0"
+  multifunction = "on"
+  addr = "0x9"
+
+[device]
+  driver = "vfio-pci"
+  host = "00:15.0"
+  bus = "pci.9"
+  addr = "0x0"
+
+[device]
+  driver = "vfio-pci"
+  host = "06:00.2"
+  bus = "pcie-bridge.7"
+  addr = "0x3"
+
+[device]
+  driver = "vfio-pci"
+  host = "06:00.1"
+  bus = "pcie-bridge.7"
+  addr = "0x2"
+
+[device "pci.5"]
+  driver = "pcie-root-port"
+  port = "15"
+  chassis = "5"
+  bus = "pcie.0"
+  multifunction = "on"
+  addr = "0x5"
+
+[device]
+  driver = "vfio-pci"
+  host = "08:00.0"
+  bus = "pci.5"
+  addr = "0x0"
+`
+	g.Expect(buffer.String()).To(Equal(expectedConfig))
+
+	// Try re-ordering functions of a multifunction device. This should be allowed.
+	pciAssignments[0].netIntfOrder = 3
+	pciAssignments[3].netIntfOrder = 2
+	err = addrAllocator.allocate()
+	g.Expect(err).ToNot(HaveOccurred())
+
+	g.Expect(virtualNetworks[0].pciDeviceID).To(Equal(6))
+	g.Expect(virtualNetworks[1].pciDeviceID).To(Equal(8))
+	g.Expect(pciAssignments[0].pciBridgeID).To(Equal(7))
+	g.Expect(pciAssignments[0].pciDeviceID).To(Equal(2)) // 1 -> 2
+	g.Expect(pciAssignments[1].pciBridgeID).To(Equal(0))
+	g.Expect(pciAssignments[1].pciDeviceID).To(Equal(9))
+	g.Expect(pciAssignments[2].pciBridgeID).To(Equal(7))
+	g.Expect(pciAssignments[2].pciDeviceID).To(Equal(3))
+	g.Expect(pciAssignments[3].pciBridgeID).To(Equal(7))
+	g.Expect(pciAssignments[3].pciDeviceID).To(Equal(1)) // 2 -> 1
+	g.Expect(pciAssignments[4].pciBridgeID).To(Equal(0))
+	g.Expect(pciAssignments[4].pciDeviceID).To(Equal(5))
+
+	// Try to put virtual interface in-between functions of a multifunction device.
+	// This should not be allowed.
+	virtualNetworks[1].VifOrder = 3
+	pciAssignments[0].netIntfOrder = 4
+
+	err = addrAllocator.allocate()
+	g.Expect(err).To(HaveOccurred())
+	g.Expect(err.Error()).To(ContainSubstring("Invalid VIF nbu2x1 configuration: " +
+		"user-defined network interface order disrupts the function sequence " +
+		"of the multifunction PCI device 0000:06:00"))
+	// Revert the invalid config change.
+	virtualNetworks[1].VifOrder = 4
+	pciAssignments[0].netIntfOrder = 3
+	err = addrAllocator.allocate()
+	g.Expect(err).ToNot(HaveOccurred())
+
+	// Try to put PCI-passthrough network device in-between functions of a multifunction
+	// device. This should not be allowed.
+	pciAssignments[4].netIntfOrder = 3
+	pciAssignments[0].netIntfOrder = 4
+
+	err = addrAllocator.allocate()
+	g.Expect(err).To(HaveOccurred())
+	fmt.Println(err.Error())
+	g.Expect(err.Error()).To(ContainSubstring("User-defined network interface order " +
+		"disrupts the function sequence of the multifunction PCI devices 0000:06:00 and 0000:08:00"))
 }

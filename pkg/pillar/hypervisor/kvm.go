@@ -398,10 +398,10 @@ const qemuPCIeRootPortTemplate = `
 `
 
 const qemuPCIeBridgeTemplate = `
-[device "pcie-bridge.{{.Bus}}"]
+[device "pcie-bridge.{{.PCIId}}"]
   driver = "pcie-pci-bridge"
-  bus = "pci.{{.Bus}}"
-  addr = "{{printf "0x%x" .PCIId}}"
+  bus = "pci.{{.PCIId}}"
+  addr = "0x0"
 `
 
 const qemuPCIPassthruTemplate = `
@@ -506,7 +506,6 @@ type tQemuPCIeRootPortContext struct {
 // Context for qemuPCIeBridgeTemplate.
 type tQemuPCIeBridgeContext struct {
 	PCIId int
-	Bus   int
 }
 
 // Context for qemuNetTemplate.
@@ -1068,9 +1067,286 @@ func getFmlCustomResolution(status *types.DomainStatus, globalConfig *types.Conf
 	return "", fmt.Errorf("invalid fml resolution %s", fmlResolutions)
 }
 
+type virtualNetwork struct {
+	types.VifConfig
+	networkID   int
+	pciDeviceID int
+}
+
+type pciAddressAllocator struct {
+	pciAssignments           []pciDevice
+	virtualNetworks          []virtualNetwork
+	multifunctionDevices     multifunctionDevs
+	firstFreePCIID           int
+	enforceNetInterfaceOrder bool
+}
+
+// allocate sets pciDeviceID and pciBridgeID for every pciDevice and virtualNetwork
+// based on user-configured ordering requirements.
+func (a *pciAddressAllocator) allocate() error {
+	if !a.enforceNetInterfaceOrder {
+		// Fallback to legacy ordering of PCI devices.
+		return a.allocateLegacy()
+	}
+
+	// Determine PCI addresses for virtual network interfaces, which are connected
+	// to the root bus using root ports.
+	for i := range a.virtualNetworks {
+		pciDeviceID := a.firstFreePCIID
+		// Increment pciDeviceID by 1 for every (virtual or assigned) PCI device
+		// which should have lower PCI address.
+		// For a multifunction PCI device, we increment by 1 for the entire group of
+		// functions, as they share a single address on the root bus through their bridge.
+		for j := range a.virtualNetworks {
+			if i == j {
+				continue
+			}
+			if a.virtualNetworks[j].VifOrder < a.virtualNetworks[i].VifOrder {
+				pciDeviceID++
+			}
+		}
+		for pciAddr, md := range a.multifunctionDevices {
+			isBefore, isAfter := md.compareOrderWithVirtNet(a.virtualNetworks[i])
+			invalidOrder := isBefore && isAfter
+			if invalidOrder {
+				return logError("Invalid VIF %s configuration: user-defined network "+
+					"interface order disrupts the function sequence of the multifunction "+
+					"PCI device %s. Interleaving PCI device functions with other devices "+
+					"is not allowed.", a.virtualNetworks[i].Vif, pciAddr)
+			}
+			if isBefore {
+				pciDeviceID++
+			}
+		}
+		a.virtualNetworks[i].pciDeviceID = pciDeviceID
+	}
+
+	// Determine PCI addresses for direct PCI assignments.
+	for i := range a.pciAssignments {
+		pciLongWoFunc, err := a.pciAssignments[i].pciLongWOFunction()
+		if err != nil {
+			logrus.Warnf("retrieving pci address without function failed: %v", err)
+			continue
+		}
+		md := a.multifunctionDevices[pciLongWoFunc]
+		if md == nil {
+			// Even when device is not multifunction, it still should have entry
+			// in the multifunctionDevices map.
+			logrus.Warnf("missing multifunctionDevices entry for pci address: %s",
+				pciLongWoFunc)
+			continue
+		}
+		// Increment pciDeviceOrBridgeID by 1 for every (virtual or assigned) PCI device
+		// which should have lower PCI address.
+		// For a multifunction PCI device, we increment by 1 for the entire group of
+		// functions, as they share a single address on the root bus through their bridge.
+		pciDeviceOrBridgeID := a.firstFreePCIID
+		for _, virtNet := range a.virtualNetworks {
+			// Order validity already checked when addresses for virtual networks
+			// were determined.
+			if isBefore, _ := md.compareOrderWithVirtNet(virtNet); !isBefore {
+				// Also increased when order is undefined, i.e. this PCI device
+				// does not have network function. Non-networking PCI devices
+				// are placed after virtual network interfaces.
+				pciDeviceOrBridgeID++
+			}
+		}
+		thisHasNetFunc := md.hasNetworkFunction()
+		for pciAddr2, md2 := range a.multifunctionDevices {
+			if pciLongWoFunc == pciAddr2 {
+				continue
+			}
+			theOtherHasNetFunc := md2.hasNetworkFunction()
+			if !thisHasNetFunc {
+				if theOtherHasNetFunc {
+					// Network functions take priority in the order.
+					pciDeviceOrBridgeID++
+				} else {
+					// Between non-networking devices, order by PCI addresses
+					// lexicographically.
+					if pciLongWoFunc > pciAddr2 {
+						pciDeviceOrBridgeID++
+					}
+				}
+				continue
+			}
+			if !theOtherHasNetFunc {
+				// The other non-network device is ordered after this network device.
+				continue
+			}
+			// Both devices have at least one network function.
+			theOtherIsBefore, theOtherIsAfter := md2.compareOrder(*md)
+			invalidOrder := theOtherIsBefore && theOtherIsAfter
+			if invalidOrder {
+				return logError("User-defined network interface order disrupts "+
+					"the function sequence of the multifunction PCI devices %s and %s. "+
+					"Interleaving PCI device functions with other devices/functions "+
+					"is not allowed.", pciLongWoFunc, pciAddr2)
+			}
+			if theOtherIsBefore {
+				pciDeviceOrBridgeID++
+			}
+		}
+		if len(md.devs) > 1 {
+			// pciDeviceOrBridgeID is for the bridge wrt. the root bus.
+			a.pciAssignments[i].pciBridgeID = pciDeviceOrBridgeID
+			// Determine device address on the secondary bus provided by the bridge.
+			// Skip PCI address 0 which is unsupported for standard hotplug controller.
+			pciDeviceID := 1
+			devIndex := md.index(a.pciAssignments[i])
+			thisIsNetDev := a.pciAssignments[i].ioType.IsNet()
+			for dev2Index, dev2 := range md.devs {
+				theOtherIsNetDev := dev2.ioType.IsNet()
+				if !thisIsNetDev {
+					if theOtherIsNetDev {
+						// Network functions take priority in the order.
+						pciDeviceID++
+					} else {
+						// Between non-networking functions, preserve the order received
+						// from zedagent.
+						if devIndex > dev2Index {
+							pciDeviceID++
+						}
+					}
+					continue
+				}
+				if !theOtherIsNetDev {
+					// The other non-network device is ordered after this network device.
+					continue
+				}
+				// Both devices are of the networking type.
+				if dev2.netIntfOrder < a.pciAssignments[i].netIntfOrder {
+					pciDeviceID++
+				}
+			}
+			a.pciAssignments[i].pciDeviceID = pciDeviceID
+		} else {
+			// Not multifunction PCI device.
+			a.pciAssignments[i].pciBridgeID = 0
+			a.pciAssignments[i].pciDeviceID = pciDeviceOrBridgeID
+		}
+	}
+	return nil
+}
+
+func (a *pciAddressAllocator) allocateLegacy() error {
+	// Virtual network interfaces precede PCI-passthrough devices in the PCI topology.
+	// Among virtual interfaces, the order received from zedagent is preserved.
+	pciDeviceID := a.firstFreePCIID
+	for i := range a.virtualNetworks {
+		a.virtualNetworks[i].pciDeviceID = pciDeviceID
+		pciDeviceID++
+	}
+
+	// Preserve order of PCI assignments as received from zedagent, but group
+	// functions of the same multifunction PCI device under the same bridge.
+	pciBridgeIDs := make(map[string]int) // key = PCI address without function suffix
+	for i := range a.pciAssignments {
+		pciLongWoFunc, err := a.pciAssignments[i].pciLongWOFunction()
+		if err != nil {
+			logrus.Warnf("retrieving pci address without function failed: %v", err)
+			continue
+		}
+		md := a.multifunctionDevices[pciLongWoFunc]
+		if md == nil {
+			// Even when device is not multifunction, it still should have entry
+			// in the a.multifunctionDevices map.
+			logrus.Warnf("missing multifunctionDevices entry for pci address: %s",
+				pciLongWoFunc)
+			continue
+		}
+		if len(md.devs) > 1 {
+			// Multi-function PCI device.
+			pciBridgeID, bridgeIDAllocated := pciBridgeIDs[pciLongWoFunc]
+			if !bridgeIDAllocated {
+				pciBridgeID = pciDeviceID
+				pciBridgeIDs[pciLongWoFunc] = pciBridgeID
+				pciDeviceID++
+			}
+			a.pciAssignments[i].pciBridgeID = pciBridgeID
+			// Skip PCI address 0 which is unsupported for standard hotplug controller.
+			a.pciAssignments[i].pciDeviceID = md.index(a.pciAssignments[i]) + 1
+		} else {
+			// Not multifunction PCI device.
+			a.pciAssignments[i].pciBridgeID = 0
+			a.pciAssignments[i].pciDeviceID = pciDeviceID
+			pciDeviceID++
+		}
+	}
+	return nil
+}
+
 type pciDevicesWithBridge struct {
 	bridgeBus string
 	devs      []*pciDevice
+}
+
+func (pd pciDevicesWithBridge) index(p pciDevice) int {
+	for i, dev := range pd.devs {
+		if p.sameDevice(*dev) {
+			return i
+		}
+	}
+	return -1
+}
+
+// compareOrder determines if this (possibly multifunction) device should be ordered
+// (in the PCI hierarchy) before the other given device.
+// Please note that if both booleans are true, then the user-defined order is invalid
+// and would break the (multifunction) device if applied.
+// If both return values are false, the order is undefined. This occurs when one or both
+// devices lack a network function (user only specifies order for network interfaces).
+func (pd pciDevicesWithBridge) compareOrder(
+	pd2 pciDevicesWithBridge) (isBefore, isAfter bool) {
+	for _, dev := range pd.devs {
+		if !dev.ioType.IsNet() {
+			continue
+		}
+		for _, dev2 := range pd2.devs {
+			if !dev2.ioType.IsNet() {
+				continue
+			}
+			if dev.netIntfOrder < dev2.netIntfOrder {
+				isBefore = true
+			}
+			if dev.netIntfOrder > dev2.netIntfOrder {
+				isAfter = true
+			}
+		}
+	}
+	return isBefore, isAfter
+}
+
+// compareOrderWithVirtNet determines if this (possibly multifunction) device should be
+// ordered (in the PCI hierarchy) before or after the given virtual network device.
+// Please note that if both booleans are true, then the user-defined order is invalid
+// and would break the (multifunction) device if applied.
+// If both return values are false, the order is undefined. This occurs when this device
+// lacks a network function (user only specifies order for network interfaces).
+func (pd pciDevicesWithBridge) compareOrderWithVirtNet(
+	virtNet virtualNetwork) (isBefore, isAfter bool) {
+	for _, dev := range pd.devs {
+		if !dev.ioType.IsNet() {
+			continue
+		}
+		if dev.netIntfOrder < virtNet.VifOrder {
+			isBefore = true
+		}
+		if dev.netIntfOrder > virtNet.VifOrder {
+			isAfter = true
+		}
+	}
+	return isBefore, isAfter
+}
+
+// Return true if device has at least one network function.
+func (pd pciDevicesWithBridge) hasNetworkFunction() bool {
+	for _, dev := range pd.devs {
+		if dev.ioType.IsNet() {
+			return true
+		}
+	}
+	return false
 }
 
 type multifunctionDevs map[string]*pciDevicesWithBridge // key: pci long without function number
@@ -1082,26 +1358,6 @@ func (md multifunctionDevs) isMultiFunction(p pciDevice) bool {
 	}
 	devs, found := md[pciLongWOFunc]
 	return found && len(devs.devs) > 1
-}
-
-func (md multifunctionDevs) index(p pciDevice) int {
-	pciLongWOFunc, err := p.pciLongWOFunction()
-	if err != nil {
-		logrus.Warnf("retrieving pci address without function failed: %v", err)
-		return -1
-	}
-	pciDevices, found := md[pciLongWOFunc]
-	if !found {
-		return -1
-	}
-
-	for i, dev := range pciDevices.devs {
-		if p.ioType == dev.ioType && p.pciLong == dev.pciLong {
-			return i
-		}
-	}
-
-	return -1
 }
 
 func multifunctionDevGroup(pcis []pciDevice) multifunctionDevs {
@@ -1127,45 +1383,32 @@ func multifunctionDevGroup(pcis []pciDevice) multifunctionDevs {
 	return mds
 }
 
-func (p pciDevice) pciLongWOFunction() (string, error) {
-	pciLongSplit := strings.Split(p.pciLong, ".")
-	if len(pciLongSplit) == 0 {
-		return "", fmt.Errorf("could not split %s", p.pciLong)
-	}
-	pciWithoutFunction := strings.Join(pciLongSplit[0:len(pciLongSplit)-1], ".")
-
-	return pciWithoutFunction, nil
-}
-
 type pciAssignmentsTemplateFiller struct {
 	multifunctionDevices multifunctionDevs
 	file                 io.Writer
 }
 
 func (f *pciAssignmentsTemplateFiller) pciEBridge(pciID int, pciWOFunction string) error {
-	pcieBridgeContext := tQemuPCIeBridgeContext{Bus: pciID}
+	pcieBridgeContext := tQemuPCIeBridgeContext{PCIId: pciID}
 	if err := tQemuPCIeBridge.Execute(f.file, pcieBridgeContext); err != nil {
 		return fmt.Errorf("can't write PCIe bridge Passthrough to config file (%w)", err)
 	}
 	f.multifunctionDevices[pciWOFunction].bridgeBus = fmt.Sprintf("pcie-bridge.%d", pciID)
-
 	return nil
 }
 
-func (f *pciAssignmentsTemplateFiller) do(file io.Writer, pciAssignments []pciDevice, pciID int) error {
+func (f *pciAssignmentsTemplateFiller) do(pciAssignments []pciDevice) error {
 	if len(pciAssignments) == 0 {
 		return nil
 	}
 
-	var pcieRPContext tQemuPCIeRootPortContext
-	var pciPTContext tQemuPCIPassthruContext
 	pciEBridgeForMultiFuncDevCreated := make(map[string]struct{}) // key: pci long without function number
-	for i, pa := range pciAssignments {
-		pcieRPContext.PCIId = pciID + i
-		pciPTContext.Xopregion = false
-		pciPTContext.Xvga = pa.isVGA()
-		pciPTContext.PciShortAddr = types.PCILongToShort(pa.pciLong)
-
+	for _, pa := range pciAssignments {
+		pciPTContext := tQemuPCIPassthruContext{
+			PciShortAddr: types.PCILongToShort(pa.pciLong),
+			Xvga:         pa.isVGA(),
+			Xopregion:    false,
+		}
 		if vendor, err := pa.vid(); err == nil {
 			// check for Intel vendor
 			if vendor == "0x8086" {
@@ -1184,36 +1427,66 @@ func (f *pciAssignmentsTemplateFiller) do(file io.Writer, pciAssignments []pciDe
 		}
 		_, pciEBridgeCreated := pciEBridgeForMultiFuncDevCreated[pciLongWoFunc]
 		pciEBridgeForMultiFuncDevCreated[pciLongWoFunc] = struct{}{}
+		isMultifunctionDev := f.multifunctionDevices.isMultiFunction(pa)
 
-		// for non-multifunction devices, every pci device gets a "pcie-root-port"
-		if !f.multifunctionDevices.isMultiFunction(pa) || !pciEBridgeCreated {
-			if err := tQemuPCIeRootPort.Execute(file, pcieRPContext); err != nil {
-				return logError("can't write Root Port PCI Passthrough to config file (%v)", err)
+		// Connect device using PCI Express Root Port either directly or via bridge if it
+		// has multiple functions.
+		if !isMultifunctionDev || !pciEBridgeCreated {
+			var pcieRPContext tQemuPCIeRootPortContext
+			if isMultifunctionDev {
+				pcieRPContext.PCIId = pa.pciBridgeID
+			} else {
+				pcieRPContext.PCIId = pa.pciDeviceID
+			}
+			if err := tQemuPCIeRootPort.Execute(f.file, pcieRPContext); err != nil {
+				return logError("can't write PCIe Root Port to config file (%v)", err)
 			}
 		}
-		if f.multifunctionDevices.isMultiFunction(pa) {
+		if isMultifunctionDev {
 			if !pciEBridgeCreated {
-				err := f.pciEBridge(pcieRPContext.PCIId, pciLongWoFunc)
+				err := f.pciEBridge(pa.pciBridgeID, pciLongWoFunc)
 				if err != nil {
 					logrus.Warnf("could not write template: %v, skipping", err)
 				}
 			}
-
 			pciPTContext.Bus = f.multifunctionDevices[pciLongWoFunc].bridgeBus
-			funcIndex := f.multifunctionDevices.index(pa)
-			if funcIndex < 0 {
-				logrus.Warn("PCI function index is less than 0 - skipping")
-			}
-			pciPTContext.Addr = fmt.Sprintf("0x%x", funcIndex+1) // Unsupported PCI slot 0 for standard hotplug controller
+			pciPTContext.Addr = fmt.Sprintf("0x%x", pa.pciDeviceID)
 		} else {
-			pciPTContext.Bus = fmt.Sprintf("pci.%d", pcieRPContext.PCIId)
+			pciPTContext.Bus = fmt.Sprintf("pci.%d", pa.pciDeviceID)
 			pciPTContext.Addr = "0x0"
 		}
-		if err := tQemuPCIPassthru.Execute(file, pciPTContext); err != nil {
+		if err := tQemuPCIPassthru.Execute(f.file, pciPTContext); err != nil {
 			return logError("can't write PCI Passthrough to config file (%v)", err)
 		}
 	}
 
+	return nil
+}
+
+type virtNetworkTemplateFiller struct {
+	file io.Writer
+}
+
+func (f *virtNetworkTemplateFiller) do(virtualNetworks []virtualNetwork,
+	virtMode types.VmMode) error {
+	for _, virtNet := range virtualNetworks {
+		netContext := tQemuNetContext{
+			PCIId:  virtNet.pciDeviceID,
+			NetID:  virtNet.networkID,
+			Mac:    virtNet.Mac.String(),
+			Bridge: virtNet.Bridge,
+			Vif:    virtNet.Vif,
+			MTU:    virtNet.MTU,
+		}
+		if virtMode == types.LEGACY {
+			netContext.Driver = "e1000"
+		} else {
+			netContext.Driver = "virtio-net-pci"
+		}
+		if err := tQemuNet.Execute(f.file, netContext); err != nil {
+			return logError("failed to write network template to config file: %v", err)
+		}
+	}
 	return nil
 }
 
@@ -1288,32 +1561,9 @@ func (ctx KvmContext) CreateDomConfig(domainName string,
 		diskContext.DiskID = diskContext.DiskID + 1
 	}
 
-	// render network device model settings
-	netContext := tQemuNetContext{PCIId: diskContext.PCIId}
-	for _, net := range config.VifList {
-		netContext.Mac = net.Mac.String()
-		netContext.Bridge = net.Bridge
-		netContext.Vif = net.Vif
-		if config.VirtualizationMode == types.LEGACY {
-			netContext.Driver = "e1000"
-		} else {
-			netContext.Driver = "virtio-net-pci"
-		}
-		netContext.MTU = net.MTU
-		if err := tQemuNet.Execute(file, netContext); err != nil {
-			return logError("can't write to config file %s (%v)", file.Name(), err)
-		}
-		netContext.PCIId = netContext.PCIId + 1
-		netContext.NetID = netContext.NetID + 1
-	}
-
-	// Gather all PCI assignments into a single line
 	var pciAssignments []pciDevice
-	// Gather all serial assignments into a single line
 	var serialAssignments []string
-	// Gather all CAN Bus assignments into a single line
 	canBusAssignments := make(map[string]string)
-
 	for _, adapter := range config.IoAdapterList {
 		logrus.Debugf("processing adapter %d %s\n", adapter.Type, adapter.Name)
 		list := aa.LookupIoBundleAny(adapter.Name)
@@ -1334,6 +1584,9 @@ func (ctx KvmContext) CreateDomConfig(domainName string,
 			if ib.PciLong != "" && ib.UsbAddr == "" {
 				logrus.Infof("Adding PCI device <%v>\n", ib.PciLong)
 				tap := pciDevice{pciLong: ib.PciLong, ioType: ib.Type}
+				if ib.Type.IsNet() {
+					tap.netIntfOrder = adapter.IntfOrder
+				}
 				pciAssignments = addNoDuplicatePCI(pciAssignments, tap)
 			}
 			if ib.Serial != "" {
@@ -1357,15 +1610,54 @@ func (ctx KvmContext) CreateDomConfig(domainName string,
 		}
 	}
 
-	pciAssignmentsFiller := pciAssignmentsTemplateFiller{
-		multifunctionDevices: multifunctionDevGroup(pciAssignments),
-		file:                 file,
+	// Group functions of the same multifunction PCI device together.
+	multifunctionDevices := multifunctionDevGroup(pciAssignments)
+
+	// Prepare a list of virtual interfaces connecting the application with network
+	// instances.
+	var virtualNetworks []virtualNetwork
+	var networkID int
+	for _, vif := range config.VifList {
+		virtualNetworks = append(virtualNetworks, virtualNetwork{
+			VifConfig: vif,
+			networkID: networkID,
+		})
+		networkID++
 	}
 
-	err = pciAssignmentsFiller.do(file, pciAssignments, netContext.PCIId)
+	// Determine PCI addresses for all virtual networks and direct PCI assignments.
+	addrAllocator := pciAddressAllocator{
+		pciAssignments:           pciAssignments,
+		virtualNetworks:          virtualNetworks,
+		multifunctionDevices:     multifunctionDevices,
+		firstFreePCIID:           diskContext.PCIId,
+		enforceNetInterfaceOrder: config.EnforceNetworkInterfaceOrder,
+	}
+	// Set pciDeviceID and pciBridgeID for every item in pciAssignments and virtualNetworks.
+	if err = addrAllocator.allocate(); err != nil {
+		return logError(err.Error())
+	}
+
+	// Render virtual network interfaces.
+	virtNetworksFiller := virtNetworkTemplateFiller{
+		file: file,
+	}
+	err = virtNetworksFiller.do(virtualNetworks, config.VirtualizationMode)
+	if err != nil {
+		return logError(err.Error())
+	}
+
+	// Render PCI assignments.
+	pciAssignmentsFiller := pciAssignmentsTemplateFiller{
+		multifunctionDevices: multifunctionDevices,
+		file:                 file,
+	}
+	err = pciAssignmentsFiller.do(pciAssignments)
 	if err != nil {
 		return fmt.Errorf("writing to template file %s failed: %w", file.Name(), err)
 	}
+
+	// Render serial assignments.
 	if len(serialAssignments) != 0 {
 		serialPortContext := tQemuSerialContext{Machine: ctx.devicemodel}
 		for id, serial := range serialAssignments {
@@ -1377,6 +1669,8 @@ func (ctx KvmContext) CreateDomConfig(domainName string,
 			}
 		}
 	}
+
+	// Render CANBus assignments.
 	if len(canBusAssignments) != 0 {
 		canIfContext := tQemuCANBusContext{Machine: ctx.devicemodel}
 		id := 0
