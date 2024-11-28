@@ -38,8 +38,7 @@ func applyDefaultConfigItem(ctxPtr *ucContext) error {
 			// Apply defaults
 			newConfigPtr.UpdateItemValues(oldConfigPtr)
 			if !cmp.Equal(oldConfigPtr, newConfigPtr) {
-				log.Noticef("Updated ConfigItemValueMap with new defaults. Diff: %+v",
-					cmp.Diff(oldConfigPtr, newConfigPtr))
+				log.Noticef("Updated ConfigItemValueMap with new defaults")
 			} else {
 				log.Tracef("upgradeconverter.applyDefaultConfigItem done with no change")
 				return nil
