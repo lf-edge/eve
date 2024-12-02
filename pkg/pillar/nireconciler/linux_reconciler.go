@@ -67,9 +67,6 @@ type LinuxNIReconciler struct {
 	exportIntendedState      bool
 	withKubernetesNetworking bool
 
-	// From GCP
-	disableAllOnesNetmask bool
-
 	reconcileMu   sync.Mutex
 	currentState  dg.Graph
 	intendedState dg.Graph
@@ -121,11 +118,12 @@ const (
 )
 
 type niInfo struct {
-	config   types.NetworkInstanceConfig
-	bridge   NIBridge
-	brIfName string
-	deleted  bool
-	status   NIReconcileStatus
+	config       types.NetworkInstanceConfig
+	bridge       NIBridge
+	brIfName     string
+	mirrorIfName string
+	deleted      bool
+	status       NIReconcileStatus
 }
 
 type appInfo struct {
@@ -632,13 +630,14 @@ func (r *LinuxNIReconciler) updateNIStatus(
 	intSG := r.intendedState.SubGraph(sgName)
 	inProgress, failedItems := r.getSubgraphState(intSG, currSG, false)
 	niStatus = NIReconcileStatus{
-		NI:          niID,
-		Deleted:     deleted,
-		BrIfName:    brIfName,
-		BrIfIndex:   brIfIndex,
-		InProgress:  inProgress,
-		FailedItems: failedItems,
-		Routes:      r.getNIRouteInfo(niID),
+		NI:           niID,
+		Deleted:      deleted,
+		BrIfName:     brIfName,
+		BrIfIndex:    brIfIndex,
+		MirrorIfName: niInfo.mirrorIfName,
+		InProgress:   inProgress,
+		FailedItems:  failedItems,
+		Routes:       r.getNIRouteInfo(niID),
 	}
 	if !niInfo.status.Equal(niStatus) {
 		changed = true
@@ -801,25 +800,7 @@ func (r *LinuxNIReconciler) ResumeReconcile(ctx context.Context) {
 // ApplyUpdatedGCP : apply change in the global config properties.
 func (r *LinuxNIReconciler) ApplyUpdatedGCP(ctx context.Context,
 	newGCP types.ConfigItemValueMap) {
-	contWatcher := r.pauseWatcher()
-	defer contWatcher()
-	disableAllOnesNetmask := newGCP.GlobalValueBool(types.DisableDHCPAllOnesNetMask)
-	if r.disableAllOnesNetmask == disableAllOnesNetmask {
-		// No change in GCP relevant for network instances.
-		return
-	}
-	r.disableAllOnesNetmask = disableAllOnesNetmask
-	for niID, ni := range r.nis {
-		if ni.config.Type == types.NetworkInstanceTypeSwitch {
-			// Not running DHCP server for switch NI inside EVE.
-			continue
-		}
-		r.scheduleNICfgRebuild(niID,
-			fmt.Sprintf("global config property %s changed to %t",
-				types.DisableDHCPAllOnesNetMask, r.disableAllOnesNetmask))
-	}
-	updates := r.reconcile(ctx)
-	r.publishReconcilerUpdates(updates...)
+	// NOOP
 }
 
 // AddNI : create this new network instance inside the network stack.
@@ -836,10 +817,17 @@ func (r *LinuxNIReconciler) AddNI(ctx context.Context,
 	if err != nil {
 		return niStatus, err
 	}
+	// Mirroring for efficient monitoring purposes is only implemented for the Switch
+	// network instance.
+	var mirrorIfName string
+	if niConfig.Type == types.NetworkInstanceTypeSwitch {
+		mirrorIfName = r.mirrorIfName(brIfName)
+	}
 	r.nis[niID] = &niInfo{
-		config:   niConfig,
-		bridge:   br,
-		brIfName: brIfName,
+		config:       niConfig,
+		bridge:       br,
+		brIfName:     brIfName,
+		mirrorIfName: mirrorIfName,
 	}
 	reconcileReason := fmt.Sprintf("adding new NI (%v)", niID)
 	// Rebuild and reconcile also global config to update the set of intended/current
@@ -876,6 +864,9 @@ func (r *LinuxNIReconciler) UpdateNI(ctx context.Context,
 		return niStatus, err
 	}
 	r.nis[niID].brIfName = brIfName
+	if niConfig.Type == types.NetworkInstanceTypeSwitch {
+		r.nis[niID].mirrorIfName = r.mirrorIfName(brIfName)
+	}
 	reconcileReason := fmt.Sprintf("updating NI (%v)", niID)
 	// Get the current state of external items to be used by NI.
 	r.updateCurrentNIState(niID)
@@ -961,7 +952,8 @@ func (r *LinuxNIReconciler) AddAppConn(ctx context.Context,
 	}
 	r.apps[appID] = appInfo
 	reconcileReason := fmt.Sprintf("connecting new app (%v)", appID)
-	// Rebuild and reconcile also global config to update the set of intended IPSets.
+	// Rebuild and reconcile also global config to update the set of intended IPSets
+	// and sysctl settings.
 	r.scheduleGlobalCfgRebuild(reconcileReason)
 	// Rebuild and reconcile config of every NI that this app is trying to connect into.
 	for _, vif := range vifs {
@@ -1006,7 +998,8 @@ func (r *LinuxNIReconciler) UpdateAppConn(ctx context.Context,
 	}
 	r.apps[appID] = appInfo
 	reconcileReason := fmt.Sprintf("updating app connectivity (%v)", appID)
-	// Rebuild and reconcile also global config to update the set of intended IPSets.
+	// Rebuild and reconcile also global config to update the set of intended IPSets
+	// and sysctl settings.
 	r.scheduleGlobalCfgRebuild(reconcileReason)
 	// Reconcile every NI that this app is disconnecting from, connecting to,
 	// or just updating its connection parameters with.
@@ -1039,7 +1032,8 @@ func (r *LinuxNIReconciler) DelAppConn(ctx context.Context,
 	// Deleted from the map when removal is completed successfully (incl. async ops).
 	r.apps[appID].deleted = true
 	reconcileReason := fmt.Sprintf("disconnecting app (%v)", appID)
-	// Rebuild and reconcile also global config to update the set of intended IPSets.
+	// Rebuild and reconcile also global config to update the set of intended IPSets
+	// and sysctl settings.
 	r.scheduleGlobalCfgRebuild(reconcileReason)
 	// Reconcile every NI that this app is trying to disconnect from.
 	for _, vif := range r.apps[appID].vifs {
@@ -1145,6 +1139,16 @@ func (r *LinuxNIReconciler) getSubgraphState(intSG, currSG dg.GraphR, forApp boo
 		}
 		if sysctlConf, isSysctl := item.(linux.Sysctl); isSysctl {
 			if sysctlConf.ForApp.ID != emptyUUID {
+				return true
+			}
+		}
+		if tcIngress, isTcIngress := item.(linux.TCIngress); isTcIngress {
+			if tcIngress.NetIf.ItemRef.ItemType == linux.VIFTypename {
+				return true
+			}
+		}
+		if tcMirror, isTcMirror := item.(linux.TCMirror); isTcMirror {
+			if tcMirror.FromNetIf.ItemRef.ItemType == linux.VIFTypename {
 				return true
 			}
 		}

@@ -4,6 +4,7 @@ go 1.22
 
 require (
 	github.com/lf-edge/eve/pkg/pillar v0.0.0-20240820084217-3f317a9e801f
+	github.com/satori/go.uuid v1.2.1-0.20180404165556-75cca531ea76
 	github.com/sirupsen/logrus v1.9.3
 )
 
@@ -20,7 +21,6 @@ require (
 	github.com/leodido/go-urn v1.2.4 // indirect
 	github.com/lf-edge/eve-api/go v0.0.0-20240722173316-ed56da45126b // indirect
 	github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20240315102754-0f6d1f182e0d // indirect
-	github.com/satori/go.uuid v1.2.1-0.20180404165556-75cca531ea76 // indirect
 	github.com/vishvananda/netlink v1.2.1-beta.2 // indirect
 	github.com/vishvananda/netns v0.0.0-20210104183010-2eb08e3e575f // indirect
 	golang.org/x/crypto v0.21.0 // indirect

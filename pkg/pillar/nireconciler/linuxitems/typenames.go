@@ -22,4 +22,8 @@ const (
 	SysctlTypename = "Sysctl"
 	// BPDUGuardTypename : typename for BPDU guard enabled on a bridge port.
 	BPDUGuardTypename = "BPDUGuard"
+	// TCIngressTypename : typename for TC-ingress qdisc.
+	TCIngressTypename = "TCIngress"
+	// TCMirrorTypename : typename for TC rule mirroring matched packets.
+	TCMirrorTypename = "TCMirror"
 )

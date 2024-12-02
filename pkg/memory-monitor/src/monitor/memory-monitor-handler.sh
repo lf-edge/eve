@@ -226,7 +226,7 @@ show_pid_mem_usage "eve" "$sorted_eve_processes" "$current_output_dir/memstat_ev
 # ==== Dump memory allocation sites for Pillar ====
 
 eve dump-memory
-logread | grep logMemAllocationSites > "$current_output_dir/allocations_pillar.out"
+logread | grep logMemAllocationSites > "$current_output_dir/allocations_pillar.out" || :
 
 # ==== Trigger a heap dump for Pillar ====
 

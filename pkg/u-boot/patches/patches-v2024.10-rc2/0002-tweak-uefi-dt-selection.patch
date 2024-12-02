@@ -1,0 +1,25 @@
+From 41fe3e8f9f943bc53562a3f91f2cf48d3c7d0294 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Ren=C3=AA=20de=20Souza=20Pinto?= <rene@renesp.com.br>
+Date: Tue, 6 Aug 2024 15:03:02 +0200
+Subject: [PATCH 2/3] 0007-tweak-uefi-dt-selection.patch
+
+---
+ include/config_distro_bootcmd.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/include/config_distro_bootcmd.h b/include/config_distro_bootcmd.h
+index 2a136b96a6..97a0ce3986 100644
+--- a/include/config_distro_bootcmd.h
++++ b/include/config_distro_bootcmd.h
+@@ -144,7 +144,7 @@
+ 		"if fdt addr -q ${fdt_addr_r}; then "                     \
+ 			"bootefi bootmgr ${fdt_addr_r};"                  \
+ 		"else "                                                   \
+-			"bootefi bootmgr;"                                \
++			"bootefi bootmgr ${fdt_addr};"                    \
+ 		"fi\0"
+ #else
+ #define BOOTENV_EFI_BOOTMGR
+-- 
+2.43.0
+

@@ -29,6 +29,7 @@ func (z *zedrouter) getArgsForNIStateCollecting(niID uuid.UUID) (
 	br.NI = niID
 	br.BrNum = niStatus.BridgeNum
 	br.BrIfName = niStatus.BridgeName
+	br.MirrorIfName = niStatus.MirrorIfName
 	br.BrIfMAC = niStatus.BridgeMac
 	// Find all app instances that (actively) use this network.
 	apps := z.pubAppNetworkStatus.GetAll()
@@ -165,6 +166,14 @@ func (z *zedrouter) updateNIPorts(niConfig types.NetworkInstanceConfig,
 				errorMsgs = append(errorMsgs,
 					fmt.Sprintf("wireless port %s cannot be used in Switch Network Instance",
 						port.Logicallabel))
+				continue
+			}
+			if z.deviceNetworkStatus.IsPortUsedAsVlanParent(port.Logicallabel) {
+				// It is not supported/valid to bridge port which has VLAN
+				// sub-interfaces configured.
+				errorMsgs = append(errorMsgs,
+					fmt.Sprintf("port %s with VLAN sub-interfaces cannot be used "+
+						"in Switch Network Instance", port.Logicallabel))
 				continue
 			}
 			if len(newPorts) > 1 && port.Dhcp != types.DhcpTypeNone {

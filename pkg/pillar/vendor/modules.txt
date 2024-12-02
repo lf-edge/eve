@@ -371,6 +371,9 @@ github.com/gabriel-vasile/mimetype
 github.com/gabriel-vasile/mimetype/internal/charset
 github.com/gabriel-vasile/mimetype/internal/json
 github.com/gabriel-vasile/mimetype/internal/magic
+# github.com/getlantern/framed v0.0.0-20190601192238-ceb6431eeede
+## explicit; go 1.12
+github.com/getlantern/framed
 # github.com/ghodss/yaml v1.0.0
 ## explicit
 github.com/ghodss/yaml
@@ -635,7 +638,7 @@ github.com/leodido/go-urn
 github.com/lf-edge/edge-containers/pkg/registry
 github.com/lf-edge/edge-containers/pkg/resolver
 github.com/lf-edge/edge-containers/pkg/tgz
-# github.com/lf-edge/eve-api/go v0.0.0-20240829123634-7c8ebda876ff
+# github.com/lf-edge/eve-api/go v0.0.0-20241125213346-b026f21b3e75
 ## explicit; go 1.20
 github.com/lf-edge/eve-api/go/attest
 github.com/lf-edge/eve-api/go/auth
@@ -770,6 +773,9 @@ github.com/openshift/client-go/security/clientset/versioned/typed/security/v1
 # github.com/openshift/custom-resource-status v1.1.2
 ## explicit; go 1.12
 github.com/openshift/custom-resource-status/conditions/v1
+# github.com/oxtoacart/bpool v0.0.0-20190530202638-03653db5a59c
+## explicit; go 1.12
+github.com/oxtoacart/bpool
 # github.com/packetcap/go-pcap v0.0.0-20230717110547-c34843f9206d
 ## explicit; go 1.13
 github.com/packetcap/go-pcap
@@ -935,6 +941,10 @@ go.opentelemetry.io/otel/metric/embedded
 ## explicit; go 1.20
 go.opentelemetry.io/otel/trace
 go.opentelemetry.io/otel/trace/embedded
+# go.uber.org/goleak v1.3.0
+## explicit; go 1.20
+go.uber.org/goleak
+go.uber.org/goleak/internal/stack
 # golang.org/x/crypto v0.21.0
 ## explicit; go 1.18
 golang.org/x/crypto/blowfish

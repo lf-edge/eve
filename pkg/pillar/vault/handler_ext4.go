@@ -424,6 +424,11 @@ func (h *Ext4Handler) getVaultStatus(vaultName string, vaultPath string,
 				status.Status = info.DataSecAtRestStatus_DATASEC_AT_REST_ENABLED
 			} else {
 				status.Status = info.DataSecAtRestStatus_DATASEC_AT_REST_ERROR
+				if status.PCRStatus == info.PCRStatus_PCR_ENABLED {
+					if pcrs, err := etpm.FindMismatchingPCRs(); err == nil {
+						status.MismatchingPCRs = pcrs
+					}
+				}
 				status.SetErrorDescription(types.ErrorDescription{Error: "Vault key unavailable"})
 			}
 		}

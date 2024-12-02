@@ -239,22 +239,32 @@ func (lc *LinuxCollector) StartCollectingForNI(
 		return fmt.Errorf("%s: NI %s is already included in state data collecting",
 			LogAndErrPrefix, niConfig.UUID)
 	}
-	pcapCtx, cancelPCAP := context.WithCancel(context.Background())
 	ni := &niInfo{
 		config:          niConfig,
 		bridge:          br,
-		cancelPCAP:      cancelPCAP,
 		arpSnoopEnabled: enableARPSnoop,
 	}
 	for _, vif := range vifs {
 		ni.vifs = append(ni.vifs, &vifInfo{AppVIF: vif})
 	}
 	lc.nis[niConfig.UUID] = ni
-	ni.pcapWG.Add(1)
-	go lc.sniffDNSandDHCP(pcapCtx, &ni.pcapWG, br, niConfig.Type, enableARPSnoop)
+	if lc.isPcapRequired(niConfig) {
+		pcapCtx, cancelPCAP := context.WithCancel(context.Background())
+		ni.cancelPCAP = cancelPCAP
+		ni.pcapWG.Add(1)
+		go lc.sniffDNSandDHCP(pcapCtx, &ni.pcapWG, br, niConfig.Type, enableARPSnoop)
+	}
 	lc.log.Noticef("%s: Started collecting state data for NI %v "+
 		"(br: %+v, vifs: %+v)", LogAndErrPrefix, niConfig.UUID, br, vifs)
 	return nil
+}
+
+func (lc *LinuxCollector) isPcapRequired(niConfig types.NetworkInstanceConfig) bool {
+	// For Switch NIs we need to capture ARP, DHCP and ICMP packets to learn application
+	// IP assignments.
+	// For both Switch and Local NIs we need to capture DNS packets if flow logging
+	// is enabled.
+	return niConfig.Type == types.NetworkInstanceTypeSwitch || niConfig.EnableFlowlog
 }
 
 // UpdateCollectingForNI : update state data collecting process to reflect a change
@@ -284,15 +294,22 @@ func (lc *LinuxCollector) UpdateCollectingForNI(
 		newVifs = append(newVifs, newVif)
 	}
 	ni.vifs = newVifs
-	if ni.arpSnoopEnabled != enableARPSnoop {
-		// Restart packet capture with changed BPF filter.
-		ni.cancelPCAP()
-		ni.pcapWG.Wait()
+	if ni.cancelPCAP != nil {
+		// Stop current PCAP also if arpSnoopEnabled changed and we need to start
+		// a new PCAP with an updated BPF filter.
+		stopPCAP := !lc.isPcapRequired(niConfig) || ni.arpSnoopEnabled != enableARPSnoop
+		if stopPCAP {
+			ni.cancelPCAP()
+			ni.pcapWG.Wait()
+			ni.cancelPCAP = nil
+		}
+	}
+	ni.arpSnoopEnabled = enableARPSnoop
+	if lc.isPcapRequired(niConfig) && ni.cancelPCAP == nil {
 		pcapCtx, cancelPCAP := context.WithCancel(context.Background())
 		ni.cancelPCAP = cancelPCAP
 		ni.pcapWG.Add(1)
 		go lc.sniffDNSandDHCP(pcapCtx, &ni.pcapWG, ni.bridge, niConfig.Type, enableARPSnoop)
-		ni.arpSnoopEnabled = enableARPSnoop
 	}
 	lc.log.Noticef("%s: Updated state collecting for NI %v "+
 		"(br: %+v, vifs: %+v)", LogAndErrPrefix, niConfig.UUID, ni.bridge, ni.vifs)
@@ -308,8 +325,11 @@ func (lc *LinuxCollector) StopCollectingForNI(niID uuid.UUID) error {
 		return ErrUnknownNI{NI: niID}
 	}
 	ni := lc.nis[niID]
-	ni.cancelPCAP()
-	ni.pcapWG.Wait()
+	if ni.cancelPCAP != nil {
+		ni.cancelPCAP()
+		ni.pcapWG.Wait()
+		ni.cancelPCAP = nil
+	}
 	delete(lc.nis, niID)
 	lc.log.Noticef("%s: Stopped collecting state data for NI %v", LogAndErrPrefix, niID)
 	return nil

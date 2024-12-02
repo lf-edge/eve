@@ -11,9 +11,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
-	"time"
 
-	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/shirou/gopsutil/cpu"
 	"github.com/shirou/gopsutil/mem"
@@ -260,8 +258,12 @@ func (ctx xenContext) CreateDomConfig(domainName string,
 		maxCpus = vCpus
 	}
 	file.WriteString(fmt.Sprintf("maxvcpus = %d\n", maxCpus))
-	if config.CPUs != "" {
-		file.WriteString(fmt.Sprintf("cpus = \"%s\"\n", config.CPUs))
+	if len(config.CPUs) > 0 {
+		cpusString := make([]string, 0)
+		for _, curCPU := range config.CPUs {
+			cpusString = append(cpusString, strconv.Itoa(curCPU))
+		}
+		file.WriteString(fmt.Sprintf("cpus = \"%s\"\n", strings.Join(cpusString, ",")))
 	}
 	if config.DeviceTree != "" {
 		file.WriteString(fmt.Sprintf("device_tree = \"%s\"\n",
@@ -877,14 +879,14 @@ func fallbackDomainMetric() map[string]types.DomainMetric {
 	return dmList
 }
 
-func (ctx xenContext) VirtualTPMSetup(domainName, agentName string, ps *pubsub.PubSub, warnTime, errTime time.Duration) error {
+func (ctx xenContext) VirtualTPMSetup(domainName string, wp *types.WatchdogParam) error {
 	return fmt.Errorf("not implemented")
 }
 
-func (ctx xenContext) VirtualTPMTerminate(domainName string) error {
+func (ctx xenContext) VirtualTPMTerminate(domainName string, wp *types.WatchdogParam) error {
 	return fmt.Errorf("not implemented")
 }
 
-func (ctx xenContext) VirtualTPMTeardown(domainName string) error {
+func (ctx xenContext) VirtualTPMTeardown(domainName string, wp *types.WatchdogParam) error {
 	return fmt.Errorf("not implemented")
 }
