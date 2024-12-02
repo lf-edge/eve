@@ -1,6 +1,8 @@
-# Clustered eve nodes (zedkube)
+# Clustered eve nodes (aka zedkube)
 
 ## Overview
+
+zedkube is a service in pillar/cmd/zedkube. The main purpose of the service is to interact with the kubernetes cluster in the container 'kube' and supply some of the pillar commands to the cluster, and relay some information from the cluster to the pillar. It handles some of the actions for the cluster which do not belong to 'volumemgr' or 'domainmgr' services.
 
 ## Components
 
