@@ -683,6 +683,9 @@ func getLocalAddrListImpl(dns DeviceNetworkStatus,
 
 // Check if an interface name is a port owned by nim
 func IsPort(dns DeviceNetworkStatus, ifname string) bool {
+	if ifname == "" {
+		return false
+	}
 	for _, us := range dns.Ports {
 		if us.IfName != ifname {
 			continue
