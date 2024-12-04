@@ -887,9 +887,9 @@ func printOutput(ctx *diagContext, caller string) {
 		// Print usefully formatted info based on which
 		// fields are set and Dhcp type; proxy info order
 		ifname := port.IfName
-		isMgmt := types.IsMgmtPort(*ctx.DeviceNetworkStatus, ifname)
+		isMgmt := types.IsMgmtPort(*ctx.DeviceNetworkStatus, ifname, port.USBAddr, port.USBProd, port.PCIAddr)
 		cost := types.GetPortCost(*ctx.DeviceNetworkStatus,
-			ifname)
+			ifname, port.USBAddr, port.USBProd, port.PCIAddr)
 		if isMgmt {
 			mgmtPorts++
 		}

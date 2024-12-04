@@ -19,7 +19,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/containerd/cgroups"
@@ -68,21 +67,12 @@ const (
 // Really a constant
 var nilUUID = uuid.UUID{}
 
-func isPort(ctx *domainContext, ifname string) bool {
-	ctx.dnsLock.Lock()
-	defer ctx.dnsLock.Unlock()
-	return types.IsPort(ctx.deviceNetworkStatus, ifname)
-}
-
 // Information for handleCreate/Modify/Delete
 type domainContext struct {
 	agentbase.AgentBase
-	ps *pubsub.PubSub
-	// The isPort function is called by different goroutines
-	// hence we serialize the calls on a mutex.
+	ps                     *pubsub.PubSub
 	decryptCipherContext   cipher.DecryptCipherContext
 	deviceNetworkStatus    types.DeviceNetworkStatus
-	dnsLock                sync.Mutex
 	assignableAdapters     *types.AssignableAdapters
 	DNSinitialized         bool // Received DeviceNetworkStatus
 	subDeviceNetworkStatus pubsub.Subscription
@@ -3154,7 +3144,7 @@ func updatePortAndPciBackIoBundle(ctx *domainContext, ib *types.IoBundle) (chang
 	// EVE controller doesn't know it
 	list = aa.ExpandControllers(log, list, hyper.PCISameController)
 	for _, ib := range list {
-		if types.IsPort(ctx.deviceNetworkStatus, ib.Ifname) {
+		if types.IsPort(ctx.deviceNetworkStatus, ib.Ifname, ib.UsbAddr, ib.UsbProduct, ib.PciLong) {
 			isPort = true
 			keepInHost = true
 		}

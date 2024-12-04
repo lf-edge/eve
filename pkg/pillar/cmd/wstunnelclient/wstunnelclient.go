@@ -387,7 +387,7 @@ func scanAIConfigs(ctx *wstunnelclientContext) {
 	deviceNetworkStatus := ctx.dnsContext.deviceNetworkStatus
 	for _, port := range deviceNetworkStatus.Ports {
 		ifname := port.IfName
-		if !types.IsMgmtPort(*deviceNetworkStatus, ifname) {
+		if !types.IsMgmtPort(*deviceNetworkStatus, ifname, port.USBAddr, port.USBProd, port.PCIAddr) {
 			log.Tracef("Skipping connection using non-mangement intf %s\n",
 				ifname)
 			continue

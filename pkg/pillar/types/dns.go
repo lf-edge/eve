@@ -31,6 +31,9 @@ type DeviceNetworkStatus struct {
 
 type NetworkPortStatus struct {
 	IfName       string
+	USBAddr      string
+	USBProd      string
+	PCIAddr      string
 	Phylabel     string // Physical name set by controller/model
 	Logicallabel string
 	// Unlike the logicallabel, which is defined in the device model and unique
@@ -682,9 +685,18 @@ func getLocalAddrListImpl(dns DeviceNetworkStatus,
 }
 
 // Check if an interface name is a port owned by nim
-func IsPort(dns DeviceNetworkStatus, ifname string) bool {
+func IsPort(dns DeviceNetworkStatus, ifname string, usbaddr string, usbprod string, pciaddr string) bool {
 	for _, us := range dns.Ports {
-		if us.IfName != ifname {
+		if ifname != "" && us.IfName != ifname {
+			continue
+		}
+		if us.USBAddr != usbaddr {
+			continue
+		}
+		if us.USBProd != usbprod {
+			continue
+		}
+		if us.PCIAddr != pciaddr {
 			continue
 		}
 		return true
@@ -692,21 +704,19 @@ func IsPort(dns DeviceNetworkStatus, ifname string) bool {
 	return false
 }
 
-// IsL3Port checks if an interface name belongs to a port with SystemAdapter attached.
-func IsL3Port(dns DeviceNetworkStatus, ifname string) bool {
+// Check if a physical label or ifname is a management port
+func IsMgmtPort(dns DeviceNetworkStatus, ifname string, usbaddr string, usbprod string, pciaddr string) bool {
 	for _, us := range dns.Ports {
-		if us.IfName != ifname {
+		if ifname != "" && us.IfName != ifname {
 			continue
 		}
-		return us.IsL3Port
-	}
-	return false
-}
-
-// Check if a physical label or ifname is a management port
-func IsMgmtPort(dns DeviceNetworkStatus, ifname string) bool {
-	for _, us := range dns.Ports {
-		if us.IfName != ifname {
+		if us.USBAddr != usbaddr {
+			continue
+		}
+		if us.USBProd != usbprod {
+			continue
+		}
+		if us.PCIAddr != pciaddr {
 			continue
 		}
 		if dns.Version >= DPCIsMgmt &&
@@ -720,9 +730,18 @@ func IsMgmtPort(dns DeviceNetworkStatus, ifname string) bool {
 
 // GetPortCost returns the port cost
 // Returns 0 if the ifname does not exist.
-func GetPortCost(dns DeviceNetworkStatus, ifname string) uint8 {
+func GetPortCost(dns DeviceNetworkStatus, ifname string, usbaddr string, usbprod string, pciaddr string) uint8 {
 	for _, us := range dns.Ports {
-		if us.IfName != ifname {
+		if ifname != "" && us.IfName != ifname {
+			continue
+		}
+		if us.USBAddr != usbaddr {
+			continue
+		}
+		if us.USBProd != usbprod {
+			continue
+		}
+		if us.PCIAddr != pciaddr {
 			continue
 		}
 		return us.Cost
@@ -732,7 +751,7 @@ func GetPortCost(dns DeviceNetworkStatus, ifname string) uint8 {
 
 func GetPort(dns DeviceNetworkStatus, ifname string) *NetworkPortStatus {
 	for _, us := range dns.Ports {
-		if us.IfName != ifname {
+		if ifname != "" && us.IfName != ifname {
 			continue
 		}
 		if dns.Version < DPCIsMgmt {
