@@ -76,14 +76,14 @@ func (m *DpcManager) processWwanStatus(ctx context.Context, status types.WwanSta
 	}
 
 	if changed || wasInProgress {
-		if m.currentDPC() != nil {
-			changedDPC := m.setDiscoveredWwanIfNames(m.currentDPC())
+		if dpc != nil {
+			changedDPC := m.setDiscoveredWwanIfNames(dpc)
 			if changedDPC {
 				m.publishDPCL()
 			}
 		}
 		m.updateDNS()
-		if dpc.State == types.DPCStateWwanWait {
+		if dpc != nil && dpc.State == types.DPCStateWwanWait {
 			m.runVerify(ctx, "wwan status is up-to-date")
 		} else {
 			m.restartVerify(ctx, "wwan status changed")
