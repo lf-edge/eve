@@ -31,6 +31,8 @@ type DeviceNetworkStatus struct {
 
 type NetworkPortStatus struct {
 	IfName       string
+	USBAddr      string
+	PCIAddr      string
 	Phylabel     string // Physical name set by controller/model
 	Logicallabel string
 	// Unlike the logicallabel, which is defined in the device model and unique
@@ -682,9 +684,15 @@ func getLocalAddrListImpl(dns DeviceNetworkStatus,
 }
 
 // Check if an interface name is a port owned by nim
-func IsPort(dns DeviceNetworkStatus, ifname string) bool {
+func IsPort(dns DeviceNetworkStatus, ifname string, usbaddr string, pciaddr string) bool {
 	for _, us := range dns.Ports {
 		if us.IfName != ifname {
+			continue
+		}
+		if us.USBAddr != usbaddr {
+			continue
+		}
+		if us.PCIAddr != pciaddr {
 			continue
 		}
 		return true
