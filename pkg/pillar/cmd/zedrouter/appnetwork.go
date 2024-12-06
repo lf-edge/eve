@@ -266,7 +266,12 @@ func (z *zedrouter) checkAndRecreateAppNetworks(niID uuid.UUID) {
 		}
 		if !appNetStatus.HasError() && !appNetStatus.AwaitNetworkInstance &&
 			appNetConfig.Activate && !appNetStatus.Activated {
-			z.doActivateAppNetwork(*appNetConfig, &appNetStatus)
+			// Re-execute the entire pubsub handler to repeat the full validation process.
+			// The conditions might have changed while the application was waiting for the
+			// network instance to appear or get fixed. For instance, another application
+			// with conflicting port forwarding rules could have been deployed during this
+			// time, which would necessitate preventing the activation of this app's network.
+			z.handleAppNetworkCreate(nil, appNetConfig.Key(), *appNetConfig)
 		}
 		z.log.Functionf("checkAndRecreateAppNetworks(%v) done for %s",
 			niID, appNetConfig.DisplayName)

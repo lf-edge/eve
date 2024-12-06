@@ -583,3 +583,206 @@ inside `FlowMessage`.
 If flow logging is not needed, it is recommended to disable this feature as it can
 potentially generate a large amount of data, which is then uploaded to the controller.
 Depending on the implementation, it may also introduce additional packet processing overhead.
+
+## Network Performance Considerations
+
+Deploying applications as virtual machines on EVE-OS offers flexibility and isolation.
+However, optimizing network performance requires careful attention to EVE-OS networking
+mechanisms and available optimizations. This article examines network performance considerations
+to maximize efficiency, minimize overhead, and leverage recent advancements in EVE-OS.
+
+### Direct NIC Assignment For Optimal Performance
+
+For the best possible network performance, direct assignment of NICs to VMs through PCI
+passthrough is recommended. This approach provides the least overhead by allowing the VM
+to control the network interface card (NIC) directly, bypassing hypervisor-layer processing.
+PCI passthrough achieves near-native performance levels, which is particularly beneficial
+in network-intensive applications like NFV (Network Function Virtualization).
+
+### SR-IOV For Improved Hardware Utilization
+
+For deployments where hardware resources are limited and sharing is essential, Single Root
+I/O Virtualization (SR-IOV) offers a compromise between performance and scalability.
+SR-IOV allows multiple VMs to share a single physical NIC by creating virtual functions (VFs)
+that are assigned directly to VMs. While SR-IOV introduces slightly more overhead than PCI
+passthrough, it still provides high throughput and low latency compared to fully virtualized
+solutions.
+
+However, it is important to point out that SR-IOV is not supported by all NICs. Typically,
+higher-end NIC models (often found in enterprise-grade or data center hardware) support SR-IOV,
+while consumer-grade NICs may lack this feature. Before considering SR-IOV, ensure that the network
+interface card in use supports it. Additionally, ensure that the Physical Function (PF) driver
+required for the target NIC is included in EVE-OS, and that the Virtual Function (VF) driver
+is properly installed within the application.
+
+### Overhead of Virtual Interfaces
+
+Network instances in EVE-OS are implemented using a Linux bridge connecting VMs through virtual
+interfaces. For optimal performance, hardware-assisted virtualization should be enabled,
+allowing the use of para-virtualized VirtIO drivers rather than the older emulated e1000 drivers.
+
+Using virtIO network interfaces is preferred over emulated e1000 interfaces because virtIO
+offers significantly better performance by providing a more efficient, para-virtualized
+interface designed specifically for virtual environments. Unlike the emulated e1000,
+which mimics physical hardware and incurs higher CPU overhead due to the need for software
+emulation, virtIO operates with lower latency and reduced CPU usage by allowing the guest VM
+to directly communicate with the hypervisor.
+
+### Understanding Linux Network Stack Limitations
+
+When utilizing network instances in EVE-OS, understanding the Linux network stack limitations
+is important, especially in environments with high network traffic. While Linux provides
+a versatile and robust network stack, there are several performance-related concerns when
+the stack is under heavy load:
+
+* *Context Switching Between Userspace and Kernel Space*: In typical Linux networking,
+  packets are processed through both kernel and userspace. When a packet is received,
+  the kernel processes it in kernel space, and if further user-level handling is required
+  (e.g., for application processing), the packet data is copied to userspace. This frequent
+  switching between userspace and kernel space can create significant overhead, particularly
+  when dealing with high number of packets per second (PPS). This can be mitigated by using
+  a higher MTU (also known as jumbo frames) or leveraging segmentation offloading - if supported
+  by the hardware.
+
+* *Memory Copy Between Kernel Space and Userspace*: In addition to context switching,
+  transferring packet data between kernel and userspace incurs memory copy overhead.
+  When a packet is handled by the kernel, the data often needs to be copied into a userspace
+  buffer for application-level processing. These memory copies not only add CPU load but
+  also increase the latency of packet delivery.
+
+* *Interrupt Handling Under Heavy Load*: As traffic increases, the system must process
+  a growing number of interrupts from network interfaces. Each interrupt triggers the kernel
+  to process packets, but under high network load, this can lead to a situation known
+  as interrupt storming, where the CPU spends most of its time handling interrupts rather
+  than processing application logic. This issue is mitigated by [NAPI](https://wiki.linuxfoundation.org/networking/napi),
+  a component of the Linux kernel utilizing batch processing and polling to reduce
+  the frequency of interrupts.
+
+### Overhead of Local vs. Switch NI
+
+EVE-OS supports two primary network instance types:
+
+* Local Network Instance: This instance type uses a private IP subnet that isolates VMs from
+  external networks via NAT. Local instances are useful for secure, isolated environments but
+  introduce routing and NAT-related overhead (routing table lookup, connection tracking/lookup,
+  MAC/IP/L4-port rewrite, etc.), impacting network throughput.
+* Switch Network Instance: A simple bridge that links VMs to external networks without NAT,
+  making it more suitable for performance-sensitive north-south traffic (traffic between the host
+  and external networks). The absence of NAT in Switch instances results in reduced overhead,
+  translating to higher performance for network applications that require direct access to external
+  resources.
+
+### Impact of iptables for ACLs in Network Instances
+
+EVE-OS uses iptables to implement Access Control Lists (ACLs) within network instances.
+While iptables offer flexibility and are widely adopted, they introduce significant overhead
+due to the linear processing of chains and rules for each packet.
+Connection tracking provided by Netfilter (conntrack) is also used for flow logging purposes.
+
+In version 13.7.0, EVE-OS introduced an optimization to completely bypass iptables for east-west
+traffic (between VMs on the same host) and for switched north-south application traffic when
+flow-logging is disabled and ACLs are configured by user to allow unrestricted access (using allow
+rules for `0.0.0.0/0` and `::/0`). For NFV use-cases, where packet filtering is typically handled
+by a dedicated firewall VNF, bypassing iptables helps to avoid unnecessary processing and improves
+performance.
+
+To check if iptables are bypassed for L2-forwarded application traffic, run these commands
+inside EVE:
+
+```shell
+# Returns 0 if iptables are not used for forwarded IPv4 traffic.
+sysctl net.bridge.bridge-nf-call-iptables
+
+# Returns 0 if iptables are not used for forwarded IPv6 traffic.
+sysctl net.bridge.bridge-nf-call-ip6tables
+```
+
+Please note that iptables (and conntrack) are always enabled for routed traffic as well as for EVE
+management traffic.
+
+### Packet Capture Optimizations for Learning App IP Addresses
+
+EVE-OS relies on packet capture to identify IP addresses assigned to applications inside
+switch network instances (DHCP server is running outside of EVE in this case).
+While this mechanism cannot be disabled, EVE version 13.7.0 includes optimizations to significantly
+reduce the performance impact of packet inspection. These improvements help maintain efficient
+packet flow without compromising the EVE-OS ability to monitor application IP usage.
+Details on the optimized packet sniffing can be found in [zedrouter.md](../pkg/pillar/docs/zedrouter.md),
+section `NI State Collector`.
+
+### Enforced Routing
+
+In earlier versions of EVE-OS, a `/32` all-ones netmask was applied to VM IP addresses within
+Local network instances to enforce routing, even when traffic could have been directly forwarded.
+This approach was used to support ACL implementation but introduced additional routing overhead
+for east-west traffic processing. However, since the `/32` netmask and the associated routes
+would confuse some applications, it was possible to disable all-ones netmask using the configuration
+property `debug.disable.dhcp.all-ones.netmask`. Starting with the EVE version 13.7.0, the use of
+`/32` netmask has been completely removed (and the config property is NOOP), as ACLs no longer
+rely on the enforced routing.
+
+### VHost Backend for VirtIO Interfaces
+
+Since version 13.7.0, EVE-OS has enabled the vhost backend for virtio-net interfaces,
+significantly enhancing performance by avoiding QEMU involvement in packet processing.
+Prior to this change, QEMU would process network I/O in user space, which incurs significant
+CPU overhead and latency due to frequent context switching between user space (QEMU) and kernel
+space. With vhost, packet processing is handled by a dedicated kernel thread, avoiding QEMU for
+most networking tasks. This direct kernel handling minimizes the need for QEMU’s intervention,
+resulting in lower latency, higher throughput, and better CPU efficiency for network-intensive
+applications running on virtual machines.
+
+Reducing QEMU overhead is especially important for EVE, where we enforce cgroup CPU quotas to limit
+application to using no more than N CPUs at a time, with N being the number of vCPUs assigned
+to the app in its configuration (see `pkg/pillar/containerd/oci.go`, method `UpdateFromDomain()`).
+These CPU quotas apply to both the application and QEMU itself, so removing QEMU from packet
+processing is essential to prevent it from consuming CPU cycles needed by the application.
+
+Please note that the vhost backend is used exclusively with virtio-net interfaces. Applications
+deployed in LEGACY virtualization mode with emulated e1000 network interfaces continue to rely
+on QEMU for packet processing, resulting in suboptimal network performance and CPU utilization.
+
+### Segmentation and Receive Offloading
+
+Enabling TSO/GSO/GRO provides significant performance benefits for both east-west and north-south
+traffic in EVE-OS. For east-west traffic, it allows data to be transferred in larger 64KB packets,
+avoiding the need to split them into smaller MTU-sized packets, which is unnecessary on purely
+virtual paths. This enables more data to be transferred with fewer packets, reducing packet
+processing overhead. For north-south traffic, TSO/GSO/GRO offloads packet segmentation and
+reassembly tasks to the physical NIC, which further reduces CPU load and enhances network efficiency.
+
+In container applications, which are deployed on EVE inside a shim-VM for isolation purposes,
+offloading is enabled for VirtIO interfaces by default. In VM applications, this is outside
+the EVE OS control. For Linux-based virtualized applications, use `ethtool -k <interface>`
+to check if offloading is enabled and `ethtool -K <interface> <tso/gso/gro> <on/off>`
+to enable/disable it.
+
+### Performance Considerations Recap
+
+Achieving optimal network performance on EVE-OS requires careful consideration of hardware
+compatibility, network instance configurations, and specific feature usage to minimize overhead
+and maximize throughput. Here is a summary of the best practices and recommendations to enhance
+network performance for virtualized applications deployed on EVE-OS:
+
+* For applications demanding the highest network performance, directly assigning a NIC to a VM
+  through PCI passthrough is recommended. This approach minimizes overhead by allowing direct
+  hardware access, resulting in near-native performance.
+* When hardware resource sharing is necessary, use SR-IOV (where supported by the NIC) to achieve
+  a balance between performance and scalability.
+* For virtual interfaces connected to network instances, enable hardware-assisted virtualization
+  to use virtIO drivers over emulated e1000 to reduce the CPU overhead and the latency.
+* Be aware of the Linux network stack's limitations, including context-switching, memory copy
+  between kernel and userspace, and interrupt handling under heavy load. Whenever possible,
+  leverage PCI passthrough, SR-IOV, or virtIO with the vhost backend to reduce processing bottlenecks.
+* Select the appropriate Network Instance type. For north-south traffic (traffic to and from
+  external networks), prefer Switch network instance over Local NI to avoid routing and NAT overhead.
+  In terms of VM-to-VM connectivity, both types of network instances offer comparable performance
+  when the all-ones (`/32`) netmask is disabled.
+* Allow everything in the ACL config for EVE OS and disable flow logging if the access-control
+  and flow monitoring functions are being handled by application(s) instead. Starting from EVE
+  13.7.0, this will result in iptables being bypassed and the iptables overhead completely
+  avoided for east-west traffic in every NI as well as for north-south traffic inside Switch NIs.
+* Enable TSO/GSO/GRO to reduce CPU overhead caused by excessive packet segmentation and reassembly
+  handled in software.
+* Use EVE version 13.7 or later to take advantages of all the performance optimizations described
+  above.

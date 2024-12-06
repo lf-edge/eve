@@ -285,6 +285,34 @@ Since a full Raspberry Pi 4 support is only available in upstream Linux kernels 
 
 Once your Raspberry Pi 4 is happily running an EVE image you can start using EVE controller for further updates (so that you don't ever have to take an SD card out of your board). Build your rootfs by running `make ZARCH=arm64 HV=xen rootfs` (or `make ZARCH=arm64 HV=kvm rootfs` if you want KVM by default) and give resulting `dist/arm64/current/installer/rootfs.img` to the controller.
 
+### How to use on an Onlogic FR201 ARM board
+
+Onlogic Factor 201 (FR201) is a device based on the Raspberry Pi Compute Module 4 (CM4). To use EVE on FR201, build an image for Raspberry Pi 4, as described above and flash it on a USB stick. Then, to enable FR201's specific subdevices, the boot configuration has to be manually edited.
+
+Specifically, in file `config.txt` of the 1st partition of the live/installer image, two lines must be changed, as shown here:
+
+```diff
+--- config.txt_OLD      2024-10-21 14:01:02.782670479 +0300
++++ config.txt  2024-10-21 14:01:11.042670420 +0300
+@@ -30,7 +30,7 @@
+ # but for advantech uno-220 we need to set ce to 0x00
+ # https://github.com/Advantech-IIoT/UNO-220-POE-/tree/master/srcs/dtbo/tpm#notes
+ # PS: Comment this line for OnLogic FR201 device
+-dtoverlay=bcm2711-spi-tpm-slb9670,ce=0x01
++#dtoverlay=bcm2711-spi-tpm-slb9670,ce=0x01
+
+ # Disable warning overlays as they don't work well together with linux's graphical output
+ avoid_warnings=1
+@@ -49,4 +49,4 @@
+
+ # Uncomment for the following line for OnLogic FR201
+ # Please, don't forget to disable overlay bcm2711-spi-tpm-slb9670
+-#include fr201.txt
++include fr201.txt
+```
+
+Finally, boot or install EVE, using the USB 3.0 port. The installer will install EVE on the eMMC drive, using the NVMe as the persist drive. If an OS is already present on those two drives, see the [documentation](https://support.onlogic.com/documentation/factor/?_gl=1*o7b3gz*_gcl_au*NzI0MzU3NDU5LjE3MjMxMTk0NTQ.*_ga*MTk3NjkxMzg5LjE3MjMxMTk0NDc.*_ga_SEVJD5HQBB*MTcyOTI0NTcwMS4xNC4xLjE3MjkyNDk3MTUuNTguMC4w) from Onlogic on how to erase them and be able to boot from the USB stick.
+
 ## How to use on an HiKey ARM board
 
 Unlike Raspberry Pi boards, HiKey boards come with a built-in flash, so we will be using EVE's installer to install a copy of EVE onto that storage. You can follow these steps to prepare your installation media:

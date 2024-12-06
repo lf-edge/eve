@@ -56,12 +56,6 @@ type Dnsmasq struct {
 type DHCPServer struct {
 	// Subnet : network address + netmask (IPv4 or IPv6).
 	Subnet *net.IPNet
-	// AllOnesNetmask : if enabled, DHCP server will advertise netmask with all bits
-	// set to one (e.g. /32 for IPv4) instead of using the actual netmask from Subnet.
-	// This together with Classless routes (routing traffic for the actual Subnet)
-	// can be used to force all traffic to go through the configured GatewayIP
-	// (where ACLs could be applied).
-	AllOnesNetmask bool
 	// IPRange : a range of IP addresses to allocate from.
 	// Not applicable for IPv6 (SLAAC is used instead).
 	IPRange IPRange
@@ -92,10 +86,10 @@ type DHCPServer struct {
 
 // String describes DHCPServer config.
 func (d DHCPServer) String() string {
-	return fmt.Sprintf("DHCPServer: {subnet: %s, allOnesNetmask: %t, ipRange: <%s-%s>, "+
+	return fmt.Sprintf("DHCPServer: {subnet: %s, ipRange: <%s-%s>, "+
 		"gatewayIP: %s, withDefaultRoute: %t, domainName: %s, dnsServers: %v, ntpServers: %v, "+
 		"staticEntries: %v, propagateRoutes: %v, MTU: %d}",
-		d.Subnet, d.AllOnesNetmask, d.IPRange.FromIP, d.IPRange.ToIP, d.GatewayIP,
+		d.Subnet, d.IPRange.FromIP, d.IPRange.ToIP, d.GatewayIP,
 		d.WithDefaultRoute, d.DomainName, d.DNSServers, d.NTPServers, d.StaticEntries,
 		d.PropagateRoutes, d.MTU)
 }
@@ -103,7 +97,6 @@ func (d DHCPServer) String() string {
 // Equal compares two DHCPServer instances
 func (d DHCPServer) Equal(d2 DHCPServer, withStaticEntries bool) bool {
 	return netutils.EqualIPNets(d.Subnet, d2.Subnet) &&
-		d.AllOnesNetmask == d2.AllOnesNetmask &&
 		netutils.EqualIPs(d.IPRange.FromIP, d2.IPRange.FromIP) &&
 		netutils.EqualIPs(d.IPRange.ToIP, d2.IPRange.ToIP) &&
 		netutils.EqualIPs(d.GatewayIP, d2.GatewayIP) &&
@@ -637,11 +630,6 @@ func (c *DnsmasqConfigurator) CreateDnsmasqConfig(buffer io.Writer, dnsmasq Dnsm
 	if subnet != nil {
 		ipv4Netmask = net.IP(subnet.Mask).String()
 		altIPv4Netmask := ipv4Netmask
-		if gatewayIP != nil && dnsmasq.DHCPServer.AllOnesNetmask {
-			// Network prefix "255.255.255.255" will force packets to go through
-			// dom0 virtual router that makes the packets pass through ACLs and flow log.
-			altIPv4Netmask = "255.255.255.255"
-		}
 		if _, err := io.WriteString(buffer,
 			fmt.Sprintf("dhcp-option=option:netmask,%s\n", altIPv4Netmask)); err != nil {
 			return writeErr(err)
@@ -651,29 +639,12 @@ func (c *DnsmasqConfigurator) CreateDnsmasqConfig(buffer io.Writer, dnsmasq Dnsm
 	// Prepare the set of all static routes to propagate to applications.
 	var staticRoutes []IPRoute
 	if !isIPv6 {
-		if dnsmasq.DHCPServer.AllOnesNetmask {
-			// Make the gateway reachable using a connected route.
-			if gatewayIP != nil {
-				staticRoutes = append(staticRoutes, IPRoute{
-					DstNetwork: netutils.HostSubnet(gatewayIP),
-					Gateway:    net.IP{0, 0, 0, 0},
-				})
-			}
-			if subnet != nil && gatewayIP != nil {
-				staticRoutes = append(staticRoutes, IPRoute{
-					DstNetwork: subnet,
-					Gateway:    gatewayIP,
-				})
-			}
-		} else {
-			// With all-ones netmask disabled we use forwarding between apps
-			// on the same NI.
-			if subnet != nil {
-				staticRoutes = append(staticRoutes, IPRoute{
-					DstNetwork: subnet,
-					Gateway:    net.IP{0, 0, 0, 0},
-				})
-			}
+		// Use L2-forwarding between apps on the same NI.
+		if subnet != nil {
+			staticRoutes = append(staticRoutes, IPRoute{
+				DstNetwork: subnet,
+				Gateway:    net.IP{0, 0, 0, 0},
+			})
 		}
 		staticRoutes = append(staticRoutes, dnsmasq.DHCPServer.PropagateRoutes...)
 	}
@@ -717,9 +688,9 @@ func (c *DnsmasqConfigurator) CreateDnsmasqConfig(buffer io.Writer, dnsmasq Dnsm
 		}
 	}
 
-	// For flow-logging purposes, we prefer routing inside the host over forwarding,
-	// even between apps on the same subnet. The only exception is when all-ones netmask
-	// for app interfaces is disabled, then we are unable to enforce routing between apps.
+	// Apply static routes to all endpoints and separately to individual gateways.
+	// This is to make sure that gateway-app will not receive route that uses app's
+	// own local IP as the gateway.
 	var appGateways []net.IP
 	for _, ipRoute := range staticRoutes {
 		if subnet != nil && subnet.Contains(ipRoute.Gateway) &&
@@ -728,30 +699,10 @@ func (c *DnsmasqConfigurator) CreateDnsmasqConfig(buffer io.Writer, dnsmasq Dnsm
 		}
 	}
 	appGateways = generics.FilterDuplicatesFn(appGateways, netutils.EqualIPs)
-	enforceRouting := func(route IPRoute) IPRoute {
-		if gatewayIP == nil || !dnsmasq.DHCPServer.AllOnesNetmask {
-			// Forwarding from app to app is inevitable.
-			return route
-		}
-		if !generics.ContainsItemFn(appGateways, route.Gateway, netutils.EqualIPs) {
-			// Not from app to app (i.e. already routed).
-			return route
-		}
-		// Traffic will go: app->bridge(L3)->app
-		return IPRoute{
-			DstNetwork: route.DstNetwork,
-			Gateway:    gatewayIP,
-		}
-	}
-
-	// Apply static routes to all endpoints and separately to individual gateways.
-	// This is to make sure that gateway-app will not receive route that uses app's
-	// own local IP as the gateway.
-	epRoutes := generics.MapList(staticRoutes, enforceRouting)
-	if len(epRoutes) > 0 {
+	if len(staticRoutes) > 0 {
 		if _, err := io.WriteString(buffer,
 			fmt.Sprintf("dhcp-option=tag:%s,option:classless-static-route,%s\n",
-				endpointTag, c.formatRoutesForConfig(epRoutes))); err != nil {
+				endpointTag, c.formatRoutesForConfig(staticRoutes))); err != nil {
 			return writeErr(err)
 		}
 	}
@@ -761,7 +712,6 @@ func (c *DnsmasqConfigurator) CreateDnsmasqConfig(buffer io.Writer, dnsmasq Dnsm
 			return !netutils.EqualIPs(route.Gateway, appGatewayIP)
 		}
 		gwRoutes := generics.FilterList(staticRoutes, isRouteValid)
-		gwRoutes = generics.MapList(gwRoutes, enforceRouting)
 		if len(gwRoutes) > 0 {
 			if _, err := io.WriteString(buffer,
 				fmt.Sprintf("dhcp-option=tag:%s,option:classless-static-route,%s\n",

@@ -124,7 +124,7 @@ func TestAddStringItem(t *testing.T) {
 	}
 	for testname, test := range testMatrix {
 		t.Logf("Running test case %s", testname)
-		(&specMap).AddStringItem(test.key, test.defaultString, validateLogrusLevel)
+		(&specMap).AddStringItem(test.key, test.defaultString, validateLogLevel)
 		assert.Equal(t, test.expectedVal, specMap.GlobalSettings[test.key].StringDefault)
 	}
 }
@@ -204,7 +204,9 @@ func TestNewConfigItemSpecMap(t *testing.T) {
 		SSHAuthorizedKeys,
 		DefaultLogLevel,
 		DefaultRemoteLogLevel,
+		SyslogRemoteLogLevel,
 		SyslogLogLevel,
+		KernelRemoteLogLevel,
 		KernelLogLevel,
 		FmlCustomResolution,
 		DisableDHCPAllOnesNetMask,
@@ -215,6 +217,11 @@ func TestNewConfigItemSpecMap(t *testing.T) {
 		NetDumpTopicPostOnboardInterval,
 		NetDumpDownloaderPCAP,
 		NetDumpDownloaderHTTPWithFieldValue,
+		GoroutineLeakDetectionThreshold,
+		GoroutineLeakDetectionCheckIntervalMinutes,
+		GoroutineLeakDetectionCheckWindowMinutes,
+		GoroutineLeakDetectionKeepStatsHours,
+		GoroutineLeakDetectionCooldownMinutes,
 	}
 	if len(specMap.GlobalSettings) != len(gsKeys) {
 		t.Errorf("GlobalSettings has more (%d) than expected keys (%d)",

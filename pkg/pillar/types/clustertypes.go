@@ -80,6 +80,10 @@ type EdgeNodeClusterStatus struct {
 	// This node needs to be up first before other nodes can join the cluster. This BootstrapNode
 	// will own the 'JoinServerIP' on it's cluster interface.
 	BootstrapNode bool
+	// EncryptedClusterToken - for kubernetes cluster server token
+	// This token string is the decrypted from the CipherBlock in the EdgeNodeClusterConfig
+	// by zedkube using the Controller and Edge-node certificates. See decryptClusterToken()
+	EncryptedClusterToken string
 
 	Error ErrorDescription
 }

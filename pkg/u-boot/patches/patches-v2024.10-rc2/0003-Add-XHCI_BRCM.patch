@@ -1,0 +1,60 @@
+From d61445a328509ca4e5870c40107e0fb4d3db27e2 Mon Sep 17 00:00:00 2001
+From: Dimitrios Poulios <dpoulios85@gmail.com>
+Date: Fri, 27 Sep 2024 13:49:12 +0300
+Subject: [PATCH] Add XHCI_BRCM
+
+- Sync rpi_4_defconfig with make savedefconfig
+- Enable device driver for XHCI_BRCM
+
+Signed-off-by: Dimitrios Poulios <dpoulios85@gmail.com>
+---
+ configs/rpi_4_defconfig | 13 ++++++-------
+ 1 file changed, 6 insertions(+), 7 deletions(-)
+
+diff --git a/configs/rpi_4_defconfig b/configs/rpi_4_defconfig
+index b6692e64..db5bbe86 100644
+--- a/configs/rpi_4_defconfig
++++ b/configs/rpi_4_defconfig
+@@ -25,6 +25,7 @@ CONFIG_CMD_GPIO=y
+ CONFIG_CMD_MMC=y
+ CONFIG_CMD_PCI=y
+ CONFIG_CMD_USB=y
++CONFIG_CMD_TPM=y
+ CONFIG_CMD_FS_UUID=y
+ CONFIG_ENV_FAT_DEVICE_AND_PART="0:1"
+ CONFIG_SYS_RELOC_GD_ENV_ADDR=y
+@@ -42,15 +43,19 @@ CONFIG_BCMGENET=y
+ CONFIG_PCI_BRCMSTB=y
+ CONFIG_PINCTRL=y
+ # CONFIG_PINCTRL_GENERIC is not set
+-CONFIG_DM_RNG=y
+ CONFIG_RNG_IPROC200=y
+ # CONFIG_REQUIRE_SERIAL_CONSOLE is not set
++CONFIG_SPI=y
++CONFIG_DM_SPI=y
++CONFIG_SOFT_SPI=y
+ CONFIG_SYSINFO=y
+ CONFIG_SYSINFO_SMBIOS=y
++CONFIG_TPM2_TIS_SPI=y
+ CONFIG_USB=y
+ CONFIG_DM_USB_GADGET=y
+ CONFIG_USB_XHCI_HCD=y
+ CONFIG_USB_XHCI_PCI=y
++CONFIG_USB_XHCI_BRCM=y
+ CONFIG_USB_KEYBOARD=y
+ CONFIG_USB_GADGET=y
+ CONFIG_USB_GADGET_MANUFACTURER="FSL"
+@@ -65,10 +70,4 @@ CONFIG_SYS_WHITE_ON_BLACK=y
+ CONFIG_VIDEO_BCM2835=y
+ CONFIG_CONSOLE_SCROLL_LINES=10
+ CONFIG_PHYS_TO_BUS=y
+-CONFIG_SPI=y
+-CONFIG_DM_SPI=y
+-CONFIG_SOFT_SPI=y
+ CONFIG_TPM=y
+-CONFIG_TPM_V2=y
+-CONFIG_TPM2_TIS_SPI=y
+-CONFIG_CMD_TPM=y
+-- 
+2.45.2
+

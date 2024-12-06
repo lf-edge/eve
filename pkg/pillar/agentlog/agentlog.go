@@ -196,6 +196,9 @@ func dumpStacks(log *base.LogObject, fileName string) {
 // DumpAllStacks writes to file but does not log
 func DumpAllStacks(log *base.LogObject, agentName string) {
 	agentDebugDir := fmt.Sprintf("%s/%s/", types.PersistDebugDir, agentName)
+	// Create the directory if it does not exist
+	_ = os.MkdirAll(agentDebugDir, 0755)
+
 	sigUsr1FileName := agentDebugDir + "/sigusr1"
 
 	stacks := getStacks(true)
@@ -289,7 +292,7 @@ func RebootReason(reason string, bootReason types.BootReason, agentName string,
 	}
 
 	// Printing the reboot reason to the console
-	filename = "/dev/console"
+	filename = "/dev/tty"
 
 	operation := "Rebooting"
 	if bootReason == types.BootReasonPoweroffCmd {

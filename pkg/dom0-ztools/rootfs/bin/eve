@@ -256,7 +256,7 @@ __EOT__
           echo "Your information can be found in logread"
           ;;
  memory-monitor-update-config)
-          pkill -SIGHUP -o /sbin/memory-monitor
+          pkill -SIGHUP -o memory-monitor
           echo "Updated memory-monitor configuration"
           ;;
  psi-collector)

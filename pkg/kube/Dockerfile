@@ -23,7 +23,10 @@ RUN GO111MODULE=on CGO_ENABLED=0 go build -v -ldflags "-s -w" -o /out/usr/bin/ce
 FROM scratch
 COPY --from=build /out/ /
 COPY cluster-init.sh /usr/bin/
+COPY cluster-utils.sh /usr/bin/
 COPY cgconfig.conf /etc
+
+COPY cluster-update.sh /usr/bin/
 
 # k3s
 COPY install-etcdctl.sh /usr/bin/
@@ -39,9 +42,17 @@ COPY kubevirt-features.yaml /etc
 COPY external-boot-image.tar /etc/
 
 # Longhorn config
+COPY longhorn-utils.sh /usr/bin/
+COPY lh-cfg-v1.6.2.yaml /etc/
 COPY iscsid.conf /etc/iscsi/
 COPY longhorn-generate-support-bundle.sh /usr/bin/
 COPY nsmounter /usr/bin/
+
+# descheduler
+COPY descheduler-utils.sh /usr/bin/
+COPY descheduler_rbac.yaml /etc/
+COPY descheduler-job.yaml /etc/
+COPY descheduler-policy-configmap.yaml /etc/
 
 # Containerd config
 RUN mkdir -p /etc/containerd

@@ -79,11 +79,13 @@ type nim struct {
 	subDevicePortConfigA     pubsub.Subscription
 	subDevicePortConfigO     pubsub.Subscription
 	subDevicePortConfigS     pubsub.Subscription
+	subDevicePortConfigM     pubsub.Subscription
 	subZedAgentStatus        pubsub.Subscription
 	subAssignableAdapters    pubsub.Subscription
 	subOnboardStatus         pubsub.Subscription
 	subWwanStatus            pubsub.Subscription
 	subNetworkInstanceConfig pubsub.Subscription
+	subEdgeNodeClusterStatus pubsub.Subscription
 
 	// Publications
 	pubDummyDevicePortConfig pubsub.Publication // For logging
@@ -288,6 +290,9 @@ func (n *nim) run(ctx context.Context) (err error) {
 
 	waitForLastResort := n.enabledLastResort
 	lastResortIsReady := func() error {
+		if err = n.subDevicePortConfigM.Activate(); err != nil {
+			return err
+		}
 		if err = n.subDevicePortConfigO.Activate(); err != nil {
 			return err
 		}
@@ -322,6 +327,9 @@ func (n *nim) run(ctx context.Context) (err error) {
 		case change := <-n.subControllerCert.MsgChan():
 			n.subControllerCert.ProcessChange(change)
 
+		case change := <-n.subEdgeNodeClusterStatus.MsgChan():
+			n.subEdgeNodeClusterStatus.ProcessChange(change)
+
 		case change := <-n.subEdgeNodeCert.MsgChan():
 			n.subEdgeNodeCert.ProcessChange(change)
 
@@ -335,6 +343,8 @@ func (n *nim) run(ctx context.Context) (err error) {
 				}
 			}
 
+		case change := <-n.subDevicePortConfigM.MsgChan():
+			n.subDevicePortConfigM.ProcessChange(change)
 		case change := <-n.subDevicePortConfigA.MsgChan():
 			n.subDevicePortConfigA.ProcessChange(change)
 
@@ -554,9 +564,25 @@ func (n *nim) initSubscriptions() (err error) {
 	}
 
 	// We get DevicePortConfig from three sources in this priority:
+	// 0. A request from monitor TUI application (manual override)
 	// 1. zedagent publishing DevicePortConfig
 	// 2. override file in /run/global/DevicePortConfig/*.json
 	// 3. "lastresort" derived from the set of network interfaces
+	n.subDevicePortConfigM, err = n.PubSub.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "monitor",
+		MyAgentName:   agentName,
+		TopicImpl:     types.DevicePortConfig{},
+		Persistent:    false,
+		Activate:      false,
+		CreateHandler: n.handleDPCCreate,
+		ModifyHandler: n.handleDPCModify,
+		DeleteHandler: n.handleDPCDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
+	if err != nil {
+		return err
+	}
 	n.subDevicePortConfigA, err = n.PubSub.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "zedagent",
 		MyAgentName:   agentName,
@@ -675,6 +701,23 @@ func (n *nim) initSubscriptions() (err error) {
 	if err != nil {
 		return err
 	}
+
+	// Subscribe to EdgeNodeClusterStatus to get the cluster interface and the cluster
+	// IP address which DPC Reconciler should assign statically.
+	n.subEdgeNodeClusterStatus, err = n.PubSub.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "zedkube",
+		MyAgentName:   agentName,
+		TopicImpl:     types.EdgeNodeClusterStatus{},
+		Activate:      false,
+		CreateHandler: n.handleEdgeNodeClusterStatusCreate,
+		ModifyHandler: n.handleEdgeNodeClusterStatusModify,
+		DeleteHandler: n.handleEdgeNodeClusterStatusDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -726,7 +769,8 @@ func (n *nim) applyGlobalConfig(gcp *types.ConfigItemValueMap) {
 	n.gcInitialized = true
 }
 
-// handleDPCCreate handles three different sources in this priority order:
+// handleDPCCreate handles four different sources in this priority order:
+// 0. A request from monitor TUI application
 // 1. zedagent with any key
 // 2. "usb" key from build or USB stick file
 // 3. "lastresort" derived from the set of network interfaces
@@ -782,6 +826,12 @@ func (n *nim) handleDPCImpl(key string, configArg interface{}, fromFile bool) {
 		n.forceLastResort = false
 		n.reevaluateLastResortDPC()
 	}
+	// if device can connect to controller it may get a new DPC in global config. This global DPC
+	// will have higher priority but can be invalid and the device will loose connectivity again
+	// at least temporarily while DPC is being tested. To avoid this we reset the timestamp on
+	// the Manual DPC to the current time
+	// TODO: do it. or check for ManualDPCKey in DPCManager
+	// TODO 2: we should not try lastresort DPC if the user set the DPC to manual
 	n.dpcManager.AddDPC(dpc)
 }
 
@@ -877,6 +927,23 @@ func (n *nim) handleNetworkInstanceUpdate() {
 		}
 	}
 	n.dpcManager.UpdateFlowlogState(flowlogEnabled)
+}
+
+func (n *nim) handleEdgeNodeClusterStatusCreate(_ interface{}, _ string,
+	statusArg interface{}) {
+	status := statusArg.(types.EdgeNodeClusterStatus)
+	n.dpcManager.UpdateClusterStatus(status)
+}
+
+func (n *nim) handleEdgeNodeClusterStatusModify(_ interface{}, _ string,
+	statusArg, _ interface{}) {
+	status := statusArg.(types.EdgeNodeClusterStatus)
+	n.dpcManager.UpdateClusterStatus(status)
+}
+
+func (n *nim) handleEdgeNodeClusterStatusDelete(_ interface{}, _ string, _ interface{}) {
+	// Apply empty cluster status, which effectively removes the cluster IP.
+	n.dpcManager.UpdateClusterStatus(types.EdgeNodeClusterStatus{})
 }
 
 func (n *nim) isDeviceOnboarded() bool {

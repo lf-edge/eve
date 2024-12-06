@@ -785,6 +785,20 @@ var (
 						},
 						RuleID: 1,
 					},
+					{
+						Matches: []types.ACEMatch{
+							{
+								Type:  "ip",
+								Value: "0.0.0.0/0",
+							},
+						},
+						Actions: []types.ACEAction{
+							{
+								Drop: false,
+							},
+						},
+						RuleID: 2,
+					},
 				},
 			},
 			// Put two VIFs into the same switch NI (just to cover this scenario).
@@ -1424,6 +1438,8 @@ func TestIPv4LocalAndSwitchNIs(test *testing.T) {
 	t.Expect(niStatus.Deleted).To(BeFalse())
 	t.Expect(niStatus.InProgress).To(BeFalse())
 	t.Expect(niStatus.BrIfName).To(Equal("bn1"))
+	// Traffic mirroring for Local NI is not implemented.
+	t.Expect(niStatus.MirrorIfName).To(BeEmpty())
 	t.Expect(niStatus.FailedItems).To(BeEmpty())
 	t.Expect(niStatus.Routes).To(HaveLen(1))
 	t.Expect(niStatus.Routes[0].IsDefaultRoute()).To(BeTrue())
@@ -1518,6 +1534,7 @@ func TestIPv4LocalAndSwitchNIs(test *testing.T) {
 	t.Expect(niStatus.Deleted).To(BeFalse())
 	t.Expect(niStatus.InProgress).To(BeFalse())
 	t.Expect(niStatus.BrIfName).To(Equal("eth1"))
+	t.Expect(niStatus.MirrorIfName).To(Equal("eth1-m"))
 	t.Expect(niStatus.FailedItems).To(BeEmpty())
 
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
@@ -1530,6 +1547,10 @@ func TestIPv4LocalAndSwitchNIs(test *testing.T) {
 		genericitems.HTTPServer{
 			ListenIf: genericitems.NetworkIf{IfName: "eth1"}, Port: 80,
 		}))).To(BeFalse())
+	t.Expect(itemIsCreated(dg.Reference(
+		linuxitems.DummyIf{IfName: "eth1-m"}))).To(BeTrue())
+	t.Expect(itemCountWithType(linuxitems.TCIngressTypename)).To(Equal(1))
+	t.Expect(itemCountWithType(linuxitems.TCMirrorTypename)).To(Equal(4))
 
 	// Simulate eth1 getting an IP address.
 	eth1.IPAddrs = eth1IPs
@@ -1582,6 +1603,9 @@ func TestIPv4LocalAndSwitchNIs(test *testing.T) {
 	t.Expect(recUpdate.UpdateType).To(Equal(nirec.AppConnReconcileStatusChanged))
 	t.Expect(recUpdate.AppConnStatus.Equal(appStatus)).To(BeTrue())
 
+	t.Expect(itemCountWithType(linuxitems.TCIngressTypename)).To(Equal(1))
+	t.Expect(itemCountWithType(linuxitems.TCMirrorTypename)).To(Equal(4))
+
 	// Simulate domainmgr creating all VIFs.
 	networkMonitor.AddOrUpdateInterface(app2VIF1)
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
@@ -1603,6 +1627,10 @@ func TestIPv4LocalAndSwitchNIs(test *testing.T) {
 		t.Expect(recUpdate.AppConnStatus.VIFs[i].InProgress).To(BeFalse())
 		t.Expect(recUpdate.AppConnStatus.VIFs[i].FailedItems).To(BeEmpty())
 	}
+
+	// 2 VIFs and one device port are connected to switch NI.
+	t.Expect(itemCountWithType(linuxitems.TCIngressTypename)).To(Equal(1 * 3))
+	t.Expect(itemCountWithType(linuxitems.TCMirrorTypename)).To(Equal(4 * 3))
 
 	ni1PortMapRule1 := iptables.Rule{
 		RuleLabel: "User-configured PORTMAP ACL rule 1 for port eth0 IP 192.168.10.5 from inside",
@@ -2065,42 +2093,6 @@ func TestIPv4LocalAndSwitchNIsWithFlowlogging(test *testing.T) {
 	ni1Config.EnableFlowlog = false
 	ni2Config.EnableFlowlog = false
 	ni5Config.EnableFlowlog = false
-}
-
-func TestDisableAllOnesMask(test *testing.T) {
-	t := initTest(test, false)
-	networkMonitor.AddOrUpdateInterface(eth0)
-	networkMonitor.UpdateRoutes(eth0Routes)
-	ctx := reconciler.MockRun(context.Background())
-	updatesCh := niReconciler.WatchReconcilerUpdates()
-	niReconciler.RunInitialReconcile(ctx)
-
-	// Create local network instance.
-	_, err := niReconciler.AddNI(ctx, ni1Config, ni1Bridge)
-	t.Expect(err).ToNot(HaveOccurred())
-	var recUpdate nirec.ReconcilerUpdate
-	t.Eventually(updatesCh).Should(Receive(&recUpdate))
-	t.Expect(recUpdate.UpdateType).To(Equal(nirec.NIReconcileStatusChanged))
-	networkMonitor.AddOrUpdateInterface(ni1BridgeIf)
-
-	// dnsmasq should advertise mask with all bits set to one.
-	dnsmasqConf := itemDescription(dg.Reference(
-		genericitems.Dnsmasq{ListenIf: genericitems.NetworkIf{IfName: "bn1"}}))
-	t.Expect(dnsmasqConf).To(ContainSubstring("allOnesNetmask: true"))
-
-	// Update global config to disable all ones mask.
-	gcp := types.DefaultConfigItemValueMap()
-	gcp.SetGlobalValueBool(types.DisableDHCPAllOnesNetMask, true)
-	niReconciler.ApplyUpdatedGCP(ctx, *gcp)
-
-	// dnsmasq should now use the mask configured for the NI subnet.
-	dnsmasqConf = itemDescription(dg.Reference(
-		genericitems.Dnsmasq{ListenIf: genericitems.NetworkIf{IfName: "bn1"}}))
-	t.Expect(dnsmasqConf).To(ContainSubstring("allOnesNetmask: false"))
-
-	// Delete network instance
-	_, err = niReconciler.DelNI(ctx, ni1UUID.UUID)
-	t.Expect(err).ToNot(HaveOccurred())
 }
 
 func TestIPv6LocalAndSwitchNIs(test *testing.T) {
@@ -2767,7 +2759,9 @@ func TestStaticAndConnectedRoutes(test *testing.T) {
 	}
 	recStatus, err := niReconciler.UpdateNI(ctx, ni5Config, ni5Bridge)
 	t.Expect(err).ToNot(HaveOccurred())
-	t.Expect(recStatus.Routes).To(HaveLen(5))
+	// The list does not include routes with application as a gateway. In those cases,
+	// the traffic is simply forwarded by the bridge, not routed.
+	t.Expect(recStatus.Routes).To(HaveLen(3))
 	t.Expect(recStatus.Routes[0].Equal(types.IPRouteInfo{
 		IPVersion:  types.AddressTypeIPV4,
 		DstNetwork: ipAddressWithPrefix("0.0.0.0/0"),
@@ -2776,23 +2770,11 @@ func TestStaticAndConnectedRoutes(test *testing.T) {
 	})).To(BeTrue())
 	t.Expect(recStatus.Routes[1].Equal(types.IPRouteInfo{
 		IPVersion:  types.AddressTypeIPV4,
-		DstNetwork: ipAddressWithPrefix("10.50.5.0/30"),
-		Gateway:    ipAddress("10.10.20.2"),
-		GatewayApp: app2UUID.UUID,
-	})).To(BeTrue())
-	t.Expect(recStatus.Routes[2].Equal(types.IPRouteInfo{
-		IPVersion:  types.AddressTypeIPV4,
-		DstNetwork: ipAddressWithPrefix("10.50.19.0/30"),
-		Gateway:    ipAddress("10.10.20.2"),
-		GatewayApp: app2UUID.UUID,
-	})).To(BeTrue())
-	t.Expect(recStatus.Routes[3].Equal(types.IPRouteInfo{
-		IPVersion:  types.AddressTypeIPV4,
 		DstNetwork: ipAddressWithPrefix("10.50.14.0/26"),
 		Gateway:    ipAddress("172.30.30.15"),
 		OutputPort: "ethernet3",
 	})).To(BeTrue())
-	t.Expect(recStatus.Routes[4].Equal(types.IPRouteInfo{
+	t.Expect(recStatus.Routes[2].Equal(types.IPRouteInfo{
 		IPVersion:  types.AddressTypeIPV4,
 		DstNetwork: ipAddressWithPrefix("10.50.1.0/24"),
 		Gateway:    ipAddress("172.20.1.1"),
@@ -2848,14 +2830,14 @@ func TestStaticAndConnectedRoutes(test *testing.T) {
 			return false
 		}
 		return route.Table == 801
-	})).To(Equal(2 + 1)) // subnet route + unreachable route + 1 static route
+	})).To(Equal(2)) // only IPv4 + IPv6 unreachable routes (N1 is air-gapped)
 	t.Expect(itemCount(func(item dg.Item) bool {
 		route, isRoute := item.(linuxitems.Route)
 		if !isRoute {
 			return false
 		}
 		return route.Table == 805
-	})).To(Equal(2 + 5)) // + 5 static routes
+	})).To(Equal(2 + 3)) // unreachable IPv4/IPv6 routes + static routes
 
 	// Disconnect the application.
 	appStatus, err = niReconciler.DelAppConn(ctx, app2UUID.UUID)
@@ -2972,6 +2954,122 @@ func TestCNI(test *testing.T) {
 	// Delete network instance
 	_, err = niReconciler.DelNI(ctx, ni1UUID.UUID)
 	t.Expect(err).ToNot(HaveOccurred())
+}
+
+func TestHostSysctl(test *testing.T) {
+	t := initTest(test, false)
+	networkMonitor.AddOrUpdateInterface(eth0)
+	networkMonitor.AddOrUpdateInterface(keth0)
+	networkMonitor.AddOrUpdateInterface(eth1)
+	networkMonitor.AddOrUpdateInterface(keth1)
+	networkMonitor.AddOrUpdateInterface(eth3)
+	networkMonitor.AddOrUpdateInterface(keth3)
+	var routes []netmonitor.Route
+	routes = append(routes, eth0Routes...)
+	routes = append(routes, eth1Routes...)
+	routes = append(routes, eth3Routes...)
+	networkMonitor.UpdateRoutes(routes)
+	ctx := reconciler.MockRun(context.Background())
+	updatesCh := niReconciler.WatchReconcilerUpdates()
+	niReconciler.RunInitialReconcile(ctx)
+
+	// Create 2 local and 1 switch network instance.
+	var recUpdate nirec.ReconcilerUpdate
+	networkMonitor.AddOrUpdateInterface(ni1BridgeIf)
+	niStatus, err := niReconciler.AddNI(ctx, ni1Config, ni1Bridge)
+	t.Expect(err).ToNot(HaveOccurred())
+	t.Eventually(updatesCh).Should(Receive(&recUpdate))
+	t.Expect(recUpdate.UpdateType).To(Equal(nirec.NIReconcileStatusChanged))
+	t.Expect(recUpdate.NIStatus.Equal(niStatus)).To(BeTrue())
+
+	niStatus, err = niReconciler.AddNI(ctx, ni2Config, ni2Bridge)
+	t.Expect(err).ToNot(HaveOccurred())
+	t.Eventually(updatesCh).Should(Receive(&recUpdate))
+	t.Expect(recUpdate.UpdateType).To(Equal(nirec.NIReconcileStatusChanged))
+	t.Expect(recUpdate.NIStatus.Equal(niStatus)).To(BeTrue())
+
+	networkMonitor.AddOrUpdateInterface(ni5BridgeIf)
+	niStatus, err = niReconciler.AddNI(ctx, ni5Config, ni5Bridge)
+	t.Expect(err).ToNot(HaveOccurred())
+	t.Eventually(updatesCh).Should(Receive(&recUpdate))
+	t.Expect(recUpdate.UpdateType).To(Equal(nirec.NIReconcileStatusChanged))
+	t.Expect(recUpdate.NIStatus.Equal(niStatus)).To(BeTrue())
+
+	// Flow logging is disabled in all network instances and there are
+	// no apps deployed hence bridges do not need iptables.
+	hostSysctlRef := dg.Reference(linuxitems.Sysctl{})
+	t.Expect(itemDescription(hostSysctlRef)).To(
+		ContainSubstring("bridgeCallIptables: false"))
+	t.Expect(itemDescription(hostSysctlRef)).To(
+		ContainSubstring("bridgeCallIp6tables: false"))
+
+	// Connection application with allow-all for IPv4 + portmap rules.
+	// This does not require to trigger iptables from bridge, but ip6tables
+	// should be triggered (still we get performance improvement at least for IPv4).
+	appStatus, err := niReconciler.AddAppConn(ctx, app2NetConfig, app2Num, cnirpc.AppPod{}, app2VIFs)
+	t.Expect(err).ToNot(HaveOccurred())
+	t.Eventually(updatesCh).Should(Receive(&recUpdate))
+	t.Expect(recUpdate.UpdateType).To(Equal(nirec.AppConnReconcileStatusChanged))
+	t.Expect(recUpdate.AppConnStatus.Equal(appStatus)).To(BeTrue())
+
+	t.Expect(itemDescription(hostSysctlRef)).To(
+		ContainSubstring("bridgeCallIptables: false"))
+	t.Expect(itemDescription(hostSysctlRef)).To(
+		ContainSubstring("bridgeCallIp6tables: true"))
+
+	// Connect application with a LIMIT rule.
+	appStatus, err = niReconciler.AddAppConn(ctx, app1NetConfig, app1Num, cnirpc.AppPod{}, app1VIFs)
+	t.Expect(err).ToNot(HaveOccurred())
+	t.Eventually(updatesCh).Should(Receive(&recUpdate))
+	t.Expect(recUpdate.UpdateType).To(Equal(nirec.AppConnReconcileStatusChanged))
+	t.Expect(recUpdate.AppConnStatus.Equal(appStatus)).To(BeTrue())
+
+	// With LIMIT rule present, iptables should be called from the bridge.
+	t.Expect(itemDescription(hostSysctlRef)).To(
+		ContainSubstring("bridgeCallIptables: true"))
+	t.Expect(itemDescription(hostSysctlRef)).To(
+		ContainSubstring("bridgeCallIp6tables: true"))
+
+	// Remove app with the LIMIT rule. For IPv4 bridge should not call iptables anymore.
+	appStatus, err = niReconciler.DelAppConn(ctx, app1UUID.UUID)
+	t.Expect(err).ToNot(HaveOccurred())
+	t.Eventually(updatesCh).Should(Receive(&recUpdate))
+	t.Expect(recUpdate.UpdateType).To(Equal(nirec.AppConnReconcileStatusChanged))
+	t.Expect(recUpdate.AppConnStatus.Equal(appStatus)).To(BeTrue())
+
+	t.Expect(itemDescription(hostSysctlRef)).To(
+		ContainSubstring("bridgeCallIptables: false"))
+	t.Expect(itemDescription(hostSysctlRef)).To(
+		ContainSubstring("bridgeCallIp6tables: true"))
+
+	// Enable flow logging in one of the network instances.
+	// This enforces the use of iptables from bridge for both IPv4 and IPv6.
+	ni2Config.EnableFlowlog = true
+	_, err = niReconciler.UpdateNI(ctx, ni2Config, ni2Bridge)
+	t.Expect(err).ToNot(HaveOccurred())
+
+	t.Expect(itemDescription(hostSysctlRef)).To(
+		ContainSubstring("bridgeCallIptables: true"))
+	t.Expect(itemDescription(hostSysctlRef)).To(
+		ContainSubstring("bridgeCallIp6tables: true"))
+
+	// Delete everything.
+	_, err = niReconciler.DelAppConn(ctx, app2UUID.UUID)
+	t.Expect(err).ToNot(HaveOccurred())
+	_, err = niReconciler.DelNI(ctx, ni1UUID.UUID)
+	t.Expect(err).ToNot(HaveOccurred())
+	_, err = niReconciler.DelNI(ctx, ni2UUID.UUID)
+	t.Expect(err).ToNot(HaveOccurred())
+	_, err = niReconciler.DelNI(ctx, ni5UUID.UUID)
+	t.Expect(err).ToNot(HaveOccurred())
+
+	t.Expect(itemDescription(hostSysctlRef)).To(
+		ContainSubstring("bridgeCallIptables: false"))
+	t.Expect(itemDescription(hostSysctlRef)).To(
+		ContainSubstring("bridgeCallIp6tables: false"))
+
+	// Revert back to flow logging being disabled.
+	ni2Config.EnableFlowlog = false
 }
 
 // This test uses it own network config, not the config globally defined.

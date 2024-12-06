@@ -304,7 +304,8 @@ func (r *LinuxDpcReconciler) watcher(netEvents <-chan netmonitor.Event) {
 					}
 				}
 				if ev.Deleted {
-					changed := r.updateCurrentRoutes(r.lastArgs.DPC)
+					changed := r.updateCurrentRoutes(r.lastArgs.DPC,
+						r.lastArgs.ClusterStatus)
 					if changed {
 						r.addPendingReconcile(
 							L3SG, "interface delete triggered route change", true)
@@ -315,13 +316,14 @@ func (r *LinuxDpcReconciler) watcher(netEvents <-chan netmonitor.Event) {
 				if changed {
 					r.addPendingReconcile(L3SG, "address change", true)
 				}
-				changed = r.updateCurrentRoutes(r.lastArgs.DPC)
+				changed = r.updateCurrentRoutes(r.lastArgs.DPC, r.lastArgs.ClusterStatus)
 				if changed {
 					r.addPendingReconcile(L3SG, "address change triggered route change", true)
 				}
 
 			case netmonitor.DNSInfoChange:
-				newGlobalCfg := r.getIntendedGlobalCfg(r.lastArgs.DPC)
+				newGlobalCfg := r.getIntendedGlobalCfg(r.lastArgs.DPC,
+					r.lastArgs.ClusterStatus)
 				prevGlobalCfg := r.intendedState.SubGraph(GlobalSG)
 				if len(prevGlobalCfg.DiffItems(newGlobalCfg)) > 0 {
 					r.addPendingReconcile(GlobalSG, "DNS info change", true)
@@ -414,6 +416,10 @@ func (r *LinuxDpcReconciler) Reconcile(ctx context.Context, args Args) Reconcile
 		if r.flowlogStateChanged(args.FlowlogEnabled) {
 			r.addPendingReconcile(ACLsSG, "Flowlog state change", false)
 		}
+		if r.clusterStatusChanged(args.ClusterStatus) {
+			// Reconcile all items.
+			r.addPendingReconcile(GraphName, "Cluster status change", false)
+		}
 	}
 	if r.pendingReconcile.isPending {
 		reconcileSG = r.pendingReconcile.forSubGraph
@@ -445,7 +451,7 @@ func (r *LinuxDpcReconciler) Reconcile(ctx context.Context, args Args) Reconcile
 		var intSG dg.Graph
 		switch reconcileSG {
 		case GlobalSG:
-			intSG = r.getIntendedGlobalCfg(args.DPC)
+			intSG = r.getIntendedGlobalCfg(args.DPC, args.ClusterStatus)
 		case NetworkIoSG:
 			intSG = r.getIntendedNetworkIO(args.DPC)
 		case PhysicalIfsSG:
@@ -456,11 +462,12 @@ func (r *LinuxDpcReconciler) Reconcile(ctx context.Context, args Args) Reconcile
 			intSG = r.getIntendedLogicalIO(args.DPC)
 		case L3SG:
 			r.rebuildMTUMap(args.DPC)
-			intSG = r.getIntendedL3Cfg(args.DPC)
+			intSG = r.getIntendedL3Cfg(args.DPC, args.ClusterStatus)
 		case WirelessSG:
 			intSG = r.getIntendedWirelessCfg(args.DPC, args.AA, args.RS)
 		case ACLsSG:
-			intSG = r.getIntendedACLs(args.DPC, args.GCP, args.FlowlogEnabled)
+			intSG = r.getIntendedACLs(args.DPC, args.ClusterStatus, args.GCP,
+				args.FlowlogEnabled)
 		default:
 			// Only these top-level subgraphs are used for selective-reconcile for now.
 			r.Log.Fatalf("Unexpected SG select for reconcile: %s", reconcileSG)
@@ -672,6 +679,14 @@ func (r *LinuxDpcReconciler) flowlogStateChanged(flowlogEnabled bool) bool {
 	return r.lastArgs.FlowlogEnabled != flowlogEnabled
 }
 
+func (r *LinuxDpcReconciler) clusterStatusChanged(
+	newStatus types.EdgeNodeClusterStatus) bool {
+	// DPCReconciler cares only about the networking-related fields of the ClusterStatus.
+	return r.lastArgs.ClusterStatus.ClusterInterface != newStatus.ClusterInterface ||
+		!netutils.EqualIPNets(r.lastArgs.ClusterStatus.ClusterIPPrefix,
+			newStatus.ClusterIPPrefix)
+}
+
 func (r *LinuxDpcReconciler) updateCurrentState(args Args) (changed bool) {
 	if r.currentState == nil {
 		// Initialize only subgraphs with external items.
@@ -690,7 +705,7 @@ func (r *LinuxDpcReconciler) updateCurrentState(args Args) (changed bool) {
 	if addrsChanged := r.updateCurrentAdapterAddrs(args.DPC); addrsChanged {
 		changed = true
 	}
-	if routesChanged := r.updateCurrentRoutes(args.DPC); routesChanged {
+	if routesChanged := r.updateCurrentRoutes(args.DPC, args.ClusterStatus); routesChanged {
 		changed = true
 	}
 	return changed
@@ -779,7 +794,8 @@ func (r *LinuxDpcReconciler) updateCurrentAdapterAddrs(
 	return false
 }
 
-func (r *LinuxDpcReconciler) updateCurrentRoutes(dpc types.DevicePortConfig) (changed bool) {
+func (r *LinuxDpcReconciler) updateCurrentRoutes(dpc types.DevicePortConfig,
+	clusterStatus types.EdgeNodeClusterStatus) (changed bool) {
 	sgPath := dg.NewSubGraphPath(L3SG, RoutesSG)
 	currentRoutes := dg.New(dg.InitArgs{Name: RoutesSG})
 	for _, port := range dpc.Ports {
@@ -806,6 +822,20 @@ func (r *LinuxDpcReconciler) updateCurrentRoutes(dpc types.DevicePortConfig) (ch
 			r.Log.Errorf("updateCurrentRoutes: ListRoutes failed for ifIndex %d: %v",
 				ifIndex, err)
 		}
+		if r.HVTypeKube && clusterStatus.ClusterInterface == port.Logicallabel {
+			k3sSvcRoutes, err := r.NetworkMonitor.ListRoutes(netmonitor.RouteFilters{
+				FilterByTable: true,
+				Table:         devicenetwork.KubeSvcRT,
+				FilterByIf:    true,
+				IfIndex:       ifIndex,
+			})
+			if err == nil {
+				routes = append(routes, k3sSvcRoutes...)
+			} else {
+				r.Log.Errorf("updateCurrentRoutes: ListRoutes failed for ifIndex %d "+
+					"and the KubeSvc table: %v", ifIndex, err)
+			}
+		}
 		for _, rt := range routes {
 			currentRoutes.PutItem(linux.Route{
 				Route:         rt.Data.(netlink.Route),
@@ -831,16 +861,18 @@ func (r *LinuxDpcReconciler) updateIntendedState(args Args) {
 		Description: "Device Connectivity provided using Linux network stack",
 	}
 	r.intendedState = dg.New(graphArgs)
-	r.intendedState.PutSubGraph(r.getIntendedGlobalCfg(args.DPC))
+	r.intendedState.PutSubGraph(r.getIntendedGlobalCfg(args.DPC, args.ClusterStatus))
 	r.intendedState.PutSubGraph(r.getIntendedNetworkIO(args.DPC))
 	r.intendedState.PutSubGraph(r.getIntendedPhysicalIfs(args.DPC))
 	r.intendedState.PutSubGraph(r.getIntendedLogicalIO(args.DPC))
-	r.intendedState.PutSubGraph(r.getIntendedL3Cfg(args.DPC))
+	r.intendedState.PutSubGraph(r.getIntendedL3Cfg(args.DPC, args.ClusterStatus))
 	r.intendedState.PutSubGraph(r.getIntendedWirelessCfg(args.DPC, args.AA, args.RS))
-	r.intendedState.PutSubGraph(r.getIntendedACLs(args.DPC, args.GCP, args.FlowlogEnabled))
+	r.intendedState.PutSubGraph(r.getIntendedACLs(args.DPC, args.ClusterStatus, args.GCP,
+		args.FlowlogEnabled))
 }
 
-func (r *LinuxDpcReconciler) getIntendedGlobalCfg(dpc types.DevicePortConfig) dg.Graph {
+func (r *LinuxDpcReconciler) getIntendedGlobalCfg(dpc types.DevicePortConfig,
+	clusterStatus types.EdgeNodeClusterStatus) dg.Graph {
 	graphArgs := dg.InitArgs{
 		Name:        GlobalSG,
 		Description: "Global configuration",
@@ -857,10 +889,14 @@ func (r *LinuxDpcReconciler) getIntendedGlobalCfg(dpc types.DevicePortConfig) dg
 			Priority: devicenetwork.PbrKubeNetworkPrio,
 			Table:    unix.RT_TABLE_MAIN,
 		}, nil)
+		tableForKubeSvc := unix.RT_TABLE_MAIN
+		if clusterStatus.ClusterInterface != "" {
+			tableForKubeSvc = devicenetwork.KubeSvcRT
+		}
 		intendedCfg.PutItem(linux.IPRule{
 			Dst:      kubeSvcCIDR,
 			Priority: devicenetwork.PbrKubeNetworkPrio,
-			Table:    unix.RT_TABLE_MAIN,
+			Table:    tableForKubeSvc,
 		}, nil)
 	}
 	if len(dpc.Ports) == 0 {
@@ -954,7 +990,7 @@ func (r *LinuxDpcReconciler) getIntendedPhysicalIfs(dpc types.DevicePortConfig) 
 		}
 		switch port.L2Type {
 		case types.L2LinkTypeNone:
-			if port.IsL3Port {
+			if port.IsL3Port && !dpc.IsPortUsedAsVlanParent(port.Logicallabel) {
 				intendedIfs.PutItem(linux.PhysIf{
 					PhysIfLL:     port.Logicallabel,
 					PhysIfName:   port.IfName,
@@ -965,11 +1001,15 @@ func (r *LinuxDpcReconciler) getIntendedPhysicalIfs(dpc types.DevicePortConfig) 
 			}
 		case types.L2LinkTypeVLAN:
 			parent := dpc.LookupPortByLogicallabel(port.VLAN.ParentPort)
+			usage := generic.IOUsageVlanParent
+			if parent.IsL3Port {
+				usage = generic.IOUsageVlanParentAndL3Adapter
+			}
 			if parent != nil && parent.L2Type == types.L2LinkTypeNone {
 				intendedIfs.PutItem(linux.PhysIf{
 					PhysIfLL:     parent.Logicallabel,
 					PhysIfName:   parent.IfName,
-					Usage:        generic.IOUsageVlanParent,
+					Usage:        usage,
 					WirelessType: port.WirelessCfg.WType,
 					MTU:          r.intfMTU[port.Logicallabel],
 				}, nil)
@@ -1007,13 +1047,14 @@ func (r *LinuxDpcReconciler) getIntendedLogicalIO(dpc types.DevicePortConfig) dg
 			parent := dpc.LookupPortByLogicallabel(port.VLAN.ParentPort)
 			if parent != nil {
 				vlan := linux.Vlan{
-					LogicalLabel: port.Logicallabel,
-					IfName:       port.IfName,
-					ParentLL:     port.VLAN.ParentPort,
-					ParentIfName: parent.IfName,
-					ParentL2Type: parent.L2Type,
-					ID:           port.VLAN.ID,
-					MTU:          r.intfMTU[port.Logicallabel],
+					LogicalLabel:   port.Logicallabel,
+					IfName:         port.IfName,
+					ParentLL:       port.VLAN.ParentPort,
+					ParentIfName:   parent.IfName,
+					ParentL2Type:   parent.L2Type,
+					ParentIsL3Port: parent.IsL3Port,
+					ID:             port.VLAN.ID,
+					MTU:            r.intfMTU[port.Logicallabel],
 				}
 				intendedIO.PutItem(vlan, nil)
 			}
@@ -1026,13 +1067,14 @@ func (r *LinuxDpcReconciler) getIntendedLogicalIO(dpc types.DevicePortConfig) dg
 				}
 			}
 			var usage generic.IOUsage
-			if port.IsL3Port {
+			if dpc.IsPortUsedAsVlanParent(port.Logicallabel) {
+				if port.IsL3Port {
+					usage = generic.IOUsageVlanParentAndL3Adapter
+				} else {
+					usage = generic.IOUsageVlanParent
+				}
+			} else if port.IsL3Port {
 				usage = generic.IOUsageL3Adapter
-			} else {
-				// Nothing other than VLAN is supported at the higher-layer currently.
-				// It is also possible that the bond is not being used at all, but we
-				// do not need to treat that case differently.
-				usage = generic.IOUsageVlanParent
 			}
 			intendedIO.PutItem(linux.Bond{
 				BondConfig:        port.Bond,
@@ -1047,20 +1089,22 @@ func (r *LinuxDpcReconciler) getIntendedLogicalIO(dpc types.DevicePortConfig) dg
 	return intendedIO
 }
 
-func (r *LinuxDpcReconciler) getIntendedL3Cfg(dpc types.DevicePortConfig) dg.Graph {
+func (r *LinuxDpcReconciler) getIntendedL3Cfg(dpc types.DevicePortConfig,
+	clusterStatus types.EdgeNodeClusterStatus) dg.Graph {
 	graphArgs := dg.InitArgs{
 		Name:        L3SG,
 		Description: "Network Layer3 configuration",
 	}
 	intendedL3 := dg.New(graphArgs)
-	intendedL3.PutSubGraph(r.getIntendedAdapters(dpc))
+	intendedL3.PutSubGraph(r.getIntendedAdapters(dpc, clusterStatus))
 	intendedL3.PutSubGraph(r.getIntendedSrcIPRules(dpc))
-	intendedL3.PutSubGraph(r.getIntendedRoutes(dpc))
+	intendedL3.PutSubGraph(r.getIntendedRoutes(dpc, clusterStatus))
 	intendedL3.PutSubGraph(r.getIntendedArps(dpc))
 	return intendedL3
 }
 
-func (r *LinuxDpcReconciler) getIntendedAdapters(dpc types.DevicePortConfig) dg.Graph {
+func (r *LinuxDpcReconciler) getIntendedAdapters(dpc types.DevicePortConfig,
+	clusterStatus types.EdgeNodeClusterStatus) dg.Graph {
 	graphArgs := dg.InitArgs{
 		Name:        AdaptersSG,
 		Description: "L3 configuration assigned to network interfaces",
@@ -1076,13 +1120,22 @@ func (r *LinuxDpcReconciler) getIntendedAdapters(dpc types.DevicePortConfig) dg.
 		if !port.IsL3Port || port.IfName == "" || port.InvalidConfig {
 			continue
 		}
+		var staticIPs []*net.IPNet
+		if r.HVTypeKube {
+			if port.Logicallabel == clusterStatus.ClusterInterface &&
+				clusterStatus.ClusterIPPrefix != nil {
+				staticIPs = append(staticIPs, clusterStatus.ClusterIPPrefix)
+			}
+		}
 		adapter := linux.Adapter{
-			LogicalLabel: port.Logicallabel,
-			IfName:       port.IfName,
-			L2Type:       port.L2Type,
-			WirelessType: port.WirelessCfg.WType,
-			DhcpType:     port.Dhcp,
-			MTU:          r.intfMTU[port.Logicallabel],
+			LogicalLabel:     port.Logicallabel,
+			IfName:           port.IfName,
+			L2Type:           port.L2Type,
+			WirelessType:     port.WirelessCfg.WType,
+			UsedAsVlanParent: dpc.IsPortUsedAsVlanParent(port.Logicallabel),
+			DhcpType:         port.Dhcp,
+			MTU:              r.intfMTU[port.Logicallabel],
+			StaticIPs:        staticIPs,
 		}
 		intendedAdapters.PutItem(adapter, nil)
 		if port.Dhcp != types.DhcpTypeNone &&
@@ -1145,7 +1198,8 @@ func (r *LinuxDpcReconciler) getIntendedSrcIPRules(dpc types.DevicePortConfig) d
 	return intendedRules
 }
 
-func (r *LinuxDpcReconciler) getIntendedRoutes(dpc types.DevicePortConfig) dg.Graph {
+func (r *LinuxDpcReconciler) getIntendedRoutes(dpc types.DevicePortConfig,
+	clusterStatus types.EdgeNodeClusterStatus) dg.Graph {
 	graphArgs := dg.InitArgs{
 		Name:        RoutesSG,
 		Description: "IP routes",
@@ -1183,6 +1237,29 @@ func (r *LinuxDpcReconciler) getIntendedRoutes(dpc types.DevicePortConfig) dg.Gr
 			r.prepareRouteForCopy(&rtCopy)
 			intendedRoutes.PutItem(linux.Route{
 				Route:         rtCopy,
+				AdapterIfName: port.IfName,
+				AdapterLL:     port.Logicallabel,
+			}, nil)
+		}
+		if r.HVTypeKube && clusterStatus.ClusterInterface == port.Logicallabel &&
+			clusterStatus.ClusterIPPrefix != nil {
+			// Ensure that packets destined for K3s services do not use the default route,
+			// but are instead routed through the cluster port. This guarantees that traffic
+			// handled by kube-proxy is properly SNATed to the cluster IP. That's the theory
+			// at least. We're not entirely certain. Without this route, however,
+			// some Longhorn pods fail to access K3s services when the cluster IP is configured
+			// on a non-default port.
+			intendedRoutes.PutItem(linux.Route{
+				Route: netlink.Route{
+					LinkIndex: ifIndex,
+					Family:    netlink.FAMILY_V4,
+					Scope:     netlink.SCOPE_UNIVERSE,
+					Protocol:  unix.RTPROT_STATIC,
+					Type:      unix.RTN_UNICAST,
+					Dst:       kubeSvcCIDR,
+					Gw:        clusterStatus.ClusterIPPrefix.IP,
+					Table:     devicenetwork.KubeSvcRT,
+				},
 				AdapterIfName: port.IfName,
 				AdapterLL:     port.Logicallabel,
 			}, nil)
@@ -1490,8 +1567,9 @@ func (r *LinuxDpcReconciler) getIntendedWwanConfig(dpc types.DevicePortConfig,
 	return generic.Wwan{Config: config}
 }
 
-func (r *LinuxDpcReconciler) getIntendedACLs(
-	dpc types.DevicePortConfig, gcp types.ConfigItemValueMap, withFlowlog bool) dg.Graph {
+func (r *LinuxDpcReconciler) getIntendedACLs(dpc types.DevicePortConfig,
+	clusterStatus types.EdgeNodeClusterStatus, gcp types.ConfigItemValueMap,
+	withFlowlog bool) dg.Graph {
 	graphArgs := dg.InitArgs{
 		Name:        ACLsSG,
 		Description: "Device-wide ACLs",
@@ -1574,7 +1652,7 @@ func (r *LinuxDpcReconciler) getIntendedACLs(
 		}
 	}
 
-	r.getIntendedFilterRules(gcp, dpc, intendedIPv4ACLs, intendedIPv6ACLs)
+	r.getIntendedFilterRules(gcp, dpc, clusterStatus, intendedIPv4ACLs, intendedIPv6ACLs)
 	if withFlowlog {
 		r.getIntendedMarkingRules(dpc, intendedIPv4ACLs, intendedIPv6ACLs)
 	}
@@ -1582,7 +1660,8 @@ func (r *LinuxDpcReconciler) getIntendedACLs(
 }
 
 func (r *LinuxDpcReconciler) getIntendedFilterRules(gcp types.ConfigItemValueMap,
-	dpc types.DevicePortConfig, intendedIPv4ACLs, intendedIPv6ACLs dg.Graph) {
+	dpc types.DevicePortConfig, clusterStatus types.EdgeNodeClusterStatus, intendedIPv4ACLs,
+	intendedIPv6ACLs dg.Graph) {
 	// Prepare filter/INPUT rules.
 	var inputV4Rules, inputV6Rules []iptables.Rule
 
@@ -1712,6 +1791,62 @@ func (r *LinuxDpcReconciler) getIntendedFilterRules(gcp types.ConfigItemValueMap
 	icmpV6Rule := icmpRule // copy
 	icmpV6Rule.MatchOpts = []string{"-p", "ipv6-icmp"}
 	inputV6Rules = append(inputV6Rules, icmpV6Rule)
+
+	clusterPort := dpc.LookupPortByLogicallabel(clusterStatus.ClusterInterface)
+	if r.HVTypeKube && clusterPort != nil && !clusterPort.InvalidConfig &&
+		clusterPort.IfName != "" && clusterStatus.ClusterIPPrefix != nil {
+		// LookupExtInterface in k3s/pkg/agent/flannel/flannel.go will pick
+		// whatever the first IP address is returned by netlink for the cluster
+		// interface. This means that VXLAN tunnel may be configured with EVE
+		// mgmt/app-shared IP instead of the cluster IP and we have to allow it.
+		// Therefore, we do not use "-d" filter for the VXLAN rule.
+		vxlanRule := iptables.Rule{
+			RuleLabel: "Allow VXLAN",
+			MatchOpts: []string{"-p", "udp", "-i", clusterPort.IfName,
+				"--dport", "8472"},
+			Target: "ACCEPT",
+			Description: "Allow VXLAN-encapsulated traffic to enter the device " +
+				"via cluster interface",
+		}
+		etcdRule := iptables.Rule{
+			RuleLabel: "Allow etcd traffic",
+			MatchOpts: []string{"-p", "tcp", "-i", clusterPort.IfName,
+				"-d", clusterStatus.ClusterIPPrefix.IP.String(), "--dport", "2379:2380"},
+			Target:      "ACCEPT",
+			Description: "Allow etcd client and server-to-server communication",
+		}
+		k3sMetricsRule := iptables.Rule{
+			RuleLabel: "Allow K3s metrics",
+			MatchOpts: []string{"-p", "tcp", "-i", clusterPort.IfName,
+				"-d", clusterStatus.ClusterIPPrefix.IP.String(), "--dport", "10250"},
+			Target: "ACCEPT",
+			Description: "Allow traffic carrying K3s metrics to enter the device " +
+				"via cluster interface",
+		}
+		k3sAPIServerRule := iptables.Rule{
+			RuleLabel: "Allow K3s API requests",
+			MatchOpts: []string{"-p", "tcp", "-i", clusterPort.IfName,
+				"-d", clusterStatus.ClusterIPPrefix.IP.String(), "--dport", "6443"},
+			Target: "ACCEPT",
+			Description: "Allow K3s API requests to enter the device " +
+				"via cluster interface",
+		}
+		clusterStatusRule := iptables.Rule{
+			RuleLabel: "Allow access to Cluster Status",
+			MatchOpts: []string{"-p", "tcp", "-i", clusterPort.IfName,
+				"-d", clusterStatus.ClusterIPPrefix.IP.String(), "--dport", "12346"},
+			Target:      "ACCEPT",
+			Description: "Allow access to Cluster Status via cluster interface",
+		}
+		forIPv6 := clusterStatus.ClusterIPPrefix.IP.To4() == nil
+		if forIPv6 {
+			inputV6Rules = append(inputV6Rules, vxlanRule, etcdRule,
+				k3sMetricsRule, k3sAPIServerRule, clusterStatusRule)
+		} else {
+			inputV4Rules = append(inputV4Rules, vxlanRule, etcdRule,
+				k3sMetricsRule, k3sAPIServerRule, clusterStatusRule)
+		}
+	}
 
 	// Allow all traffic that belongs to an already established connection.
 	allowEstablishedConn := iptables.Rule{

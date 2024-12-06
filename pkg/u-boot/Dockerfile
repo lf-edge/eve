@@ -5,7 +5,7 @@ RUN eve-alpine-deploy.sh
 
 SHELL ["/bin/bash", "-eo", "pipefail", "-c"]
 
-ENV VERSION v2022.10
+ENV VERSION v2024.10-rc2
 ENV SOURCE_URL https://github.com/u-boot/u-boot/archive/${VERSION}.tar.gz
 ENV RASPBERRY_FIRMWARE_BLOBS_VERSION 1.20211007
 ENV RASPBERRY_FIRMWARE_BLOBS https://github.com/raspberrypi/firmware/raw/${RASPBERRY_FIRMWARE_BLOBS_VERSION}
@@ -22,6 +22,7 @@ RUN mkdir /boot
 
 FROM build-base AS build-amd64
 ENV TARGET qemu-x86_64_defconfig
+RUN for p in /tmp/patches/patches-"${VERSION}"/*.patch ; do patch -p1 < "$p" || exit 1 ; done
 # FIXME: we need to get to the bottom of this weird workaround on x86/Alpine
 RUN sed -ie 's#CONFIG_IS_ENABLED(X86_64)#1#' ./arch/x86/include/asm/byteorder.h
 
@@ -36,7 +37,9 @@ COPY rpi /tmp/rpi
 ADD ${RASPBERRY_FIRMWARE_BLOBS}/boot/fixup4.dat /tmp/rpi/fixup4.dat
 # hadolint ignore=DL3020
 ADD ${RASPBERRY_FIRMWARE_BLOBS}/boot/start4.elf /tmp/rpi/start4.elf
-# hadolint ignore=SC3060
+# hadolint ignore=DL3020
+ADD ${RASPBERRY_FIRMWARE_BLOBS}/boot/bcm2711-rpi-cm4.dtb /tmp/rpi/bcm2711-rpi-cm4.dtb
+# hadolint ignore=DL3020,SC3060
 RUN  for i in /tmp/rpi/overlays/*.dts ; do                                         \
           dtc -@ -I dts -O dtb -o "${i/.dts/.dtbo}" "$i" && rm "$i"     ;\
        done                                                                         ;\

@@ -1119,21 +1119,29 @@ func maybeRetryBoot(ctx *domainContext, status *types.DomainStatus) {
 	}
 	defer file.Close()
 
-	if err := hyper.Task(status).VirtualTPMSetup(status.DomainName, agentName, ctx.ps, warningTime, errorTime); err != nil {
-		log.Errorf("Failed to setup virtual TPM for %s: %s", status.DomainName, err)
-		status.VirtualTPM = false
-	} else {
+	wp := &types.WatchdogParam{Ps: ctx.ps, AgentName: agentName, WarnTime: warningTime, ErrTime: errorTime}
+	err = hyper.Task(status).VirtualTPMSetup(status.DomainName, wp)
+	if err == nil {
 		status.VirtualTPM = true
+		defer func(status *types.DomainStatus, wp *types.WatchdogParam) {
+			// this means we failed to boot the VM.
+			if !status.Activated {
+				log.Noticef("Failed to activate domain: %s, terminating vTPM", status.DomainName)
+				if err := hyper.Task(status).VirtualTPMTerminate(status.DomainName, wp); err != nil {
+					// this is not a critical failure so just log it
+					log.Errorf("Failed to terminate vTPM for %s: %s", status.DomainName, err)
+				}
+			}
+		}(status, wp)
+	} else {
+		status.VirtualTPM = false
+		log.Errorf("Failed to setup vTPM for %s: %s", status.DomainName, err)
 	}
 
 	if err := hyper.Task(status).Setup(*status, *config, ctx.assignableAdapters, nil, file); err != nil {
 		//it is retry, so omit error
 		log.Errorf("Failed to create DomainStatus from %+v: %s",
 			config, err)
-
-		if err := hyper.Task(status).VirtualTPMTerminate(status.DomainName); err != nil {
-			log.Errorf("Failed to terminate virtual TPM for %s: %s", status.DomainName, err)
-		}
 	}
 
 	status.TriedCount++
@@ -1243,38 +1251,24 @@ func setCgroupCpuset(config *types.DomainConfig, status *types.DomainStatus) err
 		log.Warnf("Failed to find cgroups directory for %s", config.DisplayName)
 		return nil
 	}
-	err = controller.Update(&specs.LinuxResources{CPU: &specs.LinuxCPU{Cpus: status.VmConfig.CPUs}})
+	// Convert a list of CPUs to a CPU string
+	cpuStrings := make([]string, 0)
+	for _, cpu := range status.VmConfig.CPUs {
+		cpuStrings = append(cpuStrings, strconv.Itoa(cpu))
+	}
+	cpuMask := strings.Join(cpuStrings, ",")
+
+	err = controller.Update(&specs.LinuxResources{CPU: &specs.LinuxCPU{Cpus: cpuMask}})
 	if err != nil {
 		log.Warnf("Failed to update CPU set for %s", config.DisplayName)
 		return err
 	}
-	log.Functionf("Adjust the cgroups cpuset of %s to %s", config.DisplayName, status.VmConfig.CPUs)
+	log.Functionf("Adjust the cgroups cpuset of %s to %v", config.DisplayName, status.VmConfig.CPUs)
 	return nil
 }
 
-// constructNonPinnedCpumaskString returns a cpumask that contains at least CPUs reserved for the system
-// services. Hence, it can never be empty.
-func constructNonPinnedCpumaskString(ctx *domainContext) string {
-	result := ""
-	for _, cpu := range ctx.cpuAllocator.GetAllFree() {
-		addToMask(cpu, &result)
-	}
-	return result
-}
-
-func addToMask(cpu int, s *string) {
-	if s == nil {
-		return
-	}
-	if *s == "" {
-		*s = fmt.Sprintf("%d", cpu)
-	} else {
-		*s = fmt.Sprintf("%s,%d", *s, cpu)
-	}
-}
-
 func updateNonPinnedCPUs(ctx *domainContext, config *types.DomainConfig, status *types.DomainStatus) error {
-	status.VmConfig.CPUs = constructNonPinnedCpumaskString(ctx)
+	status.VmConfig.CPUs = ctx.cpuAllocator.GetAllFree()
 	err := setCgroupCpuset(config, status)
 	if err != nil {
 		return errors.New("failed to redistribute CPUs between VMs, can affect the inter-VM isolation")
@@ -1292,10 +1286,10 @@ func assignCPUs(ctx *domainContext, config *types.DomainConfig, status *types.Do
 			return errors.New("failed to allocate necessary amount of CPUs")
 		}
 		for _, cpu := range cpusToAssign {
-			addToMask(cpu, &status.VmConfig.CPUs)
+			status.VmConfig.CPUs = append(status.VmConfig.CPUs, cpu)
 		}
 	} else { // VM has no pinned CPUs, assign all the CPUs from the shared set
-		status.VmConfig.CPUs = constructNonPinnedCpumaskString(ctx)
+		status.VmConfig.CPUs = ctx.cpuAllocator.GetAllFree()
 	}
 	return nil
 }
@@ -1303,12 +1297,12 @@ func assignCPUs(ctx *domainContext, config *types.DomainConfig, status *types.Do
 // releaseCPUs releases the CPUs that were previously assigned to the VM.
 // The cpumask in the *status* is updated accordingly, and the CPUs are released in the CPUAllocator context.
 func releaseCPUs(ctx *domainContext, config *types.DomainConfig, status *types.DomainStatus) {
-	if ctx.cpuPinningSupported && config.VmConfig.CPUsPinned && status.VmConfig.CPUs != "" {
+	if ctx.cpuPinningSupported && config.VmConfig.CPUsPinned && status.VmConfig.CPUs != nil {
 		if err := ctx.cpuAllocator.Free(config.UUIDandVersion.UUID); err != nil {
 			log.Errorf("Failed to free CPUs for %s: %s", config.DisplayName, err)
 		}
 	}
-	status.VmConfig.CPUs = ""
+	status.VmConfig.CPUs = nil
 }
 
 func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
@@ -1330,7 +1324,7 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 		Service:        config.Service,
 	}
 
-	status.VmConfig.CPUs = ""
+	status.VmConfig.CPUs = make([]int, 0)
 
 	// Note that the -emu interface doesn't exist until after boot of the domU, but we
 	// initialize the VifList here with the VifUsed.
@@ -1545,7 +1539,7 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 			publishDomainStatus(ctx, status)
 			return
 		}
-		log.Functionf("CPUs for %s assigned: %s", config.DisplayName, status.VmConfig.CPUs)
+		log.Functionf("CPUs for %s assigned: %v", config.DisplayName, status.VmConfig.CPUs)
 	}
 
 	if errDescription := reserveAdapters(ctx, config); errDescription != nil {
@@ -1671,11 +1665,23 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 	}
 	defer file.Close()
 
-	if err := hyper.Task(status).VirtualTPMSetup(status.DomainName, agentName, ctx.ps, warningTime, errorTime); err != nil {
-		log.Errorf("Failed to setup virtual TPM for %s: %s", status.DomainName, err)
-		status.VirtualTPM = false
-	} else {
+	wp := &types.WatchdogParam{Ps: ctx.ps, AgentName: agentName, WarnTime: warningTime, ErrTime: errorTime}
+	err = hyper.Task(status).VirtualTPMSetup(status.DomainName, wp)
+	if err == nil {
 		status.VirtualTPM = true
+		defer func(status *types.DomainStatus, wp *types.WatchdogParam) {
+			// this means we failed to boot the VM.
+			if !status.Activated {
+				log.Noticef("Failed to activate domain: %s, terminating vTPM", status.DomainName)
+				if err := hyper.Task(status).VirtualTPMTerminate(status.DomainName, wp); err != nil {
+					// this is not a critical failure so just log it
+					log.Errorf("Failed to terminate vTPM for %s: %s", status.DomainName, err)
+				}
+			}
+		}(status, wp)
+	} else {
+		status.VirtualTPM = false
+		log.Errorf("Failed to setup vTPM for %s: %s", status.DomainName, err)
 	}
 
 	globalConfig := agentlog.GetGlobalConfig(log, ctx.subGlobalConfig)
@@ -1684,11 +1690,6 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 			config, err)
 		status.SetErrorNow(err.Error())
 		releaseCPUs(ctx, &config, status)
-
-		if err := hyper.Task(status).VirtualTPMTerminate(status.DomainName); err != nil {
-			log.Errorf("Failed to terminate virtual TPM for %s: %s", status.DomainName, err)
-		}
-
 		return
 	}
 
@@ -1932,7 +1933,7 @@ func doCleanup(ctx *domainContext, status *types.DomainStatus) {
 			}
 			triggerCPUNotification()
 		}
-		status.VmConfig.CPUs = ""
+		status.VmConfig.CPUs = nil
 	}
 	releaseAdapters(ctx, status.IoAdapterList, status.UUIDandVersion.UUID,
 		status)
@@ -2472,7 +2473,8 @@ func handleDelete(ctx *domainContext, key string, status *types.DomainStatus) {
 		log.Errorln(err)
 	}
 
-	if err := hyper.Task(status).VirtualTPMTeardown(status.DomainName); err != nil {
+	wp := &types.WatchdogParam{Ps: ctx.ps, AgentName: agentName, WarnTime: warningTime, ErrTime: errorTime}
+	if err := hyper.Task(status).VirtualTPMTeardown(status.DomainName, wp); err != nil {
 		log.Errorln(err)
 	}
 

@@ -22,7 +22,6 @@ import (
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
-	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 
 	netattdefv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
@@ -1362,14 +1361,14 @@ func (ctx kubevirtContext) PCISameController(id1 string, id2 string) bool {
 	return PCISameControllerGeneric(id1, id2)
 }
 
-func (ctx kubevirtContext) VirtualTPMSetup(domainName, agentName string, ps *pubsub.PubSub, warnTime, errTime time.Duration) error {
+func (ctx kubevirtContext) VirtualTPMSetup(domainName string, wp *types.WatchdogParam) error {
 	return fmt.Errorf("not implemented")
 }
 
-func (ctx kubevirtContext) VirtualTPMTerminate(domainName string) error {
+func (ctx kubevirtContext) VirtualTPMTerminate(domainName string, wp *types.WatchdogParam) error {
 	return fmt.Errorf("not implemented")
 }
 
-func (ctx kubevirtContext) VirtualTPMTeardown(domainName string) error {
+func (ctx kubevirtContext) VirtualTPMTeardown(domainName string, wp *types.WatchdogParam) error {
 	return fmt.Errorf("not implemented")
 }

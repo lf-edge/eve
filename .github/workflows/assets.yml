@@ -20,8 +20,34 @@ on:  # yamllint disable-line rule:truthy
         type: string
 
 jobs:
+  create_release:
+    runs-on: ubuntu-latest
+    outputs:
+      release_id: ${{ steps.create_release.outputs.release_id }}
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+    steps:
+      - name: Create GitHub Release
+        id: create_release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          response=$(curl -s -X POST \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "tag_name": "${{ inputs.tag_ref }}",
+              "name": "${{ inputs.tag_ref }}",
+              "draft": false,
+              "prerelease": true
+            }' https://api.github.com/repos/${{ github.repository }}/releases)
+          release_id=$(echo "$response" | jq -r .id)
+          upload_url=$(echo "$response" | jq -r .upload_url | sed -e "s/{?name,label}//")
+          echo $upload_url
+          echo "release_id=$release_id" >> "$GITHUB_OUTPUT"
+          echo "upload_url=$upload_url" >> "$GITHUB_OUTPUT"
   build:
     runs-on: ubuntu-20.04
+    needs: create_release
     strategy:
       fail-fast: false
       matrix:
@@ -80,19 +106,29 @@ jobs:
           docker create --name eve_sources "$EVE_SOURCES" bash
           docker export --output assets/collected_sources.tar.gz eve_sources
           docker rm eve_sources
-      - name: Rename files for release
-        id: rename-files-for-release
-        run: |
-          for asset in assets/*; do
-            mv "$asset" "assets/${{ env.ARCH }}.$(basename "$asset")"
-          done
-      - name: Upload release files
-        id: upload-release-files
-        uses: softprops/action-gh-release@v2
+      - name: Create SHA256 checksum, rename, and upload files
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ inputs.tag_ref }}
-          make_latest: false
-          files: |
-            assets/${{ env.ARCH }}.*
+          RELEASE_ID: ${{ needs.create_release.outputs.release_id }}
+          UPLOAD_URL: ${{ needs.create_release.outputs.upload_url }}
+        run: |
+          # Create SHA256 checksum for rootfs.img
+          sha256sum "assets/rootfs.img" | awk '{ print $1 }' > "assets/rootfs.img.sha256"
+          for file in assets/*; do
+            base_name=$(basename "$file")
+            # Add ARCH prefix
+            new_name="${ARCH}.${base_name}"
+            # Rename the file
+            mv "$file" "assets/$new_name"
+            echo "Uploading assets/$new_name as $new_name..."
+            upload_response=$(curl -s -X POST \
+              -H "Authorization: Bearer $GITHUB_TOKEN" \
+              -H "Content-Type: application/octet-stream" \
+              --data-binary @"assets/$new_name" \
+              "$UPLOAD_URL?name=$new_name")
+            if echo "$upload_response" | jq -e .id > /dev/null; then
+              echo "$file_name uploaded successfully."
+            else
+              echo "Error uploading $file_name: $upload_response"
+            fi
+          done

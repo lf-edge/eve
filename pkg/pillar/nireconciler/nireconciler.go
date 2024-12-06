@@ -252,6 +252,10 @@ type NIReconcileStatus struct {
 	// BrIfIndex : integer used as a handle for the bridge interface
 	// inside the network stack.
 	BrIfIndex int
+	// MirrorIfName : name of a (dummy) interface where ICMP, ARP, DNS and DHCP packets
+	// are mirrored from the bridge and can be used for monitoring purposes.
+	// Empty if mirroring is not available.
+	MirrorIfName string
 	// InProgress is true if any config operations are still in progress
 	// (i.e. network instance is not yet fully created).
 	InProgress bool

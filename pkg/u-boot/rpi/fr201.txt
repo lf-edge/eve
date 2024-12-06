@@ -1,0 +1,11 @@
+# Parameters for OnLogic FR201
+
+device_tree=bcm2711-rpi-cm4.dtb
+
+otg_mode=1
+
+dtoverlay=fr201
+dtoverlay=tpm-soft-spi
+
+dtparam=eth_led0=0
+dtparam=eth_led1=1

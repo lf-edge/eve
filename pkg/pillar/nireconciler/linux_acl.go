@@ -515,6 +515,59 @@ func (r *LinuxNIReconciler) withFlowlog() bool {
 	return false
 }
 
+func (r *LinuxNIReconciler) doACLsAllowAllTraffic() (
+	allIpv4TrafficAllowed, allIpv6TrafficAllowed bool) {
+	allIpv4TrafficAllowed = true
+	allIpv6TrafficAllowed = true
+	for _, app := range r.apps {
+		if app.deleted {
+			continue
+		}
+		for _, adapter := range app.config.AppNetAdapterList {
+			var hasAllowAllRuleIPv4, hasAllowAllRuleIPv6 bool
+			for _, ace := range adapter.ACLs {
+				// Default action (if not specified) is to allow traffic to continue.
+				allowRule := true
+				for _, action := range ace.Actions {
+					if action.Drop || action.Limit {
+						// Let's keep this simple and not try to distinguish
+						// between IPv4 and IPv6 DROP/LIMIT rules.
+						allIpv4TrafficAllowed = false
+						allIpv6TrafficAllowed = false
+						return
+					}
+					if action.PortMap {
+						allowRule = false
+					}
+				}
+				if allowRule && len(ace.Matches) == 1 && ace.Matches[0].Type == "ip" {
+					if _, subnet, err := net.ParseCIDR(ace.Matches[0].Value); err == nil {
+						ones, bits := subnet.Mask.Size()
+						if ones == 0 && subnet.IP.IsUnspecified() {
+							if bits == net.IPv4len*8 {
+								hasAllowAllRuleIPv4 = true
+							}
+							if bits == net.IPv6len*8 {
+								hasAllowAllRuleIPv6 = true
+							}
+						}
+					}
+				}
+			}
+			if !hasAllowAllRuleIPv4 {
+				allIpv4TrafficAllowed = false
+			}
+			if !hasAllowAllRuleIPv6 {
+				allIpv6TrafficAllowed = false
+			}
+			if !allIpv4TrafficAllowed && !allIpv6TrafficAllowed {
+				return
+			}
+		}
+	}
+	return
+}
+
 func (r *LinuxNIReconciler) getIntendedL2FwdChain() dg.Graph {
 	graphArgs := dg.InitArgs{
 		Name:        ACLChainL2FwdSG,

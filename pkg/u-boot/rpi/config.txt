@@ -29,6 +29,7 @@ enable_uart=1
 # for most popular TPM modules that based on slb9670 we use default ce param value (0x01),
 # but for advantech uno-220 we need to set ce to 0x00
 # https://github.com/Advantech-IIoT/UNO-220-POE-/tree/master/srcs/dtbo/tpm#notes
+# PS: Comment this line for OnLogic FR201 device
 dtoverlay=bcm2711-spi-tpm-slb9670,ce=0x01
 
 # Disable warning overlays as they don't work well together with linux's graphical output
@@ -45,3 +46,7 @@ arm_boost=1
 
 # Allow user overrides of config options
 include extraconfig.txt
+
+# Uncomment for the following line for OnLogic FR201
+# Please, don't forget to disable overlay bcm2711-spi-tpm-slb9670
+#include fr201.txt

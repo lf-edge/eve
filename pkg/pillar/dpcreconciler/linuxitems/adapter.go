@@ -13,6 +13,8 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/dpcreconciler/genericitems"
 	"github.com/lf-edge/eve/pkg/pillar/netmonitor"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
+	"github.com/lf-edge/eve/pkg/pillar/utils/netutils"
 	"github.com/vishvananda/netlink"
 )
 
@@ -29,11 +31,18 @@ type Adapter struct {
 	L2Type types.L2LinkType
 	// WirelessType is used to distinguish between Ethernet, WiFi and cellular port.
 	WirelessType types.WirelessType
+	// UsedAsVlanParent is true if the network adapter is not only used as L3 endpoint
+	// but also as a parent interface for VLAN sub-interfaces.
+	// In such case the network adapter is not put under a bridge (and cannot be used
+	// with Switch NI).
+	UsedAsVlanParent bool
 	// DhcpType is used to determine the method used to obtain IP address for the network
 	// adapter.
 	DhcpType types.DhcpType
 	// MTU : Maximum transmission unit size.
 	MTU uint16
+	// StaticIPs : IP addresses assigned to the adapter statically.
+	StaticIPs []*net.IPNet
 }
 
 // Name uses the interface name to identify the adapter.
@@ -56,8 +65,10 @@ func (a Adapter) Equal(other depgraph.Item) bool {
 	a2 := other.(Adapter)
 	return a.L2Type == a2.L2Type &&
 		a.WirelessType == a2.WirelessType &&
+		a.UsedAsVlanParent == a2.UsedAsVlanParent &&
 		a.DhcpType == a2.DhcpType &&
-		a.MTU == a2.MTU
+		a.MTU == a2.MTU &&
+		generics.EqualSetsFn(a.StaticIPs, a2.StaticIPs, netutils.EqualIPNets)
 }
 
 // External returns false.
@@ -75,6 +86,10 @@ func (a Adapter) String() string {
 func (a Adapter) Dependencies() (deps []depgraph.Dependency) {
 	var depType string
 	var mustSatisfy func(item depgraph.Item) bool
+	expectedParentUsage := genericitems.IOUsageL3Adapter
+	if a.UsedAsVlanParent {
+		expectedParentUsage = genericitems.IOUsageVlanParentAndL3Adapter
+	}
 	switch a.L2Type {
 	case types.L2LinkTypeNone:
 		// Attached directly to a physical interface.
@@ -82,12 +97,16 @@ func (a Adapter) Dependencies() (deps []depgraph.Dependency) {
 		depType = genericitems.PhysIfTypename
 		mustSatisfy = func(item depgraph.Item) bool {
 			physIf := item.(PhysIf)
-			return physIf.Usage == genericitems.IOUsageL3Adapter
+			return physIf.Usage == expectedParentUsage
 		}
 	case types.L2LinkTypeVLAN:
 		depType = genericitems.VlanTypename
 	case types.L2LinkTypeBond:
 		depType = genericitems.BondTypename
+		mustSatisfy = func(item depgraph.Item) bool {
+			bond := item.(Bond)
+			return bond.Usage == expectedParentUsage
+		}
 	}
 	return []depgraph.Dependency{
 		{
@@ -139,8 +158,12 @@ func (c *AdapterConfigurator) Create(ctx context.Context, item depgraph.Item) er
 			c.Log.Error(err)
 			return err
 		}
-		// Do not proceed with bridging the adapter, just set the MTU.
-		return c.setAdapterMTU(adapter, link)
+		// Do not proceed with bridging the adapter, just set the MTU and static IPs.
+		err = c.setAdapterMTU(adapter, link)
+		if err != nil {
+			return err
+		}
+		return c.updateAdapterStaticIPs(link, adapter.StaticIPs, nil)
 	}
 	kernIfname := "k" + adapter.IfName
 	_, err = netlink.LinkByName(kernIfname)
@@ -219,18 +242,20 @@ func (c *AdapterConfigurator) Create(ctx context.Context, item depgraph.Item) er
 		c.Log.Error(err)
 		return err
 	}
-	return nil
+	// Finally, assign statically configured IPs.
+	return c.updateAdapterStaticIPs(bridge, adapter.StaticIPs, nil)
 }
 
 // Return true if NIM is responsible for creating a Linux bridge for the adapter.
 // Bridge is NOT created by NIM if:
 //   - the adapter is wireless: it is not valid to put wireless adapter under a bridge,
+//   - or if the adapter has VLAN sub-interfaces and therefore cannot be bridged,
 //   - or if the adapter is configured with DHCP passthrough: in that case, NIM does not
 //     have to apply IP config or test connectivity, and it can leave it up to zedrouter
 //     to bridge the port with applications (and possibly also with other ports) if requested
 //     by the user
 func (c *AdapterConfigurator) isAdapterBridgedByNIM(adapter Adapter) bool {
-	return adapter.WirelessType == types.WirelessTypeNone &&
+	return adapter.WirelessType == types.WirelessTypeNone && !adapter.UsedAsVlanParent &&
 		(adapter.DhcpType == types.DhcpTypeClient || adapter.DhcpType == types.DhcpTypeStatic)
 }
 
@@ -241,6 +266,30 @@ func (c *AdapterConfigurator) setAdapterMTU(adapter Adapter, link netlink.Link) 
 		if err != nil {
 			err = fmt.Errorf("failed to set MTU %d for adapter %s: %w",
 				mtu, adapter.IfName, err)
+			c.Log.Error(err)
+			return err
+		}
+	}
+	return nil
+}
+
+func (c *AdapterConfigurator) updateAdapterStaticIPs(link netlink.Link,
+	newIPs, prevIPs []*net.IPNet) error {
+	newIPs, obsoleteIPs := generics.DiffSetsFn(newIPs, prevIPs, netutils.EqualIPNets)
+	for _, ipNet := range obsoleteIPs {
+		addr := &netlink.Addr{IPNet: ipNet}
+		if err := netlink.AddrDel(link, addr); err != nil {
+			err = fmt.Errorf("failed to del addr %v from adapter %s: %v",
+				ipNet, link.Attrs().Name, err)
+			c.Log.Error(err)
+			return err
+		}
+	}
+	for _, ipNet := range newIPs {
+		addr := &netlink.Addr{IPNet: ipNet}
+		if err := netlink.AddrAdd(link, addr); err != nil {
+			err = fmt.Errorf("failed to add addr %v to adapter %s: %v",
+				ipNet, link.Attrs().Name, err)
 			c.Log.Error(err)
 			return err
 		}
@@ -259,8 +308,12 @@ func (c *AdapterConfigurator) alternativeMAC(mac net.HardwareAddr) net.HardwareA
 	return altMacAddr
 }
 
-// Modify is able to update the MTU attribute.
-func (c *AdapterConfigurator) Modify(_ context.Context, _, newItem depgraph.Item) (err error) {
+// Modify is able to update the MTU attribute and the set of static IPs.
+func (c *AdapterConfigurator) Modify(_ context.Context, oldItem, newItem depgraph.Item) (err error) {
+	oldAdapter, isAdapter := oldItem.(Adapter)
+	if !isAdapter {
+		return fmt.Errorf("invalid item type %T, expected Adapter", newItem)
+	}
 	adapter, isAdapter := newItem.(Adapter)
 	if !isAdapter {
 		return fmt.Errorf("invalid item type %T, expected Adapter", newItem)
@@ -275,15 +328,30 @@ func (c *AdapterConfigurator) Modify(_ context.Context, _, newItem depgraph.Item
 		c.Log.Error(err)
 		return err
 	}
-	return c.setAdapterMTU(adapter, adapterLink)
+	err = c.setAdapterMTU(adapter, adapterLink)
+	if err != nil {
+		return err
+	}
+	return c.updateAdapterStaticIPs(adapterLink, adapter.StaticIPs, oldAdapter.StaticIPs)
 }
 
 // Delete undoes Create - i.e. moves MAC address and ifName back to the interface
 // and removes the bridge.
 func (c *AdapterConfigurator) Delete(ctx context.Context, item depgraph.Item) error {
 	adapter := item.(Adapter)
+	// First, remove all statically assigned IPs.
+	adapterLink, err := netlink.LinkByName(adapter.IfName)
+	if err != nil {
+		err = fmt.Errorf("failed to get adapter %s link: %v", adapter.IfName, err)
+		c.Log.Error(err)
+		return err
+	}
+	err = c.updateAdapterStaticIPs(adapterLink, nil, adapter.StaticIPs)
+	if err != nil {
+		return err
+	}
 	if !c.isAdapterBridgedByNIM(adapter) {
-		// Adapter is not bridged by NIM, nothing to undo here.
+		// Adapter is not bridged by NIM, nothing else to undo here.
 		return nil
 	}
 	// After removing/renaming interfaces it is best to clear the cache.
@@ -303,11 +371,8 @@ func (c *AdapterConfigurator) Delete(ctx context.Context, item depgraph.Item) er
 		c.Log.Error(err)
 		return err
 	}
-	// delete bridge link
-	attrs := netlink.NewLinkAttrs()
-	attrs.Name = adapter.IfName
-	bridge := &netlink.Bridge{LinkAttrs: attrs}
-	if err := netlink.LinkDel(bridge); err != nil {
+	// Delete the bridge interface.
+	if err := netlink.LinkDel(adapterLink); err != nil {
 		err = fmt.Errorf("netlink.LinkDel(%s) failed: %v",
 			adapter.IfName, err)
 		c.Log.Error(err)
@@ -343,7 +408,7 @@ func (c *AdapterConfigurator) Delete(ctx context.Context, item depgraph.Item) er
 }
 
 // NeedsRecreate returns true if L2Type or WirelessType have changed.
-// On the other hand, Modify is able to update the MTU attribute.
+// On the other hand, Modify is able to update the MTU attribute and the set of static IPs.
 func (c *AdapterConfigurator) NeedsRecreate(oldItem, newItem depgraph.Item) (recreate bool) {
 	oldCfg, isAdapter := oldItem.(Adapter)
 	if !isAdapter {
@@ -357,5 +422,6 @@ func (c *AdapterConfigurator) NeedsRecreate(oldItem, newItem depgraph.Item) (rec
 	}
 	return oldCfg.L2Type != newCfg.L2Type ||
 		oldCfg.WirelessType != newCfg.WirelessType ||
+		oldCfg.UsedAsVlanParent != newCfg.UsedAsVlanParent ||
 		oldCfg.DhcpType != newCfg.DhcpType
 }

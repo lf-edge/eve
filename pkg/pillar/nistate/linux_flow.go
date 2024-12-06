@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"fmt"
 	"net"
 	"strconv"
 	"sync"
@@ -430,14 +431,22 @@ func (lc *LinuxCollector) sniffDNSandDHCP(ctx context.Context, wg *sync.WaitGrou
 			}
 		}
 	}
-	lc.log.Noticef("%s: Installing pcap on %s (bridge-num %d), "+
-		"switched=%t, filter=%s", flowLogPrefix, br.BrIfName, br.BrNum, switched, filter)
+	pcapIfName := br.BrIfName
+	pcapIfDescr := fmt.Sprintf("%s (bridge-num %d)", br.BrIfName, br.BrNum)
+	if br.MirrorIfName != "" {
+		// Capturing mirrored traffic avoids setting the bridge to the promiscuous
+		// mode, which would significantly degrade forwarding performance.
+		pcapIfName = br.MirrorIfName
+		pcapIfDescr = fmt.Sprintf("%s (mirror from bridge %s, bridge-num %d)",
+			br.MirrorIfName, br.BrIfName, br.BrNum)
+	}
+	lc.log.Noticef("%s: Installing pcap on %s, switched=%t, filter=%s",
+		flowLogPrefix, pcapIfDescr, switched, filter)
 
-	handle, err := pcap.OpenLive(br.BrIfName, snapshotLen, promiscuous, timeout, false)
+	handle, err := pcap.OpenLive(pcapIfName, snapshotLen, promiscuous, timeout, false)
 	if err != nil {
-		lc.log.Errorf(
-			"%s: Cannot capture packets on %s (bridge-num %d): %v",
-			flowLogPrefix, br.BrIfName, br.BrNum, err)
+		lc.log.Errorf("%s: Cannot capture packets on %s: %v",
+			flowLogPrefix, pcapIfDescr, err)
 		return
 	}
 	defer handle.Close()
@@ -445,7 +454,7 @@ func (lc *LinuxCollector) sniffDNSandDHCP(ctx context.Context, wg *sync.WaitGrou
 	err = handle.SetRawBPFFilter(rawInstructions)
 	if err != nil {
 		lc.log.Errorf("%s: Cannot install pcap filter [ %s ] on %s: %s",
-			flowLogPrefix, filter, br.BrIfName, err)
+			flowLogPrefix, filter, pcapIfDescr, err)
 		return
 	}
 
@@ -455,13 +464,11 @@ func (lc *LinuxCollector) sniffDNSandDHCP(ctx context.Context, wg *sync.WaitGrou
 	for {
 		select {
 		case <-ctx.Done():
-			lc.log.Noticef("%s: PCAP stopped on %s (bridge-num %d)",
-				flowLogPrefix, br.BrIfName, br.BrNum)
+			lc.log.Noticef("%s: PCAP stopped on %s", flowLogPrefix, pcapIfDescr)
 			return
 		case packet, more := <-packetsCh:
 			if !more {
-				lc.log.Noticef("%s: PCAP closed on %s (bridge-num %d)",
-					flowLogPrefix, br.BrIfName, br.BrNum)
+				lc.log.Noticef("%s: PCAP closed on %s", flowLogPrefix, pcapIfName)
 				// Inform the main event loop.
 				lc.capturedPackets <- capturedPacket{
 					bridge:     br,

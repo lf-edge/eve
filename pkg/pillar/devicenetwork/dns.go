@@ -104,7 +104,11 @@ func ResolveWithPortsLambda(domain string,
 
 	quit := make(chan struct{})
 	work := make(chan struct{}, DNSMaxParallelRequests)
-	resolvedIPsChan := make(chan []DNSResponse)
+	defer close(work)
+
+	resolvedIPsChan := make(chan []DNSResponse, 1)
+	defer close(resolvedIPsChan)
+
 	countDNSRequests := 0
 	var errs []error
 	var errsMutex sync.Mutex
@@ -131,10 +135,13 @@ func ResolveWithPortsLambda(domain string,
 				copy(srcIPCopy, srcIP)
 				countDNSRequests++
 				go func(dnsIP, srcIP net.IP) {
-					select {
-					case work <- struct{}{}:
-						// if writable, means less than dnsMaxParallelRequests goroutines are currently running
-					}
+					defer func() {
+						wg.Done()
+						<-work
+					}()
+					// if writable, means less than dnsMaxParallelRequests goroutines are currently running
+					work <- struct{}{}
+
 					select {
 					case <-quit:
 						// will return in case the quit chan has been closed,
@@ -149,22 +156,28 @@ func ResolveWithPortsLambda(domain string,
 						defer errsMutex.Unlock()
 						errs = append(errs, err)
 					}
-					if response != nil {
-						resolvedIPsChan <- response
+					if response != nil && len(response) > 0 {
+						select {
+						case resolvedIPsChan <- response:
+						default:
+						}
 					}
-					<-work
-					wg.Done()
 				}(dnsIPCopy, srcIPCopy)
 			}
 		}
 	}
 
 	wgChan := make(chan struct{})
+
 	go func() {
 		wg.Wait()
 		close(wgChan)
 	}()
 
+	defer func() {
+		close(quit)
+		<-wgChan
+	}()
 	select {
 	case <-wgChan:
 		var responses []DNSResponse
@@ -183,7 +196,7 @@ func ResolveWithPortsLambda(domain string,
 		}
 		return responses, errs
 	case ip := <-resolvedIPsChan:
-		close(quit)
 		return ip, nil
 	}
+
 }

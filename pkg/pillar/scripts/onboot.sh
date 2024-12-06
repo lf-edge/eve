@@ -100,11 +100,11 @@ if [ -c $TPM_DEVICE_PATH ] && ! [ -f $DEVICE_KEY_NAME ]; then
 fi
 
 if [ -f $PERSISTDIR/reboot-reason ]; then
-    echo "Reboot reason: $(cat $PERSISTDIR/reboot-reason)" | tee /dev/console
+    echo "Reboot reason: $(cat $PERSISTDIR/reboot-reason)" | tee /dev/tty
 elif [ -n "$FIRSTBOOT" ]; then
-    echo "Reboot reason: NORMAL: First boot of device - at $(date -Ins -u)" | tee /dev/console
+    echo "Reboot reason: NORMAL: First boot of device - at $(date -Ins -u)" | tee /dev/tty
 else
-    echo "Reboot reason: UNKNOWN: reboot reason - power failure or crash - at $(date -Ins -u)" | tee /dev/console
+    echo "Reboot reason: UNKNOWN: reboot reason - power failure or crash - at $(date -Ins -u)" | tee /dev/tty
 fi
 
 if [ ! -d $PERSISTDIR/log ]; then
@@ -151,7 +151,7 @@ free_space() {
 # If there is less than 4Mbytes (MIN_DISKSPACE) then remove the content of the
 # following directories in order until we have that amount of available space
 # following sub directories:
-PERSIST_CLEANUPS='log netdump kcrashes memory-monitor/output eve-info patchEnvelopesCache patchEnvelopesUsageCache newlog/keepSentQueue newlog/failedUpload newlog/appUpload newlog/devUpload containerd-system-root vault/downloader vault/verifier agentdebug'
+PERSIST_CLEANUPS='log netdump kcrashes memory-monitor/output eve-info patchEnvelopesCache patchEnvelopesUsageCache newlog/keepSentQueue newlog/failedUpload newlog/appUpload newlog/devUpload kubelog containerd-system-root vault/downloader vault/verifier agentdebug'
 # NOTE that we can not cleanup /persist/containerd and /persist/{vault,clear}/volumes since those are used by applications.
 #
 # Note that we need to free up some space before Linuxkit starts containerd,
