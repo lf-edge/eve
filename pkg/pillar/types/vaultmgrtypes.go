@@ -86,6 +86,7 @@ type EncryptedVaultKeyFromDevice struct {
 	Name              string
 	EncryptedVaultKey []byte // empty if no TPM enabled
 	IsTpmEnabled      bool
+	TpmError          error // only set if there is unrecoverable error, for example TPM is kaput.
 }
 
 // Key returns name of the vault corresponding to this object
