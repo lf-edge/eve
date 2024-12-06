@@ -8,7 +8,9 @@ SHELL ["/bin/bash", "-eo", "pipefail", "-c"]
 ENV VERSION v2024.10-rc2
 ENV SOURCE_URL https://github.com/u-boot/u-boot/archive/${VERSION}.tar.gz
 ENV RASPBERRY_FIRMWARE_BLOBS_VERSION 1.20211007
+ENV RASPBERRY_FIRMWARE_BLOBS_VERSION2 1.20240306
 ENV RASPBERRY_FIRMWARE_BLOBS https://github.com/raspberrypi/firmware/raw/${RASPBERRY_FIRMWARE_BLOBS_VERSION}
+ENV RASPBERRY_FIRMWARE_BLOBS2 https://github.com/raspberrypi/firmware/raw/${RASPBERRY_FIRMWARE_BLOBS_VERSION2}
 
 # hadolint ignore=DL3020
 ADD ${SOURCE_URL} /uboot.tar.gz
@@ -39,6 +41,8 @@ ADD ${RASPBERRY_FIRMWARE_BLOBS}/boot/fixup4.dat /tmp/rpi/fixup4.dat
 ADD ${RASPBERRY_FIRMWARE_BLOBS}/boot/start4.elf /tmp/rpi/start4.elf
 # hadolint ignore=DL3020
 ADD ${RASPBERRY_FIRMWARE_BLOBS}/boot/bcm2711-rpi-cm4.dtb /tmp/rpi/bcm2711-rpi-cm4.dtb
+# hadolint ignore=DL3020
+ADD ${RASPBERRY_FIRMWARE_BLOBS2}/boot/bcm2712-rpi-5-b.dtb /tmp/rpi/bcm2712-rpi-5-b.dtb
 # hadolint ignore=DL3020,SC3060
 RUN  for i in /tmp/rpi/overlays/*.dts ; do                                         \
           dtc -@ -I dts -O dtb -o "${i/.dts/.dtbo}" "$i" && rm "$i"     ;\
