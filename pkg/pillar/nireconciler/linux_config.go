@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"net"
+	"os"
 	"strings"
 	"syscall"
 
@@ -1130,18 +1131,18 @@ func (r *LinuxNIReconciler) getIntendedDnsmasqCfg(niID uuid.UUID) (items []dg.It
 	}
 	// Combine NTP servers assigned to the port(s) together with those statically
 	// configured for the network instance.
-	var ntpServers []net.IP
+	ntpServerIPs := make([]net.IP, 0)
 	for _, port := range ni.bridge.Ports {
-		ntpServers = append(ntpServers, port.NTPServers...)
+		ntpServerIPs = append(ntpServerIPs, port.NTPServers...)
 	}
-	if ni.config.NtpServer != nil {
-		ntpServers = append(ntpServers, ni.config.NtpServer)
+	generics.FilterDuplicatesFn(ntpServerIPs, netutils.EqualIPs)
+	for _, ntpServer := range ntpServerIPs {
+		fmt.Fprintf(os.Stderr, "AAAAA dnsmasq ntpServer: %+v\n", ntpServer.String())
 	}
-	ntpServers = generics.FilterDuplicatesFn(ntpServers, netutils.EqualIPs)
 	var propagateRoutes []generic.IPRoute
 	// Use DHCP to propagate host routes towards user-configured NTP and DNS servers.
 	if bridgeIP != nil {
-		for _, ntpServer := range ntpServers {
+		for _, ntpServer := range ntpServerIPs {
 			propagateRoutes = append(propagateRoutes, generic.IPRoute{
 				DstNetwork: netutils.HostSubnet(ntpServer),
 				Gateway:    bridgeIP.IP,
@@ -1228,7 +1229,7 @@ func (r *LinuxNIReconciler) getIntendedDnsmasqCfg(niID uuid.UUID) (items []dg.It
 		WithDefaultRoute: withDefaultRoute,
 		DomainName:       ni.config.DomainName,
 		DNSServers:       ni.config.DnsServers,
-		NTPServers:       ntpServers,
+		NTPServers:       ntpServerIPs,
 		PropagateRoutes:  propagateRoutes,
 		MTU:              ni.bridge.MTU,
 	}
