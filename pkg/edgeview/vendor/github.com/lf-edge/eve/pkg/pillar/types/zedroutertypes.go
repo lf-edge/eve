@@ -368,6 +368,11 @@ type NetworkInstanceInfo struct {
 	BridgeMac     net.HardwareAddr
 	BridgeIfindex int
 
+	// Name of a (dummy) interface where ICMP, ARP, DNS and DHCP packets
+	// are mirrored from the bridge and can be used for monitoring purposes.
+	// Empty if mirroring is not available.
+	MirrorIfName string
+
 	// Collection of address assignments; from MAC address to IP address
 	IPAssignments map[string]AssignedAddrs
 
@@ -1360,4 +1365,10 @@ const (
 	// MACGeneratorGloballyScoped generates MAC addresses which are with high probability
 	// unique globally, i.e. across entire fleet of devices.
 	MACGeneratorGloballyScoped = 2
+	// MACGeneratorClusterDeterministic generates the same MAC address for a given
+	// app interface on every node in the cluster.
+	// Additionally, the probability of MAC address conflict with other devices outside
+	// the cluster is very low (same property that MACGeneratorGloballyScoped
+	// provides).
+	MACGeneratorClusterDeterministic = 3
 )

@@ -10,7 +10,6 @@ import (
 	"math/rand"
 	"net/http"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 
@@ -36,7 +35,6 @@ const (
 	warningTime = 40 * time.Second
 
 	failSendDir = types.NewlogDir + "/failedUpload"
-
 	keepSentDir = types.NewlogKeepSentQueueDir
 
 	backoffMaxUploadIntv   = 300
@@ -284,8 +282,15 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	loguploaderCtx.metrics.CurrUploadIntvSec = defaultUploadIntv
 	uploadTimer := time.NewTimer(time.Duration(loguploaderCtx.metrics.CurrUploadIntvSec) * time.Second)
 
+	// create the necceary directories upfront
 	if _, err := os.Stat(keepSentDir); os.IsNotExist(err) {
 		if err := os.MkdirAll(keepSentDir, 0755); err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	if _, err := os.Stat(failSendDir); os.IsNotExist(err) {
+		if err := os.MkdirAll(failSendDir, 0755); err != nil {
 			log.Fatal(err)
 		}
 	}
@@ -630,10 +635,16 @@ func doFetchSend(ctx *loguploaderContext, zipDir string, iter *int) int {
 		if f.IsDir() {
 			continue
 		}
-		isgzip, fTime := getTimeNumber(isApp, f.Name())
-		if !isgzip {
+
+		if !strings.HasSuffix(f.Name(), ".gz") {
 			continue
 		}
+		timestamp, err := types.GetTimestampFromGzipName(f.Name())
+		if err != nil {
+			continue
+		}
+		fTime := int(timestamp.Unix() * 1000) // convert to milliseconds
+
 		numGzipfiles++
 		if fileTime == 0 || fileTime > fTime {
 			fileTime = fTime
@@ -676,10 +687,20 @@ func doFetchSend(ctx *loguploaderContext, zipDir string, iter *int) int {
 			}
 			log.Errorf("doFetchSend: %v got error sending http: %v", ctx.metrics.FailSentStartTime.String(), err)
 		} else {
-			if _, err := os.Stat(gziplogfile); err == nil {
-				moveToFile := keepSentDir + "/" + gotFileName
-				if err := os.Rename(gziplogfile, moveToFile); err != nil {
-					log.Errorf("doFetchSend: can not move gziplogfile, %v", err)
+			if isApp {
+				// keep the sent out app log files on device
+				if _, err := os.Stat(gziplogfile); err == nil {
+					moveToFile := keepSentDir + "/" + gotFileName
+					if err := os.Rename(gziplogfile, moveToFile); err != nil {
+						log.Errorf("doFetchSend: can not move gziplogfile, %v", err)
+					}
+				}
+			} else {
+				// remove the sent out dev log files, since there is a different mechanism to keep them handled by newlogd
+				if _, err := os.Stat(gziplogfile); err == nil {
+					if err := os.Remove(gziplogfile); err != nil {
+						log.Errorf("doFetchSend: can not remove gziplogfile, %v", err)
+					}
 				}
 			}
 
@@ -734,36 +755,6 @@ func isInAppUUIDMap(urlStr string) bool {
 		return false
 	}
 	return true
-}
-
-func getTimeNumber(isApp bool, fName string) (bool, int) {
-	if isApp {
-		if strings.HasPrefix(fName, types.AppPrefix) && strings.HasSuffix(fName, ".gz") {
-			fStr1 := strings.TrimPrefix(fName, types.AppPrefix)
-			fStr := strings.Split(fStr1, types.AppSuffix)
-			if len(fStr) != 2 {
-				err := fmt.Errorf("app split is not 2")
-				log.Fatal(err)
-			}
-			fStr2 := strings.TrimSuffix(fStr[1], ".gz")
-			fTime, err := strconv.Atoi(fStr2)
-			if err != nil {
-				log.Fatal(err)
-			}
-			return true, fTime
-		}
-	} else {
-		if strings.HasPrefix(fName, types.DevPrefix) && strings.HasSuffix(fName, ".gz") {
-			fStr1 := strings.TrimPrefix(fName, types.DevPrefix)
-			fStr2 := strings.TrimSuffix(fStr1, ".gz")
-			fTime, err := strconv.Atoi(fStr2)
-			if err != nil {
-				log.Fatal(err)
-			}
-			return true, fTime
-		}
-	}
-	return false, 0
 }
 
 func sendToCloud(ctx *loguploaderContext, data []byte, iter int, fName string, fTime int, isApp bool) (bool, error) {
@@ -962,11 +953,6 @@ func handle4xxlogfile(ctx *loguploaderContext, fName string, isApp bool) {
 
 	if relocate {
 		var srcFile, dstFile string
-		if _, err := os.Stat(failSendDir); err != nil {
-			if err := os.MkdirAll(failSendDir, 0755); err != nil {
-				log.Fatal(err)
-			}
-		}
 
 		if isApp {
 			srcFile = types.NewlogUploadAppDir + "/" + fName

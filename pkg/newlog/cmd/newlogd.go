@@ -19,6 +19,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -47,18 +48,12 @@ const (
 	fastlogfileDelay       = 10  // faster to close log file if fastUpload is enabled
 	stillRunningInerval    = 25 * time.Second
 
-	collectDir   = types.NewlogCollectDir
-	uploadDevDir = types.NewlogUploadDevDir
-	uploadAppDir = types.NewlogUploadAppDir
-	keepSentDir  = types.NewlogKeepSentQueueDir
-	failSendDir  = types.NewlogDir + "/failedUpload"
-	panicFileDir = types.NewlogDir + "/panicStacks"
-	symlinkFile  = collectDir + "/current.device.log"
-	tmpSymlink   = collectDir + "/tmp-sym.dev.log"
-	devPrefix    = types.DevPrefix
-	appPrefix    = types.AppPrefix
-	tmpPrefix    = "TempFile"
-	skipUpload   = "skipTx."
+	devPrefix       = types.DevPrefix
+	devPrefixKeep   = types.DevPrefixKeep
+	devPrefixUpload = types.DevPrefixUpload
+	appPrefix       = types.AppPrefix
+	tmpPrefix       = "TempFile"
+	skipUpload      = "skipTx."
 
 	maxLogFileSize   int32 = 550000 // maximum collect file size in bytes
 	maxGzipFileSize  int64 = 50000  // maximum gzipped file size for upload in bytes
@@ -74,10 +69,18 @@ var (
 	logger *logrus.Logger
 	log    *base.LogObject
 
+	collectDir   = types.NewlogCollectDir
+	uploadDevDir = types.NewlogUploadDevDir
+	uploadAppDir = types.NewlogUploadAppDir
+	keepSentDir  = types.NewlogKeepSentQueueDir
+	failSendDir  = types.NewlogDir + "/failedUpload"
+	panicFileDir = types.NewlogDir + "/panicStacks"
+	symlinkFile  = collectDir + "/current.device.log"
+	tmpSymlink   = collectDir + "/tmp-sym.dev.log"
+
 	msgIDDevCnt   uint64              = 1 // every log message increments the msg-id by 1
 	logmetrics    types.NewlogMetrics     // the log metric, publishes to zedagent
 	devMetaData   devMeta
-	logmetaData   string
 	syncToFileCnt int    // every 'N' log event count flush to log file
 	persistMbytes uint64 // '/persist' disk space total in Mbytes
 	gzipFilesCnt  int64  // total gzip files written
@@ -108,9 +111,17 @@ var (
 	// from different goroutines, so in order to push the changes out of the
 	// goroutines local caches and correctly observe changed values in another
 	// goroutine sync/atomic synchronization is used. You've been warned.
-	syslogPrio = types.SyslogKernelLogLevelNum[types.SyslogKernelDefaultLogLevel]
-	kernelPrio = types.SyslogKernelLogLevelNum[types.SyslogKernelDefaultLogLevel]
+	syslogPrio                 = types.SyslogKernelLogLevelNum[types.SyslogKernelDefaultLogLevel]
+	kernelPrio                 = types.SyslogKernelLogLevelNum[types.SyslogKernelDefaultLogLevel]
+	syslogRemotePrio           = types.SyslogKernelLogLevelNum[types.SyslogKernelDefaultLogLevel]
+	kernelRemotePrio           = types.SyslogKernelLogLevelNum[types.SyslogKernelDefaultLogLevel]
+	agentDefaultRemoteLogLevel atomic.Value // logrus.Level
+	agentsRemoteLogLevel       sync.Map     // map of agentName to logrus.Level
 )
+
+func init() {
+	agentDefaultRemoteLogLevel.Store(logrus.InfoLevel)
+}
 
 // for app Domain-ID mapping into UUID and DisplayName
 type appDomain struct {
@@ -122,16 +133,17 @@ type appDomain struct {
 }
 
 type inputEntry struct {
-	severity  string
-	source    string
-	content   string // One line
-	pid       string
-	filename  string // file name that generated the logmsg
-	function  string // function name that generated the log msg
-	timestamp string
-	appUUID   string // App UUID
-	acName    string // App Container Name
-	acLogTime string // App Container log time
+	severity     string
+	source       string
+	content      string // One line
+	pid          string
+	filename     string // file name that generated the logmsg
+	function     string // function name that generated the log msg
+	timestamp    string
+	appUUID      string // App UUID
+	acName       string // App Container Name
+	acLogTime    string // App Container log time
+	sendToRemote bool   // this log entry needs to be sent to remote
 }
 
 // collection time device/app temp file stats for file size and time limit
@@ -160,7 +172,7 @@ type devMeta struct {
 }
 
 // parse log level string
-func parseLogLevel(loglevel string) uint32 {
+func parseSyslogLogLevel(loglevel string) uint32 {
 	prio, ok := types.SyslogKernelLogLevelNum[loglevel]
 	if !ok {
 		prio = types.SyslogKernelLogLevelNum[types.SyslogKernelDefaultLogLevel]
@@ -197,6 +209,15 @@ func main() {
 	panicFileChan := make(chan []byte, 2)
 
 	ps := *pubsub.New(&socketdriver.SocketDriver{Logger: logger, Log: log}, logger, log)
+
+	// create the necessary directories upfront
+	for _, dir := range []string{collectDir, uploadDevDir, uploadAppDir, keepSentDir, panicFileDir} {
+		if _, err := os.Stat(dir); os.IsNotExist(err) {
+			if err := os.MkdirAll(dir, 0755); err != nil {
+				log.Fatal(err)
+			}
+		}
+	}
 
 	// handle the write log messages to /persist/newlog/collect/ logfiles
 	go writelogFile(loggerChan, movefileChan)
@@ -426,7 +447,6 @@ func handleOnboardStatusImp(ctxArg interface{}, key string, statusArg interface{
 		return
 	}
 	devMetaData.uuid = status.DeviceUUID.String()
-	logmetaData = formatAndGetMeta("")
 	log.Functionf("newlogd handleOnboardStatusModify changed to %+v", devMetaData)
 }
 
@@ -515,22 +535,74 @@ func handleGlobalConfigImp(ctxArg interface{}, key string, statusArg interface{}
 			limitGzipFilesMbyts = uint32(persistMbytes / 10)
 		}
 
+		// parse agent's individual remote log levels
+		for agentName := range gcp.AgentSettings {
+			loglevel := getRemoteLogLevelImpl(gcp, agentName)
+			agentsRemoteLogLevel.Store(agentName, parseAgentLogLevel(loglevel))
+		}
+
+		// parse agent's default remote log level
+		loglevel := gcp.GlobalValueString(types.DefaultRemoteLogLevel)
+		agentDefaultRemoteLogLevel.Store(parseAgentLogLevel(loglevel))
+
 		// parse syslog log level
 		syslogPrioStr := gcp.GlobalValueString(types.SyslogLogLevel)
-		atomic.StoreUint32(&syslogPrio, parseLogLevel(syslogPrioStr))
+		atomic.StoreUint32(&syslogPrio, parseSyslogLogLevel(syslogPrioStr))
 
 		// parse kernel log level
 		kernelPrioStr := gcp.GlobalValueString(types.KernelLogLevel)
-		atomic.StoreUint32(&kernelPrio, parseLogLevel(kernelPrioStr))
+		atomic.StoreUint32(&kernelPrio, parseSyslogLogLevel(kernelPrioStr))
+
+		// parse syslog remote log level
+		syslogRemotePrioStr := gcp.GlobalValueString(types.SyslogRemoteLogLevel)
+		atomic.StoreUint32(&syslogRemotePrio, parseSyslogLogLevel(syslogRemotePrioStr))
+
+		// parse kernel remote log level
+		kernelRemotePrioStr := gcp.GlobalValueString(types.KernelRemoteLogLevel)
+		atomic.StoreUint32(&kernelRemotePrio, parseSyslogLogLevel(kernelRemotePrioStr))
 	}
 	log.Tracef("handleGlobalConfigModify done for %s, fastupload enabled %v", key, enableFastUpload)
 }
 
-func suppressMsg(entry inputEntry, cfgPrio uint32) bool {
-	pri, ok := types.SyslogKernelLogLevelNum[entry.severity]
-	if !ok {
-		pri = types.SyslogKernelLogLevelNum[types.SyslogKernelDefaultLogLevel]
+func parseAgentLogLevel(loglevel string) logrus.Level {
+	switch loglevel {
+	case "none":
+		// TODO: this should suppress most logs, but needs to be later replaced with a better solution
+		return logrus.PanicLevel
+	case "all":
+		return logrus.TraceLevel
+	default:
+		level, err := logrus.ParseLevel(loglevel)
+		if err != nil {
+			log.Errorf("parseAgentLogLevel: invalid log level %s for %s", loglevel, agentName)
+		}
+		return level
 	}
+}
+
+func getRemoteLogLevelImpl(gc *types.ConfigItemValueMap, agentName string) string {
+	// Do we have an entry for this agent?
+	loglevel := gc.AgentSettingStringValue(agentName, types.RemoteLogLevel)
+	if loglevel != "" {
+		log.Tracef("getRemoteLogLevelImpl: loglevel=%s", loglevel)
+		return loglevel
+	}
+
+	// Agent specific setting  not available. Get it from Global Setting
+	loglevel = gc.GlobalValueString(types.DefaultRemoteLogLevel)
+	if loglevel != "" {
+		log.Tracef("getRemoteLogLevelImpl: returning DefaultRemoteLogLevel (%s)",
+			loglevel)
+		return loglevel
+	}
+
+	log.Errorf("***getRemoteLogLevelImpl: DefaultRemoteLogLevel not found. " +
+		"returning info")
+	return "info"
+}
+
+func suppressMsg(entry inputEntry, cfgPrio uint32) bool {
+	pri := parseSyslogLogLevel(entry.severity)
 
 	return pri > cfgPrio
 }
@@ -557,6 +629,8 @@ func getKmessages(loggerChan chan inputEntry) {
 		if suppressMsg(entry, atomic.LoadUint32(&kernelPrio)) {
 			continue
 		}
+
+		entry.sendToRemote = types.SyslogKernelLogLevelNum[entry.severity] <= atomic.LoadUint32(&kernelRemotePrio)
 
 		logmetrics.NumKmessages++
 		logmetrics.DevMetrics.NumInputEvent++
@@ -604,16 +678,17 @@ func getMemlogMsg(logChan chan inputEntry, panicFileChan chan []byte) {
 		}
 		var pidStr string
 		// Everything is json, in some cases with an embedded json Msg
-		logEntry, jsonOK := ParseMemlogLogEntry(string(bytes))
-		if !jsonOK {
+		var logEntry MemlogLogEntry
+		if err := json.Unmarshal(bytes, &logEntry); err != nil {
 			log.Warnf("Received non-json from memlogd: %s\n",
 				string(bytes))
 			continue
 		}
 
 		// Is the Msg itself json?
-		logInfo, ok := agentlog.ParseLoginfo(logEntry.Msg)
-		if ok { // Use the inner JSON struct
+		var logInfo Loginfo
+		if err := json.Unmarshal([]byte(logEntry.Msg), &logInfo); err == nil {
+			// Use the inner JSON struct
 			// Go back to the envelope for anything not in the inner JSON
 			if logInfo.Time == "" {
 				logInfo.Time = logEntry.Time
@@ -644,9 +719,14 @@ func getMemlogMsg(logChan chan inputEntry, panicFileChan chan []byte) {
 			}
 		}
 
-		if strings.Contains(logInfo.Source, "guest_vm") {
-			logmetrics.AppMetrics.NumInputEvent++
-		} else if logInfo.Containername != "" {
+		// all logs must have the level field
+		if logInfo.Level == "" {
+			logInfo.Level = logrus.InfoLevel.String()
+		}
+
+		logFromApp := strings.Contains(logInfo.Source, "guest_vm") || logInfo.Containername != ""
+
+		if logFromApp {
 			logmetrics.AppMetrics.NumInputEvent++
 		} else {
 			logmetrics.DevMetrics.NumInputEvent++
@@ -661,17 +741,33 @@ func getMemlogMsg(logChan chan inputEntry, panicFileChan chan []byte) {
 			continue
 		}
 
+		sendToRemote := false
+		if !logFromApp { // there are no granularity nobs for the edge apps' log levels
+			loglevel, err := logrus.ParseLevel(logInfo.Level)
+			if err != nil {
+				log.Errorf("getMemlogMsg: found invalid log level %s in message from %s", logInfo.Level, logInfo.Source)
+			} else {
+				// see if we have an agent specific log level
+				if remoteLogLevel, ok := agentsRemoteLogLevel.Load(logInfo.Source); ok {
+					sendToRemote = loglevel <= remoteLogLevel.(logrus.Level)
+				} else {
+					sendToRemote = loglevel <= agentDefaultRemoteLogLevel.Load().(logrus.Level)
+				}
+			}
+		}
+
 		entry := inputEntry{
-			source:    logInfo.Source,
-			content:   logInfo.Msg,
-			pid:       pidStr,
-			timestamp: logInfo.Time,
-			function:  logInfo.Function,
-			filename:  logInfo.Filename,
-			severity:  logInfo.Level,
-			appUUID:   logInfo.Appuuid,
-			acName:    logInfo.Containername,
-			acLogTime: logInfo.Eventtime,
+			source:       logInfo.Source,
+			content:      logInfo.Msg,
+			pid:          pidStr,
+			timestamp:    logInfo.Time,
+			function:     logInfo.Function,
+			filename:     logInfo.Filename,
+			severity:     logInfo.Level,
+			appUUID:      logInfo.Appuuid,
+			acName:       logInfo.Containername,
+			acLogTime:    logInfo.Eventtime,
+			sendToRemote: sendToRemote,
 		}
 
 		// if we are in watchdog going down. fsync often
@@ -710,7 +806,7 @@ func parseLevelTimeMsg(content string) (level string, timeStr string, msg string
 	return
 }
 
-func startTmpfile(dirname, filename string, isApp bool) *os.File {
+func createLogTmpfile(dirname, filename string) *os.File {
 	tmpFile, err := os.CreateTemp(dirname, filename)
 	if err != nil {
 		log.Fatal(err)
@@ -719,8 +815,9 @@ func startTmpfile(dirname, filename string, isApp bool) *os.File {
 	if err != nil {
 		log.Fatal(err)
 	}
-	// make symbolic link for device temp logfiles
-	if !isApp {
+	log.Function("Created new temp log file: ", tmpFile.Name())
+	// make symbolic link for device log file to keep
+	if filename == devPrefixKeep {
 		if err := os.Remove(tmpSymlink); err != nil && !os.IsNotExist(err) { // remove a stale one
 			log.Error(err)
 		}
@@ -732,6 +829,7 @@ func startTmpfile(dirname, filename string, isApp bool) *os.File {
 		if err != nil {
 			log.Error(err)
 		}
+		log.Function("Pointed symlink ", symlinkFile, " to ", tmpFile.Name())
 	}
 	return tmpFile
 }
@@ -745,41 +843,43 @@ func remNonPrintable(str string) string {
 
 // writelogFile - a goroutine to format and write log entries into dev/app logfiles
 func writelogFile(logChan <-chan inputEntry, moveChan chan fileChanInfo) {
-
-	if _, err := os.Stat(collectDir); os.IsNotExist(err) {
-		if err := os.MkdirAll(collectDir, 0755); err != nil {
-			log.Fatal(err)
-		}
-	}
+	// get EVE version and partition, UUID may not be available yet
+	getEveInfo()
 
 	// move and gzip the existing logfiles first
-	logmetaData = findMovePrevLogFiles(moveChan)
+	findMovePrevLogFiles(moveChan)
 
-	// new logfile
-	devlogFile := startTmpfile(collectDir, devPrefix, false)
-	defer devlogFile.Close()
+	// new file to collect device logs for upload
+	devStatsUpload := initNewLogfile(collectDir, devPrefixUpload, "")
+	defer devStatsUpload.file.Close()
 
-	var fileinfo fileChanInfo
-	var devStats statsLogFile
+	// new file to collect device logs to keep on device
+	devStatsKeep := initNewLogfile(collectDir, devPrefixKeep, "")
+	defer devStatsKeep.file.Close()
+	devStatsKeep.notUpload = true
+
+	oldestLogEntry, err := getOldestLog()
+	if err != nil {
+		log.Errorf("could not set OldestSavedDeviceLog metric due to getLatestLog error: %v", err)
+	} else {
+		if oldestLogEntry == nil {
+			// no log entry found, set the oldest log time to now
+			logmetrics.OldestSavedDeviceLog = time.Now()
+		} else {
+			logmetrics.OldestSavedDeviceLog = time.Unix(oldestLogEntry.Timestamp.Seconds, int64(oldestLogEntry.Timestamp.Nanos))
+		}
+	}
 
 	devSourceBytes = base.NewLockedStringMap()
 	appStatsMap = make(map[string]statsLogFile)
 	checklogTimer := time.NewTimer(5 * time.Second)
-	devStats.file = devlogFile
-
-	// write the first log metadata to the first line of the logfile, will be extracted when
-	// doing gzip conversion. further log file's metadata is handled inside 'trigMoveToGzip()'
-	_, err := devStats.file.WriteString(logmetaData + "\n")
-	if err != nil {
-		log.Fatal(err)
-	}
 
 	timeIdx := 0
 	for {
 		select {
 		case <-checklogTimer.C:
 			timeIdx++
-			checkLogTimeExpire(fileinfo, &devStats, moveChan)
+			checkLogTimeExpire(&devStatsUpload, moveChan)
 			checklogTimer = time.NewTimer(5 * time.Second) // check the file time limit every 5 seconds
 
 		case entry := <-logChan:
@@ -807,13 +907,20 @@ func writelogFile(logChan <-chan inputEntry, moveChan chan fileChanInfo) {
 				logmetrics.AppMetrics.NumBytesWrite += uint64(len)
 				appStatsMap[appuuid] = appM
 
-				trigMoveToGzip(fileinfo, &appM, appuuid, moveChan, false)
+				trigMoveToGzip(&appM, appuuid, moveChan, false)
 
 			} else {
-				len := writelogEntry(&devStats, logline)
+				if entry.sendToRemote {
+					writelogEntry(&devStatsUpload, logline)
+
+					trigMoveToGzip(&devStatsUpload, "", moveChan, false)
+				}
+
+				// write all log entries to the log file to keep
+				len := writelogEntry(&devStatsKeep, logline)
 				updateDevInputlogStats(entry.source, uint64(len))
 
-				trigMoveToGzip(fileinfo, &devStats, "", moveChan, false)
+				trigMoveToGzip(&devStatsKeep, "", moveChan, false)
 			}
 		}
 	}
@@ -874,7 +981,7 @@ func updateLogMsgID(appUUID string) uint64 {
 func getAppStatsMap(appuuid string) statsLogFile {
 	if _, ok := appStatsMap[appuuid]; !ok {
 		applogname := appPrefix + appuuid + ".log"
-		applogfile := startTmpfile(collectDir, applogname, true)
+		appM := initNewLogfile(collectDir, applogname, appuuid)
 
 		var notUpload bool
 
@@ -887,19 +994,10 @@ func getAppStatsMap(appuuid string) statsLogFile {
 				domainUUID.Store(appuuid, appD)
 			}
 		}
+		appM.notUpload = notUpload
 
-		appM := statsLogFile{
-			file:      applogfile,
-			starttime: time.Now(),
-			notUpload: notUpload,
-		}
 		appStatsMap[appuuid] = appM
 
-		// write the metadata to the first line of app logfile, for App, just the appName info
-		_, err := appM.file.WriteString(formatAndGetMeta(appuuid) + "\n")
-		if err != nil {
-			log.Fatal("getAppStatsMap: write appName ", err)
-		}
 	}
 	return appStatsMap[appuuid]
 }
@@ -1000,61 +1098,151 @@ func checkKeepQuota() {
 	maxSize := int64(limitGzipFilesMbyts * 1000000)
 	sfiles := make(map[string]gfileStats)
 
-	key0, size0, err := checkDirGZFiles(sfiles, keepSentDir)
+	filesKeepSent, sizeKeepSent, err := checkDirGZFiles(sfiles, keepSentDir)
 	if err != nil {
 		log.Errorf("checkKeepQuota: keepSentDir %v", err)
 	}
-	key1, size1, err := checkDirGZFiles(sfiles, uploadAppDir)
+	filesAppUpload, sizeAppUpload, err := checkDirGZFiles(sfiles, uploadAppDir)
 	if err != nil {
 		log.Errorf("checkKeepQuota: AppDir %v", err)
 	}
-	key2, size2, err := checkDirGZFiles(sfiles, uploadDevDir)
+	filesDevUpload, sizeDevUpload, err := checkDirGZFiles(sfiles, uploadDevDir)
 	if err != nil {
 		log.Errorf("checkKeepQuota: DevDir %v", err)
 	}
-	key3, size3, err := checkDirGZFiles(sfiles, failSendDir)
+	fileFailSend, sizeFailSend, err := checkDirGZFiles(sfiles, failSendDir)
 	if err != nil && !os.IsNotExist(err) {
 		log.Errorf("checkKeepQuota: FailToSendDir %v", err)
 	}
 
-	totalsize := size0 + size1 + size2 + size3
-	totalCount := len(key0) + len(key1) + len(key2) + len(key3)
+	totalsize := sizeKeepSent + sizeAppUpload + sizeDevUpload + sizeFailSend
+	totalCount := len(filesKeepSent) + len(filesAppUpload) + len(filesDevUpload) + len(fileFailSend)
 	removed := 0
 	// limit file count to not as they can have less size than expected
 	// we can have enormous number of files
 	maxCount := int(maxSize / maxGzipFileSize)
 	if totalsize > maxSize || totalCount > maxCount {
-		keys := key0
-		keys = append(keys, key1...)
-		keys = append(keys, key2...)
-		keys = append(keys, key3...)
-		sort.Strings(keys)
+		removalPriority := [][]string{filesKeepSent, fileFailSend, filesAppUpload, filesDevUpload}
 
-		for _, key := range keys {
-			if _, ok := sfiles[key]; !ok {
-				continue
-			}
-			fs := sfiles[key]
-			filePath := filepath.Join(fs.logDir, fs.filename)
-			if _, err := os.Stat(filePath); err != nil {
-				continue
-			}
-			if err := os.Remove(filePath); err != nil {
-				log.Errorf("checkKeepQuota: remove failed %s, %v", filePath, err)
-				continue
-			}
-			if !fs.isSent {
-				logmetrics.NumGZipFileRemoved++
-			}
-			removed++
-			totalsize -= fs.filesize
-			totalCount--
-			if totalsize < maxSize && totalCount < maxCount {
-				break
+		for _, dirFiles := range removalPriority {
+			// sort the files in alphabetical order: this way the files with the oldest (smallest) timestamps will be removed first
+			// side effect: in keepSentQueue, app logs will be removed before device logs, which is okay since those are always synced with the controller
+			sort.Strings(dirFiles)
+
+			for _, filename := range dirFiles {
+				if _, ok := sfiles[filename]; !ok {
+					continue
+				}
+				fs := sfiles[filename]
+				filePath := filepath.Join(fs.logDir, fs.filename)
+				if _, err := os.Stat(filePath); err != nil {
+					continue
+				}
+				if err := os.Remove(filePath); err != nil {
+					log.Errorf("checkKeepQuota: remove failed %s, %v", filePath, err)
+					continue
+				}
+				if fs.logDir == keepSentDir {
+					// since the files are sorted by name and we delete the oldest files first,
+					// we can assume that the latest available log (from the file that is next in line to be deleted)
+					// has the timestamp of the file that was just deleted
+					oldestSavedDeviceLog, err := types.GetTimestampFromGzipName(fs.filename)
+					if err != nil {
+						log.Errorf("checkKeepQuota: %v", err)
+					} else {
+						logmetrics.OldestSavedDeviceLog = oldestSavedDeviceLog
+					}
+				}
+				if !fs.isSent {
+					logmetrics.NumGZipFileRemoved++
+				}
+				removed++
+				totalsize -= fs.filesize
+				totalCount--
+				if totalsize < maxSize && totalCount < maxCount {
+					break
+				}
 			}
 		}
 		log.Tracef("checkKeepQuota: %d gzip files removed", removed)
 	}
+	logmetrics.TotalSizeLogs = uint64(totalsize)
+}
+
+func getOldestLog() (*logs.LogEntry, error) {
+	// Compile a regex to match the log file pattern and extract the timestamp
+	re := regexp.MustCompile(`^dev\.log\.keep\.(\d+)\.gz$`)
+
+	// Read the directory and filter log files
+	files, err := os.ReadDir(keepSentDir)
+	if err != nil {
+		return nil, fmt.Errorf("error reading directory: %w", err)
+	}
+
+	type logFile struct {
+		name      string
+		timestamp string
+	}
+
+	var devLogFiles []logFile
+	for _, file := range files {
+		if file.IsDir() {
+			continue
+		}
+		matches := re.FindStringSubmatch(file.Name())
+		if matches != nil {
+			devLogFiles = append(devLogFiles, logFile{
+				name:      file.Name(),
+				timestamp: matches[1],
+			})
+		}
+	}
+
+	if len(devLogFiles) == 0 {
+		log.Function("getLatestLog: no log files found.")
+		return nil, nil
+	}
+
+	// Sort the log files by timestamp (ascending order)
+	sort.Slice(devLogFiles, func(i, j int) bool {
+		return devLogFiles[i].timestamp < devLogFiles[j].timestamp
+	})
+
+	// Open the oldest log file
+	oldestFile := filepath.Join(keepSentDir, devLogFiles[0].name)
+	file, err := os.Open(oldestFile)
+	if err != nil {
+		return nil, fmt.Errorf("error opening file: %w", err)
+	}
+	defer file.Close()
+
+	// Create a gzip reader
+	gzReader, err := gzip.NewReader(file)
+	if err != nil {
+		return nil, fmt.Errorf("error creating gzip reader: %w", err)
+	}
+	defer gzReader.Close()
+
+	// Read lines from the gzip file
+	scanner := bufio.NewScanner(gzReader)
+	scanner.Scan()
+	firstLine := scanner.Text() // we assume the first line to be the oldest log entry
+
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("error reading gzip file: %w", err)
+	}
+
+	if firstLine == "" {
+		log.Functionf("gzip log file %s is empty", oldestFile)
+		return nil, nil
+	}
+
+	var entry logs.LogEntry
+	if err = json.Unmarshal([]byte(firstLine), &entry); err != nil {
+		return nil, fmt.Errorf("error unmarshalling JSON: %w", err)
+	}
+
+	return &entry, nil
 }
 
 func doMoveCompressFile(ps *pubsub.PubSub, tmplogfileInfo fileChanInfo) {
@@ -1068,6 +1256,7 @@ func doMoveCompressFile(ps *pubsub.PubSub, tmplogfileInfo fileChanInfo) {
 		timeNowNum = lastLogNum + 1
 	}
 	outfile := gzipFileNameGet(isApp, timeNowNum, dirName, appuuid, tmplogfileInfo.notUpload)
+	log.Function("Moving ", tmplogfileInfo.tmpfile, " to ", outfile)
 
 	// open input file
 	iFile, err := os.Open(tmplogfileInfo.tmpfile)
@@ -1236,18 +1425,17 @@ func getFileInfo(tmplogfileInfo fileChanInfo) (string, string) {
 	var dirName, appuuid string
 	if tmplogfileInfo.isApp {
 		if tmplogfileInfo.notUpload {
-			dirName = types.NewlogKeepSentQueueDir
+			dirName = keepSentDir
 		} else {
 			dirName = uploadAppDir
 		}
 		appuuid = getAppuuidFromLogfile(tmplogfileInfo)
 	} else {
-		if _, err := os.Stat(uploadDevDir); os.IsNotExist(err) {
-			if err := os.Mkdir(uploadDevDir, 0755); err != nil {
-				log.Fatal(err)
-			}
+		if tmplogfileInfo.notUpload {
+			dirName = keepSentDir
+		} else {
+			dirName = uploadDevDir
 		}
-		dirName = uploadDevDir
 	}
 	return dirName, appuuid
 }
@@ -1261,17 +1449,16 @@ func gzipFileNameGet(isApp bool, timeNum int, dirName, appUUID string, notUpload
 		}
 		outfileName = appPref + appUUID + types.AppSuffix + strconv.Itoa(timeNum) + ".gz"
 	} else {
-		outfileName = devPrefix + strconv.Itoa(timeNum) + ".gz"
+		if notUpload {
+			outfileName = devPrefixKeep + strconv.Itoa(timeNum) + ".gz"
+		} else {
+			outfileName = devPrefixUpload + strconv.Itoa(timeNum) + ".gz"
+		}
 	}
 	return dirName + "/" + outfileName
 }
 
 func getAppuuidFromLogfile(tmplogfileInfo fileChanInfo) string {
-	if _, err := os.Stat(uploadAppDir); os.IsNotExist(err) {
-		if err := os.Mkdir(uploadAppDir, 0755); err != nil {
-			log.Fatal(err)
-		}
-	}
 	prefix := collectDir + "/" + appPrefix
 	tmpStr1 := strings.TrimPrefix(tmplogfileInfo.tmpfile, prefix)
 	tmpStr2 := strings.SplitN(tmpStr1, ".log", 2)
@@ -1279,14 +1466,11 @@ func getAppuuidFromLogfile(tmplogfileInfo fileChanInfo) string {
 }
 
 // at bootup, move the collected log files from previous life
-func findMovePrevLogFiles(movefile chan fileChanInfo) string {
+func findMovePrevLogFiles(movefile chan fileChanInfo) {
 	files, err := os.ReadDir(collectDir)
 	if err != nil {
 		log.Fatal("findMovePrevLogFiles: read dir ", err)
 	}
-
-	// get EVE version and partition, UUID may not be available yet
-	getEveInfo()
 
 	// remove any gzip file the name starts them 'Tempfile', it crashed before finished rename in dev/app dir
 	cleanGzipTempfiles(uploadDevDir)
@@ -1307,11 +1491,9 @@ func findMovePrevLogFiles(movefile chan fileChanInfo) string {
 			movefile <- fileinfo
 		}
 	}
-
-	return formatAndGetMeta("")
 }
 
-func trigMoveToGzip(fileinfo fileChanInfo, stats *statsLogFile, appUUID string, moveChan chan fileChanInfo, timerTrig bool) {
+func trigMoveToGzip(stats *statsLogFile, appUUID string, moveChan chan fileChanInfo, timerTrig bool) {
 	// check filesize over limit if not triggered by timeout
 	if !timerTrig && stats.size < maxLogFileSize {
 		return
@@ -1321,34 +1503,65 @@ func trigMoveToGzip(fileinfo fileChanInfo, stats *statsLogFile, appUUID string, 
 		log.Fatal(err)
 	}
 
-	isApp := appUUID != ""
-	fileinfo.isApp = isApp
-	fileinfo.inputSize = stats.size
-	fileinfo.tmpfile = stats.file.Name()
-	fileinfo.notUpload = stats.notUpload
+	fileinfo := fileChanInfo{
+		isApp:     appUUID != "",
+		inputSize: stats.size,
+		tmpfile:   stats.file.Name(),
+		notUpload: stats.notUpload,
+	}
 
+	if timerTrig {
+		log.Function("Move log file ", stats.file.Name(), " to gzip. Size: ", stats.size, " Reason timer")
+	} else {
+		log.Function("Move log file ", stats.file.Name(), " to gzip. Size: ", stats.size, " Reason size")
+	}
 	moveChan <- fileinfo
 
-	if isApp { // appM stats and logfile is created when needed
+	if fileinfo.isApp { // appM stats and logfile is created when needed
 		delete(appStatsMap, appUUID)
 		return
 	}
 
 	// reset stats data and create new logfile for device
-	stats.size = 0
-	stats.file = startTmpfile(collectDir, devPrefix, isApp)
-	stats.starttime = time.Now()
-
-	_, err := stats.file.WriteString(logmetaData + "\n") // write the metadata in the first line of logfile
-	if err != nil {
-		log.Fatal("trigMoveToGzip: write metadata line ", err)
+	var newStats statsLogFile
+	if fileinfo.notUpload {
+		newStats = initNewLogfile(collectDir, devPrefixKeep, "")
+	} else {
+		newStats = initNewLogfile(collectDir, devPrefixUpload, "")
 	}
+	newStats.index = stats.index // keep the index from the old file
+	*stats = newStats
 }
 
-func checkLogTimeExpire(fileinfo fileChanInfo, devStats *statsLogFile, moveChan chan fileChanInfo) {
+func initNewLogfile(dir, name, appuuid string) statsLogFile {
+	// new file to collect device logs for upload
+	stats := statsLogFile{
+		file:      createLogTmpfile(dir, name),
+		size:      0,
+		starttime: time.Now(),
+	}
+
+	if name == devPrefixKeep {
+		stats.notUpload = true
+	}
+	if name == devPrefixUpload {
+		stats.notUpload = false
+	}
+
+	// write the first log metadata to the first line of the logfile, will be extracted when
+	// doing gzip conversion. further log file's metadata is handled inside 'trigMoveToGzip()'
+	_, err := stats.file.WriteString(formatAndGetMeta(appuuid) + "\n")
+	if err != nil {
+		log.Fatal("initNewLogfile: write metadata line ", err)
+	}
+
+	return stats
+}
+
+func checkLogTimeExpire(devStats *statsLogFile, moveChan chan fileChanInfo) {
 	// check device log file
 	if devStats.file != nil && devStats.size > 0 && uint32(time.Since(devStats.starttime).Seconds()) > logmetrics.LogfileTimeoutSec {
-		trigMoveToGzip(fileinfo, devStats, "", moveChan, true)
+		trigMoveToGzip(devStats, "", moveChan, true)
 	}
 
 	// check app log files
@@ -1358,12 +1571,12 @@ func checkLogTimeExpire(fileinfo fileChanInfo, devStats *statsLogFile, moveChan 
 			if d.trigMove && appM.file != nil {
 				d.trigMove = false
 				domainUUID.Store(appuuid, d)
-				trigMoveToGzip(fileinfo, &appM, appuuid, moveChan, true)
+				trigMoveToGzip(&appM, appuuid, moveChan, true)
 				continue
 			}
 		}
 		if appM.file != nil && appM.size > 0 && uint32(time.Since(appM.starttime).Seconds()) > logmetrics.LogfileTimeoutSec {
-			trigMoveToGzip(fileinfo, &appM, appuuid, moveChan, true)
+			trigMoveToGzip(&appM, appuuid, moveChan, true)
 		}
 	}
 }
@@ -1371,6 +1584,7 @@ func checkLogTimeExpire(fileinfo fileChanInfo, devStats *statsLogFile, moveChan 
 // for dev, returns the meta data, and for app, return the appName
 func formatAndGetMeta(appuuid string) string {
 	if appuuid != "" {
+		// for App, just the appName info
 		val, found := domainUUID.Load(appuuid)
 		if found {
 			appD := val.(appDomain)
@@ -1387,25 +1601,13 @@ func formatAndGetMeta(appuuid string) string {
 }
 
 func getEveInfo() {
-	for {
-		devMetaData.curPart = agentlog.EveCurrentPartition()
-		if devMetaData.curPart == "Unknown" {
-			log.Errorln("currPart unknown")
-			time.Sleep(time.Second)
-			continue
-		} else {
-			break
-		}
+	for devMetaData.curPart = agentlog.EveCurrentPartition(); devMetaData.curPart == "Unknown"; devMetaData.curPart = agentlog.EveCurrentPartition() {
+		log.Errorln("currPart unknown")
+		time.Sleep(time.Second)
 	}
-	for {
-		devMetaData.imageVer = agentlog.EveVersion()
-		if devMetaData.imageVer == "Unknown" {
-			log.Errorln("imageVer unknown")
-			time.Sleep(time.Second)
-			continue
-		} else {
-			break
-		}
+	for devMetaData.imageVer = agentlog.EveVersion(); devMetaData.imageVer == "Unknown"; devMetaData.imageVer = agentlog.EveVersion() {
+		log.Errorln("imageVer unknown")
+		time.Sleep(time.Second)
 	}
 }
 
@@ -1493,13 +1695,6 @@ func savePanicFiles(panicbuf []byte) {
 	}
 
 	// save to /persist/newlog/panicStacks directory for maximum of 100 files
-	if _, err := os.Stat(panicFileDir); os.IsNotExist(err) {
-		if err := os.MkdirAll(panicFileDir, 0755); err != nil {
-			log.Error(err)
-			return
-		}
-	}
-
 	now := time.Now()
 	timeStr := strconv.Itoa(int(now.Unix()))
 	fileName := panicFileDir + "/pillar-panic-stack." + timeStr
@@ -1510,7 +1705,7 @@ func savePanicFiles(panicbuf []byte) {
 	}
 	defer pfile.Close()
 
-	_, err = pfile.WriteString(logmetaData + "\n")
+	_, err = pfile.WriteString(formatAndGetMeta("") + "\n")
 	if err != nil {
 		log.Error(err)
 	}
@@ -1652,6 +1847,8 @@ func getSyslogMsg(loggerChan chan inputEntry) {
 			continue
 		}
 
+		entry.sendToRemote = types.SyslogKernelLogLevelNum[entry.severity] <= atomic.LoadUint32(&syslogRemotePrio)
+
 		logmetrics.NumSyslogMessages++
 		logmetrics.DevMetrics.NumInputEvent++
 		log.Tracef("getSyslogMsg (%d) entry msg %s", logmetrics.NumSyslogMessages, entry.content)
@@ -1689,8 +1886,7 @@ func newMessage(pkt []byte, size int, sysfmt *regexp.Regexp) (inputEntry, error)
 		return entry, fmt.Errorf("can't parse: %d %s", len(res), string(pkt))
 	}
 
-	var msgPid int
-	var tagpid, msgTag, msgPriority string
+	var tagpid, msgTag, msgPriority, msgPid string
 	var msgRaw []byte
 
 	msgReceived := time.Now()
@@ -1708,8 +1904,7 @@ func newMessage(pkt []byte, size int, sysfmt *regexp.Regexp) (inputEntry, error)
 
 	// tagpid is either "tag[pid]" or "[pid]" or just "tag".
 	if n := strings.Index(tagpid, "["); n > 0 || strings.HasPrefix(tagpid, "[") && strings.HasSuffix(tagpid, "]") {
-		p, _ = strconv.ParseInt(tagpid[n+1:(len(tagpid)-1)], 10, 64)
-		msgPid = int(p)
+		msgPid = tagpid[n+1 : (len(tagpid) - 1)]
 		msgTag = tagpid[:n]
 	} else {
 		msgTag = tagpid
@@ -1740,7 +1935,7 @@ func newMessage(pkt []byte, size int, sysfmt *regexp.Regexp) (inputEntry, error)
 		source:    msgTag,
 		severity:  msgPriority,
 		content:   string(msgRaw),
-		pid:       strconv.Itoa(msgPid),
+		pid:       msgPid,
 		timestamp: msgReceived.Format(time.RFC3339Nano),
 	}
 
@@ -1755,11 +1950,16 @@ type MemlogLogEntry struct {
 	Msg    string `json:"msg"`
 }
 
-// ParseMemlogLogEntry returns MemlogLogEntry, ok
-func ParseMemlogLogEntry(line string) (MemlogLogEntry, bool) {
-	var output MemlogLogEntry
-	if err := json.Unmarshal([]byte(line), &output); err != nil {
-		return output, false
-	}
-	return output, true
+// Loginfo represents the standard log entry format for pillar agents
+type Loginfo struct {
+	Level         string `json:"level"`
+	Time          string `json:"time"` // RFC3339 with Nanoseconds
+	Msg           string `json:"msg"`
+	Pid           int    `json:"pid"`
+	Function      string `json:"func"`
+	Filename      string `json:"file"`
+	Source        string `json:"source"`
+	Appuuid       string `json:"appuuid"`
+	Containername string `json:"containername"`
+	Eventtime     string `json:"eventtime"`
 }

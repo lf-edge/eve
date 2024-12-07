@@ -94,6 +94,8 @@ const (
 	VolumeRefStatusLogType LogObjectType = "volume_ref_status"
 	// VolumeCreatePendingLogType:
 	VolumeCreatePendingLogType LogObjectType = "volume_create_pending"
+	// VolumeMgrStatusLogType:
+	VolumeMgrStatusLogType LogObjectType = "volumemgr_status"
 	// ServiceInitType:
 	ServiceInitLogType LogObjectType = "service_init"
 	// AppAndImageToHashLogType:

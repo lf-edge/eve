@@ -461,9 +461,13 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 		GzipFilesRemoved:    newlogMetrics.NumGZipFileRemoved,
 		TooManyRequest:      newlogMetrics.NumTooManyRequest,
 		SkipUploadAppFile:   newlogMetrics.NumSkipUploadAppFile,
+		TotalSizeLogs:       newlogMetrics.TotalSizeLogs,
 	}
 	if !newlogMetrics.FailSentStartTime.IsZero() {
 		nlm.FailSentStartTime, _ = ptypes.TimestampProto(newlogMetrics.FailSentStartTime)
+	}
+	if !newlogMetrics.OldestSavedDeviceLog.IsZero() {
+		nlm.OldestSavedDeviceLog = timestamppb.New(newlogMetrics.OldestSavedDeviceLog)
 	}
 
 	devM := &zmet.LogfileMetrics{
