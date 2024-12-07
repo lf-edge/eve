@@ -10,13 +10,59 @@ Network connectivity is enabled for an application by configuring one or more ne
 These consists of [virtual network interfaces](#virtual-network-interfaces), connecting
 application with [network instances](#network-instances), and directly assigned
 [physical NIC](#physical-network-ports) or [SR-IOV virtual functions](#sr-iov-vfs).
-The order of network adapter configurations inside `AppInstanceConfig` matters, because this
-is the same order at which these network adapters will be presented to the application by the
-Virtual Machine Manager (VMM).
-This order is reflected in the PCI addresses of the adapters. It is important to note that VIFs
-and direct assignments are configured in two separate lists. The VMM is configured to present
-VIFs first, adhering to their configured order, followed by direct assignments in their respective
-order. User cannot enforce direct assignment to appear before VIF.
+
+### Interface order
+
+To match an application's network interface with its logical representation from the configuration,
+using MAC addresses is recommended. For virtual network interfaces, users can configure MAC
+addresses for easier interface identification. Meanwhile, directly assigned NICs are passed
+through to applications with their original MAC addresses unchanged.
+
+However, since MAC addresses differ across a fleet of devices, having a predictable application
+network interface order provides a simpler and more scalable matching solution.
+But there are two main challenges related to application interface ordering, which make this method
+less recommended:
+
+#### 1. Interface Order Configuration Limitations
+
+Virtual and directly assigned NICs are configured in two separate lists within `AppInstanceConfig`:
+`Interfaces` (VIFs) and `Adapters` (direct assignments, including physical NICs and SR-IOV virtual
+functions). Until EVE version 13.8.0, it was not possible to configure the order between items
+of these two lists. Consequently, EVE would configure the VMM to present the VIFs first, followed
+by direct assignments. While directly assigned NICs adhered to the `Adapters` list order, virtual
+interfaces were ordered based on the lowest ACL rule ID assigned to each VIF. This caused undesired
+behavior when ACL rule IDs (assigned by the controller) did not align with the user-defined VIF order.
+Furthermore, VIFs without ACLs (rather useless interfaces since all traffic is blocked) were
+represented with an ACL ID of 0 and always placed first in the interface list.
+
+EVE version 13.8.0 addressed this by allowing users to define the desired position of each VIF and
+directly assigned network devices. This is propagated from controller to EVE via the `InterfaceOrder`
+fields with unique (integer) values across both the `Interfaces` and `Adapters` lists. To maintain
+backward compatibility and avoid changing interface order in existing deployments, the user-defined
+order is applied only if `VmConfig.EnforceNetworkInterfaceOrder` is set to true. Otherwise, EVE
+defaults to the legacy behavior described above.
+
+#### 2. Hypervisor Limitations
+
+The second, more fundamental challenge lies in the hypervisor's limited ability to control the order
+of network interfaces inside VM applications. The actual interface order depends on the application OS,
+and EVE cannot guarantee the desired outcome.
+
+For the KVM hypervisor, EVE attempts to enforce legacy or user-defined orders via the virtualized
+PCI topology. Devices expected to appear earlier in the interface list are assigned lower PCI
+addresses. This generally works for Linux-based systems, especially those using
+the [systemd's naming scheme](https://www.freedesktop.org/software/systemd/man/latest/systemd.net-naming-scheme.html).
+However, some limitations persist:
+
+* Devices of different types (e.g., Wi-Fi adapters vs. Ethernet NICs) often receive distinct name
+  prefixes from the application OS, making reordering impossible.
+* Multifunction PCI devices must have all functions connected to the same PCI bridge and cannot be
+  interleaved with other devices. If a user places a VIF or another NIC between functions
+  of a multifunction device (with `EnforceNetworkInterfaceOrder` enabled), EVE will return an error,
+  and the application will not be deployed.
+
+For Xen and KubeVirt hypervisors, application interface order is undefined, and
+`EnforceNetworkInterfaceOrder` is not yet supported.
 
 ### Physical network ports
 

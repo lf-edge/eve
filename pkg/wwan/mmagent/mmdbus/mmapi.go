@@ -31,6 +31,7 @@ const (
 	ModemMethodSetPowerState       = ModemInterface + ".SetPowerState"
 	ModemMethodSetPrimarySimSlot   = ModemInterface + ".SetPrimarySimSlot"
 	ModemMethodSetCurrentModes     = ModemInterface + ".SetCurrentModes"
+	ModemMethodDeleteBearer        = ModemInterface + ".DeleteBearer"
 	ModemPropertyModel             = ModemInterface + ".Model"
 	ModemPropertyRevision          = ModemInterface + ".Revision"
 	ModemPropertyManufacturer      = ModemInterface + ".Manufacturer"

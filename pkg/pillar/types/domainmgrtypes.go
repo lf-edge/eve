@@ -261,6 +261,8 @@ type VmConfig struct {
 	CPUsPinned         bool
 	VMMMaxMem          int // in kbytes
 	EnableVncShimVM    bool
+	// Enables enforcement of user-defined ordering for network interfaces.
+	EnforceNetworkInterfaceOrder bool
 }
 
 // VmMode is the type for the virtualization mode
@@ -425,6 +427,10 @@ type VifConfig struct {
 	MTU    uint16
 	// PodVif is only valid in the Kubernetes mode.
 	PodVif PodVIF
+	// Interface order across both VIFs and directly attached network devices.
+	// Note that we cannot use attribute name "IntfOrder" here, otherwise it would
+	// overlap with IntfOrder from AppNetAdapterConfig inside AppNetAdapterStatus.
+	VifOrder uint32
 }
 
 // PodVIF : configuration parameters for VIF connecting Kubernetes pod with the host.
