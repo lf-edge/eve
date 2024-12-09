@@ -220,6 +220,10 @@ const (
 	// ports for image downloads.
 	DownloadMaxPortCost GlobalSettingKey = "network.download.max.cost"
 
+	// BlobDownloadMaxRetries global setting key
+	// how many times EVE will retry to download a blob if its checksum is not verified
+	BlobDownloadMaxRetries GlobalSettingKey = "blob.download.max.retries"
+
 	// Bool Items
 	// UsbAccess global setting key
 	UsbAccess GlobalSettingKey = "debug.enable.usb"
@@ -959,6 +963,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	// LogRemainToSendMBytes - Default is 2 Gbytes, minimum is 10 Mbytes
 	configItemSpecMap.AddIntItem(LogRemainToSendMBytes, 2048, 10, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(DownloadMaxPortCost, 0, 0, 255)
+	configItemSpecMap.AddIntItem(BlobDownloadMaxRetries, 5, 1, 10)
 
 	// Goroutine Leak Detection section
 	configItemSpecMap.AddIntItem(GoroutineLeakDetectionThreshold, 5000, 1, 0xFFFFFFFF)
