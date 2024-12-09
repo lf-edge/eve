@@ -395,6 +395,7 @@ const (
 	MaintenanceModeReasonUserRequested
 	MaintenanceModeReasonVaultLockedUp
 	MaintenanceModeReasonNoDiskSpace
+	MaintenanceModeReasonTpmFailure
 )
 
 // String returns the verbose equivalent of MaintenanceModeReason code
@@ -408,6 +409,8 @@ func (mmr MaintenanceModeReason) String() string {
 		return "MaintenanceModeReasonVaultLockedUp"
 	case MaintenanceModeReasonNoDiskSpace:
 		return "MaintenanceModeReasonNoDiskSpace"
+	case MaintenanceModeReasonTpmFailure:
+		return "MaintenanceModeReasonTpmFailure"
 	default:
 		return fmt.Sprintf("Unknown MaintenanceModeReason %d", mmr)
 	}

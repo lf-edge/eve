@@ -791,6 +791,13 @@ func handleEncryptedKeyFromDeviceImpl(ctxArg interface{}, key string,
 	log.Noticef("handleEncryptedKeyFromDeviceImpl len %d",
 		len(vaultKey.EncryptedVaultKey))
 
+	if vaultKey.TpmError != nil {
+		ctx.maintenanceMode = true
+		ctx.maintModeReason = types.MaintenanceModeReasonTpmFailure
+		log.Errorf("setting maintenance mode due to TPM failurec: %v", vaultKey.TpmError)
+		return
+	}
+
 	if ctx.attestCtx == nil {
 		log.Fatalf("[ATTEST] Uninitialized access to attestCtx")
 	}
