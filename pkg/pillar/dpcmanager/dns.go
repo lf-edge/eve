@@ -66,7 +66,8 @@ func (m *DpcManager) updateDNS() {
 		// Start with any statically assigned values; update below
 		m.deviceNetStatus.Ports[ix].DomainName = port.DomainName
 		m.deviceNetStatus.Ports[ix].DNSServers = port.DNSServers
-		m.deviceNetStatus.Ports[ix].NtpServer = port.NTPServer
+		m.deviceNetStatus.Ports[ix].ConfiguredNtpServers = port.NTPServers
+		m.deviceNetStatus.Ports[ix].IgnoreDhcpNtpServers = port.IgnoreDhcpNtpServers
 		// Prefer errors recorded by DPC verification.
 		// New errors are recorded from this function only when there is none yet
 		// (HasError() == false).
@@ -269,7 +270,7 @@ func (m *DpcManager) getDHCPInfo(port *types.NetworkPortStatus) error {
 	if dhcpInfo.Subnet != nil {
 		port.Subnet = *dhcpInfo.Subnet
 	}
-	port.NtpServers = dhcpInfo.NtpServers
+	port.DhcpNtpServers = dhcpInfo.NtpServers
 	return nil
 }
 

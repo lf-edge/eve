@@ -297,8 +297,8 @@ func emulateMemoryPressureStats() (cancel context.CancelFunc, err error) {
 	}
 
 	fakePSIFileName := fakePSIFileHandler.Name()
-	originalPressureMemoryFile := agentlog.PressureMemoryFile
-	agentlog.PressureMemoryFile = fakePSIFileName
+	originalPressureMemoryFile := agentlog.PressureMemoryFile()
+	agentlog.UpdatePressureMemoryFile(fakePSIFileName)
 
 	// Start a ticker to write a new line to the file every 0.5 seconds
 	ticker := time.NewTicker(500 * time.Millisecond)
@@ -342,7 +342,7 @@ func emulateMemoryPressureStats() (cancel context.CancelFunc, err error) {
 				agentlog.PsiMutex.Lock()
 				fakePSIFileHandler.Close()
 				os.Remove(fakePSIFileName)
-				agentlog.PressureMemoryFile = originalPressureMemoryFile
+				agentlog.UpdatePressureMemoryFile(originalPressureMemoryFile)
 				agentlog.PsiMutex.Unlock()
 				// We destroy this producer, so release the mutex
 				psiProducerMutex.Unlock()
@@ -371,8 +371,8 @@ func createFakePSIStatsFile() (cleanupFunc context.CancelFunc, err error) {
 	}
 
 	fakePSIFileName := fakePSIFileHandler.Name()
-	originalPressureMemoryFile := agentlog.PressureMemoryFile
-	agentlog.PressureMemoryFile = fakePSIFileName
+	originalPressureMemoryFile := agentlog.PressureMemoryFile()
+	agentlog.UpdatePressureMemoryFile(fakePSIFileName)
 
 	// Write some content to the file
 	agentlog.PsiMutex.Lock()
@@ -389,7 +389,7 @@ func createFakePSIStatsFile() (cleanupFunc context.CancelFunc, err error) {
 		agentlog.PsiMutex.Lock()
 		fakePSIFileHandler.Close()
 		os.Remove(fakePSIFileName)
-		agentlog.PressureMemoryFile = originalPressureMemoryFile
+		agentlog.UpdatePressureMemoryFile(originalPressureMemoryFile)
 		agentlog.PsiMutex.Unlock()
 		// We destroy this producer, so release the mutex
 		psiProducerMutex.Unlock()

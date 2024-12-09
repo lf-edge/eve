@@ -51,8 +51,25 @@ const (
 var (
 	// PressureMemoryFile is the memory pressure file. It is a variable, not a constant, to allow
 	// changing it in tests to mock the file.
-	PressureMemoryFile = "/proc/pressure/memory"
+	pressureMemoryFile     = "/proc/pressure/memory"
+	pressureMemoryFileLock sync.RWMutex
 )
+
+// PressureMemoryFile returns the path to the memory pressure file in /proc
+func PressureMemoryFile() string {
+	pressureMemoryFileLock.RLock()
+	path := pressureMemoryFile
+	pressureMemoryFileLock.RUnlock()
+
+	return path
+}
+
+// UpdatePressureMemoryFile sets the path to the memory pressure file (mostly used for tests)
+func UpdatePressureMemoryFile(newpath string) {
+	pressureMemoryFileLock.Lock()
+	pressureMemoryFile = newpath
+	pressureMemoryFileLock.Unlock()
+}
 
 // MemAllocationSite is the return value of GetMemProfile
 type MemAllocationSite struct {
@@ -134,7 +151,7 @@ func GetMemAllocationSites(reportZeroInUse bool) (int, []MemAllocationSite) {
 var PsiMutex sync.Mutex
 
 func isPSISupported() bool {
-	_, err := os.Stat(PressureMemoryFile)
+	_, err := os.Stat(PressureMemoryFile())
 	if err != nil {
 		fmt.Println("PSI is not supported. Be sure to enable CONFIG_PSI=y in your kernel configuration.")
 		return false
@@ -148,7 +165,7 @@ func collectMemoryPSI() (*PressureStallInfo, error) {
 	if !isPSISupported() {
 		return nil, fmt.Errorf("PSI is not supported")
 	}
-	procFile, err := os.Open(PressureMemoryFile)
+	procFile, err := os.Open(PressureMemoryFile())
 	if err != nil {
 		return nil, fmt.Errorf("open: %v", err)
 	}
