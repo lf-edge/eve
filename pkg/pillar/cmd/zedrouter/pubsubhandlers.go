@@ -547,6 +547,19 @@ func (z *zedrouter) handleAppNetworkModify(ctxArg interface{}, key string,
 	configArg interface{}, oldConfigArg interface{}) {
 	newConfig := configArg.(types.AppNetworkConfig)
 	oldConfig := oldConfigArg.(types.AppNetworkConfig)
+
+	// re-activate network instances of edge apps in order to resolve NTP servers again
+	for _, appNetConfig := range newConfig.AppNetAdapterList {
+		appNetStatus := z.lookupNetworkInstanceStatus(appNetConfig.Network.String())
+		if appNetStatus == nil {
+			continue
+		}
+		if appNetStatus.Activated {
+			appNetConfig := z.lookupNetworkInstanceConfig(appNetStatus.Key())
+			z.doUpdateActivatedNetworkInstance(*appNetConfig, appNetStatus)
+		}
+	}
+
 	status := z.lookupAppNetworkStatus(key)
 	z.log.Functionf("handleAppNetworkModify(%v) for %s",
 		newConfig.UUIDandVersion, newConfig.DisplayName)
