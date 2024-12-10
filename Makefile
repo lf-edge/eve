@@ -569,7 +569,7 @@ run-installer-net: $(BIOS_IMG) $(IPXE_IMG) $(DEVICETREE_DTB) $(SWTPM) GETTY
 # run MUST NOT change the current dir; it depends on the output being correct from a previous build
 run-live run: $(BIOS_IMG) $(DEVICETREE_DTB) $(SWTPM) GETTY
 	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive file=$(CURRENT_IMG),format=$(IMG_FORMAT),id=uefi-disk
-run-live-gui run: $(BIOS_IMG) $(DEVICETREE_DTB) $(SWTPM) GETTY
+run-live-gui: $(BIOS_IMG) $(DEVICETREE_DTB) $(SWTPM) GETTY
 	$(QEMU_SYSTEM) $(QEMU_OPTS_GUI) -drive file=$(CURRENT_IMG),format=$(IMG_FORMAT),id=uefi-disk
 
 run-target: $(BIOS_IMG) $(DEVICETREE_DTB) $(SWTPM) GETTY
