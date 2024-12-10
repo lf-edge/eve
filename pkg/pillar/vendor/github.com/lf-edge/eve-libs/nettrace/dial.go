@@ -106,7 +106,18 @@ func newTracedDialer(tracer tracerWithDial, log Logger, sourceIP net.IP,
 	}
 }
 
+// dial implement DialContext method of the net.Dialer interface.
 func (td *tracedDialer) dial(ctx context.Context, network, address string) (net.Conn, error) {
+	// Note that if the overall timeout to the http.Client is reached, this dial() method
+	// may simply be abandoned. You cannot expect any goroutine or defer to be reached.
+	// This matters in that this routine expects to set the following parameters:
+	// - dialTrace.DialTrace.CtxCloseAt
+	// - dialTrace.DialEndAt
+	// - dialTrace.ctxClosed
+	//
+	// Anything that expects those to be set, should *not* expect them to be set
+	// if http.Client times out.
+
 	// Prepare the original Dialer from the net package.
 	var sourceAddr net.Addr
 	if td.sourceIP != nil {
@@ -146,6 +157,10 @@ func (td *tracedDialer) dial(ctx context.Context, network, address string) (net.
 		dial.SourceIP = td.sourceIP.String()
 	}
 	td.tracer.publishTrace(dial)
+
+	// if the http.Client.Timeout is reached, this will *not* return an error.
+	// It simply will be abandoned. Listening for a ctx.Done() or setting a defer()
+	// will not help either.
 	conn, err := netDialer.DialContext(ctx, network, address)
 	resolver.close()
 	dial.justBegan = false
