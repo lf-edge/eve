@@ -75,6 +75,23 @@ func addNoDuplicatePCI(list []pciDevice, tap pciDevice) []pciDevice {
 type pciDevice struct {
 	pciLong string
 	ioType  types.IoType
+	// netIntfOrder is only applied to network devices when EnforceNetworkInterfaceOrder
+	// is enabled.
+	netIntfOrder uint32
+
+	// pciBridgeID and pciDeviceID are set by pciAddressAllocator.
+
+	// PCI bridge is only used for multifunction PCI devices.
+	// In that case pciBridgeID is address of the bridge on the root bus, while
+	// pciDeviceID is device address inside the secondary bus provided by the bridge.
+	// For single-function PCI devices, bridge is unused, pciBridgeID is unset
+	// and pciDeviceID points to device address on the root bus.
+	pciBridgeID int
+	pciDeviceID int
+}
+
+func (d pciDevice) sameDevice(d2 pciDevice) bool {
+	return d.ioType == d2.ioType && d.pciLong == d2.pciLong
 }
 
 // check if the PCI device is a VGA device
@@ -100,6 +117,16 @@ func (d pciDevice) devid() (string, error) {
 		return "", err
 	}
 	return strings.TrimSpace(strings.TrimSuffix(string(devID), "\n")), nil
+}
+
+// Return PCI long address without the function suffix.
+func (d pciDevice) pciLongWOFunction() (string, error) {
+	pciLongSplit := strings.Split(d.pciLong, ".")
+	if len(pciLongSplit) == 0 {
+		return "", fmt.Errorf("could not split %s", d.pciLong)
+	}
+	pciWithoutFunction := strings.Join(pciLongSplit[0:len(pciLongSplit)-1], ".")
+	return pciWithoutFunction, nil
 }
 
 // isBridge checks if the given PCI device is a bridge.

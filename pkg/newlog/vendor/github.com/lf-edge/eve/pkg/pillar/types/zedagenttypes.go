@@ -394,6 +394,7 @@ const (
 	MaintenanceModeReasonNone MaintenanceModeReason = iota
 	MaintenanceModeReasonUserRequested
 	MaintenanceModeReasonVaultLockedUp
+	MaintenanceModeReasonNoDiskSpace
 )
 
 // String returns the verbose equivalent of MaintenanceModeReason code
@@ -405,6 +406,8 @@ func (mmr MaintenanceModeReason) String() string {
 		return "MaintenanceModeReasonUserRequested"
 	case MaintenanceModeReasonVaultLockedUp:
 		return "MaintenanceModeReasonVaultLockedUp"
+	case MaintenanceModeReasonNoDiskSpace:
+		return "MaintenanceModeReasonNoDiskSpace"
 	default:
 		return fmt.Sprintf("Unknown MaintenanceModeReason %d", mmr)
 	}

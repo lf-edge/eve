@@ -163,6 +163,12 @@ func (ctx xenContext) CreateDomConfig(domainName string,
 	xenGlobal := ""
 	uuidStr := fmt.Sprintf("appuuid=%s ", config.UUIDandVersion.UUID)
 
+	if config.EnforceNetworkInterfaceOrder {
+		logrus.Errorf("Enforcing user-defined network interface order is not supported "+
+			"with the Xen hypervisor. Ignoring EnforceNetworkInterfaceOrder flag "+
+			"for app %s", config.DisplayName)
+	}
+
 	switch config.VirtualizationMode {
 	case types.PV:
 		xenType = "pv"

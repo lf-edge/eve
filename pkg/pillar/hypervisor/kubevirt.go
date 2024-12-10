@@ -191,6 +191,12 @@ func (ctx kubevirtContext) Setup(status types.DomainStatus, config types.DomainC
 
 	logrus.Debugf("Setup called for Domain: %s, vmmode %v", domainName, config.VirtualizationMode)
 
+	if config.EnforceNetworkInterfaceOrder {
+		logrus.Errorf("Enforcing user-defined network interface order is not supported "+
+			"with the KubeVirt hypervisor. Ignoring EnforceNetworkInterfaceOrder flag "+
+			"for app %s", config.DisplayName)
+	}
+
 	if config.VirtualizationMode == types.NOHYPER {
 		if err := ctx.CreatePodConfig(domainName, config, status, diskStatusList, aa, file); err != nil {
 			return logError("failed to build kube pod config: %v", err)

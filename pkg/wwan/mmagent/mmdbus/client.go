@@ -669,6 +669,7 @@ func (c *Client) getModemStatus(modemObj dbus.BusObject) (
 	_ = getDBusProperty(c, modemObj, ModemPropertyBearers, &bearers)
 	for _, bearerPath := range bearers {
 		if !bearerPath.IsValid() {
+			c.log.Warnf("Bearer with an invalid dbus path: %s, skipping", bearerPath)
 			continue
 		}
 		bearerPaths = append(bearerPaths, string(bearerPath))
@@ -905,6 +906,7 @@ func (c *Client) getModemMetrics(
 	_ = getDBusProperty(c, modemObj, ModemPropertyBearers, &bearers)
 	for _, bearerPath := range bearers {
 		if !bearerPath.IsValid() {
+			c.log.Warnf("Bearer with an invalid dbus path: %s, skipping", bearerPath)
 			continue
 		}
 		bearerObj := c.conn.Object(MMInterface, bearerPath)
@@ -1208,6 +1210,8 @@ func (c *Client) Connect(
 			primarySIM = uint32(args.SIMSlot)
 			err := c.callDBusMethod(modemObj, ModemMethodSetPrimarySimSlot, nil, primarySIM)
 			if err != nil {
+				err = fmt.Errorf("failed to set SIM slot %d as primary for modem %s: %v",
+					primarySIM, modemPath, err)
 				return types.WwanIPSettings{}, err
 			}
 			err = c.waitForModemState(
@@ -1223,7 +1227,18 @@ func (c *Client) Connect(
 	// TODO: Not sure how to apply PreferredPLMNs with ModemManager.
 	err := c.setPreferredRATs(modemObj, args.PreferredRATs)
 	if err != nil {
+		err = fmt.Errorf("failed to set preferred RATs %v for modem %s: %v",
+			args.PreferredRATs, modemPath, err)
 		return types.WwanIPSettings{}, err
+	}
+	// Make sure that there are no previously created bearers still hanging
+	// around. Otherwise, we may get "interface-in-use-config-match" error
+	// from ModemManager.
+	err = c.deleteBearers(modemObj)
+	if err != nil {
+		// Just log as warning and continue with the connection attempt.
+		c.log.Warn(err)
+		err = nil
 	}
 	// Prepare connection settings.
 	connProps := make(map[string]interface{})
@@ -1252,42 +1267,63 @@ func (c *Client) Connect(
 	if err == nil {
 		return ipSettings, nil
 	}
-	origErr := err
-	// Try to fix failing connection attempt.
-	// First check if modem can even register.
-	changed, err := c.reconfigureEpsBearerIfNotRegistered(modemObj, connProps)
-	if changed && err == nil {
-		// Retry connection attempt with the same parameters applied also for the initial
-		// EPS bearer.
-		ipSettings, err = c.runSimpleConnect(modemObj, connProps)
-		if err == nil {
-			return ipSettings, nil
-		}
+	origErr := fmt.Errorf("failed to connect modem %s to APN %s: %v",
+		modemPath, args.APN, err)
+	// TODO: Allow the user to configure IP-type and PDP context for the initial EPS bearer.
+	// For now, we will be retrying connection attempts using all three IP types:
+	// ipv4, ipv6, ipv4v6. However, we will not be modifying the PDP context parameters
+	// for the initial EPS bearer until user is able to configure them.
+	//
+	// Some background for understanding: LTE connection consists of two IP bearers,
+	// the initial EPS bearer and the default EPS bearer. Device must first
+	// establish the initial bearer (which shows as transition from the "searching" to
+	// "registered" state) and then it connects to a default bearer (transition from
+	// "registered" to "connected"). Both bearers require PDP context settings (APN,
+	// ip-type, potentially username/password, etc.).
+	// Settings for the initial bearer are typically provided by the SIM card while
+	// settings for the default bearer are user-configured.
+	//
+	// It is not necessarily the case that the APNs for the initial and default bearers
+	// are the same. We used to make that assumption but this has led to cases where modem
+	// was failing registration because the APN for the initial bearer was wrong. It is
+	// better to let the SIM card provide the PDP context setting for the initial EPS bearer.
+	// Furthermore, once these settings are changed, there is no straightforward method to
+	// revert back to the SIM-provided configuration; for more details, see the discussion here:
+	// https://gitlab.freedesktop.org/NetworkManager/NetworkManager/-/issues/1490#note_2628804
+	//
+	// Users may only need to override SIM-provided settings in rather rare cases: either when
+	// the SIM card has incorrect configuration (we have seen this only once) or when the initial
+	// EPS bearer requires username/password authentication (also uncommon). Despite the rarity
+	// of these cases, these settings should be user-configurable.
+	// Please note, that the same enhancement was recently implemented in NetworkManager
+	// (used by Ubuntu and other major Linux distributions):
+	// https://gitlab.freedesktop.org/NetworkManager/NetworkManager/-/merge_requests/1915
+	err = c.deleteBearers(modemObj)
+	if err != nil {
+		// Just log as warning and continue with the next connection attempt for different
+		// ip-type.
+		c.log.Warn(err)
+		err = nil
 	}
-	// Next try IPv4 and IPv6 dual-stack.
+	// Try with dual-stack ip-type instead of IPv4 only.
 	connProps["ip-type"] = uint32(BearerIPFamilyIPv4v6)
-	_, err = c.reconfigureEpsBearerIfNotRegistered(modemObj, connProps)
+	ipSettings, err = c.runSimpleConnect(modemObj, connProps)
 	if err == nil {
-		ipSettings, err = c.runSimpleConnect(modemObj, connProps)
-		if err == nil {
-			return ipSettings, nil
-		}
+		return ipSettings, nil
+	}
+	err = c.deleteBearers(modemObj)
+	if err != nil {
+		// Just log as warning and continue with the next connection attempt for different
+		// ip-type.
+		c.log.Warn(err)
+		err = nil
 	}
 	// Make the final attempt with IPv6 only.
-	// This should be covered by IPv4v6 (network may return IPv6-only config
-	// in that case), but we make this attempt still just in case.
 	connProps["ip-type"] = uint32(BearerIPFamilyIPv6)
-	_, err = c.reconfigureEpsBearerIfNotRegistered(modemObj, connProps)
+	ipSettings, err = c.runSimpleConnect(modemObj, connProps)
 	if err == nil {
-		ipSettings, err = c.runSimpleConnect(modemObj, connProps)
-		if err == nil {
-			return ipSettings, nil
-		}
+		return ipSettings, nil
 	}
-	// Revert back the modem profile back to the preferred IPv4-only mode.
-	connProps["ip-type"] = uint32(BearerIPFamilyIPv4)
-	_, _ = c.reconfigureEpsBearerIfNotRegistered(modemObj, connProps)
-	// Return error from the first connection attempt (with IPv4-only).
 	return ipSettings, origErr
 }
 
@@ -1346,33 +1382,6 @@ func (c *Client) runSimpleConnect(modemObj dbus.BusObject,
 		ipSettings, err = c.getBearerIPSettings(bearerObj)
 	}
 	return ipSettings, err
-}
-
-func (c *Client) reconfigureEpsBearerIfNotRegistered(modemObj dbus.BusObject,
-	newSettings map[string]interface{}) (changedConfig bool, err error) {
-	var modemState int32
-	_ = getDBusProperty(c, modemObj, ModemPropertyState, &modemState)
-	if modemState >= ModemStateRegistered {
-		return false, nil
-	}
-	var currentSettings map[string]dbus.Variant
-	_ = getDBusProperty(c, modemObj, Modem3GPPPropertyInitialEpsBearer, &currentSettings)
-	maskedPasswd := interface{}("***")
-	maskedVariantPasswd := dbus.MakeVariant(maskedPasswd)
-	c.log.Warnf("Modem %s is failing to register, "+
-		"trying to apply settings %+v for the initial EPS bearer (previously: %+v)",
-		modemObj.Path(), maskPassword(newSettings, maskedPasswd),
-		maskPassword(currentSettings, maskedVariantPasswd))
-	err = c.callDBusMethod(modemObj, Modem3GPPMethodSetInitialEpsBearer, nil, newSettings)
-	if err != nil {
-		err = fmt.Errorf(
-			"failed to change initial EPS bearer settings for modem %s: %w",
-			modemObj.Path(), err)
-		c.log.Error(err)
-		return false, err
-	}
-	return true, c.waitForModemState(
-		modemObj, ModemStateRegistered, changeInitEPSBearerTimeout)
 }
 
 // maskPassword creates a copy of the original map with the "password" key's value masked
@@ -1535,8 +1544,33 @@ func (c *Client) Disconnect(modemPath string) error {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 	modemObj := c.conn.Object(MMInterface, dbus.ObjectPath(modemPath))
-	anyBearer := dbus.ObjectPath("/")
-	return c.callDBusMethod(modemObj, SimpleMethodDisconnect, nil, anyBearer)
+	return c.deleteBearers(modemObj)
+}
+
+// Delete all bearers which are associated with the given modem, except for
+// the initial EPS bearer, which stays connected.
+// This is used to disconnect the modem and to clean any bearers hanging
+// after a previously failed connection request.
+func (c *Client) deleteBearers(modemObj dbus.BusObject) error {
+	var bearers []dbus.ObjectPath
+	// This list does not include the initial EPS bearer details.
+	err := getDBusProperty(c, modemObj, ModemPropertyBearers, &bearers)
+	if err != nil {
+		return err
+	}
+	for _, bearerPath := range bearers {
+		if !bearerPath.IsValid() {
+			c.log.Warnf("Bearer with an invalid dbus path: %s, skipping", bearerPath)
+			continue
+		}
+		// If the bearer is currently active and providing packet data server, it will be
+		// disconnected and that packet data service will terminate.
+		err = c.callDBusMethod(modemObj, ModemMethodDeleteBearer, nil, bearerPath)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // ScanVisibleProviders runs a fairly long operation (takes around 1 minute!)

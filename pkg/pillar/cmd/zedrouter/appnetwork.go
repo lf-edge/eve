@@ -102,6 +102,9 @@ func (z *zedrouter) prepareConfigForVIFs(config types.AppNetworkConfig,
 		}
 		adapterStatus.HostName = config.Key()
 		adapterStatus.MTU = netInstStatus.MTU
+		// Propagate IntfOrder from adapter down to VifConfig, which zedmanager then passes
+		// to domainmgr.
+		adapterStatus.VifConfig.VifOrder = adapterStatus.IntfOrder
 		guestIP, err := z.lookupOrAllocateIPv4ForVIF(
 			netInstStatus, *adapterStatus, status.UUIDandVersion.UUID)
 		if err != nil {
