@@ -1,0 +1,177 @@
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"brctl: bridge bn1: Resource busy","msgid":1,"timestamp":{"seconds":1731935021,"nanos":804723000}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.588334][    T1] tpm_tis MSFT0101:00: 2.0 TPM (device-id 0x1, rev-id 1)","msgid":2,"timestamp":{"seconds":1731935028,"nanos":398144495}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.601616][    T1] brd: module loaded","msgid":3,"timestamp":{"seconds":1731935028,"nanos":411281420}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.602573][    T1] loop: module loaded","msgid":4,"timestamp":{"seconds":1731935028,"nanos":412189812}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.606079][    T1] lpc_ich 0000:00:1f.0: I/O space for GPIO uninitialized","msgid":5,"timestamp":{"seconds":1731935028,"nanos":415683674}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.606336][    T1] Microchip SmartPQI Driver (v2.1.18-045)","msgid":6,"timestamp":{"seconds":1731935028,"nanos":416036761}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.606510][    T1] megasas: 07.719.03.00-rc1","msgid":7,"timestamp":{"seconds":1731935028,"nanos":416041191}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.606598][    T1] mpt3sas version 43.100.00.00 loaded","msgid":8,"timestamp":{"seconds":1731935028,"nanos":416068378}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.606767][    T1] VMware PVSCSI driver - version 1.0.7.0-k","msgid":9,"timestamp":{"seconds":1731935028,"nanos":416376091}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.606941][    T1] hv_vmbus: registering driver hv_storvsc","msgid":10,"timestamp":{"seconds":1731935028,"nanos":416378754}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.607257][    T1] ACPI: \\_SB_.GSIA: Enabled at IRQ 16","msgid":11,"timestamp":{"seconds":1731935028,"nanos":416715353}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.608499][    T1] ahci 0000:00:1f.2: AHCI 0001.0000 32 slots 6 ports 1.5 Gbps 0x3f impl SATA mode","msgid":12,"timestamp":{"seconds":1731935028,"nanos":418012212}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.608715][    T1] ahci 0000:00:1f.2: flags: 64bit ncq only ","msgid":13,"timestamp":{"seconds":1731935028,"nanos":418240153}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.610069][    T1] scsi host0: ahci","msgid":14,"timestamp":{"seconds":1731935028,"nanos":419579227}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.610242][    T1] scsi host1: ahci","msgid":15,"timestamp":{"seconds":1731935028,"nanos":419769854}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.610425][    T1] scsi host2: ahci","msgid":16,"timestamp":{"seconds":1731935028,"nanos":419919793}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.610575][    T1] scsi host3: ahci","msgid":17,"timestamp":{"seconds":1731935028,"nanos":420102024}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.610726][    T1] scsi host4: ahci","msgid":18,"timestamp":{"seconds":1731935028,"nanos":420273649}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.610873][    T1] scsi host5: ahci","msgid":19,"timestamp":{"seconds":1731935028,"nanos":420437484}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.611390][    T1] ata1: SATA max UDMA/133 abar m4096@0xfe405000 port 0xfe405100 irq 29","msgid":20,"timestamp":{"seconds":1731935028,"nanos":420897760}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.611578][    T1] ata2: SATA max UDMA/133 abar m4096@0xfe405000 port 0xfe405180 irq 29","msgid":21,"timestamp":{"seconds":1731935028,"nanos":421088557}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.611767][    T1] ata3: SATA max UDMA/133 abar m4096@0xfe405000 port 0xfe405200 irq 29","msgid":22,"timestamp":{"seconds":1731935028,"nanos":421260644}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.611916][    T1] ata4: SATA max UDMA/133 abar m4096@0xfe405000 port 0xfe405280 irq 29","msgid":23,"timestamp":{"seconds":1731935028,"nanos":421461225}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.612082][    T1] ata5: SATA max UDMA/133 abar m4096@0xfe405000 port 0xfe405300 irq 29","msgid":24,"timestamp":{"seconds":1731935028,"nanos":421601650}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.612235][    T1] ata6: SATA max UDMA/133 abar m4096@0xfe405000 port 0xfe405380 irq 29","msgid":25,"timestamp":{"seconds":1731935028,"nanos":421754304}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.612877][    T1] Rounding down aligned max_sectors from 4294967295 to 4294967288","msgid":26,"timestamp":{"seconds":1731935028,"nanos":422384929}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.613212][    T1] db_root: cannot open: /etc/target","msgid":27,"timestamp":{"seconds":1731935028,"nanos":422672826}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.613375][    T1] tun: Universal TUN/TAP device driver, 1.6","msgid":28,"timestamp":{"seconds":1731935028,"nanos":422814600}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.615742][    T1] vcan: Virtual CAN interface driver","msgid":29,"timestamp":{"seconds":1731935028,"nanos":425209969}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.615874][    T1] CAN device driver interface","msgid":30,"timestamp":{"seconds":1731935028,"nanos":425499876}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.615997][    T1] sja1000 CAN netdevice driver","msgid":31,"timestamp":{"seconds":1731935028,"nanos":425502952}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.616088][    T1] VMware vmxnet3 virtual NIC driver - version 1.7.0.0-k-NAPI","msgid":32,"timestamp":{"seconds":1731935028,"nanos":426014186}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.616268][    T1] hv_vmbus: registering driver hv_netvsc","msgid":33,"timestamp":{"seconds":1731935028,"nanos":426018154}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.616396][    T1] Fusion MPT base driver 3.04.20","msgid":34,"timestamp":{"seconds":1731935028,"nanos":426035712}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.616486][    T1] Copyright (c) 1999-2008 LSI Corporation","msgid":35,"timestamp":{"seconds":1731935028,"nanos":426036127}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.616573][    T1] Fusion MPT SPI Host driver 3.04.20","msgid":36,"timestamp":{"seconds":1731935028,"nanos":426042143}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.616695][    T1] VFIO - User Level meta-driver version: 0.3","msgid":37,"timestamp":{"seconds":1731935028,"nanos":426346982}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.617906][    T1] xhci_hcd 0000:01:00.0: xHCI Host Controller","msgid":38,"timestamp":{"seconds":1731935028,"nanos":428154393}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.618928][    T1] xhci_hcd 0000:01:00.0: new USB bus registered, assigned bus number 1","msgid":39,"timestamp":{"seconds":1731935028,"nanos":428505344}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.619701][    T1] xhci_hcd 0000:01:00.0: hcc params 0x00087001 hci version 0x100 quirks 0x0000000000000010","msgid":40,"timestamp":{"seconds":1731935028,"nanos":429281853}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.620911][    T1] xhci_hcd 0000:01:00.0: xHCI Host Controller","msgid":41,"timestamp":{"seconds":1731935028,"nanos":430377587}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.621054][    T1] xhci_hcd 0000:01:00.0: new USB bus registered, assigned bus number 2","msgid":42,"timestamp":{"seconds":1731935028,"nanos":430533182}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.621208][    T1] xhci_hcd 0000:01:00.0: Host supports USB 3.0 SuperSpeed","msgid":43,"timestamp":{"seconds":1731935028,"nanos":430669343}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.621519][    T1] hub 1-0:1.0: USB hub found","msgid":44,"timestamp":{"seconds":1731935028,"nanos":430932988}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.621798][    T1] hub 1-0:1.0: 15 ports detected","msgid":45,"timestamp":{"seconds":1731935028,"nanos":431207072}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.622648][    T1] usb usb2: We don't know the algorithms for LPM for this host, disabling LPM.","msgid":46,"timestamp":{"seconds":1731935028,"nanos":432173621}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.622912][    T1] hub 2-0:1.0: USB hub found","msgid":47,"timestamp":{"seconds":1731935028,"nanos":432329775}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.623154][    T1] hub 2-0:1.0: 15 ports detected","msgid":48,"timestamp":{"seconds":1731935028,"nanos":432572986}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.624031][    T1] usbcore: registered new interface driver usb-storage","msgid":49,"timestamp":{"seconds":1731935028,"nanos":433525563}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.624214][    T1] i8042: PNP: PS/2 Controller [PNP0303:KBD,PNP0f13:MOU] at 0x60,0x64 irq 1,12","msgid":50,"timestamp":{"seconds":1731935028,"nanos":433777304}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.625481][    T1] serio: i8042 KBD port at 0x60,0x64 irq 1","msgid":51,"timestamp":{"seconds":1731935028,"nanos":434987087}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.625651][    T1] serio: i8042 AUX port at 0x60,0x64 irq 12","msgid":52,"timestamp":{"seconds":1731935028,"nanos":435076570}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.625790][    T1] hv_vmbus: registering driver hyperv_keyboard","msgid":53,"timestamp":{"seconds":1731935028,"nanos":435244628}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.625959][    T1] mousedev: PS/2 mouse device common for all mice","msgid":54,"timestamp":{"seconds":1731935028,"nanos":435424716}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.626412][   T70] input: AT Translated Set 2 keyboard as /devices/platform/i8042/serio0/input/input1","msgid":55,"timestamp":{"seconds":1731935028,"nanos":435973270}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.626871][    T1] input: PC Speaker as /devices/platform/pcspkr/input/input3","msgid":56,"timestamp":{"seconds":1731935028,"nanos":436371407}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.627073][    T1] rtc_cmos 00:03: RTC can wake from S4","msgid":57,"timestamp":{"seconds":1731935028,"nanos":436448258}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.628163][    T1] rtc_cmos 00:03: registered as rtc0","msgid":58,"timestamp":{"seconds":1731935028,"nanos":437678400}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.628461][    T1] rtc_cmos 00:03: setting system clock to 2024-11-18T13:03:47 UTC (1731935027)","msgid":59,"timestamp":{"seconds":1731935028,"nanos":438870365}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.628759][    T1] rtc_cmos 00:03: alarms up to one day, y3k, 242 bytes nvram","msgid":60,"timestamp":{"seconds":1731935028,"nanos":438873708}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.628922][    T1] i2c_dev: i2c /dev entries driver","msgid":61,"timestamp":{"seconds":1731935028,"nanos":438890677}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.629112][    T1] device-mapper: ioctl: 4.47.0-ioctl (2022-07-28) initialised: dm-devel@redhat.com","msgid":62,"timestamp":{"seconds":1731935028,"nanos":438891232}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.629315][    T1] intel_pstate: CPU model not supported","msgid":63,"timestamp":{"seconds":1731935028,"nanos":438898716}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.629441][    T1] sdhci: Secure Digital Host Controller Interface driver","msgid":64,"timestamp":{"seconds":1731935028,"nanos":438899110}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.629531][    T1] sdhci: Copyright(c) Pierre Ossman","msgid":65,"timestamp":{"seconds":1731935028,"nanos":439316888}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.629630][    T1] sdhci-pltfm: SDHCI platform and OF driver helper","msgid":66,"timestamp":{"seconds":1731935028,"nanos":439319495}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.629732][    T1] ledtrig-cpu: registered to indicate activity on CPUs","msgid":67,"timestamp":{"seconds":1731935028,"nanos":439328612}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.629905][    T1] hv_utils: Registering HyperV Utility Driver","msgid":68,"timestamp":{"seconds":1731935028,"nanos":439574743}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.630030][    T1] hv_vmbus: registering driver hv_utils","msgid":69,"timestamp":{"seconds":1731935028,"nanos":439688877}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.630175][    T1] hv_vmbus: registering driver hv_balloon","msgid":70,"timestamp":{"seconds":1731935028,"nanos":439690795}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.630272][    T1] GACT probability on","msgid":71,"timestamp":{"seconds":1731935028,"nanos":439697355}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.630355][    T1] Mirror/redirect action on","msgid":72,"timestamp":{"seconds":1731935028,"nanos":439889352}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.630495][    T1] Simple TC action Loaded","msgid":73,"timestamp":{"seconds":1731935028,"nanos":439891631}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.630557][    T1] u32 classifier","msgid":74,"timestamp":{"seconds":1731935028,"nanos":439999126}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.630617][    T1]     Performance counters on","msgid":75,"timestamp":{"seconds":1731935028,"nanos":440052842}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.630711][    T1]     input device check on","msgid":76,"timestamp":{"seconds":1731935028,"nanos":440141526}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.630797][    T1]     Actions configured","msgid":77,"timestamp":{"seconds":1731935028,"nanos":440177389}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.643473][    T1] xt_time: kernel timezone is -0000","msgid":78,"timestamp":{"seconds":1731935028,"nanos":452983913}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.643682][    T1] IPVS: Registered protocols (TCP, UDP, SCTP, AH, ESP)","msgid":79,"timestamp":{"seconds":1731935028,"nanos":453189719}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.643810][    T1] IPVS: Connection hash table configured (size=4096, memory=32Kbytes)","msgid":80,"timestamp":{"seconds":1731935028,"nanos":453361302}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.643967][    T1] IPVS: ipvs loaded.","msgid":81,"timestamp":{"seconds":1731935028,"nanos":453528217}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.644163][    T1] IPVS: [rr] scheduler registered.","msgid":82,"timestamp":{"seconds":1731935028,"nanos":453530790}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.644234][    T1] IPVS: [wrr] scheduler registered.","msgid":83,"timestamp":{"seconds":1731935028,"nanos":453768343}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.644347][    T1] IPVS: [lc] scheduler registered.","msgid":84,"timestamp":{"seconds":1731935028,"nanos":453771256}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.644413][    T1] IPVS: [wlc] scheduler registered.","msgid":85,"timestamp":{"seconds":1731935028,"nanos":453971269}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.644482][    T1] IPVS: [fo] scheduler registered.","msgid":86,"timestamp":{"seconds":1731935028,"nanos":453973755}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.644560][    T1] IPVS: [ovf] scheduler registered.","msgid":87,"timestamp":{"seconds":1731935028,"nanos":453991228}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.644636][    T1] IPVS: [lblc] scheduler registered.","msgid":88,"timestamp":{"seconds":1731935028,"nanos":454236252}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.644708][    T1] IPVS: [lblcr] scheduler registered.","msgid":89,"timestamp":{"seconds":1731935028,"nanos":454238551}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.644781][    T1] IPVS: [dh] scheduler registered.","msgid":90,"timestamp":{"seconds":1731935028,"nanos":454259362}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.644850][    T1] IPVS: [sh] scheduler registered.","msgid":91,"timestamp":{"seconds":1731935028,"nanos":454259942}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.644914][    T1] IPVS: [sed] scheduler registered.","msgid":92,"timestamp":{"seconds":1731935028,"nanos":454895735}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.644993][    T1] IPVS: [nq] scheduler registered.","msgid":93,"timestamp":{"seconds":1731935028,"nanos":454899114}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.645087][    T1] ipip: IPv4 and MPLS over IPv4 tunneling driver","msgid":94,"timestamp":{"seconds":1731935028,"nanos":454911840}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.645241][    T1] gre: GRE over IPv4 demultiplexor driver","msgid":95,"timestamp":{"seconds":1731935028,"nanos":454912445}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.645405][    T1] ipt_CLUSTERIP: ClusterIP Version 0.8 loaded successfully","msgid":96,"timestamp":{"seconds":1731935028,"nanos":454919053}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.645496][    T1] Initializing XFRM netlink socket","msgid":97,"timestamp":{"seconds":1731935028,"nanos":454919514}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.645604][    T1] NET: Registered PF_INET6 protocol family","msgid":98,"timestamp":{"seconds":1731935028,"nanos":455308180}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.645897][    T1] Segment Routing with IPv6","msgid":99,"timestamp":{"seconds":1731935028,"nanos":455470931}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.646099][    T1] In-situ OAM (IOAM) with IPv6","msgid":100,"timestamp":{"seconds":1731935028,"nanos":455473389}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.646272][    T1] NET: Registered PF_PACKET protocol family","msgid":101,"timestamp":{"seconds":1731935028,"nanos":455707703}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.646419][    T1] NET: Registered PF_KEY protocol family","msgid":102,"timestamp":{"seconds":1731935028,"nanos":458519916}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.646532][    T1] Bridge firewalling registered","msgid":103,"timestamp":{"seconds":1731935028,"nanos":458524557}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.646593][    T1] can: controller area network core","msgid":104,"timestamp":{"seconds":1731935028,"nanos":458538749}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.646657][    T1] NET: Registered PF_CAN protocol family","msgid":105,"timestamp":{"seconds":1731935028,"nanos":458539177}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.646716][    T1] can: raw protocol","msgid":106,"timestamp":{"seconds":1731935028,"nanos":458544897}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.646774][    T1] can: broadcast manager protocol","msgid":107,"timestamp":{"seconds":1731935028,"nanos":458545534}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.646847][    T1] can: netlink gateway - max_hops=1","msgid":108,"timestamp":{"seconds":1731935028,"nanos":458550638}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.646923][    T1] can: SAE J1939","msgid":109,"timestamp":{"seconds":1731935028,"nanos":458550976}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.646981][    T1] can: isotp protocol","msgid":110,"timestamp":{"seconds":1731935028,"nanos":458555896}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.647025][    T1] 8021q: 802.1Q VLAN Support v1.8","msgid":111,"timestamp":{"seconds":1731935028,"nanos":458556226}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.647094][    T1] 9pnet: Installing 9P2000 support","msgid":112,"timestamp":{"seconds":1731935028,"nanos":458561653}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.648271][    T1] Key type dns_resolver registered","msgid":113,"timestamp":{"seconds":1731935028,"nanos":458561987}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.648985][    T1] NET: Registered PF_VSOCK protocol family","msgid":114,"timestamp":{"seconds":1731935028,"nanos":458574921}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.650882][    T1] IPI shorthand broadcast: enabled","msgid":115,"timestamp":{"seconds":1731935028,"nanos":460553242}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.651033][    T1] AVX2 version of gcm_enc/dec engaged.","msgid":116,"timestamp":{"seconds":1731935028,"nanos":460558326}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.651122][    T1] AES CTR mode by8 optimization enabled","msgid":117,"timestamp":{"seconds":1731935028,"nanos":460577443}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.651408][    T1] sched_clock: Marking stable (640029981, 6141640)-\u003e(685829528, -39657907)","msgid":118,"timestamp":{"seconds":1731935028,"nanos":460854392}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.651625][    T1] registered taskstats version 1","msgid":119,"timestamp":{"seconds":1731935028,"nanos":461024690}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.651733][    T1] Loading compiled-in X.509 certificates","msgid":120,"timestamp":{"seconds":1731935028,"nanos":461185201}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.652209][    T1] Loaded X.509 cert 'Build time autogenerated kernel key: 80da60d0433c2eb37137bc4e514daabd6543fd25'","msgid":121,"timestamp":{"seconds":1731935028,"nanos":461692290}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.652387][    T1] Key type .fscrypt registered","msgid":122,"timestamp":{"seconds":1731935028,"nanos":461769971}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.652465][    T1] Key type fscrypt-provisioning registered","msgid":123,"timestamp":{"seconds":1731935028,"nanos":462182228}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.652647][    T1] Key type encrypted registered","msgid":124,"timestamp":{"seconds":1731935028,"nanos":462184871}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.652765][    T1] AppArmor: AppArmor sha1 policy hashing enabled","msgid":125,"timestamp":{"seconds":1731935028,"nanos":462208219}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.654445][    T1] clk: Disabling unused clocks","msgid":126,"timestamp":{"seconds":1731935028,"nanos":463940902}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.906616][   T70] usb 1-1: new high-speed USB device number 2 using xhci_hcd","msgid":127,"timestamp":{"seconds":1731935028,"nanos":716672404}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.936885][   T97] ata1: SATA link down (SStatus 0 SControl 300)","msgid":128,"timestamp":{"seconds":1731935028,"nanos":746968563}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.938418][  T101] ata3: SATA link down (SStatus 0 SControl 300)","msgid":129,"timestamp":{"seconds":1731935028,"nanos":748220619}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.941894][   T99] ata2: SATA link down (SStatus 0 SControl 300)","msgid":130,"timestamp":{"seconds":1731935028,"nanos":751702949}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.943047][  T103] ata4: SATA link down (SStatus 0 SControl 300)","msgid":131,"timestamp":{"seconds":1731935028,"nanos":752730271}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.947264][  T105] ata5: SATA link down (SStatus 0 SControl 300)","msgid":132,"timestamp":{"seconds":1731935028,"nanos":757017206}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.948463][  T107] ata6: SATA link down (SStatus 0 SControl 300)","msgid":133,"timestamp":{"seconds":1731935028,"nanos":758150726}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.956405][    T1] Freeing unused kernel image (initmem) memory: 2176K","msgid":134,"timestamp":{"seconds":1731935028,"nanos":766152723}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.956837][    T1] Write protecting the kernel read-only data: 30720k","msgid":135,"timestamp":{"seconds":1731935028,"nanos":766330036}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.957502][    T1] Freeing unused kernel image (text/rodata gap) memory: 2032K","msgid":136,"timestamp":{"seconds":1731935028,"nanos":767191622}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.958022][    T1] Freeing unused kernel image (rodata/data gap) memory: 904K","msgid":137,"timestamp":{"seconds":1731935028,"nanos":767611433}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    0.958322][    T1] Run /init as init process","msgid":138,"timestamp":{"seconds":1731935028,"nanos":767756765}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    1.072884][  T351] 8021q: adding VLAN 0 to HW filter on device eth0","msgid":139,"timestamp":{"seconds":1731935028,"nanos":882866181}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"udhcpc: started, v1.35.0","msgid":140,"timestamp":{"seconds":1731935028,"nanos":882870710}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"udhcpc op deconfig interface eth0","msgid":141,"timestamp":{"seconds":1731935028,"nanos":884585622}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"udhcpc: broadcasting discover","msgid":142,"timestamp":{"seconds":1731935028,"nanos":906109016}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"udhcpc: broadcasting select for 10.11.12.2, server 10.11.12.1","msgid":143,"timestamp":{"seconds":1731935028,"nanos":966756411}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"udhcpc: lease of 10.11.12.2 obtained from 10.11.12.1, lease time 3600","msgid":144,"timestamp":{"seconds":1731935029,"nanos":56143268}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"udhcpc op bound interface eth0","msgid":145,"timestamp":{"seconds":1731935029,"nanos":62524865}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"Mount /mnt/modules as /lib/modules, result 0","msgid":146,"timestamp":{"seconds":1731935029,"nanos":106439221}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    1.329342][  T384] wireguard: WireGuard 1.0.0 loaded. See www.wireguard.com for information.","msgid":147,"timestamp":{"seconds":1731935029,"nanos":138766260}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    1.329518][  T384] wireguard: Copyright (C) 2015-2019 Jason A. Donenfeld \u003cJason@zx2c4.com\u003e. All Rights Reserved.","msgid":148,"timestamp":{"seconds":1731935029,"nanos":139068266}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"Modprobe wireguard, result 0","msgid":149,"timestamp":{"seconds":1731935029,"nanos":139329460}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"Executing /mount_disk.sh","msgid":150,"timestamp":{"seconds":1731935029,"nanos":153594996}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"Run acpid daemon","msgid":151,"timestamp":{"seconds":1731935029,"nanos":155895123}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    1.346860][    T1] Starting chrony daemon...","msgid":152,"timestamp":{"seconds":1731935029,"nanos":156527127}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    3.786156][    C0] random: crng init done","msgid":153,"timestamp":{"seconds":1731935031,"nanos":595773892}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"[    3.787052][    T1] chronyd started!","msgid":154,"timestamp":{"seconds":1731935031,"nanos":596531147}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"Executing agetty","msgid":155,"timestamp":{"seconds":1731935031,"nanos":596538638}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"\r","msgid":156,"timestamp":{"seconds":1731935031,"nanos":597853517}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d login: root (automatic login)","msgid":157,"timestamp":{"seconds":1731935031,"nanos":597858628}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"\r","msgid":158,"timestamp":{"seconds":1731935031,"nanos":598337027}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"login[407]: root login on 'hvc1'","msgid":159,"timestamp":{"seconds":1731935031,"nanos":598341034}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"~ # \u001b[6nExecuting \"/docker-entrypoint.sh\" \"nginx\" \"-g\" \"daemon off;\"","msgid":160,"timestamp":{"seconds":1731935031,"nanos":599560202}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"Executing with uid gid: 0 0","msgid":161,"timestamp":{"seconds":1731935031,"nanos":603229745}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"/docker-entrypoint.sh: /docker-entrypoint.d/ is not empty, will attempt to perform configuration","msgid":162,"timestamp":{"seconds":1731935031,"nanos":680256420}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"/docker-entrypoint.sh: Looking for shell scripts in /docker-entrypoint.d/","msgid":163,"timestamp":{"seconds":1731935031,"nanos":680270552}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"/docker-entrypoint.sh: Launching /docker-entrypoint.d/10-listen-on-ipv6-by-default.sh","msgid":164,"timestamp":{"seconds":1731935031,"nanos":695595743}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"10-listen-on-ipv6-by-default.sh: info: Getting the checksum of /etc/nginx/conf.d/default.conf","msgid":165,"timestamp":{"seconds":1731935031,"nanos":784627507}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"10-listen-on-ipv6-by-default.sh: info: Enabled listen on IPv6 in /etc/nginx/conf.d/default.conf","msgid":166,"timestamp":{"seconds":1731935031,"nanos":827222491}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"/docker-entrypoint.sh: Sourcing /docker-entrypoint.d/15-local-resolvers.envsh","msgid":167,"timestamp":{"seconds":1731935031,"nanos":828136724}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"/docker-entrypoint.sh: Launching /docker-entrypoint.d/20-envsubst-on-templates.sh","msgid":168,"timestamp":{"seconds":1731935031,"nanos":871831559}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"/docker-entrypoint.sh: Launching /docker-entrypoint.d/30-tune-worker-processes.sh","msgid":169,"timestamp":{"seconds":1731935031,"nanos":900589721}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"/docker-entrypoint.sh: Configuration complete; ready for start up","msgid":170,"timestamp":{"seconds":1731935031,"nanos":908754000}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"2024/11/18 13:03:51 [notice] 1#1: using the \"epoll\" event method","msgid":171,"timestamp":{"seconds":1731935032,"nanos":51377500}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"2024/11/18 13:03:51 [notice] 1#1: nginx/1.27.2","msgid":172,"timestamp":{"seconds":1731935032,"nanos":51387428}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"2024/11/18 13:03:51 [notice] 1#1: built by gcc 12.2.0 (Debian 12.2.0-14) ","msgid":173,"timestamp":{"seconds":1731935032,"nanos":51434850}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"2024/11/18 13:03:51 [notice] 1#1: OS: Linux 6.1.112-linuxkit-38eefb8a4109","msgid":174,"timestamp":{"seconds":1731935032,"nanos":51847234}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"2024/11/18 13:03:51 [notice] 1#1: getrlimit(RLIMIT_NOFILE): 1024:4096","msgid":175,"timestamp":{"seconds":1731935032,"nanos":51850457}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"2024/11/18 13:03:51 [notice] 1#1: start worker processes","msgid":176,"timestamp":{"seconds":1731935032,"nanos":56911714}}
+{"source":"8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.1.1","content":"2024/11/18 13:03:51 [notice] 1#1: start worker process 24","msgid":177,"timestamp":{"seconds":1731935032,"nanos":57203530}}
