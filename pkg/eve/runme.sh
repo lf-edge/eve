@@ -157,9 +157,17 @@ do_installer_raw() {
   dump "$OUTPUT_IMG" installer.raw
 }
 
+# create_installer_iso creates the installer iso and leaves it as /output.iso
+# common base for other usages like do_installer_iso and do_installer_net
+create_installer_iso() {
+  mkdir -p /installer_root
+  unsquashfs -f -d /installer_root /bits/installer.img 1>&2
+  tar -C /installer_root -cf - . | /make-efi installer
+  rm -rf /installer_root
+}
+
 do_installer_iso() {
-  rm -rf /parts
-  /make-efi installer
+  create_installer_iso
   dump /output.iso installer.iso
 }
 
@@ -170,7 +178,7 @@ do_installer_net() {
   cp /bits/ipxe.efi.cfg /installer
   mkdir -p /installer/EFI/BOOT
   cp /bits/EFI/BOOT/BOOT*EFI /installer/EFI/BOOT/
-  /make-efi installer
+  create_installer_iso
   mv /output.iso /installer/installer.iso
 
   # all of this is taken straight from ../../tools/makenet.sh
