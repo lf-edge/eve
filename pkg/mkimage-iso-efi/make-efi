@@ -14,16 +14,14 @@ copy() {
 }
 
 #
-# Extract partitions from stdin or look them up in /bits
+# Extract partitions from stdin to a working directory
+# We could do this in /tmp, but it might be really big, and for cases where
+# /tmp is tmpfs, that might use up a lot of memory
 #
-mkdir -p /parts 2>/dev/null || :
-cd /parts
-if [ -d /bits ]; then
-   ln -s /bits/* .
-   rm \* >/dev/null 2>&1 || :
-else
-   bsdtar xzf -
-fi
+TMPDIR=/var/efiparts-$$
+mkdir -p $TMPDIR
+cd $TMPDIR
+bsdtar xzf -
 
 # create a ISO with a EFI boot partition
 # Stuff it into a FAT filesystem, making it as small as possible.  511KiB
