@@ -10,13 +10,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/golang/protobuf/ptypes"
-
 	"github.com/lf-edge/eve-api/go/info"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 const (
@@ -136,7 +135,7 @@ func publishLocationToDest(ctx *zedagentContext, locInfo *info.ZInfoLocation,
 		InfoContent: &info.ZInfoMsg_Locinfo{
 			Locinfo: locInfo,
 		},
-		AtTimeStamp: ptypes.TimestampNow(),
+		AtTimeStamp: timestamppb.Now(),
 	}
 
 	log.Functionf("publishLocationToDest: sending %v", infoMsg)
@@ -241,13 +240,12 @@ func getLocationInfo(ctx *zedagentContext) *info.ZInfoLocation {
 	unixSec := int64(locInfo.UTCTimestamp / 1000)
 	unixNano := int64((locInfo.UTCTimestamp % 1000) * 1000000)
 	timestamp := time.Unix(unixSec, unixNano)
-	timestampProto, _ := ptypes.TimestampProto(timestamp)
 	return &info.ZInfoLocation{
 		Logicallabel:          locInfo.LogicalLabel,
 		Latitude:              locInfo.Latitude,
 		Longitude:             locInfo.Longitude,
 		Altitude:              locInfo.Altitude,
-		UtcTimestamp:          timestampProto,
+		UtcTimestamp:          timestamppb.New(timestamp),
 		HorizontalReliability: locationReliabilityToProto(locInfo.HorizontalReliability),
 		VerticalReliability:   locationReliabilityToProto(locInfo.VerticalReliability),
 		HorizontalUncertainty: locInfo.HorizontalUncertainty,

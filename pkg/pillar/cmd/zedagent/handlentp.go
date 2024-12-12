@@ -11,8 +11,6 @@ import (
 	"path"
 	"time"
 
-	"github.com/golang/protobuf/ptypes"
-
 	chrony "github.com/facebook/time/ntp/chrony"
 	"github.com/lf-edge/eve-api/go/info"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -136,7 +134,7 @@ func publishNTPSourcesToDest(ctx *zedagentContext,
 		InfoContent: &info.ZInfoMsg_NtpSources{
 			NtpSources: infoNTPSources,
 		},
-		AtTimeStamp: ptypes.TimestampNow(),
+		AtTimeStamp: timestamppb.Now(),
 	}
 
 	log.Functionf("publishNTPSourcesToDest: sending %v", infoMsg)

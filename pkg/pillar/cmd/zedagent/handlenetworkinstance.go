@@ -10,9 +10,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/golang/protobuf/ptypes/timestamp"
-
-	"github.com/golang/protobuf/ptypes"
 	zcommon "github.com/lf-edge/eve-api/go/evecommon"
 	"github.com/lf-edge/eve-api/go/flowlog"
 	zinfo "github.com/lf-edge/eve-api/go/info"   // XXX need to stop using
@@ -20,6 +17,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 func handleNetworkInstanceCreate(ctxArg interface{}, key string,
@@ -71,7 +69,7 @@ func prepareAndPublishNetworkInstanceInfoMsg(ctx *zedagentContext,
 	*infoType = zinfo.ZInfoTypes_ZiNetworkInstance
 	infoMsg.DevId = *proto.String(devUUID.String())
 	infoMsg.Ztype = *infoType
-	infoMsg.AtTimeStamp = ptypes.TimestampNow()
+	infoMsg.AtTimeStamp = timestamppb.Now()
 
 	uuid := status.Key()
 	info := new(zinfo.ZInfoNetworkInstance)
@@ -110,8 +108,7 @@ func prepareAndPublishNetworkInstanceInfoMsg(ctx *zedagentContext,
 		if !status.ErrorTime.IsZero() {
 			errInfo := new(zinfo.ErrorInfo)
 			errInfo.Description = status.Error
-			errTime, _ := ptypes.TimestampProto(status.ErrorTime)
-			errInfo.Timestamp = errTime
+			errInfo.Timestamp = timestamppb.New(status.ErrorTime)
 			errInfo.Severity = zinfo.Severity(status.ErrorSeverity)
 			info.NetworkErr = append(info.NetworkErr, errInfo)
 			info.State = zinfo.ZNetworkInstanceState_ZNETINST_STATE_ERROR
@@ -315,12 +312,8 @@ func protoEncodeAppFlowMonitorProto(ipflow types.IPFlow) *flowlog.FlowMessage {
 		prec.AclId = rec.ACLID
 		prec.Action = aclActionToProtoAction(rec.Action)
 		// prec.AclName =
-		pStart := new(timestamp.Timestamp)
-		pStart = timeNanoToProto(rec.StartTime)
-		prec.StartTime = pStart
-		pEnd := new(timestamp.Timestamp)
-		pEnd = timeNanoToProto(rec.StopTime)
-		prec.EndTime = pEnd
+		prec.StartTime = timestamppb.New(time.Unix(0, rec.StartTime))
+		prec.EndTime = timestamppb.New(time.Unix(0, rec.StopTime))
 		prec.TxBytes = rec.TxBytes
 		prec.TxPkts = rec.TxPkts
 		prec.RxBytes = rec.RxBytes
@@ -335,9 +328,7 @@ func protoEncodeAppFlowMonitorProto(ipflow types.IPFlow) *flowlog.FlowMessage {
 		for _, address := range dns.Addrs {
 			pdns.Addrs = append(pdns.Addrs, address.String())
 		}
-		dnsTime := new(timestamp.Timestamp)
-		dnsTime = timeNanoToProto(dns.RequestTime)
-		pdns.RequestTime = dnsTime
+		pdns.RequestTime = timestamppb.New(time.Unix(0, dns.RequestTime))
 		pdns.AclNum = dns.ACLNum
 		pflows.DnsReqs = append(pflows.DnsReqs, pdns)
 	}
@@ -454,11 +445,6 @@ func publishFlowMessage(flowMsg *flowlog.FlowMessage, iteration int) error {
 	}
 	saveSentFlowProtoMessage(data)
 	return nil
-}
-
-func timeNanoToProto(timenum int64) *timestamp.Timestamp {
-	timeProto, _ := ptypes.TimestampProto(time.Unix(0, timenum))
-	return timeProto
 }
 
 func saveSentFlowProtoMessage(contents []byte) {

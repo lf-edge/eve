@@ -6,11 +6,11 @@ package zedagent
 import (
 	"bytes"
 
-	"github.com/golang/protobuf/ptypes"
 	"github.com/lf-edge/eve-api/go/info"
 	"github.com/lf-edge/eve-api/go/metrics"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 func composePatchEnvelopeUsage(appUUID string, ctx *zedagentContext) []*metrics.AppPatchEnvelopeMetric {
@@ -87,7 +87,7 @@ func publishPatchEnvelopeStatus(ctx *zedagentContext, patchInfo *info.ZInfoPatch
 		InfoContent: &info.ZInfoMsg_PatchInfo{
 			PatchInfo: patchInfo,
 		},
-		AtTimeStamp: ptypes.TimestampNow(),
+		AtTimeStamp: timestamppb.Now(),
 	}
 
 	log.Functionf("publishPatchEnvelopeStatus: sending %v", infoMsg)
