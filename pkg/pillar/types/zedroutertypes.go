@@ -709,7 +709,7 @@ type NetworkInstanceConfig struct {
 	Subnet          net.IPNet
 	Gateway         net.IP
 	DomainName      string
-	NtpServer       net.IP
+	NtpServers      []string
 	DnsServers      []net.IP // If not set we use Gateway as DNS server
 	DhcpRange       IPRange
 	DnsNameToIPList []DNSNameToIP // Used for DNS and ACL ipset
@@ -980,7 +980,7 @@ type NetworkInstanceStatus struct {
 	// List of NTP servers published to applications connected to this network instance.
 	// This includes the NTP server from the NI config (if any) and all NTP servers
 	// associated with ports used by the network instance for external connectivity.
-	NTPServers []net.IP
+	NTPServers []string
 	// The intended state of the routing table.
 	// Includes user-configured static routes and potentially also automatically
 	// generated default route.
