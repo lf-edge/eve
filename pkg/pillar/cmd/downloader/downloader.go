@@ -398,9 +398,18 @@ func handleModify(ctx *downloaderContext, key string,
 		status.Expired, status.Name)
 
 	// If RefCount from zero to non-zero and status has error
-	// or status is not downloaded then do install
-	if config.RefCount != 0 && (status.HasError() || status.State != types.DOWNLOADED) {
+	// or status is not downloaded or retry then do install
+	if config.RefCount != 0 && (status.HasError() ||
+		status.State != types.DOWNLOADED || config.RetryCount != 0) {
 		log.Functionf("handleModify installing %s", config.Name)
+		if config.RetryCount != 0 {
+			log.Functionf("handleModify retry download %s", config.Name)
+			status.CurrentSize = 0
+			status.Size = 0
+			status.Progress = 0
+			status.State = types.DOWNLOADING
+			publishDownloaderStatus(ctx, status)
+		}
 		handleCreate(ctx, config, status, key, receiveChan)
 	} else if status.RefCount != config.RefCount {
 		log.Functionf("handleModify RefCount change %s from %d to %d",
