@@ -47,6 +47,9 @@ func (m *DpcManager) updateDNS() {
 	m.deviceNetStatus.Ports = make([]types.NetworkPortStatus, len(dpc.Ports))
 	for ix, port := range dpc.Ports {
 		m.deviceNetStatus.Ports[ix].IfName = port.IfName
+		m.deviceNetStatus.Ports[ix].USBAddr = port.USBAddr
+		m.deviceNetStatus.Ports[ix].USBProd = port.USBProd
+		m.deviceNetStatus.Ports[ix].PCIAddr = port.PCIAddr
 		m.deviceNetStatus.Ports[ix].Phylabel = port.Phylabel
 		m.deviceNetStatus.Ports[ix].Logicallabel = port.Logicallabel
 		m.deviceNetStatus.Ports[ix].SharedLabels = port.SharedLabels

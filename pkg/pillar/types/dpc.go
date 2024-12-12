@@ -442,6 +442,7 @@ func (config *DevicePortConfig) MostlyEqual(config2 *DevicePortConfig) bool {
 		if p1.IfName != p2.IfName ||
 			p1.PCIAddr != p2.PCIAddr ||
 			p1.USBAddr != p2.USBAddr ||
+			p1.USBProd != p2.USBProd ||
 			p1.Phylabel != p2.Phylabel ||
 			p1.Logicallabel != p2.Logicallabel ||
 			!generics.EqualSets(p1.SharedLabels, p2.SharedLabels) ||
@@ -567,6 +568,7 @@ func (config *DevicePortConfig) IsAnyPortInPciBack(
 type NetworkPortConfig struct {
 	IfName       string
 	USBAddr      string
+	USBProd      string
 	PCIAddr      string
 	Phylabel     string // Physical name set by controller/model
 	Logicallabel string // SystemAdapter's name which is logical label in phyio

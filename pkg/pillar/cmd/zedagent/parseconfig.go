@@ -1138,6 +1138,7 @@ func propagatePhyioAttrsToPort(port *types.NetworkPortConfig, phyio *types.Physi
 	port.Phylabel = phyio.Phylabel
 	port.IfName = phyio.Phyaddr.Ifname
 	port.USBAddr = phyio.Phyaddr.UsbAddr
+	port.USBProd = phyio.Phyaddr.UsbProduct
 	port.PCIAddr = phyio.Phyaddr.PciLong
 	if port.IfName == "" {
 		// Inside device model, network adapter may be referenced by PCI or USB address
