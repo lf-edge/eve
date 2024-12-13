@@ -1,2 +1,5 @@
 image: eve-fw
 org: lfedge
+tag: "{{.Hash}}-generic"
+buildArgs:
+  - PLATFORM=generic
