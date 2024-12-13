@@ -3152,7 +3152,7 @@ func updatePortAndPciBackIoBundle(ctx *domainContext, ib *types.IoBundle) (chang
 	// EVE controller doesn't know it
 	list = aa.ExpandControllers(log, list, hyper.PCISameController)
 	for _, ib := range list {
-		if types.IsPort(ctx.deviceNetworkStatus, ib.Ifname) {
+		if types.IsPort(ctx.deviceNetworkStatus, ib.Ifname) && ib.Type.IsNet() {
 			isPort = true
 			keepInHost = true
 		}
