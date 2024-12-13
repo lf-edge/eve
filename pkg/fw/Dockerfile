@@ -1,19 +1,39 @@
 # syntax=docker/dockerfile-upstream:1.5.0-rc2-labs
-FROM lfedge/eve-alpine:591df01e581889c3027514c8a91feaca1c8ad49f as build
+ARG PLATFORM=generic
+
+FROM lfedge/eve-alpine:591df01e581889c3027514c8a91feaca1c8ad49f as build-base
 
 ENV BUILD_PKGS tar make binutils zstd rdfind coreutils
 RUN eve-alpine-deploy.sh
 
-ENV WIRELESS_REGDB_VERSION 2024.01.23
-ENV WIRELESS_REGDB_REPO https://mirrors.edge.kernel.org/pub/software/network/wireless-regdb/wireless-regdb
+ENV WIRELESS_REGDB_VERSION=2024.01.23
+ENV WIRELESS_REGDB_REPO=https://mirrors.edge.kernel.org/pub/software/network/wireless-regdb/wireless-regdb
 ADD ${WIRELESS_REGDB_REPO}-${WIRELESS_REGDB_VERSION}.tar.gz /wireless-regdb.tar.gz
 RUN mkdir /wireless-regdb &&\
     tar -xz --strip-components=1 -C /wireless-regdb -f /wireless-regdb.tar.gz &&\
     cp /wireless-regdb/regulatory.db /wireless-regdb/regulatory.db.p7s /lib/firmware
 
-# Nvidia Firmware
-ENV NVIDIA_FW_TEGRA nvidia-l4t-firmware_35.5.0-20240219203809_arm64.deb
-ADD https://repo.download.nvidia.com/jetson/t194/pool/main/n/nvidia-l4t-firmware/${NVIDIA_FW_TEGRA} /${NVIDIA_FW_TEGA}
+# Nvidia Firmwares for Jetpack 5.1.3 and Jetpack 6.0
+ENV JETPACK5_DEB=nvidia-l4t-firmware_35.5.0-20240219203809_arm64.deb
+ENV JETPACK5_URL=https://repo.download.nvidia.com/jetson/t194/pool/main/n/nvidia-l4t-firmware/${JETPACK5_DEB}
+ENV JETPACK6_DEB=nvidia-l4t-firmware_36.3.0-20240506102626_arm64.deb
+ENV JETPACK6_URL=https://repo.download.nvidia.com/jetson/t234/pool/main/n/nvidia-l4t-firmware/${JETPACK6_DEB}
+
+FROM build-base AS generic
+ENV NVIDIA_FW_TEGRA=${JETPACK5_DEB}
+ENV NVIDIA_FW_URL=${JETPACK5_URL}
+
+FROM build-base AS nvidia-jp5
+ENV NVIDIA_FW_TEGRA=${JETPACK5_DEB}
+ENV NVIDIA_FW_URL=${JETPACK5_URL}
+
+FROM build-base AS nvidia-jp6
+ENV NVIDIA_FW_TEGRA=${JETPACK6_DEB}
+ENV NVIDIA_FW_URL=${JETPACK6_URL}
+
+FROM ${PLATFORM} AS build
+
+ADD ${NVIDIA_FW_URL} /${NVIDIA_FW_TEGRA}
 RUN mkdir -p /nvidia-firmware && \
     cd /nvidia-firmware ;\
     ar x ../"${NVIDIA_FW_TEGRA}" ;\
@@ -144,24 +164,8 @@ COPY --from=build /lib/firmware/ath10k /lib/firmware/ath10k
 COPY --from=build /lib/firmware/ti-connectivity /lib/firmware/ti-connectivity
 # to keep compatibility with the current layout
 RUN cp --symbolic-link /lib/firmware/brcm/* /lib/firmware
-# Nvidia Jetson Nano + Xavier NX
-COPY --from=build /nvidia-firmware/lib/firmware/bcm4354.hcd /lib/firmware/
-COPY --from=build /nvidia-firmware/lib/firmware/brcm/fw_bcmdhd.bin /lib/firmware/brcm/
-COPY --from=build /nvidia-firmware/lib/firmware/brcm/nvram.txt /lib/firmware/brcm/
-COPY --from=build /nvidia-firmware/lib/firmware/display-t234-dce.bin /lib/firmware/
-COPY --from=build /nvidia-firmware/lib/firmware/nv-BT-Version /lib/firmware/
-COPY --from=build /nvidia-firmware/lib/firmware/nvhost_nvdla010.fw /lib/firmware/
-COPY --from=build /nvidia-firmware/lib/firmware/nvhost_nvdla020.fw /lib/firmware/
-COPY --from=build /nvidia-firmware/lib/firmware/nvhost_ofa012.fw /lib/firmware/
-COPY --from=build /nvidia-firmware/lib/firmware/nvhost_vic042.fw /lib/firmware/
-COPY --from=build /nvidia-firmware/lib/firmware/nvpva_010.fw /lib/firmware/
-COPY --from=build /nvidia-firmware/lib/firmware/nvpva_020.fw /lib/firmware/
-COPY --from=build /nvidia-firmware/lib/firmware/nv-WIFI-Version /lib/firmware/
-COPY --from=build /nvidia-firmware/lib/firmware/nvidia/tegra194 /lib/firmware/nvidia/tegra194
-COPY --from=build /nvidia-firmware/lib/firmware/ga10b /lib/firmware/ga10b
-COPY --from=build /nvidia-firmware/lib/firmware/gv11b /lib/firmware/gv11b
-COPY --from=build /nvidia-firmware/lib/firmware/tegra19x /lib/firmware/tegra19x
-COPY --from=build /nvidia-firmware/lib/firmware/tegra23x /lib/firmware/tegra23x
+# Nvidia Jetson related firmwares
+COPY --from=build /nvidia-firmware/lib/firmware/ /lib/firmware/
 COPY --from=build /lib/firmware/nvidia/tegra210 /lib/firmware/nvidia/tegra210
 COPY --from=build /rtw88/*.bin /lib/firmware/rtw88/
 # Intel ICE firmware.
