@@ -420,10 +420,15 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 func sendCtxInit(ctx *loguploaderContext) {
 	//get server name
-	bytes, err := os.ReadFile(types.ServerFileName)
-	if err != nil {
-		log.Fatalf("sendCtxInit: Failed to read ServerFileName(%s). Err: %s",
-			types.ServerFileName, err)
+	var bytes []byte
+	var err error
+	for len(bytes) == 0 {
+		bytes, err = os.ReadFile(types.ServerFileName)
+		if err != nil {
+			log.Errorf("sendCtxInit: Failed to read ServerFileName(%s). Err: %s",
+				types.ServerFileName, err)
+			time.Sleep(10 * time.Second)
+		}
 	}
 	// Preserve port
 	ctx.serverNameAndPort = strings.TrimSpace(string(bytes))
