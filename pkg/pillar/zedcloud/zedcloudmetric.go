@@ -50,6 +50,8 @@ func (am *AgentMetrics) getInterfaceMetrics(ifname string) types.ZedcloudMetric 
 	return am.metrics[ifname]
 }
 
+var urlFailedLastTime = map[string]bool{}
+
 // RecordFailure records failed zedcloud API request.
 func (am *AgentMetrics) RecordFailure(log *base.LogObject, ifname, url string, reqLen, respLen int64, authenFail bool) {
 	release := am.acquire(log)
@@ -79,6 +81,11 @@ func (am *AgentMetrics) RecordFailure(log *base.LogObject, ifname, url string, r
 		m.URLCounters[url] = u
 	}
 	am.metrics[ifname] = m
+
+	if failedLastTime, ok := urlFailedLastTime[url]; !ok || !failedLastTime {
+		log.Noticef("EVENT: failed to access %s", url)
+	}
+	urlFailedLastTime[url] = true
 }
 
 // RecordSuccess records successful zedcloud API request.
@@ -106,6 +113,11 @@ func (am *AgentMetrics) RecordSuccess(log *base.LogObject, ifname, url string, r
 	}
 	m.URLCounters[url] = u
 	am.metrics[ifname] = m
+
+	if failedLastTime, ok := urlFailedLastTime[url]; ok && failedLastTime {
+		log.Noticef("EVENT: recovered from failure. Accessed %s successfully", url)
+	}
+	urlFailedLastTime[url] = false
 }
 
 // Publish the recorded metrics through the given publisher.

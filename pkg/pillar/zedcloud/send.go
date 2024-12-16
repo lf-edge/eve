@@ -214,7 +214,6 @@ func SendOnAllIntf(ctxWork context.Context, ctx *ZedCloudContext, url string, re
 	if len(intfs) == 0 {
 		err := fmt.Errorf("Can not connect to %s: No management interfaces",
 			url)
-		log.Error(err.Error())
 		return combinedRV, err
 	}
 
@@ -266,11 +265,9 @@ func SendOnAllIntf(ctxWork context.Context, ctx *ZedCloudContext, url string, re
 		combinedRV.RespContents = rv.RespContents
 		return combinedRV, nil
 	}
-	errStr := fmt.Sprintf("All attempts to connect to %s failed: %s",
-		url, describeSendAttempts(attempts))
-	log.Errorln(errStr)
 	err := &SendError{
-		Err:      errors.New(errStr),
+		Err: fmt.Errorf("All attempts to connect to %s failed: %s",
+			url, describeSendAttempts(attempts)),
 		Attempts: attempts,
 	}
 	return combinedRV, err
@@ -471,26 +468,21 @@ func VerifyAllIntf(ctx *ZedCloudContext, url string, requiredSuccessCount uint,
 	}
 	if len(types.GetMgmtPortsAny(*ctx.DeviceNetworkStatus, 0)) == 0 {
 		err := fmt.Errorf("Can not connect to %s: No management interfaces", url)
-		log.Error(err.Error())
 		return verifyRV, err
 	}
 	if intfSuccessCount == 0 {
-		errStr := fmt.Sprintf("All attempts to connect to %s failed: %s",
-			url, describeSendAttempts(attempts))
-		log.Errorln(errStr)
 		err := &SendError{
-			Err:      errors.New(errStr),
+			Err: fmt.Errorf("All attempts to connect to %s failed: %s",
+				url, describeSendAttempts(attempts)),
 			Attempts: attempts,
 		}
 		return verifyRV, err
 	}
 	if intfSuccessCount < requiredSuccessCount {
-		errStr := fmt.Sprintf("Not enough Ports (%d) against required count %d"+
-			" to reach %s; last failed with: %v",
-			intfSuccessCount, requiredSuccessCount, url, attempts)
-		log.Errorln(errStr)
 		err := &SendError{
-			Err:      errors.New(errStr),
+			Err: fmt.Errorf("Not enough Ports (%d) against required count %d"+
+				" to reach %s; last failed with: %v",
+				intfSuccessCount, requiredSuccessCount, url, attempts),
 			Attempts: attempts,
 		}
 		return verifyRV, err
@@ -640,6 +632,8 @@ func (d *dialerWithResolverCache) DialContext(
 	}
 	return conn, err
 }
+
+var failedReqUrl = map[string]bool{}
 
 // SendOnIntf : Tries all source addresses on interface until one succeeds.
 // Returns response for first success. Caller can not use SendRetval.HTTPResp.Body but can
@@ -812,7 +806,6 @@ func SendOnIntf(workContext context.Context, ctx *ZedCloudContext, destURL strin
 		localAddr, err := types.GetLocalAddrAnyNoLinkLocal(*ctx.DeviceNetworkStatus,
 			retryCount, intf)
 		if err != nil {
-			log.Error(err)
 			return rv, err
 		}
 		clientConfig.SourceIP = localAddr
@@ -827,8 +820,7 @@ func SendOnIntf(workContext context.Context, ctx *ZedCloudContext, destURL strin
 		if ctx.V2API && isEdgenode && !isGet {
 			b2, err = AddAuthentication(ctx, b, useOnboard)
 			if err != nil {
-				log.Errorf("SendOnIntf: auth error %v\n", err)
-				return rv, err
+				return rv, fmt.Errorf("SendOnIntf: auth error %v", err)
 			}
 			reqlen = int64(b2.Len())
 			log.Tracef("SendOnIntf: add auth for %s\n", reqURL)
@@ -842,8 +834,7 @@ func SendOnIntf(workContext context.Context, ctx *ZedCloudContext, destURL strin
 			req, err = http.NewRequest("GET", reqURL, nil)
 		}
 		if err != nil {
-			log.Errorf("NewRequest failed %s\n", err)
-			attempt.Err = err
+			attempt.Err = fmt.Errorf("NewRequest failed %s\n", err)
 			attempts = append(attempts, attempt)
 			continue
 		}
@@ -855,8 +846,7 @@ func SendOnIntf(workContext context.Context, ctx *ZedCloudContext, destURL strin
 		// for traceability in the controller
 		id, err := uuid.NewV4()
 		if err != nil {
-			log.Errorf("NewV4 failed: %v", err)
-			attempt.Err = err
+			attempt.Err = fmt.Errorf("NewV4 failed: %v", err)
 			attempts = append(attempts, attempt)
 			continue
 		}
@@ -980,50 +970,43 @@ func SendOnIntf(workContext context.Context, ctx *ZedCloudContext, destURL strin
 			if cf, cert := isCertFailure(err); cf {
 				// XXX can we ever get this from a proxy?
 				// We assume we reached the controller here
-				log.Errorf("client.Do fail: certFailure")
 				rv.Status = types.SenderStatusCertInvalid
 				if cert != nil {
-					errStr := fmt.Sprintf("cert failure for Subject %s NotBefore %v NotAfter %v",
+					attempt.Err = fmt.Errorf("client.Do fail: certFailure for Subject %s NotBefore %v NotAfter %v",
 						cert.Subject, cert.NotBefore,
 						cert.NotAfter)
-					log.Error(errStr)
-					cerr := errors.New(errStr)
-					attempt.Err = cerr
 				} else {
-					attempt.Err = err
+					attempt.Err = fmt.Errorf("client.Do fail: certFailure: %v", err)
 				}
 			} else if isCertUnknownAuthority(err) {
 				if usedProxy {
-					log.Errorf("client.Do fail: CertUnknownAuthority with proxy")
+					attempt.Err = fmt.Errorf("client.Do fail: CertUnknownAuthority with proxy %v", err)
 					rv.Status = types.SenderStatusCertUnknownAuthorityProxy
 				} else {
-					log.Errorf("client.Do fail: CertUnknownAuthority") // could be transparent proxy
+					attempt.Err = fmt.Errorf("client.Do fail: CertUnknownAuthority %v", err) // could be transparent proxy
 					rv.Status = types.SenderStatusCertUnknownAuthority
 				}
-				attempt.Err = err
 			} else if isECONNREFUSED(err) {
 				if usedProxy {
 					// Must try other interfaces and configs
 					// since the proxy might be broken.
-					log.Errorf("client.Do fail: ECONNREFUSED with proxy")
+					attempt.Err = fmt.Errorf("client.Do fail: ECONNREFUSED with proxy %v", err)
 				} else {
-					log.Errorf("client.Do fail: ECONNREFUSED")
+					attempt.Err = fmt.Errorf("client.Do fail: ECONNREFUSED %v", err)
 					rv.Status = types.SenderStatusRefused
 				}
-				attempt.Err = err
 			} else if logutils.IsNoSuitableAddrErr(err) {
 				// We get lots of these due to IPv6 link-local
 				// only address on some interfaces.
 				// Do not return as errors
 				log.Warn("client.Do fail: No suitable address")
 			} else if _, deadlineSet := workContext.Deadline(); deadlineSet {
-				log.Errorf("client.Do global deadline: %v", err)
-				attempt.Err = err
+				attempt.Err = fmt.Errorf("client.Do global deadline: %v", err)
 			} else {
-				log.Errorf("client.Do (timeout %d) fail: %v",
+				attempt.Err = fmt.Errorf("client.Do (timeout %d) fail: %v",
 					ctx.NetworkSendTimeout, err)
-				attempt.Err = err
 			}
+
 			if attempt.Err != nil {
 				attempts = append(attempts, attempt)
 			}
@@ -1059,9 +1042,8 @@ func SendOnIntf(workContext context.Context, ctx *ZedCloudContext, destURL strin
 
 		// Handle failure to read HTTP response body.
 		if readErr != nil {
-			log.Errorf("ReadAll (timeout %d) failed: %s",
+			attempt.Err = fmt.Errorf("ReadAll (timeout %d) failed: %s",
 				ctx.NetworkSendTimeout, readErr)
-			attempt.Err = readErr
 			attempts = append(attempts, attempt)
 			continue
 		}
@@ -1070,9 +1052,7 @@ func SendOnIntf(workContext context.Context, ctx *ZedCloudContext, destURL strin
 		if useTLS {
 			connState := resp.TLS
 			if connState == nil {
-				errStr := "no TLS connection state"
-				log.Errorln(errStr)
-				attempt.Err = errors.New(errStr)
+				attempt.Err = errors.New("no TLS connection state")
 				attempts = append(attempts, attempt)
 				// Inform ledmanager about broken cloud connectivity
 				if !ctx.NoLedManager {
@@ -1091,7 +1071,6 @@ func SendOnIntf(workContext context.Context, ctx *ZedCloudContext, destURL strin
 				// XXX OSCP is not implemented in controller
 				// so commenting out it for now.
 				if false {
-					log.Errorln(errStr)
 					// Inform ledmanager about broken cloud connectivity
 					if !ctx.NoLedManager {
 						utils.UpdateLedManagerConfig(log, types.LedBlinkRespWithoutOSCP)
@@ -1107,7 +1086,7 @@ func SendOnIntf(workContext context.Context, ctx *ZedCloudContext, destURL strin
 				log.Traceln(errStr)
 			}
 		}
-		// Even if we got e.g., a 404 we consider the connection a
+		// Even if we got e.g. a 404 we consider the connection a
 		// success since we care about the connectivity to the cloud.
 		totalTimeMillis := int64(time.Since(apiCallStartTime) / time.Millisecond)
 		if ctx.SuccessFunc != nil {
@@ -1130,21 +1109,19 @@ func SendOnIntf(workContext context.Context, ctx *ZedCloudContext, destURL strin
 			// remove trailing newline from hex.Dump
 			hexdump = strings.TrimSuffix(hexdump, "\n")
 
-			errStr := fmt.Sprintf("SendOnIntf to %s reqlen %d statuscode %d %s body:\n%s",
-				reqURL, reqlen, resp.StatusCode,
-				http.StatusText(resp.StatusCode), hexdump)
 			// zedrouter probing sends 'http' to zedcloud server and expects
 			// to get status of 404 or 400, not an error
 			if (resp.StatusCode != http.StatusBadRequest &&
 				resp.StatusCode != http.StatusNotFound) || ctx.AgentName != "zedrouter" {
-				log.Errorln(errStr)
 				log.Errorf("Got payload for status %s: %s",
 					http.StatusText(resp.StatusCode), contents)
 			}
 			// Get caller to schedule a retry based on StatusCode
 			rv.Status = types.SenderStatusNone
 			rv.HTTPResp = resp
-			return rv, errors.New(errStr)
+			return rv, fmt.Errorf("SendOnIntf to %s reqlen %d statuscode %d %s body:\n%s",
+				reqURL, reqlen, resp.StatusCode,
+				http.StatusText(resp.StatusCode), hexdump)
 		}
 	}
 	if ctx.FailureFunc != nil {
@@ -1152,7 +1129,6 @@ func SendOnIntf(workContext context.Context, ctx *ZedCloudContext, destURL strin
 	}
 	errStr := fmt.Sprintf("All attempts to connect to %s failed: %s",
 		reqURL, describeSendAttempts(attempts))
-	log.Errorln(errStr)
 	err = &SendError{
 		Err:      errors.New(errStr),
 		Attempts: attempts,
@@ -1246,12 +1222,10 @@ func SendLocal(ctx *ZedCloudContext, destURL string, intf string, ipSrc net.IP,
 	callStartTime := time.Now()
 	resp, err := client.Do(req)
 	if err != nil {
-		errStr := fmt.Sprintf("client.Do (timeout %d) fail: %v", ctx.NetworkSendTimeout, err)
-		log.Errorln(errStr)
 		if ctx.FailureFunc != nil {
 			ctx.FailureFunc(log, intf, reqURL, reqlen, 0, false)
 		}
-		return nil, nil, errors.New(errStr)
+		return nil, nil, fmt.Errorf("client.Do (timeout %d) fail: %v", ctx.NetworkSendTimeout, err)
 	}
 
 	contents, err := io.ReadAll(resp.Body)
