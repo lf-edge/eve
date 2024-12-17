@@ -8,11 +8,16 @@ import (
 	"testing"
 	"time"
 
+	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	. "github.com/onsi/gomega"
 )
 
+func init() {
+	logger, log = agentlog.Init(agentName)
+}
 func TestGzipParsing(t *testing.T) {
+	t.Parallel()
 	g := NewWithT(t)
 
 	// Test the gzip parsing function
@@ -31,13 +36,14 @@ func TestGzipParsing(t *testing.T) {
 }
 
 func TestGetTimestampFromGzipName(t *testing.T) {
+	t.Parallel()
 	g := NewWithT(t)
 
 	comparisonMap := map[string]time.Time{
 		"app.8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.log.1731935033496.gz": time.Unix(0, 1731935033496*int64(time.Millisecond)),
-		"dev.log.keep.1731491904032.gz":                                 time.Unix(0, 1731491904032*int64(time.Millisecond)),
-		"dev.log.keep.1731491932618.gz":                                 time.Unix(0, 1731491932618*int64(time.Millisecond)),
-		"dev.log.keep.1731491940142.gz":                                 time.Unix(0, 1731491940142*int64(time.Millisecond)),
+		"dev.log.1731491904032.gz":                                      time.Unix(0, 1731491904032*int64(time.Millisecond)),
+		"dev.log.1731491932618.gz":                                      time.Unix(0, 1731491932618*int64(time.Millisecond)),
+		"dev.log.1731491940142.gz":                                      time.Unix(0, 1731491940142*int64(time.Millisecond)),
 	}
 
 	keepSentDir = "../testdata/keepSentQueue"
@@ -55,6 +61,7 @@ func TestGetTimestampFromGzipName(t *testing.T) {
 }
 
 func TestFindMovePrevLogFiles(t *testing.T) {
+	t.Parallel()
 	g := NewWithT(t)
 
 	collectDir = "../testdata/collect"
@@ -106,6 +113,7 @@ func TestFindMovePrevLogFiles(t *testing.T) {
 }
 
 func TestGetFileInfo(t *testing.T) {
+	t.Parallel()
 	g := NewWithT(t)
 
 	tests := []struct {
@@ -158,6 +166,7 @@ func TestGetFileInfo(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			dirName, appuuid := getFileInfo(tt.fileChanInfo)
 			g.Expect(dirName).To(Equal(tt.expectedDir))
 			g.Expect(appuuid).To(Equal(tt.expectedAppID))

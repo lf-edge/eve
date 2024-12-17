@@ -1168,46 +1168,36 @@ func checkKeepQuota() {
 }
 
 func getOldestLog() (*logs.LogEntry, error) {
-	// Compile a regex to match the log file pattern and extract the timestamp
-	re := regexp.MustCompile(`^dev\.log\.keep\.(\d+)\.gz$`)
-
 	// Read the directory and filter log files
 	files, err := os.ReadDir(keepSentDir)
 	if err != nil {
 		return nil, fmt.Errorf("error reading directory: %w", err)
 	}
 
-	type logFile struct {
-		name      string
-		timestamp string
-	}
+	oldestLogFileName := ""
+	oldestLogFileTimestamp := time.Now()
 
-	var devLogFiles []logFile
 	for _, file := range files {
 		if file.IsDir() {
 			continue
 		}
-		matches := re.FindStringSubmatch(file.Name())
-		if matches != nil {
-			devLogFiles = append(devLogFiles, logFile{
-				name:      file.Name(),
-				timestamp: matches[1],
-			})
+		timestamp, err := types.GetTimestampFromGzipName(file.Name())
+		if err != nil {
+			continue
+		}
+		if timestamp.Before(oldestLogFileTimestamp) {
+			oldestLogFileTimestamp = timestamp
+			oldestLogFileName = file.Name()
 		}
 	}
 
-	if len(devLogFiles) == 0 {
+	if oldestLogFileName == "" {
 		log.Function("getLatestLog: no log files found.")
 		return nil, nil
 	}
 
-	// Sort the log files by timestamp (ascending order)
-	sort.Slice(devLogFiles, func(i, j int) bool {
-		return devLogFiles[i].timestamp < devLogFiles[j].timestamp
-	})
-
 	// Open the oldest log file
-	oldestFile := filepath.Join(keepSentDir, devLogFiles[0].name)
+	oldestFile := filepath.Join(keepSentDir, oldestLogFileName)
 	file, err := os.Open(oldestFile)
 	if err != nil {
 		return nil, fmt.Errorf("error opening file: %w", err)
@@ -1447,11 +1437,7 @@ func gzipFileNameGet(isApp bool, timeNum int, dirName, appUUID string, notUpload
 		}
 		outfileName = appPref + appUUID + types.AppSuffix + strconv.Itoa(timeNum) + ".gz"
 	} else {
-		if notUpload {
-			outfileName = devPrefixKeep + strconv.Itoa(timeNum) + ".gz"
-		} else {
-			outfileName = devPrefixUpload + strconv.Itoa(timeNum) + ".gz"
-		}
+		outfileName = devPrefix + strconv.Itoa(timeNum) + ".gz"
 	}
 	return dirName + "/" + outfileName
 }
