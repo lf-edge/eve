@@ -3,7 +3,8 @@ pkg/installer/src/vendor/
 pkg/kube/eve-bridge/vendor/
 pkg/measure-config/vendor/
 pkg/newlog/vendor/
-pkg/nvidia/cdi/
+pkg/nvidia/cdi/jp5
+pkg/nvidia/cdi/jp6
 pkg/pillar/vendor/
 pkg/recovertpm/src/vendor/
 pkg/rngd/cmd/rngd/vendor/

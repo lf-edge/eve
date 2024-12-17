@@ -3,23 +3,51 @@
 # Copyright (c) 2024 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
+ARG PLATFORM=generic
+
 FROM lfedge/eve-alpine:591df01e581889c3027514c8a91feaca1c8ad49f as build-base
 ENV BUILD_PKGS="autoconf automake build-base coreutils gettext git glib-dev go libtool libmd-dev ncurses-dev tar xz-dev yq zstd-dev"
 
-# This is an arm64 (only) package, nothing to do for other architectures
-FROM build-base as build-amd64
-FROM build-base as build-riscv64
-
-FROM build-base as build-arm64
-
 RUN eve-alpine-deploy.sh
+
+# Set EVE_PLATFORM
+ARG PLATFORM
+ENV EVE_PLATFORM=$PLATFORM
 
 # Setup git to apply patches
 RUN git config --global user.email 'builder@projecteve.dev' && \
     git config --global user.name 'Project EVE'
 
-# Jetson Linux tarball
-ENV JETSON_LINUX=https://developer.nvidia.com/downloads/embedded/l4t/r35_release_v5.0/release/jetson_linux_r35.5.0_aarch64.tbz2
+# Jetpack tarballs
+ENV JETSON_JP5=https://developer.nvidia.com/downloads/embedded/l4t/r35_release_v5.0/release/jetson_linux_r35.5.0_aarch64.tbz2
+ENV JETSON_JP6=https://developer.nvidia.com/downloads/embedded/l4t/r36_release_v3.0/release/jetson_linux_r36.3.0_aarch64.tbz2
+
+# Default Jetpack version
+ENV JETSON_LINUX=${JETSON_JP5}
+ENV JETPACK_VER=jp5
+
+# This is an arm64 (only) package, nothing to do for other architectures
+FROM build-base AS amd64-generic
+FROM build-base AS amd64-nvidia-jp5
+FROM build-base AS amd64-nvidia-jp6
+FROM build-base AS riscv64-generic
+FROM build-base AS riscv64-nvidia-jp5
+FROM build-base AS riscv64-nvidia-jp6
+
+FROM build-base as arm64-nvidia-jp5
+ENV JETSON_LINUX=${JETSON_JP5}
+ENV JETPACK_VER=jp5
+
+FROM build-base as arm64-nvidia-jp6
+ENV JETSON_LINUX=${JETSON_JP6}
+ENV JETPACK_VER=jp6
+
+FROM ${TARGETARCH}-${PLATFORM} AS build
+
+RUN echo "${EVE_PLATFORM}" > /eve-platform
+
+# CDI Files
+COPY cdi/${JETPACK_VER} /cdi
 
 ADD ${JETSON_LINUX} /jetson_linux.tbz2
 
@@ -33,9 +61,6 @@ RUN ./autogen && \
     ./configure --prefix=/ && \
     make -j "$(nproc)" && \
     make install
-
-# CDI Files
-COPY cdi /cdi
 
 # Extract tarball
 WORKDIR /
@@ -68,14 +93,12 @@ RUN mkdir -p /ldconfig-bin && \
     dpkg -x /libc-bin_2.31-0ubuntu9.16_arm64.deb /ldconfig && \
     cp /ldconfig/sbin/ldconfig.real /ldconfig-bin/ldconfig-glibc
 
-
-FROM build-${TARGETARCH} as build
-
 # Copy udev rules
-COPY udev/rules.d/* /rules.d/
+COPY udev/${JETPACK_VER}/rules.d/* /rules.d/
 
 # Copy scripts to processing CDI files and initialization
-COPY scripts/* /
+COPY scripts/*.sh /
+COPY scripts/${JETPACK_VER}/* /
 
 # Process CDI files
 WORKDIR /
@@ -106,6 +129,7 @@ COPY --from=build /ldconfig-bin/* /opt/vendor/nvidia/bin/
 COPY --from=build /nvfanctrl/dist/* /opt/vendor/nvidia/bin/
 COPY --from=build /nvct/dist/* /opt/vendor/nvidia/bin/
 COPY --from=build /nv-init.sh /opt/vendor/nvidia/init.d/
+COPY --from=build /eve-platform /opt/vendor/nvidia/
 
 ENTRYPOINT []
 CMD []
