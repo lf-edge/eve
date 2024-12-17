@@ -3,8 +3,9 @@
 # Copyright (c) 2025 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 #
+---
 org: lfedge
 image: eve-nvidia
-tag: "{{.Hash}}-nvidia-jp5"
+tag: "{{.Hash}}-nvidia-jp6"
 buildArgs:
-  - PLATFORM=nvidia-jp5
+  - PLATFORM=nvidia-jp6
