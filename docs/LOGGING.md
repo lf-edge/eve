@@ -53,7 +53,8 @@ When the above log files are closed either due to size or time limit reached, th
 
 The size of the gzip file is limited to 50 KBytes due to the northbound queueing configuration.
 If the compressed file is larger than the limit, it will be split and compressed into two separate gzip files.
-The gzip filename is encoded with current timestamp in Unix milliseconds, such as 'dev.log.upload.1600831551491.gz' for device log, and with timestamp and application UUID such as 'app.62195aa9-7db4-4ac0-86d3-d8abe0ff0ea9.log.1599186248917.gz' for application logs.
+The gzip filename is encoded with current timestamp in Unix milliseconds, such as 'dev.log.1600831551491.gz' for device log, and with timestamp and application UUID such as 'app.62195aa9-7db4-4ac0-86d3-d8abe0ff0ea9.log.1599186248917.gz' for application logs.
+The words "keep" or "upload" are not part of the gzip filename, but the directory name where the gzip file is stored indicates the purpose of the log file.
 The metadata such as device-UUID, the image partition, and image version or app Name for application are encoded as part of the gzip metadata header along with the gzip file.
 
 Upon the device restart, any unfinished temporary log files of previous life left in /persist/newlog/collect directory will be first moved and compressed by newlogd daemon into their upload gzip directories before any current log events are written onto the disk.
@@ -115,7 +116,8 @@ The uploading is controlled on a scheduled timer. When the timer fires, the "log
 
 The "loguploader" collects stats of round-trip delay, controller CPU load percentage and log batch processing time. The current EVE implementation does not use those stats in calculating the uploading timer values.
 
-The already uploaded gzip files with app logs are moved to /persist/newlog/keepSentQueue directory or removed in case of dev.log.upload files.
+The already uploaded gzip files with app logs are moved to /persist/newlog/keepSentQueue directory.
+The already uploaded gzip files with device logs from devUpload directory are removed since all log entries are also contained in /persist/newlog/keepSentQueue directory.
 This directory and together with 'collect', 'appUpload', 'devUpload' directories form a circular buffer and will be kept up to the quota limit (default is 2 Gbytes and can be changed by user config-item).
 
 To prevent the log messages grow without bounds over time, the 'failedUpload' directory will only keep up to 1000 gzip files, each with maximum of 50K, to be under 50M in the directory. The '/persist' partition space is monitored, and if the available space is under 100M, the 'newlogd' will kick in the gzip file recycle operation just as the controller uplink is unreachable.
