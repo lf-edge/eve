@@ -402,6 +402,19 @@ func handleModify(ctx *downloaderContext, key string,
 	if config.RefCount != 0 && (status.HasError() || status.State != types.DOWNLOADED) {
 		log.Functionf("handleModify installing %s", config.Name)
 		handleCreate(ctx, config, status, key, receiveChan)
+		// Retrying the download due to image verification failure
+		// This happens when: RefCount and retryCount is non-zero,
+		// and DownloaderStatus state is "downloaded"
+	} else if config.RefCount != 0 && config.BlobDownloadRetryCount != 0 &&
+		status.BlobDownloadRetryCount != config.BlobDownloadRetryCount {
+		log.Functionf("handleModify retry download %s", config.Name)
+		status.CurrentSize = 0
+		status.Size = 0
+		status.Progress = 0
+		status.State = types.DOWNLOADING
+		status.BlobDownloadRetryCount++
+		publishDownloaderStatus(ctx, status)
+		handleCreate(ctx, config, status, key, receiveChan)
 	} else if status.RefCount != config.RefCount {
 		log.Functionf("handleModify RefCount change %s from %d to %d",
 			config.Name, status.RefCount, config.RefCount)

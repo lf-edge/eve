@@ -18,10 +18,12 @@ func AddOrRefcountDownloaderConfig(ctx *volumemgrContext, blob types.BlobStatus)
 	log.Functionf("AddOrRefcountDownloaderConfig for %s", blob.Sha256)
 
 	refCount := uint(1)
+	blobDownloadRetryCount := uint(0)
 	m := lookupDownloaderConfig(ctx, blob.Sha256)
 	if m != nil {
 		log.Functionf("downloader config exists for %s to refcount %d", blob.Sha256, m.RefCount)
 		refCount = m.RefCount + 1
+		blobDownloadRetryCount = m.BlobDownloadRetryCount
 		// We need to update datastore id before publishing the
 		// datastore config because datastore id can be updated
 		// in some cases. For example:
@@ -58,12 +60,13 @@ func AddOrRefcountDownloaderConfig(ctx *volumemgrContext, blob types.BlobStatus)
 	// try to reserve storage, must be released on error
 	size := blob.Size
 	n := types.DownloaderConfig{
-		DatastoreIDList: blob.DatastoreIDList,
-		Name:            blob.RelativeURL,
-		ImageSha256:     blob.Sha256,
-		Size:            size,
-		Target:          locFilename,
-		RefCount:        refCount,
+		DatastoreIDList:        blob.DatastoreIDList,
+		Name:                   blob.RelativeURL,
+		ImageSha256:            blob.Sha256,
+		Size:                   size,
+		Target:                 locFilename,
+		RefCount:               refCount,
+		BlobDownloadRetryCount: blobDownloadRetryCount,
 	}
 	log.Functionf("AddOrRefcountDownloaderConfig: DownloaderConfig: %+v", n)
 	publishDownloaderConfig(ctx, &n)
@@ -103,6 +106,24 @@ func MaybeRemoveDownloaderConfig(ctx *volumemgrContext, imageSha string) {
 
 	publishDownloaderConfig(ctx, m)
 	log.Functionf("MaybeRemoveDownloaderConfig done for %s", imageSha)
+}
+
+func retryDownload(ctx *volumemgrContext, imageSha string) {
+	m := lookupDownloaderConfig(ctx, imageSha)
+	if m == nil {
+		log.Functionf("retryDownload: config missing for %s",
+			imageSha)
+		return
+	}
+	if m.RefCount == 0 {
+		log.Fatalf("retryDownload: Attempting to retry when "+
+			"RefCount is 0. Image Details - Name: %s, ImageSha: %s, ",
+			m.Name, m.ImageSha256)
+	}
+	m.BlobDownloadRetryCount++
+
+	publishDownloaderConfig(ctx, m)
+	log.Functionf("retryDownload done for %s", imageSha)
 }
 
 func publishDownloaderConfig(ctx *volumemgrContext,
