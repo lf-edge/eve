@@ -45,6 +45,16 @@ Any given node could be hosting one or more longhorn volume replicas and thus co
 A drain operation should be performed before any Node Operation / Node Command which can cause an extended outage of a node such as a reboot, shutdown, reset.
 kubenodeop handles NodeDrainRequest objects which zedkube subscribes to, initiates the drain, and publishes NodeDrainStatus objects.
 
+## Applications under Kubevirt Mode
+
+### Handling Domain Deletion in Domainmgr
+
+In normal cases of EVE application launching and running, the domainmgr handles the configuration creation, starts the domain, and monitors the domain's running status. If the starting and monitoring status is not in the running state, then there is something wrong with the runtime process, and the domain is normally stopped and deleted by the domainmgr. Domainmgr keeps a timer, usually 10 minutes, to retry starting the domain again later.
+
+When the application is launched and managed in KubeVirt mode, the Kubernetes cluster is provisioned for this application, being a VMI (Virtual Machine Instance) replicaSet object or a Pod replicaSet object. It uses a declarative approach to manage the desired state of the applications. The configurations are saved in the Kubernetes database for the Kubernetes controller to use to ensure the objects eventually achieve the correct state if possible. Any particular VMI/Pod state of a domain may not be in working condition at the time when EVE domainmgr checks. In the domainmgr code running in KubeVirt mode, it normally skips the hyper.Task().Delete() or hyper.Task().Stop() in domainmgr.go, and lets the Kubernetes cluster have a chance to work its way to bring up the application to the running state.
+
+The exception to the above is in the case of the application itself being removed from the AppInstanceConfig, in which case, the DomainStatus of this application will be deleted, and we have a new boolean DomainConfigDeleted to be set if the DomainStatus is pending for deletion. When the DomainStatus of DomainConfigDeleted is set, the code in domainmgr will allow the Stop() or Delete() operations for Kubernetes to remove the replicaSet of the application.
+
 ## Kubernetes Node Draining
 
 ### kubeapi

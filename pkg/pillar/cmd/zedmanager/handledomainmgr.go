@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	uuid "github.com/satori/go.uuid"
 )
 
 const (
@@ -46,7 +47,12 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 	if ns != nil {
 		AppNum = ns.AppNum
 	}
-	effectiveActivate := effectiveActivateCurrentProfile(aiConfig, ctx.currentProfile)
+
+	isDNiDnode := false
+	if aiConfig.DesignatedNodeID != uuid.Nil && aiConfig.DesignatedNodeID == ctx.nodeUUID {
+		isDNiDnode = true
+	}
+	effectiveActivate := effectiveActivateCombined(aiConfig, ctx)
 	dc := types.DomainConfig{
 		UUIDandVersion:    aiConfig.UUIDandVersion,
 		DisplayName:       aiConfig.DisplayName,
@@ -60,6 +66,7 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 		MetaDataType:      aiConfig.MetaDataType,
 		Service:           aiConfig.Service,
 		CloudInitVersion:  aiConfig.CloudInitVersion,
+		IsDNidNode:        isDNiDnode,
 	}
 
 	dc.DiskConfigList = make([]types.DiskConfig, 0, len(aiStatus.VolumeRefStatusList))
