@@ -145,6 +145,7 @@ CURRENT_INSTALLER=$(CURRENT_DIR)/installer
 INSTALLER_FIRMWARE_DIR=$(INSTALLER)/firmware
 CURRENT_FIRMWARE_DIR=$(CURRENT_INSTALLER)/firmware
 UBOOT_IMG=$(INSTALLER_FIRMWARE_DIR)/boot
+BUILDARGS_FILE=build-args.conf
 
 # not every firmware file is used on every architecture
 BIOS_IMG_amd64=$(INSTALLER_FIRMWARE_DIR)/OVMF.fd $(INSTALLER_FIRMWARE_DIR)/OVMF_CODE.fd $(INSTALLER_FIRMWARE_DIR)/OVMF_VARS.fd
@@ -249,6 +250,12 @@ QEMU_TPM_DEVICE_riscv64=tpm-tis
 QEMU_OPTS_TPM_Y_$(ZARCH)=-chardev socket,id=chrtpm,path=$(CURRENT_SWTPM)/swtpm-sock -tpmdev emulator,id=tpm0,chardev=chrtpm -device $(QEMU_TPM_DEVICE_$(ZARCH)),tpmdev=tpm0
 QEMU_OPTS_TPM=$(QEMU_OPTS_TPM_$(TPM:%=Y)_$(ZARCH))
 
+ifneq ($(TAP),)
+QEMU_OPTS_eth1=-netdev tap,id=eth1,ifname=$(TAP),script="" -device virtio-net-pci,netdev=eth1,romfile=""
+else
+QEMU_OPTS_eth1=-netdev user,id=eth1,net=$(QEMU_OPTS_NET2),dhcpstart=$(QEMU_OPTS_NET2_FIRST_IP) -device virtio-net-pci,netdev=eth1,romfile=""
+endif
+
 QEMU_OPTS_amd64=-smbios type=1,serial=$(QEMU_EVE_SERIAL)
 QEMU_OPTS_arm64=-smbios type=1,serial=$(QEMU_EVE_SERIAL) -drive file=fat:rw:$(dir $(DEVICETREE_DTB)),label=QEMU_DTB,format=vvfat
 QEMU_OPTS_riscv64=-kernel $(UBOOT_IMG)/u-boot.bin -device virtio-blk,drive=uefi-disk
@@ -259,7 +266,7 @@ QEMU_OPTS_COMMON= -m $(QEMU_MEMORY) -smp 4  $(QEMU_OPTS_BIOS) \
         -global ICH9-LPC.noreboot=false -watchdog-action reset \
         -rtc base=utc,clock=rt \
         -netdev user,id=eth0,net=$(QEMU_OPTS_NET1),dhcpstart=$(QEMU_OPTS_NET1_FIRST_IP),hostfwd=tcp::$(SSH_PORT)-:22$(QEMU_TFTP_OPTS) -device virtio-net-pci,netdev=eth0,romfile="" \
-        -netdev user,id=eth1,net=$(QEMU_OPTS_NET2),dhcpstart=$(QEMU_OPTS_NET2_FIRST_IP) -device virtio-net-pci,netdev=eth1,romfile="" \
+	$(QEMU_OPTS_eth1) \
         -device nec-usb-xhci,id=xhci \
         -qmp unix:$(CURDIR)/qmp.sock,server,wait=off
 QEMU_OPTS_CONF_PART=$(shell [ -d "$(CONF_PART)" ] && echo '-drive file=fat:rw:$(CONF_PART),format=raw')
@@ -313,6 +320,7 @@ LINUXKIT_VERSION=v1.5.2
 LINUXKIT_SOURCE=https://github.com/linuxkit/linuxkit
 LINUXKIT_OPTS=$(if $(strip $(EVE_HASH)),--hash) $(EVE_HASH) $(if $(strip $(EVE_REL)),--release) $(EVE_REL)
 LINUXKIT_PKG_TARGET=build
+LINUXKIT_BUILD_ARGS=--build-arg-file $(BUILDARGS_FILE)
 
 ifdef LIVE_FAST
 # Check the makerootfs.sh and the linuxkit tool invocation, the --input-tar
@@ -431,7 +439,7 @@ currentversion:
 	#echo $(shell readlink $(CURRENT) | sed -E 's/rootfs-(.*)\.[^.]*$/\1/')
 	@cat $(CURRENT_DIR)/installer/eve_version
 
-.PHONY: currentversion linuxkit pkg/kernel
+.PHONY: currentversion linuxkit pkg/kernel $(BUILDARGS_FILE)
 
 test: $(LINUXKIT) test-images-patches | $(DIST)
 	@echo Running tests on $(GOMODULE)
@@ -455,7 +463,7 @@ pillar-%: $(GOBUILDER) | $(DIST)
 	$(QUIET): $@: Succeeded
 
 clean:
-	rm -rf $(DIST) images/out pkg-deps.mk
+	rm -rf $(DIST) $(BUILDARGS_FILE) images/out pkg-deps.mk
 
 $(DOCKERFILE_FROM_CHECKER): $(DOCKERFILE_FROM_CHECKER_DIR)/*.go $(DOCKERFILE_FROM_CHECKER_DIR)/go.*
 	make -C $(DOCKERFILE_FROM_CHECKER_DIR)
@@ -569,7 +577,7 @@ run-installer-net: $(BIOS_IMG) $(IPXE_IMG) $(DEVICETREE_DTB) $(SWTPM) GETTY
 # run MUST NOT change the current dir; it depends on the output being correct from a previous build
 run-live run: $(BIOS_IMG) $(DEVICETREE_DTB) $(SWTPM) GETTY
 	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive file=$(CURRENT_IMG),format=$(IMG_FORMAT),id=uefi-disk
-run-live-gui run: $(BIOS_IMG) $(DEVICETREE_DTB) $(SWTPM) GETTY
+run-live-gui: $(BIOS_IMG) $(DEVICETREE_DTB) $(SWTPM) GETTY
 	$(QEMU_SYSTEM) $(QEMU_OPTS_GUI) -drive file=$(CURRENT_IMG),format=$(IMG_FORMAT),id=uefi-disk
 
 run-target: $(BIOS_IMG) $(DEVICETREE_DTB) $(SWTPM) GETTY
@@ -1003,6 +1011,9 @@ else
 	$(QUIET): $@: Succeeded
 endif
 
+$(BUILDARGS_FILE):
+	@echo "PLATFORM=$(PLATFORM)" > $@
+
 %.yml: %.yml.in $(RESCAN_DEPS) | build-tools
 	$(QUIET)$(PARSE_PKGS) $< > $@
 	$(QUIET): $@: Succeeded
@@ -1024,12 +1035,12 @@ get_pkg_build_rstats_yml = $(if $(wildcard pkg/$1/build-rstats.yml),build-rstats
 get_pkg_build_kubevirt_yml = $(if $(and $(filter y,$(DEV)),$(wildcard pkg/$1/build-kubevirt-dev.yml)),build-kubevirt-dev.yml, \
                              $(if $(wildcard pkg/$1/build-kubevirt.yml),build-kubevirt.yml,build.yml))
 
-eve-%: pkg/%/Dockerfile build-tools $(RESCAN_DEPS)
+eve-%: pkg/%/Dockerfile build-tools $(BUILDARGS_FILE) $(RESCAN_DEPS)
 	$(QUIET): "$@: Begin: LINUXKIT_PKG_TARGET=$(LINUXKIT_PKG_TARGET)"
 	$(eval LINUXKIT_DOCKER_LOAD := $(if $(filter $(PKGS_DOCKER_LOAD),$*),--docker,))
 	$(eval LINUXKIT_BUILD_PLATFORMS_LIST := $(call uniq,linux/$(ZARCH) $(if $(filter $(PKGS_HOSTARCH),$*),linux/$(HOSTARCH),)))
 	$(eval LINUXKIT_BUILD_PLATFORMS := --platforms $(subst $(space),$(comma),$(strip $(LINUXKIT_BUILD_PLATFORMS_LIST))))
-	$(eval LINUXKIT_FLAGS := $(if $(filter manifest,$(LINUXKIT_PKG_TARGET)),,$(FORCE_BUILD) $(LINUXKIT_DOCKER_LOAD) $(LINUXKIT_BUILD_PLATFORMS)))
+	$(eval LINUXKIT_FLAGS := $(if $(filter manifest,$(LINUXKIT_PKG_TARGET)),,$(FORCE_BUILD) $(LINUXKIT_BUILD_ARGS) $(LINUXKIT_DOCKER_LOAD) $(LINUXKIT_BUILD_PLATFORMS)))
 	$(QUIET)$(LINUXKIT) $(DASH_V) pkg $(LINUXKIT_PKG_TARGET) $(LINUXKIT_OPTS) $(LINUXKIT_FLAGS) --build-yml $(call get_pkg_build_yml,$*) pkg/$*
 	$(QUIET)if [ -n "$(PRUNE)" ]; then \
 		$(LINUXKIT) pkg builder prune; \

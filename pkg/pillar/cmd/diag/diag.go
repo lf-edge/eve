@@ -961,8 +961,8 @@ func printOutput(ctx *diagContext, caller string) {
 			}
 			ctx.ph.Print("INFO: %s: Static Domain Name: %s\n",
 				ifname, port.DomainName)
-			ctx.ph.Print("INFO: %s: Static NTP server: %s\n",
-				ifname, port.NtpServer.String())
+			ctx.ph.Print("INFO: %s: Static NTP server: %+v\n",
+				ifname, port.ConfiguredNtpServers)
 		}
 		printProxy(ctx, port, ifname)
 		if port.HasError() {

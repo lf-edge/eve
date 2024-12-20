@@ -15,7 +15,6 @@ import (
 
 	"github.com/containerd/containerd/mount"
 	"github.com/eriknordmark/ipinfo"
-	"github.com/golang/protobuf/ptypes"
 	"github.com/lf-edge/eve-api/go/evecommon"
 	"github.com/lf-edge/eve-api/go/info"
 	etpm "github.com/lf-edge/eve/pkg/pillar/evetpm"
@@ -220,7 +219,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext, dest destinationBitset) {
 	ReportInfo.Ztype = *deviceType
 	deviceUUID := devUUID.String()
 	ReportInfo.DevId = *proto.String(deviceUUID)
-	ReportInfo.AtTimeStamp = ptypes.TimestampNow()
+	ReportInfo.AtTimeStamp = timestamppb.Now()
 	log.Functionf("PublishDeviceInfoToZedCloud uuid %s", deviceUUID)
 
 	ReportDeviceInfo := new(info.ZInfoDevice)
@@ -535,10 +534,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext, dest destinationBitset) {
 			errInfo.Description = ib.Error.String()
 			errInfo.Severity = info.Severity_SEVERITY_ERROR
 			if !ib.Error.ErrorTime().IsZero() {
-				protoTime, err := ptypes.TimestampProto(ib.Error.ErrorTime())
-				if err == nil {
-					errInfo.Timestamp = protoTime
-				}
+				errInfo.Timestamp = timestamppb.New(ib.Error.ErrorTime())
 			}
 			reportAA.Err = errInfo
 		}
@@ -556,9 +552,8 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext, dest destinationBitset) {
 		hinfo.Uptime, hinfo.Uptime/(3600*24))
 	log.Tracef("Booted at %v", time.Unix(int64(hinfo.BootTime), 0).UTC())
 
-	bootTime, _ := ptypes.TimestampProto(
+	ReportDeviceInfo.BootTime = timestamppb.New(
 		time.Unix(int64(hinfo.BootTime), 0).UTC())
-	ReportDeviceInfo.BootTime = bootTime
 	hostname, err := os.Hostname()
 	if err != nil {
 		log.Errorf("HostName failed: %s", err)
@@ -576,8 +571,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext, dest destinationBitset) {
 
 	ReportDeviceInfo.LastRebootStack = ctx.rebootStack
 	if !ctx.rebootTime.IsZero() {
-		rebootTime, _ := ptypes.TimestampProto(ctx.rebootTime)
-		ReportDeviceInfo.LastRebootTime = rebootTime
+		ReportDeviceInfo.LastRebootTime = timestamppb.New(ctx.rebootTime)
 	}
 
 	ReportDeviceInfo.SystemAdapter = encodeSystemAdapterInfo(ctx)
@@ -647,7 +641,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext, dest destinationBitset) {
 	// device returns a runtime error. Similarly, we only support enforced application network
 	// interface order for the KVM hypervisor. If enabled for application deployed under Xen
 	// or Kubevirt hypervisor, EVE returns error and the application will not be started.
-	ReportDeviceInfo.ApiCapability = info.APICapability_API_CAPABILITY_ENFORCED_NET_INTERFACE_ORDER
+	ReportDeviceInfo.ApiCapability = info.APICapability_API_CAPABILITY_NTPS_FQDN
 
 	// Report if there is a local override of profile
 	if ctx.getconfigCtx.sideController.currentProfile !=
@@ -721,7 +715,7 @@ func PublishAppInstMetaDataToZedCloud(ctx *zedagentContext,
 	*contentType = info.ZInfoTypes_ZiAppInstMetaData
 	ReportInfo.Ztype = *contentType
 	ReportInfo.DevId = *proto.String(devUUID.String())
-	ReportInfo.AtTimeStamp = ptypes.TimestampNow()
+	ReportInfo.AtTimeStamp = timestamppb.Now()
 
 	ReportAppInstMetaData := new(info.ZInfoAppInstMetaData)
 	ReportAppInstMetaData.Uuid = appInstId
@@ -891,8 +885,10 @@ func encodeNetInfo(port types.NetworkPortStatus) *info.ZInfoNetwork {
 
 	networkInfo.Proxy = encodeProxyStatus(&port.ProxyConfig)
 	networkInfo.NtpServers = []string{}
-	for _, server := range port.NtpServers {
-		networkInfo.NtpServers = append(networkInfo.NtpServers, server.String())
+	if !port.IgnoreDhcpNtpServers {
+		for _, server := range port.DhcpNtpServers {
+			networkInfo.NtpServers = append(networkInfo.NtpServers, server.String())
+		}
 	}
 	return networkInfo
 }
@@ -987,15 +983,12 @@ func encodeSystemAdapterInfo(ctx *zedagentContext) *info.SystemAdapterInfo {
 		dps := new(info.DevicePortStatus)
 		dps.Version = uint32(dpc.Version)
 		dps.Key = dpc.Key
-		ts, _ := ptypes.TimestampProto(dpc.TimePriority)
-		dps.TimePriority = ts
+		dps.TimePriority = timestamppb.New(dpc.TimePriority)
 		if !dpc.LastFailed.IsZero() {
-			ts, _ := ptypes.TimestampProto(dpc.LastFailed)
-			dps.LastFailed = ts
+			dps.LastFailed = timestamppb.New(dpc.LastFailed)
 		}
 		if !dpc.LastSucceeded.IsZero() {
-			ts, _ := ptypes.TimestampProto(dpc.LastSucceeded)
-			dps.LastSucceeded = ts
+			dps.LastSucceeded = timestamppb.New(dpc.LastSucceeded)
 		}
 		dps.LastError = dpc.LastError
 
@@ -1044,12 +1037,25 @@ func encodeNetworkPortStatus(ctx *zedagentContext,
 	devicePort.Up = port.Up
 	devicePort.Mtu = uint32(port.MTU)
 	devicePort.Domainname = port.DomainName
-	// TODO: modify EVE APIs and allow to publish full list of NTP servers
-	if port.NtpServer != nil {
-		devicePort.NtpServer = port.NtpServer.String()
-	} else if len(port.NtpServers) > 0 {
-		devicePort.NtpServer = port.NtpServers[0].String()
+	ntpServers := make([]string, 0)
+	if port.ConfiguredNtpServers != nil {
+		ntpServers = append(ntpServers, port.ConfiguredNtpServers...)
 	}
+	if len(port.DhcpNtpServers) > 0 && !port.IgnoreDhcpNtpServers {
+		ntpServers = append(ntpServers, port.DhcpNtpServers[0].String())
+		if len(port.DhcpNtpServers) > 1 {
+			for _, ntpServer := range port.DhcpNtpServers[1:] {
+				ntpServers = append(ntpServers, ntpServer.String())
+			}
+		}
+	}
+	if len(ntpServers) > 0 {
+		devicePort.NtpServer = ntpServers[0]
+	}
+	if len(ntpServers) > 1 {
+		devicePort.MoreNtpServers = ntpServers[1:]
+	}
+
 	devicePort.Proxy = encodeProxyStatus(&port.ProxyConfig)
 	devicePort.MacAddr = port.MacAddr.String()
 	for _, ipAddr := range port.AddrInfoList {
@@ -1152,7 +1158,13 @@ func encodeNetworkPortConfig(ctx *zedagentContext,
 	dp.DefaultRouters = make([]string, 0)
 	dp.DefaultRouters = append(dp.DefaultRouters, npc.Gateway.String())
 
-	dp.NtpServer = npc.NTPServer.String()
+	if npc.NTPServers != nil && len(npc.NTPServers) > 0 {
+		dp.NtpServer = npc.NTPServers[0]
+
+		if len(npc.NTPServers) > 1 {
+			dp.MoreNtpServers = append(dp.MoreNtpServers, npc.NTPServers[1:]...)
+		}
+	}
 
 	dp.Dns = new(info.ZInfoDNS)
 	dp.Dns.DNSdomain = npc.DomainName

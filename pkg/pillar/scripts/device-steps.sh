@@ -81,14 +81,14 @@ get_ntp_servers_from_nim() {
     # Select static NTP sources
     ntp_static=$(jq -r  -c  \
                 '.Ports[] |
-                 select(.NtpServer != null and .NtpServer != "") |
-                 .NtpServer' $INPUTFILE)
+                 select (.ConfiguredNtpServers != null) |
+                 .ConfiguredNtpServers | .[]' $INPUTFILE)
 
     # Select dynamic (from DHCP) NTP sources
     ntp_dynamic=$(jq -r  -c  \
                 '.Ports[] |
-                 select(.NtpServers != null) |
-                 .NtpServers | .[]' $INPUTFILE)
+                 select(.DhcpNtpServers != null and .IgnoreDhcpNtpServers == false) |
+                 .DhcpNtpServers | .[]' $INPUTFILE)
 
     # Concat all in one string
     # shellcheck disable=SC3037

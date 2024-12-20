@@ -120,6 +120,8 @@ var (
 )
 
 func init() {
+	// domain-name to UUID and App-name mapping
+	domainUUID = base.NewLockedStringMap()
 	agentDefaultRemoteLogLevel.Store(logrus.InfoLevel)
 }
 
@@ -248,8 +250,6 @@ func main() {
 		log.Fatal(err)
 	}
 
-	// domain-name to UUID and App-name mapping
-	domainUUID = base.NewLockedStringMap()
 	// Get DomainStatus from domainmgr
 	subDomainStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "domainmgr",
@@ -852,6 +852,7 @@ func writelogFile(logChan <-chan inputEntry, moveChan chan fileChanInfo) {
 	// new file to collect device logs for upload
 	devStatsUpload := initNewLogfile(collectDir, devPrefixUpload, "")
 	defer devStatsUpload.file.Close()
+	devStatsUpload.notUpload = false
 
 	// new file to collect device logs to keep on device
 	devStatsKeep := initNewLogfile(collectDir, devPrefixKeep, "")
@@ -879,7 +880,7 @@ func writelogFile(logChan <-chan inputEntry, moveChan chan fileChanInfo) {
 		select {
 		case <-checklogTimer.C:
 			timeIdx++
-			checkLogTimeExpire(&devStatsUpload, moveChan)
+			checkLogTimeExpire(&devStatsUpload, moveChan)  // only check the upload log file, there is no need to hurry moving the keep log file
 			checklogTimer = time.NewTimer(5 * time.Second) // check the file time limit every 5 seconds
 
 		case entry := <-logChan:
@@ -983,18 +984,15 @@ func getAppStatsMap(appuuid string) statsLogFile {
 		applogname := appPrefix + appuuid + ".log"
 		appM := initNewLogfile(collectDir, applogname, appuuid)
 
-		var notUpload bool
-
 		val, found := domainUUID.Load(appuuid)
 		if found {
 			appD := val.(appDomain)
-			notUpload = appD.disableLogs
+			appM.notUpload = appD.disableLogs
 			if appD.trigMove {
 				appD.trigMove = false // reset this since we start a new file
 				domainUUID.Store(appuuid, appD)
 			}
 		}
-		appM.notUpload = notUpload
 
 		appStatsMap[appuuid] = appM
 
@@ -1170,46 +1168,36 @@ func checkKeepQuota() {
 }
 
 func getOldestLog() (*logs.LogEntry, error) {
-	// Compile a regex to match the log file pattern and extract the timestamp
-	re := regexp.MustCompile(`^dev\.log\.keep\.(\d+)\.gz$`)
-
 	// Read the directory and filter log files
 	files, err := os.ReadDir(keepSentDir)
 	if err != nil {
 		return nil, fmt.Errorf("error reading directory: %w", err)
 	}
 
-	type logFile struct {
-		name      string
-		timestamp string
-	}
+	oldestLogFileName := ""
+	oldestLogFileTimestamp := time.Now()
 
-	var devLogFiles []logFile
 	for _, file := range files {
 		if file.IsDir() {
 			continue
 		}
-		matches := re.FindStringSubmatch(file.Name())
-		if matches != nil {
-			devLogFiles = append(devLogFiles, logFile{
-				name:      file.Name(),
-				timestamp: matches[1],
-			})
+		timestamp, err := types.GetTimestampFromGzipName(file.Name())
+		if err != nil {
+			continue
+		}
+		if timestamp.Before(oldestLogFileTimestamp) {
+			oldestLogFileTimestamp = timestamp
+			oldestLogFileName = file.Name()
 		}
 	}
 
-	if len(devLogFiles) == 0 {
+	if oldestLogFileName == "" {
 		log.Function("getLatestLog: no log files found.")
 		return nil, nil
 	}
 
-	// Sort the log files by timestamp (ascending order)
-	sort.Slice(devLogFiles, func(i, j int) bool {
-		return devLogFiles[i].timestamp < devLogFiles[j].timestamp
-	})
-
 	// Open the oldest log file
-	oldestFile := filepath.Join(keepSentDir, devLogFiles[0].name)
+	oldestFile := filepath.Join(keepSentDir, oldestLogFileName)
 	file, err := os.Open(oldestFile)
 	if err != nil {
 		return nil, fmt.Errorf("error opening file: %w", err)
@@ -1449,18 +1437,13 @@ func gzipFileNameGet(isApp bool, timeNum int, dirName, appUUID string, notUpload
 		}
 		outfileName = appPref + appUUID + types.AppSuffix + strconv.Itoa(timeNum) + ".gz"
 	} else {
-		if notUpload {
-			outfileName = devPrefixKeep + strconv.Itoa(timeNum) + ".gz"
-		} else {
-			outfileName = devPrefixUpload + strconv.Itoa(timeNum) + ".gz"
-		}
+		outfileName = devPrefix + strconv.Itoa(timeNum) + ".gz"
 	}
 	return dirName + "/" + outfileName
 }
 
 func getAppuuidFromLogfile(tmplogfileInfo fileChanInfo) string {
-	prefix := collectDir + "/" + appPrefix
-	tmpStr1 := strings.TrimPrefix(tmplogfileInfo.tmpfile, prefix)
+	tmpStr1 := strings.TrimPrefix(path.Base(tmplogfileInfo.tmpfile), appPrefix)
 	tmpStr2 := strings.SplitN(tmpStr1, ".log", 2)
 	return tmpStr2[0]
 }
@@ -1478,13 +1461,32 @@ func findMovePrevLogFiles(movefile chan fileChanInfo) {
 
 	// on prev life's dev-log and app-log
 	for _, f := range files {
+		if f.IsDir() {
+			continue
+		}
+
 		isDev := strings.HasPrefix(f.Name(), devPrefix)
 		isApp := strings.HasPrefix(f.Name(), appPrefix)
-		if !f.IsDir() && (isDev && len(f.Name()) > len(devPrefix) || isApp && len(f.Name()) > len(appPrefix)) {
-			var fileinfo fileChanInfo
-			prevLogFile := collectDir + "/" + f.Name()
-			fileinfo.tmpfile = prevLogFile
-			fileinfo.isApp = isApp
+
+		if (isDev && len(f.Name()) > len(devPrefix)) || (isApp && len(f.Name()) > len(appPrefix)) {
+			fileinfo := fileChanInfo{
+				tmpfile: path.Join(collectDir, f.Name()),
+				isApp:   isApp,
+			}
+			if isDev {
+				fileinfo.notUpload = strings.HasPrefix(f.Name(), devPrefixKeep)
+			} else {
+				// this is going to be executed right after bootup, so the availability of config for this app is subject to race condition
+				// furthermore the config might not contain the appUUID anymore, so we are better off uploading the logs as default
+				appuuid := getAppuuidFromLogfile(fileinfo)
+				if val, found := domainUUID.Load(appuuid); found {
+					appD := val.(appDomain)
+					fileinfo.notUpload = appD.disableLogs
+				} else {
+					fileinfo.notUpload = false // default to upload
+				}
+			}
+
 			if info, err := f.Info(); err == nil {
 				fileinfo.inputSize = int32(info.Size())
 			}

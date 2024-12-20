@@ -244,3 +244,44 @@ func TestResolveWithPortsLambdaWithErrors(t *testing.T) {
 		t.Errorf("expected empty response, but got: %+v", res)
 	}
 }
+
+func TestResolveCacheWrap(t *testing.T) {
+	t.Parallel()
+	called := 0
+
+	cw := devicenetwork.ResolveCacheWrap(func(domain string, dnsServerIP, srcIP net.IP) ([]devicenetwork.DNSResponse, error) {
+		called++
+		return []devicenetwork.DNSResponse{
+			{
+				IP:  []byte{127, 0, 0, 1},
+				TTL: 2,
+			},
+		}, nil
+	})
+
+	cw("localhost", net.IP{8, 8, 8, 8}, net.IP{0, 0, 0, 0})
+
+	if called != 1 {
+		t.Fatalf("resolver func should have been called once, but called=%d", called)
+	}
+
+	cw("localhost", net.IP{8, 8, 8, 8}, net.IP{0, 0, 0, 0})
+
+	if called != 1 {
+		t.Fatalf("resolver func should have been called once, but called=%d", called)
+	}
+
+	time.Sleep(5 * time.Second)
+	cw("localhost", net.IP{8, 8, 8, 8}, net.IP{0, 0, 0, 0})
+	if called != 2 {
+		t.Fatalf("resolver func should have been called twice, but called=%d", called)
+	}
+
+	// Check different srcIPs
+	called = 0
+	cw("localhost1", net.IP{8, 8, 8, 8}, net.IP{0, 0, 0, 0})
+	cw("localhost1", net.IP{8, 8, 8, 8}, net.IP{1, 2, 3, 4})
+	if called != 2 {
+		t.Fatalf("resolver func should have been called twice because different src IPs, but called=%d", called)
+	}
+}

@@ -137,7 +137,9 @@ func PullBlob(registry, repo, hash, localFile, username, apiKey string, maxsize 
 		}
 		size, err = layer.Size()
 		if err != nil {
-			return 0, "", fmt.Errorf("could not get layer size %s: %v", ref.String(), err)
+			// Registry didn't reply correctly the HEAD request for size, fallback to the maxsize
+			size = maxsize
+			logrus.Errorf("could not get layer size %s: %v, trying maxsize %d ...", ref.String(), err, size)
 		}
 	}
 

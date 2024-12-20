@@ -17,7 +17,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/golang/protobuf/ptypes"
 	"github.com/lf-edge/eve-api/go/evecommon"
 	"github.com/lf-edge/eve-api/go/info"
 	"github.com/lf-edge/eve-api/go/metrics"
@@ -123,13 +122,7 @@ func encodeErrorInfo(et types.ErrorDescription) *info.ErrorInfo {
 	}
 	errInfo := new(info.ErrorInfo)
 	errInfo.Description = et.Error
-	protoTime, err := ptypes.TimestampProto(et.ErrorTime)
-	if err == nil {
-		errInfo.Timestamp = protoTime
-	} else {
-		log.Errorf("Failed to convert timestamp (%+v) for ErrorStr (%s) "+
-			"into TimestampProto. err: %s", et.ErrorTime, et.Error, err)
-	}
+	errInfo.Timestamp = timestamppb.New(et.ErrorTime)
 	errInfo.Severity = info.Severity(et.ErrorSeverity)
 	errInfo.RetryCondition = et.ErrorRetryCondition
 	errInfo.Entities = make([]*info.DeviceEntity, len(et.ErrorEntities))
@@ -156,13 +149,7 @@ func encodeTestResults(tr types.TestResults) *info.ErrorInfo {
 		}
 	}
 	if !timestamp.IsZero() {
-		protoTime, err := ptypes.TimestampProto(timestamp)
-		if err == nil {
-			errInfo.Timestamp = protoTime
-		} else {
-			log.Errorf("Failed to convert timestamp (%+v) for ErrorStr (%s) "+
-				"into TimestampProto. err: %s", timestamp, tr.LastError, err)
-		}
+		errInfo.Timestamp = timestamppb.New(timestamp)
 	}
 	return errInfo
 }
@@ -306,7 +293,7 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 
 	// This will be overridden with the timestamp for the CPU metrics
 	// below to make CPU usage calculations more accurate
-	ReportMetrics.AtTimeStamp = ptypes.TimestampNow()
+	ReportMetrics.AtTimeStamp = timestamppb.Now()
 
 	info, err := host.Info()
 	if err != nil {
@@ -319,9 +306,8 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 	// Note that uptime is seconds we've been up. We're converting
 	// to a timestamp. That better not be interpreted as a time since
 	// the epoch
-	uptime, _ := ptypes.TimestampProto(
+	ReportDeviceMetric.CpuMetric.UpTime = timestamppb.New(
 		time.Unix(int64(info.Uptime), 0).UTC())
-	ReportDeviceMetric.CpuMetric.UpTime = uptime
 
 	// Memory related info for the device
 	var totalMemory, freeMemory, usedEveMB uint64
@@ -416,12 +402,10 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 			AuthVerifyFailure: cm.AuthFailCount,
 		}
 		if !cm.LastFailure.IsZero() {
-			lf, _ := ptypes.TimestampProto(cm.LastFailure)
-			metric.LastFailure = lf
+			metric.LastFailure = timestamppb.New(cm.LastFailure)
 		}
 		if !cm.LastSuccess.IsZero() {
-			ls, _ := ptypes.TimestampProto(cm.LastSuccess)
-			metric.LastSuccess = ls
+			metric.LastSuccess = timestamppb.New(cm.LastSuccess)
 		}
 		for url, um := range cm.URLCounters {
 			log.Tracef("CloudMetrics[%s] url %s %v",
@@ -464,7 +448,7 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 		TotalSizeLogs:       newlogMetrics.TotalSizeLogs,
 	}
 	if !newlogMetrics.FailSentStartTime.IsZero() {
-		nlm.FailSentStartTime, _ = ptypes.TimestampProto(newlogMetrics.FailSentStartTime)
+		nlm.FailSentStartTime = timestamppb.New(newlogMetrics.FailSentStartTime)
 	}
 	if !newlogMetrics.OldestSavedDeviceLog.IsZero() {
 		nlm.OldestSavedDeviceLog = timestamppb.New(newlogMetrics.OldestSavedDeviceLog)
@@ -480,10 +464,10 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 		NumGzipFileKeptLocal: newlogMetrics.DevMetrics.NumGZipFileKeptLocal,
 	}
 	if !newlogMetrics.DevMetrics.RecentUploadTimestamp.IsZero() {
-		devM.RecentGzipFileTime, _ = ptypes.TimestampProto(newlogMetrics.DevMetrics.RecentUploadTimestamp)
+		devM.RecentGzipFileTime = timestamppb.New(newlogMetrics.DevMetrics.RecentUploadTimestamp)
 	}
 	if !newlogMetrics.DevMetrics.LastGZipFileSendTime.IsZero() {
-		devM.LastGzipFileSendTime, _ = ptypes.TimestampProto(newlogMetrics.DevMetrics.LastGZipFileSendTime)
+		devM.LastGzipFileSendTime = timestamppb.New(newlogMetrics.DevMetrics.LastGZipFileSendTime)
 	}
 	nlm.DeviceMetrics = devM
 
@@ -497,10 +481,10 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 		NumGzipFileKeptLocal: newlogMetrics.AppMetrics.NumGZipFileKeptLocal,
 	}
 	if !newlogMetrics.AppMetrics.RecentUploadTimestamp.IsZero() {
-		appM.RecentGzipFileTime, _ = ptypes.TimestampProto(newlogMetrics.AppMetrics.RecentUploadTimestamp)
+		appM.RecentGzipFileTime = timestamppb.New(newlogMetrics.AppMetrics.RecentUploadTimestamp)
 	}
 	if !newlogMetrics.AppMetrics.LastGZipFileSendTime.IsZero() {
-		appM.LastGzipFileSendTime, _ = ptypes.TimestampProto(newlogMetrics.AppMetrics.LastGZipFileSendTime)
+		appM.LastGzipFileSendTime = timestamppb.New(newlogMetrics.AppMetrics.LastGZipFileSendTime)
 	}
 	nlm.AppMetrics = appM
 
@@ -526,12 +510,10 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 			SuccessCount: cm.SuccessCount,
 		}
 		if !cm.LastFailure.IsZero() {
-			lf, _ := ptypes.TimestampProto(cm.LastFailure)
-			metric.LastFailure = lf
+			metric.LastFailure = timestamppb.New(cm.LastFailure)
 		}
 		if !cm.LastSuccess.IsZero() {
-			ls, _ := ptypes.TimestampProto(cm.LastSuccess)
-			metric.LastSuccess = ls
+			metric.LastSuccess = timestamppb.New(cm.LastSuccess)
 		}
 		for i := range cm.TypeCounters {
 			tc := metrics.TypeCounter{
@@ -602,8 +584,7 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 		// Override the time of the report with the time from
 		// domainmgr
 		if !dm.LastHeard.IsZero() {
-			lh, _ := ptypes.TimestampProto(dm.LastHeard)
-			ReportMetrics.AtTimeStamp = lh
+			ReportMetrics.AtTimeStamp = timestamppb.New(dm.LastHeard)
 		}
 
 		ReportDeviceMetric.CpuMetric.Total = *proto.Uint64(dm.CPUTotalNs / nanoSecToSec)
@@ -654,22 +635,10 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 	}
 
 	if !ctx.getconfigCtx.lastReceivedConfig.IsZero() {
-		protoTime, err := ptypes.TimestampProto(ctx.getconfigCtx.lastReceivedConfig)
-		if err == nil {
-			ReportDeviceMetric.LastReceivedConfig = protoTime
-		} else {
-			log.Errorf("Failed to convert timestamp (%+v) for LastReceivedConfig into TimestampProto. err: %s",
-				ctx.getconfigCtx.lastReceivedConfig, err)
-		}
+		ReportDeviceMetric.LastReceivedConfig = timestamppb.New(ctx.getconfigCtx.lastReceivedConfig)
 	}
 	if !ctx.getconfigCtx.lastProcessedConfig.IsZero() {
-		protoTime, err := ptypes.TimestampProto(ctx.getconfigCtx.lastProcessedConfig)
-		if err == nil {
-			ReportDeviceMetric.LastProcessedConfig = protoTime
-		} else {
-			log.Errorf("Failed to convert timestamp (%+v) for LastProcessedConfig into TimestampProto. err: %s",
-				ctx.getconfigCtx.lastProcessedConfig, err)
-		}
+		ReportDeviceMetric.LastProcessedConfig = timestamppb.New(ctx.getconfigCtx.lastProcessedConfig)
 	}
 	ReportDeviceMetric.DormantTimeInSeconds = getDormantTime(ctx)
 
@@ -714,9 +683,8 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 
 		if !aiStatus.BootTime.IsZero() && aiStatus.Activated {
 			elapsed := time.Since(aiStatus.BootTime)
-			uptime, _ := ptypes.TimestampProto(
+			ReportAppMetric.Cpu.UpTime = timestamppb.New(
 				time.Unix(0, elapsed.Nanoseconds()).UTC())
-			ReportAppMetric.Cpu.UpTime = uptime
 		}
 
 		dm := lookupDomainMetric(ctx, aiStatus.Key())
@@ -835,8 +803,7 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 					appContainerMetric.PIDs = stats.Pids
 
 					appContainerMetric.Cpu = new(metrics.AppCpuMetric)
-					uptime, _ := ptypes.TimestampProto(time.Unix(0, stats.Uptime).UTC())
-					appContainerMetric.Cpu.UpTime = uptime
+					appContainerMetric.Cpu.UpTime = timestamppb.New(time.Unix(0, stats.Uptime).UTC())
 					// convert to seconds
 					appContainerMetric.Cpu.Total = stats.CPUTotal / nanoSecToSec
 					appContainerMetric.Cpu.SystemTotal = stats.SystemCPUTotal / nanoSecToSec
@@ -1059,7 +1026,7 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 	*appType = info.ZInfoTypes_ZiApp
 	ReportInfo.Ztype = *appType
 	ReportInfo.DevId = *proto.String(devUUID.String())
-	ReportInfo.AtTimeStamp = ptypes.TimestampNow()
+	ReportInfo.AtTimeStamp = timestamppb.Now()
 
 	ReportAppInfo := new(info.ZInfoApp)
 
@@ -1081,8 +1048,7 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 			// If never booted
 			log.Functionln("BootTime is empty")
 		} else {
-			bootTime, _ := ptypes.TimestampProto(aiStatus.BootTime)
-			ReportAppInfo.BootTime = bootTime
+			ReportAppInfo.BootTime = timestamppb.New(aiStatus.BootTime)
 		}
 
 		for _, ia := range aiStatus.IoAdapterList {
@@ -1140,10 +1106,7 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 			networkInfo.DevName = *proto.String(name)
 			niStatus := appIfnameToNetworkInstance(ctx, aiStatus, ifname)
 			if niStatus != nil {
-				for _, ntpServer := range niStatus.NTPServers {
-					networkInfo.NtpServers = append(networkInfo.NtpServers,
-						ntpServer.String())
-				}
+				networkInfo.NtpServers = append(networkInfo.NtpServers, niStatus.NTPServers...)
 				networkInfo.DefaultRouters = []string{niStatus.Gateway.String()}
 				networkInfo.Dns = &info.ZInfoDNS{
 					DNSservers: []string{},
@@ -1213,7 +1176,7 @@ func PublishContentInfoToZedCloud(ctx *zedagentContext, uuid string,
 	*contentType = info.ZInfoTypes_ZiContentTree
 	ReportInfo.Ztype = *contentType
 	ReportInfo.DevId = *proto.String(devUUID.String())
-	ReportInfo.AtTimeStamp = ptypes.TimestampNow()
+	ReportInfo.AtTimeStamp = timestamppb.Now()
 
 	ReportContentInfo := new(info.ZInfoContentTree)
 
@@ -1230,12 +1193,11 @@ func PublishContentInfoToZedCloud(ctx *zedagentContext, uuid string,
 		ContentResourcesInfo := new(info.ContentResources)
 		ContentResourcesInfo.CurSizeBytes = uint64(ctStatus.TotalSize)
 		ReportContentInfo.Resources = ContentResourcesInfo
-		createTime, _ := ptypes.TimestampProto(ctStatus.CreateTime)
 		ReportContentInfo.Usage = &info.UsageInfo{
 			// XXX RefCount: uint32(ctStatus.RefCount),
 			RefCount:               1,
-			LastRefcountChangeTime: createTime,
-			CreateTime:             createTime,
+			LastRefcountChangeTime: timestamppb.New(ctStatus.CreateTime),
+			CreateTime:             timestamppb.New(ctStatus.CreateTime),
 		}
 		ReportContentInfo.Sha256 = ctStatus.ContentSha256
 		ReportContentInfo.ProgressPercentage = uint32(ctStatus.Progress)
@@ -1281,7 +1243,7 @@ func PublishVolumeToZedCloud(ctx *zedagentContext, uuid string,
 	*volumeType = info.ZInfoTypes_ZiVolume
 	ReportInfo.Ztype = *volumeType
 	ReportInfo.DevId = *proto.String(devUUID.String())
-	ReportInfo.AtTimeStamp = ptypes.TimestampNow()
+	ReportInfo.AtTimeStamp = timestamppb.Now()
 
 	ReportVolumeInfo := new(info.ZInfoVolume)
 
@@ -1308,12 +1270,10 @@ func PublishVolumeToZedCloud(ctx *zedagentContext, uuid string,
 				ReportVolumeInfo.Resources = VolumeResourcesInfo
 			}
 		}
-		createTime, _ := ptypes.TimestampProto(volStatus.CreateTime)
-		lastChangeTime, _ := ptypes.TimestampProto(volStatus.LastRefCountChangeTime)
 		ReportVolumeInfo.Usage = &info.UsageInfo{
 			RefCount:               uint32(volStatus.RefCount),
-			LastRefcountChangeTime: lastChangeTime,
-			CreateTime:             createTime,
+			LastRefcountChangeTime: timestamppb.New(volStatus.LastRefCountChangeTime),
+			CreateTime:             timestamppb.New(volStatus.CreateTime),
 		}
 
 		ReportVolumeInfo.ProgressPercentage = uint32(volStatus.Progress)
@@ -1357,7 +1317,7 @@ func PublishBlobInfoToZedCloud(ctx *zedagentContext, blobSha string,
 	*contentType = info.ZInfoTypes_ZiBlobList
 	ReportInfo.Ztype = *contentType
 	ReportInfo.DevId = *proto.String(devUUID.String())
-	ReportInfo.AtTimeStamp = ptypes.TimestampNow()
+	ReportInfo.AtTimeStamp = timestamppb.Now()
 
 	ReportBlobInfoList := new(info.ZInfoBlobList)
 
@@ -1367,12 +1327,10 @@ func PublishBlobInfoToZedCloud(ctx *zedagentContext, blobSha string,
 	if blobStatus != nil {
 		ReportBlobInfo.State = blobStatus.State.ZSwState()
 		ReportBlobInfo.ProgressPercentage = blobStatus.GetDownloadedPercentage()
-		createTime, _ := ptypes.TimestampProto(blobStatus.CreateTime)
-		lastChangeTime, _ := ptypes.TimestampProto(blobStatus.LastRefCountChangeTime)
 		ReportBlobInfo.Usage = &info.UsageInfo{
 			RefCount:               uint32(blobStatus.RefCount),
-			LastRefcountChangeTime: lastChangeTime,
-			CreateTime:             createTime,
+			LastRefcountChangeTime: timestamppb.New(blobStatus.LastRefCountChangeTime),
+			CreateTime:             timestamppb.New(blobStatus.CreateTime),
 		}
 		ReportBlobInfo.Resources = &info.ContentResources{CurSizeBytes: blobStatus.Size}
 	}
@@ -1416,14 +1374,12 @@ func PublishEdgeviewToZedCloud(ctx *zedagentContext,
 	*evType = info.ZInfoTypes_ZiEdgeview
 	ReportInfo.Ztype = *evType
 	ReportInfo.DevId = *proto.String(devUUID.String())
-	ReportInfo.AtTimeStamp = ptypes.TimestampNow()
+	ReportInfo.AtTimeStamp = timestamppb.Now()
 
 	ReportEvInfo := new(info.ZInfoEdgeview)
 	if evStatus != nil {
-		expTime, _ := ptypes.TimestampProto(time.Unix(int64(evStatus.ExpireOn), 0).UTC())
-		startTime, _ := ptypes.TimestampProto(evStatus.StartedOn)
-		ReportEvInfo.ExpireTime = expTime
-		ReportEvInfo.StartedTime = startTime
+		ReportEvInfo.ExpireTime = timestamppb.New(time.Unix(int64(evStatus.ExpireOn), 0).UTC())
+		ReportEvInfo.StartedTime = timestamppb.New(evStatus.StartedOn)
 		ReportEvInfo.CountDev = evStatus.CmdCountDev
 		ReportEvInfo.CountApp = evStatus.CmdCountApp
 		ReportEvInfo.CountExt = evStatus.CmdCountExt
@@ -1639,10 +1595,7 @@ func createProcessMetrics(ctx *zedagentContext, reportMetrics *metrics.ZMetricMs
 		processMetric.UserTime = p.UserTime
 		processMetric.SystemTime = p.SystemTime
 		processMetric.CpuPercent = p.CPUPercent
-		protoTime, err := ptypes.TimestampProto(p.CreateTime)
-		if err == nil {
-			processMetric.CreateTime = protoTime
-		}
+		processMetric.CreateTime = timestamppb.New(p.CreateTime)
 		processMetric.VmBytes = p.VMBytes
 		processMetric.RssBytes = p.RssBytes
 		processMetric.MemoryPercent = p.MemoryPercent
@@ -1801,11 +1754,7 @@ func fillStorageChildrenMetrics(childrenDataset *types.StorageChildrenMetrics) *
 func fillStorageMetrics(zpoolMetrics *types.ZFSPoolMetrics) *metrics.StorageMetric {
 	storageMetrics := new(metrics.StorageMetric)
 	storageMetrics.PoolName = *proto.String(zpoolMetrics.PoolName)
-	tmpCollectionTime, err := ptypes.TimestampProto(zpoolMetrics.CollectionTime)
-	if err != nil {
-		log.Errorf("fillStorageMetrics: failed to convert CollectionTime %v", err)
-	}
-	storageMetrics.CollectionTime = tmpCollectionTime
+	storageMetrics.CollectionTime = timestamppb.New(zpoolMetrics.CollectionTime)
 	storageMetrics.ZpoolMetrics = fillStorageVDevMetrics(zpoolMetrics.Metrics)
 
 	// Fill metrics for RAID or Mirror

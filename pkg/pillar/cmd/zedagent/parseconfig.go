@@ -1380,10 +1380,11 @@ func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
 			port.WirelessCfg = network.WirelessCfg
 			port.Gateway = network.Gateway
 			port.DomainName = network.DomainName
-			port.NTPServer = network.NTPServer
+			port.NTPServers = network.NTPServers
 			port.DNSServers = network.DNSServers
 			// Need to be careful since zedcloud can feed us bad Dhcp type
 			port.Dhcp = network.Dhcp
+			port.IgnoreDhcpNtpServers = network.IgnoreDhcpNtpServers
 			switch port.Dhcp {
 			case types.DhcpTypeStatic:
 				if sysAdapter.Addr == "" {
@@ -2260,12 +2261,18 @@ func parseIpspecNetworkXObject(ipspec *zconfig.Ipspec, config *types.NetworkXObj
 			return fmt.Errorf("invalid gateway IP (%s)", g)
 		}
 	}
-	if n := ipspec.GetNtp(); n != "" {
-		config.NTPServer = net.ParseIP(n)
-		if config.NTPServer == nil {
-			return fmt.Errorf("invalid NTP IP (%s)", n)
-		}
+
+	ntpServers := append([]string{ipspec.GetNtp()}, ipspec.GetMoreNtp()...)
+	if len(ntpServers) > 0 && ntpServers[0] != "" {
+		config.NTPServers = ntpServers
 	}
+
+	config.IgnoreDhcpNtpServers = false
+	dhcpOptionsIgnore := ipspec.GetDhcpOptionsIgnore()
+	if dhcpOptionsIgnore != nil {
+		config.IgnoreDhcpNtpServers = dhcpOptionsIgnore.NtpServerExclusively
+	}
+
 	for _, dsStr := range ipspec.GetDns() {
 		ds := net.ParseIP(dsStr)
 		if ds == nil {
@@ -2293,11 +2300,11 @@ func parseIpspec(ipspec *zconfig.Ipspec,
 
 	config.DomainName = ipspec.GetDomain()
 	// Parse NTP Server
+	if config.NtpServers == nil {
+		config.NtpServers = make([]string, 0)
+	}
 	if n := ipspec.GetNtp(); n != "" {
-		config.NtpServer = net.ParseIP(n)
-		if config.NtpServer == nil {
-			return fmt.Errorf("invalid NTP IP (%s)", n)
-		}
+		config.NtpServers = append(config.NtpServers, n)
 	}
 	// Parse Dns Servers
 	for _, dsStr := range ipspec.GetDns() {

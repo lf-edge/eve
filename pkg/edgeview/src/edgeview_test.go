@@ -28,7 +28,7 @@ func TestWalkLogDirs(t *testing.T) {
 	g.Expect(foundFiles).To(HaveLen(1), "expected exactly one file to be found")
 
 	expected := logfiletime{
-		filepath: path.Join(newlogDir, "keepSentQueue/dev.log.keep.1731491932618.gz"),
+		filepath: path.Join(newlogDir, "keepSentQueue/dev.log.1731491932618.gz"),
 		filesec:  1731491932,
 	}
 	g.Expect(foundFiles[0]).To(Equal(expected))

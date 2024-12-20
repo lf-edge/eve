@@ -95,7 +95,7 @@ func newPipeline(accountName, accountKey string, httpClient *http.Client) (pipel
 	}
 	credential, err := azblob.NewSharedKeyCredential(accountName, accountKey)
 	if err != nil {
-		return nil, fmt.Errorf("Invalid credentials with error: " + err.Error())
+		return nil, fmt.Errorf("invalid credentials with error: %s", err.Error())
 	}
 	p := azblob.NewPipeline(credential, azblob.PipelineOptions{
 		HTTPSender: sender,
@@ -457,7 +457,7 @@ func GetAzureBlobMetaData(accountURL, accountName, accountKey, containerName, re
 func GenerateBlobSasURI(accountURL, accountName, accountKey, containerName, remoteFile string, httpClient *http.Client, duration time.Duration) (string, error) {
 	credential, err := azblob.NewSharedKeyCredential(accountName, accountKey)
 	if err != nil {
-		return "", fmt.Errorf("Invalid credentials with error: " + err.Error())
+		return "", fmt.Errorf("invalid credentials with error: %s", err.Error())
 	}
 
 	// Checking whether blob exists or not before generating SAS URI

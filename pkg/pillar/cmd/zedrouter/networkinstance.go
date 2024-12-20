@@ -10,6 +10,7 @@ import (
 	"net"
 	"strings"
 
+	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
 	"github.com/lf-edge/eve/pkg/pillar/nireconciler"
 	"github.com/lf-edge/eve/pkg/pillar/nistate"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -92,6 +93,41 @@ func (z *zedrouter) getNIBridgeConfig(
 	}
 }
 
+func (z *zedrouter) attachNTPServersToPortConfigs(portConfigs []nireconciler.Port) {
+	for i := range portConfigs {
+		pc := &portConfigs[i]
+		ntpServerIPs, ntpServerDomainsOrIPs := types.GetNTPServers(*z.deviceNetworkStatus, pc.IfName)
+
+		ntpServers := make([]net.IP, 0, len(ntpServerDomainsOrIPs))
+		for _, ntpServer := range ntpServerDomainsOrIPs {
+			ip := net.ParseIP(ntpServer)
+			if ip != nil {
+				ntpServers = append(ntpServers, ip)
+				continue
+			}
+			z.pubSub.StillRunning(agentName, warningTime, errorTime)
+			dnsResponses, err := devicenetwork.ResolveWithPortsLambda(
+				ntpServer,
+				*z.deviceNetworkStatus,
+				devicenetwork.ResolveCacheWrap(devicenetwork.ResolveWithSrcIP),
+			)
+			if err != nil {
+				z.log.Warnf("could not resolve '%s': %v", ntpServer, err)
+			}
+
+			for _, dnsResponse := range dnsResponses {
+				ntpServers = append(ntpServers, dnsResponse.IP)
+			}
+		}
+
+		ntpServers = append(ntpServers, ntpServerIPs...)
+		generics.FilterDuplicatesFn(ntpServers, netutils.EqualIPs)
+
+		pc.NTPServers = ntpServers
+	}
+}
+
+// NTP servers are set separately with z.attachNTPServersToPortConfigs
 func (z *zedrouter) getNIPortConfig(
 	status *types.NetworkInstanceStatus) (portConfigs []nireconciler.Port) {
 	if len(status.Ports) == 0 {
@@ -111,7 +147,6 @@ func (z *zedrouter) getNIPortConfig(
 			MTU:          port.MTU,
 			DhcpType:     port.Dhcp,
 			DNSServers:   types.GetDNSServers(*z.deviceNetworkStatus, port.IfName),
-			NTPServers:   types.GetNTPServers(*z.deviceNetworkStatus, port.IfName),
 		})
 	}
 	return portConfigs
@@ -124,12 +159,12 @@ func (z *zedrouter) updateNIPorts(niConfig types.NetworkInstanceConfig,
 	var (
 		newPorts         []*types.NetworkPortStatus
 		validatedPortLLs []string
-		newNTPServers    []net.IP
+		newNTPServers    []string
 		errorMsgs        []string
 	)
-	if niStatus.NtpServer != nil {
+	if niStatus.NtpServers != nil {
 		// The NTP server explicitly configured for the NI.
-		newNTPServers = append(newNTPServers, niStatus.NtpServer)
+		newNTPServers = append(newNTPServers, niStatus.NtpServers...)
 	}
 	if niStatus.PortLabel != "" {
 		newPorts = z.deviceNetworkStatus.LookupPortsByLabel(niStatus.PortLabel)
@@ -205,23 +240,26 @@ func (z *zedrouter) updateNIPorts(niConfig types.NetworkInstanceConfig,
 		}
 		// Port is valid for this network instance.
 		validatedPortLLs = append(validatedPortLLs, port.Logicallabel)
-		if port.NtpServer != nil {
+		if port.ConfiguredNtpServers != nil {
 			// The NTP server explicitly configured for the port.
-			newNTPServers = append(newNTPServers, port.NtpServer)
+			newNTPServers = append(newNTPServers, port.ConfiguredNtpServers...)
 		}
 		// NTP servers received via DHCP.
-		newNTPServers = append(newNTPServers, port.NtpServers...)
+		if !port.IgnoreDhcpNtpServers {
+			for _, dhcpNtpserver := range port.DhcpNtpServers {
+				newNTPServers = append(newNTPServers, dhcpNtpserver.String())
+			}
+		}
 	}
 	if niStatus.PortLabel != "" && len(newPorts) == 0 {
 		// This is potentially a transient state, wait for DNS update.
 		errorMsgs = append(errorMsgs,
 			fmt.Sprintf("no port is matching label '%s'", niStatus.PortLabel))
 	}
-	newNTPServers = generics.FilterDuplicatesFn(newNTPServers, netutils.EqualIPs)
+	newNTPServers = generics.FilterDuplicates(newNTPServers)
 	changed = changed || !generics.EqualSets(niStatus.Ports, validatedPortLLs)
 	niStatus.Ports = validatedPortLLs
-	changed = changed || !generics.EqualSetsFn(niStatus.NTPServers, newNTPServers,
-		netutils.EqualIPs)
+	changed = changed || !generics.EqualSets(niStatus.NTPServers, newNTPServers)
 	niStatus.NTPServers = newNTPServers
 	// Update BridgeMac for Switch NI bridge created by NIM.
 	if z.niBridgeIsCreatedByNIM(niConfig) {
@@ -492,8 +530,10 @@ func (z *zedrouter) updateNIRoutePort(route types.IPRouteConfig, port string,
 func (z *zedrouter) doActivateNetworkInstance(config types.NetworkInstanceConfig,
 	status *types.NetworkInstanceStatus) {
 	// Create network instance inside the network stack.
+	bridgeConfig := z.getNIBridgeConfig(status)
+	z.attachNTPServersToPortConfigs(bridgeConfig.Ports)
 	niRecStatus, err := z.niReconciler.AddNI(
-		z.runCtx, config, z.getNIBridgeConfig(status))
+		z.runCtx, config, bridgeConfig)
 	if err != nil {
 		z.log.Errorf("Failed to activate network instance %s: %v", status.UUID, err)
 		status.ReconcileErr.SetErrorNow(err.Error())
@@ -537,8 +577,10 @@ func (z *zedrouter) doInactivateNetworkInstance(status *types.NetworkInstanceSta
 
 func (z *zedrouter) doUpdateActivatedNetworkInstance(config types.NetworkInstanceConfig,
 	status *types.NetworkInstanceStatus) {
+	bridgeConfig := z.getNIBridgeConfig(status)
+	z.attachNTPServersToPortConfigs(bridgeConfig.Ports)
 	niRecStatus, err := z.niReconciler.UpdateNI(
-		z.runCtx, config, z.getNIBridgeConfig(status))
+		z.runCtx, config, bridgeConfig)
 	if err != nil {
 		z.log.Errorf("Failed to update activated network instance %s: %v",
 			status.UUID, err)
