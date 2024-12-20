@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"path"
 	"strconv"
+	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
@@ -18,10 +19,12 @@ func AddOrRefcountDownloaderConfig(ctx *volumemgrContext, blob types.BlobStatus)
 	log.Functionf("AddOrRefcountDownloaderConfig for %s", blob.Sha256)
 
 	refCount := uint(1)
+	lastRetry := time.Now()
 	m := lookupDownloaderConfig(ctx, blob.Sha256)
 	if m != nil {
 		log.Functionf("downloader config exists for %s to refcount %d", blob.Sha256, m.RefCount)
 		refCount = m.RefCount + 1
+		lastRetry = m.LastRetry
 		// We need to update datastore id before publishing the
 		// datastore config because datastore id can be updated
 		// in some cases. For example:
@@ -64,6 +67,7 @@ func AddOrRefcountDownloaderConfig(ctx *volumemgrContext, blob types.BlobStatus)
 		Size:            size,
 		Target:          locFilename,
 		RefCount:        refCount,
+		LastRetry:       lastRetry,
 	}
 	log.Functionf("AddOrRefcountDownloaderConfig: DownloaderConfig: %+v", n)
 	publishDownloaderConfig(ctx, &n)
@@ -83,7 +87,8 @@ func AddOrRefcountDownloaderConfig(ctx *volumemgrContext, blob types.BlobStatus)
 // ignored silently.
 // > If DownloaderConfig's Refcount was incremented before #3, then expired notification from the
 // Downloader will be ignored silently.
-func MaybeRemoveDownloaderConfig(ctx *volumemgrContext, imageSha string) {
+func MaybeRemoveDownloaderConfig(ctx *volumemgrContext, blob *types.BlobStatus) {
+	imageSha := blob.Sha256
 	log.Functionf("MaybeRemoveDownloaderConfig(%s)", imageSha)
 
 	m := lookupDownloaderConfig(ctx, imageSha)
@@ -102,7 +107,28 @@ func MaybeRemoveDownloaderConfig(ctx *volumemgrContext, imageSha string) {
 		m.RefCount, imageSha)
 
 	publishDownloaderConfig(ctx, m)
+
+	// Remove downloader config reference from blob
+	blob.HasDownloaderRef = false
 	log.Functionf("MaybeRemoveDownloaderConfig done for %s", imageSha)
+}
+
+func retryDownload(ctx *volumemgrContext, imageSha string) {
+	m := lookupDownloaderConfig(ctx, imageSha)
+	if m == nil {
+		log.Functionf("retryDownload: config missing for %s",
+			imageSha)
+		return
+	}
+	if m.RefCount == 0 {
+		log.Warnf("retryDownload: Attempting to retry when "+
+			"RefCount is 0. Image Details - Name: %s, ImageSha: %s, ",
+			m.Name, m.ImageSha256)
+	}
+	m.LastRetry = time.Now()
+
+	publishDownloaderConfig(ctx, m)
+	log.Functionf("retryDownload done for %s", imageSha)
 }
 
 func publishDownloaderConfig(ctx *volumemgrContext,

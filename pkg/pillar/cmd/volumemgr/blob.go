@@ -484,12 +484,10 @@ func unpublishBlobStatus(ctx *volumemgrContext, blobs ...*types.BlobStatus) {
 		// But the BlobStatus pointer might appear several times in
 		// the list hence we better clear the Has*Ref
 		if blob.HasDownloaderRef {
-			MaybeRemoveDownloaderConfig(ctx, blob.Sha256)
-			blob.HasDownloaderRef = false
+			MaybeRemoveDownloaderConfig(ctx, blob)
 		}
 		if blob.HasVerifierRef {
-			MaybeRemoveVerifyImageConfig(ctx, blob.Sha256)
-			blob.HasVerifierRef = false
+			MaybeRemoveVerifyImageConfig(ctx, blob)
 		}
 		//If blob is loaded, then remove it from CAS
 		if blob.State == types.LOADED {
