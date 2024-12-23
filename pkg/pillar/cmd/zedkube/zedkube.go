@@ -58,6 +58,10 @@ type zedkube struct {
 	pubENClusterAppStatus    pubsub.Publication
 	pubKubeClusterInfo       pubsub.Publication
 
+	subNodeDrainRequestZA  pubsub.Subscription
+	subNodeDrainRequestBoM pubsub.Subscription
+	pubNodeDrainStatus     pubsub.Publication
+
 	networkInstanceStatusMap sync.Map
 	ioAdapterMap             sync.Map
 	deviceNetworkStatus      types.DeviceNetworkStatus
@@ -74,6 +78,8 @@ type zedkube struct {
 	electionStopCh           chan struct{}
 	statusServer             *http.Server
 	statusServerWG           sync.WaitGroup
+	drainOverrideTimer       *time.Timer
+	drainTimeoutHours        uint32
 }
 
 // Run - an zedkube run
@@ -259,6 +265,60 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 	log.Noticef("zedkube run: controller and edge node certs are ready")
 
+	//
+	// NodeDrainRequest subscriber and NodeDrainStatus publisher
+	//
+	// Sub the request
+	zedkubeCtx.subNodeDrainRequestZA, err = ps.NewSubscription(pubsub.SubscriptionOptions{
+		CreateHandler: handleNodeDrainRequestCreate,
+		ModifyHandler: handleNodeDrainRequestModify,
+		DeleteHandler: handleNodeDrainRequestDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+		AgentName:     "zedagent",
+		MyAgentName:   agentName,
+		TopicImpl:     kubeapi.NodeDrainRequest{},
+		Ctx:           &zedkubeCtx,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	kubeapi.CleanupDrainStatusOverride(log)
+	zedkubeCtx.subNodeDrainRequestZA.Activate()
+
+	// Sub the request
+	zedkubeCtx.subNodeDrainRequestBoM, err = ps.NewSubscription(pubsub.SubscriptionOptions{
+		CreateHandler: handleNodeDrainRequestCreate,
+		ModifyHandler: handleNodeDrainRequestModify,
+		DeleteHandler: handleNodeDrainRequestDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+		AgentName:     "baseosmgr",
+		MyAgentName:   agentName,
+		TopicImpl:     kubeapi.NodeDrainRequest{},
+		Ctx:           &zedkubeCtx,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	zedkubeCtx.subNodeDrainRequestBoM.Activate()
+
+	//Pub the status
+	zedkubeCtx.pubNodeDrainStatus, err = ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName: agentName,
+			TopicType: kubeapi.NodeDrainStatus{},
+		})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	zedkubeCtx.drainOverrideTimer = time.NewTimer(5 * time.Minute)
+	zedkubeCtx.drainOverrideTimer.Stop()
+	// Until we hear otherwise that we are in a cluster
+	publishNodeDrainStatus(&zedkubeCtx, kubeapi.NOTSUPPORTED)
+	// EdgeNodeClusterConfig create needs to publish NodeDrainStatus, so wait to activate it.
+
 	// EdgeNodeClusterConfig subscription
 	subEdgeNodeClusterConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "zedagent",
@@ -278,6 +338,11 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 	zedkubeCtx.subEdgeNodeClusterConfig = subEdgeNodeClusterConfig
 	subEdgeNodeClusterConfig.Activate()
+
+	if len(subEdgeNodeClusterConfig.GetAll()) != 0 {
+		// Handle persistent existing cluster config
+		publishNodeDrainStatus(&zedkubeCtx, kubeapi.NOTREQUESTED)
+	}
 
 	zedkubeCtx.config, err = kubeapi.GetKubeConfig()
 	if err != nil {
@@ -336,6 +401,21 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 	appLogTimer := time.NewTimer(logcollectInterval * time.Second)
 
+	//Re-enable local node
+	log.Noticef("zedkube re-enable-node/uncordon+")
+	cordoned, err := isNodeCordoned(&zedkubeCtx)
+	if err != nil {
+		log.Errorf("zedkube can't read local node cordon state, err:%v", err)
+	} else {
+		log.Noticef("zedkube isNodeCordoned cordoned:%v", cordoned)
+		if cordoned {
+			if err := cordonNode(&zedkubeCtx, false); err != nil {
+				log.Errorf("zedkube Unable to uncordon local node: %v", err)
+			}
+		}
+	}
+	log.Noticef("zedkube re-enable-node/uncordon-")
+
 	log.Notice("zedkube online")
 
 	for {
@@ -369,6 +449,19 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 		case change := <-subZedAgentStatus.MsgChan():
 			subZedAgentStatus.ProcessChange(change)
+
+		case change := <-zedkubeCtx.subNodeDrainRequestZA.MsgChan():
+			zedkubeCtx.subNodeDrainRequestZA.ProcessChange(change)
+
+		case change := <-zedkubeCtx.subNodeDrainRequestBoM.MsgChan():
+			zedkubeCtx.subNodeDrainRequestBoM.ProcessChange(change)
+
+		case <-zedkubeCtx.drainOverrideTimer.C:
+			override := kubeapi.GetDrainStatusOverride(log)
+			if override != nil {
+				zedkubeCtx.pubNodeDrainStatus.Publish("global", override)
+			}
+			zedkubeCtx.drainOverrideTimer.Reset(5 * time.Minute)
 
 		case <-stillRunning.C:
 		}
@@ -447,8 +540,21 @@ func handleGlobalConfigImpl(ctxArg interface{}, key string,
 		return
 	}
 	log.Functionf("handleGlobalConfigImpl for %s", key)
-	_ = agentlog.HandleGlobalConfig(log, z.subGlobalConfig, agentName,
+	gcp := agentlog.HandleGlobalConfig(log, z.subGlobalConfig, agentName,
 		z.CLIParams().DebugOverride, z.Logger())
+	if gcp != nil {
+		currentConfigItemValueMap := z.globalConfig
+		newConfigItemValueMap := gcp
+		// Handle Drain Timeout Change
+		if newConfigItemValueMap.GlobalValueInt(types.KubevirtDrainTimeout) != 0 &&
+			newConfigItemValueMap.GlobalValueInt(types.KubevirtDrainTimeout) !=
+				currentConfigItemValueMap.GlobalValueInt(types.KubevirtDrainTimeout) {
+			log.Functionf("handleGlobalConfigImpl: Updating drainTimeoutHours from %d to %d",
+				currentConfigItemValueMap.GlobalValueInt(types.KubevirtDrainTimeout),
+				newConfigItemValueMap.GlobalValueInt(types.KubevirtDrainTimeout))
+			z.drainTimeoutHours = newConfigItemValueMap.GlobalValueInt(types.KubevirtDrainTimeout)
+		}
+	}
 	log.Functionf("handleGlobalConfigImpl(%s): done", key)
 }
 
@@ -480,6 +586,8 @@ func handleEdgeNodeClusterConfigImpl(ctxArg interface{}, key string,
 		key, config, oldconfig)
 
 	z.applyClusterConfig(&config, oldConfigPtr)
+
+	publishNodeDrainStatus(z, kubeapi.NOTREQUESTED)
 }
 
 func handleEdgeNodeClusterConfigDelete(ctxArg interface{}, key string,
@@ -489,6 +597,7 @@ func handleEdgeNodeClusterConfigDelete(ctxArg interface{}, key string,
 	config := statusArg.(types.EdgeNodeClusterConfig)
 	z.applyClusterConfig(nil, &config)
 	z.pubEdgeNodeClusterStatus.Unpublish("global")
+	publishNodeDrainStatus(z, kubeapi.NOTSUPPORTED)
 }
 
 // handle zedagent status events, for cloud connectivity
