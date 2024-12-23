@@ -3119,6 +3119,20 @@ func scheduleDeviceOperation(getconfigCtx *getconfigContext, opsCmd *zconfig.Dev
 		return false
 	}
 
+	// If HV=kubevirt and clustered, we ma need to drain a replica first
+	// If so defer/block the node outage
+	deferForDrain := shouldDeferForNodeDrain(ctx, op)
+	if deferForDrain {
+		switch op {
+		case types.DeviceOperationReboot:
+			ctx.rebootCmdDeferred = true
+		case types.DeviceOperationShutdown:
+			ctx.shutdownCmdDeferred = true
+		}
+		getconfigCtx.drainInProgress = true
+		return false
+	}
+
 	infoStr := fmt.Sprintf("NORMAL: controller %s", op.String())
 	handleDeviceOperationCmd(ctx, infoStr, op)
 	*prevReturn = true
