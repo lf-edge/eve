@@ -38,13 +38,6 @@ When the application uses passthrough on ethernet ports, zedkube creates a speci
 
 This collection is specific for the kubernetes status and stats. Although EVE has the device info, domain status, etc, but kubernetes has a different sets of 'nodes', 'pods', 'vmis', cluster storage stats, etc. This will be reported by zedkube through 'KubeClusterInfo' publication. It will also have some simple non-EVE App related POD status.
 
-### kubenodeop
-
-kubenodeop handles cordoning, uncordoning, and draining of clustered eve-os nodes.
-Any given node could be hosting one or more longhorn volume replicas and thus could be the rebuild source for other node replicas.
-A drain operation should be performed before any Node Operation / Node Command which can cause an extended outage of a node such as a reboot, shutdown, reset.
-kubenodeop handles NodeDrainRequest objects which zedkube subscribes to, initiates the drain, and publishes NodeDrainStatus objects.
-
 ## Applications under Kubevirt Mode
 
 ### Handle Domain Apps Status in domainmgr
@@ -52,6 +45,38 @@ kubenodeop handles NodeDrainRequest objects which zedkube subscribes to, initiat
 When the application is launched and managed in KubeVirt mode, the Kubernetes cluster is provisioned for this application, being a VMI (Virtual Machine Instance) replicaSet object or a Pod replicaSet object. It uses a declarative approach to manage the desired state of the applications. The configurations are saved in the Kubernetes database for the Kubernetes controller to use to ensure the objects eventually achieve the correct state if possible. Any particular VMI/Pod state of a domain may not be in working condition at the time when EVE domainmgr checks. In the domainmgr code running in KubeVirt mode, if it can not contact the Kubernetes API server to query about the application, or if the application itself has not be started yet in the cluster, the kubervirt.go will return the 'Unknown' status back. It will keep a 'Unknown' status starting timestamp per application. If the 'Unknown' status lasts longer then 5 minutes, the status functions in kubevirt.go will return 'Halting' status back to domainmgr. The timestamp will be cleared once it can get the application status from the kubernetes.
 
 ## Kubernetes Node Draining
+
+### Description
+
+As a part of kubevirt-eve we have multiple cluster nodes each hosting app workloads and volume replicas.
+zedkube implements defer for eve mgmt config operations which will result in unavailability of storage
+replicas until the cluster volume is not running on a single replica.  This defer is implemented 
+through cordoning, uncordoning, and draining of clustered eve-os nodes.
+
+Any given node could be hosting one or more longhorn volume replicas and thus could be the rebuild source for other node replicas.
+A drain operation should be performed before any Node Operation / Node Command which can cause an extended outage of a node such as a reboot, shutdown, reset.
+kubenodeop handles NodeDrainRequest objects which zedkube subscribes to, initiates the drain, and publishes NodeDrainStatus objects.
+
+An example:
+
+1. Node 1 outage and recovers.
+1. Before volumes complete rebuilding on node 1 there is a node 2 outage and recovery.
+1. Volumes begin rebuilding replicas on nodes 1 and 2. Only available rebuild source is on node 3.
+1. User initiated request to reboot/shutdown/update eve-os on node 3.
+1. That config request is set to defer until replicas are rebuilt on the other nodes.
+
+At a high level the eve-side workflow looks like this:
+
+1. eve config received requesting reboot/shutdown/baseos-image-change to node 1
+1. drain requested for node 1
+1. zedkube cordons node 1 so that new workloads are blocked from scheduling on that node.
+1. zedkube initiates a kubernetes drain of that node removing workloads
+1. As a part of drain, PDB (Pod Disruption Budget) at longhorn level determines local replica is the last online one.
+1. Drain waits for volume replicas to rebuild across the cluster.
+1. Drain completes and NodeDrainStatus message sent to continue original config request.
+1. On the next boot event zedkube nodeOnBootHealthStatusWatcher() waits until the local kubernetes node comes online/ready for the first time on each boot event and uncordons it, allowing workloads to be scheduled.
+
+Note: For eve baseos image updates this path waits until a new baseos image is fully available locally (LOADED or INSTALLED) and activated before beginning drain.
 
 ### kubeapi
 

@@ -77,6 +77,7 @@ type nodeagentContext struct {
 	subDomainStatus             pubsub.Subscription
 	subVaultStatus              pubsub.Subscription
 	subVolumeMgrStatus          pubsub.Subscription
+	subNodeDrainStatus          pubsub.Subscription
 	pubZbootConfig              pubsub.Publication
 	pubNodeAgentStatus          pubsub.Publication
 	curPart                     string
@@ -115,6 +116,7 @@ type nodeagentContext struct {
 	configGetSuccess            bool                        // got config from controller success
 	vaultmgrReported            bool                        // got reports from vaultmgr
 	hvTypeKube                  bool                        // image is kubernetes cluster type
+	waitDrainInProgress         bool
 
 	// Some constants.. Declared here as variables to enable unit tests
 	minRebootDelay          uint32
@@ -364,6 +366,8 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	ctxPtr.subZedAgentStatus = subZedAgentStatus
 	subZedAgentStatus.Activate()
 
+	initNodeDrainPubSub(ps, ctxPtr)
+
 	log.Functionf("zedbox event loop")
 	for {
 		select {
@@ -387,6 +391,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 		case change := <-subVolumeMgrStatus.MsgChan():
 			subVolumeMgrStatus.ProcessChange(change)
+
+		case change := <-ctxPtr.subNodeDrainStatus.MsgChan():
+			ctxPtr.subNodeDrainStatus.ProcessChange(change)
 
 		case <-ctxPtr.stillRunning.C:
 		}
@@ -722,6 +729,7 @@ func publishNodeAgentStatus(ctxPtr *nodeagentContext) {
 		LocalMaintenanceMode:       ctxPtr.maintMode,
 		LocalMaintenanceModeReason: ctxPtr.maintModeReason,
 		HVTypeKube:                 ctxPtr.hvTypeKube,
+		WaitDrainInProgress:        ctxPtr.waitDrainInProgress,
 	}
 	ctxPtr.lastLock.Unlock()
 	pub.Publish(agentName, status)
