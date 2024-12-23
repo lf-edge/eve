@@ -36,7 +36,7 @@ func RequestNodeDrain(pubsub.Publication, DrainRequester, string) error {
 }
 
 // GetNodeDrainStatus is a stub for non-kubevirt builds
-func GetNodeDrainStatus(pubsub.Subscription) *NodeDrainStatus {
+func GetNodeDrainStatus(pubsub.Subscription, *base.LogObject) *NodeDrainStatus {
 	// No need to query for inprogress operations, just a noop
 	return &NodeDrainStatus{Status: NOTSUPPORTED}
 }

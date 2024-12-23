@@ -198,6 +198,7 @@ func TestNewConfigItemSpecMap(t *testing.T) {
 		EnableARPSnoop,
 		WwanQueryVisibleProviders,
 		NetworkLocalLegacyMACAddress,
+		KubevirtDrainTimeout,
 		// TriState Items
 		NetworkFallbackAnyEth,
 		MaintenanceMode,
