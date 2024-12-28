@@ -94,14 +94,17 @@ func handleVolumeRefModify(ctxArg interface{}, key string,
 	vs := ctx.LookupVolumeStatus(config.VolumeKey())
 	if vs != nil {
 		if needUpdateVol {
-			doUpdateVol(ctx, vs)
+			changed, _ := doUpdateVol(ctx, vs)
+			if changed {
+				publishVolumeStatus(ctx, vs)
+				updateVolumeRefStatus(ctx, vs)
+				if err := createOrUpdateAppDiskMetrics(ctx, vs); err != nil {
+					log.Errorf("handleVolumeRefModify(%s): exception while publishing diskmetric. %s",
+						status.Key(), err.Error())
+				}
+			}
 		}
 		updateVolumeStatusRefCount(ctx, vs)
-		publishVolumeStatus(ctx, vs)
-		if err := createOrUpdateAppDiskMetrics(ctx, vs); err != nil {
-			log.Errorf("handleVolumeRefModify(%s): exception while publishing diskmetric. %s",
-				status.Key(), err.Error())
-		}
 	}
 	log.Functionf("handleVolumeRefModify(%s) Done", key)
 }
@@ -170,6 +173,8 @@ func unpublishVolumeRefStatus(ctx *volumemgrContext, key string) {
 }
 
 func updateVolumeRefStatus(ctx *volumemgrContext, vs *types.VolumeStatus) {
+
+	log.Functionf("updateVolumeRefStatus(%s)", vs.Key())
 	sub := ctx.subVolumeRefConfig
 	items := sub.GetAll()
 	for _, st := range items {
@@ -232,4 +237,5 @@ func updateVolumeRefStatus(ctx *volumemgrContext, vs *types.VolumeStatus) {
 			publishVolumeRefStatus(ctx, status)
 		}
 	}
+	log.Functionf("updateVolumeRefStatus(%s) Done", vs.Key())
 }
