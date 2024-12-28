@@ -48,6 +48,7 @@ const (
 	waitForPodCheckCounter = 5  // Check 5 times
 	waitForPodCheckTime    = 15 // Check every 15 seconds, don't wait for too long to cause watchdog
 	tolerateSec            = 30 // Pod/VMI reschedule delay after node unreachable seconds
+	unknownToHaltMinutes   = 5  // If VMI is unknown for 5 minutes, return halt state
 )
 
 // MetaDataType is a type for different Domain types
@@ -64,13 +65,14 @@ const (
 
 // VM instance meta data structure.
 type vmiMetaData struct {
-	repPod   *appsv1.ReplicaSet                   // Handle to the replicaSetof pod
-	repVMI   *v1.VirtualMachineInstanceReplicaSet // Handle to the replicaSet of VMI
-	domainID int                                  // DomainID understood by domainmgr in EVE
-	mtype    MetaDataType                         // switch on is ReplicaSet, Pod or is VMI
-	name     string                               // Display-Name(all lower case) + first 5 bytes of domainName
-	cputotal uint64                               // total CPU in NS so far
-	maxmem   uint32                               // total Max memory usage in bytes so far
+	repPod           *appsv1.ReplicaSet                   // Handle to the replicaSetof pod
+	repVMI           *v1.VirtualMachineInstanceReplicaSet // Handle to the replicaSet of VMI
+	domainID         int                                  // DomainID understood by domainmgr in EVE
+	mtype            MetaDataType                         // switch on is ReplicaSet, Pod or is VMI
+	name             string                               // Display-Name(all lower case) + first 5 bytes of domainName
+	cputotal         uint64                               // total CPU in NS so far
+	maxmem           uint32                               // total Max memory usage in bytes so far
+	startUnknownTime time.Time                            // time when the domain returned as unknown status
 }
 
 type kubevirtContext struct {
@@ -88,12 +90,13 @@ type kubevirtContext struct {
 var stateMap = map[string]types.SwState{
 	"Paused":     types.PAUSED,
 	"Running":    types.RUNNING,
-	"NonLocal":   types.RUNNING,
 	"shutdown":   types.HALTING,
 	"suspended":  types.PAUSED,
 	"Pending":    types.PENDING,
 	"Scheduling": types.SCHEDULING,
 	"Failed":     types.FAILED,
+	"Halting":    types.HALTING,
+	"Unknown":    types.UNKNOWN,
 }
 
 var excludedMetrics = map[string]struct{}{
@@ -512,7 +515,7 @@ func (ctx kubevirtContext) Start(domainName string) error {
 
 	// Start the Pod ReplicaSet
 	if vmis.mtype == IsMetaReplicaPod {
-		err := StartReplicaPodContiner(ctx, ctx.vmiList[domainName].repPod)
+		err := StartReplicaPodContiner(ctx, vmis)
 		return err
 	} else if vmis.mtype != IsMetaReplicaVMI {
 		return logError("Start domain %s wrong type", domainName)
@@ -544,7 +547,7 @@ func (ctx kubevirtContext) Start(domainName string) error {
 	}
 	logrus.Infof("Started Kubevirt domain replicaset %s, VMI replicaset %s", domainName, vmis.name)
 
-	err = waitForVMI(vmis.name, nodeName, true)
+	err = waitForVMI(vmis, nodeName, true)
 	if err != nil {
 		logrus.Errorf("couldn't start VMI %v", err)
 		return err
@@ -669,9 +672,9 @@ func (ctx kubevirtContext) Info(domainName string) (int, types.SwState, error) {
 		return 0, types.HALTED, logError("info domain %s failed to get vmlist", domainName)
 	}
 	if vmis.mtype == IsMetaReplicaPod {
-		res, err = InfoReplicaSetContainer(ctx, vmis.name)
+		res, err = InfoReplicaSetContainer(ctx, vmis)
 	} else {
-		res, err = getVMIStatus(vmis.name, nodeName)
+		res, err = getVMIStatus(vmis, nodeName)
 	}
 	if err != nil {
 		return 0, types.BROKEN, logError("domain %s failed to get info: %v", domainName, err)
@@ -680,10 +683,10 @@ func (ctx kubevirtContext) Info(domainName string) (int, types.SwState, error) {
 	if effectiveDomainState, matched := stateMap[res]; !matched {
 		return 0, types.BROKEN, logError("domain %s reported to be in unexpected state %s", domainName, res)
 	} else {
-		if _, ok := ctx.vmiList[domainName]; !ok {
+		if _, ok := ctx.vmiList[domainName]; !ok { // domain is deleted
 			return 0, types.HALTED, logError("domain %s is deleted", domainName)
 		}
-		return ctx.vmiList[domainName].domainID, effectiveDomainState, nil
+		return ctx.vmiList[domainName].domainID, effectiveDomainState, err
 	}
 }
 
@@ -703,12 +706,12 @@ func (ctx kubevirtContext) Cleanup(domainName string) error {
 		return logError("cleanup domain %s failed to get vmlist", domainName)
 	}
 	if vmis.mtype == IsMetaReplicaPod {
-		_, err = InfoReplicaSetContainer(ctx, vmis.name)
+		_, err = InfoReplicaSetContainer(ctx, vmis)
 		if err == nil {
 			err = ctx.Delete(domainName)
 		}
 	} else if vmis.mtype == IsMetaReplicaVMI {
-		err = waitForVMI(vmis.name, nodeName, false)
+		err = waitForVMI(vmis, nodeName, false)
 	} else {
 		err = logError("cleanup domain %s wrong type", domainName)
 	}
@@ -735,8 +738,9 @@ func convertToKubernetesFormat(b int) string {
 	return fmt.Sprintf("%.1fYi", bf)
 }
 
-func getVMIStatus(repVmiName, nodeName string) (string, error) {
+func getVMIStatus(vmis *vmiMetaData, nodeName string) (string, error) {
 
+	repVmiName := vmis.name
 	kubeconfig, err := kubeapi.GetKubeConfig()
 	if err != nil {
 		return "", logError("couldn't get the Kube Config: %v", err)
@@ -751,14 +755,18 @@ func getVMIStatus(repVmiName, nodeName string) (string, error) {
 	// List VMIs with a label selector that matches the replicaset name
 	vmiList, err := virtClient.VirtualMachineInstance(kubeapi.EVEKubeNameSpace).List(context.Background(), &metav1.ListOptions{})
 	if err != nil {
-		return "", logError("getVMIStatus: domain %s failed to get VMI info %s", repVmiName, err)
+		retStatus, err2 := checkAndReturnStatus(vmis, true)
+		logError("getVMIStatus: domain %s failed to get VMI info %s, return %s", repVmiName, err, retStatus)
+		return retStatus, err2
 	}
 	if len(vmiList.Items) == 0 {
-		return "", logError("getVMIStatus: No VMI found with the given replicaset name %s", repVmiName)
+		retStatus, err2 := checkAndReturnStatus(vmis, true)
+		logError("getVMIStatus: No VMI found with the given replicaset name %s, return %s", repVmiName, retStatus)
+		return retStatus, err2
 	}
 
 	// Use the first VMI in the list
-	var foundNonlocal bool
+	var nonLocalStatus string
 	var targetVMI *v1.VirtualMachineInstance
 	for _, vmi := range vmiList.Items {
 		if vmi.Status.NodeName == nodeName {
@@ -768,22 +776,27 @@ func getVMIStatus(repVmiName, nodeName string) (string, error) {
 			}
 		} else {
 			if vmi.GenerateName == repVmiName {
-				foundNonlocal = true
+				nonLocalStatus = fmt.Sprintf("%v", vmi.Status.Phase)
 			}
 		}
 	}
 	if targetVMI == nil {
-		if foundNonlocal {
-			return "NonLocal", nil
+		if nonLocalStatus != "" {
+			_, _ = checkAndReturnStatus(vmis, false) // reset the unknown timestamp
+			return nonLocalStatus, nil
 		}
-		return "", logError("getVMIStatus: No VMI %s found with the given nodeName %s", repVmiName, nodeName)
+		retStatus, err2 := checkAndReturnStatus(vmis, true)
+		logError("getVMIStatus: No VMI %s found with the given nodeName %s, return %s", repVmiName, nodeName, retStatus)
+		return retStatus, err2
 	}
 	res := fmt.Sprintf("%v", targetVMI.Status.Phase)
+	_, _ = checkAndReturnStatus(vmis, false) // reset the unknown timestamp
 	return res, nil
 }
 
 // Inspired from kvm.go
-func waitForVMI(vmiName, nodeName string, available bool) error {
+func waitForVMI(vmis *vmiMetaData, nodeName string, available bool) error {
+	vmiName := vmis.name
 	maxDelay := time.Minute * 5 // 5mins ?? lets keep it for now
 	delay := time.Second
 	var waited time.Duration
@@ -795,7 +808,7 @@ func waitForVMI(vmiName, nodeName string, available bool) error {
 			waited += delay
 		}
 
-		state, err := getVMIStatus(vmiName, nodeName)
+		state, err := getVMIStatus(vmis, nodeName)
 		if err != nil {
 
 			if available {
@@ -1237,7 +1250,8 @@ func setKubeToleration(timeOutSec int64) []k8sv1.Toleration {
 }
 
 // StartReplicaPodContiner starts the ReplicaSet pod
-func StartReplicaPodContiner(ctx kubevirtContext, rep *appsv1.ReplicaSet) error {
+func StartReplicaPodContiner(ctx kubevirtContext, vmis *vmiMetaData) error {
+	rep := vmis.repPod
 	err := getConfig(&ctx)
 	if err != nil {
 		return err
@@ -1261,7 +1275,7 @@ func StartReplicaPodContiner(ctx kubevirtContext, rep *appsv1.ReplicaSet) error 
 
 	logrus.Infof("StartReplicaPodContiner: Rep %s %s, result %v", rep.ObjectMeta.Name, opStr, result)
 
-	err = checkForReplicaPod(ctx, rep.ObjectMeta.Name)
+	err = checkForReplicaPod(ctx, vmis)
 	if err != nil {
 		logrus.Errorf("StartReplicaPodContiner: check for pod status error %v", err)
 		return err
@@ -1270,7 +1284,8 @@ func StartReplicaPodContiner(ctx kubevirtContext, rep *appsv1.ReplicaSet) error 
 	return nil
 }
 
-func checkForReplicaPod(ctx kubevirtContext, repName string) error {
+func checkForReplicaPod(ctx kubevirtContext, vmis *vmiMetaData) error {
+	repName := vmis.repPod.ObjectMeta.Name
 	var i int
 	var status string
 	var err error
@@ -1279,11 +1294,11 @@ func checkForReplicaPod(ctx kubevirtContext, repName string) error {
 		logrus.Infof("checkForReplicaPod: check(%d) wait 15 sec, %v", i, repName)
 		time.Sleep(15 * time.Second)
 
-		status, err = InfoReplicaSetContainer(ctx, repName)
+		status, err = InfoReplicaSetContainer(ctx, vmis)
 		if err != nil {
 			logrus.Infof("checkForReplicaPod: repName %s, %v", repName, err)
 		} else {
-			if status == "Running" || status == "NonLocal" {
+			if status == "Running" {
 				logrus.Infof("checkForReplicaPod: (%d) status %s, good", i, status)
 				return nil
 			} else {
@@ -1299,8 +1314,9 @@ func checkForReplicaPod(ctx kubevirtContext, repName string) error {
 }
 
 // InfoReplicaSetContainer gets the status of the ReplicaSet pod
-func InfoReplicaSetContainer(ctx kubevirtContext, repName string) (string, error) {
+func InfoReplicaSetContainer(ctx kubevirtContext, vmis *vmiMetaData) (string, error) {
 
+	repName := vmis.repPod.ObjectMeta.Name
 	err := getConfig(&ctx)
 	if err != nil {
 		return "", err
@@ -1310,24 +1326,17 @@ func InfoReplicaSetContainer(ctx kubevirtContext, repName string) (string, error
 		return "", logError("InfoReplicaSetContainer: couldn't get the pod Config: %v", err)
 	}
 
-	nodeName, ok := ctx.nodeNameMap["nodename"]
-	if !ok {
-		return "", logError("Failed to get nodeName")
-	}
 	pods, err := podclientset.CoreV1().Pods(kubeapi.EVEKubeNameSpace).List(context.TODO(), metav1.ListOptions{
 		LabelSelector: fmt.Sprintf("app=%s", repName),
 	})
-	if err != nil {
-		return "", logError("InfoReplicaSetContainer: couldn't get the pods: %v", err)
+	if err != nil || len(pods.Items) == 0 {
+		// we either can not talk to the kubernetes api-server or it can not find our pod
+		retStatus, err2 := checkAndReturnStatus(vmis, true)
+		logError("InfoReplicaSetContainer: couldn't get the pods: %v, return %s", err, retStatus)
+		return retStatus, err2
 	}
 
-	var foundNonlocal bool
 	for _, pod := range pods.Items {
-		if nodeName != pod.Spec.NodeName {
-			foundNonlocal = true
-			logrus.Infof("InfoReplicaSetContainer: rep %s, nodeName %v differ w/ hostname", repName, pod.Spec.NodeName)
-			continue
-		}
 
 		var res string
 		// https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle/
@@ -1345,16 +1354,15 @@ func InfoReplicaSetContainer(ctx kubevirtContext, repName string) (string, error
 		default:
 			res = "Scheduling"
 		}
-		logrus.Infof("InfoReplicaSetContainer: rep %s, nodeName %v, status %s", pod.ObjectMeta.Name, pod.Spec.NodeName, res)
+		logrus.Infof("InfoReplicaSetContainer: rep %s, pod nodeName %v, status %s", pod.ObjectMeta.Name, pod.Spec.NodeName, res)
 		if pod.Status.Phase != k8sv1.PodRunning {
 			continue
 		}
 
+		_, _ = checkAndReturnStatus(vmis, false) // reset the unknown timestamp
 		return res, nil
 	}
-	if foundNonlocal {
-		return "NonLocal", nil
-	}
+
 	return "", logError("InfoReplicaSetContainer: pod not ready")
 }
 
@@ -1704,4 +1712,28 @@ func getMyNodeUUID(ctx *kubevirtContext, nodeName string) {
 	if len(ctx.nodeNameMap) == 0 {
 		ctx.nodeNameMap["nodename"] = nodeName
 	}
+}
+
+// checkAndReturnStatus
+// when pass-in gotUnknown is true, we failed to get the kubernetes pod, return 'Unknown' for
+// the status, and if the status exceeds 5 minutes, return 'Halting' with error
+// when pass-in !goUnknown, we reset the unknown timestamp
+// see detail description in the 'zedkube.md' section 'Handle Domain Apps Status in domainmgr'
+func checkAndReturnStatus(vmis *vmiMetaData, gotUnknown bool) (string, error) {
+	if gotUnknown {
+		if vmis.startUnknownTime.IsZero() { // first time, set the unknown timestamp
+			vmis.startUnknownTime = time.Now()
+			return "Unknown", nil
+		} else {
+			if time.Since(vmis.startUnknownTime) > unknownToHaltMinutes*time.Minute {
+				return "Halting", fmt.Errorf("Unknown status for more than 5 minute")
+			} else {
+				return "Unknown", nil
+			}
+		}
+	} else {
+		// we got the pod status, reset the unknown timestamp
+		vmis.startUnknownTime = time.Time{}
+	}
+	return "", nil
 }

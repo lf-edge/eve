@@ -3221,13 +3221,8 @@ func parseEdgeNodeClusterConfig(getconfigCtx *getconfigContext,
 	ctx := getconfigCtx.zedagentCtx
 	zcfgCluster := config.GetCluster()
 	if zcfgCluster == nil {
-		log.Functionf("parseEdgeNodeClusterConfig: No EdgeNodeClusterConfig, Unpublishing")
-		pub := ctx.pubEdgeNodeClusterConfig
-		items := pub.GetAll()
-		if len(items) > 0 {
-			log.Functionf("parseEdgeNodeClusterConfig: Unpublishing EdgeNodeClusterConfig")
-			ctx.pubEdgeNodeClusterConfig.Unpublish("global")
-		}
+		log.Functionf("parseEdgeNodeClusterConfig: Unpublishing EdgeNodeClusterConfig")
+		ctx.pubEdgeNodeClusterConfig.Unpublish("global")
 		return
 	}
 	ipAddr, ipNet, err := net.ParseCIDR(zcfgCluster.GetClusterIpPrefix())
@@ -3238,6 +3233,10 @@ func parseEdgeNodeClusterConfig(getconfigCtx *getconfigContext,
 	ipNet.IP = ipAddr
 
 	joinServerIP := net.ParseIP(zcfgCluster.GetJoinServerIp())
+	if joinServerIP == nil {
+		log.Errorf("handleEdgeNodeConfigItem: parse JoinServerIP failed")
+		return
+	}
 	var isJoinNode bool
 	// deduce the bootstrap node status from clusterIPPrefix and joinServerIP
 	if ipAddr.Equal(joinServerIP) { // deduce the bootstrap node status from

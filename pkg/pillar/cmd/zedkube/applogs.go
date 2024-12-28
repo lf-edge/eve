@@ -204,7 +204,7 @@ func (z *zedkube) getnodeNameAndUUID() error {
 			return err
 		}
 		enInfo := NodeInfo.(types.EdgeNodeInfo)
-		z.nodeName = strings.ToLower(enInfo.DeviceName)
+		z.nodeName = strings.ReplaceAll(strings.ToLower(enInfo.DeviceName), "_", "-")
 		z.nodeuuid = enInfo.DeviceID.String()
 	}
 	return nil

@@ -327,11 +327,6 @@ type DomainStatus struct {
 	FmlCustomResolution string
 	// if this node is the DNiD of the App
 	IsDNidNode bool
-	// handle DomainConfig Delete
-	// for kubevirt EVE, App is configured into the kubernetes database,
-	// there is no need to delete the domain if the status check fails.
-	// But this flag is used to handle if the domain config is deleted.
-	DomainConfigDeleted bool
 	// the device name is used for kube node name
 	// Need to pass in from domainmgr to hypervisor context commands
 	NodeName string
