@@ -225,10 +225,12 @@ QEMU_ACCEL_Y_Linux_amd64=-machine q35,accel=kvm,usb=off,dump-guest-core=off -cpu
 # -machine virt,gic_version=3
 QEMU_ACCEL_Y_Darwin_arm64=-machine $(QEMU_DEFAULT_MACHINE)accel=hvf,usb=off -cpu host
 QEMU_ACCEL_Y_Linux_arm64=-machine virt,accel=kvm,usb=off,dump-guest-core=off -cpu host
+QEMU_ACCEL_Y_$(UNAME_S)_COMMON=
 QEMU_ACCEL__$(UNAME_S)_arm64=-machine virt,virtualization=true -cpu cortex-a57
 QEMU_ACCEL__$(UNAME_S)_amd64=-machine q35 -cpu SandyBridge
 QEMU_ACCEL__$(UNAME_S)_riscv64=-machine virt -cpu rv64
-QEMU_ACCEL:=$(QEMU_ACCEL_$(ACCEL:%=Y)_$(UNAME_S)_$(ZARCH))
+QEMU_ACCEL__$(UNAME_S)_COMMON=-device virtio-rng-pci
+QEMU_ACCEL:=$(QEMU_ACCEL_$(ACCEL:%=Y)_$(UNAME_S)_$(ZARCH)) $(QEMU_ACCEL_$(ACCEL:%=Y)_$(UNAME_S)_COMMON)
 
 QEMU_OPTS_NET1=192.168.1.0/24
 QEMU_OPTS_NET1_FIRST_IP=192.168.1.10
