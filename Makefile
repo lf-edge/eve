@@ -314,7 +314,7 @@ DOCKER_GO = _() { $(SET_X); mkdir -p $(CURDIR)/.go/src/$${3:-dummy} ; mkdir -p $
     [ $$verbose -ge 1 ] && echo $$docker_go_line "\"$$1\""; \
     $$docker_go_line "$$1" ; } ; _
 
-PARSE_PKGS=$(if $(strip $(EVE_HASH)),EVE_HASH=)$(EVE_HASH) DOCKER_ARCH_TAG=$(DOCKER_ARCH_TAG) KERNEL_TAG=$(KERNEL_TAG) ./tools/parse-pkgs.sh
+PARSE_PKGS=$(if $(strip $(EVE_HASH)),EVE_HASH=)$(EVE_HASH) DOCKER_ARCH_TAG=$(DOCKER_ARCH_TAG) KERNEL_TAG=$(KERNEL_TAG) PLATFORM=$(PLATFORM) ./tools/parse-pkgs.sh
 LINUXKIT=$(BUILDTOOLS_BIN)/linuxkit
 # linuxkit version. This **must** be a published semver version so it can be downloaded already compiled from
 # the release page at https://github.com/linuxkit/linuxkit/releases
@@ -1028,10 +1028,12 @@ $(BUILDARGS_FILE):
 # If RSTATS=y and file pkg/my_package/build-rstats.yml exists, returns the path to that file.
 # If HV=kubevirt and DEV=y and file pkg/my_package/build-kubevirt-dev.yml exists, returns the path to that file.
 # If HV=kubevirt and DEV!=y and file pkg/my_package/build-kubevirt.yml exists, returns the path to that file.
+# If pkg/my_package/build-<PLATFORM>.yml exists, returns the path to that file.
 # Otherwise returns pkg/my_package/build.yml.
 get_pkg_build_yml = $(if $(filter kubevirt,$(HV)), $(call get_pkg_build_kubevirt_yml,$1), \
                     $(if $(filter y,$(RSTATS)), $(call get_pkg_build_rstats_yml,$1), \
-                    $(if $(filter y,$(DEV)), $(call get_pkg_build_dev_yml,$1), build.yml)))
+                    $(if $(filter y,$(DEV)), $(call get_pkg_build_dev_yml,$1), \
+                    $(if $(wildcard pkg/$1/build-$(PLATFORM).yml),build-$(PLATFORM).yml,build.yml))))
 get_pkg_build_dev_yml = $(if $(wildcard pkg/$1/build-dev.yml),build-dev.yml,build.yml)
 get_pkg_build_rstats_yml = $(if $(wildcard pkg/$1/build-rstats.yml),build-rstats.yml,build.yml)
 get_pkg_build_kubevirt_yml = $(if $(and $(filter y,$(DEV)),$(wildcard pkg/$1/build-kubevirt-dev.yml)),build-kubevirt-dev.yml, \

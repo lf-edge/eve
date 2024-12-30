@@ -52,6 +52,8 @@ _linuxkit_tag() {
       build_yml_cmd=(--build-yml build-dev.yml)
     elif [[ "${is_kubevirt_build}" == 1 ]]; then
       build_yml_cmd=(--build-yml build-kubevirt.yml)
+    elif [[ -f "${pkg}/build-${PLATFORM}.yml" ]]; then
+      build_yml_cmd=(--build-yml "build-${PLATFORM}.yml")
     fi
 
     echo "$(linuxkit pkg show-tag "${build_yml_cmd[@]}" ${EVE_HASH:+--hash $EVE_HASH} "${EVE}/${pkg}")${ARCH}"
