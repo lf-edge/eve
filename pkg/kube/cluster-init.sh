@@ -669,6 +669,8 @@ logmsg "Using ZFS persistent storage"
 
 setup_prereqs
 
+Update_CheckNodeComponents
+
 
 if [ -f /var/lib/convert-to-single-node ]; then
         logmsg "remove /var/lib and copy saved single node /var/lib"
@@ -931,6 +933,7 @@ fi
         check_kubeconfig_yaml_files
         check_and_remove_excessive_k3s_logs
         check_and_run_vnc
+        Update_CheckClusterComponents
         wait_for_item "wait"
         sleep 15
 done
