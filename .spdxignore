@@ -16,3 +16,4 @@ pkg/kube/descheduler_rbac.yaml
 pkg/kube/lh-cfg-v1.6.2.yaml
 pkg/vtpm/swtpm-vtpm/vendor/
 pkg/dom0-ztools/rootfs/usr/bin/rungetty.sh
+pkg/kube/update-component/vendor/

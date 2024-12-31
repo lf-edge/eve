@@ -50,7 +50,7 @@ When the application is launched and managed in KubeVirt mode, the Kubernetes cl
 
 As a part of kubevirt-eve we have multiple cluster nodes each hosting app workloads and volume replicas.
 zedkube implements defer for eve mgmt config operations which will result in unavailability of storage
-replicas until the cluster volume is not running on a single replica.  This defer is implemented 
+replicas until the cluster volume is not running on a single replica.  This defer is implemented
 through cordoning, uncordoning, and draining of clustered eve-os nodes.
 
 Any given node could be hosting one or more longhorn volume replicas and thus could be the rebuild source for other node replicas.

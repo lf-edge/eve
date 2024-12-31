@@ -7,6 +7,7 @@ package zedkube
 
 import (
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -32,6 +33,8 @@ const (
 	logcollectInterval   = 30
 	// run VNC file
 	vmiVNCFileName = "/run/zedkube/vmiVNC.run"
+
+	inlineCmdKubeClusterUpdateStatus = "pubKubeClusterUpdateStatus"
 )
 
 var (
@@ -99,6 +102,73 @@ type zedkube struct {
 	onBootUncordonCheckComplete bool
 }
 
+func inlineUsage() int {
+	log.Errorf("Usage: zedkube %s <node> <component> <status> <DestinationKubeUpdateVersion> <error>", inlineCmdKubeClusterUpdateStatus)
+	return 1
+}
+
+func runCommand(ps *pubsub.PubSub, command string, args []string) int {
+	if args == nil {
+		return inlineUsage()
+	}
+	switch command {
+	case inlineCmdKubeClusterUpdateStatus:
+		if args == nil {
+			return inlineUsage()
+		}
+		node := args[0]
+		comp := types.KubeCompFromStr(args[1])
+		status := types.KubeCompUpdateStatusFromStr(args[2])
+
+		destKubeVersion := uint32(0)
+		val, err := strconv.ParseInt(args[3], 10, 32)
+		if err != nil {
+			log.Errorf("zedkube %s unable to parse dest_version:%s err:%v", inlineCmdKubeClusterUpdateStatus, args[3], err)
+			return 1
+		}
+		destKubeVersion = uint32(val)
+
+		errorStr := ""
+		if len(args) == 5 {
+			errorStr = args[4]
+		}
+
+		pubKubeClusterUpdateStatus, err := ps.NewPublication(
+			pubsub.PublicationOptions{
+				AgentName:  "zedagent",
+				TopicType:  types.KubeClusterUpdateStatus{},
+				Persistent: true,
+			})
+		if err != nil {
+			log.Fatal(err)
+			return 2
+		}
+		if (comp == types.CompUnknown) && (status == types.CompStatusUnknown) {
+			if _, err := pubKubeClusterUpdateStatus.Get("global"); err == nil {
+				pubKubeClusterUpdateStatus.Unpublish("global")
+			}
+		} else {
+			upStatusObj := types.KubeClusterUpdateStatus{
+				CurrentNode:                  node,
+				Component:                    comp,
+				Status:                       status,
+				DestinationKubeUpdateVersion: destKubeVersion,
+			}
+			if status == types.CompStatusFailed {
+				if errorStr == "" {
+					errorStr = inlineCmdKubeClusterUpdateStatus + " " + strings.Join(args, " ")
+				}
+				upStatusObj.SetError(errorStr, time.Now())
+			}
+			pubKubeClusterUpdateStatus.Publish("global", upStatusObj)
+		}
+	default:
+		log.Errorf("Unknown command %s", command)
+		return 99
+	}
+	return 0
+}
+
 // Run - an zedkube run
 func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string, baseDir string) int {
 	logger = loggerArg
@@ -107,6 +177,26 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	zedkubeCtx := zedkube{
 		globalConfig: types.DefaultConfigItemValueMap(),
 	}
+
+	// do we run a single command, or long-running service?
+	// if any args defined, will run that single command and exit.
+	// otherwise, will run the agent
+	var (
+		command string
+		args    []string
+	)
+	if len(arguments) > 0 {
+		command = arguments[0]
+	}
+	if len(arguments) > 1 {
+		args = arguments[1:]
+	}
+
+	// if an explicit command was given, run that command and return, else run the agent
+	if command != "" {
+		return runCommand(ps, command, args)
+	}
+
 	agentbase.Init(&zedkubeCtx, logger, log, agentName,
 		agentbase.WithPidFile(),
 		agentbase.WithWatchdog(ps, warningTime, errorTime),
@@ -569,12 +659,12 @@ func handleGlobalConfigImpl(ctxArg interface{}, key string,
 		//
 		// Handle cases of kubernetes node unavailability
 		//
-		newDrainK8sApiNotReachableTimeout := newConfigItemValueMap.GlobalValueInt(types.KubevirtDrainSkipK8sAPINotReachableTimeout)
-		existingDrainK8sApiNotReachableTimeout := currentConfigItemValueMap.GlobalValueInt(types.KubevirtDrainSkipK8sAPINotReachableTimeout)
-		if newDrainK8sApiNotReachableTimeout != 0 && newDrainK8sApiNotReachableTimeout != existingDrainK8sApiNotReachableTimeout {
+		newDrainK8sAPINotReachableTimeout := newConfigItemValueMap.GlobalValueInt(types.KubevirtDrainSkipK8sAPINotReachableTimeout)
+		existingDrainK8sAPINotReachableTimeout := currentConfigItemValueMap.GlobalValueInt(types.KubevirtDrainSkipK8sAPINotReachableTimeout)
+		if newDrainK8sAPINotReachableTimeout != 0 && newDrainK8sAPINotReachableTimeout != existingDrainK8sAPINotReachableTimeout {
 			log.Functionf("handleGlobalConfigImpl: Updating drainSkipK8sApiTimeout from %d to %d",
-				existingDrainK8sApiNotReachableTimeout, newDrainK8sApiNotReachableTimeout)
-			z.drainSkipK8sAPINotReachableTimeout = newDrainK8sApiNotReachableTimeout
+				existingDrainK8sAPINotReachableTimeout, newDrainK8sAPINotReachableTimeout)
+			z.drainSkipK8sAPINotReachableTimeout = newDrainK8sAPINotReachableTimeout
 		}
 	}
 	log.Functionf("handleGlobalConfigImpl(%s): done", key)
@@ -690,7 +780,7 @@ func nodeOnBootHealthStatusWatcher(z *zedkube) {
 		}
 
 		// Is the node is ready?
-		var ready bool = false
+		var ready = false
 		for _, condition := range node.Status.Conditions {
 			if condition.Type == "Ready" && condition.Status == "True" {
 				ready = true

@@ -1303,7 +1303,7 @@ func getDeviceState(ctx *zedagentContext) types.DeviceState {
 	if ctx.maintenanceMode {
 		return types.DEVICE_STATE_MAINTENANCE_MODE
 	}
-	if isUpdating(ctx) {
+	if isUpdating(ctx) || isKubeClusterUpdating(ctx) {
 		return types.DEVICE_STATE_BASEOS_UPDATING
 	}
 	if ctx.rebootCmd || ctx.deviceReboot {
