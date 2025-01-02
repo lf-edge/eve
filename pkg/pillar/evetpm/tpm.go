@@ -628,7 +628,9 @@ func readDiskKey() ([]byte, error) {
 	return keyBytes, nil
 }
 
-// FetchSealedVaultKey fetches Vault key sealed into TPM2.0
+// FetchSealedVaultKey fetches Vault key sealed into TPM2.0,
+// and unseals it. If the key is not present, it generates
+// a new key and seals it into TPM2.0.
 func FetchSealedVaultKey(log *base.LogObject) ([]byte, error) {
 	if !PCRBankSHA256Enabled() {
 		//On platforms without PCR Bank SHA256, we can't
@@ -706,7 +708,7 @@ func FetchSealedVaultKey(log *base.LogObject) ([]byte, error) {
 	if sealedKeyPresent {
 		log.Noticef("sealed disk key present int TPM, about to unseal it")
 	}
-	//By this, we have a key sealed into TPM
+	//at this point, we have a key sealed into TPM
 	key, err := UnsealDiskKey(DiskKeySealingPCRs)
 	if err == nil {
 		// be more verbose, lets celebrate
