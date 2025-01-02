@@ -118,7 +118,7 @@ func tcpDial() (net.Conn, error) {
 
 func vsockDial() (net.Conn, error) {
 	addr := unix.SockaddrVM{
-		CID:  uint32(cidAddr),
+		CID:  unix.VMADDR_CID_HOST,
 		Port: hostVPort,
 	}
 
