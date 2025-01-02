@@ -77,6 +77,7 @@ type nodeagentContext struct {
 	subDomainStatus             pubsub.Subscription
 	subVaultStatus              pubsub.Subscription
 	subVolumeMgrStatus          pubsub.Subscription
+	subTpmStatus                pubsub.Subscription
 	pubZbootConfig              pubsub.Publication
 	pubNodeAgentStatus          pubsub.Publication
 	curPart                     string
@@ -279,6 +280,24 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	ctxPtr.subVolumeMgrStatus = subVolumeMgrStatus
 	subVolumeMgrStatus.Activate()
 
+	// Look for Tpm status
+	subTpmStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "tpmmgr",
+		MyAgentName:   agentName,
+		TopicImpl:     types.TpmSanityStatus{},
+		Activate:      false,
+		Ctx:           ctxPtr,
+		CreateHandler: handleTpmStatusCreate,
+		ModifyHandler: handleTpmStatusModify,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctxPtr.subTpmStatus = subTpmStatus
+	subTpmStatus.Activate()
+
 	// publish zboot config as of now
 	publishZbootConfigAll(ctxPtr)
 
@@ -387,6 +406,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 		case change := <-subVolumeMgrStatus.MsgChan():
 			subVolumeMgrStatus.ProcessChange(change)
+
+		case change := <-subTpmStatus.MsgChan():
+			subTpmStatus.ProcessChange(change)
 
 		case <-ctxPtr.stillRunning.C:
 		}
@@ -839,4 +861,29 @@ func parseSMARTData() {
 
 	parseData(currentSMARTfilename, smartData)
 	parseData(previousSMARTfilename, previousSmartData)
+}
+
+func handleTpmStatusCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleTpmStatusImpl(ctxArg, key, statusArg)
+}
+
+func handleTpmStatusModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleTpmStatusImpl(ctxArg, key, statusArg)
+}
+
+func handleTpmStatusImpl(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	ctx := ctxArg.(*nodeagentContext)
+	tpm := statusArg.(types.TpmSanityStatus)
+
+	if tpm.Status == types.MaintenanceModeReasonTpmEncFailure {
+		log.Errorf("handleTpmStatusImpl: TPM manager reported TPM error : %s", tpm.Error)
+		log.Noticef("Setting %s", types.MaintenanceModeReasonTpmEncFailure)
+
+		ctx.maintMode = true
+		ctx.maintModeReason = types.MaintenanceModeReasonTpmEncFailure
+		publishNodeAgentStatus(ctx)
+	}
 }
