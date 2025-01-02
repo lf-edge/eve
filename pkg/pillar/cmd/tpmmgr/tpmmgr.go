@@ -4,6 +4,7 @@
 package tpmmgr
 
 import (
+	"bytes"
 	"crypto"
 	"crypto/aes"
 	"crypto/ecdsa"
@@ -36,12 +37,18 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+type tpmSanityCheckError struct {
+	err          error
+	tpmErrorType types.MaintenanceModeReason
+}
+
 type tpmMgrContext struct {
 	agentbase.AgentBase
 	subGlobalConfig pubsub.Subscription
 	subAttestNonce  pubsub.Subscription
 	pubAttestQuote  pubsub.Publication
 	pubEdgeNodeCert pubsub.Publication
+	pubTpmStatus    pubsub.Publication
 	globalConfig    *types.ConfigItemValueMap
 	GCInitialized   bool // GlobalConfig initialized
 	// cli options
@@ -1334,6 +1341,17 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 	ctx.pubEdgeNodeCert = pubEdgeNodeCert
 
+	//to publish tpm sanity check results
+	pubTpmStatus, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName: agentName,
+			TopicType: types.TpmSanityStatus{},
+		})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.pubTpmStatus = pubTpmStatus
+
 	// publish ECDH cert
 	publishEdgeNodeCertToController(&ctx, ecdhCertFile, types.CertTypeEcdhXchange,
 		etpm.IsTpmEnabled() && !fileutils.FileExists(log, etpm.EcdhKeyFile), nil)
@@ -1370,6 +1388,26 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 			return 1
 		}
 	}
+
+	// check if TPM is working as expected
+	if check := tpmSanityCheck(); check != nil {
+		log.Errorf("TPM sanity check failed: %v", check.err)
+		// Alert the Controller about the TPM error, and possible implications.
+
+		errorAndTime := types.ErrorAndTime{}
+		errorAndTime.SetErrorDescription(types.ErrorDescription{
+			Error:               check.err.Error(),
+			ErrorTime:           time.Now(),
+			ErrorSeverity:       types.ErrorSeverityWarning,
+			ErrorRetryCondition: getTpmSanityStatus(check.tpmErrorType),
+		})
+		publishTpmStatus(&ctx, types.TpmSanityStatus{
+			Name:         etpm.TpmDevicePath,
+			Status:       check.tpmErrorType,
+			ErrorAndTime: errorAndTime,
+		})
+	}
+
 	for {
 		select {
 		case change := <-subGlobalConfig.MsgChan():
@@ -1591,4 +1629,56 @@ func handleAttestNonceDelete(ctxArg interface{}, key string, statusArg interface
 		pub.Unpublish(key)
 	}
 	log.Functionf("handleAttestNonceDelete done")
+}
+
+func publishTpmStatus(ctx *tpmMgrContext, status types.TpmSanityStatus) {
+	key := status.Key()
+	log.Tracef("Publishing TpmSanityStatus %s\n", key)
+	pub := ctx.pubTpmStatus
+	pub.Publish(key, status)
+}
+
+// tpmSanityCheck checks if the TPM fails in a way that is not detectable during the
+// common TPM operations but affects EVE's ability to manage itself.
+// * encrypt/decrypt (ECDHZGen) : checked here
+// * seal/unseal : checked during vault creation, no need to check here
+// * quote : checked during attestation, no need to check here
+// * certificate and key creation : checked during device step, no need to check here
+// * device key signing : checked during onboarding, no need to check here
+func tpmSanityCheck() *tpmSanityCheckError {
+	// sanity check TPM encrypt/decrypt (ECDHZGen), if this fails we can't
+	// encrypt/decrypt the vualt key and send/received it from controller.
+	// this can prevent the device from being upgraded.
+	message := []byte("TPM Sanity Check, may god have mercy on us")
+	encrypted, err := etpm.EncryptDecryptUsingTpm(message, true)
+	if err != nil {
+		return &tpmSanityCheckError{
+			fmt.Errorf("failed to encrypt key using TPM: %w", err),
+			types.MaintenanceModeReasonTpmEncFailure,
+		}
+	}
+	decrypted, err := etpm.EncryptDecryptUsingTpm(encrypted, false)
+	if err != nil {
+		return &tpmSanityCheckError{
+			fmt.Errorf("failed to decrypt key using TPM: %w", err),
+			types.MaintenanceModeReasonTpmEncFailure,
+		}
+	}
+	if !bytes.Equal(message, decrypted) {
+		return &tpmSanityCheckError{
+			fmt.Errorf("decrypted message is not matching original message"),
+			types.MaintenanceModeReasonTpmEncFailure,
+		}
+	}
+
+	return nil
+}
+
+func getTpmSanityStatus(status types.MaintenanceModeReason) string {
+	switch status {
+	case types.MaintenanceModeReasonTpmEncFailure:
+		return "TPM error can possibly affect device upgrade"
+	default:
+		return ""
+	}
 }
