@@ -396,6 +396,7 @@ const (
 	MaintenanceModeReasonUserRequested = MaintenanceModeReason(info.MaintenanceModeReason_MAINTENANCE_MODE_REASON_USER_REQUESTED)
 	MaintenanceModeReasonVaultLockedUp = MaintenanceModeReason(info.MaintenanceModeReason_MAINTENANCE_MODE_REASON_VAULT_LOCKED_UP)
 	MaintenanceModeReasonNoDiskSpace   = MaintenanceModeReason(info.MaintenanceModeReason_MAINTENANCE_MODE_REASON_LOW_DISK_SPACE)
+	MaintenanceModeReasonTpmEncFailure = MaintenanceModeReason(info.MaintenanceModeReason_MAINTENANCE_MODE_REASON_TPM_ENCRYPTION_FAILURE)
 )
 
 // String returns the verbose equivalent of MaintenanceModeReason code
@@ -409,6 +410,8 @@ func (mmr MaintenanceModeReason) String() string {
 		return "MaintenanceModeReasonVaultLockedUp"
 	case MaintenanceModeReasonNoDiskSpace:
 		return "MaintenanceModeReasonNoDiskSpace"
+	case MaintenanceModeReasonTpmEncFailure:
+		return "MaintenanceModeReasonTpmEncFailure"
 	default:
 		return fmt.Sprintf("Unknown MaintenanceModeReason %d", mmr)
 	}
