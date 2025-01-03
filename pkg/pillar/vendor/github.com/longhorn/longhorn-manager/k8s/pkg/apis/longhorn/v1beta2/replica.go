@@ -1,0 +1,95 @@
+package v1beta2
+
+import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+const (
+	// error messages captured from the gRPC error code
+	ReplicaRebuildFailedCanceledErrorMSG         = "rpc error: code = Canceled"
+	ReplicaRebuildFailedDeadlineExceededErrorMSG = "rpc error: code = DeadlineExceeded"
+	ReplicaRebuildFailedUnavailableErrorMSG      = "rpc error: code = Unavailable"
+)
+
+const (
+	ReplicaConditionTypeRebuildFailed                = "RebuildFailed"
+	ReplicaConditionTypeWaitForBackingImage          = "WaitForBackingImage"
+	ReplicaConditionReasonWaitForBackingImageFailed  = "GetBackingImageFailed"
+	ReplicaConditionReasonWaitForBackingImageWaiting = "Waiting"
+
+	ReplicaConditionReasonRebuildFailedDisconnection = "Disconnection"
+	ReplicaConditionReasonRebuildFailedGeneral       = "General"
+)
+
+// ReplicaSpec defines the desired state of the Longhorn replica
+type ReplicaSpec struct {
+	InstanceSpec `json:""`
+	// +optional
+	EngineName string `json:"engineName"`
+	// +optional
+	HealthyAt string `json:"healthyAt"`
+	// +optional
+	FailedAt string `json:"failedAt"`
+	// +optional
+	DiskID string `json:"diskID"`
+	// +optional
+	DiskPath string `json:"diskPath"`
+	// +optional
+	DataDirectoryName string `json:"dataDirectoryName"`
+	// +optional
+	BackingImage string `json:"backingImage"`
+	// +optional
+	Active bool `json:"active"`
+	// +optional
+	HardNodeAffinity string `json:"hardNodeAffinity"`
+	// +optional
+	RevisionCounterDisabled bool `json:"revisionCounterDisabled"`
+	// +optional
+	UnmapMarkDiskChainRemovedEnabled bool `json:"unmapMarkDiskChainRemovedEnabled"`
+	// +optional
+	RebuildRetryCount int `json:"rebuildRetryCount"`
+	// +optional
+	EvictionRequested bool `json:"evictionRequested"`
+	// +optional
+	SnapshotMaxCount int `json:"snapshotMaxCount"`
+	// +kubebuilder:validation:Type=string
+	// +optional
+	SnapshotMaxSize int64 `json:"snapshotMaxSize,string"`
+}
+
+// ReplicaStatus defines the observed state of the Longhorn replica
+type ReplicaStatus struct {
+	InstanceStatus `json:""`
+	// Deprecated: Replaced by field `spec.evictionRequested`.
+	// +optional
+	EvictionRequested bool `json:"evictionRequested"`
+}
+
+// +genclient
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +kubebuilder:resource:shortName=lhr
+// +kubebuilder:subresource:status
+// +kubebuilder:storageversion
+// +kubebuilder:printcolumn:name="Data Engine",type=string,JSONPath=`.spec.dataEngine`,description="The data engine of the replica"
+// +kubebuilder:printcolumn:name="State",type=string,JSONPath=`.status.currentState`,description="The current state of the replica"
+// +kubebuilder:printcolumn:name="Node",type=string,JSONPath=`.spec.nodeID`,description="The node that the replica is on"
+// +kubebuilder:printcolumn:name="Disk",type=string,JSONPath=`.spec.diskID`,description="The disk that the replica is on"
+// +kubebuilder:printcolumn:name="InstanceManager",type=string,JSONPath=`.status.instanceManagerName`,description="The instance manager of the replica"
+// +kubebuilder:printcolumn:name="Image",type=string,JSONPath=`.status.currentImage`,description="The current image of the replica"
+// +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
+
+// Replica is where Longhorn stores replica object.
+type Replica struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	Spec   ReplicaSpec   `json:"spec,omitempty"`
+	Status ReplicaStatus `json:"status,omitempty"`
+}
+
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
+// ReplicaList is a list of Replicas.
+type ReplicaList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata,omitempty"`
+	Items           []Replica `json:"items"`
+}
