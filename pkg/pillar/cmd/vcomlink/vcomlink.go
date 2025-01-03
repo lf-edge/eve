@@ -1,4 +1,4 @@
-// Copyright (c) 2018-2024 Zededa, Inc.
+// Copyright (c) 2024 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 package vcomlink
@@ -14,7 +14,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/sirupsen/logrus"
-	"golang.org/x/sys/unix"
 )
 
 const (
@@ -22,16 +21,12 @@ const (
 	errorTime     = 3 * time.Minute
 	warningTime   = 40 * time.Second
 	maxPacketSize = 4096 * 2
-	hostVPort     = 2000
-	backLogSize   = unix.SOMAXCONN
-	readTimeout   = 30 // seconds
-	writeTimeout  = 30 // seconds
 )
 
 var (
-	logger   *logrus.Logger
-	log      *base.LogObject
-	listener SocketListener = vsockListener
+	logger    *logrus.Logger
+	log       *base.LogObject
+	vlistener SocketListener = vsockNetListener
 	// TpmDevicePath is the path to the TPM device, this is a variable so that
 	// it can be overridden in tests.
 	TpmDevicePath = etpm.TpmDevicePath
@@ -86,7 +81,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	subGlobalConfig.Activate()
 
 	// start listening on vsock
-	go startVcomServer(listener)
+	go startVcomServer(vlistener)
 
 	for {
 		select {
