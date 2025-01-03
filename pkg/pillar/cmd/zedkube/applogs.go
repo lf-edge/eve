@@ -154,7 +154,7 @@ func (z *zedkube) checkAppsStatus() {
 	}
 
 	pub := z.pubENClusterAppStatus
-	stItmes := pub.GetAll()
+	stItems := pub.GetAll()
 	var oldStatus *types.ENClusterAppStatus
 	for _, item := range items {
 		aiconfig := item.(types.AppInstanceConfig)
@@ -179,7 +179,7 @@ func (z *zedkube) checkAppsStatus() {
 			}
 		}
 
-		for _, st := range stItmes {
+		for _, st := range stItems {
 			aiStatus := st.(types.ENClusterAppStatus)
 			if aiStatus.AppUUID == aiconfig.UUIDandVersion.UUID {
 				oldStatus = &aiStatus
@@ -204,7 +204,7 @@ func (z *zedkube) getnodeNameAndUUID() error {
 			return err
 		}
 		enInfo := NodeInfo.(types.EdgeNodeInfo)
-		z.nodeName = strings.ToLower(enInfo.DeviceName)
+		z.nodeName = strings.ReplaceAll(strings.ToLower(enInfo.DeviceName), "_", "-")
 		z.nodeuuid = enInfo.DeviceID.String()
 	}
 	return nil
