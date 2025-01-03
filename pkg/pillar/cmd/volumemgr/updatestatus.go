@@ -907,7 +907,7 @@ func updateVolumeStatus(ctx *volumemgrContext, volumeID uuid.UUID) bool {
 				publishVolumeStatus(ctx, &status)
 				updateVolumeRefStatus(ctx, &status)
 			}
-			if err := createOrUpdateAppDiskMetrics(ctx, &status); err != nil {
+			if err := createOrUpdateAppDiskMetrics(ctx, agentName, &status); err != nil {
 				log.Errorf("updateVolumeStatus(%s): exception while publishing diskmetric. %s",
 					status.Key(), err.Error())
 			}
@@ -936,7 +936,7 @@ func updateVolumeStatusFromContentID(ctx *volumemgrContext, contentID uuid.UUID)
 			if changed {
 				publishVolumeStatus(ctx, &status)
 				updateVolumeRefStatus(ctx, &status)
-				if err := createOrUpdateAppDiskMetrics(ctx, &status); err != nil {
+				if err := createOrUpdateAppDiskMetrics(ctx, agentName, &status); err != nil {
 					log.Errorf("updateVolumeStatus(%s): exception while publishing diskmetric. %s",
 						status.Key(), err.Error())
 				}

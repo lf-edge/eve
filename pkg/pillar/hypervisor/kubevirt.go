@@ -107,10 +107,17 @@ func (metrics *kubevirtMetrics) fill(domainName, metricName string, value interf
 		cpuNs := assignToInt64(value) * int64(time.Second)
 		r.CPUTotalNs = r.CPUTotalNs + uint64(cpuNs)
 	case "kubevirt_vmi_memory_usable_bytes":
+		// The amount of memory which can be reclaimed by balloon without pushing the guest system to swap,
+		// corresponds to ‘Available’ in /proc/meminfo
+		// https://kubevirt.io/monitoring/metrics.html#kubevirt
 		r.AvailableMemory = uint32(assignToInt64(value)) / BytesInMegabyte
-	case "kubevirt_vmi_memory_domain_bytes_total":
+	case "kubevirt_vmi_memory_domain_bytes":
+		// The amount of memory in bytes allocated to the domain.
+		// https://kubevirt.io/monitoring/metrics.html#kubevirt
 		r.AllocatedMB = uint32(assignToInt64(value)) / BytesInMegabyte
 	case "kubevirt_vmi_memory_available_bytes": // save this temp for later
+		// Amount of usable memory as seen by the domain.
+		// https://kubevirt.io/monitoring/metrics.html#kubevirt
 		r.UsedMemory = uint32(assignToInt64(value)) / BytesInMegabyte
 	default:
 	}

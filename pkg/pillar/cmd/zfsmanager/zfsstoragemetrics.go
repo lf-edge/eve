@@ -7,6 +7,7 @@ import (
 	"time"
 
 	libzfs "github.com/andrewd-zededa/go-libzfs"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils/persist"
 	"github.com/lf-edge/eve/pkg/pillar/zfs"
@@ -49,23 +50,25 @@ func collectAndPublishStorageMetrics(ctxPtr *zfsContext) {
 
 			zfsPoolMetrics := zfs.GetZpoolMetrics(vdevs)
 
-			// Fill metrics for zvols
-			for _, vs := range ctxPtr.subVolumeStatus.GetAll() {
-				volumeStatus := vs.(types.VolumeStatus)
-				if volumeStatus.State < types.CREATING_VOLUME {
-					// we did not go to creating of volume, nothing to measure
-					continue
+			if !base.IsHVTypeKube() {
+				// Fill metrics for zvols
+				for _, vs := range ctxPtr.subVolumeStatus.GetAll() {
+					volumeStatus := vs.(types.VolumeStatus)
+					if volumeStatus.State < types.CREATING_VOLUME {
+						// we did not go to creating of volume, nothing to measure
+						continue
+					}
+					if !volumeStatus.UseZVolDisk(persist.ReadPersistType()) {
+						// we do not create zvol for that volumeStatus
+						continue
+					}
+					zVolMetric, err := zfs.GetZvolMetrics(volumeStatus, zfsPoolMetrics.PoolName)
+					if err != nil {
+						// It is possible that the logical volume belongs to another zpool
+						continue
+					}
+					zfsPoolMetrics.ZVols = append(zfsPoolMetrics.ZVols, zVolMetric)
 				}
-				if !volumeStatus.UseZVolDisk(persist.ReadPersistType()) {
-					// we do not create zvol for that volumeStatus
-					continue
-				}
-				zVolMetric, err := zfs.GetZvolMetrics(volumeStatus, zfsPoolMetrics.PoolName)
-				if err != nil {
-					// It is possible that the logical volume belongs to another zpool
-					continue
-				}
-				zfsPoolMetrics.ZVols = append(zfsPoolMetrics.ZVols, zVolMetric)
 			}
 
 			if err := ctxPtr.storageMetricsPub.Publish(zfsPoolMetrics.Key(), *zfsPoolMetrics); err != nil {
