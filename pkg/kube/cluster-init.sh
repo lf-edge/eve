@@ -934,6 +934,7 @@ fi
         check_and_remove_excessive_k3s_logs
         check_and_run_vnc
         Update_CheckClusterComponents
+        Update_RunDeschedulerOnBoot
         wait_for_item "wait"
         sleep 15
 done
