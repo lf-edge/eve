@@ -112,8 +112,9 @@ type zedagentContext struct {
 	triggerHwInfo             chan<- destinationBitset
 	triggerLocationInfo       chan<- destinationBitset
 	triggerNTPSourcesInfo     chan<- destinationBitset
-	triggerClusterUpdateInfo  chan<- destinationBitset
 	triggerObjectInfo         chan<- infoForObjectKey
+	triggerClusterInfo        chan<- destinationBitset
+	triggerClusterUpdateInfo  chan<- destinationBitset
 	zbootRestarted            bool // published by baseosmgr
 	subOnboardStatus          pubsub.Subscription
 	subBaseOsStatus           pubsub.Subscription
@@ -155,28 +156,32 @@ type zedagentContext struct {
 	subCipherMetricsZR        pubsub.Subscription
 	subCipherMetricsWwan      pubsub.Subscription
 	subPatchEnvelopeUsage     pubsub.Subscription
-	subNodeDrainStatus        pubsub.Subscription
-	pubNodeDrainRequest       pubsub.Publication
-	subClusterUpdateStatus    pubsub.Subscription
-	zedcloudMetrics           *zedcloud.AgentMetrics
-	fatalFlag                 bool // From command line arguments
-	hangFlag                  bool // From command line arguments
-	rebootCmd                 bool
-	rebootCmdDeferred         bool
-	deviceReboot              bool // From nodeagent
-	shutdownCmd               bool
-	shutdownCmdDeferred       bool
-	deviceShutdown            bool // From nodeagent
-	poweroffCmd               bool
-	poweroffCmdDeferred       bool
-	devicePoweroff            bool // From nodeagent
-	allDomainsHalted          bool
-	requestedRebootReason     string           // Set by zedagent
-	requestedBootReason       types.BootReason // Set by zedagent
-	rebootReason              string           // Previous reboot from nodeagent
-	bootReason                types.BootReason // Previous reboot from nodeagent
-	rebootStack               string           // Previous reboot from nodeagent
-	rebootTime                time.Time        // Previous reboot from nodeagent
+
+	subNodeDrainStatus     pubsub.Subscription
+	pubNodeDrainRequest    pubsub.Publication
+	subClusterUpdateStatus pubsub.Subscription
+	subKubeClusterInfo     pubsub.Subscription
+
+	zedcloudMetrics       *zedcloud.AgentMetrics
+	fatalFlag             bool // From command line arguments
+	hangFlag              bool // From command line arguments
+	rebootCmd             bool
+	rebootCmdDeferred     bool
+	deviceReboot          bool // From nodeagent
+	shutdownCmd           bool
+	shutdownCmdDeferred   bool
+	deviceShutdown        bool // From nodeagent
+	poweroffCmd           bool
+	poweroffCmdDeferred   bool
+	devicePoweroff        bool // From nodeagent
+	allDomainsHalted      bool
+	requestedRebootReason string           // Set by zedagent
+	requestedBootReason   types.BootReason // Set by zedagent
+	rebootReason          string           // Previous reboot from nodeagent
+	bootReason            types.BootReason // Previous reboot from nodeagent
+	rebootStack           string           // Previous reboot from nodeagent
+	rebootTime            time.Time        // Previous reboot from nodeagent
+
 	// restartCounter - counts number of reboots of the device by Eve
 	restartCounter uint32
 	// rebootConfigCounter - reboot counter sent by the cloud in its config.
@@ -343,15 +348,17 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	triggerHwInfo := make(chan destinationBitset, 1)
 	triggerLocationInfo := make(chan destinationBitset, 1)
 	triggerNTPSourcesInfo := make(chan destinationBitset, 1)
-	triggerClusterUpdateInfo := make(chan destinationBitset, 1)
 	triggerObjectInfo := make(chan infoForObjectKey, 1)
+	triggerClusterInfo := make(chan destinationBitset, 1)
+	triggerClusterUpdateInfo := make(chan destinationBitset, 1)
 	zedagentCtx.flowlogQueue = flowlogQueue
 	zedagentCtx.triggerDeviceInfo = triggerDeviceInfo
 	zedagentCtx.triggerHwInfo = triggerHwInfo
 	zedagentCtx.triggerLocationInfo = triggerLocationInfo
 	zedagentCtx.triggerNTPSourcesInfo = triggerNTPSourcesInfo
-	zedagentCtx.triggerClusterUpdateInfo = triggerClusterUpdateInfo
 	zedagentCtx.triggerObjectInfo = triggerObjectInfo
+	zedagentCtx.triggerClusterInfo = triggerClusterInfo
+	zedagentCtx.triggerClusterUpdateInfo = triggerClusterUpdateInfo
 
 	// Initialize all zedagent publications.
 	initPublications(zedagentCtx)
@@ -514,6 +521,11 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	log.Functionf("Creating %s at %s", "ntpTimerTask", agentlog.GetMyStack())
 	go ntpSourcesTimerTask(zedagentCtx, handleChannel, triggerNTPSourcesInfo)
 	getconfigCtx.ntpSourcesTickerHandle = <-handleChannel
+
+	// Initial publish of KubeClusterInfo
+	log.Noticef("Creating %s at %s", "kubeClusterInfoTask", agentlog.GetMyStack())
+	go kubeClusterInfoTask(zedagentCtx, triggerClusterInfo)
+	triggerPublishKubeClusterInfo(zedagentCtx)
 
 	// Initial publish of KubeClusterUpdateStatus
 	log.Noticef("Creating %s at %s", "kubeClusterUpdateStatusTask", agentlog.GetMyStack())
@@ -1075,6 +1087,9 @@ func mainEventLoop(zedagentCtx *zedagentContext, stillRunning *time.Ticker) {
 
 		case change := <-zedagentCtx.subNodeDrainStatus.MsgChan():
 			zedagentCtx.subNodeDrainStatus.ProcessChange(change)
+
+		case change := <-zedagentCtx.subKubeClusterInfo.MsgChan():
+			zedagentCtx.subKubeClusterInfo.ProcessChange(change)
 
 		case change := <-zedagentCtx.subClusterUpdateStatus.MsgChan():
 			zedagentCtx.subClusterUpdateStatus.ProcessChange(change)
@@ -2062,6 +2077,41 @@ func triggerPublishKubeClusterUpdateStatusToDest(ctxPtr *zedagentContext, dest d
 
 func triggerPublishKubeClusterUpdateStatus(ctxPtr *zedagentContext) {
 	triggerPublishKubeClusterUpdateStatusToDest(ctxPtr, AllDest)
+}
+
+func handleKubeClusterInfoCreate(ctxArg interface{}, key string,
+	configArg interface{}) {
+	handleKubeClusterInfoImpl(ctxArg, key, configArg, nil)
+}
+func handleKubeClusterInfoModify(ctxArg interface{}, key string,
+	configArg interface{}, oldStatusArg interface{}) {
+	handleKubeClusterInfoImpl(ctxArg, key, configArg, oldStatusArg)
+}
+func handleKubeClusterInfoImpl(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	ctx, ok := ctxArg.(*zedagentContext)
+	if !ok {
+		log.Errorf("handleKubeClusterInfoImpl invalid type in ctxArg: %v", ctxArg)
+		return
+	}
+	triggerPublishKubeClusterInfo(ctx)
+}
+
+func triggerPublishKubeClusterInfoToDest(ctxPtr *zedagentContext, dest destinationBitset) {
+	log.Notice("Triggered PublishKubeClusterInfo")
+	select {
+	case ctxPtr.triggerClusterInfo <- dest:
+
+		// Do nothing more
+	default:
+		// This occurs if we are already trying to send
+		// and we get a second and third trigger before that is complete.
+		log.Warnf("Failed to send on PublishKubeClusterInfo")
+	}
+}
+
+func triggerPublishKubeClusterInfo(ctxPtr *zedagentContext) {
+	triggerPublishKubeClusterInfoToDest(ctxPtr, AllDest)
 }
 
 func triggerPublishDevInfoToDest(ctxPtr *zedagentContext, dest destinationBitset) {
