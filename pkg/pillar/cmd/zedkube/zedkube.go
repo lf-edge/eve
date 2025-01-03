@@ -7,6 +7,7 @@ package zedkube
 
 import (
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -31,6 +32,8 @@ const (
 	logcollectInterval   = 30
 	// run VNC file
 	vmiVNCFileName = "/run/zedkube/vmiVNC.run"
+
+	inlineCmdKubeClusterUpdateStatus = "pubKubeClusterUpdateStatus"
 )
 
 var (
@@ -76,6 +79,76 @@ type zedkube struct {
 	statusServerWG           sync.WaitGroup
 }
 
+func inlineUsage() int {
+	log.Errorf("Usage: zedkube %s <node> <component> <status> <DestinationKubeUpdateVersion> <error>", inlineCmdKubeClusterUpdateStatus)
+	return 1
+}
+
+func runCommand(ps *pubsub.PubSub, command string, args []string) int {
+	if args == nil {
+		return inlineUsage()
+	}
+	switch command {
+	case inlineCmdKubeClusterUpdateStatus:
+		if args == nil {
+			return inlineUsage()
+		}
+		node := args[0]
+		comp := kubeapi.KubeCompFromStr(args[1])
+		status := kubeapi.KubeCompUpdateStatusFromStr(args[2])
+
+		dest_kube_version := uint32(0)
+		val, err := strconv.ParseInt(args[3], 10, 32)
+		if err != nil {
+			log.Errorf("zedkube %s unable to parse dest_version:%s err:%v", inlineCmdKubeClusterUpdateStatus, args[3], err)
+			return 1
+		}
+		dest_kube_version = uint32(val)
+
+		error_str := ""
+		if len(args) == 5 {
+			error_str = args[4]
+		}
+
+		pubKubeClusterUpdateStatus, err := ps.NewPublication(
+			pubsub.PublicationOptions{
+				AgentName:  "zedagent",
+				TopicType:  kubeapi.KubeClusterUpdateStatus{},
+				Persistent: true,
+			})
+		if err != nil {
+			log.Fatal(err)
+			return 2
+		}
+		if (comp == kubeapi.COMP_UNKNOWN) && (status == kubeapi.COMP_STATUS_UNKNOWN) {
+			if _, err := pubKubeClusterUpdateStatus.Get("global"); err == nil {
+				pubKubeClusterUpdateStatus.Unpublish("global")
+			}
+		} else {
+			upStatusObj := kubeapi.KubeClusterUpdateStatus{
+				CurrentNode:                  node,
+				Component:                    comp,
+				Status:                       status,
+				DestinationKubeUpdateVersion: dest_kube_version,
+			}
+			if status == kubeapi.COMP_STATUS_FAILED {
+				if error_str == "" {
+					error_str = inlineCmdKubeClusterUpdateStatus + " " + strings.Join(args, " ")
+				}
+				upStatusObj.SetError(error_str, time.Now())
+			}
+			pubKubeClusterUpdateStatus.Publish("global", upStatusObj)
+		}
+	default:
+		log.Errorf("Unknown command %s", command)
+		return 99
+	}
+
+	ps.StillRunning("zedkube", warningTime, errorTime)
+	time.Sleep(time.Second * 1)
+	return 0
+}
+
 // Run - an zedkube run
 func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string, baseDir string) int {
 	logger = loggerArg
@@ -84,6 +157,26 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	zedkubeCtx := zedkube{
 		globalConfig: types.DefaultConfigItemValueMap(),
 	}
+
+	// do we run a single command, or long-running service?
+	// if any args defined, will run that single command and exit.
+	// otherwise, will run the agent
+	var (
+		command string
+		args    []string
+	)
+	if len(arguments) > 0 {
+		command = arguments[0]
+	}
+	if len(arguments) > 1 {
+		args = arguments[1:]
+	}
+
+	// if an explicit command was given, run that command and return, else run the agent
+	if command != "" {
+		return runCommand(ps, command, args)
+	}
+
 	agentbase.Init(&zedkubeCtx, logger, log, agentName,
 		agentbase.WithPidFile(),
 		agentbase.WithWatchdog(ps, warningTime, errorTime),

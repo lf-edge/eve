@@ -1,0 +1,5 @@
+---
+multus: "v3.9.3"
+kubevirt: "v1.1.0-dirty"
+cdi: "v1.57.1"
+longhorn: "v1.6.3"
