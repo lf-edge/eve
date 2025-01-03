@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 KUBEVIRT_VERSION=v1.1.0
-CDI_VERSION=v1.54.0
+CDI_VERSION=v1.57.1
 NODE_IP=""
 RESTART_COUNT=0
 K3S_LOG_DIR="/persist/kubelog"

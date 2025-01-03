@@ -13,6 +13,7 @@ root = "/persist/vault/containerd"
   enable_unprivileged_ports = true
   enable_unprivileged_icmp = true
   sandbox_image = "rancher/mirrored-pause:3.6"
+  device_ownership_from_security_context = true
 
 [plugins."io.containerd.grpc.v1.cri".containerd]
   snapshotter = "overlayfs"
