@@ -6,7 +6,7 @@
 
 # Script version, don't forget to bump up once something is changed
 
-VERSION=32
+VERSION=33
 # Add required packages here, it will be passed to "apk add".
 # Once something added here don't forget to add the same package
 # to the Dockerfile ('ENV PKGS' line) of the debug container,
@@ -328,6 +328,14 @@ collect_kube_info()
            echo "============"
            eve exec kube kubectl describe pods -A
            echo "============"
+           echo "kubectl get rs -A"
+           echo "============"
+           eve exec kube kubectl get rs -A
+           echo "============"
+           echo "kubectl describe rs -A"
+           echo "============"
+           eve exec kube kubectl describe rs -A
+           echo "============"
            echo "kubectl get pvc -A"
            echo "============"
            eve exec kube kubectl get pvc -A
@@ -343,6 +351,14 @@ collect_kube_info()
            echo "kubectl describe vmi -A"
            echo "============"
            eve exec kube kubectl describe vmi -A
+           echo "============"
+           echo "kubectl get vmirs -A"
+           echo "============"
+           eve exec kube kubectl get vmirs -A
+           echo "============"
+           echo "kubectl describe vmirs -A"
+           echo "============"
+           eve exec kube kubectl describe vmirs -A
            echo "============"
            echo "kubectl get kubevirt -n kubevirt -o yaml"
            echo "============"

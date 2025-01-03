@@ -9,8 +9,14 @@
 #   mount RWX volumes for longhorn
 #
 target_pid=1
-kube_pid=$(pgrep -f "cluster-init.sh")
-if [ -n "$kube_pid" ]; then
-  target_pid=$kube_pid
-fi
+starting_pid=$$
+while [ "$starting_pid" != "1" ]; do
+  ppid=$(grep PPid "/proc/${starting_pid}/status" | cut -d ':' -f 2 | tr -d '\t')
+  echo "proc:$starting_pid has ppid:$ppid"
+  if grep -q containerd "/proc/${ppid}/cmdline"; then
+    target_pid=$ppid
+    break
+  fi
+  starting_pid=$ppid
+done
 nsenter -t "$target_pid" -m -n -u -- "$@"
