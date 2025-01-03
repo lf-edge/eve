@@ -42,7 +42,7 @@ func (z *zedkube) collectKubeStats() {
 			return
 		}
 		for _, node := range nodes {
-			nodeInfo := getKubeNodeInfo(node)
+			nodeInfo := getKubeNodeInfo(node, z)
 			nodesInfo = append(nodesInfo, *nodeInfo)
 		}
 
@@ -77,12 +77,37 @@ func (z *zedkube) collectKubeStats() {
 		}
 
 		// Publish the cluster info, first w/ nodes and app pods and VMIs
+		ksi, err := kubeapi.PopulateKSI()
+		if err != nil {
+			log.Errorf("collectKubeStats: can't get KSI %v", err)
+		}
+
+		var podNsInfoList []types.KubePodNameSpaceInfo
+		allNs, err := getAllNs()
+		if err == nil {
+			for _, ns := range allNs {
+				nsInfo, err := getPodNsInfo(ns)
+				if err == nil {
+					podNsInfoList = append(podNsInfoList, nsInfo)
+				}
+			}
+		}
+		// Publish the cluster info
 		clusterInfo := types.KubeClusterInfo{
-			Nodes:   nodesInfo,
-			AppPods: podsInfo,
-			AppVMIs: vmisInfo,
+			Nodes:     nodesInfo,
+			AppPods:   podsInfo,
+			AppVMIs:   vmisInfo,
+			Storage:   ksi,
+			PodNsInfo: podNsInfoList,
 		}
 		z.pubKubeClusterInfo.Publish("global", clusterInfo)
+	}
+	if !z.isKubeStatsLeader.Load() {
+		// Unpublish so that there isn't anything to send to the controller
+		items := z.pubKubeClusterInfo.GetAll()
+		if _, ok := items["global"].(types.KubeClusterInfo); ok {
+			z.pubKubeClusterInfo.Unpublish("global")
+		}
 	}
 }
 
@@ -95,7 +120,7 @@ func getKubeNodes(clientset *kubernetes.Clientset) ([]corev1.Node, error) {
 	return nodes.Items, nil
 }
 
-func getKubeNodeInfo(node corev1.Node) *types.KubeNodeInfo {
+func getKubeNodeInfo(node corev1.Node, z *zedkube) *types.KubeNodeInfo {
 	status := types.KubeNodeStatusUnknown
 	var lastTransitionTime time.Time
 	for _, condition := range node.Status.Conditions {
@@ -142,6 +167,28 @@ func getKubeNodeInfo(node corev1.Node) *types.KubeNodeInfo {
 	log.Functionf("getKubeNodeInfo: node %s, status %v, isMaster %v, usesEtcd %v, creationTime %v, lastTrasitionTime %v, kubeletVersion %s, internalIP %s, externalIP %s, schedulable %v",
 		node.Name, status, isMaster, usesEtcd, creationTimestamp, lastTransitionTime, kubeletVersion, internalIP, externalIP, schedulable)
 
+	admission := types.NodeAdmissionUnknown
+	clusterCfgs := z.subEdgeNodeClusterConfig.GetAll()
+	_, ok := clusterCfgs["global"].(types.EdgeNodeClusterConfig)
+	if !ok {
+		// No EdgeNodeClusterConfig
+		if !usesEtcd {
+			admission = types.NodeAdmissionNotClustered
+		}
+		if usesEtcd {
+			admission = types.NodeAdmissionLeaving
+		}
+	} else {
+		// EdgeNodeClusterConfig
+		if usesEtcd {
+			// Expected state shortly after requesting cluster config
+			admission = types.NodeAdmissionJoined
+		} else {
+			// Node not yet set etcd label, should be a shorter state
+			admission = types.NodeAdmissionJoining
+		}
+	}
+
 	nodeInfo := types.KubeNodeInfo{
 		Name:               node.Name,
 		Status:             status,
@@ -153,6 +200,8 @@ func getKubeNodeInfo(node corev1.Node) *types.KubeNodeInfo {
 		InternalIP:         internalIP,
 		ExternalIP:         externalIP,
 		Schedulable:        schedulable,
+		Admission:          admission,
+		NodeID:             node.Labels["node-uuid"],
 	}
 
 	return &nodeInfo
