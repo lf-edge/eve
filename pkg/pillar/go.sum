@@ -1452,6 +1452,8 @@ github.com/lf-edge/edge-containers v0.0.0-20240207093504-5dfda0619b80 h1:kiqB1Rk
 github.com/lf-edge/edge-containers v0.0.0-20240207093504-5dfda0619b80/go.mod h1:4yXdumKdTzF0URMtxOl8Xnzdxnoy1QR+2dzfOr4CIZY=
 github.com/lf-edge/eve-api/go v0.0.0-20241213165007-1a8f9be485b1 h1:FEWskrHaPtLaymwKB9QLNvc79S7DxnE+4v3NGSNJZp0=
 github.com/lf-edge/eve-api/go v0.0.0-20241213165007-1a8f9be485b1/go.mod h1:ot6MhAhBXapUDl/hXklaX4kY88T3uC4PTg0D2wD8DzA=
+github.com/lf-edge/eve-api/go v0.0.0-20250102213900-786246223024 h1:C+Xj3QOl+RMOVub78IcP07s6fqExFh21vjWwZgC9WGM=
+github.com/lf-edge/eve-api/go v0.0.0-20250102213900-786246223024/go.mod h1:ot6MhAhBXapUDl/hXklaX4kY88T3uC4PTg0D2wD8DzA=
 github.com/lf-edge/eve-libs v0.0.0-20241210085709-fc89dcac7f3c h1:PN0cNV+Rwq6T358PYyuaFr3MU9xjUCPTHtUwepMACac=
 github.com/lf-edge/eve-libs v0.0.0-20241210085709-fc89dcac7f3c/go.mod h1:32koNJxwKDrVL7rBLy35QzjIuMvGy6+BmLjf8Y38MQU=
 github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20240315102754-0f6d1f182e0d h1:tUBb9M6u42LXwHAYHyh22wJeUUQlTpDkXwRXalpRqbo=
@@ -2839,6 +2841,8 @@ google.golang.org/protobuf v1.29.0/go.mod h1:HV8QOd/L58Z+nl8r43ehVNZIU/HEI6OcFqw
 google.golang.org/protobuf v1.29.1/go.mod h1:HV8QOd/L58Z+nl8r43ehVNZIU/HEI6OcFqwMG9pJV4I=
 google.golang.org/protobuf v1.33.0 h1:uNO2rsAINq/JlFpSdYEKIZ0uKD/R9cpdv0T+yoGwGmI=
 google.golang.org/protobuf v1.33.0/go.mod h1:c6P6GXX6sHbq/GpV6MGZEdwhWPcYBgnhAHhKbcUYpos=
+google.golang.org/protobuf v1.36.1 h1:yBPeRvTftaleIgM3PZ/WBIZ7XM/eEYAaEyCwvyjq/gk=
+google.golang.org/protobuf v1.36.1/go.mod h1:9fA7Ob0pmnwhb644+1+CVWFRbNajQ6iRojtC/QF5bRE=
 gopkg.in/airbrake/gobrake.v2 v2.0.9/go.mod h1:/h5ZAUhDkGaJfjzjKLSjv6zCL6O0LLBxU4K+aSYdM/U=
 gopkg.in/alecthomas/kingpin.v2 v2.2.6/go.mod h1:FMv+mEhP44yOT+4EoQTLFTRgOQ1FBLkstjWtayDeSgw=
 gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=
