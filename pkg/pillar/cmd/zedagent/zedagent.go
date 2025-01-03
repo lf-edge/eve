@@ -40,6 +40,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/kubeapi"
 	"github.com/lf-edge/eve/pkg/pillar/netdump"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -112,6 +113,8 @@ type zedagentContext struct {
 	triggerLocationInfo       chan<- destinationBitset
 	triggerNTPSourcesInfo     chan<- destinationBitset
 	triggerObjectInfo         chan<- infoForObjectKey
+	triggerClusterInfo        chan<- destinationBitset
+	triggerClusterUpdateInfo  chan<- destinationBitset
 	zbootRestarted            bool // published by baseosmgr
 	subOnboardStatus          pubsub.Subscription
 	subBaseOsStatus           pubsub.Subscription
@@ -153,6 +156,8 @@ type zedagentContext struct {
 	subCipherMetricsZR        pubsub.Subscription
 	subCipherMetricsWwan      pubsub.Subscription
 	subPatchEnvelopeUsage     pubsub.Subscription
+	subKubeClusterInfo        pubsub.Subscription
+	subClusterUpdateStatus    pubsub.Subscription
 	zedcloudMetrics           *zedcloud.AgentMetrics
 	fatalFlag                 bool // From command line arguments
 	hangFlag                  bool // From command line arguments
@@ -336,12 +341,16 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	triggerLocationInfo := make(chan destinationBitset, 1)
 	triggerNTPSourcesInfo := make(chan destinationBitset, 1)
 	triggerObjectInfo := make(chan infoForObjectKey, 1)
+	triggerClusterInfo := make(chan destinationBitset, 1)
+	triggerClusterUpdateInfo := make(chan destinationBitset, 1)
 	zedagentCtx.flowlogQueue = flowlogQueue
 	zedagentCtx.triggerDeviceInfo = triggerDeviceInfo
 	zedagentCtx.triggerHwInfo = triggerHwInfo
 	zedagentCtx.triggerLocationInfo = triggerLocationInfo
 	zedagentCtx.triggerNTPSourcesInfo = triggerNTPSourcesInfo
 	zedagentCtx.triggerObjectInfo = triggerObjectInfo
+	zedagentCtx.triggerClusterInfo = triggerClusterInfo
+	zedagentCtx.triggerClusterUpdateInfo = triggerClusterUpdateInfo
 
 	// Initialize all zedagent publications.
 	initPublications(zedagentCtx)
@@ -504,6 +513,16 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	log.Functionf("Creating %s at %s", "ntpTimerTask", agentlog.GetMyStack())
 	go ntpSourcesTimerTask(zedagentCtx, handleChannel, triggerNTPSourcesInfo)
 	getconfigCtx.ntpSourcesTickerHandle = <-handleChannel
+
+	// Initial publish of KubeClusterInfo
+	log.Noticef("Creating %s at %s", "kubeClusterInfoTask", agentlog.GetMyStack())
+	go kubeClusterInfoTask(zedagentCtx, triggerClusterInfo)
+	triggerPublishKubeClusterInfo(zedagentCtx)
+
+	// Initial publish of KubeClusterUpdateStatus
+	log.Noticef("Creating %s at %s", "kubeClusterUpdateStatusTask", agentlog.GetMyStack())
+	go kubeClusterUpdateStatusTask(zedagentCtx, triggerClusterUpdateInfo)
+	triggerPublishKubeClusterUpdateStatus(zedagentCtx)
 
 	//trigger channel for localProfile state machine
 	getconfigCtx.sideController.localProfileTrigger = make(chan Notify, 1)
@@ -782,6 +801,9 @@ func mainEventLoop(zedagentCtx *zedagentContext, stillRunning *time.Ticker) {
 
 	hwInfoTiker := time.NewTicker(3 * time.Hour)
 
+	kubeClusterInfoTicker := time.NewTicker(1 * time.Minute)
+	kubeClusterUpdateTicker := time.NewTicker(1 * time.Minute)
+
 	for {
 		select {
 		case change := <-zedagentCtx.subOnboardStatus.MsgChan():
@@ -1055,6 +1077,18 @@ func mainEventLoop(zedagentCtx *zedagentContext, stillRunning *time.Ticker) {
 
 		case change := <-zedagentCtx.subEdgeviewStatus.MsgChan():
 			zedagentCtx.subEdgeviewStatus.ProcessChange(change)
+
+		case <-kubeClusterInfoTicker.C:
+			triggerPublishKubeClusterInfo(zedagentCtx)
+
+		case change := <-zedagentCtx.subKubeClusterInfo.MsgChan():
+			zedagentCtx.subKubeClusterInfo.ProcessChange(change)
+
+		case <-kubeClusterUpdateTicker.C:
+			triggerPublishKubeClusterUpdateStatus(zedagentCtx)
+
+		case change := <-zedagentCtx.subClusterUpdateStatus.MsgChan():
+			zedagentCtx.subClusterUpdateStatus.ProcessChange(change)
 
 		case <-stillRunning.C:
 			// Fault injection
@@ -1974,6 +2008,38 @@ func initPostOnboardSubs(zedagentCtx *zedagentContext) {
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	zedagentCtx.subKubeClusterInfo, err = ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:   "zedkube",
+		MyAgentName: agentName,
+		TopicImpl:   types.KubeClusterInfo{},
+		Persistent:  false,
+		Activate:    false,
+		Ctx:         zedagentCtx,
+		WarningTime: warningTime,
+		ErrorTime:   errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	zedagentCtx.subKubeClusterInfo.Activate()
+
+	zedagentCtx.subClusterUpdateStatus, err = ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     agentName,
+		MyAgentName:   agentName,
+		TopicImpl:     kubeapi.KubeClusterUpdateStatus{},
+		Persistent:    true,
+		Activate:      false, //need to have the zedagentCtx.subClusterUpdateStatus set before activation
+		Ctx:           zedagentCtx,
+		CreateHandler: handleClusterUpdateStatusCreate,
+		ModifyHandler: handleClusterUpdateStatusModify,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	zedagentCtx.subClusterUpdateStatus.Activate()
 }
 
 func triggerPublishHwInfoToDest(ctxPtr *zedagentContext, dest destinationBitset) {
@@ -1991,6 +2057,22 @@ func triggerPublishHwInfoToDest(ctxPtr *zedagentContext, dest destinationBitset)
 
 func triggerPublishHwInfo(ctxPtr *zedagentContext) {
 	triggerPublishHwInfoToDest(ctxPtr, AllDest)
+}
+
+func triggerPublishKubeClusterInfoToDest(ctxPtr *zedagentContext, dest destinationBitset) {
+	log.Notice("Triggered PublishKubeClusterInfo")
+	select {
+	case ctxPtr.triggerClusterInfo <- dest:
+		// Do nothing more
+	default:
+		// This occurs if we are already trying to send
+		// and we get a second and third trigger before that is complete.
+		log.Warnf("Failed to send on PublishKubeClusterInfo")
+	}
+}
+
+func triggerPublishKubeClusterInfo(ctxPtr *zedagentContext) {
+	triggerPublishKubeClusterInfoToDest(ctxPtr, AllDest)
 }
 
 func triggerPublishDevInfoToDest(ctxPtr *zedagentContext, dest destinationBitset) {
@@ -2099,6 +2181,7 @@ func triggerPublishAllInfo(ctxPtr *zedagentContext, dest destinationBitset) {
 		}
 		triggerPublishLocationToDest(ctxPtr, dest)
 		triggerPublishNTPSourcesToDest(ctxPtr, dest)
+		triggerPublishKubeClusterUpdateStatusToDest(ctxPtr, dest)
 	}()
 }
 
@@ -2728,4 +2811,48 @@ func reinitNetdumper(ctx *zedagentContext) {
 	}
 	// Assign at the end to avoid race condition with configTimerTask.
 	ctx.netDumper = netDumper
+}
+
+func handleClusterUpdateStatusCreate(ctxArg interface{}, key string,
+	configArg interface{}) {
+	handleClusterUpdateStatusImpl(ctxArg, key, configArg, nil)
+}
+func handleClusterUpdateStatusModify(ctxArg interface{}, key string,
+	configArg interface{}, oldStatusArg interface{}) {
+	handleClusterUpdateStatusImpl(ctxArg, key, configArg, oldStatusArg)
+}
+func handleClusterUpdateStatusImpl(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	ctx, ok := ctxArg.(*zedagentContext)
+	if !ok {
+		log.Fatalf("handleClusterUpdateStatusImpl invalid type in ctxArg: %v", ctxArg)
+	}
+	req, ok := statusArg.(kubeapi.KubeClusterUpdateStatus)
+	if !ok {
+		log.Fatalf("handleClusterUpdateStatusImpl invalid type in configArg: %v", statusArg)
+	}
+	log.Noticef("handleClusterUpdateStatusImpl key:%s obj:%v", key, req)
+
+	state := getDeviceState(ctx)
+	//if state != DEVICE_STATE_BASEOS_UPDATING {
+	// Ignore if not in baseos updating state
+	//	return
+	//}
+	log.Noticef("handleClusterUpdateStatusImpl devicestate:%s", state)
+	triggerPublishKubeClusterUpdateStatus(ctx)
+}
+func triggerPublishKubeClusterUpdateStatusToDest(ctxPtr *zedagentContext, dest destinationBitset) {
+	log.Notice("Triggered PublishKubeClusterUpdateStatus")
+	select {
+	case ctxPtr.triggerClusterUpdateInfo <- dest:
+		// Do nothing more
+	default:
+		// This occurs if we are already trying to send
+		// and we get a second and third trigger before that is complete.
+		log.Warnf("Failed to send on PublishKubeClusterUpdateStatus")
+	}
+}
+
+func triggerPublishKubeClusterUpdateStatus(ctxPtr *zedagentContext) {
+	triggerPublishKubeClusterUpdateStatusToDest(ctxPtr, AllDest)
 }
