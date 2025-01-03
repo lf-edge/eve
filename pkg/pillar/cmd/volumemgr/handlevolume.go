@@ -53,7 +53,7 @@ func handleVolumeModify(ctxArg interface{}, key string,
 			status.SetError(errStr, time.Now())
 			publishVolumeStatus(ctx, status)
 			updateVolumeRefStatus(ctx, status)
-			if err := createOrUpdateAppDiskMetrics(ctx, status); err != nil {
+			if err := createOrUpdateAppDiskMetrics(ctx, agentName, status); err != nil {
 				log.Errorf("handleVolumeModify(%s): exception while publishing diskmetric. %s", key, err.Error())
 			}
 			return
@@ -66,7 +66,7 @@ func handleVolumeModify(ctxArg interface{}, key string,
 		updateVolumeStatusRefCount(ctx, status)
 		publishVolumeStatus(ctx, status)
 		updateVolumeRefStatus(ctx, status)
-		if err := createOrUpdateAppDiskMetrics(ctx, status); err != nil {
+		if err := createOrUpdateAppDiskMetrics(ctx, agentName, status); err != nil {
 			log.Errorf("handleVolumeModify(%s): exception while publishing diskmetric. %s", key, err.Error())
 		}
 	}
@@ -135,7 +135,7 @@ func handleDeferredVolumeCreate(ctx *volumemgrContext, key string, config *types
 		status.SetError(err.Error(), time.Now())
 		publishVolumeStatus(ctx, status)
 		updateVolumeRefStatus(ctx, status)
-		if err := createOrUpdateAppDiskMetrics(ctx, status); err != nil {
+		if err := createOrUpdateAppDiskMetrics(ctx, agentName, status); err != nil {
 			log.Errorf("handleDeferredVolumeCreate(%s): exception while publishing diskmetric. %s", key, err.Error())
 		}
 		return
@@ -175,7 +175,7 @@ func handleDeferredVolumeCreate(ctx *volumemgrContext, key string, config *types
 		}
 		publishVolumeStatus(ctx, status)
 		updateVolumeRefStatus(ctx, status)
-		if err := createOrUpdateAppDiskMetrics(ctx, status); err != nil {
+		if err := createOrUpdateAppDiskMetrics(ctx, agentName, status); err != nil {
 			log.Errorf("handleDeferredVolumeCreate(%s): exception while publishing diskmetric. %s", key, err.Error())
 		}
 		return
@@ -186,7 +186,7 @@ func handleDeferredVolumeCreate(ctx *volumemgrContext, key string, config *types
 		publishVolumeStatus(ctx, status)
 		updateVolumeRefStatus(ctx, status)
 	}
-	if err := createOrUpdateAppDiskMetrics(ctx, status); err != nil {
+	if err := createOrUpdateAppDiskMetrics(ctx, agentName, status); err != nil {
 		log.Errorf("handleDeferredVolumeCreate(%s): exception while publishing diskmetric. %s", key, err.Error())
 	}
 	log.Tracef("handleDeferredVolumeCreate(%s) done", key)
@@ -335,7 +335,7 @@ func maybeSpaceAvailable(ctx *volumemgrContext) {
 		if changed {
 			publishVolumeStatus(ctx, &status)
 			updateVolumeRefStatus(ctx, &status)
-			if err := createOrUpdateAppDiskMetrics(ctx, &status); err != nil {
+			if err := createOrUpdateAppDiskMetrics(ctx, agentName, &status); err != nil {
 				log.Errorf("maybeSpaceAvailable(%s): exception while publishing diskmetric. %s", status.Key(), err.Error())
 			}
 		}

@@ -82,7 +82,8 @@ func SizeFromDir(log *base.LogObject, dirname string) (uint64, error) {
 				// will be in the clear and vault volumes base directories so a lot of compute time
 				// can be saved by not checking detailed allocated bytes information in deeper
 				// directories.
-				if dirname == types.VolumeEncryptedDirName || dirname == types.VolumeClearDirName {
+				if strings.HasPrefix(dirname, types.VolumeEncryptedDirName) ||
+					strings.HasPrefix(dirname, types.VolumeClearDirName) {
 					// FileInfo.Size() returns the provisioned size
 					// Sparse files will have a smaller allocated size than provisioned
 					// Use full syscall.Stat_t to get the allocated size

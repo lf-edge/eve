@@ -174,7 +174,7 @@ func (handler *volumeHandlerCSI) CreateVolume() (string, error) {
 			}
 
 			// Convert to PVC
-			pvcerr := kubeapi.RolloutDiskToPVC(createContext, handler.log, false, rawImgFile, pvcName, false)
+			pvcerr := kubeapi.RolloutDiskToPVC(createContext, handler.log, false, rawImgFile, pvcName, false, pvcSize)
 
 			// Since we succeeded or failed to create PVC above, no point in keeping the rawImgFile.
 			// Delete it to save space.
@@ -199,7 +199,7 @@ func (handler *volumeHandlerCSI) CreateVolume() (string, error) {
 				return pvcName, errors.New(errStr)
 			}
 			// Convert qcow2 to PVC
-			err = kubeapi.RolloutDiskToPVC(createContext, handler.log, false, qcowFile, pvcName, false)
+			err = kubeapi.RolloutDiskToPVC(createContext, handler.log, false, qcowFile, pvcName, false, pvcSize)
 
 			if err != nil {
 				errStr := fmt.Sprintf("Error converting %s to PVC %s: %v",
@@ -239,6 +239,7 @@ func (handler *volumeHandlerCSI) DestroyVolume() (string, error) {
 
 func (handler *volumeHandlerCSI) Populate() (bool, error) {
 	pvcName := handler.status.GetPVCName()
+	handler.status.FileLocation = pvcName
 	handler.log.Noticef("Populate called for PVC %s", pvcName)
 	_, err := kubeapi.FindPVC(pvcName, handler.log)
 	if err != nil {
