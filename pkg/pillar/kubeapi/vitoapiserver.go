@@ -14,7 +14,6 @@ import (
 
 	zconfig "github.com/lf-edge/eve-api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/base"
-	"github.com/lf-edge/eve/pkg/pillar/diskmetrics"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -130,42 +129,34 @@ func GetPVCInfo(pvcName string, log *base.LogObject) (*types.ImgInfo, error) {
 		return nil, err
 	}
 
-	fmt := zconfig.Format_name[int32(zconfig.Format_PVC)]
+	imgFmt := zconfig.Format_name[int32(zconfig.Format_PVC)]
 	imgInfo := types.ImgInfo{
-		Format:    fmt,
+		Format:    imgFmt,
 		Filename:  pvcName,
 		DirtyFlag: false,
 	}
-	// Get the actual and used size of the PVC.
-	actualSizeBytes, usedSizeBytes := getPVCSizes(pvc)
+	// PVC asks for a minimum size, spec may be less than actual (status) provisioned
+	imgInfo.VirtualSize = getPVCSize(pvc)
 
-	imgInfo.ActualSize = actualSizeBytes
-	imgInfo.VirtualSize = usedSizeBytes
-
+	// Ask longhorn for the PVCs backing-volume allocated space
+	_, imgInfo.ActualSize, err = LonghornVolumeSizeDetails(pvc.Spec.VolumeName)
+	if err != nil {
+		err = fmt.Errorf("GetPVCInfo failed to get info for pvc %s volume %s: %v", pvcName, pvc.Spec.VolumeName, err)
+		log.Error(err)
+		return &imgInfo, err
+	}
 	return &imgInfo, nil
 }
 
-// Returns the actual and used size of the PVC in bytes
-func getPVCSizes(pvc *corev1.PersistentVolumeClaim) (actualSizeBytes, usedSizeBytes uint64) {
-	// Extract the actual size of the PVC from its spec.
-	actualSizeBytes = 0
-	usedSizeBytes = 0
-
-	if pvc.Spec.Resources.Requests != nil {
-		if quantity, ok := pvc.Spec.Resources.Requests[corev1.ResourceStorage]; ok {
-			actualSizeBytes = uint64(quantity.Value())
-		}
-	}
-
-	// Extract the used size of the PVC from its status.
+// Returns the provisioned size of the PVC in bytes
+func getPVCSize(pvc *corev1.PersistentVolumeClaim) (provisionedSizeBytes uint64) {
+	// Status field contains the size of the volume which actually bound to the claim
 	if pvc.Status.Phase == corev1.ClaimBound {
 		if quantity, ok := pvc.Status.Capacity[corev1.ResourceStorage]; ok {
-			usedSizeBytes = uint64(quantity.Value())
+			return uint64(quantity.Value())
 		}
 	}
-
-	return actualSizeBytes, usedSizeBytes
-
+	return 0
 }
 
 // longhorn PVC deals with Ki Mi not KB, MB
@@ -212,8 +203,10 @@ func NewPVCDefinition(pvcName string, size string, annotations,
 // RolloutDiskToPVC : copy the content of diskfile to PVC
 // diskfile can be in qcow or raw format
 // If pvc does not exist, the command will create PVC and copies the data.
+// This does currently have extended retries but does not need to
+// bump a watchdog as the volumecreate worker does not have one.
 func RolloutDiskToPVC(ctx context.Context, log *base.LogObject, exists bool,
-	diskfile string, pvcName string, filemode bool) error {
+	diskfile string, pvcName string, filemode bool, pvcSize uint64) error {
 
 	// Get the Kubernetes clientset
 	clientset, err := GetClientSet()
@@ -248,23 +241,6 @@ func RolloutDiskToPVC(ctx context.Context, log *base.LogObject, exists bool,
 	clusterIP := service.Spec.ClusterIP
 	uploadproxyURL := "https://" + clusterIP + ":443"
 	log.Noticef("RolloutDiskToPVC diskfile %s pvc %s  URL %s", diskfile, pvcName, uploadproxyURL)
-	volSize, err := diskmetrics.GetDiskVirtualSize(log, diskfile)
-	if err != nil {
-		err = fmt.Errorf("failed to get virtual size of disk %s: %v", diskfile, err)
-		log.Error(err)
-		return err
-	}
-
-	// ActualSize can be larger than VirtualSize for fully-allocated/not-thin QCOW2 files
-	actualVolSize, err := diskmetrics.GetDiskActualSize(log, diskfile)
-	if err != nil {
-		err = fmt.Errorf("failed to get actual size of disk %s: %v", diskfile, err)
-		log.Error(err)
-		return err
-	}
-	if actualVolSize > volSize {
-		volSize = actualVolSize
-	}
 
 	// Sample virtctl command
 	// virtctl image-upload -n eve-kube-app pvc pvcname  --no-create --storage-class longhorn --image-path=<diskfile>
@@ -288,29 +264,52 @@ func RolloutDiskToPVC(ctx context.Context, log *base.LogObject, exists bool,
 		args = append(args, "--no-create")
 	} else {
 		// Add size
-		args = append(args, "--size", fmt.Sprint(volSize))
+		args = append(args, "--size", fmt.Sprint(pvcSize))
 	}
 
 	log.Noticef("virtctl args %v", args)
 
-	// Wait for long long time since some volumes could be in TBs
-	output, err := base.Exec(log, "/containers/services/kube/rootfs/usr/bin/virtctl", args...).
-		WithContext(ctx).WithUnlimitedTimeout(432000 * time.Second).CombinedOutput()
+	uploadTry := 0
+	maxRetries := 10
+	timeoutBaseSeconds := int64(300) // 5 min
+	volSizeGB := int64(pvcSize / 1024 / 1024 / 1024)
+	timeoutPer1GBSeconds := int64(120)
+	timeout := time.Duration(timeoutBaseSeconds + (volSizeGB * timeoutPer1GBSeconds))
+	log.Noticef("RolloutDiskToPVC calculated timeout to %d seconds due to volume size %d GB", timeout, volSizeGB)
 
-	if err != nil {
-		err = fmt.Errorf("RolloutDiskToPVC: Failed to convert qcow to PVC %s: %v", output, err)
-		log.Error(err)
-		return err
+	startTimeOverall := time.Now()
+
+	//
+	// CDI Upload is quick to fail upon short-lived k8s api errors during its own upload-wait status loop
+	// Try the upload again.
+	//
+	for uploadTry < maxRetries {
+		uploadTry++
+
+		startTimeThisUpload := time.Now()
+		output, err := base.Exec(log, "/containers/services/kube/rootfs/usr/bin/virtctl", args...).
+			WithContext(ctx).WithUnlimitedTimeout(timeout * time.Second).CombinedOutput()
+
+		uploadDuration := time.Since(startTimeThisUpload)
+		if err != nil {
+			err = fmt.Errorf("RolloutDiskToPVC: Failed after %f seconds to convert qcow to PVC %s: %v", uploadDuration.Seconds(), output, err)
+			log.Error(err)
+			time.Sleep(5)
+			continue
+		}
+		// Eventually the command should return something like:
+		// PVC 688b9728-6f21-4bb6-b2f7-4928813fefdc-pvc-0 already successfully imported/cloned/updated
+		overallDuration := time.Since(startTimeOverall)
+		log.Noticef("RolloutDiskToPVC image upload completed on try:%d after %f seconds, total elapsed time %f seconds", uploadTry, uploadDuration.Seconds(), overallDuration.Seconds())
+		err = waitForPVCUploadComplete(ctx, pvcName, log)
+		if err != nil {
+			err = fmt.Errorf("RolloutDiskToPVC: error wait for PVC %v", err)
+			log.Error(err)
+			return err
+		}
+		return nil
 	}
-	err = waitForPVCReady(ctx, log, pvcName)
-
-	if err != nil {
-		err = fmt.Errorf("RolloutDiskToPVC: error wait for PVC %v", err)
-		log.Error(err)
-		return err
-	}
-
-	return nil
+	return fmt.Errorf("RolloutDiskToPVC attempts to upload image failed")
 }
 
 // GetPVFromPVC : Returns volume name (PV) from the PVC name
