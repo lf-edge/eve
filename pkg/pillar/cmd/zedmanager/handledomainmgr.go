@@ -66,7 +66,9 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 		MetaDataType:      aiConfig.MetaDataType,
 		Service:           aiConfig.Service,
 		CloudInitVersion:  aiConfig.CloudInitVersion,
-		IsDNidNode:        isDNiDnode,
+		// This isDNiDnode will be set to true even if the App is not in cluster mode,
+		// This will be set in zedagent parseConfig for the case of single node/device App case.
+		IsDNidNode: isDNiDnode,
 	}
 
 	dc.DiskConfigList = make([]types.DiskConfig, 0, len(aiStatus.VolumeRefStatusList))

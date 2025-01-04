@@ -96,6 +96,7 @@ var stateMap = map[string]types.SwState{
 	"Scheduling": types.SCHEDULING,
 	"Failed":     types.FAILED,
 	"Halting":    types.HALTING,
+	"Succeeded":  types.SCHEDULING,
 	"Unknown":    types.UNKNOWN,
 }
 
@@ -219,7 +220,7 @@ func (ctx kubevirtContext) Setup(status types.DomainStatus, config types.DomainC
 			"for app %s", config.DisplayName)
 	}
 
-	getMyNodeUUID(&ctx, status.NodeName)
+	saveMyNodeUUID(&ctx, status.NodeName)
 
 	if config.VirtualizationMode == types.NOHYPER {
 		if err := ctx.CreateReplicaPodConfig(domainName, config, status, diskStatusList, aa, file); err != nil {
@@ -681,7 +682,14 @@ func (ctx kubevirtContext) Info(domainName string) (int, types.SwState, error) {
 	}
 
 	if effectiveDomainState, matched := stateMap[res]; !matched {
-		return 0, types.BROKEN, logError("domain %s reported to be in unexpected state %s", domainName, res)
+		// Received undefined state in our map, return UNKNOWN instead
+		retStatus, err := checkAndReturnStatus(vmis, true)
+		logrus.Infof("domain %s reported to be in unexpected state %s", domainName, res)
+		effectiveDomainState = types.HALTING
+		if retStatus == "Unknown" {
+			effectiveDomainState = types.UNKNOWN
+		}
+		return ctx.vmiList[domainName].domainID, effectiveDomainState, err
 	} else {
 		if _, ok := ctx.vmiList[domainName]; !ok { // domain is deleted
 			return 0, types.HALTED, logError("domain %s is deleted", domainName)
@@ -1708,7 +1716,8 @@ func (ctx kubevirtContext) VirtualTPMTeardown(domainName string, wp *types.Watch
 	return fmt.Errorf("not implemented")
 }
 
-func getMyNodeUUID(ctx *kubevirtContext, nodeName string) {
+// save the node-name to context map for later retrieval
+func saveMyNodeUUID(ctx *kubevirtContext, nodeName string) {
 	if len(ctx.nodeNameMap) == 0 {
 		ctx.nodeNameMap["nodename"] = nodeName
 	}

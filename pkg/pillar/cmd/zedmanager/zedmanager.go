@@ -428,11 +428,17 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	_ = subEdgeNodeInfo.Activate()
 
 	// Pick up debug aka log level before we start real work
-	for !ctx.GCInitialized {
-		log.Functionf("waiting for GCInitialized")
+	edgenodeInfoInitialized := false
+	for !ctx.GCInitialized || (ctx.hvTypeKube && !edgenodeInfoInitialized) {
+		log.Functionf("waiting for GCInitialized and EdgeNodeInfo")
 		select {
 		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
+
+		case change := <-subEdgeNodeInfo.MsgChan():
+			subEdgeNodeInfo.ProcessChange(change)
+			edgenodeInfoInitialized = ctx.checkAndSaveEdgeNodeInfo()
+
 		case <-stillRunning.C:
 		}
 		ps.StillRunning(agentName, warningTime, errorTime)
@@ -736,9 +742,13 @@ func publishAppInstanceStatus(ctx *zedmanagerContext,
 		st, _ := sub.Get(key)
 		if st != nil {
 			clusterStatus := st.(types.ENClusterAppStatus)
+			// To avoid publishing the stats to controller by multiple nodes, we set this flag here
+			// and zedagent will not publish the stats to controller for this App.
 			if !clusterStatus.ScheduledOnThisNode {
-				log.Functionf("publishAppInstanceStatus(%s) not scheduled on this node, skip", key)
-				return
+				log.Functionf("publishAppInstanceStatus(%s) not scheduled on this node, don't publish to controller", key)
+				status.NoUploadStatsToController = true
+			} else {
+				status.NoUploadStatsToController = false
 			}
 		}
 	}
@@ -1616,7 +1626,10 @@ func updateBasedOnProfile(ctx *zedmanagerContext, oldProfile string) {
 	}
 }
 
-// returns effective Activate status based on Activate from app instance config and current profile
+// returns effective Activate status based on Activate from app instance config, current profile
+// and plus the status of the App in kubernetes cluster mode. In the cluster mode, the app needs
+// to be scheduled on the node by kubernetes before the effectiveActivate can be true.
+// The scheduled status is monitored by the zedkube and through ENClusterAppStatus.
 func effectiveActivateCombined(config types.AppInstanceConfig, ctx *zedmanagerContext) bool {
 	effectiveActivate := effectiveActivateCurrentProfile(config, ctx.currentProfile)
 	// Add cluster login in the activate state
@@ -1655,13 +1668,6 @@ func getKubeAppActivateStatus(ctx *zedmanagerContext, aiConfig types.AppInstance
 		return effectiveActivate
 	}
 
-	if ctx.nodeUUID == uuid.Nil {
-		err := getnodeNameAndUUID(ctx)
-		if err != nil {
-			log.Errorf("getKubeAppActivateStatus: can't get nodeUUID %v", err)
-			return false
-		}
-	}
 	sub := ctx.subENClusterAppStatus
 	items := sub.GetAll()
 
@@ -1705,15 +1711,21 @@ func getKubeAppActivateStatus(ctx *zedmanagerContext, aiConfig types.AppInstance
 	}
 }
 
-func getnodeNameAndUUID(ctx *zedmanagerContext) error {
-	if ctx.nodeUUID == uuid.Nil {
-		NodeInfo, err := ctx.subEdgeNodeInfo.Get("global")
-		if err != nil {
-			log.Errorf("getnodeNameAndUUID: can't get edgeNodeInfo %v", err)
-			return err
+// checkAndSaveEdgeNodeInfo checks if the device name is set in the EdgeNodeInfo
+// it returns true if we got the valid EdgeNodeInfo update
+func (ctx *zedmanagerContext) checkAndSaveEdgeNodeInfo() bool {
+	items := ctx.subEdgeNodeInfo.GetAll()
+	if len(items) > 0 {
+		for _, item := range items {
+			enInfo := item.(types.EdgeNodeInfo)
+			if enInfo.DeviceName != "" {
+				log.Noticef("checkAndSaveEdgeNodeInfo: found devicename %s", enInfo.DeviceName)
+				ctx.nodeUUID = enInfo.DeviceID
+				if ctx.nodeUUID.String() != "" {
+					return true
+				}
+			}
 		}
-		enInfo := NodeInfo.(types.EdgeNodeInfo)
-		ctx.nodeUUID = enInfo.DeviceID
 	}
-	return nil
+	return false
 }
