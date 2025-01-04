@@ -1,4 +1,4 @@
-// Copyright (c) 2024 Zededa, Inc.
+// Copyright (c) 2024-2025 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 package zedmanager
@@ -43,17 +43,17 @@ func handleENClusterAppStatusImpl(ctx *zedmanagerContext, key string, status *ty
 			// XXX this will be handled in later PR in clustering and zedmanager code
 			//handleCreateAppInstanceStatus(ctx, *aiConfig)
 		} else {
-			// Nothing to do, we already have aiStatus
+			// re-publish the aiStatus, in case the cluster status has changed.
 			log.Functionf("handleENClusterAppStatusImpl(%s) for app-status %v aiStatus %v", key, status, aiStatus)
+			publishAppInstanceStatus(ctx, aiStatus)
 			return
 		}
 	} else { // not scheduled here.
 
 		// if aiStatus is not present, nothing to do
 		if aiStatus != nil {
-			// If I am not scheduled here, just unpublish the AIStatus.
-			// We probably had app running on this node earlier before failover.
-			unpublishAppInstanceStatus(ctx, aiStatus)
+			// If I am not scheduled here, modify and publish the aiStatus with NoUploadStatsToController set.
+			publishAppInstanceStatus(ctx, aiStatus)
 		}
 
 	}

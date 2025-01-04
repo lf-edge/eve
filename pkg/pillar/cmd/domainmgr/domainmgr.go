@@ -432,9 +432,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 	// Parse any existing ConfigIntemValueMap but continue if there
 	// is none
-	waitEdgeNodeInfo := true
-	for !domainCtx.GCComplete || (domainCtx.hvTypeKube && waitEdgeNodeInfo) {
-		log.Noticef("waiting for GCComplete")
+	edgenodeInfoInitialized := false
+	for !domainCtx.GCComplete || (domainCtx.hvTypeKube && !edgenodeInfoInitialized) {
+		log.Noticef("waiting for GCComplete and EdgeNodeInfo")
 		select {
 		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
@@ -444,19 +444,13 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 		case change := <-subEdgeNodeInfo.MsgChan():
 			subEdgeNodeInfo.ProcessChange(change)
-			waitEdgeNodeInfo = false
+			edgenodeInfoInitialized = domainCtx.checkAndSaveEdgeNodeInfo()
 
 		case <-stillRunning.C:
 		}
 		ps.StillRunning(agentName, warningTime, errorTime)
 	}
 	log.Noticef("processed GCComplete")
-
-	// Get the EdgeNode info, needed for kubevirt clustering
-	err = domainCtx.retrieveDeviceNodeName()
-	if err != nil {
-		log.Fatal(err)
-	}
 
 	if !domainCtx.setInitialUsbAccess {
 		log.Functionf("GCComplete but not setInitialUsbAccess => first boot")
@@ -1010,15 +1004,12 @@ func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 				status.SetErrorDescription(errDescription)
 			}
 
-			// in cluster mode, we can not delete the pod due to failing to get app info
-			if !ctx.hvTypeKube {
-				//cleanup app instance tasks
-				if err := hyper.Task(status).Delete(status.DomainName); err != nil {
-					log.Errorf("failed to delete domain: %s (%v)", status.DomainName, err)
-				}
-				if err := hyper.Task(status).Cleanup(status.DomainName); err != nil {
-					log.Errorf("failed to cleanup domain: %s (%v)", status.DomainName, err)
-				}
+			//cleanup app instance tasks
+			if err := hyper.Task(status).Delete(status.DomainName); err != nil {
+				log.Errorf("failed to delete domain: %s (%v)", status.DomainName, err)
+			}
+			if err := hyper.Task(status).Cleanup(status.DomainName); err != nil {
+				log.Errorf("failed to cleanup domain: %s (%v)", status.DomainName, err)
 			}
 		}
 		status.DomainId = 0
@@ -1173,11 +1164,6 @@ func maybeRetryBoot(ctx *domainContext, status *types.DomainStatus) {
 	} else {
 		status.VirtualTPM = false
 		log.Errorf("Failed to setup vTPM for %s: %s", status.DomainName, err)
-	}
-
-	// pass nodeName to hypervisor call Setup
-	if status.NodeName == "" {
-		status.NodeName = ctx.nodeName
 	}
 
 	if err := hyper.Task(status).Setup(*status, *config, ctx.assignableAdapters, nil, file); err != nil {
@@ -1364,6 +1350,7 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 		State:          types.INSTALLED,
 		VmConfig:       config.VmConfig,
 		Service:        config.Service,
+		NodeName:       ctx.nodeName,
 	}
 
 	status.VmConfig.CPUs = make([]int, 0)
@@ -1724,11 +1711,6 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 	} else {
 		status.VirtualTPM = false
 		log.Errorf("Failed to setup vTPM for %s: %s", status.DomainName, err)
-	}
-
-	// pass nodeName to hypervisor call Setup
-	if status.NodeName == "" {
-		status.NodeName = ctx.nodeName
 	}
 
 	globalConfig := agentlog.GetGlobalConfig(log, ctx.subGlobalConfig)
@@ -3653,14 +3635,21 @@ func lookupCapabilities(ctx *domainContext) (*types.Capabilities, error) {
 	return &capabilities, nil
 }
 
-func (ctx *domainContext) retrieveDeviceNodeName() error {
-	NodeInfo, err := ctx.subEdgeNodeInfo.Get("global")
-	if err != nil {
-		log.Errorf("retrieveDeviceNodeName: can't get edgeNodeInfo %v", err)
-		return err
+// checkAndSaveEdgeNodeInfo checks if the device name is set in the EdgeNodeInfo
+// it returns true if we got the valid EdgeNodeInfo update
+func (ctx *domainContext) checkAndSaveEdgeNodeInfo() bool {
+	items := ctx.subEdgeNodeInfo.GetAll()
+	if len(items) > 0 {
+		for _, item := range items {
+			enInfo := item.(types.EdgeNodeInfo)
+			if enInfo.DeviceName != "" {
+				log.Noticef("checkAndSaveEdgeNodeInfo: found devicename %s", enInfo.DeviceName)
+				ctx.nodeName = strings.ReplaceAll(strings.ToLower(enInfo.DeviceName), "_", "-")
+				if ctx.nodeName != "" {
+					return true
+				}
+			}
+		}
 	}
-	enInfo := NodeInfo.(types.EdgeNodeInfo)
-	ctx.nodeName = strings.ReplaceAll(strings.ToLower(enInfo.DeviceName), "_", "-")
-	log.Noticef("retrieveDeviceNodeName: devicename, NodeInfo %v", NodeInfo) // XXX
-	return nil
+	return false
 }

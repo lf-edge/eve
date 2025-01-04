@@ -233,17 +233,32 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 	zedkubeCtx.pubCipherMetrics = pubCipherMetrics
 
+	// Look for edge node info
+	subEdgeNodeInfo, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:   "zedagent",
+		MyAgentName: agentName,
+		TopicImpl:   types.EdgeNodeInfo{},
+		Persistent:  true,
+		Activate:    false,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	zedkubeCtx.subEdgeNodeInfo = subEdgeNodeInfo
+	subEdgeNodeInfo.Activate()
+
 	// start the leader election
 	zedkubeCtx.electionStartCh = make(chan struct{})
 	zedkubeCtx.electionStopCh = make(chan struct{})
 	go zedkubeCtx.handleLeaderElection()
 
-	// Wait for the certs, which are needed to decrypt the token inside the cluster config.
-	var controllerCertInitialized, edgenodeCertInitialized bool
-	for !controllerCertInitialized || !edgenodeCertInitialized {
+	// Wait for the certs, and nodeInfo which are needed to decrypt the token inside the
+	// cluster config and other operations
+	var controllerCertInitialized, edgenodeCertInitialized, edgenodeInfoInitialized bool
+	for !controllerCertInitialized || !edgenodeCertInitialized || !edgenodeInfoInitialized {
 		log.Noticef("zedkube run: waiting for controller cert (initialized=%t), "+
-			"edgenode cert (initialized=%t)", controllerCertInitialized,
-			edgenodeCertInitialized)
+			"edgenode cert (initialized=%t), edgenode info (initialized=%t)", controllerCertInitialized,
+			edgenodeCertInitialized, edgenodeInfoInitialized)
 		select {
 		case change := <-subControllerCert.MsgChan():
 			subControllerCert.ProcessChange(change)
@@ -252,6 +267,10 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		case change := <-subEdgeNodeCert.MsgChan():
 			subEdgeNodeCert.ProcessChange(change)
 			edgenodeCertInitialized = true
+
+		case change := <-subEdgeNodeInfo.MsgChan():
+			subEdgeNodeInfo.ProcessChange(change)
+			edgenodeInfoInitialized = zedkubeCtx.checkAndSaveEdgeNodeInfo()
 
 		case <-stillRunning.C:
 		}
@@ -285,26 +304,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	} else {
 		log.Noticef("zedkube: running")
 	}
-
-	// Look for edge node info
-	subEdgeNodeInfo, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:     "zedagent",
-		MyAgentName:   agentName,
-		TopicImpl:     types.EdgeNodeInfo{},
-		Persistent:    true,
-		Activate:      false,
-		Ctx:           &zedkubeCtx,
-		CreateHandler: handleEdgeNodeInfoCreate,
-		ModifyHandler: handleEdgeNodeInfoModify,
-		DeleteHandler: handleEdgeNodeInfoDelete,
-		WarningTime:   warningTime,
-		ErrorTime:     errorTime,
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	zedkubeCtx.subEdgeNodeInfo = subEdgeNodeInfo
-	subEdgeNodeInfo.Activate()
 
 	// subscribe to zedagent status events, for controller connection status
 	subZedAgentStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
@@ -517,31 +516,22 @@ func handleZedAgentStatusDelete(ctxArg interface{}, key string,
 	log.Functionf("handleZedAgentStatusDelete(%s) done", key)
 }
 
-func handleEdgeNodeInfoCreate(ctxArg interface{}, key string,
-	statusArg interface{}) {
-	handleEdgeNodeInfoImpl(ctxArg, key, statusArg)
-}
-
-func handleEdgeNodeInfoModify(ctxArg interface{}, key string,
-	statusArg interface{}, oldStatusArg interface{}) {
-	handleEdgeNodeInfoImpl(ctxArg, key, statusArg)
-}
-
-func handleEdgeNodeInfoImpl(ctxArg interface{}, key string,
-	statusArg interface{}) {
-	z := ctxArg.(*zedkube)
-	nodeInfo := statusArg.(types.EdgeNodeInfo)
-	if err := z.getnodeNameAndUUID(); err != nil {
-		log.Errorf("handleEdgeNodeInfoImpl: getnodeNameAndUUID failed: %v", err)
-		return
+// checkAndSaveEdgeNodeInfo checks if the device name is set in the EdgeNodeInfo
+// it returns true if we got the valid EdgeNodeInfo update
+func (ctx *zedkube) checkAndSaveEdgeNodeInfo() bool {
+	items := ctx.subEdgeNodeInfo.GetAll()
+	if len(items) > 0 {
+		for _, item := range items {
+			enInfo := item.(types.EdgeNodeInfo)
+			if enInfo.DeviceName != "" {
+				log.Noticef("checkAndSaveEdgeNodeInfo: found devicename %s", enInfo.DeviceName)
+				ctx.nodeName = strings.ReplaceAll(strings.ToLower(enInfo.DeviceName), "_", "-")
+				ctx.nodeuuid = enInfo.DeviceID.String()
+				if ctx.nodeName != "" && ctx.nodeuuid != "" {
+					return true
+				}
+			}
+		}
 	}
-
-	z.nodeName = strings.ToLower(nodeInfo.DeviceName)
-	z.nodeuuid = nodeInfo.DeviceID.String()
-}
-
-func handleEdgeNodeInfoDelete(ctxArg interface{}, key string,
-	statusArg interface{}) {
-	// do nothing?
-	log.Functionf("handleEdgeNodeInfoDelete(%s) done", key)
+	return false
 }
