@@ -38,6 +38,9 @@ const (
 	VolumeCSIClusterStorageClass = "longhorn"
 	// VolumeCSILocalStorageClass : default local storage class
 	VolumeCSILocalStorageClass = "local-path"
+	// KubevirtPodsRunning : Wait for node to be ready, and require kubevirt namespace have at least 4 pods running
+	// (virt-api, virt-controller, virt-handler, and virt-operator)
+	KubevirtPodsRunning = 4
 )
 
 const (
@@ -282,8 +285,11 @@ func waitForNodeReady(client *kubernetes.Clientset, readyCh chan bool, devUUID s
 			if err != nil {
 				return err
 			}
-			if len(pods.Items) < 6 {
-				return fmt.Errorf("kubevirt running pods less than 6")
+			// Wait for kubevirt namespace to have at least 4 pods running
+			// (virt-api, virt-controller, virt-handler, and virt-operator)
+			// to consider kubevirt system is ready
+			if len(pods.Items) < KubevirtPodsRunning {
+				return fmt.Errorf("kubevirt running pods less than 4")
 			}
 
 			err = waitForLonghornReady(client, hostname)

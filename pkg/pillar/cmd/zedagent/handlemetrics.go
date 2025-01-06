@@ -671,6 +671,14 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 	for _, st := range items {
 		aiStatus := st.(types.AppInstanceStatus)
 
+		// In cluster mode, if ENClusterAppStatus reports the app is not scheduled on the node,
+		// to avoid publishing the stats to controller by multiple nodes, zedmanager set this flag
+		// and zedagent will not publish the stats to controller for this App.
+		if aiStatus.NoUploadStatsToController {
+			log.Tracef("ReportMetrics: domainName %s, not upload metrics, NoUploadStatsToController set",
+				aiStatus.DomainName)
+			continue
+		}
 		ReportAppMetric := new(metrics.AppMetric)
 		ReportAppMetric.Cpu = new(metrics.AppCpuMetric)
 		// New AppMemoryMetric
@@ -1034,6 +1042,14 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 	ReportAppInfo.SystemApp = false
 
 	if aiStatus != nil {
+		// In cluster mode, if ENClusterAppStatus reports the app is not scheduled on the node,
+		// to avoid publishing the stats to controller by multiple nodes, zedmanager set this flag
+		// and zedagent will not publish the stats to controller for this App.
+		if aiStatus.NoUploadStatsToController {
+			log.Tracef("PublishAppInfoToZedCloud: domainName %s, not upload info, NoUploadStatsToController set", aiStatus.DomainName)
+			return
+		}
+
 		ReportAppInfo.AppVersion = aiStatus.UUIDandVersion.Version
 		ReportAppInfo.AppName = aiStatus.DisplayName
 		ReportAppInfo.State = aiStatus.State.ZSwState()

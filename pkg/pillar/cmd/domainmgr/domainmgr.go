@@ -91,6 +91,7 @@ type domainContext struct {
 	pubDomainStatus        pubsub.Publication
 	subGlobalConfig        pubsub.Subscription
 	subZFSPoolStatus       pubsub.Subscription
+	subEdgeNodeInfo        pubsub.Subscription
 	pubAssignableAdapters  pubsub.Publication
 	pubDomainMetric        pubsub.Publication
 	pubHostMemory          pubsub.Publication
@@ -126,6 +127,7 @@ type domainContext struct {
 	cpuPinningSupported bool
 	// Is it kubevirt eve
 	hvTypeKube bool
+	nodeName   string
 }
 
 // AddAgentSpecificCLIFlags adds CLI options
@@ -414,16 +416,35 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	domainCtx.subZFSPoolStatus = subZFSPoolStatus
 	subZFSPoolStatus.Activate()
 
+	// Look for edge node info
+	subEdgeNodeInfo, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:   "zedagent",
+		MyAgentName: agentName,
+		TopicImpl:   types.EdgeNodeInfo{},
+		Persistent:  true,
+		Activate:    false,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	domainCtx.subEdgeNodeInfo = subEdgeNodeInfo
+	_ = subEdgeNodeInfo.Activate()
+
 	// Parse any existing ConfigIntemValueMap but continue if there
 	// is none
-	for !domainCtx.GCComplete {
-		log.Noticef("waiting for GCComplete")
+	edgenodeInfoInitialized := false
+	for !domainCtx.GCComplete || (domainCtx.hvTypeKube && !edgenodeInfoInitialized) {
+		log.Noticef("waiting for GCComplete and EdgeNodeInfo")
 		select {
 		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
 
 		case <-domainCtx.publishTicker.C:
 			publishProcessesHandler(&domainCtx)
+
+		case change := <-subEdgeNodeInfo.MsgChan():
+			subEdgeNodeInfo.ProcessChange(change)
+			edgenodeInfoInitialized = domainCtx.checkAndSaveEdgeNodeInfo()
 
 		case <-stillRunning.C:
 		}
@@ -512,6 +533,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 		case change := <-subZFSPoolStatus.MsgChan():
 			subZFSPoolStatus.ProcessChange(change)
+
+		case change := <-subEdgeNodeInfo.MsgChan():
+			subEdgeNodeInfo.ProcessChange(change)
 
 		case <-domainCtx.publishTicker.C:
 			publishProcessesHandler(&domainCtx)
@@ -650,6 +674,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 		case change := <-subPhysicalIOAdapter.MsgChan():
 			subPhysicalIOAdapter.ProcessChange(change)
+
+		case change := <-subEdgeNodeInfo.MsgChan():
+			subEdgeNodeInfo.ProcessChange(change)
 
 		case <-domainCtx.publishTicker.C:
 			start := time.Now()
@@ -1071,6 +1098,7 @@ func maybeRetryBoot(ctx *domainContext, status *types.DomainStatus) {
 	if !status.BootFailed {
 		return
 	}
+
 	if status.Activated && status.BootFailed {
 		log.Functionf("maybeRetryBoot(%s) clearing bootFailed since Activated",
 			status.Key())
@@ -1322,6 +1350,7 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 		State:          types.INSTALLED,
 		VmConfig:       config.VmConfig,
 		Service:        config.Service,
+		NodeName:       ctx.nodeName,
 	}
 
 	status.VmConfig.CPUs = make([]int, 0)
@@ -1780,6 +1809,7 @@ func doActivateTail(ctx *domainContext, status *types.DomainStatus,
 		status.SetErrorNow(err.Error())
 		log.Errorf("doActivateTail(%v) failed for %s: %s",
 			status.UUIDandVersion, status.DisplayName, err)
+
 		// Delete
 		if err := hyper.Task(status).Delete(status.DomainName); err != nil {
 			log.Errorf("failed to delete domain: %s (%v)", status.DomainName, err)
@@ -1844,7 +1874,7 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus, impatient bool
 		if doShutdown {
 			// If the Shutdown fails we don't wait; assume failure
 			// was due to no PV tools
-			if err := DomainShutdown(*status, false); err != nil {
+			if err := DomainShutdown(ctx, *status, false); err != nil {
 				log.Errorf("DomainShutdown %s failed: %s",
 					status.DomainName, err)
 			} else {
@@ -1864,7 +1894,7 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus, impatient bool
 		// the domain is already on the way down.
 		// In case of errors we proceed directly to deleting the task,
 		// and after that we waitForDomainGone
-		if err := DomainShutdown(*status, true); err != nil {
+		if err := DomainShutdown(ctx, *status, true); err != nil {
 			log.Warnf("DomainShutdown -F %s failed: %s",
 				status.DomainName, err)
 		} else {
@@ -2508,13 +2538,14 @@ func DomainCreate(ctx *domainContext, status types.DomainStatus) (int, error) {
 }
 
 // DomainShutdown is a wrapper for domain shutdown
-func DomainShutdown(status types.DomainStatus, force bool) error {
+func DomainShutdown(ctx *domainContext, status types.DomainStatus, force bool) error {
 
 	var err error
 	log.Functionf("DomainShutdown force-%v %s %d", force, status.DomainName, status.DomainId)
 
 	// Stop the domain
 	log.Functionf("Stopping domain - %s", status.DomainName)
+
 	err = hyper.Task(&status).Stop(status.DomainName, force)
 
 	return err
@@ -3602,4 +3633,23 @@ func lookupCapabilities(ctx *domainContext) (*types.Capabilities, error) {
 		log.Fatalf("Unexpected type from pubCapabilities: %T", c)
 	}
 	return &capabilities, nil
+}
+
+// checkAndSaveEdgeNodeInfo checks if the device name is set in the EdgeNodeInfo
+// it returns true if we got the valid EdgeNodeInfo update
+func (ctx *domainContext) checkAndSaveEdgeNodeInfo() bool {
+	items := ctx.subEdgeNodeInfo.GetAll()
+	if len(items) > 0 {
+		for _, item := range items {
+			enInfo := item.(types.EdgeNodeInfo)
+			if enInfo.DeviceName != "" {
+				log.Noticef("checkAndSaveEdgeNodeInfo: found devicename %s", enInfo.DeviceName)
+				ctx.nodeName = strings.ReplaceAll(strings.ToLower(enInfo.DeviceName), "_", "-")
+				if ctx.nodeName != "" {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }

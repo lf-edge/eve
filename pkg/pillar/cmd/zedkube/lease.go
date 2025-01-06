@@ -34,13 +34,6 @@ func (z *zedkube) handleLeaderElection() {
 				return
 			}
 
-			err = z.getnodeNameAndUUID()
-			if err != nil {
-				z.inKubeLeaderElection = false
-				log.Errorf("handleLeaderElection: can't get nodeName and UUID %v", err)
-				return
-			}
-
 			// Create a new lease lock
 			lock := &resourcelock.LeaseLock{
 				LeaseMeta: metav1.ObjectMeta{

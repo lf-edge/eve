@@ -37,12 +37,6 @@ func (z *zedkube) collectAppLogs() {
 		return
 	}
 
-	err = z.getnodeNameAndUUID()
-	if err != nil {
-		log.Errorf("collectAppLogs: can't get edgeNodeInfo %v", err)
-		return
-	}
-
 	// "Thu Aug 17 05:39:04 UTC 2023"
 	timestampRegex := regexp.MustCompile(`(\w{3} \w{3} \d{2} \d{2}:\d{2}:\d{2} \w+ \d{4})`)
 	nowStr := time.Now().String()
@@ -127,12 +121,6 @@ func (z *zedkube) checkAppsStatus() {
 		return
 	}
 
-	err := z.getnodeNameAndUUID()
-	if err != nil {
-		log.Errorf("checkAppsStatus: can't get edgeNodeInfo %v", err)
-		return
-	}
-
 	u, err := uuid.FromString(z.nodeuuid)
 	if err != nil {
 		return
@@ -154,7 +142,7 @@ func (z *zedkube) checkAppsStatus() {
 	}
 
 	pub := z.pubENClusterAppStatus
-	stItmes := pub.GetAll()
+	stItems := pub.GetAll()
 	var oldStatus *types.ENClusterAppStatus
 	for _, item := range items {
 		aiconfig := item.(types.AppInstanceConfig)
@@ -179,7 +167,7 @@ func (z *zedkube) checkAppsStatus() {
 			}
 		}
 
-		for _, st := range stItmes {
+		for _, st := range stItems {
 			aiStatus := st.(types.ENClusterAppStatus)
 			if aiStatus.AppUUID == aiconfig.UUIDandVersion.UUID {
 				oldStatus = &aiStatus
@@ -194,18 +182,4 @@ func (z *zedkube) checkAppsStatus() {
 			z.pubENClusterAppStatus.Publish(aiconfig.Key(), encAppStatus)
 		}
 	}
-}
-
-func (z *zedkube) getnodeNameAndUUID() error {
-	if z.nodeuuid == "" || z.nodeName == "" {
-		NodeInfo, err := z.subEdgeNodeInfo.Get("global")
-		if err != nil {
-			log.Errorf("getnodeNameAndUUID: can't get edgeNodeInfo %v", err)
-			return err
-		}
-		enInfo := NodeInfo.(types.EdgeNodeInfo)
-		z.nodeName = strings.ToLower(enInfo.DeviceName)
-		z.nodeuuid = enInfo.DeviceID.String()
-	}
-	return nil
 }
