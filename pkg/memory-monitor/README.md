@@ -303,6 +303,36 @@ local machine. Then, run the following command:
 $ go tool pprof /path/to/zedbox /path/to/output/<event_timestamp>/heap_pillar.out
 ```
 
+It will start the pprof tool in the interactive mode. You can use the `top`
+command to see the top memory allocations. The `top` command will show you the
+top memory allocations in the heap dump. You can also use other commands to
+analyze the heap dump.
+
+Another useful command is `list`. It shows the source code that corresponds to
+a function with a given as a regular expression name. The name can be taken from
+the `top` command output. Do not forget to escape special characters in the
+function name (for example, `.`, `(`, `*`, etc) with a backslash.
+
+To make it possible to see the source code of the memory allocations, you need
+to have the source code of the zedbox binary. You can provide the path to the
+source code to the `pprof` tool using the `-source_path` and `-trim_path` flags.
+The first flag is used to provide the path to the source code, and the second
+flag is used to trim the path embedded in the binary as they correspond to the
+path on the build machine (container) that originally had the source code under
+the `/pillar/` directory. Also, don't forget to use the source code of the
+version of the zedbox binary that was used to collect the heap dump.
+
+```shell
+$ go tool pprof -source_path ../ -trim_path / /path/to/zedbox /path/to/output/<event_timestamp>/heap_pillar.out
+```
+
+The `pprof` tool can also generate an interactive graph of the memory
+allocations. To do this, you can run the following command:
+
+```shell
+$ go tool pprof -source_path ../ -trim_path / -http=:8080 -call_tree -nodefraction=0 -lines /path/to/zedbox /path/to/output/<event_timestamp>/heap_pillar.out
+```
+
 ## Configuration of the memory monitor
 
 The memory monitor is configured using the `memory-monitor.conf` file.
