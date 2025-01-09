@@ -9,3 +9,5 @@ dtoverlay=tpm-soft-spi
 
 dtparam=eth_led0=0
 dtparam=eth_led1=1
+
+gpio=42=op,dl
