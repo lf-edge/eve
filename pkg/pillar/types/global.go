@@ -209,8 +209,8 @@ const (
 	AppContainerStatsInterval GlobalSettingKey = "timer.appcontainer.stats.interval"
 	// VaultReadyCutOffTime global setting key
 	VaultReadyCutOffTime GlobalSettingKey = "timer.vault.ready.cutoff"
-	// LogRemainToSendMBytes Max gzip log files remain on device to be sent in Mbytes
-	LogRemainToSendMBytes GlobalSettingKey = "newlog.gzipfiles.ondisk.maxmegabytes"
+	// MaxGzipLogMBytesInPersist Max size of gzip log files in persist in Mbytes
+	MaxGzipLogMBytesInPersist GlobalSettingKey = "newlog.gzipfiles.ondisk.maxmegabytes"
 
 	// ForceFallbackCounter global setting key
 	ForceFallbackCounter = "force.fallback.counter"
@@ -972,8 +972,8 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 		eveMemoryLimitInMiB, 0xFFFFFFFF)
 	// Limit manual vmm overhead override to 1 PiB
 	configItemSpecMap.AddIntItem(VmmMemoryLimitInMiB, 0, 0, uint32(1024*1024*1024))
-	// LogRemainToSendMBytes - Default is 2 Gbytes, minimum is 10 Mbytes
-	configItemSpecMap.AddIntItem(LogRemainToSendMBytes, 2048, 10, 0xFFFFFFFF)
+	// MaxGzipLogMBytesInPersist - Default is 2 Gbytes, minimum is 10 Mbytes
+	configItemSpecMap.AddIntItem(MaxGzipLogMBytesInPersist, 2048, 10, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(DownloadMaxPortCost, 0, 0, 255)
 	configItemSpecMap.AddIntItem(BlobDownloadMaxRetries, 5, 1, 10)
 
