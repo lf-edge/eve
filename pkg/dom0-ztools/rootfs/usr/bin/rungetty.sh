@@ -15,9 +15,18 @@ start_getty() {
 	term="linux"
 	[ "$speed" = "$1" ] && speed=115200
 
+	# if console=tty0 is specified on the kernel command line, we should not start a getty on tty0
+	# but instead start it on the first available tty. tty0 points to the current console, so if
+	# we start a getty from pillar of debug.enable.console=true we may start it on current tty
+	# which may be occupied by TUI monitor application and tty will be taken away by getty.
+	# replacing tty0 with tty1 should be ok because this is the user's intention
+	if [ "$tty" = "tty0" ]; then
+		tty="tty1"
+	fi
+
 	# did we already process this tty?
 	if $(echo "${PROCESSEDTTY}" | grep -q -w "$tty"); then
-		echo "getty: already processed tty for $tty, not starting twice" | tee /dev/console
+		echo "getty: already processed tty for $tty, not starting twice" | tee /dev/tty
 		return
 	fi
 	# now indicate that we are processing it
@@ -25,7 +34,7 @@ start_getty() {
 
 	# does the device even exist?
 	if [ ! -c /dev/$tty ]; then
-		echo "getty: cmdline has console=$tty but /dev/$tty is not a character device; not starting getty for $tty" | tee /dev/console
+		echo "getty: cmdline has console=$tty but /dev/$tty is not a character device; not starting getty for $tty" | tee /dev/tty
 		return
 	fi
 
