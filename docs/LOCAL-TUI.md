@@ -12,13 +12,17 @@ The client communicates with the server over UNIX socket
 
 The UI is rendered on a local TTY (/dev/tty2) only i.e. on a physical monitor attached to the system. Neither Serial Console nor SSH connection has access to TUI. It is done to ensure the physical presence of the operator.
 
-## /dev/ttyX vs /dev/console
+## /dev/ttyX vs /dev/console vs /dev/tty0
 
-There are two distinguishable console devices in Linux `/dev/console` and `/dev/ttyX`. The later points to a particular virtual terminal device and the former points to *currently active* TTY device. The user can switch between virtual terminals by using `Alt+Fx` or `Alt+<,>` keys. When the current TTY is set `/dev/console` tracks this change and always points to to the current terminal
+There are three distinguishable console devices in Linux `/dev/console`, `/dev/tty0` and `/dev/ttyX` where X > 0. The latter points to a particular virtual terminal device i.e. a dedicated framebuffer for VGA console.  `/dev/tty0` points to *currently active* TTY device. This can be proven by reading `/sys/devices/virtual/tty/tty0/active` file. This file exists only for `/dev/tty0`. On the other hand `/dev/console` may point to several devices at a time. These are devices user specifies in `console=` kernel command line parameters. The list can be obtained by reading `/sys/devices/virtual/tty/console/active` file.
 
-Monitor application is spawned on a `/dev/tty2` using a `openvt` utility while the rest of the applications are spawned on the default kernel console defined by `console=` parameters on the kernel command line. When the application is in focus (`/dev/tty2` is an active console) writing to `/dev/console` which points to the same device corrupts TUI thus it cannot be used by other services in the system to produce the output. At least when `/dev/tty2` is a current console.
+The user can switch between virtual terminals by using `Alt+Fx` or `Alt+<,>` keys. When the current TTY is set `/dev/tty0` tracks this change and always points to to the current terminal
 
-From the other hand `/dev/tty`  (no digit at the end!) device always points to a TTY *in the context of running process*. This device can be used instead of `/dev/console` by other services for the output.
+Monitor application is spawned on a `/dev/tty2` using a `openvt` utility while the rest of the applications are spawned on the default kernel console defined by `console=` parameters on the kernel command line. When the application is in focus (`/dev/tty2` is an active console) writing to `/dev/console` or to `/dev/tty0` which points to the same device corrupts TUI thus it cannot be used by other services in the system to produce the output. At least when `/dev/tty2` is a current console.
+
+On the other hand `/dev/tty`  (no digit at the end!) device always points to a TTY *in the context of running process*. This device can be used instead of `/dev/console` by other services for the output.
+
+Mode details can be found in [https://www.kernel.org/doc/Documentation/admin-guide/serial-console.rst](https://www.kernel.org/doc/Documentation/admin-guide/serial-console.rst), [https://www.kernel.org/doc/html/v6.11/admin-guide/devices.html#virtual-consoles-and-the-console-device](https://www.kernel.org/doc/html/v6.11/admin-guide/devices.html#virtual-consoles-and-the-console-device) and in this blog post [https://www.baeldung.com/linux/monitor-keyboard-drivers](https://www.baeldung.com/linux/monitor-keyboard-drivers)
 
 ## Limitations of linux terminal
 
