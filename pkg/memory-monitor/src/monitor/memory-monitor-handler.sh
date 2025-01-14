@@ -233,7 +233,7 @@ eve http-debug
 
 # ==== Trigger a heap dump for Pillar ====
 
-curl --retry-all-errors --retry 5 -m 5 "http://127.1:6543/debug/pprof/heap?debug=1" > "$current_output_dir/heap_pillar.out"
+curl --retry-all-errors --retry 5 -m 5 "http://127.1:6543/debug/pprof/heap" > "$current_output_dir/heap_pillar.out"
 
 # ==== Handle the Pillar memory usage ====
 
