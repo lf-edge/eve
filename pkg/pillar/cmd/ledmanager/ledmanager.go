@@ -214,6 +214,18 @@ var mToF = []modelToFuncs{
 		arg:         "ACT,led0",
 	},
 	{
+		model:       "raspberrypi,4-compute-modulebrcm,bcm2711",
+		initFunc:    InitLedCmd,
+		displayFunc: ExecuteLedCmd,
+		arg:         "ACT",
+	},
+	{
+		model:       "raspberrypi,5-model-bbrcm,bcm2712",
+		initFunc:    InitLedCmd,
+		displayFunc: ExecuteLedCmd,
+		arg:         "ACT",
+	},
+	{
 		model:       "raspberrypi.uno-220.raspberrypi,4-model-b.brcm,bcm2711",
 		initFunc:    InitLedCmd,
 		displayFunc: ExecuteLedCmd,
