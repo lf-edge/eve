@@ -58,6 +58,9 @@ cleanup() {
     total_size=$(du -s | awk '{print $1}')
     total_size=$((total_size - $(stat -c %s "$MEMORY_MONITOR_HANDLER_LOG_FILE") / 1024))
   done
+
+  # Remove the lock file
+  rm "/run/memory-monitor/$timestamp"
 }
 
 # Trap the cleanup function
@@ -201,6 +204,19 @@ current_output_dir=$1
 # Get the timestamp from the directory name (it's the last part of the path)
 timestamp=$(basename "$current_output_dir")
 mkdir -p "$current_output_dir"
+
+# Create lock file to prevent multiple instances of the handler
+# It's created in the /run/memory-monitor directory and has the timestamp as the name
+mkdir -p /run/memory-monitor
+# First, check if the lock file exists (any file in the /run/memory-monitor directory)
+lock_file=$(find /run/memory-monitor -type f -print -quit)
+if [ -n "$lock_file" ]; then
+  echo "Lock file" "$lock_file" "exists, exiting" >> "$output_file"
+  exit 1
+fi
+
+# Create the lock file
+touch "/run/memory-monitor/$timestamp"
 
 # Process the cgroup and its subgroups
 find_pids_of_cgroup "$cgroup_eve" "$eve_processes"

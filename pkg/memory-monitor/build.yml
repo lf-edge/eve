@@ -4,7 +4,7 @@ config:
   binds:
     - /persist:/persist # for the working directory and output directory
     - /dev:/dev # for syslog (/dev/log)
-    - /run:/run:ro # for the zedbox pid file
+    - /run:/run:rw # for the zedbox pid file and the lock file
     - /sys/fs/cgroup/memory/:/sys/fs/cgroup/memory/ # to read and modify memory limits
     - /proc:/proc:ro #:ro to read memory usage in /proc/<PID>/*
     - /bin/eve:/bin/eve
