@@ -215,6 +215,10 @@ rm "$pillar_processes"
 # TODO How to deal with the older eve versions that do not support the debug command?
 eve http-debug
 
+# ==== Trigger a heap dump for Pillar ====
+
+curl --retry-all-errors --retry 5 -m 5 "http://127.1:6543/debug/pprof/heap?debug=1" > "$current_output_dir/heap_pillar.out"
+
 # ==== Handle the Pillar memory usage ====
 
 show_pid_mem_usage "eve/services/pillar" "$sorted_pillar_processes" "$current_output_dir/memstat_pillar.out"
@@ -227,10 +231,6 @@ show_pid_mem_usage "eve" "$sorted_eve_processes" "$current_output_dir/memstat_ev
 
 eve dump-memory
 logread | grep logMemAllocationSites > "$current_output_dir/allocations_pillar.out" || :
-
-# ==== Trigger a heap dump for Pillar ====
-
-curl --retry-all-errors --retry 5 -m 5 "http://127.1:6543/debug/pprof/heap?debug=1" > "$current_output_dir/heap_pillar.out"
 
 eve http-debug stop
 
