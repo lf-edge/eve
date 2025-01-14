@@ -259,9 +259,8 @@ The output directory contains:
   * `allocations_pillar.out`: A list of memory allocation sites of the zedbox
     process.
   * `heap_pillar.out`: A heap dump of the zedbox process. It's collected using
-    the built-in go tool. It's a text file that can be either read manually or,
-    even better, analyzed using the `pprof` tool. How to analyze the heap dump
-    is described in the next section.
+    the built-in go tool. It's a binary file that can be analyzed using the
+    `pprof` tool. How to analyze the heap dump is described in the next section.
   * `memstats_pillar.out`: A memory usage report of the pillar cgroup. It
     contains the total memory usage of the pillar cgroup according to the cgroup
     itself, including the cache and the total Resident Set Size (RSS)
@@ -296,7 +295,7 @@ are prefixed with the `memory-monitor` tag.
 
 ### How to analyze the heap dump
 
-The heap dump (`heap_pillar.out`) is a text file that can be analyzed using
+The heap dump (`heap_pillar.out`) is a binary file that can be analyzed using
 `go tool pprof`. This tool is a part of the Go toolchain, so it is not
 necessary to install anything extra to use it. To run it, first copy the
 `heap_pillar.out` file and the `zedbox` binary to the same directory on your
