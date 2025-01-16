@@ -243,11 +243,6 @@ show_pid_mem_usage "eve/services/pillar" "$sorted_pillar_processes" "$current_ou
 
 show_pid_mem_usage "eve" "$sorted_eve_processes" "$current_output_dir/memstat_eve.out" 1
 
-# ==== Dump memory allocation sites for Pillar ====
-
-eve dump-memory
-logread | grep logMemAllocationSites > "$current_output_dir/allocations_pillar.out" || :
-
 eve http-debug stop
 
 # ==== Create a symlink to the current zedbox ====
