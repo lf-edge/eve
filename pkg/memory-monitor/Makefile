@@ -99,7 +99,6 @@ local-clean-results-on-eve:
 	ssh local_eve rm -rf /persist/memory-monitor/output/*
 
 local-analyze-results:
-	cat $(RESULTS_DIR)/*/allocations_pillar.out | cut -d";" -f3- | jq -r .msg | grep 'alloc' | awk '{bytes += $$2;} END {print "Total bytes allocated:", bytes, "bytes."}'
 	go tool pprof -http=:8080 $(RESULTS_DIR)/zedbox $(RESULTS_DIR)/*/heap_pillar.out
 
 
