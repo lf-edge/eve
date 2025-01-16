@@ -256,8 +256,6 @@ The output directory contains:
   * `event_info.txt`: A text file that contains metadata about the event. It
     includes the type of the event and the EVE version that was running when the
     event was triggered.
-  * `allocations_pillar.out`: A list of memory allocation sites of the zedbox
-    process.
   * `heap_pillar.out`: A heap dump of the zedbox process. It's collected using
     the built-in go tool. It's a binary file that can be analyzed using the
     `pprof` tool. How to analyze the heap dump is described in the next section.
