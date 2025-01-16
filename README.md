@@ -405,24 +405,9 @@ above and executing exactly the same boot command:
 Shell> fs0:\EFI\BOOT\BOOTX64.EFI
 ```
 
-## How to use on a Jetson nano 4GB ARM board
+## How to use on a NVIDIA Jetson based device
 
-In Jetson nano, from January 22, 2021, it became possible to save the u-boot to an internal qspi chip. Following the instructions from the first point and specifying the kernel and u-boot versions in the same way as in EVE, we can run it on the Jetson nano with 4GB of RAM.
-
-1. Follow steps in [instruction](https://github.com/lf-edge/eve/blob/master/boards/nvidia/jetson/) for flash jetson boot flow partitions to qspi.
-2. Make sure you have a clean build directory (since this is a non-standard build) `rm -rf dist/arm64`
-3. Build a live image `make ZARCH=arm64 HV=kvm live-raw` (Only KVM is supported)
-4. Flash the `dist/arm64/current/live.raw` live EVE image onto your SD card by [following these instructions](#how-to-write-the-eve-image-and-installer-onto-storage-media)
-
-## How to use on a Jetson Xavier NX platform
-
-Currently EVE supports the following devices from NVIDIA's Jetson Xavier NX platform:
-
-1. Lenovo ThinkEdge SE70
-2. Siemens SIMATIC IPC520A
-3. NVIDIA Jetson Xavier NX developer kit
-
-See [NVIDIA-NX.md](./docs/NVIDIA-NX.md) for instructions on how to build and deploy EVE on these devices.
+Currently EVE supports several NVIDIA Jetson devices, see [NVIDIA.md](./docs/NVIDIA.md) for details.
 
 ## How to use on a i.MX 8MQuad Evaluation Kit ARM board
 
