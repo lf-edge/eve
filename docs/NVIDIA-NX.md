@@ -29,8 +29,8 @@ can be changed in the bootloader's setup interface with the following steps:
 
 ### Installing EVE on the ThinkEdge SE70
 
-1. Build an installation raw image `make ZARCH=arm64 HV=kvm PLATFORM=nvidia installer-raw` (Only KVM is supported)
-1. Flash the `dist/arm64/current/installer.raw` install EVE image onto an USB Stick [following these instructions](../README.md#how-to-write-eve-image-and-installer-onto-an-sd-card-or-an-installer-medium)
+1. Build an installation raw image `make ZARCH=arm64 HV=kvm PLATFORM=nvidia-jp5 installer-raw` (Only KVM is supported)
+1. Flash the `dist/arm64/current/installer.raw` install EVE image onto an USB Stick [following these instructions](../README.md#3-flash-the-image-to-the-device)
 1. Insert the USB Stick and power on the device
 
 The installation process will start and it will install EVE on the NVMe automatically.
@@ -43,8 +43,8 @@ If the installation succeed, the device will be powered off. Remove the USB Stic
 
 ### Running a live image on the ThinkEdge SE70
 
-1. Build a live raw image `make ZARCH=arm64 HV=kvm PLATFORM=nvidia live-raw` (Only KVM is supported)
-1. Flash the `dist/arm64/current/live.raw` live EVE image onto an USB Stick [following these instructions](../README.md#how-to-write-eve-image-and-installer-onto-an-sd-card-or-an-installer-medium)
+1. Build a live raw image `make ZARCH=arm64 HV=kvm PLATFORM=nvidia-jp5 live-raw` (Only KVM is supported)
+1. Flash the `dist/arm64/current/live.raw` live EVE image onto an USB Stick [following these instructions](../README.md#3-flash-the-image-to-the-device)
 1. Insert the USB Stick and power on the device
 
 EVE should boot the live image and run from the USB Stick. **NOTE** that the NVMe SSD must not contain an EVE installation,
@@ -112,8 +112,8 @@ Once the procedure is done, power off the board and disconnect the pin *FC REC* 
 ### Running a live image on the Jetson Xavier NX developer kit
 
 1. Make sure the bootloader is present in the QSPI EEPROM
-1. Build a live raw image `make ZARCH=arm64 HV=kvm PLATFORM=nvidia live-raw` (Only KVM is supported)
-1. Flash the `dist/arm64/current/live.raw` live EVE image onto an SD Card [following these instructions](../README.md#how-to-write-eve-image-and-installer-onto-an-sd-card-or-an-installer-medium)
+1. Build a live raw image `make ZARCH=arm64 HV=kvm PLATFORM=nvidia-jp5 live-raw` (Only KVM is supported)
+1. Flash the `dist/arm64/current/live.raw` live EVE image onto an SD Card [following these instructions](../README.md#3-flash-the-image-to-the-device)
 1. Insert the SD Card and power on the board
 
 ## References
