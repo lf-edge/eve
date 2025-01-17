@@ -1040,6 +1040,7 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 
 	ReportAppInfo.AppID = uuid
 	ReportAppInfo.SystemApp = false
+	ReportAppInfo.ClusterAppRunning = false
 
 	if aiStatus != nil {
 		// In cluster mode, if ENClusterAppStatus reports the app is not scheduled on the node,
@@ -1152,6 +1153,10 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 			snapInfo.SnapErr = encodeErrorInfo(snap.Error)
 			ReportAppInfo.Snapshots = append(ReportAppInfo.Snapshots, snapInfo)
 		}
+
+		// For Clustered apps on HV=kubevirt, 'ClusterAppRunning' designates
+		// the app is running on this node either naturally or after some failover event.
+		ReportAppInfo.ClusterAppRunning = aiStatus.Activated
 	}
 
 	ReportInfo.InfoContent = new(info.ZInfoMsg_Ainfo)

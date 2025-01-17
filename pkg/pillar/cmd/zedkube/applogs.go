@@ -17,7 +17,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/kubeapi"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -48,7 +47,7 @@ func (z *zedkube) collectAppLogs() {
 		if aiconfig.FixedResources.VirtualizationMode != types.NOHYPER {
 			continue
 		}
-		if aiconfig.DesignatedNodeID != uuid.Nil && aiconfig.DesignatedNodeID.String() != z.nodeuuid {
+		if !aiconfig.IsDesignatedNodeID {
 			continue
 		}
 		kubeName := base.GetAppKubeName(aiconfig.DisplayName, aiconfig.UUIDandVersion.UUID)
@@ -121,11 +120,6 @@ func (z *zedkube) checkAppsStatus() {
 		return
 	}
 
-	u, err := uuid.FromString(z.nodeuuid)
-	if err != nil {
-		return
-	}
-
 	clientset, err := getKubeClientSet()
 	if err != nil {
 		log.Errorf("checkAppsStatus: can't get clientset %v", err)
@@ -146,12 +140,12 @@ func (z *zedkube) checkAppsStatus() {
 	var oldStatus *types.ENClusterAppStatus
 	for _, item := range items {
 		aiconfig := item.(types.AppInstanceConfig)
-		if aiconfig.DesignatedNodeID == uuid.Nil { // if not for cluster app, skip
+		if !aiconfig.IsDesignatedNodeID { // if not for cluster app, skip
 			continue
 		}
 		encAppStatus := types.ENClusterAppStatus{
 			AppUUID:    aiconfig.UUIDandVersion.UUID,
-			IsDNidNode: aiconfig.DesignatedNodeID == u,
+			IsDNidNode: aiconfig.IsDesignatedNodeID,
 		}
 		contName := base.GetAppKubeName(aiconfig.DisplayName, aiconfig.UUIDandVersion.UUID)
 
