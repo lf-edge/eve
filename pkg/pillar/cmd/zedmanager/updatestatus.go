@@ -39,6 +39,31 @@ func updateAIStatusUUID(ctx *zedmanagerContext, uuidStr string) {
 	}
 }
 
+// Activate this AppInstanceStatus generate config updates to
+// the microservices
+func activateAIStatusUUID(ctx *zedmanagerContext, uuidStr string) {
+
+	log.Functionf("activateAIStatusUUID(%s)", uuidStr)
+	status := lookupAppInstanceStatus(ctx, uuidStr)
+	if status == nil {
+		log.Functionf("activateAIStatusUUID for %s: Missing AppInstanceStatus",
+			uuidStr)
+		return
+	}
+	config := lookupAppInstanceConfig(ctx, uuidStr, true)
+	if config == nil || (status.PurgeInprogress == types.BringDown) {
+		removeAIStatus(ctx, status)
+		return
+	}
+	doActivate(ctx, uuidStr, *config, status)
+
+	log.Functionf("activateAIStatusUUID status %d for %s",
+		status.State, uuidStr)
+	publishAppInstanceStatus(ctx, status)
+	publishAppInstanceSummary(ctx)
+
+}
+
 // Remove this AppInstanceStatus and generate config removes for
 // the microservices
 func removeAIStatusUUID(ctx *zedmanagerContext, uuidStr string) {

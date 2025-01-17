@@ -40,12 +40,11 @@ func handleENClusterAppStatusImpl(ctx *zedmanagerContext, key string, status *ty
 				log.Errorf("handleENClusterAppStatusImpl(%s) AppInstanceConfig missing for app", key)
 				return
 			}
-			// XXX this will be handled in later PR in clustering and zedmanager code
-			//handleCreateAppInstanceStatus(ctx, *aiConfig)
+			handleCreateAppInstanceStatus(ctx, *aiConfig)
 		} else {
-			// re-publish the aiStatus, in case the cluster status has changed.
+
+			activateAIStatusUUID(ctx, key)
 			log.Functionf("handleENClusterAppStatusImpl(%s) for app-status %v aiStatus %v", key, status, aiStatus)
-			publishAppInstanceStatus(ctx, aiStatus)
 			return
 		}
 	} else { // not scheduled here.
@@ -54,7 +53,9 @@ func handleENClusterAppStatusImpl(ctx *zedmanagerContext, key string, status *ty
 		if aiStatus != nil {
 			// If I am not scheduled here, modify and publish the aiStatus with NoUploadStatsToController set.
 			publishAppInstanceStatus(ctx, aiStatus)
+			publishAppInstanceSummary(ctx)
 		}
 
 	}
+
 }
