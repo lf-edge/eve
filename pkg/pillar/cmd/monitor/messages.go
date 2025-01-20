@@ -30,7 +30,6 @@ func (ctx *monitor) isOnboarded() (bool, uuid.UUID) {
 }
 
 func (ctx *monitor) getAppSummary() types.AppInstanceSummary {
-	// send the network status to the server
 	sub := ctx.subscriptions["AppSummary"]
 	if item, err := sub.Get("global"); err == nil {
 		appSummary := item.(types.AppInstanceSummary)
@@ -61,7 +60,6 @@ func (ctx *monitor) sendNodeStatus() {
 }
 
 func (ctx *monitor) getAppInstancesStatus() []types.AppInstanceStatus {
-	// send the network status to the server
 	sub := ctx.subscriptions["AppStatus"]
 	items := sub.GetAll()
 	apps := make([]types.AppInstanceStatus, 0)
@@ -84,12 +82,11 @@ func (ctx *monitor) getZedAgentStatus() types.ZedAgentStatus {
 }
 
 func (ctx *monitor) sendAppsList() {
-	// send the node status to the server
+	// send the application list to the client
+	// empty list is allowed
 	appStatus := ctx.getAppInstancesStatus()
-	if len(appStatus) > 0 {
-		apps := appInstancesStatus{
-			Apps: appStatus,
-		}
-		ctx.IPCServer.sendIpcMessage("AppsList", apps)
+	apps := appInstancesStatus{
+		Apps: appStatus,
 	}
+	ctx.IPCServer.sendIpcMessage("AppsList", apps)
 }

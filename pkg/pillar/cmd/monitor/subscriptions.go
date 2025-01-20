@@ -106,6 +106,9 @@ func handleAppInstanceStatusModify(ctxArg interface{}, key string,
 
 func handleAppInstanceStatusDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
+	ctx := ctxArg.(*monitor)
+	// send updated status for all apps to detect deleted apps
+	ctx.sendAppsList()
 }
 
 func handleAppInstanceStatusUpdate(statusArg interface{}, ctxArg interface{}) {
