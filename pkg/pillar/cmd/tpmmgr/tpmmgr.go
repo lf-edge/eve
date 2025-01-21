@@ -1389,23 +1389,32 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		}
 	}
 
-	// check if TPM is working as expected
-	if check := tpmSanityCheck(); check != nil {
-		log.Errorf("TPM sanity check failed: %v", check.err)
-		// Alert the Controller about the TPM error, and possible implications.
-
-		errorAndTime := types.ErrorAndTime{}
-		errorAndTime.SetErrorDescription(types.ErrorDescription{
-			Error:               check.err.Error(),
-			ErrorTime:           time.Now(),
-			ErrorSeverity:       types.ErrorSeverityWarning,
-			ErrorRetryCondition: getTpmSanityStatus(check.tpmErrorType),
-		})
-		publishTpmStatus(&ctx, types.TpmSanityStatus{
-			Name:         etpm.TpmDevicePath,
-			Status:       check.tpmErrorType,
-			ErrorAndTime: errorAndTime,
-		})
+	// check if TPM is working as expected every hour
+	tpmSanityCheckTicker := time.NewTicker(1 * time.Hour)
+	defer tpmSanityCheckTicker.Stop()
+	periodicTpmSanityCheck := func() {
+		// check if TPM is working as expected or not
+		if check := tpmSanityCheck(); check != nil {
+			log.Errorf("TPM sanity check failed: %v", check.err)
+			// Alert the Controller about the TPM error, and possible implications.
+			errorAndTime := types.ErrorAndTime{}
+			errorAndTime.SetErrorDescription(types.ErrorDescription{
+				Error:               check.err.Error(),
+				ErrorTime:           time.Now(),
+				ErrorSeverity:       types.ErrorSeverityWarning,
+				ErrorRetryCondition: getTpmSanityStatus(check.tpmErrorType),
+			})
+			publishTpmStatus(&ctx, types.TpmSanityStatus{
+				Name:         etpm.TpmDevicePath,
+				Status:       check.tpmErrorType,
+				ErrorAndTime: errorAndTime,
+			})
+		} else {
+			publishTpmStatus(&ctx, types.TpmSanityStatus{
+				Name:   etpm.TpmDevicePath,
+				Status: types.MaintenanceModeReasonNone,
+			})
+		}
 	}
 
 	for {
@@ -1416,6 +1425,8 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 			ctx.subAttestNonce.ProcessChange(change)
 		case <-stillRunning.C:
 			ps.StillRunning(agentName, warningTime, errorTime)
+		case <-tpmSanityCheckTicker.C:
+			periodicTpmSanityCheck()
 		}
 	}
 }
