@@ -1,5 +1,6 @@
+---
 name: build and publish packages on demand
-on:
+on:  # yamllint disable-line rule:truthy
   workflow_dispatch:
     inputs:
       force:
@@ -99,7 +100,10 @@ jobs:
             platform: "rt"
           - arch: arm64
             hv: kvm
-            platform: "nvidia"
+            platform: "nvidia-jp5"
+          - arch: arm64
+            hv: kvm
+            platform: "nvidia-jp6"
           - arch: arm64
             hv: kvm
             platform: "imx8mp_pollux"
