@@ -276,7 +276,7 @@ for BLK_DEVICE in $BLK_DEVICES; do
 done
 
 #Recording SMART details to a file
-if [ -L /dev/root ] ; then
+if [ -L /dev/root ] || [ -b /dev/root ] ; then
   DEV_TO_CHECK_SMART=/dev/root
 else
   DEV_TO_CHECK_SMART=$(grep -m 1 /persist < /proc/mounts | cut -d ' ' -f 1)
