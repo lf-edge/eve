@@ -889,9 +889,15 @@ func handleTpmStatusImpl(ctxArg interface{}, key string,
 	if tpm.Status == types.MaintenanceModeReasonTpmEncFailure {
 		log.Errorf("handleTpmStatusImpl: TPM manager reported TPM error : %s", tpm.Error)
 		log.Noticef("Setting %s", types.MaintenanceModeReasonTpmEncFailure)
-
 		ctx.maintMode = true
 		ctx.maintModeReason = types.MaintenanceModeReasonTpmEncFailure
 		publishNodeAgentStatus(ctx)
+	} else {
+		if ctx.maintMode && ctx.maintModeReason == types.MaintenanceModeReasonTpmEncFailure {
+			log.Noticef("Clearing %s", types.MaintenanceModeReasonTpmEncFailure)
+			ctx.maintMode = false
+			ctx.maintModeReason = types.MaintenanceModeReasonNone
+			publishNodeAgentStatus(ctx)
+		}
 	}
 }
