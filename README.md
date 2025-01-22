@@ -285,11 +285,15 @@ Since a full Raspberry Pi 4 support is only available in upstream Linux kernels 
 
 Once your Raspberry Pi 4 is happily running an EVE image you can start using EVE controller for further updates (so that you don't ever have to take an SD card out of your board). Build your rootfs by running `make ZARCH=arm64 HV=xen rootfs` (or `make ZARCH=arm64 HV=kvm rootfs` if you want KVM by default) and give resulting `dist/arm64/current/installer/rootfs.img` to the controller.
 
-### How to use on an Onlogic FR201 ARM board
+### How to use on an Onlogic FR201 ARM device
 
-Onlogic Factor 201 (FR201) is a device based on the Raspberry Pi Compute Module 4 (CM4). To use EVE on FR201, build an image for Raspberry Pi 4, as described above and flash it on a USB stick. Then, to enable FR201's specific subdevices, the boot configuration has to be manually edited.
+Onlogic Factor 201 (FR201) is a device based on the Raspberry Pi Compute Module 4 (CM4). To use EVE on FR201, build a live or installer image for Raspberry Pi 4, as described below and flash it on a USB stick. Then, to enable FR201's specific subdevices, the boot configuration has to be manually edited.
 
-Specifically, in file `config.txt` of the 1st partition of the live/installer image, two lines must be changed, as shown here:
+1. To build a live raw image: `make ZARCH=arm64 HV=kvm live-raw` (Only KVM is supported)
+1. To build an installation raw image: `make ZARCH=arm64 HV=kvm installer-raw` (Only KVM is supported)
+1. Flash the `dist/arm64/current/installer.raw` install EVE image onto an USB Stick [following these instructions](../README.md#3-flash-the-image-to-the-device)
+
+Edit the file `config.txt` of the 1st partition of the live/installer image, two lines must be changed, as shown by the diff syntax below:
 
 ```diff
 --- config.txt_OLD      2024-10-21 14:01:02.782670479 +0300
@@ -312,6 +316,17 @@ Specifically, in file `config.txt` of the 1st partition of the live/installer im
 ```
 
 Finally, boot or install EVE, using the USB 3.0 port. The installer will install EVE on the eMMC drive, using the NVMe as the persist drive. If an OS is already present on those two drives, see the [documentation](https://support.onlogic.com/documentation/factor/?_gl=1*o7b3gz*_gcl_au*NzI0MzU3NDU5LjE3MjMxMTk0NTQ.*_ga*MTk3NjkxMzg5LjE3MjMxMTk0NDc.*_ga_SEVJD5HQBB*MTcyOTI0NTcwMS4xNC4xLjE3MjkyNDk3MTUuNTguMC4w) from Onlogic on how to erase them and be able to boot from the USB stick.
+
+### FR201 without eMMC
+
+Some variants of the FR201 don't have an internal eMMC. For these devices,
+EVE must be installed entirely in the internal NVMe. The following line
+must be added to the `grub.cfg` file inside the CONFIG partition of the
+installer USB stick:
+
+```sh
+set_global dom0_platform_tweaks "eve_install_disk=sdb rootdelay=10"
+```
 
 ## How to use on an HiKey ARM board
 
