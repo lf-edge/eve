@@ -15,7 +15,7 @@ KERNEL_COMPILER=gcc
 PLATFORM?=generic
 
 PLATFORMS_amd64=generic rt
-PLATFORMS_arm64=generic nvidia-jp5 nvidia-jp6 imx8mp_pollux imx8mp_epc_r3720 imx8mq_evk
+PLATFORMS_arm64=generic nvidia nvidia-jp5 nvidia-jp6 imx8mp_pollux imx8mp_epc_r3720 imx8mq_evk
 PLATFORMS_riscv64=generic
 ARCHS=amd64 arm64 riscv64
 
@@ -42,6 +42,7 @@ else ifeq ($(ZARCH), arm64)
         KERNEL_FLAVOR=generic
         KERNEL_VERSION=v6.1.112
     else
+        KVER_nvidia=v5.10.192
         KVER_nvidia-jp5=v5.10.192
         KVER_nvidia-jp6=v5.15.136
 
