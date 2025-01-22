@@ -89,7 +89,7 @@ func parseConfig(getconfigCtx *getconfigContext, config *zconfig.EdgeDevConfig,
 	// Did MaintenanceMode change?
 	if ctx.apiMaintenanceMode != config.MaintenanceMode {
 		ctx.apiMaintenanceMode = config.MaintenanceMode
-		mergeMaintenanceMode(ctx)
+		mergeMaintenanceMode(ctx, "parseConfig")
 	}
 
 	// Did the ForceFallbackCounter change? If so we publish for
@@ -2749,7 +2749,7 @@ func parseConfigItems(ctx *getconfigContext, config *zconfig.EdgeDevConfig,
 		newMaintenanceMode := newGlobalConfig.GlobalValueTriState(types.MaintenanceMode)
 		if oldMaintenanceMode != newMaintenanceMode {
 			ctx.zedagentCtx.gcpMaintenanceMode = newMaintenanceMode
-			mergeMaintenanceMode(ctx.zedagentCtx)
+			mergeMaintenanceMode(ctx.zedagentCtx, "parseConfigItems")
 		}
 
 		pub := ctx.zedagentCtx.pubGlobalConfig
@@ -2765,29 +2765,29 @@ func parseConfigItems(ctx *getconfigContext, config *zconfig.EdgeDevConfig,
 
 // mergeMaintenanceMode handles the configItem override (unless NONE)
 // and the API setting
-func mergeMaintenanceMode(ctx *zedagentContext) {
+func mergeMaintenanceMode(ctx *zedagentContext, caller string) {
 	switch ctx.gcpMaintenanceMode {
 	case types.TS_ENABLED:
 		// Overrides everything, and sets maintenance mode
 		ctx.maintenanceMode = true
-		ctx.maintModeReason = types.MaintenanceModeReasonUserRequested
+		ctx.maintModeReasons = types.MaintenanceModeMultiReason{types.MaintenanceModeReasonUserRequested}
 	case types.TS_DISABLED:
 		// Overrides everything, and resets maintenance mode
 		ctx.maintenanceMode = false
-		ctx.maintModeReason = types.MaintenanceModeReasonNone
+		ctx.maintModeReasons = types.MaintenanceModeMultiReason{types.MaintenanceModeReasonNone}
 	case types.TS_NONE:
 		// Now, look at user config and local triggers
 		ctx.maintenanceMode = ctx.apiMaintenanceMode || ctx.localMaintenanceMode
 		if ctx.apiMaintenanceMode {
 			// set reason as user requested
-			ctx.maintModeReason = types.MaintenanceModeReasonUserRequested
-		} else if ctx.localMaintenanceMode {
+			ctx.maintModeReasons = types.MaintenanceModeMultiReason{types.MaintenanceModeReasonUserRequested}
+		} else if !equalMaintenanceMode(ctx.maintModeReasons, ctx.localMaintModeReasons) {
 			// set reason to reflect exact local reason
-			ctx.maintModeReason = ctx.localMaintModeReason
+			ctx.maintModeReasons = ctx.localMaintModeReasons
 		}
 	}
-	log.Noticef("Changed maintenanceMode to %t, with reason as %s, considering {%v, %v, %v}",
-		ctx.maintenanceMode, ctx.maintModeReason.String(), ctx.gcpMaintenanceMode,
+	log.Noticef("%s changed maintenanceMode to %t, with reason as %s, considering {%v, %v, %v}",
+		caller, ctx.maintenanceMode, ctx.maintModeReasons.String(), ctx.gcpMaintenanceMode,
 		ctx.apiMaintenanceMode, ctx.localMaintenanceMode)
 }
 
