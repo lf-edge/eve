@@ -30,6 +30,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"sort"
 	"time"
 
 	"github.com/eriknordmark/ipinfo"
@@ -199,18 +200,18 @@ type zedagentContext struct {
 	// API. Those are merged into maintenanceMode
 	// TBD will be also decide locally to go into maintenanceMode based
 	// on out of disk space etc?
-	maintenanceMode      bool                        //derived state, after consolidating all inputs
-	maintModeReason      types.MaintenanceModeReason //reason for setting derived maintenance mode
-	gcpMaintenanceMode   types.TriState
-	apiMaintenanceMode   bool
-	localMaintenanceMode bool                        //maintenance mode triggered by local failure
-	localMaintModeReason types.MaintenanceModeReason //local failure reason for maintenance mode
-	devState             types.DeviceState
-	attestState          types.AttestState
-	attestError          string
-	vaultStatus          info.DataSecAtRestStatus
-	pcrStatus            info.PCRStatus
-	vaultErr             string
+	maintenanceMode       bool                             //derived state, after consolidating all inputs
+	maintModeReasons      types.MaintenanceModeMultiReason //reason for setting derived maintenance mode
+	gcpMaintenanceMode    types.TriState
+	apiMaintenanceMode    bool
+	localMaintenanceMode  bool                             //maintenance mode triggered by local failure
+	localMaintModeReasons types.MaintenanceModeMultiReason //local failure reason for maintenance mode
+	devState              types.DeviceState
+	attestState           types.AttestState
+	attestError           string
+	vaultStatus           info.DataSecAtRestStatus
+	pcrStatus             info.PCRStatus
+	vaultErr              string
 
 	// Track the counter from force.fallback.counter to detect changes
 	forceFallbackCounter int
@@ -2415,7 +2416,7 @@ func handleGlobalConfigImpl(ctxArg interface{}, key string,
 		ctx.globalConfig = *gcp
 		ctx.GCInitialized = true
 		ctx.gcpMaintenanceMode = gcp.GlobalValueTriState(types.MaintenanceMode)
-		mergeMaintenanceMode(ctx)
+		mergeMaintenanceMode(ctx, "handleGlobalConfigImpl")
 		reinitNetdumper(ctx)
 	}
 
@@ -2491,50 +2492,50 @@ func handleNodeAgentStatusImpl(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
 	getconfigCtx := ctxArg.(*getconfigContext)
-	status := statusArg.(types.NodeAgentStatus)
+	nodeAgentstatus := statusArg.(types.NodeAgentStatus)
 	log.Functionf("handleNodeAgentStatusImpl: updateInProgress %t rebootReason %s bootReason %s",
-		status.UpdateInprogress, status.RebootReason,
-		status.BootReason.String())
+		nodeAgentstatus.UpdateInprogress, nodeAgentstatus.RebootReason,
+		nodeAgentstatus.BootReason.String())
 	updateInprogress := getconfigCtx.updateInprogress
 	waitDrainInProgress := getconfigCtx.waitDrainInProgress
 	ctx := getconfigCtx.zedagentCtx
-	ctx.remainingTestTime = status.RemainingTestTime
-	getconfigCtx.updateInprogress = status.UpdateInprogress
-	getconfigCtx.waitDrainInProgress = status.WaitDrainInProgress
-	ctx.rebootTime = status.RebootTime
-	ctx.rebootStack = status.RebootStack
-	ctx.rebootReason = status.RebootReason
-	ctx.bootReason = status.BootReason
-	ctx.restartCounter = status.RestartCounter
-	ctx.allDomainsHalted = status.AllDomainsHalted
+	ctx.remainingTestTime = nodeAgentstatus.RemainingTestTime
+	getconfigCtx.updateInprogress = nodeAgentstatus.UpdateInprogress
+	getconfigCtx.waitDrainInProgress = nodeAgentstatus.WaitDrainInProgress
+	ctx.rebootTime = nodeAgentstatus.RebootTime
+	ctx.rebootStack = nodeAgentstatus.RebootStack
+	ctx.rebootReason = nodeAgentstatus.RebootReason
+	ctx.bootReason = nodeAgentstatus.BootReason
+	ctx.restartCounter = nodeAgentstatus.RestartCounter
+	ctx.allDomainsHalted = nodeAgentstatus.AllDomainsHalted
 	// Mark that we have received the NodeAgentStatus and initialized the context properly
 	ctx.initializedFromNodeAgentStatus = true
 	// if config reboot command was initiated and
 	// was deferred, and the device is not in inprogress
 	// state, initiate the reboot process
 	if ctx.rebootCmdDeferred &&
-		updateInprogress && !status.UpdateInprogress {
+		updateInprogress && !nodeAgentstatus.UpdateInprogress {
 		log.Functionf("TestComplete and deferred reboot")
 		ctx.rebootCmdDeferred = false
 		infoStr := fmt.Sprintf("TestComplete and deferred Reboot Cmd")
 		handleDeviceOperationCmd(ctx, infoStr, types.DeviceOperationReboot)
 	}
 	if ctx.shutdownCmdDeferred &&
-		updateInprogress && !status.UpdateInprogress {
+		updateInprogress && !nodeAgentstatus.UpdateInprogress {
 		log.Functionf("TestComplete and deferred shutdown")
 		ctx.shutdownCmdDeferred = false
 		infoStr := fmt.Sprintf("TestComplete and deferred Shutdown Cmd")
 		handleDeviceOperationCmd(ctx, infoStr, types.DeviceOperationShutdown)
 	}
 	if ctx.poweroffCmdDeferred &&
-		updateInprogress && !status.UpdateInprogress {
+		updateInprogress && !nodeAgentstatus.UpdateInprogress {
 		log.Functionf("TestComplete and deferred poweroff")
 		ctx.poweroffCmdDeferred = false
 		infoStr := fmt.Sprintf("TestComplete and deferred Poweroff Cmd")
 		handleDeviceOperationCmd(ctx, infoStr, types.DeviceOperationPoweroff)
 	}
 	if ctx.rebootCmdDeferred &&
-		waitDrainInProgress && !status.WaitDrainInProgress {
+		waitDrainInProgress && !nodeAgentstatus.WaitDrainInProgress {
 		log.Noticef("Drain complete and deferred Reboot Cmd")
 		log.Functionf("Drain complete check and deferred reboot Cmd")
 		ctx.rebootCmdDeferred = false
@@ -2542,7 +2543,7 @@ func handleNodeAgentStatusImpl(ctxArg interface{}, key string,
 		handleDeviceOperationCmd(ctx, infoStr, types.DeviceOperationReboot)
 	}
 	if ctx.shutdownCmdDeferred &&
-		waitDrainInProgress && !status.WaitDrainInProgress {
+		waitDrainInProgress && !nodeAgentstatus.WaitDrainInProgress {
 		log.Noticef("Drain complete and deferred shutdown Cmd")
 		log.Functionf("Drain complete check and deferred shutdown Cmd")
 		ctx.shutdownCmdDeferred = false
@@ -2550,31 +2551,32 @@ func handleNodeAgentStatusImpl(ctxArg interface{}, key string,
 		handleDeviceOperationCmd(ctx, infoStr, types.DeviceOperationShutdown)
 	}
 	if ctx.poweroffCmdDeferred &&
-		waitDrainInProgress && !status.WaitDrainInProgress {
+		waitDrainInProgress && !nodeAgentstatus.WaitDrainInProgress {
 		log.Functionf("Drain complete and deferred poweroff")
 		ctx.poweroffCmdDeferred = false
 		infoStr := fmt.Sprintf("Drain complete and deferred Poweroff Cmd")
 		handleDeviceOperationCmd(ctx, infoStr, types.DeviceOperationPoweroff)
 	}
-	if status.DeviceReboot {
+	if nodeAgentstatus.DeviceReboot {
 		handleDeviceOperation(ctx, types.DeviceOperationReboot)
 	}
-	if status.DeviceShutdown {
+	if nodeAgentstatus.DeviceShutdown {
 		handleDeviceOperation(ctx, types.DeviceOperationShutdown)
 	}
-	if status.DevicePoweroff {
+	if nodeAgentstatus.DevicePoweroff {
 		handleDeviceOperation(ctx, types.DeviceOperationPoweroff)
 	}
-	if ctx.localMaintenanceMode != status.LocalMaintenanceMode {
-		ctx.localMaintenanceMode = status.LocalMaintenanceMode
-		ctx.localMaintModeReason = status.LocalMaintenanceModeReason
-		mergeMaintenanceMode(ctx)
+	if ctx.localMaintenanceMode != nodeAgentstatus.LocalMaintenanceMode ||
+		equalMaintenanceMode(ctx.localMaintModeReasons, nodeAgentstatus.LocalMaintenanceModeReasons) {
+		ctx.localMaintenanceMode = nodeAgentstatus.LocalMaintenanceMode
+		ctx.localMaintModeReasons = nodeAgentstatus.LocalMaintenanceModeReasons
+		mergeMaintenanceMode(ctx, "handleNodeAgentStatusImpl")
 	}
 
-	if naHasRealChange(*getconfigCtx.NodeAgentStatus, status) {
+	if naHasRealChange(*getconfigCtx.NodeAgentStatus, nodeAgentstatus) {
 		triggerPublishDevInfo(ctx)
 	}
-	*getconfigCtx.NodeAgentStatus = status
+	*getconfigCtx.NodeAgentStatus = nodeAgentstatus
 	log.Functionf("handleNodeAgentStatusImpl: done.")
 }
 
@@ -2773,4 +2775,20 @@ func reinitNetdumper(ctx *zedagentContext) {
 	}
 	// Assign at the end to avoid race condition with configTimerTask.
 	ctx.netDumper = netDumper
+}
+
+func equalMaintenanceMode(a, b []types.MaintenanceModeReason) bool {
+	if len(a) != len(b) {
+		return false
+	}
+
+	// sort so me make sure the order is the same
+	sort.Slice(a, func(i, j int) bool { return a[i] < a[j] })
+	sort.Slice(b, func(i, j int) bool { return b[i] < b[j] })
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }

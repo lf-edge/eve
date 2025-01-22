@@ -386,8 +386,11 @@ func BootReasonFromString(str string) BootReason {
 	}
 }
 
-// MaintenanceModeReason captures reason for entering into maintenance mode
+// MaintenanceModeReason captures a reason for entering into maintenance mode
 type MaintenanceModeReason info.MaintenanceModeReason
+
+// MaintenanceModeMultiReason captures multiple reasons for entering into maintenance mode
+type MaintenanceModeMultiReason []MaintenanceModeReason
 
 // MaintenanceModeReason codes for storing reason for getting into maintenance mode,
 // this should match the values in api/proto/info/info.proto.MaintenanceModeReason
@@ -398,6 +401,15 @@ const (
 	MaintenanceModeReasonNoDiskSpace   = MaintenanceModeReason(info.MaintenanceModeReason_MAINTENANCE_MODE_REASON_LOW_DISK_SPACE)
 	MaintenanceModeReasonTpmEncFailure = MaintenanceModeReason(info.MaintenanceModeReason_MAINTENANCE_MODE_REASON_TPM_ENCRYPTION_FAILURE)
 )
+
+// String returns the verbose equivalent of MaintenanceModeMultiReason code
+func (mmmr MaintenanceModeMultiReason) String() string {
+	reason := []string{}
+	for _, mmr := range mmmr {
+		reason = append(reason, mmr.String())
+	}
+	return strings.Join(reason, "|")
+}
 
 // String returns the verbose equivalent of MaintenanceModeReason code
 func (mmr MaintenanceModeReason) String() string {
@@ -413,30 +425,30 @@ func (mmr MaintenanceModeReason) String() string {
 	case MaintenanceModeReasonTpmEncFailure:
 		return "MaintenanceModeReasonTpmEncFailure"
 	default:
-		return fmt.Sprintf("Unknown MaintenanceModeReason %d", mmr)
+		return "Unknown MaintenanceModeReason"
 	}
 }
 
 // NodeAgentStatus :
 type NodeAgentStatus struct {
-	Name                       string
-	CurPart                    string
-	UpdateInprogress           bool
-	RemainingTestTime          time.Duration
-	DeviceReboot               bool
-	DeviceShutdown             bool
-	DevicePoweroff             bool
-	AllDomainsHalted           bool       // Progression of reboot etc
-	RebootReason               string     // From last reboot
-	BootReason                 BootReason // From last reboot
-	RebootStack                string     // From last reboot
-	RebootTime                 time.Time  // From last reboot
-	RestartCounter             uint32
-	RebootImage                string
-	LocalMaintenanceMode       bool                  //enter Maintenance Mode
-	LocalMaintenanceModeReason MaintenanceModeReason //reason for Maintenance Mode
-	HVTypeKube                 bool
-	WaitDrainInProgress        bool
+	Name                        string
+	CurPart                     string
+	UpdateInprogress            bool
+	RemainingTestTime           time.Duration
+	DeviceReboot                bool
+	DeviceShutdown              bool
+	DevicePoweroff              bool
+	AllDomainsHalted            bool       // Progression of reboot etc
+	RebootReason                string     // From last reboot
+	BootReason                  BootReason // From last reboot
+	RebootStack                 string     // From last reboot
+	RebootTime                  time.Time  // From last reboot
+	RestartCounter              uint32
+	RebootImage                 string
+	LocalMaintenanceMode        bool                       // enter Maintenance Mode
+	LocalMaintenanceModeReasons MaintenanceModeMultiReason // reason for Maintenance Mode
+	HVTypeKube                  bool
+	WaitDrainInProgress         bool
 }
 
 // Key :

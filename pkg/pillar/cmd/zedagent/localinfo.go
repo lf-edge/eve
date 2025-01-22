@@ -683,7 +683,7 @@ func prepareLocalDevInfo(ctx *zedagentContext) *profile.LocalDevInfo {
 	msg.DeviceUuid = devUUID.String()
 	msg.State = info.ZDeviceState(getDeviceState(ctx))
 	msg.MaintenanceModeReasons = append(msg.MaintenanceModeReasons,
-		info.MaintenanceModeReason(ctx.maintModeReason))
+		infoMaintModeReason(ctx.maintModeReasons)...)
 	hinfo, err := host.Info()
 	if err != nil {
 		log.Errorf("host.Info(): %s", err)
@@ -777,4 +777,14 @@ func processReceivedDevCommands(getconfigCtx *getconfigContext, cmd *profile.Loc
 	// a power cycle from a UPS to power on again.
 	getconfigCtx.sideController.lastDevCmdTimestamp = cmd.Timestamp
 	saveLocalDevCmdTimestamp(getconfigCtx)
+}
+
+// convert maintenance mode reasons from types.MaintenanceModeMultiReason
+// to []info.MaintenanceModeReason
+func infoMaintModeReason(mmmr types.MaintenanceModeMultiReason) []info.MaintenanceModeReason {
+	cast := []info.MaintenanceModeReason{}
+	for _, v := range mmmr {
+		cast = append(cast, info.MaintenanceModeReason(v))
+	}
+	return cast
 }
