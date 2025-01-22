@@ -780,14 +780,8 @@ func handleVaultStatusImpl(ctxArg interface{}, key string,
 		if vault.ConversionComplete {
 			ctx.vaultOperational = types.TS_ENABLED
 			// Do we need to clear maintenance?
-			if ctx.maintMode &&
-				ctx.maintModeReason == types.MaintenanceModeReasonVaultLockedUp {
-				log.Noticef("Clearing %s",
-					types.MaintenanceModeReasonVaultLockedUp)
-				ctx.maintMode = false
-				ctx.maintModeReason = types.MaintenanceModeReasonNone
-				publishNodeAgentStatus(ctx)
-			}
+			maybeClearMaintenanceModeReason(ctx, types.MaintenanceModeReasonVaultLockedUp, "handleVaultStatusImpl")
+			publishNodeAgentStatus(ctx)
 		} else {
 			ctx.vaultOperational = types.TS_NONE
 		}
@@ -811,7 +805,6 @@ func handleVolumeMgrStatusImpl(ctxArg interface{}, key string,
 
 	ctx := ctxArg.(*nodeagentContext)
 	vms := statusArg.(types.VolumeMgrStatus)
-	changed := false
 	// This RemainingSpace takes into account the space reserved for
 	// /persist/newlog plus the percentage/minimum reserved for the rest
 	// of EVE-OS. Thus it can never go negative, but zero means that
@@ -819,26 +812,12 @@ func handleVolumeMgrStatusImpl(ctxArg interface{}, key string,
 	// a tiny app instance.
 	if vms.RemainingSpace == 0 {
 		log.Warnf("MaintenanceMode due to no remaining diskspace")
-		// Do not overwrite a vault maintenance mode
-		if !ctx.maintMode {
-			log.Noticef("Setting %s",
-				types.MaintenanceModeReasonNoDiskSpace)
-			ctx.maintModeReason = types.MaintenanceModeReasonNoDiskSpace
-			ctx.maintMode = true
-			changed = true
-		}
+		// Add to maintenance mode reasons
+		setMaintenanceModeReason(ctx, types.MaintenanceModeReasonNoDiskSpace, "handleVolumeMgrStatusImpl")
+		publishNodeAgentStatus(ctx)
 	} else {
 		// Do we need to clear maintenance?
-		if ctx.maintMode &&
-			ctx.maintModeReason == types.MaintenanceModeReasonNoDiskSpace {
-			log.Noticef("Clearing %s",
-				types.MaintenanceModeReasonNoDiskSpace)
-			ctx.maintMode = false
-			ctx.maintModeReason = types.MaintenanceModeReasonNone
-			changed = true
-		}
-	}
-	if changed {
+		maybeClearMaintenanceModeReason(ctx, types.MaintenanceModeReasonNoDiskSpace, "handleVolumeMgrStatusImpl")
 		publishNodeAgentStatus(ctx)
 	}
 }
@@ -880,16 +859,31 @@ func handleTpmStatusImpl(ctxArg interface{}, key string,
 
 	if tpm.Status == types.MaintenanceModeReasonTpmEncFailure {
 		log.Errorf("handleTpmStatusImpl: TPM manager reported TPM error : %s", tpm.Error)
-		log.Noticef("Setting %s", types.MaintenanceModeReasonTpmEncFailure)
-		ctx.maintMode = true
-		ctx.maintModeReason = types.MaintenanceModeReasonTpmEncFailure
+		setMaintenanceModeReason(ctx, types.MaintenanceModeReasonTpmEncFailure, "handleTpmStatusImpl")
 		publishNodeAgentStatus(ctx)
 	} else {
-		if ctx.maintMode && ctx.maintModeReason == types.MaintenanceModeReasonTpmEncFailure {
-			log.Noticef("Clearing %s", types.MaintenanceModeReasonTpmEncFailure)
-			ctx.maintMode = false
-			ctx.maintModeReason = types.MaintenanceModeReasonNone
-			publishNodeAgentStatus(ctx)
-		}
+		maybeClearMaintenanceModeReason(ctx, types.MaintenanceModeReasonTpmEncFailure, "handleTpmStatusImpl")
+		publishNodeAgentStatus(ctx)
+	}
+}
+
+func maybeClearMaintenanceModeReason(ctx *nodeagentContext, reason types.MaintenanceModeReason, caller string) {
+	if ctx.maintModeReason&reason == reason {
+		clearMaintenanceModeReason(ctx, reason, caller)
+	}
+}
+
+func setMaintenanceModeReason(ctx *nodeagentContext, reason types.MaintenanceModeReason, caller string) {
+	log.Noticef("%s setting %s", caller, reason)
+	ctx.maintModeReason |= reason
+	ctx.maintMode = true
+}
+
+func clearMaintenanceModeReason(ctx *nodeagentContext, reason types.MaintenanceModeReason, caller string) {
+	log.Noticef("%s clearing %s", caller, reason)
+	ctx.maintModeReason &^= reason
+	if ctx.maintModeReason == types.MaintenanceModeReasonNone {
+		log.Noticef("%s : No reason to be in maintenance mode, clearing maintenance mode", caller)
+		ctx.maintMode = false
 	}
 }

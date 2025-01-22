@@ -401,20 +401,27 @@ const (
 
 // String returns the verbose equivalent of MaintenanceModeReason code
 func (mmr MaintenanceModeReason) String() string {
-	switch mmr {
-	case MaintenanceModeReasonNone:
+	reason := []string{}
+	if mmr == MaintenanceModeReasonNone {
 		return "MaintenanceModeReasonNone"
-	case MaintenanceModeReasonUserRequested:
-		return "MaintenanceModeReasonUserRequested"
-	case MaintenanceModeReasonVaultLockedUp:
-		return "MaintenanceModeReasonVaultLockedUp"
-	case MaintenanceModeReasonNoDiskSpace:
-		return "MaintenanceModeReasonNoDiskSpace"
-	case MaintenanceModeReasonTpmEncFailure:
-		return "MaintenanceModeReasonTpmEncFailure"
-	default:
-		return fmt.Sprintf("Unknown MaintenanceModeReason %d", mmr)
 	}
+	if (mmr & MaintenanceModeReasonUserRequested) == MaintenanceModeReasonUserRequested {
+		reason = append(reason, "MaintenanceModeReasonUserRequested")
+	}
+	if (mmr & MaintenanceModeReasonVaultLockedUp) == MaintenanceModeReasonVaultLockedUp {
+		reason = append(reason, "MaintenanceModeReasonVaultLockedUp")
+	}
+	if (mmr & MaintenanceModeReasonNoDiskSpace) == MaintenanceModeReasonNoDiskSpace {
+		reason = append(reason, "MaintenanceModeReasonNoDiskSpace")
+	}
+	if (mmr & MaintenanceModeReasonTpmEncFailure) == MaintenanceModeReasonTpmEncFailure {
+		reason = append(reason, "MaintenanceModeReasonTpmEncFailure")
+	}
+	if len(reason) == 0 {
+		return "Unknown MaintenanceModeReason"
+	}
+
+	return strings.Join(reason, "|")
 }
 
 // NodeAgentStatus :
