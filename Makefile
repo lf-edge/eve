@@ -118,7 +118,6 @@ export ZARCH
 CROSS ?=
 ifneq ($(HOSTARCH),$(ZARCH))
 CROSS = 1
-$(warning "WARNING: We are assembling an $(ZARCH) image on $(HOSTARCH). Things may break.")
 endif
 
 DOCKER_ARCH_TAG=$(ZARCH)
