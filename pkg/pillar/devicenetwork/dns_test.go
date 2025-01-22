@@ -285,3 +285,15 @@ func TestResolveCacheWrap(t *testing.T) {
 		t.Fatalf("resolver func should have been called twice because different src IPs, but called=%d", called)
 	}
 }
+
+func FuzzResolveWithSrcIP(f *testing.F) {
+	f.Fuzz(func(t *testing.T,
+		domain string,
+		dnsServer string,
+		src string,
+	) {
+		dnsServerIP := net.ParseIP(dnsServer)
+		srcIP := net.ParseIP(src)
+		devicenetwork.ResolveWithSrcIP(domain, dnsServerIP, srcIP)
+	})
+}
