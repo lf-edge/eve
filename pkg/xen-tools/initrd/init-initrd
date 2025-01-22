@@ -220,7 +220,7 @@ chroot_ret=$?
 
 if test "$EVE_CONTAINER_NO_POWEROFF" = "1"; then
   # Don't power off, wait for further debugging
-  echo "chroot2 exited with $chroot_ret, the init-initrd idles, please attach to the 'prime-cons' console of the hosting Vm for further debugging"
+  echo "chroot2 exited with $chroot_ret, the init-initrd idles, please attach to the 'shim-cons' console of the shim Vm for further debugging"
   sleep infinity
 else
   # Power off is the default behavior

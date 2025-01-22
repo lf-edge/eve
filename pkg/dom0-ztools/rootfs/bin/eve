@@ -161,9 +161,9 @@ case "$1" in
               # shellcheck disable=SC2009
               uuid=$(ps -p "$pid" --no-headers -o command | grep -o '\-uuid\s\+[^ ]\+' | awk '{print $2}')
               dir="$KVM_RUN_DIR/$name"
-              if [ -e "$dir/prime-cons" ]; then
+              if [ -e "$dir/shim-cons" ]; then
                   printf "%s\t%s\tCONTAINER\t%s/cons\n" "$pid" "$uuid" "$name"
-                  printf "%s\t%s\tVM\t\t%s/prime-cons\n" "$pid" "$uuid" "$name"
+                  printf "%s\t%s\tVM\t\t%s/shim-cons\n" "$pid" "$uuid" "$name"
               else
                   printf "%s\t%s\tVM\t\t%s/cons\n" "$pid" "$uuid" "$name"
               fi
