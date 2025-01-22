@@ -2402,7 +2402,7 @@ func domConfigContainerVNC() string {
 [chardev "charserial1"]
   backend = "socket"
   mux = "on"
-  path = "/run/hypervisor/kvm/%s/prime-cons"
+  path = "/run/hypervisor/kvm/%s/shim-cons"
   server = "on"
   wait = "off"
   logfile = "/dev/fd/1"
@@ -2411,14 +2411,14 @@ func domConfigContainerVNC() string {
 [device]
   driver = "virtconsole"
   chardev = "charserial1"
-  name = "org.lfedge.eve.console.prime"
+  name = "org.lfedge.eve.console.shim"
 [chardev "charserial2"]
   backend = "vc"
 
 [device]
   driver = "virtconsole"
   chardev = "charserial2"
-  name = "org.lfedge.eve.console.prime.forvnc"
+  name = "org.lfedge.eve.console.shim.forvnc"
 
 
 [vnc "default"]
