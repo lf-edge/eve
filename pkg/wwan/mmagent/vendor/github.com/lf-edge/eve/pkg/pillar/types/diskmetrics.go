@@ -40,6 +40,8 @@ var ReportDirPaths = []string{
 	PersistDir + "/etcd-storage",
 	PersistDir + "/kcrashes",
 	PersistDir + "/eve-info",
+	PersistDir + "/kubelog",
+	PersistDir + "/kube-save-var-lib",
 }
 
 // AppPersistPaths  Application-related files live here
