@@ -20,3 +20,4 @@
 ^.+/testdata/.+
 ^.codespellignorelines
 eve-tools/bpftrace-compiler/examples/.+\.bt
+pkg/dom0-ztools/rootfs/usr/bin/rungetty.sh

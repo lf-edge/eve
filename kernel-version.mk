@@ -15,7 +15,7 @@ KERNEL_COMPILER=gcc
 PLATFORM?=generic
 
 PLATFORMS_amd64=generic rt
-PLATFORMS_arm64=generic nvidia imx8mp_pollux imx8mp_epc_r3720 imx8mq_evk
+PLATFORMS_arm64=generic nvidia nvidia-jp5 nvidia-jp6 imx8mp_pollux imx8mp_epc_r3720 imx8mq_evk
 PLATFORMS_riscv64=generic
 ARCHS=amd64 arm64 riscv64
 
@@ -38,12 +38,16 @@ ifeq ($(ZARCH), amd64)
         KERNEL_VERSION=v6.1.112
     endif
 else ifeq ($(ZARCH), arm64)
-    ifeq ($(PLATFORM), nvidia)
-        KERNEL_FLAVOR=nvidia
-        KERNEL_VERSION=v5.10.192
-    else
+    ifeq (, $(findstring nvidia,$(PLATFORM)))
         KERNEL_FLAVOR=generic
         KERNEL_VERSION=v6.1.112
+    else
+        KVER_nvidia=v5.10.192
+        KVER_nvidia-jp5=v5.10.192
+        KVER_nvidia-jp6=v5.15.136
+
+        KERNEL_FLAVOR=$(PLATFORM)
+        KERNEL_VERSION=$(KVER_$(PLATFORM))
     endif
 else ifeq ($(ZARCH), riscv64)
     KERNEL_VERSION=v6.1.112

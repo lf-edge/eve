@@ -1,0 +1,11 @@
+# linuxkit build template
+#
+# Copyright (c) 2025 Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+#
+---
+image: eve-fw
+org: lfedge
+tag: "{{.Hash}}-nvidia-jp5"
+buildArgs:
+  - PLATFORM=nvidia-jp5

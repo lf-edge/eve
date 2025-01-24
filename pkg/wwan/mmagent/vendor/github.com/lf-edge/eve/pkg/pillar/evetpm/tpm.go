@@ -876,13 +876,13 @@ func UnsealDiskKey(pcrSel tpm2.PCRSelection) ([]byte, error) {
 		// a copy of TPM measurement log, it comes handy for diagnosing the issue.
 		evtLogStat := "copied (failed unseal) TPM measurement log"
 		if errEvtLog := copyMeasurementLog(measurementLogUnsealFail); errEvtLog != nil {
-			// just report the failure, still give findMismatchingPCRs a chance so
+			// just report the failure, still give FindMismatchingPCRs a chance so
 			// we can at least have some partial information about why unseal failed.
 			evtLogStat = fmt.Sprintf("copying (failed unseal) TPM measurement log failed: %v", errEvtLog)
 		}
 
 		// try to find out the mismatching PCR index
-		mismatch, errPcrMiss := findMismatchingPCRs()
+		mismatch, errPcrMiss := FindMismatchingPCRs()
 		if errPcrMiss != nil {
 			return nil, fmt.Errorf("UnsealWithSession failed: %w, %s, finding mismatching PCR failed: %v", err, evtLogStat, errPcrMiss)
 		}
@@ -1072,7 +1072,10 @@ func saveDiskKeySealingPCRs() error {
 	return fileutils.WriteRename(savedSealingPcrsFile, buff.Bytes())
 }
 
-func findMismatchingPCRs() ([]int, error) {
+// FindMismatchingPCRs compares saved PCR values with current PCR values and returns a
+// list of PCR indices that have different values. Returns an error if PCR values cannot
+// be retrieved.
+func FindMismatchingPCRs() ([]int, error) {
 	frw, err := os.Open(savedSealingPcrsFile)
 	if err != nil {
 		return nil, err

@@ -118,7 +118,6 @@ export ZARCH
 CROSS ?=
 ifneq ($(HOSTARCH),$(ZARCH))
 CROSS = 1
-$(warning "WARNING: We are assembling an $(ZARCH) image on $(HOSTARCH). Things may break.")
 endif
 
 DOCKER_ARCH_TAG=$(ZARCH)
@@ -145,7 +144,6 @@ CURRENT_INSTALLER=$(CURRENT_DIR)/installer
 INSTALLER_FIRMWARE_DIR=$(INSTALLER)/firmware
 CURRENT_FIRMWARE_DIR=$(CURRENT_INSTALLER)/firmware
 UBOOT_IMG=$(INSTALLER_FIRMWARE_DIR)/boot
-BUILDARGS_FILE=build-args.conf
 
 # not every firmware file is used on every architecture
 BIOS_IMG_amd64=$(INSTALLER_FIRMWARE_DIR)/OVMF.fd $(INSTALLER_FIRMWARE_DIR)/OVMF_CODE.fd $(INSTALLER_FIRMWARE_DIR)/OVMF_VARS.fd
@@ -314,7 +312,7 @@ DOCKER_GO = _() { $(SET_X); mkdir -p $(CURDIR)/.go/src/$${3:-dummy} ; mkdir -p $
     [ $$verbose -ge 1 ] && echo $$docker_go_line "\"$$1\""; \
     $$docker_go_line "$$1" ; } ; _
 
-PARSE_PKGS=$(if $(strip $(EVE_HASH)),EVE_HASH=)$(EVE_HASH) DOCKER_ARCH_TAG=$(DOCKER_ARCH_TAG) KERNEL_TAG=$(KERNEL_TAG) ./tools/parse-pkgs.sh
+PARSE_PKGS=$(if $(strip $(EVE_HASH)),EVE_HASH=)$(EVE_HASH) DOCKER_ARCH_TAG=$(DOCKER_ARCH_TAG) KERNEL_TAG=$(KERNEL_TAG) PLATFORM=$(PLATFORM) ./tools/parse-pkgs.sh
 LINUXKIT=$(BUILDTOOLS_BIN)/linuxkit
 # linuxkit version. This **must** be a published semver version so it can be downloaded already compiled from
 # the release page at https://github.com/linuxkit/linuxkit/releases
@@ -322,7 +320,6 @@ LINUXKIT_VERSION=v1.5.3
 LINUXKIT_SOURCE=https://github.com/linuxkit/linuxkit
 LINUXKIT_OPTS=$(if $(strip $(EVE_HASH)),--hash) $(EVE_HASH) $(if $(strip $(EVE_REL)),--release) $(EVE_REL)
 LINUXKIT_PKG_TARGET=build
-LINUXKIT_BUILD_ARGS=--build-arg-file $(BUILDARGS_FILE)
 
 ifdef LIVE_FAST
 # Check the makerootfs.sh and the linuxkit tool invocation, the --input-tar
@@ -392,10 +389,10 @@ else
         #kube container will not be in non-kubevirt builds
         PKGS_$(ZARCH)=$(shell find pkg -maxdepth 1 -type d | grep -Ev "eve|alpine|sources|kube|external-boot-image$$")
         # nvidia platform requires more space
-        ifeq ($(PLATFORM),nvidia)
-            ROOTFS_MAXSIZE_MB=450
-        else
+        ifeq (, $(findstring nvidia,$(PLATFORM)))
             ROOTFS_MAXSIZE_MB=270
+        else
+            ROOTFS_MAXSIZE_MB=450
         endif
 endif
 
@@ -441,7 +438,7 @@ currentversion:
 	#echo $(shell readlink $(CURRENT) | sed -E 's/rootfs-(.*)\.[^.]*$/\1/')
 	@cat $(CURRENT_DIR)/installer/eve_version
 
-.PHONY: currentversion linuxkit pkg/kernel $(BUILDARGS_FILE)
+.PHONY: currentversion linuxkit pkg/kernel
 
 test: $(LINUXKIT) test-images-patches | $(DIST)
 	@echo Running tests on $(GOMODULE)
@@ -465,7 +462,7 @@ pillar-%: $(GOBUILDER) | $(DIST)
 	$(QUIET): $@: Succeeded
 
 clean:
-	rm -rf $(DIST) $(BUILDARGS_FILE) images/out pkg-deps.mk
+	rm -rf $(DIST) images/out pkg-deps.mk
 
 $(DOCKERFILE_FROM_CHECKER): $(DOCKERFILE_FROM_CHECKER_DIR)/*.go $(DOCKERFILE_FROM_CHECKER_DIR)/go.*
 	make -C $(DOCKERFILE_FROM_CHECKER_DIR)
@@ -1013,9 +1010,6 @@ else
 	$(QUIET): $@: Succeeded
 endif
 
-$(BUILDARGS_FILE):
-	@echo "PLATFORM=$(PLATFORM)" > $@
-
 %.yml: %.yml.in $(RESCAN_DEPS) | build-tools
 	$(QUIET)$(PARSE_PKGS) $< > $@
 	$(QUIET): $@: Succeeded
@@ -1028,21 +1022,23 @@ $(BUILDARGS_FILE):
 # If RSTATS=y and file pkg/my_package/build-rstats.yml exists, returns the path to that file.
 # If HV=kubevirt and DEV=y and file pkg/my_package/build-kubevirt-dev.yml exists, returns the path to that file.
 # If HV=kubevirt and DEV!=y and file pkg/my_package/build-kubevirt.yml exists, returns the path to that file.
+# If pkg/my_package/build-<PLATFORM>.yml exists, returns the path to that file.
 # Otherwise returns pkg/my_package/build.yml.
 get_pkg_build_yml = $(if $(filter kubevirt,$(HV)), $(call get_pkg_build_kubevirt_yml,$1), \
                     $(if $(filter y,$(RSTATS)), $(call get_pkg_build_rstats_yml,$1), \
-                    $(if $(filter y,$(DEV)), $(call get_pkg_build_dev_yml,$1), build.yml)))
+                    $(if $(filter y,$(DEV)), $(call get_pkg_build_dev_yml,$1), \
+                    $(if $(wildcard pkg/$1/build-$(PLATFORM).yml),build-$(PLATFORM).yml,build.yml))))
 get_pkg_build_dev_yml = $(if $(wildcard pkg/$1/build-dev.yml),build-dev.yml,build.yml)
 get_pkg_build_rstats_yml = $(if $(wildcard pkg/$1/build-rstats.yml),build-rstats.yml,build.yml)
 get_pkg_build_kubevirt_yml = $(if $(and $(filter y,$(DEV)),$(wildcard pkg/$1/build-kubevirt-dev.yml)),build-kubevirt-dev.yml, \
                              $(if $(wildcard pkg/$1/build-kubevirt.yml),build-kubevirt.yml,build.yml))
 
-eve-%: pkg/%/Dockerfile build-tools $(BUILDARGS_FILE) $(RESCAN_DEPS)
+eve-%: pkg/%/Dockerfile build-tools $(RESCAN_DEPS)
 	$(QUIET): "$@: Begin: LINUXKIT_PKG_TARGET=$(LINUXKIT_PKG_TARGET)"
 	$(eval LINUXKIT_DOCKER_LOAD := $(if $(filter $(PKGS_DOCKER_LOAD),$*),--docker,))
 	$(eval LINUXKIT_BUILD_PLATFORMS_LIST := $(call uniq,linux/$(ZARCH) $(if $(filter $(PKGS_HOSTARCH),$*),linux/$(HOSTARCH),)))
 	$(eval LINUXKIT_BUILD_PLATFORMS := --platforms $(subst $(space),$(comma),$(strip $(LINUXKIT_BUILD_PLATFORMS_LIST))))
-	$(eval LINUXKIT_FLAGS := $(if $(filter manifest,$(LINUXKIT_PKG_TARGET)),,$(FORCE_BUILD) $(LINUXKIT_BUILD_ARGS) $(LINUXKIT_DOCKER_LOAD) $(LINUXKIT_BUILD_PLATFORMS)))
+	$(eval LINUXKIT_FLAGS := $(if $(filter manifest,$(LINUXKIT_PKG_TARGET)),,$(FORCE_BUILD) $(LINUXKIT_DOCKER_LOAD) $(LINUXKIT_BUILD_PLATFORMS)))
 	$(QUIET)$(LINUXKIT) $(DASH_V) pkg $(LINUXKIT_PKG_TARGET) $(LINUXKIT_OPTS) $(LINUXKIT_FLAGS) --build-yml $(call get_pkg_build_yml,$*) pkg/$*
 	$(QUIET)if [ -n "$(PRUNE)" ]; then \
 		$(LINUXKIT) pkg builder prune; \

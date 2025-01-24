@@ -41,6 +41,7 @@ func (config VerifyImageConfig) LogCreate(logBase *base.LogObject) {
 		return
 	}
 	logObject.CloneAndAddField("refcount-int64", config.RefCount).
+		AddField("mediatype", config.MediaType).
 		AddField("expired-bool", config.Expired).
 		Noticef("VerifyImage config create")
 }
@@ -58,6 +59,7 @@ func (config VerifyImageConfig) LogModify(logBase *base.LogObject, old interface
 		oldConfig.Expired != config.Expired {
 
 		logObject.CloneAndAddField("refcount-int64", config.RefCount).
+			AddField("mediatype", config.MediaType).
 			AddField("expired-bool", config.Expired).
 			AddField("old-refcount-int64", oldConfig.RefCount).
 			AddField("old-expired-bool", oldConfig.Expired).
@@ -74,6 +76,7 @@ func (config VerifyImageConfig) LogDelete(logBase *base.LogObject) {
 	logObject := base.EnsureLogObject(logBase, base.VerifyImageConfigLogType, config.Name,
 		nilUUID, config.LogKey())
 	logObject.CloneAndAddField("refcount-int64", config.RefCount).
+		AddField("mediatype", config.MediaType).
 		AddField("expired-bool", config.Expired).
 		Noticef("VerifyImage config delete")
 
@@ -116,6 +119,7 @@ func (status VerifyImageStatus) LogCreate(logBase *base.LogObject) {
 		return
 	}
 	logObject.CloneAndAddField("state", status.State.String()).
+		AddField("mediatype", status.MediaType).
 		AddField("refcount-int64", status.RefCount).
 		AddField("expired-bool", status.Expired).
 		AddField("size-int64", status.Size).
@@ -139,6 +143,7 @@ func (status VerifyImageStatus) LogModify(logBase *base.LogObject, old interface
 		oldStatus.FileLocation != status.FileLocation {
 
 		logObject.CloneAndAddField("state", status.State.String()).
+			AddField("mediatype", status.MediaType).
 			AddField("refcount-int64", status.RefCount).
 			AddField("expired-bool", status.Expired).
 			AddField("size-int64", status.Size).
@@ -169,6 +174,7 @@ func (status VerifyImageStatus) LogDelete(logBase *base.LogObject) {
 	logObject := base.EnsureLogObject(logBase, base.VerifyImageStatusLogType, status.Name,
 		nilUUID, status.LogKey())
 	logObject.CloneAndAddField("state", status.State.String()).
+		AddField("mediatype", status.MediaType).
 		AddField("refcount-int64", status.RefCount).
 		AddField("expired-bool", status.Expired).
 		AddField("size-int64", status.Size).

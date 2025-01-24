@@ -99,7 +99,7 @@ root_dev() {
    local MAJOR
    local MINOR
    local DEV
-   if [ -L /dev/root ] ; then
+   if [ -L /dev/root ] || [ -b /dev/root ] ; then
       DEV=$(readlink -f /dev/root)
       MAJOR=$(( 0x$(stat -c '%t' "$DEV") + 0 ))
       MINOR=$(( 0x$(stat -c '%T' "$DEV") + 0 ))

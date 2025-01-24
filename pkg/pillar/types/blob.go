@@ -95,7 +95,7 @@ func (status BlobStatus) LogCreate(logBase *base.LogObject) {
 	logObject.CloneAndAddField("state", status.State.String()).
 		AddField("datastoreid-uuids", uuids).
 		AddField("size-int64", status.Size).
-		AddField("blobtype-string", status.MediaType).
+		AddField("mediatype", status.MediaType).
 		AddField("refcount-int64", status.RefCount).
 		AddField("has-verifier-ref-bool", status.HasVerifierRef).
 		AddField("has-downloader-ref-bool", status.HasDownloaderRef).
@@ -116,6 +116,7 @@ func (status BlobStatus) LogModify(logBase *base.LogObject, old interface{}) {
 		oldStatus.Size != status.Size {
 
 		logObject.CloneAndAddField("state", status.State.String()).
+			AddField("mediatype", status.MediaType).
 			AddField("refcount-int64", status.RefCount).
 			AddField("size-int64", status.Size).
 			AddField("has-verifier-ref-bool", status.HasVerifierRef).
@@ -145,6 +146,7 @@ func (status BlobStatus) LogDelete(logBase *base.LogObject) {
 	logObject := base.EnsureLogObject(logBase, base.BlobStatusLogType, status.RelativeURL,
 		nilUUID, status.LogKey())
 	logObject.CloneAndAddField("state", status.State.String()).
+		AddField("mediatype", status.MediaType).
 		AddField("refcount-int64", status.RefCount).
 		AddField("size-int64", status.Size).
 		AddField("has-verifier-ref-bool", status.HasVerifierRef).

@@ -90,8 +90,11 @@ nav:
       - ZFS: 'docs/ZFS.md'
       - 'Application Snapshot, API': 'docs/APP-SNAPSHOT.md'
   - Boards:
-      - 'NVIDIA Jetson Xavier/Orin': 'docs/NVIDIA-NX.md'
-      - 'NVIDIA Jetson Nano': 'boards/nvidia/jetson/README.md'
+      - 'NVIDIA Jetson':
+          - 'Introduction': 'docs/NVIDIA.md'
+          - 'Jetson Orin': 'docs/NVIDIA-ORIN.md'
+          - 'Jetson Xavier NX': 'docs/NVIDIA-NX.md'
+          - 'Jetson Nano': 'boards/nvidia/jetson/README.md'
   - Debugging:
       - Information: 'pkg/debug/abuild/README.md'
       - Debugging: 'docs/DEBUGGING.md'

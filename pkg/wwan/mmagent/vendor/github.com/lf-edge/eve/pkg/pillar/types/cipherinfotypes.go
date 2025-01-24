@@ -145,4 +145,5 @@ type EncryptionBlock struct {
 	CellularNetUsername string
 	CellularNetPassword string
 	ProtectedUserData   string
+	ClusterToken        string
 }

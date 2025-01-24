@@ -17,10 +17,11 @@ import (
 	zconfig "github.com/lf-edge/eve-api/go/config"
 	"github.com/lf-edge/eve/pkg/kube/cnirpc"
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/utils/cloudconfig"
 )
 
-// The information DomainManager needs to boot and halt domains
+// DomainConfig contains information DomainManager needs to boot and halt domains
 // If the the version (in UUIDandVersion) changes then the domain needs to
 // halted and booted?? NO, because an ACL change from ZedControl would bump
 // the version. Who determines which changes require halt+reboot?
@@ -41,6 +42,8 @@ type DomainConfig struct {
 	// KubeImageName: is the container image reference we pass to domainmgr to launch a native container
 	// in kubevirt eve
 	KubeImageName string
+	// if this node is the DNiD of the App
+	IsDNidNode bool
 
 	// XXX: to be deprecated, use CipherBlockStatus instead
 	CloudInitUserData *string `json:"pubsub-large-CloudInitUserData"` // base64-encoded
@@ -132,6 +135,7 @@ func DomainnameToUUID(name string) (uuid.UUID, string, int, error) {
 	return id, res[1], appNum, nil
 }
 
+// Key returns domain UUID string
 func (config DomainConfig) Key() string {
 	return config.UUIDandVersion.UUID.String()
 }
@@ -222,7 +226,7 @@ func (config DomainConfig) LogKey() string {
 	return string(base.DomainConfigLogType) + "-" + config.Key()
 }
 
-// Some of these items can be overridden by matching Targets in
+// VmConfig, Some of these items can be overridden by matching Targets in
 // StorageConfigList. For example, a Target of "kernel" means to set/override
 // the Kernel attribute below.
 //
@@ -240,7 +244,7 @@ type VmConfig struct {
 	ExtraArgs  string // added to bootargs
 	BootLoader string // default ""
 	// For CPU pinning
-	CPUs string // default "", list of "1,2"
+	CPUs []int // default nil, list of [1,2]
 	// Needed for device passthru
 	DeviceTree string // default ""; sets device_tree
 	// Example: device_tree="guest-gpio.dtb"
@@ -257,8 +261,11 @@ type VmConfig struct {
 	CPUsPinned         bool
 	VMMMaxMem          int // in kbytes
 	EnableVncShimVM    bool
+	// Enables enforcement of user-defined ordering for network interfaces.
+	EnforceNetworkInterfaceOrder bool
 }
 
+// VmMode is the type for the virtualization mode
 type VmMode uint8
 
 const (
@@ -274,6 +281,9 @@ const (
 type Task interface {
 	Setup(DomainStatus, DomainConfig, *AssignableAdapters,
 		*ConfigItemValueMap, *os.File) error
+	VirtualTPMSetup(domainName string, wp *WatchdogParam) error
+	VirtualTPMTerminate(domainName string, wp *WatchdogParam) error
+	VirtualTPMTeardown(domainName string, wp *WatchdogParam) error
 	Create(string, string, *DomainConfig) (int, error)
 	Start(string) error
 	Stop(string, bool) error
@@ -309,6 +319,17 @@ type DomainStatus struct {
 	WritableFiles  []cloudconfig.WritableFile // List of files from CloudInit scripts to be created in container
 	VmConfig                                  // From DomainConfig
 	Service        bool
+	// VirtualTPM is a flag to signal the hypervisor implementation
+	// that vTPM is available for the domain.
+	VirtualTPM bool
+	// FmlCustomResolution is the custom resolution for FML mode,
+	// xxx: this should be moved to VmConfig
+	FmlCustomResolution string
+	// if this node is the DNiD of the App
+	IsDNidNode bool
+	// the device name is used for kube node name
+	// Need to pass in from domainmgr to hypervisor context commands
+	NodeName string
 }
 
 func (status DomainStatus) Key() string {
@@ -406,6 +427,10 @@ type VifConfig struct {
 	MTU    uint16
 	// PodVif is only valid in the Kubernetes mode.
 	PodVif PodVIF
+	// Interface order across both VIFs and directly attached network devices.
+	// Note that we cannot use attribute name "IntfOrder" here, otherwise it would
+	// overlap with IntfOrder from AppNetAdapterConfig inside AppNetAdapterStatus.
+	VifOrder uint32
 }
 
 // PodVIF : configuration parameters for VIF connecting Kubernetes pod with the host.
@@ -462,6 +487,7 @@ type DomainMetric struct {
 	UsedMemoryPercent float64
 	LastHeard         time.Time
 	Activated         bool
+	NodeName          string // the name of the kubernetes node on which the app is currently running
 }
 
 // Key returns the key for pubsub
@@ -567,4 +593,13 @@ type Capabilities struct {
 	IOVirtualization         bool // I/O Virtualization support
 	CPUPinning               bool // CPU Pinning support
 	UseVHost                 bool // vHost support
+}
+
+// WatchdogParam is used in some proc functions that have a timeout,
+// to tell the watchdog agent is still alive.
+type WatchdogParam struct {
+	Ps        *pubsub.PubSub
+	AgentName string
+	WarnTime  time.Duration
+	ErrTime   time.Duration
 }

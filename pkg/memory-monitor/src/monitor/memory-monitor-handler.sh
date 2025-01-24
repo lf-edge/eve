@@ -58,6 +58,9 @@ cleanup() {
     total_size=$(du -s | awk '{print $1}')
     total_size=$((total_size - $(stat -c %s "$MEMORY_MONITOR_HANDLER_LOG_FILE") / 1024))
   done
+
+  # Remove the lock file
+  rm "/run/memory-monitor/$timestamp"
 }
 
 # Trap the cleanup function
@@ -202,6 +205,19 @@ current_output_dir=$1
 timestamp=$(basename "$current_output_dir")
 mkdir -p "$current_output_dir"
 
+# Create lock file to prevent multiple instances of the handler
+# It's created in the /run/memory-monitor directory and has the timestamp as the name
+mkdir -p /run/memory-monitor
+# First, check if the lock file exists (any file in the /run/memory-monitor directory)
+lock_file=$(find /run/memory-monitor -type f -print -quit)
+if [ -n "$lock_file" ]; then
+  echo "Lock file" "$lock_file" "exists, exiting" >> "$output_file"
+  exit 1
+fi
+
+# Create the lock file
+touch "/run/memory-monitor/$timestamp"
+
 # Process the cgroup and its subgroups
 find_pids_of_cgroup "$cgroup_eve" "$eve_processes"
 normalize_pids "$eve_processes" "$sorted_eve_processes"
@@ -215,6 +231,10 @@ rm "$pillar_processes"
 # TODO How to deal with the older eve versions that do not support the debug command?
 eve http-debug
 
+# ==== Trigger a heap dump for Pillar ====
+
+curl --retry-all-errors --retry 5 -m 5 "http://127.1:6543/debug/pprof/heap" > "$current_output_dir/heap_pillar.out"
+
 # ==== Handle the Pillar memory usage ====
 
 show_pid_mem_usage "eve/services/pillar" "$sorted_pillar_processes" "$current_output_dir/memstat_pillar.out"
@@ -222,15 +242,6 @@ show_pid_mem_usage "eve/services/pillar" "$sorted_pillar_processes" "$current_ou
 # ==== Handle the EVE memory usage ====
 
 show_pid_mem_usage "eve" "$sorted_eve_processes" "$current_output_dir/memstat_eve.out" 1
-
-# ==== Dump memory allocation sites for Pillar ====
-
-eve dump-memory
-logread | grep logMemAllocationSites > "$current_output_dir/allocations_pillar.out" || :
-
-# ==== Trigger a heap dump for Pillar ====
-
-curl --retry-all-errors --retry 5 -m 5 "http://127.1:6543/debug/pprof/heap?debug=1" > "$current_output_dir/heap_pillar.out"
 
 eve http-debug stop
 
