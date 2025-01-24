@@ -5,6 +5,7 @@ package types
 
 import (
 	"net"
+	"time"
 
 	uuid "github.com/satori/go.uuid"
 )
@@ -88,4 +89,13 @@ type EdgeNodeClusterStatus struct {
 	EncryptedClusterToken string
 
 	Error ErrorDescription
+}
+
+// KubeLeaseInfo - Information about the status reporter lease election
+type KubeLeaseInfo struct {
+	InLeaseElection bool
+	IsStatsLeader   bool
+	ElectionRunning bool
+	LeaderIdentity  string
+	LatestChange    time.Time
 }
