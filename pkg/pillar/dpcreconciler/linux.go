@@ -2019,6 +2019,10 @@ func (r *LinuxDpcReconciler) getIntendedMarkingRules(dpc types.DevicePortConfig,
 		markSSHAndGuacamole, markVnc, markIcmpV6,
 	}
 
+	if r.HVTypeKube {
+		protoMarkV4Rules = append(protoMarkV4Rules, defaultKubernetesIptablesRules()...)
+	}
+
 	// Do not overwrite mark that was already added be rules from zedrouter
 	// for application traffic.
 	skipMarkedFlowRule := iptables.Rule{
@@ -2185,4 +2189,119 @@ func (r *LinuxDpcReconciler) getIntendedMarkingRules(dpc types.DevicePortConfig,
 func controlProtoMark(protoName string) string {
 	mark := iptables.ControlProtocolMarkingIDMap[protoName]
 	return strconv.FormatUint(uint64(mark), 10)
+}
+
+func defaultKubernetesIptablesRules() []iptables.Rule {
+	// Allow all traffic from Kubernetes pods to Kubernetes services.
+	// Note that traffic originating from another node is already D-NATed
+	// and will get marked with the kube_pod mark.
+	markKubeSvc := iptables.Rule{
+		RuleLabel:   "Kubernetes service mark",
+		MatchOpts:   []string{"-s", kubePodCIDR.String(), "-d", kubeSvcCIDR.String()},
+		Target:      "CONNMARK",
+		TargetOpts:  []string{"--set-mark", controlProtoMark("kube_svc")},
+		Description: "Mark traffic from Kubernetes pods to Kubernetes services",
+	}
+
+	// Allow all traffic forwarded between Kubernetes pods.
+	markKubePod := iptables.Rule{
+		RuleLabel:   "Kubernetes pod mark",
+		MatchOpts:   []string{"-s", kubePodCIDR.String(), "-d", kubePodCIDR.String()},
+		Target:      "CONNMARK",
+		TargetOpts:  []string{"--set-mark", controlProtoMark("kube_pod")},
+		Description: "Mark all traffic directly forwarded between Kubernetes pods",
+	}
+
+	// Allow all DNS requests made from the Kubernetes network.
+	markKubeDNS := iptables.Rule{
+		RuleLabel:   "Kubernetes DNS mark",
+		MatchOpts:   []string{"-p", "udp", "--dport", "domain"},
+		Target:      "CONNMARK",
+		TargetOpts:  []string{"--set-mark", controlProtoMark("kube_dns")},
+		Description: "Mark DNS requests made from the Kubernetes network",
+	}
+
+	// XXX some kube cluster rules
+	markK3s := iptables.Rule{
+		RuleLabel:   "K3s mark",
+		MatchOpts:   []string{"-p", "tcp", "--dport", "6443"},
+		Target:      "CONNMARK",
+		TargetOpts:  []string{"--set-mark", controlProtoMark("in_k3s")},
+		Description: "Mark K3S API server traffic for kubernetes",
+	}
+
+	markEtcd := iptables.Rule{
+		RuleLabel:   "Etcd mark",
+		MatchOpts:   []string{"-p", "tcp", "--dport", "2379:2381"},
+		Target:      "CONNMARK",
+		TargetOpts:  []string{"--set-mark", controlProtoMark("in_etcd")},
+		Description: "Mark K3S HA with embedded etcd traffic for kubernetes",
+	}
+
+	markFlannel := iptables.Rule{
+		RuleLabel:   "Flannel mark",
+		MatchOpts:   []string{"-p", "udp", "--dport", "8472"},
+		Target:      "CONNMARK",
+		TargetOpts:  []string{"--set-mark", controlProtoMark("in_flannel")},
+		Description: "Mark K3S with Flannel VxLan traffic for kubernetes",
+	}
+
+	markMetrics := iptables.Rule{
+		RuleLabel:   "Metrics mark",
+		MatchOpts:   []string{"-p", "tcp", "--dport", "10250"},
+		Target:      "CONNMARK",
+		TargetOpts:  []string{"--set-mark", controlProtoMark("in_metrics")},
+		Description: "Mark K3S metrics traffic for kubernetes",
+	}
+
+	markLongHornWebhook := iptables.Rule{
+		RuleLabel:   "Longhorn Webhook",
+		MatchOpts:   []string{"-p", "tcp", "--dport", "9501:9503"},
+		Target:      "CONNMARK",
+		TargetOpts:  []string{"--set-mark", controlProtoMark("in_lhweb")},
+		Description: "Mark K3S HA with longhorn webhook for kubernetes",
+	}
+	markLongHornInstMgr := iptables.Rule{
+		RuleLabel:   "Longhorn Instance Manager",
+		MatchOpts:   []string{"-p", "tcp", "--dport", "8500:8501"},
+		Target:      "CONNMARK",
+		TargetOpts:  []string{"--set-mark", controlProtoMark("in_lhinstmgr")},
+		Description: "Mark K3S HA with longhorn instance manager for kubernetes",
+	}
+	markIscsi := iptables.Rule{
+		RuleLabel:   "Iscsi",
+		MatchOpts:   []string{"-p", "tcp", "--dport", "3260"},
+		Target:      "CONNMARK",
+		TargetOpts:  []string{"--set-mark", controlProtoMark("in_iscsi")},
+		Description: "Mark K3S HA with longhorn iscsi for kubernetes",
+	}
+	markNFS := iptables.Rule{
+		RuleLabel:   "NFS",
+		MatchOpts:   []string{"-p", "tcp", "--dport", "2049"},
+		Target:      "CONNMARK",
+		TargetOpts:  []string{"--set-mark", controlProtoMark("in_nfs")},
+		Description: "Mark K3S HA with longhorn nfs for kubernetes",
+	}
+	markClusterStatus := iptables.Rule{ // cluster bootstrap status
+		RuleLabel:   "EncBootstrap",
+		MatchOpts:   []string{"-p", "tcp", "--dport", "12346"},
+		Target:      "CONNMARK",
+		TargetOpts:  []string{"--set-mark", controlProtoMark("in_cluster_status")},
+		Description: "Mark EdgeNode Cluster bootstrap status traffic",
+	}
+
+	return []iptables.Rule{
+		markKubeDNS,
+		markKubeSvc,
+		markKubePod,
+		markK3s,
+		markEtcd,
+		markFlannel,
+		markMetrics,
+		markLongHornWebhook,
+		markLongHornInstMgr,
+		markIscsi,
+		markNFS,
+		markClusterStatus,
+	}
 }
