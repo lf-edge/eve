@@ -38,6 +38,12 @@ var (
 	log    *base.LogObject
 )
 
+// GetKubePodsError is used to check and handle get kube pods error
+type GetKubePodsError struct {
+	getKubePodsErrorTime    time.Time
+	processedErrorCondition bool
+}
+
 type zedkube struct {
 	agentbase.AgentBase
 	globalConfig             *types.ConfigItemValueMap
@@ -74,6 +80,8 @@ type zedkube struct {
 	electionStopCh           chan struct{}
 	statusServer             *http.Server
 	statusServerWG           sync.WaitGroup
+	// Check and handle get kube pods error
+	getKubePodsError GetKubePodsError
 }
 
 // Run - an zedkube run
