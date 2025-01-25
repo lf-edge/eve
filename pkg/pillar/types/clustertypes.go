@@ -1,4 +1,4 @@
-// Copyright (c) 2024 Zededa, Inc.
+// Copyright (c) 2024-2025 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 package types
@@ -91,11 +91,11 @@ type EdgeNodeClusterStatus struct {
 	Error ErrorDescription
 }
 
-// KubeLeaseInfo - Information about the status reporter lease election
-type KubeLeaseInfo struct {
-	InLeaseElection bool
-	IsStatsLeader   bool
-	ElectionRunning bool
-	LeaderIdentity  string
-	LatestChange    time.Time
+// KubeLeaderElectInfo - Information about the status reporter leader election
+type KubeLeaderElectInfo struct {
+	InLeaderElection bool
+	IsStatsLeader    bool
+	ElectionRunning  bool
+	LeaderIdentity   string
+	LatestChange     time.Time
 }

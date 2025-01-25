@@ -106,20 +106,20 @@ func GetApplicationInfo(rootRun, persistStatus, persistKubelog, AppUUID string) 
 		appInfo = append(appInfo, OrderedAppInfoItem{Key: structName, Value: ai})
 	}
 
-	// 3) Get the KubeLeaseInfo from zedkuube, it may not exist
+	// 3) Get the KubeLeaderElectInfo from zedkuube, it may not exist
 	var structName2 string
-	structName = "zedkube-KubeLeaseInfo"
-	leaseInfo := &types.KubeLeaseInfo{}
-	if structName2, err = readJSONFile(rootRun, structName, "global", leaseInfo); err != nil {
+	structName = "zedkube-KubeLeaderElectInfo"
+	leaderInfo := &types.KubeLeaderElectInfo{}
+	if structName2, err = readJSONFile(rootRun, structName, "global", leaderInfo); err != nil {
 		appInfo = appendFailedItem(appInfo, structName, "global", err)
 	} else {
 		ai = AppInfoItems{ // ENClusterAppStatus
 			UUID:      "global",
-			Name:      leaseInfo.LeaderIdentity,
+			Name:      leaderInfo.LeaderIdentity,
 			Exist:     true,
-			State:     fmt.Sprintf("Is Stats Leader %v", leaseInfo.IsStatsLeader),
-			Activated: boolToTriState(leaseInfo.InLeaseElection),
-			Content:   fmt.Sprintf("Last time updated at %v", leaseInfo.LatestChange.UTC().Format(time.RFC3339)),
+			State:     fmt.Sprintf("Is Stats Leader %v", leaderInfo.IsStatsLeader),
+			Activated: boolToTriState(leaderInfo.InLeaderElection),
+			Content:   fmt.Sprintf("Last time updated at %v", leaderInfo.LatestChange.UTC().Format(time.RFC3339)),
 		}
 		appInfo = append(appInfo, OrderedAppInfoItem{Key: structName2, Value: ai})
 	}
