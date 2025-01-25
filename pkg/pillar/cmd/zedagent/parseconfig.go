@@ -159,6 +159,9 @@ func parseConfig(getconfigCtx *getconfigContext, config *zconfig.EdgeDevConfig,
 			parseContentInfoConfig(getconfigCtx, config)
 			parseVolumeConfig(getconfigCtx, config)
 			parseEvConfig(getconfigCtx, config)
+			// several service are waiting this NodeInfo at startup, either if we don't
+			// have apps, need to parse this config first
+			parseEdgeNodeInfo(getconfigCtx, config)
 
 			// We have handled the volumes, so we can now process the app instances. But we need to check if
 			// we are in the middle of a baseOS upgrade, and if so, we need to skip processing the app instances.
@@ -176,8 +179,6 @@ func parseConfig(getconfigCtx *getconfigContext, config *zconfig.EdgeDevConfig,
 			parseAppInstanceConfig(getconfigCtx, config)
 
 			parseDisksConfig(getconfigCtx, config)
-
-			parseEdgeNodeInfo(getconfigCtx, config)
 
 			parsePatchEnvelopes(getconfigCtx, config)
 		}

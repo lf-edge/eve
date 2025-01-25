@@ -21,6 +21,7 @@ INITIAL_WAIT_TIME=5
 MAX_WAIT_TIME=$((10 * 60)) # 10 minutes in seconds, exponential backoff for k3s restart
 current_wait_time=$INITIAL_WAIT_TIME
 CLUSTER_WAIT_FILE="/run/kube/cluster-change-wait-ongoing"
+All_PODS_READY=true
 
 # shellcheck source=pkg/kube/descheduler-utils.sh
 . /usr/bin/descheduler-utils.sh
@@ -317,6 +318,31 @@ check_start_containerd() {
         fi
 }
 
+# apply the node-uuid label to the node
+apply_node_uuid_label () {
+        if [ "$All_PODS_READY" = true ]; then
+                logmsg "set node label with uuid $DEVUUID"
+        else
+                logmsg "Not all pods are ready, Continue to wait while applying node labels"
+        fi
+        kubectl label node "$HOSTNAME" node-uuid="$DEVUUID"
+}
+
+# reapply the node labels
+reapply_node_labels() {
+        apply_node_uuid_label
+        apply_longhorn_disk_config "$HOSTNAME"
+        # Check if the node with both labels exists, don't assume above apply worked
+        node_count=$(kubectl get nodes -l node-uuid="$DEVUUID",node.longhorn.io/create-default-disk=config -o json | jq '.items | length')
+
+        if [ "$node_count" -gt 0 ]; then
+                logmsg "Node labels re-applied successfully"
+                touch /var/lib/node-labels-initialized
+        else
+                logmsg "Failed to re-apply node labels, on $HOSTNAME, uuid $DEVUUID"
+        fi
+}
+
 # Return success if all pods are Running/Succeeded and Ready
 # Used in install time to control api server load
 # Return unix style 0 for success.  (Not 0 for false)
@@ -388,7 +414,7 @@ is_bootstrap=""
 join_serverIP=""
 cluster_token=""
 cluster_node_ip=""
-# for bootstrap node, after reboot to get neighbor node to join
+convert_to_single_node=false
 
 # get the EdgeNodeClusterStatus from zedkube publication
 get_enc_status() {
@@ -413,18 +439,44 @@ get_enc_status() {
     fi
 }
 
+
 # When transitioning from single node to cluster mode, need change the controller
 # provided token for the cluster
+
+rotate_cluster_token() {
+        local token="$1"
+        /usr/bin/k3s token rotate --new-token "$token"
+        local status=$?
+        if [ $status -ne 0 ]; then
+                logmsg "Failed to rotate token. Exit status: $status"
+        else
+                logmsg "Token rotated successfully."
+        fi
+        return $status
+}
+
 change_to_new_token() {
   if [ -n "$cluster_token" ]; then
-    /usr/bin/k3s token rotate --new-token "$cluster_token"
+    logmsg "Rotate cluster token size: ${#cluster_token}"
+    rotate_cluster_token "$cluster_token"
+    # Set the starttime before entering the while loop
+    starttime=$(date +%s)
+
     while true; do
         if grep -q "server:$cluster_token" /var/lib/rancher/k3s/server/token; then
             logmsg "Token change has taken effect."
             break
         else
-            logmsg "Token has not taken effect yet. Sleeping for 2 seconds..."
-            sleep 2
+           currenttime=$(date +%s)
+            elapsed=$((currenttime - starttime))
+            if [ $elapsed -ge 60 ]; then
+                # Redo the rotate_cluster_token and reset the starttime
+                rotate_cluster_token "$cluster_token"
+                logmsg "Rotate cluster token again by k3s."
+                starttime=$(date +%s)
+            fi
+            logmsg "Token has not taken effect yet. Sleeping for 5 seconds..."
+            sleep 5
         fi
     done
   else
@@ -581,23 +633,27 @@ EOF
         counter=0
         touch "$CLUSTER_WAIT_FILE"
         while true; do
+          counter=$((counter+1))
           if curl --insecure --max-time 2 "https://$join_serverIP:6443" >/dev/null 2>&1; then
-            counter=$((counter+1))
             #logmsg "curl to Endpoint https://$join_serverIP:6443 ready, check cluster status"
             # if we are here, check the bootstrap server is single or cluster mode
             if ! status=$(curl --max-time 2 -s "http://$join_serverIP:$clusterStatusPort/status"); then
                 if [ $((counter % 30)) -eq 1 ]; then
                         logmsg "Attempt $counter: Failed to connect to the server. Waiting for 10 seconds..."
                 fi
-            elif [ "$status" != "cluster" ]; then
-                if [ $((counter % 30)) -eq 1 ]; then
-                        logmsg "Attempt $counter: Server is not in 'cluster' status. Waiting for 10 seconds..."
-                fi
-            else
+            elif [ "$status" = "cluster" ]; then
                 logmsg "Server is in 'cluster' status. done"
                 rm "$CLUSTER_WAIT_FILE"
                 break
+            else
+                if [ $((counter % 30)) -eq 1 ]; then
+                        logmsg "Attempt $counter: Server is not in 'cluster' status. Waiting for 10 seconds..."
+                fi
             fi
+          else
+                if [ $((counter % 30)) -eq 1 ]; then
+                        logmsg "Attempt $counter: curl to Endpoint https://$join_serverIP:6443 failed. Waiting for 10 seconds..."
+                fi
           fi
           sleep 10
         done
@@ -617,8 +673,14 @@ setup_prereqs
 if [ -f /var/lib/convert-to-single-node ]; then
         logmsg "remove /var/lib and copy saved single node /var/lib"
         restore_var_lib
+        logmsg "wiping unreferenced replicas"
+        rm -rf /persist/vault/volumes/replicas/*
         # assign node-ip to multus nodeIP for yaml config file
         assign_multus_nodeip
+        # set the variable 'convert_to_single_node' to true, in the case
+        # if we immediately convert back to cluster mode, we need to wait for the
+        # bootstrap status before moving on to cluster mode
+        convert_to_single_node=true
 fi
 # since we can wait for long time, always start the containerd first
 check_start_containerd
@@ -658,8 +720,12 @@ else # a restart case, found all_components_initialized
       fi
     done
     # got the cluster config, make the config.ymal now
-    logmsg "Cluster config status ok, provision config.yaml and bootstrap-config.yaml"
-    provision_cluster_config_file false
+   logmsg "Cluster config status ok, provision config.yaml and bootstrap-config.yaml"
+
+    # if we just converted to single node, then we need to wait for the bootstrap
+    # 'cluster' status before moving on to cluster mode
+    provision_cluster_config_file $convert_to_single_node
+    convert_to_single_node=false
     logmsg "provision config.yaml done"
   else # single node mode
     logmsg "Single node mode, prepare config.yaml for $HOSTNAME"
@@ -703,11 +769,14 @@ if [ ! -f /var/lib/all_components_initialized ]; then
         fi
 
         # label the node with device uuid
-        apply_node_uuid_lable
+        apply_node_uuid_label
 
         if ! are_all_pods_ready; then
+                All_PODS_READY=false
+                sleep 10
                 continue
         fi
+        All_PODS_READY=true
 
         if [ ! -f /var/lib/multus_initialized ]; then
                 if [ ! -f /etc/multus-daemonset-new.yaml ]; then
@@ -817,7 +886,7 @@ else
                 fi
         else
                 if [ ! -f /var/lib/node-labels-initialized ]; then
-                        reapply_node_labes
+                        reapply_node_labels
                 fi
                 # Initialize CNI after k3s reboot
                 if [ ! -d /var/lib/cni/bin ] || [ ! -d /opt/cni/bin ]; then

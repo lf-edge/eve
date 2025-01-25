@@ -370,8 +370,6 @@ func (z *zedkube) clusterAppIDHandler(w http.ResponseWriter, r *http.Request) {
 				log.Errorf("clusterAppIDHandler: error reading response from %s: %v", host, err)
 				continue
 			}
-
-			// Replace outermost { and } with [ and ] in remoteAppInfoJSON
 			combinedJSON = combinedJSON + "," + strings.TrimSuffix(string(remoteAppInfoJSON), "\n")
 		}
 	}

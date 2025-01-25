@@ -43,6 +43,16 @@ check_log_file_size() {
                 fi
                 # keep the original log file's attributes
                 cp -p "$K3S_LOG_DIR/$1" "$K3S_LOG_DIR/$1.1"
+                # Check if the argument passed is "$K3s_LOG_FILE", sometimes the k3s is
+                # not releasing the file descriptor, so truncate the file may not
+                # take effect. Signal a HUP signal to that.
+                if [ "$1" = "$K3s_LOG_FILE" ]; then
+                        k3s_pid=$(pgrep -f "k3s server")
+                        if [ -n "$k3s_pid" ]; then
+                                kill -HUP "$k3s_pid"
+                                logmsg "Sent HUP signal to k3s server before truncate k3s.log size"
+                        fi
+                fi
                 truncate -s 0 "$K3S_LOG_DIR/$1"
                 logmsg "k3s logfile $1, size $currentSize rotate"
         fi
