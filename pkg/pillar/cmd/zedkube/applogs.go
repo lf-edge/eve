@@ -126,17 +126,19 @@ func (z *zedkube) checkAppsStatus() {
 		return
 	}
 
-	options := metav1.ListOptions{
-		FieldSelector: fmt.Sprintf("spec.nodeName=%s", z.nodeName),
-	}
-	pods, err := clientset.CoreV1().Pods(kubeapi.EVEKubeNameSpace).List(context.TODO(), options)
+	stItems := z.pubENClusterAppStatus.GetAll()
+
+	pods, err := clientset.CoreV1().Pods(kubeapi.EVEKubeNameSpace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		log.Errorf("checkAppsStatus: can't get pods %v", err)
+		// If we can't get pods, process the error and return
+		z.handleKubePodsGetError(items, stItems)
 		return
 	}
 
-	pub := z.pubENClusterAppStatus
-	stItems := pub.GetAll()
+	z.getKubePodsError.getKubePodsErrorTime = time.Time{}
+	z.getKubePodsError.processedErrorCondition = false
+
 	var oldStatus *types.ENClusterAppStatus
 	for _, item := range items {
 		aiconfig := item.(types.AppInstanceConfig)
@@ -153,7 +155,9 @@ func (z *zedkube) checkAppsStatus() {
 			contVMIName := "virt-launcher-" + contName
 			log.Functionf("checkAppsStatus: pod %s, cont %s", pod.Name, contName)
 			if strings.HasPrefix(pod.Name, contName) || strings.HasPrefix(pod.Name, contVMIName) {
-				encAppStatus.ScheduledOnThisNode = true
+				if pod.Spec.NodeName == z.nodeName {
+					encAppStatus.ScheduledOnThisNode = true
+				}
 				if pod.Status.Phase == corev1.PodRunning {
 					encAppStatus.StatusRunning = true
 				}
@@ -170,10 +174,42 @@ func (z *zedkube) checkAppsStatus() {
 		}
 		log.Functionf("checkAppsStatus: devname %s, pod (%d) status %+v, old %+v", z.nodeName, len(pods.Items), encAppStatus, oldStatus)
 
+		// Publish if there is a status change
 		if oldStatus == nil || oldStatus.IsDNidNode != encAppStatus.IsDNidNode ||
 			oldStatus.ScheduledOnThisNode != encAppStatus.ScheduledOnThisNode || oldStatus.StatusRunning != encAppStatus.StatusRunning {
 			log.Functionf("checkAppsStatus: status differ, publish")
 			z.pubENClusterAppStatus.Publish(aiconfig.Key(), encAppStatus)
+		}
+	}
+}
+
+func (z *zedkube) handleKubePodsGetError(items, stItems map[string]interface{}) {
+	if z.getKubePodsError.getKubePodsErrorTime.IsZero() {
+		now := time.Now()
+		z.getKubePodsError.getKubePodsErrorTime = now
+		log.Noticef("handleKubePodsGetError: can't get pods, set error time")
+	} else if time.Since(z.getKubePodsError.getKubePodsErrorTime) > 2*time.Minute {
+		// The settings of kubernetes the node is 'NotReady' after unreachable for 1 minute,
+		// and the replicaSet policy for POD/VMI is after 30 seconds post the 'NotReady' node
+		// the App will be rescheduled to other node. So, we use the 2 minutes as the threshold
+		if z.getKubePodsError.processedErrorCondition == false {
+			z.getKubePodsError.processedErrorCondition = true
+			for _, item := range items {
+				aiconfig := item.(types.AppInstanceConfig)
+				for _, st := range stItems {
+					aiStatus := st.(types.ENClusterAppStatus)
+					if aiStatus.AppUUID == aiconfig.UUIDandVersion.UUID {
+						// if we used to publish the status, of this app is scheduled on this node
+						// need to reset this, since we have lost the connection to the kubernetes
+						// for longer time than the app is to be migrated to other node
+						if aiStatus.ScheduledOnThisNode {
+							aiStatus.ScheduledOnThisNode = false
+							z.pubENClusterAppStatus.Publish(aiconfig.Key(), aiStatus)
+							log.Noticef("handleKubePodsGetError: can't get pods set ScheduledOnThisNode off for %s, ", aiconfig.DisplayName)
+						}
+					}
+				}
+			}
 		}
 	}
 }
