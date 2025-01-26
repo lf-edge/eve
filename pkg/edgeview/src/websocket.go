@@ -5,6 +5,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
@@ -136,11 +137,13 @@ func setupWebC(hostname, token string, u url.URL, isServer bool) bool {
 				}
 				return true
 			}
-			retry++
 			if !isServer && retry > 1 {
 				return false
 			}
 		}
+		// do exponential backoff after walking through all the interfaces
+		// to speed up the connection retrial
+		retry++
 	}
 }
 
@@ -175,7 +178,21 @@ func tlsDial(isServer bool, pIP string, pport int, src []net.IP, idx int) (*webs
 		dialer.Proxy = http.ProxyURL(proxyURL)
 	}
 	if idx >= 0 && len(src) > 0 && idx < len(src) {
-		dialer.NetDialContext = (&net.Dialer{LocalAddr: &net.TCPAddr{IP: src[idx]}}).DialContext
+		srcSelected := src[idx]
+		localAddr := &net.TCPAddr{IP: srcSelected}
+		netDialer := &net.Dialer{
+			LocalAddr: localAddr,
+			Resolver: &net.Resolver{
+				PreferGo: true,
+				Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
+					d := net.Dialer{
+						LocalAddr: &net.UDPAddr{IP: srcSelected},
+					}
+					return d.DialContext(ctx, network, address)
+				},
+			},
+		}
+		dialer.NetDialContext = netDialer.DialContext
 	}
 
 	return dialer, nil
