@@ -512,13 +512,13 @@ func publishVaultKey(ctx *vaultMgrContext, vaultName string) error {
 		}
 		keyBytes, err := etpm.FetchSealedVaultKey(log)
 		if err != nil {
-			return fmt.Errorf("Failed to retrieve key from TPM %w", err)
+			return fmt.Errorf("failed to retrieve key from TPM %w", err)
 		}
 
+		// if this fails, tpm manager signals the controller something is wrong with TPM
 		encryptedKey, err := etpm.EncryptDecryptUsingTpm(keyBytes, true)
 		if err != nil {
-			// XXX should we still send with no key?
-			return fmt.Errorf("Failed to encrypt vault key %w", err)
+			return fmt.Errorf("failed to encrypt vault key %w", err)
 		}
 
 		hash := sha256.New()
@@ -531,7 +531,7 @@ func publishVaultKey(ctx *vaultMgrContext, vaultName string) error {
 		}
 		encryptedVaultKey, err = proto.Marshal(keyData)
 		if err != nil {
-			return fmt.Errorf("Failed to Marshal keyData %w", err)
+			return fmt.Errorf("failed to Marshal keyData %w", err)
 		}
 	}
 

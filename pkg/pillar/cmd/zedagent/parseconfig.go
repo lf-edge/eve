@@ -89,7 +89,7 @@ func parseConfig(getconfigCtx *getconfigContext, config *zconfig.EdgeDevConfig,
 	// Did MaintenanceMode change?
 	if ctx.apiMaintenanceMode != config.MaintenanceMode {
 		ctx.apiMaintenanceMode = config.MaintenanceMode
-		mergeMaintenanceMode(ctx)
+		mergeMaintenanceMode(ctx, "parseConfig")
 	}
 
 	// Did the ForceFallbackCounter change? If so we publish for
@@ -2741,7 +2741,7 @@ func parseConfigItems(ctx *getconfigContext, config *zconfig.EdgeDevConfig,
 		newMaintenanceMode := newGlobalConfig.GlobalValueTriState(types.MaintenanceMode)
 		if oldMaintenanceMode != newMaintenanceMode {
 			ctx.zedagentCtx.gcpMaintenanceMode = newMaintenanceMode
-			mergeMaintenanceMode(ctx.zedagentCtx)
+			mergeMaintenanceMode(ctx.zedagentCtx, "parseConfigItems")
 		}
 
 		pub := ctx.zedagentCtx.pubGlobalConfig
@@ -2757,7 +2757,7 @@ func parseConfigItems(ctx *getconfigContext, config *zconfig.EdgeDevConfig,
 
 // mergeMaintenanceMode handles the configItem override (unless NONE)
 // and the API setting
-func mergeMaintenanceMode(ctx *zedagentContext) {
+func mergeMaintenanceMode(ctx *zedagentContext, caller string) {
 	switch ctx.gcpMaintenanceMode {
 	case types.TS_ENABLED:
 		// Overrides everything, and sets maintenance mode
@@ -2773,13 +2773,13 @@ func mergeMaintenanceMode(ctx *zedagentContext) {
 		if ctx.apiMaintenanceMode {
 			// set reason as user requested
 			ctx.maintModeReason = types.MaintenanceModeReasonUserRequested
-		} else if ctx.localMaintenanceMode {
+		} else if ctx.maintModeReason != ctx.localMaintModeReason {
 			// set reason to reflect exact local reason
 			ctx.maintModeReason = ctx.localMaintModeReason
 		}
 	}
-	log.Noticef("Changed maintenanceMode to %t, with reason as %s, considering {%v, %v, %v}",
-		ctx.maintenanceMode, ctx.maintModeReason.String(), ctx.gcpMaintenanceMode,
+	log.Noticef("%s changed maintenanceMode to %t, with reason as %s, considering {%v, %v, %v}",
+		caller, ctx.maintenanceMode, ctx.maintModeReason.String(), ctx.gcpMaintenanceMode,
 		ctx.apiMaintenanceMode, ctx.localMaintenanceMode)
 }
 

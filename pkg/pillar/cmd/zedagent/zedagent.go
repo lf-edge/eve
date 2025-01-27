@@ -2408,7 +2408,7 @@ func handleGlobalConfigImpl(ctxArg interface{}, key string,
 		ctx.globalConfig = *gcp
 		ctx.GCInitialized = true
 		ctx.gcpMaintenanceMode = gcp.GlobalValueTriState(types.MaintenanceMode)
-		mergeMaintenanceMode(ctx)
+		mergeMaintenanceMode(ctx, "handleGlobalConfigImpl")
 		reinitNetdumper(ctx)
 	}
 
@@ -2533,10 +2533,12 @@ func handleNodeAgentStatusImpl(ctxArg interface{}, key string,
 	if status.DevicePoweroff {
 		handleDeviceOperation(ctx, types.DeviceOperationPoweroff)
 	}
-	if ctx.localMaintenanceMode != status.LocalMaintenanceMode {
+	if ctx.localMaintenanceMode != status.LocalMaintenanceMode ||
+		ctx.localMaintModeReason != status.LocalMaintenanceModeReason {
 		ctx.localMaintenanceMode = status.LocalMaintenanceMode
 		ctx.localMaintModeReason = status.LocalMaintenanceModeReason
-		mergeMaintenanceMode(ctx)
+
+		mergeMaintenanceMode(ctx, "handleNodeAgentStatusImpl")
 	}
 
 	if naHasRealChange(*getconfigCtx.NodeAgentStatus, status) {
