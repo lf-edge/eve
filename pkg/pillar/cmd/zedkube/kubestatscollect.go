@@ -22,7 +22,7 @@ import (
 func (z *zedkube) collectKubeStats() {
 	// we are the elected leader, start collecting kube stats
 	// regardless if we are in cluster or single node mode
-	if z.isKubeStatsLeader {
+	if z.isKubeStatsLeader.Load() {
 		log.Functionf("collectKubeStats: Started collecting kube stats")
 
 		clientset, err := getKubeClientSet()

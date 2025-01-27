@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/agentbase"
@@ -57,6 +58,7 @@ type zedkube struct {
 	pubEdgeNodeClusterStatus pubsub.Publication
 	pubENClusterAppStatus    pubsub.Publication
 	pubKubeClusterInfo       pubsub.Publication
+	pubLeaseLeaderInfo       pubsub.Publication
 
 	networkInstanceStatusMap sync.Map
 	ioAdapterMap             sync.Map
@@ -68,8 +70,10 @@ type zedkube struct {
 	clusterIPIsReady         bool
 	nodeuuid                 string
 	nodeName                 string
-	isKubeStatsLeader        bool
-	inKubeLeaderElection     bool
+	isKubeStatsLeader        atomic.Bool
+	inKubeLeaderElection     atomic.Bool
+	electionFuncRunning      atomic.Bool
+	leaderIdentity           string
 	electionStartCh          chan struct{}
 	electionStopCh           chan struct{}
 	statusServer             *http.Server
@@ -184,6 +188,16 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 	zedkubeCtx.pubKubeClusterInfo = pubKubeClusterInfo
 
+	pubLeaseLeaderInfo, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName: agentName,
+			TopicType: types.KubeLeaseInfo{},
+		})
+	if err != nil {
+		log.Fatal(err)
+	}
+	zedkubeCtx.pubLeaseLeaderInfo = pubLeaseLeaderInfo
+
 	// Look for global config such as log levels
 	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "zedagent",
@@ -248,8 +262,8 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	subEdgeNodeInfo.Activate()
 
 	// start the leader election
-	zedkubeCtx.electionStartCh = make(chan struct{})
-	zedkubeCtx.electionStopCh = make(chan struct{})
+	zedkubeCtx.electionStartCh = make(chan struct{}, 1)
+	zedkubeCtx.electionStopCh = make(chan struct{}, 1)
 	go zedkubeCtx.handleLeaderElection()
 
 	// Wait for the certs, and nodeInfo which are needed to decrypt the token inside the
