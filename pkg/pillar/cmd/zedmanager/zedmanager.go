@@ -1098,11 +1098,19 @@ func handleCreate(ctxArg interface{}, key string,
 	log.Functionf("handleCreate(%v) for %s",
 		config.UUIDandVersion, config.DisplayName)
 
+	handleCreateAppInstanceStatus(ctx, config)
+}
+
+func handleCreateAppInstanceStatus(ctx *zedmanagerContext, config types.AppInstanceConfig) {
+	log.Functionf("handleCreateAppInstanceStatus(%v) for %s",
+		config.UUIDandVersion, config.DisplayName)
+
 	status := types.AppInstanceStatus{
-		UUIDandVersion: config.UUIDandVersion,
-		DisplayName:    config.DisplayName,
-		FixedResources: config.FixedResources,
-		State:          types.INITIAL,
+		UUIDandVersion:     config.UUIDandVersion,
+		DisplayName:        config.DisplayName,
+		FixedResources:     config.FixedResources,
+		State:              types.INITIAL,
+		IsDesignatedNodeID: config.IsDesignatedNodeID,
 	}
 
 	// Calculate the moment when the application should start, taking into account the configured delay
@@ -1119,10 +1127,10 @@ func handleCreate(ctxArg interface{}, key string,
 	configCounter := int(config.PurgeCmd.Counter + config.LocalPurgeCmd.Counter)
 	if err == nil {
 		if persistedCounter == configCounter {
-			log.Functionf("handleCreate(%v) for %s found matching purge counter %d",
+			log.Functionf("handleCreateAppInstanceStatus(%v) for %s found matching purge counter %d",
 				config.UUIDandVersion, config.DisplayName, persistedCounter)
 		} else {
-			log.Warnf("handleCreate(%v) for %s found different purge counter %d vs. %d",
+			log.Warnf("handleCreateAppInstanceStatus(%v) for %s found different purge counter %d vs. %d",
 				config.UUIDandVersion, config.DisplayName, persistedCounter, configCounter)
 			status.PurgeInprogress = types.DownloadAndVerify
 			status.PurgeStartedAt = time.Now()
@@ -1131,7 +1139,7 @@ func handleCreate(ctxArg interface{}, key string,
 		}
 	} else {
 		// Save this PurgeCmd.Counter as the baseline
-		log.Functionf("handleCreate(%v) for %s saving purge counter %d",
+		log.Functionf("handleCreateAppInstanceStatus(%v) for %s saving purge counter %d",
 			config.UUIDandVersion, config.DisplayName, configCounter)
 		err = ctx.appToPurgeCounterMap.Assign(mapKey, configCounter, true)
 		if err != nil {
@@ -1194,7 +1202,7 @@ func handleCreate(ctxArg interface{}, key string,
 			config.DisplayName, config.UUIDandVersion.UUID)
 		publishAppInstanceStatus(ctx, &status)
 	}
-	log.Functionf("handleCreate done for %s", config.DisplayName)
+	log.Functionf("handleCreateAppInstanceStatus done for %s", config.DisplayName)
 }
 
 func handleModify(ctxArg interface{}, key string,
@@ -1664,7 +1672,7 @@ func effectiveActivateCurrentProfile(config types.AppInstanceConfig, currentProf
 
 func getKubeAppActivateStatus(ctx *zedmanagerContext, aiConfig types.AppInstanceConfig, effectiveActivate bool) bool {
 
-	if !ctx.hvTypeKube || aiConfig.DesignatedNodeID == uuid.Nil {
+	if !ctx.hvTypeKube {
 		return effectiveActivate
 	}
 
@@ -1693,9 +1701,9 @@ func getKubeAppActivateStatus(ctx *zedmanagerContext, aiConfig types.AppInstance
 		}
 	}
 
-	log.Functionf("getKubeAppActivateStatus: ai %s, node %s, onTheDevice %v, statusRunning %v",
-		aiConfig.DesignatedNodeID.String(), ctx.nodeUUID, onTheDevice, statusRunning)
-	if aiConfig.DesignatedNodeID == ctx.nodeUUID {
+	log.Functionf("getKubeAppActivateStatus: is designated node %v, node %s, onTheDevice %v, statusRunning %v",
+		aiConfig.IsDesignatedNodeID, ctx.nodeUUID, onTheDevice, statusRunning)
+	if aiConfig.IsDesignatedNodeID {
 		if statusRunning && !onTheDevice {
 			return false
 		}

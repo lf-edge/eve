@@ -29,6 +29,8 @@ type ContentTreeConfig struct {
 	GenerationCounter int64
 	DisplayName       string
 	CustomMeta        string
+	// Do we download on this node ?
+	IsLocal bool
 }
 
 // Key is content info UUID which will be unique
@@ -136,6 +138,7 @@ type ContentTreeStatus struct {
 	Blobs []string
 
 	HVTypeKube bool
+	IsLocal    bool
 	ErrorAndTimeWithSource
 }
 

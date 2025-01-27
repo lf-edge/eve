@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	zconfig "github.com/lf-edge/eve-api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/vault"
 	"github.com/lf-edge/eve/pkg/pillar/volumehandlers"
@@ -35,6 +36,7 @@ func handleVolumeModify(ctxArg interface{}, key string,
 	log.Functionf("handleVolumeModify(%s)", key)
 	config := configArg.(types.VolumeConfig)
 	ctx := ctxArg.(*volumemgrContext)
+
 	if _, deferred := ctx.volumeConfigCreateDeferredMap[key]; deferred {
 		//update deferred creation if exists
 		ctx.volumeConfigCreateDeferredMap[key] = &config
@@ -77,6 +79,7 @@ func handleVolumeDelete(ctxArg interface{}, key string,
 	log.Functionf("handleVolumeDelete(%s)", key)
 	config := configArg.(types.VolumeConfig)
 	ctx := ctxArg.(*volumemgrContext)
+
 	if _, deferred := ctx.volumeConfigCreateDeferredMap[key]; deferred {
 		//remove deferred creation if exists
 		delete(ctx.volumeConfigCreateDeferredMap, key)
@@ -98,6 +101,10 @@ func handleDeferredVolumeCreate(ctx *volumemgrContext, key string, config *types
 	log.Tracef("handleDeferredVolumeCreate(%s)", key)
 	status := ctx.LookupVolumeStatus(config.Key())
 	if status != nil {
+		if config.IsReplicated {
+			// Objects are replicated across cluster nodes, just exit.
+			return
+		}
 		log.Fatalf("status exists at handleVolumeCreate for %s", config.Key())
 	}
 	status = &types.VolumeStatus{
@@ -116,6 +123,8 @@ func handleDeferredVolumeCreate(ctx *volumemgrContext, key string, config *types
 		LastRefCountChangeTime:  time.Now(),
 		LastUse:                 time.Now(),
 		State:                   types.INITIAL,
+		IsReplicated:            config.IsReplicated,
+		IsNativeContainer:       config.IsNativeContainer,
 	}
 	updateVolumeStatusRefCount(ctx, status)
 	log.Noticef("handleDeferredVolumeCreate(%s) setting contentFormat to %s", key, volumeFormat[status.Key()])
@@ -151,6 +160,18 @@ func handleDeferredVolumeCreate(ctx *volumemgrContext, key string, config *types
 			}
 			status.TotalSize = int64(actualSize)
 			status.CurrentSize = int64(actualSize)
+		}
+
+		// Fill the ReferenceName which will be used by domainmgr to launch native containers.
+		ctStatus := ctx.LookupContentTreeStatus(status.ContentID.String())
+
+		if ctStatus != nil {
+			status.ReferenceName = ctStatus.ReferenceID()
+			// In kubevirt eve though we created PVC from container image, we still set the content format as container.
+			// This will help domainmgr to load the external boot kernel (support shim VM container)
+			if ctStatus.Format == zconfig.Format_CONTAINER {
+				status.ContentFormat = zconfig.Format_CONTAINER
+			}
 		}
 		publishVolumeStatus(ctx, status)
 		updateVolumeRefStatus(ctx, status)
