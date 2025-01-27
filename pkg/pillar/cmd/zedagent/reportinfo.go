@@ -19,6 +19,7 @@ import (
 	"github.com/lf-edge/eve-api/go/info"
 	etpm "github.com/lf-edge/eve/pkg/pillar/evetpm"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
+	"github.com/lf-edge/eve/pkg/pillar/kubeapi"
 	"github.com/lf-edge/eve/pkg/pillar/netclone"
 	"github.com/lf-edge/eve/pkg/pillar/netdump"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -1296,11 +1297,28 @@ func getBaseosUpdateCounter(ctx *zedagentContext) uint32 {
 	return status.CurrentRetryUpdateCounter
 }
 
+func isKubeClusterUpdating(ctx *zedagentContext) bool {
+	if ctx == nil {
+		return false
+	}
+	if ctx.subClusterUpdateStatus == nil {
+		return false
+	}
+	items := ctx.subClusterUpdateStatus.GetAll()
+	if status, ok := items["global"].(kubeapi.KubeClusterUpdateStatus); ok {
+		if (status.Component == kubeapi.COMP_LONGHORN) && (status.Status == kubeapi.COMP_STATUS_COMPLETED) {
+			return false
+		}
+		return true
+	}
+	return false
+}
+
 func getDeviceState(ctx *zedagentContext) types.DeviceState {
 	if ctx.maintenanceMode {
 		return types.DEVICE_STATE_MAINTENANCE_MODE
 	}
-	if isUpdating(ctx) {
+	if isUpdating(ctx) || isKubeClusterUpdating(ctx) {
 		return types.DEVICE_STATE_BASEOS_UPDATING
 	}
 	if ctx.rebootCmd || ctx.deviceReboot {
