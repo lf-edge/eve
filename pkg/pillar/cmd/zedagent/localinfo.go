@@ -723,6 +723,23 @@ func processReceivedDevCommands(getconfigCtx *getconfigContext, cmd *profile.Loc
 		}
 		return
 	}
+
+	// If HV=kubevirt and clustered, we ma need to drain a replica first
+	// If so defer/block the node outage
+	if getconfigCtx.waitDrainInProgress {
+		switch command {
+		case types.DevCommandUnspecified:
+			// Do nothing
+		case types.DevCommandShutdown:
+			log.Noticef("Received shutdown from local profile server during waitDrainInProgress")
+			ctx.shutdownCmdDeferred = true
+		case types.DevCommandShutdownPoweroff:
+			log.Noticef("Received shutdown_poweroff from local profile server during waitDrainInProgress")
+			ctx.poweroffCmdDeferred = true
+		}
+		return
+	}
+
 	switch command {
 	case types.DevCommandUnspecified:
 		// Do nothing

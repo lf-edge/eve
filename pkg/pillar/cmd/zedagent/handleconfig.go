@@ -77,6 +77,7 @@ type getconfigContext struct {
 	configGetStatus           types.ConfigGetStatus
 	updateInprogress          bool
 	readSavedConfig           bool // Did we already read it?
+	waitDrainInProgress       bool
 	configTickerHandle        interface{}
 	certTickerHandle          interface{}
 	metricsTickerHandle       interface{}

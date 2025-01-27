@@ -178,6 +178,8 @@ func TestNewConfigItemSpecMap(t *testing.T) {
 		LogRemainToSendMBytes,
 		DownloadMaxPortCost,
 		BlobDownloadMaxRetries,
+		KubevirtDrainTimeout,
+		KubevirtDrainSkipK8sAPINotReachableTimeout,
 		// Bool Items
 		UsbAccess,
 		VgaAccess,

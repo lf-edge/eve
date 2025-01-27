@@ -346,6 +346,18 @@ const (
 	// address, and MAC address change on EVE node upgrade (switch from old
 	// generation logic to new one) can cause problems with the guest network.
 	NetworkLocalLegacyMACAddress GlobalSettingKey = "network.local.legacy.mac.address"
+	// KubevirtDrainTimeout : how long in hours is allowed for a node drain before a failure is returned
+	KubevirtDrainTimeout GlobalSettingKey = "kubevirt.drain.timeout"
+	// KubevirtDrainSkipK8sApiTimeout : specifies the time duration in seconds which the drain request handler
+	// will continue retrying the k8s api before declaring the node is unavailable and continuing
+	// device operations (reboot/shutdown/upgrade)
+	// This covers the following k8s.io/apimachinery/pkg/api/errors
+	// IsInternalError
+	// IsServerTimeout
+	// IsServiceUnavailable
+	// IsTimeout
+	// IsTooManyRequests
+	KubevirtDrainSkipK8sAPINotReachableTimeout GlobalSettingKey = "kubevirt.drain.skip.k8sapinotreachable.timeout"
 )
 
 // AgentSettingKey - keys for per-agent settings
@@ -971,6 +983,10 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddIntItem(GoroutineLeakDetectionCheckWindowMinutes, 10, 10, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(GoroutineLeakDetectionKeepStatsHours, 24, 1, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(GoroutineLeakDetectionCooldownMinutes, 5, 1, 0xFFFFFFFF)
+
+	// Kubevirt Drain Section
+	configItemSpecMap.AddIntItem(KubevirtDrainTimeout, 24, 1, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(KubevirtDrainSkipK8sAPINotReachableTimeout, 300, 1, 0xFFFFFFFF)
 
 	// Add Bool Items
 	configItemSpecMap.AddBoolItem(UsbAccess, true) // Controller likely default to false

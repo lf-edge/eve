@@ -69,6 +69,7 @@ type diagContext struct {
 	appInstanceSummary      types.AppInstanceSummary
 	subAppInstanceStatus    pubsub.Subscription
 	subDownloaderStatus     pubsub.Subscription
+	subNodeDrainStatus      pubsub.Subscription
 	zedcloudMetrics         *zedcloud.AgentMetrics
 	gotBC                   bool
 	gotDNS                  bool
@@ -381,6 +382,8 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	ctx.subDownloaderStatus = subDownloaderStatus
 	subDownloaderStatus.Activate()
 
+	initDrainSub(ps, &ctx)
+
 	cloudPingMetricPub, err := ps.NewPublication(
 		pubsub.PublicationOptions{
 			AgentName: agentName,
@@ -429,6 +432,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 		case change := <-subDownloaderStatus.MsgChan():
 			subDownloaderStatus.ProcessChange(change)
+
+		case change := <-ctx.subNodeDrainStatus.MsgChan():
+			ctx.subNodeDrainStatus.ProcessChange(change)
 		}
 		// Is this the first time we have all the info to print?
 		if !gotAll && ctx.gotBC && ctx.gotDNS && ctx.gotDPCList {
@@ -1063,6 +1069,8 @@ func printOutput(ctx *diagContext, caller string) {
 				ds.Name, ds.ImageSha256, ds.Progress, ds.TotalSize)
 		}
 	}
+
+	printNodeDrainStatus(ctx)
 	ctx.ph.Flush()
 }
 
