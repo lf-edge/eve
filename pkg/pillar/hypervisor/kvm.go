@@ -1687,6 +1687,8 @@ func (ctx KvmContext) CreateDomConfig(domainName string,
 		}
 	}
 
+	// TODO: check uuid and do not start vsock if it is not premitted
+
 	// render vsock settings, this should go last to avoid
 	// PCI ID conflicts, let qemu assign PCI ID for vsock.
 	vsockContext := tQemuVsockContext{
