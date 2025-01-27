@@ -100,11 +100,16 @@ func (z *zedrouter) attachNTPServersToPortConfigs(portConfigs []nireconciler.Por
 
 		ntpServers := make([]net.IP, 0, len(ntpServerDomainsOrIPs))
 		for _, ntpServer := range ntpServerDomainsOrIPs {
+			if len(strings.TrimSpace(ntpServer)) == 0 {
+				continue
+			}
+
 			ip := net.ParseIP(ntpServer)
 			if ip != nil {
 				ntpServers = append(ntpServers, ip)
 				continue
 			}
+
 			z.pubSub.StillRunning(agentName, warningTime, errorTime)
 			dnsResponses, err := devicenetwork.ResolveWithPortsLambda(
 				ntpServer,
