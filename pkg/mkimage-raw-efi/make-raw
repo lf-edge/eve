@@ -100,6 +100,16 @@ EFI_PART_SIZE=$((36 * 1024 * 1024))
 # Warning: free space and rellocate all tables if image has
 # Warning: been bloated.
 ROOTFS_PART_SIZE_MIN=$((512 * 1024 * 1024))
+# For kubevirt eve lets set partition size to 1GB
+# Check if file /root/etc/eve-hv-type exists.
+# make-raw will be called twice during compilation and during installation.
+# The eve-hv-type file will be present only during installation.
+if [ -f /root/etc/eve-hv-type ]; then
+   eve_flavor=$(cat /root/etc/eve-hv-type)
+   if [ "$eve_flavor" = "kubevirt" ]; then
+      ROOTFS_PART_SIZE_MIN=$((1 * 1024 * 1024 * 1024))
+   fi
+fi
 # conf partition size in bytes
 CONF_PART_SIZE=$((1024 * 1024))
 # installer inventory partition size in bytes
