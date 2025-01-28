@@ -463,6 +463,7 @@ cp -r /sys/fs/cgroup/memory "$DIR/sys-fs-cgroup-memory" >/dev/null 2>&1
 [ -f /persist/SMART_details.json ] && ln -s /persist/SMART_details* "$DIR/"
 cp    /config/grub.cfg      "$DIR/config-grub.cfg"
 cp    /config/server        "$DIR/config-server"
+[ -d /persist/monitor ] && ln -s /persist/monitor "$DIR/persist-monitor"
 
 # Network part
 collect_network_info
