@@ -162,7 +162,7 @@ do_installer_raw() {
 create_installer_iso() {
   mkdir -p /installer_root
   unsquashfs -f -d /installer_root /bits/installer.img 1>&2
-  tar -C /installer_root -cf - . | /make-efi installer
+  tar -C /installer_root -cf - . | VOLUME_LABEL=EVEISO /make-efi installer
   rm -rf /installer_root
 }
 

@@ -651,6 +651,8 @@ func parseAppInstanceConfig(getconfigCtx *getconfigContext,
 		appinstancePrevConfigHash, configHash, Apps)
 	appinstancePrevConfigHash = configHash
 
+	devUUIDStr := config.GetId().Uuid
+
 	// First look for deleted ones
 	items := getconfigCtx.pubAppInstanceConfig.GetAll()
 	for uuidStr := range items {
@@ -768,9 +770,14 @@ func parseAppInstanceConfig(getconfigCtx *getconfigContext,
 		// Add config submitted via local profile server.
 		addLocalAppConfig(getconfigCtx, &appInstance)
 
-		// XXX add Designated ID to the appInstance
-		// XXX Keep this here for now to allow the kubevirt single-node working, the later PR to EVE main will remove this
-		appInstance.DesignatedNodeID = devUUID
+		controllerDNID := cfgApp.GetDesignatedNodeId()
+		// If this node is designated node id set IsDesignatedNodeID to true else false.
+		// On single node eve either kvm or kubevirt based, this node will always be designated node.
+		if controllerDNID != "" && controllerDNID != devUUIDStr {
+			appInstance.IsDesignatedNodeID = false
+		} else {
+			appInstance.IsDesignatedNodeID = true
+		}
 
 		// Verify that it fits and if not publish with error
 		checkAndPublishAppInstanceConfig(getconfigCtx, appInstance)
@@ -3124,6 +3131,20 @@ func scheduleDeviceOperation(getconfigCtx *getconfigContext, opsCmd *zconfig.Dev
 		case types.DeviceOperationShutdown:
 			ctx.shutdownCmdDeferred = true
 		}
+		return false
+	}
+
+	// If HV=kubevirt and clustered, we ma need to drain a replica first
+	// If so defer/block the node outage
+	deferForDrain := shouldDeferForNodeDrain(ctx, op)
+	if deferForDrain {
+		switch op {
+		case types.DeviceOperationReboot:
+			ctx.rebootCmdDeferred = true
+		case types.DeviceOperationShutdown:
+			ctx.shutdownCmdDeferred = true
+		}
+		getconfigCtx.waitDrainInProgress = true
 		return false
 	}
 

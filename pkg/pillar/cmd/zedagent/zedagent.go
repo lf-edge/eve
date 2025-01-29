@@ -153,6 +153,8 @@ type zedagentContext struct {
 	subCipherMetricsZR        pubsub.Subscription
 	subCipherMetricsWwan      pubsub.Subscription
 	subPatchEnvelopeUsage     pubsub.Subscription
+	subNodeDrainStatus        pubsub.Subscription
+	pubNodeDrainRequest       pubsub.Publication
 	zedcloudMetrics           *zedcloud.AgentMetrics
 	fatalFlag                 bool // From command line arguments
 	hangFlag                  bool // From command line arguments
@@ -543,6 +545,8 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 	// start remote attestation task
 	attestModuleStart(zedagentCtx)
+
+	initNodeDrainPubSub(zedagentCtx)
 
 	// Enter main zedagent event loop.
 	mainEventLoop(zedagentCtx, stillRunning) // never exits
@@ -1058,6 +1062,9 @@ func mainEventLoop(zedagentCtx *zedagentContext, stillRunning *time.Ticker) {
 
 		case change := <-zedagentCtx.subEdgeviewStatus.MsgChan():
 			zedagentCtx.subEdgeviewStatus.ProcessChange(change)
+
+		case change := <-zedagentCtx.subNodeDrainStatus.MsgChan():
+			zedagentCtx.subNodeDrainStatus.ProcessChange(change)
 
 		case <-stillRunning.C:
 			// Fault injection
@@ -2489,9 +2496,11 @@ func handleNodeAgentStatusImpl(ctxArg interface{}, key string,
 		status.UpdateInprogress, status.RebootReason,
 		status.BootReason.String())
 	updateInprogress := getconfigCtx.updateInprogress
+	waitDrainInProgress := getconfigCtx.waitDrainInProgress
 	ctx := getconfigCtx.zedagentCtx
 	ctx.remainingTestTime = status.RemainingTestTime
 	getconfigCtx.updateInprogress = status.UpdateInprogress
+	getconfigCtx.waitDrainInProgress = status.WaitDrainInProgress
 	ctx.rebootTime = status.RebootTime
 	ctx.rebootStack = status.RebootStack
 	ctx.rebootReason = status.RebootReason
@@ -2522,6 +2531,29 @@ func handleNodeAgentStatusImpl(ctxArg interface{}, key string,
 		log.Functionf("TestComplete and deferred poweroff")
 		ctx.poweroffCmdDeferred = false
 		infoStr := fmt.Sprintf("TestComplete and deferred Poweroff Cmd")
+		handleDeviceOperationCmd(ctx, infoStr, types.DeviceOperationPoweroff)
+	}
+	if ctx.rebootCmdDeferred &&
+		waitDrainInProgress && !status.WaitDrainInProgress {
+		log.Noticef("Drain complete and deferred Reboot Cmd")
+		log.Functionf("Drain complete check and deferred reboot Cmd")
+		ctx.rebootCmdDeferred = false
+		infoStr := fmt.Sprintf("Drain complete and deferred Reboot Cmd")
+		handleDeviceOperationCmd(ctx, infoStr, types.DeviceOperationReboot)
+	}
+	if ctx.shutdownCmdDeferred &&
+		waitDrainInProgress && !status.WaitDrainInProgress {
+		log.Noticef("Drain complete and deferred shutdown Cmd")
+		log.Functionf("Drain complete check and deferred shutdown Cmd")
+		ctx.shutdownCmdDeferred = false
+		infoStr := fmt.Sprintf("Drain complete and deferred shutdown Cmd")
+		handleDeviceOperationCmd(ctx, infoStr, types.DeviceOperationShutdown)
+	}
+	if ctx.poweroffCmdDeferred &&
+		waitDrainInProgress && !status.WaitDrainInProgress {
+		log.Functionf("Drain complete and deferred poweroff")
+		ctx.poweroffCmdDeferred = false
+		infoStr := fmt.Sprintf("Drain complete and deferred Poweroff Cmd")
 		handleDeviceOperationCmd(ctx, infoStr, types.DeviceOperationPoweroff)
 	}
 	if status.DeviceReboot {

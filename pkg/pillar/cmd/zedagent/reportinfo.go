@@ -128,10 +128,13 @@ func objectInfoTask(ctxPtr *zedagentContext, triggerInfo <-chan infoForObjectKey
 				sub := ctxPtr.getconfigCtx.subContentTreeStatus
 				if c, err = sub.Get(infoForKeyMessage.objectKey); err == nil {
 					ctStatus := c.(types.ContentTreeStatus)
-					uuidStr := ctStatus.Key()
-					PublishContentInfoToZedCloud(ctxPtr, uuidStr, &ctStatus,
-						ctxPtr.iteration, infoDest)
-					ctxPtr.iteration++
+					// We publish the info to zedcloud only if it is a local contenttree
+					if ctStatus.IsLocal {
+						uuidStr := ctStatus.Key()
+						PublishContentInfoToZedCloud(ctxPtr, uuidStr, &ctStatus,
+							ctxPtr.iteration, infoDest)
+						ctxPtr.iteration++
+					}
 				}
 			case info.ZInfoTypes_ZiBlobList:
 				// publish blob info

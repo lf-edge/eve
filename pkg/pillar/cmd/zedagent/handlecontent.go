@@ -96,6 +96,24 @@ func parseContentInfoConfig(ctx *getconfigContext,
 		contentConfig.MaxDownloadSize = cfgContentTree.GetMaxSizeBytes()
 		contentConfig.DisplayName = cfgContentTree.GetDisplayName()
 		contentConfig.CustomMeta = cfgContentTree.GetCustomMetaData()
+		contentConfig.IsLocal = true
+		controllerDNID := cfgContentTree.GetDesignatedNodeId()
+		// If this node is not designated node id set IsLocal to false.
+		// Content will be downloaded to only to the designated node id of that content tree.
+		// So on other nodes in the cluster mark the content tree as non-local.
+		// On single node eve either kvm or kubevirt based, this node will always be designated node.
+		// But if this is the contenttree of a container, we download it to all nodes of the cluster,
+		// so set IsLocal true in such case.
+		if controllerDNID != "" && controllerDNID != devUUID.String() {
+			if contentConfig.Format == zconfig.Format_CONTAINER {
+				contentConfig.IsLocal = true
+			} else {
+				contentConfig.IsLocal = false
+			}
+		}
+
+		log.Noticef("parseContentInfo designated ID copy from volume config: %v, contentid %v, url %s", controllerDNID, contentConfig.ContentID, contentConfig.RelativeURL)
+
 		publishContentTreeConfig(ctx, *contentConfig)
 	}
 	ctx.pubContentTreeConfig.SignalRestarted()

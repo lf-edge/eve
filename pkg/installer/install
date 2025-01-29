@@ -139,6 +139,19 @@ mount_part() {
    mount "$@" "/dev/$ID" "$TARGET"
 }
 
+# Find EFI partition and copy files
+copy_native_efi() {
+    EFI_PART=$(lsblk -anl -o "NAME,PARTLABEL" | grep "EFI System" | awk '{print $1}' | sed "s#.*#/dev/&#")
+    if [ -n "$EFI_PART" ]; then
+        # EFI partition was found, copy files
+        mkdir -p "$BOOT_DIR"
+        mkdir /tmp/_EFI
+        mount "$EFI_PART" /tmp/_EFI
+        cp -r /tmp/_EFI/* "$BOOT_DIR"/
+        umount /tmp/_EFI
+    fi
+}
+
 # collect_black_box FOLDER_TO_PUT_BLACK_BOX
 collect_black_box() {
    lsblk > "$1/lsblk.txt"
@@ -325,6 +338,9 @@ if [ ! -s $INSTALL_SERVER_FILE ]; then
    logmsg "EVE install server : $(cat $INSTALL_SERVER_FILE)"
 fi
 
+# Try to copy EFI files from the EFI partition of the installer device
+copy_native_efi
+
 # if there's something in /bits -- that's the ultimate source
 # before we do, let's list what we have, for the log
 ls -la /bits
@@ -336,8 +352,8 @@ ln -s /bits/* ${ARTIFACTS_DIR} 2>/dev/null
 # and now a few measures of last resort - make sure the ${ARTIFACTS_DIR}/* we need exist, or else
 # symlink to the root filesystem
 [ -e ${ROOTFS_IMG} ] || { echo "ERROR: no rootfs.img found"; exit 1; }
-[ -e ${EFI_DIR} ] || ln -s /root/EFI ${EFI_DIR}
-[ -e ${BOOT_DIR} ] || ln -s /uboot/boot ${BOOT_DIR}
+[ -d ${EFI_DIR} ] || ln -s /root/EFI ${EFI_DIR}
+[ -d ${BOOT_DIR} ] || ln -s /uboot/boot ${BOOT_DIR}
 
 # finally lets see if we were given any overrides
 for i in rootfs config persist; do
