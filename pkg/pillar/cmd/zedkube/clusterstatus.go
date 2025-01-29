@@ -7,15 +7,24 @@ package zedkube
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net/http"
+	"os"
 	"reflect"
+	"strings"
 	"time"
 
+	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"github.com/lf-edge/eve/pkg/pillar/cipher"
+	"github.com/lf-edge/eve/pkg/pillar/kubeapi"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils/netutils"
+	uuid "github.com/satori/go.uuid"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
 )
 
 func handleDNSCreate(ctxArg interface{}, _ string, statusArg interface{}) {
@@ -182,6 +191,20 @@ func (z *zedkube) startClusterStatusServer() {
 	mux.HandleFunc("/status", func(w http.ResponseWriter, r *http.Request) {
 		z.clusterStatusHTTPHandler(w, r)
 	})
+	mux.HandleFunc("/app", func(w http.ResponseWriter, r *http.Request) {
+		z.appIDHandler(w, r)
+	})
+	mux.HandleFunc("/app/", func(w http.ResponseWriter, r *http.Request) {
+		z.appIDHandler(w, r)
+	})
+
+	mux.HandleFunc("/cluster-app", func(w http.ResponseWriter, r *http.Request) {
+		z.clusterAppIDHandler(w, r)
+	})
+	mux.HandleFunc("/cluster-app/", func(w http.ResponseWriter, r *http.Request) {
+		z.clusterAppIDHandler(w, r)
+	})
+
 	z.statusServer = &http.Server{
 		// Listen on the ClusterIPPrefix IP and the ClusterStatusPort
 		// the firewall rule is explicitly added to allow traffic to this port in kubevirt
@@ -259,4 +282,166 @@ func (z *zedkube) clusterStatusHTTPHandler(w http.ResponseWriter, r *http.Reques
 	}
 	log.Functionf("clusterStatusHTTPHandler: not master or etcd")
 	fmt.Fprint(w, "")
+}
+
+func (z *zedkube) appIDHandler(w http.ResponseWriter, r *http.Request) {
+	// Extract the UUID from the URL
+	uuidStr := strings.TrimPrefix(r.URL.Path, "/app")
+	uuidStr = strings.TrimPrefix(uuidStr, "/")
+
+	af := agentbase.GetApplicationInfo("/run/", "/persist/status/", "/persist/kubelog/", uuidStr)
+	if af.AppInfo == nil {
+		http.Error(w, "App not found", http.StatusNotFound)
+		return
+	}
+	appInfoJSON, err := json.MarshalIndent(af, "", "  ")
+	if err != nil {
+		http.Error(w, "Error marshalling appInfo to JSON", http.StatusInternalServerError)
+		return
+	}
+	// Handle the request for the given UUID
+	fmt.Fprintf(w, "%s", appInfoJSON)
+}
+
+func (z *zedkube) clusterAppIDHandler(w http.ResponseWriter, r *http.Request) {
+	// Extract the UUID from the URL
+	uuidStr := strings.TrimPrefix(r.URL.Path, "/cluster-app")
+	uuidStr = strings.TrimPrefix(uuidStr, "/")
+
+	af := agentbase.GetApplicationInfo("/run/", "/persist/status/", "/persist/kubelog/", uuidStr)
+	if af.AppInfo == nil {
+		http.Error(w, "App not found", http.StatusNotFound)
+		return
+	}
+	appInfoJSON, err := json.MarshalIndent(af, "", "  ")
+	if err != nil {
+		http.Error(w, "Error marshalling appInfo to JSON", http.StatusInternalServerError)
+		return
+	}
+
+	// Initialize combined JSON with local app info
+	combinedJSON := `{
+  "key": "cluster-app",
+  "value": [` + strings.TrimSuffix(string(appInfoJSON), "\n")
+
+	hosts, notClusterMode, err := z.getClusterNodeIPs()
+	if err == nil && !notClusterMode {
+		for _, host := range hosts {
+			client := &http.Client{
+				Timeout: 5 * time.Second, // Set a timeout of 5 seconds (adjust as needed)
+			}
+			req, err := http.NewRequest("POST", "http://"+host+":"+types.ClusterStatusPort+"/app/"+uuidStr, nil)
+			if err != nil {
+				log.Errorf("clusterAppIDHandler: %v", err)
+				continue
+			}
+
+			resp, err := client.Do(req)
+			if err != nil {
+				if os.IsTimeout(err) {
+					errorInfo := struct {
+						Hostname string `json:"hostname"`
+						Errors   string `json:"errors"`
+					}{
+						Hostname: host,
+						Errors:   err.Error(),
+					}
+					errorJSON, jsonErr := json.MarshalIndent(errorInfo, "", "  ")
+					if jsonErr != nil {
+						log.Errorf("clusterAppIDHandler: error marshalling error info to JSON: %v", jsonErr)
+					} else {
+						// Append the error JSON to combinedJSON
+						combinedJSON = combinedJSON + "," + string(errorJSON)
+					}
+				} else {
+					log.Errorf("clusterAppIDHandler: %v", err)
+				}
+				continue
+			}
+			defer resp.Body.Close()
+
+			if resp.StatusCode != http.StatusOK {
+				log.Errorf("clusterAppIDHandler: received non-OK status %d from %s", resp.StatusCode, host)
+				continue
+			}
+
+			remoteAppInfoJSON, err := ioutil.ReadAll(resp.Body)
+			if err != nil {
+				log.Errorf("clusterAppIDHandler: error reading response from %s: %v", host, err)
+				continue
+			}
+
+			// Replace outermost { and } with [ and ] in remoteAppInfoJSON
+			combinedJSON = combinedJSON + "," + strings.TrimSuffix(string(remoteAppInfoJSON), "\n")
+		}
+	}
+
+	// Ensure the combined JSON is properly closed
+	combinedJSON += "]\n}\n"
+
+	// Return the combined JSON to the caller
+	w.Header().Set("Content-Type", "application/json")
+	w.Write([]byte(combinedJSON))
+}
+
+func (z *zedkube) checkAppNameForUUID(appStr string) (string, error) {
+	// Verify the extracted UUID string
+	if _, err := uuid.FromString(appStr); err != nil {
+		// then check if this is the app Name
+		sub := z.subAppInstanceConfig
+		items := sub.GetAll()
+		if len(items) == 0 {
+			return "", fmt.Errorf("App not found")
+		}
+		var foundApp bool
+		for _, item := range items {
+			aiconfig := item.(types.AppInstanceConfig)
+			if aiconfig.DisplayName == appStr {
+				appStr = aiconfig.UUIDandVersion.UUID.String()
+				foundApp = true
+				break
+			}
+		}
+		if !foundApp {
+			return "", fmt.Errorf("App not found")
+		}
+	}
+	return appStr, nil
+}
+
+func (z *zedkube) getClusterNodeIPs() ([]string, bool, error) {
+	if !z.clusterIPIsReady {
+		return nil, true, nil
+	}
+
+	config, err := kubeapi.GetKubeConfig()
+	if err != nil {
+		log.Errorf("getClusterNodes: config is nil")
+		return nil, false, err
+	}
+	z.config = config
+
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		log.Errorf("collectAppLogs: can't get clientset %v", err)
+		return nil, false, err
+	}
+
+	nodes, err := clientset.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
+	if err != nil {
+		log.Errorf("Error getting cluster nodes")
+		return nil, false, err
+	}
+
+	// get all the nodes internal ip addresses except for my own
+	clusterIPStr := z.clusterConfig.ClusterIPPrefix.IP.String()
+	var hosts []string
+	for _, node := range nodes.Items {
+		for _, addr := range node.Status.Addresses {
+			if addr.Type == corev1.NodeInternalIP && addr.Address != clusterIPStr {
+				hosts = append(hosts, addr.Address)
+			}
+		}
+	}
+	return hosts, false, nil
 }
