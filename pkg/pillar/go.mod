@@ -63,6 +63,7 @@ require (
 	k8s.io/client-go v12.0.0+incompatible
 	k8s.io/kubectl v0.30.3
 	k8s.io/metrics v0.29.3
+	k8s.io/utils v0.0.0-20230726121419-3b25d923346b
 	kubevirt.io/api v1.1.1
 	kubevirt.io/client-go v1.2.0
 	tags.cncf.io/container-device-interface v0.6.2
@@ -205,7 +206,7 @@ require (
 	github.com/go-kit/kit v0.13.0 // indirect
 	github.com/go-kit/log v0.2.1 // indirect
 	github.com/go-logfmt/logfmt v0.6.0 // indirect
-	github.com/golang/glog v1.1.2 // indirect
+	github.com/golang/glog v1.2.4 // indirect
 	github.com/golang/mock v1.6.0 // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/google/btree v1.0.1 // indirect
@@ -237,7 +238,6 @@ require (
 	k8s.io/component-base v0.28.5 // indirect
 	k8s.io/klog/v2 v2.110.1 // indirect
 	k8s.io/kube-openapi v0.0.0-20231010175941-2dd684a91f00 // indirect
-	k8s.io/utils v0.0.0-20230726121419-3b25d923346b // indirect
 	kubevirt.io/containerized-data-importer-api v1.57.0-alpha1 // indirect
 	kubevirt.io/controller-lifecycle-operator-sdk/api v0.0.0-20220329064328-f3cc58c6ed90 // indirect
 	sigs.k8s.io/controller-runtime v0.16.1 // indirect
