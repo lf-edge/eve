@@ -37,7 +37,7 @@ FROM --platform=${BUILDPLATFORM} lfedge/eve-cross-compilers:250abc77c8c39664905b
 
 # will use several packages from target arch and copy them to sysroot
 # hadolint ignore=DL3006
-FROM ${EVE_ALPINE_IMAGE} AS cross-compile-libs
+FROM --platform=${TARGETPLATFORM} ${EVE_ALPINE_IMAGE} AS cross-compile-libs
 ENV PKGS musl-dev libgcc libintl libuuid libtirpc libblkid
 RUN eve-alpine-deploy.sh
 # we need zfs files during build
