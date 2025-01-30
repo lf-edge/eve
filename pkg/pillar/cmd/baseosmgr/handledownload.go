@@ -68,7 +68,7 @@ func installDownloadedObjects(ctx *baseOsMgrContext, uuidStr, finalObjDir string
 
 	if status == nil {
 		return changed, proceed, fmt.Errorf("installDownloadedObjects(%s) cannot found contentTree %s",
-			uuidStr, status.ContentID)
+			uuidStr, contentID)
 	}
 
 	if status.State == types.LOADED {
