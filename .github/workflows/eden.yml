@@ -113,27 +113,27 @@ jobs:
         hv: [kvm]
         platform: ["generic"]
     if: github.event.review.state == 'approved'
-    uses: lf-edge/eden/.github/workflows/test.yml@1.0.1
+    uses: lf-edge/eden/.github/workflows/test.yml@1.0.2
     secrets: inherit
     with:
       eve_image: "evebuild/pr:${{ github.event.pull_request.number  }}"
       eve_log_level: "debug"
       eve_artifact_name: eve-${{ matrix.hv }}-${{ matrix.arch }}-${{ matrix.platform }}
       artifact_run_id: ${{ needs.get_run_id.outputs.run_id }}
-      eden_version: "1.0.1"
+      eden_version: "1.0.2"
 
   test_suite_master:
     if: github.ref == 'refs/heads/master'
-    uses: lf-edge/eden/.github/workflows/test.yml@1.0.1
+    uses: lf-edge/eden/.github/workflows/test.yml@1.0.2
     secrets: inherit
     with:
       eve_image: "lfedge/eve:snapshot"
-      eden_version: "1.0.1"
+      eden_version: "1.0.2"
 
   test_suite_tag:
     if: startsWith(github.ref, 'refs/tags')
-    uses: lf-edge/eden/.github/workflows/test.yml@1.0.1
+    uses: lf-edge/eden/.github/workflows/test.yml@1.0.2
     secrets: inherit
     with:
       eve_image: "lfedge/eve:${{ github.ref_name }}"
-      eden_version: "1.0.1"
+      eden_version: "1.0.2"
