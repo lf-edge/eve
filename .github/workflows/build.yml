@@ -20,13 +20,18 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        os: [buildjet-4vcpu-ubuntu-2204-arm, buildjet-4vcpu-ubuntu-2004]
+        arch: [arm64, amd64]
+        platform: [generic, nvidia-jp5, nvidia-jp6]
         include:
-          - os: buildjet-4vcpu-ubuntu-2204-arm
-            arch: arm64
-          - os: buildjet-4vcpu-ubuntu-2004
-            arch: amd64
           - os: buildjet-4vcpu-ubuntu-2004
             arch: riscv64
+            platform: generic
+        exclude:
+          - os: buildjet-4vcpu-ubuntu-2204-arm
+            arch: amd64
+          - os: buildjet-4vcpu-ubuntu-2004
+            platform: arm64
     steps:
       - name: Starting Report
         run: |
@@ -71,9 +76,9 @@ jobs:
         with:
           path: ~/.linuxkit/cache
           key: linuxkit-${{ matrix.arch }}-${{ github.event.pull_request.head.sha }}
-      - name: Build packages
+      - name: Build packages ${{ matrix.os }} for ${{ matrix.platform }}
         run: |
-          make V=1 PRUNE=1 ZARCH=${{ matrix.arch }} pkgs
+          make V=1 PRUNE=1 PLATFORM=${{ matrix.platform }} ZARCH=${{ matrix.arch }} pkgs
       - name: Post package report
         run: |
           echo Disk usage
