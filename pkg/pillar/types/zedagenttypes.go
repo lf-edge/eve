@@ -497,7 +497,7 @@ const (
 	DeviceOperationReboot DeviceOperation = iota
 	//DeviceOperationShutdown shutdown all app instances on device
 	DeviceOperationShutdown
-	//DeviceOperationPoweroff is shutdown plus poweroff. Not setable from controller
+	//DeviceOperationPoweroff is shutdown plus poweroff. Not settable from controller
 	DeviceOperationPoweroff
 )
 

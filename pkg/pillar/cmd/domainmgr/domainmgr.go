@@ -702,11 +702,11 @@ func getReservedCPUsNum() (int, error) {
 	bootArgs := strings.Fields(string(data))
 	for _, arg := range bootArgs {
 		if strings.HasPrefix(arg, "eve_max_vcpus") {
-			argSplitted := strings.Split(arg, "=")
-			if len(argSplitted) < 2 {
+			argSplit := strings.Split(arg, "=")
+			if len(argSplit) < 2 {
 				return 1, errors.New("kernel arg 'eve_max_vcpus' is malformed")
 			}
-			cpusReserved, err := strconv.Atoi(argSplitted[1])
+			cpusReserved, err := strconv.Atoi(argSplit[1])
 			if err != nil {
 				return 1, errors.New("value of kernel arg 'eve_max_vcpus' is malformed")
 			}
