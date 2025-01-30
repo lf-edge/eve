@@ -44,6 +44,12 @@ while getopts ":s:d:f" opt; do
     esac
 done
 
+cp_parents_supported=true
+os=$(uname -s)
+if [ "$os" = "Darwin" ]; then
+    cp_parents_supported=false
+fi
+
 shift $((OPTIND -1))
 
 echo "[+] Running mini-yetus"
@@ -100,7 +106,11 @@ all_files=$( {
 process_files() {
     while IFS= read -r file; do
         if [ -e "$file" ]; then
-            cp --parents -r "$PWD/$file" "$SRC_DIR/" || { echo "Failed to copy $file"; exit 1; }
+            if [ "$cp_parents_supported" = false ]; then
+                rsync -R "$PWD/$file" "$SRC_DIR/" || { echo "Failed to copy $file"; exit 1; }
+            else
+                cp --parents -r "$PWD/$file" "$SRC_DIR/" || { echo "Failed to copy $file"; exit 1; }
+            fi
         else
             if [ "$MISSING_FILE_REPORTED" = false ]; then
                 echo "[*] Some files are missing from the current branch, if you are comparing against main/master, a rebase might be needed."
@@ -116,7 +126,11 @@ echo "$all_files" | process_files
 
 # copy all the dot files from root to the SRC_DIR and .yetus, this includes all
 # the yetus configuration files.
-find . -maxdepth 1 -type f -name '.*' -exec cp --parents {} "$SRC_DIR/" \;
+if [ "$cp_parents_supported" = false ]; then
+    find . -maxdepth 1 -type f -name '.*' -exec rsync -R {} "$SRC_DIR/" \;
+else
+    find . -maxdepth 1 -type f -name '.*' -exec cp --parents {} "$SRC_DIR/" \;
+fi
 cp -Rf .yetus "$SRC_DIR/"
 
 cd "$SRC_DIR" && \
