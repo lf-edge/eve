@@ -31,7 +31,11 @@ jobs:
           - os: buildjet-4vcpu-ubuntu-2204-arm
             arch: amd64
           - os: buildjet-4vcpu-ubuntu-2004
-            platform: arm64
+            arch: arm64
+          - arch: amd64
+            platform: nvidia-jp5
+          - arch: amd64
+            platform: nvidia-jp6
     steps:
       - name: Starting Report
         run: |
