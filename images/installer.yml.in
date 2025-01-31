@@ -10,6 +10,7 @@ init:
   - linuxkit/memlogd:1ded209c4cc10aa8de2099f4156164b59df14e3c
   - GRUB_TAG
   - DOM0ZTOOLS_TAG
+  - FW_TAG
 onboot:
   - name: sysctl
     image: linuxkit/sysctl:c6f23919b8610c7645a89a89f863c6209bc84bee
