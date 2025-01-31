@@ -513,6 +513,9 @@ func (client *Client) CtrContainerInfo(ctx context.Context, name string) (int, i
 		return 0, 0, "", fmt.Errorf("CtrContainerInfo: couldn't determine task status for container %s: %v", name, err)
 	}
 
+	if stat.Status == "unknown" {
+		logrus.Infof("CtrContainerInfo: PID of the task in container %s is %d, exit code is %d, status is %s and the task object (%v)", name, int(t.Pid()), int(stat.ExitStatus), stat.Status, t)
+	}
 	return int(t.Pid()), int(stat.ExitStatus), string(stat.Status), nil
 }
 
