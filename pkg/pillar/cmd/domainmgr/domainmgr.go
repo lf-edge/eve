@@ -60,9 +60,10 @@ const (
 	ciDirname  = runDirname + "/cloudinit" // For cloud-init images
 
 	// Time limits for event loop handlers
-	errorTime     = 3 * time.Minute
-	warningTime   = 40 * time.Second
-	casClientType = "containerd"
+	errorTime           = 3 * time.Minute
+	warningTime         = 40 * time.Second
+	casClientType       = "containerd"
+	unknownStateRetries = 10
 )
 
 // Really a constant
@@ -1799,7 +1800,23 @@ func doActivateTail(ctx *domainContext, status *types.DomainStatus,
 	status.VifList = checkIfEmu(status.VifList)
 
 	status.State = types.RUNNING
-	domainID, state, err := hyper.Task(status).Info(status.DomainName)
+	var state types.SwState
+	// If status is unknown, get info again for some retries and if it will not be activated return error.
+	for retry := 0; retry < unknownStateRetries; retry++ {
+		ctx.ps.StillRunning(agentName, warningTime, errorTime)
+		domainID, state, err = hyper.Task(status).Info(status.DomainName)
+		if err != nil || state != types.UNKNOWN {
+			break
+		}
+		log.Warnf("doActivateTail(%v) for %s: state is UNKNOWN, retry %d", status.UUIDandVersion, status.DisplayName, retry)
+		time.Sleep(2 * time.Second)
+	}
+
+	// if the state is still unknown after the retries we set an error, because we
+	// cannot guarantee that the domain is running.
+	if state == types.UNKNOWN && err == nil {
+		err = fmt.Errorf("The domain state is still unknown after %d retries", unknownStateRetries)
+	}
 
 	if err != nil {
 		// Immediate failure treat as above
@@ -1827,6 +1844,7 @@ func doActivateTail(ctx *domainContext, status *types.DomainStatus,
 			status.DomainId, status.BootTime.Format(time.RFC3339Nano),
 			status.Key())
 	}
+
 	status.Activated = true
 	log.Functionf("doActivateTail(%v) done for %s",
 		status.UUIDandVersion, status.DisplayName)
