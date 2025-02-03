@@ -114,12 +114,6 @@ jobs:
           - arch: arm64
             hv: kvm
             platform: "nvidia-jp6"
-          - arch: arm64
-            hv: kvm
-            platform: "imx8mp_pollux"
-          - arch: arm64
-            hv: kvm
-            platform: "imx8mp_epc_r3720"
         exclude:
           - arch: arm64
             hv: kubevirt
