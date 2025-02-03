@@ -1651,11 +1651,11 @@ func publishTpmStatus(ctx *tpmMgrContext, status types.TpmSanityStatus) {
 
 // tpmSanityCheck checks if the TPM fails in a way that is not detectable during the
 // common TPM operations but affects EVE's ability to manage itself.
-// * encrypt/decrypt (ECDHZGen) : checked here
-// * seal/unseal : checked during vault creation, no need to check here
-// * quote : checked during attestation, no need to check here
-// * certificate and key creation : checked during device step, no need to check here
-// * device key signing : checked during onboarding, no need to check here
+// * encrypt/decrypt (ECDHZGen) : checked here.
+// * quote : checked during attestation and also here.
+// * seal/unseal : checked during vault creation, failure will set device in MaintenanceModeReasonVaultLockedUp.
+// * certificate and key creation : checked during device step.
+// * device key signing : checked during onboarding.
 func tpmSanityCheck() *tpmSanityCheckError {
 	// sanity check TPM encrypt/decrypt (ECDHZGen), if this fails we can't
 	// encrypt/decrypt the vualt key and send/received it from controller.
@@ -1682,6 +1682,16 @@ func tpmSanityCheck() *tpmSanityCheckError {
 		}
 	}
 
+	// sanity check TPM quote operation, this is key to successful attestation
+	// and if this fails we can't attest the device and recover the vault key.
+	_, _, _, err = getQuote([]byte(message))
+	if err != nil {
+		return &tpmSanityCheckError{
+			fmt.Errorf("failed to get quote using TPM: %w", err),
+			types.MaintenanceModeReasonTpmQuoteFailure,
+		}
+	}
+
 	return nil
 }
 
@@ -1689,6 +1699,8 @@ func getTpmSanityStatus(status types.MaintenanceModeReason) string {
 	switch status {
 	case types.MaintenanceModeReasonTpmEncFailure:
 		return "TPM error can possibly affect device upgrade"
+	case types.MaintenanceModeReasonTpmQuoteFailure:
+		return "TPM error can affect attestation process and vault key retrieval"
 	default:
 		return ""
 	}
