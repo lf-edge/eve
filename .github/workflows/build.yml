@@ -165,7 +165,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ~/.linuxkit/cache
-          key: linuxkit-amd64-${{ github.event.pull_request.head.sha }}-${{ matrix.platform }}
+          key: linuxkit-amd64-${{ github.event.pull_request.head.sha }}-generic
           fail-on-cache-miss: true
       - name: load images we need from linuxkit cache into docker
         run: |
