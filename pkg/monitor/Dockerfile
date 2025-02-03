@@ -1,7 +1,7 @@
 # Copyright (c) 2024 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-ARG MONITOR_RS_VERSION=v0.1.2
+ARG MONITOR_RS_VERSION=v0.2.0
 ARG RUST_VERSION=lfedge/eve-rust:1.80.1
 FROM --platform=$BUILDPLATFORM ${RUST_VERSION} AS toolchain-base
 ARG TARGETARCH
