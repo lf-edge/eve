@@ -31,6 +31,7 @@ require (
 	github.com/lf-edge/edge-containers v0.0.0-20240207093504-5dfda0619b80
 	github.com/lf-edge/eve-api/go v0.0.0-20241213165007-1a8f9be485b1
 	github.com/lf-edge/eve-libs v0.0.0-20241210085709-fc89dcac7f3c
+	github.com/lf-edge/eve-tpmea v0.0.0-20230919075259-6fcd8746a710
 	github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20240315102754-0f6d1f182e0d
 	github.com/lf-edge/go-qemu v0.0.0-20231121152149-4c467eda0c56
 	github.com/linuxkit/linuxkit/src/cmd/linuxkit v0.0.0-20240507172735-6d37353ca1ee
@@ -199,6 +200,8 @@ require (
 require (
 	github.com/MakeNowJust/heredoc v1.0.0 // indirect
 	github.com/bicomsystems/go-libzfs v0.4.0 // indirect
+	github.com/canonical/go-sp800.108-kdf v0.0.0-20210314145419-a3359f2d21b9 // indirect
+	github.com/canonical/go-tpm2 v1.0.1-0.20230302101824-929183e212cc // indirect
 	github.com/chai2010/gettext-go v1.0.2 // indirect
 	github.com/evanphx/json-patch v5.6.0+incompatible // indirect
 	github.com/exponent-io/jsonpath v0.0.0-20151013193312-d6023ce2651d // indirect

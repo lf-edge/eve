@@ -148,6 +148,23 @@ github.com/beorn7/perks/quantile
 ## explicit
 # github.com/bugsnag/panicwrap v1.2.0
 ## explicit
+# github.com/canonical/go-sp800.108-kdf v0.0.0-20210314145419-a3359f2d21b9
+## explicit; go 1.9
+github.com/canonical/go-sp800.108-kdf
+# github.com/canonical/go-tpm2 v1.0.1-0.20230302101824-929183e212cc
+## explicit; go 1.9
+github.com/canonical/go-tpm2
+github.com/canonical/go-tpm2/crypto
+github.com/canonical/go-tpm2/cryptutil
+github.com/canonical/go-tpm2/internal/crypt
+github.com/canonical/go-tpm2/internal/util
+github.com/canonical/go-tpm2/linux
+github.com/canonical/go-tpm2/mu
+github.com/canonical/go-tpm2/objectutil
+github.com/canonical/go-tpm2/policyutil
+github.com/canonical/go-tpm2/ppi
+github.com/canonical/go-tpm2/templates
+github.com/canonical/go-tpm2/util
 # github.com/cenkalti/backoff v2.2.1+incompatible
 ## explicit
 github.com/cenkalti/backoff
@@ -697,6 +714,9 @@ github.com/lf-edge/eve-libs/zedUpload/httputil
 github.com/lf-edge/eve-libs/zedUpload/ociutil
 github.com/lf-edge/eve-libs/zedUpload/sftputil
 github.com/lf-edge/eve-libs/zedUpload/types
+# github.com/lf-edge/eve-tpmea v0.0.0-20230919075259-6fcd8746a710
+## explicit; go 1.20
+github.com/lf-edge/eve-tpmea
 # github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20240315102754-0f6d1f182e0d
 ## explicit; go 1.20
 github.com/lf-edge/eve/pkg/kube/cnirpc
