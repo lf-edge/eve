@@ -118,7 +118,7 @@ func (h *Ext4Handler) SetupDefaultVault() error {
 	}
 	// Log the type of key used for unlocking default vault
 	h.log.Noticef("default vault unlocked using key type: %s",
-		etpm.CompareLegacyandSealedKey().String())
+		etpm.CompareLegacyandSealedKey(h.log).String())
 	return nil
 }
 
@@ -413,7 +413,7 @@ func (h *Ext4Handler) getVaultStatus(vaultName string, vaultPath string,
 				status.SetErrorDescription(types.ErrorDescription{Error: stdOut + stdErr})
 			}
 		} else {
-			sealedKeyType := etpm.CompareLegacyandSealedKey()
+			sealedKeyType := etpm.CompareLegacyandSealedKey(h.log)
 			switch sealedKeyType {
 			case etpm.SealedKeyTypeReused, etpm.SealedKeyTypeNew:
 				status.ClearError()

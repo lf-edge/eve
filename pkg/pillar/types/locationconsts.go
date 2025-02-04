@@ -43,6 +43,8 @@ const (
 	PersistCachePatchEnvelopes = PersistDir + "/patchEnvelopesCache"
 	// PersistCachePatchEnvelopesUsage - folder to store patch envelopes usage stat per app
 	PersistCachePatchEnvelopesUsage = PersistDir + "/patchEnvelopesUsageCache"
+	// TPMPolicyConfigDir - directory to keep tpm enhanced auth policies
+	TPMPolicyConfigDir = PersistConfigDir + "/tpmpolicy"
 
 	// IdentityDirname - Config dir
 	IdentityDirname = "/config"
