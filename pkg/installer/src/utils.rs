@@ -88,15 +88,32 @@ pub fn save_config_value(c: &mut Cursive, k: &str, v: &str, m: bool) -> crate::e
     Ok(())
 }
 
-pub fn edit_config_value(c: &mut Cursive, k: &str, v: &str) -> crate::error::Result<()> {
+pub fn add_config_value(c: &mut Cursive, k: &str, v: &str) -> crate::error::Result<()> {
     let mut s: GlobalState = c.take_user_data().unwrap();
-    let mut vedit = s.data.map.get(k).unwrap().clone();
-    if vedit == "_____" {
-        vedit = v.to_string();
+    let mut vadd = s.data.map.get(k).cloned().unwrap_or_default();
+    if vadd == "_____" {
+        vadd = v.to_string();
     } else {
-        vedit = vedit + "," + v;
+        vadd = vadd + "," + v;
     }
-    s.data.map.insert(k.to_string(), vedit);
+    s.data.map.insert(k.to_string(), vadd);
+    c.set_user_data(s);
+    Ok(())
+}
+
+pub fn remove_config_value(c: &mut Cursive, k: &str, v: &str) -> crate::error::Result<()> {
+    let mut s: GlobalState = c.take_user_data().unwrap();
+    let mut vremove: String = s.data.map.get(k).cloned().unwrap_or_default()
+        .split(',')
+        .filter(|&d| d != v) // Remove matching device
+        .collect::<Vec<&str>>() // Collect filtered items into Vec
+        .join(","); // Join them back with ','
+
+    if vremove == "" { // If we removed all devices we return to the init value
+        vremove = "_____".to_string()
+    }
+
+    s.data.map.insert(k.to_string(), vremove);
     c.set_user_data(s);
     Ok(())
 }

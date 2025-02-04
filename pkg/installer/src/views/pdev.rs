@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use crate::{
     data::{PERSIST_DISK},
     herr,
-    utils::{get_block_devices, edit_config_value},
+    utils::{get_block_devices, add_config_value, remove_config_value},
 };
 
 use cursive::{
@@ -35,7 +35,9 @@ pub fn get_pdev(map: HashMap<String, String>) -> PDEVView {
         let dev = d.clone();
         let mut c = Checkbox::new().on_change(move |s, checked | {
             if checked {
-                herr!(s, edit_config_value, PERSIST_DISK, &dev);
+                herr!(s, add_config_value, PERSIST_DISK, &dev);
+            } else if !checked {
+                herr!(s, remove_config_value, PERSIST_DISK, &dev);
             }
         });
         if pdevs.contains(&d.as_str()) {
