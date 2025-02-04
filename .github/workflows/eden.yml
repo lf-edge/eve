@@ -20,31 +20,42 @@ concurrency:
 
 jobs:
   get_run_id:
-    if: github.event.review.state == 'approved'
+    if: ${{ github.event.review.state == 'approved' }}
     runs-on: ubuntu-latest
     outputs:
       run_id: ${{ steps.get_run_id.outputs.run_id }}
     steps:
+      - name: Get the GitHub context
+        run: echo "github context is $GITHUB_CONTEXT"
+        env:
+          GITHUB_CONTEXT: ${{ toJson(github) }}
+      - name: Print the head SHA
+        run: |
+          echo ${{ github.event.pull_request.head.sha }}
+      - name: Print pull request url
+        run: |
+          echo ${{ github.event.pull_request._links.self.href }}
       - name: Get run ID for the artifact upload
         id: get_run_id
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const { data } = await github.rest.actions.listWorkflowRuns({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              workflow_id: 'build.yml',
-              head_sha: context.payload.pull_request.head.sha,
-              status: 'success'
-            });
-            if (data == null || data.workflow_runs.length == 0) {
-                throw new Error('No successful runs found');
-            }
-            const runId = data.workflow_runs[0].id; // Assuming the first one is the latest successful run
-            return runId;
-          result-encoding: string
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          RESPONSE=$(curl -s -L "https://api.github.com/repos/${{ github.repository }}/actions/workflows/build.yml/runs?head_sha=${{ github.event.pull_request.head.sha }}&status=success" \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github+json")
+          # Check if RESPONSE is empty
+          if [ -z "$RESPONSE" ]; then
+            echo "API call returned no response."
+            exit 1
+          fi
+          RUN_ID=$(echo $RESPONSE | jq -r '.workflow_runs[0].id')
+          # Check if the RUN_ID is empty
+          if [ "$RUN_ID" == "null" ] || [ -z "$RUN_ID" ]; then
+            echo "No successful runs found"
+            exit 1
+          fi
+          echo $RUN_ID
+          echo "run_id=$RUN_ID" >> $GITHUB_OUTPUT
       - name: Report Run ID  # useful for debugging
         run: echo "Run ID is ${{ steps.get_run_id.outputs.run_id }}"
 
