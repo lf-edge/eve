@@ -236,6 +236,43 @@ Use your real name (sorry, no pseudonyms or anonymous contributions.)
 If you set your `user.name` and `user.email` git configs, you can sign your
 commit automatically with `git commit -s`.
 
+## Backporting
+
+When a critical fix from the master branch needs to be applied to an older
+branch, follow these steps:
+
+**1. Checkout the target branch.** Switch to the stable branch that will
+receive the fix. For example:
+
+```sh
+git checkout <stable-branch>
+```
+
+**2. Cherry-pick the commit.** Identify the commit hash from the master branch
+(do not use a commit hash from a branch in your fork) and use the `-x` flag to
+record the original commit reference.
+
+```sh
+git cherry-pick -x <commit-hash>
+```
+
+**3. Create a Pull Request.** Open a PR with the target branch set to
+`<stable-branch>`.
+
+**4. Update PR description.** In the PR description, add a note to indicate the
+origin of the fix, for example:
+
+```text
+Backport of #<original-PR-number>
+```
+
+**5. Update PR title.** Form the PR title by prepending the stable branch name
+in square brackets to the original PR name. For instance, if the original
+title was "Example PR title", change it to: "[\<stable-branch\>] Example PR
+title".
+
+Example of such a PR: [#4527](https://github.com/lf-edge/eve/pull/4527)
+
 ## Check how we are doing
 
 Linux Foundation maintains a [project health dashboard](https://insights.lfx.linuxfoundation.org/projects/lfedge)
