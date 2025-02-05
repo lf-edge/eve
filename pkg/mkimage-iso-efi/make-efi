@@ -75,11 +75,9 @@ if [ ! -e boot/initrd.img ]; then
    mv /tmp/initrd.img boot/initrd.img
 fi
 
-# pay attention to the -f option: it follows symlinks which is exactly
-# what we need for installer construction but could be dangerous in the
-# generic case for this container
+# shellcheck disable=SC2086
 xorriso -as mkisofs \
-        -m rootfs-\* -f -R -e boot.img -hide boot.img -hide boot.catalog -no-emul-boot ${VOL_LABEL} -o /tmp/disk.iso .
+        -m rootfs-\* -R -e boot.img -hide boot.img -hide boot.catalog -no-emul-boot ${VOL_LABEL} -o /tmp/disk.iso .
 copy /tmp/disk.iso /output.iso
 
 # How to build a VHDX. Commented out because we are currently not using it
