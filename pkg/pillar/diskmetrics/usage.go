@@ -3,6 +3,9 @@
 
 package diskmetrics
 
+// #include <sys/param.h>
+import "C"
+
 import (
 	"fmt"
 	"io"
@@ -27,7 +30,11 @@ func StatAllocatedBytes(path string) (uint64, error) {
 	if err != nil {
 		return uint64(0), err
 	}
-	return uint64(stat.Blocks * int64(stat.Blksize)), nil
+	// From POSIX standard for st_blocks block size:
+	// Traditionally, some implementations defined
+	// the multiplier for st_blocks in <sys/param.h>
+	// as the symbol DEV_BSIZE.
+	return uint64(stat.Blocks * C.DEV_BSIZE), nil
 }
 
 // SizeFromDir performs a du -s equivalent operation.
