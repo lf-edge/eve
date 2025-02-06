@@ -822,7 +822,7 @@ $(INSTALLER).raw: $(INSTALLER_IMG) $(EFI_PART) $(BOOT_PART) $(CONFIG_IMG) $(BSP_
 	$(QUIET): $@: Succeeded
 
 $(INSTALLER).iso: $(INSTALLER_TAR) $(BSP_IMX_PART) | $(INSTALLER)
-	./tools/makeiso.sh $< $@ installer
+	DOCKER_ARCH_TAG=$(DOCKER_ARCH_TAG) ./tools/makeiso.sh $< $@ installer
 	$(QUIET): $@: Succeeded
 
 $(INSTALLER).net: $(INSTALLER).iso $(EFI_PART) $(INITRD_IMG) $(CONFIG_IMG) | $(INSTALLER)
