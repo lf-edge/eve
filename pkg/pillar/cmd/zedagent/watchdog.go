@@ -14,7 +14,7 @@ const (
 	WatchdogDevicePath = "/dev/watchdog"
 )
 
-func getHarwareWatchdogPresent(ctx *zedagentContext) bool {
+func getHardwareWatchdogPresent(ctx *zedagentContext) bool {
 	_, err := os.Stat(WatchdogDevicePath)
 	if err != nil {
 		//No Watchdog found on this system

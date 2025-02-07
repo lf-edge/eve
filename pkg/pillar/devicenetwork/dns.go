@@ -76,7 +76,7 @@ func ResolveWithSrcIP(domain string, dnsServerIP net.IP, srcIP net.IP) ([]DNSRes
 	dialer := net.Dialer{LocalAddr: &sourceUDPAddr}
 	dnsClient := dns.Client{Dialer: &dialer}
 	msg := dns.Msg{}
-	if domain[len(domain)-1] != '.' {
+	if !strings.HasSuffix(domain, ".") {
 		domain = domain + "."
 	}
 	msg.SetQuestion(domain, dns.TypeA)

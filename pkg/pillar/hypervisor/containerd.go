@@ -231,11 +231,18 @@ func (ctx ctrdContext) Info(domainName string) (int, types.SwState, error) {
 	defer done()
 	effectiveDomainID, exit, status, err := ctx.ctrdClient.CtrContainerInfo(ctrdCtx, domainName)
 	if err != nil {
-		return 0, types.UNKNOWN, logError("containerd looking up domain %s resulted in %v", domainName, err)
+		return 0, types.UNKNOWN, nil
 	}
 
 	if status == "stopped" && exit != 0 {
 		return 0, types.BROKEN, logError("task broke with exit status %d", exit)
+	}
+	// When the status is "unknown", it typically indicates a communication issue between containerd and the task.
+	// This is generally a temporary state, so rather than returning an error, we’ll maintain the last known valid state.
+	// The goal is to keep the application running without marking it as broken or terminating it unnecessarily.
+	// Todo: Send an alert to the user that the task is in an unknown state, even after the retries.
+	if status == "unknown" {
+		logrus.Errorf("task %s is in %s state", domainName, status)
 	}
 
 	stateMap := map[string]types.SwState{
@@ -244,7 +251,9 @@ func (ctx ctrdContext) Info(domainName string) (int, types.SwState, error) {
 		"pausing": types.PAUSING,
 		"paused":  types.PAUSED,
 		"stopped": types.HALTED,
+		"unknown": types.UNKNOWN,
 	}
+
 	if effectiveDomainState, matched := stateMap[status]; !matched {
 		err := fmt.Errorf("task %s happens to be in an unexpected state %s",
 			domainName, status)

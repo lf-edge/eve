@@ -20,13 +20,22 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        os: [buildjet-4vcpu-ubuntu-2204-arm, buildjet-4vcpu-ubuntu-2004]
+        arch: [arm64, amd64]
+        platform: [generic, nvidia-jp5, nvidia-jp6]
         include:
-          - os: buildjet-4vcpu-ubuntu-2204-arm
-            arch: arm64
-          - os: buildjet-4vcpu-ubuntu-2004
-            arch: amd64
           - os: buildjet-4vcpu-ubuntu-2004
             arch: riscv64
+            platform: generic
+        exclude:
+          - os: buildjet-4vcpu-ubuntu-2204-arm
+            arch: amd64
+          - os: buildjet-4vcpu-ubuntu-2004
+            arch: arm64
+          - arch: amd64
+            platform: nvidia-jp5
+          - arch: amd64
+            platform: nvidia-jp6
     steps:
       - name: Starting Report
         run: |
@@ -70,10 +79,10 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.linuxkit/cache
-          key: linuxkit-${{ matrix.arch }}-${{ github.event.pull_request.head.sha }}
-      - name: Build packages
+          key: linuxkit-${{ matrix.arch }}-${{ github.event.pull_request.head.sha }}-${{ matrix.platform }}
+      - name: Build packages ${{ matrix.os }} for ${{ matrix.platform }}
         run: |
-          make V=1 PRUNE=1 ZARCH=${{ matrix.arch }} pkgs
+          make V=1 PRUNE=1 PLATFORM=${{ matrix.platform }} ZARCH=${{ matrix.arch }} pkgs
       - name: Post package report
         run: |
           echo Disk usage
@@ -105,12 +114,6 @@ jobs:
           - arch: arm64
             hv: kvm
             platform: "nvidia-jp6"
-          - arch: arm64
-            hv: kvm
-            platform: "imx8mp_pollux"
-          - arch: arm64
-            hv: kvm
-            platform: "imx8mp_epc_r3720"
         exclude:
           - arch: arm64
             hv: kubevirt
@@ -156,7 +159,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ~/.linuxkit/cache
-          key: linuxkit-amd64-${{ github.event.pull_request.head.sha }}
+          key: linuxkit-amd64-${{ github.event.pull_request.head.sha }}-generic
           fail-on-cache-miss: true
       - name: load images we need from linuxkit cache into docker
         run: |
@@ -172,7 +175,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ~/.linuxkit/cache
-          key: linuxkit-${{ matrix.arch }}-${{ github.event.pull_request.head.sha }}
+          key: linuxkit-${{ matrix.arch }}-${{ github.event.pull_request.head.sha }}-${{ matrix.platform }}
           fail-on-cache-miss: true
       - name: set environment
         env:

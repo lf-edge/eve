@@ -59,6 +59,28 @@ var ControlProtocolMarkingIDMap = map[string]uint32{
 	"app_http": 11,
 	// ICMPv6 traffic to and from an application
 	"app_icmpv6": 12,
+	// Traffic from Kubernetes pods to Kubernetes services.
+	"kube_svc": 13,
+	// Traffic directly forwarded between Kubernetes pods (not via services).
+	"kube_pod": 14,
+	// for kubernetes api-server
+	"in_k3s": 15,
+	// for kube Etcd
+	"in_etcd": 16,
+	// for flannel VxLan
+	"in_flannel": 17,
+	// for kube Metrics
+	"in_metrics": 18,
+	// for longhorn webhook
+	"in_lhweb": 19,
+	// for longhorn instance manager
+	"in_lhinstmgr": 20,
+	// for longhorn iscsi
+	"in_iscsi": 21,
+	// for longhorn nfs
+	"in_nfs": 22,
+	// for cluster advertise status
+	"in_cluster_status": 23,
 }
 
 // GetConnmark : create connection mark corresponding to the given attributes.

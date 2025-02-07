@@ -40,7 +40,7 @@ ENV BUILD_PKGS mkinitfs grep patch make coreutils musl-dev gcc g++ perl \
     cryptsetup-dev go lddtree git
 ENV PKGS mtools dosfstools libarchive-tools sgdisk e2fsprogs util-linux \
     squashfs-tools coreutils tar dmidecode smartmontools libaio libaio-dev \
-    perl glib zlib libusb curl xz pciutils usbutils hdparm ncurses-dev jq \
+    glib zlib libusb curl xz pciutils usbutils hdparm ncurses-dev jq \
     wireless-tools libxrandr eudev-libs sudo fio iperf3 sysstat \
     lm-sensors acpi iw libdrm hwinfo dhclient e2fsprogs-extra \
     libgcc pixman libvncserver musl-utils \

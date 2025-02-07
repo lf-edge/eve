@@ -1,10 +1,11 @@
-// Copyright (c) 2021 Zededa, Inc.
+// Copyright (c) 2021-2005 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
@@ -89,6 +90,13 @@ func setupWebC(hostname, token string, u url.URL, isServer bool) bool {
 		useProxy++
 		// walk through default route intfs if exist, and try also without specifying the source
 		// if we know the index it worked previously before disconnect, try that first
+		// For the source IP, we on EVE device, relies on the policy routing to route the
+		// IP packets to the correct outbound interface. For a normal Linux host, this may
+		// not be available, or it needs to be implemented on the host which runs Edgeview.
+		// The below for loop, only gets the interfaces pointed to by default IP route,
+		// and using the Interface IP address as the source IP for the TLS connection, it walks
+		// through all the interfaces on this list, plus one more without using the source IP,
+		// in the case the controller IP route is statically configured in the routing table.
 		for idx := len(intfSrcs) - 1; idx >= -1; idx-- {
 			if websIndex != invalidIndex && websIndex < len(intfSrcs) {
 				idx = websIndex
@@ -136,11 +144,13 @@ func setupWebC(hostname, token string, u url.URL, isServer bool) bool {
 				}
 				return true
 			}
-			retry++
 			if !isServer && retry > 1 {
 				return false
 			}
 		}
+		// do exponential backoff after walking through all the interfaces
+		// to speed up the connection retrial
+		retry++
 	}
 }
 
@@ -175,7 +185,21 @@ func tlsDial(isServer bool, pIP string, pport int, src []net.IP, idx int) (*webs
 		dialer.Proxy = http.ProxyURL(proxyURL)
 	}
 	if idx >= 0 && len(src) > 0 && idx < len(src) {
-		dialer.NetDialContext = (&net.Dialer{LocalAddr: &net.TCPAddr{IP: src[idx]}}).DialContext
+		srcSelected := src[idx]
+		localAddr := &net.TCPAddr{IP: srcSelected}
+		netDialer := &net.Dialer{
+			LocalAddr: localAddr,
+			Resolver: &net.Resolver{
+				PreferGo: true,
+				Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
+					d := net.Dialer{
+						LocalAddr: &net.UDPAddr{IP: srcSelected},
+					}
+					return d.DialContext(ctx, network, address)
+				},
+			},
+		}
+		dialer.NetDialContext = netDialer.DialContext
 	}
 
 	return dialer, nil

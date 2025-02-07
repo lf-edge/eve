@@ -1,0 +1,42 @@
+---
+# Copyright (c) 2025, Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+name: OSV-Scanner
+
+on:  # yamllint disable-line rule:truthy
+  push:
+    branches:
+      - "master"
+      - "[0-9]+.[0-9]+"
+      - "[0-9]+.[0-9]+-stable"
+    paths-ignore:
+      - '**/*.md'
+      - '.github/**'
+  pull_request:
+    # The branches below must be a subset of the branches above
+    branches:
+      - "master"
+      - "[0-9]+.[0-9]+"
+      - "[0-9]+.[0-9]+-stable"
+    paths-ignore:
+      - '**/*.md'
+  schedule:
+    - cron: "12 12 * * 1"
+
+permissions:
+  # Required to upload SARIF file to CodeQL. See: https://github.com/github/codeql-action/issues/2117
+  actions: read
+  # Require writing security events to upload SARIF file to security tab
+  security-events: write
+  # Read commit contents
+  contents: read
+
+jobs:
+  scan-scheduled:
+    if: ${{ github.event_name == 'push' || github.event_name == 'schedule' }}
+    uses: "google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@e994fd8ab13fe1394942045f5945cd39c6c2d68e"  # v1.9.2
+
+  scan-pr:
+    if: ${{ github.event_name == 'pull_request'}}
+    uses: "google/osv-scanner-action/.github/workflows/osv-scanner-reusable-pr.yml@e994fd8ab13fe1394942045f5945cd39c6c2d68e"  # v1.9.2

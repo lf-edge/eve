@@ -30,6 +30,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"sort"
 	"time"
 
 	"github.com/eriknordmark/ipinfo"
@@ -112,6 +113,8 @@ type zedagentContext struct {
 	triggerLocationInfo       chan<- destinationBitset
 	triggerNTPSourcesInfo     chan<- destinationBitset
 	triggerObjectInfo         chan<- infoForObjectKey
+	triggerClusterInfo        chan<- destinationBitset
+	triggerClusterUpdateInfo  chan<- destinationBitset
 	zbootRestarted            bool // published by baseosmgr
 	subOnboardStatus          pubsub.Subscription
 	subBaseOsStatus           pubsub.Subscription
@@ -153,27 +156,32 @@ type zedagentContext struct {
 	subCipherMetricsZR        pubsub.Subscription
 	subCipherMetricsWwan      pubsub.Subscription
 	subPatchEnvelopeUsage     pubsub.Subscription
-	subNodeDrainStatus        pubsub.Subscription
-	pubNodeDrainRequest       pubsub.Publication
-	zedcloudMetrics           *zedcloud.AgentMetrics
-	fatalFlag                 bool // From command line arguments
-	hangFlag                  bool // From command line arguments
-	rebootCmd                 bool
-	rebootCmdDeferred         bool
-	deviceReboot              bool // From nodeagent
-	shutdownCmd               bool
-	shutdownCmdDeferred       bool
-	deviceShutdown            bool // From nodeagent
-	poweroffCmd               bool
-	poweroffCmdDeferred       bool
-	devicePoweroff            bool // From nodeagent
-	allDomainsHalted          bool
-	requestedRebootReason     string           // Set by zedagent
-	requestedBootReason       types.BootReason // Set by zedagent
-	rebootReason              string           // Previous reboot from nodeagent
-	bootReason                types.BootReason // Previous reboot from nodeagent
-	rebootStack               string           // Previous reboot from nodeagent
-	rebootTime                time.Time        // Previous reboot from nodeagent
+
+	subNodeDrainStatus     pubsub.Subscription
+	pubNodeDrainRequest    pubsub.Publication
+	subClusterUpdateStatus pubsub.Subscription
+	subKubeClusterInfo     pubsub.Subscription
+
+	zedcloudMetrics       *zedcloud.AgentMetrics
+	fatalFlag             bool // From command line arguments
+	hangFlag              bool // From command line arguments
+	rebootCmd             bool
+	rebootCmdDeferred     bool
+	deviceReboot          bool // From nodeagent
+	shutdownCmd           bool
+	shutdownCmdDeferred   bool
+	deviceShutdown        bool // From nodeagent
+	poweroffCmd           bool
+	poweroffCmdDeferred   bool
+	devicePoweroff        bool // From nodeagent
+	allDomainsHalted      bool
+	requestedRebootReason string           // Set by zedagent
+	requestedBootReason   types.BootReason // Set by zedagent
+	rebootReason          string           // Previous reboot from nodeagent
+	bootReason            types.BootReason // Previous reboot from nodeagent
+	rebootStack           string           // Previous reboot from nodeagent
+	rebootTime            time.Time        // Previous reboot from nodeagent
+
 	// restartCounter - counts number of reboots of the device by Eve
 	restartCounter uint32
 	// rebootConfigCounter - reboot counter sent by the cloud in its config.
@@ -199,18 +207,18 @@ type zedagentContext struct {
 	// API. Those are merged into maintenanceMode
 	// TBD will be also decide locally to go into maintenanceMode based
 	// on out of disk space etc?
-	maintenanceMode      bool                        //derived state, after consolidating all inputs
-	maintModeReason      types.MaintenanceModeReason //reason for setting derived maintenance mode
-	gcpMaintenanceMode   types.TriState
-	apiMaintenanceMode   bool
-	localMaintenanceMode bool                        //maintenance mode triggered by local failure
-	localMaintModeReason types.MaintenanceModeReason //local failure reason for maintenance mode
-	devState             types.DeviceState
-	attestState          types.AttestState
-	attestError          string
-	vaultStatus          info.DataSecAtRestStatus
-	pcrStatus            info.PCRStatus
-	vaultErr             string
+	maintenanceMode       bool                             //derived state, after consolidating all inputs
+	maintModeReasons      types.MaintenanceModeMultiReason //reason for setting derived maintenance mode
+	gcpMaintenanceMode    types.TriState
+	apiMaintenanceMode    bool
+	localMaintenanceMode  bool                             //maintenance mode triggered by local failure
+	localMaintModeReasons types.MaintenanceModeMultiReason //local failure reason for maintenance mode
+	devState              types.DeviceState
+	attestState           types.AttestState
+	attestError           string
+	vaultStatus           info.DataSecAtRestStatus
+	pcrStatus             info.PCRStatus
+	vaultErr              string
 
 	// Track the counter from force.fallback.counter to detect changes
 	forceFallbackCounter int
@@ -341,12 +349,16 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	triggerLocationInfo := make(chan destinationBitset, 1)
 	triggerNTPSourcesInfo := make(chan destinationBitset, 1)
 	triggerObjectInfo := make(chan infoForObjectKey, 1)
+	triggerClusterInfo := make(chan destinationBitset, 1)
+	triggerClusterUpdateInfo := make(chan destinationBitset, 1)
 	zedagentCtx.flowlogQueue = flowlogQueue
 	zedagentCtx.triggerDeviceInfo = triggerDeviceInfo
 	zedagentCtx.triggerHwInfo = triggerHwInfo
 	zedagentCtx.triggerLocationInfo = triggerLocationInfo
 	zedagentCtx.triggerNTPSourcesInfo = triggerNTPSourcesInfo
 	zedagentCtx.triggerObjectInfo = triggerObjectInfo
+	zedagentCtx.triggerClusterInfo = triggerClusterInfo
+	zedagentCtx.triggerClusterUpdateInfo = triggerClusterUpdateInfo
 
 	// Initialize all zedagent publications.
 	initPublications(zedagentCtx)
@@ -509,6 +521,16 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	log.Functionf("Creating %s at %s", "ntpTimerTask", agentlog.GetMyStack())
 	go ntpSourcesTimerTask(zedagentCtx, handleChannel, triggerNTPSourcesInfo)
 	getconfigCtx.ntpSourcesTickerHandle = <-handleChannel
+
+	// Initial publish of KubeClusterInfo
+	log.Noticef("Creating %s at %s", "kubeClusterInfoTask", agentlog.GetMyStack())
+	go kubeClusterInfoTask(zedagentCtx, triggerClusterInfo)
+	triggerPublishKubeClusterInfo(zedagentCtx)
+
+	// Initial publish of KubeClusterUpdateStatus
+	log.Noticef("Creating %s at %s", "kubeClusterUpdateStatusTask", agentlog.GetMyStack())
+	go kubeClusterUpdateStatusTask(zedagentCtx, triggerClusterUpdateInfo)
+	triggerPublishKubeClusterUpdateStatus(zedagentCtx)
 
 	//trigger channel for localProfile state machine
 	getconfigCtx.sideController.localProfileTrigger = make(chan Notify, 1)
@@ -1065,6 +1087,12 @@ func mainEventLoop(zedagentCtx *zedagentContext, stillRunning *time.Ticker) {
 
 		case change := <-zedagentCtx.subNodeDrainStatus.MsgChan():
 			zedagentCtx.subNodeDrainStatus.ProcessChange(change)
+
+		case change := <-zedagentCtx.subKubeClusterInfo.MsgChan():
+			zedagentCtx.subKubeClusterInfo.ProcessChange(change)
+
+		case change := <-zedagentCtx.subClusterUpdateStatus.MsgChan():
+			zedagentCtx.subClusterUpdateStatus.ProcessChange(change)
 
 		case <-stillRunning.C:
 			// Fault injection
@@ -1994,6 +2022,8 @@ func initPostOnboardSubs(zedagentCtx *zedagentContext) {
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	initKubeSubs(zedagentCtx)
 }
 
 func triggerPublishHwInfoToDest(ctxPtr *zedagentContext, dest destinationBitset) {
@@ -2011,6 +2041,77 @@ func triggerPublishHwInfoToDest(ctxPtr *zedagentContext, dest destinationBitset)
 
 func triggerPublishHwInfo(ctxPtr *zedagentContext) {
 	triggerPublishHwInfoToDest(ctxPtr, AllDest)
+}
+
+func handleClusterUpdateStatusCreate(ctxArg interface{}, key string,
+	configArg interface{}) {
+	handleClusterUpdateStatusImpl(ctxArg, key, configArg, nil)
+}
+func handleClusterUpdateStatusModify(ctxArg interface{}, key string,
+	configArg interface{}, oldStatusArg interface{}) {
+	handleClusterUpdateStatusImpl(ctxArg, key, configArg, oldStatusArg)
+}
+func handleClusterUpdateStatusImpl(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	ctx, ok := ctxArg.(*zedagentContext)
+	if !ok {
+		log.Errorf("handleClusterUpdateStatusImpl invalid type in ctxArg: %v", ctxArg)
+		return
+	}
+	state := getDeviceState(ctx)
+	log.Noticef("handleClusterUpdateStatusImpl key:%s devicestate:%s", key, state)
+	triggerPublishKubeClusterUpdateStatus(ctx)
+}
+
+func triggerPublishKubeClusterUpdateStatusToDest(ctxPtr *zedagentContext, dest destinationBitset) {
+	log.Function("Triggered PublishKubeClusterUpdateStatus")
+	select {
+	case ctxPtr.triggerClusterUpdateInfo <- dest:
+		// Do nothing more
+	default:
+		// This occurs if we are already trying to send
+		// and we get a second and third trigger before that is complete.
+		log.Warnf("Failed to send on PublishKubeClusterUpdateStatus")
+	}
+}
+
+func triggerPublishKubeClusterUpdateStatus(ctxPtr *zedagentContext) {
+	triggerPublishKubeClusterUpdateStatusToDest(ctxPtr, AllDest)
+}
+
+func handleKubeClusterInfoCreate(ctxArg interface{}, key string,
+	configArg interface{}) {
+	handleKubeClusterInfoImpl(ctxArg, key, configArg, nil)
+}
+func handleKubeClusterInfoModify(ctxArg interface{}, key string,
+	configArg interface{}, oldStatusArg interface{}) {
+	handleKubeClusterInfoImpl(ctxArg, key, configArg, oldStatusArg)
+}
+func handleKubeClusterInfoImpl(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	ctx, ok := ctxArg.(*zedagentContext)
+	if !ok {
+		log.Errorf("handleKubeClusterInfoImpl invalid type in ctxArg: %v", ctxArg)
+		return
+	}
+	triggerPublishKubeClusterInfo(ctx)
+}
+
+func triggerPublishKubeClusterInfoToDest(ctxPtr *zedagentContext, dest destinationBitset) {
+	log.Notice("Triggered PublishKubeClusterInfo")
+	select {
+	case ctxPtr.triggerClusterInfo <- dest:
+
+		// Do nothing more
+	default:
+		// This occurs if we are already trying to send
+		// and we get a second and third trigger before that is complete.
+		log.Warnf("Failed to send on PublishKubeClusterInfo")
+	}
+}
+
+func triggerPublishKubeClusterInfo(ctxPtr *zedagentContext) {
+	triggerPublishKubeClusterInfoToDest(ctxPtr, AllDest)
 }
 
 func triggerPublishDevInfoToDest(ctxPtr *zedagentContext, dest destinationBitset) {
@@ -2119,6 +2220,7 @@ func triggerPublishAllInfo(ctxPtr *zedagentContext, dest destinationBitset) {
 		}
 		triggerPublishLocationToDest(ctxPtr, dest)
 		triggerPublishNTPSourcesToDest(ctxPtr, dest)
+		triggerPublishKubeClusterUpdateStatusToDest(ctxPtr, dest)
 	}()
 }
 
@@ -2415,7 +2517,7 @@ func handleGlobalConfigImpl(ctxArg interface{}, key string,
 		ctx.globalConfig = *gcp
 		ctx.GCInitialized = true
 		ctx.gcpMaintenanceMode = gcp.GlobalValueTriState(types.MaintenanceMode)
-		mergeMaintenanceMode(ctx)
+		mergeMaintenanceMode(ctx, "handleGlobalConfigImpl")
 		reinitNetdumper(ctx)
 	}
 
@@ -2491,50 +2593,50 @@ func handleNodeAgentStatusImpl(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
 	getconfigCtx := ctxArg.(*getconfigContext)
-	status := statusArg.(types.NodeAgentStatus)
+	nodeAgentstatus := statusArg.(types.NodeAgentStatus)
 	log.Functionf("handleNodeAgentStatusImpl: updateInProgress %t rebootReason %s bootReason %s",
-		status.UpdateInprogress, status.RebootReason,
-		status.BootReason.String())
+		nodeAgentstatus.UpdateInprogress, nodeAgentstatus.RebootReason,
+		nodeAgentstatus.BootReason.String())
 	updateInprogress := getconfigCtx.updateInprogress
 	waitDrainInProgress := getconfigCtx.waitDrainInProgress
 	ctx := getconfigCtx.zedagentCtx
-	ctx.remainingTestTime = status.RemainingTestTime
-	getconfigCtx.updateInprogress = status.UpdateInprogress
-	getconfigCtx.waitDrainInProgress = status.WaitDrainInProgress
-	ctx.rebootTime = status.RebootTime
-	ctx.rebootStack = status.RebootStack
-	ctx.rebootReason = status.RebootReason
-	ctx.bootReason = status.BootReason
-	ctx.restartCounter = status.RestartCounter
-	ctx.allDomainsHalted = status.AllDomainsHalted
+	ctx.remainingTestTime = nodeAgentstatus.RemainingTestTime
+	getconfigCtx.updateInprogress = nodeAgentstatus.UpdateInprogress
+	getconfigCtx.waitDrainInProgress = nodeAgentstatus.WaitDrainInProgress
+	ctx.rebootTime = nodeAgentstatus.RebootTime
+	ctx.rebootStack = nodeAgentstatus.RebootStack
+	ctx.rebootReason = nodeAgentstatus.RebootReason
+	ctx.bootReason = nodeAgentstatus.BootReason
+	ctx.restartCounter = nodeAgentstatus.RestartCounter
+	ctx.allDomainsHalted = nodeAgentstatus.AllDomainsHalted
 	// Mark that we have received the NodeAgentStatus and initialized the context properly
 	ctx.initializedFromNodeAgentStatus = true
 	// if config reboot command was initiated and
 	// was deferred, and the device is not in inprogress
 	// state, initiate the reboot process
 	if ctx.rebootCmdDeferred &&
-		updateInprogress && !status.UpdateInprogress {
+		updateInprogress && !nodeAgentstatus.UpdateInprogress {
 		log.Functionf("TestComplete and deferred reboot")
 		ctx.rebootCmdDeferred = false
 		infoStr := fmt.Sprintf("TestComplete and deferred Reboot Cmd")
 		handleDeviceOperationCmd(ctx, infoStr, types.DeviceOperationReboot)
 	}
 	if ctx.shutdownCmdDeferred &&
-		updateInprogress && !status.UpdateInprogress {
+		updateInprogress && !nodeAgentstatus.UpdateInprogress {
 		log.Functionf("TestComplete and deferred shutdown")
 		ctx.shutdownCmdDeferred = false
 		infoStr := fmt.Sprintf("TestComplete and deferred Shutdown Cmd")
 		handleDeviceOperationCmd(ctx, infoStr, types.DeviceOperationShutdown)
 	}
 	if ctx.poweroffCmdDeferred &&
-		updateInprogress && !status.UpdateInprogress {
+		updateInprogress && !nodeAgentstatus.UpdateInprogress {
 		log.Functionf("TestComplete and deferred poweroff")
 		ctx.poweroffCmdDeferred = false
 		infoStr := fmt.Sprintf("TestComplete and deferred Poweroff Cmd")
 		handleDeviceOperationCmd(ctx, infoStr, types.DeviceOperationPoweroff)
 	}
 	if ctx.rebootCmdDeferred &&
-		waitDrainInProgress && !status.WaitDrainInProgress {
+		waitDrainInProgress && !nodeAgentstatus.WaitDrainInProgress {
 		log.Noticef("Drain complete and deferred Reboot Cmd")
 		log.Functionf("Drain complete check and deferred reboot Cmd")
 		ctx.rebootCmdDeferred = false
@@ -2542,7 +2644,7 @@ func handleNodeAgentStatusImpl(ctxArg interface{}, key string,
 		handleDeviceOperationCmd(ctx, infoStr, types.DeviceOperationReboot)
 	}
 	if ctx.shutdownCmdDeferred &&
-		waitDrainInProgress && !status.WaitDrainInProgress {
+		waitDrainInProgress && !nodeAgentstatus.WaitDrainInProgress {
 		log.Noticef("Drain complete and deferred shutdown Cmd")
 		log.Functionf("Drain complete check and deferred shutdown Cmd")
 		ctx.shutdownCmdDeferred = false
@@ -2550,31 +2652,32 @@ func handleNodeAgentStatusImpl(ctxArg interface{}, key string,
 		handleDeviceOperationCmd(ctx, infoStr, types.DeviceOperationShutdown)
 	}
 	if ctx.poweroffCmdDeferred &&
-		waitDrainInProgress && !status.WaitDrainInProgress {
+		waitDrainInProgress && !nodeAgentstatus.WaitDrainInProgress {
 		log.Functionf("Drain complete and deferred poweroff")
 		ctx.poweroffCmdDeferred = false
 		infoStr := fmt.Sprintf("Drain complete and deferred Poweroff Cmd")
 		handleDeviceOperationCmd(ctx, infoStr, types.DeviceOperationPoweroff)
 	}
-	if status.DeviceReboot {
+	if nodeAgentstatus.DeviceReboot {
 		handleDeviceOperation(ctx, types.DeviceOperationReboot)
 	}
-	if status.DeviceShutdown {
+	if nodeAgentstatus.DeviceShutdown {
 		handleDeviceOperation(ctx, types.DeviceOperationShutdown)
 	}
-	if status.DevicePoweroff {
+	if nodeAgentstatus.DevicePoweroff {
 		handleDeviceOperation(ctx, types.DeviceOperationPoweroff)
 	}
-	if ctx.localMaintenanceMode != status.LocalMaintenanceMode {
-		ctx.localMaintenanceMode = status.LocalMaintenanceMode
-		ctx.localMaintModeReason = status.LocalMaintenanceModeReason
-		mergeMaintenanceMode(ctx)
+	if ctx.localMaintenanceMode != nodeAgentstatus.LocalMaintenanceMode ||
+		equalMaintenanceMode(ctx.localMaintModeReasons, nodeAgentstatus.LocalMaintenanceModeReasons) {
+		ctx.localMaintenanceMode = nodeAgentstatus.LocalMaintenanceMode
+		ctx.localMaintModeReasons = nodeAgentstatus.LocalMaintenanceModeReasons
+		mergeMaintenanceMode(ctx, "handleNodeAgentStatusImpl")
 	}
 
-	if naHasRealChange(*getconfigCtx.NodeAgentStatus, status) {
+	if naHasRealChange(*getconfigCtx.NodeAgentStatus, nodeAgentstatus) {
 		triggerPublishDevInfo(ctx)
 	}
-	*getconfigCtx.NodeAgentStatus = status
+	*getconfigCtx.NodeAgentStatus = nodeAgentstatus
 	log.Functionf("handleNodeAgentStatusImpl: done.")
 }
 
@@ -2773,4 +2876,20 @@ func reinitNetdumper(ctx *zedagentContext) {
 	}
 	// Assign at the end to avoid race condition with configTimerTask.
 	ctx.netDumper = netDumper
+}
+
+func equalMaintenanceMode(a, b []types.MaintenanceModeReason) bool {
+	if len(a) != len(b) {
+		return false
+	}
+
+	// sort so me make sure the order is the same
+	sort.Slice(a, func(i, j int) bool { return a[i] < a[j] })
+	sort.Slice(b, func(i, j int) bool { return b[i] < b[j] })
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }

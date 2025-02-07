@@ -18,6 +18,7 @@ require (
 	github.com/go-chi/chi/v5 v5.0.10
 	github.com/go-playground/validator/v10 v10.15.5
 	github.com/golang-jwt/jwt v3.2.2+incompatible
+	github.com/golang/protobuf v1.5.4
 	github.com/google/go-cmp v0.6.0
 	github.com/google/go-containerregistry v0.14.0
 	github.com/google/go-tpm v0.9.1
@@ -29,7 +30,7 @@ require (
 	github.com/jaypipes/ghw v0.8.0
 	github.com/k8snetworkplumbingwg/network-attachment-definition-client v1.5.0
 	github.com/lf-edge/edge-containers v0.0.0-20240207093504-5dfda0619b80
-	github.com/lf-edge/eve-api/go v0.0.0-20241213165007-1a8f9be485b1
+	github.com/lf-edge/eve-api/go v0.0.0-20250204190553-54ee503d1433
 	github.com/lf-edge/eve-libs v0.0.0-20241210085709-fc89dcac7f3c
 	github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20240315102754-0f6d1f182e0d
 	github.com/lf-edge/go-qemu v0.0.0-20231121152149-4c467eda0c56
@@ -56,13 +57,14 @@ require (
 	golang.org/x/net v0.25.0
 	golang.org/x/sys v0.28.0
 	google.golang.org/grpc v1.61.0
-	google.golang.org/protobuf v1.33.0
+	google.golang.org/protobuf v1.36.1
 	gopkg.in/yaml.v2 v2.4.0
 	k8s.io/api v0.29.3
 	k8s.io/apimachinery v0.29.3
 	k8s.io/client-go v12.0.0+incompatible
 	k8s.io/kubectl v0.30.3
 	k8s.io/metrics v0.29.3
+	k8s.io/utils v0.0.0-20230726121419-3b25d923346b
 	kubevirt.io/api v1.1.1
 	kubevirt.io/client-go v1.2.0
 	tags.cncf.io/container-device-interface v0.6.2
@@ -205,9 +207,8 @@ require (
 	github.com/go-kit/kit v0.13.0 // indirect
 	github.com/go-kit/log v0.2.1 // indirect
 	github.com/go-logfmt/logfmt v0.6.0 // indirect
-	github.com/golang/glog v1.1.2 // indirect
+	github.com/golang/glog v1.2.4 // indirect
 	github.com/golang/mock v1.6.0 // indirect
-	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/google/btree v1.0.1 // indirect
 	github.com/google/gnostic v0.5.7-v3refs // indirect
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510 // indirect
@@ -237,7 +238,6 @@ require (
 	k8s.io/component-base v0.28.5 // indirect
 	k8s.io/klog/v2 v2.110.1 // indirect
 	k8s.io/kube-openapi v0.0.0-20231010175941-2dd684a91f00 // indirect
-	k8s.io/utils v0.0.0-20230726121419-3b25d923346b // indirect
 	kubevirt.io/containerized-data-importer-api v1.57.0-alpha1 // indirect
 	kubevirt.io/controller-lifecycle-operator-sdk/api v0.0.0-20220329064328-f3cc58c6ed90 // indirect
 	sigs.k8s.io/controller-runtime v0.16.1 // indirect

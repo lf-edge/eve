@@ -50,7 +50,7 @@ When the application is launched and managed in KubeVirt mode, the Kubernetes cl
 
 As a part of kubevirt-eve we have multiple cluster nodes each hosting app workloads and volume replicas.
 zedkube implements defer for eve mgmt config operations which will result in unavailability of storage
-replicas until the cluster volume is not running on a single replica.  This defer is implemented 
+replicas until the cluster volume is not running on a single replica.  This defer is implemented
 through cordoning, uncordoning, and draining of clustered eve-os nodes.
 
 Any given node could be hosting one or more longhorn volume replicas and thus could be the rebuild source for other node replicas.
@@ -226,3 +226,42 @@ The statefulset must be deleted.
   zgrep 'kubevirt_node_drain_completion_time_seconds' /persist/newlog/keepSentQueue/dev.log.1725511530990.gz | jq -r .content | jq -r .msg | cut -d ':' -f 2
   s34.559219
   ...
+
+### Application Tracker or App-Tracker
+
+In the Edge-Node Clustering setup, there are multiple EVE nodes handling the applications in a distributed way to prepare and handle the kubernetes cluster Pods and VMIs. The deployed application is downloaded onto all the nodes in the cluster, same for the cluster Network Instance and Volume Instance. Each node handles a different way to the application depending on the node is the Designated Node for the App, or if the kubernetes scheduling has scheduled the application to another node, etc. It is not easy to debug the distributed system when there is an issue encountered.
+
+The service 'zedkube' offers an App-Tracker http service, by offering the URL on the cluster node prefix IP address with the port number 12346. This prefix IP and port is already being used across the network in cluster to query the node cluster status when the node is being converted from single node into the cluster mode. The App-Tracker is using the same endpoint with a different URL to display the page of application status in the node or in the entire cluster.
+
+With the URL `http://<cluster-intf-ip>:12346/app/<app name or uuid>`
+it will return the Application state being published by each relevant microservices in pillar and the cluster status. Given the AppInstanceConfig data, we can gather the volume instances and network instances information, and further explore the volume and network related states. The Json file includes those items:
+
+- EdgeNode Info
+- EdgeNode Cluster Status
+- Kubernetes lease Information (for Cluster status reporter)
+- last 10 lines of /persist/kubelog/k3s-install.log
+- App Instance Config Info
+- Volume Config Info
+- Network Instance Status
+- EdgeNode Cluster App Status by zedkube
+- App Network Config by zedmanager
+- App Network Status by zedrouter
+- App Volume Status
+- App ContentTree Status
+- App Network Config by zedmanager
+- App Instance Status by zedmanager
+- App Domain Config my zedmanager
+- App Domain Status by domainmgr
+- App Domain Metrics by domainmgr
+- App Disk Metrics by volumemgr
+
+For entire cluster status of the App, with the URL `http://<cluster-intf-ip>:12346/cluster-app/<app name or uuid>`
+The first node specified by the 'cluster-intf-ip' will gather the above App status on the node, then it will query the cluster on all the cluster-intf-ip of the other nodes on the cluster. Then it sends out the http query to those endpoints with the 'app name or app uuid' in URL to goather the APP status on those nodes, and merge the json results for the query reply to the user.
+
+To use this, one example can be to use Edgeview with TCP command for the first node. First find out the cluster-intf-ip of the node on the cluster, for instance it is '10.244.244.3', then do:
+
+  edgeview.sh tcp/10.244.244.3:12346
+
+then go to a web browser (or use 'curl'), enter url: `http://localhost:9001/app/<app name or uuid>` for the particular node status of the App, or enter url: `http://localhost:9001/cluster-app/<app name or uuid>` for the cluster status of the App.
+
+If the \<app name or uuid\> is empty in the URL, then the query reply only returns the cluster related status. (the above first 4 items in the list)

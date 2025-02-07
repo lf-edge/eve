@@ -78,6 +78,7 @@ type nodeagentContext struct {
 	subVaultStatus              pubsub.Subscription
 	subVolumeMgrStatus          pubsub.Subscription
 	subNodeDrainStatus          pubsub.Subscription
+	subTpmStatus                pubsub.Subscription
 	pubZbootConfig              pubsub.Publication
 	pubNodeAgentStatus          pubsub.Publication
 	curPart                     string
@@ -109,13 +110,13 @@ type nodeagentContext struct {
 	rebootStack                 string           // From last reboot
 	rebootTime                  time.Time        // From last reboot
 	restartCounter              uint32
-	vaultOperational            types.TriState              // Is the vault fully operational?
-	vaultTestStartTime          uint32                      // Time at which we should start waiting for vault to be operational
-	maintMode                   bool                        // whether Maintenance mode should be triggered
-	maintModeReason             types.MaintenanceModeReason //reason for entering Maintenance mode
-	configGetSuccess            bool                        // got config from controller success
-	vaultmgrReported            bool                        // got reports from vaultmgr
-	hvTypeKube                  bool                        // image is kubernetes cluster type
+	vaultOperational            types.TriState                   // Is the vault fully operational?
+	vaultTestStartTime          uint32                           // Time at which we should start waiting for vault to be operational
+	maintMode                   bool                             // whether Maintenance mode should be triggered
+	maintModeReasons            types.MaintenanceModeMultiReason // reasons for entering Maintenance mode
+	configGetSuccess            bool                             // got config from controller success
+	vaultmgrReported            bool                             // got reports from vaultmgr
+	hvTypeKube                  bool                             // image is kubernetes cluster type
 	waitDrainInProgress         bool
 
 	// Some constants.. Declared here as variables to enable unit tests
@@ -281,6 +282,24 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	ctxPtr.subVolumeMgrStatus = subVolumeMgrStatus
 	subVolumeMgrStatus.Activate()
 
+	// Look for Tpm status
+	subTpmStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "tpmmgr",
+		MyAgentName:   agentName,
+		TopicImpl:     types.TpmSanityStatus{},
+		Activate:      false,
+		Ctx:           ctxPtr,
+		CreateHandler: handleTpmStatusCreate,
+		ModifyHandler: handleTpmStatusModify,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctxPtr.subTpmStatus = subTpmStatus
+	subTpmStatus.Activate()
+
 	// publish zboot config as of now
 	publishZbootConfigAll(ctxPtr)
 
@@ -394,6 +413,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 		case change := <-ctxPtr.subNodeDrainStatus.MsgChan():
 			ctxPtr.subNodeDrainStatus.ProcessChange(change)
+
+		case change := <-subTpmStatus.MsgChan():
+			subTpmStatus.ProcessChange(change)
 
 		case <-ctxPtr.stillRunning.C:
 		}
@@ -712,24 +734,24 @@ func publishNodeAgentStatus(ctxPtr *nodeagentContext) {
 	pub := ctxPtr.pubNodeAgentStatus
 	ctxPtr.lastLock.Lock()
 	status := types.NodeAgentStatus{
-		Name:                       agentName,
-		CurPart:                    ctxPtr.curPart,
-		RemainingTestTime:          ctxPtr.remainingTestTime,
-		UpdateInprogress:           ctxPtr.updateInprogress,
-		DeviceReboot:               ctxPtr.deviceReboot,
-		DeviceShutdown:             ctxPtr.deviceShutdown,
-		DevicePoweroff:             ctxPtr.devicePoweroff,
-		AllDomainsHalted:           ctxPtr.allDomainsHalted,
-		RebootReason:               ctxPtr.rebootReason,
-		BootReason:                 ctxPtr.bootReason,
-		RebootStack:                ctxPtr.rebootStack,
-		RebootTime:                 ctxPtr.rebootTime,
-		RebootImage:                ctxPtr.rebootImage,
-		RestartCounter:             ctxPtr.restartCounter,
-		LocalMaintenanceMode:       ctxPtr.maintMode,
-		LocalMaintenanceModeReason: ctxPtr.maintModeReason,
-		HVTypeKube:                 ctxPtr.hvTypeKube,
-		WaitDrainInProgress:        ctxPtr.waitDrainInProgress,
+		Name:                        agentName,
+		CurPart:                     ctxPtr.curPart,
+		RemainingTestTime:           ctxPtr.remainingTestTime,
+		UpdateInprogress:            ctxPtr.updateInprogress,
+		DeviceReboot:                ctxPtr.deviceReboot,
+		DeviceShutdown:              ctxPtr.deviceShutdown,
+		DevicePoweroff:              ctxPtr.devicePoweroff,
+		AllDomainsHalted:            ctxPtr.allDomainsHalted,
+		RebootReason:                ctxPtr.rebootReason,
+		BootReason:                  ctxPtr.bootReason,
+		RebootStack:                 ctxPtr.rebootStack,
+		RebootTime:                  ctxPtr.rebootTime,
+		RebootImage:                 ctxPtr.rebootImage,
+		RestartCounter:              ctxPtr.restartCounter,
+		LocalMaintenanceMode:        ctxPtr.maintMode,
+		LocalMaintenanceModeReasons: ctxPtr.maintModeReasons,
+		HVTypeKube:                  ctxPtr.hvTypeKube,
+		WaitDrainInProgress:         ctxPtr.waitDrainInProgress,
 	}
 	ctxPtr.lastLock.Unlock()
 	pub.Publish(agentName, status)
@@ -766,14 +788,8 @@ func handleVaultStatusImpl(ctxArg interface{}, key string,
 		if vault.ConversionComplete {
 			ctx.vaultOperational = types.TS_ENABLED
 			// Do we need to clear maintenance?
-			if ctx.maintMode &&
-				ctx.maintModeReason == types.MaintenanceModeReasonVaultLockedUp {
-				log.Noticef("Clearing %s",
-					types.MaintenanceModeReasonVaultLockedUp)
-				ctx.maintMode = false
-				ctx.maintModeReason = types.MaintenanceModeReasonNone
-				publishNodeAgentStatus(ctx)
-			}
+			removeMaintenanceModeReason(ctx, types.MaintenanceModeReasonVaultLockedUp, "handleVaultStatusImpl")
+			publishNodeAgentStatus(ctx)
 		} else {
 			ctx.vaultOperational = types.TS_NONE
 		}
@@ -797,7 +813,6 @@ func handleVolumeMgrStatusImpl(ctxArg interface{}, key string,
 
 	ctx := ctxArg.(*nodeagentContext)
 	vms := statusArg.(types.VolumeMgrStatus)
-	changed := false
 	// This RemainingSpace takes into account the space reserved for
 	// /persist/newlog plus the percentage/minimum reserved for the rest
 	// of EVE-OS. Thus it can never go negative, but zero means that
@@ -805,26 +820,12 @@ func handleVolumeMgrStatusImpl(ctxArg interface{}, key string,
 	// a tiny app instance.
 	if vms.RemainingSpace == 0 {
 		log.Warnf("MaintenanceMode due to no remaining diskspace")
-		// Do not overwrite a vault maintenance mode
-		if !ctx.maintMode {
-			log.Noticef("Setting %s",
-				types.MaintenanceModeReasonNoDiskSpace)
-			ctx.maintModeReason = types.MaintenanceModeReasonNoDiskSpace
-			ctx.maintMode = true
-			changed = true
-		}
+		// Add to maintenance mode reasons
+		addMaintenanceModeReason(ctx, types.MaintenanceModeReasonNoDiskSpace, "handleVolumeMgrStatusImpl")
+		publishNodeAgentStatus(ctx)
 	} else {
 		// Do we need to clear maintenance?
-		if ctx.maintMode &&
-			ctx.maintModeReason == types.MaintenanceModeReasonNoDiskSpace {
-			log.Noticef("Clearing %s",
-				types.MaintenanceModeReasonNoDiskSpace)
-			ctx.maintMode = false
-			ctx.maintModeReason = types.MaintenanceModeReasonNone
-			changed = true
-		}
-	}
-	if changed {
+		removeMaintenanceModeReason(ctx, types.MaintenanceModeReasonNoDiskSpace, "handleVolumeMgrStatusImpl")
 		publishNodeAgentStatus(ctx)
 	}
 }
@@ -847,4 +848,56 @@ func parseSMARTData() {
 
 	parseData(currentSMARTfilename, smartData)
 	parseData(previousSMARTfilename, previousSmartData)
+}
+
+func handleTpmStatusCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleTpmStatusImpl(ctxArg, key, statusArg)
+}
+
+func handleTpmStatusModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleTpmStatusImpl(ctxArg, key, statusArg)
+}
+
+func handleTpmStatusImpl(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	ctx := ctxArg.(*nodeagentContext)
+	tpm := statusArg.(types.TpmSanityStatus)
+
+	if tpm.Status == types.MaintenanceModeReasonTpmEncFailure {
+		log.Errorf("handleTpmStatusImpl: TPM manager reported TPM error : %s", tpm.Error)
+		addMaintenanceModeReason(ctx, types.MaintenanceModeReasonTpmEncFailure, "handleTpmStatusImpl")
+		publishNodeAgentStatus(ctx)
+	} else {
+		removeMaintenanceModeReason(ctx, types.MaintenanceModeReasonTpmEncFailure, "handleTpmStatusImpl")
+		publishNodeAgentStatus(ctx)
+	}
+}
+
+func addMaintenanceModeReason(ctx *nodeagentContext, reason types.MaintenanceModeReason, caller string) {
+	log.Noticef("%s setting %s", caller, reason)
+	ctx.maintMode = true
+	// don't add duplicate reasons
+	for _, r := range ctx.maintModeReasons {
+		if r == reason {
+			return
+		}
+	}
+
+	ctx.maintModeReasons = append(ctx.maintModeReasons, reason)
+}
+
+func removeMaintenanceModeReason(ctx *nodeagentContext, reason types.MaintenanceModeReason, caller string) {
+	log.Noticef("%s clearing %s", caller, reason)
+	for i, r := range ctx.maintModeReasons {
+		if r == reason {
+			ctx.maintModeReasons = append(ctx.maintModeReasons[:i], ctx.maintModeReasons[i+1:]...)
+		}
+	}
+
+	if len(ctx.maintModeReasons) == 0 {
+		ctx.maintMode = false
+		log.Noticef("%s : No reason to be in maintenance mode, clearing maintenance mode", caller)
+	}
 }
