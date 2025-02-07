@@ -1,0 +1,23 @@
+# Copyright (c) 2025 Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+org: lfedge
+image: eve-nkv
+network: yes
+config:
+  pid: host
+  binds:
+    # for temporary files and UNIX socket
+    - /run:/run
+    # to save logs
+    - /persist:/persist:rshared,rbind
+    - /:/hostfs
+  net: host
+  capabilities:
+    - all
+  pid: host
+  rootfsPropagation: shared
+  devices:
+    - path: all
+      type: a
+
