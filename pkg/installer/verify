@@ -58,27 +58,10 @@ do
    fi
 done
 
-if false; # Temporarily commented out
-then
-   # Testing qemu and passthrough
-   qemu_exec=/usr/bin/qemu-system-$(uname -m)
-   machine=$($qemu_exec -machine help | awk '{if (NR==2) print $1}')
-   $qemu_exec -m 1024 -smp 2 -display none -serial mon:stdio -global ICH9-LPC.noreboot=false \
-      -watchdog-action reset -rtc base=utc,clock=rt -machine "$machine" -cpu SandyBridge \
-      -drive file=/ubuntu-22.04-minimal-cloudimg-amd64.img,format=qcow2 &
-
-   # shellcheck disable=SC2181
-   if [ "$?" -eq 0 ]; then
-      kill %1
-      echo "start VM success" > "$REPORT/guest-checks.log"
-      echo "Start of an edge application successful" >> "$REPORT/summary.log";
-   else
-      echo "start VM failed" > "$REPORT/guest-checks.log"
-      echo "Start of an edge application failed" >> "$REPORT/summary.log";
-   fi
-fi
-
-echo "start VM test unavailable" > "$REPORT/guest-checks.log"
+# There used to be a VM test here, using qemu, and ubuntu-22.04-minimal-cloud.img. It was commented out for a long time as of this writing.
+# The installer image does not have qemu (~40MB) or the listed ubuntu-22.04 file (~287MB) installed.
+# If they are needed, add qemu to the Dockerfile, as well as downloading the .img, but think long
+# and hard if the size is needed. Look for alternatives. You can find the actual script code for the test from older commits.
 
 tpm2_pcrread >> "$REPORT/summary.log"
 
