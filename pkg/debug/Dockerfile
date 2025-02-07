@@ -8,6 +8,7 @@
 # has a fast path for stack unwinding. This also happens
 # to be a perfect place to put any other kind of debug info
 # into the package: see abuild/etc/abuild.conf.
+FROM lfedge/eve-nkv:5cf72d91760f34815b5fc7fe47e5279cc2ae63c7 AS nkv
 FROM lfedge/eve-recovertpm:e0e02dc0f6e81e6b15e84a416171e354346923ad AS recovertpm
 FROM lfedge/eve-bpftrace:c08d714db34b7cde90d20c56e74d2c11afe483df AS bpftrace
 FROM lfedge/eve-alpine:745ae9066273c73b0fd879c4ba4ff626a8392d04 AS build
@@ -127,6 +128,8 @@ RUN mkdir -p /bpftrace/bpftrace-aotrt
 # add recover-tpm to debug container
 WORKDIR /
 COPY --from=recovertpm /usr/bin/recovertpm /out/usr/bin/recovertpm
+# with nkv-client we can communicate with nkv
+COPY --from=nkv /sbin/nkv-client /out/usr/bin/nkv-client
 
 FROM build AS test
 # run collect-info test
