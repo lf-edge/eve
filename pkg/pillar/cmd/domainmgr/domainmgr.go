@@ -146,6 +146,7 @@ var hyper hypervisor.Hypervisor // Current hypervisor
 var logger *logrus.Logger
 var log *base.LogObject
 
+// Run is the main entry point for domainmgr
 func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string, baseDir string) int { //nolint:gocyclo
 	logger = loggerArg
 	log = logArg
@@ -491,7 +492,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		}
 		ps.StillRunning(agentName, warningTime, errorTime)
 	}
-	log.Noticef("processed GlobalConfig")
+	log.Noticef("processed GlobalConfig!")
 
 	capabilitiesSent := false
 	capabilitiesTicker := time.NewTicker(5 * time.Second)
