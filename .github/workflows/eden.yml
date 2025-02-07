@@ -103,7 +103,7 @@ jobs:
           fi
 
   get_run_id:
-    if: needs.check_existing_workflow.outputs.should_run == 'true' && needs.check_md_wf_files.outputs.only_md == 'false' && needs.check_md_wf_files.outputs.workflow_files_modified == 'false'
+    if: needs.check_existing_workflow.outputs.should_run == 'true' && needs.check_md_wf_files.outputs.only_md == 'false'
     runs-on: ubuntu-latest
     needs: check_md_wf_files
     outputs:
