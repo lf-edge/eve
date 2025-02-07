@@ -109,7 +109,7 @@ PID     APP-UUID                                CONS-TYPE       CONS-ID
 ---     --------                                ---------       ---------
 3883    e4e2f56d-b833-4562-a86f-be654d6387ba    VM              e4e2f56d-b833-4562-a86f-be654d6387ba.1.1/cons
 4072    f6d348cc-9c31-4f8b-8c4f-a4aae4590b97    CONTAINER       f6d348cc-9c31-4f8b-8c4f-a4aae4590b97.1.2/cons
-4072    f6d348cc-9c31-4f8b-8c4f-a4aae4590b97    VM              f6d348cc-9c31-4f8b-8c4f-a4aae4590b97.1.2/prime-cons
+4072    f6d348cc-9c31-4f8b-8c4f-a4aae4590b97    VM              f6d348cc-9c31-4f8b-8c4f-a4aae4590b97.1.2/shim-cons
 
 ```
 
@@ -140,10 +140,10 @@ Note: `tio` utility is used as a simple TTY terminal, so in order to quit the se
 
 The same 'cons' console ID can be used for the Container application, but please be aware if container does not start a shell then terminal is very limited and can be used only for reading for the console output, but not for executing commands.
 
-In order to attach to the console of the hosting Vm of the Container application another console ID should be used which is named `prime-cons`:
+In order to attach to the console of the hosting Vm of the Container application another console ID should be used which is named `shim-cons`:
 
 ```bash
-# eve attach-app-console f6d348cc-9c31-4f8b-8c4f-a4aae4590b97.1.2/prime-cons
+# eve attach-app-console f6d348cc-9c31-4f8b-8c4f-a4aae4590b97.1.2/shim-cons
 [20:41:47.124] tio v1.37
 [20:41:47.124] Press ctrl-t q to quit
 [20:41:47.124] Connected
@@ -151,9 +151,9 @@ In order to attach to the console of the hosting Vm of the Container application
 ~ #
 ```
 
-The `prime-cons` console exists only for the Container applications and is always reachable for executing commands on the Vm which hosts corresponding container.
+The `shim-cons` console exists only for the Container applications and is always reachable for executing commands on the Vm which hosts corresponding container.
 
-Once terminal responds on the `prime-cons` console it is possible to enter container by executing the `eve-enter-container` command. The script takes an optional argument with the path to the program to run in the container (the path is relative to the root of the container filesystem). If no argument is provided, the script will try to call the shell (`/bin/sh`) in the container:
+Once terminal responds on the `shim-cons` console it is possible to enter container by executing the `eve-enter-container` command. The script takes an optional argument with the path to the program to run in the container (the path is relative to the root of the container filesystem). If no argument is provided, the script will try to call the shell (`/bin/sh`) in the container:
 
 ```bash
 ~ # eve-enter-container
@@ -170,7 +170,7 @@ PID   USER     TIME  COMMAND
 
 If container's entrypoint (e.g. `init` script) misbehaves and exits, it becomes very difficult to debug such a container, because hosting Vm shuts down immediately by explicit poweroff call.
 
-If EVE_CONTAINER_NO_POWEROFF=1 environment variable is set on the controller side in the application instance userData/cipherData fields, then the hosting Vm does not shut down, but waits for further debugging session, for example attaching to a `prime-cons` console.
+If EVE_CONTAINER_NO_POWEROFF=1 environment variable is set on the controller side in the application instance userData/cipherData fields, then the hosting Vm does not shut down, but waits for further debugging session, for example attaching to a `shim-cons` console.
 
 ## Reboots
 
