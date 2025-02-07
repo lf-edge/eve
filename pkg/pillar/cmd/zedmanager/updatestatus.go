@@ -86,7 +86,7 @@ func removeAIStatus(ctx *zedmanagerContext, status *types.AppInstanceStatus) {
 	// The VM has been just shutdown in a result of the purge&update command coming from the controller.
 	if !uninstall && domainStatus != nil && !domainStatus.Activated {
 		// We should do it before the doRemove is called, so that all the volumes are still available.
-		if status.SnapStatus.SnapshotOnUpgrade && len(status.SnapStatus.PreparedVolumesSnapshotConfigs) > 0 {
+		if status.SnapStatus.SnapshotTakenType != types.NoSnapshotTake && len(status.SnapStatus.PreparedVolumesSnapshotConfigs) > 0 {
 			// Check whether there are snapshots to be deleted first (not to exceed the maximum number of snapshots).
 			if len(status.SnapStatus.SnapshotsToBeDeleted) > 0 {
 				triggerSnapshotDeletion(status.SnapStatus.SnapshotsToBeDeleted, ctx, status)
