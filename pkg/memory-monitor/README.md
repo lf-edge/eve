@@ -190,6 +190,10 @@ This setup allows you to toggle memory monitoring on and off, which can be
 especially useful if you suspect that the memory monitor's handler script might
 be consuming excessive CPU or memory resources.
 
+As the memory monitor is a new component in the EVE system, and very few
+real-world testing was done with it, is important to be on the safe side, so we
+disable the memory monitor by default. It can be enabled by the user if needed.
+
 ## Internals of the build and startup process
 
 To deploy the memory monitor to the EVE system, we create a corresponding
