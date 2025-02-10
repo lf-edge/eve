@@ -31,39 +31,51 @@ fi
 echo "searching for root filesystem with value: $root_value"
 
 rootdev=""
-blkid=$(blkid)
 
-# Determine if the root_value is a LABEL, UUID, or direct device path
-while read -r line; do
-    case "$root_value" in
-        LABEL=*)
-            label=${root_value#LABEL=}
-            if echo "$line" | grep -q "LABEL=\"$label\""; then
-                rootdev=$(echo "$line" | cut -d: -f1)
-                break
-            fi
-            ;;
-        UUID=*)
-            uuid=${root_value#UUID=}
-            if echo "$line" | grep -q "UUID=\"$uuid\""; then
-                rootdev=$(echo "$line" | cut -d: -f1)
-                break
-            fi
-            ;;
-        PARTUUID=*)
-            partuuid=${root_value#PARTUUID=}
-            if echo "$line" | grep -q "PARTUUID=\"$partuuid\""; then
-                rootdev=$(echo "$line" | cut -d: -f1)
-                break
-            fi
-            ;;
-        *)
-            rootdev="$root_value"
-            ;;
-    esac
-done <<EOF
-$blkid
+# Some emulated CD/DVD-ROM devices might take some time to appear in the
+# system, set a maximum number of retries (one per second) until give up
+cnt=10
+while [ "$cnt" -gt 0 ]; do
+    # Determine if the root_value is a LABEL, UUID, or direct device path
+    while read -r line; do
+        case "$root_value" in
+            LABEL=*)
+                label=${root_value#LABEL=}
+                if echo "$line" | grep -q "LABEL=\"$label\""; then
+                    rootdev=$(echo "$line" | cut -d: -f1)
+                    break
+                fi
+                ;;
+            UUID=*)
+                uuid=${root_value#UUID=}
+                if echo "$line" | grep -q "UUID=\"$uuid\""; then
+                    rootdev=$(echo "$line" | cut -d: -f1)
+                    break
+                fi
+                ;;
+            PARTUUID=*)
+                partuuid=${root_value#PARTUUID=}
+                if echo "$line" | grep -q "PARTUUID=\"$partuuid\""; then
+                    rootdev=$(echo "$line" | cut -d: -f1)
+                    break
+                fi
+                ;;
+            *)
+                rootdev="$root_value"
+                ;;
+        esac
+    done <<EOF
+$(blkid)
 EOF
+
+    if [ -n "$rootdev" ]; then
+        break
+    else
+        echo "Waiting for root device... "
+        sleep 1
+        cnt=$((cnt - 1))
+    fi
+done
 
 # If root filesystem is found, mount it
 if [ -n "$rootdev" ]; then
