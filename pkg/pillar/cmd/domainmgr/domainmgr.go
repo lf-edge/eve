@@ -16,6 +16,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -1148,6 +1149,19 @@ func maybeRetryBoot(ctx *domainContext, status *types.DomainStatus) {
 	}
 	defer file.Close()
 
+	// setup Windows OEM license key if enabled
+	if config.EnableOemWinLicenseKey {
+		getDmiSystemInfo(&config.OemWindowsLicenseKeyInfo.SystemInfo)
+		err = hyper.Task(status).OemWindowsLicenseKeySetup(&config.OemWindowsLicenseKeyInfo)
+		if err != nil {
+			// let the VM to boot and just log the error? or terminate?
+			log.Errorf("Failed to setup Windows OEM license key for %s: %s", status.DomainName, err)
+			status.PassthroughWindowsLicenseKey = false
+		} else {
+			status.PassthroughWindowsLicenseKey = true
+		}
+	}
+
 	wp := &types.WatchdogParam{Ps: ctx.ps, AgentName: agentName, WarnTime: warningTime, ErrTime: errorTime}
 	err = hyper.Task(status).VirtualTPMSetup(status.DomainName, wp)
 	if err == nil {
@@ -1694,6 +1708,19 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 		log.Fatal("os.Create for ", filename, err)
 	}
 	defer file.Close()
+
+	// setup Windows OEM license key if enabled
+	if config.EnableOemWinLicenseKey {
+		getDmiSystemInfo(&config.OemWindowsLicenseKeyInfo.SystemInfo)
+		err = hyper.Task(status).OemWindowsLicenseKeySetup(&config.OemWindowsLicenseKeyInfo)
+		if err != nil {
+			// let the VM to boot and just log the error? or terminate?
+			log.Errorf("Failed to setup Windows OEM license key for %s: %s", status.DomainName, err)
+			status.PassthroughWindowsLicenseKey = false
+		} else {
+			status.PassthroughWindowsLicenseKey = true
+		}
+	}
 
 	wp := &types.WatchdogParam{Ps: ctx.ps, AgentName: agentName, WarnTime: warningTime, ErrTime: errorTime}
 	err = hyper.Task(status).VirtualTPMSetup(status.DomainName, wp)
@@ -3670,4 +3697,41 @@ func (ctx *domainContext) checkAndSaveEdgeNodeInfo() bool {
 		}
 	}
 	return false
+}
+
+func getDmiSystemInfo(dmi *types.DmiSystemInfo) {
+	validate := func(a string) string {
+		a = strings.TrimSpace(a)
+		if strings.Contains(a, ",") {
+			logrus.Warnf("Invalid value: %s", a)
+			return ""
+		}
+		return a
+	}
+
+	dmidecode := func(arg string) string {
+		cmd := exec.Command("dmidecode", "-s", arg)
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			logrus.Warnf("Failed to run dmidecode %s : %v", arg, err)
+			return ""
+		}
+
+		return validate(string(output))
+	}
+
+	dmi.Manufacturer = validate(dmidecode("system-manufacturer"))
+	dmi.ProductName = validate(dmidecode("system-product-name"))
+	dmi.Version = validate(dmidecode("system-version"))
+	dmi.SerialNumber = validate(dmidecode("system-serial-number"))
+	dmi.SKUNumber = validate(dmidecode("system-sku-number"))
+	dmi.Family = validate(dmidecode("system-family"))
+	dmi.UUID = validate(dmidecode("system-uuid"))
+	if dmi.UUID != "" {
+		_, err := uuid.FromString(dmi.UUID)
+		if err != nil {
+			logrus.Warnf("Invalid UUID: %s", dmi.UUID)
+			dmi.UUID = ""
+		}
+	}
 }

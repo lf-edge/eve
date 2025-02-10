@@ -979,6 +979,15 @@ func (ctx KvmContext) Setup(status types.DomainStatus, config types.DomainConfig
 		dmArgs = append(dmArgs, "-smbios", "type=1,product=OpenStack Compute")
 	}
 
+	if status.PassthroughWindowsLicenseKey {
+		if config.OemWindowsLicenseKeyInfo.Qemu.DomainArguments != nil {
+			dmArgs = append(dmArgs, config.OemWindowsLicenseKeyInfo.Qemu.DomainArguments...)
+		} else {
+			// this should never happen, but just in case.
+			return logError("Windows OEM license key is enabled but no domain arguments are provided")
+		}
+	}
+
 	os.MkdirAll(kvmStateDir+domainName, 0777)
 
 	args := []string{ctx.dmExec}
@@ -1517,6 +1526,9 @@ func (ctx KvmContext) CreateDomConfig(domainName string,
 		isVncShimVMEnabled(globalConfig, config)
 	qemuConfContext.DomainConfig.DisplayName = domainName
 
+	// signal Qemu to inject MS Licenses via custom ACPI tables
+	qemuConfContext.DomainConfig.EnableOemWinLicenseKey = config.EnableOemWinLicenseKey
+
 	// render global device model settings
 	if err := tQemuGlobalConf.Execute(file, qemuConfContext); err != nil {
 		return logError("can't write to config file %s (%v)", file.Name(), err)
@@ -2007,4 +2019,50 @@ func requestvTPMTermination(id uuid.UUID, wp *types.WatchdogParam) error {
 	}
 
 	return nil
+}
+
+// OemWindowsLicenseKeySetup prepares the domain to receive Windows OEM license keys
+func (ctx KvmContext) OemWindowsLicenseKeySetup(wlk *types.OemWindowsLicenseKeyInfo) error {
+	licenses := getWindowsLicenseACPIPath()
+	for _, license := range licenses {
+		licenseFile := fmt.Sprintf("file=%s", license)
+		wlk.Qemu.DomainArguments = append(wlk.Qemu.DomainArguments, "-acpitable", licenseFile)
+	}
+
+	// add sysinfo
+	smbiosSysInfo := generateDmidecodeSmbiosString(wlk.SystemInfo)
+	wlk.Qemu.DomainArguments = append(wlk.Qemu.DomainArguments, "-smbios", smbiosSysInfo)
+
+	return nil
+}
+
+// generateDmidecodeSmbiosString creates the SMBIOS string from dmi info
+func generateDmidecodeSmbiosString(sysInfo types.DmiSystemInfo) string {
+	var fields []string
+
+	if sysInfo.UUID != "" {
+		fields = append(fields, fmt.Sprintf("uuid=%s", sysInfo.UUID))
+	}
+	if sysInfo.Manufacturer != "" {
+		fields = append(fields, fmt.Sprintf("manufacturer=%s", sysInfo.Manufacturer))
+	}
+	if sysInfo.ProductName != "" {
+		fields = append(fields, fmt.Sprintf("product=%s", sysInfo.ProductName))
+	}
+	if sysInfo.Version != "" {
+		fields = append(fields, fmt.Sprintf("version=%s", sysInfo.Version))
+	}
+	if sysInfo.SerialNumber != "" {
+		fields = append(fields, fmt.Sprintf("serial=%s", sysInfo.SerialNumber))
+	}
+	if sysInfo.SKUNumber != "" {
+		fields = append(fields, fmt.Sprintf("sku=%s", sysInfo.SKUNumber))
+	}
+	if sysInfo.Family != "" {
+		fields = append(fields, fmt.Sprintf("family=%s", sysInfo.Family))
+	}
+
+	smbiosString := "type=1," + strings.Join(fields, ",")
+	logrus.Infof("Generated SMBIOS string: %s", smbiosString)
+	return smbiosString
 }
