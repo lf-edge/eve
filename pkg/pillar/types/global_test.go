@@ -200,6 +200,7 @@ func TestNewConfigItemSpecMap(t *testing.T) {
 		EnableARPSnoop,
 		WwanQueryVisibleProviders,
 		NetworkLocalLegacyMACAddress,
+		MemoryMonitorEnabled,
 		// TriState Items
 		NetworkFallbackAnyEth,
 		MaintenanceMode,
