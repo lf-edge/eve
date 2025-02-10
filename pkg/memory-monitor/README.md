@@ -177,6 +177,19 @@ The tool than creates the output files in `/persist/memory-monitor/output`.
 The persistent storage is mounted to the container, so the output files are
 available in the host system.
 
+### Enabling memory monitor
+
+By default, the memory monitor is disabled: its container starts automatically
+with the EVE boot but remains paused. To activate memory monitoring, set the
+global configuration option `memory-monitor.enabled` to `true`. When Pillar
+receives this update, it simply resumes the paused container. Conversely, if
+you need to disable it again, setting the option to `false` will pause the
+container.
+
+This setup allows you to toggle memory monitoring on and off, which can be
+especially useful if you suspect that the memory monitor's handler script might
+be consuming excessive CPU or memory resources.
+
 ## Internals of the build and startup process
 
 To deploy the memory monitor to the EVE system, we create a corresponding
