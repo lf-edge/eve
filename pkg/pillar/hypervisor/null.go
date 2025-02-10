@@ -183,3 +183,7 @@ func (ctx nullContext) VirtualTPMTerminate(domainName string, wp *types.Watchdog
 func (ctx nullContext) VirtualTPMTeardown(domainName string, wp *types.WatchdogParam) error {
 	return fmt.Errorf("not implemented")
 }
+
+func (ctx nullContext) OemWindowsLicenseKeySetup(wlk *types.OemWindowsLicenseKeyInfo) error {
+	return fmt.Errorf("not implemented")
+}
