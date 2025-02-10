@@ -317,6 +317,9 @@ const (
 	// address, and MAC address change on EVE node upgrade (switch from old
 	// generation logic to new one) can cause problems with the guest network.
 	NetworkLocalLegacyMACAddress GlobalSettingKey = "network.local.legacy.mac.address"
+
+	// MemoryMonitorEnabled : Enable memory monitor
+	MemoryMonitorEnabled GlobalSettingKey = "memory-monitor.enabled"
 )
 
 // AgentSettingKey - keys for per-agent settings
@@ -947,6 +950,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddBoolItem(EnableARPSnoop, true)
 	configItemSpecMap.AddBoolItem(WwanQueryVisibleProviders, false)
 	configItemSpecMap.AddBoolItem(NetworkLocalLegacyMACAddress, false)
+	configItemSpecMap.AddBoolItem(MemoryMonitorEnabled, true)
 
 	// Add TriState Items
 	configItemSpecMap.AddTriStateItem(NetworkFallbackAnyEth, TS_DISABLED)
