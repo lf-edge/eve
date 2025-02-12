@@ -631,7 +631,7 @@ func (ctx xenContext) PCISameController(id1 string, id2 string) bool {
 	return false
 }
 
-func (ctx xenContext) GetHostCPUMem() (types.HostMemory, error) {
+func (ctx xenContext) GetHostCPUMem(reportPhyCores bool) (types.HostMemory, error) {
 	hm := types.HostMemory{}
 	ctrdSystemCtx, done := ctx.ctrdClient.CtrNewSystemServicesCtx()
 	defer done()

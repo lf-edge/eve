@@ -5,8 +5,9 @@ package domainmgr
 
 import (
 	"fmt"
-	"github.com/lf-edge/eve/pkg/pillar/hypervisor"
 	"time"
+
+	"github.com/lf-edge/eve/pkg/pillar/hypervisor"
 
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -93,7 +94,7 @@ func logWatermarks(ctx *domainContext, status *types.DomainStatus, dm *types.Dom
 
 func getAndPublishMetrics(ctx *domainContext, hyper hypervisor.Hypervisor) {
 	dmList, _ := hyper.GetDomsCPUMem()
-	hm, err := hyper.GetHostCPUMem()
+	hm, err := hyper.GetHostCPUMem(ctx.reportPhyCores)
 	if err != nil {
 		log.Errorf("Cannot obtain HostCPUMem: %s", err)
 		return

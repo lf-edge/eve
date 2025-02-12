@@ -109,6 +109,7 @@ type domainContext struct {
 	setInitialVgaAccess     bool
 	consoleAccess           bool
 	setInitialConsoleAccess bool
+	reportPhyCores          bool
 
 	GCInitialized       bool
 	domainBootRetryTime uint32 // In seconds
@@ -568,7 +569,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	var resources types.HostMemory
 	for i := 0; true; i++ {
 		delay := 10
-		resources, err = hyper.GetHostCPUMem()
+		resources, err = hyper.GetHostCPUMem(domainCtx.reportPhyCores)
 		if err == nil {
 			break
 		}
@@ -2690,6 +2691,7 @@ func handleGlobalConfigImpl(ctxArg interface{}, key string,
 			ctx.metricInterval = metricInterval
 		}
 		ctx.processCloudInitMultiPart = gcp.GlobalValueBool(types.ProcessCloudInitMultiPart)
+		ctx.reportPhyCores = gcp.GlobalValueBool(types.CPUStatsPhysicalCoreEnable)
 		ctx.GCInitialized = true
 	}
 	log.Functionf("handleGlobalConfigImpl done for %s. "+

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
@@ -33,7 +34,7 @@ type Hypervisor interface {
 	PCIRelease(string) error
 	PCISameController(string, string) bool
 
-	GetHostCPUMem() (types.HostMemory, error)
+	GetHostCPUMem(reportPhyCores bool) (types.HostMemory, error)
 	GetDomsCPUMem() (map[string]types.DomainMetric, error)
 
 	GetCapabilities() (*types.Capabilities, error)
@@ -111,7 +112,7 @@ func GetAvailableHypervisors() (all []string, enabled []string) {
 	return
 }
 
-func selfDomCPUMem() (types.HostMemory, error) {
+func selfDomCPUMem(reportPhysCores bool) (types.HostMemory, error) {
 	hm := types.HostMemory{}
 	vm, err := mem.VirtualMemory()
 	if err != nil {
@@ -139,6 +140,20 @@ func selfDomCPUMem() (types.HostMemory, error) {
 		return hm, err
 	}
 	hm.Ncpus = uint32(len(info))
+	if reportPhysCores {
+		if len(info) < 1 {
+			return hm, nil
+		}
+		// The list should be ordered so that CoreIds for a 4 core / 8 thread
+		// CPU would be eg. 0,1,2,3,0,1,2,3.  Pull the last entry:
+		lastInfoStat := info[len(info)-1]
+		val, err := strconv.ParseInt(lastInfoStat.CoreID, 10, 32)
+		if err != nil {
+			return hm, err
+		}
+		// Account for coreid 0
+		hm.Ncpus = uint32(val) + 1
+	}
 	return hm, nil
 }
 
