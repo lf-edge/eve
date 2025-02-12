@@ -67,7 +67,7 @@ func (c *sectionWriter) Write(p []byte) (int, error) {
 	}
 
 	if len(p) > n {
-		return n, fmt.Errorf("not enough space for %d bytes: %d", p, n)
+		return n, fmt.Errorf("partial write %d bytes, %d bytes remaining", n, len(slice)-n)
 	}
 
 	c.part.Size = c.part.Size + int64(n)
