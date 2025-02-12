@@ -67,6 +67,7 @@
 | goroutine.leak.detection.keep.stats.hours | integer (hours) | 24 | Amount of hours to keep the stats for leak detection. We keep more stats than the check window to be able to react to settings with a bigger check window via configuration. |
 | goroutine.leak.detection.cooldown.minutes | integer (minutes) | 5 | Cooldown period in minutes after the leak detection is triggered. During this period, no stack traces are collected; only warning messages are logged. |
 | kubevirt.drain.timeout | integer | 24 | hours to allow kubernetes to drain a node |
+| memory-monitor.enabled | boolean | false | Enable external memory monitoring and memory pressure events handling |
 
 ## Log levels
 

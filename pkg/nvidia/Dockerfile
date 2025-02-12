@@ -88,9 +88,9 @@ RUN make && mkdir -p dist/ && cp nvfanctrl dist/
 
 # Get and extract ldconfig for glibc, this tool runs over the rootfs of the
 # application container, like CUDA application containers (glibc based).
-ADD http://ports.ubuntu.com/ubuntu-ports/pool/main/g/glibc/libc-bin_2.31-0ubuntu9.16_arm64.deb /
+ADD http://ports.ubuntu.com/ubuntu-ports/pool/main/g/glibc/libc-bin_2.31-0ubuntu9_arm64.deb /
 RUN mkdir -p /ldconfig-bin && \
-    dpkg -x /libc-bin_2.31-0ubuntu9.16_arm64.deb /ldconfig && \
+    dpkg -x /libc-bin_2.31-0ubuntu9_arm64.deb /ldconfig && \
     cp /ldconfig/sbin/ldconfig.real /ldconfig-bin/ldconfig-glibc
 
 # Copy udev rules

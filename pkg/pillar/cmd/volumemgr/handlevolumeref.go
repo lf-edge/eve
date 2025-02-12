@@ -63,7 +63,7 @@ func handleVolumeRefCreate(ctxArg interface{}, key string,
 		if changed {
 			publishVolumeStatus(ctx, vs)
 			updateVolumeRefStatus(ctx, vs)
-			if err := createOrUpdateAppDiskMetrics(ctx, vs); err != nil {
+			if err := createOrUpdateAppDiskMetrics(ctx, agentName, vs); err != nil {
 				log.Errorf("handleVolumeRefCreate(%s): exception while publishing diskmetric. %s",
 					status.Key(), err.Error())
 			}
@@ -95,7 +95,7 @@ func handleVolumeRefModify(ctxArg interface{}, key string,
 			if changed {
 				publishVolumeStatus(ctx, vs)
 				updateVolumeRefStatus(ctx, vs)
-				if err := createOrUpdateAppDiskMetrics(ctx, vs); err != nil {
+				if err := createOrUpdateAppDiskMetrics(ctx, agentName, vs); err != nil {
 					log.Errorf("handleVolumeRefModify(%s): exception while publishing diskmetric. %s",
 						status.Key(), err.Error())
 				}

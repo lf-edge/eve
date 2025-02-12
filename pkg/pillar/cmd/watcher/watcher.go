@@ -6,6 +6,9 @@ package watcher
 import (
 	"context"
 	"flag"
+	"fmt"
+	ctrdd "github.com/containerd/containerd"
+	"github.com/lf-edge/eve/pkg/pillar/containerd"
 	"math"
 	"os"
 	"runtime"
@@ -187,7 +190,7 @@ func setForcedGOGCParams(ctx *watcherContext) {
 }
 
 // Read the global goroutine leak detection parameters to the context
-func readGlobalGoroutineLeakDetectionParams(ctx *watcherContext) {
+func updateGoroutineLeakDetectionConfig(ctx *watcherContext) {
 	gcp := agentlog.GetGlobalConfig(log, ctx.subGlobalConfig)
 	if gcp == nil {
 		return
@@ -200,6 +203,70 @@ func readGlobalGoroutineLeakDetectionParams(ctx *watcherContext) {
 	cooldownPeriod := time.Duration(gcp.GlobalValueInt(types.GoroutineLeakDetectionCooldownMinutes)) * time.Minute
 
 	ctx.GRLDParams.Set(threshold, checkInterval, checkStatsFor, keepStatsFor, cooldownPeriod)
+}
+
+// setContainerRunning pauses the container with the given ID
+func setContainerRunning(containerID string, running bool) error {
+	ctrd, err := containerd.NewContainerdClient(false)
+	if err != nil {
+		return fmt.Errorf("creating containerd client failed: %+v", err)
+	}
+
+	ctx, done := ctrd.CtrNewSystemServicesCtx()
+	defer done()
+
+	container, err := ctrd.CtrLoadContainer(ctx, containerID)
+	if err != nil {
+		return fmt.Errorf("loading container failed: %+v", err)
+	}
+
+	task, err := container.Task(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("getting container task failed: %+v", err)
+	}
+
+	status, err := task.Status(ctx)
+	if err != nil {
+		return fmt.Errorf("getting task info failed: %+v", err)
+	}
+
+	if running && status.Status == ctrdd.Paused {
+		if err := task.Resume(ctx); err != nil {
+			return fmt.Errorf("resuming container failed: %+v", err)
+		}
+		return nil
+	}
+
+	if !running && status.Status == ctrdd.Running {
+		if err := task.Pause(ctx); err != nil {
+			return fmt.Errorf("pausing container failed: %+v", err)
+		}
+		return nil
+	}
+
+	return nil
+}
+
+// read the global config and update the memory monitor status
+func updateMemoryMonitorConfig(ctx *watcherContext) {
+	log.Functionf("Updating memory monitor config")
+	gcp := agentlog.GetGlobalConfig(log, ctx.subGlobalConfig)
+	if gcp == nil {
+		return
+	}
+	enabled := gcp.GlobalValueBool(types.MemoryMonitorEnabled)
+	if enabled {
+		log.Functionf("Enabling memory monitor")
+		if err := setContainerRunning("memory-monitor", true); err != nil {
+			log.Warnf("Resuming memory monitor failed: %v", err)
+		}
+	} else { // memory monitor is disabled
+		log.Functionf("Disabling memory monitor")
+		if err := setContainerRunning("memory-monitor", false); err != nil {
+			log.Warnf("Pausing memory monitor failed: %v", err)
+		}
+	}
+	return
 }
 
 // Listens to root cgroup in hierarchy mode (events always propagate
@@ -771,8 +838,8 @@ func handleGlobalConfigImpl(ctxArg interface{}, key string,
 	if gcp != nil {
 		ctx.GCInitialized = true
 	}
-	// Update the global goroutine leak detection parameters
-	readGlobalGoroutineLeakDetectionParams(ctx)
+	updateGoroutineLeakDetectionConfig(ctx)
+	updateMemoryMonitorConfig(ctx)
 	log.Functionf("handleGlobalConfigImpl done for %s", key)
 }
 

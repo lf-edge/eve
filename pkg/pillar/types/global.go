@@ -358,6 +358,9 @@ const (
 	// IsTimeout
 	// IsTooManyRequests
 	KubevirtDrainSkipK8sAPINotReachableTimeout GlobalSettingKey = "kubevirt.drain.skip.k8sapinotreachable.timeout"
+
+	// MemoryMonitorEnabled : Enable memory monitor
+	MemoryMonitorEnabled GlobalSettingKey = "memory-monitor.enabled"
 )
 
 // AgentSettingKey - keys for per-agent settings
@@ -1002,6 +1005,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddBoolItem(EnableARPSnoop, true)
 	configItemSpecMap.AddBoolItem(WwanQueryVisibleProviders, false)
 	configItemSpecMap.AddBoolItem(NetworkLocalLegacyMACAddress, false)
+	configItemSpecMap.AddBoolItem(MemoryMonitorEnabled, false)
 
 	// Add TriState Items
 	configItemSpecMap.AddTriStateItem(NetworkFallbackAnyEth, TS_DISABLED)
