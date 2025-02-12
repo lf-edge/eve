@@ -27,12 +27,12 @@ defaults, when possible.
 | `ROOTFS_VERSION` | Version ID of the EVE image | calculated from the git commit | `snapshot`, `1.2.3-abcd567` |
 | `ZARCH` | Hardware architecture of the resulting image | your current platform | `amd64`, `arm64`, `riscv64` |
 | `HV` | Hypervisor flavor of the resulting image | `kvm` (amd64, arm64) or `mini` (riscv64) | `kvm`, `xen`, `acrn`, `mini`, `kubevirt` |
-| `PLATFORM` | Specific platform for which to build | `generic` | `generic`, `rt`, `nvidia`, `imx8mp_pollux` |
+| `PLATFORM` | Specific platform for which to build | `generic` | `generic`, `rt`, `nvidia-jp6`, `imx8mp_pollux` |
 
 Finally, the target determines what type of image you are building, e.g.`live`, `installer`.
 
 As much as possible, incompatible combinations will be caught and prevent a build. For example,
-`PLATFORM=nvidia` is for the ARM-based Jetsons, so `ZARCH=amd64` is incompatible and will be caught.
+`PLATFORM=nvidia-jp6` is for the ARM-based Jetsons, so `ZARCH=amd64` is incompatible and will be caught.
 
 You can specify an arbitrary combinations of these knobs to set the desired outcome of the build.
 
