@@ -50,7 +50,7 @@ COPY external-boot-image.tar /etc/
 
 # Longhorn config
 COPY longhorn-utils.sh /usr/bin/
-COPY lh-cfg-v1.6.2.yaml /etc/
+COPY lh-cfg-v1.6.3.yaml /etc/
 COPY iscsid.conf /etc/iscsi/
 COPY longhorn-generate-support-bundle.sh /usr/bin/
 COPY nsmounter /usr/bin/
