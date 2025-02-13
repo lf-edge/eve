@@ -23,9 +23,16 @@ import datetime
 import json
 import os
 import re
+import sys
 import requests
 from colorama import Fore, Style, init  # pylint: disable=import-error
 
+# do not force users to have pytest installed
+try:
+    import pytest
+    PYTEST_AVAILABLE = True
+except ImportError:
+    PYTEST_AVAILABLE = False
 
 def get_short_arch_flavor(branch_name):
     """
@@ -117,8 +124,40 @@ def branch_commit_to_variable(branch_name, commit):
     Returns:
     - str: The variable name in the expected format.
     """
-    variable_name = branch_name.replace("eve-kernel-", "KERNEL_COMMIT_").replace("-", "_")
+    branch_match = re.match(r"(?P<branch>.*v\d+\.\d+(?:\.\d+)?)-(?P<platform>.*)", branch_name)
+
+    if not branch_match:
+        sys.exit(f"Error: Invalid branch name format: {branch_name}")
+
+    branch_name = branch_match.group("branch").replace("eve-kernel-", "KERNEL_COMMIT_") \
+        .replace("-", "_")
+    variable_name = branch_name + "_" + branch_match.group("platform")
     return f"{variable_name} = {commit}\n"
+
+if PYTEST_AVAILABLE:
+    def test_branch_commit_to_variable():
+        """
+        Test the branch_commit_to_variable function with valid branch names.
+        """
+
+        assert branch_commit_to_variable("eve-kernel-amd64-v5.10.186-generic", "abcd") \
+            == "KERNEL_COMMIT_amd64_v5.10.186_generic = abcd\n"
+        assert branch_commit_to_variable("eve-kernel-amd64-v5.10-generic", "abcd") \
+            == "KERNEL_COMMIT_amd64_v5.10_generic = abcd\n"
+        assert branch_commit_to_variable("eve-kernel-arm64-v5.10.192-nvidia-jp5", "abcd") \
+            == "KERNEL_COMMIT_arm64_v5.10.192_nvidia-jp5 = abcd\n"
+        assert branch_commit_to_variable("eve-kernel-arm64-v5.10-nvidia-jp5", "abcd") \
+            == "KERNEL_COMMIT_arm64_v5.10_nvidia-jp5 = abcd\n"
+
+    def test_branch_commit_to_variable_exit():
+        """
+        Test the branch_commit_to_variable function on incorrect br.
+        """
+        with pytest.raises(SystemExit) as pytest_wrapped_e:
+            branch_commit_to_variable("eve-kernel-arm64-v5-nvidia-jp5", "abcd")
+        assert pytest_wrapped_e.type == SystemExit
+        assert pytest_wrapped_e.value.code == \
+            "Error: Invalid branch name format: eve-kernel-arm64-v5-nvidia-jp5"
 
 
 def parse_kernel_commits_file(file_path):
@@ -168,7 +207,7 @@ def github_fetch_commit_range(repo_owner, repo_name, old_commit, new_commit, ver
         print(f"Fetching commit subjects for {old_commit}..{new_commit}...")
         print(f"API URL: {api_url}")
 
-    response = requests.get(api_url, headers=headers)
+    response = requests.get(api_url, headers=headers, timeout=30)
     if response.status_code == 200:
         comparison = response.json()
         commit_info = []
@@ -270,7 +309,7 @@ def find_updated_branches(old_commits, new_commits):
     return branches_updated
 
 
-def get_kernel_tags_from_dockerhub(username, repository, search_pattern: str = None, verbose=False):
+def get_kernel_tags_from_dockerhub(username, repository, search_pattern: str="", verbose=False):
     """
     Retrieves Docker tags from Docker Hub for a given repository.
 
@@ -293,11 +332,11 @@ def get_kernel_tags_from_dockerhub(username, repository, search_pattern: str = N
     regex_pattern = None
 
     # convert search patterns to gerexp
-    if search_pattern:
+    if search_pattern != "":
         regex_pattern = pattern_to_regex(search_pattern)
 
     while True:
-        response = requests.get(tags_url)
+        response = requests.get(tags_url, timeout=30)
 
         if response.status_code == 200:
             tags_json = response.json()
