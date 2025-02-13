@@ -1393,6 +1393,10 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	tpmSanityCheckTicker := time.NewTicker(1 * time.Hour)
 	defer tpmSanityCheckTicker.Stop()
 	periodicTpmSanityCheck := func() {
+		if !etpm.IsTpmEnabled() {
+			return
+		}
+
 		// check if TPM is working as expected or not
 		if check := tpmSanityCheck(); check != nil {
 			log.Errorf("TPM sanity check failed: %v", check.err)
