@@ -11,7 +11,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/kubeapi"
 )
 
-func publishNodeDrainPs(ctx *zedkube, nds *kubeapi.NodeDrainStatus) {
+func publishNodeDrainPs(ctx *zedkube, nds kubeapi.NodeDrainStatus) {
 	log.Noticef("publishNodeDrainStatus nodedrain-step:changing drainStatus:%v", nds)
 	err := ctx.pubNodeDrainStatus.Publish("global", nds)
 	if err != nil {
@@ -26,7 +26,7 @@ func publishNodeDrainStatus(ctx *zedkube, status kubeapi.DrainStatus) {
 		Status:      status,
 		RequestedBy: getNodeDrainRequester(ctx),
 	}
-	publishNodeDrainPs(ctx, &drainStatus)
+	publishNodeDrainPs(ctx, drainStatus)
 }
 
 func getNodeDrainRequester(ctx *zedkube) kubeapi.DrainRequester {

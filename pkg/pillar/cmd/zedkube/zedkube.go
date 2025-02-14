@@ -561,7 +561,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 			zedkubeCtx.drainOverrideTimer.Reset(5 * time.Minute)
 			override := kubeapi.GetDrainStatusOverride(log)
 			if override != nil {
-				publishNodeDrainPs(&zedkubeCtx, override)
+				publishNodeDrainPs(&zedkubeCtx, *override)
 			}
 
 		case <-stillRunning.C:
