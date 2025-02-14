@@ -9,7 +9,7 @@ hv=`cat /run/eve-hv-type`
 default_cgroup_cpus_limit=1
 
 default_cgroup_memory_limit=838860800 #800M
-EVESERVICES="sshd eve-edgeview wwan wlan lisp guacd pillar vtpm watchdog xen-tools newlogd memlogd memory-monitor debug"
+EVESERVICES="sshd eve-edgeview wwan wlan lisp guacd pillar vtpm watchdog xen-tools newlogd memlogd memory-monitor debug monitor"
 
 #Increase memory limits temporarily for kubevirt type only.
 case $hv in
