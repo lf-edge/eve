@@ -28,9 +28,9 @@ jobs:
         include:
           - os: buildjet-4vcpu-ubuntu-2204-arm
             arch: arm64
-          - os: buildjet-4vcpu-ubuntu-2004
+          - os: buildjet-4vcpu-ubuntu-2204
             arch: amd64
-          - os: buildjet-4vcpu-ubuntu-2004
+          - os: buildjet-4vcpu-ubuntu-2204
             arch: riscv64
     steps:
       - name: Starting Report
@@ -84,7 +84,7 @@ jobs:
     needs: packages  # all packages for all platforms must be built first
     # Only run for the default branch
     if: github.ref_name == github.event.repository.default_branch
-    runs-on: buildjet-4vcpu-ubuntu-2004
+    runs-on: buildjet-4vcpu-ubuntu-2204
     strategy:
       fail-fast: false
       matrix:
