@@ -1,0 +1,86 @@
+// Copyright (c) 2025 Zededa, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package vcom;
+
+// Specify the Go package path.
+option go_package = "vcom/";
+
+// TpmRequestGetPub is the request get public part of a key.
+message TpmRequestGetPub {
+  // index is the TPM index of the key to get.
+  uint32 index = 1;
+}
+
+// TpmResponseGetPub is the response to TpmRequestGetPub
+message TpmResponseGetPub {
+  // public is the public part of the key, in TPM wrire format
+  bytes public      = 1;
+  // algorithm is the algorithm used in the key.
+  uint32 algorithm  = 2;
+  // attributes is a bitmask used in Attributes field of key template. Full mask
+  // flag should be AND-ed to check for individual attributes.
+  uint32 attributes = 3;
+}
+
+// TpmRequestSign is the request to create a key.
+message TpmRequestSign {
+  // index is the TPM index of the key to be used for signing.
+  uint32 index  = 1;
+  bytes data    = 2;
+}
+
+// TpmResponseSign is the response to TpmRequestSign
+message TpmResponseSign {
+  string algorithm      = 1;
+  bytes rsa_signature   = 2;
+  string rsa_hash       = 3;
+  bytes ecc_signature_r = 4;
+  bytes ecc_signature_s = 5;
+  string ecc_hash       = 6;
+}
+
+// TpmRequestReadNv is the request to read a NV.
+message TpmRequestReadNv{
+  // index is the TPM nv index to read.
+  uint32 index = 1;
+}
+
+// TpmResponseReadNv is the response to TpmRequestReadNv
+message TpmResponseReadNv{
+  // data is the data read from the nv index.
+  bytes data = 1;
+}
+
+// TpmRequestActivateCredParams is the request to get the parameters required to
+// activate the TPM credential.
+message TpmRequestActivateCredParams{
+  // index is the TPM nv index to use, this should be a restricted signing key.
+  uint32 index = 1;
+}
+
+// TpmActivateCredParams provides the parameters required to activate the
+// TPM credential using EK and AIK.
+message TpmResponseActivateCredParams {
+  // ek is the public part of the EK in TPM wire format.
+  bytes ek          = 1;
+  // aik_pub is the public part of the AIK in TPM wire format.
+  bytes aik_pub     = 2;
+  // aik_name is the name of the AIK in TPM wire format.
+  bytes aik_name    = 3;
+}
+
+// TpmGeneratedCred contains the generated credential and the encrypted secret.
+message TpmRequestGeneratedCred {
+  bytes cred   = 1;
+  bytes secret = 2;
+  // aik_index is the index to be used.
+  uint32 aik_index  = 3;
+}
+
+// TpmActivatedCred contains the activated credential (decrypted secret).
+message TpmResponseActivatedCred {
+	bytes secret = 1;
+}
