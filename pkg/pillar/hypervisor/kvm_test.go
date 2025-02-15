@@ -205,7 +205,6 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
 
 
 
-
 #[device "video0"]
 #  driver = "qxl-vga"
 #  ram_size = "67108864"
@@ -493,7 +492,6 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
 
 
 
-
 #[device "video0"]
 #  driver = "qxl-vga"
 #  ram_size = "67108864"
@@ -743,7 +741,6 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
   driver = "virtconsole"
   chardev = "charserial0"
   name = "org.lfedge.eve.console.0"
-
 
 
 
@@ -1221,7 +1218,6 @@ func domConfigArm64() string {
 
 
 
-
 #[device "video0"]
 #  driver = "qxl-vga"
 #  ram_size = "67108864"
@@ -1520,7 +1516,6 @@ func domConfigAmd64FML() string {
   driver = "virtconsole"
   chardev = "charserial0"
   name = "org.lfedge.eve.console.0"
-
 
 
 
@@ -1824,7 +1819,6 @@ func domConfigAmd64Legacy() string {
 
 
 
-
 #[device "video0"]
 #  driver = "qxl-vga"
 #  ram_size = "67108864"
@@ -2113,7 +2107,6 @@ func domConfigAmd64() string {
 
 
 
-
 #[device "video0"]
 #  driver = "qxl-vga"
 #  ram_size = "67108864"
@@ -2398,27 +2391,26 @@ func domConfigContainerVNC() string {
   chardev = "charserial0"
   name = "org.lfedge.eve.console.0"
 
-
 [chardev "charserial1"]
   backend = "socket"
-  mux = "on"
-  path = "/run/hypervisor/kvm/%s/prime-cons"
+  path = "/run/hypervisor/kvm/%s/shim-cons"
   server = "on"
   wait = "off"
+
+[chardev "charserial2"]
+  backend = "vc"
+
+[chardev "charhub0"]
+  backend = "hub"
+  chardevs.0 = "charserial1"
+  chardevs.1 = "charserial2"
   logfile = "/dev/fd/1"
   logappend = "on"
 
 [device]
   driver = "virtconsole"
-  chardev = "charserial1"
-  name = "org.lfedge.eve.console.prime"
-[chardev "charserial2"]
-  backend = "vc"
-
-[device]
-  driver = "virtconsole"
-  chardev = "charserial2"
-  name = "org.lfedge.eve.console.prime.forvnc"
+  chardev = "charhub0"
+  name = "org.lfedge.eve.console.shim"
 
 
 [vnc "default"]

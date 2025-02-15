@@ -188,10 +188,8 @@ run_agetty_loop()
 }
 
 echo "Executing agetty"
-# run agetty on the virtual console connected to the socket
+# run agetty on the virtual shim console
 run_agetty_loop hvc1 &
-# run agetty on the virtual console available for VNC
-run_agetty_loop hvc2 &
 
 cmd=`cat /mnt/cmdline`
 echo "Executing $cmd"
@@ -220,7 +218,7 @@ chroot_ret=$?
 
 if test "$EVE_CONTAINER_NO_POWEROFF" = "1"; then
   # Don't power off, wait for further debugging
-  echo "chroot2 exited with $chroot_ret, the init-initrd idles, please attach to the 'prime-cons' console of the hosting Vm for further debugging"
+  echo "chroot2 exited with $chroot_ret, the init-initrd idles, please attach to the 'shim-cons' console of the shim Vm for further debugging"
   sleep infinity
 else
   # Power off is the default behavior

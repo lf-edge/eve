@@ -27,12 +27,12 @@ defaults, when possible.
 | `ROOTFS_VERSION` | Version ID of the EVE image | calculated from the git commit | `snapshot`, `1.2.3-abcd567` |
 | `ZARCH` | Hardware architecture of the resulting image | your current platform | `amd64`, `arm64`, `riscv64` |
 | `HV` | Hypervisor flavor of the resulting image | `kvm` (amd64, arm64) or `mini` (riscv64) | `kvm`, `xen`, `acrn`, `mini`, `kubevirt` |
-| `PLATFORM` | Specific platform for which to build | `generic` | `generic`, `rt`, `nvidia`, `imx8mp_pollux` |
+| `PLATFORM` | Specific platform for which to build | `generic` | `generic`, `rt`, `nvidia-jp6`, `imx8mp_pollux` |
 
 Finally, the target determines what type of image you are building, e.g.`live`, `installer`.
 
 As much as possible, incompatible combinations will be caught and prevent a build. For example,
-`PLATFORM=nvidia` is for the ARM-based Jetsons, so `ZARCH=amd64` is incompatible and will be caught.
+`PLATFORM=nvidia-jp6` is for the ARM-based Jetsons, so `ZARCH=amd64` is incompatible and will be caught.
 
 You can specify an arbitrary combinations of these knobs to set the desired outcome of the build.
 
@@ -955,3 +955,68 @@ The whole flow looks like this:
     * installs the target arch libraries from `cross-compile-libs`, which is based on `eve-alpine` for the `TARGETARCH`
     * sets `CROSS_COMPILE_ENV="${EVE_TARGET_ARCH}"-alpine-linux-musl-` environment variable to use later as cross-compile prefix
     * inherits from `build-cross-target-${TARGETARCH}`, which adjust the `EVE_TARGET_ARCH` environment variable and inherits from `build-cross` stage based on `eve-alpine`
+
+## Using a local container registry
+
+All containers built by the EVE project are available in the official [LF-Edge's Docker HUB](https://hub.docker.com/u/lfedge).
+However, developers might want to pull and/or push all containers to a local container registry for debugging and development purposes.
+EVE's build system allows to override the default docker registry through the `REGISTRY` variable. For example:
+
+1. Start docker registry at local port 5001 (to not clash with a running docker registry)
+
+    ```sh
+    docker run -d -p 5001:5000 --name lcreg registry:2
+    ```
+
+1. Build EVE with the local registry URL
+
+    ```sh
+    make REGISTRY="localhost:5001" pkgs eve
+    ```
+
+1. Push packages to the local registry
+
+    ```sh
+    make REGISTRY="localhost:5001" LINUXKIT_PKG_TARGET=push pkgs eve
+    ```
+
+1. A list of packages pushed to the local registry can be retrieved with the following command:
+
+    ```sh
+    curl -s http://localhost:5001/v2/_catalog? | jq
+    ```
+
+    Output will be in JSON format, for instance:
+
+    ```json
+    {
+      "repositories": [
+        "lfedge/eve",
+        "lfedge/eve-acrn",
+        "lfedge/eve-acrn-kernel",
+        "lfedge/eve-alpine",
+        "lfedge/eve-apparmor",
+        "lfedge/eve-bpftrace",
+        "lfedge/eve-bsp-imx",
+        "lfedge/eve-cross-compilers",
+        "lfedge/eve-gpt-tools",
+        "lfedge/eve-grub",
+        "lfedge/eve-ipxe",
+        "lfedge/eve-kvm-tools",
+        "lfedge/eve-measure-config",
+        "lfedge/eve-memory-monitor",
+        "lfedge/eve-mkconf",
+        "lfedge/eve-mkimage-raw-efi",
+        "lfedge/eve-newlog",
+        "lfedge/eve-optee-os",
+        "lfedge/eve-recovertpm",
+        "lfedge/eve-rngd",
+        "lfedge/eve-storage-init",
+        "lfedge/eve-u-boot",
+        "lfedge/eve-udev",
+        "lfedge/eve-uefi",
+        "lfedge/eve-watchdog",
+        "lfedge/eve-xen"
+      ]
+    }
+    ```
