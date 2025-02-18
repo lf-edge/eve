@@ -844,6 +844,7 @@ if [ ! -f /var/lib/all_components_initialized ]; then
                 continue
         fi
         logmsg "longhorn ready"
+        touch /var/lib/longhorn_initialized
 
         #
         # Descheduler
@@ -922,6 +923,7 @@ else
                 fi
                 if [ ! -e /var/lib/longhorn_configured ]; then
                         longhorn_post_install_config
+                        touch /var/lib/longhorn_configured
                 fi
         fi
 fi
