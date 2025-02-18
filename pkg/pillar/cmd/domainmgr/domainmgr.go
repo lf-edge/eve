@@ -3474,7 +3474,7 @@ func updateUsbAccess(ctx *domainContext) {
 
 func updateVgaAccess(ctx *domainContext) {
 
-	log.Functionf("updateVgaAccess(%t)", ctx.usbAccess)
+	log.Functionf("updateVgaAccess(%t)", ctx.vgaAccess)
 	// TODO: we might need some extra work here for some VGA devices
 	// that do not enable output upon HDMI cable attachment
 	updatePortAndPciBackIoBundleAll(ctx)
