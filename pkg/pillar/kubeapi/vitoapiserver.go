@@ -14,6 +14,7 @@ import (
 
 	zconfig "github.com/lf-edge/eve-api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/diskmetrics"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -242,6 +243,38 @@ func RolloutDiskToPVC(ctx context.Context, log *base.LogObject, exists bool,
 	uploadproxyURL := "https://" + clusterIP + ":443"
 	log.Noticef("RolloutDiskToPVC diskfile %s pvc %s  URL %s", diskfile, pvcName, uploadproxyURL)
 
+	imgVirtBytes, err := diskmetrics.GetDiskVirtualSize(log, diskfile)
+	if err != nil {
+		err = fmt.Errorf("failed to get virtual size of disk %s: %v", diskfile, err)
+		log.Error(err)
+		return err
+	}
+	if pvcSize < imgVirtBytes {
+		log.Noticef("Image file: %s has virtual size %d", diskfile, imgVirtBytes)
+		pvcSize = imgVirtBytes
+	}
+	// ActualSize can be larger (by a very small amount) than VirtualSize for fully-allocated/not-thin QCOW2 files
+	imgActualBytes, err := diskmetrics.GetDiskActualSize(log, diskfile)
+	if err != nil {
+		err = fmt.Errorf("failed to get actual size of disk %s: %v", diskfile, err)
+		log.Error(err)
+		return err
+	}
+	if pvcSize < imgActualBytes {
+		pvcSize = imgActualBytes
+	}
+
+	// Create PVC and then copy data. We create PVC to set the designated node id label.
+	if !exists {
+		err = CreatePVC(pvcName, pvcSize, log)
+		if err != nil {
+			err = fmt.Errorf("Error creating PVC %s", pvcName)
+			log.Error(err)
+			return err
+		}
+		exists = true
+	}
+
 	// Sample virtctl command
 	// virtctl image-upload -n eve-kube-app pvc pvcname  --no-create --storage-class longhorn --image-path=<diskfile>
 	// --insecure --uploadproxy-url https://10.43.31.180:8443  --access-mode RWO --block-volume --size 1000M
@@ -291,24 +324,33 @@ func RolloutDiskToPVC(ctx context.Context, log *base.LogObject, exists bool,
 			WithContext(ctx).WithUnlimitedTimeout(timeout * time.Second).CombinedOutput()
 
 		uploadDuration := time.Since(startTimeThisUpload)
-		if err != nil {
+		if err != nil && !strings.Contains(string(output), "already successfully imported") {
 			err = fmt.Errorf("RolloutDiskToPVC: Failed after %f seconds to convert qcow to PVC %s: %v", uploadDuration.Seconds(), output, err)
 			log.Error(err)
-			time.Sleep(5)
+
+			// This is a backoff to handle cases where the kubernetes api server
+			// or the cdi-upload proxy may be temporarily unavailable due to a variety
+			// of cases. EVE should wait as virtctl will just immediately throw
+			// back some connection error.
+			// 30 secs with 10 tries, 5 mins should be good enough even if k3s server restarts
+			time.Sleep(30 * time.Second)
 			continue
 		}
+
 		// Eventually the command should return something like:
 		// PVC 688b9728-6f21-4bb6-b2f7-4928813fefdc-pvc-0 already successfully imported/cloned/updated
 		overallDuration := time.Since(startTimeOverall)
-		log.Noticef("RolloutDiskToPVC image upload completed on try:%d after %f seconds, total elapsed time %f seconds", uploadTry, uploadDuration.Seconds(), overallDuration.Seconds())
+		log.Functionf("RolloutDiskToPVC image upload completed on try:%d after %f seconds, total elapsed time %f seconds", uploadTry, uploadDuration.Seconds(), overallDuration.Seconds())
 		err = waitForPVCUploadComplete(ctx, pvcName, log)
 		if err != nil {
 			err = fmt.Errorf("RolloutDiskToPVC: error wait for PVC %v", err)
 			log.Error(err)
 			return err
 		}
+		log.Noticef("RolloutDiskToPVC image upload completed on try:%d after %f seconds, total elapsed time %f seconds", uploadTry, uploadDuration.Seconds(), overallDuration.Seconds())
 		return nil
 	}
+
 	return fmt.Errorf("RolloutDiskToPVC attempts to upload image failed")
 }
 
