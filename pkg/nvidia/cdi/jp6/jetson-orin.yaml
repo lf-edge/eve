@@ -44,77 +44,77 @@ devices:
             - hook
             - create-symlinks
             - --link
-              /usr/lib/aarch64-linux-gnu/nvidia/nvidia_icd.json::/etc/vulkan/icd.d/nvidia_icd.json
+            - /usr/lib/aarch64-linux-gnu/nvidia/nvidia_icd.json::/etc/vulkan/icd.d/nvidia_icd.json
             - --link
-              ../nvidia/libnvidia-allocator.so::/usr/lib/aarch64-linux-gnu/gbm/nvidia-drm_gbm.so
+            - ../nvidia/libnvidia-allocator.so::/usr/lib/aarch64-linux-gnu/gbm/nvidia-drm_gbm.so
             - --link
-              libnvidia-allocator.so.1::/usr/lib/aarch64-linux-gnu/nvidia/libnvidia-allocator.so
+            - libnvidia-allocator.so.1::/usr/lib/aarch64-linux-gnu/nvidia/libnvidia-allocator.so
             - --link
-              ../nvidia/libnvidia-allocator.so::/usr/lib/aarch64-linux-gnu/gbm/tegra_gbm.so
+            - ../nvidia/libnvidia-allocator.so::/usr/lib/aarch64-linux-gnu/gbm/tegra_gbm.so
             - --link
-              ../nvidia/libnvidia-allocator.so::/usr/lib/aarch64-linux-gnu/gbm/tegra-udrm_gbm.so
+            - ../nvidia/libnvidia-allocator.so::/usr/lib/aarch64-linux-gnu/gbm/tegra-udrm_gbm.so
             - --link
             - 'nvidia/libcuda.so::/usr/lib/aarch64-linux-gnu/libcuda.so'
             - --link
             - 'libcuda.so.1.1::/usr/lib/aarch64-linux-gnu/nvidia/libcuda.so'
             - --link
-              nvidia/libnvcucompat.so::/usr/lib/aarch64-linux-gnu/libnvcucompat.so
+            - nvidia/libnvcucompat.so::/usr/lib/aarch64-linux-gnu/libnvcucompat.so
             - --link
             - 'nvidia/libnvcudla.so::/usr/lib/aarch64-linux-gnu/libnvcudla.so'
             - --link
-              nvidia/libnvv4l2.so::/usr/lib/aarch64-linux-gnu/libv4l2.so.0.0.999999
+            - nvidia/libnvv4l2.so::/usr/lib/aarch64-linux-gnu/libv4l2.so.0.0.999999
             - --link
-              nvidia/libnvv4lconvert.so::/usr/lib/aarch64-linux-gnu/libv4lconvert.so.0.0.999999
+            - nvidia/libnvv4lconvert.so::/usr/lib/aarch64-linux-gnu/libv4lconvert.so.0.0.999999
             - --link
-              ../../../nvidia/libv4l2_nvargus.so::/usr/lib/aarch64-linux-gnu/libv4l/plugins/nv/libv4l2_nvargus.so
+            - ../../../nvidia/libv4l2_nvargus.so::/usr/lib/aarch64-linux-gnu/libv4l/plugins/nv/libv4l2_nvargus.so
             - --link
-              ../../../nvidia/libv4l2_nvcuvidvideocodec.so::/usr/lib/aarch64-linux-gnu/libv4l/plugins/nv/libv4l2_nvcuvidvideocodec.so
+            - ../../../nvidia/libv4l2_nvcuvidvideocodec.so::/usr/lib/aarch64-linux-gnu/libv4l/plugins/nv/libv4l2_nvcuvidvideocodec.so
             - --link
-              ../../../nvidia/libv4l2_nvvideocodec.so::/usr/lib/aarch64-linux-gnu/libv4l/plugins/nv/libv4l2_nvvideocodec.so
+            - ../../../nvidia/libv4l2_nvvideocodec.so::/usr/lib/aarch64-linux-gnu/libv4l/plugins/nv/libv4l2_nvvideocodec.so
             - --link
             - 'libcuda.so.1.1::/usr/lib/aarch64-linux-gnu/nvidia/libcuda.so.1'
             - --link
-              libnvbufsurface.so.1.0.0::/usr/lib/aarch64-linux-gnu/nvidia/libnvbufsurface.so
+            - libnvbufsurface.so.1.0.0::/usr/lib/aarch64-linux-gnu/nvidia/libnvbufsurface.so
             - --link
-              libnvbufsurftransform.so.1.0.0::/usr/lib/aarch64-linux-gnu/nvidia/libnvbufsurftransform.so
+            - libnvbufsurftransform.so.1.0.0::/usr/lib/aarch64-linux-gnu/nvidia/libnvbufsurftransform.so
             - --link
-              libnvdsbufferpool.so.1.0.0::/usr/lib/aarch64-linux-gnu/nvidia/libnvdsbufferpool.so
+            - libnvdsbufferpool.so.1.0.0::/usr/lib/aarch64-linux-gnu/nvidia/libnvdsbufferpool.so
             - --link
-              libnvidia-egl-gbm.so.1.1.0::/usr/lib/aarch64-linux-gnu/nvidia/libnvidia-egl-gbm.so.1
+            - libnvidia-egl-gbm.so.1.1.0::/usr/lib/aarch64-linux-gnu/nvidia/libnvidia-egl-gbm.so.1
             - --link
-              libnvidia-egl-wayland.so.1.1.11::/usr/lib/aarch64-linux-gnu/nvidia/libnvidia-egl-wayland.so.1
+            - libnvidia-egl-wayland.so.1.1.11::/usr/lib/aarch64-linux-gnu/nvidia/libnvidia-egl-wayland.so.1
             - --link
-              libnvidia-kms.so.540.3.0::/usr/lib/aarch64-linux-gnu/nvidia/libnvidia-kms.so
+            - libnvidia-kms.so.540.3.0::/usr/lib/aarch64-linux-gnu/nvidia/libnvidia-kms.so
             - --link
-              libnvidia-nvvm.so.540.3.0::/usr/lib/aarch64-linux-gnu/nvidia/libnvidia-nvvm.so.4
+            - libnvidia-nvvm.so.540.3.0::/usr/lib/aarch64-linux-gnu/nvidia/libnvidia-nvvm.so.4
             - --link
-              libnvidia-ptxjitcompiler.so.540.3.0::/usr/lib/aarch64-linux-gnu/nvidia/libnvidia-ptxjitcompiler.so.1
+            - libnvidia-ptxjitcompiler.so.540.3.0::/usr/lib/aarch64-linux-gnu/nvidia/libnvidia-ptxjitcompiler.so.1
             - --link
-              libnvidia-vksc-core.so.1::/usr/lib/aarch64-linux-gnu/nvidia/libnvidia-vksc-core.so
+            - libnvidia-vksc-core.so.1::/usr/lib/aarch64-linux-gnu/nvidia/libnvidia-vksc-core.so
             - --link
-              libnvidia-vksc-core.so.540.3.0::/usr/lib/aarch64-linux-gnu/nvidia/libnvidia-vksc-core.so.1
+            - libnvidia-vksc-core.so.540.3.0::/usr/lib/aarch64-linux-gnu/nvidia/libnvidia-vksc-core.so.1
             - --link
-              libnvid_mapper.so.1.0.0::/usr/lib/aarch64-linux-gnu/nvidia/libnvid_mapper.so
+            - libnvid_mapper.so.1.0.0::/usr/lib/aarch64-linux-gnu/nvidia/libnvid_mapper.so
             - --link
             - 'libnvscibuf.so.1::/usr/lib/aarch64-linux-gnu/nvidia/libnvscibuf.so'
             - --link
-              libnvscicommon.so.1::/usr/lib/aarch64-linux-gnu/nvidia/libnvscicommon.so
+            - libnvscicommon.so.1::/usr/lib/aarch64-linux-gnu/nvidia/libnvscicommon.so
             - --link
-              libnvscistream.so.1::/usr/lib/aarch64-linux-gnu/nvidia/libnvscistream.so
+            - libnvscistream.so.1::/usr/lib/aarch64-linux-gnu/nvidia/libnvscistream.so
             - --link
-              libnvscisync.so.1::/usr/lib/aarch64-linux-gnu/nvidia/libnvscisync.so
+            - libnvscisync.so.1::/usr/lib/aarch64-linux-gnu/nvidia/libnvscisync.so
             - --link
             - 'libnvv4l2.so::/usr/lib/aarch64-linux-gnu/nvidia/libv4l2.so.0'
             - --link
-              libnvv4lconvert.so::/usr/lib/aarch64-linux-gnu/nvidia/libv4lconvert.so.0
+            - libnvv4lconvert.so::/usr/lib/aarch64-linux-gnu/nvidia/libv4lconvert.so.0
             - --link
             - 'libvulkansc.so.1::/usr/lib/aarch64-linux-gnu/nvidia/libvulkansc.so'
             - --link
-              libvulkansc.so.1.0.10::/usr/lib/aarch64-linux-gnu/nvidia/libvulkansc.so.1
+            - libvulkansc.so.1.0.10::/usr/lib/aarch64-linux-gnu/nvidia/libvulkansc.so.1
             - --link
-              ../../../lib/aarch64-linux-gnu/tegra-egl/nvidia.json::/usr/share/glvnd/egl_vendor.d/10_nvidia.json
+            - ../../../lib/aarch64-linux-gnu/tegra-egl/nvidia.json::/usr/share/glvnd/egl_vendor.d/10_nvidia.json
             - --link
-              libGLX_nvidia.so.0::/usr/lib/aarch64-linux-gnu/nvidia/libGLX_indirect.so.0
+            - libGLX_nvidia.so.0::/usr/lib/aarch64-linux-gnu/nvidia/libGLX_indirect.so.0
             - --link
             - 'libcuda.so.1::/usr/lib/aarch64-linux-gnu/nvidia/libcuda.so'
           hookName: createContainer
@@ -1577,77 +1577,77 @@ devices:
             - hook
             - create-symlinks
             - --link
-              /usr/lib/aarch64-linux-gnu/nvidia/nvidia_icd.json::/etc/vulkan/icd.d/nvidia_icd.json
+            - /usr/lib/aarch64-linux-gnu/nvidia/nvidia_icd.json::/etc/vulkan/icd.d/nvidia_icd.json
             - --link
-              ../nvidia/libnvidia-allocator.so::/usr/lib/aarch64-linux-gnu/gbm/nvidia-drm_gbm.so
+            - ../nvidia/libnvidia-allocator.so::/usr/lib/aarch64-linux-gnu/gbm/nvidia-drm_gbm.so
             - --link
-              libnvidia-allocator.so.1::/usr/lib/aarch64-linux-gnu/nvidia/libnvidia-allocator.so
+            - libnvidia-allocator.so.1::/usr/lib/aarch64-linux-gnu/nvidia/libnvidia-allocator.so
             - --link
-              ../nvidia/libnvidia-allocator.so::/usr/lib/aarch64-linux-gnu/gbm/tegra_gbm.so
+            - ../nvidia/libnvidia-allocator.so::/usr/lib/aarch64-linux-gnu/gbm/tegra_gbm.so
             - --link
-              ../nvidia/libnvidia-allocator.so::/usr/lib/aarch64-linux-gnu/gbm/tegra-udrm_gbm.so
+            - ../nvidia/libnvidia-allocator.so::/usr/lib/aarch64-linux-gnu/gbm/tegra-udrm_gbm.so
             - --link
             - 'nvidia/libcuda.so::/usr/lib/aarch64-linux-gnu/libcuda.so'
             - --link
             - 'libcuda.so.1.1::/usr/lib/aarch64-linux-gnu/nvidia/libcuda.so'
             - --link
-              nvidia/libnvcucompat.so::/usr/lib/aarch64-linux-gnu/libnvcucompat.so
+            - nvidia/libnvcucompat.so::/usr/lib/aarch64-linux-gnu/libnvcucompat.so
             - --link
             - 'nvidia/libnvcudla.so::/usr/lib/aarch64-linux-gnu/libnvcudla.so'
             - --link
-              nvidia/libnvv4l2.so::/usr/lib/aarch64-linux-gnu/libv4l2.so.0.0.999999
+            - nvidia/libnvv4l2.so::/usr/lib/aarch64-linux-gnu/libv4l2.so.0.0.999999
             - --link
-              nvidia/libnvv4lconvert.so::/usr/lib/aarch64-linux-gnu/libv4lconvert.so.0.0.999999
+            - nvidia/libnvv4lconvert.so::/usr/lib/aarch64-linux-gnu/libv4lconvert.so.0.0.999999
             - --link
-              ../../../nvidia/libv4l2_nvargus.so::/usr/lib/aarch64-linux-gnu/libv4l/plugins/nv/libv4l2_nvargus.so
+            - ../../../nvidia/libv4l2_nvargus.so::/usr/lib/aarch64-linux-gnu/libv4l/plugins/nv/libv4l2_nvargus.so
             - --link
-              ../../../nvidia/libv4l2_nvcuvidvideocodec.so::/usr/lib/aarch64-linux-gnu/libv4l/plugins/nv/libv4l2_nvcuvidvideocodec.so
+            - ../../../nvidia/libv4l2_nvcuvidvideocodec.so::/usr/lib/aarch64-linux-gnu/libv4l/plugins/nv/libv4l2_nvcuvidvideocodec.so
             - --link
-              ../../../nvidia/libv4l2_nvvideocodec.so::/usr/lib/aarch64-linux-gnu/libv4l/plugins/nv/libv4l2_nvvideocodec.so
+            - ../../../nvidia/libv4l2_nvvideocodec.so::/usr/lib/aarch64-linux-gnu/libv4l/plugins/nv/libv4l2_nvvideocodec.so
             - --link
             - 'libcuda.so.1.1::/usr/lib/aarch64-linux-gnu/nvidia/libcuda.so.1'
             - --link
-              libnvbufsurface.so.1.0.0::/usr/lib/aarch64-linux-gnu/nvidia/libnvbufsurface.so
+            - libnvbufsurface.so.1.0.0::/usr/lib/aarch64-linux-gnu/nvidia/libnvbufsurface.so
             - --link
-              libnvbufsurftransform.so.1.0.0::/usr/lib/aarch64-linux-gnu/nvidia/libnvbufsurftransform.so
+            - libnvbufsurftransform.so.1.0.0::/usr/lib/aarch64-linux-gnu/nvidia/libnvbufsurftransform.so
             - --link
-              libnvdsbufferpool.so.1.0.0::/usr/lib/aarch64-linux-gnu/nvidia/libnvdsbufferpool.so
+            - libnvdsbufferpool.so.1.0.0::/usr/lib/aarch64-linux-gnu/nvidia/libnvdsbufferpool.so
             - --link
-              libnvidia-egl-gbm.so.1.1.0::/usr/lib/aarch64-linux-gnu/nvidia/libnvidia-egl-gbm.so.1
+            - libnvidia-egl-gbm.so.1.1.0::/usr/lib/aarch64-linux-gnu/nvidia/libnvidia-egl-gbm.so.1
             - --link
-              libnvidia-egl-wayland.so.1.1.11::/usr/lib/aarch64-linux-gnu/nvidia/libnvidia-egl-wayland.so.1
+            - libnvidia-egl-wayland.so.1.1.11::/usr/lib/aarch64-linux-gnu/nvidia/libnvidia-egl-wayland.so.1
             - --link
-              libnvidia-kms.so.540.3.0::/usr/lib/aarch64-linux-gnu/nvidia/libnvidia-kms.so
+            - libnvidia-kms.so.540.3.0::/usr/lib/aarch64-linux-gnu/nvidia/libnvidia-kms.so
             - --link
-              libnvidia-nvvm.so.540.3.0::/usr/lib/aarch64-linux-gnu/nvidia/libnvidia-nvvm.so.4
+            - libnvidia-nvvm.so.540.3.0::/usr/lib/aarch64-linux-gnu/nvidia/libnvidia-nvvm.so.4
             - --link
-              libnvidia-ptxjitcompiler.so.540.3.0::/usr/lib/aarch64-linux-gnu/nvidia/libnvidia-ptxjitcompiler.so.1
+            - libnvidia-ptxjitcompiler.so.540.3.0::/usr/lib/aarch64-linux-gnu/nvidia/libnvidia-ptxjitcompiler.so.1
             - --link
-              libnvidia-vksc-core.so.1::/usr/lib/aarch64-linux-gnu/nvidia/libnvidia-vksc-core.so
+            - libnvidia-vksc-core.so.1::/usr/lib/aarch64-linux-gnu/nvidia/libnvidia-vksc-core.so
             - --link
-              libnvidia-vksc-core.so.540.3.0::/usr/lib/aarch64-linux-gnu/nvidia/libnvidia-vksc-core.so.1
+            - libnvidia-vksc-core.so.540.3.0::/usr/lib/aarch64-linux-gnu/nvidia/libnvidia-vksc-core.so.1
             - --link
-              libnvid_mapper.so.1.0.0::/usr/lib/aarch64-linux-gnu/nvidia/libnvid_mapper.so
+            - libnvid_mapper.so.1.0.0::/usr/lib/aarch64-linux-gnu/nvidia/libnvid_mapper.so
             - --link
             - 'libnvscibuf.so.1::/usr/lib/aarch64-linux-gnu/nvidia/libnvscibuf.so'
             - --link
-              libnvscicommon.so.1::/usr/lib/aarch64-linux-gnu/nvidia/libnvscicommon.so
+            - libnvscicommon.so.1::/usr/lib/aarch64-linux-gnu/nvidia/libnvscicommon.so
             - --link
-              libnvscistream.so.1::/usr/lib/aarch64-linux-gnu/nvidia/libnvscistream.so
+            - libnvscistream.so.1::/usr/lib/aarch64-linux-gnu/nvidia/libnvscistream.so
             - --link
-              libnvscisync.so.1::/usr/lib/aarch64-linux-gnu/nvidia/libnvscisync.so
+            - libnvscisync.so.1::/usr/lib/aarch64-linux-gnu/nvidia/libnvscisync.so
             - --link
             - 'libnvv4l2.so::/usr/lib/aarch64-linux-gnu/nvidia/libv4l2.so.0'
             - --link
-              libnvv4lconvert.so::/usr/lib/aarch64-linux-gnu/nvidia/libv4lconvert.so.0
+            - libnvv4lconvert.so::/usr/lib/aarch64-linux-gnu/nvidia/libv4lconvert.so.0
             - --link
             - 'libvulkansc.so.1::/usr/lib/aarch64-linux-gnu/nvidia/libvulkansc.so'
             - --link
-              libvulkansc.so.1.0.10::/usr/lib/aarch64-linux-gnu/nvidia/libvulkansc.so.1
+            - libvulkansc.so.1.0.10::/usr/lib/aarch64-linux-gnu/nvidia/libvulkansc.so.1
             - --link
-              ../../../lib/aarch64-linux-gnu/tegra-egl/nvidia.json::/usr/share/glvnd/egl_vendor.d/10_nvidia.json
+            - ../../../lib/aarch64-linux-gnu/tegra-egl/nvidia.json::/usr/share/glvnd/egl_vendor.d/10_nvidia.json
             - --link
-              libGLX_nvidia.so.0::/usr/lib/aarch64-linux-gnu/nvidia/libGLX_indirect.so.0
+            - libGLX_nvidia.so.0::/usr/lib/aarch64-linux-gnu/nvidia/libGLX_indirect.so.0
             - --link
             - 'libcuda.so.1::/usr/lib/aarch64-linux-gnu/nvidia/libcuda.so'
           hookName: createContainer
