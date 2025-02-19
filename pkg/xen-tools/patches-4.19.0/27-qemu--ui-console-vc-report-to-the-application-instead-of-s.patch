@@ -1,0 +1,58 @@
+From 84bc76e2c23fb4a677990e9b45ee68f9a323ff4c Mon Sep 17 00:00:00 2001
+From: Roman Penyaev <r.peniaev@gmail.com>
+Date: Wed, 19 Feb 2025 10:37:19 +0100
+Subject: [PATCH 2/3] ui/console-vc: report to the application instead of
+ screen rendering
+
+Terminal Device Status Report (DSR) [1] should be sent to an
+application, not rendered to the screen. This patch fixes rendering of
+terminal report, which appear only on the graphical screen of the
+terminal (console "vc") and can be reproduced by the following
+command:
+
+     echo -en '\e[6n'; IFS='[;' read -sdR _ row col; echo $row:$col
+
+Command requests cursor position and waits for terminal response, but
+instead, the response is rendered to the graphical screen and never
+sent to an application.
+
+Why bother? Busybox shell (ash) in Alpine distribution requests cursor
+position on each shell prompt (once <ENTER> is pressed), which makes a
+prompt on a graphical screen corrupted with repeating Cursor Position
+Report (CPR) [2]:
+
+   [root@alpine ~]# \033[57;1R]
+
+Which is very annoying and incorrect.
+
+[1] https://vt100.net/docs/vt100-ug/chapter3.html#DSR
+[2] https://vt100.net/docs/vt100-ug/chapter3.html#CPR
+
+Signed-off-by: Roman Penyaev <r.peniaev@gmail.com>
+Cc: "Marc-André Lureau" <marcandre.lureau@redhat.com>
+Cc: qemu-devel@nongnu.org
+Reviewed-by: Marc-André Lureau <marcandre.lureau@redhat.com>
+Message-ID: <20250226075913.353676-3-r.peniaev@gmail.com>
+---
+ ui/console.c | 5 +----
+ 1 file changed, 1 insertion(+), 4 deletions(-)
+
+diff --git a/tools/qemu-xen/ui/console.c b/tools/qemu-xen/ui/console.c
+index d5aaa34f669b..8226a17b37e5 100644
+--- a/tools/qemu-xen/ui/console.c
++++ b/tools/qemu-xen/ui/console.c
+@@ -923,10 +923,7 @@ static void console_put_one(QemuConsole *s, int ch)
+ 
+ static void console_respond_str(QemuConsole *s, const char *buf)
+ {
+-    while (*buf) {
+-        console_put_one(s, *buf);
+-        buf++;
+-    }
++    qemu_chr_be_write(s->chr, (const uint8_t *)buf, strlen(buf));
+ }
+ 
+ /* set cursor, checking bounds */
+-- 
+2.43.0
+

@@ -1,0 +1,78 @@
+From 075c5c40d6762c0f4e005ad114e35a2db7b102bc Mon Sep 17 00:00:00 2001
+From: Roman Penyaev <r.peniaev@gmail.com>
+Date: Wed, 19 Feb 2025 10:35:59 +0100
+Subject: [PATCH 1/3] ui/console-vc: introduce parsing for 'ESC ( B' sequence
+
+This change introduces parsing of the 'ESC ( <ch>' sequence, which is
+supposed to change character set [1]. In the QEMU case, the
+introduced parsing logic does not actually change the character set, but
+simply parses the sequence and does not let output of a tool to be
+corrupted with leftovers: `top` sends 'ESC ( B', so if character
+sequence is not parsed correctly, chracter 'B' appears in the output:
+
+  Btop - 11:08:42 up 5 min,  1 user,  load average: 0BB
+  Tasks:B 158 Btotal,B  1 Brunning,B 157 Bsleeping,B   0 BsBB
+  %Cpu(s):B  0.0 Bus,B  0.0 Bsy,B  0.0 Bni,B 99.8 Bid,B  0.2 BB
+  MiB Mem :B   7955.6 Btotal,B   7778.6 Bfree,B     79.6 BB
+  MiB Swap:B      0.0 Btotal,B      0.0 Bfree,B      0.0 BB
+
+      PID USER      PR  NI    VIRT    RES    SHR S B
+  B    735 root      20   0    9328   3540   3152 R B
+  B      1 root      20   0   20084  10904   8404 S B
+  B      2 root      20   0       0      0      0 S B
+
+[1] https://vt100.net/docs/vt100-ug/chapter3.html#SCS
+
+Signed-off-by: Roman Penyaev <r.peniaev@gmail.com>
+Cc: "Marc-André Lureau" <marcandre.lureau@redhat.com>
+Cc: qemu-devel@nongnu.org
+Reviewed-by: Marc-André Lureau <marcandre.lureau@redhat.com>
+Message-ID: <20250226075913.353676-2-r.peniaev@gmail.com>
+---
+ ui/console.c | 16 ++++++++++++++++
+ 1 file changed, 16 insertions(+)
+
+diff --git a/tools/qemu-xen/ui/console.c b/tools/qemu-xen/ui/console.c
+index 7461446e711f..d5aaa34f669b 100644
+--- a/tools/qemu-xen/ui/console.c
++++ b/tools/qemu-xen/ui/console.c
+@@ -67,6 +67,8 @@ enum TTYState {
+     TTY_STATE_NORM,
+     TTY_STATE_ESC,
+     TTY_STATE_CSI,
++    TTY_STATE_G0,
++    TTY_STATE_G1,
+ };
+ 
+ typedef enum {
+@@ -997,6 +999,10 @@ static void console_putchar(QemuConsole *s, int ch)
+                 s->esc_params[i] = 0;
+             s->nb_esc_params = 0;
+             s->state = TTY_STATE_CSI;
++        } else if (ch == '(') {
++            s->state = TTY_STATE_G0;
++        } else if (ch == ')') {
++            s->state = TTY_STATE_G1;
+         } else {
+             s->state = TTY_STATE_NORM;
+         }
+@@ -1147,6 +1153,16 @@ static void console_putchar(QemuConsole *s, int ch)
+             }
+             break;
+         }
++        break;
++    case TTY_STATE_G0: /* set character sets */
++    case TTY_STATE_G1: /* set character sets */
++        switch (ch) {
++        case 'B':
++            /* Latin-1 map */
++            break;
++        }
++        s->state = TTY_STATE_NORM;
++        break;
+     }
+ }
+ 
+-- 
+2.43.0
+
