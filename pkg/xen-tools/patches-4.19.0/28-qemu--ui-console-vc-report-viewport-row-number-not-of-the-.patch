@@ -1,0 +1,51 @@
+From 703cf69423fe1342e2716e93b74d87b319a9f6fc Mon Sep 17 00:00:00 2001
+From: Roman Penyaev <r.peniaev@gmail.com>
+Date: Wed, 19 Feb 2025 10:39:54 +0100
+Subject: [PATCH 3/3] ui/console-vc: report viewport row number, not of the
+ whole scroll buffer
+
+The format of the CSI cursor position report is `ESC[row;columnR`,
+where `row` is a row of a cursor in the screen, not in the scrollback
+buffer. What's the difference? Let's say the terminal screen has 24
+lines, no matter how long the scrollback buffer may be, the last line
+is the 24th.
+
+For example the following command can be executed in xterm on the last
+screen line:
+
+   $ echo -en '\e[6n'; IFS='[;' read -sdR _ row col; echo $row:$col
+   24:1
+
+It shows the cursor position on the current screen and not relative
+to the backscroll buffer.
+
+Before this change the row number was always increasing for the QEMU
+VC and represents the cursor position relative to the backscroll
+buffer.
+
+Signed-off-by: Roman Penyaev <r.peniaev@gmail.com>
+Cc: "Marc-André Lureau" <marcandre.lureau@redhat.com>
+Cc: qemu-devel@nongnu.org
+Reviewed-by: Marc-André Lureau <marcandre.lureau@redhat.com>
+Message-ID: <20250226075913.353676-4-r.peniaev@gmail.com>
+---
+ ui/console.c | 3 +--
+ 1 file changed, 1 insertion(+), 2 deletions(-)
+
+diff --git a/tools/qemu-xen/ui/console.c b/tools/qemu-xen/ui/console.c
+index 8226a17b37e5..10ea34aea1b1 100644
+--- a/tools/qemu-xen/ui/console.c
++++ b/tools/qemu-xen/ui/console.c
+@@ -1128,8 +1128,7 @@ static void console_putchar(QemuConsole *s, int ch)
+                 case 6:
+                     /* report cursor position */
+                     sprintf(response, "\033[%d;%dR",
+-                           (s->y_base + s->y) % s->total_height + 1,
+-                            s->x + 1);
++                            s->y + 1, s->x + 1);
+                     console_respond_str(s, response);
+                     break;
+                 }
+-- 
+2.43.0
+
