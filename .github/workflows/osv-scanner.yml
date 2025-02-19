@@ -39,6 +39,8 @@ jobs:
     with:
       scan-args: |-
         --fail-on-vuln=false # Do not fail the build if vulnerabilities are found
+        --recursive # Recursively scan subdirectories
+        ./ # Start the scan from the root of the repository
 
   scan-pr:
     if: ${{ github.event_name == 'pull_request'}}
