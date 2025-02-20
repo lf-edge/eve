@@ -90,8 +90,9 @@ func (s *monitorIPCServer) handleConnection(conn net.Conn) {
 	s.Lock()
 	defer s.Unlock()
 	// the format of the frame is length + data
-	// where the length is 16 bit unsigned integer
+	// where the length is 32 bit unsigned integer
 	s.codec = framed.NewReadWriteCloser(conn)
+	s.codec.EnableBigFrames()
 
 	go func() {
 		defer s.close()
@@ -169,14 +170,32 @@ func (s *monitorIPCServer) sendIpcMessage(t string, msg any) error {
 	defer s.Unlock()
 
 	var err error
+	var data []byte
 
-	if data, err := json.Marshal(msg); err == nil {
-		ipcMessage := ipcMessage{Type: t, Message: json.RawMessage(data)}
-		if data, err = json.Marshal(ipcMessage); err == nil {
-			log.Noticef("Sending IPC message: %s", string(data))
-			_, err = s.codec.Write(data)
-		}
+	if data, err = json.Marshal(msg); err != nil {
+		log.Errorf("Failed to Marshal IPC message data: %v", err)
+		return err
 	}
+
+	ipcMessage := ipcMessage{Type: t, Message: json.RawMessage(data)}
+
+	if data, err = json.Marshal(ipcMessage); err != nil {
+		log.Errorf("Failed to Marshal IPC message: %v", err)
+		return err
+	}
+
+	if t == "TpmLogs" {
+		log.Noticef("Sending IPC message: %s", t)
+	} else {
+		log.Noticef("Sending IPC message: %s", string(data))
+	}
+
+	_, err = s.codec.Write(data)
+
+	if err != nil {
+		log.Errorf("Failed to send IPC message: %v", err)
+	}
+
 	return err
 }
 
