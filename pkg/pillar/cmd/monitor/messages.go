@@ -5,8 +5,10 @@ package monitor
 
 import (
 	"io/fs"
+	"os"
 	"regexp"
 
+	"github.com/lf-edge/eve/pkg/pillar/evetpm"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	uuid "github.com/satori/go.uuid"
 )
@@ -16,6 +18,15 @@ var bootVariableRe = regexp.MustCompile(`^Boot[0-9a-fA-F]{4}$`)
 type efiVariable struct {
 	Name  string `json:"name,omitempty"`
 	Value []byte `json:"value,omitempty"`
+}
+
+type tpmLogs struct {
+	LastFailedLog   []byte        `json:"last_failed_log,omitempty"`
+	LastGoodLog     []byte        `json:"last_good_log,omitempty"`
+	BackupFailedLog []byte        `json:"backup_failed_log,omitempty"`
+	BackupGoodLog   []byte        `json:"backup_good_log,omitempty"`
+	EfiVarsSuccess  []efiVariable `json:"efi_vars_success,omitempty"`
+	EfiVarsFailed   []efiVariable `json:"efi_vars_failed,omitempty"`
 }
 
 type nodeStatus struct {
@@ -132,4 +143,60 @@ func readEfiVars(fsys fs.FS) ([]efiVariable, error) {
 	bootVars = append(bootVars, efiVariable{Name: "BootOrder", Value: bootOrder})
 
 	return bootVars, nil
+}
+
+func (ctx *monitor) sendTpmLogs() {
+	currentGoodTpmLog, currentFailedTpmLog := evetpm.GetTpmLogFileNames()
+	backupGoodTpmLog, backupFailedTpmLog := evetpm.GetTpmLogBackupFileNames()
+
+	goodLog, err := os.ReadFile(currentGoodTpmLog)
+
+	if err != nil {
+		log.Warnf("Cannot read last good TPM log: %v", err)
+		goodLog = nil
+	}
+
+	failedLog, err := os.ReadFile(currentFailedTpmLog)
+	if err != nil {
+		log.Warnf("Cannot read failed TPM log: %v", err)
+		failedLog = nil
+	}
+
+	// backup logs
+	backupGoodLog, err := os.ReadFile(backupGoodTpmLog)
+	if err != nil {
+		log.Warnf("Cannot read backup good TPM log: %v", err)
+		backupGoodLog = nil
+	}
+
+	backupFailedLog, err := os.ReadFile(backupFailedTpmLog)
+	if err != nil {
+		log.Warnf("Cannot read backup failed TPM log: %v", err)
+		backupFailedLog = nil
+	}
+
+	efiVarsDirSuccess, efiVarsDirFailed := evetpm.GetBootVariablesDirNames()
+
+	bootVarsSuccess, err := readEfiVars(os.DirFS(efiVarsDirSuccess))
+	if err != nil {
+		log.Warnf("Cannot read boot variables: %v", err)
+		bootVarsSuccess = nil
+	}
+
+	bootVarsFailed, err := readEfiVars(os.DirFS(efiVarsDirFailed))
+	if err != nil {
+		log.Warnf("Cannot read boot variables: %v", err)
+		bootVarsFailed = nil
+	}
+
+	tpmLogs := tpmLogs{
+		LastFailedLog:   failedLog,
+		LastGoodLog:     goodLog,
+		BackupFailedLog: backupFailedLog,
+		BackupGoodLog:   backupGoodLog,
+		EfiVarsSuccess:  bootVarsSuccess,
+		EfiVarsFailed:   bootVarsFailed,
+	}
+
+	ctx.IPCServer.sendIpcMessage("TpmLogs", tpmLogs)
 }
