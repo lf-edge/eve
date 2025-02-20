@@ -4,9 +4,19 @@
 package monitor
 
 import (
+	"io/fs"
+	"regexp"
+
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	uuid "github.com/satori/go.uuid"
 )
+
+var bootVariableRe = regexp.MustCompile(`^Boot[0-9a-fA-F]{4}$`)
+
+type efiVariable struct {
+	Name  string `json:"name,omitempty"`
+	Value []byte `json:"value,omitempty"`
+}
 
 type nodeStatus struct {
 	Server         string                   `json:"server,omitempty"`
@@ -91,4 +101,35 @@ func (ctx *monitor) sendAppsList() {
 		Apps: appStatus,
 	}
 	ctx.IPCServer.sendIpcMessage("AppsList", apps)
+}
+
+func readEfiVars(fsys fs.FS) ([]efiVariable, error) {
+	vars, err := fs.ReadDir(fsys, ".")
+	if err != nil {
+		return nil, err
+	}
+
+	// read boot order
+	bootOrder, err := fs.ReadFile(fsys, "BootOrder")
+	if err != nil {
+		return nil, err
+	}
+
+	// read boot variables
+	bootVars := make([]efiVariable, 0)
+	for _, varFile := range vars {
+		varName := varFile.Name()
+		if varFile.IsDir() || !bootVariableRe.MatchString(varName) {
+			continue
+		}
+		varValue, err := fs.ReadFile(fsys, varName)
+		if err != nil {
+			return nil, err
+		}
+		bootVars = append(bootVars, efiVariable{Name: varName, Value: varValue})
+	}
+
+	bootVars = append(bootVars, efiVariable{Name: "BootOrder", Value: bootOrder})
+
+	return bootVars, nil
 }
