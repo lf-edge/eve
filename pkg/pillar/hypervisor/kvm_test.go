@@ -1095,7 +1095,7 @@ func domainConfigAndAssignableAdapters(dcl []types.DiskConfig) (types.DomainConf
 		IoAdapterList: []types.IoAdapter{
 			{Type: types.IoNetEth, Name: "eth0"},
 			{Type: types.IoCom, Name: "COM1"},
-			{Type: types.IoUSB, Name: "USB1"},
+			{Type: types.IoUSBDevice, Name: "USB1"},
 		},
 	}
 
@@ -1119,7 +1119,7 @@ func domainConfigAndAssignableAdapters(dcl []types.DiskConfig) (types.DomainConf
 				UsedByUUID:      config.UUIDandVersion.UUID,
 			},
 			{
-				Type:            types.IoUSB,
+				Type:            types.IoUSBDevice,
 				AssignmentGroup: "USB1",
 				Phylabel:        "USB1:1",
 				UsbAddr:         "1:1",
@@ -2942,7 +2942,7 @@ func TestPCIAddressAllocator(t *testing.T) {
 		},
 		{
 			pciLong: "0000:00:15.0",
-			ioType:  types.IoUSB,
+			ioType:  types.IoUSBController,
 		},
 		{
 			pciLong: "0000:06:00.2",
