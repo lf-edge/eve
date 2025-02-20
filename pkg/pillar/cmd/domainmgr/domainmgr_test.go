@@ -595,7 +595,7 @@ func TestConfigEnableUsbUpdatePortAndPciBackIoBundle(t *testing.T) {
 		IoBundleList: []types.IoBundle{
 			{
 				Phylabel:        "IoUSB",
-				Type:            types.IoUSB,
+				Type:            types.IoUSBController,
 				KeepInHost:      false,
 				AssignmentGroup: "1",
 				PciLong:         "00:01",

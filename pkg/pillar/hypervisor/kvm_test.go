@@ -1091,7 +1091,7 @@ func domainConfigAndAssignableAdapters(dcl []types.DiskConfig) (types.DomainConf
 		IoAdapterList: []types.IoAdapter{
 			{Type: types.IoNetEth, Name: "eth0"},
 			{Type: types.IoCom, Name: "COM1"},
-			{Type: types.IoUSB, Name: "USB1"},
+			{Type: types.IoUSBDevice, Name: "USB1"},
 		},
 	}
 
@@ -1115,7 +1115,7 @@ func domainConfigAndAssignableAdapters(dcl []types.DiskConfig) (types.DomainConf
 				UsedByUUID:      config.UUIDandVersion.UUID,
 			},
 			{
-				Type:            types.IoUSB,
+				Type:            types.IoUSBDevice,
 				AssignmentGroup: "USB1",
 				Phylabel:        "USB1:1",
 				UsbAddr:         "1:1",
