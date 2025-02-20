@@ -24,9 +24,11 @@ func (ctx *monitor) isOnboarded() (bool, uuid.UUID) {
 	sub := ctx.subscriptions["OnboardingStatus"]
 	if item, err := sub.Get("global"); err == nil {
 		onboardingStatus := item.(types.OnboardingStatus)
-		return true, onboardingStatus.DeviceUUID
+		if onboardingStatus.DeviceUUID != uuid.Nil {
+			return true, onboardingStatus.DeviceUUID
+		}
 	}
-	return false, uuid.UUID{}
+	return false, uuid.Nil
 }
 
 func (ctx *monitor) getAppSummary() types.AppInstanceSummary {
