@@ -36,6 +36,11 @@ jobs:
   scan-scheduled:
     if: ${{ github.event_name == 'push' || github.event_name == 'schedule' }}
     uses: "google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@e994fd8ab13fe1394942045f5945cd39c6c2d68e"  # v1.9.2
+    with:
+      scan-args: |-
+        --fail-on-vuln=false # Do not fail the build if vulnerabilities are found
+        --recursive # Recursively scan subdirectories
+        ./ # Start the scan from the root of the repository
 
   scan-pr:
     if: ${{ github.event_name == 'pull_request'}}

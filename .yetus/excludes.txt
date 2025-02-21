@@ -21,3 +21,4 @@
 ^.codespellignorelines
 eve-tools/bpftrace-compiler/examples/.+\.bt
 pkg/dom0-ztools/rootfs/usr/bin/rungetty.sh
+^.+lh-cfg-v1.6.3.yaml

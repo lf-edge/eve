@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -171,7 +172,7 @@ func (d pciDevice) isBootVGA() (bool, error) {
 }
 
 // readResources reads all resources of the PCI device in a list of structs {start, end, flags}
-func (d pciDevice) readResources() ([]pciResource, error) {
+func (d pciDevice) readResources(pciDeviceDir string) ([]pciResource, error) {
 	var resources []pciResource
 	var resourceIndexes []int
 
@@ -184,7 +185,7 @@ func (d pciDevice) readResources() ([]pciResource, error) {
 		return false
 	}
 
-	path := filepath.Join(sysfsPciDevices, d.pciLong)
+	path := filepath.Join(pciDeviceDir, d.pciLong)
 
 	// read directory for device and collect valid resource indexes
 	files, err := os.ReadDir(path)
@@ -193,20 +194,22 @@ func (d pciDevice) readResources() ([]pciResource, error) {
 			path, err)
 	}
 
+	// skip files that are not resources or are write-combining that mapped to the same addresses
+	// or resources for resizable BARs. i.e. files with _wc and _resize suffixes
+	var re = regexp.MustCompile(`^resource(\d+)$`)
+
 	// collect indexes of valid resources
 	for _, file := range files {
 		name := file.Name()
-		// skip files that are not resources or are write-combining that mapped to the same addresses
-		if !strings.HasPrefix(name, "resource") || strings.HasSuffix(name, "_wc") {
-			continue
-		}
-		// trim prefix and convert to integer
-		resourceIndex := strings.TrimPrefix(name, "resource")
-		if resourceIndex == "" {
+		matches := re.FindStringSubmatch(name)
+
+		if len(matches) != 2 {
 			continue
 		}
 
+		resourceIndex := matches[1]
 		index, err := strconv.Atoi(resourceIndex)
+
 		if err != nil {
 			return nil, logError("Can't convert PCI device resource index %s: %v\n",
 				resourceIndex, err)
