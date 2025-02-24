@@ -1,0 +1,29 @@
+# Copyright (c) 2025, Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+---
+name: Close PRs from master
+
+on:
+  pull_request:
+    types: [opened, reopened]
+
+jobs:
+  close-master-pr:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Close PR if from master
+        if: github.event.pull_request.head.ref == 'master'
+        run: |
+          # 1) Close the PR via GitHub API
+          curl -s -X PATCH \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            -d '{"state":"closed"}' \
+            "https://api.github.com/repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}"
+
+          # 2) Add a comment explaining why
+          curl -s -X POST \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            -d '{"body":"Hi! We automatically close PRs from the `master` branch. Please create a dedicated feature branch. For example:\n\n1. In your fork, create a new branch named `feature/my-change`.\n2. Commit and push your changes to that branch.\n3. Open a new pull request from your `feature/my-change` branch.\n\nThanks!"}' \
+            "https://api.github.com/repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments"
