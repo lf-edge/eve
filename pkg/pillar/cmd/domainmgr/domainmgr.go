@@ -1381,7 +1381,7 @@ func usbControllersWithoutPCIReserve(ioBundles []types.IoBundle) map[string][]*t
 	usbControllerGroups := make(map[string][]*types.IoBundle) // assigngrp -> iobundle
 
 	for i, ioBundle := range ioBundles {
-		if ioBundle.Type != types.IoUSBController {
+		if !ioBundle.IsUSBController() {
 			continue
 		}
 
