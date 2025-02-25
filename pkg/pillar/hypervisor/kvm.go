@@ -650,16 +650,16 @@ func mmioVMMOverhead(domainName string, aa *types.AssignableAdapters, domainAdap
 			}
 			if ib.PciLong != "" && ib.UsbAddr == "" {
 				logrus.Infof("Adding PCI device <%s>\n", ib.PciLong)
-				tap := pciDevice{pciLong: ib.PciLong, ioType: ib.Type}
+				tap := pciDevice{ioBundle: *ib}
 				pciAssignments = addNoDuplicatePCI(pciAssignments, tap)
 			}
 		}
 	}
 
 	for _, dev := range pciAssignments {
-		logrus.Infof("PCI device %s %d\n", dev.pciLong, dev.ioType)
+		logrus.Infof("PCI device %s %d\n", dev.ioBundle.PciLong, dev.ioBundle.Type)
 		// read the size of the PCI device aperture. Only GPU/VGA devices for now
-		if dev.ioType != types.IoOther && dev.ioType != types.IoHDMI {
+		if dev.ioBundle.Type != types.IoOther && dev.ioBundle.Type != types.IoHDMI {
 			continue
 		}
 		// skip bridges
@@ -667,12 +667,12 @@ func mmioVMMOverhead(domainName string, aa *types.AssignableAdapters, domainAdap
 		if err != nil {
 			// do not treat as fatal error
 			logrus.Warnf("Can't read PCI device class, treat as bridge %s: %v\n",
-				dev.pciLong, err)
+				dev.ioBundle.PciLong, err)
 			isBridge = true
 		}
 
 		if isBridge {
-			logrus.Infof("Skipping bridge %s\n", dev.pciLong)
+			logrus.Infof("Skipping bridge %s\n", dev.ioBundle.PciLong)
 			continue
 		}
 
@@ -680,7 +680,7 @@ func mmioVMMOverhead(domainName string, aa *types.AssignableAdapters, domainAdap
 		resources, err := dev.readResources(sysfsPciDevices)
 		if err != nil {
 			return 0, logError("Can't read PCI device resources %s: %v\n",
-				dev.pciLong, err)
+				dev.ioBundle.PciLong, err)
 		}
 
 		// calculate the size of the MMIO region
@@ -959,7 +959,7 @@ func (md multifunctionDevs) index(p pciDevice) int {
 	}
 
 	for i, dev := range pciDevices.devs {
-		if p.ioType == dev.ioType && p.pciLong == dev.pciLong {
+		if p.ioBundle.Type == dev.ioBundle.Type && p.ioBundle.PciLong == dev.ioBundle.PciLong {
 			return i
 		}
 	}
@@ -991,9 +991,9 @@ func multifunctionDevGroup(pcis []pciDevice) multifunctionDevs {
 }
 
 func (p pciDevice) pciLongWOFunction() (string, error) {
-	pciLongSplit := strings.Split(p.pciLong, ".")
+	pciLongSplit := strings.Split(p.ioBundle.PciLong, ".")
 	if len(pciLongSplit) == 0 {
-		return "", fmt.Errorf("could not split %s", p.pciLong)
+		return "", fmt.Errorf("could not split %s", p.ioBundle.PciLong)
 	}
 	pciWithoutFunction := strings.Join(pciLongSplit[0:len(pciLongSplit)-1], ".")
 
@@ -1047,7 +1047,7 @@ func (f *pciAssignmentsTemplateFiller) do(file io.Writer, pciAssignments []pciDe
 		pciPTContext.Xopregion = false
 		pciPTContext.Xvga = pa.isVGA()
 		pciPTContext.Bus = fmt.Sprintf("pci.%d", pciPTContext.PCIId)
-		pciPTContext.PciShortAddr = types.PCILongToShort(pa.pciLong)
+		pciPTContext.PciShortAddr = types.PCILongToShort(pa.ioBundle.PciLong)
 
 		if vendor, err := pa.vid(); err == nil {
 			// check for Intel vendor
@@ -1230,7 +1230,8 @@ func (ctx KvmContext) CreateDomConfig(domainName string,
 			}
 			if ib.PciLong != "" && ib.UsbAddr == "" {
 				logrus.Infof("Adding PCI device <%v>\n", ib.PciLong)
-				tap := pciDevice{pciLong: ib.PciLong, ioType: ib.Type}
+				tap := pciDevice{ioBundle: *ib}
+
 				pciAssignments = addNoDuplicatePCI(pciAssignments, tap)
 			}
 			if ib.Serial != "" {
