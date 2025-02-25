@@ -545,7 +545,7 @@ func initImpl(agentName string) (*logrus.Logger, *base.LogObject) {
 		sigs := make(chan os.Signal, 1)
 		signal.Notify(sigs, syscall.SIGUSR1)
 		signal.Notify(sigs, syscall.SIGUSR2)
-		log.Functionf("Creating %s at %s", "handleSignals", GetMyStack())
+		log.Functionf("Creating %s at %s...", "handleSignals", GetMyStack())
 		go handleSignals(log, agentName, agentPid, sigs)
 		eh := func() { printStack(log, agentName, agentPid) }
 		logrus.RegisterExitHandler(eh)
