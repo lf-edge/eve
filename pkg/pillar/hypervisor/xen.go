@@ -403,7 +403,7 @@ func (ctx xenContext) CreateDomConfig(domainName string,
 			short := types.PCILongToShort(pa.ioBundle.PciLong)
 			// USB controller are subject to legacy USB support from
 			// some BIOS. Use relaxed to get past that.
-			if pa.ioBundle.Type == types.IoUSBController {
+			if pa.ioBundle.IsUSBController() {
 				cfg = cfg + fmt.Sprintf("'%s,rdm_policy=relaxed'",
 					short)
 			} else {
