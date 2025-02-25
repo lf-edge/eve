@@ -93,6 +93,14 @@ it? Do it! We will appreciate it. We are always thrilled to receive pull request
 We do our best to process them quickly. If your pull request is not accepted on
 the first try, don't get discouraged!
 
+We expect changes to be submitted from a fork of the repository and a feature
+branch. Please do not submit changes from your master branch, as this disrupts
+several of our CI workflows and will be automatically declined.
+
+All changes should be submitted as a pull request against the master branch of
+the repository, unless they are backports (see the [backporting](#backporting)
+section below).
+
 ### Commit Messages
 
 Each commit message includes a subject and a body, separated by an empty line.
