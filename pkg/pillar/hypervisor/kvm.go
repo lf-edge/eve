@@ -566,16 +566,16 @@ func mmioVMMOverhead(domainName string, aa *types.AssignableAdapters, domainAdap
 			}
 			if ib.PciLong != "" && ib.UsbAddr == "" {
 				logrus.Infof("Adding PCI device <%s>\n", ib.PciLong)
-				tap := pciDevice{pciLong: ib.PciLong, ioType: ib.Type}
+				tap := pciDevice{ioBundle: *ib}
 				pciAssignments = addNoDuplicatePCI(pciAssignments, tap)
 			}
 		}
 	}
 
 	for _, dev := range pciAssignments {
-		logrus.Infof("PCI device %s %d\n", dev.pciLong, dev.ioType)
+		logrus.Infof("PCI device %s %d\n", dev.ioBundle.PciLong, dev.ioBundle.Type)
 		// read the size of the PCI device aperture. Only GPU/VGA devices for now
-		if dev.ioType != types.IoOther && dev.ioType != types.IoHDMI {
+		if dev.ioBundle.Type != types.IoOther && dev.ioBundle.Type != types.IoHDMI {
 			continue
 		}
 		// skip bridges
@@ -583,12 +583,12 @@ func mmioVMMOverhead(domainName string, aa *types.AssignableAdapters, domainAdap
 		if err != nil {
 			// do not treat as fatal error
 			logrus.Warnf("Can't read PCI device class, treat as bridge %s: %v\n",
-				dev.pciLong, err)
+				dev.ioBundle.PciLong, err)
 			isBridge = true
 		}
 
 		if isBridge {
-			logrus.Infof("Skipping bridge %s\n", dev.pciLong)
+			logrus.Infof("Skipping bridge %s\n", dev.ioBundle.PciLong)
 			continue
 		}
 
@@ -596,7 +596,7 @@ func mmioVMMOverhead(domainName string, aa *types.AssignableAdapters, domainAdap
 		resources, err := dev.readResources(sysfsPciDevices)
 		if err != nil {
 			return 0, logError("Can't read PCI device resources %s: %v\n",
-				dev.pciLong, err)
+				dev.ioBundle.PciLong, err)
 		}
 
 		// calculate the size of the MMIO region
@@ -818,7 +818,8 @@ func (ctx KvmContext) CreateDomConfig(domainName string, config types.DomainConf
 			}
 			if ib.PciLong != "" && ib.UsbAddr == "" {
 				logrus.Infof("Adding PCI device <%v>\n", ib.PciLong)
-				tap := pciDevice{pciLong: ib.PciLong, ioType: ib.Type}
+				tap := pciDevice{ioBundle: *ib}
+
 				pciAssignments = addNoDuplicatePCI(pciAssignments, tap)
 			}
 			if ib.Serial != "" {
@@ -851,7 +852,7 @@ func (ctx KvmContext) CreateDomConfig(domainName string, config types.DomainConf
 
 		t, _ = template.New("qemuPciPT").Parse(qemuPciPassthruTemplate)
 		for _, pa := range pciAssignments {
-			short := types.PCILongToShort(pa.pciLong)
+			short := types.PCILongToShort(pa.ioBundle.PciLong)
 			pciPTContext.Xvga = pa.isVGA()
 
 			if vendor, err := pa.vid(); err == nil {
