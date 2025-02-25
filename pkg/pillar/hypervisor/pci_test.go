@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -38,7 +39,7 @@ func TestPCIReadResources(t *testing.T) {
 	}
 
 	// Instantiate the PCI device and call readResources()
-	pciDev := pciDevice{pciLong: "0000:00:1f.0"}
+	pciDev := pciDevice{ioBundle: types.IoBundle{PciLong: "0000:00:1f.0"}}
 	resources, err := pciDev.readResources(tempDir)
 
 	// Assertions
