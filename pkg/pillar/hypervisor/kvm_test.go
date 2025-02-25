@@ -2815,20 +2815,28 @@ func expectedMultifunctionDevice() string {
 func TestPCIAssignmentsTemplateFillMultifunctionDevice(t *testing.T) {
 	pciAssignments := []pciDevice{
 		{
-			pciLong: "0000:00:0a.0",
-			ioType:  0,
+			ioBundle: types.IoBundle{
+				PciLong: "0000:00:0a.0",
+				Type:    0,
+			},
 		},
 		{
-			pciLong: "0000:00:0d.0",
-			ioType:  0,
+			ioBundle: types.IoBundle{
+				PciLong: "0000:00:0d.0",
+				Type:    0,
+			},
 		},
 		{
-			pciLong: "0000:00:0b.0",
-			ioType:  0,
+			ioBundle: types.IoBundle{
+				PciLong: "0000:00:0b.0",
+				Type:    0,
+			},
 		},
 		{
-			pciLong: "0000:00:0d.2",
-			ioType:  0,
+			ioBundle: types.IoBundle{
+				PciLong: "0000:00:0d.2",
+				Type:    0,
+			},
 		},
 	}
 
@@ -2847,20 +2855,28 @@ func TestPCIAssignmentsTemplateFillMultifunctionDevice(t *testing.T) {
 func TestConvertToMultifunctionPCIDevices(t *testing.T) {
 	pciAssignments := []pciDevice{
 		{
-			pciLong: "0000:00:0d.0",
-			ioType:  0,
+			ioBundle: types.IoBundle{
+				PciLong: "0000:00:0d.0",
+				Type:    0,
+			},
 		},
 		{
-			pciLong: "0000:00:aa.8",
-			ioType:  0,
+			ioBundle: types.IoBundle{
+				PciLong: "0000:00:aa.8",
+				Type:    0,
+			},
 		},
 		{
-			pciLong: "0000:00:0d.2",
-			ioType:  0,
+			ioBundle: types.IoBundle{
+				PciLong: "0000:00:0d.2",
+				Type:    0,
+			},
 		},
 		{
-			pciLong: "0000:00:0d.f",
-			ioType:  0,
+			ioBundle: types.IoBundle{
+				PciLong: "0000:00:0d.f",
+				Type:    0,
+			},
 		},
 	}
 
@@ -2872,7 +2888,7 @@ func TestConvertToMultifunctionPCIDevices(t *testing.T) {
 
 	t.Log(mds)
 	for i, pci := range []string{"0000:00:0d.0", "0000:00:0d.2", "0000:00:0d.f"} {
-		functionPCIDev := mds["0000:00:0d"].devs[i].pciLong
+		functionPCIDev := mds["0000:00:0d"].devs[i].ioBundle.PciLong
 		if functionPCIDev != pci {
 			t.Logf("expected %s got %s", pci, functionPCIDev)
 			t.Fail()
