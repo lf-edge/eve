@@ -66,7 +66,7 @@ func (r pciResource) isMem() bool {
 func addNoDuplicatePCI(list []pciDevice, tap pciDevice) []pciDevice {
 
 	for _, t := range list {
-		if t.pciLong == tap.pciLong {
+		if t.ioBundle.PciLong == tap.ioBundle.PciLong {
 			return list
 		}
 	}
@@ -74,11 +74,11 @@ func addNoDuplicatePCI(list []pciDevice, tap pciDevice) []pciDevice {
 }
 
 type pciDevice struct {
-	pciLong string
-	ioType  types.IoType
 	// netIntfOrder is only applied to network devices when EnforceNetworkInterfaceOrder
 	// is enabled.
 	netIntfOrder uint32
+
+	ioBundle types.IoBundle
 
 	// pciBridgeID and pciDeviceID are set by pciAddressAllocator.
 
@@ -92,19 +92,19 @@ type pciDevice struct {
 }
 
 func (d pciDevice) sameDevice(d2 pciDevice) bool {
-	return d.ioType == d2.ioType && d.pciLong == d2.pciLong
+	return d.ioBundle.Type == d2.ioBundle.Type && d.ioBundle.PciLong == d2.ioBundle.PciLong
 }
 
 // check if the PCI device is a VGA device
 // check availability of the VGA file in the sysfs filesystem
 func (d pciDevice) isVGA() bool {
-	bootVgaFile := filepath.Join(sysfsPciDevices, d.pciLong, "boot_vga")
+	bootVgaFile := filepath.Join(sysfsPciDevices, d.ioBundle.PciLong, "boot_vga")
 	return utils.FileExists(nil, bootVgaFile)
 }
 
 // read vendor ID
 func (d pciDevice) vid() (string, error) {
-	vendorID, err := os.ReadFile(filepath.Join(sysfsPciDevices, d.pciLong, "vendor"))
+	vendorID, err := os.ReadFile(filepath.Join(sysfsPciDevices, d.ioBundle.PciLong, "vendor"))
 	if err != nil {
 		return "", err
 	}
@@ -113,7 +113,7 @@ func (d pciDevice) vid() (string, error) {
 
 // read device ID
 func (d pciDevice) devid() (string, error) {
-	devID, err := os.ReadFile(filepath.Join(sysfsPciDevices, d.pciLong, "device"))
+	devID, err := os.ReadFile(filepath.Join(sysfsPciDevices, d.ioBundle.PciLong, "device"))
 	if err != nil {
 		return "", err
 	}
@@ -122,9 +122,9 @@ func (d pciDevice) devid() (string, error) {
 
 // Return PCI long address without the function suffix.
 func (d pciDevice) pciLongWOFunction() (string, error) {
-	pciLongSplit := strings.Split(d.pciLong, ".")
+	pciLongSplit := strings.Split(d.ioBundle.PciLong, ".")
 	if len(pciLongSplit) == 0 {
-		return "", fmt.Errorf("could not split %s", d.pciLong)
+		return "", fmt.Errorf("could not split %s", d.ioBundle.PciLong)
 	}
 	pciWithoutFunction := strings.Join(pciLongSplit[0:len(pciLongSplit)-1], ".")
 	return pciWithoutFunction, nil
@@ -137,11 +137,11 @@ func (d pciDevice) pciLongWOFunction() (string, error) {
 // base_class,subclass,prog-if
 // e.g. 0x06,0x04,0x00 - PCI bridge
 func (d pciDevice) isBridge() (bool, error) {
-	class, err := os.ReadFile(filepath.Join(sysfsPciDevices, d.pciLong, "class"))
+	class, err := os.ReadFile(filepath.Join(sysfsPciDevices, d.ioBundle.PciLong, "class"))
 
 	if err != nil {
 		logrus.Errorf("Can't read PCI device class %s: %v\n",
-			d.pciLong, err)
+			d.ioBundle.PciLong, err)
 		return true, err // assume it is a bridge
 	}
 
@@ -156,11 +156,11 @@ func (d pciDevice) isBridge() (bool, error) {
 // read the boot_vga file from the sysfs filesystem
 // and return true if the file contains "1"
 func (d pciDevice) isBootVGA() (bool, error) {
-	bootVGA, err := os.ReadFile(filepath.Join(sysfsPciDevices, d.pciLong, "boot_vga"))
+	bootVGA, err := os.ReadFile(filepath.Join(sysfsPciDevices, d.ioBundle.PciLong, "boot_vga"))
 
 	if err != nil {
 		logrus.Errorf("Can't read PCI device boot_vga %s: %v\n",
-			d.pciLong, err)
+			d.ioBundle.PciLong, err)
 		return false, err
 	}
 
@@ -185,7 +185,7 @@ func (d pciDevice) readResources(pciDeviceDir string) ([]pciResource, error) {
 		return false
 	}
 
-	path := filepath.Join(pciDeviceDir, d.pciLong)
+	path := filepath.Join(pciDeviceDir, d.ioBundle.PciLong)
 
 	// read directory for device and collect valid resource indexes
 	files, err := os.ReadDir(path)
