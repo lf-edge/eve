@@ -406,7 +406,7 @@ func TestGoroutinesMonitorUpdateParamsKeepStatsDecrease(t *testing.T) {
 	// Check if the log output contains the expected messages
 	for _, expectedMsg := range expectedMsgs {
 		if !strings.Contains(string(output), expectedMsg) {
-			t.Errorf("Expected log output to contain '%s'", expectedMsg)
+			t.Errorf("Expected log output to contain '%s', but got '%s'", expectedMsg, output)
 		}
 	}
 }

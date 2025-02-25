@@ -251,7 +251,7 @@ var aa2 = AssignableAdapters{
 			PciLong:         "0000:f8:00.1",
 		},
 		{
-			Type:            IoUSB,
+			Type:            IoUSBController,
 			Phylabel:        "USB0",
 			Logicallabel:    "USB0",
 			AssignmentGroup: "USB-A",
@@ -259,7 +259,7 @@ var aa2 = AssignableAdapters{
 			PciLong:         "0000:f0:15.0",
 		},
 		{
-			Type:            IoUSB,
+			Type:            IoUSBController,
 			Phylabel:        "USB1",
 			Logicallabel:    "USB1",
 			AssignmentGroup: "USB-A",
@@ -267,7 +267,7 @@ var aa2 = AssignableAdapters{
 			PciLong:         "0000:f0:15.0",
 		},
 		{
-			Type:            IoUSB,
+			Type:            IoUSBController,
 			Phylabel:        "USB2",
 			Logicallabel:    "USB2",
 			AssignmentGroup: "USB-A",
@@ -275,7 +275,7 @@ var aa2 = AssignableAdapters{
 			PciLong:         "0000:f0:15.0",
 		},
 		{
-			Type:            IoUSB,
+			Type:            IoUSBController,
 			Phylabel:        "USB3",
 			Logicallabel:    "USB3",
 			AssignmentGroup: "USB-A",
@@ -283,7 +283,7 @@ var aa2 = AssignableAdapters{
 			PciLong:         "0000:f0:15.0",
 		},
 		{
-			Type:            IoUSB,
+			Type:            IoUSBController,
 			Phylabel:        "USB4",
 			Logicallabel:    "USB4",
 			AssignmentGroup: "USB-A",
@@ -291,7 +291,7 @@ var aa2 = AssignableAdapters{
 			PciLong:         "0000:f0:15.0",
 		},
 		{
-			Type:            IoUSB,
+			Type:            IoUSBController,
 			Phylabel:        "USB5",
 			Logicallabel:    "USB5",
 			AssignmentGroup: "USB-A",
@@ -299,7 +299,7 @@ var aa2 = AssignableAdapters{
 			PciLong:         "0000:f0:15.0",
 		},
 		{
-			Type:            IoUSB,
+			Type:            IoUSBController,
 			Phylabel:        "USB-C",
 			Logicallabel:    "USB6",
 			AssignmentGroup: "USB-C",
