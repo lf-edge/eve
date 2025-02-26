@@ -14,7 +14,7 @@ enable_fcc_unlock() {
     if [ -f "$SCRIPT" ]; then
       SCRIPT_NAME="$(basename "$SCRIPT")"
       case "$SCRIPT_NAME" in
-        "1eac:1002" | "2c7c:030a" | "2c7c:0311")
+        "1eac:1002" | "2c7c:030a" | "2c7c:0311" | "105b:e0ab")
           # For these modems we have our own custom scripts.
           continue
           ;;

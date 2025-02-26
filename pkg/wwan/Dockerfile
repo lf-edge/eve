@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile-upstream:1.5.0-rc2-labs
 
-# Copyright (c) 2023 Zededa, Inc.
+# Copyright (c) 2023-2025 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
 FROM lfedge/eve-alpine:82df60e43ab9f8c935584b8c7b4d0a4b0271d608 as build
@@ -13,7 +13,7 @@ ENV LIBMBIM_VERSION=1.30.0
 ENV LIBQMI_VERSION=1.34.0
 ENV LIBQRTR_VERSION=1.2.2
 ENV PICOCOM_COMMIT=1acf1ddabaf3576b4023c4f6f09c5a3e4b086fb8
-ENV LENOVO_WWAN_UNLOCK_COMMIT=dc9a7eccf72b83e6db528da930cc7f19d6cdd523
+ENV LENOVO_WWAN_UNLOCK_COMMIT=1c0753d709f0efa57575c5a7491bc5456417b073
 
 ADD --keep-git-dir=true https://gitlab.freedesktop.org/mobile-broadband/libqrtr-glib.git#${LIBQRTR_VERSION} /libqrtr
 WORKDIR /libqrtr
@@ -53,6 +53,7 @@ RUN make -j "$(getconf _NPROCESSORS_ONLN)" && strip picocom && cp picocom /usr/b
 ADD --keep-git-dir=true https://github.com/lenovo/lenovo-wwan-unlock.git#${LENOVO_WWAN_UNLOCK_COMMIT} /lenovo-wwan-unlock
 WORKDIR /lenovo-wwan-unlock
 RUN cp libmbimtools.so /out/usr/lib/ && chmod 444 /out/usr/lib/libmbimtools.so
+RUN cp libdpr.so.2.0.1 /out/usr/lib/ && chmod 444 /out/usr/lib/libdpr.so.2.0.1
 RUN mkdir -p /out/opt/lenovo/ && \
     cp DPR_Fcc_unlock_service /out/opt/lenovo/ && chmod 544 /out/opt/lenovo/DPR_Fcc_unlock_service
 COPY --chown=root:root --chmod=500 fcc-unlock /out/usr/lib/ModemManager/fcc-unlock.d
