@@ -124,7 +124,7 @@ jobs:
             upload_response=$(curl -s -X POST \
               -H "Authorization: Bearer $GITHUB_TOKEN" \
               -H "Content-Type: application/octet-stream" \
-              --data-binary @"assets/$new_name" \
+              -T "assets/$new_name" \
               "$UPLOAD_URL?name=$new_name")
             if echo "$upload_response" | jq -e .id > /dev/null; then
               echo "$file_name uploaded successfully."
