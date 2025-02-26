@@ -1,0 +1,2 @@
+# That what you should see in the shim VM prompt
+PS1="\u@shim \W# "
