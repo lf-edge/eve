@@ -1095,7 +1095,7 @@ func domainConfigAndAssignableAdapters(dcl []types.DiskConfig) (types.DomainConf
 		IoAdapterList: []types.IoAdapter{
 			{Type: types.IoNetEth, Name: "eth0"},
 			{Type: types.IoCom, Name: "COM1"},
-			{Type: types.IoUSB, Name: "USB1"},
+			{Type: types.IoUSBDevice, Name: "USB1"},
 		},
 	}
 
@@ -1119,7 +1119,7 @@ func domainConfigAndAssignableAdapters(dcl []types.DiskConfig) (types.DomainConf
 				UsedByUUID:      config.UUIDandVersion.UUID,
 			},
 			{
-				Type:            types.IoUSB,
+				Type:            types.IoUSBDevice,
 				AssignmentGroup: "USB1",
 				Phylabel:        "USB1:1",
 				UsbAddr:         "1:1",
@@ -2832,20 +2832,28 @@ func expectedMultifunctionDevice() string {
 func TestPCIAssignmentsTemplateFillMultifunctionDevice(t *testing.T) {
 	pciAssignments := []pciDevice{
 		{
-			pciLong: "0000:00:0a.0",
-			ioType:  0,
+			ioBundle: types.IoBundle{
+				PciLong: "0000:00:0a.0",
+				Type:    0,
+			},
 		},
 		{
-			pciLong: "0000:00:0d.0",
-			ioType:  0,
+			ioBundle: types.IoBundle{
+				PciLong: "0000:00:0d.0",
+				Type:    0,
+			},
 		},
 		{
-			pciLong: "0000:00:0b.0",
-			ioType:  0,
+			ioBundle: types.IoBundle{
+				PciLong: "0000:00:0b.0",
+				Type:    0,
+			},
 		},
 		{
-			pciLong: "0000:00:0d.2",
-			ioType:  0,
+			ioBundle: types.IoBundle{
+				PciLong: "0000:00:0d.2",
+				Type:    0,
+			},
 		},
 	}
 
@@ -2873,20 +2881,28 @@ func TestPCIAssignmentsTemplateFillMultifunctionDevice(t *testing.T) {
 func TestConvertToMultifunctionPCIDevices(t *testing.T) {
 	pciAssignments := []pciDevice{
 		{
-			pciLong: "0000:00:0d.0",
-			ioType:  0,
+			ioBundle: types.IoBundle{
+				PciLong: "0000:00:0d.0",
+				Type:    0,
+			},
 		},
 		{
-			pciLong: "0000:00:aa.8",
-			ioType:  0,
+			ioBundle: types.IoBundle{
+				PciLong: "0000:00:aa.8",
+				Type:    0,
+			},
 		},
 		{
-			pciLong: "0000:00:0d.2",
-			ioType:  0,
+			ioBundle: types.IoBundle{
+				PciLong: "0000:00:0d.2",
+				Type:    0,
+			},
 		},
 		{
-			pciLong: "0000:00:0d.f",
-			ioType:  0,
+			ioBundle: types.IoBundle{
+				PciLong: "0000:00:0d.f",
+				Type:    0,
+			},
 		},
 	}
 
@@ -2898,7 +2914,7 @@ func TestConvertToMultifunctionPCIDevices(t *testing.T) {
 
 	t.Log(mds)
 	for i, pci := range []string{"0000:00:0d.0", "0000:00:0d.2", "0000:00:0d.f"} {
-		functionPCIDev := mds["0000:00:0d"].devs[i].pciLong
+		functionPCIDev := mds["0000:00:0d"].devs[i].ioBundle.PciLong
 		if functionPCIDev != pci {
 			t.Logf("expected %s got %s", pci, functionPCIDev)
 			t.Fail()
@@ -2936,26 +2952,36 @@ func TestPCIAddressAllocator(t *testing.T) {
 	}
 	pciAssignments := []pciDevice{
 		{
-			pciLong:      "0000:06:00.0",
-			ioType:       types.IoNetEth,
+			ioBundle: types.IoBundle{
+				PciLong: "0000:06:00.0",
+				Type:    types.IoNetEth,
+			},
 			netIntfOrder: 2,
 		},
 		{
-			pciLong: "0000:00:15.0",
-			ioType:  types.IoUSB,
+			ioBundle: types.IoBundle{
+				PciLong: "0000:00:15.0",
+				Type:    types.IoUSBController,
+			},
 		},
 		{
-			pciLong: "0000:06:00.2",
-			ioType:  types.IoOther,
+			ioBundle: types.IoBundle{
+				PciLong: "0000:06:00.2",
+				Type:    types.IoOther,
+			},
 		},
 		{
-			pciLong:      "0000:06:00.1",
-			ioType:       types.IoNetEth,
+			ioBundle: types.IoBundle{
+				PciLong: "0000:06:00.1",
+				Type:    types.IoNetEth,
+			},
 			netIntfOrder: 3,
 		},
 		{
-			pciLong:      "0000:08:00.0",
-			ioType:       types.IoNetWWAN,
+			ioBundle: types.IoBundle{
+				PciLong: "0000:08:00.0",
+				Type:    types.IoNetWWAN,
+			},
 			netIntfOrder: 0,
 		},
 	}

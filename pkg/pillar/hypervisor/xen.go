@@ -381,7 +381,7 @@ func (ctx xenContext) CreateDomConfig(domainName string,
 					domainName)
 			}
 			if ib.PciLong != "" {
-				tap := pciDevice{pciLong: ib.PciLong, ioType: ib.Type}
+				tap := pciDevice{ioBundle: *ib}
 				pciAssignments = addNoDuplicatePCI(pciAssignments, tap)
 			}
 			if ib.Irq != "" && config.VirtualizationMode == types.PV {
@@ -410,10 +410,10 @@ func (ctx xenContext) CreateDomConfig(domainName string,
 			if i != 0 {
 				cfg = cfg + ", "
 			}
-			short := types.PCILongToShort(pa.pciLong)
+			short := types.PCILongToShort(pa.ioBundle.PciLong)
 			// USB controller are subject to legacy USB support from
 			// some BIOS. Use relaxed to get past that.
-			if pa.ioType == types.IoUSB {
+			if pa.ioBundle.IsUSBController() {
 				cfg = cfg + fmt.Sprintf("'%s,rdm_policy=relaxed'",
 					short)
 			} else {

@@ -772,16 +772,16 @@ func mmioVMMOverhead(domainName string, aa *types.AssignableAdapters, domainAdap
 			}
 			if ib.PciLong != "" && ib.UsbAddr == "" {
 				logrus.Infof("Adding PCI device <%s>\n", ib.PciLong)
-				tap := pciDevice{pciLong: ib.PciLong, ioType: ib.Type}
+				tap := pciDevice{ioBundle: *ib}
 				pciAssignments = addNoDuplicatePCI(pciAssignments, tap)
 			}
 		}
 	}
 
 	for _, dev := range pciAssignments {
-		logrus.Infof("PCI device %s %d\n", dev.pciLong, dev.ioType)
+		logrus.Infof("PCI device %s %d\n", dev.ioBundle.PciLong, dev.ioBundle.Type)
 		// read the size of the PCI device aperture. Only GPU/VGA devices for now
-		if dev.ioType != types.IoOther && dev.ioType != types.IoHDMI {
+		if dev.ioBundle.Type != types.IoOther && dev.ioBundle.Type != types.IoHDMI {
 			continue
 		}
 		// skip bridges
@@ -789,12 +789,12 @@ func mmioVMMOverhead(domainName string, aa *types.AssignableAdapters, domainAdap
 		if err != nil {
 			// do not treat as fatal error
 			logrus.Warnf("Can't read PCI device class, treat as bridge %s: %v\n",
-				dev.pciLong, err)
+				dev.ioBundle.PciLong, err)
 			isBridge = true
 		}
 
 		if isBridge {
-			logrus.Infof("Skipping bridge %s\n", dev.pciLong)
+			logrus.Infof("Skipping bridge %s\n", dev.ioBundle.PciLong)
 			continue
 		}
 
@@ -802,7 +802,7 @@ func mmioVMMOverhead(domainName string, aa *types.AssignableAdapters, domainAdap
 		resources, err := dev.readResources(sysfsPciDevices)
 		if err != nil {
 			return 0, logError("Can't read PCI device resources %s: %v\n",
-				dev.pciLong, err)
+				dev.ioBundle.PciLong, err)
 		}
 
 		// calculate the size of the MMIO region
@@ -1194,9 +1194,9 @@ func (a *pciAddressAllocator) allocate() error {
 			// Skip PCI address 0 which is unsupported for standard hotplug controller.
 			pciDeviceID := 1
 			devIndex := md.index(a.pciAssignments[i])
-			thisIsNetDev := a.pciAssignments[i].ioType.IsNet()
+			thisIsNetDev := a.pciAssignments[i].ioBundle.Type.IsNet()
 			for dev2Index, dev2 := range md.devs {
-				theOtherIsNetDev := dev2.ioType.IsNet()
+				theOtherIsNetDev := dev2.ioBundle.Type.IsNet()
 				if !thisIsNetDev {
 					if theOtherIsNetDev {
 						// Network functions take priority in the order.
@@ -1299,11 +1299,11 @@ func (pd pciDevicesWithBridge) index(p pciDevice) int {
 func (pd pciDevicesWithBridge) compareOrder(
 	pd2 pciDevicesWithBridge) (isBefore, isAfter bool) {
 	for _, dev := range pd.devs {
-		if !dev.ioType.IsNet() {
+		if !dev.ioBundle.Type.IsNet() {
 			continue
 		}
 		for _, dev2 := range pd2.devs {
-			if !dev2.ioType.IsNet() {
+			if !dev2.ioBundle.Type.IsNet() {
 				continue
 			}
 			if dev.netIntfOrder < dev2.netIntfOrder {
@@ -1326,7 +1326,7 @@ func (pd pciDevicesWithBridge) compareOrder(
 func (pd pciDevicesWithBridge) compareOrderWithVirtNet(
 	virtNet virtualNetwork) (isBefore, isAfter bool) {
 	for _, dev := range pd.devs {
-		if !dev.ioType.IsNet() {
+		if !dev.ioBundle.Type.IsNet() {
 			continue
 		}
 		if dev.netIntfOrder < virtNet.VifOrder {
@@ -1342,7 +1342,7 @@ func (pd pciDevicesWithBridge) compareOrderWithVirtNet(
 // Return true if device has at least one network function.
 func (pd pciDevicesWithBridge) hasNetworkFunction() bool {
 	for _, dev := range pd.devs {
-		if dev.ioType.IsNet() {
+		if dev.ioBundle.Type.IsNet() {
 			return true
 		}
 	}
@@ -1405,7 +1405,7 @@ func (f *pciAssignmentsTemplateFiller) do(pciAssignments []pciDevice) error {
 	pciEBridgeForMultiFuncDevCreated := make(map[string]struct{}) // key: pci long without function number
 	for _, pa := range pciAssignments {
 		pciPTContext := tQemuPCIPassthruContext{
-			PciShortAddr: types.PCILongToShort(pa.pciLong),
+			PciShortAddr: types.PCILongToShort(pa.ioBundle.PciLong),
 			Xvga:         pa.isVGA(),
 			Xopregion:    false,
 		}
@@ -1583,7 +1583,8 @@ func (ctx KvmContext) CreateDomConfig(domainName string,
 			}
 			if ib.PciLong != "" && ib.UsbAddr == "" {
 				logrus.Infof("Adding PCI device <%v>\n", ib.PciLong)
-				tap := pciDevice{pciLong: ib.PciLong, ioType: ib.Type}
+				tap := pciDevice{ioBundle: *ib}
+
 				if ib.Type.IsNet() {
 					tap.netIntfOrder = adapter.IntfOrder
 				}

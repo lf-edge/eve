@@ -210,6 +210,21 @@ type VfInfo struct {
 // Really a constant
 var nilUUID = uuid.UUID{}
 
+// IsUSBController checks if the IoBundle is a USB controller, including when using the deprecated type IoUSB
+func (ib IoBundle) IsUSBController() bool {
+	if ib.Type == IoUSBController {
+		return true
+	}
+
+	// let's assume that if no usbaddr and no usbproduct is set, that it is a USB controller
+	// we cannot check for PciLong as there are USB controllers out there that are not connected via PCI
+	if ib.Type == IoUSB && ib.UsbAddr == "" && ib.UsbProduct == "" {
+		return true
+	}
+
+	return false
+}
+
 // HasAdapterChanged - We store each Physical Adapter using the IoBundle object.
 // Compares IoBundle with Physical adapter and returns if they are the Same
 // or the Physical Adapter has changed.
