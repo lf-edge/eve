@@ -1783,7 +1783,7 @@ func (r *LinuxDpcReconciler) getIntendedFilterRules(gcp types.ConfigItemValueMap
 	// Allow all ICMP traffic to enter the device from outside.
 	icmpRule := iptables.Rule{
 		RuleLabel:   "Allow ICMP",
-		MatchOpts:   []string{"-p", "icmp"},
+		MatchOpts:   []string{"-p", "icmp", "--icmp-type", "echo-request"},
 		Target:      "ACCEPT",
 		Description: "Allow ICMP traffic to enter the device from outside",
 	}
