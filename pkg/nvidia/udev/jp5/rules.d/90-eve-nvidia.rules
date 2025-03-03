@@ -1,12 +1,14 @@
 # EVE-OS udev rules for NVIDIA Jetson Xavier and Orin platforms
 
-# Ensure fb0 file device to be present in the system (otherwise OCI spec will fail)
+# Ensure fb0 and fb1 file devices to be present in the system (otherwise OCI spec will fail)
 KERNEL=="fb", RUN+="/bin/mknod -m 660 /dev/fb0 c %M 0"
+KERNEL=="fb", RUN+="/bin/mknod -m 660 /dev/fb1 c %M 1"
 
 # NVIDIA modules
 KERNEL=="nvidia", RUN+="/bin/mknod -m 660 /dev/nvidiactl c 195 255"
 KERNEL=="nvidia", RUN+="/bin/mknod -m 660 /dev/nvidia0 c 195 0"
 KERNEL=="nvidia_modeset", RUN+="/bin/mknod -m 660 /dev/nvidia-modeset c %M %m"
+DRIVER=="host1x", RUN+="/bin/mknod -m 660 /dev/tegra_dc_1 c %M 1"
 
 # Set SD card read_ahead_kb to 2048 (taken from Jetpack)
 KERNEL=="mmcblk[0-9]", SUBSYSTEMS=="mmc", ACTION=="add|change", ATTR{bdi/read_ahead_kb}="2048"
