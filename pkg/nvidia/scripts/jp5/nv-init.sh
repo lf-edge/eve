@@ -1,6 +1,6 @@
 #!/bin/sh
 
-# Copyright (c) 2024 Zededa, Inc.
+# Copyright (c) 2024-2025 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
 VENDOR="/opt/vendor/nvidia"
@@ -22,11 +22,13 @@ udevadm info -a -p /devices/gpu.0
 modprobe nvidia
 modprobe nvidia_modeset
 
-# Enforces add for framebuffer and nvidia modules, so we have /dev/fb0 and
-# /dev/nvidiactrl even when there is no monitor connected to the display
-# port. These devices must be present because they are on the CDI spec.
+# Enforces add for framebuffer and nvidia modules, so we have /dev/fb0,
+# /dev/nvidiactrl and /dev/tegra_dc_1 even when there is no monitor connected
+# to the display port. These devices must be present because they are on the
+# CDI spec.
 echo "add" > /sys/module/fb/uevent 2> /dev/null
 echo "add" > /sys/module/nvidia/uevent 2> /dev/null
+echo "add" > /sys/devices/platform/host1x/uevent 2> /dev/null
 
 # Start FAN controller detached from terminal
 if [ -f "$FANCTRL" ]; then
