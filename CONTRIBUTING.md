@@ -283,5 +283,5 @@ Example of such a PR: [#4527](https://github.com/lf-edge/eve/pull/4527)
 
 ## Check how we are doing
 
-Linux Foundation maintains a [project health dashboard](https://insights.lfx.linuxfoundation.org/projects/lfedge)
+Linux Foundation maintains a [project health dashboard](https://insights.lfx.linuxfoundation.org/foundation/lfedge/overview/github?project=project-eve)
 for all its LF Edge projects including Project EVE.
