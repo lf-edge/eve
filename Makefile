@@ -269,7 +269,9 @@ QEMU_OPTS_amd64=-smbios type=1,serial=$(QEMU_EVE_SERIAL)
 QEMU_OPTS_arm64=-smbios type=1,serial=$(QEMU_EVE_SERIAL) -drive file=fat:rw:$(dir $(DEVICETREE_DTB)),label=QEMU_DTB,format=vvfat
 QEMU_OPTS_riscv64=-kernel $(UBOOT_IMG)/u-boot.bin -device virtio-blk,drive=uefi-disk
 QEMU_OPTS_NO_DISPLAY=-display none
-QEMU_OPTS_VGA_DISPLAY=-vga std
+QEMU_OPTS_VGA_DISPLAY_amd64=-vga std
+QEMU_OPTS_VGA_DISPLAY_arm64=-device virtio-gpu-pci -usb -device usb-ehci,id=ehci -device usb-kbd,bus=ehci.0
+QEMU_OPTS_VGA_DISPLAY_riscv64=-vga std
 QEMU_OPTS_COMMON= -m $(QEMU_MEMORY) -smp 4  $(QEMU_OPTS_BIOS) \
         -serial mon:stdio      \
         -global ICH9-LPC.noreboot=false -watchdog-action reset \
@@ -280,7 +282,7 @@ QEMU_OPTS_COMMON= -m $(QEMU_MEMORY) -smp 4  $(QEMU_OPTS_BIOS) \
         -qmp unix:$(CURDIR)/qmp.sock,server,wait=off
 QEMU_OPTS_CONF_PART=$(shell [ -d "$(CONF_PART)" ] && echo '-drive file=fat:rw:$(CONF_PART),format=raw')
 QEMU_OPTS=$(QEMU_OPTS_NO_DISPLAY) $(QEMU_OPTS_COMMON) $(QEMU_ACCEL) $(QEMU_OPTS_$(ZARCH)) $(QEMU_OPTS_CONF_PART) $(QEMU_OPTS_TPM)
-QEMU_OPTS_GUI=$(QEMU_OPTS_VGA_DISPLAY) $(QEMU_OPTS_COMMON) $(QEMU_ACCEL) $(QEMU_OPTS_$(ZARCH)) $(QEMU_OPTS_CONF_PART) $(QEMU_OPTS_TPM)
+QEMU_OPTS_GUI=$(QEMU_OPTS_VGA_DISPLAY_$(ZARCH)) $(QEMU_OPTS_COMMON) $(QEMU_ACCEL) $(QEMU_OPTS_$(ZARCH)) $(QEMU_OPTS_CONF_PART) $(QEMU_OPTS_TPM)
 # -device virtio-blk-device,drive=image -drive if=none,id=image,file=X
 # -device virtio-net-device,netdev=user0 -netdev user,id=user0,hostfwd=tcp::1234-:22
 
@@ -1160,6 +1162,7 @@ help:
 	@echo "   run-compose          runs all EVE microservices via docker-compose deployment"
 	@echo "   run-build-vm         runs a build VM image"
 	@echo "   run-live             runs a full fledged virtual device on qemu (as close as it gets to actual h/w)"
+	@echo "   run-live-gui         same as run-live but with an emulated graphics card"
 	@echo "   run-live-parallels   runs a full fledged virtual device on Parallels Desktop"
 	@echo "   run-live-vb          runs a full fledged virtual device on VirtualBox"
 	@echo "   run-rootfs           runs a rootfs.img (limited usefulness e.g. quick test before cloud upload)"
