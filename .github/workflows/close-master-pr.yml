@@ -1,0 +1,68 @@
+# Copyright (c) 2025, Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+---
+name: Close PRs from master
+
+on:  # yamllint disable-line rule:truthy
+  pull_request_target:
+    types: [opened, reopened]
+
+jobs:
+  close-master-pr:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Close PR if from master
+        if: github.event.pull_request.head.ref == 'master' || github.event.pull_request.head.ref == 'main'
+        run: |
+          # 1) Close the PR via GitHub API
+          curl -s -X PATCH \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            -d '{"state":"closed"}' \
+            "https://api.github.com/repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}"
+
+          # 2) Add a comment explaining why
+          COMMENT_PAYLOAD=$(cat <<EOF
+          {
+            "body": "🚨 Hey there!  We automatically close PRs from the \`master\` branch.\n\n\
+            Please create a dedicated feature branch instead. Follow these steps to do it properly:\n\n\
+            1. Add the upstream repository if you haven't already:\n\n\
+            \`\`\`sh\n\
+            git remote add upstream https://github.com/${{ github.repository }}.git\n\
+            \`\`\`\n\
+            2. Add your fork as a separate remote:\n\n\
+            \`\`\`sh\n\
+            git remote add myfork ${{ github.event.pull_request.head.repo.clone_url }}\n\
+            \`\`\`\n\
+            3. Fetch the latest changes from the upstream repository:\n\n\
+            \`\`\`sh\n\
+            git fetch upstream\n\
+            \`\`\`\n\
+            4. Rebase your \`master\` branch on top of the upstream \`master\`:\n\n\
+            \`\`\`sh\n\
+            git rebase upstream/master\n\
+            \`\`\`\n\
+            5. Create a new feature branch from the updated \`master\`:\n\n\
+            \`\`\`sh\n\
+            git checkout -b feature/my-change\n\
+            \`\`\`\n\
+            6. Reset \`master\` to match the upstream version without affecting your feature branch:\n\n\
+            \`\`\`sh\n\
+            git branch -f master upstream/master\n\
+            \`\`\`\n\
+            7. Push the new feature branch to your fork:\n\n\
+            \`\`\`sh\n\
+            git push myfork feature/my-change\n\
+            \`\`\`\n\n\
+            Finally, open a new pull request from your \`feature/my-change\` branch.\n\n\
+            Please also review our [contributing guidelines](https://github.com/${{ github.repository }}/blob/master/CONTRIBUTING.md).\n\n\
+            Thanks!"
+          }
+          EOF
+          )
+
+          curl -s -X POST \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            -d "$COMMENT_PAYLOAD" \
+            "https://api.github.com/repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments"
