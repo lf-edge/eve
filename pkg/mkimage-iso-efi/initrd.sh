@@ -22,6 +22,12 @@ root_param=$(cat /proc/cmdline | tr ' ' '\n' | grep '^root=' | head -n 1)
 # remove the leading "root="  to get the actual value
 root_value=${root_param#root=}
 
+# Search for the rootimg= cmdline property
+# shellcheck disable=SC2002
+rootimg_param=$(cat /proc/cmdline | tr ' ' '\n' | grep '^rootimg=' | head -n 1)
+# remove the leading "root="  to get the actual value
+root_img=${rootimg_param#rootimg=}
+
 # Check if root_value is set
 if [ -z "$root_value" ]; then
     echo "Error: No root= parameter found in /proc/cmdline"
@@ -81,7 +87,22 @@ done
 if [ -n "$rootdev" ]; then
     echo "found root filesystem: $rootdev, switching"
     mount "$rootdev" /newroot
-    exec switch_root /newroot /sbin/init
+    # Now, check for the installer rootfs squashfs image
+    if [ -n "$root_img" ]; then
+        rootfsimg=/newroot/"$root_img"
+        if [ -e "$rootfsimg" ]; then
+            # Mount the image and call switch_root
+            mkdir -p /installer_root
+            mount "$rootfsimg" /installer_root
+            exec switch_root /installer_root /sbin/init
+        else
+            echo "$root_img image not found!"
+            exec sh
+        fi
+    else
+        # No image provided, let's just switch root
+        exec switch_root /newroot /sbin/init
+    fi
 else
     echo "Root filesystem not found!"
     exec sh
