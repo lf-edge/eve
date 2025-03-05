@@ -18,10 +18,24 @@ copy() {
 # We could do this in /tmp, but it might be really big, and for cases where
 # /tmp is tmpfs, that might use up a lot of memory
 #
+ROOTFS=/var/efi-rootfs
+mkdir -p $ROOTFS
+cd $ROOTFS
+bsdtar xzf -
+
+# Create and change to a working directory for the ISO image
 TMPDIR=/var/efiparts-$$
 mkdir -p $TMPDIR
 cd $TMPDIR
-bsdtar xzf -
+
+# Some files must also be present at the rootfs of the boot device
+cp -r ${ROOTFS}/EFI .
+cp -r ${ROOTFS}/boot .
+mkdir -p ./etc
+cp -r ${ROOTFS}/etc/eve-release ./etc/
+
+# Build a squashfs image for the installer rootfs
+mksquashfs $ROOTFS rootfs_installer.img -noappend -comp xz -no-recovery
 
 # create a ISO with a EFI boot partition
 # Stuff it into a FAT filesystem, making it as small as possible.  511KiB
