@@ -18,7 +18,7 @@ fi
 EVE="$(cd "$(dirname "$0")" && pwd)/../"
 PATH="$EVE/build-tools/bin:$PATH"
 INSTALLER_TAR="$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"
-MKIMAGE_TAG="$(linuxkit pkg show-tag "$EVE/pkg/mkimage-iso-efi")"
+MKIMAGE_TAG="$(linuxkit pkg show-tag "$EVE/pkg/mkimage-iso-efi")-${ARCH}"
 ISO="$(cd "$(dirname "$2")" && pwd)/$(basename "$2")"
 
 if [ ! -f "$INSTALLER_TAR" ] || [ $# -lt 2 ]; then
