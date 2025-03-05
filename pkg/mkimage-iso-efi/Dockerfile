@@ -1,6 +1,6 @@
 FROM lfedge/eve-alpine:591df01e581889c3027514c8a91feaca1c8ad49f AS build
 
-ENV PKGS dosfstools libarchive-tools binutils mtools xorriso mkinitfs
+ENV PKGS dosfstools libarchive-tools binutils mtools xorriso mkinitfs squashfs-tools
 RUN eve-alpine-deploy.sh
 
 RUN echo "mtools_skip_check=1" >> /out/etc/mtools.conf
