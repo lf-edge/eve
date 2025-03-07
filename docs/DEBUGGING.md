@@ -79,7 +79,7 @@ If during hardware or software bringup it is desirable to have USB access during
 
 To enable USB keyboard and/or storage access post onboarding it is necessary to set debug.enable.usb to true as specified in [configuration properties](CONFIG-PROPERTIES.md). Note that this setting is persisted by the device across reboots, hence it is re-applied once the pillar container starts.
 
-Further, to enable any console input post onboarding it is necessary to set debug.enable.console to true as specified in [configuration properties](CONFIG-PROPERTIES.md). Note that this setting is persisted by the device across reboots, hence it is re-applied once the pillar container starts. To see output on a screen post onboarding it is necessary to set debug.enable.vga, which is also persisted and re-applied after a reboot.
+Further, to enable any console input post onboarding it is necessary to set debug.enable.console to true as specified in [configuration properties](CONFIG-PROPERTIES.md). Note that this setting is persisted by the device across reboots, hence it is re-applied once the pillar container starts. To see output on a screen post onboarding it is necessary to set debug.enable.vga, which is also persisted and re-applied after a reboot. Some devices might require a reboot in order to get console back after access is enabled.
 
 ## VNC access to the shim VM
 
@@ -458,7 +458,7 @@ Further parsing and diffing the files is possible using tpm2-tools:
 
 ### TPM Recovery
 
-Using `recovertpm` tool from debug container, it is possible to perform TPM hardware test, key re-generation, volume key extraction and more. Note that the extracted key is in **encrypted** wire format suitable for EVE controler, and key extraction is only possible if the device state (current PCR values) match the original state where key was seald. For complete list of available functionalities :
+Using `recovertpm` tool from debug container, it is possible to perform TPM hardware test, key re-generation, volume key extraction and more. Note that the extracted key is in **encrypted** wire format suitable for EVE controller, and key extraction is only possible if the device state (current PCR values) match the original state where key was seald. For complete list of available functionalities :
 
 ```bash
 eve enter debug
