@@ -1,0 +1,60 @@
+# Copyright (c) 2025, Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+---
+name: CVE Report
+
+on:  # yamllint disable-line rule:truthy
+  schedule:
+    - cron: '0 0 * * *'  # Daily at midnight UTC
+  push:
+    branches:
+      - master
+      - '*-stable'
+    tags:
+      - '*-lts'
+  pull_request:
+    branches:
+      - master
+      - '*-stable'
+  workflow_dispatch:
+
+jobs:
+  cve-scan:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Grype
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
+
+      - name: Build EVE rootfs
+        run: make pkgs installer
+
+      - name: Generate SBOM using Makefile
+        run: make sbom
+
+      - name: Run CVE scan with Grype and output SARIF
+        run: |
+          FILE=$(find dist -type f -name "rootfs.spdx.json" | head -n1)
+          grype "$FILE" --output sarif > grype.sarif
+
+      - name: Patch locations in SARIF report
+        run: |
+          jq '(.runs[]?.results) |= map(
+            if (.locations == null or (.locations|length)==0)
+            then .locations = [{"physicalLocation": {"artifactLocation": {"uri": ".", "uriBaseId": "SRCROOT"}}}]
+            else (.locations |= map(
+              if (.physicalLocation.artifactLocation.uri == "" or .physicalLocation.artifactLocation.uri == null)
+              then .physicalLocation.artifactLocation.uri = "."
+              else .
+              end))
+            end
+          )' grype.sarif > grype.fixed.sarif
+
+      - name: Upload SARIF report to GitHub
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: grype.fixed.sarif
