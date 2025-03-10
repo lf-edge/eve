@@ -41,26 +41,13 @@ func ReadSMARTinfoForDisks() (*types.DisksInformation, error) {
 		dev.Close()
 
 		if diskType == "sata" {
-			diskSmartInfo, err = GetInfoFromSATAdisk(diskName)
-			if err != nil {
-				disksInfo.Disks = append(disksInfo.Disks, diskSmartInfo)
-				continue
-			}
+			diskSmartInfo, _ = GetInfoFromSATAdisk(diskName)
 		} else if diskType == "nvme" {
-			diskSmartInfo, err = GetInfoFromNVMeDisk(diskName)
-			if err != nil {
-				disksInfo.Disks = append(disksInfo.Disks, diskSmartInfo)
-				continue
-			}
+			diskSmartInfo, _ = GetInfoFromNVMeDisk(diskName)
 		} else if diskType == "scsi" {
-			diskSmartInfo, err = GetInfoFromSCSIDisk(diskName)
-			if err != nil {
-				disksInfo.Disks = append(disksInfo.Disks, diskSmartInfo)
-				continue
-			}
+			diskSmartInfo, _ = GetInfoFromSCSIDisk(diskName)
 		} else {
 			diskSmartInfo = getInfoFromUnknownDisk(diskName, diskType)
-			disksInfo.Disks = append(disksInfo.Disks, diskSmartInfo)
 		}
 
 		disksInfo.Disks = append(disksInfo.Disks, diskSmartInfo)
@@ -420,4 +407,14 @@ func GetSerialNumberForDisk(diskName string) (string, error) {
 	}
 
 	return diskSmartInfo.SerialNumber, nil
+}
+
+// CheckSMARTinfoForDisk - verifies that S.M.A.R.T info is available for a disk
+// returns true or false depending on if S.M.A.R.T info is available
+func CheckSMARTinfoForDisk(diskName string) string {
+	_, err := smart.Open(diskName)
+	if err == nil {
+		return "passed"
+	}
+	return "failed"
 }

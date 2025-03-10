@@ -105,10 +105,12 @@ func getSmartAttr(diskData []*types.DAttrTable) []*info.SmartAttr {
 
 	for _, attr := range diskData {
 		attrResult := &info.SmartAttr{ // Allocate on heap
-			Id:       uint32(attr.ID),
-			RawValue: uint64(attr.RawValue),
-			Worst:    uint64(attr.Worst),
-			Value:    uint64(attr.Value),
+			Id:            uint32(attr.ID),
+			AttributeName: attr.AttributeName,
+			RawValue:      uint64(attr.RawValue),
+			Worst:         uint64(attr.Worst),
+			Value:         uint64(attr.Value),
+			Type:          attr.Type,
 		}
 
 		attrResults = append(attrResults, attrResult) // Append pointer
