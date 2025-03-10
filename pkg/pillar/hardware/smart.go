@@ -7,6 +7,7 @@ package hardware
 
 import (
 	"fmt"
+	"reflect"
 	"time"
 
 	smart "github.com/anatol/smart.go"
@@ -40,26 +41,13 @@ func ReadSMARTinfoForDisks() (*types.DisksInformation, error) {
 		dev.Close()
 
 		if diskType == "sata" {
-			diskSmartInfo, err = GetInfoFromSATAdisk(diskName)
-			if err != nil {
-				disksInfo.Disks = append(disksInfo.Disks, diskSmartInfo)
-				continue
-			}
+			diskSmartInfo, _ = GetInfoFromSATAdisk(diskName)
 		} else if diskType == "nvme" {
-			diskSmartInfo, err = GetInfoFromNVMeDisk(diskName)
-			if err != nil {
-				disksInfo.Disks = append(disksInfo.Disks, diskSmartInfo)
-				continue
-			}
+			diskSmartInfo, _ = GetInfoFromNVMeDisk(diskName)
 		} else if diskType == "scsi" {
-			diskSmartInfo, err = GetInfoFromSCSIDisk(diskName)
-			if err != nil {
-				disksInfo.Disks = append(disksInfo.Disks, diskSmartInfo)
-				continue
-			}
+			diskSmartInfo, _ = GetInfoFromSCSIDisk(diskName)
 		} else {
 			diskSmartInfo = getInfoFromUnknownDisk(diskName, diskType)
-			disksInfo.Disks = append(disksInfo.Disks, diskSmartInfo)
 		}
 
 		disksInfo.Disks = append(disksInfo.Disks, diskSmartInfo)
@@ -78,6 +66,56 @@ func getInfoFromUnknownDisk(diskName, diskType string) *types.DiskSmartInfo {
 	diskInfo.CollectingStatus = types.SmartCollectingStatusError
 	diskInfo.TimeUpdate = uint64(time.Now().Unix())
 	return diskInfo
+}
+
+// getSmartType returns "Pre-fail" if the ATA attribute flag for pre-failure is set,
+// otherwise it returns "Old_age". According to the ATA spec, if bit 0 (prefailure) is set,
+// the attribute is considered a pre-fail attribute.
+// I have found this in smartmontools repo https://github.com/smartmontools/smartmontools.git
+// smartmontools/smartmontools/atacmds.h:164:#define ATTRIBUTE_FLAGS_PREFAILURE(x) (x & 0x01)
+// smartmontools/smartmontools/ataprint.cpp:1302: (ATTRIBUTE_FLAGS_PREFAILURE(attr.flags) ? "Pre-fail" : "Old_age"),
+func getSmartType(flags uint16) string {
+	if flags&0x1 != 0 {
+		return "Pre-fail"
+	}
+	return "Old_age"
+}
+
+func smartAttrMap(id uint8) string {
+	var smartAttrMapping = map[uint8]string{
+		1:   "Raw_Read_Error_Rate",
+		3:   "Spin_Up_Time",
+		4:   "Start_Stop_Count",
+		5:   "Reallocated_Sector_Ct",
+		7:   "Seek_Error_Rate",
+		9:   "Power_On_Hours",
+		10:  "Spin_Retry_Count",
+		12:  "Power_Cycle_Count",
+		177: "Wear_Leveling_Count",
+		179: "Used_Rsvd_Blk_Cnt_Tot",
+		181: "Program_Fail_Cnt_Total",
+		182: "Erase_Fail_Count_Total",
+		183: "Runtime_Bad_Block",
+		187: "Uncorrectable_Error_Cnt",
+		188: "Command_Timeout",
+		190: "Airflow_Temperature_Cel",
+		192: "Power-Off_Retract_Count",
+		193: "Load_Cycle_Count",
+		194: "Temperature_Celsius",
+		195: "ECC_Error_Rate",
+		197: "Current_Pending_Sector",
+		198: "Offline_Uncorrectable",
+		199: "CRC_Error_Count",
+		200: "Multi_Zone_Error_Rate",
+		235: "POR_Recovery_Count",
+		240: "Head_Flying_Hours",
+		241: "Total_LBAs_Written",
+		242: "Total_LBAs_Read",
+	}
+	if name, ok := smartAttrMapping[id]; ok {
+		return name
+	}
+	return "Unknown_Attribute"
 }
 
 // GetInfoFromSATAdisk - takes a disk name (/dev/sda or /dev/nvme0n1)
@@ -117,10 +155,12 @@ func GetInfoFromSATAdisk(diskName string) (*types.DiskSmartInfo, error) {
 	for _, smart := range smartAttrList.Attrs {
 		smartAttr := new(types.DAttrTable)
 		smartAttr.ID = int(smart.Id)
-		smartAttr.Flags = int(smart.Flags)
+		smartAttr.AttributeName = smartAttrMap(smart.Id)
+		smartAttr.Flags = smart.Flags
 		smartAttr.RawValue = int(smart.VendorBytes[0])
-		smartAttr.Value = int(smart.Value)
-		smartAttr.Worst = int(smart.Worst)
+		smartAttr.Value = smart.ValueRaw
+		smartAttr.Worst = smart.Worst
+		smartAttr.Type = getSmartType(smart.Flags)
 		diskInfo.SmartAttrs = append(diskInfo.SmartAttrs, smartAttr)
 	}
 
@@ -169,20 +209,38 @@ func GetInfoFromNVMeDisk(diskName string) (*types.DiskSmartInfo, error) {
 		return diskInfo, diskInfo.Errors
 	}
 
-	smartTemperature := new(types.DAttrTable)
-	smartTemperature.ID = types.SmartAttrIDTemperatureCelsius
-	smartTemperature.RawValue = int(smartAttr.Temperature)
-	diskInfo.SmartAttrs = append(diskInfo.SmartAttrs, smartTemperature)
+	// processSmartAttributes extracts SMART attributes from the NvmeSMARTLog struct and stores them in diskInfo.
+	// Use reflection to inspect the structure of smartAttr at runtime
+	val := reflect.ValueOf(*smartAttr) // Get the actual values of the fields
+	typ := reflect.TypeOf(*smartAttr)  // Get the metadata (field names, types, etc.)
 
-	smartPowerOnHours := new(types.DAttrTable)
-	smartPowerOnHours.ID = types.SmartAttrIDPowerOnHours
-	smartPowerOnHours.RawValue = int(smartAttr.PowerOnHours.Val[0])
-	diskInfo.SmartAttrs = append(diskInfo.SmartAttrs, smartPowerOnHours)
+	// Iterate through all fields in the struct
+	for i := 0; i < val.NumField(); i++ {
+		field := val.Field(i)     // Get the value of the current field
+		fieldType := typ.Field(i) // Get metadata about the current field
 
-	smartPowerCycles := new(types.DAttrTable)
-	smartPowerCycles.ID = types.SmartAttrIDPowerCycleCount
-	smartPowerCycles.RawValue = int(smartAttr.PowerCycles.Val[0])
-	diskInfo.SmartAttrs = append(diskInfo.SmartAttrs, smartPowerCycles)
+		// Extract the raw value from the field
+		var rawValue int
+		switch field.Kind() {
+		case reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+			// Directly convert unsigned integer types to int
+			rawValue = int(field.Uint())
+		case reflect.Struct:
+			// This is not accurate but Uint128 is huge so it should be safe.
+			// Special handling for Uint128 type: extract the first value (assuming Val[0] holds meaningful data)
+			rawValue = int(field.FieldByName("Val").Index(0).Uint())
+		default:
+			// Skip unsupported field types
+			continue
+		}
+
+		// Create a new SMART attribute entry and populate it with extracted values
+		smartEntry := new(types.DAttrTable)
+		smartEntry.AttributeName = fieldType.Name                     // Use the field name as the attribute name
+		smartEntry.RawValue = rawValue                                // Store the extracted value
+		diskInfo.SmartAttrs = append(diskInfo.SmartAttrs, smartEntry) // Append to the list of SMART attributes
+	}
+
 	diskInfo.TimeUpdate = uint64(time.Now().Unix())
 	diskInfo.CollectingStatus = types.SmartCollectingStatusSuccess
 
@@ -252,4 +310,14 @@ func GetSerialNumberForDisk(diskName string) (string, error) {
 	}
 
 	return diskSmartInfo.SerialNumber, nil
+}
+
+// CheckSMARTinfoForDisk - verifies that S.M.A.R.T info is available for a disk
+// returns true or false depending on if S.M.A.R.T info is available
+func CheckSMARTinfoForDisk(diskName string) string {
+	_, err := smart.Open(diskName)
+	if err == nil {
+		return "passed"
+	}
+	return "failed"
 }

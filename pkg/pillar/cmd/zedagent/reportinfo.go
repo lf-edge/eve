@@ -408,6 +408,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext, dest destinationBitset) {
 			for _, disk := range zfsPoolStatus.Disks {
 				diskInfo := new(info.StorageDiskState)
 				diskInfo.Status = info.StorageStatus(disk.Status)
+				diskInfo.SmartStatus = hardware.CheckSMARTinfoForDisk(disk.DiskName.Name)
 				diskInfo.State = disk.AuxStateStr
 				if disk.DiskName != nil {
 					diskInfo.DiskName = new(evecommon.DiskDescription)
@@ -441,6 +442,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext, dest destinationBitset) {
 			rDiskStatus.DiskName.Name = *proto.String(mi.Source)
 			rDiskStatus.DiskName.Serial = *proto.String(serialNumber)
 			rDiskStatus.Status = info.StorageStatus_STORAGE_STATUS_ONLINE
+			rDiskStatus.SmartStatus = hardware.CheckSMARTinfoForDisk(rDiskStatus.DiskName.Name)
 			xStorageInfo.Disks = append(xStorageInfo.Disks, rDiskStatus)
 		}
 		ReportDeviceInfo.StorageInfo = append(ReportDeviceInfo.StorageInfo, xStorageInfo)
