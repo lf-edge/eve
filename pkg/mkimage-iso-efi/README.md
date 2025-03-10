@@ -8,11 +8,8 @@ In addition, the following will be created:
 1. An El Torito compliant FAT32 image that can be booted by UEFI firmware.
 1. An `initrd.img` that can be used to boot the kernel and mount the ISO filesystem.
 
-The `initrd.img` will be for the architecture on which you are running, for example linux/amd64. If you wish to
-build for another architecture, do one of the following:
-
-* `docker run --platform <other-platform>`, e.g. `docker run --platform linux/arm64` while on `linux/amd64`
-* pass the target architecture as `TARGETARCH` environment variable, e.g. `docker run -e TARGETARCH=arm64` while on `linux/amd64`
+The `initrd.img` will be for the architecture of the input filesystem tar stream. All executables placed in the initrd, if
+needed, will be taken from the tar.
 
 ## Usage
 
