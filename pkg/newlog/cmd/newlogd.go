@@ -207,6 +207,7 @@ func main() {
 	log.Functionf("newlogd: starting... restarted %v", restarted)
 
 	loggerChan := make(chan inputEntry, 10)
+	dedupChan := make(chan inputEntry, 10)
 	movefileChan := make(chan fileChanInfo, 5)
 	panicFileChan := make(chan []byte, 2)
 
@@ -228,7 +229,10 @@ func main() {
 	go getKmessages(loggerChan)
 
 	// handle collect other container log messages from memlogd
-	go getMemlogMsg(loggerChan, panicFileChan)
+	go getMemlogMsg(dedupChan, panicFileChan)
+
+	// handle deduplication of log messages coming from memlogd
+	go deduplicateLogs(dedupChan, loggerChan)
 
 	// handle linux Syslog /dev/log messages
 	go getSyslogMsg(loggerChan)
