@@ -880,8 +880,7 @@ func sendToCloud(ctx *loguploaderContext, data []byte, iter int, fName string, f
 		}
 	}
 	if err != nil {
-		log.Errorf("sendToCloud: %d bytes, file %s failed: %v", size, fName, err)
-		return serviceUnavailable, fmt.Errorf("sendToCloud: failed to send")
+		return serviceUnavailable, fmt.Errorf("sendToCloud: %d bytes, file %s failed: %v", size, fName, err)
 	}
 	log.Tracef("sendToCloud: Sent %d bytes, file %s to %s", size, fName, logsURL)
 	return serviceUnavailable, nil
