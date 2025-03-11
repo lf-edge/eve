@@ -1,6 +1,7 @@
 package main
 
 import (
+	"container/ring"
 	"encoding/json"
 	"fmt"
 )
@@ -15,10 +16,7 @@ func deduplicateLogs(in <-chan inputEntry, out chan<- inputEntry) {
 	// 'seen' counts occurrences of each file in the current window.
 	seen := make(map[string]string)
 	// 'queue' holds the file fields of the last bufferSize logs.
-	queue := make([]string, bufferSize)
-
-	newElementIdx := 0
-	bufferFull := false
+	queue := ring.New(bufferSize)
 
 	for logEntry := range in {
 		dedupField := ""
@@ -34,11 +32,6 @@ func deduplicateLogs(in <-chan inputEntry, out chan<- inputEntry) {
 			}
 		}
 
-		if bufferFull {
-			oldest := queue[newElementIdx]
-			delete(seen, oldest)
-		}
-
 		// If the file hasn't appeared in the last bufferSize logs, forward it.
 		if _, ok := seen[dedupField]; !ok || logEntry.severity != "error" {
 			out <- logEntry
@@ -46,17 +39,17 @@ func deduplicateLogs(in <-chan inputEntry, out chan<- inputEntry) {
 			fmt.Printf("Deduped %s because of %s\n", msgid, seen[dedupField])
 		}
 
+		// Remove the oldest log from the window.
+		if oldest := queue.Value; oldest != nil {
+			delete(seen, oldest.(string))
+		}
+
 		// Add the current log to the window.
-		queue[newElementIdx] = dedupField
+		queue.Value = dedupField
 		seen[dedupField] = msgid
 
-		// increment the index
-		newElementIdx++
-		// Maintain the window size: if it exceeds bufferSize, remove the oldest log.
-		if newElementIdx == bufferSize {
-			newElementIdx = 0
-			bufferFull = true
-		}
+		// Move the window.
+		queue = queue.Next()
 	}
 
 	close(out)
