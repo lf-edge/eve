@@ -12,6 +12,8 @@ type ContainsMsg struct {
 	Msg string `json:"msg"`
 }
 
+var numDedupedLogs = 0
+
 func deduplicateLogs(in <-chan inputEntry, out chan<- inputEntry) {
 	// 'seen' counts occurrences of each file in the current window.
 	seen := make(map[string]string)
@@ -37,6 +39,10 @@ func deduplicateLogs(in <-chan inputEntry, out chan<- inputEntry) {
 			out <- logEntry
 		} else {
 			fmt.Printf("Deduped %s because of %s\n", msgid, seen[dedupField])
+			numDedupedLogs++
+			if numDedupedLogs%10 == 0 {
+				fmt.Printf("Deduped %d logs\n", numDedupedLogs)
+			}
 		}
 
 		// Remove the oldest log from the window.
