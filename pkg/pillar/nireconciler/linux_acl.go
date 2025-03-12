@@ -508,7 +508,7 @@ func (r *LinuxNIReconciler) getIntendedACLRootChains() dg.Graph {
 
 func (r *LinuxNIReconciler) withFlowlog() bool {
 	for _, ni := range r.nis {
-		if ni.config.EnableFlowlog {
+		if !ni.deleted && ni.config.EnableFlowlog {
 			return true
 		}
 	}
