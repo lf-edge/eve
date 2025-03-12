@@ -8,6 +8,9 @@ In addition, the following will be created:
 1. An El Torito compliant FAT32 image that can be booted by UEFI firmware.
 1. An `initrd.img` that can be used to boot the kernel and mount the ISO filesystem.
 
+The `initrd.img` will be for the architecture of the input filesystem tar stream. All executables placed in the initrd, if
+needed, will be taken from the tar.
+
 ## Usage
 
 ### Input

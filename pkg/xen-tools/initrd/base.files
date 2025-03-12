@@ -25,3 +25,4 @@
 /etc/acpi/PWRF/00000080
 /usr/sbin/chronyd
 /var/lib/chrony/chrony.drift
+/root/.profile
