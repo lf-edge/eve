@@ -368,9 +368,11 @@ func (r *LinuxNIReconciler) getIntendedGlobalState() dg.Graph {
 
 func (r *LinuxNIReconciler) getIntendedHostSysctl() linux.Sysctl {
 	var bridgeCallIptables, bridgeCallIp6tables bool
-	if r.withFlowlog() {
+	if r.withKubernetesNetworking || r.withFlowlog() {
 		// Enforce the use of iptables in order to get conntrack entry
 		// created for every flow, which is then used to obtain flow metadata.
+		// Enabling iptables for bridges is also required for Flannel CNI to ensure
+		// the iptables-based implementation of Kubernetes services functions correctly.
 		bridgeCallIptables = true
 		bridgeCallIp6tables = true
 		return linux.Sysctl{
