@@ -147,6 +147,10 @@ func handleVaultStatusUpdate(statusArg interface{}, ctxArg interface{}) {
 	status := statusArg.(types.VaultStatus)
 	ctx := ctxArg.(*monitor)
 	ctx.IPCServer.sendIpcMessage("VaultStatus", status)
+
+	if status.IsVaultInError() {
+		ctx.sendTpmLogs()
+	}
 }
 
 func handleAppInstanceSummaryCreate(ctxArg interface{}, key string,
