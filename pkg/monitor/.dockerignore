@@ -1,0 +1,4 @@
+eve-monitor-rs/target/
+.idea
+.vscode
+**/*.json
