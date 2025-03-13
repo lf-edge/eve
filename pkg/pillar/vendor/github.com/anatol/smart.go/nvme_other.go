@@ -4,8 +4,7 @@
 
 package smart
 
-type NVMeDevice struct {
-}
+type NVMeDevice struct{}
 
 func OpenNVMe(name string) (*NVMeDevice, error) {
 	return nil, ErrOSUnsupported

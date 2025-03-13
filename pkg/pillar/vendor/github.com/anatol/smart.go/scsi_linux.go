@@ -10,7 +10,7 @@ import (
 )
 
 func OpenScsi(name string) (*ScsiDevice, error) {
-	fd, err := unix.Open(name, unix.O_RDWR, 0600)
+	fd, err := unix.Open(name, unix.O_RDONLY, 0o600)
 	if err != nil {
 		return nil, err
 	}
@@ -46,9 +46,11 @@ func (d *ScsiDevice) Close() error {
 }
 
 // SCSI CDB types
-type cdb6 [6]byte
-type cdb10 [10]byte
-type cdb16 [16]byte
+type (
+	cdb6  [6]byte
+	cdb10 [10]byte
+	cdb16 [16]byte
+)
 
 type sgioError struct {
 	hostStatus   uint32
