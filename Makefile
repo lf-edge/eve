@@ -936,6 +936,12 @@ proto-vendor:
 bump-eve-api:
 	find . -type f -name "go.mod" -exec grep -q 'github.com/lf-edge/eve-api/go' {} \; -execdir go get -u github.com/lf-edge/eve-api/go \; -execdir go mod tidy \; -execdir go mod vendor \;
 
+bump-eve-libs:
+	find . -type f -name "go.mod" -exec grep -q 'github.com/lf-edge/eve-libs' {} \; -execdir go get -u github.com/lf-edge/eve-libs \; -execdir go mod tidy \; -execdir go mod vendor \;
+
+bump-eve-pillar:
+	find . -type f -name "go.mod" -exec grep -q 'github.com/lf-edge/eve/pkg/pillar' {} \; -execdir go get -u github.com/lf-edge/eve/pkg/pillar \; -execdir go mod tidy \; -execdir go mod vendor \;
+
 .PHONY: proto-api-%
 
 rc-release:
@@ -1141,7 +1147,9 @@ help:
 	@echo "   check-docker-hashes-consistency  check for Dockerfile image inconsistencies"
 	@echo
 	@echo "Seldom used maintenance and development targets:"
-	@echo "   bump-eve-api   bump eve-api in all subprojects"
+	@echo "   bump-eve-api    bump eve-api in all subprojects"
+	@echo "   bump-eve-libs   bump eve-libs in all subprojects"
+	@echo "   bump-eve-pillar bump eve/pkg/pillar in all subprojects"
 	@echo
 	@echo "Commonly used build targets:"
 	@echo "   build-tools          builds linuxkit utilities and installs under build-tools/bin"
