@@ -38,6 +38,7 @@ require (
 	github.com/longhorn/longhorn-manager v1.6.0
 	github.com/miekg/dns v1.1.43
 	github.com/moby/sys/mountinfo v0.7.1
+	github.com/multiplay/go-edac v1.0.1
 	github.com/onsi/gomega v1.29.0
 	github.com/opencontainers/go-digest v1.0.0
 	github.com/opencontainers/image-spec v1.1.0-rc6
@@ -57,7 +58,7 @@ require (
 	golang.org/x/net v0.36.0
 	golang.org/x/sys v0.30.0
 	google.golang.org/grpc v1.61.0
-	google.golang.org/protobuf v1.36.1
+	google.golang.org/protobuf v1.36.5
 	gopkg.in/yaml.v2 v2.4.0
 	k8s.io/api v0.29.3
 	k8s.io/apimachinery v0.29.3
