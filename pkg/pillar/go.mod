@@ -3,7 +3,7 @@ module github.com/lf-edge/eve/pkg/pillar
 go 1.22
 
 require (
-	github.com/anatol/smart.go v0.0.0-20220615232124-371056cd18c3
+	github.com/anatol/smart.go v0.0.0-20241126061019-f03d79b340d2
 	github.com/andrewd-zededa/go-libzfs v0.0.0-20240304231806-6a64e99da97d
 	github.com/containerd/cgroups v1.1.0
 	github.com/containerd/containerd v1.7.13
@@ -47,7 +47,7 @@ require (
 	github.com/shjala/gostats v0.0.0-20230215094906-69a32327600f
 	github.com/sirupsen/logrus v1.9.3
 	github.com/spf13/cobra v1.8.0
-	github.com/stretchr/testify v1.8.4
+	github.com/stretchr/testify v1.10.0
 	github.com/tatsushid/go-fastping v0.0.0-20160109021039-d7bb493dee3e
 	github.com/vishvananda/netlink v1.2.1-beta.2
 	go.uber.org/goleak v1.3.0
