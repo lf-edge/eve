@@ -5,7 +5,7 @@ Smart.go tries to match functionality provided by [smartctl](https://www.smartmo
 
 Currently this library support SATA, SCSI and NVMe drives. Different drive types provide different set of monitoring information and API reflects it.
 
-At this point the library works at Linux and partialy at MacOSX. We are looking for help with porting it to other platforms.
+At this point the library works at Linux and partially at MacOSX. We are looking for help with porting it to other platforms.
 
 ## Example
 
@@ -58,13 +58,36 @@ for _, disk := range block.Disks {
 
         switch sm := dev.(type) {
         case *smart.SataDevice:
-            _, _ = sm.Identify()
+            data, err := sm.ReadSMARTData()
+            attr, ok := data.Attrs[194]; ok { // attr.Name == "Temperature_Celsius"
+                temp, min, max, overtempCounter, err := attr.ParseAsTemperature()
+                // min/max/counter are optional
+            }
         case *smart.ScsiDevice:
             _, _ = sm.Capacity()
         case *smart.NVMeDevice:
             _, _ = sm.ReadSMART()
         }
 }
+```
+
+Reading generic SMART attributes.
+
+smart.go provides API for easier access to the most commonly used device attributes.
+
+```go
+dev, err := smart.Open("/dev/nvme0n1")
+require.NoError(t, err)
+defer dev.Close()
+
+a, err := dev.ReadGenericAttributes()
+require.NoError(t, err)
+
+fmt.Println("The temperature is ", a.Temperature) // in Celsius
+fmt.Println("Read block count ", a.Read)
+fmt.Println("Written block count ", a.Written)
+fmt.Println("Power Cycles count ", a.PowerCycles)
+fmt.Println("Power On Hours ", a.PowerOnHours)
 ```
 
 ### Credit
