@@ -71,53 +71,54 @@ type L2Adapter struct {
 }
 
 type getconfigContext struct {
-	zedagentCtx               *zedagentContext    // Cross link
-	ledBlinkCount             types.LedBlinkCount // Current count
-	configReceived            bool
-	configGetStatus           types.ConfigGetStatus
-	updateInprogress          bool
-	readSavedConfig           bool // Did we already read it?
-	waitDrainInProgress       bool
-	configTickerHandle        interface{}
-	certTickerHandle          interface{}
-	metricsTickerHandle       interface{}
-	locationCloudTickerHandle interface{}
-	locationAppTickerHandle   interface{}
-	localProfileTickerHandle  interface{}
-	ntpSourcesTickerHandle    interface{}
-	pubDevicePortConfig       pubsub.Publication
-	pubPhysicalIOAdapters     pubsub.Publication
-	devicePortConfig          types.DevicePortConfig
-	pubNetworkXObjectConfig   pubsub.Publication
-	subAppInstanceStatus      pubsub.Subscription
-	subDomainMetric           pubsub.Subscription
-	subProcessMetric          pubsub.Subscription
-	subHostMemory             pubsub.Subscription
-	subNodeAgentStatus        pubsub.Subscription
-	pubZedAgentStatus         pubsub.Publication
-	pubAppInstanceConfig      pubsub.Publication
-	pubAppNetworkConfig       pubsub.Publication
-	subAppNetworkStatus       pubsub.Subscription
-	pubBaseOsConfig           pubsub.Publication
-	pubDatastoreConfig        pubsub.Publication
-	pubNetworkInstanceConfig  pubsub.Publication
-	pubControllerCert         pubsub.Publication
-	pubCipherContext          pubsub.Publication
-	subContentTreeStatus      pubsub.Subscription
-	pubContentTreeConfig      pubsub.Publication
-	subVolumeStatus           pubsub.Subscription
-	pubVolumeConfig           pubsub.Publication
-	pubDisksConfig            pubsub.Publication
-	pubEdgeNodeInfo           pubsub.Publication
-	pubPatchEnvelopeInfo      pubsub.Publication
-	subPatchEnvelopeStatus    pubsub.Subscription
-	subCachedResolvedIPs      pubsub.Subscription
-	NodeAgentStatus           *types.NodeAgentStatus
-	configProcessingRV        configProcessingRetval
-	lastReceivedConfig        time.Time // controller or local clocks
-	lastProcessedConfig       time.Time // controller or local clocks
-	lastConfigTimestamp       time.Time // controller clocks (zero if not available)
-	lastConfigSource          configSource
+	zedagentCtx                *zedagentContext    // Cross link
+	ledBlinkCount              types.LedBlinkCount // Current count
+	configReceived             bool
+	configGetStatus            types.ConfigGetStatus
+	updateInprogress           bool
+	readSavedConfig            bool // Did we already read it?
+	waitDrainInProgress        bool
+	configTickerHandle         interface{}
+	certTickerHandle           interface{}
+	metricsTickerHandle        interface{}
+	hardwareHealthTickerHandle interface{}
+	locationCloudTickerHandle  interface{}
+	locationAppTickerHandle    interface{}
+	localProfileTickerHandle   interface{}
+	ntpSourcesTickerHandle     interface{}
+	pubDevicePortConfig        pubsub.Publication
+	pubPhysicalIOAdapters      pubsub.Publication
+	devicePortConfig           types.DevicePortConfig
+	pubNetworkXObjectConfig    pubsub.Publication
+	subAppInstanceStatus       pubsub.Subscription
+	subDomainMetric            pubsub.Subscription
+	subProcessMetric           pubsub.Subscription
+	subHostMemory              pubsub.Subscription
+	subNodeAgentStatus         pubsub.Subscription
+	pubZedAgentStatus          pubsub.Publication
+	pubAppInstanceConfig       pubsub.Publication
+	pubAppNetworkConfig        pubsub.Publication
+	subAppNetworkStatus        pubsub.Subscription
+	pubBaseOsConfig            pubsub.Publication
+	pubDatastoreConfig         pubsub.Publication
+	pubNetworkInstanceConfig   pubsub.Publication
+	pubControllerCert          pubsub.Publication
+	pubCipherContext           pubsub.Publication
+	subContentTreeStatus       pubsub.Subscription
+	pubContentTreeConfig       pubsub.Publication
+	subVolumeStatus            pubsub.Subscription
+	pubVolumeConfig            pubsub.Publication
+	pubDisksConfig             pubsub.Publication
+	pubEdgeNodeInfo            pubsub.Publication
+	pubPatchEnvelopeInfo       pubsub.Publication
+	subPatchEnvelopeStatus     pubsub.Subscription
+	subCachedResolvedIPs       pubsub.Subscription
+	NodeAgentStatus            *types.NodeAgentStatus
+	configProcessingRV         configProcessingRetval
+	lastReceivedConfig         time.Time // controller or local clocks
+	lastProcessedConfig        time.Time // controller or local clocks
+	lastConfigTimestamp        time.Time // controller clocks (zero if not available)
+	lastConfigSource           configSource
 
 	// parsed L2 adapters
 	vlans []L2Adapter
@@ -896,6 +897,11 @@ func touchReceivedProtoMessage() {
 // XXX for debug we track these
 func saveSentMetricsProtoMessage(contents []byte) {
 	saveConfig("lastmetrics", contents)
+}
+
+// XXX for debug we track these
+func saveSentHardwareHealthProtoMessage(contents []byte) {
+	saveConfig("lasthardwarehealth", contents)
 }
 
 // XXX for debug we track these
