@@ -149,6 +149,7 @@ func TestNewConfigItemSpecMap(t *testing.T) {
 		ConfigInterval,
 		CertInterval,
 		MetricInterval,
+		HardwareHealthInterval,
 		LocationCloudInterval,
 		LocationAppInterval,
 		NTPSourcesInterval,
