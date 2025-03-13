@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/lf-edge/eve-api/go/evecommon"
+	"github.com/lf-edge/eve-api/go/hardwarehealth"
 	"github.com/lf-edge/eve-api/go/info"
 	"github.com/lf-edge/eve-api/go/metrics"
 	zmet "github.com/lf-edge/eve-api/go/metrics" // zinfo and zmet here
@@ -26,6 +27,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/lf-edge/eve/pkg/pillar/utils/persist"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
+	"github.com/multiplay/go-edac/lib/edac"
 	"github.com/shirou/gopsutil/host"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -1001,6 +1003,98 @@ func setMetricAnyValue(item *metrics.MetricItem, val interface{}) {
 	}
 }
 
+// Run a periodic post of health checks to the controller
+func hardwareHealthTimerTask(ctx *zedagentContext, handleChannel chan interface{}) {
+	iteration := 0
+	log.Functionln("starting report health check timer task")
+	publishΗealthChecksReport(ctx, iteration)
+
+	interval := time.Duration(ctx.globalConfig.GlobalValueInt(types.HardwareHealthInterval)) * time.Second
+	max := float64(interval)
+	min := max * 0.3
+	ticker := flextimer.NewRangeTicker(time.Duration(min), time.Duration(max))
+	// Return handle to caller
+	handleChannel <- ticker
+
+	wdName := agentName + "hardwarehealth"
+
+	// Run a periodic timer so we always update StillRunning
+	stillRunning := time.NewTicker(25 * time.Second)
+	ctx.ps.StillRunning(wdName, warningTime, errorTime)
+	ctx.ps.RegisterFileWatchdog(wdName)
+
+	for {
+		select {
+		case <-ticker.C:
+			start := time.Now()
+			iteration++
+			publishΗealthChecksReport(ctx, iteration)
+			ctx.ps.CheckMaxTimeTopic(wdName, "publishHardwareHealth", start,
+				warningTime, errorTime)
+
+		case <-stillRunning.C:
+		}
+		ctx.ps.StillRunning(wdName, warningTime, errorTime)
+	}
+}
+
+func publishΗealthChecksReport(ctx *zedagentContext, iteration int) {
+	log.Functionf("publishΗealthChecksReport")
+	var ReportHardwareHealth = &hardwarehealth.ZHardwareHealth{}
+
+	ReportHardwareHealth.DevId = *proto.String(devUUID.String())
+	ReportHardwareHealth.AtTimeStamp = timestamppb.Now()
+
+	ReportMemoryInfo := new(hardwarehealth.ECCMemoryReport)
+
+	mcs, err := edac.MemoryControllers()
+	if err != nil {
+		log.Error(err)
+		return
+	}
+
+	if len(mcs) == 0 {
+		log.Noticef("No ECC memory found in the system")
+		return
+	}
+
+	for _, c := range mcs {
+		i, err := c.Info()
+		if err != nil {
+			log.Error(err)
+			return
+		}
+
+		// Add ECC memory controller info
+		memoryInfo := &hardwarehealth.ECCMemoryControllerInfo{
+			ControllerName: i.Name,
+			CeCount:        i.Correctable,
+			UeCount:        i.Uncorrectable,
+		}
+
+		// Retrieve and add DIMM ranks
+		ranks, err := c.DimmRanks()
+		if err != nil {
+			log.Error(err)
+			return
+		}
+
+		for _, r := range ranks {
+			dimmRank := &hardwarehealth.DimmRankInfo{
+				RankName: r.Name,
+				CeCount:  r.Correctable,
+				UeCount:  r.Uncorrectable,
+			}
+			memoryInfo.Ranks = append(memoryInfo.Ranks, dimmRank)
+		}
+
+		ReportMemoryInfo.MemoryControllers = append(ReportMemoryInfo.MemoryControllers, memoryInfo)
+	}
+
+	log.Tracef("PublishHardwareHealthToZedCloud sending %s", ReportHardwareHealth)
+	sendHardwareHealthProtobuf(ctx.getconfigCtx, ReportHardwareHealth, iteration)
+}
+
 func encodeProxyStatus(proxyConfig *types.ProxyConfig) *info.ProxyStatus {
 	status := new(info.ProxyStatus)
 	status.Proxies = make([]*info.ProxyEntry, len(proxyConfig.Proxies))
@@ -1541,6 +1635,55 @@ func sendMetricsProtobuf(ctx *getconfigContext,
 			url := zedcloud.URLPathString(locConfig.LocURL, zedcloudCtx.V2API,
 				devUUID, "metrics")
 			sendMetricsProtobufByURL(ctx, url, ReportMetrics, iteration)
+		}()
+	}
+}
+
+// Try all (first free, then rest) until it gets through.
+// Each iteration we try a different port for load spreading.
+// For each port we try all its local IP addresses until we get a success.
+func sendHardwareHealthProtobufByURL(ctx *getconfigContext, harwdareHealthURL string,
+	HardwareHealth *hardwarehealth.ZHardwareHealth, iteration int) {
+
+	data, err := proto.Marshal(HardwareHealth)
+	if err != nil {
+		log.Fatal("sendHardwareHealthProtobufByURL proto marshaling error: ", err)
+	}
+
+	buf := bytes.NewBuffer(data)
+	size := int64(proto.Size(HardwareHealth))
+	const bailOnHTTPErr = false
+	const withNetTrace = false
+	ctxWork, cancel := zedcloud.GetContextForAllIntfFunctions(zedcloudCtx)
+	defer cancel()
+	log.Noticef("sending hardware health message: %s", harwdareHealthURL)
+	rv, err := zedcloud.SendOnAllIntf(ctxWork, zedcloudCtx, harwdareHealthURL,
+		size, buf, iteration, bailOnHTTPErr, withNetTrace)
+	if err != nil {
+		// Hopefully next timeout will be more successful
+		log.Errorf("sendHardwareHealthProtobufByURL status %d failed: %s", rv.Status, err)
+		return
+	} else {
+		saveSentHardwareHealthProtoMessage(data)
+	}
+}
+
+func sendHardwareHealthProtobuf(ctx *getconfigContext,
+	HardwareHealth *hardwarehealth.ZHardwareHealth, iteration int) {
+
+	url := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API,
+		devUUID, "hardwarehealth")
+	sendHardwareHealthProtobufByURL(ctx, url, HardwareHealth, iteration)
+
+	locConfig := ctx.sideController.locConfig
+
+	// Repeat hardwarehealth for LOC as well
+	if locConfig != nil {
+		// Don't block current execution context
+		go func() {
+			url := zedcloud.URLPathString(locConfig.LocURL, zedcloudCtx.V2API,
+				devUUID, "hardwarehealth")
+			sendHardwareHealthProtobufByURL(ctx, url, HardwareHealth, iteration)
 		}()
 	}
 }
