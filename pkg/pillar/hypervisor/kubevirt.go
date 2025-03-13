@@ -1723,6 +1723,10 @@ func (ctx kubevirtContext) VirtualTPMTeardown(domainName string, wp *types.Watch
 	return fmt.Errorf("not implemented")
 }
 
+func (ctx kubevirtContext) OemWindowsLicenseKeySetup(wlk *types.OemWindowsLicenseKeyInfo) error {
+	return fmt.Errorf("not implemented")
+}
+
 // save the node-name to context map for later retrieval
 func saveMyNodeUUID(ctx *kubevirtContext, nodeName string) {
 	if len(ctx.nodeNameMap) == 0 {

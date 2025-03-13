@@ -16,7 +16,9 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -68,6 +70,10 @@ const (
 
 // Really a constant
 var nilUUID = uuid.UUID{}
+
+// Information related to VGA access
+var vgaSwitch = false
+var currentTTY = 0
 
 func isPort(ctx *domainContext, ifname string) bool {
 	ctx.dnsLock.Lock()
@@ -146,6 +152,7 @@ var hyper hypervisor.Hypervisor // Current hypervisor
 var logger *logrus.Logger
 var log *base.LogObject
 
+// Run - Main function
 func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string, baseDir string) int { //nolint:gocyclo
 	logger = loggerArg
 	log = logArg
@@ -1148,6 +1155,19 @@ func maybeRetryBoot(ctx *domainContext, status *types.DomainStatus) {
 	}
 	defer file.Close()
 
+	// setup Windows OEM license key if enabled
+	if config.EnableOemWinLicenseKey {
+		getDmiSystemInfo(&config.OemWindowsLicenseKeyInfo.SystemInfo)
+		err = hyper.Task(status).OemWindowsLicenseKeySetup(&config.OemWindowsLicenseKeyInfo)
+		if err != nil {
+			// let the VM to boot and just log the error? or terminate?
+			log.Errorf("Failed to setup Windows OEM license key for %s: %s", status.DomainName, err)
+			status.PassthroughWindowsLicenseKey = false
+		} else {
+			status.PassthroughWindowsLicenseKey = true
+		}
+	}
+
 	wp := &types.WatchdogParam{Ps: ctx.ps, AgentName: agentName, WarnTime: warningTime, ErrTime: errorTime}
 	err = hyper.Task(status).VirtualTPMSetup(status.DomainName, wp)
 	if err == nil {
@@ -1694,6 +1714,19 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 		log.Fatal("os.Create for ", filename, err)
 	}
 	defer file.Close()
+
+	// setup Windows OEM license key if enabled
+	if config.EnableOemWinLicenseKey {
+		getDmiSystemInfo(&config.OemWindowsLicenseKeyInfo.SystemInfo)
+		err = hyper.Task(status).OemWindowsLicenseKeySetup(&config.OemWindowsLicenseKeyInfo)
+		if err != nil {
+			// let the VM to boot and just log the error? or terminate?
+			log.Errorf("Failed to setup Windows OEM license key for %s: %s", status.DomainName, err)
+			status.PassthroughWindowsLicenseKey = false
+		} else {
+			status.PassthroughWindowsLicenseKey = true
+		}
+	}
 
 	wp := &types.WatchdogParam{Ps: ctx.ps, AgentName: agentName, WarnTime: warningTime, ErrTime: errorTime}
 	err = hyper.Task(status).VirtualTPMSetup(status.DomainName, wp)
@@ -3473,9 +3506,84 @@ func updateUsbAccess(ctx *domainContext) {
 
 func updateVgaAccess(ctx *domainContext) {
 
-	log.Functionf("updateVgaAccess(%t)", ctx.usbAccess)
-	// TODO: we might need some extra work here for some VGA devices
-	// that do not enable output upon HDMI cable attachment
+	log.Functionf("updateVgaAccess(%t)", ctx.vgaAccess)
+
+	if ctx.vgaAccess {
+		// If VGA is disabled, we need to first bring any VGA PCIe adapter back
+		updatePortAndPciBackIoBundleAll(ctx)
+		checkIoBundleAll(ctx)
+
+		// Nothing to do if VGA is already enabled
+		if vgaSwitch {
+			// VGA access was set to true and it was disabled before, so we
+			// need to perform the "switch VGA back" operations:
+			//
+			// 1. Re-bind framebuffer drivers
+			// 2. Restore activated VTs
+			// 3. Switch back to the last active TTY
+			if err := fbBindAll(); err != nil {
+				log.Errorf("Cannot bind framebuffer drivers: %v", err)
+			}
+			if err := vtBindAll(); err != nil {
+				log.Errorf("Cannot bind Virtual Terminals: %v", err)
+			}
+			if err := chvt(currentTTY); err != nil {
+				log.Errorf("Cannot switch to VT: %v", err)
+			}
+			vgaSwitch = false
+		}
+
+		return
+	}
+
+	if !vgaSwitch {
+		// Get active TTY, in case of error just consider tty2 which is
+		// the one used by TUI Monitor
+		ttyDev, err := getActiveTTY()
+		if err != nil {
+			log.Errorf("Fail to get active TTY: %v", err)
+			currentTTY = 2
+		} else {
+			re := regexp.MustCompile("tty([0-9]+)")
+			match := re.FindStringSubmatch(ttyDev)
+			if len(match) != 2 {
+				log.Errorf("Fail to get active TTY index")
+				currentTTY = 2
+			} else {
+				index, err := strconv.Atoi(match[1])
+				if err != nil {
+					log.Errorf("Fail to get active TTY index: %v", err)
+					currentTTY = 2
+				} else {
+					currentTTY = index
+				}
+			}
+		}
+
+		// Perform the following operations to "disable" VGA:
+		// 1. Switch to the next free Virtual Terminal (VT), so screen
+		// goes black
+		// 2. Detach all active VTs
+		// 3. Unbind all framebuffer drivers
+		freeVT, err := findFreeVT()
+		if err != nil {
+			// In case of error, just use a higher VT
+			log.Errorf("Cannot find a free VT: %v", err)
+			freeVT = 9
+		}
+		if err := chvt(freeVT); err != nil {
+			log.Errorf("Cannot switch to VT: %v", err)
+		}
+		if err := vtUnbindAll(); err != nil {
+			log.Errorf("Cannot unbind Virtual Terminals: %v", err)
+		}
+		if err := fbUnbindAll(); err != nil {
+			log.Errorf("Cannot unbind framebuffer drivers: %v", err)
+		}
+
+		vgaSwitch = true
+	}
+
 	updatePortAndPciBackIoBundleAll(ctx)
 	checkIoBundleAll(ctx)
 }
@@ -3670,4 +3778,41 @@ func (ctx *domainContext) checkAndSaveEdgeNodeInfo() bool {
 		}
 	}
 	return false
+}
+
+func getDmiSystemInfo(dmi *types.DmiSystemInfo) {
+	validate := func(a string) string {
+		a = strings.TrimSpace(a)
+		if strings.Contains(a, ",") {
+			logrus.Warnf("Invalid value: %s", a)
+			return ""
+		}
+		return a
+	}
+
+	dmidecode := func(arg string) string {
+		cmd := exec.Command("dmidecode", "-s", arg)
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			logrus.Warnf("Failed to run dmidecode %s : %v", arg, err)
+			return ""
+		}
+
+		return validate(string(output))
+	}
+
+	dmi.Manufacturer = validate(dmidecode("system-manufacturer"))
+	dmi.ProductName = validate(dmidecode("system-product-name"))
+	dmi.Version = validate(dmidecode("system-version"))
+	dmi.SerialNumber = validate(dmidecode("system-serial-number"))
+	dmi.SKUNumber = validate(dmidecode("system-sku-number"))
+	dmi.Family = validate(dmidecode("system-family"))
+	dmi.UUID = validate(dmidecode("system-uuid"))
+	if dmi.UUID != "" {
+		_, err := uuid.FromString(dmi.UUID)
+		if err != nil {
+			logrus.Warnf("Invalid UUID: %s", dmi.UUID)
+			dmi.UUID = ""
+		}
+	}
 }
