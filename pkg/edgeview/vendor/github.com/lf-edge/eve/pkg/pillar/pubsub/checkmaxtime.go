@@ -32,10 +32,10 @@ func (p *PubSub) StillRunning(agentName string, warnTime time.Duration, errTime 
 		}
 		elapsed := time.Since(ls)
 		if elapsed > errTime {
-			log.Errorf("StillRunning(%s) XXX took a long time: %d",
+			log.Errorf("StillRunning(%s) took a long time (longer than the error threshold): %d",
 				agentName, elapsed/time.Second)
 		} else if elapsed > warnTime {
-			log.Warnf("StillRunning(%s) took a long time: %d",
+			log.Warnf("StillRunning(%s) took a long time (longer than the warning threshold): %d",
 				agentName, elapsed/time.Second)
 		}
 		lockedLastStillMap.Store(agentName, time.Now())
@@ -71,10 +71,10 @@ func (p *PubSub) CheckMaxTimeTopic(agentName string, topic string, start time.Ti
 
 	elapsed := time.Since(start)
 	if elapsed > errTime && errTime != 0 {
-		p.log.Errorf("%s handler in %s XXX took a long time: %d",
+		p.log.Errorf("%s handler in %s took a long time (longer than the error threshold): %d",
 			topic, agentName, elapsed/time.Second)
 	} else if elapsed > warnTime && warnTime != 0 {
-		p.log.Warnf("%s handler in %s took a long time: %d",
+		p.log.Warnf("%s handler in %s took a long time (longer than the warning threshold): %d",
 			topic, agentName, elapsed/time.Second)
 	}
 }

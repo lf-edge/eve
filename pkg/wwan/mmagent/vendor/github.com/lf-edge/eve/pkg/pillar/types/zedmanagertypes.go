@@ -144,8 +144,8 @@ type AppInstanceConfig struct {
 	// allow AppInstance to discover other AppInstances attached to its network instances
 	AllowToDiscover bool
 
-	// Cluster Designated Node Id
-	DesignatedNodeID uuid.UUID
+	// Am I Cluster Designated Node Id for this app
+	IsDesignatedNodeID bool
 }
 
 type AppInstanceOpsCmd struct {
@@ -277,6 +277,8 @@ type AppInstanceStatus struct {
 	// This is used in cluster-mode to avoid multiple nodes
 	// updating the same app instance status
 	NoUploadStatsToController bool
+	// Am I Cluster Designated Node Id for this app
+	IsDesignatedNodeID bool
 }
 
 // AppCount is uint8 and it should be sufficient for the number of apps we can support

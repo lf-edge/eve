@@ -15,6 +15,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
+	"github.com/lf-edge/eve/pkg/pillar/utils/netutils"
 	uuid "github.com/satori/go.uuid"
 )
 
@@ -137,12 +138,14 @@ func (config DevicePortConfig) LogCreate(logBase *base.LogObject) {
 		AddField("last-failed", config.LastFailed).
 		AddField("last-succeeded", config.LastSucceeded).
 		AddField("last-error", config.LastError).
+		AddField("last-warning", config.LastWarning).
 		AddField("state", config.State.String()).
 		Noticef("DevicePortConfig create")
 	for _, p := range config.Ports {
 		// XXX different logobject for a particular port?
 		logObject.CloneAndAddField("ifname", p.IfName).
 			AddField("last-error", p.LastError).
+			AddField("last-warning", p.LastWarning).
 			AddField("last-succeeded", p.LastSucceeded).
 			AddField("last-failed", p.LastFailed).
 			Noticef("DevicePortConfig port create")
@@ -162,21 +165,25 @@ func (config DevicePortConfig) LogModify(logBase *base.LogObject, old interface{
 		oldConfig.LastFailed != config.LastFailed ||
 		oldConfig.LastSucceeded != config.LastSucceeded ||
 		oldConfig.LastError != config.LastError ||
+		oldConfig.LastWarning != config.LastWarning ||
 		oldConfig.State != config.State {
 
 		logData := logObject.CloneAndAddField("ports-int64", len(config.Ports)).
 			AddField("last-failed", config.LastFailed).
 			AddField("last-succeeded", config.LastSucceeded).
 			AddField("last-error", config.LastError).
+			AddField("last-warning", config.LastWarning).
 			AddField("state", config.State.String()).
 			AddField("old-ports-int64", len(oldConfig.Ports)).
 			AddField("old-last-failed", oldConfig.LastFailed).
 			AddField("old-last-succeeded", oldConfig.LastSucceeded).
 			AddField("old-last-error", oldConfig.LastError).
+			AddField("old-last-warning", oldConfig.LastWarning).
 			AddField("old-state", oldConfig.State.String())
 		if len(oldConfig.Ports) == len(config.Ports) &&
 			config.LastFailed == oldConfig.LastFailed &&
 			config.LastError == oldConfig.LastError &&
+			config.LastWarning == oldConfig.LastWarning &&
 			oldConfig.State == config.State &&
 			config.LastSucceeded.After(oldConfig.LastFailed) &&
 			oldConfig.LastSucceeded.After(oldConfig.LastFailed) {
@@ -196,16 +203,20 @@ func (config DevicePortConfig) LogModify(logBase *base.LogObject, old interface{
 		if p.HasError() != op.HasError() ||
 			p.LastFailed != op.LastFailed ||
 			p.LastSucceeded != op.LastSucceeded ||
-			p.LastError != op.LastError {
+			p.LastError != op.LastError ||
+			p.LastWarning != op.LastWarning {
 			logData := logObject.CloneAndAddField("ifname", p.IfName).
 				AddField("last-error", p.LastError).
+				AddField("last-warning", p.LastWarning).
 				AddField("last-succeeded", p.LastSucceeded).
 				AddField("last-failed", p.LastFailed).
 				AddField("old-last-error", op.LastError).
+				AddField("old-last-warning", op.LastWarning).
 				AddField("old-last-succeeded", op.LastSucceeded).
 				AddField("old-last-failed", op.LastFailed)
 			if p.HasError() == op.HasError() &&
-				p.LastError == op.LastError {
+				p.LastError == op.LastError &&
+				p.LastWarning == op.LastWarning {
 				// if we have success or the same error again, reduce log level
 				logData.Function("DevicePortConfig port modify")
 			} else {
@@ -223,12 +234,14 @@ func (config DevicePortConfig) LogDelete(logBase *base.LogObject) {
 		AddField("last-failed", config.LastFailed).
 		AddField("last-succeeded", config.LastSucceeded).
 		AddField("last-error", config.LastError).
+		AddField("last-warning", config.LastWarning).
 		AddField("state", config.State.String()).
 		Noticef("DevicePortConfig delete")
 	for _, p := range config.Ports {
 		// XXX different logobject for a particular port?
 		logObject.CloneAndAddField("ifname", p.IfName).
 			AddField("last-error", p.LastError).
+			AddField("last-warning", p.LastWarning).
 			AddField("last-succeeded", p.LastSucceeded).
 			AddField("last-failed", p.LastFailed).
 			Noticef("DevicePortConfig port delete")
@@ -292,6 +305,17 @@ func (config *DevicePortConfig) RecordPortFailure(ifname string, errStr string) 
 	if portPtr != nil {
 		portPtr.RecordFailure(errStr)
 	}
+}
+
+// IsPortUsedAsVlanParent - returns true if port with the given logical label
+// is used as a VLAN parent interface.
+func (config DevicePortConfig) IsPortUsedAsVlanParent(portLabel string) bool {
+	for _, port2 := range config.Ports {
+		if port2.L2Type == L2LinkTypeVLAN && port2.VLAN.ParentPort == portLabel {
+			return true
+		}
+	}
+	return false
 }
 
 // DPCSanitizeArgs : arguments for DevicePortConfig.DoSanitize().
@@ -570,6 +594,7 @@ type NetworkPortConfig struct {
 	WirelessCfg WirelessConfig
 	// TestResults - Errors from parsing plus success/failure from testing
 	TestResults
+	IgnoreDhcpNtpServers bool
 }
 
 // EVE-defined port labels.
@@ -659,7 +684,7 @@ type DhcpConfig struct {
 	AddrSubnet string   // In CIDR e.g., 192.168.1.44/24
 	Gateway    net.IP
 	DomainName string
-	NTPServer  net.IP
+	NTPServers []string
 	DNSServers []net.IP    // If not set we use Gateway as DNS server
 	Type       NetworkType // IPv4 or IPv6 or Dual stack
 }
@@ -736,6 +761,18 @@ type WirelessConfig struct {
 	// It is kept here only for backward-compatibility, i.e. to support upgrades from
 	// EVE versions which still use this structure.
 	Cellular []DeprecatedCellConfig
+}
+
+// IsEmpty returns true if the wireless config is empty.
+func (wc WirelessConfig) IsEmpty() bool {
+	switch wc.WType {
+	case WirelessTypeWifi:
+		return len(wc.Wifi) == 0
+	case WirelessTypeCellular:
+		return len(wc.CellularV2.AccessPoints) == 0 &&
+			len(wc.Cellular) == 0
+	}
+	return true
 }
 
 // WifiConfig - Wifi structure
@@ -924,6 +961,13 @@ type BondArpMonitor struct {
 	IPTargets []net.IP
 }
 
+// Equal compares two BondArpMonitor configs for equality.
+func (m BondArpMonitor) Equal(m2 BondArpMonitor) bool {
+	return m.Enabled == m2.Enabled &&
+		m.Interval == m2.Interval &&
+		generics.EqualSetsFn(m.IPTargets, m2.IPTargets, netutils.EqualIPs)
+}
+
 // DevicePortConfigList is an array in timestamp aka priority order;
 // first one is the most desired config to use
 // It includes test results hence is misnamed - should have a separate status
@@ -1016,19 +1060,20 @@ func (config DevicePortConfigList) LogKey() string {
 // from protobuf API into DevicePortConfig.
 // XXX replace by inline once we have device model
 type NetworkXObjectConfig struct {
-	UUID            uuid.UUID
-	Type            NetworkType
-	Dhcp            DhcpType // If DhcpTypeStatic or DhcpTypeClient use below
-	Subnet          net.IPNet
-	Gateway         net.IP
-	DomainName      string
-	NTPServer       net.IP
-	DNSServers      []net.IP // If not set we use Gateway as DNS server
-	DhcpRange       IPRange
-	DNSNameToIPList []DNSNameToIP // Used for DNS and ACL ipset
-	Proxy           *ProxyConfig
-	WirelessCfg     WirelessConfig
-	MTU             uint16
+	UUID                 uuid.UUID
+	Type                 NetworkType
+	Dhcp                 DhcpType // If DhcpTypeStatic or DhcpTypeClient use below
+	Subnet               net.IPNet
+	Gateway              net.IP
+	DomainName           string
+	NTPServers           []string
+	IgnoreDhcpNtpServers bool
+	DNSServers           []net.IP // If not set we use Gateway as DNS server
+	DhcpRange            IPRange
+	DNSNameToIPList      []DNSNameToIP // Used for DNS and ACL ipset
+	Proxy                *ProxyConfig
+	WirelessCfg          WirelessConfig
+	MTU                  uint16
 	// Any errors from the parser
 	// ErrorAndTime provides SetErrorNow() and ClearError()
 	ErrorAndTime

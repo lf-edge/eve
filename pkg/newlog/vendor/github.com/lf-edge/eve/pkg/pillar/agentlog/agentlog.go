@@ -292,7 +292,7 @@ func RebootReason(reason string, bootReason types.BootReason, agentName string,
 	}
 
 	// Printing the reboot reason to the console
-	filename = "/dev/console"
+	filename = "/dev/tty"
 
 	operation := "Rebooting"
 	if bootReason == types.BootReasonPoweroffCmd {

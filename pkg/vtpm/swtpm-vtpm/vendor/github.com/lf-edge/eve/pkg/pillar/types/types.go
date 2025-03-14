@@ -51,6 +51,8 @@ const (
 	SCHEDULING
 	// FAILED to start
 	FAILED
+	// REMOTELOADED used for content tree which was loaded in other node
+	REMOTELOADED
 	MAXSTATE
 )
 
@@ -105,6 +107,8 @@ func (state SwState) String() string {
 		return "BROKEN"
 	case START_DELAYED:
 		return "START_DELAYED"
+	case REMOTELOADED:
+		return "REMOTELOADED"
 	case UNKNOWN:
 		return "UNKNOWN"
 	default:
@@ -176,6 +180,9 @@ func (state SwState) ZSwState() info.ZSwState {
 		return info.ZSwState_PENDING
 	case SCHEDULING:
 		return info.ZSwState_SCHEDULING
+	case REMOTELOADED:
+		// REMOTELOADED is internal to eve cluster from API perspective return the LOADED state.
+		return info.ZSwState_LOADED
 
 	// If we ever see UNKNOWN we return RUNNING assuming the state will change to something
 	// known soon.

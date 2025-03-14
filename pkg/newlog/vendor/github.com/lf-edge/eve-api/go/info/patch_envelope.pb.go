@@ -27,9 +27,9 @@ type EVE_PATCH_ENVELOPE_STATE int32
 
 const (
 	EVE_PATCH_ENVELOPE_STATE_PATCH_UNKOWN EVE_PATCH_ENVELOPE_STATE = 0
-	// There is an error with config or during download
+	// There is an error with config, during download,
 	//
-	//	or verification failed
+	//	verification failed, or decryption failure
 	EVE_PATCH_ENVELOPE_STATE_PATCH_ERROR EVE_PATCH_ENVELOPE_STATE = 1
 	// Configuration received but no downloads started
 	EVE_PATCH_ENVELOPE_STATE_PATCH_RECEIVED EVE_PATCH_ENVELOPE_STATE = 2

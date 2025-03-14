@@ -1,10 +1,11 @@
-// Copyright (c) 2024 Zededa, Inc.
+// Copyright (c) 2024-2025 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 package types
 
 import (
 	"net"
+	"time"
 
 	uuid "github.com/satori/go.uuid"
 )
@@ -88,4 +89,13 @@ type EdgeNodeClusterStatus struct {
 	EncryptedClusterToken string
 
 	Error ErrorDescription
+}
+
+// KubeLeaderElectInfo - Information about the status reporter leader election
+type KubeLeaderElectInfo struct {
+	InLeaderElection bool
+	IsStatsLeader    bool
+	ElectionRunning  bool
+	LeaderIdentity   string
+	LatestChange     time.Time
 }

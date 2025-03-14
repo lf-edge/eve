@@ -1,10 +1,11 @@
-// Copyright (c) 2024 Zededa, Inc.
+// Copyright (c) 2024-2025 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 package types
 
 import (
 	"net"
+	"time"
 
 	uuid "github.com/satori/go.uuid"
 )
@@ -49,6 +50,8 @@ type ENClusterAppStatus struct {
 	ScheduledOnThisNode bool      // App is running on this device
 	StatusRunning       bool      // Status of the app in "Running" state
 	IsVolumeDetached    bool      // Are volumes detached after failover ?
+	AppIsVMI            bool      // Is this a VMI app, vs a Pod app
+	AppKubeName         string    // Kube name of the app, either VMI or Pod
 }
 
 // Key - returns the key for the config of EdgeNodeClusterConfig
@@ -80,6 +83,19 @@ type EdgeNodeClusterStatus struct {
 	// This node needs to be up first before other nodes can join the cluster. This BootstrapNode
 	// will own the 'JoinServerIP' on it's cluster interface.
 	BootstrapNode bool
+	// EncryptedClusterToken - for kubernetes cluster server token
+	// This token string is the decrypted from the CipherBlock in the EdgeNodeClusterConfig
+	// by zedkube using the Controller and Edge-node certificates. See decryptClusterToken()
+	EncryptedClusterToken string
 
 	Error ErrorDescription
+}
+
+// KubeLeaderElectInfo - Information about the status reporter leader election
+type KubeLeaderElectInfo struct {
+	InLeaderElection bool
+	IsStatsLeader    bool
+	ElectionRunning  bool
+	LeaderIdentity   string
+	LatestChange     time.Time
 }

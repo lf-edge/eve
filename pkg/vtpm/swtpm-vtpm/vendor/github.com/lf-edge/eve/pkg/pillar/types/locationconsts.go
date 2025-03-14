@@ -98,8 +98,10 @@ const (
 	NewlogUploadAppDir = NewlogDir + "/appUpload"
 	// NewlogKeepSentQueueDir - a circular queue of gzip files already been sent
 	NewlogKeepSentQueueDir = NewlogDir + "/keepSentQueue"
+	// PillarHardMemoryLimitFile - hard memory reserved for pillar
+	PillarHardMemoryLimitFile = "/hostfs/sys/fs/cgroup/memory/eve/services/pillar/memory.limit_in_bytes"
 	// EveMemoryLimitFile - stores memory reserved for eve
-	EveMemoryLimitFile = "/hostfs/sys/fs/cgroup/memory/eve/memory.soft_limit_in_bytes"
+	EveMemoryLimitFile = "/hostfs/sys/fs/cgroup/memory/eve/memory.limit_in_bytes"
 	// EveMemoryUsageFile - current usage
 	EveMemoryUsageFile = "/hostfs/sys/fs/cgroup/memory/eve/memory.usage_in_bytes"
 	// EveKmemUsageFile - current kernel usage
@@ -125,6 +127,20 @@ const (
 	SwtpmCtrlSocketPath = "/run/swtpm/%s.ctrl.sock"
 	// SwtpmPidPath is SWTPM per-vm pid file path, the format string is filled with the App UUID
 	SwtpmPidPath = "/run/swtpm/%s.pid"
+
+	// MemoryMonitorDir - directory for memory monitor
+	MemoryMonitorDir = PersistDir + "/memory-monitor"
+	// MemoryMonitorOutputDir - directory for memory monitor output
+	MemoryMonitorOutputDir = MemoryMonitorDir + "/output"
+	// MemoryMonitorPSIStatsFile - file to store memory PSI (Pressure Stall Information) statistics
+	MemoryMonitorPSIStatsFile = MemoryMonitorOutputDir + "/psi.txt"
+
+	// OVMFSettingsDir - directory for OVMF settings, they are stored in per-domain files
+	OVMFSettingsDir = SealedDirName + "/ovmf"
+	// OVMFSettingsTemplate - template file for OVMF settings
+	OVMFSettingsTemplate = "/usr/lib/xen/boot/OVMF_VARS.fd"
+	// CustomOVMFSettingsDir - directory for custom OVMF settings (for different resolutions)
+	CustomOVMFSettingsDir = "/hostfs/etc/ovmf"
 )
 
 var (
