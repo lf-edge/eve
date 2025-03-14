@@ -62,6 +62,10 @@ type DomainConfig struct {
 	// once the version is changed cloud-init tool restarts in a guest.
 	// See getCloudInitVersion() and createCloudInitISO() for details.
 	CloudInitVersion uint32
+
+	// OemWindowsLicenseKeyInfo provides the information required to propagate the OEM license key
+	// to the VM.
+	OemWindowsLicenseKeyInfo OemWindowsLicenseKeyInfo
 }
 
 // MetaDataType of metadata service for app
@@ -261,6 +265,10 @@ type VmConfig struct {
 	CPUsPinned         bool
 	VMMMaxMem          int // in kbytes
 	EnableVncShimVM    bool
+	// Enables enforcement of user-defined ordering for network interfaces.
+	EnforceNetworkInterfaceOrder bool
+	// EnableOemWinLicenseKey indicates the app should receive the embedded Windows license key (if available)
+	EnableOemWinLicenseKey bool
 }
 
 // VmMode is the type for the virtualization mode
@@ -282,6 +290,7 @@ type Task interface {
 	VirtualTPMSetup(domainName string, wp *WatchdogParam) error
 	VirtualTPMTerminate(domainName string, wp *WatchdogParam) error
 	VirtualTPMTeardown(domainName string, wp *WatchdogParam) error
+	OemWindowsLicenseKeySetup(*OemWindowsLicenseKeyInfo) error
 	Create(string, string, *DomainConfig) (int, error)
 	Start(string) error
 	Stop(string, bool) error
@@ -328,6 +337,9 @@ type DomainStatus struct {
 	// the device name is used for kube node name
 	// Need to pass in from domainmgr to hypervisor context commands
 	NodeName string
+	// PassthroughWindowsLicenseKey is true if eveything it available to propagate
+	// the OEM license key to the VM.
+	PassthroughWindowsLicenseKey bool
 }
 
 func (status DomainStatus) Key() string {
@@ -425,6 +437,10 @@ type VifConfig struct {
 	MTU    uint16
 	// PodVif is only valid in the Kubernetes mode.
 	PodVif PodVIF
+	// Interface order across both VIFs and directly attached network devices.
+	// Note that we cannot use attribute name "IntfOrder" here, otherwise it would
+	// overlap with IntfOrder from AppNetAdapterConfig inside AppNetAdapterStatus.
+	VifOrder uint32
 }
 
 // PodVIF : configuration parameters for VIF connecting Kubernetes pod with the host.
@@ -596,4 +612,26 @@ type WatchdogParam struct {
 	AgentName string
 	WarnTime  time.Duration
 	ErrTime   time.Duration
+}
+
+// OemWindowsLicenseKeyInfo contains the information required to propagate the OEM license key
+// to the VM. Currently only QEMU/KVM is supported.
+type OemWindowsLicenseKeyInfo struct {
+	SystemInfo DmiSystemInfo
+	Qemu       struct {
+		DomainArguments []string
+	}
+	Xen  struct{}
+	Acrn struct{}
+}
+
+// DmiSystemInfo hold system information extracted from dmidecode
+type DmiSystemInfo struct {
+	Manufacturer string
+	ProductName  string
+	Version      string
+	SerialNumber string
+	UUID         string
+	SKUNumber    string
+	Family       string
 }

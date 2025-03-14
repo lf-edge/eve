@@ -15,7 +15,10 @@ import (
 	"io"
 	"math/big"
 	"os"
+	"path/filepath"
+	"regexp"
 	"sort"
+	"strings"
 	"unsafe"
 
 	"github.com/google/go-tpm/legacy/tpm2"
@@ -82,6 +85,10 @@ const (
 	PCRBank256StatusNotSupported
 )
 
+// as defined in https://uefi.org/sites/default/files/resources/UEFI%20Spec%202_6.pdf
+// 3.3 Globally Defined Variables. must be LOWERCASE
+const efiGlobalVariableGUID = "8be4df61-93ca-11d2-aa0d-00e098032b8c"
+
 var (
 	//EcdhKeyFile is the location of the ecdh private key
 	//on devices without a TPM. It is not a constant due to test usage
@@ -119,6 +126,16 @@ var (
 	// measurefsTpmEventLog is the file containing the event log from the measure-config.
 	// it is not a constant due to test usage.
 	measurefsTpmEventLog = types.PersistStatusDir + "/measurefs_tpm_event_log"
+
+	// we do not make backup copies of following directories because we use them
+	// only when we couldn't unseal the key from TPM and remote attestation fails
+	// to get a backup key
+	// directory to store the boot variables's values when the key is sealed
+	bootVariablesSealSuccess = filepath.Join(types.PersistStatusDir, "boot_vars/success")
+	// directory to store the boot variables's values when we failed to unseal the key
+	bootVariablesUnsealFail = filepath.Join(types.PersistStatusDir, "boot_vars/fail")
+	// sysfs directory with boot variables
+	kernelEfiBootVarsPath = "/hostfs/sys/firmware/efi/efivars/"
 
 	// PcrSelection is used as an entropy to generate keys and the selection
 	// of PCRs do not matter as well as the contents but PCR[7] is not changed often
@@ -223,6 +240,23 @@ var (
 		},
 	}
 )
+
+// GetTpmLogFileNames returns paths to saved TPM logs
+func GetTpmLogFileNames() (string, string) {
+	return measurementLogSealSuccess, measurementLogUnsealFail
+}
+
+// GetTpmLogBackupFileNames returns paths to saved TPM logs for previous boot
+func GetTpmLogBackupFileNames() (string, string) {
+	sealSuccessBackupPath := fmt.Sprintf("%s-backup", measurementLogSealSuccess)
+	unsealFailBackupPath := fmt.Sprintf("%s-backup", measurementLogUnsealFail)
+	return sealSuccessBackupPath, unsealFailBackupPath
+}
+
+// GetBootVariablesDirNames returns paths to saved boot variables directories
+func GetBootVariablesDirNames() (string, string) {
+	return bootVariablesSealSuccess, bootVariablesUnsealFail
+}
 
 // SealedKeyType holds different types of sealed key
 // defined below
@@ -628,7 +662,9 @@ func readDiskKey() ([]byte, error) {
 	return keyBytes, nil
 }
 
-// FetchSealedVaultKey fetches Vault key sealed into TPM2.0
+// FetchSealedVaultKey fetches Vault key sealed into TPM2.0,
+// and unseals it. If the key is not present, it generates
+// a new key and seals it into TPM2.0.
 func FetchSealedVaultKey(log *base.LogObject) ([]byte, error) {
 	if !PCRBankSHA256Enabled() {
 		//On platforms without PCR Bank SHA256, we can't
@@ -706,7 +742,7 @@ func FetchSealedVaultKey(log *base.LogObject) ([]byte, error) {
 	if sealedKeyPresent {
 		log.Noticef("sealed disk key present int TPM, about to unseal it")
 	}
-	//By this, we have a key sealed into TPM
+	//at this point, we have a key sealed into TPM
 	key, err := UnsealDiskKey(DiskKeySealingPCRs)
 	if err == nil {
 		// be more verbose, lets celebrate
@@ -817,6 +853,12 @@ func SealDiskKey(log *base.LogObject, key []byte, pcrSel tpm2.PCRSelection) erro
 		log.Warnf("copying current TPM measurement log failed: %s", err)
 	}
 
+	// save a copy of the current boot variables, this is also called
+	// if unseal fails to have copy when we fail to unlock the vault.
+	if err := saveBootVariables(bootVariablesSealSuccess); err != nil {
+		log.Warnf("copying current boot variables failed: %s", err)
+	}
+
 	return nil
 }
 
@@ -879,6 +921,13 @@ func UnsealDiskKey(pcrSel tpm2.PCRSelection) ([]byte, error) {
 			// just report the failure, still give FindMismatchingPCRs a chance so
 			// we can at least have some partial information about why unseal failed.
 			evtLogStat = fmt.Sprintf("copying (failed unseal) TPM measurement log failed: %v", errEvtLog)
+		}
+
+		// save a copy of the current boot variables
+		if errSaveVars := saveBootVariables(bootVariablesUnsealFail); errSaveVars != nil {
+			// just report the failure, still give FindMismatchingPCRs a chance so
+			// we can at least have some partial information about why unseal failed.
+			evtLogStat += fmt.Sprintf(" ,copying (failed unseal) boot variables failed: %v", errSaveVars)
 		}
 
 		// try to find out the mismatching PCR index
@@ -998,8 +1047,7 @@ func pcrBankSHA256EnabledHelper() bool {
 }
 
 func backupCopiedMeasurementLogs() error {
-	sealSuccessBackupPath := fmt.Sprintf("%s-backup", measurementLogSealSuccess)
-	unsealFailBackupPath := fmt.Sprintf("%s-backup", measurementLogUnsealFail)
+	sealSuccessBackupPath, unsealFailBackupPath := GetTpmLogBackupFileNames()
 
 	if fileutils.FileExists(nil, measurementLogSealSuccess) {
 		if err := os.Rename(measurementLogSealSuccess, sealSuccessBackupPath); err != nil {
@@ -1045,6 +1093,47 @@ func copyMeasurementLog(dstPath string) error {
 		}
 
 		return fmt.Errorf("failed to copy tpm measurement log data: %w", err)
+	}
+
+	return nil
+}
+
+func saveBootVariables(destPath string) error {
+	if err := os.RemoveAll(destPath); err != nil {
+		return fmt.Errorf("failed to clean directory %s: %w", destPath, err)
+	}
+
+	if err := os.MkdirAll(destPath, 0755); err != nil {
+		return fmt.Errorf("failed to create directory %s: %w", destPath, err)
+	}
+
+	files, err := os.ReadDir(kernelEfiBootVarsPath)
+	if err != nil {
+		return fmt.Errorf("failed to read directory %s: %w", kernelEfiBootVarsPath, err)
+	}
+
+	variableSuffix := fmt.Sprintf("-%s", efiGlobalVariableGUID)
+	bootOrderFileName := fmt.Sprintf(`BootOrder%s`, variableSuffix)
+	regexpStr := fmt.Sprintf(`^Boot[0-9a-fA-F]{4}%s$`, variableSuffix)
+
+	// regexp to match BootXXXX where XXXX is a 4 digit hex number
+	bootVarRegexp := regexp.MustCompile(regexpStr)
+
+	for _, file := range files {
+		variableFileName := file.Name()
+
+		if variableFileName == bootOrderFileName || bootVarRegexp.MatchString(variableFileName) {
+			src := filepath.Join(kernelEfiBootVarsPath, variableFileName)
+
+			//remove suffix for destination file
+			dst := filepath.Join(destPath, variableFileName)
+			dst = strings.TrimSuffix(dst, variableSuffix)
+
+			// copy the file
+			if err := fileutils.CopyFile(src, dst); err != nil {
+				return fmt.Errorf("failed to copy file %s to %s: %w", src, dst, err)
+			}
+		}
 	}
 
 	return nil

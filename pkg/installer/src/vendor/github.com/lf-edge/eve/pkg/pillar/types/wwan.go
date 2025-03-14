@@ -151,9 +151,10 @@ const (
 
 // WwanProbe : cellular connectivity verification probe.
 type WwanProbe struct {
+	// If true, then probing is disabled.
 	Disable bool
-	// IP/FQDN address to periodically probe to determine connection status.
-	Address string
+	// User-defined probe for cellular connectivity testing.
+	UserDefinedProbe ConnectivityProbe
 }
 
 // Equal compares two instances of WwanNetworkConfig for equality.
