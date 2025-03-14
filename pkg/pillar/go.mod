@@ -1,8 +1,6 @@
 module github.com/lf-edge/eve/pkg/pillar
 
-go 1.23.0
-
-toolchain go1.24.1
+go 1.23
 
 require (
 	github.com/anatol/smart.go v0.0.0-20220615232124-371056cd18c3
