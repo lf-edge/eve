@@ -15,6 +15,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
 	"github.com/lf-edge/eve/pkg/pillar/utils/netutils"
+	"github.com/sirupsen/logrus"
 )
 
 // DeviceNetworkStatus is published to microservices which needs to know about ports and IP addresses
@@ -46,22 +47,23 @@ type NetworkPortStatus struct {
 	// InvalidConfig is used to flag port config which failed parsing or (static) validation
 	// checks, such as: malformed IP address, undefined required field, IP address not inside
 	// the subnet, etc.
-	InvalidConfig  bool
-	Cost           uint8
-	Dhcp           DhcpType
-	Type           NetworkType // IPv4 or IPv6 or Dual stack
-	Subnet         net.IPNet
-	NtpServer      net.IP // This comes from network configuration
-	DomainName     string
-	DNSServers     []net.IP // If not set we use Gateway as DNS server
-	NtpServers     []net.IP // This comes from DHCP done on uplink port
-	AddrInfoList   []AddrInfo
-	Up             bool
-	MacAddr        net.HardwareAddr
-	DefaultRouters []net.IP
-	MTU            uint16
-	WirelessCfg    WirelessConfig
-	WirelessStatus WirelessStatus
+	InvalidConfig        bool
+	Cost                 uint8
+	Dhcp                 DhcpType
+	Type                 NetworkType // IPv4 or IPv6 or Dual stack
+	Subnet               net.IPNet
+	ConfiguredNtpServers []string // This comes from network configuration
+	IgnoreDhcpNtpServers bool
+	DomainName           string
+	DNSServers           []net.IP // If not set we use Gateway as DNS server
+	DhcpNtpServers       []net.IP // This comes from DHCP done on uplink port
+	AddrInfoList         []AddrInfo
+	Up                   bool
+	MacAddr              net.HardwareAddr
+	DefaultRouters       []net.IP
+	MTU                  uint16
+	WirelessCfg          WirelessConfig
+	WirelessStatus       WirelessStatus
 	ProxyConfig
 	L2LinkConfig
 	// TestResults provides recording of failure and success
@@ -236,7 +238,7 @@ func (status DeviceNetworkStatus) MostlyEqual(status2 DeviceNetworkStatus) bool 
 		}
 		if p1.Dhcp != p2.Dhcp ||
 			!netutils.EqualIPNets(&p1.Subnet, &p2.Subnet) ||
-			!p1.NtpServer.Equal(p2.NtpServer) ||
+			!generics.EqualSets(p1.ConfiguredNtpServers, p2.ConfiguredNtpServers) ||
 			p1.DomainName != p2.DomainName {
 			return false
 		}
@@ -560,22 +562,34 @@ func GetDNSServers(dns DeviceNetworkStatus, ifname string) []net.IP {
 }
 
 // GetNTPServers returns all, or the ones on one interface if ifname is set
-func GetNTPServers(dns DeviceNetworkStatus, ifname string) []net.IP {
-	var servers []net.IP
+// Duplicate entries ared filtered out, but no DNS resolution happens, i.e.
+// 1.2.3.4.nip.io and 1.2.3.4 can be in the list at the same time
+func GetNTPServers(dns DeviceNetworkStatus, ifname string) ([]net.IP, []string) {
+	var serverDomainsOrIPs []string
+	var serverIPs []net.IP
 	for _, us := range dns.Ports {
 		if ifname != "" && ifname != us.IfName {
 			continue
 		}
 		// NTP servers received via DHCP.
-		servers = append(servers, us.NtpServers...)
+		if !us.IgnoreDhcpNtpServers {
+			for _, ntpServer := range us.DhcpNtpServers {
+				// from golang/src/net/ip.go
+				if len(ntpServer) != net.IPv4len && len(ntpServer) != net.IPv6len {
+					logrus.Warnf("parsing ntp server '%v' failed", ntpServer)
+					continue
+				}
+				serverIPs = append(serverIPs, ntpServer)
+			}
+		}
 		// Add statically configured NTP server as well.
-		if us.NtpServer != nil {
-			servers = append(servers, us.NtpServer)
+		if us.ConfiguredNtpServers != nil {
+			serverDomainsOrIPs = append(serverDomainsOrIPs, us.ConfiguredNtpServers...)
 		}
 	}
 	// Avoid duplicates.
-	servers = generics.FilterDuplicatesFn(servers, netutils.EqualIPs)
-	return servers
+	serverDomainsOrIPs = generics.FilterDuplicates(serverDomainsOrIPs)
+	return serverIPs, serverDomainsOrIPs
 }
 
 // CountLocalIPv4AddrAnyNoLinkLocalIf is like CountLocalAddrAnyNoLinkLocalIf but

@@ -1,6 +1,8 @@
 module github.com/lf-edge/eve/pkg/pillar
 
-go 1.23
+go 1.23.0
+
+toolchain go1.24.1
 
 require (
 	github.com/anatol/smart.go v0.0.0-20220615232124-371056cd18c3
@@ -30,7 +32,7 @@ require (
 	github.com/jaypipes/ghw v0.8.0
 	github.com/k8snetworkplumbingwg/network-attachment-definition-client v1.5.0
 	github.com/lf-edge/edge-containers v0.0.0-20240207093504-5dfda0619b80
-	github.com/lf-edge/eve-api/go v0.0.0-20250304184518-532c94981505
+	github.com/lf-edge/eve-api/go v0.0.0-20250310225738-c77ab6f8c73a
 	github.com/lf-edge/eve-libs v0.0.0-20250313200311-28f858e8e99b
 	github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20240315102754-0f6d1f182e0d
 	github.com/lf-edge/go-qemu v0.0.0-20231121152149-4c467eda0c56

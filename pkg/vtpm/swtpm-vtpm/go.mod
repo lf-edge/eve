@@ -3,7 +3,7 @@ module github.com/lf-edge/eve/pkg/vtpm
 go 1.22
 
 require (
-	github.com/lf-edge/eve/pkg/pillar v0.0.0-20240820084217-3f317a9e801f
+	github.com/lf-edge/eve/pkg/pillar v0.0.0-20250314100426-74d3f0360c57
 	github.com/satori/go.uuid v1.2.1-0.20180404165556-75cca531ea76
 	github.com/sirupsen/logrus v1.9.3
 )
@@ -19,7 +19,7 @@ require (
 	github.com/google/go-tpm v0.9.1 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/leodido/go-urn v1.2.4 // indirect
-	github.com/lf-edge/eve-api/go v0.0.0-20240722173316-ed56da45126b // indirect
+	github.com/lf-edge/eve-api/go v0.0.0-20250310225738-c77ab6f8c73a // indirect
 	github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20240315102754-0f6d1f182e0d // indirect
 	github.com/vishvananda/netlink v1.2.1-beta.2 // indirect
 	github.com/vishvananda/netns v0.0.0-20210104183010-2eb08e3e575f // indirect
@@ -27,6 +27,6 @@ require (
 	golang.org/x/net v0.33.0 // indirect
 	golang.org/x/sys v0.28.0 // indirect
 	golang.org/x/text v0.21.0 // indirect
-	google.golang.org/protobuf v1.33.0 // indirect
+	google.golang.org/protobuf v1.36.1 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 )

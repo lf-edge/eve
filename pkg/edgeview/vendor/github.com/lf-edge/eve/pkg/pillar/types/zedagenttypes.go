@@ -386,16 +386,31 @@ func BootReasonFromString(str string) BootReason {
 	}
 }
 
-// MaintenanceModeReason captures reason for entering into maintenance mode
-type MaintenanceModeReason uint8
+// MaintenanceModeReason captures a reason for entering into maintenance mode
+type MaintenanceModeReason info.MaintenanceModeReason
 
-// MaintenanceModeReason codes for storing reason for getting into maintenance mode
+// MaintenanceModeMultiReason captures multiple reasons for entering into maintenance mode
+type MaintenanceModeMultiReason []MaintenanceModeReason
+
+// MaintenanceModeReason codes for storing reason for getting into maintenance mode,
+// this should match the values in api/proto/info/info.proto.MaintenanceModeReason
 const (
-	MaintenanceModeReasonNone MaintenanceModeReason = iota
-	MaintenanceModeReasonUserRequested
-	MaintenanceModeReasonVaultLockedUp
-	MaintenanceModeReasonNoDiskSpace
+	MaintenanceModeReasonNone            = MaintenanceModeReason(info.MaintenanceModeReason_MAINTENANCE_MODE_REASON_NONE)
+	MaintenanceModeReasonUserRequested   = MaintenanceModeReason(info.MaintenanceModeReason_MAINTENANCE_MODE_REASON_USER_REQUESTED)
+	MaintenanceModeReasonVaultLockedUp   = MaintenanceModeReason(info.MaintenanceModeReason_MAINTENANCE_MODE_REASON_VAULT_LOCKED_UP)
+	MaintenanceModeReasonNoDiskSpace     = MaintenanceModeReason(info.MaintenanceModeReason_MAINTENANCE_MODE_REASON_LOW_DISK_SPACE)
+	MaintenanceModeReasonTpmEncFailure   = MaintenanceModeReason(info.MaintenanceModeReason_MAINTENANCE_MODE_REASON_TPM_ENCRYPTION_FAILURE)
+	MaintenanceModeReasonTpmQuoteFailure = MaintenanceModeReason(info.MaintenanceModeReason_MAINTENANCE_MODE_REASON_TPM_QUOTE_FAILURE)
 )
+
+// String returns the verbose equivalent of MaintenanceModeMultiReason code
+func (mmmr MaintenanceModeMultiReason) String() string {
+	reason := []string{}
+	for _, mmr := range mmmr {
+		reason = append(reason, mmr.String())
+	}
+	return strings.Join(reason, "|")
+}
 
 // String returns the verbose equivalent of MaintenanceModeReason code
 func (mmr MaintenanceModeReason) String() string {
@@ -408,30 +423,33 @@ func (mmr MaintenanceModeReason) String() string {
 		return "MaintenanceModeReasonVaultLockedUp"
 	case MaintenanceModeReasonNoDiskSpace:
 		return "MaintenanceModeReasonNoDiskSpace"
+	case MaintenanceModeReasonTpmEncFailure:
+		return "MaintenanceModeReasonTpmEncFailure"
 	default:
-		return fmt.Sprintf("Unknown MaintenanceModeReason %d", mmr)
+		return "Unknown MaintenanceModeReason"
 	}
 }
 
 // NodeAgentStatus :
 type NodeAgentStatus struct {
-	Name                       string
-	CurPart                    string
-	UpdateInprogress           bool
-	RemainingTestTime          time.Duration
-	DeviceReboot               bool
-	DeviceShutdown             bool
-	DevicePoweroff             bool
-	AllDomainsHalted           bool       // Progression of reboot etc
-	RebootReason               string     // From last reboot
-	BootReason                 BootReason // From last reboot
-	RebootStack                string     // From last reboot
-	RebootTime                 time.Time  // From last reboot
-	RestartCounter             uint32
-	RebootImage                string
-	LocalMaintenanceMode       bool                  //enter Maintenance Mode
-	LocalMaintenanceModeReason MaintenanceModeReason //reason for Maintenance Mode
-	HVTypeKube                 bool
+	Name                        string
+	CurPart                     string
+	UpdateInprogress            bool
+	RemainingTestTime           time.Duration
+	DeviceReboot                bool
+	DeviceShutdown              bool
+	DevicePoweroff              bool
+	AllDomainsHalted            bool       // Progression of reboot etc
+	RebootReason                string     // From last reboot
+	BootReason                  BootReason // From last reboot
+	RebootStack                 string     // From last reboot
+	RebootTime                  time.Time  // From last reboot
+	RestartCounter              uint32
+	RebootImage                 string
+	LocalMaintenanceMode        bool                       // enter Maintenance Mode
+	LocalMaintenanceModeReasons MaintenanceModeMultiReason // reason for Maintenance Mode
+	HVTypeKube                  bool
+	WaitDrainInProgress         bool
 }
 
 // Key :
@@ -496,7 +514,7 @@ const (
 	DeviceOperationReboot DeviceOperation = iota
 	//DeviceOperationShutdown shutdown all app instances on device
 	DeviceOperationShutdown
-	//DeviceOperationPoweroff is shutdown plus poweroff. Not setable from controller
+	//DeviceOperationPoweroff is shutdown plus poweroff. Not settable from controller
 	DeviceOperationPoweroff
 )
 

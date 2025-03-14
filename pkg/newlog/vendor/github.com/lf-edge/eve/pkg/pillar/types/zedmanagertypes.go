@@ -143,6 +143,9 @@ type AppInstanceConfig struct {
 
 	// allow AppInstance to discover other AppInstances attached to its network instances
 	AllowToDiscover bool
+
+	// Am I Cluster Designated Node Id for this app
+	IsDesignatedNodeID bool
 }
 
 type AppInstanceOpsCmd struct {
@@ -152,9 +155,10 @@ type AppInstanceOpsCmd struct {
 
 // IoAdapter specifies that a group of ports should be assigned
 type IoAdapter struct {
-	Type  IoType
-	Name  string      // Short hand name such as "COM1" or "eth1-2"
-	EthVf sriov.EthVF // Applies only to the VF IoType
+	Type      IoType
+	Name      string      // Short hand name such as "COM1" or "eth1-2"
+	EthVf     sriov.EthVF // Applies only to the VF IoType
+	IntfOrder uint32      // Interface order across both virtual and passthrough network devices.
 }
 
 // LogCreate :
@@ -269,6 +273,12 @@ type AppInstanceStatus struct {
 	SnapStatus SnapshottingStatus
 	// Estimated memory overhead for VM, counted in MB
 	MemOverhead uint64
+	// Not upload stats to controller if true
+	// This is used in cluster-mode to avoid multiple nodes
+	// updating the same app instance status
+	NoUploadStatsToController bool
+	// Am I Cluster Designated Node Id for this app
+	IsDesignatedNodeID bool
 }
 
 // AppCount is uint8 and it should be sufficient for the number of apps we can support

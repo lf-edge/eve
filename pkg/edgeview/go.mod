@@ -7,8 +7,8 @@ require (
 	github.com/fsnotify/fsnotify v1.6.0
 	github.com/gorilla/websocket v1.5.0
 	github.com/grandcat/zeroconf v1.0.0
-	github.com/lf-edge/eve-api/go v0.0.0-20241126174545-53f139cd5166
-	github.com/lf-edge/eve/pkg/pillar v0.0.0-20241126215939-16062e81d553
+	github.com/lf-edge/eve-api/go v0.0.0-20250310225738-c77ab6f8c73a
+	github.com/lf-edge/eve/pkg/pillar v0.0.0-20250314100426-74d3f0360c57
 	github.com/onsi/gomega v1.29.0
 	github.com/satori/go.uuid v1.2.1-0.20180404165556-75cca531ea76
 	github.com/shirou/gopsutil v3.21.11+incompatible
@@ -36,11 +36,11 @@ require (
 	github.com/tklauser/go-sysconf v0.3.11 // indirect
 	github.com/tklauser/numcpus v0.6.0 // indirect
 	github.com/vishvananda/netns v0.0.0-20210104183010-2eb08e3e575f // indirect
-	github.com/yusufpapurcu/wmi v1.2.2 // indirect
+	github.com/yusufpapurcu/wmi v1.2.3 // indirect
 	golang.org/x/crypto v0.31.0 // indirect
 	golang.org/x/net v0.33.0 // indirect
 	golang.org/x/text v0.21.0 // indirect
-	google.golang.org/protobuf v1.33.0 // indirect
+	google.golang.org/protobuf v1.36.1 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

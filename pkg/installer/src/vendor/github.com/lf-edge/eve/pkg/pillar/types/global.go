@@ -220,6 +220,10 @@ const (
 	// ports for image downloads.
 	DownloadMaxPortCost GlobalSettingKey = "network.download.max.cost"
 
+	// BlobDownloadMaxRetries global setting key
+	// how many times EVE will retry to download a blob if its checksum is not verified
+	BlobDownloadMaxRetries GlobalSettingKey = "blob.download.max.retries"
+
 	// Bool Items
 	// UsbAccess global setting key
 	UsbAccess GlobalSettingKey = "debug.enable.usb"
@@ -227,10 +231,25 @@ const (
 	VgaAccess GlobalSettingKey = "debug.enable.vga"
 	// AllowAppVnc global setting key
 	AllowAppVnc GlobalSettingKey = "app.allow.vnc"
-	// EveMemoryLimitInBytes global setting key
+	// EveMemoryLimitInMiB global setting key, memory limit for EVE in MiB
+	EveMemoryLimitInMiB GlobalSettingKey = "memory.eve.limit.MiB"
+	// EveMemoryLimitInBytes global setting key, memory limit for EVE in bytes
+	// Deprecated: Use EveMemoryLimitInMiB. This config is limited to 4GB
+	// as it is stored as uint32. Nevertheles, for backward compatibility,
+	// this config is still supported and has higher priority than EveMemoryLimitInMiB.
 	EveMemoryLimitInBytes GlobalSettingKey = "memory.eve.limit.bytes"
 	// How much memory overhead is allowed for VMM needs
 	VmmMemoryLimitInMiB GlobalSettingKey = "memory.vmm.limit.MiB"
+	// GOGCMemoryLimitInBytes global setting key
+	GOGCMemoryLimitInBytes GlobalSettingKey = "gogc.memory.limit.bytes"
+	// GOGCPercent global setting key
+	GOGCPercent GlobalSettingKey = "gogc.percent"
+	// GOGCForcedIntervalInSec global setting key
+	GOGCForcedIntervalInSec GlobalSettingKey = "gogc.forced.interval.seconds"
+	// GOGCForcedGrowthMemInMiB global setting key
+	GOGCForcedGrowthMemInMiB GlobalSettingKey = "gogc.forced.growth.memory.MiB"
+	// GOGCForcedGrowthMemPerc global setting key
+	GOGCForcedGrowthMemPerc GlobalSettingKey = "gogc.forced.growth.memory.percent"
 	// IgnoreMemoryCheckForApps global setting key
 	IgnoreMemoryCheckForApps GlobalSettingKey = "memory.apps.ignore.check"
 	// IgnoreDiskCheckForApps global setting key
@@ -241,6 +260,22 @@ const (
 	EnableARPSnoop GlobalSettingKey = "network.switch.enable.arpsnoop"
 	// WwanQueryVisibleProviders : periodically query visible cellular service providers
 	WwanQueryVisibleProviders GlobalSettingKey = "wwan.query.visible.providers"
+
+	// GoroutineLeakDetectionThreshold amount of goroutines, reaching which will trigger leak detection
+	// regardless of growth rate.
+	GoroutineLeakDetectionThreshold GlobalSettingKey = "goroutine.leak.detection.threshold"
+	// GoroutineLeakDetectionCheckIntervalMinutes interval in minutes between the measurements of the
+	// goroutine count.
+	GoroutineLeakDetectionCheckIntervalMinutes GlobalSettingKey = "goroutine.leak.detection.check.interval.minutes"
+	// GoroutineLeakDetectionCheckWindowMinutes interval in minutes for which the leak analysis is performed.
+	// It should contain at least 10 measurements, so no less than 10 * GoroutineLeakDetectionCheckIntervalMinutes.
+	GoroutineLeakDetectionCheckWindowMinutes GlobalSettingKey = "goroutine.leak.detection.check.window.minutes"
+	// GoroutineLeakDetectionKeepStatsHours amount of hours to keep the stats for the leak detection. We keep more
+	// stats than the check window to be able to react to settings a bigger check window via configuration.
+	GoroutineLeakDetectionKeepStatsHours GlobalSettingKey = "goroutine.leak.detection.keep.stats.hours"
+	// GoroutineLeakDetectionCooldownMinutes cooldown period in minutes after the leak detection is triggered. During
+	// this period no stack traces are collected, only warning messages are logged.
+	GoroutineLeakDetectionCooldownMinutes GlobalSettingKey = "goroutine.leak.detection.cooldown.minutes"
 
 	// TriState Items
 	// NetworkFallbackAnyEth global setting key
@@ -256,16 +291,27 @@ const (
 	ConsoleAccess GlobalSettingKey = "debug.enable.console"
 	// Shim VM VNC access global setting key
 	VncShimVMAccess GlobalSettingKey = "debug.enable.vnc.shim.vm"
-	// DefaultLogLevel global setting key
+	// DefaultLogLevel default level of logs produced by EVE microservices
 	DefaultLogLevel GlobalSettingKey = "debug.default.loglevel"
-	// DefaultRemoteLogLevel global setting key
+	// DefaultRemoteLogLevel default level of logs sent by EVE microservices to the controller
 	DefaultRemoteLogLevel GlobalSettingKey = "debug.default.remote.loglevel"
-	// SyslogLogLevel global setting key
+	// SyslogLogLevel level of the produced syslog messages
 	SyslogLogLevel GlobalSettingKey = "debug.syslog.loglevel"
-	// KernelLogLevel global setting key
+	// SyslogRemoteLogLevel level of the syslog messages sent to the controller
+	SyslogRemoteLogLevel GlobalSettingKey = "debug.syslog.remote.loglevel"
+	// KernelLogLevel level of the produced kernel messages
 	KernelLogLevel GlobalSettingKey = "debug.kernel.loglevel"
+	// KernelRemoteLogLevel level of the kernel messages sent to the controller
+	KernelRemoteLogLevel GlobalSettingKey = "debug.kernel.remote.loglevel"
+	// FmlCustomResolution global setting key
+	FmlCustomResolution GlobalSettingKey = "app.fml.resolution"
 
-	// XXX Temporary flag to disable RFC 3442 classless static route usage
+	// DisableDHCPAllOnesNetMask option is deprecated and has no effect.
+	// Zedrouter no longer uses the all-ones netmask as it adds unnecessary complexity,
+	// causes confusion for some applications, and is no longer required for any EVE
+	// functionality (previously it was supposedly needed for ACLs and flow logging).
+	// We keep the option defined to avoid reporting errors in ZInfoDevice.ConfigItemStatus
+	// for older deployments where this option is still configured.
 	DisableDHCPAllOnesNetMask GlobalSettingKey = "debug.disable.dhcp.all-ones.netmask"
 
 	// ProcessCloudInitMultiPart to help VMs which do not handle mime multi-part themselves
@@ -300,6 +346,21 @@ const (
 	// address, and MAC address change on EVE node upgrade (switch from old
 	// generation logic to new one) can cause problems with the guest network.
 	NetworkLocalLegacyMACAddress GlobalSettingKey = "network.local.legacy.mac.address"
+	// KubevirtDrainTimeout : how long in hours is allowed for a node drain before a failure is returned
+	KubevirtDrainTimeout GlobalSettingKey = "kubevirt.drain.timeout"
+	// KubevirtDrainSkipK8sApiTimeout : specifies the time duration in seconds which the drain request handler
+	// will continue retrying the k8s api before declaring the node is unavailable and continuing
+	// device operations (reboot/shutdown/upgrade)
+	// This covers the following k8s.io/apimachinery/pkg/api/errors
+	// IsInternalError
+	// IsServerTimeout
+	// IsServiceUnavailable
+	// IsTimeout
+	// IsTooManyRequests
+	KubevirtDrainSkipK8sAPINotReachableTimeout GlobalSettingKey = "kubevirt.drain.skip.k8sapinotreachable.timeout"
+
+	// MemoryMonitorEnabled : Enable memory monitor
+	MemoryMonitorEnabled GlobalSettingKey = "memory-monitor.enabled"
 )
 
 // AgentSettingKey - keys for per-agent settings
@@ -342,20 +403,35 @@ var (
 	// SyslogKernelLogLevelNum is a number representation of syslog/kernel
 	// loglevels.
 	SyslogKernelLogLevelNum = map[string]uint32{
-		"emerg":    0,
-		"alert":    1,
-		"crit":     2,
-		"critical": 2,
-		"err":      3,
-		"error":    3,
-		"warning":  4,
-		"warn":     4,
-		"notice":   5,
-		"info":     6,
-		"debug":    7,
+		"none":     0,
+		"emerg":    1,
+		"alert":    2,
+		"crit":     3,
+		"critical": 3,
+		"err":      4,
+		"error":    4,
+		"warning":  5,
+		"warn":     5,
+		"notice":   6,
+		"info":     7,
+		"debug":    8,
+		"all":      99,
 	}
 	// SyslogKernelDefaultLogLevel is a default loglevel for syslog and kernel.
 	SyslogKernelDefaultLogLevel = "info"
+)
+
+var (
+	// FmlResolutionUnset is a string to indicate that custom resolution is not set
+	FmlResolutionUnset = ""
+	// FmlResolution800x600 is a string to indicate 800x600 resolution
+	FmlResolution800x600 = "800x600"
+	// FmlResolution1024x768 is a string to indicate 1024x768 resolution
+	FmlResolution1024x768 = "1024x768"
+	// FmlResolution1280x800 is a string to indicate 1280x720 resolution
+	FmlResolution1280x800 = "1280x800"
+	// FmlResolution1920x1080 is a string to indicate 1280x720 resolution
+	FmlResolution1920x1080 = "1920x1080"
 )
 
 // ConfigItemSpec - Defines what a specification for a configuration should be
@@ -828,6 +904,8 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	if err != nil {
 		logrus.Errorf("getEveMemoryLimitInBytes failed: %v", err)
 	}
+	// Round up to the nearest MiB
+	eveMemoryLimitInMiB := uint32((eveMemoryLimitInBytes + 1024*1024 - 1) / (1024 * 1024))
 	var configItemSpecMap ConfigItemSpecMap
 	configItemSpecMap.GlobalSettings = make(map[GlobalSettingKey]ConfigItemSpec)
 	configItemSpecMap.AgentSettings = make(map[AgentSettingKey]ConfigItemSpec)
@@ -877,14 +955,41 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 		100*1024*1024, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(StorageZfsReserved, 20, 1, 99)
 	configItemSpecMap.AddIntItem(ForceFallbackCounter, 0, 0, 0xFFFFFFFF)
-
+	//
+	// Go garbage collector configuration section
+	//
+	// Default GOGC memory limit is 0
+	configItemSpecMap.AddIntItem(GOGCMemoryLimitInBytes, 0, 0, 0xFFFFFFFF)
+	// Default GOGC target percentage is 100, 0 means disable GC
+	configItemSpecMap.AddIntItem(GOGCPercent, 100, 0, 500)
+	// Default forced GOGC interval in seconds, 0 means disable forced GC
+	configItemSpecMap.AddIntItem(GOGCForcedIntervalInSec, 10, 0, 1000)
+	// Default forced GOGC growth memory in MiB
+	configItemSpecMap.AddIntItem(GOGCForcedGrowthMemInMiB, 50, 10, 1024)
+	// Default forced GOGC growth memory percent
+	configItemSpecMap.AddIntItem(GOGCForcedGrowthMemPerc, 20, 5, 300)
+	//
 	configItemSpecMap.AddIntItem(EveMemoryLimitInBytes, uint32(eveMemoryLimitInBytes),
 		uint32(eveMemoryLimitInBytes), 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(EveMemoryLimitInMiB, eveMemoryLimitInMiB,
+		eveMemoryLimitInMiB, 0xFFFFFFFF)
 	// Limit manual vmm overhead override to 1 PiB
 	configItemSpecMap.AddIntItem(VmmMemoryLimitInMiB, 0, 0, uint32(1024*1024*1024))
 	// LogRemainToSendMBytes - Default is 2 Gbytes, minimum is 10 Mbytes
 	configItemSpecMap.AddIntItem(LogRemainToSendMBytes, 2048, 10, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(DownloadMaxPortCost, 0, 0, 255)
+	configItemSpecMap.AddIntItem(BlobDownloadMaxRetries, 5, 1, 10)
+
+	// Goroutine Leak Detection section
+	configItemSpecMap.AddIntItem(GoroutineLeakDetectionThreshold, 5000, 1, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(GoroutineLeakDetectionCheckIntervalMinutes, 1, 1, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(GoroutineLeakDetectionCheckWindowMinutes, 10, 10, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(GoroutineLeakDetectionKeepStatsHours, 24, 1, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(GoroutineLeakDetectionCooldownMinutes, 5, 1, 0xFFFFFFFF)
+
+	// Kubevirt Drain Section
+	configItemSpecMap.AddIntItem(KubevirtDrainTimeout, 24, 1, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(KubevirtDrainSkipK8sAPINotReachableTimeout, 300, 1, 0xFFFFFFFF)
 
 	// Add Bool Items
 	configItemSpecMap.AddBoolItem(UsbAccess, true) // Controller likely default to false
@@ -900,6 +1005,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddBoolItem(EnableARPSnoop, true)
 	configItemSpecMap.AddBoolItem(WwanQueryVisibleProviders, false)
 	configItemSpecMap.AddBoolItem(NetworkLocalLegacyMACAddress, false)
+	configItemSpecMap.AddBoolItem(MemoryMonitorEnabled, false)
 
 	// Add TriState Items
 	configItemSpecMap.AddTriStateItem(NetworkFallbackAnyEth, TS_DISABLED)
@@ -907,14 +1013,17 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 
 	// Add String Items
 	configItemSpecMap.AddStringItem(SSHAuthorizedKeys, "", blankValidator)
-	configItemSpecMap.AddStringItem(DefaultLogLevel, "info", validateLogrusLevel)
-	configItemSpecMap.AddStringItem(DefaultRemoteLogLevel, "info", validateLogrusLevel)
+	configItemSpecMap.AddStringItem(DefaultLogLevel, "info", validateLogLevel)
+	configItemSpecMap.AddStringItem(DefaultRemoteLogLevel, "info", validateLogLevel)
 	configItemSpecMap.AddStringItem(SyslogLogLevel, "info", validateSyslogKernelLevel)
 	configItemSpecMap.AddStringItem(KernelLogLevel, "info", validateSyslogKernelLevel)
+	configItemSpecMap.AddStringItem(SyslogRemoteLogLevel, "info", validateSyslogKernelLevel)
+	configItemSpecMap.AddStringItem(KernelRemoteLogLevel, "info", validateSyslogKernelLevel)
+	configItemSpecMap.AddStringItem(FmlCustomResolution, FmlResolutionUnset, blankValidator)
 
 	// Add Agent Settings
-	configItemSpecMap.AddAgentSettingStringItem(LogLevel, "info", validateLogrusLevel)
-	configItemSpecMap.AddAgentSettingStringItem(RemoteLogLevel, "info", validateLogrusLevel)
+	configItemSpecMap.AddAgentSettingStringItem(LogLevel, "info", validateLogLevel)
+	configItemSpecMap.AddAgentSettingStringItem(RemoteLogLevel, "info", validateLogLevel)
 
 	// Add NetDump settings
 	configItemSpecMap.AddBoolItem(NetDumpEnable, true)
@@ -927,10 +1036,15 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	return configItemSpecMap
 }
 
-// validateLogrusLevel - Wrapper for validating logrus loglevel
-func validateLogrusLevel(level string) error {
-	_, err := logrus.ParseLevel(level)
-	return err
+// validateLogLevel - make sure the log level has one of the supported values
+func validateLogLevel(level string) error {
+	switch level {
+	case "none", "all":
+		return nil
+	default:
+		_, err := logrus.ParseLevel(level)
+		return err
+	}
 }
 
 // validateSyslogKernelLevel - Wrapper for validating syslog and kernel

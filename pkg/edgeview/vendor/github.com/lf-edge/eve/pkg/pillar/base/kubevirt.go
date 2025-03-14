@@ -67,15 +67,37 @@ func GetAppKubeName(displayName string, uuid uuid.UUID) string {
 }
 
 // GetVMINameFromVirtLauncher : get VMI name from the corresponding Kubevirt
-// launcher pod name.
+// launcher pod name for replicaset generated VMI.
 func GetVMINameFromVirtLauncher(podName string) (vmiName string, isVirtLauncher bool) {
 	if !strings.HasPrefix(podName, VMIPodNamePrefix) {
 		return "", false
 	}
 	vmiName = strings.TrimPrefix(podName, VMIPodNamePrefix)
 	lastSep := strings.LastIndex(vmiName, "-")
-	if lastSep != -1 {
-		vmiName = vmiName[:lastSep]
+	if lastSep == -1 || lastSep < 5 {
+		return "", false
 	}
+
+	// Check if the last part is 5 bytes long
+	if len(vmiName[lastSep+1:]) != 5 {
+		return "", false
+	}
+
+	// Use the index minus 5 bytes to get the VMI name to remove added
+	// replicaset suffix
+	vmiName = vmiName[:lastSep-5]
 	return vmiName, true
+}
+
+// GetReplicaPodName : get the app name from the pod name for replica pods.
+func GetReplicaPodName(displayName, podName string, uuid uuid.UUID) (kubeName string, isReplicaPod bool) {
+	kubeName = GetAppKubeName(displayName, uuid)
+	if !strings.HasPrefix(podName, kubeName) {
+		return "", false
+	}
+	suffix := strings.TrimPrefix(podName, kubeName)
+	if strings.HasPrefix(suffix, "-") && len(suffix[1:]) == 5 {
+		return kubeName, true
+	}
+	return "", false
 }
