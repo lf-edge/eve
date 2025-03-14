@@ -42,3 +42,7 @@ type ScsiInquiry struct {
 	ProductIdent [16]byte
 	ProductRev   [4]byte
 }
+
+func (d *ScsiDevice) ReadGenericAttributes() (*GenericAttributes, error) {
+	return nil, ErrOSUnsupported
+}

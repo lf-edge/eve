@@ -74,14 +74,7 @@ func PublishHardwareInfoToZedCloud(ctx *zedagentContext, dest destinationBitset)
 		stDiskInfo.Model = *proto.String(disk.ModelNumber)
 		stDiskInfo.Wwn = *proto.String(fmt.Sprintf("%x", disk.Wwn))
 
-		attrSmart := new(info.SmartMetric)
-		attrSmart.ReallocatedSectorCt = getSmartAttr(types.SmartAttrIDRealLocatedSectorCt, disk.SmartAttrs)
-		attrSmart.PowerOnHours = getSmartAttr(types.SmartAttrIDPowerOnHours, disk.SmartAttrs)
-		attrSmart.PowerCycleCount = getSmartAttr(types.SmartAttrIDPowerCycleCount, disk.SmartAttrs)
-		attrSmart.ReallocatedEventCount = getSmartAttr(types.SmartAttrIDRealLocatedEventCount, disk.SmartAttrs)
-		attrSmart.CurrentPendingSector = getSmartAttr(types.SmartAttrIDCurrentPendingSectorCt, disk.SmartAttrs)
-		attrSmart.Temperature = getSmartAttr(types.SmartAttrIDTemperatureCelsius, disk.SmartAttrs)
-		stDiskInfo.SmartData = append(stDiskInfo.SmartData, attrSmart)
+		stDiskInfo.SmartAttr = getSmartAttr(disk.SmartAttrs)
 
 		hwInfo.Disks = append(hwInfo.Disks, stDiskInfo)
 	}
@@ -107,17 +100,21 @@ func PublishHardwareInfoToZedCloud(ctx *zedagentContext, dest destinationBitset)
 		info.ZInfoTypes_ZiHardware)
 }
 
-func getSmartAttr(id int, diskData []*types.DAttrTable) *info.SmartAttr {
-	attrResult := new(info.SmartAttr)
+func getSmartAttr(diskData []*types.DAttrTable) []*info.SmartAttr {
+	attrResults := []*info.SmartAttr{} // Store pointers instead of structs
+
 	for _, attr := range diskData {
-		if attr.ID == id {
-			attrResult.Id = uint32(id)
-			attrResult.RawValue = uint64(attr.RawValue)
-			attrResult.Worst = uint64(attr.Worst)
-			attrResult.Value = uint64(attr.Value)
-			return attrResult
+		attrResult := &info.SmartAttr{ // Allocate on heap
+			Id:            uint32(attr.ID),
+			AttributeName: attr.AttributeName,
+			RawValue:      uint64(attr.RawValue),
+			Worst:         uint64(attr.Worst),
+			Value:         uint64(attr.Value),
+			Type:          attr.Type,
 		}
+
+		attrResults = append(attrResults, attrResult) // Append pointer
 	}
 
-	return nil
+	return attrResults
 }

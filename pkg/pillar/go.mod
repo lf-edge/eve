@@ -3,7 +3,7 @@ module github.com/lf-edge/eve/pkg/pillar
 go 1.22
 
 require (
-	github.com/anatol/smart.go v0.0.0-20220615232124-371056cd18c3
+	github.com/anatol/smart.go v0.0.0-20241126061019-f03d79b340d2
 	github.com/andrewd-zededa/go-libzfs v0.0.0-20240304231806-6a64e99da97d
 	github.com/containerd/cgroups v1.1.0
 	github.com/containerd/containerd v1.7.13
@@ -30,7 +30,7 @@ require (
 	github.com/jaypipes/ghw v0.8.0
 	github.com/k8snetworkplumbingwg/network-attachment-definition-client v1.5.0
 	github.com/lf-edge/edge-containers v0.0.0-20240207093504-5dfda0619b80
-	github.com/lf-edge/eve-api/go v0.0.0-20250304184518-532c94981505
+	github.com/lf-edge/eve-api/go v0.0.0-20250310225738-c77ab6f8c73a
 	github.com/lf-edge/eve-libs v0.0.0-20241210085709-fc89dcac7f3c
 	github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20240315102754-0f6d1f182e0d
 	github.com/lf-edge/go-qemu v0.0.0-20231121152149-4c467eda0c56
@@ -49,7 +49,7 @@ require (
 	github.com/shjala/gostats v0.0.0-20230215094906-69a32327600f
 	github.com/sirupsen/logrus v1.9.3
 	github.com/spf13/cobra v1.8.0
-	github.com/stretchr/testify v1.8.4
+	github.com/stretchr/testify v1.10.0
 	github.com/tatsushid/go-fastping v0.0.0-20160109021039-d7bb493dee3e
 	github.com/vishvananda/netlink v1.2.1-beta.2
 	go.uber.org/goleak v1.3.0

@@ -1210,6 +1210,21 @@ func (d *NVMeDevice) Type() string {
 	return "nvme"
 }
 
+func (d *NVMeDevice) ReadGenericAttributes() (*GenericAttributes, error) {
+	log, err := d.ReadSMART()
+	if err != nil {
+		return nil, err
+	}
+
+	a := GenericAttributes{}
+	a.Temperature = uint64(log.Temperature - 273) // NVMe reports the temperature in Kelvins, normalize it to Celsius
+	a.Read = log.DataUnitsRead.Val[0]
+	a.Written = log.DataUnitsWritten.Val[0]
+	a.PowerOnHours = log.PowerOnHours.Val[0]
+	a.PowerCycles = log.PowerCycles.Val[0]
+	return &a, nil
+}
+
 func (d *NVMeDevice) Identify() (*NvmeIdentController, []NvmeIdentNamespace, error) {
 	controller, err := d.readControllerIdentifyData()
 	if err != nil {
