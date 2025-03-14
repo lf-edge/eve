@@ -2,14 +2,19 @@ package main
 
 import (
 	"bufio"
+	"bytes"
+	"container/ring"
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strconv"
 	"testing"
+	"unicode"
 
 	"github.com/lf-edge/eve-api/go/logs"
+	"github.com/lf-edge/eve/pkg/pillar/agentlog"
+	"github.com/lf-edge/eve/pkg/pillar/pubsub"
+	"github.com/lf-edge/eve/pkg/pillar/pubsub/socketdriver"
 )
 
 func TestDeduplicateLogs(t *testing.T) {
@@ -137,4 +142,138 @@ func TestMsgFieldExtraction(t *testing.T) {
 	if content.Msg != "EVENT: failed to access https://zedcloud.alpha.zededa.net/api/v2/edgedevice/id/91a44d75-0bfe-466b-acfe-0b91d2033c15/metrics" {
 		t.Errorf("expected %q, got %q", "EVENT: failed to access https://zedcloud.alpha.zededa.net/api/v2/edgedevice/id/91a44d75-0bfe-466b-acfe-0b91d2033c15/metrics", content.Msg)
 	}
+}
+
+func TestHowMapsArePassedToFunctions(t *testing.T) {
+	// Create a map and pass it to a function.
+	m := make(map[string]int)
+	m["test"] = 1
+	addOneToMap(m)
+	if m["test"] != 2 {
+		t.Errorf("expected %d, got %d", 2, m["test"])
+	}
+	key := "test2"
+	addKeyToMap(m, key)
+	if m[key] != 1 {
+		t.Errorf("expected %d, got %d", 1, m[key])
+	}
+}
+
+func addOneToMap(m map[string]int) {
+	m["test"]++
+}
+
+func addKeyToMap(m map[string]int, key string) {
+	m[key] = 1
+}
+
+func TestDoMoveCompressFile(t *testing.T) {
+	logFileInfo := fileChanInfo{
+		tmpfile:   "/home/paul/eve-info/eve-info-v22-2025-01-29-13-51-04/right_time.log",
+		isApp:     false,
+		notUpload: false, // treat as if it was uploaded to see how the filtering measures work
+	}
+
+	logger, log = agentlog.Init(agentName)
+	ps := *pubsub.New(&socketdriver.SocketDriver{Logger: logger, Log: log}, logger, log)
+
+	doMoveCompressFile(&ps, logFileInfo)
+}
+
+func TestLogFiltering(t *testing.T) {
+	// open input file
+	// iFile, err := os.Open("/home/paul/eve-info/eve-info-v22-2025-01-29-13-51-04/right_time.log")
+	iFile, err := os.Open("/home/paul/eve-info/eve-info-v33-2025-03-03-15-44-57/all_logs")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer iFile.Close()
+
+	// oFile, err := os.OpenFile("/home/paul/eve-info/eve-info-v22-2025-01-29-13-51-04/out.log", os.O_CREATE|os.O_WRONLY, 0644)
+	oFile, err := os.OpenFile("/home/paul/eve-info/eve-info-v33-2025-03-03-15-44-57/out.log", os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer oFile.Close()
+
+	// FILTERING PARAMS:
+	filenameFilter["/pillar/evetpm/tpm.go:346"] = nil
+	logsToCount = []string{
+		"/pillar/types/zedroutertypes.go:1079",
+	}
+
+	// first we go through the file and count the number of occurrences of the selected log entries
+	var logCounter map[string]int
+	var seen map[string]uint64
+	var queue *ring.Ring
+	logCounter = make(map[string]int)
+	for _, logSrcLine := range logsToCount {
+		logCounter[logSrcLine] = 0
+	}
+	preScanner := bufio.NewScanner(iFile)
+	for preScanner.Scan() {
+		// we ingnore the errors here, they might be coming from non-json lines like the metadata line
+		_ = countLogOccurances(preScanner.Bytes(), logCounter)
+	}
+	if err := preScanner.Err(); err != nil {
+		t.Errorf("Error scanning file for log occurrence count: %v", err)
+	}
+	if _, err := iFile.Seek(0, 0); err != nil {
+		t.Errorf("Failed to reset file pointer: %v", err)
+		return // TODO: this might be wrong, what should we do here?
+	}
+
+	// for deduplicator
+	// 'seen' counts occurrences of each file in the current window.
+	seen = make(map[string]uint64)
+	// 'queue' holds the file fields of the last bufferSize logs.
+	queue = ring.New(bufferSize)
+
+	// now we go through the file again and deduplicate the logs
+	scanner := bufio.NewScanner(iFile)
+	for scanner.Scan() {
+		newLine := scanner.Bytes()
+		//trim non-graphic symbols
+		newLine = bytes.TrimFunc(newLine, func(r rune) bool {
+			return !unicode.IsGraphic(r)
+		})
+		if len(newLine) == 0 {
+			continue
+		}
+		if !json.Valid(newLine) {
+			t.Errorf("doMoveCompressFile: found broken line: %s", string(newLine))
+			continue
+		}
+
+		var logEntry logs.LogEntry
+		if err := json.Unmarshal(newLine, &logEntry); err != nil {
+			continue // we don't care about the error here
+		}
+		var useEntry bool
+		if useEntry = filterOut(&logEntry); !useEntry {
+			continue
+		}
+		if useEntry = addLogCount(&logEntry, logCounter); !useEntry {
+			continue
+		}
+		if useEntry, queue = dedupLogEntry(&logEntry, seen, queue); !useEntry {
+			continue
+		}
+		newLine, err = json.Marshal(&logEntry)
+		if err != nil {
+			t.Errorf("doMoveCompressFile: failed to marshal logEntry: %v", err)
+			continue
+		}
+
+		_, err := oFile.Write(append(newLine, '\n'))
+		if err != nil {
+			t.Fatal("doMoveCompressFile: cannot write file", err)
+		}
+	}
+
+	if scanner.Err() != nil {
+		t.Fatal("doMoveCompressFile: reading file failed", scanner.Err())
+	}
+
+	t.Logf("Total num deduped logs: %d", numDedupedLogs)
 }

@@ -7,6 +7,7 @@ import (
 	"bufio"
 	"bytes"
 	"compress/gzip"
+	"container/ring"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -1255,6 +1256,35 @@ func doMoveCompressFile(ps *pubsub.PubSub, tmplogfileInfo fileChanInfo) {
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	// first we go through the file and count the number of occurrences of the selected log entries
+	var logCounter map[string]int
+	var seen map[string]uint64
+	var queue *ring.Ring
+	if dirName == uploadDevDir {
+		logCounter = make(map[string]int)
+		for _, logSrcLine := range logsToCount {
+			logCounter[logSrcLine] = 0
+		}
+		preScanner := bufio.NewScanner(iFile)
+		for preScanner.Scan() {
+			// we ingnore the errors here, they might be coming from non-json lines like the metadata line
+			_ = countLogOccurances(preScanner.Bytes(), logCounter)
+		}
+		if err := preScanner.Err(); err != nil {
+			log.Errorf("Error scanning file for log occurrence count: %v", err)
+		}
+		if _, err := iFile.Seek(0, 0); err != nil {
+			log.Errorf("Failed to reset file pointer: %v", err)
+			return // TODO: this might be wrong, what should we do here?
+		}
+
+		// for deduplicator
+		// 'seen' counts occurrences of each file in the current window.
+		seen = make(map[string]uint64)
+		// 'queue' holds the file fields of the last bufferSize logs.
+		queue = ring.New(bufferSize)
+	}
 	scanner := bufio.NewScanner(iFile)
 	// check if we cannot scan
 	// check valid json header for device log we will use later
@@ -1298,6 +1328,29 @@ func doMoveCompressFile(ps *pubsub.PubSub, tmplogfileInfo fileChanInfo) {
 			log.Errorf("doMoveCompressFile: found broken line: %s", string(newLine))
 			continue
 		}
+
+		if dirName == uploadDevDir {
+			var logEntry logs.LogEntry
+			if err := json.Unmarshal(newLine, &logEntry); err != nil {
+				continue // we don't care about the error here
+			}
+			var useEntry bool
+			if useEntry = filterOut(&logEntry); !useEntry {
+				continue
+			}
+			if useEntry = addLogCount(&logEntry, logCounter); !useEntry {
+				continue
+			}
+			if useEntry, queue = dedupLogEntry(&logEntry, seen, queue); !useEntry {
+				continue
+			}
+			newLine, err = json.Marshal(&logEntry)
+			if err != nil {
+				log.Errorf("doMoveCompressFile: failed to marshal logEntry: %v", err)
+				continue
+			}
+		}
+
 		// assume that next line is incompressible to be safe
 		// note: bytesWritten may be updated eventually because of gzip implementation
 		// potentially we cannot account maxGzipFileSize less than windowsize of gzip 32768

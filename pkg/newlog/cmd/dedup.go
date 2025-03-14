@@ -4,6 +4,8 @@ import (
 	"container/ring"
 	"encoding/json"
 	"fmt"
+
+	"github.com/lf-edge/eve-api/go/logs"
 )
 
 const bufferSize = 100
@@ -58,4 +60,42 @@ func deduplicateLogs(in <-chan inputEntry, out chan<- inputEntry) {
 	}
 
 	close(out)
+}
+
+func dedupLogEntry(logEntry *logs.LogEntry, seen map[string]uint64, queue *ring.Ring) (bool, *ring.Ring) {
+	useEntry := true
+	dedupField := ""
+	// If logEntry.content is a valid JSON, extract the field "msg" from it.
+	if logEntry.Content != "" {
+		var content ContainsMsg
+		err := json.Unmarshal([]byte(logEntry.Content), &content)
+		if err == nil && content.Msg != "" {
+			dedupField = content.Msg
+		} else {
+			dedupField = logEntry.Content
+		}
+	}
+
+	// If the file hasn't appeared in the last bufferSize logs, forward it.
+	if _, ok := seen[dedupField]; !ok || logEntry.Severity != "error" {
+		useEntry = true
+	} else {
+		useEntry = false
+		fmt.Printf("Deduped log id %d because of the log id %d\n", logEntry.Msgid, seen[dedupField])
+		numDedupedLogs++
+		if numDedupedLogs%10 == 0 {
+			fmt.Printf("Deduped %d logs\n", numDedupedLogs)
+		}
+	}
+
+	// Remove the oldest log from the window.
+	if oldest := queue.Value; oldest != nil {
+		delete(seen, oldest.(string))
+	}
+
+	// Add the current log to the window.
+	queue.Value = dedupField
+	seen[dedupField] = logEntry.Msgid
+
+	return useEntry, queue.Next()
 }
