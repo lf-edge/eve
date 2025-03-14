@@ -22,7 +22,6 @@ func deduplicateLogs(in <-chan inputEntry, out chan<- inputEntry) {
 
 	for logEntry := range in {
 		dedupField := ""
-		msgid := logEntry.appUUID // the field is set artificially for testing - CHANGE AFTER TESTING!!!
 		// If logEntry.content is a valid JSON, extract the field "msg" from it.
 		if logEntry.content != "" {
 			var content ContainsMsg
@@ -38,7 +37,7 @@ func deduplicateLogs(in <-chan inputEntry, out chan<- inputEntry) {
 		if _, ok := seen[dedupField]; !ok || logEntry.severity != "error" {
 			out <- logEntry
 		} else {
-			fmt.Printf("Deduped %s because of %s\n", msgid, seen[dedupField])
+			fmt.Printf("Deduped log at %s because of the log at %s\n", logEntry.timestamp, seen[dedupField])
 			numDedupedLogs++
 			if numDedupedLogs%10 == 0 {
 				fmt.Printf("Deduped %d logs\n", numDedupedLogs)
@@ -52,7 +51,7 @@ func deduplicateLogs(in <-chan inputEntry, out chan<- inputEntry) {
 
 		// Add the current log to the window.
 		queue.Value = dedupField
-		seen[dedupField] = msgid
+		seen[dedupField] = logEntry.timestamp
 
 		// Move the window.
 		queue = queue.Next()

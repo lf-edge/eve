@@ -91,7 +91,7 @@ func TestDedupWithLocalFile(t *testing.T) {
 		close(in)
 	}()
 
-	file, err := os.OpenFile(filepath.Join("/home/paul/eve-info/eve-info-v33-2025-03-03-15-44-57/deduped_logs"), os.O_CREATE|os.O_WRONLY, 0644)
+	file, err := os.OpenFile("/home/paul/eve-info/eve-info-v33-2025-03-03-15-44-57/deduped_logs", os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		panic(err)
 	}
@@ -125,6 +125,8 @@ func TestDedupWithLocalFile(t *testing.T) {
 			t.Error(err)
 		}
 	}
+
+	t.Logf("Total num deduped logs: %d", numDedupedLogs)
 }
 
 func TestMsgFieldExtraction(t *testing.T) {
