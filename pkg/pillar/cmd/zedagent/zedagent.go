@@ -511,6 +511,12 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	metricsTickerHandle := <-handleChannel
 	getconfigCtx.metricsTickerHandle = metricsTickerHandle
 
+	// start the hardware health reporting task
+	log.Functionf("Creating %s at %s", "hardwareHealthTimerTask", agentlog.GetMyStack())
+	go hardwareHealthTimerTask(zedagentCtx, handleChannel)
+	hardwareHealthTickerHandle := <-handleChannel
+	getconfigCtx.hardwareHealthTickerHandle = hardwareHealthTickerHandle
+
 	// start the location reporting task
 	log.Functionf("Creating %s at %s", "locationTimerTask", agentlog.GetMyStack())
 	go locationTimerTask(zedagentCtx, handleChannel, triggerLocationInfo)
