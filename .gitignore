@@ -28,3 +28,4 @@ tools/get-deps/get-deps
 tools/get-deps/vendor
 pkg/installer/target
 pkg/installer/vendor
+pkg/monitor/eve-monitor-rs
