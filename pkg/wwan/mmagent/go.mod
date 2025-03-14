@@ -1,8 +1,6 @@
 module github.com/lf-edge/eve/pkg/wwan/mmagent
 
-go 1.23.0
-
-toolchain go1.24.1
+go 1.23
 
 require (
 	github.com/godbus/dbus/v5 v5.1.0
