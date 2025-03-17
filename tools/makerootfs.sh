@@ -24,9 +24,8 @@ do_image() {
     ARCHARG="--arch ${arch}"
   fi
   : > "$IMAGE"
-  # sbom disabled for now; will be re-enabled later
   # shellcheck disable=SC2086
-  linuxkit build --no-sbom --docker ${ARCHARG} -o - "$ymlfile" | docker run -i --rm -v /dev:/dev --privileged -v "$IMAGE:/rootfs.img" "${MKROOTFS_TAG}"
+  linuxkit build --docker ${ARCHARG} -o - "$ymlfile" | docker run -i --rm -v /dev:/dev --privileged -v "$IMAGE:/rootfs.img" "${MKROOTFS_TAG}"
 }
 
 # mode 1 - generate tarfile from yml and save
@@ -42,13 +41,11 @@ do_tar() {
     ARCHARG="--arch ${arch}"
   fi
   if [ -z "$updatetar" ] || [ ! -e "${tarfile}" ]; then
-    # sbom disabled for now; will be re-enabled later
     # shellcheck disable=SC2086
-    linuxkit build --no-sbom --docker ${ARCHARG} --o "${tarfile}" "$ymlfile"
+    linuxkit build --docker ${ARCHARG} --o "${tarfile}" "$ymlfile"
   else
-    # sbom disabled for now; will be re-enabled later
     # shellcheck disable=SC2086
-    linuxkit build --no-sbom --docker ${ARCHARG} --o "${tarfile}.new" --input-tar "${tarfile}"  "$ymlfile"
+    linuxkit build --docker ${ARCHARG} --o "${tarfile}.new" --input-tar "${tarfile}"  "$ymlfile"
     newmd5=$(md5sum "${tarfile}.new" | awk '{print $1}')
     oldmd5=$(md5sum "${tarfile}" | awk '{print $1}')
     # Don't touch the modification time if files are equal. Crucial for Makefile.
