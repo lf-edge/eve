@@ -15,28 +15,28 @@ ENV LIBQRTR_VERSION=1.2.2
 ENV PICOCOM_COMMIT=1acf1ddabaf3576b4023c4f6f09c5a3e4b086fb8
 ENV LENOVO_WWAN_UNLOCK_COMMIT=dc9a7eccf72b83e6db528da930cc7f19d6cdd523
 
-ADD --keep-git-dir=true https://gitlab.freedesktop.org/mobile-broadband/libqrtr-glib.git#${LIBQRTR_VERSION} /libqrtr
+ADD --keep-git-dir=true https://github.com/linux-mobile-broadband/libqrtr-glib.git#${LIBQRTR_VERSION} /libqrtr
 WORKDIR /libqrtr
 RUN meson build --buildtype=release --prefix=/usr --sysconfdir=/etc --libdir=/usr/lib \
           -Dgtk_doc=false -Dintrospection=false && \
     ninja -C build && \
     ninja -C build install
 
-ADD --keep-git-dir=true https://gitlab.freedesktop.org/mobile-broadband/libmbim.git#${LIBMBIM_VERSION} /libmbim
+ADD --keep-git-dir=true https://github.com/linux-mobile-broadband/libmbim.git#${LIBMBIM_VERSION} /libmbim
 WORKDIR /libmbim
 RUN meson build --buildtype=release --prefix=/usr --sysconfdir=/etc --libdir=/usr/lib \
           -Dbash_completion=false -Dintrospection=false -Dman=false && \
     ninja -C build && \
     ninja -C build install
 
-ADD --keep-git-dir=true https://gitlab.freedesktop.org/mobile-broadband/libqmi.git#${LIBQMI_VERSION} /libqmi
+ADD --keep-git-dir=true https://github.com/linux-mobile-broadband/libqmi.git#${LIBQMI_VERSION} /libqmi
 WORKDIR /libqmi
 RUN meson build --buildtype=release --prefix=/usr --sysconfdir=/etc --libdir=/usr/lib \
           -Dbash_completion=false -Dintrospection=false -Dman=false && \
     ninja -C build && \
     ninja -C build install
 
-ADD --keep-git-dir=true https://gitlab.freedesktop.org/mobile-broadband/ModemManager.git#${MM_VERSION} /mm
+ADD --keep-git-dir=true https://github.com/linux-mobile-broadband/ModemManager.git#${MM_VERSION} /mm
 WORKDIR /mm
 RUN meson build --buildtype=release --prefix=/usr --sysconfdir=/etc --libdir=/usr/lib \
           -Dmbim=true -Dqmi=true -Dbash_completion=false -Dintrospection=false -Dpolkit=no \
