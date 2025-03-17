@@ -309,6 +309,8 @@ const (
 	// Log filtering and dedupliction
 	// LogDedupWindowSize is a measure of how many log entries are saved to search for duplicates
 	LogDedupWindowSize GlobalSettingKey = "log.dedup.window.size"
+	// LogFilenamesToCount a comma-separated list of log filenames to count
+	LogFilenamesToCount GlobalSettingKey = "log.count.filenames"
 
 	// DisableDHCPAllOnesNetMask option is deprecated and has no effect.
 	// Zedrouter no longer uses the all-ones netmask as it adds unnecessary complexity,
@@ -1027,6 +1029,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 
 	// Log deduplication and filtering settings
 	configItemSpecMap.AddIntItem(LogDedupWindowSize, 100, 0, 0xFFFFFFFF)
+	configItemSpecMap.AddStringItem(LogFilenamesToCount, "", blankValidator)
 
 	// Add Agent Settings
 	configItemSpecMap.AddAgentSettingStringItem(LogLevel, "info", validateLogLevel)

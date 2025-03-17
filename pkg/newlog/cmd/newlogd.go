@@ -568,6 +568,9 @@ func handleGlobalConfigImp(ctxArg interface{}, key string, statusArg interface{}
 
 		// set log deduplication and filtering settings
 		dedupWindowSize.Store(gcp.GlobalValueInt(types.LogDedupWindowSize))
+
+		// parse a comma separated list of log filenames to count
+		logsToCount.Store(strings.Split(gcp.GlobalValueString(types.LogFilenamesToCount), ","))
 	}
 	log.Tracef("handleGlobalConfigModify done for %s, fastupload enabled %v", key, enableFastUpload)
 }
@@ -1266,7 +1269,7 @@ func doMoveCompressFile(ps *pubsub.PubSub, tmplogfileInfo fileChanInfo) {
 	var queue *ring.Ring
 	if dirName == uploadDevDir {
 		logCounter = make(map[string]int)
-		for _, logSrcLine := range logsToCount {
+		for _, logSrcLine := range logsToCount.Load().([]string) {
 			logCounter[logSrcLine] = 0
 		}
 		preScanner := bufio.NewScanner(iFile)

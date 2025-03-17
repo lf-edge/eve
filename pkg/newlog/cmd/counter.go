@@ -3,12 +3,13 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"sync/atomic"
 
 	"github.com/lf-edge/eve-api/go/logs"
 )
 
 // logsToCount is a list of Filename fields (src file + line number) of log entries that should be counted.
-var logsToCount []string
+var logsToCount atomic.Value
 
 // countLogOccurances checks if the log entries should be merged into a single entry with a counter of occurances.
 // If so it increments the counter for that log entry. It returns true if the log entry

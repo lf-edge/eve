@@ -198,16 +198,16 @@ func TestLogFiltering(t *testing.T) {
 
 	// FILTERING PARAMS:
 	filenameFilter["/pillar/evetpm/tpm.go:346"] = nil
-	logsToCount = []string{
+	logsToCount.Store([]string{
 		"/pillar/types/zedroutertypes.go:1079",
-	}
+	})
 
 	// first we go through the file and count the number of occurrences of the selected log entries
 	var logCounter map[string]int
 	var seen map[string]uint64
 	var queue *ring.Ring
 	logCounter = make(map[string]int)
-	for _, logSrcLine := range logsToCount {
+	for _, logSrcLine := range logsToCount.Load().([]string) {
 		logCounter[logSrcLine] = 0
 	}
 	preScanner := bufio.NewScanner(iFile)
