@@ -197,7 +197,9 @@ func TestLogFiltering(t *testing.T) {
 	defer oFile.Close()
 
 	// FILTERING PARAMS:
-	filenameFilter["/pillar/evetpm/tpm.go:346"] = nil
+	filenameFilter.Store(map[string]any{
+		"/pillar/types/zedroutertypes.go:1079": nil,
+	})
 	logsToCount.Store([]string{
 		"/pillar/types/zedroutertypes.go:1079",
 	})

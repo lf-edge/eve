@@ -571,6 +571,15 @@ func handleGlobalConfigImp(ctxArg interface{}, key string, statusArg interface{}
 
 		// parse a comma separated list of log filenames to count
 		logsToCount.Store(strings.Split(gcp.GlobalValueString(types.LogFilenamesToCount), ","))
+
+		// parse a comma separated list of log filenames to filter
+		newFilenameFilter := make(map[string]any)
+		filenamesToFilter := strings.Split(gcp.GlobalValueString(types.LogFilenamesToFilter), ",")
+		for _, filename := range filenamesToFilter {
+			newFilenameFilter[filename] = nil
+		}
+		filenameFilter.Store(newFilenameFilter)
+
 	}
 	log.Tracef("handleGlobalConfigModify done for %s, fastupload enabled %v", key, enableFastUpload)
 }
