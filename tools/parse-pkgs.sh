@@ -56,7 +56,7 @@ _linuxkit_tag() {
       build_yml_cmd=(--build-yml "build-${PLATFORM}.yml")
     fi
 
-    echo "$(linuxkit pkg show-tag "${build_yml_cmd[@]}" ${EVE_HASH:+--hash $EVE_HASH} "${EVE}/${pkg}")${ARCH}"
+    linuxkit pkg show-tag "${build_yml_cmd[@]}" ${EVE_HASH:+--hash $EVE_HASH} "${EVE}/${pkg}"
 }
 
 immutable_tag() {
@@ -68,32 +68,12 @@ immutable_tag() {
          echo "$1"
 }
 
-external_tag() {
-  # Since the tag is external to us, we can't rely on local git SHAs,
-  # thus the best we can do is:
-  #    1. if we're building a release from a tag, we expect external tag to be the same
-  #    2. if we're NOT building from a tag, the external tag is simply snapshot
-  local TAG
-  TAG="$(get_git_tag)"
-  PKG="$1:${TAG:-snapshot}${ARCH}"
-
-  # for external packages we have to always try to pull first - otherwise
-  # we may have something stale in our local Docker cache
-  docker pull "$PKG" 2>/dev/null >&2 || echo "WARNING: couldn't fetch the latest $PKG - may be using stale cache" >&2
-  if docker inspect "$PKG" >/dev/null 2>&1 ; then
-    echo "$PKG"
-  else
-    echo "WARNING: failed to obtain $PKG - using $2 instead" >&2
-    echo "$2"
-  fi
-}
-
 synthetic_tag() {
   NAME=$1
   shift 1
   # ignore undefined EVE_TAG in resolve_tags because not defined yet
   # shellcheck disable=SC2086
-  echo ${NAME}:${EVE_HASH:-$( (cat "$@" ; git rev-parse HEAD) | resolve_tags | git hash-object --stdin)}"$ARCH"
+  echo ${NAME}:${EVE_HASH:-$( (cat "$@" ; git rev-parse HEAD) | resolve_tags | git hash-object --stdin)}
 }
 
 resolve_tags() {
@@ -157,19 +137,6 @@ INSTALLER_TAG=${INSTALLER_TAG}
 MONITOR_TAG=${MONITOR_TAG}
 EOF
 }
-
-if [ -z "$DOCKER_ARCH_TAG" ] ; then
-  case $(uname -m) in
-    x86_64) ARCH=-amd64
-      ;;
-    aarch64) ARCH=-arm64
-      ;;
-    *) echo "Unsupported architecture $(uname -m). Exiting" && exit 1
-      ;;
-  esac
-else
-  ARCH="-${DOCKER_ARCH_TAG}"
-fi
 
 ACRN_KERNEL_TAG=$(linuxkit_tag pkg/acrn-kernel)
 FW_TAG=$(linuxkit_tag pkg/fw)
