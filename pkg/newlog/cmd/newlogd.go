@@ -565,6 +565,9 @@ func handleGlobalConfigImp(ctxArg interface{}, key string, statusArg interface{}
 		// parse kernel remote log level
 		kernelRemotePrioStr := gcp.GlobalValueString(types.KernelRemoteLogLevel)
 		atomic.StoreUint32(&kernelRemotePrio, parseSyslogLogLevel(kernelRemotePrioStr))
+
+		// set log deduplication and filtering settings
+		dedupWindowSize.Store(gcp.GlobalValueInt(types.LogDedupWindowSize))
 	}
 	log.Tracef("handleGlobalConfigModify done for %s, fastupload enabled %v", key, enableFastUpload)
 }
@@ -1283,7 +1286,7 @@ func doMoveCompressFile(ps *pubsub.PubSub, tmplogfileInfo fileChanInfo) {
 		// 'seen' counts occurrences of each file in the current window.
 		seen = make(map[string]uint64)
 		// 'queue' holds the file fields of the last bufferSize logs.
-		queue = ring.New(bufferSize)
+		queue = ring.New(int(dedupWindowSize.Load()))
 	}
 	scanner := bufio.NewScanner(iFile)
 	// check if we cannot scan

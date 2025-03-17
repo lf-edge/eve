@@ -4,11 +4,16 @@ import (
 	"container/ring"
 	"encoding/json"
 	"fmt"
+	"sync/atomic"
 
 	"github.com/lf-edge/eve-api/go/logs"
 )
 
-const bufferSize = 100
+var dedupWindowSize atomic.Uint32
+
+func init() {
+	dedupWindowSize.Store(100)
+}
 
 type ContainsMsg struct {
 	Msg string `json:"msg"`
@@ -20,7 +25,10 @@ func deduplicateLogs(in <-chan inputEntry, out chan<- inputEntry) {
 	// 'seen' counts occurrences of each file in the current window.
 	seen := make(map[string]string)
 	// 'queue' holds the file fields of the last bufferSize logs.
-	queue := ring.New(bufferSize)
+	// TODO changing dedupWindowSize will have no effect
+	// since the ring buffer is created with the initial value of dedupWindowSize
+	// Need to find another solution here
+	queue := ring.New(int(dedupWindowSize.Load()))
 
 	for logEntry := range in {
 		dedupField := ""

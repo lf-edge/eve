@@ -19,7 +19,7 @@ import (
 
 func TestDeduplicateLogs(t *testing.T) {
 	// Create channels
-	totalLogs := bufferSize + 50
+	totalLogs := int(dedupWindowSize.Load() + 50)
 	in := make(chan inputEntry, totalLogs)
 	distinctLogs := 75
 	out := make(chan inputEntry, distinctLogs)
@@ -227,7 +227,7 @@ func TestLogFiltering(t *testing.T) {
 	// 'seen' counts occurrences of each file in the current window.
 	seen = make(map[string]uint64)
 	// 'queue' holds the file fields of the last bufferSize logs.
-	queue = ring.New(bufferSize)
+	queue = ring.New(int(dedupWindowSize.Load()))
 
 	// now we go through the file again and deduplicate the logs
 	scanner := bufio.NewScanner(iFile)
