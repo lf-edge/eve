@@ -208,7 +208,6 @@ func main() {
 	log.Functionf("newlogd: starting... restarted %v", restarted)
 
 	loggerChan := make(chan inputEntry, 10)
-	dedupChan := make(chan inputEntry, 10)
 	movefileChan := make(chan fileChanInfo, 5)
 	panicFileChan := make(chan []byte, 2)
 
@@ -230,10 +229,7 @@ func main() {
 	go getKmessages(loggerChan)
 
 	// handle collect other container log messages from memlogd
-	go getMemlogMsg(dedupChan, panicFileChan)
-
-	// handle deduplication of log messages coming from memlogd
-	go deduplicateLogs(dedupChan, loggerChan)
+	go getMemlogMsg(loggerChan, panicFileChan)
 
 	// handle linux Syslog /dev/log messages
 	go getSyslogMsg(loggerChan)
@@ -1350,7 +1346,7 @@ func doMoveCompressFile(ps *pubsub.PubSub, tmplogfileInfo fileChanInfo) {
 				continue // we don't care about the error here
 			}
 			var useEntry bool
-			if useEntry = filterOut(&logEntry); !useEntry {
+			if useEntry = !filterOut(&logEntry); !useEntry {
 				continue
 			}
 			if useEntry = addLogCount(&logEntry, logCounter); !useEntry {

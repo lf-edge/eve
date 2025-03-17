@@ -1,7 +1,6 @@
 package main
 
 import (
-	"slices"
 	"sync/atomic"
 
 	"github.com/lf-edge/eve-api/go/logs"
@@ -17,14 +16,16 @@ var (
 // based on the filename or severity + function name
 func filterOut(l *logs.LogEntry) bool {
 	if _, ok := filenameFilter.Load().(map[string]any)[l.Filename]; ok {
-		return false
+		return true
 	}
 
 	if severityList, ok := severityAndFunctionFilter[l.Function]; ok {
-		if slices.Contains(severityList, l.Severity) {
-			return false
+		for _, severity := range severityList {
+			if severity == l.Severity {
+				return true
+			}
 		}
 	}
 
-	return true
+	return false
 }
