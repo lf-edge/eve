@@ -22,9 +22,11 @@ tmproot=$(mktemp -d)
 tmpout=$(mktemp -d)
 manifest=${tmpout}/collected_sources_manifest.csv
 
+tar_opts="$(tar --version | grep -qi 'GNU tar' && echo --warning=no-unknown-keyword || echo)"
+
 # this is a bit of a hack, but we need to extract the rootfs tar to a directory, and it fails if
 # we try to extract character devices, block devices or pipes, so we just exclude the dir.
-tar -xf "$rootfs" -C "$tmproot" --exclude "dev/*"
+tar "${tar_opts}" -xf "$rootfs" -C "$tmproot" --exclude "dev/*"
 echo "${tmpout}"
 echo "${outfile}"
 {
@@ -32,5 +34,5 @@ echo "${outfile}"
 "${eve}/build-tools/bin/go-sources-and-licenses" sources -s "${eve}/pkg" --find --out "${tmpout}" --prefix golang --template 'golang,{{.Module}}@{{.Version}},{{.Version}},{{.Path}}'
 "${eve}/build-tools/bin/go-sources-and-licenses" sources -b "${tmproot}" --find --out "${tmpout}" --prefix golang --template 'golang,{{.Module}}@{{.Version}},{{.Version}},{{.Path}}'
 } > "${manifest}"
-tar -zcf "${outfile}" -C "${tmpout}" .
+tar "${tar_opts}" -zcf "${outfile}" -C "${tmpout}" .
 rm -rf "${tmproot}" "${tmpout}"
