@@ -765,20 +765,11 @@ collected_sources_info:
 
 $(SBOM): $(ROOTFS_TAR) | $(INSTALLER)
 	$(QUIET): $@: Begin
-	$(eval TMP_ROOTDIR := $(shell mktemp -d))
-	# this is a bit of a hack, but we need to extract the rootfs tar to a directory, and it fails if
-	# we try to extract character devices, block devices or pipes, so we just exclude the dir.
-	# when syft supports reading straight from a tar archive with duplicate entries,
-	# this all can go away, and we can read the rootfs.tar
-	# see https://github.com/anchore/syft/issues/1400
-	#
 	# the ROOTFS_TAR includes extended PAX headers, which GNU tar does not support.
 	# It does not break, but logs two lines of warnings for each file, which is a lot.
 	# For BSD tar, no need to do anything; for GNU tar, need to add `--warning=no-unknown-keyword`
 	$(eval TAR_OPTS = $(shell tar --version | grep -qi 'GNU tar' && echo --warning=no-unknown-keyword || echo))
-	tar $(TAR_OPTS) -xf $< -C $(TMP_ROOTDIR) --exclude "dev/*"
-	docker run -v $(TMP_ROOTDIR):/rootdir:ro -v $(CURDIR)/.syft.yaml:/syft.yaml:ro $(SYFT_IMAGE) -c /syft.yaml --base-path /rootdir /rootdir > $@
-	rm -rf $(TMP_ROOTDIR)
+	tar $(TAR_OPTS) -xf $< -O sbom.spdx.json > $@
 	$(QUIET): $@: Succeeded
 
 $(GOSOURCES):
