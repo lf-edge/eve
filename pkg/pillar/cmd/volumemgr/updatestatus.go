@@ -34,7 +34,7 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 
 		if status.IsOCIRegistry {
 			if len(status.DatastoreIDList) > 1 {
-				err := fmt.Sprintf("doUpdateContentTree(%s) name %s: OCI registry along with the fallback datastores list is not supported",
+				err := fmt.Sprintf("doUpdateContentTree(%s) name %s: EVE doesn't support multiple datastores for OCI registry. Please use only one datastore",
 					status.Key(), status.DisplayName)
 				log.Errorf(err)
 				status.SetErrorDescription(types.ErrorDescription{Error: err})
