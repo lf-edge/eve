@@ -1001,10 +1001,6 @@ func encodeSystemAdapterInfo(ctx *zedagentContext) *info.SystemAdapterInfo {
 
 		dps.Ports = make([]*info.DevicePort, len(dpc.Ports))
 		for j, p := range dpc.Ports {
-			if !p.IsL3Port {
-				// info for ports from lower layers is not published
-				continue
-			}
 			if i == dpcl.CurrentIndex {
 				// For the currently used DPC we publish the status (DeviceNetworkStatus).
 				portStatus := deviceNetworkStatus.LookupPortByLogicallabel(p.Logicallabel)

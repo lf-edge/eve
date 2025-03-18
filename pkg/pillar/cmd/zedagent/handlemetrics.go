@@ -341,10 +341,6 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 	// Only report stats for the ports in DeviceNetworkStatus
 	for _, p := range deviceNetworkStatus.Ports {
 		var metric *types.NetworkMetric
-		if !p.IsL3Port {
-			// metrics for ports from lower layers are not reported
-			continue
-		}
 		if p.IfName == "" {
 			// Cannot associate metrics with the port until interface name is known.
 			continue
