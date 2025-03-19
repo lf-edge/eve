@@ -1,12 +1,18 @@
-# image was bootstraped using FROM lfedge/eve-alpine-base:fad44e3702708a8d044663a20fd98d933dddb41e AS cache
+# image was bootstraped using FROM lfedge/eve-alpine-base:353bf866797f6e60f91cbe1b00c439634adfcf13 AS cache
 # to update please see https://github.com/lf-edge/eve/blob/master/docs/BUILD.md#how-to-update-eve-alpine-package
-FROM lfedge/eve-alpine:43c5a193374e44350e27fad7ad6fe28a929109b5 AS cache
+FROM lfedge/eve-alpine-base:353bf866797f6e60f91cbe1b00c439634adfcf13 AS cache
+
+FROM lfedge/eve-alpine:b96ae7c5b776702cdc7596e3722e40cc0d353ad7 AS cache-riscv64
+FROM cache AS cache-amd64
+FROM cache AS cache-arm64
+# hadolint ignore=DL3006
+FROM cache-${TARGETARCH} AS cache-build
 
 ARG ALPINE_VERSION=3.16
 # this is only needed once, when this package
 # is rebased on the new version of Alpine and
 # you have to have FROM alpine:x.y.z above:
-# RUN apk update && apk upgrade -a
+RUN apk update && apk upgrade -a
 
 # Copy Dockerfile so we can include it in the hash
 COPY Dockerfile abuild.conf /etc/
@@ -14,6 +20,7 @@ COPY mirrors /tmp/mirrors/
 COPY build-cache.sh /bin/
 
 # install abuild for signing (which requires gcc as well)
+# hadolint ignore=DL3018
 RUN apk add --no-cache abuild gcc sudo
 
 # install a new key into /etc/apk/keys
@@ -42,9 +49,9 @@ RUN apk update
 
 FROM lfedge/eve-alpine:591df01e581889c3027514c8a91feaca1c8ad49f AS compactor
 
-COPY --from=cache /etc/apk/repositories* /etc/apk/
-COPY --from=cache /etc/apk/keys /etc/apk/keys/
-COPY --from=cache /mirror /mirror/
+COPY --from=cache-build /etc/apk/repositories* /etc/apk/
+COPY --from=cache-build /etc/apk/keys /etc/apk/keys/
+COPY --from=cache-build /mirror /mirror/
 COPY eve-alpine-deploy.sh go-compile.sh /bin/
 
 RUN apk update && apk upgrade -a

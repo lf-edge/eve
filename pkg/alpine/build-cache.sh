@@ -8,9 +8,9 @@ bail() {
 
 [ "$#" -gt 2 ] || bail "Usage: $0 <alpine version> <path to the cache> [packages...]"
 
-ALPINE_VERSION=$1
-
-if [ "$ALPINE_VERSION" != "edge" ]; then
+if echo "$1" | grep -q edge; then
+  ALPINE_VERSION=$1
+else
   ALPINE_VERSION=v$1
 fi
 
