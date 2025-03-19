@@ -317,7 +317,7 @@ func (msrv *Msrv) handleWWANStatus() func(http.ResponseWriter, *http.Request) {
 	}
 }
 
-func (msrv *Msrv) handleWWANMeterics() func(http.ResponseWriter, *http.Request) {
+func (msrv *Msrv) handleWWANMetrics() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		msrv.Log.Tracef("wwanMetricsHandler.ServeHTTP")
 		metricsObj, err := msrv.subWwanMetrics.Get("global")
