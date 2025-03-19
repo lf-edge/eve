@@ -643,6 +643,7 @@ func (msrv *Msrv) MakeMetadataHandler() http.Handler {
 
 		r.Get("/wwan/status.json", msrv.handleWWANStatus())
 		r.Get("/wwan/metrics.json", msrv.handleWWANMetrics())
+		r.Get("/networks/metrics.json", msrv.handleNetworkStatusMetrics())
 
 		r.Get("/app/info.json", msrv.handleAppInfo())
 
