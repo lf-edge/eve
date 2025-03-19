@@ -220,6 +220,10 @@ const (
 	// ports for image downloads.
 	DownloadMaxPortCost GlobalSettingKey = "network.download.max.cost"
 
+	// BlobDownloadMaxRetries global setting key
+	// how many times EVE will retry to download a blob if its checksum is not verified
+	BlobDownloadMaxRetries GlobalSettingKey = "blob.download.max.retries"
+
 	// Bool Items
 	// UsbAccess global setting key
 	UsbAccess GlobalSettingKey = "debug.enable.usb"
@@ -342,6 +346,21 @@ const (
 	// address, and MAC address change on EVE node upgrade (switch from old
 	// generation logic to new one) can cause problems with the guest network.
 	NetworkLocalLegacyMACAddress GlobalSettingKey = "network.local.legacy.mac.address"
+	// KubevirtDrainTimeout : how long in hours is allowed for a node drain before a failure is returned
+	KubevirtDrainTimeout GlobalSettingKey = "kubevirt.drain.timeout"
+	// KubevirtDrainSkipK8sApiTimeout : specifies the time duration in seconds which the drain request handler
+	// will continue retrying the k8s api before declaring the node is unavailable and continuing
+	// device operations (reboot/shutdown/upgrade)
+	// This covers the following k8s.io/apimachinery/pkg/api/errors
+	// IsInternalError
+	// IsServerTimeout
+	// IsServiceUnavailable
+	// IsTimeout
+	// IsTooManyRequests
+	KubevirtDrainSkipK8sAPINotReachableTimeout GlobalSettingKey = "kubevirt.drain.skip.k8sapinotreachable.timeout"
+
+	// MemoryMonitorEnabled : Enable memory monitor
+	MemoryMonitorEnabled GlobalSettingKey = "memory-monitor.enabled"
 )
 
 // AgentSettingKey - keys for per-agent settings
@@ -959,6 +978,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	// LogRemainToSendMBytes - Default is 2 Gbytes, minimum is 10 Mbytes
 	configItemSpecMap.AddIntItem(LogRemainToSendMBytes, 2048, 10, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(DownloadMaxPortCost, 0, 0, 255)
+	configItemSpecMap.AddIntItem(BlobDownloadMaxRetries, 5, 1, 10)
 
 	// Goroutine Leak Detection section
 	configItemSpecMap.AddIntItem(GoroutineLeakDetectionThreshold, 5000, 1, 0xFFFFFFFF)
@@ -966,6 +986,10 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddIntItem(GoroutineLeakDetectionCheckWindowMinutes, 10, 10, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(GoroutineLeakDetectionKeepStatsHours, 24, 1, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(GoroutineLeakDetectionCooldownMinutes, 5, 1, 0xFFFFFFFF)
+
+	// Kubevirt Drain Section
+	configItemSpecMap.AddIntItem(KubevirtDrainTimeout, 24, 1, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(KubevirtDrainSkipK8sAPINotReachableTimeout, 300, 1, 0xFFFFFFFF)
 
 	// Add Bool Items
 	configItemSpecMap.AddBoolItem(UsbAccess, true) // Controller likely default to false
@@ -981,6 +1005,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddBoolItem(EnableARPSnoop, true)
 	configItemSpecMap.AddBoolItem(WwanQueryVisibleProviders, false)
 	configItemSpecMap.AddBoolItem(NetworkLocalLegacyMACAddress, false)
+	configItemSpecMap.AddBoolItem(MemoryMonitorEnabled, false)
 
 	// Add TriState Items
 	configItemSpecMap.AddTriStateItem(NetworkFallbackAnyEth, TS_DISABLED)

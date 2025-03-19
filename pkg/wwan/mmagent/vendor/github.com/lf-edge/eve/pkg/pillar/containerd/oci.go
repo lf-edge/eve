@@ -421,7 +421,16 @@ func (s *ociSpec) UpdateWithIoBundles(config *types.DomainConfig, aa *types.Assi
 			logrus.Errorf("could not retrieve information about device file %s", dev)
 			continue
 		}
+		// Add to device + cgroups list
 		s.Linux.Devices = append(s.Linux.Devices, ociDev)
+		cgrDev := &specs.LinuxDeviceCgroup{
+			Allow:  true,
+			Type:   ociDev.Type,
+			Major:  &ociDev.Major,
+			Minor:  &ociDev.Minor,
+			Access: "rwm",
+		}
+		s.Linux.Resources.Devices = append(s.Linux.Resources.Devices, *cgrDev)
 	}
 	return nil
 }

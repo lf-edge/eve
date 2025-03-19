@@ -282,7 +282,7 @@ type AppNetAdapterConfig struct {
 	Name       string           // From proto message
 	AppMacAddr net.HardwareAddr // If set use it for vif
 	AppIPAddr  net.IP           // If set use DHCP to assign to app
-	IntfOrder  int32            // XXX need to get from API
+	IntfOrder  uint32           // Order wrt. other virtual and also directly assigned network adapters
 
 	// XXX Shouldn't we use ErrorAndTime here
 	// Error
@@ -353,10 +353,9 @@ type AppNetAdapterStatus struct {
 	AppNetAdapterConfig
 	VifInfo
 	BridgeMac         net.HardwareAddr
-	BridgeIPAddr      net.IP   // The address for DNS/DHCP service in zedrouter
-	AllocatedIPv4Addr net.IP   // Assigned to domU
-	AllocatedIPv6List []net.IP // IPv6 addresses assigned to domU
-	IPv4Assigned      bool     // Set to true once DHCP has assigned it to domU
+	BridgeIPAddr      net.IP        // The address for DNS/DHCP service in zedrouter
+	AssignedAddresses AssignedAddrs // IPv4 and IPv6 addresses assigned to domU
+	IPv4Assigned      bool          // Set to true once DHCP has assigned it to domU
 	IPAddrMisMatch    bool
 	HostName          string
 }
@@ -368,6 +367,11 @@ type NetworkInstanceInfo struct {
 	BridgeIPAddr  net.IP
 	BridgeMac     net.HardwareAddr
 	BridgeIfindex int
+
+	// Name of a (dummy) interface where ICMP, ARP, DNS and DHCP packets
+	// are mirrored from the bridge and can be used for monitoring purposes.
+	// Empty if mirroring is not available.
+	MirrorIfName string
 
 	// Collection of address assignments; from MAC address to IP address
 	IPAssignments map[string]AssignedAddrs
@@ -384,8 +388,48 @@ type NetworkInstanceInfo struct {
 
 // AssignedAddrs : IP addresses assigned to application network adapter.
 type AssignedAddrs struct {
-	IPv4Addr  net.IP
-	IPv6Addrs []net.IP
+	IPv4Addrs []AssignedAddr
+	IPv6Addrs []AssignedAddr
+}
+
+// GetInternallyLeasedIPv4Addr returns IPv4 address leased by EVE using
+// an internally run DHCP server.
+func (aa AssignedAddrs) GetInternallyLeasedIPv4Addr() net.IP {
+	for _, addr := range aa.IPv4Addrs {
+		if addr.AssignedBy == AddressSourceInternalDHCP {
+			return addr.Address
+		}
+	}
+	return nil
+}
+
+// AddressSource determines the source of an IP address assigned to an app VIF.
+// Values are power of two and therefore can be used with a bit mask.
+type AddressSource uint8
+
+const (
+	// AddressSourceUndefined : IP address source is not defined
+	AddressSourceUndefined AddressSource = 0
+	// AddressSourceEVEInternal : IP address is used only internally by EVE
+	// (i.e. inside dom0).
+	AddressSourceEVEInternal AddressSource = 1 << iota
+	// AddressSourceInternalDHCP : IP address is leased to an app by an internal DHCP server
+	// run by EVE.
+	AddressSourceInternalDHCP
+	// AddressSourceExternalDHCP : IP address is leased to an app by an external DHCP server.
+	AddressSourceExternalDHCP
+	// AddressSourceSLAAC : Stateless Address Autoconfiguration (SLAAC) was used by the client
+	// to generate a unique IPv6 address.
+	AddressSourceSLAAC
+	// AddressSourceStatic : IP address is assigned to an app statically
+	// (using e.g. cloud-init).
+	AddressSourceStatic
+)
+
+// AssignedAddr : IP address assigned to an application interface (on the guest side).
+type AssignedAddr struct {
+	Address    net.IP
+	AssignedBy AddressSource
 }
 
 // VifNameMac : name and MAC address assigned to app VIF.
@@ -665,7 +709,7 @@ type NetworkInstanceConfig struct {
 	Subnet          net.IPNet
 	Gateway         net.IP
 	DomainName      string
-	NtpServer       net.IP
+	NtpServers      []string
 	DnsServers      []net.IP // If not set we use Gateway as DNS server
 	DhcpRange       IPRange
 	DnsNameToIPList []DNSNameToIP // Used for DNS and ACL ipset
@@ -674,6 +718,27 @@ type NetworkInstanceConfig struct {
 	// Route configuration
 	PropagateConnRoutes bool
 	StaticRoutes        []IPRouteConfig
+
+	// Enable flow logging for this network instance.
+	// If enabled, EVE periodically captures metadata about all application TCP and UDP
+	// flows, as well DNS queries.
+	// It is recommended to disable flow logging by default. This is because it may
+	// potentially produce a large amount of data, which is then uploaded to
+	// the controller. Another drawback of flow-logging is that the iptables rules
+	// that EVE installs for network instances are considerably more complicated
+	// because of this feature and thus introduce additional packet processing overhead.
+	EnableFlowlog bool
+
+	// Spanning Tree Protocol configuration.
+	// Only applied for Switch NI with multiple ports.
+	STPConfig STPConfig
+
+	// VLAN access ports configured for a switch network instance.
+	// For other types of network instances, this option is ignored.
+	// This setting applies to physical network ports attached to the network instance.
+	// VLAN configuration for application interfaces is applied separately via AppNetAdapterConfig
+	// (see AppNetAdapterConfig.AccessVlanID).
+	VlanAccessPorts []VlanAccessPort
 
 	// Any errors from the parser
 	// ErrorAndTime provides SetErrorNow() and ClearError()
@@ -709,6 +774,22 @@ type IPRouteConfig struct {
 	// cellular network signal strength. If this option is enabled, EVE will prefer
 	// cellular ports with better signal (only among cellular ports).
 	PreferStrongerWwanSignal bool
+}
+
+// STPConfig : Spanning Tree Protocol configuration.
+// Only applied for Switch NI with multiple ports.
+type STPConfig struct {
+	// Either a single NI port referenced by its name (SystemAdapter.Name, aka logical label)
+	// or an adapter shared-label matching zero or more NI ports.
+	PortsWithBpduGuard string
+}
+
+// VlanAccessPort : config applied to physical port(s) attached to a Switch NI.
+type VlanAccessPort struct {
+	VlanID uint16
+	// Either a single NI port referenced by its name (SystemAdapter.Name, aka logical label)
+	// or an adapter shared-label matching zero or more NI ports.
+	PortLabel string
 }
 
 // ConnectivityProbeMethod -  method to use to determine the connectivity status of a port.
@@ -849,18 +930,6 @@ func (config *NetworkInstanceConfig) IsIPv6() bool {
 	return false
 }
 
-// IsUsingPortBridge returns true if the network instance is using the bridge
-// created (by NIM) for the selected port, instead of creating its own bridge.
-func (config *NetworkInstanceConfig) IsUsingPortBridge() bool {
-	switch config.Type {
-	case NetworkInstanceTypeSwitch:
-		airGapped := config.PortLabel == ""
-		return !airGapped
-	default:
-		return false
-	}
-}
-
 type ChangeInProgressType int32
 
 const (
@@ -911,7 +980,7 @@ type NetworkInstanceStatus struct {
 	// List of NTP servers published to applications connected to this network instance.
 	// This includes the NTP server from the NI config (if any) and all NTP servers
 	// associated with ports used by the network instance for external connectivity.
-	NTPServers []net.IP
+	NTPServers []string
 	// The intended state of the routing table.
 	// Includes user-configured static routes and potentially also automatically
 	// generated default route.
@@ -954,6 +1023,7 @@ type IPRouteStatus struct {
 // IPRouteInfo contains info about a single IP route from the NI routing table.
 // It is published to the controller as part of ZInfoNetworkInstance.
 type IPRouteInfo struct {
+	IPVersion  AddressType
 	DstNetwork *net.IPNet
 	// Nil for connected route.
 	Gateway net.IP
@@ -978,7 +1048,8 @@ func (r IPRouteInfo) IsDefaultRoute() bool {
 
 // Equal compares two IP routes for equality.
 func (r IPRouteInfo) Equal(r2 IPRouteInfo) bool {
-	return netutils.EqualIPs(r.Gateway, r2.Gateway) &&
+	return r.IPVersion == r2.IPVersion &&
+		netutils.EqualIPs(r.Gateway, r2.Gateway) &&
 		netutils.EqualIPNets(r.DstNetwork, r2.DstNetwork) &&
 		r.OutputPort == r2.OutputPort &&
 		r.GatewayApp == r2.GatewayApp
@@ -1025,11 +1096,13 @@ func (status NetworkInstanceStatus) LogKey() string {
 // IsIpAssigned returns true if the given IP address is assigned to any app VIF.
 func (status *NetworkInstanceStatus) IsIpAssigned(ip net.IP) bool {
 	for _, assignments := range status.IPAssignments {
-		if ip.Equal(assignments.IPv4Addr) {
-			return true
+		for _, assignedIP := range assignments.IPv4Addrs {
+			if ip.Equal(assignedIP.Address) {
+				return true
+			}
 		}
-		for _, nip := range assignments.IPv6Addrs {
-			if ip.Equal(nip) {
+		for _, assignedIP := range assignments.IPv6Addrs {
+			if ip.Equal(assignedIP.Address) {
 				return true
 			}
 		}
@@ -1135,7 +1208,7 @@ type FlowRec struct {
 type DNSReq struct {
 	HostName    string
 	Addrs       []net.IP
-	RequestTime int64
+	RequestTime int64 // in nanoseconds
 	ACLNum      int32
 }
 
@@ -1292,4 +1365,10 @@ const (
 	// MACGeneratorGloballyScoped generates MAC addresses which are with high probability
 	// unique globally, i.e. across entire fleet of devices.
 	MACGeneratorGloballyScoped = 2
+	// MACGeneratorClusterDeterministic generates the same MAC address for a given
+	// app interface on every node in the cluster.
+	// Additionally, the probability of MAC address conflict with other devices outside
+	// the cluster is very low (same property that MACGeneratorGloballyScoped
+	// provides).
+	MACGeneratorClusterDeterministic = 3
 )

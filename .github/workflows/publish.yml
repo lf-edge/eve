@@ -22,12 +22,21 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: arm64-secure
-            arch: arm64
           - os: ubuntu-22.04
             arch: amd64
+            platform: "generic"
+          - os: arm64-secure
+            arch: arm64
+            platform: "generic"
+          - os: arm64-secure
+            arch: arm64
+            platform: "nvidia-jp5"
+          - os: arm64-secure
+            arch: arm64
+            platform: "nvidia-jp6"
           - os: ubuntu-latest
             arch: riscv64
+            platform: "generic"
     steps:
       - name: Starting Report
         run: |
@@ -73,7 +82,7 @@ jobs:
           # sadly, our build sometimes times out on network access
           # and running out of disk space: re-trying for 3 times
           for i in 1 2 3; do
-             if make -e V=1 LINUXKIT_PKG_TARGET=push PRUNE=1 pkgs; then
+             if make -e V=1 PLATFORM=${{ matrix.platform }} LINUXKIT_PKG_TARGET=push PRUNE=1 pkgs; then
                 SUCCESS=true
                 break
              else
@@ -111,16 +120,24 @@ jobs:
       matrix:
         arch: [arm64, amd64]
         hv: [kvm, xen]
+        platform: ["generic"]
         include:
           - arch: riscv64
             hv: mini
+            platform: "generic"
+          - arch: arm64
+            hv: kvm
+            platform: "nvidia-jp5"
+          - arch: arm64
+            hv: kvm
+            platform: "nvidia-jp6"
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
       - uses: ./.github/actions/run-make
         with:
-          command: "V=1 HV=${{ matrix.hv }} ZARCH=${{ matrix.arch }} LINUXKIT_PKG_TARGET=push eve"
+          command: "V=1 HV=${{ matrix.hv }} ZARCH=${{ matrix.arch }} PLATFORM=${{ matrix.platform }} LINUXKIT_PKG_TARGET=push eve"
           dockerhub-token: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
           dockerhub-account: ${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}
       - uses: ./.github/actions/run-make

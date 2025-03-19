@@ -4,12 +4,19 @@
 package types
 
 import (
+	"fmt"
+	"strconv"
+	"strings"
 	"time"
 )
 
 const (
-	// DevPrefix - device log file prefix string
+	// DevPrefix - general file prefix string for device log files
 	DevPrefix = "dev.log."
+	// DevPrefixUpload - file prefix string for device log files to upload
+	DevPrefixUpload = "dev.log.upload."
+	// DevPrefixKeep - file prefix string for device log files to keep on device
+	DevPrefixKeep = "dev.log.keep."
 	// AppPrefix - app log file prefix string
 	AppPrefix = "app."
 	// AppSuffix - app log file suffix string, the appuuid is between the AppPrefix and AppSuffix
@@ -65,6 +72,8 @@ type NewlogMetrics struct {
 	NumKmessages          uint64            // total input kmessages
 	NumSyslogMessages     uint64            // total input syslog message
 	DevTop10InputBytesPCT map[string]uint32 // top 10 sources device log input in percentage
+	TotalSizeLogs         uint64            // total size of logs on device
+	OldestSavedDeviceLog  time.Time         // timestamp of the latest device log saved on device
 
 	// upload latency
 	Latency cloudDelay
@@ -74,4 +83,23 @@ type NewlogMetrics struct {
 	// Dev and App file metrics
 	DevMetrics logfileMetrics // Device metrics
 	AppMetrics logfileMetrics // App metrics
+}
+
+// GetTimestampFromGzipName - get timestamp from gzip file name
+func GetTimestampFromGzipName(fName string) (time.Time, error) {
+	// here are example file names:
+	// app.6656f860-7563-4bbf-8bba-051f5942982b.log.1730464687367.gz
+	// dev.log.keep.1730404601953.gz
+	// dev.log.upload.1730404601953.gz
+	// the timestamp is the number between the last two dots
+	nameParts := strings.Split(fName, ".")
+	if len(nameParts) < 2 {
+		return time.Time{}, fmt.Errorf("getTimestampFromGzipName: invalid log file name %s", fName)
+	}
+	timeStr := nameParts[len(nameParts)-2]
+	fTime, err := strconv.Atoi(timeStr)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("getTimestampFromGzipName: %w", err)
+	}
+	return time.Unix(0, int64(fTime)*int64(time.Millisecond)), nil
 }
