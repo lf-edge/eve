@@ -1,4 +1,4 @@
-FROM busybox@sha256:ef320ff10026a50cf5f0213d35537ce0041ac1d96e9b7800bafd8bc9eff6c693 AS builder
+FROM alpine:3.21 AS builder
 
 WORKDIR /rootfs
 
@@ -7,10 +7,10 @@ WORKDIR /rootfs
 # and replace with https for repo url
 RUN case $(uname -m) in \
     x86_64|aarch64) \
-        ROOTFS_URL="https://dl-cdn.alpinelinux.org/alpine/v3.16/releases/$(uname -m)/alpine-minirootfs-3.16.2-$(uname -m).tar.gz"; \
+        ROOTFS_URL="https://dl-cdn.alpinelinux.org/alpine/v3.16/releases/$(uname -m)/alpine-minirootfs-3.16.9-$(uname -m).tar.gz"; \
         ;; \
     riscv64) \
-        ROOT_URL=http://storage.googleapis.com/eve-alpine && \
+        ROOT_URL=https://storage.googleapis.com/eve-alpine && \
         ROOTFS_URL="$ROOT_URL/images/alpine-minirootfs-220909-riscv64.tar.gz"; \
         ;; \
     *) echo "Unsupported architecture $(uname -m). Exiting" && exit 1 \
@@ -34,4 +34,4 @@ COPY --from=builder /rootfs/ /
 
 # set the defaults for docker run
 ENV PATH /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-CMD sh
+CMD ["/bin/sh"]
