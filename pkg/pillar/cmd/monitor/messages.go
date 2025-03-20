@@ -41,6 +41,10 @@ type appInstancesStatus struct {
 	Apps []types.AppInstanceStatus `json:"apps"`
 }
 
+type tuiConfig struct {
+	LogLevel string `json:"log_level"`
+}
+
 func (ctx *monitor) isOnboarded() (bool, uuid.UUID) {
 	sub := ctx.subscriptions["OnboardingStatus"]
 	if item, err := sub.Get("global"); err == nil {
@@ -199,4 +203,18 @@ func (ctx *monitor) sendTpmLogs() {
 	}
 
 	ctx.IPCServer.sendIpcMessage("TpmLogs", tpmLogs)
+}
+
+func (ctx *monitor) processGlobalConfig(cfg *types.ConfigItemValueMap) {
+	if cfg == nil {
+		return
+	}
+
+	logLevel := cfg.GlobalValueString(types.TUIMonitorLogLevel)
+
+	tuiConfig := tuiConfig{
+		LogLevel: logLevel,
+	}
+
+	ctx.IPCServer.sendIpcMessage("TUIConfig", tuiConfig)
 }
