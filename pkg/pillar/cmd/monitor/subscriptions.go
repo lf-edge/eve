@@ -203,6 +203,44 @@ func handleZedAgentStatusUpdate(statusArg interface{}, ctxArg interface{}) {
 	ctx.IPCServer.sendIpcMessage("ZedAgentStatus", status)
 }
 
+func handleGlobalConfigCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleGlobalConfigImpl(ctxArg, key, statusArg)
+}
+
+func handleGlobalConfigModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleGlobalConfigImpl(ctxArg, key, statusArg)
+}
+
+func getGlobalConfig(sub pubsub.Subscription) *types.ConfigItemValueMap {
+	m, err := sub.Get("global")
+	if err != nil {
+		log.Errorf("GlobalConfig - Failed to get key global. err: %s", err)
+		return nil
+	}
+	gc := m.(types.ConfigItemValueMap)
+	return &gc
+}
+
+func handleGlobalConfigImpl(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	if key != "global" {
+		log.Functionf("handleGlobalConfigImpl: ignoring %s", key)
+		return
+	}
+
+	ctx := ctxArg.(*monitor)
+	log.Functionf("handleGlobalConfigImpl for %s", key)
+
+	// Get the global config
+	globalConfig := getGlobalConfig(ctx.subscriptions["GlobalConfig"])
+	ctx.processGlobalConfig(globalConfig)
+
+	log.Functionf("handleGlobalConfigImpl done for %s", key)
+}
+
 func (ctx *monitor) subscribe(ps *pubsub.PubSub) error {
 	var err error
 
@@ -390,6 +428,19 @@ func (ctx *monitor) subscribe(ps *pubsub.PubSub) error {
 		return err
 	}
 
+	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "zedagent",
+		MyAgentName:   agentName,
+		TopicImpl:     types.ConfigItemValueMap{},
+		Persistent:    true,
+		Activate:      false,
+		Ctx:           ctx,
+		CreateHandler: handleGlobalConfigCreate,
+		ModifyHandler: handleGlobalConfigModify,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
+
 	ctx.subscriptions["IOAdapters"] = subPhysicalIOAdapter
 	ctx.subscriptions["VaultStatus"] = subVaultStatus
 	ctx.subscriptions["OnboardingStatus"] = subOnboardStatus
@@ -400,6 +451,7 @@ func (ctx *monitor) subscribe(ps *pubsub.PubSub) error {
 	ctx.subscriptions["AppSummary"] = subAppInstanceSummary
 	ctx.subscriptions["LedBlinkCounter"] = subLedBlinkCounter
 	ctx.subscriptions["ZedAgentStatus"] = subZedAgentStatus
+	ctx.subscriptions["GlobalConfig"] = subGlobalConfig
 	return nil
 }
 
