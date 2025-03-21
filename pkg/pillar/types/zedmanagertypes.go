@@ -89,6 +89,18 @@ type SnapshotConfig struct {
 	Snapshots      []SnapshotDesc    // List of snapshots known to the controller at the moment
 }
 
+// AppRuntimeType specifies the runtime type of the application
+// With the new types of runtime Apps running on EVE, we need to distinguish them
+// to be able to handle them properly. For example, we need to query into the runtime
+// to get the stats from the IoT-Edge runtime or from the Docker-Compose runtime, each
+// of them having different ways and http endpoints to get the stats in various formats.
+type AppRuntimeType int
+
+const (
+	AppRuntimeTypeUnSpecified AppRuntimeType = iota // AppRuntimeTypeUnSpecified
+	AppRuntimeTypeDocker                            // AppRuntimeTypeDocker, for docker compose apps
+)
+
 // This is what we assume will come from the ZedControl for each
 // application instance. Note that we can have different versions
 // configured for the same UUID, hence the key is the UUIDandVersion
@@ -146,6 +158,9 @@ type AppInstanceConfig struct {
 
 	// Am I Cluster Designated Node Id for this app
 	IsDesignatedNodeID bool
+
+	// AppRuntimeType specifies the runtime type of the application
+	DeploymentType AppRuntimeType
 }
 
 type AppInstanceOpsCmd struct {

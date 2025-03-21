@@ -1372,6 +1372,7 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 		VmConfig:       config.VmConfig,
 		Service:        config.Service,
 		NodeName:       ctx.nodeName,
+		DeploymentType: config.DeploymentType,
 	}
 
 	status.VmConfig.CPUs = make([]int, 0)
