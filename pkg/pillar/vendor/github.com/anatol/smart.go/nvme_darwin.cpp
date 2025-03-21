@@ -32,8 +32,8 @@ unsigned int smart_nvme_open_darwin(const char *path, void **ptr) {
   IOCFPlugInInterface **plugin;
   struct smart_nvme_darwin *nvme;
 
-  CFMutableDictionaryRef matcher = IOBSDNameMatching(kIOMasterPortDefault, 0, path);
-  io_object_t disk = IOServiceGetMatchingService(kIOMasterPortDefault, matcher);
+  CFMutableDictionaryRef matcher = IOBSDNameMatching(kIOMainPortDefault, 0, path);
+  io_object_t disk = IOServiceGetMatchingService(kIOMainPortDefault, matcher);
 
   while (!is_smart_capable(disk)) {
     io_object_t prevdisk = disk;
@@ -62,12 +62,17 @@ unsigned int smart_nvme_open_darwin(const char *path, void **ptr) {
   *ptr = malloc(sizeof(struct smart_nvme_darwin));
   nvme = (struct smart_nvme_darwin *)*ptr;
 
+  if (!nvme)
+    goto exit4;
+
   nvme->disk = disk;
   nvme->plugin = plugin;
   nvme->smartIfNVMe = smartIfNVMe;
 
   return 0;
 
+exit4:
+  (*smartIfNVMe)->Release(smartIfNVMe);
 exit3:
   IODestroyPlugInInterface(plugin);
 exit2:

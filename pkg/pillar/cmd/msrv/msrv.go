@@ -105,6 +105,8 @@ type Msrv struct {
 
 	subDomainStatus pubsub.Subscription
 
+	subNetworkMetrics pubsub.Subscription
+
 	subAppNetworkStatus pubsub.Subscription
 
 	subDeviceNetworkStatus pubsub.Subscription
@@ -463,6 +465,19 @@ func (msrv *Msrv) initSubscriptions(persist bool) (err error) {
 		return err
 	}
 
+	// Subscribe to network metrics from zedrouter
+	msrv.subNetworkMetrics, err = msrv.PubSub.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:   "zedrouter",
+		MyAgentName: agentName,
+		TopicImpl:   types.NetworkMetrics{},
+		Activate:    false,
+		WarningTime: warningTime,
+		ErrorTime:   errorTime,
+	})
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -480,6 +495,7 @@ func (msrv *Msrv) Activate() error {
 		msrv.subWwanStatus,
 		msrv.subWwanMetrics,
 		msrv.subDomainStatus,
+		msrv.subNetworkMetrics,
 		msrv.subAppNetworkStatus,
 		msrv.subDeviceNetworkStatus,
 		msrv.subPatchEnvelopeInfo,
@@ -566,6 +582,9 @@ func (msrv *Msrv) Run(ctx context.Context) (err error) {
 		case change := <-msrv.subWwanMetrics.MsgChan():
 			msrv.subWwanMetrics.ProcessChange(change)
 
+		case change := <-msrv.subNetworkMetrics.MsgChan():
+			msrv.subNetworkMetrics.ProcessChange(change)
+
 		case change := <-msrv.subDomainStatus.MsgChan():
 			msrv.subDomainStatus.ProcessChange(change)
 
@@ -623,7 +642,8 @@ func (msrv *Msrv) MakeMetadataHandler() http.Handler {
 		r.Get("/discover-network.json", msrv.handleAppInstanceDiscovery())
 
 		r.Get("/wwan/status.json", msrv.handleWWANStatus())
-		r.Get("/wwan/metrics.json", msrv.handleWWANMeterics())
+		r.Get("/wwan/metrics.json", msrv.handleWWANMetrics())
+		r.Get("/networks/metrics.json", msrv.handleNetworkStatusMetrics())
 
 		r.Get("/app/info.json", msrv.handleAppInfo())
 

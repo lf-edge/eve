@@ -27,6 +27,24 @@ import (
 
 type middlewareKeys int
 
+// Struct to generate the output JSON for Network Status and Metrics
+type networkStatusMetrics struct {
+	IfName              string // Interface's name
+	Up                  bool   // Is interface up?
+	TxBytes             uint64
+	RxBytes             uint64
+	TxDrops             uint64
+	RxDrops             uint64
+	TxPkts              uint64
+	RxPkts              uint64
+	TxErrors            uint64
+	RxErrors            uint64
+	TxACLDrops          uint64 // For implicit deny/drop at end
+	RxACLDrops          uint64 // For implicit deny/drop at end
+	TxACLRateLimitDrops uint64 // For all rate limited rules
+	RxACLRateLimitDrops uint64 // For all rate limited rules
+}
+
 const (
 	patchEnvelopesContextKey middlewareKeys = iota
 	appUUIDContextKey
@@ -317,7 +335,7 @@ func (msrv *Msrv) handleWWANStatus() func(http.ResponseWriter, *http.Request) {
 	}
 }
 
-func (msrv *Msrv) handleWWANMeterics() func(http.ResponseWriter, *http.Request) {
+func (msrv *Msrv) handleWWANMetrics() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		msrv.Log.Tracef("wwanMetricsHandler.ServeHTTP")
 		metricsObj, err := msrv.subWwanMetrics.Get("global")
@@ -785,5 +803,78 @@ func (msrv *Msrv) handleActivateCredentialPost() func(http.ResponseWriter, *http
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		w.Write(out)
+	}
+}
+
+// handleNetworkStatusMetrics handles GET requests for network status and
+// metrics, returning a JSON output with the information of all device used
+// ports: interface name, status (up or down) and network metrics
+func (msrv *Msrv) handleNetworkStatusMetrics() func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		msrv.Log.Tracef("networkStatusMetricsHandler.ServeHTTP")
+
+		// Fetch network status data
+		devNetStatusObj, err := msrv.subDeviceNetworkStatus.Get("global")
+		if err != nil {
+			http.Error(w, http.StatusText(http.StatusNoContent), http.StatusNoContent)
+			return
+		}
+		devNetStatus := devNetStatusObj.(types.DeviceNetworkStatus)
+
+		// Fetch network metrics data
+		metricsObj, err := msrv.subNetworkMetrics.Get("global")
+		if err != nil {
+			http.Error(w, http.StatusText(http.StatusNoContent), http.StatusNoContent)
+			return
+		}
+		metrics := metricsObj.(types.NetworkMetrics)
+
+		// List all (used) device ports
+		devList := make([]networkStatusMetrics, 0)
+		for _, p := range devNetStatus.Ports {
+			var metric *types.NetworkMetric
+			if p.IfName == "" {
+				continue
+			}
+			for _, m := range metrics.MetricList {
+				if p.IfName == m.IfName {
+					metric = &m
+					break
+				}
+			}
+			if metric == nil {
+				continue
+			}
+
+			ifDev := &networkStatusMetrics{
+				IfName:              p.IfName,
+				Up:                  p.Up,
+				TxPkts:              metric.TxPkts,
+				RxPkts:              metric.RxPkts,
+				TxBytes:             metric.TxBytes,
+				RxBytes:             metric.RxBytes,
+				TxDrops:             metric.TxDrops,
+				RxDrops:             metric.RxDrops,
+				TxErrors:            metric.TxErrors,
+				RxErrors:            metric.RxErrors,
+				TxACLDrops:          metric.TxAclDrops,
+				RxACLDrops:          metric.RxAclDrops,
+				TxACLRateLimitDrops: metric.TxAclRateLimitDrops,
+				RxACLRateLimitDrops: metric.RxAclRateLimitDrops,
+			}
+			devList = append(devList, *ifDev)
+		}
+
+		// Create output JSON from devList
+		resp, err := json.Marshal(devList)
+		if err != nil {
+			msg := fmt.Sprintf("Failed to marshal network status and metrics: %v", err)
+			msrv.Log.Errorf(msg)
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Add("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write(resp)
 	}
 }

@@ -363,6 +363,9 @@ const (
 
 	// MemoryMonitorEnabled : Enable memory monitor
 	MemoryMonitorEnabled GlobalSettingKey = "memory-monitor.enabled"
+
+	// TUIMonitorLogLevel: log level for TUI monitor
+	TUIMonitorLogLevel GlobalSettingKey = "debug.tui.loglevel"
 )
 
 // AgentSettingKey - keys for per-agent settings
@@ -1025,6 +1028,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddStringItem(SyslogRemoteLogLevel, "info", validateSyslogKernelLevel)
 	configItemSpecMap.AddStringItem(KernelRemoteLogLevel, "info", validateSyslogKernelLevel)
 	configItemSpecMap.AddStringItem(FmlCustomResolution, FmlResolutionUnset, blankValidator)
+	configItemSpecMap.AddStringItem(TUIMonitorLogLevel, "info", blankValidator)
 
 	// Add Agent Settings
 	configItemSpecMap.AddAgentSettingStringItem(LogLevel, "info", validateLogLevel)

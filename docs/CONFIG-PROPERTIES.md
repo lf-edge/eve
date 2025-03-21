@@ -68,10 +68,11 @@
 | goroutine.leak.detection.cooldown.minutes | integer (minutes) | 5 | Cooldown period in minutes after the leak detection is triggered. During this period, no stack traces are collected; only warning messages are logged. |
 | kubevirt.drain.timeout | integer | 24 | hours to allow kubernetes to drain a node |
 | memory-monitor.enabled | boolean | false | Enable external memory monitoring and memory pressure events handling |
+| debug.tui.loglevel | string | info | Set log level for EVE Text UI (TUI) monitor. Possible values are "OFF", "ERROR", "WARN", "INFO", "DEBUG", "TRACE" and are case insensitive
 
 ## Log levels
 
-Log level can be set for three different components of EVE: EVE microservices, syslog, and kernel.
+Log level can be set for four different components of EVE: EVE microservices, syslog, kernel, and TUI monitor application. Logs for TUI monitor are not sent to the controller and only available locally on the device.
 The log levels set this way are used to control the verbosity of the logs produced by the corresponding components.
 All logs produced this way will be saved locally in /persist/newlog/keepSentQueue/ directory and will be subject to rotation based on the max total size of stored logs.
 
@@ -94,6 +95,7 @@ A corresponding "remote" log level can be set for each of the three components: 
 | debug.syslog.remote.loglevel | string | info | level of the syslog messages sent to the controller. System default loglevel string representation should be used as described here ["https://man7.org/linux/man-pages/man3/syslog.3.html"]: emerg, alert, crit, err, warning, notice, info, debug. |
 | debug.kernel.loglevel | string | info | level of the produced kernel log messages. System default loglevel string representation should be used as described here ["https://man7.org/linux/man-pages/man3/syslog.3.html"]: emerg, alert, crit, err, warning, notice, info, debug. |
 | debug.kernel.remote.loglevel | string | info | level of the kernel log messages sent to the controller. System default loglevel string representation should be used as described here ["https://man7.org/linux/man-pages/man3/syslog.3.html"]: emerg, alert, crit, err, warning, notice, info, debug. |
+debug.tui.loglevel | string | info | Set log level for EVE Text UI (TUI) monitor. Possible values are "OFF", "ERROR", "WARN", "INFO", "DEBUG", "TRACE" and are case insensitive
 
 In addition, there can be per-agent settings to overwrite the default log level set for EVE microservices.
 These use the same log levels as the default log level settings (logrus).

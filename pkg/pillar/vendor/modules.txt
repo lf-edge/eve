@@ -80,8 +80,8 @@ github.com/Microsoft/hcsshim/pkg/ociwclayer
 # github.com/StackExchange/wmi v0.0.0-20190523213315-cbe66965904d
 ## explicit
 github.com/StackExchange/wmi
-# github.com/anatol/smart.go v0.0.0-20220615232124-371056cd18c3
-## explicit; go 1.17
+# github.com/anatol/smart.go v0.0.0-20241126061019-f03d79b340d2
+## explicit; go 1.22
 github.com/anatol/smart.go
 # github.com/andrewd-zededa/go-libzfs v0.0.0-20240304231806-6a64e99da97d
 ## explicit; go 1.13
@@ -914,9 +914,10 @@ github.com/spf13/cobra
 # github.com/spf13/pflag v1.0.5
 ## explicit; go 1.12
 github.com/spf13/pflag
-# github.com/stretchr/testify v1.8.4
-## explicit; go 1.20
+# github.com/stretchr/testify v1.10.0
+## explicit; go 1.17
 github.com/stretchr/testify/assert
+github.com/stretchr/testify/assert/yaml
 github.com/stretchr/testify/require
 # github.com/syndtr/gocapability v0.0.0-20200815063812-42c35b437635
 ## explicit
