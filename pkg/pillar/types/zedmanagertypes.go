@@ -97,8 +97,10 @@ type SnapshotConfig struct {
 type AppRuntimeType int
 
 const (
-	AppRuntimeTypeUnSpecified AppRuntimeType = iota // AppRuntimeTypeUnSpecified
-	AppRuntimeTypeDocker                            // AppRuntimeTypeDocker, for docker compose apps
+	// AppRuntimeTypeUnSpecified is the default value for AppRuntimeType, indicating an unspecified runtime type.
+	AppRuntimeTypeUnSpecified AppRuntimeType = iota
+	// AppRuntimeTypeDocker is used for applications running in a Docker Compose runtime.
+	AppRuntimeTypeDocker
 )
 
 // This is what we assume will come from the ZedControl for each

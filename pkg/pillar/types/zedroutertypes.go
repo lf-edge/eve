@@ -1384,7 +1384,7 @@ const (
 // services may still want to know about those nested apps.
 type NestedAppDomainStatus struct {
 	UUIDandVersion UUIDandVersion // UUID of the nested app, e.g. a Docker-Compose App UUID
-	DisplayName    string         // neested App name
+	DisplayName    string         // nested App name
 	DisableLogs    bool           // if app log is disabled
 	ParentAppUUID  uuid.UUID      // parent app, a runtime VM UUID
 }
