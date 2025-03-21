@@ -914,7 +914,7 @@ cache-export-docker-load: $(LINUXKIT)
 	rm -rf ${TARFILE}
 
 %-cache-export-docker-load: $(LINUXKIT)
-	$(eval IMAGE_TAG := $(shell $(MAKE) $*-show-tag))
+	$(eval IMAGE_TAG := $(shell $(LINUXKIT) pkg show-tag --canonical pkg/$*))
 	$(eval CACHE_CONTENT := $(shell $(LINUXKIT) cache ls 2>&1))
 	$(if $(filter $(IMAGE_TAG),$(CACHE_CONTENT)),$(MAKE) cache-export-docker-load IMAGE=$(IMAGE_TAG),@echo "Missing image $(IMAGE_TAG) in cache")
 
