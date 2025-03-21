@@ -16,6 +16,7 @@ import (
 func init() {
 	logger, log = agentlog.Init(agentName)
 }
+
 func TestGzipParsing(t *testing.T) {
 	t.Parallel()
 	g := NewWithT(t)
