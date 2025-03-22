@@ -176,7 +176,7 @@ func TestNewConfigItemSpecMap(t *testing.T) {
 		Dom0DiskUsageMaxBytes,
 		StorageZfsReserved,
 		ForceFallbackCounter,
-		LogRemainToSendMBytes,
+		MaxGzipLogMBytesInPersist,
 		DownloadMaxPortCost,
 		BlobDownloadMaxRetries,
 		KubevirtDrainTimeout,
