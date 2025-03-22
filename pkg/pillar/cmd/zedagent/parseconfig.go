@@ -716,7 +716,14 @@ func parseAppInstanceConfig(getconfigCtx *getconfigContext,
 		parseVolumeRefList(appInstance.VolumeRefConfigList, cfgApp.GetVolumeRefList(), appInstance.UUIDandVersion.UUID)
 
 		// fill in the collect stats IP address of the App
+		// Get the runtime deployment type of the App
 		appInstance.CollectStatsIPAddr = net.ParseIP(cfgApp.GetCollectStatsIPAddr())
+		switch cfgApp.GetRuntimeType() {
+		case zconfig.AppRuntimeType_APP_RUNTIME_TYPE_DOCKER:
+			appInstance.DeploymentType = types.AppRuntimeTypeDocker
+		default:
+			appInstance.DeploymentType = types.AppRuntimeTypeUnSpecified
+		}
 
 		// fill the app adapter config
 		parseAppNetworkConfig(&appInstance, cfgApp, config.Networks,
