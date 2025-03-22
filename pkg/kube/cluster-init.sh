@@ -277,6 +277,7 @@ external_boot_image_import() {
         eve_external_boot_img="${eve_external_boot_img_name}:${eve_external_boot_img_tag}"
         if /var/lib/k3s/bin/k3s crictl --runtime-endpoint=unix:///run/containerd-user/containerd.sock inspecti "$eve_external_boot_img"; then
                 # Already imported
+                logmsg "external-boot-image $eve_external_boot_img already imported"
                 return 0
         fi
 
@@ -891,6 +892,10 @@ else
                 if [ ! -f /var/lib/node-labels-initialized ]; then
                         reapply_node_labels
                 fi
+                if ! external_boot_image_import; then
+                        continue
+                fi
+
                 # Initialize CNI after k3s reboot
                 if [ ! -d /var/lib/cni/bin ] || [ ! -d /opt/cni/bin ]; then
                         copy_cni_plugin_files
