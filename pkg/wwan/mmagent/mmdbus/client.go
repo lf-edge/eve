@@ -1231,15 +1231,6 @@ func (c *Client) Connect(
 			args.PreferredRATs, modemPath, err)
 		return types.WwanIPSettings{}, err
 	}
-	// Make sure that there are no previously created bearers still hanging
-	// around. Otherwise, we may get "interface-in-use-config-match" error
-	// from ModemManager.
-	err = c.deleteBearers(modemObj)
-	if err != nil {
-		// Just log as warning and continue with the connection attempt.
-		c.log.Warn(err)
-		err = nil
-	}
 	// Prepare connection settings.
 	connProps := make(map[string]interface{})
 	connProps["apn"] = args.APN
@@ -1263,64 +1254,70 @@ func (c *Client) Connect(
 	connProps["allow-roaming"] = !args.ForbidRoaming
 	// Try to connect - first with IPv4-only IP-type.
 	connProps["ip-type"] = uint32(BearerIPFamilyIPv4)
-	ipSettings, err := c.runSimpleConnect(modemObj, connProps)
+	ipSettings, tryLater, err := c.runSimpleConnect(modemObj, connProps)
 	if err == nil {
 		return ipSettings, nil
 	}
 	origErr := fmt.Errorf("failed to connect modem %s to APN %s: %v",
 		modemPath, args.APN, err)
+	if tryLater {
+		return ipSettings, origErr
+	}
 	// TODO: Allow the user to configure IP-type and PDP context for the initial EPS bearer.
-	// For now, we will be retrying connection attempts using all three IP types:
-	// ipv4, ipv6, ipv4v6. However, we will not be modifying the PDP context parameters
-	// for the initial EPS bearer until user is able to configure them.
+	// For now, if registration is failing, we will first try to clear the initial EPS
+	// bearer APN inside the modem PDN profiles and let the network assign the APN expected
+	// for the specific user. If that does not work, the APN configured by the user for
+	// the default bearer is tried for the LTE attach procedure next.
 	//
 	// Some background for understanding: LTE connection consists of two IP bearers,
 	// the initial EPS bearer and the default EPS bearer. Device must first
-	// establish the initial bearer (which shows as transition from the "searching" to
-	// "registered" state) and then it connects to a default bearer (transition from
-	// "registered" to "connected"). Both bearers require PDP context settings (APN,
-	// ip-type, potentially username/password, etc.).
-	// Settings for the initial bearer are typically provided by the SIM card while
-	// settings for the default bearer are user-configured.
+	// establish the initial bearer (LTE attach procedure, which ModemManager shows
+	// as transition from the "searching" to "registered" modem state) and then it connects
+	// to a default bearer (transition from "registered" to "connected"). Both bearers
+	// require PDP context settings (APN, ip-type, potentially username/password, etc.).
+	// Settings for the initial bearer are typically provided by the modem profiles
+	// or the network, while settings for the default bearer are user-configured.
 	//
 	// It is not necessarily the case that the APNs for the initial and default bearers
 	// are the same. We used to make that assumption but this has led to cases where modem
 	// was failing registration because the APN for the initial bearer was wrong. It is
-	// better to let the SIM card provide the PDP context setting for the initial EPS bearer.
+	// better to let the modem/network provide the PDP context setting for the initial EPS bearer.
 	// Furthermore, once these settings are changed, there is no straightforward method to
-	// revert back to the SIM-provided configuration; for more details, see the discussion here:
+	// revert back to the pre-installed modem profile configuration; for more details, see
+	// the discussion here:
 	// https://gitlab.freedesktop.org/NetworkManager/NetworkManager/-/issues/1490#note_2628804
 	//
-	// Users may only need to override SIM-provided settings in rather rare cases: either when
-	// the SIM card has incorrect configuration (we have seen this only once) or when the initial
-	// EPS bearer requires username/password authentication (also uncommon). Despite the rarity
-	// of these cases, these settings should be user-configurable.
+	// It is possible to clear the default attach APN in the modem profiles and let the network
+	// to assign the APN expected for the specific user.
+	// Users may only need to override modem/network-provided settings in rather rare cases:
+	// either when the modem has incorrect configuration pre-installed (we have seen this
+	// only once) or when the initial EPS bearer requires username/password authentication
+	// (also uncommon). Despite the rarity of these cases, these settings should
+	// be user-configurable.
 	// Please note, that the same enhancement was recently implemented in NetworkManager
 	// (used by Ubuntu and other major Linux distributions):
 	// https://gitlab.freedesktop.org/NetworkManager/NetworkManager/-/merge_requests/1915
-	err = c.deleteBearers(modemObj)
-	if err != nil {
-		// Just log as warning and continue with the next connection attempt for different
-		// ip-type.
-		c.log.Warn(err)
-		err = nil
+	changed, err := c.tryToFixModemRegistration(modemObj, args.APN)
+	if changed && err == nil {
+		// Retry connection attempt with IPv4-only IP-type.
+		ipSettings, tryLater, err = c.runSimpleConnect(modemObj, connProps)
+		if err == nil {
+			return ipSettings, nil
+		} else if tryLater {
+			return ipSettings, origErr
+		}
 	}
 	// Try with dual-stack ip-type instead of IPv4 only.
 	connProps["ip-type"] = uint32(BearerIPFamilyIPv4v6)
-	ipSettings, err = c.runSimpleConnect(modemObj, connProps)
+	ipSettings, tryLater, err = c.runSimpleConnect(modemObj, connProps)
 	if err == nil {
 		return ipSettings, nil
-	}
-	err = c.deleteBearers(modemObj)
-	if err != nil {
-		// Just log as warning and continue with the next connection attempt for different
-		// ip-type.
-		c.log.Warn(err)
-		err = nil
+	} else if tryLater {
+		return ipSettings, origErr
 	}
 	// Make the final attempt with IPv6 only.
 	connProps["ip-type"] = uint32(BearerIPFamilyIPv6)
-	ipSettings, err = c.runSimpleConnect(modemObj, connProps)
+	ipSettings, tryLater, err = c.runSimpleConnect(modemObj, connProps)
 	if err == nil {
 		return ipSettings, nil
 	}
@@ -1328,16 +1325,28 @@ func (c *Client) Connect(
 }
 
 func (c *Client) runSimpleConnect(modemObj dbus.BusObject,
-	connProps map[string]interface{}) (types.WwanIPSettings, error) {
-	var ipSettings types.WwanIPSettings
+	connProps map[string]interface{}) (ipSettings types.WwanIPSettings, tryLater bool,
+	err error) {
 	var bearerPath dbus.ObjectPath
 	modem, exists := c.modems[string(modemObj.Path())]
 	if !exists {
-		return ipSettings, fmt.Errorf("unknown modem: %v", modemObj.Path())
+		return ipSettings, true, fmt.Errorf("unknown modem: %v", modemObj.Path())
 	}
-	err := c.callDBusMethod(modemObj, SimpleMethodConnect, &bearerPath, connProps)
+	// Make sure that there are no previously created bearers still hanging
+	// around. Otherwise, we may get "interface-in-use-config-match" error
+	// from ModemManager.
+	err = c.deleteBearers(modemObj)
+	if err != nil {
+		// Just log as warning and continue with the connection attempt.
+		c.log.Warn(err)
+		err = nil
+	}
+	err = c.callDBusMethod(modemObj, SimpleMethodConnect, &bearerPath, connProps)
 	var errIsUseless bool
 	if err != nil {
+		if strings.Contains(err.Error(), "operation already in progress") {
+			return ipSettings, true, err
+		}
 		if strings.HasPrefix(err.Error(), "No such interface") {
 			errIsUseless = true
 		}
@@ -1351,20 +1360,22 @@ func (c *Client) runSimpleConnect(modemObj dbus.BusObject,
 			if !simCard.SlotActivated {
 				continue
 			}
+			// For SIM-related issues we return tryLater as true to immediately
+			// give up in the Connect method.
 			switch simCard.Type {
 			case SIMTypeESIM:
 				switch simCard.State {
 				case SIMStateAbsent:
-					return ipSettings, errors.New("eSIM card is without profile")
+					return ipSettings, true, errors.New("eSIM card is without profile")
 				case SIMStateError:
-					return ipSettings, errors.New("eSIM card is in failed state")
+					return ipSettings, true, errors.New("eSIM card is in failed state")
 				}
 			default:
 				switch simCard.State {
 				case SIMStateAbsent:
-					return ipSettings, errors.New("SIM card is absent")
+					return ipSettings, true, errors.New("SIM card is absent")
 				case SIMStateError:
-					return ipSettings, errors.New("SIM card is in failed state")
+					return ipSettings, true, errors.New("SIM card is in failed state")
 				}
 			}
 		}
@@ -1372,8 +1383,15 @@ func (c *Client) runSimpleConnect(modemObj dbus.BusObject,
 		case types.WwanOpModeUnspecified, types.WwanOpModeOnline,
 			types.WwanOpModeConnected:
 			break
+		case types.WwanOpModeRadioOff:
+			// With radio OFF it makes no sense for the Connect method to try again
+			// immediately. Return tryLater as true.
+			return ipSettings, true, fmt.Errorf("modem is in the radio-off state")
 		default:
-			return ipSettings, fmt.Errorf("modem is not online, current state: %v",
+			// Modem is failing to register.
+			// tryLater is returned as false - it might make sense for the Connect
+			// method to try different APN for the LTE attach procedure.
+			return ipSettings, false, fmt.Errorf("modem is not online, current state: %v",
 				modem.Status.Module.OpMode)
 		}
 	}
@@ -1381,7 +1399,82 @@ func (c *Client) runSimpleConnect(modemObj dbus.BusObject,
 		bearerObj := c.conn.Object(MMInterface, bearerPath)
 		ipSettings, err = c.getBearerIPSettings(bearerObj)
 	}
-	return ipSettings, err
+	// The reason for the failure is unknown. Return tryLater as false to allow the Connect
+	// method to try a different IP type in the PDN config.
+	return ipSettings, false, err
+}
+
+// The method tries to fix failing modem registration (i.e. the LTE attach procedure
+// aiming to establish the initial EPS bearer). First, it tries to clear any previously
+// configured APN to let the network assign the APN expected for the specific user.
+// If that does not work, the same APN as configured for the default bearer is tried
+// for the LTE attach procedure as well.
+// All of this is mostly a workaround for the lack of support to have the LTE attach APN
+// configured by the user through EVE API.
+func (c *Client) tryToFixModemRegistration(modemObj dbus.BusObject,
+	defaultBearerAPN string) (changedConfig bool, err error) {
+	var modemState int32
+	_ = getDBusProperty(c, modemObj, ModemPropertyState, &modemState)
+	if modemState >= ModemStateRegistered {
+		// Already registered.
+		return false, nil
+	}
+	epsBearerConfig := make(map[string]interface{})
+	epsBearerConfig["apn"] = ""
+	c.log.Warnf("Modem %s is failing to register, "+
+		"trying to clear the initial EPS bearer APN in the modem profile to let the network "+
+		"assign the APN expected for the specific user", modemObj.Path())
+	err = c.callDBusMethod(modemObj, Modem3GPPMethodSetInitialEpsBearer,
+		nil, epsBearerConfig)
+	if err != nil {
+		err = fmt.Errorf(
+			"failed to change initial EPS bearer settings for modem %s: %w",
+			modemObj.Path(), err)
+		c.log.Error(err)
+		return false, err
+	}
+	err = c.waitForModemState(
+		modemObj, ModemStateRegistered, changeInitEPSBearerTimeout)
+	if err == nil {
+		c.log.Noticef("Modem %s registration was fixed by clearing the APN "+
+			"in the modem profile", modemObj.Path())
+		return true, nil
+	}
+	epsBearerConfig["apn"] = defaultBearerAPN
+	c.log.Warnf("Modem %s is failing to register, trying to establish the initial "+
+		"bearer with the same APN (%s) as configured for the default bearer",
+		modemObj.Path(), defaultBearerAPN)
+	err = c.callDBusMethod(modemObj, Modem3GPPMethodSetInitialEpsBearer,
+		nil, epsBearerConfig)
+	if err != nil {
+		err = fmt.Errorf(
+			"failed to change initial EPS bearer settings for modem %s: %w",
+			modemObj.Path(), err)
+		c.log.Error(err)
+		return true, err
+	}
+	err = c.waitForModemState(
+		modemObj, ModemStateRegistered, changeInitEPSBearerTimeout)
+	if err == nil {
+		c.log.Noticef("Modem %s registration was fixed by using the default "+
+			"bearer APN for the LTE attach procedure as well", modemObj.Path())
+		return true, nil
+	}
+	// Go back to cleared APN, i.e. APN selected by the network, which has
+	// better chance of success to register the modem between connection attempts.
+	epsBearerConfig["apn"] = ""
+	c.log.Warnf("Modem %s is (still) failing to register, "+
+		"leaving the initial EPS bearer APN cleared", modemObj.Path())
+	// Do not overwrite the more important error related to failed registration.
+	err2 := c.callDBusMethod(modemObj, Modem3GPPMethodSetInitialEpsBearer,
+		nil, epsBearerConfig)
+	if err2 != nil {
+		err2 = fmt.Errorf(
+			"failed to change initial EPS bearer settings for modem %s: %w",
+			modemObj.Path(), err2)
+		c.log.Error(err2)
+	}
+	return true, err
 }
 
 // maskPassword creates a copy of the original map with the "password" key's value masked
