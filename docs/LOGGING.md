@@ -88,6 +88,34 @@ There are no granularity nobs for the edge apps' log levels - all logs generated
 
 For the full list of log level parameters and the possible values, see the [config-properties](CONFIG-PROPERTIES.md#log-levels) doc.
 
+## Log filtering, counting and deduplication
+
+To reduce the amount of logs sent to the controller, EVE offers three mechanisms:
+
+* filter
+* counter
+* deduplicator
+
+All of the above are implemented in the newlogd daemon.
+The transformations are performed when newlog compresses the logs into gzip files.
+
+Filter simply removes the specified log entries from the log file.
+
+Counter counts the number of specified log entries and only keeps the first occurrence of the specified log entries.
+It also adds a "count" tag to that log entry with the number of times that log entry was repeated in the file.
+
+The identifier for the log entries to be filtered or counted is the field "Filename" that's present in every [log entry](https://github.com/lf-edge/eve-api/go/logs/log.pb.go#L39).
+It's a string that contains the name of the source code file and the line number where the log entry was generated (e.g. "/my-pkg/main.go:123").
+The config properties for the filter and counter are:
+
+* `log.count.filenames`
+* `log.filter.filenames`
+
+Deduplicator goes through all log entries in the file, keeping a sliding window of the last N error messages.
+It checks: if the N+1'th message is already in the window - it is not logged.
+Either way the first message in the window is replaced with the new message (FIFO).
+The window size is configurable via the `log.dedup.window.size` config property.
+
 ## Log export to cloud
 
 "loguploader" is a pillar service which is responsible for uploading the gzip log files to the controller. The binary data of a gzip file is the payload portion of the authentication protobuf envolope structure. This is similar to all the other EVE POST messages, except that in those messages the payload usually is data of another protobuf structure.
