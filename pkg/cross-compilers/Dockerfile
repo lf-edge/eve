@@ -1,8 +1,8 @@
-FROM lfedge/eve-alpine:591df01e581889c3027514c8a91feaca1c8ad49f as build-base
+FROM lfedge/eve-alpine:0f2e0da38e30753c68410727a6cc269e57ff74f2 as build-base
 ENV BUILD_PKGS abuild curl tar make linux-headers patch g++ git gcc ncurses-dev autoconf file sudo
 RUN eve-alpine-deploy.sh
 
-ENV ALPINE_VERSION 3.16.2
+ENV ALPINE_VERSION 3.16.9
 ENV APORTS /home/builder/aports
 
 # setting up building account and output directory
@@ -47,7 +47,7 @@ FROM build-base as build-armhf
 # we do not support cross-compilers for riscv64 host
 # as gcc-gnat is not available on riscv64
 # we cannot build cross-compilers without additional patches
-FROM lfedge/eve-alpine:591df01e581889c3027514c8a91feaca1c8ad49f as build-riscv64
+FROM lfedge/eve-alpine:0f2e0da38e30753c68410727a6cc269e57ff74f2 as build-riscv64
 
 # hadolint ignore=DL3006
 FROM build-${TARGETARCH} as build
