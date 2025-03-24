@@ -453,7 +453,7 @@ currentversion:
 
 .PHONY: currentversion linuxkit pkg/kernel
 
-test: $(LINUXKIT) test-images-patches | $(DIST)
+test: $(LINUXKIT) pkg/pillar test-images-patches | $(DIST)
 	@echo Running tests on $(GOMODULE)
 	make -C pkg/pillar test
 	cp pkg/pillar/results.json $(DIST)/
