@@ -698,6 +698,9 @@ github.com/lf-edge/eve-libs/zedUpload/httputil
 github.com/lf-edge/eve-libs/zedUpload/ociutil
 github.com/lf-edge/eve-libs/zedUpload/sftputil
 github.com/lf-edge/eve-libs/zedUpload/types
+# github.com/lf-edge/eve-tools/runtimemetrics/go v0.0.0-20250320220227-713ea9d6c6d2
+## explicit; go 1.22.2
+github.com/lf-edge/eve-tools/runtimemetrics/go/nestedappinstancemetrics
 # github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20240315102754-0f6d1f182e0d
 ## explicit; go 1.20
 github.com/lf-edge/eve/pkg/kube/cnirpc
