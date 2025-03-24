@@ -660,6 +660,11 @@ func (z *zedrouter) handleAppNetworkDelete(ctxArg interface{}, key string,
 	// Write out what we modified to AppNetworkStatus aka delete
 	z.unpublishAppNetworkStatus(status)
 
+	// Unpublish AppContainerStats
+	if config.GetStatsIPAddr != nil {
+		z.pubAppContainerStats.Unpublish(status.Key())
+	}
+
 	// Free all numbers allocated for this app network.
 	appNumKey := types.UuidToNumKey{UUID: status.UUIDandVersion.UUID}
 	err := z.appNumAllocator.Free(appNumKey, false)

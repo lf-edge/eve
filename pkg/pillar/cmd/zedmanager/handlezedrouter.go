@@ -75,6 +75,7 @@ func MaybeAddAppNetworkConfig(ctx *zedmanagerContext,
 			CloudInitUserData: aiConfig.CloudInitUserData,
 			CipherBlockStatus: aiConfig.CipherBlockStatus,
 			MetaDataType:      aiConfig.MetaDataType,
+			DeploymentType:    aiConfig.DeploymentType, // can not be dynamically changed
 		}
 		nc.AppNetAdapterList = make([]types.AppNetAdapterConfig,
 			len(aiConfig.AppNetAdapterList))

@@ -154,6 +154,9 @@ type zedrouter struct {
 	// Kubernetes networking
 	withKubeNetworking bool
 	cniRequests        chan *rpcRequest
+
+	// publist nested App Status
+	pubNestedAppDomainStatus pubsub.Publication
 }
 
 // AddAgentSpecificCLIFlags adds CLI options
@@ -573,6 +576,15 @@ func (z *zedrouter) initPublications() (err error) {
 		pubsub.PublicationOptions{
 			AgentName: agentName,
 			TopicType: types.MetricsMap{},
+		})
+	if err != nil {
+		return err
+	}
+
+	z.pubNestedAppDomainStatus, err = z.pubSub.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName: agentName,
+			TopicType: types.NestedAppDomainStatus{},
 		})
 	if err != nil {
 		return err
