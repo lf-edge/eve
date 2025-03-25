@@ -634,7 +634,8 @@ var appinstancePrevConfigHash []byte
 
 func parseAppInstanceConfig(getconfigCtx *getconfigContext,
 	config *zconfig.EdgeDevConfig) {
-
+	// This checks if the configuration that we get from the server has changed.
+	// if not, we will leave the function. Else we will try to create the Apps.
 	Apps := config.GetApps()
 	h := sha256.New()
 	for _, a := range Apps {
@@ -654,7 +655,8 @@ func parseAppInstanceConfig(getconfigCtx *getconfigContext,
 
 	devUUIDStr := config.GetId().Uuid
 
-	// First look for deleted ones
+	// First look for deleted ones. Look for Apps that exists on EVE OS, but not in the config
+	// file from the server. If yes, we will remove the App from the EVE OS.
 	items := getconfigCtx.pubAppInstanceConfig.GetAll()
 	for uuidStr := range items {
 		found := false

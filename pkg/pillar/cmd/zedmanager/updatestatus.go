@@ -185,6 +185,29 @@ func doUpdate(ctx *zedmanagerContext,
 			return true
 		}
 	}
+
+	// Check if the App is low priority.
+	// Load the UUIDs of the apps that were previously (before the reboot) in the ACTIVE state.
+	var hasPriority bool
+	activeAppsUUIDs, err := loadActiveAppInstanceUUIDs()
+	if err != nil {
+		log.Warningf("checkLowPriorityApps: failed to load active app instance UUIDs: %v", err)
+		activeAppsUUIDs = []string{} // Fallback to an empty list
+	}
+	// Check if the app is in the active list
+	log.Functionf("Processing AppInstanceConfig for app with UUID: %s", config.UUIDandVersion.UUID.String())
+	for _, uuid := range activeAppsUUIDs {
+		log.Functionf("active app instance UUID: %s", uuid)
+		if uuid == config.UUIDandVersion.UUID.String() {
+			hasPriority = true
+		}
+	}
+	if !hasPriority && !status.NoBootPriority {
+		log.Functionf("low priority app %s", uuidStr)
+		status.NoBootPriority = true
+		return true
+	}
+
 	// The existence of Config is interpreted to mean the
 	// AppInstance should be INSTALLED. Activate is checked separately.
 	changed, done = doInstall(ctx, config, status)
@@ -248,6 +271,7 @@ func doUpdate(ctx *zedmanagerContext,
 		return changed
 	}
 	log.Functionf("Have config.Activate for %s", uuidStr)
+
 	c = doActivate(ctx, uuidStr, config, status)
 	changed = changed || c
 	log.Functionf("doUpdate done for %s", uuidStr)
