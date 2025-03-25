@@ -12,7 +12,9 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
@@ -33,8 +35,9 @@ import (
 const (
 	agentName = "zedmanager"
 	// Time limits for event loop handlers
-	errorTime   = 3 * time.Minute
-	warningTime = 40 * time.Second
+	errorTime                 = 3 * time.Minute
+	warningTime               = 40 * time.Second
+	waitForAppsToStartTimeout = 5 * time.Minute
 )
 
 // State used by handlers
@@ -101,7 +104,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		agentbase.WithArguments(arguments))
 
 	ctx.assignableAdapters = &types.AssignableAdapters{}
-
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
 	ps.StillRunning(agentName, warningTime, errorTime)
@@ -449,6 +451,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 	// The ticker that triggers a check for the applications in the START_DELAYED state
 	delayedStartTicker := time.NewTicker(1 * time.Second)
+	priorityStartTicker := time.NewTicker(5 * time.Second)
 
 	log.Functionf("Handling all inputs")
 	for {
@@ -506,6 +509,8 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		case <-delayedStartTicker.C:
 			checkDelayedStartApps(&ctx)
 
+		case <-priorityStartTicker.C:
+			checkLowPriorityApps(&ctx)
 		case <-stillRunning.C:
 		}
 		ps.StillRunning(agentName, warningTime, errorTime)
@@ -602,6 +607,39 @@ func checkDelayedStartApps(ctx *zedmanagerContext) {
 			status.State = types.INSTALLED
 			doUpdate(ctx, config, status)
 			publishAppInstanceStatus(ctx, status)
+		}
+	}
+}
+
+// Handle the applications in Low Priority state ready to be started.
+// Get the list of the Apps in High priority state and check if they are running.
+// If all the High priority apps are running or the timeout has expired, then
+// we can start the Low priority apps.
+func checkLowPriorityApps(ctx *zedmanagerContext) {
+	activeAppsUUIDs, err := loadActiveAppInstanceUUIDs()
+	if err != nil {
+		log.Warningf("checkLowPriorityApps: failed to load active app instance UUIDs: %v", err)
+		activeAppsUUIDs = []string{} // Fallback to an empty list
+	}
+	activeMap := make(map[string]struct{})
+	for _, uuid := range activeAppsUUIDs {
+		activeMap[uuid] = struct{}{}
+	}
+	log.Functionf("check low priority apps: %v", activeMap)
+	runningCount := countRunningAppsForUUIDs(ctx, activeMap)
+	if runningCount >= uint(len(activeMap)) || time.Now().After(ctx.delayBaseTime.Add(waitForAppsToStartTimeout)) {
+		configs := ctx.subAppInstanceConfig.GetAll()
+		for _, c := range configs {
+			config := c.(types.AppInstanceConfig)
+			if localConfig := lookupLocalAppInstanceConfig(ctx, config.Key()); localConfig != nil {
+				config = *localConfig
+			}
+			status := lookupAppInstanceStatus(ctx, config.Key())
+			if status != nil && status.NoBootPriority {
+				doUpdate(ctx, config, status)
+				status.NoBootPriority = false
+				publishAppInstanceStatus(ctx, status)
+			}
 		}
 	}
 }
@@ -1107,6 +1145,31 @@ func handleCreate(ctxArg interface{}, key string,
 		config.UUIDandVersion, config.DisplayName)
 
 	handleCreateAppInstanceStatus(ctx, config)
+}
+
+// loadActiveAppInstanceUUIDs reads all JSON files from the specified directory,
+// extracts the UUID from each filename (by removing the ".json" extension),
+// and returns a slice of UUIDs.
+func loadActiveAppInstanceUUIDs() ([]string, error) {
+	// Read all directory entries using os.ReadDir.
+	entries, err := os.ReadDir(types.LocalActiveAppConfigDir)
+	if err != nil {
+		return nil, err
+	}
+
+	var uuids []string
+	// Iterate over all entries found.
+	for _, entry := range entries {
+		// We only care about files (not subdirectories) with a .json extension.
+		if !entry.IsDir() && filepath.Ext(entry.Name()) == ".json" {
+			// Remove the .json extension to get the UUID.
+			uuid := strings.TrimSuffix(entry.Name(), ".json")
+			log.Noticef("Found active app instance UUID: %s", uuid)
+			uuids = append(uuids, uuid)
+		}
+	}
+
+	return uuids, nil
 }
 
 func handleCreateAppInstanceStatus(ctx *zedmanagerContext, config types.AppInstanceConfig) {
@@ -1653,6 +1716,27 @@ func updateBasedOnProfile(ctx *zedmanagerContext, oldProfile string) {
 			}
 		}
 	}
+}
+
+// countRunningAppsForUUIDs returns the number of app instances (from the provided uuidMap)
+// that are in a running state (BOOTING, RUNNING, HALTING, START_DELAYED).
+func countRunningAppsForUUIDs(ctx *zedmanagerContext, uuidMap map[string]struct{}) (runningCount uint) {
+	sub := ctx.subAppInstanceStatus
+	items := sub.GetAll()
+	log.Noticef("countRunningAppsForUUIDs: %d items", len(items))
+	for _, s := range items {
+		status := s.(types.AppInstanceStatus)
+		log.Noticef("countRunningAppsForUUIDs: %s %s", status.UUIDandVersion, status.State)
+		// Check if this status belongs to one of the app UUIDs in our map.
+		if _, exists := uuidMap[status.UUIDandVersion.UUID.String()]; !exists {
+			continue
+		}
+		switch status.State {
+		case types.BOOTING, types.RUNNING, types.HALTING, types.START_DELAYED:
+			runningCount++
+		}
+	}
+	return runningCount
 }
 
 // returns effective Activate status based on Activate from app instance config, current profile
