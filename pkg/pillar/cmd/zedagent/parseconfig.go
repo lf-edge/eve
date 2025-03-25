@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"hash"
+	"io/ioutil"
 	"net"
 	"net/url"
 	"os"
@@ -38,8 +39,9 @@ const (
 	ifNameMaxLength = 15
 
 	// range of valid VLAN IDs
-	minVlanID = 1
-	maxVlanID = 4094
+	minVlanID          = 1
+	maxVlanID          = 4094
+	waitForAppsToStart = 1 * time.Minute
 )
 
 func parseConfig(getconfigCtx *getconfigContext, config *zconfig.EdgeDevConfig,
@@ -632,9 +634,200 @@ func parseNetworkInstanceConfig(getconfigCtx *getconfigContext,
 
 var appinstancePrevConfigHash []byte
 
+// processAppInstance processes a single app configuration and applies its settings.
+// It extracts the code that creates and populates an AppInstanceConfig from the cfgApp.
+func processAppInstance(getconfigCtx *getconfigContext, cfgApp *zconfig.AppInstanceConfig, config *zconfig.EdgeDevConfig, devUUIDStr string) {
+	// Log that we are processing a new or updated app instance.
+	log.Functionf("New/updated app instance %v", cfgApp)
+	var appInstance types.AppInstanceConfig
+
+	// Populate the basic fields.
+	appInstance.UUIDandVersion.UUID, _ = uuid.FromString(cfgApp.Uuidandversion.Uuid)
+	appInstance.UUIDandVersion.Version = cfgApp.Uuidandversion.Version
+	appInstance.DisplayName = cfgApp.Displayname
+	appInstance.Activate = cfgApp.Activate
+
+	appInstance.FixedResources.Kernel = cfgApp.Fixedresources.Kernel
+	appInstance.FixedResources.BootLoader = cfgApp.Fixedresources.Bootloader
+	appInstance.FixedResources.Ramdisk = cfgApp.Fixedresources.Ramdisk
+	appInstance.FixedResources.MaxMem = int(cfgApp.Fixedresources.Maxmem)
+	appInstance.FixedResources.VMMMaxMem = int(cfgApp.Fixedresources.VmmMaxmem)
+	appInstance.FixedResources.Memory = int(cfgApp.Fixedresources.Memory)
+	appInstance.FixedResources.RootDev = cfgApp.Fixedresources.Rootdev
+	appInstance.FixedResources.VCpus = int(cfgApp.Fixedresources.Vcpus)
+	appInstance.FixedResources.MaxCpus = int(cfgApp.Fixedresources.Maxcpus)
+	appInstance.FixedResources.VirtualizationMode = types.VmMode(cfgApp.Fixedresources.VirtualizationMode)
+	appInstance.FixedResources.EnableVnc = cfgApp.Fixedresources.EnableVnc
+	appInstance.FixedResources.VncDisplay = cfgApp.Fixedresources.VncDisplay
+	appInstance.FixedResources.EnforceNetworkInterfaceOrder =
+		cfgApp.Fixedresources.EnforceNetworkInterfaceOrder
+	appInstance.DisableLogs = cfgApp.Fixedresources.DisableLogs
+	appInstance.MetaDataType = types.MetaDataType(cfgApp.MetaDataType)
+	appInstance.Delay = time.Duration(cfgApp.StartDelayInSeconds) * time.Second
+	appInstance.Service = cfgApp.Service
+	appInstance.CloudInitVersion = cfgApp.CloudInitVersion
+	appInstance.FixedResources.CPUsPinned = cfgApp.Fixedresources.PinCpu
+	appInstance.FixedResources.EnableOemWinLicenseKey = cfgApp.Fixedresources.EnableOemWinLicenseKey
+
+	// Parse the snapshot related fields
+	if cfgApp.Snapshot != nil {
+		parseSnapshotConfig(&appInstance.Snapshot, cfgApp.Snapshot)
+	}
+
+	appInstance.VolumeRefConfigList = make([]types.VolumeRefConfig,
+		len(cfgApp.VolumeRefList))
+	parseVolumeRefList(appInstance.VolumeRefConfigList, cfgApp.GetVolumeRefList(), appInstance.UUIDandVersion.UUID)
+
+	// fill in the collect stats IP address of the App
+	appInstance.CollectStatsIPAddr = net.ParseIP(cfgApp.GetCollectStatsIPAddr())
+
+	// fill the app adapter config
+	parseAppNetworkConfig(&appInstance, cfgApp, config.Networks,
+		config.NetworkInstances)
+
+	// I/O adapters
+	appInstance.IoAdapterList = nil
+	for _, adapter := range cfgApp.Adapters {
+		log.Tracef("Processing adapter type %d name %s",
+			adapter.Type, adapter.Name)
+		ioa := types.IoAdapter{Type: types.IoType(adapter.Type), Name: adapter.Name}
+		if ioa.Type == types.IoNetEthVF && adapter.EthVf != nil {
+			// not checking lower bound, since it's zero if VlanId is not specified
+			if adapter.EthVf.VlanId > maxVlanID {
+				log.Errorf("Incorrect VlanID %d for adapter %s", adapter.EthVf.VlanId, adapter)
+				continue
+			}
+			hwaddr, err := net.ParseMAC(adapter.EthVf.Mac)
+			if err != nil {
+				log.Errorf("Failed to parse hardware address for adapter %s: %s", adapter.Name, err)
+			}
+			ioa.EthVf = sriov.EthVF{
+				Mac:    hwaddr.String(),
+				VlanID: uint16(adapter.EthVf.VlanId)}
+		} else if ioa.Type == types.IoCAN || ioa.Type == types.IoVCAN || ioa.Type == types.IoLCAN {
+			log.Functionf("Got CAN adapter")
+		}
+		if ioa.Type.IsNet() && appInstance.FixedResources.EnforceNetworkInterfaceOrder {
+			ioa.IntfOrder = adapter.GetInterfaceOrder()
+		}
+		appInstance.IoAdapterList = append(appInstance.IoAdapterList, ioa)
+	}
+	log.Functionf("Got adapters %v", appInstance.IoAdapterList)
+
+	cmd := cfgApp.GetRestart()
+	if cmd != nil {
+		appInstance.RestartCmd.Counter = cmd.Counter
+		appInstance.RestartCmd.ApplyTime = cmd.OpsTime
+	}
+	cmd = cfgApp.GetPurge()
+	if cmd != nil {
+		appInstance.PurgeCmd.Counter = cmd.Counter
+		appInstance.PurgeCmd.ApplyTime = cmd.OpsTime
+	}
+	userData := cfgApp.GetUserData()
+	if userData != "" {
+		appInstance.CloudInitUserData = &userData
+	}
+	appInstance.RemoteConsole = cfgApp.GetRemoteConsole()
+	appInstance.CipherBlockStatus = parseCipherBlock(getconfigCtx, appInstance.Key(), cfgApp.GetCipherData())
+	appInstance.ProfileList = cfgApp.ProfileList
+
+	// Add config submitted via local profile server.
+	addLocalAppConfig(getconfigCtx, &appInstance)
+
+	controllerDNID := cfgApp.GetDesignatedNodeId()
+	// If this node is designated node id set IsDesignatedNodeID to true else false.
+	// On single node eve either kvm or kubevirt based, this node will always be designated node.
+	if controllerDNID != "" && controllerDNID != devUUIDStr {
+		appInstance.IsDesignatedNodeID = false
+	} else {
+		appInstance.IsDesignatedNodeID = true
+	}
+
+	// Verify that it fits and if not publish with error
+	checkAndPublishAppInstanceConfig(getconfigCtx, appInstance)
+}
+
+// loadActiveAppInstanceUUIDs reads all JSON files from the specified directory,
+// extracts the UUID from each filename (by removing the ".json" extension),
+// and returns a slice of UUIDs.
+func loadActiveAppInstanceUUIDs() ([]string, error) {
+	// Define the directory containing the JSON files.
+	dir := "/persist/vault/active-app-instance-config"
+
+	// Read all files in the directory.
+	files, err := ioutil.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+
+	var uuids []string
+	// Iterate over all files found.
+	for _, file := range files {
+		// We only care about files (not subdirectories) that have a .json extension.
+		if !file.IsDir() && strings.HasSuffix(file.Name(), ".json") {
+			// Remove the .json extension to get the UUID.
+			uuid := strings.TrimSuffix(file.Name(), ".json")
+			uuids = append(uuids, uuid)
+		}
+	}
+
+	return uuids, nil
+}
+
+// countRunningAppsForUUIDs returns the number of app instances (from the provided uuidMap)
+// that are in a running state (BOOTING, RUNNING, HALTING, PURGING, or RESTARTING).
+func countRunningAppsForUUIDs(getconfigCtx *getconfigContext, uuidMap map[string]bool) (runningCount uint) {
+	sub := getconfigCtx.subAppInstanceStatus
+	items := sub.GetAll()
+	for _, s := range items {
+		status := s.(types.AppInstanceStatus)
+		// Check if this status belongs to one of the app UUIDs in our map.
+		if !uuidMap[status.UUIDandVersion.UUID.String()] {
+			continue
+		}
+		switch status.State {
+		case types.BOOTING, types.RUNNING, types.HALTING:
+			runningCount++
+		}
+	}
+	return runningCount
+}
+
+// waitForAppsToStart waits (blocking) until all apps in the provided uuidMap have started,
+// as determined by countRunningAppsForUUIDs. It checks the status every 5 seconds and times out after 1 minute.
+func waitForPrevAppsToStart(getconfigCtx *getconfigContext, uuidMap map[string]bool) {
+	totalApps := len(uuidMap)
+
+	// Create a ticker that fires every 5 seconds.
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+
+	// Create a channel that signals timeout.
+	timeoutCh := time.After(waitForAppsToStart)
+	startTime := time.Now()
+
+	for {
+		getconfigCtx.zedagentCtx.ps.StillRunning(agentName, warningTime, errorTime)
+		select {
+		case <-ticker.C:
+			runningCount := countRunningAppsForUUIDs(getconfigCtx, uuidMap)
+			log.Noticef("waitForAppsToStart: %d/%d apps running, waited %v", runningCount, totalApps, time.Since(startTime))
+			if runningCount >= uint(totalApps) {
+				log.Noticef("waitForAppsToStart: all apps started after %v", time.Since(startTime))
+				return
+			}
+		case <-timeoutCh:
+			log.Noticef("waitForAppsToStart: timeout reached after %v", time.Since(startTime))
+			return
+		}
+	}
+}
+
 func parseAppInstanceConfig(getconfigCtx *getconfigContext,
 	config *zconfig.EdgeDevConfig) {
-
+	// This checks if the configuration that we get from the server has changed.
+	// if not, we will leave the function. Else we will try to create the Apps.
 	Apps := config.GetApps()
 	h := sha256.New()
 	for _, a := range Apps {
@@ -654,7 +847,8 @@ func parseAppInstanceConfig(getconfigCtx *getconfigContext,
 
 	devUUIDStr := config.GetId().Uuid
 
-	// First look for deleted ones
+	// First look for deleted ones. Look for Apps that exists on EVE OS, but not in the config
+	// file from the server. If yes, we will remove the App from the EVE OS.
 	items := getconfigCtx.pubAppInstanceConfig.GetAll()
 	for uuidStr := range items {
 		found := false
@@ -671,118 +865,36 @@ func parseAppInstanceConfig(getconfigCtx *getconfigContext,
 		}
 	}
 
+	// Load the UUIDs of the apps that were previously in the ACTIVE state.
+	activeAppsUUIDs, err := loadActiveAppInstanceUUIDs()
+	if err != nil {
+		log.Errorf("Failed to load active app instance UUIDs: %s", err)
+	}
+
+	// Build a lookup map from active UUIDs for quick check.
+	activeMap := make(map[string]bool)
+	for _, uuid := range activeAppsUUIDs {
+		activeMap[uuid] = true
+	}
+
+	// Process in two phases:
+	// Phase 1: Process apps whose UUID appears in activeAppsUUIDs.
+	// Also, remove them from the original Apps slice.
+	var remainingApps []*zconfig.AppInstanceConfig
 	for _, cfgApp := range Apps {
-		// Note that we repeat this even if the app config didn't
-		// change but something else in the EdgeDeviceConfig did
-		log.Tracef("New/updated app instance %v", cfgApp)
-		var appInstance types.AppInstanceConfig
-
-		appInstance.UUIDandVersion.UUID, _ = uuid.FromString(cfgApp.Uuidandversion.Uuid)
-		appInstance.UUIDandVersion.Version = cfgApp.Uuidandversion.Version
-		appInstance.DisplayName = cfgApp.Displayname
-		appInstance.Activate = cfgApp.Activate
-
-		appInstance.FixedResources.Kernel = cfgApp.Fixedresources.Kernel
-		appInstance.FixedResources.BootLoader = cfgApp.Fixedresources.Bootloader
-		appInstance.FixedResources.Ramdisk = cfgApp.Fixedresources.Ramdisk
-		appInstance.FixedResources.MaxMem = int(cfgApp.Fixedresources.Maxmem)
-		appInstance.FixedResources.VMMMaxMem = int(cfgApp.Fixedresources.VmmMaxmem)
-		appInstance.FixedResources.Memory = int(cfgApp.Fixedresources.Memory)
-		appInstance.FixedResources.RootDev = cfgApp.Fixedresources.Rootdev
-		appInstance.FixedResources.VCpus = int(cfgApp.Fixedresources.Vcpus)
-		appInstance.FixedResources.MaxCpus = int(cfgApp.Fixedresources.Maxcpus)
-		appInstance.FixedResources.VirtualizationMode = types.VmMode(cfgApp.Fixedresources.VirtualizationMode)
-		appInstance.FixedResources.EnableVnc = cfgApp.Fixedresources.EnableVnc
-		appInstance.FixedResources.EnableVncShimVM = cfgApp.Fixedresources.EnableVncShimVm
-		appInstance.FixedResources.VncDisplay = cfgApp.Fixedresources.VncDisplay
-		appInstance.FixedResources.VncPasswd = cfgApp.Fixedresources.VncPasswd
-		appInstance.FixedResources.EnforceNetworkInterfaceOrder =
-			cfgApp.Fixedresources.EnforceNetworkInterfaceOrder
-		appInstance.DisableLogs = cfgApp.Fixedresources.DisableLogs
-		appInstance.MetaDataType = types.MetaDataType(cfgApp.MetaDataType)
-		appInstance.Delay = time.Duration(cfgApp.StartDelayInSeconds) * time.Second
-		appInstance.Service = cfgApp.Service
-		appInstance.CloudInitVersion = cfgApp.CloudInitVersion
-		appInstance.FixedResources.CPUsPinned = cfgApp.Fixedresources.PinCpu
-		appInstance.FixedResources.EnableOemWinLicenseKey = cfgApp.Fixedresources.EnableOemWinLicenseKey
-
-		// Parse the snapshot related fields
-		if cfgApp.Snapshot != nil {
-			parseSnapshotConfig(&appInstance.Snapshot, cfgApp.Snapshot)
-		}
-
-		appInstance.VolumeRefConfigList = make([]types.VolumeRefConfig,
-			len(cfgApp.VolumeRefList))
-		parseVolumeRefList(appInstance.VolumeRefConfigList, cfgApp.GetVolumeRefList(), appInstance.UUIDandVersion.UUID)
-
-		// fill in the collect stats IP address of the App
-		appInstance.CollectStatsIPAddr = net.ParseIP(cfgApp.GetCollectStatsIPAddr())
-
-		// fill the app adapter config
-		parseAppNetworkConfig(&appInstance, cfgApp, config.Networks,
-			config.NetworkInstances)
-
-		// I/O adapters
-		appInstance.IoAdapterList = nil
-		for _, adapter := range cfgApp.Adapters {
-			log.Tracef("Processing adapter type %d name %s",
-				adapter.Type, adapter.Name)
-			ioa := types.IoAdapter{Type: types.IoType(adapter.Type), Name: adapter.Name}
-			if ioa.Type == types.IoNetEthVF && adapter.EthVf != nil {
-				// not checking lower bound, since it's zero if VlanId is not specified
-				if adapter.EthVf.VlanId > maxVlanID {
-					log.Errorf("Incorrect VlanID %d for adapter %s", adapter.EthVf.VlanId, adapter)
-					continue
-				}
-				hwaddr, err := net.ParseMAC(adapter.EthVf.Mac)
-				if err != nil {
-					log.Errorf("Failed to parse hardware address for adapter %s: %s", adapter.Name, err)
-				}
-				ioa.EthVf = sriov.EthVF{
-					Mac:    hwaddr.String(),
-					VlanID: uint16(adapter.EthVf.VlanId)}
-			} else if ioa.Type == types.IoCAN || ioa.Type == types.IoVCAN || ioa.Type == types.IoLCAN {
-				log.Functionf("Got CAN adapter")
-			}
-			if ioa.Type.IsNet() && appInstance.FixedResources.EnforceNetworkInterfaceOrder {
-				ioa.IntfOrder = adapter.GetInterfaceOrder()
-			}
-			appInstance.IoAdapterList = append(appInstance.IoAdapterList, ioa)
-		}
-		log.Functionf("Got adapters %v", appInstance.IoAdapterList)
-
-		cmd := cfgApp.GetRestart()
-		if cmd != nil {
-			appInstance.RestartCmd.Counter = cmd.Counter
-			appInstance.RestartCmd.ApplyTime = cmd.OpsTime
-		}
-		cmd = cfgApp.GetPurge()
-		if cmd != nil {
-			appInstance.PurgeCmd.Counter = cmd.Counter
-			appInstance.PurgeCmd.ApplyTime = cmd.OpsTime
-		}
-		userData := cfgApp.GetUserData()
-		if userData != "" {
-			appInstance.CloudInitUserData = &userData
-		}
-		appInstance.RemoteConsole = cfgApp.GetRemoteConsole()
-		appInstance.CipherBlockStatus = parseCipherBlock(getconfigCtx, appInstance.Key(), cfgApp.GetCipherData())
-		appInstance.ProfileList = cfgApp.ProfileList
-
-		// Add config submitted via local profile server.
-		addLocalAppConfig(getconfigCtx, &appInstance)
-
-		controllerDNID := cfgApp.GetDesignatedNodeId()
-		// If this node is designated node id set IsDesignatedNodeID to true else false.
-		// On single node eve either kvm or kubevirt based, this node will always be designated node.
-		if controllerDNID != "" && controllerDNID != devUUIDStr {
-			appInstance.IsDesignatedNodeID = false
+		if activeMap[cfgApp.Uuidandversion.Uuid] {
+			processAppInstance(getconfigCtx, cfgApp, config, devUUIDStr)
 		} else {
-			appInstance.IsDesignatedNodeID = true
+			remainingApps = append(remainingApps, cfgApp)
 		}
+	}
 
-		// Verify that it fits and if not publish with error
-		checkAndPublishAppInstanceConfig(getconfigCtx, appInstance)
+	// wait the priority apps to change their status
+	waitForPrevAppsToStart(getconfigCtx, activeMap)
+
+	// Phase 2: Process the remaining apps.
+	for _, cfgApp := range remainingApps {
+		processAppInstance(getconfigCtx, cfgApp, config, devUUIDStr)
 	}
 }
 
