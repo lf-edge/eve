@@ -32,6 +32,7 @@ const (
 	localDevInfoURLPath               = "/api/v1/devinfo"
 	localDevInfoPOSTInterval          = time.Minute
 	localDevInfoPOSTThrottledInterval = time.Hour
+	LocalActiveAppConfigDir           = "/persist/vault/active-app-instance-config/"
 )
 
 var (
@@ -400,12 +401,21 @@ func addLocalAppConfig(ctx *getconfigContext, appInstance *types.AppInstanceConf
 	}
 }
 
+// Delete the local file that indicates the app instance is active
+func delLocalAppActiveFile(appUUID string) {
+	filePath := filepath.Join(LocalActiveAppConfigDir, appUUID+".json")
+	if err := os.Remove(filePath); err != nil {
+		log.Errorf("Failed to remove a file %s: %v", filePath, err)
+	}
+}
+
 // Delete all local config for this application.
 // ctx.sideController should be locked!
 func delLocalAppConfig(ctx *getconfigContext, appUUID string) {
 	delete(ctx.sideController.localCommands.AppCommands, appUUID)
 	delete(ctx.sideController.localCommands.AppCounters, appUUID)
 	persistLocalCommands(ctx.sideController.localCommands)
+	delLocalAppActiveFile(appUUID)
 }
 
 // Add config submitted for the volume via local profile server.
