@@ -260,19 +260,19 @@ func (c *containerdCAS) IngestBlob(ctx context.Context, blobs ...types.BlobStatu
 		case blobFile == "" && len(blob.Content) == 0:
 			err = fmt.Errorf("IngestBlob(%s): both blobFile and blobContent empty %s",
 				blob.Sha256, blobFile)
-			logrus.Errorf(err.Error())
+			logrus.Error(err.Error())
 			return loadedBlobs, err
 		case blobFile != "" && len(blob.Content) != 0:
 			err = fmt.Errorf("IngestBlob(%s): both blobFile and blobContent provided, cannot pick, %s",
 				blob.Sha256, blobFile)
-			logrus.Errorf(err.Error())
+			logrus.Error(err.Error())
 			return loadedBlobs, err
 		case blobFile != "":
 			fileReader, err := os.Open(blobFile)
 			if err != nil {
 				err = fmt.Errorf("IngestBlob(%s): could not open blob file for reading at %s: %+s",
 					blob.Sha256, blobFile, err.Error())
-				logrus.Errorf(err.Error())
+				logrus.Error(err.Error())
 				return loadedBlobs, err
 			}
 			defer fileReader.Close()
@@ -290,7 +290,7 @@ func (c *containerdCAS) IngestBlob(ctx context.Context, blobs ...types.BlobStatu
 			if err != nil {
 				err = fmt.Errorf("IngestBlob(%s): could not read data at %s: %+s",
 					blob.Sha256, blobFile, err.Error())
-				logrus.Errorf(err.Error())
+				logrus.Error(err.Error())
 				return loadedBlobs, err
 			}
 			// create a new reader for the content.WriteBlob
@@ -299,7 +299,7 @@ func (c *containerdCAS) IngestBlob(ctx context.Context, blobs ...types.BlobStatu
 			if err := json.Unmarshal(data, &index); err != nil {
 				err = fmt.Errorf("IngestBlob(%s): could not parse index at %s: %+s",
 					blob.Sha256, blobFile, err.Error())
-				logrus.Errorf(err.Error())
+				logrus.Error(err.Error())
 				return loadedBlobs, err
 			}
 			indexHash = sha
@@ -309,7 +309,7 @@ func (c *containerdCAS) IngestBlob(ctx context.Context, blobs ...types.BlobStatu
 			if err != nil {
 				err = fmt.Errorf("IngestBlob(%s): could not read data at %s: %+s",
 					blob.Sha256, blobFile, err.Error())
-				logrus.Errorf(err.Error())
+				logrus.Error(err.Error())
 				return loadedBlobs, err
 			}
 			// create a new reader for the content.WriteBlob
@@ -319,7 +319,7 @@ func (c *containerdCAS) IngestBlob(ctx context.Context, blobs ...types.BlobStatu
 			if err := json.Unmarshal(data, &mfst); err != nil {
 				err = fmt.Errorf("IngestBlob(%s): could not parse manifest at %s: %+s",
 					blob.Sha256, blobFile, err.Error())
-				logrus.Errorf(err.Error())
+				logrus.Error(err.Error())
 				return loadedBlobs, err
 			}
 			manifests = append(manifests, &mfst)
@@ -333,7 +333,7 @@ func (c *containerdCAS) IngestBlob(ctx context.Context, blobs ...types.BlobStatu
 		if err := c.ctrdClient.CtrWriteBlob(ctx, sha, blob.Size, r); err != nil {
 			err = fmt.Errorf("IngestBlob(%s): could not load blob file into containerd at %s: %+s",
 				blob.Sha256, blobFile, err.Error())
-			logrus.Errorf(err.Error())
+			logrus.Error(err.Error())
 			return loadedBlobs, err
 		}
 		logrus.Infof("IngestBlob(%s): Loaded the blob successfully", blob.Sha256)
@@ -352,7 +352,7 @@ func (c *containerdCAS) IngestBlob(ctx context.Context, blobs ...types.BlobStatu
 		}
 		if err := c.UpdateBlobInfo(info); err != nil {
 			err = fmt.Errorf("IngestBlob(%s): could not update labels on index: %v", info.Digest, err.Error())
-			logrus.Errorf(err.Error())
+			logrus.Error(err.Error())
 			return loadedBlobs, err
 		}
 	}
@@ -373,7 +373,7 @@ func (c *containerdCAS) IngestBlob(ctx context.Context, blobs ...types.BlobStatu
 			if err := c.UpdateBlobInfo(info); err != nil {
 				err = fmt.Errorf("IngestBlob(%s): could not update labels on manifest: %v",
 					info.Digest, err.Error())
-				logrus.Errorf(err.Error())
+				logrus.Error(err.Error())
 				return loadedBlobs, err
 			}
 		}
@@ -611,7 +611,7 @@ func (c *containerdCAS) CreateSnapshotForImage(snapshotID, reference string) err
 	if err := c.ctrdClient.UnpackClientImage(clientImageObj); err != nil {
 		err = fmt.Errorf("CreateSnapshotForImage: could not unpack clientImageObj %s: %+s",
 			clientImageObj.Name(), err.Error())
-		logrus.Errorf(err.Error())
+		logrus.Error(err.Error())
 		return err
 	}
 
@@ -681,7 +681,7 @@ func (c *containerdCAS) PrepareContainerRootDir(rootPath, reference, _ string) e
 	snapshotID := containerd.GetSnapshotID(rootPath)
 	if err := c.CreateSnapshotForImage(snapshotID, reference); err != nil {
 		err = fmt.Errorf("PrepareContainerRootDir: Could not create snapshot %s. %w", snapshotID, err)
-		logrus.Errorf(err.Error())
+		logrus.Error(err.Error())
 		return err
 	}
 
@@ -690,33 +690,33 @@ func (c *containerdCAS) PrepareContainerRootDir(rootPath, reference, _ string) e
 	if err != nil {
 		err = fmt.Errorf("PrepareContainerRootDir: exception while fetching image config for reference %s: %s",
 			reference, err.Error())
-		logrus.Errorf(err.Error())
+		logrus.Error(err.Error())
 		return err
 	}
 	clientImageSpecJSON, err := json.MarshalIndent(clientImageSpec, "", "    ")
 	if err != nil {
 		err = fmt.Errorf("PrepareContainerRootDir: Could not build json of image: %v. %v",
 			reference, err.Error())
-		logrus.Errorf(err.Error())
+		logrus.Error(err.Error())
 		return err
 	}
 
 	if err := os.MkdirAll(rootPath, 0766); err != nil {
 		err = fmt.Errorf("PrepareContainerRootDir: Exception while creating rootPath dir. %w", err)
-		logrus.Errorf(err.Error())
+		logrus.Error(err.Error())
 		return err
 	}
 	ociConfPath := filepath.Join(rootPath, imageConfigFilename)
 	if err := fileutils.WriteRename(ociConfPath, clientImageSpecJSON); err != nil {
 		err = fmt.Errorf("PrepareContainerRootDir: Exception while writing image info to %s. %w",
 			ociConfPath, err)
-		logrus.Errorf(err.Error())
+		logrus.Error(err.Error())
 		return err
 	}
 	if err := os.Chmod(ociConfPath, 0666); err != nil {
 		err = fmt.Errorf("PrepareContainerRootDir: Exception while setting permissions on %s. %w",
 			ociConfPath, err)
-		logrus.Errorf(err.Error())
+		logrus.Error(err.Error())
 		return err
 	}
 	logrus.Infof("written image config for reference %s. content: %s", reference, string(clientImageSpecJSON))
@@ -911,7 +911,7 @@ func (c *containerdCAS) IngestBlobsAndCreateImage(reference string, root types.B
 	if err != nil {
 		err = fmt.Errorf("IngestBlobsAndCreateImage: Unable load blobs for reference %s. "+
 			"Exception while creating lease: %v", reference, err.Error())
-		logrus.Errorf(err.Error())
+		logrus.Error(err.Error())
 		return nil, err
 	}
 	// deleting the lease means that containerd will be free to GC any blob that doesn't have a tag
@@ -920,7 +920,7 @@ func (c *containerdCAS) IngestBlobsAndCreateImage(reference string, root types.B
 	loadedBlobs, err := c.IngestBlob(newCtxWithLease, blobs...)
 	if err != nil {
 		err = fmt.Errorf("IngestBlobsAndCreateImage: Exception while loading blobs into CAS: %v", err.Error())
-		logrus.Errorf(err.Error())
+		logrus.Error(err.Error())
 		return nil, err
 	}
 	rootBlobSha := fmt.Sprintf("%s:%s", digest.SHA256, strings.ToLower(root.Sha256))
@@ -931,7 +931,7 @@ func (c *containerdCAS) IngestBlobsAndCreateImage(reference string, root types.B
 		if err := c.CreateImage(reference, mediaType, rootBlobSha); err != nil {
 			err = fmt.Errorf("IngestBlobsAndCreateImage: could not create reference %s with rootBlob %s: %v",
 				reference, rootBlobSha, err.Error())
-			logrus.Errorf(err.Error())
+			logrus.Error(err.Error())
 			return nil, err
 		}
 	} else if err != nil {
@@ -943,7 +943,7 @@ func (c *containerdCAS) IngestBlobsAndCreateImage(reference string, root types.B
 		if err := c.ReplaceImage(reference, mediaType, rootBlobSha); err != nil {
 			err = fmt.Errorf("IngestBlobsAndCreateImage: could not update reference %s with rootBlob %s: %v",
 				reference, rootBlobSha, err.Error())
-			logrus.Errorf(err.Error())
+			logrus.Error(err.Error())
 			return nil, err
 		}
 	}
@@ -1036,7 +1036,7 @@ func getImageConfig(c *containerdCAS, reference string) (*ocispec.Image, error) 
 	imageParentHash, err := c.GetImageHash(reference)
 	if err != nil {
 		err = fmt.Errorf("getImageConfig: exception while fetching reference hash of %s: %s", reference, err.Error())
-		logrus.Errorf(err.Error())
+		logrus.Error(err.Error())
 		return nil, err
 	}
 
@@ -1048,14 +1048,14 @@ func getImageConfig(c *containerdCAS, reference string) (*ocispec.Image, error) 
 	if err != nil {
 		err = fmt.Errorf("getImageConfig: exception while reading blob %s for reference %s: %s",
 			imageParentHash, reference, err.Error())
-		logrus.Errorf(err.Error())
+		logrus.Error(err.Error())
 		return nil, err
 	}
 	blobData, err := io.ReadAll(blobReader)
 	if err != nil {
 		err = fmt.Errorf("getImageConfig: could not read blobdata %s for reference %s: %+s",
 			imageParentHash, reference, err.Error())
-		logrus.Errorf(err.Error())
+		logrus.Error(err.Error())
 		return nil, err
 	}
 
@@ -1067,7 +1067,7 @@ func getImageConfig(c *containerdCAS, reference string) (*ocispec.Image, error) 
 		if err := json.Unmarshal(blobData, &manifests); err != nil {
 			err = fmt.Errorf("getImageConfig: could not read imageManifest %s for reference %s: %+s",
 				imageParentHash, reference, err.Error())
-			logrus.Errorf(err.Error())
+			logrus.Error(err.Error())
 			return nil, err
 		}
 	} else {
@@ -1079,7 +1079,7 @@ func getImageConfig(c *containerdCAS, reference string) (*ocispec.Image, error) 
 				if err != nil {
 					err = fmt.Errorf("getImageConfig: exception while reading manifest blob %s for reference %s: %s",
 						m.Digest.String(), reference, err.Error())
-					logrus.Errorf(err.Error())
+					logrus.Error(err.Error())
 					return nil, err
 				}
 				// Step 3.1.3: Read the manifest data
@@ -1087,13 +1087,13 @@ func getImageConfig(c *containerdCAS, reference string) (*ocispec.Image, error) 
 				if err != nil {
 					err = fmt.Errorf("getImageConfig: could not parsr manifestBlob %s for reference %s: %+s",
 						m.Digest.String(), reference, err.Error())
-					logrus.Errorf(err.Error())
+					logrus.Error(err.Error())
 					return nil, err
 				}
 				if err := json.Unmarshal(blobData, &manifests); err != nil {
 					err = fmt.Errorf("getImageConfig: could not parse manifestBlob %s for reference %s: %+s",
 						m.Digest.String(), reference, err.Error())
-					logrus.Errorf(err.Error())
+					logrus.Error(err.Error())
 					return nil, err
 				}
 				break
@@ -1107,20 +1107,20 @@ func getImageConfig(c *containerdCAS, reference string) (*ocispec.Image, error) 
 	if err != nil {
 		err = fmt.Errorf("getImageConfig: exception while reading config blob %s for reference %s: %s",
 			configHash, reference, err.Error())
-		logrus.Errorf(err.Error())
+		logrus.Error(err.Error())
 		return nil, err
 	}
 	blobData, err = io.ReadAll(blobReader)
 	if err != nil {
 		err = fmt.Errorf("getImageConfig: could not read config blobdata %s for reference %s: %+s",
 			configHash, reference, err.Error())
-		logrus.Errorf(err.Error())
+		logrus.Error(err.Error())
 		return nil, err
 	}
 	if err := json.Unmarshal(blobData, &imageConfig); err != nil {
 		err = fmt.Errorf("getImageConfig: could not parse configBlob %s for reference %s: %+s",
 			configHash, reference, err.Error())
-		logrus.Errorf(err.Error())
+		logrus.Error(err.Error())
 		return nil, err
 	}
 	return &imageConfig, nil

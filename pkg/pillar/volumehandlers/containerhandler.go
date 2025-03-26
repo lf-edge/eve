@@ -4,6 +4,7 @@
 package volumehandlers
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"time"
@@ -51,7 +52,7 @@ func (handler *volumeHandlerContainer) CreateVolume() (string, error) {
 	if ctStatus == nil {
 		err := fmt.Errorf("createContainerVolume: Unable to find contentTreeStatus %s for Volume %s",
 			handler.status.ContentID.String(), handler.status.Key())
-		handler.log.Errorf(err.Error())
+		handler.log.Error(err.Error())
 		return fileLocation, err
 	}
 	// First blob in the list will be a root Blob
@@ -59,7 +60,7 @@ func (handler *volumeHandlerContainer) CreateVolume() (string, error) {
 	if rootBlobStatus == nil {
 		err := fmt.Errorf("createContainerVolume: Unable to find root BlobStatus %s for Volume %s",
 			ctStatus.Blobs[0], handler.status.Key())
-		handler.log.Errorf(err.Error())
+		handler.log.Error(err.Error())
 		return fileLocation, err
 	}
 	if err := handler.volumeManager.GetCasClient().PrepareContainerRootDir(fileLocation, handler.status.ReferenceName, cas.CheckAndCorrectBlobHash(rootBlobStatus.Sha256)); err != nil {
@@ -95,27 +96,27 @@ func (handler *volumeHandlerContainer) Populate() (bool, error) {
 func (handler *volumeHandlerContainer) CreateSnapshot() (interface{}, time.Time, error) {
 	//TODO implement me
 	errStr := fmt.Sprintf("CreateSnapshot not implemented for container volumes")
-	handler.log.Errorf(errStr)
+	handler.log.Error(errStr)
 	timeCreated := time.Time{}
-	return "", timeCreated, fmt.Errorf(errStr)
+	return "", timeCreated, errors.New(errStr)
 }
 
 func (handler *volumeHandlerContainer) RollbackToSnapshot(snapshotMeta interface{}) error {
 	//TODO implement me
 	errStr := fmt.Sprintf("RollbackToSnapshot not implemented for container volumes")
-	handler.log.Errorf(errStr)
-	return fmt.Errorf(errStr)
+	handler.log.Error(errStr)
+	return errors.New(errStr)
 }
 
 func (handler *volumeHandlerContainer) DeleteSnapshot(snapshotMeta interface{}) error {
 	//TODO implement me
 	errStr := fmt.Sprintf("DeleteSnapshot not implemented for container volumes")
-	handler.log.Errorf(errStr)
-	return fmt.Errorf(errStr)
+	handler.log.Error(errStr)
+	return errors.New(errStr)
 }
 
 func (handler *volumeHandlerContainer) GetAllDataSets() ([]types.ImgInfo, error) {
 	errStr := fmt.Sprintf("GetAllDataSets not implemented for container volumes")
-	handler.log.Errorf(errStr)
-	return nil, fmt.Errorf(errStr)
+	handler.log.Error(errStr)
+	return nil, errors.New(errStr)
 }

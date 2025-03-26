@@ -148,7 +148,7 @@ func (client *Client) CloseClient() error {
 	}
 	if err := client.ctrdClient.Close(); err != nil {
 		err = fmt.Errorf("CloseClient: exception while closing containerd client. %v", err.Error())
-		logrus.Errorf(err.Error())
+		logrus.Error(err.Error())
 		return err
 	}
 	client.ctrdClient = nil

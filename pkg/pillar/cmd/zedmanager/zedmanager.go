@@ -1376,7 +1376,7 @@ func quantifyChanges(config types.AppInstanceConfig, oldConfig types.AppInstance
 		str := fmt.Sprintf("number of volume ref changed from %d to %d",
 			len(oldConfig.VolumeRefConfigList),
 			len(config.VolumeRefConfigList))
-		log.Functionf(str)
+		log.Function(str)
 		needPurge = true
 		purgeReason += str + "\n"
 	} else {
@@ -1398,7 +1398,7 @@ func quantifyChanges(config types.AppInstanceConfig, oldConfig types.AppInstance
 		str := fmt.Sprintf("number of AppNetAdapter changed from %d to %d",
 			len(oldConfig.AppNetAdapterList),
 			len(config.AppNetAdapterList))
-		log.Functionf(str)
+		log.Function(str)
 		needPurge = true
 		purgeReason += str + "\n"
 	} else {
@@ -1407,21 +1407,21 @@ func quantifyChanges(config types.AppInstanceConfig, oldConfig types.AppInstance
 			if old.AppMacAddr.String() != uc.AppMacAddr.String() {
 				str := fmt.Sprintf("AppMacAddr changed from %v to %v",
 					old.AppMacAddr, uc.AppMacAddr)
-				log.Functionf(str)
+				log.Function(str)
 				needPurge = true
 				purgeReason += str + "\n"
 			}
 			if !old.AppIPAddr.Equal(uc.AppIPAddr) {
 				str := fmt.Sprintf("AppIPAddr changed from %v to %v",
 					old.AppIPAddr, uc.AppIPAddr)
-				log.Functionf(str)
+				log.Function(str)
 				needPurge = true
 				purgeReason += str + "\n"
 			}
 			if old.Network != uc.Network {
 				str := fmt.Sprintf("Network changed from %v to %v",
 					old.Network, uc.Network)
-				log.Functionf(str)
+				log.Function(str)
 				needPurge = true
 				purgeReason += str + "\n"
 			}
@@ -1434,7 +1434,7 @@ func quantifyChanges(config types.AppInstanceConfig, oldConfig types.AppInstance
 	if !cmp.Equal(config.IoAdapterList, oldConfig.IoAdapterList) {
 		str := fmt.Sprintf("IoAdapterList changed: %v",
 			cmp.Diff(oldConfig.IoAdapterList, config.IoAdapterList))
-		log.Functionf(str)
+		log.Function(str)
 		needPurge = true
 		purgeReason += str + "\n"
 	}
@@ -1443,7 +1443,7 @@ func quantifyChanges(config types.AppInstanceConfig, oldConfig types.AppInstance
 	if !cmp.Equal(config.FixedResources, oldConfig.FixedResources) {
 		str := fmt.Sprintf("FixedResources changed: %v",
 			cmp.Diff(oldConfig.FixedResources, config.FixedResources))
-		log.Functionf(str)
+		log.Function(str)
 		needRestart = true
 		restartReason += str + "\n"
 	}

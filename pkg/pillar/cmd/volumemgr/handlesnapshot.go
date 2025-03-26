@@ -37,7 +37,7 @@ func createSnapshot(ctx *volumemgrContext, config *types.VolumesSnapshotConfig) 
 		if volumeStatus == nil {
 			errDesc := types.ErrorDescription{}
 			errDesc.Error = fmt.Sprintf("createSnapshot: volume %s not found", volumeID.String())
-			log.Errorf(errDesc.Error)
+			log.Error(errDesc.Error)
 			volumesSnapshotStatus.SetErrorWithSourceAndDescription(errDesc, types.VolumesSnapshotStatus{})
 			return volumesSnapshotStatus
 		}
@@ -46,7 +46,7 @@ func createSnapshot(ctx *volumemgrContext, config *types.VolumesSnapshotConfig) 
 		if err != nil {
 			errDesc := types.ErrorDescription{}
 			errDesc.Error = fmt.Sprintf("createSnapshot: failed to create snapshot for %s, %s", volumeID.String(), err.Error())
-			log.Errorf(errDesc.Error)
+			log.Error(errDesc.Error)
 			volumesSnapshotStatus.SetErrorWithSourceAndDescription(errDesc, types.VolumesSnapshotStatus{})
 			return volumesSnapshotStatus
 		}
@@ -59,7 +59,7 @@ func createSnapshot(ctx *volumemgrContext, config *types.VolumesSnapshotConfig) 
 	if err != nil {
 		errDesc := types.ErrorDescription{}
 		errDesc.Error = fmt.Sprintf("handleVolumesSnapshotConfigCreate: failed to serialize snapshot status for %s, %s", config.SnapshotID, err.Error())
-		log.Errorf(errDesc.Error)
+		log.Error(errDesc.Error)
 		volumesSnapshotStatus.SetErrorWithSourceAndDescription(errDesc, types.VolumesSnapshotStatus{})
 	}
 	return volumesSnapshotStatus

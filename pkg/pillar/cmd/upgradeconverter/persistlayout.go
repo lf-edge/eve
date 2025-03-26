@@ -26,7 +26,7 @@ func convertPersistVolumes(ctxPtr *ucContext) error {
 		// This error always happens on first boot of a device.
 		// In that case there is nothing to convert.
 		errStr := fmt.Sprintf("No checkpoint file in %s", checkpointFile)
-		log.Errorf(errStr)
+		log.Error(errStr)
 		return errors.New(errStr)
 	}
 	latch, err := inhaleLatch(ctxPtr.ps) // XXX override dir in pubsub?

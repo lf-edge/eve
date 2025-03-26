@@ -5,6 +5,7 @@ package zedagent
 
 import (
 	"encoding/hex"
+	"errors"
 	"fmt"
 
 	"crypto/sha256"
@@ -48,7 +49,7 @@ func parsePatchEnvelopesImpl(ctx *getconfigContext, config *zconfig.EdgeDevConfi
 			if err != nil {
 				msg := fmt.Sprintf("Failed to compose binary blob for patch envelope %v", err)
 				peInfo.Errors = append(peInfo.Errors, msg)
-				log.Errorf(msg)
+				log.Error(msg)
 				return
 			}
 		}
@@ -109,7 +110,7 @@ func addBinaryBlobToPatchEnvelope(pe *types.PatchEnvelopeInfo, artifact *zconfig
 		return nil
 	}
 
-	return fmt.Errorf("Unknown EveBinaryArtifact format")
+	return errors.New("Unknown EveBinaryArtifact format")
 }
 
 // cacheInlineBinaryArtifact stores inline artifact as file and

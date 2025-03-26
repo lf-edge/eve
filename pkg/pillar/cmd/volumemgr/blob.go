@@ -495,7 +495,7 @@ func unpublishBlobStatus(ctx *volumemgrContext, blobs ...*types.BlobStatus) {
 			if err := ctx.casClient.RemoveBlob(cas.CheckAndCorrectBlobHash(blob.Sha256)); err != nil {
 				err := fmt.Errorf("unpublishBlobStatus: Exception while removing loaded blob %s: %s",
 					blob.Sha256, err.Error())
-				log.Errorf(err.Error())
+				log.Error(err.Error())
 			}
 		}
 

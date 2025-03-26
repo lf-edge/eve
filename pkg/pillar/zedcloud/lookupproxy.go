@@ -35,7 +35,7 @@ func LookupProxy(log *base.LogObject, status *types.DeviceNetworkStatus, ifname 
 		u, err := url.Parse(rawUrl)
 		if err != nil {
 			errStr := fmt.Sprintf("LookupProxy: malformed URL %s", rawUrl)
-			log.Errorf(errStr)
+			log.Error(errStr)
 			return nil, errors.New(errStr)
 		}
 
@@ -44,7 +44,7 @@ func LookupProxy(log *base.LogObject, status *types.DeviceNetworkStatus, ifname 
 			pacFile, err := base64.StdEncoding.DecodeString(proxyConfig.Pacfile)
 			if err != nil {
 				errStr := fmt.Sprintf("LookupProxy: Decoding proxy file failed: %s", err)
-				log.Errorf(errStr)
+				log.Error(errStr)
 				return nil, errors.New(errStr)
 			}
 			proxyString, err := zedpac.Find_proxy_sync(
@@ -52,7 +52,7 @@ func LookupProxy(log *base.LogObject, status *types.DeviceNetworkStatus, ifname 
 			if err != nil {
 				errStr := fmt.Sprintf("LookupProxy: PAC file could not find proxy for %s: %s",
 					rawUrl, err)
-				log.Errorf(errStr)
+				log.Error(errStr)
 				return nil, errors.New(errStr)
 			}
 			//if proxyString == "DIRECT" {
@@ -61,7 +61,7 @@ func LookupProxy(log *base.LogObject, status *types.DeviceNetworkStatus, ifname 
 			}
 			proxies := strings.Split(proxyString, ";")
 			if len(proxies) == 0 {
-				log.Errorf("LookupProxy: Number of proxies in PAC file result is Zero")
+				log.Error("LookupProxy: Number of proxies in PAC file result is Zero")
 				return nil, nil
 			}
 
@@ -76,7 +76,7 @@ func LookupProxy(log *base.LogObject, status *types.DeviceNetworkStatus, ifname 
 			if err != nil {
 				errStr := fmt.Sprintf("LookupProxy: PAC file returned invalid proxy %s: %s",
 					proxyString, err)
-				log.Errorf(errStr)
+				log.Error(errStr)
 				return nil, errors.New(errStr)
 			}
 			log.Tracef("LookupProxy: PAC proxy being used is %s", proxy0)
@@ -115,7 +115,7 @@ func LookupProxy(log *base.LogObject, status *types.DeviceNetworkStatus, ifname 
 		proxy, err := proxyFunc(u)
 		if err != nil {
 			errStr := fmt.Sprintf("LookupProxy: proxyFunc error: %s", err)
-			log.Errorf(errStr)
+			log.Error(errStr)
 			return proxy, errors.New(errStr)
 		}
 		return proxy, err
