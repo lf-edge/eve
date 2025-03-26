@@ -1,6 +1,6 @@
 module github.com/lf-edge/eve/pkg/pillar
 
-go 1.23.0
+go 1.23.1
 
 toolchain go1.24.1
 
@@ -12,7 +12,6 @@ require (
 	github.com/containerd/containerd/api v1.8.0
 	github.com/containerd/typeurl v1.0.2
 	github.com/cshari-zededa/eve-tpm2-tools v0.0.4
-	github.com/docker/docker v28.0.4+incompatible
 	github.com/eriknordmark/ipinfo v0.0.0-20230728132417-2d8f4da903d7
 	github.com/eshard/uevent v1.0.2-0.20220110110621-d8d2be286cec
 	github.com/facebook/time v0.0.0-20240605113323-bdee26e8523f
@@ -76,7 +75,6 @@ require (
 
 require (
 	cloud.google.com/go v0.118.3 // indirect
-	cloud.google.com/go/compute v1.34.0 // indirect
 	cloud.google.com/go/compute/metadata v0.6.0 // indirect
 	cloud.google.com/go/iam v1.4.0 // indirect
 	cloud.google.com/go/storage v1.50.0 // indirect
@@ -90,8 +88,6 @@ require (
 	github.com/StackExchange/wmi v0.0.0-20190523213315-cbe66965904d // indirect
 	github.com/aws/aws-sdk-go v1.44.82 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
-	github.com/bugsnag/bugsnag-go v1.4.1 // indirect
-	github.com/bugsnag/panicwrap v1.2.0 // indirect
 	github.com/cenkalti/backoff v2.2.1+incompatible // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/containerd/continuity v0.4.5 // indirect
@@ -139,7 +135,6 @@ require (
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/josharian/native v1.0.1-0.20221213033349-c1e37c09b531 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
-	github.com/kardianos/osext v0.0.0-20190222173326-2bc1f35cddc0 // indirect
 	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/kr/fs v0.1.0 // indirect
 	github.com/leodido/go-urn v1.2.4 // indirect
@@ -189,7 +184,6 @@ require (
 	golang.org/x/text v0.23.0 // indirect
 	golang.org/x/time v0.10.0 // indirect
 	google.golang.org/api v0.222.0 // indirect
-	google.golang.org/appengine v1.6.8 // indirect
 	google.golang.org/genproto v0.0.0-20250324211829-b45e905df463 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20250227231956-55c901821b1e // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250324211829-b45e905df463 // indirect
@@ -216,6 +210,7 @@ require (
 	github.com/containerd/errdefs v1.0.0 // indirect
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect
 	github.com/containerd/platforms v0.2.1 // indirect
+	github.com/docker/docker v28.0.4+incompatible // indirect
 	github.com/envoyproxy/go-control-plane/envoy v1.32.4 // indirect
 	github.com/envoyproxy/protoc-gen-validate v1.2.1 // indirect
 	github.com/evanphx/json-patch v5.6.0+incompatible // indirect
@@ -236,7 +231,6 @@ require (
 	github.com/kubernetes-csi/external-snapshotter/client/v4 v4.2.0 // indirect
 	github.com/liggitt/tabwriter v0.0.0-20181228230101-89fcab3d43de // indirect
 	github.com/mitchellh/go-wordwrap v1.0.0 // indirect
-	github.com/moby/docker-image-spec v1.3.1 // indirect
 	github.com/moby/spdystream v0.2.0 // indirect
 	github.com/moby/sys/userns v0.1.0 // indirect
 	github.com/monochromegane/go-gitignore v0.0.0-20200626010858-205db1a8cc00 // indirect
