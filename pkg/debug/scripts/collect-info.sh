@@ -6,7 +6,7 @@
 
 # Script version, don't forget to bump up once something is changed
 
-VERSION=33
+VERSION=34
 # Add required packages here, it will be passed to "apk add".
 # Once something added here don't forget to add the same package
 # to the Dockerfile ('ENV PKGS' line) of the debug container,
@@ -458,6 +458,11 @@ find /sys/kernel/security -name "tpm*" | while read -r TPM; do
     fi
 done
 
+if [ -c /dev/tpm0 ]; then
+    echo "- TPM persistent handles"
+    eve exec vtpm tpm2 getcap handles-persistent > "$DIR/handles-persistent.txt"
+fi
+
 if [ -n "$READ_LOGS_DAYS" ]; then
     mkdir -p "$LOG_TMP_DIR"
     # Find and copy log files from /persist/newlog to $LOG_TMP_DIR in previous days
@@ -467,6 +472,7 @@ else
     ln -s /persist/newlog "$DIR/persist-newlog"
 fi
 
+ln -s /persist/certs        "$DIR/persist-certs"
 ln -s /persist/status       "$DIR/persist-status"
 ln -s /persist/log          "$DIR/persist-log"
 [ -d /persist/kubelog ] && ln -s /persist/kubelog "$DIR/persist-kubelog"
