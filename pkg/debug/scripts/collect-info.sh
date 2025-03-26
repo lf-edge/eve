@@ -6,7 +6,7 @@
 
 # Script version, don't forget to bump up once something is changed
 
-VERSION=33
+VERSION=34
 # Add required packages here, it will be passed to "apk add".
 # Once something added here don't forget to add the same package
 # to the Dockerfile ('ENV PKGS' line) of the debug container,
@@ -19,7 +19,8 @@ DATE=$(date "+%Y-%m-%d-%H-%M-%S")
 INFO_DIR_SUFFIX="eve-info-v$VERSION-$DATE"
 SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
 
-READ_LOGS_DAYS=
+GET_LOGS=0
+GET_LOGS_DAYS=
 READ_LOGS_DEV=
 READ_LOGS_APP=
 TAR_WHOLE_SYS=
@@ -43,17 +44,18 @@ usage()
     echo ""
     echo "Collect-logs mode:"
     echo "       -s tar whole /sysfs"
+    echo "       -l                   - get logs from /persist/newlog"
+    echo "       -t NUMBER-OF-DAYS    - get logs from the last NUMBER-OF-DAYS [1-30]"
     echo ""
     echo "Read-logs mode:"
     echo "       -d                   - read device logs only"
     echo "       -a APPLICATION-UUID  - read specified application logs only"
-    echo "       -t NUMBER-OF-DAYS    - read logs from the last NUMBER-OF-DAYS [1-30]"
     echo "       -e                   - additional edgeview string in filename"
     echo "       -j                   - output logs in json"
     exit 1
 }
 
-while getopts "vhsa:djet:" o; do
+while getopts "vhsa:djelt:" o; do
     case "$o" in
         h)
             usage
@@ -65,10 +67,13 @@ while getopts "vhsa:djet:" o; do
         a)
             READ_LOGS_APP="$OPTARG"
             ;;
+        l)
+            GET_LOGS=1
+            ;;
         t)
-            READ_LOGS_DAYS="$OPTARG"
-            if [ "$READ_LOGS_DAYS" -lt 1 ] || [ "$READ_LOGS_DAYS" -gt 30 ]; then
-                echo "Error: READ_LOGS_DAYS must be between 1 and 30."
+            GET_LOGS_DAYS="$OPTARG"
+            if [ "$GET_LOGS_DAYS" -lt 1 ] || [ "$GET_LOGS_DAYS" -gt 30 ]; then
+                echo "Error: GET_LOGS_DAYS must be between 1 and 30."
                 exit 1
             fi
             ;;
@@ -458,12 +463,12 @@ find /sys/kernel/security -name "tpm*" | while read -r TPM; do
     fi
 done
 
-if [ -n "$READ_LOGS_DAYS" ]; then
+if [ -n "$GET_LOGS_DAYS" ]; then
     mkdir -p "$LOG_TMP_DIR"
-    # Find and copy log files from /persist/newlog to $LOG_TMP_DIR in previous days
-    find /persist/newlog -type f -mtime -"$READ_LOGS_DAYS" -exec ln -s {} "$LOG_TMP_DIR" \;
+    # Find and link log files from /persist/newlog modified in the last GET_LOGS_DAYS days
+    find /persist/newlog -type f -mtime -"${GET_LOGS_DAYS}" -exec ln -s {} "$LOG_TMP_DIR" \;
     ln -s "$LOG_TMP_DIR" "$DIR/persist-newlog"
-else
+elif [ "$GET_LOGS" -eq 1 ]; then
     ln -s /persist/newlog "$DIR/persist-newlog"
 fi
 
