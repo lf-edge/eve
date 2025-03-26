@@ -2,8 +2,6 @@ module github.com/lf-edge/eve/pkg/pillar
 
 go 1.24.1
 
-toolchain go1.24.1
-
 require (
 	github.com/anatol/smart.go v0.0.0-20241126061019-f03d79b340d2
 	github.com/andrewd-zededa/go-libzfs v0.0.0-20240304231806-6a64e99da97d
