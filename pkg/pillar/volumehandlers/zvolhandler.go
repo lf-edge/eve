@@ -195,13 +195,13 @@ func (handler *volumeHandlerZVol) DestroyVolume() (string, error) {
 			if err := tgt.VHostDeleteIBlock(tgt.GetNaaSerial(serial)); err != nil {
 				errStr := fmt.Sprintf("Error deleting vhost for %s, error=%v",
 					handler.status.Key(), err)
-				handler.log.Warnf(errStr)
+				handler.log.Warn(errStr)
 			}
 		}
 		if err := tgt.TargetDeleteIBlock(handler.status.Key()); err != nil {
 			errStr := fmt.Sprintf("Error deleting target for %s, error=%v",
 				handler.status.Key(), err)
-			handler.log.Warnf(errStr)
+			handler.log.Warn(errStr)
 		}
 	}
 	zVolName := handler.status.ZVolName()

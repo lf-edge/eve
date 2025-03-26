@@ -1111,7 +1111,7 @@ func printProxy(ctx *diagContext, port types.NetworkPortStatus,
 			pacFile, err := base64.StdEncoding.DecodeString(port.ProxyConfig.Pacfile)
 			if err != nil {
 				errStr := fmt.Sprintf("Decoding proxy file failed: %s", err)
-				log.Errorf(errStr)
+				log.Error(errStr)
 			} else {
 				ctx.ph.Print("INFO: %s: PAC file:\n%s\n",
 					ifname, pacFile)

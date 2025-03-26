@@ -333,6 +333,6 @@ func (handler *volumeHandlerCSI) DeleteSnapshot(snapshotMeta interface{}) error 
 
 func (handler *volumeHandlerCSI) GetAllDataSets() ([]types.ImgInfo, error) {
 	errStr := fmt.Sprintf("GetAllDataSets not implemented for container volumes")
-	handler.log.Errorf(errStr)
-	return nil, fmt.Errorf(errStr)
+	handler.log.Error(errStr)
+	return nil, errors.New(errStr)
 }

@@ -63,7 +63,7 @@ func handleFallbackOnCloudDisconnect(ctxPtr *nodeagentContext) {
 	if timePassed > fallbackLimit {
 		errStr := fmt.Sprintf("Exceeded fallback outage for cloud connectivity %d by %d seconds; rebooting\n",
 			fallbackLimit, timePassed-fallbackLimit)
-		log.Errorf(errStr)
+		log.Error(errStr)
 		scheduleNodeOperation(ctxPtr, errStr, types.BootReasonFallback,
 			types.DeviceOperationReboot)
 	} else {
@@ -80,7 +80,7 @@ func handleResetOnCloudDisconnect(ctxPtr *nodeagentContext) {
 	if timePassed > resetLimit {
 		errStr := fmt.Sprintf("Exceeded outage for cloud connectivity %d by %d seconds; rebooting\n",
 			resetLimit, timePassed-resetLimit)
-		log.Errorf(errStr)
+		log.Error(errStr)
 		scheduleNodeOperation(ctxPtr, errStr, types.BootReasonDisconnect,
 			types.DeviceOperationReboot)
 	} else {
@@ -127,7 +127,7 @@ func handleRebootOnVaultLocked(ctxPtr *nodeagentContext) {
 			// fail the upgrade by rebooting now
 			errStr := fmt.Sprintf("Exceeded time for vault to be ready %d by %d seconds, rebooting",
 				vaultCutOffTime, timePassed-vaultCutOffTime)
-			log.Errorf(errStr)
+			log.Error(errStr)
 			scheduleNodeOperation(ctxPtr, errStr, types.BootReasonVaultFailure,
 				types.DeviceOperationReboot)
 		} else {

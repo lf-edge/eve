@@ -324,7 +324,7 @@ func requestCertsByURL(ctx *zedagentContext, certURL string, desc string,
 	}
 
 	if err := zedcloud.ValidateProtoContentType(certURL, rv.HTTPResp); err != nil {
-		log.Errorf("getCertsFromController: resp header error")
+		log.Error("getCertsFromController: resp header error")
 		return false
 	}
 	if len(rv.RespContents) > 0 {
@@ -370,7 +370,7 @@ func requestCertsByURL(ctx *zedagentContext, certURL string, desc string,
 	// write the signing cert to file
 	if err := zedcloud.SaveServerSigningCert(zedcloudCtx, signingCertBytes); err != nil {
 		errStr := fmt.Sprintf("%v", err)
-		log.Errorf("getCertsFromController: " + errStr)
+		log.Error("getCertsFromController: " + errStr)
 		return false
 	}
 

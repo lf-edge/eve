@@ -1648,7 +1648,8 @@ func (ctx KvmContext) CreateDomConfig(domainName string,
 	}
 	// Set pciDeviceID and pciBridgeID for every item in pciAssignments and virtualNetworks.
 	if err = addrAllocator.allocate(); err != nil {
-		return logError(err.Error())
+		logrus.Error(err.Error())
+		return err
 	}
 
 	// Render virtual network interfaces.
@@ -1657,7 +1658,8 @@ func (ctx KvmContext) CreateDomConfig(domainName string,
 	}
 	err = virtNetworksFiller.do(virtualNetworks, config.VirtualizationMode)
 	if err != nil {
-		return logError(err.Error())
+		logrus.Error(err.Error())
+		return err
 	}
 
 	// Render PCI assignments.
