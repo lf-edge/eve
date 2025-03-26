@@ -62,10 +62,11 @@ const (
 	ciDirname  = runDirname + "/cloudinit" // For cloud-init images
 
 	// Time limits for event loop handlers
-	errorTime           = 3 * time.Minute
-	warningTime         = 40 * time.Second
-	casClientType       = "containerd"
-	unknownStateRetries = 10
+	errorTime               = 3 * time.Minute
+	warningTime             = 40 * time.Second
+	casClientType           = "containerd"
+	unknownStateRetries     = 10
+	LocalActiveAppConfigDir = "/persist/vault/active-app-instance-config/"
 )
 
 // Really a constant
@@ -105,6 +106,7 @@ type domainContext struct {
 	pubProcessMetric       pubsub.Publication
 	pubCipherBlockStatus   pubsub.Publication
 	pubCapabilities        pubsub.Publication
+	subNodeAgentStatus     pubsub.Subscription
 	cipherMetrics          *cipher.AgentMetrics
 	createSema             *sema.Semaphore
 	GCComplete             bool
@@ -310,6 +312,23 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		log.Fatal(err)
 	}
 	domainCtx.pubCapabilities = capabilitiesInfoPub
+
+	// Look for nodeagent status
+	subNodeAgentStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:   "nodeagent",
+		MyAgentName: agentName,
+		TopicImpl:   types.NodeAgentStatus{},
+		Activate:    false,
+		Persistent:  true,
+		Ctx:         &domainCtx,
+		WarningTime: warningTime,
+		ErrorTime:   errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	domainCtx.subNodeAgentStatus = subNodeAgentStatus
+	subNodeAgentStatus.Activate()
 
 	// Look for controller certs which will be used for decryption
 	subControllerCert, err := ps.NewSubscription(pubsub.SubscriptionOptions{
@@ -662,6 +681,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 	for {
 		select {
+		case change := <-subNodeAgentStatus.MsgChan():
+			subNodeAgentStatus.ProcessChange(change)
+
 		case change := <-subControllerCert.MsgChan():
 			subControllerCert.ProcessChange(change)
 
@@ -790,6 +812,27 @@ func unpublishCipherBlockStatus(ctx *domainContext, key string) {
 		return
 	}
 	pub.Unpublish(key)
+}
+
+func createLocalAppActiveFile(appUUID string) {
+	// Construct the file path as "<LocalActiveAppConfigDir>/<appUUID>.json".
+	filePath := filepath.Join(LocalActiveAppConfigDir, appUUID+".json")
+
+	// Ensure that the base directory exists.
+	if err := os.MkdirAll(LocalActiveAppConfigDir, 0755); err != nil {
+		log.Errorf("Failed to create directory %s: %v", LocalActiveAppConfigDir, err)
+		return
+	}
+
+	// Create (or truncate) an empty file.
+	f, err := os.Create(filePath)
+	if err != nil {
+		log.Errorf("Failed to create active file %s: %v", filePath, err)
+		return
+	}
+	defer f.Close()
+
+	log.Noticef("Created empty JSON file: %s", filePath)
 }
 
 func xenCfgFilename(appNum int) string {
@@ -1263,6 +1306,14 @@ func lookupDomainStatus(ctx *domainContext, key string) *types.DomainStatus {
 	}
 	status := st.(types.DomainStatus)
 	return &status
+}
+
+// Delete the local file that indicates the app instance is active
+func delLocalAppActiveFile(appUUID string) {
+	filePath := filepath.Join(LocalActiveAppConfigDir, appUUID+".json")
+	if err := os.Remove(filePath); err != nil {
+		log.Errorf("Failed to remove a file %s: %v", filePath, err)
+	}
 }
 
 // lookupDomainStatusByUUID ignores the version part of the key
@@ -1879,6 +1930,9 @@ func doActivateTail(ctx *domainContext, status *types.DomainStatus,
 	}
 
 	status.Activated = true
+	// create a new json file in the filesystem for the specific VM.
+	createLocalAppActiveFile(status.UUIDandVersion.UUID.String())
+
 	log.Functionf("doActivateTail(%v) done for %s",
 		status.UUIDandVersion, status.DisplayName)
 }
@@ -2020,6 +2074,16 @@ func doCleanup(ctx *domainContext, status *types.DomainStatus) {
 		status)
 	status.IoAdapterList = nil
 	publishDomainStatus(ctx, status)
+
+	// Remove the boot file for the app instance unless the device is currently rebooting.
+	items := ctx.subNodeAgentStatus.GetAll()
+	for _, st := range items {
+		if agentStatus, ok := st.(types.NodeAgentStatus); ok {
+			if !agentStatus.DeviceReboot {
+				delLocalAppActiveFile(status.UUIDandVersion.UUID.String())
+			}
+		}
+	}
 
 	log.Functionf("doCleanup(%v) done for %s",
 		status.UUIDandVersion, status.DisplayName)
