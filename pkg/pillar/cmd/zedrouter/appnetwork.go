@@ -155,7 +155,7 @@ func (z *zedrouter) doActivateAppNetwork(config types.AppNetworkConfig,
 	z.updateNIStatusAfterAppNetworkActivate(status)
 
 	// Update state data collecting to include this application.
-	z.checkAppContainerStatsCollecting(&config, status)
+	// XXX z.checkAppContainerStatsCollecting(&config, status)
 	z.updateVIFsForStateCollecting(nil, &config)
 }
 
@@ -312,7 +312,7 @@ func (z *zedrouter) doUpdateActivatedAppNetwork(oldConfig, newConfig types.AppNe
 		newConfig.UUIDandVersion.UUID, newConfig.DisplayName)
 
 	// Update state data collecting parameters.
-	z.checkAppContainerStatsCollecting(&newConfig, status)
+	// XXX z.checkAppContainerStatsCollecting(&newConfig, status)
 	z.updateVIFsForStateCollecting(&oldConfig, &newConfig)
 
 	// Update app network status as well as status of connected network instances.
@@ -326,7 +326,7 @@ func (z *zedrouter) doInactivateAppNetwork(config types.AppNetworkConfig,
 	status *types.AppNetworkStatus) {
 	// Stop state data collecting for this application.
 	z.updateVIFsForStateCollecting(&config, nil)
-	z.checkAppContainerStatsCollecting(nil, status) // nil config to represent delete
+	// XXX z.checkAppContainerStatsCollecting(nil, status) // nil config to represent delete
 
 	// Use NIReconciler to un-configure connection between the app and the network instance(s)
 	// inside the network stack.
