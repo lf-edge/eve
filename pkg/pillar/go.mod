@@ -1,6 +1,6 @@
 module github.com/lf-edge/eve/pkg/pillar
 
-go 1.23.1
+go 1.24.1
 
 toolchain go1.24.1
 
