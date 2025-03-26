@@ -119,7 +119,7 @@ func parseCipherBlock(ctx *getconfigContext, key string, cfgCipherBlock *zcommon
 	if len(cipherBlock.CipherData) == 0 ||
 		len(cipherBlock.CipherContextID) == 0 {
 		errStr := fmt.Sprintf("%s, block contains incomplete data", key)
-		log.Errorf(errStr)
+		log.Error(errStr)
 		cipherBlock.SetErrorNow(errStr)
 		return cipherBlock
 	}

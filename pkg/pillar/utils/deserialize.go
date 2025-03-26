@@ -5,6 +5,7 @@ package utils
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	log "github.com/sirupsen/logrus"
 	"io"
@@ -48,8 +49,8 @@ func validateFields(dataMap map[string]interface{}, expectedFields map[string]bo
 		if _, ok := dataMap[k]; !ok {
 			if criticalFields[k] {
 				errMsg := fmt.Sprintf("Critical field %s missing in stored data in %s", k, filename)
-				log.Errorf(errMsg)
-				return fmt.Errorf(errMsg)
+				log.Error(errMsg)
+				return errors.New(errMsg)
 			}
 			log.Warnf("Missing field %s in stored data in %s", k, filename)
 		}

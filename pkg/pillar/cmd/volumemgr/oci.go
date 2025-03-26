@@ -28,27 +28,27 @@ func resolveIndex(ctx *volumemgrContext, blob *types.BlobStatus) (*v1.Descriptor
 		reader, err := ctx.casClient.ReadBlob(ctrdCtx, blobHash)
 		if err != nil {
 			err = fmt.Errorf("resolveIndex(%s): Exception while reading blob: %v", blob.Sha256, err)
-			log.Errorf(err.Error())
+			log.Error(err.Error())
 			return nil, err
 		}
 		index, err = v1.ParseIndexManifest(reader)
 		if err != nil && err != io.EOF {
 			err = fmt.Errorf("resolveIndex(%s): Exception while parsing Index from cas: %v", blob.Sha256, err)
-			log.Errorf(err.Error())
+			log.Error(err.Error())
 			return nil, err
 		}
 	} else {
 		fileReader, err := os.Open(blob.Path)
 		if err != nil {
 			err = fmt.Errorf("resolveIndex(%s): failed to open file %s: %v", blob.Sha256, blob.Path, err)
-			log.Errorf(err.Error())
+			log.Error(err.Error())
 			return nil, err
 		}
 		index, err = v1.ParseIndexManifest(fileReader)
 		if err != nil && err != io.EOF {
 			err = fmt.Errorf("resolveIndex(%s): Exception while parsing Index from %s: %v",
 				blob.Sha256, blob.Path, err)
-			log.Errorf(err.Error())
+			log.Error(err.Error())
 			return nil, err
 		}
 		defer fileReader.Close()
@@ -80,27 +80,27 @@ func resolveManifestChildren(ctx *volumemgrContext, blob *types.BlobStatus) (int
 		reader, err := ctx.casClient.ReadBlob(ctrdCtx, blobHash)
 		if err != nil {
 			err = fmt.Errorf("resolveManifestChildren(%s): Exception while reading blob: %v", blob.Sha256, err)
-			log.Errorf(err.Error())
+			log.Error(err.Error())
 			return 0, nil, err
 		}
 		manifest, err = v1.ParseManifest(reader)
 		if err != nil && err != io.EOF {
 			err = fmt.Errorf("resolveManifestChildren(%s): Exception while parsing Index from cas: %v", blob.Sha256, err)
-			log.Errorf(err.Error())
+			log.Error(err.Error())
 			return 0, nil, err
 		}
 	} else {
 		fileReader, err := os.Open(blob.Path)
 		if err != nil {
 			err = fmt.Errorf("resolveManifestChildren(%s): failed to open file %s: %v", blob.Sha256, blob.Path, err)
-			log.Errorf(err.Error())
+			log.Error(err.Error())
 			return 0, nil, err
 		}
 		manifest, err = v1.ParseManifest(fileReader)
 		if err != nil && err != io.EOF {
 			err = fmt.Errorf("resolveManifestChildren(%s): Exception while parsing Index from %s: %v",
 				blob.Sha256, blob.Path, err)
-			log.Errorf(err.Error())
+			log.Error(err.Error())
 			return 0, nil, err
 		}
 		defer fileReader.Close()

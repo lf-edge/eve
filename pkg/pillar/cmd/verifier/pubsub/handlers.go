@@ -117,7 +117,7 @@ func handleCreate(ctx *VerifierContext,
 
 	if config.FileLocation == "" {
 		err := fmt.Errorf("handleCreate: verifyImageConfig: %s has empty fileLocation", config.ImageSha256)
-		ctx.log.Errorf(err.Error())
+		ctx.log.Error(err.Error())
 		cerr := fmt.Sprintf("%v", err)
 		updateVerifyErrStatus(ctx, &status, cerr)
 		return

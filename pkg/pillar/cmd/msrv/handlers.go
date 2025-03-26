@@ -161,7 +161,7 @@ func (msrv *Msrv) handleOpenStack() func(http.ResponseWriter, *http.Request) {
 		if anConfig.MetaDataType != types.MetaDataOpenStack {
 			errorLine := fmt.Sprintf("no MetaDataOpenStack for %s",
 				anStatus.Key())
-			msrv.Log.Tracef(errorLine)
+			msrv.Log.Trace(errorLine)
 			http.Error(w, errorLine, http.StatusNotFound)
 			return
 		}
@@ -291,7 +291,7 @@ func (msrv *Msrv) handleLocationInfo() func(http.ResponseWriter, *http.Request) 
 		resp, err := json.Marshal(locInfo)
 		if err != nil {
 			msg := fmt.Sprintf("Failed to marshal location info: %v", err)
-			msrv.Log.Errorf(msg)
+			msrv.Log.Error(msg)
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			return
 		}
@@ -325,7 +325,7 @@ func (msrv *Msrv) handleWWANStatus() func(http.ResponseWriter, *http.Request) {
 		resp, err := json.Marshal(status)
 		if err != nil {
 			msg := fmt.Sprintf("Failed to marshal WWAN status: %v", err)
-			msrv.Log.Errorf(msg)
+			msrv.Log.Error(msg)
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			return
 		}
@@ -347,7 +347,7 @@ func (msrv *Msrv) handleWWANMetrics() func(http.ResponseWriter, *http.Request) {
 		resp, err := json.Marshal(metrics)
 		if err != nil {
 			msg := fmt.Sprintf("Failed to marshal WWAN metrics: %v", err)
-			msrv.Log.Errorf(msg)
+			msrv.Log.Error(msg)
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			return
 		}
@@ -371,7 +371,7 @@ func (msrv *Msrv) handleSigner(zedcloudCtx *zedcloud.ZedCloudContext) func(http.
 		payload, err := io.ReadAll(io.LimitReader(r.Body, SignerMaxSize+1))
 		if err != nil {
 			msg := fmt.Sprintf("signerHandler: ReadAll failed: %v", err)
-			msrv.Log.Errorf(msg)
+			msrv.Log.Error(msg)
 			http.Error(w, msg, http.StatusInternalServerError)
 			return
 		}
@@ -379,7 +379,7 @@ func (msrv *Msrv) handleSigner(zedcloudCtx *zedcloud.ZedCloudContext) func(http.
 		if binary.Size(payload) > SignerMaxSize {
 			msg := fmt.Sprintf("signerHandler: size exceeds limit. Expected <= %v",
 				SignerMaxSize)
-			msrv.Log.Errorf(msg)
+			msrv.Log.Error(msg)
 			http.Error(w, msg, http.StatusBadRequest)
 			return
 		}
@@ -388,7 +388,7 @@ func (msrv *Msrv) handleSigner(zedcloudCtx *zedcloud.ZedCloudContext) func(http.
 		if anStatus == nil {
 			msg := fmt.Sprintf("signerHandler: no AppNetworkStatus for %s",
 				remoteIP.String())
-			msrv.Log.Errorf(msg)
+			msrv.Log.Error(msg)
 			http.Error(w, msg, http.StatusForbidden)
 			return
 		}
@@ -397,7 +397,7 @@ func (msrv *Msrv) handleSigner(zedcloudCtx *zedcloud.ZedCloudContext) func(http.
 			bytes.NewBuffer(payload), false)
 		if err != nil {
 			msg := fmt.Sprintf("Failed to AddAuthentication: %v", err)
-			msrv.Log.Errorf(msg)
+			msrv.Log.Error(msg)
 			http.Error(w, msg, http.StatusInternalServerError)
 			return
 		}
@@ -424,7 +424,7 @@ func (msrv *Msrv) handleDiag() func(http.ResponseWriter, *http.Request) {
 		if anStatus == nil {
 			msg := fmt.Sprintf("diagHandler: no AppNetworkStatus for %s",
 				remoteIP.String())
-			msrv.Log.Errorf(msg)
+			msrv.Log.Error(msg)
 			http.Error(w, msg, http.StatusForbidden)
 			return
 		}
@@ -440,7 +440,7 @@ func (msrv *Msrv) handleDiag() func(http.ResponseWriter, *http.Request) {
 			DiagMaxSize+1)
 		if err != nil {
 			msg := fmt.Sprintf("diagHandler: read: %v", err)
-			msrv.Log.Errorf(msg)
+			msrv.Log.Error(msg)
 			http.Error(w, msg, http.StatusInternalServerError)
 			return
 		}
@@ -448,7 +448,7 @@ func (msrv *Msrv) handleDiag() func(http.ResponseWriter, *http.Request) {
 		if len(b) > DiagMaxSize {
 			msg := fmt.Sprintf("diagHandler: size exceeds limit. Expected <= %v",
 				DiagMaxSize)
-			msrv.Log.Errorf(msg)
+			msrv.Log.Error(msg)
 			http.Error(w, msg, http.StatusInternalServerError)
 			return
 		}
@@ -869,7 +869,7 @@ func (msrv *Msrv) handleNetworkStatusMetrics() func(http.ResponseWriter, *http.R
 		resp, err := json.Marshal(devList)
 		if err != nil {
 			msg := fmt.Sprintf("Failed to marshal network status and metrics: %v", err)
-			msrv.Log.Errorf(msg)
+			msrv.Log.Error(msg)
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			return
 		}
