@@ -256,6 +256,6 @@ func (handler *volumeHandlerFile) DeleteSnapshot(snapshotMeta interface{}) error
 
 func (handler *volumeHandlerFile) GetAllDataSets() ([]types.ImgInfo, error) {
 	errStr := fmt.Sprintf("GetAllDataSets not implemented for file volumes")
-	handler.log.Errorf(errStr)
-	return nil, fmt.Errorf(errStr)
+	handler.log.Error(errStr)
+	return nil, errors.New(errStr)
 }

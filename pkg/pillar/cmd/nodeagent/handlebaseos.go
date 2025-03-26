@@ -34,7 +34,7 @@ func doZbootBaseOsInstallationComplete(ctxPtr *nodeagentContext,
 		}
 		infoStr := fmt.Sprintf("NORMAL: baseos-update(%s) to EVE version %s reboot",
 			key, newVersion)
-		log.Functionf(infoStr)
+		log.Function(infoStr)
 		scheduleNodeOperation(ctxPtr, infoStr, types.BootReasonUpdate,
 			types.DeviceOperationReboot)
 	}

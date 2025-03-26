@@ -111,7 +111,7 @@ func GetTlsConfig(dns *types.DeviceNetworkStatus, clientCert *tls.Certificate, c
 					}
 					errStr := fmt.Sprintf("Failed to append ProxyCertPEM %s for %s",
 						pemStr, port.IfName)
-					ctx.log.Errorf(errStr)
+					ctx.log.Error(errStr)
 					return nil, errors.New(errStr)
 				}
 			}
@@ -128,7 +128,7 @@ func GetTlsConfig(dns *types.DeviceNetworkStatus, clientCert *tls.Certificate, c
 		errStr := fmt.Sprintf("Failed to append certs from %s",
 			types.RootCertFileName)
 		if ctx != nil {
-			ctx.log.Errorf(errStr)
+			ctx.log.Error(errStr)
 		}
 		return nil, errors.New(errStr)
 	}
@@ -255,7 +255,7 @@ func UpdateTLSProxyCerts(ctx *ZedCloudContext) bool {
 
 	if caCertPool == nil {
 		errStr := fmt.Sprintf("caCertPool is nil")
-		log.Errorf(errStr)
+		log.Error(errStr)
 		return false
 	}
 
@@ -264,7 +264,7 @@ func UpdateTLSProxyCerts(ctx *ZedCloudContext) bool {
 		for _, pem := range port.ProxyCertPEM {
 			if !caCertPool.AppendCertsFromPEM(pem) {
 				errStr := fmt.Sprintf("Failed to append certs from proxy pem")
-				log.Errorf(errStr)
+				log.Error(errStr)
 				return false
 			}
 		}

@@ -4,6 +4,7 @@
 package types
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -497,8 +498,8 @@ func alternativeCheckBadUSBBundlesImpl(bundles []IoBundle) {
 			}
 
 			if errStr != "" {
-				bundles[i].Error.Append(fmt.Errorf(errStr))
-				bundles[j].Error.Append(fmt.Errorf(errStr))
+				bundles[i].Error.Append(errors.New(errStr))
+				bundles[j].Error.Append(errors.New(errStr))
 			}
 		}
 	}
