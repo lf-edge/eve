@@ -463,6 +463,11 @@ find /sys/kernel/security -name "tpm*" | while read -r TPM; do
     fi
 done
 
+if [ -c /dev/tpm0 ]; then
+    echo "- TPM getcap"
+    eve exec vtpm tpm2 getcap handles-persistent > "$DIR/handles-persistent.txt"
+fi
+
 if [ -n "$GET_LOGS_DAYS" ]; then
     mkdir -p "$LOG_TMP_DIR"
     # Find and link log files from /persist/newlog modified in the last GET_LOGS_DAYS days
@@ -472,6 +477,7 @@ elif [ "$GET_LOGS" -eq 1 ]; then
     ln -s /persist/newlog "$DIR/persist-newlog"
 fi
 
+ln -s /persist/certs        "$DIR/persist-certs"
 ln -s /persist/status       "$DIR/persist-status"
 ln -s /persist/log          "$DIR/persist-log"
 [ -d /persist/kubelog ] && ln -s /persist/kubelog "$DIR/persist-kubelog"
