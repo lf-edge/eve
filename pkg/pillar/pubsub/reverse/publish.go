@@ -24,7 +24,7 @@ func Publish(log *base.LogObject, agent string, data interface{}) error {
 
 	if _, err := os.Stat(sockName); err != nil {
 		err := fmt.Errorf("publish(%s): exception while check socket. %s", sockName, err.Error())
-		log.Errorf(err.Error())
+		log.Error(err.Error())
 		return err
 	}
 
@@ -32,7 +32,7 @@ func Publish(log *base.LogObject, agent string, data interface{}) error {
 	if err != nil {
 		err := fmt.Errorf("publish(%s): exception while marshalling data. %s",
 			sockName, err.Error())
-		log.Errorf(err.Error())
+		log.Error(err.Error())
 		return err
 	}
 
@@ -40,7 +40,7 @@ func Publish(log *base.LogObject, agent string, data interface{}) error {
 	if err != nil {
 		err := fmt.Errorf("publish(%s): exception while dialing socket. %s",
 			sockName, err.Error())
-		log.Errorf(err.Error())
+		log.Error(err.Error())
 		return err
 	}
 	defer conn.Close()
@@ -48,7 +48,7 @@ func Publish(log *base.LogObject, agent string, data interface{}) error {
 	if _, err := conn.Write(byteData); err != nil {
 		err := fmt.Errorf("publish(%s): exception while writing data to the socket. %s",
 			sockName, err.Error())
-		log.Errorf(err.Error())
+		log.Error(err.Error())
 		return err
 	}
 	return nil

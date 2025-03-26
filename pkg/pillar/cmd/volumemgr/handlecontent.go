@@ -232,7 +232,7 @@ func AddBlobsToContentTreeStatus(ctx *volumemgrContext, status *types.ContentTre
 		if blobStatus == nil {
 			err := fmt.Errorf("AddBlobsToContentTreeStatus(%s): No BlobStatus found for blobHash: %s",
 				status.ContentID.String(), blobSha)
-			log.Errorf(err.Error())
+			log.Error(err.Error())
 			return err
 		}
 		// Adding a blob to ContentTreeStatus and incrementing the refcount of that blob should be atomic as
@@ -257,7 +257,7 @@ func RemoveAllBlobsFromContentTreeStatus(ctx *volumemgrContext, status *types.Co
 		if blobStatus == nil {
 			err := fmt.Errorf("RemoveAllBlobsFromContentTreeStatus(%s): No BlobStatus found for blobHash: %s",
 				status.ContentID.String(), blobSha)
-			log.Errorf(err.Error())
+			log.Error(err.Error())
 			continue
 		}
 		RemoveRefFromBlobStatus(ctx, blobStatus)

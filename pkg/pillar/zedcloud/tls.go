@@ -98,7 +98,7 @@ func GetTlsConfig(dns *types.DeviceNetworkStatus, clientCert *tls.Certificate, c
 		sha := strings.TrimSpace(string(line))
 		if len(sha) == 0 {
 			errStr := fmt.Sprintf("Read zero byte from sha file")
-			log.Errorf(errStr)
+			log.Error(errStr)
 			return nil, errors.New(errStr)
 		}
 		v2RootFilename := types.CertificateDirname + "/" + sha
@@ -109,7 +109,7 @@ func GetTlsConfig(dns *types.DeviceNetworkStatus, clientCert *tls.Certificate, c
 		if !caCertPool.AppendCertsFromPEM(caCert) {
 			errStr := fmt.Sprintf("Failed to append certs from %s",
 				v2RootFilename)
-			log.Errorf(errStr)
+			log.Error(errStr)
 			return nil, errors.New(errStr)
 		}
 
@@ -126,7 +126,7 @@ func GetTlsConfig(dns *types.DeviceNetworkStatus, clientCert *tls.Certificate, c
 					}
 					errStr := fmt.Sprintf("Failed to append ProxyCertPEM %s for %s",
 						pemStr, port.IfName)
-					log.Errorf(errStr)
+					log.Error(errStr)
 					return nil, errors.New(errStr)
 				}
 			}
@@ -143,7 +143,7 @@ func GetTlsConfig(dns *types.DeviceNetworkStatus, clientCert *tls.Certificate, c
 		errStr := fmt.Sprintf("Failed to append certs from %s",
 			types.RootCertFileName)
 		if ctx != nil {
-			ctx.log.Errorf(errStr)
+			ctx.log.Error(errStr)
 		}
 		return nil, errors.New(errStr)
 	}
@@ -253,25 +253,25 @@ func UpdateTLSProxyCerts(ctx *ZedCloudContext) bool {
 		line, err := os.ReadFile(types.V2TLSCertShaFilename)
 		if err != nil {
 			errStr := fmt.Sprintf("Failed to read V2TLSCertShaFilename")
-			log.Errorf(errStr)
+			log.Error(errStr)
 			return false
 		}
 		sha := strings.TrimSpace(string(line))
 		if len(sha) == 0 {
 			errStr := fmt.Sprintf("Read zero byte from sha file")
-			log.Errorf(errStr)
+			log.Error(errStr)
 			return false
 		}
 		v2RootFilename := types.CertificateDirname + "/" + sha
 		caCert, err := os.ReadFile(v2RootFilename)
 		if err != nil {
 			errStr := fmt.Sprintf("Failed to read v2RootFilename")
-			log.Errorf(errStr)
+			log.Error(errStr)
 			return false
 		}
 		if !caCertPool.AppendCertsFromPEM(caCert) {
 			errStr := fmt.Sprintf("Failed to append certs from %s", v2RootFilename)
-			log.Errorf(errStr)
+			log.Error(errStr)
 			return false
 		}
 		log.Functionf("UpdateTLSProxyCerts: rebuild root CA\n")
@@ -282,7 +282,7 @@ func UpdateTLSProxyCerts(ctx *ZedCloudContext) bool {
 
 	if caCertPool == nil {
 		errStr := fmt.Sprintf("caCertPool is nil")
-		log.Errorf(errStr)
+		log.Error(errStr)
 		return false
 	}
 
@@ -291,7 +291,7 @@ func UpdateTLSProxyCerts(ctx *ZedCloudContext) bool {
 		for _, pem := range port.ProxyCertPEM {
 			if !caCertPool.AppendCertsFromPEM(pem) {
 				errStr := fmt.Sprintf("Failed to append certs from proxy pem")
-				log.Errorf(errStr)
+				log.Error(errStr)
 				return false
 			}
 		}
