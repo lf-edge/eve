@@ -1,4 +1,4 @@
-// Copyright (c) 2020 Zededa, Inc.
+// Copyright (c) 2020-2025 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 package zedrouter
@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -16,10 +17,14 @@ import (
 	apitypes "github.com/docker/docker/api/types"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/stdcopy"
+	"github.com/google/go-cmp/cmp"
+	nestedapp "github.com/lf-edge/eve-tools/runtimemetrics/go/nestedappinstancemetrics"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
+	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
+	"google.golang.org/protobuf/encoding/protojson"
 )
 
 // dockerAPIPort - unencrypted docker socket for remote password-less access
@@ -27,6 +32,19 @@ const dockerAPIPort int = 2375
 
 // dockerAPIVersion - docker API version used
 const dockerAPIVersion string = "1.40"
+
+const (
+	// See detail in https://github.com/lf-edge/eve-tools/blob/master/runtimemetrics/README.md
+
+	// nestedAppDomainAppPort - TCP port for nested domain app stats for runtime to provide app list and metrics
+	// this is used in the http://<runtime-ip>:57475, where the <runtime-ip> is the 'GetStatsIPAddr' of the AppNetworkStatus
+	// and the deployment type is 'Docker'
+	nestedAppDomainAppPort int = 57475
+	// nestedAppDomainAppListURL - URL to get nested domain app list
+	nestedAppDomainAppListURL = "/api/v1/inventory/nested-app-id"
+	// nestedAppDomainAppMetricsURL - URL to get nested domain app metrics with nested-app uuid
+	nestedAppDomainAppMetricsURL = "/api/v1/metrics/nested-app-id/"
+)
 
 // check if we need to launch the goroutine to collect App container stats
 func (z *zedrouter) checkAppContainerStatsCollecting(config *types.AppNetworkConfig,
@@ -36,11 +54,13 @@ func (z *zedrouter) checkAppContainerStatsCollecting(config *types.AppNetworkCon
 	if config != nil {
 		if !status.GetStatsIPAddr.Equal(config.GetStatsIPAddr) {
 			status.GetStatsIPAddr = config.GetStatsIPAddr
+			status.DeploymentType = config.DeploymentType
 			changed = true
 		}
 	} else {
 		if status.GetStatsIPAddr != nil {
 			status.GetStatsIPAddr = nil
+			status.DeploymentType = types.AppRuntimeTypeUnSpecified
 			changed = true
 		}
 	}
@@ -72,28 +92,16 @@ func (z *zedrouter) collectAppContainerStats() {
 			collectTime := time.Now() // all apps collection assign the same timestamp
 			for _, st := range items {
 				status := st.(types.AppNetworkStatus)
+				// When the GetStatsIPAddr is configured, we need to handle collecting stats
+				// for various deployment types, defined by the DeploymentType. At this moment,
+				// we have two types of deployment for stats collection: Docker-Compose and IoT-Edge.
 				if status.GetStatsIPAddr != nil {
-					// get a list of containers and client handle
-					cli, containers, err := z.getAppContainers(status)
-					if err != nil {
-						z.log.Errorf(
-							"collectAppContainerStats: can't get App Containers %s on %s, %v",
-							status.UUIDandVersion.UUID.String(), status.GetStatsIPAddr.String(),
-							err)
-						continue
+					switch status.DeploymentType {
+					case types.AppRuntimeTypeDocker:
+						z.getNestedDomainAppMetrics(status, &acNum)
+					default:
+						z.getIotEdgeMetricsAndLogs(status, collectTime, lastLogTime, &acNum, &numlogs)
 					}
-					acNum += len(containers)
-
-					// collect container stats, and publish to zedclient
-					acMetrics := z.getAppContainerStats(cli, containers)
-					if len(acMetrics.StatsList) > 0 {
-						acMetrics.UUIDandVersion = status.UUIDandVersion
-						acMetrics.CollectTime = collectTime
-						z.pubAppContainerStats.Publish(acMetrics.Key(), acMetrics)
-					}
-
-					// collect container logs and send through the logging system
-					numlogs += z.getAppContainerLogs(status, lastLogTime, cli, containers)
 				}
 			}
 			// log output every 5 min, see this goroutine running status and number
@@ -327,4 +335,186 @@ func (z *zedrouter) getAppContainers(status types.AppNetworkStatus) (
 	}
 
 	return cli, containers, nil
+}
+
+// getIotEdgeMetricsAndLogs collects the metrics and logs for IoT-Edge
+func (z *zedrouter) getIotEdgeMetricsAndLogs(status types.AppNetworkStatus,
+	collectTime time.Time, lastLogTime map[string]time.Time, acNum, numlogs *int) {
+	// get a list of containers and client handle
+	cli, containers, err := z.getAppContainers(status)
+	if err != nil {
+		z.log.Errorf(
+			"getIotEdgeMetricsAndLogs: can't get App Containers %s on %s, %v",
+			status.UUIDandVersion.UUID.String(), status.GetStatsIPAddr.String(),
+			err)
+		return
+	}
+	*acNum += len(containers)
+
+	// collect container stats, and publish to zedclient
+	acMetrics := z.getAppContainerStats(cli, containers)
+	if len(acMetrics.StatsList) > 0 {
+		acMetrics.UUIDandVersion = status.UUIDandVersion
+		acMetrics.CollectTime = collectTime
+		z.pubAppContainerStats.Publish(acMetrics.Key(), acMetrics)
+	}
+
+	// collect container logs and send through the logging system
+	*numlogs += z.getAppContainerLogs(status, lastLogTime, cli, containers)
+}
+
+// Helper function to construct the URL for nested app operations
+func buildNestedAppURL(status types.AppNetworkStatus, endpoint string, appID string) string {
+	baseURL := fmt.Sprintf("http://%s:%d%s", status.GetStatsIPAddr.String(), nestedAppDomainAppPort, endpoint)
+	if appID != "" {
+		return baseURL + appID
+	}
+	return baseURL
+}
+
+// getNestedDomainAppMetrics collects the metrics for nested domain apps
+// this does several tasks:
+// - http request to runtime agent to get the list of nested domain apps
+// - publish the nested domain apps, currently it can be used by 'newlogd'
+// - http request to runtime agent to get the metrics for each nested domain app
+// - publish the metrics to zedagent w/ types.AppContainerStats
+func (z *zedrouter) getNestedDomainAppMetrics(status types.AppNetworkStatus, acNum *int) {
+	// first get the list of nested domain apps
+	nestedApps, err := z.getNestedDomainAppList(status)
+	if err != nil {
+		z.log.Errorf("getNestedDomainAppMetrics: failed to get nested app list, error: %v", err)
+		return
+	}
+
+	*acNum += len(nestedApps)
+	var acMetrics types.AppContainerMetrics
+	acMetrics.UUIDandVersion = status.UUIDandVersion
+	acMetrics.CollectTime = time.Now()
+
+	// for each nested domain app, get the metrics
+	// this list of nested app metrics is published to zedclient
+	// and to be uploaded to the controller along with the runtime or parent app metrics
+	for _, nestedApp := range nestedApps {
+		url := buildNestedAppURL(status, nestedAppDomainAppMetricsURL, nestedApp.UUIDandVersion.UUID.String())
+
+		data, err := fetchHTTPData(url)
+		if err != nil {
+			z.log.Errorf("getNestedDomainAppMetrics: %v", err)
+			continue
+		}
+
+		var nastat nestedapp.NestedAppMetrics
+		if err := protojson.Unmarshal(data, &nastat); err != nil {
+			z.log.Errorf("getNestedDomainAppMetrics: failed to decode JSON data, error: %v", err)
+			continue
+		}
+
+		acStats := types.AppContainerStats{
+			ContainerName:  nastat.Id,
+			Status:         nastat.Status,
+			Pids:           nastat.Pids,
+			Uptime:         nastat.Uptime,
+			CPUTotal:       nastat.CPUTotal,
+			SystemCPUTotal: nastat.SystemCPUTotal,
+			UsedMem:        nastat.UsedMem,
+			AllocatedMem:   nastat.AllocatedMem,
+			TxBytes:        nastat.TxBytes,
+			RxBytes:        nastat.RxBytes,
+			ReadBytes:      nastat.ReadBytes,
+			WriteBytes:     nastat.WriteBytes,
+		}
+		acMetrics.StatsList = append(acMetrics.StatsList, acStats)
+	}
+	// send for zedagent to pack w/ parent app metrics
+	z.pubAppContainerStats.Publish(acMetrics.Key(), acMetrics)
+
+	z.log.Functionf("getNestedDomainAppMetrics: collected metrics %+v", acMetrics)
+}
+
+// getNestedDomainAppList gets the list of nested domain apps
+func (z *zedrouter) getNestedDomainAppList(status types.AppNetworkStatus) ([]types.NestedAppDomainStatus, error) {
+	pub := z.pubNestedAppDomainStatus
+	existingItems := pub.GetAll()
+	existingNestedApps := make(map[string]types.NestedAppDomainStatus)
+
+	// Save existing items for later comparison
+	for _, st := range existingItems {
+		nestedApp := st.(types.NestedAppDomainStatus)
+		existingNestedApps[nestedApp.UUIDandVersion.UUID.String()] = nestedApp
+	}
+
+	// Get the JSON data from the Runtime endpoint
+	url := buildNestedAppURL(status, nestedAppDomainAppListURL, "")
+
+	data, err := fetchHTTPData(url)
+	if err != nil {
+		z.log.Errorf("getNestedDomainAppMetrics: %v", err)
+		return nil, err
+	}
+
+	var nestedAppInventory nestedapp.NestedAppInventory
+	// Decode the JSON data into the protobuf struct
+	if err := protojson.Unmarshal(data, &nestedAppInventory); err != nil {
+		z.log.Errorf("getNestedAppListAndMetrics: failed to decode JSON data using protojson, error: %v", err)
+		return nil, err
+	}
+
+	// Process the nested app IDs
+	var nestedapps []types.NestedAppDomainStatus
+	newNestedApps := make(map[string]types.NestedAppDomainStatus)
+	for _, nestedAppID := range nestedAppInventory.Apps {
+		nestedAppUUID, err := uuid.FromString(nestedAppID.AppId)
+		if err != nil {
+			z.log.Errorf("getNestedAppListAndMetrics: invalid UUID %s, error: %v", nestedAppID.AppId, err)
+			continue
+		}
+
+		nestedApp := types.NestedAppDomainStatus{
+			UUIDandVersion: types.UUIDandVersion{UUID: nestedAppUUID},
+			DisplayName:    nestedAppID.AppName,
+			DisableLogs:    nestedAppID.DisableLogs,
+			ParentAppUUID:  status.UUIDandVersion.UUID,
+		}
+
+		newNestedApps[nestedAppID.AppId] = nestedApp
+		nestedapps = append(nestedapps, nestedApp)
+	}
+
+	// Compare old and new sets of nested apps and publish if different
+	for uuidStr, newNestedApp := range newNestedApps {
+		if existingNestedApp, exists := existingNestedApps[uuidStr]; !exists || !cmp.Equal(existingNestedApp, newNestedApp) {
+			z.log.Functionf("getNestedAppListAndMetrics: publish nestedApp %+v", newNestedApp)
+			z.pubNestedAppDomainStatus.Publish(newNestedApp.Key(), newNestedApp)
+		}
+	}
+
+	// handle removed nested apps
+	for uuidStr := range existingNestedApps {
+		if _, exists := newNestedApps[uuidStr]; !exists {
+			z.log.Functionf("getNestedAppListAndMetrics: remove nestedApp with UUID %s", uuidStr)
+			z.pubNestedAppDomainStatus.Unpublish(uuidStr)
+		}
+	}
+
+	return nestedapps, nil
+}
+
+// fetchHTTPData fetches data from the given URL
+func fetchHTTPData(url string) ([]byte, error) {
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch data from %s: %w", url, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status code %d from %s", resp.StatusCode, url)
+	}
+
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body from %s: %w", url, err)
+	}
+
+	return data, nil
 }

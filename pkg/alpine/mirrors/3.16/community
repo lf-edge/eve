@@ -1,10 +1,11 @@
+bcc
 bcc-dev
 cereal
 cni-plugins
 fio
 fmt
-hwinfo-libs
 hwinfo
+hwinfo-libs
 i2c-tools
 i2c-tools-dev
 iw
@@ -12,6 +13,7 @@ json-glib
 json-glib-dev
 libbpf
 libbpf-dev
+libgudev
 libgudev-dev
 libproc
 librados
@@ -26,6 +28,7 @@ libvirt-lxc
 libvirt-qemu
 libvncserver
 libvncserver-dev
+libx86emu
 pahole
 perf
 pkgconf
@@ -63,8 +66,8 @@ tpm2-tss-rc
 tpm2-tss-sys
 tpm2-tss-tcti-cmd
 tpm2-tss-tcti-device
+tpm2-tss-tctildr
 tpm2-tss-tcti-mssim
 tpm2-tss-tcti-pcap
 tpm2-tss-tcti-swtpm
-tpm2-tss-tctildr
 yq
