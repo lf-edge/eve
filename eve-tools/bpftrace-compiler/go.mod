@@ -1,7 +1,6 @@
 module bpftrace-compiler
 
-go 1.21
-toolchain go1.24.1
+go 1.24.1
 
 require (
 	github.com/creack/pty v1.1.24
@@ -15,16 +14,14 @@ require (
 	gopkg.in/yaml.v2 v2.4.0
 )
 
-require github.com/linuxkit/linuxkit/src/cmd/linuxkit v0.0.0-20241223160006-dc8c6d5985ac
+require github.com/linuxkit/linuxkit/src/cmd/linuxkit v0.0.0-20250311191319-ec70c1246f4f
 
 require (
 	github.com/AdaLogics/go-fuzz-headers v0.0.0-20240806141605-e8a1dd7889d6 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
-	github.com/Microsoft/hcsshim v0.12.9 // indirect
 	github.com/agext/levenshtein v1.2.3 // indirect
 	github.com/anchore/go-struct-converter v0.0.0-20221118182256-c68fdcfa2092 // indirect
 	github.com/containerd/console v1.0.4 // indirect
-	github.com/containerd/containerd v1.7.23 // indirect
 	github.com/containerd/containerd/api v1.8.0 // indirect
 	github.com/containerd/containerd/v2 v2.0.2 // indirect
 	github.com/containerd/continuity v0.4.5 // indirect
@@ -57,7 +54,7 @@ require (
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
-	github.com/hashicorp/go-version v1.2.0 // indirect
+	github.com/hashicorp/go-version v1.7.0 // indirect
 	github.com/in-toto/in-toto-golang v0.5.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/klauspost/compress v1.17.11 // indirect
