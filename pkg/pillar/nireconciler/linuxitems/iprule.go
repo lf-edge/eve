@@ -127,8 +127,9 @@ func (c *IPRuleConfigurator) makeNetlinkRule(rule IPRule) *netlink.Rule {
 	r.Src = rule.Src
 	r.Dst = rule.Dst
 	r.Table = rule.Table
-	r.Mark = rule.Mark
-	r.Mask = rule.Mask
+	r.Mark = uint32(rule.Mark)
+	mask := uint32(rule.Mask)
+	r.Mask = &mask
 	r.Priority = rule.Priority
 	r.Family = netlink.FAMILY_V4
 	if rule.Src != nil && rule.Src.IP.To4() == nil {
