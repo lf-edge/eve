@@ -47,15 +47,13 @@ def get_short_arch_flavor(branch_name):
     _, _, arch, _, flavor = branch_name.split("-", 4)
     return f"{arch}-{flavor}"
 
-
-def fetch_latest_commits_from_github(user_token):
+def fetch_latest_commits_from_github(user, user_token, verbose=False):
     """
-    Generate the kernel-commits.mk-new file with commit information from GitHub branches.
-
     This function retrieves branch information from a GitHub repository and
-    returns the commit hashes for each branch in a set.
+    returns the commit hashes for each branch in a set. Protected branches are ignored
     """
-    repo_url = "https://api.github.com/repos/lf-edge/eve-kernel/branches?per_page=100"
+    # pylint: disable-next=line-too-long
+    repo_url = f"https://api.github.com/repos/{user}/eve-kernel/branches?protected=false&per_page=100"
     new_commits = {}
 
     headers = {"Authorization": f"token {user_token}"}
@@ -74,14 +72,19 @@ def fetch_latest_commits_from_github(user_token):
                 branch_name = branch["name"]
                 if is_valid_branch_format(branch_name):
                     new_commits[branch_name] = commit
+                    if verbose:
+                        print(f"  {branch_name}, Commit: {commit}")
+                else:
+                    if verbose:
+                        print(f"    skipping: {branch_name}")
 
             if "next" in response.links:
                 repo_url = response.links["next"]["url"]
             else:
                 break
         else:
-            print("Error:", response.status_code, response.text)
-            break
+            print(Fore.RED + Style.BRIGHT + "Error:", response.status_code, response.text)
+            sys.exit(1)
     return new_commits
 
 
@@ -96,8 +99,8 @@ def is_valid_branch_format(branch_name):
     Returns:
     - bool: True if the branch name follows the expected format, False otherwise.
     """
-    return branch_name.startswith("eve-kernel-") and "-" in branch_name
-
+    match = re.fullmatch(r"eve-kernel-(amd64|arm64|riscv64){1}-v\d+\.\d+(?:\.\d+)?-.+", branch_name)
+    return match is not None
 
 def variable_to_branch_name(variable_name):
     """
@@ -124,7 +127,8 @@ def branch_commit_to_variable(branch_name, commit):
     Returns:
     - str: The variable name in the expected format.
     """
-    branch_match = re.match(r"(?P<branch>.*v\d+\.\d+(?:\.\d+)?)-(?P<platform>.*)", branch_name)
+    # pylint: disable-next=line-too-long
+    branch_match = re.match(r"(?P<branch>eve-kernel-(amd64|arm64|riscv64){1}-v\d+\.\d+(?:\.\d+)?)-(?P<platform>.+)", branch_name)
 
     if not branch_match:
         sys.exit(f"Error: Invalid branch name format: {branch_name}")
@@ -158,6 +162,29 @@ if PYTEST_AVAILABLE:
         assert pytest_wrapped_e.type == SystemExit
         assert pytest_wrapped_e.value.code == \
             "Error: Invalid branch name format: eve-kernel-arm64-v5-nvidia-jp5"
+
+    def test_is_valid_branch_format():
+        """
+        Test the is_valid_branch_format function with valid branch names.
+        """
+        assert is_valid_branch_format("eve-kernel-arm64-v5.10.186-generic") is True
+        assert is_valid_branch_format("eve-kernel-amd64-v5.10-generic") is True
+        assert is_valid_branch_format("eve-kernel-riscv64-v5.10.192-nvidia-jp5") is True
+        assert is_valid_branch_format("eve-kernel-arm64-v5.10-nvidia-jp5") is True
+        assert is_valid_branch_format("eve-kernel-arm64-v5.10-nvidia-jp5") is True
+
+    def test_is_invalid_branch_format():
+        """
+        Test the is_valid_branch_format function with invalid branch names.
+        """
+        assert is_valid_branch_format("v5.10-nvidia-jp5") is False
+        assert is_valid_branch_format("eve-kernel-v6.8") is False
+        assert is_valid_branch_format("eve-kernel-6.8") is False
+        assert is_valid_branch_format("eve-kernel-update") is False
+        assert is_valid_branch_format("eve-kernel-v6.8-") is False
+        assert is_valid_branch_format("eve-kernel-arm64-v6.8") is False
+
+
 
 
 def parse_kernel_commits_file(file_path):
@@ -219,7 +246,8 @@ def github_fetch_commit_range(repo_owner, repo_name, old_commit, new_commit, ver
 
         return commit_info
 
-    return None
+    print(Fore.RED + Style.BRIGHT + "Error:", response.status_code, response.text)
+    sys.exit(1)
 
 
 def generate_commit_message(branches, repo_owner, repo_name, verbose=False):
@@ -238,6 +266,11 @@ def generate_commit_message(branches, repo_owner, repo_name, verbose=False):
 
     for branch in branches:
         old_commit, new_commit = branches[branch]
+
+        if old_commit is None and new_commit is None:
+            commit_message += f"{branch}: branch is now obsolete\n"
+            continue
+
         commit_message += f"{branch}\n"
         # Fetch a limited number of commit subjects and their corresponding
         # commit hashes between old and new commits for the branch
@@ -282,7 +315,7 @@ def pattern_to_regex(pattern):
     return regex_pattern
 
 
-def find_updated_branches(old_commits, new_commits):
+def find_updated_branches(old_commits, new_commits, verbose=False):
     """
     Find the branches that have been updated.
 
@@ -295,16 +328,33 @@ def find_updated_branches(old_commits, new_commits):
     """
     branches_updated = {}
 
+    if verbose:
+        print("Checking for updated branches...")
+
     for branch, new_commit in new_commits.items():
+        if verbose:
+            print(f"  {branch}, current commit: {new_commit}")
         if branch in old_commits:
             old_commit = old_commits[branch]
             if old_commit != new_commit:
                 branches_updated[branch] = (old_commit, new_commit)
+                if verbose:
+                    print(f"    {branch} updated from {old_commit} to {new_commit}")
         else:
             # get tag from branch name
             _, _, _, tag, _ = branch.split("-", 4)
             new_commit = new_commits[branch]
             branches_updated[branch] = (tag, new_commit)
+
+    if verbose:
+        print("Checking for removed branches...")
+
+    # check for removed branches
+    for branch, old_commit in old_commits.items():
+        if verbose:
+            print(f"  {branch}, current commit: {old_commit}")
+        if branch not in new_commits:
+            branches_updated[branch] = (None, None)
 
     return branches_updated
 
@@ -367,8 +417,8 @@ def get_kernel_tags_from_dockerhub(username, repository, search_pattern: str="",
                 print(f"Fetching docker tags: {total_tags_fetched} / {count}")
                 break
         else:
-            print("Error:", response.status_code, response.text)
-            break
+            print(Fore.RED + Style.BRIGHT + "Error:", response.status_code, response.text)
+            sys.exit(1)
     return tags
 
 
@@ -568,6 +618,16 @@ def adjust_branches_by_docker_tags(new_commits, updated_branches, docker_tags):
         # and we fallback to the commit from docker hub
         current_gh_commit, latest_gh_commit = updated_branches[branch]
 
+        if current_gh_commit is None and latest_gh_commit is None:
+            # branch was removed. Print nice info message
+            print(
+                Fore.YELLOW
+                + "[warning]"
+                + Style.RESET_ALL
+                + f" :{branch}: the branch was removed from the repository or protected."
+            )
+            continue
+
         if docker_commit != latest_gh_commit:
             is_error = True
             msg = (
@@ -622,22 +682,35 @@ def main():
     init(autoreset=True)
 
     kernel_commits_mk_file = "kernel-commits.mk"
+    gh_user = "lf-edge"
 
     # parse command line arguments. Only token is supported for now
     args = parse_cmd_args()
     github_user_token = get_github_token(args.token)
 
-    new_commits = fetch_latest_commits_from_github(github_user_token)
+    new_commits = fetch_latest_commits_from_github(gh_user, github_user_token,args.verbose)
     old_commits = parse_kernel_commits_file(kernel_commits_mk_file)
     # updated on github
-    updated_branches = find_updated_branches(old_commits, new_commits)
+    updated_branches = find_updated_branches(old_commits, new_commits, args.verbose)
 
     if not updated_branches:
         print("No kernel updates available.")
         return
 
+    # print updated branches
+    print("Updated branches:")
+    for branch, commits in updated_branches.items():
+        if commits[0] is None and commits[1] is None:
+            print(Fore.YELLOW + Style.BRIGHT +   "  REMOVED: "
+                + Style.RESET_ALL + Style.BRIGHT + f"{branch}")
+        else:
+            print(Fore.GREEN + Style.BRIGHT +   "  UPDATED: "
+                + Style.RESET_ALL + Style.BRIGHT + f"{branch}" + Style.RESET_ALL
+                + f" {commits[0]} -> {commits[1]}")
+
+
     # fetch tags from docker hub and convert them to branch names
-    docker_tags = fetch_docker_tags(verbose=args.verbose)
+    docker_tags = fetch_docker_tags(args.verbose)
 
     is_error = adjust_branches_by_docker_tags(new_commits, updated_branches, docker_tags)
 
@@ -660,7 +733,7 @@ def main():
         )
         return
 
-    commit_message = generate_commit_message(updated_branches, "lf-edge", "eve-kernel")
+    commit_message = generate_commit_message(updated_branches, gh_user, "eve-kernel")
 
     # dump updated commits to kernel-commits.mk
     with open(kernel_commits_mk_file, "w", encoding="utf-8") as new_file:
