@@ -27,10 +27,12 @@ type UUIDandVersion struct {
 type SnapshotType int32
 
 const (
-	// SnapshotTypeUnspecified is the default value, and should not be used in practice
+	// SnapshotTypeUnspecified is the default value, and means no snapshot should be taken
 	SnapshotTypeUnspecified SnapshotType = 0
 	// SnapshotTypeAppUpdate is used when the snapshot is created as a result of an app update
 	SnapshotTypeAppUpdate SnapshotType = 1
+	// SnapshotTypeImmediate is used when the snapshot is created immediately
+	SnapshotTypeImmediate SnapshotType = 2
 )
 
 func (s SnapshotType) String() string {
@@ -39,6 +41,8 @@ func (s SnapshotType) String() string {
 		return "SnapshotTypeUnspecified"
 	case SnapshotTypeAppUpdate:
 		return "SnapshotTypeAppUpdate"
+	case SnapshotTypeImmediate:
+		return "SnapshotTypeImmediate"
 	default:
 		return fmt.Sprintf("Unknown SnapshotType %d", s)
 	}
@@ -49,6 +53,8 @@ func (s SnapshotType) ConvertToInfoSnapshotType() info.SnapshotType {
 	switch s {
 	case SnapshotTypeAppUpdate:
 		return info.SnapshotType_SNAPSHOT_TYPE_APP_UPDATE
+	case SnapshotTypeImmediate:
+		return info.SnapshotType_SNAPSHOT_TYPE_IMMEDIATE
 	default:
 		return info.SnapshotType_SNAPSHOT_TYPE_UNSPECIFIED
 	}
@@ -234,6 +240,18 @@ func (config AppInstanceConfig) Key() string {
 	return config.UUIDandVersion.UUID.String()
 }
 
+// SnapshotWhen describes when a snapshot should be taken, see info below
+type SnapshotWhen uint8
+
+const (
+	// NoSnapshotTake indicated no snapshot should be taken, f.e. because it already exists.
+	NoSnapshotTake SnapshotWhen = iota
+	// SnapshotImmediate indicates whether a snapshot should be taken immediately.
+	SnapshotImmediate
+	// SnapshotOnUpgrade indicates whether a snapshot should be taken during the app instance update.
+	SnapshotOnUpgrade
+)
+
 // SnapshottingStatus contains the snapshot information for the app instance.
 type SnapshottingStatus struct {
 	// MaxSnapshots indicates the maximum number of snapshots to be kept for the app instance.
@@ -246,8 +264,8 @@ type SnapshottingStatus struct {
 	SnapshotsToBeDeleted []SnapshotDesc
 	// PreparedVolumesSnapshotConfigs contains the list of snapshots to be triggered for the app instance.
 	PreparedVolumesSnapshotConfigs []VolumesSnapshotConfig
-	// SnapshotOnUpgrade indicates whether a snapshot should be taken during the app instance update.
-	SnapshotOnUpgrade bool
+	// SnapshotTakenType indicates if and when a snapshot should be taken
+	SnapshotTakenType SnapshotWhen
 	// HasRollbackRequest indicates whether there are any rollback requests for the app instance.
 	// Set to true when a rollback is requested by controller, set to false when the rollback is triggered.
 	HasRollbackRequest bool
