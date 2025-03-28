@@ -4,13 +4,20 @@
 package msrv
 
 import (
+	"crypto/sha256"
+	"encoding/gob"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"os"
 	"sync"
 
 	uuid "github.com/satori/go.uuid"
 
+	zconfig "github.com/lf-edge/eve-api/go/config"
+	"github.com/lf-edge/eve-api/go/evecommon"
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/cipher"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
@@ -65,6 +72,8 @@ type PatchEnvelopes struct {
 	pubSub                *pubsub.PubSub
 	log                   *base.LogObject
 	pubPatchEnvelopeState pubsub.Publication
+
+	msrv *Msrv
 }
 
 // UpdateStateNotificationCh return update channel to send notifications to update currentState
@@ -75,7 +84,7 @@ func (pes *PatchEnvelopes) UpdateStateNotificationCh() chan<- struct{} {
 // NewPatchEnvelopes returns PatchEnvelopes structure and starts goroutine
 // to process notifications from channel. Note that we create buffered channel
 // to avoid unbounded processing time in writing to channel
-func NewPatchEnvelopes(log *base.LogObject, ps *pubsub.PubSub) *PatchEnvelopes {
+func NewPatchEnvelopes(msrv *Msrv) *PatchEnvelopes {
 	pe := &PatchEnvelopes{
 
 		updateStateNotificationCh: make(chan struct{}, 1),
@@ -87,8 +96,9 @@ func NewPatchEnvelopes(log *base.LogObject, ps *pubsub.PubSub) *PatchEnvelopes {
 		completedVolumes:  generics.NewLockedMap[uuid.UUID, types.VolumeStatus](),
 		contentTreeStatus: generics.NewLockedMap[uuid.UUID, types.ContentTreeStatus](),
 
-		log:    log,
-		pubSub: ps,
+		log:    msrv.Log,
+		pubSub: msrv.PubSub,
+		msrv:   msrv,
 	}
 
 	var err error
@@ -135,6 +145,22 @@ func (pes *PatchEnvelopes) updateState() {
 			peState := types.PatchEnvelopeStateActive
 			for _, volRef := range pe.VolumeRefs {
 				if blob, blobState := pes.blobFromVolumeRef(volRef); blob != nil {
+					if blobState < peState {
+						peState = blobState
+					}
+					if idx := types.CompletedBinaryBlobIdxByName(pe.BinaryBlobs, blob.FileName); idx != -1 {
+						pe.BinaryBlobs[idx] = *blob
+					} else {
+						pe.BinaryBlobs = append(pe.BinaryBlobs, *blob)
+					}
+				}
+			}
+			// Check also the cipher blobs
+			for _, cipher := range pe.CipherBlobs {
+				if cipher.Volume == nil {
+					continue
+				}
+				if blob, blobState := pes.blobFromVolumeRef(*cipher.Volume); blob != nil {
 					if blobState < peState {
 						peState = blobState
 					}
@@ -273,6 +299,7 @@ func (pes *PatchEnvelopes) UpdateEnvelopes(peInfo []types.PatchEnvelopeInfo) {
 		if err != nil {
 			pes.log.Errorf("Failed to Update Envelopes :%v", err)
 		}
+		pes.checkAndExpandCipherBlobs(&pe)
 		envelopes.Store(peUUID, pe)
 	}
 
@@ -282,6 +309,146 @@ func (pes *PatchEnvelopes) UpdateEnvelopes(peInfo []types.PatchEnvelopeInfo) {
 	}
 
 	pes.envelopes = envelopes
+}
+
+func (pes *PatchEnvelopes) checkAndExpandCipherBlobs(pe *types.PatchEnvelopeInfo) {
+
+	for i := range pe.BinaryBlobs {
+		blob := &pe.BinaryBlobs[i]
+		if !blob.EncArtifactMeta.IsCipher {
+			continue
+		}
+		aMeta := pes.GetArtifactMetaData(blob.EncArtifactMeta)
+		if aMeta == "" {
+			pes.log.Errorf("checkAndExpandCipherBlobs: Failed to get artifact metadata for %v", blob.FileName)
+			continue
+		}
+		blob.ArtifactMetadata = aMeta
+		pes.log.Functionf("checkAndExpandCipherBlobs: got binaryBlobs (%d)", i)
+	}
+
+	for i := range pe.VolumeRefs {
+		volRef := &pe.VolumeRefs[i]
+		if !volRef.EncArtifactMeta.IsCipher {
+			continue
+		}
+		aMeta := pes.GetArtifactMetaData(volRef.EncArtifactMeta)
+		if aMeta == "" {
+			pes.log.Errorf("checkAndExpandCipherBlobs: Failed to get artifact metadata for %v", volRef.FileName)
+			continue
+		}
+		volRef.ArtifactMetadata = aMeta
+		pes.log.Functionf("checkAndExpandCipherBlobs: got binary volumeref (%d)", i)
+	}
+
+	// Either the inline blob or the volume ref is encrypted, the artifactMetadata attached
+	// may or may not be encrypted
+	for i := range pe.CipherBlobs {
+		cBlob := &pe.CipherBlobs[i]
+		if cBlob.EncArtifactMeta.IsCipher {
+			aMeta := pes.GetArtifactMetaData(cBlob.EncArtifactMeta)
+			if aMeta == "" {
+				pes.log.Errorf("checkAndExpandCipherBlobs: Failed to get artifact metadata for cipher blob")
+				continue
+			}
+			cBlob.ArtifactMetaData = aMeta
+		}
+		_, err := pes.msrv.PopulateBinaryBlobFromCipher(cBlob, true)
+		if err != nil {
+			pes.log.Errorf("checkAndExpandCipherBlobs: Failed to populate binary blob from cipher blob")
+		}
+	}
+}
+
+// GetArtifactMetaData returns artifact metadata for the given cipher block status
+func (pes *PatchEnvelopes) GetArtifactMetaData(c types.CipherBlockStatus) string {
+	status, decBlock, err := cipher.GetCipherCredentials(&pes.msrv.decryptCipherContext, c)
+	if pes.msrv.pubCipherBlockStatus != nil {
+		_ = pes.msrv.pubCipherBlockStatus.Publish(status.Key(), status)
+		if err != nil {
+			return ""
+		}
+	}
+	if decBlock.User == evecommon.EncryptionBlockUser_ENCRYPTION_BLOCK_USER_BINARY_ARTIFACT_METADATA {
+		return decBlock.EncryptedData
+	}
+	return ""
+}
+
+// PopulateBinaryBlobFromCipher populates BinaryBlobCompleted or BinaryBlobVolumeRef
+func (msrv *Msrv) PopulateBinaryBlobFromCipher(cBlob *types.BinaryCipherBlob, download bool) (string, error) {
+	if cBlob == nil {
+		return "", fmt.Errorf("cBlob is nil")
+	}
+	EncBinaryArtifact, err := loadCipherBlockStatusFromFile(cBlob.EncURL)
+	if err != nil {
+		return "", fmt.Errorf("failed to load cipher block status from file: %v", err)
+	}
+	status, clearBytes, err := cipher.GetCipherMarshalledData(&msrv.decryptCipherContext, EncBinaryArtifact)
+	if msrv.pubCipherBlockStatus != nil {
+		_ = msrv.pubCipherBlockStatus.Publish(status.Key(), status)
+		if err != nil {
+			return "", err
+		}
+	}
+
+	switch cBlob.EncType {
+	case types.BlobEncrytedTypeInline:
+		var inline zconfig.InlineOpaqueBase64Data
+		err = cipher.UnmarshalCipherData(&msrv.decryptCipherContext, clearBytes, &inline)
+		if err != nil {
+			return "", fmt.Errorf("failed to unmarshal BinaryBlobCompleted: %v", err)
+		}
+		data := inline.GetBase64Data()
+		if download {
+			return data, nil
+		}
+		shaBytes := sha256.Sum256([]byte(data))
+		inlineBlob := &types.BinaryBlobCompleted{
+			FileName:     inline.GetFileNameToUse(),
+			FileSha:      hex.EncodeToString(shaBytes[:]),
+			FileMetadata: inline.GetBase64MetaData(),
+			URL:          "", //data, // this URL now is not used for download, but for decrypted data saved
+			Size:         int64(len(data)),
+		}
+		cBlob.Inline = inlineBlob
+		msrv.Log.Functionf("PopulateBinaryBlobFromCipher: inlineBlob %v", inlineBlob)
+	case types.BlobEncrytedTypeVolume:
+		var volume zconfig.ExternalOpaqueBinaryBlob
+		err = cipher.UnmarshalCipherData(&msrv.decryptCipherContext, clearBytes, &volume)
+		if err != nil {
+			return "", fmt.Errorf("failed to unmarshal BinaryBlobCompleted: %v", err)
+		}
+		volumeBlob := &types.BinaryBlobVolumeRef{
+			ImageName:    volume.GetImageName(),
+			FileName:     volume.GetFileNameToUse(),
+			FileMetadata: volume.GetBlobMetaData(),
+			ImageID:      volume.GetImageId(),
+		}
+		cBlob.Volume = volumeBlob
+		msrv.Log.Functionf("PopulateBinaryBlobFromCipher: volumeBlob %v", volumeBlob)
+	default:
+		return "", fmt.Errorf("unknown encryption type: %v", cBlob.EncType)
+	}
+	return "", nil
+}
+
+// loadCipherBlockStatusFromFile loads CipherBlockStatus from EncURL file path,
+// and Gob decodes it into CipherBlockStatus structure
+func loadCipherBlockStatusFromFile(encURL string) (types.CipherBlockStatus, error) {
+	var status types.CipherBlockStatus
+	file, err := os.Open(encURL)
+	if err != nil {
+		return status, fmt.Errorf("failed to open file: %v", err)
+	}
+	defer file.Close()
+
+	decoder := gob.NewDecoder(file)
+	if err := decoder.Decode(&status); err != nil {
+		return status, fmt.Errorf("failed to decode CipherBlockStatus: %v", err)
+	}
+
+	return status, nil
 }
 
 // UpdateContentTree adds or removes ContentTreeStatus from PatchEnvelopes structure
@@ -329,24 +496,60 @@ func patchEnvelopesJSONForAppInstance(pe types.PatchEnvelopeInfoList) ([]byte, e
 	toDisplay := make([]PeInfoToDisplay, len(pe.Envelopes))
 
 	for i, envelope := range pe.Envelopes {
-
-		var binaryBlobs []types.BinaryBlobCompleted
-		binaryBlobs = nil
-		if envelope.BinaryBlobs != nil {
-			binaryBlobs = make([]types.BinaryBlobCompleted, len(envelope.BinaryBlobs))
-			copy(binaryBlobs, envelope.BinaryBlobs)
-		}
+		// Create copies of the slices
+		binaryBlobs := make([]types.BinaryBlobCompleted, len(envelope.BinaryBlobs))
+		copy(binaryBlobs, envelope.BinaryBlobs)
 
 		for j := range binaryBlobs {
 			url := fmt.Sprintf("http://%s%sdownload/%s/%s", MetaDataServerIP, PatchEnvelopeURLPath, envelope.PatchID, binaryBlobs[j].FileName)
 			binaryBlobs[j].URL = url
+			binaryBlobs[j].EncArtifactMeta = types.CipherBlockStatus{}
+		}
+
+		// Create copies of the cipher blobs
+		for _, cipher := range envelope.CipherBlobs {
+			if cipher.EncType == types.BlobEncrytedTypeInline && cipher.Inline != nil {
+				inline := *cipher.Inline
+				url := fmt.Sprintf("http://%s%sdownload/%s/%s", MetaDataServerIP, PatchEnvelopeURLPath, envelope.PatchID, inline.FileName)
+				inline.URL = url
+				inline.EncArtifactMeta = types.CipherBlockStatus{}
+				binaryBlobs = append(binaryBlobs, inline)
+			}
+		}
+
+		// Set binaryBlobs to nil if empty
+		if len(binaryBlobs) == 0 {
+			binaryBlobs = nil
+		}
+
+		// Create copies of the volumeRefs
+		volumeRefs := make([]types.BinaryBlobVolumeRef, len(envelope.VolumeRefs))
+		copy(volumeRefs, envelope.VolumeRefs)
+
+		for j := range volumeRefs {
+			volRef := &volumeRefs[j]
+			volRef.EncArtifactMeta = types.CipherBlockStatus{}
+		}
+
+		// Create copies of the cipher blobs for volume blobs
+		for _, cipher := range envelope.CipherBlobs {
+			if cipher.EncType == types.BlobEncrytedTypeVolume && cipher.Volume != nil {
+				volume := *cipher.Volume
+				volume.EncArtifactMeta = types.CipherBlockStatus{}
+				volumeRefs = append(volumeRefs, volume)
+			}
+		}
+
+		// Set volumeRefs to nil if empty
+		if len(volumeRefs) == 0 {
+			volumeRefs = nil
 		}
 
 		toDisplay[i] = PeInfoToDisplay{
 			PatchID:     envelope.PatchID,
 			Version:     envelope.Version,
 			BinaryBlobs: binaryBlobs,
-			VolumeRefs:  envelope.VolumeRefs,
+			VolumeRefs:  volumeRefs,
 		}
 	}
 

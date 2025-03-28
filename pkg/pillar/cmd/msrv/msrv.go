@@ -111,6 +111,8 @@ type Msrv struct {
 
 	subDeviceNetworkStatus pubsub.Subscription
 
+	pubCipherMetrics pubsub.Publication
+
 	// Subscriptions to gather information about
 	// patch envelopes from volumemgr and zedagent
 	// external envelopes have to be downloaded via
@@ -169,7 +171,7 @@ func (msrv *Msrv) Init(cachePath string, persist bool) (err error) {
 	msrv.decryptCipherContext.PubSubControllerCert = msrv.subControllerCert
 	msrv.decryptCipherContext.PubSubEdgeNodeCert = msrv.subEdgeNodeCert
 
-	msrv.PatchEnvelopes = NewPatchEnvelopes(msrv.Log, msrv.PubSub)
+	msrv.PatchEnvelopes = NewPatchEnvelopes(msrv)
 	msrv.patchEnvelopesUsage = generics.NewLockedMap[string, types.PatchEnvelopeUsage]()
 
 	msrv.peUsagePersist, err = persistcache.New(cachePath)
@@ -214,6 +216,17 @@ func (msrv *Msrv) initPublications() (err error) {
 		pubsub.PublicationOptions{
 			AgentName: agentName,
 			TopicType: types.PatchEnvelopeUsage{},
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	msrv.pubCipherBlockStatus, err = msrv.PubSub.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName:  agentName,
+			Persistent: true,
+			TopicType:  types.CipherBlockStatus{},
 		},
 	)
 	if err != nil {
@@ -291,6 +304,17 @@ func (msrv *Msrv) initSubscriptions(persist bool) (err error) {
 	if err != nil {
 		return err
 	}
+
+	msrv.cipherMetrics = cipher.NewAgentMetrics(agentName)
+	pubCipherMetrics, err := msrv.PubSub.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName: agentName,
+			TopicType: types.CipherMetrics{},
+		})
+	if err != nil {
+		return err
+	}
+	msrv.pubCipherMetrics = pubCipherMetrics
 
 	// Subscribe to AppNetworkConfig from zedmanager
 	msrv.subAppNetworkConfig, err = msrv.PubSub.NewSubscription(pubsub.SubscriptionOptions{
@@ -547,6 +571,33 @@ func (msrv *Msrv) Run(ctx context.Context) (err error) {
 
 	if err = msrv.Activate(); err != nil {
 		return err
+	}
+
+	// Wait for the EdgeNodeInfo, and EdgeNodeCert and ControllerCert publications
+	var edgenodeCertInitialized, controllerCertInitialized, edgenodeInfoInitialized bool
+	for !edgenodeCertInitialized || !controllerCertInitialized || !edgenodeInfoInitialized {
+		select {
+		case change := <-msrv.subEdgeNodeCert.MsgChan():
+			msrv.subEdgeNodeCert.ProcessChange(change)
+			msrv.Log.Noticef("msrv: EdgeNodeCert, len %d", len(msrv.subEdgeNodeCert.GetAll()))
+			if len(msrv.subEdgeNodeCert.GetAll()) > 0 {
+				edgenodeCertInitialized = true
+			}
+		case change := <-msrv.subControllerCert.MsgChan():
+			msrv.subControllerCert.ProcessChange(change)
+			msrv.Log.Noticef("msrv: ControllerCert, len %d", len(msrv.subEdgeNodeCert.GetAll()))
+			if len(msrv.subControllerCert.GetAll()) > 0 {
+				controllerCertInitialized = true
+			}
+		case change := <-msrv.subEdgeNodeInfo.MsgChan():
+			msrv.subEdgeNodeInfo.ProcessChange(change)
+			msrv.Log.Noticef("msrv: EdgeNodeInfo, len %d", len(msrv.subEdgeNodeInfo.GetAll()))
+			if len(msrv.subEdgeNodeInfo.GetAll()) > 0 {
+				edgenodeInfoInitialized = true
+			}
+		case <-stillRunning.C:
+		}
+		msrv.PubSub.StillRunning(agentName, warningTime, errorTime)
 	}
 
 	for {

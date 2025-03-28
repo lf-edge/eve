@@ -602,7 +602,26 @@ func (msrv *Msrv) handlePatchDownload() func(http.ResponseWriter, *http.Request)
 					fmt.Sprintf("failed to create temp dir %v", err))
 				return
 			}
+
+			// temp URL data populated in the cipher blobs for zip operation
+			for _, cipher := range e.CipherBlobs {
+				if cipher.EncType == types.BlobEncrytedTypeInline && cipher.Inline != nil {
+					cipher.Inline.URL, err = msrv.PopulateBinaryBlobFromCipher(&cipher, false)
+					if err != nil {
+						sendError(w, http.StatusInternalServerError,
+							fmt.Sprintf("failed to populate cipher blob %v", err))
+						return
+					}
+				}
+			}
 			zipFilename, err := utils.GetZipArchive(path, *e)
+
+			// clear the temp URL data populated in the cipher blobs
+			for _, cipher := range e.CipherBlobs {
+				if cipher.EncType == types.BlobEncrytedTypeInline && cipher.Inline != nil {
+					cipher.Inline.URL = ""
+				}
+			}
 
 			if err != nil {
 				sendError(w, http.StatusInternalServerError,
@@ -651,6 +670,15 @@ func (msrv *Msrv) handlePatchFileDownload() func(http.ResponseWriter, *http.Requ
 				http.ServeFile(w, r, e.BinaryBlobs[idx].URL)
 				msrv.increasePatchEnvelopeDownloadCounter(appUUID, *e)
 				return
+			} else if idx := types.CompletedCipherBlobIdxByName(e.CipherBlobs, fileName); idx != -1 {
+				base64Data, err := msrv.PopulateBinaryBlobFromCipher(&e.CipherBlobs[idx], false)
+				if err != nil {
+					sendError(w, http.StatusInternalServerError, fmt.Sprintf("failed to populate cipher blob %v", err))
+					return
+				}
+				serveBase64Data(w, r, base64Data)
+				msrv.increasePatchEnvelopeDownloadCounter(appUUID, *e)
+				return
 			} else {
 				sendError(w, http.StatusNotFound, "file is not found")
 				return
@@ -659,6 +687,18 @@ func (msrv *Msrv) handlePatchFileDownload() func(http.ResponseWriter, *http.Requ
 
 		sendError(w, http.StatusNotFound, "patch is not found")
 	}
+}
+
+// Handler to serve the base64 data
+func serveBase64Data(w http.ResponseWriter, r *http.Request, base64Data string) {
+	// Set the appropriate headers
+	w.Header().Set("Content-Type", "text/plain")
+	w.Header().Set("Content-Disposition", "attachment; filename=\"data.txt\"")
+	w.Header().Set("Content-Length", fmt.Sprintf("%d", len(base64Data)))
+
+	// Write the base64 data to the response
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(base64Data))
 }
 
 // handleAppInstanceDiscovery returns all IP addresses of each port

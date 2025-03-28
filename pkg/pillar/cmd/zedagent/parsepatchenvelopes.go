@@ -4,6 +4,8 @@
 package zedagent
 
 import (
+	"bytes"
+	"encoding/gob"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -11,6 +13,7 @@ import (
 	"crypto/sha256"
 
 	zconfig "github.com/lf-edge/eve-api/go/config"
+	zcommon "github.com/lf-edge/eve-api/go/evecommon"
 	"github.com/lf-edge/eve/pkg/pillar/persistcache"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 
@@ -45,7 +48,7 @@ func parsePatchEnvelopesImpl(ctx *getconfigContext, config *zconfig.EdgeDevConfi
 			State:       evePatchEnvelopeActionToState(pe.GetAction()),
 		}
 		for _, a := range pe.GetArtifacts() {
-			err := addBinaryBlobToPatchEnvelope(&peInfo, a, persistCacheFilepath)
+			err := addBinaryBlobToPatchEnvelope(ctx, &peInfo, a, persistCacheFilepath)
 			if err != nil {
 				msg := fmt.Sprintf("Failed to compose binary blob for patch envelope %v", err)
 				peInfo.Errors = append(peInfo.Errors, msg)
@@ -58,6 +61,10 @@ func parsePatchEnvelopesImpl(ctx *getconfigContext, config *zconfig.EdgeDevConfi
 
 		for _, inlineBlob := range peInfo.BinaryBlobs {
 			blobsAfter = append(blobsAfter, inlineBlob.FileName)
+		}
+
+		for _, cipherBlob := range peInfo.CipherBlobs {
+			blobsAfter = append(blobsAfter, cipherBlob.EncFileName)
 		}
 	}
 
@@ -79,12 +86,11 @@ func publishPatchEnvelopes(ctx *getconfigContext, patchEnvelopes types.PatchEnve
 	log.Tracef("publishPatchEnvelopes(%s) done\n", key)
 }
 
-func addBinaryBlobToPatchEnvelope(pe *types.PatchEnvelopeInfo, artifact *zconfig.EveBinaryArtifact, persistCacheFilepath string) error {
-	format := artifact.GetFormat()
+func addBinaryBlobToPatchEnvelope(ctx *getconfigContext, pe *types.PatchEnvelopeInfo, artifact *zconfig.EveBinaryArtifact, persistCacheFilepath string) error {
 
-	switch format {
-	case zconfig.EVE_OPAQUE_OBJECT_CATEGORY_BINARYBLOB:
-		binaryArtifact := artifact.GetVolumeRef()
+	switch blob := artifact.GetBinaryBlob().(type) {
+	case *zconfig.EveBinaryArtifact_VolumeRef:
+		binaryArtifact := blob.VolumeRef
 		if binaryArtifact == nil {
 			return fmt.Errorf("ExternalOpaqueBinaryBlob is empty, type indicates it should be present")
 		}
@@ -93,11 +99,11 @@ func addBinaryBlobToPatchEnvelope(pe *types.PatchEnvelopeInfo, artifact *zconfig
 			return err
 		}
 		volumeRef.ArtifactMetadata = artifact.GetArtifactMetaData()
+		volumeRef.EncArtifactMeta = getEncArtifactMetadata(ctx, artifact)
 		pe.VolumeRefs = append(pe.VolumeRefs, *volumeRef)
 		return nil
-	case zconfig.EVE_OPAQUE_OBJECT_CATEGORY_SECRET:
-	case zconfig.EVE_OPAQUE_OBJECT_CATEGORY_BASE64:
-		inlineArtifact := artifact.GetInline()
+	case *zconfig.EveBinaryArtifact_Inline:
+		inlineArtifact := blob.Inline
 		if inlineArtifact == nil {
 			return fmt.Errorf("InlineOpaqueBase64data is empty, type indicates it should be present")
 		}
@@ -106,11 +112,122 @@ func addBinaryBlobToPatchEnvelope(pe *types.PatchEnvelopeInfo, artifact *zconfig
 			return err
 		}
 		binaryBlob.ArtifactMetadata = artifact.GetArtifactMetaData()
+		binaryBlob.EncArtifactMeta = getEncArtifactMetadata(ctx, artifact)
 		pe.BinaryBlobs = append(pe.BinaryBlobs, *binaryBlob)
+
 		return nil
+	case *zconfig.EveBinaryArtifact_EncryptedInline:
+		encInline := blob.EncryptedInline
+		if encInline == nil {
+			return fmt.Errorf("EncryptedInlineOpaqueBase64data is empty, type indicates it should be present")
+		}
+		encBlob, err := getEncryptedCipherBlock(ctx, artifact, types.BlobEncrytedTypeInline, encInline, persistCacheFilepath)
+		if err != nil {
+			return err
+		}
+		pe.CipherBlobs = append(pe.CipherBlobs, *encBlob)
+		return nil
+	case *zconfig.EveBinaryArtifact_EncryptedVolumeref:
+		encVolumeRef := blob.EncryptedVolumeref
+		if encVolumeRef == nil {
+			return fmt.Errorf("EncryptedVolumeref is empty, type indicates it should be present")
+		}
+		encBlob, err := getEncryptedCipherBlock(ctx, artifact, types.BlobEncrytedTypeVolume, encVolumeRef, persistCacheFilepath)
+		if err != nil {
+			return err
+		}
+		pe.CipherBlobs = append(pe.CipherBlobs, *encBlob)
+		return nil
+	default:
 	}
 
 	return errors.New("Unknown EveBinaryArtifact format")
+}
+
+func getEncArtifactMetadata(ctx *getconfigContext, artifact *zconfig.EveBinaryArtifact) types.CipherBlockStatus {
+	data := artifact.GetMetadataCipherData()
+	if data == nil {
+		return types.CipherBlockStatus{}
+	}
+	if len(data.CipherData) < 16 {
+		log.Errorf("Failed to get metadata cipher data, cipherData is nil or less than 16 bytes")
+		return parseCipherBlock(ctx, "None", nil)
+	}
+
+	key := fmt.Sprintf("artifactMeta-%s", hex.EncodeToString(data.CipherData[:16]))
+	return parseCipherBlock(ctx, key, data)
+}
+
+// getEncryptedCipherBlock extracts artifact metadata, either encrypted or not,
+// it stores the cypher block data in the EncBinaryArtifact, this data can be
+// either encrypted inline blob or encrypted volume reference
+// returns path to it to be served by HTTP server
+func getEncryptedCipherBlock(ctx *getconfigContext,
+	artifact *zconfig.EveBinaryArtifact,
+	enctype types.BlobEncrytedType,
+	blob interface{},
+	persistCacheFilepath string) (*types.BinaryCipherBlob, error) {
+	var cipherData *zcommon.CipherBlock
+	var typeStr string
+	cipherBlob := types.BinaryCipherBlob{
+		EncType:          enctype,
+		ArtifactMetaData: artifact.GetArtifactMetaData(),
+		EncArtifactMeta:  getEncArtifactMetadata(ctx, artifact),
+	}
+	switch enctype {
+	case types.BlobEncrytedTypeInline:
+		inline, ok := blob.(*zconfig.EncryptedInlineOpaqueBase64Data)
+		if !ok || inline == nil {
+			return nil, fmt.Errorf("invalid type for EncryptedInline")
+		}
+		cipherData = inline.GetCipherData()
+		typeStr = "encInline"
+	case types.BlobEncrytedTypeVolume:
+		volume, ok := blob.(*zconfig.EncryptedExternalOpaqueBinaryBlob)
+		if !ok || volume == nil {
+			return nil, fmt.Errorf("invalid type for EncryptedVolumeref")
+		}
+		cipherData = volume.GetCipherData()
+		typeStr = "encVolume"
+	}
+	if cipherData == nil || len(cipherData.CipherData) < 16 {
+		return nil, fmt.Errorf("BlobEncrytedType %v has incorrect cipher data", enctype)
+	}
+	// the key is used for cipher block and also the file name for the URL saved
+	// we save the cipher block data to the cache file, and read it back in msrv side to decrypt,
+	// to avoid publishing the cipher block data which can be too big in size
+	key := fmt.Sprintf("%s-%s", typeStr, hex.EncodeToString(cipherData.CipherData[:16]))
+	EncBinaryArtifact := parseCipherBlock(ctx, key, cipherData)
+	url, err := saveCipherBlockStatusToFile(EncBinaryArtifact, key, persistCacheFilepath)
+	if err != nil {
+		return nil, err
+	}
+	cipherBlob.EncURL = url
+	cipherBlob.EncFileName = key
+	return &cipherBlob, nil
+}
+
+func saveCipherBlockStatusToFile(status types.CipherBlockStatus, fileName, persistCacheFilepath string) (string, error) {
+	pc, err := persistcache.New(persistCacheFilepath)
+	if err != nil {
+		return "", err
+	}
+
+	// Encode the CipherBlockStatus to []byte using gob
+	var buf bytes.Buffer
+	encoder := gob.NewEncoder(&buf)
+	if err := encoder.Encode(status); err != nil {
+		return "", fmt.Errorf("failed to gob encode CipherBlockStatus: %v", err)
+	}
+	encodedData := buf.Bytes()
+
+	// Write the encoded data to a file using pc.Put()
+	url, err := pc.Put(fileName, encodedData)
+	if err != nil {
+		return "", err
+	}
+
+	return url, nil
 }
 
 // cacheInlineBinaryArtifact stores inline artifact as file and
