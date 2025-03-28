@@ -146,4 +146,6 @@ type EncryptionBlock struct {
 	CellularNetPassword string
 	ProtectedUserData   string
 	ClusterToken        string
+	User                zcommon.EncryptionBlockUser
+	EncryptedData       string
 }
