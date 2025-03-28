@@ -5,6 +5,7 @@ package types
 
 import (
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -85,21 +86,50 @@ type NewlogMetrics struct {
 	AppMetrics logfileMetrics // App metrics
 }
 
-// GetTimestampFromGzipName - get timestamp from gzip file name
-func GetTimestampFromGzipName(fName string) (time.Time, error) {
-	// here are example file names:
-	// app.6656f860-7563-4bbf-8bba-051f5942982b.log.1730464687367.gz
-	// dev.log.keep.1730404601953.gz
-	// dev.log.upload.1730404601953.gz
-	// the timestamp is the number between the last two dots
-	nameParts := strings.Split(fName, ".")
-	if len(nameParts) < 2 {
-		return time.Time{}, fmt.Errorf("getTimestampFromGzipName: invalid log file name %s", fName)
+var (
+	timestampRegex *regexp.Regexp
+	uuidRegex      *regexp.Regexp
+)
+
+func init() {
+	// Regular expression to match a timestamp
+	timestampRegex = regexp.MustCompile(`^\d+$`)
+
+	// UUID regex pattern (supports v4 UUIDs like "123e4567-e89b-12d3-a456-426614174000")
+	uuidRegex = regexp.MustCompile(`[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}`)
+}
+
+// GetTimestampFromFileName extracts a millisecond timestamp from a filename
+func GetTimestampFromFileName(filename string) (time.Time, error) {
+	// Split the filename into parts using dots
+	parts := strings.Split(filename, ".")
+
+	// Check each part for a timestamp match
+	for _, part := range parts {
+		if timestampRegex.MatchString(part) {
+			// Convert the matched timestamp string to an integer
+			timestamp, err := strconv.ParseInt(part, 10, 64)
+			if err != nil {
+				return time.Time{}, fmt.Errorf("failed to parse timestamp: %s", err)
+			}
+			return time.Unix(0, timestamp*int64(time.Millisecond)), nil // Return the first valid timestamp found
+		}
 	}
-	timeStr := nameParts[len(nameParts)-2]
-	fTime, err := strconv.Atoi(timeStr)
-	if err != nil {
-		return time.Time{}, fmt.Errorf("getTimestampFromGzipName: %w", err)
+
+	return time.Time{}, fmt.Errorf("no timestamp found in filename: %s", filename)
+}
+
+// GetUUIDFromFileName extracts a UUID from a filename with dot-delimited parts
+func GetUUIDFromFileName(filename string) (string, error) {
+	// Split the filename into parts using dots
+	parts := strings.Split(filename, ".")
+
+	// Check each part for a UUID match
+	for _, part := range parts {
+		if uuidRegex.MatchString(part) {
+			return part, nil // Return the first UUID found
+		}
 	}
-	return time.Unix(0, int64(fTime)*int64(time.Millisecond)), nil
+
+	return "", fmt.Errorf("no UUID found in filename: %s", filename)
 }
