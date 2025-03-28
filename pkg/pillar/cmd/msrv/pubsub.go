@@ -341,11 +341,6 @@ func (srv *Msrv) handlePatchEnvelopeModify(ctxArg interface{}, key string,
 	statusArg interface{}, oldStatusArg interface{}) {
 	peInfo := statusArg.(types.PatchEnvelopeInfoList)
 
-	if len(peInfo.Envelopes) == 0 {
-		srv.Log.Functionf("handlePatchEnvelopeModify: (UUID: %s). Empty envelopes", key)
-		return
-	}
-
 	srv.Log.Functionf("handlePatchEnvelopeModify: (UUID: %s) %v", key, peInfo.Envelopes)
 
 	srv.handlePatchEnvelopeImpl(peInfo)

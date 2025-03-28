@@ -46,5 +46,24 @@ func GetZipArchive(root string, pe types.PatchEnvelopeInfo) (string, error) {
 
 	}
 
+	// The CipherBlobs, temporarily, store the decrypted content of the blob file in
+	// the Inline.URL string. Directly use that for zipEntry write.
+	for _, b := range pe.CipherBlobs {
+		// We only want to archive cipher blobs which are ready
+		if b.EncType != types.BlobEncrytedTypeInline || b.Inline == nil {
+			continue
+		}
+
+		zipEntry, err := zipWriter.Create(b.Inline.FileName)
+		if err != nil {
+			return "", err
+		}
+
+		_, err = zipEntry.Write([]byte(b.Inline.URL))
+		if err != nil {
+			return "", err
+		}
+	}
+
 	return zipFilename, nil
 }

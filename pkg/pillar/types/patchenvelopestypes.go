@@ -3,6 +3,11 @@
 
 package types
 
+import (
+	"encoding/json"
+	"reflect"
+)
+
 // PatchEnvelopeInfoList will be shared with zedrouter after parsing
 // in zedagent
 type PatchEnvelopeInfoList struct {
@@ -38,6 +43,7 @@ type PatchEnvelopeInfo struct {
 	State       PatchEnvelopeState
 	BinaryBlobs []BinaryBlobCompleted
 	VolumeRefs  []BinaryBlobVolumeRef
+	CipherBlobs []BinaryCipherBlob
 }
 
 // Size returns sum of all sizes of BinaryBlobs of given PatchEnvelope
@@ -99,8 +105,67 @@ type BinaryBlobCompleted struct {
 	FileMetadata string `json:"fileMetaData"`
 	// ArtifactMetadata is generic info i.e. user info, desc etc.
 	ArtifactMetadata string `json:"artifactMetaData"`
-	URL              string `json:"url"` //nolint:var-naming
-	Size             int64  `json:"size"`
+	// Encrypted ArtifactMetadata for blob
+	EncArtifactMeta CipherBlockStatus `json:"encArtifactMeta"`
+	URL             string            `json:"url"` //nolint:var-naming
+	Size            int64             `json:"size"`
+}
+
+// MarshalJSON is used to customize the JSON output for BinaryBlobCompleted
+// The blob structures are also used in the return of json formatted
+// patchenvelope description request. This is to suppress the
+// CipherBlockStatus cipher structure items detail when displaying.
+// Implement the json.Marshaler interface for BinaryBlobCompleted
+func (b BinaryBlobCompleted) MarshalJSON() ([]byte, error) {
+	return marshalWithCustomLogic(b)
+}
+
+// MarshalJSON is used to customize the JSON output for BinaryBlobVolumeRef
+// Implement the json.Marshaler interface for BinaryBlobVolumeRef
+func (b BinaryBlobVolumeRef) MarshalJSON() ([]byte, error) {
+	return marshalWithCustomLogic(b)
+}
+
+// MarshalJSON is used to customize the JSON output for BinaryCipherBlob
+// Implement the json.Marshaler interface for BinaryBlobVolumeRef
+func (b BinaryCipherBlob) MarshalJSON() ([]byte, error) {
+	return marshalWithCustomLogic(b)
+}
+
+// Generic marshal function with custom logic
+func marshalWithCustomLogic(v interface{}) ([]byte, error) {
+	val := reflect.ValueOf(v)
+	typ := reflect.TypeOf(v)
+
+	// Create a map to hold the JSON representation
+	m := make(map[string]interface{})
+
+	for i := 0; i < val.NumField(); i++ {
+		field := val.Field(i)
+		fieldType := typ.Field(i)
+		fieldName := fieldType.Tag.Get("json")
+
+		if fieldName == "" {
+			fieldName = fieldType.Name
+		}
+
+		if fieldName == "encArtifactMeta" {
+			if isEmpty(field.Interface()) {
+				m[fieldName] = struct{}{}
+			} else {
+				m[fieldName] = field.Interface()
+			}
+		} else {
+			m[fieldName] = field.Interface()
+		}
+	}
+
+	return json.Marshal(m)
+}
+
+// isEmpty checks if a struct is empty using reflection
+func isEmpty(v interface{}) bool {
+	return reflect.DeepEqual(v, reflect.Zero(reflect.TypeOf(v)).Interface())
 }
 
 // CompletedBinaryBlobIdxByName returns index of element in blobs list
@@ -108,6 +173,17 @@ type BinaryBlobCompleted struct {
 func CompletedBinaryBlobIdxByName(blobs []BinaryBlobCompleted, name string) int {
 	for i := range blobs {
 		if blobs[i].FileName == name {
+			return i
+		}
+	}
+	return -1
+}
+
+// CompletedCipherBlobIdxByName returns index of element in blobs list
+// which FileName matches name
+func CompletedCipherBlobIdxByName(blobs []BinaryCipherBlob, name string) int {
+	for i := range blobs {
+		if blobs[i].Inline != nil && blobs[i].Inline.FileName == name {
 			return i
 		}
 	}
@@ -124,7 +200,9 @@ type BinaryBlobVolumeRef struct {
 	FileMetadata string `json:"fileMetaData"`
 	// ArtifactMetadata is generic info i.e. user info, desc etc.
 	ArtifactMetadata string `json:"artifactMetaData"`
-	ImageID          string `json:"imageId"`
+	// Encrypted ArtifactMetadata for blob
+	EncArtifactMeta CipherBlockStatus `json:"encArtifactMeta"`
+	ImageID         string            `json:"imageId"`
 }
 
 // PatchEnvelopeUsage stores information on how patchEnvelopes are
@@ -163,4 +241,35 @@ func PatchEnvelopeUsageFromInfo(peInfo PatchEnvelopeInfo) []PatchEnvelopeUsage {
 	}
 
 	return result
+}
+
+// BlobEncrytedType - type of encrypted Binary blob
+type BlobEncrytedType int8
+
+const (
+	// BlobEncrytedTypeNone - no encryption
+	BlobEncrytedTypeNone BlobEncrytedType = iota
+	// BlobEncrytedTypeInline - inline encryption
+	BlobEncrytedTypeInline
+	// BlobEncrytedTypeVolume - volume encryption
+	BlobEncrytedTypeVolume
+)
+
+// BinaryCipherBlob is encrypted binary blob for Binary Artifact
+type BinaryCipherBlob struct {
+	// EncType is type of encryption
+	EncType BlobEncrytedType `json:"encType"`
+	// ArtifactMetadata is generic info i.e. user info, desc etc.
+	ArtifactMetaData string `json:"artifactMetaData"`
+	// Encrypted ArtifactMetadata for blob
+	EncArtifactMeta CipherBlockStatus `json:"encArtifactMeta"`
+	// EncURL is URL to download encrypted binary blob in CipherBlockStatus format
+	// which contains either ONEOF inline or volume encrypted data
+	EncURL string `json:"encURL"`
+	// EncFileName is file name of the encrypted binary blob
+	EncFileName string `json:"encFileName"`
+	// Inline - used for post decrypt inline binary blob
+	Inline *BinaryBlobCompleted `json:"inline"`
+	// Volume - used for post decrypt volume binary blob
+	Volume *BinaryBlobVolumeRef `json:"volume"`
 }
