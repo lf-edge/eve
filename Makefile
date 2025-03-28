@@ -347,7 +347,7 @@ endif
 
 # for the go build sources
 GOSOURCES=$(BUILDTOOLS_BIN)/go-sources-and-licenses
-GOSOURCES_VERSION=6047a068b2702ed2687cd13dcb7eaa2542d20344
+GOSOURCES_VERSION=v1.0.0
 GOSOURCES_SOURCE=github.com/deitch/go-sources-and-licenses
 
 # for the compare sbom and collecte sources
