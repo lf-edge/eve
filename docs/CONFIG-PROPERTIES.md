@@ -70,8 +70,8 @@
 | memory-monitor.enabled | boolean | false | Enable external memory monitoring and memory pressure events handling |
 | debug.tui.loglevel | string | info | Set log level for EVE Text UI (TUI) monitor. Possible values are "OFF", "ERROR", "WARN", "INFO", "DEBUG", "TRACE" and are case insensitive
 | log.dedup.window.size | integer | 0 | The size of the log deduplicator's sliding window (in number of messages). See logging [docs](LOGGING.md#log-filtering-counting-and-deduplication) for details. If the window size is set to 0 (default), no deduplication is performed. |
-| log.count.filenames | string | "" | Comma-separated list of log's filenames to be counted and logged once instead of logging them every time. Example `/my-pkg/main.go:123,/other-pkg/code.go:42`. See logging [docs](LOGGING.md#log-filtering-counting-and-deduplication) for details. |
-| log.filter.filenames | string | "" | Comma-separated list of log's filenames to be filtered out. Example `/my-pkg/main.go:123,/other-pkg/code.go:42`. See logging [docs](LOGGING.md#log-filtering-counting-and-deduplication) for details. |
+| log.count.filenames | string | "" | Comma-separated list of log's filenames to be counted and logged once instead of logging them every time. Example `/my-pkg/main.go:123,/other-pkg/code.go:42`. Empty string `""` doesn't filter anything out, however a single comma `","` will filter out all entries that don't have a filename field set (e.g. logs not coming from components written in Golang). See logging [docs](LOGGING.md#log-filtering-counting-and-deduplication) for details. |
+| log.filter.filenames | string | "" | Comma-separated list of log's filenames to be filtered out. Example `/my-pkg/main.go:123,/other-pkg/code.go:42`. Empty string `""` doesn't filter anything out, however a single comma `","` will filter out all entries that don't have a filename field set (e.g. logs not coming from components written in Golang). See logging [docs](LOGGING.md#log-filtering-counting-and-deduplication) for details. |
 
 ## Log levels
 
