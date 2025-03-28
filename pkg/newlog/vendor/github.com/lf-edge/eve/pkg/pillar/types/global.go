@@ -158,6 +158,8 @@ const (
 	CertInterval GlobalSettingKey = "timer.cert.interval"
 	// MetricInterval global setting key
 	MetricInterval GlobalSettingKey = "timer.metric.interval"
+	// HardwareHealthInterval global setting key
+	HardwareHealthInterval GlobalSettingKey = "timer.hardwarehealth.interval"
 	// DiskScanMetricInterval global setting key
 	DiskScanMetricInterval GlobalSettingKey = "timer.metric.diskscan.interval"
 	// ResetIfCloudGoneTime global setting key
@@ -361,6 +363,9 @@ const (
 
 	// MemoryMonitorEnabled : Enable memory monitor
 	MemoryMonitorEnabled GlobalSettingKey = "memory-monitor.enabled"
+
+	// TUIMonitorLogLevel: log level for TUI monitor
+	TUIMonitorLogLevel GlobalSettingKey = "debug.tui.loglevel"
 )
 
 // AgentSettingKey - keys for per-agent settings
@@ -921,10 +926,13 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	// timer.metric.diskscan.interval (seconds)
 	// Shorter interval can lead to device scanning the disk frequently which is a costly operation.
 	configItemSpecMap.AddIntItem(DiskScanMetricInterval, 300, 5, HourInSec)
-	// timer.metric.diskscan.interval (seconds)
+	// timer.metric.interval (seconds)
 	// Need to be careful about max value. Controller may use metric message to
 	// update status of device (online / suspect etc ).
 	configItemSpecMap.AddIntItem(MetricInterval, 60, 5, HourInSec)
+	// timer.metric.hardwarehealth.interval (seconds)
+	// Default value 12 hours minimum value 6 hours.
+	configItemSpecMap.AddIntItem(HardwareHealthInterval, 43200, 21600, 0xFFFFFFFF)
 	// timer.reboot.no.network (seconds) - reboot after no cloud connectivity
 	// Max designed to allow the option of never rebooting even if device
 	//  can't connect to the cloud
@@ -1020,6 +1028,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddStringItem(SyslogRemoteLogLevel, "info", validateSyslogKernelLevel)
 	configItemSpecMap.AddStringItem(KernelRemoteLogLevel, "info", validateSyslogKernelLevel)
 	configItemSpecMap.AddStringItem(FmlCustomResolution, FmlResolutionUnset, blankValidator)
+	configItemSpecMap.AddStringItem(TUIMonitorLogLevel, "info", blankValidator)
 
 	// Add Agent Settings
 	configItemSpecMap.AddAgentSettingStringItem(LogLevel, "info", validateLogLevel)

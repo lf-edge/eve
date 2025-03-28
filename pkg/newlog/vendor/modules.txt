@@ -305,7 +305,7 @@ github.com/leodido/go-urn
 # github.com/lf-edge/edge-containers v0.0.0-20240207093504-5dfda0619b80
 ## explicit; go 1.15
 github.com/lf-edge/edge-containers/pkg/resolver
-# github.com/lf-edge/eve-api/go v0.0.0-20250304184518-532c94981505
+# github.com/lf-edge/eve-api/go v0.0.0-20250310225738-c77ab6f8c73a
 ## explicit; go 1.20
 github.com/lf-edge/eve-api/go/auth
 github.com/lf-edge/eve-api/go/certs
@@ -315,10 +315,13 @@ github.com/lf-edge/eve-api/go/info
 github.com/lf-edge/eve-api/go/logs
 github.com/lf-edge/eve-api/go/metrics
 github.com/lf-edge/eve-api/go/profile
+# github.com/lf-edge/eve-tools/runtimemetrics/go v0.0.0-20250320220227-713ea9d6c6d2
+## explicit; go 1.22.2
+github.com/lf-edge/eve-tools/runtimemetrics/go/nestedappinstancemetrics
 # github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20240315102754-0f6d1f182e0d
 ## explicit; go 1.20
 github.com/lf-edge/eve/pkg/kube/cnirpc
-# github.com/lf-edge/eve/pkg/pillar v0.0.0-20250314140011-251590c3c9b2
+# github.com/lf-edge/eve/pkg/pillar v0.0.0-20250327141430-f040d3437112
 ## explicit; go 1.23
 github.com/lf-edge/eve/pkg/pillar/agentlog
 github.com/lf-edge/eve/pkg/pillar/base
@@ -583,7 +586,7 @@ google.golang.org/grpc/serviceconfig
 google.golang.org/grpc/stats
 google.golang.org/grpc/status
 google.golang.org/grpc/tap
-# google.golang.org/protobuf v1.36.1
+# google.golang.org/protobuf v1.36.5
 ## explicit; go 1.21
 google.golang.org/protobuf/encoding/protodelim
 google.golang.org/protobuf/encoding/protojson
