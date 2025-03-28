@@ -1340,8 +1340,8 @@ github.com/lf-edge/eve-tools/runtimemetrics/go v0.0.0-20250320220227-713ea9d6c6d
 github.com/lf-edge/eve-tools/runtimemetrics/go v0.0.0-20250320220227-713ea9d6c6d2/go.mod h1:l5jh2deQzJnZ7gW4F7dvzJcLRlkYBgFjcHs+eBnBUxo=
 github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20240315102754-0f6d1f182e0d h1:tUBb9M6u42LXwHAYHyh22wJeUUQlTpDkXwRXalpRqbo=
 github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20240315102754-0f6d1f182e0d/go.mod h1:Nn3juMJJ1G8dyHOebdZyS4jOB/fuxAd5fIajBaWjHr8=
-github.com/lf-edge/eve/pkg/pillar v0.0.0-20250327141430-f040d3437112 h1:8UkacfP5qQR0CQfyYbDSjOxKEksUnEm7VoqsESHPXvc=
-github.com/lf-edge/eve/pkg/pillar v0.0.0-20250327141430-f040d3437112/go.mod h1:qHx+C/9HT8xEWXVnhZeNZ+PevVMnNlB0W2IjDzishYk=
+github.com/lf-edge/eve/pkg/pillar v0.0.0-20250403232224-ee02f7ed9974 h1:5wDvqWIXvFE1dChqFjUffjL/+xmCqGfeeClt4zMKq/A=
+github.com/lf-edge/eve/pkg/pillar v0.0.0-20250403232224-ee02f7ed9974/go.mod h1:qHx+C/9HT8xEWXVnhZeNZ+PevVMnNlB0W2IjDzishYk=
 github.com/linuxkit/linuxkit/src/cmd/linuxkit v0.0.0-20240507172735-6d37353ca1ee h1:ASS39H/5OkVqkGSOR2xtcIsu3EZH4aDQOKhE1OfazUo=
 github.com/linuxkit/linuxkit/src/cmd/linuxkit v0.0.0-20240507172735-6d37353ca1ee/go.mod h1:UMA/+cd1QZElFCZAhuGv0TEEdWP9AgcRSXSI6S+r/KA=
 github.com/linuxkit/virtsock v0.0.0-20201010232012-f8cee7dfc7a3/go.mod h1:3r6x7q95whyfWQpmGZTu3gk3v2YkMi05HEzl7Tf7YEo=
