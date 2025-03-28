@@ -1,14 +1,13 @@
 module github.com/lf-edge/eve/pkg/newlog
 
-go 1.23
-toolchain go1.24.1
+go 1.24
 
 require (
 	github.com/euank/go-kmsg-parser v2.0.0+incompatible
 	github.com/golang/protobuf v1.5.4
 	github.com/google/go-cmp v0.6.0
-	github.com/lf-edge/eve-api/go v0.0.0-20250304184518-532c94981505
-	github.com/lf-edge/eve/pkg/pillar v0.0.0-20250314140011-251590c3c9b2
+	github.com/lf-edge/eve-api/go v0.0.0-20250310225738-c77ab6f8c73a
+	github.com/lf-edge/eve/pkg/pillar v0.0.0-20250328142859-5cb322b94d46
 	github.com/onsi/gomega v1.29.0
 	github.com/sirupsen/logrus v1.9.3
 )
@@ -97,7 +96,7 @@ require (
 	google.golang.org/genproto v0.0.0-20240205150955-31a09d347014 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20240401170217-c3f982113cda // indirect
 	google.golang.org/grpc v1.61.0 // indirect
-	google.golang.org/protobuf v1.36.1 // indirect
+	google.golang.org/protobuf v1.36.5 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	oras.land/oras-go v1.2.5 // indirect
