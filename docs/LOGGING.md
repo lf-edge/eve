@@ -36,6 +36,28 @@ The following diagram shows the flow of logs from containers to newlogd and to c
 
 ![EVE Log Flow](images/eve_newlog_flow.png)
 
+### Application Logging and Nested Application Logging
+
+For logs originating from sources containing the string `guest_vm-[Domain-ID]`, the `newlogd` service formats each log entry and writes it to a log file. These log files are named with the prefix `app.<app-uuid>`. This naming convention allows the controller to quickly dispatch log entries to the appropriate application instance for storage and display.
+
+When log entries originate from nested applications within a runtime VM, the agent inside the runtime formats the entry using a proto/JSON structure defined as `NestedAppInstanceLogMsg`:
+
+```go
+type NestedAppInstanceLogMsg struct {
+  // NestedAppId is the AppId of the nested application instance or virtual application instance.
+  // For example, a Docker Compose application instance ID.
+  NestedAppId string `protobuf:"bytes,1,opt,name=nested_app_id,json=nestedAppId,proto3" json:"nested_app_id,omitempty"`
+  // ContainerName is the shortened name of the container.
+  // For example, a Compose application container name is project_name-service-replica.
+  // This field should contain the service-replica suffix.
+  ContainerName string `protobuf:"bytes,2,opt,name=container_name,json=containerName,proto3" json:"container_name,omitempty"`
+  // Msg is the original log message from the runtime container.
+  Msg string `protobuf:"bytes,3,opt,name=msg,proto3" json:"msg,omitempty"`
+}
+```
+
+The newlogd service subscribes to the NestedAppDomainStatus publication from zedrouter. It processes nested application logs similarly to how it handles DomainStatus publications, specifically in terms of generating log files for application log entries. If the VM's deployment type is "Docker" and a log entry's content can be successfully unmarshalled from JSON into the NestedAppInstanceLogMsg structure, the entry is written to a file with the prefix app.<nestedAppId>. This facilitates rapid log dispatch to the correct application instance (including nested application instances) on the controller side.
+
 ## Log Aggregation, Reformatting and Compression for Persistent Log Files
 
 All logs collected from various containers/services/kernel in the system will reach newlogd daemon.

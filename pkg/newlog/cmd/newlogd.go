@@ -29,6 +29,7 @@ import (
 	"github.com/golang/protobuf/ptypes/timestamp"
 	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve-api/go/logs"
+	nestedapp "github.com/lf-edge/eve-tools/runtimemetrics/go/nestedappinstancemetrics"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
@@ -107,6 +108,9 @@ var (
 
 	//domainUUID
 	domainUUID *base.LockedStringMap // App log, from domain-id to appDomain
+	// subNestedAppDomainStatus
+	subNestedAppDomainStatus pubsub.Subscription
+
 	// Default log levels for some subsystems. Variables are updated and used
 	// from different goroutines, so in order to push the changes out of the
 	// goroutines local caches and correctly observe changed values in another
@@ -132,6 +136,7 @@ type appDomain struct {
 	msgIDAppCnt uint64
 	disableLogs bool
 	trigMove    bool
+	nestedAppVM bool
 }
 
 type inputEntry struct {
@@ -311,6 +316,21 @@ func main() {
 		log.Fatal(err)
 	}
 
+	// Get NestedAppDomainStatus from zedrouter
+	subNestedAppDomainStatus, err = ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "zedrouter",
+		TopicImpl:     types.NestedAppDomainStatus{},
+		Activate:      true,
+		CreateHandler: handleNestedAppDomainStatusCreate,
+		ModifyHandler: handleNestedAppDomainStatusModify,
+		DeleteHandler: handleNestedAppDomainStatusDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	// newlog Metrics publish timer. Publish log metrics every 5 minutes.
 	interval := time.Duration(metricsPublishInterval)
 	max := float64(interval)
@@ -361,6 +381,9 @@ func main() {
 		case panicBuf := <-panicFileChan:
 			// save panic stack into files
 			savePanicFiles(panicBuf)
+
+		case change := <-subNestedAppDomainStatus.MsgChan():
+			subNestedAppDomainStatus.ProcessChange(change)
 
 		case <-panicWriteTimer.C:
 			if len(panicBuf) > 0 {
@@ -471,6 +494,7 @@ func handleDomainStatusImp(ctxArg interface{}, key string, statusArg interface{}
 		appName:     status.DisplayName,
 		disableLogs: status.DisableLogs,
 		msgIDAppCnt: 1,
+		nestedAppVM: status.DeploymentType == types.AppRuntimeTypeDocker,
 	}
 
 	// close the app log file if already opened due to app log policy change
@@ -484,6 +508,7 @@ func handleDomainStatusImp(ctxArg interface{}, key string, statusArg interface{}
 		appD.msgIDAppCnt = d.msgIDAppCnt // inherit the counter for the app
 	}
 	domainUUID.Store(appD.appUUID, appD)
+
 	log.Tracef("handleDomainStatusModify: done for %s", key)
 }
 
@@ -599,6 +624,54 @@ func getRemoteLogLevelImpl(gc *types.ConfigItemValueMap, agentName string) strin
 	log.Errorf("***getRemoteLogLevelImpl: DefaultRemoteLogLevel not found. " +
 		"returning info")
 	return "info"
+}
+
+func handleNestedAppDomainStatusCreate(ctxArg interface{}, key string, statusArg interface{}) {
+	handleNestedAppDomainStatusImp(ctxArg, key, statusArg)
+}
+
+func handleNestedAppDomainStatusModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleNestedAppDomainStatusImp(ctxArg, key, statusArg)
+}
+
+func handleNestedAppDomainStatusImp(ctxArg interface{}, key string, statusArg interface{}) {
+
+	status := statusArg.(types.NestedAppDomainStatus)
+	// Record the domainName even if Pending* is set
+	log.Functionf("handleNestedAppDomainStatusImp: add %s to %s",
+		status.DisplayName, status.UUIDandVersion.UUID.String())
+	appD := appDomain{
+		appUUID:     status.UUIDandVersion.UUID.String(),
+		appName:     status.DisplayName,
+		disableLogs: status.DisableLogs,
+		msgIDAppCnt: 1,
+	}
+
+	// close the app log file if already opened due to app log policy change
+	if val, ok := domainUUID.Load(appD.appUUID); ok {
+		d := val.(appDomain)
+		if d.disableLogs != appD.disableLogs {
+			appD.trigMove = true
+		} else {
+			appD.trigMove = d.trigMove
+		}
+		appD.msgIDAppCnt = d.msgIDAppCnt // inherit the counter for the app
+	}
+	domainUUID.Store(appD.appUUID, appD)
+}
+
+func handleNestedAppDomainStatusDelete(ctxArg interface{}, key string, statusArg interface{}) {
+
+	log.Tracef("handleNestedAppDomainStatusDelete: for %s", key)
+	status := statusArg.(types.NestedAppDomainStatus)
+	appUUID := status.UUIDandVersion.UUID.String()
+	if _, ok := domainUUID.Load(appUUID); !ok {
+		return
+	}
+	log.Tracef("handleNestedAppDomainStatusDelete: remove %s", appUUID)
+	domainUUID.Delete(appUUID)
+	log.Tracef("handleNestedAppDomainStatusDelete: done for %s", key)
 }
 
 func suppressMsg(entry inputEntry, cfgPrio uint32) bool {
@@ -948,16 +1021,64 @@ func checkAppEntry(entry *inputEntry) string {
 				// of app-uuid.restart-num.app-num
 				entry.source = appSplitArr[1]
 				appsource := strings.Split(entry.source, ".")
-				if val, ok := domainUUID.Load(appsource[0]); ok {
-					du := val.(appDomain)
-					appuuid = du.appUUID
-				} else {
-					log.Tracef("entry.source not in right format %s", entry.source)
+
+				// Check the nested app log message of docker runtime app
+				vmAppUUID := appsource[0]
+				appuuid = processNestedAppLogMessage(entry, vmAppUUID)
+				if appuuid == "" {
+					if val, ok := domainUUID.Load(vmAppUUID); ok {
+						du := val.(appDomain)
+						appuuid = du.appUUID
+					} else {
+						log.Tracef("entry.source not in right format %s", entry.source)
+					}
 				}
 			}
 		}
 	}
 	return appuuid
+}
+
+// Check the nested app log message of docker runtime app
+func processNestedAppLogMessage(entry *inputEntry, vmAppUUID string) string {
+	var appUUID string
+	if vmApp, ok := domainUUID.Load(vmAppUUID); !ok {
+		return appUUID // Exit early if the app domain does not exist
+	} else if vm, ok := vmApp.(appDomain); !ok {
+		return appUUID // Exit early if the app domain is not of type appDomain
+	} else {
+		if !vm.nestedAppVM {
+			return appUUID // Exit early if the app is not a nested app VM
+		}
+	}
+
+	var nestedAppLogMsg nestedapp.NestedAppInstanceLogMsg
+	if err := json.Unmarshal([]byte(entry.content), &nestedAppLogMsg); err != nil {
+		return appUUID // Exit early if JSON unmarshalling fails
+	}
+
+	if nestedAppLogMsg.NestedAppId == "" {
+		return appUUID // Exit early if no NestedAppId exists
+	}
+
+	if _, ok := domainUUID.Load(nestedAppLogMsg.NestedAppId); ok {
+		// Nested app domain status exists, return the nestedApp appUUID
+		appUUID = nestedAppLogMsg.NestedAppId
+		entry.content = formatNestedAppLogContent(nestedAppLogMsg.ContainerName, nestedAppLogMsg.Msg)
+	} else {
+		// Nested app domain status not set up yet
+		entry.content = formatParentRuntimeLogContent(nestedAppLogMsg.NestedAppId, nestedAppLogMsg.ContainerName, nestedAppLogMsg.Msg)
+	}
+
+	return appUUID
+}
+
+func formatNestedAppLogContent(containerName, msg string) string {
+	return "{\"container-name\":\"" + containerName + "\",\"msg\":\"" + msg + "\"}"
+}
+
+func formatParentRuntimeLogContent(nestedAppId, containerName, msg string) string {
+	return "{\"nested-app-uuid\":\"" + nestedAppId + "\",\"container-name\":\"" + containerName + "\",\"msg\":\"" + msg + "\"}"
 }
 
 // updateLogMsgID - handles the msgID for log for both dev and apps
