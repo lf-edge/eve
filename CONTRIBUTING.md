@@ -281,6 +281,65 @@ title".
 
 Example of such a PR: [#4527](https://github.com/lf-edge/eve/pull/4527)
 
+## Kernel development
+
+The [eve-kernel](https://github.com/lf-edge/eve-kernel) project provides
+all kernel versions used by EVE. Some devices, like those from NVIDIA
+Jetson platform, use a different kernel from the main one. Each supported
+kernel is provided in a dedicated branch of the eve-kernel project so it
+facilitates the integration with EVE's build system. When contributing with
+a kernel change (adding a driver to the default configuration, providing a
+driver fix, etc) developers must pay attention to provide the change for
+all relevant kernel versions. All active branches of the eve-kernel project
+can be listed using the script `./tools/update_kernel_commits.py`:
+
+```sh
+./tools/update_kernel_commits.py -v
+```
+
+The output should be something like the following:
+
+```text
+Fetching branch information from github...
+  eve-kernel-amd64-v6.1.111-rt, Commit: c708a17493f1
+  eve-kernel-amd64-v6.1.112-generic, Commit: 272f44dbfe09
+  eve-kernel-arm64-v5.10.192-nvidia-jp5, Commit: 6e54f05fbd3b
+  eve-kernel-arm64-v5.15.136-nvidia-jp6, Commit: 22e03b8516f2
+  eve-kernel-arm64-v6.1.112-generic, Commit: 9f160b774dbc
+  eve-kernel-riscv64-v6.1.112-generic, Commit: 18e1d313b90b
+    skipping: linux-6.1.y
+    skipping: main
+    skipping: rucoder/new-sbom
+Checking for updated branches...
+  eve-kernel-amd64-v6.1.111-rt, current commit: c708a17493f1
+  eve-kernel-amd64-v6.1.112-generic, current commit: 272f44dbfe09
+  eve-kernel-arm64-v5.10.192-nvidia-jp5, current commit: 6e54f05fbd3b
+  eve-kernel-arm64-v5.15.136-nvidia-jp6, current commit: 22e03b8516f2
+  eve-kernel-arm64-v6.1.112-generic, current commit: 9f160b774dbc
+  eve-kernel-riscv64-v6.1.112-generic, current commit: 18e1d313b90b
+Checking for removed branches...
+  eve-kernel-amd64-v6.1.111-rt, current commit: c708a17493f1
+  eve-kernel-amd64-v6.1.112-generic, current commit: 272f44dbfe09
+  eve-kernel-arm64-v5.10.192-nvidia-jp5, current commit: 6e54f05fbd3b
+  eve-kernel-arm64-v5.15.136-nvidia-jp6, current commit: 22e03b8516f2
+  eve-kernel-arm64-v6.1.112-generic, current commit: 9f160b774dbc
+  eve-kernel-riscv64-v6.1.112-generic, current commit: 18e1d313b90b
+No kernel updates available.
+```
+
+In this case the active branches are:
+
+* eve-kernel-amd64-v6.1.111-rt
+* eve-kernel-amd64-v6.1.112-generic
+* eve-kernel-arm64-v5.10.192-nvidia-jp5
+* eve-kernel-arm64-v5.15.136-nvidia-jp6
+* eve-kernel-arm64-v6.1.112-generic
+* eve-kernel-riscv64-v6.1.112-generic
+
+For instance, if the developer enables an USB Webcam driver in the
+`eve-kernel-amd64-v6.1.112-generic`, it must provide the patch for all
+other active branches as well, when applicable.
+
 ## Check how we are doing
 
 Linux Foundation maintains a [project health dashboard](https://insights.lfx.linuxfoundation.org/foundation/lfedge/overview/github?project=project-eve)
