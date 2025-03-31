@@ -1,6 +1,6 @@
 module github.com/lf-edge/eve/pkg/kube
 
-go 1.20
+go 1.24.1
 
 require (
 	github.com/containernetworking/cni v1.1.2
@@ -15,8 +15,8 @@ require (
 	github.com/satori/go.uuid v1.2.0 // indirect
 	github.com/vishvananda/netlink v1.2.1-beta.2 // indirect
 	github.com/vishvananda/netns v0.0.4 // indirect
-	golang.org/x/net v0.33.0 // indirect
-	golang.org/x/sys v0.28.0 // indirect
+	golang.org/x/net v0.36.0 // indirect
+	golang.org/x/sys v0.30.0 // indirect
 )
 
 // TODO: Remove the replace directive once cnirpc is merged.
