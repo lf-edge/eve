@@ -1,6 +1,6 @@
 module bpftrace-compiler
 
-go 1.24.1
+go 1.23.7
 
 require (
 	github.com/creack/pty v1.1.24
