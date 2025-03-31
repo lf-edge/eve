@@ -499,7 +499,7 @@ check-docker-hashes-consistency: $(DOCKERFILE_FROM_CHECKER)
 yetus:
 	@echo Running yetus
 	mkdir -p yetus-output
-	docker run --rm -v $(CURDIR):/src:delegated,z ghcr.io/apache/yetus:0.15.0 \
+	docker run --rm -v $(CURDIR):/src:delegated,z ghcr.io/apache/yetus:0.15.1 \
 		--basedir=/src \
 		--test-parallel=true \
 		--dirty-workspace \
