@@ -26,6 +26,8 @@ func getEncryptionBlock(
 	decBlock.WifiPassword = zconfigDecBlockPtr.WifiPassword
 	decBlock.CellularNetUsername = zconfigDecBlockPtr.CellularNetUsername
 	decBlock.CellularNetPassword = zconfigDecBlockPtr.CellularNetPassword
+	decBlock.CellularNetAttachUsername = zconfigDecBlockPtr.CellularNetAttachUsername
+	decBlock.CellularNetAttachPassword = zconfigDecBlockPtr.CellularNetAttachPassword
 	decBlock.ProtectedUserData = zconfigDecBlockPtr.ProtectedUserData
 	decBlock.ClusterToken = zconfigDecBlockPtr.ClusterToken
 	return decBlock
