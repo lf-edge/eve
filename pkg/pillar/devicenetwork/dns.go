@@ -69,11 +69,14 @@ func ResolvConfToIfname(resolvConf string) string {
 	return ""
 }
 
-// ResolveWithSrcIP resolves a domain with a given dns server and source Ip
-func ResolveWithSrcIP(domain string, dnsServerIP net.IP, srcIP net.IP) ([]DNSResponse, error) {
+// ResolveWithSrcIPWithTimeout resolves a domain with a given dns server and source Ip within a time duration
+func ResolveWithSrcIPWithTimeout(domain string, dnsServerIP net.IP, srcIP net.IP, timeout time.Duration) ([]DNSResponse, error) {
 	var response []DNSResponse
 	sourceUDPAddr := net.UDPAddr{IP: srcIP}
-	dialer := net.Dialer{LocalAddr: &sourceUDPAddr}
+	dialer := net.Dialer{
+		LocalAddr: &sourceUDPAddr,
+		Timeout:   timeout,
+	}
 	dnsClient := dns.Client{Dialer: &dialer}
 	msg := dns.Msg{}
 	if !strings.HasSuffix(domain, ".") {
@@ -95,6 +98,11 @@ func ResolveWithSrcIP(domain string, dnsServerIP net.IP, srcIP net.IP) ([]DNSRes
 	}
 
 	return response, nil
+}
+
+// ResolveWithSrcIP resolves a domain with a given dns server and source Ip
+func ResolveWithSrcIP(domain string, dnsServerIP net.IP, srcIP net.IP) ([]DNSResponse, error) {
+	return ResolveWithSrcIPWithTimeout(domain, dnsServerIP, srcIP, 0)
 }
 
 type cachedDNSResponses struct {
