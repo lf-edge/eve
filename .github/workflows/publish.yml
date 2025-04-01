@@ -25,13 +25,13 @@ jobs:
           - os: ubuntu-22.04
             arch: amd64
             platform: "generic"
-          - os: arm64-secure
+          - os: buildjet-4vcpu-ubuntu-2204-arm
             arch: arm64
             platform: "generic"
-          - os: arm64-secure
+          - os: buildjet-4vcpu-ubuntu-2204-arm
             arch: arm64
             platform: "nvidia-jp5"
-          - os: arm64-secure
+          - os: buildjet-4vcpu-ubuntu-2204-arm
             arch: arm64
             platform: "nvidia-jp6"
           - os: ubuntu-latest
