@@ -1,11 +1,12 @@
 module github.com/lf-edge/eve/pkg/wwan/mmagent
 
-go 1.23
+go 1.23.0
+
 toolchain go1.24.1
 
 require (
 	github.com/godbus/dbus/v5 v5.1.0
-	github.com/lf-edge/eve/pkg/pillar v0.0.0-20250314140011-251590c3c9b2
+	github.com/lf-edge/eve/pkg/pillar v0.0.0-20250504151246-ec39e287817b
 	github.com/miekg/dns v1.1.55
 	github.com/sirupsen/logrus v1.9.3
 	github.com/tatsushid/go-fastping v0.0.0-20160109021039-d7bb493dee3e
@@ -60,7 +61,7 @@ require (
 	github.com/klauspost/compress v1.17.6 // indirect
 	github.com/leodido/go-urn v1.2.4 // indirect
 	github.com/lf-edge/edge-containers v0.0.0-20240207093504-5dfda0619b80 // indirect
-	github.com/lf-edge/eve-api/go v0.0.0-20250310225738-c77ab6f8c73a // indirect
+	github.com/lf-edge/eve-api/go v0.0.0-20250502212418-fc1e3bad8f0f // indirect
 	github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20240315102754-0f6d1f182e0d // indirect
 	github.com/linuxkit/linuxkit/src/cmd/linuxkit v0.0.0-20240507172735-6d37353ca1ee // indirect
 	github.com/moby/locker v1.0.1 // indirect
