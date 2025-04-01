@@ -19,7 +19,7 @@ DATE=$(date "+%Y-%m-%d-%H-%M-%S")
 INFO_DIR_SUFFIX="eve-info-v$VERSION-$DATE"
 SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
 
-READ_LOGS_DAYS=
+COLLECT_LOGS_DAYS=
 READ_LOGS_DEV=
 READ_LOGS_APP=
 TAR_WHOLE_SYS=
@@ -43,11 +43,11 @@ usage()
     echo ""
     echo "Collect-logs mode:"
     echo "       -s tar whole /sysfs"
+    echo "       -t NUMBER-OF-DAYS    - collect logs from the last NUMBER-OF-DAYS [0-30]. Set to 0 to not include /persist/newlog logs."
     echo ""
     echo "Read-logs mode:"
     echo "       -d                   - read device logs only"
     echo "       -a APPLICATION-UUID  - read specified application logs only"
-    echo "       -t NUMBER-OF-DAYS    - read logs from the last NUMBER-OF-DAYS [1-30]"
     echo "       -e                   - additional edgeview string in filename"
     echo "       -j                   - output logs in json"
     exit 1
@@ -66,9 +66,9 @@ while getopts "vhsa:djet:" o; do
             READ_LOGS_APP="$OPTARG"
             ;;
         t)
-            READ_LOGS_DAYS="$OPTARG"
-            if [ "$READ_LOGS_DAYS" -lt 1 ] || [ "$READ_LOGS_DAYS" -gt 30 ]; then
-                echo "Error: READ_LOGS_DAYS must be between 1 and 30."
+            COLLECT_LOGS_DAYS="$OPTARG"
+            if [ "$COLLECT_LOGS_DAYS" -lt 0 ] || [ "$COLLECT_LOGS_DAYS" -gt 30 ]; then
+                echo "Error: COLLECT_LOGS_DAYS must be between 0 and 30."
                 exit 1
             fi
             ;;
@@ -463,10 +463,10 @@ if [ -c /dev/tpm0 ]; then
     eve exec vtpm tpm2 getcap handles-persistent > "$DIR/handles-persistent.txt"
 fi
 
-if [ -n "$READ_LOGS_DAYS" ]; then
+if [ -n "$COLLECT_LOGS_DAYS" ]; then
     mkdir -p "$LOG_TMP_DIR"
     # Find and copy log files from /persist/newlog to $LOG_TMP_DIR in previous days
-    find /persist/newlog -type f -mtime -"$READ_LOGS_DAYS" -exec ln -s {} "$LOG_TMP_DIR" \;
+    find /persist/newlog -type f -mtime -"$COLLECT_LOGS_DAYS" -exec ln -s {} "$LOG_TMP_DIR" \;
     ln -s "$LOG_TMP_DIR" "$DIR/persist-newlog"
 else
     ln -s /persist/newlog "$DIR/persist-newlog"
