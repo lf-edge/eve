@@ -321,7 +321,7 @@ github.com/lf-edge/eve-tools/runtimemetrics/go/nestedappinstancemetrics
 # github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20240315102754-0f6d1f182e0d
 ## explicit; go 1.20
 github.com/lf-edge/eve/pkg/kube/cnirpc
-# github.com/lf-edge/eve/pkg/pillar v0.0.0-20250327141430-f040d3437112
+# github.com/lf-edge/eve/pkg/pillar v0.0.0-20250403232224-ee02f7ed9974
 ## explicit; go 1.23
 github.com/lf-edge/eve/pkg/pillar/agentlog
 github.com/lf-edge/eve/pkg/pillar/base
