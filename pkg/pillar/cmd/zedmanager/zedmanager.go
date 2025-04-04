@@ -829,18 +829,26 @@ func lookupLocalAppInstanceConfig(ctx *zedmanagerContext, key string) *types.App
 	return &config
 }
 
-func isSnapshotRequestedOnUpdate(status *types.AppInstanceStatus, config types.AppInstanceConfig) bool {
-	if config.Snapshot.Snapshots == nil {
-		return false
-	}
+func snapshotRequestedType(status *types.AppInstanceStatus, config types.AppInstanceConfig) types.SnapshotWhen {
+	ret := types.NoSnapshotTake
+
 	for _, snap := range config.Snapshot.Snapshots {
-		// VM should be marked to be snapshotted on update only if there is any snapshot request of the type "on update"
-		// that is not handled yet.
-		if snap.SnapshotType == types.SnapshotTypeAppUpdate && lookupAvailableSnapshot(status, snap.SnapshotID) == nil {
-			return true
+		if lookupAvailableSnapshot(status, snap.SnapshotID) != nil {
+			continue
+		}
+
+		switch snap.SnapshotType {
+		case types.SnapshotTypeUnspecified:
+			ret = types.NoSnapshotTake
+		case types.SnapshotTypeAppUpdate:
+			ret = types.SnapshotOnUpgrade
+		case types.SnapshotTypeImmediate:
+			// Immediate snapshots have precedence over snapshots on upgrade
+			return types.SnapshotImmediate
 		}
 	}
-	return false
+
+	return ret
 }
 
 // removeNUnpublishedSnapshotRequests removes up to n snapshot requests that have not been triggered yet
@@ -985,7 +993,7 @@ func isNewSnapshotRequest(id string, status *types.AppInstanceStatus) bool {
 
 // Update the snapshot related fields in the AppInstanceStatus
 func updateSnapshotsInAIStatus(status *types.AppInstanceStatus, config types.AppInstanceConfig) {
-	status.SnapStatus.SnapshotOnUpgrade = isSnapshotRequestedOnUpdate(status, config)
+	status.SnapStatus.SnapshotTakenType = snapshotRequestedType(status, config)
 	//markReportedSnapshots(status, config)
 	status.SnapStatus.MaxSnapshots = config.Snapshot.MaxSnapshots
 	snapshotsToBeDeleted := getSnapshotsToBeDeleted(config, status)
@@ -1021,7 +1029,7 @@ func updateSnapshotsInAIStatus(status *types.AppInstanceStatus, config types.App
 func prepareVolumesSnapshotConfigs(ctx *zedmanagerContext, config types.AppInstanceConfig, status *types.AppInstanceStatus) []types.VolumesSnapshotConfig {
 	var volumesSnapshotConfigList []types.VolumesSnapshotConfig
 	for _, snapshot := range status.SnapStatus.RequestedSnapshots {
-		if snapshot.Snapshot.SnapshotType == types.SnapshotTypeAppUpdate {
+		if snapshot.Snapshot.SnapshotType == types.SnapshotTypeAppUpdate || snapshot.Snapshot.SnapshotType == types.SnapshotTypeImmediate {
 			log.Noticef("Creating volumesSnapshotConfig for snapshot %s", snapshot.Snapshot.SnapshotID)
 			volumesSnapshotConfig := types.VolumesSnapshotConfig{
 				SnapshotID: snapshot.Snapshot.SnapshotID,
@@ -1264,9 +1272,11 @@ func handleModify(ctxArg interface{}, key string,
 	if needPurge {
 		needRestart = false
 	}
+
 	// A snapshot is deemed necessary whenever the application requires a restart, as this typically
 	// indicates a significant change in the application, such as an upgrade.
-	if status.SnapStatus.SnapshotOnUpgrade && (needRestart || needPurge) {
+	if status.SnapStatus.SnapshotTakenType == types.SnapshotImmediate ||
+		(status.SnapStatus.SnapshotTakenType == types.SnapshotOnUpgrade && (needRestart || needPurge)) {
 		// Save the list of the volumes that need to be backed up. We will use this list to create the snapshot when
 		// it's triggered. We cannot trigger the snapshot creation here immediately, as the VM
 		// should be stopped first. But we still need to save the list of volumes that are known only at this point.
@@ -1277,6 +1287,17 @@ func handleModify(ctxArg interface{}, key string,
 				config.UUIDandVersion, config.DisplayName, err)
 			// Do not report it to the controller, as the controller do not expect snapshot-creation related errors
 		}
+	}
+
+	if status.SnapStatus.SnapshotTakenType == types.SnapshotImmediate {
+		// this is okay as a clash with updated volumes is prevented later by
+		// "Need purge due to %s but not a purgeCmd", so if the user
+		// updates the volumes but does not set the purgeCmd but does
+		// an immediate snapshot, the immediate snapshot will not trigger
+		// an update of the volumes as the purgeCmd is missing
+		status.PurgeInprogress = types.DownloadAndVerify
+		status.PurgeStartedAt = time.Now()
+		restartReason = "Restart to create immediate snapshot"
 	}
 
 	if config.RestartCmd.Counter != oldConfig.RestartCmd.Counter ||
@@ -1419,7 +1440,7 @@ func quantifyChanges(config types.AppInstanceConfig, oldConfig types.AppInstance
 		str := fmt.Sprintf("number of volume ref changed from %d to %d",
 			len(oldConfig.VolumeRefConfigList),
 			len(config.VolumeRefConfigList))
-		log.Functionf(str)
+		log.Function(str)
 		needPurge = true
 		purgeReason += str + "\n"
 	} else {
@@ -1441,7 +1462,7 @@ func quantifyChanges(config types.AppInstanceConfig, oldConfig types.AppInstance
 		str := fmt.Sprintf("number of AppNetAdapter changed from %d to %d",
 			len(oldConfig.AppNetAdapterList),
 			len(config.AppNetAdapterList))
-		log.Functionf(str)
+		log.Function(str)
 		needPurge = true
 		purgeReason += str + "\n"
 	} else {
@@ -1450,21 +1471,21 @@ func quantifyChanges(config types.AppInstanceConfig, oldConfig types.AppInstance
 			if old.AppMacAddr.String() != uc.AppMacAddr.String() {
 				str := fmt.Sprintf("AppMacAddr changed from %v to %v",
 					old.AppMacAddr, uc.AppMacAddr)
-				log.Functionf(str)
+				log.Function(str)
 				needPurge = true
 				purgeReason += str + "\n"
 			}
 			if !old.AppIPAddr.Equal(uc.AppIPAddr) {
 				str := fmt.Sprintf("AppIPAddr changed from %v to %v",
 					old.AppIPAddr, uc.AppIPAddr)
-				log.Functionf(str)
+				log.Function(str)
 				needPurge = true
 				purgeReason += str + "\n"
 			}
 			if old.Network != uc.Network {
 				str := fmt.Sprintf("Network changed from %v to %v",
 					old.Network, uc.Network)
-				log.Functionf(str)
+				log.Function(str)
 				needPurge = true
 				purgeReason += str + "\n"
 			}
@@ -1477,14 +1498,14 @@ func quantifyChanges(config types.AppInstanceConfig, oldConfig types.AppInstance
 	if !cmp.Equal(config.IoAdapterList, oldConfig.IoAdapterList) {
 		str := fmt.Sprintf("IoAdapterList changed: %v",
 			cmp.Diff(oldConfig.IoAdapterList, config.IoAdapterList))
-		log.Functionf(str)
+		log.Function(str)
 		needPurge = true
 		purgeReason += str + "\n"
 	}
 	if !cmp.Equal(config.FixedResources, oldConfig.FixedResources) {
 		str := fmt.Sprintf("FixedResources changed: %v",
 			cmp.Diff(oldConfig.FixedResources, config.FixedResources))
-		log.Functionf(str)
+		log.Function(str)
 		needRestart = true
 		restartReason += str + "\n"
 	}

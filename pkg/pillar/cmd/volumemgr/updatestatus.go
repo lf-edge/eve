@@ -36,7 +36,7 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 			if len(status.DatastoreIDList) > 1 {
 				err := fmt.Sprintf("doUpdateContentTree(%s) name %s: OCI registry along with the fallback datastores list is not supported",
 					status.Key(), status.DisplayName)
-				log.Errorf(err)
+				log.Error(err)
 				status.SetErrorDescription(types.ErrorDescription{Error: err})
 				changed = true
 				return changed, false
@@ -130,7 +130,7 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 			if status.ContentSha256 == "" {
 				err := fmt.Sprintf("doUpdateContentTree(%s) name %s: no content sha256 defined",
 					status.Key(), status.DisplayName)
-				log.Errorf(err)
+				log.Error(err)
 				status.SetErrorDescription(types.ErrorDescription{Error: err})
 				changed = true
 				return changed, false
@@ -331,7 +331,7 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 			if err != nil {
 				err = fmt.Errorf("doUpdateContentTree(%s): Exception while getting manifest and config for bare blob: %s",
 					status.ContentID, err.Error())
-				log.Errorf(err.Error())
+				log.Error(err.Error())
 				status.SetErrorWithSource(err.Error(), types.ContentTreeStatus{}, time.Now())
 				return changed, false
 			}
@@ -405,7 +405,7 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 			log.Functionf("doUpdateContentTree(%s): IngestWorkResult found", status.Key())
 			if wres.Error != nil {
 				err := fmt.Errorf("doUpdateContentTree(%s): IngestWorkResult error, exception while loading blobs into CAS: %v", status.Key(), wres.Error)
-				log.Errorf(err.Error())
+				log.Error(err.Error())
 				status.SetErrorWithSource(err.Error(), types.ContentTreeStatus{}, wres.ErrorTime)
 				changed = true
 				return changed, false

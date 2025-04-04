@@ -998,7 +998,7 @@ func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 			// the only remedy is an explicit user action (delete, restart, etc.)
 			if domainStatus == types.BROKEN {
 				err := fmt.Errorf("one of the %s tasks has crashed (%v)", status.Key(), err)
-				log.Errorf(err.Error())
+				log.Error(err.Error())
 				status.SetErrorNow("one of the application's tasks has crashed - please restart application instance")
 				status.State = types.BROKEN
 			} else {
@@ -1500,7 +1500,7 @@ func doAssignIoAdaptersToDomain(ctx *domainContext, config types.DomainConfig,
 			}
 			// Also checked in reserveAdapters. Check here in case there was a late error.
 			if !ib.Error.Empty() {
-				return fmt.Errorf(ib.Error.String())
+				return errors.New(ib.Error.String())
 			}
 			if ib.UsbAddr != "" {
 				log.Functionf("Assigning %s (%s) to %s",

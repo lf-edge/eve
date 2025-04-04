@@ -27,7 +27,12 @@ func TestPatchEnvelopes(t *testing.T) {
 	logger := logrus.StandardLogger()
 	log := base.NewSourceLogObject(logger, "petypes", 1234)
 	ps := pubsub.New(&pubsub.EmptyDriver{}, logger, log)
-	peStore := msrv.NewPatchEnvelopes(log, ps)
+	srv := &msrv.Msrv{
+		Log:    log,
+		PubSub: ps,
+		Logger: logger,
+	}
+	peStore := msrv.NewPatchEnvelopes(srv)
 
 	patch1UUID := "6ba7b810-9dad-11d1-80b4-000000000000"
 	app1UUID := "6ba7b810-9dad-11d1-80b4-00c04fd430c8"

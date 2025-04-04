@@ -294,6 +294,6 @@ func FuzzResolveWithSrcIP(f *testing.F) {
 	) {
 		dnsServerIP := net.ParseIP(dnsServer)
 		srcIP := net.ParseIP(src)
-		devicenetwork.ResolveWithSrcIP(domain, dnsServerIP, srcIP)
+		devicenetwork.ResolveWithSrcIPWithTimeout(domain, dnsServerIP, srcIP, 3*time.Second)
 	})
 }

@@ -389,28 +389,28 @@ func quantifyChanges(config types.VolumeConfig,
 	if config.ContentID != status.ContentID {
 		str := fmt.Sprintf("ContentID changed from %s to %s for %s",
 			status.ContentID, config.ContentID, config.DisplayName)
-		log.Functionf(str)
+		log.Function(str)
 		needRegeneration = true
 		regenerationReason += str + "\n"
 	}
 	if config.VolumeContentOriginType != status.VolumeContentOriginType {
 		str := fmt.Sprintf("VolumeContentOriginType changed from %v to %v for %s",
 			status.VolumeContentOriginType, config.VolumeContentOriginType, config.DisplayName)
-		log.Functionf(str)
+		log.Function(str)
 		needRegeneration = true
 		regenerationReason += str + "\n"
 	}
 	if config.MaxVolSize != status.MaxVolSize {
 		str := fmt.Sprintf("MaxVolSize changed from %d to %d for %s",
 			status.MaxVolSize, config.MaxVolSize, config.DisplayName)
-		log.Functionf(str)
+		log.Function(str)
 		needRegeneration = true
 		regenerationReason += str + "\n"
 	}
 	if config.ReadOnly != status.ReadOnly {
 		str := fmt.Sprintf("ReadOnly changed from %v to %v for %s",
 			status.ReadOnly, config.ReadOnly, config.DisplayName)
-		log.Functionf(str)
+		log.Function(str)
 		needRegeneration = true
 		regenerationReason += str + "\n"
 	}

@@ -7,6 +7,7 @@ package zedmanager
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"time"
@@ -396,7 +397,7 @@ func moveSnapshotToAvailable(status *types.AppInstanceStatus, volumesSnapshotSta
 	if err != nil {
 		errStr := fmt.Sprintf("moveSnapshotToAvailable: Failed to serialize snapshot instance status: %s", err)
 		log.Error(errStr)
-		return fmt.Errorf(errStr)
+		return errors.New(errStr)
 	}
 	// Add to AvailableSnapshots
 	status.SnapStatus.AvailableSnapshots = append(status.SnapStatus.AvailableSnapshots, *snapToBeMoved)

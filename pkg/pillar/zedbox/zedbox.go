@@ -172,7 +172,7 @@ func runService(serviceName string, sep entrypoint, inline bool) int {
 		// or fatal. Don't hide that as the reboot reason.
 		// If that is not the case, then watchdog will soon detect that this service
 		// is not running.
-		log.Errorf(err.Error())
+		log.Error(err.Error())
 		return 1
 	}
 	return 0
@@ -200,7 +200,7 @@ func runZedbox(ps *pubsub.PubSub, logger *logrus.Logger, log *base.LogObject, ar
 			if err := json.Unmarshal([]byte(subData), &serviceInitStatus); err != nil {
 				err := fmt.Errorf("zedbox: exception while unmarshalling data %s. %s",
 					subData, err.Error())
-				log.Errorf(err.Error())
+				log.Error(err.Error())
 				break
 			}
 			// Kick off the command in a goroutine

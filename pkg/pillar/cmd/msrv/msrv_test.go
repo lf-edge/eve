@@ -205,6 +205,26 @@ func TestRequestPatchEnvelopes(t *testing.T) {
 						URL:      "a.txt",
 					},
 				},
+				CipherBlobs: []types.BinaryCipherBlob{
+					{
+						EncType: types.BlobEncrytedTypeInline,
+						Inline: &types.BinaryBlobCompleted{
+							FileName: "abcd2",
+							FileSha:  "abcd2",
+							URL:      "a2.txt",
+						},
+					},
+					{
+						EncType: types.BlobEncrytedTypeVolume,
+						Volume: &types.BinaryBlobVolumeRef{
+							FileName:         "abcd3a",
+							ImageName:        "abcd3b",
+							FileMetadata:     "abcd3c",
+							ArtifactMetadata: "abcd3d",
+							ImageID:          "abcd3e",
+						},
+					},
+				},
 			},
 		},
 	})
@@ -259,6 +279,23 @@ func TestRequestPatchEnvelopes(t *testing.T) {
 							ArtifactMetadata: "",
 							URL:              "http://169.254.169.254/eve/v1/patch/download/6ba7b810-9dad-11d1-80b4-111111111111/abcd",
 							Size:             0,
+						},
+						{
+							FileName:         "abcd2",
+							FileSha:          "abcd2",
+							FileMetadata:     "",
+							ArtifactMetadata: "",
+							URL:              "http://169.254.169.254/eve/v1/patch/download/6ba7b810-9dad-11d1-80b4-111111111111/abcd2",
+							Size:             0,
+						},
+					},
+					VolumeRefs: []types.BinaryBlobVolumeRef{
+						{
+							FileName:         "abcd3a",
+							ImageName:        "abcd3b",
+							FileMetadata:     "abcd3c",
+							ArtifactMetadata: "abcd3d",
+							ImageID:          "abcd3e",
 						},
 					},
 				},
