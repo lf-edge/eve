@@ -100,12 +100,13 @@ func parseCipherContext(ctx *getconfigContext,
 // parseCipherBlock : will collate all the relevant information
 // ciphercontext will be used to get the certs and encryption schemes
 // should be run after parseCipherContext
-func parseCipherBlock(ctx *getconfigContext, key string, cfgCipherBlock *zcommon.CipherBlock) types.CipherBlockStatus {
+func parseCipherBlock(ctx *getconfigContext, key string,
+	cfgCipherBlock *zcommon.CipherBlock) (types.CipherBlockStatus, error) {
 
 	log.Functionf("parseCipherBlock(%s) started", key)
 	if cfgCipherBlock == nil {
 		log.Functionf("parseCipherBlock(%s) nil cipher block", key)
-		return types.CipherBlockStatus{CipherBlockID: key}
+		return types.CipherBlockStatus{CipherBlockID: key}, nil
 	}
 	cipherBlock := types.CipherBlockStatus{
 		CipherBlockID:   key,
@@ -118,10 +119,10 @@ func parseCipherBlock(ctx *getconfigContext, key string, cfgCipherBlock *zcommon
 	// should contain valid cipher data
 	if len(cipherBlock.CipherData) == 0 ||
 		len(cipherBlock.CipherContextID) == 0 {
-		errStr := fmt.Sprintf("%s, block contains incomplete data", key)
-		log.Errorf(errStr)
-		cipherBlock.SetErrorNow(errStr)
-		return cipherBlock
+		err := fmt.Errorf("%s, block contains incomplete data", key)
+		log.Error(err)
+		cipherBlock.SetErrorNow(err.Error())
+		return cipherBlock, err
 	}
 	log.Functionf("%s, marking cipher as true", key)
 	cipherBlock.IsCipher = true
@@ -142,7 +143,7 @@ func parseCipherBlock(ctx *getconfigContext, key string, cfgCipherBlock *zcommon
 	}
 
 	log.Functionf("parseCipherBlock(%s) done", key)
-	return cipherBlock
+	return cipherBlock, nil
 }
 
 func publishCipherContext(ctx *getconfigContext,
