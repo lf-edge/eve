@@ -99,7 +99,10 @@ func addBinaryBlobToPatchEnvelope(ctx *getconfigContext, pe *types.PatchEnvelope
 			return err
 		}
 		volumeRef.ArtifactMetadata = artifact.GetArtifactMetaData()
-		volumeRef.EncArtifactMeta = getEncArtifactMetadata(ctx, artifact)
+		volumeRef.EncArtifactMeta, err = getEncArtifactMetadata(ctx, artifact)
+		if err != nil {
+			return err
+		}
 		pe.VolumeRefs = append(pe.VolumeRefs, *volumeRef)
 		return nil
 	case *zconfig.EveBinaryArtifact_Inline:
@@ -112,7 +115,10 @@ func addBinaryBlobToPatchEnvelope(ctx *getconfigContext, pe *types.PatchEnvelope
 			return err
 		}
 		binaryBlob.ArtifactMetadata = artifact.GetArtifactMetaData()
-		binaryBlob.EncArtifactMeta = getEncArtifactMetadata(ctx, artifact)
+		binaryBlob.EncArtifactMeta, err = getEncArtifactMetadata(ctx, artifact)
+		if err != nil {
+			return err
+		}
 		pe.BinaryBlobs = append(pe.BinaryBlobs, *binaryBlob)
 
 		return nil
@@ -144,10 +150,11 @@ func addBinaryBlobToPatchEnvelope(ctx *getconfigContext, pe *types.PatchEnvelope
 	return errors.New("Unknown EveBinaryArtifact format")
 }
 
-func getEncArtifactMetadata(ctx *getconfigContext, artifact *zconfig.EveBinaryArtifact) types.CipherBlockStatus {
+func getEncArtifactMetadata(ctx *getconfigContext,
+	artifact *zconfig.EveBinaryArtifact) (types.CipherBlockStatus, error) {
 	data := artifact.GetMetadataCipherData()
 	if data == nil {
-		return types.CipherBlockStatus{}
+		return types.CipherBlockStatus{}, nil
 	}
 	if len(data.CipherData) < 16 {
 		log.Errorf("Failed to get metadata cipher data, cipherData is nil or less than 16 bytes")
@@ -169,10 +176,14 @@ func getEncryptedCipherBlock(ctx *getconfigContext,
 	persistCacheFilepath string) (*types.BinaryCipherBlob, error) {
 	var cipherData *zcommon.CipherBlock
 	var typeStr string
+	encArtifactMeta, err := getEncArtifactMetadata(ctx, artifact)
+	if err != nil {
+		return nil, err
+	}
 	cipherBlob := types.BinaryCipherBlob{
 		EncType:          enctype,
 		ArtifactMetaData: artifact.GetArtifactMetaData(),
-		EncArtifactMeta:  getEncArtifactMetadata(ctx, artifact),
+		EncArtifactMeta:  encArtifactMeta,
 	}
 	switch enctype {
 	case types.BlobEncrytedTypeInline:
@@ -197,7 +208,10 @@ func getEncryptedCipherBlock(ctx *getconfigContext,
 	// we save the cipher block data to the cache file, and read it back in msrv side to decrypt,
 	// to avoid publishing the cipher block data which can be too big in size
 	key := fmt.Sprintf("%s-%s", typeStr, hex.EncodeToString(cipherData.CipherData[:16]))
-	EncBinaryArtifact := parseCipherBlock(ctx, key, cipherData)
+	EncBinaryArtifact, err := parseCipherBlock(ctx, key, cipherData)
+	if err != nil {
+		return nil, err
+	}
 	url, err := saveCipherBlockStatusToFile(EncBinaryArtifact, key, persistCacheFilepath)
 	if err != nil {
 		return nil, err
