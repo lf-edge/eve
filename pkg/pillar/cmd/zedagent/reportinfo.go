@@ -983,6 +983,69 @@ func encodeCellProviders(wwanStatus types.WwanNetworkStatus) (providers []*info.
 	return providers
 }
 
+func encodeCellIPType(ipType types.WwanIPType) evecommon.CellularIPType {
+	switch ipType {
+	case types.WwanIPTypeUnspecified:
+		return evecommon.CellularIPType_CELLULAR_IP_TYPE_UNSPECIFIED
+	case types.WwanIPTypeIPv4:
+		return evecommon.CellularIPType_CELLULAR_IP_TYPE_IPV4
+	case types.WwanIPTypeIPv4AndIPv6:
+		return evecommon.CellularIPType_CELLULAR_IP_TYPE_IPV4_AND_IPV6
+	case types.WwanIPTypeIPv6:
+		return evecommon.CellularIPType_CELLULAR_IP_TYPE_IPV6
+	default:
+		log.Errorf("Invalid wwan IP type: %v", ipType)
+	}
+	return evecommon.CellularIPType_CELLULAR_IP_TYPE_UNSPECIFIED
+}
+
+func encodeCellBearerType(bearerType types.BearerType) evecommon.BearerType {
+	switch bearerType {
+	case types.BearerTypeUnspecified:
+		return evecommon.BearerType_BEARER_TYPE_UNSPECIFIED
+	case types.BearerTypeAttach:
+		return evecommon.BearerType_BEARER_TYPE_ATTACH
+	case types.BearerTypeDefault:
+		return evecommon.BearerType_BEARER_TYPE_DEFAULT
+	case types.BearerTypeDedicated:
+		return evecommon.BearerType_BEARER_TYPE_DEDICATED
+	default:
+		log.Errorf("Invalid wwan bearer type: %v", bearerType)
+	}
+	return evecommon.BearerType_BEARER_TYPE_UNSPECIFIED
+}
+
+func encodeCellBearers(wwanStatus types.WwanNetworkStatus) (bearers []*info.CellularBearer) {
+	for _, bearer := range wwanStatus.Bearers {
+		var connectedAt *timestamppb.Timestamp
+		if bearer.ConnectedAt != 0 {
+			connectedAt = timestamppb.New(time.Unix(int64(bearer.ConnectedAt), 0))
+		}
+		bearers = append(bearers, &info.CellularBearer{
+			Apn:             bearer.APN,
+			BearerType:      encodeCellBearerType(bearer.Type),
+			IpType:          encodeCellIPType(bearer.IPType),
+			Connected:       bearer.Connected,
+			ConnectionError: bearer.ConnectionError,
+			ConnectedAt:     connectedAt,
+		})
+	}
+	return bearers
+}
+
+func encodeCellProfiles(wwanStatus types.WwanNetworkStatus) (profiles []*info.CellularProfile) {
+	for _, profile := range wwanStatus.Profiles {
+		profiles = append(profiles, &info.CellularProfile{
+			ProfileName:   profile.Name,
+			Apn:           profile.APN,
+			BearerType:    encodeCellBearerType(profile.BearerType),
+			IpType:        encodeCellIPType(profile.IPType),
+			ForbidRoaming: profile.ForbidRoaming,
+		})
+	}
+	return profiles
+}
+
 func encodeSystemAdapterInfo(ctx *zedagentContext) *info.SystemAdapterInfo {
 	dpcl := *ctx.DevicePortConfigList
 	sainfo := new(info.SystemAdapterInfo)
@@ -1127,6 +1190,8 @@ func encodeNetworkPortStatus(ctx *zedagentContext,
 				ConnectedAt:    connectedAt,
 				ConfigError:    wwanStatus.ConfigError,
 				ProbeError:     wwanStatus.ProbeError,
+				Bearers:        encodeCellBearers(wwanStatus),
+				Profiles:       encodeCellProfiles(wwanStatus),
 			},
 		}
 	case types.WirelessTypeWifi:
