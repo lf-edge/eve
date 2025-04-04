@@ -645,6 +645,9 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext, dest destinationBitset) {
 	// We report the snapshot capability despite the fact that we support snapshots only
 	// for file-based volumes. If a controller tries to make a snapshot of ZFS-based volume
 	// device returns a runtime error.
+	// Note: Support for LTE attach configuration was backported to 13.4-stable. However,
+	// since the capabilities between ADAPTER_USER_LABELS and CELLULAR_ATTACH_CONFIG
+	// are not present in 13.4, the ApiCapability field is intentionally left unchanged.
 	ReportDeviceInfo.ApiCapability = info.APICapability_API_CAPABILITY_ADAPTER_USER_LABELS
 
 	// Report if there is a local override of profile
