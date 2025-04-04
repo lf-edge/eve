@@ -128,9 +128,14 @@ type ModemInfo struct {
 	appliedIPSettings types.WwanIPSettings
 	// Last applied user-configured MTU.
 	appliedUserMTU uint16
-	// Decrypted username and password (from Config.AccessPoint.EncryptedCredentials).
+	// Decrypted username and password to use for the default bearer.
+	// (decrypted from Config.AccessPoint.EncryptedCredentials).
 	decryptedUsername string
 	decryptedPassword string
+	// Decrypted username and password to use for the attach bearer.
+	// (also decrypted from Config.AccessPoint.EncryptedCredentials).
+	decryptedAttachUsername string
+	decryptedAttachPassword string
 	// Latest errors encountered while managing this modem.
 	probeError       error
 	connectError     error
@@ -602,12 +607,7 @@ func (a *MMAgent) applyWwanConfig(config types.WwanConfig) {
 			rescanProviders = append(rescanProviders, modem.Path)
 		}
 		if !modem.config.AccessPoint.Equal(modem.prevConfig.AccessPoint) {
-			modem.decryptedUsername, modem.decryptedPassword, modem.decryptError =
-				a.decryptAPCredentials(&modem.config.AccessPoint)
-			if modem.decryptError != nil {
-				a.log.Errorf("Failed to decrypt username/password for modem %s (%s): %v",
-					modem.config.LogicalLabel, modem.Path, modem.decryptError)
-			}
+			a.decryptCredentials(modem)
 			forceReconnect = true
 		}
 		a.reconcileModem(modem, forceReconnect)
@@ -760,12 +760,7 @@ func (a *MMAgent) findConfigForNewModem(modem *ModemInfo) {
 		modem.config = config
 		a.log.Noticef("Associated modem at path %s with logical label %s",
 			modem.Path, modem.config.LogicalLabel)
-		modem.decryptedUsername, modem.decryptedPassword, modem.decryptError =
-			a.decryptAPCredentials(&config.AccessPoint)
-		if modem.decryptError != nil {
-			a.log.Errorf("Failed to decrypt username/password for modem %s (%s): %v",
-				modem.config.LogicalLabel, modem.Path, modem.decryptError)
-		}
+		a.decryptCredentials(modem)
 		// Remove entry from missingModems.
 		a.missingModems[i] = a.missingModems[len(a.missingModems)-1]
 		a.missingModems = a.missingModems[:len(a.missingModems)-1]
@@ -827,6 +822,11 @@ func (a *MMAgent) reconcileModem(
 			connErrChanged = true
 			a.logReconcileOp(modem, "close connection", opReason, connErr)
 		}
+		if connErr == nil {
+			// Not a necessary step hence we do not touch connErr if it fails.
+			err := a.mmClient.DeleteBearers(modem.Path)
+			a.logReconcileOp(modem, "delete bearers", opReason, err)
+		}
 		if connErr == nil && modem.Status.Module.OpMode != types.WwanOpModeRadioOff {
 			// Note that we disable radio function of all unmanaged modems.
 			connErr = a.mmClient.DisableRadio(modem.Path)
@@ -856,6 +856,14 @@ func (a *MMAgent) reconcileModem(
 					connErr = a.removeIPSettings(modem)
 					a.logReconcileOp(modem, "remove (obsolete) IP settings",
 						opReason, connErr)
+				}
+				if forceReconnect {
+					// For forced-reconnection we start with a clear bearer config.
+					// This is not a necessary step, but may help to prevent some connection
+					// errors caused by lingering bearer configs that we have seen.
+					// If this fails, we continue anyway (do not store error in connErr).
+					err := a.mmClient.DeleteBearers(modem.Path)
+					a.logReconcileOp(modem, "delete bearers", opReason, err)
 				}
 			}
 			if connErr == nil &&
@@ -1192,7 +1200,10 @@ func (a *MMAgent) connectModem(modem *ModemInfo) error {
 		CellularAccessPoint: modem.config.AccessPoint,
 		DecryptedUsername:   modem.decryptedUsername,
 		//pragma: allowlist nextline secret
-		DecryptedPassword: modem.decryptedPassword,
+		DecryptedPassword:       modem.decryptedPassword,
+		DecryptedAttachUsername: modem.decryptedAttachUsername,
+		//pragma: allowlist nextline secret
+		DecryptedAttachPassword: modem.decryptedAttachPassword,
 	})
 	if err != nil {
 		return err
@@ -1345,20 +1356,33 @@ func (a *MMAgent) getResolvConfFilename(modem *ModemInfo) string {
 	return path.Join(WwanResolvConfDir, modem.Status.PhysAddrs.Interface+".dhcp")
 }
 
-func (a *MMAgent) decryptAPCredentials(ap *types.CellularAccessPoint) (
-	username, password string, err error) {
-	if !ap.EncryptedCredentials.IsCipher {
-		return "", "", nil
+func (a *MMAgent) decryptCredentials(modem *ModemInfo) {
+	defer func() {
+		if modem.decryptError != nil {
+			a.log.Errorf(
+				"Failed to decrypt user credentials for modem %s (%s): %v",
+				modem.config.LogicalLabel, modem.Path, modem.decryptError)
+		}
+	}()
+	modem.decryptError = nil
+	modem.decryptedUsername = ""
+	modem.decryptedPassword = ""
+	modem.decryptedAttachUsername = ""
+	modem.decryptedAttachPassword = ""
+	encryptedCreds := modem.config.AccessPoint.EncryptedCredentials
+	if !encryptedCreds.IsCipher {
+		return
 	}
 	// Regardless of how decryption will go, metrics will be updated.
 	a.metricsUpdated = true
 	decryptAvailable := a.subControllerCert != nil && a.subEdgeNodeCert != nil
 	if !decryptAvailable {
 		a.cipherMetrics.RecordFailure(a.log, types.NotReady)
-		return "", "", fmt.Errorf(
+		modem.decryptError = fmt.Errorf(
 			"missing certificates for decryption of cellular network credentials")
+		return
 	}
-	status, decBlock, err := cipher.GetCipherCredentials(
+	cipherStatus, decryptedCreds, err := cipher.GetCipherCredentials(
 		&cipher.DecryptCipherContext{
 			Log:                  a.log,
 			AgentName:            agentName,
@@ -1366,9 +1390,9 @@ func (a *MMAgent) decryptAPCredentials(ap *types.CellularAccessPoint) (
 			PubSubControllerCert: a.subControllerCert,
 			PubSubEdgeNodeCert:   a.subEdgeNodeCert,
 		},
-		ap.EncryptedCredentials)
+		encryptedCreds)
 	if a.pubCipherBlockStatus != nil {
-		err2 := a.pubCipherBlockStatus.Publish(status.Key(), status)
+		err2 := a.pubCipherBlockStatus.Publish(cipherStatus.Key(), cipherStatus)
 		if err2 != nil {
 			// This does not affect the decryption procedure itself, just log error.
 			a.log.Errorf("Failed to publish CipherBlockStatus: %v", err2)
@@ -1376,10 +1400,13 @@ func (a *MMAgent) decryptAPCredentials(ap *types.CellularAccessPoint) (
 	}
 	if err != nil {
 		a.cipherMetrics.RecordFailure(a.log, types.DecryptFailed)
-		return "", "", fmt.Errorf(
-			"failed to decrypt cellular network credentials: %w", err)
+		modem.decryptError = err
+		return
 	}
-	return decBlock.CellularNetUsername, decBlock.CellularNetPassword, nil
+	modem.decryptedUsername = decryptedCreds.CellularNetUsername
+	modem.decryptedPassword = decryptedCreds.CellularNetPassword
+	modem.decryptedAttachUsername = decryptedCreds.CellularNetAttachUsername
+	modem.decryptedAttachPassword = decryptedCreds.CellularNetAttachPassword
 }
 
 func (a *MMAgent) publishWwanStatus() {
