@@ -31,13 +31,13 @@ const (
 )
 
 const (
-	notifChanBuffer            = 128
-	dbusSigChanBuffer          = 256
-	dbusCallTimeout            = 10 * time.Second
-	scanProvidersTimeout       = 3 * time.Minute
-	modemDisableTimeout        = 10 * time.Second
-	changePrimarySIMTimeout    = 30 * time.Second
-	changeInitEPSBearerTimeout = 20 * time.Second
+	notifChanBuffer         = 128
+	dbusSigChanBuffer       = 256
+	dbusCallTimeout         = 10 * time.Second
+	scanProvidersTimeout    = 3 * time.Minute
+	modemDisableTimeout     = 10 * time.Second
+	changePrimarySIMTimeout = 30 * time.Second
+	setInitEPSBearerTimeout = 20 * time.Second
 )
 
 const (
@@ -91,8 +91,10 @@ type Modem struct {
 // ConnectionArgs encapsulates all arguments for connection request.
 type ConnectionArgs struct {
 	types.CellularAccessPoint
-	DecryptedUsername string
-	DecryptedPassword string
+	DecryptedUsername       string
+	DecryptedPassword       string
+	DecryptedAttachUsername string
+	DecryptedAttachPassword string
 }
 
 // Event is used to signal change in modem state data.
@@ -158,7 +160,7 @@ func (c *Client) RunModemMonitoring(signalPollPeriod time.Duration) (
 func (c *Client) setSignalPollPeriod(period time.Duration) {
 	c.sigPollPeriodSecs = uint32(period.Seconds())
 	if c.sigPollPeriodSecs == 0 && period > 0 {
-		// Smallest support period.
+		// Smallest supported period.
 		c.sigPollPeriodSecs = 1
 	}
 }
@@ -386,6 +388,9 @@ func (c *Client) processDbusSignal(signal *dbus.Signal) {
 						modemPaths, modem.Path)
 				}
 			}
+		case ProfileManagerInterface:
+			statusChanged = true
+			modemPaths = generics.AppendIfNotDuplicate(modemPaths, path)
 		}
 		// Reload changed state data and publish notification(s).
 		for _, modemPath := range modemPaths {
@@ -666,6 +671,8 @@ func (c *Client) getModemStatus(modemObj dbus.BusObject) (
 		status.CurrentProvider.Description = providerName
 	}
 	var bearers []dbus.ObjectPath
+	// Retrieve status for default and dedicated bearers.
+	// This does not include the attach bearer.
 	_ = getDBusProperty(c, modemObj, ModemPropertyBearers, &bearers)
 	for _, bearerPath := range bearers {
 		if !bearerPath.IsValid() {
@@ -674,25 +681,27 @@ func (c *Client) getModemStatus(modemObj dbus.BusObject) (
 		}
 		bearerPaths = append(bearerPaths, string(bearerPath))
 		bearerObj := c.conn.Object(MMInterface, bearerPath)
-		var connected bool
-		_ = getDBusProperty(c, bearerObj, BearerPropertyConnected, &connected)
-		if !connected {
-			continue
+		bearer := c.getBearerStatus(bearerObj)
+		if bearer.Connected && bearer.Type == types.BearerTypeDefault {
+			status.ConnectedAt = bearer.ConnectedAt
+			ipSettings, err := c.getBearerIPSettings(bearerObj)
+			if err != nil {
+				c.log.Error(err)
+			} else {
+				status.IPSettings = ipSettings
+			}
 		}
-		var stats map[string]dbus.Variant
-		_ = getDBusProperty(c, bearerObj, BearerPropertyStats, &stats)
-		if value, ok := stats["start-date"].Value().(uint64); ok {
-			status.ConnectedAt = value
-		} else if value, ok := stats["duration"].Value().(uint32); ok {
-			status.ConnectedAt = uint64(time.Now().Unix()) - uint64(value)
+		status.Bearers = append(status.Bearers, bearer)
+	}
+	// Retrieve attach bearer status.
+	var attachBearer dbus.ObjectPath
+	_ = getDBusProperty(c, modemObj, Modem3GPPPropertyInitialEpsBearer, &attachBearer)
+	if attachBearer.IsValid() {
+		attachBearerObj := c.conn.Object(MMInterface, attachBearer)
+		bearer := c.getBearerStatus(attachBearerObj)
+		if bearer.Type == types.BearerTypeAttach {
+			status.Bearers = append(status.Bearers, bearer)
 		}
-		ipSettings, err := c.getBearerIPSettings(bearerObj)
-		if err != nil {
-			c.log.Error(err)
-			break
-		}
-		status.IPSettings = ipSettings
-		break
 	}
 	// Find out if location tracking is running for this modem.
 	var locEnabled uint32
@@ -700,7 +709,103 @@ func (c *Client) getModemStatus(modemObj dbus.BusObject) (
 	var locSignals bool
 	_ = getDBusProperty(c, modemObj, LocationPropertySignals, &locSignals)
 	status.LocationTracking = locSignals && (locEnabled&LocationSourceGpsRaw) > 0
+	// Retrieve modem profiles.
+	var profilesRaw interface{}
+	_ = c.callDBusMethod(modemObj, ProfileManagerMethodList, &profilesRaw)
+	if profiles, ok := profilesRaw.([]map[string]dbus.Variant); ok {
+		for _, profileAttrs := range profiles {
+			var profile types.WwanProfile
+			if value, ok := profileAttrs["profile-name"].Value().(string); ok {
+				profile.Name = value
+			}
+			if value, ok := profileAttrs["profile-id"].Value().(int32); ok {
+				if profile.Name == "" && value >= 0 {
+					profile.Name = fmt.Sprintf("profile-id:%d", value)
+				}
+			}
+			if value, ok := profileAttrs["apn"].Value().(string); ok {
+				profile.APN = value
+			}
+			if value, ok := profileAttrs["ip-type"].Value().(uint32); ok {
+				switch value {
+				case BearerIPFamilyIPv4:
+					profile.IPType = types.WwanIPTypeIPv4
+				case BearerIPFamilyIPv4v6:
+					profile.IPType = types.WwanIPTypeIPv4AndIPv6
+				case BearerIPFamilyIPv6:
+					profile.IPType = types.WwanIPTypeIPv6
+				}
+			}
+			if value, ok := profileAttrs["apn-type"].Value().(uint32); ok {
+				if value&BearerAPNTypeAttach != 0 {
+					profile.BearerType = types.BearerTypeAttach
+				} else if value&BearerAPNTypeDefault != 0 {
+					profile.BearerType = types.BearerTypeDefault
+				} else if value&(^uint32(BearerAPNTypeAttach|BearerAPNTypeDefault)) != 0 {
+					profile.BearerType = types.BearerTypeDedicated
+				}
+			}
+			if value, ok := profileAttrs["roaming-allowance"].Value().(uint32); ok {
+				if value == 0 {
+					profile.ForbidRoaming = true
+				}
+			}
+			status.Profiles = append(status.Profiles, profile)
+		}
+	}
 	return
+}
+
+func (c *Client) getBearerStatus(bearerObj dbus.BusObject) (bearer types.WwanBearer) {
+	var bearerType uint32
+	_ = getDBusProperty(c, bearerObj, BearerPropertyType, &bearerType)
+	switch bearerType {
+	case BearerTypeDefault:
+		bearer.Type = types.BearerTypeDefault
+	case BearerTypeAttach:
+		bearer.Type = types.BearerTypeAttach
+	case BearerTypeDedicated:
+		bearer.Type = types.BearerTypeDedicated
+	}
+	_ = getDBusProperty(c, bearerObj, BearerPropertyConnected, &bearer.Connected)
+	if bearer.Connected {
+		var stats map[string]dbus.Variant
+		_ = getDBusProperty(c, bearerObj, BearerPropertyStats, &stats)
+		if value, ok := stats["start-date"].Value().(uint64); ok {
+			bearer.ConnectedAt = value
+		} else if value, ok := stats["duration"].Value().(uint32); ok {
+			bearer.ConnectedAt = uint64(time.Now().Unix()) - uint64(value)
+		}
+	}
+	connectionError := struct {
+		DBusErrName string
+		ErrMessage  string
+	}{}
+	_ = getDBusProperty(c, bearerObj, BearerPropertyConnectionError, &connectionError)
+	if connectionError.DBusErrName != "" {
+		if connectionError.ErrMessage != "" {
+			bearer.ConnectionError = connectionError.DBusErrName + ": " +
+				connectionError.ErrMessage
+		} else {
+			bearer.ConnectionError = connectionError.DBusErrName
+		}
+	}
+	var bearerProperties map[string]dbus.Variant
+	_ = getDBusProperty(c, bearerObj, BearerPropertyProperties, &bearerProperties)
+	if value, ok := bearerProperties["apn"].Value().(string); ok {
+		bearer.APN = value
+	}
+	if value, ok := bearerProperties["ip-type"].Value().(uint32); ok {
+		switch value {
+		case BearerIPFamilyIPv4:
+			bearer.IPType = types.WwanIPTypeIPv4
+		case BearerIPFamilyIPv4v6:
+			bearer.IPType = types.WwanIPTypeIPv4AndIPv6
+		case BearerIPFamilyIPv6:
+			bearer.IPType = types.WwanIPTypeIPv6
+		}
+	}
+	return bearer
 }
 
 func (c *Client) getBearerIPSettings(bearerObj dbus.BusObject) (
@@ -1193,8 +1298,8 @@ func (c *Client) Connect(
 		err := c.preferPhysSimOverESim(modemObj)
 		if err != nil {
 			c.log.Error(err)
-			// Continue, below we will try to change settings for the initial
-			// EPS bearer, which could help with the UE registration.
+			// Continue, below we may change the LTE attach settings and fix the failing
+			// registration.
 		}
 	}
 	if args.SIMSlot != 0 {
@@ -1218,8 +1323,8 @@ func (c *Client) Connect(
 				modemObj, ModemStateRegistered, changePrimarySIMTimeout)
 			if err != nil {
 				c.log.Error(err)
-				// Continue, below we will try to change settings for the initial
-				// EPS bearer.
+				// Continue even if not registered, below we may change the LTE attach
+				// settings and fix the failing registration.
 			}
 		}
 	}
@@ -1231,100 +1336,69 @@ func (c *Client) Connect(
 			args.PreferredRATs, modemPath, err)
 		return types.WwanIPSettings{}, err
 	}
-	// Make sure that there are no previously created bearers still hanging
-	// around. Otherwise, we may get "interface-in-use-config-match" error
-	// from ModemManager.
-	err = c.deleteBearers(modemObj)
-	if err != nil {
-		// Just log as warning and continue with the connection attempt.
-		c.log.Warn(err)
-		err = nil
+	// Set the initial EPS bearer (aka LTE attach) config first if provided by the user.
+	if args.AttachAPN != "" {
+		attachProps := make(map[string]interface{})
+		attachProps["apn"] = args.AttachAPN
+		attachProps["allowed-auth"] = wwanAuthProtocolToBearerAllowedAuth(
+			args.AttachAuthProtocol)
+		if args.DecryptedAttachUsername != "" {
+			attachProps["user"] = args.DecryptedAttachUsername
+			//pragma: allowlist nextline secret
+			attachProps["password"] = args.DecryptedAttachPassword
+		}
+		switch args.AttachIPType {
+		case types.WwanIPTypeIPv4:
+			attachProps["ip-type"] = uint32(BearerIPFamilyIPv4)
+		case types.WwanIPTypeIPv4AndIPv6:
+			attachProps["ip-type"] = uint32(BearerIPFamilyIPv4v6)
+		case types.WwanIPTypeIPv6:
+			attachProps["ip-type"] = uint32(BearerIPFamilyIPv6)
+		}
+		err = c.callDBusMethodWithTimeout(modemObj, Modem3GPPMethodSetInitialEpsBearer,
+			setInitEPSBearerTimeout, nil, attachProps)
+		if err != nil {
+			err = fmt.Errorf(
+				"failed to set the attach APN settings for modem %s: %w",
+				modemObj.Path(), err)
+			c.log.Error(err)
+			return types.WwanIPSettings{}, err
+		}
+		err = c.waitForModemState(
+			modemObj, ModemStateRegistered, setInitEPSBearerTimeout)
+		if err != nil {
+			c.log.Error(err)
+			// Continue even if not registered, maybe the timeout for registration
+			// is not enough. Connection request will add additional timeout and the bearer
+			// config will stay around even after this method gives up, allowing the modem
+			// to continue trying to register/connect in the background.
+		}
 	}
 	// Prepare connection settings.
 	connProps := make(map[string]interface{})
 	connProps["apn"] = args.APN
-	var allowedAuth uint32
-	switch args.AuthProtocol {
-	case types.WwanAuthProtocolPAP:
-		allowedAuth = BearerAllowedAuthPap
-	case types.WwanAuthProtocolCHAP:
-		allowedAuth = BearerAllowedAuthChap
-	case types.WwanAuthProtocolPAPAndCHAP:
-		allowedAuth = BearerAllowedAuthPap | BearerAllowedAuthChap
-	default:
-		allowedAuth = BearerAllowedAuthUnknown
-	}
-	connProps["allowed-auth"] = allowedAuth
+	connProps["allowed-auth"] = wwanAuthProtocolToBearerAllowedAuth(args.AuthProtocol)
 	if args.DecryptedUsername != "" {
 		connProps["user"] = args.DecryptedUsername
 		//pragma: allowlist nextline secret
 		connProps["password"] = args.DecryptedPassword
 	}
 	connProps["allow-roaming"] = !args.ForbidRoaming
-	// Try to connect - first with IPv4-only IP-type.
-	connProps["ip-type"] = uint32(BearerIPFamilyIPv4)
+	switch args.IPType {
+	case types.WwanIPTypeIPv4:
+		connProps["ip-type"] = uint32(BearerIPFamilyIPv4)
+	case types.WwanIPTypeIPv4AndIPv6:
+		connProps["ip-type"] = uint32(BearerIPFamilyIPv4v6)
+	case types.WwanIPTypeIPv6:
+		connProps["ip-type"] = uint32(BearerIPFamilyIPv6)
+	}
 	ipSettings, err := c.runSimpleConnect(modemObj, connProps)
-	if err == nil {
-		return ipSettings, nil
-	}
-	origErr := fmt.Errorf("failed to connect modem %s to APN %s: %v",
-		modemPath, args.APN, err)
-	// TODO: Allow the user to configure IP-type and PDP context for the initial EPS bearer.
-	// For now, we will be retrying connection attempts using all three IP types:
-	// ipv4, ipv6, ipv4v6. However, we will not be modifying the PDP context parameters
-	// for the initial EPS bearer until user is able to configure them.
-	//
-	// Some background for understanding: LTE connection consists of two IP bearers,
-	// the initial EPS bearer and the default EPS bearer. Device must first
-	// establish the initial bearer (which shows as transition from the "searching" to
-	// "registered" state) and then it connects to a default bearer (transition from
-	// "registered" to "connected"). Both bearers require PDP context settings (APN,
-	// ip-type, potentially username/password, etc.).
-	// Settings for the initial bearer are typically provided by the SIM card while
-	// settings for the default bearer are user-configured.
-	//
-	// It is not necessarily the case that the APNs for the initial and default bearers
-	// are the same. We used to make that assumption but this has led to cases where modem
-	// was failing registration because the APN for the initial bearer was wrong. It is
-	// better to let the SIM card provide the PDP context setting for the initial EPS bearer.
-	// Furthermore, once these settings are changed, there is no straightforward method to
-	// revert back to the SIM-provided configuration; for more details, see the discussion here:
-	// https://gitlab.freedesktop.org/NetworkManager/NetworkManager/-/issues/1490#note_2628804
-	//
-	// Users may only need to override SIM-provided settings in rather rare cases: either when
-	// the SIM card has incorrect configuration (we have seen this only once) or when the initial
-	// EPS bearer requires username/password authentication (also uncommon). Despite the rarity
-	// of these cases, these settings should be user-configurable.
-	// Please note, that the same enhancement was recently implemented in NetworkManager
-	// (used by Ubuntu and other major Linux distributions):
-	// https://gitlab.freedesktop.org/NetworkManager/NetworkManager/-/merge_requests/1915
-	err = c.deleteBearers(modemObj)
 	if err != nil {
-		// Just log as warning and continue with the next connection attempt for different
-		// ip-type.
-		c.log.Warn(err)
-		err = nil
+		err = fmt.Errorf("failed to connect modem %s to APN %s: %v",
+			modemPath, args.APN, err)
+		return ipSettings, err
 	}
-	// Try with dual-stack ip-type instead of IPv4 only.
-	connProps["ip-type"] = uint32(BearerIPFamilyIPv4v6)
-	ipSettings, err = c.runSimpleConnect(modemObj, connProps)
-	if err == nil {
-		return ipSettings, nil
-	}
-	err = c.deleteBearers(modemObj)
-	if err != nil {
-		// Just log as warning and continue with the next connection attempt for different
-		// ip-type.
-		c.log.Warn(err)
-		err = nil
-	}
-	// Make the final attempt with IPv6 only.
-	connProps["ip-type"] = uint32(BearerIPFamilyIPv6)
-	ipSettings, err = c.runSimpleConnect(modemObj, connProps)
-	if err == nil {
-		return ipSettings, nil
-	}
-	return ipSettings, origErr
+	return ipSettings, nil
 }
 
 func (c *Client) runSimpleConnect(modemObj dbus.BusObject,
@@ -1540,19 +1614,22 @@ func (c *Client) preferPhysSimOverESim(modemObj dbus.BusObject) error {
 
 // Disconnect terminates the modem connection.
 // If the modem is not connected, function does nothing and returns nil.
+// The config of disconnected bearer(s) is not removed.
 func (c *Client) Disconnect(modemPath string) error {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 	modemObj := c.conn.Object(MMInterface, dbus.ObjectPath(modemPath))
-	return c.deleteBearers(modemObj)
+	anyBearer := dbus.ObjectPath("/")
+	return c.callDBusMethod(modemObj, SimpleMethodDisconnect, nil, anyBearer)
 }
 
-// Delete all bearers which are associated with the given modem, except for
-// the initial EPS bearer, which stays connected.
-// This is used to disconnect the modem and to clean any bearers hanging
-// after a previously failed connection request.
-func (c *Client) deleteBearers(modemObj dbus.BusObject) error {
+// DeleteBearers deletes all bearers which are associated with the given modem,
+// except for the initial EPS bearer, which stays connected.
+// This is used to clean up any stale bearers when the user changes the APN
+// configuration.
+func (c *Client) DeleteBearers(modemPath string) error {
 	var bearers []dbus.ObjectPath
+	modemObj := c.conn.Object(MMInterface, dbus.ObjectPath(modemPath))
 	// This list does not include the initial EPS bearer details.
 	err := getDBusProperty(c, modemObj, ModemPropertyBearers, &bearers)
 	if err != nil {
