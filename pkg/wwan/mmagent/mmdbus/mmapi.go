@@ -3,6 +3,8 @@
 
 package mmdbus
 
+import "github.com/lf-edge/eve/pkg/pillar/types"
+
 // Standard D-Bus interfaces
 const (
 	DBusMethodManagedObjects    = "org.freedesktop.DBus.ObjectManager.GetManagedObjects"
@@ -182,7 +184,7 @@ const (
 	Modem3GPPPropertyRegistrationState = Modem3GPPInterface + ".RegistrationState"
 	Modem3GPPPropertyPLMN              = Modem3GPPInterface + ".OperatorCode"
 	Modem3GPPPropertyProviderName      = Modem3GPPInterface + ".OperatorName"
-	Modem3GPPPropertyInitialEpsBearer  = Modem3GPPInterface + ".InitialEpsBearerSettings"
+	Modem3GPPPropertyInitialEpsBearer  = Modem3GPPInterface + ".InitialEpsBearer"
 )
 
 // Modem registration state
@@ -205,13 +207,39 @@ const (
 // ModemManager/Bearer D-Bus interface
 // https://www.freedesktop.org/software/ModemManager/api/latest/gdbus-org.freedesktop.ModemManager1.Bearer.html#
 const (
-	BearerInterface             = MMInterface + ".Bearer"
-	BearerPropertyConnectedName = "Connected"
-	BearerPropertyConnected     = BearerInterface + "." + BearerPropertyConnectedName
-	BearerPropertyStatsName     = "Stats"
-	BearerPropertyStats         = BearerInterface + "." + BearerPropertyStatsName
-	BearerPropertyIPv4Config    = BearerInterface + ".Ip4Config"
-	BearerPropertyIPv6Config    = BearerInterface + ".Ip6Config"
+	BearerInterface               = MMInterface + ".Bearer"
+	BearerPropertyConnectedName   = "Connected"
+	BearerPropertyConnected       = BearerInterface + "." + BearerPropertyConnectedName
+	BearerPropertyStatsName       = "Stats"
+	BearerPropertyStats           = BearerInterface + "." + BearerPropertyStatsName
+	BearerPropertyIPv4Config      = BearerInterface + ".Ip4Config"
+	BearerPropertyIPv6Config      = BearerInterface + ".Ip6Config"
+	BearerPropertyType            = BearerInterface + ".BearerType"
+	BearerPropertyConnectionError = BearerInterface + ".ConnectionError"
+	BearerPropertyProperties      = BearerInterface + ".Properties"
+)
+
+// Bearer Type
+// https://www.freedesktop.org/software/ModemManager/api/latest/ModemManager-Flags-and-Enumerations.html#MMBearerIpFamily
+const (
+	// BearerTypeDefault : primary context (2G/3G) or default bearer (4G),
+	// defined by the user of the API.
+	BearerTypeDefault = 1
+	// BearerTypeAttach : the initial bearer established during LTE attach procedure,
+	// automatically connected as long as the device is registered in the LTE network.
+	BearerTypeAttach = 2
+	// BearerTypeDedicated : secondary context (2G/3G) or dedicated bearer (4G),
+	// defined by the user of the API. These bearers use the same IP address used
+	// by a primary context or default bearer and provide a dedicated flow for
+	// specific traffic with different QoS settings.
+	BearerTypeDedicated = 3
+)
+
+// Bearer APN type
+// https://www.freedesktop.org/software/ModemManager/doc/latest/ModemManager/ModemManager-Flags-and-Enumerations.html#MMBearerApnType
+const (
+	BearerAPNTypeAttach  = 1 << 0
+	BearerAPNTypeDefault = 1 << 1
 )
 
 // Bearer IP method
@@ -238,6 +266,22 @@ const (
 	BearerAllowedAuthPap     = 1 << 1 // PAP.
 	BearerAllowedAuthChap    = 1 << 2 // CHAP.
 )
+
+// Just a conversion method between our enum and ModemManager enum.
+func wwanAuthProtocolToBearerAllowedAuth(authProto types.WwanAuthProtocol) int {
+	switch authProto {
+	case types.WwanAuthProtocolNone:
+		return BearerAllowedAuthNone
+	case types.WwanAuthProtocolPAP:
+		return BearerAllowedAuthPap
+	case types.WwanAuthProtocolCHAP:
+		return BearerAllowedAuthChap
+	case types.WwanAuthProtocolPAPAndCHAP:
+		return BearerAllowedAuthPap | BearerAllowedAuthChap
+	default:
+		return BearerAllowedAuthUnknown
+	}
+}
 
 // ModemManager/Modem/Location D-Bus interface
 // https://www.freedesktop.org/software/ModemManager/api/latest/gdbus-org.freedesktop.ModemManager1.Modem.Location.html
@@ -269,4 +313,11 @@ const (
 	SimpleInterface        = ModemInterface + ".Simple"
 	SimpleMethodConnect    = SimpleInterface + ".Connect"
 	SimpleMethodDisconnect = SimpleInterface + ".Disconnect"
+)
+
+// ModemManager/Modem/Modem3gpp/ProfileManager D-Bus interface
+// https://www.freedesktop.org/software/ModemManager/doc/latest/ModemManager/gdbus-org.freedesktop.ModemManager1.Modem.Modem3gpp.ProfileManager.html
+const (
+	ProfileManagerInterface  = Modem3GPPInterface + ".ProfileManager"
+	ProfileManagerMethodList = ProfileManagerInterface + ".List"
 )
