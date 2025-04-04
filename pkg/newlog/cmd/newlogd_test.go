@@ -10,7 +10,7 @@ import (
 
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	. "github.com/onsi/gomega"
+	"github.com/onsi/gomega"
 )
 
 func init() {
@@ -19,17 +19,17 @@ func init() {
 
 func TestGzipParsing(t *testing.T) {
 	t.Parallel()
-	g := NewWithT(t)
+	g := gomega.NewWithT(t)
 
 	// Test the gzip parsing function
 	keepSentDir = "../testdata/keepSentQueue"
 	oldestLogEntry, err := getOldestLog()
 
-	g.Expect(err).To(BeNil())
-	g.Expect(oldestLogEntry).NotTo(BeNil())
+	g.Expect(err).To(gomega.BeNil())
+	g.Expect(oldestLogEntry).NotTo(gomega.BeNil())
 	t.Logf("latestLogEntry: %v\n", oldestLogEntry)
 
-	g.Expect(oldestLogEntry.Content).To(Equal("memlogd started"))
+	g.Expect(oldestLogEntry.Content).To(gomega.Equal("memlogd started"))
 
 	logmetrics.OldestSavedDeviceLog = time.Unix(
 		oldestLogEntry.Timestamp.Seconds, int64(oldestLogEntry.Timestamp.Nanos))
@@ -38,7 +38,7 @@ func TestGzipParsing(t *testing.T) {
 
 func TestGetTimestampFromGzipName(t *testing.T) {
 	t.Parallel()
-	g := NewWithT(t)
+	g := gomega.NewWithT(t)
 
 	comparisonMap := map[string]time.Time{
 		"app.8ce1cc69-e1bb-4fe3-9613-e3eb1c5f5c4d.log.1731935033496.gz": time.Unix(0, 1731935033496*int64(time.Millisecond)),
@@ -49,21 +49,21 @@ func TestGetTimestampFromGzipName(t *testing.T) {
 
 	keepSentDir = "../testdata/keepSentQueue"
 	files, err := os.ReadDir(keepSentDir)
-	g.Expect(err).To(BeNil())
+	g.Expect(err).To(gomega.BeNil())
 
 	for _, file := range files {
 		if file.IsDir() {
 			continue
 		}
 		timestamp, err := types.GetTimestampFromGzipName(file.Name())
-		g.Expect(err).To(BeNil())
-		g.Expect(timestamp).To(Equal(comparisonMap[file.Name()]))
+		g.Expect(err).To(gomega.BeNil())
+		g.Expect(timestamp).To(gomega.Equal(comparisonMap[file.Name()]))
 	}
 }
 
 func TestFindMovePrevLogFiles(t *testing.T) {
 	t.Parallel()
-	g := NewWithT(t)
+	g := gomega.NewWithT(t)
 
 	collectDir = "../testdata/collect"
 
@@ -76,7 +76,7 @@ func TestFindMovePrevLogFiles(t *testing.T) {
 	movefileChan := make(chan fileChanInfo, 5)
 	findMovePrevLogFiles(movefileChan)
 
-	g.Eventually(movefileChan).Should(HaveLen(3))
+	g.Eventually(movefileChan).Should(gomega.HaveLen(3))
 
 	var file1, file2, file3 fileChanInfo
 	select {
@@ -106,8 +106,8 @@ func TestFindMovePrevLogFiles(t *testing.T) {
 
 	for _, file := range files {
 		expectedNotUpload, exists := expectedFiles[file.tmpfile]
-		g.Expect(exists).To(BeTrue())
-		g.Expect(file.notUpload).To(Equal(expectedNotUpload))
+		g.Expect(exists).To(gomega.BeTrue())
+		g.Expect(file.notUpload).To(gomega.Equal(expectedNotUpload))
 
 		getFileInfo(file)
 	}
@@ -115,7 +115,7 @@ func TestFindMovePrevLogFiles(t *testing.T) {
 
 func TestGetFileInfo(t *testing.T) {
 	t.Parallel()
-	g := NewWithT(t)
+	g := gomega.NewWithT(t)
 
 	tests := []struct {
 		name          string
@@ -169,8 +169,8 @@ func TestGetFileInfo(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			dirName, appuuid := getFileInfo(tt.fileChanInfo)
-			g.Expect(dirName).To(Equal(tt.expectedDir))
-			g.Expect(appuuid).To(Equal(tt.expectedAppID))
+			g.Expect(dirName).To(gomega.Equal(tt.expectedDir))
+			g.Expect(appuuid).To(gomega.Equal(tt.expectedAppID))
 		})
 	}
 }
