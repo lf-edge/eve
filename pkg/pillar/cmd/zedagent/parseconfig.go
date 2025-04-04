@@ -773,7 +773,16 @@ func parseAppInstanceConfig(getconfigCtx *getconfigContext,
 			appInstance.CloudInitUserData = &userData
 		}
 		appInstance.RemoteConsole = cfgApp.GetRemoteConsole()
-		appInstance.CipherBlockStatus = parseCipherBlock(getconfigCtx, appInstance.Key(), cfgApp.GetCipherData())
+
+		var err error
+		appInstance.CipherBlockStatus, err = parseCipherBlock(
+			getconfigCtx, appInstance.Key(), cfgApp.GetCipherData())
+		if err != nil {
+			log.Errorf("Failed to parse application %s cipher data: %v",
+				cfgApp.Displayname, err)
+			appInstance.SetErrorNow(err.Error())
+		}
+
 		appInstance.ProfileList = cfgApp.ProfileList
 
 		// Add config submitted via local profile server.
@@ -1915,7 +1924,13 @@ func publishDatastoreConfig(ctx *getconfigContext,
 
 		datastore.DsCertPEM = ds.GetDsCertPEM()
 
-		datastore.CipherBlockStatus = parseCipherBlock(ctx, datastore.Key(), ds.GetCipherData())
+		var err error
+		datastore.CipherBlockStatus, err = parseCipherBlock(
+			ctx, datastore.Key(), ds.GetCipherData())
+		if err != nil {
+			log.Error(err)
+			datastore.SetErrorNow(err.Error())
+		}
 		ctx.pubDatastoreConfig.Publish(datastore.Key(), *datastore)
 	}
 }
@@ -2069,7 +2084,12 @@ func parseOneNetworkXObjectConfig(ctx *getconfigContext, netEnt *zconfig.Network
 	}
 
 	// wireless property configuration
-	config.WirelessCfg = parseNetworkWirelessConfig(ctx, config.Key(), netEnt)
+	config.WirelessCfg, err = parseNetworkWirelessConfig(ctx, config.Key(), netEnt)
+	if err != nil {
+		log.Errorf("parseOneNetworkXObjectConfig (%s): %v", config.Key(), err)
+		config.SetErrorNow(err.Error())
+		return config
+	}
 
 	ipspec := netEnt.GetIp()
 	if ipspec == nil && config.Type != types.NetworkTypeNOOP {
@@ -2135,14 +2155,15 @@ func parseOneNetworkXObjectConfig(ctx *getconfigContext, netEnt *zconfig.Network
 	return config
 }
 
-func parseNetworkWirelessConfig(ctx *getconfigContext, key string, netEnt *zconfig.NetworkConfig) types.WirelessConfig {
-	var wconfig types.WirelessConfig
+func parseNetworkWirelessConfig(ctx *getconfigContext,
+	key string, netEnt *zconfig.NetworkConfig) (wconfig types.WirelessConfig, err error) {
 
 	netWireless := netEnt.GetWireless()
 	if netWireless == nil {
-		return wconfig
+		return wconfig, nil
 	}
-	log.Functionf("parseNetworkWirelessConfig: Wireless of network present in %s, config %v", netEnt.Id, netWireless)
+	log.Functionf("parseNetworkWirelessConfig: Wireless of network present in %s, config %v",
+		netEnt.Id, netWireless)
 
 	wType := netWireless.GetType()
 	switch wType {
@@ -2150,19 +2171,16 @@ func parseNetworkWirelessConfig(ctx *getconfigContext, key string, netEnt *zconf
 		wconfig.WType = types.WirelessTypeCellular
 		cellNetConfigs := netWireless.GetCellularCfg()
 		if len(cellNetConfigs) == 0 {
-			log.Errorf("parseNetworkWirelessConfig: missing cellular config in: %v",
-				netWireless)
-			return wconfig
+			err = errors.New("missing cellular config")
+			return wconfig, err
 		}
 		// CellularCfg should really have been defined in the EVE API as a single entry
 		// rather than as a list (for multiple SIM cards and APNs there is AccessPoints list
 		// underneath). However, marking this field as deprecated and creating a new non-list
 		// field seems unnecessary - let's instead expect single entry.
 		if len(cellNetConfigs) > 1 {
-			log.Errorf(
-				"parseNetworkWirelessConfig: unexpected multiple cellular configs in: %v",
-				netWireless)
-			return wconfig
+			err = errors.New("unexpected multiple cellular configs")
+			return wconfig, err
 		}
 		cellNetConfig := cellNetConfigs[0]
 		for _, accessPoint := range cellNetConfig.AccessPoints {
@@ -2173,19 +2191,9 @@ func parseNetworkWirelessConfig(ctx *getconfigContext, key string, netEnt *zconf
 			// should be activated.
 			ap.Activated = cellNetConfig.ActivatedSimSlot == 0 ||
 				cellNetConfig.ActivatedSimSlot == accessPoint.SimSlot
-			switch accessPoint.AuthProtocol {
-			case zconfig.CellularAuthProtocol_CELLULAR_AUTH_PROTOCOL_PAP:
-				ap.AuthProtocol = types.WwanAuthProtocolPAP
-			case zconfig.CellularAuthProtocol_CELLULAR_AUTH_PROTOCOL_CHAP:
-				ap.AuthProtocol = types.WwanAuthProtocolCHAP
-			case zconfig.CellularAuthProtocol_CELLULAR_AUTH_PROTOCOL_PAP_AND_CHAP:
-				ap.AuthProtocol = types.WwanAuthProtocolPAPAndCHAP
-			default:
-				log.Errorf("parseNetworkWirelessConfig: unrecognized AuthProtocol: %+v",
-					accessPoint)
-			}
-			if ap.AuthProtocol != types.WwanAuthProtocolNone {
-				ap.EncryptedCredentials = parseCipherBlock(ctx, key, accessPoint.GetCipherData())
+			ap.AuthProtocol, err = parseCellularAuthProtocol(accessPoint.AuthProtocol)
+			if err != nil {
+				return wconfig, err
 			}
 			for _, plmn := range accessPoint.PreferredPlmns {
 				ap.PreferredPLMNs = append(ap.PreferredPLMNs, plmn)
@@ -2201,11 +2209,32 @@ func parseNetworkWirelessConfig(ctx *getconfigContext, key string, netEnt *zconf
 				case zevecommon.RadioAccessTechnology_RADIO_ACCESS_TECHNOLOGY_5GNR:
 					ap.PreferredRATs = append(ap.PreferredRATs, types.WwanRAT5GNR)
 				default:
-					log.Errorf("parseNetworkWirelessConfig: unrecognized RAT: %+v",
-						accessPoint)
+					return wconfig, fmt.Errorf("unrecognized RAT: %+v", accessPoint)
 				}
 			}
 			ap.ForbidRoaming = accessPoint.ForbidRoaming
+			ap.IPType, err = parseCellularIPType(accessPoint.IpType)
+			if err != nil {
+				return wconfig, err
+			}
+			ap.AttachAPN = accessPoint.AttachApn
+			ap.AttachIPType, err = parseCellularIPType(accessPoint.AttachIpType)
+			if err != nil {
+				return wconfig, err
+			}
+			ap.AttachAuthProtocol, err = parseCellularAuthProtocol(
+				accessPoint.AttachAuthProtocol)
+			if err != nil {
+				return wconfig, err
+			}
+			if ap.AuthProtocol != types.WwanAuthProtocolNone ||
+				ap.AttachAuthProtocol != types.WwanAuthProtocolNone {
+				ap.EncryptedCredentials, err = parseCipherBlock(
+					ctx, key, accessPoint.GetCipherData())
+				if err != nil {
+					return wconfig, err
+				}
+			}
 			wconfig.CellularV2.AccessPoints = append(wconfig.CellularV2.AccessPoints, ap)
 		}
 		// For backward compatibility.
@@ -2219,7 +2248,7 @@ func parseNetworkWirelessConfig(ctx *getconfigContext, key string, netEnt *zconf
 		probeCfg := cellNetConfig.Probe
 		customProbe, err := parseConnectivityProbe(probeCfg.GetCustomProbe())
 		if err != nil {
-			log.Errorf("parseNetworkWirelessConfig: %v", err)
+			return wconfig, err
 		}
 		if customProbe.Method == types.ConnectivityProbeMethodNone || err != nil {
 			// For backward compatibility.
@@ -2252,21 +2281,59 @@ func parseNetworkWirelessConfig(ctx *getconfigContext, key string, netEnt *zconf
 			case zconfig.WiFiKeyScheme_WPAEAP:
 				wifi.KeyScheme = types.KeySchemeWpaEap
 			default:
-				log.Errorf("parseNetworkWirelessConfig: unrecognized WiFi Key scheme: %+v",
-					wificfg)
+				return wconfig, fmt.Errorf("unrecognized WiFi Key scheme: %+v",
+					wificfg.GetKeyScheme())
 			}
 			wifi.Identity = wificfg.GetIdentity()
 			wifi.Password = wificfg.GetPassword()
 			wifi.Priority = wificfg.GetPriority()
 			wifiKey := fmt.Sprintf("%s-%s", key, wifi.SSID)
-			wifi.CipherBlockStatus = parseCipherBlock(ctx, wifiKey, wificfg.GetCipherData())
+			wifi.CipherBlockStatus, err = parseCipherBlock(
+				ctx, wifiKey, wificfg.GetCipherData())
+			if err != nil {
+				return wconfig, err
+			}
 			wconfig.Wifi = append(wconfig.Wifi, wifi)
 		}
 		log.Functionf("parseNetworkWirelessConfig: Wireless of type Wifi, %v", wconfig.Wifi)
 	default:
-		log.Errorf("parseNetworkWirelessConfig: unsupported wireless configure type %d", wType)
+		return wconfig, fmt.Errorf("unsupported wireless type: %d", wType)
 	}
-	return wconfig
+	return wconfig, nil
+}
+
+func parseCellularAuthProtocol(
+	authProtocol zconfig.CellularAuthProtocol) (types.WwanAuthProtocol, error) {
+	switch authProtocol {
+	case zconfig.CellularAuthProtocol_CELLULAR_AUTH_PROTOCOL_NONE:
+		return types.WwanAuthProtocolNone, nil
+	case zconfig.CellularAuthProtocol_CELLULAR_AUTH_PROTOCOL_PAP:
+		return types.WwanAuthProtocolPAP, nil
+	case zconfig.CellularAuthProtocol_CELLULAR_AUTH_PROTOCOL_CHAP:
+		return types.WwanAuthProtocolCHAP, nil
+	case zconfig.CellularAuthProtocol_CELLULAR_AUTH_PROTOCOL_PAP_AND_CHAP:
+		return types.WwanAuthProtocolPAPAndCHAP, nil
+	default:
+		return types.WwanAuthProtocolNone, fmt.Errorf(
+			"unrecognized cellular AuthProtocol: %+v", authProtocol)
+	}
+}
+
+func parseCellularIPType(
+	ipType zevecommon.CellularIPType) (types.WwanIPType, error) {
+	switch ipType {
+	case zevecommon.CellularIPType_CELLULAR_IP_TYPE_UNSPECIFIED:
+		return types.WwanIPTypeUnspecified, nil
+	case zevecommon.CellularIPType_CELLULAR_IP_TYPE_IPV4:
+		return types.WwanIPTypeIPv4, nil
+	case zevecommon.CellularIPType_CELLULAR_IP_TYPE_IPV4_AND_IPV6:
+		return types.WwanIPTypeIPv4AndIPv6, nil
+	case zevecommon.CellularIPType_CELLULAR_IP_TYPE_IPV6:
+		return types.WwanIPTypeIPv6, nil
+	default:
+		return types.WwanIPTypeUnspecified, fmt.Errorf(
+			"unrecognized cellular IP type: %+v", ipType)
+	}
 }
 
 func parseIpspecNetworkXObject(ipspec *zconfig.Ipspec, config *types.NetworkXObjectConfig) error {
@@ -3288,8 +3355,13 @@ func parseEdgeNodeClusterConfig(getconfigCtx *getconfigContext,
 		BootstrapNode:    isJoinNode,
 		// XXX EncryptedClusterToken is only for gcp config
 	}
-	enClusterConfig.CipherToken = parseCipherBlock(getconfigCtx,
+	enClusterConfig.CipherToken, err = parseCipherBlock(getconfigCtx,
 		enClusterConfig.Key(), zcfgCluster.GetEncryptedClusterToken())
+	if err != nil {
+		// TODO: Flag enClusterConfig with an error and propagate it to the controller.
+		log.Errorf("parseEdgeNodeClusterConfig: failed to parse encrypted cluster token: %v", err)
+		return
+	}
 	log.Functionf("parseEdgeNodeClusterConfig: ENCluster API, Config %+v, %v", zcfgCluster, enClusterConfig)
 	ctx.pubEdgeNodeClusterConfig.Publish("global", enClusterConfig)
 }
