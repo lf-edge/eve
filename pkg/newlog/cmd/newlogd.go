@@ -334,10 +334,10 @@ func main() {
 
 	// newlog Metrics publish timer. Publish log metrics every 5 minutes.
 	interval := time.Duration(metricsPublishInterval)
-	max := float64(interval)
-	min := max * 0.3
-	metricsPublishTimer := flextimer.NewRangeTicker(time.Duration(min),
-		time.Duration(max))
+	maxInterval := float64(interval)
+	minInterval := maxInterval * 0.3
+	metricsPublishTimer := flextimer.NewRangeTicker(time.Duration(minInterval),
+		time.Duration(maxInterval))
 
 	schedResetTimer = time.NewTimer(1 * time.Second)
 	schedResetTimer.Stop()
@@ -1005,9 +1005,9 @@ func writelogFile(logChan <-chan inputEntry, moveChan chan fileChanInfo) {
 			mapJentry, _ := json.Marshal(&mapLog)
 			logline := string(mapJentry) + "\n"
 			if appuuid != "" {
-				len := writelogEntry(&appM, logline)
+				bytesWritten := writelogEntry(&appM, logline)
 
-				logmetrics.AppMetrics.NumBytesWrite += uint64(len)
+				logmetrics.AppMetrics.NumBytesWrite += uint64(bytesWritten)
 				appStatsMap[appuuid] = appM
 
 				trigMoveToGzip(&appM, appuuid, moveChan, false)
@@ -1020,8 +1020,8 @@ func writelogFile(logChan <-chan inputEntry, moveChan chan fileChanInfo) {
 				}
 
 				// write all log entries to the log file to keep
-				len := writelogEntry(&devStatsKeep, logline)
-				updateDevInputlogStats(entry.source, uint64(len))
+				n := writelogEntry(&devStatsKeep, logline)
+				updateDevInputlogStats(entry.source, uint64(n))
 
 				trigMoveToGzip(&devStatsKeep, "", moveChan, false)
 			}
@@ -1166,11 +1166,11 @@ func updateDevInputlogStats(source string, size uint64) {
 
 // write log entry, update size and index, sync file if needed
 func writelogEntry(stats *statsLogFile, logline string) int {
-	len, err := stats.file.WriteString(logline)
+	n, err := stats.file.WriteString(logline)
 	if err != nil {
 		log.Fatal("writelogEntry: write logline ", err)
 	}
-	stats.size += int32(len)
+	stats.size += int32(n)
 
 	if stats.index%syncToFileCnt == 0 {
 		err = stats.file.Sync()
@@ -1179,7 +1179,7 @@ func writelogEntry(stats *statsLogFile, logline string) int {
 		}
 	}
 	stats.index++
-	return len
+	return n
 }
 
 type gfileStats struct {
@@ -1636,7 +1636,7 @@ func getAppuuidFromLogfile(tmplogfileInfo fileChanInfo) string {
 	return tmpStr2[0]
 }
 
-// at bootup, move the collected log files from previous life
+// at boot-up, move the collected log files from previous life
 func findMovePrevLogFiles(movefile chan fileChanInfo) {
 	files, err := os.ReadDir(collectDir)
 	if err != nil {
@@ -1664,7 +1664,7 @@ func findMovePrevLogFiles(movefile chan fileChanInfo) {
 			if isDev {
 				fileinfo.notUpload = strings.HasPrefix(f.Name(), devPrefixKeep)
 			} else {
-				// this is going to be executed right after bootup, so the availability of config for this app is subject to race condition
+				// this is going to be executed right after boot-up, so the availability of config for this app is subject to race condition
 				// furthermore the config might not contain the appUUID anymore, so we are better off uploading the logs as default
 				appuuid := getAppuuidFromLogfile(fileinfo)
 				if val, found := domainUUID.Load(appuuid); found {
