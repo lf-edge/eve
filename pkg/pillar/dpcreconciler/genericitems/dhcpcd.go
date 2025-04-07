@@ -154,7 +154,7 @@ func (c *DhcpcdConfigurator) Create(ctx context.Context, item depgraph.Item) err
 		op, args := c.DhcpcdArgs(config)
 
 		// Start DHCP client.
-		if c.dhcpcdExists(client.AdapterIfName) {
+		if c.dhcpcdExists(client.AdapterIfName, config.Type) {
 			err := fmt.Errorf("dhcpcd for interface %s is already running", ifName)
 			c.Log.Error(err)
 			done(err)
@@ -168,7 +168,7 @@ func (c *DhcpcdConfigurator) Create(ctx context.Context, item depgraph.Item) err
 			return
 		}
 		// Wait for a bit then give up
-		for !c.dhcpcdExists(ifName) {
+		for !c.dhcpcdExists(ifName, config.Type) {
 			if time.Since(startTime) > dhcpcdStartTimeout {
 				err := fmt.Errorf("dhcpcd for interface %s failed to start in time",
 					ifName)
@@ -220,7 +220,7 @@ func (c *DhcpcdConfigurator) Delete(ctx context.Context, item depgraph.Item) err
 					c.Log.Errorf("dhcpcd release failed for interface %s: %v, elapsed time %v",
 						ifName, err, time.Since(startTime))
 				}
-				if !c.dhcpcdExists(ifName) {
+				if !c.dhcpcdExists(ifName, config.Type) {
 					break
 				}
 				if time.Since(startTime) > dhcpcdStopTimeout {
@@ -248,7 +248,7 @@ func (c *DhcpcdConfigurator) Delete(ctx context.Context, item depgraph.Item) err
 				done(err)
 				return
 			}
-			if !c.dhcpcdExists(ifName) {
+			if !c.dhcpcdExists(ifName, config.Type) {
 				c.Log.Noticef("dhcpcd for interface %s is gone after exit, elapsed time %v",
 					ifName, time.Since(startTime))
 				done(nil)
@@ -365,9 +365,19 @@ func (c *DhcpcdConfigurator) dhcpcdCmd(op string, extras []string,
 	return nil
 }
 
-func (c *DhcpcdConfigurator) dhcpcdExists(ifName string) bool {
+func (c *DhcpcdConfigurator) dhcpcdExists(ifName string, netType types.NetworkType) bool {
 	name := "/sbin/dhcpcd"
-	args := []string{"-P", ifName}
+	args := []string{"-P"}
+	// For --ipv4only and --ipv6only, dhcpcd adds PID filename suffix "-4" and "-6", respectively.
+	// "dhcpcd -P" therefore needs to know if these arguments are used to return the correct
+	// PID file name.
+	switch netType {
+	case types.NetworkTypeIpv4Only:
+		args = append(args, "--ipv4only")
+	case types.NetworkTypeIpv6Only:
+		args = append(args, "--ipv6only")
+	}
+	args = append(args, ifName)
 	out, err := base.Exec(c.Log, name, args...).CombinedOutput()
 	if err != nil {
 		err = fmt.Errorf("dhcpcd command %s failed: %w; output: %s",
