@@ -1388,31 +1388,34 @@ func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
 			port.DNSServers = network.DNSServers
 			// Need to be careful since zedcloud can feed us bad Dhcp type
 			port.Dhcp = network.Dhcp
-			switch port.Dhcp {
-			case types.DhcpTypeStatic:
-				if sysAdapter.Addr == "" {
-					errStr := fmt.Sprintf("Port %s configured with static IP config "+
-						"but IP address is not defined", port.Logicallabel)
+			// Skip port config validation if the associated network config is invalid,
+			// to avoid overriding the inherited network error.
+			if !network.HasError() {
+				switch port.Dhcp {
+				case types.DhcpTypeStatic:
+					if sysAdapter.Addr == "" {
+						errStr := fmt.Sprintf("Port %s configured with static IP config "+
+							"but IP address is not defined", port.Logicallabel)
+						log.Errorf("parseSystemAdapterConfig: %s", errStr)
+						port.RecordFailure(errStr)
+					}
+				case types.DhcpTypeClient:
+					// Do nothing
+				case types.DhcpTypeNone:
+					if isMgmt {
+						errStr := fmt.Sprintf("Port %s configured as Management port "+
+							"with an unsupported DHCP type %d. Client and static are "+
+							"the only allowed DHCP modes for management ports.",
+							port.Logicallabel, types.DhcpTypeNone)
+						log.Errorf("parseSystemAdapterConfig: %s", errStr)
+						port.RecordFailure(errStr)
+					}
+				default:
+					errStr := fmt.Sprintf("Port %s configured with unknown DHCP type %v",
+						port.Logicallabel, network.Dhcp)
 					log.Errorf("parseSystemAdapterConfig: %s", errStr)
 					port.RecordFailure(errStr)
 				}
-			case types.DhcpTypeClient:
-				// Do nothing
-			case types.DhcpTypeNone:
-				if isMgmt {
-					errStr := fmt.Sprintf("Port %s configured as Management port "+
-						"with an unsupported DHCP type %d. Client and static are "+
-						"the only allowed DHCP modes for management ports.",
-						port.Logicallabel, types.DhcpTypeNone)
-
-					log.Errorf("parseSystemAdapterConfig: %s", errStr)
-					port.RecordFailure(errStr)
-				}
-			default:
-				errStr := fmt.Sprintf("Port %s configured with unknown DHCP type %v",
-					port.Logicallabel, network.Dhcp)
-				log.Errorf("parseSystemAdapterConfig: %s", errStr)
-				port.RecordFailure(errStr)
 			}
 			// XXX use DnsNameToIpList?
 			if network.Proxy != nil {
@@ -1976,9 +1979,25 @@ func publishNetworkXObjectConfig(ctx *getconfigContext,
 }
 
 func parseOneNetworkXObjectConfig(ctx *getconfigContext, netEnt *zconfig.NetworkConfig) *types.NetworkXObjectConfig {
-
 	config := new(types.NetworkXObjectConfig)
-	config.Type = types.NetworkType(netEnt.Type)
+	switch netEnt.Type {
+	case zconfig.NetworkType_NETWORKTYPENOOP:
+		config.Type = types.NetworkTypeNOOP
+	case zconfig.NetworkType_V4:
+		config.Type = types.NetworkTypeIPv4
+	case zconfig.NetworkType_V6:
+		config.Type = types.NetworkTypeIPV6
+	case zconfig.NetworkType_V4Only:
+		config.Type = types.NetworkTypeIpv4Only
+	case zconfig.NetworkType_V6Only:
+		config.Type = types.NetworkTypeIpv6Only
+	default:
+		errStr := fmt.Sprintf("Unknown Network type (%s)", netEnt.Type.String())
+		log.Errorf("parseOneNetworkXObjectConfig (%s): %s", config.Key(), errStr)
+		config.SetErrorNow(errStr)
+		return config
+	}
+
 	id, err := uuid.FromString(netEnt.Id)
 	if err != nil {
 		errStr := fmt.Sprintf("Malformed UUID ignored: %s", err)
@@ -2042,14 +2061,13 @@ func parseOneNetworkXObjectConfig(ctx *getconfigContext, netEnt *zconfig.Network
 	}
 
 	ipspec := netEnt.GetIp()
-	switch config.Type {
-	case types.NetworkTypeIPv4, types.NetworkTypeIPV6:
-		if ipspec == nil {
-			errStr := "Missing IP configuration"
-			log.Errorf("parseOneNetworkXObjectConfig (%s): %s", config.Key(), errStr)
-			config.SetErrorNow(errStr)
-			return config
-		}
+	if ipspec == nil && config.Type != types.NetworkTypeNOOP {
+		errStr := "Missing IP configuration"
+		log.Errorf("parseOneNetworkXObjectConfig (%s): %s", config.Key(), errStr)
+		config.SetErrorNow(errStr)
+		return config
+	}
+	if ipspec != nil {
 		err := parseIpspecNetworkXObject(ipspec, config)
 		if err != nil {
 			errStr := fmt.Sprintf("Invalid IP configuration: %s", err)
@@ -2057,25 +2075,6 @@ func parseOneNetworkXObjectConfig(ctx *getconfigContext, netEnt *zconfig.Network
 			config.SetErrorNow(errStr)
 			return config
 		}
-	case types.NetworkTypeNOOP:
-		// XXX is controller still sending static and dynamic entries with NetworkTypeNOOP? Why?
-		if ipspec != nil {
-			log.Warnf("XXX NetworkTypeNOOP for %s with ipspec %v",
-				config.Key(), ipspec)
-			err := parseIpspecNetworkXObject(ipspec, config)
-			if err != nil {
-				errStr := fmt.Sprintf("Invalid IP configuration: %s", err)
-				log.Errorf("parseOneNetworkXObjectConfig (%s): %s", config.Key(), errStr)
-				config.SetErrorNow(errStr)
-				return config
-			}
-		}
-
-	default:
-		errStr := fmt.Sprintf("Unknown Network type (%d)", config.Type)
-		log.Errorf("parseOneNetworkXObjectConfig (%s): %s", config.Key(), errStr)
-		config.SetErrorNow(errStr)
-		return config
 	}
 
 	// Parse and store DNSNameToIPList form Network configuration
