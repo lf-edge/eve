@@ -2,6 +2,7 @@
 ^pkg/mkimage-raw-efi/initramfs-init
 ^pkg/mkimage-raw-efi/nlplug-findfs.c
 ^pkg/pillar/rootfs/fscrypt.conf
+^pkg/pillar/vendor/github.com/andrewd-zededa/go-libzfs
 ^pkg/fw/
 ^pkg/debug/abuild/
 ^pkg/pillar/zedpac/
