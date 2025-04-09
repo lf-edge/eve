@@ -28,6 +28,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	envp "github.com/hashicorp/go-envparse"
 	zconfig "github.com/lf-edge/eve-api/go/config"
+	"github.com/lf-edge/eve/pkg/pillar/activeapp"
 	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
@@ -813,27 +814,6 @@ func unpublishCipherBlockStatus(ctx *domainContext, key string) {
 	pub.Unpublish(key)
 }
 
-func createLocalAppActiveFile(appUUID string) {
-	// Construct the file path as "<LocalActiveAppConfigDir>/<appUUID>.json".
-	filePath := filepath.Join(types.LocalActiveAppConfigDir, appUUID+".json")
-
-	// Ensure that the base directory exists.
-	if err := os.MkdirAll(types.LocalActiveAppConfigDir, 0700); err != nil {
-		log.Errorf("Failed to create directory %s: %v", types.LocalActiveAppConfigDir, err)
-		return
-	}
-
-	// Create (or truncate) an empty file.
-	f, err := os.Create(filePath)
-	if err != nil {
-		log.Errorf("Failed to create active file %s: %v", filePath, err)
-		return
-	}
-	defer f.Close()
-
-	log.Functionf("Created empty JSON file: %s", filePath)
-}
-
 func xenCfgFilename(appNum int) string {
 	return xenDirname + "/xen" + strconv.Itoa(appNum) + ".cfg"
 }
@@ -1305,14 +1285,6 @@ func lookupDomainStatus(ctx *domainContext, key string) *types.DomainStatus {
 	}
 	status := st.(types.DomainStatus)
 	return &status
-}
-
-// Delete the local file that indicates the app instance is active
-func delLocalAppActiveFile(appUUID string) {
-	filePath := filepath.Join(types.LocalActiveAppConfigDir, appUUID+".json")
-	if err := os.Remove(filePath); err != nil {
-		log.Errorf("Failed to remove a file %s: %v", filePath, err)
-	}
 }
 
 // lookupDomainStatusByUUID ignores the version part of the key
@@ -1931,7 +1903,7 @@ func doActivateTail(ctx *domainContext, status *types.DomainStatus,
 
 	status.Activated = true
 	// create a new json file in the filesystem for the specific VM.
-	createLocalAppActiveFile(status.UUIDandVersion.UUID.String())
+	activeapp.CreateLocalAppActiveFile(log, status.UUIDandVersion.UUID.String())
 
 	log.Functionf("doActivateTail(%v) done for %s",
 		status.UUIDandVersion, status.DisplayName)
@@ -2080,7 +2052,7 @@ func doCleanup(ctx *domainContext, status *types.DomainStatus) {
 	for _, st := range items {
 		if agentStatus, ok := st.(types.NodeAgentStatus); ok {
 			if !agentStatus.DeviceReboot && !agentStatus.DevicePoweroff && !agentStatus.DeviceShutdown {
-				delLocalAppActiveFile(status.UUIDandVersion.UUID.String())
+				activeapp.DelLocalAppActiveFile(log, status.UUIDandVersion.UUID.String())
 			}
 		}
 	}
