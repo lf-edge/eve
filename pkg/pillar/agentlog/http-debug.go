@@ -280,6 +280,7 @@ func (b bpftraceHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeAndLog(b.log, w, fmt.Sprintf("Error happened, could not parse timeout: %s\n", err.Error()))
 		w.WriteHeader(http.StatusBadRequest)
+		return
 	}
 	aotForm, _, err := r.FormFile("aot")
 	if err != nil {
