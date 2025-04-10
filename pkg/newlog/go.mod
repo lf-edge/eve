@@ -1,7 +1,6 @@
 module github.com/lf-edge/eve/pkg/newlog
 
-go 1.23
-toolchain go1.24.1
+go 1.24.1
 
 require (
 	github.com/euank/go-kmsg-parser v2.0.0+incompatible
@@ -9,7 +8,7 @@ require (
 	github.com/google/go-cmp v0.6.0
 	github.com/lf-edge/eve-api/go v0.0.0-20250310225738-c77ab6f8c73a
 	github.com/lf-edge/eve-tools/runtimemetrics/go v0.0.0-20250320220227-713ea9d6c6d2
-	github.com/lf-edge/eve/pkg/pillar v0.0.0-20250327141430-f040d3437112
+	github.com/lf-edge/eve/pkg/pillar v0.0.0-20250403232224-ee02f7ed9974
 	github.com/onsi/gomega v1.29.0
 	github.com/sirupsen/logrus v1.9.3
 )
