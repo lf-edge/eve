@@ -606,7 +606,7 @@ func (msrv *Msrv) handlePatchDownload() func(http.ResponseWriter, *http.Request)
 			// temp URL data populated in the cipher blobs for zip operation
 			for _, cipher := range e.CipherBlobs {
 				if cipher.EncType == types.BlobEncrytedTypeInline && cipher.Inline != nil {
-					cipher.Inline.URL, err = msrv.PopulateBinaryBlobFromCipher(&cipher, false)
+					cipher.Inline.URL, err = msrv.PopulateBinaryBlobFromCipher(&cipher, true)
 					if err != nil {
 						sendError(w, http.StatusInternalServerError,
 							fmt.Sprintf("failed to populate cipher blob %v", err))
@@ -671,7 +671,7 @@ func (msrv *Msrv) handlePatchFileDownload() func(http.ResponseWriter, *http.Requ
 				msrv.increasePatchEnvelopeDownloadCounter(appUUID, *e)
 				return
 			} else if idx := types.CompletedCipherBlobIdxByName(e.CipherBlobs, fileName); idx != -1 {
-				base64Data, err := msrv.PopulateBinaryBlobFromCipher(&e.CipherBlobs[idx], false)
+				base64Data, err := msrv.PopulateBinaryBlobFromCipher(&e.CipherBlobs[idx], true)
 				if err != nil {
 					sendError(w, http.StatusInternalServerError, fmt.Sprintf("failed to populate cipher blob %v", err))
 					return

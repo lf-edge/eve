@@ -353,7 +353,7 @@ func (pes *PatchEnvelopes) checkAndExpandCipherBlobs(pe *types.PatchEnvelopeInfo
 			}
 			cBlob.ArtifactMetaData = aMeta
 		}
-		_, err := pes.msrv.PopulateBinaryBlobFromCipher(cBlob, true)
+		_, err := pes.msrv.PopulateBinaryBlobFromCipher(cBlob, false)
 		if err != nil {
 			pes.log.Errorf("checkAndExpandCipherBlobs: Failed to populate binary blob from cipher blob")
 		}
