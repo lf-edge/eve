@@ -6,16 +6,14 @@ import (
 
 // Protinfo represents bridge flags from netlink.
 type Protinfo struct {
-	Hairpin       bool
-	Guard         bool
-	FastLeave     bool
-	RootBlock     bool
-	Learning      bool
-	Flood         bool
-	ProxyArp      bool
-	ProxyArpWiFi  bool
-	Isolated      bool
-	NeighSuppress bool
+	Hairpin      bool
+	Guard        bool
+	FastLeave    bool
+	RootBlock    bool
+	Learning     bool
+	Flood        bool
+	ProxyArp     bool
+	ProxyArpWiFi bool
 }
 
 // String returns a list of enabled flags
@@ -48,12 +46,6 @@ func (prot *Protinfo) String() string {
 	}
 	if prot.ProxyArpWiFi {
 		boolStrings = append(boolStrings, "ProxyArpWiFi")
-	}
-	if prot.Isolated {
-		boolStrings = append(boolStrings, "Isolated")
-	}
-	if prot.NeighSuppress {
-		boolStrings = append(boolStrings, "NeighSuppress")
 	}
 	return strings.Join(boolStrings, " ")
 }

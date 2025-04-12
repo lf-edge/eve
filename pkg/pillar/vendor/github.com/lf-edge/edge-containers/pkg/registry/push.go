@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"os"
 	"runtime"
 	"time"
@@ -72,7 +73,7 @@ func (p Pusher) Push(format Format, verbose bool, statusWriter io.Writer, config
 	legacyOpts = append(legacyOpts, WithTimestamp(p.Timestamp))
 
 	if format == FormatLegacy {
-		tmpDir, err = os.MkdirTemp("", "edge-containers")
+		tmpDir, err = ioutil.TempDir("", "edge-containers")
 		if err != nil {
 			return "", fmt.Errorf("could not make temporary directory for tgz files: %v", err)
 		}

@@ -25,35 +25,38 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/remote/transport"
 )
 
-type Catalogs struct {
+type catalog struct {
 	Repos []string `json:"repositories"`
-	Next  string   `json:"next,omitempty"`
 }
 
 // CatalogPage calls /_catalog, returning the list of repositories on the registry.
 func CatalogPage(target name.Registry, last string, n int, options ...Option) ([]string, error) {
-	o, err := makeOptions(options...)
+	o, err := makeOptions(target, options...)
 	if err != nil {
 		return nil, err
 	}
 
-	f, err := newPuller(o).fetcher(o.context, target)
+	scopes := []string{target.Scope(transport.PullScope)}
+	tr, err := transport.NewWithContext(o.context, target, o.auth, o.transport, scopes)
 	if err != nil {
 		return nil, err
 	}
+
+	query := fmt.Sprintf("last=%s&n=%d", url.QueryEscape(last), n)
 
 	uri := url.URL{
 		Scheme:   target.Scheme(),
 		Host:     target.RegistryStr(),
 		Path:     "/v2/_catalog",
-		RawQuery: fmt.Sprintf("last=%s&n=%d", url.QueryEscape(last), n),
+		RawQuery: query,
 	}
 
+	client := http.Client{Transport: tr}
 	req, err := http.NewRequest(http.MethodGet, uri.String(), nil)
 	if err != nil {
 		return nil, err
 	}
-	resp, err := f.client.Do(req.WithContext(o.context))
+	resp, err := client.Do(req.WithContext(o.context))
 	if err != nil {
 		return nil, err
 	}
@@ -63,7 +66,7 @@ func CatalogPage(target name.Registry, last string, n int, options ...Option) ([
 		return nil, err
 	}
 
-	var parsed Catalogs
+	var parsed catalog
 	if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
 		return nil, err
 	}
@@ -73,87 +76,79 @@ func CatalogPage(target name.Registry, last string, n int, options ...Option) ([
 
 // Catalog calls /_catalog, returning the list of repositories on the registry.
 func Catalog(ctx context.Context, target name.Registry, options ...Option) ([]string, error) {
-	o, err := makeOptions(options...)
+	o, err := makeOptions(target, options...)
 	if err != nil {
 		return nil, err
 	}
+
+	scopes := []string{target.Scope(transport.PullScope)}
+	tr, err := transport.NewWithContext(o.context, target, o.auth, o.transport, scopes)
+	if err != nil {
+		return nil, err
+	}
+
+	uri := &url.URL{
+		Scheme: target.Scheme(),
+		Host:   target.RegistryStr(),
+		Path:   "/v2/_catalog",
+	}
+
+	if o.pageSize > 0 {
+		uri.RawQuery = fmt.Sprintf("n=%d", o.pageSize)
+	}
+
+	client := http.Client{Transport: tr}
 
 	// WithContext overrides the ctx passed directly.
 	if o.context != context.Background() {
 		ctx = o.context
 	}
 
-	return newPuller(o).catalog(ctx, target, o.pageSize)
-}
+	var (
+		parsed   catalog
+		repoList []string
+	)
 
-func (f *fetcher) catalogPage(ctx context.Context, reg name.Registry, next string, pageSize int) (*Catalogs, error) {
-	if next == "" {
-		uri := &url.URL{
-			Scheme: reg.Scheme(),
-			Host:   reg.RegistryStr(),
-			Path:   "/v2/_catalog",
+	// get responses until there is no next page
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
 		}
-		if pageSize > 0 {
-			uri.RawQuery = fmt.Sprintf("n=%d", pageSize)
+
+		req, err := http.NewRequest("GET", uri.String(), nil)
+		if err != nil {
+			return nil, err
 		}
-		next = uri.String()
+		req = req.WithContext(ctx)
+
+		resp, err := client.Do(req)
+		if err != nil {
+			return nil, err
+		}
+
+		if err := transport.CheckError(resp, http.StatusOK); err != nil {
+			return nil, err
+		}
+
+		if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
+			return nil, err
+		}
+		if err := resp.Body.Close(); err != nil {
+			return nil, err
+		}
+
+		repoList = append(repoList, parsed.Repos...)
+
+		uri, err = getNextPageURL(resp)
+		if err != nil {
+			return nil, err
+		}
+		// no next page
+		if uri == nil {
+			break
+		}
 	}
-
-	req, err := http.NewRequestWithContext(ctx, "GET", next, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	resp, err := f.client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := transport.CheckError(resp, http.StatusOK); err != nil {
-		return nil, err
-	}
-
-	parsed := Catalogs{}
-	if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
-		return nil, err
-	}
-
-	if err := resp.Body.Close(); err != nil {
-		return nil, err
-	}
-
-	uri, err := getNextPageURL(resp)
-	if err != nil {
-		return nil, err
-	}
-
-	if uri != nil {
-		parsed.Next = uri.String()
-	}
-
-	return &parsed, nil
-}
-
-type Catalogger struct {
-	f        *fetcher
-	reg      name.Registry
-	pageSize int
-
-	page *Catalogs
-	err  error
-
-	needMore bool
-}
-
-func (l *Catalogger) Next(ctx context.Context) (*Catalogs, error) {
-	if l.needMore {
-		l.page, l.err = l.f.catalogPage(ctx, l.reg, l.page.Next, l.pageSize)
-	} else {
-		l.needMore = true
-	}
-	return l.page, l.err
-}
-
-func (l *Catalogger) HasNext() bool {
-	return l.page != nil && (!l.needMore || l.page.Next != "")
+	return repoList, nil
 }
