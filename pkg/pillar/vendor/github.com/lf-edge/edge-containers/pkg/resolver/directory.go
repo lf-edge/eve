@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"os"
 	"path"
 	"time"
@@ -56,7 +57,7 @@ func (d *Directory) Resolve(ctx context.Context, ref string) (name string, desc 
 	// get the root manifest
 	// try to get it from the image reference file
 	indexFile := path.Join(d.dir, "index.json")
-	contents, err := os.ReadFile(indexFile)
+	contents, err := ioutil.ReadFile(indexFile)
 	if err != nil {
 		return "", ocispec.Descriptor{}, reference.ErrInvalid
 	}
@@ -202,7 +203,7 @@ func (d directoryWriter) Commit(ctx context.Context, size int64, expected digest
 		if err != nil {
 			return fmt.Errorf("could not convert index to json: %v", err)
 		}
-		if err := os.WriteFile(d.indexFile, b, 0644); err != nil {
+		if err := ioutil.WriteFile(d.indexFile, b, 0644); err != nil {
 			return fmt.Errorf("error writing index file %s: %v", d.indexFile, err)
 		}
 	}

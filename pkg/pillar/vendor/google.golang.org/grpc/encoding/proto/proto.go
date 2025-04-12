@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2024 gRPC authors.
+ * Copyright 2018 gRPC authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,74 +23,36 @@ package proto
 import (
 	"fmt"
 
+	"github.com/golang/protobuf/proto"
 	"google.golang.org/grpc/encoding"
-	"google.golang.org/grpc/mem"
-	"google.golang.org/protobuf/proto"
-	"google.golang.org/protobuf/protoadapt"
 )
 
 // Name is the name registered for the proto compressor.
 const Name = "proto"
 
 func init() {
-	encoding.RegisterCodecV2(&codecV2{})
+	encoding.RegisterCodec(codec{})
 }
 
-// codec is a CodecV2 implementation with protobuf. It is the default codec for
-// gRPC.
-type codecV2 struct{}
+// codec is a Codec implementation with protobuf. It is the default codec for gRPC.
+type codec struct{}
 
-func (c *codecV2) Marshal(v any) (data mem.BufferSlice, err error) {
-	vv := messageV2Of(v)
-	if vv == nil {
-		return nil, fmt.Errorf("proto: failed to marshal, message is %T, want proto.Message", v)
+func (codec) Marshal(v any) ([]byte, error) {
+	vv, ok := v.(proto.Message)
+	if !ok {
+		return nil, fmt.Errorf("failed to marshal, message is %T, want proto.Message", v)
 	}
-
-	size := proto.Size(vv)
-	if mem.IsBelowBufferPoolingThreshold(size) {
-		buf, err := proto.Marshal(vv)
-		if err != nil {
-			return nil, err
-		}
-		data = append(data, mem.SliceBuffer(buf))
-	} else {
-		pool := mem.DefaultBufferPool()
-		buf := pool.Get(size)
-		if _, err := (proto.MarshalOptions{}).MarshalAppend((*buf)[:0], vv); err != nil {
-			pool.Put(buf)
-			return nil, err
-		}
-		data = append(data, mem.NewBuffer(buf, pool))
-	}
-
-	return data, nil
+	return proto.Marshal(vv)
 }
 
-func (c *codecV2) Unmarshal(data mem.BufferSlice, v any) (err error) {
-	vv := messageV2Of(v)
-	if vv == nil {
+func (codec) Unmarshal(data []byte, v any) error {
+	vv, ok := v.(proto.Message)
+	if !ok {
 		return fmt.Errorf("failed to unmarshal, message is %T, want proto.Message", v)
 	}
-
-	buf := data.MaterializeToBuffer(mem.DefaultBufferPool())
-	defer buf.Free()
-	// TODO: Upgrade proto.Unmarshal to support mem.BufferSlice. Right now, it's not
-	//  really possible without a major overhaul of the proto package, but the
-	//  vtprotobuf library may be able to support this.
-	return proto.Unmarshal(buf.ReadOnlyData(), vv)
+	return proto.Unmarshal(data, vv)
 }
 
-func messageV2Of(v any) proto.Message {
-	switch v := v.(type) {
-	case protoadapt.MessageV1:
-		return protoadapt.MessageV2Of(v)
-	case protoadapt.MessageV2:
-		return v
-	}
-
-	return nil
-}
-
-func (c *codecV2) Name() string {
+func (codec) Name() string {
 	return Name
 }

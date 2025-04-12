@@ -45,11 +45,11 @@ const (
 	fieldTransport11TCPLen = 13
 	fieldTransport11UDPLen = 10
 
-	// Kernel version >= 4.14 MaxLen
+	// kernel version >= 4.14 MaxLen
 	// See: https://elixir.bootlin.com/linux/v6.4.8/source/net/sunrpc/xprtrdma/xprt_rdma.h#L393
 	fieldTransport11RDMAMaxLen = 28
 
-	// Kernel version <= 4.2 MinLen
+	// kernel version <= 4.2 MinLen
 	// See: https://elixir.bootlin.com/linux/v4.2.8/source/net/sunrpc/xprtrdma/xprt_rdma.h#L331
 	fieldTransport11RDMAMinLen = 20
 )
@@ -88,7 +88,7 @@ type MountStatsNFS struct {
 	// Statistics broken down by filesystem operation.
 	Operations []NFSOperationStats
 	// Statistics about the NFS RPC transport.
-	Transport []NFSTransportStats
+	Transport NFSTransportStats
 }
 
 // mountStats implements MountStats.
@@ -194,6 +194,8 @@ type NFSOperationStats struct {
 	CumulativeTotalResponseMilliseconds uint64
 	// Duration from when a request was enqueued to when it was completely handled.
 	CumulativeTotalRequestMilliseconds uint64
+	// The average time from the point the client sends RPC requests until it receives the response.
+	AverageRTTMilliseconds float64
 	// The count of operations that complete with tk_status < 0.  These statuses usually indicate error conditions.
 	Errors uint64
 }
@@ -432,7 +434,7 @@ func parseMountStatsNFS(s *bufio.Scanner, statVersion string) (*MountStatsNFS, e
 				return nil, err
 			}
 
-			stats.Transport = append(stats.Transport, *tstats)
+			stats.Transport = *tstats
 		}
 
 		// When encountering "per-operation statistics", we must break this
@@ -580,6 +582,9 @@ func parseNFSOperationStats(s *bufio.Scanner) ([]NFSOperationStats, error) {
 			CumulativeTotalResponseMilliseconds: ns[6],
 			CumulativeTotalRequestMilliseconds:  ns[7],
 		}
+		if ns[0] != 0 {
+			opStats.AverageRTTMilliseconds = float64(ns[6]) / float64(ns[0])
+		}
 
 		if len(ns) > 8 {
 			opStats.Errors = ns[8]
@@ -627,7 +632,7 @@ func parseNFSTransportStats(ss []string, statVersion string) (*NFSTransportStats
 			return nil, fmt.Errorf("%w: invalid NFS transport stats 1.1 statement: %v, protocol: %v", ErrFileParse, ss, protocol)
 		}
 	default:
-		return nil, fmt.Errorf("%w: Unrecognized NFS transport stats version: %q, protocol: %v", ErrFileParse, statVersion, protocol)
+		return nil, fmt.Errorf("%s: Unrecognized NFS transport stats version: %q, protocol: %v", ErrFileParse, statVersion, protocol)
 	}
 
 	// Allocate enough for v1.1 stats since zero value for v1.1 stats will be okay

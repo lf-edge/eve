@@ -5,30 +5,31 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/filters"
 )
 
 // ContainersPrune requests the daemon to delete unused data
-func (cli *Client) ContainersPrune(ctx context.Context, pruneFilters filters.Args) (container.PruneReport, error) {
+func (cli *Client) ContainersPrune(ctx context.Context, pruneFilters filters.Args) (types.ContainersPruneReport, error) {
+	var report types.ContainersPruneReport
+
 	if err := cli.NewVersionError(ctx, "1.25", "container prune"); err != nil {
-		return container.PruneReport{}, err
+		return report, err
 	}
 
 	query, err := getFiltersQuery(pruneFilters)
 	if err != nil {
-		return container.PruneReport{}, err
+		return report, err
 	}
 
-	resp, err := cli.post(ctx, "/containers/prune", query, nil, nil)
-	defer ensureReaderClosed(resp)
+	serverResp, err := cli.post(ctx, "/containers/prune", query, nil, nil)
+	defer ensureReaderClosed(serverResp)
 	if err != nil {
-		return container.PruneReport{}, err
+		return report, err
 	}
 
-	var report container.PruneReport
-	if err := json.NewDecoder(resp.Body).Decode(&report); err != nil {
-		return container.PruneReport{}, fmt.Errorf("Error retrieving disk usage: %v", err)
+	if err := json.NewDecoder(serverResp.body).Decode(&report); err != nil {
+		return report, fmt.Errorf("Error retrieving disk usage: %v", err)
 	}
 
 	return report, nil

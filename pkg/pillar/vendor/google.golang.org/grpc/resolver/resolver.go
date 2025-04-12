@@ -22,7 +22,6 @@ package resolver
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net"
 	"net/url"
@@ -30,8 +29,6 @@ import (
 
 	"google.golang.org/grpc/attributes"
 	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/experimental/stats"
-	"google.golang.org/grpc/internal"
 	"google.golang.org/grpc/serviceconfig"
 )
 
@@ -66,18 +63,16 @@ func Get(scheme string) Builder {
 }
 
 // SetDefaultScheme sets the default scheme that will be used. The default
-// scheme is initially set to "passthrough".
+// default scheme is "passthrough".
 //
 // NOTE: this function must only be called during initialization time (i.e. in
 // an init() function), and is not thread-safe. The scheme set last overrides
 // previously set values.
 func SetDefaultScheme(scheme string) {
 	defaultScheme = scheme
-	internal.UserSetDefaultScheme = true
 }
 
-// GetDefaultScheme gets the default scheme that will be used by grpc.Dial.  If
-// SetDefaultScheme is never called, the default scheme used by grpc.NewClient is "dns" instead.
+// GetDefaultScheme gets the default scheme that will be used.
 func GetDefaultScheme() string {
 	return defaultScheme
 }
@@ -173,11 +168,6 @@ type BuildOptions struct {
 	// field. In most cases though, it is not appropriate, and this field may
 	// be ignored.
 	Dialer func(context.Context, string) (net.Conn, error)
-	// Authority is the effective authority of the clientconn for which the
-	// resolver is built.
-	Authority string
-	// MetricsRecorder is the metrics recorder to do recording.
-	MetricsRecorder stats.MetricsRecorder
 }
 
 // An Endpoint is one network endpoint, or server, which may have multiple
@@ -241,8 +231,8 @@ type ClientConn interface {
 	// UpdateState can be omitted.
 	UpdateState(State) error
 	// ReportError notifies the ClientConn that the Resolver encountered an
-	// error. The ClientConn then forwards this error to the load balancing
-	// policy.
+	// error.  The ClientConn will notify the load balancer and begin calling
+	// ResolveNow on the Resolver with exponential backoff.
 	ReportError(error)
 	// NewAddress is called by resolver to notify ClientConn a new list
 	// of resolved addresses.
@@ -291,9 +281,9 @@ func (t Target) Endpoint() string {
 	return strings.TrimPrefix(endpoint, "/")
 }
 
-// String returns the canonical string representation of Target.
+// String returns a string representation of Target.
 func (t Target) String() string {
-	return t.URL.Scheme + "://" + t.URL.Host + "/" + t.Endpoint()
+	return t.URL.String()
 }
 
 // Builder creates a resolver that will be used to watch name resolution updates.
@@ -333,21 +323,4 @@ type AuthorityOverrider interface {
 	// given target. The implementation must generate it without blocking,
 	// typically in line, and must keep it unchanged.
 	OverrideAuthority(Target) string
-}
-
-// ValidateEndpoints validates endpoints from a petiole policy's perspective.
-// Petiole policies should call this before calling into their children. See
-// [gRPC A61](https://github.com/grpc/proposal/blob/master/A61-IPv4-IPv6-dualstack-backends.md)
-// for details.
-func ValidateEndpoints(endpoints []Endpoint) error {
-	if len(endpoints) == 0 {
-		return errors.New("endpoints list is empty")
-	}
-
-	for _, endpoint := range endpoints {
-		for range endpoint.Addresses {
-			return nil
-		}
-	}
-	return errors.New("endpoints list contains no addresses")
 }
