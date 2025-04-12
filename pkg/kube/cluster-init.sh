@@ -277,7 +277,6 @@ external_boot_image_import() {
         eve_external_boot_img="${eve_external_boot_img_name}:${eve_external_boot_img_tag}"
         if /var/lib/k3s/bin/k3s crictl --runtime-endpoint=unix:///run/containerd-user/containerd.sock inspecti "$eve_external_boot_img"; then
                 # Already imported
-                logmsg "external-boot-image $eve_external_boot_img already imported"
                 return 0
         fi
 

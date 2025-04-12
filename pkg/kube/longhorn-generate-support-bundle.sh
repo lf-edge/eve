@@ -3,7 +3,7 @@
 # Copyright (c) 2024 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-LOG_DIR=/persist/newlog/kube
+LOG_DIR=/persist/kubelog
 
 echo "Apply longhorn support bundle yaml at $(date)"
 
