@@ -14,8 +14,6 @@
 
 package authn
 
-import "context"
-
 type multiKeychain struct {
 	keychains []Keychain
 }
@@ -30,12 +28,8 @@ func NewMultiKeychain(kcs ...Keychain) Keychain {
 
 // Resolve implements Keychain.
 func (mk *multiKeychain) Resolve(target Resource) (Authenticator, error) {
-	return mk.ResolveContext(context.Background(), target)
-}
-
-func (mk *multiKeychain) ResolveContext(ctx context.Context, target Resource) (Authenticator, error) {
 	for _, kc := range mk.keychains {
-		auth, err := Resolve(ctx, kc, target)
+		auth, err := kc.Resolve(target)
 		if err != nil {
 			return nil, err
 		}

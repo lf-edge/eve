@@ -1,115 +1,138 @@
 package types
 
 import (
-	"context"
-
-	"github.com/docker/docker/api/types/common"
+	"github.com/docker/docker/api/types/checkpoint"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/image"
-	"github.com/docker/docker/api/types/storage"
+	"github.com/docker/docker/api/types/swarm"
+	"github.com/docker/docker/api/types/system"
 )
 
-// IDResponse Response to an API call that returns just an Id.
+// CheckpointCreateOptions holds parameters to create a checkpoint from a container.
 //
-// Deprecated: use either [container.CommitResponse] or [container.ExecCreateResponse]. It will be removed in the next release.
-type IDResponse = common.IDResponse
+// Deprecated: use [checkpoint.CreateOptions].
+type CheckpointCreateOptions = checkpoint.CreateOptions
 
-// ContainerJSONBase contains response of Engine API GET "/containers/{name:.*}/json"
-// for API version 1.18 and older.
+// CheckpointListOptions holds parameters to list checkpoints for a container
 //
-// Deprecated: use [container.InspectResponse] or [container.ContainerJSONBase]. It will be removed in the next release.
-type ContainerJSONBase = container.ContainerJSONBase
+// Deprecated: use [checkpoint.ListOptions].
+type CheckpointListOptions = checkpoint.ListOptions
 
-// ContainerJSON is the response for the GET "/containers/{name:.*}/json"
-// endpoint.
+// CheckpointDeleteOptions holds parameters to delete a checkpoint from a container
 //
-// Deprecated: use [container.InspectResponse]. It will be removed in the next release.
-type ContainerJSON = container.InspectResponse
+// Deprecated: use [checkpoint.DeleteOptions].
+type CheckpointDeleteOptions = checkpoint.DeleteOptions
 
-// Container contains response of Engine API:
-// GET "/containers/json"
+// Checkpoint represents the details of a checkpoint when listing endpoints.
 //
-// Deprecated: use [container.Summary].
-type Container = container.Summary
+// Deprecated: use [checkpoint.Summary].
+type Checkpoint = checkpoint.Summary
 
-// ContainerState stores container's running state
+// Info contains response of Engine API:
+// GET "/info"
 //
-// Deprecated: use [container.State].
-type ContainerState = container.State
+// Deprecated: use [system.Info].
+type Info = system.Info
 
-// NetworkSettings exposes the network settings in the api.
+// Commit holds the Git-commit (SHA1) that a binary was built from, as reported
+// in the version-string of external tools, such as containerd, or runC.
 //
-// Deprecated: use [container.NetworkSettings].
-type NetworkSettings = container.NetworkSettings
+// Deprecated: use [system.Commit].
+type Commit = system.Commit
 
-// NetworkSettingsBase holds networking state for a container when inspecting it.
+// PluginsInfo is a temp struct holding Plugins name
+// registered with docker daemon. It is used by [system.Info] struct
 //
-// Deprecated: use [container.NetworkSettingsBase].
-type NetworkSettingsBase = container.NetworkSettingsBase
+// Deprecated: use [system.PluginsInfo].
+type PluginsInfo = system.PluginsInfo
 
-// DefaultNetworkSettings holds network information
-// during the 2 release deprecation period.
-// It will be removed in Docker 1.11.
+// NetworkAddressPool is a temp struct used by [system.Info] struct.
 //
-// Deprecated: use [container.DefaultNetworkSettings].
-type DefaultNetworkSettings = container.DefaultNetworkSettings
+// Deprecated: use [system.NetworkAddressPool].
+type NetworkAddressPool = system.NetworkAddressPool
 
-// SummaryNetworkSettings provides a summary of container's networks
-// in /containers/json.
+// Runtime describes an OCI runtime.
 //
-// Deprecated: use [container.NetworkSettingsSummary].
-type SummaryNetworkSettings = container.NetworkSettingsSummary
+// Deprecated: use [system.Runtime].
+type Runtime = system.Runtime
 
-// Health states
-const (
-	NoHealthcheck = container.NoHealthcheck // Deprecated: use [container.NoHealthcheck].
-	Starting      = container.Starting      // Deprecated: use [container.Starting].
-	Healthy       = container.Healthy       // Deprecated: use [container.Healthy].
-	Unhealthy     = container.Unhealthy     // Deprecated: use [container.Unhealthy].
-)
-
-// Health stores information about the container's healthcheck results.
+// SecurityOpt contains the name and options of a security option.
 //
-// Deprecated: use [container.Health].
-type Health = container.Health
+// Deprecated: use [system.SecurityOpt].
+type SecurityOpt = system.SecurityOpt
 
-// HealthcheckResult stores information about a single run of a healthcheck probe.
+// KeyValue holds a key/value pair.
 //
-// Deprecated: use [container.HealthcheckResult].
-type HealthcheckResult = container.HealthcheckResult
+// Deprecated: use [system.KeyValue].
+type KeyValue = system.KeyValue
 
-// MountPoint represents a mount point configuration inside the container.
-// This is used for reporting the mountpoints in use by a container.
+// ImageDeleteResponseItem image delete response item.
 //
-// Deprecated: use [container.MountPoint].
-type MountPoint = container.MountPoint
+// Deprecated: use [image.DeleteResponse].
+type ImageDeleteResponseItem = image.DeleteResponse
 
-// Port An open port on a container
+// ImageSummary image summary.
 //
-// Deprecated: use [container.Port].
-type Port = container.Port
+// Deprecated: use [image.Summary].
+type ImageSummary = image.Summary
 
-// GraphDriverData Information about the storage driver used to store the container's and
-// image's filesystem.
+// ImageMetadata contains engine-local data about the image.
 //
-// Deprecated: use [storage.DriverData].
-type GraphDriverData = storage.DriverData
+// Deprecated: use [image.Metadata].
+type ImageMetadata = image.Metadata
 
-// RootFS returns Image's RootFS description including the layer IDs.
+// ServiceCreateResponse contains the information returned to a client
+// on the creation of a new service.
 //
-// Deprecated: use [image.RootFS].
-type RootFS = image.RootFS
+// Deprecated: use [swarm.ServiceCreateResponse].
+type ServiceCreateResponse = swarm.ServiceCreateResponse
 
-// ImageInspect contains response of Engine API:
-// GET "/images/{name:.*}/json"
+// ServiceUpdateResponse service update response.
 //
-// Deprecated: use [image.InspectResponse].
-type ImageInspect = image.InspectResponse
+// Deprecated: use [swarm.ServiceUpdateResponse].
+type ServiceUpdateResponse = swarm.ServiceUpdateResponse
 
-// RequestPrivilegeFunc is a function interface that clients can supply to
-// retry operations after getting an authorization error.
-// This function returns the registry authentication header value in base64
-// format, or an error if the privilege request fails.
+// ContainerStartOptions holds parameters to start containers.
 //
-// Deprecated: moved to [github.com/docker/docker/api/types/registry.RequestAuthConfig].
-type RequestPrivilegeFunc func(context.Context) (string, error)
+// Deprecated: use [container.StartOptions].
+type ContainerStartOptions = container.StartOptions
+
+// ResizeOptions holds parameters to resize a TTY.
+// It can be used to resize container TTYs and
+// exec process TTYs too.
+//
+// Deprecated: use [container.ResizeOptions].
+type ResizeOptions = container.ResizeOptions
+
+// ContainerAttachOptions holds parameters to attach to a container.
+//
+// Deprecated: use [container.AttachOptions].
+type ContainerAttachOptions = container.AttachOptions
+
+// ContainerCommitOptions holds parameters to commit changes into a container.
+//
+// Deprecated: use [container.CommitOptions].
+type ContainerCommitOptions = container.CommitOptions
+
+// ContainerListOptions holds parameters to list containers with.
+//
+// Deprecated: use [container.ListOptions].
+type ContainerListOptions = container.ListOptions
+
+// ContainerLogsOptions holds parameters to filter logs with.
+//
+// Deprecated: use [container.LogsOptions].
+type ContainerLogsOptions = container.LogsOptions
+
+// ContainerRemoveOptions holds parameters to remove containers.
+//
+// Deprecated: use [container.RemoveOptions].
+type ContainerRemoveOptions = container.RemoveOptions
+
+// DecodeSecurityOptions decodes a security options string slice to a type safe
+// [system.SecurityOpt].
+//
+// Deprecated: use [system.DecodeSecurityOptions].
+func DecodeSecurityOptions(opts []string) ([]system.SecurityOpt, error) {
+	return system.DecodeSecurityOptions(opts)
+}

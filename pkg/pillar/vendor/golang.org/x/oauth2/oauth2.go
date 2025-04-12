@@ -56,7 +56,7 @@ type Config struct {
 	// the OAuth flow, after the resource owner's URLs.
 	RedirectURL string
 
-	// Scopes specifies optional requested permissions.
+	// Scope specifies optional requested permissions.
 	Scopes []string
 
 	// authStyleCache caches which auth style to use when Endpoint.AuthStyle is
@@ -393,7 +393,7 @@ func ReuseTokenSource(t *Token, src TokenSource) TokenSource {
 	}
 }
 
-// ReuseTokenSourceWithExpiry returns a TokenSource that acts in the same manner as the
+// ReuseTokenSource returns a TokenSource that acts in the same manner as the
 // TokenSource returned by ReuseTokenSource, except the expiry buffer is
 // configurable. The expiration time of a token is calculated as
 // t.Expiry.Add(-earlyExpiry).

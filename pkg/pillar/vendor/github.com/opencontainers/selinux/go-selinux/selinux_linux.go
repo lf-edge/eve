@@ -45,7 +45,7 @@ type selinuxState struct {
 
 type level struct {
 	cats *big.Int
-	sens int
+	sens uint
 }
 
 type mlsRange struct {
@@ -132,13 +132,12 @@ func verifySELinuxfsMount(mnt string) bool {
 		if err == nil {
 			break
 		}
-		if err == unix.EAGAIN || err == unix.EINTR {
+		if err == unix.EAGAIN || err == unix.EINTR { //nolint:errorlint // unix errors are bare
 			continue
 		}
 		return false
 	}
 
-	//#nosec G115 -- there is no overflow here.
 	if uint32(buf.Type) != uint32(unix.SELINUX_MAGIC) {
 		return false
 	}
@@ -264,7 +263,7 @@ func isProcHandle(fh *os.File) error {
 		if err == nil {
 			break
 		}
-		if err != unix.EINTR {
+		if err != unix.EINTR { //nolint:errorlint // unix errors are bare
 			return &os.PathError{Op: "fstatfs", Path: fh.Name(), Err: err}
 		}
 	}
@@ -329,8 +328,8 @@ func lSetFileLabel(fpath string, label string) error {
 		if err == nil {
 			break
 		}
-		if err != unix.EINTR {
-			return &os.PathError{Op: fmt.Sprintf("lsetxattr(label=%s)", label), Path: fpath, Err: err}
+		if err != unix.EINTR { //nolint:errorlint // unix errors are bare
+			return &os.PathError{Op: "lsetxattr", Path: fpath, Err: err}
 		}
 	}
 
@@ -348,8 +347,8 @@ func setFileLabel(fpath string, label string) error {
 		if err == nil {
 			break
 		}
-		if err != unix.EINTR {
-			return &os.PathError{Op: fmt.Sprintf("setxattr(label=%s)", label), Path: fpath, Err: err}
+		if err != unix.EINTR { //nolint:errorlint // unix errors are bare
+			return &os.PathError{Op: "setxattr", Path: fpath, Err: err}
 		}
 	}
 
@@ -502,14 +501,14 @@ func catsToBitset(cats string) (*big.Int, error) {
 				return nil, err
 			}
 			for i := catstart; i <= catend; i++ {
-				bitset.SetBit(bitset, i, 1)
+				bitset.SetBit(bitset, int(i), 1)
 			}
 		} else {
 			cat, err := parseLevelItem(ranges[0], category)
 			if err != nil {
 				return nil, err
 			}
-			bitset.SetBit(bitset, cat, 1)
+			bitset.SetBit(bitset, int(cat), 1)
 		}
 	}
 
@@ -517,17 +516,16 @@ func catsToBitset(cats string) (*big.Int, error) {
 }
 
 // parseLevelItem parses and verifies that a sensitivity or category are valid
-func parseLevelItem(s string, sep levelItem) (int, error) {
+func parseLevelItem(s string, sep levelItem) (uint, error) {
 	if len(s) < minSensLen || levelItem(s[0]) != sep {
 		return 0, ErrLevelSyntax
 	}
-	const bitSize = 31 // Make sure the result fits into signed int32.
-	val, err := strconv.ParseUint(s[1:], 10, bitSize)
+	val, err := strconv.ParseUint(s[1:], 10, 32)
 	if err != nil {
 		return 0, err
 	}
 
-	return int(val), nil
+	return uint(val), nil
 }
 
 // parseLevel fills a level from a string that contains
@@ -584,8 +582,7 @@ func bitsetToStr(c *big.Int) string {
 	var str string
 
 	length := 0
-	i0 := int(c.TrailingZeroBits()) //#nosec G115 -- don't expect TralingZeroBits to return values with highest bit set.
-	for i := i0; i < c.BitLen(); i++ {
+	for i := int(c.TrailingZeroBits()); i < c.BitLen(); i++ {
 		if c.Bit(i) == 0 {
 			continue
 		}
@@ -625,7 +622,7 @@ func (l *level) equal(l2 *level) bool {
 
 // String returns an mlsRange as a string.
 func (m mlsRange) String() string {
-	low := "s" + strconv.Itoa(m.low.sens)
+	low := "s" + strconv.Itoa(int(m.low.sens))
 	if m.low.cats != nil && m.low.cats.BitLen() > 0 {
 		low += ":" + bitsetToStr(m.low.cats)
 	}
@@ -634,7 +631,7 @@ func (m mlsRange) String() string {
 		return low
 	}
 
-	high := "s" + strconv.Itoa(m.high.sens)
+	high := "s" + strconv.Itoa(int(m.high.sens))
 	if m.high.cats != nil && m.high.cats.BitLen() > 0 {
 		high += ":" + bitsetToStr(m.high.cats)
 	}
@@ -642,16 +639,14 @@ func (m mlsRange) String() string {
 	return low + "-" + high
 }
 
-// TODO: remove these in favor of built-in min/max
-// once we stop supporting Go < 1.21.
-func maxInt(a, b int) int {
+func max(a, b uint) uint {
 	if a > b {
 		return a
 	}
 	return b
 }
 
-func minInt(a, b int) int {
+func min(a, b uint) uint {
 	if a < b {
 		return a
 	}
@@ -680,10 +675,10 @@ func calculateGlbLub(sourceRange, targetRange string) (string, error) {
 	outrange := &mlsRange{low: &level{}, high: &level{}}
 
 	/* take the greatest of the low */
-	outrange.low.sens = maxInt(s.low.sens, t.low.sens)
+	outrange.low.sens = max(s.low.sens, t.low.sens)
 
 	/* take the least of the high */
-	outrange.high.sens = minInt(s.high.sens, t.high.sens)
+	outrange.high.sens = min(s.high.sens, t.high.sens)
 
 	/* find the intersecting categories */
 	if s.low.cats != nil && t.low.cats != nil {
@@ -734,9 +729,6 @@ func setKeyLabel(label string) error {
 	}
 	if label == "" && errors.Is(err, os.ErrPermission) {
 		return nil
-	}
-	if errors.Is(err, unix.EACCES) && unix.Getuid() != unix.Gettid() {
-		return ErrNotTGLeader
 	}
 	return err
 }
@@ -816,7 +808,8 @@ func enforceMode() int {
 // setEnforceMode sets the current SELinux mode Enforcing, Permissive.
 // Disabled is not valid, since this needs to be set at boot time.
 func setEnforceMode(mode int) error {
-	return os.WriteFile(selinuxEnforcePath(), []byte(strconv.Itoa(mode)), 0)
+	//nolint:gosec // ignore G306: permissions to be 0600 or less.
+	return os.WriteFile(selinuxEnforcePath(), []byte(strconv.Itoa(mode)), 0o644)
 }
 
 // defaultEnforceMode returns the systems default SELinux mode Enforcing,
@@ -1023,7 +1016,8 @@ func addMcs(processLabel, fileLabel string) (string, string) {
 
 // securityCheckContext validates that the SELinux label is understood by the kernel
 func securityCheckContext(val string) error {
-	return os.WriteFile(filepath.Join(getSelinuxMountPoint(), "context"), []byte(val), 0)
+	//nolint:gosec // ignore G306: permissions to be 0600 or less.
+	return os.WriteFile(filepath.Join(getSelinuxMountPoint(), "context"), []byte(val), 0o644)
 }
 
 // copyLevel returns a label with the MLS/MCS level from src label replaced on
@@ -1140,7 +1134,7 @@ func rchcon(fpath, label string) error { //revive:disable:cognitive-complexity
 	}
 	return pwalkdir.Walk(fpath, func(p string, _ fs.DirEntry, _ error) error {
 		if fastMode {
-			if cLabel, err := lFileLabel(p); err == nil && cLabel == label {
+			if cLabel, err := lFileLabel(fpath); err == nil && cLabel == label {
 				return nil
 			}
 		}

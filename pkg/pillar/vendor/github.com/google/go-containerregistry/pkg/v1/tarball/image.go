@@ -223,9 +223,9 @@ func extractFileFromTar(opener Opener, filePath string) (io.ReadCloser, error) {
 	if err != nil {
 		return nil, err
 	}
-	needClose := true
+	close := true
 	defer func() {
-		if needClose {
+		if close {
 			f.Close()
 		}
 	}()
@@ -244,7 +244,7 @@ func extractFileFromTar(opener Opener, filePath string) (io.ReadCloser, error) {
 				currentDir := filepath.Dir(filePath)
 				return extractFileFromTar(opener, path.Join(currentDir, path.Clean(hdr.Linkname)))
 			}
-			needClose = false
+			close = false
 			return tarFile{
 				Reader: tf,
 				Closer: f,
@@ -299,29 +299,18 @@ func (i *uncompressedImage) LayerByDiffID(h v1.Hash) (partial.UncompressedLayer,
 			// v1.Layer doesn't force consumers to care about whether the layer is compressed
 			// we should be fine returning the DockerLayer media type
 			mt := types.DockerLayer
-			bd, ok := i.imgDescriptor.LayerSources[h]
-			if ok {
-				// This is janky, but we don't want to implement Descriptor for
-				// uncompressed layers because it breaks a bunch of assumptions in partial.
-				// See https://github.com/google/go-containerregistry/issues/1870
-				docker25workaround := bd.MediaType == types.DockerUncompressedLayer || bd.MediaType == types.OCIUncompressedLayer
-
-				if !docker25workaround {
-					// Overwrite the mediaType for foreign layers.
-					return &foreignUncompressedLayer{
-						uncompressedLayerFromTarball: uncompressedLayerFromTarball{
-							diffID:    diffID,
-							mediaType: bd.MediaType,
-							opener:    i.opener,
-							filePath:  i.imgDescriptor.Layers[idx],
-						},
-						desc: bd,
-					}, nil
-				}
-
-				// Intentional fall through.
+			if bd, ok := i.imgDescriptor.LayerSources[h]; ok {
+				// Overwrite the mediaType for foreign layers.
+				return &foreignUncompressedLayer{
+					uncompressedLayerFromTarball: uncompressedLayerFromTarball{
+						diffID:    diffID,
+						mediaType: bd.MediaType,
+						opener:    i.opener,
+						filePath:  i.imgDescriptor.Layers[idx],
+					},
+					desc: bd,
+				}, nil
 			}
-
 			return &uncompressedLayerFromTarball{
 				diffID:    diffID,
 				mediaType: mt,
