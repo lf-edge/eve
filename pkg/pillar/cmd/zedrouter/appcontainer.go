@@ -15,7 +15,6 @@ import (
 	"time"
 
 	apitypes "github.com/docker/docker/api/types"
-	apicontainer "github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/google/go-cmp/cmp"
@@ -185,10 +184,10 @@ func (z *zedrouter) getAppContainerStats(cli *client.Client,
 	return acMetrics
 }
 
-func (z *zedrouter) processAppContainerStats(stats apicontainer.StatsResponseReader,
+func (z *zedrouter) processAppContainerStats(stats apitypes.ContainerStats,
 	container apitypes.Container, startTime time.Time) (types.AppContainerStats, error) {
 	var acStats types.AppContainerStats
-	var v *apicontainer.StatsResponse
+	var v *apitypes.StatsJSON
 
 	dec := json.NewDecoder(stats.Body)
 	err := dec.Decode(&v)
@@ -245,7 +244,7 @@ func (z *zedrouter) getAppContainerLogs(status types.AppNetworkStatus,
 			lasttime = lt.Format(time.RFC3339Nano)
 		}
 		out, err := cli.ContainerLogs(context.Background(), container.ID,
-			apicontainer.LogsOptions{
+			apitypes.ContainerLogsOptions{
 				ShowStdout: true,
 				ShowStderr: true,
 				Timestamps: true,
@@ -329,7 +328,7 @@ func (z *zedrouter) getAppContainers(status types.AppNetworkStatus) (
 	}
 
 	containers, err := cli.ContainerList(
-		context.Background(), apicontainer.ListOptions{})
+		context.Background(), apitypes.ContainerListOptions{})
 	if err != nil {
 		z.log.Errorf("getAppContainers: Container list error %v", err)
 		return nil, nil, err
