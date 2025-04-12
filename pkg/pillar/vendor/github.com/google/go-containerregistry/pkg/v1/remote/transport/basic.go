@@ -33,7 +33,7 @@ var _ http.RoundTripper = (*basicTransport)(nil)
 // RoundTrip implements http.RoundTripper
 func (bt *basicTransport) RoundTrip(in *http.Request) (*http.Response, error) {
 	if bt.auth != authn.Anonymous {
-		auth, err := authn.Authorization(in.Context(), bt.auth)
+		auth, err := bt.auth.Authorization()
 		if err != nil {
 			return nil, err
 		}

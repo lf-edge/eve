@@ -29,19 +29,17 @@ import (
 	"sync"
 	"time"
 
+	"github.com/golang/protobuf/proto"
 	"github.com/google/s2a-go/fallback"
 	"github.com/google/s2a-go/internal/handshaker"
 	"github.com/google/s2a-go/internal/handshaker/service"
 	"github.com/google/s2a-go/internal/tokenmanager"
 	"github.com/google/s2a-go/internal/v2"
 	"github.com/google/s2a-go/retry"
-	"github.com/google/s2a-go/stream"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/grpclog"
-	"google.golang.org/protobuf/proto"
 
-	commonpbv1 "github.com/google/s2a-go/internal/proto/common_go_proto"
-	commonpb "github.com/google/s2a-go/internal/proto/v2/common_go_proto"
+	commonpb "github.com/google/s2a-go/internal/proto/common_go_proto"
 	s2av2pb "github.com/google/s2a-go/internal/proto/v2/s2a_go_proto"
 )
 
@@ -56,17 +54,17 @@ const (
 // credentials.TransportCredentials interface.
 type s2aTransportCreds struct {
 	info          *credentials.ProtocolInfo
-	minTLSVersion commonpbv1.TLSVersion
-	maxTLSVersion commonpbv1.TLSVersion
+	minTLSVersion commonpb.TLSVersion
+	maxTLSVersion commonpb.TLSVersion
 	// tlsCiphersuites contains the ciphersuites used in the S2A connection.
 	// Note that these are currently unconfigurable.
-	tlsCiphersuites []commonpbv1.Ciphersuite
+	tlsCiphersuites []commonpb.Ciphersuite
 	// localIdentity should only be used by the client.
-	localIdentity *commonpbv1.Identity
+	localIdentity *commonpb.Identity
 	// localIdentities should only be used by the server.
-	localIdentities []*commonpbv1.Identity
+	localIdentities []*commonpb.Identity
 	// targetIdentities should only be used by the client.
-	targetIdentities            []*commonpbv1.Identity
+	targetIdentities            []*commonpb.Identity
 	isClient                    bool
 	s2aAddr                     string
 	ensureProcessSessionTickets *sync.WaitGroup
@@ -78,7 +76,7 @@ func NewClientCreds(opts *ClientOptions) (credentials.TransportCredentials, erro
 	if opts == nil {
 		return nil, errors.New("nil client options")
 	}
-	var targetIdentities []*commonpbv1.Identity
+	var targetIdentities []*commonpb.Identity
 	for _, targetIdentity := range opts.TargetIdentities {
 		protoTargetIdentity, err := toProtoIdentity(targetIdentity)
 		if err != nil {
@@ -95,12 +93,12 @@ func NewClientCreds(opts *ClientOptions) (credentials.TransportCredentials, erro
 			info: &credentials.ProtocolInfo{
 				SecurityProtocol: s2aSecurityProtocol,
 			},
-			minTLSVersion: commonpbv1.TLSVersion_TLS1_3,
-			maxTLSVersion: commonpbv1.TLSVersion_TLS1_3,
-			tlsCiphersuites: []commonpbv1.Ciphersuite{
-				commonpbv1.Ciphersuite_AES_128_GCM_SHA256,
-				commonpbv1.Ciphersuite_AES_256_GCM_SHA384,
-				commonpbv1.Ciphersuite_CHACHA20_POLY1305_SHA256,
+			minTLSVersion: commonpb.TLSVersion_TLS1_3,
+			maxTLSVersion: commonpb.TLSVersion_TLS1_3,
+			tlsCiphersuites: []commonpb.Ciphersuite{
+				commonpb.Ciphersuite_AES_128_GCM_SHA256,
+				commonpb.Ciphersuite_AES_256_GCM_SHA384,
+				commonpb.Ciphersuite_CHACHA20_POLY1305_SHA256,
 			},
 			localIdentity:               localIdentity,
 			targetIdentities:            targetIdentities,
@@ -114,11 +112,7 @@ func NewClientCreds(opts *ClientOptions) (credentials.TransportCredentials, erro
 	if opts.FallbackOpts != nil && opts.FallbackOpts.FallbackClientHandshakeFunc != nil {
 		fallbackFunc = opts.FallbackOpts.FallbackClientHandshakeFunc
 	}
-	v2LocalIdentity, err := toV2ProtoIdentity(opts.LocalIdentity)
-	if err != nil {
-		return nil, err
-	}
-	return v2.NewClientCreds(opts.S2AAddress, opts.TransportCreds, v2LocalIdentity, verificationMode, fallbackFunc, opts.getS2AStream, opts.serverAuthorizationPolicy)
+	return v2.NewClientCreds(opts.S2AAddress, opts.TransportCreds, localIdentity, verificationMode, fallbackFunc, opts.getS2AStream, opts.serverAuthorizationPolicy)
 }
 
 // NewServerCreds returns a server-side transport credentials object that uses
@@ -127,7 +121,7 @@ func NewServerCreds(opts *ServerOptions) (credentials.TransportCredentials, erro
 	if opts == nil {
 		return nil, errors.New("nil server options")
 	}
-	var localIdentities []*commonpbv1.Identity
+	var localIdentities []*commonpb.Identity
 	for _, localIdentity := range opts.LocalIdentities {
 		protoLocalIdentity, err := toProtoIdentity(localIdentity)
 		if err != nil {
@@ -140,12 +134,12 @@ func NewServerCreds(opts *ServerOptions) (credentials.TransportCredentials, erro
 			info: &credentials.ProtocolInfo{
 				SecurityProtocol: s2aSecurityProtocol,
 			},
-			minTLSVersion: commonpbv1.TLSVersion_TLS1_3,
-			maxTLSVersion: commonpbv1.TLSVersion_TLS1_3,
-			tlsCiphersuites: []commonpbv1.Ciphersuite{
-				commonpbv1.Ciphersuite_AES_128_GCM_SHA256,
-				commonpbv1.Ciphersuite_AES_256_GCM_SHA384,
-				commonpbv1.Ciphersuite_CHACHA20_POLY1305_SHA256,
+			minTLSVersion: commonpb.TLSVersion_TLS1_3,
+			maxTLSVersion: commonpb.TLSVersion_TLS1_3,
+			tlsCiphersuites: []commonpb.Ciphersuite{
+				commonpb.Ciphersuite_AES_128_GCM_SHA256,
+				commonpb.Ciphersuite_AES_256_GCM_SHA384,
+				commonpb.Ciphersuite_CHACHA20_POLY1305_SHA256,
 			},
 			localIdentities: localIdentities,
 			isClient:        false,
@@ -153,15 +147,7 @@ func NewServerCreds(opts *ServerOptions) (credentials.TransportCredentials, erro
 		}, nil
 	}
 	verificationMode := getVerificationMode(opts.VerificationMode)
-	var v2LocalIdentities []*commonpb.Identity
-	for _, localIdentity := range opts.LocalIdentities {
-		protoLocalIdentity, err := toV2ProtoIdentity(localIdentity)
-		if err != nil {
-			return nil, err
-		}
-		v2LocalIdentities = append(v2LocalIdentities, protoLocalIdentity)
-	}
-	return v2.NewServerCreds(opts.S2AAddress, opts.TransportCreds, v2LocalIdentities, verificationMode, opts.getS2AStream)
+	return v2.NewServerCreds(opts.S2AAddress, opts.TransportCreds, localIdentities, verificationMode, opts.getS2AStream)
 }
 
 // ClientHandshake initiates a client-side TLS handshake using the S2A.
@@ -262,22 +248,22 @@ func (c *s2aTransportCreds) Info() credentials.ProtocolInfo {
 
 func (c *s2aTransportCreds) Clone() credentials.TransportCredentials {
 	info := *c.info
-	var localIdentity *commonpbv1.Identity
+	var localIdentity *commonpb.Identity
 	if c.localIdentity != nil {
-		localIdentity = proto.Clone(c.localIdentity).(*commonpbv1.Identity)
+		localIdentity = proto.Clone(c.localIdentity).(*commonpb.Identity)
 	}
-	var localIdentities []*commonpbv1.Identity
+	var localIdentities []*commonpb.Identity
 	if c.localIdentities != nil {
-		localIdentities = make([]*commonpbv1.Identity, len(c.localIdentities))
+		localIdentities = make([]*commonpb.Identity, len(c.localIdentities))
 		for i, localIdentity := range c.localIdentities {
-			localIdentities[i] = proto.Clone(localIdentity).(*commonpbv1.Identity)
+			localIdentities[i] = proto.Clone(localIdentity).(*commonpb.Identity)
 		}
 	}
-	var targetIdentities []*commonpbv1.Identity
+	var targetIdentities []*commonpb.Identity
 	if c.targetIdentities != nil {
-		targetIdentities = make([]*commonpbv1.Identity, len(c.targetIdentities))
+		targetIdentities = make([]*commonpb.Identity, len(c.targetIdentities))
 		for i, targetIdentity := range c.targetIdentities {
-			targetIdentities[i] = proto.Clone(targetIdentity).(*commonpbv1.Identity)
+			targetIdentities[i] = proto.Clone(targetIdentity).(*commonpb.Identity)
 		}
 	}
 	return &s2aTransportCreds{
@@ -331,7 +317,6 @@ func NewTLSClientConfigFactory(opts *ClientOptions) (TLSClientConfigFactory, err
 			tokenManager:              nil,
 			verificationMode:          getVerificationMode(opts.VerificationMode),
 			serverAuthorizationPolicy: opts.serverAuthorizationPolicy,
-			getStream:                 opts.getS2AStream,
 		}, nil
 	}
 	return &s2aTLSClientConfigFactory{
@@ -340,7 +325,6 @@ func NewTLSClientConfigFactory(opts *ClientOptions) (TLSClientConfigFactory, err
 		tokenManager:              tokenManager,
 		verificationMode:          getVerificationMode(opts.VerificationMode),
 		serverAuthorizationPolicy: opts.serverAuthorizationPolicy,
-		getStream:                 opts.getS2AStream,
 	}, nil
 }
 
@@ -350,7 +334,6 @@ type s2aTLSClientConfigFactory struct {
 	tokenManager              tokenmanager.AccessTokenManager
 	verificationMode          s2av2pb.ValidatePeerCertificateChainReq_VerificationMode
 	serverAuthorizationPolicy []byte
-	getStream                 stream.GetS2AStream
 }
 
 func (f *s2aTLSClientConfigFactory) Build(
@@ -359,7 +342,7 @@ func (f *s2aTLSClientConfigFactory) Build(
 	if opts != nil && opts.ServerName != "" {
 		serverName = opts.ServerName
 	}
-	return v2.NewClientTLSConfig(ctx, f.s2av2Address, f.transportCreds, f.tokenManager, f.verificationMode, serverName, f.serverAuthorizationPolicy, f.getStream)
+	return v2.NewClientTLSConfig(ctx, f.s2av2Address, f.transportCreds, f.tokenManager, f.verificationMode, serverName, f.serverAuthorizationPolicy)
 }
 
 func getVerificationMode(verificationMode VerificationModeType) s2av2pb.ValidatePeerCertificateChainReq_VerificationMode {
@@ -368,14 +351,6 @@ func getVerificationMode(verificationMode VerificationModeType) s2av2pb.Validate
 		return s2av2pb.ValidatePeerCertificateChainReq_CONNECT_TO_GOOGLE
 	case Spiffe:
 		return s2av2pb.ValidatePeerCertificateChainReq_SPIFFE
-	case ReservedCustomVerificationMode3:
-		return s2av2pb.ValidatePeerCertificateChainReq_RESERVED_CUSTOM_VERIFICATION_MODE_3
-	case ReservedCustomVerificationMode4:
-		return s2av2pb.ValidatePeerCertificateChainReq_RESERVED_CUSTOM_VERIFICATION_MODE_4
-	case ReservedCustomVerificationMode5:
-		return s2av2pb.ValidatePeerCertificateChainReq_RESERVED_CUSTOM_VERIFICATION_MODE_5
-	case ReservedCustomVerificationMode6:
-		return s2av2pb.ValidatePeerCertificateChainReq_RESERVED_CUSTOM_VERIFICATION_MODE_6
 	default:
 		return s2av2pb.ValidatePeerCertificateChainReq_UNSPECIFIED
 	}
@@ -421,20 +396,24 @@ func NewS2ADialTLSContextFunc(opts *ClientOptions) func(ctx context.Context, net
 		defer cancel()
 
 		var s2aTLSConfig *tls.Config
-		var c net.Conn
 		retry.Run(timeoutCtx,
 			func() error {
 				s2aTLSConfig, err = factory.Build(timeoutCtx, &TLSClientConfigOptions{
 					ServerName: serverName,
 				})
-				if err != nil {
-					grpclog.Infof("error building S2A TLS config: %v", err)
-					return err
-				}
+				return err
+			})
+		if err != nil {
+			grpclog.Infof("error building S2A TLS config: %v", err)
+			return fallback(err)
+		}
 
-				s2aDialer := &tls.Dialer{
-					Config: s2aTLSConfig,
-				}
+		s2aDialer := &tls.Dialer{
+			Config: s2aTLSConfig,
+		}
+		var c net.Conn
+		retry.Run(timeoutCtx,
+			func() error {
 				c, err = s2aDialer.DialContext(timeoutCtx, network, addr)
 				return err
 			})

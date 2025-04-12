@@ -100,7 +100,7 @@ func (t *retryTransport) RoundTrip(in *http.Request) (out *http.Response, err er
 		if out != nil {
 			for _, code := range t.codes {
 				if out.StatusCode == code {
-					return retryError(out)
+					return CheckError(out)
 				}
 			}
 		}

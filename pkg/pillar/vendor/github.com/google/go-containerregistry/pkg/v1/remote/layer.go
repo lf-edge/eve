@@ -15,33 +15,32 @@
 package remote
 
 import (
-	"context"
 	"io"
 
 	"github.com/google/go-containerregistry/internal/redact"
 	"github.com/google/go-containerregistry/internal/verify"
 	"github.com/google/go-containerregistry/pkg/name"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
+	"github.com/google/go-containerregistry/pkg/v1/partial"
 	"github.com/google/go-containerregistry/pkg/v1/types"
 )
 
 // remoteImagelayer implements partial.CompressedLayer
 type remoteLayer struct {
-	ctx     context.Context
-	fetcher fetcher
-	digest  v1.Hash
+	fetcher
+	digest v1.Hash
 }
 
 // Compressed implements partial.CompressedLayer
 func (rl *remoteLayer) Compressed() (io.ReadCloser, error) {
 	// We don't want to log binary layers -- this can break terminals.
-	ctx := redact.NewContext(rl.ctx, "omitting binary blobs from logs")
-	return rl.fetcher.fetchBlob(ctx, verify.SizeUnknown, rl.digest)
+	ctx := redact.NewContext(rl.context, "omitting binary blobs from logs")
+	return rl.fetchBlob(ctx, verify.SizeUnknown, rl.digest)
 }
 
 // Compressed implements partial.CompressedLayer
 func (rl *remoteLayer) Size() (int64, error) {
-	resp, err := rl.fetcher.headBlob(rl.ctx, rl.digest)
+	resp, err := rl.headBlob(rl.digest)
 	if err != nil {
 		return -1, err
 	}
@@ -61,7 +60,7 @@ func (rl *remoteLayer) MediaType() (types.MediaType, error) {
 
 // See partial.Exists.
 func (rl *remoteLayer) Exists() (bool, error) {
-	return rl.fetcher.blobExists(rl.ctx, rl.digest)
+	return rl.blobExists(rl.digest)
 }
 
 // Layer reads the given blob reference from a registry as a Layer. A blob
@@ -69,9 +68,27 @@ func (rl *remoteLayer) Exists() (bool, error) {
 // digest of the blob to be read and the repository portion is the repo where
 // that blob lives.
 func Layer(ref name.Digest, options ...Option) (v1.Layer, error) {
-	o, err := makeOptions(options...)
+	o, err := makeOptions(ref.Context(), options...)
 	if err != nil {
 		return nil, err
 	}
-	return newPuller(o).Layer(o.context, ref)
+	f, err := makeFetcher(ref, o)
+	if err != nil {
+		return nil, err
+	}
+	h, err := v1.NewHash(ref.Identifier())
+	if err != nil {
+		return nil, err
+	}
+	l, err := partial.CompressedToLayer(&remoteLayer{
+		fetcher: *f,
+		digest:  h,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &MountableLayer{
+		Layer:     l,
+		Reference: ref,
+	}, nil
 }

@@ -18,7 +18,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
-	"sync"
 
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/partial"
@@ -39,8 +38,6 @@ type image struct {
 	diffIDMap       map[v1.Hash]v1.Layer
 	digestMap       map[v1.Hash]v1.Layer
 	subject         *v1.Descriptor
-
-	sync.Mutex
 }
 
 var _ v1.Image = (*image)(nil)
@@ -53,9 +50,6 @@ func (i *image) MediaType() (types.MediaType, error) {
 }
 
 func (i *image) compute() error {
-	i.Lock()
-	defer i.Unlock()
-
 	// Don't re-compute if already computed.
 	if i.computed {
 		return nil

@@ -15,7 +15,6 @@ package procfs
 
 import (
 	"bytes"
-	"math/bits"
 	"sort"
 	"strconv"
 	"strings"
@@ -77,9 +76,9 @@ type ProcStatus struct {
 	NonVoluntaryCtxtSwitches uint64
 
 	// UIDs of the process (Real, effective, saved set, and filesystem UIDs)
-	UIDs [4]uint64
+	UIDs [4]string
 	// GIDs of the process (Real, effective, saved set, and filesystem GIDs)
-	GIDs [4]uint64
+	GIDs [4]string
 
 	// CpusAllowedList: List of cpu cores processes are allowed to run on.
 	CpusAllowedList []uint64
@@ -114,43 +113,24 @@ func (p Proc) NewStatus() (ProcStatus, error) {
 		// convert kB to B
 		vBytes := vKBytes * 1024
 
-		err = s.fillStatus(k, v, vKBytes, vBytes)
-		if err != nil {
-			return ProcStatus{}, err
-		}
+		s.fillStatus(k, v, vKBytes, vBytes)
 	}
 
 	return s, nil
 }
 
-func (s *ProcStatus) fillStatus(k string, vString string, vUint uint64, vUintBytes uint64) error {
+func (s *ProcStatus) fillStatus(k string, vString string, vUint uint64, vUintBytes uint64) {
 	switch k {
 	case "Tgid":
 		s.TGID = int(vUint)
 	case "Name":
 		s.Name = vString
 	case "Uid":
-		var err error
-		for i, v := range strings.Split(vString, "\t") {
-			s.UIDs[i], err = strconv.ParseUint(v, 10, bits.UintSize)
-			if err != nil {
-				return err
-			}
-		}
+		copy(s.UIDs[:], strings.Split(vString, "\t"))
 	case "Gid":
-		var err error
-		for i, v := range strings.Split(vString, "\t") {
-			s.GIDs[i], err = strconv.ParseUint(v, 10, bits.UintSize)
-			if err != nil {
-				return err
-			}
-		}
+		copy(s.GIDs[:], strings.Split(vString, "\t"))
 	case "NSpid":
-		nspids, err := calcNSPidsList(vString)
-		if err != nil {
-			return err
-		}
-		s.NSpids = nspids
+		s.NSpids = calcNSPidsList(vString)
 	case "VmPeak":
 		s.VmPeak = vUintBytes
 	case "VmSize":
@@ -193,7 +173,6 @@ func (s *ProcStatus) fillStatus(k string, vString string, vUint uint64, vUintByt
 		s.CpusAllowedList = calcCpusAllowedList(vString)
 	}
 
-	return nil
 }
 
 // TotalCtxtSwitches returns the total context switch.
@@ -226,17 +205,17 @@ func calcCpusAllowedList(cpuString string) []uint64 {
 	return g
 }
 
-func calcNSPidsList(nspidsString string) ([]uint64, error) {
-	s := strings.Split(nspidsString, "\t")
+func calcNSPidsList(nspidsString string) []uint64 {
+	s := strings.Split(nspidsString, " ")
 	var nspids []uint64
 
 	for _, nspid := range s {
-		nspid, err := strconv.ParseUint(nspid, 10, 64)
-		if err != nil {
-			return nil, err
+		nspid, _ := strconv.ParseUint(nspid, 10, 64)
+		if nspid == 0 {
+			continue
 		}
 		nspids = append(nspids, nspid)
 	}
 
-	return nspids, nil
+	return nspids
 }

@@ -60,6 +60,5 @@ func base() *v1.IndexManifest {
 	return &v1.IndexManifest{
 		SchemaVersion: 2,
 		MediaType:     types.OCIImageIndex,
-		Manifests:     []v1.Descriptor{},
 	}
 }

@@ -59,10 +59,8 @@ type storageClient interface {
 	// Object metadata methods.
 
 	DeleteObject(ctx context.Context, bucket, object string, gen int64, conds *Conditions, opts ...storageOption) error
-	GetObject(ctx context.Context, params *getObjectParams, opts ...storageOption) (*ObjectAttrs, error)
+	GetObject(ctx context.Context, bucket, object string, gen int64, encryptionKey []byte, conds *Conditions, opts ...storageOption) (*ObjectAttrs, error)
 	UpdateObject(ctx context.Context, params *updateObjectParams, opts ...storageOption) (*ObjectAttrs, error)
-	RestoreObject(ctx context.Context, params *restoreObjectParams, opts ...storageOption) (*ObjectAttrs, error)
-	MoveObject(ctx context.Context, params *moveObjectParams, opts ...storageOption) (*ObjectAttrs, error)
 
 	// Default Object ACL methods.
 
@@ -108,8 +106,6 @@ type storageClient interface {
 	ListNotifications(ctx context.Context, bucket string, opts ...storageOption) (map[string]*Notification, error)
 	CreateNotification(ctx context.Context, bucket string, n *Notification, opts ...storageOption) (*Notification, error)
 	DeleteNotification(ctx context.Context, bucket string, id string, opts ...storageOption) error
-
-	NewMultiRangeDownloader(ctx context.Context, params *newMultiRangeDownloaderParams, opts ...storageOption) (*MultiRangeDownloader, error)
 }
 
 // settings contains transport-agnostic configuration for API calls made via
@@ -125,7 +121,7 @@ type settings struct {
 	gax []gax.CallOption
 
 	// idempotent indicates if the call is idempotent or not when considering
-	// if the call should be retried or not.
+	// if the call should be retired or not.
 	idempotent bool
 
 	// clientOption is a set of option.ClientOption to be used during client
@@ -135,8 +131,6 @@ type settings struct {
 
 	// userProject is the user project that should be billed for the request.
 	userProject string
-
-	metricsContext *metricsContext
 }
 
 func initSettings(opts ...storageOption) *settings {
@@ -187,6 +181,16 @@ func makeStorageOpts(isIdempotent bool, retry *retryConfig, userProject string) 
 type storageOption interface {
 	Apply(s *settings)
 }
+
+func withGAXOptions(opts ...gax.CallOption) storageOption {
+	return &gaxOption{opts}
+}
+
+type gaxOption struct {
+	opts []gax.CallOption
+}
+
+func (o *gaxOption) Apply(s *settings) { s.gax = o.opts }
 
 func withRetryConfig(rc *retryConfig) storageOption {
 	return &retryOption{rc}
@@ -240,8 +244,7 @@ type openWriterParams struct {
 	chunkSize int
 	// chunkRetryDeadline - see `Writer.ChunkRetryDeadline`.
 	// Optional.
-	chunkRetryDeadline   time.Duration
-	chunkTransferTimeout time.Duration
+	chunkRetryDeadline time.Duration
 
 	// Object/request properties
 
@@ -251,9 +254,6 @@ type openWriterParams struct {
 	// attrs - see `Writer.ObjectAttrs`.
 	// Required.
 	attrs *ObjectAttrs
-	// forceEmptyContentType - Disables auto-detect of Content-Type
-	// Optional.
-	forceEmptyContentType bool
 	// conds - see `Writer.o.conds`.
 	// Optional.
 	conds *Conditions
@@ -263,9 +263,6 @@ type openWriterParams struct {
 	// sendCRC32C - see `Writer.SendCRC32C`.
 	// Optional.
 	sendCRC32C bool
-	// append - Write with appendable object semantics.
-	// Optional.
-	append bool
 
 	// Writer callbacks
 
@@ -283,15 +280,6 @@ type openWriterParams struct {
 	setObj func(*ObjectAttrs)
 }
 
-type newMultiRangeDownloaderParams struct {
-	bucket        string
-	conds         *Conditions
-	encryptionKey []byte
-	gen           int64
-	object        string
-	handle        *ReadHandle
-}
-
 type newRangeReaderParams struct {
 	bucket         string
 	conds          *Conditions
@@ -301,15 +289,6 @@ type newRangeReaderParams struct {
 	object         string
 	offset         int64
 	readCompressed bool // Use accept-encoding: gzip. Only works for HTTP currently.
-	handle         *ReadHandle
-}
-
-type getObjectParams struct {
-	bucket, object string
-	gen            int64
-	encryptionKey  []byte
-	conds          *Conditions
-	softDeleted    bool
 }
 
 type updateObjectParams struct {
@@ -319,21 +298,6 @@ type updateObjectParams struct {
 	encryptionKey     []byte
 	conds             *Conditions
 	overrideRetention *bool
-}
-
-type restoreObjectParams struct {
-	bucket, object string
-	gen            int64
-	encryptionKey  []byte
-	conds          *Conditions
-	copySourceACL  bool
-}
-
-type moveObjectParams struct {
-	bucket, srcObject, dstObject string
-	srcConds                     *Conditions
-	dstConds                     *Conditions
-	encryptionKey                []byte
 }
 
 type composeObjectRequest struct {
