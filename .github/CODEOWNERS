@@ -18,7 +18,7 @@
 /pkg/kdump/                   @rouming
 /pkg/kernel/                  @rucoder @rene @rouming @shjala
 /pkg/kexec/                   @rouming
-/pkg/kube/                    @zedi-pramodh
+/pkg/kube/                    @zedi-pramodh @andrewd-zededa @naiming-zededa
 /pkg/measure-config/          @rucoder
 /pkg/memory-monitor/          @OhmSpectator
 /pkg/mkimage-raw-efi/         @jsfakian @zedi-pramodh
@@ -34,6 +34,7 @@
 /pkg/pillar/cmd/tpmmgr/       @rucoder @shjala
 /pkg/pillar/cmd/volumemgr/    @OhmSpectator @deitch @rouming
 /pkg/pillar/cmd/zedagent/     @OhmSpectator @milan-zededa @rouming @uncleDecart
+/pkg/pillar/cmd/zedkube/      @andrewd-zededa @naiming-zededa @zedi-pramodh
 /pkg/pillar/cmd/zedmanager/   @OhmSpectator @rouming
 /pkg/pillar/cmd/zedrouter/    @christoph-zededa @milan-zededa @rouming
 /pkg/pillar/containerd/       @deitch @rouming
@@ -44,6 +45,7 @@
 /pkg/pillar/evetpm/           @rucoder @shjala
 /pkg/pillar/hypervisor/       @OhmSpectator @rucoder @rene @rouming @shjala
 /pkg/pillar/iptables/         @milan-zededa
+/pkg/pillar/kubeapi/          @andrewd-zededa @naiming-zededa @zedi-pramodh
 /pkg/pillar/netdump/          @milan-zededa
 /pkg/pillar/netmonitor/       @milan-zededa
 /pkg/pillar/nireconciler/     @milan-zededa
