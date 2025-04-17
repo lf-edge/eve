@@ -76,6 +76,9 @@
 | msrv.prometheus.metrics.burst | integer | 10 | The maximum burst size for the Prometheus metrics endpoint. |
 | msrv.prometheus.metrics.idletimeout.seconds | integer | 240 | The idle timeout in seconds for the Prometheus metrics endpoint. If the connection is idle for this duration, the limit is reset. |
 | edgeview.authen.publickey | string | "" | Specifies SSH public keys for Edgeview client command authentication. The user must provide the path to the SSH private key in the client script, and the device verifies the command using one of the configured public keys. Separate multiple public keys with newline characters. |
+| wwan.modem.recovery.watchdog | boolean | false | Enable watchdog for cellular modems. If a modem firmware crashes and fails to recover, the device will automatically reboot.|
+| wwan.modem.recovery.reload.drivers | boolean | false | If a modem firmware crashes and fails to recover, EVE will attempt to reload the MBIM/QMI/MHI drivers as a recovery step. This occurs before the watchdog mechanism is triggered (if enabled). |
+| wwan.modem.recovery.restart.modemmanager | boolean | false | If a modem firmware crash occurs and ModemManager fails to properly recognize or manage the restarted modem, EVE will attempt to restart ModemManager as a recovery step. This occurs before the watchdog mechanism is triggered (if enabled) and can be combined with driver reload recovery mechanism. |
 
 ## Log levels
 

@@ -200,6 +200,9 @@ func TestNewConfigItemSpecMap(t *testing.T) {
 		AllowLogFastupload,
 		EnableARPSnoop,
 		WwanQueryVisibleProviders,
+		WwanModemRecoveryWatchdog,
+		WwanModemRecoveryReloadDrivers,
+		WwanModemRecoveryRestartModemManager,
 		NetworkLocalLegacyMACAddress,
 		MemoryMonitorEnabled,
 		// TriState Items
