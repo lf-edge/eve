@@ -1,0 +1,20 @@
+# Copyright (c) 2025 Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+---
+# Sets up the webhook to enable ACE for downstream clusters.
+# https://ranchermanager.docs.rancher.com/how-to-guides/new-user-guides/kubernetes-clusters-in-rancher-setup/register-existing-clusters
+
+apiVersion: v1
+kind: Config
+clusters:
+- name: Default
+  cluster:
+    server: http://127.0.0.1:6440/v1/authenticate
+users:
+- name: Default
+current-context: webhook
+contexts:
+- name: webhook
+  context:
+    user: Default
+    cluster: Default
