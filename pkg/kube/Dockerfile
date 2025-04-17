@@ -61,6 +61,10 @@ COPY descheduler_rbac.yaml /etc/
 COPY descheduler-job.yaml /etc/
 COPY descheduler-policy-configmap.yaml /etc/
 
+# ACE
+# https://ranchermanager.docs.rancher.com/how-to-guides/new-user-guides/kubernetes-clusters-in-rancher-setup/register-existing-clusters
+COPY kube-api-authn-webhook.yaml /etc
+
 # Containerd config
 RUN mkdir -p /etc/containerd
 COPY config-k3s.toml /etc/containerd/
