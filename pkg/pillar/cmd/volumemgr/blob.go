@@ -424,6 +424,7 @@ func lookupOrCreateBlobStatus(ctx *volumemgrContext, blobSha string) *types.Blob
 			State:                  vs.State,
 			Path:                   vs.FileLocation,
 			Size:                   uint64(vs.Size),
+			MediaType:              vs.MediaType,
 			CurrentSize:            vs.Size,
 			TotalSize:              vs.Size,
 			Progress:               100,
