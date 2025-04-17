@@ -93,6 +93,7 @@ EVE uses several build tools, some of which are prerequisites, while others are 
 You must have the following installed in order to build EVE:
 
 * [docker](https://www.docker.com/get-started)
+  * [buildx](https://docs.docker.com/reference/cli/docker/buildx/)
 * [Go](https://golang.org) (optional) Required only if you want to build packages locally. By default, all builds happen in a docker environment.
 * [qemu](https://www.qemu.org) (optional) Required only if you wish to run the generated image. On macOS, easiest to install via [homebrew](https://brew.sh) via `brew install qemu`.
 * [git](https://git-scm.com) which you must have to clone this repository.
