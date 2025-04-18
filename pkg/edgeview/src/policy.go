@@ -108,7 +108,7 @@ func getCMDString(cmds cmdOpt) string {
 	return ""
 }
 
-func checkCmdPolicy(cmds cmdOpt, evStatus *types.EdgeviewStatus) (bool, string) {
+func checkCmdPolicy(cmds cmdOpt, evStatus *types.EdgeviewStatus, keyComment string) (bool, string) {
 	// log the incoming edge-view command from client
 	var instStr string
 	if edgeviewInstID > 0 {
@@ -141,10 +141,21 @@ func checkCmdPolicy(cmds cmdOpt, evStatus *types.EdgeviewStatus) (bool, string) 
 	if appNames != "" {
 		appNames = " (" + appNames + ")"
 	}
+
+	// tracking the cmds.UserInfo from the controller and/or user ssh key comment with Edgeview command
+	// for user command tracking
+	var userInfo string
+	if cmds.UserInfo != "" {
+		userInfo = ", (" + cmds.UserInfo + ")"
+	}
+	if keyComment != "" {
+		userInfo = ", (" + keyComment + ")"
+	}
 	// add object-type and object-name for controller easier identifying
+	// this log entry will generate an device event on the controller
 	logObj := log.CloneAndAddField("obj_type", "newlog-gen-event").
 		AddField("obj_name", "edgeview-cmd")
-	logObj.Noticef("recv[ep%s:%s] cmd: %v%s", instStr, cmds.ClientEPAddr, getCMDString(cmds), appNames)
+	logObj.Noticef("recv[ep%s:%s%s] cmd: %v%s", instStr, cmds.ClientEPAddr, userInfo, getCMDString(cmds), appNames)
 	return true, ""
 }
 

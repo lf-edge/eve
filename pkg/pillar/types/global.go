@@ -307,6 +307,8 @@ const (
 	KernelRemoteLogLevel GlobalSettingKey = "debug.kernel.remote.loglevel"
 	// FmlCustomResolution global setting key
 	FmlCustomResolution GlobalSettingKey = "app.fml.resolution"
+	// EdgeviewPublicKeys global setting key
+	EdgeviewPublicKeys GlobalSettingKey = "edgeview.authen.publickey"
 
 	// Log filtering and dedupliction
 	// LogDedupWindowSize is a measure of how many log entries are saved to search for duplicates
@@ -1044,6 +1046,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddStringItem(KernelRemoteLogLevel, "info", validateSyslogKernelLevel)
 	configItemSpecMap.AddStringItem(FmlCustomResolution, FmlResolutionUnset, blankValidator)
 	configItemSpecMap.AddStringItem(TUIMonitorLogLevel, "info", blankValidator)
+	configItemSpecMap.AddStringItem(EdgeviewPublicKeys, "", blankValidator)
 
 	// Log deduplication and filtering settings
 	configItemSpecMap.AddIntItem(LogDedupWindowSize, 0, 0, 0xFFFFFFFF)
