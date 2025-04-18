@@ -214,6 +214,7 @@ func TestNewConfigItemSpecMap(t *testing.T) {
 		KernelRemoteLogLevel,
 		KernelLogLevel,
 		FmlCustomResolution,
+		EdgeviewPublicKeys,
 		LogDedupWindowSize,
 		LogFilenamesToCount,
 		LogFilenamesToFilter,

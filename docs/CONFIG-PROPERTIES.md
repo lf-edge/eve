@@ -75,6 +75,7 @@
 | msrv.prometheus.metrics.rps | integer | 1 | The maximum number of requests per second (RPS) for the Prometheus metrics endpoint. |
 | msrv.prometheus.metrics.burst | integer | 10 | The maximum burst size for the Prometheus metrics endpoint. |
 | msrv.prometheus.metrics.idletimeout.seconds | integer | 240 | The idle timeout in seconds for the Prometheus metrics endpoint. If the connection is idle for this duration, the limit is reset. |
+| edgeview.authen.publickey | string | "" | Specifies SSH public keys for Edgeview client command authentication. The user must provide the path to the SSH private key in the client script, and the device verifies the command using one of the configured public keys. Separate multiple public keys with newline characters. |
 
 ## Log levels
 

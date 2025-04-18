@@ -244,7 +244,7 @@ func clientTCPtunnel(here net.Conn, idx, chNum int, rport int) {
 			}
 		}
 		if allowSend {
-			err = addEnvelopeAndWriteWss(jdata, false)
+			err = addEnvelopeAndWriteWss(jdata, false, false)
 			if err != nil {
 				close(done)
 				log.Errorf("ch(%d)-%d, client write wss error %v", idx, chNum, err)
@@ -406,7 +406,7 @@ func setAndStartProxyTCP(opt string) {
 				continue
 			}
 			log.Tracef("setAndStartProxyTCP: timer expired, close and notify client")
-			_ = addEnvelopeAndWriteWss([]byte("\n"), true) // try send a text msg to other side
+			_ = addEnvelopeAndWriteWss([]byte("\n"), true, false) // try send a text msg to other side
 			if !isClosed(tcpServerDone) {
 				close(tcpServerDone)
 			} else if !isClosed(proxyServerDone) {
@@ -551,7 +551,7 @@ func tcpTransfer(url string, wssMsg tcpData, idx int) {
 
 	log.Tracef("tcpTrasfer(%d) starts%s for chNum %d. got conn, localaddr %s", idx, proxyStr, chNum, conn.LocalAddr())
 	//done := make(chan struct{})
-	// receive from clinet/websocket and relay to tcp server
+	// receive from client/websocket and relay to tcp server
 	go func(conn net.Conn, done chan struct{}) {
 		for {
 			select {
@@ -614,7 +614,7 @@ func tcpTransfer(url string, wssMsg tcpData, idx int) {
 			}
 		}
 		if allowSend {
-			err = addEnvelopeAndWriteWss(jdata, false)
+			err = addEnvelopeAndWriteWss(jdata, false, false)
 			if err != nil {
 				log.Errorf("ch(%d)-%d, server wrote error %v", idx, chNum, err)
 				break
@@ -759,7 +759,7 @@ func tcpClientSendDone() {
 		return
 	}
 	// send to server first, then to dispatcher to close
-	_ = addEnvelopeAndWriteWss([]byte(tcpDONEMessage), true)
+	_ = addEnvelopeAndWriteWss([]byte(tcpDONEMessage), true, true)
 	sendCloseToWss()
 }
 
