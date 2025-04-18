@@ -125,7 +125,7 @@ func runCopy(opt string, tarDirSize *int64) error {
 	}
 
 	// send file information to client side and wait for signal to start copy
-	err = addEnvelopeAndWriteWss(jbytes, false)
+	err = addEnvelopeAndWriteWss(jbytes, false, false)
 	if err != nil {
 		fmt.Printf("sign and write error: %v\n", err)
 		return fmt.Errorf("cp command write file header error")
@@ -205,7 +205,7 @@ func runCopy(opt string, tarDirSize *int64) error {
 			return fmt.Errorf("cp command error")
 		}
 
-		err = addEnvelopeAndWriteWss(buffer[:n], false)
+		err = addEnvelopeAndWriteWss(buffer[:n], false, false)
 		if err != nil {
 			fmt.Printf("file write to wss error %v\n", err)
 			return fmt.Errorf("cp command error")
@@ -275,7 +275,7 @@ func recvCopyFile(msg []byte, fstatus *fileCopyStatus, mtype int) {
 		fstatus.gotFileInfo = true
 
 		// send to server, go ahead and start transfer
-		err = addEnvelopeAndWriteWss([]byte(startCopyMessage), false)
+		err = addEnvelopeAndWriteWss([]byte(startCopyMessage), false, false)
 		if err != nil {
 			sendCopyDone("write start copy failed", err)
 		}
@@ -438,7 +438,7 @@ func sendCopyDone(context string, err error) {
 	if err != nil {
 		fmt.Printf("%s error: %v\n", context, err)
 	}
-	err = addEnvelopeAndWriteWss([]byte(context), true)
+	err = addEnvelopeAndWriteWss([]byte(context), true, false)
 	if err != nil {
 		fmt.Printf("sign and write error: %v\n", err)
 	}
