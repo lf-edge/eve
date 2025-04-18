@@ -272,7 +272,7 @@ func closePipe(openAfter bool) {
 		}
 	} else if websocketConn != nil && len(buf.String()) > 0 {
 		for _, buff := range splitBySize(buf.Bytes(), pipeBufHalfSize) {
-			err := addEnvelopeAndWriteWss(buff, true)
+			err := addEnvelopeAndWriteWss(buff, true, false)
 			if err != nil {
 				log.Errorf("write: %v", err)
 				break
@@ -329,7 +329,7 @@ func clientSendQuery(cmd cmdOpt) bool {
 		return false
 	}
 
-	err = addEnvelopeAndWriteWss(jdata, true)
+	err = addEnvelopeAndWriteWss(jdata, true, true)
 	if err != nil {
 		fmt.Printf("write: %v\n", err)
 		return false
@@ -339,7 +339,7 @@ func clientSendQuery(cmd cmdOpt) bool {
 
 func sendCloseToWss() {
 	// send to dispatcher to close, no authentication
-	err := addEnvelopeAndWriteWss([]byte(closeMessage), true)
+	err := addEnvelopeAndWriteWss([]byte(closeMessage), true, !runOnServer)
 	if err != nil {
 		log.Noticef("sent done msg error: %v", err)
 	}
