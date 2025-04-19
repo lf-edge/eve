@@ -234,6 +234,9 @@ func (n *nim) run(ctx context.Context) (err error) {
 	if err = n.subOnboardStatus.Activate(); err != nil {
 		return err
 	}
+	if err = n.subEdgeNodeClusterStatus.Activate(); err != nil {
+		return err
+	}
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(stillRunTime)
