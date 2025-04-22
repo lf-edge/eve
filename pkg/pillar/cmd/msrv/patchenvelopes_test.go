@@ -196,30 +196,10 @@ func TestPatchEnvelopes(t *testing.T) {
 
 	peStore.UpdateEnvelopes(peInfo)
 	peStore.UpdateStateNotificationCh() <- struct{}{}
-
-	finishDeleting := make(chan struct{})
-	go func() {
-		for {
-			// Since there's no feedback mechanism to see if the work in
-			// peStore structure was done we need to wait for it to finish
-			envelopes1 := peStore.Get(app1UUID).Envelopes
-			envelopes2 := peStore.Get(app2UUID).Envelopes
-
-			if len(envelopes2) > 0 && len(envelopes1) == 0 {
-				close(finishDeleting)
-				return
-			}
-			time.Sleep(time.Second)
-		}
-	}()
-
 	g.Eventually(func() bool {
-		select {
-		case <-finishDeleting:
-			return true
-		case <-time.After(deadline):
-			return false
-		}
+		envelopes1 := peStore.Get(app1UUID).Envelopes
+		envelopes2 := peStore.Get(app2UUID).Envelopes
+		return len(envelopes2) > 0 && len(envelopes1) == 0
 	}, deadline, time.Second).Should(gomega.BeTrue())
 
 	g.Expect(peStore.Get(app2UUID).Envelopes).To(gomega.BeEquivalentTo(
@@ -238,4 +218,18 @@ func TestPatchEnvelopes(t *testing.T) {
 				},
 			},
 		}))
+	g.Expect(peStore.Get(app1UUID).Envelopes).To(gomega.BeEmpty())
+
+	// Corner case: deleting all the envelopes
+	peStore.UpdateEnvelopes([]types.PatchEnvelopeInfo{})
+	peStore.UpdateStateNotificationCh() <- struct{}{}
+
+	g.Eventually(func() bool {
+		envelopes1 := peStore.Get(app1UUID).Envelopes
+		envelopes2 := peStore.Get(app2UUID).Envelopes
+		return len(envelopes2) == 0 && len(envelopes1) == 0
+	}, deadline, time.Second).Should(gomega.BeTrue())
+
+	g.Expect(peStore.Get(app1UUID).Envelopes).To(gomega.BeEmpty())
+	g.Expect(peStore.Get(app2UUID).Envelopes).To(gomega.BeEmpty())
 }
