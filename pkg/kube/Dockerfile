@@ -66,13 +66,16 @@ RUN mkdir -p /etc/containerd
 COPY config-k3s.toml /etc/containerd/
 WORKDIR /
 
+ARG TARGETARCH
+
 # Actual k3s install and config happens when this container starts during EVE bootup, look at cluster-init.sh
 ### NOTE: the version of virtctl should match the version of kubevirt in cluster_init.sh, else PVC creation might fail due to incompatibility
 ENV VIRTCTL_VERSION v1.1.0
-ADD https://github.com/kubevirt/kubevirt/releases/download/${VIRTCTL_VERSION}/virtctl-${VIRTCTL_VERSION}-linux-amd64 .
-RUN install virtctl-${VIRTCTL_VERSION}-linux-amd64 /usr/bin/virtctl
+ADD https://github.com/kubevirt/kubevirt/releases/download/${VIRTCTL_VERSION}/virtctl-${VIRTCTL_VERSION}-linux-${TARGETARCH} .
+
+RUN install virtctl-${VIRTCTL_VERSION}-linux-${TARGETARCH} /usr/bin/virtctl
 # We installed under /usr/bin. Remove the downloaded version
-RUN rm -f ./virtctl-${VIRTCTL_VERSION}-linux-amd64
+RUN rm -f ./virtctl-${VIRTCTL_VERSION}-linux-${TARGETARCH}
 
 ENTRYPOINT []
 CMD ["/usr/bin/cluster-init.sh"]
