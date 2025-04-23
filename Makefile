@@ -856,7 +856,8 @@ pkgs: build-tools $(PKGS)
 pkg/kernel:
 	$(QUIET): $@: No-op pkg/kernel
 
-pkg/external-boot-image/build.yml: pkg/external-boot-image/build.yml.in
+# Need to force build.yml target in order to always get the current KERNEL_TAG
+pkg/external-boot-image/build.yml: pkg/external-boot-image/build.yml.in pkg/xen-tools FORCE
 	$(QUIET)tools/compose-external-boot-image-yml.sh $< $@ $(shell echo $(KERNEL_TAG) | cut -d':' -f2) $(shell $(LINUXKIT) pkg show-tag pkg/xen-tools | cut -d':' -f2)
 eve-external-boot-image: pkg/external-boot-image/build.yml
 pkg/kube/external-boot-image.tar: pkg/external-boot-image
