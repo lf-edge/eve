@@ -3,7 +3,16 @@
 set -e
 
 yq() {
-  docker run -i --rm -v "${PWD}/":/workdir intoiter/yq:3.1.0 -y -i "$@"
+  docker run -i --rm -v "${PWD}/":/workdir -w /workdir mikefarah/yq:4.40.5 "$@"
+}
+
+# because sponge doesn't exist everywhere, and this one uses a tmpfile
+spongefile() {
+    local tmp=""
+    tmp=$(mktemp)
+    cat > "$tmp"
+    cat "$tmp" > "$1"
+    rm "$tmp"
 }
 
 patch_xentools() {
@@ -22,9 +31,9 @@ main() {
     cp "${base_templ_path}" "${out_templ_path}"
 
     # Replace kernel_tag
-    patch_kernel "${kernel_tag}" "${out_templ_path}"
+    patch_kernel "${kernel_tag}" "${out_templ_path}" | spongefile "${out_templ_path}"
     # Replace xentools_tag
-    patch_xentools "${xentools_tag}" "${out_templ_path}"
+    patch_xentools "${xentools_tag}" "${out_templ_path}" | spongefile "${out_templ_path}"
 }
 
 main "$@"
