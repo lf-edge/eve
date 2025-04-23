@@ -676,7 +676,7 @@ github.com/leodido/go-urn
 github.com/lf-edge/edge-containers/pkg/registry
 github.com/lf-edge/edge-containers/pkg/resolver
 github.com/lf-edge/edge-containers/pkg/tgz
-# github.com/lf-edge/eve-api/go v0.0.0-20250416000930-73eb0befc1e5
+# github.com/lf-edge/eve-api/go v0.0.0-20250422203050-5aa8967bde34
 ## explicit; go 1.20
 github.com/lf-edge/eve-api/go/attest
 github.com/lf-edge/eve-api/go/auth
@@ -689,6 +689,7 @@ github.com/lf-edge/eve-api/go/hardwarehealth
 github.com/lf-edge/eve-api/go/info
 github.com/lf-edge/eve-api/go/logs
 github.com/lf-edge/eve-api/go/metrics
+github.com/lf-edge/eve-api/go/nestedappinstancemetrics
 github.com/lf-edge/eve-api/go/profile
 github.com/lf-edge/eve-api/go/register
 # github.com/lf-edge/eve-libs v0.0.0-20250313200311-28f858e8e99b
@@ -704,9 +705,6 @@ github.com/lf-edge/eve-libs/zedUpload/httputil
 github.com/lf-edge/eve-libs/zedUpload/ociutil
 github.com/lf-edge/eve-libs/zedUpload/sftputil
 github.com/lf-edge/eve-libs/zedUpload/types
-# github.com/lf-edge/eve-tools/runtimemetrics/go v0.0.0-20250320220227-713ea9d6c6d2
-## explicit; go 1.22.2
-github.com/lf-edge/eve-tools/runtimemetrics/go/nestedappinstancemetrics
 # github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20240315102754-0f6d1f182e0d
 ## explicit; go 1.20
 github.com/lf-edge/eve/pkg/kube/cnirpc
