@@ -40,7 +40,7 @@ ifneq ($(TAGS),)
 	TAGS:=-tags "$(TAGS)"
 endif
 
-LDFLAGS=
+LDFLAGS=-extldflags=-fuse-ld=bfd
 ifneq ($(DEV),y)
 	LDFLAGS+=-s -w
 endif
