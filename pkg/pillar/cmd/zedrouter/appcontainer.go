@@ -18,7 +18,7 @@ import (
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/google/go-cmp/cmp"
-	nestedapp "github.com/lf-edge/eve-tools/runtimemetrics/go/nestedappinstancemetrics"
+	nestedapp "github.com/lf-edge/eve-api/go/nestedappinstancemetrics"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
@@ -414,8 +414,8 @@ func (z *zedrouter) getNestedDomainAppMetrics(status types.AppNetworkStatus, acN
 			Status:         nastat.Status,
 			Pids:           nastat.Pids,
 			Uptime:         nastat.Uptime,
-			CPUTotal:       nastat.CPUTotal,
-			SystemCPUTotal: nastat.SystemCPUTotal,
+			CPUTotal:       nastat.CpuTotal,
+			SystemCPUTotal: nastat.SystemCpuTotal,
 			UsedMem:        nastat.UsedMem,
 			AllocatedMem:   nastat.AllocatedMem,
 			TxBytes:        nastat.TxBytes,
