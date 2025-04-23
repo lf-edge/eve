@@ -37,11 +37,31 @@ func handleContentTreeModify(ctxArg interface{}, key string,
 
 	log.Functionf("handleContentTreeModify(%s)", key)
 	config := configArg.(types.ContentTreeConfig)
+	oldConfig := oldConfigArg.(types.ContentTreeConfig)
 	ctx := ctxArg.(*volumemgrContext)
 	status := ctx.LookupContentTreeStatus(config.Key())
 	if status == nil {
 		log.Fatalf("Missing ContentTreeStatus for %s", config.Key())
 	}
+
+	// if the change is significant, i.e. the content has changed, then
+	// delete the whole content tree (incl blobs) and create a new one
+	// otherwise, just update the status and proceed normally
+	if config.RelativeURL != oldConfig.RelativeURL ||
+		config.Format != oldConfig.Format ||
+		config.ContentSha256 != oldConfig.ContentSha256 {
+
+		// make sure the delete is immediate
+		oldDeferContextDelete := ctx.deferContentDelete
+		ctx.deferContentDelete = 0
+		deleteContentTree(ctx, status)
+		status = createContentTreeStatus(ctx, config)
+		// restore the original value
+		ctx.deferContentDelete = oldDeferContextDelete
+	} else {
+		status.UpdateFromContentTreeConfig(config)
+	}
+
 	updateContentTree(ctx, status)
 	log.Functionf("handleContentTree(%s) Done", key)
 }
