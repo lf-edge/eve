@@ -52,6 +52,9 @@ nav:
   - 'Configuration properties': 'docs/CONFIG-PROPERTIES.md'
   - CI-CD: 'docs/CI-CD.md'
   - FAQ: 'docs/FAQ.md'
+  - 'Metrics and Monitoring':
+      - 'Prometheus': 'docs/PROMETHEUS_METRICS.md'
+      - 'Memory Monitoring': 'pkg/memory-monitor/README.md'
   - 'Building EVE':
       - 'How to build EVE': 'docs/BUILD.md'
       - 'EVE image reproducibility': 'docs/EVE-IMAGE-REPRODUCIBILITY.md'
