@@ -179,6 +179,8 @@ SHELL ["/bin/sh", "-c"]
 
 COPY --from=collector /out /
 
+RUN rm -rf /usr/bin/qemu-storage-daemon
+
 # FIXME: replace with tini+monit ASAP
 WORKDIR /
 CMD ["/init.sh"]

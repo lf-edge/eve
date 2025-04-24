@@ -132,4 +132,6 @@ WORKDIR /
 COPY --from=build /out/ /
 COPY --from=build /bpftrace/bpftrace-aotrt /
 
+RUN rm -rf /usr/share/vim/vim82/doc/
+
 CMD ["/sbin/tini", "/usr/bin/debug-services.sh"]
