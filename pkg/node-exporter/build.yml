@@ -1,0 +1,13 @@
+# Copyright (c) 2025 Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+org: lfedge
+image: eve-node-exporter
+config:
+  binds:
+    - /:/hostfs:ro,rslave
+    - /proc:/hostfs/proc
+    - /sys:/hostfs/sys
+    - /persist:/persist
+  net: host
+  pid: host
