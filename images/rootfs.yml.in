@@ -90,6 +90,10 @@ services:
     image: XENTOOLS_TAG
     cgroupsPath: /eve/services/xen-tools
     oomScoreAdj: -999
+  - name: node-exporter
+    image: NODE_EXPORTER_TAG
+    cgroupsPath: /eve/services/node-exporter
+    oomScoreAdj: -999
 files:
   - path: /etc/eve-release
     source: eve_version
