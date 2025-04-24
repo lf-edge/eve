@@ -84,8 +84,8 @@ jobs:
              EVE=lfedge/eve:${TAG}-${HV}-${{ env.ARCH }}
              docker pull "$EVE"
           else
-             make pkgs
-             make HV=${HV} ZARCH=${{ env.ARCH }} eve
+             make -j $(getconf _NPROCESSORS_ONLN) pkgs
+             make -j $(getconf _NPROCESSORS_ONLN) HV=${HV} ZARCH=${{ env.ARCH }} eve
              EVE=lfedge/eve:$(make version)-${HV}-${{ env.ARCH }}
           fi
           docker run "$EVE" rootfs > assets/rootfs.img
