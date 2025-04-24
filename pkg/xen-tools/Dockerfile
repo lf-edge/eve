@@ -96,8 +96,11 @@ WORKDIR /xen
 
 # disable golang as it does not play well together with musl (stderr is defined as FILE* const and fails to compile)
 RUN ./configure --prefix=/usr --disable-xen --disable-golang --disable-qemu-traditional --disable-docs --enable-9pfs \
- --with-system-ovmf=/usr/lib/xen/boot/ovmf.bin --disable-stubdom \
- --enable-vhost-vsock --enable-vhost-scsi
+ --with-system-ovmf=/usr/lib/xen/boot/ovmf.bin --disable-stubdom --disable-openbios \
+ --enable-vhost-vsock --enable-vhost-scsi \
+ --disable-microblaze --disable-mips --disable-ppc \
+ --disable-sparc --disable-tricore --disable-alpha --disable-hppa \
+ --disable-storage-daemon
 RUN make -j "$(getconf _NPROCESSORS_ONLN)" && make dist
 RUN dist/install.sh /out
 
@@ -122,6 +125,10 @@ COPY qemu-ifup xen-start /etc/xen/scripts/
 
 # We need to keep a slim profile, which means removing things we don't need
 RUN rm -rf /usr/lib/libxen*.a /usr/lib/libxl*.a /usr/lib/debug /usr/lib/python*
+
+RUN rm -rf /usr/share/man \
+    /usr/share/qemu-xen/qemu/openbios-* \
+    /usr/lib/xen/bin/qemu-storage-daemon
 
 # Adjust /var/run, /var/lib and /var/lock to be shared
 RUN mv /var /var.template && ln -s /run /var && ln -s /run /var.template/run

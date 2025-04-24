@@ -35,11 +35,15 @@ FROM ${PLATFORM} AS build
 
 ADD ${NVIDIA_FW_URL} /${NVIDIA_FW_TEGRA}
 RUN mkdir -p /nvidia-firmware && \
-    cd /nvidia-firmware ;\
-    ar x ../"${NVIDIA_FW_TEGRA}" ;\
-    zstd -d < data.tar.zst > data.tar ;\
-    tar -xvf data.tar -C ./ ;\
-    rm data.tar.zst data.tar
+    if [ "${TARGETARCH}" = "arm64" ]; then \
+        cd /nvidia-firmware ;\
+        ar x ../"${NVIDIA_FW_TEGRA}" ;\
+        zstd -d < data.tar.zst > data.tar ;\
+        tar -xvf data.tar -C ./ ;\
+        rm data.tar.zst data.tar ;\
+    else \
+        mkdir -p /nvidia-firmware/lib/firmware/ ;\
+    fi
 
 # RTL8822ce firmware
 ENV RTL8822_FW_VERSION ca9f4e199efbf8c377e8a1769ba5b05b23f92c82
@@ -65,9 +69,11 @@ RUN ln -s brcmfmac4356-pcie.gpd-win-pocket.txt /lib/firmware/brcm/brcmfmac4356-p
 ENV RPI_FIRMWARE_VERSION 2c8f665254899a52260788dd902083bb57a99738
 ENV RPI_FIRMWARE_URL https://github.com/RPi-Distro/firmware-nonfree/archive
 ADD ${RPI_FIRMWARE_URL}/${RPI_FIRMWARE_VERSION}.tar.gz /rpifirmware.tar.gz
-RUN mkdir /rpi-firmware &&\
+RUN if [ "${TARGETARCH}" = "arm64" ]; then \
+    mkdir /rpi-firmware &&\
     tar -xz --strip-components=1 -C /rpi-firmware -f /rpifirmware.tar.gz &&\
-    cp -a /rpi-firmware/debian/config/brcm80211/brcm/brcmfmac43436* /lib/firmware/brcm
+    cp -a /rpi-firmware/debian/config/brcm80211/brcm/brcmfmac43436* /lib/firmware/brcm ;\
+    fi
 
 ENV RPI_BT_FIRMWARE_VERSION e7fd166981ab4bb9a36c2d1500205a078a35714d
 ENV RPI_BT_FIRMWARE_URL https://github.com/RPi-Distro/bluez-firmware/raw
@@ -171,6 +177,31 @@ COPY --from=build /rtw88/*.bin /lib/firmware/rtw88/
 # Intel ICE firmware.
 COPY --from=build /lib/firmware/intel/ice /lib/firmware/intel/ice
 COPY --from=build /lib/firmware/hailo /lib/firmware/hailo
+
+ARG TARGETARCH
+
+# Remove unnecessary firmware based on TARGETARCH and print freed space
+RUN if [ "$TARGETARCH" = "amd64" ]; then \
+    initial_size=$(du -sm /lib/firmware | cut -f1); \
+    rm -rf /lib/firmware/nvidia \
+           /lib/firmware/ti-connectivity \
+           /lib/broadcom \
+           /lib/firmware/*t234* \
+           /lib/firmware/*t194* \
+           /lib/firmware/nvpva* ; \
+    final_size=$(du -sm /lib/firmware | cut -f1); \
+    freed_space=$((initial_size - final_size)); \
+    echo "Freed space: ${freed_space} MB"; \
+    fi
+
+RUN if [ "$TARGETARCH" = "arm64" ]; then \
+    initial_size=$(du -s /lib/firmware | cut -f1); \
+    rm -rf /lib/firmware/ice; \
+    final_size=$(du -s /lib/firmware | cut -f1); \
+    freed_space=$((initial_size - final_size)); \
+    echo "Freed space: ${freed_space} KB"; \
+    fi
+
 
 FROM scratch
 ENTRYPOINT []
