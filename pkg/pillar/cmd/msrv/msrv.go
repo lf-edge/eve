@@ -14,6 +14,7 @@ import (
 	"context"
 	"encoding/gob"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -62,6 +63,16 @@ const DiagMaxSize = 65535
 
 // MetaDataServerIP is IP of meta data server
 const MetaDataServerIP = "169.254.169.254"
+
+// We forward /metrics endpoint to this URL
+// we assume that NodeExporter will be serving on default port 9100
+const (
+	NodeExporterMetricsURL            = "http://localhost:9100"
+	MetricsRouteRequestPerSecondLimit = 1
+	MetricsRouteBurstLimit            = 10
+	// Clean up idle IP addresses
+	MetricsRouteIdleTimeout = 4 * time.Minute
+)
 
 // Msrv struct contains all PubSubs which are needed to compose REST APIs
 // for App Instances
@@ -710,6 +721,12 @@ func (msrv *Msrv) MakeMetadataHandler() http.Handler {
 			r.Get("/download/{patch}", msrv.handlePatchDownload())
 			r.Get("/download/{patch}/{file}", msrv.handlePatchFileDownload())
 		})
+	})
+
+	target, _ := url.Parse(NodeExporterMetricsURL)
+	r.Route("/metrics", func(r chi.Router) {
+		r.Use(withRateLimiterPerIP(MetricsRouteRequestPerSecondLimit, MetricsRouteBurstLimit, MetricsRouteIdleTimeout))
+		r.HandleFunc("/", msrv.reverseProxy(target))
 	})
 
 	r.Get("/eve/app-custom-blobs", msrv.handleAppCustomBlobs())

@@ -5,7 +5,6 @@ package msrv
 
 import (
 	"bytes"
-	"context"
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
@@ -13,6 +12,8 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/httputil"
+	"net/url"
 	"os"
 	"path"
 	"strings"
@@ -24,8 +25,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/utils/netutils"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 )
-
-type middlewareKeys int
 
 // Struct to generate the output JSON for Network Status and Metrics
 type networkStatusMetrics struct {
@@ -44,11 +43,6 @@ type networkStatusMetrics struct {
 	TxACLRateLimitDrops uint64 // For all rate limited rules
 	RxACLRateLimitDrops uint64 // For all rate limited rules
 }
-
-const (
-	patchEnvelopesContextKey middlewareKeys = iota
-	appUUIDContextKey
-)
 
 func (msrv *Msrv) handleNetwork() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -737,38 +731,6 @@ func (msrv *Msrv) handleAppInstanceDiscovery() func(http.ResponseWriter, *http.R
 	}
 }
 
-// withPatchEnvelopesByIP is a middleware for Patch Envelopes which adds
-// to a context patchEnvelope variable containing available patch envelopes
-// for given IP address (it gets resolved to app instance UUID)
-// in case there is no patch envelopes available it returns StatusNoContent
-func (msrv *Msrv) withPatchEnvelopesByIP() func(http.Handler) http.Handler {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			remoteIP := net.ParseIP(strings.Split(r.RemoteAddr, ":")[0])
-			anStatus := msrv.lookupAppNetworkStatusByAppIP(remoteIP)
-			if anStatus == nil {
-				w.WriteHeader(http.StatusNoContent)
-				msrv.Log.Errorf("No AppNetworkStatus for %s",
-					remoteIP.String())
-				return
-			}
-
-			appUUID := anStatus.UUIDandVersion.UUID
-
-			accessablePe := msrv.PatchEnvelopes.Get(appUUID.String())
-			if len(accessablePe.Envelopes) == 0 {
-				sendError(w, http.StatusNotFound, fmt.Sprintf("No envelopes for %s", appUUID.String()))
-			}
-
-			ctx := context.WithValue(r.Context(), patchEnvelopesContextKey, accessablePe)
-			ctx = context.WithValue(ctx, appUUIDContextKey, appUUID.String())
-
-			r = r.WithContext(ctx)
-			next.ServeHTTP(w, r)
-		})
-	}
-}
-
 // handleActivateCredentialGet handles get request of the activate-credential exchange,
 // it returns a json containing the EK, AIK public keys and AIK name.
 func (msrv *Msrv) handleActivateCredentialGet() func(http.ResponseWriter, *http.Request) {
@@ -916,5 +878,19 @@ func (msrv *Msrv) handleNetworkStatusMetrics() func(http.ResponseWriter, *http.R
 		w.Header().Add("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		w.Write(resp)
+	}
+}
+
+// reverseProxy is a handler which proxies request to target URL
+func (msrv *Msrv) reverseProxy(target *url.URL) func(http.ResponseWriter, *http.Request) {
+	proxy := httputil.NewSingleHostReverseProxy(target)
+	proxy.ErrorHandler = func(rw http.ResponseWriter, r *http.Request, err error) {
+		msrv.Log.Errorf("httputil proxy error: %v", err)
+		rw.WriteHeader(http.StatusBadGateway)
+	}
+
+	return func(w http.ResponseWriter, r *http.Request) {
+		r.Host = target.Host
+		proxy.ServeHTTP(w, r)
 	}
 }
