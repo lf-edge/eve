@@ -51,13 +51,8 @@ func handleContentTreeModify(ctxArg interface{}, key string,
 		config.Format != oldConfig.Format ||
 		config.ContentSha256 != oldConfig.ContentSha256 {
 
-		// make sure the delete is immediate
-		oldDeferContextDelete := ctx.deferContentDelete
-		ctx.deferContentDelete = 0
-		deleteContentTree(ctx, status)
+		deleteContentTree(ctx, status, 0) // make sure the delete is immediate
 		status = createContentTreeStatus(ctx, config)
-		// restore the original value
-		ctx.deferContentDelete = oldDeferContextDelete
 	} else {
 		status.UpdateFromContentTreeConfig(config)
 	}
@@ -76,7 +71,7 @@ func handleContentTreeDelete(ctxArg interface{}, key string,
 	if status == nil {
 		log.Fatalf("Missing ContentTreeStatus for %s", config.Key())
 	}
-	deleteContentTree(ctx, status)
+	deleteContentTree(ctx, status, ctx.deferContentDelete)
 	log.Functionf("handleContentTreeDelete(%s) Done", key)
 }
 
@@ -304,7 +299,7 @@ type timeAndContentTreeStatus struct {
 var deferredDelete = make([]timeAndContentTreeStatus, 0)
 
 // deleteContentTree optionally delays the delete using the above slice
-func deleteContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus) {
+func deleteContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus, deferContentDelete uint32) {
 	log.Functionf("deleteContentTree for %v", status.ContentID)
 
 	// Clean up in case it was never resolved
@@ -313,10 +308,10 @@ func deleteContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus) {
 	// If the content tree did not complete, or knob is at default of
 	// no defer, then delete. Otherwise honor defer time to to avoid
 	// delete then re-download
-	if status.State < types.LOADED || ctx.deferContentDelete == 0 {
+	if status.State < types.LOADED || deferContentDelete == 0 {
 		doDeleteContentTree(ctx, status)
 	} else {
-		expiry := time.Now().Add(time.Duration(ctx.deferContentDelete) * time.Second)
+		expiry := time.Now().Add(time.Duration(deferContentDelete) * time.Second)
 		tc := timeAndContentTreeStatus{
 			deleteTime: expiry,
 			status:     status,
