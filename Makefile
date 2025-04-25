@@ -1096,6 +1096,9 @@ docker-old-images:
 docker-image-clean:
 	docker rmi -f $(shell ./tools/oldimages.sh)
 
+kernel-tag:
+	@echo $(KERNEL_TAG)
+
 .PRECIOUS: rootfs-% $(ROOTFS)-%.img $(ROOTFS_COMPLETE)
 .PHONY: all clean test run pkgs help build-tools live rootfs config installer live current FORCE $(DIST) HOSTARCH image-set cache-export
 FORCE:
@@ -1137,6 +1140,7 @@ help:
 	@echo "                                    MYETUS_DBRANCH, in addition if MYETUS_VERBOSE is set to"
 	@echo "                                    Y, the output will be echoed to the console"
 	@echo "   check-docker-hashes-consistency  check for Dockerfile image inconsistencies"
+	@echo "   kernel-tag                       show current KERNEL_TAG"
 	@echo
 	@echo "Seldom used maintenance and development targets:"
 	@echo "   bump-eve-api    bump eve-api in all subprojects"
