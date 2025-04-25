@@ -15,7 +15,7 @@ import (
 
 const (
 	multusNamespace     = "kube-system"
-	compMultusDaemonset = "kube-multus-ds-amd64"
+	compMultusDaemonset = "kube-multus-ds"
 )
 
 type multusComponent struct {
