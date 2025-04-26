@@ -173,9 +173,12 @@ func TestReconcileWithEmptyArgs(test *testing.T) {
 	t.Expect(itemCountWithType(linux.IPRuleTypename)).To(Equal(1))
 	t.Expect(itemCountWithType(iptables.ChainV4Typename)).To(Equal(14))
 	t.Expect(itemCountWithType(iptables.ChainV6Typename)).To(Equal(14))
-	t.Expect(itemCountWithType(iptables.RuleV4Typename)).To(Equal(22))
-	t.Expect(itemCountWithType(iptables.RuleV6Typename)).To(Equal(21))
+	t.Expect(itemCountWithType(iptables.RuleV4Typename)).To(Equal(24))
+	t.Expect(itemCountWithType(iptables.RuleV6Typename)).To(Equal(23))
 	t.Expect(itemIsCreatedWithDescrSnippet("--dport 22 -j REJECT")).To(BeTrue())
+
+	// Check that the node_exporter port is blocked for non-local traffic
+	t.Expect(itemIsCreatedWithDescrSnippet("--dport 9100 -j REJECT")).To(BeTrue())
 
 	// Enable SSH access
 	gcp := types.DefaultConfigItemValueMap()

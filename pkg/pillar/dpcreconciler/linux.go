@@ -1707,6 +1707,35 @@ func (r *LinuxDpcReconciler) getIntendedFilterRules(gcp types.ConfigItemValueMap
 	inputV4Rules = append(inputV4Rules, allowLocalGuacamoleV4, blockNonLocalGuacamole)
 	inputV6Rules = append(inputV6Rules, allowLocalGuacamoleV6, blockNonLocalGuacamole)
 
+	// Allow local access to node exporter metrics (port 9100)
+	const (
+		localMetricsRuleLabel  = "Local Node Exporter Metrics"
+		remoteMetricsRuleLabel = "Remote Node Exporter Metrics"
+	)
+	allowLocalMetricsV4 := iptables.Rule{
+		RuleLabel:     localMetricsRuleLabel,
+		MatchOpts:     []string{"-p", "tcp", "-s", "127.0.0.1", "-d", "127.0.0.1", "--dport", "9100"},
+		Target:        "ACCEPT",
+		AppliedBefore: []string{remoteMetricsRuleLabel},
+		Description:   "Allow local access to node exporter metrics",
+	}
+	allowLocalMetricsV6 := iptables.Rule{
+		RuleLabel:     localMetricsRuleLabel,
+		MatchOpts:     []string{"-p", "tcp", "-s", "::1", "-d", "::1", "--dport", "9100"},
+		Target:        "ACCEPT",
+		AppliedBefore: []string{remoteMetricsRuleLabel},
+		Description:   "Allow local access to node exporter metrics",
+	}
+	blockRemoteMetrics := iptables.Rule{
+		RuleLabel:   remoteMetricsRuleLabel,
+		MatchOpts:   []string{"-p", "tcp", "--dport", "9100"},
+		Target:      "REJECT",
+		TargetOpts:  []string{"--reject-with", "tcp-reset"},
+		Description: "Block remote access to node exporter metrics",
+	}
+	inputV4Rules = append(inputV4Rules, allowLocalMetricsV4, blockRemoteMetrics)
+	inputV6Rules = append(inputV6Rules, allowLocalMetricsV6, blockRemoteMetrics)
+
 	// Allow/block SSH access.
 	gcpAllowSSH := gcp.GlobalValueString(types.SSHAuthorizedKeys) != ""
 	sshRule := iptables.Rule{
