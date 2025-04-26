@@ -26,6 +26,14 @@ consistent deployments.
 To modify how metrics are collected or adjust the exporter’s flags, edit the
 `CMD` in the `Dockerfile` or update bind mounts in build.yml.
 
+#### iptables rules
+
+To enhance security, EVE configures iptables rules to restrict access to the
+node exporter metrics endpoint. Only connections from localhost (127.0.0.1
+and ::1) are allowed to access TCP port 9100, while all remote access attempts
+to this port are explicitly rejected. This ensures that metrics are not exposed
+to the external network. It's done via DPCReconciler.
+
 ### Exposed Metrics Categories
 
 #### System Uptime
