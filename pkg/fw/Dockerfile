@@ -25,6 +25,10 @@ FROM build-base AS generic
 ENV NVIDIA_FW_TEGRA=${JETPACK5_DEB}
 ENV NVIDIA_FW_URL=${JETPACK5_URL}
 
+FROM build-base AS evaluation
+ENV NVIDIA_FW_TEGRA=${JETPACK5_DEB}
+ENV NVIDIA_FW_URL=${JETPACK5_URL}
+
 FROM build-base AS nvidia-jp5
 ENV NVIDIA_FW_TEGRA=${JETPACK5_DEB}
 ENV NVIDIA_FW_URL=${JETPACK5_URL}
@@ -133,7 +137,7 @@ FROM ucode-build-common as ucode-build-arm64
 FROM ucode-build-common as ucode-build-riscv64
 FROM ucode-build-${TARGETARCH} as ucode-build
 
-FROM lfedge/eve-alpine:0f2e0da38e30753c68410727a6cc269e57ff74f2 as compactor
+FROM lfedge/eve-alpine:0f2e0da38e30753c68410727a6cc269e57ff74f2 as compactor-common
 ENTRYPOINT []
 WORKDIR /
 COPY --from=build /lib/firmware/regulatory* /lib/firmware/
@@ -204,6 +208,17 @@ RUN if [ "$TARGETARCH" = "arm64" ]; then \
     echo "Freed space: ${freed_space} KB"; \
     fi
 
+
+FROM lfedge/eve-alpine:0f2e0da38e30753c68410727a6cc269e57ff74f2 as compactor-full
+# get all possible FW
+COPY --from=build /lib/firmware/ /lib/firmware/
+
+FROM compactor-common AS compactor-generic
+FROM compactor-common AS compactor-nvidia-jp5
+FROM compactor-common AS compactor-nvidia-jp6
+FROM compactor-full AS compactor-evaluation
+
+FROM compactor-${PLATFORM} as compactor
 
 FROM scratch
 ENTRYPOINT []
