@@ -82,7 +82,7 @@ jobs:
           # sadly, our build sometimes times out on network access
           # and running out of disk space: re-trying for 3 times
           for i in 1 2 3; do
-             if make -j $(getconf _NPROCESSORS_ONLN) -e V=1 PLATFORM=${{ matrix.platform }} LINUXKIT_PKG_TARGET=push PRUNE=1 pkgs; then
+             if make -e V=1 PLATFORM=${{ matrix.platform }} LINUXKIT_PKG_TARGET=push PRUNE=1 pkgs; then
                 SUCCESS=true
                 break
              else
@@ -137,13 +137,13 @@ jobs:
           fetch-depth: 0
       - uses: ./.github/actions/run-make
         with:
-          command: "-j $(getconf _NPROCESSORS_ONLN) V=1 HV=${{ matrix.hv }} ZARCH=${{ matrix.arch }} PLATFORM=${{ matrix.platform }} LINUXKIT_PKG_TARGET=push eve"
+          command: "V=1 HV=${{ matrix.hv }} ZARCH=${{ matrix.arch }} PLATFORM=${{ matrix.platform }} LINUXKIT_PKG_TARGET=push eve"
           dockerhub-token: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
           dockerhub-account: ${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}
       - uses: ./.github/actions/run-make
         if: matrix.arch != 'riscv64'
         with:
-          command: "-j $(getconf _NPROCESSORS_ONLN) V=1 HV=${{ matrix.hv }} ZARCH=${{ matrix.arch }} LINUXKIT_PKG_TARGET=push sbom collected_sources compare_sbom_collected_sources publish_sources"
+          command: "V=1 HV=${{ matrix.hv }} ZARCH=${{ matrix.arch }} LINUXKIT_PKG_TARGET=push sbom collected_sources compare_sbom_collected_sources publish_sources"
           dockerhub-token: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
           dockerhub-account: ${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}
 
@@ -157,7 +157,7 @@ jobs:
           fetch-depth: 0
       - uses: ./.github/actions/run-make
         with:
-          command: "-j $(getconf _NPROCESSORS_ONLN) V=1 LINUXKIT_PKG_TARGET=manifest pkgs"
+          command: "V=1 LINUXKIT_PKG_TARGET=manifest pkgs"
           dockerhub-token: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
           dockerhub-account: ${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}
 
