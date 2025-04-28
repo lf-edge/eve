@@ -82,11 +82,21 @@ def fetch_latest_commits_from_github(user, user_token, verbose=False):
                 repo_url = response.links["next"]["url"]
             else:
                 break
+        elif response.status_code == 401:
+            print(Fore.RED + Style.BRIGHT + "Error: Unauthorized (401). Your GitHub token is invalid or"
+                                            " expired.")
+            print("Please enter a new GitHub personal access token.")
+            if os.path.exists(config_file_path):
+                os.remove(config_file_path)
+            new_token = get_github_token_from_user()
+            write_github_token_to_config(new_token)
+            # Update session headers and retry
+            session.headers.update({"Authorization": f"token {new_token}"})
+            continue  # Retry the request with the new token
         else:
             print(Fore.RED + Style.BRIGHT + "Error:", response.status_code, response.text)
             sys.exit(1)
     return new_commits
-
 
 def is_valid_branch_format(branch_name):
     """
