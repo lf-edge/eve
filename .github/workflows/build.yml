@@ -82,7 +82,7 @@ jobs:
           key: linuxkit-${{ matrix.arch }}-${{ github.event.pull_request.head.sha }}-${{ matrix.platform }}
       - name: Build packages ${{ matrix.os }} for ${{ matrix.platform }}
         run: |
-          make -j $(getconf _NPROCESSORS_ONLN) V=1 PRUNE=1 PLATFORM=${{ matrix.platform }} ZARCH=${{ matrix.arch }} pkgs
+          make V=1 PRUNE=1 PLATFORM=${{ matrix.platform }} ZARCH=${{ matrix.arch }} pkgs
       - name: Post package report
         run: |
           echo Disk usage
@@ -163,7 +163,7 @@ jobs:
           fail-on-cache-miss: true
       - name: load images we need from linuxkit cache into docker
         run: |
-          make -j $(getconf _NPROCESSORS_ONLN) cache-export-docker-load-all
+          make cache-export-docker-load-all
       - name: clear linuxkit cache so we can load for target arch
         if: ${{ steps.arch_runner_equals_matrix.outputs.matched != 'true' }}
         run: |
@@ -188,7 +188,7 @@ jobs:
 
       - name: Build EVE ${{ matrix.hv }}-${{ matrix.arch }}-${{ matrix.platform }}
         run: |
-          make -j $(getconf _NPROCESSORS_ONLN) V=1 ROOTFS_VERSION="$VERSION" PLATFORM=${{ matrix.platform }} HV=${{ matrix.hv }} ZARCH=${{ matrix.arch }} pkgs eve  # note that this already loads it into docker
+          make V=1 ROOTFS_VERSION="$VERSION" PLATFORM=${{ matrix.platform }} HV=${{ matrix.hv }} ZARCH=${{ matrix.arch }} pkgs eve  # note that this already loads it into docker
       - name: Post eve build report
         run: |
           echo Disk usage
@@ -199,7 +199,7 @@ jobs:
           docker system df -v
       - name: Export docker container
         run: |
-          make -j $(getconf _NPROCESSORS_ONLN) cache-export ZARCH=${{ matrix.arch }} IMAGE=lfedge/eve:$VERSION-${{ matrix.hv }} OUTFILE=eve-${{ matrix.hv }}-${{ matrix.arch }}-${{ matrix.platform }}.tar IMAGE_NAME=$TAG-${{ matrix.hv }}-${{ matrix.arch }}
+          make cache-export ZARCH=${{ matrix.arch }} IMAGE=lfedge/eve:$VERSION-${{ matrix.hv }} OUTFILE=eve-${{ matrix.hv }}-${{ matrix.arch }}-${{ matrix.platform }}.tar IMAGE_NAME=$TAG-${{ matrix.hv }}-${{ matrix.arch }}
       - name: Upload EVE ${{ matrix.hv }}-${{ matrix.arch }}-${{ matrix.platform }}
         uses: actions/upload-artifact@v4
         with:
