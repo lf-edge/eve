@@ -419,3 +419,45 @@ curl -X GET http://169.254.169.254/eve/v1/patch/download/699fbdb2-e455-448f-84f5
 
 %base64-encoded file contents%
 ```
+
+### Prometheus '/metrics' endpoint
+
+The /metrics endpoint provides access to system-level metrics from the EVE host where your EdgeApp is running.
+These metrics are sourced directly from a Node Exporter instance, expected to be available on localhost:9100 within the EVE host.
+
+When a client inside the EdgeApp makes a request to '/metrics', the EdgeApp transparently forwards the request to the Node Exporter
+and returns the response. The metrics are in Prometheus exposition format, making them compatible with Prometheus scraping and monitoring tools.
+
+>About Prometheus:
+[Prometheus](https://prometheus.io/) is an open-source systems monitoring and alerting toolkit. It collects and stores metrics as time series data, allowing users to query, visualize, and create alerts based on those metrics.
+
+#### Key Details
+
+- Target: Forwards all traffic internally to localhost:9100 on the EVE host.
+- Metrics Format: Prometheus-compatible plain text format.
+- Metrics Scope: Host-level metrics (not EdgeApp-specific).
+- Availability: Exposed within the EdgeApp.
+
+#### Rate Limiting
+
+To protect the system from overload, a *rate limiter* per client IP address is enforced:
+
+- Allowed Rate: 1 request per second.
+- Burst Capacity: Up to 10 requests can be handled immediately before rate limiting applies.
+- Idle Timeout: 4 minutes (if no requests are made from an IP for 4 minutes, the rate limit state is reset).
+
+Exceeding the allowed rate may result in the request being temporarily rejected with an appropriate HTTP error code (e.g., `429 Too Many Requests`).
+
+#### Usage Example
+
+```bash
+curl -X GET http://169.254.169.254/metrics
+```
+
+This command retrieves current host system metrics.
+
+#### Notes
+
+- Ensure that the Node Exporter service is running and accessible at localhost:9100 on the EVE host for this endpoint to function correctly.
+
+- This endpoint is intended for observability and monitoring purposes. Avoid frequent polling to respect rate limits and ensure system stability.
