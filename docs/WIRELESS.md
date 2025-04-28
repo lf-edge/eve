@@ -93,6 +93,23 @@ toggling roaming on or off, designating preferred network operators, and establi
 of preference for Radio Access Technologies (RATs). This comprehensive API empowers users to tailor
 cellular connectivity settings to suit various network scenarios and SIM card configurations.
 
+#### LTE Attach configuration
+
+LTE connection consists of two IP bearers, the initial (aka attach) EPS bearer and the default
+EPS bearer. Device must first establish the initial bearer (LTE attach procedure, which
+ModemManager shows as a transition from the `enabled`/`searching` to `registered` modem state)
+and then it connects to a default bearer (transition from `registered` to `connected`).
+Both bearers require PDP (Packet Data Protocol) context settings (`APN`, `ip-type`, potentially
+`username`/`password`, etc.). Settings for the initial bearer are typically provided by the modem
+profiles or the network, while settings for the default bearer are user-configured.
+However, there are cases, especially with private cellular networks or when changing SIM card
+and moving to another operator for which the modem was not pre-configured, where the modem
+may not provide the correct APN settings for the attach procedure and it will fail to register
+into the network. In these cases, the user can configure PDP settings within the `CellularAccessPoint`
+for the attach bearer (see the `attach_*` protobuf fields). All of these fields are optional.
+If they are not specified, EVE will not send any attach bearer configuration into the modem,
+leaving it to the modem profiles or the network to determine the appropriate settings.
+
 ### Cellular info and metrics
 
 The list of all cellular modems visible to the host (incl. the unused ones, without network config attached),
