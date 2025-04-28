@@ -11,6 +11,19 @@ From the EVE itself, you can access these metrics at:
 https://localhost:9100/metrics
 ```
 
+From an application instance, you can access these metrics at:
+
+```text
+http://169.254.169.254/metrics
+```
+
+This IP address is reachable from within any container or VM that EVE runs
+through an interface which is connected to a local network instance.
+
+The metrics endpoint behaves like a standard Prometheus target. You can consume
+it from any Prometheus-compatible agent, library, or application. This endpoint
+contains a request limiter of 1 rps with a burst of 10 for each IP address.
+
 ### Integration into EVE
 
 `node_exporter` is defined as a service in `rootfs.yml.in`. The container
@@ -25,6 +38,9 @@ consistent deployments.
 
 To modify how metrics are collected or adjust the exporter’s flags, edit the
 `CMD` in the `Dockerfile` or update bind mounts in build.yml.
+
+Regarding the metadata server usage for exposing metrics to applications, you
+can find the documentation in the [metadata server doc](./ECO-METADATA.md).
 
 #### iptables rules
 
