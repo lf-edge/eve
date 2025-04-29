@@ -1,13 +1,15 @@
-diff -r -u ../orig/dnsmasq-2.78/src/rfc2131.c src/rfc2131.c
---- a/src/rfc2131.c 2017-10-02 18:43:51.000000000 +0530
-+++ b/src/rfc2131.c	2020-04-09 15:31:15.000000000 +0530
-@@ -1026,11 +1026,10 @@
+diff --git a/src/rfc2131.c b/src/rfc2131.c
+index c54c255..dad70df 100644
+--- a/src/rfc2131.c
++++ b/src/rfc2131.c
+@@ -1125,11 +1125,10 @@ size_t dhcp_reply(struct dhcp_context *context, char *iface_name, int int_index,
  		  int len;
  		  unsigned char *mac = extended_hwaddr(ltmp->hwaddr_type, ltmp->hwaddr_len,
  						       ltmp->hwaddr, ltmp->clid_len, ltmp->clid, &len);
 -		  my_syslog(MS_DHCP | LOG_WARNING, _("not using configured address %s because it is leased to %s"),
+-			    daemon->addrbuff, print_mac(daemon->namebuff, mac, len));
 +		  my_syslog(MS_DHCP | LOG_WARNING, _("pruning configured address %s because it is leased to %s"),
- 			    addrs, print_mac(daemon->namebuff, mac, len));
++			   daemon->addrbuff, print_mac(daemon->namebuff, mac, len));
 +		  lease_prune(ltmp, now);
  		}
 -	      else
@@ -15,11 +17,13 @@ diff -r -u ../orig/dnsmasq-2.78/src/rfc2131.c src/rfc2131.c
  		  struct dhcp_context *tmp;
  		  for (tmp = context; tmp; tmp = tmp->current)
  		    if (context->router.s_addr == config->addr.s_addr)
-@@ -1042,7 +1041,6 @@
- 		    my_syslog(MS_DHCP | LOG_WARNING, _("not using configured address %s because it was previously declined"), addrs);
+@@ -1141,7 +1140,6 @@ size_t dhcp_reply(struct dhcp_context *context, char *iface_name, int int_index,
+		    my_syslog(MS_DHCP | LOG_WARNING, _("not using configured address %s because it was previously declined"), daemon->addrbuff);
  		  else
  		    conf = config->addr;
 -		}
  	    }
  	  
  	  if (conf.s_addr)
+--
+2.49.0

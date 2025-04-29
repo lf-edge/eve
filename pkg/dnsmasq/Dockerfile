@@ -2,18 +2,18 @@
 # SPDX-License-Identifier: Apache-2.0
 
 FROM lfedge/eve-alpine:82df60e43ab9f8c935584b8c7b4d0a4b0271d608 as build
-ENV BUILD_PKGS gcc make patch libc-dev linux-headers tar
+ENV BUILD_PKGS gcc make patch libc-dev linux-headers tar xz
 RUN eve-alpine-deploy.sh
 
-ENV DNSMASQ_VERSION 2.84
+ENV DNSMASQ_VERSION 2.91
 
 RUN mkdir -p /dnsmasq/patches
 
-COPY dnsmasq-${DNSMASQ_VERSION}.tar.gz /dnsmasq
+COPY dnsmasq-${DNSMASQ_VERSION}.tar.xz /dnsmasq
 COPY patches/* /dnsmasq/patches/
 
 WORKDIR /dnsmasq
-RUN tar xvzf dnsmasq-${DNSMASQ_VERSION}.tar.gz
+RUN tar xvf dnsmasq-${DNSMASQ_VERSION}.tar.xz
 
 WORKDIR /dnsmasq/dnsmasq-${DNSMASQ_VERSION}
 RUN set -e && for patch in ../patches/*.patch; do \
