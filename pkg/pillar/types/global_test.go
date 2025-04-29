@@ -231,6 +231,9 @@ func TestNewConfigItemSpecMap(t *testing.T) {
 		GoroutineLeakDetectionKeepStatsHours,
 		GoroutineLeakDetectionCooldownMinutes,
 		TUIMonitorLogLevel,
+		MsrvPrometheusMetricsRequestPerSecond,
+		MsrvPrometheusMetricsBurst,
+		MsrvPrometheusMetricsIdleTimeoutSeconds,
 	}
 	if len(specMap.GlobalSettings) != len(gsKeys) {
 		t.Errorf("GlobalSettings has more (%d) than expected keys (%d)",

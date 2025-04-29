@@ -42,6 +42,22 @@ To modify how metrics are collected or adjust the exporter’s flags, edit the
 Regarding the metadata server usage for exposing metrics to applications, you
 can find the documentation in the [metadata server doc](./ECO-METADATA.md).
 
+#### Limits Configuration
+
+The metrics are exposed with a limit of 1 request per second (rps) and a burst of 10
+for each IP address. This is done to prevent overloading the system with too many
+requests.
+
+The limits can be configured with the following global configuration options:
+
+```text
+msrv.prometheus.metrics.rps # Rate limit for requests per second
+msrv.prometheus.metrics.burst # Burst limit for requests
+msrv.prometheus.metrics.idletimeout.seconds # Timeout for requests
+```
+
+You can find description of these options in the [EVE configuration doc](./CONFIG-PROPERTIES.md).
+
 #### iptables rules
 
 To enhance security, EVE configures iptables rules to restrict access to the
