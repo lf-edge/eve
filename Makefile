@@ -396,6 +396,7 @@ test: $(LINUXKIT) test-images-patches | $(DIST)
 	make -C pkg/pillar test
 	cp pkg/pillar/results.json $(DIST)/
 	cp pkg/pillar/results.xml $(DIST)/
+	make -C pkg/dnsmasq test
 	$(QUIET): $@: Succeeded
 
 # wrap command into DOCKER_GO and propagate it to the pillar's Makefile
