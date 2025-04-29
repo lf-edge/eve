@@ -67,11 +67,7 @@ const MetaDataServerIP = "169.254.169.254"
 // We forward /metrics endpoint to this URL
 // we assume that NodeExporter will be serving on default port 9100
 const (
-	NodeExporterMetricsURL            = "http://localhost:9100"
-	MetricsRouteRequestPerSecondLimit = 1
-	MetricsRouteBurstLimit            = 10
-	// Clean up idle IP addresses
-	MetricsRouteIdleTimeout = 4 * time.Minute
+	NodeExporterMetricsURL = "http://localhost:9100"
 )
 
 // Msrv struct contains all PubSubs which are needed to compose REST APIs
@@ -142,6 +138,8 @@ type Msrv struct {
 	peUsagePersist      *persistcache.PersistCache
 
 	pubPatchEnvelopesUsage pubsub.Publication
+
+	pmc *PrometheusMetricsConf
 }
 
 // Run starts up agent
@@ -168,6 +166,9 @@ func Run(ps *pubsub.PubSub, logger *logrus.Logger, log *base.LogObject, argument
 // but because of how memdriver works, we want them to be persisted
 func (msrv *Msrv) Init(cachePath string, persist bool) (err error) {
 	msrv.patchEnvelopesUsage = generics.NewLockedMap[string, types.PatchEnvelopeUsage]()
+
+	// Initialize the metrics configuration
+	msrv.pmc = defaultPrometheusMetricsConf()
 
 	if err = msrv.initPublications(); err != nil {
 		return err
@@ -665,6 +666,9 @@ func (msrv *Msrv) Run(ctx context.Context) (err error) {
 		case change := <-msrv.subContentTreeStatus.MsgChan():
 			msrv.subContentTreeStatus.ProcessChange(change)
 
+		case change := <-msrv.subGlobalConfig.MsgChan():
+			msrv.subGlobalConfig.ProcessChange(change)
+
 		case <-ctx.Done():
 			return nil
 
@@ -725,7 +729,7 @@ func (msrv *Msrv) MakeMetadataHandler() http.Handler {
 
 	target, _ := url.Parse(NodeExporterMetricsURL)
 	r.Route("/metrics", func(r chi.Router) {
-		r.Use(withRateLimiterPerIP(MetricsRouteRequestPerSecondLimit, MetricsRouteBurstLimit, MetricsRouteIdleTimeout))
+		r.Use(msrv.withRateLimiterPerIP())
 		r.HandleFunc("/", msrv.reverseProxy(target))
 	})
 

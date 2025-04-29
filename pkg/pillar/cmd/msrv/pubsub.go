@@ -479,6 +479,10 @@ func (srv *Msrv) handleGlobalConfigImpl(ctxArg interface{}, key string,
 			}
 			srv.metricInterval = metricInterval
 		}
+		// Set up rate limiting for prometheus metrics
+		srv.pmc.RPS = int(gcp.GlobalValueInt(types.MsrvPrometheusMetricsRequestPerSecond))
+		srv.pmc.Burst = int(gcp.GlobalValueInt(types.MsrvPrometheusMetricsBurst))
+		srv.pmc.IdleTimeout = time.Duration(gcp.GlobalValueInt(types.MsrvPrometheusMetricsIdleTimeoutSeconds)) * time.Second
 	}
 	srv.Log.Functionf("handleGlobalConfigImpl done for %s", key)
 }

@@ -374,6 +374,13 @@ const (
 
 	// TUIMonitorLogLevel: log level for TUI monitor
 	TUIMonitorLogLevel GlobalSettingKey = "debug.tui.loglevel"
+
+	// MsrvPrometheusMetricsRequestPerSecond: limit the number of requests per second
+	MsrvPrometheusMetricsRequestPerSecond GlobalSettingKey = "msrv.prometheus.metrics.rps"
+	// MsrvPrometheusMetricsBurst: limit the burst of requests
+	MsrvPrometheusMetricsBurst GlobalSettingKey = "msrv.prometheus.metrics.burst"
+	// MsrvPrometheusMetricsIdleTimeoutSeconds: idle timeout for the connection
+	MsrvPrometheusMetricsIdleTimeoutSeconds GlobalSettingKey = "msrv.prometheus.metrics.idletimeout.seconds"
 )
 
 // AgentSettingKey - keys for per-agent settings
@@ -1054,6 +1061,11 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddIntItem(NetDumpTopicMaxCount, 10, 1, 0xFFFFFFFF)
 	configItemSpecMap.AddBoolItem(NetDumpDownloaderPCAP, false)
 	configItemSpecMap.AddBoolItem(NetDumpDownloaderHTTPWithFieldValue, false)
+
+	// Add Metadata Server Prometheus metrics limits settings
+	configItemSpecMap.AddIntItem(MsrvPrometheusMetricsRequestPerSecond, 1, 1, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(MsrvPrometheusMetricsBurst, 10, 1, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(MsrvPrometheusMetricsIdleTimeoutSeconds, 4*60, 1, 0xFFFFFFFF)
 
 	return configItemSpecMap
 }

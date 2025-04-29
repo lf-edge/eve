@@ -72,6 +72,9 @@
 | log.dedup.window.size | integer | 0 | The size of the log deduplicator's sliding window (in number of messages). See logging [docs](LOGGING.md#log-filtering-counting-and-deduplication) for details. If the window size is set to 0 (default), no deduplication is performed. |
 | log.count.filenames | string | "" | Comma-separated list of log's filenames to be counted and logged once instead of logging them every time. Example `/my-pkg/main.go:123,/other-pkg/code.go:42`. Empty string `""` doesn't filter anything out, however a single comma `","` will filter out all entries that don't have a filename field set (e.g. logs not coming from components written in Golang). See logging [docs](LOGGING.md#log-filtering-counting-and-deduplication) for details. |
 | log.filter.filenames | string | "" | Comma-separated list of log's filenames to be filtered out. Example `/my-pkg/main.go:123,/other-pkg/code.go:42`. Empty string `""` doesn't filter anything out, however a single comma `","` will filter out all entries that don't have a filename field set (e.g. logs not coming from components written in Golang). See logging [docs](LOGGING.md#log-filtering-counting-and-deduplication) for details. |
+| msrv.prometheus.metrics.rps | integer | 1 | The maximum number of requests per second (RPS) for the Prometheus metrics endpoint. |
+| msrv.prometheus.metrics.burst | integer | 10 | The maximum burst size for the Prometheus metrics endpoint. |
+| msrv.prometheus.metrics.idletimeout.seconds | integer | 240 | The idle timeout in seconds for the Prometheus metrics endpoint. If the connection is idle for this duration, the limit is reset. |
 
 ## Log levels
 
