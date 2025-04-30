@@ -743,9 +743,9 @@ ifdef LIVE_UPDATE
 # Don't regenerate the whole image if tar was changed, but
 # do generate if does not exist. qcow2 target will handle
 # the rest
-$(ROOTFS_IMG): | $(ROOTFS_TAR) $(INSTALLER)
+$(ROOTFS_IMG): pkg/mkrootfs-$(ROOTFS_FORMAT) | $(ROOTFS_TAR) $(INSTALLER)
 else
-$(ROOTFS_IMG): $(ROOTFS_TAR) | $(INSTALLER)
+$(ROOTFS_IMG): pkg/mkrootfs-$(ROOTFS_FORMAT) $(ROOTFS_TAR) | $(INSTALLER)
 endif
 	$(QUIET): $@: Begin
 	./tools/makerootfs.sh imagefromtar -t $(ROOTFS_TAR) -i $@ -f $(ROOTFS_FORMAT) -a $(ZARCH)
