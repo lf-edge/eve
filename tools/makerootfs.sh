@@ -161,7 +161,8 @@ done
 
 EVE="$(cd "$(dirname "$0")" && pwd)/../"
 PATH="$EVE/build-tools/bin:$PATH"
-MKROOTFS_TAG="$(linuxkit pkg show-tag "$EVE/pkg/mkrootfs-${format}")"
+# shellcheck disable=SC2086
+MKROOTFS_TAG="$(linuxkit pkg ${LINUXKIT_ORG_TARGET} show-tag "$EVE/pkg/mkrootfs-${format}")"
 IMAGE="$(cd "$(dirname "$imgfile")" && pwd)/$(basename "$imgfile")"
 
 [ -n "$execdir" ] && cd "$execdir"
