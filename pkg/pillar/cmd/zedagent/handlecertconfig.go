@@ -187,7 +187,8 @@ func handleEdgeNodeCertDelete(ctxArg interface{}, key string,
 func controllerCertsTask(ctx *zedagentContext, triggerCerts <-chan struct{}) {
 
 	log.Functionln("starting controller certificate fetch task")
-	retry := !getCertsFromController(ctx, "initial")
+	success := getCertsFromController(ctx, "initial")
+	retry := !success
 
 	wdName := agentName + "ccerts"
 
@@ -213,7 +214,6 @@ func controllerCertsTask(ctx *zedagentContext, triggerCerts <-chan struct{}) {
 	ctx.getconfigCtx.certTickerHandle = periodicTicker
 
 	for {
-		success := true
 		select {
 		case <-triggerCerts:
 			start := time.Now()
