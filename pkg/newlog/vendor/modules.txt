@@ -305,7 +305,7 @@ github.com/leodido/go-urn
 # github.com/lf-edge/edge-containers v0.0.0-20240207093504-5dfda0619b80
 ## explicit; go 1.15
 github.com/lf-edge/edge-containers/pkg/resolver
-# github.com/lf-edge/eve-api/go v0.0.0-20250310225738-c77ab6f8c73a
+# github.com/lf-edge/eve-api/go v0.0.0-20250424203521-3735e5d1ea50
 ## explicit; go 1.20
 github.com/lf-edge/eve-api/go/auth
 github.com/lf-edge/eve-api/go/certs
@@ -314,10 +314,8 @@ github.com/lf-edge/eve-api/go/evecommon
 github.com/lf-edge/eve-api/go/info
 github.com/lf-edge/eve-api/go/logs
 github.com/lf-edge/eve-api/go/metrics
+github.com/lf-edge/eve-api/go/nestedappinstancemetrics
 github.com/lf-edge/eve-api/go/profile
-# github.com/lf-edge/eve-tools/runtimemetrics/go v0.0.0-20250320220227-713ea9d6c6d2
-## explicit; go 1.22.2
-github.com/lf-edge/eve-tools/runtimemetrics/go/nestedappinstancemetrics
 # github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20240315102754-0f6d1f182e0d
 ## explicit; go 1.20
 github.com/lf-edge/eve/pkg/kube/cnirpc
