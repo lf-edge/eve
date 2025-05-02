@@ -1,6 +1,7 @@
 module github.com/lf-edge/eve/pkg/pillar
 
-go 1.23
+go 1.23.1
+
 toolchain go1.24.1
 
 require (
@@ -42,7 +43,8 @@ require (
 	github.com/miekg/dns v1.1.43
 	github.com/moby/sys/mountinfo v0.7.1
 	github.com/multiplay/go-edac v1.0.1
-	github.com/onsi/gomega v1.29.0
+	github.com/nkval/go-nkv v0.0.0-20250429104035-28081f691ca8
+	github.com/onsi/gomega v1.36.0
 	github.com/opencontainers/go-digest v1.0.0
 	github.com/opencontainers/image-spec v1.1.0
 	github.com/opencontainers/runtime-spec v1.1.0
@@ -187,7 +189,7 @@ require (
 	golang.org/x/sync v0.11.0 // indirect
 	golang.org/x/term v0.29.0 // indirect
 	golang.org/x/text v0.22.0 // indirect
-	golang.org/x/time v0.5.0 // indirect
+	golang.org/x/time v0.5.0
 	google.golang.org/api v0.160.0 // indirect
 	google.golang.org/appengine v1.6.8 // indirect
 	google.golang.org/genproto v0.0.0-20240205150955-31a09d347014 // indirect
@@ -256,6 +258,8 @@ require (
 )
 
 replace (
+
+	github.com/nkval/go-nkv => /home/pabramov/go/src/github.com/uncleDecart/go-nkv
 	github.com/openshift/api => github.com/openshift/api v0.0.0-20210105115604-44119421ec6b
 
 	k8s.io/api => k8s.io/api v0.26.3
