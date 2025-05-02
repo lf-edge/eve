@@ -1,3 +1,5 @@
+# Copyright (c) 2025, Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
 ---
 name: Publish
 on:  # yamllint disable-line rule:truthy
@@ -15,7 +17,8 @@ on:  # yamllint disable-line rule:truthy
       - "[0-9]+.[0-9]+.[0-9]+-rc[0-9]+"
 
 jobs:
-  packages:
+  # 1) non-ARM packages, fully parallel
+  packages-non-arm:
     if: github.event.repository.full_name == 'lf-edge/eve'
     runs-on: ${{ matrix.os }}
     strategy:
@@ -25,6 +28,71 @@ jobs:
           - os: ubuntu-22.04
             arch: amd64
             platform: "generic"
+          - os: ubuntu-latest
+            arch: riscv64
+            platform: "generic"
+    steps:
+      - name: Starting Report
+        run: |
+          echo Git Ref: ${{ github.ref }}
+          echo GitHub Event: ${{ github.event_name }}
+          echo Disk usage
+          df -h
+          echo Memory
+          free -m
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Force fetch annotated tags (workaround)
+        run: |
+          git fetch --force --tags
+      - name: Determine architecture prefix and ref
+        env:
+          REF: ${{ github.ref }}
+        run: |
+          echo "ARCH=${{ matrix.arch }}" >> "$GITHUB_ENV"
+          echo "TAG=$(echo "$REF" | sed -e 's#^.*/##' -e 's#master#snapshot#' -e 's#main#snapshot#')" >> "$GITHUB_ENV"
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}
+          password: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
+      - name: Build packages
+        run: |
+          SUCCESS=
+          for i in 1 2 3; do
+            if make -e V=1 PLATFORM=${{ matrix.platform }} LINUXKIT_PKG_TARGET=push PRUNE=1 pkgs; then
+              SUCCESS=true
+              break
+            else
+              docker rmi -f $(docker image ls -q) || :
+              docker system prune -f || :
+            fi
+          done
+          if [ -z "$SUCCESS" ]; then echo "::error::failed to build and push packages" && exit 1; fi
+      - name: Post package report
+        run: |
+          echo Disk usage
+          df -h
+          echo Memory
+          free -m
+          docker system df
+          docker system df -v
+      - name: Clean
+        run: |
+          make clean
+          docker system prune -f -a
+          rm -rf ~/.linuxkit
+
+  # 2) ARM packages, serialized
+  packages-arm:
+    if: github.event.repository.full_name == 'lf-edge/eve'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        include:
           - os: buildjet-4vcpu-ubuntu-2204-arm
             arch: arm64
             platform: "generic"
@@ -34,9 +102,6 @@ jobs:
           - os: buildjet-4vcpu-ubuntu-2204-arm
             arch: arm64
             platform: "nvidia-jp6"
-          - os: ubuntu-latest
-            arch: riscv64
-            platform: "generic"
     steps:
       - name: Starting Report
         run: |
@@ -109,11 +174,10 @@ jobs:
           docker system prune -f -a
           rm -rf ~/.linuxkit
 
-  # eve composition can run as a separate job, even on a separate runner, because the packages job
-  # published everything. Which means all images are already on the OCI registry.
+  # 3) downstream jobs depend on both package jobs
   eve:
     if: github.event.repository.full_name == 'lf-edge/eve'
-    needs: packages
+    needs: [packages-non-arm, packages-arm]
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -149,8 +213,8 @@ jobs:
 
   manifest:
     if: github.event.repository.full_name == 'lf-edge/eve'
+    needs: [packages-non-arm, packages-arm]
     runs-on: ubuntu-latest
-    needs: packages
     steps:
       - uses: actions/checkout@v4
         with:
