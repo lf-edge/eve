@@ -327,7 +327,7 @@ PARSE_PKGS=$(if $(strip $(EVE_HASH)),EVE_HASH=)$(EVE_HASH) DOCKER_ARCH_TAG=$(DOC
 LINUXKIT=$(BUILDTOOLS_BIN)/linuxkit
 # linuxkit version. This **must** be a published semver version so it can be downloaded already compiled from
 # the release page at https://github.com/linuxkit/linuxkit/releases
-LINUXKIT_VERSION=v1.5.3
+LINUXKIT_VERSION=v1.6.0
 LINUXKIT_SOURCE=https://github.com/linuxkit/linuxkit
 LINUXKIT_OPTS=$(if $(strip $(EVE_HASH)),--hash) $(EVE_HASH) $(if $(strip $(EVE_REL)),--release) $(EVE_REL)
 LINUXKIT_PKG_TARGET=build
