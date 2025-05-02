@@ -25,7 +25,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/cipher"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
-	"github.com/lf-edge/eve/pkg/pillar/pubsub/socketdriver"
+	"github.com/lf-edge/eve/pkg/pillar/pubsub/nkvdriver"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	"github.com/lf-edge/eve/pkg/wwan/mmagent/mmdbus"
@@ -189,7 +189,7 @@ func (a *MMAgent) AddAgentSpecificCLIFlags(flagSet *flag.FlagSet) {
 func (a *MMAgent) Init() (err error) {
 	a.logger, a.log = agentlog.Init(agentName)
 	a.ps = pubsub.New(
-		&socketdriver.SocketDriver{Logger: a.logger, Log: a.log},
+		nkvdriver.NewNkvDriver("", agentName),
 		a.logger, a.log)
 	arguments := os.Args[1:]
 	agentbase.Init(a, a.logger, a.log, agentName,

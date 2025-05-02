@@ -48,17 +48,17 @@ func TestHandleModify(t *testing.T) {
 
 	created := false
 	modified := false
-	subCreateHandler := func(ctxArg interface{}, key string, status interface{}) {
+	subCreateHandler := func(ctxArg any, key string, status any) {
 		created = true
 	}
-	subModifyHandler := func(ctxArg interface{}, key string, status interface{}, oldStatus interface{}) {
+	subModifyHandler := func(ctxArg any, key string, status any, oldStatus any) {
 		modified = true
 	}
 
 	testMatrix := map[string]struct {
 		ctxArg         *SubscriptionImpl
 		key            string
-		item           interface{}
+		item           any
 		modifyHandler  SubModifyHandler
 		createHandler  SubCreateHandler
 		expectedCreate bool
