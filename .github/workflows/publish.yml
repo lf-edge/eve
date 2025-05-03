@@ -79,9 +79,11 @@ jobs:
           docker system df
           docker system df -v
       - name: Clean
+        if: ${{ always() }}
         run: |
           make clean
           docker system prune -f -a
+          docker rm -f $(docker ps -aq) && docker volume rm -f $(docker volume ls -q)
           rm -rf ~/.linuxkit
 
   # 2) ARM packages, serialized
@@ -169,9 +171,11 @@ jobs:
           docker system df
           docker system df -v
       - name: Clean
+        if: ${{ always() }}
         run: |
           make clean
           docker system prune -f -a
+          docker rm -f $(docker ps -aq) && docker volume rm -f $(docker volume ls -q)
           rm -rf ~/.linuxkit
 
   # 3) downstream jobs depend on both package jobs
@@ -210,6 +214,13 @@ jobs:
           command: "V=1 HV=${{ matrix.hv }} ZARCH=${{ matrix.arch }} LINUXKIT_PKG_TARGET=push sbom collected_sources compare_sbom_collected_sources publish_sources"
           dockerhub-token: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
           dockerhub-account: ${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}
+      - name: Clean
+        if: ${{ always() }}
+        run: |
+          make clean
+          docker system prune -f -a
+          docker rm -f $(docker ps -aq) && docker volume rm -f $(docker volume ls -q)
+          rm -rf ~/.linuxkit
 
   manifest:
     if: github.event.repository.full_name == 'lf-edge/eve'
