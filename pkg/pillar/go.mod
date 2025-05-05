@@ -1,6 +1,7 @@
 module github.com/lf-edge/eve/pkg/pillar
 
-go 1.23
+go 1.23.0
+
 toolchain go1.24.1
 
 require (
@@ -32,7 +33,7 @@ require (
 	github.com/jaypipes/ghw v0.8.0
 	github.com/k8snetworkplumbingwg/network-attachment-definition-client v1.5.0
 	github.com/lf-edge/edge-containers v0.0.0-20240207093504-5dfda0619b80
-	github.com/lf-edge/eve-api/go v0.0.0-20250424203521-3735e5d1ea50
+	github.com/lf-edge/eve-api/go v0.0.0-20250502212418-fc1e3bad8f0f
 	github.com/lf-edge/eve-libs v0.0.0-20250313200311-28f858e8e99b
 	github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20240315102754-0f6d1f182e0d
 	github.com/lf-edge/go-qemu v0.0.0-20231121152149-4c467eda0c56
@@ -186,7 +187,7 @@ require (
 	golang.org/x/sync v0.11.0 // indirect
 	golang.org/x/term v0.29.0 // indirect
 	golang.org/x/text v0.22.0 // indirect
-	golang.org/x/time v0.5.0 // indirect
+	golang.org/x/time v0.5.0
 	google.golang.org/api v0.160.0 // indirect
 	google.golang.org/appengine v1.6.8 // indirect
 	google.golang.org/genproto v0.0.0-20240205150955-31a09d347014 // indirect
