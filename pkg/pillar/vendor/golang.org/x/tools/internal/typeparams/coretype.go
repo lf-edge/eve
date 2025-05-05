@@ -108,15 +108,15 @@ func CoreType(T types.Type) types.Type {
 //
 // _NormalTerms makes no guarantees about the order of terms, except that it
 // is deterministic.
-func _NormalTerms(typ types.Type) ([]*types.Term, error) {
+func _NormalTerms(typ types.Type) ([]*Term, error) {
 	switch typ := typ.(type) {
-	case *types.TypeParam:
+	case *TypeParam:
 		return StructuralTerms(typ)
-	case *types.Union:
+	case *Union:
 		return UnionTermSet(typ)
 	case *types.Interface:
 		return InterfaceTermSet(typ)
 	default:
-		return []*types.Term{types.NewTerm(false, typ)}, nil
+		return []*Term{NewTerm(false, typ)}, nil
 	}
 }
