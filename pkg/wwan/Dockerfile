@@ -74,6 +74,9 @@ COPY --from=build /out/ /
 # Only for troubleshooting purposes.
 COPY --from=build /usr/bin/mmcli /usr/bin/qmicli /usr/bin/mbimcli /usr/bin/picocom /usr/bin/
 
+# To enable modem firmware upgrades directly from EVE
+COPY --from=build /usr/bin/qmi-firmware-update /usr/bin/
+
 COPY --from=build /usr/libexec/*proxy /usr/libexec/
 COPY --from=build /usr/sbin/ModemManager /usr/bin/
 COPY --from=build /mmagent/mmagent /usr/bin/
