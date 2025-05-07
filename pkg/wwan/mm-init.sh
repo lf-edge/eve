@@ -41,12 +41,11 @@ cp /lib/udev/rules.d/* /run/udev/rules.d/
 udevadm control --reload
 udevadm trigger
 
-echo "Starting Modem Manager"
+echo "Enabling FCC unlock scripts"
 enable_fcc_unlock
-ModemManager --debug &
 
 echo "Starting Modem Manager Agent"
-# Monitor liveness of the agent (and Modem Manager) with watchdog.
+# Monitor liveness of the agent with watchdog.
 mkdir -p /run/watchdog/file
 touch /run/watchdog/file/wwan.touch
 mmagent
