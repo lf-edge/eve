@@ -134,6 +134,12 @@ func NewClient(log *base.LogObject) (*Client, error) {
 	return client, nil
 }
 
+// Close is a destructor for the Client.
+func (c *Client) Close() error {
+	c.PauseModemMonitoring()
+	return c.conn.Close()
+}
+
 // RunModemMonitoring starts Go routine that monitors changes in the state
 // of cellular modems as reported by ModemManager, parses and stores obtained
 // modem attributes into pillar's Wwan* types and publishes notifications
@@ -1078,6 +1084,9 @@ func (c *Client) getModemLocation(modemObj dbus.BusObject) types.WwanLocationInf
 // modem state data, incl. metrics and location info, from which subsequent notifications
 // will follow.
 func (c *Client) PauseModemMonitoring() (resume func() (newInitialState []Modem)) {
+	if c.monitorCancel == nil {
+		return nil
+	}
 	c.monitorCancel()
 	c.monitorWG.Wait()
 	return func() (modems []Modem) {
