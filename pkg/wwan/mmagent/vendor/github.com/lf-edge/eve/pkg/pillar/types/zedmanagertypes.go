@@ -298,7 +298,9 @@ type AppInstanceStatus struct {
 	State          SwState
 	MissingNetwork bool // If some Network UUID not found
 	MissingMemory  bool // Waiting for memory
-
+	// NoBootPriority indicates whether the application instance has no boot priority set.
+	// If true, the application instance will not be prioritized during the boot process.
+	NoBootPriority bool
 	// All error strings across all steps and all StorageStatus
 	// ErrorAndTimeWithSource provides SetError, SetErrrorWithSource, etc
 	ErrorAndTimeWithSource

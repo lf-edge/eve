@@ -322,7 +322,7 @@ github.com/lf-edge/eve-api/go/profile
 # github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20240315102754-0f6d1f182e0d
 ## explicit; go 1.20
 github.com/lf-edge/eve/pkg/kube/cnirpc
-# github.com/lf-edge/eve/pkg/pillar v0.0.0-20250504151246-ec39e287817b => ../../pillar
+# github.com/lf-edge/eve/pkg/pillar v0.0.0-20250515072906-f212a801a9cd => ../../pillar
 ## explicit; go 1.23.0
 github.com/lf-edge/eve/pkg/pillar/agentbase
 github.com/lf-edge/eve/pkg/pillar/agentlog
