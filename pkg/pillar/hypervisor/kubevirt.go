@@ -1161,48 +1161,46 @@ func (ctx kubevirtContext) CreateReplicaPodConfig(domainName string, config type
 
 	// Add pod non-image volume disks
 	if len(diskStatusList) > 1 {
-		length := len(diskStatusList) - 1
+		logrus.Infof("CreateReplicaPodConfig: diskStatusList:%v", diskStatusList)
+
+		var volumes []k8sv1.Volume
+		var mounts []k8sv1.VolumeMount
+		var devs []k8sv1.VolumeDevice
+
 		for _, ds := range diskStatusList[1:] {
 			if ds.Devtype == "9P" { // skip 9P volume type
-				if length > 0 {
-					length--
-				} else {
-					break
-				}
+				continue
 			}
-		}
-		if length > 0 {
-			volumes := make([]k8sv1.Volume, length)
-			mounts := make([]k8sv1.VolumeMount, length)
 
-			i := 0
-			for _, ds := range diskStatusList[1:] {
-				if ds.Devtype == "9P" {
-					continue
-				}
-				voldispName := strings.ToLower(ds.DisplayName)
-				//voldevs[i] = k8sv1.VolumeDevice{
-				//	Name:       voldispName,
-				//	DevicePath: ds.MountDir,
-				//}
-				mounts[i] = k8sv1.VolumeMount{
+			voldispName := strings.ToLower("vol-" + ds.FileLocation)
+
+			if ds.MountDir == "" {
+				devs = append(devs, k8sv1.VolumeDevice{
+					Name:       voldispName,
+					DevicePath: "/dev/" + ds.Vdev,
+				})
+			} else {
+				mounts = append(mounts, k8sv1.VolumeMount{
 					Name:      voldispName,
 					MountPath: ds.MountDir,
-				}
-
-				volumes[i].Name = voldispName
-				volumes[i].VolumeSource = k8sv1.VolumeSource{
-					PersistentVolumeClaim: &k8sv1.PersistentVolumeClaimVolumeSource{
-						ClaimName: strings.ToLower(ds.DisplayName),
-						//ClaimName: ds.VolumeKey,
-					},
-				}
-				logrus.Infof("CreateReplicaPodConfig:(%d) mount[i] %+v, volumes[i] %+v", i, mounts[i], volumes[i])
-				i++
+					ReadOnly:  ds.ReadOnly,
+				})
 			}
-			replicaSet.Spec.Template.Spec.Containers[0].VolumeMounts = mounts
-			replicaSet.Spec.Template.Spec.Volumes = volumes
+
+			vol := k8sv1.Volume{
+				Name: voldispName,
+				VolumeSource: k8sv1.VolumeSource{
+					PersistentVolumeClaim: &k8sv1.PersistentVolumeClaimVolumeSource{
+						ClaimName: strings.ToLower(ds.FileLocation),
+					},
+				},
+			}
+			volumes = append(volumes, vol)
+			logrus.Infof("CreateReplicaPodConfig: mounts %+v, volumes %+v, devices %+v", mounts, volumes, devs)
 		}
+		replicaSet.Spec.Template.Spec.Containers[0].VolumeMounts = mounts
+		replicaSet.Spec.Template.Spec.Containers[0].VolumeDevices = devs
+		replicaSet.Spec.Template.Spec.Volumes = volumes
 	}
 	logrus.Infof("CreateReplicaPodConfig: replicaset setup %+v", replicaSet)
 
