@@ -58,21 +58,35 @@ func TestCreateReplicaPodConfig(t *testing.T) {
 	diskStatusList := []types.DiskStatus{
 		{
 			VolumeKey:    "3b2337e6-2488-4ff6-87c6-b3a6d918b325#0",
-			FileLocation: "",
+			FileLocation: "3b2337e6-2488-4ff6-87c6-b3a6d918b325-pvc-0",
 			ReadOnly:     false,
-			Format:       10,
-			MountDir:     "",
+			Format:       8, // container type
+			MountDir:     "/",
 			DisplayName:  "my-app_0_m_0",
 			WWN:          "",
 			CustomMeta:   "",
 		},
 		{
-			VolumeKey:    "5769a61b-2249-41d2-8806-53eb1d8c264f#0",
-			FileLocation: "/persist/vault/volumes/5769a61b-2249-41d2-8806-53eb1d8c264f#0.qcow2",
+			VolumeKey:    "f6e9139f-eba3-4480-821a-d1af8ca5dd07#0",
 			ReadOnly:     false,
-			Format:       3,
+			FileLocation: "f6e9139f-eba3-4480-821a-d1af8ca5dd07-pvc-0",
+			Format:       10, // pvc type (block device)
 			MountDir:     "",
-			DisplayName:  "my_app_1_m_0",
+			DisplayName:  "example-longer-eve-node-name1-app-name-1-ef059340-5838-4639-b115-fa3790c6734d",
+			Devtype:      "hdd",
+			Vdev:         "xvdb",
+			WWN:          "",
+			CustomMeta:   "",
+		},
+		{
+			VolumeKey:    "",
+			ReadOnly:     false,
+			FileLocation: "/mnt",
+			Format:       0, // pvc type (block device)
+			MountDir:     "",
+			DisplayName:  "",
+			Devtype:      "9P",
+			Vdev:         "",
 			WWN:          "",
 			CustomMeta:   "",
 		},
@@ -128,4 +142,10 @@ func TestCreateReplicaPodConfig(t *testing.T) {
 
 	assert.Equal(t, replicaPod.ObjectMeta.Name, vmis.name, "replicaPod name %s is different from name %s",
 		replicaPod.ObjectMeta.Name, vmis.name)
+
+	assert.True(t, len(replicaPod.Spec.Template.Spec.Volumes) > 0, "ReplicaSet volumes missing")
+	mountLen := len(replicaPod.Spec.Template.Spec.Containers[0].VolumeMounts)
+	assert.True(t, mountLen == 0, "ReplicaSet incorrect volume mount len %d", mountLen)
+	devLen := len(replicaPod.Spec.Template.Spec.Containers[0].VolumeDevices)
+	assert.True(t, devLen == 1, "ReplicaSet incorrect volumedevice len %d", devLen)
 }
