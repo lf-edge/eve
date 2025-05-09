@@ -52,7 +52,12 @@ func (z *zedkube) applyDNS(dns types.DeviceNetworkStatus) {
 				z.stopClusterStatusServer()
 			}
 		}
-		z.publishKubeConfigStatus()
+		// NIM can publish network status due to cluster config
+		// removal, and we don't want to publish the dummy/empty
+		// cluster status in that case.
+		if z.clusterConfig.ClusterInterface != "" {
+			z.publishKubeConfigStatus()
+		}
 	}
 }
 
