@@ -75,6 +75,9 @@
 | msrv.prometheus.metrics.rps | integer | 1 | The maximum number of requests per second (RPS) for the Prometheus metrics endpoint. |
 | msrv.prometheus.metrics.burst | integer | 10 | The maximum burst size for the Prometheus metrics endpoint. |
 | msrv.prometheus.metrics.idletimeout.seconds | integer | 240 | The idle timeout in seconds for the Prometheus metrics endpoint. If the connection is idle for this duration, the limit is reset. |
+| wwan.modem.recovery.watchdog | boolean | false | Enable watchdog for cellular modems. If a modem firmware crashes and fails to recover, the device will automatically reboot.|
+| wwan.modem.recovery.reload.drivers | boolean | false | If a modem firmware crashes and fails to recover, EVE will attempt to reload the MBIM/QMI/MHI drivers as a recovery step. This occurs before the watchdog mechanism is triggered (if enabled). |
+| wwan.modem.recovery.restart.modemmanager | boolean | false | If a modem firmware crash occurs and ModemManager fails to properly recognize or manage the restarted modem, EVE will attempt to restart ModemManager as a recovery step. This occurs before the watchdog mechanism is triggered (if enabled) and can be combined with driver reload recovery mechanism. |
 
 ## Log levels
 
