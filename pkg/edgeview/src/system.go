@@ -1188,7 +1188,7 @@ func createArchive(source, archiveName string, timeRange *logSearchRange, dirSiz
 
 				tarball.Flush()
 				tardata := tarBuffer.Bytes()
-				err = addEnvelopeAndWriteWss(tardata, false)
+				err = addEnvelopeAndWriteWss(tardata, false, false)
 				if err != nil {
 					return err
 				}
@@ -1211,7 +1211,7 @@ func createArchive(source, archiveName string, timeRange *logSearchRange, dirSiz
 
 	// send text message over websocket on tar copy is done
 	log.Noticef("createArchive: tar done with size %d, write msg over to client", totalSendSize)
-	err = addEnvelopeAndWriteWss([]byte(tarCopyDoneMsg+strconv.Itoa(totalSendSize)+"+++"), true)
+	err = addEnvelopeAndWriteWss([]byte(tarCopyDoneMsg+strconv.Itoa(totalSendSize)+"+++"), true, false)
 	if err != nil {
 		fmt.Printf("sign and write error: %v\n", err)
 		return err

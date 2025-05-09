@@ -50,7 +50,8 @@ const (
 	serverRateMsg   = "ServerRateLimit:disable"
 	tcpPktRate      = MbpsToBytes * 5 * 1.2 // 125k Bytes * 5 * 1.2, or 5Mbits add 20%
 	tcpPktBurst     = 65536                 // burst allow bytes
-	tarMinVersion   = "0.8.4"               // for tar operation, expect client to have newer version
+	tarMinVersion   = "0.8.5"               // for tar operation, expect client to have newer version
+	verifyFailed    = "+++Verify failed+++"
 )
 
 type cmdOpt struct {
@@ -64,6 +65,7 @@ type cmdOpt struct {
 	IsJSON       bool   `json:"isJSON"`
 	Extraline    int    `json:"extraline"`
 	Logtype      string `json:"logtype"`
+	UserInfo     string `json:"userinfo"`
 }
 
 func main() {
@@ -73,6 +75,7 @@ func main() {
 	pServer := flag.Bool("server", false, "service edge-view queries")
 	ptoken := flag.String("token", "", "session token")
 	pDebug := flag.Bool("debug", false, "log more in debug")
+	pUser := flag.String("user", "", "user name info")
 	flag.Parse()
 
 	logger := evLogger(*pDebug)
@@ -101,7 +104,7 @@ func main() {
 	var wsAddr, pathStr string
 	if *ptoken != "" {
 		var err error
-		wsAddr, pathStr, err = getAddrFromJWT(*ptoken, *pServer, *pInst)
+		wsAddr, pathStr, clientAuthType, err = getAddrFromJWT(*ptoken, *pServer, *pInst)
 		if err != nil {
 			fmt.Printf("%v\n", err)
 			if *phelpopt || *phopt {
@@ -122,6 +125,7 @@ func main() {
 	var pqueryopt, pnetopt, psysopt, ppubsubopt, logopt, timeopt string
 	var jsonopt bool
 	typeopt := "all"
+	userinfo := *pUser
 	extraopt := 0
 	values := flag.Args()
 	var skiptype string
@@ -139,6 +143,12 @@ func main() {
 				timeopt = word
 			case "type":
 				typeopt = word
+			case "user":
+				if len(word) > 64 {
+					userinfo = word[:64]
+				} else {
+					userinfo = word
+				}
 			case "line":
 				numline, _ := strconv.Atoi(word)
 				extraopt = numline
@@ -168,6 +178,8 @@ func main() {
 			skiptype = "token"
 		} else if strings.HasSuffix(word, "-inst") {
 			skiptype = "inst"
+		} else if strings.HasSuffix(word, "-user") {
+			skiptype = "user"
 		} else {
 			pqueryopt = word
 		}
@@ -259,6 +271,30 @@ func main() {
 		// client side can break the session
 		intSignal = make(chan os.Signal, 1)
 		signal.Notify(intSignal, os.Interrupt)
+
+		if clientAuthType == types.EvAuthTypeSSHRsaKeys {
+			evSSHPrivateKey = getEdgeviewClientPrivateKey()
+			if evSSHPrivateKey == "" {
+				fmt.Printf("Edgeview Authentication failed:\n need to set environment variable 'EdgeviewSshKeyPath' to SSH private key path\n or setup ~/.edgeview/config file with content of \"EdgeviewSshKeyPath:<ssh-private-key-path>\"\n")
+				return
+			}
+		} else if clientAuthType == types.EvAuthTypeControllerCert {
+			ecPrivateKeyPEM = getEdgeviewClientPrivateKey()
+			if ecPrivateKeyPEM == "" {
+				fmt.Printf("Edgeview Authentication failed: can not import private key file\n")
+				return
+			}
+		}
+	} else {
+		// get the controller server signing leaf certificate
+		if clientAuthType == types.EvAuthTypeControllerCert {
+			certBytes, err := os.ReadFile(types.ServerSigningCertFileName)
+			if err != nil {
+				log.Errorf("Edgeview can not read in server cert file, %v\n", err)
+				return
+			}
+			ecPublicKeyPEM = certBytes // save the cert bytes for verifying
+		}
 	}
 	urlWSS := url.URL{Scheme: "wss", Host: wsAddr, Path: pathStr}
 
@@ -287,6 +323,7 @@ func main() {
 		Timerange: timeopt,
 		IsJSON:    jsonopt,
 		Extraline: extraopt,
+		UserInfo:  userinfo,
 	}
 	if typeopt != "all" {
 		queryCmds.Logtype = typeopt
@@ -342,7 +379,7 @@ func main() {
 				}
 
 				var recvCmds cmdOpt
-				isJSON, verifyOK, message := verifyEnvelopeData(msg)
+				isJSON, verifyOK, message, keyComment := verifyEnvelopeData(msg, mtype == websocket.TextMessage)
 				if !isJSON {
 					if strings.Contains(string(msg), "no device online") {
 						log.Tracef("read: peer not there yet, continue")
@@ -365,6 +402,8 @@ func main() {
 				}
 				if !verifyOK {
 					log.Noticef("authen failed on json msg")
+					_ = addEnvelopeAndWriteWss([]byte("authentication for command failed to verify\n"), true, false)
+					sendCloseToWss()
 					continue
 				}
 				lostClientPeer = false
@@ -387,9 +426,9 @@ func main() {
 						continue
 					} else {
 						// check the query commands against defined policy
-						ok, errmsg := checkCmdPolicy(recvCmds, &evStatus)
+						ok, errmsg := checkCmdPolicy(recvCmds, &evStatus, keyComment)
 						if !ok {
-							_ = addEnvelopeAndWriteWss([]byte("cmd policy check failed: "+errmsg), true)
+							_ = addEnvelopeAndWriteWss([]byte("cmd policy check failed: "+errmsg), true, false)
 							sendCloseToWss()
 							continue
 						}
@@ -443,7 +482,7 @@ func main() {
 					return
 				}
 
-				isJSON, verifyOK, message := verifyEnvelopeData(msg)
+				isJSON, verifyOK, message, _ := verifyEnvelopeData(msg, false)
 				if !isJSON {
 					if strings.HasPrefix(string(msg), serverRateMsg) {
 						continue
@@ -454,12 +493,18 @@ func main() {
 				}
 
 				if !verifyOK {
-					fmt.Printf("\nverify msg failed\n")
+					if len(message) > 0 {
+						fmt.Printf("\nverify msg failed\n")
+					}
 					done <- struct{}{}
 					break
 				}
 
 				if strings.Contains(string(message), closeMessage) {
+					done <- struct{}{}
+					break
+				} else if strings.HasSuffix(string(message), verifyFailed) {
+					fmt.Printf("%s\n", message)
 					done <- struct{}{}
 					break
 				} else if fstatus.cType != unknownCopy {
