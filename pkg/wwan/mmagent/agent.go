@@ -509,16 +509,26 @@ func (a *MMAgent) startModemManager(setLogLevel bool) {
 		}
 	}
 
-	// Start monitoring state of all detected cellular modems.
+	// Begin monitoring the state of all detected cellular modems.
+	// TODO: is this correct? What about missing modems? Get config and call applyWwanConfig (instead of reconcileModem)?
+	//       What about:
+	//          - clear modem info
+	//          - set modeminfo.Modem returned by RunModemMonitoring
+	//          - get wwan config from pubsub
+	//          - call applyWwanConfig
 	var modems []mmdbus.Modem
 	modems, a.mmNotifs = a.mmClient.RunModemMonitoring(a.metricPollInterval)
 	for _, modem := range modems {
-		a.log.Noticef("Modem detected at startup, path: %s, physical addresses: %+v",
+		a.log.Noticef("Modem detected at MM startup, path: %s, physical addresses: %+v",
 			modem.Path, modem.Status.PhysAddrs)
 		if _, haveInfo := a.modemInfo[modem.Path]; !haveInfo {
 			a.modemInfo[modem.Path] = &ModemInfo{}
 		}
 		a.modemInfo[modem.Path].Modem = modem
+		a.modemInfo[modem.Path].suspendedReconcileUntil = time.Time{}
+		if modem.Status.LocationTracking {
+			a.locTrackingModem = modem.Path
+		}
 	}
 
 	// Reconcile status of every modem.
@@ -564,9 +574,14 @@ func (a *MMAgent) stopModemManager() {
 	if err := a.mmClient.Close(); err != nil {
 		a.log.Warnf("Failed to close ModemManager client: %v", err)
 	}
+
+	// Clear internal state.
 	a.mmClient = nil
 	a.mmNotifs = nil
 	a.locTrackingModem = ""
+	// TODO: clear also missingModems and modemInfo?
+	//       We need to preserve missingModem.softRecoveryDone
+	//       Maybe just pretend that all modems are missing (move managed modems from modemInfo)?
 
 	// Try to kill the process gracefully first
 	err := a.mmProcess.Signal(os.Interrupt) // SIGINT (Ctrl+C)
@@ -768,7 +783,7 @@ func (a *MMAgent) applyWwanConfig(config types.WwanConfig) {
 				a.log.Noticef("We have a new missing modem: %s", modemConfig.LogicalLabel)
 				a.missingModems[modemConfig.LogicalLabel] = &missingModem{}
 			}
-			// Preserve lastSeenAt, usesMHIDriver and driverReloaded field values.
+			// Preserve lastSeenAt, usesMHIDriver and softRecoveryDone field values.
 			a.missingModems[modemConfig.LogicalLabel].config = modemConfig
 			a.missingModems[modemConfig.LogicalLabel].remove = false
 		}
@@ -862,6 +877,7 @@ func (a *MMAgent) applyWwanConfig(config types.WwanConfig) {
 				continue
 			}
 			a.scanVisibleProviders(modem)
+			// TODO: StillRunning
 		}
 		a.publishWwanStatus()
 	}
