@@ -82,10 +82,10 @@ jobs:
       - name: Clean
         if: ${{ always() }}
         run: |
-          make clean
-          docker system prune -f -a
-          docker rm -f $(docker ps -aq) && docker volume rm -f $(docker volume ls -q)
-          rm -rf ~/.linuxkit
+          make clean || :
+          docker system prune -f -a || :
+          docker rm -f $(docker ps -aq) && docker volume rm -f $(docker volume ls -q) || :
+          rm -rf ~/.linuxkit || :
 
   # 2) ARM packages, serialized
   packages-arm:
@@ -175,10 +175,10 @@ jobs:
       - name: Clean
         if: ${{ always() }}
         run: |
-          make clean
-          docker system prune -f -a
-          docker rm -f $(docker ps -aq) && docker volume rm -f $(docker volume ls -q)
-          rm -rf ~/.linuxkit
+          make clean || :
+          docker system prune -f -a || :
+          docker rm -f $(docker ps -aq) && docker volume rm -f $(docker volume ls -q) || :
+          rm -rf ~/.linuxkit || :
 
   # 3) downstream jobs depend on both package jobs
   eve:
@@ -219,10 +219,10 @@ jobs:
       - name: Clean
         if: ${{ always() }}
         run: |
-          make clean
-          docker system prune -f -a
-          docker rm -f $(docker ps -aq) && docker volume rm -f $(docker volume ls -q)
-          rm -rf ~/.linuxkit
+          make clean || :
+          docker system prune -f -a || :
+          docker rm -f $(docker ps -aq) && docker volume rm -f $(docker volume ls -q) || :
+          rm -rf ~/.linuxkit || :
 
   manifest:
     if: github.event.repository.full_name == 'lf-edge/eve'
