@@ -11,6 +11,7 @@ import (
 	"fmt"
 
 	zconfig "github.com/lf-edge/eve-api/go/config"
+	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	uuid "github.com/satori/go.uuid"
 )
@@ -63,14 +64,14 @@ func parseVolumeConfig(ctx *getconfigContext,
 		if !foundVolume || !sameGenCounter {
 			// volume not found, delete
 			log.Functionf("parseVolumeConfig: deleting %s\n", volume.Key())
-			unpublishVolumeConfig(ctx, volume.Key())
+			unpublishVolumeConfig(ctx.pubVolumeConfig, volume.Key())
 			if !foundVolume {
 				delLocalVolumeConfig(ctx, uuid)
 			}
 		} else {
 			// check links from apps
 			volume.HasNoAppReferences = checkVolumeHasNoAppReferences(ctx, cfgVolume, config)
-			publishVolumeConfig(ctx, volume)
+			publishVolumeConfig(ctx.pubVolumeConfig, volume)
 		}
 	}
 
@@ -131,7 +132,7 @@ func parseVolumeConfig(ctx *getconfigContext,
 				}
 			}
 		}
-		publishVolumeConfig(ctx, *volumeConfig)
+		publishVolumeConfig(ctx.pubVolumeConfig, *volumeConfig)
 	}
 
 	//signal publisher restarted to apply deferred changes inside volumemgr
@@ -162,21 +163,19 @@ func checkVolumeHasNoAppReferences(ctx *getconfigContext, cfgVolume *zconfig.Vol
 	return true
 }
 
-func publishVolumeConfig(ctx *getconfigContext,
+func publishVolumeConfig(pub pubsub.Publication,
 	config types.VolumeConfig) {
 
 	key := config.Key()
 	log.Tracef("publishVolumeConfig(%s)\n", key)
-	pub := ctx.pubVolumeConfig
 	pub.Publish(key, config)
 	log.Tracef("publishVolumeConfig(%s) done\n", key)
 }
 
-func unpublishVolumeConfig(ctx *getconfigContext,
+func unpublishVolumeConfig(pub pubsub.Publication,
 	key string) {
 
 	log.Tracef("unpublishVolumeConfig(%s)\n", key)
-	pub := ctx.pubVolumeConfig
 	config, _ := pub.Get(key)
 	if config == nil {
 		log.Errorf("unpublishVolumeConfig(%s) not found\n", key)
