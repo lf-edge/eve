@@ -295,7 +295,7 @@ func triggerLocalCommand(ctx *getconfigContext, cmd types.AppCommand,
 		appCounters.RestartCmd.Counter++
 		appCounters.RestartCmd.ApplyTime = timestamp
 		app.LocalRestartCmd = appCounters.RestartCmd
-		checkAndPublishAppInstanceConfig(ctx, *app)
+		checkAndPublishAppInstanceConfig(ctx.pubAppInstanceConfig, *app)
 
 	case types.AppCommandPurge:
 		// To trigger application purge we take the previously published
@@ -328,16 +328,16 @@ func triggerLocalCommand(ctx *getconfigContext, cmd types.AppCommand,
 				continue
 			}
 			volume := volObj.(types.VolumeConfig)
-			unpublishVolumeConfig(ctx, volKey)
+			unpublishVolumeConfig(ctx.pubVolumeConfig, volKey)
 			// Publish volume with an increased local generation counter.
 			localGenCounter++
 			ctx.sideController.localCommands.VolumeGenCounters[uuid] = localGenCounter
 			vr.LocalGenerationCounter = localGenCounter
 			volume.LocalGenerationCounter = localGenCounter
-			publishVolumeConfig(ctx, volume)
+			publishVolumeConfig(ctx.pubVolumeConfig, volume)
 			changedVolumes = true
 		}
-		checkAndPublishAppInstanceConfig(ctx, *app)
+		checkAndPublishAppInstanceConfig(ctx.pubAppInstanceConfig, *app)
 	}
 	return changedVolumes
 }
