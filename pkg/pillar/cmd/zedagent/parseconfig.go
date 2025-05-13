@@ -21,6 +21,7 @@ import (
 	zconfig "github.com/lf-edge/eve-api/go/config"
 	zevecommon "github.com/lf-edge/eve-api/go/evecommon"
 	"github.com/lf-edge/eve/pkg/pillar/objtonum"
+	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/sriov"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
@@ -815,7 +816,7 @@ func parseAppInstanceConfig(getconfigCtx *getconfigContext,
 		}
 
 		// Verify that it fits and if not publish with error
-		checkAndPublishAppInstanceConfig(getconfigCtx, appInstance)
+		checkAndPublishAppInstanceConfig(getconfigCtx.pubAppInstanceConfig, appInstance)
 	}
 }
 
@@ -2889,12 +2890,11 @@ func mergeMaintenanceMode(ctx *zedagentContext, caller string) {
 		ctx.apiMaintenanceMode, ctx.localMaintenanceMode)
 }
 
-func checkAndPublishAppInstanceConfig(getconfigCtx *getconfigContext,
+func checkAndPublishAppInstanceConfig(pub pubsub.Publication,
 	config types.AppInstanceConfig) {
 
 	key := config.Key()
 	log.Tracef("checkAndPublishAppInstanceConfig UUID %s", key)
-	pub := getconfigCtx.pubAppInstanceConfig
 	if err := pub.CheckMaxSize(key, config); err != nil {
 		log.Error(err)
 		var clearNumBytes int
