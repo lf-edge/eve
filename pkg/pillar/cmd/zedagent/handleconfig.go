@@ -1307,7 +1307,7 @@ func updateHasLocalServer(ctx *getconfigContext) {
 			log.Noticef("HasLocalServer(%s) for %s change to %t",
 				aic.Key(), aic.DisplayName, hasLocalServer)
 			// Verify that it fits and if not publish with error
-			checkAndPublishAppInstanceConfig(ctx, aic)
+			checkAndPublishAppInstanceConfig(ctx.pubAppInstanceConfig, aic)
 		}
 	}
 }
