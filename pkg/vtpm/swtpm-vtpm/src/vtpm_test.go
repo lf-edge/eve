@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path"
 	"syscall"
 	"testing"
 	"time"
@@ -239,7 +240,7 @@ func TestSwtpmStateChange(t *testing.T) {
 		return false
 	}
 
-	// this should fail since it was instance was marked as encrypted and now TPM is not available anymore
+	// this should fail since this instance was marked as encrypted and now TPM is not available anymore
 	b, _, err = sendLaunchRequest(id)
 	if err == nil {
 		t.Fatalf("expected error, got nil")
@@ -249,6 +250,217 @@ func TestSwtpmStateChange(t *testing.T) {
 	if liveInstances > 1 {
 		t.Fatalf("expected liveInstances to be 1, got %d", liveInstances)
 	}
+
+	b, _, err = sendPurgeRequest(id)
+	if err != nil {
+		t.Fatalf("failed to send request: %v, body : %s", err, b)
+	}
+}
+
+func TestSwtpmStateBakcupWithStateEncryption(t *testing.T) {
+	id := generateUUID()
+	key := make([]byte, 32)
+	_, _ = rand.Read(key)
+	defer cleanupFiles(id)
+	isTPMAvailable = func() bool {
+		return true
+	}
+	getEncryptionKey = func() ([]byte, error) {
+		return key, nil
+	}
+
+	b, _, err := sendLaunchRequest(id)
+	if err != nil {
+		t.Fatalf("failed to send request: %v, body : %s", err, b)
+	}
+	time.Sleep(1 * time.Second)
+
+	// get the normal and backup state file path
+	normalState := path.Join(fmt.Sprintf(swtpmStatePath, id.String(), "tpm2-00.permall"))
+	backupState := path.Join(fmt.Sprintf(swtpmStatePath, id.String(), "tpm2-00.permall.bak"))
+
+	// check for backup file to be present
+	if _, err := os.Stat(backupState); os.IsNotExist(err) {
+		t.Fatalf("backup file %s does not exist", backupState)
+	}
+
+	b, _, err = sendTerminateRequest(id)
+	if err != nil {
+		t.Fatalf("failed to send request: %v, body : %s", err, b)
+	}
+	time.Sleep(1 * time.Second)
+
+	// corrup the normal state file, by writing some data
+	f1, err := os.OpenFile(normalState, os.O_WRONLY|os.O_TRUNC, 0644)
+	if err != nil {
+		t.Fatalf("failed to open file: %v", err)
+	}
+	defer f1.Close()
+	_, err = f1.Write([]byte("corrupted data"))
+	if err != nil {
+		t.Fatalf("failed to write to file: %v", err)
+	}
+
+	// this should succeed since we have a backup state file
+	b, _, err = sendLaunchRequest(id)
+	if err != nil {
+		t.Fatalf("failed to send request: %v, body : %s", err, b)
+	}
+	time.Sleep(1 * time.Second)
+
+	b, _, err = sendTerminateRequest(id)
+	if err != nil {
+		t.Fatalf("failed to send request: %v, body : %s", err, b)
+	}
+	time.Sleep(1 * time.Second)
+
+	// remove the normal state file
+	if err := os.Remove(normalState); err != nil {
+		t.Fatalf("failed to remove file: %v", err)
+	}
+
+	// this should succeed since we have backup file
+	b, _, err = sendLaunchRequest(id)
+	if err != nil {
+		t.Fatalf("failed to send request: %v, body : %s", err, b)
+	}
+	time.Sleep(1 * time.Second)
+
+	b, _, err = sendTerminateRequest(id)
+	if err != nil {
+		t.Fatalf("failed to send request: %v, body : %s", err, b)
+	}
+	time.Sleep(1 * time.Second)
+
+	// corrup both normal and backup state file, by writing some data
+	f2, err := os.OpenFile(normalState, os.O_WRONLY|os.O_TRUNC, 0644)
+	if err != nil {
+		t.Fatalf("failed to open file: %v", err)
+	}
+	defer f2.Close()
+	_, err = f2.Write([]byte("corrupted data"))
+	if err != nil {
+		t.Fatalf("failed to write to file: %v", err)
+	}
+	f3, err := os.OpenFile(backupState, os.O_WRONLY|os.O_TRUNC, 0644)
+	if err != nil {
+		t.Fatalf("failed to open file: %v", err)
+	}
+	defer f3.Close()
+	_, err = f3.Write([]byte("corrupted data"))
+	if err != nil {
+		t.Fatalf("failed to write to file: %v", err)
+	}
+
+	// this should succeed since we reset the SWTPM state if both files are corrupted
+	b, _, err = sendLaunchRequest(id)
+	if err != nil {
+		t.Fatalf("failed to send request: %v, body : %s", err, b)
+	}
+	time.Sleep(1 * time.Second)
+
+	b, _, err = sendPurgeRequest(id)
+	if err != nil {
+		t.Fatalf("failed to send request: %v, body : %s", err, b)
+	}
+}
+
+func TestSwtpmStateBakcup(t *testing.T) {
+	id := generateUUID()
+	defer cleanupFiles(id)
+	isTPMAvailable = func() bool {
+		return false
+	}
+
+	b, _, err := sendLaunchRequest(id)
+	if err != nil {
+		t.Fatalf("failed to send request: %v, body : %s", err, b)
+	}
+	time.Sleep(1 * time.Second)
+
+	// get the normal and backup state file path
+	normalState := path.Join(fmt.Sprintf(swtpmStatePath, id.String(), "tpm2-00.permall"))
+	backupState := path.Join(fmt.Sprintf(swtpmStatePath, id.String(), "tpm2-00.permall.bak"))
+
+	// check for backup file to be present
+	if _, err := os.Stat(backupState); os.IsNotExist(err) {
+		t.Fatalf("backup file %s does not exist", backupState)
+	}
+
+	b, _, err = sendTerminateRequest(id)
+	if err != nil {
+		t.Fatalf("failed to send request: %v, body : %s", err, b)
+	}
+	time.Sleep(1 * time.Second)
+
+	// corrup the normal state file, by writing some data
+	f1, err := os.OpenFile(normalState, os.O_WRONLY|os.O_TRUNC, 0644)
+	if err != nil {
+		t.Fatalf("failed to open file: %v", err)
+	}
+	defer f1.Close()
+	_, err = f1.Write([]byte("corrupted data"))
+	if err != nil {
+		t.Fatalf("failed to write to file: %v", err)
+	}
+
+	// this should succeed since we have backup file
+	b, _, err = sendLaunchRequest(id)
+	if err != nil {
+		t.Fatalf("failed to send request: %v, body : %s", err, b)
+	}
+	time.Sleep(1 * time.Second)
+
+	b, _, err = sendTerminateRequest(id)
+	if err != nil {
+		t.Fatalf("failed to send request: %v, body : %s", err, b)
+	}
+	time.Sleep(1 * time.Second)
+
+	// remove the normal state file
+	if err := os.Remove(normalState); err != nil {
+		t.Fatalf("failed to remove file: %v", err)
+	}
+
+	// this should succeed since we have backup file
+	b, _, err = sendLaunchRequest(id)
+	if err != nil {
+		t.Fatalf("failed to send request: %v, body : %s", err, b)
+	}
+	time.Sleep(1 * time.Second)
+
+	b, _, err = sendTerminateRequest(id)
+	if err != nil {
+		t.Fatalf("failed to send request: %v, body : %s", err, b)
+	}
+	time.Sleep(1 * time.Second)
+
+	// corrup both normal and backup state file, by writing some data
+	f2, err := os.OpenFile(normalState, os.O_WRONLY|os.O_TRUNC, 0644)
+	if err != nil {
+		t.Fatalf("failed to open file: %v", err)
+	}
+	defer f2.Close()
+	_, err = f2.Write([]byte("corrupted data"))
+	if err != nil {
+		t.Fatalf("failed to write to file: %v", err)
+	}
+	f3, err := os.OpenFile(backupState, os.O_WRONLY|os.O_TRUNC, 0644)
+	if err != nil {
+		t.Fatalf("failed to open file: %v", err)
+	}
+	defer f3.Close()
+	_, err = f3.Write([]byte("corrupted data"))
+	if err != nil {
+		t.Fatalf("failed to write to file: %v", err)
+	}
+
+	// this should succeed since we reset the SWTPM state if both files are corrupted
+	b, _, err = sendLaunchRequest(id)
+	if err != nil {
+		t.Fatalf("failed to send request: %v, body : %s", err, b)
+	}
+	time.Sleep(1 * time.Second)
 
 	b, _, err = sendPurgeRequest(id)
 	if err != nil {
