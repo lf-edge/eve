@@ -2169,6 +2169,10 @@ func parseNetworkWirelessConfig(ctx *getconfigContext,
 
 	wType := netWireless.GetType()
 	switch wType {
+	case zconfig.WirelessType_TypeNOOP:
+		// This is not a wireless network adapter.
+		// Return an empty wireless configuration.
+		return wconfig, nil
 	case zconfig.WirelessType_Cellular:
 		wconfig.WType = types.WirelessTypeCellular
 		cellNetConfigs := netWireless.GetCellularCfg()
