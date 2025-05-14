@@ -102,6 +102,7 @@ type getconfigContext struct {
 	pubBaseOsConfig            pubsub.Publication
 	pubDatastoreConfig         pubsub.Publication
 	pubLOCConfig               pubsub.Publication
+	pubCollectInfoCmd          pubsub.Publication
 	pubNetworkInstanceConfig   pubsub.Publication
 	pubControllerCert          pubsub.Publication
 	pubCipherContext           pubsub.Publication
