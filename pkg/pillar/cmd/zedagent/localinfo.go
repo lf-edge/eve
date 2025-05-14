@@ -710,6 +710,16 @@ func processReceivedDevCommands(getconfigCtx *getconfigContext, cmd *profile.Loc
 		return
 	}
 	command := types.DevCommand(cmd.Command)
+
+	if command == types.DevCommandCollectInfo {
+		key := time.Now().String()
+		// unpublishing and publishing does not trigger the create/modify handler
+		err := getconfigCtx.pubCollectInfoCmd.Publish(key, types.CollectInfoCmd{})
+		if err != nil {
+			log.Warnf("could not publish collect info cmd: %v", err)
+		}
+	}
+
 	if getconfigCtx.updateInprogress {
 		switch command {
 		case types.DevCommandUnspecified:
