@@ -18,6 +18,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/baseosmgr"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/client"
+	"github.com/lf-edge/eve/pkg/pillar/cmd/collectinfo"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/command"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/conntrack"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/diag"
@@ -109,6 +110,7 @@ var (
 		"watcher":          {f: watcher.Run},
 		"zfsmanager":       {f: zfsmanager.Run},
 		"usbmanager":       {f: usbmanager.Run},
+		"collectinfo":      {f: collectinfo.Run},
 		"vcomlink":         {f: vcomlink.Run},
 		"monitor":          {f: monitor.Run},
 	}
