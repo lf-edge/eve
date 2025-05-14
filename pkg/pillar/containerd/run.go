@@ -7,7 +7,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"os"
 	"sync"
 	"syscall"
 	"time"
@@ -35,7 +34,7 @@ func (m mutexWriter) Write(p []byte) (n int, err error) {
 }
 
 // RunInDebugContainer runs a program in the debug container
-func RunInDebugContainer(clientCtx context.Context, taskID string, w io.Writer, args []string, timeout time.Duration) error {
+func RunInDebugContainer(clientCtx context.Context, taskID string, w io.Writer, args, env []string, timeout time.Duration) error {
 	ctrd, err := NewContainerdClient(false)
 	if err != nil {
 		return fmt.Errorf("could not initialize containerd client: %+v\n", err)
@@ -56,6 +55,7 @@ func RunInDebugContainer(clientCtx context.Context, taskID string, w io.Writer, 
 
 	pspec := specs.Process{
 		Args: args,
+		Env:  env,
 		Cwd:  "/",
 		Scheduler: &specs.Scheduler{
 			Deadline: uint64(time.Now().Add(timeout).Unix()),

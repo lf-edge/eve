@@ -1258,6 +1258,15 @@ func initPublications(zedagentCtx *zedagentContext) {
 	}
 	getconfigCtx.pubLOCConfig.ClearRestarted()
 
+	getconfigCtx.pubCollectInfoCmd, err = ps.NewPublication(pubsub.PublicationOptions{
+		AgentName: agentName,
+		TopicType: types.CollectInfoCmd{},
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	getconfigCtx.pubCollectInfoCmd.ClearRestarted()
+
 	getconfigCtx.pubControllerCert, err = ps.NewPublication(
 		pubsub.PublicationOptions{
 			AgentName:  agentName,
