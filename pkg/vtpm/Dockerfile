@@ -9,12 +9,12 @@ ENV BUILD_PKGS="gcc g++ autoconf automake libtool make openssl-dev libtasn1-dev 
     json-glib-dev gnutls bash expect gawk socat libseccomp-dev gmp-dev \
     musl-utils autoconf-archive git json-c json-c-dev libcurl curl-dev \
     patch go protobuf-dev"
-ENV PKGS="libseccomp libcurl libstdc++ libprotobuf"
+ENV PKGS="libseccomp libcurl libstdc++ libprotobuf pcre libintl glib libffi json-c json-glib"
 RUN eve-alpine-deploy.sh
 
 # build libtpms, it is needed by swtpm
 WORKDIR /libtpms
-ADD https://github.com/stefanberger/libtpms.git#v0.9.6 /libtpms
+ADD https://github.com/stefanberger/libtpms.git#v0.10.0 /libtpms
 RUN ./autogen.sh --prefix=/usr --with-tpm2
 RUN make -j$(nproc)
 RUN make -j$(nproc) install
@@ -23,9 +23,12 @@ RUN strip --strip-unneeded /out/usr/lib/libtpms.so.*
 
 # build swtpm
 WORKDIR /swtpm
-ADD https://github.com/stefanberger/swtpm.git#v0.9.0 /swtpm
+# This poinst to the latest commit that implements state backup functionality.
+# TODO: revert this when there is a new release in swtpm
+ADD https://github.com/stefanberger/swtpm.git#732bbd6ad3a52b9552b5a1620e03a9f6449a1aab /swtpm
 RUN ./autogen.sh --prefix=/out/usr
 RUN make -j$(nproc)
+RUN src/swtpm/swtpm socket --tpm2 --print-capabilities | grep "tpmstate-dir-backend-opt-backup"
 RUN make -j$(nproc) install
 RUN cp /out/usr/lib/swtpm/* /out/usr/lib/
 RUN strip --strip-unneeded /out/usr/lib/swtpm/*.so*
@@ -45,8 +48,8 @@ WORKDIR /tpm2-tools
 ADD --keep-git-dir=true https://github.com/tpm2-software/tpm2-tools.git#5.5 /tpm2-tools
 COPY patches/ /patches/
 RUN for patch in /patches/*.patch; do \
-        echo "Applying $patch"; \
-        patch -d /tpm2-tools -p1 < "$patch" || exit 1 ; \
+    echo "Applying $patch"; \
+    patch -d /tpm2-tools -p1 < "$patch" || exit 1 ; \
     done
 RUN ./bootstrap && \
     ./configure && \
