@@ -260,7 +260,7 @@ QEMU_OPTS_TPM_Y_$(ZARCH)=-chardev socket,id=chrtpm,path=$(CURRENT_SWTPM)/swtpm-s
 QEMU_OPTS_TPM=$(QEMU_OPTS_TPM_$(TPM:%=Y)_$(ZARCH))
 
 ifneq ($(TAP),)
-QEMU_OPTS_eth1=-netdev tap,id=eth1,ifname=$(TAP),script="" -device virtio-net-pci,netdev=eth1,romfile=""
+QEMU_OPTS_eth1=-netdev tap,id=eth1,ifname=$(TAP),script="" -device virtio-net-pci,netdev=eth1,csum=off,guest_csum=off,romfile=""
 else
 QEMU_OPTS_eth1=-netdev user,id=eth1,net=$(QEMU_OPTS_NET2),dhcpstart=$(QEMU_OPTS_NET2_FIRST_IP) -device virtio-net-pci,netdev=eth1,romfile=""
 endif
