@@ -768,6 +768,8 @@ const (
 	DevCommandShutdownPoweroff
 	// DevCommandGracefulReboot : shut down all app instances + reboot
 	DevCommandGracefulReboot
+	// DevCommandCollectInfo : starts a collect-info.sh
+	DevCommandCollectInfo
 )
 
 // LOCConfig : configuration of the Local Operator Console
@@ -777,3 +779,6 @@ type LOCConfig struct {
 	// Collect-Info Datastore UUID
 	CollectInfoDatastore DatastoreConfig
 }
+
+// CollectInfoCmd : passing this to trigger a collect-info.sh call
+type CollectInfoCmd struct{}
