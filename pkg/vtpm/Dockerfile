@@ -3,18 +3,18 @@
 # Copyright (c) 2023 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-FROM lfedge/eve-dom0-ztools:b8eaeec19d373228a4a842374e5de0d50f050853 as dom0
-FROM lfedge/eve-alpine:82df60e43ab9f8c935584b8c7b4d0a4b0271d608 as build
-ENV BUILD_PKGS gcc g++ autoconf automake libtool make openssl-dev libtasn1-dev \
-               json-glib-dev gnutls bash expect gawk socat libseccomp-dev gmp-dev \
-               musl-utils autoconf-archive git json-c json-c-dev libcurl curl-dev \
-               patch go protobuf-dev
-ENV PKGS libseccomp libcurl libstdc++ libprotobuf
+FROM lfedge/eve-dom0-ztools:09f378d92d6c8ada04fb8e9cf5d45fc8fdf934f9 AS dom0
+FROM lfedge/eve-alpine:0f2e0da38e30753c68410727a6cc269e57ff74f2 AS build
+ENV BUILD_PKGS="gcc g++ autoconf automake libtool make openssl-dev libtasn1-dev \
+    json-glib-dev gnutls bash expect gawk socat libseccomp-dev gmp-dev \
+    musl-utils autoconf-archive git json-c json-c-dev libcurl curl-dev \
+    patch go protobuf-dev"
+ENV PKGS="libseccomp libcurl libstdc++ libprotobuf pcre libintl glib libffi json-c json-glib"
 RUN eve-alpine-deploy.sh
 
 # build libtpms, it is needed by swtpm
 WORKDIR /libtpms
-ADD https://github.com/stefanberger/libtpms.git#v0.9.6 /libtpms
+ADD https://github.com/stefanberger/libtpms.git#v0.10.0 /libtpms
 RUN ./autogen.sh --prefix=/usr --with-tpm2
 RUN make -j$(nproc)
 RUN make -j$(nproc) install
@@ -22,9 +22,12 @@ RUN cp /usr/lib/libtpms.so.* /out/usr/lib/
 
 # build swtpm
 WORKDIR /swtpm
-ADD https://github.com/stefanberger/swtpm.git#v0.9.0 /swtpm
+# This poinst to the latest commit that implements state backup functionality.
+# TODO: revert this when there is a new release in swtpm
+ADD https://github.com/stefanberger/swtpm.git#732bbd6ad3a52b9552b5a1620e03a9f6449a1aab /swtpm
 RUN ./autogen.sh --prefix=/out/usr
 RUN make -j$(nproc)
+RUN src/swtpm/swtpm socket --tpm2 --print-capabilities | grep "tpmstate-dir-backend-opt-backup"
 RUN make -j$(nproc) install
 RUN cp /out/usr/lib/swtpm/* /out/usr/lib/
 
