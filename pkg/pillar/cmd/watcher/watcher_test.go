@@ -484,10 +484,6 @@ func TestGoroutineMonitorStops(t *testing.T) {
 	r, w, _ := os.Pipe()
 	logger.SetOutput(w)
 	logger.SetLevel(logrus.TraceLevel)
-	defer func() {
-		logger.SetOutput(backupOut)
-		logger.SetLevel(backupLevel)
-	}()
 
 	// Create context with default parameters
 	ctx := &watcherContext{}
@@ -506,6 +502,8 @@ func TestGoroutineMonitorStops(t *testing.T) {
 
 	// Close the pipe
 	_ = w.Close()
+	logger.SetOutput(backupOut)
+	logger.SetLevel(backupLevel)
 
 	// Read the log output
 	output, _ := io.ReadAll(r)
