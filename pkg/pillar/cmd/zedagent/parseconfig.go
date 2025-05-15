@@ -2809,7 +2809,7 @@ func parseConfigItems(ctx *getconfigContext, config *zconfig.EdgeDevConfig,
 		if newCertInterval != oldCertInterval {
 			log.Functionf("parseConfigItems: %s change from %d to %d",
 				"CertInterval", oldCertInterval, newCertInterval)
-			updateCertTimer(newCertInterval, ctx.certTickerHandle)
+			updateTaskTimer(newCertInterval, ctx.certTickerHandle)
 		}
 		if newMetricInterval != oldMetricInterval {
 			log.Functionf("parseConfigItems: %s change from %d to %d",

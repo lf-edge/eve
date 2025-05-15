@@ -233,12 +233,12 @@ func controllerCertsTask(ctx *zedagentContext, triggerCerts <-chan struct{}) {
 		if retry && success {
 			log.Noticef("getCertsFromController succeeded; switching to long timer %d seconds",
 				ctx.globalConfig.GlobalValueInt(types.CertInterval))
-			updateCertTimer(ctx.globalConfig.GlobalValueInt(types.CertInterval),
+			updateTaskTimer(ctx.globalConfig.GlobalValueInt(types.CertInterval),
 				ctx.getconfigCtx.certTickerHandle)
 			retry = false
 		} else if !retry && !success {
 			log.Noticef("getCertsFromController failed; switching to short timer")
-			updateCertTimer(shortTime,
+			updateTaskTimer(shortTime,
 				ctx.getconfigCtx.certTickerHandle)
 			retry = true
 		}
