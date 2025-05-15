@@ -28,9 +28,11 @@ jobs:
           - os: zededa-ubuntu-2204
             arch: amd64
             platform: "generic"
+            hv: [kvm, kubevirt]
           - os: zededa-ubuntu-2204
             arch: riscv64
             platform: "generic"
+            hv: kvm
     steps:
       - name: Starting Report
         run: |
@@ -61,7 +63,7 @@ jobs:
         run: |
           SUCCESS=
           for i in 1 2 3; do
-            if make -e V=1 ZARCH=${{ matrix.arch }} PLATFORM=${{ matrix.platform }} LINUXKIT_PKG_TARGET=push PRUNE=1 pkgs; then
+            if make -e V=1 HV=${{ matrix.hv }} ZARCH=${{ matrix.arch }} PLATFORM=${{ matrix.platform }} LINUXKIT_PKG_TARGET=push PRUNE=1 pkgs; then
               SUCCESS=true
               break
             else
@@ -201,6 +203,9 @@ jobs:
           - arch: arm64
             hv: kvm
             platform: "nvidia-jp6"
+          - arch: amd64
+            hv: kubevirt
+            platform: "generic"
     steps:
       - uses: actions/checkout@v4
         with:
