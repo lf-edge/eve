@@ -513,22 +513,23 @@ func updateConfigTimer(configInterval uint32, tickerHandle interface{}) {
 	flextimer.TickNow(tickerHandle)
 }
 
-// Called when globalConfig changes
-// Assumes the caller has verified that the interval has changed
-func updateCertTimer(configInterval uint32, tickerHandle interface{}) {
+// updateTaskTimer updates the given tickerHandle to use a new interval based on configInterval.
+// It adjusts the ticker's range and triggers an immediate tick to ensure the new interval takes effect promptly.
+func updateTaskTimer(configInterval uint32, tickerHandle interface{}) {
 
 	if tickerHandle == nil {
-		// Happens if we have a GlobalConfig setting in /persist/
-		log.Warnf("updateConfigTimer: no certTickerHandle yet")
+		// Happens if the tickerHandle has not been initialized yet.
+		log.Warnf("updateConfigTimer: no tickerHandle yet")
 		return
 	}
 	interval := time.Duration(configInterval) * time.Second
-	log.Functionf("updateCertTimer() change to %v", interval)
+	log.Functionf("updateTaskTimer() change to %v", interval)
 	max := float64(interval)
 	min := max * 0.3
+	// Update the ticker to use the new interval range.
 	flextimer.UpdateRangeTicker(tickerHandle,
 		time.Duration(min), time.Duration(max))
-	// Force an immediate timeout since timer could have decreased
+	// Force an immediate tick in case the interval was decreased.
 	flextimer.TickNow(tickerHandle)
 }
 
