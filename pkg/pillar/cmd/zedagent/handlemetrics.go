@@ -1003,6 +1003,19 @@ func setMetricAnyValue(item *metrics.MetricItem, val interface{}) {
 func hardwareHealthTimerTask(ctx *zedagentContext, handleChannel chan interface{}) {
 	iteration := 0
 	log.Functionln("starting report health check timer task")
+
+	for deviceNetworkStatus != nil && deviceNetworkStatus.State != types.DPCStateSuccess && iteration < 100 {
+		log.Noticef("Waiting for device networking to be ready, Network Status: %s", deviceNetworkStatus.State)
+		time.Sleep(5 * time.Second)
+		iteration++
+	}
+
+	if iteration >= 100 {
+		log.Warnf("Device networking not ready after 500 seconds, giving up...")
+		return
+	}
+
+	iteration = 0
 	publishΗealthChecksReport(ctx, iteration)
 
 	interval := time.Duration(ctx.globalConfig.GlobalValueInt(types.HardwareHealthInterval)) * time.Second
@@ -1024,6 +1037,7 @@ func hardwareHealthTimerTask(ctx *zedagentContext, handleChannel chan interface{
 		case <-ticker.C:
 			start := time.Now()
 			iteration++
+			log.Noticef("publishinig HardwareHealth: %d, time: %v", iteration, start)
 			publishΗealthChecksReport(ctx, iteration)
 			ctx.ps.CheckMaxTimeTopic(wdName, "publishHardwareHealth", start,
 				warningTime, errorTime)
@@ -1086,6 +1100,7 @@ func publishΗealthChecksReport(ctx *zedagentContext, iteration int) {
 
 		ReportMemoryInfo.MemoryControllers = append(ReportMemoryInfo.MemoryControllers, memoryInfo)
 	}
+	ReportHardwareHealth.Mr = ReportMemoryInfo
 
 	log.Tracef("PublishHardwareHealthToZedCloud sending %s", ReportHardwareHealth)
 	sendHardwareHealthProtobuf(ctx.getconfigCtx, ReportHardwareHealth, iteration)
@@ -1643,7 +1658,8 @@ func sendHardwareHealthProtobufByURL(ctx *getconfigContext, harwdareHealthURL st
 
 	data, err := proto.Marshal(HardwareHealth)
 	if err != nil {
-		log.Fatal("sendHardwareHealthProtobufByURL proto marshaling error: ", err)
+		log.Errorf("sendHardwareHealthProtobufByURL proto marshaling error: %v", err)
+		return
 	}
 
 	buf := bytes.NewBuffer(data)
