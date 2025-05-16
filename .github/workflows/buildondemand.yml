@@ -89,7 +89,7 @@ jobs:
       fail-fast: false
       matrix:
         arch: [arm64, amd64]
-        hv: [xen, kvm]
+        hv: [xen, kvm, kubevirt]
         platform: ["generic"]
         include:
           - arch: riscv64
@@ -99,10 +99,10 @@ jobs:
             hv: kvm
             platform: "rt"
           - arch: arm64
-            hv: kvm
+            hv: [kvm, kubevirt]
             platform: "nvidia-jp5"
           - arch: arm64
-            hv: kvm
+            hv: [kvm, kubevirt]
             platform: "nvidia-jp6"
           - arch: arm64
             hv: kvm
