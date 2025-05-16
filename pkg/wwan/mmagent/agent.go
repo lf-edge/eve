@@ -822,12 +822,10 @@ func (a *MMAgent) reconcileModem(
 			connErrChanged = true
 			a.logReconcileOp(modem, "close connection", opReason, connErr)
 		}
-		if connErr == nil {
+		if connErr == nil && modem.Status.Module.OpMode != types.WwanOpModeRadioOff {
 			// Not a necessary step hence we do not touch connErr if it fails.
 			err := a.mmClient.DeleteBearers(modem.Path)
 			a.logReconcileOp(modem, "delete bearers", opReason, err)
-		}
-		if connErr == nil && modem.Status.Module.OpMode != types.WwanOpModeRadioOff {
 			// Note that we disable radio function of all unmanaged modems.
 			connErr = a.mmClient.DisableRadio(modem.Path)
 			connErrChanged = true
