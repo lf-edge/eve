@@ -12,6 +12,7 @@ import (
 	"net"
 	"os"
 	"path"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -362,6 +363,8 @@ func (a *MMAgent) Run(ctx context.Context) error {
 		a.modemInfo[modem.Path] = modemInfo
 		// Unmanaged modems have radio function disabled.
 		modemInfo.connectError = a.mmClient.DisableRadio(modem.Path)
+		// Allow the PCI bus to put the device into a low-power state.
+		a.maybeChangePCIPowerMode(modemInfo, false)
 	}
 	a.publishWwanStatus()
 
@@ -833,6 +836,12 @@ func (a *MMAgent) reconcileModem(
 			connErrChanged = true
 			a.logReconcileOp(modem, "disable radio", opReason, connErr)
 		}
+		// Allow the PCI bus to put the device into a low-power state.
+		// Since this is not critical, failures are only logged and not exposed via modem
+		// status reporting.
+		if changed, err := a.maybeChangePCIPowerMode(modem, false); changed || err != nil {
+			a.logReconcileOp(modem, "disable always-on PCI power", opReason, err)
+		}
 	} else {
 		// Modem should be connected.
 		isConnected := modem.Status.Module.OpMode == types.WwanOpModeConnected
@@ -840,6 +849,16 @@ func (a *MMAgent) reconcileModem(
 			opReason := "modem not connected"
 			if forceReconnect {
 				opReason = "forcing reconnection"
+			}
+			// Some modem firmware versions are known to become unstable and sometimes
+			// even crash when the PCI driver performs runtime power management and
+			// changes the device's power state. In such cases, we disable power
+			// management for the device and force it to remain always powered on while
+			// connected.
+			// Since this is not necessary for connectivity (even if unstable), failures
+			// are only logged and not exposed via modem status reporting.
+			if changed, err := a.maybeChangePCIPowerMode(modem, true); changed || err != nil {
+				a.logReconcileOp(modem, "enable always-on PCI power", opReason, connErr)
 			}
 			if modem.Status.Module.OpMode == types.WwanOpModeRadioOff {
 				connErr = a.mmClient.EnableRadio(modem.Path)
@@ -967,6 +986,53 @@ func (a *MMAgent) logReconcileOp(modem *ModemInfo, operation, reason string, ret
 		a.log.Errorf("Failed to %s for %s%s: %v", operation, modemDescr,
 			reasonDescr, retval)
 	}
+}
+
+// Toggle between "auto" and "on" power settings for a PCI modem with known
+// firmware instability triggered by runtime power state changes from the driver.
+func (a *MMAgent) maybeChangePCIPowerMode(
+	modem *ModemInfo, powerAlwaysOn bool) (changed bool, err error) {
+	if modem.Status.PhysAddrs.USB != "" || modem.Status.PhysAddrs.PCI == "" {
+		// Not a PCI modem.
+		return false, nil
+	}
+
+	// Check if modem is known to be unstable with power management (PM) enabled.
+	// This list of problematic firmware versions may grow over time.
+	unstableWithPM :=
+		// Foxconn Qualcomm Snapdragon X55 5G
+		strings.HasPrefix(modem.Status.Module.Revision, "T99W175") ||
+			// Quectel EM160R_GL
+			strings.HasPrefix(modem.Status.Module.Revision, "EM160RGL")
+	if !unstableWithPM {
+		// Leave the power settings unchanged.
+		return false, nil
+	}
+
+	// Documentation: https://www.kernel.org/doc/Documentation/ABI/testing/sysfs-devices-power
+	requiredMode := "auto"
+	if powerAlwaysOn {
+		requiredMode = "on"
+	}
+	controlFilePath := filepath.Join("/sys/bus/pci/devices",
+		modem.Status.PhysAddrs.PCI, "power/control")
+
+	// Read current setting.
+	currentModeBytes, err := os.ReadFile(controlFilePath)
+	if err != nil {
+		return false, fmt.Errorf("failed to read current power mode: %w", err)
+	}
+	currentMode := strings.TrimSpace(string(currentModeBytes))
+	if currentMode == requiredMode {
+		// Already set correctly.
+		return false, nil
+	}
+
+	// Write new setting.
+	if err := os.WriteFile(controlFilePath, []byte(requiredMode), 0644); err != nil {
+		return false, fmt.Errorf("failed to write new power mode: %w", err)
+	}
+	return true, nil
 }
 
 func (a *MMAgent) scanVisibleProviders(modem *ModemInfo) {
