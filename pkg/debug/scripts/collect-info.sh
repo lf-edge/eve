@@ -6,7 +6,7 @@
 
 # Script version, don't forget to bump up once something is changed
 
-VERSION=34
+VERSION=35
 # Add required packages here, it will be passed to "apk add".
 # Once something added here don't forget to add the same package
 # to the Dockerfile ('ENV PKGS' line) of the debug container,
@@ -458,9 +458,22 @@ find /sys/kernel/security -name "tpm*" | while read -r TPM; do
     fi
 done
 
+echo "- vTPM (SWTPM) logs"
+for dir in /persist/swtpm/tpm-state-*; do
+    if [ -d "$dir" ]; then
+        uuid="${dir##*/tpm-state-}"
+        log_file="$dir/swtpm.log"
+        if [ -f "$log_file" ]; then
+            cp "$log_file" "$DIR/$uuid.swtpm.log"
+        fi
+    fi
+done
+
 if [ -c /dev/tpm0 ]; then
     echo "- TPM persistent handles"
     eve exec vtpm tpm2 getcap handles-persistent > "$DIR/handles-persistent.txt"
+    echo "- TPM PCRs capabilitie"
+    eve exec vtpm tpm2 getcap pcrs > "$DIR/selected-pcrs.txt"
 fi
 
 if [ -n "$COLLECT_LOGS_DAYS" ]; then
