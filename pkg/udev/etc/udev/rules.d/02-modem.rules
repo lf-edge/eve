@@ -1,0 +1,10 @@
+# Certain modem firmware versions are known to become unstable, or even
+# crash, when the PCI driver engages in runtime power management and
+# alters the device's power state. To prevent this, we disable power
+# management for affected devices and force them to remain continuously
+# powered-on.
+
+# Foxconn Qualcomm Snapdragon X55 5G
+SUBSYSTEM=="pci", ATTR{vendor}=="0x105b", ATTR{device}=="0xe0ab", ATTR{power/control}="on"
+# Quectel EM160R_GL
+SUBSYSTEM=="pci", ATTR{vendor}=="0x1eac", ATTR{device}=="0x1002", ATTR{power/control}="on"
