@@ -174,6 +174,11 @@ func (ctx ctrdContext) Delete(domainName string) error {
 	if err := ctx.ctrdClient.CtrDeleteContainer(ctrdCtx, domainName); err != nil {
 		return err
 	}
+	if persistentSnapshotExists, _ := ctx.ctrdClient.CtrSnapshotExists(ctrdCtx, domainName); persistentSnapshotExists {
+		if err := ctx.ctrdClient.CtrRemoveSnapshot(ctrdCtx, domainName); err != nil {
+			return err
+		}
+	}
 	vifsTaskDir := filepath.Join(vifsDir, domainName)
 	if err := os.RemoveAll(vifsTaskDir); err != nil {
 		return logError("cannot clear vifs task dir %s: %v", vifsTaskDir, err)
@@ -186,10 +191,17 @@ func (ctx ctrdContext) Cleanup(domainName string) error {
 	ctrdCtx, done := ctx.ctrdClient.CtrNewUserServicesCtx()
 	defer done()
 	container, _ := ctx.ctrdClient.CtrLoadContainer(ctrdCtx, domainName)
-	if container == nil {
-		return nil
+	if container != nil {
+		if err := ctx.Delete(domainName); err != nil {
+			return err
+		}
 	}
-	return ctx.Delete(domainName)
+	if persistentSnapshotExists, _ := ctx.ctrdClient.CtrSnapshotExists(ctrdCtx, domainName); persistentSnapshotExists {
+		if err := ctx.ctrdClient.CtrRemoveSnapshot(ctrdCtx, domainName); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (ctx ctrdContext) Annotations(domainName string) (map[string]string, error) {
