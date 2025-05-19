@@ -129,7 +129,7 @@ func (ctx xenContext) Setup(status types.DomainStatus, config types.DomainConfig
 	if err != nil {
 		return logError("failed to load OCI spec for domain %s: %v", status.DomainName, err)
 	}
-	if err = spec.AddLoader("/containers/services/xen-tools"); err != nil {
+	if err = spec.AddLoader(xenToolsPath); err != nil {
 		return logError("failed to add xen hypervisor loader to domain %s: %v", status.DomainName, err)
 	}
 

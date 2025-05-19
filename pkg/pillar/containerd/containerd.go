@@ -21,10 +21,12 @@ import (
 	"github.com/containerd/containerd/api/services/tasks/v1"
 	"github.com/containerd/containerd/cio"
 	"github.com/containerd/containerd/content"
+	"github.com/containerd/containerd/errdefs"
 	"github.com/containerd/containerd/images"
 	"github.com/containerd/containerd/leases"
 	"github.com/containerd/containerd/mount"
 	"github.com/containerd/containerd/namespaces"
+	"github.com/containerd/containerd/oci"
 	"github.com/containerd/containerd/snapshots"
 	"github.com/containerd/typeurl"
 	"github.com/lf-edge/edge-containers/pkg/resolver"
@@ -32,11 +34,11 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/vault"
 	"github.com/opencontainers/go-digest"
 	"github.com/opencontainers/image-spec/identity"
+	runtimespecs "github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/vishvananda/netlink"
 
 	v1stat "github.com/containerd/cgroups/stats/v1"
-	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
-	spec "github.com/opencontainers/image-spec/specs-go/v1"
+	imagespecs "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/sirupsen/logrus"
 )
 
@@ -163,7 +165,7 @@ func (client *Client) CtrWriteBlob(ctx context.Context, blobHash string, expecte
 		return fmt.Errorf("CtrWriteBlob: exception while validating hash format of %s. %v", blobHash, err)
 	}
 	if err := content.WriteBlob(ctx, client.contentStore, blobHash, reader,
-		spec.Descriptor{Digest: expectedDigest, Size: int64(expectedSize)}); err != nil {
+		imagespecs.Descriptor{Digest: expectedDigest, Size: int64(expectedSize)}); err != nil {
 		return fmt.Errorf("CtrWriteBlob: Exception while writing blob: %s. %s", blobHash, err.Error())
 	}
 	return nil
@@ -191,7 +193,7 @@ func (client *Client) CtrReadBlob(ctx context.Context, blobHash string) (io.Read
 	if err != nil {
 		return nil, fmt.Errorf("CtrReadBlob: Exception getting info of blob: %s. %s", blobHash, err.Error())
 	}
-	readerAt, err := client.contentStore.ReaderAt(ctx, spec.Descriptor{Digest: shaDigest})
+	readerAt, err := client.contentStore.ReaderAt(ctx, imagespecs.Descriptor{Digest: shaDigest})
 	if err != nil {
 		return nil, fmt.Errorf("CtrReadBlob: Exception while reading blob: %s. %s", blobHash, err.Error())
 	}
@@ -288,20 +290,48 @@ func (client *Client) CtrDeleteImage(ctx context.Context, reference string) erro
 	return client.ctrdClient.ImageService().Delete(ctx, reference)
 }
 
-// CtrPrepareSnapshot creates snapshot for the given image
+// CtrCreateEmptySnapshot creates an empty snapshot with the given snapshotID or returns the existing snapshot if it already exists.
+func (client *Client) CtrCreateEmptySnapshot(ctx context.Context, snapshotID string) ([]mount.Mount, error) {
+	if err := client.verifyCtr(ctx, true); err != nil {
+		return nil, fmt.Errorf("CtrCreateEmptySnapshot: exception while verifying ctrd client: %s", err.Error())
+	}
+	snapshotter := client.ctrdClient.SnapshotService(defaultSnapshotter)
+	snapshotMount, err := snapshotter.Mounts(ctx, snapshotID)
+	if errdefs.IsNotFound(err) {
+		logrus.Debugf("Snapshot %s does not exist, creating it", snapshotID)
+		snapshotMount, err = client.CtrPrepareSnapshot(ctx, snapshotID, nil)
+		if err != nil {
+			return nil, err
+		}
+	} else if err != nil {
+		return nil, err
+	} else {
+		logrus.Debugf("Snapshot %s already exists, reusing it", snapshotID)
+	}
+	return snapshotMount, nil
+}
+
+// CtrPrepareSnapshot creates snapshot for the given image or a clean one if no image is provided.
 func (client *Client) CtrPrepareSnapshot(ctx context.Context, snapshotID string, image containerd.Image) ([]mount.Mount, error) {
 	if err := client.verifyCtr(ctx, true); err != nil {
 		return nil, fmt.Errorf("CtrPrepareSnapshot: exception while verifying ctrd client: %s", err.Error())
 	}
-	// use rootfs unpacked image to create a writable snapshot with default snapshotter
-	diffIDs, err := image.RootFS(ctx)
-	if err != nil {
-		err = fmt.Errorf("CtrPrepareSnapshot: Could not load rootfs of image: %v. %v", image.Name(), err)
-		return nil, err
+
+	var parent string
+	if image == nil {
+		// create a clean writable snapshot if no image is provided
+		parent = ""
+	} else {
+		// use rootfs unpacked image to create a writable snapshot with default snapshotter
+		diffIDs, err := image.RootFS(ctx)
+		if err != nil {
+			err = fmt.Errorf("CtrPrepareSnapshot: Could not load rootfs of image: %v. %v", image.Name(), err)
+			return nil, err
+		}
+		parent = identity.ChainID(diffIDs).String()
 	}
 
 	snapshotter := client.ctrdClient.SnapshotService(defaultSnapshotter)
-	parent := identity.ChainID(diffIDs).String()
 	labels := map[string]string{"containerd.io/gc.root": time.Now().UTC().Format(time.RFC3339)}
 	return snapshotter.Prepare(ctx, snapshotID, parent, snapshots.WithLabels(labels))
 }
@@ -336,6 +366,22 @@ func (client *Client) CtrListSnapshotInfo(ctx context.Context) ([]snapshots.Info
 		return nil, fmt.Errorf("CtrListSnapshotInfo: Exception while fetching snapshot list. %s", err.Error())
 	}
 	return snapshotInfoList, nil
+}
+
+// CtrSnapshotExists checks if a snapshot with the given snapshotName exists in containerd's snapshot store
+func (client *Client) CtrSnapshotExists(ctx context.Context, snapshotName string) (bool, error) {
+	if err := client.verifyCtr(ctx, true); err != nil {
+		return false, err
+	}
+
+	snapshotter := client.ctrdClient.SnapshotService(defaultSnapshotter)
+	_, err := snapshotter.Stat(ctx, snapshotName)
+	if errdefs.IsNotFound(err) {
+		return false, nil
+	} else if err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // CtrGetSnapshotUsage returns snapshot's usage for snapshotID present in containerd's snapshot store
@@ -512,6 +558,49 @@ func (client *Client) CtrListTaskIds(ctx context.Context) ([]string, error) {
 		res = append(res, v.ID)
 	}
 	return res, nil
+}
+
+// CtrNewContainer starts a new container with a specific spec and specOpts
+func (client *Client) CtrNewContainer(ctx context.Context, spec runtimespecs.Spec, specOpts []oci.SpecOpts, name string, containerImage containerd.Image) (containerd.Container, error) {
+
+	opts := []containerd.NewContainerOpts{
+		containerd.WithImage(containerImage),
+		containerd.WithImageConfigLabels(containerImage),
+		containerd.WithNewSnapshot(name, containerImage),
+		containerd.WithSpec(&spec, specOpts...),
+	}
+
+	return client.ctrdClient.NewContainer(ctx, name, opts...)
+}
+
+// CtrNewContainerWithPersist starts a new container with /persist mounted
+func (client *Client) CtrNewContainerWithPersist(ctx context.Context, name string, containerImage containerd.Image) (containerd.Container, error) {
+	var spec runtimespecs.Spec
+
+	spec.Root = &runtimespecs.Root{
+		Readonly: false,
+	}
+
+	mount := runtimespecs.Mount{
+		Destination: "/persist",
+		Type:        "bind",
+		Source:      "/persist",
+		Options:     []string{"bind", "rw"},
+	}
+	specOpts := []oci.SpecOpts{
+		oci.WithDefaultSpec(),
+		oci.WithImageConfig(containerImage),
+		oci.WithMounts([]runtimespecs.Mount{mount}),
+		oci.WithDefaultUnixDevices,
+	}
+
+	return client.CtrNewContainer(ctx, spec, specOpts, name, containerImage)
+}
+
+// CtrPull pulls a container
+func (client *Client) CtrPull(ctx context.Context, ref string) (containerd.Image, error) {
+	image, err := client.ctrdClient.Pull(ctx, ref, containerd.WithPullUnpack)
+	return image, err
 }
 
 // CtrStartTask starts the default task in a pre-existing container that was prepared by CtrCreateTask
@@ -734,7 +823,7 @@ func prepareProcess(pid int, VifList []types.VifInfo) error {
 	logrus.Infof("prepareProcess(%d, %v)", pid, VifList)
 	for _, iface := range VifList {
 		if iface.Vif == "" {
-			return fmt.Errorf("Interface requires a name")
+			return fmt.Errorf("interface requires a name")
 		}
 
 		var link netlink.Link
@@ -772,8 +861,8 @@ func prepareProcess(pid int, VifList []types.VifInfo) error {
 	return nil
 }
 
-func getSavedImageInfo(containerPath string) (ocispec.Image, error) {
-	var image ocispec.Image
+func getSavedImageInfo(containerPath string) (imagespecs.Image, error) {
+	var image imagespecs.Image
 
 	data, err := os.ReadFile(filepath.Join(containerPath, imageConfigFilename))
 	if err != nil {

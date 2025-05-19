@@ -4,14 +4,12 @@
 package containerd
 
 import (
-	"encoding/json"
 	"fmt"
 	"log"
 	"net"
 	"os"
 	"path"
 	"path/filepath"
-	"reflect"
 	"testing"
 
 	zconfig "github.com/lf-edge/eve-api/go/config"
@@ -475,6 +473,9 @@ func TestCreateMountPointExecEnvFiles(t *testing.T) {
         }
     ]
 }`
+
+	client := initClient(t)
+
 	//create a temp dir to hold resulting files
 	dir, _ := os.MkdirTemp("/tmp", "podfiles")
 	rootDir := path.Join(dir, "runx")
@@ -497,7 +498,6 @@ func TestCreateMountPointExecEnvFiles(t *testing.T) {
 		t.Errorf("failed to write to a runtime spec file %v", err)
 	}
 
-	client := &Client{}
 	spec, err := client.NewOciSpec("test", false)
 	if err != nil {
 		t.Errorf("failed to create new OCI spec %v", err)
@@ -623,6 +623,8 @@ func TestPrepareMount(t *testing.T) {
     ]
 }`
 
+	client := initClient(t)
+
 	err := os.MkdirAll(path.Join(oldTempRootPath, "tmp"), 0777)
 	if err != nil {
 		t.Errorf("TestPrepareMount: Failed to create %s: %s", oldTempRootPath, err.Error())
@@ -677,7 +679,6 @@ func TestPrepareMount(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			client := &Client{}
 			spec, err := client.NewOciSpec("test", false)
 			if err != nil {
 				t.Errorf("failed to create new OCI spec")
@@ -790,10 +791,10 @@ func TestEnvs(t *testing.T) {
 	g.Expect(spec.Process.Args).To(Equal([]string{"echo", "hello"}))
 }
 
-func TestAddLoader(t *testing.T) {
-	g := NewGomegaWithT(t)
-	specTemplate := ociSpec{
+func specTemplate(client *Client) ociSpec {
+	return ociSpec{
 		name:    "test",
+		client:  client,
 		volumes: map[string]struct{}{"/myvol": {}, "/hisvol": {}},
 		Spec: specs.Spec{
 			Process: &specs.Process{
@@ -809,8 +810,39 @@ func TestAddLoader(t *testing.T) {
 			Linux:       &specs.Linux{CgroupsPath: "/foo/bar/baz"},
 		},
 	}
-	spec1 := deepCopy(specTemplate).(ociSpec)
-	spec2 := deepCopy(specTemplate).(ociSpec)
+}
+
+func initClient(t *testing.T) *Client {
+	client, err := NewContainerdClient(false)
+	if err != nil {
+		t.Skipf("test must be run on a system with a functional containerd")
+	}
+
+	t.Cleanup(func() {
+		ctrdCtx, done := client.CtrNewUserServicesCtx()
+		defer done()
+
+		// clean up the snapshots that were created in AddLoader()
+		snapshots, err := client.CtrListSnapshotInfo(ctrdCtx)
+		if err != nil {
+			t.Errorf("failed to list snapshots %v", err)
+		}
+		for _, snapshot := range snapshots {
+			if err := client.CtrRemoveSnapshot(ctrdCtx, snapshot.Name); err != nil {
+				t.Errorf("failed to remove snapshot %s %v", snapshot.Name, err)
+			}
+		}
+
+		// add more things here if other containerd artifacts were created
+	})
+
+	return client
+}
+
+func TestAddLoader(t *testing.T) {
+	client := initClient(t)
+
+	g := NewGomegaWithT(t)
 
 	tmpdir, err := os.MkdirTemp("/tmp", "volume")
 	if err != nil {
@@ -822,36 +854,30 @@ func TestAddLoader(t *testing.T) {
 		log.Fatalf("failed to create tmpfile %v", err)
 	}
 
+	spec1 := specTemplate(client)
 	g.Expect(spec1.AddLoader("/foo/bar/baz")).To(HaveOccurred())
 
 	g.Expect(spec1.AddLoader(tmpdir)).ToNot(HaveOccurred())
-	g.Expect(spec1.Root).To(Equal(&specs.Root{Path: filepath.Join(tmpdir, "rootfs"), Readonly: true}))
+	g.Expect(spec1.Root).To(Equal(&specs.Root{Path: "rootfs", Readonly: false}))
 	g.Expect(spec1.Linux.CgroupsPath).To(Equal("/foo/bar/baz"))
-	g.Expect(spec1.Mounts[9]).To(Equal(specs.Mount{Destination: "/mnt/rootfs/test", Type: "bind", Source: "/test", Options: []string{"ro"}}))
-	g.Expect(spec1.Mounts[0]).To(Equal(specs.Mount{Destination: "/dev", Type: "bind", Source: "/dev", Options: []string{"rw", "rbind", "rshared"}}))
+	g.Expect(spec1.Mounts[10]).To(Equal(specs.Mount{Destination: "/mnt/rootfs/test", Type: "bind", Source: "/test", Options: []string{"ro"}}))
+	g.Expect(spec1.Mounts[1]).To(Equal(specs.Mount{Destination: "/dev", Type: "bind", Source: "/dev", Options: []string{"rw", "rbind", "rshared"}}))
 
+	spec2 := specTemplate(client)
 	spec2.Root.Path = tmpdir
 	g.Expect(spec2.AddLoader(tmpdir)).ToNot(HaveOccurred())
-	g.Expect(spec2.Root).To(Equal(&specs.Root{Path: filepath.Join(tmpdir, "rootfs"), Readonly: true}))
+	g.Expect(spec2.Root).To(Equal(&specs.Root{Path: "rootfs", Readonly: false}))
 	g.Expect(spec2.Linux.CgroupsPath).To(Equal("/foo/bar/baz"))
-	g.Expect(spec2.Mounts[11]).To(Equal(specs.Mount{Destination: "/mnt/rootfs/test", Type: "bind", Source: "/test", Options: []string{"ro"}}))
-	g.Expect(spec2.Mounts[10]).To(Equal(specs.Mount{Destination: "/mnt/modules", Type: "bind", Source: "/lib/modules", Options: []string{"rbind", "ro", "rslave"}}))
-	g.Expect(spec2.Mounts[9]).To(Equal(specs.Mount{Destination: "/mnt", Type: "bind", Source: path.Join(tmpdir, ".."), Options: []string{"rbind", "rw", "rslave"}}))
-	g.Expect(spec2.Mounts[0]).To(Equal(specs.Mount{Destination: "/dev", Type: "bind", Source: "/dev", Options: []string{"rw", "rbind", "rshared"}}))
-}
-
-func deepCopy(in interface{}) interface{} {
-	b, _ := json.Marshal(in)
-	p := reflect.New(reflect.TypeOf(in))
-	output := p.Interface()
-	_ = json.Unmarshal(b, output)
-	val := reflect.ValueOf(output)
-	val = val.Elem()
-	return val.Interface()
+	g.Expect(spec2.Mounts[12]).To(Equal(specs.Mount{Destination: "/mnt/rootfs/test", Type: "bind", Source: "/test", Options: []string{"ro"}}))
+	g.Expect(spec2.Mounts[11]).To(Equal(specs.Mount{Destination: "/mnt/modules", Type: "bind", Source: "/lib/modules", Options: []string{"rbind", "ro", "rslave"}}))
+	g.Expect(spec2.Mounts[10]).To(Equal(specs.Mount{Destination: "/mnt", Type: "bind", Source: path.Join(tmpdir, ".."), Options: []string{"rbind", "rw", "rslave"}}))
+	g.Expect(spec2.Mounts[1]).To(Equal(specs.Mount{Destination: "/dev", Type: "bind", Source: "/dev", Options: []string{"rw", "rbind", "rshared"}}))
 }
 
 func TestAllowAllDevicesInSpec(t *testing.T) {
 	t.Parallel()
+
+	client := initClient(t)
 
 	// create a temp dir to hold resulting files
 	dir, _ := os.MkdirTemp("/tmp", "podfiles")
@@ -870,7 +896,6 @@ func TestAllowAllDevicesInSpec(t *testing.T) {
 		t.Errorf("failed to write to a runtime spec file %v", err)
 	}
 
-	client := &Client{}
 	spec, err := client.NewOciSpec("test", false)
 	if err != nil {
 		t.Errorf("failed to create new OCI spec %v", err)

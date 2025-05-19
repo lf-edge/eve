@@ -26,6 +26,7 @@ import (
 	"github.com/linuxkit/linuxkit/src/cmd/linuxkit/moby"
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/opencontainers/runtime-spec/specs-go"
+	"github.com/sirupsen/logrus"
 )
 
 const eveScript = "/bin/eve"
@@ -42,13 +43,14 @@ var dhcpcdScript = []string{"eve", "exec", "pillar", "/opt/zededa/bin/dhcpcd.sh"
 // for all the different task usecases
 type ociSpec struct {
 	specs.Spec
-	name         string
-	client       *Client
-	exposedPorts map[string]struct{}
-	volumes      map[string]struct{}
-	labels       map[string]string
-	stopSignal   string
-	service      bool
+	name          string
+	client        *Client
+	exposedPorts  map[string]struct{}
+	volumes       map[string]struct{}
+	labels        map[string]string
+	stopSignal    string
+	service       bool
+	containerOpts []containerd.NewContainerOpts
 }
 
 // OCISpec provides methods to manipulate OCI runtime specifications and create containers based on them
@@ -111,7 +113,42 @@ func (s *ociSpec) AddLoader(volume string) error {
 		return err
 	}
 
-	spec.Root = &specs.Root{Readonly: true, Path: filepath.Join(volume, "rootfs")}
+	// we're gonna use a little hack: since we already have the rootfs of a xen-tools container
+	// laid out on disk, but don't have it in a form of a snapshot or an image, we're going to
+	// create an empty snapshot and then overlay the rootfs on top of it - this way we can save
+	// ourselves copying the rootfs around and still have the newest version of xen-tools on every
+	// boot, while the original xen-tools rootfs stays read-only
+
+	ctrdCtx, done := s.client.CtrNewUserServicesCtx()
+	defer done()
+
+	// create a clean snapshot
+	snapshotName := s.name
+	snapshotMount, err := s.client.CtrCreateEmptySnapshot(ctrdCtx, snapshotName)
+	if err != nil {
+		return err
+	}
+
+	// remove fs from the end of snapshotMount
+	snapshotPath := strings.TrimSuffix(snapshotMount[0].Source, "/fs")
+	logrus.Debugf("Snapshot path: %s", snapshotPath)
+
+	xenToolsMount := specs.Mount{
+		Type:        "overlay",
+		Source:      "overlay",
+		Destination: "/",
+		Options: []string{
+			"index=off",
+			"workdir=" + snapshotPath + "/work",
+			"upperdir=" + snapshotPath + "/fs",
+			"lowerdir=" + volume + "/rootfs",
+		}}
+
+	// we need to prepend the loader mount to the existing mounts to make sure it's mounted first because it's the rootfs
+	spec.Mounts = append([]specs.Mount{xenToolsMount}, spec.Mounts...)
+
+	s.containerOpts = append(s.containerOpts, containerd.WithSnapshot(snapshotName))
+
 	spec.Linux.Resources = s.Linux.Resources
 	spec.Linux.CgroupsPath = s.Linux.CgroupsPath
 
@@ -263,11 +300,14 @@ func (s *ociSpec) Load(file *os.File) error {
 func (s *ociSpec) CreateContainer(removeExisting bool) error {
 	ctrdCtx, done := s.client.CtrNewUserServicesCtx()
 	defer done()
-	_, err := s.client.ctrdClient.NewContainer(ctrdCtx, s.name, containerd.WithSpec(&s.Spec))
+
+	containerOpts := append(s.containerOpts, containerd.WithSpec(&s.Spec))
+
+	_, err := s.client.ctrdClient.NewContainer(ctrdCtx, s.name, containerOpts...)
 	// if container exists, is stopped and we are asked to remove existing - try that
 	if err != nil && removeExisting {
 		_ = s.client.CtrDeleteContainer(ctrdCtx, s.name)
-		_, err = s.client.ctrdClient.NewContainer(ctrdCtx, s.name, containerd.WithSpec(&s.Spec))
+		_, err = s.client.ctrdClient.NewContainer(ctrdCtx, s.name, containerOpts...)
 	}
 	return err
 }

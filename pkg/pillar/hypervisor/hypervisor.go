@@ -13,6 +13,10 @@ import (
 	"os"
 )
 
+const (
+	xenToolsPath = "/containers/services/xen-tools"
+)
+
 // Hypervisor provides methods for manipulating domains on the host
 type Hypervisor interface {
 	Name() string
