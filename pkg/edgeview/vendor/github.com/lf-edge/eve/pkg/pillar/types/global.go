@@ -262,6 +262,18 @@ const (
 	EnableARPSnoop GlobalSettingKey = "network.switch.enable.arpsnoop"
 	// WwanQueryVisibleProviders : periodically query visible cellular service providers
 	WwanQueryVisibleProviders GlobalSettingKey = "wwan.query.visible.providers"
+	// WwanModemRecoveryWatchdog : trigger watchdog when cellular modem crashes and fails to recover.
+	WwanModemRecoveryWatchdog GlobalSettingKey = "wwan.modem.recovery.watchdog"
+	// WwanModemRecoveryReloadDrivers : reload QMI/MBIM/MHI drivers when cellular modem crashes
+	// and fails to recover. This occurs before the watchdog mechanism is triggered (if enabled
+	// by WwanModemRecoveryWatchdog).
+	WwanModemRecoveryReloadDrivers GlobalSettingKey = "wwan.modem.recovery.reload.drivers"
+	// WwanModemRecoveryRestartModemManager : If a modem firmware crash occurs and ModemManager
+	// fails to properly recognize or manage the restarted modem, EVE will attempt to restart
+	// ModemManager as a recovery step. This occurs before the watchdog mechanism is triggered
+	// (if enabled by WwanModemRecoveryWatchdog) and can be combined with driver reload recovery
+	// mechanism (see WwanModemRecoveryReloadDrivers).
+	WwanModemRecoveryRestartModemManager GlobalSettingKey = "wwan.modem.recovery.restart.modemmanager"
 
 	// GoroutineLeakDetectionThreshold amount of goroutines, reaching which will trigger leak detection
 	// regardless of growth rate.
@@ -376,6 +388,13 @@ const (
 
 	// TUIMonitorLogLevel: log level for TUI monitor
 	TUIMonitorLogLevel GlobalSettingKey = "debug.tui.loglevel"
+
+	// MsrvPrometheusMetricsRequestPerSecond: limit the number of requests per second
+	MsrvPrometheusMetricsRequestPerSecond GlobalSettingKey = "msrv.prometheus.metrics.rps"
+	// MsrvPrometheusMetricsBurst: limit the burst of requests
+	MsrvPrometheusMetricsBurst GlobalSettingKey = "msrv.prometheus.metrics.burst"
+	// MsrvPrometheusMetricsIdleTimeoutSeconds: idle timeout for the connection
+	MsrvPrometheusMetricsIdleTimeoutSeconds GlobalSettingKey = "msrv.prometheus.metrics.idletimeout.seconds"
 )
 
 // AgentSettingKey - keys for per-agent settings
@@ -1022,6 +1041,9 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddBoolItem(VncShimVMAccess, false)
 	configItemSpecMap.AddBoolItem(EnableARPSnoop, true)
 	configItemSpecMap.AddBoolItem(WwanQueryVisibleProviders, false)
+	configItemSpecMap.AddBoolItem(WwanModemRecoveryWatchdog, false)
+	configItemSpecMap.AddBoolItem(WwanModemRecoveryReloadDrivers, false)
+	configItemSpecMap.AddBoolItem(WwanModemRecoveryRestartModemManager, false)
 	configItemSpecMap.AddBoolItem(NetworkLocalLegacyMACAddress, false)
 	configItemSpecMap.AddBoolItem(MemoryMonitorEnabled, false)
 
@@ -1057,6 +1079,11 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddIntItem(NetDumpTopicMaxCount, 10, 1, 0xFFFFFFFF)
 	configItemSpecMap.AddBoolItem(NetDumpDownloaderPCAP, false)
 	configItemSpecMap.AddBoolItem(NetDumpDownloaderHTTPWithFieldValue, false)
+
+	// Add Metadata Server Prometheus metrics limits settings
+	configItemSpecMap.AddIntItem(MsrvPrometheusMetricsRequestPerSecond, 1, 1, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(MsrvPrometheusMetricsBurst, 10, 1, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(MsrvPrometheusMetricsIdleTimeoutSeconds, 4*60, 1, 0xFFFFFFFF)
 
 	return configItemSpecMap
 }

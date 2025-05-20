@@ -51,7 +51,7 @@ github.com/grandcat/zeroconf
 # github.com/leodido/go-urn v1.2.4
 ## explicit; go 1.16
 github.com/leodido/go-urn
-# github.com/lf-edge/eve-api/go v0.0.0-20250304184518-532c94981505
+# github.com/lf-edge/eve-api/go v0.0.0-20250502212418-fc1e3bad8f0f
 ## explicit; go 1.20
 github.com/lf-edge/eve-api/go/auth
 github.com/lf-edge/eve-api/go/certs
@@ -64,8 +64,8 @@ github.com/lf-edge/eve-api/go/profile
 # github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20240315102754-0f6d1f182e0d
 ## explicit; go 1.20
 github.com/lf-edge/eve/pkg/kube/cnirpc
-# github.com/lf-edge/eve/pkg/pillar v0.0.0-20250314140011-251590c3c9b2
-## explicit; go 1.23
+# github.com/lf-edge/eve/pkg/pillar v0.0.0-20250520150328-24744913c21c
+## explicit; go 1.23.0
 github.com/lf-edge/eve/pkg/pillar/base
 github.com/lf-edge/eve/pkg/pillar/flextimer
 github.com/lf-edge/eve/pkg/pillar/objtonum
@@ -175,7 +175,7 @@ golang.org/x/text/transform
 # golang.org/x/time v0.5.0
 ## explicit; go 1.18
 golang.org/x/time/rate
-# google.golang.org/protobuf v1.36.1
+# google.golang.org/protobuf v1.36.5
 ## explicit; go 1.21
 google.golang.org/protobuf/encoding/prototext
 google.golang.org/protobuf/encoding/protowire

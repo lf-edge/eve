@@ -141,6 +141,9 @@ const (
 	OVMFSettingsTemplate = "/usr/lib/xen/boot/OVMF_VARS.fd"
 	// CustomOVMFSettingsDir - directory for custom OVMF settings (for different resolutions)
 	CustomOVMFSettingsDir = "/hostfs/etc/ovmf"
+
+	// LocalActiveAppConfigDir - directory to put JSON of the apps that are running.
+	LocalActiveAppConfigDir = "/persist/vault/active-app-instance-config/"
 )
 
 var (
