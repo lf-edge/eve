@@ -94,6 +94,7 @@ type EvjwtAlgo struct {
 // EvAuthType - enum for authentication type of edge-view
 type EvAuthType int32
 
+// EvAuthType defines the authentication types for edge-view.
 const (
 	EvAuthTypeUnspecified    EvAuthType = iota // EvAuthTypeUnspecified - an unspecified authentication type.
 	EvAuthTypeControllerCert                   // EvAuthTypeControllerCert - using authen of controller cert

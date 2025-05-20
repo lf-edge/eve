@@ -28,6 +28,7 @@ type AppNetworkConfig struct {
 	CloudInitUserData *string `json:"pubsub-large-CloudInitUserData"`
 	CipherBlockStatus CipherBlockStatus
 	MetaDataType      MetaDataType
+	DeploymentType    AppRuntimeType
 }
 
 // Key :
@@ -112,6 +113,7 @@ type AppNetworkStatus struct {
 	AppPod cnirpc.AppPod
 	// Copy from the AppNetworkConfig; used to delete when config is gone.
 	GetStatsIPAddr       net.IP
+	DeploymentType       AppRuntimeType
 	AppNetAdapterList    []AppNetAdapterStatus
 	AwaitNetworkInstance bool // If any Missing flag is set in the networks
 	// ID of the MAC generator variant that was used to generate MAC addresses for this app.
@@ -1372,3 +1374,22 @@ const (
 	// provides).
 	MACGeneratorClusterDeterministic = 3
 )
+
+// NestedAppDomainStatus - status of a nested app domain
+// This is the struct of the nested app reported by runtime agent, and it is
+// published by zedrouter. One use case is for 'newlogd' to get the App structure
+// set up the same mechainsm as if it learned from the domainmgr's DomainStatus.
+// Because this nested app domain is configured through the Patch-envelop directly
+// to the runtime agent, and bypasses the EVE pillar, although some of the EVE
+// services may still want to know about those nested apps.
+type NestedAppDomainStatus struct {
+	UUIDandVersion UUIDandVersion // UUID of the nested app, e.g. a Docker-Compose App UUID
+	DisplayName    string         // nested App name
+	DisableLogs    bool           // if app log is disabled
+	ParentAppUUID  uuid.UUID      // parent app, a runtime VM UUID
+}
+
+// Key - returns the UUID for the nested app domain status
+func (status NestedAppDomainStatus) Key() string {
+	return status.UUIDandVersion.UUID.String()
+}
