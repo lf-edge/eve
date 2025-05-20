@@ -1,0 +1,379 @@
+From 9a1bb2cd356a920bfa431cd0aa482daa97a9bac4 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Ren=C3=AA=20de=20Souza=20Pinto?= <rene@renesp.com.br>
+Date: Tue, 20 May 2025 17:37:24 +0200
+Subject: [PATCH] OvmfPkg: Add EveBootOrderLib
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+This commit introduces the EveBootOrderLib. This library aims to allow
+EVE-OS change the boot order of Virtual Machines running OVMF. For now a
+partial implementation is provided, where USB devices are prioritized in
+the boot order list.
+
+Signed-off-by: Renê de Souza Pinto <rene@renesp.com.br>
+---
+ OvmfPkg/Include/Library/EveBootOrderLib.h     |  46 +++++
+ .../Library/EveBootOrderLib/EveBootOrderLib.c | 159 ++++++++++++++++++
+ .../EveBootOrderLib/EveBootOrderLib.inf       |  48 ++++++
+ .../PlatformBootManagerLib/BdsPlatform.c      |   1 +
+ .../PlatformBootManagerLib/BdsPlatform.h      |   1 +
+ .../PlatformBootManagerLib.inf                |   1 +
+ OvmfPkg/OvmfPkg.dec                           |   5 +
+ OvmfPkg/OvmfPkgX64.dsc                        |   1 +
+ OvmfPkg/OvmfXen.dsc                           |   1 +
+ 9 files changed, 263 insertions(+)
+ create mode 100644 OvmfPkg/Include/Library/EveBootOrderLib.h
+ create mode 100644 OvmfPkg/Library/EveBootOrderLib/EveBootOrderLib.c
+ create mode 100644 OvmfPkg/Library/EveBootOrderLib/EveBootOrderLib.inf
+
+diff --git a/OvmfPkg/Include/Library/EveBootOrderLib.h b/OvmfPkg/Include/Library/EveBootOrderLib.h
+new file mode 100644
+index 0000000000..78bf4730f5
+--- /dev/null
++++ b/OvmfPkg/Include/Library/EveBootOrderLib.h
+@@ -0,0 +1,46 @@
++/** @file
++  Rewrite the BootOrder NvVar based on EVE-OS "opt/eve.bootorder" fw_cfg file --
++  include file.
++
++  Copyright (C) 2012-2014, Red Hat, Inc.
++  Copyright (C) 2025 Zededa, Inc.
++
++  SPDX-License-Identifier: BSD-2-Clause-Patent
++**/
++
++#ifndef __EVE_BOOT_ORDER_LIB_H__
++#define __EVE_BOOT_ORDER_LIB_H__
++
++#include <Uefi/UefiBaseType.h>
++#include <Base.h>
++
++/**
++
++  Attempt to retrieve the "opt/eve.bootorder" fw_cfg file from QEMU. In
++  case the file is found, set the boot order based on configuration
++  retrieved from QEMU for EVE-OS.
++
++
++  @retval RETURN_SUCCESS            The "opt/eve.bootorder" fw_cfg file has been
++                                    parsed, and the referenced device-subtrees
++                                    have been connected.
++
++  @retval RETURN_UNSUPPORTED        QEMU's fw_cfg is not supported.
++
++  @retval RETURN_NOT_FOUND          Empty or nonexistent "opt/eve.bootorder" fw_cfg
++                                    file.
++
++  @retval RETURN_INVALID_PARAMETER  Parse error in the "opt/eve.bootorder" fw_cfg file.
++
++  @retval RETURN_OUT_OF_RESOURCES   Memory allocation failed.
++
++  @return                           Error statuses propagated from underlying
++                                    functions.
++**/
++RETURN_STATUS
++EFIAPI
++SetBootOrderFromEve (
++  VOID
++  );
++
++#endif
+diff --git a/OvmfPkg/Library/EveBootOrderLib/EveBootOrderLib.c b/OvmfPkg/Library/EveBootOrderLib/EveBootOrderLib.c
+new file mode 100644
+index 0000000000..33b37f86a4
+--- /dev/null
++++ b/OvmfPkg/Library/EveBootOrderLib/EveBootOrderLib.c
+@@ -0,0 +1,159 @@
++/** @file
++  Rewrite the BootOrder NvVar based on EVE-OS "opt/eve.bootorder" fw_cfg file.
++
++  Copyright (C) 2012 - 2014, Red Hat, Inc.
++  Copyright (c) 2013 - 2016, Intel Corporation. All rights reserved.<BR>
++  Copyright (C) 2025 Zededa, Inc.
++
++  SPDX-License-Identifier: BSD-2-Clause-Patent
++**/
++
++#include <Library/QemuFwCfgLib.h>
++#include <Library/DebugLib.h>
++#include <Library/MemoryAllocationLib.h>
++#include <Library/UefiBootManagerLib.h>
++#include <Library/UefiBootServicesTableLib.h>
++#include <Library/UefiRuntimeServicesTableLib.h>
++#include <Library/BaseLib.h>
++#include <Library/PrintLib.h>
++#include <Library/DevicePathLib.h>
++#include <Library/EveBootOrderLib.h>
++#include <Library/BaseMemoryLib.h>
++#include <Guid/GlobalVariable.h>
++#include <Guid/VirtioMmioTransport.h>
++
++/**
++  A simple array of Boot Option ID's.
++**/
++typedef struct {
++  UINT16 *Data;
++  UINTN  Allocated;
++  UINTN  Produced;
++} BOOT_ORDER;
++
++
++/**
++  Check if a DevicePath is an USB Device
++**/
++STATIC
++  BOOLEAN
++IsUSBDevice (
++  IN EFI_DEVICE_PATH_PROTOCOL *DevicePath
++  )
++{
++  EFI_DEVICE_PATH_PROTOCOL *Node;
++
++  for (Node = DevicePath; !IsDevicePathEnd(Node); Node = NextDevicePathNode(Node)) {
++    if (DevicePathType(Node) == MESSAGING_DEVICE_PATH &&
++       ((DevicePathSubType(Node) == MSG_USB_DP ||
++         DevicePathSubType(Node) == MSG_USB_CLASS_DP))) {
++        return TRUE;
++    }
++  }
++
++  return FALSE;
++}
++
++/**
++
++  Attempt to retrieve the "opt/eve.bootorder" fw_cfg file from QEMU. In
++  case the file is found, set the boot order based on configuration
++  retrieved from QEMU for EVE-OS.
++
++
++  @retval RETURN_SUCCESS            The "opt/eve.bootorder" fw_cfg file has been
++                                    parsed, and the referenced device-subtrees
++                                    have been connected.
++
++  @retval RETURN_UNSUPPORTED        QEMU's fw_cfg is not supported.
++
++  @retval RETURN_NOT_FOUND          Empty or nonexistent "opt/eve.bootorder" fw_cfg
++                                    file.
++
++  @retval RETURN_INVALID_PARAMETER  Parse error in the "opt/eve.bootorder" fw_cfg file.
++
++  @retval RETURN_OUT_OF_RESOURCES   Memory allocation failed.
++
++  @return                           Error statuses propagated from underlying
++                                    functions.
++**/
++RETURN_STATUS
++EFIAPI
++SetBootOrderFromEve (
++  VOID
++  )
++{
++  RETURN_STATUS                    Status;
++  BOOT_ORDER                       BootOrder;
++  EFI_BOOT_MANAGER_LOAD_OPTION     *BootOptions;
++  UINTN                            BootOptionCount;
++  UINT16                           BootOptionAux;
++  UINT16                           UsbPos;
++
++  DEBUG ((DEBUG_ERROR, "%a: Force prioritize USB devices for Boot\n", __FUNCTION__));
++
++  // Load boot options
++  BootOptions = EfiBootManagerGetLoadOptions (
++      &BootOptionCount, LoadOptionTypeBoot
++      );
++  if (BootOptions == NULL) {
++    return RETURN_NOT_FOUND;
++  }
++
++  // Create an array for boot order
++  BootOrder.Produced  = BootOptionCount;
++  BootOrder.Allocated = BootOptionCount;
++  BootOrder.Data = AllocatePool (
++      BootOrder.Allocated * sizeof (*BootOrder.Data)
++      );
++  if (BootOrder.Data == NULL) {
++    Status = RETURN_OUT_OF_RESOURCES;
++    goto ErrorFreeBootOptions;
++  }
++  // Store the current boot sequence (indexes)
++  for (UINTN Index = 0; Index < BootOptionCount; Index++) {
++    BootOrder.Data[Index] = BootOptions[Index].OptionNumber;
++  }
++
++  // TODO: This is a partial implementation, for now it will only
++  // prioritize USB devices in the boot list.
++  // Search for USB devices and move them to the top of the list
++  UsbPos = 0;
++  for (UINTN Index = 0; Index < BootOptionCount; Index++) {
++    if (IsUSBDevice(BootOptions[Index].FilePath)) {
++      BootOptionAux          = BootOrder.Data[UsbPos];
++      BootOrder.Data[UsbPos] = BootOrder.Data[Index];
++      BootOrder.Data[Index]  = BootOptionAux;
++      UsbPos++;
++    }
++  }
++
++  //
++  // See Table 10 in the UEFI Spec 2.3.1 with Errata C for the required
++  // attributes.
++  //
++  Status = gRT->SetVariable (
++      L"BootOrder",
++      &gEfiGlobalVariableGuid,
++      EFI_VARIABLE_NON_VOLATILE |
++      EFI_VARIABLE_BOOTSERVICE_ACCESS |
++      EFI_VARIABLE_RUNTIME_ACCESS,
++      BootOrder.Produced * sizeof (*BootOrder.Data),
++      BootOrder.Data
++      );
++  if (EFI_ERROR (Status)) {
++    DEBUG ((DEBUG_ERROR, "%a: setting BootOrder: %r\n", __FUNCTION__,
++          Status));
++    goto ErrorFreeBootOrder;
++  }
++
++ DEBUG ((DEBUG_INFO, "%a: setting BootOrder: success\n", __FUNCTION__));
++
++ErrorFreeBootOrder:
++  FreePool (BootOrder.Data);
++
++ErrorFreeBootOptions:
++  EfiBootManagerFreeLoadOptions (BootOptions, BootOptionCount);
++
++  return Status;
++}
+diff --git a/OvmfPkg/Library/EveBootOrderLib/EveBootOrderLib.inf b/OvmfPkg/Library/EveBootOrderLib/EveBootOrderLib.inf
+new file mode 100644
+index 0000000000..5e11df7242
+--- /dev/null
++++ b/OvmfPkg/Library/EveBootOrderLib/EveBootOrderLib.inf
+@@ -0,0 +1,48 @@
++## @file
++#  Rewrite the BootOrder NvVar based on EVE's "opt/eve.bootorder" fw_cfg file.
++#
++#  Copyright (C) 2025 Zededa, Inc.
++#
++#  SPDX-License-Identifier: BSD-2-Clause-Patent
++#
++##
++
++[Defines]
++  INF_VERSION                    = 0x00010005
++  BASE_NAME                      = EveBootOrderLib
++  FILE_GUID                      = 1E8AB4B5-3497-11F0-9B0F-78AF08E0E8B3
++  MODULE_TYPE                    = DXE_DRIVER
++  VERSION_STRING                 = 1.0
++  LIBRARY_CLASS                  = EveBootOrderLib|DXE_DRIVER
++
++[Sources]
++  EveBootOrderLib.c
++
++[Packages]
++  MdePkg/MdePkg.dec
++  MdeModulePkg/MdeModulePkg.dec
++  OvmfPkg/OvmfPkg.dec
++
++[LibraryClasses]
++  QemuFwCfgLib
++  DebugLib
++  MemoryAllocationLib
++  UefiBootManagerLib
++  UefiBootServicesTableLib
++  UefiRuntimeServicesTableLib
++  BaseLib
++  PrintLib
++  DevicePathLib
++  BaseMemoryLib
++  OrderedCollectionLib
++
++[Guids]
++  gEfiGlobalVariableGuid
++  gVirtioMmioTransportGuid
++
++[Pcd]
++  gEfiMdePkgTokenSpaceGuid.PcdPlatformBootTimeOut
++
++[Protocols]
++  gEfiDevicePathProtocolGuid                            ## CONSUMES
++  gEfiPciRootBridgeIoProtocolGuid                       ## CONSUMES
+diff --git a/OvmfPkg/Library/PlatformBootManagerLib/BdsPlatform.c b/OvmfPkg/Library/PlatformBootManagerLib/BdsPlatform.c
+index d9f61757cf..1fbc0d7a75 100644
+--- a/OvmfPkg/Library/PlatformBootManagerLib/BdsPlatform.c
++++ b/OvmfPkg/Library/PlatformBootManagerLib/BdsPlatform.c
+@@ -1854,6 +1854,7 @@ PlatformBootManagerAfterConsole (
+ 
+   RemoveStaleFvFileOptions ();
+   SetBootOrderFromQemu ();
++  SetBootOrderFromEve ();
+ 
+   PlatformBmPrintScRegisterHandler ();
+ }
+diff --git a/OvmfPkg/Library/PlatformBootManagerLib/BdsPlatform.h b/OvmfPkg/Library/PlatformBootManagerLib/BdsPlatform.h
+index 18b3deb9db..b507284236 100644
+--- a/OvmfPkg/Library/PlatformBootManagerLib/BdsPlatform.h
++++ b/OvmfPkg/Library/PlatformBootManagerLib/BdsPlatform.h
+@@ -44,6 +44,7 @@ Abstract:
+ #include <Library/QemuFwCfgLib.h>
+ #include <Library/QemuFwCfgS3Lib.h>
+ #include <Library/QemuBootOrderLib.h>
++#include <Library/EveBootOrderLib.h>
+ 
+ #include <Protocol/Decompress.h>
+ #include <Protocol/PciIo.h>
+diff --git a/OvmfPkg/Library/PlatformBootManagerLib/PlatformBootManagerLib.inf b/OvmfPkg/Library/PlatformBootManagerLib/PlatformBootManagerLib.inf
+index c6ffc1ed9e..38536dae5d 100644
+--- a/OvmfPkg/Library/PlatformBootManagerLib/PlatformBootManagerLib.inf
++++ b/OvmfPkg/Library/PlatformBootManagerLib/PlatformBootManagerLib.inf
+@@ -51,6 +51,7 @@
+   QemuFwCfgS3Lib
+   QemuLoadImageLib
+   QemuBootOrderLib
++  EveBootOrderLib
+   ReportStatusCodeLib
+   UefiLib
+   PlatformBmPrintScLib
+diff --git a/OvmfPkg/OvmfPkg.dec b/OvmfPkg/OvmfPkg.dec
+index c1c8198061..38c355198a 100644
+--- a/OvmfPkg/OvmfPkg.dec
++++ b/OvmfPkg/OvmfPkg.dec
+@@ -96,6 +96,11 @@
+   #
+   QemuBootOrderLib|Include/Library/QemuBootOrderLib.h
+ 
++  ##  @libraryclass  Rewrite the BootOrder NvVar based on EVE-OS
++  #                  "opt/eve.bootorder" fw_cfg file.
++  #
++  EveBootOrderLib|Include/Library/EveBootOrderLib.h
++
+   ##  @libraryclass  Load a kernel image and command line passed to QEMU via
+   #                  the command line
+   #
+diff --git a/OvmfPkg/OvmfPkgX64.dsc b/OvmfPkg/OvmfPkgX64.dsc
+index efb0eedb04..b0326707e2 100644
+--- a/OvmfPkg/OvmfPkgX64.dsc
++++ b/OvmfPkg/OvmfPkgX64.dsc
+@@ -416,6 +416,7 @@
+   PlatformBootManagerLib|OvmfPkg/Library/PlatformBootManagerLib/PlatformBootManagerLib.inf
+   PlatformBmPrintScLib|OvmfPkg/Library/PlatformBmPrintScLib/PlatformBmPrintScLib.inf
+   QemuBootOrderLib|OvmfPkg/Library/QemuBootOrderLib/QemuBootOrderLib.inf
++  EveBootOrderLib|OvmfPkg/Library/EveBootOrderLib/EveBootOrderLib.inf
+   CpuExceptionHandlerLib|UefiCpuPkg/Library/CpuExceptionHandlerLib/DxeCpuExceptionHandlerLib.inf
+ !if $(SMM_REQUIRE) == TRUE
+   LockBoxLib|MdeModulePkg/Library/SmmLockBoxLib/SmmLockBoxDxeLib.inf
+diff --git a/OvmfPkg/OvmfXen.dsc b/OvmfPkg/OvmfXen.dsc
+index c6fc3031ca..96d9590fec 100644
+--- a/OvmfPkg/OvmfXen.dsc
++++ b/OvmfPkg/OvmfXen.dsc
+@@ -334,6 +334,7 @@
+   PlatformBootManagerLib|OvmfPkg/Library/PlatformBootManagerLib/PlatformBootManagerLib.inf
+   PlatformBmPrintScLib|OvmfPkg/Library/PlatformBmPrintScLib/PlatformBmPrintScLib.inf
+   QemuBootOrderLib|OvmfPkg/Library/QemuBootOrderLib/QemuBootOrderLib.inf
++  EveBootOrderLib|OvmfPkg/Library/EveBootOrderLib/EveBootOrderLib.inf
+   CpuExceptionHandlerLib|UefiCpuPkg/Library/CpuExceptionHandlerLib/DxeCpuExceptionHandlerLib.inf
+   LockBoxLib|OvmfPkg/Library/LockBoxLib/LockBoxDxeLib.inf
+ !if $(SOURCE_DEBUG_ENABLE) == TRUE
+-- 
+2.47.2
+
