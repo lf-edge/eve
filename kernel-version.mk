@@ -32,17 +32,17 @@ endif
 ifeq ($(ZARCH), amd64)
     # either generic or rt
     KERNEL_FLAVOR=$(PLATFORM)
-    KERNEL_VERSION=v6.1.38
+    KERNEL_VERSION=v6.1.112
 else ifeq ($(ZARCH), arm64)
     ifeq ($(PLATFORM), nvidia)
         KERNEL_FLAVOR=nvidia
-        KERNEL_VERSION=v5.10.104
+        KERNEL_VERSION=v5.10.192
     else
         KERNEL_FLAVOR=generic
-        KERNEL_VERSION=v6.1.38
+        KERNEL_VERSION=v6.1.112
     endif
 else ifeq ($(ZARCH), riscv64)
-    KERNEL_VERSION=v6.1.38
+    KERNEL_VERSION=v6.1.112
     KERNEL_FLAVOR=generic
 endif
 
@@ -56,7 +56,7 @@ endif
 # at this point ZARCH, KERNEL_VERSION and FLAVOR must be defined.
 # Check that we defined a commit for combination
 ifeq ($(origin KERNEL_COMMIT_$(ZARCH)_$(KERNEL_VERSION)_$(KERNEL_FLAVOR)), undefined)
-    $(error "KERNEL_COMMIT_$(KERNEL_FLAVOR) is not defined. did you introduce new platform or ARCH?")
+    $(error "KERNEL_COMMIT_$(ZARCH)_$(KERNEL_VERSION)_$(KERNEL_FLAVOR) is not defined. did you introduce new platform or ARCH?")
 endif
 
 KERNEL_COMMIT=$(KERNEL_COMMIT_$(ZARCH)_$(KERNEL_VERSION)_$(KERNEL_FLAVOR))
