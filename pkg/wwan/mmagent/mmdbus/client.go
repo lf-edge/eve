@@ -777,17 +777,18 @@ func (c *Client) getBearerStatus(bearerObj dbus.BusObject) (bearer types.WwanBea
 			bearer.ConnectedAt = uint64(time.Now().Unix()) - uint64(value)
 		}
 	}
-	connectionError := struct {
-		DBusErrName string
-		ErrMessage  string
-	}{}
+
+	var connectionError []interface{}
 	_ = getDBusProperty(c, bearerObj, BearerPropertyConnectionError, &connectionError)
-	if connectionError.DBusErrName != "" {
-		if connectionError.ErrMessage != "" {
-			bearer.ConnectionError = connectionError.DBusErrName + ": " +
-				connectionError.ErrMessage
-		} else {
-			bearer.ConnectionError = connectionError.DBusErrName
+	if len(connectionError) == 2 {
+		dbusErrName, ok1 := connectionError[0].(string)
+		errMessage, ok2 := connectionError[1].(string)
+		if ok1 && ok2 && dbusErrName != "" {
+			if errMessage != "" {
+				bearer.ConnectionError = dbusErrName + ": " + errMessage
+			} else {
+				bearer.ConnectionError = dbusErrName
+			}
 		}
 	}
 	var bearerProperties map[string]dbus.Variant
