@@ -6,7 +6,7 @@
 # to "emulated" arm64 side on the amd64 runner.
 #
 # The trick we play is that we keep it as a matrix job still, but we make
-# it use the same GitHub provided x86 ubuntu-20.04 runners. The runner that
+# it use the same GitHub provided x86 ubuntu-24.04 runners. The runner that
 # gets to unpack arm64 artifacts does so with the help of binfmt-support and
 # qemu-user-static
 
@@ -46,7 +46,7 @@ jobs:
           echo "release_id=$release_id" >> "$GITHUB_OUTPUT"
           echo "upload_url=$upload_url" >> "$GITHUB_OUTPUT"
   build:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
     needs: create_release
     strategy:
       fail-fast: false
