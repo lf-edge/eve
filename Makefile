@@ -872,10 +872,6 @@ pkg/kube/external-boot-image.tar: pkg/external-boot-image
 	rm -f pkg/external-boot-image/build.yml
 pkg/kube: pkg/kube/external-boot-image.tar eve-kube
 	$(QUIET): $@: Succeeded
-pkg/pillar: pkg/dnsmasq pkg/gpt-tools pkg/dom0-ztools eve-pillar
-	$(QUIET): $@: Succeeded
-pkg/xen-tools: pkg/uefi eve-xen-tools
-	$(QUIET): $@: Succeeded
 pkg/%: eve-% FORCE
 	$(QUIET): $@: Succeeded
 
