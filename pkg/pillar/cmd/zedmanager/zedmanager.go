@@ -1337,6 +1337,14 @@ func handleModify(ctxArg interface{}, key string,
 		restartReason = "Restart to create immediate snapshot"
 	}
 
+	// Check if we need to roll back to a snapshot, and if so, mark the application
+	// as in purge state. We can apply snapshot only when the application is halted.
+	if status.SnapStatus.HasRollbackRequest {
+		status.PurgeInprogress = types.DownloadAndVerify
+		status.PurgeStartedAt = time.Now()
+		restartReason = "Restart to rollback snapshot"
+	}
+
 	if config.RestartCmd.Counter != oldConfig.RestartCmd.Counter ||
 		config.LocalRestartCmd.Counter != oldConfig.LocalRestartCmd.Counter {
 
