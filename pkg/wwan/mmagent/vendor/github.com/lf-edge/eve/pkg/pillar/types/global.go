@@ -308,6 +308,14 @@ const (
 	// FmlCustomResolution global setting key
 	FmlCustomResolution GlobalSettingKey = "app.fml.resolution"
 
+	// Log filtering and dedupliction
+	// LogDedupWindowSize is a measure of how many log entries are saved to search for duplicates
+	LogDedupWindowSize GlobalSettingKey = "log.dedup.window.size"
+	// LogFilenamesToCount a comma-separated list of log filenames to count
+	LogFilenamesToCount GlobalSettingKey = "log.count.filenames"
+	// LogFilenamesToFilter a comma-separated list of log filenames to filter
+	LogFilenamesToFilter GlobalSettingKey = "log.filter.filenames"
+
 	// DisableDHCPAllOnesNetMask option is deprecated and has no effect.
 	// Zedrouter no longer uses the all-ones netmask as it adds unnecessary complexity,
 	// causes confusion for some applications, and is no longer required for any EVE
@@ -1029,6 +1037,11 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddStringItem(KernelRemoteLogLevel, "info", validateSyslogKernelLevel)
 	configItemSpecMap.AddStringItem(FmlCustomResolution, FmlResolutionUnset, blankValidator)
 	configItemSpecMap.AddStringItem(TUIMonitorLogLevel, "info", blankValidator)
+
+	// Log deduplication and filtering settings
+	configItemSpecMap.AddIntItem(LogDedupWindowSize, 0, 0, 0xFFFFFFFF)
+	configItemSpecMap.AddStringItem(LogFilenamesToCount, "", blankValidator)
+	configItemSpecMap.AddStringItem(LogFilenamesToFilter, "", blankValidator)
 
 	// Add Agent Settings
 	configItemSpecMap.AddAgentSettingStringItem(LogLevel, "info", validateLogLevel)

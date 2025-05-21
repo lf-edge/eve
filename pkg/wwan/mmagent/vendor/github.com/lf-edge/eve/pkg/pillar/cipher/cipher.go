@@ -26,6 +26,8 @@ func getEncryptionBlock(
 	decBlock.WifiPassword = zconfigDecBlockPtr.WifiPassword
 	decBlock.CellularNetUsername = zconfigDecBlockPtr.CellularNetUsername
 	decBlock.CellularNetPassword = zconfigDecBlockPtr.CellularNetPassword
+	decBlock.CellularNetAttachUsername = zconfigDecBlockPtr.CellularNetAttachUsername
+	decBlock.CellularNetAttachPassword = zconfigDecBlockPtr.CellularNetAttachPassword
 	decBlock.ProtectedUserData = zconfigDecBlockPtr.ProtectedUserData
 	decBlock.ClusterToken = zconfigDecBlockPtr.ClusterToken
 	return decBlock
@@ -34,13 +36,42 @@ func getEncryptionBlock(
 // GetCipherCredentials : decrypt encryption block
 func GetCipherCredentials(ctx *DecryptCipherContext,
 	status types.CipherBlockStatus) (types.CipherBlockStatus, types.EncryptionBlock, error) {
+	var decBlock types.EncryptionBlock
+	cipherBlock, clearBytes, err := GetCipherMarshalledData(ctx, status)
+	if err != nil {
+		return handleCipherBlockCredError(ctx, &cipherBlock,
+			decBlock, err, types.DecryptFailed)
+	}
+
+	var zconfigDecBlock zcommon.EncryptionBlock
+	err = UnmarshalCipherData(ctx, clearBytes, &zconfigDecBlock)
+	if err != nil {
+		ctx.Log.Errorf("%s, encryption block unmarshall failed, %v\n",
+			cipherBlock.Key(), err)
+		return handleCipherBlockCredError(ctx, &cipherBlock,
+			decBlock, err, types.UnmarshalFailed)
+	}
+	ctx.Log.Functionf("%s, cipherblock decryption successful", cipherBlock.Key())
+	decBlock = getEncryptionBlock(&zconfigDecBlock)
+	ctx.AgentMetrics.RecordSuccess(ctx.Log)
+	return cipherBlock, decBlock, err
+}
+
+// GetCipherMarshalledData : decrypt encryption block, without assuming the proto
+// encoding data is zcommon.EncryptionBlock, since the data before encryption may have
+// its own data structure, it is up to the caller to unmarshal the data using
+// 'UnmarshalCipherData' function. Future use cases may not need to add a new
+// item in the EncryptionBLock.
+func GetCipherMarshalledData(ctx *DecryptCipherContext,
+	status types.CipherBlockStatus) (types.CipherBlockStatus, []byte, error) {
 	cipherBlock := new(types.CipherBlockStatus)
 	*cipherBlock = status
 	var decBlock types.EncryptionBlock
 	if !cipherBlock.IsCipher {
 		// Should not be called if IsCipher is not set
-		return handleCipherBlockCredError(ctx, cipherBlock,
+		cblock, _, err := handleCipherBlockCredError(ctx, cipherBlock,
 			decBlock, nil, types.Invalid)
+		return cblock, nil, err
 	}
 	ctx.Log.Functionf("%s, cipherblock decryption, using cipher-context: %s\n",
 		cipherBlock.Key(), cipherBlock.CipherContextID)
@@ -49,29 +80,31 @@ func GetCipherCredentials(ctx *DecryptCipherContext,
 			cipherBlock.Key(), cipherBlock.Error)
 		ctx.Log.Errorln(errStr)
 		err := errors.New(errStr)
-		return handleCipherBlockCredError(ctx, cipherBlock,
+		cblock, _, err := handleCipherBlockCredError(ctx, cipherBlock,
 			decBlock, err, types.NotReady)
+		return cblock, nil, err
 	}
 	clearBytes, err := DecryptCipherBlock(ctx, *cipherBlock)
 	if err != nil {
 		ctx.Log.Errorf("%s, cipherblock decryption failed, %v\n",
 			cipherBlock.Key(), err)
-		return handleCipherBlockCredError(ctx, cipherBlock,
-			decBlock, err, types.DecryptFailed)
+		cblock, _, err := handleCipherBlockCredError(ctx, cipherBlock,
+			decBlock, nil, types.Invalid)
+		return cblock, nil, err
 	}
 
-	var zconfigDecBlock zcommon.EncryptionBlock
-	err = proto.Unmarshal(clearBytes, &zconfigDecBlock)
+	return *cipherBlock, clearBytes, err
+}
+
+// UnmarshalCipherData generalizes the unmarshalling of cipher data into different Go data structures.
+func UnmarshalCipherData(ctx *DecryptCipherContext, clearBytes []byte, out proto.Message) error {
+	err := proto.Unmarshal(clearBytes, out)
 	if err != nil {
-		ctx.Log.Errorf("%s, encryption block unmarshall failed, %v\n",
-			cipherBlock.Key(), err)
-		return handleCipherBlockCredError(ctx, cipherBlock,
-			decBlock, err, types.UnmarshalFailed)
+		ctx.Log.Errorf("encryption block unmarshall failed, %v\n", err)
+		return fmt.Errorf("failed to unmarshal cipher block: %w", err)
 	}
-	ctx.Log.Functionf("%s, cipherblock decryption successful", cipherBlock.Key())
-	decBlock = getEncryptionBlock(&zconfigDecBlock)
-	ctx.AgentMetrics.RecordSuccess(ctx.Log)
-	return *cipherBlock, decBlock, err
+	ctx.Log.Functionf("cipherblock decryption successful")
+	return nil
 }
 
 // GetCipherData : decrypt plain text

@@ -4,6 +4,7 @@
 package types
 
 import (
+	"bytes"
 	"encoding/hex"
 
 	"github.com/google/go-cmp/cmp"
@@ -134,16 +135,31 @@ func (status CipherBlockStatus) LogKey() string {
 	return string(base.CipherBlockStatusLogType) + "-" + status.Key()
 }
 
+// Equal compares two instances of CipherBlockStatus for equality.
+func (status *CipherBlockStatus) Equal(status2 CipherBlockStatus) bool {
+	return status.CipherBlockID == status2.CipherBlockID &&
+		status.CipherContextID == status2.CipherContextID &&
+		bytes.Equal(status.InitialValue, status2.InitialValue) &&
+		bytes.Equal(status.CipherData, status2.CipherData) &&
+		bytes.Equal(status.ClearTextHash, status2.ClearTextHash)
+}
+
 // EncryptionBlock - This is a Mirror of
 // api/proto/config/acipherinfo.proto - EncryptionBlock
 // Always need to keep these two consistent.
 type EncryptionBlock struct {
-	DsAPIKey            string
-	DsPassword          string
-	WifiUserName        string // If the authentication type is EAP
-	WifiPassword        string
+	DsAPIKey     string
+	DsPassword   string
+	WifiUserName string // If the authentication type is EAP
+	WifiPassword string
+	// Credentials for the cellular default bearer:
 	CellularNetUsername string
 	CellularNetPassword string
-	ProtectedUserData   string
-	ClusterToken        string
+	// Credentials for the cellular attach bearer:
+	CellularNetAttachUsername string
+	CellularNetAttachPassword string
+	ProtectedUserData         string
+	ClusterToken              string
+	User                      zcommon.EncryptionBlockUser
+	EncryptedData             string
 }
