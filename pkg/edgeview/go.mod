@@ -17,8 +17,8 @@ require (
 	github.com/sirupsen/logrus v1.9.3
 	github.com/tatsushid/go-fastping v0.0.0-20160109021039-d7bb493dee3e
 	github.com/vishvananda/netlink v1.2.1-beta.2
-	golang.org/x/crypto v0.35.0
-	golang.org/x/sys v0.30.0
+	golang.org/x/crypto v0.36.0
+	golang.org/x/sys v0.31.0
 	golang.org/x/time v0.5.0
 )
 
@@ -40,8 +40,8 @@ require (
 	github.com/tklauser/numcpus v0.6.0 // indirect
 	github.com/vishvananda/netns v0.0.0-20210104183010-2eb08e3e575f // indirect
 	github.com/yusufpapurcu/wmi v1.2.3 // indirect
-	golang.org/x/net v0.36.0 // indirect
-	golang.org/x/text v0.22.0 // indirect
+	golang.org/x/net v0.38.0 // indirect
+	golang.org/x/text v0.23.0 // indirect
 	google.golang.org/protobuf v1.36.5 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
