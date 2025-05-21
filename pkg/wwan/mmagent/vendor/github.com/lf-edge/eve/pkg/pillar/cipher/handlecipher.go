@@ -108,7 +108,7 @@ func decryptCipherBlockWithECDH(ctx *DecryptCipherContext,
 	edgeNodeCert := lookupEdgeNodeCert(ctx, cipherContext.EdgeNodeCertKey())
 	if edgeNodeCert == nil {
 		errStr := fmt.Sprint("Edge Node Certificate get fail")
-		ctx.Log.Errorf(errStr)
+		ctx.Log.Error(errStr)
 		return []byte{}, errors.New(errStr)
 	}
 	switch cipherContext.EncryptionScheme {
