@@ -116,6 +116,7 @@ func (status DeviceNetworkStatus) LogCreate(logBase *base.LogObject) {
 		// XXX different logobject for a particular port?
 		logObject.CloneAndAddField("ifname", p.IfName).
 			AddField("last-error", p.LastError).
+			AddField("last-warning", p.LastWarning).
 			AddField("last-succeeded", p.LastSucceeded).
 			AddField("last-failed", p.LastFailed).
 			Noticef("DeviceNetworkStatus port create")
@@ -163,16 +164,20 @@ func (status DeviceNetworkStatus) LogModify(logBase *base.LogObject, old interfa
 		if p.HasError() != op.HasError() ||
 			p.LastFailed != op.LastFailed ||
 			p.LastSucceeded != op.LastSucceeded ||
-			p.LastError != op.LastError {
+			p.LastError != op.LastError ||
+			p.LastWarning != op.LastWarning {
 			logData := logObject.CloneAndAddField("ifname", p.IfName).
 				AddField("last-error", p.LastError).
+				AddField("last-warning", p.LastWarning).
 				AddField("last-succeeded", p.LastSucceeded).
 				AddField("last-failed", p.LastFailed).
 				AddField("old-last-error", op.LastError).
+				AddField("old-last-warning", op.LastWarning).
 				AddField("old-last-succeeded", op.LastSucceeded).
 				AddField("old-last-failed", op.LastFailed)
 			if p.HasError() == op.HasError() &&
-				p.LastError == op.LastError {
+				p.LastError == op.LastError &&
+				p.LastWarning == op.LastWarning {
 				// if we have success or the same error again, reduce log level
 				logData.Function("DeviceNetworkStatus port modify")
 			} else {
@@ -194,6 +199,7 @@ func (status DeviceNetworkStatus) LogDelete(logBase *base.LogObject) {
 		// XXX different logobject for a particular port?
 		logObject.CloneAndAddField("ifname", p.IfName).
 			AddField("last-error", p.LastError).
+			AddField("last-warning", p.LastWarning).
 			AddField("last-succeeded", p.LastSucceeded).
 			AddField("last-failed", p.LastFailed).
 			Noticef("DeviceNetworkStatus port delete")
@@ -354,6 +360,17 @@ func (status DeviceNetworkStatus) GetPortAddrInfo(ifname string, addr net.IP) *A
 		}
 	}
 	return nil
+}
+
+// IsPortUsedAsVlanParent - returns true if port with the given logical label
+// is used as a VLAN parent interface.
+func (status DeviceNetworkStatus) IsPortUsedAsVlanParent(portLabel string) bool {
+	for _, port2 := range status.Ports {
+		if port2.L2Type == L2LinkTypeVLAN && port2.VLAN.ParentPort == portLabel {
+			return true
+		}
+	}
+	return false
 }
 
 func rotate(arr []string, amount int) []string {
