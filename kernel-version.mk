@@ -1,4 +1,4 @@
-# Copyright (c) 2023 Zededa, Inc.
+# Copyright (c) 2023-2025 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 #
 # This file is included by the main Makefile.
@@ -12,7 +12,6 @@
 #
 
 KERNEL_COMPILER=gcc
-PLATFORM?=generic
 
 PLATFORMS_amd64=generic rt
 PLATFORMS_arm64=generic nvidia imx8mp_pollux imx8mp_epc_r3720 imx8mq_evk
