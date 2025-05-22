@@ -1,5 +1,5 @@
 
-# Copyright (c) 2018 Zededa, Inc.
+# Copyright (c) 2018-2025 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Run make (with no arguments) to see help on what targets are available
@@ -101,11 +101,8 @@ ifeq ($(DEV),y)
 	DEV_TAG:=-dev
 endif
 
-ifeq ($(PLATFORM),generic)
-TAGPLAT=
-else
-TAGPLAT=$(PLATFORM)
-endif
+PLATFORM?=generic
+TAGPLAT=$(if $(filter-out generic,$(PLATFORM)),$(PLATFORM))
 
 # ROOTFS_VERSION used to construct the installer directory
 # set this to the current tag only if we are building from a tag
@@ -1069,10 +1066,10 @@ images/out:
 	mkdir -p $@
 
 images/out/rootfs-%.yml.in: images/rootfs.yml.in $(RESCAN_DEPS) | images/out
-	$(QUIET)tools/compose-image-yml.sh -b $< -v "$(ROOTFS_VERSION)-$*-$(ZARCH)" -o $@ -h $(HV) $(patsubst %,images/modifiers/%.yq,$(subst -, ,$*))
+	$(QUIET)tools/compose-image-yml.sh -b $< -v "$(ROOTFS_VERSION)-$*-$(ZARCH)" -o $@ -h $(HV) $(patsubst %,images/modifiers/%.yq,$(firstword $(subst -, ,$*)))
 
 images/out/installer-%.yml.in: images/installer.yml.in $(RESCAN_DEPS) | images/out
-	$(QUIET)tools/compose-image-yml.sh -b $< -v "$(ROOTFS_VERSION)-$*-$(ZARCH)" -o $@ -h $(HV) $(patsubst %,images/modifiers/%.yq,$(subst -, ,$*))
+	$(QUIET)tools/compose-image-yml.sh -b $< -v "$(ROOTFS_VERSION)-$*-$(ZARCH)" -o $@ -h $(HV) $(patsubst %,images/modifiers/%.yq,$(firstword $(subst -, ,$*)))
 
 pkg-deps.mk: $(GET_DEPS)
 	$(QUIET)$(GET_DEPS) $(ROOTFS_GET_DEPS) -m $@
