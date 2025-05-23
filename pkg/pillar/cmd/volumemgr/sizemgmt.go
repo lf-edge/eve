@@ -85,7 +85,7 @@ func getRemainingDiskSpace(ctxPtr *volumemgrContext) (uint64, error) {
 // Everything in /persist except these directories/datasets counts
 // as EVE overhead.
 // Note that we also exclude /persist/newlog here since it maintains its own
-// size limit (GlobalValueInt(types.LogRemainToSendMBytes)) the caller
+// size limit (GlobalValueInt(types.MaxGzipLogMBytesInPersist)) the caller
 // needs to consider as EVE overhead.
 var excludeDirs = append(types.AppPersistPaths, types.NewlogDir)
 
