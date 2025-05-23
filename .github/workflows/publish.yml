@@ -189,17 +189,17 @@ jobs:
       fail-fast: false
       matrix:
         arch: [arm64, amd64]
-        hv: [kvm, xen]
+        hv: [kvm, xen, kubevirt]
         platform: ["generic"]
         include:
           - arch: riscv64
             hv: mini
             platform: "generic"
           - arch: arm64
-            hv: kvm
+            hv: [kvm, kubevirt]
             platform: "nvidia-jp5"
           - arch: arm64
-            hv: kvm
+            hv: [kvm, kubevirt]
             platform: "nvidia-jp6"
     steps:
       - uses: actions/checkout@v4

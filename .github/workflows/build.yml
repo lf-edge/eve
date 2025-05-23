@@ -109,15 +109,11 @@ jobs:
             hv: kvm
             platform: "rt"
           - arch: arm64
-            hv: kvm
+            hv: [kvm, kubevirt]
             platform: "nvidia-jp5"
           - arch: arm64
-            hv: kvm
+            hv: [kvm, kubevirt]
             platform: "nvidia-jp6"
-        exclude:
-          - arch: arm64
-            hv: kubevirt
-            platform: "generic"
 
     steps:
       - uses: actions/checkout@v4
