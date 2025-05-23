@@ -5,7 +5,7 @@ FROM lfedge/eve-alpine:0f2e0da38e30753c68410727a6cc269e57ff74f2 as build-base
 
 ARG TARGETARCH
 
-ENV BUILD_PKGS tar make binutils zstd rdfind coreutils
+ENV BUILD_PKGS="tar make binutils zstd rdfind coreutils"
 RUN eve-alpine-deploy.sh
 
 ENV WIRELESS_REGDB_VERSION=2024.01.23
@@ -22,6 +22,10 @@ ENV JETPACK6_DEB=nvidia-l4t-firmware_36.3.0-20240506102626_arm64.deb
 ENV JETPACK6_URL=https://repo.download.nvidia.com/jetson/t234/pool/main/n/nvidia-l4t-firmware/${JETPACK6_DEB}
 
 FROM build-base AS generic
+ENV NVIDIA_FW_TEGRA=${JETPACK5_DEB}
+ENV NVIDIA_FW_URL=${JETPACK5_URL}
+
+FROM build-base AS evaluation
 ENV NVIDIA_FW_TEGRA=${JETPACK5_DEB}
 ENV NVIDIA_FW_URL=${JETPACK5_URL}
 
@@ -48,11 +52,11 @@ RUN mkdir -p /nvidia-firmware && \
     fi
 
 # RTL8822ce firmware
-ENV RTL8822_FW_VERSION ca9f4e199efbf8c377e8a1769ba5b05b23f92c82
+ENV RTL8822_FW_VERSION=ca9f4e199efbf8c377e8a1769ba5b05b23f92c82
 ADD https://github.com/lwfinger/rtw88.git#${RTL8822_FW_VERSION} /rtw88
 
-ENV LINUX_FIRMWARE_VERSION 20240811
-ENV LINUX_FIRMWARE_URL https://cdn.kernel.org/pub/linux/kernel/firmware/linux-firmware
+ENV LINUX_FIRMWARE_VERSION=20240811
+ENV LINUX_FIRMWARE_URL=https://cdn.kernel.org/pub/linux/kernel/firmware/linux-firmware
 ADD ${LINUX_FIRMWARE_URL}-${LINUX_FIRMWARE_VERSION}.tar.gz /linux-firmware.tar.gz
 RUN mkdir /linux-firmware &&\
     tar -xz --strip-components=1 -C /linux-firmware -f /linux-firmware.tar.gz &&\
@@ -68,8 +72,8 @@ RUN ln -s brcmfmac4356-pcie.gpd-win-pocket.txt '/lib/firmware/brcm/brcmfmac4356-
 RUN ln -s brcmfmac4356-pcie.bin '/lib/firmware/brcm/brcmfmac4356-pcie.Kontron America-.bin'
 RUN ln -s brcmfmac4356-pcie.gpd-win-pocket.txt /lib/firmware/brcm/brcmfmac4356-pcie.txt
 
-ENV RPI_FIRMWARE_VERSION 2c8f665254899a52260788dd902083bb57a99738
-ENV RPI_FIRMWARE_URL https://github.com/RPi-Distro/firmware-nonfree/archive
+ENV RPI_FIRMWARE_VERSION=2c8f665254899a52260788dd902083bb57a99738
+ENV RPI_FIRMWARE_URL=https://github.com/RPi-Distro/firmware-nonfree/archive
 ADD ${RPI_FIRMWARE_URL}/${RPI_FIRMWARE_VERSION}.tar.gz /rpifirmware.tar.gz
 RUN if [ "${TARGETARCH}" = "arm64" ]; then \
     mkdir /rpi-firmware &&\
@@ -77,8 +81,8 @@ RUN if [ "${TARGETARCH}" = "arm64" ]; then \
     cp -a /rpi-firmware/debian/config/brcm80211/brcm/brcmfmac43436* /lib/firmware/brcm ;\
     fi
 
-ENV RPI_BT_FIRMWARE_VERSION e7fd166981ab4bb9a36c2d1500205a078a35714d
-ENV RPI_BT_FIRMWARE_URL https://github.com/RPi-Distro/bluez-firmware/raw
+ENV RPI_BT_FIRMWARE_VERSION=e7fd166981ab4bb9a36c2d1500205a078a35714d
+ENV RPI_BT_FIRMWARE_URL=https://github.com/RPi-Distro/bluez-firmware/raw
 
 WORKDIR /lib/firmware/brcm
 ADD ${RPI_BT_FIRMWARE_URL}/${RPI_BT_FIRMWARE_VERSION}/broadcom/BCM43430A1.hcd .
@@ -87,7 +91,7 @@ ADD ${RPI_BT_FIRMWARE_URL}/${RPI_BT_FIRMWARE_VERSION}/broadcom/BCM43430B0.hcd .
 ADD ${RPI_BT_FIRMWARE_URL}/${RPI_BT_FIRMWARE_VERSION}/broadcom/BCM4345C5.hcd .
 
 # Hailo 8 GPU firmware
-ENV HAILO_FW_VERSION 4.16.0
+ENV HAILO_FW_VERSION=4.16.0
 ADD https://hailo-hailort.s3.eu-west-2.amazonaws.com/Hailo8/${HAILO_FW_VERSION}/FW/hailo8_fw.${HAILO_FW_VERSION}.bin /lib/firmware/hailo/hailo8_fw.bin
 
 # generate initrd for Intel's and AMD's microcode
@@ -96,7 +100,7 @@ FROM --platform=${TARGETPLATFORM} lfedge/eve-alpine:0f2e0da38e30753c68410727a6cc
 RUN mkdir -p /boot /tmp/ucode/intel /tmp/ucode/amd /usr/share/licenses/ucode
 
 FROM ucode-build-common as ucode-build-amd64
-ENV BUILD_PKGS iucode-tool
+ENV BUILD_PKGS=iucode-tool
 RUN eve-alpine-deploy.sh
 
 # build intel microcode
@@ -112,7 +116,7 @@ RUN cp license /usr/share/licenses/ucode/intel-license.txt
 
 #build AMD microcode. We use a separate Linux firmware image for that
 ENV AMD_UCODE_VERSION=20240811
-ENV LINUX_FIRMWARE_URL https://cdn.kernel.org/pub/linux/kernel/firmware/linux-firmware
+ENV LINUX_FIRMWARE_URL=https://cdn.kernel.org/pub/linux/kernel/firmware/linux-firmware
 ADD ${LINUX_FIRMWARE_URL}-${AMD_UCODE_VERSION}.tar.gz /linux-firmware-ucode.tar.gz
 RUN mkdir /tmp/ucode/amd/linux-firmware \
     && tar -xz --strip-components=1 -C /tmp/ucode/amd/linux-firmware -f /linux-firmware-ucode.tar.gz
@@ -133,7 +137,7 @@ FROM ucode-build-common as ucode-build-arm64
 FROM ucode-build-common as ucode-build-riscv64
 FROM ucode-build-${TARGETARCH} as ucode-build
 
-FROM lfedge/eve-alpine:0f2e0da38e30753c68410727a6cc269e57ff74f2 as compactor
+FROM lfedge/eve-alpine:0f2e0da38e30753c68410727a6cc269e57ff74f2 as compactor-common
 ENTRYPOINT []
 WORKDIR /
 COPY --from=build /lib/firmware/regulatory* /lib/firmware/
@@ -204,6 +208,17 @@ RUN if [ "$TARGETARCH" = "arm64" ]; then \
     echo "Freed space: ${freed_space} KB"; \
     fi
 
+
+FROM lfedge/eve-alpine:0f2e0da38e30753c68410727a6cc269e57ff74f2 as compactor-full
+# get all possible FW
+COPY --from=build /lib/firmware/ /lib/firmware/
+
+FROM compactor-common AS compactor-generic
+FROM compactor-common AS compactor-nvidia-jp5
+FROM compactor-common AS compactor-nvidia-jp6
+FROM compactor-full AS compactor-evaluation
+
+FROM compactor-${PLATFORM} as compactor
 
 FROM scratch
 ENTRYPOINT []
