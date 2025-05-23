@@ -78,6 +78,17 @@ func (z *zedkube) applyClusterConfig(config, oldconfig *types.EdgeNodeClusterCon
 			if z.clusterIPIsReady {
 				z.startClusterStatusServer()
 			}
+
+			if config.BootstrapNode && (len(config.GzipRegistrationManifestYaml) != 0) {
+				go func() {
+					err := kubeapi.RegistrationAdd(kubeapi.PillarPersistManifestPath, config.GzipRegistrationManifestYaml)
+					if err != nil {
+						log.Errorf("Registration err:%v", err)
+					} else {
+						log.Noticef("Registration success")
+					}
+				}()
+			}
 		}
 	}
 	z.publishKubeConfigStatus()
@@ -110,6 +121,7 @@ func (z *zedkube) publishKubeConfigStatus() {
 	} else {
 		log.Errorf("publishKubeConfigStatus: cluster token is not from configitme or encrypted")
 	}
+
 	// publish the cluster status for the kube container
 	z.pubEdgeNodeClusterStatus.Publish("global", status)
 }

@@ -39,7 +39,7 @@ func getLocalNode(nodeuuid string) (*v1.Node, error) {
 		return nil, fmt.Errorf("getLocalNode: can't get clientset %v", err)
 	}
 
-	log.Noticef("getLocalNode with nodeuuid:%s", nodeuuid)
+	log.Functionf("getLocalNode with nodeuuid:%s", nodeuuid)
 	labelSelector := metav1.LabelSelector{MatchLabels: map[string]string{"node-uuid": nodeuuid}}
 	options := metav1.ListOptions{LabelSelector: metav1.FormatLabelSelector(&labelSelector)}
 	nodes, err := clientset.CoreV1().Nodes().List(context.Background(), options)

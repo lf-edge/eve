@@ -1,0 +1,54 @@
+#!/bin/sh
+#
+# Copyright (c) 2025 Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+# Dir which pillar has access to
+PERSIST_MANIFESTS_DIR=/persist/vault/manifests
+# Path which k3s monitors
+KUBE_MANIFESTS_DIR=/var/lib/rancher/k3s/server/manifests
+
+YAML_EXT="yaml"
+# The source yaml, which pillar inflates.
+registrationYamlName="registration"
+registrationYamlFileName="${registrationYamlName}.${YAML_EXT}"
+registrationYamlFilePath="${PERSIST_MANIFESTS_DIR}/${registrationYamlFileName}"
+
+# The dest yaml, where k3s can auto-apply
+appliedRegistrationYamlName="persist-${registrationYamlName}"
+appliedRegistrationYamlFileName="${appliedRegistrationYamlName}.${YAML_EXT}"
+appliedRegistrationYamlFilePath="${KUBE_MANIFESTS_DIR}/${appliedRegistrationYamlFileName}"
+
+# Pillar may download a yaml for registration, copy it in so that k3s handles applying it
+Registration_CheckApply() {
+    if [ ! -e "${PERSIST_MANIFESTS_DIR}" ]; then
+        return
+    fi
+
+    if [ ! -e "${registrationYamlFilePath}" ]; then
+        return
+    fi
+
+    if [ -e "${appliedRegistrationYamlFilePath}" ]; then
+        return
+    fi
+
+    # Copy to the dir monitored by k3s, it will handle application
+    cp "${registrationYamlFilePath}" "${appliedRegistrationYamlFilePath}" 
+    logmsg "${appliedRegistrationYamlFilePath} awaiting application by k3s"
+}
+
+Registration_Cleanup() {
+    cleanup_persist_manifest_registration
+    return 0
+}
+
+# Controller will delete the objects which were contained in the yaml
+# this is a post-uninstall stage to cleanup the AddOn anchor which k3s
+# creates when yaml is placed in its monitored directory
+cleanup_persist_manifest_registration() {
+    addonName="${appliedRegistrationYamlName}"
+    rm "${appliedRegistrationYamlFilePath}"
+    rm "${registrationYamlFilePath}"
+    logmsg "registration manifests deleted"
+}

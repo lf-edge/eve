@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"time"
@@ -378,4 +379,35 @@ func CleanupStaleVMI() (int, error) {
 		count++
 	}
 	return count, nil
+}
+
+// WriteAndRename is a file write helper for powerloss file corruption protection
+// Aim to protect the case of OS panic, power loss mid-write
+func WriteAndRename(fileName string, parentPath string, fileData []byte) error {
+	// Write to a temp file in destination fs.
+	tempFile, err := os.CreateTemp("/tmp/", fileName+"*")
+	if err != nil {
+		return err
+	}
+	defer func() {
+		tempFile.Close()           // Ensure the temp file is closed
+		os.Remove(tempFile.Name()) // and removed
+	}()
+	_, err = tempFile.Write(fileData)
+	if err != nil {
+		return err
+	}
+
+	// Sync and close
+	err = tempFile.Sync()
+	if err != nil {
+		return err
+	}
+	err = tempFile.Close()
+	if err != nil {
+		return err
+	}
+
+	// Rename tmp file to final path
+	return os.Rename(tempFile.Name(), filepath.Join(parentPath, fileName))
 }

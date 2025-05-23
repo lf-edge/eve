@@ -41,6 +41,9 @@ type EdgeNodeClusterConfig struct {
 
 	// CipherBlockStatus, for encrypted cluster token data
 	CipherToken CipherBlockStatus
+
+	// RegistrationManifestYamlUrl, for url to registration yaml
+	GzipRegistrationManifestYaml []byte
 }
 
 // ENClusterAppStatus - Status of an App Instance in the multi-node cluster
@@ -87,6 +90,8 @@ type EdgeNodeClusterStatus struct {
 	// This token string is the decrypted from the CipherBlock in the EdgeNodeClusterConfig
 	// by zedkube using the Controller and Edge-node certificates. See decryptClusterToken()
 	EncryptedClusterToken string
+	// EncryptedManifestYamlUrl - for kubernetes cluster import to orchestration
+	EncryptedManifestYamlUrl string
 
 	Error ErrorDescription
 }

@@ -3287,9 +3287,12 @@ func parseEdgeNodeClusterConfig(getconfigCtx *getconfigContext,
 		JoinServerIP:     joinServerIP,
 		BootstrapNode:    isJoinNode,
 		// XXX EncryptedClusterToken is only for gcp config
+
+		GzipRegistrationManifestYaml: zcfgCluster.GetGzipRegistrationManifestYaml(),
 	}
 	enClusterConfig.CipherToken = parseCipherBlock(getconfigCtx,
 		enClusterConfig.Key(), zcfgCluster.GetEncryptedClusterToken())
+
 	log.Functionf("parseEdgeNodeClusterConfig: ENCluster API, Config %+v, %v", zcfgCluster, enClusterConfig)
 	ctx.pubEdgeNodeClusterConfig.Publish("global", enClusterConfig)
 }
