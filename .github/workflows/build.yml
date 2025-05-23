@@ -20,17 +20,17 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [buildjet-4vcpu-ubuntu-2204-arm, buildjet-4vcpu-ubuntu-2204]
+        os: [buildjet-4vcpu-ubuntu-2204-arm, zededa-ubuntu-2204]
         arch: [arm64, amd64]
         platform: [generic, nvidia-jp5, nvidia-jp6]
         include:
-          - os: buildjet-4vcpu-ubuntu-2204
+          - os: zededa-ubuntu-2204
             arch: riscv64
             platform: generic
         exclude:
           - os: buildjet-4vcpu-ubuntu-2204-arm
             arch: amd64
-          - os: buildjet-4vcpu-ubuntu-2204
+          - os: zededa-ubuntu-2204
             arch: arm64
           - arch: amd64
             platform: nvidia-jp5
@@ -94,7 +94,7 @@ jobs:
 
   eve:
     needs: packages  # all packages for all platforms must be built first
-    runs-on: buildjet-4vcpu-ubuntu-2204
+    runs-on: zededa-ubuntu-2204
     strategy:
       fail-fast: false
       matrix:

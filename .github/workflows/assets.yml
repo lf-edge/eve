@@ -21,7 +21,7 @@ on:  # yamllint disable-line rule:truthy
 
 jobs:
   create_release:
-    runs-on: buildjet-4vcpu-ubuntu-2204
+    runs-on: zededa-ubuntu-2204
     outputs:
       release_id: ${{ steps.create_release.outputs.release_id }}
       upload_url: ${{ steps.create_release.outputs.upload_url }}
@@ -46,7 +46,7 @@ jobs:
           echo "release_id=$release_id" >> "$GITHUB_OUTPUT"
           echo "upload_url=$upload_url" >> "$GITHUB_OUTPUT"
   build:
-    runs-on: buildjet-4vcpu-ubuntu-2204
+    runs-on: zededa-ubuntu-2204
     needs: create_release
     strategy:
       fail-fast: false
