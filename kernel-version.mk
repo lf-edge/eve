@@ -14,7 +14,7 @@
 KERNEL_COMPILER=gcc
 
 PLATFORMS_amd64=generic rt evaluation
-PLATFORMS_arm64=generic nvidia nvidia-jp5 nvidia-jp6 imx8mp_pollux imx8mp_epc_r3720 imx8mq_evk
+PLATFORMS_arm64=generic nvidia-jp5 nvidia-jp6 imx8mp_pollux imx8mp_epc_r3720 imx8mq_evk
 PLATFORMS_riscv64=generic
 ARCHS=amd64 arm64 riscv64
 

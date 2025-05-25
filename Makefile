@@ -1061,11 +1061,18 @@ eve-%: pkg/%/Dockerfile build-tools $(RESCAN_DEPS)
 images/out:
 	mkdir -p $@
 
+# Find modifiers for a .yml filename
+define find-modifiers
+$(wildcard $(patsubst %,images/modifiers/%.yq,$1)) \
+$(wildcard $(patsubst %,images/modifiers/%.yq,$(firstword $(subst -, ,$1)))) \
+$(wildcard $(patsubst %,images/modifiers/%.yq,$(patsubst $(firstword $(subst -, ,$1))-%,%,$1)))
+endef
+
 images/out/rootfs-%.yml.in: images/rootfs.yml.in $(RESCAN_DEPS) | images/out
-	$(QUIET)tools/compose-image-yml.sh -b $< -v "$(ROOTFS_VERSION)-$*-$(ZARCH)" -o $@ -h $(HV) $(patsubst %,images/modifiers/%.yq,$(firstword $(subst -, ,$*)))
+	$(QUIET)tools/compose-image-yml.sh -b $< -v "$(ROOTFS_VERSION)-$*-$(ZARCH)" -o $@ -h $(HV) $(call find-modifiers,$*)
 
 images/out/installer-%.yml.in: images/installer.yml.in $(RESCAN_DEPS) | images/out
-	$(QUIET)tools/compose-image-yml.sh -b $< -v "$(ROOTFS_VERSION)-$*-$(ZARCH)" -o $@ -h $(HV) $(patsubst %,images/modifiers/%.yq,$(firstword $(subst -, ,$*)))
+	$(QUIET)tools/compose-image-yml.sh -b $< -v "$(ROOTFS_VERSION)-$*-$(ZARCH)" -o $@ -h $(HV) $(call find-modifiers,$*)
 
 pkg-deps.mk: $(GET_DEPS)
 	$(QUIET)$(GET_DEPS) $(ROOTFS_GET_DEPS) -m $@
