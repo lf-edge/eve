@@ -117,7 +117,7 @@ RUN --mount=type=cache,target=/root/.cache/go-build if [ "${TEST_TOOLS}" = "y" ]
 fi
 
 FROM lfedge/eve-fscrypt:68d40d7e70585669adef91279ba39dd134d3a15f as fscrypt
-FROM lfedge/eve-dnsmasq:3af908d86a95a627c729e09b1b125bf8de7fadcb as dnsmasq
+FROM lfedge/eve-dnsmasq:b8ca1cb29bf98184b90eeb91e0705696c0b80abd as dnsmasq
 FROM lfedge/eve-gpt-tools:51ecda7bc185c655c1d0423228dc83e29d4c674d as gpttools
 
 # collector collects everything together and then does any processing like stripping binaries.
