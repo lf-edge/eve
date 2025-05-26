@@ -8,8 +8,8 @@
 # has a fast path for stack unwinding. This also happens
 # to be a perfect place to put any other kind of debug info
 # into the package: see abuild/etc/abuild.conf.
-FROM lfedge/eve-recovertpm:0da17f65aba4fb09c83944cf5847dd7b523118b4 AS recovertpm
-FROM lfedge/eve-bpftrace:64f87b9dfce42524b0364159a6cc3b88ae3445b2 AS bpftrace
+FROM lfedge/eve-recovertpm:dd6f5c5e184f62c368a2fc4cbab18ddad97aaf39 AS recovertpm
+FROM lfedge/eve-bpftrace:31a885bb79cc1cde850340a80dd38427213f3518 AS bpftrace
 FROM lfedge/eve-alpine:0f2e0da38e30753c68410727a6cc269e57ff74f2 AS build
 ENV BUILD_PKGS="abuild curl tar make linux-headers patch g++ git gcc gpg ncurses-dev autoconf openssl-dev zlib-dev"
 # Feel free to add additional packages here, but be aware that
