@@ -165,6 +165,15 @@ func (c *VlanConfigurator) Create(ctx context.Context, item depgraph.Item) error
 		c.Log.Error(err)
 		return err
 	}
+	// Ensure the parent interface is set to UP before bringing up the VLAN subinterface.
+	// Otherwise, netlink.LinkSetUp(vlan) will return a "network is down" error.
+	err = netlink.LinkSetUp(parentLink)
+	if err != nil {
+		err = fmt.Errorf("failed to set parent interface %s UP: %v",
+			vlanCfg.ParentIfName, err)
+		c.Log.Error(err)
+		return err
+	}
 	err = netlink.LinkSetUp(vlan)
 	if err != nil {
 		err = fmt.Errorf("failed to set VLAN sub-interface %s UP: %v",
