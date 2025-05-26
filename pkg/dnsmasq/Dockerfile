@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 FROM lfedge/eve-alpine:82df60e43ab9f8c935584b8c7b4d0a4b0271d608 as build
-ENV BUILD_PKGS gcc make patch libc-dev linux-headers tar xz
+ENV BUILD_PKGS gcc make patch libc-dev linux-headers tar xz coreutils
 RUN eve-alpine-deploy.sh
 
 ENV DNSMASQ_VERSION 2.91
