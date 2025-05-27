@@ -22,11 +22,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: arm64-secure
+          - os: zededa-ubuntu-2204
             arch: arm64
-          - os: ubuntu-24.04
+          - os: zededa-ubuntu-2204
             arch: amd64
-          - os: ubuntu-latest
+          - os: zededa-ubuntu-latest
             arch: riscv64
     steps:
       - name: Starting Report
@@ -105,7 +105,7 @@ jobs:
   eve:
     if: github.event.repository.full_name == 'lf-edge/eve'
     needs: packages
-    runs-on: ubuntu-latest
+    runs-on: zededa-ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
@@ -132,7 +132,7 @@ jobs:
 
   manifest:
     if: github.event.repository.full_name == 'lf-edge/eve'
-    runs-on: ubuntu-latest
+    runs-on: zededa-ubuntu-latest
     needs: packages
     steps:
       - uses: actions/checkout@v4

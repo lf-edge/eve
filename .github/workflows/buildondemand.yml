@@ -25,11 +25,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: buildjet-4vcpu-ubuntu-2204-arm
+          - os: zededa-ubuntu-latest
             arch: arm64
-          - os: buildjet-4vcpu-ubuntu-2204
+          - os: zededa-ubuntu-2204
             arch: amd64
-          - os: buildjet-4vcpu-ubuntu-2204
+          - os: zededa-ubuntu-2204
             arch: riscv64
     steps:
       - name: Starting Report
@@ -83,7 +83,7 @@ jobs:
     needs: packages  # all packages for all platforms must be built first
     # Only run for the default branch
     if: github.ref_name == github.event.repository.default_branch
-    runs-on: buildjet-4vcpu-ubuntu-2204
+    runs-on: zededa-ubuntu-2204
     strategy:
       fail-fast: false
       matrix:
@@ -134,7 +134,7 @@ jobs:
   manifest:
     # Only run for the default branch
     if: github.ref_name == github.event.repository.default_branch
-    runs-on: ubuntu-latest
+    runs-on: zededa-ubuntu-latest
     needs: packages
     steps:
       - uses: actions/checkout@v4
