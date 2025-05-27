@@ -6,6 +6,9 @@ exec 3>&1
 exec 1>&2
 
 OUTPUT_IMG=/tmp/output.img
+DEFAULT_LIVE_IMG_SIZE=592
+DEFAULT_INSTALLER_IMG_SIZE=592
+DEFAULT_NVIDIA_IMG_SIZE=900
 
 bail() {
   echo "$@"
@@ -101,8 +104,14 @@ Optionally you can specify platform:
 
  -p <platform>
 
-This specifies a platform for this image: none (default),
-imx8mq_evk are all valid options.
+This specifies a platform for this image, e.g.:
+
+default (no platform provided), imx8mq_evk, imx8mp_pollux are all valid
+options.
+
+Note that NVIDIA images are only valid for a specific plataform. For
+instance: nvidia-jp6 images cannot be used with any other platform other
+than nvidia-jp6. The same applies for nvidia-jp5.
 
 Example:
 docker run --rm lfedge/eve -f raw -p imx8mq_evk live > live.raw
@@ -147,13 +156,13 @@ do_live() {
      IMAGE_UUID=$(uuidgen | tee /tmp/soft_serial)
      mcopy -o -i /bits/config.img /tmp/soft_serial ::/soft_serial
   fi
-  create_efi_raw "${1:-592}" "$PART_SPEC"
+  create_efi_raw "${1:-${DEFAULT_LIVE_IMG_SIZE}}" "$PART_SPEC"
   dump "$OUTPUT_IMG" live.raw
   echo "$IMAGE_UUID" >&2
 }
 
 do_installer_raw() {
-  create_efi_raw "${1:-592}" "efi conf_win installer inventory_win"
+  create_efi_raw "${1:-${DEFAULT_INSTALLER_IMG_SIZE}}" "efi conf_win installer inventory_win"
   dump "$OUTPUT_IMG" installer.raw
 }
 
@@ -204,12 +213,36 @@ do_sbom() {
 }
 
 prepare_for_platform() {
+    # First we need to check if we are an image for NVIDIA platform
+    if grep -q "\(.*\)-nvidia-\(.*\)" /bits/eve_version; then
+        # It's a NVIDIA image, increase the default size for installer
+        NVIDIA_PLAT=$(sed "s/.*-\(nvidia-jp.\)-.*/\1/" < /bits/eve_version)
+        DEFAULT_INSTALLER_IMG_SIZE=$DEFAULT_NVIDIA_IMG_SIZE
+        NVIDIA=true
+    else
+        NVIDIA_PLAT=""
+        NVIDIA=false
+    fi
+
+    # Parse platform argument
     case "$PLATFORM" in
     imx8m*) #shellcheck disable=SC2039
+        if [ "$NVIDIA" = "true" ]; then
+            bail "This image is only valid for NVIDIA platform."
+        fi
         cat /bits/bsp-imx/NXP-EULA-LICENSE.txt
         [ -n "$ACCEPT" ] || bail "You need to read and accept the EULA before you can continue. Use the --accept-license argument."
         cp /bits/bsp-imx/"$PLATFORM"-flash.bin /bits/imx8-flash.bin
         [ -n "$(ls /bits/bsp-imx/*.dtb 2> /dev/null)" ] && cp /bits/bsp-imx/*.dtb /bits/boot
+        ;;
+    nvidia*)
+        if [ "$NVIDIA" = "false" ]; then
+            bail "This image is not for NVIDIA platform."
+        else
+            if [ "$PLATFORM" != "$NVIDIA_PLAT" ]; then
+                bail "This image is not for $PLATFORM but for $NVIDIA_PLAT instead."
+            fi
+        fi
         ;;
     *) #shellcheck disable=SC2039,SC2104
         break
@@ -237,8 +270,9 @@ while true; do
           fi
           shift
           #shellcheck disable=SC3057
-          BASEPLATFORM="${PLATFORM:0:5}"
-          [ "$PLATFORM" != "none" ] && [ "$BASEPLATFORM" != "imx8m" ] && bail "Unknown platform: $PLATFORM"
+          [ "$PLATFORM" != "none" ] && \
+              [ "${PLATFORM:0:5}" != "imx8m" ] && \
+              [ "${PLATFORM:0:6}" != "nvidia" ] &&  bail "Unknown platform: $PLATFORM"
           ;;
      --accept-license*) #shellcheck disable=SC2039,SC3060
           ACCEPT=1
