@@ -6,13 +6,13 @@ package evetpm
 
 import (
 	"bytes"
+	"crypto/ecdsa"
 	"crypto/sha256"
 	"fmt"
 	"os"
 	"reflect"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/google/go-tpm/legacy/tpm2"
 	"github.com/google/go-tpm/tpmutil"
@@ -48,22 +48,34 @@ func TestMain(m *testing.M) {
 	m.Run()
 }
 
-func waitForTpmReadyState() error {
-	for i := 0; i < 10; i++ {
-		if err := SealDiskKey(log, []byte("secret"), DiskKeySealingPCRs); err != nil {
-			// this is RCRetry, so retry
-			if strings.Contains(err.Error(), "code 0x22") {
-				time.Sleep(100 * time.Millisecond)
-				continue
-			} else {
-				return fmt.Errorf("Something is wrong with the TPM : %w", err)
-			}
-		} else {
-			return nil
-		}
+func TestDriveSessionKey(t *testing.T) {
+	_, err := os.Stat(TpmDevicePath)
+	if err != nil {
+		t.Skip("TPM is not available, skipping the test.")
 	}
 
-	return fmt.Errorf("TPM did't become ready after 10 attempts, failing the test")
+	ecdhPublicKeyFile := "/tmp/eve-tpm/ec_key_leading_zero.cert"
+	pub, err := GetPublicKeyFromCert(ecdhPublicKeyFile)
+	if err != nil {
+		t.Fatalf("GetPublicKeyFromCert failed with err: %v", err)
+	}
+
+	eccPublicKey, ok := pub.(*ecdsa.PublicKey)
+	if !ok {
+		t.Fatalf("Expected ecdsa.PublicKey, got %T", pub)
+	}
+
+	fmt.Printf("X : %064x\nY : %064x\n", eccPublicKey.X.Bytes(), eccPublicKey.Y.Bytes())
+
+	key, err := deriveSessionKey(eccPublicKey.X, eccPublicKey.Y, eccPublicKey)
+	if err != nil {
+		t.Fatalf("deriveSessionKey failed with err: %v", err)
+	}
+
+	fmt.Printf("Derived session key: %x\n", key)
+	if len(key) != 32 {
+		t.Fatalf("Expected session key length to be 32 bytes, got %d bytes", len(key))
+	}
 }
 
 func TestSealUnseal(t *testing.T) {
