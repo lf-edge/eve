@@ -8,6 +8,7 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/pem"
@@ -519,6 +520,12 @@ func logto(w io.Writer, format string, args ...interface{}) {
 	}
 }
 
+func eccIntToBytes(curve elliptic.Curve, i *big.Int) []byte {
+	bytes := i.Bytes()
+	curveBytes := (curve.Params().BitSize + 7) / 8
+	return append(make([]byte, curveBytes-len(bytes)), bytes...)
+}
+
 func getPcrIndexes(pcrs []string) ([]int, error) {
 	var pcrIndexes []int
 	for _, pcr := range pcrs {
@@ -759,7 +766,11 @@ func deriveSessionKey(X, Y *big.Int, publicKey *ecdsa.PublicKey) ([32]byte, erro
 	}
 	defer rw.Close()
 
-	p := tpm2.ECPoint{XRaw: X.Bytes(), YRaw: Y.Bytes()}
+	p := tpm2.ECPoint{
+		XRaw: eccIntToBytes(publicKey.Curve, X),
+		YRaw: eccIntToBytes(publicKey.Curve, Y),
+	}
+
 	z, err := tpm2.ECDHZGen(rw, tpmutil.Handle(*ecdhIndex), "", p)
 	if err != nil {
 		return [32]byte{}, fmt.Errorf("deriveSessionKey failed: %v", err)
