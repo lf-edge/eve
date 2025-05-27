@@ -5,6 +5,9 @@
 #
 # The following env variables change the behaviour of this script
 #     DEBUG - makes this script verbose
+#     VOLUME_LABEL - sets the volume label of the ISO image
+#     IN_IMAGE - if set, the file to use as installer rootfs image, from inside the tar stream, rather than the entire stream to make a squashfs
+#     IN_FORMAT - format of the IN_IMAGE, to enable extracting elements from it; can be squashfs or raw
 
 set -e
 [ -n "$DEBUG" ] && set -x
@@ -23,19 +26,58 @@ mkdir -p $ROOTFS
 cd $ROOTFS
 bsdtar xzf -
 
+# BUSYBOXDIR will be used to extract busybox and its components for use in initrd
+BUSYBOXDIR=/var/busybox-$$
+mkdir -p $BUSYBOXDIR
+
 # Create and change to a working directory for the ISO image
 TMPDIR=/var/efiparts-$$
 mkdir -p $TMPDIR
 cd $TMPDIR
 
-# Some files must also be present at the rootfs of the boot device
-cp -r ${ROOTFS}/EFI .
-cp -r ${ROOTFS}/boot .
-mkdir -p ./etc
-cp -r ${ROOTFS}/etc/eve-release ./etc/
+# if IN_IMAGE is set, we will use that as the rootfs image rather than trying to construct it from the tar stream
+# anything else in the tar stream will be placed in the root of the ISO image
+if [ -n "$IN_IMAGE" ]; then
+   # save the contents
+   cp -r "${ROOTFS}/." .
+   # rename the IN_IMAGE to rootfs_installer.img
+   mv "${IN_IMAGE}" rootfs_installer.img
+   # Some files must also be present at the rootfs of the boot device
+   # extract any needed files
+   case "$IN_FORMAT" in
+      squashfs)
+         # extract the rootfs from the squashfs image
+         unsquashfs -d . rootfs_installer.img EFI
+         unsquashfs -d . rootfs_installer.img boot
+         unsquashfs -d ${BUSYBOXDIR} rootfs_installer.img bin lib
+         ;;
+      raw)
+         # extract the rootfs from the raw image
+         mkdir -p /mnt
+         mount -o loop,ro rootfs_installer.img /mnt
+         cp -r /mnt/boot .
+         cp -r /mnt/EFI .
+         cp -r /mnt/bin ${BUSYBOXDIR}/
+         cp -r /mnt/lib ${BUSYBOXDIR}/
+         umount ${ROOTFS}
+         ;;
+      *)
+         echo "Unknown IN_FORMAT: $IN_FORMAT"
+         exit 1
+         ;;
+   esac
+else
+   # Some files must also be present at the rootfs of the boot device
+   cp -r ${ROOTFS}/EFI .
+   cp -r ${ROOTFS}/boot .
+   cp -r ${ROOTFS}/bin ${BUSYBOXDIR}/
+   cp -r ${ROOTFS}/lib ${BUSYBOXDIR}/
+   mkdir -p ./etc
+   cp -r ${ROOTFS}/etc/eve-release ./etc/
 
-# Build a squashfs image for the installer rootfs
-mksquashfs $ROOTFS rootfs_installer.img -noappend -comp xz -no-recovery
+   # IN_IMAGE is not set, so we will create a squashfs rootfs from the tar stream
+   mksquashfs $ROOTFS rootfs_installer.img -noappend -comp xz -no-recovery
+fi
 
 # create a ISO with a EFI boot partition
 # Stuff it into a FAT filesystem, making it as small as possible.  511KiB
@@ -82,8 +124,8 @@ if [ ! -e boot/initrd.img ]; then
    (cd /tmp/initrd
    mkdir -p bin lib sbin etc proc sys newroot
    cp /initrd.sh init
-   cp /bin/busybox bin/
-   cp /lib/ld-musl* lib/
+   cp "${BUSYBOXDIR}"/bin/busybox bin/
+   cp "${BUSYBOXDIR}"/lib/ld-musl* lib/
    /bin/busybox --install -s /tmp/initrd/bin
    find . | cpio -H newc -o | gzip > /tmp/initrd.img)
    mv /tmp/initrd.img boot/initrd.img
