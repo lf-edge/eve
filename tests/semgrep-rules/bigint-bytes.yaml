@@ -1,0 +1,15 @@
+# Copyright (c) 2025 Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+rules:
+- id: big-int-bytes-call
+  message: "Calling Bytes() on a *big.Int variable"
+  severity: WARNING
+  languages: 
+    - go
+  patterns:
+    - pattern: $VAR.Bytes()
+    - metavariable-type:
+        metavariable: $VAR
+        type: "*big.Int"
+

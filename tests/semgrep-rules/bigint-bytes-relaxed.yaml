@@ -1,0 +1,15 @@
+# Copyright (c) 2025 Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+rules:
+- id: big-int-bytes-call-relaxed
+  # Relaxed version of big-int-bytes-call to match any variable calling Bytes()
+  # becuse semgrep can't infer types from function return or other complex
+  # expressions, see "Work in progress" https://semgrep.dev/blog/2020/type-awareness-in-semantic-grep/
+  message: "Calling Bytes() on a variable that may be a *big.Int (relaxed)"
+  severity: WARNING
+  languages: 
+    - go
+  patterns:
+    - pattern: $VAR.Bytes()
+
