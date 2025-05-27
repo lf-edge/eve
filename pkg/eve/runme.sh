@@ -170,11 +170,11 @@ do_installer_raw() {
 # common base for other usages like do_installer_iso and do_installer_net
 create_installer_iso() {
   mkdir -p /installer_root
-  unsquashfs -f -d /installer_root /bits/installer.img 1>&2
+  cp /bits/installer.img /installer_root/
   if [ -e /bits/config.img ]; then
       cp /bits/config.img /installer_root/
   fi
-  tar -C /installer_root -cf - . | VOLUME_LABEL=EVEISO /make-efi installer
+  tar -C /installer_root -cf - . | VOLUME_LABEL=EVEISO IN_IMAGE=installer.img IN_FORMAT=squashfs /make-efi installer
   rm -rf /installer_root
 }
 
