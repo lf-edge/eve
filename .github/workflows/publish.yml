@@ -82,7 +82,8 @@ jobs:
                 # disk space. So the following can't hurt before we
                 # retry:
                 docker rmi -f `docker image ls -q` || :
-                docker system prune -f || :
+                docker system prune -f -a || :
+                docker rm -f $(docker ps -aq) && docker volume rm -f $(docker volume ls -q) || :
              fi
           done
           if [ -z "$SUCCESS" ]; then echo "::error::failed to build and push packages" && exit 1; fi
@@ -95,10 +96,12 @@ jobs:
           docker system df
           docker system df -v
       - name: Clean
+        if: ${{ always() }}
         run: |
-          make clean
-          docker system prune -f -a
-          rm -rf ~/.linuxkit
+          make clean || :
+          docker system prune -f -a || :
+          docker rm -f $(docker ps -aq) && docker volume rm -f $(docker volume ls -q) || :
+          rm -rf ~/.linuxkit || :
 
   # eve composition can run as a separate job, even on a separate runner, because the packages job
   # published everything. Which means all images are already on the OCI registry.
@@ -129,6 +132,13 @@ jobs:
           command: "V=1 HV=${{ matrix.hv }} ZARCH=${{ matrix.arch }} LINUXKIT_PKG_TARGET=push sbom collected_sources compare_sbom_collected_sources publish_sources"
           dockerhub-token: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
           dockerhub-account: ${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}
+      - name: Clean
+        if: ${{ always() }}
+        run: |
+          make clean || :
+          docker system prune -f -a || :
+          docker rm -f $(docker ps -aq) && docker volume rm -f $(docker volume ls -q) || :
+          rm -rf ~/.linuxkit || :
 
   manifest:
     if: github.event.repository.full_name == 'lf-edge/eve'
