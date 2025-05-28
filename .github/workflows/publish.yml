@@ -73,7 +73,7 @@ jobs:
           # sadly, our build sometimes times out on network access
           # and running out of disk space: re-trying for 3 times
           for i in 1 2 3; do
-             if make -e V=1 LINUXKIT_PKG_TARGET=push PRUNE=1 pkgs; then
+             if make -e V=1 ZARCH=${{ matrix.arch }} LINUXKIT_PKG_TARGET=push PRUNE=1 pkgs; then
                 SUCCESS=true
                 break
              else
