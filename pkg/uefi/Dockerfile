@@ -40,7 +40,7 @@ ADD --keep-git-dir=true https://github.com/tianocore/edk2.git#${EDK_COMMIT} /edk
 RUN set -e ; [ ! -d /edk2 ] ||  [ ! -d /edk2-patches/${EDK_VERSION} ] || \
         for patch in /edk2-patches/${EDK_VERSION}/*.patch; do \
             echo "Applying $patch"; \
-            patch -d /edk2 -p1 < "$patch" || exit 1 ; \
+            git apply -p1 < "$patch" || exit 1 ; \
         done
 
 FROM build-edk2 AS build-amd64
