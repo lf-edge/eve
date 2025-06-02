@@ -4,6 +4,10 @@
 package main
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"encoding/base64"
 	"path"
 	"testing"
 	"time"
@@ -32,4 +36,61 @@ func TestWalkLogDirs(t *testing.T) {
 		filesec:  1731491932,
 	}
 	g.Expect(foundFiles[0]).To(Equal(expected))
+}
+
+// Make sure signWithECPrivateKey will not produce incorrect signatures
+// when the r or s values have leading zeros.
+func TestEcdsaSignature(t *testing.T) {
+	g := NewWithT(t)
+
+	// Generate a new ECDSA private key
+	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("Failed to generate ECDSA key: %v", err)
+	}
+
+	msg := []byte("test message")
+	for i := 0; i < 10000; i++ {
+		sig, r, s, err := signWithECPrivateKey(msg, privateKey)
+		if err != nil {
+			t.Fatalf("Signing failed: %v", err)
+		}
+
+		foundLeadingZero := false
+		rBytes := r.Bytes()
+		sBytes := s.Bytes()
+
+		// check if r or s has leading zero (P256 size is 32 bytes)
+		if len(rBytes) < 32 {
+			t.Logf("Found signature with leading zero in r at attempt %d\n", i)
+			t.Logf("r length: %d, s length: %d\n", len(rBytes), len(sBytes))
+			foundLeadingZero = true
+		}
+		if len(sBytes) < 32 {
+			t.Logf("Found signature with leading zero in s at attempt %d\n", i)
+			t.Logf("r length: %d, s length: %d\n", len(rBytes), len(sBytes))
+			foundLeadingZero = true
+		}
+
+		if foundLeadingZero {
+			rBase64 := base64.StdEncoding.EncodeToString(rBytes)
+			sBase64 := base64.StdEncoding.EncodeToString(sBytes)
+			sigBase64 := base64.StdEncoding.EncodeToString(sig)
+			t.Logf("Base64 : r = %s, s = %s (Original)\n", rBase64, sBase64)
+
+			rBase64Fixed := base64.StdEncoding.EncodeToString(eccIntToBytes(privateKey.Curve, r))
+			sBase64Fixed := base64.StdEncoding.EncodeToString(eccIntToBytes(privateKey.Curve, s))
+			sigFixed := append(eccIntToBytes(privateKey.Curve, r), eccIntToBytes(privateKey.Curve, s)...)
+			sigFixedBase64 := base64.StdEncoding.EncodeToString(sigFixed)
+			t.Logf("Base64 : r = %s, s = %s (Fixed Length)\n", rBase64Fixed, sBase64Fixed)
+
+			t.Logf("Base64 Signature : %s (Original)\n", sigBase64)
+			t.Logf("Base64 Signature : %s (Fixed Length)\n", sigFixedBase64)
+
+			g.Expect(sigBase64).To(Equal(sigFixedBase64), "Fixed len signature should match original signature")
+			return
+		}
+	}
+
+	t.Fatalf("Test not finished, did not find a signature with a leading zero after 10000 attempts")
 }

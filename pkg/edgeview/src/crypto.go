@@ -9,6 +9,7 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/hmac"
 	"crypto/md5"
 	"crypto/rand"
@@ -364,7 +365,7 @@ func signClientSSHKeyAuthenData(msg []byte, privateKeyPEM []byte) ([]byte, error
 			return nil, fmt.Errorf("failed to sign with RSA private key: %v", err)
 		}
 	case *ecdsa.PrivateKey:
-		signature, err = signWithECPrivateKey(msg, key)
+		signature, _, _, err = signWithECPrivateKey(msg, key)
 		if err != nil {
 			return nil, fmt.Errorf("failed to sign with ECDSA private key: %v", err)
 		}
@@ -531,16 +532,16 @@ func ExtractCommentFromSSHPublicKey(publicSSHKey string) (string, error) {
 }
 
 // signWithECPrivateKey signs the message using the provided EC private key
-func signWithECPrivateKey(msg []byte, privateKey *ecdsa.PrivateKey) ([]byte, error) {
+func signWithECPrivateKey(msg []byte, privateKey *ecdsa.PrivateKey) ([]byte, *big.Int, *big.Int, error) {
 	hashed := sha256.Sum256(msg)
 	r, s, err := ecdsa.Sign(rand.Reader, privateKey, hashed[:])
 	if err != nil {
-		return nil, err
+		return nil, nil, nil, err
 	}
 
 	// Concatenate r and s to form the signature
-	signature := append(r.Bytes(), s.Bytes()...)
-	return signature, nil
+	signature := append(eccIntToBytes(privateKey.Curve, r), eccIntToBytes(privateKey.Curve, s)...)
+	return signature, r, s, nil
 }
 
 func signClientCertAuthenData(msg []byte, ecPrivateKey string) []byte {
@@ -563,7 +564,7 @@ func signClientCertAuthenData(msg []byte, ecPrivateKey string) []byte {
 			return nil
 		}
 	case *ecdsa.PrivateKey:
-		signature, err = signWithECPrivateKey(jmsg.Message, key)
+		signature, _, _, err = signWithECPrivateKey(jmsg.Message, key)
 		if err != nil {
 			log.Errorf("failed to sign message: %v", err)
 			return nil
@@ -624,4 +625,11 @@ func loadPrivateKey(pemData string) (interface{}, error) {
 		fmt.Printf("Unknown private key type: %T\n", privateKey)
 		return nil, errors.New("unknown private key type")
 	}
+}
+
+// TODO : remove this and use evetpm export
+func eccIntToBytes(curve elliptic.Curve, i *big.Int) []byte {
+	bytes := i.Bytes()
+	curveBytes := (curve.Params().BitSize + 7) / 8
+	return append(make([]byte, curveBytes-len(bytes)), bytes...)
 }
