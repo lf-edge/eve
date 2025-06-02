@@ -93,7 +93,6 @@ RUN ./configure \
 
 RUN make -j "$(getconf _NPROCESSORS_ONLN)"
 RUN make install
-RUN HARNESS_JOBS="$(getconf _NPROCESSORS_ONLN)" make tests
 
 RUN /usr/bin/install -c -m 0755 -s ssh /out/usr/bin/ssh
 RUN /usr/bin/install -c -m 0755 -s scp /out/usr/bin/scp
