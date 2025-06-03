@@ -627,14 +627,31 @@ func selfRegister(zedcloudCtx *zedcloud.ZedCloudContext, tlsConfig *tls.Config, 
 	requrl := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, nilUUID, "register")
 	done, rv := myPost(zedcloudCtx, tlsConfig, requrl, false, retryCount,
 		int64(len(b)), bytes.NewBuffer(b))
-	if rv.HTTPResp != nil && rv.HTTPResp.StatusCode == http.StatusNotModified {
+	if rv.HTTPResp != nil {
+		// Inform ledmanager about brokenness
 		if !zedcloudCtx.NoLedManager {
-			// Inform ledmanager about brokenness
-			utils.UpdateLedManagerConfig(log, types.LedBlinkOnboardingFailure)
+			// XXX zedcloud is not respecting the eve-api, fix this when zedcloud is updated.
+			// for now it returns:
+			// StatusBadRequest - if failed parse AuthContainer, verify signature or failed to unmarshal message.
+			// StatusGatewayTimeout and StatusInternalServerError - if some internal error occurred on the controller side.
+			// StatusOK - if registration was successful.
+			// StatusNotModified - if the device is already registered (does this mean duplicate?)
+			// StatusForbidden - if the device is not found in the controller.
+			// see for expected codes:
+			// https://github.com/lf-edge/eve-api/blob/main/APIv2.md#register
+			switch rv.HTTPResp.StatusCode {
+			case http.StatusBadRequest, http.StatusGatewayTimeout, http.StatusInternalServerError:
+				utils.UpdateLedManagerConfig(log, types.LedBlinkOnboardingFailure)
+			case http.StatusForbidden:
+				utils.UpdateLedManagerConfig(log, types.LedBlinkOnboardingFailureNotFound)
+			case http.StatusConflict, http.StatusNotModified:
+				utils.UpdateLedManagerConfig(log, types.LedBlinkOnboardingFailureConflict)
+			}
 		}
-		log.Errorf("%s StatusNotModified", requrl)
 		// Retry until fixed
-		log.Errorf("%s", string(rv.RespContents))
+		log.Errorf("Registration failed on URL %s with error %d (%s)", requrl,
+			rv.HTTPResp.StatusCode, http.StatusText(rv.HTTPResp.StatusCode))
+		log.Errorf("Full response : %s", string(rv.RespContents))
 		done = false
 	}
 
