@@ -25,7 +25,7 @@ jobs:
           fetch-depth: 0
 
       - name: Yetus
-        uses: apache/yetus-test-patch-action@0.15.1
+        uses: rene/yetus-test-patch-action@eve
         with:
           basedir: ./src
           buildtool: nobuild
