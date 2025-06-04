@@ -1709,7 +1709,7 @@ func sendHardwareHealthProtobuf(ctx *getconfigContext,
 	locConfig := ctx.sideController.locConfig
 
 	// Repeat hardwarehealth for LOC as well
-	if locConfig != nil {
+	if locConfig != nil && locConfig.LocURL != "" {
 		// Don't block current execution context
 		go func() {
 			url := controllerconn.URLPathString(locConfig.LocURL, ctrlClient.UsingV2API(),
