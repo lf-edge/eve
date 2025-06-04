@@ -101,6 +101,7 @@ type getconfigContext struct {
 	subAppNetworkStatus        pubsub.Subscription
 	pubBaseOsConfig            pubsub.Publication
 	pubDatastoreConfig         pubsub.Publication
+	pubLOCConfig               pubsub.Publication
 	pubNetworkInstanceConfig   pubsub.Publication
 	pubControllerCert          pubsub.Publication
 	pubCipherContext           pubsub.Publication
@@ -862,7 +863,7 @@ cfgReceived:
 func needRequestLocConfig(getconfigCtx *getconfigContext,
 	rv configProcessingRetval) bool {
 
-	return (rv != configOK && getconfigCtx.sideController.locConfig != nil)
+	return (rv != configOK && getconfigCtx.sideController.locConfig != nil && getconfigCtx.sideController.locConfig.LocURL != "")
 }
 
 func getLatestConfig(getconfigCtx *getconfigContext, iteration int,
