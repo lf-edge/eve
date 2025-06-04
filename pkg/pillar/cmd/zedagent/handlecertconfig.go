@@ -407,7 +407,7 @@ func getCertsFromController(ctx *zedagentContext, desc string) bool {
 	if !rv && !expectNoConn {
 		log.Warningf("getCertsFromController: fetching certs from controller failed")
 	}
-	if !rv && ctx.getconfigCtx.sideController.locConfig != nil {
+	if !rv && ctx.getconfigCtx.sideController.locConfig != nil && ctx.getconfigCtx.sideController.locConfig.LocURL != "" {
 		locURL := ctx.getconfigCtx.sideController.locConfig.LocURL
 		url = controllerconn.URLPathString(locURL, ctrlClient.UsingV2API(),
 			nilUUID, "certs")
