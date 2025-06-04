@@ -794,7 +794,8 @@ $(INSTALLER).iso: $(INSTALLER_TAR) $(BSP_IMX_PART) | $(INSTALLER)
 	DOCKER_ARCH_TAG=$(DOCKER_ARCH_TAG) ./tools/makeiso.sh $< $@ installer
 	$(QUIET): $@: Succeeded
 
-$(INSTALLER).net: $(INSTALLER).iso $(EFI_PART) $(INITRD_IMG) $(CONFIG_IMG) | $(INSTALLER)
+$(INSTALLER).net: $(INSTALLER).iso $(EFI_PART) $(INITRD_IMG) $(CONFIG_IMG) $(IPXE_IMG) | $(INSTALLER)
+	cp $(IPXE_IMG) $|
 	./tools/makenet.sh $| $< $@
 	$(QUIET): $@: Succeeded
 
