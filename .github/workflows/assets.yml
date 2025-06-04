@@ -1,15 +1,3 @@
-# This workflow is much more convoluted than it should be (see a simpler
-# version of it in git's history). The reason it is convoluted is that it
-# kept timing out on any of the hosted runners so we're now trying to see
-# if GitHub own runners are any better. Of course, GH only provides x86
-# runners and thus (instead of a nice matrix job of amd64, arm64) we have
-# to "emulated" arm64 side on the amd64 runner.
-#
-# The trick we play is that we keep it as a matrix job still, but we make
-# it use the same GitHub provided x86 ubuntu-24.04 runners. The runner that
-# gets to unpack arm64 artifacts does so with the help of binfmt-support and
-# qemu-user-static
-
 ---
 name: Release Assets
 on:  # yamllint disable-line rule:truthy
@@ -52,6 +40,15 @@ jobs:
       fail-fast: false
       matrix:
         arch: [amd64, arm64]
+        platform: ["generic"]
+        hv: ["kvm"]
+        include:
+          - arch: arm64
+            platform: "nvidia-jp5"
+            hv: "kvm"
+          - arch: arm64
+            platform: "nvidia-jp6"
+            hv: "kvm"
     steps:
       - name: checkout repo
         uses: actions/checkout@v4
@@ -66,66 +63,78 @@ jobs:
         env:
           REF: ${{ inputs.tag_ref }}
         run: |
-          # FIXME: I'd rather be a real matrix job with a functional arm64 runner
-          # echo "ARCH=$(uname -m | sed -e 's/x86_64/amd64/' -e 's/aarch64/arm64/')" >> "$GITHUB_ENV"
-          APT_INSTALL="sudo apt install -y binfmt-support qemu-user-static"
-          # the following weird statement is here to speed up the happy path
-          # if the default server is responding -- we can skip apt update
-          $APT_INSTALL || { sudo apt update && $APT_INSTALL ; }
           echo "ARCH=${{ matrix.arch }}" >> "$GITHUB_ENV"
+          if [ "${{ matrix.platform }}" != "generic" ]; then
+             echo "PLATFORMVER=${{ matrix.platform }}-" >> "$GITHUB_ENV"
+          else
+             echo "PLATFORMVER=" >> "$GITHUB_ENV"
+          fi
           echo "TAG=$(git describe --always --tags | grep -E '[0-9]+\.[0-9]+\.[0-9]' || echo snapshot)" >> "$GITHUB_ENV"
-      - name: ensure clean assets directory
+      - name: Ensure clean assets directory
         run: |
           rm -rf assets && mkdir -p assets
       - name: Pull the EVE release from DockerHUB or build it
         run: |
-          HV=kvm
+          HV=${{ matrix.hv }}
           if [ "${{ github.event.repository.full_name }}" = "lf-edge/eve" ]; then
-             EVE=lfedge/eve:${TAG}-${HV}-${{ env.ARCH }}
+             EVE=lfedge/eve:${TAG}-${{ env.PLATFORMVER }}${HV}-${{ env.ARCH }}
              docker pull "$EVE"
           else
              make pkgs
-             make HV=${HV} ZARCH=${{ env.ARCH }} eve
-             EVE=lfedge/eve:$(make version)-${HV}-${{ env.ARCH }}
+             make HV=${HV} ZARCH=${{ env.ARCH }} PLATFORM=${{ matrix.platform }} eve
+             EVE=lfedge/eve:$(make version)-${{ env.PLATFORMVER }}${HV}-${{ env.ARCH }}
           fi
-          docker run "$EVE" rootfs > assets/rootfs.img
-          docker run "$EVE" installer_net | tar -C assets -xvf -
-      - name: Create direct iPXE config
+          echo "EVE=$EVE" >> "$GITHUB_ENV"
+      - name: Generate EVE binary assets
         run: |
-          URL="${{ github.event.repository.html_url }}/releases/download/${TAG}/${{ env.ARCH }}."
-          sed -i. -e '/# set url https:/s#^.*$#set url '"$URL"'#' assets/ipxe.efi.cfg
-          for comp in initrd rootfs installer; do
-              sed -i. -e "s#initrd=${comp}#initrd=${{ env.ARCH }}.${comp}#g" assets/ipxe.efi.cfg
-          done
-          sed -e 's#{mac:hexhyp}#{ip}#' < assets/ipxe.efi.cfg > assets/ipxe.efi.ip.cfg
+          docker run "$EVE" rootfs > assets/rootfs.img
+          docker run "$EVE" installer_raw > assets/installer.raw
+          docker run "$EVE" live > assets/live.raw
+          if [ "${{ matrix.platform }}" == "generic" ]; then
+             docker run "$EVE" installer_iso > assets/installer.iso
+             docker run "$EVE" installer_net > assets/installer-net.tar
+          fi
       - name: Pull eve-sources and publish collected_sources.tar.gz to assets
         run: |
-          HV=kvm
-          EVE_SOURCES=lfedge/eve-sources:${TAG}-${HV}-${{ env.ARCH }}
+          HV=${{ matrix.hv }}
+          EVE_SOURCES=lfedge/eve-sources:${TAG}-${{ env.PLATFORMVER }}${HV}-${{ env.ARCH }}
           docker pull "$EVE_SOURCES"
           docker create --name eve_sources "$EVE_SOURCES" bash
           docker export --output assets/collected_sources.tar.gz eve_sources
           docker rm eve_sources
-      - name: Create SHA256 checksum, rename, and upload files
+      - name: Rename, create SHA256 checksums and upload files
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_ID: ${{ needs.create_release.outputs.release_id }}
           UPLOAD_URL: ${{ needs.create_release.outputs.upload_url }}
         run: |
-          # Create SHA256 checksum for rootfs.img
-          sha256sum "assets/rootfs.img" | awk '{ print $1 }' > "assets/rootfs.img.sha256"
+          # Rename all files
+          HV=${{ matrix.hv }}
           for file in assets/*; do
             base_name=$(basename "$file")
-            # Add ARCH prefix
-            new_name="${ARCH}.${base_name}"
+            # Add ARCH + platform prefix
+            new_name="${ARCH}.${HV}.${{ matrix.platform }}.${base_name}"
             # Rename the file
             mv "$file" "assets/$new_name"
-            echo "Uploading assets/$new_name as $new_name..."
+          done
+          # Create sha256sums file and summary of file sizes
+          sha256_file="${ARCH}.${HV}.${{ matrix.platform }}.sha256sums"
+          sizes_file="${ARCH}.${HV}.${{ matrix.platform }}.sizes"
+          cd assets/
+          sha256sum * > "../$sha256_file"
+          du -b * > "../$sizes_file"
+          cd ../
+          mv "$sha256_file" assets/
+          mv "$sizes_file" assets/
+          # Upload files
+          for file in assets/*; do
+            file_name=$(basename $file)
+            echo "Uploading ${file_name}..."
             upload_response=$(curl -s -X POST \
               -H "Authorization: Bearer $GITHUB_TOKEN" \
               -H "Content-Type: application/octet-stream" \
-              -T "assets/$new_name" \
-              "$UPLOAD_URL?name=$new_name")
+              -T "$file" \
+              "$UPLOAD_URL?name=$file_name")
             if echo "$upload_response" | jq -e .id > /dev/null; then
               echo "$file_name uploaded successfully."
             else
