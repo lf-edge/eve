@@ -1,13 +1,12 @@
 FROM lfedge/eve-alpine:82df60e43ab9f8c935584b8c7b4d0a4b0271d608 AS build
 
-ENV BUILD_PKGS patch make gcc perl util-linux-dev git mtools linux-headers musl-dev xz-dev
-# bash xorriso coreutils syslinux
+ENV BUILD_PKGS="patch make gcc perl util-linux-dev git mtools linux-headers musl-dev xz-dev"
 RUN eve-alpine-deploy.sh
 
+ENV IPXE_VERSION="5b3ebf8b24ae40a6f9f9f78491702d508f843e56"
+
+ADD https://github.com/ipxe/ipxe.git#${IPXE_VERSION} /ws
 WORKDIR /ws
-ADD https://github.com/ipxe/ipxe/tarball/v1.21.1 /ipxe.tgz
-RUN tar -zxvf /ipxe.tgz  --strip-components=1 && \
-    rm /ipxe.tgz
 
 COPY embedded.cfg src/embedded.cfg
 COPY *patch /tmp/
@@ -16,11 +15,11 @@ COPY *patch /tmp/
 RUN cat /tmp/*patch | patch -p1
 
 # bin/ipxe.iso
-ENV TARGET_x86_64  bin-x86_64-efi/ipxe.efi bin/ipxe.dsk bin/ipxe.lkrn bin/undionly.kpxe
-ENV TARGET_aarch64 bin-arm64-efi/ipxe.efi
-ENV TARGET_riscv64 clean
+ENV TARGET_x86_64="bin-x86_64-efi/ipxe.efi bin/ipxe.dsk bin/ipxe.lkrn bin/undionly.kpxe"
+ENV TARGET_aarch64="bin-arm64-efi/ipxe.efi"
+ENV TARGET_riscv64="clean"
 
-RUN eval make -j "$(getconf _NPROCESSORS_ONLN)" -C src DOWNLOAD_PROTO_HTTPS=1 NO_WERROR=1 EMBED=embedded.cfg \$TARGET_`uname -m`
+RUN eval make -j "$(getconf _NPROCESSORS_ONLN)" -C src DOWNLOAD_PROTO_HTTPS=1 NO_ERROR=1 EMBED=embedded.cfg \$TARGET_`uname -m`
 RUN mkdir -p /ws/src/bin-riscv64 && touch /ws/src/bin-riscv64/ipxe.riscv64 && touch /ws/src/bin-riscv64/ipxe.riscv64.debug
 RUN mv /ws/src/bin/undionly.kpxe /ws/src/bin/ipxe.undionly 2>/dev/null || :
 RUN rm /ws/src/bin*/*.*.*
