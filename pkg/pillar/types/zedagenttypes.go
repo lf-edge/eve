@@ -768,6 +768,8 @@ const (
 	DevCommandShutdown
 	// DevCommandShutdownPoweroff : shut down all app instances + poweroff
 	DevCommandShutdownPoweroff
+	// DevCommandGracefulReboot : shut down all app instances + reboot
+	DevCommandGracefulReboot
 )
 
 // LOCConfig : configuration of the Local Operator Console
