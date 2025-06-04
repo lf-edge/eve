@@ -33,6 +33,7 @@ fi
 cat <<'EOT' | docker run --rm -e DEBUG="$DEBUG" -v "$SOURCE:/bits" -v "$IMG:/installer/${IMGNAME}" -v "$OUTPUT:/output.tar" -i alpine:3.20 sh
    set -e
    [ -n "$DEBUG" ] && set -x
+   cp /bits/ipxe.efi /installer
    cp /bits/ipxe.efi.cfg /installer
    mkdir -p /installer/EFI/BOOT
    cp /bits/EFI/BOOT/BOOT*EFI /installer/EFI/BOOT/
