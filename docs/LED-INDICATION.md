@@ -18,13 +18,15 @@ that deserve user attention.
 | 4   | Device is connected to the Controller and onboarded.  |
 | 5   | Radio silence is imposed (wireless transmission is disabled). |
 | 6-9 | *unused* |
-| 10  | Device onboarding is failing. |
+| 10  | Device onboarding is failing (generic). |
 | 11  | *unused* |
 | 12  | Controller replied without TLS connection state. |
 | 13  | Controller replied without OCSP response. |
 | 14  | Failed to fetch or verify Controller certificate. |
 | 15  | Received message from the controller with invalid or missing signature. |
 | 16  | Bootstrap configuration (see [CONFIG.md](./CONFIG.md)) is not valid. |
+| 17  | Device onboarding is failing due to conflict with another device. |
+| 18  | Device onboarding is failing due to not being found in the controller. |
 
 Application status is also displayed using LEDs on device model SIEMENS AG.SIMATIC IPC127E
 Uses LED3 (the one labeled as L3 MAINT) for application state.
