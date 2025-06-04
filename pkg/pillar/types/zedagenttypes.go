@@ -774,4 +774,6 @@ const (
 type LOCConfig struct {
 	// LOC URL
 	LocURL string
+	// Collect-Info Datastore UUID
+	CollectInfoDatastore DatastoreConfig
 }
