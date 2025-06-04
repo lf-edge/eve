@@ -175,9 +175,15 @@ do_installer_iso() {
 }
 
 do_installer_net() {
+  if [ "$(uname -m)" = "riscv64" ]; then
+    IPXE_IMG="/ipxe.riscv64"
+  else
+    IPXE_IMG="/ipxe.efi"
+  fi
   # net installer depends on installer.iso
   rm -rf /installer /parts
   mkdir -p /installer
+  cp "$IPXE_IMG" /installer
   cp /bits/ipxe.efi.cfg /installer
   mkdir -p /installer/EFI/BOOT
   cp /bits/EFI/BOOT/BOOT*EFI /installer/EFI/BOOT/
