@@ -97,8 +97,8 @@ Additionally all log levels can be set to "none" to disable logging for the corr
 Furthermore, the "remote" log levels control which subset of the generated logs are sent to the controller.
 A corresponding "remote" log level can be set for each of the three components: EVE microservices, syslog, and kernel.
 
-| Name                          | Type | Default | Description |
-|-------------------------------| ---- | ------- | ----------- |
+| Name | Type | Default | Description |
+| ---- | ---- | ------- | ----------- |
 | debug.default.loglevel        | string | debug | default level of logs produced by EVE microservices. Can be overwritten by agent.*agentname*.debug.loglevel. Uses logrus log levels as described here ["https://pkg.go.dev/github.com/sirupsen/logrus"]: panic, fatal, error, warning, info, debug and trace. |
 | debug.default.remote.loglevel | string | warning | default level of logs sent by EVE microservices to the controller. Can be overwritten by agent.*agentname*.debug.remote.loglevel. Uses logrus log levels as described here ["https://pkg.go.dev/github.com/sirupsen/logrus"]: panic, fatal, error, warning, info, debug and trace. |
 | debug.syslog.loglevel         | string | info | level of the produced syslog messages. System default loglevel string representation should be used as described here ["https://man7.org/linux/man-pages/man3/syslog.3.html"]: emerg, alert, crit, err, warning, notice, info, debug. |
