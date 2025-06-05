@@ -21,18 +21,60 @@ on:  # yamllint disable-line rule:truthy
       - '.github/**'
 
 jobs:
-  test:
+  lint:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha }}
-      - name: Check Docker Hashes Consistency
-        run: |
-          make check-docker-hashes-consistency
-      - name: Store raw test results
-        if: ${{ always() }}
-        uses: actions/upload-artifact@v4
+
+      - name: Cache Go modules
+        uses: actions/cache@v4
         with:
-          name: 'check-docker-hashes-consistency-report'
-          path: ${{ github.workspace }}/dist
+          path: |
+            ~/.cache/go-build
+            ${{ github.workspace }}/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Build get-deps helper
+        shell: bash
+        run: |
+          echo "::group::[Build] tools/get-deps (go mod download + build)"
+          make -C ./tools/get-deps GOOS=linux
+          echo "::endgroup::"
+
+      - name: Build dockerfile-from-checker helper
+        shell: bash
+        run: |
+          echo "::group::[Build] tools/dockerfile-from-checker"
+          make -C ./tools/dockerfile-from-checker
+          echo "::endgroup::"
+
+      - name: Verify Dockerfile hash consistency
+        shell: bash
+        run: |
+          echo "::group::[Check] pkg: compare Dockerfile hashes"
+          set -eo pipefail
+          log_file=$(mktemp)
+
+          # run once, capture output and exit status
+          if ! make check-docker-hashes-consistency 2>&1 | tee "$log_file"; then
+            rc=$?
+          else
+            rc=0
+          fi
+          echo "::endgroup::"
+
+          # surface specific mismatch line as an inline PR error
+          if grep -qE 'uses .*:.* but .* is built in this repo' "$log_file"; then
+            mismatch_line=$(grep -E 'uses .*:.* but .* is built in this repo' "$log_file")
+            dockerfile_path=$(awk '{print $1}' <<< "$mismatch_line")
+            echo "::error file=${dockerfile_path}::${mismatch_line}"
+            exit 1
+          fi
+
+          # propagate any non-hash-related failure from make
+          exit $rc
