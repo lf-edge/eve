@@ -1,8 +1,6 @@
 module github.com/lf-edge/eve/pkg/edgeview
 
-go 1.23.0
-
-toolchain go1.23.7
+go 1.23
 
 require (
 	github.com/coreos/go-semver v0.3.1
@@ -10,7 +8,7 @@ require (
 	github.com/gorilla/websocket v1.5.0
 	github.com/grandcat/zeroconf v1.0.0
 	github.com/lf-edge/eve-api/go v0.0.0-20250502212418-fc1e3bad8f0f
-	github.com/lf-edge/eve/pkg/pillar v0.0.0-20250520150328-24744913c21c
+	github.com/lf-edge/eve/pkg/pillar v0.0.0-20250605040644-0de9f5c8d1ce
 	github.com/onsi/gomega v1.29.0
 	github.com/satori/go.uuid v1.2.1-0.20180404165556-75cca531ea76
 	github.com/shirou/gopsutil v3.21.11+incompatible
@@ -32,6 +30,7 @@ require (
 	github.com/go-playground/validator/v10 v10.15.5 // indirect
 	github.com/google/go-cmp v0.6.0 // indirect
 	github.com/google/go-containerregistry v0.14.0 // indirect
+	github.com/google/go-tpm v0.9.1 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/leodido/go-urn v1.2.4 // indirect
 	github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20240315102754-0f6d1f182e0d // indirect
