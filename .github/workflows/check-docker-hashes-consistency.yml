@@ -68,11 +68,28 @@ jobs:
           fi
           echo "::endgroup::"
 
-          # surface specific mismatch line as an inline PR error
-          if grep -qE 'uses .*:.* but .* is built in this repo' "$log_file"; then
-            mismatch_line=$(grep -E 'uses .*:.* but .* is built in this repo' "$log_file")
-            dockerfile_path=$(awk '{print $1}' <<< "$mismatch_line")
-            echo "::error file=${dockerfile_path}::${mismatch_line}"
+          # If the checker failed, surface every error line as a PR annotation
+          if [ "$rc" -ne 0 ]; then
+            while IFS= read -r line; do
+              # Pattern 1:  <file> uses <image:tag> but <hash> is built in this repo
+              if [[ "$line" =~ ^([^[:space:]]+)\ uses\ .*is\ built\ in\ this\ repo$ ]]; then
+                file="${BASH_REMATCH[1]}"
+                echo "::error file=${file}::${line}"
+                continue
+              fi
+
+              # Pattern 2:  tags differ for image ... in files <file1> and <file2>
+              if [[ "$line" =~ ^tags\ differ\ for\ image\ .*\ in\ files\ ([^[:space:]]+)\ and\ ([^[:space:]]+)$ ]]; then
+                file1="${BASH_REMATCH[1]}"
+                file2="${BASH_REMATCH[2]}"
+                echo "::error file=${file1}::${line}"
+                echo "::error file=${file2}::${line}"
+                continue
+              fi
+
+              # Fallback: generic error not tied to a specific file
+              echo "::error ::${line}"
+            done < "$log_file"
             exit 1
           fi
 
