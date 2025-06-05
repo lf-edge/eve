@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	etpm "github.com/lf-edge/eve/pkg/pillar/evetpm"
+
 	. "github.com/onsi/gomega"
 )
 
@@ -78,9 +80,9 @@ func TestEcdsaSignature(t *testing.T) {
 			sigBase64 := base64.StdEncoding.EncodeToString(sig)
 			t.Logf("Base64 : r = %s, s = %s (Original)\n", rBase64, sBase64)
 
-			rBase64Fixed := base64.StdEncoding.EncodeToString(eccIntToBytes(privateKey.Curve, r))
-			sBase64Fixed := base64.StdEncoding.EncodeToString(eccIntToBytes(privateKey.Curve, s))
-			sigFixed := append(eccIntToBytes(privateKey.Curve, r), eccIntToBytes(privateKey.Curve, s)...)
+			rBase64Fixed := base64.StdEncoding.EncodeToString(etpm.EccIntToBytes(privateKey.Curve, r))
+			sBase64Fixed := base64.StdEncoding.EncodeToString(etpm.EccIntToBytes(privateKey.Curve, s))
+			sigFixed := append(etpm.EccIntToBytes(privateKey.Curve, r), etpm.EccIntToBytes(privateKey.Curve, s)...)
 			sigFixedBase64 := base64.StdEncoding.EncodeToString(sigFixed)
 			t.Logf("Base64 : r = %s, s = %s (Fixed Length)\n", rBase64Fixed, sBase64Fixed)
 
