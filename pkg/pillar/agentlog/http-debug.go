@@ -121,7 +121,7 @@ type bpftraceHandler struct {
 func (b bpftraceHandler) runInDebugContainer(clientCtx context.Context, w io.Writer, args []string, timeout time.Duration) error {
 	taskID := fmt.Sprintf("bpftrace-%d", rand.Int()) // TODO: avoid collision
 
-	return containerd.RunInDebugContainer(clientCtx, taskID, w, args, timeout)
+	return containerd.RunInDebugContainer(clientCtx, taskID, w, args, []string{}, timeout)
 }
 
 func (b bpftraceHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
