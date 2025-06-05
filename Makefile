@@ -12,11 +12,15 @@ uniq = $(if $1,$(firstword $1) $(call uniq,$(filter-out $(firstword $1),$1)))
 
 # you are not supposed to tweak these variables -- they are effectively R/O
 HV_DEFAULT=kvm
+# linuxkit version. This **must** be a published semver version so it can be downloaded already compiled from
+# the release page at https://github.com/linuxkit/linuxkit/releases
+LINUXKIT_VERSION=v1.6.0
 GOVER ?= 1.24.1
 PKGBASE=github.com/lf-edge/eve
 GOMODULE=$(PKGBASE)/pkg/pillar
 GOTREE=$(CURDIR)/pkg/pillar
 BUILDTOOLS_BIN=$(CURDIR)/build-tools/bin
+LINUXKIT=$(BUILDTOOLS_BIN)/linuxkit
 PATH:=$(BUILDTOOLS_BIN):$(PATH)
 
 GOPKGVERSION=$(shell tools/goversion.sh 2>/dev/null)
@@ -316,11 +320,7 @@ DOCKER_GO = _() { $(SET_X); mkdir -p $(CURDIR)/.go/src/$${3:-dummy} ; mkdir -p $
     $$docker_go_line "$$1" ; } ; _
 
 PARSE_PKGS=$(if $(strip $(EVE_HASH)),EVE_HASH=)$(EVE_HASH) DOCKER_ARCH_TAG=$(DOCKER_ARCH_TAG) KERNEL_TAG=$(KERNEL_TAG) PLATFORM=$(PLATFORM) ./tools/parse-pkgs.sh
-LINUXKIT=$(BUILDTOOLS_BIN)/linuxkit
-# linuxkit version. This **must** be a published semver version so it can be downloaded already compiled from
-# the release page at https://github.com/linuxkit/linuxkit/releases
-LINUXKIT_VERSION=v1.6.0
-LINUXKIT_SOURCE=https://github.com/linuxkit/linuxkit
+
 LINUXKIT_OPTS=$(if $(strip $(EVE_HASH)),--hash) $(EVE_HASH) $(if $(strip $(EVE_REL)),--release) $(EVE_REL)
 LINUXKIT_PKG_TARGET=build
 
@@ -445,11 +445,10 @@ $(CURRENT_DIR): $(BUILD_DIR)
 # we explicitly do *not* use $(BUILD_DIR), because that is recalculated each time, and it might have changed
 # since we last built. We just want to know what current is pointing to *now*, not what it might point to
 # if we ran a new build.
+.PHONY: currentversion
 currentversion:
 	#echo $(shell readlink $(CURRENT) | sed -E 's/rootfs-(.*)\.[^.]*$/\1/')
 	@cat $(CURRENT_DIR)/installer/eve_version
-
-.PHONY: currentversion linuxkit pkg/kernel
 
 test: $(LINUXKIT) pkg/pillar test-images-patches | $(DIST)
 	@echo Running tests on $(GOMODULE)
@@ -677,7 +676,6 @@ $(NETBOOT):
 	@mkdir -p $@
 
 # convenience targets - so you can do `make config` instead of `make dist/config.img`, and `make installer` instead of `make dist/amd64/installer.img
-linuxkit: $(LINUXKIT)
 build-vm: $(BUILD_VM)
 initrd: $(INITRD_IMG)
 config: $(CONFIG_IMG)		; $(QUIET): "$@: Succeeded, CONFIG_IMG=$(CONFIG_IMG)"
@@ -953,14 +951,19 @@ shell: $(GOBUILDER)
 	$(QUIET)DOCKER_GO_ARGS=-t ; $(DOCKER_GO) bash $(GOTREE) $(GOMODULE)
 
 #
-# Utility targets in support of our Dockerized build infrastrucutre
+# Linuxkit
 #
+.PHONY: linuxkit
+linuxkit: $(LINUXKIT)
 
-# check to make sure linuxkit version is correct
-# if it does not exist, version is incorrect, or it cannot report `version --short`, download it
-$(LINUXKIT): FORCE
-	$(eval ACTUAL_LINUXKIT_VERSION := $(strip $(shell $@ version --short 2>/dev/null || echo "unknown")))
-	$(if $(filter $(LINUXKIT_VERSION),$(ACTUAL_LINUXKIT_VERSION)),,$(QUIET) curl -L -o $@ $(LINUXKIT_SOURCE)/releases/download/$(LINUXKIT_VERSION)/linuxkit-$(LOCAL_GOOS)-$(HOSTARCH) && chmod +x $@)
+LINUXKIT_SOURCE=https://github.com/linuxkit/linuxkit
+
+$(LINUXKIT): $(BUILDTOOLS_BIN)/linuxkit-$(LINUXKIT_VERSION)
+	$(QUIET) ln -sf  $(notdir $<) $@
+	$(QUIET): $@: Succeeded
+
+$(BUILDTOOLS_BIN)/linuxkit-$(LINUXKIT_VERSION):
+	$(QUIET) curl -L -o $@ $(LINUXKIT_SOURCE)/releases/download/$(LINUXKIT_VERSION)/linuxkit-$(LOCAL_GOOS)-$(HOSTARCH) && chmod +x $@
 	$(QUIET): $@: Succeeded
 
 $(GOBUILDER):
