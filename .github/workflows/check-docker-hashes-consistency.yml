@@ -57,18 +57,12 @@ jobs:
         shell: bash
         run: |
           echo "::group::[Check] pkg: compare Dockerfile hashes"
-          set -eo pipefail
+          set -e
           log_file=$(mktemp)
-
-          # run once, capture output and exit status
-          if ! make check-docker-hashes-consistency 2>&1 | tee "$log_file"; then
-            rc=$?
-          else
-            rc=0
-          fi
+          make check-docker-hashes-consistency >"$log_file" 2>&1 || rc=$?
+          rc=${rc:-0} # rc is non-empty only when make failed
+          cat "$log_file"
           echo "::endgroup::"
-
-          # If the checker failed, surface every error line as a PR annotation
           if [ "$rc" -ne 0 ]; then
             # Pattern 1: <file> uses <image:tag> but <hash> is built in this repo
             pat_uses='^[[:space:]]*([^[:space:]]+)[[:space:]]+uses[[:space:]].*is[[:space:]]+built[[:space:]]+in[[:space:]]+this[[:space:]]+repo[[:space:]]*$'
@@ -79,18 +73,13 @@ jobs:
                 echo "::error file=${BASH_REMATCH[1]}::${line}"
                 continue
               fi
-
               if [[ $line =~ $pat_tags ]]; then
                 echo "::error file=${BASH_REMATCH[1]}::${line}"
                 echo "::error file=${BASH_REMATCH[2]}::${line}"
                 continue
               fi
-
-              # Fallback: generic error not tied to a specific file
               echo "::error ::${line}"
             done < "$log_file"
             exit 1
           fi
-
-          # propagate any non-hash-related failure from make
           exit $rc
