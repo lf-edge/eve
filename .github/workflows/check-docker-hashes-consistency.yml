@@ -70,20 +70,19 @@ jobs:
 
           # If the checker failed, surface every error line as a PR annotation
           if [ "$rc" -ne 0 ]; then
+            # Pattern 1: <file> uses <image:tag> but <hash> is built in this repo
+            pat_uses='^[[:space:]]*([^[:space:]]+)[[:space:]]+uses[[:space:]].*is[[:space:]]+built[[:space:]]+in[[:space:]]+this[[:space:]]+repo[[:space:]]*$'
+            # Pattern 2: tags differ for image ... in files <file1> and <file2>
+            pat_tags='^[[:space:]]*tags[[:space:]]+differ[[:space:]]+for[[:space:]]+image[[:space:]]+.+[[:space:]]+in[[:space:]]+files[[:space:]]+([^[:space:]]+)[[:space:]]+and[[:space:]]+([^[:space:]]+)[[:space:]]*$'
             while IFS= read -r line; do
-              # Pattern 1:  <file> uses <image:tag> but <hash> is built in this repo
-              if [[ "$line" =~ ^([^[:space:]]+)\ uses\ .*is\ built\ in\ this\ repo$ ]]; then
-                file="${BASH_REMATCH[1]}"
-                echo "::error file=${file}::${line}"
+              if [[ $line =~ $pat_uses ]]; then
+                echo "::error file=${BASH_REMATCH[1]}::${line}"
                 continue
               fi
 
-              # Pattern 2:  tags differ for image ... in files <file1> and <file2>
-              if [[ "$line" =~ ^tags\ differ\ for\ image\ .*\ in\ files\ ([^[:space:]]+)\ and\ ([^[:space:]]+)$ ]]; then
-                file1="${BASH_REMATCH[1]}"
-                file2="${BASH_REMATCH[2]}"
-                echo "::error file=${file1}::${line}"
-                echo "::error file=${file2}::${line}"
+              if [[ $line =~ $pat_tags ]]; then
+                echo "::error file=${BASH_REMATCH[1]}::${line}"
+                echo "::error file=${BASH_REMATCH[2]}::${line}"
                 continue
               fi
 
