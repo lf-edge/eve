@@ -588,7 +588,11 @@ func signClientCertAuthenData(msg []byte, ecPrivateKey string) []byte {
 func loadPrivateKey(pemData string) (interface{}, error) {
 	block, _ := pem.Decode([]byte(pemData))
 	if block == nil || !strings.Contains(block.Type, "PRIVATE KEY") { // it can be "EC PRIVATE KEY" or "OPENSSH PRIVATE KEY"
-		return nil, errors.New("failed to decode PEM block containing private key certificate, type: " + block.Type)
+		blockType := "unknown"
+		if block != nil {
+			blockType = block.Type
+		}
+		return nil, errors.New("failed to decode PEM block containing private key certificate, type: " + blockType)
 	}
 
 	var privateKey interface{}

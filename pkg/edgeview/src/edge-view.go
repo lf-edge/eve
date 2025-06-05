@@ -44,13 +44,13 @@ const (
 	agentName       = "edgeview"
 	closeMessage    = "+++Done+++"
 	tarCopyDoneMsg  = "+++TarCopyDone+++"
-	edgeViewVersion = "0.8.4" // set the version now to 0.8.4
+	edgeViewVersion = "0.8.6" // set the version now to 0.8.6
 	cpLogFileString = "copy-logfiles"
 	clientIPMsg     = "YourEndPointIPAddr:"
 	serverRateMsg   = "ServerRateLimit:disable"
 	tcpPktRate      = MbpsToBytes * 5 * 1.2 // 125k Bytes * 5 * 1.2, or 5Mbits add 20%
 	tcpPktBurst     = 65536                 // burst allow bytes
-	tarMinVersion   = "0.8.5"               // for tar operation, expect client to have newer version
+	tarMinVersion   = "0.8.4"               // for tar operation, expect client to have newer version
 	verifyFailed    = "+++Verify failed+++"
 )
 
@@ -594,7 +594,7 @@ func parserAndRun(cmds cmdOpt) {
 	// This is shared by ssh and non-ssh mode.
 	//
 	if cmds.Network != "" {
-		runNetwork(cmds.Network)
+		runNetwork(cmds, cmds.Network)
 	} else if cmds.Pubsub != "" {
 		runPubsub(cmds.Pubsub)
 	} else if cmds.System != "" {
