@@ -1,3 +1,4 @@
+FROM alpine:3.20 AS foo
 FROM alpine:3.21 AS builder
 
 WORKDIR /rootfs
