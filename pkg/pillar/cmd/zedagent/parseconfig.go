@@ -3368,6 +3368,9 @@ func parseEdgeNodeClusterConfig(getconfigCtx *getconfigContext,
 		log.Errorf("parseEdgeNodeClusterConfig: failed to parse encrypted cluster token: %v", err)
 		return
 	}
+	// These share a cipherblock
+	enClusterConfig.CipherGzipRegistrationManifestYaml = enClusterConfig.CipherToken
+
 	log.Functionf("parseEdgeNodeClusterConfig: ENCluster API, Config %+v, %v", zcfgCluster, enClusterConfig)
 	ctx.pubEdgeNodeClusterConfig.Publish("global", enClusterConfig)
 }
