@@ -64,7 +64,7 @@ jobs:
           git fetch --force --tags
       - name: Determine architecture prefix and ref
         env:
-          REF: ${{ inputs.tag_ref }}
+          REF: ${{ github.ref }}
         run: |
           # FIXME: I'd rather be a real matrix job with a functional arm64 runner
           # echo "ARCH=$(uname -m | sed -e 's/x86_64/amd64/' -e 's/aarch64/arm64/')" >> "$GITHUB_ENV"
@@ -81,7 +81,7 @@ jobs:
         run: |
           HV=kvm
           if [ "${{ github.event.repository.full_name }}" = "lf-edge/eve" ]; then
-             EVE=lfedge/eve:${{ inputs.tag_ref }}-${HV}-${{ env.ARCH }}
+             EVE=lfedge/eve:${TAG}-${HV}-${{ env.ARCH }}
              docker pull "$EVE"
           else
              make pkgs
