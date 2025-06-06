@@ -145,12 +145,12 @@ BUILD_DIR=$(DIST)/$(ROOTFS_VERSION)
 INSTALLER=$(BUILD_DIR)/installer
 LIVE=$(BUILD_DIR)/live
 LIVE_IMG=$(BUILD_DIR)/live.$(IMG_FORMAT)
-TARGET_IMG=$(BUILD_DIR)/target.img
 VERSION_FILE=$(INSTALLER)/eve_version
 CURRENT_DIR=$(DIST)/current
 CURRENT_IMG=$(CURRENT_DIR)/live.$(IMG_FORMAT)
 CURRENT_SWTPM=$(CURRENT_DIR)/swtpm
 CURRENT_INSTALLER=$(CURRENT_DIR)/installer
+TARGET_IMG=$(CURRENT_DIR)/target.img
 INSTALLER_FIRMWARE_DIR=$(INSTALLER)/firmware
 CURRENT_FIRMWARE_DIR=$(CURRENT_INSTALLER)/firmware
 UBOOT_IMG=$(INSTALLER_FIRMWARE_DIR)/boot
@@ -159,7 +159,7 @@ UBOOT_IMG=$(INSTALLER_FIRMWARE_DIR)/boot
 BIOS_IMG_amd64=$(INSTALLER_FIRMWARE_DIR)/OVMF.fd $(INSTALLER_FIRMWARE_DIR)/OVMF_CODE.fd $(INSTALLER_FIRMWARE_DIR)/OVMF_VARS.fd
 BIOS_IMG_arm64=$(INSTALLER_FIRMWARE_DIR)/OVMF.fd $(INSTALLER_FIRMWARE_DIR)/OVMF_VARS.fd
 BIOS_IMG_riscv64=$(INSTALLER_FIRMWARE_DIR)/OVMF.fd $(INSTALLER_FIRMWARE_DIR)/OVMF_CODE.fd $(INSTALLER_FIRMWARE_DIR)/OVMF_VARS.fd
-BIOS_IMG=$(BIOS_IMG_$(ZARCH))
+BIOS_IMG:=$(BIOS_IMG_$(ZARCH))
 
 RUNME=$(BUILD_DIR)/runme.sh
 BUILD_YML=$(BUILD_DIR)/build.yml
@@ -180,6 +180,8 @@ INSTALLER_IMG=$(INSTALLER)/installer.img
 PERSIST_IMG=$(INSTALLER)/persist.img
 NETBOOT=$(BUILD_DIR)/netboot
 IPXE_IMG=$(NETBOOT)/ipxe.efi
+CURRENT_NETBOOT=$(CURRENT_DIR)/netboot
+CURRENT_IPXE_IMG=$(CURRENT_NETBOOT)/ipxe.efi
 EFI_PART=$(INSTALLER)/EFI
 BOOT_PART=$(INSTALLER)/boot
 BSP_IMX_PART=$(INSTALLER)/bsp-imx
@@ -576,35 +578,35 @@ GETTY:
 # through the installer. It's the long road to live.img. Good for
 # testing.
 #
-run-installer-iso: $(BIOS_IMG) $(DEVICETREE_DTB) $(SWTPM) GETTY
+run-installer-iso: $(SWTPM) GETTY
 	qemu-img create -f ${IMG_FORMAT} $(TARGET_IMG) ${MEDIA_SIZE}M
-	$(QEMU_SYSTEM) -drive file=$(TARGET_IMG),format=$(IMG_FORMAT) -cdrom $(INSTALLER).iso -boot d $(QEMU_OPTS)
+	$(QEMU_SYSTEM) -drive file=$(TARGET_IMG),format=$(IMG_FORMAT) -cdrom $(CURRENT_INSTALLER).iso -boot d $(QEMU_OPTS)
 
-run-installer-raw: $(BIOS_IMG) $(DEVICETREE_DTB) $(SWTPM) GETTY
+run-installer-raw: $(SWTPM) GETTY
 	qemu-img create -f ${IMG_FORMAT} $(TARGET_IMG) ${MEDIA_SIZE}M
-	$(QEMU_SYSTEM) -drive file=$(TARGET_IMG),format=$(IMG_FORMAT) -drive file=$(INSTALLER).raw,format=raw $(QEMU_OPTS)
+	$(QEMU_SYSTEM) -drive file=$(TARGET_IMG),format=$(IMG_FORMAT) -drive file=$(CURRENT_INSTALLER).raw,format=raw $(QEMU_OPTS)
 
-run-installer-net: QEMU_TFTP_OPTS=,tftp=$(dir $(IPXE_IMG)),bootfile=$(notdir $(IPXE_IMG))
-run-installer-net: $(BIOS_IMG) $(IPXE_IMG) $(DEVICETREE_DTB) $(SWTPM) GETTY
-	tar -C $(NETBOOT) -xvf $(INSTALLER).net || :
+run-installer-net: QEMU_TFTP_OPTS=,tftp=$(dir $(CURRENT_IPXE_IMG)),bootfile=$(notdir $(CURRENT_IPXE_IMG))
+run-installer-net: $(SWTPM) GETTY
+	tar -C $(CURRENT_NETBOOT) -xvf $(CURRENT_INSTALLER).net || :
 	qemu-img create -f ${IMG_FORMAT} $(TARGET_IMG) ${MEDIA_SIZE}M
 	$(QEMU_SYSTEM) -drive file=$(TARGET_IMG),format=$(IMG_FORMAT) $(QEMU_OPTS)
 
 # run MUST NOT change the current dir; it depends on the output being correct from a previous build
-run-live run: $(BIOS_IMG) $(DEVICETREE_DTB) $(SWTPM) GETTY
+run-live run: $(SWTPM) GETTY
 	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive file=$(CURRENT_IMG),format=$(IMG_FORMAT),id=uefi-disk
-run-live-gui: $(BIOS_IMG) $(DEVICETREE_DTB) $(SWTPM) GETTY
+run-live-gui: $(SWTPM) GETTY
 	$(QEMU_SYSTEM) $(QEMU_OPTS_GUI) -drive file=$(CURRENT_IMG),format=$(IMG_FORMAT),id=uefi-disk
 
-run-target: $(BIOS_IMG) $(DEVICETREE_DTB) $(SWTPM) GETTY
+run-target: $(SWTPM) GETTY
 	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive file=$(TARGET_IMG),format=$(IMG_FORMAT)
 
-run-rootfs: $(BIOS_IMG) $(UBOOT_IMG) $(EFI_PART) $(DEVICETREE_DTB) $(SWTPM) GETTY
+run-rootfs: $(SWTPM) GETTY
 	(echo 'set devicetree="(hd0,msdos1)/eve.dtb"' ; echo 'set rootfs_root=/dev/vdb' ; echo 'set root=hd1' ; echo 'export rootfs_root' ; echo 'export devicetree' ; echo 'configfile /EFI/BOOT/grub.cfg' ) > $(EFI_PART)/BOOT/grub.cfg
 	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive file=$(ROOTFS_IMG),format=raw -drive file=fat:rw:$(EFI_PART)/..,label=CONFIG,id=uefi-disk,format=vvfat
 	$(QUIET): $@: Succeeded
 
-run-grub: $(BIOS_IMG) $(UBOOT_IMG) $(EFI_PART) $(DEVICETREE_DTB) $(SWTPM)  GETTY
+run-grub: $(SWTPM)  GETTY
 	[ -f $(EFI_PART)/BOOT/grub.cfg ] && mv $(EFI_PART)/BOOT/grub.cfg $(EFI_PART)/BOOT/grub.cfg.$(notdir $(shell mktemp))
 	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive format=vvfat,id=uefi-disk,label=EVE,file=fat:rw:$(EFI_PART)/..
 	$(QUIET): $@: Succeeded
@@ -813,7 +815,7 @@ publish_sources: $(COLLECTED_SOURCES)
 	$(QUIET): $@: Succeeded
 
 
-$(LIVE).raw: $(BOOT_PART) $(EFI_PART) $(ROOTFS_IMG) $(CONFIG_IMG) $(PERSIST_IMG) $(BSP_IMX_PART) | $(INSTALLER)
+$(LIVE).raw: $(BOOT_PART) $(EFI_PART) $(ROOTFS_IMG) $(CONFIG_IMG) $(PERSIST_IMG) $(BSP_IMX_PART) $(BIOS_IMG) | $(INSTALLER)
 	./tools/prepare-platform.sh "$(PLATFORM)" "$(BUILD_DIR)" "$(INSTALLER)" || :
 	./tools/makeflash.sh "mkimage-raw-efi" -C $| $@ $(LIVE_PART_SPEC)
 	$(QUIET): $@: Succeeded
@@ -823,16 +825,16 @@ $(INSTALLER_IMG): $(INSTALLER_TAR) | $(INSTALLER)
 	./tools/makerootfs.sh imagefromtar -t $(INSTALLER_TAR) -i $@ -f $(ROOTFS_FORMAT) -a $(ZARCH)
 	$(QUIET): $@: Succeeded
 
-$(INSTALLER).raw: $(INSTALLER_IMG) $(EFI_PART) $(BOOT_PART) $(CONFIG_IMG) $(BSP_IMX_PART) | $(INSTALLER)
+$(INSTALLER).raw: $(INSTALLER_IMG) $(EFI_PART) $(BOOT_PART) $(CONFIG_IMG) $(BSP_IMX_PART) $(BIOS_IMG) | $(INSTALLER)
 	./tools/prepare-platform.sh "$(PLATFORM)" "$(BUILD_DIR)" "$(INSTALLER)" || :
 	./tools/makeflash.sh "mkimage-raw-efi" -C $| $@ "efi conf_win installer inventory_win"
 	$(QUIET): $@: Succeeded
 
-$(INSTALLER).iso: $(INSTALLER_TAR) $(BSP_IMX_PART) | $(INSTALLER)
+$(INSTALLER).iso: $(INSTALLER_TAR) $(BSP_IMX_PART) $(BIOS_IMG) | $(INSTALLER)
 	DOCKER_ARCH_TAG=$(DOCKER_ARCH_TAG) ./tools/makeiso.sh $< $@ installer
 	$(QUIET): $@: Succeeded
 
-$(INSTALLER).net: $(INSTALLER).iso $(EFI_PART) $(INITRD_IMG) $(CONFIG_IMG) $(IPXE_IMG) | $(INSTALLER)
+$(INSTALLER).net: $(INSTALLER).iso $(EFI_PART) $(INITRD_IMG) $(CONFIG_IMG) $(IPXE_IMG) $(BIOS_IMG) | $(INSTALLER)
 	cp $(IPXE_IMG) $|
 	./tools/makenet.sh $| $< $@
 	$(QUIET): $@: Succeeded
