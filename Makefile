@@ -374,16 +374,16 @@ ifeq ($(LINUXKIT_PKG_TARGET),push)
   # only builds from master branch are allowed to be called snapshots
   # everything else gets tagged with a branch name itself UNLESS
   # we're building off of a annotated tag
-  EVE_REL_$(REPO_BRANCH)_$(REPO_TAG):=$(REPO_TAG)
+  EVE_REL_$(REPO_BRANCH)_$(REPO_TAG):=$(if $(TAGPLAT),$(REPO_TAG)-$(TAGPLAT),$(REPO_TAG))
   EVE_REL_$(REPO_BRANCH)_snapshot:=$(REPO_BRANCH)
-  EVE_REL_master_snapshot:=snapshot
+  EVE_REL_master_snapshot:=$(if $(TAGPLAT),$(TAGPLAT)-snapshot,snapshot)
   EVE_REL:=$(EVE_REL_$(REPO_BRANCH)_$(REPO_TAG))
 
   # the only time we rebuild everything from scratch is when we're building 'latest' release
   # in order to achieve that we have to force EVE_HASH to be the release version
   ifeq ($(shell [ "`git tag | grep -E '[0-9]*\.[0-9]*\.[0-9]*' | sort -t. -n -k1,1 -k2,2 -k3,3 | tail -1`" = $(REPO_TAG) ] && echo latest),latest)
     EVE_HASH:=$(REPO_TAG)
-    EVE_REL:=latest
+    EVE_REL:=$(if $(TAGPLAT),$(TAGPLAT)-latest,latest)
   endif
 endif
 
