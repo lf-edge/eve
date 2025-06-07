@@ -19,9 +19,10 @@ monitor_file_and_execute_tasks() {
     while true; do
         if [ -f "/run/edgeview/edgeview-request-collect-info" ]; then
             echo "edgeview request to run collect-info..."
-            # the newlog part of the collection, only collect last 10 days,
+            # the newlog part of the collection, only collect last 3 days
+            # to limit the size of the tarball to the controller side,
             # and add 'edgeview' to tarball name
-            /usr/bin/collect-info.sh -t 10 -e
+            /usr/bin/collect-info.sh -t 3 -e
             # remove the request file
             echo "edgeview request collect-info done"
             rm /run/edgeview/edgeview-request-collect-info
