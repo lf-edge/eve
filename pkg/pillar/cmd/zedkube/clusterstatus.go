@@ -102,7 +102,7 @@ func (z *zedkube) publishKubeConfigStatus() {
 	}
 
 	if z.clusterConfig.CipherToken.IsCipher {
-		decToken, err := z.decryptClusterToken()
+		decToken, decGzipManifest, err := z.decryptClusterTokenAndManifest()
 		if err != nil {
 			log.Errorf("publishKubeConfigStatus: failed to decrypt cluster token: %v", err)
 			status.Error = types.ErrorDescription{
@@ -111,22 +111,37 @@ func (z *zedkube) publishKubeConfigStatus() {
 			}
 		} else {
 			status.EncryptedClusterToken = decToken
+
+			// Don't store the decrypted manifest in EdgeNodeClusterStatus as its a pubsub published
+			// structure and could lead to some log.Fatal due to this buffer size.
+			regExists, err := kubeapi.RegistrationExists(kubeapi.PillarPersistManifestPath)
+			if z.clusterConfig.BootstrapNode && (len(decGzipManifest) != 0) && (!regExists || err != nil) {
+				go func() {
+					err := kubeapi.RegistrationAdd(kubeapi.PillarPersistManifestPath, decGzipManifest)
+					if err != nil {
+						log.Errorf("Registration err:%v", err)
+					} else {
+						log.Noticef("Registration success")
+					}
+				}()
+			}
 		}
 	} else {
 		log.Errorf("publishKubeConfigStatus: cluster token is not from configitme or encrypted")
 	}
+
 	// publish the cluster status for the kube container
 	z.pubEdgeNodeClusterStatus.Publish("global", status)
 }
 
-func (z *zedkube) decryptClusterToken() (string, error) {
+func (z *zedkube) decryptClusterTokenAndManifest() (string, []byte, error) {
 	if !z.clusterConfig.CipherToken.IsCipher {
-		return "", fmt.Errorf("decryptClusterToken: cluster token is not encrypted")
+		return "", []byte{}, fmt.Errorf("decryptClusterTokenAndManifest: cluster token is not encrypted")
 	}
 
 	decryptAvailable := z.subControllerCert != nil && z.subEdgeNodeCert != nil
 	if !decryptAvailable {
-		return "", fmt.Errorf("decryptClusterToken: certificates are not available")
+		return "", []byte{}, fmt.Errorf("decryptClusterTokenAndManifest: certificates are not available")
 	}
 	status, decBlock, err := cipher.GetCipherCredentials(
 		&cipher.DecryptCipherContext{
@@ -140,21 +155,21 @@ func (z *zedkube) decryptClusterToken() (string, error) {
 	if z.pubCipherBlockStatus != nil {
 		err2 := z.pubCipherBlockStatus.Publish(status.Key(), status)
 		if err2 != nil {
-			return "", fmt.Errorf("decryptClusterToken: publish failed %v", err2)
+			return "", []byte{}, fmt.Errorf("decryptClusterTokenAndManifest: publish failed %v", err2)
 		}
 	}
 	if err != nil {
 		z.cipherMetrics.RecordFailure(log, types.DecryptFailed)
-		return "", fmt.Errorf("decryptClusterToken: failed to decrypt cluster token: %v", err)
+		return "", []byte{}, fmt.Errorf("decryptClusterTokenAndManifest: failed to decrypt cluster token: %v", err)
 	}
 
 	err = z.cipherMetrics.Publish(log, z.pubCipherMetrics, "global")
 	if err != nil {
-		log.Errorf("decryptClusterToken: publish failed for cipher metrics: %v", err)
-		return "", fmt.Errorf("decryptClusterToken: failed to publish cipher metrics: %v", err)
+		log.Errorf("decryptClusterTokenAndManifest: publish failed for cipher metrics: %v", err)
+		return "", []byte{}, fmt.Errorf("decryptClusterTokenAndManifest: failed to publish cipher metrics: %v", err)
 	}
 
-	return decBlock.ClusterToken, nil
+	return decBlock.ClusterToken, decBlock.GzipRegistrationManifestYaml, nil
 }
 
 func (z *zedkube) updateClusterIPReadiness() (changed bool) {

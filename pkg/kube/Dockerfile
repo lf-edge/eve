@@ -41,6 +41,7 @@ RUN mkdir -p /etc/rancher/k3s
 COPY config.yaml /etc/rancher/k3s
 COPY debuguser-role-binding.yaml /etc/
 COPY k3s-pod-logs.sh /usr/bin/
+COPY registration-utils.sh /usr/bin/
 
 # kubevirt yaml files are patched files and will be removed later, look at cluster-init.sh
 COPY multus-daemonset.yaml /etc

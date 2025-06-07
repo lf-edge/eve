@@ -32,6 +32,8 @@ All_PODS_READY=true
 . /usr/bin/cluster-utils.sh
 # shellcheck source=pkg/kube/cluster-update.sh
 . /usr/bin/cluster-update.sh
+# shellcheck source=pkg/kube/registration-utils.sh
+. /usr/bin/registration-utils.sh
 
 # get cluster IP address from the cluster status file
 get_cluster_node_ip() {
@@ -520,6 +522,7 @@ check_cluster_config_change() {
           logmsg "EdgeNodeClusterConfig file found, but the EdgeNodeClusterStatus file is missing, wait..."
           return 0
         fi
+        Registration_Cleanup
         touch /var/lib/convert-to-single-node
         reboot
       fi
@@ -941,6 +944,7 @@ fi
         check_and_run_vnc
         Update_CheckClusterComponents
         Update_RunDeschedulerOnBoot
+        Registration_CheckApply
         wait_for_item "wait"
         sleep 15
 done
