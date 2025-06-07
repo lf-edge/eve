@@ -9,7 +9,6 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/ecdsa"
-	"crypto/elliptic"
 	"crypto/hmac"
 	"crypto/md5"
 	"crypto/rand"
@@ -25,6 +24,7 @@ import (
 	"strings"
 
 	"github.com/gorilla/websocket"
+	etpm "github.com/lf-edge/eve/pkg/pillar/evetpm"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"golang.org/x/crypto/ssh"
 )
@@ -540,7 +540,7 @@ func signWithECPrivateKey(msg []byte, privateKey *ecdsa.PrivateKey) ([]byte, *bi
 	}
 
 	// Concatenate r and s to form the signature
-	signature := append(eccIntToBytes(privateKey.Curve, r), eccIntToBytes(privateKey.Curve, s)...)
+	signature := append(etpm.EccIntToBytes(privateKey.Curve, r), etpm.EccIntToBytes(privateKey.Curve, s)...)
 	return signature, r, s, nil
 }
 
@@ -625,11 +625,4 @@ func loadPrivateKey(pemData string) (interface{}, error) {
 		fmt.Printf("Unknown private key type: %T\n", privateKey)
 		return nil, errors.New("unknown private key type")
 	}
-}
-
-// TODO : remove this and use evetpm export
-func eccIntToBytes(curve elliptic.Curve, i *big.Int) []byte {
-	bytes := i.Bytes()
-	curveBytes := (curve.Params().BitSize + 7) / 8
-	return append(make([]byte, curveBytes-len(bytes)), bytes...)
 }
