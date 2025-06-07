@@ -1029,10 +1029,12 @@ else
 endif
 
 %.yml: %.yml.in $(RESCAN_DEPS) | build-tools
+	@echo "Building $@ from $<"
 	$(QUIET)$(PARSE_PKGS) $< > $@
 	$(QUIET): $@: Succeeded
 
 %/Dockerfile: %/Dockerfile.in build-tools $(RESCAN_DEPS)
+	@echo "Building $@ from $<"
 	$(QUIET)$(PARSE_PKGS) $< > $@
 	$(QUIET): $@: Succeeded
 
@@ -1067,18 +1069,91 @@ eve-%: pkg/%/Dockerfile build-tools $(RESCAN_DEPS)
 images/out:
 	mkdir -p $@
 
-# Find modifiers for a .yml filename
-define find-modifiers
-$(wildcard $(patsubst %,images/modifiers/%.yq,$1)) \
-$(wildcard $(patsubst %,images/modifiers/%.yq,$(firstword $(subst -, ,$1)))) \
-$(wildcard $(patsubst %,images/modifiers/%.yq,$(patsubst $(firstword $(subst -, ,$1))-%,%,$1)))
+# Find modifiers for an installer .yml filename
+# the $1 contains the target name in following format:
+# $(HV)-$(PLATFORM)
+# the rules are following:
+# 1. if the file <HV>.yq exists in the images/modifiers/hv directory, it will be added to the list
+# of the files we return
+# 2. if the directory with the images/modifiers/platforms/$(PLATFORM) name exists, it will use
+#   installer.yq file inside the directory
+# 3. if the directory with the $(PLATFORM) name does not exist, it will use
+#   images/modifiers/platform/$(PLATFORM).yq file
+define find-modifiers-installer
+$(foreach hv,$(firstword $(subst -, ,$1)), \
+    $(foreach platform,$(subst $(hv)-,,$1), \
+        $(if $(wildcard images/modifiers/hv/$(hv).yq), \
+        	$(info [INFO] Found hv modifier file images/modifiers/hv/$(hv).yq) \
+			images/modifiers/hv/$(hv).yq \
+		) \
+        $(if $(wildcard images/modifiers/platform/$(platform)/), \
+            $(if $(wildcard images/modifiers/platform/$(platform)/installer.yq), \
+            	$(info [INFO] Found installer modifier file images/modifiers/platform/$(platform)/installer.yq) \
+				images/modifiers/platform/$(platform)/installer.yq, \
+				$(error [ERROR] Found platform directory images/modifiers/platform/$(platform)/, but no installer.yq file found. \
+			) \
+        ), \
+            $(wildcard images/modifiers/platform/$(platform).yq) \
+        ) \
+    ) \
+)
+endef
+
+# Find modifiers for a rootfs .yml filename
+# the $1 contains the target name in following format:
+# <HV>-<PLATFORM>-<FLAVOR>
+# NOTE: in case of platforms with '-' in the name (e.g. nvidia-jp6) we cannot identify FLAVOR so we start
+# looking at <PLATFORM> as a whole first and if we fail we treat the lsast part as a FLAVOR
+# the rules are following:
+# 1. if the file <HV>.yq exists in the images/modifiers/hv directory, it will be added to the list
+# of the files we return
+# 2. if the file <PLATFORM>.yq exists in the images/modifiers/platform directory, it will be added to the list
+# 3. if the directory with the images/modifiers/platforms/$(PLATFORM) name exists, it will use
+# rootfs-<FLAVOR>.yq file inside the directory
+# 4. if the directory with the $(PLATFORM) name does not exist, it will use
+# images/modifiers/platform/$(PLATFORM).yq file
+define find-modifiers-rootfs
+$(eval _mod := $1) \
+$(eval _parts := $(subst -, ,$1)) \
+$(eval _hv := $(firstword $(_parts))) \
+$(eval _platform := $(subst $(_hv)-,,$1)) \
+$(if $(wildcard images/modifiers/hv/$(_hv).yq), \
+	$(info [INFO] Found hv modifier file images/modifiers/hv/$(_hv).yq) \
+	images/modifiers/hv/$(_hv).yq \
+) \
+$(if $(wildcard images/modifiers/platform/$(_platform).yq), \
+	$(info [INFO] Found platform modifier file images/modifiers/platform/$(_platform).yq) \
+	images/modifiers/platform/$(_platform).yq \
+	, \
+	$(info [INFO] platform modifier file images/modifiers/platform/$(_platform).yq NOT found) \
+	$(info [INFO] looking for platform directory:)\
+	$(eval _parts := $(subst -, ,$(_platform))) \
+	$(eval _flavor := $(lastword $(_parts))) \
+	$(eval _platform := $(subst -$(_flavor),,$(_platform))) \
+	$(info [INFO]   images/modifiers/platform/$(_platform)/) \
+	$(info [INFO]   rootfs flavor: $(_flavor)) \
+	$(if $(wildcard images/modifiers/platform/$(_platform)/), \
+		$(info [INFO] Found platform directory images/modifiers/platform/$(_platform)/) \
+		$(if $(wildcard images/modifiers/platform/$(_platform)/rootfs-$(_flavor).yq), \
+			$(info [INFO] Found rootfs flavor modifier file images/modifiers/platform/$(_platform)/rootfs-$(_flavor).yq) \
+			images/modifiers/platform/$(_platform)/rootfs-$(_flavor).yq \
+		) \
+	, \
+		$(info [WARN] Platform directory mages/modifiers/platform/$(_platform)/ not found and platform modifier file \
+		images/modifiers/platform/$(subst $(_hv)-,,$1).yq does not exist.) \
+	) \
+)
 endef
 
 images/out/rootfs-%.yml.in: images/rootfs.yml.in $(RESCAN_DEPS) | images/out
-	$(QUIET)tools/compose-image-yml.sh -b $< -v "$(ROOTFS_VERSION)-$*-$(ZARCH)" -o $@ -h $(HV) $(call find-modifiers,$*)
+	$(info [INFO] Building rootfs for target: $*)
+	$(info [INFO] Building $@ from $<)
+	$(QUIET)tools/compose-image-yml.sh -b $< -v "$(ROOTFS_VERSION)-$*-$(ZARCH)" -o $@ -h $(HV) $(call find-modifiers-rootfs,$*)
 
 images/out/installer-%.yml.in: images/installer.yml.in $(RESCAN_DEPS) | images/out
-	$(QUIET)tools/compose-image-yml.sh -b $< -v "$(ROOTFS_VERSION)-$*-$(ZARCH)" -o $@ -h $(HV) $(call find-modifiers,$*)
+	$(info [INFO] Building installer for target: $*)
+	$(info [INFO] Building $@ from $<)
+	$(QUIET)tools/compose-image-yml.sh -b $< -v "$(ROOTFS_VERSION)-$*-$(ZARCH)" -o $@ -h $(HV) $(call find-modifiers-installer,$*)
 
 pkg-deps.mk: $(GET_DEPS)
 	$(QUIET)$(GET_DEPS) $(ROOTFS_GET_DEPS) -m $@
