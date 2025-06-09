@@ -245,7 +245,7 @@ func verifyEnvelopeData(data []byte, checkClientAuth bool) (bool, bool, []byte, 
 			}
 			log.Errorf("Signature is empty")
 			_ = addEnvelopeAndWriteWss([]byte("Edgeview requires client authentication signing by "+errTypeStr+verifyFailed), true, false)
-			return false, false, nil, keyComment
+			return true, false, nil, keyComment
 		}
 
 		var isValid bool
@@ -588,7 +588,11 @@ func signClientCertAuthenData(msg []byte, ecPrivateKey string) []byte {
 func loadPrivateKey(pemData string) (interface{}, error) {
 	block, _ := pem.Decode([]byte(pemData))
 	if block == nil || !strings.Contains(block.Type, "PRIVATE KEY") { // it can be "EC PRIVATE KEY" or "OPENSSH PRIVATE KEY"
-		return nil, errors.New("failed to decode PEM block containing private key certificate, type: " + block.Type)
+		blockType := "unknown"
+		if block != nil {
+			blockType = block.Type
+		}
+		return nil, errors.New("failed to decode PEM block containing private key certificate, type: " + blockType)
 	}
 
 	var privateKey interface{}
