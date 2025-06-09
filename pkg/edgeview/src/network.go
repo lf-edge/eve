@@ -53,7 +53,8 @@ type intfIP struct {
 // Used as a constant.
 var emptyUUID = uuid.UUID{}
 
-func runNetwork(netw string) {
+func runNetwork(cmds cmdOpt) {
+	netw := cmds.Network
 	opts, err := checkOpts(netw, netopts)
 	if err != nil {
 		fmt.Println("runNetwork:", err)
@@ -119,7 +120,7 @@ func runNetwork(netw string) {
 		} else if opt == "speed" {
 			runSpeedTest(substring)
 		} else if opt == "flow" {
-			getFlow(substring)
+			getFlow(substring, cmds.Extraline)
 		} else if opt == "mdns" {
 			runmDNS(substring)
 		} else if opt == "tcp" { // tcp and proxy are special
@@ -788,12 +789,15 @@ func showSockets() {
 
 func showIntf(substring string, intfip []intfIP) {
 	for _, i := range intfip {
+		if substring != "" && !strings.Contains(i.intfName, substring) {
+			continue
+		}
 		fmt.Printf("%s: %s %v\n", i.intfName, i.ipAddr, i.iFlag)
 	}
 	fmt.Printf("\n")
 	printTitle(" ip link info:", colorCYAN, false)
 
-	getARP("")
+	getARP(substring)
 
 	getPortCfg(substring, true)
 	printTitle(" proxy:", colorCYAN, false)
@@ -823,7 +827,8 @@ func runTrace(substring, server string) {
 	prog := "traceroute"
 	var args []string
 	if substring != "" {
-		baseargs := []string{"-4", "-m", "10", "-q", "2", substring}
+		// limit to 10 hops, 2 queries per hop, and wait 1 second
+		baseargs := []string{"-4", "-m", "10", "-q", "2", "-w", "1", substring}
 		args = baseargs
 		if cmdTimeout != "" {
 			prog = "timeout"
@@ -960,7 +965,7 @@ func httpsclient(server string, ipaddr net.IP) {
 	fmt.Printf("%s", string(htmlData))
 }
 
-func getFlow(subStr string) {
+func getFlow(subStr string, numLines int) {
 	afs := [2]netlink.InetFamily{syscall.AF_INET, syscall.AF_INET6}
 	for _, af := range afs {
 		connT, err := netlink.ConntrackTableList(netlink.ConntrackTable, af)
@@ -975,6 +980,9 @@ func getFlow(subStr string) {
 		}
 		i := 0
 		for _, entry := range connT {
+			if numLines > 0 && i >= numLines {
+				break
+			}
 			connStr := entry.String()
 			oline := connStr
 			if subStr != "" {

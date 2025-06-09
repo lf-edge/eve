@@ -594,7 +594,7 @@ func parserAndRun(cmds cmdOpt) {
 	// This is shared by ssh and non-ssh mode.
 	//
 	if cmds.Network != "" {
-		runNetwork(cmds.Network)
+		runNetwork(cmds)
 	} else if cmds.Pubsub != "" {
 		runPubsub(cmds.Pubsub)
 	} else if cmds.System != "" {

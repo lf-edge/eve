@@ -643,6 +643,7 @@ func printHelp(opt string) {
 			helpOn("flow[/<some pattern>]", "display ip flow information in the kernel search pattern")
 			helpExample("flow/sport=53", "display all the ip flow matches source port of 53", true)
 			helpExample("flow/10.1.0.2", "display all the ip flow matches ip address of 10.1.0.2", false)
+			helpExample("flow/dport=443 -line 20", "display the first 20 entries of the ip flow matches dst port of 443", false)
 		case "if":
 			helpOn("if[/intf-name]", "display interface related information briefly")
 			helpExample("if/eth0", "display interface eth0 related information", true)
@@ -663,6 +664,10 @@ func printHelp(opt string) {
 			helpOn("ping[/<ip or name>]", "ping to 8.8.8.8 from all the UP interfaces or ping a specific address")
 			helpExample("ping", "ping to 8.8.8.8 from each source IP address of the interfaces", true)
 			helpExample("ping/192.168.1.1", "ping the address of 192.168.1.1", false)
+		case "pub":
+			helpOn("pub/<micro-service name>[/<publication item]", "display the EVE micro-services pub-sub information")
+			helpExample("pub/zedagent", "display the zedagent micro-service all the pub-sub information", true)
+			helpExample("pub/zedagent/configitem", "display the zedagent micro-service the ConfigItem information", false)
 		case "route":
 			helpOn("route", "display all the ip rule and their ip table entries")
 		case "socket":
@@ -707,6 +712,7 @@ func printHelp(opt string) {
 			helpOn("pprof", "pprof/on to turn on pprof; pprof/off to turn off again")
 		case "dmesg":
 			helpOn("dmesg", "display the device current dmesg information")
+			helpExample("dmesg -line 25", "display the last 25 lines from the dmesg", true)
 		case "download":
 			helpOn("download", "display the download config and status during downloading operation and url stats since reboot")
 		case "du":
