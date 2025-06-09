@@ -107,7 +107,7 @@ func runSystem(cmds cmdOpt, sysOpt string) {
 		} else if strings.HasPrefix(opt, "techsupport") {
 			runTechSupport(cmds, false)
 		} else if strings.HasPrefix(opt, "dmesg") {
-			getDmesg()
+			getDmesg(cmds.Extraline)
 		} else if strings.HasPrefix(opt, "tar/") {
 			getTarFile(opt, nil)
 		} else if strings.HasPrefix(opt, "pprof") {
@@ -194,14 +194,22 @@ func getLogStats() {
 	fmt.Println()
 }
 
-func getDmesg() {
+func getDmesg(numLines int) {
 	printTitle("Dmesg:", colorCYAN, false)
 	buf := make([]byte, 64*1024)
 	_, _, err := unix.Syscall(unix.SYS_SYSLOG, uintptr(3), uintptr(unsafe.Pointer(&buf[0])), uintptr(len(buf)))
 	if err == 0 {
 		size := 0
 		lines := bytes.SplitAfter(buf, []byte("\n"))
-		for _, l := range lines {
+
+		// Determine the starting index based on numLines
+		start := 0
+		if numLines > 0 && numLines < len(lines) {
+			start = len(lines) - numLines
+		}
+
+		// Process the relevant lines directly
+		for _, l := range lines[start:] {
 			printDmesgLine(string(l))
 			size += len(l)
 			if size > 4096 {
@@ -1266,7 +1274,8 @@ func runTechSupport(cmds cmdOpt, isLocal bool) {
 	getBasics()
 
 	printTitle("\n       - network info -\n\n", colorRED, false)
-	runNetwork("route,arp,if,acl,connectivity,url,socket,app,mdns,nslookup/google.com,trace/8.8.8.8,wireless,flow,showcerts")
+	cmds.Network = "route,arp,if,acl,connectivity,url,socket,app,mdns,nslookup/google.com,trace/8.8.8.8,wireless,flow,showcerts"
+	runNetwork(cmds)
 	closePipe(true)
 
 	printTitle("\n       - system info -\n\n", colorRED, false)
