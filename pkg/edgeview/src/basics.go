@@ -317,7 +317,8 @@ func getBasics() {
 
 	ips := []string{}
 	for _, i := range allUPIntfIPv4() {
-		if strings.HasPrefix(i.intfName, "bn") {
+		// exclude the interfaces that are not used for device management
+		if strings.HasPrefix(i.intfName, "bn") || strings.HasPrefix(i.intfName, "flannel") || i.intfName == "cni0" {
 			continue
 		}
 		ips = append(ips, i.ipAddr)

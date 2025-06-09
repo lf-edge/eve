@@ -44,7 +44,7 @@ const (
 	agentName       = "edgeview"
 	closeMessage    = "+++Done+++"
 	tarCopyDoneMsg  = "+++TarCopyDone+++"
-	edgeViewVersion = "0.8.4" // set the version now to 0.8.4
+	edgeViewVersion = "0.8.6" // set the version now to 0.8.6
 	cpLogFileString = "copy-logfiles"
 	clientIPMsg     = "YourEndPointIPAddr:"
 	serverRateMsg   = "ServerRateLimit:disable"
