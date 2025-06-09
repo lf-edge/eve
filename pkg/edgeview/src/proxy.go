@@ -77,16 +77,26 @@ func handleTunneling(w http.ResponseWriter, r *http.Request, dnsIP string) {
 	}
 
 	log.Tracef("handleTunneling: %s", r.Host)
-	w.WriteHeader(http.StatusOK)
 	hijacker, ok := w.(http.Hijacker)
 	if !ok {
+		log.Errorf("handleTunneling: hijacker not supported")
 		http.Error(w, "Hijacking not supported", http.StatusInternalServerError)
 		return
 	}
+
 	clientConn, _, err := hijacker.Hijack()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
 		log.Errorf("handleTunneling: hijacker error: %v", err)
+		return
+	}
+
+	// Write full 200 OK response manually, some clients expect this
+	_, err = clientConn.Write([]byte("HTTP/1.1 200 Connection Established\r\n\r\n"))
+	if err != nil {
+		clientConn.Close()
+		destConn.Close()
+		return
 	}
 	go transfer(destConn, clientConn, true)
 	go transfer(clientConn, destConn, false)
