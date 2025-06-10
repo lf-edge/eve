@@ -19,7 +19,7 @@ you don’t want to recreate VM image) or when downtime is not an option for you
 In EVE every App Instance connected to local network instances is exposed to Metadata server at
 `169.254.169.254`. It has bunch of useful endpoints, amongst them are patch envelope endpoints. So within
 App Instance one can access Patch Envelopes available to specific App Instance by getting description.json.
-This would return list of Patch Envelopes available to this App Instance.
+This would return list of Patch Envelopes available to this App Instance. (For more information on the metadata service consult [ECO-METADATA.md](ECO-METADATA.md).)
 
 ```bash
 curl -X GET -v http://169.254.169.254/eve/v1/patch/description.json
@@ -66,7 +66,7 @@ Flow diagram of the process is below
 
 ![process-flow](./images/eve-pe-process-flow.png)
 
-Full OpenAPI (Swagger) specification for patch envelope endpoint can be found [here](./api/patch-envelopes.yml).
+Full OpenAPI (Swagger) [specification for patch envelope endpoint can be found here](./api/patch-envelopes.yml).
 You can generate client from this specification and use it to develop your application.
 
 ## What types of Binary Artifacts are there?
@@ -94,8 +94,8 @@ Metadata server stores VolRef – volume references, which are changed to Binary
 once volumes are downloaded. Note that this process is async and it might take time.
 All communication in this process is done via PubSub. When AppInstance downloads inline
 object it’s served from Metadata server (zedrouter microservice). In case of external
-patch envelopes – Metadata serves file from volume. For more information on how it works
-in code refer [here](https://github.com/lf-edge/eve/blob/0a8b21ec5de3bf6a2613c2c6f2e2af7e353b1e98/pkg/pillar/cmd/zedrouter/patchenvelopes.go#L18C1-L47C88)
+patch envelopes – Metadata serves file from volume. For more information [on how envelopes works
+in code refer here](https://github.com/lf-edge/eve/blob/0a8b21ec5de3bf6a2613c2c6f2e2af7e353b1e98/pkg/pillar/cmd/zedrouter/patchenvelopes.go#L18C1-L47C88)
 
 ## Encryption/Description of patch envelopes data
 
