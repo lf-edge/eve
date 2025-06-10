@@ -328,36 +328,43 @@ Note that once you flash `installer.raw` on the installer media, such as USB dri
 
 ## Generating yml
 
-The core `rootfs.tar` file is generated using `linuxkit build`, which is driven by a `yml` file.
-The `yml` file is in the `images` directory and is named `rootfs-$(HV).yml`, where `HV` is the hypervisor,
-e.g. `kvm`, `xen`, `acrn`, `mini`, and can be set in the environment variable `HV`,
-e.g. `make rootfs.tar HV=kvm`.
+The core `rootfs.tar` or `installer.tar` files are generated using `linuxkit build`, which is driven by a `yml` file.
+The `yml` file is in the `images/out` directory and is named `rootfs-$(HV)-$(PLATFORM)-<rootfs flavor>.yml`, where `HV` is the hypervisor,
+e.g. `kvm`, `xen`, `acrn`, `mini`, `kubevirt`, and can be set in the environment variable `HV`, and `PLATFORM` is the platform, e.g. `generic`, `rt`, `nvidia-jp6`, `imx8mp_pollux`, etc. and can be set in the environment variable `PLATFORM`.
+e.g. `make rootfs.tar HV=kvm PLATFORM=generic`.
 
-The actual `yml` file `rootfs-$(HV).yml` is not checked into version control, nor is any file
+Rootfs flavor is not currently used by any platform except for `evaluation`.
+
+The actual `yml` file `images/out/rootfs-$(HV)-$(PLATFORM)-<rootfs flavor>.yml` is not checked into version control, nor is any file
 in [images](../images/). Rather, the checked-in files in this directory are templates and modifiers:
 
-* templates: `rootfs.yml.in` and `version.yml.in`
-* modifiers: `*.yml.in.yq`
+* templates: `rootfs.yml.in`, `installer.yml.in` and `version.yml.in`
+* modifiers are located in `images/modifiers` and structured as following:
+  * `images/modifiers/hv/<HV>.yq` - hypervisor-specific modifiers
+  * `images/modifiers/platform/<platform name>/` - platform-specific modifiers. A platform may require separate modifiers to be applied to `rootfs.yml.in` and `installer.yml.in`. In this case the platform-specific modifiers are located in `images/modifiers/platform/<platform name>/rootfs-<rootfs flavor>.yq` and `images/modifiers/platform/<platform name>/installer.yq`. Besides rootfs modifier may have a rootfs flavor in its name, e.g. `images/modifiers/platform/<platform name>/rootfs-lts.yq`. The flavor cannot be passed directly to the Makefile, but it can be used in the Makefile to generate a specific `rootfs-$(HV)-$(PLATFORM)-<rootfs flavor>.yml` file. If rootfs and installer shares the same modifiers, the `images/modifiers/platform/<platform name>/` directory may contain only a single file, e.g. `images/modifiers/platform/<platform name>/<platform name>.yq`.
+  *If the platform doesn't require any specific modifiers, the `images/modifiers/platform/<platform name>/` directory may not exist at all.
+
+All intermediate files generated in `images/out/` can be inspected to debug modifiers.
 
 When you run `make rootfs.tar`, or any target that depends upon it, the following happens:
 
 1. The Makefile includes [kernel-version.mk](../kernel-version.mk). This sets the variable `KERNEL_TAG` inside the make process to a specific docker image tag, based on the `ZARCH` and, if set, `PLATFORM`
-1. The Makefile sees a dependency on `images/out/rootfs-$(HV)-$(PLATFORM).yml`
-1. The Makefile runs `tools/compose-image-yml.sh -b images/rootfs.yml.in -v "$(ROOTFS_VERSION)-$(HV)-$(ZARCH)" -h $(HV) -o images/out/rootfs-$(HV)-$(PLATFORM).yml.in images/modifiers/$(HV).yq images/modifiers/$(PLATFORM).yq`, i.e. the utility [compose-image-yml.sh](../tools/compose-image-yml.sh), passing it:
+1. The Makefile sees a dependency on `images/out/rootfs-$(HV)-$(PLATFORM)-[<rootfs flavor>].yml`
+1. The Makefile runs `tools/compose-image-yml.sh -b images/rootfs.yml.in -v "$(ROOTFS_VERSION)-$(HV)-$(ZARCH)" -h $(HV) -o images/out/rootfs-$(HV)-$(PLATFORM)-[<rootfs flavor>].yml.in images/modifiers/hv/$(HV).yq images/modifiers/$(PLATFORM)/[rootfs-<flavor>| insstaller | <platform-name>].yq`, i.e. the utility [compose-image-yml.sh](../tools/compose-image-yml.sh), passing it:
    * the base template `images/rootfs.yml.in`, i.e. input file
    * the version string, which is the `ROOTFS_VERSION`, hypervisor, and architecture
    * the hypervisor
-   * the output file, specifically `images/rootfs-$(HV).yml.in`
-   * one or more modifiers: currently only `images/modifiers/$(HV).yq` and `images/modifiers/$(PLATFORM).yq`
+   * the output file, specifically `images/out/rootfs-$(HV)-$(PLATFORM)-[<rootfs flavor>].yml`
+   * one or more modifiers: from `images/modifiers/hv/*` and/or `images/modifiers/$(PLATFORM)/*`
 1. `compose-image-yml.sh` does the following:
    1. For each modifier, if any, apply it to the base template, and save the result to the provided output file.
    1. Search through the output file for the string `EVE_HV` and, if found, replace it with the hypervisor.
    1. If the version argument, which was generated from the git commit, contains the phrase `dirty`, i.e. uncommitted, then change the `PILLAR_TAG` in the output file to `PILLAR_DEV_TAG`, which will be used in a later stage.
-1. The Makefile runs `./tools/parse-pkgs.sh images/out/rootfs-$(HV)-$(PLATFORM).yml.in > images/rootfs-$(HV)-$(PLATFORM).yml`, i.e. the utility [parse-pkgs.sh](../tools/parse-pkgs.sh), passing it as an input the HV-specific template generated in the previous step `rootfs-$(HV).yml.in`, and saving the output to the final `rootfs-$(HV).yml` file. In addition, the variable `KERNEL_TAG` is passed as an environment variable.
+1. The Makefile runs `./tools/parse-pkgs.sh images/out/rootfs-$(HV)-$(PLATFORM)-[<rootfs flavor>].yml.in > images/out/rootfs-$(HV)-$(PLATFORM)-[<rootfs flavor>].yml`, i.e. the utility [parse-pkgs.sh](../tools/parse-pkgs.sh), passing it as an input the HV-specific template generated in the previous step `rootfs-$(HV).yml.in`, and saving the output to the final `images/out/rootfs-$(HV)-$(PLATFORM)-[<rootfs flavor>].yml` file. In addition, the variable `KERNEL_TAG` is passed as an environment variable.
 1. `parse-pkgs.sh` does the following:
     1. Gets the package tag for each directory in [pkg/](../pkg/) via `linuxkit pkg show-tag ${dir}`, and save it to variable which looks like `<PKGNAME>_TAG`, e.g. `PILLAR_TAG` or `WWAN_TAG`.
     1. Go through the input file - the HV-specific template - and replace the tags with the appropriate values. This includes the value of `KERNEL_TAG` as passed by the Makefile on calling `parse-pkgs.sh`.
-1. The Makefile generates `rootfs.tar` via `./tools/makerootfs.sh tar -y images/out/rootfs-$(HV)-$(PLATFORM).yml -t path/to/rootfs.tar -a $(ZARCH)`, i.e. it runs [makerootfs.sh](../tools/makerootfs.sh), passing it the following arguments:
+1. The Makefile generates `rootfs.tar` via `./tools/makerootfs.sh tar -y images/out/rootfs-$(HV)-$(PLATFORM)-[<rootfs flavor>].yml -t path/to/rootfs.tar -a $(ZARCH)`, i.e. it runs [makerootfs.sh](../tools/makerootfs.sh), passing it the following arguments:
     1. The target format, i.e. `tar`
     1. `-a $(ZARCH)` - the architecture
     1. `-t $(PATH)` - path to the target output file
