@@ -12,7 +12,9 @@ info:
 
 servers:
   - url: http://169.254.169.254/eve/v1
-    description: EVE Metadata endpoint
+    description: |
+      EVE Metadata server endpoint
+      **Access:** only via the *local network instance*. Not reachable over switch or app-direct networks.
 
 tags:
   - name: PatchEnvelopes

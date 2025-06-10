@@ -4,9 +4,9 @@ EVE supports [cloud-init](https://cloudinit.readthedocs.io/en/latest/) for confi
 
 ## Support in VMs
 
-For VMs, EVE supports cloud-init configuration using the NoCloud datasource. With NoCloud, EVE manually provides both meta-data and user-data received from the controller to the VM. This is done by placing these files on a virtual CD-ROM in the form of an ISO image. Further EVE relies on the cloud-init system present in the ECO's VM image. Upon booting the VM instance, if a cloud-init installation is present, the system checks for these data files, and if found, processes the configurations or scripts defined in them.
+For VMs, EVE supports cloud-init configuration using the NoCloud datasource. With NoCloud, EVE manually provides both metadata and user-data received from the controller to the VM. This is done by placing these files on a virtual CD-ROM in the form of an ISO image. Further EVE relies on the cloud-init system present in the ECO's VM image. Upon booting the VM instance, if a cloud-init installation is present, the system checks for these data files, and if found, processes the configurations or scripts defined in them.
 
-For more information on the meta-data consult [ECO-METADATA.md](ECO-METADATA.md).
+For more information on the metadata service consult [ECO-METADATA.md](ECO-METADATA.md).
 
 ## Support in Containers
 
@@ -41,6 +41,6 @@ As opposed to the VM implementation, cloud-init in ECO containers does not rely 
 
 ## Versioning
 
-Both VM and container implementations support versioning of the user-data. This means that the cloud-init configuration is only reapplied if the version of the user-data has changed. The version is specified in the meta-data file in the `instance-id` field.
+Both VM and container implementations support versioning of the user-data. This means that the cloud-init configuration is only reapplied if the version of the user-data has changed. The version is specified in the metadata file in the `instance-id` field.
 
 If the controller implementation does not support versioning, the user-data will be reapplied each time the version of the `AppInstanceConfig` changes.
