@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"golang.org/x/sys/unix"
+	corev1 "k8s.io/api/core/v1"
 
 	dg "github.com/lf-edge/eve-libs/depgraph"
 	"github.com/lf-edge/eve-libs/reconciler"
@@ -420,6 +421,10 @@ func (r *LinuxDpcReconciler) Reconcile(ctx context.Context, args Args) Reconcile
 			// Reconcile all items.
 			r.addPendingReconcile(GraphName, "Cluster status change", false)
 		}
+		if r.kubeUserServicesChanged(args.KubeUserServices) {
+			// Services and ingresses affect ACLs
+			r.addPendingReconcile(ACLsSG, "Kube services/ingresses change", false)
+		}
 	}
 	if r.pendingReconcile.isPending {
 		reconcileSG = r.pendingReconcile.forSubGraph
@@ -467,7 +472,7 @@ func (r *LinuxDpcReconciler) Reconcile(ctx context.Context, args Args) Reconcile
 			intSG = r.getIntendedWirelessCfg(args.DPC, args.AA, args.RS)
 		case ACLsSG:
 			intSG = r.getIntendedACLs(args.DPC, args.ClusterStatus, args.GCP,
-				args.FlowlogEnabled)
+				args.FlowlogEnabled, args.KubeUserServices)
 		default:
 			// Only these top-level subgraphs are used for selective-reconcile for now.
 			r.Log.Fatalf("Unexpected SG select for reconcile: %s", reconcileSG)
@@ -631,6 +636,21 @@ func (r *LinuxDpcReconciler) saveArgs(args Args) {
 	for i := range args.AA.IoBundleList {
 		r.lastArgs.AA.IoBundleList[i] = args.AA.IoBundleList[i]
 	}
+
+	// Deep copy KubeUserServices
+	if len(args.KubeUserServices.UserService) > 0 {
+		r.lastArgs.KubeUserServices.UserService = make([]types.KubeServiceInfo, len(args.KubeUserServices.UserService))
+		copy(r.lastArgs.KubeUserServices.UserService, args.KubeUserServices.UserService)
+	} else {
+		r.lastArgs.KubeUserServices.UserService = []types.KubeServiceInfo{}
+	}
+
+	if len(args.KubeUserServices.UserIngress) > 0 {
+		r.lastArgs.KubeUserServices.UserIngress = make([]types.KubeIngressInfo, len(args.KubeUserServices.UserIngress))
+		copy(r.lastArgs.KubeUserServices.UserIngress, args.KubeUserServices.UserIngress)
+	} else {
+		r.lastArgs.KubeUserServices.UserIngress = []types.KubeIngressInfo{}
+	}
 }
 
 func (r *LinuxDpcReconciler) dpcChanged(newDPC types.DevicePortConfig) bool {
@@ -685,6 +705,81 @@ func (r *LinuxDpcReconciler) clusterStatusChanged(
 	return r.lastArgs.ClusterStatus.ClusterInterface != newStatus.ClusterInterface ||
 		!netutils.EqualIPNets(r.lastArgs.ClusterStatus.ClusterIPPrefix,
 			newStatus.ClusterIPPrefix)
+}
+
+// kubeUserServicesChanged checks if the Kubernetes user services configuration has changed
+func (r *LinuxDpcReconciler) kubeUserServicesChanged(
+	newServices types.KubeUserServices) bool {
+	// Check if service lists are different
+	if len(r.lastArgs.KubeUserServices.UserService) != len(newServices.UserService) {
+		return true
+	}
+
+	// Check if ingress lists are different
+	if len(r.lastArgs.KubeUserServices.UserIngress) != len(newServices.UserIngress) {
+		return true
+	}
+
+	// Create maps for fast lookup of existing services
+	oldServiceMap := make(map[string]types.KubeServiceInfo)
+	for _, svc := range r.lastArgs.KubeUserServices.UserService {
+		key := svc.Namespace + "/" + svc.Name
+		oldServiceMap[key] = svc
+	}
+
+	// Check if any service has been added, removed or modified
+	for _, newSvc := range newServices.UserService {
+		key := newSvc.Namespace + "/" + newSvc.Name
+		oldSvc, exists := oldServiceMap[key]
+		if !exists ||
+			oldSvc.Protocol != newSvc.Protocol ||
+			oldSvc.Port != newSvc.Port ||
+			oldSvc.NodePort != newSvc.NodePort ||
+			oldSvc.LoadBalancerIP != newSvc.LoadBalancerIP ||
+			oldSvc.Type != newSvc.Type {
+			return true
+		}
+	}
+
+	// Create maps for fast lookup of existing ingresses
+	oldIngressMap := make(map[string]types.KubeIngressInfo)
+	for _, ing := range r.lastArgs.KubeUserServices.UserIngress {
+		key := ing.Namespace + "/" + ing.Name + "/" + ing.Hostname + ing.Path
+		oldIngressMap[key] = ing
+	}
+
+	// Check if any ingress has been added, removed or modified
+	for _, newIng := range newServices.UserIngress {
+		key := newIng.Namespace + "/" + newIng.Name + "/" + newIng.Hostname + newIng.Path
+		oldIng, exists := oldIngressMap[key]
+		if !exists ||
+			oldIng.PathType != newIng.PathType ||
+			oldIng.ServiceType != newIng.ServiceType ||
+			oldIng.Protocol != newIng.Protocol ||
+			!compareIngressIPs(oldIng.IngressIP, newIng.IngressIP) {
+			return true
+		}
+	}
+
+	// No changes detected
+	return false
+}
+
+// compareIngressIPs compares two slices of ingress IPs to check if they're the same
+// Since the IP arrays are sorted, we can do a direct element-by-element comparison
+func compareIngressIPs(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+
+	// Direct comparison of sorted arrays
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+
+	return true
 }
 
 func (r *LinuxDpcReconciler) updateCurrentState(args Args) (changed bool) {
@@ -868,7 +963,7 @@ func (r *LinuxDpcReconciler) updateIntendedState(args Args) {
 	r.intendedState.PutSubGraph(r.getIntendedL3Cfg(args.DPC, args.ClusterStatus))
 	r.intendedState.PutSubGraph(r.getIntendedWirelessCfg(args.DPC, args.AA, args.RS))
 	r.intendedState.PutSubGraph(r.getIntendedACLs(args.DPC, args.ClusterStatus, args.GCP,
-		args.FlowlogEnabled))
+		args.FlowlogEnabled, args.KubeUserServices))
 }
 
 func (r *LinuxDpcReconciler) getIntendedGlobalCfg(dpc types.DevicePortConfig,
@@ -1569,7 +1664,7 @@ func (r *LinuxDpcReconciler) getIntendedWwanConfig(dpc types.DevicePortConfig,
 
 func (r *LinuxDpcReconciler) getIntendedACLs(dpc types.DevicePortConfig,
 	clusterStatus types.EdgeNodeClusterStatus, gcp types.ConfigItemValueMap,
-	withFlowlog bool) dg.Graph {
+	withFlowlog bool, kubeUserServices types.KubeUserServices) dg.Graph {
 	graphArgs := dg.InitArgs{
 		Name:        ACLsSG,
 		Description: "Device-wide ACLs",
@@ -1652,16 +1747,26 @@ func (r *LinuxDpcReconciler) getIntendedACLs(dpc types.DevicePortConfig,
 		}
 	}
 
-	r.getIntendedFilterRules(gcp, dpc, clusterStatus, intendedIPv4ACLs, intendedIPv6ACLs)
+	r.getIntendedFilterRules(gcp, dpc, clusterStatus, kubeUserServices, intendedIPv4ACLs, intendedIPv6ACLs)
 	if withFlowlog {
-		r.getIntendedMarkingRules(dpc, intendedIPv4ACLs, intendedIPv6ACLs)
+		r.getIntendedMarkingRules(dpc, intendedIPv4ACLs, intendedIPv6ACLs, kubeUserServices)
 	}
 	return intendedACLs
 }
 
+// kubeACEEnabled checks if any Kubernetes user service has ACE (Authorized Cluster Endpoint) enabled
+func kubeACEEnabled(services types.KubeUserServices) bool {
+	for _, service := range services.UserService {
+		if service.ACEenabled {
+			return true
+		}
+	}
+	return false
+}
+
 func (r *LinuxDpcReconciler) getIntendedFilterRules(gcp types.ConfigItemValueMap,
-	dpc types.DevicePortConfig, clusterStatus types.EdgeNodeClusterStatus, intendedIPv4ACLs,
-	intendedIPv6ACLs dg.Graph) {
+	dpc types.DevicePortConfig, clusterStatus types.EdgeNodeClusterStatus,
+	services types.KubeUserServices, intendedIPv4ACLs, intendedIPv6ACLs dg.Graph) {
 	// Prepare filter/INPUT rules.
 	var inputV4Rules, inputV6Rules []iptables.Rule
 
@@ -1877,6 +1982,22 @@ func (r *LinuxDpcReconciler) getIntendedFilterRules(gcp types.ConfigItemValueMap
 		}
 	}
 
+	// When the kubernetes has Authorized Cluster Endpoint (ACE) enabled, accept the api-server port 6443
+	if r.HVTypeKube && kubeACEEnabled(services) {
+		k3sAPIServerRule := iptables.Rule{
+			RuleLabel:   "Allow K3s API Servier requests",
+			MatchOpts:   []string{"-p", "tcp", "--dport", "6443"},
+			Target:      "ACCEPT",
+			Description: "Allow K3s API Server requests to enter the device",
+		}
+		forIPv6 := clusterStatus.ClusterIPPrefix != nil && clusterStatus.ClusterIPPrefix.IP.To4() == nil
+		if forIPv6 {
+			inputV6Rules = append(inputV6Rules, k3sAPIServerRule)
+		} else {
+			inputV4Rules = append(inputV4Rules, k3sAPIServerRule)
+		}
+	}
+
 	// Allow all traffic that belongs to an already established connection.
 	allowEstablishedConn := iptables.Rule{
 		RuleLabel:   "Allow established connection",
@@ -2002,7 +2123,7 @@ func (r *LinuxDpcReconciler) getIntendedFilterRules(gcp types.ConfigItemValueMap
 
 // Marking rules are only used if at least one Network instance has flow logging enabled.
 func (r *LinuxDpcReconciler) getIntendedMarkingRules(dpc types.DevicePortConfig,
-	intendedIPv4ACLs, intendedIPv6ACLs dg.Graph) {
+	intendedIPv4ACLs, intendedIPv6ACLs dg.Graph, kubeUserServices types.KubeUserServices) {
 	// Mark ingress control-flow traffic.
 	// For connections originating from outside we use App ID = 0.
 	markSSHAndGuacamole := iptables.Rule{
@@ -2050,6 +2171,7 @@ func (r *LinuxDpcReconciler) getIntendedMarkingRules(dpc types.DevicePortConfig,
 
 	if r.HVTypeKube {
 		protoMarkV4Rules = append(protoMarkV4Rules, defaultKubernetesIptablesRules()...)
+		protoMarkV4Rules = append(protoMarkV4Rules, r.addKubeServiceRules(kubeUserServices)...)
 	}
 
 	// Do not overwrite mark that was already added be rules from zedrouter
@@ -2232,10 +2354,10 @@ func defaultKubernetesIptablesRules() []iptables.Rule {
 		Description: "Mark traffic from Kubernetes pods to Kubernetes services",
 	}
 
-	// Allow all traffic forwarded between Kubernetes pods.
+	// Allow all traffic from the Kubernetes network to pods or external endpoints.
 	markKubePod := iptables.Rule{
 		RuleLabel:   "Kubernetes pod mark",
-		MatchOpts:   []string{"-s", kubePodCIDR.String(), "-d", kubePodCIDR.String()},
+		MatchOpts:   []string{"-s", kubePodCIDR.String()},
 		Target:      "CONNMARK",
 		TargetOpts:  []string{"--set-mark", controlProtoMark("kube_pod")},
 		Description: "Mark all traffic directly forwarded between Kubernetes pods",
@@ -2333,4 +2455,255 @@ func defaultKubernetesIptablesRules() []iptables.Rule {
 		markNFS,
 		markClusterStatus,
 	}
+}
+
+// addKubeServiceRules creates iptables rules for Kubernetes services and ingresses
+func (r *LinuxDpcReconciler) addKubeServiceRules(kubeUserServices types.KubeUserServices) []iptables.Rule {
+	var rules []iptables.Rule
+
+	// 1. Create TCP rules for nodePort services and LoadBalancer services
+	// First, collect TCP LoadBalancer services with IPs for IP-specific rules
+	tcpLoadBalancerIPRules := make(map[string]map[string]bool) // map[ip]map[port]bool
+
+	// Track NodePort TCP ports and LoadBalancer TCP ports without IPs
+	tcpPortsMap := make(map[string]bool)
+
+	for _, svc := range kubeUserServices.UserService {
+		if svc.Protocol == "TCP" {
+			if svc.ACEenabled { // this is handled in the interface filter section
+				continue
+			}
+			// Handle NodePort services
+			if svc.Type == "NodePort" && svc.NodePort > 0 {
+				tcpPortsMap[strconv.Itoa(int(svc.NodePort))] = true
+			} else if svc.Type == "LoadBalancer" && svc.Port > 0 {
+				// For LoadBalancer with IP, create IP-specific rules
+				if svc.LoadBalancerIP != "" {
+					portStr := strconv.Itoa(int(svc.Port))
+
+					// Initialize map for this IP if it doesn't exist
+					if _, exists := tcpLoadBalancerIPRules[svc.LoadBalancerIP]; !exists {
+						tcpLoadBalancerIPRules[svc.LoadBalancerIP] = make(map[string]bool)
+					}
+
+					// Add port to this IP's map
+					tcpLoadBalancerIPRules[svc.LoadBalancerIP][portStr] = true
+				} else {
+					// For LoadBalancer without IP, add to generic port list
+					tcpPortsMap[strconv.Itoa(int(svc.Port))] = true
+				}
+			}
+		}
+	}
+
+	// Create IP-specific rules for TCP LoadBalancer services
+	ruleIndex := 0
+	for ip, ports := range tcpLoadBalancerIPRules {
+		var tcpPorts []string
+		for port := range ports {
+			tcpPorts = append(tcpPorts, port)
+		}
+
+		// If there are ports for this IP
+		if len(tcpPorts) > 0 {
+			markTCPSvcPortIP := iptables.Rule{
+				RuleLabel:   fmt.Sprintf("KubeSvcPortTCP_IP_%d", ruleIndex),
+				MatchOpts:   []string{"-p", "tcp", "-d", ip, "--match", "multiport", "--dports", strings.Join(tcpPorts, ",")},
+				Target:      "CONNMARK",
+				TargetOpts:  []string{"--set-mark", controlProtoMark("in_tcp_svc_port")},
+				Description: fmt.Sprintf("Mark Kubernetes TCP service port traffic for LoadBalancer IP %s", ip),
+			}
+			rules = append(rules, markTCPSvcPortIP)
+			ruleIndex++
+		}
+	}
+
+	// Create generic rule for TCP NodePorts and LoadBalancer services without IPs
+	if len(tcpPortsMap) > 0 {
+		var tcpPorts []string
+		for port := range tcpPortsMap {
+			tcpPorts = append(tcpPorts, port)
+		}
+
+		markTCPSvcPort := iptables.Rule{
+			RuleLabel:   "KubeSvcPortTCP",
+			MatchOpts:   []string{"-p", "tcp", "--match", "multiport", "--dports", strings.Join(tcpPorts, ",")},
+			Target:      "CONNMARK",
+			TargetOpts:  []string{"--set-mark", controlProtoMark("in_tcp_svc_port")},
+			Description: "Mark Kubernetes TCP service port traffic",
+		}
+		rules = append(rules, markTCPSvcPort)
+	}
+	// 2. Create UDP rules for nodePort services and LoadBalancer services
+	// First, collect UDP LoadBalancer services with IPs for IP-specific rules
+	udpLoadBalancerIPRules := make(map[string]map[string]bool) // map[ip]map[port]bool
+
+	// Track NodePort UDP ports and LoadBalancer UDP ports without IPs
+	udpPortsMap := make(map[string]bool)
+
+	for _, svc := range kubeUserServices.UserService {
+		if svc.Protocol == "UDP" {
+			// Handle NodePort services
+			if svc.Type == "NodePort" && svc.NodePort > 0 {
+				udpPortsMap[strconv.Itoa(int(svc.NodePort))] = true
+			} else if svc.Type == "LoadBalancer" && svc.Port > 0 {
+				// For LoadBalancer with IP, create IP-specific rules
+				if svc.LoadBalancerIP != "" {
+					portStr := strconv.Itoa(int(svc.Port))
+
+					// Initialize map for this IP if it doesn't exist
+					if _, exists := udpLoadBalancerIPRules[svc.LoadBalancerIP]; !exists {
+						udpLoadBalancerIPRules[svc.LoadBalancerIP] = make(map[string]bool)
+					}
+
+					// Add port to this IP's map
+					udpLoadBalancerIPRules[svc.LoadBalancerIP][portStr] = true
+				} else {
+					// For LoadBalancer without IP, add to generic port list
+					udpPortsMap[strconv.Itoa(int(svc.Port))] = true
+				}
+			}
+		}
+	}
+
+	// Create IP-specific rules for UDP LoadBalancer services
+	ruleIndex = 0
+	for ip, ports := range udpLoadBalancerIPRules {
+		var udpPorts []string
+		for port := range ports {
+			udpPorts = append(udpPorts, port)
+		}
+
+		// If there are ports for this IP
+		if len(udpPorts) > 0 {
+			markUDPSvcPortIP := iptables.Rule{
+				RuleLabel:   fmt.Sprintf("KubeSvcPortUDP_IP_%d", ruleIndex),
+				MatchOpts:   []string{"-p", "udp", "-d", ip, "--match", "multiport", "--dports", strings.Join(udpPorts, ",")},
+				Target:      "CONNMARK",
+				TargetOpts:  []string{"--set-mark", controlProtoMark("in_udp_svc_port")},
+				Description: fmt.Sprintf("Mark Kubernetes UDP service port traffic for LoadBalancer IP %s", ip),
+			}
+			rules = append(rules, markUDPSvcPortIP)
+			ruleIndex++
+		}
+	}
+
+	// Create generic rule for UDP NodePorts and LoadBalancer services without IPs
+	if len(udpPortsMap) > 0 {
+		var udpPorts []string
+		for port := range udpPortsMap {
+			udpPorts = append(udpPorts, port)
+		}
+
+		markUDPSvcPort := iptables.Rule{
+			RuleLabel:   "KubeSvcPortUDP",
+			MatchOpts:   []string{"-p", "udp", "--match", "multiport", "--dports", strings.Join(udpPorts, ",")},
+			Target:      "CONNMARK",
+			TargetOpts:  []string{"--set-mark", controlProtoMark("in_udp_svc_port")},
+			Description: "Mark Kubernetes UDP service port traffic",
+		}
+		rules = append(rules, markUDPSvcPort)
+	}
+
+	// 3. Create rules for HTTP and HTTPS ingresses
+	// Track which protocols are used and collect unique ingress IPs
+	httpIngressIPs := make(map[string]bool)
+	httpsIngressIPs := make(map[string]bool)
+	var hasHTTPNoIP bool
+	var hasHTTPSNoIP bool
+
+	// Collect information about ingresses, unique IPs and protocols
+	for _, ing := range kubeUserServices.UserIngress {
+		// Only process ingress IPs for LoadBalancer services
+		// For NodePort types, the addresses will be cluster-prefixes which we use 10.244.244.0
+		// private addresses, and user may not have access to them.
+		if ing.ServiceType == corev1.ServiceTypeLoadBalancer {
+			// Process HTTP protocol
+			if ing.Protocol == "http" {
+				if len(ing.IngressIP) > 0 {
+					for _, ip := range ing.IngressIP {
+						if ip != "" {
+							httpIngressIPs[ip] = true
+						}
+					}
+				}
+			} else if ing.Protocol == "https" {
+				if len(ing.IngressIP) > 0 {
+					for _, ip := range ing.IngressIP {
+						if ip != "" {
+							httpsIngressIPs[ip] = true
+						}
+					}
+				}
+			}
+		} else {
+			if ing.Protocol == "http" {
+				// For NodePort HTTP, we don't track IPs, just mark the port
+				hasHTTPNoIP = true
+			} else if ing.Protocol == "https" {
+				// For NodePort HTTPS, we don't track IPs, just mark the port
+				hasHTTPSNoIP = true
+			}
+		}
+	}
+
+	// Add HTTP ingress rules
+	if len(httpIngressIPs) > 0 {
+		// Create one rule per unique ingress IP for HTTP
+		i := 0
+		for ingressIP := range httpIngressIPs {
+			markHTTPIngressIP := iptables.Rule{
+				RuleLabel:   fmt.Sprintf("KubeIngressHTTP_IP_%d", i),
+				MatchOpts:   []string{"-p", "tcp", "-d", ingressIP, "--dport", "80"},
+				Target:      "CONNMARK",
+				TargetOpts:  []string{"--set-mark", controlProtoMark("in_http_ingress")},
+				Description: fmt.Sprintf("Mark Kubernetes HTTP ingress traffic for IP %s", ingressIP),
+			}
+			rules = append(rules, markHTTPIngressIP)
+			i++
+		}
+	}
+
+	// Add generic HTTP ingress rule if no IngressIP (only one rule for port 80 without IPs)
+	if hasHTTPNoIP {
+		markHTTPIngress := iptables.Rule{
+			RuleLabel:   "KubeIngressHTTP",
+			MatchOpts:   []string{"-p", "tcp", "--dport", "80"},
+			Target:      "CONNMARK",
+			TargetOpts:  []string{"--set-mark", controlProtoMark("in_http_ingress")},
+			Description: "Mark Kubernetes HTTP ingress traffic",
+		}
+		rules = append(rules, markHTTPIngress)
+	}
+
+	// Add HTTPS ingress rules
+	if len(httpsIngressIPs) > 0 {
+		// Create one rule per unique ingress IP for HTTPS
+		i := 0
+		for ingressIP := range httpsIngressIPs {
+			markHTTPSIngressIP := iptables.Rule{
+				RuleLabel:   fmt.Sprintf("KubeIngressHTTPS_IP_%d", i),
+				MatchOpts:   []string{"-p", "tcp", "-d", ingressIP, "--dport", "443"},
+				Target:      "CONNMARK",
+				TargetOpts:  []string{"--set-mark", controlProtoMark("in_https_ingress")},
+				Description: fmt.Sprintf("Mark Kubernetes HTTPS ingress traffic for IP %s", ingressIP),
+			}
+			rules = append(rules, markHTTPSIngressIP)
+			i++
+		}
+	}
+
+	// Add generic HTTPS ingress rule if needed (only one rule for port 443 without IPs)
+	if hasHTTPSNoIP {
+		markHTTPSIngress := iptables.Rule{
+			RuleLabel:   "KubeIngressHTTPS",
+			MatchOpts:   []string{"-p", "tcp", "--dport", "443"},
+			Target:      "CONNMARK",
+			TargetOpts:  []string{"--set-mark", controlProtoMark("in_https_ingress")},
+			Description: "Mark Kubernetes HTTPS ingress traffic",
+		}
+		rules = append(rules, markHTTPSIngress)
+	}
+
+	return rules
 }

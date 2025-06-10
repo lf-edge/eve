@@ -265,3 +265,173 @@ To use this, one example can be to use Edgeview with TCP command for the first n
 then go to a web browser (or use 'curl'), enter url: `http://localhost:9001/app/<app name or uuid>` for the particular node status of the App, or enter url: `http://localhost:9001/cluster-app/<app name or uuid>` for the cluster status of the App.
 
 If the \<app name or uuid\> is empty in the URL, then the query reply only returns the cluster related status. (the above first 4 items in the list)
+
+## Kubernetes Service and Ingress Networking
+
+### Service and Ingress Overview
+
+zedkube periodically collects information about exposed Kubernetes services and ingresses across all namespaces (except system namespaces like `kube-system`, `kubevirt`, `longhorn-system`, `cdi`, and `eve-kube-app`), and publishes this information through `KubeUserServices` for consumption by other microservices. This enables EVE to implement specific network traffic rules for these services.
+
+For applications that do not use EVE CNI and rely on the default Pod 'eth0' interface for Pod external access, the traffic must be routed through the cni0 interface with source IP addresses in the '10.42.x.0/24' prefix range. This outbound traffic to external endpoints requires proper marking to ensure that return traffic is allowed according to the flow setup established for the Pod. This marking is essential for maintaining proper network connectivity for Pods using the default kubernetes CNI configuration.
+
+### Implementation
+
+The collector for Kubernetes services and ingresses runs on a timer-based interval and performs the following operations:
+
+1. **Service Collection**: The `collectKubeSvcs` function calls `GetAllKubeServices` to gather information about all services across non-system namespaces. For each service:
+   - Extracts metadata like name, namespace, protocol, port, node port, and service type
+   - For LoadBalancer services, collects the LoadBalancer IP from:
+     - The requested IP in the service spec (`LoadBalancerIP`)
+     - Any external IPs configured for the service
+     - Any `kube-vip.io/loadbalancerIPs` annotations
+
+2. **Ingress Collection**: The `collectKubeSvcs` function also calls `GetAllKubeIngresses` to gather information about all ingresses across non-system namespaces. For each ingress:
+   - Extracts metadata like name, namespace, hostname, path, path type, protocol
+   - Records the ingress IP address from the LoadBalancer status
+   - Maps the ingress to the backend service and port
+
+3. **Publication**: The collected service and ingress information is published as a combined `KubeUserServices` object containing:
+   - `UserService` - a slice of `KubeServiceInfo` objects
+   - `UserIngress` - a slice of `KubeIngressInfo` objects
+
+### Network Rule Generation
+
+The Network Interface Manager (`nim`) microservice subscribes to the `KubeUserServices` publication from zedkube. When changes are detected, it triggers an update to the network ACL rules in the Linux iptables mangle table through the `addKubeServiceRules` function:
+
+1. **TCP and UDP Service Rules**:
+   - For services with LoadBalancer IPs, creates destination-specific rules matching IP+port combinations
+   - For NodePort services and LoadBalancer services without specific IPs, creates generic port-only rules
+   - Both use connection marking to identify the traffic type (e.g., `in_tcp_svc_port`, `in_udp_svc_port`)
+
+2. **HTTP and HTTPS Ingress Rules**:
+   - Creates destination-specific rules for unique ingress IPs on ports 80 (HTTP) and 443 (HTTPS)
+   - Creates generic port-only rules for ingresses without specific IPs
+   - Uses connection marking to identify the traffic type (e.g., `in_http_ingress`, `in_https_ingress`)
+
+This implementation ensures that external traffic to Kubernetes services and ingresses is properly identified and can be subjected to appropriate traffic control policies.
+
+### Kube-VIP Service Load Balancer
+
+Kube-VIP provides LoadBalancer implementations for services and ingress resources in the K3s cluster, enabling external access to applications. This feature is currently available as a testing tool that must be explicitly deployed by the user.
+
+#### Architecture
+
+Kube-VIP runs as a DaemonSet in the K3s cluster and handles:
+
+1. **IP Address Management**:
+   - Allocates IP addresses from a configured CIDR range
+   - Maintains a pool of available IPs for services
+   - Ensures IPs are unique across the cluster
+
+2. **Service Handling**:
+   - Watches for services of type LoadBalancer
+   - Allocates and assigns external IPs from the configured pool
+   - Creates appropriate ARP announcements to make IPs reachable
+
+3. **Ingress Support**:
+   - Works with ingress controllers to provide stable IPs for HTTP/HTTPS ingress
+   - Enables host-based and path-based routing to services
+
+#### Manual Deployment For Testing
+
+The Kube-VIP integration with EVE requires manual deployment before support from the controller side:
+
+1. **Deployment Command**:
+
+   ```bash
+   /usr/bin/kubevip-apply.sh <interface> <prefix>
+   ```
+
+   Where:
+   - `<interface>` is the network interface to use (e.g., `eth0`)
+   - `<prefix>` is the CIDR range for IP allocation (e.g., `10.20.30.0/24`)
+
+2. **Deployment Process**:
+   - The script generates a ConfigMap YAML file with the specified settings
+   - Applies the service account and provider-controller deployment from `kubevip-sa.yaml`
+   - Deploys the Kube-VIP DaemonSet from `kubevip-ds.yaml`
+
+3. **Configuration**:
+   - CIDR range is defined for allocating service IPs
+   - Network interface is configured to correspond with the application network
+   - Strict CIDR validation ensures IP allocations stay within defined ranges
+   - Exclusion ranges prevent conflicts with other network resources
+
+4. **Implementation Details**:
+   - The CIDR is split into IP and mask components for precise configuration
+   - Sort mechanisms ensure consistent ordering of IngressIP arrays
+   - Change detection algorithms monitor service type, protocol, and IP allocation changes
+
+#### Manual Removal/Cleanup
+
+To remove the deployed Kube-VIP components from the cluster, use the provided deletion script:
+
+```bash
+/usr/bin/kubevip-delete.sh
+```
+
+This script will:
+
+- Remove the Kube-VIP DaemonSet
+- Delete the Kube-VIP ConfigMap
+- Remove the Kube-VIP service account and provider-controller deployment
+- Clean up any allocated LoadBalancer IPs
+
+It's recommended to run this script before attempting to redeploy Kube-VIP with different settings or when transitioning back to standard K3s networking.
+
+#### Troubleshooting
+
+Common issues with the Kube-VIP implementation:
+
+1. **IP Allocation Failures**:
+   - Check the kubevip ConfigMap for proper CIDR configuration
+   - Ensure the CIDR range doesn't conflict with other network resources
+   - Verify that the strict-cidr setting is correctly configured
+
+2. **Connectivity Issues**:
+   - Confirm that the network interface is correctly specified
+   - Check that ARP announcements are functioning correctly
+   - Verify that allocated IPs are within the application network's reachable range
+
+### Example
+
+For a LoadBalancer service exposed at 192.168.86.200:80 and an ingress at 10.244.244.1:443, the system will:
+
+1. Collect these services and ingresses via the collector
+2. Create a TCP rule for the LoadBalancer service matching destination 192.168.86.200 port 80
+3. Create an HTTPS rule for the ingress matching destination 10.244.244.1 port 443
+4. Apply appropriate connection marking to allow for traffic control policies
+
+### Authorized Cluster Endpoint (ACE)
+
+The Authorized Cluster Endpoint (ACE) feature enables secure local cluster access via kubectl on port 6443. This implementation focuses on handling services in the `cattle-system` namespace and provides special port remapping for cluster access.
+
+#### Implementation Details
+
+1. **Service Type Conversion**:
+   - Services in the `cattle-system` namespace with port 443 are automatically converted to NodePort services
+   - The NodePort is explicitly set to 6443 to maintain consistent access
+
+2. **ACEenabled Flag**:
+   - The ACEenabled flag controls the behavior of service conversion
+   - When enabled, it triggers the special handling of cattle-system namespace services
+   - Affects how the service is processed in the getIntenedFilterFules function
+
+3. **Traffic Rules**:
+   - Special iptables rules are created when running in HVTypeKube mode
+   - These rules specifically handle traffic to port 6443
+   - Ensures proper routing of kubectl commands to the cluster endpoint
+
+4. **Mangle Table Handling**:
+   - Services in the cattle-system namespace are excluded from standard mangle table markrules
+   - This exclusion prevents interference with the ACE functionality
+   - Maintains separation between ACE traffic and regular service traffic
+
+#### Usage
+
+The ACE feature automatically configures the necessary network rules when enabled, allowing:
+
+- Local kubectl access via port 6443
+- Secure communication with the cluster control plane with cluster webhook for verification
+
+This implementation ensures that local cluster management tools can reliably connect to the cluster while maintaining security and proper traffic routing.

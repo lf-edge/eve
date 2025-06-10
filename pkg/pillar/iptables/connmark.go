@@ -81,6 +81,16 @@ var ControlProtocolMarkingIDMap = map[string]uint32{
 	"in_nfs": 22,
 	// for cluster advertise status
 	"in_cluster_status": 23,
+	// for TCP service ports (NodePort and LoadBalancer)
+	"in_tcp_svc_port": 24,
+	// for UDP service ports (NodePort and LoadBalancer)
+	"in_udp_svc_port": 25,
+	// for HTTP ingress (port 80)
+	"in_http_ingress": 26,
+	// for HTTPS ingress (port 443)
+	"in_https_ingress": 27,
+	// for DNS traffic in Kubernetes environments
+	"kube_dns": 28,
 }
 
 // GetConnmark : create connection mark corresponding to the given attributes.
