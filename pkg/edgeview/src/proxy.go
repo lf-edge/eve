@@ -52,26 +52,34 @@ func handleTunneling(w http.ResponseWriter, r *http.Request, dnsIP string) {
 
 	err := checkAppPolicyAllow(r.Host)
 	if err != nil {
+		log.Errorf("handleTunneling: checkAppPolicyAllow error: %v", err)
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
 		return
 	}
 
+	// Initialize the dialer with KeepAlive
+	var d = net.Dialer{
+		Timeout:   10 * time.Second,
+		KeepAlive: 30 * time.Second, // Critical addition: Set a keep-alive period
+	}
+
 	if dnsIP != "" { // this is probably needed for internal/vpn https service with private DNS server
-		r := &net.Resolver{
+		resolver := &net.Resolver{
 			Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
-				d := net.Dialer{
-					Timeout: time.Millisecond * time.Duration(10000),
+				dialer := net.Dialer{
+					Timeout:   10 * time.Second,
+					KeepAlive: 30 * time.Second,
 				}
-				return d.DialContext(ctx, network, dnsIP+":53")
+				return dialer.DialContext(ctx, network, dnsIP+":53")
 			},
 		}
-		d := net.Dialer{Resolver: r, Timeout: 10 * time.Second}
+		d.Resolver = resolver
 		log.Tracef("handleTunneling: custom dialer")
-		destConn, err = d.Dial("tcp", remoteHost)
-	} else {
-		destConn, err = net.DialTimeout("tcp", remoteHost, 10*time.Second)
 	}
+
+	destConn, err = d.DialContext(context.Background(), "tcp", remoteHost)
 	if err != nil {
+		log.Errorf("handleTunneling: dial error: %v", err)
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
 		return
 	}
