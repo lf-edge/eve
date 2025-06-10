@@ -69,7 +69,7 @@ const (
 type DAttrTable struct {
 	ID            int
 	AttributeName string
-	Value         uint64
+	Value         int64
 	Worst         uint8
 	Flags         uint16
 	RawValue      int
