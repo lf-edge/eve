@@ -10,7 +10,7 @@ The initial metadata service provides merely that, but over time we expect to ad
 
 ## Access Limitation
 
-The metadata server endpoints (e.g. <http://169.254.169.254/eve/v1/network.json> and <http://169.254.169.254/eve/v1/external_ipv4>) are only accessible over a **local network instance** (the built-in host-NAT network). These endpoints are **not** available if the app or VM is running on a "switch network" or an "app-direct" network.
+The metadata server endpoints (e.g. <http://169.254.169.254/eve/v1/network.json> and <http://169.254.169.254/eve/v1/external_ipv4>) are only accessible over a **local network instance**. These endpoints are **not** available if the app or VM is running on a "switch network" or an "app-direct" network.
 
 *See "Networking Modes" in the main EVE architecture guide for more details on local vs. switch/app-direct network.*
 
