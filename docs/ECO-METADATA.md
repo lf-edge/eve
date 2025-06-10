@@ -1,18 +1,24 @@
-# EVE meta-data server for app instances
+# EVE metadata server for app instances
 
-EVE provides an old method to serve cloud-init meta-data in the form of a read-only CDROM disk which is created on the fly when an app instance is booted if the API specifies userData/cipherData in the [AppInstanceConfig message](https://github.com/lf-edge/eve-api/tree/main/proto/config/appconfig.proto).
+EVE provides an old method to serve cloud-init metadata in the form of a read-only CDROM disk which is created on the fly when an app instance is booted if the API specifies userData/cipherData in the [AppInstanceConfig message](https://github.com/lf-edge/eve-api/tree/main/proto/config/appconfig.proto).
 
-However, there is also a need to provide access to meta-data which might change while the app instance is running.
+However, there is also a need to provide access to metadata which might change while the app instance is running.
 
 The first data which is needed by applications is determining the external IP address of the edge node, so that when there is a portmap ACL in place the application instance can determine which IP plus port its peers should use to connect to it.
 
-The initial meta-data service provides merely that, but over time we expect to add the rest of the cloud-init content.
+The initial metadata service provides merely that, but over time we expect to add the rest of the cloud-init content.
+
+## Access Limitation
+
+The metadata server endpoints (e.g. <http://169.254.169.254/eve/v1/network.json> and <http://169.254.169.254/eve/v1/external_ipv4> are only accessible over a **local network instance** (the built-in host-NAT network). These endpoints are **not** available if the app or VM is running on a "switch network" or an "app-direct" network.
+
+*See "Networking Modes" in the main EVE architecture guide for more details on local vs. switch/app-direct network.*
 
 ## Schema
 
 There is no existing industry standard schema specifying a notion of an external IP; existing schemas contain public and private IP addresses but the external IP is a different thing necessitated by the internal NAT which EVE deploys for the local network instances.
 
-Thus this particular part of the meta-data uses a EVE-unique schema, which we do not expect for other meta-data information.
+Thus this particular part of the metadata uses a EVE-unique schema, which we do not expect for other meta-data information.
 
 The API endpoint is <http://169.254.169.254/eve/v1/network.json>
 
@@ -29,7 +35,7 @@ The returned json contains
 - enterprise-id: a string with the id of the enterprise the device is associated with
 - enterprise-name: a string with the name of the enterprise the device is associated with
 
-Note that there is no need to specify the application instance identity since the meta-data server in EVE determines that from the virtual network adapter the application instance is using to communicate with EVE.
+Note that there is no need to specify the application instance identity since the metadata server in EVE determines that from the virtual network adapter the application instance is using to communicate with EVE.
 
 ## Example usage
 
@@ -54,7 +60,7 @@ curl <http://169.254.169.254/eve/v1/external_ipv4>
 
 ## Location API endpoint
 
-Meta-data service allows applications to obtain geographic coordinates of the device,
+Metadata service allows applications to obtain geographic coordinates of the device,
 determined using Global Navigation Satellite Systems. This is available only if device
 has a supported LTE modem with an integrated GNSS receiver (e.g. Sierra Wireless EM7565).
 Standalone GPS receivers are currently not supported.
@@ -122,7 +128,7 @@ coordinates presented to applications are never older than 20 seconds.
 
 ## Cellular connectivity metadata
 
-Using meta-data server, applications are able to request information about the current state
+Using metadata server, applications are able to request information about the current state
 of the cellular connectivity of the device. This covers all wireless wide area networks (WWANs)
 configured for the device, with information about the installed cellular equipment (modem(s)
 and SIM card(s)), identity information (IMEI, IMSI, ICCID), available network providers (PLMNs),
