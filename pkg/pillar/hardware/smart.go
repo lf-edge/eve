@@ -87,30 +87,88 @@ func smartAttrMap(id uint8) string {
 		3:   "Spin_Up_Time",
 		4:   "Start_Stop_Count",
 		5:   "Reallocated_Sector_Ct",
+		6:   "Read_Channel_Margin",
 		7:   "Seek_Error_Rate",
+		8:   "Seek_Time_Perf",
 		9:   "Power_On_Hours",
 		10:  "Spin_Retry_Count",
+		11:  "Recalibration_Retries",
 		12:  "Power_Cycle_Count",
+		13:  "Soft_Read_Error_Rate",
+		22:  "Current_Helium_Level",
+		23:  "Helium_Condition_Lower",
+		24:  "Helium_Condition_Upper",
+		171: "SSD_Program_Fail_Count",
+		172: "SSD_Erase_Fail_Count",
+		173: "SSD_Wear_Leveling_Count",
+		174: "Unexpected_Power_Loss_Count",
+		175: "Power_Loss_Protection_Failure",
+		176: "Erase_Fail_Count",
 		177: "Wear_Leveling_Count",
+		178: "Used_Reserved_Block_Count",
 		179: "Used_Rsvd_Blk_Cnt_Tot",
+		180: "Unused_Reserved_Block_Count_sTotal",
 		181: "Program_Fail_Cnt_Total",
 		182: "Erase_Fail_Count_Total",
 		183: "Runtime_Bad_Block",
+		184: "IOEDC",
+		185: "Head_Stability",
+		186: "Induced_Op-Vibration_Detection",
 		187: "Uncorrectable_Error_Cnt",
 		188: "Command_Timeout",
+		189: "High_Fly_Writes",
 		190: "Airflow_Temperature_Cel",
+		191: "G-sense_Error_Rate",
 		192: "Power-Off_Retract_Count",
 		193: "Load_Cycle_Count",
 		194: "Temperature_Celsius",
 		195: "ECC_Error_Rate",
+		196: "Reallocation_Event_Count",
 		197: "Current_Pending_Sector",
 		198: "Offline_Uncorrectable",
 		199: "CRC_Error_Count",
 		200: "Multi_Zone_Error_Rate",
+		201: "Soft_Read_Error_Rate_or",
+		202: "Data_Address_Mark_errors",
+		203: "Run_Out_Cancel",
+		204: "Soft_ECC_Correction",
+		205: "Thermal_Asperity_Rate",
+		206: "Flying_Height",
+		207: "Spin_High_Current",
+		208: "Spin_Buzz",
+		209: "Offline_Seek_Perf",
+		210: "Vibration_During_Write",
+		211: "Vibration_During_Write",
+		212: "Shock_During_Write",
+		220: "Disk_Shift",
+		221: "G-Sense_Error_Rate",
+		222: "Loaded_Hours",
+		223: "Load/Unload_Retry_Cnt",
+		224: "Load_Friction",
+		225: "Load/Unload_Cycle_Cnt",
+		226: "Load_In-time",
+		227: "Torque_Amplification_Cnt",
+		228: "Power-Off_Retract_Cycle",
+		230: "GMR_Head_Amplitude",
+		231: "Life_Left_(SSDs)",
+		232: "Endurance_Remaining",
+		233: "Media_Wearout_Indicator_(SSDs)",
+		234: "Average_Max_erase_cnt",
 		235: "POR_Recovery_Count",
 		240: "Head_Flying_Hours",
 		241: "Total_LBAs_Written",
 		242: "Total_LBAs_Read",
+		243: "Total_LBAs_Written_Expanded",
+		244: "Total_LBAs_Read_Expanded",
+		245: "Remaining_Rated_Write_Endurance",
+		246: "Cumulative_host_sectors_written",
+		247: "Host_program_page_cnt",
+		248: "Bg_program_page_cnt",
+		249: "NAND_Writes_(1GiB)",
+		250: "Read_Error_Retry_Rate",
+		251: "Min_Spares_Remaining",
+		252: "Newly_Added_Bad_Flash_Block",
+		254: "Free_Fall_Protection",
 	}
 	if name, ok := smartAttrMapping[id]; ok {
 		return name
@@ -157,8 +215,29 @@ func GetInfoFromSATAdisk(diskName string) (*types.DiskSmartInfo, error) {
 		smartAttr.ID = int(smart.Id)
 		smartAttr.AttributeName = smartAttrMap(smart.Id)
 		smartAttr.Flags = smart.Flags
-		smartAttr.RawValue = int(smart.VendorBytes[0])
-		smartAttr.Value = smart.ValueRaw
+		// Decode RAW_VALUE based on known special attribute formats
+		switch smart.Id {
+		case 190, 194:
+			// Temperature: only the first byte is the current temperature in °C
+			smartAttr.RawValue = int(smart.VendorBytes[0])
+
+		case 240:
+			// Head_Flying_Hours: smartmontools uses first 3 bytes as a uint
+			smartAttr.RawValue = int(smart.VendorBytes[0]) |
+				int(smart.VendorBytes[1])<<8 |
+				int(smart.VendorBytes[2])<<16
+
+		default:
+			// convert 6-byte byte array to the raw value (little-endian)
+			smartAttr.RawValue = int(
+				uint64(smart.VendorBytes[0]) |
+					uint64(smart.VendorBytes[1])<<8 |
+					uint64(smart.VendorBytes[2])<<16 |
+					uint64(smart.VendorBytes[3])<<24 |
+					uint64(smart.VendorBytes[4])<<32 |
+					uint64(smart.VendorBytes[5])<<40)
+		}
+		smartAttr.Value = int64(smart.Current)
 		smartAttr.Worst = smart.Worst
 		smartAttr.Type = getSmartType(smart.Flags)
 		diskInfo.SmartAttrs = append(diskInfo.SmartAttrs, smartAttr)
@@ -236,9 +315,27 @@ func GetInfoFromNVMeDisk(diskName string) (*types.DiskSmartInfo, error) {
 
 		// Create a new SMART attribute entry and populate it with extracted values
 		smartEntry := new(types.DAttrTable)
-		smartEntry.AttributeName = fieldType.Name                     // Use the field name as the attribute name
-		smartEntry.RawValue = rawValue                                // Store the extracted value
+		smartEntry.AttributeName = fieldType.Name // Use the field name as the attribute name
+		smartEntry.RawValue = rawValue            // Store the extracted value
+		smartEntry.Value = int64(rawValue)        // Store the extracted value
+		if "Temperature" == smartEntry.AttributeName {
+			// Convert temperature from Kelvin to Celsius
+			smartEntry.Value = int64(rawValue - 273)
+		}
 		diskInfo.SmartAttrs = append(diskInfo.SmartAttrs, smartEntry) // Append to the list of SMART attributes
+	}
+
+	// Add individual temperature sensors
+	for i, t := range smartAttr.TempSensor {
+		if t == 0 {
+			break
+		}
+		attr := &types.DAttrTable{
+			AttributeName: fmt.Sprintf("Temperature Sensor %d", i+1),
+			RawValue:      int(t),
+			Value:         int64(t - 273),
+		}
+		diskInfo.SmartAttrs = append(diskInfo.SmartAttrs, attr)
 	}
 
 	diskInfo.TimeUpdate = uint64(time.Now().Unix())
