@@ -13,7 +13,6 @@ import (
 	"reflect"
 	"strings"
 
-	eventlog "github.com/cshari-zededa/eve-tpm2-tools/eventlog"
 	"github.com/lf-edge/eve-api/go/attest"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	zattest "github.com/lf-edge/eve/pkg/pillar/attest"
@@ -58,17 +57,11 @@ type attestContext struct {
 	Iteration int
 	// Started indicates that attest module was started
 	Started bool
-	//EventLogEntries are the TPM EventLog entries
-	EventLogEntries []eventlog.Event
-	//EventLogParseErr stores any error that happened during EventLog parsing
-	EventLogParseErr error
 }
 
 const (
 	watchdogInterval  = 15
 	retryTimeInterval = 15
-	//EventLogPath is the TPM measurement log aka TPM event log
-	EventLogPath = "/sys/kernel/security/tpm0/binary_bios_measurements"
 )
 
 // One shot send, if fails, return an error to the state machine to retry later
@@ -307,18 +300,7 @@ func (server *VerifierImpl) SendAttestQuote(ctx *zattest.Context) error {
 	}
 
 	attestReq.Quote = quote
-
-	if attestCtx.EventLogParseErr == nil {
-		//On some platforms, either the kernel does not export TPM Eventlog
-		//or the TPM does not have SHA256 bank enabled for PCRs. We populate
-		//eventlog if we are able to parse eventlog successfully
-		encodeEventLog(attestCtx, attestReq.Quote)
-
-		if len(attestReq.Quote.EventLog) > 0 && proto.Size(attestReq) > maxQuotePayloadSize {
-			log.Errorf("[ATTEST] attestReq size too much (%d) will remove large binaries", proto.Size(attestReq))
-			cleanupEventLog(attestReq.Quote)
-		}
-	}
+	// We may add the binary TPM logs to the attestation request here.
 
 	//Increment Iteration for interface rotation
 	attestCtx.Iteration++
@@ -584,45 +566,6 @@ func (wd *WatchdogImpl) PunchWatchdog(ctx *zattest.Context) error {
 	return nil
 }
 
-// parseTpmEventLog parses TPM Event Log and stores it given attestContext
-// any error during parsing is stored in EventLogParseErr
-func parseTpmEventLog(attestCtx *attestContext) {
-	events, err := eventlog.ParseEvents(EventLogPath)
-	attestCtx.EventLogEntries = events
-	attestCtx.EventLogParseErr = err
-	if err != nil {
-		log.Errorf("[ATTEST] Eventlog parsing error %v", err)
-	}
-}
-
-func encodeEventLog(attestCtx *attestContext, quoteMsg *attest.ZAttestQuote) error {
-	quoteMsg.EventLog = make([]*attest.TpmEventLogEntry, 0)
-	for _, event := range attestCtx.EventLogEntries {
-		tpmEventLog := new(attest.TpmEventLogEntry)
-		tpmEventLog.Index = uint32(event.Sequence)
-		tpmEventLog.PcrIndex = uint32(event.Index)
-		tpmEventLog.Digest = new(attest.TpmEventDigest)
-		tpmEventLog.Digest.HashAlgo = attest.TpmHashAlgo_TPM_HASH_ALGO_SHA256
-		tpmEventLog.Digest.Digest = event.Sha256Digest()
-		tpmEventLog.EventDataBinary = event.Data
-		tpmEventLog.EventBinarySize = uint32(len(event.Data))
-		tpmEventLog.EventType = uint32(event.Typ)
-		//Do not populate EventDataString for now because of possible size exceed
-
-		quoteMsg.EventLog = append(quoteMsg.EventLog, tpmEventLog)
-	}
-	return nil
-}
-
-// cleanupEventLog removes event binary data from EventLog which exceed size limit
-func cleanupEventLog(quoteMsg *attest.ZAttestQuote) {
-	for _, el := range quoteMsg.EventLog {
-		if el.EventBinarySize > eventLogBinarySizeLimit {
-			el.EventDataBinary = nil
-		}
-	}
-}
-
 // initialize attest pubsub trigger handlers and channels
 func attestModuleInitialize(ctx *zedagentContext) error {
 	zattest.RegisterExternalIntf(&TpmAgentImpl{}, &VerifierImpl{}, &WatchdogImpl{})
@@ -655,7 +598,6 @@ func attestModuleInitialize(ctx *zedagentContext) error {
 		log.Fatal(err)
 	}
 	ctx.attestCtx.pubEncryptedKeyFromController = pubEncryptedKeyFromController
-	parseTpmEventLog(ctx.attestCtx)
 	return nil
 }
 
