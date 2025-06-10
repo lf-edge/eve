@@ -280,9 +280,6 @@ github.com/containerd/typeurl/v2
 # github.com/coreos/go-systemd/v22 v22.5.0
 ## explicit; go 1.12
 github.com/coreos/go-systemd/v22/dbus
-# github.com/cshari-zededa/eve-tpm2-tools v0.0.4
-## explicit
-github.com/cshari-zededa/eve-tpm2-tools/eventlog
 # github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc
 ## explicit
 github.com/davecgh/go-spew/spew
