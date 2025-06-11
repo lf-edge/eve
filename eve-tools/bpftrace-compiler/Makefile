@@ -7,7 +7,10 @@ bpftrace-compiler: *.go
 .PHONY: test bare-test docker-test
 
 bare-test:
-	go test -test.timeout 1h -v -race .
+	go test -coverprofile=coverage.txt -covermode=atomic -test.timeout 1h -v -race .
+
+show-coverage:
+	go tool cover -html=coverage.txt
 
 test: bare-test
 
