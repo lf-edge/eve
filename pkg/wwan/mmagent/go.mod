@@ -6,7 +6,7 @@ toolchain go1.24.1
 
 require (
 	github.com/godbus/dbus/v5 v5.1.0
-	github.com/lf-edge/eve/pkg/pillar v0.0.0-20250515072906-f212a801a9cd
+	github.com/lf-edge/eve/pkg/pillar v0.0.0-20250611052854-619b388f4b02
 	github.com/miekg/dns v1.1.55
 	github.com/sirupsen/logrus v1.9.3
 	github.com/tatsushid/go-fastping v0.0.0-20160109021039-d7bb493dee3e
@@ -109,9 +109,3 @@ require (
 	tags.cncf.io/container-device-interface v0.8.1 // indirect
 	tags.cncf.io/container-device-interface/specs-go v0.8.0 // indirect
 )
-
-// This is only a temporary replace directive used until this commit is merged into master.
-// Without replace we would have to make changes in pillar and wwan separately.
-// However, between these separate PRs, wwan would be broken due to incompatibility
-// between pillar and mmagent.
-replace github.com/lf-edge/eve/pkg/pillar => ../../pillar
