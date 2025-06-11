@@ -1,1 +1,1 @@
-.kernel.image |= "KERNEL_EVAL_UBUNTU_TAG"
+.kernel.image |= "KERNEL_TAG"
