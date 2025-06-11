@@ -25,7 +25,7 @@ FROM --platform=${BUILDPLATFORM} lfedge/eve-cross-compilers:fb809cfb1909752acb56
 # will use several packages from target arch and copy them to sysroot
 # hadolint ignore=DL3006
 FROM ${EVE_ALPINE_IMAGE} AS cross-compile-libs
-ENV PKGS musl-dev libgcc libintl libuuid libtirpc libblkid
+ENV PKGS="musl-dev libgcc libintl libuuid libtirpc libblkid"
 RUN eve-alpine-deploy.sh
 
 # adjust EVE_TARGET_ARCH for cross-compiler
@@ -38,7 +38,7 @@ ENV EVE_TARGET_ARCH=riscv64
 
 # hadolint ignore=DL3006
 FROM build-cross-target-${TARGETARCH} AS build-cross-target
-ENV CROSS_COMPILE_ENV="${EVE_TARGET_ARCH}"-alpine-linux-musl-
+ENV CROSS_COMPILE_ENV="${EVE_TARGET_ARCH}-alpine-linux-musl-"
 COPY --from=cross-compilers /packages /packages
 # hadolint ignore=DL3018
 RUN apk add --no-cache --allow-untrusted -X /packages build-base-"${EVE_TARGET_ARCH}"

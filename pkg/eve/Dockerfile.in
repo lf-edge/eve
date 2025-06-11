@@ -1,5 +1,5 @@
 FROM lfedge/eve-alpine:591df01e581889c3027514c8a91feaca1c8ad49f as tools
-ENV PKGS qemu-img tar u-boot-tools coreutils dosfstools
+ENV PKGS="qemu-img tar u-boot-tools coreutils dosfstools"
 RUN eve-alpine-deploy.sh
 
 # hadolint ignore=DL3006
