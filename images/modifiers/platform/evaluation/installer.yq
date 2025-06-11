@@ -1,0 +1,2 @@
+(.onboot[] | select(.name == "installer"))."binds.add" += ["/rootfs-b.img:/bits/rootfs-b.img:ro", "/rootfs-c.img:/bits/rootfs-c.img:ro"] |
+.files += [{"path": "/rootfs-b.img", "source": "rootfs-evaluation-ubuntu.img"}, {"path": "/rootfs-c.img", "source": "rootfs-evaluation-lts.img"}] | ((.files[] | select(.path == "/rootfs.img")).source) |= "rootfs-evaluation-generic.img"
