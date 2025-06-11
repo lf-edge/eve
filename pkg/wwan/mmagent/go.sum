@@ -1329,6 +1329,8 @@ github.com/lf-edge/eve-api/go v0.0.0-20250502212418-fc1e3bad8f0f h1:FCTReYtGDfxI
 github.com/lf-edge/eve-api/go v0.0.0-20250502212418-fc1e3bad8f0f/go.mod h1:ot6MhAhBXapUDl/hXklaX4kY88T3uC4PTg0D2wD8DzA=
 github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20240315102754-0f6d1f182e0d h1:tUBb9M6u42LXwHAYHyh22wJeUUQlTpDkXwRXalpRqbo=
 github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20240315102754-0f6d1f182e0d/go.mod h1:Nn3juMJJ1G8dyHOebdZyS4jOB/fuxAd5fIajBaWjHr8=
+github.com/lf-edge/eve/pkg/pillar v0.0.0-20250606204414-b1f9e31984af h1:fCbyIs6A8zRbeEXpyqPMlGcPqWo23IJp5WfYtDuFWLw=
+github.com/lf-edge/eve/pkg/pillar v0.0.0-20250606204414-b1f9e31984af/go.mod h1:aNL9E7ksY+sfDE+tpJ+CJZsxFwmFAQ+eNCfYpi4NG8s=
 github.com/linuxkit/linuxkit/src/cmd/linuxkit v0.0.0-20240507172735-6d37353ca1ee h1:ASS39H/5OkVqkGSOR2xtcIsu3EZH4aDQOKhE1OfazUo=
 github.com/linuxkit/linuxkit/src/cmd/linuxkit v0.0.0-20240507172735-6d37353ca1ee/go.mod h1:UMA/+cd1QZElFCZAhuGv0TEEdWP9AgcRSXSI6S+r/KA=
 github.com/linuxkit/virtsock v0.0.0-20201010232012-f8cee7dfc7a3/go.mod h1:3r6x7q95whyfWQpmGZTu3gk3v2YkMi05HEzl7Tf7YEo=
