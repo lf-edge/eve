@@ -6,7 +6,7 @@
 
 # Script version, don't forget to bump up once something is changed
 
-VERSION=35
+VERSION=36
 # Add required packages here, it will be passed to "apk add".
 # Once something added here don't forget to add the same package
 # to the Dockerfile ('ENV PKGS' line) of the debug container,
@@ -203,7 +203,7 @@ collect_sysfs()
 collect_network_info()
 {
     echo "- network info"
-    echo "   - ifconfig, ip, arp, netstat, iptables"
+    echo "   - ifconfig, ip, arp, netstat, iptables, conntrack"
     ifconfig       > "$DIR/network/ifconfig"
     ip -s link     > "$DIR/network/ip-s-link"
     ip rule list   > "$DIR/network/ip-rule-list"
@@ -220,6 +220,7 @@ collect_network_info()
                    > "$DIR/network/iptables-mangle"
     iptables -L -v -n --line-numbers -t nat \
                    > "$DIR/network/iptables-nat"
+    eve exec pillar /opt/zededa/bin/conntrack > "$DIR/network/conntrack"
 
     echo "   - dhcpcd for all ifaces"
     for iface in /sys/class/net/*; do
