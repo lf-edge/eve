@@ -1,6 +1,7 @@
 # syntax=docker/dockerfile:1.10.0
 # Copyright (c) 2024 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
+ARG PLATFORM=generic
 
 # Interactive mode for the installer
 FROM --platform=$BUILDPLATFORM lfedge/eve-rust:1.84.1 AS rust-host
@@ -92,6 +93,7 @@ COPY --from=rust /usr/local/my-installer/target/installer /out/sbin/installer
 COPY --from=rust /usr/local/my-installer/sbom.spdx.json /out/sbin/sbom.spdx.json
 
 FROM scratch
+ARG PLATFORM
 COPY --from=build /out/ /
 COPY install parse-installer-conf.sh spec.sh verify verifytpm.sh /
 ENV RUST_BACKTRACE full
@@ -104,5 +106,5 @@ ENV PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 # hadolint ignore=DL3002
 USER 0:0
-
+ENV PLATFORM=${PLATFORM}
 ENTRYPOINT [ "/bin/sh", "-c", "/install </dev/console >/dev/console 2>&1" ]

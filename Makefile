@@ -170,9 +170,24 @@ BUILD_VM_CLOUD_INIT=$(DIST)/build-vm-ci.qcow2
 ROOTFS=$(INSTALLER)/rootfs
 ROOTFS_FULL_NAME=$(INSTALLER)/rootfs-$(ROOTFS_VERSION)
 ROOTFS_COMPLETE=$(ROOTFS_FULL_NAME)-%-$(ZARCH).$(ROOTFS_FORMAT)
-ROOTFS_IMG=$(ROOTFS).img
+ROOTFS_IMG_BASE=$(ROOTFS)
+ROOTFS_IMG_UBUNTU=$(ROOTFS_IMG_BASE)-evaluation-ubuntu.img
+ROOTFS_IMG_LTS=$(ROOTFS_IMG_BASE)-evaluation-lts.img
+
+ROOTFS_IMGS= $(if $(findstring evaluation,$(PLATFORM)), \
+	$(ROOTFS_IMG_UBUNTU) $(ROOTFS_IMG_LTS) $(ROOTFS_IMG_BASE)-evaluation-generic.img, \
+	$(ROOTFS_IMG_BASE)-$(PLATFORM).img)
+
 # ROOTFS_TAR is in BUILD_DIR, not installer, so it does not get installed
-ROOTFS_TAR=$(BUILD_DIR)/rootfs.tar
+ROOTFS_TAR_BASE=$(BUILD_DIR)/rootfs
+ROOTFS_TAR_UBUNTU=$(ROOTFS_TAR_BASE)-evaluation-ubuntu.tar
+ROOTFS_TAR_LTS=$(ROOTFS_TAR_BASE)-evaluation-lts.tar
+
+# for evaluation platform we generate 3 rootfs tarballs:
+ROOTFS_TARS= $(if $(findstring evaluation,$(PLATFORM)), \
+	$(ROOTFS_TAR_UBUNTU) $(ROOTFS_TAR_LTS) $(ROOTFS_TAR_BASE)-evaluation-generic.tar, \
+	$(ROOTFS_TAR_BASE)-$(PLATFORM).tar)
+
 CONFIG_IMG=$(INSTALLER)/config.img
 INITRD_IMG=$(INSTALLER)/initrd.img
 INSTALLER_TAR=$(BUILD_DIR)/installer.tar
@@ -186,7 +201,7 @@ EFI_PART=$(INSTALLER)/EFI
 BOOT_PART=$(INSTALLER)/boot
 BSP_IMX_PART=$(INSTALLER)/bsp-imx
 
-SBOM?=$(ROOTFS).spdx.json
+# SBOM?=$(if $(findstring evaluation,$(PLATFORM)), $(ROOTFS)-generic.spdx.json, $(ROOTFS).spdx.json)
 SOURCES_DIR=$(BUILD_DIR)/sources
 COLLECTED_SOURCES=$(SOURCES_DIR)/collected_sources.tar.gz
 DEVICETREE_DTB_amd64=
@@ -194,7 +209,7 @@ DEVICETREE_DTB_arm64=$(DIST)/dtb/eve.dtb
 DEVICETREE_DTB=$(DEVICETREE_DTB_$(ZARCH))
 
 CONF_FILES=$(shell ls -d $(CONF_DIR)/*)
-LIVE_PART_SPEC=efi conf imga
+LIVE_PART_SPEC=$(if $(findstring evaluation,$(PLATFORM)), efi conf imga imgb imgc, efi conf imga)
 
 # parallels settings
 # https://github.com/qemu/qemu/blob/595123df1d54ed8fbab9e1a73d5a58c5bb71058f/docs/interop/prl-xml.txt
@@ -326,7 +341,7 @@ DOCKER_GO = _() { $(SET_X); mkdir -p $(CURDIR)/.go/src/$${3:-dummy} ; mkdir -p $
     [ $$verbose -ge 1 ] && echo $$docker_go_line "\"$$1\""; \
     $$docker_go_line "$$1" ; } ; _
 
-PARSE_PKGS=$(if $(strip $(EVE_HASH)),EVE_HASH=)$(EVE_HASH) DOCKER_ARCH_TAG=$(DOCKER_ARCH_TAG) KERNEL_TAG=$(KERNEL_TAG) PLATFORM=$(PLATFORM) ./tools/parse-pkgs.sh
+PARSE_PKGS=$(if $(strip $(EVE_HASH)),EVE_HASH=)$(EVE_HASH) DOCKER_ARCH_TAG=$(DOCKER_ARCH_TAG) KERNEL_TAG=$(KERNEL_TAG) KERNEL_EVAL_UBUNTU_TAG=$(KERNEL_EVAL_UBUNTU_TAG) PLATFORM=$(PLATFORM) ./tools/parse-pkgs.sh
 
 LINUXKIT_OPTS=$(if $(strip $(EVE_HASH)),--hash) $(EVE_HASH) $(if $(strip $(EVE_REL)),--release) $(EVE_REL)
 LINUXKIT_PKG_TARGET=build
@@ -406,8 +421,11 @@ ifeq ($(HV),kubevirt)
 else
         #kube container will not be in non-kubevirt builds
         PKGS_$(ZARCH)=$(shell find pkg -maxdepth 1 -type d | grep -Ev "eve|alpine|sources|kube|external-boot-image$$")
+        # evaluation platform requires 500MB
+        ifeq ($(PLATFORM),evaluation)
+            ROOTFS_MAXSIZE_MB=950
         # nvidia platform requires more space
-        ifeq (, $(findstring nvidia,$(PLATFORM)))
+        else ifeq (, $(findstring nvidia,$(PLATFORM)))
             ROOTFS_MAXSIZE_MB=270
         else
             ROOTFS_MAXSIZE_MB=450
@@ -446,6 +464,7 @@ version:
 # makes a link to current
 current: $(CURRENT_DIR)
 $(CURRENT_DIR): $(BUILD_DIR)
+	$(info "[INFO] Linking current to $(BUILD_DIR)")
 	@rm -f $@ && ln -s $(BUILD_DIR) $@
 
 # reports the image version that current points to
@@ -514,9 +533,6 @@ yetus:
 mini-yetus:
 	@echo Running mini-yetus
 	./tools/mini-yetus.sh $(if $(MYETUS_VERBOSE),-f) $(if $(MYETUS_SBRANCH),-s $(MYETUS_SBRANCH)) $(if $(MYETUS_DBRANCH),-d $(MYETUS_DBRANCH))
-
-build-tools: $(LINUXKIT)
-	@echo Done building $<
 
 $(BUILD_VM_CLOUD_INIT): build-tools/src/scripts/cloud-init.in | $(DIST)
 	@if [ -z "$(BUILD_VM_SSH_PUB_KEY)" ] || [ -z "$(BUILD_VM_GH_TOKEN)" ]; then                  \
@@ -603,7 +619,7 @@ run-target: $(SWTPM) GETTY
 
 run-rootfs: $(SWTPM) GETTY
 	(echo 'set devicetree="(hd0,msdos1)/eve.dtb"' ; echo 'set rootfs_root=/dev/vdb' ; echo 'set root=hd1' ; echo 'export rootfs_root' ; echo 'export devicetree' ; echo 'configfile /EFI/BOOT/grub.cfg' ) > $(EFI_PART)/BOOT/grub.cfg
-	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive file=$(ROOTFS_IMG),format=raw -drive file=fat:rw:$(EFI_PART)/..,label=CONFIG,id=uefi-disk,format=vvfat
+	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive file=$(ROOTFS_IMG_BASE)-$*.img,format=raw -drive file=fat:rw:$(EFI_PART)/..,label=CONFIG,id=uefi-disk,format=vvfat
 	$(QUIET): $@: Succeeded
 
 run-grub: $(SWTPM)  GETTY
@@ -678,7 +694,7 @@ $(DIST) $(BUILD_DIR) $(INSTALLER_FIRMWARE_DIR):
 $(INSTALLER):
 	@mkdir -p $@
 	@cp -r pkg/eve/installer/* $@
-	# sample output 0.0.0-HEAD-a437e8e4-xen-amd64
+    # sample output 0.0.0-HEAD-a437e8e4-xen-amd64
 	@echo $(FULL_VERSION) > $(VERSION_FILE)
 
 $(NETBOOT):
@@ -689,9 +705,7 @@ build-vm: $(BUILD_VM)
 initrd: $(INITRD_IMG)
 config: $(CONFIG_IMG)		; $(QUIET): "$@: Succeeded, CONFIG_IMG=$(CONFIG_IMG)"
 ssh-key: $(SSH_KEY)
-rootfs: $(ROOTFS_TAR) $(ROOTFS_IMG) current
-rootfs.tar: $(ROOTFS_TAR)
-rootfstar: $(ROOTFS_TAR)
+rootfs: $(ROOTFS_IMGS) current
 sbom: $(SBOM)
 live: $(LIVE_IMG) $(BIOS_IMG) current	; $(QUIET): "$@: Succeeded, LIVE_IMG=$(LIVE_IMG)"
 live-%: $(LIVE).%		; $(QUIET): "$@: Succeeded, LIVE=$(LIVE)"
@@ -717,48 +731,44 @@ $(PERSIST_IMG): | $(INSTALLER)
 	dd if=/dev/zero bs=1048576 count=1 >> $@
 	$(QUIET): $@: Succeeded
 
-$(ROOTFS)-%.img: $(ROOTFS_IMG)
-	@rm -f $@ && ln -s $(notdir $<) $@
-	$(QUIET): $@: Succeeded
-
-$(ROOTFS_TAR): images/out/rootfs-$(HV)-$(PLATFORM).yml | $(INSTALLER)
+$(ROOTFS_TAR_BASE)-%.tar: images/out/rootfs-$(HV)-%.yml | $(INSTALLER)
 	$(QUIET): $@: Begin
-	./tools/makerootfs.sh tar $(UPDATE_TAR) -y $< -t $@ -d $(INSTALLER) -a $(ZARCH)
-	$(QUIET): $@: Succeeded
-ifdef KERNEL_IMAGE
-	# Consider this as a cry from the heart: enormous amount of time is
-	# wasted during kernel rebuild on every small testing change. Now any
-	# kernel image can be used by providing path to a file. You heard it
-	# right: path-to-a-file. No docker. Yay!
-	$(eval KIMAGE = $$(realpath $(KERNEL_IMAGE)))
-	@echo "Replace kernel image in \"$@\" with \"$(KIMAGE)\""
-	# Delete /boot/kernel kernel image
-	tar --delete -f "$@" boot/kernel
-	# Append new kernel image and rename
-	tar -P -u --transform="flags=r;s|$(KIMAGE)|/boot/kernel|" -f "$@" "$(KIMAGE)"
-endif
-
-$(INSTALLER_TAR): images/out/installer-$(HV)-$(PLATFORM).yml $(ROOTFS_IMG) $(PERSIST_IMG) $(CONFIG_IMG) | $(INSTALLER)
-	$(QUIET): $@: Begin
+	echo "Building rootfs tarball $@ from $<"
 	./tools/makerootfs.sh tar $(UPDATE_TAR) -y $< -t $@ -d $(INSTALLER) -a $(ZARCH)
 	$(QUIET): $@: Succeeded
 
-ifdef LIVE_UPDATE
-# Don't regenerate the whole image if tar was changed, but
-# do generate if does not exist. qcow2 target will handle
-# the rest
-$(ROOTFS_IMG): pkg/mkrootfs-$(ROOTFS_FORMAT) | $(ROOTFS_TAR) $(INSTALLER)
-else
-$(ROOTFS_IMG): pkg/mkrootfs-$(ROOTFS_FORMAT) $(ROOTFS_TAR) | $(INSTALLER)
-endif
+$(INSTALLER_TAR): images/out/installer-$(HV)-$(PLATFORM).yml $(ROOTFS_IMGS) $(PERSIST_IMG) $(CONFIG_IMG) | $(INSTALLER)
 	$(QUIET): $@: Begin
-	./tools/makerootfs.sh imagefromtar -t $(ROOTFS_TAR) -i $@ -f $(ROOTFS_FORMAT) -a $(ZARCH)
+	echo "Building installer tarball from $<"
+	./tools/makerootfs.sh tar $(UPDATE_TAR) -y $< -t $@ -d $(INSTALLER) -a $(ZARCH)
+	$(QUIET): $@: Succeeded
+
+$(ROOTFS_IMG_BASE)-%.img: $(ROOTFS_TAR_BASE)-%.tar | $(INSTALLER)
+	$(QUIET): $@: Begin
+	echo "Building rootfs image $@ from $<"
+	./tools/makerootfs.sh imagefromtar -t $< -i $@ -f $(ROOTFS_FORMAT) -a $(ZARCH)
 	@echo "size of $@ is $$(wc -c < "$@")B"
 ifeq ($(ROOTFS_FORMAT),squash)
 	@[ $$(wc -c < "$@") -gt $$(( $(ROOTFS_MAXSIZE_MB) * 1024 * 1024 )) ] && \
 	        echo "ERROR: size of $@ is greater than $(ROOTFS_MAXSIZE_MB)MB (bigger than allocated partition)" && exit 1 || :
 endif
-	$(QUIET): $@: Succeeded
+
+# ifdef LIVE_UPDATE
+# # Don't regenerate the whole image if tar was changed, but
+# # do generate if does not exist. qcow2 target will handle
+# # the rest
+# $(ROOTFS_IMG): pkg/mkrootfs-$(ROOTFS_FORMAT) | $(ROOTFS_TARS) $(INSTALLER)
+# else
+# $(ROOTFS_IMG): pkg/mkrootfs-$(ROOTFS_FORMAT) $(ROOTFS_TARS) | $(INSTALLER)
+# endif
+# 	$(QUIET): $@: Begin
+# 	./tools/makerootfs.sh imagefromtar -t $(ROOTFS_TARS) -i $@ -f $(ROOTFS_FORMAT) -a $(ZARCH)
+# 	@echo "size of $@ is $$(wc -c < "$@")B"
+# ifeq ($(ROOTFS_FORMAT),squash)
+# 	@[ $$(wc -c < "$@") -gt $$(( $(ROOTFS_MAXSIZE_MB) * 1024 * 1024 )) ] && \
+# 	        echo "ERROR: size of $@ is greater than $(ROOTFS_MAXSIZE_MB)MB (bigger than allocated partition)" && exit 1 || :
+# endif
+# 	$(QUIET): $@: Succeeded
 
 $(GET_DEPS):
 	$(MAKE) -C $(GET_DEPS_DIR) GOOS=$(LOCAL_GOOS)
@@ -769,9 +779,9 @@ sbom_info:
 collected_sources_info:
 	@echo "$(COLLECTED_SOURCES)"
 
-$(SBOM): $(ROOTFS_TAR) | $(INSTALLER)
+$(ROOTFS)-%.spdx.json: $(BUILD_DIR)/rootfs-%.tar | $(INSTALLER)
 	$(QUIET): $@: Begin
-	# the ROOTFS_TAR includes extended PAX headers, which GNU tar does not support.
+	# the ROOTFS_TARS includes extended PAX headers, which GNU tar does not support.
 	# It does not break, but logs two lines of warnings for each file, which is a lot.
 	# For BSD tar, no need to do anything; for GNU tar, need to add `--warning=no-unknown-keyword`
 	$(eval TAR_OPTS = $(shell tar --version | grep -qi 'GNU tar' && echo --warning=no-unknown-keyword || echo))
@@ -788,7 +798,7 @@ $(GOSOURCES):
 $(SOURCES_DIR):
 	@mkdir -p $@
 
-$(COLLECTED_SOURCES): $(ROOTFS_TAR) $(GOSOURCES)| $(INSTALLER) $(SOURCES_DIR)
+$(COLLECTED_SOURCES): $(ROOTFS_TARS) $(GOSOURCES)| $(INSTALLER) $(SOURCES_DIR)
 	$(QUIET): $@: Begin
 	bash tools/collect-sources.sh $< $(CURDIR) $@
 	$(QUIET): $@: Succeeded
@@ -815,7 +825,7 @@ publish_sources: $(COLLECTED_SOURCES)
 	$(QUIET): $@: Succeeded
 
 
-$(LIVE).raw: $(BOOT_PART) $(EFI_PART) $(ROOTFS_IMG) $(CONFIG_IMG) $(PERSIST_IMG) $(BSP_IMX_PART) $(BIOS_IMG) | $(INSTALLER)
+$(LIVE).raw: $(BOOT_PART) $(EFI_PART) $(ROOTFS_IMGS) $(CONFIG_IMG) $(PERSIST_IMG) $(BSP_IMX_PART) $(BIOS_IMG) | $(INSTALLER)
 	./tools/prepare-platform.sh "$(PLATFORM)" "$(BUILD_DIR)" "$(INSTALLER)" || :
 	./tools/makeflash.sh "mkimage-raw-efi" -C $| $@ $(LIVE_PART_SPEC)
 	$(QUIET): $@: Succeeded
@@ -839,6 +849,13 @@ $(INSTALLER).net: $(INSTALLER).iso $(EFI_PART) $(INITRD_IMG) $(CONFIG_IMG) $(IPX
 	./tools/makenet.sh $| $< $@
 	$(QUIET): $@: Succeeded
 
+# $(INSTALLER)-eval.raw: $(INSTALLER_IMG) $(EFI_PART) $(BOOT_PART) $(CONFIG_IMG) $(BSP_IMX_PART) | $(INSTALLER)
+# 	@echo "Building $(INSTALLER)-eval.raw"
+# 	@echo "For platform $(PLATFORM)"
+# 	./tools/prepare-platform.sh "$(PLATFORM)" "$(BUILD_DIR)" "$(INSTALLER)" || :
+# 	./tools/makeflash.sh "mkimage-raw-efi" -C $| $@ "efi conf_win installer inventory_win"
+# 	$(QUIET): $@: Succeeded
+
 $(LIVE).vdi: $(LIVE).raw
 	qemu-img resize -f raw $< ${MEDIA_SIZE}M
 	qemu-img convert -O vdi $< $@
@@ -851,7 +868,7 @@ $(LIVE).parallels: $(LIVE).raw
 
 # top-level linuxkit packages targets, note the one enforcing ordering between packages
 pkgs: RESCAN_DEPS=
-pkgs: build-tools $(PKGS)
+pkgs: $(LINUXKIT) $(PKGS)
 	@echo Done building packages
 
 # No-op target for get-deps which looks at
@@ -1002,7 +1019,7 @@ ifdef LIVE_UPDATE
 # Target depends on rootfs tarbar directly, which gives possibility to
 # detect when qcow2 should be updated with a tarball and when it should
 # be recreated from scratch.
-%.qcow2: %.raw $(ROOTFS_TAR) | $(DIST)
+%.qcow2: %.raw $(ROOTFS_TARS) | $(DIST)
 #	Detect if the first %.raw ($<) prerequisite is in the "$?" list,
 #	which means qcow has to be fully recreated. If not - just update
 #	with the existing tar.
@@ -1018,7 +1035,7 @@ ifdef LIVE_UPDATE
 	else \
 		echo "Update $@ with generated tarball:"; \
 		echo "	guestfish ..."; \
-		guestfish -a $@ run : mount /dev/sda2 / : tar-in $(ROOTFS_TAR) /; \
+		guestfish -a $@ run : mount /dev/sda2 / : tar-in $(ROOTFS_TARS) /; \
 	fi
 	$(QUIET): $@: Succeeded
 else
@@ -1028,12 +1045,13 @@ else
 	$(QUIET): $@: Succeeded
 endif
 
-%.yml: %.yml.in $(RESCAN_DEPS) | build-tools
+.PRECIOUS: %.yml
+%.yml: %.yml.in $(RESCAN_DEPS) $(LINUXKIT)
 	@echo "Building $@ from $<"
 	$(QUIET)$(PARSE_PKGS) $< > $@
 	$(QUIET): $@: Succeeded
 
-%/Dockerfile: %/Dockerfile.in build-tools $(RESCAN_DEPS)
+%/Dockerfile: %/Dockerfile.in $(LINUXKIT) $(RESCAN_DEPS)
 	@echo "Building $@ from $<"
 	$(QUIET)$(PARSE_PKGS) $< > $@
 	$(QUIET): $@: Succeeded
@@ -1053,12 +1071,13 @@ get_pkg_build_rstats_yml = $(if $(wildcard pkg/$1/build-rstats.yml),build-rstats
 get_pkg_build_kubevirt_yml = $(if $(and $(filter y,$(DEV)),$(wildcard pkg/$1/build-kubevirt-dev.yml)),build-kubevirt-dev.yml, \
                              $(if $(wildcard pkg/$1/build-kubevirt.yml),build-kubevirt.yml,build.yml))
 
-eve-%: pkg/%/Dockerfile build-tools $(RESCAN_DEPS)
+eve-%: pkg/%/Dockerfile $(LINUXKIT) $(RESCAN_DEPS)
 	$(QUIET): "$@: Begin: LINUXKIT_PKG_TARGET=$(LINUXKIT_PKG_TARGET)"
 	$(eval LINUXKIT_DOCKER_LOAD := $(if $(filter $(PKGS_DOCKER_LOAD),$*),--docker,))
 	$(eval LINUXKIT_BUILD_PLATFORMS_LIST := $(call uniq,linux/$(ZARCH) $(if $(filter $(PKGS_HOSTARCH),$*),linux/$(HOSTARCH),)))
 	$(eval LINUXKIT_BUILD_PLATFORMS := --platforms $(subst $(space),$(comma),$(strip $(LINUXKIT_BUILD_PLATFORMS_LIST))))
 	$(eval LINUXKIT_FLAGS := $(if $(filter manifest,$(LINUXKIT_PKG_TARGET)),,$(FORCE_BUILD) $(LINUXKIT_DOCKER_LOAD) $(LINUXKIT_BUILD_PLATFORMS)))
+	$(info [DEBUG] package build yml $(call get_pkg_build_yml,$*))
 	$(QUIET)$(LINUXKIT) $(DASH_V) pkg $(LINUXKIT_PKG_TARGET) $(LINUXKIT_ORG_TARGET) $(LINUXKIT_OPTS) $(LINUXKIT_FLAGS) --build-yml $(call get_pkg_build_yml,$*) pkg/$*
 	$(QUIET)if [ -n "$(PRUNE)" ]; then \
 		$(LINUXKIT) pkg $(LINUXKIT_ORG_TARGET) builder prune; \
@@ -1146,6 +1165,27 @@ images/out/installer-%.yml.in: images/installer.yml.in $(RESCAN_DEPS) | images/o
 	$(info [INFO] Building $@ from $<)
 	$(QUIET)tools/compose-image-yml.sh -b $< -v "$(ROOTFS_VERSION)-$*-$(ZARCH)" -o $@ -h $(HV) $(call find-modifiers-installer,$*)
 
+# $(foreach mod,$(wildcard $(platform_dir)/*.yq $(platform_dir)/rootfs-*.yq $(platform_dir)/installer.yq), \
+# images/out/rootfs-$(notdir $(basename $(hv)))-$(notdir $(platform_dir))-$(subst installer-,,$(subst rootfs-,,$(notdir $(basename $(mod)))).yml.in))) \
+
+
+# YML_IN_TEST_TARGETS:=$(foreach hv,$(wildcard images/modifiers/hv/*.yq), \
+#                      $(foreach platform_dir,$(wildcard images/modifiers/platform/*), \
+#                      	$(if $(wildcard $(platform_dir)/$(platform_dir).yq), \
+# 					 		images/out/rootfs-$(hv)-$(platform_dir).yml.in, \
+# 					 		images/out/installer-$(hv)-$(platform_dir).yml.in, \
+# 					 	) \
+# 						$(if $(wildcard $(platform_dir)/rootfs-*.yq), \
+# 			 				images/out/rootfs-$(hv)-$(platform_dir)-$(subst rootfs-,, $(notdir $(wildcard $(platform_dir)/rootfs-*.yq))).yml.in, \
+# 						) \
+#                      ))
+
+# $(info [INFO] YML_IN_TEST_TARGETS=$(YML_IN_TEST_TARGETS))
+
+# .PHONY: test-images-patches
+# test-images-patches: $(YML_IN_TEST_TARGETS)
+
+
 pkg-deps.mk: $(GET_DEPS)
 	$(QUIET)$(GET_DEPS) $(ROOTFS_GET_DEPS) -m $@
 
@@ -1172,7 +1212,7 @@ kernel-tag:
 	@echo $(KERNEL_TAG)
 
 .PRECIOUS: rootfs-% $(ROOTFS)-%.img $(ROOTFS_COMPLETE)
-.PHONY: all clean test run pkgs help build-tools live rootfs config installer live current FORCE $(DIST) HOSTARCH image-set cache-export
+.PHONY: all clean test run pkgs help live rootfs config installer live current FORCE $(DIST) HOSTARCH image-set cache-export
 FORCE:
 
 help:
@@ -1220,7 +1260,6 @@ help:
 	@echo "   bump-eve-pillar bump eve/pkg/pillar in all subprojects"
 	@echo
 	@echo "Commonly used build targets:"
-	@echo "   build-tools          builds linuxkit utilities and installs under build-tools/bin"
 	@echo "   config               builds a bundle with initial EVE configs"
 	@echo "   pkgs                 builds all EVE packages"
 	@echo "   pkg/XXX              builds XXX EVE package"
