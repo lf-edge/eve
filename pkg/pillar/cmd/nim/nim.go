@@ -751,6 +751,7 @@ func (n *nim) handleZedAgentStatusModify(_ interface{}, key string, statusArg, _
 func (n *nim) handleZedAgentStatusImpl(_ string, statusArg interface{}) {
 	zedagentStatus := statusArg.(types.ZedAgentStatus)
 	n.dpcManager.UpdateRadioSilence(zedagentStatus.RadioSilence)
+	n.dpcManager.UpdateLOCUrl(zedagentStatus.LOCUrl)
 }
 
 func (n *nim) handleOnboardStatusCreate(_ interface{}, key string, statusArg interface{}) {

@@ -75,12 +75,14 @@ type loguploaderContext struct {
 	subGlobalConfig        pubsub.Subscription
 	subAppInstConfig       pubsub.Subscription
 	subCachedResolvedIPs   pubsub.Subscription
+	subZedAgentStatus      pubsub.Subscription
 	usableAddrCount        int
 	metrics                types.NewlogMetrics
 	agentMetrics           *controllerconn.AgentMetrics
 	serverNameAndPort      string
 	metricsPub             pubsub.Publication
 	enableFastUpload       bool
+	airgapMode             bool
 	scheduleTimer          *time.Timer
 	backoffExprTimer       *time.Timer
 }
@@ -194,6 +196,25 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 	loguploaderCtx.subAppInstConfig = subAppInstConfig
 	subAppInstConfig.Activate()
+
+	// To check if Air-gap mode is enabled, in which case lack of cloud connectivity
+	// is expected.
+	subZedAgentStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "zedagent",
+		MyAgentName:   agentName,
+		TopicImpl:     types.ZedAgentStatus{},
+		Activate:      false,
+		Ctx:           &loguploaderCtx,
+		CreateHandler: handleZedAgentStatusCreate,
+		ModifyHandler: handleZedAgentStatusModify,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	loguploaderCtx.subZedAgentStatus = subZedAgentStatus
+	subZedAgentStatus.Activate()
 
 	sendCtxInit(ps, &loguploaderCtx)
 
@@ -309,6 +330,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 		case change := <-subAppInstConfig.MsgChan():
 			subAppInstConfig.ProcessChange(change)
+
+		case change := <-subZedAgentStatus.MsgChan():
+			subZedAgentStatus.ProcessChange(change)
 
 		case change := <-subCachedResolvedIPs.MsgChan():
 			subCachedResolvedIPs.ProcessChange(change)
@@ -608,6 +632,21 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string, statusArg interfac
 	log.Tracef("handleGlobalConfigDelete done for %s", key)
 }
 
+func handleZedAgentStatusCreate(ctxArg interface{}, key string, statusArg interface{}) {
+	handleZedAgentStatusImpl(ctxArg, key, statusArg)
+}
+
+func handleZedAgentStatusModify(ctxArg interface{}, key string,
+	statusArg interface{}, _ interface{}) {
+	handleZedAgentStatusImpl(ctxArg, key, statusArg)
+}
+
+func handleZedAgentStatusImpl(ctxArg interface{}, _ string, statusArg interface{}) {
+	zedagentStatus := statusArg.(types.ZedAgentStatus)
+	ctx := ctxArg.(*loguploaderContext)
+	ctx.airgapMode = zedagentStatus.AirgapMode
+}
+
 func doFetchSend(ctx *loguploaderContext, zipDir string, iter *int) int {
 	if _, err := os.Stat(zipDir); err != nil {
 		log.Tracef("doFetchSend: can't stats %s", zipDir)
@@ -668,7 +707,11 @@ func doFetchSend(ctx *loguploaderContext, zipDir string, iter *int) int {
 			return numFiles
 		}
 		if len(content) > warnGzipFileSize {
-			log.Warnf("doFetchSend: log file size %d more than expected %d",
+			logFunc := log.Warnf
+			if ctx.airgapMode {
+				logFunc = log.Functionf
+			}
+			logFunc("doFetchSend: log file size %d more than expected %d",
 				len(content), warnGzipFileSize)
 		}
 		unavailable, err := sendToCloud(ctx, content, *iter, gotFileName, fileTime, isApp)
@@ -686,7 +729,12 @@ func doFetchSend(ctx *loguploaderContext, zipDir string, iter *int) int {
 				log.Functionf("doFetchSend: fail. set fail to send time %v", ctx.metrics.FailSentStartTime.String())
 				ctx.metricsPub.Publish("global", ctx.metrics)
 			}
-			log.Errorf("doFetchSend: %v got error sending http: %v", ctx.metrics.FailSentStartTime.String(), err)
+			logFunc := log.Errorf
+			if ctx.airgapMode {
+				logFunc = log.Functionf
+			}
+			logFunc("doFetchSend: %v got error sending http: %v",
+				ctx.metrics.FailSentStartTime.String(), err)
 		} else {
 			if isApp {
 				// keep the sent out app log files on device
@@ -801,6 +849,7 @@ func sendToCloud(ctx *loguploaderContext, data []byte, iter int, fName string, f
 		WithNetTracing: false,
 		BailOnHTTPErr:  false,
 		Iteration:      iter,
+		SuppressLogs:   ctx.airgapMode,
 	})
 	if rv.HTTPResp != nil {
 		if rv.HTTPResp.StatusCode == http.StatusOK ||
@@ -882,7 +931,11 @@ func sendToCloud(ctx *loguploaderContext, data []byte, iter int, fName string, f
 		}
 	}
 	if err != nil {
-		log.Errorf("sendToCloud: %d bytes, file %s failed: %v", size, fName, err)
+		logFunc := log.Errorf
+		if ctx.airgapMode {
+			logFunc = log.Functionf
+		}
+		logFunc("sendToCloud: %d bytes, file %s failed: %v", size, fName, err)
 		return serviceUnavailable, fmt.Errorf("sendToCloud: failed to send")
 	}
 	log.Tracef("sendToCloud: Sent %d bytes, file %s to %s", size, fName, logsURL)

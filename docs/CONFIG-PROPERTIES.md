@@ -41,6 +41,7 @@
 | timer.appcontainer.stats.interval | integer in seconds | 300 | collect application container stats |
 | timer.vault.ready.cutoff | integer in seconds | 300 | reboot after inaccessible vault |
 | maintenance.mode | "enabled" or "disabled" | "none" | don't run applications etc |
+| airgap.mode | "enabled" or "disabled" | "none" | Enable when the device is expected to operate without connectivity to the main controller and is instead managed locally via the LOC (Local Operator Console) |
 | force.fallback.counter | integer | 0 | forces fallback to other image if counter is changed |
 | newlog.allow.fastupload | boolean | false | allow faster upload gzip logfiles to controller |
 | memory.apps.ignore.check | boolean | false | Ignore memory usage check for Apps |

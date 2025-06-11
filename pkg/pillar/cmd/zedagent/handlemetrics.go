@@ -1612,7 +1612,7 @@ func SendProtobuf(url string, buf *bytes.Buffer, iteration int) error {
 // Each iteration we try a different port for load spreading.
 // For each port we try all its local IP addresses until we get a success.
 func sendMetricsProtobufByURL(ctx *getconfigContext, metricsURL string,
-	ReportMetrics *metrics.ZMetricMsg, iteration int) {
+	ReportMetrics *metrics.ZMetricMsg, iteration int, expectNoConn bool) {
 
 	data, err := proto.Marshal(ReportMetrics)
 	if err != nil {
@@ -1627,10 +1627,13 @@ func sendMetricsProtobufByURL(ctx *getconfigContext, metricsURL string,
 			WithNetTracing: false,
 			BailOnHTTPErr:  false,
 			Iteration:      iteration,
+			SuppressLogs:   expectNoConn,
 		})
 	if err != nil {
 		// Hopefully next timeout will be more successful
-		log.Errorf("sendMetricsProtobufByURL status %d failed: %s", rv.Status, err)
+		if !expectNoConn {
+			log.Errorf("sendMetricsProtobufByURL status %d failed: %s", rv.Status, err)
+		}
 		return
 	} else {
 		maybeUpdateMetricsTimer(ctx, true)
@@ -1643,7 +1646,7 @@ func sendMetricsProtobuf(ctx *getconfigContext,
 
 	url := controllerconn.URLPathString(serverNameAndPort, ctrlClient.UsingV2API(),
 		devUUID, "metrics")
-	sendMetricsProtobufByURL(ctx, url, ReportMetrics, iteration)
+	sendMetricsProtobufByURL(ctx, url, ReportMetrics, iteration, ctx.zedagentCtx.airgapMode)
 
 	locConfig := ctx.sideController.locConfig
 
@@ -1653,7 +1656,7 @@ func sendMetricsProtobuf(ctx *getconfigContext,
 		go func() {
 			url := controllerconn.URLPathString(locConfig.LocURL, ctrlClient.UsingV2API(),
 				devUUID, "metrics")
-			sendMetricsProtobufByURL(ctx, url, ReportMetrics, iteration)
+			sendMetricsProtobufByURL(ctx, url, ReportMetrics, iteration, false)
 		}()
 	}
 }
@@ -1666,7 +1669,7 @@ func sendMetricsProtobuf(ctx *getconfigContext,
 // Returns:
 //   - bool: true if the message was sent successfully, false otherwise.
 func sendHardwareHealthProtobufByURL(ctx *getconfigContext, hardwareHealthURL string,
-	HardwareHealth *hardwarehealth.ZHardwareHealth, iteration int) bool {
+	HardwareHealth *hardwarehealth.ZHardwareHealth, iteration int, expectNoConn bool) bool {
 
 	data, err := proto.Marshal(HardwareHealth)
 	if err != nil {
@@ -1676,16 +1679,22 @@ func sendHardwareHealthProtobufByURL(ctx *getconfigContext, hardwareHealthURL st
 	buf := bytes.NewBuffer(data)
 	ctxWork, cancel := ctrlClient.GetContextForAllIntfFunctions()
 	defer cancel()
-	log.Noticef("sending hardware health message: %s", hardwareHealthURL)
+	if !expectNoConn {
+		log.Noticef("sending hardware health message: %s", hardwareHealthURL)
+	}
 	rv, err := ctrlClient.SendOnAllIntf(ctxWork, hardwareHealthURL, buf,
 		controllerconn.RequestOptions{
 			WithNetTracing: false,
 			BailOnHTTPErr:  false,
 			Iteration:      iteration,
+			SuppressLogs:   expectNoConn,
 		})
 	if err != nil {
 		// Hopefully next timeout will be more successful
-		log.Errorf("sendHardwareHealthProtobufByURL status %d failed: %s", rv.Status, err)
+		if !expectNoConn {
+			log.Errorf("sendHardwareHealthProtobufByURL status %d failed: %s",
+				rv.Status, err)
+		}
 		return false
 	} else {
 		saveSentHardwareHealthProtoMessage(data)
@@ -1704,7 +1713,8 @@ func sendHardwareHealthProtobuf(ctx *getconfigContext,
 
 	url := controllerconn.URLPathString(serverNameAndPort, ctrlClient.UsingV2API(),
 		devUUID, "hardwarehealth")
-	ret := sendHardwareHealthProtobufByURL(ctx, url, HardwareHealth, iteration)
+	ret := sendHardwareHealthProtobufByURL(ctx, url, HardwareHealth, iteration,
+		ctx.zedagentCtx.airgapMode)
 
 	locConfig := ctx.sideController.locConfig
 
@@ -1714,7 +1724,7 @@ func sendHardwareHealthProtobuf(ctx *getconfigContext,
 		go func() {
 			url := controllerconn.URLPathString(locConfig.LocURL, ctrlClient.UsingV2API(),
 				devUUID, "hardwarehealth")
-			sendHardwareHealthProtobufByURL(ctx, url, HardwareHealth, iteration)
+			sendHardwareHealthProtobufByURL(ctx, url, HardwareHealth, iteration, false)
 		}()
 	}
 	return ret
