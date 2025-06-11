@@ -460,13 +460,15 @@ func TestVerifyAllIntf(test *testing.T) {
 
 	rv, err := client.VerifyAllIntf(ctx, "https://google.com", 1,
 		controllerconn.RequestOptions{
-			AllowProxy:      false,
-			UseOnboard:      false,
-			SuppressLogs:    false,
-			WithNetTracing:  false,
-			DryRun:          false,
-			BailOnHTTPErr:   false,
-			Accept4xxErrors: true,
+			AllowProxy:     false,
+			UseOnboard:     false,
+			SuppressLogs:   false,
+			WithNetTracing: false,
+			DryRun:         false,
+			BailOnHTTPErr:  false,
+			// In this test we require HTTP success.
+			// Accepted 4XX errors are covered by TestVerifyAllIntf_Accept4xx.
+			Accept4xxErrors: false,
 			// Let's try the fake port first, then continue verification with the proper
 			// port next.
 			Iteration:        1,
@@ -512,7 +514,7 @@ func TestVerifyAllIntf_NoUsablePorts(test *testing.T) {
 			WithNetTracing:   false,
 			DryRun:           false,
 			BailOnHTTPErr:    false,
-			Accept4xxErrors:  true,
+			Accept4xxErrors:  false,
 			Iteration:        0,
 			AllowLoopbackDNS: true,
 		})
@@ -534,5 +536,53 @@ func TestVerifyAllIntf_NoUsablePorts(test *testing.T) {
 		Equal("link not found for interface " + dns.Ports[1].IfName))
 	t.Expect(rv.TracedReqs).To(BeEmpty())
 	t.Expect(rv.ControllerReachable).To(BeFalse()) // Cloud in this case is google.com
+	t.Expect(rv.RemoteTempFailure).To(BeFalse())
+}
+
+func TestVerifyAllIntf_Accept4xxErrors(test *testing.T) {
+	dns := getDeviceNetworkStatus(test)
+
+	// Add a fake port with no IPs. This will fail the verification but VerifyAllIntf
+	// should continue with the real working interface and confirm that connectivity
+	// is working (even though the remote endpoint returns 404).
+	unusedName := getUnusedInterfaceName()
+	fakePort := types.NetworkPortStatus{
+		IfName:         unusedName,
+		Phylabel:       unusedName,
+		Logicallabel:   unusedName,
+		IsMgmt:         true,
+		IsL3Port:       true,
+		Up:             false,
+		AddrInfoList:   []types.AddrInfo{},
+		DefaultRouters: []net.IP{},
+	}
+	dns.Ports = append(dns.Ports, fakePort)
+	fmt.Printf("DeviceNetworkStatus %+v\n", dns)
+	agentMetrics := controllerconn.NewAgentMetrics()
+	client := makeControllerClient(test, &dns, agentMetrics)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+
+	rv, err := client.VerifyAllIntf(ctx, "https://google.com/nonexistenturl", 1,
+		controllerconn.RequestOptions{
+			AllowProxy:     false,
+			UseOnboard:     false,
+			SuppressLogs:   false,
+			WithNetTracing: false,
+			DryRun:         false,
+			BailOnHTTPErr:  false,
+			// Consider connectivity successful even if the remote endpoint returns 404.
+			Accept4xxErrors: true,
+			// Let's try the fake port first, then continue verification with the proper
+			// port next.
+			Iteration:        1,
+			AllowLoopbackDNS: true,
+		})
+
+	t := NewGomegaWithT(test)
+	t.Expect(err).ToNot(HaveOccurred())
+	t.Expect(rv.TracedReqs).To(BeEmpty())
+	t.Expect(rv.ControllerReachable).To(BeTrue()) // Cloud in this case is google.com
 	t.Expect(rv.RemoteTempFailure).To(BeFalse())
 }

@@ -234,7 +234,7 @@ func (m *DpcManager) verifyDPC(ctx context.Context) (status types.DPCState) {
 	m.updateDNS()
 	withNetTrace := m.traceNextConnTest()
 	intfStatusMap, tracedProbes, err := m.ConnTester.TestConnectivity(
-		m.deviceNetStatus, withNetTrace)
+		m.deviceNetStatus, m.getAirGapModeConf(), withNetTrace)
 	// Use TestResults to update the DevicePortConfigList and DeviceNetworkStatus
 	// Note that the TestResults will at least have an updated timestamp
 	// for one of the ports.
@@ -408,7 +408,7 @@ func (m *DpcManager) testConnectivityToController(ctx context.Context) error {
 
 	withNetTrace := m.traceNextConnTest()
 	intfStatusMap, tracedProbes, err := m.ConnTester.TestConnectivity(
-		m.deviceNetStatus, withNetTrace)
+		m.deviceNetStatus, m.getAirGapModeConf(), withNetTrace)
 	dpc.UpdatePortStatusFromIntfStatusMap(intfStatusMap)
 	if err == nil {
 		dpc.State = types.DPCStateSuccess
@@ -619,6 +619,13 @@ func (m *DpcManager) waitForWwanUpdate() bool {
 	statusIsUpToDate := dpc.Key == m.wwanStatus.DPCKey &&
 		dpc.TimePriority.Equal(m.wwanStatus.DPCTimestamp)
 	return !statusIsUpToDate
+}
+
+func (m *DpcManager) getAirGapModeConf() conntester.AirGapMode {
+	return conntester.AirGapMode{
+		Enabled: m.airGapMode,
+		LocURL:  m.locURL,
+	}
 }
 
 // If error returned from connectivity test was wrapped into PortsNotReady,

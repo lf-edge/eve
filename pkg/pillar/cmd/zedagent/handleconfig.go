@@ -618,7 +618,7 @@ func decryptAuthContainer(getconfigCtx *getconfigContext, sendRV *controllerconn
 // We use the iteration argument to start at a different point each time.
 // Returns the configProcessingRetval and the traced requests if any.
 func requestConfigByURL(getconfigCtx *getconfigContext, url string,
-	isCompoundConfig bool, iteration int, withNetTracing bool) (
+	isCompoundConfig bool, iteration int, withNetTracing, expectNoConn bool) (
 	configProcessingRetval, []netdump.TracedNetRequest) {
 
 	log.Tracef("getLatestConfig(%s, %d)", url, iteration)
@@ -641,6 +641,7 @@ func requestConfigByURL(getconfigCtx *getconfigContext, url string,
 			// irrespective of bailOnHTTPErr)
 			BailOnHTTPErr: false,
 			Iteration:     iteration,
+			SuppressLogs:  expectNoConn,
 		})
 	if err != nil {
 		newCount := types.LedBlinkConnectingToController
@@ -658,7 +659,9 @@ func requestConfigByURL(getconfigCtx *getconfigContext, url string,
 		case types.SenderStatusForbidden:
 			log.Warnf("getLatestConfig : Device integrity token mismatch")
 		default:
-			log.Errorf("getLatestConfig  failed: %s", err)
+			if !expectNoConn {
+				log.Errorf("getLatestConfig  failed: %s", err)
+			}
 		}
 		switch rv.Status {
 		case types.SenderStatusCertInvalid:
@@ -872,7 +875,7 @@ func getLatestConfig(getconfigCtx *getconfigContext, iteration int,
 		devUUID, "config")
 
 	rv, tracedReqs := requestConfigByURL(getconfigCtx, url, false,
-		iteration, withNetTracing)
+		iteration, withNetTracing, getconfigCtx.zedagentCtx.airgapMode)
 
 	// Request configuration from the LOC
 	if needRequestLocConfig(getconfigCtx, rv) {
@@ -884,7 +887,7 @@ func getLatestConfig(getconfigCtx *getconfigContext, iteration int,
 		// get @obsoleteConfig return value (see parseConfig() for details)
 		// and we repeat on the next fetch attempt
 		rv, tracedReqs = requestConfigByURL(getconfigCtx, url, true,
-			iteration, withNetTracing)
+			iteration, withNetTracing, false)
 	}
 
 	return rv, tracedReqs
@@ -1193,6 +1196,10 @@ func publishZedAgentStatus(getconfigCtx *getconfigContext) {
 		VaultStatus:           ctx.vaultStatus,
 		PCRStatus:             ctx.pcrStatus,
 		VaultErr:              ctx.vaultErr,
+		AirgapMode:            ctx.airgapMode,
+	}
+	if getconfigCtx.sideController.locConfig != nil {
+		status.LOCUrl = getconfigCtx.sideController.locConfig.LocURL
 	}
 	pub := getconfigCtx.pubZedAgentStatus
 	pub.Publish(agentName, status)
