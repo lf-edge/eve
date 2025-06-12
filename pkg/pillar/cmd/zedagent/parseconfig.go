@@ -1267,7 +1267,7 @@ func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
 	sysAdapter *zconfig.SystemAdapter, version types.DevicePortConfigVersion,
 ) (ports []*types.NetworkPortConfig, err error) {
 
-	log.Functionf("XXX parseOneSystemAdapterConfig name %s lowerLayerName %s",
+	log.Functionf("parseOneSystemAdapterConfig name %s lowerLayerName %s",
 		sysAdapter.Name, sysAdapter.LowerLayerName)
 
 	// We check if any phyio has FreeUplink set. If so we operate
@@ -1358,7 +1358,7 @@ func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
 		if phyioFreeUplink || sysAdapter.FreeUplink {
 			portCost = 0
 		} else if oldController {
-			log.Warnf("XXX oldController and !FreeUplink; assume %s cost=1",
+			log.Warnf("oldController and !FreeUplink; assume %s cost=1",
 				sysAdapter.Name)
 			portCost = 1
 		}
@@ -1366,7 +1366,7 @@ func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
 
 	var isMgmt bool
 	if version < types.DPCIsMgmt {
-		log.Warnf("XXX old version; assuming %s isMgmt and cost=0",
+		log.Warnf("old version; assuming %s isMgmt and cost=0",
 			sysAdapter.Name)
 		// This should go away when cloud sends proper values
 		isMgmt = true
@@ -2586,9 +2586,9 @@ func parseAppNetAdapterConfig(appInstance *types.AppInstanceConfig,
 		adapterCfg.IfIdx = 0
 	}
 
-	// XXX remove? Debug?
+	// Debug logging for multiple network adapters
 	if len(appInstance.AppNetAdapterList) > 1 {
-		log.Functionf("XXX post sort %+v", appInstance.AppNetAdapterList)
+		log.Functionf("App network adapters after sorting: %+v", appInstance.AppNetAdapterList)
 	}
 }
 
@@ -3264,7 +3264,7 @@ func scheduleBackup(backup *zconfig.DeviceOpsCmd) {
 		return
 	}
 	log.Functionf("scheduleBackup: Applying updated config %v", backup)
-	log.Errorf("XXX handle Backup Config: %v", backup)
+	log.Errorf("handle Backup Config: %v", backup)
 }
 
 // user driven reboot/shutdown/poweroff command originating from controller or

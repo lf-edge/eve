@@ -1598,7 +1598,7 @@ func SendProtobuf(url string, buf *bytes.Buffer, size int64,
 		switch rv.HTTPResp.StatusCode {
 		// XXX Some controller gives a generic 400 which should be fixed
 		case http.StatusBadRequest:
-			log.Warnf("XXX SendProtoBuf: %s silently ignore code %d %s",
+			log.Warnf("SendProtoBuf: Ignoring bad request for %s - code %d %s (controller issue should be fixed)",
 				url, rv.HTTPResp.StatusCode, http.StatusText(rv.HTTPResp.StatusCode))
 			return nil
 

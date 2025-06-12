@@ -805,7 +805,7 @@ func updateStatusByBlob(ctx *volumemgrContext, sha ...string) {
 		}
 	}
 	if !found {
-		log.Warnf("XXX updateStatusByBlob(%s) NOT FOUND", sha)
+		log.Warnf("updateStatusByBlob(%s) NOT FOUND", sha)
 	}
 }
 
@@ -896,7 +896,7 @@ func updateContentTreeStatus(ctx *volumemgrContext, contentSha256 string, conten
 		}
 	}
 	if !found {
-		log.Warnf("XXX updateContentTreeStatus(%s) NOT FOUND", contentID)
+		log.Warnf("updateContentTreeStatus(%s) NOT FOUND", contentID)
 	}
 }
 
@@ -926,7 +926,7 @@ func updateVolumeStatus(ctx *volumemgrContext, volumeID uuid.UUID) bool {
 		}
 	}
 	if !found {
-		log.Warnf("XXX updateVolumeStatus(%s) NOT FOUND", volumeID)
+		log.Warnf("updateVolumeStatus(%s) NOT FOUND", volumeID)
 	}
 	return found
 }
@@ -956,6 +956,6 @@ func updateVolumeStatusFromContentID(ctx *volumemgrContext, contentID uuid.UUID)
 		}
 	}
 	if !found {
-		log.Warnf("XXX updateVolumeStatusFromContentID(%s) NOT FOUND", contentID)
+		log.Warnf("updateVolumeStatusFromContentID(%s) NOT FOUND", contentID)
 	}
 }
