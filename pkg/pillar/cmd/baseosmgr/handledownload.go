@@ -103,7 +103,7 @@ func installDownloadedObject(ctx *baseOsMgrContext, contentID uuid.UUID, finalOb
 	}
 	refID = ctsPtr.ReferenceID()
 	if refID == "" {
-		log.Fatalf("XXX no image ID for LOADED %s",
+		log.Fatalf("Content tree status is LOADED but missing required image ID for content %s",
 			contentID)
 	}
 	log.Functionf("For %s reference ID for LOADED: %s",

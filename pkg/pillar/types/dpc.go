@@ -370,12 +370,12 @@ func (config *DevicePortConfig) DoSanitize(log *base.LogObject, args DPCSanitize
 			port := &config.Ports[i]
 			if port.Phylabel == "" {
 				port.Phylabel = port.IfName
-				log.Functionf("XXX DoSanitize: Forcing Phylabel for %s ifname %s\n",
+				log.Functionf("DoSanitize: Setting missing Phylabel to match ifname for %s ifname %s",
 					config.Key, port.IfName)
 			}
 			if port.Logicallabel == "" {
 				port.Logicallabel = port.IfName
-				log.Functionf("XXX DoSanitize: Forcing Logicallabel for %s ifname %s\n",
+				log.Functionf("DoSanitize: Setting missing Logicallabel to match ifname for %s ifname %s",
 					config.Key, port.IfName)
 			}
 		}
