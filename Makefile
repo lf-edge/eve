@@ -1157,13 +1157,13 @@ endef
 images/out/rootfs-%.yml.in: images/rootfs.yml.in $(RESCAN_DEPS) | images/out
 	$(info [INFO] Building rootfs for target: $*)
 	$(info [INFO] Building $@ from $<)
-	$(QUIET)tools/compose-image-yml.sh -b $< -v "$(ROOTFS_VERSION)-$*-$(ZARCH)" -o $@ -h $(HV) $(call find-modifiers-rootfs,$*)
+	$(QUIET)tools/compose-image-yml.sh -b $< -v "$(ROOTFS_VERSION)-$*-$(ZARCH)" -o $@ -h $(HV) -p $(PLATFORM) $(call find-modifiers-rootfs,$*)
 
 .PRECIOUS: images/out/installer-%.yml.in
 images/out/installer-%.yml.in: images/installer.yml.in $(RESCAN_DEPS) | images/out
 	$(info [INFO] Building installer for target: $*)
 	$(info [INFO] Building $@ from $<)
-	$(QUIET)tools/compose-image-yml.sh -b $< -v "$(ROOTFS_VERSION)-$*-$(ZARCH)" -o $@ -h $(HV) $(call find-modifiers-installer,$*)
+	$(QUIET)tools/compose-image-yml.sh -b $< -v "$(ROOTFS_VERSION)-$*-$(ZARCH)" -o $@ -h $(HV) -p $(PLATFORM) $(call find-modifiers-installer,$*)
 
 # $(foreach mod,$(wildcard $(platform_dir)/*.yq $(platform_dir)/rootfs-*.yq $(platform_dir)/installer.yq), \
 # images/out/rootfs-$(notdir $(basename $(hv)))-$(notdir $(platform_dir))-$(subst installer-,,$(subst rootfs-,,$(notdir $(basename $(mod)))).yml.in))) \
