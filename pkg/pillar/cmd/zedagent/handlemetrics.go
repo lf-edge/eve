@@ -1013,14 +1013,14 @@ func hardwareHealthTimerTask(ctx *zedagentContext, handleChannel chan interface{
 	// Run a timer for extra safety to send hardwarehealth updates
 	// If we failed with the initial we have a short timer, otherwise
 	// the configurable one.
-	const shortTime = 120 // Short time: two minutes
+	const shortTimeSecs = 120 // Short time: two minutes
 	hardwareHealthInterval := ctx.globalConfig.GlobalValueInt(types.HardwareHealthInterval)
-	interval := time.Duration(hardwareHealthInterval) * time.Second
+	interval := time.Duration(hardwareHealthInterval)
 	if retry {
 		log.Noticef("Initial publishHardwareHealth failed; switching to short timer")
-		interval = shortTime
+		interval = shortTimeSecs
 	}
-	max := float64(interval)
+	max := float64(interval * time.Second)
 	min := max * 0.3
 	ticker := flextimer.NewRangeTicker(time.Duration(min), time.Duration(max))
 	// Return handle to caller
@@ -1049,7 +1049,7 @@ func hardwareHealthTimerTask(ctx *zedagentContext, handleChannel chan interface{
 				retry = false
 			} else if !retry && !success {
 				log.Noticef("Hardwarehealth failed; switching to short timer")
-				updateTaskTimer(shortTime, ticker)
+				updateTaskTimer(shortTimeSecs, ticker)
 				retry = true
 			}
 		case <-stillRunning.C:
