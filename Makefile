@@ -242,10 +242,10 @@ QEMU_ACCEL__$(UNAME_S)_riscv64=-machine virt -cpu rv64
 QEMU_ACCEL__$(UNAME_S)_COMMON=-device virtio-rng-pci
 QEMU_ACCEL:=$(QEMU_ACCEL_$(ACCEL:%=Y)_$(UNAME_S)_$(ZARCH)) $(QEMU_ACCEL_$(ACCEL:%=Y)_$(UNAME_S)_COMMON)
 
-QEMU_OPTS_NET1=192.168.1.0/24
-QEMU_OPTS_NET1_FIRST_IP=192.168.1.10
-QEMU_OPTS_NET2=192.168.2.0/24
-QEMU_OPTS_NET2_FIRST_IP=192.168.2.10
+IPS_NET1=192.168.1.0/24
+IPS_NET1_FIRST_IP=192.168.1.10
+IPS_NET2=192.168.2.0/24
+IPS_NET2_FIRST_IP=192.168.2.10
 
 QEMU_MEMORY?=4096
 QEMU_EVE_SERIAL?=31415926
@@ -265,7 +265,7 @@ QEMU_OPTS_TPM=$(QEMU_OPTS_TPM_$(TPM:%=Y)_$(ZARCH))
 ifneq ($(TAP),)
 QEMU_OPTS_eth1=-netdev tap,id=eth1,ifname=$(TAP),script="" -device virtio-net-pci,netdev=eth1,csum=off,guest_csum=off,romfile=""
 else
-QEMU_OPTS_eth1=-netdev user,id=eth1,net=$(QEMU_OPTS_NET2),dhcpstart=$(QEMU_OPTS_NET2_FIRST_IP) -device virtio-net-pci,netdev=eth1,romfile=""
+QEMU_OPTS_eth1=-netdev user,id=eth1,net=$(IPS_NET2),dhcpstart=$(IPS_NET2_FIRST_IP) -device virtio-net-pci,netdev=eth1,romfile=""
 endif
 
 QEMU_OPTS_amd64=-smbios type=1,serial=$(QEMU_EVE_SERIAL)
@@ -275,7 +275,7 @@ QEMU_OPTS_COMMON= -m $(QEMU_MEMORY) -smp 4 -display none $(QEMU_OPTS_BIOS) \
         -serial mon:stdio      \
 	-global ICH9-LPC.noreboot=false -watchdog-action reset \
         -rtc base=utc,clock=rt \
-        -netdev user,id=eth0,net=$(QEMU_OPTS_NET1),dhcpstart=$(QEMU_OPTS_NET1_FIRST_IP),hostfwd=tcp::$(SSH_PORT)-:22$(QEMU_TFTP_OPTS) -device virtio-net-pci,netdev=eth0,romfile="" \
+        -netdev user,id=eth0,net=$(IPS_NET1),dhcpstart=$(IPS_NET1_FIRST_IP),hostfwd=tcp::$(SSH_PORT)-:22$(QEMU_TFTP_OPTS) -device virtio-net-pci,netdev=eth0,romfile="" \
 	$(QEMU_OPTS_eth1) \
         -device nec-usb-xhci,id=xhci \
         -qmp unix:$(CURDIR)/qmp.sock,server,wait=off
@@ -624,8 +624,8 @@ run-live-vb:
 	VBoxManage storagectl $(VB_VM_NAME) --name "SATA Controller" --add SATA --controller IntelAhci --bootable on --hostiocache on
 	VBoxManage storageattach $(VB_VM_NAME)  --storagectl "SATA Controller" --port 0 --device 0 --type hdd --medium $(CURRENT_DIR)/live.vdi
 	# Create NAT networks if they don't exist
-	VBoxManage natnetwork add --netname natnet1 --network "$(QEMU_OPTS_NET1)" --enable 2>/dev/null || true
-	VBoxManage natnetwork add --netname natnet2 --network "$(QEMU_OPTS_NET1)" --enable 2>/dev/null || true
+	VBoxManage natnetwork add --netname natnet1 --network "$(IPS_NET1)" --enable 2>/dev/null || true
+	VBoxManage natnetwork add --netname natnet2 --network "$(IPS_NET2)" --enable 2>/dev/null || true
 	VBoxManage modifyvm $(VB_VM_NAME) --nic1 natnetwork --nat-network1 natnet1 --cableconnected1 on --natpf1 "ssh,tcp,,$(SSH_PORT),,22"
 	VBoxManage modifyvm $(VB_VM_NAME) --nic2 natnetwork --nat-network2 natnet2 --cableconnected2 on
 	VBoxManage setextradata $(VB_VM_NAME) "VBoxInternal/Devices/pcbios/0/Config/DmiSystemSerial" "$(QEMU_EVE_SERIAL)"
