@@ -26,7 +26,7 @@ const (
 	stackFile      = "reboot-stack"
 	rebootImage    = "reboot-image"
 	bootReasonFile = "boot-reason"
-	readSize16k    = 16 << 10  // From files in /persist
+	readSize16k    = 16 << 10  // From files in PersistDir
 	readSize512k   = 512 << 10 // Kernel dmesg
 )
 
@@ -171,7 +171,7 @@ func dumpStacks(log *base.LogObject, fileName string) {
 		os.O_WRONLY|os.O_CREATE|os.O_SYNC|os.O_TRUNC, 0755)
 	if err == nil {
 		for _, stack := range stackArray {
-			// This goes to /persist/agentdebug/<agentname>/sigusr1 file
+			// This goes to PersistDebugDir/<agentname>/sigusr1 file
 			_, err := sigUsr1File.WriteString(stack + "\n\n")
 			if err != nil {
 				log.Errorf("could not write to %s: %+v", fileName, err)
@@ -208,7 +208,7 @@ func DumpAllStacks(log *base.LogObject, agentName string) {
 		os.O_WRONLY|os.O_CREATE|os.O_SYNC|os.O_TRUNC, 0755)
 	if err == nil {
 		for _, stack := range stackArray {
-			// This goes to /persist/agentdebug/<agentname>/sigusr1 file
+			// This goes to PersistDebugDir/<agentname>/sigusr1 file
 			sigUsr1File.WriteString(stack + "\n\n")
 		}
 		sigUsr1File.Close()
@@ -247,8 +247,8 @@ func printStack(log *base.LogObject, agentName string, agentPid int) {
 	RebootStack(log, stacks, agentName, agentPid)
 }
 
-// RebootReason writes a reason string in /persist/reboot-reason, including agentName and date
-// It also appends to /persist/log/reboot-reason.log
+// RebootReason writes a reason string in PersistDir/reboot-reason, including agentName and date
+// It also appends to PersistLogDir/reboot-reason.log
 // If the bootReasonFile is not present it will write the bootReason enum
 // there as a string. That ensures that if we have a e.g., a log.Fatal followed
 // by watchdog we retain the fatal.
@@ -267,7 +267,7 @@ func RebootReason(reason string, bootReason types.BootReason, agentName string,
 	}
 	// If we already wrote a bootReason file we append to
 	// the rebootReason file otherwise we truncate and write.
-	_, err := os.Stat("/persist/" + bootReasonFile)
+	_, err := os.Stat(types.PersistDir + "/" + bootReasonFile)
 	if err != nil {
 		// Already failed; append subsequent info to rebootReason
 		err = printToFile(filename, reason)
@@ -284,7 +284,7 @@ func RebootReason(reason string, bootReason types.BootReason, agentName string,
 		}
 	}
 	// Append to the log file
-	filename = "/persist/log/" + reasonFile + ".log"
+	filename = types.PersistLogDir + "/" + reasonFile + ".log"
 	err = printToFile(filename, reason)
 	if err != nil {
 		// Note: can not use log here since we are called from a log hook!
@@ -316,7 +316,7 @@ func RebootReason(reason string, bootReason types.BootReason, agentName string,
 		}
 	}
 
-	filename = "/persist/" + rebootImage
+	filename = types.PersistDir + "/" + rebootImage
 	curPart := EveCurrentPartition()
 	err = overWriteFile(filename, curPart)
 	if err != nil {
@@ -326,7 +326,7 @@ func RebootReason(reason string, bootReason types.BootReason, agentName string,
 	syscall.Sync()
 
 	if bootReason != types.BootReasonNone {
-		filename = "/persist/" + bootReasonFile
+		filename = types.PersistDir + "/" + bootReasonFile
 		brString := bootReason.String()
 		b, _ := fileutils.ReadWithMaxSize(nil, filename, readSize16k)
 		if len(b) != 0 {
@@ -343,8 +343,8 @@ func RebootReason(reason string, bootReason types.BootReason, agentName string,
 	}
 }
 
-// RebootStack writes stack in /persist/reboot-stack
-// and appends to /persist/log/reboot-stack.log
+// RebootStack writes stack in PersistDir/reboot-stack
+// and appends to PersistLogDir/reboot-stack.log
 // XXX remove latter? Can grow unbounded.
 func RebootStack(log *base.LogObject, stacks string, agentName string, agentPid int) {
 	filename := fmt.Sprintf("%s/%s", types.PersistDir, stackFile)
@@ -353,7 +353,7 @@ func RebootStack(log *base.LogObject, stacks string, agentName string, agentPid 
 	if err != nil {
 		log.Errorf("overWriteFile failed %s\n", err)
 	}
-	filename = "/persist/log/" + stackFile + ".log"
+	filename = types.PersistDir + "/log/" + stackFile + ".log"
 	err = printToFile(filename, fmt.Sprintf("%v\n", stacks))
 	if err != nil {
 		log.Errorf("printToFile failed %s\n", err)
@@ -381,7 +381,7 @@ func GetRebootReason(log *base.LogObject) (string, time.Time, string) {
 	return reason, ts, stack
 }
 
-// GetBootReason returns the BootReason enum, which is stored as a string in /persist, together with its timestamp
+// GetBootReason returns the BootReason enum, which is stored as a string in PersistDir, together with its timestamp
 func GetBootReason(log *base.LogObject) (types.BootReason, time.Time) {
 	reasonFilename := fmt.Sprintf("%s/%s", types.PersistDir, bootReasonFile)
 	reason, ts, _ := fileutils.StatAndRead(log, reasonFilename, readSize16k)
@@ -424,7 +424,7 @@ func overWriteFile(filename string, str string) error {
 	return nil
 }
 
-// DiscardRebootReason removes any reason and stack from /persist/
+// DiscardRebootReason removes any reason and stack from PersistDir
 func DiscardRebootReason(log *base.LogObject) {
 	reasonFilename := fmt.Sprintf("%s/%s", types.PersistDir, reasonFile)
 	stackFilename := fmt.Sprintf("%s/%s", types.PersistDir, stackFile)
