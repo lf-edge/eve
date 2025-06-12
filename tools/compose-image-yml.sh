@@ -9,6 +9,7 @@ yq() {
 process-image-template() {
     local out_templ_path="$1"
     local eve_version="$2"
+    local eve_platform="$3"
 
     local flags
     local -a bits
@@ -72,6 +73,7 @@ main() {
     local out_templ_path=""
     local eve_version=""
     local eve_hv=""
+    local eve_platform=""
 
     while getopts "b:o:v:h:p:" opt; do
         case ${opt} in
@@ -118,11 +120,11 @@ main() {
 
     patch_hv "${eve_hv}" "${out_templ_path}"
 
-    process-image-template "${out_templ_path}" "${eve_version}"
+    process-image-template "${out_templ_path}" "${eve_version}" "${eve_platform}"
 }
 
 usage() {
-    echo "Usage: $0 -b <base template> -o <output template> -v <eve version> -h <eve hv> <modifiers>"
+    echo "Usage: $0 -b <base template> -o <output template> -v <eve version> -h <eve hv> -p <platform> <modifiers>"
     exit 1
 }
 
