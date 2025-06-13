@@ -30,7 +30,7 @@ Radio silence implementation is split between 3 EVE microservices:
   is greater than the timestamp of the last seen radio configuration change. If it is the case, it copies
   `ChangeRequestedAt` from `ZedAgentStatus.RadioSilence` to `DeviceNetworkStatus.RadioSilence`,
   sets `ChangeInProgress` to `true` and starts switching radios of wireless devices ON/OFF.
-  For WiFi adapters, this is done by directly [calling the rfkill command](../devicenetwork/wlan.go).
+  For WiFi adapters, this is done by directly [calling the rfkill command](../dpcreconciler/linuxitems/wlan.go).
   For cellular modems, NIM updates and publishes new `WwanConfig` via pubsub, which is received
   by `mmagent` of the `wwan` microservice. NIM then waits for the status update from `wwan`
   published through pubsub topic `WwanStatus`. To avoid NIM processing obsolete `WwanStatus`,

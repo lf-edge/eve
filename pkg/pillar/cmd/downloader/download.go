@@ -15,8 +15,8 @@ import (
 	"github.com/lf-edge/eve-libs/nettrace"
 	"github.com/lf-edge/eve-libs/zedUpload"
 	"github.com/lf-edge/eve-libs/zedUpload/types"
+	"github.com/lf-edge/eve/pkg/pillar/controllerconn"
 	"github.com/lf-edge/eve/pkg/pillar/netdump"
-	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 )
 
 func loadDownloadedParts(locFilename string) types.DownloadedParts {
@@ -109,8 +109,8 @@ func download(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 		}
 	}
 	// check for proxies on the selected management port interface
-	proxyLookupURL := zedcloud.IntfLookupProxyCfg(log, &ctx.deviceNetworkStatus, ifname, downloadURL, trType)
-	proxyURL, err := zedcloud.LookupProxy(log, &ctx.deviceNetworkStatus, ifname, proxyLookupURL)
+	proxyLookupURL := controllerconn.IntfLookupProxyCfg(log, &ctx.deviceNetworkStatus, ifname, downloadURL, trType)
+	proxyURL, err := controllerconn.LookupProxy(log, &ctx.deviceNetworkStatus, ifname, proxyLookupURL)
 	if err != nil {
 		log.Errorf("Lookup Proxy failed: %s", err)
 		return "", cancel, tracedReq, err
@@ -313,8 +313,8 @@ func objectMetadata(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 	// Configure the network client.
 	dEndPoint.WithSrcIP(ipSrc)
 	// check for proxies on the selected management port interface
-	proxyLookupURL := zedcloud.IntfLookupProxyCfg(log, &ctx.deviceNetworkStatus, ifname, downloadURL, trType)
-	proxyURL, err := zedcloud.LookupProxy(log, &ctx.deviceNetworkStatus, ifname, proxyLookupURL)
+	proxyLookupURL := controllerconn.IntfLookupProxyCfg(log, &ctx.deviceNetworkStatus, ifname, downloadURL, trType)
+	proxyURL, err := controllerconn.LookupProxy(log, &ctx.deviceNetworkStatus, ifname, proxyLookupURL)
 	if err == nil && proxyURL != nil {
 		log.Functionf("%s: Using proxy %s", trType, proxyURL.String())
 		dEndPoint.WithProxy(proxyURL)

@@ -19,6 +19,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/cipher"
 	"github.com/lf-edge/eve/pkg/pillar/conntester"
+	"github.com/lf-edge/eve/pkg/pillar/controllerconn"
 	"github.com/lf-edge/eve/pkg/pillar/dpcmanager"
 	"github.com/lf-edge/eve/pkg/pillar/dpcreconciler"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
@@ -26,7 +27,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
-	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 )
@@ -67,7 +67,7 @@ type nim struct {
 	stdoutPtr *bool
 
 	// NIM components
-	connTester     *conntester.ZedcloudConnectivityTester
+	connTester     *conntester.ControllerConnectivityTester
 	dpcManager     *dpcmanager.DpcManager
 	dpcReconciler  dpcreconciler.DpcReconciler
 	networkMonitor netmonitor.NetworkMonitor
@@ -93,14 +93,14 @@ type nim struct {
 	pubDevicePortConfigList  pubsub.Publication
 	pubCipherBlockStatus     pubsub.Publication
 	pubDeviceNetworkStatus   pubsub.Publication
-	pubZedcloudMetrics       pubsub.Publication
+	pubAgentMetrics          pubsub.Publication
 	pubCipherMetrics         pubsub.Publication
 	pubCachedResolvedIPs     pubsub.Publication
 	pubWwanConfig            pubsub.Publication
 
 	// Metrics
-	zedcloudMetrics *zedcloud.AgentMetrics
-	cipherMetrics   *cipher.AgentMetrics
+	agentMetrics  *controllerconn.AgentMetrics
+	cipherMetrics *cipher.AgentMetrics
 
 	// Configuration
 	globalConfig       types.ConfigItemValueMap
@@ -145,7 +145,7 @@ func Run(ps *pubsub.PubSub, logger *logrus.Logger, log *base.LogObject, argument
 func (n *nim) init() (err error) {
 
 	n.cipherMetrics = cipher.NewAgentMetrics(agentName)
-	n.zedcloudMetrics = zedcloud.NewAgentMetrics()
+	n.agentMetrics = controllerconn.NewAgentMetrics()
 
 	if err = n.initPublications(); err != nil {
 		return err
@@ -159,10 +159,11 @@ func (n *nim) init() (err error) {
 		Log: n.Log,
 	}
 	n.networkMonitor = linuxNetMonitor
-	n.connTester = &conntester.ZedcloudConnectivityTester{
-		Log:       n.Log,
-		AgentName: agentName,
-		Metrics:   n.zedcloudMetrics,
+	n.connTester = &conntester.ControllerConnectivityTester{
+		Log:            n.Log,
+		AgentName:      agentName,
+		Metrics:        n.agentMetrics,
+		NetworkMonitor: n.networkMonitor,
 	}
 	n.dpcReconciler = &dpcreconciler.LinuxDpcReconciler{
 		Log:                  n.Log,
@@ -187,7 +188,7 @@ func (n *nim) init() (err error) {
 		PubDummyDevicePortConfig: n.pubDummyDevicePortConfig,
 		PubDevicePortConfigList:  n.pubDevicePortConfigList,
 		PubDeviceNetworkStatus:   n.pubDeviceNetworkStatus,
-		ZedcloudMetrics:          n.zedcloudMetrics,
+		AgentMetrics:             n.agentMetrics,
 	}
 	return nil
 }
@@ -392,7 +393,7 @@ func (n *nim) run(ctx context.Context) (err error) {
 			if err != nil {
 				n.Log.Error(err)
 			}
-			err = n.zedcloudMetrics.Publish(n.Log, n.pubZedcloudMetrics, "global")
+			err = n.agentMetrics.Publish(n.Log, n.pubAgentMetrics, "global")
 			if err != nil {
 				n.Log.Error(err)
 			}
@@ -435,7 +436,7 @@ func (n *nim) initPublications() (err error) {
 		return err
 	}
 
-	n.pubZedcloudMetrics, err = n.PubSub.NewPublication(
+	n.pubAgentMetrics, err = n.PubSub.NewPublication(
 		pubsub.PublicationOptions{
 			AgentName: agentName,
 			TopicType: types.MetricsMap{},

@@ -12,7 +12,6 @@ import (
 
 	"github.com/lf-edge/eve-libs/depgraph"
 	"github.com/lf-edge/eve/pkg/pillar/base"
-	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
 	"github.com/lf-edge/eve/pkg/pillar/dpcreconciler/genericitems"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
@@ -39,7 +38,7 @@ func (wc WifiConfig) String() string {
 
 // Name returns the wpa_supplicant.conf file path as the name.
 func (w Wlan) Name() string {
-	return devicenetwork.WpaFilename
+	return types.WpaFilename
 }
 
 // Label is not defined.
@@ -117,19 +116,19 @@ func (c *WlanConfigurator) NeedsRecreate(oldItem, newItem depgraph.Item) (recrea
 }
 
 func (c *WlanConfigurator) installWifiConfig(config []WifiConfig) error {
-	if _, err := os.Stat(devicenetwork.RunWlanDir); os.IsNotExist(err) {
-		err = os.Mkdir(devicenetwork.RunWlanDir, 600)
+	if _, err := os.Stat(types.RunWlanDir); os.IsNotExist(err) {
+		err = os.Mkdir(types.RunWlanDir, 600)
 		if err != nil {
 			err = fmt.Errorf("failed to create directory %s: %v",
-				devicenetwork.RunWlanDir, err)
+				types.RunWlanDir, err)
 			c.Log.Error(err)
 			return err
 		}
 	}
-	tmpfile, err := os.CreateTemp(devicenetwork.RunWlanDir, devicenetwork.WpaTempname)
+	tmpfile, err := os.CreateTemp(types.RunWlanDir, types.WpaTempname)
 	if err != nil {
 		err = fmt.Errorf("failed to create temporary file %s/%s: %v",
-			devicenetwork.RunWlanDir, devicenetwork.WpaTempname, err)
+			types.RunWlanDir, types.WpaTempname, err)
 		c.Log.Error(err)
 		return err
 	}
@@ -196,9 +195,9 @@ func (c *WlanConfigurator) installWifiConfig(config []WifiConfig) error {
 		c.Log.Error(err)
 		return err
 	}
-	if err := os.Rename(tmpfile.Name(), devicenetwork.WpaFilename); err != nil {
+	if err := os.Rename(tmpfile.Name(), types.WpaFilename); err != nil {
 		err = fmt.Errorf("failed to rename file %s to %s: %v\n",
-			tmpfile.Name(), devicenetwork.WpaFilename, err)
+			tmpfile.Name(), types.WpaFilename, err)
 		c.Log.Error(err)
 		return err
 	}

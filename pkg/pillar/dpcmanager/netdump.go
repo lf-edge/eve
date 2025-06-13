@@ -47,13 +47,13 @@ func (m *DpcManager) traceNextConnTest() bool {
 
 // Publish netdump containing traces of executed connectivity probes.
 func (m *DpcManager) publishNetdump(
-	cloudConnWorks bool, tracedConnProbes []netdump.TracedNetRequest) {
+	controllerConnWorks bool, tracedConnProbes []netdump.TracedNetRequest) {
 	netDumper := m.netDumper
 	if netDumper == nil {
 		return
 	}
 	var topic string
-	if cloudConnWorks {
+	if controllerConnWorks {
 		topic = m.netDumpOKTopic()
 	} else {
 		topic = m.netDumpFailTopic()

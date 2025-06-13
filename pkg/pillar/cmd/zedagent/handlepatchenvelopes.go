@@ -99,13 +99,12 @@ func publishPatchEnvelopeStatus(ctx *zedagentContext, patchInfo *info.ZInfoPatch
 	if buf == nil {
 		log.Fatal("malloc error")
 	}
-	size := int64(proto.Size(infoMsg))
 
 	const bailOnHTTPErr = false
 	const withNetTrace = false
 	key := "publishPatchEnvelopeStatus:" + patchInfo.Id + "v" + patchInfo.Version
 
 	const forcePeriodic = false
-	queueInfoToDest(ctx, dest, key, buf, size, bailOnHTTPErr, withNetTrace,
+	queueInfoToDest(ctx, dest, key, buf, bailOnHTTPErr, withNetTrace,
 		forcePeriodic, info.ZInfoTypes_ZiPatchEnvelope)
 }

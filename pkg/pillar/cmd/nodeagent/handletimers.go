@@ -61,7 +61,7 @@ func handleFallbackOnCloudDisconnect(ctxPtr *nodeagentContext) {
 	fallbackLimit := ctxPtr.globalConfig.GlobalValueInt(types.FallbackIfCloudGoneTime)
 	timePassed := ctxPtr.timeTickCount - ctxPtr.lastControllerReachableTime
 	if timePassed > fallbackLimit {
-		errStr := fmt.Sprintf("Exceeded fallback outage for cloud connectivity %d by %d seconds; rebooting\n",
+		errStr := fmt.Sprintf("Exceeded fallback outage for controller connectivity %d by %d seconds; rebooting\n",
 			fallbackLimit, timePassed-fallbackLimit)
 		log.Error(errStr)
 		scheduleNodeOperation(ctxPtr, errStr, types.BootReasonFallback,
@@ -78,7 +78,7 @@ func handleResetOnCloudDisconnect(ctxPtr *nodeagentContext) {
 	resetLimit := ctxPtr.globalConfig.GlobalValueInt(types.ResetIfCloudGoneTime)
 	timePassed := ctxPtr.timeTickCount - ctxPtr.lastControllerReachableTime
 	if timePassed > resetLimit {
-		errStr := fmt.Sprintf("Exceeded outage for cloud connectivity %d by %d seconds; rebooting\n",
+		errStr := fmt.Sprintf("Exceeded outage for controller connectivity %d by %d seconds; rebooting\n",
 			resetLimit, timePassed-resetLimit)
 		log.Error(errStr)
 		scheduleNodeOperation(ctxPtr, errStr, types.BootReasonDisconnect,
@@ -99,7 +99,7 @@ func handleUpgradeTestValidation(ctxPtr *nodeagentContext) {
 		log.Functionf("CurPart: %s, Upgrade Validation Test Complete",
 			ctxPtr.curPart)
 		resetTestStartTime(ctxPtr)
-		initiateBaseOsZedCloudTestComplete(ctxPtr)
+		initiateBaseOsControllerTestComplete(ctxPtr)
 		publishNodeAgentStatus(ctxPtr)
 	}
 }

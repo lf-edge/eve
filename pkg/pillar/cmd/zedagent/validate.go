@@ -11,7 +11,7 @@ import (
 )
 
 func readValidateConfig(validateFile string) (bool, *zconfig.EdgeDevConfig) {
-	config, _, err := readSavedProtoMessageConfig(zedcloudCtx, "https://",
+	config, _, err := readSavedProtoMessageConfig(ctrlClient, "https://",
 		validateFile)
 	if err != nil {
 		fmt.Printf("getconfig: %v\n", err)

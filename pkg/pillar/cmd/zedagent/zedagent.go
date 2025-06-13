@@ -41,10 +41,10 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/controllerconn"
 	"github.com/lf-edge/eve/pkg/pillar/netdump"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 
 	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
@@ -162,7 +162,22 @@ type zedagentContext struct {
 	subClusterUpdateStatus pubsub.Subscription
 	subKubeClusterInfo     pubsub.Subscription
 
-	zedcloudMetrics       *zedcloud.AgentMetrics
+	// All controller HTTP requests which can't be dropped and send
+	// should be repeated in case of a transmission error are added to
+	// this queue.
+	deferredEventQueue *controllerconn.DeferredQueue
+	// All periodic controller HTTP requests are added to this queue,
+	// sending errors of which can be ignored. This means even the
+	// request has failed, it will be removed from the queue, so there
+	// is no need to `kick` this queue once connectivity has restored.
+	deferredPeriodicQueue *controllerconn.DeferredQueue
+	// All periodic LOC HTTP requests are added to this queue,
+	// sending errors of which can be ignored. This means even the
+	// request has failed, it will be removed from the queue, so there
+	// is no need to `kick` this queue once connectivity has restored.
+	deferredLOCPeriodicQueue *controllerconn.DeferredQueue
+
+	agentMetrics          *controllerconn.AgentMetrics
 	fatalFlag             bool // From command line arguments
 	hangFlag              bool // From command line arguments
 	rebootCmd             bool
@@ -260,7 +275,7 @@ func (zedagentCtx *zedagentContext) AddAgentSpecificCLIFlags(flagSet *flag.FlagS
 
 var logger *logrus.Logger
 var log *base.LogObject
-var zedcloudCtx *zedcloud.ZedCloudContext
+var ctrlClient *controllerconn.Client
 
 // Destination bitset as unsigned integer
 type destinationBitset uint
@@ -284,30 +299,37 @@ const (
 // @forcePeriodic forces all deferred requests to be added
 // to the deferred queue and errors will be ignored.
 func queueInfoToDest(ctx *zedagentContext, dest destinationBitset,
-	key string, buf *bytes.Buffer, size int64, bailOnHTTPErr,
+	key string, buf *bytes.Buffer, bailOnHTTPErr,
 	withNetTracing, forcePeriodic bool, itemType interface{}) {
 
 	locConfig := ctx.getconfigCtx.sideController.locConfig
 
 	if dest&ControllerDest != 0 {
-		url := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API,
+		url := controllerconn.URLPathString(serverNameAndPort, ctrlClient.UsingV2API(),
 			devUUID, "info")
 		// Ignore all errors in case of periodic
 		ignoreErr := forcePeriodic
-		deferredCtx := zedcloudCtx.DeferredEventCtx
+		deferredQueue := ctx.deferredEventQueue
 		if forcePeriodic {
-			deferredCtx = zedcloudCtx.DeferredPeriodicCtx
+			deferredQueue = ctx.deferredPeriodicQueue
 		}
-		deferredCtx.SetDeferred(key, buf, size, url,
-			bailOnHTTPErr, withNetTracing, ignoreErr, itemType)
+		deferredQueue.SetDeferred(key, buf, url, itemType,
+			controllerconn.DeferredItemOpts{
+				BailOnHTTPErr:  bailOnHTTPErr,
+				WithNetTracing: withNetTracing,
+				IgnoreErr:      ignoreErr,
+			})
 	}
 	if dest&LOCDest != 0 && locConfig != nil {
-		url := zedcloud.URLPathString(locConfig.LocURL, zedcloudCtx.V2API,
+		url := controllerconn.URLPathString(locConfig.LocURL, ctrlClient.UsingV2API(),
 			devUUID, "info")
-		// Ignore errors for all the LOC info messages
-		const ignoreErr = true
-		zedcloudCtx.DeferredLOCPeriodicCtx.SetDeferred(key, buf, size, url,
-			bailOnHTTPErr, withNetTracing, ignoreErr, itemType)
+		ctx.deferredLOCPeriodicQueue.SetDeferred(key, buf, url, itemType,
+			controllerconn.DeferredItemOpts{
+				BailOnHTTPErr:  bailOnHTTPErr,
+				WithNetTracing: withNetTracing,
+				// Ignore errors for all the LOC info messages
+				IgnoreErr: true,
+			})
 	}
 }
 
@@ -423,10 +445,10 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	reinitNetdumper(zedagentCtx)
 
 	// We know our own UUID; prepare for communication with controller
-	zedcloudCtx = initZedcloudContext(getconfigCtx,
+	ctrlClient = initZedcloudContext(getconfigCtx,
 		zedagentCtx.globalConfig.GlobalValueInt(types.NetworkSendTimeout),
 		zedagentCtx.globalConfig.GlobalValueInt(types.NetworkDialTimeout),
-		zedagentCtx.zedcloudMetrics)
+		zedagentCtx.agentMetrics)
 
 	if parse != "" {
 		res, config := readValidateConfig(parse)
@@ -446,15 +468,15 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 
 	// Timer for deferred sends of info messages
-	zedcloudCtx.DeferredEventCtx = zedcloud.CreateDeferredCtx(zedcloudCtx,
+	zedagentCtx.deferredEventQueue = controllerconn.CreateDeferredQueue(log, ctrlClient,
 		zedagentCtx.ps, agentName, "DeferredEvent",
 		warningTime, errorTime,
 		getDeferredSentHandlerFunction(zedagentCtx),
 		getDeferredPriorityFunctions()...)
-	zedcloudCtx.DeferredPeriodicCtx = zedcloud.CreateDeferredCtx(zedcloudCtx,
+	zedagentCtx.deferredPeriodicQueue = controllerconn.CreateDeferredQueue(log, ctrlClient,
 		zedagentCtx.ps, agentName, "DeferredPeriodic",
 		warningTime, errorTime, nil)
-	zedcloudCtx.DeferredLOCPeriodicCtx = zedcloud.CreateDeferredCtx(zedcloudCtx,
+	zedagentCtx.deferredLOCPeriodicQueue = controllerconn.CreateDeferredQueue(log, ctrlClient,
 		zedagentCtx.ps, agentName, "DeferredLOCPeriodic",
 		warningTime, errorTime, nil)
 	// XXX defer this until we have some config from cloud or saved copy
@@ -595,7 +617,7 @@ func waitUntilInitializedFromNodeAgentStatus(ctx *zedagentContext, running *time
 }
 
 func (zedagentCtx *zedagentContext) init() {
-	zedagentCtx.zedcloudMetrics = zedcloud.NewAgentMetrics()
+	zedagentCtx.agentMetrics = controllerconn.NewAgentMetrics()
 	zedagentCtx.specMap = types.NewConfigItemSpecMap()
 	zedagentCtx.globalConfig = *types.DefaultConfigItemValueMap()
 	zedagentCtx.globalStatus.ConfigItems = make(
@@ -762,7 +784,7 @@ func waitUntilDNSReady(zedagentCtx *zedagentContext, stillRunning *time.Ticker) 
 				// within minute. We don't bother to kick the periodic
 				// queue, because failed requests will be dropped from
 				// the queue anyway.
-				zedcloudCtx.DeferredEventCtx.KickTimerWithinMinute()
+				zedagentCtx.deferredEventQueue.KickTimerWithinMinute()
 				dnsCtx.triggerHandleDeferred = false
 			}
 
@@ -877,7 +899,7 @@ func mainEventLoop(zedagentCtx *zedagentContext, stillRunning *time.Ticker) {
 				// within minute. We don't bother to kick the periodic
 				// queue, because failed requests will be dropped from
 				// the queue anyway.
-				zedcloudCtx.DeferredEventCtx.KickTimerWithinMinute()
+				zedagentCtx.deferredEventQueue.KickTimerWithinMinute()
 				dnsCtx.triggerHandleDeferred = false
 			}
 			if dnsCtx.triggerRadioPOST {
@@ -2348,8 +2370,8 @@ func handleDNSImpl(ctxArg interface{}, key string,
 	*deviceNetworkStatus = status
 	ctx.DNSinitialized = true
 
-	if zedcloudCtx.V2API {
-		zedcloud.UpdateTLSProxyCerts(zedcloudCtx)
+	if ctrlClient.UsingV2API() {
+		ctrlClient.UpdateTLSProxyCerts()
 	}
 
 	log.Functionf("handleDNSImpl done for %s", key)
@@ -2705,9 +2727,8 @@ func handleNodeAgentStatusDelete(ctxArg interface{}, key string,
 	triggerPublishDevInfo(ctx)
 }
 
-func getDeferredSentHandlerFunction(ctx *zedagentContext) *zedcloud.SentHandlerFunction {
-	var function zedcloud.SentHandlerFunction
-	function = func(itemType interface{}, data *bytes.Buffer, result types.SenderStatus, traces []netdump.TracedNetRequest) {
+func getDeferredSentHandlerFunction(ctx *zedagentContext) controllerconn.SentHandlerFunction {
+	return func(itemType interface{}, data *bytes.Buffer, result types.SenderStatus, traces []netdump.TracedNetRequest) {
 		if el, ok := itemType.(info.ZInfoTypes); ok && len(traces) > 0 {
 			for i := range traces {
 				reqName := traces[i].RequestName
@@ -2769,11 +2790,10 @@ func getDeferredSentHandlerFunction(ctx *zedagentContext) *zedcloud.SentHandlerF
 			}
 		}
 	}
-	return &function
 }
 
-func getDeferredPriorityFunctions() []zedcloud.TypePriorityCheckFunction {
-	var functions []zedcloud.TypePriorityCheckFunction
+func getDeferredPriorityFunctions() []controllerconn.TypePriorityCheckFunction {
+	var functions []controllerconn.TypePriorityCheckFunction
 	functions = append(functions, func(itemType interface{}) bool {
 		if _, ok := itemType.(attest.ZAttestReqType); ok {
 			return true
@@ -2812,15 +2832,15 @@ func handleOnboardStatusImpl(ctxArg interface{}, key string,
 	log.Noticef("Device UUID changed from %s to %s", devUUID, status.DeviceUUID)
 	oldUUID := devUUID
 	devUUID = status.DeviceUUID
-	if zedcloudCtx != nil {
-		zedcloudCtx.DevUUID = devUUID
+	if ctrlClient != nil {
+		ctrlClient.DevUUID = devUUID
 	}
 	// Make sure trigger function isn't going to trip on a nil pointer
 	if ctx.getconfigCtx != nil && ctx.getconfigCtx.zedagentCtx != nil &&
 		ctx.getconfigCtx.subAppInstanceStatus != nil {
-		if zedcloudCtx != nil && oldUUID != nilUUID {
+		if oldUUID != nilUUID {
 			// remove old deferred attest if exists
-			zedcloudCtx.DeferredEventCtx.RemoveDeferred("attest:" + oldUUID.String())
+			ctx.deferredEventQueue.RemoveDeferred("attest:" + oldUUID.String())
 			if ctx.cipherCtx != nil && ctx.cipherCtx.triggerEdgeNodeCerts != nil {
 				// Re-publish certificates with new device UUID
 				triggerEdgeNodeCertEvent(ctx.getconfigCtx.zedagentCtx)

@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/eriknordmark/ipinfo"
-	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
+	"github.com/lf-edge/eve/pkg/pillar/controllerconn"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
@@ -167,8 +167,8 @@ func (m *DpcManager) updateDNS() {
 		// Result is updating the Pacfile
 		// We always redo this since we don't know what has changed
 		// from the previous DeviceNetworkStatus.
-		err = devicenetwork.CheckAndGetNetworkProxy(
-			m.Log, &m.deviceNetStatus, port.IfName, m.ZedcloudMetrics)
+		err = controllerconn.CheckAndGetNetworkProxy(
+			m.Log, &m.deviceNetStatus, port.IfName, m.AgentMetrics)
 		if err != nil {
 			err = fmt.Errorf("updateDNS: CheckAndGetNetworkProxy failed for %s: %v",
 				port.IfName, err)

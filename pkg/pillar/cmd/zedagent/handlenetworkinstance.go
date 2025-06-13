@@ -14,8 +14,8 @@ import (
 	"github.com/lf-edge/eve-api/go/flowlog"
 	zinfo "github.com/lf-edge/eve-api/go/info"   // XXX need to stop using
 	zmet "github.com/lf-edge/eve-api/go/metrics" // zinfo and zmet here
+	"github.com/lf-edge/eve/pkg/pillar/controllerconn"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -194,12 +194,11 @@ func prepareAndPublishNetworkInstanceInfoMsg(ctx *zedagentContext,
 	if buf == nil {
 		log.Fatal("malloc error")
 	}
-	size := int64(proto.Size(infoMsg))
 
 	//We queue the message and then get the highest priority message to send.
 	//If there are no failures and defers we'll send this message,
 	//but if there is a queue we'll retry sending the highest priority message.
-	queueInfoToDest(ctx, dest, uuid, buf, size, true, false, false,
+	queueInfoToDest(ctx, dest, uuid, buf, true, false, false,
 		zinfo.ZInfoTypes_ZiNetworkInstance)
 }
 
@@ -429,15 +428,17 @@ func publishFlowMessage(flowMsg *flowlog.FlowMessage, iteration int) error {
 		return err
 	}
 	buf := bytes.NewBuffer(data)
-	size := int64(proto.Size(flowMsg))
 
-	flowlogURL := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, devUUID, "flowlog")
-	const bailOnHTTPErr = false
-	const withNetTrace = false
-	ctxWork, cancel := zedcloud.GetContextForAllIntfFunctions(zedcloudCtx)
+	flowlogURL := controllerconn.URLPathString(
+		serverNameAndPort, ctrlClient.UsingV2API(), devUUID, "flowlog")
+	ctxWork, cancel := ctrlClient.GetContextForAllIntfFunctions()
 	defer cancel()
-	rv, err := zedcloud.SendOnAllIntf(ctxWork, zedcloudCtx, flowlogURL,
-		size, buf, iteration, bailOnHTTPErr, withNetTrace)
+	rv, err := ctrlClient.SendOnAllIntf(ctxWork, flowlogURL, buf,
+		controllerconn.RequestOptions{
+			WithNetTracing: false,
+			BailOnHTTPErr:  false,
+			Iteration:      iteration,
+		})
 	if err != nil {
 		err = fmt.Errorf("publishFlowMessage: SendOnAllIntf failed with %d: %s",
 			rv.Status, err)

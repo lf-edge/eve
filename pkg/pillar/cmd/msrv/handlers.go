@@ -19,11 +19,11 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/lf-edge/eve/pkg/pillar/controllerconn"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	"github.com/lf-edge/eve/pkg/pillar/utils/netutils"
-	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 )
 
 // Struct to generate the output JSON for Network Status and Metrics
@@ -351,7 +351,7 @@ func (msrv *Msrv) handleWWANMetrics() func(http.ResponseWriter, *http.Request) {
 	}
 }
 
-func (msrv *Msrv) handleSigner(zedcloudCtx *zedcloud.ZedCloudContext) func(http.ResponseWriter, *http.Request) {
+func (msrv *Msrv) handleSigner(ctrlClient *controllerconn.Client) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		msrv.Log.Tracef("signerHandler.ServeHTTP")
 
@@ -387,8 +387,7 @@ func (msrv *Msrv) handleSigner(zedcloudCtx *zedcloud.ZedCloudContext) func(http.
 			return
 		}
 
-		resp, err := zedcloud.AddAuthentication(zedcloudCtx,
-			bytes.NewBuffer(payload), false)
+		resp, err := ctrlClient.AddAuthentication(bytes.NewBuffer(payload), false)
 		if err != nil {
 			msg := fmt.Sprintf("Failed to AddAuthentication: %v", err)
 			msrv.Log.Error(msg)

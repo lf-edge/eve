@@ -576,7 +576,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 			}
 
 		// Run stillRunning since we waiting for zedagent to deliver
-		// PhysicalIO which depends on cloud connectivity
+		// PhysicalIO which depends on controller connectivity
 		case <-stillRunning.C:
 		}
 		ps.StillRunning(agentName, warningTime, errorTime)

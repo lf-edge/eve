@@ -19,7 +19,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
-	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	uuid "github.com/satori/go.uuid"
 	"github.com/shirou/gopsutil/host"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -144,8 +143,8 @@ func postLocalAppInfo(ctx *getconfigContext) *profile.LocalAppCmdList {
 		for _, srv := range servers {
 			fullURL := srv.localServerAddr + localAppInfoURLPath
 			appCmds := &profile.LocalAppCmdList{}
-			resp, err := zedcloud.SendLocalProto(
-				zedcloudCtx, fullURL, bridgeName, srv.bridgeIP, localInfo, appCmds)
+			resp, err := ctrlClient.SendLocalProto(
+				fullURL, bridgeName, srv.bridgeIP, localInfo, appCmds)
 			if err != nil {
 				errList = append(errList, fmt.Sprintf("SendLocalProto: %v", err))
 				continue
@@ -643,9 +642,8 @@ func postLocalDevInfo(ctx *getconfigContext) *profile.LocalDevCmd {
 		for _, srv := range servers {
 			fullURL := srv.localServerAddr + localDevInfoURLPath
 			devCmd := &profile.LocalDevCmd{}
-			resp, err := zedcloud.SendLocalProto(
-				zedcloudCtx, fullURL, bridgeName, srv.bridgeIP,
-				localInfo, devCmd)
+			resp, err := ctrlClient.SendLocalProto(
+				fullURL, bridgeName, srv.bridgeIP, localInfo, devCmd)
 			if err != nil {
 				errList = append(errList, fmt.Sprintf("SendLocalProto: %v", err))
 				continue

@@ -13,7 +13,6 @@ import (
 	"github.com/lf-edge/eve-api/go/info"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -147,7 +146,6 @@ func publishLocationToDest(ctx *zedagentContext, locInfo *info.ZInfoLocation,
 	if buf == nil {
 		log.Fatal("malloc error")
 	}
-	size := int64(proto.Size(infoMsg))
 
 	const bailOnHTTPErr = false
 	const withNetTrace = false
@@ -156,7 +154,7 @@ func publishLocationToDest(ctx *zedagentContext, locInfo *info.ZInfoLocation,
 	// Even for the controller destination we can't stall the queue on error,
 	// because this is recurring call, so set @forcePeriodic to true
 	forcePeriodic := true
-	queueInfoToDest(ctx, dest, key, buf, size, bailOnHTTPErr, withNetTrace,
+	queueInfoToDest(ctx, dest, key, buf, bailOnHTTPErr, withNetTrace,
 		forcePeriodic, info.ZInfoTypes_ZiLocation)
 }
 
@@ -195,8 +193,8 @@ func publishLocationToLocalServer(ctx *getconfigContext, locInfo *info.ZInfoLoca
 	for bridgeName, servers := range srvMap {
 		for _, srv := range servers {
 			fullURL := srv.localServerAddr + lpsLocationURLPath
-			resp, err := zedcloud.SendLocalProto(
-				zedcloudCtx, fullURL, bridgeName, srv.bridgeIP, locInfo, nil)
+			resp, err := ctrlClient.SendLocalProto(
+				fullURL, bridgeName, srv.bridgeIP, locInfo, nil)
 			ctx.sideController.lpsLastPublishedLocation = time.Now()
 			if err != nil {
 				errList = append(errList, fmt.Sprintf("SendLocalProto: %v", err))
