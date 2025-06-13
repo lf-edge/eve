@@ -19,6 +19,42 @@ longhorn_install() {
     return 0
 }
 
+Longhorn_uninstall() {
+    logmsg "longhorn_uninstall ${LONGHORN_VERSION} beginning"
+    while ! kubectl apply -f /etc/longhorn_uninstall_settings.yaml; do
+        sleep 5
+    done
+    logmsg "longhorn_uninstall: set uninstall setting"
+
+    while ! kubectl create -f https://raw.githubusercontent.com/longhorn/longhorn/${LONGHORN_VERSION}/uninstall/uninstall.yaml; do
+        sleep 5
+    done
+    logmsg "longhorn_uninstall job wait begun"
+
+    # A clean idle system can take ~1 min, allow for some delay
+    i=1
+    while [ $i -lt 1000 ]; do
+        success=$(kubectl get job/longhorn-uninstall -n longhorn-system -o jsonpath='{.status.succeeded}')
+        if [ "$success" = "1" ]; then
+                logmsg "longhorn_uninstall job success"
+                break
+        fi
+        sleep 5
+        i=$((i+1))
+    done
+    logmsg "longhorn_uninstall job wait stopped"
+
+    # Can return failure for non-fatal conditions
+    kubectl delete -f https://raw.githubusercontent.com/longhorn/longhorn/${LONGHORN_VERSION}/deploy/longhorn.yaml
+    logmsg "longhorn_uninstall deploy deleted"
+
+    kubectl delete -f https://raw.githubusercontent.com/longhorn/longhorn/${LONGHORN_VERSION}/uninstall/uninstall.yaml
+    logmsg "longhorn_uninstall job deletion"
+
+    rm /var/lib/longhorn_initialized
+    return 0
+}
+
 longhorn_is_ready() {
     lhStatus=$(kubectl -n longhorn-system get daemonsets -o json | jq '.items[].status | .numberReady==.desiredNumberScheduled' | tr -d '\n')
     if [ "$lhStatus" != "truetruetrue" ]; then
