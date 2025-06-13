@@ -8,6 +8,7 @@ import (
 
 	"github.com/lf-edge/eve-api/go/info"
 	"google.golang.org/protobuf/types/known/timestamppb"
+	corev1 "k8s.io/api/core/v1"
 )
 
 // KubeNodeStatus - Enum for the status of a Kubernetes node
@@ -419,4 +420,36 @@ func (ksi KubeStorageInfo) ZKubeStorageInfo() *info.KubeStorageInfo {
 		iKsi.Volumes = append(iKsi.Volumes, vol.ZKubeVolumeInfo())
 	}
 	return iKsi
+}
+
+// KubeServiceInfo represents information about a Kubernetes Service
+type KubeServiceInfo struct {
+	Name           string             // Name of the service
+	Namespace      string             // Namespace of the service
+	Protocol       corev1.Protocol    // Protocol used by the service (TCP, UDP, etc.)
+	Port           int32              // Port number for the service
+	NodePort       int32              // NodePort number for NodePort services
+	Type           corev1.ServiceType // Type of the service (ClusterIP, NodePort, LoadBalancer, etc.)
+	LoadBalancerIP string             // IP address assigned to LoadBalancer service
+	ACEenabled     bool               // Authorized Cluster Endpoint access is enabled
+}
+
+// KubeIngressInfo represents information about a Kubernetes Ingress
+type KubeIngressInfo struct {
+	Name        string             // Name of the Ingress resource
+	Namespace   string             // Namespace of the Ingress resource
+	Hostname    string             // e.g. "example.com"
+	Path        string             // e.g. "/api/v1"
+	PathType    string             // "Prefix" or "Exact"
+	Protocol    string             // "http" or "https"
+	Service     string             // Target service name
+	ServicePort int32              // Target service port
+	ServiceType corev1.ServiceType // Type of the target service (LoadBalancer, NodePort, etc.)
+	IngressIP   []string           // LoadBalancer IPs if available
+}
+
+// KubeUserServices - Collected User services from kubernetes
+type KubeUserServices struct {
+	UserService []KubeServiceInfo
+	UserIngress []KubeIngressInfo
 }
