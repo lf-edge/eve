@@ -29,6 +29,7 @@ COPY --from=build /out/ /
 COPY cluster-init.sh /usr/bin/
 COPY cluster-utils.sh /usr/bin/
 COPY cgconfig.conf /etc
+COPY utils.sh /usr/bin/
 
 # upgrades
 COPY cluster-update.sh /usr/bin/
@@ -48,6 +49,7 @@ COPY multus-daemonset.yaml /etc
 COPY kubevirt-operator.yaml /etc
 COPY kubevirt-features.yaml /etc
 COPY external-boot-image.tar /etc/
+COPY kubevirt-utils.sh /usr/bin/
 
 # Longhorn config
 COPY longhorn-utils.sh /usr/bin/
@@ -55,6 +57,7 @@ COPY lh-cfg-v1.6.3.yaml /etc/
 COPY iscsid.conf /etc/iscsi/
 COPY longhorn-generate-support-bundle.sh /usr/bin/
 COPY nsmounter /usr/bin/
+COPY longhorn_uninstall_settings.yaml /etc/
 
 # descheduler
 COPY descheduler-utils.sh /usr/bin/

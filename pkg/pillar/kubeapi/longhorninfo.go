@@ -20,8 +20,18 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
+const longhornNamespace = "longhorn-system"
+
 // LonghornVolumeSizeDetails returns the provisionedBytes and allocatedBytes size values for a longhorn volume
 func LonghornVolumeSizeDetails(longhornVolumeName string) (provisionedBytes uint64, allocatedBytes uint64, err error) {
+	apiExists, err := longhornAPIExists()
+	if err != nil {
+		return 0, 0, err
+	}
+	if !apiExists {
+		return 0, 0, nil
+	}
+
 	config, err := GetKubeConfig()
 	if err != nil {
 		return 0, 0, fmt.Errorf("LonghornVolumeSizeDetails can't get kubeconfig %v", err)
@@ -36,7 +46,7 @@ func LonghornVolumeSizeDetails(longhornVolumeName string) (provisionedBytes uint
 	shortContext, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	lhVol, err := lhClient.LonghornV1beta2().Volumes("longhorn-system").Get(shortContext, longhornVolumeName, metav1.GetOptions{})
+	lhVol, err := lhClient.LonghornV1beta2().Volumes(longhornNamespace).Get(shortContext, longhornVolumeName, metav1.GetOptions{})
 	if err != nil || lhVol == nil {
 		return 0, 0, fmt.Errorf("LonghornVolumeSizeDetails can't get lh vol err:%v", err)
 	}
@@ -53,7 +63,7 @@ func min(a, b types.ServiceStatus) types.ServiceStatus {
 
 // PopulateKVIFromPVCName uses the longhorn api to retrieve volume and replica health
 // to be sent out to the controller as info messages
-func PopulateKVIFromPVCName(kvi *types.KubeVolumeInfo) (*types.KubeVolumeInfo, error) {
+func populateKVIFromPVCName(kvi *types.KubeVolumeInfo) (*types.KubeVolumeInfo, error) {
 	config, err := GetKubeConfig()
 	if err != nil {
 		return kvi, fmt.Errorf("PopulateKVIFromPVCName can't get kubeconfig %v", err)
@@ -86,7 +96,7 @@ func PopulateKVIFromPVCName(kvi *types.KubeVolumeInfo) (*types.KubeVolumeInfo, e
 	}
 	lhVolName := pvc.Spec.VolumeName
 
-	lhVol, err := lhClient.LonghornV1beta2().Volumes("longhorn-system").Get(context.Background(), lhVolName, metav1.GetOptions{})
+	lhVol, err := lhClient.LonghornV1beta2().Volumes(longhornNamespace).Get(context.Background(), lhVolName, metav1.GetOptions{})
 	if err != nil {
 		return kvi, fmt.Errorf("PopulateKVIFromPVCName can't get lh vol err:%v", err)
 	}
@@ -125,7 +135,7 @@ func PopulateKVIFromPVCName(kvi *types.KubeVolumeInfo) (*types.KubeVolumeInfo, e
 		kvi.State = types.StorageVolumeStateDeleting
 	}
 
-	replicas, err := lhClient.LonghornV1beta2().Replicas("longhorn-system").List(context.Background(), metav1.ListOptions{
+	replicas, err := lhClient.LonghornV1beta2().Replicas(longhornNamespace).List(context.Background(), metav1.ListOptions{
 		LabelSelector: "longhornvolume=" + lhVolName,
 	})
 	if err != nil {
@@ -149,7 +159,7 @@ func PopulateKVIFromPVCName(kvi *types.KubeVolumeInfo) (*types.KubeVolumeInfo, e
 			kviRep.Status = types.StorageVolumeReplicaStatusOnline
 			kviRep.OwnerNode = lhReplica.Status.OwnerID
 
-			engine, err := lhClient.LonghornV1beta2().Engines("longhorn-system").Get(context.Background(), replicaEngineName, metav1.GetOptions{})
+			engine, err := lhClient.LonghornV1beta2().Engines(longhornNamespace).Get(context.Background(), replicaEngineName, metav1.GetOptions{})
 			if err != nil {
 				return kvi, fmt.Errorf("PopulateKVIFromPVCName can't get replica engine: %v", err)
 			}
@@ -234,7 +244,7 @@ func getDsServiceStatus(ds appsv1.DaemonSet) (time.Time, types.ServiceStatus) {
 
 	// get all the pods for that
 	//kubectl -n longhorn-system get pods -l app=longhorn-manager
-	pods, err := clientset.CoreV1().Pods("longhorn-system").List(context.Background(), metav1.ListOptions{
+	pods, err := clientset.CoreV1().Pods(longhornNamespace).List(context.Background(), metav1.ListOptions{
 		LabelSelector: "app=" + matchLabel,
 	})
 	if err != nil {
@@ -264,6 +274,14 @@ func getDsServiceStatus(ds appsv1.DaemonSet) (time.Time, types.ServiceStatus) {
 // will be sent out to the controller as info messages
 func PopulateKSI() (types.KubeStorageInfo, error) {
 	ksi := types.KubeStorageInfo{}
+	apiExists, err := longhornAPIExists()
+	if err != nil {
+		return ksi, err
+	}
+	if !apiExists {
+		return ksi, nil
+	}
+
 	config, err := GetKubeConfig()
 	if err != nil {
 		return ksi, fmt.Errorf("PopulateKSI can't get kubeconfig %v", err)
@@ -274,7 +292,7 @@ func PopulateKSI() (types.KubeStorageInfo, error) {
 		return ksi, fmt.Errorf("PopulateKSI can't get clientset %v", err)
 	}
 
-	daemonsets, err := clientset.AppsV1().DaemonSets("longhorn-system").List(context.Background(), metav1.ListOptions{})
+	daemonsets, err := clientset.AppsV1().DaemonSets(longhornNamespace).List(context.Background(), metav1.ListOptions{})
 	if err != nil {
 		return ksi, fmt.Errorf("PopulateKSI failed to list longhorn daemonsets: %v", err)
 	}
@@ -291,7 +309,7 @@ func PopulateKSI() (types.KubeStorageInfo, error) {
 	}
 	for _, pvc := range pvcs.Items {
 		kvi := &types.KubeVolumeInfo{Name: pvc.ObjectMeta.Name}
-		kvi, err := PopulateKVIFromPVCName(kvi)
+		kvi, err := populateKVIFromPVCName(kvi)
 		if err != nil {
 			return ksi, fmt.Errorf("PopulateKSI can't get kvi: %v", err)
 		}
@@ -304,6 +322,14 @@ func PopulateKSI() (types.KubeStorageInfo, error) {
 
 // LonghornReplicaList returns the replica for a given longhorn volume which is hosted on a given kubernetes node
 func LonghornReplicaList(ownerNodeName string, longhornVolName string) (*lhv1beta2.ReplicaList, error) {
+	apiExists, err := longhornAPIExists()
+	if err != nil {
+		return &lhv1beta2.ReplicaList{}, err
+	}
+	if !apiExists {
+		return &lhv1beta2.ReplicaList{}, nil
+	}
+
 	config, err := GetKubeConfig()
 	if err != nil {
 		return nil, fmt.Errorf("LonghornReplicaList can't get versioned config: %v", err)
@@ -321,11 +347,33 @@ func LonghornReplicaList(ownerNodeName string, longhornVolName string) (*lhv1bet
 	if longhornVolName != "" {
 		labelSelectors = append(labelSelectors, "longhornvolume="+longhornVolName)
 	}
-	replicas, err := lhClient.LonghornV1beta2().Replicas("longhorn-system").List(context.Background(), metav1.ListOptions{
+	replicas, err := lhClient.LonghornV1beta2().Replicas(longhornNamespace).List(context.Background(), metav1.ListOptions{
 		LabelSelector: strings.Join(labelSelectors, ","),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("LonghornReplicaList labelSelector:%s can't get replicas: %v", strings.Join(labelSelectors, ","), err)
 	}
 	return replicas, nil
+}
+
+// longhornAPIExists will check for longhorn components installed and set
+// a flag in this module to gate all API access.  In some configurations
+// it is possible that longhorn is not installed but this intended configuration
+// is not known until runtime at some time after first boot.  In the reverse situation
+// it is possible there can be a long delay at runtime until longhorn installation
+// has completed.
+func longhornAPIExists() (bool, error) {
+	cs, err := GetClientSet()
+	if err != nil {
+		return false, err
+	}
+	// If the longhorn-system namespace exists then we should expect the longhorn api endpoint is available.
+	ns, err := cs.CoreV1().Namespaces().Get(context.Background(), longhornNamespace, metav1.GetOptions{})
+	if err != nil {
+		return false, err
+	}
+	if ns == nil {
+		return false, nil
+	}
+	return true, nil
 }
