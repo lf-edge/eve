@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
+	"github.com/lf-edge/eve/pkg/pillar/controllerconn"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
@@ -91,11 +91,11 @@ func (n *nim) runResolverCacheForController() {
 	}
 }
 
-func (n *nim) doDNSQuery(hostname string) []devicenetwork.DNSResponse {
-	dnsResponse, errs := devicenetwork.ResolveWithPortsLambda(
+func (n *nim) doDNSQuery(hostname string) []controllerconn.DNSResponse {
+	dnsResponse, errs := controllerconn.ResolveWithPortsLambda(
 		hostname,
 		n.dpcManager.GetDNS(),
-		devicenetwork.ResolveWithSrcIP,
+		controllerconn.ResolveWithSrcIP,
 	)
 	if len(errs) > 0 {
 		n.Log.Warnf("doDNSQuery failed: %+v", errs)

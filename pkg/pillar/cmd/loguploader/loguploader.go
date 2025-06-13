@@ -18,12 +18,12 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/controllerconn"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	utils "github.com/lf-edge/eve/pkg/pillar/utils/file"
-	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 )
@@ -70,14 +70,14 @@ type loguploaderContext struct {
 	agentbase.AgentBase
 	devUUID                uuid.UUID
 	globalConfig           *types.ConfigItemValueMap
-	zedcloudCtx            *zedcloud.ZedCloudContext
+	ctrlClient             *controllerconn.Client
 	subDeviceNetworkStatus pubsub.Subscription
 	subGlobalConfig        pubsub.Subscription
 	subAppInstConfig       pubsub.Subscription
 	subCachedResolvedIPs   pubsub.Subscription
 	usableAddrCount        int
 	metrics                types.NewlogMetrics
-	zedcloudMetrics        *zedcloud.AgentMetrics
+	agentMetrics           *controllerconn.AgentMetrics
 	serverNameAndPort      string
 	metricsPub             pubsub.Publication
 	enableFastUpload       bool
@@ -101,8 +101,8 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	log = logArg
 
 	loguploaderCtx := loguploaderContext{
-		globalConfig:    types.DefaultConfigItemValueMap(),
-		zedcloudMetrics: zedcloud.NewAgentMetrics(),
+		globalConfig: types.DefaultConfigItemValueMap(),
+		agentMetrics: controllerconn.NewAgentMetrics(),
 	}
 	agentbase.Init(&loguploaderCtx, logger, log, agentName,
 		agentbase.WithPidFile(),
@@ -316,7 +316,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		case <-publishCloudTimer.C:
 			start := time.Now()
 			log.Tracef("publishCloudTimer cloud metrics at at %s", time.Now().String())
-			err := loguploaderCtx.zedcloudMetrics.Publish(log, pubCloud, "global")
+			err := loguploaderCtx.agentMetrics.Publish(log, pubCloud, "global")
 			if err != nil {
 				log.Errorln(err)
 			}
@@ -446,25 +446,26 @@ func sendCtxInit(ps *pubsub.PubSub, ctx *loguploaderContext) {
 	// Preserve port
 	ctx.serverNameAndPort = strings.TrimSpace(string(bytes))
 
-	//set newlog url
-	zedcloudCtx := zedcloud.NewContext(log, zedcloud.ContextOptions{
-		DevNetworkStatus:  deviceNetworkStatus,
-		SendTimeout:       ctx.globalConfig.GlobalValueInt(types.NetworkSendTimeout),
-		DialTimeout:       ctx.globalConfig.GlobalValueInt(types.NetworkDialTimeout),
-		AgentMetrics:      ctx.zedcloudMetrics,
-		ResolverCacheFunc: ctx.getCachedResolvedIPs,
-		Serial:            hardware.GetProductSerial(log),
-		SoftSerial:        hardware.GetSoftSerial(log),
-		AgentName:         agentName,
+	SendTimeoutSecs := ctx.globalConfig.GlobalValueInt(types.NetworkSendTimeout)
+	DialTimeoutSecs := ctx.globalConfig.GlobalValueInt(types.NetworkDialTimeout)
+	ctrlClient := controllerconn.NewClient(log, controllerconn.ClientOptions{
+		DeviceNetworkStatus: deviceNetworkStatus,
+		NetworkSendTimeout:  time.Duration(SendTimeoutSecs) * time.Second,
+		NetworkDialTimeout:  time.Duration(DialTimeoutSecs) * time.Second,
+		AgentMetrics:        ctx.agentMetrics,
+		ResolverCacheFunc:   ctx.getCachedResolvedIPs,
+		DevSerial:           hardware.GetProductSerial(log),
+		DevSoftSerial:       hardware.GetSoftSerial(log),
+		DevUUID:             ctx.devUUID,
+		AgentName:           agentName,
 	})
-	zedcloudCtx.DevUUID = ctx.devUUID
 
-	ctx.zedcloudCtx = &zedcloudCtx
-	log.Functionf("sendCtxInit: Get Device Serial %s, Soft Serial %s", zedcloudCtx.DevSerial,
-		zedcloudCtx.DevSoftSerial)
+	ctx.ctrlClient = ctrlClient
+	log.Functionf("sendCtxInit: Get Device Serial %s, Soft Serial %s", ctrlClient.DevSerial,
+		ctrlClient.DevSoftSerial)
 
 	// XXX need to redo this since the root certificates can change when DeviceNetworkStatus changes
-	err = zedcloud.UpdateTLSConfig(&zedcloudCtx, nil)
+	err = ctrlClient.UpdateTLSConfig(nil)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -497,8 +498,8 @@ func handleDNSImp(ctxArg interface{}, key string, statusArg interface{}) {
 	ctx.usableAddrCount = newAddrCount // inc both ipv4 and ipv6 of mgmt intfs
 
 	// update proxy certs if configured
-	if ctx.zedcloudCtx != nil && ctx.zedcloudCtx.V2API {
-		zedcloud.UpdateTLSProxyCerts(ctx.zedcloudCtx)
+	if ctx.ctrlClient != nil && ctx.ctrlClient.UsingV2API() {
+		ctx.ctrlClient.UpdateTLSProxyCerts()
 	}
 	log.Tracef("handleDNSModify done for %s; %d usable",
 		key, newAddrCount)
@@ -535,7 +536,7 @@ func checkAppLogMetrics(ctx *loguploaderContext) {
 	}
 
 	// get the url set in the log metric-map
-	urlstats := ctx.zedcloudMetrics.GetURLsWithSubstr(log, "apps/instanceid")
+	urlstats := ctx.agentMetrics.GetURLsWithSubstr(log, "apps/instanceid")
 	log.Tracef("checkAppLogMetrics: app config len %d, log metrics url length %d", len(ai), len(urlstats))
 
 	// get a removal set
@@ -556,7 +557,7 @@ func checkAppLogMetrics(ctx *loguploaderContext) {
 	}
 	log.Tracef("checkAppLogMetrics: list of remove urls %v", rmlist)
 	for _, url := range rmlist {
-		ctx.zedcloudMetrics.RemoveURLMetrics(log, url)
+		ctx.agentMetrics.RemoveURLMetrics(log, url)
 	}
 }
 
@@ -776,30 +777,31 @@ func sendToCloud(ctx *loguploaderContext, data []byte, iter int, fName string, f
 			log.Fatal(err)
 		}
 		appUUID := fStr[0]
-		if ctx.zedcloudCtx.V2API {
+		if ctx.ctrlClient.UsingV2API() {
 			appLogURL = fmt.Sprintf("apps/instanceid/%s/newlogs", appUUID)
 		} else {
 			// XXX temp support for adam controller
 			appLogURL = fmt.Sprintf("apps/instanceid/id/%s/newlogs", appUUID)
 		}
-		logsURL = zedcloud.URLPathString(ctx.serverNameAndPort, ctx.zedcloudCtx.V2API,
+		logsURL = controllerconn.URLPathString(ctx.serverNameAndPort, ctx.ctrlClient.UsingV2API(),
 			ctx.devUUID, appLogURL)
 	} else {
-		logsURL = zedcloud.URLPathString(ctx.serverNameAndPort, ctx.zedcloudCtx.V2API,
+		logsURL = controllerconn.URLPathString(ctx.serverNameAndPort, ctx.ctrlClient.UsingV2API(),
 			ctx.devUUID, "newlogs")
 	}
 	startTime := time.Now()
 
-	ctxWork, cancel := zedcloud.GetContextForAllIntfFunctions(ctx.zedcloudCtx)
+	ctxWork, cancel := ctx.ctrlClient.GetContextForAllIntfFunctions()
 	defer cancel()
 	// if resp statusOK, then sent success
 	// otherwise have to retry the same file later:
 	//  - if resp is nil, or it's 'StatusServiceUnavailable', mark as serviceUnavailabe
 	//  - if resp is 4xx, the file maybe moved to 'failtosend' directory later
-	const bailOnHTTPErr = false
-	const withNetTrace = false
-	rv, err := zedcloud.SendOnAllIntf(
-		ctxWork, ctx.zedcloudCtx, logsURL, size, buf, iter, bailOnHTTPErr, withNetTrace)
+	rv, err := ctx.ctrlClient.SendOnAllIntf(ctxWork, logsURL, buf, controllerconn.RequestOptions{
+		WithNetTracing: false,
+		BailOnHTTPErr:  false,
+		Iteration:      iter,
+	})
 	if rv.HTTPResp != nil {
 		if rv.HTTPResp.StatusCode == http.StatusOK ||
 			rv.HTTPResp.StatusCode == http.StatusCreated {

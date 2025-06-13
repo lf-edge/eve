@@ -13,7 +13,6 @@ import (
 	"github.com/lf-edge/eve-api/go/profile"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -191,8 +190,8 @@ func getRadioConfig(ctx *getconfigContext, radioStatus *profile.RadioStatus) *pr
 		for _, srv := range servers {
 			fullURL := srv.localServerAddr + radioURLPath
 			radioConfig := &profile.RadioConfig{}
-			resp, err := zedcloud.SendLocalProto(
-				zedcloudCtx, fullURL, bridgeName, srv.bridgeIP, radioStatus, radioConfig)
+			resp, err := ctrlClient.SendLocalProto(
+				fullURL, bridgeName, srv.bridgeIP, radioStatus, radioConfig)
 			if err != nil {
 				errList = append(errList, fmt.Sprintf("SendLocalProto: %v", err))
 				continue

@@ -701,13 +701,12 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext, dest destinationBitset) {
 	if buf == nil {
 		log.Fatal("malloc error")
 	}
-	size := int64(proto.Size(ReportInfo))
 
 	//We queue the message and then get the highest priority message to send.
 	//If there are no failures and defers we'll send this message,
 	//but if there is a queue we'll retry sending the highest priority message.
 	withNetTracing := traceNextInfoReq(ctx)
-	queueInfoToDest(ctx, dest, deviceUUID, buf, size, true, withNetTracing, false,
+	queueInfoToDest(ctx, dest, deviceUUID, buf, true, withNetTracing, false,
 		info.ZInfoTypes_ZiDevice)
 }
 
@@ -754,12 +753,11 @@ func PublishAppInstMetaDataToZedCloud(ctx *zedagentContext,
 	if buf == nil {
 		log.Fatal("malloc error")
 	}
-	size := int64(proto.Size(ReportInfo))
 
 	//We queue the message and then get the highest priority message to send.
 	//If there are no failures and defers we'll send this message,
 	//but if there is a queue we'll retry sending the highest priority message.
-	queueInfoToDest(ctx, dest, deferKey, buf, size, true, false, false,
+	queueInfoToDest(ctx, dest, deferKey, buf, true, false, false,
 		info.ZInfoTypes_ZiAppInstMetaData)
 }
 

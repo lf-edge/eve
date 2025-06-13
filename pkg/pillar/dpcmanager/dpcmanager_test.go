@@ -24,6 +24,7 @@ import (
 	"github.com/lf-edge/eve-libs/reconciler"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/conntester"
+	"github.com/lf-edge/eve/pkg/pillar/controllerconn"
 	dpcmngr "github.com/lf-edge/eve/pkg/pillar/dpcmanager"
 	dpcrec "github.com/lf-edge/eve/pkg/pillar/dpcreconciler"
 	generic "github.com/lf-edge/eve/pkg/pillar/dpcreconciler/genericitems"
@@ -31,7 +32,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/netmonitor"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 )
 
 var (
@@ -108,7 +108,7 @@ func initTest(test *testing.T) *GomegaWithT {
 		PubDummyDevicePortConfig: pubDummyDPC,
 		PubDevicePortConfigList:  pubDPCList,
 		PubDeviceNetworkStatus:   pubDNS,
-		ZedcloudMetrics:          zedcloud.NewAgentMetrics(),
+		AgentMetrics:             controllerconn.NewAgentMetrics(),
 	}
 	ctx := reconciler.MockRun(context.Background())
 	if err := dpcManager.Init(ctx); err != nil {

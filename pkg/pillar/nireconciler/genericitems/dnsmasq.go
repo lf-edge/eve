@@ -18,7 +18,7 @@ import (
 	dg "github.com/lf-edge/eve-libs/depgraph"
 	"github.com/lf-edge/eve-libs/reconciler"
 	"github.com/lf-edge/eve/pkg/pillar/base"
-	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
+	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
 	"github.com/lf-edge/eve/pkg/pillar/utils/netutils"
 	uuid "github.com/satori/go.uuid"
@@ -365,7 +365,7 @@ func (c *DnsmasqConfigurator) Create(ctx context.Context, item dg.Item) error {
 	if err := ensureDir(c.Log, c.dnsmasqDNSHostsDir(dnsmasq.Name())); err != nil {
 		return err
 	}
-	if err := ensureDir(c.Log, devicenetwork.DnsmasqLeaseDir); err != nil {
+	if err := ensureDir(c.Log, types.DnsmasqLeaseDir); err != nil {
 		return err
 	}
 	for _, host := range dnsmasq.DHCPServer.StaticEntries {
@@ -522,7 +522,7 @@ func (c *DnsmasqConfigurator) CreateDnsmasqConfig(buffer io.Writer, dnsmasq Dnsm
 		}
 	}
 
-	leaseFilepath := devicenetwork.DnsmasqLeaseFilePath(dnsmasq.ListenIf.IfName)
+	leaseFilepath := types.DnsmasqLeaseFilePath(dnsmasq.ListenIf.IfName)
 	if _, err := io.WriteString(buffer,
 		fmt.Sprintf("dhcp-leasefile=%s\n", leaseFilepath)); err != nil {
 		return writeErr(err)
@@ -918,7 +918,7 @@ func (c *DnsmasqConfigurator) removeDnsmasqPidFile(instanceName string) error {
 }
 
 func (c *DnsmasqConfigurator) removeDnsmasqLeaseFile(listenIfName string) error {
-	leaseFilepath := devicenetwork.DnsmasqLeaseFilePath(listenIfName)
+	leaseFilepath := types.DnsmasqLeaseFilePath(listenIfName)
 	if err := os.Remove(leaseFilepath); err != nil {
 		err = fmt.Errorf("failed to remove dnsmasq lease file %s: %w",
 			leaseFilepath, err)

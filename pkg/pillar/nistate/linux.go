@@ -15,7 +15,6 @@ import (
 	"github.com/fsnotify/fsnotify"
 	"github.com/google/gopacket"
 	"github.com/lf-edge/eve/pkg/pillar/base"
-	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	uuid "github.com/satori/go.uuid"
@@ -221,7 +220,7 @@ func NewLinuxCollector(log *base.LogObject) *LinuxCollector {
 	}
 	// Assumes that NewLinuxCollector is called after the directory with
 	// IP leases was already created by zedrouter.
-	err = sc.ipLeaseWatcher.Add(devicenetwork.DnsmasqLeaseDir)
+	err = sc.ipLeaseWatcher.Add(types.DnsmasqLeaseDir)
 	if err != nil {
 		log.Fatalf("%s: Watcher.Add: %v", LogAndErrPrefix, err)
 	}

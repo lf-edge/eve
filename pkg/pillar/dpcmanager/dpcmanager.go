@@ -12,13 +12,13 @@ import (
 	"github.com/eriknordmark/ipinfo"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/conntester"
+	"github.com/lf-edge/eve/pkg/pillar/controllerconn"
 	"github.com/lf-edge/eve/pkg/pillar/dpcreconciler"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/netdump"
 	"github.com/lf-edge/eve/pkg/pillar/netmonitor"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	uuid "github.com/satori/go.uuid"
 )
 
@@ -85,7 +85,7 @@ type DpcManager struct {
 	PubDeviceNetworkStatus   pubsub.Publication
 
 	// Metrics
-	ZedcloudMetrics *zedcloud.AgentMetrics
+	AgentMetrics *controllerconn.AgentMetrics
 
 	// Current configuration
 	dpcList          types.DevicePortConfigList
@@ -208,10 +208,10 @@ type inputCommand struct {
 }
 
 type dpcVerify struct {
-	inProgress     bool
-	startedAt      time.Time
-	cloudConnWorks bool
-	crucialIfs     map[string]netmonitor.IfAttrs // key = ifName, change triggers restartVerify
+	inProgress          bool
+	startedAt           time.Time
+	controllerConnWorks bool
+	crucialIfs          map[string]netmonitor.IfAttrs // key = ifName, change triggers restartVerify
 }
 
 // Init DpcManager
@@ -225,8 +225,8 @@ func (m *DpcManager) Init(ctx context.Context) error {
 		m.DpcMinTimeSinceFailure = 5 * time.Minute
 	}
 	m.dpcList.CurrentIndex = -1
-	// We start assuming cloud connectivity works
-	m.dpcVerify.cloudConnWorks = true
+	// We start assuming controller connectivity works
+	m.dpcVerify.controllerConnWorks = true
 
 	// Keep timers inactive until we receive GCP.
 	m.dpcTestTimer = &time.Timer{}
@@ -293,18 +293,18 @@ func (m *DpcManager) run(ctx context.Context) {
 			if !ok {
 				m.Log.Noticef("DPC test timer stopped?")
 			} else if m.dpcList.CurrentIndex == -1 {
-				m.Log.Tracef("Starting looking for working Device connectivity to cloud")
+				m.Log.Tracef("Starting looking for working Device connectivity to controller")
 				m.restartVerify(ctx, "looking for working DPC")
 				m.Log.Noticef("Looking for working done at index %d. Took %v",
 					m.dpcList.CurrentIndex, time.Since(start))
 			} else {
-				m.Log.Tracef("Starting test of Device connectivity to cloud")
-				err := m.testConnectivityToCloud(ctx)
+				m.Log.Tracef("Starting test of Device connectivity to controller")
+				err := m.testConnectivityToController(ctx)
 				if err == nil {
-					m.Log.Tracef("Device connectivity to cloud worked. Took %v",
+					m.Log.Tracef("Device connectivity to controller worked. Took %v",
 						time.Since(start))
 				} else {
-					m.Log.Noticef("Device connectivity to cloud failed (%v). Took %v",
+					m.Log.Noticef("Device connectivity to controller failed (%v). Took %v",
 						err, time.Since(start))
 				}
 			}

@@ -16,12 +16,12 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/cipher"
+	"github.com/lf-edge/eve/pkg/pillar/controllerconn"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/lf-edge/eve/pkg/pillar/utils/wait"
-	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 )
@@ -52,8 +52,8 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 	// Any state needed by handler functions
 	ctx := downloaderContext{
-		zedcloudMetrics: zedcloud.NewAgentMetrics(),
-		cipherMetrics:   cipher.NewAgentMetrics(agentName),
+		agentMetrics:  controllerconn.NewAgentMetrics(),
+		cipherMetrics: cipher.NewAgentMetrics(agentName),
 	}
 	agentbase.Init(&ctx, logger, log, agentName,
 		agentbase.WithPidFile(),
@@ -179,7 +179,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 		case <-publishTimer.C:
 			start := time.Now()
-			err := ctx.zedcloudMetrics.Publish(log, metricsPub, "global")
+			err := ctx.agentMetrics.Publish(log, metricsPub, "global")
 			if err != nil {
 				log.Errorln(err)
 			}

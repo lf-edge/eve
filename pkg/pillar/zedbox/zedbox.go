@@ -48,12 +48,12 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/cmd/zedmanager"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/zedrouter"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/zfsmanager"
+	"github.com/lf-edge/eve/pkg/pillar/controllerconn"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub/reverse"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub/socketdriver"
 	_ "github.com/lf-edge/eve/pkg/pillar/rstats"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	"github.com/sirupsen/logrus"
 )
 
@@ -138,7 +138,7 @@ func main() {
 	if basename == agentName {
 		sep := entrypoint{f: runZedbox, inline: inlineAlways}
 		inline := true
-		err := zedcloud.InitializeCertDir(log)
+		err := controllerconn.InitializeCertDir(log)
 		if err != nil {
 			log.Fatal(err)
 		}

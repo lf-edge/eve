@@ -26,12 +26,11 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
-	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
+	"github.com/lf-edge/eve/pkg/pillar/controllerconn"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
-	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/protobuf/proto"
@@ -70,13 +69,13 @@ type diagContext struct {
 	subAppInstanceStatus    pubsub.Subscription
 	subDownloaderStatus     pubsub.Subscription
 	subNodeDrainStatus      pubsub.Subscription
-	zedcloudMetrics         *zedcloud.AgentMetrics
+	agentMetrics            *controllerconn.AgentMetrics
 	gotBC                   bool
 	gotDNS                  bool
 	gotDPCList              bool
 	serverNameAndPort       string
 	serverName              string // Without port number
-	zedcloudCtx             *zedcloud.ZedCloudContext
+	ctrlClient              *controllerconn.Client
 	cert                    *tls.Certificate
 	usingOnboardCert        bool
 	devUUID                 uuid.UUID
@@ -118,7 +117,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	triggerPrintChan := make(chan string, 1)
 	ctx := diagContext{
 		globalConfig:     types.DefaultConfigItemValueMap(),
-		zedcloudMetrics:  zedcloud.NewAgentMetrics(),
+		agentMetrics:     controllerconn.NewAgentMetrics(),
 		triggerPrintChan: triggerPrintChan,
 	}
 	agentbase.Init(&ctx, logger, log, agentName,
@@ -192,27 +191,29 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	ctx.serverNameAndPort = strings.TrimSpace(string(server))
 	ctx.serverName = strings.Split(ctx.serverNameAndPort, ":")[0]
 
-	zedcloudCtx := zedcloud.NewContext(log, zedcloud.ContextOptions{
-		DevNetworkStatus: ctx.DeviceNetworkStatus,
-		SendTimeout:      ctx.globalConfig.GlobalValueInt(types.NetworkSendTimeout),
-		DialTimeout:      ctx.globalConfig.GlobalValueInt(types.NetworkDialTimeout),
-		AgentMetrics:     ctx.zedcloudMetrics,
-		Serial:           hardware.GetProductSerial(log),
-		SoftSerial:       hardware.GetSoftSerial(log),
-		AgentName:        agentName,
+	sendTimeoutSecs := ctx.globalConfig.GlobalValueInt(types.NetworkSendTimeout)
+	dialTimeoutSecs := ctx.globalConfig.GlobalValueInt(types.NetworkDialTimeout)
+	ctrlClient := controllerconn.NewClient(log, controllerconn.ClientOptions{
+		DeviceNetworkStatus: ctx.DeviceNetworkStatus,
+		NetworkSendTimeout:  time.Duration(sendTimeoutSecs) * time.Second,
+		NetworkDialTimeout:  time.Duration(dialTimeoutSecs) * time.Second,
+		AgentMetrics:        ctx.agentMetrics,
+		DevSerial:           hardware.GetProductSerial(log),
+		DevSoftSerial:       hardware.GetSoftSerial(log),
+		AgentName:           agentName,
 	})
 	// As we ping the cloud or other URLs, don't affect the LEDs
-	zedcloudCtx.NoLedManager = true
-	log.Functionf("Diag Get Device Serial %s, Soft Serial %s", zedcloudCtx.DevSerial,
-		zedcloudCtx.DevSoftSerial)
+	ctrlClient.NoLedManager = true
+	log.Functionf("Diag Get Device Serial %s, Soft Serial %s", ctrlClient.DevSerial,
+		ctrlClient.DevSoftSerial)
 
 	// XXX move to later for Get UUID if available
 
-	log.Functionf("diag Run: Use V2 API %v", zedcloudCtx.V2API)
+	log.Functionf("diag Run: Use V2 API %v", ctrlClient.UsingV2API())
 
 	if fileutils.FileExists(log, types.DeviceCertName) {
 		// Load device cert
-		cert, err := zedcloud.GetClientCert()
+		cert, err := controllerconn.GetClientCert()
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -233,7 +234,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 			time.Now().Format(time.RFC3339Nano))
 		return 1
 	}
-	ctx.zedcloudCtx = &zedcloudCtx
+	ctx.ctrlClient = ctrlClient
 
 	subLedBlinkCounter, err := ps.NewSubscription(
 		pubsub.SubscriptionOptions{
@@ -400,7 +401,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		gotAll := ctx.gotBC && ctx.gotDNS && ctx.gotDPCList
 		select {
 		case <-pubTimer.C:
-			ctx.zedcloudMetrics.Publish(log, cloudPingMetricPub, "global")
+			ctx.agentMetrics.Publish(log, cloudPingMetricPub, "global")
 			pubTimer = time.NewTimer(30 * time.Second)
 
 		case change := <-subGlobalConfig.MsgChan():
@@ -447,7 +448,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		if ctx.usingOnboardCert && fileutils.FileExists(log, types.DeviceCertName) {
 			ctx.ph.Print("WARNING: Switching from onboard to device cert\n")
 			// Load device cert
-			cert, err := zedcloud.GetClientCert()
+			cert, err := controllerconn.GetClientCert()
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -501,7 +502,7 @@ func handleLedBlinkImpl(ctxArg interface{}, key string,
 	triggerPrintOutput(ctx, "LED")
 }
 
-// handle zedagent status events, for cloud connectivity
+// handle zedagent status events, for controller connectivity
 func handleZedAgentStatusCreate(ctxArg interface{}, key string,
 	statusArg interface{}) {
 	handleZedAgentStatusImpl(ctxArg, key, statusArg)
@@ -635,8 +636,8 @@ func handleDNSImpl(ctxArg interface{}, key string,
 	}
 
 	// update proxy certs if configured
-	if ctx.zedcloudCtx != nil && ctx.zedcloudCtx.V2API && ctx.zedcloudCtx.TlsConfig != nil {
-		zedcloud.UpdateTLSProxyCerts(ctx.zedcloudCtx)
+	if ctx.ctrlClient != nil && ctx.ctrlClient.UsingV2API() && ctx.ctrlClient.TLSConfig != nil {
+		ctx.ctrlClient.UpdateTLSProxyCerts()
 	}
 	if mostlyEqual {
 		log.Functionf("handleDNSImpl done - no important change for %s",
@@ -991,7 +992,7 @@ func printOutput(ctx *diagContext, caller string) {
 		}
 		// DNS lookup - skip if an explicit (i.e. not transparent) proxy is configured.
 		// In that case it is the proxy which is responsible for domain name resolution.
-		if !devicenetwork.IsExplicitProxyConfigured(port.ProxyConfig) {
+		if !controllerconn.IsExplicitProxyConfigured(port.ProxyConfig) {
 			if !tryLookupIP(ctx, ifname) {
 				continue
 			}
@@ -1077,7 +1078,7 @@ func printOutput(ctx *diagContext, caller string) {
 func printProxy(ctx *diagContext, port types.NetworkPortStatus,
 	ifname string) {
 
-	if devicenetwork.IsProxyConfigEmpty(port.ProxyConfig) {
+	if controllerconn.IsProxyConfigEmpty(port.ProxyConfig) {
 		ctx.ph.Print("INFO: %s: no http(s) proxy\n", ifname)
 		return
 	}
@@ -1215,24 +1216,25 @@ func tryLookupIP(ctx *diagContext, ifname string) bool {
 
 func tryPing(ctx *diagContext, ifname string, reqURL string) bool {
 
-	zedcloudCtx := ctx.zedcloudCtx
-	if zedcloudCtx.TlsConfig == nil {
-		err := zedcloud.UpdateTLSConfig(zedcloudCtx, ctx.cert)
+	ctrlClient := ctx.ctrlClient
+	if ctrlClient.TLSConfig == nil {
+		err := ctrlClient.UpdateTLSConfig(ctx.cert)
 		if err != nil {
 			log.Errorf("internal UpdateTLSConfig failed %v", err)
 			return false
 		}
-		zedcloudCtx.TlsConfig.ClientSessionCache = tls.NewLRUClientSessionCache(0)
+		ctrlClient.TLSConfig.ClientSessionCache = tls.NewLRUClientSessionCache(0)
 	}
 	if reqURL == "" {
-		reqURL = zedcloud.URLPathString(ctx.serverNameAndPort, zedcloudCtx.V2API, nilUUID, "ping")
+		reqURL = controllerconn.URLPathString(
+			ctx.serverNameAndPort, ctrlClient.UsingV2API(), nilUUID, "ping")
 	} else {
 		// Temporarily change TLS config for the non-controller destination.
-		origSkipVerify := zedcloudCtx.TlsConfig.InsecureSkipVerify
-		zedcloudCtx.TlsConfig.InsecureSkipVerify = true
+		origSkipVerify := ctrlClient.TLSConfig.InsecureSkipVerify
+		ctrlClient.TLSConfig.InsecureSkipVerify = true
 		defer func() {
 			// Revert back the original TLS config.
-			zedcloudCtx.TlsConfig.InsecureSkipVerify = origSkipVerify
+			ctrlClient.TLSConfig.InsecureSkipVerify = origSkipVerify
 		}()
 	}
 
@@ -1271,7 +1273,7 @@ func tryPostUUID(ctx *diagContext, ifname string) bool {
 		log.Errorln(err)
 		return false
 	}
-	zedcloudCtx := ctx.zedcloudCtx
+	ctrlClient := ctx.ctrlClient
 
 	retryCount := 0
 	done := false
@@ -1281,12 +1283,12 @@ func tryPostUUID(ctx *diagContext, ifname string) bool {
 		time.Sleep(delay)
 		var resp *http.Response
 		var buf []byte
-		reqURL := zedcloud.URLPathString(ctx.serverNameAndPort, zedcloudCtx.V2API,
+		reqURL := controllerconn.URLPathString(ctx.serverNameAndPort, ctrlClient.UsingV2API(),
 			nilUUID, "uuid")
 		done, resp, senderStatus, buf = myPost(ctx, reqURL, ifname, retryCount,
 			int64(len(b)), bytes.NewBuffer(b))
 		if done {
-			parsePrint(reqURL, resp, buf)
+			parsePrint(resp, buf)
 			break
 		}
 		if senderStatus == types.SenderStatusCertMiss {
@@ -1295,9 +1297,9 @@ func tryPostUUID(ctx *diagContext, ifname string) bool {
 			// 2) zedagent
 			// 3) diag here for getting /config
 			// 1) is the initial getting cloud certs, 2) rely on zedagent to refetch the cloud certs
-			// if zedcloud has cert change. 3) only need to zero out the cache in zedcloudCtx and
+			// if controller has cert change. 3) only need to zero out the cache in ctrlClient and
 			// it will reacquire from the updated cert file. zedagent is the only one responsible for refetching certs.
-			zedcloud.ClearCloudCert(zedcloudCtx)
+			ctrlClient.ClearServerCert()
 			return false
 		}
 		retryCount++
@@ -1311,13 +1313,13 @@ func tryPostUUID(ctx *diagContext, ifname string) bool {
 	return true
 }
 
-func parsePrint(reqURL string, resp *http.Response, contents []byte) {
+func parsePrint(resp *http.Response, contents []byte) {
 	if resp.StatusCode == http.StatusNotModified {
 		log.Tracef("StatusNotModified len %d", len(contents))
 		return
 	}
 
-	if err := zedcloud.ValidateProtoContentType(reqURL, resp); err != nil {
+	if err := controllerconn.ValidateProtoContentType(resp); err != nil {
 		log.Errorln("ValidateProtoContentType: ", err)
 		return
 	}
@@ -1352,7 +1354,7 @@ func readUUIDResponseProtoMessage(contents []byte) (*eveuuid.UuidResponse, error
 func myGet(ctx *diagContext, reqURL string, ifname string,
 	retryCount int) (bool, *http.Response, []byte) {
 
-	zedcloudCtx := ctx.zedcloudCtx
+	ctrlClient := ctx.ctrlClient
 	var preqURL string
 	if strings.HasPrefix(reqURL, "http:") {
 		preqURL = reqURL
@@ -1361,7 +1363,7 @@ func myGet(ctx *diagContext, reqURL string, ifname string,
 	} else {
 		preqURL = "https://" + reqURL
 	}
-	proxyURL, err := zedcloud.LookupProxy(log, zedcloudCtx.DeviceNetworkStatus,
+	proxyURL, err := controllerconn.LookupProxy(log, ctrlClient.DeviceNetworkStatus,
 		ifname, preqURL)
 	if err != nil {
 		ctx.ph.Print("ERROR: %s: LookupProxy failed: %s\n", ifname, err)
@@ -1369,10 +1371,15 @@ func myGet(ctx *diagContext, reqURL string, ifname string,
 		ctx.ph.Print("INFO: %s: Proxy %s to reach %s\n",
 			ifname, proxyURL.String(), reqURL)
 	}
-	const allowProxy = true
 	// No verification of AuthContainer for this GET
-	rv, err := zedcloud.SendOnIntf(context.Background(), zedcloudCtx, reqURL, ifname,
-		0, nil, allowProxy, ctx.usingOnboardCert, withNetTracing, false)
+	rv, err := ctrlClient.SendOnIntf(context.Background(), reqURL, ifname, nil,
+		controllerconn.RequestOptions{
+			AllowProxy:     true,
+			UseOnboard:     ctx.usingOnboardCert,
+			WithNetTracing: withNetTracing,
+			// Suppress logs to prevent periodic diag actions from cluttering the logs.
+			SuppressLogs: true,
+		})
 	if err != nil {
 		switch rv.Status {
 		case types.SenderStatusUpgrade:
@@ -1417,7 +1424,7 @@ func myGet(ctx *diagContext, reqURL string, ifname string,
 func myPost(ctx *diagContext, reqURL string, ifname string,
 	retryCount int, reqlen int64, b *bytes.Buffer) (bool, *http.Response, types.SenderStatus, []byte) {
 
-	zedcloudCtx := ctx.zedcloudCtx
+	ctrlClient := ctx.ctrlClient
 	var preqURL string
 	if strings.HasPrefix(reqURL, "http:") {
 		preqURL = reqURL
@@ -1426,7 +1433,7 @@ func myPost(ctx *diagContext, reqURL string, ifname string,
 	} else {
 		preqURL = "https://" + reqURL
 	}
-	proxyURL, err := zedcloud.LookupProxy(log, zedcloudCtx.DeviceNetworkStatus,
+	proxyURL, err := controllerconn.LookupProxy(log, ctrlClient.DeviceNetworkStatus,
 		ifname, preqURL)
 	if err != nil {
 		ctx.ph.Print("ERROR: %s: LookupProxy failed: %s\n", ifname, err)
@@ -1434,9 +1441,14 @@ func myPost(ctx *diagContext, reqURL string, ifname string,
 		ctx.ph.Print("INFO: %s: Proxy %s to reach %s\n",
 			ifname, proxyURL.String(), reqURL)
 	}
-	const allowProxy = true
-	rv, err := zedcloud.SendOnIntf(context.Background(), zedcloudCtx,
-		reqURL, ifname, reqlen, b, allowProxy, ctx.usingOnboardCert, withNetTracing, false)
+	rv, err := ctrlClient.SendOnIntf(context.Background(), reqURL, ifname, b,
+		controllerconn.RequestOptions{
+			AllowProxy:     true,
+			UseOnboard:     ctx.usingOnboardCert,
+			WithNetTracing: withNetTracing,
+			// Suppress logs to prevent periodic diag actions from cluttering the logs.
+			SuppressLogs: true,
+		})
 	if err != nil {
 		switch rv.Status {
 		case types.SenderStatusUpgrade:
@@ -1474,7 +1486,7 @@ func myPost(ctx *diagContext, reqURL string, ifname string,
 		return false, nil, rv.Status, nil
 	}
 	if len(rv.RespContents) > 0 {
-		err = zedcloud.RemoveAndVerifyAuthContainer(zedcloudCtx, &rv, false)
+		err = ctrlClient.RemoveAndVerifyAuthContainer(&rv, false)
 		if err != nil {
 			ctx.ph.Print("ERROR: %s: %s RemoveAndVerifyAuthContainer  %s\n",
 				ifname, reqURL, err)
