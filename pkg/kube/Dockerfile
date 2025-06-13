@@ -71,6 +71,12 @@ RUN mkdir -p /etc/containerd
 COPY config-k3s.toml /etc/containerd/
 WORKDIR /
 
+# Kube-VIP
+COPY kubevip-sa.yaml /etc/
+COPY kubevip-ds.yaml /etc/
+COPY kubevip-apply.sh /usr/bin/
+COPY kubevip-delete.sh /usr/bin/
+
 ARG TARGETARCH
 
 # Actual k3s install and config happens when this container starts during EVE bootup, look at cluster-init.sh
