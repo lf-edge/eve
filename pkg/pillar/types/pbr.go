@@ -1,7 +1,9 @@
 // Copyright (c) 2017-2019 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-package devicenetwork
+// Constants for policy-based routing used in NIM and zedrouter.
+
+package types
 
 const (
 	// KubeSvcRT : index of the routing table used for the Kubernetes service prefix.

@@ -75,7 +75,7 @@ type LedBlinkCounter struct {
 }
 
 // Merge the 1/2 values based on having usable addresses or not, with
-// the value we get based on access to zedcloud or errors.
+// the value we get based on access to the controller or errors.
 func DeriveLedCounter(ledCounter LedBlinkCount, usableAddressCount int, radioSilence bool) LedBlinkCount {
 	if radioSilence {
 		return LedBlinkRadioSilence

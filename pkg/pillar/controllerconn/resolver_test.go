@@ -1,7 +1,7 @@
 // Copyright (c) 2023 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-package devicenetwork_test
+package controllerconn_test
 
 import (
 	"errors"
@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
+	"github.com/lf-edge/eve/pkg/pillar/controllerconn"
 	"github.com/lf-edge/eve/pkg/pillar/netmonitor"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"go.uber.org/goleak"
@@ -129,7 +129,7 @@ func TestDnsResolve(t *testing.T) {
 		)
 	}
 
-	res, errs := devicenetwork.ResolveWithSrcIP(testHost, net.IP{1, 1, 1, 1}, net.IP{0, 0, 0, 0})
+	res, errs := controllerconn.ResolveWithSrcIP(testHost, net.IP{1, 1, 1, 1}, net.IP{0, 0, 0, 0})
 	if errs != nil {
 		panic(errs)
 	}
@@ -155,7 +155,7 @@ func TestDnsResolveTimeout(t *testing.T) {
 		t.Skipf("Skipping as timing out would take too much time and short tests are enabled")
 	}
 	exampleCom := net.IP{93, 184, 216, 34} // example.com, they drop packets on 53/udp
-	res, _ := devicenetwork.ResolveWithSrcIP("www.google.com", exampleCom, net.IP{0, 0, 0, 0})
+	res, _ := controllerconn.ResolveWithSrcIP("www.google.com", exampleCom, net.IP{0, 0, 0, 0})
 	if res != nil {
 		t.Fatalf("resolving with dns server %+v should fail, but succeeded: %+v", exampleCom, res)
 	}
@@ -169,13 +169,13 @@ func TestResolveWithPortsLambda(t *testing.T) {
 	var first atomic.Bool
 	first.Store(true)
 	var countCalls atomic.Int32
-	resolverFunc := func(domain string, dnsServer net.IP, srcIP net.IP) ([]devicenetwork.DNSResponse, error) {
+	resolverFunc := func(domain string, dnsServer net.IP, srcIP net.IP) ([]controllerconn.DNSResponse, error) {
 		countCalls.Add(1)
 		if !first.Swap(false) {
 			time.Sleep(1 * time.Second)
-			return []devicenetwork.DNSResponse{}, nil
+			return []controllerconn.DNSResponse{}, nil
 		}
-		return []devicenetwork.DNSResponse{
+		return []controllerconn.DNSResponse{
 			{
 				IP:  expectedIP,
 				TTL: 3600,
@@ -184,7 +184,7 @@ func TestResolveWithPortsLambda(t *testing.T) {
 	}
 
 	deviceNetworkStatus := createDeviceNetworkStatus()
-	res, err := devicenetwork.ResolveWithPortsLambda(
+	res, err := controllerconn.ResolveWithPortsLambda(
 		"example.com",
 		deviceNetworkStatus,
 		resolverFunc,
@@ -195,7 +195,7 @@ func TestResolveWithPortsLambda(t *testing.T) {
 	if !res[0].IP.Equal(expectedIP) {
 		t.Errorf("wrong result, expected IP 1.2.3.4, but got: %+v", res)
 	}
-	if countCalls.Load() > devicenetwork.DNSMaxParallelRequests+1 {
+	if countCalls.Load() > controllerconn.DNSMaxParallelRequests+1 {
 		// checking for +1 as the first call immediately returns
 		t.Errorf(
 			"more calls to resolverFunc than dnsMaxParallelRequests+1, but first call should already succeed",
@@ -207,9 +207,9 @@ func TestResolveWithPortsLambdaWithErrors(t *testing.T) {
 	t.Parallel()
 
 	expectedIP := net.IP{1, 2, 3, 4}
-	resolverFunc := func(domain string, dnsServer net.IP, srcIP net.IP) ([]devicenetwork.DNSResponse, error) {
+	resolverFunc := func(domain string, dnsServer net.IP, srcIP net.IP) ([]controllerconn.DNSResponse, error) {
 		if srcIP.Equal(net.IP{192, 168, 0, 1}) && domain == "example.com" {
-			return []devicenetwork.DNSResponse{
+			return []controllerconn.DNSResponse{
 				{
 					IP:  expectedIP,
 					TTL: 3600,
@@ -220,7 +220,7 @@ func TestResolveWithPortsLambdaWithErrors(t *testing.T) {
 	}
 
 	deviceNetworkStatus := createDeviceNetworkStatus()
-	res, err := devicenetwork.ResolveWithPortsLambda(
+	res, err := controllerconn.ResolveWithPortsLambda(
 		"example.com",
 		deviceNetworkStatus,
 		resolverFunc,
@@ -232,7 +232,7 @@ func TestResolveWithPortsLambdaWithErrors(t *testing.T) {
 		t.Errorf("expected IP 1.2.3.4, but got: %+v", res)
 	}
 
-	res, err = devicenetwork.ResolveWithPortsLambda(
+	res, err = controllerconn.ResolveWithPortsLambda(
 		"resolver-should-fail.com",
 		deviceNetworkStatus,
 		resolverFunc,
@@ -249,9 +249,9 @@ func TestResolveCacheWrap(t *testing.T) {
 	t.Parallel()
 	called := 0
 
-	cw := devicenetwork.ResolveCacheWrap(func(domain string, dnsServerIP, srcIP net.IP) ([]devicenetwork.DNSResponse, error) {
+	cw := controllerconn.ResolveCacheWrap(func(domain string, dnsServerIP, srcIP net.IP) ([]controllerconn.DNSResponse, error) {
 		called++
-		return []devicenetwork.DNSResponse{
+		return []controllerconn.DNSResponse{
 			{
 				IP:  []byte{127, 0, 0, 1},
 				TTL: 2,
@@ -294,6 +294,6 @@ func FuzzResolveWithSrcIP(f *testing.F) {
 	) {
 		dnsServerIP := net.ParseIP(dnsServer)
 		srcIP := net.ParseIP(src)
-		devicenetwork.ResolveWithSrcIPWithTimeout(domain, dnsServerIP, srcIP, 3*time.Second)
+		controllerconn.ResolveWithSrcIPWithTimeout(domain, dnsServerIP, srcIP, 3*time.Second)
 	})
 }

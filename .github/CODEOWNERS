@@ -52,7 +52,7 @@
 /pkg/pillar/portprober/       @milan-zededa
 /pkg/pillar/utils/            @milan-zededa
 /pkg/pillar/volumehandlers/   @OhmSpectator
-/pkg/pillar/zedcloud/         @christoph-zededa @rouming
+/pkg/pillar/controllerconn/   @christoph-zededa @rouming @milan-zededa
 /pkg/pillar/zfs/              @zedi-pramodh
 /pkg/rngd/                    @deitch
 /pkg/storage-init/            @rouming

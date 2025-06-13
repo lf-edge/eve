@@ -34,7 +34,7 @@ require (
 	github.com/k8snetworkplumbingwg/network-attachment-definition-client v1.5.0
 	github.com/lf-edge/edge-containers v0.0.0-20240207093504-5dfda0619b80
 	github.com/lf-edge/eve-api/go v0.0.0-20250502212418-fc1e3bad8f0f
-	github.com/lf-edge/eve-libs v0.0.0-20250313200311-28f858e8e99b
+	github.com/lf-edge/eve-libs v0.0.0-20250623080236-896cb688e28c
 	github.com/lf-edge/eve-tools/runtimemetrics/go v0.0.0-20250320220227-713ea9d6c6d2
 	github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20240315102754-0f6d1f182e0d
 	github.com/lf-edge/go-qemu v0.0.0-20231121152149-4c467eda0c56
@@ -56,11 +56,11 @@ require (
 	github.com/spf13/cobra v1.8.0
 	github.com/stretchr/testify v1.10.0
 	github.com/tatsushid/go-fastping v0.0.0-20160109021039-d7bb493dee3e
-	github.com/vishvananda/netlink v1.2.1-beta.2
+	github.com/vishvananda/netlink v1.3.1
 	go.uber.org/goleak v1.3.0
-	golang.org/x/crypto v0.35.0
-	golang.org/x/net v0.36.0
-	golang.org/x/sys v0.30.0
+	golang.org/x/crypto v0.36.0
+	golang.org/x/net v0.38.0
+	golang.org/x/sys v0.31.0
 	google.golang.org/grpc v1.61.0
 	google.golang.org/protobuf v1.36.5
 	gopkg.in/yaml.v2 v2.4.0
@@ -172,7 +172,7 @@ require (
 	github.com/tklauser/go-sysconf v0.3.11 // indirect
 	github.com/tklauser/numcpus v0.6.0 // indirect
 	github.com/vbatts/tar-split v0.11.2 // indirect
-	github.com/vishvananda/netns v0.0.0-20210104183010-2eb08e3e575f
+	github.com/vishvananda/netns v0.0.5
 	github.com/xeipuuv/gojsonpointer v0.0.0-20190905194746-02993c407bfb // indirect
 	github.com/xeipuuv/gojsonreference v0.0.0-20180127040603-bd5ef7bd5415 // indirect
 	github.com/xeipuuv/gojsonschema v1.2.0 // indirect
@@ -185,9 +185,9 @@ require (
 	go.opentelemetry.io/otel/trace v1.23.1 // indirect
 	golang.org/x/mod v0.17.0 // indirect
 	golang.org/x/oauth2 v0.16.0 // indirect
-	golang.org/x/sync v0.11.0 // indirect
-	golang.org/x/term v0.29.0 // indirect
-	golang.org/x/text v0.22.0 // indirect
+	golang.org/x/sync v0.12.0 // indirect
+	golang.org/x/term v0.30.0 // indirect
+	golang.org/x/text v0.23.0 // indirect
 	golang.org/x/time v0.5.0 // indirect
 	google.golang.org/api v0.160.0 // indirect
 	google.golang.org/appengine v1.6.8 // indirect

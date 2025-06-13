@@ -712,7 +712,7 @@ func handleEdgeNodeClusterConfigDelete(ctxArg interface{}, key string,
 	publishNodeDrainStatus(z, kubeapi.NOTSUPPORTED)
 }
 
-// handle zedagent status events, for cloud connectivity
+// handle zedagent status events, for controller connectivity
 func handleZedAgentStatusCreate(ctxArg interface{}, key string,
 	statusArg interface{}) {
 	handleZedAgentStatusImpl(ctxArg, key, statusArg)

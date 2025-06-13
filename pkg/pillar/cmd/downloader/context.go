@@ -9,10 +9,10 @@ import (
 	"github.com/lf-edge/eve-libs/zedUpload"
 	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"github.com/lf-edge/eve/pkg/pillar/cipher"
+	"github.com/lf-edge/eve/pkg/pillar/controllerconn"
 	"github.com/lf-edge/eve/pkg/pillar/netdump"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 )
 
 type downloaderContext struct {
@@ -31,7 +31,7 @@ type downloaderContext struct {
 	subEdgeNodeCert          pubsub.Subscription
 	deviceNetworkStatus      types.DeviceNetworkStatus
 	subGlobalConfig          pubsub.Subscription
-	zedcloudMetrics          *zedcloud.AgentMetrics
+	agentMetrics             *controllerconn.AgentMetrics
 	cipherMetrics            *cipher.AgentMetrics
 	globalConfig             types.ConfigItemValueMap
 	GCInitialized            bool

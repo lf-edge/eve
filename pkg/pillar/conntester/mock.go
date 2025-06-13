@@ -70,7 +70,7 @@ func (t *MockConnectivityTester) TestConnectivity(dns types.DeviceNetworkStatus,
 
 	for _, ifName := range intfs {
 		if successCount >= requiredSuccessCount {
-			// We have enough uplinks with cloud connectivity working.
+			// We have enough uplinks with controller connectivity working.
 			break
 		}
 		if _, exists, _ := t.NetworkMonitor.GetInterfaceIndex(ifName); !exists {
