@@ -57,7 +57,7 @@ shift $((OPTIND-1))
 
 IMGFILE=$1
 shift
-PARTS=${*:-"efi imga imgb conf persist"}
+PARTS=${*:-"efi imga imgb imgc conf persist"}
 
 # This is the only partition type that PARTITION_TYPE_USR_X86_64
 # grub-core/commands/gptprio.c code will pay attention to
@@ -70,11 +70,14 @@ EFI_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30051
 IMGA_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30052
 IMGB_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30053
 CONF_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30054
+IMGC_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30055
 PERSIST_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30059
 INSTALLER_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30060
 
 # content of rootfs partition
 ROOTFS_IMG=/parts/rootfs.img
+ROOTFS_IMG_B=/parts/rootfs-b.img
+ROOTFS_IMG_C=/parts/rootfs-c.img
 # contents of installer partition
 INSTALLER_IMG=/parts/installer.img
 # content of conf partition
@@ -106,9 +109,19 @@ ROOTFS_PART_SIZE_MIN=$((512 * 1024 * 1024))
 # The eve-hv-type file will be present only during installation.
 if [ -f /root/etc/eve-hv-type ]; then
    eve_flavor=$(cat /root/etc/eve-hv-type)
-   if [ "$eve_flavor" = "kubevirt" ]; then
-      ROOTFS_PART_SIZE_MIN=$((1 * 1024 * 1024 * 1024))
-   fi
+   case "$eve_flavor" in
+      "kubevirt")
+         # kubevirt flavor
+         ROOTFS_PART_SIZE_MIN=$((1 * 1024 * 1024 * 1024))
+         ;;
+      "evaluation")
+         # baremetal flavor
+         ROOTFS_PART_SIZE_MIN=$((1 * 1024 * 1024 * 1024))
+         ;;
+      *)
+         ;;
+   esac
+
 fi
 # conf partition size in bytes
 CONF_PART_SIZE=$((1024 * 1024))
@@ -132,6 +145,7 @@ SYSTEM_VFAT_PART_OFFSET=1
 VFAT_PART_OFFSET=4
 IMGA_PART_OFFSET=2
 IMGB_PART_OFFSET=3
+IMGC_PART_OFFSET=7
 EFI_PART_OFFSET=1
 CONF_PART_OFFSET=4
 PERSIST_PART_OFFSET=9
@@ -170,6 +184,26 @@ calc_rootfs_part_size() {
   local SIZE
 
   SIZE=$(file_size "$ROOTFS_IMG")
+  # Take max
+  SIZE=$((SIZE > ROOTFS_PART_SIZE_MIN ? SIZE : ROOTFS_PART_SIZE_MIN))
+
+  echo $SIZE
+}
+
+calc_rootfs_part_b_size() {
+  local SIZE
+
+  SIZE=$(file_size "$ROOTFS_IMG_B")
+  # Take max
+  SIZE=$((SIZE > ROOTFS_PART_SIZE_MIN ? SIZE : ROOTFS_PART_SIZE_MIN))
+
+  echo $SIZE
+}
+
+calc_rootfs_part_c_size() {
+  local SIZE
+
+  SIZE=$(file_size "$ROOTFS_IMG_C")
   # Take max
   SIZE=$((SIZE > ROOTFS_PART_SIZE_MIN ? SIZE : ROOTFS_PART_SIZE_MIN))
 
@@ -220,7 +254,10 @@ calc_image_size() {
               SIZE=$((SIZE + $(calc_rootfs_part_size)))
               ;;
           imgb)
-              SIZE=$((SIZE + $(calc_rootfs_part_size)))
+              SIZE=$((SIZE + $(calc_rootfs_part_b_size)))
+              ;;
+          imgc)
+              SIZE=$((SIZE + $(calc_rootfs_part_c_size)))
               ;;
           installer)
               SIZE=$((SIZE + $(calc_installer_part_size)))
@@ -407,7 +444,12 @@ do_imga() {
 
 do_imgb() {
     # for now we are wiping IMGB - hence not passing the source
-    do_rootfs $1 IMGB $(calc_rootfs_part_size) $IMGB_PART $IMGB_UUID
+    do_rootfs $1 IMGB $(calc_rootfs_part_b_size) $IMGB_PART $IMGB_UUID $ROOTFS_IMG_B
+}
+
+do_imgc() {
+    # for now we are wiping IMGB - hence not passing the source
+    do_rootfs $1 IMGC $(calc_rootfs_part_c_size) $IMGC_PART $IMGC_UUID $ROOTFS_IMG_C
 }
 
 # create a VFAT partition with the specified UUID
@@ -605,6 +647,7 @@ VFAT_PART=$(( PART_OFFSET + $VFAT_PART_OFFSET ))
 INSTALLER_PART=$(( PART_OFFSET + $INSTALLER_PART_OFFSET ))
 IMGA_PART=$(( PART_OFFSET + $IMGA_PART_OFFSET ))
 IMGB_PART=$(( PART_OFFSET + $IMGB_PART_OFFSET ))
+IMGC_PART=$(( PART_OFFSET + $IMGC_PART_OFFSET ))
 EFI_PART=$(( PART_OFFSET + $EFI_PART_OFFSET ))
 CONF_PART=$(( PART_OFFSET + $CONF_PART_OFFSET ))
 PERSIST_PART=$(( PART_OFFSET + $PERSIST_PART_OFFSET ))
@@ -629,6 +672,8 @@ elif echo "$PARTS" | grep -q "imga"; then
   BOOTABLE_PART=$IMGA_PART
 elif echo "$PARTS" | grep -q "imgb"; then
   BOOTABLE_PART=$IMGB_PART
+elif echo "$PARTS" | grep -q "imgc"; then
+  BOOTABLE_PART=$IMGC_PART
 fi
 
 if [ -n "$BOOTABLE_PART" ]; then

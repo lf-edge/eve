@@ -69,7 +69,9 @@ endif
 KERNEL_COMMIT=$(KERNEL_COMMIT_$(ZARCH)_$(KERNEL_VERSION)_$(KERNEL_FLAVOR))
 KERNEL_BRANCH = eve-kernel-$(ZARCH)-$(KERNEL_VERSION)-$(KERNEL_FLAVOR)
 KERNEL_DOCKER_TAG = $(KERNEL_BRANCH)-$(KERNEL_COMMIT)-$(KERNEL_COMPILER)
+KERNEL_EVAL_UBUNTU_DOCKER_TAG = $(KERNEL_BRANCH)-ubuntu-$(KERNEL_COMMIT)-$(KERNEL_COMPILER)
 
 # one can override the whole tag from the command line and set it to
 # output of make -f Makefile.eve docker-tag-${KERNEL_COMPILER} in github.com/lf-edge/eve-kernel
 KERNEL_TAG ?= docker.io/lfedge/eve-kernel:$(KERNEL_DOCKER_TAG)
+KERNEL_EVAL_UBUNTU_TAG ?= docker.io/lfedge/eve-kernel:$(KERNEL_EVAL_UBUNTU_DOCKER_TAG)

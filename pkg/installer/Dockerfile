@@ -1,6 +1,7 @@
 # syntax=docker/dockerfile:1.10.0
 # Copyright (c) 2024 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
+ARG PLATFORM=generic
 
 # Interactive mode for the installer
 FROM --platform=$BUILDPLATFORM lfedge/eve-rust:1.84.1 AS rust-host
@@ -31,21 +32,21 @@ RUN cp "/usr/local/my-installer/target/$CARGO_BUILD_TARGET/release/installer" /u
 # Dockerfile to build installer img initrd
 FROM lfedge/eve-alpine:0f2e0da38e30753c68410727a6cc269e57ff74f2 AS build
 SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
-ENV BUILD_PKGS mkinitfs grep patch make coreutils musl-dev gcc g++ perl \
+ENV BUILD_PKGS="mkinitfs grep patch make coreutils musl-dev gcc g++ perl \
     autoconf automake libtool file bsd-compat-headers libc-dev \
     util-linux-dev flex linux-headers glib-dev libxrandr-dev zlib-dev \
     libusb-dev kmod-dev curl eudev-dev libdrm-dev i2c-tools-dev hwinfo \
     binutils-dev libaio-dev zlib-static libvncserver-dev python3 pixman-dev \
     py3-setuptools bash cmake m4 pkgconf pkgconfig autoconf-archive tpm2-tss-dev \
-    cryptsetup-dev go lddtree git
-ENV PKGS mtools dosfstools libarchive-tools sgdisk e2fsprogs util-linux \
+    cryptsetup-dev go lddtree git"
+ENV PKGS="mtools dosfstools libarchive-tools sgdisk e2fsprogs util-linux \
     squashfs-tools coreutils tar dmidecode smartmontools libaio libaio-dev \
     glib zlib libusb curl xz pciutils usbutils hdparm ncurses-dev jq \
     wireless-tools libxrandr eudev-libs sudo fio iperf3 sysstat \
     lm-sensors acpi iw libdrm hwinfo dhclient e2fsprogs-extra \
     libgcc pixman libvncserver musl-utils \
     tpm2-tss-dev tpm2-tss-esys tpm2-tss-fapi tpm2-tss-rc \
-    kmod-libs tpm2-tss-sys tpm2-tss-tctildr tpm2-abrmd libblkid cryptsetup-libs
+    kmod-libs tpm2-tss-sys tpm2-tss-tctildr tpm2-abrmd libblkid cryptsetup-libs"
 RUN eve-alpine-deploy.sh
 
 COPY src/ /src/
@@ -92,6 +93,7 @@ COPY --from=rust /usr/local/my-installer/target/installer /out/sbin/installer
 COPY --from=rust /usr/local/my-installer/sbom.spdx.json /out/sbin/sbom.spdx.json
 
 FROM scratch
+ARG PLATFORM
 COPY --from=build /out/ /
 COPY install parse-installer-conf.sh spec.sh verify verifytpm.sh /
 ENV RUST_BACKTRACE full
@@ -104,5 +106,5 @@ ENV PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 # hadolint ignore=DL3002
 USER 0:0
-
+ENV PLATFORM=${PLATFORM}
 ENTRYPOINT [ "/bin/sh", "-c", "/install </dev/console >/dev/console 2>&1" ]
