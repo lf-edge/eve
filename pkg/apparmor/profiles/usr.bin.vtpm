@@ -8,14 +8,14 @@ profile vtpm @{exec_path} {
     #include <abstractions/base>
 
     # allow necessary access for operations
-    owner /usr/bin/vtpm            rm,
+    owner /usr/bin/vtpm             rm,
     owner /home/{,*,**}             rw,
 
     # writes temporary tpm-state encryption key here.
     owner /run/swtpm/{,*,**}        rw,
 
     # crates the per-vm tpm-state dir here.
-   owner /persist/swtpm/{,*,**}     rw,
+    owner /persist/swtpm/{,*,**}    rw,
 
     # access to host tpm to unseal the encryption key.
     /dev/tpm0                       rw,
