@@ -15,7 +15,6 @@ import (
 	"github.com/lf-edge/eve-api/go/profile"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -135,8 +134,8 @@ func getLocalProfileConfig(getconfigCtx *getconfigContext, localServerURL string
 		for _, srv := range servers {
 			fullURL := srv.localServerAddr + profileURLPath
 			localProfile := &profile.LocalProfile{}
-			resp, err := zedcloud.SendLocalProto(
-				zedcloudCtx, fullURL, bridgeName, srv.bridgeIP, nil, localProfile)
+			resp, err := ctrlClient.SendLocalProto(
+				fullURL, bridgeName, srv.bridgeIP, nil, localProfile)
 			if err != nil {
 				errList = append(errList, fmt.Sprintf("SendLocal: %s", err))
 				continue

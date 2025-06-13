@@ -20,7 +20,6 @@ import (
 	"github.com/lf-edge/eve-libs/reconciler"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/cipher"
-	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
 	generic "github.com/lf-edge/eve/pkg/pillar/dpcreconciler/genericitems"
 	linux "github.com/lf-edge/eve/pkg/pillar/dpcreconciler/linuxitems"
 	"github.com/lf-edge/eve/pkg/pillar/iptables"
@@ -811,7 +810,7 @@ func (r *LinuxDpcReconciler) updateCurrentRoutes(dpc types.DevicePortConfig,
 		if !found {
 			continue
 		}
-		table := devicenetwork.DPCBaseRTIndex + ifIndex
+		table := types.DPCBaseRTIndex + ifIndex
 		routes, err := r.NetworkMonitor.ListRoutes(netmonitor.RouteFilters{
 			FilterByTable: true,
 			Table:         table,
@@ -825,7 +824,7 @@ func (r *LinuxDpcReconciler) updateCurrentRoutes(dpc types.DevicePortConfig,
 		if r.HVTypeKube && clusterStatus.ClusterInterface == port.Logicallabel {
 			k3sSvcRoutes, err := r.NetworkMonitor.ListRoutes(netmonitor.RouteFilters{
 				FilterByTable: true,
-				Table:         devicenetwork.KubeSvcRT,
+				Table:         types.KubeSvcRT,
 				FilterByIf:    true,
 				IfIndex:       ifIndex,
 			})
@@ -880,22 +879,22 @@ func (r *LinuxDpcReconciler) getIntendedGlobalCfg(dpc types.DevicePortConfig,
 	intendedCfg := dg.New(graphArgs)
 	// Move IP rule that matches local destined packets below network instance rules.
 	intendedCfg.PutItem(linux.IPRule{
-		Priority: devicenetwork.PbrLocalDestPrio,
+		Priority: types.PbrLocalDestPrio,
 		Table:    unix.RT_TABLE_LOCAL,
 	}, nil)
 	if r.HVTypeKube {
 		intendedCfg.PutItem(linux.IPRule{
 			Dst:      kubePodCIDR,
-			Priority: devicenetwork.PbrKubeNetworkPrio,
+			Priority: types.PbrKubeNetworkPrio,
 			Table:    unix.RT_TABLE_MAIN,
 		}, nil)
 		tableForKubeSvc := unix.RT_TABLE_MAIN
 		if clusterStatus.ClusterInterface != "" {
-			tableForKubeSvc = devicenetwork.KubeSvcRT
+			tableForKubeSvc = types.KubeSvcRT
 		}
 		intendedCfg.PutItem(linux.IPRule{
 			Dst:      kubeSvcCIDR,
-			Priority: devicenetwork.PbrKubeNetworkPrio,
+			Priority: types.PbrKubeNetworkPrio,
 			Table:    tableForKubeSvc,
 		}, nil)
 	}
@@ -1190,8 +1189,8 @@ func (r *LinuxDpcReconciler) getIntendedSrcIPRules(dpc types.DevicePortConfig) d
 		for _, ipAddr := range ipAddrs {
 			intendedRules.PutItem(linux.IPRule{
 				Src:      netutils.HostSubnet(ipAddr.IP),
-				Priority: devicenetwork.PbrLocalOrigPrio,
-				Table:    devicenetwork.DPCBaseRTIndex + ifIndex,
+				Priority: types.PbrLocalOrigPrio,
+				Table:    types.DPCBaseRTIndex + ifIndex,
 			}, nil)
 		}
 	}
@@ -1220,7 +1219,7 @@ func (r *LinuxDpcReconciler) getIntendedRoutes(dpc types.DevicePortConfig,
 		if !found {
 			continue
 		}
-		dstTable := devicenetwork.DPCBaseRTIndex + ifIndex
+		dstTable := types.DPCBaseRTIndex + ifIndex
 		routes, err := r.NetworkMonitor.ListRoutes(netmonitor.RouteFilters{
 			FilterByTable: true,
 			Table:         srcTable,
@@ -1258,7 +1257,7 @@ func (r *LinuxDpcReconciler) getIntendedRoutes(dpc types.DevicePortConfig,
 					Type:      unix.RTN_UNICAST,
 					Dst:       kubeSvcCIDR,
 					Gw:        clusterStatus.ClusterIPPrefix.IP,
-					Table:     devicenetwork.KubeSvcRT,
+					Table:     types.KubeSvcRT,
 				},
 				AdapterIfName: port.IfName,
 				AdapterLL:     port.Logicallabel,

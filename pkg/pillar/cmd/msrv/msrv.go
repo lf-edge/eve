@@ -21,13 +21,13 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/cipher"
+	"github.com/lf-edge/eve/pkg/pillar/controllerconn"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/persistcache"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
-	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	"github.com/sirupsen/logrus"
 )
 
@@ -675,7 +675,7 @@ func (msrv *Msrv) Run(ctx context.Context) (err error) {
 // MakeMetadataHandler creates http.Handler to be used by LinuxNIReconciler
 func (msrv *Msrv) MakeMetadataHandler() http.Handler {
 	r := chi.NewRouter()
-	zedcloudCtx := zedcloud.NewContext(msrv.Log, zedcloud.ContextOptions{})
+	ctrlClient := controllerconn.NewClient(msrv.Log, controllerconn.ClientOptions{})
 
 	r.Route("/eve/v1", func(r chi.Router) {
 		r.Get("/network.json", msrv.handleNetwork())
@@ -698,7 +698,7 @@ func (msrv *Msrv) MakeMetadataHandler() http.Handler {
 
 		r.Get("/app/info.json", msrv.handleAppInfo())
 
-		r.Post("/tpm/signer", msrv.handleSigner(&zedcloudCtx))
+		r.Post("/tpm/signer", msrv.handleSigner(ctrlClient))
 
 		r.Post("/tpm/activatecredential/", msrv.handleActivateCredentialPost())
 		r.Get("/tpm/activatecredential/", msrv.handleActivateCredentialGet())

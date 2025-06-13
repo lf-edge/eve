@@ -94,9 +94,8 @@ func PublishHardwareInfoToZedCloud(ctx *zedagentContext, dest destinationBitset)
 	if buf == nil {
 		log.Fatal("PublishHardwareInfoToZedCloud malloc error")
 	}
-	size := int64(proto.Size(ReportHwInfo))
 
-	queueInfoToDest(ctx, dest, hwInfoKey, buf, size, bailOnHTTPErr, false, false,
+	queueInfoToDest(ctx, dest, hwInfoKey, buf, bailOnHTTPErr, false, false,
 		info.ZInfoTypes_ZiHardware)
 }
 

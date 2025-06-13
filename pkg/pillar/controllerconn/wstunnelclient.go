@@ -1,7 +1,7 @@
 // Copyright (c) 2017,2018 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-package zedcloud
+package controllerconn
 
 import (
 	"bytes"
@@ -104,11 +104,10 @@ func (t *WSTunnelClient) TestConnection(devNetStatus *types.DeviceNetworkStatus,
 	log.Tracef("Testing connection to %s on local address: %v, proxy: %v", t.Tunnel, localAddr, proxyURL)
 	log.Functionf("Testing connection to %s on local address: %v, proxy: %v", t.Tunnel, localAddr, proxyURL)
 
-	zedcloudCtx := ZedCloudContext{
-		V2API: UseV2API(),
-	}
-	// zedcloudCtx V2API UseV2API()
-	tlsConfig, err := GetTlsConfig(devNetStatus, nil, &zedcloudCtx)
+	ctrlClient := NewClient(log, ClientOptions{
+		DeviceNetworkStatus: devNetStatus,
+	})
+	tlsConfig, err := ctrlClient.GetTLSConfig(nil)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -126,7 +125,8 @@ func (t *WSTunnelClient) TestConnection(devNetStatus *types.DeviceNetworkStatus,
 		dialer.Proxy = http.ProxyURL(proxyURL)
 	}
 
-	pingURL := URLPathString(t.Tunnel, zedcloudCtx.V2API, devUUID, "connection/ping")
+	useV2API := UseV2API()
+	pingURL := URLPathString(t.Tunnel, useV2API, devUUID, "connection/ping")
 	_, resp, err := dialer.Dial(pingURL, nil)
 	if resp == nil { // this can get error, but with resp code is still 200
 		log.Functionf("TestConnection: url %s, resp %v, err %v", pingURL, resp, err)
@@ -136,7 +136,7 @@ func (t *WSTunnelClient) TestConnection(devNetStatus *types.DeviceNetworkStatus,
 
 	switch resp.StatusCode {
 	case http.StatusOK, http.StatusCreated, http.StatusNotModified:
-		url := URLPathString(t.Tunnel, zedcloudCtx.V2API, devUUID, "connection/tunnel")
+		url := URLPathString(t.Tunnel, useV2API, devUUID, "connection/tunnel")
 		t.DestURL = url
 		t.Dialer = dialer
 		log.Functionf("Connection test succeeded for url: %s on local address: %v, proxy: %v", url, localAddr, proxyURL)

@@ -180,8 +180,8 @@ func (m *DpcManager) runVerify(ctx context.Context, reason string) {
 	}
 	switch res {
 	case types.DPCStateSuccess, types.DPCStateRemoteWait:
-		// We just found a new DPC that restored our cloud connectivity.
-		m.dpcVerify.cloudConnWorks = true
+		// We just found a new DPC that restored our controller connectivity.
+		m.dpcVerify.controllerConnWorks = true
 	default:
 	}
 
@@ -230,7 +230,7 @@ func (m *DpcManager) verifyDPC(ctx context.Context) (status types.DPCState) {
 		m.reconcileStatus.CancelAsyncOps()
 	}
 
-	// Check cloud connectivity.
+	// Check controller connectivity.
 	m.updateDNS()
 	withNetTrace := m.traceNextConnTest()
 	intfStatusMap, tracedProbes, err := m.ConnTester.TestConnectivity(
@@ -248,19 +248,19 @@ func (m *DpcManager) verifyDPC(ctx context.Context) (status types.DPCState) {
 		m.deviceNetStatus.State = dpc.State
 		m.publishDNS()
 		if withNetTrace {
-			var cloudConnWorks bool
+			var controllerConnWorks bool
 			switch dpc.State {
 			case types.DPCStateFail, types.DPCStateFailWithIPAndDNS:
-				cloudConnWorks = false
+				controllerConnWorks = false
 			case types.DPCStateSuccess, types.DPCStateRemoteWait:
-				cloudConnWorks = true
+				controllerConnWorks = true
 			default:
 				// DpcManager is waiting for something (IP address, DNS server, etc.)
 				// Do not publish recorded traces (will be done later when the waiting
 				// has ended).
 				return
 			}
-			m.publishNetdump(cloudConnWorks, tracedProbes)
+			m.publishNetdump(controllerConnWorks, tracedProbes)
 		}
 	}()
 
@@ -398,11 +398,11 @@ func (m *DpcManager) verifyDPC(ctx context.Context) (status types.DPCState) {
 	return status
 }
 
-func (m *DpcManager) testConnectivityToCloud(ctx context.Context) error {
+func (m *DpcManager) testConnectivityToController(ctx context.Context) error {
 	dpc := m.currentDPC()
 	if dpc == nil {
 		err := errors.New("device port config is not applied")
-		m.Log.Warnf("testConnectivityToCloud: %v", err)
+		m.Log.Warnf("testConnectivityToController: %v", err)
 		return err
 	}
 
@@ -419,8 +419,8 @@ func (m *DpcManager) testConnectivityToCloud(ctx context.Context) error {
 	m.updateDNS()
 
 	if err == nil {
-		m.Log.Functionf("testConnectivityToCloud: Device cloud connectivity test passed.")
-		m.dpcVerify.cloudConnWorks = true
+		m.Log.Functionf("testConnectivityToController: Device controller connectivity test passed.")
+		m.dpcVerify.controllerConnWorks = true
 		if withNetTrace {
 			m.publishNetdump(true, tracedProbes)
 		}
@@ -434,37 +434,37 @@ func (m *DpcManager) testConnectivityToCloud(ctx context.Context) error {
 		m.publishNetdump(rtf, tracedProbes)
 	}
 
-	if !m.dpcVerify.cloudConnWorks && !rtf {
-		// If previous cloud connectivity test also failed, it means
+	if !m.dpcVerify.controllerConnWorks && !rtf {
+		// If previous controller connectivity test also failed, it means
 		// that the current DPC configuration stopped working.
 		// In this case we start the process where device tries to
 		// figure out a DevicePortConfig that works.
 		// We avoid doing this for remoteTemporaryFailures
 		if m.dpcVerify.inProgress {
-			m.Log.Functionf("testConnectivityToCloud: Device port configuration list " +
+			m.Log.Functionf("testConnectivityToController: Device port configuration list " +
 				"verification in progress")
-			// Connectivity to cloud is already being figured out.
-			// We wait till the next cloud connectivity test slot.
+			// Connectivity to controller is already being figured out.
+			// We wait till the next controller connectivity test slot.
 		} else {
-			m.Log.Functionf("testConnectivityToCloud: Triggering Device port "+
-				"verification to resume cloud connectivity after error: %v", err)
+			m.Log.Functionf("testConnectivityToController: Triggering Device port "+
+				"verification to resume controller connectivity after error: %v", err)
 			// Start DPC verification to find a working configuration
-			m.restartVerify(ctx, "testConnectivityToCloud")
+			m.restartVerify(ctx, "testConnectivityToController")
 		}
 	} else {
 		// Restart DPC test timer for next slot.
 		m.dpcTestTimer = time.NewTimer(m.dpcTestInterval)
 		if rtf {
-			// The fact that cloud replied with a status code shows that the cloud is UP,
-			// but not functioning fully at this time. So, we mark the cloud connectivity
+			// The fact that controller replied with a status code shows that the controller is UP,
+			// but not functioning fully at this time. So, we mark the controller connectivity
 			// as UP for now.
-			m.Log.Warnf("testConnectivityToCloud: remoteTemporaryFailure: %v", err)
-			m.dpcVerify.cloudConnWorks = true
+			m.Log.Warnf("testConnectivityToController: remoteTemporaryFailure: %v", err)
+			m.dpcVerify.controllerConnWorks = true
 			return nil
 		} else {
-			m.Log.Functionf("testConnectivityToCloud: Device cloud connectivity test "+
+			m.Log.Functionf("testConnectivityToController: Device controller connectivity test "+
 				"restart timer due to error: %v", err)
-			m.dpcVerify.cloudConnWorks = false
+			m.dpcVerify.controllerConnWorks = false
 		}
 	}
 	return err

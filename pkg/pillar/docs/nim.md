@@ -59,7 +59,7 @@ of concerns. The interaction between these components is well-defined using Go i
 This allows to (unit-)test each component individually and even to have them replaceable
 (with alternative implementations or with mock objects). For example, the default method
 of connectivity testing based on the `ping` API of the controller is wrapped by
-`ZedcloudConnectivityTester`, implementing [ConnectivityTester](#connectivitytester) interface.
+`ControllerConnectivityTester`, implementing [ConnectivityTester](#connectivitytester) interface.
 Should a different connectivity testing method be required for a specific use-case,
 the default tester can be easily swapped with a different implementation without affecting
 the rest of the NIM microservice.

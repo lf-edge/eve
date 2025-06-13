@@ -330,7 +330,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	log.Functionf("Device is onboarded")
 
 	// if current partition state is not in-progress,
-	// nothing much to do. Zedcloud connectivity is tracked,
+	// nothing much to do. Controller connectivity is tracked,
 	// to trigger the device to reboot, on reset timeout expiry
 	//
 	// if current partition state is in-progress,
@@ -338,10 +338,10 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	// fallback timeout expiry
 	//
 	// On zedbox modules activation, nodeagent will
-	// track the zedcloud connectivity events
+	// track the controller connectivity events
 	//
 	// These timer functions will be tracked using
-	// cloud connectionnectivity status.
+	// controller connectivity status.
 
 	// Start waiting for controller connectivity
 	ctxPtr.lastControllerReachableTime = ctxPtr.timeTickCount
@@ -476,7 +476,7 @@ func handleGlobalConfigDelete(ctxArg interface{},
 	log.Functionf("handleGlobalConfigDelete done for %s", key)
 }
 
-// handle zedagent status events, for cloud connectivity
+// handle zedagent status events, for controller connectivity
 func handleZedAgentStatusCreate(ctxArg interface{}, key string,
 	statusArg interface{}) {
 	handleZedAgentStatusImpl(ctxArg, key, statusArg)

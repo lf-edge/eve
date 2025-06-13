@@ -15,9 +15,9 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/controllerconn"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 )
@@ -43,7 +43,7 @@ type wstunnelclientContext struct {
 	GCInitialized        bool
 	subAppInstanceConfig pubsub.Subscription
 	serverNameAndPort    string
-	wstunnelclient       *zedcloud.WSTunnelClient
+	wstunnelclient       *controllerconn.WSTunnelClient
 	dnsContext           *DNSContext
 	devUUID              uuid.UUID
 	// XXX add any output from scanAIConfigs()?
@@ -392,7 +392,7 @@ func scanAIConfigs(ctx *wstunnelclientContext) {
 				ifname)
 			continue
 		}
-		wstunnelclient := zedcloud.InitializeTunnelClient(log, ctx.serverNameAndPort, "localhost:4822")
+		wstunnelclient := controllerconn.InitializeTunnelClient(log, ctx.serverNameAndPort, "localhost:4822")
 		destURL := wstunnelclient.Tunnel
 
 		addrCount, err := types.CountLocalAddrAnyNoLinkLocalIf(*deviceNetworkStatus,
@@ -422,7 +422,7 @@ func scanAIConfigs(ctx *wstunnelclientContext) {
 				continue
 			}
 
-			proxyURL, _ := zedcloud.LookupProxy(log, deviceNetworkStatus,
+			proxyURL, _ := controllerconn.LookupProxy(log, deviceNetworkStatus,
 				ifname, destURL)
 			if err := wstunnelclient.TestConnection(deviceNetworkStatus, proxyURL, localAddr, ctx.devUUID); err != nil {
 				log.Function(err)

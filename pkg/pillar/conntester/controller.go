@@ -13,11 +13,11 @@ import (
 
 	"github.com/lf-edge/eve-libs/nettrace"
 	"github.com/lf-edge/eve/pkg/pillar/base"
-	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
+	"github.com/lf-edge/eve/pkg/pillar/controllerconn"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/netdump"
+	"github.com/lf-edge/eve/pkg/pillar/netmonitor"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	uuid "github.com/satori/go.uuid"
 )
 
@@ -26,22 +26,23 @@ const requiredSuccessCount uint = 1
 
 var nilUUID = uuid.UUID{} // used as a constant
 
-// ZedcloudConnectivityTester implements external connectivity testing using
-// the "/api/v2/edgeDevice/ping" endpoint provided by the zedcloud.
-type ZedcloudConnectivityTester struct {
+// ControllerConnectivityTester implements external connectivity testing using
+// the "/api/v2/edgeDevice/ping" endpoint provided by the controller.
+type ControllerConnectivityTester struct {
 	// Exported attributes below should be injected.
-	Log         *base.LogObject
-	AgentName   string
-	TestTimeout time.Duration // can be changed in run-time
-	Metrics     *zedcloud.AgentMetrics
+	Log            *base.LogObject
+	AgentName      string
+	TestTimeout    time.Duration // can be changed in run-time
+	Metrics        *controllerconn.AgentMetrics
+	NetworkMonitor netmonitor.NetworkMonitor
 
 	iteration     int
 	prevTLSConfig *tls.Config
 }
 
-// TestConnectivity uses VerifyAllIntf from the zedcloud package, which
+// TestConnectivity uses VerifyAllIntf from the controllerconn package, which
 // tries to call the "ping" API of the controller.
-func (t *ZedcloudConnectivityTester) TestConnectivity(dns types.DeviceNetworkStatus,
+func (t *ControllerConnectivityTester) TestConnectivity(dns types.DeviceNetworkStatus,
 	withNetTrace bool) (types.IntfStatusMap, []netdump.TracedNetRequest, error) {
 
 	t.iteration++
@@ -58,20 +59,27 @@ func (t *ZedcloudConnectivityTester) TestConnectivity(dns types.DeviceNetworkSta
 	}
 	serverNameAndPort := strings.TrimSpace(string(server))
 
-	zedcloudCtx := zedcloud.NewContext(t.Log, zedcloud.ContextOptions{
-		DevNetworkStatus: &dns,
-		SendTimeout:      uint32(t.TestTimeout.Seconds()),
-		AgentMetrics:     t.Metrics,
-		Serial:           hardware.GetProductSerial(t.Log),
-		SoftSerial:       hardware.GetSoftSerial(t.Log),
-		AgentName:        t.AgentName,
-		NetTraceOpts:     t.netTraceOpts(dns),
+	ctrlClient := controllerconn.NewClient(t.Log, controllerconn.ClientOptions{
+		AgentName:           t.AgentName,
+		NetworkMonitor:      t.NetworkMonitor,
+		DeviceNetworkStatus: &dns,
+		TLSConfig:           nil,
+		AgentMetrics:        t.Metrics,
+		NetworkSendTimeout:  t.TestTimeout,
+		NetworkDialTimeout:  0,
+		DevUUID:             uuid.UUID{},
+		DevSerial:           hardware.GetProductSerial(t.Log),
+		DevSoftSerial:       hardware.GetSoftSerial(t.Log),
+		NetTraceOpts:        t.netTraceOpts(dns),
+		ResolverCacheFunc:   nil,
+		NoLedManager:        false,
 	})
-	t.Log.Functionf("TestConnectivity: Use V2 API %v\n", zedcloud.UseV2API())
-	testURL := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, nilUUID, "ping")
 
-	tlsConfig, err := zedcloud.GetTlsConfig(zedcloudCtx.DeviceNetworkStatus,
-		nil, &zedcloudCtx)
+	t.Log.Functionf("TestConnectivity: Use V2 API %v\n", ctrlClient.UsingV2API())
+	testURL := controllerconn.URLPathString(
+		serverNameAndPort, ctrlClient.UsingV2API(), nilUUID, "ping")
+
+	err = ctrlClient.UpdateTLSConfig(nil)
 	if err != nil {
 		t.Log.Functionf("TestConnectivity: " +
 			"Device certificate not found, looking for Onboarding certificate")
@@ -83,25 +91,23 @@ func (t *ZedcloudConnectivityTester) TestConnectivity(dns types.DeviceNetworkSta
 			return intfStatusMap, nil, err
 		}
 		clientCert := &onboardingCert
-		tlsConfig, err = zedcloud.GetTlsConfig(zedcloudCtx.DeviceNetworkStatus,
-			clientCert, &zedcloudCtx)
+		err = ctrlClient.UpdateTLSConfig(clientCert)
 		if err != nil {
-			err = fmt.Errorf("failed to load TLS config for talking to Zedcloud: %v", err)
+			err = fmt.Errorf("failed to load TLS config for talking to controller: %v", err)
 			t.Log.Functionf("TestConnectivity: %v", err)
 			return intfStatusMap, nil, err
 		}
 	}
 
 	if t.prevTLSConfig != nil {
-		tlsConfig.ClientSessionCache = t.prevTLSConfig.ClientSessionCache
+		ctrlClient.TLSConfig.ClientSessionCache = t.prevTLSConfig.ClientSessionCache
 	}
-	zedcloudCtx.TlsConfig = tlsConfig
 	for ix := range dns.Ports {
 		if dns.Ports[ix].InvalidConfig {
 			continue
 		}
 		ifName := dns.Ports[ix].IfName
-		err = devicenetwork.CheckAndGetNetworkProxy(t.Log, &dns, ifName, t.Metrics)
+		err = controllerconn.CheckAndGetNetworkProxy(t.Log, &dns, ifName, t.Metrics)
 		if err != nil {
 			err = fmt.Errorf("failed to get network proxy for interface %s: %v",
 				ifName, err)
@@ -110,8 +116,13 @@ func (t *ZedcloudConnectivityTester) TestConnectivity(dns types.DeviceNetworkSta
 			return intfStatusMap, nil, err
 		}
 	}
-	rv, err := zedcloud.VerifyAllIntf(&zedcloudCtx, testURL, requiredSuccessCount,
-		t.iteration, withNetTrace)
+	ctx, cancel := ctrlClient.GetContextForAllIntfFunctions()
+	defer cancel()
+	rv, err := ctrlClient.VerifyAllIntf(ctx, testURL, requiredSuccessCount,
+		controllerconn.RequestOptions{
+			WithNetTracing: withNetTrace,
+			Iteration:      t.iteration,
+		})
 	intfStatusMap.SetOrUpdateFromMap(rv.IntfStatusMap)
 	t.Log.Tracef("TestConnectivity: intfStatusMap = %+v", intfStatusMap)
 	for i := range rv.TracedReqs {
@@ -120,7 +131,7 @@ func (t *ZedcloudConnectivityTester) TestConnectivity(dns types.DeviceNetworkSta
 		rv.TracedReqs[i].RequestName = "ping-" + reqName
 	}
 	if withNetTrace {
-		if (!rv.CloudReachable || err != nil) && !rv.RemoteTempFailure {
+		if (!rv.ControllerReachable || err != nil) && !rv.RemoteTempFailure {
 			rv.TracedReqs = append(rv.TracedReqs, t.tryGoogleWithTracing(dns)...)
 		}
 	}
@@ -142,8 +153,8 @@ func (t *ZedcloudConnectivityTester) TestConnectivity(dns types.DeviceNetworkSta
 		return intfStatusMap, rv.TracedReqs, err
 	}
 
-	t.prevTLSConfig = zedcloudCtx.TlsConfig
-	if rv.CloudReachable {
+	t.prevTLSConfig = ctrlClient.TLSConfig
+	if rv.ControllerReachable {
 		t.Log.Functionf("TestConnectivity: uplink test SUCCEEDED for URL: %s", testURL)
 		return intfStatusMap, rv.TracedReqs, nil
 	}
@@ -152,9 +163,9 @@ func (t *ZedcloudConnectivityTester) TestConnectivity(dns types.DeviceNetworkSta
 	return intfStatusMap, rv.TracedReqs, err
 }
 
-func (t *ZedcloudConnectivityTester) getPortsNotReady(
+func (t *ControllerConnectivityTester) getPortsNotReady(
 	verifyErr error, dns types.DeviceNetworkStatus) (ports []string) {
-	if sendErr, isSendErr := verifyErr.(*zedcloud.SendError); isSendErr {
+	if sendErr, isSendErr := verifyErr.(*controllerconn.SendError); isSendErr {
 		portMap := make(map[string]struct{}) // Avoid duplicate entries.
 		for _, attempt := range sendErr.Attempts {
 			var dnsErr *types.DNSNotAvailError
@@ -179,7 +190,7 @@ func (t *ZedcloudConnectivityTester) getPortsNotReady(
 
 // Enable all net traces, including packet capture - ping and google.com requests
 // are quite small.
-func (t *ZedcloudConnectivityTester) netTraceOpts(
+func (t *ControllerConnectivityTester) netTraceOpts(
 	dns types.DeviceNetworkStatus) []nettrace.TraceOpt {
 	return []nettrace.TraceOpt{
 		&nettrace.WithLogging{
@@ -204,17 +215,23 @@ func (t *ZedcloudConnectivityTester) netTraceOpts(
 // google.com over HTTP and HTTPS and include collected traces in the output.
 // This can help to determine if the issue is with the Internet access or with
 // something specific to the controller.
-func (t *ZedcloudConnectivityTester) tryGoogleWithTracing(
+func (t *ControllerConnectivityTester) tryGoogleWithTracing(
 	dns types.DeviceNetworkStatus) (tracedReqs []netdump.TracedNetRequest) {
-	const bailOnHTTPErr = true
-	const withNetTracing = true
-	zedcloudCtx := zedcloud.NewContext(t.Log, zedcloud.ContextOptions{
-		DevNetworkStatus: &dns,
-		SendTimeout:      uint32(t.TestTimeout.Seconds()),
-		AgentName:        t.AgentName,
-		NetTraceOpts:     t.netTraceOpts(dns),
+	client := controllerconn.NewClient(t.Log, controllerconn.ClientOptions{
+		AgentName:           t.AgentName,
+		DeviceNetworkStatus: &dns,
+		TLSConfig:           nil,
+		AgentMetrics:        nil,
+		NetworkSendTimeout:  t.TestTimeout,
+		NetworkDialTimeout:  0,
+		DevUUID:             uuid.UUID{},
+		DevSerial:           "",
+		DevSoftSerial:       "",
+		NetTraceOpts:        t.netTraceOpts(dns),
+		ResolverCacheFunc:   nil,
+		NoLedManager:        false,
 	})
-	ctxWork, cancel := zedcloud.GetContextForAllIntfFunctions(&zedcloudCtx)
+	ctx, cancel := client.GetContextForAllIntfFunctions()
 	defer cancel()
 	tests := []struct {
 		url  string
@@ -224,8 +241,12 @@ func (t *ZedcloudConnectivityTester) tryGoogleWithTracing(
 		{url: "https://www.google.com", name: "google.com-over-https"},
 	}
 	for _, test := range tests {
-		rv, _ := zedcloud.SendOnAllIntf(ctxWork, &zedcloudCtx, test.url, 0, nil,
-			t.iteration, bailOnHTTPErr, withNetTracing)
+		rv, _ := client.SendOnAllIntf(ctx, test.url, nil,
+			controllerconn.RequestOptions{
+				WithNetTracing: true,
+				BailOnHTTPErr:  true,
+				Iteration:      t.iteration,
+			})
 		for i := range rv.TracedReqs {
 			reqName := rv.TracedReqs[i].RequestName
 			rv.TracedReqs[i].RequestName = test.name + "-" + reqName

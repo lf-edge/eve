@@ -10,7 +10,7 @@ import (
 	"net"
 	"strings"
 
-	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
+	"github.com/lf-edge/eve/pkg/pillar/controllerconn"
 	"github.com/lf-edge/eve/pkg/pillar/nireconciler"
 	"github.com/lf-edge/eve/pkg/pillar/nistate"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -106,10 +106,10 @@ func (z *zedrouter) attachNTPServersToPortConfigs(portConfigs []nireconciler.Por
 				continue
 			}
 			z.pubSub.StillRunning(agentName, warningTime, errorTime)
-			dnsResponses, err := devicenetwork.ResolveWithPortsLambda(
+			dnsResponses, err := controllerconn.ResolveWithPortsLambda(
 				ntpServer,
 				*z.deviceNetworkStatus,
-				devicenetwork.ResolveCacheWrap(devicenetwork.ResolveWithSrcIP),
+				controllerconn.ResolveCacheWrap(controllerconn.ResolveWithSrcIP),
 			)
 			if err != nil {
 				z.log.Warnf("could not resolve '%s': %v", ntpServer, err)
