@@ -16,11 +16,11 @@ import (
 	"github.com/lf-edge/eve-api/go/attest"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	zattest "github.com/lf-edge/eve/pkg/pillar/attest"
+	"github.com/lf-edge/eve/pkg/pillar/cloudconn"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/vault"
-	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -65,7 +65,7 @@ const (
 )
 
 // One shot send, if fails, return an error to the state machine to retry later
-func trySendToController(attestReq *attest.ZAttestReq, attestCtx *attestContext) (zedcloud.SendRetval, error) {
+func trySendToController(attestReq *attest.ZAttestReq, attestCtx *attestContext) (cloudconn.SendRetval, error) {
 	log.Noticef("trySendToController type %d", attestReq.ReqType)
 	data, err := proto.Marshal(attestReq)
 	if err != nil {
@@ -73,19 +73,22 @@ func trySendToController(attestReq *attest.ZAttestReq, attestCtx *attestContext)
 	}
 
 	buf := bytes.NewBuffer(data)
-	size := int64(proto.Size(attestReq))
-	attestURL := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API,
+	attestURL := cloudconn.URLPathString(serverNameAndPort, cloudClient.UsingV2API(),
 		devUUID, "attest")
-	ctxWork, cancel := zedcloud.GetContextForAllIntfFunctions(zedcloudCtx)
+	ctxWork, cancel := cloudClient.GetContextForAllIntfFunctions()
 	defer cancel()
 	const bailOnHTTPErr = true
 	const withNetTracing = false
-	rv, err := zedcloud.SendOnAllIntf(ctxWork, zedcloudCtx, attestURL, size, buf,
-		attestCtx.Iteration, bailOnHTTPErr, withNetTracing)
+	rv, err := cloudClient.SendOnAllIntf(ctxWork, attestURL, buf,
+		cloudconn.RequestOptions{
+			WithNetTracing: withNetTracing,
+			BailOnHTTPErr:  bailOnHTTPErr,
+			Iteration:      attestCtx.Iteration,
+		})
 	if err != nil || len(rv.RespContents) == 0 {
 		// Error case handled below
 	} else {
-		err = zedcloud.RemoveAndVerifyAuthContainer(zedcloudCtx, &rv, false)
+		err = cloudClient.RemoveAndVerifyAuthContainer(&rv, false)
 	}
 	switch rv.Status {
 	case types.SenderStatusCertMiss, types.SenderStatusCertInvalid:
@@ -126,7 +129,7 @@ func (server *VerifierImpl) SendNonceRequest(ctx *zattest.Context) error {
 	var attestReq = &attest.ZAttestReq{}
 
 	// bail if V2API is not supported
-	if !zedcloud.UseV2API() {
+	if !cloudClient.UsingV2API() {
 		return zattest.ErrNoVerifier
 	}
 
@@ -270,7 +273,7 @@ func (server *VerifierImpl) SendAttestQuote(ctx *zattest.Context) error {
 	var attestReq = &attest.ZAttestReq{}
 
 	// bail if V2API is not supported
-	if !zedcloud.UseV2API() {
+	if !cloudClient.UsingV2API() {
 		return zattest.ErrNoVerifier
 	}
 
@@ -431,7 +434,7 @@ func (server *VerifierImpl) SendAttestEscrow(ctx *zattest.Context) error {
 			ctx.OpaqueCtx)
 	}
 	// bail if V2API is not supported
-	if !zedcloud.UseV2API() {
+	if !cloudClient.UsingV2API() {
 		attestCtx.zedagentCtx.publishedAttestEscrow = true
 		return zattest.ErrNoVerifier
 	}

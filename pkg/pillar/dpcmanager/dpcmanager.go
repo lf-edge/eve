@@ -11,6 +11,7 @@ import (
 
 	"github.com/eriknordmark/ipinfo"
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/cloudconn"
 	"github.com/lf-edge/eve/pkg/pillar/conntester"
 	"github.com/lf-edge/eve/pkg/pillar/dpcreconciler"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
@@ -18,7 +19,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/netmonitor"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	uuid "github.com/satori/go.uuid"
 )
 
@@ -85,7 +85,7 @@ type DpcManager struct {
 	PubDeviceNetworkStatus   pubsub.Publication
 
 	// Metrics
-	ZedcloudMetrics *zedcloud.AgentMetrics
+	AgentMetrics *cloudconn.AgentMetrics
 
 	// Current configuration
 	dpcList          types.DevicePortConfigList

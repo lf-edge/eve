@@ -84,10 +84,9 @@ func publishKubeClusterUpdateStatus(ctx *zedagentContext, dest destinationBitset
 		log.Errorf("publishKubeClusterUpdateStatus malloc error")
 		return
 	}
-	size := int64(proto.Size(UpdateStatusInfo))
 
 	log.Function("publishKubeClusterUpdateStatus to controller")
-	queueInfoToDest(ctx, dest, key, buf, size, bailOnHTTPErr, false, false,
+	queueInfoToDest(ctx, dest, key, buf, bailOnHTTPErr, false, false,
 		info.ZInfoTypes_ZiKubeClusterUpdateStatus)
 }
 
@@ -227,9 +226,8 @@ func publishKubeClusterInfo(ctx *zedagentContext, dest destinationBitset) {
 		log.Errorf("publishKubeClusterInfo malloc error")
 		return
 	}
-	size := int64(proto.Size(infoMsg))
 
 	log.Functionf("publishKubeClusterInfo to controller")
-	queueInfoToDest(ctx, dest, key, buf, size, bailOnHTTPErr, false, false,
+	queueInfoToDest(ctx, dest, key, buf, bailOnHTTPErr, false, false,
 		info.ZInfoTypes_ZiKubeClusterUpdateStatus)
 }

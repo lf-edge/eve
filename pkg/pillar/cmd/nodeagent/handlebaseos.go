@@ -41,13 +41,13 @@ func doZbootBaseOsInstallationComplete(ctxPtr *nodeagentContext,
 }
 
 // baseos upgrade validation and activation path
-// mark the zedcloud health/connectivity test complete flag
+// mark the controller health/connectivity test complete flag
 // for baseosmgr to pick up and complete the partition activation
-func initiateBaseOsZedCloudTestComplete(ctxPtr *nodeagentContext) {
+func initiateBaseOsControllerTestComplete(ctxPtr *nodeagentContext) {
 	if !ctxPtr.updateInprogress {
 		return
 	}
-	log.Functionf("initiateBaseOsZedCloudTestComplete(%s)", ctxPtr.curPart)
+	log.Functionf("initiateBaseOsControllerTestComplete(%s)", ctxPtr.curPart)
 	// get the current partition zboot config and status
 	zbootConfig := lookupZbootConfig(ctxPtr, ctxPtr.curPart)
 	zbootStatus := lookupZbootStatus(ctxPtr, ctxPtr.curPart)

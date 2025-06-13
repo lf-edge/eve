@@ -73,7 +73,7 @@ type OldGlobalConfig struct {
 
 type PerAgentSettings struct {
 	LogLevel       string // What we log to files
-	RemoteLogLevel string // What we log to zedcloud
+	RemoteLogLevel string // What we log to the controller
 }
 
 // Default values until/unless we receive them from the cloud

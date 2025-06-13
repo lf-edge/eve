@@ -9,7 +9,6 @@ import (
 
 	dg "github.com/lf-edge/eve-libs/depgraph"
 	"github.com/lf-edge/eve-libs/reconciler"
-	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
 	"github.com/lf-edge/eve/pkg/pillar/iptables"
 	"github.com/lf-edge/eve/pkg/pillar/netmonitor"
 	generic "github.com/lf-edge/eve/pkg/pillar/nireconciler/genericitems"
@@ -245,7 +244,7 @@ func (r *LinuxNIReconciler) updateCurrentNIRoutes(niID uuid.UUID) (changed bool)
 	if ni.config.Type == types.NetworkInstanceTypeSwitch {
 		return changed
 	}
-	table := devicenetwork.NIBaseRTIndex + ni.bridge.BrNum
+	table := types.NIBaseRTIndex + ni.bridge.BrNum
 	routes, err := r.netMonitor.ListRoutes(netmonitor.RouteFilters{
 		FilterByTable: true,
 		Table:         table,
