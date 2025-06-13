@@ -115,7 +115,10 @@ func (z *zedkube) publishKubeConfigStatus() {
 			// Don't store the decrypted manifest in EdgeNodeClusterStatus as its a pubsub published
 			// structure and could lead to some log.Fatal due to this buffer size.
 			regExists, err := kubeapi.RegistrationExists(kubeapi.PillarPersistManifestPath)
-			if z.clusterConfig.BootstrapNode && (len(decGzipManifest) != 0) && (!regExists || err != nil) {
+			if regExists && (err == nil) {
+				log.Warn("Registration exists, overwriting")
+			}
+			if z.clusterConfig.BootstrapNode && (len(decGzipManifest) != 0) {
 				go func() {
 					err := kubeapi.RegistrationAdd(kubeapi.PillarPersistManifestPath, decGzipManifest)
 					if err != nil {

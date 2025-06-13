@@ -7,7 +7,6 @@ DESCHEDULER_VERSION="v0.29.0"
 
 descheduler_install()
 {
-    logmsg "Applying Descheduler ${DESCHEDULER_VERSION}"
     if ! kubectl apply -f /etc/descheduler_rbac.yaml; then
             logmsg "descheduler rbac not yet applied"
             return 1
@@ -17,4 +16,17 @@ descheduler_install()
             return 1
     fi
     return 0
+}
+
+Descheduler_uninstall() {
+        logmsg "Removing Descheduler ${DESCHEDULER_VERSION}"
+        if ! kubectl delete -f /etc/descheduler-policy-configmap.yaml; then
+                logmsg "descheduler config not deleted"
+                return 1
+        fi
+        if ! kubectl delete -f /etc/descheduler_rbac.yaml; then
+                logmsg "descheduler not deleted"
+                return 1
+        fi
+        return 0
 }

@@ -201,6 +201,12 @@ func WaitForKubernetes(agentName string, ps *pubsub.PubSub, stillRunning *time.T
 }
 
 func waitForLonghornReady(client *kubernetes.Clientset, hostname string) error {
+	// Only wait for longhorn if we are not in base-k3s mode.
+	if err := registrationAppliedToCluster(); err == nil {
+		// In base k3s mode, pillar not deploying redundant storage
+		return nil
+	}
+
 	// First we'll gate on the longhorn daemonsets existing
 	lhDaemonsets, err := client.AppsV1().DaemonSets("longhorn-system").
 		List(context.Background(), metav1.ListOptions{})
@@ -277,6 +283,13 @@ func waitForNodeReady(client *kubernetes.Clientset, readyCh chan bool, devUUID s
 			if hostname == "" {
 				return fmt.Errorf("node not found by label uuid %s", devUUID)
 			}
+
+			// Only wait for kubevirt if we are not in base-k3s mode.
+			if err := registrationAppliedToCluster(); err == nil {
+				// In base k3s mode, pillar not deploying kubevirt VM app instances
+				return nil
+			}
+
 			// get all pods from kubevirt, and check if they are all running
 			pods, err := client.CoreV1().Pods("kubevirt").
 				List(context.Background(), metav1.ListOptions{
@@ -352,6 +365,12 @@ func waitForPVCReady(ctx context.Context, log *base.LogObject, pvcName string) e
 
 // CleanupStaleVMI : delete all VMIs. Used by domainmgr on startup.
 func CleanupStaleVMI() (int, error) {
+	// Only wait for kubevirt if we are not in base-k3s mode.
+	if err := registrationAppliedToCluster(); err == nil {
+		// In base k3s mode, pillar not deploying kubevirt VM app instances
+		return 0, nil
+	}
+
 	kubeconfig, err := GetKubeConfig()
 	if err != nil {
 		return 0, fmt.Errorf("couldn't get the Kube Config: %v", err)

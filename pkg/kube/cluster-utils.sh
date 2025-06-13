@@ -291,3 +291,9 @@ wait_for_default_route() {
         done < /proc/net/route
         return 1
 }
+
+Multus_uninstall() {
+        logmsg "multus uninstall"
+        kubectl delete -f /etc/multus-daemonset-new.yaml
+        rm /var/lib/multus_initialized
+}
