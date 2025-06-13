@@ -11,7 +11,7 @@ import (
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
-	"github.com/lf-edge/eve/pkg/pillar/pubsub/socketdriver"
+	"github.com/lf-edge/eve/pkg/pillar/pubsub/nkvdriver"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 )
@@ -31,12 +31,8 @@ func TestRestarted(t *testing.T) {
 	logger.SetFormatter(&formatter)
 	logger.SetReportCaller(true)
 	log := base.NewSourceLogObject(logger, "test", 1234)
-	driver := socketdriver.SocketDriver{
-		Logger:  logger,
-		Log:     log,
-		RootDir: rootPath,
-	}
-	ps := pubsub.New(&driver, logger, log)
+	driver := nkvdriver.NewNkvDriver("/tmp/nkv/nkv.sock")
+	ps := pubsub.New(driver, logger, log)
 
 	myCtx := context{}
 	testMatrix := map[string]struct {

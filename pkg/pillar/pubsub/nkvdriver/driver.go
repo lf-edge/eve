@@ -15,8 +15,11 @@ type NkvDriver struct {
 	client     *client.Client
 }
 
-func NewNkvDriver() *NkvDriver {
-	nkvClient := client.NewClient(sockPath)
+func NewNkvDriver(path string) *NkvDriver {
+	if path == "" {
+		path = sockPath
+	}
+	nkvClient := client.NewClient(path)
 
 	return &NkvDriver{
 		socketPath: sockPath,
@@ -29,8 +32,8 @@ func (d *NkvDriver) Publisher(_ bool, _, topic string, _ bool, _ *pubsub.Updater
 }
 
 // TODO: perhaps channel is needed
-func (d *NkvDriver) Subscriber(_ bool, _, topic string, _ bool, _ chan pubsub.Change) (pubsub.DriverSubscriber, error) {
-	return &Subscriber{nkvClient: d.client, topic: topic}, nil
+func (d *NkvDriver) Subscriber(_ bool, _, topic string, _ bool, C chan pubsub.Change) (pubsub.DriverSubscriber, error) {
+	return &Subscriber{nkvClient: d.client, topic: topic, C: C}, nil
 }
 
 func (d *NkvDriver) DefaultName() string {

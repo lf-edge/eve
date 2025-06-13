@@ -187,6 +187,7 @@ func (sub *SubscriptionImpl) nameString() string {
 	var name string
 	agentName := sub.agentName
 	if agentName == "" {
+		// global
 		agentName = sub.defaultName
 	}
 	if sub.agentScope == "" {
