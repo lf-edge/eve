@@ -86,6 +86,7 @@ type nim struct {
 	subWwanStatus            pubsub.Subscription
 	subNetworkInstanceConfig pubsub.Subscription
 	subEdgeNodeClusterStatus pubsub.Subscription
+	subKubeUserServices      pubsub.Subscription
 
 	// Publications
 	pubDummyDevicePortConfig pubsub.Publication // For logging
@@ -237,6 +238,9 @@ func (n *nim) run(ctx context.Context) (err error) {
 	if err = n.subEdgeNodeClusterStatus.Activate(); err != nil {
 		return err
 	}
+	if err = n.subKubeUserServices.Activate(); err != nil {
+		return err
+	}
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(stillRunTime)
@@ -314,6 +318,9 @@ func (n *nim) run(ctx context.Context) (err error) {
 		if err = n.subNetworkInstanceConfig.Activate(); err != nil {
 			return err
 		}
+		if err = n.subKubeUserServices.Activate(); err != nil {
+			return err
+		}
 		go n.runResolverCacheForController()
 		return nil
 	}
@@ -379,6 +386,9 @@ func (n *nim) run(ctx context.Context) (err error) {
 		case change := <-n.subNetworkInstanceConfig.MsgChan():
 			n.subNetworkInstanceConfig.ProcessChange(change)
 			n.handleNetworkInstanceUpdate()
+
+		case change := <-n.subKubeUserServices.MsgChan():
+			n.subKubeUserServices.ProcessChange(change)
 
 		case event := <-netEvents:
 			ifChange, isIfChange := event.(netmonitor.IfChange)
@@ -721,6 +731,23 @@ func (n *nim) initSubscriptions() (err error) {
 	if err != nil {
 		return err
 	}
+
+	// Subscribe to KubeUserServices to get the Kubernetes services and ingresses
+	// for firewall configuration.
+	n.subKubeUserServices, err = n.PubSub.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "zedkube",
+		MyAgentName:   agentName,
+		TopicImpl:     types.KubeUserServices{},
+		Activate:      false,
+		CreateHandler: n.handleKubeUserServicesCreate,
+		ModifyHandler: n.handleKubeUserServicesModify,
+		DeleteHandler: n.handleKubeUserServicesDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -947,6 +974,23 @@ func (n *nim) handleEdgeNodeClusterStatusModify(_ interface{}, _ string,
 func (n *nim) handleEdgeNodeClusterStatusDelete(_ interface{}, _ string, _ interface{}) {
 	// Apply empty cluster status, which effectively removes the cluster IP.
 	n.dpcManager.UpdateClusterStatus(types.EdgeNodeClusterStatus{})
+}
+
+func (n *nim) handleKubeUserServicesCreate(_ interface{}, _ string,
+	statusArg interface{}) {
+	services := statusArg.(types.KubeUserServices)
+	n.dpcManager.UpdateKubeUserServices(services)
+}
+
+func (n *nim) handleKubeUserServicesModify(_ interface{}, _ string,
+	statusArg, _ interface{}) {
+	services := statusArg.(types.KubeUserServices)
+	n.dpcManager.UpdateKubeUserServices(services)
+}
+
+func (n *nim) handleKubeUserServicesDelete(_ interface{}, _ string, _ interface{}) {
+	// Apply empty services, which effectively removes all services and ingresses.
+	n.dpcManager.UpdateKubeUserServices(types.KubeUserServices{})
 }
 
 func (n *nim) isDeviceOnboarded() bool {
