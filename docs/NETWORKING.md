@@ -78,7 +78,7 @@ EVE provides 2 types of network instances:
   - traffic between apps and external endpoints is routed and NATed
   - from outside, applications can be accessed only through port forwarding rules
   - provides basic services like: DHCP (with its own IPAM), DNS, access-control,
-    HTTP metadata server (e.g. for cloud-init)
+    HTTP metadata server (e.g. for cloud-init) (For more information on the metadata service consult [ECO-METADATA.md](ECO-METADATA.md))
   - one or more network ports can be attached to network instance to provide
     external connectivity
 - **Switch**:
