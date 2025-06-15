@@ -91,6 +91,7 @@ jobs:
   packages-arm:
     if: github.event.repository.full_name == 'lf-edge/eve'
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 1440 # It takes more time when building arm64 on an amd64 runner
     strategy:
       fail-fast: false
       max-parallel: 1
