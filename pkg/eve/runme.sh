@@ -8,6 +8,7 @@ exec 1>&2
 OUTPUT_IMG=/tmp/output.img
 DEFAULT_LIVE_IMG_SIZE=592
 DEFAULT_INSTALLER_IMG_SIZE=592
+DEFAULT_EVALUATION_INSTALLER_IMG_SIZE=2000
 DEFAULT_NVIDIA_IMG_SIZE=900
 
 bail() {
@@ -125,6 +126,8 @@ __EOT__
   exit 0
 }
 
+# $1 - offset in bytes
+# $2 - partition list
 create_efi_raw() {
   rm -rf /parts
   ln -s /bits /parts
@@ -145,7 +148,7 @@ do_build_config() {
 }
 
 do_live() {
-  PART_SPEC="efi conf imga"
+  PART_SPEC="efi conf imga imgb imgc"
   # each live image is expected to have a soft serial number that
   # typically gets provisioned by an installer -- since we're
   # shortcutting the installer step here we need to generate it
@@ -162,7 +165,7 @@ do_live() {
 }
 
 do_installer_raw() {
-  create_efi_raw "${1:-${DEFAULT_INSTALLER_IMG_SIZE}}" "efi conf_win installer inventory_win"
+  create_efi_raw "${1:-${DEFAULT_EVALUATION_INSTALLER_IMG_SIZE}}" "efi conf_win installer inventory_win"
   dump "$OUTPUT_IMG" installer.raw
 }
 

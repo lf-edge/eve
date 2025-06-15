@@ -3,12 +3,13 @@
 set -e
 
 yq() {
-  docker run -i --rm -v "${PWD}/":/workdir -w /workdir mikefarah/yq:4.40.5 "$@"
+    docker run -i --rm -v "${PWD}/":/workdir -w /workdir mikefarah/yq:4.40.5 "$@"
 }
 
 process-image-template() {
     local out_templ_path="$1"
     local eve_version="$2"
+    local eve_platform="$3"
 
     local flags
     local -a bits
@@ -45,6 +46,9 @@ process-image-template() {
     yq '(.onboot[] | select(.image == "PILLAR_TAG").image) |= "'"$pillar_tag"'"' < "${out_templ_path}" | spongefile "${out_templ_path}"
     # shellcheck disable=SC2094
     yq '(.services[] | select(.image == "PILLAR_TAG").image) |= "'"$pillar_tag"'"' < "${out_templ_path}" | spongefile "${out_templ_path}"
+
+    local rootfs_source_file="rootfs-$eve_platform.img"
+    yq '(.files[] | select(.source == "rootfs-PLATFORM.img")).source |= "'"$rootfs_source_file"'"' < "${out_templ_path}" | spongefile "${out_templ_path}"
 }
 
 patch_hv() {
@@ -69,8 +73,9 @@ main() {
     local out_templ_path=""
     local eve_version=""
     local eve_hv=""
+    local eve_platform=""
 
-    while getopts "b:o:v:h:" opt; do
+    while getopts "b:o:v:h:p:" opt; do
         case ${opt} in
             b )
                 base_templ_path=$OPTARG
@@ -83,6 +88,9 @@ main() {
                 ;;
             h )
                 eve_hv=$OPTARG
+                ;;
+            p )
+                eve_platform=$OPTARG
                 ;;
             \? )
                 echo "Invalid option: -$OPTARG" 1>&2
@@ -112,11 +120,11 @@ main() {
 
     patch_hv "${eve_hv}" "${out_templ_path}"
 
-    process-image-template "${out_templ_path}" "${eve_version}"
+    process-image-template "${out_templ_path}" "${eve_version}" "${eve_platform}"
 }
 
 usage() {
-    echo "Usage: $0 -b <base template> -o <output template> -v <eve version> -h <eve hv> <modifiers>"
+    echo "Usage: $0 -b <base template> -o <output template> -v <eve version> -h <eve hv> -p <platform> <modifiers>"
     exit 1
 }
 

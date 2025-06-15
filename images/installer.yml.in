@@ -47,7 +47,7 @@ files:
   - path: /etc/issue
     source: etc_issue
   - path: /rootfs.img
-    source: rootfs.img
+    source: rootfs-PLATFORM.img
   - path: /persist.img
     source: persist.img
   - path: /config.img
