@@ -6,11 +6,18 @@ package types
 import "strings"
 
 const (
+	// RunDir - Runtime directory for temporary files and sockets
+	RunDir = "/run"
+
 	// TmpDirname - used for files fed into pubsub as global subscriptions
-	TmpDirname = "/run/global"
+	TmpDirname = RunDir + "/global"
 
 	// PersistDir - Location to store persistent files.
 	PersistDir = "/persist"
+	// PersistLogDir - Location to store persistent log files.
+	PersistLogDir = PersistDir + "/log"
+	// PersistTmpDir - temporary files in persistent storage
+	PersistTmpDir = PersistDir + "/tmp"
 	// PersistConfigDir is where we used to keep some configuration across reboots. Remove once upgradeconverter code is removed.
 	PersistConfigDir = PersistDir + "/config"
 	// PersistStatusDir is where we keep some configuration across reboots
@@ -81,15 +88,15 @@ const (
 	AppImgObj = "appImg.obj"
 	// BaseOsObj - name of base image type
 	BaseOsObj = "baseOs.obj"
-	//ITokenFile contains the integrity token sent in attestation response
-	ITokenFile = "/run/eve.integrity_token"
-	//EveVersionFile contains the running version of EVE
-	EveVersionFile = "/run/eve-release"
-	//DefaultVaultName is the name of the default vault
+	// ITokenFile contains the integrity token sent in attestation response
+	ITokenFile = RunDir + "/eve.integrity_token"
+	// EveVersionFile contains the running version of EVE
+	EveVersionFile = RunDir + "/eve-release"
+	// DefaultVaultName is the name of the default vault
 	DefaultVaultName = "Application Data Store"
 
 	// NewlogDir - newlog directories
-	NewlogDir = "/persist/newlog"
+	NewlogDir = PersistDir + "/newlog"
 	// NewlogCollectDir - newlog collect directory for temp log files
 	NewlogCollectDir = NewlogDir + "/collect"
 	// NewlogUploadDevDir - newlog device gzip file directory ready for upload
@@ -118,15 +125,15 @@ const (
 	// ContainerdDir - path to user containerd storage
 	ContainerdDir = SealedDirName + "/containerd"
 
-	// ContainerdContentDir - path to containerd`s content store
+	// ContainerdContentDir - path to containerd's content store
 	ContainerdContentDir = ContainerdDir + "/io.containerd.content.v1.content"
 
 	// VtpmdCtrlSocket is UDS to ask vtpmd to launch SWTP instances for VMs
-	VtpmdCtrlSocket = "/run/swtpm/vtpmd.ctrl.sock"
+	VtpmdCtrlSocket = RunDir + "/swtpm/vtpmd.ctrl.sock"
 	// SwtpmCtrlSocketPath SWTPM per-vm socket path, the format string is filled with the App UUID
-	SwtpmCtrlSocketPath = "/run/swtpm/%s.ctrl.sock"
+	SwtpmCtrlSocketPath = RunDir + "/swtpm/%s.ctrl.sock"
 	// SwtpmPidPath is SWTPM per-vm pid file path, the format string is filled with the App UUID
-	SwtpmPidPath = "/run/swtpm/%s.pid"
+	SwtpmPidPath = RunDir + "/swtpm/%s.pid"
 
 	// MemoryMonitorDir - directory for memory monitor
 	MemoryMonitorDir = PersistDir + "/memory-monitor"
@@ -134,6 +141,8 @@ const (
 	MemoryMonitorOutputDir = MemoryMonitorDir + "/output"
 	// MemoryMonitorPSIStatsFile - file to store memory PSI (Pressure Stall Information) statistics
 	MemoryMonitorPSIStatsFile = MemoryMonitorOutputDir + "/psi.txt"
+	// MemoryMonitorPSICollectorDir - directory for PSI collector
+	MemoryMonitorPSICollectorDir = MemoryMonitorDir + "/psi-collector"
 
 	// OVMFSettingsDir - directory for OVMF settings, they are stored in per-domain files
 	OVMFSettingsDir = SealedDirName + "/ovmf"
@@ -143,7 +152,12 @@ const (
 	CustomOVMFSettingsDir = "/hostfs/etc/ovmf"
 
 	// LocalActiveAppConfigDir - directory to put JSON of the apps that are running.
-	LocalActiveAppConfigDir = "/persist/vault/active-app-instance-config/"
+	LocalActiveAppConfigDir = SealedDirName + "/active-app-instance-config/"
+
+	// HostFSEtcDir - host filesystem etc directory
+	HostFSEtcDir = "/hostfs/etc"
+	// LinuxKitConfigFile - LinuxKit EVE configuration file
+	LinuxKitConfigFile = HostFSEtcDir + "/linuxkit-eve-config.yml"
 )
 
 var (
@@ -157,9 +171,9 @@ var (
 	SealedDataset = strings.TrimLeft(SealedDirName, "/")
 	// PersistReservedDataset - reserved dataset
 	PersistReservedDataset = PersistDataset + "/reserved"
-	//VolumeClearZFSDataset - dataset to create volumes without encryption
+	// VolumeClearZFSDataset - dataset to create volumes without encryption
 	VolumeClearZFSDataset = ClearDataset + "/volumes"
-	//VolumeEncryptedZFSDataset - dataset to create volumes with encryption
+	// VolumeEncryptedZFSDataset - dataset to create volumes with encryption
 	VolumeEncryptedZFSDataset = SealedDataset + "/volumes"
 	// EtcdZvol - zvol encrypted for etcd storage
 	EtcdZvol = PersistDataset + "/etcd-storage"

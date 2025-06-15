@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/lf-edge/eve/pkg/pillar/types"
 	"io"
 	"math/rand"
 	"net/http"
@@ -63,7 +64,7 @@ func logMemUsage(log *base.LogObject, file *os.File) {
 		roundToMb(m.Alloc), roundToMb(m.TotalAlloc), roundToMb(m.Sys), m.NumGC)
 
 	if file != nil {
-		// This goes to /persist/agentdebug/<agentname>/sigusr2 file
+		// This goes to PersistDebugDir/<agentname>/sigusr2 file
 		// And there in not much difference from the above log except the CRNL at the end.
 		statString := fmt.Sprintf("Alloc %d Mb, TotalAlloc %d Mb, Sys %d Mb, NumGC %d\n",
 			roundToMb(m.Alloc), roundToMb(m.TotalAlloc), roundToMb(m.Sys), m.NumGC)
@@ -88,7 +89,7 @@ func logMemAllocationSites(log *base.LogObject, file *os.File) {
 			site.AllocObjects, site.PrintedStack)
 
 		if file != nil {
-			// This goes to /persist/agentdebug/<agentname>/sigusr2 file
+			// This goes to PersistDebugDir/<agentname>/sigusr2 file
 			// And there in not much difference from the above log except the CRNL at the end.
 			statString := fmt.Sprintf("alloc %d bytes %d objects total %d/%d at:\n%s\n",
 				site.InUseBytes, site.InUseObjects, site.AllocBytes,
@@ -105,7 +106,7 @@ func dumpMemoryInfo(log *base.LogObject, fileName string) {
 	if err != nil {
 		log.Errorf("handleSignals: Error opening file %s with: %s", fileName, err)
 	} else {
-		// This goes to /persist/agentdebug/<agentname>/sigusr2 file
+		// This goes to PersistDebugDir/<agentname>/sigusr2 file
 		_, err := sigUsr2File.WriteString("SIGUSR2 triggered memory info:\n")
 		if err != nil {
 			log.Errorf("could not write to %s: %+v", fileName, err)
@@ -263,7 +264,7 @@ func (b bpftraceHandler) killProcess(ctx context.Context, process ctrdd.Process)
 }
 
 func (b bpftraceHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	file, err := os.CreateTemp("/persist/tmp", "bpftrace-aot")
+	file, err := os.CreateTemp(types.PersistTmpDir, "bpftrace-aot")
 	if err != nil {
 		b.log.Warnf("could not create temp dir: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -332,7 +333,7 @@ func archHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func linuxkitYmlHandler(w http.ResponseWriter, r *http.Request) {
-	http.ServeFile(w, r, "/hostfs/etc/linuxkit-eve-config.yml")
+	http.ServeFile(w, r, types.LinuxKitConfigFile)
 }
 
 // ListenDebug starts an HTTP server on localhost:6543 that provides various debugging capabilities.
