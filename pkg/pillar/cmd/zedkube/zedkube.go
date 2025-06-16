@@ -526,6 +526,10 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		log.Errorf("zedkube: WaitForKubenetes %v", err)
 	}
 
+	err = zedkubeCtx.initKubePrefixes()
+	if err != nil { // should never happen
+		log.Fatalf("zedkube: initKubePrefixes %v", err)
+	}
 	appLogTimer := time.NewTimer(logcollectInterval * time.Second)
 
 	log.Notice("zedkube online")
