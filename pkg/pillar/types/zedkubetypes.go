@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/lf-edge/eve-api/go/info"
+	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	corev1 "k8s.io/api/core/v1"
 )
@@ -434,6 +435,11 @@ type KubeServiceInfo struct {
 	ACEenabled     bool               // Authorized Cluster Endpoint access is enabled
 }
 
+// Define the K8s service CIDR that we want to exclude from external IP handling
+const (
+	KubeServicePrefix = "10.43.0.0/16" // Standard K3s service CIDR
+)
+
 // KubeIngressInfo represents information about a Kubernetes Ingress
 type KubeIngressInfo struct {
 	Name        string             // Name of the Ingress resource
@@ -452,4 +458,41 @@ type KubeIngressInfo struct {
 type KubeUserServices struct {
 	UserService []KubeServiceInfo
 	UserIngress []KubeIngressInfo
+}
+
+// Equal checks if two KubeUserServices instances are equal
+func (s KubeUserServices) Equal(s2 KubeUserServices) bool {
+	// Use generics.EqualSetsFn to compare service arrays
+	servicesEqual := generics.EqualSetsFn(s.UserService, s2.UserService,
+		func(svc1, svc2 KubeServiceInfo) bool {
+			return svc1.Namespace == svc2.Namespace &&
+				svc1.Name == svc2.Name &&
+				svc1.Protocol == svc2.Protocol &&
+				svc1.Port == svc2.Port &&
+				svc1.NodePort == svc2.NodePort &&
+				svc1.LoadBalancerIP == svc2.LoadBalancerIP &&
+				svc1.Type == svc2.Type &&
+				svc1.ACEenabled == svc2.ACEenabled
+		})
+
+	if !servicesEqual {
+		return false
+	}
+
+	// Use generics.EqualSetsFn to compare ingress arrays
+	return generics.EqualSetsFn(s.UserIngress, s2.UserIngress,
+		func(ing1, ing2 KubeIngressInfo) bool {
+			if ing1.Namespace != ing2.Namespace ||
+				ing1.Name != ing2.Name ||
+				ing1.Hostname != ing2.Hostname ||
+				ing1.Path != ing2.Path ||
+				ing1.PathType != ing2.PathType ||
+				ing1.ServiceType != ing2.ServiceType ||
+				ing1.Protocol != ing2.Protocol {
+				return false
+			}
+
+			// Compare the ingress IPs
+			return generics.EqualSets(ing1.IngressIP, ing2.IngressIP)
+		})
 }

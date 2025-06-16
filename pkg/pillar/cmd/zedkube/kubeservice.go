@@ -16,9 +16,8 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
-// Define the K8s service CIDR that we want to exclude from external IP handling
-const (
-	kubeServicePrefix = "10.43.0.0/16" // Standard K3s service CIDR
+var (
+	kubeServiceCIDR *net.IPNet
 )
 
 // Define the excluded namespaces map at package level
@@ -28,6 +27,12 @@ var excludedKubeNamespaces = map[string]struct{}{
 	"longhorn-system": {},
 	"cdi":             {},
 	"eve-kube-app":    {},
+}
+
+func (z *zedkube) initKubePrefixes() error {
+	var err error
+	_, kubeServiceCIDR, err = net.ParseCIDR(types.KubeServicePrefix)
+	return err
 }
 
 func (z *zedkube) collectKubeSvcs() {
@@ -53,16 +58,28 @@ func (z *zedkube) collectKubeSvcs() {
 		// Continue anyway, we might have some services
 	}
 
-	// Create the combined user services object
-	svcsInfo := types.KubeUserServices{
+	// Create new KubeUserServices struct with collected data
+	newKubeUserServices := types.KubeUserServices{
 		UserService: serviceInfoList,
 		UserIngress: ingressInfoList,
 	}
 
-	// Publish the collected services and ingresses information
-	z.pubKubeUserServices.Publish("global", svcsInfo)
+	// Get previous published data to compare
+	currentInfoPtr, err := z.pubKubeUserServices.Get("global")
+	var currentInfo types.KubeUserServices
+	if err == nil && currentInfoPtr != nil {
+		currentInfo = currentInfoPtr.(types.KubeUserServices)
+	}
 
-	log.Functionf("collectKubeSvcs: found %d services, %d ingress", len(svcsInfo.UserService), len(svcsInfo.UserIngress))
+	// Only publish if there are changes
+	if !currentInfo.Equal(newKubeUserServices) {
+		log.Tracef("collectKubeSvcs: detected changes in services/ingresses, publishing updates")
+		z.pubKubeUserServices.Publish("global", newKubeUserServices)
+	} else {
+		log.Tracef("collectKubeSvcs: no changes detected in services/ingresses, skipping publish")
+	}
+
+	log.Functionf("collectKubeSvcs: found %d services, %d ingress", len(newKubeUserServices.UserService), len(newKubeUserServices.UserIngress))
 }
 
 // GetAllKubeServices returns a slice of KubeServiceInfo containing all Kubernetes services across namespaces,
@@ -141,15 +158,11 @@ func (z *zedkube) GetAllKubeServices(clientset *kubernetes.Clientset) ([]types.K
 
 				// If we have a LoadBalancerIP, check if it's within the K8s service CIDR range
 				if loadbalancerIP != "" {
-					_, kubeCIDR, err := net.ParseCIDR(kubeServicePrefix)
-					if err == nil {
-						ipAddr := net.ParseIP(loadbalancerIP)
-						if ipAddr != nil && kubeCIDR.Contains(ipAddr) {
-							//log.Functionf("GetAllKubeServices: skipping service %s/%s with LoadBalancerIP %s as it's in the K8s service CIDR range",
-							log.Noticef("GetAllKubeServices: skipping service %s/%s with LoadBalancerIP %s as it's in the K8s service CIDR range", // XXX
-								svc.Namespace, svc.Name, loadbalancerIP)
-							continue // Skip this service port
-						}
+					ipAddr := net.ParseIP(loadbalancerIP)
+					if ipAddr != nil && kubeServiceCIDR.Contains(ipAddr) {
+						log.Functionf("GetAllKubeServices: skipping service %s/%s with LoadBalancerIP %s as it's in the K8s service CIDR range",
+							svc.Namespace, svc.Name, loadbalancerIP)
+						continue // Skip this service port
 					}
 				} else {
 					continue // Skip LoadBalancer services without an IP
@@ -258,10 +271,10 @@ func (z *zedkube) GetAllKubeIngresses(clientset *kubernetes.Clientset, serviceIn
 
 						// Add more detailed logging for LoadBalancer and NodePort services
 						if serviceType == corev1.ServiceTypeLoadBalancer {
-							log.Noticef("GetAllKubeIngresses: found LoadBalancer service %s/%s (LB IP: %s)",
+							log.Functionf("GetAllKubeIngresses: found LoadBalancer service %s/%s (LB IP: %s)",
 								serviceNamespace, serviceName, svcInfo.LoadBalancerIP)
 						} else if serviceType == corev1.ServiceTypeNodePort {
-							log.Noticef("GetAllKubeIngresses: found NodePort service %s/%s (NodePort: %d)",
+							log.Functionf("GetAllKubeIngresses: found NodePort service %s/%s (NodePort: %d)",
 								serviceNamespace, serviceName, svcInfo.NodePort)
 						} else {
 							log.Functionf("GetAllKubeIngresses: found service %s/%s with type %s in serviceInfoList",
@@ -284,7 +297,7 @@ func (z *zedkube) GetAllKubeIngresses(clientset *kubernetes.Clientset, serviceIn
 							serviceNamespace, serviceName, err)
 					} else {
 						serviceType = svc.Spec.Type
-						log.Noticef("GetAllKubeIngresses: direct fetch of service %s/%s found type %s",
+						log.Functionf("GetAllKubeIngresses: direct fetch of service %s/%s found type %s",
 							serviceNamespace, serviceName, serviceType)
 					}
 				}
