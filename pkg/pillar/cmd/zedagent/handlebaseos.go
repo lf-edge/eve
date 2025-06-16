@@ -6,8 +6,9 @@
 package zedagent
 
 import (
-	"github.com/lf-edge/eve/pkg/pillar/types"
 	"strings"
+
+	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
 // base os status event handlers
@@ -74,7 +75,7 @@ func handleZbootStatusDelete(ctxArg interface{}, key string,
 
 // utility routines to access baseos partition status
 func isZbootValidPartitionLabel(name string) bool {
-	partitionNames := []string{"IMGA", "IMGB"}
+	partitionNames := []string{"IMGA", "IMGB", "IMGC"}
 	for _, partName := range partitionNames {
 		if name == partName {
 			return true

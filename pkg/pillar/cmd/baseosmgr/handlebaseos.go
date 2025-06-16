@@ -831,7 +831,7 @@ func baseOsSetPartitionInfoInStatus(ctx *baseOsMgrContext, status *types.BaseOsS
 // scratch
 func updateAndPublishZbootStatusAll(ctx *baseOsMgrContext) {
 	log.Functionf("updateAndPublishZbootStatusAll")
-	partitionNames := []string{"IMGA", "IMGB"}
+	partitionNames := []string{"IMGA", "IMGB", "IMGC"}
 	for _, partName := range partitionNames {
 		status := getZbootStatus(ctx, partName)
 		if status == nil {
@@ -915,7 +915,7 @@ func getZbootStatus(ctx *baseOsMgrContext, partName string) *types.ZbootStatus {
 }
 
 func isValidBaseOsPartitionLabel(name string) bool {
-	partitionNames := []string{"IMGA", "IMGB"}
+	partitionNames := []string{"IMGA", "IMGB", "IMGC"}
 	name = strings.TrimSpace(name)
 	for _, partName := range partitionNames {
 		if name == partName {
