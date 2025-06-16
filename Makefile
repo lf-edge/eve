@@ -372,13 +372,7 @@ ifeq ($(LINUXKIT_PKG_TARGET),push)
   EVE_REL_$(REPO_BRANCH)_snapshot:=$(REPO_BRANCH)
   EVE_REL_master_snapshot:=$(if $(TAGPLAT),$(TAGPLAT)-snapshot,snapshot)
   EVE_REL:=$(EVE_REL_$(REPO_BRANCH)_$(REPO_TAG))
-
-  # the only time we rebuild everything from scratch is when we're building 'latest' release
-  # in order to achieve that we have to force EVE_HASH to be the release version
-  ifeq ($(shell [ "`git tag | grep -E '[0-9]*\.[0-9]*\.[0-9]*' | sort -t. -n -k1,1 -k2,2 -k3,3 | tail -1`" = $(REPO_TAG) ] && echo latest),latest)
-    EVE_HASH:=$(REPO_TAG)
-    EVE_REL:=$(if $(TAGPLAT),$(TAGPLAT)-latest,latest)
-  endif
+  EVE_REL:=$(EVE_REL)$(if $(TAGPLAT),-$(TAGPLAT),)
 endif
 
 # Check for a custom registry (used for development purposes)
