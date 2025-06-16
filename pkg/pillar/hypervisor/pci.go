@@ -18,7 +18,6 @@ import (
 )
 
 // define a path in sysfs to the PCI devices
-const sysfsPciDevices = "/sys/bus/pci/devices/"
 
 // define go constants for the flags as defined in include/linux/pci_ids.h
 //
@@ -98,13 +97,13 @@ func (d pciDevice) sameDevice(d2 pciDevice) bool {
 // check if the PCI device is a VGA device
 // check availability of the VGA file in the sysfs filesystem
 func (d pciDevice) isVGA() bool {
-	bootVgaFile := filepath.Join(sysfsPciDevices, d.ioBundle.PciLong, "boot_vga")
+	bootVgaFile := filepath.Join(types.SysfsPciDevicesDir, d.ioBundle.PciLong, "boot_vga")
 	return utils.FileExists(nil, bootVgaFile)
 }
 
 // read vendor ID
 func (d pciDevice) vid() (string, error) {
-	vendorID, err := os.ReadFile(filepath.Join(sysfsPciDevices, d.ioBundle.PciLong, "vendor"))
+	vendorID, err := os.ReadFile(filepath.Join(types.SysfsPciDevicesDir, d.ioBundle.PciLong, "vendor"))
 	if err != nil {
 		return "", err
 	}
@@ -113,7 +112,7 @@ func (d pciDevice) vid() (string, error) {
 
 // read device ID
 func (d pciDevice) devid() (string, error) {
-	devID, err := os.ReadFile(filepath.Join(sysfsPciDevices, d.ioBundle.PciLong, "device"))
+	devID, err := os.ReadFile(filepath.Join(types.SysfsPciDevicesDir, d.ioBundle.PciLong, "device"))
 	if err != nil {
 		return "", err
 	}
@@ -137,7 +136,7 @@ func (d pciDevice) pciLongWOFunction() (string, error) {
 // base_class,subclass,prog-if
 // e.g. 0x06,0x04,0x00 - PCI bridge
 func (d pciDevice) isBridge() (bool, error) {
-	class, err := os.ReadFile(filepath.Join(sysfsPciDevices, d.ioBundle.PciLong, "class"))
+	class, err := os.ReadFile(filepath.Join(types.SysfsPciDevicesDir, d.ioBundle.PciLong, "class"))
 
 	if err != nil {
 		logrus.Errorf("Can't read PCI device class %s: %v\n",
@@ -156,7 +155,7 @@ func (d pciDevice) isBridge() (bool, error) {
 // read the boot_vga file from the sysfs filesystem
 // and return true if the file contains "1"
 func (d pciDevice) isBootVGA() (bool, error) {
-	bootVGA, err := os.ReadFile(filepath.Join(sysfsPciDevices, d.ioBundle.PciLong, "boot_vga"))
+	bootVGA, err := os.ReadFile(filepath.Join(types.SysfsPciDevicesDir, d.ioBundle.PciLong, "boot_vga"))
 
 	if err != nil {
 		logrus.Errorf("Can't read PCI device boot_vga %s: %v\n",

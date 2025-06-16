@@ -12,6 +12,13 @@ const (
 	// TmpDirname - used for files fed into pubsub as global subscriptions
 	TmpDirname = RunDir + "/global"
 
+	// WatchdogDir - Location for watchdog resources
+	WatchdogDir = RunDir + "/watchdog"
+	// WatchdogPidDir - Location for .pid files
+	WatchdogPidDir = WatchdogDir + "/pid"
+	// WatchdogFileDir - Location for .touch files
+	WatchdogFileDir = WatchdogDir + "/file"
+
 	// PersistDir - Location to store persistent files.
 	PersistDir = "/persist"
 	// PersistLogDir - Location to store persistent log files.
@@ -151,6 +158,9 @@ const (
 	// CustomOVMFSettingsDir - directory for custom OVMF settings (for different resolutions)
 	CustomOVMFSettingsDir = "/hostfs/etc/ovmf"
 
+	// SysfsPciDevices - path in sysfs to the PCI devices
+	SysfsPciDevicesDir = "/sys/bus/pci/devices/"
+
 	// LocalActiveAppConfigDir - directory to put JSON of the apps that are running.
 	LocalActiveAppConfigDir = SealedDirName + "/active-app-instance-config/"
 
@@ -158,6 +168,9 @@ const (
 	HostFSEtcDir = "/hostfs/etc"
 	// LinuxKitConfigFile - LinuxKit EVE configuration file
 	LinuxKitConfigFile = HostFSEtcDir + "/linuxkit-eve-config.yml"
+
+	// EveVirtTypeFile contains the virtualization type, ie kvm, xen or kubevirt
+	EveVirtTypeFile = RunDir + "/eve-hv-type"
 )
 
 var (

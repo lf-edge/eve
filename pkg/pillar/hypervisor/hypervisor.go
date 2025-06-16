@@ -93,9 +93,9 @@ func bootTimeHypervisorWithHVFilePath(hvFilePath string) Hypervisor {
 	return nil
 }
 
-// BootTimeHypervisor returns the hypervisor according to /run/eve-hv-type
+// BootTimeHypervisor returns the hypervisor according to EveVirtTypeFile
 func BootTimeHypervisor() Hypervisor {
-	return bootTimeHypervisorWithHVFilePath("/run/eve-hv-type")
+	return bootTimeHypervisorWithHVFilePath(types.EveVirtTypeFile)
 }
 
 // GetAvailableHypervisors returns a list of all available hypervisors plus
@@ -164,8 +164,8 @@ func logError(format string, a ...interface{}) error {
 func PCIReserveGeneric(long string) error {
 	logrus.Infof("PCIReserve long addr is %s", long)
 
-	overrideFile := filepath.Join(sysfsPciDevices, long, "driver_override")
-	driverPath := filepath.Join(sysfsPciDevices, long, "driver")
+	overrideFile := filepath.Join(types.SysfsPciDevicesDir, long, "driver_override")
+	driverPath := filepath.Join(types.SysfsPciDevicesDir, long, "driver")
 	unbindFile := filepath.Join(driverPath, "unbind")
 
 	//Check if already bound to vfio-pci
@@ -203,8 +203,8 @@ func PCIReserveGeneric(long string) error {
 func PCIReleaseGeneric(long string) error {
 	logrus.Infof("PCIRelease long addr is %s", long)
 
-	overrideFile := filepath.Join(sysfsPciDevices, long, "driver_override")
-	unbindFile := filepath.Join(sysfsPciDevices, long, "driver/unbind")
+	overrideFile := filepath.Join(types.SysfsPciDevicesDir, long, "driver_override")
+	unbindFile := filepath.Join(types.SysfsPciDevicesDir, long, "driver/unbind")
 
 	//Write Empty string, to clear driver_override for the device
 	if err := os.WriteFile(overrideFile, []byte("\n"), 0644); err != nil {
