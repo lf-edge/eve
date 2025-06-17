@@ -12,6 +12,9 @@ const (
 	// TmpDirname - used for files fed into pubsub as global subscriptions
 	TmpDirname = RunDir + "/global"
 
+	// DomainMgrDir - location for EVE domainmgr
+	DomainMgrDir = RunDir + "/domainmgr"
+
 	// WatchdogDir - Location for watchdog resources
 	WatchdogDir = RunDir + "/watchdog"
 	// WatchdogPidDir - Location for .pid files
