@@ -16,7 +16,35 @@ VERSION=40
 PKG_DEPS="procps tar dmidecode iptables dhcpcd"
 
 DATE=$(date "+%Y-%m-%d-%H-%M-%S")
-INFO_DIR_SUFFIX="eve-info-v$VERSION-$DATE"
+# Function to get device identifier (UUID if onboarding, serial otherwise)
+get_device_identifier() {
+    local device_id=""
+    # Check if device is onboarded by looking for device UUID
+    # During onboarding, the device UUID is typically stored in /persist/status/uuid
+    if [ -f "/persist/status/uuid" ]; then
+        device_id=$(tr -d '\n' < /persist/status/uuid 2>/dev/null)
+    fi
+    # If no UUID found or device is not onboarded, attempt to retrieve the device serial
+    if [ -z "$device_id" ] ; then
+        #Get device serial number from DMI/SMBIOS
+        device_id=$(dmidecode -s system-serial-number 2>/dev/null | head -1)
+    fi
+    # Clean up the identifier (remove spaces, special chars, limit length)
+    device_id=$(echo "$device_id" | tr -d ' \t\n\r' | tr -cd '[:alnum:]-' | cut -c1-32)
+    # If still empty return "unknown"
+    if [ -z "$device_id" ]; then
+        logger -s "Could not get either device UUID or device serial"
+        device_id="unknown"
+    fi
+    echo "$device_id"
+}
+
+# Get device identifier
+DEVICE_ID=$(get_device_identifier)
+
+# Generate filename with device identifier
+INFO_DIR_SUFFIX="eve-info-v$VERSION-$DEVICE_ID-$DATE"
+
 SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
 
 COLLECT_LOGS_DAYS=
@@ -83,7 +111,7 @@ while getopts "vu:sha:djet:" o; do
             READ_LOGS_DEV=1
             ;;
         e)
-            INFO_DIR_SUFFIX="eve-info-edgeview-v$VERSION-$DATE"
+            INFO_DIR_SUFFIX="eve-info-edgeview-v$VERSION-$DEVICE_ID-$DATE"
             ;;
         s)
             TAR_WHOLE_SYS=1
