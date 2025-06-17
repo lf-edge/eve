@@ -646,7 +646,7 @@ Files /tmp/rfs-one/lib/modules/5.10.121-default/kernel/net/can/can.ko and /tmp/r
 $
 ```
 
-#### Buil-time kernel module signing
+#### Build-time kernel module signing
 
 EVE kernel is configured to only load signed kernel modules, the module signing happens automatically during the build with a build-time generated throw-away key. But if you are willing to sign the modules using your own key, generate a key:
 
