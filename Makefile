@@ -512,9 +512,6 @@ mini-yetus:
 	@echo Running mini-yetus
 	./tools/mini-yetus.sh $(if $(MYETUS_VERBOSE),-f) $(if $(MYETUS_SBRANCH),-s $(MYETUS_SBRANCH)) $(if $(MYETUS_DBRANCH),-d $(MYETUS_DBRANCH))
 
-build-tools: $(LINUXKIT)
-	@echo Done building $<
-
 $(BUILD_VM_CLOUD_INIT): build-tools/src/scripts/cloud-init.in | $(DIST)
 	@if [ -z "$(BUILD_VM_SSH_PUB_KEY)" ] || [ -z "$(BUILD_VM_GH_TOKEN)" ]; then                  \
 	    echo "Must be run as: make BUILD_VM_SSH_PUB_KEY=XXX BUILD_VM_GH_TOKEN=YYY $@" && exit 1 ;\
@@ -852,7 +849,7 @@ $(LIVE).parallels: $(LIVE).raw
 
 # top-level linuxkit packages targets, note the one enforcing ordering between packages
 pkgs: RESCAN_DEPS=
-pkgs: build-tools $(PKGS)
+pkgs: $(LINUXKIT) $(PKGS)
 	@echo Done building packages
 
 # No-op target for get-deps which looks at
@@ -1071,12 +1068,12 @@ else
 	$(QUIET): $@: Succeeded
 endif
 
-%.yml: %.yml.in $(RESCAN_DEPS) | build-tools
+%.yml: %.yml.in $(RESCAN_DEPS) $(LINUXKIT)
 	@echo "Building $@ from $<"
 	$(QUIET)$(PARSE_PKGS) $< > $@
 	$(QUIET): $@: Succeeded
 
-%/Dockerfile: %/Dockerfile.in build-tools $(RESCAN_DEPS)
+%/Dockerfile: %/Dockerfile.in $(LINUXKIT) $(RESCAN_DEPS)
 	@echo "Building $@ from $<"
 	$(QUIET)$(PARSE_PKGS) $< > $@
 	$(QUIET): $@: Succeeded
@@ -1096,7 +1093,7 @@ get_pkg_build_rstats_yml = $(if $(wildcard pkg/$1/build-rstats.yml),build-rstats
 get_pkg_build_kubevirt_yml = $(if $(and $(filter y,$(DEV)),$(wildcard pkg/$1/build-kubevirt-dev.yml)),build-kubevirt-dev.yml, \
                              $(if $(wildcard pkg/$1/build-kubevirt.yml),build-kubevirt.yml,build.yml))
 
-eve-%: pkg/%/Dockerfile build-tools $(RESCAN_DEPS)
+eve-%: pkg/%/Dockerfile $(LINUXKIT) $(RESCAN_DEPS)
 	$(QUIET): "$@: Begin: LINUXKIT_PKG_TARGET=$(LINUXKIT_PKG_TARGET)"
 	$(eval LINUXKIT_DOCKER_LOAD := $(if $(filter $(PKGS_DOCKER_LOAD),$*),--docker,))
 	$(eval LINUXKIT_BUILD_PLATFORMS_LIST := $(call uniq,linux/$(ZARCH) $(if $(filter $(PKGS_HOSTARCH),$*),linux/$(HOSTARCH),)))
@@ -1215,7 +1212,7 @@ kernel-tag:
 	@echo $(KERNEL_TAG)
 
 .PRECIOUS: rootfs-% $(ROOTFS)-%.img $(ROOTFS_COMPLETE)
-.PHONY: all clean test run pkgs help build-tools live rootfs config installer live current FORCE $(DIST) HOSTARCH image-set cache-export
+.PHONY: all clean test run pkgs help live rootfs config installer live current FORCE $(DIST) HOSTARCH image-set cache-export
 FORCE:
 
 help:
@@ -1263,7 +1260,6 @@ help:
 	@echo "   bump-eve-pillar bump eve/pkg/pillar in all subprojects"
 	@echo
 	@echo "Commonly used build targets:"
-	@echo "   build-tools          builds linuxkit utilities and installs under build-tools/bin"
 	@echo "   config               builds a bundle with initial EVE configs"
 	@echo "   pkgs                 builds all EVE packages"
 	@echo "   pkg/XXX              builds XXX EVE package"
