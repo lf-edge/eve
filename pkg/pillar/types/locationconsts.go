@@ -158,7 +158,7 @@ const (
 	// CustomOVMFSettingsDir - directory for custom OVMF settings (for different resolutions)
 	CustomOVMFSettingsDir = "/hostfs/etc/ovmf"
 
-	// SysfsPciDevices - path in sysfs to the PCI devices
+	// SysfsPciDevicesDir - path in sysfs to the PCI devices.
 	SysfsPciDevicesDir = "/sys/bus/pci/devices/"
 
 	// LocalActiveAppConfigDir - directory to put JSON of the apps that are running.
