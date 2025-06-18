@@ -55,6 +55,11 @@ patch_hv() {
     yq '(.files[] | select(.contents == "EVE_HV")).contents |= "'"$1"'"' < "$2" | spongefile "$2"
 }
 
+patch_platform() {
+    # shellcheck disable=SC2016,SC2094
+    yq '(.files[] | select(.contents == "EVE_PLATFORM")).contents |= "'"$1"'"' < "$2" | spongefile "$2"
+}
+
 # because sponge doesn't exist everywhere, and this one uses a tmpfile
 spongefile() {
     local tmp=""
@@ -69,8 +74,9 @@ main() {
     local out_templ_path=""
     local eve_version=""
     local eve_hv=""
+    local eve_platform=""
 
-    while getopts "b:o:v:h:" opt; do
+    while getopts "b:o:v:h:p:" opt; do
         case ${opt} in
             b )
                 base_templ_path=$OPTARG
@@ -84,6 +90,9 @@ main() {
             h )
                 eve_hv=$OPTARG
                 ;;
+            p )
+                eve_platform=$OPTARG
+                ;;
             \? )
                 echo "Invalid option: -$OPTARG" 1>&2
                 exit 1
@@ -95,7 +104,7 @@ main() {
         esac
     done
     shift $((OPTIND -1))
-    if [ -z "$out_templ_path" ] || [ -z "$eve_version" ] || [ -z "$eve_hv" ] || [ -z "$base_templ_path" ]; then
+    if [ -z "$out_templ_path" ] || [ -z "$eve_version" ] || [ -z "$eve_hv" ] || [ -z "$base_templ_path" ] || [ -z "$eve_platform" ]; then
         usage
     fi
     local modifiers="$*"
@@ -111,12 +120,13 @@ main() {
     done
 
     patch_hv "${eve_hv}" "${out_templ_path}"
+    patch_platform "${eve_platform}" "${out_templ_path}"
 
     process-image-template "${out_templ_path}" "${eve_version}"
 }
 
 usage() {
-    echo "Usage: $0 -b <base template> -o <output template> -v <eve version> -h <eve hv> <modifiers>"
+    echo "Usage: $0 -b <base template> -o <output template> -v <eve version> -h <eve hv> -p <platform> <modifiers>"
     exit 1
 }
 
