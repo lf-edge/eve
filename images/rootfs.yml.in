@@ -97,7 +97,7 @@ services:
 files:
   - path: /etc/eve-release
     source: eve_version
-  - path: etc/linuxkit-eve-config.yml
+  - path: /etc/linuxkit-eve-config.yml
     metadata: yaml
   - path: /etc/eve-hv-type
     contents: 'EVE_HV'
@@ -105,6 +105,8 @@ files:
     source: etc_issue
   - path: /opt/vendor
     directory: true
+  - path: /etc/eve-platform
+    contents: 'EVE_PLATFORM'
   - path: /etc/securetty
     contents: |
       console
