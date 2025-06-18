@@ -1,7 +1,8 @@
 module github.com/lf-edge/eve/pkg/pillar
 
-go 1.23
-toolchain go1.24.1
+go 1.23.1
+
+toolchain go1.24.2
 
 require (
 	github.com/anatol/smart.go v0.0.0-20241126061019-f03d79b340d2
@@ -42,7 +43,7 @@ require (
 	github.com/miekg/dns v1.1.43
 	github.com/moby/sys/mountinfo v0.7.1
 	github.com/multiplay/go-edac v1.0.1
-	github.com/onsi/gomega v1.29.0
+	github.com/onsi/gomega v1.36.0
 	github.com/opencontainers/go-digest v1.0.0
 	github.com/opencontainers/image-spec v1.1.0
 	github.com/opencontainers/runtime-spec v1.1.0
@@ -187,7 +188,7 @@ require (
 	golang.org/x/sync v0.11.0 // indirect
 	golang.org/x/term v0.29.0 // indirect
 	golang.org/x/text v0.22.0 // indirect
-	golang.org/x/time v0.5.0 // indirect
+	golang.org/x/time v0.5.0
 	google.golang.org/api v0.160.0 // indirect
 	google.golang.org/appengine v1.6.8 // indirect
 	google.golang.org/genproto v0.0.0-20240205150955-31a09d347014 // indirect
@@ -227,6 +228,7 @@ require (
 	github.com/moby/spdystream v0.2.0 // indirect
 	github.com/moby/sys/userns v0.1.0 // indirect
 	github.com/monochromegane/go-gitignore v0.0.0-20200626010858-205db1a8cc00 // indirect
+	github.com/nkval/go-nkv v0.0.0-20250429104035-28081f691ca8 // indirect
 	github.com/opencontainers/runtime-tools v0.9.1-0.20221107090550-2e043c6bd626 // indirect
 	github.com/openshift/api v0.0.0-20230503133300-8bbcb7ca7183 // indirect
 	github.com/openshift/client-go v0.0.0-20210112165513-ebc401615f47 // indirect
@@ -256,8 +258,9 @@ require (
 )
 
 replace (
-	github.com/openshift/api => github.com/openshift/api v0.0.0-20210105115604-44119421ec6b
 
+	github.com/nkval/go-nkv => /home/pabramov/go/src/github.com/uncleDecart/go-nkv
+	github.com/openshift/api => github.com/openshift/api v0.0.0-20210105115604-44119421ec6b
 	k8s.io/api => k8s.io/api v0.26.3
 	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.26.3
 	k8s.io/apimachinery => k8s.io/apimachinery v0.26.3
