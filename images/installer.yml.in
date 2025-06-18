@@ -40,7 +40,7 @@ volumes:
 files:
   - path: /etc/eve-release
     source: eve_version
-  - path: etc/linuxkit-eve-config.yml
+  - path: /etc/linuxkit-eve-config.yml
     metadata: yaml
   - path: /etc/eve-hv-type
     contents: 'EVE_HV'
@@ -54,6 +54,8 @@ files:
     source: config.img
   - path: /EFI/BOOT/grub_include.cfg
     source: grub_installer.cfg
+  - path: /etc/eve-platform
+    contents: 'EVE_PLATFORM'
   - path: /etc/securetty
     contents: |
       console
