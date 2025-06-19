@@ -577,14 +577,27 @@ func parseConnectivityProbe(probe *zconfig.ConnectivityProbe) (
 	case zconfig.ConnectivityProbeMethod_CONNECTIVITY_PROBE_METHOD_ICMP:
 		parsedProbe.Method = types.ConnectivityProbeMethodICMP
 		parsedProbe.ProbeHost = probe.GetProbeEndpoint().GetHost()
-		if parsedProbe.ProbeHost == "" {
-			return parsedProbe, errors.New("missing endpoint host address for ICMP probe")
+		// Undefined host for ICMP probing is allowed - EVE will probe Google DNS
+		// (8.8.8.8) in that case.
+		// However, if host address is defined, it should be a valid IP address.
+		if parsedProbe.ProbeHost != "" {
+			probeIP := net.ParseIP(parsedProbe.ProbeHost)
+			if probeIP == nil {
+				return parsedProbe, fmt.Errorf("invalid IP address for ICMP probe: %s",
+					parsedProbe.ProbeHost)
+			}
 		}
 	case zconfig.ConnectivityProbeMethod_CONNECTIVITY_PROBE_METHOD_TCP:
 		parsedProbe.Method = types.ConnectivityProbeMethodTCP
+		// Host address should be a valid (and non-empty) IP address.
 		parsedProbe.ProbeHost = probe.GetProbeEndpoint().GetHost()
 		if parsedProbe.ProbeHost == "" {
 			return parsedProbe, errors.New("missing endpoint host address for TCP probe")
+		}
+		probeIP := net.ParseIP(parsedProbe.ProbeHost)
+		if probeIP == nil {
+			return parsedProbe, fmt.Errorf("invalid IP address for TCP probe: %s",
+				parsedProbe.ProbeHost)
 		}
 		probePort := probe.GetProbeEndpoint().GetPort()
 		if probePort == 0 {
@@ -2223,7 +2236,7 @@ func parseNetworkWirelessConfig(ctx *getconfigContext,
 		if err != nil {
 			return wconfig, err
 		}
-		if customProbe.Method == types.ConnectivityProbeMethodNone || err != nil {
+		if customProbe.Method == types.ConnectivityProbeMethodNone {
 			// For backward compatibility.
 			if probeCfg.GetProbeAddress() != "" {
 				customProbe = types.ConnectivityProbe{
