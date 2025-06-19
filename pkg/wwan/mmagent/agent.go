@@ -1358,6 +1358,15 @@ func (a *MMAgent) probeModemConnectivity(modem *ModemInfo) error {
 			return nil
 		}
 	case types.ConnectivityProbeMethodICMP:
+		if probeConfig.UserDefinedProbe.ProbeHost == "" {
+			// When ICMP probe is selected but probe host is undefined, we use the default
+			// probing endpoint (Google DNS).
+			err = a.runICMPProbe(modemIP, defaultProbeAddr)
+			if err == nil {
+				return nil
+			}
+			break
+		}
 		// User-configured ICMP probe address.
 		remoteIP := net.ParseIP(probeConfig.UserDefinedProbe.ProbeHost)
 		if remoteIP == nil {
