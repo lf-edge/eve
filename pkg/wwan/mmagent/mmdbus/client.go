@@ -1368,6 +1368,9 @@ func (c *Client) Connect(
 		err = c.callDBusMethodWithTimeout(modemObj, Modem3GPPMethodSetInitialEpsBearer,
 			setInitEPSBearerTimeout, nil, attachProps)
 		if err != nil {
+			// SetInitialEpsBearerSettings may return the same uninformative
+			// errors as Connect; try to determine a better cause.
+			err = c.getBetterConnectError(err, modemPath)
 			err = fmt.Errorf(
 				"failed to set the attach APN settings for modem %s: %w",
 				modemObj.Path(), err)
@@ -1420,52 +1423,79 @@ func (c *Client) runSimpleConnect(modemObj dbus.BusObject,
 		return ipSettings, fmt.Errorf("unknown modem: %v", modemObj.Path())
 	}
 	err := c.callDBusMethod(modemObj, SimpleMethodConnect, &bearerPath, connProps)
-	var errIsUseless bool
-	if err != nil {
-		if strings.HasPrefix(err.Error(), "No such interface") {
-			errIsUseless = true
-		}
-		if errors.Is(err, context.DeadlineExceeded) {
-			errIsUseless = true
-		}
-	}
-	if errIsUseless && modem != nil {
-		// Try to determine more useful connection failure reason.
-		for _, simCard := range modem.Status.SimCards {
-			if !simCard.SlotActivated {
-				continue
-			}
-			switch simCard.Type {
-			case SIMTypeESIM:
-				switch simCard.State {
-				case SIMStateAbsent:
-					return ipSettings, errors.New("eSIM card is without profile")
-				case SIMStateError:
-					return ipSettings, errors.New("eSIM card is in failed state")
-				}
-			default:
-				switch simCard.State {
-				case SIMStateAbsent:
-					return ipSettings, errors.New("SIM card is absent")
-				case SIMStateError:
-					return ipSettings, errors.New("SIM card is in failed state")
-				}
-			}
-		}
-		switch modem.Status.Module.OpMode {
-		case types.WwanOpModeUnspecified, types.WwanOpModeOnline,
-			types.WwanOpModeConnected:
-			break
-		default:
-			return ipSettings, fmt.Errorf("modem is not online, current state: %v",
-				modem.Status.Module.OpMode)
-		}
-	}
+	err = c.getBetterConnectError(err, modem.Path)
 	if err == nil {
 		bearerObj := c.conn.Object(MMInterface, bearerPath)
 		ipSettings, err = c.getBearerIPSettings(bearerObj)
 	}
 	return ipSettings, err
+}
+
+// getBetterConnectError analyzes a received connection error and attempts to
+// provide a more meaningful explanation when the original error does not indicate
+// the root cause of the failure. If the error is considered uninformative
+// (e.g., reflects a D-Bus API state or timeout), the function inspects
+// the modem and SIM card state to identify issues such as absent or failed SIM cards,
+// or a modem that is not online. If no better reason is found, it returns the
+// original error.
+func (c *Client) getBetterConnectError(
+	receivedErr error, modemPath string) (betterErr error) {
+	if receivedErr == nil {
+		return nil
+	}
+	modem := c.modems[modemPath]
+	if modem == nil {
+		// Modem state data is unavailable; cannot determine a more specific error.
+		return receivedErr
+	}
+	// errIsUseless is set for errors that do not indicate the root cause
+	// of the failure, but instead describe a consequence affecting
+	// the ModemManager D-Bus API.
+	// Below we inspect the state of the modem to find out the real reason
+	// for the failure.
+	var errIsUseless bool
+	if strings.HasPrefix(receivedErr.Error(), "No such interface") {
+		errIsUseless = true
+	}
+	if strings.Contains(receivedErr.Error(), "not implemented on interface") {
+		errIsUseless = true
+	}
+	if errors.Is(receivedErr, context.DeadlineExceeded) {
+		errIsUseless = true
+	}
+	if !errIsUseless {
+		return receivedErr
+	}
+	// Try to determine more useful connection failure reason.
+	for _, simCard := range modem.Status.SimCards {
+		if !simCard.SlotActivated {
+			continue
+		}
+		switch simCard.Type {
+		case SIMTypeESIM:
+			switch simCard.State {
+			case SIMStateAbsent:
+				return errors.New("eSIM has no profile")
+			case SIMStateError:
+				return errors.New("eSIM is in failed state")
+			}
+		default:
+			switch simCard.State {
+			case SIMStateAbsent:
+				return errors.New("SIM card is absent")
+			case SIMStateError:
+				return errors.New("SIM card is in failed state")
+			}
+		}
+	}
+	switch modem.Status.Module.OpMode {
+	case types.WwanOpModeUnspecified, types.WwanOpModeOnline,
+		types.WwanOpModeConnected:
+		return receivedErr
+	default:
+		return fmt.Errorf("modem is not online, current state: %v",
+			modem.Status.Module.OpMode)
+	}
 }
 
 // maskPassword creates a copy of the original map with the "password" key's value masked
