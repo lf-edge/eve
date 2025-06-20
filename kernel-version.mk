@@ -19,14 +19,16 @@ PLATFORMS_riscv64=generic
 ARCHS=amd64 arm64 riscv64
 
 # check if ZARCH is supported
-ifeq (, $(findstring $(ZARCH), $(ARCHS)))
+ifeq (, $(filter $(ZARCH), $(ARCHS)))
     $(error "Unsupported architecture $(ZARCH)")
 endif
 
 # check if PLATFORM is supported
-ifeq (, $(findstring $(PLATFORM), $(PLATFORMS_$(ZARCH))))
+ifeq (, $(filter $(PLATFORM), $(PLATFORMS_$(ZARCH))))
     $(error "Unsupported combination of ZARCH=$(ZARCH) and PLATFORM=$(PLATFORM)")
 endif
+
+KERNEL_LTS_VERSION=v6.12.33
 
 ifeq ($(ZARCH), amd64)
     ifeq ($(PLATFORM), rt)
@@ -63,13 +65,31 @@ endif
 # at this point ZARCH, KERNEL_VERSION and FLAVOR must be defined.
 # Check that we defined a commit for combination
 ifeq ($(origin KERNEL_COMMIT_$(ZARCH)_$(KERNEL_VERSION)_$(KERNEL_FLAVOR)), undefined)
-    $(error "KERNEL_COMMIT_$(KERNEL_FLAVOR) is not defined. did you introduce new platform or ARCH?")
+    $(error "KERNEL_COMMIT_$(ZARCH)_$(KERNEL_VERSION)_$(KERNEL_FLAVOR) is not defined. did you introduce new platform or ARCH?")
 endif
 
 KERNEL_COMMIT=$(KERNEL_COMMIT_$(ZARCH)_$(KERNEL_VERSION)_$(KERNEL_FLAVOR))
 KERNEL_BRANCH = eve-kernel-$(ZARCH)-$(KERNEL_VERSION)-$(KERNEL_FLAVOR)
 KERNEL_DOCKER_TAG = $(KERNEL_BRANCH)-$(KERNEL_COMMIT)-$(KERNEL_COMPILER)
 
+# TODO: this is a placeholder for lts commit check
+# LTS commit is not any speccial, one day it becomes a regular commit
+# ifeq ($(origin KERNEL_COMMIT_$(ZARCH)_$(KERNEL_LTS_VERSION)_$(KERNEL_FLAVOR)), undefined)
+#     $(error "KERNEL_COMMIT_$(ZARCH)_$(KERNEL_LTS_VERSION)_$(KERNEL_FLAVOR) is not defined. did you introduce new platform or ARCH?")
+# endif
+
+KERNEL_LTS_COMMIT=$(KERNEL_COMMIT_$(ZARCH)_$(KERNEL_LTS_VERSION)_$(KERNEL_FLAVOR))
+KERNEL_LTS_BRANCH = eve-kernel-$(ZARCH)-$(KERNEL_LTS_VERSION)-$(KERNEL_FLAVOR)
+KERNEL_LTS_DOCKER_TAG = $(KERNEL_LTS_BRANCH)-$(KERNEL_LTS_COMMIT)-$(KERNEL_COMPILER)
+
+# TODO: this is a placeholder for full and lts kernel docker tags
+# KERNEL_EVAL_HWE_TAG = $(KERNEL_BRANCH)-hwe-$(KERNEL_COMMIT)-$(KERNEL_COMPILER)
+# KERNEL_EVAL_LTS_DOCKER_TAG = $(KERNEL_LTS_BRANCH)-hwe-$(KERNEL_LTS_COMMIT)-$(KERNEL_COMPILER)
+
 # one can override the whole tag from the command line and set it to
 # output of make -f Makefile.eve docker-tag-${KERNEL_COMPILER} in github.com/lf-edge/eve-kernel
 KERNEL_TAG ?= docker.io/lfedge/eve-kernel:$(KERNEL_DOCKER_TAG)
+
+# TODO: KERNEL_DOCKER_TAG will be replaced with _FULL or _LTS
+KERNEL_EVAL_HWE_TAG ?= docker.io/lfedge/eve-kernel:$(KERNEL_DOCKER_TAG)
+KERNEL_EVAL_LTS_HWE_TAG ?= docker.io/lfedge/eve-kernel:$(KERNEL_DOCKER_TAG)
