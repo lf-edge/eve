@@ -17,7 +17,7 @@ require (
 	github.com/facebook/time v0.0.0-20240605113323-bdee26e8523f
 	github.com/fsnotify/fsnotify v1.6.0
 	github.com/getlantern/framed v0.0.0-20190601192238-ceb6431eeede
-	github.com/go-chi/chi/v5 v5.0.10
+	github.com/go-chi/chi/v5 v5.2.2
 	github.com/go-playground/validator/v10 v10.15.5
 	github.com/golang-jwt/jwt v3.2.2+incompatible
 	github.com/golang/protobuf v1.5.4
