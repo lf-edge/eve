@@ -32,6 +32,8 @@ const PatchEnvelopeURLPath = "/eve/v1/patch/"
 // for more info check docs/PATCH-ENVELOPES.md
 // Must be created by calling NewPatchEnvelopes()
 //
+// Limitation: only via local-access and not accessible over switch or app-direct networks.
+//
 // Internally, PatchEnvelopes structure stores envelopes which
 // come from EdgeDevConfig parsed by zedagent. This envelopes contains
 // both inline binary artifacts which are ready to be downloaded by app instances
