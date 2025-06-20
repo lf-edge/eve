@@ -1,0 +1,1 @@
+.kernel.image |= "KERNEL_EVAL_LTS_HWE_TAG"
