@@ -117,7 +117,7 @@ fi
 P3=$(findfs PARTLABEL=P3)
 IMGA=$(findfs PARTLABEL=IMGA)
 IMGB=$(findfs PARTLABEL=IMGB)
-if [ -n "$IMGA" ] && [ -z "$P3" ] && [ -z "$IMGB" ]; then
+if [ -n "$IMGA" ] && [ -z "$P3" ]; then
    DEV=$(echo /sys/block/*/"${IMGA#/dev/}")
    DEV="/dev/$(echo "$DEV" | cut -f4 -d/)"
 
@@ -149,7 +149,7 @@ if [ -n "$IMGA" ] && [ -z "$P3" ] && [ -z "$IMGB" ]; then
    SEC_START=$(sgdisk -f "$DEV")
    SEC_END=$((SEC_START + IMGA_SIZE))
 
-   sgdisk --new "$IMGB_ID:$SEC_START:$SEC_END" --typecode="$IMGB_ID:$IMGA_GUID" --change-name="$IMGB_ID:IMGB" "$DEV"
+   [ -z "$IMGB" ] && sgdisk --new "$IMGB_ID:$SEC_START:$SEC_END" --typecode="$IMGB_ID:$IMGA_GUID" --change-name="$IMGB_ID:IMGB" "$DEV"
    sgdisk --largest-new="$P3_ID" --typecode="$P3_ID:5f24425a-2dfa-11e8-a270-7b663faccc2c" --change-name="$P3_ID:P3" "$DEV"
    # Assume we want the fixed partition UUIDs if IMGA has the fixed one.
    # UUIDs from make-raw.
@@ -165,7 +165,7 @@ if [ -n "$IMGA" ] && [ -z "$P3" ] && [ -z "$IMGB" ]; then
    }')
 
    if [ "$res" = "match" ]; then
-       sgdisk --partition-guid="$IMGB_ID:$IMGB_UUID" "$DEV"
+       [ -z "$IMGB" ] && sgdisk --partition-guid="$IMGB_ID:$IMGB_UUID" "$DEV"
        sgdisk --partition-guid="$P3_ID:$PERSIST_UUID" "$DEV"
    fi
 
