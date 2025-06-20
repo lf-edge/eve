@@ -6,6 +6,6 @@
 ---
 image: eve-fw
 org: lfedge
-tag: "{{.Hash}}-evaluation"
+tag: "{{.Hash}}-generic"
 buildArgs:
-    - PLATFORM=evaluation
+    - PLATFORM=generic
