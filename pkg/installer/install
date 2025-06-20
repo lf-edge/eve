@@ -49,6 +49,13 @@ INSTALL_SERVER_FILE="${ARTIFACTS_DIR}/eve_install_server"
 EFI_DIR="${ARTIFACTS_DIR}/EFI"
 BOOT_DIR="${ARTIFACTS_DIR}/boot"
 
+ROOTFS_PARTITIONS="imga imgb"
+
+# if we have a third rootfs, we will use it as the third partition
+if [ -f "${ARTIFACTS_DIR}/rootfs-c.img" ]; then
+  logmsg "Found rootfs-c.img, will use it as the third partition (IMGC)"
+  ROOTFS_PARTITIONS="$ROOTFS_PARTITIONS imgc"
+fi
 
 # This is a temp file to capture various stages of install
 # the contents of this file are saved to $REPORT/installer.log
@@ -389,6 +396,9 @@ if [ "$eve_flavor" = "kubevirt" ]; then
    logmsg "Kubevirt image installing ZFS"
 fi
 
+eve_platform=$(cat /root/etc/eve-platform)
+logmsg "EVE platform: $eve_platform"
+
 
 if [ "$INSTALL_ZFS" = true ]; then
    # User explicitly asked to install ZFS so skip the zfs minimum requirement checks.
@@ -408,11 +418,11 @@ if [ "$INSTALL_DEV" != "$INSTALL_PERSIST" ]; then
    if echo "$INSTALL_PERSIST"| grep -q ","; then
      MULTIPLE_DISKS=true
      INSTALL_ZFS=true
-     MAKE_RAW_PARTS="efi imga imgb conf"
+     MAKE_RAW_PARTS="efi $ROOTFS_PARTITIONS conf"
      for dev in $(echo "$INSTALL_PERSIST" | tr ',' ' '); do
         if [ "$dev" = "$INSTALL_DEV" ]; then
            # in case we want to have one of P3 on the bootable disk
-           MAKE_RAW_PARTS="efi imga imgb conf persist"
+           MAKE_RAW_PARTS="efi $ROOTFS_PARTITIONS conf persist"
            DISK_WITH_P3="$dev"
            POOL_CREATION_COMMAND_SUFFIX="$POOL_CREATION_COMMAND_SUFFIX $P3_ON_BOOT_PLACEHOLDER"
            DISKS_TO_MERGE_COUNT=$((DISKS_TO_MERGE_COUNT+1))
@@ -444,7 +454,7 @@ if [ "$INSTALL_DEV" != "$INSTALL_PERSIST" ]; then
 
      if [ $DISKS_TO_MERGE_COUNT -eq 0 ] || [ "$INSTALL_ZFS" = false ]; then
           # in case of only comma provided or zfs requirements are not met
-          MAKE_RAW_PARTS="efi imga imgb conf persist"
+          MAKE_RAW_PARTS="efi $ROOTFS_PARTITIONS conf persist"
           DISK_WITH_P3="$INSTALL_DEV"
           POOL_CREATION_COMMAND_SUFFIX=$P3_ON_BOOT_PLACEHOLDER
           DISKS_TO_MERGE_COUNT=1
@@ -460,7 +470,7 @@ if [ "$INSTALL_DEV" != "$INSTALL_PERSIST" ]; then
         sgdisk --partition-guid="1:$PERSIST_UUID" "$PDEV"
      fi
      # force make-raw to skip persist
-     MAKE_RAW_PARTS="efi imga imgb conf"
+     MAKE_RAW_PARTS="efi $ROOTFS_PARTITIONS conf"
      # We will be here if persist is being installed on single disk. In ZFS case update pool creation command
      if [ "$INSTALL_ZFS" = true ]; then
          POOL_CREATION_COMMAND_SUFFIX=$PDEV
