@@ -1,0 +1,9 @@
+(.onboot[] | select(.name == "installer"))."binds.add" += [
+  "/rootfs-b.img:/bits/rootfs-b.img:ro",
+  "/rootfs-c.img:/bits/rootfs-c.img:ro"
+ ] |
+.files += [
+  {"path": "/rootfs-b.img", "source": "rootfs-b.img"},
+  {"path": "/rootfs-c.img", "source": "rootfs-c.img"}
+] |
+.kernel.image |= "KERNEL_EVAL_HWE_TAG"
