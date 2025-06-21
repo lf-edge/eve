@@ -6,10 +6,10 @@
 | app.fml.resolution | string | notset | Set system-wide value of forced resolution for applications running in FML mode, it can be one of [predefined](/pkg/pillar/types/global.go) FmlResolution* values. |
 | timer.config.interval | integer in seconds | 60 | how frequently device gets config |
 | timer.cert.interval | integer in seconds | 1 day (24*3600) | how frequently device checks for new controller certificates |
-| timer.metric.interval  | integer in seconds | 60 | how frequently device reports metrics |
-| timer.metric.diskscan.interval  | integer in seconds | 300 | how frequently device should scan the disk for metrics |
+| timer.metric.interval | integer in seconds | 60 | how frequently device reports metrics |
+| timer.metric.diskscan.interval | integer in seconds | 300 | how frequently device should scan the disk for metrics |
 | timer.location.cloud.interval | integer in seconds | 1 hour | how frequently device reports geographic location information to controller |
-| timer.location.app.interval | integer in seconds | 20 | how frequently device reports geographic location information to applications (to local profile server and to other apps via meta-data server) |
+| timer.location.app.interval | integer in seconds | 20 | how frequently device reports geographic location information to applications (to local profile server and to other apps via metadata server) |
 | timer.ntpsources.interval | integer in seconds | 10 minutes | how frequently device forcibly reports information about NTP sources to which EVE has established a connection for the NTP synchronization. Requests are also sent to the controller if the list of NTP peers or NTP peer fields, such as mode, state, have changed. |
 | timer.send.timeout | timer in seconds | 120 | time for each http/send |
 | timer.dial.timeout | timer in seconds | 10 | maximum time allowed to establish connection |
@@ -43,7 +43,7 @@
 | maintenance.mode | "enabled" or "disabled" | "none" | don't run applications etc |
 | force.fallback.counter | integer | 0 | forces fallback to other image if counter is changed |
 | newlog.allow.fastupload | boolean | false | allow faster upload gzip logfiles to controller |
-| memory.apps.ignore.check | boolean | false | Ignore memory usage check for Apps|
+| memory.apps.ignore.check | boolean | false | Ignore memory usage check for Apps |
 | memory.vmm.limit.MiB | integer | 0 | Manually override how much overhead is allocated for each running VMM |
 | gogc.memory.limit.bytes | integer | 0 | Golang runtime soft memory limit, see details in API doc ["https://pkg.go.dev/runtime/debug#SetMemoryLimit"] |
 | gogc.percent | integer | 100 | Golang runtime garbage collector target percentage, see details in API doc ["https://pkg.go.dev/runtime/debug#SetGCPercent"] |
@@ -55,7 +55,7 @@
 | netdump.enable | boolean | true | enable publishing of network diagnostics (as tgz archives to /persist/netdump) |
 | netdump.topic.preonboard.interval | integer in seconds | 1 hour | how frequently (in seconds) can be netdumps of the same topic published while device is not yet onboarded |
 | netdump.topic.postonboard.interval | integer in seconds | 1 day | how frequently (in seconds) can be netdumps of the same topic published after device has been onboarded |
-| netdump.topic.maxcount | integer | 10 | maximum number of netdumps that can be published for each topic. The oldest netdump is unpublished should a new netdump exceed the limit.
+| netdump.topic.maxcount | integer | 10 | maximum number of netdumps that can be published for each topic. The oldest netdump is unpublished should a new netdump exceed the limit. |
 | netdump.downloader.with.pcap | boolean | false | include packet captures inside netdumps for download requests. However, even if enabled, TCP segments carrying non-empty payload (i.e. content which is being downloaded) are excluded and the overall PCAP size is limited to 64MB. |
 | netdump.downloader.http.with.fieldvalue | boolean | false | include HTTP header field values in captured network traces for download requests (beware: may contain secrets, such as datastore credentials). |
 | network.switch.enable.arpsnoop | boolean | true | enable ARP Snooping on switch Network Instances |
@@ -68,7 +68,7 @@
 | goroutine.leak.detection.cooldown.minutes | integer (minutes) | 5 | Cooldown period in minutes after the leak detection is triggered. During this period, no stack traces are collected; only warning messages are logged. |
 | kubevirt.drain.timeout | integer | 24 | hours to allow kubernetes to drain a node |
 | memory-monitor.enabled | boolean | false | Enable external memory monitoring and memory pressure events handling |
-| debug.tui.loglevel | string | info | Set log level for EVE Text UI (TUI) monitor. Possible values are "OFF", "ERROR", "WARN", "INFO", "DEBUG", "TRACE" and are case insensitive
+| debug.tui.loglevel | string | info | Set log level for EVE Text UI (TUI) monitor. Possible values are "OFF", "ERROR", "WARN", "INFO", "DEBUG", "TRACE" and are case insensitive |
 | log.dedup.window.size | integer | 0 | The size of the log deduplicator's sliding window (in number of messages). See logging [docs](LOGGING.md#log-filtering-counting-and-deduplication) for details. If the window size is set to 0 (default), no deduplication is performed. |
 | log.count.filenames | string | "" | Comma-separated list of log's filenames to be counted and logged once instead of logging them every time. Example `/my-pkg/main.go:123,/other-pkg/code.go:42`. Empty string `""` doesn't filter anything out, however a single comma `","` will filter out all entries that don't have a filename field set (e.g. logs not coming from components written in Golang). See logging [docs](LOGGING.md#log-filtering-counting-and-deduplication) for details. |
 | log.filter.filenames | string | "" | Comma-separated list of log's filenames to be filtered out. Example `/my-pkg/main.go:123,/other-pkg/code.go:42`. Empty string `""` doesn't filter anything out, however a single comma `","` will filter out all entries that don't have a filename field set (e.g. logs not coming from components written in Golang). See logging [docs](LOGGING.md#log-filtering-counting-and-deduplication) for details. |
@@ -99,22 +99,22 @@ A corresponding "remote" log level can be set for each of the three components: 
 
 | Name | Type | Default | Description |
 | ---- | ---- | ------- | ----------- |
-| debug.default.loglevel | string | debug | default level of logs produced by EVE microservices. Can be overwritten by agent.*agentname*.debug.loglevel. Uses logrus log levels as described here ["https://pkg.go.dev/github.com/sirupsen/logrus"]: panic, fatal, error, warning, info, debug and trace.
+| debug.default.loglevel | string | debug | default level of logs produced by EVE microservices. Can be overwritten by agent.*agentname*.debug.loglevel. Uses logrus log levels as described here ["https://pkg.go.dev/github.com/sirupsen/logrus"]: panic, fatal, error, warning, info, debug and trace. |
 | debug.default.remote.loglevel | string | warning | default level of logs sent by EVE microservices to the controller. Can be overwritten by agent.*agentname*.debug.remote.loglevel. Uses logrus log levels as described here ["https://pkg.go.dev/github.com/sirupsen/logrus"]: panic, fatal, error, warning, info, debug and trace. |
 | debug.syslog.loglevel | string | info | level of the produced syslog messages. System default loglevel string representation should be used as described here ["https://man7.org/linux/man-pages/man3/syslog.3.html"]: emerg, alert, crit, err, warning, notice, info, debug. |
 | debug.syslog.remote.loglevel | string | info | level of the syslog messages sent to the controller. System default loglevel string representation should be used as described here ["https://man7.org/linux/man-pages/man3/syslog.3.html"]: emerg, alert, crit, err, warning, notice, info, debug. |
 | debug.kernel.loglevel | string | info | level of the produced kernel log messages. System default loglevel string representation should be used as described here ["https://man7.org/linux/man-pages/man3/syslog.3.html"]: emerg, alert, crit, err, warning, notice, info, debug. |
 | debug.kernel.remote.loglevel | string | info | level of the kernel log messages sent to the controller. System default loglevel string representation should be used as described here ["https://man7.org/linux/man-pages/man3/syslog.3.html"]: emerg, alert, crit, err, warning, notice, info, debug. |
-debug.tui.loglevel | string | info | Set log level for EVE Text UI (TUI) monitor. Possible values are "OFF", "ERROR", "WARN", "INFO", "DEBUG", "TRACE" and are case insensitive
+| debug.tui.loglevel | string | info | Set log level for EVE Text UI (TUI) monitor. Possible values are "OFF", "ERROR", "WARN", "INFO", "DEBUG", "TRACE" and are case insensitive |
 
 In addition, there can be per-agent settings to overwrite the default log level set for EVE microservices.
 These use the same log levels as the default log level settings (logrus).
 The per-agent settings begin with "agent.*agentname*.*setting*":
 
-| Name | Type | Description |
-| ---- | ---- | ----------- |
-| agent.*agentname*.debug.loglevel | string | if set overrides debug.default.loglevel for this particular agent | (Legacy setting debug.*agentname*.loglevel still supported)
-| agent.*agentname*.debug.remote.loglevel | string | if set overrides debug.default.remote.loglevel for this particular agent | (Legacy setting debug.*agentname*.remote.loglevel)
+| Name | Type | Default | Description |
+| ---- | ---- |---------|------------ |
+| agent.*agentname*.debug.loglevel | string | if set overrides debug.default.loglevel for this particular agent | (Legacy setting debug.*agentname*.loglevel still supported) |
+| agent.*agentname*.debug.remote.loglevel | string | if set overrides debug.default.remote.loglevel for this particular agent | (Legacy setting debug.*agentname*.remote.loglevel) |
 
 Right now the following agents support per-agent log level settings:
 

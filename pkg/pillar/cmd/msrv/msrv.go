@@ -6,6 +6,8 @@
 // parameters and download patch envelopes.
 // You can think of metadata server as a translator from pubsub to REST API for
 // Application Instances
+//
+// Limitation: only via local-access and not accessible over switch or app-direct networks.
 
 package msrv
 
