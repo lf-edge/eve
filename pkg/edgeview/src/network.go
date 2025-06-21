@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -302,7 +303,7 @@ func doAppNet(status, appstr string, isSummary bool) string {
 	}
 
 	appUUIDStr := appStatus.UUIDandVersion.UUID.String()
-	retbytes, err = os.ReadFile("/run/domainmgr/DomainStatus/" + appUUIDStr + ".json")
+	retbytes, err = os.ReadFile(filepath.Join(types.DomainMgrDir, "DomainStatus", appUUIDStr+".json"))
 	if err == nil {
 		printColor("\n - domain status:", colorGREEN)
 		var domainS types.DomainStatus

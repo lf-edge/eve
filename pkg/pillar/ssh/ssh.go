@@ -11,20 +11,20 @@
 package ssh
 
 import (
+	"github.com/lf-edge/eve/pkg/pillar/types"
 	"os"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
 )
 
 const (
-	runDir                   = "/run"
-	targetAuthorizedKeysFile = runDir + "/authorized_keys"
+	targetAuthorizedKeysFile = types.RunDir + "/authorized_keys"
 )
 
 func UpdateSshAuthorizedKeys(log *base.LogObject, authorizedKeys string) {
 
 	log.Functionf("UpdateSshAuthorizedKeys: %s", authorizedKeys)
-	tmpfile, err := os.CreateTemp(runDir, "ak")
+	tmpfile, err := os.CreateTemp(types.RunDir, "ak")
 	if err != nil {
 		log.Errorln("TempFile ", err)
 		return

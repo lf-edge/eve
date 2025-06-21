@@ -6,6 +6,7 @@ package genericitems
 import (
 	"context"
 	"fmt"
+	"github.com/lf-edge/eve/pkg/pillar/types"
 	"os"
 
 	"github.com/lf-edge/eve-libs/depgraph"
@@ -13,8 +14,7 @@ import (
 )
 
 const (
-	runDir           = "/run"
-	authKeysFilename = runDir + "/authorized_keys"
+	authKeysFilename = types.RunDir + "/authorized_keys"
 )
 
 // SSHAuthKeys : a singleton item representing file "authorized_keys" used by SSH.
@@ -93,9 +93,9 @@ func (c *SSHAuthKeysConfigurator) writeSSHAuthKeys(item depgraph.Item) error {
 		keys = sshAuthKeys.Keys
 	}
 	c.Log.Functionf("writeSSHAuthKeys: %s", keys)
-	tmpfile, err := os.CreateTemp(runDir, "ak")
+	tmpfile, err := os.CreateTemp(types.RunDir, "ak")
 	if err != nil {
-		err = fmt.Errorf("os.CreateTemp(%s) failed: %w", runDir, err)
+		err = fmt.Errorf("os.CreateTemp(%s) failed: %w", types.RunDir, err)
 		c.Log.Error(err)
 		return err
 	}

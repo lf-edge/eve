@@ -82,6 +82,8 @@ func (p *PubSub) CheckMaxTimeTopic(agentName string, topic string, start time.Ti
 // RegisterFileWatchdog tells the watchdog about the touch file
 func (p *PubSub) RegisterFileWatchdog(agentName string) {
 	p.log.Noticef("RegisterFileWatchdog(%s)", agentName)
+	// This is a candidate for using pkg/pillar/types/locationsconst.go; however, this creates
+	// a cyclical dependency.
 	wdFile := fmt.Sprintf("%s/%s.touch", base.WatchdogFileDir, agentName)
 	base.TouchFile(p.log, wdFile)
 }
@@ -89,6 +91,8 @@ func (p *PubSub) RegisterFileWatchdog(agentName string) {
 // RegisterPidWatchdog tells the watchdog about the pid file
 func (p *PubSub) RegisterPidWatchdog(agentName string) {
 	p.log.Noticef("RegisterPidWatchdog(%s)", agentName)
+	// This is a candidate for using pkg/pillar/types/locationsconst.go; however, this creates
+	// a cyclical dependency.
 	wdFile := fmt.Sprintf("%s/%s.pid", base.WatchdogPidDir, agentName)
 	base.TouchFile(p.log, wdFile)
 }

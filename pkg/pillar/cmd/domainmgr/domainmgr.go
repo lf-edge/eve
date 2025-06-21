@@ -58,9 +58,8 @@ import (
 
 const (
 	agentName  = "domainmgr"
-	runDirname = "/run/" + agentName
-	xenDirname = runDirname + "/xen"       // We store xen cfg files here
-	ciDirname  = runDirname + "/cloudinit" // For cloud-init images
+	xenDirname = types.DomainMgrDir + "/xen"       // We store xen cfg files here
+	ciDirname  = types.DomainMgrDir + "/cloudinit" // For cloud-init images
 
 	// Time limits for event loop handlers
 	errorTime           = 3 * time.Minute
@@ -194,9 +193,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	stillRunning := time.NewTicker(25 * time.Second)
 	ps.StillRunning(agentName, warningTime, errorTime)
 
-	if _, err := os.Stat(runDirname); err != nil {
-		log.Tracef("Create %s", runDirname)
-		if err := os.MkdirAll(runDirname, 0700); err != nil {
+	if _, err := os.Stat(types.DomainMgrDir); err != nil {
+		log.Tracef("Create %s", types.DomainMgrDir)
+		if err := os.MkdirAll(types.DomainMgrDir, 0700); err != nil {
 			log.Fatal(err)
 		}
 	}
