@@ -110,6 +110,9 @@ jobs:
           - arch: arm64
             hv: kvm
             platform: "imx8mp_epc_r3720"
+          - arch: amd64
+            hv: kubevirt
+            platform: "generic"
     steps:
       - uses: actions/checkout@v4
         with:
@@ -131,7 +134,7 @@ jobs:
       - uses: ./.github/actions/run-make
         if: matrix.arch != 'riscv64'
         with:
-          command: "V=1 HV=${{ matrix.hv }} ZARCH=${{ matrix.arch }} LINUXKIT_PKG_TARGET=push $FORCE_BUILD sbom collected_sources compare_sbom_collected_sources publish_sources"
+          command: "V=1 HV=${{ matrix.hv }} PLATFORM=${{ matrix.platform }} ZARCH=${{ matrix.arch }} LINUXKIT_PKG_TARGET=push $FORCE_BUILD sbom collected_sources compare_sbom_collected_sources publish_sources"
           dockerhub-token: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
           dockerhub-account: ${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}
 
