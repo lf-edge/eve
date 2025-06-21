@@ -127,6 +127,10 @@ Update_CheckClusterComponents() {
 
     # Handle cluster wide component updates
     for comp in multus kubevirt cdi longhorn; do
+        if ! component_is_installed "$comp"; then
+            continue
+        fi
+
         while ! update_Component_CheckReady "$comp"; do
             logmsg "Component: $comp not ready on existing version"
             sleep 60
@@ -178,9 +182,11 @@ Update_RunDeschedulerOnBoot() {
     if [ "$lhStatus" != "truetruetrue" ]; then
         return
     fi
-    kvStatus=$(kubectl -n kubevirt get daemonsets -o json | jq '.items[].status | .numberReady==.desiredNumberScheduled' | tr -d '\n')
-    if [ "$kvStatus" != "true" ]; then
-        return
+    if component_is_installed "kubevirt"; then
+        kvStatus=$(kubectl -n kubevirt get daemonsets -o json | jq '.items[].status | .numberReady==.desiredNumberScheduled' | tr -d '\n')
+        if [ "$kvStatus" != "true" ]; then
+            return
+        fi
     fi
     # Job lives persistently in cluster, cleanup after old runs
     if kubectl -n kube-system get job/descheduler-job; then
@@ -270,4 +276,27 @@ publishUpdateStatus() {
     if [ $rc -ne 0 ]; then
         logmsg "publishUpdateStatus() $node $component $status in error:$rc"
     fi
+}
+
+component_is_installed() {
+    comp=$1
+    if [ "$comp" = "kubevirt" ]; then
+        if kubectl get namespace/kubevirt; then
+            return 0
+        fi
+        return 1
+    fi
+    if [ "$comp" = "cdi" ]; then
+        if kubectl get namespace/cdi; then
+            return 0
+        fi
+        return 1
+    fi
+    if [ "$comp" = "longhorn" ]; then
+        if kubectl get namespace/longhorn-system; then
+            return 0
+        fi
+        return 1
+    fi
+    return 0
 }

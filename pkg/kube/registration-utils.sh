@@ -20,16 +20,13 @@ appliedRegistrationYamlFileName="${appliedRegistrationYamlName}.${YAML_EXT}"
 appliedRegistrationYamlFilePath="${KUBE_MANIFESTS_DIR}/${appliedRegistrationYamlFileName}"
 
 # Pillar may download a yaml for registration, copy it in so that k3s handles applying it
+# This should be called in a very infrequently called cluster-config-change path 
 Registration_CheckApply() {
     if [ ! -d "${PERSIST_MANIFESTS_DIR}" ]; then
         return
     fi
 
     if [ ! -e "${registrationYamlFilePath}" ]; then
-        return
-    fi
-
-    if [ -e "${appliedRegistrationYamlFilePath}" ]; then
         return
     fi
 
