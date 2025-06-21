@@ -11,10 +11,11 @@ import (
 // Note that there are no LogCreate etc functions for this type
 // since it is published by logmanager and we don't want to cause logs
 // when logging
-type MetricsMap map[string]ZedcloudMetric
+type MetricsMap map[string]CloudMetrics
 
-// ZedcloudMetric are metrics for one interface
-type ZedcloudMetric struct {
+// CloudMetrics holds communication statistics with the controller for a single interface.
+// It tracks successes, failures, authentication failures, and per-URL metrics.
+type CloudMetrics struct {
 	FailureCount  uint64
 	SuccessCount  uint64
 	LastFailure   time.Time
@@ -45,7 +46,7 @@ func (m MetricsMap) AddInto(toMap MetricsMap) {
 		dst, ok := toMap[ifname]
 		if !ok {
 			// New ifname; take all but need to deepcopy
-			dst = ZedcloudMetric{}
+			dst = CloudMetrics{}
 		}
 		if dst.LastFailure.IsZero() {
 			// Don't care if src is zero

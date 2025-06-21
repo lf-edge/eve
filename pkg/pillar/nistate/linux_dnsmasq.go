@@ -13,7 +13,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
 )
@@ -174,7 +173,7 @@ func (lc *LinuxCollector) gcIPLeases(niInfo *niInfo) (purgedAny bool) {
 // 1560664900 00:16:3e:00:01:01 10.1.0.3 63120af3-42c4-4d84-9faf-de0582d496c2 *
 func (lc *LinuxCollector) readIPLeases(br NIBridge) ([]dnsmasqIPLease, error) {
 	var leases []dnsmasqIPLease
-	leasesFile := devicenetwork.DnsmasqLeaseFilePath(br.BrIfName)
+	leasesFile := types.DnsmasqLeaseFilePath(br.BrIfName)
 	fileDesc, err := os.Open(leasesFile)
 	if err != nil {
 		return leases, err

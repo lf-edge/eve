@@ -99,7 +99,7 @@ func handleUpgradeTestValidation(ctxPtr *nodeagentContext) {
 		log.Functionf("CurPart: %s, Upgrade Validation Test Complete",
 			ctxPtr.curPart)
 		resetTestStartTime(ctxPtr)
-		initiateBaseOsZedCloudTestComplete(ctxPtr)
+		initiateBaseOsControllerTestComplete(ctxPtr)
 		publishNodeAgentStatus(ctxPtr)
 	}
 }

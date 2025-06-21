@@ -517,8 +517,8 @@ func (config DevicePortConfig) WasDPCWorking() bool {
 // the port was not tested, so we retain the original TestResults for the port.
 func (config *DevicePortConfig) UpdatePortStatusFromIntfStatusMap(
 	intfStatusMap IntfStatusMap) {
-	for indx := range config.Ports {
-		portPtr := &config.Ports[indx]
+	for index := range config.Ports {
+		portPtr := &config.Ports[index]
 		tr, ok := intfStatusMap.StatusMap[portPtr.IfName]
 		if ok {
 			portPtr.TestResults.Update(tr)
@@ -790,6 +790,15 @@ type WifiConfig struct {
 	// CipherBlockStatus, for encrypted credentials
 	CipherBlockStatus
 }
+
+const (
+	// WpaFilename : path to WiFi wpa_supplicant file.
+	WpaFilename = "/run/wlan/wpa_supplicant.conf"
+	// RunWlanDir : directory for WLAN-related configuration.
+	RunWlanDir = "/run/wlan"
+	// WpaTempname : name used for a temporary wpa_supplicant file.
+	WpaTempname = "wpa_supplicant.temp"
+)
 
 // DeprecatedCellConfig : old and now deprecated structure for storing cellular
 // network port config. It is preserved only to support upgrades from older EVE

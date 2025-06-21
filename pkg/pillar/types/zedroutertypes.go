@@ -6,6 +6,7 @@ package types
 import (
 	"fmt"
 	"net"
+	"path"
 	"strings"
 	"time"
 
@@ -290,7 +291,7 @@ type AppNetAdapterConfig struct {
 	// Error
 	//	If there is a parsing error and this AppNetAdapterNetwork config cannot be
 	//	processed, set the error here. This allows the error to be propagated
-	//  back to zedcloud
+	//  back to the controller
 	Error           string
 	Network         uuid.UUID // Points to a NetworkInstance.
 	ACLs            []ACE
@@ -403,6 +404,16 @@ func (aa AssignedAddrs) GetInternallyLeasedIPv4Addr() net.IP {
 		}
 	}
 	return nil
+}
+
+// DnsmasqLeaseDir is a directory with files (one per NI bridge) storing IP leases
+// granted to applications by dnsmasq.
+const DnsmasqLeaseDir = "/run/zedrouter/dnsmasq.leases/"
+
+// DnsmasqLeaseFilePath returns the path to a file with IP leases granted
+// to applications connected to a given bridge.
+func DnsmasqLeaseFilePath(bridgeIfName string) string {
+	return path.Join(DnsmasqLeaseDir, bridgeIfName)
 }
 
 // AddressSource determines the source of an IP address assigned to an app VIF.

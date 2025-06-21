@@ -277,7 +277,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 				break
 			}
 			log.Errorf("Source IP %s failed: %s", ipSrc, err)
-			ctx.zedcloudMetrics.RecordFailure(log, ifname, metricsURL, 1024, 0, false)
+			ctx.agentMetrics.RecordFailure(log, ifname, metricsURL, 1024, 0, false)
 			// the error with "no suitable address found" for http schemes
 			// are suppressed inside httputil library.
 			// the S3 and Azure similar error have their own private error structure
@@ -299,7 +299,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 		downloadTime := int64(time.Since(downloadStartTime) / time.Millisecond)
 		status.Size = uint64(size)
 		status.ContentType = contentType
-		ctx.zedcloudMetrics.RecordSuccess(log, ifname,
+		ctx.agentMetrics.RecordSuccess(log, ifname,
 			metricsURL, 1024, size, downloadTime, false)
 		if st.Progress(100, size, size) {
 			log.Noticef("updated sizes at end to %d/%d",

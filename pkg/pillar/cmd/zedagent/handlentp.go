@@ -146,7 +146,6 @@ func publishNTPSourcesToDest(ctx *zedagentContext,
 	if buf == nil {
 		log.Fatal("malloc error")
 	}
-	size := int64(proto.Size(infoMsg))
 
 	const bailOnHTTPErr = false
 	const withNetTrace = false
@@ -156,7 +155,7 @@ func publishNTPSourcesToDest(ctx *zedagentContext,
 	// all updates should be delivered to the controller, so clear
 	// @forcePeriodic.
 	forcePeriodic := false
-	queueInfoToDest(ctx, dest, key, buf, size, bailOnHTTPErr, withNetTrace,
+	queueInfoToDest(ctx, dest, key, buf, bailOnHTTPErr, withNetTrace,
 		forcePeriodic, info.ZInfoTypes_ZiNTPSources)
 }
 
