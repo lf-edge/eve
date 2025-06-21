@@ -176,7 +176,7 @@ func GetOtherPartition() string {
 
 func validatePartitionName(partName string) {
 
-	if partName == "IMGA" || partName == "IMGB" {
+	if partName == "IMGA" || partName == "IMGB" || partName == "IMGC" {
 		return
 	}
 	errStr := fmt.Sprintf("invalid partition %s", partName)

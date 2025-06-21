@@ -21,7 +21,7 @@ get_platform() {
     if [ -n "$IMX" ]; then
         echo "imx"
     else
-        echo "unknown"
+        echo "$1"
     fi
 }
 
@@ -39,9 +39,4 @@ case "$PLAT" in
         copy_a "${OUTPUT_DIR}"/bsp-imx/"${PLATFORM}"-flash.conf "${OUTPUT_DIR}"/imx8-flash.conf
         copy_a "${OUTPUT_DIR}"/bsp-imx/*.dtb "${OUTPUT_DIR}"/boot
     ;;
-
-    *)
-        exit 1
-    ;;
 esac
-
