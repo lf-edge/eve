@@ -57,7 +57,6 @@ shift $((OPTIND-1))
 
 IMGFILE=$1
 shift
-PARTS=${*:-"efi imga imgb conf persist"}
 
 # This is the only partition type that PARTITION_TYPE_USR_X86_64
 # grub-core/commands/gptprio.c code will pay attention to
@@ -70,11 +69,14 @@ EFI_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30051
 IMGA_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30052
 IMGB_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30053
 CONF_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30054
+IMGC_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30055
 PERSIST_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30059
 INSTALLER_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30060
 
 # content of rootfs partition
 ROOTFS_IMG=/parts/rootfs.img
+ROOTFS_IMG_B=/parts/rootfs-b.img
+ROOTFS_IMG_C=/parts/rootfs-c.img
 # contents of installer partition
 INSTALLER_IMG=/parts/installer.img
 # content of conf partition
@@ -85,8 +87,6 @@ PERSIST_FILE=/parts/persist.img
 EFI_DIR=/parts/EFI
 # early bootloader directory (optional)
 BOOT_DIR=/parts/boot
-# content of initrd installer image (optional)
-INITRD_IMG=/parts/initrd.img
 # IMX8 flash blob that needs to be written to image
 IMX8_BLOB=/parts/imx8-flash.bin
 # IMX8 configuration file with flashing parameters
@@ -110,13 +110,34 @@ if [ -f /root/etc/eve-hv-type ]; then
       ROOTFS_PART_SIZE_MIN=$((1 * 1024 * 1024 * 1024))
    fi
 fi
+
+# PLATFORM can be set in environment, it means we are executed using
+# docker during build time, otherwise we are executed from EVE e.g.
+# from installer, in later case read platform from /etc/eve-platform
+if [ -z "$PLATFORM" ]; then
+  if [ -f /root/etc/eve-platform ]; then
+    PLATFORM=$(cat /root/etc/eve-platform)
+  else
+    PLATFORM="unknown"
+  fi
+fi
+
+if [ "$PLATFORM" = "evaluation" ]; then
+    PARTS=${*:-"efi imga imgb imgc conf persist"}
+    # we do not update any rootfs for evaluation platform
+    # so we do not reserve any space in the partition
+    ROOTFS_PART_SIZE_MIN=0
+else
+    PARTS=${*:-"efi imga imgb conf persist"}
+    # wipe IMGB for non-evaluation platforms
+    ROOTFS_IMG_B=
+fi
+
+
 # conf partition size in bytes
 CONF_PART_SIZE=$((1024 * 1024))
 # installer inventory partition size in bytes
 WIN_INVENTORY_PART_SIZE=$((40240 * 1024))
-# resulting FAT FS image size factor for installer
-# 1.5 is enough for FAT to keep all our files.
-INSTALLER_PART_SIZE_FACTOR="1.5"
 # imx8 boot blob size in bytes
 IMX8_BLOB_SIZE=$(( 8 * 1024 * 1024 ))
 # sector where the first partition starts on a blank disk
@@ -132,6 +153,7 @@ SYSTEM_VFAT_PART_OFFSET=1
 VFAT_PART_OFFSET=4
 IMGA_PART_OFFSET=2
 IMGB_PART_OFFSET=3
+IMGC_PART_OFFSET=7
 EFI_PART_OFFSET=1
 CONF_PART_OFFSET=4
 PERSIST_PART_OFFSET=9
@@ -170,6 +192,26 @@ calc_rootfs_part_size() {
   local SIZE
 
   SIZE=$(file_size "$ROOTFS_IMG")
+  # Take max
+  SIZE=$((SIZE > ROOTFS_PART_SIZE_MIN ? SIZE : ROOTFS_PART_SIZE_MIN))
+
+  echo $SIZE
+}
+
+calc_rootfs_part_b_size() {
+  local SIZE
+
+  SIZE=$(file_size "$ROOTFS_IMG_B")
+  # Take max
+  SIZE=$((SIZE > ROOTFS_PART_SIZE_MIN ? SIZE : ROOTFS_PART_SIZE_MIN))
+
+  echo $SIZE
+}
+
+calc_rootfs_part_c_size() {
+  local SIZE
+
+  SIZE=$(file_size "$ROOTFS_IMG_C")
   # Take max
   SIZE=$((SIZE > ROOTFS_PART_SIZE_MIN ? SIZE : ROOTFS_PART_SIZE_MIN))
 
@@ -220,7 +262,10 @@ calc_image_size() {
               SIZE=$((SIZE + $(calc_rootfs_part_size)))
               ;;
           imgb)
-              SIZE=$((SIZE + $(calc_rootfs_part_size)))
+              SIZE=$((SIZE + $(calc_rootfs_part_b_size)))
+              ;;
+          imgc)
+              SIZE=$((SIZE + $(calc_rootfs_part_c_size)))
               ;;
           installer)
               SIZE=$((SIZE + $(calc_installer_part_size)))
@@ -411,8 +456,12 @@ do_imga() {
 }
 
 do_imgb() {
-    # for now we are wiping IMGB - hence not passing the source
-  do_rootfs "$1" IMGB "$(calc_rootfs_part_size)" $IMGB_PART $IMGB_UUID
+  # if ROOTFS_IMG_B is empty we are wiping IMGB
+  do_rootfs "$1" IMGB "$(calc_rootfs_part_b_size)" $IMGB_PART $IMGB_UUID $ROOTFS_IMG_B
+}
+
+do_imgc() {
+  do_rootfs "$1" IMGC "$(calc_rootfs_part_c_size)" $IMGC_PART $IMGC_UUID $ROOTFS_IMG_C
 }
 
 # create a VFAT partition with the specified UUID
@@ -638,6 +687,8 @@ elif echo "$PARTS" | grep -q "imga"; then
   BOOTABLE_PART=$IMGA_PART
 elif echo "$PARTS" | grep -q "imgb"; then
   BOOTABLE_PART=$IMGB_PART
+elif echo "$PARTS" | grep -q "imgc"; then
+  BOOTABLE_PART=$IMGC_PART
 fi
 
 if [ -n "$BOOTABLE_PART" ]; then
