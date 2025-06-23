@@ -349,21 +349,35 @@ func (m *LinuxNetworkMonitor) GetInterfaceDefaultGWs(ifIndex int) (gws []net.IP,
 		return info, nil
 	}
 	table := syscall.RT_TABLE_MAIN
-	// Note that a default route is represented as nil Dst
+	// Note: vishvananda/netlink no longer represents default routes with a nil Dst.
+	// There was a change between v1.2.1-beta.2 and v1.2.1, and default routes now have
+	// an explicit Dst of "0.0.0.0/0" for IPv4 or "::/0" for IPv6.
+	// As a result, we can’t rely on RT_FILTER_DST with a nil Dst to match default routes
+	// across both IPv4 and IPv6 in a single call. Instead of making separate calls
+	// for each family, we avoid using RT_FILTER_DST and filter routes by destination
+	// manually below. This reduces netlink calls while ensuring compatibility.
 	filter := netlink.Route{Table: table, LinkIndex: ifIndex, Dst: nil}
 	fflags := netlink.RT_FILTER_TABLE
 	fflags |= netlink.RT_FILTER_OIF
-	fflags |= netlink.RT_FILTER_DST
 	routes, err := netlink.RouteListFiltered(syscall.AF_UNSPEC, &filter, fflags)
 	if err != nil {
 		return nil, err
 	}
 	for _, rt := range routes {
 		if rt.Table != table {
+			// This should be unreachable and taken care of by the filter.
 			continue
 		}
 		if ifIndex != 0 && rt.LinkIndex != ifIndex {
+			// This should be unreachable and taken care of by the filter.
 			continue
+		}
+		if rt.Dst != nil {
+			ones, _ := rt.Dst.Mask.Size()
+			if ones != 0 || !rt.Dst.IP.IsUnspecified() {
+				// Not a default route.
+				continue
+			}
 		}
 		gws = append(gws, rt.Gw)
 	}
