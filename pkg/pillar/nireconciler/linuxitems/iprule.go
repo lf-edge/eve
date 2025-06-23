@@ -21,28 +21,28 @@ const matchAll = "all"
 type IPRule struct {
 	Priority int
 	Table    int
-	Mark     int
-	Mask     int
+	Mark     uint32
+	Mask     *uint32
 	Src      *net.IPNet
 	Dst      *net.IPNet
 }
 
 // Name combines all attributes to construct a unique identifier for IP rule.
 func (r IPRule) Name() string {
-	if r.Mark == 0 {
+	if r.Mark == 0 || r.Mask == nil {
 		return fmt.Sprintf("%d/%s/%s/%d", r.Priority,
 			r.srcToString(), r.dstToString(), r.Table)
 	}
 	return fmt.Sprintf("%d/%s/%s/%x/%x/%d", r.Priority,
-		r.srcToString(), r.dstToString(), r.Mark, r.Mask, r.Table)
+		r.srcToString(), r.dstToString(), r.Mark, *r.Mask, r.Table)
 }
 
 // Label is more human-readable than name.
 // Label resembles the output of "ip rule list".
 func (r IPRule) Label() string {
 	var mark string
-	if r.Mark != 0 {
-		mark = fmt.Sprintf(" fwmark %x/%x", r.Mark, r.Mask)
+	if r.Mark != 0 && r.Mask != nil {
+		mark = fmt.Sprintf(" fwmark %x/%x", r.Mark, *r.Mask)
 	}
 	return fmt.Sprintf("%d: from %s to %s%s lookup %d",
 		r.Priority, r.srcToString(), r.dstToString(), mark, r.Table)
@@ -59,10 +59,18 @@ func (r IPRule) Equal(other dg.Item) bool {
 	if !isIPRule {
 		return false
 	}
+	if r.Mask == nil || r2.Mask == nil {
+		if r.Mask != r2.Mask {
+			return false
+		}
+	} else {
+		if *r.Mask != *r2.Mask {
+			return false
+		}
+	}
 	return r.Priority == r2.Priority &&
 		r.Table == r2.Table &&
 		r.Mark == r2.Mark &&
-		r.Mask == r2.Mask &&
 		netutils.EqualIPNets(r.Src, r2.Src) &&
 		netutils.EqualIPNets(r.Dst, r2.Dst)
 }
@@ -74,9 +82,13 @@ func (r IPRule) External() bool {
 
 // String describes IPRule in detail.
 func (r IPRule) String() string {
+	var mark string
+	if r.Mark != 0 && r.Mask != nil {
+		mark = fmt.Sprintf(", Mark: %x/%x", r.Mark, *r.Mask)
+	}
 	return fmt.Sprintf("IP rule: "+
-		"{prio: %d, Src: %s, Dst: %s, Table: %d, Mark: %x/%x}",
-		r.Priority, r.srcToString(), r.dstToString(), r.Table, r.Mark, r.Mask)
+		"{prio: %d, Src: %s, Dst: %s, Table: %d%s}",
+		r.Priority, r.srcToString(), r.dstToString(), r.Table, mark)
 }
 
 // Dependencies returns no dependencies (table does not have to exist).
