@@ -508,11 +508,12 @@ func (r *LinuxNIReconciler) getIntendedBlackholeCfg() dg.Graph {
 		},
 		OutputIf: dummyIfRef,
 	}, nil)
+	mask := uint32(iptables.AceDropAction)
 	intendedBlackholeCfg.PutItem(linux.IPRule{
 		Priority: blackholePrio,
 		Table:    blackholeRT,
 		Mark:     iptables.AceDropAction,
-		Mask:     iptables.AceDropAction,
+		Mask:     &mask,
 	}, nil)
 	// Install iptables rule to ensure that packets marked with the drop action
 	// are indeed dropped and never sent out via downlink or port interfaces.

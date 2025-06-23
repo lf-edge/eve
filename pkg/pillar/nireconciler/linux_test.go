@@ -1768,11 +1768,12 @@ func TestIPv4LocalAndSwitchNIsWithFlowlogging(test *testing.T) {
 		IfName: "blackhole",
 	}
 	t.Expect(itemIsCreated(dg.Reference(dummyIf))).To(BeTrue())
+	mask := uint32(0x800000)
 	iprule := linuxitems.IPRule{
 		Priority: 1000,
 		Table:    400,
 		Mark:     0x800000,
-		Mask:     0x800000,
+		Mask:     &mask,
 	}
 	t.Expect(itemIsCreated(dg.Reference(iprule))).To(BeTrue())
 	netlinkUnreachV4Route := netlink.Route{
