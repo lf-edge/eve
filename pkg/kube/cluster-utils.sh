@@ -6,6 +6,7 @@
 LOG_SIZE=$((5*1024*1024))
 K3s_LOG_FILE="k3s.log"
 SAVE_KUBE_VAR_LIB_DIR="/persist/kube-save-var-lib"
+K3S_SERVER_CMD="k3s server"
 
 logmsg() {
         local MSG
@@ -47,10 +48,12 @@ check_log_file_size() {
                 # not releasing the file descriptor, so truncate the file may not
                 # take effect. Signal a HUP signal to that.
                 if [ "$1" = "$K3s_LOG_FILE" ]; then
-                        k3s_pid=$(pgrep -f "k3s server")
-                        if [ -n "$k3s_pid" ]; then
-                                kill -HUP "$k3s_pid"
-                                logmsg "Sent HUP signal to k3s server before truncate k3s.log size"
+                        k3s_pids=$(pgrep -f "$K3S_SERVER_CMD")
+                        if [ -n "$k3s_pids" ]; then
+                                for pid in $k3s_pids; do
+                                        kill -HUP "$pid"
+                                        logmsg "Sent HUP signal to k3s server before truncate k3s.log size"
+                                done
                         fi
                 fi
                 truncate -s 0 "$K3S_LOG_DIR/$1"
@@ -224,25 +227,58 @@ get_eve_os_release() {
 }
 
 terminate_k3s() {
-  # Find the process ID of 'k3s server'
-  pid=$(pgrep -f 'k3s server')
+  # Simple loop to kill all k3s server processes
+  max_attempts=4
+  attempt=0
 
-  # If the process exists, kill it
-  if [ -n "$pid" ]; then
-    logmsg "Killing 'k3s server' process with PID: $pid"
-    kill "$pid"
+  while [ $attempt -lt $max_attempts ]; do
+    # Check for any k3s server processes
+    pids=$(pgrep -f "$K3S_SERVER_CMD")
+
+    # If no processes found, we're done
+    if [ -z "$pids" ]; then
+      if [ $attempt -eq 0 ]; then
+        logmsg "No '$K3S_SERVER_CMD' processes found"
+      else
+        logmsg "k3s server processes successfully terminated after $attempt attempts"
+      fi
+      return 0
+    fi
+
+    for pid in $pids; do
+        if [ $attempt -lt 3 ]; then
+            # First three attempts: use SIGTERM for graceful shutdown
+            logmsg "Attempt $((attempt+1))/$max_attempts: Sending SIGTERM to PID $pid for graceful shutdown"
+            kill "$pid" 2>/dev/null
+        else
+            # Last attempt: use SIGKILL for forced termination
+            logmsg "Final attempt $max_attempts/$max_attempts: Sending SIGKILL to PID $pid"
+            kill -9 "$pid" 2>/dev/null
+        fi
+    done
+
+    # Wait a moment for processes to terminate
+    sleep 1
+    attempt=$((attempt+1))
+  done
+
+  # Final check for any remaining processes - just report status
+  final_check=$(pgrep -f "$K3S_SERVER_CMD")
+  if [ -n "$final_check" ]; then
+    logmsg "ERROR: Failed to terminate all k3s server processes after $max_attempts attempts. Still running: $final_check"
+    return 1
   else
-    logmsg "'k3s server' process not found"
+    logmsg "All k3s server processes successfully terminated"
+    return 0
   fi
 }
 
 # wait for debugging flag in /persist/k3s/wait_{flagname} if exist
 wait_for_item() {
         filename="/persist/k3s/wait_$1"
-        processname="k3s server"
         while [ -e "$filename" ]; do
                 k3sproc=""
-                if pgrep -x "$processname" > /dev/null; then
+                if pgrep -x "$K3S_SERVER_CMD" > /dev/null; then
                         k3sproc="k3s server is running"
                 else
                         k3sproc="k3s server is NOT running"
