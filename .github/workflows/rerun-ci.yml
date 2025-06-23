@@ -1,0 +1,73 @@
+# Copyright (c) 2025, Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+---
+name: Rerun CI on /rerun-ci
+
+on:  # yamllint disable-line rule:truthy
+  issue_comment:
+    types: [created]
+
+jobs:
+  rerun-failed:
+    if: |
+      github.event.issue.pull_request &&
+      startsWith(github.event.comment.body, '/rerun-ci')
+    runs-on: ubuntu-latest
+
+    permissions:
+      actions: write
+      issues: read
+      pull-requests: read
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Parse CODEOWNERS to get allowed users
+        run: |
+          CODEOWNERS=".github/CODEOWNERS"
+          awk '{for(i=1;i<=NF;i++) if($i ~ /^@/) print substr($i,2)}' "$CODEOWNERS" | sort -u > allowed_users.txt
+
+      - name: Check if comment author is allowed
+        run: |
+          COMMENT_USER="${{ github.event.comment.user.login }}"
+          echo "User: $COMMENT_USER"
+          if ! grep -Fxq "$COMMENT_USER" allowed_users.txt; then
+            echo "User $COMMENT_USER is not allowed to rerun CI." >&2
+            exit 1
+          fi
+
+      - name: Find failed workflow runs for this PR
+        id: get_runs
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_NUMBER="${{ github.event.issue.number }}"
+          REPO="${{ github.repository }}"
+          PR_DATA=$(curl -sSL -H "Authorization: Bearer $GITHUB_TOKEN" "https://api.github.com/repos/$REPO/pulls/$PR_NUMBER")
+          BRANCH=$(echo "$PR_DATA" | jq -r '.head.ref')
+          RUNS_URL="https://api.github.com/repos/$REPO/actions/runs?event=pull_request&branch=$BRANCH"
+          RUNS=$(curl -sSL -H "Authorization: Bearer $GITHUB_TOKEN" "$RUNS_URL")
+          RUN_IDS=$(echo "$RUNS" | jq -r '.workflow_runs[] | select(.pull_requests[].number=='"$PR_NUMBER"') | select(.conclusion != null and .conclusion != "success") | .id')
+          echo "$RUN_IDS" > run_ids.txt
+          if [ -z "$RUN_IDS" ]; then
+            echo "No failed workflow runs found for this PR"
+            echo "has_runs=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_runs=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Re-run failed workflow runs
+        if: steps.get_runs.outputs.has_runs == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          REPO="${{ github.repository }}"
+          while read -r run_id; do
+            [ -z "$run_id" ] && continue
+            echo "Re-running workflow run $run_id"
+            curl -sSL -X POST -H "Authorization: Bearer $GITHUB_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/$REPO/actions/runs/$run_id/rerun"
+          done < run_ids.txt
