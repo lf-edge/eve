@@ -15,6 +15,7 @@ HV_DEFAULT=kvm
 # linuxkit version. This **must** be a published semver version so it can be downloaded already compiled from
 # the release page at https://github.com/linuxkit/linuxkit/releases
 LINUXKIT_VERSION=v1.6.1
+BUILD_KIT_VERSION=v0.23.1
 GOVER ?= 1.24.1
 PKGBASE=github.com/lf-edge/eve
 GOMODULE=$(PKGBASE)/pkg/pillar
@@ -129,6 +130,8 @@ CROSS ?=
 ifneq ($(HOSTARCH),$(ZARCH))
 CROSS = 1
 endif
+
+PARALLEL_BUILD_LOCK:=$(shell mktemp -u $(CURDIR)/eve-parallel-build-XXXXXX)
 
 DOCKER_ARCH_TAG=$(ZARCH)
 
@@ -546,7 +549,7 @@ $(UBOOT_IMG): PKG=u-boot
 $(BSP_IMX_PART): PKG=bsp-imx
 $(EFI_PART) $(BOOT_PART) $(INITRD_IMG) $(IPXE_IMG) $(BIOS_IMG) $(UBOOT_IMG) $(BSP_IMX_PART): $(LINUXKIT) | $(INSTALLER)
 	mkdir -p $(dir $@)
-	$(LINUXKIT) pkg build --pull $(LINUXKIT_ORG_TARGET) --platforms linux/$(ZARCH) pkg/$(PKG) # running linuxkit pkg build _without_ force ensures that we either pull it down or build it.
+	$(LINUXKIT) pkg build --pull $(LINUXKIT_ORG_TARGET) --platforms linux/$(ZARCH) --builders linux/$(ZARCH)=default  pkg/$(PKG) # running linuxkit pkg build _without_ force ensures that we either pull it down or build it.
 	cd $(dir $@) && $(LINUXKIT) cache export --platform linux/$(DOCKER_ARCH_TAG) --format filesystem --outfile - $(shell $(LINUXKIT) pkg $(LINUXKIT_ORG_TARGET) show-tag pkg/$(PKG)) | tar xvf - $(notdir $@)
 	$(QUIET): $@: Succeeded
 
@@ -966,9 +969,30 @@ shell: $(GOBUILDER)
 .PHONY: linuxkit
 linuxkit: $(LINUXKIT)
 
+ensure-builder:
+	@if ! docker --context default container inspect linuxkit-builder >/dev/null 2>&1; then \
+	    echo "Container linuxkit-builder does not exist, creating..."; \
+	    docker --context default container run -d --name linuxkit-builder \
+	        --privileged moby/buildkit:$(BUILD_KIT_VERSION) \
+	        --allow-insecure-entitlement network.host \
+	        --debug --addr unix:///run/buildkit/buildkitd.sock; \
+	else \
+	    current_image=$$(docker --context default container inspect linuxkit-builder | jq -r '.[].Config.Image'); \
+	    if [ "$$current_image" != "moby/buildkit:$(BUILD_KIT_VERSION)" ]; then \
+	        echo "Recreating container (expected moby/buildkit:$(BUILD_KIT_VERSION), found $$current_image)"; \
+	        docker --context default container rm -f linuxkit-builder; \
+	        docker --context default container run -d --name linuxkit-builder \
+	            --privileged moby/buildkit:$(BUILD_KIT_VERSION) \
+	            --allow-insecure-entitlement network.host \
+	            --debug --addr unix:///run/buildkit/buildkitd.sock; \
+	    else \
+	        echo "Container linuxkit-builder is up-to-date"; \
+	    fi; \
+	fi
+
 LINUXKIT_SOURCE=https://github.com/linuxkit/linuxkit
 
-$(LINUXKIT): $(BUILDTOOLS_BIN)/linuxkit-$(LINUXKIT_VERSION)
+$(LINUXKIT): $(BUILDTOOLS_BIN)/linuxkit-$(LINUXKIT_VERSION) | ensure-builder
 	$(QUIET) ln -sf  $(notdir $<) $@
 	$(QUIET): $@: Succeeded
 
@@ -1060,8 +1084,8 @@ eve-%: pkg/%/Dockerfile build-tools $(RESCAN_DEPS)
 	$(eval LINUXKIT_FLAGS := $(if $(filter manifest,$(LINUXKIT_PKG_TARGET)),,$(FORCE_BUILD) $(LINUXKIT_DOCKER_LOAD) $(LINUXKIT_BUILD_PLATFORMS)))
 	$(QUIET)$(LINUXKIT) $(DASH_V) pkg $(LINUXKIT_PKG_TARGET) $(LINUXKIT_ORG_TARGET) $(LINUXKIT_OPTS) $(LINUXKIT_FLAGS) --build-yml $(call get_pkg_build_yml,$*) pkg/$*
 	$(QUIET)if [ -n "$(PRUNE)" ]; then \
-		$(LINUXKIT) pkg $(LINUXKIT_ORG_TARGET) builder prune; \
-		docker image prune -f; \
+		flock $(PARALLEL_BUILD_LOCK) $(LINUXKIT) pkg $(LINUXKIT_ORG_TARGET) builder prune; \
+		flock $(PARALLEL_BUILD_LOCK) docker image prune -f; \
 	fi
 	$(QUIET): "$@: Succeeded (intermediate for pkg/%)"
 
