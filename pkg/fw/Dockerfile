@@ -91,7 +91,7 @@ ADD ${RPI_BT_FIRMWARE_URL}/${RPI_BT_FIRMWARE_VERSION}/broadcom/BCM43430B0.hcd .
 ADD ${RPI_BT_FIRMWARE_URL}/${RPI_BT_FIRMWARE_VERSION}/broadcom/BCM4345C5.hcd .
 
 # Hailo 8 GPU firmware
-ENV HAILO_FW_VERSION=4.16.0
+ENV HAILO_FW_VERSION=4.21.0
 ADD https://hailo-hailort.s3.eu-west-2.amazonaws.com/Hailo8/${HAILO_FW_VERSION}/FW/hailo8_fw.${HAILO_FW_VERSION}.bin /lib/firmware/hailo/hailo8_fw.bin
 
 # generate initrd for Intel's and AMD's microcode
