@@ -163,10 +163,11 @@ func cordonAndDrainNode(ctx *zedkube) {
 	//
 	// 1. Attempt to safely handle the case where the kube api is down
 	//	for an extended period of time and the controller requested device operation is needed anyways.
+	//  eg. k3s not running on local node due to needing a reboot operation.
 	//
-	unavail, err := isExtendedKubeAPIUnreachable(time.Second * time.Duration(ctx.drainSkipK8sAPINotReachableTimeout))
+	unavail, err := isExtendedKubeAPIUnreachable(ctx.drainSkipK8sAPINotReachableTimeout)
 	if unavail && (err == nil) {
-		log.Notice("cordonAndDrainNode nodedrain-step:drain-complete due to extended kube api service unreachability")
+		log.Noticef("cordonAndDrainNode nodedrain-step:drain-complete due to extended kube api service unreachability after duration:%v", ctx.drainSkipK8sAPINotReachableTimeout)
 		publishNodeDrainStatus(ctx, kubeapi.COMPLETE)
 		return
 	}
@@ -310,7 +311,7 @@ func drainNode(ctx *zedkube) error {
 		Out:                   &drainLogger{log: log, err: false},
 		ErrOut:                &drainLogger{log: log, err: true},
 		DeleteEmptyDirData:    true,
-		Timeout:               time.Hour * time.Duration(ctx.drainTimeoutHours),
+		Timeout:               ctx.drainTimeout,
 		PodSelector:           podSelectorStr,
 		OnPodDeletedOrEvicted: onPodDeletedOrEvicted,
 	}
