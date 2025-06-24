@@ -28,7 +28,11 @@ jobs:
           - os: zededa-ubuntu-2204
             arch: amd64
             platform: "generic"
-            hv: [kvm, kubevirt]
+            hv: kvm
+          - os: zededa-ubuntu-2204
+            arch: amd64
+            platform: "generic"
+            hv: kubevirt
           - os: zededa-ubuntu-2204
             arch: riscv64
             platform: "generic"
