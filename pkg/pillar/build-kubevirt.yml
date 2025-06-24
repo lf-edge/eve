@@ -5,7 +5,8 @@
 
 ---
 org: lfedge
-image: eve-pillar-kube
+image: eve-pillar
+tag: "{{.Hash}}-kube"
 config:
   binds:
     - /lib/modules:/lib/modules
