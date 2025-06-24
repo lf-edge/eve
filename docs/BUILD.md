@@ -521,17 +521,20 @@ Depending on the values of optional variables, the following pillar build varian
   The name of the built pillar container is `lfedge/eve-pillar:<tag>`.
 * `make pkg/pillar DEV=y`: Development version of pillar for the KVM or Xen hypervisor. Debug symbols
   are preserved and seccomp is disabled in the pillar container.
-  The name of the built pillar container is `lfedge/eve-pillar-dev:<tag>`.
+  The name of the built pillar container is `lfedge/eve-pillar:<hash>-dev`.
 * `make pkg/pillar HV=kubevirt`: Production version of pillar for the KubeVirt hypervisor (EVE using
   K3s + KubeVirt to deploy applications as VMs inside Kubernetes Pods). Contains additional
   microservices and Go package dependencies specific to Kubernetes.
-  The name of the built pillar container is `lfedge/eve-pillar-kube:<tag>`.
+  The name of the built pillar container is `lfedge/eve-pillar:<hash>-kube`.
 * `make pkg/pillar HV=kubevirt DEV=y`: Development version of pillar for the KubeVirt hypervisor.
   Debug symbols are preserved and seccomp is disabled in the pillar container.
-  The name of the built pillar container is `lfedge/eve-pillar-kube-dev:<tag>`.
+  The name of the built pillar container is `lfedge/eve-pillar:<hash>-kube-dev`.
 
-Only `lfedge/eve-pillar` is currently published to Dockerhub as part of `lf-edge/eve` Github actions
-for the master branch and EVE releases.
+Note that the final image tag for the dev and kubevirt variants is the
+combination of the image hash + the variant string (dev, kube or kube-dev).
+
+The `lfedge/eve-pillar` regular + kube variant images are published to Dockerhub
+as part of `lf-edge/eve` Github actions for the master branch and EVE releases.
 
 ### Building packages
 
