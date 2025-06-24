@@ -1,0 +1,110 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2025, Zededa, Inc.
+---
+name: Rerun CI
+
+on:  # yamllint disable-line rule:truthy
+  issue_comment:
+    types: [created]
+
+jobs:
+  rerun-workflows:
+    if: |
+      github.event.issue.pull_request && startsWith(github.event.comment.body, '/rerun')
+    runs-on: ubuntu-latest
+
+    permissions:
+      actions: write
+      issues: read
+      pull-requests: read
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Parse CODEOWNERS to get allowed users
+        run: |
+          CODEOWNERS=".github/CODEOWNERS"
+          awk '{for(i=1;i<=NF;i++) if($i ~ /^@/) print substr($i,2)}' "$CODEOWNERS" | sort -u > allowed_users.txt
+
+      - name: Check if comment author is allowed
+        run: |
+          COMMENT_USER="${{ github.event.comment.user.login }}"
+          echo "User: $COMMENT_USER"
+          if ! grep -Fxq "$COMMENT_USER" allowed_users.txt; then
+            echo "User $COMMENT_USER is not allowed to rerun CI." >&2
+            exit 1
+          fi
+
+      - name: Set run mode (red or yellow)
+        id: mode
+        run: |
+          BODY="${{ github.event.comment.body }}"
+          if [[ "$BODY" =~ ^/rerun[[:space:]]+yellow ]]; then
+            echo "mode=yellow" >> $GITHUB_OUTPUT
+          elif [[ "$BODY" =~ ^/rerun[[:space:]]+red ]]; then
+            echo "mode=red" >> $GITHUB_OUTPUT
+          else
+            echo "Unknown rerun mode" >&2
+            exit 1
+          fi
+
+      - name: Gather PR branch and SHA
+        id: prinfo
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_NUMBER="${{ github.event.issue.number }}"
+          REPO="${{ github.repository }}"
+
+          BRANCH=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json headRefName -q .headRefName)
+          SHA=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json headRefOid -q .headRefOid)
+          echo "branch=$BRANCH" >> $GITHUB_OUTPUT
+          echo "sha=$SHA" >> $GITHUB_OUTPUT
+
+      - name: Find and act on workflow runs for this PR's latest commit
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRANCH: ${{ steps.prinfo.outputs.branch }}
+          SHA: ${{ steps.prinfo.outputs.sha }}
+          REPO: ${{ github.repository }}
+          MODE: ${{ steps.mode.outputs.mode }}
+        run: |
+          set -euo pipefail
+
+          # Get all runs for the branch (could be for old commits, so we'll filter below)
+          RUNS=$(gh run list --repo "$REPO" --branch "$BRANCH" --json databaseId,status,conclusion,headSha,workflowName,displayTitle,event)
+
+          # Cancel all in-progress runs for this commit if requested
+          if [[ "$MODE" == "yellow" ]]; then
+            echo "Cancelling all in-progress or queued runs for commit $SHA on branch $BRANCH..."
+            echo "$RUNS" | jq -r \
+              '.[] | select(.headSha == env.SHA and .status != "completed") | .databaseId' | while read -r run_id; do
+                [ -z "$run_id" ] && continue
+                echo "Canceling run $run_id"
+                gh run cancel "$run_id" --repo "$REPO"
+              done
+
+            # Poll (with short backoff) until all in-progress/queued runs for this commit are done
+            # Max 15 iterations, summing to 120 seconds
+            for i in {1..15}; do
+              sleep $((i))
+              RUNS_LEFT=$(gh run list --repo "$REPO" --branch "$BRANCH" --json databaseId,status,headSha | jq \
+                '[.[] | select(.headSha == env.SHA and .status != "completed")] | length')
+              echo "Still running: $RUNS_LEFT"
+              [ "$RUNS_LEFT" -eq 0 ] && break
+            done
+
+            # Refresh RUNS after cancellation!
+            RUNS=$(gh run list --repo "$REPO" --branch "$BRANCH" --json databaseId,status,conclusion,headSha,workflowName,displayTitle,event)
+          fi
+
+          # Now rerun all runs for this commit that are completed and not successful
+          echo "$RUNS" | jq -r \
+            '.[] | select(.headSha == env.SHA and .status == "completed" and (.conclusion != "success" and .conclusion != "skipped")) | .databaseId' \
+            | while read -r run_id; do
+                [ -z "$run_id" ] && continue
+                echo "Re-running failed/canceled run $run_id"
+                gh run rerun "$run_id" --repo "$REPO"
+              done
