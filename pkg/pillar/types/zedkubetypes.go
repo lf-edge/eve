@@ -10,6 +10,10 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
+const (
+	DefaultDrainSkipK8sAPINotReachableTimeoutSeconds = 300
+)
+
 // KubeNodeStatus - Enum for the status of a Kubernetes node
 type KubeNodeStatus int8
 

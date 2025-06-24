@@ -1026,7 +1026,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 
 	// Kubevirt Drain Section
 	configItemSpecMap.AddIntItem(KubevirtDrainTimeout, 24, 1, 0xFFFFFFFF)
-	configItemSpecMap.AddIntItem(KubevirtDrainSkipK8sAPINotReachableTimeout, 300, 1, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(KubevirtDrainSkipK8sAPINotReachableTimeout, DefaultDrainSkipK8sAPINotReachableTimeoutSeconds, 1, 0xFFFFFFFF)
 
 	// Add Bool Items
 	configItemSpecMap.AddBoolItem(UsbAccess, true) // Controller likely default to false

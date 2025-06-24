@@ -96,7 +96,7 @@ type zedkube struct {
 
 	// Config Properties for Drain
 	drainTimeoutHours                  uint32
-	drainSkipK8sAPINotReachableTimeout uint32
+	drainSkipK8sAPINotReachableTimeout time.Duration
 
 	// Block 'uncordon' after running it once at bootup
 	onBootUncordonCheckComplete bool
@@ -175,7 +175,8 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	log = logArg
 
 	zedkubeCtx := zedkube{
-		globalConfig: types.DefaultConfigItemValueMap(),
+		globalConfig:                       types.DefaultConfigItemValueMap(),
+		drainSkipK8sAPINotReachableTimeout: time.Duration(time.Second * types.DefaultDrainSkipK8sAPINotReachableTimeoutSeconds),
 	}
 
 	// do we run a single command, or long-running service?
@@ -664,7 +665,7 @@ func handleGlobalConfigImpl(ctxArg interface{}, key string,
 		if newDrainK8sAPINotReachableTimeout != 0 && newDrainK8sAPINotReachableTimeout != existingDrainK8sAPINotReachableTimeout {
 			log.Functionf("handleGlobalConfigImpl: Updating drainSkipK8sApiTimeout from %d to %d",
 				existingDrainK8sAPINotReachableTimeout, newDrainK8sAPINotReachableTimeout)
-			z.drainSkipK8sAPINotReachableTimeout = newDrainK8sAPINotReachableTimeout
+			z.drainSkipK8sAPINotReachableTimeout = time.Second * time.Duration(newDrainK8sAPINotReachableTimeout)
 		}
 	}
 	log.Functionf("handleGlobalConfigImpl(%s): done", key)
