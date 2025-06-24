@@ -12,11 +12,16 @@ uniq = $(if $1,$(firstword $1) $(call uniq,$(filter-out $(firstword $1),$1)))
 
 # you are not supposed to tweak these variables -- they are effectively R/O
 HV_DEFAULT=kvm
+# linuxkit version. This **must** be a published semver version so it can be downloaded already compiled from
+# the release page at https://github.com/linuxkit/linuxkit/releases
+LINUXKIT_VERSION=v1.7.0
+BUILD_KIT_VERSION=v0.23.1
 GOVER ?= 1.20.1
 PKGBASE=github.com/lf-edge/eve
 GOMODULE=$(PKGBASE)/pkg/pillar
 GOTREE=$(CURDIR)/pkg/pillar
 BUILDTOOLS_BIN=$(CURDIR)/build-tools/bin
+LINUXKIT=$(BUILDTOOLS_BIN)/linuxkit
 PATH:=$(BUILDTOOLS_BIN):$(PATH)
 
 GOPKGVERSION=$(shell tools/goversion.sh 2>/dev/null)
@@ -110,6 +115,8 @@ ifneq ($(HOSTARCH),$(ZARCH))
 CROSS = 1
 $(warning "WARNING: We are assembling an $(ZARCH) image on $(HOSTARCH). Things may break.")
 endif
+
+PARALLEL_BUILD_LOCK:=$(shell mktemp -u $(CURDIR)/eve-parallel-build-XXXXXX)
 
 DOCKER_ARCH_TAG=$(ZARCH)
 
@@ -280,7 +287,7 @@ DASH_V :=
 QUIET := @
 SET_X := :
 ifeq ($(V),1)
-  DASH_V := -v
+  DASH_V := -v 2
   QUIET :=
   SET_X := set -x
 endif
@@ -295,12 +302,16 @@ DOCKER_GO = _() { $(SET_X); mkdir -p $(CURDIR)/.go/src/$${3:-dummy} ; mkdir -p $
     $$docker_go_line "$$1" ; } ; _
 
 PARSE_PKGS=$(if $(strip $(EVE_HASH)),EVE_HASH=)$(EVE_HASH) DOCKER_ARCH_TAG=$(DOCKER_ARCH_TAG) KERNEL_TAG=$(KERNEL_TAG) ./tools/parse-pkgs.sh
-LINUXKIT=$(BUILDTOOLS_BIN)/linuxkit
-LINUXKIT_VERSION=7164b2c04d40eb276cee6e16c7fa617fe6840a17
-LINUXKIT_SOURCE=https://github.com/linuxkit/linuxkit.git
-LINUXKIT_OPTS=$(if $(strip $(EVE_HASH)),--hash) $(EVE_HASH) $(if $(strip $(EVE_REL)),--release) $(EVE_REL)
+
+# buildkitd.toml configuration file can control a configuration of the buildkit daemon
+# it is used for example to setup a Docker registry mirror for CI to speedup the builds
+# this option can be overridden by setting BUILDKIT_CONFIG_FILE variable on make command line
+BUILDKIT_CONFIG_FILE ?= /etc/buildkit/buildkitd.toml
+BUILDKIT_CONFIG_OPTS := $(if $(wildcard $(BUILDKIT_CONFIG_FILE)),--builder-config $(BUILDKIT_CONFIG_FILE),)
+
+LINUXKIT_OPTS=$(if $(strip $(EVE_HASH)),--hash) $(EVE_HASH) $(if $(strip $(EVE_REL)),--release) $(EVE_REL) $(BUILDKIT_CONFIG_OPTS)
 LINUXKIT_PKG_TARGET=build
-LINUXKIT_PATCHES_DIR=tools/linuxkit/patches
+
 RESCAN_DEPS=FORCE
 # set FORCE_BUILD to --force to enforce rebuild
 FORCE_BUILD=
@@ -391,7 +402,7 @@ currentversion:
 
 .PHONY: currentversion linuxkit
 
-test: $(LINUXKIT) test-images-patches | $(DIST)
+test: $(GOBUILDER) test-images-patches | $(DIST)
 	@echo Running tests on $(GOMODULE)
 	$(QUIET)$(DOCKER_GO) "gotestsum --jsonfile $(DOCKER_DIST)/results.json --junitfile $(DOCKER_DIST)/results.xml --raw-command -- go test -coverprofile=coverage.txt -covermode=atomic -json ./..." $(GOTREE) $(GOMODULE)
 	$(QUIET): $@: Succeeded
@@ -459,8 +470,8 @@ $(UBOOT_IMG): PKG=u-boot
 $(BSP_IMX_PART): PKG=bsp-imx
 $(EFI_PART) $(BOOT_PART) $(INITRD_IMG) $(INSTALLER_IMG) $(VERIFICATION_IMG) $(KERNEL_IMG) $(IPXE_IMG) $(BIOS_IMG) $(UBOOT_IMG) $(BSP_IMX_PART): $(LINUXKIT) | $(INSTALLER)
 	mkdir -p $(dir $@)
-	$(LINUXKIT) pkg build --pull --platforms linux/$(ZARCH) pkg/$(PKG) # running linuxkit pkg build _without_ force ensures that we either pull it down or build it.
-	cd $(dir $@) && $(LINUXKIT) cache export --arch $(DOCKER_ARCH_TAG) --format filesystem --outfile - $(shell $(LINUXKIT) pkg show-tag pkg/$(PKG)) | tar xvf - $(notdir $@)
+	$(LINUXKIT) pkg build --pull --platforms linux/$(ZARCH) --builders linux/$(ZARCH)=default  pkg/$(PKG) # running linuxkit pkg build _without_ force ensures that we either pull it down or build it.
+	cd $(dir $@) && $(LINUXKIT) cache export --platform linux/$(DOCKER_ARCH_TAG) --format filesystem --outfile - $(shell $(LINUXKIT) pkg $(LINUXKIT_ORG_TARGET) show-tag pkg/$(PKG)) | tar xvf - $(notdir $@)
 	$(QUIET): $@: Succeeded
 
 # run swtpm if TPM flag defined
@@ -806,7 +817,7 @@ endif
 ## exports an image from the linuxkit cache to stdout
 cache-export: image-set outfile-set $(LINUXKIT)
 	$(eval IMAGE_TAG_OPT := $(if $(IMAGE_NAME),--name $(IMAGE_NAME),))
-	$(LINUXKIT) $(DASH_V) cache export --arch $(ZARCH) --outfile $(OUTFILE) $(IMAGE_TAG_OPT) $(IMAGE)
+	$(LINUXKIT) $(DASH_V) cache export --format docker --platform linux/$(ZARCH) --outfile $(OUTFILE) $(IMAGE_TAG_OPT) $(IMAGE)
 
 ## export an image from linuxkit cache and load it into docker.
 cache-export-docker-load: $(LINUXKIT)
@@ -815,7 +826,7 @@ cache-export-docker-load: $(LINUXKIT)
 	rm -rf ${TARFILE}
 
 %-cache-export-docker-load: $(LINUXKIT)
-	$(eval IMAGE_TAG := $(shell $(MAKE) $*-show-tag))
+	$(eval IMAGE_TAG := $(shell $(LINUXKIT) pkg $(LINUXKIT_ORG_TARGET) show-tag --canonical pkg/$*))
 	$(eval CACHE_CONTENT := $(shell $(LINUXKIT) cache ls 2>&1))
 	$(if $(filter $(IMAGE_TAG),$(CACHE_CONTENT)),$(MAKE) cache-export-docker-load IMAGE=$(IMAGE_TAG),@echo "Missing image $(IMAGE_TAG) in cache")
 
@@ -855,34 +866,20 @@ shell: $(GOBUILDER)
 	$(QUIET)DOCKER_GO_ARGS=-t ; $(DOCKER_GO) bash $(GOTREE) $(GOMODULE)
 
 #
-# Utility targets in support of our Dockerized build infrastrucutre
+# Linuxkit
 #
+.PHONY: linuxkit
+linuxkit: $(LINUXKIT)
 
-# file to store current linuxkit version
-# if version mismatch will delete linuxkit to rebuild
-# we clean all old saved versions here as well
-$(LINUXKIT).$(LINUXKIT_VERSION):
-	@rm -rf $(LINUXKIT)*
-	@touch $(LINUXKIT).$(LINUXKIT_VERSION)
-# build linuxkit for the host OS, not the container OS
-$(LINUXKIT): GOOS=$(LOCAL_GOOS)
-$(LINUXKIT): $(LINUXKIT).$(LINUXKIT_VERSION)
-$(LINUXKIT): | $(GOBUILDER)
-	$(QUIET)$(DOCKER_GO) \
-	"unset GOFLAGS; rm -rf /tmp/linuxkit && \
-	git clone $(LINUXKIT_SOURCE) /tmp/linuxkit && \
-	cd /tmp/linuxkit && \
-	git checkout $(LINUXKIT_VERSION) && \
-	if [ -e /eve/$(LINUXKIT_PATCHES_DIR) ]; then \
-	    patch -p1 < /eve/$(LINUXKIT_PATCHES_DIR)/*.patch; \
-	fi && \
-	cd /tmp/linuxkit/src/cmd/linuxkit && \
-	GO111MODULE=on CGO_ENABLED=0 go build -o /go/bin/linuxkit -mod=vendor . && \
-	cd && \
-	rm -rf /tmp/linuxkit" \
-	$(GOTREE) $(GOMODULE) $(BUILDTOOLS_BIN)
+LINUXKIT_SOURCE=https://github.com/linuxkit/linuxkit
+
+$(LINUXKIT): $(BUILDTOOLS_BIN)/linuxkit-$(LINUXKIT_VERSION)
+	$(QUIET)ln -sf  $(notdir $<) $@
 	$(QUIET): $@: Succeeded
 
+$(BUILDTOOLS_BIN)/linuxkit-$(LINUXKIT_VERSION):
+	$(QUIET) curl -L -o $@ $(LINUXKIT_SOURCE)/releases/download/$(LINUXKIT_VERSION)/linuxkit-$(LOCAL_GOOS)-$(HOSTARCH) && chmod +x $@
+	$(QUIET): $@: Succeeded
 
 $(GOBUILDER):
 	$(QUIET): "$@: Begin: GOBUILDER=$(GOBUILDER)"
@@ -955,7 +952,7 @@ $(ROOTFS_FULL_NAME)-%-$(ZARCH).$(ROOTFS_FORMAT): $(ROOTFS_IMG)
 	$(QUIET): $@: Succeeded
 
 %-show-tag:
-	@$(LINUXKIT) pkg show-tag -canonical pkg/$*
+	@$(LINUXKIT) pkg show-tag --canonical pkg/$*
 
 %Gopkg.lock: %Gopkg.toml | $(GOBUILDER)
 	@$(DOCKER_GO) "dep ensure -update $(GODEP_NAME)" $(dir $@)
@@ -993,7 +990,7 @@ help:
 	@echo "                  If the latest lts tag is 14.4.0 then running make rc-release will"
 	@echo "                  create 14.4.0-rc1 tag and if the latest tag is 14.4.1-lts then"
 	@echo "   lts-release    make a lts release on a current branch (must be a release branch)"
-	@echo "                  If the latest lts tag is 14.4.0-lts then running make lts-release
+	@echo "                  If the latest lts tag is 14.4.0-lts then running make lts-release"
 	@echo "                  will create a new lts release 14.4.1-lts"
 	@echo "   proto          generates Go and Python source from protobuf API definitions"
 	@echo "   proto-vendor   update vendored API in packages that require it (e.g. pkg/pillar)"
