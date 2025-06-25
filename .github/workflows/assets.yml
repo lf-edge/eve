@@ -31,14 +31,12 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          RAW_TAG="${{ inputs.tag_ref }}"
-          TAG="${RAW_TAG#refs/tags/}"
           response=$(curl -s -X POST \
             -H "Authorization: Bearer $GITHUB_TOKEN" \
             -H "Content-Type: application/json" \
             -d '{
-              "tag_name": "${TAG}",
-              "name": "${TAG}",
+              "tag_name": "${{ inputs.tag_ref }}",
+              "name": "${{ inputs.tag_ref }}",
               "draft": false,
               "prerelease": true
             }' https://api.github.com/repos/${{ github.repository }}/releases)
