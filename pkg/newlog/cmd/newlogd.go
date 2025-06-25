@@ -570,6 +570,15 @@ func handleGlobalConfigImp(ctxArg interface{}, key string, statusArg interface{}
 		log.Functionf("handleGlobalConfigModify: gonna filter out the logs from the following lines %v", newFilenameFilter)
 
 		vectorEnabled.Store(gcp.GlobalValueBool(types.VectorEnabled))
+
+		// set vector config
+		vectorConfig := gcp.GlobalValueString(types.VectorConfig)
+		err := handleVectorConfig(vectorConfig)
+		if err != nil {
+			log.Errorf("handleGlobalConfigModify: handleVectorConfig failed: %v", err)
+		} else {
+			log.Functionf("handleGlobalConfigModify: vector config set to %s", vectorConfig)
+		}
 	}
 	log.Tracef("handleGlobalConfigModify done for %s, fastupload enabled %v", key, enableFastUpload)
 }
