@@ -832,3 +832,63 @@ network performance for virtualized applications deployed on EVE-OS:
   handled in software.
 * Use EVE version 13.7 or later to take advantages of all the performance optimizations described
   above.
+
+## Link-Local Protocol Forwarding
+
+Network Instances in EVE are implemented using Linux bridges, which by default conform to
+the IEEE 802.1D standard. This standard mandates strict filtering of Ethernet frames sent
+to reserved multicast destination MAC addresses in the range `01:80:C2:00:00:00` to
+`01:80:C2:00:00:0F`. These addresses are typically used by link-local control protocols
+that are not meant to be forwarded by switches or bridges.
+
+One such protocol is LLDP (Link Layer Discovery Protocol), which uses EtherType `0x88cc`
+and destination MAC `01:80:C2:00:00:0E`. In standard Linux bridge configurations,
+LLDP frames are silently dropped and not forwarded across ports in the bridge.
+While this behavior is appropriate for physical switching hardware, it can cause
+problems in virtualized or containerized environments, where forwarding LLDP frames
+may be necessary to support topology discovery or integration with virtual network
+infrastructure.
+
+To address this, EVE provides the `forward_lldp` option in the Network Instance
+configuration. When this option is enabled, the bridge is configured to forward
+LLDP frames between connected interfaces.
+By default, `forward_lldp` is unset (`false`), meaning LLDP forwarding is disabled
+to maintain backward compatibility with older EVE versions that do not yet support
+this option.
+
+Only protocols permitted by the Linux kernel can be selectively forwarded. Some protocols
+(e.g., STP, pause frames, LACP) use reserved addresses that are hardcoded in the kernel
+to be non-forwardable and cannot be enabled via configuration.
+
+While only LLDP forwarding is currently configurable via the API, support for additional
+link-local protocols such as EAPOL (802.1X authentication) and MVRP (Multiple VLAN
+Registration Protocol, 802.1AK) may be added in the future, subject to kernel limitations
+and user demand.
+
+### Forwarding Between Physical Ports
+
+When LLDP forwarding is enabled and a switch network instance is configured with multiple
+physical interfaces, LLDP frames will be forwarded between all ports, including
+between physical ports. This means that LLDP advertisements received from one external
+device may be forwarded to another external device connected to the same switch network
+instance.
+
+While this behavior supports full visibility of LLDP traffic in virtualized and
+mixed environments (e.g., between VMs and physical devices), it may not always
+be desirable to forward LLDP frames between physical devices. For example,
+LLDP forwarding from a physical port to another might violate network isolation
+or lead to unintended topology propagation.
+
+Although the current implementation takes a simplified approach — either fully enabling
+or fully disabling LLDP forwarding — a more granular forwarding model (e.g.,
+disabling forwarding between physical ports) may be introduced in the future
+if a clear use-case arises. For now, enabling `forward_lldp` allows LLDP frames
+to be forwarded between:
+
+* app instance to app instance
+* app instance to external device
+* external device to app instance
+* and *external device to external device*
+
+Administrators should be aware of this behavior when enabling LLDP forwarding in
+scenarios involving multiple physical interfaces connected to the same switch NI.

@@ -10,6 +10,8 @@ const (
 	IPRuleTypename = "IPRule"
 	// BridgeTypename : typename for Linux bridges.
 	BridgeTypename = "Bridge"
+	// BridgeFwdMaskTypename : typename for Linux bridge forwarding mask configuration.
+	BridgeFwdMaskTypename = "BridgeFwdMask"
 	// BridgePortTypename : typename for network interface added into a Linux bridge.
 	BridgePortTypename = "BridgePort"
 	// DummyIfTypename : typename for Linux dummy interface.
