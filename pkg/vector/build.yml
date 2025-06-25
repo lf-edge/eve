@@ -1,0 +1,12 @@
+# Copyright (c) 2025 Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+image: eve-vector
+org: lfedge
+network: yes
+config:
+  binds:
+    - /run:/run
+    - /persist:/persist
+  net: new
+  pid: host
