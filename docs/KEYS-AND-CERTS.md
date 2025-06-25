@@ -37,3 +37,9 @@ If EVE is running on hardware with a trusted platform module (TPM), then these k
 | Certificate | Purpose | Type | Location |
 |-------------|---------|------|----------|
 | TLS root of trust | Standard TLS | Any | /config/v2tlsbaseroot-certificates.pem |
+
+## How to Verify TPM Endorsment Key
+
+Verifying the TPM Endorsement Key (EK) is vital for establishing a trust chain for device identity or credential activation. Although the EK public key is stored and can be obtained from the cloud controller, it is recommended to perform the verification before installing EVE.
+
+Extracting the EK certificate is platform-dependent. Please refer to the TPM2-Tools command  [tpm2_getekcertificates](https://tpm2-tools.readthedocs.io/en/latest/man/tpm2_getekcertificate.1/) for more information, and the [verify-ek.sh](https://github.com/lf-edge/eve-tools/blob/master/eve-tpm-tools/scripts/verify-ek.sh) script in eve-tools for the verification steps.
