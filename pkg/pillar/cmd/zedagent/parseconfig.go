@@ -721,6 +721,7 @@ func parseAppInstanceConfig(getconfigCtx *getconfigContext,
 		appInstance.CloudInitVersion = cfgApp.CloudInitVersion
 		appInstance.FixedResources.CPUsPinned = cfgApp.Fixedresources.PinCpu
 		appInstance.FixedResources.EnableOemWinLicenseKey = cfgApp.Fixedresources.EnableOemWinLicenseKey
+		appInstance.FixedResources.DisableVirtualTPM = cfgApp.Fixedresources.DisableVtpm
 
 		// Parse the snapshot related fields
 		if cfgApp.Snapshot != nil {
