@@ -1,0 +1,136 @@
+# Copyright (c) 2025 Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+---
+data_dir: "${VECTOR_DATA_DIR:-/var/lib/vector}"  # where Vector stores its data files (mostly buffers)
+
+sources:
+  dev_keep:
+    type: socket
+    mode: unix_stream
+    path: "${DEV_KEEP_SOURCE_SOCK:-/run/devKeep_source.sock}"
+
+  dev_upload:
+    type: socket
+    mode: unix_stream
+    path: "${DEV_UPLOAD_SOURCE_SOCK:-/run/devUpload_source.sock}"
+
+  vector_metrics:
+    type: internal_metrics
+
+transforms:
+  parse_json_keep:
+    type: remap
+    inputs:
+      - dev_keep
+    source: |
+      . = parse_json!(.message)
+
+  parse_json_upload:
+    type: remap
+    inputs:
+      - dev_upload
+    source: |
+      . = parse_json!(.message)
+
+# Here you can add any transforms that you need,
+# all transforms from https://vector.dev/docs/reference/configuration/transforms/
+# are supported.
+# Some example transforms that you might want to use:
+
+#   # this transform throttles the rate of error events to 1 per minute
+#   # per event (unique) based on the `filename` field
+#   throttle_errors:
+#     type: throttle
+#     inputs:
+#       - parse_json_keep
+#     threshold: 1
+#     window_secs: 60
+#     exclude: .severity != "error"
+#     key_field: "{{ filename }}"
+#     internal_metrics:
+#       emit_events_discarded_per_key: true
+
+#   # this transform drops hardware health errors that match a specific pattern
+#   drop_hwhealth_errors:
+#     type: filter
+#     inputs:
+#       - parse_json_upload
+#     condition: |
+#       # Safely get .content as a string (empty if missing/invalid)
+#       c = to_string(.content) ?? "";
+#       cont = parse_json(c) ?? null;
+
+#       if is_null(cont) {
+#         # If parsing failed, we can't filter it out, so keep it.
+#         return true;
+#       } else {
+#         # Drop any line mentioning “All attempts to connect to …hardwarehealth failed”
+#         # by _negating_ a regex match:
+#         m = to_string(cont.msg) ?? "";
+#         !match(m, r'All attempts to connect to .*hardwarehealth failed')
+#       }
+
+#   # this transform lets through only error events
+#   filter_errors:
+#     type: filter
+#     inputs:
+#       - parse_json_upload
+#     condition: |
+#       # Filter out events that are not errors.
+#       # This assumes the JSON has a field `severity` that indicates the log level.
+#       .severity == "error" || .severity == "err" || .severity == "critical" || .severity == "fatal"
+
+#   # this transform deduplicates events based on the `content` field
+#   dedup_upload:
+#     type: dedupe
+#     inputs:
+#       - filter_errors
+#     fields.match:
+#       - "content"  # deduplicate based on the `content` field
+
+#   # this transform filters out events that do not start with "vector" or "newlog"
+#   filter_upload:
+#     type: filter
+#     inputs:
+#       - dedup_upload
+#     condition: |
+#       # Coerce `.source` to a string; if it fails, use "".
+#       src = to_string(.source) ?? "";
+
+#       # Now `src` is always a valid string (possibly empty).
+#       # starts_with(src, "vector") || starts_with(src, "newlog")
+
+sinks:
+  keep_sent_queue_socket:
+    type: socket
+    inputs:
+      - parse_json_keep
+    mode: unix_stream
+    path: "${DEV_KEEP_SINK_SOCK:-/run/devKeep_sink.sock}"
+    encoding:
+      codec: json  # write events as JSON objects
+    buffer:
+      type: disk
+      max_size: 268435488  # 256 MB
+      when_full: block
+
+  dev_upload_socket:
+    type: socket
+    inputs:
+      - parse_json_upload
+    mode: unix_stream
+    path: "${DEV_UPLOAD_SINK_SOCK:-/run/devUpload_sink.sock}"
+    encoding:
+      codec: json
+    buffer:
+      type: disk
+      max_size: 268435488  # 256 MB
+      when_full: block
+
+  prometheus:
+    type: prometheus_exporter
+    inputs:
+      - vector_metrics
+    address: "127.0.0.1:8889"
+    namespace: "vector"
