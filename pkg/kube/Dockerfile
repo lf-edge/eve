@@ -1,5 +1,6 @@
 # syntax=docker/dockerfile-upstream:1.5.0-rc2-labs
 
+FROM lfedge/eve-external-boot-image:325e7463e093db2c1abc0da0260b193e73bcef5d AS ebi
 FROM lfedge/eve-alpine:0f2e0da38e30753c68410727a6cc269e57ff74f2 as build
 ENV BUILD_PKGS go
 ENV PKGS alpine-baselayout musl-utils iproute2 iptables curl openrc \
@@ -29,6 +30,8 @@ COPY --from=build /out/ /
 COPY cluster-init.sh /usr/bin/
 COPY cluster-utils.sh /usr/bin/
 COPY cgconfig.conf /etc
+RUN mkdir /ebi
+COPY --from=ebi / /ebi
 
 # upgrades
 COPY cluster-update.sh /usr/bin/
