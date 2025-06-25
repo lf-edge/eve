@@ -742,6 +742,15 @@ type NetworkInstanceConfig struct {
 	// (see AppNetAdapterConfig.AccessVlanID).
 	VlanAccessPorts []VlanAccessPort
 
+	// Enables forwarding of LLDP (Link Layer Discovery Protocol) frames across this
+	// network instance.
+	// LLDP is used by devices to advertise identity and capabilities to directly
+	// connected neighbors, and is often required for topology discovery and network
+	// management tools.
+	// When enabled, LLDP frames (EtherType 0x88cc) are not dropped or suppressed
+	// by the forwarding plane.
+	ForwardLLDP bool
+
 	// Any errors from the parser
 	// ErrorAndTime provides SetErrorNow() and ClearError()
 	ErrorAndTime

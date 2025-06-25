@@ -603,6 +603,10 @@ func (r *LinuxNIReconciler) getIntendedNIL2Cfg(niID uuid.UUID) dg.Graph {
 		MTU:          ni.bridge.MTU,
 		WithSTP:      withSTP,
 	}, nil)
+	intendedL2Cfg.PutItem(linux.BridgeFwdMask{
+		BridgeIfName: ni.brIfName,
+		ForwardLLDP:  ni.config.ForwardLLDP,
+	}, nil)
 	// For Switch NI also add the intended VLAN configuration.
 	// Here we put VLAN config only for the bridge itself and the port interface,
 	// VIFs have their config in AppConn-* subgraphs.
