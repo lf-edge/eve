@@ -68,7 +68,7 @@ jobs:
       - name: Build packages
         uses: ./.github/actions/run-make
         with:
-          command: "-j $(getconf _NPROCESSORS_ONLN) V=1 PRUNE=1 ZARCH=${{ matrix.arch }} LINUXKIT_PKG_TARGET=push $FORCE_BUILD pkgs"
+          command: "V=1 PRUNE=1 ZARCH=${{ matrix.arch }} LINUXKIT_PKG_TARGET=push $FORCE_BUILD pkgs"
           dockerhub-token: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
           dockerhub-account: ${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}
       - name: Post package report
@@ -128,13 +128,13 @@ jobs:
 
       - uses: ./.github/actions/run-make
         with:
-          command: "-j $(getconf _NPROCESSORS_ONLN) V=1 HV=${{ matrix.hv }} PLATFORM=${{ matrix.platform }} ZARCH=${{ matrix.arch }} LINUXKIT_PKG_TARGET=push $FORCE_BUILD eve"
+          command: "V=1 HV=${{ matrix.hv }} PLATFORM=${{ matrix.platform }} ZARCH=${{ matrix.arch }} LINUXKIT_PKG_TARGET=push $FORCE_BUILD eve"
           dockerhub-token: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
           dockerhub-account: ${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}
       - uses: ./.github/actions/run-make
         if: matrix.arch != 'riscv64'
         with:
-          command: "-j $(getconf _NPROCESSORS_ONLN) V=1 HV=${{ matrix.hv }} PLATFORM=${{ matrix.platform }} ZARCH=${{ matrix.arch }} LINUXKIT_PKG_TARGET=push $FORCE_BUILD sbom collected_sources compare_sbom_collected_sources publish_sources"
+          command: "V=1 HV=${{ matrix.hv }} PLATFORM=${{ matrix.platform }} ZARCH=${{ matrix.arch }} LINUXKIT_PKG_TARGET=push $FORCE_BUILD sbom collected_sources compare_sbom_collected_sources publish_sources"
           dockerhub-token: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
           dockerhub-account: ${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}
 
@@ -149,6 +149,6 @@ jobs:
           fetch-depth: 0
       - uses: ./.github/actions/run-make
         with:
-          command: "-j $(getconf _NPROCESSORS_ONLN) V=1 LINUXKIT_PKG_TARGET=manifest pkgs"
+          command: "V=1 LINUXKIT_PKG_TARGET=manifest pkgs"
           dockerhub-token: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
           dockerhub-account: ${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}
