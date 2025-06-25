@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/linuxkit/linuxkit/src/cmd/linuxkit/pkglib"
 	"github.com/moby/buildkit/frontend/dockerfile/instructions"
@@ -129,27 +130,39 @@ type linuxkitPkg struct {
 }
 
 func linuxkitPackageTags(buildYmlPaths []string) []linuxkitPkg {
+	var wg sync.WaitGroup
 	var tags []linuxkitPkg
 
-	var pkgs []pkglib.Pkg
+	pkgsChan := make(chan pkglib.Pkg)
 	for _, ymlPath := range buildYmlPaths {
-		ymlBuildFile := filepath.Base(ymlPath)
-		pkglibConfig := pkglib.PkglibConfig{
-			BuildYML:   ymlBuildFile,
-			HashCommit: defaultPkgCommit,
-			Dev:        false,
-			Tag:        defaultPkgTag,
-		}
-		pkg, err := pkglib.NewFromConfig(pkglibConfig, filepath.Dir(ymlPath))
-		if err != nil {
-			// silently ignore that this is not a linuxkit package
-			continue
-		}
+		wg.Add(1)
+		go func(ymlPath string) {
+			defer wg.Done()
+			ymlBuildFile := filepath.Base(ymlPath)
+			pkglibConfig := pkglib.PkglibConfig{
+				BuildYML:   ymlBuildFile,
+				HashCommit: defaultPkgCommit,
+				Dev:        false,
+				Tag:        defaultPkgTag,
+			}
+			pkg, err := pkglib.NewFromConfig(pkglibConfig, filepath.Dir(ymlPath))
+			if err != nil {
+				// silently ignore that this is not a linuxkit package
+				return
+			}
 
-		pkgs = append(pkgs, pkg...)
+			for _, pkgs := range pkg {
+				pkgsChan <- pkgs
+			}
+		}(ymlPath)
 	}
 
-	for _, p := range pkgs {
+	go func() {
+		wg.Wait()
+		close(pkgsChan)
+	}()
+
+	for p := range pkgsChan {
 		tags = append(tags, linuxkitPkg{
 			image: p.Image(),
 			hash:  p.Hash(),
