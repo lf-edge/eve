@@ -83,12 +83,14 @@ var (
 	kernelRemotePrio           = types.SyslogKernelLogLevelNum[types.SyslogKernelDefaultLogLevel]
 	agentDefaultRemoteLogLevel atomic.Value // logrus.Level
 	agentsRemoteLogLevel       sync.Map     // map of agentName to logrus.Level
+	vectorEnabled              atomic.Bool  // true if vector is enabled
 )
 
 func init() {
 	// domain-name to UUID and App-name mapping
 	domainUUID = base.NewLockedStringMap()
 	agentDefaultRemoteLogLevel.Store(logrus.InfoLevel)
+	vectorEnabled.Store(true) // default vector enabled
 }
 
 // for app Domain-ID mapping into UUID and DisplayName
@@ -157,6 +159,10 @@ func main() {
 	movefileChan := make(chan fileChanInfo, 5)
 	panicFileChan := make(chan []byte, 2)
 
+	appLogChan := make(chan appLog)
+	uploadLogChan := make(chan string)
+	keepLogChan := make(chan string)
+
 	ps := *pubsub.New(&socketdriver.SocketDriver{Logger: logger, Log: log}, logger, log)
 
 	// create the necessary directories upfront
@@ -168,8 +174,16 @@ func main() {
 		}
 	}
 
+	if vectorEnabled.Load() {
+		go listenOnSocketAndWriteToChan(uploadSockVectorSink, uploadLogChan)
+		go listenOnSocketAndWriteToChan(keepSockVectorSink, keepLogChan)
+	}
+
 	// handle the write log messages to /persist/newlog/collect/ logfiles
-	go writelogFile(loggerChan, movefileChan)
+	go writelogFile(movefileChan, appLogChan, uploadLogChan, keepLogChan)
+
+	// put the logs through vector before writing to logfiles
+	go sendLogsToVector(loggerChan, appLogChan, uploadLogChan, keepLogChan)
 
 	// handle the kernel messages
 	go getKernelMsg(loggerChan)
@@ -555,6 +569,7 @@ func handleGlobalConfigImp(ctxArg interface{}, key string, statusArg interface{}
 		filenameFilter.Store(newFilenameFilter)
 		log.Functionf("handleGlobalConfigModify: gonna filter out the logs from the following lines %v", newFilenameFilter)
 
+		vectorEnabled.Store(gcp.GlobalValueBool(types.VectorEnabled))
 	}
 	log.Tracef("handleGlobalConfigModify done for %s, fastupload enabled %v", key, enableFastUpload)
 }
