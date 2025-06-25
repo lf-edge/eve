@@ -14,6 +14,7 @@ export VECTOR_DATA_DIR="/persist/vector/data" # where Vector stores its data fil
 
 DEFAULT_VECTOR_CONFIG="/etc/vector/vector.yaml"
 LIVE_CONFIG="/persist/vector/config/vector.yaml"
+DEFAULT_VECTOR_CONFIG_PERSIST=${LIVE_CONFIG}.default
 CONFIG_CANDIDATE=${LIVE_CONFIG}.new
 PIDFILE=/var/run/vector.pid
 
@@ -49,6 +50,9 @@ fi
 # --- initial setup --------------------------------------------------------
 
 mkdir -p "$VECTOR_DATA_DIR"
+
+mkdir -p "$(dirname "$DEFAULT_VECTOR_CONFIG_PERSIST")"
+cp "$DEFAULT_VECTOR_CONFIG" "$DEFAULT_VECTOR_CONFIG_PERSIST"
 
 if [ ! -f "$LIVE_CONFIG" ]; then
   echo "No Vector config found at $LIVE_CONFIG"
