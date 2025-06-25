@@ -23,21 +23,21 @@
 /pkg/memory-monitor/          @OhmSpectator
 /pkg/mkimage-raw-efi/         @jsfakian @zedi-pramodh
 /pkg/new-kernel/              @rucoder @rene @rouming @shjala
-/pkg/newlog/                  @deitch @naiming-zededa
+/pkg/newlog/                  @deitch @naiming-zededa @europaul
 /pkg/optee-os/                @rene
-/pkg/pillar/cas/              @deitch
+/pkg/pillar/cas/              @deitch @europaul
 /pkg/pillar/cmd/baseosmgr/    @deitch
 /pkg/pillar/cmd/domainmgr/    @OhmSpectator @jsfakian @milan-zededa @uncleDecart
 /pkg/pillar/cmd/downloader/   @deitch @milan-zededa @rouming
 /pkg/pillar/cmd/ledmanager/   @rucoder @rene
 /pkg/pillar/cmd/nim/          @milan-zededa
 /pkg/pillar/cmd/tpmmgr/       @rucoder @shjala
-/pkg/pillar/cmd/volumemgr/    @OhmSpectator @deitch @rouming
+/pkg/pillar/cmd/volumemgr/    @OhmSpectator @deitch @rouming @europaul
 /pkg/pillar/cmd/zedagent/     @OhmSpectator @milan-zededa @rouming @uncleDecart
 /pkg/pillar/cmd/zedkube/      @andrewd-zededa @naiming-zededa @zedi-pramodh
 /pkg/pillar/cmd/zedmanager/   @OhmSpectator @rouming
 /pkg/pillar/cmd/zedrouter/    @christoph-zededa @milan-zededa @rouming
-/pkg/pillar/containerd/       @deitch @rouming
+/pkg/pillar/containerd/       @deitch @rouming @europaul
 /pkg/pillar/cpuallocator/     @OhmSpectator
 /pkg/pillar/devicenetwork/    @milan-zededa
 /pkg/pillar/dpcmanager/       @milan-zededa
