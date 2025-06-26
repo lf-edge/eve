@@ -221,6 +221,8 @@ func TestNewConfigItemSpecMap(t *testing.T) {
 		LogDedupWindowSize,
 		LogFilenamesToCount,
 		LogFilenamesToFilter,
+		VectorEnabled,
+		VectorConfig,
 		DisableDHCPAllOnesNetMask,
 		ProcessCloudInitMultiPart,
 		NetDumpEnable,
