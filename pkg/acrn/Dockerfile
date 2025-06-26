@@ -3,7 +3,7 @@
 # Copyright (c) 2023 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-FROM lfedge/eve-alpine:0f2e0da38e30753c68410727a6cc269e57ff74f2 AS kernel-build
+FROM lfedge/eve-alpine:fde32dd3438dc67aecdc8320814d642a438f4aae AS kernel-build
 
 ENV BUILD_PKGS \
     gcc make libc-dev dev86 xz-dev perl bash python3-dev gettext iasl         \

@@ -1,8 +1,8 @@
 # image was bootstraped using FROM lfedge/eve-alpine-base:353bf866797f6e60f91cbe1b00c439634adfcf13 AS cache
 # to update please see https://github.com/lf-edge/eve/blob/master/docs/BUILD.md#how-to-update-eve-alpine-package
-FROM lfedge/eve-alpine-base:353bf866797f6e60f91cbe1b00c439634adfcf13 AS cache
+FROM lfedge/eve-alpine-base@sha256:07888b77a87b8966c77b30f38c26218cdeed36f37c112c3612c6ec1ecb71a9b8 AS cache
 
-FROM lfedge/eve-alpine:b96ae7c5b776702cdc7596e3722e40cc0d353ad7 AS cache-riscv64
+FROM lfedge/eve-alpine:56e65818c517e51f04c44bfa2c525a283167411e AS cache-riscv64
 FROM cache AS cache-amd64
 FROM cache AS cache-arm64
 # hadolint ignore=DL3006
@@ -47,7 +47,7 @@ RUN cp /mirror/${ALPINE_VERSION}/rootfs/etc/apk/repositories /etc/apk
 RUN cat /mirror/edge/rootfs/etc/apk/repositories >> /etc/apk/repositories
 RUN apk update
 
-FROM lfedge/eve-alpine:591df01e581889c3027514c8a91feaca1c8ad49f AS compactor
+FROM lfedge/eve-alpine:56e65818c517e51f04c44bfa2c525a283167411e AS compactor
 
 COPY --from=cache-build /etc/apk/repositories* /etc/apk/
 COPY --from=cache-build /etc/apk/keys /etc/apk/keys/
@@ -57,13 +57,13 @@ COPY eve-alpine-deploy.sh go-compile.sh /bin/
 RUN apk update && apk upgrade -a
 
 # define arch-specific envs
-FROM scratch as final-amd64
+FROM scratch AS final-amd64
 ENV EVE_BUILD_ARCH=x86_64
 ENV EVE_TARGET_ARCH=x86_64
-FROM scratch as final-arm64
+FROM scratch AS final-arm64
 ENV EVE_BUILD_ARCH=aarch64
 ENV EVE_TARGET_ARCH=aarch64
-FROM scratch as final-riscv64
+FROM scratch AS final-riscv64
 ENV EVE_BUILD_ARCH=riscv64
 ENV EVE_TARGET_ARCH=riscv64
 
