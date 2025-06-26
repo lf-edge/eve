@@ -1823,3 +1823,59 @@ func TestOldDPC(test *testing.T) {
 	eth0Dhcpcd := dg.Reference(generic.Dhcpcd{AdapterIfName: "eth0"})
 	t.Expect(itemIsCreated(eth0Dhcpcd)).To(BeTrue())
 }
+
+func TestRemoteTemporaryFailure(test *testing.T) {
+	t := initTest(test)
+
+	// Prepare simulated network stack.
+	eth0 := mockEth0()
+	networkMonitor.AddOrUpdateInterface(eth0)
+
+	// Single interface configured for mgmt.
+	aa := makeAA(selectedIntfs{eth0: true})
+	dpcManager.UpdateAA(aa)
+
+	// Apply global config.
+	dpcManager.UpdateGCP(globalConfig())
+
+	// Apply initial "bootstrap" DPC with single ethernet port.
+	timePrio1 := time.Now()
+	dpc := makeDPC("bootstrap", timePrio1, selectedIntfs{eth0: true})
+	dpcManager.AddDPC(dpc)
+	t.Eventually(testingInProgressCb()).Should(BeTrue())
+	t.Eventually(testingInProgressCb()).Should(BeFalse())
+	t.Eventually(dpcIdxCb()).Should(Equal(0))
+	t.Eventually(dnsKeyCb()).Should(Equal("bootstrap"))
+	t.Eventually(dpcStateCb(0)).Should(Equal(types.DPCStateSuccess))
+
+	// Apply "zedagent" DPC with single ethernet port.
+	timePrio2 := time.Now()
+	dpc = makeDPC("zedagent", timePrio2, selectedIntfs{eth0: true})
+
+	// Simulate certificate error, which is reported from ConnectivityTester to DpcManager
+	// as a RemoteTemporaryFailure.
+	connTester.SetConnectivityError("zedagent", "eth0",
+		&conntester.RemoteTemporaryFailure{
+			Endpoint:   "simulated-controller",
+			WrappedErr: errors.New("certificate error"),
+		})
+
+	// Even though we are getting error from the simulated controller,
+	// the connectivity is working and DPC should be marked as working
+	// and replace the "bootstrap" DPC.
+	// Previously, we had a bug that would result in DPCManager being
+	// stuck in a loop inside runVerify, re-running verification
+	// for the same DPC and constantly getting RemoteTemporaryFailure.
+	dpcManager.AddDPC(dpc)
+	t.Eventually(testingInProgressCb()).Should(BeTrue())
+	t.Eventually(testingInProgressCb()).Should(BeFalse())
+	t.Eventually(dpcListLenCb()).Should(Equal(1)) // "bootstrap" compressed out
+	t.Eventually(dpcIdxCb()).Should(Equal(0))
+	t.Eventually(dnsKeyCb()).Should(Equal("zedagent"))
+	t.Eventually(dpcStateCb(0)).Should(Equal(types.DPCStateRemoteWait))
+	dpc = getDPC(0)
+	t.Expect(dpc.HasError()).To(BeFalse())
+	t.Expect(dpc.HasWarning()).To(BeTrue())
+	t.Expect(dpc.LastWarning).To(Equal(
+		"Remote temporary failure (endpoint: simulated-controller): certificate error"))
+}
