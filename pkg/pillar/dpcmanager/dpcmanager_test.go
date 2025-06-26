@@ -1,4 +1,4 @@
-// Copyright (c) 2022 Zededa, Inc.
+// Copyright (c) 2022,2025 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 package dpcmanager_test
@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math"
 	"net"
 	"syscall"
 	"testing"
@@ -806,7 +807,6 @@ func TestDPCFallback(test *testing.T) {
 	dpcManager.AddDPC(dpc)
 
 	t.Eventually(testingInProgressCb()).Should(BeTrue())
-	t.Eventually(dpcListLenCb()).Should(Equal(3))
 	t.Eventually(testingInProgressCb()).Should(BeFalse())
 	t.Eventually(dpcListLenCb()).Should(Equal(2)) // compressed
 	t.Eventually(dpcIdxCb()).Should(Equal(0))
@@ -1898,4 +1898,77 @@ func TestRemoteTemporaryFailure(test *testing.T) {
 	t.Expect(dpc.HasWarning()).To(BeTrue())
 	t.Expect(dpc.LastWarning).To(Equal(
 		"Remote temporary failure (endpoint: simulated-controller): certificate error"))
+}
+
+// Test that a non-working, non-latest DPC is removed from the DPCL by compressDPCL
+// if a newer DPC exists, regardless of whether the newer DPC provides working
+// connectivity. This prevents the DPCL from growing beyond the pubsub size limit.
+func TestRemovalOfOldNonWorkingDPCs(test *testing.T) {
+	t := initTest(test)
+
+	// Prepare simulated network stack.
+	eth0 := mockEth0()
+	eth1 := mockEth1()
+	networkMonitor.AddOrUpdateInterface(eth0)
+	networkMonitor.AddOrUpdateInterface(eth1)
+
+	// Two interfaces available for mgmt.
+	aa := makeAA(selectedIntfs{eth0: true, eth1: true})
+	dpcManager.UpdateAA(aa)
+
+	// Apply global config.
+	// Effectively disable test-better timer to avoid interference with the unit test.
+	gcp := globalConfig()
+	gcp.SetGlobalValueInt(types.NetworkTestBetterInterval, math.MaxUint32)
+	dpcManager.UpdateGCP(gcp)
+
+	// Apply initial "bootstrap" DPC using both ports
+	timePrio1 := time.Now()
+	dpc := makeDPC("bootstrap", timePrio1, selectedIntfs{eth0: true, eth1: true})
+	dpcManager.AddDPC(dpc)
+	t.Eventually(testingInProgressCb()).Should(BeTrue())
+	t.Eventually(testingInProgressCb()).Should(BeFalse())
+	t.Eventually(dpcIdxCb()).Should(Equal(0))
+	t.Eventually(dnsKeyCb()).Should(Equal("bootstrap"))
+	t.Eventually(dpcStateCb(0)).Should(Equal(types.DPCStateSuccess))
+
+	// Apply "zedagent" DPC which configures only eth0 and with config
+	// that breaks connectivity.
+	timePrio2 := time.Now()
+	dpc = makeDPC("zedagent", timePrio2, selectedIntfs{eth0: true})
+	dpc.Ports[0].Dhcp = types.DhcpTypeStatic
+	dpc.Ports[0].AddrSubnet = "192.168.1.44/24"
+	connTester.SetConnectivityError("zedagent", "eth0",
+		errors.New("failed to connect over eth0"))
+	dpcManager.AddDPC(dpc)
+	t.Eventually(testingInProgressCb()).Should(BeTrue())
+	t.Eventually(testingInProgressCb()).Should(BeFalse())
+
+	// Latest DPC from zedagent is not working, DPCManager therefore falls back to
+	// the "bootstrap" DPC.
+	t.Eventually(dpcIdxCb()).Should(Equal(1))
+	t.Eventually(dnsKeyCb()).Should(Equal("bootstrap"))
+	t.Eventually(dpcListLenCb()).Should(Equal(2))
+
+	// Apply "zedagent" DPC which configures only eth1 and with config
+	// that also breaks connectivity.
+	timePrio3 := time.Now()
+	dpc = makeDPC("zedagent", timePrio3, selectedIntfs{eth1: true})
+	dpc.Ports[0].Dhcp = types.DhcpTypeStatic
+	dpc.Ports[0].AddrSubnet = "10.10.5.22/24"
+	connTester.SetConnectivityError("zedagent", "eth1",
+		errors.New("failed to connect over eth1"))
+	dpcManager.AddDPC(dpc)
+	t.Eventually(testingInProgressCb()).Should(BeTrue())
+	t.Eventually(testingInProgressCb()).Should(BeFalse())
+
+	// DPCManager should stay on "bootstrap" and the old "zedagent" DPC
+	// should be compressed out.
+	t.Eventually(dpcIdxCb()).Should(Equal(1))
+	t.Eventually(dnsKeyCb()).Should(Equal("bootstrap"))
+	t.Eventually(dpcListLenCb()).Should(Equal(2))
+	latestDPC := getDPC(0)
+	t.Expect(latestDPC.Key).To(Equal("zedagent"))
+	t.Expect(latestDPC.TimePriority.Equal(timePrio3)).To(BeTrue())
+	t.Expect(latestDPC.State).To(Equal(types.DPCStateFailWithIPAndDNS))
 }
