@@ -3,9 +3,9 @@
 # Copyright (c) 2025 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-# Dir which pillar has access to
+# Dir which pillar service container has access to
 PERSIST_MANIFESTS_DIR=/persist/vault/manifests
-# Path which k3s monitors
+# Dir which kube service container has access to and k3s monitors
 KUBE_MANIFESTS_DIR=/var/lib/rancher/k3s/server/manifests
 
 YAML_EXT="yaml"
@@ -20,16 +20,13 @@ appliedRegistrationYamlFileName="${appliedRegistrationYamlName}.${YAML_EXT}"
 appliedRegistrationYamlFilePath="${KUBE_MANIFESTS_DIR}/${appliedRegistrationYamlFileName}"
 
 # Pillar may download a yaml for registration, copy it in so that k3s handles applying it
+# This should be called in a very infrequently called cluster-config-change path
 Registration_CheckApply() {
     if [ ! -d "${PERSIST_MANIFESTS_DIR}" ]; then
         return
     fi
 
     if [ ! -e "${registrationYamlFilePath}" ]; then
-        return
-    fi
-
-    if [ -e "${appliedRegistrationYamlFilePath}" ]; then
         return
     fi
 
@@ -44,11 +41,22 @@ Registration_Cleanup() {
     return 0
 }
 
+# Registration_Exists checks if the local eve fs contains
+# a registration file, this will only exist on one node.
 Registration_Exists() {
     if [ -e "${appliedRegistrationYamlFilePath}" ]; then
         return 0
     fi
     return 1
+}
+
+# Registration_Applied checks if the cluster contains the pointer
+# marking that a registration manifest has been applied by k3s.
+# This marker allows an agnostic check that the manifest has been applied
+# regardless of the manifest's specific object contents
+Registration_Applied() {
+    kubectl -n kube-system get AddOn/${appliedRegistrationYamlName} > /dev/null 2>&1
+    return $?
 }
 
 # delete the files from persist so that we don't re-apply them
