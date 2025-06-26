@@ -30,10 +30,6 @@ jobs:
             platform: "generic"
             hv: kvm
           - os: zededa-ubuntu-2204
-            arch: amd64
-            platform: "generic"
-            hv: kubevirt
-          - os: zededa-ubuntu-2204
             arch: riscv64
             platform: "generic"
             hv: mini
@@ -208,9 +204,6 @@ jobs:
           - arch: arm64
             hv: kvm
             platform: "nvidia-jp6"
-          - arch: amd64
-            hv: kubevirt
-            platform: "generic"
     steps:
       - uses: actions/checkout@v4
         with:

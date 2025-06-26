@@ -49,9 +49,6 @@ jobs:
           - arch: arm64
             platform: "nvidia-jp6"
             hv: "kvm"
-          - arch: amd64
-            platform: "generic"
-            hv: "kubevirt"
     steps:
       - name: checkout repo
         uses: actions/checkout@v4
