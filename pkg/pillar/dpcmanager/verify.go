@@ -252,7 +252,7 @@ func (m *DpcManager) verifyDPC(ctx context.Context) (status types.DPCState) {
 			switch dpc.State {
 			case types.DPCStateFail, types.DPCStateFailWithIPAndDNS:
 				controllerConnWorks = false
-			case types.DPCStateSuccess:
+			case types.DPCStateSuccess, types.DPCStateRemoteWait:
 				controllerConnWorks = true
 			default:
 				// DpcManager is waiting for something (IP address, DNS server, etc.)
@@ -278,8 +278,9 @@ func (m *DpcManager) verifyDPC(ctx context.Context) (status types.DPCState) {
 	_, rtf := err.(*conntester.RemoteTemporaryFailure)
 	if rtf {
 		m.Log.Errorf("DPC verify: remoteTemporaryFailure: %v", err)
-		// NOTE: We retry until the certificate or ECONNREFUSED is fixed
-		// on the server side.
+		// We treat RemoteTemporaryFailure as a success because the connectivity is working.
+		// Save and publish the server-side error only as a warning.
+		dpc.RecordSuccessWithWarning(err.Error())
 		status = types.DPCStateRemoteWait
 		dpc.State = status
 		return status
