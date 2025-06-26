@@ -312,7 +312,10 @@ For more info on clock synchronization, refer to [CLOCK-SYNCHRONIZATION.md](CLOC
 
 There are several sources from which nim gets the potential port configurations.
 Those all use the ```DevicePortConfig``` type (Go struct marshalled with JSON).
-There are examples of such configurations in [legacy EVE configuration](CONFIG.md)
+There are examples of such configurations in [legacy EVE configuration](CONFIG.md).
+The value of the `Key` field inside `DevicePortConfig` reflects the source
+of the configuration. Different sources — such as bootstrap files, controller updates,
+or USB overrides — use distinct key values to identify their origin.
 
 ### Fresh install
 
@@ -346,7 +349,7 @@ edits from the user in the process.
 In terms of configuration handling, much of the code-path is reused between the bootstrap
 and a config coming (on-line) from a controller. Just like in the latter case,
 the networking portion of the device configuration is parsed and published to nim by
-[zedagent](../pkg/pillar/cmd/zedagent) using `DevicePortConfig` type.
+[zedagent](../pkg/pillar/cmd/zedagent) using `DevicePortConfig` type, with key `bootstrap`.
 
 This feature is described in much more detail in [CONFIG.md](./CONFIG.md). Even though
 it has some limitations in the present state, it is already the preferred method to use.
@@ -358,7 +361,8 @@ supported by EVE for backward-compatibility reasons.
 If the deployment site requires use of HTTP enterprise proxies and/or static IP
 configuration, then a file containing JSON-formatted content of `DevicePortConfig`,
 aka "override network config", can be placed on either the EVE-installer or onto
-a separate USB stick. The latter case allows to inject network config even in run-time.
+a separate USB stick (typically identified with the key `override`, but this is not enforced).
+The latter case allows to inject network config even in run-time.
 However, for an already onboarded device it is required that the USB controller
 is enabled using `debug.enable.usb` as specified in [configuration properties](CONFIG-PROPERTIES.md)
 
@@ -376,7 +380,8 @@ to the controller.
 
 The [SystemAdapter in the API](https://github.com/lf-edge/eve-api/tree/main/proto/config/devmodel.proto)
 specifies the intended port configuration. This is fed into the logic in [nim](../pkg/pillar/docs/nim.md)
-by [zedagent](../pkg/pillar/cmd/zedagent) publishing a `DevicePortConfig` item.
+by [zedagent](../pkg/pillar/cmd/zedagent) publishing a `DevicePortConfig` item with
+key `zedagent`.
 
 At least one port must be set to be a management port, and that port needs to refer
 to a network with IP configuration for the device to even try to use the `SystemAdapter`
@@ -386,7 +391,7 @@ configuration.
 
 If `network.fallback.any.eth` [configuration property](CONFIG-PROPERTIES.md) is set to `enabled`
 (by default it is disabled), then there is an additional lowest priority item in the list
-of DevicePortConfigs, called "Last resort" DPC (pubsub key `lastresort`), based on finding
+of DevicePortConfigs, called "Last resort" DPC (key `lastresort`), based on finding
 all Ethernet interfaces (i.e. excluding wireless connectivity options) which are not used
 exclusively by applications. The last resort configuration assumes DHCP and no enterprise
 proxies.
@@ -402,36 +407,68 @@ Once device obtains a proper network config (from the controller or a USB stick)
 stop using Last resort forcefully and will keep this network config inside `DevicePortConfigList`
 only if and as long as it is enabled explicitly by the config (`network.fallback.any.eth` is `enabled`).
 
-## Prioritizing the list of network configurations
+## List of persisted network configurations
 
-The nim retains the currently working configuration, plus the following in priority order
-in ```/persist/status/nim/DevicePortConfigList```:
+EVE must persist device network configuration, referred to as `DevicePortConfig` (`DPC`),
+to ensure it can regain controller connectivity after a reboot.
+To support fallback scenarios, EVE may retain not only the latest configuration
+but also some older configurations that were known to work.
 
-1. The most recently received configuration from the controller
-2. The last known working configuration from the controller
-3. Bootstrap config or an override file from a USB stick (if any)
-4. The last resort if enabled, or (used forcefully) if there is no network config available
-   (e.g. first boot without bootstrap config or config override file)
+The full list of persisted network configurations is maintained in:
+`/persist/status/nim/DevicePortConfigList/global.json`
 
-This is based on comparing the `TimePriority` field in the `DevicePortConfig`
-Depending on the configuration source, `TimePriority` is determined differently:
+This list is referred to as the `DevicePortConfigList` (`DPCL`).
+`DevicePortConfigList` includes a field `CurrentIndex`, pointing to the currently applied DPC.
 
-- *For configuration from the controller*: newer EVE versions allow the controller to specify
-  the time when the configuration was created/updated in `EdgeDevConfig.config_timestamp`
-  (which is then used for `TimePriority`); in older EVE versions `zedagent` microservice
-  will simply set `TimePriority` to the time when the configuration was received from the controller.
-- *For bootstrap config*: the controller is expected to put the time of config creation into
-  `EdgeDevConfig.config_timestamp` and `zedagent` will use it for `TimePriority`
-- *For legacy override file*: it should contain explicit `TimePriority` field entered manually
-  by the user (this is rather error-prone)
-- *For the last resort*: `nim` microservice assumes the lowest priority with a `TimePriority`
-  of Jan 1, 1970.
+Initially, the `DevicePortConfigList` is empty, and `CurrentIndex` is set to -1,
+indicating that no configuration is currently selected.
+`CurrentIndex` can also be -1 when none of the available configurations are testable.
+This can happen if a configuration lacks a valid management port, was very recently tested
+and failed, or is otherwise unusable.
 
-Once the most recent configuration received from the controller has been tested and found
-to be usable, then all but the (optional) last resort configuration are pruned from the above
-list. If Last resort is disabled (which is the default), it will be pruned from the list as well.
-When a new configuration is received from the controller, it will keep the old configuration
-from the controller as a fallback until the new config was proven to work.
+### Network config priority and order
+
+Network configs are sorted in priority-decreasing order, i.e. the highest-prio config
+is at the index 0.
+Priority is assigned to DPC using a `TimePriority` timestamp field — newer timestamps indicate
+higher priority (basically newer network config is preferred over an older one).
+
+Depending on the source of the configuration, the timestamp is assigned differently:
+
+- Configuration from the controller: Uses the `EdgeDevConfig.config_timestamp` specified
+  by the controller. Older EVE versions that do not support this field simply set DPC
+  timestamp to the time when the config was received.
+- Bootstrap config: the timestamp should also be provided via `config_timestamp`
+  by the controller.
+- Legacy override config file: must contain a manually set `TimePriority` (prone to user error).
+- Last-resort config: assigned the lowest possible timestamp (Jan 1, 1970), effectively
+  the lowest priority.
+
+### Network config retention policy
+
+EVE does not retain all network configurations indefinitely in the `DevicePortConfigList` (`DPCL`).
+This is by design, for the following reasons:
+
+- To avoid retrying obsolete configurations: Old and repeatedly failing configurations
+  should not be retried endlessly, as they are unlikely to restore controller connectivity.
+  Moreover, retrying such obsolete configs adds unnecessary delay to the network testing process,
+  during which the device may remain unreachable on the network.
+- To stay within size limits: The `DPCL` is persisted and published via PubSub, which has
+  a maximum message size limit of 64 KB. Retaining too many entries can cause this limit
+  to be exceeded, leading to fatal errors.
+
+To balance reliability with resource constraints, the following entries are retained in the DPCL:
+
+- The latest received network configuration (always at index 0)
+- The currently used DPC, as identified by the `CurrentIndex`
+- The most recent DPC with working controller connectivity (if any)
+- The most recent DPC from the controller (key `zedagent`)
+- If there is no DPC from the controller (key `zedagent`), or if none of
+  the controller-provided DPCs have ever succeeded in a connectivity test,
+  retain the most recent DPC from each source to ensure fallback options remain available
+- The last resort configuration (key `lastresort`), if `network.fallback.any.eth` is `enabled`
+
+All other entries are pruned during a compression process, triggered on any relevant DPCL change.
 
 ## Testing device connectivity
 
