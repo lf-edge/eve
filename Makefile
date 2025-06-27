@@ -130,8 +130,6 @@ ifneq ($(HOSTARCH),$(ZARCH))
 CROSS = 1
 endif
 
-PARALLEL_BUILD_LOCK:=$(shell mktemp -u $(CURDIR)/eve-parallel-build-XXXXXX)
-
 DOCKER_ARCH_TAG=$(ZARCH)
 
 FULL_VERSION:=$(ROOTFS_VERSION)-$(HV)-$(ZARCH)
@@ -976,8 +974,19 @@ shell: $(GOBUILDER)
 linuxkit: $(LINUXKIT)
 
 LINUXKIT_SOURCE=https://github.com/linuxkit/linuxkit
+PARALLEL_BUILD_LOCK:=$(shell mktemp -u $(BUILD_DIR)/eve-parallel-build-XXXXXX)
 
-$(LINUXKIT): $(BUILDTOOLS_BIN)/linuxkit-$(LINUXKIT_VERSION)
+$(PARALLEL_BUILD_LOCK): $(BUILD_DIR)
+	$(QUIET): "$@: Begin: PARALLEL_BUILD_LOCK=$(PARALLEL_BUILD_LOCK)"
+	@touch $@
+	$(QUIET): $@: Succeeded
+
+# $(PARALLEL_BUILD_LOCK) is unique for each build, so we can use is a flag
+# to cleanup possibly old linuxkit-builder containers because this
+# target is executed only once per build for both secuential and parallel builds
+$(LINUXKIT): $(BUILDTOOLS_BIN)/linuxkit-$(LINUXKIT_VERSION) $(PARALLEL_BUILD_LOCK)
+	$(QUIET)docker stop linuxkit-builder >/dev/null 2>&1 || true
+	$(QUIET)docker rm linuxkit-builder >/dev/null 2>&1 || true
 	$(QUIET)ln -sf  $(notdir $<) $@
 	$(QUIET): $@: Succeeded
 
@@ -1071,7 +1080,6 @@ eve-%: pkg/%/Dockerfile build-tools $(RESCAN_DEPS)
 	$(eval LINUXKIT_FLAGS := $(if $(filter manifest,$(LINUXKIT_PKG_TARGET)),,$(FORCE_BUILD) $(LINUXKIT_DOCKER_LOAD) $(LINUXKIT_BUILD_PLATFORMS)))
 	$(QUIET)$(LINUXKIT) $(DASH_V) pkg $(LINUXKIT_PKG_TARGET) $(LINUXKIT_ORG_TARGET) $(LINUXKIT_OPTS) $(LINUXKIT_FLAGS) --build-yml $(call get_pkg_build_yml,$*) pkg/$*
 	$(QUIET)if [ -n "$(PRUNE)" ]; then \
-		flock $(PARALLEL_BUILD_LOCK) $(LINUXKIT) pkg $(LINUXKIT_ORG_TARGET) builder prune; \
 		flock $(PARALLEL_BUILD_LOCK) docker image prune -f; \
 	fi
 	$(QUIET): "$@: Succeeded (intermediate for pkg/%)"
