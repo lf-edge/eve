@@ -1190,23 +1190,28 @@ func maybeRetryBoot(ctx *domainContext, status *types.DomainStatus) {
 		}
 	}
 
-	wp := &types.WatchdogParam{Ps: ctx.ps, AgentName: agentName, WarnTime: warningTime, ErrTime: errorTime}
-	err = hyper.Task(status).VirtualTPMSetup(status.DomainName, wp)
-	if err == nil {
-		status.VirtualTPM = true
-		defer func(status *types.DomainStatus, wp *types.WatchdogParam) {
-			// this means we failed to boot the VM.
-			if !status.Activated {
-				log.Noticef("Failed to activate domain: %s, terminating vTPM", status.DomainName)
-				if err := hyper.Task(status).VirtualTPMTerminate(status.DomainName, wp); err != nil {
-					// this is not a critical failure so just log it
-					log.Errorf("Failed to terminate vTPM for %s: %s", status.DomainName, err)
-				}
-			}
-		}(status, wp)
-	} else {
+	if config.DisableVirtualTPM {
+		log.Warnf("vTPM is disabled for %s by user request", status.DomainName)
 		status.VirtualTPM = false
-		log.Errorf("Failed to setup vTPM for %s: %s", status.DomainName, err)
+	} else {
+		wp := &types.WatchdogParam{Ps: ctx.ps, AgentName: agentName, WarnTime: warningTime, ErrTime: errorTime}
+		err = hyper.Task(status).VirtualTPMSetup(status.DomainName, wp)
+		if err == nil {
+			status.VirtualTPM = true
+			defer func(status *types.DomainStatus, wp *types.WatchdogParam) {
+				// this means we failed to boot the VM.
+				if !status.Activated {
+					log.Noticef("Failed to activate domain: %s, terminating vTPM", status.DomainName)
+					if err := hyper.Task(status).VirtualTPMTerminate(status.DomainName, wp); err != nil {
+						// this is not a critical failure so just log it
+						log.Errorf("Failed to terminate vTPM for %s: %s", status.DomainName, err)
+					}
+				}
+			}(status, wp)
+		} else {
+			status.VirtualTPM = false
+			log.Errorf("Failed to setup vTPM for %s: %s", status.DomainName, err)
+		}
 	}
 
 	if err := hyper.Task(status).Setup(*status, *config, ctx.assignableAdapters, nil, file); err != nil {
@@ -1751,23 +1756,28 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 		}
 	}
 
-	wp := &types.WatchdogParam{Ps: ctx.ps, AgentName: agentName, WarnTime: warningTime, ErrTime: errorTime}
-	err = hyper.Task(status).VirtualTPMSetup(status.DomainName, wp)
-	if err == nil {
-		status.VirtualTPM = true
-		defer func(status *types.DomainStatus, wp *types.WatchdogParam) {
-			// this means we failed to boot the VM.
-			if !status.Activated {
-				log.Noticef("Failed to activate domain: %s, terminating vTPM", status.DomainName)
-				if err := hyper.Task(status).VirtualTPMTerminate(status.DomainName, wp); err != nil {
-					// this is not a critical failure so just log it
-					log.Errorf("Failed to terminate vTPM for %s: %s", status.DomainName, err)
-				}
-			}
-		}(status, wp)
-	} else {
+	if config.DisableVirtualTPM {
+		log.Warnf("vTPM is disabled for %s by user request", status.DomainName)
 		status.VirtualTPM = false
-		log.Errorf("Failed to setup vTPM for %s: %s", status.DomainName, err)
+	} else {
+		wp := &types.WatchdogParam{Ps: ctx.ps, AgentName: agentName, WarnTime: warningTime, ErrTime: errorTime}
+		err = hyper.Task(status).VirtualTPMSetup(status.DomainName, wp)
+		if err == nil {
+			status.VirtualTPM = true
+			defer func(status *types.DomainStatus, wp *types.WatchdogParam) {
+				// this means we failed to boot the VM.
+				if !status.Activated {
+					log.Noticef("Failed to activate domain: %s, terminating vTPM", status.DomainName)
+					if err := hyper.Task(status).VirtualTPMTerminate(status.DomainName, wp); err != nil {
+						// this is not a critical failure so just log it
+						log.Errorf("Failed to terminate vTPM for %s: %s", status.DomainName, err)
+					}
+				}
+			}(status, wp)
+		} else {
+			status.VirtualTPM = false
+			log.Errorf("Failed to setup vTPM for %s: %s", status.DomainName, err)
+		}
 	}
 
 	globalConfig := agentlog.GetGlobalConfig(log, ctx.subGlobalConfig)

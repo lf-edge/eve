@@ -271,6 +271,8 @@ type VmConfig struct {
 	EnforceNetworkInterfaceOrder bool
 	// EnableOemWinLicenseKey indicates the app should receive the embedded Windows license key (if available)
 	EnableOemWinLicenseKey bool
+	// DisableVirtualTPM disables virtual TPM for the domain
+	DisableVirtualTPM bool
 }
 
 // VmMode is the type for the virtualization mode
