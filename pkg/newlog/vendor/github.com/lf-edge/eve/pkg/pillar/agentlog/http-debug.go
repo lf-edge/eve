@@ -263,8 +263,56 @@ func (b bpftraceHandler) killProcess(ctx context.Context, process ctrdd.Process)
 }
 
 func (b bpftraceHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if r.Method == http.MethodGet {
-		fmt.Fprintf(w, `
+	file, err := os.CreateTemp("/persist/tmp", "bpftrace-aot")
+	if err != nil {
+		b.log.Warnf("could not create temp dir: %v", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	filename := file.Name()
+	defer os.Remove(filename)
+
+	timeoutString := r.FormValue("timeout")
+	if timeoutString == "" {
+		timeoutString = "5"
+	}
+	timeoutSeconds, err := strconv.ParseUint(timeoutString, 10, 16)
+	if err != nil {
+		writeAndLog(b.log, w, fmt.Sprintf("Error happened, could not parse timeout: %s\n", err.Error()))
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	aotForm, _, err := r.FormFile("aot")
+	if err != nil {
+		writeAndLog(b.log, w, fmt.Sprintf("could not retrieve form file: %s", err))
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	_, err = io.Copy(file, aotForm)
+	if err != nil {
+		writeAndLog(b.log, w, fmt.Sprintf("could not copy form file: %s", err))
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	err = aotForm.Close()
+	if err != nil {
+		writeAndLog(b.log, w, fmt.Sprintf("could not close form file: %s", err))
+	}
+	err = file.Close()
+	if err != nil {
+		writeAndLog(b.log, w, fmt.Sprintf("could not close file: %s", err))
+	}
+
+	args := []string{"/usr/bin/bpftrace-aotrt", "-f", "json", filename}
+	err = b.runInDebugContainer(r.Context(), w, args, time.Duration(timeoutSeconds)*time.Second)
+	if err != nil {
+		fmt.Fprintf(w, "Error happened:\n%s\n", err.Error())
+		return
+	}
+}
+
+func bpftraceForm(w http.ResponseWriter, r *http.Request) {
+	fmt.Fprintf(w, `
 				<html>
 				<form method="post" enctype="multipart/form-data">
                 <label>Please choose the aot bpftrace file:
@@ -277,72 +325,13 @@ func (b bpftraceHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
                 </form>
 				</html>
 			`)
-	} else if r.Method == http.MethodPost {
-		file, err := os.CreateTemp("/persist/tmp", "bpftrace-aot")
-		if err != nil {
-			b.log.Warnf("could not create temp dir: %v", err)
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-		filename := file.Name()
-		defer os.Remove(filename)
-
-		timeoutString := r.FormValue("timeout")
-		if timeoutString == "" {
-			timeoutString = "5"
-		}
-		timeoutSeconds, err := strconv.ParseUint(timeoutString, 10, 16)
-		if err != nil {
-			writeAndLog(b.log, w, fmt.Sprintf("Error happened, could not parse timeout: %s\n", err.Error()))
-			w.WriteHeader(http.StatusBadRequest)
-		}
-		aotForm, _, err := r.FormFile("aot")
-		if err != nil {
-			writeAndLog(b.log, w, fmt.Sprintf("could not retrieve form file: %s", err))
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-		_, err = io.Copy(file, aotForm)
-		if err != nil {
-			writeAndLog(b.log, w, fmt.Sprintf("could not copy form file: %s", err))
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-		err = aotForm.Close()
-		if err != nil {
-			writeAndLog(b.log, w, fmt.Sprintf("could not close form file: %s", err))
-		}
-		err = file.Close()
-		if err != nil {
-			writeAndLog(b.log, w, fmt.Sprintf("could not close file: %s", err))
-		}
-
-		args := []string{"/usr/bin/bpftrace-aotrt", "-f", "json", filename}
-		err = b.runInDebugContainer(r.Context(), w, args, time.Duration(timeoutSeconds)*time.Second)
-		if err != nil {
-			fmt.Fprintf(w, "Error happened:\n%s\n", err.Error())
-			return
-		}
-	} else {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-	}
 }
 
 func archHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		return
-	}
-
 	fmt.Fprint(w, runtime.GOARCH)
 }
 
 func linuxkitYmlHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		return
-	}
-
 	http.ServeFile(w, r, "/hostfs/etc/linuxkit-eve-config.yml")
 }
 
@@ -415,7 +404,7 @@ func ListenDebug(log *base.LogObject, stacksDumpFileName, memDumpFileName string
 		w.Header().Set("Content-Type", "text/html")
 		writeOrLog(log, w, info)
 	}))
-	mux.Handle("/index.html", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle("GET /index.html", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
 		writeOrLog(log, w, info)
 	}))
@@ -424,82 +413,58 @@ func ListenDebug(log *base.LogObject, stacksDumpFileName, memDumpFileName string
 		log: log.Clone(),
 	}
 
-	mux.Handle("/debug/info/arch", http.HandlerFunc(archHandler))
-	mux.Handle("/debug/info/linuxkit.yml", http.HandlerFunc(linuxkitYmlHandler))
-	mux.Handle("/debug/bpftrace", bpfHandler)
-	mux.Handle("/debug/pprof/", http.HandlerFunc(pprof.Index))
-	mux.Handle("/debug/pprof/cmdline", http.HandlerFunc(pprof.Cmdline))
-	mux.Handle("/debug/pprof/profile", http.HandlerFunc(pprof.Profile))
-	mux.Handle("/debug/pprof/symbol", http.HandlerFunc(pprof.Symbol))
-	mux.Handle("/debug/pprof/trace", http.HandlerFunc(pprof.Trace))
-	mux.Handle("/stop", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPost {
-			server.Close()
-			listenDebugRunning.Swap(false)
-		} else {
-			http.Error(w, "Did you want to use POST method?", http.StatusMethodNotAllowed)
+	mux.Handle("GET /debug/info/arch", http.HandlerFunc(archHandler))
+	mux.Handle("GET /debug/info/linuxkit.yml", http.HandlerFunc(linuxkitYmlHandler))
+	mux.Handle("POST /debug/bpftrace", bpfHandler)
+	mux.Handle("GET /debug/bpftrace", http.HandlerFunc(bpftraceForm))
+	mux.Handle("GET /debug/pprof/", http.HandlerFunc(pprof.Index))
+	mux.Handle("GET /debug/pprof/cmdline", http.HandlerFunc(pprof.Cmdline))
+	mux.Handle("GET /debug/pprof/profile", http.HandlerFunc(pprof.Profile))
+	mux.Handle("GET /debug/pprof/symbol", http.HandlerFunc(pprof.Symbol))
+	mux.Handle("GET /debug/pprof/trace", http.HandlerFunc(pprof.Trace))
+	mux.Handle("POST /stop", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		server.Close()
+		listenDebugRunning.Swap(false)
+	}))
+	mux.Handle("POST /dump/stacks", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		dumpStacks(log, stacksDumpFileName)
+		response := fmt.Sprintf("Stacks can be found in logread or %s\n", stacksDumpFileName)
+		writeOrLog(log, w, response)
+	}))
+	mux.Handle("POST /dump/memory", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		dumpMemoryInfo(log, memDumpFileName)
+		response := fmt.Sprintf("Stacks can be found in logread or %s\n", memDumpFileName)
+		writeOrLog(log, w, response)
+	}))
+	mux.Handle("POST /memory-monitor/psi-collector/start", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if psiCollectorRunning.Swap(true) {
+			http.Error(w, "Memory PSI collector is already running", http.StatusConflict)
 			return
 		}
-	}))
-	mux.Handle("/dump/stacks", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPost {
-			dumpStacks(log, stacksDumpFileName)
-			response := fmt.Sprintf("Stacks can be found in logread or %s\n", stacksDumpFileName)
-			writeOrLog(log, w, response)
-		} else {
-			http.Error(w, "Did you want to use POST method?", http.StatusMethodNotAllowed)
-			return
-		}
-	}))
-	mux.Handle("/dump/memory", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPost {
-			dumpMemoryInfo(log, memDumpFileName)
-			response := fmt.Sprintf("Stacks can be found in logread or %s\n", memDumpFileName)
-			writeOrLog(log, w, response)
-		} else {
-			http.Error(w, "Did you want to use POST method?", http.StatusMethodNotAllowed)
-			return
-		}
-	}))
-	mux.Handle("/memory-monitor/psi-collector/start", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPost {
-			if psiCollectorRunning.Swap(true) {
-				http.Error(w, "Memory PSI collector is already running", http.StatusConflict)
-				return
+		// Start the memoryPSICollector
+		psiCollectorCtx, cancel := context.WithCancel(context.Background())
+		psiCollectorCancel = cancel
+		go func() {
+			err := MemoryPSICollector(psiCollectorCtx, log)
+			defer psiCollectorRunning.Swap(false)
+			if err != nil {
+				log.Errorf("MemoryPSICollector failed: %+v", err)
 			}
-			// Start the memoryPSICollector
-			psiCollectorCtx, cancel := context.WithCancel(context.Background())
-			psiCollectorCancel = cancel
-			go func() {
-				err := MemoryPSICollector(psiCollectorCtx, log)
-				defer psiCollectorRunning.Swap(false)
-				if err != nil {
-					log.Errorf("MemoryPSICollector failed: %+v", err)
-				}
-			}()
-			// Send a response to the client
-			response := "Memory PSI collector started.\n"
-			writeOrLog(log, w, response)
-		} else {
-			http.Error(w, "Did you want to use POST method?", http.StatusMethodNotAllowed)
-			return
-		}
+		}()
+		// Send a response to the client
+		response := "Memory PSI collector started.\n"
+		writeOrLog(log, w, response)
 	}))
-	mux.Handle("/memory-monitor/psi-collector/stop", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPost {
-			if !psiCollectorRunning.Swap(false) {
-				http.Error(w, "Memory PSI collector is not running", http.StatusNotFound)
-				return
-			}
-			// Stop the memoryPSICollector
-			psiCollectorCancel()
-			// Send a response to the client
-			response := "Memory PSI collector stopped.\n"
-			writeOrLog(log, w, response)
-		} else {
-			http.Error(w, "Did you want to use POST method?", http.StatusMethodNotAllowed)
+	mux.Handle("POST /memory-monitor/psi-collector/stop", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !psiCollectorRunning.Swap(false) {
+			http.Error(w, "Memory PSI collector is not running", http.StatusNotFound)
 			return
 		}
+		// Stop the memoryPSICollector
+		psiCollectorCancel()
+		// Send a response to the client
+		response := "Memory PSI collector stopped.\n"
+		writeOrLog(log, w, response)
 	}))
 
 	if err := server.ListenAndServe(); err != nil {
