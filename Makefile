@@ -1016,7 +1016,7 @@ ifneq ($(BUILD),local)
 endif
 	$(QUIET): $@: Succeeded
 
-$(PARALLEL_BUILD_LOCK):
+$(PARALLEL_BUILD_LOCK): $(BUILD_DIR)
 	$(QUIET): "$@: Begin: PARALLEL_BUILD_LOCK=$(PARALLEL_BUILD_LOCK)"
 	@touch $@
 	$(QUIET): $@: Succeeded
