@@ -11,7 +11,7 @@
 FROM lfedge/eve-recovertpm:25f66701fa7ce348631e5d9bf4efc5082a497b8b AS recovertpm
 FROM lfedge/eve-bpftrace:faebad58df4cddaa07d15937021854d8165d7c9a AS bpftrace
 FROM lfedge/eve-alpine:0f2e0da38e30753c68410727a6cc269e57ff74f2 AS build
-ENV BUILD_PKGS="abuild curl tar make linux-headers patch g++ git gcc gpg ncurses-dev autoconf openssl-dev zlib-dev"
+ENV BUILD_PKGS="abuild curl tar make linux-headers patch g++ git gcc go gpg ncurses-dev autoconf openssl-dev zlib-dev"
 # Feel free to add additional packages here, but be aware that
 # EVE's rootfs image can be no larger than 300Mb (and don't
 # forget to check on all supported architectures: e.g. arm64
@@ -123,6 +123,13 @@ RUN mkdir -p /bpftrace/bpftrace-aotrt
 # add recover-tpm to debug container
 WORKDIR /
 COPY --from=recovertpm /usr/bin/recovertpm /out/usr/bin/recovertpm
+
+FROM build AS test
+# run collect-info test
+COPY collect-info-test /collect-info-test
+WORKDIR /collect-info-test
+RUN go test
+
 
 FROM scratch
 ENTRYPOINT []
