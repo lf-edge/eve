@@ -639,7 +639,7 @@ func doFetchSend(ctx *loguploaderContext, zipDir string, iter *int) int {
 		if !strings.HasSuffix(f.Name(), ".gz") {
 			continue
 		}
-		timestamp, err := types.GetTimestampFromGzipName(f.Name())
+		timestamp, err := types.GetTimestampFromFileName(f.Name())
 		if err != nil {
 			continue
 		}
@@ -722,22 +722,14 @@ func doFetchSend(ctx *loguploaderContext, zipDir string, iter *int) int {
 }
 
 func buildAppUUIDMap(fName string) {
-	var appUUID string
-	if strings.HasPrefix(fName, types.AppPrefix) && strings.HasSuffix(fName, ".gz") {
-		fStr1 := strings.TrimPrefix(fName, types.AppPrefix)
-		fStr := strings.Split(fStr1, types.AppSuffix)
-		if len(fStr) != 2 {
-			err := fmt.Errorf("app split is not 2")
-			log.Error(err)
-			return
-		}
-		appUUID = fStr[0]
+	appUUID, err := types.GetUUIDFromFileName(fName)
+	if err != nil {
+		log.Errorf("buildAppUUIDMap: cannot parse app log filename %s: %v", fName, err)
+		return
 	}
 
-	if len(appUUID) > 0 {
-		if _, ok := appGzipMap[appUUID]; !ok {
-			appGzipMap[appUUID] = true
-		}
+	if _, ok := appGzipMap[appUUID]; !ok {
+		appGzipMap[appUUID] = true
 	}
 }
 
@@ -769,13 +761,10 @@ func sendToCloud(ctx *loguploaderContext, data []byte, iter int, fName string, f
 	var logsURL, appLogURL string
 	var sentFailed, serviceUnavailable bool
 	if isApp {
-		fStr1 := strings.TrimPrefix(fName, types.AppPrefix)
-		fStr := strings.Split(fStr1, types.AppSuffix)
-		if len(fStr) != 2 {
-			err := fmt.Errorf("app split is not 2")
-			log.Fatal(err)
+		appUUID, err := types.GetUUIDFromFileName(fName)
+		if err != nil {
+			return false, fmt.Errorf("sendToCloud: cannot parse app file name %s: %v", fName, err)
 		}
-		appUUID := fStr[0]
 		if ctx.zedcloudCtx.V2API {
 			appLogURL = fmt.Sprintf("apps/instanceid/%s/newlogs", appUUID)
 		} else {
