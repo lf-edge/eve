@@ -4,6 +4,12 @@
 #
 # Run make (with no arguments) to see help on what targets are available
 
+# disable parallel builds by default
+# it can be overridden from make command line using -jN
+# we set it to 1 for now to still run it as sequential build by default
+NCORES:=1
+MAKEFLAGS += -j$(NCORES)
+
 # universal constants and functions
 null  :=
 space := $(null) #
