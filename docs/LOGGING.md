@@ -56,7 +56,7 @@ type NestedAppInstanceLogMsg struct {
 }
 ```
 
-The newlogd service subscribes to the NestedAppDomainStatus publication from zedrouter. It processes nested application logs similarly to how it handles DomainStatus publications, specifically in terms of generating log files for application log entries. If the VM's deployment type is "Docker" and a log entry's content can be successfully unmarshalled from JSON into the NestedAppInstanceLogMsg structure, the entry is written to a file with the prefix app.<nestedAppId>. This facilitates rapid log dispatch to the correct application instance (including nested application instances) on the controller side.
+The newlogd service subscribes to the NestedAppDomainStatus publication from zedrouter. It processes nested application logs similarly to how it handles DomainStatus publications, specifically in terms of generating log files for application log entries. If the VM's deployment type is "Docker" and a log entry's content can be successfully unmarshalled from JSON into the NestedAppInstanceLogMsg structure, the entry is written to a file with the prefix `app.<nestedAppId>`. This facilitates rapid log dispatch to the correct application instance (including nested application instances) on the controller side.
 
 ## Log Aggregation, Reformatting and Compression for Persistent Log Files
 
@@ -137,6 +137,34 @@ Deduplicator goes through all log entries in the file, keeping a sliding window 
 It checks: if the N+1'th message is already in the window - it is not logged.
 Either way the first message in the window is replaced with the new message (FIFO).
 The window size is configurable via the `log.dedup.window.size` config property.
+
+NOTE: The preferred way to filter logs is to use vector transforms (see the [Vector section](#vector)).
+
+## Vector
+
+We have a [Vector](https://vector.dev/) service running on the device that we use for various log transformations.
+It can be configured dynamically by supplying a full base64 encoded Vector configuration file via the `vector.config` config property.
+
+Vector connects to newlogd via unix domain sockets and is only used for log transformation.
+It does not sample the logs or send them anywhere - this is still done by newlogd.
+See the diagram below for the flow of logs through Vector.
+
+![Vector Log Flow](images/vector.drawio.png)
+
+We support all Vector [transforms](https://vector.dev/docs/reference/configuration/transforms/), except the Lua transform, since it allows arbitrary code execution and is not suitable for a production environment.
+As for sources and sinks: only the sources and sinks from the default Vector configuration are supported.
+This is done to minimize the size of the Vector binary and to keep the configuration simple.
+You'll find examples of how to use Vector transforms in the default [Vector configuration file](../pkg/vector/etc/vector.yaml).
+
+### Vector config
+
+EVE pre-validates the supplied Vector configuration file to ensure that it is valid and does not contain any unsupported VRL, sources or sinks.
+If the configuration is invalid, EVE will discard it without applying.
+
+### Vector metrics
+
+Vector exposes its internal metrics via the [Prometheus](https://prometheus.io/) protocol.
+You can access the metrics at the following URL: `http://localhost:8889/metrics` from inside the vector's container (this is done for security purposes at the moment).
 
 ## Log export to cloud
 
