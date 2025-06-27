@@ -1,4 +1,4 @@
-FROM lfedge/eve-alpine:0f2e0da38e30753c68410727a6cc269e57ff74f2 AS build
+FROM lfedge/eve-alpine:e799def68af51dba83ec5a41f34bd0109704574f AS build
 
 ENV BUILD_PKGS patch curl make gcc perl util-linux-dev git mtools linux-headers musl-dev xz-dev elfutils-dev libbz2
 ENV PKGS xz-libs util-linux elfutils-dev libbz2
