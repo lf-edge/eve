@@ -149,6 +149,20 @@ const (
 	WwanRAT5GNR WwanRAT = "5gnr"
 )
 
+// WwanIPType : the IP addressing type to use for a given attach or default bearer.
+type WwanIPType string
+
+const (
+	// WwanIPTypeUnspecified : IP type is not specified.
+	WwanIPTypeUnspecified WwanIPType = ""
+	// WwanIPTypeIPv4 : IPv4 only.
+	WwanIPTypeIPv4 WwanIPType = "ipv4"
+	// WwanIPTypeIPv4AndIPv6 : IPv4 and IPv6.
+	WwanIPTypeIPv4AndIPv6 WwanIPType = "ipv4v6"
+	// WwanIPTypeIPv6 : IPv6 only.
+	WwanIPTypeIPv6 WwanIPType = "ipv6"
+)
+
 // WwanProbe : cellular connectivity verification probe.
 type WwanProbe struct {
 	// If true, then probing is disabled.
@@ -339,6 +353,11 @@ type WwanNetworkStatus struct {
 	IPSettings WwanIPSettings
 	// True if location tracking is successfully running.
 	LocationTracking bool
+	// Contains all bearers currently associated with the cellular connection,
+	// including the attach (initial) bearer.
+	Bearers []WwanBearer
+	// Cellular connection profiles stored on the modem.
+	Profiles []WwanProfile
 }
 
 // WwanCellModule contains cellular module specs.
@@ -456,6 +475,60 @@ func (wips WwanIPSettings) Equal(wips2 WwanIPSettings) bool {
 		wips.MTU == wips2.MTU
 }
 
+// WwanBearer represents a logical connection established between a User Equipment (UE)
+// and a cellular network.
+type WwanBearer struct {
+	// Access Point Network of the bearer.
+	APN string
+	// Purpose of the bearer.
+	Type BearerType
+	// The IP addressing type to use for the bearer.
+	IPType WwanIPType
+	// Indicates whether or not the bearer is connected.
+	Connected bool
+	// Provides additional information specifying the reason why the modem is not connected
+	// (either due to a failed connection attempt, or due to a network initiated disconnection).
+	ConnectionError string
+	// Unix timestamp in seconds made when the current connection was established.
+	// Zero value if the bearer is not connected.
+	ConnectedAt uint64
+}
+
+// BearerType : purpose of a given cellular bearer.
+type BearerType int32
+
+// The values here should be same as the ones defined in info.proto of EVE API.
+const (
+	// BearerTypeUnspecified : bearer type is not specified/known.
+	BearerTypeUnspecified BearerType = iota
+	// BearerTypeAttach : bearer used for the initial attach procedure.
+	BearerTypeAttach
+	// BearerTypeDefault : default connection bearer providing packet data access
+	// to the network.
+	BearerTypeDefault
+	// BearerTypeDedicated : secondary context (2G/3G) or dedicated bearer (4G),
+	// defined by the user of the API. These bearers use the same IP address used
+	// by a primary context or default bearer and provide a dedicated flow for specific
+	// traffic with different QoS settings.
+	BearerTypeDedicated
+)
+
+// WwanProfile is a modem-stored configuration that defines how the device
+// connects to a network. It is used mostly during the initial attach procedure.
+type WwanProfile struct {
+	// The name of the profile.
+	Name string
+	// Access Point Name used by the profile.
+	APN string
+	// Which bearer type this profile is for.
+	BearerType BearerType
+	// The IP addressing type used by the profile.
+	IPType WwanIPType
+	// When true, the modem will not connect to networks that require roaming
+	// when using this profile.
+	ForbidRoaming bool
+}
+
 // Equal compares two instances of WwanNetworkStatus for equality.
 func (wns WwanNetworkStatus) Equal(wns2 WwanNetworkStatus) bool {
 	if wns.LogicalLabel != wns2.LogicalLabel ||
@@ -482,6 +555,10 @@ func (wns WwanNetworkStatus) Equal(wns2 WwanNetworkStatus) bool {
 	if wns.ConnectedAt != wns2.ConnectedAt ||
 		!wns.IPSettings.Equal(wns2.IPSettings) ||
 		wns.LocationTracking != wns2.LocationTracking {
+		return false
+	}
+	if !generics.EqualSets(wns.Bearers, wns2.Bearers) ||
+		!generics.EqualSets(wns.Profiles, wns2.Profiles) {
 		return false
 	}
 	return true
