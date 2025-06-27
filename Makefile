@@ -4,6 +4,11 @@
 #
 # Run make (with no arguments) to see help on what targets are available
 
+# enable parallel builds by default
+# it can be overridden from make command line using -jN
+NRCORES:=$(nproc)
+MAKEFLAGS += -j$(NRCORES)
+
 # universal constants and functions
 null  :=
 space := $(null) #
