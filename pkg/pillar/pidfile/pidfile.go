@@ -7,16 +7,13 @@ package pidfile
 
 import (
 	"fmt"
+	"github.com/lf-edge/eve/pkg/pillar/types"
 	"os"
 	"path"
 	"strconv"
 	"syscall"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
-)
-
-const (
-	defaultRundir = "/run"
 )
 
 func writeMyPid(filename string) error {
@@ -69,7 +66,7 @@ func CheckAndCreatePidfile(log *base.LogObject, agentName string, options ...Opt
 	if exists, description := checkProcessExists(log, agentName, opt); exists {
 		return fmt.Errorf("checkAndCreatePidfile: %s", description)
 	}
-	rundir := defaultRundir
+	rundir := types.WatchdogPidDir
 	if opt.baseDir != "" {
 		rundir = opt.baseDir
 	}
@@ -86,7 +83,7 @@ func processOpts(options []Option) opt {
 		o(&opt)
 	}
 	if opt.baseDir == "" {
-		opt.baseDir = defaultRundir
+		opt.baseDir = types.WatchdogPidDir
 	}
 	return opt
 }

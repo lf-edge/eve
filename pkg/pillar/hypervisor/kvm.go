@@ -799,7 +799,7 @@ func mmioVMMOverhead(domainName string, aa *types.AssignableAdapters, domainAdap
 		}
 
 		// read all resources of the PCI device
-		resources, err := dev.readResources(sysfsPciDevices)
+		resources, err := dev.readResources(types.SysfsPciDevicesDir)
 		if err != nil {
 			return 0, logError("Can't read PCI device resources %s: %v\n",
 				dev.ioBundle.PciLong, err)

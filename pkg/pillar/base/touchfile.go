@@ -9,9 +9,11 @@ import (
 )
 
 const (
-	// WatchdogFileDir is the dir to add .touch files for watchdog to monitor
+	// WatchdogFileDir - the dir to add .touch files for watchdog to monitor.
+	// These constants are available in pkg/pillar/types/locationconsts.go; however, using these
+	// causes a cyclical dependency.
 	WatchdogFileDir = "/run/watchdog/file"
-	// WatchdogPidDir is the dir to add .pid files for watchdog to monitor
+	// WatchdogPidDir - the dir to add .pid files for watchdog to monitor
 	WatchdogPidDir = "/run/watchdog/pid"
 )
 

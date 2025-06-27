@@ -86,15 +86,10 @@ func gatherProcessMetricList(ctx *domainContext) ([]types.ProcessMetric, map[int
 	return ret, reportedPids
 }
 
-const (
-	watchdogDirName = "/run/watchdog/pid/"
-	pidDirName      = "/run"
-)
-
 // getWatchedPids returns a map will all the pids watched by watchdog
 // based on /run/watchdog/pid/<foo> by reading the content of /run/<foo>
 func getWatchedPids() (map[int32]bool, error) {
-	return getWatchedPidsFromDir(watchdogDirName, pidDirName)
+	return getWatchedPidsFromDir(types.WatchdogPidDir, types.RunDir)
 }
 
 func getWatchedPidsFromDir(wDirname string, pDirname string) (map[int32]bool, error) {
