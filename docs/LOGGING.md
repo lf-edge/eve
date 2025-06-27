@@ -110,7 +110,7 @@ There are no granularity nobs for the edge apps' log levels - all logs generated
 
 For the full list of log level parameters and the possible values, see the [config-properties](CONFIG-PROPERTIES.md#log-levels) doc.
 
-## Log filtering, counting and deduplication
+## [DEPRECATED] Log filtering, counting and deduplication
 
 To reduce the amount of logs sent to the controller, EVE offers three mechanisms:
 
@@ -137,6 +137,32 @@ Deduplicator goes through all log entries in the file, keeping a sliding window 
 It checks: if the N+1'th message is already in the window - it is not logged.
 Either way the first message in the window is replaced with the new message (FIFO).
 The window size is configurable via the `log.dedup.window.size` config property.
+
+## Vector
+
+We have a [Vector](https://vector.dev/) service running on the device that we use for various log transformations.
+It can be configured dynamically by supplying a full base64 encoded Vector configuration file via the `vector.config` config property.
+
+Vector connects to newlogd via unix domain sockets and is only used for log transformation.
+It does not sample the logs or send them anywhere - this is still done by newlogd.
+See the diagram below for the flow of logs through Vector.
+
+![Vector Log Flow](images/vector.drawio.png)
+
+We support all Vector [transforms](https://vector.dev/docs/reference/configuration/transforms/).
+However only the sources and sinks from the default Vector configuration are supported.
+This is done to minimize the size of the Vector binary and to keep the configuration simple.
+You'll find examples of how to use Vector transforms in the default [Vector configuration file](../pkg/vector/etc/vector.yaml).
+
+### Vector config
+
+EVE pre-validates the supplied Vector configuration file to ensure that it is valid and does not contain any unsupported VRL, sources or sinks.
+If the configuration is invalid, EVE will discard it without applying.
+
+### Vector metrics
+
+Vector exposes its internal metrics via the [Prometheus](https://prometheus.io/) protocol.
+You can access the metrics at the following URL: `http://localhost:8889/metrics`.
 
 ## Log export to cloud
 
