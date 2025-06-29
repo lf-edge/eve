@@ -98,6 +98,7 @@ type DpcManager struct {
 	devUUID          uuid.UUID
 	flowlogEnabled   bool
 	clusterStatus    types.EdgeNodeClusterStatus
+	kubeUserServices types.KubeUserServices
 	// Boot-time configuration
 	dpclPresentAtBoot bool
 
@@ -193,18 +194,20 @@ const (
 	commandProcessWwanStatus
 	commandUpdateFlowlogState
 	commandUpdateClusterStatus
+	commandUpdateKubeUserServices
 )
 
 type inputCommand struct {
-	cmd            command
-	dpc            types.DevicePortConfig      // for commandAddDPC and commandDelDPC
-	gcp            types.ConfigItemValueMap    // for commandUpdateGCP
-	aa             types.AssignableAdapters    // for commandUpdateAA
-	rs             types.RadioSilence          // for commandUpdateRS
-	devUUID        uuid.UUID                   // for commandUpdateDevUUID
-	wwanStatus     types.WwanStatus            // for commandProcessWwanStatus
-	flowlogEnabled bool                        // for commandUpdateFlowlogState
-	clusterStatus  types.EdgeNodeClusterStatus // for commandUpdateClusterStatus
+	cmd              command
+	dpc              types.DevicePortConfig      // for commandAddDPC and commandDelDPC
+	gcp              types.ConfigItemValueMap    // for commandUpdateGCP
+	aa               types.AssignableAdapters    // for commandUpdateAA
+	rs               types.RadioSilence          // for commandUpdateRS
+	devUUID          uuid.UUID                   // for commandUpdateDevUUID
+	wwanStatus       types.WwanStatus            // for commandProcessWwanStatus
+	flowlogEnabled   bool                        // for commandUpdateFlowlogState
+	clusterStatus    types.EdgeNodeClusterStatus // for commandUpdateClusterStatus
+	kubeUserServices types.KubeUserServices      // for commandUpdateKubeUserServices
 }
 
 type dpcVerify struct {
@@ -281,6 +284,8 @@ func (m *DpcManager) run(ctx context.Context) {
 				m.doUpdateFlowlogState(ctx, inputCmd.flowlogEnabled)
 			case commandUpdateClusterStatus:
 				m.doUpdateClusterStatus(ctx, inputCmd.clusterStatus)
+			case commandUpdateKubeUserServices:
+				m.doUpdateKubeUserServices(ctx, inputCmd.kubeUserServices)
 			}
 			m.resumeVerifyIfAsyncDone(ctx)
 
@@ -413,11 +418,12 @@ func (m *DpcManager) run(ctx context.Context) {
 
 func (m *DpcManager) reconcilerArgs() dpcreconciler.Args {
 	args := dpcreconciler.Args{
-		GCP:            m.globalCfg,
-		AA:             m.adapters,
-		RS:             m.rsConfig,
-		FlowlogEnabled: m.flowlogEnabled,
-		ClusterStatus:  m.clusterStatus,
+		GCP:              m.globalCfg,
+		AA:               m.adapters,
+		RS:               m.rsConfig,
+		FlowlogEnabled:   m.flowlogEnabled,
+		ClusterStatus:    m.clusterStatus,
+		KubeUserServices: m.kubeUserServices,
 	}
 	if m.currentDPC() != nil {
 		args.DPC = *m.currentDPC()
@@ -502,6 +508,14 @@ func (m *DpcManager) UpdateClusterStatus(status types.EdgeNodeClusterStatus) {
 	m.inputCommands <- inputCommand{
 		cmd:           commandUpdateClusterStatus,
 		clusterStatus: status,
+	}
+}
+
+// UpdateKubeUserServices : apply an updated Kubernetes user services data.
+func (m *DpcManager) UpdateKubeUserServices(services types.KubeUserServices) {
+	m.inputCommands <- inputCommand{
+		cmd:              commandUpdateKubeUserServices,
+		kubeUserServices: services,
 	}
 }
 
@@ -647,5 +661,11 @@ func (m *DpcManager) doUpdateFlowlogState(ctx context.Context, flowlogEnabled bo
 func (m *DpcManager) doUpdateClusterStatus(ctx context.Context,
 	status types.EdgeNodeClusterStatus) {
 	m.clusterStatus = status
+	m.reconcileStatus = m.DpcReconciler.Reconcile(ctx, m.reconcilerArgs())
+}
+
+func (m *DpcManager) doUpdateKubeUserServices(ctx context.Context,
+	services types.KubeUserServices) {
+	m.kubeUserServices = services
 	m.reconcileStatus = m.DpcReconciler.Reconcile(ctx, m.reconcilerArgs())
 }

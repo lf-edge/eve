@@ -7,11 +7,6 @@ ENV PKGS alpine-baselayout musl-utils iproute2 iptables curl openrc \
          cni-plugins nfs-utils
 RUN eve-alpine-deploy.sh
 
-# Remove unused CNI plugins
-RUN for plugin in bandwidth ipvlan macvlan ptp static vlan firewall sbr tuning vrf; do \
-        rm /out/usr/libexec/cni/${plugin}; \
-    done
-
 COPY eve-bridge /plugins/eve-bridge
 WORKDIR /plugins/eve-bridge
 RUN GO111MODULE=on CGO_ENABLED=0 go build -v -ldflags "-s -w" -mod=vendor -o /out/usr/bin/eve-bridge .
