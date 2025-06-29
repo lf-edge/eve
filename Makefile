@@ -4,6 +4,11 @@
 #
 # Run make (with no arguments) to see help on what targets are available
 
+# enable parallel builds by default
+# it can be overridden from make command line using -jN
+NRCORES:=$(nproc)
+MAKEFLAGS += -j$(NRCORES)
+
 # universal constants and functions
 null  :=
 space := $(null) #
@@ -14,7 +19,7 @@ uniq = $(if $1,$(firstword $1) $(call uniq,$(filter-out $(firstword $1),$1)))
 HV_DEFAULT=kvm
 # linuxkit version. This **must** be a published semver version so it can be downloaded already compiled from
 # the release page at https://github.com/linuxkit/linuxkit/releases
-LINUXKIT_VERSION=v1.6.2
+LINUXKIT_VERSION=v1.6.4
 BUILD_KIT_VERSION=v0.23.1
 GOVER ?= 1.24.1
 PKGBASE=github.com/lf-edge/eve
@@ -130,8 +135,6 @@ CROSS ?=
 ifneq ($(HOSTARCH),$(ZARCH))
 CROSS = 1
 endif
-
-PARALLEL_BUILD_LOCK:=$(shell mktemp -u $(CURDIR)/eve-parallel-build-XXXXXX)
 
 DOCKER_ARCH_TAG=$(ZARCH)
 
@@ -332,7 +335,7 @@ DOCKER_GO = _() { $(SET_X); mkdir -p $(CURDIR)/.go/src/$${3:-dummy} ; mkdir -p $
 PARSE_PKGS=$(if $(strip $(EVE_HASH)),EVE_HASH=)$(EVE_HASH) DOCKER_ARCH_TAG=$(DOCKER_ARCH_TAG) KERNEL_TAG=$(KERNEL_TAG) PLATFORM=$(PLATFORM) ./tools/parse-pkgs.sh
 
 LINUXKIT_OPTS=$(if $(strip $(EVE_HASH)),--hash) $(EVE_HASH) $(if $(strip $(EVE_REL)),--release) $(EVE_REL)
-LINUXKIT_PKG_TARGET=build
+LINUXKIT_PKG_TARGET=build --builders linux/$(ZARCH)=default
 
 ifdef LIVE_FAST
 # Check the makerootfs.sh and the linuxkit tool invocation, the --input-tar
@@ -991,8 +994,9 @@ ensure-builder:
 	fi
 
 LINUXKIT_SOURCE=https://github.com/linuxkit/linuxkit
+PARALLEL_BUILD_LOCK:=$(shell mktemp -u $(BUILD_DIR)/eve-parallel-build-XXXXXX)
 
-$(LINUXKIT): $(BUILDTOOLS_BIN)/linuxkit-$(LINUXKIT_VERSION) | ensure-builder
+$(LINUXKIT): $(BUILDTOOLS_BIN)/linuxkit-$(LINUXKIT_VERSION) $(PARALLEL_BUILD_LOCK) | ensure-builder
 	$(QUIET) ln -sf  $(notdir $<) $@
 	$(QUIET): $@: Succeeded
 
@@ -1010,6 +1014,11 @@ ifneq ($(BUILD),local)
                       -t $@ build-tools/src/scripts > /dev/null
 	@echo "$@ docker container is ready to use"
 endif
+	$(QUIET): $@: Succeeded
+
+$(PARALLEL_BUILD_LOCK): $(BUILD_DIR)
+	$(QUIET): "$@: Begin: PARALLEL_BUILD_LOCK=$(PARALLEL_BUILD_LOCK)"
+	@touch $@
 	$(QUIET): $@: Succeeded
 
 #
@@ -1086,7 +1095,6 @@ eve-%: pkg/%/Dockerfile build-tools $(RESCAN_DEPS)
 	$(eval LINUXKIT_FLAGS := $(if $(filter manifest,$(LINUXKIT_PKG_TARGET)),,$(FORCE_BUILD) $(LINUXKIT_DOCKER_LOAD) $(LINUXKIT_BUILD_PLATFORMS)))
 	$(QUIET)$(LINUXKIT) $(DASH_V) pkg $(LINUXKIT_PKG_TARGET) $(LINUXKIT_ORG_TARGET) $(LINUXKIT_OPTS) $(LINUXKIT_FLAGS) --build-yml $(call get_pkg_build_yml,$*) pkg/$*
 	$(QUIET)if [ -n "$(PRUNE)" ]; then \
-		flock $(PARALLEL_BUILD_LOCK) $(LINUXKIT) pkg $(LINUXKIT_ORG_TARGET) builder prune; \
 		flock $(PARALLEL_BUILD_LOCK) docker image prune -f; \
 	fi
 	$(QUIET): "$@: Succeeded (intermediate for pkg/%)"
