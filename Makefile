@@ -176,8 +176,8 @@ ROOTFS=$(INSTALLER)/rootfs
 ROOTFS_FULL_NAME=$(INSTALLER)/rootfs-$(ROOTFS_VERSION)
 ROOTFS_COMPLETE=$(ROOTFS_FULL_NAME)-%-$(ZARCH).$(ROOTFS_FORMAT)
 ROOTFS_IMG_BASE=$(ROOTFS)
-ROOTFS_IMG_UBUNTU=$(ROOTFS_IMG_BASE)-evaluation-ubuntu.img
-ROOTFS_IMG_LTS=$(ROOTFS_IMG_BASE)-evaluation-lts.img
+ROOTFS_IMG_EVAL_HWE=$(ROOTFS_IMG_BASE)-evaluation-hwe.img
+ROOTFS_IMG_EVAL_LTS=$(ROOTFS_IMG_BASE)-evaluation-lts.img
 
 ROOTFS_IMGS= $(if $(findstring evaluation,$(PLATFORM)), \
 	$(ROOTFS_IMG_BASE).img $(ROOTFS_IMG_BASE)-b.img $(ROOTFS_IMG_BASE)-c.img, \
@@ -192,19 +192,19 @@ ROOTFS_GENERIC_IMG_INTERMEDIATE:=$(if $(findstring evaluation,$(PLATFORM)), \
 # pass the names down the pipeline
 $(ROOTFS_IMG_BASE).img: $(ROOTFS_GENERIC_IMG_INTERMEDIATE)
 	mv $< $@
-$(ROOTFS_IMG_BASE)-b.img: $(ROOTFS_IMG_UBUNTU)
+$(ROOTFS_IMG_BASE)-b.img: $(ROOTFS_IMG_EVAL_HWE)
 	mv $< $@
-$(ROOTFS_IMG_BASE)-c.img: $(ROOTFS_IMG_LTS)
+$(ROOTFS_IMG_BASE)-c.img: $(ROOTFS_IMG_EVAL_LTS)
 	mv $< $@
 
 # ROOTFS_TAR is in BUILD_DIR, not installer, so it does not get installed
 ROOTFS_TAR_BASE=$(BUILD_DIR)/rootfs
-ROOTFS_TAR_UBUNTU=$(ROOTFS_TAR_BASE)-evaluation-ubuntu.tar
-ROOTFS_TAR_LTS=$(ROOTFS_TAR_BASE)-evaluation-lts.tar
+ROOTFS_TAR_EVAL_HWE=$(ROOTFS_TAR_BASE)-evaluation-hwe.tar
+ROOTFS_TAR_EVAL_LTS=$(ROOTFS_TAR_BASE)-evaluation-lts.tar
 
 # for evaluation platform we generate 3 rootfs tarballs:
 ROOTFS_TARS= $(if $(findstring evaluation,$(PLATFORM)), \
-	$(ROOTFS_TAR_UBUNTU) $(ROOTFS_TAR_LTS) $(ROOTFS_TAR_BASE)-evaluation-generic.tar, \
+	$(ROOTFS_TAR_EVAL_HWE) $(ROOTFS_TAR_EVAL_LTS) $(ROOTFS_TAR_BASE)-evaluation-generic.tar, \
 	$(ROOTFS_TAR_BASE)-$(PLATFORM).tar)
 
 CONFIG_IMG=$(INSTALLER)/config.img
@@ -220,7 +220,7 @@ EFI_PART=$(INSTALLER)/EFI
 BOOT_PART=$(INSTALLER)/boot
 BSP_IMX_PART=$(INSTALLER)/bsp-imx
 
-SBOM?=$(if $(findstring evaluation,$(PLATFORM)), $(ROOTFS)-evaluation-generic.spdx.json $(ROOTFS)-evaluation-ubuntu.spdx.json \
+SBOM?=$(if $(findstring evaluation,$(PLATFORM)), $(ROOTFS)-evaluation-generic.spdx.json $(ROOTFS)-evaluation-hwe.spdx.json \
     $(ROOTFS)-evaluation-lts.spdx.json , $(ROOTFS)-$(PLATFORM).spdx.json)
 SOURCES_DIR=$(BUILD_DIR)/sources
 COLLECTED_SOURCES=$(SOURCES_DIR)/collected_sources.tar.gz
@@ -362,7 +362,7 @@ DOCKER_GO = _() { $(SET_X); mkdir -p $(CURDIR)/.go/src/$${3:-dummy} ; mkdir -p $
     $$docker_go_line "$$1" ; } ; _
 
 PARSE_PKGS=$(if $(strip $(EVE_HASH)),EVE_HASH=)$(EVE_HASH) DOCKER_ARCH_TAG=$(DOCKER_ARCH_TAG) KERNEL_TAG=$(KERNEL_TAG) \
-    KERNEL_EVAL_FULL_TAG=$(KERNEL_EVAL_FULL_TAG) KERNEL_EVAL_LTS_TAG=$(KERNEL_EVAL_LTS_TAG) PLATFORM=$(PLATFORM) ./tools/parse-pkgs.sh
+    KERNEL_EVAL_HWE_TAG=$(KERNEL_EVAL_HWE_TAG) KERNEL_EVAL_LTS_TAG=$(KERNEL_EVAL_LTS_TAG) PLATFORM=$(PLATFORM) ./tools/parse-pkgs.sh
 
 LINUXKIT_OPTS=$(if $(strip $(EVE_HASH)),--hash) $(EVE_HASH) $(if $(strip $(EVE_REL)),--release) $(EVE_REL)
 LINUXKIT_PKG_TARGET=build

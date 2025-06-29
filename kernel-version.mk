@@ -83,7 +83,7 @@ KERNEL_LTS_BRANCH = eve-kernel-$(ZARCH)-$(KERNEL_LTS_VERSION)-$(KERNEL_FLAVOR)
 KERNEL_LTS_DOCKER_TAG = $(KERNEL_LTS_BRANCH)-$(KERNEL_LTS_COMMIT)-$(KERNEL_COMPILER)
 
 # TODO: this is a placeholder for full and lts kernel docker tags
-# KERNEL_EVAL_FULL_DOCKER_TAG = $(KERNEL_BRANCH)-full-$(KERNEL_COMMIT)-$(KERNEL_COMPILER)
+# KERNEL_EVAL_HWE_TAG = $(KERNEL_BRANCH)-hwe-$(KERNEL_COMMIT)-$(KERNEL_COMPILER)
 # KERNEL_EVAL_LTS_DOCKER_TAG = $(KERNEL_LTS_BRANCH)-$(KERNEL_LTS_COMMIT)-$(KERNEL_COMPILER)
 
 # one can override the whole tag from the command line and set it to
@@ -91,5 +91,5 @@ KERNEL_LTS_DOCKER_TAG = $(KERNEL_LTS_BRANCH)-$(KERNEL_LTS_COMMIT)-$(KERNEL_COMPI
 KERNEL_TAG ?= docker.io/lfedge/eve-kernel:$(KERNEL_DOCKER_TAG)
 
 # TODO: KERNEL_DOCKER_TAG will be replaced with _FULL or _LTS
-KERNEL_EVAL_FULL_TAG ?= docker.io/lfedge/eve-kernel:$(KERNEL_DOCKER_TAG)
+KERNEL_EVAL_HWE_TAG ?= docker.io/lfedge/eve-kernel:$(KERNEL_DOCKER_TAG)
 KERNEL_EVAL_LTS_TAG ?= docker.io/lfedge/eve-kernel:$(KERNEL_DOCKER_TAG)
