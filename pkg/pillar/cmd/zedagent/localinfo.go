@@ -295,7 +295,7 @@ func triggerLocalCommand(ctx *getconfigContext, cmd types.AppCommand,
 		appCounters.RestartCmd.Counter++
 		appCounters.RestartCmd.ApplyTime = timestamp
 		app.LocalRestartCmd = appCounters.RestartCmd
-		checkAndPublishAppInstanceConfig(ctx, *app)
+		checkAndPublishAppInstanceConfig(ctx.pubAppInstanceConfig, *app)
 
 	case types.AppCommandPurge:
 		// To trigger application purge we take the previously published
@@ -328,16 +328,16 @@ func triggerLocalCommand(ctx *getconfigContext, cmd types.AppCommand,
 				continue
 			}
 			volume := volObj.(types.VolumeConfig)
-			unpublishVolumeConfig(ctx, volKey)
+			unpublishVolumeConfig(ctx.pubVolumeConfig, volKey)
 			// Publish volume with an increased local generation counter.
 			localGenCounter++
 			ctx.sideController.localCommands.VolumeGenCounters[uuid] = localGenCounter
 			vr.LocalGenerationCounter = localGenCounter
 			volume.LocalGenerationCounter = localGenCounter
-			publishVolumeConfig(ctx, volume)
+			publishVolumeConfig(ctx.pubVolumeConfig, volume)
 			changedVolumes = true
 		}
-		checkAndPublishAppInstanceConfig(ctx, *app)
+		checkAndPublishAppInstanceConfig(ctx.pubAppInstanceConfig, *app)
 	}
 	return changedVolumes
 }
@@ -710,6 +710,16 @@ func processReceivedDevCommands(getconfigCtx *getconfigContext, cmd *profile.Loc
 		return
 	}
 	command := types.DevCommand(cmd.Command)
+
+	if command == types.DevCommandCollectInfo {
+		key := time.Now().String()
+		// unpublishing and publishing does not trigger the create/modify handler
+		err := getconfigCtx.pubCollectInfoCmd.Publish(key, types.CollectInfoCmd{})
+		if err != nil {
+			log.Warnf("could not publish collect info cmd: %v", err)
+		}
+	}
+
 	if getconfigCtx.updateInprogress {
 		switch command {
 		case types.DevCommandUnspecified:
@@ -720,6 +730,9 @@ func processReceivedDevCommands(getconfigCtx *getconfigContext, cmd *profile.Loc
 		case types.DevCommandShutdownPoweroff:
 			log.Noticef("Received shutdown_poweroff from local profile server during updateInProgress")
 			ctx.poweroffCmdDeferred = true
+		case types.DevCommandGracefulReboot:
+			log.Noticef("Received graceful-reboot from local profile server during updateInProgress")
+			ctx.rebootCmdDeferred = true
 		}
 		return
 	}
@@ -736,6 +749,9 @@ func processReceivedDevCommands(getconfigCtx *getconfigContext, cmd *profile.Loc
 		case types.DevCommandShutdownPoweroff:
 			log.Noticef("Received shutdown_poweroff from local profile server during waitDrainInProgress")
 			ctx.poweroffCmdDeferred = true
+		case types.DevCommandGracefulReboot:
+			log.Noticef("Received graceful-reboot from local profile server during waitDrainInProgress")
+			ctx.rebootCmdDeferred = true
 		}
 		return
 	}
@@ -760,6 +776,15 @@ func processReceivedDevCommands(getconfigCtx *getconfigContext, cmd *profile.Loc
 		infoStr := fmt.Sprintf("NORMAL: local profile server power off")
 		ctx.requestedRebootReason = infoStr
 		ctx.requestedBootReason = types.BootReasonPoweroffCmd
+	case types.DevCommandGracefulReboot:
+		log.Noticef("Received graceful+reboot from local profile server")
+		if ctx.rebootCmd || ctx.deviceReboot {
+			log.Warnf("Reboot already in progress")
+		}
+		ctx.rebootCmd = true
+		infoStr := fmt.Sprintf("NORMAL: local profile graceful reboot")
+		ctx.requestedRebootReason = infoStr
+		ctx.requestedBootReason = types.BootReasonRebootCmd
 	}
 
 	// shutdown the application instances

@@ -101,6 +101,8 @@ type getconfigContext struct {
 	subAppNetworkStatus        pubsub.Subscription
 	pubBaseOsConfig            pubsub.Publication
 	pubDatastoreConfig         pubsub.Publication
+	pubLOCConfig               pubsub.Publication
+	pubCollectInfoCmd          pubsub.Publication
 	pubNetworkInstanceConfig   pubsub.Publication
 	pubControllerCert          pubsub.Publication
 	pubCipherContext           pubsub.Publication
@@ -862,7 +864,7 @@ cfgReceived:
 func needRequestLocConfig(getconfigCtx *getconfigContext,
 	rv configProcessingRetval) bool {
 
-	return (rv != configOK && getconfigCtx.sideController.locConfig != nil)
+	return (rv != configOK && getconfigCtx.sideController.locConfig != nil && getconfigCtx.sideController.locConfig.LocURL != "")
 }
 
 func getLatestConfig(getconfigCtx *getconfigContext, iteration int,
@@ -1300,7 +1302,7 @@ func updateHasLocalServer(ctx *getconfigContext) {
 			log.Noticef("HasLocalServer(%s) for %s change to %t",
 				aic.Key(), aic.DisplayName, hasLocalServer)
 			// Verify that it fits and if not publish with error
-			checkAndPublishAppInstanceConfig(ctx, aic)
+			checkAndPublishAppInstanceConfig(ctx.pubAppInstanceConfig, aic)
 		}
 	}
 }
