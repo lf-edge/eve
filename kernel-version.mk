@@ -13,6 +13,11 @@
 
 KERNEL_COMPILER=gcc
 
+# kernel may have severla config files eve-<KERNEL_KONFIG_FLAVOR>_defconfig
+# this varialbe can be passed to the make command line to select
+# 'evaluation' platform has hardcoded config flavors for different rootfs images
+KERNEL_KONFIG_FLAVOR ?= core
+
 PLATFORMS_amd64=generic rt evaluation
 PLATFORMS_arm64=generic nvidia-jp5 nvidia-jp6 imx8mp_pollux imx8mp_epc_r3720 imx8mq_evk
 PLATFORMS_riscv64=generic
