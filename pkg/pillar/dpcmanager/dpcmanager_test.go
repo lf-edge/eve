@@ -47,7 +47,7 @@ var (
 	pubDNS         pubsub.Publication
 )
 
-func initTest(test *testing.T) *GomegaWithT {
+func initTest(test *testing.T, expectBootstrapDPCsOpt ...bool) *GomegaWithT {
 	t := NewGomegaWithT(test)
 	t.SetDefaultEventuallyTimeout(20 * time.Second)
 	t.SetDefaultEventuallyPollingInterval(250 * time.Millisecond)
@@ -103,6 +103,7 @@ func initTest(test *testing.T) *GomegaWithT {
 		AgentName:                "test",
 		GeoService:               geoService,
 		DpcMinTimeSinceFailure:   3 * time.Second,
+		DpcAvailTimeLimit:        3 * time.Second,
 		NetworkMonitor:           networkMonitor,
 		DpcReconciler:            dpcReconciler,
 		ConnTester:               connTester,
@@ -115,7 +116,11 @@ func initTest(test *testing.T) *GomegaWithT {
 	if err := dpcManager.Init(ctx); err != nil {
 		log.Fatal(err)
 	}
-	if err := dpcManager.Run(ctx); err != nil {
+	expectBootstrapDPCs := false
+	if len(expectBootstrapDPCsOpt) > 0 {
+		expectBootstrapDPCs = expectBootstrapDPCsOpt[0]
+	}
+	if err := dpcManager.Run(ctx, expectBootstrapDPCs); err != nil {
 		log.Fatal(err)
 	}
 	return t
@@ -761,16 +766,15 @@ func TestDPCFallback(test *testing.T) {
 	networkMonitor.AddOrUpdateInterface(eth0)
 
 	// Apply global config first.
+	// "lastresort" DPC will be created by DPCManager.
 	dpcManager.UpdateGCP(globalConfigWithLastresort())
+	lastResortTimePrio := time.Unix(0, 0)
 
-	// Apply "lastresort" DPC with single ethernet port.
+	// Publish AssignableAdapters.
 	aa := makeAA(selectedIntfs{eth0: true})
-	timePrio1 := time.Time{} // zero timestamp for lastresort
-	dpc := makeDPC("lastresort", timePrio1, selectedIntfs{eth0: true})
 	dpcManager.UpdateAA(aa)
-	dpcManager.AddDPC(dpc)
 
-	// Verification should succeed.
+	// Lastresort verification should succeed.
 	t.Eventually(dpcIdxCb()).Should(Equal(0))
 	t.Eventually(dnsKeyCb()).Should(Equal("lastresort"))
 	t.Eventually(dpcStateCb(0)).Should(Equal(types.DPCStateSuccess))
@@ -778,7 +782,7 @@ func TestDPCFallback(test *testing.T) {
 	// Change DPC - change from eth0 to non-existent eth1.
 	// Verification should fail and the manager should revert back to the first DPC.
 	timePrio2 := time.Now()
-	dpc = makeDPC("zedagent", timePrio2, selectedIntfs{eth1: true})
+	dpc := makeDPC("zedagent", timePrio2, selectedIntfs{eth1: true})
 	dpcManager.AddDPC(dpc)
 
 	t.Eventually(testingInProgressCb()).Should(BeTrue())
@@ -795,7 +799,7 @@ func TestDPCFallback(test *testing.T) {
 	t.Expect(dpcList[0].LastError).To(
 		Equal("not enough working ports (0); failed with: [interface eth1 is missing]"))
 	t.Expect(dpcList[1].Key).To(Equal("lastresort"))
-	t.Expect(dpcList[1].TimePriority.Equal(timePrio1)).To(BeTrue())
+	t.Expect(dpcList[1].TimePriority.Equal(lastResortTimePrio)).To(BeTrue())
 	t.Expect(dpcList[1].State).To(Equal(types.DPCStateSuccess))
 	t.Expect(dpcList[1].LastSucceeded.After(dpcList[0].LastFailed)).To(BeTrue())
 	t.Expect(dpcList[1].LastError).To(BeEmpty())
@@ -821,7 +825,7 @@ func TestDPCFallback(test *testing.T) {
 	t.Expect(dpcList[0].LastSucceeded.After(dpcList[0].LastFailed)).To(BeTrue())
 	t.Expect(dpcList[0].LastError).To(BeEmpty())
 	t.Expect(dpcList[1].Key).To(Equal("lastresort"))
-	t.Expect(dpcList[1].TimePriority.Equal(timePrio1)).To(BeTrue())
+	t.Expect(dpcList[1].TimePriority.Equal(lastResortTimePrio)).To(BeTrue())
 	t.Expect(dpcList[1].State).To(Equal(types.DPCStateSuccess))
 	t.Expect(dpcList[1].LastSucceeded.After(dpcList[0].LastFailed)).To(BeTrue())
 	t.Expect(dpcList[1].LastError).To(BeEmpty())
@@ -844,7 +848,7 @@ func TestDPCFallback(test *testing.T) {
 	t.Expect(dpcList[0].LastSucceeded.After(dpcList[0].LastFailed)).To(BeTrue())
 	t.Expect(dpcList[0].LastError).To(BeEmpty())
 	t.Expect(dpcList[1].Key).To(Equal("lastresort"))
-	t.Expect(dpcList[1].TimePriority.Equal(timePrio1)).To(BeTrue())
+	t.Expect(dpcList[1].TimePriority.Equal(lastResortTimePrio)).To(BeTrue())
 	t.Expect(dpcList[1].State).To(Equal(types.DPCStateSuccess))
 	t.Expect(dpcList[1].LastSucceeded.After(dpcList[0].LastFailed)).To(BeTrue())
 	t.Expect(dpcList[1].LastError).To(BeEmpty())
@@ -869,7 +873,7 @@ func TestDPCFallback(test *testing.T) {
 	t.Expect(dpcList[0].LastFailed.After(dpcList[0].LastSucceeded)).To(BeTrue())
 	t.Expect(dpcList[0].LastError).To(Equal("not enough working ports (0); failed with: [failed to connect]"))
 	t.Expect(dpcList[1].Key).To(Equal("lastresort"))
-	t.Expect(dpcList[1].TimePriority.Equal(timePrio1)).To(BeTrue())
+	t.Expect(dpcList[1].TimePriority.Equal(lastResortTimePrio)).To(BeTrue())
 	t.Expect(dpcList[1].State).To(Equal(types.DPCStateSuccess))
 	t.Expect(dpcList[1].LastSucceeded.After(dpcList[0].LastFailed)).To(BeTrue())
 	t.Expect(dpcList[1].LastError).To(BeEmpty())
@@ -895,15 +899,13 @@ func TestDPCWithMultipleEths(test *testing.T) {
 	connTester.SetConnectivityError("zedagent", "eth1",
 		errors.New("failed to connect over eth1"))
 
-	// Apply global config first.
+	// Apply global config with enabled lastresort.
 	dpcManager.UpdateGCP(globalConfigWithLastresort())
+	lastResortTimePrio := time.Unix(0, 0)
 
-	// Apply last-resort DPC with two ethernet ports.
+	// Publish AssignableAdapters.
 	aa := makeAA(selectedIntfs{eth0: true, eth1: true})
-	timePrio1 := time.Time{} // zero timestamp for lastresort
-	dpc := makeDPC("lastresort", timePrio1, selectedIntfs{eth0: true, eth1: true})
 	dpcManager.UpdateAA(aa)
-	dpcManager.AddDPC(dpc)
 
 	// Verification should succeed even if connectivity over eth1 is failing.
 	t.Eventually(testingInProgressCb()).Should(BeTrue())
@@ -916,7 +918,7 @@ func TestDPCWithMultipleEths(test *testing.T) {
 	t.Expect(idx).To(Equal(0))
 	t.Expect(dpcList).To(HaveLen(1))
 	t.Expect(dpcList[0].Key).To(Equal("lastresort"))
-	t.Expect(dpcList[0].TimePriority.Equal(timePrio1)).To(BeTrue())
+	t.Expect(dpcList[0].TimePriority.Equal(lastResortTimePrio)).To(BeTrue())
 	t.Expect(dpcList[0].State).To(Equal(types.DPCStateSuccess))
 	t.Expect(dpcList[0].LastSucceeded.After(dpcList[0].LastFailed)).To(BeTrue())
 	t.Expect(dpcList[0].LastError).To(BeEmpty())
@@ -934,7 +936,7 @@ func TestDPCWithMultipleEths(test *testing.T) {
 	// Put a new DPC.
 	// This one will fail for both ports and thus manager should fallback to lastresort.
 	timePrio2 := time.Now()
-	dpc = makeDPC("zedagent", timePrio2, selectedIntfs{eth0: true, eth1: true})
+	dpc := makeDPC("zedagent", timePrio2, selectedIntfs{eth0: true, eth1: true})
 	dpcManager.AddDPC(dpc)
 
 	t.Eventually(testingInProgressCb()).Should(BeTrue())
@@ -952,7 +954,7 @@ func TestDPCWithMultipleEths(test *testing.T) {
 		Equal("not enough working ports (0); failed with: " +
 			"[failed to connect over eth0 failed to connect over eth1]"))
 	t.Expect(dpcList[1].Key).To(Equal("lastresort"))
-	t.Expect(dpcList[1].TimePriority.Equal(timePrio1)).To(BeTrue())
+	t.Expect(dpcList[1].TimePriority.Equal(lastResortTimePrio)).To(BeTrue())
 	t.Expect(dpcList[1].State).To(Equal(types.DPCStateSuccess))
 	t.Expect(dpcList[1].LastSucceeded.After(dpcList[0].LastFailed)).To(BeTrue())
 	t.Expect(dpcList[1].LastError).To(BeEmpty())
@@ -974,15 +976,12 @@ func TestDNS(test *testing.T) {
 	connTester.SetConnectivityError("lastresort", "eth1",
 		errors.New("failed to connect over eth1"))
 
-	// Apply global config first.
+	// Apply global config with enabled lastresort.
 	dpcManager.UpdateGCP(globalConfigWithLastresort())
 
-	// Apply last-resort DPC with two ethernet ports.
+	// Publish AssignableAdapters.
 	aa := makeAA(selectedIntfs{eth0: true, eth1: true})
-	timePrio1 := time.Time{} // zero timestamp for lastresort
-	dpc := makeDPC("lastresort", timePrio1, selectedIntfs{eth0: true, eth1: true})
 	dpcManager.UpdateAA(aa)
-	dpcManager.AddDPC(dpc)
 
 	// Verification should succeed even if connectivity over eth1 is failing.
 	t.Eventually(testingInProgressCb()).Should(BeTrue())
@@ -1014,7 +1013,7 @@ func TestDNS(test *testing.T) {
 	t.Expect(eth0State.LastSucceeded.After(eth0State.LastFailed)).To(BeTrue())
 	t.Expect(eth0State.IfName).To(Equal("eth0"))
 	t.Expect(eth0State.Phylabel).To(Equal("eth0"))
-	t.Expect(eth0State.Logicallabel).To(Equal("mock-eth0"))
+	t.Expect(eth0State.Logicallabel).To(Equal("eth0"))
 	t.Expect(eth0State.LastError).To(BeEmpty())
 	t.Expect(eth0State.AddrInfoList).To(HaveLen(1))
 	t.Expect(eth0State.AddrInfoList[0].Addr.String()).To(Equal("192.168.10.5"))
@@ -1045,7 +1044,7 @@ func TestDNS(test *testing.T) {
 	t.Expect(eth1State.LastFailed.After(eth1State.LastSucceeded)).To(BeTrue())
 	t.Expect(eth1State.IfName).To(Equal("eth1"))
 	t.Expect(eth1State.Phylabel).To(Equal("eth1"))
-	t.Expect(eth1State.Logicallabel).To(Equal("mock-eth1"))
+	t.Expect(eth1State.Logicallabel).To(Equal("eth1"))
 	t.Expect(eth1State.LastError).To(Equal("failed to connect over eth1"))
 	t.Expect(eth1State.AddrInfoList).To(HaveLen(1))
 	t.Expect(eth1State.AddrInfoList[0].Addr.String()).To(Equal("172.20.1.2"))
@@ -1066,7 +1065,8 @@ func TestDNS(test *testing.T) {
 }
 
 func TestWireless(test *testing.T) {
-	t := initTest(test)
+	expectBootstrapDPC := true
+	t := initTest(test, expectBootstrapDPC)
 
 	// Prepare simulated network stack.
 	wlan0 := mockWlan0()
@@ -1237,7 +1237,8 @@ func TestWireless(test *testing.T) {
 }
 
 func TestAddDPCDuringVerify(test *testing.T) {
-	t := initTest(test)
+	expectBootstrapDPC := true
+	t := initTest(test, expectBootstrapDPC)
 
 	// Prepare simulated network stack.
 	eth0 := mockEth0()
@@ -1282,7 +1283,8 @@ func TestAddDPCDuringVerify(test *testing.T) {
 }
 
 func TestDPCWithAssignedInterface(test *testing.T) {
-	t := initTest(test)
+	expectBootstrapDPC := true
+	t := initTest(test, expectBootstrapDPC)
 
 	// Prepare simulated network stack.
 	eth0 := mockEth0()
@@ -1341,21 +1343,17 @@ func TestDeleteDPC(test *testing.T) {
 	aa := makeAA(selectedIntfs{eth0: true})
 	dpcManager.UpdateAA(aa)
 
-	// Apply global config.
+	// Apply global config with lastresort enabled.
 	dpcManager.UpdateGCP(globalConfigWithLastresort())
-
-	// Apply "lastresort" DPC.
-	timePrio1 := time.Time{}
-	dpc := makeDPC("lastresort", timePrio1, selectedIntfs{eth0: true})
-	dpcManager.AddDPC(dpc)
+	lastResortTimePrio := time.Unix(0, 0)
 
 	t.Eventually(dpcIdxCb()).Should(Equal(0))
 	t.Eventually(dpcKeyCb(0)).Should(Equal("lastresort"))
-	t.Eventually(dpcTimePrioCb(0, timePrio1)).Should(BeTrue())
+	t.Eventually(dpcTimePrioCb(0, lastResortTimePrio)).Should(BeTrue())
 
 	// Apply "zedagent" DPC.
 	timePrio2 := time.Now()
-	dpc = makeDPC("zedagent", timePrio2, selectedIntfs{eth0: true})
+	dpc := makeDPC("zedagent", timePrio2, selectedIntfs{eth0: true})
 	dpcManager.AddDPC(dpc)
 
 	t.Eventually(dpcIdxCb()).Should(Equal(0))
@@ -1366,11 +1364,12 @@ func TestDeleteDPC(test *testing.T) {
 	dpcManager.DelDPC(dpc)
 	t.Eventually(dpcIdxCb()).Should(Equal(0))
 	t.Eventually(dpcKeyCb(0)).Should(Equal("lastresort"))
-	t.Eventually(dpcTimePrioCb(0, timePrio1)).Should(BeTrue())
+	t.Eventually(dpcTimePrioCb(0, lastResortTimePrio)).Should(BeTrue())
 }
 
 func TestDPCWithReleasedAndRenamedInterface(test *testing.T) {
-	t := initTest(test)
+	expectBootstrapDPC := true
+	t := initTest(test, expectBootstrapDPC)
 
 	// Two ethernet interface configured for mgmt.
 	// However, both interfaces are assigned to PCIBack.
@@ -1433,7 +1432,8 @@ func TestDPCWithReleasedAndRenamedInterface(test *testing.T) {
 }
 
 func TestVlansAndBonds(test *testing.T) {
-	t := initTest(test)
+	expectBootstrapDPC := true
+	t := initTest(test, expectBootstrapDPC)
 
 	// Prepare simulated network stack.
 	// Initially there are only physical network interfaces.
@@ -1730,7 +1730,8 @@ func TestVlansAndBonds(test *testing.T) {
 }
 
 func TestTransientDNSError(test *testing.T) {
-	t := initTest(test)
+	expectBootstrapDPC := true
+	t := initTest(test, expectBootstrapDPC)
 
 	// Prepare simulated network stack.
 	eth0 := mockEth0()
@@ -1800,7 +1801,8 @@ func TestTransientDNSError(test *testing.T) {
 
 // Test DPC from before 7.3.0 which does not have IsL3Port flag.
 func TestOldDPC(test *testing.T) {
-	t := initTest(test)
+	expectBootstrapDPC := true
+	t := initTest(test, expectBootstrapDPC)
 
 	// Prepare simulated network stack.
 	eth0 := mockEth0()
@@ -1845,7 +1847,8 @@ func TestOldDPC(test *testing.T) {
 }
 
 func TestRemoteTemporaryFailure(test *testing.T) {
-	t := initTest(test)
+	expectBootstrapDPC := true
+	t := initTest(test, expectBootstrapDPC)
 
 	// Prepare simulated network stack.
 	eth0 := mockEth0()
@@ -1904,7 +1907,8 @@ func TestRemoteTemporaryFailure(test *testing.T) {
 // if a newer DPC exists, regardless of whether the newer DPC provides working
 // connectivity. This prevents the DPCL from growing beyond the pubsub size limit.
 func TestRemovalOfOldNonWorkingDPCs(test *testing.T) {
-	t := initTest(test)
+	expectBootstrapDPC := true
+	t := initTest(test, expectBootstrapDPC)
 
 	// Prepare simulated network stack.
 	eth0 := mockEth0()
@@ -1971,4 +1975,204 @@ func TestRemovalOfOldNonWorkingDPCs(test *testing.T) {
 	t.Expect(latestDPC.Key).To(Equal("zedagent"))
 	t.Expect(latestDPC.TimePriority.Equal(timePrio3)).To(BeTrue())
 	t.Expect(latestDPC.State).To(Equal(types.DPCStateFailWithIPAndDNS))
+}
+
+// Test that DPCManager will temporarily use lastresort when there is no DPC
+// available for bootstrapping, even if lastresort is not enabled by config.
+func TestNoDPCForBootstrap(test *testing.T) {
+	expectBootstrapDPC := false
+	t := initTest(test, expectBootstrapDPC)
+
+	// Prepare simulated network stack.
+	eth0 := mockEth0()
+	networkMonitor.AddOrUpdateInterface(eth0)
+
+	// Single interface configured for mgmt.
+	aa := makeAA(selectedIntfs{eth0: true})
+	dpcManager.UpdateAA(aa)
+
+	// Apply global config, lastresort is not enabled.
+	dpcManager.UpdateGCP(globalConfig())
+
+	// Even though lastresort is disabled, DPCManager will use it because
+	// there is no DPC available to bootstrap controller connectivity.
+	lastResortTimePrio := time.Unix(0, 0)
+	t.Eventually(testingInProgressCb()).Should(BeTrue())
+	t.Eventually(testingInProgressCb()).Should(BeFalse())
+	t.Eventually(dpcIdxCb()).Should(Equal(0))
+	t.Eventually(dnsKeyCb()).Should(Equal("lastresort"))
+	t.Eventually(dpcStateCb(0)).Should(Equal(types.DPCStateSuccess))
+
+	idx, dpcList := getDPCList()
+	t.Expect(idx).To(Equal(0))
+	t.Expect(dpcList).To(HaveLen(1))
+	t.Expect(dpcList[0].Key).To(Equal("lastresort"))
+	t.Expect(dpcList[0].TimePriority.Equal(lastResortTimePrio)).To(BeTrue())
+	t.Expect(dpcList[0].State).To(Equal(types.DPCStateSuccess))
+	t.Expect(dpcList[0].LastSucceeded.After(dpcList[0].LastFailed)).To(BeTrue())
+	t.Expect(dpcList[0].LastError).To(BeEmpty())
+
+	// Apply "zedagent" DPC but with failing connectivity -- lastresort should be retained.
+	timePrio2 := time.Now()
+	dpc := makeDPC("zedagent", timePrio2, selectedIntfs{eth0: true})
+	connTester.SetConnectivityError("zedagent", "eth0",
+		errors.New("failed to connect over eth0"))
+	dpcManager.AddDPC(dpc)
+
+	t.Eventually(testingInProgressCb()).Should(BeTrue())
+	t.Eventually(testingInProgressCb()).Should(BeFalse())
+	t.Eventually(dpcStateCb(0)).Should(Equal(types.DPCStateFailWithIPAndDNS))
+	t.Eventually(dpcIdxCb()).Should(Equal(1))
+	idx, dpcList = getDPCList()
+	t.Expect(idx).To(Equal(1)) // not the highest priority
+	t.Expect(dpcList).To(HaveLen(2))
+	t.Expect(dpcList[0].Key).To(Equal("zedagent"))
+	t.Expect(dpcList[0].TimePriority.Equal(timePrio2)).To(BeTrue())
+	t.Expect(dpcList[0].State).To(Equal(types.DPCStateFailWithIPAndDNS))
+	t.Expect(dpcList[0].LastFailed.After(dpcList[0].LastSucceeded)).To(BeTrue())
+	t.Expect(dpcList[0].LastError).To(
+		Equal("not enough working ports (0); failed with: " +
+			"[failed to connect over eth0]"))
+	t.Expect(dpcList[1].Key).To(Equal("lastresort"))
+	t.Expect(dpcList[1].TimePriority.Equal(lastResortTimePrio)).To(BeTrue())
+	t.Expect(dpcList[1].State).To(Equal(types.DPCStateSuccess))
+	t.Expect(dpcList[1].LastSucceeded.After(dpcList[0].LastFailed)).To(BeTrue())
+	t.Expect(dpcList[1].LastError).To(BeEmpty())
+
+	// Now put a working zedagent DPC. Lastresort should be eventually removed because
+	// it is not enabled by config to always stay around.
+	timePrio3 := time.Now()
+	dpc = makeDPC("zedagent", timePrio3, selectedIntfs{eth0: true})
+	connTester.SetConnectivityError("zedagent", "eth0", nil)
+	dpcManager.AddDPC(dpc)
+
+	t.Eventually(dpcListLenCb()).Should(Equal(1))
+	t.Eventually(dpcIdxCb()).Should(Equal(0))
+	t.Eventually(dnsKeyCb()).Should(Equal("zedagent"))
+	t.Eventually(dpcStateCb(0)).Should(Equal(types.DPCStateSuccess))
+
+	idx, dpcList = getDPCList()
+	t.Expect(idx).To(Equal(0))
+	t.Expect(dpcList).To(HaveLen(1))
+	t.Expect(dpcList[0].Key).To(Equal("zedagent"))
+	t.Expect(dpcList[0].TimePriority.Equal(timePrio3)).To(BeTrue())
+	t.Expect(dpcList[0].State).To(Equal(types.DPCStateSuccess))
+	t.Expect(dpcList[0].LastSucceeded.After(dpcList[0].LastFailed)).To(BeTrue())
+	t.Expect(dpcList[0].LastError).To(BeEmpty())
+}
+
+// Test that if there is no DPC available within DpcAvailTimeLimit (in the unit test
+// only 3 seconds, in reality 1 minute), DPCManager will use lastresort
+// (even if it is disabled by config).
+func TestDpcAvailTimeLimit(test *testing.T) {
+	// Let's trick DPCManager to wait for a DPC, but nothing will be actually submitted
+	// and the timer should fire.
+	expectBootstrapDPC := true
+	t := initTest(test, expectBootstrapDPC)
+
+	// Prepare simulated network stack.
+	eth0 := mockEth0()
+	networkMonitor.AddOrUpdateInterface(eth0)
+
+	// Single interface configured for mgmt.
+	aa := makeAA(selectedIntfs{eth0: true})
+	dpcManager.UpdateAA(aa)
+
+	// Apply global config, lastresort is not enabled.
+	dpcManager.UpdateGCP(globalConfig())
+
+	// Even though lastresort is disabled, DPCManager will use it because
+	// it receives no DPC within DpcAvailTimeLimit.
+	lastResortTimePrio := time.Unix(0, 0)
+	t.Eventually(dpcListLenCb()).Should(Equal(1))
+	t.Eventually(dpcIdxCb()).Should(Equal(0))
+	t.Eventually(dnsKeyCb()).Should(Equal("lastresort"))
+	t.Eventually(dpcStateCb(0)).Should(Equal(types.DPCStateSuccess))
+
+	idx, dpcList := getDPCList()
+	t.Expect(idx).To(Equal(0))
+	t.Expect(dpcList).To(HaveLen(1))
+	t.Expect(dpcList[0].Key).To(Equal("lastresort"))
+	t.Expect(dpcList[0].TimePriority.Equal(lastResortTimePrio)).To(BeTrue())
+	t.Expect(dpcList[0].State).To(Equal(types.DPCStateSuccess))
+	t.Expect(dpcList[0].LastSucceeded.After(dpcList[0].LastFailed)).To(BeTrue())
+	t.Expect(dpcList[0].LastError).To(BeEmpty())
+
+	// Now put a working zedagent DPC. Lastresort should be eventually removed because
+	// it is not enabled by config to always stay around.
+	timePrio2 := time.Now()
+	dpc := makeDPC("zedagent", timePrio2, selectedIntfs{eth0: true})
+	connTester.SetConnectivityError("zedagent", "eth0", nil)
+	dpcManager.AddDPC(dpc)
+
+	t.Eventually(dpcListLenCb()).Should(Equal(1))
+	t.Eventually(dpcIdxCb()).Should(Equal(0))
+	t.Eventually(dnsKeyCb()).Should(Equal("zedagent"))
+	t.Eventually(dpcStateCb(0)).Should(Equal(types.DPCStateSuccess))
+}
+
+// When the set of ethernet ports available for management changes,
+// Lastresort DPC should be updated.
+func TestLastresortUpdate(test *testing.T) {
+	t := initTest(test)
+
+	// Prepare simulated network stack.
+	eth0 := mockEth0()
+	eth1 := mockEth1()
+	networkMonitor.AddOrUpdateInterface(eth0)
+	networkMonitor.AddOrUpdateInterface(eth1)
+
+	// Two ethernet interface configured for mgmt.
+	// However, eth1 is assigned to an application initially.
+	aa := makeAA(selectedIntfs{eth0: true, eth1: true})
+	appUUID, err := uuid.FromString("ccf4c2f8-1d0f-4b44-b55a-220f7a138f6d")
+	t.Expect(err).To(BeNil())
+	aa.IoBundleList[1].IsPCIBack = true
+	aa.IoBundleList[1].UsedByUUID = appUUID
+	dpcManager.UpdateAA(aa)
+
+	// Apply global config first.
+	// "lastresort" DPC will be created by DPCManager.
+	dpcManager.UpdateGCP(globalConfigWithLastresort())
+	lastResortTimePrio := time.Unix(0, 0)
+
+	// Lastresort verification should succeed.
+	t.Eventually(dpcIdxCb()).Should(Equal(0))
+	t.Eventually(dnsKeyCb()).Should(Equal("lastresort"))
+	t.Eventually(dpcStateCb(0)).Should(Equal(types.DPCStateSuccess))
+
+	// Only eth0 is used in lastresort DPC.
+	idx, dpcList := getDPCList()
+	t.Expect(idx).To(Equal(0))
+	t.Expect(dpcList).To(HaveLen(1))
+	t.Expect(dpcList[0].Key).To(Equal("lastresort"))
+	t.Expect(dpcList[0].TimePriority.Equal(lastResortTimePrio)).To(BeTrue())
+	t.Expect(dpcList[0].State).To(Equal(types.DPCStateSuccess))
+	t.Expect(dpcList[0].LastSucceeded.After(dpcList[0].LastFailed)).To(BeTrue())
+	t.Expect(dpcList[0].LastError).To(BeEmpty())
+	t.Expect(dpcList[0].Ports).To(HaveLen(1))
+	t.Expect(dpcList[0].Ports[0].IfName).To(Equal("eth0"))
+
+	// Now simulate that eth1 was unassigned from an application and is therefore available
+	// for management and should be added into lastresort.
+	aa = makeAA(selectedIntfs{eth0: true, eth1: true})
+	dpcManager.UpdateAA(aa)
+
+	t.Eventually(func() bool {
+		dnsObj, _ := pubDNS.Get("global")
+		dns := dnsObj.(types.DeviceNetworkStatus)
+		ports := dns.Ports
+		return !dns.Testing && len(ports) == 2
+	}).Should(BeTrue())
+	idx, dpcList = getDPCList()
+	t.Expect(idx).To(Equal(0))
+	t.Expect(dpcList).To(HaveLen(1))
+	t.Expect(dpcList[0].Key).To(Equal("lastresort"))
+	t.Expect(dpcList[0].TimePriority.Equal(lastResortTimePrio)).To(BeTrue())
+	t.Expect(dpcList[0].State).To(Equal(types.DPCStateSuccess))
+	t.Expect(dpcList[0].LastSucceeded.After(dpcList[0].LastFailed)).To(BeTrue())
+	t.Expect(dpcList[0].LastError).To(BeEmpty())
+	t.Expect(dpcList[0].Ports).To(HaveLen(2))
+	t.Expect(dpcList[0].Ports[0].IfName).To(Equal("eth0"))
+	t.Expect(dpcList[0].Ports[1].IfName).To(Equal("eth1"))
 }
