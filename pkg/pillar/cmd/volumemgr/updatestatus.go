@@ -471,8 +471,8 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 
 	log.Functionf("doUpdateVol(%s) name %s", status.Key(), status.DisplayName)
 
-	// Anything to do?
-	if status.State == types.CREATED_VOLUME {
+	// If volume is already created or if is a replicated volume, do nothing.
+	if status.State == types.CREATED_VOLUME || status.IsReplicated {
 		log.Functionf("doUpdateVol(%s) name %s nothing to do",
 			status.Key(), status.DisplayName)
 		return false, true
