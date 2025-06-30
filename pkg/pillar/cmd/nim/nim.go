@@ -7,7 +7,6 @@ import (
 	"context"
 	"encoding/json"
 	"flag"
-	"fmt"
 	"os"
 	"path"
 	"path/filepath"
@@ -27,7 +26,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
-	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 )
 
@@ -42,12 +40,8 @@ const (
 const (
 	configDevicePortConfigDir = types.IdentityDirname + "/DevicePortConfig"
 	runDevicePortConfigDir    = "/run/global/DevicePortConfig"
-	maxReadSize               = 16384       // Punt on too large files
-	dpcAvailableTimeLimit     = time.Minute // TODO: make configurable?
+	maxReadSize               = 16384 // Punt on too large files
 )
-
-// Really a constant
-var nilUUID uuid.UUID
 
 // NIM - Network Interface Manager.
 // Manage (physical) network interfaces of the device based on configuration from
@@ -78,7 +72,6 @@ type nim struct {
 	subEdgeNodeCert          pubsub.Subscription
 	subDevicePortConfigA     pubsub.Subscription
 	subDevicePortConfigO     pubsub.Subscription
-	subDevicePortConfigS     pubsub.Subscription
 	subDevicePortConfigM     pubsub.Subscription
 	subZedAgentStatus        pubsub.Subscription
 	subAssignableAdapters    pubsub.Subscription
@@ -106,9 +99,6 @@ type nim struct {
 	globalConfig       types.ConfigItemValueMap
 	gcInitialized      bool // Received initial GlobalConfig
 	assignableAdapters types.AssignableAdapters
-	enabledLastResort  bool
-	forceLastResort    bool
-	lastResort         *types.DevicePortConfig
 }
 
 // AddAgentSpecificCLIFlags adds CLI options
@@ -196,11 +186,18 @@ func (n *nim) init() (err error) {
 func (n *nim) run(ctx context.Context) (err error) {
 	n.Log.Noticef("Starting %s", agentName)
 
+	// Check if we have a /config/DevicePortConfig/*.json which we need to
+	// take into account by copying it to /run/global/DevicePortConfig/
+	n.ingestDevicePortConfig()
+
 	// Start DPC Manager.
 	if err = n.dpcManager.Init(ctx); err != nil {
 		return err
 	}
-	if err = n.dpcManager.Run(ctx); err != nil {
+	installerDPCs := n.listPublishedDPCs(runDevicePortConfigDir)
+	haveBootstrapConf := fileutils.FileExists(n.Log, types.BootstrapConfFileName)
+	expectBootstrapDPCs := len(installerDPCs) > 0 || haveBootstrapConf
+	if err = n.dpcManager.Run(ctx, expectBootstrapDPCs); err != nil {
 		return err
 	}
 
@@ -217,28 +214,6 @@ func (n *nim) run(ctx context.Context) (err error) {
 	}
 	n.Log.Noticef("Processed GlobalConfig")
 
-	// Check if we have a /config/DevicePortConfig/*.json which we need to
-	// take into account by copying it to /run/global/DevicePortConfig/
-	n.ingestDevicePortConfig()
-
-	// Activate some subscriptions.
-	// Not all yet though, first we wait for last-resort and AA to initialize.
-	if err = n.subControllerCert.Activate(); err != nil {
-		return err
-	}
-	if err = n.subEdgeNodeCert.Activate(); err != nil {
-		return err
-	}
-	if err = n.subDevicePortConfigS.Activate(); err != nil {
-		return err
-	}
-	if err = n.subOnboardStatus.Activate(); err != nil {
-		return err
-	}
-	if err = n.subEdgeNodeClusterStatus.Activate(); err != nil {
-		return err
-	}
-
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(stillRunTime)
 	n.PubSub.StillRunning(agentName, warningTime, errorTime)
@@ -249,81 +224,28 @@ func (n *nim) run(ctx context.Context) (err error) {
 	min := max * 0.3
 	publishTimer := flextimer.NewRangeTicker(time.Duration(min), time.Duration(max))
 
-	// Watch for interface changes to update last resort DPC.
-	done := make(chan struct{})
-	defer close(done)
-	netEvents := n.networkMonitor.WatchEvents(ctx, agentName)
+	// Periodically resolve the controller hostname to keep its DNS entry cached,
+	// reducing the need for DNS lookups on every controller API request.
+	go n.runResolverCacheForController()
 
-	// Time limit to obtain some network config.
-	// If it runs out and we still do not have any config, lastresort will be enabled
-	// unconditionally.
-	// This is mainly to handle the case when for whatever reason the device
-	// has lost /persist/status/nim/DevicePortConfigList
-	dpcAvailTimer := time.After(dpcAvailableTimeLimit)
-
-	if !n.enabledLastResort {
-		// Even if lastresort DPC is disabled by config, it can be forcefully used
-		// until NIM obtains any proper network config (from controller or bootstrap config
-		// or override/usb json).
-		//  * Before onboarding, we can easily determine if there is going to be any network
-		//    config available. If there is neither bootstrap device config nor any network
-		//    config override inside the /config partition or inside an (already plugged in)
-		//    USB stick, then device has no source of network configuration (currently)
-		//    available. The only exception is if the user is planning to insert USB stick
-		//    with usb.json *later*, but this cannot be predicted.
-		//    In order to not prolong onboarding in situations where the use of lastresort
-		//    is expected (ethernet + DHCP scenarios; often relied upon in lab/testing cases),
-		//    we will forcefully enable lastresort immediately if the above conditions for
-		//    missing network config source are satisfied. If the user later inserts a USB
-		//    stick with usb.json or the device onboards using lastresort and obtains a proper
-		//    config from the controller, the lastresort DPC will be unpublished (unless it is
-		//    enabled explicitly by config - by default it is disabled).
-		//  * After onboarding, it is expected that device always keeps and persists
-		//    at least the latest and the last working DPC, so it should never run out of
-		//    network configurations. But should device loose all of its /persist partition,
-		//    e.g. due to replacing or wiping the single disk where /persist lives, NIM will
-		//    notice that even after one minute of runtime (when dpcAvailTimer fires) there
-		//    is still no network config available and it will forcefully enable lastresort.
-		if !n.isDeviceOnboarded() &&
-			len(n.listPublishedDPCs(runDevicePortConfigDir)) == 0 &&
-			!fileutils.FileExists(n.Log, types.BootstrapConfFileName) {
-			n.forceLastResort = true
-			n.reevaluateLastResortDPC()
-		}
+	// Activate all subscriptions now.
+	inactiveSubs := []pubsub.Subscription{
+		n.subControllerCert,
+		n.subEdgeNodeCert,
+		n.subOnboardStatus,
+		n.subEdgeNodeClusterStatus,
+		n.subDevicePortConfigM,
+		n.subDevicePortConfigO,
+		n.subDevicePortConfigA,
+		n.subZedAgentStatus,
+		n.subAssignableAdapters,
+		n.subWwanStatus,
+		n.subNetworkInstanceConfig,
 	}
-
-	waitForLastResort := n.enabledLastResort
-	lastResortIsReady := func() error {
-		if err = n.subDevicePortConfigM.Activate(); err != nil {
+	for _, sub := range inactiveSubs {
+		if err = sub.Activate(); err != nil {
 			return err
 		}
-		if err = n.subDevicePortConfigO.Activate(); err != nil {
-			return err
-		}
-		if err = n.subDevicePortConfigA.Activate(); err != nil {
-			return err
-		}
-		if err = n.subZedAgentStatus.Activate(); err != nil {
-			return err
-		}
-		if err = n.subAssignableAdapters.Activate(); err != nil {
-			return err
-		}
-		if err = n.subWwanStatus.Activate(); err != nil {
-			return err
-		}
-		if err = n.subNetworkInstanceConfig.Activate(); err != nil {
-			return err
-		}
-		go n.runResolverCacheForController()
-		return nil
-	}
-	if !waitForLastResort {
-		if err = lastResortIsReady(); err != nil {
-			return err
-		}
-	} else {
-		n.Log.Notice("Waiting for last-resort DPC...")
 	}
 
 	for {
@@ -339,31 +261,15 @@ func (n *nim) run(ctx context.Context) (err error) {
 
 		case change := <-n.subGlobalConfig.MsgChan():
 			n.subGlobalConfig.ProcessChange(change)
-			if waitForLastResort && !n.enabledLastResort {
-				waitForLastResort = false
-				n.Log.Notice("last-resort DPC is not enabled")
-				if err = lastResortIsReady(); err != nil {
-					return err
-				}
-			}
 
 		case change := <-n.subDevicePortConfigM.MsgChan():
 			n.subDevicePortConfigM.ProcessChange(change)
+
 		case change := <-n.subDevicePortConfigA.MsgChan():
 			n.subDevicePortConfigA.ProcessChange(change)
 
 		case change := <-n.subDevicePortConfigO.MsgChan():
 			n.subDevicePortConfigO.ProcessChange(change)
-
-		case change := <-n.subDevicePortConfigS.MsgChan():
-			n.subDevicePortConfigS.ProcessChange(change)
-			if waitForLastResort && n.lastResort != nil {
-				waitForLastResort = false
-				n.Log.Notice("last-resort DPC is ready")
-				if err = lastResortIsReady(); err != nil {
-					return err
-				}
-			}
 
 		case change := <-n.subZedAgentStatus.MsgChan():
 			n.subZedAgentStatus.ProcessChange(change)
@@ -381,12 +287,6 @@ func (n *nim) run(ctx context.Context) (err error) {
 			n.subNetworkInstanceConfig.ProcessChange(change)
 			n.handleNetworkInstanceUpdate()
 
-		case event := <-netEvents:
-			ifChange, isIfChange := event.(netmonitor.IfChange)
-			if isIfChange {
-				n.processInterfaceChange(ifChange)
-			}
-
 		case <-publishTimer.C:
 			start := time.Now()
 			err = n.cipherMetrics.Publish(n.Log, n.pubCipherMetrics, "global")
@@ -399,20 +299,6 @@ func (n *nim) run(ctx context.Context) (err error) {
 			}
 			n.PubSub.CheckMaxTimeTopic(agentName, "publishTimer", start,
 				warningTime, errorTime)
-
-		case <-dpcAvailTimer:
-			obj, err := n.pubDevicePortConfigList.Get("global")
-			if err != nil {
-				n.Log.Errorf("Failed to get published DPCL: %v", err)
-				continue
-			}
-			dpcl := obj.(types.DevicePortConfigList)
-			if len(dpcl.PortConfigList) == 0 {
-				n.Log.Noticef("DPC Manager has no network config to work with "+
-					"even after %v, enabling lastresort unconditionally", dpcAvailableTimeLimit)
-				n.forceLastResort = true
-				n.reevaluateLastResortDPC()
-			}
 
 		case <-ctx.Done():
 			return nil
@@ -568,10 +454,9 @@ func (n *nim) initSubscriptions() (err error) {
 	}
 
 	// We get DevicePortConfig from three sources in this priority:
-	// 0. A request from monitor TUI application (manual override)
-	// 1. zedagent publishing DevicePortConfig
-	// 2. override file in /run/global/DevicePortConfig/*.json
-	// 3. "lastresort" derived from the set of network interfaces
+	// 1. A request from monitor TUI application (manual override)
+	// 2. zedagent publishing DevicePortConfig (received from controller or LOC)
+	// 3. override file in /run/global/DevicePortConfig/*.json
 	n.subDevicePortConfigM, err = n.PubSub.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "monitor",
 		MyAgentName:   agentName,
@@ -601,7 +486,6 @@ func (n *nim) initSubscriptions() (err error) {
 	if err != nil {
 		return err
 	}
-
 	n.subDevicePortConfigO, err = n.PubSub.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "",
 		MyAgentName:   agentName,
@@ -609,21 +493,6 @@ func (n *nim) initSubscriptions() (err error) {
 		Activate:      false,
 		CreateHandler: n.handleDPCFileCreate,
 		ModifyHandler: n.handleDPCFileModify,
-		DeleteHandler: n.handleDPCDelete,
-		WarningTime:   warningTime,
-		ErrorTime:     errorTime,
-	})
-	if err != nil {
-		return err
-	}
-
-	n.subDevicePortConfigS, err = n.PubSub.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:     agentName,
-		MyAgentName:   agentName,
-		TopicImpl:     types.DevicePortConfig{},
-		Activate:      false,
-		CreateHandler: n.handleDPCCreate,
-		ModifyHandler: n.handleDPCModify,
 		DeleteHandler: n.handleDPCDelete,
 		WarningTime:   warningTime,
 		ErrorTime:     errorTime,
@@ -769,15 +638,13 @@ func (n *nim) applyGlobalConfig(gcp *types.ConfigItemValueMap) {
 	n.dpcManager.UpdateGCP(n.globalConfig)
 	timeout := gcp.GlobalValueInt(types.NetworkTestTimeout)
 	n.connTester.TestTimeout = time.Second * time.Duration(timeout)
-	n.reevaluateLastResortDPC()
 	n.gcInitialized = true
 }
 
-// handleDPCCreate handles four different sources in this priority order:
-// 0. A request from monitor TUI application
-// 1. zedagent with any key
-// 2. "usb" key from build or USB stick file
-// 3. "lastresort" derived from the set of network interfaces
+// handleDPCCreate handles three different sources in this priority order:
+// 1. A request from monitor TUI application
+// 2. DPC from zedagent (received from the controller or LOC)
+// 3. "override"/"usb" key from build or USB stick file
 // We determine the priority from TimePriority in the config.
 func (n *nim) handleDPCCreate(_ interface{}, key string, configArg interface{}) {
 	n.handleDPCImpl(key, configArg, false)
@@ -824,12 +691,6 @@ func (n *nim) handleDPCImpl(key string, configArg interface{}, fromFile bool) {
 			return
 		}
 	}
-	// Lastresort DPC is allowed to be forcefully used only until NIM receives
-	// any (proper) network configuration.
-	if dpc.Key != dpcmanager.LastResortKey {
-		n.forceLastResort = false
-		n.reevaluateLastResortDPC()
-	}
 	// if device can connect to controller it may get a new DPC in global config. This global DPC
 	// will have higher priority but can be invalid and the device will loose connectivity again
 	// at least temporarily while DPC is being tested. To avoid this we reset the timestamp on
@@ -868,9 +729,6 @@ func (n *nim) handleAssignableAdaptersImpl(key string, configArg interface{}) {
 	assignableAdapters := configArg.(types.AssignableAdapters)
 	n.assignableAdapters = assignableAdapters
 	n.dpcManager.UpdateAA(n.assignableAdapters)
-	if n.enabledLastResort {
-		n.publishLastResortDPC("assignable adapters changed")
-	}
 }
 
 func (n *nim) handleAssignableAdaptersDelete(_ interface{}, key string, _ interface{}) {
@@ -948,18 +806,6 @@ func (n *nim) handleEdgeNodeClusterStatusModify(_ interface{}, _ string,
 func (n *nim) handleEdgeNodeClusterStatusDelete(_ interface{}, _ string, _ interface{}) {
 	// Apply empty cluster status, which effectively removes the cluster IP.
 	n.dpcManager.UpdateClusterStatus(types.EdgeNodeClusterStatus{})
-}
-
-func (n *nim) isDeviceOnboarded() bool {
-	obj, err := n.subOnboardStatus.Get("global")
-	if err != nil {
-		return false
-	}
-	status, ok := obj.(types.OnboardingStatus)
-	if !ok {
-		return false
-	}
-	return status.DeviceUUID != nilUUID
 }
 
 func (n *nim) listPublishedDPCs(directory string) (dpcFilePaths []string) {
@@ -1063,160 +909,5 @@ func (n *nim) ingestDevicePortConfigFile(oldDirname string, newDirname string, n
 	if err != nil {
 		n.Log.Errorf("Failed to write new DevicePortConfig to %s: %s",
 			filename, err)
-	}
-}
-
-// reevaluateLastResortDPC re-evaluates the current state of Last resort DPC.
-// If the config or the overall situation around DPC availability changed since
-// the last call, an already enabled lastresort could be disabled and vice versa.
-// The function applies a potential change in the intended state of lastresort
-// by (un)publishing lastresort DPC (notification will be delivered to NIM itself
-// and further propagated to DPCManager).
-// Note that the function also updates n.enabledLastResort, signaling the current
-// (intended) state of Last resort DPC.
-func (n *nim) reevaluateLastResortDPC() {
-	fallbackAnyEth := n.globalConfig.GlobalValueTriState(types.NetworkFallbackAnyEth)
-	enabledByConfig := fallbackAnyEth == types.TS_ENABLED
-	enableLastResort := enabledByConfig || n.forceLastResort
-	if n.enabledLastResort != enableLastResort {
-		if enableLastResort {
-			reason := "lastresort enabled by global config"
-			if !enabledByConfig {
-				reason = "lastresort forcefully enabled"
-			}
-			n.publishLastResortDPC(reason)
-		} else {
-			n.removeLastResortDPC()
-		}
-	}
-	n.enabledLastResort = enableLastResort
-}
-
-func (n *nim) publishLastResortDPC(reason string) {
-	n.Log.Functionf("publishLastResortDPC")
-	dpc, err := n.makeLastResortDPC()
-	if err != nil {
-		n.Log.Error(err)
-		return
-	}
-	if n.lastResort != nil && n.lastResort.MostlyEqual(&dpc) {
-		return
-	}
-	n.Log.Noticef("Publishing last-resort DPC, reason: %v", reason)
-	if err := n.pubDevicePortConfig.Publish(dpcmanager.LastResortKey, dpc); err != nil {
-		n.Log.Errorf("Failed to publish last-resort DPC: %v", err)
-		return
-	}
-	n.lastResort = &dpc
-}
-
-func (n *nim) removeLastResortDPC() {
-	n.Log.Noticef("removeLastResortDPC")
-	if err := n.pubDevicePortConfig.Unpublish(dpcmanager.LastResortKey); err != nil {
-		n.Log.Errorf("Failed to un-publish last-resort DPC: %v", err)
-		return
-	}
-	n.lastResort = nil
-}
-
-func (n *nim) makeLastResortDPC() (types.DevicePortConfig, error) {
-	config := types.DevicePortConfig{}
-	config.Key = dpcmanager.LastResortKey
-	config.Version = types.DPCIsMgmt
-	// Set to higher than all zero but lower than the hardware model derived one above
-	config.TimePriority = time.Unix(0, 0)
-	ifNames, err := n.networkMonitor.ListInterfaces()
-	if err != nil {
-		err = fmt.Errorf("makeLastResortDPC: Failed to list interfaces: %v", err)
-		return config, err
-	}
-	for _, ifName := range ifNames {
-		ifIndex, _, err := n.networkMonitor.GetInterfaceIndex(ifName)
-		if err != nil {
-			n.Log.Errorf("makeLastResortDPC: failed to get interface index: %v", err)
-			continue
-		}
-		ifAttrs, err := n.networkMonitor.GetInterfaceAttrs(ifIndex)
-		if err != nil {
-			n.Log.Errorf("makeLastResortDPC: failed to get interface attrs: %v", err)
-			continue
-		}
-		if !n.includeLastResortPort(ifAttrs) {
-			continue
-		}
-		port := types.NetworkPortConfig{
-			IfName:       ifName,
-			Phylabel:     ifName,
-			Logicallabel: ifName,
-			IsMgmt:       true,
-			IsL3Port:     true,
-			DhcpConfig: types.DhcpConfig{
-				Dhcp: types.DhcpTypeClient,
-			},
-		}
-		dns := n.dpcManager.GetDNS()
-		portStatus := dns.LookupPortByIfName(ifName)
-		if portStatus != nil {
-			port.WirelessCfg = portStatus.WirelessCfg
-		}
-		config.Ports = append(config.Ports, port)
-	}
-	return config, nil
-}
-
-func (n *nim) includeLastResortPort(ifAttrs netmonitor.IfAttrs) bool {
-	ifName := ifAttrs.IfName
-	exclude := strings.HasPrefix(ifName, "vif") ||
-		strings.HasPrefix(ifName, "nbu") ||
-		strings.HasPrefix(ifName, "nbo") ||
-		strings.HasPrefix(ifName, "wlan") ||
-		strings.HasPrefix(ifName, "wwan") ||
-		strings.HasPrefix(ifName, "keth")
-	if exclude {
-		return false
-	}
-	if n.isInterfaceAssigned(ifName) {
-		return false
-	}
-	if ifAttrs.IsLoopback || !ifAttrs.WithBroadcast || ifAttrs.Enslaved {
-		return false
-	}
-
-	switch ifAttrs.IfType {
-	case "device":
-		return true
-	case "bridge":
-		// Was this originally an ethernet interface turned into a bridge?
-		_, exists, _ := n.networkMonitor.GetInterfaceIndex("k" + ifName)
-		return exists
-	case "can", "vcan":
-		return false
-	}
-
-	return false
-}
-
-func (n *nim) isInterfaceAssigned(ifName string) bool {
-	ib := n.assignableAdapters.LookupIoBundleIfName(ifName)
-	if ib == nil {
-		return false
-	}
-	n.Log.Tracef("isAssigned(%s): pciback %t, used %s",
-		ifName, ib.IsPCIBack, ib.UsedByUUID.String())
-	if ib.UsedByUUID != nilUUID {
-		return true
-	}
-	return false
-}
-
-func (n *nim) processInterfaceChange(ifChange netmonitor.IfChange) {
-	if !n.enabledLastResort || n.lastResort == nil {
-		return
-	}
-	includePort := n.includeLastResortPort(ifChange.Attrs)
-	port := n.lastResort.LookupPortByIfName(ifChange.Attrs.IfName)
-	if port == nil && includePort {
-		n.publishLastResortDPC(fmt.Sprintf("interface %s should be included",
-			ifChange.Attrs.IfName))
 	}
 }

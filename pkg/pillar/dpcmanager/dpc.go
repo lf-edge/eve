@@ -402,6 +402,9 @@ func (m *DpcManager) compressDPCL() {
 						dpc.ShaFile, dpc.PubKey())
 				}
 			}
+			if dpc.Key == LastResortKey {
+				m.lastResort = nil
+			}
 			if i <= m.dpcList.CurrentIndex {
 				newCurrentIndex--
 			}
