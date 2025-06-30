@@ -92,7 +92,10 @@ func sendLogsToVector(logChan <-chan inputEntry, appLogChan chan<- appLog, uploa
 			if entry.sendToRemote {
 				if vectorEnabled.Load() {
 					if _, err := uploadSockWriter.Write([]byte(logline)); err != nil {
-						log.Errorf("writelogFile: uploadSockWriter write error: %v", err)
+						// we only report errors periodically to avoid flooding the logs
+						if numLogs := uploadSockWriter.ReportDroppedMsgs(); numLogs > 0 {
+							log.Warnf("writelogFile: uploadSockWriter dropped %d logs due to a write error: %s", numLogs, err)
+						}
 					}
 				} else {
 					uploadLogChan <- logline
@@ -103,7 +106,10 @@ func sendLogsToVector(logChan <-chan inputEntry, appLogChan chan<- appLog, uploa
 				// write all log entries to the log file to keep
 				_, err := keepSockWriter.Write([]byte(logline))
 				if err != nil {
-					log.Errorf("writelogFile: keepSockWriter write error: %v", err)
+					// we only report errors periodically to avoid flooding the logs
+					if numLogs := keepSockWriter.ReportDroppedMsgs(); numLogs > 0 {
+						log.Warnf("writelogFile: keepSockWriter dropped %d logs due to a write error: %s", numLogs, err)
+					}
 				}
 			} else {
 				keepLogChan <- logline

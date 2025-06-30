@@ -10,9 +10,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
-	"time"
 
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 )
@@ -26,56 +24,6 @@ var (
 	defaultConfigPath   = "/persist/vector/config/vector.yaml.default"
 	candidateConfigPath = "/persist/vector/config/vector.yaml.new"
 )
-
-// BufferedSockWriter is a writer that buffers messages and writes them to a unix socket.
-// It uses a buffered channel to queue messages and attempts to reconnect if the connection is lost.
-type BufferedSockWriter struct {
-	path      string
-	buffer    chan []byte
-	reconnect time.Duration
-}
-
-// NewBufferedSockWriter creates a new buffered socket writer that writes to the specified path.
-func NewBufferedSockWriter(path string, bufSize int, reconnect time.Duration) *BufferedSockWriter {
-	sw := &BufferedSockWriter{
-		path:      path,
-		buffer:    make(chan []byte, bufSize),
-		reconnect: reconnect,
-	}
-	go sw.run()
-	return sw
-}
-
-func (sw *BufferedSockWriter) run() {
-	for {
-		conn, err := net.Dial("unix", sw.path)
-		if err != nil {
-			log.Errorf("socket connect failed: %v, retrying...", err)
-			time.Sleep(sw.reconnect)
-			continue
-		}
-
-		for msg := range sw.buffer {
-			_, err := conn.Write(msg)
-			if err != nil {
-				log.Errorf("socket write failed: %v, reconnecting...", err)
-				conn.Close()
-				break // reconnect
-			}
-		}
-	}
-}
-
-// Write implements the io.Writer interface for bufferedSockWriter.
-func (sw *BufferedSockWriter) Write(p []byte) (int, error) {
-	// Don't block forever, drop if buffer full
-	select {
-	case sw.buffer <- slices.Clone(p): // copy buffer
-		return len(p), nil
-	default:
-		return 0, fmt.Errorf("buffer full, dropping log")
-	}
-}
 
 // listenOnSocketAndWriteToChan - goroutine to listen on unix sockets for incoming log entries
 func listenOnSocketAndWriteToChan(sockPath string, sendToChan chan<- string) {
