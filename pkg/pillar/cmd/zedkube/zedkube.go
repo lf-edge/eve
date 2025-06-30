@@ -6,7 +6,9 @@
 package zedkube
 
 import (
+	"io"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -20,6 +22,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/kubeapi"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 	"k8s.io/client-go/rest"
 )
@@ -35,6 +38,7 @@ const (
 	vmiVNCFileName = "/run/zedkube/vmiVNC.run"
 
 	inlineCmdKubeClusterUpdateStatus = "pubKubeClusterUpdateStatus"
+	inlineCmdVmiDetach               = "vmiDetach"
 )
 
 var (
@@ -105,6 +109,7 @@ type zedkube struct {
 
 func inlineUsage() int {
 	log.Errorf("Usage: zedkube %s <node> <component> <status> <DestinationKubeUpdateVersion> <error>", inlineCmdKubeClusterUpdateStatus)
+	log.Errorf("Usage: zedkube %s <unreachable node name> <app domain name>", inlineCmdVmiDetach)
 	return 1
 }
 
@@ -163,6 +168,25 @@ func runCommand(ps *pubsub.PubSub, command string, args []string) int {
 			}
 			pubKubeClusterUpdateStatus.Publish("global", upStatusObj)
 		}
+	case inlineCmdVmiDetach:
+		if args == nil {
+			return inlineUsage()
+		}
+		nodeName := args[0]
+		appDomainName := args[1]
+
+		file, _ := os.OpenFile("/persist/kubelog/detach.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+		mw := io.MultiWriter(os.Stdout, file)
+		logger := logrus.New()
+		logger.SetOutput(mw)
+		baseLogObj := base.NewSourceLogObject(logger, "zedkube_inline", os.Getpid())
+		logObj := base.NewLogObject(baseLogObj, base.KubeAppFailover, "zedkube_inline", uuid.Nil, "detach-key")
+
+		logObj.Noticef("zedkube inline %s node:%s appDomainName:%s", inlineCmdVmiDetach, nodeName, appDomainName)
+		wdUpdateFunc := func() {
+
+		}
+		kubeapi.DetachOldWorkload(logObj, nodeName, appDomainName, wdUpdateFunc)
 	default:
 		log.Errorf("Unknown command %s", command)
 		return 99
@@ -539,6 +563,10 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 	appLogTimer := time.NewTimer(logcollectInterval * time.Second)
 
+	zedkubeWdUpdate := func() {
+		ps.StillRunning(agentName, warningTime, errorTime)
+	}
+
 	log.Notice("zedkube online")
 
 	for {
@@ -551,6 +579,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 		case <-appLogTimer.C:
 			zedkubeCtx.collectAppLogs()
+			zedkubeCtx.checkAppsFailover(zedkubeWdUpdate)
 			zedkubeCtx.checkAppsStatus()
 			zedkubeCtx.collectKubeStats()
 			zedkubeCtx.collectKubeSvcs()

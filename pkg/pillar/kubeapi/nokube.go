@@ -45,3 +45,8 @@ func GetNodeDrainStatus(pubsub.Subscription, *base.LogObject) *NodeDrainStatus {
 func IsClusterMode() bool {
 	return false
 }
+
+// DetachOldWorkload is a stub for non HV=kubevirt builds
+func DetachOldWorkload(log *base.LogObject, virtLauncherPodName string) error {
+	return nil
+}

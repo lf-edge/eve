@@ -48,7 +48,7 @@ const (
 	waitForPodCheckCounter = 5  // Check 5 times
 	waitForPodCheckTime    = 15 // Check every 15 seconds, don't wait for too long to cause watchdog
 	tolerateSec            = 15 // Pod/VMI reschedule delay after node unreachable seconds
-	unknownToHaltMinutes   = 5  // If VMI is unknown for 5 minutes, return halt state
+	unknownToHaltMinutes   = 30 // If VMI is unknown for 30 minutes, return halt state
 )
 
 // MetaDataType is a type for different Domain types
@@ -524,11 +524,11 @@ func (ctx kubevirtContext) Start(domainName string) error {
 	}
 	kubeconfig := ctx.kubeConfig
 
-	logrus.Infof("Starting Kubevirt domain %s, devicename nodename %d", domainName, len(ctx.nodeNameMap))
 	vmis, ok := ctx.vmiList[domainName]
 	if !ok {
 		return logError("start domain %s failed to get vmlist", domainName)
 	}
+	logrus.Infof("Starting Kubevirt domain %s, devicename nodename %d nodeName:%s vmis:%v", domainName, len(ctx.nodeNameMap), nodeName, vmis)
 
 	// Start the Pod ReplicaSet
 	if vmis.mtype == IsMetaReplicaPod {
@@ -584,6 +584,104 @@ func (ctx kubevirtContext) Create(domainName string, cfgFilename string, config 
 	return ctx.vmiList[domainName].domainID, nil
 }
 
+// replicaVmiScheduledOnMe is the VMI replicaset implementation of scheduledOnMe()
+func (ctx kubevirtContext) replicaVmiScheduledOnMe(vmirsName string) (onMe bool, err error) {
+	err = getConfig(&ctx)
+	if err != nil {
+		return false, err
+	}
+	kubeconfig := ctx.kubeConfig
+
+	nodeName, ok := ctx.nodeNameMap["nodename"]
+	if !ok {
+		return false, fmt.Errorf("Failed to get nodeName")
+	}
+
+	virtClient, err := kubecli.GetKubevirtClientFromRESTConfig(kubeconfig)
+	if err != nil {
+		logrus.Errorf("couldn't get the kubernetes client API config: %v", err)
+		return false, err
+	}
+
+	vmirs, err := virtClient.ReplicaSet(kubeapi.EVEKubeNameSpace).Get(vmirsName, metav1.GetOptions{})
+	if err != nil {
+		return false, err
+	}
+	appDomainNameSelector := vmirs.Status.LabelSelector
+
+	vmis, err := virtClient.VirtualMachineInstance(kubeapi.EVEKubeNameSpace).List(context.Background(), &metav1.ListOptions{
+		LabelSelector: appDomainNameSelector,
+	})
+	if err != nil {
+		return false, err
+	}
+	if len(vmis.Items) < 1 {
+		return false, nil
+	}
+	// If there are multiple copies, one should be terminating
+	// Skip it and find the copy scheduling or running and see if it matches node name
+	for _, vmi := range vmis.Items {
+		if vmi.ObjectMeta.DeletionTimestamp != nil {
+			// copy is terminating
+			// could be a leftover from a vmi currently failing over
+			continue
+		}
+		return (vmi.Status.NodeName == nodeName), nil
+	}
+	return false, nil
+}
+
+// replicaPodScheduledOnMe is the ReplicaSet Pod implementation of scheduledOnMe()
+func (ctx kubevirtContext) replicaPodScheduledOnMe(rsName string) (onMe bool, err error) {
+	err = getConfig(&ctx)
+	if err != nil {
+		return false, err
+	}
+
+	nodeName, ok := ctx.nodeNameMap["nodename"]
+	if !ok {
+		return false, fmt.Errorf("Failed to get nodeName")
+	}
+
+	podclientset, err := kubernetes.NewForConfig(ctx.kubeConfig)
+	if err != nil {
+		return false, fmt.Errorf("no kube config")
+	}
+
+	pods, err := podclientset.CoreV1().Pods(kubeapi.EVEKubeNameSpace).List(context.TODO(), metav1.ListOptions{
+		LabelSelector: fmt.Sprintf("app=%s", rsName),
+	})
+	if err != nil {
+		return false, err
+	}
+	if len(pods.Items) < 1 {
+		return false, nil
+	}
+
+	for _, pod := range pods.Items {
+		if pod.ObjectMeta.DeletionTimestamp != nil {
+			// this is terminating, check for another.
+			continue
+		}
+		return (pod.Spec.NodeName == nodeName), nil
+	}
+	return false, nil
+}
+
+// scheduledOnMe compares local node name to the node name kubernetes reports running/scheduling on
+// this is used in cluster environments to determine if action should be taken on an app only if the app
+// is running on the local node.  kubevirt hypervisor actions should call this to check it the app has
+// recently failed over to another node, if so then take no action (defer to the new node's pillar).
+func (ctx kubevirtContext) scheduledOnMe(mtype MetaDataType, objectName string) (onMe bool, err error) {
+	if mtype == IsMetaReplicaPod {
+		return ctx.replicaPodScheduledOnMe(objectName)
+	} else if mtype == IsMetaReplicaVMI {
+		return ctx.replicaVmiScheduledOnMe(objectName)
+	} else {
+		return false, logError("domain %s wrong type %d", objectName, mtype)
+	}
+}
+
 // There is no such thing as stop VMI, so delete it.
 func (ctx kubevirtContext) Stop(domainName string, force bool) error {
 	logrus.Debugf("Stop called for Domain: %s", domainName)
@@ -597,6 +695,15 @@ func (ctx kubevirtContext) Stop(domainName string, force bool) error {
 	if !ok {
 		return logError("domain %s failed to get vmlist", domainName)
 	}
+
+	onMe, err := ctx.scheduledOnMe(vmis.mtype, vmis.name)
+	if err != nil {
+		return err
+	}
+	if !onMe {
+		return nil
+	}
+
 	if vmis.mtype == IsMetaReplicaPod {
 		err = StopReplicaPodContainer(kubeconfig, vmis.name)
 	} else if vmis.mtype == IsMetaReplicaVMI {
@@ -628,6 +735,15 @@ func (ctx kubevirtContext) Delete(domainName string) (result error) {
 	if !ok {
 		return logError("delete domain %s failed to get vmlist", domainName)
 	}
+
+	onMe, err := ctx.replicaVmiScheduledOnMe(vmis.name)
+	if err != nil {
+		return err
+	}
+	if !onMe {
+		return nil
+	}
+
 	if vmis.mtype == IsMetaReplicaPod {
 		err = StopReplicaPodContainer(kubeconfig, vmis.name)
 	} else if vmis.mtype == IsMetaReplicaVMI {
@@ -664,7 +780,9 @@ func StopReplicaVMI(kubeconfig *rest.Config, repVmiName string) error {
 		return err
 	}
 
+	logrus.Infof("Attempt to stop VMI:%s vmirs deleted", repVmiName)
 	// Stop the VMI ReplicaSet
+
 	err = virtClient.ReplicaSet(kubeapi.EVEKubeNameSpace).Delete(repVmiName, &metav1.DeleteOptions{})
 	if errors.IsNotFound(err) {
 		logrus.Infof("Stop VMI Replicaset, Domain already deleted: %v", repVmiName)
@@ -694,6 +812,15 @@ func (ctx kubevirtContext) Info(domainName string) (int, types.SwState, error) {
 	if !ok {
 		return 0, types.HALTED, logError("info domain %s failed to get vmlist", domainName)
 	}
+
+	onMe, err := ctx.replicaVmiScheduledOnMe(vmis.name)
+	if err != nil {
+		return 0, types.BROKEN, logError("Failed to determine scheduled node")
+	}
+	if !onMe {
+		return 0, types.UNKNOWN, nil
+	}
+
 	if vmis.mtype == IsMetaReplicaPod {
 		res, err = InfoReplicaSetContainer(ctx, vmis)
 	} else {
@@ -808,9 +935,12 @@ func getVMIStatus(vmis *vmiMetaData, nodeName string) (string, error) {
 	var nonLocalStatus string
 	var targetVMI *v1.VirtualMachineInstance
 	for _, vmi := range vmiList.Items {
+		logrus.Infof("getVMIStatus: repVmi:%s nodeName:%s vmiList vmi.ObjectMeta.Name:%s vmi.Status.NodeName:%s vmi.ObjectMeta.DeletionTimestamp:%v vmi.Status.Phase:%s",
+			repVmiName, nodeName, vmi.ObjectMeta.Name, vmi.Status.NodeName, vmi.ObjectMeta.DeletionTimestamp, vmi.Status.Phase)
 		if vmi.Status.NodeName == nodeName {
 			if vmi.GenerateName == repVmiName {
 				targetVMI = &vmi
+				logrus.Infof("getVMIStatus: repVmi:%s nodeName:%s picked vmi", repVmiName, nodeName)
 				break
 			}
 		} else {
@@ -822,6 +952,7 @@ func getVMIStatus(vmis *vmiMetaData, nodeName string) (string, error) {
 	if targetVMI == nil {
 		if nonLocalStatus != "" {
 			_, _ = checkAndReturnStatus(vmis, false) // reset the unknown timestamp
+			logrus.Infof("getVMIStatus: repVmi:%s nodeName:%s nonLocalStatus:%s", repVmiName, nodeName, nonLocalStatus)
 			return nonLocalStatus, nil
 		}
 		retStatus, err2 := checkAndReturnStatus(vmis, true)
@@ -829,6 +960,8 @@ func getVMIStatus(vmis *vmiMetaData, nodeName string) (string, error) {
 		return retStatus, err2
 	}
 	res := fmt.Sprintf("%v", targetVMI.Status.Phase)
+	logrus.Infof("getVMIStatus: repVmi:%s nodeName:%s targetVMI.ObjectMeta.Name:%s targetVMI.Status.NodeName:%s targetVMI.ObjectMeta.DeletionTimestamp:%v targetVMI.Status.Phase:%s res:%s",
+		repVmiName, nodeName, targetVMI.ObjectMeta.Name, targetVMI.Status.NodeName, targetVMI.ObjectMeta.DeletionTimestamp, targetVMI.Status.Phase, res)
 	_, _ = checkAndReturnStatus(vmis, false) // reset the unknown timestamp
 	return res, nil
 }
@@ -836,12 +969,12 @@ func getVMIStatus(vmis *vmiMetaData, nodeName string) (string, error) {
 // Inspired from kvm.go
 func waitForVMI(vmis *vmiMetaData, nodeName string, available bool) error {
 	vmiName := vmis.name
-	maxDelay := time.Minute * 5 // 5mins ?? lets keep it for now
+	maxDelay := time.Minute * 15
 	delay := time.Second
 	var waited time.Duration
 
 	for {
-		logrus.Infof("waitForVMI for %s %t: waiting for %v", vmiName, available, delay)
+		logrus.Infof("waitForVMI for %s on %s %t: waiting for %v", vmiName, nodeName, available, delay)
 		if delay != 0 {
 			time.Sleep(delay)
 			waited += delay
@@ -851,21 +984,22 @@ func waitForVMI(vmis *vmiMetaData, nodeName string, available bool) error {
 		if err != nil {
 
 			if available {
-				logrus.Infof("waitForVMI for %s %t done, state %v, err %v", vmiName, available, state, err)
+				logrus.Infof("waitForVMI for %s on %s %t done, state %v, err %v", vmiName, nodeName, available, state, err)
 			} else {
 				// Failed to get status, may be already deleted.
-				logrus.Infof("waitForVMI for %s %t done, state %v, err %v", vmiName, available, state, err)
+				logrus.Infof("waitForVMI for %s on %s %t done, state %v, err %v", vmiName, nodeName, available, state, err)
 				return nil
 			}
 		} else {
 			if state == "Running" && available {
+				logrus.Infof("waitForVMI %s %s %t found state==Running", vmiName, nodeName, available)
 				return nil
 			}
 		}
 
 		if waited > maxDelay {
-			// Give up
-			logrus.Warnf("waitForVMIfor %s %t: giving up", vmiName, available)
+			// Give up, also log the state at the time of give up.
+			logrus.Warnf("waitForVMI for %s on %s %t: giving up at state:%s", vmiName, nodeName, available, state)
 			if available {
 				return logError("VMI not found: error %v", err)
 			}
