@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net"
 	"reflect"
+	"sort"
 	"sync"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
@@ -173,6 +174,8 @@ func (m *MockNetworkMonitor) ListInterfaces() (ifNames []string, err error) {
 	for _, mockIf := range m.interfaces {
 		ifNames = append(ifNames, mockIf.Attrs.IfName)
 	}
+	// Sort to make output deterministic and easier to work with in unit tests.
+	sort.Strings(ifNames)
 	return ifNames, nil
 }
 
