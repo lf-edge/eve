@@ -123,6 +123,8 @@ func parseVolumeConfig(ctx *getconfigContext,
 				for _, vr := range ai.VolumeRefList {
 					if vr.Uuid == volumeConfig.VolumeID.String() && volumeConfig.ContentID != uuid.Nil {
 						volumeConfig.IsNativeContainer = true
+						// Native containers are downloaded to every node, so set isreplciated to false
+						volumeConfig.IsReplicated = false
 						log.Noticef("parseVolumeConfig: setting IsNativeContainer for %s", volumeConfig.VolumeID.String())
 						break
 					}
