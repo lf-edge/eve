@@ -13,6 +13,11 @@
 
 KERNEL_COMPILER=gcc
 
+# kernel may have severla config files eve-<KERNEL_KONFIG_FLAVOR>_defconfig
+# this varialbe can be passed to the make command line to select
+# 'evaluation' platform has hardcoded config flavors for different rootfs images
+KERNEL_KONFIG_FLAVOR ?= core
+
 PLATFORMS_amd64=generic rt evaluation
 PLATFORMS_arm64=generic nvidia-jp5 nvidia-jp6 imx8mp_pollux imx8mp_epc_r3720 imx8mq_evk
 PLATFORMS_riscv64=generic
@@ -70,26 +75,24 @@ endif
 
 KERNEL_COMMIT=$(KERNEL_COMMIT_$(ZARCH)_$(KERNEL_VERSION)_$(KERNEL_FLAVOR))
 KERNEL_BRANCH = eve-kernel-$(ZARCH)-$(KERNEL_VERSION)-$(KERNEL_FLAVOR)
-KERNEL_DOCKER_TAG = $(KERNEL_BRANCH)-$(KERNEL_COMMIT)-$(KERNEL_COMPILER)
+KERNEL_DOCKER_TAG = $(KERNEL_BRANCH)-$(KERNEL_KONFIG_FLAVOR)-$(KERNEL_COMMIT)-$(KERNEL_COMPILER)
 
-# TODO: this is a placeholder for lts commit check
 # LTS commit is not any speccial, one day it becomes a regular commit
-# ifeq ($(origin KERNEL_COMMIT_$(ZARCH)_$(KERNEL_LTS_VERSION)_$(KERNEL_FLAVOR)), undefined)
-#     $(error "KERNEL_COMMIT_$(ZARCH)_$(KERNEL_LTS_VERSION)_$(KERNEL_FLAVOR) is not defined. did you introduce new platform or ARCH?")
-# endif
+ifeq ($(origin KERNEL_COMMIT_$(ZARCH)_$(KERNEL_LTS_VERSION)_$(KERNEL_FLAVOR)), undefined)
+    $(error "KERNEL_COMMIT_$(ZARCH)_$(KERNEL_LTS_VERSION)_$(KERNEL_FLAVOR) is not defined. did you introduce new platform or ARCH?")
+endif
 
 KERNEL_LTS_COMMIT=$(KERNEL_COMMIT_$(ZARCH)_$(KERNEL_LTS_VERSION)_$(KERNEL_FLAVOR))
 KERNEL_LTS_BRANCH = eve-kernel-$(ZARCH)-$(KERNEL_LTS_VERSION)-$(KERNEL_FLAVOR)
-KERNEL_LTS_DOCKER_TAG = $(KERNEL_LTS_BRANCH)-$(KERNEL_LTS_COMMIT)-$(KERNEL_COMPILER)
-
-# TODO: this is a placeholder for full and lts kernel docker tags
-# KERNEL_EVAL_HWE_TAG = $(KERNEL_BRANCH)-hwe-$(KERNEL_COMMIT)-$(KERNEL_COMPILER)
-# KERNEL_EVAL_LTS_DOCKER_TAG = $(KERNEL_LTS_BRANCH)-hwe-$(KERNEL_LTS_COMMIT)-$(KERNEL_COMPILER)
 
 # one can override the whole tag from the command line and set it to
 # output of make -f Makefile.eve docker-tag-${KERNEL_COMPILER} in github.com/lf-edge/eve-kernel
 KERNEL_TAG ?= docker.io/lfedge/eve-kernel:$(KERNEL_DOCKER_TAG)
 
-# TODO: KERNEL_DOCKER_TAG will be replaced with _FULL or _LTS
-KERNEL_EVAL_HWE_TAG ?= docker.io/lfedge/eve-kernel:$(KERNEL_DOCKER_TAG)
-KERNEL_EVAL_LTS_HWE_TAG ?= docker.io/lfedge/eve-kernel:$(KERNEL_DOCKER_TAG)
+# these tags are valid for evaluation platforms only
+KERNEL_EVAL_HWE_DOCKER_TAG = $(KERNEL_BRANCH)-hwe-$(KERNEL_COMMIT)-$(KERNEL_COMPILER)
+KERNEL_EVAL_LTS_HWE_DOCKER_TAG = $(KERNEL_LTS_BRANCH)-hwe-$(KERNEL_LTS_COMMIT)-$(KERNEL_COMPILER)
+KERNEL_EVAL_HWE_TAG ?= docker.io/lfedge/eve-kernel:$(KERNEL_EVAL_HWE_DOCKER_TAG)
+# TODO: docker tag for LTS is not published yet. KERNEL_EVAL_HWE_DOCKER_TAG will be replaced
+# with KERNEL_EVAL_LTS_HWE_DOCKER_TAG when it is available
+KERNEL_EVAL_LTS_HWE_TAG ?= docker.io/lfedge/eve-kernel:$(KERNEL_EVAL_HWE_DOCKER_TAG)
