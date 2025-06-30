@@ -400,7 +400,11 @@ func quantifyChanges(config types.VolumeConfig,
 		needRegeneration = true
 		regenerationReason += str + "\n"
 	}
-	if config.MaxVolSize != status.MaxVolSize {
+
+	// Replicated volumes are special, they are not created on this node
+	// So the config might have size 0 and while generating we calculate the status.MaxVolSize.
+	// they may not match.
+	if config.MaxVolSize != status.MaxVolSize && !config.IsReplicated {
 		str := fmt.Sprintf("MaxVolSize changed from %d to %d for %s",
 			status.MaxVolSize, config.MaxVolSize, config.DisplayName)
 		log.Function(str)

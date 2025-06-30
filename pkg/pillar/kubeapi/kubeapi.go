@@ -310,10 +310,11 @@ func waitForNodeReady(client *kubernetes.Clientset, readyCh chan bool, devUUID s
 	}
 }
 
-func waitForPVCReady(ctx context.Context, log *base.LogObject, pvcName string) error {
+// WaitForPVCReady : Loop until PVC is ready for timeout
+func WaitForPVCReady(pvcName string, log *base.LogObject) error {
 	clientset, err := GetClientSet()
 	if err != nil {
-		log.Errorf("waitForPVCReady failed to get clientset err %v", err)
+		log.Errorf("WaitForPVCReady failed to get clientset err %v", err)
 		return err
 	}
 
@@ -333,7 +334,7 @@ func waitForPVCReady(ctx context.Context, log *base.LogObject, pvcName string) e
 				pvcObjName := pvc.ObjectMeta.Name
 				if strings.Contains(pvcObjName, pvcName) {
 					count++
-					log.Noticef("waitForPVCReady(%d): get pvc %s", count, pvcObjName)
+					log.Noticef("WaitForPVCReady(%d): get pvc %s", count, pvcObjName)
 				}
 			}
 			if count == 1 {
@@ -347,7 +348,7 @@ func waitForPVCReady(ctx context.Context, log *base.LogObject, pvcName string) e
 		time.Sleep(5 * time.Second)
 	}
 
-	return fmt.Errorf("waitForPVCReady: time expired count %d, err %v", count, err2)
+	return fmt.Errorf("WaitForPVCReady: time expired count %d, err %v", count, err2)
 }
 
 // CleanupStaleVMI : delete all VMIs. Used by domainmgr on startup.
