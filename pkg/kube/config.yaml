@@ -19,8 +19,8 @@ kube-controller-arg:
   - "node-monitor-period=5s"
   - "node-monitor-grace-period=40s"
 kube-controller-manager-arg:
-  - "node-monitor-period=5s"
-  - "node-monitor-grace-period=40s"
+  - "node-monitor-period=2s"
+  - "node-monitor-grace-period=10s"
 kube-apiserver-arg:
   - "event-ttl=72h"
   - "authentication-token-webhook-config-file=/etc/kube-api-authn-webhook.yaml"

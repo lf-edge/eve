@@ -35,8 +35,22 @@ func baseOsHandleStatusUpdateUUID(ctx *baseOsMgrContext, id string) {
 	// We want to wait to drain until we're sure we actually have a usable image locally.
 	// eve baseos image is downloaded locally, verified, available, and most importantly has been activated
 	// before the node downtime/reboot is initiated, see if we need to defer the operation
-	if ((status.State == types.LOADED) || (status.State == types.INSTALLED)) && config.Activate && !status.Activated {
-		log.Tracef("baseOsHandleStatusUpdateUUID() image just activated id:%s config:%v status:%v state:%s", id, config, status, status.State)
+	statusCt := lookupContentTreeStatus(ctx, status.ContentTreeUUID)
+	if statusCt == nil {
+		log.Functionf("baseOsHandleStatusUpdateUUID(%s) ct:%s not found", id, status.ContentTreeUUID)
+		return
+	}
+
+	log.Functionf("baseOsHandleStatusUpdateUUID() image id:%s status.BaseOsVersion:%s config.BaseOsVersion:%s status.State:%v config.Activate:%t status.Activated:%t status.ContentTreeUUID%s prog:%d state:%v",
+		id, status.BaseOsVersion, config.BaseOsVersion, status.State, config.Activate, status.Activated, status.ContentTreeUUID, statusCt.Progress, statusCt.State)
+
+	baseOsContentTreeAvailable := statusCt.State == types.LOADED
+	baseOsAvailableLocally := ((status.State == types.LOADING) || (status.State == types.LOADED) || (status.State == types.INSTALLED)) && baseOsContentTreeAvailable
+	baseOsMgrSwitchingToImage := config.Activate && !status.Activated
+
+	if baseOsAvailableLocally && baseOsMgrSwitchingToImage {
+		log.Functionf("baseOsHandleStatusUpdateUUID() image just activated id:%s status.BaseOsVersion:%s config.BaseOsVersion:%s config:%v status:%v state:%s",
+			id, status.BaseOsVersion, config.BaseOsVersion, config, status, status.State)
 		deferUpdate := shouldDeferForNodeDrain(ctx, id, config, status)
 		if deferUpdate {
 			return
