@@ -429,7 +429,7 @@ func GetPVFromPVC(pvcName string, log *base.LogObject) (string, error) {
 // longhorn attaches to the PV to serve to the apps. This API returns the attachment name and nodename.
 // We use that attachment name to delete the attachment during failover.
 // Basically the attachment of previous node needs to be deleted to attach to current node.
-func GetVolumeAttachmentFromPV(volName string, log *base.LogObject) (string, string, error) {
+func GetVolumeAttachmentFromPV(volName string, nodeName string, log *base.LogObject) (string, string, error) {
 	// Get the Kubernetes clientset
 	clientset, err := GetClientSet()
 	if err != nil {
@@ -447,6 +447,9 @@ func GetVolumeAttachmentFromPV(volName string, log *base.LogObject) (string, str
 
 	// Iterate through VolumeAttachments to find one that references the PV's CSI volume handle
 	for _, va := range volumeAttachments.Items {
+		if va.Spec.NodeName != nodeName {
+			continue
+		}
 		if va.Spec.Source.PersistentVolumeName != nil && *va.Spec.Source.PersistentVolumeName == volName {
 			log.Noticef("VolumeAttachment for vol %s found: %s (attached to node: %s)\n", volName, va.Name, va.Spec.NodeName)
 			return va.Name, va.Spec.NodeName, nil
@@ -454,6 +457,40 @@ func GetVolumeAttachmentFromPV(volName string, log *base.LogObject) (string, str
 	}
 
 	return "", "", nil
+}
+
+// GetVolumeAttachmentFromHost : Return volume attachments on node
+func GetVolumeAttachmentFromHost(nodeName string, log *base.LogObject) ([]string, error) {
+	// Get the Kubernetes clientset
+	vaList := []string{}
+
+	clientset, err := GetClientSet()
+	if err != nil {
+		err = fmt.Errorf("failed to get clientset: %v", err)
+		log.Error(err)
+		return vaList, err
+	}
+	// List all VolumeAttachments and find the one corresponding to the PV
+	volumeAttachments, err := clientset.StorageV1().VolumeAttachments().List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		err = fmt.Errorf("Error listing VolumeAttachments: %v", err)
+		log.Error(err)
+		return vaList, err
+	}
+
+	// Iterate through VolumeAttachments to find one that references the PV's CSI volume handle
+	for _, va := range volumeAttachments.Items {
+		if va.Spec.NodeName != nodeName {
+			continue
+		}
+		if va.Spec.Source.PersistentVolumeName == nil {
+			continue
+		}
+		log.Noticef("VolumeAttachment found: %s (attached to node: %s)\n", va.Name, va.Spec.NodeName)
+		vaList = append(vaList, va.Name)
+	}
+
+	return vaList, nil
 }
 
 // DeleteVolumeAttachment : Delete the volumeattachment of given name
@@ -468,9 +505,10 @@ func DeleteVolumeAttachment(vaName string, log *base.LogObject) error {
 
 	// Force delete the VolumeAttachment with grace period set to 0
 	// This will ensure attachment is really deleted before its assigned to some other node.
+	gracePeriod := int64(0)
 	deletePolicy := metav1.DeletePropagationForeground
 	deleteOptions := metav1.DeleteOptions{
-		GracePeriodSeconds: new(int64), // Set grace period to 0 for force deletion
+		GracePeriodSeconds: &gracePeriod, // Set grace period to 0 for force deletion
 		PropagationPolicy:  &deletePolicy,
 	}
 
@@ -481,9 +519,41 @@ func DeleteVolumeAttachment(vaName string, log *base.LogObject) error {
 		log.Error(err)
 		return err
 	}
-
-	log.Noticef("Deleted volumeattachment %s", vaName)
 	return nil
+}
+
+// GetVolumeAttachmentAttached : Return true if VA is attached, not just requested
+func GetVolumeAttachmentAttached(volName string, nodeName string, log *base.LogObject) (bool, error) {
+	// Get the Kubernetes clientset
+	clientset, err := GetClientSet()
+	if err != nil {
+		err = fmt.Errorf("failed to get clientset: %v", err)
+		log.Error(err)
+		return false, err
+	}
+	// List all VolumeAttachments and find the one corresponding to the PV
+	volumeAttachments, err := clientset.StorageV1().VolumeAttachments().List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		err = fmt.Errorf("Error listing VolumeAttachments: %v", err)
+		log.Error(err)
+		return false, err
+	}
+
+	// Iterate through VolumeAttachments to find one that references the PV's CSI volume handle
+	for _, va := range volumeAttachments.Items {
+		if va.Spec.NodeName != nodeName {
+			continue
+		}
+		if va.Spec.Source.PersistentVolumeName == nil {
+			continue
+		}
+		if *va.Spec.Source.PersistentVolumeName != volName {
+			continue
+		}
+		return va.Status.Attached, nil
+	}
+
+	return false, fmt.Errorf("VA for vol:%s node:%s not found", volName, nodeName)
 }
 
 func stringPtr(str string) *string {
