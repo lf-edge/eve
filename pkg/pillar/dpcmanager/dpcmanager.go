@@ -74,6 +74,12 @@ type DpcManager struct {
 	// XXX Should we make this a global config parameter?
 	DpcMinTimeSinceFailure time.Duration
 
+	// Time limit for some DPC to become available.
+	// Once this elapses and no DPC has been provided, DPCManager will try lastresort.
+	// By default (if not specified), this is 1 minute.
+	// It is useful to override this for unit testing purposes.
+	DpcAvailTimeLimit time.Duration
+
 	// NIM components that the manager interacts with
 	NetworkMonitor netmonitor.NetworkMonitor
 	DpcReconciler  dpcreconciler.DpcReconciler
@@ -100,6 +106,10 @@ type DpcManager struct {
 	clusterStatus    types.EdgeNodeClusterStatus
 	// Boot-time configuration
 	dpclPresentAtBoot bool
+
+	// Last-Resort DPC
+	expectBootstrapDPCs bool
+	lastResort          *types.DevicePortConfig
 
 	// DPC verification
 	dpcVerify dpcVerify
@@ -224,6 +234,9 @@ func (m *DpcManager) Init(ctx context.Context) error {
 	if m.DpcMinTimeSinceFailure == 0 {
 		m.DpcMinTimeSinceFailure = 5 * time.Minute
 	}
+	if m.DpcAvailTimeLimit == 0 {
+		m.DpcAvailTimeLimit = time.Minute
+	}
 	m.dpcList.CurrentIndex = -1
 	// We start assuming controller connectivity works
 	m.dpcVerify.controllerConnWorks = true
@@ -241,9 +254,12 @@ func (m *DpcManager) Init(ctx context.Context) error {
 }
 
 // Run DpcManager as a separate task with its own loop and a watchdog file.
-func (m *DpcManager) Run(ctx context.Context) (err error) {
+// The expectBootstrapDPCs flag indicates whether initial DPCs for network bootstrapping
+// are expected to arrive shortly.
+func (m *DpcManager) Run(ctx context.Context, expectBootstrapDPCs bool) (err error) {
 	m.startTime = time.Now()
 	m.networkEvents = m.NetworkMonitor.WatchEvents(ctx, "dpc-reconciler")
+	m.expectBootstrapDPCs = expectBootstrapDPCs
 	go m.run(ctx)
 	return nil
 }
@@ -256,6 +272,25 @@ func (m *DpcManager) run(ctx context.Context) {
 
 	// Run initial reconciliation.
 	m.reconcileStatus = m.DpcReconciler.Reconcile(ctx, m.reconcilerArgs())
+
+	// Time limit for obtaining a valid network configuration.
+	// If this timer expires without any config being received, lastresort will be enabled
+	// unconditionally.
+	// This primarily handles cases where the device has lost
+	// /persist/status/nim/DevicePortConfigList.
+	//
+	// It can also be triggered if a bootstrapping DPC (e.g., override.json or bootstrap-config.pb)
+	// is present but invalid.
+	//
+	// In normal onboarding, with an initially empty DPCL, DPCManager either:
+	//   - Receives a bootstrapping DPC from nim, or
+	//   - If none is available (i.e., expectBootstrapDPCs set by nim is false), it creates
+	//     and tries lastresort DPC after receiving the global config (ConfigItemValueMap)
+	//     (see doUpdateGCP).
+	//
+	// This timer here is really just a fallback mechanism if something went wrong,
+	// to make sure we never end with empty DPCL.
+	dpcAvailTimer := time.After(m.DpcAvailTimeLimit)
 
 	for {
 		select {
@@ -287,6 +322,16 @@ func (m *DpcManager) run(ctx context.Context) {
 		case <-m.reconcileStatus.ResumeReconcile:
 			m.reconcileStatus = m.DpcReconciler.Reconcile(ctx, m.reconcilerArgs())
 			m.resumeVerifyIfAsyncDone(ctx)
+
+		case <-dpcAvailTimer:
+			if len(m.dpcList.PortConfigList) == 0 {
+				// Add lastresort DPC even if it is disabled by config.
+				reason := fmt.Sprintf("DPC Manager has no network config to work with "+
+					"even after %v, enabling lastresort unconditionally",
+					m.DpcAvailTimeLimit)
+				m.Log.Notice(reason)
+				m.addOrUpdateLastResortDPC(ctx, reason)
+			}
 
 		case _, ok := <-m.dpcTestTimer.C:
 			start := time.Now()
@@ -348,6 +393,7 @@ func (m *DpcManager) run(ctx context.Context) {
 		case event := <-m.networkEvents:
 			switch ev := event.(type) {
 			case netmonitor.IfChange:
+				m.updateLastResortOnIntfChange(ctx, ev)
 				ifName := ev.Attrs.IfName
 				if !m.adapters.Initialized {
 					continue
@@ -528,9 +574,6 @@ func (m *DpcManager) doUpdateGCP(ctx context.Context, gcp types.ConfigItemValueM
 	geoRetryInterval := time.Second *
 		time.Duration(m.globalCfg.GlobalValueInt(types.NetworkGeoRetryTime))
 
-	fallbackAnyEth := m.globalCfg.GlobalValueTriState(types.NetworkFallbackAnyEth)
-	m.enableLastResort = fallbackAnyEth == types.TS_ENABLED
-
 	if m.dpcTestInterval != testInterval {
 		if testInterval == 0 {
 			m.Log.Warn("NOT running TestTimer")
@@ -574,6 +617,31 @@ func (m *DpcManager) doUpdateGCP(ctx context.Context, gcp types.ConfigItemValueM
 	m.reinitNetdumper()
 
 	m.reconcileStatus = m.DpcReconciler.Reconcile(ctx, m.reconcilerArgs())
+
+	// Handle NetworkFallbackAnyEth config property.
+	wasLastResortEnabled := m.enableLastResort
+	fallbackAnyEth := m.globalCfg.GlobalValueTriState(types.NetworkFallbackAnyEth)
+	m.enableLastResort = fallbackAnyEth == types.TS_ENABLED
+	if m.enableLastResort && !wasLastResortEnabled {
+		m.addOrUpdateLastResortDPC(ctx, "lastresort enabled by global config")
+	}
+	if !m.enableLastResort && wasLastResortEnabled {
+		m.compressAndPublishDPCL()
+	}
+	if firstGCP && !m.enableLastResort {
+		// Even if the lastresort DPC is disabled by config, it can be forcefully enabled
+		// until DPCManager receives a valid network configuration (from the controller,
+		// bootstrap, override, or USB).
+		//
+		// Specifically, if no DPC is persisted from a previous run (e.g., during the first
+		// device boot or after /persist is lost due to disk replacement or wiping),
+		// and if no bootstrap DPC is expected to arrive shortly, then use the lastresort
+		// DPC as a fallback to attempt establishing the initial connectivity.
+		if len(m.dpcList.PortConfigList) == 0 && !m.expectBootstrapDPCs {
+			m.addOrUpdateLastResortDPC(ctx, "no DPC available for bootstrapping")
+		}
+	}
+
 	// If we have persisted DPCs then go ahead and pick a working one
 	// with the highest priority, do not wait for dpcTestTimer to fire.
 	if firstGCP && m.currentDPC() == nil && len(m.dpcList.PortConfigList) > 0 {
@@ -583,6 +651,10 @@ func (m *DpcManager) doUpdateGCP(ctx context.Context, gcp types.ConfigItemValueM
 
 func (m *DpcManager) doUpdateAA(ctx context.Context, adapters types.AssignableAdapters) {
 	m.adapters = adapters
+	if m.lastResort != nil {
+		m.addOrUpdateLastResortDPC(ctx, "assignable adapters changed")
+	}
+
 	// In case a verification is in progress and is waiting for return from pciback
 	if dpc := m.currentDPC(); dpc != nil {
 		if dpc.State == types.DPCStatePCIWait || dpc.State == types.DPCStateIntfWait {
