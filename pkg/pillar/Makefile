@@ -81,6 +81,7 @@ build-docker-git:
 	git archive HEAD | docker build $(DOCKER_ARGS) -t $(DOCKER_TAG) -
 
 build-docker-test:
+	$(MAKE) -C ../../ alpine-cache-export-docker-load dom0-ztools-cache-export-docker-load
 	docker build $(DOCKER_ARGS) --build-arg TEST_TOOLS=y -t $(DOCKER_TAG) . --target build
 
 test: build-docker-test
