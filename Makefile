@@ -14,8 +14,7 @@ uniq = $(if $1,$(firstword $1) $(call uniq,$(filter-out $(firstword $1),$1)))
 HV_DEFAULT=kvm
 # linuxkit version. This **must** be a published semver version so it can be downloaded already compiled from
 # the release page at https://github.com/linuxkit/linuxkit/releases
-LINUXKIT_VERSION=v1.6.5
-BUILD_KIT_VERSION=v0.23.1
+LINUXKIT_VERSION=v1.7.0
 GOVER ?= 1.24.1
 PKGBASE=github.com/lf-edge/eve
 GOMODULE=$(PKGBASE)/pkg/pillar
@@ -326,8 +325,14 @@ DOCKER_GO = _() { $(SET_X); mkdir -p $(CURDIR)/.go/src/$${3:-dummy} ; mkdir -p $
 
 PARSE_PKGS=$(if $(strip $(EVE_HASH)),EVE_HASH=)$(EVE_HASH) DOCKER_ARCH_TAG=$(DOCKER_ARCH_TAG) KERNEL_TAG=$(KERNEL_TAG) PLATFORM=$(PLATFORM) ./tools/parse-pkgs.sh
 
-LINUXKIT_OPTS=$(if $(strip $(EVE_HASH)),--hash) $(EVE_HASH) $(if $(strip $(EVE_REL)),--release) $(EVE_REL)
-LINUXKIT_PKG_TARGET=build --builders linux/$(ZARCH)=default
+# buildkitd.toml configuration file can control a configuration of the buildkit daemon
+# it is used for example to setup a Docker registry mirror for CI to speedup the builds
+# this option can be overridden by setting BUILDKIT_CONFIG_FILE variable on make command line
+BUILDKIT_CONFIG_FILE ?= /etc/buildkit/buildkitd.toml
+BUILDKIT_CONFIG_OPTS := $(if $(wildcard $(BUILDKIT_CONFIG_FILE)),--builder-config $(BUILDKIT_CONFIG_FILE),)
+
+LINUXKIT_OPTS=$(if $(strip $(EVE_HASH)),--hash) $(EVE_HASH) $(if $(strip $(EVE_REL)),--release) $(EVE_REL) $(BUILDKIT_CONFIG_OPTS)
+LINUXKIT_PKG_TARGET=build
 
 ifdef LIVE_FAST
 # Check the makerootfs.sh and the linuxkit tool invocation, the --input-tar
@@ -962,48 +967,9 @@ shell: $(GOBUILDER)
 .PHONY: linuxkit
 linuxkit: $(LINUXKIT)
 
-# Detect config files
-BUILDKIT_CONFIG_FILE := /etc/buildkit/buildkitd.toml
-DOCKER_CONFIG_FILE := $(HOME)/.docker/config.json
-
-# Conditional options
-BUILDKIT_CONFIG_OPTS := $(if $(wildcard $(BUILDKIT_CONFIG_FILE)),--config /etc/buildkit/buildkitd.toml,)
-BUILDKIT_MOUNT_OPTS := \
-    $(if $(wildcard $(BUILDKIT_CONFIG_FILE)),-v $(BUILDKIT_CONFIG_FILE):/etc/buildkit/buildkitd.toml,) \
-    $(if $(wildcard $(DOCKER_CONFIG_FILE)),-v $(DOCKER_CONFIG_FILE):/root/.docker/config.json:ro,)
-
-ensure-builder:
-	$(QUIET)if ! docker --context default container inspect linuxkit-builder >/dev/null 2>&1; then \
-	    echo "Container linuxkit-builder does not exist, creating..."; \
-	    docker --context default container run -d --name linuxkit-builder \
-	        --privileged \
-	        $(BUILDKIT_MOUNT_OPTS) \
-	        --network=host \
-	        moby/buildkit:$(BUILD_KIT_VERSION) \
-	        --allow-insecure-entitlement network.host \
-	        $(BUILDKIT_CONFIG_OPTS) \
-	        --debug --addr unix:///run/buildkit/buildkitd.sock; \
-	else \
-	    current_image=$$(docker --context default container inspect linuxkit-builder | jq -r '.[].Config.Image'); \
-	    if [ "$$current_image" != "moby/buildkit:$(BUILD_KIT_VERSION)" ]; then \
-	        echo "Recreating container (expected moby/buildkit:$(BUILD_KIT_VERSION), found $$current_image)"; \
-	        docker --context default container rm -f linuxkit-builder; \
-	        docker --context default container run -d --name linuxkit-builder \
-	            --privileged \
-	            $(BUILDKIT_MOUNT_OPTS) \
-	            --network=host \
-	            moby/buildkit:$(BUILD_KIT_VERSION) \
-	            --allow-insecure-entitlement network.host \
-	            $(BUILDKIT_CONFIG_OPTS) \
-	            --debug --addr unix:///run/buildkit/buildkitd.sock; \
-	    else \
-	        echo "Container linuxkit-builder is up-to-date"; \
-	    fi; \
-	fi
-
 LINUXKIT_SOURCE=https://github.com/linuxkit/linuxkit
 
-$(LINUXKIT): $(BUILDTOOLS_BIN)/linuxkit-$(LINUXKIT_VERSION) | ensure-builder
+$(LINUXKIT): $(BUILDTOOLS_BIN)/linuxkit-$(LINUXKIT_VERSION)
 	$(QUIET)ln -sf  $(notdir $<) $@
 	$(QUIET): $@: Succeeded
 
