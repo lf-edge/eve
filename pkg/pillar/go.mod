@@ -214,6 +214,7 @@ require (
 	github.com/golang/glog v1.2.4 // indirect
 	github.com/golang/mock v1.6.0 // indirect
 	github.com/google/btree v1.0.1 // indirect
+	github.com/google/fscrypt v0.3.5 // indirect
 	github.com/google/gnostic v0.5.7-v3refs // indirect
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510 // indirect
 	github.com/gregjones/httpcache v0.0.0-20180305231024-9cad4c3443a7 // indirect

@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/google/fscrypt/actions"
 	"github.com/lf-edge/eve-api/go/info"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	etpm "github.com/lf-edge/eve/pkg/pillar/evetpm"
@@ -189,15 +190,25 @@ func (h *Ext4Handler) getRemovePolicyParams(policyID string) []string {
 	return []string{"metadata", "destroy", "--policy=" + mountPoint + ":" + policyID, "--quiet", "--force"}
 }
 
-func (h *Ext4Handler) getProtectorIDByName(vaultPath string) ([][]string, error) {
-	stdOut, _, err := execCmd(fsCryptPath, h.getStatusParams(mountPoint)...)
+func (h *Ext4Handler) getProtectorIDByName(vaultPath string) ([]string, error) {
+	ctx, err := actions.NewContextFromMountpoint(vaultPath, nil)
 	if err != nil {
 		return nil, err
 	}
-	patternStr := fmt.Sprintf("([[:xdigit:]]+) {2}No {6}raw key protector \"%s\"",
-		protectorPrefix+filepath.Base(vaultPath))
-	protector := regexp.MustCompile(patternStr)
-	return protector.FindAllStringSubmatch(stdOut, -1), nil
+
+	pOptions, err := ctx.ProtectorOptions()
+	if err != nil {
+		return nil, err
+	}
+
+	var protectorIDs []string
+	for _, option := range pOptions {
+		if strings.HasPrefix(option.Name(), protectorPrefix) {
+			protectorIDs = append(protectorIDs, option.Descriptor())
+		}
+	}
+
+	return protectorIDs, nil
 }
 
 func (h *Ext4Handler) getPolicyIDByProtectorID(protectID string) ([][]string, error) {
@@ -217,13 +228,13 @@ func (h *Ext4Handler) removeProtectorIfAny(vaultPath string) error {
 		return nil
 	}
 	if err == nil {
-		h.log.Functionf("Removing protectorID %s for vaultPath %s", protectorID[0][1], vaultPath)
-		args := h.getRemoveProtectorParams(protectorID[0][1])
+		h.log.Functionf("Removing protectorID %s for vaultPath %s", protectorID[0], vaultPath)
+		args := h.getRemoveProtectorParams(protectorID[0])
 		if stdOut, stdErr, err := execCmd(fsCryptPath, args...); err != nil {
 			h.log.Errorf("Error changing protector key: %v, %v, %v", err, stdOut, stdErr)
 			return err
 		}
-		policyID, err := h.getPolicyIDByProtectorID(protectorID[0][1])
+		policyID, err := h.getPolicyIDByProtectorID(protectorID[0])
 		if err == nil {
 			h.log.Functionf("Removing policyID %s for vaultPath %s", policyID[0][1], vaultPath)
 			args := h.getRemovePolicyParams(policyID[0][1])
