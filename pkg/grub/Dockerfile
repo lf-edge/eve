@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile-upstream:1.5.0-rc2-labs
 
-FROM lfedge/eve-alpine:0f2e0da38e30753c68410727a6cc269e57ff74f2 AS grub-build-base
+FROM lfedge/eve-alpine:523254c1b0728948a16a02115eb817f27c00977f AS grub-build-base
 ENV BUILD_PKGS automake \
                make \
                bison \
