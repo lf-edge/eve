@@ -18,11 +18,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: buildjet-4vcpu-ubuntu-2204-arm
+          - os: zededa-ubuntu-2204
             arch: arm64
-          - os: buildjet-4vcpu-ubuntu-2004
+          - os: zededa-ubuntu-2204
             arch: amd64
-          - os: buildjet-4vcpu-ubuntu-2004
+          - os: zededa-ubuntu-2204
             arch: riscv64
     steps:
       - name: Starting Report
@@ -77,7 +77,7 @@ jobs:
 
   eve:
     needs: packages  # all packages for all platforms must be built first
-    runs-on: buildjet-4vcpu-ubuntu-2004
+    runs-on: zededa-ubuntu-2204
     strategy:
       fail-fast: false
       matrix:

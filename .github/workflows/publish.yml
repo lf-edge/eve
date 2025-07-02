@@ -19,11 +19,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: arm64-secure
+          - os: zededa-ubuntu-2204
             arch: arm64
-          - os: ubuntu-24.04
+          - os: zededa-ubuntu-2204
             arch: amd64
-          - os: ubuntu-latest
+          - os: zededa-ubuntu-2204
             arch: riscv64
     steps:
       - name: Starting Report
@@ -66,7 +66,7 @@ jobs:
           # sadly, our build sometimes times out on network access
           # and running out of disk space: re-trying for 3 times
           for i in 1 2 3; do
-             if make -e V=1 LINUXKIT_PKG_TARGET=push PRUNE=1 pkgs; then
+             if make -e V=1 ZARCH=${{ matrix.arch }} LINUXKIT_PKG_TARGET=push PRUNE=1 pkgs; then
                 SUCCESS=true
                 break
              else
@@ -98,7 +98,7 @@ jobs:
   eve:
     if: github.event.repository.full_name == 'lf-edge/eve'
     needs: packages
-    runs-on: ubuntu-latest
+    runs-on: zededa-ubuntu-2204
     strategy:
       fail-fast: false
       matrix:
@@ -126,7 +126,7 @@ jobs:
   verification:
     if: github.event.repository.full_name == 'lf-edge/eve'
     needs: packages
-    runs-on: ubuntu-latest
+    runs-on: zededa-ubuntu-2204
     strategy:
       fail-fast: false
       matrix:
@@ -144,7 +144,7 @@ jobs:
 
   manifest:
     if: github.event.repository.full_name == 'lf-edge/eve'
-    runs-on: ubuntu-latest
+    runs-on: zededa-ubuntu-2204
     needs: packages
     steps:
       - uses: actions/checkout@v4
