@@ -1,4 +1,4 @@
-FROM lfedge/eve-alpine:0f2e0da38e30753c68410727a6cc269e57ff74f2 as build-base
+FROM lfedge/eve-alpine:0f2e0da38e30753c68410727a6cc269e57ff74f2 AS build-base
 ENV BUILD_PKGS abuild curl tar make linux-headers patch g++ git gcc ncurses-dev autoconf file sudo
 RUN eve-alpine-deploy.sh
 
@@ -41,16 +41,16 @@ RUN [ "x86_64" = "${EVE_BUILD_ARCH}" ] || sh -x ./scripts/bootstrap.sh "x86_64"
 RUN rm -rf /home/builder/packages/main/"${EVE_BUILD_ARCH}"/gcc-pass2*
 RUN cp -r /home/builder/packages/main/"${EVE_BUILD_ARCH}" /packages/
 
-FROM build-base as build-amd64
-FROM build-base as build-arm64
-FROM build-base as build-armhf
+FROM build-base AS build-amd64
+FROM build-base AS build-arm64
+FROM build-base AS build-armhf
 # we do not support cross-compilers for riscv64 host
 # as gcc-gnat is not available on riscv64
 # we cannot build cross-compilers without additional patches
-FROM lfedge/eve-alpine:0f2e0da38e30753c68410727a6cc269e57ff74f2 as build-riscv64
+FROM lfedge/eve-alpine:0f2e0da38e30753c68410727a6cc269e57ff74f2 AS build-riscv64
 
 # hadolint ignore=DL3006
-FROM build-${TARGETARCH} as build
+FROM build-${TARGETARCH} AS build
 RUN mkdir -p /packages
 
 FROM scratch
