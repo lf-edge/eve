@@ -28,7 +28,7 @@ RUN tar -xzvf aports.tar.gz --strip-components=1 && rm -rf aports.tar.gz
 ENV BINUTILS_VERSION 2.38
 ENV MUSL_VERSION 1.2.3
 ENV GCC_VERSION 11.2.1_git20220219
-ADD --chown=builder:abuild https://ftp.gnu.org/gnu/binutils/binutils-${BINUTILS_VERSION}.tar.xz /var/cache/distfiles/binutils-${BINUTILS_VERSION}.tar.xz
+ADD --chown=builder:abuild https://mirror.kumi.systems/gnu/binutils/binutils-${BINUTILS_VERSION}.tar.xz /var/cache/distfiles/binutils-${BINUTILS_VERSION}.tar.xz
 ADD --chown=builder:abuild https://git.musl-libc.org/cgit/musl/snapshot/v${MUSL_VERSION}.tar.gz /var/cache/distfiles/musl-v${MUSL_VERSION}.tar.gz
 ADD --chown=builder:abuild https://dev.alpinelinux.org/~nenolod/gcc-${GCC_VERSION}.tar.xz /var/cache/distfiles/gcc-${GCC_VERSION}.tar.xz
 
