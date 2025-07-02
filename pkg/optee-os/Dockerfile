@@ -17,7 +17,7 @@ ARG BUILD_PKGS_BASE
 RUN BUILD_PKGS="${BUILD_PKGS_BASE}" eve-alpine-deploy.sh
 
 # hadolint ignore=DL3029
-FROM --platform=${BUILDPLATFORM} lfedge/eve-cross-compilers:35972523c447e120e10667dcfae18f59063544bf AS cross-compilers
+FROM --platform=${BUILDPLATFORM} lfedge/eve-cross-compilers:aa6d31738390d25b17183bceaa0c0935893208b0 AS cross-compilers
 
 # will use several packages from target arch and copy them to sysroot
 # hadolint ignore=DL3006
