@@ -224,6 +224,10 @@ func (h *Ext4Handler) removeProtectorIfAny(vaultPath string) error {
 			return err
 		}
 		policyID, err := h.getPolicyIDByProtectorID(protectorID[0][1])
+		if err == nil && len(policyID) == 0 {
+			// No policy found, nothing to be done.
+			return nil
+		}
 		if err == nil {
 			h.log.Functionf("Removing policyID %s for vaultPath %s", policyID[0][1], vaultPath)
 			args := h.getRemovePolicyParams(policyID[0][1])
