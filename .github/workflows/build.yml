@@ -59,8 +59,8 @@ jobs:
         if: ${{ github.event.repository.full_name }}== 'lf-edge/eve'
         uses: docker/login-action@v3
         with:
-          username: ${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}
-          password: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
+          username: ${{ secrets.DOCKERHUB_PULL_USER }}
+          password: ${{ secrets.DOCKERHUB_PULL_TOKEN }}
       - name: ensure zstd for cache  # this should be removed once the arm64 VM includes zstd
         if: ${{ matrix.os == 'buildjet-4vcpu-ubuntu-2204-arm' || matrix.os == 'arm64-secure' }}
         run: |
@@ -130,8 +130,8 @@ jobs:
         if: ${{ github.event.repository.full_name }}== 'lf-edge/eve'
         uses: docker/login-action@v3
         with:
-          username: ${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}
-          password: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
+          username: ${{ secrets.DOCKERHUB_PULL_USER }}
+          password: ${{ secrets.DOCKERHUB_PULL_TOKEN }}
 
       - name: Arch Runner is Matrix
         id: arch_runner_equals_matrix
