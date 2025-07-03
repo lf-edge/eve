@@ -106,6 +106,7 @@ type DpcManager struct {
 	clusterStatus    types.EdgeNodeClusterStatus
 	airGapMode       bool
 	locURL           string
+	kubeUserServices types.KubeUserServices
 	// Boot-time configuration
 	dpclPresentAtBoot bool
 
@@ -206,19 +207,21 @@ const (
 	commandUpdateFlowlogState
 	commandUpdateClusterStatus
 	commandUpdateLOCUrl
+	commandUpdateKubeUserServices
 )
 
 type inputCommand struct {
-	cmd            command
-	dpc            types.DevicePortConfig      // for commandAddDPC and commandDelDPC
-	gcp            types.ConfigItemValueMap    // for commandUpdateGCP
-	aa             types.AssignableAdapters    // for commandUpdateAA
-	rs             types.RadioSilence          // for commandUpdateRS
-	devUUID        uuid.UUID                   // for commandUpdateDevUUID
-	wwanStatus     types.WwanStatus            // for commandProcessWwanStatus
-	flowlogEnabled bool                        // for commandUpdateFlowlogState
-	clusterStatus  types.EdgeNodeClusterStatus // for commandUpdateClusterStatus
-	locURL         string                      // for commandUpdateLOCUrl
+	cmd              command
+	dpc              types.DevicePortConfig      // for commandAddDPC and commandDelDPC
+	gcp              types.ConfigItemValueMap    // for commandUpdateGCP
+	aa               types.AssignableAdapters    // for commandUpdateAA
+	rs               types.RadioSilence          // for commandUpdateRS
+	devUUID          uuid.UUID                   // for commandUpdateDevUUID
+	wwanStatus       types.WwanStatus            // for commandProcessWwanStatus
+	flowlogEnabled   bool                        // for commandUpdateFlowlogState
+	clusterStatus    types.EdgeNodeClusterStatus // for commandUpdateClusterStatus
+	locURL           string                      // for commandUpdateLOCUrl
+	kubeUserServices types.KubeUserServices      // for commandUpdateKubeUserServices
 }
 
 type dpcVerify struct {
@@ -322,6 +325,8 @@ func (m *DpcManager) run(ctx context.Context) {
 				m.doUpdateClusterStatus(ctx, inputCmd.clusterStatus)
 			case commandUpdateLOCUrl:
 				m.doUpdateLOCUrl(ctx, inputCmd.locURL)
+			case commandUpdateKubeUserServices:
+				m.doUpdateKubeUserServices(ctx, inputCmd.kubeUserServices)
 			}
 			m.resumeVerifyIfAsyncDone(ctx)
 
@@ -465,11 +470,12 @@ func (m *DpcManager) run(ctx context.Context) {
 
 func (m *DpcManager) reconcilerArgs() dpcreconciler.Args {
 	args := dpcreconciler.Args{
-		GCP:            m.globalCfg,
-		AA:             m.adapters,
-		RS:             m.rsConfig,
-		FlowlogEnabled: m.flowlogEnabled,
-		ClusterStatus:  m.clusterStatus,
+		GCP:              m.globalCfg,
+		AA:               m.adapters,
+		RS:               m.rsConfig,
+		FlowlogEnabled:   m.flowlogEnabled,
+		ClusterStatus:    m.clusterStatus,
+		KubeUserServices: m.kubeUserServices,
 	}
 	if m.currentDPC() != nil {
 		args.DPC = *m.currentDPC()
@@ -562,6 +568,14 @@ func (m *DpcManager) UpdateLOCUrl(locURL string) {
 	m.inputCommands <- inputCommand{
 		cmd:    commandUpdateLOCUrl,
 		locURL: locURL,
+	}
+}
+
+// UpdateKubeUserServices : apply an updated Kubernetes user services data.
+func (m *DpcManager) UpdateKubeUserServices(services types.KubeUserServices) {
+	m.inputCommands <- inputCommand{
+		cmd:              commandUpdateKubeUserServices,
+		kubeUserServices: services,
 	}
 }
 
@@ -743,4 +757,10 @@ func (m *DpcManager) doUpdateLOCUrl(ctx context.Context, locURL string) {
 	m.locURL = locURL
 	// Nothing else to do here.
 	// Updated LOC URL will take effect in the next connectivity testing.
+}
+
+func (m *DpcManager) doUpdateKubeUserServices(ctx context.Context,
+	services types.KubeUserServices) {
+	m.kubeUserServices = services
+	m.reconcileStatus = m.DpcReconciler.Reconcile(ctx, m.reconcilerArgs())
 }

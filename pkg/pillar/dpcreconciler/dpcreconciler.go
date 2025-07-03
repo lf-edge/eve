@@ -34,6 +34,8 @@ type Args struct {
 	FlowlogEnabled bool
 	// Cluster network status used when edge node is part of a kubernetes cluster.
 	ClusterStatus types.EdgeNodeClusterStatus
+	// Kubernetes service and ingress information for firewall configuration.
+	KubeUserServices types.KubeUserServices
 }
 
 // ReconcileStatus : state data related to config reconciliation.
