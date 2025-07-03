@@ -68,6 +68,7 @@ type zedkube struct {
 	pubENClusterAppStatus    pubsub.Publication
 	pubKubeClusterInfo       pubsub.Publication
 	pubLeaderElectInfo       pubsub.Publication
+	pubKubeUserServices      pubsub.Publication
 
 	subNodeDrainRequestZA  pubsub.Subscription
 	subNodeDrainRequestBoM pubsub.Subscription
@@ -299,6 +300,16 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 	zedkubeCtx.pubKubeClusterInfo = pubKubeClusterInfo
 
+	pubKubeUserServices, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName: agentName,
+			TopicType: types.KubeUserServices{},
+		})
+	if err != nil {
+		log.Fatal(err)
+	}
+	zedkubeCtx.pubKubeUserServices = pubKubeUserServices
+
 	pubLeaderElectInfo, err := ps.NewPublication(
 		pubsub.PublicationOptions{
 			AgentName: agentName,
@@ -517,6 +528,10 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		log.Errorf("zedkube: WaitForKubenetes %v", err)
 	}
 
+	err = zedkubeCtx.initKubePrefixes()
+	if err != nil { // should never happen
+		log.Fatalf("zedkube: initKubePrefixes %v", err)
+	}
 	appLogTimer := time.NewTimer(logcollectInterval * time.Second)
 
 	log.Notice("zedkube online")
@@ -533,6 +548,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 			zedkubeCtx.collectAppLogs()
 			zedkubeCtx.checkAppsStatus()
 			zedkubeCtx.collectKubeStats()
+			zedkubeCtx.collectKubeSvcs()
 			appLogTimer = time.NewTimer(logcollectInterval * time.Second)
 
 		case change := <-subGlobalConfig.MsgChan():
