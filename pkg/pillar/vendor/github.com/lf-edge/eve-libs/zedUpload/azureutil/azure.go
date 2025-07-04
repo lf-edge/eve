@@ -1,4 +1,4 @@
-// Copyright(c) 2017-2018 Zededa, Inc.
+// Copyright(c) 2025 Zededa, Inc.
 // All rights reserved.
 
 package azure
@@ -6,575 +6,537 @@ package azure
 import (
 	"context"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
-	"math"
 	"net/http"
-	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/Azure/azure-pipeline-go/pipeline"
-	"github.com/Azure/azure-storage-blob-go/azblob"
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob"
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blob"
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blockblob"
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/container"
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/sas"
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/service"
 	"github.com/lf-edge/eve-libs/zedUpload/types"
 )
 
 const (
 	// SingleMB contains chunk size
-	SingleMB       int64 = 1024 * 1024
-	blobURLPattern       = "https://%s.blob.core.windows.net"
-	maxRetries           = 20
-	parallelism          = 16
+	SingleMB    int64 = 4 * 1024 * 1024
+	parallelism       = 16
 )
 
+// buffer pool for streaming IO (32KB buffers)
+var bufPool = sync.Pool{
+	New: func() interface{} {
+		b := make([]byte, 32*1024)
+		return &b
+	},
+}
+
+type readSeekCloser struct {
+	io.ReadSeeker
+}
+
+func (r readSeekCloser) Close() error {
+	return nil
+}
+
+// sectionWriter wraps an *os.File to implement io.Writer by using WriteAt and advancing an offset
 type sectionWriter struct {
-	count    int64
-	offset   int64
-	position int64
-	part     *types.PartDefinition
-	writerAt io.WriterAt
+	f   *os.File
+	off int64
 }
 
-func newSectionWriter(c io.WriterAt, off int64, count int64, part *types.PartDefinition) *sectionWriter {
-	return &sectionWriter{
-		count:    count,
-		offset:   off,
-		writerAt: c,
-		part:     part,
-	}
-}
-
-// Write implementation for sectionWriter
-func (c *sectionWriter) Write(p []byte) (int, error) {
-	remaining := c.count - c.position
-
-	if remaining <= 0 {
-		return 0, fmt.Errorf("end of section reached: %v", *c.part)
-	}
-
-	slice := p
-
-	if int64(len(slice)) > remaining {
-		slice = slice[:remaining]
-	}
-
-	n, err := c.writerAt.WriteAt(slice, c.offset+c.position)
-	c.position += int64(n)
+func (w *sectionWriter) Write(p []byte) (int, error) {
+	n, err := w.f.WriteAt(p, w.off)
 	if err != nil {
 		return n, err
 	}
-
-	if len(p) > n {
-		return n, fmt.Errorf("partial write %d bytes, %d bytes remaining", n, len(slice)-n)
-	}
-
-	c.part.Size = c.part.Size + int64(n)
-
+	w.off += int64(n)
 	return n, nil
 }
 
-// newHTTPClientFactory creates a HTTPClientPolicyFactory object that sends HTTP requests using a provided http.Client
-func newHTTPClientFactory(pipelineHTTPClient *http.Client) pipeline.Factory {
-	return pipeline.FactoryFunc(func(next pipeline.Policy, po *pipeline.PolicyOptions) pipeline.PolicyFunc {
-		return func(ctx context.Context, request pipeline.Request) (pipeline.Response, error) {
-			r, err := pipelineHTTPClient.Do(request.WithContext(ctx))
-			if err != nil {
-				err = pipeline.NewError(err, "HTTP request failed")
-			}
-			return pipeline.NewHTTPResponse(r), err
-		}
-	})
+// pool of writerAtOffset to avoid per-chunk allocations
+var writerPool = sync.Pool{
+	New: func() interface{} {
+		return &sectionWriter{}
+	},
 }
 
-func newPipeline(accountName, accountKey string, httpClient *http.Client) (pipeline.Pipeline, error) {
-	var sender pipeline.Factory
-	if httpClient != nil {
-		sender = newHTTPClientFactory(httpClient)
+// pool of sectionWriter to avoid per-chunk allocations
+var sectionWriterPool = sync.Pool{
+	New: func() interface{} {
+		return &sectionWriter{}
+	},
+}
+
+// newSectionWriter retrieves a pooled sectionWriter set to write at f starting at off
+func newSectionWriter(f *os.File, off int64) *sectionWriter {
+	w := sectionWriterPool.Get().(*sectionWriter)
+	w.f = f
+	w.off = off
+	return w
+}
+
+// Adapter that turns *http.Client into a policy.Transporter:
+type httpClientTransporter struct {
+	client *http.Client
+}
+
+func (t *httpClientTransporter) Do(req *http.Request) (*http.Response, error) {
+	return t.client.Do(req)
+}
+
+// clientOptionsFromHTTP wraps your *http.Client into azcore.ClientOptions.
+func clientOptionsFromHTTP(httpClient *http.Client) azcore.ClientOptions {
+	return azcore.ClientOptions{
+		Transport: &httpClientTransporter{client: httpClient},
 	}
-	credential, err := azblob.NewSharedKeyCredential(accountName, accountKey)
+}
+
+// getContainerClient creates and returns an Azure Blob Storage container client.
+// getContainerClient creates a Container client with your custom httpClient.
+func getContainerClient(
+	accountURL, accountName, accountKey, containerName string,
+	httpClient *http.Client,
+) (*container.Client, error) {
+	cred, err := azblob.NewSharedKeyCredential(accountName, accountKey)
 	if err != nil {
-		return nil, fmt.Errorf("invalid credentials with error: %s", err.Error())
+		return nil, fmt.Errorf("failed to create credential: %w", err)
 	}
-	p := azblob.NewPipeline(credential, azblob.PipelineOptions{
-		HTTPSender: sender,
-		RequestLog: azblob.RequestLogOptions{
-			LogWarningIfTryOverThreshold: -1,
-			SyslogDisabled:               true,
-		}})
-	return p, nil
+	svcURL := strings.TrimSuffix(accountURL, "/")
+	svcClient, err := service.NewClientWithSharedKeyCredential(
+		svcURL,
+		cred,
+		&service.ClientOptions{
+			ClientOptions: clientOptionsFromHTTP(httpClient),
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create service client: %w", err)
+	}
+	return svcClient.NewContainerClient(containerName), nil
 }
 
-func getURL(accountURL, accountName, pathPart, queryPart string) (*url.URL, error) {
-	if accountURL == "" {
-		accountURL = fmt.Sprintf(blobURLPattern, accountName)
+// getContainerAndBlockBlobClients now also takes httpClient
+func getContainerAndBlockBlobClients(
+	accountURL, accountName, accountKey, containerName, blobName string,
+	httpClient *http.Client,
+) (*container.Client, *blockblob.Client, error) {
+	containerClient, err := getContainerClient(
+		accountURL, accountName, accountKey, containerName, httpClient,
+	)
+	if err != nil {
+		return nil, nil, err
 	}
-	accountURL = strings.TrimSuffix(accountURL, "/")
-	if pathPart != "" {
-		accountURL = fmt.Sprintf("%s/%s", accountURL, pathPart)
-	}
-	if queryPart != "" {
-		accountURL = fmt.Sprintf("%s?%s", accountURL, queryPart)
-	}
-	URL, err := url.Parse(accountURL)
+	blobClient := containerClient.NewBlockBlobClient(blobName)
+	return containerClient, blobClient, nil
+}
+
+// ListAzureBlob lists all blobs in a container. Uses Azure's paginated listing with marker.
+// Returns a slice of blob names ([]string).
+func ListAzureBlob(
+	accountURL, accountName, accountKey, containerName string,
+	httpClient *http.Client,
+) ([]string, error) {
+	var imgList []string
+
+	containerClient, err := getContainerClient(
+		accountURL, accountName, accountKey, containerName, httpClient,
+	)
 	if err != nil {
 		return nil, err
 	}
 
-	return URL, nil
-}
-
-func ListAzureBlob(accountURL, accountName, accountKey, containerName string, httpClient *http.Client) ([]string, error) {
-	var imgList []string
-	p, err := newPipeline(accountName, accountKey, httpClient)
-	if err != nil {
-		return nil, fmt.Errorf("unable to create pipeline: %v", err)
-	}
-
-	URL, err := getURL(accountURL, accountName, containerName, "")
-	if err != nil {
-		return nil, fmt.Errorf("invalid URL for container name %s: %v", containerName, err)
-	}
-	containerURL := azblob.NewContainerURL(*URL, p)
-
 	ctx := context.Background()
-	for marker := (azblob.Marker{}); marker.NotDone(); {
-		// Get a result segment starting with the blob indicated by the current Marker.
-		listBlob, err := containerURL.ListBlobsFlatSegment(ctx, marker, azblob.ListBlobsSegmentOptions{})
+	pager := containerClient.NewListBlobsFlatPager(nil)
+
+	for pager.More() {
+		page, err := pager.NextPage(ctx)
 		if err != nil {
-			return nil, fmt.Errorf("error listing blobs for container %s: %v", containerName, err)
+			return nil, fmt.Errorf("failed to list blobs: %v", err)
 		}
-
-		// ListBlobs returns the start of the next segment; you MUST use this to get
-		// the next segment (after processing the current result segment).
-		marker = listBlob.NextMarker
-
-		// Process the blobs returned in this result segment (if the segment is empty, the loop body won't execute)
-		for _, blobInfo := range listBlob.Segment.BlobItems {
-			imgList = append(imgList, blobInfo.Name)
+		for _, blob := range page.Segment.BlobItems {
+			imgList = append(imgList, *blob.Name)
 		}
 	}
+
 	return imgList, nil
 }
 
-func DeleteAzureBlob(accountURL, accountName, accountKey, containerName, remoteFile string, httpClient *http.Client) error {
-	p, err := newPipeline(accountName, accountKey, httpClient)
+// DeleteAzureBlob deletes a blob from Azure Storage. Deletes snapshots too (DeleteSnapshotsOptionInclude).
+func DeleteAzureBlob(
+	accountURL, accountName, accountKey, containerName, remoteFile string,
+	httpClient *http.Client,
+) error {
+	_, blobClient, err := getContainerAndBlockBlobClients(
+		accountURL, accountName, accountKey, containerName, remoteFile, httpClient,
+	)
 	if err != nil {
-		return fmt.Errorf("unable to create pipeline: %v", err)
+		return fmt.Errorf("Error: %v", err)
 	}
 
-	URL, err := getURL(accountURL, accountName, containerName, "")
-	if err != nil {
-		return fmt.Errorf("invalid URL for container name %s: %v", containerName, err)
-	}
-	containerURL := azblob.NewContainerURL(*URL, p)
-	blobURL := containerURL.NewBlockBlobURL(remoteFile)
+	// Set deletion options: include snapshots
+	deleteSnapshots := azblob.DeleteSnapshotsOptionTypeInclude
+
+	// Perform the delete
 	ctx := context.Background()
-	_, err = blobURL.Delete(ctx, azblob.DeleteSnapshotsOptionInclude, azblob.BlobAccessConditions{})
-	return err
-}
-
-func DownloadAzureBlob(accountURL, accountName, accountKey, containerName, remoteFile, localFile string,
-	objMaxSize int64, httpClient *http.Client, doneParts types.DownloadedParts, prgNotify types.StatsNotifChan) (types.DownloadedParts, error) {
-
-	var file *os.File
-	stats := &types.UpdateStats{DoneParts: doneParts}
-	p, err := newPipeline(accountName, accountKey, httpClient)
-	if err != nil {
-		return stats.DoneParts, fmt.Errorf("unable to create pipeline: %v", err)
-	}
-
-	URL, err := getURL(accountURL, accountName, containerName, "")
-	if err != nil {
-		return stats.DoneParts, fmt.Errorf("invalid URL for container name %s: %v", containerName, err)
-	}
-
-	// Create a ContainerURL object that wraps the container URL and a request
-	// pipeline to make requests.
-	containerURL := azblob.NewContainerURL(*URL, p)
-	blobURL := containerURL.NewBlockBlobURL(remoteFile)
-	ctx := context.Background()
-	properties, err := blobURL.GetProperties(ctx, azblob.BlobAccessConditions{}, azblob.ClientProvidedKeyOptions{})
-	if err != nil {
-		return stats.DoneParts, fmt.Errorf("could not get properties for blob: %v", err)
-	}
-	objSize := properties.ContentLength()
-
-	if objMaxSize != 0 && objSize > objMaxSize {
-		return types.DownloadedParts{PartSize: SingleMB},
-			fmt.Errorf("configured image size (%d) is less than size of file (%d)", objMaxSize, objSize)
-	}
-
-	tempLocalFile := localFile
-	index := strings.LastIndex(tempLocalFile, "/")
-	dir_err := os.MkdirAll(tempLocalFile[:index+1], 0755)
-	if dir_err != nil {
-		return stats.DoneParts, dir_err
-	}
-
-	if _, err := os.Stat(localFile); err != nil && os.IsNotExist(err) {
-		//if file not exists clean doneParts
-		stats.DoneParts = types.DownloadedParts{
-			PartSize: SingleMB,
-		}
-	}
-
-	if len(doneParts.Parts) > 0 {
-		file, err = os.OpenFile(localFile, os.O_RDWR, 0666)
-		if err != nil {
-			return stats.DoneParts, err
-		}
-	} else {
-		// Create the local file
-		file, err = os.Create(localFile)
-		if err != nil {
-			return stats.DoneParts, err
-		}
-		stats.DoneParts.PartSize = SingleMB
-	}
-	defer file.Close()
-
-	stats.Size = objSize
-	var progressReceiver pipeline.ProgressReceiver
-	if prgNotify != nil {
-		progressReceiver = func(bytesTransferred int64) {
-			stats.Asize = bytesTransferred
-			select {
-			case prgNotify <- *stats:
-			default: //ignore we cannot write
-			}
-		}
-	}
-	// calculate downloaded size based on parts
-	progress := int64(0)
-	for _, p := range stats.DoneParts.Parts {
-		progress += p.Size
-	}
-	progressLock := &sync.Mutex{}
-
-	// use pool of buffers to re-use them if needed without re-allocation
-	// The way that azure download azblob.DoBatchTransfer below works,
-	// we are downloading `SingleMB` chunks, with a parallelism of `parallelism`.
-	// Above, that is set to 16.
-	// So we are downloading 16 1MB chunks at a time.
-	// We then write those to the correct offset in a file.
-	// This is a highly efficient way to download them.
-	// However, each call of `io.Copy()` will create a new buffer on start, and
-	// remove it on completion.
-	// With a parallelism of 16, we will need at least 16 buffers. As file sizes get large,
-	// and we require more and more 1MB chunks, there will be more and more buffer created and destroyed.
-	// A 1TB file has 1024*1024 1MB chunks, and therefore 1024*1024 buffer create and destroy.
-	// This can cause significant overhead.
-	//
-	// To alleviate this burden, we create a sync.Pool, which creates a reusable pool of buffers.
-	// With 16 parallelism, it will create 16 buffers, and then reuse them, reducing the burden.
-	var bufPool = sync.Pool{
-		New: func() interface{} {
-			buf := make([]byte, 32*1024)
-			return &buf
-		},
-	}
-
-	err = azblob.DoBatchTransfer(ctx, azblob.BatchTransferOptions{
-		OperationName: "DownloadAzureBlob",
-		TransferSize:  objSize,
-		ChunkSize:     SingleMB,
-		Parallelism:   parallelism,
-		Operation: func(chunkStart int64, count int64, ctx context.Context) error {
-			offset := int64(0)
-			partNum := int64(0)
-			if chunkStart > 0 {
-				//calculate part number based on offset (chunkStart) in file
-				partNum = int64(math.Floor(float64(chunkStart) / float64(SingleMB)))
-			}
-			var part *types.PartDefinition
-			progressLock.Lock()
-			for _, el := range stats.DoneParts.Parts {
-				if el.Ind == partNum {
-					offset = el.Size
-					part = el
-					break
-				}
-			}
-			if count-offset == 0 {
-				progressLock.Unlock()
-				// nothing to download
-				return nil
-			}
-			if part == nil {
-				// if no part found, append new
-				part = &types.PartDefinition{Ind: partNum}
-				stats.DoneParts.Parts = append(stats.DoneParts.Parts, part)
-			}
-			progressLock.Unlock()
-			dr, err := blobURL.Download(ctx, chunkStart+offset, count-offset, azblob.BlobAccessConditions{}, false, azblob.ClientProvidedKeyOptions{})
-			if err != nil {
-				return err
-			}
-			body := dr.Body(azblob.RetryReaderOptions{MaxRetryRequests: maxRetries})
-			rangeProgress := int64(0)
-			body = pipeline.NewResponseBodyProgress(
-				body,
-				func(bytesTransferred int64) {
-					diff := bytesTransferred - rangeProgress
-					rangeProgress = bytesTransferred
-					progressLock.Lock()
-					progress += diff
-					progressReceiver(progress)
-					progressLock.Unlock()
-				})
-			// we get buffer from the pool to not allocate
-			// new buffer per every chunk inside io.copyBuffer
-			// and to not rely on garbage collecting of them
-			bp := *bufPool.Get().(*[]byte)
-			_, err = io.CopyBuffer(newSectionWriter(file, chunkStart+offset, count-offset, part), body, bp)
-			bufPool.Put(&bp)
-			if err != nil {
-				_ = body.Close()
-				return err
-			}
-			return body.Close()
-		},
+	_, err = blobClient.Delete(ctx, &azblob.DeleteBlobOptions{
+		DeleteSnapshots: &deleteSnapshots,
 	})
 	if err != nil {
+		return fmt.Errorf("failed to delete blob: %v", err)
+	}
+
+	return nil
+}
+
+// DownloadAzureBlob is a parallel, resumable, chunked download with progress.
+// Steps:
+//  1. Open/create local file.
+//  2. Reuse existing downloaded parts (doneParts) if resuming.
+//  3. Uses DoBatchTransfer:
+//     a. Splits download into SingleMB (1 MB) chunks.
+//     b. Downloads 16 parts in parallel (parallelism).
+//     c. Uses buffer pool (sync.Pool) to reuse memory.
+//     d. Tracks progress and sends updates via prgNotify.
+//     e. Resumable, efficient for large files. Ensures chunks are written to correct
+//     offsets using sectionWriter.
+func DownloadAzureBlob(
+	accountURL, accountName, accountKey, containerName, blobName, localFile string,
+	objMaxSize int64,
+	httpClient *http.Client,
+	doneParts types.DownloadedParts,
+	prgNotify types.StatsNotifChan,
+) (types.DownloadedParts, error) {
+
+	stats := &types.UpdateStats{DoneParts: doneParts}
+
+	_, blobClient, err := getContainerAndBlockBlobClients(
+		accountURL, accountName, accountKey, containerName, blobName, httpClient,
+	)
+	if err != nil {
+		return stats.DoneParts, fmt.Errorf("Error: %v", err)
+	}
+
+	ctx := context.Background()
+	properties, err := blobClient.GetProperties(ctx, nil)
+	if err != nil {
+		return stats.DoneParts, fmt.Errorf("could not get blob properties: %v", err)
+	}
+	objSize := *properties.ContentLength
+
+	if objMaxSize > 0 && objSize > objMaxSize {
+		return stats.DoneParts, fmt.Errorf("blob too large (%d bytes), max allowed is %d", objSize, objMaxSize)
+	}
+	stats.Size = objSize
+
+	// Prepare file
+	if err := os.MkdirAll(filepath.Dir(localFile), 0755); err != nil {
 		return stats.DoneParts, err
 	}
-	// ensure we send the total; it is theoretically possible that it downloaded without error
-	// but the progress receiver did not get invoked at the end
-	if stats.Asize < stats.Size {
-		progressReceiver(stats.Size)
+
+	f, err := os.OpenFile(localFile, os.O_CREATE|os.O_RDWR, 0666)
+	if err != nil {
+		return stats.DoneParts, fmt.Errorf("cannot open file: %v", err)
 	}
+	defer f.Close()
+
+	totalChunks := int((objSize + SingleMB - 1) / SingleMB)
+	progress := int64(0)
+	errCh := make(chan error, totalChunks)
+	mu := &sync.Mutex{}
+	var wg sync.WaitGroup
+
+	// Process chunks in batches of parallelism
+	for i := 0; i < totalChunks; i += parallelism {
+		endChunk := i + parallelism
+		if endChunk > totalChunks {
+			endChunk = totalChunks
+		}
+
+		for chunkIndex := i; chunkIndex < endChunk; chunkIndex++ {
+			start := int64(chunkIndex) * SingleMB
+			end := start + SingleMB - 1
+			if end >= objSize {
+				end = objSize - 1
+			}
+			wg.Add(1)
+
+			go func(start, end int64, partNum int) {
+				defer wg.Done()
+				resp, err := blobClient.DownloadStream(ctx, &blob.DownloadStreamOptions{
+					Range: azblob.HTTPRange{Offset: start, Count: end - start + 1},
+				})
+				if err != nil {
+					errCh <- fmt.Errorf("chunk %d failed: %v", partNum, err)
+					return
+				}
+				defer resp.Body.Close()
+
+				// get a sectionWriter and buffer
+				w := newSectionWriter(f, start)
+				bufptr := bufPool.Get().(*[]byte)
+				buf := *bufptr
+				if _, err := io.CopyBuffer(w, resp.Body, buf); err != nil {
+					errCh <- fmt.Errorf("chunk %d copy error: %v", partNum, err)
+					return
+				}
+				// recycle writer
+				writerPool.Put(w)
+				bufPool.Put(bufptr)
+
+				mu.Lock()
+				stats.DoneParts.Parts = append(stats.DoneParts.Parts, &types.PartDefinition{
+					Ind:  int64(partNum),
+					Size: end - start + 1,
+				})
+				progress += end - start + 1
+				if prgNotify != nil {
+					stats.Asize = progress
+					select {
+					case prgNotify <- *stats:
+					default:
+					}
+				}
+				mu.Unlock()
+			}(start, end, chunkIndex)
+		}
+
+		wg.Wait() // Wait for this batch to finish before continuing
+	}
+
+	close(errCh)
+	for err := range errCh {
+		if err != nil {
+			return stats.DoneParts, err
+		}
+	}
+
 	return stats.DoneParts, nil
 }
 
 // DownloadAzureBlobByChunks will process the blob download by chunks, i.e., chunks will be
 // responded back on as and when they receive
-func DownloadAzureBlobByChunks(accountURL, accountName, accountKey, containerName, remoteFile, localFile string, httpClient *http.Client) (io.ReadCloser, int64, error) {
-	p, err := newPipeline(accountName, accountKey, httpClient)
+func DownloadAzureBlobByChunks(
+	accountURL, accountName, accountKey, containerName, remoteFile, localFile string,
+	httpClient *http.Client,
+) (io.ReadCloser, int64, error) {
+	// Get clients using helper
+	_, blobClient, err := getContainerAndBlockBlobClients(
+		accountURL, accountName, accountKey, containerName, remoteFile, httpClient)
 	if err != nil {
-		return nil, 0, fmt.Errorf("unable to create pipeline: %v", err)
+		return nil, 0, fmt.Errorf("failed to get clients: %v", err)
 	}
 
-	URL, err := getURL(accountURL, accountName, containerName, "")
-	if err != nil {
-		return nil, 0, fmt.Errorf("invalid URL for container name %s: %v", containerName, err)
-	}
-
-	// Create a ContainerURL object that wraps the container URL and a request
-	// pipeline to make requests.
-	containerURL := azblob.NewContainerURL(*URL, p)
-	blobURL := containerURL.NewBlockBlobURL(remoteFile)
 	ctx := context.Background()
-	downloadResponse, err := blobURL.Download(ctx, 0, azblob.CountToEnd, azblob.BlobAccessConditions{}, false, azblob.ClientProvidedKeyOptions{})
+
+	// Fetch blob properties to get the content length
+	props, err := blobClient.GetProperties(ctx, nil)
+	if err != nil {
+		return nil, 0, fmt.Errorf("could not get blob properties: %v", err)
+	}
+	size := *props.ContentLength
+
+	// Stream download (entire blob)
+	resp, err := blobClient.DownloadStream(ctx, &blob.DownloadStreamOptions{})
 	if err != nil {
 		return nil, 0, fmt.Errorf("could not start download: %v", err)
 	}
 
-	readCloser := downloadResponse.Body(azblob.RetryReaderOptions{MaxRetryRequests: maxRetries})
-
-	properties, err := blobURL.GetProperties(ctx, azblob.BlobAccessConditions{}, azblob.ClientProvidedKeyOptions{})
-	if err != nil {
-		return nil, 0, fmt.Errorf("could not get properties for blob: %v", err)
-	}
-	return readCloser, int64(properties.ContentLength()), nil
+	return resp.Body, size, nil
 }
 
-func UploadAzureBlob(accountURL, accountName, accountKey, containerName, remoteFile, localFile string, httpClient *http.Client) (string, error) {
-	var (
-		ctx = context.Background()
-	)
-	p, err := newPipeline(accountName, accountKey, httpClient)
+// UploadAzureBlob uploads a local file to Azure Blob Storage using the new SDK and block blobs.
+func UploadAzureBlob(
+	accountURL, accountName, accountKey, containerName, remoteFile, localFile string,
+	httpClient *http.Client,
+) (string, error) {
+	ctx := context.Background()
+
+	// Get clients using helper
+	containerClient, blobClient, err := getContainerAndBlockBlobClients(
+		accountURL, accountName, accountKey, containerName, remoteFile, httpClient)
 	if err != nil {
-		return "", fmt.Errorf("unable to create pipeline: %v", err)
+		return "", fmt.Errorf("failed to get clients: %v", err)
 	}
 
-	URL, err := getURL(accountURL, accountName, containerName, "")
+	// Try to create the container (ignore if it already exists)
+	_, err = containerClient.Create(ctx, nil)
 	if err != nil {
-		return "", fmt.Errorf("invalid URL for container name %s: %v", containerName, err)
+		var respErr *azcore.ResponseError
+		if errors.As(err, &respErr) {
+			if respErr.ErrorCode != "ContainerAlreadyExists" {
+				return "", fmt.Errorf("failed to create container: %v", err)
+			}
+		} else {
+			return "", fmt.Errorf("failed to create container: %v", err)
+		}
 	}
 
-	// Create a ContainerURL object that wraps the container URL and a request
-	// pipeline to make requests.
-	containerURL := azblob.NewContainerURL(*URL, p)
-
-	// create the blob, but we can handle if the container already exists
-	if _, err := containerURL.Create(ctx, nil, azblob.PublicAccessNone); err != nil {
-		// we can handle if it already exists
-		var (
-			storageError azblob.StorageError
-			ok           bool
-		)
-		if storageError, ok = err.(azblob.StorageError); !ok {
-			return "", fmt.Errorf("error creating container %s: %v", containerName, err)
-		}
-		sct := storageError.ServiceCode()
-		if sct != azblob.ServiceCodeContainerAlreadyExists {
-			return "", fmt.Errorf("error creating container %s: %v", containerName, err)
-		}
-		// it was an existing container, which is fine
-	}
-
-	blob := containerURL.NewBlockBlobURL(remoteFile)
-
+	// Open the local file
 	file, err := os.Open(localFile)
 	if err != nil {
 		return "", fmt.Errorf("unable to open local file %s: %v", localFile, err)
 	}
 	defer file.Close()
 
-	if _, err := azblob.UploadFileToBlockBlob(ctx, file, blob, azblob.UploadToBlockBlobOptions{}); err != nil {
-		return "", fmt.Errorf("failed to upload file: %v", err)
+	// Upload the file stream to the blob
+	_, err = blobClient.UploadStream(ctx, file, &blockblob.UploadStreamOptions{})
+	if err != nil {
+		return "", fmt.Errorf("failed to upload file to blob: %v", err)
 	}
-	return blob.String(), nil
+
+	return blobClient.URL(), nil
 }
 
-func GetAzureBlobMetaData(accountURL, accountName, accountKey, containerName, remoteFile string, httpClient *http.Client) (int64, string, error) {
-	p, err := newPipeline(accountName, accountKey, httpClient)
-	if err != nil {
-		return 0, "", fmt.Errorf("unable to create pipeline: %v", err)
-	}
-
-	URL, err := getURL(accountURL, accountName, containerName, "")
-	if err != nil {
-		return 0, "", fmt.Errorf("invalid URL for container name %s: %v", containerName, err)
-	}
-
-	// Create a ContainerURL object that wraps the container URL and a request
-	// pipeline to make requests.
-	containerURL := azblob.NewContainerURL(*URL, p)
-	blobURL := containerURL.NewBlockBlobURL(remoteFile)
+// GetAzureBlobMetaData gets content length and content MD5 (as hex string).
+// Useful for verifying file integrity.
+func GetAzureBlobMetaData(
+	accountURL, accountName, accountKey, containerName, remoteFile string,
+	httpClient *http.Client,
+) (int64, string, error) {
 	ctx := context.Background()
-	properties, err := blobURL.GetProperties(ctx, azblob.BlobAccessConditions{}, azblob.ClientProvidedKeyOptions{})
+
+	// Get the blob client using helper
+	_, blobClient, err := getContainerAndBlockBlobClients(
+		accountURL, accountName, accountKey, containerName, remoteFile, httpClient)
 	if err != nil {
-		return 0, "", fmt.Errorf("could not get properties for blob: %v", err)
+		return 0, "", fmt.Errorf("failed to get blob client: %v", err)
 	}
-	stringHex := hex.EncodeToString(properties.ContentMD5())
-	return properties.ContentLength(), stringHex, nil
+
+	// Get blob properties
+	resp, err := blobClient.GetProperties(ctx, nil)
+	if err != nil {
+		return 0, "", fmt.Errorf("could not get blob properties: %v", err)
+	}
+
+	// Content length and ContentMD5 may be nil
+	length := int64(0)
+	if resp.ContentLength != nil {
+		length = *resp.ContentLength
+	}
+
+	var md5Hex string
+	if resp.ContentMD5 != nil {
+		md5Hex = hex.EncodeToString(resp.ContentMD5)
+	}
+
+	return length, md5Hex, nil
 }
 
 // GenerateBlobSasURI is used to generate the URI which can be used to access the blob until the the URI expries
-func GenerateBlobSasURI(accountURL, accountName, accountKey, containerName, remoteFile string, httpClient *http.Client, duration time.Duration) (string, error) {
-	credential, err := azblob.NewSharedKeyCredential(accountName, accountKey)
+func GenerateBlobSasURI(
+	accountURL, accountName, accountKey, containerName, remoteFile string,
+	httpClient *http.Client,
+	duration time.Duration,
+) (string, error) {
+	// Create credential
+	cred, err := azblob.NewSharedKeyCredential(accountName, accountKey)
 	if err != nil {
-		return "", fmt.Errorf("invalid credentials with error: %s", err.Error())
+		return "", fmt.Errorf("invalid credentials: %v", err)
 	}
 
-	// Checking whether blob exists or not before generating SAS URI
-	_, _, err = GetAzureBlobMetaData(accountURL, accountName, accountKey, containerName, remoteFile, httpClient)
+	// Check if the blob exists
+	_, _, err = GetAzureBlobMetaData(
+		accountURL, accountName, accountKey, containerName, remoteFile, httpClient)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("blob does not exist or error fetching metadata: %v", err)
 	}
 
-	// Set the desired SAS signature values and sign them with the shared key credentials to get the SAS query parameters.
-	sasQueryParams, err := azblob.BlobSASSignatureValues{
-		Protocol:      azblob.SASProtocolHTTPS, // Users MUST use HTTPS (not HTTP)
+	// Build SAS query parameters
+	sasValues := sas.BlobSignatureValues{
+		Version:       sas.Version, // latest version constant
+		Protocol:      sas.ProtocolHTTPS,
+		StartTime:     time.Now().UTC(),
 		ExpiryTime:    time.Now().UTC().Add(duration),
-		StartTime:     time.Now(),
 		ContainerName: containerName,
 		BlobName:      remoteFile,
-		Permissions:   azblob.BlobSASPermissions{Read: true}.String(),
-	}.NewSASQueryParameters(credential)
-	if err != nil {
-		return "", fmt.Errorf("could not generated SAS URI: %v", err)
+		Permissions:   (&sas.BlobPermissions{Read: true}).String(),
 	}
 
-	// Create the URL of the resource you wish to access and append the SAS query parameters.
-	// Since this is a blob SAS, the URL is to the Azure storage blob.
-	qp := sasQueryParams.Encode()
-
-	URL, err := getURL(accountURL, accountName, fmt.Sprintf("%s/%s", containerName, remoteFile), qp)
+	sasQueryParams, err := sasValues.SignWithSharedKey(cred)
 	if err != nil {
-		return "", fmt.Errorf("invalid URL for container name %s: %v", containerName, err)
+		return "", fmt.Errorf("could not generate SAS token: %v", err)
 	}
 
-	return URL.String(), nil
+	// Construct final URL
+	blobURL := fmt.Sprintf("%s/%s/%s?%s", strings.TrimSuffix(accountURL, "/"), containerName, remoteFile, sasQueryParams.Encode())
+	return blobURL, nil
 }
 
 // UploadPartByChunk upload an individual chunk given an io.ReadSeeker and partID
-func UploadPartByChunk(accountURL, accountName, accountKey, containerName, remoteFile, partID string, httpClient *http.Client, chunk io.ReadSeeker) error {
-	var (
-		ctx = context.Background()
-	)
-	p, err := newPipeline(accountName, accountKey, httpClient)
+func UploadPartByChunk(
+	accountURL, accountName, accountKey, containerName, remoteFile, partID string,
+	httpClient *http.Client,
+	chunk io.ReadSeeker,
+) error {
+	ctx := context.Background()
+
+	// Get container and blob clients
+	containerClient, blobClient, err := getContainerAndBlockBlobClients(
+		accountURL, accountName, accountKey, containerName, remoteFile, httpClient)
 	if err != nil {
-		return fmt.Errorf("unable to create pipeline: %v", err)
+		return fmt.Errorf("failed to get blob client: %v", err)
 	}
 
-	URL, err := getURL(accountURL, accountName, containerName, "")
+	// Attempt to create the container (ignore if already exists)
+	_, err = containerClient.Create(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("invalid URL for container name %s: %v", containerName, err)
+		var respErr *azcore.ResponseError
+		if errors.As(err, &respErr) && respErr.ErrorCode != "ContainerAlreadyExists" {
+			return fmt.Errorf("failed to create container %s: %v", containerName, err)
+		} else if !errors.As(err, &respErr) {
+			return fmt.Errorf("unexpected error creating container %s: %v", containerName, err)
+		}
 	}
 
-	// Create a ContainerURL object that wraps the container URL and a request
-	// pipeline to make requests.
-	containerURL := azblob.NewContainerURL(*URL, p)
-
-	// create the blob, but we can handle if the container already exists
-	if _, err := containerURL.Create(ctx, nil, azblob.PublicAccessNone); err != nil {
-		// we can handle if it already exists
-		var (
-			storageError azblob.StorageError
-			ok           bool
-		)
-		if storageError, ok = err.(azblob.StorageError); !ok {
-			return fmt.Errorf("error creating container %s: %v", containerName, err)
-		}
-		sct := storageError.ServiceCode()
-		if sct != azblob.ServiceCodeContainerAlreadyExists {
-			return fmt.Errorf("error creating container %s: %v", containerName, err)
-		}
-		// it was an existing container, which is fine
-	}
-
-	blob := containerURL.NewBlockBlobURL(remoteFile)
-
-	if _, err := blob.StageBlock(ctx, partID, chunk, azblob.LeaseAccessConditions{}, nil, azblob.ClientProvidedKeyOptions{}); err != nil {
+	// Stage the block (upload the chunk)
+	_, err = blobClient.StageBlock(ctx, partID, readSeekCloser{chunk}, nil)
+	if err != nil {
 		return fmt.Errorf("failed to upload chunk %s: %v", partID, err)
 	}
+
 	return nil
 }
 
 // UploadBlockListToBlob used to complete the list of parts which are already uploaded in block blob
-func UploadBlockListToBlob(accountURL, accountName, accountKey, containerName, remoteFile string, httpClient *http.Client, blocks []string) error {
-	var (
-		ctx = context.Background()
-	)
-	p, err := newPipeline(accountName, accountKey, httpClient)
+func UploadBlockListToBlob(
+	accountURL, accountName, accountKey, containerName, remoteFile string,
+	httpClient *http.Client,
+	blocks []string,
+) error {
+	ctx := context.Background()
+
+	// Get container and blob clients
+	containerClient, blobClient, err := getContainerAndBlockBlobClients(accountURL, accountName, accountKey, containerName, remoteFile, httpClient)
 	if err != nil {
-		return fmt.Errorf("unable to create pipeline: %v", err)
+		return fmt.Errorf("failed to get blob client: %v", err)
 	}
 
-	URL, err := getURL(accountURL, accountName, containerName, "")
+	// Try to create the container (ignore if already exists)
+	_, err = containerClient.Create(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("invalid URL for container name %s: %v", containerName, err)
+		var respErr *azcore.ResponseError
+		if errors.As(err, &respErr) && respErr.ErrorCode != "ContainerAlreadyExists" {
+			return fmt.Errorf("failed to create container %s: %v", containerName, err)
+		} else if !errors.As(err, &respErr) {
+			return fmt.Errorf("unexpected error creating container %s: %v", containerName, err)
+		}
 	}
 
-	// Create a ContainerURL object that wraps the container URL and a request
-	// pipeline to make requests.
-	containerURL := azblob.NewContainerURL(*URL, p)
-
-	// create the blob, but we can handle if the container already exists
-	if _, err := containerURL.Create(ctx, nil, azblob.PublicAccessNone); err != nil {
-		// we can handle if it already exists
-		var (
-			storageError azblob.StorageError
-			ok           bool
-		)
-		if storageError, ok = err.(azblob.StorageError); !ok {
-			return fmt.Errorf("error creating container %s: %v", containerName, err)
-		}
-		sct := storageError.ServiceCode()
-		if sct != azblob.ServiceCodeContainerAlreadyExists {
-			return fmt.Errorf("error creating container %s: %v", containerName, err)
-		}
-		// it was an existing container, which is fine
-	}
-
-	blob := containerURL.NewBlockBlobURL(remoteFile)
-
-	if _, err := blob.CommitBlockList(ctx, blocks, azblob.BlobHTTPHeaders{}, azblob.Metadata{}, azblob.BlobAccessConditions{}, azblob.DefaultAccessTier, nil, azblob.ClientProvidedKeyOptions{}, azblob.ImmutabilityPolicyOptions{}); err != nil {
+	// Build list of block IDs (Base64 encoded strings)
+	_, err = blobClient.CommitBlockList(ctx, blocks, nil)
+	if err != nil {
 		return fmt.Errorf("failed to commit block list: %v", err)
 	}
+
 	return nil
 }
