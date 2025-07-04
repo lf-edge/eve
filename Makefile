@@ -330,14 +330,15 @@ DOCKER_GO = _() { $(SET_X); mkdir -p $(CURDIR)/.go/src/$${3:-dummy} ; mkdir -p $
 
 PARSE_PKGS=$(if $(strip $(EVE_HASH)),EVE_HASH=)$(EVE_HASH) DOCKER_ARCH_TAG=$(DOCKER_ARCH_TAG) KERNEL_TAG=$(KERNEL_TAG) PLATFORM=$(PLATFORM) ./tools/parse-pkgs.sh
 
+LINUXKIT_PKG_TARGET=build
+
 # buildkitd.toml configuration file can control a configuration of the buildkit daemon
 # it is used for example to setup a Docker registry mirror for CI to speedup the builds
 # this option can be overridden by setting BUILDKIT_CONFIG_FILE variable on make command line
 BUILDKIT_CONFIG_FILE ?= /etc/buildkit/buildkitd.toml
-BUILDKIT_CONFIG_OPTS := $(if $(wildcard $(BUILDKIT_CONFIG_FILE)),--builder-config $(BUILDKIT_CONFIG_FILE),)
+BUILDKIT_CONFIG_OPTS := $(if $(filter manifest,$(LINUXKIT_PKG_TARGET)),,$(if $(wildcard $(BUILDKIT_CONFIG_FILE)),--builder-config $(BUILDKIT_CONFIG_FILE),))
 
 LINUXKIT_OPTS=$(if $(strip $(EVE_HASH)),--hash) $(EVE_HASH) $(if $(strip $(EVE_REL)),--release) $(EVE_REL) $(BUILDKIT_CONFIG_OPTS)
-LINUXKIT_PKG_TARGET=build
 
 ifdef LIVE_FAST
 # Check the makerootfs.sh and the linuxkit tool invocation, the --input-tar
