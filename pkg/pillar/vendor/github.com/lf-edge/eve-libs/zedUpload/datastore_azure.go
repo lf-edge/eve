@@ -113,7 +113,8 @@ func (ep *AzureTransportMethod) processAzureUpload(req *DronaRequest) (string, e
 		return "", err
 	}
 	file := req.name
-	loc, err := azure.UploadAzureBlob(ep.aurl, ep.acName, ep.acKey, ep.container, file, req.objloc, hClient)
+	loc, err := azure.UploadAzureBlob(ep.aurl, ep.acName, ep.acKey,
+		ep.container, file, req.objloc, hClient)
 	if err != nil {
 		return loc, err
 	}
@@ -172,7 +173,8 @@ func (ep *AzureTransportMethod) processAzureBlobMetaData(req *DronaRequest) (int
 	if err != nil {
 		return 0, "", err
 	}
-	size, md5, err := azure.GetAzureBlobMetaData(ep.aurl, ep.acName, ep.acKey, ep.container, req.name, hClient)
+	size, md5, err := azure.GetAzureBlobMetaData(ep.aurl, ep.acName, ep.acKey,
+		ep.container, req.name, hClient)
 	if err != nil {
 		return 0, "", err
 	}
