@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile-upstream:1.5.0-rc2-labs
 
-FROM lfedge/eve-alpine:0f2e0da38e30753c68410727a6cc269e57ff74f2 as grub-build-base
+FROM lfedge/eve-alpine:523254c1b0728948a16a02115eb817f27c00977f AS grub-build-base
 ENV BUILD_PKGS automake \
                make \
                bison \
@@ -63,7 +63,7 @@ RUN ln -s python3 /usr/bin/python && \
 
 ADD ${GRUB_REPO}/snapshot/grub-${GRUB_COMMIT}.tar.gz /grub.tar.gz
 ENV GNULIB_REVISION=d271f868a8df9bbec29049d01e056481b7a1a263
-ADD --keep-git-dir git://git.sv.gnu.org/gnulib#${GNULIB_REVISION} /gnulib
+ADD --keep-git-dir https://github.com/coreutils/gnulib#{GNULIB_REVISION} /gnulib
 
 # the below does a weird init of a git repo, because we are not cloning the
 # repo, yet we need to be in a repo to apply patches with `git am`.

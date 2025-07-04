@@ -3,8 +3,8 @@
 ARG KERNEL=latest
 ARG XENTOOLS=latest
 
-FROM lfedge/eve-xen-tools:$XENTOOLS as initrd-build
-FROM lfedge/eve-kernel:$KERNEL as kernel-build
+FROM lfedge/eve-xen-tools:$XENTOOLS AS initrd-build
+FROM lfedge/eve-kernel:$KERNEL AS kernel-build
 
 FROM scratch
 COPY --from=initrd-build --chmod=666 /usr/lib/xen/boot/runx-initrd /

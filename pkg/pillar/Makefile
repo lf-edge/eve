@@ -81,6 +81,8 @@ build-docker-git:
 	git archive HEAD | docker build $(DOCKER_ARGS) -t $(DOCKER_TAG) -
 
 build-docker-test:
+	../../build-tools/bin/linuxkit cache export $(shell ../../build-tools/bin/linuxkit pkg show-tag ../alpine) --outfile - --format docker | docker image load
+	../../build-tools/bin/linuxkit cache export $(shell ../../build-tools/bin/linuxkit pkg show-tag ../dom0-ztools/) --outfile - --format docker | docker image load
 	docker build $(DOCKER_ARGS) --build-arg TEST_TOOLS=y -t $(DOCKER_TAG) . --target build
 
 test: build-docker-test

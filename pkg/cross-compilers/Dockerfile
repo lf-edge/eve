@@ -1,4 +1,4 @@
-FROM lfedge/eve-alpine:0f2e0da38e30753c68410727a6cc269e57ff74f2 as build-base
+FROM lfedge/eve-alpine:523254c1b0728948a16a02115eb817f27c00977f AS build-base
 ENV BUILD_PKGS abuild curl tar make linux-headers patch g++ git gcc ncurses-dev autoconf file sudo
 RUN eve-alpine-deploy.sh
 
@@ -28,7 +28,7 @@ RUN tar -xzvf aports.tar.gz --strip-components=1 && rm -rf aports.tar.gz
 ENV BINUTILS_VERSION 2.38
 ENV MUSL_VERSION 1.2.3
 ENV GCC_VERSION 11.2.1_git20220219
-ADD --chown=builder:abuild https://ftp.gnu.org/gnu/binutils/binutils-${BINUTILS_VERSION}.tar.xz /var/cache/distfiles/binutils-${BINUTILS_VERSION}.tar.xz
+ADD --chown=builder:abuild https://mirror.kumi.systems/gnu/binutils/binutils-${BINUTILS_VERSION}.tar.xz /var/cache/distfiles/binutils-${BINUTILS_VERSION}.tar.xz
 ADD --chown=builder:abuild https://git.musl-libc.org/cgit/musl/snapshot/v${MUSL_VERSION}.tar.gz /var/cache/distfiles/musl-v${MUSL_VERSION}.tar.gz
 ADD --chown=builder:abuild https://dev.alpinelinux.org/~nenolod/gcc-${GCC_VERSION}.tar.xz /var/cache/distfiles/gcc-${GCC_VERSION}.tar.xz
 
@@ -41,16 +41,16 @@ RUN [ "x86_64" = "${EVE_BUILD_ARCH}" ] || sh -x ./scripts/bootstrap.sh "x86_64"
 RUN rm -rf /home/builder/packages/main/"${EVE_BUILD_ARCH}"/gcc-pass2*
 RUN cp -r /home/builder/packages/main/"${EVE_BUILD_ARCH}" /packages/
 
-FROM build-base as build-amd64
-FROM build-base as build-arm64
-FROM build-base as build-armhf
+FROM build-base AS build-amd64
+FROM build-base AS build-arm64
+FROM build-base AS build-armhf
 # we do not support cross-compilers for riscv64 host
 # as gcc-gnat is not available on riscv64
 # we cannot build cross-compilers without additional patches
-FROM lfedge/eve-alpine:0f2e0da38e30753c68410727a6cc269e57ff74f2 as build-riscv64
+FROM lfedge/eve-alpine:523254c1b0728948a16a02115eb817f27c00977f AS build-riscv64
 
 # hadolint ignore=DL3006
-FROM build-${TARGETARCH} as build
+FROM build-${TARGETARCH} AS build
 RUN mkdir -p /packages
 
 FROM scratch
