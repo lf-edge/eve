@@ -9,6 +9,8 @@ OUTPUT_IMG=/tmp/output.img
 DEFAULT_LIVE_IMG_SIZE=592
 DEFAULT_INSTALLER_IMG_SIZE=592
 DEFAULT_NVIDIA_IMG_SIZE=900
+DEFAULT_EVALUATION_INSTALLER_IMG_SIZE=2500
+DEFAULT_EVALUATION_LIVE_IMG_SIZE=2000
 
 bail() {
   echo "$@"
@@ -125,6 +127,8 @@ __EOT__
   exit 0
 }
 
+# $1 - offset in bytes
+# $2 - partition list
 create_efi_raw() {
   rm -rf /parts
   ln -s /bits /parts
@@ -146,6 +150,9 @@ do_build_config() {
 
 do_live() {
   PART_SPEC="efi conf imga"
+  if [ "$PLATFORM" = "evaluation" ]; then
+    PART_SPEC="efi conf imga imgb imgc"
+  fi
   # each live image is expected to have a soft serial number that
   # typically gets provisioned by an installer -- since we're
   # shortcutting the installer step here we need to generate it
@@ -218,42 +225,31 @@ do_sbom() {
   cat /bits/*.spdx.json >&3
 }
 
-prepare_for_platform() {
-    # First we need to check if we are an image for NVIDIA platform
-    if grep -q "\(.*\)-nvidia-\(.*\)" /bits/eve_version; then
-        # It's a NVIDIA image, increase the default size for installer
-        NVIDIA_PLAT=$(sed "s/.*-\(nvidia-jp.\)-.*/\1/" < /bits/eve_version)
-        DEFAULT_INSTALLER_IMG_SIZE=$DEFAULT_NVIDIA_IMG_SIZE
-        NVIDIA=true
-    else
-        NVIDIA_PLAT=""
-        NVIDIA=false
-    fi
+get_image_platform() {
+  cat /bits/eve_platform || bail "Cannot read platform from /bits/eve_platform"
+}
 
+# $1 - image platform
+prepare_for_platform() {
+    platform="$1"
     # Parse platform argument
-    case "$PLATFORM" in
-    imx8m*) #shellcheck disable=SC2039
-        if [ "$NVIDIA" = "true" ]; then
-            bail "This image is only valid for NVIDIA platform."
-        fi
-        cat /bits/bsp-imx/NXP-EULA-LICENSE.txt
-        [ -n "$ACCEPT" ] || bail "You need to read and accept the EULA before you can continue. Use the --accept-license argument."
+    case "$platform" in
+    imx) #shellcheck disable=SC2039
         cp /bits/bsp-imx/"$PLATFORM"-flash.bin /bits/imx8-flash.bin
         [ -n "$(ls /bits/bsp-imx/*.dtb 2> /dev/null)" ] && cp /bits/bsp-imx/*.dtb /bits/boot
         ;;
-    nvidia*)
-        if [ "$NVIDIA" = "false" ]; then
-            bail "This image is not for NVIDIA platform."
-        else
-            if [ "$PLATFORM" != "$NVIDIA_PLAT" ]; then
-                bail "This image is not for $PLATFORM but for $NVIDIA_PLAT instead."
-            fi
-        fi
+    nvidia-jp*)
+        DEFAULT_INSTALLER_IMG_SIZE=$DEFAULT_NVIDIA_IMG_SIZE
+        ;;
+    evaluation)
+        DEFAULT_LIVE_IMG_SIZE=$DEFAULT_EVALUATION_LIVE_IMG_SIZE
+        DEFAULT_INSTALLER_IMG_SIZE=$DEFAULT_EVALUATION_INSTALLER_IMG_SIZE
         ;;
     *) #shellcheck disable=SC2039,SC2104
         break
         ;;
     esac
+    export PLATFORM
 }
 
 # Lets' parse global options first
@@ -275,10 +271,6 @@ while true; do
              shift
           fi
           shift
-          #shellcheck disable=SC3057
-          [ "$PLATFORM" != "none" ] && \
-              [ "${PLATFORM:0:5}" != "imx8m" ] && \
-              [ "${PLATFORM:0:6}" != "nvidia" ] &&  bail "Unknown platform: $PLATFORM"
           ;;
      --accept-license*) #shellcheck disable=SC2039,SC3060
           ACCEPT=1
@@ -289,11 +281,28 @@ while true; do
    esac
 done
 
+image_platform=$(get_image_platform)
+
+# only for IMX8 -p and --accept-license are mandatory
+if [ "$image_platform" = "imx8" ]; then
+   [ -z "$PLATFORM" ] && bail "Error: platform (-p) argument is required for IMX8 images."
+   if [ -n "$ACCEPT" ]; then
+     cat /bits/bsp-imx/NXP-EULA-LICENSE.txt
+     bail "Error: you must accept the EULA to create IMX8 images. Use --accept-license option."
+   fi
+else
+   # image_platform cannot be unknown and it is always valid
+   # however if -p argument is not the same as image_platform
+   # print an error
+   [ -n "$PLATFORM" ] && [ "$PLATFORM" != "$image_platform" ] && bail "Error: platform (-p) argument '$PLATFORM' does not match image platform '$image_platform'."
+   PLATFORM="${image_platform}"
+fi
+
 # If we were not told to do anything, print help and exit with success
 [ $# -eq 0 ] && do_help
 
 # Prepare some files for selected platform
-prepare_for_platform
+prepare_for_platform "${image_platform}"
 
 # Let's see what was it that we were asked to do
 ACTION="do_$1"
@@ -305,6 +314,8 @@ shift
 if [ "$(ls -A /in)" ]; then
    mcopy -o -i /bits/config.img -s /in/* ::/
 fi
+
+echo "Generating image for platform '$PLATFORM'..."
 
 # Do. Or do not. There is no try.
 "$ACTION" "$@"

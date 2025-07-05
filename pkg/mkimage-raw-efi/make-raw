@@ -57,7 +57,6 @@ shift $((OPTIND-1))
 
 IMGFILE=$1
 shift
-PARTS=${*:-"efi imga imgb conf persist"}
 
 # This is the only partition type that PARTITION_TYPE_USR_X86_64
 # grub-core/commands/gptprio.c code will pay attention to
@@ -70,11 +69,14 @@ EFI_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30051
 IMGA_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30052
 IMGB_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30053
 CONF_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30054
+IMGC_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30055
 PERSIST_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30059
 INSTALLER_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30060
 
 # content of rootfs partition
 ROOTFS_IMG=/parts/rootfs.img
+ROOTFS_IMG_B=/parts/rootfs-b.img
+ROOTFS_IMG_C=/parts/rootfs-c.img
 # contents of installer partition
 INSTALLER_IMG=/parts/installer.img
 # content of conf partition
@@ -85,8 +87,6 @@ PERSIST_FILE=/parts/persist.img
 EFI_DIR=/parts/EFI
 # early bootloader directory (optional)
 BOOT_DIR=/parts/boot
-# content of initrd installer image (optional)
-INITRD_IMG=/parts/initrd.img
 # IMX8 flash blob that needs to be written to image
 IMX8_BLOB=/parts/imx8-flash.bin
 # IMX8 configuration file with flashing parameters
@@ -110,13 +110,34 @@ if [ -f /root/etc/eve-hv-type ]; then
       ROOTFS_PART_SIZE_MIN=$((1 * 1024 * 1024 * 1024))
    fi
 fi
+
+# PLATFORM can be set in environment, it means we are executed using
+# docker during build time, otherwise we are executed from EVE e.g.
+# from installer, in later case read platform from /etc/eve-platform
+if [ -z "$PLATFORM" ]; then
+  if [ -f /root/etc/eve-platform ]; then
+    PLATFORM=$(cat /root/etc/eve-platform)
+  else
+    PLATFORM="unknown"
+  fi
+fi
+
+if [ "$PLATFORM" = "evaluation" ]; then
+    PARTS=${*:-"efi imga imgb imgc conf persist"}
+    # we do not update any rootfs for evaluation platform
+    # so we do not reserve any space in the partition
+    ROOTFS_PART_SIZE_MIN=0
+else
+    PARTS=${*:-"efi imga imgb conf persist"}
+    # wipe IMGB for non-evaluation platforms
+    ROOTFS_IMG_B=
+fi
+
+
 # conf partition size in bytes
 CONF_PART_SIZE=$((1024 * 1024))
 # installer inventory partition size in bytes
 WIN_INVENTORY_PART_SIZE=$((40240 * 1024))
-# resulting FAT FS image size factor for installer
-# 1.5 is enough for FAT to keep all our files.
-INSTALLER_PART_SIZE_FACTOR="1.5"
 # imx8 boot blob size in bytes
 IMX8_BLOB_SIZE=$(( 8 * 1024 * 1024 ))
 # sector where the first partition starts on a blank disk
@@ -132,6 +153,7 @@ SYSTEM_VFAT_PART_OFFSET=1
 VFAT_PART_OFFSET=4
 IMGA_PART_OFFSET=2
 IMGB_PART_OFFSET=3
+IMGC_PART_OFFSET=7
 EFI_PART_OFFSET=1
 CONF_PART_OFFSET=4
 PERSIST_PART_OFFSET=9
@@ -170,6 +192,26 @@ calc_rootfs_part_size() {
   local SIZE
 
   SIZE=$(file_size "$ROOTFS_IMG")
+  # Take max
+  SIZE=$((SIZE > ROOTFS_PART_SIZE_MIN ? SIZE : ROOTFS_PART_SIZE_MIN))
+
+  echo $SIZE
+}
+
+calc_rootfs_part_b_size() {
+  local SIZE
+
+  SIZE=$(file_size "$ROOTFS_IMG_B")
+  # Take max
+  SIZE=$((SIZE > ROOTFS_PART_SIZE_MIN ? SIZE : ROOTFS_PART_SIZE_MIN))
+
+  echo $SIZE
+}
+
+calc_rootfs_part_c_size() {
+  local SIZE
+
+  SIZE=$(file_size "$ROOTFS_IMG_C")
   # Take max
   SIZE=$((SIZE > ROOTFS_PART_SIZE_MIN ? SIZE : ROOTFS_PART_SIZE_MIN))
 
@@ -220,7 +262,10 @@ calc_image_size() {
               SIZE=$((SIZE + $(calc_rootfs_part_size)))
               ;;
           imgb)
-              SIZE=$((SIZE + $(calc_rootfs_part_size)))
+              SIZE=$((SIZE + $(calc_rootfs_part_b_size)))
+              ;;
+          imgc)
+              SIZE=$((SIZE + $(calc_rootfs_part_c_size)))
               ;;
           installer)
               SIZE=$((SIZE + $(calc_installer_part_size)))
@@ -251,8 +296,10 @@ calc_image_size() {
 }
 
 cp_with_backup() {
-  local MD5_SUM=$(md5sum "$2" | cut -f1 -d\  )
-  [ -f "$2".$MD5_SUM ] || cp "$2" "$2".$MD5_SUM
+  local MD5_SUM
+  MD5_SUM=$(md5sum "$2" | cut -f1 -d\  )
+  [ -f "$2"."$MD5_SUM" ] || cp "$2" "$2"."$MD5_SUM"
+  # shellcheck disable=SC2181
   [ $? -eq 0 ] && cp "$1" "$2"
 }
 
@@ -270,26 +317,28 @@ grow_part() {
 
 dir2vfat() {
   # <img name> dir2vfat <dir> <image size> [label]
-  local IMG=`mktemp -u -p /tmp/data`
+  local IMG
   local LABEL=${3:-EVE}
   local FORCE_FAT32="-F32"
+  IMG=$(mktemp -u -p /tmp/data)
   # FAT32 can only reside on disks larger than 33Mb
   [ "$2" -lt 33792 ] && FORCE_FAT32="-v"
   (rm -rf /tmp/data
    mkdir /tmp/data
    mkfs.vfat "$FORCE_FAT32" -v -n "$LABEL" -C "$IMG" "$2"
-   mcopy -i $IMG -s $1/* ::/ ) >&2
-  echo $IMG
+   mcopy -i "$IMG" -s "$1"/* ::/ ) >&2
+  echo "$IMG"
 }
 
 do_system_vfat_part() {
   eval "local SEC_START=\$$1"
-  local SEC_END="$(grow_part "$SEC_START" "$2")"
+  local SEC_END
   local NUM_PART=$3
   local SOURCEDIR=$4
   local PART_TYPE="ef00"
   local partlabel='EFI System'
 
+  SEC_END="$(grow_part "$SEC_START" "$2")"
   PROTECTIVE_MBR_LIST="$PROTECTIVE_MBR_LIST$NUM_PART:"
 
   # Create a partition
@@ -300,7 +349,7 @@ do_system_vfat_part() {
          "$IMGFILE"
 
   #   ...copy EFI fs to EFI partition
-  dd if="$(dir2vfat $SOURCEDIR $(( (SEC_END - SEC_START) / 2)))" of="$IMGFILE" bs=1M conv=notrunc seek="$(( SEC_START * 512 ))" oflag=seek_bytes
+  dd if="$(dir2vfat "$SOURCEDIR" $(( (SEC_END - SEC_START) / 2)))" of="$IMGFILE" bs=1M conv=notrunc seek="$(( SEC_START * 512 ))" oflag=seek_bytes
 
   eval "$1=$((SEC_END + 1))"
 }
@@ -368,22 +417,23 @@ efi_installer_extension() {
 # 2. copy the bits we need for installation - persist.img, rootfs.img - to the INSTALLERPARTS partition
 do_installer() {
   # install the installer.img as our bootable rootfs
-  do_rootfs $1 INSTALLER "$(calc_installer_part_size)" $INSTALLER_PART $INSTALLER_UUID $INSTALLER_IMG
+  do_rootfs "$1" INSTALLER "$(calc_installer_part_size)" $INSTALLER_PART $INSTALLER_UUID $INSTALLER_IMG
 }
 
 do_rootfs() {
-    eval SEC_START=\$$1
+    eval SEC_START="\$$1"
     LABEL=$2
     local partsize=$3
     local NUM_PART=$4
     local IMG_UUID=$5
     IMG=$6
-    local SEC_END=$(grow_part "$SEC_START" "$partsize")
+    local SEC_END
+    SEC_END=$(grow_part "$SEC_START" "$partsize")
 
     # Calculate partition size and add a partition
     sgdisk --new "$NUM_PART:$SEC_START:$SEC_END" \
            --typecode="$NUM_PART:$PARTITION_TYPE_USR_X86_64" \
-           --change-name="$NUM_PART:$LABEL" $EXTRA_ATTR "$IMGFILE"
+           --change-name="$NUM_PART:$LABEL" "$IMGFILE"
 
     if [ -z "$RANDOM_DISK_UUIDS" ]; then
       sgdisk --partition-guid="$NUM_PART:$IMG_UUID" "$IMGFILE"
@@ -398,39 +448,45 @@ do_rootfs() {
       dd if=/dev/zero of="$IMGFILE" bs=512 count=1 conv=notrunc seek="$(( SEC_START * 512 ))" oflag=seek_bytes
     fi
 
-    eval $1=$(( $SEC_END + 1))
+    eval "$1=$(( SEC_END + 1))"
 }
 
 do_imga() {
-    do_rootfs $1 IMGA $(calc_rootfs_part_size) $IMGA_PART $IMGA_UUID $ROOTFS_IMG
+  do_rootfs "$1" IMGA "$(calc_rootfs_part_size)" $IMGA_PART $IMGA_UUID $ROOTFS_IMG
 }
 
 do_imgb() {
-    # for now we are wiping IMGB - hence not passing the source
-    do_rootfs $1 IMGB $(calc_rootfs_part_size) $IMGB_PART $IMGB_UUID
+  # if ROOTFS_IMG_B is empty we are wiping IMGB
+  do_rootfs "$1" IMGB "$(calc_rootfs_part_b_size)" $IMGB_PART $IMGB_UUID $ROOTFS_IMG_B
+}
+
+do_imgc() {
+  do_rootfs "$1" IMGC "$(calc_rootfs_part_c_size)" $IMGC_PART $IMGC_UUID $ROOTFS_IMG_C
 }
 
 # create a VFAT partition with the specified UUID
 do_vfat() {
-    eval local SEC_START=\$$1
-    local SEC_END=$(grow_part $SEC_START $2)
+    eval local SEC_START="\$$1"
+    local SEC_END
     local NUM_PART=$3
     local PART_TYPE=$4
     local partlabel=$5
     local partdatafile=$6
 
-    sgdisk --new $NUM_PART:$SEC_START:$SEC_END \
-           --typecode=$NUM_PART:$PART_TYPE \
+    SEC_END=$(grow_part "$SEC_START" "$2")
+
+    sgdisk --new "$NUM_PART:$SEC_START:$SEC_END" \
+           --typecode="$NUM_PART:$PART_TYPE" \
            --change-name="$NUM_PART:$partlabel" \
            "$IMGFILE"
 
-    dd if=$partdatafile of=$IMGFILE bs=1M conv=notrunc seek="$(( SEC_START * 512 ))" oflag=seek_bytes
+    dd if="$partdatafile" of="$IMGFILE" bs=1M conv=notrunc seek="$(( SEC_START * 512 ))" oflag=seek_bytes
 
-    eval $1=$(( $SEC_END + 1))
+    eval "$1=$(( SEC_END + 1))"
 }
 
 do_conf() {
-    do_vfat $1 $CONF_PART_SIZE $VFAT_PART 13307e62-cd9c-4920-8f9b-91b45828b798 CONFIG $CONF_FILE
+    do_vfat "$1" $CONF_PART_SIZE $VFAT_PART 13307e62-cd9c-4920-8f9b-91b45828b798 CONFIG $CONF_FILE
     if [ -z "$RANDOM_DISK_UUIDS" ]; then
         local NUM_PART=$CONF_PART
         sgdisk --partition-guid="$NUM_PART:$CONF_UUID" "$IMGFILE"
@@ -438,7 +494,7 @@ do_conf() {
 }
 
 do_conf_win() {
-    do_vfat $1 $CONF_PART_SIZE $VFAT_PART EBD0A0A2-B9E5-4433-87C0-68B6B72699C7 CONFIG $CONF_FILE
+    do_vfat "$1" $CONF_PART_SIZE $VFAT_PART EBD0A0A2-B9E5-4433-87C0-68B6B72699C7 CONFIG $CONF_FILE
 }
 
 do_inventory_win() {
@@ -461,23 +517,23 @@ do_inventory_win() {
 }
 
 do_persist() {
-    eval SEC_START=\$$1
+    eval SEC_START="\$$1"
     # Persistent Purgeable Partition.  It is set at partition
     # number 9 to reserve the first 8 partitions to system types.
     local NUM_PART=$PERSIST_PART
     # P3 takes all space available
     local SEC_END=0
 
-    sgdisk --new $NUM_PART:$SEC_START:$SEC_END \
+    sgdisk --new "$NUM_PART:$SEC_START:$SEC_END" \
            --typecode=$NUM_PART:5f24425a-2dfa-11e8-a270-7b663faccc2c \
-           --change-name=$NUM_PART:'P3' $IMGFILE
+           --change-name=$NUM_PART:'P3' "$IMGFILE"
 
     if [ -z "$RANDOM_DISK_UUIDS" ]; then
         sgdisk --partition-guid="$NUM_PART:$PERSIST_UUID" "$IMGFILE"
     fi
     dd if="$PERSIST_FILE" of="$IMGFILE" bs=1M conv=notrunc seek="$(( SEC_START * 512 ))" oflag=seek_bytes
 
-    eval $1=0
+    eval "$1=0"
 }
 
 do_usb_conf() {
@@ -566,32 +622,33 @@ if imx8_exists; then
   # If offset was not specified, use 32 as default
   [ -z "$IMG_SEEK" ] && IMG_SEEK=32
   # Write blob to image file
-  dd if="$IMX8_BLOB" of="$IMGFILE" bs=1024 seek=$IMG_SEEK conv=notrunc
+  dd if="$IMX8_BLOB" of="$IMGFILE" bs=1024 seek="$IMG_SEEK" conv=notrunc
 fi
 
 # Lets see if GPT partition exists and it is one of the
 # kinds we recognize
-case "$(sgdisk -p $IMGFILE 2>/dev/null | sed -ne '/^Number/,$s/^.* //p' | tr '\012' ' ')" in
+case "$(sgdisk -p "$IMGFILE" 2>/dev/null | sed -ne '/^Number/,$s/^.* //p' | tr '\012' ' ')" in
   "Name vrl vrl_backup mcuimage fastboot nvme boot reserved cache"*)
       echo "Found Android GPT partition table on $IMGFILE"
-      for p in $(sgdisk -p $IMGFILE 2>/dev/null | sed -e '1,/cache$/d' | awk '{print $1;}') ; do
-        sgdisk -d $p $IMGFILE
+      for p in $(sgdisk -p "$IMGFILE" 2>/dev/null | sed -e '1,/cache$/d' | awk '{print $1;}') ; do
+        sgdisk -d "$p" "$IMGFILE"
       done
       PART_OFFSET=10
-      CUR_SEC=$(( ( $(sgdisk -p $IMGFILE 2>/dev/null | tail -1 | awk '{print $3;}') / 2048 + 1 ) * 2048 ))
-      EMBED_BOOT_START=$(sgdisk -i 6 $IMGFILE 2>/dev/null | awk '/First sector:/{ print $3; }')
-      EMBED_BOOT_SIZE=$(sgdisk -i 6 $IMGFILE 2>/dev/null | awk '/Partition size:/{ print $3; }')
+      # shellcheck disable=SC2034
+      CUR_SEC=$(( ( $(sgdisk -p "$IMGFILE" 2>/dev/null | tail -1 | awk '{print $3;}') / 2048 + 1 ) * 2048 ))
+      EMBED_BOOT_START=$(sgdisk -i 6 "$IMGFILE" 2>/dev/null | awk '/First sector:/{ print $3; }')
+      EMBED_BOOT_SIZE=$(sgdisk -i 6 "$IMGFILE" 2>/dev/null | awk '/Partition size:/{ print $3; }')
       ;;
   "Name System IMGA IMGB CONFIG P3"*)
       echo "Found EVE GPT partition table on $IMGFILE"
       # apparently sgdisk -Z doesn't clear MBR and keeps complaining
       dd if=/dev/zero of="$IMGFILE" bs=512 count=1 conv=notrunc
-      sgdisk -Z --clear $IMGFILE 2>/dev/null || :
+      sgdisk -Z --clear "$IMGFILE" 2>/dev/null || :
       ;;
    *) echo "Unknown (or unrecognizable) GPT partition table on $IMGFILE"
       # apparently sgdisk -Z doesn't clear MBR and keeps complaining
       dd if=/dev/zero of="$IMGFILE" bs=512 count=1 conv=notrunc
-      sgdisk -Z --clear $IMGFILE 2>/dev/null || :
+      sgdisk -Z --clear "$IMGFILE" 2>/dev/null || :
       ;;
 esac
 
@@ -600,16 +657,17 @@ if [ -z "$RANDOM_DISK_UUIDS" ]; then
 fi
 
 # at this point, the base PART_OFFSET is set, so we can calculate the rest
-SYSTEM_VFAT_PART=$(( PART_OFFSET + $SYSTEM_VFAT_PART_OFFSET ))
-VFAT_PART=$(( PART_OFFSET + $VFAT_PART_OFFSET ))
-INSTALLER_PART=$(( PART_OFFSET + $INSTALLER_PART_OFFSET ))
-IMGA_PART=$(( PART_OFFSET + $IMGA_PART_OFFSET ))
-IMGB_PART=$(( PART_OFFSET + $IMGB_PART_OFFSET ))
-EFI_PART=$(( PART_OFFSET + $EFI_PART_OFFSET ))
-CONF_PART=$(( PART_OFFSET + $CONF_PART_OFFSET ))
-PERSIST_PART=$(( PART_OFFSET + $PERSIST_PART_OFFSET ))
-INVENTORY_WIN_PART=$(( PART_OFFSET + $INVENTORY_WIN_PART_OFFSET ))
-USB_CONF_PART=$(( PART_OFFSET + $USB_CONF_PART_OFFSET ))
+SYSTEM_VFAT_PART=$(( PART_OFFSET + SYSTEM_VFAT_PART_OFFSET ))
+VFAT_PART=$(( PART_OFFSET + VFAT_PART_OFFSET ))
+INSTALLER_PART=$(( PART_OFFSET + INSTALLER_PART_OFFSET ))
+IMGA_PART=$(( PART_OFFSET + IMGA_PART_OFFSET ))
+IMGB_PART=$(( PART_OFFSET + IMGB_PART_OFFSET ))
+IMGC_PART=$(( PART_OFFSET + IMGC_PART_OFFSET ))
+EFI_PART=$(( PART_OFFSET + EFI_PART_OFFSET ))
+CONF_PART=$(( PART_OFFSET + CONF_PART_OFFSET ))
+PERSIST_PART=$(( PART_OFFSET + PERSIST_PART_OFFSET ))
+INVENTORY_WIN_PART=$(( PART_OFFSET + INVENTORY_WIN_PART_OFFSET ))
+USB_CONF_PART=$(( PART_OFFSET + USB_CONF_PART_OFFSET ))
 
 # override regular efi for efiinstaller if both efi and installer are here
 if echo "$PARTS" | grep -q "efi" && echo "$PARTS" | grep -q "installer"; then
@@ -617,7 +675,7 @@ if echo "$PARTS" | grep -q "efi" && echo "$PARTS" | grep -q "installer"; then
 fi
 
 for p in $PARTS ; do
-  eval do_$p CUR_SEC
+  eval "do_$p CUR_SEC"
 done
 
 # set the appropriate boot partition for grub gptprio.next
@@ -629,6 +687,8 @@ elif echo "$PARTS" | grep -q "imga"; then
   BOOTABLE_PART=$IMGA_PART
 elif echo "$PARTS" | grep -q "imgb"; then
   BOOTABLE_PART=$IMGB_PART
+elif echo "$PARTS" | grep -q "imgc"; then
+  BOOTABLE_PART=$IMGC_PART
 fi
 
 if [ -n "$BOOTABLE_PART" ]; then
@@ -657,10 +717,12 @@ fi
 # blobs on flash is fairly common on ARM so we expect to see others as well)
 # On the other hand...
 GRUB_IMG="$(echo /efifs/EFI/BOOT/BOOT*.EFI)"
-if [ ${EMBED_BOOT_START:-0} -gt 0 -a ${EMBED_BOOT_SIZE:-0} -gt 0 -a -f "$GRUB_IMG" ] ; then
-  if mount $IMGFILE /mnt -o loop,offset=$(( EMBED_BOOT_START * 512  )),sizelimit=$(( EMBED_BOOT_SIZE * 512 )) ; then
+if [ "${EMBED_BOOT_START:-0}" -gt 0 ] && [ "${EMBED_BOOT_SIZE:-0}" -gt 0 ] && [ -f "$GRUB_IMG" ] ; then
+  if mount "$IMGFILE" /mnt -o loop,offset=$(( EMBED_BOOT_START * 512  )),sizelimit=$(( EMBED_BOOT_SIZE * 512 )) ; then
+     # shellcheck disable=SC2010
      FASTBOOT=$(cd /mnt/EFI/BOOT/ ; ls | grep -i '^fastboot.efi$')
-     if $(set ${FASTBOOT:-. .} ; test $# -eq 1) ; then
+     # shellcheck disable=SC2091
+     if $(set "${FASTBOOT:-. .}" ; test $# -eq 1) ; then
         cp_with_backup "$GRUB_IMG" "/mnt/EFI/BOOT/$FASTBOOT"
         (echo 'set root=hd0,gpt11' ; echo 'configfile /efi/boot/grub.cfg') > /tmp/grub.cfg
         cp_with_backup /tmp/grub.cfg /mnt/EFI/BOOT/grub.cfg
@@ -676,4 +738,4 @@ else
 fi
 
 # Validate the health of our creation
-sgdisk -v $IMGFILE
+sgdisk -v "$IMGFILE"
