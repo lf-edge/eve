@@ -224,31 +224,65 @@ func (handler *volumeHandlerCSI) CreateVolume() (string, error) {
 func (handler *volumeHandlerCSI) DestroyVolume() (string, error) {
 	pvcName := handler.status.GetPVCName()
 	handler.log.Noticef("DestroyVolume called for PVC %s", pvcName)
-	err := kubeapi.DeletePVC(pvcName, handler.log)
-	if err != nil {
-		// Its OK if not found since PVC might have been deleted already
-		if kerr.IsNotFound(err) {
-			handler.log.Noticef("PVC %s not found, might have been deleted", pvcName)
-			return pvcName, nil
-		} else {
-			return pvcName, err
+	// if this is a replicated volume, do not delete PVC on this node.
+	if !handler.status.IsReplicated {
+		err := kubeapi.DeletePVC(pvcName, handler.log)
+		if err != nil {
+			// Its OK if not found since PVC might have been deleted already
+			if kerr.IsNotFound(err) {
+				handler.log.Noticef("PVC %s not found, might have been deleted", pvcName)
+				return pvcName, nil
+			} else {
+				return pvcName, err
+			}
 		}
+	} else {
+		// Lets log this to see that PVC delete was skipped because its a replicated PVC.
+		handler.log.Noticef("DestroyVolume skip delete PVC %s", pvcName)
 	}
 	return pvcName, nil
 }
 
 func (handler *volumeHandlerCSI) Populate() (bool, error) {
 	pvcName := handler.status.GetPVCName()
+	isReplicated := handler.status.IsReplicated
+	// Kubevirt eve volumes have no location on /persist, they are PVCs
 	handler.status.FileLocation = pvcName
+	// Though we convert container image to PVC, we need to keep the image format to tell domainmgr
+	// that we are launching a container as VM.
+	if !handler.status.IsContainer() {
+		handler.status.ContentFormat = zconfig.Format_PVC
+	} else {
+		handler.status.ContentFormat = zconfig.Format_CONTAINER
+	}
 	handler.log.Noticef("Populate called for PVC %s", pvcName)
-	_, err := kubeapi.FindPVC(pvcName, handler.log)
-	if err != nil {
-		// Its OK if not found since PVC might not be created yet.
-		if kerr.IsNotFound(err) {
-			handler.log.Noticef("PVC %s not found", pvcName)
-			return false, nil
-		} else {
-			return false, err
+	// A replicated volume is created on designated node, this node is supposed to be a replica volume.
+	// so wait until the replica is created. It could happen that the designated node did not even receive
+	// the configuration. This wait can be for long long time.
+	if isReplicated {
+		for {
+			// waitForPVCReady sleeps for 60 secs, so no need to sleep here.
+			err := kubeapi.WaitForPVCReady(pvcName, handler.log)
+			if err != nil {
+				if kerr.IsNotFound(err) {
+					handler.log.Noticef("PVC %s not found", pvcName)
+					continue
+				} else {
+					return false, nil
+				}
+			}
+			return true, nil
+		}
+	} else {
+		_, err := kubeapi.FindPVC(pvcName, handler.log)
+		if err != nil {
+			// Its OK if not found since PVC might not be created yet.
+			if kerr.IsNotFound(err) {
+				handler.log.Noticef("PVC %s not found", pvcName)
+				return false, nil
+			} else {
+				return false, err
+			}
 		}
 	}
 	return true, nil
