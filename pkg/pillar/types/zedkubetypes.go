@@ -10,6 +10,21 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
+const (
+	// DefaultDrainSkipK8sAPINotReachableTimeoutSeconds is the time duration which the drain request handler
+	// will continue retrying the k8s api before declaring the node is unavailable and continuing
+	// device operations (reboot/shutdown/upgrade)
+	// This covers the following k8s.io/apimachinery/pkg/api/errors
+	// IsInternalError
+	// IsServerTimeout
+	// IsServiceUnavailable
+	// IsTimeout
+	// IsTooManyRequests
+	DefaultDrainSkipK8sAPINotReachableTimeoutSeconds = 300
+	// DefaultDrainTimeoutHours is time allowed for a node drain before a failure is returned
+	DefaultDrainTimeoutHours = 24
+)
+
 // KubeNodeStatus - Enum for the status of a Kubernetes node
 type KubeNodeStatus int8
 
