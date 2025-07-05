@@ -6,7 +6,7 @@
 
 # Script version, don't forget to bump up once something is changed
 
-VERSION=37
+VERSION=38
 # Add required packages here, it will be passed to "apk add".
 # Once something added here don't forget to add the same package
 # to the Dockerfile ('ENV PKGS' line) of the debug container,
@@ -78,10 +78,11 @@ usage()
     echo "       -a APPLICATION-UUID  - read specified application logs only"
     echo "       -e                   - additional edgeview string in filename"
     echo "       -j                   - output logs in json"
+    echo "       -u server            - upload logs via http to server with credentials in AUTHORIZATION environment variable"
     exit 1
 }
 
-while getopts "vhsa:djet:" o; do
+while getopts "vu:sha:djet:" o; do
     case "$o" in
         h)
             usage
@@ -111,6 +112,9 @@ while getopts "vhsa:djet:" o; do
             ;;
         j)
             OUT_LOGS_IN_JSON=1
+            ;;
+        u)
+            UPLOAD="$OPTARG"
             ;;
         :)
             usage
@@ -562,4 +566,11 @@ sync
 
 echo "- done"
 echo
-echo "EVE info is collected '$TARBALL_FILE'"
+echo "EVE info is collected into '$TARBALL_FILE'"
+
+if [ -n "$UPLOAD" ];
+then
+    echo "Uploading tarball to $UPLOAD"
+    curl --retry-all-errors --retry 10 --retry-delay 3 -s -d @"$TARBALL_FILE" -H "Authorization: $AUTHORIZATION" "$UPLOAD/$INFO_DIR_SUFFIX.tar.gz"
+    echo "Uploading tarball to $UPLOAD done"
+fi

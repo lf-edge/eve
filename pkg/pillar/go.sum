@@ -1470,7 +1470,7 @@ github.com/linuxkit/linuxkit/src/cmd/linuxkit v0.0.0-20240507172735-6d37353ca1ee
 github.com/linuxkit/virtsock v0.0.0-20201010232012-f8cee7dfc7a3/go.mod h1:3r6x7q95whyfWQpmGZTu3gk3v2YkMi05HEzl7Tf7YEo=
 github.com/lithammer/shortuuid/v4 v4.0.0 h1:QRbbVkfgNippHOS8PXDkti4NaWeyYfcBTHtw7k08o4c=
 github.com/lithammer/shortuuid/v4 v4.0.0/go.mod h1:Zs8puNcrvf2rV9rTH51ZLLcj7ZXqQI3lv67aw4KiB1Y=
-github.com/longhorn/longhorn-manager v1.6.0 h1:tIU9Dtl5564jIxPM9qaax8Fvbd+FSDX8HQYH7U5E4vE=
+github.com/longhorn/longhorn-manager v1.6.0 h1:bU7l1BN+ylsJD5oEI5qtCIzc9HYdhB9zIfFPi9x9LkU=
 github.com/longhorn/longhorn-manager v1.6.0/go.mod h1:+v8jWi4y8leBGIdmUuopYIesx6o9Ih7bQC4JzFOCqaM=
 github.com/lyft/protoc-gen-star v0.6.0/go.mod h1:TGAoBVkt8w7MPG72TrKIu85MIdXwDuzJYeZuUPFPNwA=
 github.com/lyft/protoc-gen-star v0.6.1/go.mod h1:TGAoBVkt8w7MPG72TrKIu85MIdXwDuzJYeZuUPFPNwA=
