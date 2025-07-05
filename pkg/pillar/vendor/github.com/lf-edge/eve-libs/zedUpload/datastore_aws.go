@@ -75,6 +75,7 @@ func (ep *AwsTransportMethod) Close() error {
 
 // WithSrcIP : use the specific IP as source address for this connection.
 func (ep *AwsTransportMethod) WithSrcIP(localAddr net.IP) error {
+	ep.useIPv6 = localAddr != nil && localAddr.To4() == nil
 	return ep.hClientWrap.withSrcIP(localAddr)
 }
 
@@ -127,9 +128,9 @@ func (ep *AwsTransportMethod) processS3Upload(req *DronaRequest) (error, int) {
 
 	// FiXME: strings.TrimSuffix needs to go away once final soultion is done.
 	// upload, always the compression file.
-	sc := zedAWS.NewAwsCtx(ep.token, ep.apiKey, ep.region, hClient)
-	if sc == nil {
-		return fmt.Errorf("unable to create S3 context"), 0
+	sc, err := zedAWS.NewAwsCtx(ep.token, ep.apiKey, ep.region, ep.useIPv6, hClient)
+	if err != nil {
+		return fmt.Errorf("unable to create S3 context: %v", err), 0
 	}
 	if req.cancelContext != nil {
 		sc = sc.WithContext(req.cancelContext)
@@ -158,7 +159,10 @@ func (ep *AwsTransportMethod) processS3Download(req *DronaRequest) (error, int) 
 	}
 
 	if req.ackback {
-		s := zedAWS.NewAwsCtx(ep.token, pwd, ep.region, hClient)
+		s, err := zedAWS.NewAwsCtx(ep.token, pwd, ep.region, ep.useIPv6, hClient)
+		if err != nil {
+			return fmt.Errorf("unable to create S3 context: %v", err), 0
+		}
 		if req.cancelContext != nil {
 			s = s.WithContext(req.cancelContext)
 		}
@@ -166,7 +170,7 @@ func (ep *AwsTransportMethod) processS3Download(req *DronaRequest) (error, int) 
 			s = s.WithLogger(req.logger)
 		}
 		if s != nil {
-			err, length := s.GetObjectSize(ep.bucket, req.name)
+			length, err := s.GetObjectSize(ep.bucket, req.name)
 			if err == nil {
 				ep.ctx.postSize(req, length, 0)
 			}
@@ -174,9 +178,9 @@ func (ep *AwsTransportMethod) processS3Download(req *DronaRequest) (error, int) 
 		go statsUpdater(req, ep.ctx, prgChan)
 	}
 
-	sc := zedAWS.NewAwsCtx(ep.token, pwd, ep.region, hClient)
-	if sc == nil {
-		return fmt.Errorf("unable to create S3 context"), 0
+	sc, err := zedAWS.NewAwsCtx(ep.token, pwd, ep.region, ep.useIPv6, hClient)
+	if err != nil {
+		return fmt.Errorf("unable to create S3 context: %v", err), 0
 	}
 	if req.cancelContext != nil {
 		sc = sc.WithContext(req.cancelContext)
@@ -205,9 +209,9 @@ func (ep *AwsTransportMethod) processS3DownloadByChunks(req *DronaRequest) error
 		return err
 	}
 	pwd := strings.TrimSuffix(ep.apiKey, "\n")
-	sc := zedAWS.NewAwsCtx(ep.token, pwd, ep.region, hClient)
-	if sc == nil {
-		return fmt.Errorf("unable to create S3 context")
+	sc, err := zedAWS.NewAwsCtx(ep.token, pwd, ep.region, ep.useIPv6, hClient)
+	if err != nil {
+		return fmt.Errorf("unable to create S3 context: %v", err)
 	}
 	if req.cancelContext != nil {
 		sc = sc.WithContext(req.cancelContext)
@@ -235,7 +239,7 @@ func (ep *AwsTransportMethod) processS3Delete(req *DronaRequest) error {
 	if err != nil {
 		return err
 	}
-	s3ctx := zedAWS.NewAwsCtx(ep.token, ep.apiKey, ep.region, hClient)
+	s3ctx, err := zedAWS.NewAwsCtx(ep.token, ep.apiKey, ep.region, ep.useIPv6, hClient)
 	if s3ctx != nil {
 		if req.cancelContext != nil {
 			s3ctx = s3ctx.WithContext(req.cancelContext)
@@ -245,7 +249,7 @@ func (ep *AwsTransportMethod) processS3Delete(req *DronaRequest) error {
 		}
 		err = s3ctx.DeleteObject(ep.bucket, req.name)
 	} else {
-		return fmt.Errorf("no s3 context")
+		return fmt.Errorf("no s3 context: %v", err)
 	}
 	if err != nil {
 		return err
@@ -271,9 +275,9 @@ func (ep *AwsTransportMethod) processS3List(req *DronaRequest) ([]string, error,
 	if err != nil {
 		return s, err, 0
 	}
-	sc := zedAWS.NewAwsCtx(ep.token, pwd, ep.region, hClient)
-	if sc == nil {
-		return s, fmt.Errorf("unable to create S3 context"), 0
+	sc, err := zedAWS.NewAwsCtx(ep.token, pwd, ep.region, ep.useIPv6, hClient)
+	if err != nil {
+		return s, fmt.Errorf("unable to create S3 context: %v", err), 0
 	}
 	if req.cancelContext != nil {
 		sc = sc.WithContext(req.cancelContext)
@@ -299,9 +303,9 @@ func (ep *AwsTransportMethod) processS3ObjectMetaData(req *DronaRequest) (int64,
 		return 0, "", err
 	}
 	pwd := strings.TrimSuffix(ep.apiKey, "\n")
-	sc := zedAWS.NewAwsCtx(ep.token, pwd, ep.region, hClient)
-	if sc == nil {
-		return 0, "", fmt.Errorf("unable to create S3 context")
+	sc, err := zedAWS.NewAwsCtx(ep.token, pwd, ep.region, ep.useIPv6, hClient)
+	if err != nil {
+		return 0, "", fmt.Errorf("unable to create S3 context: %v", err)
 	}
 	if req.cancelContext != nil {
 		sc = sc.WithContext(req.cancelContext)
@@ -347,7 +351,10 @@ func (ep *AwsTransportMethod) processMultipartUpload(req *DronaRequest) (string,
 	if err != nil {
 		return "", "", err
 	}
-	s3ctx := zedAWS.NewAwsCtx(ep.token, ep.apiKey, ep.region, hClient)
+	s3ctx, err := zedAWS.NewAwsCtx(ep.token, ep.apiKey, ep.region, ep.useIPv6, hClient)
+	if err != nil {
+		return "", "", err
+	}
 	if req.cancelContext != nil {
 		s3ctx = s3ctx.WithContext(req.cancelContext)
 	}
@@ -363,7 +370,10 @@ func (ep *AwsTransportMethod) completeMultipartUpload(req *DronaRequest) error {
 	if err != nil {
 		return err
 	}
-	s3ctx := zedAWS.NewAwsCtx(ep.token, ep.apiKey, ep.region, hClient)
+	s3ctx, err := zedAWS.NewAwsCtx(ep.token, ep.apiKey, ep.region, ep.useIPv6, hClient)
+	if err != nil {
+		return err
+	}
 	if req.cancelContext != nil {
 		s3ctx = s3ctx.WithContext(req.cancelContext)
 	}
@@ -378,7 +388,10 @@ func (ep *AwsTransportMethod) generateSignedURL(req *DronaRequest) (string, erro
 	if err != nil {
 		return "", err
 	}
-	s3ctx := zedAWS.NewAwsCtx(ep.token, ep.apiKey, ep.region, hClient)
+	s3ctx, err := zedAWS.NewAwsCtx(ep.token, ep.apiKey, ep.region, ep.useIPv6, hClient)
+	if err != nil {
+		return "", err
+	}
 	if req.cancelContext != nil {
 		s3ctx = s3ctx.WithContext(req.cancelContext)
 	}
@@ -399,5 +412,6 @@ type AwsTransportMethod struct {
 
 	failPostTime time.Time
 	ctx          *DronaCtx
+	useIPv6      bool
 	hClientWrap  *httpClientWrapper
 }
