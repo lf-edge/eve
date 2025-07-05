@@ -208,6 +208,7 @@ func TestNewConfigItemSpecMap(t *testing.T) {
 		// TriState Items
 		NetworkFallbackAnyEth,
 		MaintenanceMode,
+		AirGapMode,
 		// String Items
 		SSHAuthorizedKeys,
 		DefaultLogLevel,

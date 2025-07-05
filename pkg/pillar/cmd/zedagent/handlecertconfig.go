@@ -279,7 +279,7 @@ func verifySigningCertNewest(ctx *zedagentContext, certByte []byte) error {
 // not changed or the update was successfully applied.
 // False is returned if the function failed to fetch/verify/unmarshal certs.
 func requestCertsByURL(ctx *zedagentContext, certURL string, desc string,
-	requireSigningCertNewest bool) bool {
+	requireSigningCertNewest, expectNoConn bool) bool {
 	log.Functionf("getCertsFromController started for %s", desc)
 	ctxWork, cancel := ctrlClient.GetContextForAllIntfFunctions()
 	defer cancel()
@@ -288,6 +288,7 @@ func requestCertsByURL(ctx *zedagentContext, certURL string, desc string,
 		WithNetTracing: false,
 		BailOnHTTPErr:  false,
 		Iteration:      0,
+		SuppressLogs:   expectNoConn,
 	})
 	if err != nil {
 		switch rv.Status {
@@ -304,7 +305,9 @@ func requestCertsByURL(ctx *zedagentContext, certURL string, desc string,
 			log.Noticef("%s trigger", rv.Status.String())
 			triggerControllerCertEvent(ctx)
 		default:
-			log.Errorf("getCertsFromController failed: %s", err)
+			if !expectNoConn {
+				log.Errorf("getCertsFromController failed: %s", err)
+			}
 		}
 		return false
 	}
@@ -399,8 +402,9 @@ func getCertsFromController(ctx *zedagentContext, desc string) bool {
 	// insubordition.
 	requireSigningCertNewest := false
 
-	rv := requestCertsByURL(ctx, url, desc, requireSigningCertNewest)
-	if !rv {
+	expectNoConn := ctx.airgapMode
+	rv := requestCertsByURL(ctx, url, desc, requireSigningCertNewest, expectNoConn)
+	if !rv && !expectNoConn {
 		log.Warningf("getCertsFromController: fetching certs from controller failed")
 	}
 	if !rv && ctx.getconfigCtx.sideController.locConfig != nil {
@@ -413,7 +417,8 @@ func getCertsFromController(ctx *zedagentContext, desc string) bool {
 
 		// Request certs from LOC if previous request has failed and LOC
 		// configuration exists and is valid
-		rv = requestCertsByURL(ctx, url, desc, requireSigningCertNewest)
+		expectNoConn = false
+		rv = requestCertsByURL(ctx, url, desc, requireSigningCertNewest, expectNoConn)
 		log.Warningf("getCertsFromController: certs were requested from the LOC with the result '%v'",
 			rv)
 	}

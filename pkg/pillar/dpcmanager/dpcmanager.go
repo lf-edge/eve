@@ -104,6 +104,8 @@ type DpcManager struct {
 	devUUID          uuid.UUID
 	flowlogEnabled   bool
 	clusterStatus    types.EdgeNodeClusterStatus
+	airGapMode       bool
+	locURL           string
 	// Boot-time configuration
 	dpclPresentAtBoot bool
 
@@ -203,6 +205,7 @@ const (
 	commandProcessWwanStatus
 	commandUpdateFlowlogState
 	commandUpdateClusterStatus
+	commandUpdateLOCUrl
 )
 
 type inputCommand struct {
@@ -215,6 +218,7 @@ type inputCommand struct {
 	wwanStatus     types.WwanStatus            // for commandProcessWwanStatus
 	flowlogEnabled bool                        // for commandUpdateFlowlogState
 	clusterStatus  types.EdgeNodeClusterStatus // for commandUpdateClusterStatus
+	locURL         string                      // for commandUpdateLOCUrl
 }
 
 type dpcVerify struct {
@@ -316,6 +320,8 @@ func (m *DpcManager) run(ctx context.Context) {
 				m.doUpdateFlowlogState(ctx, inputCmd.flowlogEnabled)
 			case commandUpdateClusterStatus:
 				m.doUpdateClusterStatus(ctx, inputCmd.clusterStatus)
+			case commandUpdateLOCUrl:
+				m.doUpdateLOCUrl(ctx, inputCmd.locURL)
 			}
 			m.resumeVerifyIfAsyncDone(ctx)
 
@@ -551,6 +557,14 @@ func (m *DpcManager) UpdateClusterStatus(status types.EdgeNodeClusterStatus) {
 	}
 }
 
+// UpdateLOCUrl : apply an updated LOC URL.
+func (m *DpcManager) UpdateLOCUrl(locURL string) {
+	m.inputCommands <- inputCommand{
+		cmd:    commandUpdateLOCUrl,
+		locURL: locURL,
+	}
+}
+
 // GetDNS returns device network state information.
 func (m *DpcManager) GetDNS() types.DeviceNetworkStatus {
 	return m.deviceNetStatus
@@ -573,6 +587,9 @@ func (m *DpcManager) doUpdateGCP(ctx context.Context, gcp types.ConfigItemValueM
 	// Interval for Geo retries after failure etc. Should be less than geoRedoInterval.
 	geoRetryInterval := time.Second *
 		time.Duration(m.globalCfg.GlobalValueInt(types.NetworkGeoRetryTime))
+
+	airGapModeState := m.globalCfg.GlobalValueTriState(types.AirGapMode)
+	m.airGapMode = airGapModeState == types.TS_ENABLED
 
 	if m.dpcTestInterval != testInterval {
 		if testInterval == 0 {
@@ -720,4 +737,10 @@ func (m *DpcManager) doUpdateClusterStatus(ctx context.Context,
 	status types.EdgeNodeClusterStatus) {
 	m.clusterStatus = status
 	m.reconcileStatus = m.DpcReconciler.Reconcile(ctx, m.reconcilerArgs())
+}
+
+func (m *DpcManager) doUpdateLOCUrl(ctx context.Context, locURL string) {
+	m.locURL = locURL
+	// Nothing else to do here.
+	// Updated LOC URL will take effect in the next connectivity testing.
 }

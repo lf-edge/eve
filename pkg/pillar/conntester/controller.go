@@ -36,28 +36,21 @@ type ControllerConnectivityTester struct {
 	Metrics        *controllerconn.AgentMetrics
 	NetworkMonitor netmonitor.NetworkMonitor
 
-	iteration     int
-	prevTLSConfig *tls.Config
+	iteration          int
+	prevTLSConfig      *tls.Config
+	controllerHostname string
 }
 
 // TestConnectivity uses VerifyAllIntf from the controllerconn package, which
 // tries to call the "ping" API of the controller.
-func (t *ControllerConnectivityTester) TestConnectivity(dns types.DeviceNetworkStatus,
+func (t *ControllerConnectivityTester) TestConnectivity(
+	dns types.DeviceNetworkStatus, airGapMode AirGapMode,
 	withNetTrace bool) (types.IntfStatusMap, []netdump.TracedNetRequest, error) {
 
 	t.iteration++
 	intfStatusMap := *types.NewIntfStatusMap()
 	t.Log.Tracef("TestConnectivity() requiredSuccessCount %d, iteration %d",
 		requiredSuccessCount, t.iteration)
-
-	server, err := os.ReadFile(types.ServerFileName)
-	if err != nil {
-		t.Log.Error(err)
-		// XXX should we return an indicating that the intf is unknown
-		// and not failed?
-		return intfStatusMap, nil, err
-	}
-	serverNameAndPort := strings.TrimSpace(string(server))
 
 	ctrlClient := controllerconn.NewClient(t.Log, controllerconn.ClientOptions{
 		AgentName:           t.AgentName,
@@ -75,11 +68,7 @@ func (t *ControllerConnectivityTester) TestConnectivity(dns types.DeviceNetworkS
 		NoLedManager:        false,
 	})
 
-	t.Log.Functionf("TestConnectivity: Use V2 API %v\n", ctrlClient.UsingV2API())
-	testURL := controllerconn.URLPathString(
-		serverNameAndPort, ctrlClient.UsingV2API(), nilUUID, "ping")
-
-	err = ctrlClient.UpdateTLSConfig(nil)
+	err := ctrlClient.UpdateTLSConfig(nil)
 	if err != nil {
 		t.Log.Functionf("TestConnectivity: " +
 			"Device certificate not found, looking for Onboarding certificate")
@@ -102,6 +91,8 @@ func (t *ControllerConnectivityTester) TestConnectivity(dns types.DeviceNetworkS
 	if t.prevTLSConfig != nil {
 		ctrlClient.TLSConfig.ClientSessionCache = t.prevTLSConfig.ClientSessionCache
 	}
+	t.prevTLSConfig = ctrlClient.TLSConfig
+
 	for ix := range dns.Ports {
 		if dns.Ports[ix].InvalidConfig {
 			continue
@@ -116,51 +107,153 @@ func (t *ControllerConnectivityTester) TestConnectivity(dns types.DeviceNetworkS
 			return intfStatusMap, nil, err
 		}
 	}
-	ctx, cancel := ctrlClient.GetContextForAllIntfFunctions()
-	defer cancel()
-	rv, err := ctrlClient.VerifyAllIntf(ctx, testURL, requiredSuccessCount,
-		controllerconn.RequestOptions{
-			WithNetTracing: withNetTrace,
-			Iteration:      t.iteration,
-		})
-	intfStatusMap.SetOrUpdateFromMap(rv.IntfStatusMap)
-	t.Log.Tracef("TestConnectivity: intfStatusMap = %+v", intfStatusMap)
-	for i := range rv.TracedReqs {
-		// Differentiate ping tests from google tests.
-		reqName := rv.TracedReqs[i].RequestName
-		rv.TracedReqs[i].RequestName = "ping-" + reqName
+
+	connTest := connTestSetup{
+		ctrlClient:   ctrlClient,
+		dns:          dns,
+		withNetTrace: withNetTrace,
+		airGapMode:   airGapMode,
 	}
-	if withNetTrace {
-		if (!rv.ControllerReachable || err != nil) && !rv.RemoteTempFailure {
-			rv.TracedReqs = append(rv.TracedReqs, t.tryGoogleWithTracing(dns)...)
+	var tracedReqs []netdump.TracedNetRequest
+	if airGapMode.Enabled && airGapMode.LocURL != "" {
+		locTestRV := t.testLOCConnectivity(connTest)
+		intfStatusMap.SetOrUpdateFromMap(locTestRV.intfStatusMap)
+		tracedReqs = locTestRV.tracedReqs
+		if locTestRV.testErr == nil {
+			return intfStatusMap, tracedReqs, nil
 		}
-	}
-	if err != nil {
-		if rv.RemoteTempFailure {
-			err = &RemoteTemporaryFailure{
-				Endpoint:   serverNameAndPort,
-				WrappedErr: err,
-			}
-		} else if portsNotReady := t.getPortsNotReady(err, dns); len(portsNotReady) > 0 {
-			// At least one of the uplink ports is not ready in terms of L3 connectivity.
-			// Signal to the caller that it might make sense to wait and repeat test later.
-			err = &PortsNotReady{
-				WrappedErr: err,
-				Ports:      portsNotReady,
-			}
-		}
-		t.Log.Errorf("TestConnectivity: %v", err)
-		return intfStatusMap, rv.TracedReqs, err
+		// If LOC connectivity is not working, we continue with the standard controller
+		// connectivity test.
 	}
 
-	t.prevTLSConfig = ctrlClient.TLSConfig
-	if rv.ControllerReachable {
-		t.Log.Functionf("TestConnectivity: uplink test SUCCEEDED for URL: %s", testURL)
-		return intfStatusMap, rv.TracedReqs, nil
+	controllerTestRV := t.testControllerConnectivity(connTest)
+	intfStatusMap.SetOrUpdateFromMap(controllerTestRV.intfStatusMap)
+	tracedReqs = append(tracedReqs, controllerTestRV.tracedReqs...)
+
+	if !airGapMode.Enabled && withNetTrace && controllerTestRV.testErr != nil {
+		if _, isRTF := controllerTestRV.testErr.(*RemoteTemporaryFailure); !isRTF {
+			// When network tracing is enabled and controller connectivity is not working,
+			// we additionally perform google.com connectivity tests and include network
+			// traces from them in the netdump for troubleshooting purposes.
+			tracedReqs = append(tracedReqs, t.tryGoogleWithTracing(dns)...)
+		}
 	}
-	err = fmt.Errorf("uplink test FAILED for URL: %s", testURL)
-	t.Log.Errorf("TestConnectivity: %v, intfStatusMap: %+v", err, intfStatusMap)
-	return intfStatusMap, rv.TracedReqs, err
+
+	return intfStatusMap, tracedReqs, controllerTestRV.testErr
+}
+
+type connTestSetup struct {
+	ctrlClient   *controllerconn.Client
+	dns          types.DeviceNetworkStatus
+	withNetTrace bool
+	airGapMode   AirGapMode
+}
+
+type connectivityTestRV struct {
+	intfStatusMap types.IntfStatusMap
+	tracedReqs    []netdump.TracedNetRequest
+	testErr       error
+}
+
+func (t *ControllerConnectivityTester) testControllerConnectivity(
+	connTest connTestSetup) (rv connectivityTestRV) {
+	if t.controllerHostname == "" {
+		server, err := os.ReadFile(types.ServerFileName)
+		if err != nil {
+			rv.testErr = fmt.Errorf("controller hostname is not available: %w", err)
+			t.Log.Error(rv.testErr)
+			return rv
+		}
+		t.controllerHostname = strings.TrimSpace(string(server))
+	}
+	testURL := controllerconn.URLPathString(
+		t.controllerHostname, connTest.ctrlClient.UsingV2API(), nilUUID, "ping")
+	ctx, cancel := connTest.ctrlClient.GetContextForAllIntfFunctions()
+	defer cancel()
+
+	suppressLogs := connTest.airGapMode.Enabled
+	verifyRV, verifyErr := connTest.ctrlClient.VerifyAllIntf(ctx, testURL,
+		requiredSuccessCount, controllerconn.RequestOptions{
+			WithNetTracing: connTest.withNetTrace,
+			Iteration:      t.iteration,
+			SuppressLogs:   suppressLogs,
+		})
+
+	rv.intfStatusMap = verifyRV.IntfStatusMap
+	rv.tracedReqs = verifyRV.TracedReqs
+	for i := range rv.tracedReqs {
+		reqName := rv.tracedReqs[i].RequestName
+		rv.tracedReqs[i].RequestName = "ping-controller-" + reqName
+	}
+	rv.testErr = t.processReturnValue(
+		connTest.dns, t.controllerHostname, verifyRV, verifyErr, suppressLogs)
+	return rv
+}
+
+func (t *ControllerConnectivityTester) testLOCConnectivity(
+	connTest connTestSetup) (rv connectivityTestRV) {
+	testURL := controllerconn.URLPathString(
+		connTest.airGapMode.LocURL, connTest.ctrlClient.UsingV2API(), nilUUID, "ping")
+	ctx, cancel := connTest.ctrlClient.GetContextForAllIntfFunctions()
+	defer cancel()
+
+	verifyRV, verifyErr := connTest.ctrlClient.VerifyAllIntf(ctx, testURL,
+		requiredSuccessCount, controllerconn.RequestOptions{
+			WithNetTracing: connTest.withNetTrace,
+			// Older versions of LOC do not implement the ping endpoint.
+			// To maintain compatibility, we treat HTTP status code 404 as a successful
+			// connectivity response (at least for now).
+			Accept4xxErrors: true,
+			Iteration:       t.iteration,
+		})
+
+	rv.intfStatusMap = verifyRV.IntfStatusMap
+	rv.tracedReqs = verifyRV.TracedReqs
+	for i := range rv.tracedReqs {
+		reqName := rv.tracedReqs[i].RequestName
+		rv.tracedReqs[i].RequestName = "ping-loc-" + reqName
+	}
+	rv.testErr = t.processReturnValue(
+		connTest.dns, connTest.airGapMode.LocURL, verifyRV, verifyErr, false)
+	return rv
+}
+
+func (t *ControllerConnectivityTester) processReturnValue(
+	dns types.DeviceNetworkStatus, endpoint string, rv controllerconn.VerifyRetval,
+	rvErr error, suppressLogs bool) (processedErr error) {
+	if rvErr != nil {
+		if rv.RemoteTempFailure {
+			processedErr = &RemoteTemporaryFailure{
+				Endpoint:   endpoint,
+				WrappedErr: rvErr,
+			}
+		} else if portsNotReady := t.getPortsNotReady(rvErr, dns); len(portsNotReady) > 0 {
+			// At least one of the uplink ports is not ready in terms of L3 connectivity.
+			// Signal to the caller that it might make sense to wait and repeat test later.
+			processedErr = &PortsNotReady{
+				WrappedErr: rvErr,
+				Ports:      portsNotReady,
+			}
+		} else {
+			processedErr = rvErr
+		}
+		return processedErr
+	}
+	if !rv.ControllerReachable {
+		processedErr = fmt.Errorf("%s is not reachable", endpoint)
+	}
+	if processedErr == nil {
+		t.Log.Functionf("TestConnectivity: connectivity test SUCCEEDED for URL: %s",
+			endpoint)
+	} else {
+		logFunc := t.Log.Errorf
+		if suppressLogs {
+			logFunc = t.Log.Functionf
+		}
+		logFunc("TestConnectivity: connectivity test FAILED for URL: %s, err: %v",
+			endpoint, processedErr)
+	}
+	return processedErr
 }
 
 func (t *ControllerConnectivityTester) getPortsNotReady(

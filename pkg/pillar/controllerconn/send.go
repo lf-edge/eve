@@ -211,7 +211,7 @@ type SendRetval struct {
 
 // VerifyRetval is returned from connectivity verification (VerifyAllIntf).
 type VerifyRetval struct {
-	ControllerReachable bool
+	ControllerReachable bool // Main controller or LOC (in air-gap mode) is reachable
 	RemoteTempFailure   bool
 	IntfStatusMap       types.IntfStatusMap
 	TracedReqs          []netdump.TracedNetRequest
@@ -883,6 +883,14 @@ func (c *Client) SendOnIntf(ctx context.Context, destURL string, intf string,
 			rv.RespContents = contents
 			return rv, nil
 		default:
+			// Get caller to schedule a retry based on StatusCode
+			rv.Status = types.SenderStatusNone
+			rv.HTTPResp = resp
+
+			if opts.Accept4xxErrors && (resp.StatusCode >= 400 && resp.StatusCode < 500) {
+				return rv, nil
+			}
+
 			maxlen := 256
 			if maxlen > len(contents) {
 				maxlen = len(contents)
@@ -895,14 +903,9 @@ func (c *Client) SendOnIntf(ctx context.Context, destURL string, intf string,
 				reqURL, reqlen, resp.StatusCode,
 				http.StatusText(resp.StatusCode), hexdump)
 
-			if !opts.Accept4xxErrors || (resp.StatusCode < 400 || resp.StatusCode >= 500) {
-				errorLog(errStr)
-				errorLog("Got payload for status %s: %s",
-					http.StatusText(resp.StatusCode), contents)
-			}
-			// Get caller to schedule a retry based on StatusCode
-			rv.Status = types.SenderStatusNone
-			rv.HTTPResp = resp
+			errorLog(errStr)
+			errorLog("Got payload for status %s: %s",
+				http.StatusText(resp.StatusCode), contents)
 			return rv, errors.New(errStr)
 		}
 	}

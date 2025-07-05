@@ -151,7 +151,7 @@ func (q *DeferredQueue) processQueueTask(ps *pubsub.PubSub,
 		case <-q.Ticker.C:
 			start := time.Now()
 			if !q.handleDeferred() {
-				q.log.Noticef("processQueueTask: some deferred items remain to be sent")
+				q.log.Functionf("processQueueTask: some deferred items remain to be sent")
 			}
 			if ps != nil {
 				ps.CheckMaxTimeTopic(agentName, ctxName, start, warningTime, errorTime)
@@ -287,7 +287,7 @@ func (q *DeferredQueue) handleDeferred() bool {
 
 	if len(notSentReqs) > 0 {
 		// Log the content of the rest in the queue
-		q.log.Noticef("handleDeferred() the rest to be sent: %d",
+		q.log.Functionf("handleDeferred() the rest to be sent: %d",
 			len(notSentReqs))
 		if q.sentHandler != nil {
 			for _, item := range notSentReqs {

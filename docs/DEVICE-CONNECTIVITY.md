@@ -558,6 +558,39 @@ There are two levels of errors:
 - A particular management port could not be used to reach the controller. In that case
   the `ErrorInfo` for the particular `DevicePort` is set to indicate the error and timestamp.
 
+## Air-Gap Mode
+
+Air-Gap mode allows a device to operate without connectivity to the main controller,
+supporting scenarios where local-only management is required. In this mode,
+the *Local Operator Console* (*LOC*) is used to manage the device locally.
+
+When Air-Gap mode is enabled, [the connectivity tester](#testing-device-connectivity)
+reports the device as connected if either the main controller *or the LOC is reachable*.
+This ensures that when network configuration changes are made, EVE does not incorrectly
+mark the configuration as non-working or revert it, as long as LOC connectivity is maintained.
+
+Error and warning logs about lost controller connectivity are either suppressed or downgraded
+to trace-level to avoid log clutter, since loss of controller connectivity is expected
+in this mode. However, the device still attempts to contact the controller, so it can resume
+normal operation if connectivity is restored.
+
+Air-Gap mode is controlled through the configuration property `airgap.mode`. Setting this
+property to `enable` enables Air-Gap mode, while setting it to `disable` disables it.
+By default, Air-Gap mode is disabled.
+
+Air-Gap mode activation is indicated in the console output by the diagnostic microservice.
+If Air-Gap mode is enabled and Local Operator Console (LOC) is configured, it will report:
+
+```text
+INFO : Air-gap mode enabled, using LOC: <loc-url>
+```
+
+But if LOC is not configured while Air-Gap mode is enabled, the user will be warned:
+
+```text
+WARNING: Air-gap mode enabled without LOC configuration
+```
+
 ## Troubleshooting
 
 There are multiple sources of information that provide a picture of the current or a past

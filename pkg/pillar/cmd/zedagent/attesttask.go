@@ -65,7 +65,8 @@ const (
 )
 
 // One shot send, if fails, return an error to the state machine to retry later
-func trySendToController(attestReq *attest.ZAttestReq, attestCtx *attestContext) (controllerconn.SendRetval, error) {
+func trySendToController(attestReq *attest.ZAttestReq,
+	attestCtx *attestContext, expectNoConn bool) (controllerconn.SendRetval, error) {
 	log.Noticef("trySendToController type %d", attestReq.ReqType)
 	data, err := proto.Marshal(attestReq)
 	if err != nil {
@@ -84,6 +85,7 @@ func trySendToController(attestReq *attest.ZAttestReq, attestCtx *attestContext)
 			WithNetTracing: withNetTracing,
 			BailOnHTTPErr:  bailOnHTTPErr,
 			Iteration:      attestCtx.Iteration,
+			SuppressLogs:   expectNoConn,
 		})
 	if err != nil || len(rv.RespContents) == 0 {
 		// Error case handled below
@@ -139,7 +141,8 @@ func (server *VerifierImpl) SendNonceRequest(ctx *zattest.Context) error {
 	attestCtx.Iteration++
 	log.Tracef("Sending Nonce request %v", attestReq)
 
-	rv, err := trySendToController(attestReq, attestCtx)
+	expectNoConn := attestCtx.zedagentCtx.airgapMode
+	rv, err := trySendToController(attestReq, attestCtx, expectNoConn)
 	if err != nil || rv.Status != types.SenderStatusNone {
 		errorDescription := types.ErrorDescription{
 			Error: fmt.Sprintf("[ATTEST] Error %v, senderStatus %v",
@@ -310,7 +313,8 @@ func (server *VerifierImpl) SendAttestQuote(ctx *zattest.Context) error {
 	log.Tracef("Sending Quote request")
 	recordAttestationTry(attestCtx.zedagentCtx)
 
-	rv, err := trySendToController(attestReq, attestCtx)
+	expectNoConn := attestCtx.zedagentCtx.airgapMode
+	rv, err := trySendToController(attestReq, attestCtx, expectNoConn)
 	if err != nil || rv.Status != types.SenderStatusNone {
 		errorDescription := types.ErrorDescription{
 			Error: fmt.Sprintf("[ATTEST] Error %v, senderStatus %v",
@@ -466,12 +470,15 @@ func (server *VerifierImpl) SendAttestEscrow(ctx *zattest.Context) error {
 	attestCtx.Iteration++
 	log.Noticef("[ATTEST] Sending Escrow data len %d", len(key.Key))
 
-	rv, err := trySendToController(attestReq, attestCtx)
+	expectNoConn := attestCtx.zedagentCtx.airgapMode
+	rv, err := trySendToController(attestReq, attestCtx, expectNoConn)
 	if err != nil || rv.Status != types.SenderStatusNone {
 		errorDescription := types.ErrorDescription{
 			Error: fmt.Sprintf("[ATTEST] Error %v, senderStatus %v", err, rv.Status),
 		}
-		log.Error(errorDescription.Error)
+		if !expectNoConn || rv.Status != types.SenderStatusNone {
+			log.Error(errorDescription.Error)
+		}
 		setAttestErrorAndTriggerInfo(ctx, errorDescription)
 		return zattest.ErrControllerReqFailed
 	}

@@ -298,6 +298,9 @@ const (
 
 	// MaintenanceMode global setting key
 	MaintenanceMode GlobalSettingKey = "maintenance.mode"
+	// AirGapMode should be enabled when device is operated in an air-gapped network environment,
+	// where connectivity to the main controller is not available.
+	AirGapMode GlobalSettingKey = "airgap.mode"
 
 	// String Items
 	// SSHAuthorizedKeys global setting key
@@ -1055,6 +1058,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	// Add TriState Items
 	configItemSpecMap.AddTriStateItem(NetworkFallbackAnyEth, TS_DISABLED)
 	configItemSpecMap.AddTriStateItem(MaintenanceMode, TS_NONE)
+	configItemSpecMap.AddTriStateItem(AirGapMode, TS_NONE)
 
 	// Add String Items
 	configItemSpecMap.AddStringItem(SSHAuthorizedKeys, "", blankValidator)

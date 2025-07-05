@@ -551,6 +551,8 @@ type ZedAgentStatus struct {
 	VaultStatus           info.DataSecAtRestStatus
 	PCRStatus             info.PCRStatus
 	VaultErr              string
+	AirgapMode            bool
+	LOCUrl                string
 }
 
 // DeviceState represents overall state

@@ -222,7 +222,8 @@ type zedagentContext struct {
 	// API. Those are merged into maintenanceMode
 	// TBD will be also decide locally to go into maintenanceMode based
 	// on out of disk space etc?
-	maintenanceMode       bool                             //derived state, after consolidating all inputs
+	maintenanceMode       bool //derived state, after consolidating all inputs
+	airgapMode            bool
 	maintModeReasons      types.MaintenanceModeMultiReason //reason for setting derived maintenance mode
 	gcpMaintenanceMode    types.TriState
 	apiMaintenanceMode    bool
@@ -318,6 +319,7 @@ func queueInfoToDest(ctx *zedagentContext, dest destinationBitset,
 				BailOnHTTPErr:  bailOnHTTPErr,
 				WithNetTracing: withNetTracing,
 				IgnoreErr:      ignoreErr,
+				SuppressLogs:   ctx.airgapMode,
 			})
 	}
 	if dest&LOCDest != 0 && locConfig != nil {
@@ -2737,12 +2739,14 @@ func getDeferredSentHandlerFunction(ctx *zedagentContext) controllerconn.SentHan
 			publishInfoNetdump(ctx, result, traces)
 		}
 		if result == types.SenderStatusDebug {
-			// Debug stuff
-			if el, ok := itemType.(info.ZInfoTypes); ok {
-				log.Noticef("deferred queue has INFO: %d", el)
-			}
-			if el, ok := itemType.(attest.ZAttestReqType); ok {
-				log.Noticef("deferred queue has ATTEST: %d", el)
+			if !ctx.airgapMode {
+				// Debug stuff
+				if el, ok := itemType.(info.ZInfoTypes); ok {
+					log.Noticef("deferred queue has INFO: %d", el)
+				}
+				if el, ok := itemType.(attest.ZAttestReqType); ok {
+					log.Noticef("deferred queue has ATTEST: %d", el)
+				}
 			}
 		} else if result == types.SenderStatusNone {
 			if data == nil {

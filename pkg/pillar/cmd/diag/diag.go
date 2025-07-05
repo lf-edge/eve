@@ -796,6 +796,15 @@ func printOutput(ctx *diagContext, caller string) {
 		level, ctx.zedagentStatus.DeviceState.String(),
 		attestStatus, vaultStatus, pcrStatus)
 
+	if ctx.zedagentStatus.AirgapMode {
+		if ctx.zedagentStatus.LOCUrl != "" {
+			ctx.ph.Print("INFO : Air-gap mode enabled, using LOC: %s\n",
+				ctx.zedagentStatus.LOCUrl)
+		} else {
+			ctx.ph.Print("WARNING: Air-gap mode enabled without LOC configuration\n")
+		}
+	}
+
 	// Determine what we print for app summary
 	summary := ctx.appInstanceSummary
 	if ctx.appInstanceSummary.TotalError > 0 {

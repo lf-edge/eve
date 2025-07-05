@@ -353,7 +353,8 @@ func flowlogTask(ctx *zedagentContext, flowlogQueue <-chan *flowlog.FlowMessage)
 		start := time.Now()
 		log.Function("flowlogTask got message")
 		var retry bool
-		err := publishFlowMessage(msg, iteration)
+		expectNoConn := ctx.airgapMode
+		err := publishFlowMessage(msg, iteration, expectNoConn)
 		if err == nil {
 			iteration++
 			ctx.flowLogMetrics.Lock()
@@ -362,7 +363,9 @@ func flowlogTask(ctx *zedagentContext, flowlogQueue <-chan *flowlog.FlowMessage)
 			ctx.flowLogMetrics.DNSReqs.Success += uint64(len(msg.DnsReqs))
 			ctx.flowLogMetrics.Unlock()
 		} else {
-			log.Error(err)
+			if !expectNoConn {
+				log.Error(err)
+			}
 			ctx.flowLogMetrics.Lock()
 			ctx.flowLogMetrics.Messages.FailedAttempts++
 			ctx.flowLogMetrics.Flows.FailedAttempts += uint64(len(msg.Flows))
@@ -421,7 +424,7 @@ func flowlogTask(ctx *zedagentContext, flowlogQueue <-chan *flowlog.FlowMessage)
 	}
 }
 
-func publishFlowMessage(flowMsg *flowlog.FlowMessage, iteration int) error {
+func publishFlowMessage(flowMsg *flowlog.FlowMessage, iteration int, expectNoConn bool) error {
 	data, err := proto.Marshal(flowMsg)
 	if err != nil {
 		err = fmt.Errorf("publishFlowMessage: proto marshaling error %w", err)
@@ -438,6 +441,7 @@ func publishFlowMessage(flowMsg *flowlog.FlowMessage, iteration int) error {
 			WithNetTracing: false,
 			BailOnHTTPErr:  false,
 			Iteration:      iteration,
+			SuppressLogs:   expectNoConn,
 		})
 	if err != nil {
 		err = fmt.Errorf("publishFlowMessage: SendOnAllIntf failed with %d: %s",

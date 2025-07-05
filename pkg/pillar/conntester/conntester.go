@@ -16,8 +16,24 @@ type ConnectivityTester interface {
 	// TestConnectivity returns nil error if connectivity test has passed.
 	// Additionally, it returns test result for each tested device network interface
 	// and network traces of executed probes if withNetTrace was enabled.
-	TestConnectivity(dns types.DeviceNetworkStatus,
+	TestConnectivity(dns types.DeviceNetworkStatus, airGapMode AirGapMode,
 		withNetTrace bool) (types.IntfStatusMap, []netdump.TracedNetRequest, error)
+}
+
+// AirGapMode defines the configuration for operating the device in an air-gapped
+// network environment, where connectivity to the main controller is not available.
+type AirGapMode struct {
+	// Enabled indicates whether air-gap mode is active. When true, and a LOC
+	// (Local Operator Console) URL is configured, the connectivity tester will
+	// report device as "connected" if either the main controller or the LOC
+	// is reachable. In other words, device is still considered connected
+	// even if the main controller is unreachable, as long as the LOC can be accessed.
+	Enabled bool
+
+	// LocURL specifies the URL of the Local Operator Console used to manage the device
+	// when it is running in air-gap mode. This URL is used by the connectivity tester
+	// to validate local accessibility.
+	LocURL string
 }
 
 // RemoteTemporaryFailure can be returned by TestConnectivity to indicate that test failed

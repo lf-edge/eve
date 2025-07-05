@@ -2847,6 +2847,8 @@ func parseConfigItems(ctx *getconfigContext, config *zconfig.EdgeDevConfig,
 			ctx.zedagentCtx.gcpMaintenanceMode = newMaintenanceMode
 			mergeMaintenanceMode(ctx.zedagentCtx, "parseConfigItems")
 		}
+		airgapModeVal := newGlobalConfig.GlobalValueTriState(types.AirGapMode)
+		ctx.zedagentCtx.airgapMode = airgapModeVal == types.TS_ENABLED
 
 		pub := ctx.zedagentCtx.pubGlobalConfig
 		err := pub.Publish("global", *gcPtr)
