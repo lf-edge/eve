@@ -1,0 +1,268 @@
+# Copyright (c) 2025, Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+---
+name: Run Eden
+
+on:  # yamllint disable-line rule:truthy
+  workflow_run:
+    workflows: ["PR Gate"]
+    types: [completed]
+
+permissions:
+  contents: read
+  actions: read
+  statuses: write
+
+env:
+  EDEN_IN_PR_STATUS_TITLE_PREFIX: Eden Runner
+  EDEN_IN_PR_DETAILS_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+  EDEN_PARENT_JOB_TITLE_PREFIX: Eden Tests
+  RUN_CONTEXT_FILE: run-context.json
+
+jobs:
+  context:
+    name: Setup Context from Gate
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    outputs:
+      pr_id: ${{ steps.extract.outputs.pr_id }}
+      original_run_id: ${{ steps.extract.outputs.original_run_id }}
+      pr_sha: ${{ steps.extract.outputs.pr_sha }}
+      hv: ${{ steps.extract.outputs.hv }}
+      arch: ${{ steps.extract.outputs.arch }}
+      platform: ${{ steps.extract.outputs.platform }}
+      eden_parent_job_title: ${{ steps.titles.outputs.eden_parent_job_title }}
+      eden_in_pr_status_title: ${{ steps.titles.outputs.eden_in_pr_status_title }}
+      gate_run_id: ${{ steps.extract.outputs.gate_run_id }}
+      gate_status_name: ${{ steps.extract.outputs.gate_status_name }}
+      skip_run: ${{ steps.check_gate.outputs.skip_run }}
+    steps:
+      - name: Download
+        uses: actions/download-artifact@v4
+        with:
+          name: run-context
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check if Gate Passed
+        id: check_gate
+        run: |
+          if [[ ! -f "$RUN_CONTEXT_FILE" ]]; then
+            echo "::error::Gate context file not found"
+            echo "skip_run=true" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+          # Check if the file contains only the "exit" command
+          if [[ $(cat "$RUN_CONTEXT_FILE") == "exit" ]]; then
+            echo "::error::Gate not satisfied, exiting"
+            echo "skip_run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip_run=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Verify
+        if: ${{ steps.check_gate.outputs.skip_run == 'false' }}
+        env:
+          RUN_CONTEXT_FILE: ${{ env.RUN_CONTEXT_FILE }}
+          REQUIRED_FIELDS: pr_id, original_run_id, pr_sha, hv, arch, platform, gate_run_id, gate_status_name
+        run: |
+          if [[ ! -f "$RUN_CONTEXT_FILE" ]]; then
+            echo "$RUN_CONTEXT_FILE file not found"
+            exit 1
+          fi
+          cat "$RUN_CONTEXT_FILE"
+          if ! jq -e . $RUN_CONTEXT_FILE > /dev/null; then
+            echo "$RUN_CONTEXT_FILE is not a valid JSON file"
+            exit 1
+          fi
+          # Now check for all required fields
+          has_all_fields=true
+
+          # Split the CSV once; spaces in names are not expected, so keep tr
+          for field in $(echo "$REQUIRED_FIELDS" | tr ',' ' '); do
+            if ! jq -e --arg f "$field" 'has($f)' "$RUN_CONTEXT_FILE" >/dev/null; then
+              echo "Missing required field: $field"
+              has_all_fields=false
+            fi
+          done
+
+          if [[ $has_all_fields == false ]]; then
+            echo "Run context is missing required fields"
+            exit 1
+          fi
+
+      - name: Extract
+        if: ${{ steps.check_gate.outputs.skip_run == 'false' }}
+        id: extract
+        env:
+          FIELDS: pr_id, original_run_id, pr_sha, hv, arch, platform, gate_run_id, gate_status_name
+        run: |
+          # Extract fields from the JSON file
+          for field in $(echo "$FIELDS" | tr ',' ' '); do
+            value=$(jq -r --arg f "$field" '.[$f]' $RUN_CONTEXT_FILE)
+            if [[ -z "$value" || "$value" == "null" ]]; then
+              echo "Field $field is empty or null"
+              exit 1
+            fi
+            echo "$field=$value" >> "$GITHUB_OUTPUT"
+          done
+
+      - name: Define Titles
+        if: ${{ steps.check_gate.outputs.skip_run == 'false' }}
+        id: titles
+        run: |
+          postfix="(${{ steps.extract.outputs.hv }}, ${{ steps.extract.outputs.arch }}, ${{ steps.extract.outputs.platform }})"
+          echo "eden_parent_job_title=${{ env.EDEN_PARENT_JOB_TITLE_PREFIX }} $postfix" >> "$GITHUB_OUTPUT"
+          echo "eden_in_pr_status_title=${{ env.EDEN_IN_PR_STATUS_TITLE_PREFIX }} $postfix" >> "$GITHUB_OUTPUT"
+
+  check_secrets:
+    name: Check Secrets
+    if: github.event.workflow_run.conclusion == 'success' && needs.context.outputs.skip_run == 'false'
+    needs: context
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check Dockerhub credentials
+        run: |
+          if [[ -z "${{ secrets.DOCKERHUB_PULL_USER }}" ]]; then
+            echo "Warning: DOCKERHUB_PULL_USER secret is not set. This may affect the ability to pull images from Docker Hub.";
+          fi
+
+  status_ui:
+    name: Status UI
+    runs-on: ubuntu-latest
+    needs: context
+    if: needs.context.outputs.skip_run == 'false'
+    env:
+      EDEN_IN_PR_STATUS_TITLE: ${{ needs.context.outputs.eden_in_pr_status_title }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Switch Gate Status to Green
+        if: ${{ github.event.workflow_run.conclusion == 'success' }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            // Get new target URL for the Gate status that passes and called this workflow
+            const targetUrlPrefix = `${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ needs.context.outputs.gate_run_id }}`;
+            // Find the job that triggered this workflow
+            const { data: jobs } = await github.rest.actions.listJobsForWorkflowRun({
+              owner, repo, run_id: ${{ needs.context.outputs.gate_run_id }}
+            });
+            // Print the jobs for debugging
+            console.log(jobs.jobs.map(j => j.name).join(', '));
+            const job = jobs.jobs.find(j => j.name.startsWith('${{ needs.context.outputs.gate_status_name }}'));
+            const targetUrl = `${targetUrlPrefix}/job/${job.id}?pr=${{ needs.context.outputs.pr_id }}`;
+            await github.rest.repos.createCommitStatus({
+              owner, repo,
+              sha: '${{ needs.context.outputs.pr_sha }}',
+              state: 'success',
+              context: 'PR Gate / ${{ needs.context.outputs.gate_status_name }}',
+              description: 'Gate Passed!',
+              target_url: targetUrl
+            });
+      - name: Check if exists
+        uses: actions/github-script@v7
+        id: check_status
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const { data: statuses } = await github.rest.repos.listCommitStatusesForRef({
+              owner, repo, ref: '${{ needs.context.outputs.pr_sha }}'
+            });
+            const status = statuses.find(s => s.context === process.env.EDEN_IN_PR_STATUS_TITLE);
+            core.setOutput('exists', status ? 'true' : 'false');
+      - name: Create entity in check list
+        if: ${{ steps.check_status.outputs.exists == 'false' }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            await github.rest.repos.createCommitStatus({
+              owner, repo,
+              sha: '${{ needs.context.outputs.pr_sha }}',
+              state: 'pending',
+              context: process.env.EDEN_IN_PR_STATUS_TITLE,
+              description: 'Tests running ...',
+              target_url: process.env.EDEN_IN_PR_DETAILS_URL
+            });
+
+  tests:
+    name: ${{ needs.context.outputs.eden_parent_job_title }}
+    needs: context
+    if: needs.context.outputs.skip_run == 'false'
+    uses: lf-edge/eden/.github/workflows/test.yml@1.0.4
+    secrets: inherit
+    with:
+      eve_image: "evebuild/pr:${{ needs.context.outputs.pr_id }}"
+      eve_log_level: "debug"
+      eve_artifact_name: "eve-${{ needs.context.outputs.hv }}-${{ needs.context.outputs.arch }}-${{ needs.context.outputs.platform }}"
+      artifact_run_id: ${{ needs.context.outputs.original_run_id }}
+      eden_version: "1.0.4"
+
+  finalize:
+    if: always() && needs.context.outputs.skip_run == 'false'
+    needs: [context, tests]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Update commit status
+        uses: actions/github-script@v7
+        env:
+          SHA: ${{ needs.context.outputs.pr_sha }}
+          RESULT: ${{ needs.tests.result }}    # success / failure / cancelled
+          EDEN_IN_PR_STATUS_TITLE: ${{ needs.context.outputs.eden_in_pr_status_title }}
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const map = { success:'success', failure:'failure', cancelled:'error' };
+            const state = map[process.env.RESULT] || 'error';
+            await github.rest.repos.createCommitStatus({
+              owner, repo,
+              sha: process.env.SHA,
+              state,
+              context: process.env.EDEN_IN_PR_STATUS_TITLE,
+              description: `Eden tests ${state}`,
+              target_url: `${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}`
+            });
+
+  subjob_statuses:
+    if: always() && needs.context.outputs.skip_run == 'false'
+    needs: [context, tests]   # ensure Eden has finished
+    runs-on: ubuntu-latest
+    steps:
+      - name: Surface each Eden job as PR status
+        uses: actions/github-script@v7
+        env:
+          SHA: ${{ needs.context.outputs.pr_sha }}
+          EDEN_PARENT_JOB_TITLE: ${{ needs.context.outputs.eden_parent_job_title }}
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const runId      = process.env.GITHUB_RUN_ID;
+            const parentName = process.env.EDEN_PARENT_JOB_TITLE;
+            const prefix     = `${parentName} / `;
+
+            const { data } = await github.rest.actions.listJobsForWorkflowRun({
+              owner, repo, run_id: runId, per_page: 100
+            });
+
+            for (const job of data.jobs) {
+              // child jobs only
+              if (!job.name.startsWith(prefix)) continue;
+
+              // Filter out "Determine best available runner" postfix jobs
+              if (job.name.includes('Determine best available runner')) continue;
+
+              const state = job.conclusion === 'success'
+                              ? 'success'
+                              : job.conclusion === 'failure' ? 'failure'
+                              : 'error';
+
+              await github.rest.repos.createCommitStatus({
+                owner, repo,
+                sha: process.env.SHA,
+                context: `${job.name}`,
+                state: state,
+                target_url: job.html_url,
+                description:`${state}`
+              });
+            }
