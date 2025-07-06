@@ -1,0 +1,147 @@
+# Copyright (c) 2025, Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+---
+name: PR Gate
+
+on:  # yamllint disable-line rule:truthy
+  workflow_run:
+    workflows: ["PR build"]
+    types: [completed]
+
+  pull_request_review:
+    types: [submitted]
+
+env:
+  BUILD_WF_NAME: PR build
+  RUN_CONTEXT_FILE: run-context.json
+
+# one gate run per PR; new workflow_run cancels the older run, reviews do not
+concurrency:
+  group: |
+    ${{ github.event.workflow_run.pull_requests[0].number || format('review-{0}-{1}', github.event.pull_request.number, github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'workflow_run' }}
+
+jobs:
+  eden-gate:
+    name: Ready for Eden
+    strategy:
+      fail-fast: false
+      matrix:
+        hv: [kvm]
+        arch: [amd64]
+        platform: [generic]
+    if: >
+      (github.event_name == 'workflow_run') ||
+      (github.event_name == 'pull_request_review' && github.event.review.state == 'approved')
+
+    runs-on: ubuntu-latest
+    steps:
+
+      - name: Gather Context (workflow_run)
+        id: from_run
+        if: github.event_name == 'workflow_run'
+        env:
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          pr_id=$(gh api /search/issues -X GET -f q="type:pr is:open repo:${GH_REPO} sha:${{ github.event.workflow_run.head_sha }}" -q '.items[0].number')
+          echo "pr_id=$pr_id" >> "$GITHUB_OUTPUT"
+          echo "pr_sha=${{ github.event.workflow_run.head_sha }}" >> "$GITHUB_OUTPUT"
+          echo "original_run_id=${{ github.event.workflow_run.id }}" >> "$GITHUB_OUTPUT"
+
+      - name: Gather Context (pull_request_review)
+        id: from_review
+        if: github.event_name == 'pull_request_review'
+        env:
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          pr_sha="${{ github.event.pull_request.head.sha }}"
+          original_run_id=$(gh api /repos/${GH_REPO}/actions/runs \
+                   -q ".workflow_runs[] | select(.head_sha==\"$pr_sha\" and .name==\"${{ env.BUILD_WF_NAME }}\") | .id" | head -n1)
+          echo "pr_id=${{ github.event.pull_request.number }}" >> "$GITHUB_OUTPUT"
+          echo "pr_sha=$pr_sha" >> "$GITHUB_OUTPUT"
+          echo "original_run_id=$original_run_id" >> "$GITHUB_OUTPUT"
+
+      - name: Promote Context for Local Use
+        id: meta
+        run: |
+          echo "pr_id=${{ steps.from_run.outputs.pr_id   || steps.from_review.outputs.pr_id }}" >> "$GITHUB_OUTPUT"
+          echo "pr_sha=${{ steps.from_run.outputs.pr_sha  || steps.from_review.outputs.pr_sha }}" >> "$GITHUB_OUTPUT"
+          echo "original_run_id=${{ steps.from_run.outputs.original_run_id || steps.from_review.outputs.original_run_id }}" >> "$GITHUB_OUTPUT"
+
+      - name: Check Review Decision
+        id: reviews
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ steps.meta.outputs.pr_id }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          decision=$(gh pr view "$PR" --json reviewDecision -q .reviewDecision)
+          echo "approved=$([[ $decision == 'APPROVED' ]] && echo true || echo false)" >> $GITHUB_OUTPUT
+
+      - name: Check Build Result
+        id: build
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ steps.meta.outputs.original_run_id }}
+          GH_REPO: ${{ github.repository }}
+          BUILD_JOB_NAME: "eve (${{ matrix.arch }}, ${{ matrix.hv }}, ${{ matrix.platform }})"
+        run: |
+          build_conclusion=$(gh api \
+            /repos/$GH_REPO/actions/runs/$RUN_ID/jobs \
+            -X GET \
+            -q ".jobs[] | select(.name == \"$BUILD_JOB_NAME\") | .conclusion" ) || api_status=$?
+
+          if [[ "${api_status:-0}" -ne 0 ]]; then
+            echo "::error::Failed to fetch build job status for run $RUN_ID"
+            echo "build_ok=false" >>"$GITHUB_OUTPUT"
+          else
+            echo "build_ok=$([[ "$build_conclusion" == 'success' ]] && echo true || echo false)" >>"$GITHUB_OUTPUT"
+          fi
+
+      - name: Check Gate Condition
+        id: check
+        run: |
+          echo "Approved: ${{ steps.reviews.outputs.approved }}"
+          echo "Build OK: ${{ steps.build.outputs.build_ok }}"
+          if [[ "${{ steps.reviews.outputs.approved }}" != "true" ||
+                "${{ steps.build.outputs.build_ok }}" != "true" ]]; then
+            echo "gate_passed=false" >> "$GITHUB_OUTPUT"
+            echo "::error::Gate not satisfied: PR build: ${{ steps.build.outputs.build_ok }}, PR approved: ${{ steps.reviews.outputs.approved }}"
+          else
+            echo "gate_passed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+
+      - name: Gather Context for Trusted Workflow
+        if: ${{ steps.check.outputs.gate_passed == 'true' }}
+        id: create_gate_context
+        run: |
+          echo "Build passed and PR approved – gate satisfied"
+          # Create gate context file
+          # This file will be used by the eden-trusted workflow to run tests
+          # It should contain the PR number, original WF run ID, and SHA of the commit
+          echo '{ "pr_id":  "${{ steps.meta.outputs.pr_id }}",
+                  "original_run_id": "${{ steps.meta.outputs.original_run_id }}",
+                  "pr_sha": "${{ steps.meta.outputs.pr_sha }}",
+                  "hv": "${{ matrix.hv }}",
+                  "arch": "${{ matrix.arch }}",
+                  "platform": "${{ matrix.platform }}",
+                  "gate_run_id": "${{ github.run_id }}",
+                  "gate_status_name": "Ready for Eden (${{ matrix.hv }}, ${{ matrix.arch }}, ${{ matrix.platform }})"
+            }' \
+            > "${{ env.RUN_CONTEXT_FILE }}"
+
+      - name: Gather Failure Context for Trusted Workflow
+        if: ${{ steps.check.outputs.gate_passed != 'true' }}
+        id: create_failure_context
+        run: |
+          echo "Gate not satisfied, creating failure context"
+          echo "exit" > "${{ env.RUN_CONTEXT_FILE }}"
+
+      - name: Upload Context for Trusted Workflow
+        uses: actions/upload-artifact@v4
+        with:
+          name: run-context
+          path: ${{ env.RUN_CONTEXT_FILE }}
