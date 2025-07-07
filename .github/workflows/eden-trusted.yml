@@ -190,14 +190,14 @@ jobs:
     name: ${{ needs.context.outputs.eden_parent_job_title }}
     needs: context
     if: needs.context.outputs.skip_run == 'false'
-    uses: lf-edge/eden/.github/workflows/test.yml@1.0.4
+    uses: lf-edge/eden/.github/workflows/test.yml@1.0.5
     secrets: inherit
     with:
       eve_image: "evebuild/pr:${{ needs.context.outputs.pr_id }}"
       eve_log_level: "debug"
       eve_artifact_name: "eve-${{ needs.context.outputs.hv }}-${{ needs.context.outputs.arch }}-${{ needs.context.outputs.platform }}"
       artifact_run_id: ${{ needs.context.outputs.original_run_id }}
-      eden_version: "1.0.4"
+      eden_version: "1.0.5"
 
   finalize:
     if: always() && needs.context.outputs.skip_run == 'false'
