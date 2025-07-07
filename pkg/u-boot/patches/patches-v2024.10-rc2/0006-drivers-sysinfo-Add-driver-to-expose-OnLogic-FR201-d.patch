@@ -1,0 +1,261 @@
+From 10fc8ae49098fb444917e88af64fd6143cc31247 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Ren=C3=AA=20de=20Souza=20Pinto?= <rene@renesp.com.br>
+Date: Mon, 7 Jul 2025 20:45:42 +0200
+Subject: [PATCH 6/7] drivers/sysinfo: Add driver to expose OnLogic FR201
+ device information
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+OnLogic FR201 devices have their serial number written to the OTP memory.
+This commit introduces a sysinfo driver that reads this serial number and
+exposes it along with other SMBIOS information.
+
+Raspberry Pi board initialization code will set the variable serial# with
+the board serial number. This variable will be overwritten with the
+device's serial number and the original serial will be exposed as the
+SMBIOS baseboard serial number.
+
+Signed-off-by: Renê de Souza Pinto <rene@renesp.com.br>
+---
+ drivers/sysinfo/Kconfig        |   7 ++
+ drivers/sysinfo/Makefile       |   1 +
+ drivers/sysinfo/fr201-serial.c | 201 +++++++++++++++++++++++++++++++++
+ 3 files changed, 209 insertions(+)
+ create mode 100644 drivers/sysinfo/fr201-serial.c
+
+diff --git a/drivers/sysinfo/Kconfig b/drivers/sysinfo/Kconfig
+index 2030e4babc..95e9ce8655 100644
+--- a/drivers/sysinfo/Kconfig
++++ b/drivers/sysinfo/Kconfig
+@@ -52,4 +52,11 @@ config SYSINFO_GPIO
+ 	  This ternary number is then mapped to a board revision name using
+ 	  device tree properties.
+ 
++config FR201_SYSINFO_SN
++	bool "OnLogic FR201 sysinfo driver for Serial Number and SMBIOS information"
++	help
++	  OnLogic FR201 device has its serial number written to the OTP memory.
++	  This driver can read the serial number and expose it to the SMBIOS
++	  information.
++
+ endif
+diff --git a/drivers/sysinfo/Makefile b/drivers/sysinfo/Makefile
+index 680dde77fe..0132fddfba 100644
+--- a/drivers/sysinfo/Makefile
++++ b/drivers/sysinfo/Makefile
+@@ -8,3 +8,4 @@ obj-$(CONFIG_SYSINFO_GPIO) += gpio.o
+ obj-$(CONFIG_SYSINFO_RCAR3) += rcar3.o
+ obj-$(CONFIG_SYSINFO_SANDBOX) += sandbox.o
+ obj-$(CONFIG_SYSINFO_SMBIOS) += smbios.o
++obj-$(CONFIG_FR201_SYSINFO_SN) += fr201-serial.o
+diff --git a/drivers/sysinfo/fr201-serial.c b/drivers/sysinfo/fr201-serial.c
+new file mode 100644
+index 0000000000..ba4eef9e79
+--- /dev/null
++++ b/drivers/sysinfo/fr201-serial.c
+@@ -0,0 +1,201 @@
++// SPDX-License-Identifier: GPL-2.0-or-later
++/**
++ * Copyright (C) 2025 Zededa Inc. All rights reserved.
++ *
++ * Driver to read the serial number written to OTP memory on OnLogic FR201
++ * devices and expose it through SMBIOS.
++ *
++ * Author: Renê de Souza Pinto <rene@renesp.com.br>
++ */
++#include <dm.h>
++#include <log.h>
++#include <env.h>
++#include <env_internal.h>
++#include <sysinfo.h>
++#include <memalign.h>
++#include <asm/arch/mbox.h>
++#include <asm/arch/msg.h>
++
++#define FR201_SYSTEM_MANUFACTURER     "OnLogic"
++#define FR201_SYSTEM_PRODUCT          "FR201"
++#define FR201_BASEBOARD_MANUFACTURER  "OnLogic"
++#define FR201_BASEBOARD_PRODUCT       "FR201"
++
++#define UNKNOWN_SERIAL_NUMBER "000000"
++
++#define SN_MAX_SIZE 20
++
++#define BCM2835_MBOX_TAG_GET_FR201_SERIAL 0x00030021
++
++/**
++ * struct sysinfo_fr201_serial - Driver's private data that stores both
++ * original serial number (Raspberry Pi's) and the device's (OnLogic)
++ * serial number read from OTP.
++ */
++struct sysinfo_fr201_serial_priv {
++	/** Device's serial number */
++	char serial[SN_MAX_SIZE];
++	/** Raspberry Pi's serial number */
++	char board_serial[SN_MAX_SIZE];
++};
++
++/* Structs for the mailbox message to fetch device's serial number */
++struct bcm2835_mbox_tag_get_fr201_serial {
++	struct bcm2835_mbox_tag_hdr tag_hdr;
++	union {
++		struct {
++			u32 start;
++			u32 count;
++		} req;
++		struct {
++			u32 start;
++			u32 count;
++			u32 serial_high;
++			u32 serial_low;
++		} resp;
++	} body;
++};
++struct msg_get_fr201_serial {
++	struct bcm2835_mbox_hdr hdr;
++	struct bcm2835_mbox_tag_get_fr201_serial get_board_serial;
++	u32 end_tag;
++};
++
++/**
++ * Reads serial number from OTP memory.
++ */
++static int get_serial_number(char *buffer, size_t size)
++{
++	ALLOC_CACHE_ALIGN_BUFFER(struct msg_get_fr201_serial, msg, 1);
++	char ser[10] = { 0 };
++	int i, ret;
++
++	if (size < 8)
++		return -EINVAL;
++
++	BCM2835_MBOX_INIT_HDR(msg);
++	msg->get_board_serial.body.req.start = 0;
++	msg->get_board_serial.body.req.count = 2;
++	BCM2835_MBOX_INIT_TAG(&msg->get_board_serial, GET_FR201_SERIAL);
++
++	ret = bcm2835_mbox_call_prop(BCM2835_MBOX_PROP_CHAN, &msg->hdr);
++	if (ret)
++		return ret;
++
++	/* Validate serial number */
++	if (msg->get_board_serial.body.resp.serial_low == 0 &&
++			msg->get_board_serial.body.resp.serial_high == 0)
++		return -ENOENT;
++
++	/* Convert serial number to string */
++	memcpy(&ser[0], &msg->get_board_serial.body.resp.serial_low, sizeof(uint32_t));
++	memcpy(&ser[4], &msg->get_board_serial.body.resp.serial_high, sizeof(uint32_t));
++
++	for (i = 0; i < 8; i++) {
++		if (ser[i] != 0)
++			buffer[7-i] = ser[i];
++	}
++
++	return 0;
++}
++
++static int sysinfo_fr201_detect(struct udevice *dev)
++{
++	/* Nothing to do */
++	return 0;
++}
++
++static int sysinfo_fr201_get_str(struct udevice *dev, int id, size_t size, char *val)
++{
++	struct sysinfo_fr201_serial_priv *priv = dev_get_priv(dev);
++	char *str;
++	size_t len;
++
++	switch (id) {
++	case SYSINFO_ID_SMBIOS_SYSTEM_MANUFACTURER:
++		str = FR201_SYSTEM_MANUFACTURER;
++		break;
++	case SYSINFO_ID_SMBIOS_SYSTEM_PRODUCT:
++		str = FR201_SYSTEM_PRODUCT;
++		break;
++	case SYSINFO_ID_SMBIOS_SYSTEM_SERIAL:
++		str = priv->serial;
++		break;
++	case SYSINFO_ID_SMBIOS_BASEBOARD_MANUFACTURER:
++		str = FR201_BASEBOARD_MANUFACTURER;
++		break;
++	case SYSINFO_ID_SMBIOS_BASEBOARD_PRODUCT:
++		str = FR201_BASEBOARD_PRODUCT;
++		break;
++	case SYSINFO_ID_SMBIOS_BASEBOARD_SERIAL:
++		str = priv->board_serial;
++		break;
++	default:
++		return -EINVAL;
++	};
++
++	len = strlen(str);
++	if (size < len+1)
++		return -ENOMEM;
++
++	strncpy(val, str, len);
++	val[len] = '\0';
++	return 0;
++}
++
++static int sysinfo_fr201_probe(struct udevice *dev)
++{
++	struct sysinfo_fr201_serial_priv *priv = dev_get_priv(dev);
++	char *sn;
++	int ret;
++
++	/* Initialize struct with unknown serial number */
++	strncpy(priv->board_serial, UNKNOWN_SERIAL_NUMBER, SN_MAX_SIZE);
++	strncpy(priv->serial, UNKNOWN_SERIAL_NUMBER, SN_MAX_SIZE);
++
++	/* Read device's serial number */
++	ret = get_serial_number(priv->serial, SN_MAX_SIZE);
++	if (ret) {
++		/* Even if we cannot read the serial number, let's keeping
++		 * providing other information and not touch anything else.
++		 */
++		printf("Failed to read device serial number!\n");
++		return 0;
++	}
++
++	/* Get the original serial number and replace serial# variable */
++	sn = env_get("serial#");
++	if (sn != NULL) {
++		strncpy(priv->board_serial, sn, SN_MAX_SIZE);
++
++		/* on lib/smbios.c the serial number on variable serial# takes precedence
++		 * over the sysinfo driver, so we need to overwrite the serial#
++		 * variable with the device's serial number. This is done by
++		 * using internal env_do_env_set() function from env module.
++		 */
++		const char * const argv[4] = { "setenv", "serial#", priv->serial, NULL };
++		ret = env_do_env_set(0, 2, (char * const *)argv, H_FORCE);
++		if (ret)
++			printf("Cannot overwrite serial# variable with device serial number!\n");
++	}
++	return 0;
++}
++
++static const struct sysinfo_ops sysinfo_fr201_ops = {
++	.detect = sysinfo_fr201_detect,
++	.get_str = sysinfo_fr201_get_str,
++};
++
++static const struct udevice_id fr201_serial_ids[] = {
++	{ .compatible = "onlogic,fr201-serial" },
++	{ /* sentinel */ }
++};
++
++U_BOOT_DRIVER(sysinfo_fr201) = {
++	.name      = "sysinfo_fr201",
++	.id        = UCLASS_SYSINFO,
++	.of_match  = fr201_serial_ids,
++	.ops       = &sysinfo_fr201_ops,
++	.probe     = sysinfo_fr201_probe,
++	.priv_auto = sizeof(struct sysinfo_fr201_serial_priv),
++};
+-- 
+2.47.2
+
