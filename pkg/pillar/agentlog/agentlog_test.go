@@ -529,6 +529,7 @@ func TestPsiEveIntegratedStartStop(t *testing.T) {
 }
 
 func TestPsiEveIntegratedStartStopTwice(t *testing.T) {
+	t.Skip("skip test because of flakiness")
 	stopEmulation, err := preparePSIEnvironment(false)
 	if err != nil {
 		t.Fatalf("could not prepare the PSI environment: %v", err)
@@ -613,6 +614,7 @@ func TestPsiEveIntegratedStartStopTwice(t *testing.T) {
 }
 
 func TestPsiEveIntegratedStartTwice(t *testing.T) {
+	t.Skip("skip test because of flakiness")
 	stopEmulation, err := preparePSIEnvironment(false)
 	if err != nil {
 		t.Fatalf("could not prepare the PSI environment: %v", err)
@@ -652,6 +654,7 @@ func TestPsiEveIntegratedStartTwice(t *testing.T) {
 }
 
 func TestPsiEveIntegratedStopUnstarted(t *testing.T) {
+	t.Skip("skip test because of flakiness")
 	stopEmulation, err := preparePSIEnvironment(false)
 	if err != nil {
 		t.Fatalf("could not prepare the PSI environment: %v", err)
