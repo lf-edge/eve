@@ -626,8 +626,20 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		} else {
 			// If device rebooted abruptly, kubernetes did not get time to stop the VMs.
 			// They will be in failed state, so clean them up if they exists.
-			count, err := kubeapi.CleanupStaleVMI()
-			log.Noticef("domainmgr cleanup vmi count %d, %v", count, err)
+			// We have to do this only on single node config. In the cluster setup the VMs
+			// will be running on some other node after failover.
+			// Even in single node one might wonder why we need to delete VMI when node is coming up
+			// after reboot !! This is for very corner case, if the user deleted the app in the controller when
+			// the device is powered off. Next config refresh will see app is gone and domainmgr will not do anything.
+			// But kubernetes thinks app is still running and starts. So its safe to delete all replica sets at the start
+			// on single node installs.
+			clusterMode := kubeapi.IsClusterMode()
+
+			if !clusterMode {
+				count, err := kubeapi.CleanupStaleVMIRs()
+				log.Noticef("domainmgr cleanup vmirs count %d, %v", count, err)
+			}
+
 		}
 	}
 
