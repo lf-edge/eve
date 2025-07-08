@@ -554,7 +554,7 @@ $(UBOOT_IMG): PKG=u-boot
 $(BSP_IMX_PART): PKG=bsp-imx
 $(EFI_PART) $(BOOT_PART) $(INITRD_IMG) $(IPXE_IMG) $(BIOS_IMG) $(UBOOT_IMG) $(BSP_IMX_PART): $(LINUXKIT) | $(INSTALLER)
 	mkdir -p $(dir $@)
-	$(LINUXKIT) pkg build --pull $(LINUXKIT_ORG_TARGET) --platforms linux/$(ZARCH) --builders linux/$(ZARCH)=default  pkg/$(PKG) # running linuxkit pkg build _without_ force ensures that we either pull it down or build it.
+	$(LINUXKIT) pkg build --pull $(LINUXKIT_ORG_TARGET) --platforms linux/$(ZARCH) pkg/$(PKG) # running linuxkit pkg build _without_ force ensures that we either pull it down or build it.
 	cd $(dir $@) && $(LINUXKIT) cache export --platform linux/$(DOCKER_ARCH_TAG) --format filesystem --outfile - $(shell $(LINUXKIT) pkg $(LINUXKIT_ORG_TARGET) show-tag pkg/$(PKG)) | tar xvf - $(notdir $@)
 	$(QUIET): $@: Succeeded
 
