@@ -83,7 +83,9 @@ The binary will be placed in the `bin` directory.
 ### Running
 
 After building the binary, copy it to the target device, preferably to the
-`/persist/memory-monitor` directory. Then run the binary:
+`/persist/memory-monitor` directory (`MemoryMonitorPSICollectorDir` from `pkg/pillar/types/locationconsts.go`).
+
+Then run the binary:
 
 ```sh
 /persist/memory-monitor/psi-collector

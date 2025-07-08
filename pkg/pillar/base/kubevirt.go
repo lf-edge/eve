@@ -13,6 +13,8 @@ import (
 
 const (
 	// EveVirtTypeFile contains the virtualization type, ie kvm, xen or kubevirt
+	//This could be referenced from `pkg\pillar\types\locationconsts.go`, but it would cause
+	//a cyclical dependency with `pkg/pillar/types/dns.go`.
 	EveVirtTypeFile = "/run/eve-hv-type"
 	// KubeAppNameMaxLen limits the length of the app name for Kubernetes.
 	// This also includes the appended UUID prefix.

@@ -34,9 +34,9 @@ import (
 )
 
 const (
-	requestCollectInfoDir   = "/run/edgeview"
-	requestCollectInfoFile  = requestCollectInfoDir + "/edgeview-request-collect-info"
-	requestRemoveInfoGZFile = requestCollectInfoDir + "/edgeview-request-remove-tar-gz"
+	requestCollectInfoDir   = types.EdgeviewPath
+	requestCollectInfoFile  = requestCollectInfoDir + "edgeview-request-collect-info"
+	requestRemoveInfoGZFile = requestCollectInfoDir + "edgeview-request-remove-tar-gz"
 	infoFilePatternPrefix   = "/persist/eve-info/eve-info-edgeview-"
 	infoFilePattern         = infoFilePatternPrefix + "v*.tar.gz"
 )

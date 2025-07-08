@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	partitionFile = "/run/eve.id"
+	partitionFile = types.RunDir + "/eve.id"
 )
 
 var (

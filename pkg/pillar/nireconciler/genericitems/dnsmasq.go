@@ -26,6 +26,7 @@ import (
 )
 
 // Put config and PID files into the run directory of zedrouter.
+// Candidate for pkg/pillar/types/locationconst.go
 const zedrouterRunDir = "/run/zedrouter"
 
 const (

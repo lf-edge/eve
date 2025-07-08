@@ -4,6 +4,7 @@
 package agentlog
 
 import (
+	"github.com/lf-edge/eve/pkg/pillar/types"
 	"log"
 	"os"
 	"path/filepath"
@@ -89,19 +90,20 @@ func TestListenDebug(t *testing.T) {
 		t.Skip()
 	}
 
-	err = os.MkdirAll("/hostfs/etc/", 0755)
+	err = os.MkdirAll(types.HostFSEtcDir, 0755)
 	if err != nil {
 		panic(err)
 	}
-	err = os.MkdirAll("/persist/tmp/", 0755)
+	err = os.MkdirAll(types.PersistTmpDir, 0755)
 	if err != nil {
 		panic(err)
 	}
+	// NOTE: This needs to be examined further
 	linuxkitYmlFile, err := filepath.Abs("../../../images/rootfs.yml.in")
 	if err != nil {
 		panic(err)
 	}
-	err = os.Symlink(linuxkitYmlFile, "/hostfs/etc/linuxkit-eve-config.yml")
+	err = os.Symlink(linuxkitYmlFile, types.LinuxKitConfigFile)
 	if err != nil && !os.IsExist(err) {
 		panic(err)
 	}

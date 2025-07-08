@@ -20,7 +20,7 @@ import (
 
 const (
 	//PIDFile is the file to store the PID
-	PIDFile = types.MemoryMonitorDir + "/psi-collector/psi-collector.pid"
+	PIDFile = types.MemoryMonitorPSICollectorDir + "/psi-collector.pid"
 )
 
 var log *base.LogObject

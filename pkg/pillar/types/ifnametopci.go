@@ -22,7 +22,6 @@ import (
 )
 
 const basePath = "/sys/class/net"
-const pciPath = "/sys/bus/pci/devices"
 
 // ExtractUSBBusnumPort extracts busnum and port number out of a sysfs device path
 func ExtractUSBBusnumPort(path string) (uint16, string, error) {
@@ -164,7 +163,7 @@ func PCISameController(long1 string, long2 string) bool {
 
 // PCIGetIOMMUGroup returns IOMMU group tag as seen by the control domain
 func PCIGetIOMMUGroup(long string) (string, error) {
-	pathDev := pciPath + "/" + long + "/iommu_group"
+	pathDev := filepath.Join(SysfsPciDevicesDir, long, "iommu_group")
 	if iommuPath, err := os.Readlink(pathDev); err != nil {
 		return "", fmt.Errorf("can't determine iommu group for %s (%v)", long, err)
 	} else {
@@ -174,7 +173,7 @@ func PCIGetIOMMUGroup(long string) (string, error) {
 
 // Check if an ID like 0000:03:00.0 exists
 func pciLongExists(long string) bool {
-	path := pciPath + "/" + long
+	path := SysfsPciDevicesDir + "/" + long
 	_, err := os.Stat(path)
 	return err == nil
 
@@ -188,7 +187,7 @@ func PciLongToUnique(log *base.LogObject, long string) (bool, string) {
 	if !pciLongExists(long) {
 		return false, ""
 	}
-	devPath := pciPath + "/" + long + "/firmware_node"
+	devPath := SysfsPciDevicesDir + "/" + long + "/firmware_node"
 	info, err := os.Lstat(devPath)
 	if err != nil {
 		log.Errorln(err)
@@ -214,7 +213,7 @@ func PciLongToIfname(log *base.LogObject, long string) (bool, string) {
 	if !pciLongExists(long) {
 		return false, ""
 	}
-	devPath := pciPath + "/" + long + "/net"
+	devPath := SysfsPciDevicesDir + "/" + long + "/net"
 	locations, err := os.ReadDir(devPath)
 	if err != nil {
 		log.Errorf("Dir %s is missing", devPath)
@@ -327,7 +326,7 @@ func IfRename(log *base.LogObject, ifname string, newIfname string) error {
 func PCIIsBootVga(log *base.LogObject, long string) (bool, error) {
 	log.Functionf("PCIIsBootVga %s", long)
 
-	bootVgaFile := pciPath + "/" + long + "/boot_vga"
+	bootVgaFile := SysfsPciDevicesDir + "/" + long + "/boot_vga"
 	if isBoot, err := os.ReadFile(bootVgaFile); err != nil {
 		return false, err
 	} else {
