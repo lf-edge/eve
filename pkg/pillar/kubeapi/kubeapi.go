@@ -16,6 +16,8 @@ import (
 	netclientset "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/client/clientset/versioned"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
+	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/sirupsen/logrus"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
@@ -351,32 +353,75 @@ func WaitForPVCReady(pvcName string, log *base.LogObject) error {
 	return fmt.Errorf("WaitForPVCReady: time expired count %d, err %v", count, err2)
 }
 
-// CleanupStaleVMI : delete all VMIs. Used by domainmgr on startup.
-func CleanupStaleVMI() (int, error) {
+// CleanupStaleVMIRs : delete all VMI replica sets on single node. Used by domainmgr on startup.
+// There are two replica set types.
+// 1) vmirs (VM replica sets)
+// 2) podrs (Pod replica sets, basically native containers)
+// Iterate through all replicasets and delete those.
+func CleanupStaleVMIRs() (int, error) {
+
 	kubeconfig, err := GetKubeConfig()
 	if err != nil {
 		return 0, fmt.Errorf("couldn't get the Kube Config: %v", err)
 	}
 
-	clientset, err := kubecli.GetKubevirtClientFromRESTConfig(kubeconfig)
+	virtClient, err := kubecli.GetKubevirtClientFromRESTConfig(kubeconfig)
 	if err != nil {
 		return 0, fmt.Errorf("couldn't get the Kube client Config: %v", err)
 	}
 
 	ctx := context.Background()
 
-	// get a list of our VMs
-	vmiList, err := clientset.VirtualMachineInstance(EVEKubeNameSpace).List(ctx, &metav1.ListOptions{})
+	// get a list of our VM replica sets
+	vmrsList, err := virtClient.ReplicaSet(EVEKubeNameSpace).List(metav1.ListOptions{})
 	if err != nil {
-		return 0, fmt.Errorf("couldn't get the Kubevirt VMs: %v", err)
+		return 0, fmt.Errorf("couldn't get the Kubevirt VM replcia sets: %v", err)
 	}
 
 	var count int
-	for _, vmi := range vmiList.Items {
-		if err := clientset.VirtualMachineInstance(EVEKubeNameSpace).Delete(ctx, vmi.ObjectMeta.Name, &metav1.DeleteOptions{}); err != nil {
-			return count, fmt.Errorf("delete vmi error: %v", err)
+	for _, vmirs := range vmrsList.Items {
+
+		if err := virtClient.ReplicaSet(EVEKubeNameSpace).Delete(vmirs.ObjectMeta.Name, &metav1.DeleteOptions{}); err != nil {
+			return count, fmt.Errorf("delete vmirs error: %v", err)
 		}
 		count++
 	}
+
+	// Get list of native container pods replica sets
+	podrsList, err := virtClient.AppsV1().ReplicaSets(EVEKubeNameSpace).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return count, fmt.Errorf("couldn't get the pod replica sets: %v", err)
+	}
+
+	for _, podrs := range podrsList.Items {
+
+		err := virtClient.AppsV1().ReplicaSets(EVEKubeNameSpace).Delete(ctx, podrs.ObjectMeta.Name, metav1.DeleteOptions{})
+		if err != nil {
+			return count, fmt.Errorf("delete podrs error: %v", err)
+		}
+		count++
+	}
+
 	return count, nil
+}
+
+// IsClusterMode : Returns true if this node is part of a cluster by checking EdgeNodeClusterConfigFile
+// If EdgeNodeClusterConfigFile exists and is > 0 bytes then this node is part of a cluster.
+func IsClusterMode() bool {
+
+	fileInfo, err := os.Stat(types.EdgeNodeClusterConfigFile)
+	if os.IsNotExist(err) {
+		logrus.Debugf("This node is not in cluster mode")
+		return false
+	} else if err != nil {
+		logrus.Errorf("Error checking file '%s': %v", types.EdgeNodeClusterConfigFile, err)
+		return false
+	}
+
+	if fileInfo.Size() > 0 {
+		logrus.Debugf("This node is in cluster mode")
+		return true
+	}
+
+	return false
 }
