@@ -691,6 +691,9 @@ func (ctx kubevirtContext) Info(domainName string) (int, types.SwState, error) {
 		res, err = getVMIStatus(vmis, nodeName)
 	}
 	if err != nil {
+		if isK3sUnreachable(err) {
+			return 0, types.UNKNOWN, nil
+		}
 		return 0, types.BROKEN, logError("domain %s failed to get info: %v", domainName, err)
 	}
 
@@ -776,6 +779,12 @@ func getVMIStatus(vmis *vmiMetaData, nodeName string) (string, error) {
 	// List VMIs with a label selector that matches the replicaset name
 	vmiList, err := virtClient.VirtualMachineInstance(kubeapi.EVEKubeNameSpace).List(context.Background(), &metav1.ListOptions{})
 	if err != nil {
+
+		if isK3sUnreachable(err) {
+			// This means we are unable to talk to kubernetes.
+			// May be API server crashed or network cable got pulled ??
+			return "Unknown", err
+		}
 		retStatus, err2 := checkAndReturnStatus(vmis, true)
 		logError("getVMIStatus: domain %s failed to get VMI info %s, return %s", repVmiName, err, retStatus)
 		return retStatus, err2
@@ -1762,4 +1771,14 @@ func checkAndReturnStatus(vmis *vmiMetaData, gotUnknown bool) (string, error) {
 		vmis.startUnknownTime = time.Time{}
 	}
 	return "", nil
+}
+
+// check if the error is due to k3s unreachable or any other timeouts.
+func isK3sUnreachable(err error) bool {
+
+	// k3s API server timeout or any other timeouts or if etcd service or any other service is not available.
+	if errors.IsServerTimeout(err) || errors.IsTimeout(err) || errors.IsServiceUnavailable(err) {
+		return true
+	}
+	return false
 }
