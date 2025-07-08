@@ -30,7 +30,7 @@ const (
 	errorTime            = 3 * time.Minute
 	warningTime          = 40 * time.Second
 	stillRunningInterval = 25 * time.Second
-	logcollectInterval   = 30
+	logcollectInterval   = 10
 	// run VNC file
 	vmiVNCFileName = "/run/zedkube/vmiVNC.run"
 

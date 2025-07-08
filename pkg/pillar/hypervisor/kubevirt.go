@@ -47,7 +47,7 @@ const (
 	eveLabelKey            = "App-Domain-Name"
 	waitForPodCheckCounter = 5  // Check 5 times
 	waitForPodCheckTime    = 15 // Check every 15 seconds, don't wait for too long to cause watchdog
-	tolerateSec            = 30 // Pod/VMI reschedule delay after node unreachable seconds
+	tolerateSec            = 15 // Pod/VMI reschedule delay after node unreachable seconds
 	unknownToHaltMinutes   = 5  // If VMI is unknown for 5 minutes, return halt state
 )
 
