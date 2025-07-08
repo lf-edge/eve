@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/sirupsen/logrus" // OK for logrus.Fatal
 )
@@ -769,6 +770,13 @@ func (configPtr *ConfigItemValueMap) GlobalValueInt(key GlobalSettingKey) uint32
 		logrus.Fatalf("***Key(%s) is of Type(%d) NOT Int", key, val.ItemType)
 		return 0
 	}
+}
+
+// GlobalValueDurationSeconds - Gets a duration global setting value
+func (configPtr *ConfigItemValueMap) GlobalValueDurationSeconds(key GlobalSettingKey) time.Duration {
+	val := configPtr.GlobalValueInt(key)
+
+	return time.Duration(val) * time.Second
 }
 
 // GlobalValueString - Gets a string global setting value
