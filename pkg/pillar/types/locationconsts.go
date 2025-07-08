@@ -141,6 +141,8 @@ const (
 	OVMFSettingsTemplate = "/usr/lib/xen/boot/OVMF_VARS.fd"
 	// CustomOVMFSettingsDir - directory for custom OVMF settings (for different resolutions)
 	CustomOVMFSettingsDir = "/hostfs/etc/ovmf"
+	// EdgeNodeClusterConfigFile - the file which contains edgenodecluster config
+	EdgeNodeClusterConfigFile = PersistStatusDir + "/zedagent/EdgeNodeClusterConfig/global.json"
 )
 
 var (
