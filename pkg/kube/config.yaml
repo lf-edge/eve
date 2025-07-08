@@ -13,5 +13,13 @@ etcd-expose-metrics: true
 container-runtime-endpoint: "/run/containerd-user/containerd.sock"
 disable-network-policy: true
 disable-cloud-controller: true
+kubelet-arg:
+  - "node-status-update-frequency=2s"
+kube-controller-arg:
+  - "node-monitor-period=5s"
+  - "node-monitor-grace-period=40s"
+kube-controller-manager-arg:
+  - "node-monitor-period=5s"
+  - "node-monitor-grace-period=40s"
 kube-apiserver-arg:
   - "event-ttl=72h"
