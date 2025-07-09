@@ -1,0 +1,19 @@
+version: "2"
+linters:
+  default: none
+  enable:
+    - govet
+    - gocyclo
+    - goheader
+    - lll
+    - misspell
+    - prealloc
+    - revive
+    - ineffassign
+    - staticcheck
+    - unused
+
+formatters:
+  enable:
+    - gofmt
+    - goimports

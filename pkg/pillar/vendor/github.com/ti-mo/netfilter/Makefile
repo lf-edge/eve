@@ -57,10 +57,11 @@ coverhtml: cover
 	go tool cover -html=cover.out
 
 .PHONY: check
-check: test cover
-	go vet ./...
-	megacheck ./...
-	golint -set_exit_status ./...
+check: test cover lint
+
+.PHONY: lint
+lint:
+	golangci-lint run
 
 netfilter-fuzz.zip:
 	go-fuzz-build github.com/ti-mo/netfilter
