@@ -60,6 +60,7 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 		MetaDataType:      aiConfig.MetaDataType,
 		Service:           aiConfig.Service,
 		CloudInitVersion:  aiConfig.CloudInitVersion,
+		DisableLogs:       aiConfig.DisableLogs,
 	}
 
 	dc.DiskConfigList = make([]types.DiskConfig, 0, len(aiStatus.VolumeRefStatusList))
