@@ -76,7 +76,7 @@ type tupleType uint8
 
 // enum ctattr_tuple
 const (
-	ctaTupleUnspec tupleType = iota //CTA_TUPLE_UNSPEC
+	ctaTupleUnspec tupleType = iota // CTA_TUPLE_UNSPEC
 	ctaTupleIP                      // CTA_TUPLE_IP
 	ctaTupleProto                   // CTA_TUPLE_PROTO
 	ctaTupleZone                    // CTA_TUPLE_ZONE
