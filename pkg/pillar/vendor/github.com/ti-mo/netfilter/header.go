@@ -37,7 +37,6 @@ func (h Header) String() string {
 // Version is a protocol version descriptor, and always set to 0 (NFNETLINK_V0)
 // ResourceID is a generic field specific to the upper layer protocol (eg. CPU ID of Conntrack stats)
 type Header struct {
-
 	// Netlink header flags, to (un)marshal to a netlink Message in a single operation
 	Flags netlink.HeaderFlags
 
@@ -57,7 +56,6 @@ const nfHeaderLen = 4
 // unmarshal unmarshals a netlink.Message into a Header. The message Data must be at least 4 bytes long.
 // The first 4 bytes of the message's Data field and the message's Header Type/Flags are used.
 func (h *Header) unmarshal(nlm netlink.Message) error {
-
 	if len(nlm.Data) < nfHeaderLen {
 		return errMessageLen
 	}
@@ -77,7 +75,6 @@ func (h *Header) unmarshal(nlm netlink.Message) error {
 // marshal marshals a Header into a netlink.Message. The message Data must be initialized with at least 4 bytes.
 // The Header Type and the first 4 bytes of the Data field are overwritten.
 func (h Header) marshal(nlm *netlink.Message) error {
-
 	if len(nlm.Data) < nfHeaderLen {
 		return errMessageLen
 	}
