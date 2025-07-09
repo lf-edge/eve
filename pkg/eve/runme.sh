@@ -9,6 +9,7 @@ OUTPUT_IMG=/tmp/output.img
 DEFAULT_LIVE_IMG_SIZE=592
 DEFAULT_INSTALLER_IMG_SIZE=592
 DEFAULT_NVIDIA_IMG_SIZE=900
+DEFAULT_KUBEVIRT_IMG_SIZE=2048
 
 bail() {
   echo "$@"
@@ -228,6 +229,11 @@ prepare_for_platform() {
     else
         NVIDIA_PLAT=""
         NVIDIA=false
+    fi
+
+    if grep -q "\(.*\)-kubevirt-\(.*\)" /bits/eve_version; then
+        # Kubevirt image size defaults to a much larger (1GB at this time)
+        DEFAULT_INSTALLER_IMG_SIZE=$DEFAULT_KUBEVIRT_IMG_SIZE
     fi
 
     # Parse platform argument
