@@ -63,7 +63,7 @@ RUN ln -s python3 /usr/bin/python && \
 
 ADD ${GRUB_REPO}/snapshot/grub-${GRUB_COMMIT}.tar.gz /grub.tar.gz
 ENV GNULIB_REVISION=d271f868a8df9bbec29049d01e056481b7a1a263
-ADD --keep-git-dir https://github.com/coreutils/gnulib#${GNULIB_REVISION} /gnulib
+ADD --keep-git-dir https://github.com/coreutils/gnulib.git#${GNULIB_REVISION} /gnulib
 
 # the below does a weird init of a git repo, because we are not cloning the
 # repo, yet we need to be in a repo to apply patches with `git am`.
