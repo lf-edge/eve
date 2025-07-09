@@ -51,11 +51,12 @@ type Attribute struct {
 
 func (a Attribute) String() string {
 	if a.Nested {
-		return fmt.Sprintf("<Length %d, Type %d, Nested %t, %d Children (%v)>", len(a.Data), a.Type, a.Nested, len(a.Children), a.Children)
+		return fmt.Sprintf("<Length %d, Type %d, Nested %t, %d Children (%v)>",
+			len(a.Data), a.Type, a.Nested, len(a.Children), a.Children)
 	}
 
-	return fmt.Sprintf("<Length %d, Type %d, Nested %t, NetByteOrder %t, %v>", len(a.Data), a.Type, a.Nested, a.NetByteOrder, a.Data)
-
+	return fmt.Sprintf("<Length %d, Type %d, Nested %t, NetByteOrder %t, %v>",
+		len(a.Data), a.Type, a.Nested, a.NetByteOrder, a.Data)
 }
 
 // Uint16 interprets a non-nested Netfilter attribute in network byte order as a uint16.
@@ -84,7 +85,6 @@ func (a *Attribute) PutUint16(v uint16) {
 
 // Uint32 interprets a non-nested Netfilter attribute in network byte order as a uint32.
 func (a Attribute) Uint32() uint32 {
-
 	if a.Nested {
 		panic("Uint32: unexpected Nested attribute")
 	}
@@ -98,7 +98,6 @@ func (a Attribute) Uint32() uint32 {
 
 // PutUint32 sets the Attribute's data field to a Uint32 encoded in net byte order.
 func (a *Attribute) PutUint32(v uint32) {
-
 	if len(a.Data) != 4 {
 		a.Data = make([]byte, 4)
 	}
@@ -113,7 +112,6 @@ func (a Attribute) Int32() int32 {
 
 // Uint64 interprets a non-nested Netfilter attribute in network byte order as a uint64.
 func (a Attribute) Uint64() uint64 {
-
 	if a.Nested {
 		panic("Uint64: unexpected Nested attribute")
 	}
@@ -127,7 +125,6 @@ func (a Attribute) Uint64() uint64 {
 
 // PutUint64 sets the Attribute's data field to a Uint64 encoded in net byte order.
 func (a *Attribute) PutUint64(v uint64) {
-
 	if len(a.Data) != 8 {
 		a.Data = make([]byte, 8)
 	}
@@ -164,9 +161,7 @@ func Uint64Bytes(u uint64) []byte {
 // decode fills the Attribute's Children field with Attributes
 // obtained by exhausting ad.
 func (a *Attribute) decode(ad *netlink.AttributeDecoder) error {
-
 	for ad.Next() {
-
 		// Copy the netlink attribute's fields into the netfilter attribute.
 		nfa := Attribute{
 			// Only consider the rightmost 14 bits for Type.
@@ -198,11 +193,8 @@ func (a *Attribute) decode(ad *netlink.AttributeDecoder) error {
 // This function can be passed to AttributeEncoder.Nested for recursively
 // encoding Attributes.
 func (a *Attribute) encode(attrs []Attribute) func(*netlink.AttributeEncoder) error {
-
 	return func(ae *netlink.AttributeEncoder) error {
-
 		for _, nfa := range attrs {
-
 			if nfa.NetByteOrder && nfa.Nested {
 				return errInvalidAttributeFlags
 			}
@@ -227,7 +219,6 @@ func (a *Attribute) encode(attrs []Attribute) func(*netlink.AttributeEncoder) er
 // a byte array. This byte array should be taken from the netlink.Message's
 // Data payload after the nfHeaderLen offset.
 func decodeAttributes(ad *netlink.AttributeDecoder) ([]Attribute, error) {
-
 	// Use the Children element of the Attribute to decode into.
 	// Attribute already has nested decoding implemented on the type.
 	var a Attribute
@@ -247,7 +238,6 @@ func decodeAttributes(ad *netlink.AttributeDecoder) ([]Attribute, error) {
 
 // encodeAttributes encodes a list of Attributes into the given netlink.AttributeEncoder.
 func encodeAttributes(ae *netlink.AttributeEncoder, attrs []Attribute) error {
-
 	if ae == nil {
 		return errNilAttributeEncoder
 	}
@@ -260,9 +250,7 @@ func encodeAttributes(ae *netlink.AttributeEncoder, attrs []Attribute) error {
 // This byte slice can then be copied into a netlink.Message's Data field after
 // the nfHeaderLen offset.
 func MarshalAttributes(attrs []Attribute) ([]byte, error) {
-
 	ae := NewAttributeEncoder()
-
 	if err := encodeAttributes(ae, attrs); err != nil {
 		return nil, err
 	}
@@ -277,7 +265,6 @@ func MarshalAttributes(attrs []Attribute) ([]byte, error) {
 
 // UnmarshalAttributes unmarshals a byte slice into a list of Attributes.
 func UnmarshalAttributes(b []byte) ([]Attribute, error) {
-
 	ad, err := NewAttributeDecoder(b)
 	if err != nil {
 		return nil, err

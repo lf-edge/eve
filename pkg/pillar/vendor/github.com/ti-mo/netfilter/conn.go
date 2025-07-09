@@ -46,7 +46,6 @@ func (c *Conn) Close() error {
 // from the underlying Netlink layer are wrapped using pkg/errors.Wrap(). Use
 // errors.Cause() to unwrap to compare to Errno.
 func (c *Conn) Query(nlm netlink.Message) ([]netlink.Message, error) {
-
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
@@ -65,7 +64,6 @@ func (c *Conn) Query(nlm netlink.Message) ([]netlink.Message, error) {
 // JoinGroups attaches the Netlink socket to one or more Netfilter multicast groups.
 // Marks the Conn as Multicast, meaning it can no longer be used for any queries.
 func (c *Conn) JoinGroups(groups []NetlinkGroup) error {
-
 	if len(groups) == 0 {
 		return errNoMulticastGroups
 	}
@@ -90,7 +88,6 @@ func (c *Conn) JoinGroups(groups []NetlinkGroup) error {
 // LeaveGroups detaches the Netlink socket from one or more Netfilter multicast groups.
 // Does not remove the Multicast flag, open a separate Conn for making queries instead.
 func (c *Conn) LeaveGroups(groups []NetlinkGroup) error {
-
 	// Write lock
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -112,7 +109,6 @@ func (c *Conn) Receive() ([]netlink.Message, error) {
 
 // IsMulticast returns the Conn's Multicast flag. It is set by calling Listen().
 func (c *Conn) IsMulticast() bool {
-
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
@@ -142,17 +138,20 @@ func (c *Conn) SetReadDeadline(t time.Time) error {
 
 // SetWriteDeadline sets the write deadline associated with the connection.
 //
-// Deadline functionality is only supported on Go 1.12+. Calling this function on older versions of Go will result in an error.
+// Deadline functionality is only supported on Go 1.12+. Calling this function
+// on older versions of Go will result in an error.
 func (c *Conn) SetWriteDeadline(t time.Time) error {
 	return c.conn.SetWriteDeadline(t)
 }
 
-// SetReadBuffer sets the size of the operating system's receive buffer associated with the Conn.
+// SetReadBuffer sets the size of the operating system's receive buffer
+// associated with the Conn.
 func (c *Conn) SetReadBuffer(bytes int) error {
 	return c.conn.SetReadBuffer(bytes)
 }
 
-// SetWriteBuffer sets the size of the operating system's transmit buffer associated with the Conn.
+// SetWriteBuffer sets the size of the operating system's transmit buffer
+// associated with the Conn.
 func (c *Conn) SetWriteBuffer(bytes int) error {
 	return c.conn.SetWriteBuffer(bytes)
 }
