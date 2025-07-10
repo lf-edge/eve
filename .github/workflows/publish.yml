@@ -58,12 +58,33 @@ jobs:
         run: |
           echo "ARCH=${{ matrix.arch }}" >> "$GITHUB_ENV"
           echo "TAG=$(echo "$REF" | sed -e 's#^.*/##' -e 's#master#snapshot#' -e 's#main#snapshot#')" >> "$GITHUB_ENV"
-      - name: Login to Docker Hub
+      - name: Login to Docker Hub (build)
         uses: docker/login-action@v3
+        if: ${{ github.event.repository.full_name }}== 'lf-edge/eve'
+        with:
+          username: ${{ secrets.DOCKERHUB_PULL_USER }}
+          password: ${{ secrets.DOCKERHUB_PULL_TOKEN }}
+      - name: Build packages
+        run: |
+          SUCCESS=
+          for i in 1 2 3; do
+            if make -e V=1 HV=${{ matrix.hv }} ZARCH=${{ matrix.arch }} PLATFORM=${{ matrix.platform }} LINUXKIT_PKG_TARGET=build pkgs; then
+              SUCCESS=true
+              break
+            else
+              docker rmi -f $(docker image ls -q) || :
+              docker system prune -f -a || :
+              docker rm -f $(docker ps -aq) && docker volume rm -f $(docker volume ls -q) || :
+            fi
+          done
+          if [ -z "$SUCCESS" ]; then echo "::error::failed to build packages" && exit 1; fi
+      - name: Login to Docker Hub (push)
+        uses: docker/login-action@v3
+        if: ${{ github.event.repository.full_name }}== 'lf-edge/eve'
         with:
           username: ${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}
           password: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
-      - name: Build packages
+      - name: Push packages
         run: |
           SUCCESS=
           for i in 1 2 3; do
@@ -76,7 +97,7 @@ jobs:
               docker rm -f $(docker ps -aq) && docker volume rm -f $(docker volume ls -q) || :
             fi
           done
-          if [ -z "$SUCCESS" ]; then echo "::error::failed to build and push packages" && exit 1; fi
+          if [ -z "$SUCCESS" ]; then echo "::error::failed to push packages" && exit 1; fi
       - name: Post package report
         run: |
           echo Disk usage
@@ -144,12 +165,12 @@ jobs:
           echo "ARCH=${{ matrix.arch }}" >> "$GITHUB_ENV"
           echo "TAG=$(echo "$REF" | sed -e 's#^.*/##' -e 's#master#snapshot#' -e 's#main#snapshot#')" >> "$GITHUB_ENV"
 
-      - name: Login to Docker Hub
+      - name: Login to Docker Hub (build)
         if: ${{ github.event.repository.full_name }}== 'lf-edge/eve'
         uses: docker/login-action@v3
         with:
-          username: ${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}
-          password: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
+          username: ${{ secrets.DOCKERHUB_PULL_USER }}
+          password: ${{ secrets.DOCKERHUB_PULL_TOKEN }}
 
       - name: Build packages
         run: |
@@ -157,7 +178,7 @@ jobs:
           # sadly, our build sometimes times out on network access
           # and running out of disk space: re-trying for 3 times
           for i in 1 2 3; do
-             if make -e V=1 ZARCH=${{ matrix.arch }} PLATFORM=${{ matrix.platform }} LINUXKIT_PKG_TARGET=push PRUNE=1 pkgs; then
+             if make -e V=1 ZARCH=${{ matrix.arch }} PLATFORM=${{ matrix.platform }} LINUXKIT_PKG_TARGET=build pkgs; then
                 SUCCESS=true
                 break
              else
@@ -170,7 +191,33 @@ jobs:
                 docker rm -f $(docker ps -aq) && docker volume rm -f $(docker volume ls -q) || :
              fi
           done
-          if [ -z "$SUCCESS" ]; then echo "::error::failed to build and push packages" && exit 1; fi
+          if [ -z "$SUCCESS" ]; then echo "::error::failed to build packages" && exit 1; fi
+      - name: Login to Docker Hub (push)
+        if: ${{ github.event.repository.full_name }}== 'lf-edge/eve'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}
+          password: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
+      - name: Push packages
+        run: |
+          SUCCESS=
+          # sadly, our build sometimes times out on network access
+          # and running out of disk space: re-trying for 3 times
+          for i in 1 2 3; do
+             if make -e V=1 ZARCH=${{ matrix.arch }} PLATFORM=${{ matrix.platform }} LINUXKIT_PKG_TARGET=push pkgs; then
+                SUCCESS=true
+                break
+             else
+                # the most likely reason for 'make pkgs' to fail is
+                # the docker cache produced by the build exhausting
+                # disk space. So the following can't hurt before we
+                # retry:
+                docker rmi -f `docker image ls -q` || :
+                docker system prune -f -a || :
+                docker rm -f $(docker ps -aq) && docker volume rm -f $(docker volume ls -q) || :
+             fi
+          done
+          if [ -z "$SUCCESS" ]; then echo "::error::failed to push packages" && exit 1; fi
       - name: Post package report
         run: |
           echo Disk usage
@@ -212,15 +259,25 @@ jobs:
             hv: kubevirt
             platform: "generic"
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: ./.github/actions/run-make
+      - name: Build EVE
+        uses: ./.github/actions/run-make
+        with:
+          command: "V=1 HV=${{ matrix.hv }} ZARCH=${{ matrix.arch }} PLATFORM=${{ matrix.platform }} LINUXKIT_PKG_TARGET=build eve"
+          dockerhub-token: ${{ secrets.DOCKERHUB_PULL_TOKEN }}
+          dockerhub-account: ${{ secrets.DOCKERHUB_PULL_USER }}
+          clean: false
+      - name: Push EVE
+        uses: ./.github/actions/run-make
         with:
           command: "V=1 HV=${{ matrix.hv }} ZARCH=${{ matrix.arch }} PLATFORM=${{ matrix.platform }} LINUXKIT_PKG_TARGET=push eve"
           dockerhub-token: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
           dockerhub-account: ${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}
-      - uses: ./.github/actions/run-make
+      - name: Collect and push SBOM and sources
+        uses: ./.github/actions/run-make
         if: matrix.arch != 'riscv64'
         with:
           command: "V=1 HV=${{ matrix.hv }} ZARCH=${{ matrix.arch }} PLATFORM=${{ matrix.platform }} LINUXKIT_PKG_TARGET=push sbom collected_sources compare_sbom_collected_sources publish_sources"
@@ -252,5 +309,8 @@ jobs:
     if: ${{ (startsWith(github.ref, 'refs/tags/')) && (github.event.repository.full_name == 'lf-edge/eve') }}
     needs: [manifest, eve]
     uses: lf-edge/eve/.github/workflows/assets.yml@master
+    secrets:
+      DOCKERHUB_PULL_TOKEN: ${{ secrets.DOCKERHUB_PULL_TOKEN }}
+      DOCKERHUB_PULL_USER: ${{ secrets.DOCKERHUB_PULL_USER }}
     with:
       tag_ref: ${{ github.ref_name }}
