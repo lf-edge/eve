@@ -7,8 +7,10 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/lf-edge/eve-libs/nettrace"
@@ -261,16 +263,45 @@ func (t *ControllerConnectivityTester) getPortsNotReady(
 	if sendErr, isSendErr := verifyErr.(*controllerconn.SendError); isSendErr {
 		portMap := make(map[string]struct{}) // Avoid duplicate entries.
 		for _, attempt := range sendErr.Attempts {
-			var dnsErr *types.DNSNotAvailError
-			if errors.As(attempt.Err, &dnsErr) {
-				if port := dns.LookupPortByIfName(dnsErr.IfName); port != nil {
-					portMap[port.Logicallabel] = struct{}{}
-				}
+			var portLabel string
+			if port := dns.LookupPortByIfName(attempt.IfName); port != nil {
+				portLabel = port.Logicallabel
+			} else {
+				// Should be unreachable.
+				continue
+			}
+			var dnsNotAvailErr *types.DNSNotAvailError
+			if errors.As(attempt.Err, &dnsNotAvailErr) {
+				portMap[portLabel] = struct{}{}
 			}
 			var ipErr *types.IPAddrNotAvailError
 			if errors.As(attempt.Err, &ipErr) {
-				if port := dns.LookupPortByIfName(ipErr.IfName); port != nil {
-					portMap[port.Logicallabel] = struct{}{}
+				portMap[portLabel] = struct{}{}
+			}
+			// Occasionally, we receive a netlink notification that an IP address has been
+			// assigned to a port (by dhcpcd), but due to some kernel timing issue,
+			// the address isn’t ready for socket use yet. If DPC verification runs immediately,
+			// it may fail with a temporary error like "bind: cannot assign requested address".
+			// Rather than marking the DPC as broken, we keep the DPCStateIPDNSWait and retry
+			// later (until it works or a timeout runs out).
+			// This is rare with IPv4, but quite common with IPv6.
+			var syscallErr *os.SyscallError
+			if errors.As(attempt.Err, &syscallErr) {
+				if errno, ok := syscallErr.Err.(syscall.Errno); ok {
+					if errno == syscall.EADDRNOTAVAIL {
+						portMap[portLabel] = struct{}{}
+					}
+				}
+			}
+			var dnsErr *net.DNSError
+			if errors.As(attempt.Err, &dnsErr) {
+				if dnsErr.IsTemporary {
+					// This flag is set when the resolver hits a socket errno
+					// (e.g., EADDRNOTAVAIL).
+					// Note that net.DNSError doesn't wrap the underlying syscall error,
+					// it only copies the error message string, meaning that errors.As()
+					// will not match it as a SyscallError.
+					portMap[portLabel] = struct{}{}
 				}
 			}
 		}
