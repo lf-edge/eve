@@ -2092,6 +2092,10 @@ func TestIPv4LocalAndSwitchNIsWithFlowlogging(test *testing.T) {
 	ni5Config.EnableFlowlog = false
 }
 
+// Note: Local network instances with IPv6 addressing are not currently supported.
+// Some initial work has been done in this area, but it remains incomplete, primarily due
+// to the lack of practical use cases for NATed IPv6 NIs.
+// However, Switch NIs connected to IPv6 networks are fully supported.
 func TestIPv6LocalAndSwitchNIs(test *testing.T) {
 	t := initTest(test, false)
 	networkMonitor.AddOrUpdateInterface(keth2)
@@ -2129,14 +2133,15 @@ func TestIPv6LocalAndSwitchNIs(test *testing.T) {
 	t.Expect(recUpdate.UpdateType).To(Equal(nirec.NIReconcileStatusChanged))
 	t.Expect(recUpdate.NIStatus.Equal(niStatus)).To(BeTrue())
 
+	// Not running metadata server for IPv6 NI.
 	t.Expect(itemIsCreated(dg.Reference(
 		genericitems.HTTPServer{
 			ListenIf: genericitems.NetworkIf{IfName: "bn3"}, Port: 80,
-		}))).To(BeTrue())
+		}))).To(BeFalse())
 	t.Expect(itemIsCreated(dg.Reference(
 		genericitems.HTTPServer{
 			ListenIf: genericitems.NetworkIf{IfName: "eth2"}, Port: 80,
-		}))).To(BeTrue())
+		}))).To(BeFalse())
 	t.Expect(itemIsCreated(dg.Reference(
 		linuxitems.VLANBridge{BridgeIfName: "eth2"}))).To(BeTrue())
 
@@ -2217,10 +2222,6 @@ func TestIPv6LocalAndSwitchNIs(test *testing.T) {
 		"ntpServers: [2610:20:6f15:15::27]"))
 	t.Expect(itemDescription(dg.Reference(dnsmasq))).To(ContainSubstring(
 		"staticEntries: [{test-hostname [2001:db8::1]} {router [2001::1111:1]} {app3 [2001::1111:2]}]"))
-	httpSrvN3 := genericitems.HTTPServer{
-		ListenIf: genericitems.NetworkIf{IfName: "bn3"}, Port: 80}
-	t.Expect(itemDescription(dg.Reference(httpSrvN3))).To(ContainSubstring(
-		"listenIP: 2001::1111:1"))
 	vif1Eidset := linuxitems.IPSet{SetName: "ipv6.eids.nbu1x3"}
 	t.Expect(itemDescription(dg.Reference(vif1Eidset))).To(ContainSubstring(
 		"entries: [2001:db8::1 2001::1111:2]"))
@@ -2258,10 +2259,6 @@ func TestIPv6LocalAndSwitchNIs(test *testing.T) {
 	t.Expect(itemIsCreated(dg.Reference(ni3PortMapRuleOut))).To(BeTrue())
 
 	// Check items created in the scope of NI4.
-	httpSrvN4 := genericitems.HTTPServer{
-		ListenIf: genericitems.NetworkIf{IfName: "eth2"}, Port: 80}
-	t.Expect(itemDescription(dg.Reference(httpSrvN4))).To(ContainSubstring(
-		"listenIP: 2001::20"))
 	vif2Eidset := linuxitems.IPSet{SetName: "ipv6.eids.nbu2x3"}
 	t.Expect(itemDescription(dg.Reference(vif2Eidset))).To(ContainSubstring(
 		"entries: [2001::101]"))
