@@ -4,6 +4,8 @@
 package linuxitems
 
 const (
-	// IPRuleTypename : typename for Linux IP rules.
-	IPRuleTypename = "IPRule"
+	// IPv4RuleTypename : typename for Linux IPv4 rules.
+	IPv4RuleTypename = "IPv4Rule"
+	// IPv6RuleTypename : typename for Linux IPv6 rules.
+	IPv6RuleTypename = "IPv6Rule"
 )
