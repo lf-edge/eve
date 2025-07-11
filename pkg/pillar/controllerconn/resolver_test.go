@@ -16,7 +16,7 @@ import (
 	"go.uber.org/goleak"
 )
 
-func createNetmonitorMockInterface() []netmonitor.MockInterface {
+func createNetmonitorMockInterface(withIPv6 bool) []netmonitor.MockInterface {
 	mockInterface := []netmonitor.MockInterface{
 		{
 			Attrs: netmonitor.IfAttrs{
@@ -91,11 +91,21 @@ func createNetmonitorMockInterface() []netmonitor.MockInterface {
 			},
 		},
 	}
+	if withIPv6 {
+		mockInterface[1].IPAddrs = append(mockInterface[1].IPAddrs,
+			&net.IPNet{
+				IP:   net.ParseIP("2001:db8::1"),
+				Mask: net.CIDRMask(64, 128),
+			})
+		mockInterface[1].DNS.DNSServers = append(mockInterface[1].DNS.DNSServers,
+			net.ParseIP("2001:4860:4860::8888"),
+			net.ParseIP("2001:4860:4860::8844"))
+	}
 	return mockInterface
 }
 
-func createDeviceNetworkStatus() types.DeviceNetworkStatus {
-	mockInterface := createNetmonitorMockInterface()
+func createDeviceNetworkStatus(withIpv6 bool) types.DeviceNetworkStatus {
+	mockInterface := createNetmonitorMockInterface(withIpv6)
 	deviceNetworkStatusPorts := make([]types.NetworkPortStatus, len(mockInterface))
 	for i := range deviceNetworkStatusPorts {
 		deviceNetworkStatusPorts[i].IfName = mockInterface[i].Attrs.IfName
@@ -183,7 +193,7 @@ func TestResolveWithPortsLambda(t *testing.T) {
 		}, nil
 	}
 
-	deviceNetworkStatus := createDeviceNetworkStatus()
+	deviceNetworkStatus := createDeviceNetworkStatus(false)
 	res, err := controllerconn.ResolveWithPortsLambda(
 		"example.com",
 		deviceNetworkStatus,
@@ -219,7 +229,7 @@ func TestResolveWithPortsLambdaWithErrors(t *testing.T) {
 		return nil, errors.New("resolver failed")
 	}
 
-	deviceNetworkStatus := createDeviceNetworkStatus()
+	deviceNetworkStatus := createDeviceNetworkStatus(false)
 	res, err := controllerconn.ResolveWithPortsLambda(
 		"example.com",
 		deviceNetworkStatus,
@@ -242,6 +252,76 @@ func TestResolveWithPortsLambdaWithErrors(t *testing.T) {
 	}
 	if len(res) > 0 {
 		t.Errorf("expected empty response, but got: %+v", res)
+	}
+}
+
+func TestResolveWithPortsLambdaWithIPv6(t *testing.T) {
+	expectedIPv4 := net.IP{1, 2, 3, 4}
+	expectedIPv6 := net.ParseIP("2001:ef4::15")
+
+	resolverFunc := func(domain string, dnsServer net.IP, srcIP net.IP) ([]controllerconn.DNSResponse, error) {
+		if dnsServer.String() == "8.8.8.8" && domain == "example.com" {
+			return []controllerconn.DNSResponse{
+				{
+					IP:  expectedIPv4,
+					TTL: 3600,
+				},
+			}, nil
+		}
+		if dnsServer.String() == "2001:4860:4860::8888" && domain == "example.com" {
+			return []controllerconn.DNSResponse{
+				{
+					IP:  expectedIPv6,
+					TTL: 3600,
+				},
+			}, nil
+		}
+		return nil, errors.New("resolver failed")
+	}
+
+	deviceNetworkStatus := createDeviceNetworkStatus(true)
+	responses, err := controllerconn.ResolveWithPortsLambda(
+		"example.com",
+		deviceNetworkStatus,
+		resolverFunc,
+	)
+	if err != nil {
+		t.Errorf("expected no error, but got: %+v", err)
+	}
+	var haveIPv4, haveIPv6 bool
+	for _, res := range responses {
+		if res.IP.To4() != nil {
+			if !res.IP.Equal(expectedIPv4) {
+				t.Errorf("expected IP 1.2.3.4, but got: %+v", res)
+			}
+			haveIPv4 = true
+		} else {
+			if !res.IP.Equal(expectedIPv6) {
+				t.Errorf("expected IP 2001:ef4::15, but got: %+v", res)
+			}
+			haveIPv6 = true
+		}
+	}
+	if !haveIPv4 {
+		t.Errorf("expected to receive IPv4 address")
+	}
+	if !haveIPv6 {
+		t.Errorf("expected to receive IPv6 address")
+	}
+	if len(responses) != 2 {
+		t.Errorf("expected to not get any duplicates")
+	}
+
+	responses, err = controllerconn.ResolveWithPortsLambda(
+		"resolver-should-fail.com",
+		deviceNetworkStatus,
+		resolverFunc,
+	)
+	if err == nil {
+		t.Error("expected error, but got nil")
+	}
+	if len(responses) > 0 {
+		t.Errorf("expected empty response, but got: %+v", responses)
 	}
 }
 
