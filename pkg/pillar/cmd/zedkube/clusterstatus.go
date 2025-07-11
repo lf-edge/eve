@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"net"
 	"net/http"
 	"os"
 	"reflect"
@@ -210,11 +211,13 @@ func (z *zedkube) startClusterStatusServer() {
 		z.clusterAppIDHandler(w, r)
 	})
 
+	serverAddr := net.JoinHostPort(
+		z.clusterConfig.ClusterIPPrefix.IP.String(), types.ClusterStatusPort)
 	z.statusServer = &http.Server{
 		// Listen on the ClusterIPPrefix IP and the ClusterStatusPort
 		// the firewall rule is explicitly added to allow traffic to this port in kubevirt
 		// this is documented in pkg/pillar/docs/zedkube.md section "Cluster Status Server"
-		Addr:    z.clusterConfig.ClusterIPPrefix.IP.String() + ":" + types.ClusterStatusPort,
+		Addr:    serverAddr,
 		Handler: mux,
 	}
 	z.statusServerWG.Add(1)
