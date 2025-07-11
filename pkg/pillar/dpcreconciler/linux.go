@@ -882,11 +882,17 @@ func (r *LinuxDpcReconciler) getIntendedGlobalCfg(dpc types.DevicePortConfig,
 		Priority: types.PbrLocalDestPrio,
 		Table:    unix.RT_TABLE_LOCAL,
 	}, nil)
+	intendedCfg.PutItem(linux.IPRule{
+		Priority: types.PbrLocalDestPrio,
+		Table:    unix.RT_TABLE_LOCAL,
+		IPv6:     true,
+	}, nil)
 	if r.HVTypeKube {
 		intendedCfg.PutItem(linux.IPRule{
 			Dst:      kubePodCIDR,
 			Priority: types.PbrKubeNetworkPrio,
 			Table:    unix.RT_TABLE_MAIN,
+			IPv6:     false,
 		}, nil)
 		tableForKubeSvc := unix.RT_TABLE_MAIN
 		if clusterStatus.ClusterInterface != "" {
@@ -896,6 +902,7 @@ func (r *LinuxDpcReconciler) getIntendedGlobalCfg(dpc types.DevicePortConfig,
 			Dst:      kubeSvcCIDR,
 			Priority: types.PbrKubeNetworkPrio,
 			Table:    tableForKubeSvc,
+			IPv6:     false,
 		}, nil)
 	}
 	if len(dpc.Ports) == 0 {
@@ -1191,6 +1198,7 @@ func (r *LinuxDpcReconciler) getIntendedSrcIPRules(dpc types.DevicePortConfig) d
 				Src:      netutils.HostSubnet(ipAddr.IP),
 				Priority: types.PbrLocalOrigPrio,
 				Table:    types.DPCBaseRTIndex + ifIndex,
+				IPv6:     ipAddr.IP.To4() == nil,
 			}, nil)
 		}
 	}
