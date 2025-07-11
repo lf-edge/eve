@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"sort"
@@ -1641,4 +1642,197 @@ func TestParseSharedLabels(t *testing.T) {
 	g.Expect(port.Logicallabel).To(Equal("adapter-warehouse"))
 	g.Expect(port.SharedLabels).To(Equal([]string{"portfwd", "netinst2", "all", "uplink"}))
 	g.Expect(port.InvalidConfig).To(BeFalse())
+}
+
+func TestParseIpspecNetworkXObject_ValidConfig(t *testing.T) {
+	g := NewGomegaWithT(t)
+
+	subnetStr := "192.168.1.0/24"
+	_, subnet, _ := net.ParseCIDR(subnetStr)
+
+	ipspec := &zconfig.Ipspec{
+		Dhcp:    zconfig.DHCPType_Static,
+		Subnet:  subnetStr,
+		Gateway: "192.168.1.1",
+		Domain:  "test.local",
+		Ntp:     "192.168.1.10",
+		MoreNtp: []string{"192.168.1.11"},
+		Dns:     []string{"192.168.1.2"},
+		DhcpRange: &zconfig.IpRange{
+			Start: "192.168.1.100",
+			End:   "192.168.1.120",
+		},
+		DhcpOptionsIgnore: &zconfig.DhcpOptionsIgnore{
+			NtpServerExclusively: true,
+		},
+	}
+
+	var config types.NetworkXObjectConfig
+	err := parseIpspecNetworkXObject(ipspec, &config)
+
+	g.Expect(err).To(BeNil())
+	g.Expect(config.Dhcp).To(Equal(types.DhcpTypeStatic))
+	g.Expect(config.DomainName).To(Equal("test.local"))
+	g.Expect(config.Gateway.String()).To(Equal("192.168.1.1"))
+	g.Expect(config.Subnet.String()).To(Equal(subnet.String()))
+	g.Expect(config.DNSServers).To(HaveLen(1))
+	g.Expect(config.DNSServers[0].String()).To(Equal("192.168.1.2"))
+	g.Expect(config.DhcpRange.Start.String()).To(Equal("192.168.1.100"))
+	g.Expect(config.DhcpRange.End.String()).To(Equal("192.168.1.120"))
+	g.Expect(config.IgnoreDhcpNtpServers).To(BeTrue())
+	g.Expect(config.NTPServers).To(ConsistOf("192.168.1.10", "192.168.1.11"))
+}
+
+func TestParseIpspecNetworkXObject_ValidConfig_IPv6(t *testing.T) {
+	RegisterTestingT(t)
+
+	subnetStr := "fd00::/64"
+	_, subnet, _ := net.ParseCIDR(subnetStr)
+
+	ipspec := &zconfig.Ipspec{
+		Dhcp:    zconfig.DHCPType_Static,
+		Subnet:  subnetStr,
+		Gateway: "fd00::1",
+		Domain:  "ipv6.local",
+		Ntp:     "fd00::123",
+		MoreNtp: []string{"fd00::124"},
+		Dns:     []string{"fd00::53"},
+		DhcpRange: &zconfig.IpRange{
+			Start: "fd00::100",
+			End:   "fd00::1ff",
+		},
+		DhcpOptionsIgnore: &zconfig.DhcpOptionsIgnore{
+			NtpServerExclusively: true,
+		},
+	}
+
+	var config types.NetworkXObjectConfig
+	err := parseIpspecNetworkXObject(ipspec, &config)
+
+	Expect(err).To(BeNil())
+	Expect(config.Dhcp).To(Equal(types.DhcpTypeStatic))
+	Expect(config.Subnet.String()).To(Equal(subnet.String()))
+	Expect(config.Gateway.String()).To(Equal("fd00::1"))
+	Expect(config.DomainName).To(Equal("ipv6.local"))
+
+	Expect(config.DNSServers).To(HaveLen(1))
+	Expect(config.DNSServers[0].String()).To(Equal("fd00::53"))
+
+	Expect(config.DhcpRange.Start.String()).To(Equal("fd00::100"))
+	Expect(config.DhcpRange.End.String()).To(Equal("fd00::1ff"))
+
+	Expect(config.IgnoreDhcpNtpServers).To(BeTrue())
+	Expect(config.NTPServers).To(ConsistOf("fd00::123", "fd00::124"))
+}
+
+func TestParseIpspecNetworkXObject_InvalidSubnet(t *testing.T) {
+	g := NewGomegaWithT(t)
+
+	ipspec := &zconfig.Ipspec{
+		Subnet: "not_a_cidr",
+	}
+
+	var config types.NetworkXObjectConfig
+	err := parseIpspecNetworkXObject(ipspec, &config)
+
+	g.Expect(err).To(HaveOccurred())
+	g.Expect(err.Error()).To(ContainSubstring("invalid subnet"))
+}
+
+func TestParseIpspecNetworkXObject_InvalidGateway(t *testing.T) {
+	g := NewGomegaWithT(t)
+
+	ipspec := &zconfig.Ipspec{
+		Subnet:  "192.168.1.0/24",
+		Gateway: "bad_ip",
+	}
+
+	var config types.NetworkXObjectConfig
+	err := parseIpspecNetworkXObject(ipspec, &config)
+
+	g.Expect(err).To(HaveOccurred())
+	g.Expect(err.Error()).To(ContainSubstring("invalid gateway"))
+}
+
+func TestParseIpspecNetworkXObject_DNSMismatch(t *testing.T) {
+	g := NewGomegaWithT(t)
+
+	ipspec := &zconfig.Ipspec{
+		Subnet: "192.168.1.0/24",
+		Dns:    []string{"2001:db8::1"}, // IPv6 in IPv4 subnet
+	}
+
+	var config types.NetworkXObjectConfig
+	err := parseIpspecNetworkXObject(ipspec, &config)
+
+	g.Expect(err).To(HaveOccurred())
+	g.Expect(err.Error()).To(ContainSubstring("IP version mismatch"))
+}
+
+func TestParseIpspecNetworkXObject_InvalidDHCPRange(t *testing.T) {
+	g := NewGomegaWithT(t)
+
+	ipspec := &zconfig.Ipspec{
+		Subnet: "192.168.1.0/24",
+		DhcpRange: &zconfig.IpRange{
+			Start: "192.168.1.250",
+			End:   "192.168.1.240", // start > end
+		},
+	}
+
+	var config types.NetworkXObjectConfig
+	err := parseIpspecNetworkXObject(ipspec, &config)
+
+	g.Expect(err).To(HaveOccurred())
+	g.Expect(err.Error()).To(ContainSubstring("greater than end IP"))
+}
+
+func TestParseIpspec_Valid(t *testing.T) {
+	g := NewGomegaWithT(t)
+
+	ipspec := &zconfig.Ipspec{
+		Subnet:  "192.168.0.0/24",
+		Gateway: "192.168.0.1",
+		Domain:  "test.local",
+		Ntp:     "192.168.0.5",
+		Dns:     []string{"192.168.0.2"},
+	}
+
+	var config types.NetworkInstanceConfig
+	err := parseIpspec(ipspec, &config)
+
+	g.Expect(err).To(BeNil())
+	g.Expect(config.DomainName).To(Equal("test.local"))
+	g.Expect(config.Gateway.String()).To(Equal("192.168.0.1"))
+	g.Expect(config.NtpServers).To(ConsistOf("192.168.0.5"))
+	g.Expect(config.DnsServers[0].String()).To(Equal("192.168.0.2"))
+	g.Expect(config.DhcpRange.Start).ToNot(BeNil())
+	g.Expect(config.DhcpRange.End).ToNot(BeNil())
+}
+
+func TestParseIpspec_MissingSubnet(t *testing.T) {
+	g := NewGomegaWithT(t)
+
+	ipspec := &zconfig.Ipspec{}
+
+	var config types.NetworkInstanceConfig
+	err := parseIpspec(ipspec, &config)
+
+	g.Expect(err).To(HaveOccurred())
+	g.Expect(err.Error()).To(ContainSubstring("missing network instance subnet"))
+}
+
+func TestParseIpspec_GatewayVersionMismatch(t *testing.T) {
+	g := NewGomegaWithT(t)
+
+	ipspec := &zconfig.Ipspec{
+		Subnet:  "192.168.1.0/24",
+		Gateway: "2001:db8::1", // mismatch
+	}
+
+	var config types.NetworkInstanceConfig
+	err := parseIpspec(ipspec, &config)
+
+	g.Expect(err).To(HaveOccurred())
+	g.Expect(err.Error()).To(ContainSubstring("IP version mismatch"))
 }
