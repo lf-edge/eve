@@ -179,7 +179,7 @@ func (r *LinuxNIReconciler) updateCurrentNIBridge(niID uuid.UUID) (changed bool)
 	if !r.niBridgeIsCreatedByNIM(ni.config, ni.bridge) {
 		return r.updateSingleItem(prevExtBridge, nil, l2SG)
 	}
-	ip, _, mac, found, err := r.getBridgeAddrs(niID)
+	ips, _, mac, found, err := r.getBridgeAddrs(niID)
 	if err != nil {
 		r.log.Errorf("%s: updateCurrentNIBridge: getBridgeAddrs(%s) failed: %v",
 			LogAndErrPrefix, niID, err)
@@ -198,11 +198,9 @@ func (r *LinuxNIReconciler) updateCurrentNIBridge(niID uuid.UUID) (changed bool)
 		IfName:       ni.brIfName,
 		CreatedByNIM: true,
 		MACAddress:   mac,
+		IPAddresses:  ips,
 		MTU:          mtu,
 		WithSTP:      false,
-	}
-	if ip != nil {
-		bridge.IPAddresses = append(bridge.IPAddresses, ip)
 	}
 	return r.updateSingleItem(prevExtBridge, bridge, l2SG)
 }
@@ -371,8 +369,8 @@ func (r *LinuxNIReconciler) updateCurrentVIFs(niID uuid.UUID) (changed bool) {
 	return changed
 }
 
-func (r *LinuxNIReconciler) getBridgeAddrs(niID uuid.UUID) (ipWithSubnet,
-	ipWithHostSubnet *net.IPNet, mac net.HardwareAddr, found bool, err error) {
+func (r *LinuxNIReconciler) getBridgeAddrs(niID uuid.UUID) (ipsWithSubnet,
+	ipsWithHostSubnet []*net.IPNet, mac net.HardwareAddr, found bool, err error) {
 	ni := r.nis[niID]
 	switch ni.config.Type {
 	case types.NetworkInstanceTypeSwitch:
@@ -387,14 +385,12 @@ func (r *LinuxNIReconciler) getBridgeAddrs(niID uuid.UUID) (ipWithSubnet,
 			if err != nil {
 				return
 			}
-			if len(ips) > 0 {
-				// Take the first global unicast.
-				for _, ip := range ips {
-					if ip.IP.IsGlobalUnicast() {
-						ipWithSubnet = ip
-						ipWithHostSubnet = netutils.HostSubnet(ip.IP)
-						break
-					}
+			// Take global unicast IPs.
+			for _, ip := range ips {
+				if ip.IP.IsGlobalUnicast() {
+					ipsWithSubnet = append(ipsWithSubnet, ip)
+					ipsWithHostSubnet = append(ipsWithHostSubnet,
+						netutils.HostSubnet(ip.IP))
 				}
 			}
 			return
@@ -402,8 +398,9 @@ func (r *LinuxNIReconciler) getBridgeAddrs(niID uuid.UUID) (ipWithSubnet,
 		fallthrough // bridge created by zedrouter
 	case types.NetworkInstanceTypeLocal:
 		if ni.bridge.IPAddress != nil {
-			ipWithSubnet = ni.bridge.IPAddress
-			ipWithHostSubnet = netutils.HostSubnet(ni.bridge.IPAddress.IP)
+			ipsWithSubnet = append(ipsWithSubnet, ni.bridge.IPAddress)
+			ipsWithHostSubnet = append(ipsWithHostSubnet,
+				netutils.HostSubnet(ni.bridge.IPAddress.IP))
 		}
 		mac = ni.bridge.MACAddress
 		found = true
