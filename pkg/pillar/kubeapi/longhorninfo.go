@@ -8,6 +8,8 @@ package kubeapi
 import (
 	"context"
 	"fmt"
+	"net"
+	"strconv"
 	"strings"
 	"time"
 
@@ -153,7 +155,7 @@ func PopulateKVIFromPVCName(kvi *types.KubeVolumeInfo) (*types.KubeVolumeInfo, e
 			if err != nil {
 				return kvi, fmt.Errorf("PopulateKVIFromPVCName can't get replica engine: %v", err)
 			}
-			replicaAddress := "tcp://" + replicaEngineIP + ":" + fmt.Sprintf("%d", replicaEnginePort)
+			replicaAddress := "tcp://" + net.JoinHostPort(replicaEngineIP, strconv.Itoa(replicaEnginePort))
 			rebuildStatus, ok := engine.Status.RebuildStatus[replicaAddress]
 			if !ok {
 				kviRep.RebuildProgressPercentage = 100
