@@ -95,7 +95,7 @@ func (z *zedrouter) lookupOrAllocateIPv4ForVIF(niStatus *types.NetworkInstanceSt
 	var ipAddr net.IP
 	networkID := niStatus.UUID
 
-	if niStatus.Subnet.IP == nil || niStatus.DhcpRange.Start == nil {
+	if niStatus.Subnet == nil || niStatus.DhcpRange.Start == nil {
 		z.log.Functionf("lookupOrAllocateIPv4(NI:%v, app:%v): no IP subnet",
 			networkID, appID)
 		return nil, nil

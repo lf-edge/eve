@@ -58,7 +58,10 @@ func AddToIP(ip net.IP, addition int) net.IP {
 }
 
 // GetIPAddrCountOnSubnet return the number or available IP addresses inside a subnet.
-func GetIPAddrCountOnSubnet(subnet net.IPNet) int {
+func GetIPAddrCountOnSubnet(subnet *net.IPNet) int {
+	if subnet == nil {
+		return 0
+	}
 	prefixLen, _ := subnet.Mask.Size()
 	if prefixLen != 0 {
 		if subnet.IP.To4() != nil {
@@ -71,19 +74,37 @@ func GetIPAddrCountOnSubnet(subnet net.IPNet) int {
 	return 0
 }
 
+// GetSubnetAddr returns the network (subnet) address of the given IP network.
+// It applies the subnet mask to the IP address to compute the base network address.
+func GetSubnetAddr(ipWithMask *net.IPNet) *net.IPNet {
+	if ipWithMask == nil {
+		return nil
+	}
+	return &net.IPNet{
+		IP:   ipWithMask.IP.Mask(ipWithMask.Mask),
+		Mask: ipWithMask.Mask,
+	}
+}
+
 // GetIPNetwork returns the first IP Address of the subnet(Network Address)
-func GetIPNetwork(subnet net.IPNet) net.IP {
+func GetIPNetwork(subnet *net.IPNet) net.IP {
+	if subnet == nil {
+		return nil
+	}
 	return subnet.IP.Mask(subnet.Mask)
 }
 
 // GetIPBroadcast returns the last IP Address of the subnet(Broadcast Address)
-func GetIPBroadcast(subnet net.IPNet) net.IP {
+func GetIPBroadcast(subnet *net.IPNet) net.IP {
+	if subnet == nil || subnet.IP.To4() == nil {
+		return nil
+	}
 	if network := GetIPNetwork(subnet); network != nil {
 		if addrCount := GetIPAddrCountOnSubnet(subnet); addrCount != 0 {
 			return AddToIP(network, addrCount-1)
 		}
 	}
-	return net.IP{}
+	return nil
 }
 
 // HostFamily returns the address family for the given IP address
