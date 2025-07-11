@@ -2447,7 +2447,7 @@ func parseIpspec(ipspec *zconfig.Ipspec,
 	if err != nil {
 		return fmt.Errorf("invalid subnet (%s): %w", ipspec.GetSubnet(), err)
 	}
-	config.Subnet = *subnet
+	config.Subnet = subnet
 	config.DomainName = ipspec.GetDomain()
 	// Parse NTP Server
 	if config.NtpServers == nil {

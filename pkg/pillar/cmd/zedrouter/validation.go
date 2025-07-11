@@ -59,7 +59,7 @@ func (z *zedrouter) doNetworkInstanceSanityCheck(config *types.NetworkInstanceCo
 
 func (z *zedrouter) doNetworkInstanceSubnetSanityCheck(
 	config *types.NetworkInstanceConfig) error {
-	if config.Subnet.IP == nil || config.Subnet.IP.IsUnspecified() {
+	if config.Subnet == nil || config.Subnet.IP.IsUnspecified() {
 		return fmt.Errorf("subnet unspecified for %s-%s: %+v",
 			config.Key(), config.DisplayName, config.Subnet)
 	}
@@ -114,7 +114,7 @@ func (z *zedrouter) checkNetworkInstanceIPConflicts(
 		if config.Key() == key2 {
 			continue
 		}
-		if netutils.OverlappingSubnets(&config.Subnet, &niConfig2.Subnet) {
+		if netutils.OverlappingSubnets(config.Subnet, niConfig2.Subnet) {
 			return fmt.Errorf("subnet (%s) overlaps with another "+
 				"network instance (%s-%s) subnet (%s)",
 				config.Subnet.String(), niConfig2.DisplayName, niConfig2.UUID,
@@ -123,7 +123,7 @@ func (z *zedrouter) checkNetworkInstanceIPConflicts(
 	}
 	// Check for overlapping subnets between the NI and device ports.
 	for _, port := range z.deviceNetworkStatus.Ports {
-		if netutils.OverlappingSubnets(&config.Subnet, &port.Subnet) {
+		if netutils.OverlappingSubnets(config.Subnet, &port.Subnet) {
 			return fmt.Errorf("subnet (%s) overlaps with device port %s "+
 				"subnet (%s)", config.Subnet.String(), port.Logicallabel,
 				port.Subnet.String())
