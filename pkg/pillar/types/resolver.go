@@ -5,9 +5,10 @@ package types
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
+
+	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 )
 
 const (
@@ -22,23 +23,31 @@ const (
 // ResolveConfDirs : directories where resolv.conf for an interface could be found.
 var ResolveConfDirs = []string{DhcpcdResolvConfDir, WwanResolvConfDir}
 
-// IfnameToResolvConf : Look for a file created by dhcpcd
-func IfnameToResolvConf(ifname string) string {
+// IfnameToResolvConf : Look for resolv.conf file(s) created by dhcpcd
+// for a given interface.
+func IfnameToResolvConf(ifname string) (filenames []string) {
 	for _, d := range ResolveConfDirs {
 		filename := fmt.Sprintf("%s/%s.dhcp", d, ifname)
-		_, err := os.Stat(filename)
-		if err == nil {
-			return filename
+		if fileutils.FileExists(nil, filename) {
+			filenames = append(filenames, filename)
+		}
+		filename = fmt.Sprintf("%s/%s.dhcp6", d, ifname)
+		if fileutils.FileExists(nil, filename) {
+			filenames = append(filenames, filename)
+		}
+		filename = fmt.Sprintf("%s/%s.ra", d, ifname)
+		if fileutils.FileExists(nil, filename) {
+			filenames = append(filenames, filename)
 		}
 	}
-	return ""
+	return filenames
 }
 
 // ResolvConfToIfname : Returns the name of the interface for which
 // the given resolv.conf file was created.
 func ResolvConfToIfname(resolvConf string) string {
 	ext := filepath.Ext(resolvConf)
-	if ext != ".dhcp" {
+	if ext != ".dhcp" && ext != ".dhcp6" && ext != ".ra" {
 		return ""
 	}
 	for _, d := range ResolveConfDirs {

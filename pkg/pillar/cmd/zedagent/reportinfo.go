@@ -1101,7 +1101,13 @@ func encodeNetworkPortStatus(ctx *zedagentContext,
 	devicePort.Free = port.Cost == 0 // To be deprecated
 	devicePort.NetworkUUID = network.String()
 	devicePort.DhcpType = uint32(port.Dhcp)
-	devicePort.Subnet = port.Subnet.String()
+	if port.IPv4Subnet != nil {
+		devicePort.Subnet = port.IPv4Subnet.String()
+	} else if len(port.IPv6Subnets) > 0 {
+		// We have only one subnet to report in the info message.
+		// TODO: Or should we comma-separate all IPv6 subnets?
+		devicePort.Subnet = port.IPv6Subnets[0].String()
+	}
 	devicePort.Up = port.Up
 	devicePort.Mtu = uint32(port.MTU)
 	devicePort.Domainname = port.DomainName

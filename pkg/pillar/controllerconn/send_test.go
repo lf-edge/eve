@@ -21,6 +21,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/controllerconn"
 	"github.com/lf-edge/eve/pkg/pillar/netmonitor"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils/netutils"
 	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 	"github.com/vishvananda/netlink"
@@ -86,7 +87,7 @@ func getDeviceNetworkStatus(t *testing.T) types.DeviceNetworkStatus {
 	}
 
 	addrInfoList := []types.AddrInfo{}
-	var subnet net.IPNet
+	var subnet *net.IPNet
 	for _, addr := range addrs {
 		if addr.IP == nil || addr.IP.IsLinkLocalUnicast() {
 			continue
@@ -94,8 +95,8 @@ func getDeviceNetworkStatus(t *testing.T) types.DeviceNetworkStatus {
 		addrInfoList = append(addrInfoList, types.AddrInfo{
 			Addr: addr.IP,
 		})
-		if subnet.IP == nil {
-			subnet = *addr.IPNet
+		if subnet == nil {
+			subnet = netutils.GetSubnetAddr(addr.IPNet)
 		}
 	}
 
@@ -115,7 +116,7 @@ func getDeviceNetworkStatus(t *testing.T) types.DeviceNetworkStatus {
 		IsMgmt:         true,
 		IsL3Port:       true,
 		Cost:           0,
-		Subnet:         subnet,
+		IPv4Subnet:     subnet,
 		DNSServers:     dnsServers,
 		AddrInfoList:   addrInfoList,
 		Up:             link.Attrs().Flags&net.FlagUp != 0,
