@@ -309,13 +309,15 @@ func mockEth0() netmonitor.MockInterface {
 		},
 		IPAddrs: []*net.IPNet{ipAddress("192.168.10.5/24")},
 		DHCP: netmonitor.DHCPInfo{
-			Subnet:     ipSubnet("192.168.10.0/24"),
-			NtpServers: []net.IP{net.ParseIP("132.163.96.5")},
+			IPv4Subnet:     ipSubnet("192.168.10.0/24"),
+			IPv4NtpServers: []net.IP{net.ParseIP("132.163.96.5")},
 		},
-		DNS: netmonitor.DNSInfo{
-			ResolvConfPath: "/etc/eth0-resolv.conf",
-			Domains:        []string{"eth-test-domain"},
-			DNSServers:     []net.IP{net.ParseIP("8.8.8.8")},
+		DNS: []netmonitor.DNSInfo{
+			{
+				ResolvConfPath: "/etc/eth0-resolv.conf",
+				Domains:        []string{"eth-test-domain"},
+				DNSServers:     []net.IP{net.ParseIP("8.8.8.8")},
+			},
 		},
 		HwAddr: macAddress("02:00:00:00:00:01"),
 	}
@@ -364,13 +366,15 @@ func mockEth1() netmonitor.MockInterface {
 		},
 		IPAddrs: []*net.IPNet{ipAddress("172.20.1.2/24")},
 		DHCP: netmonitor.DHCPInfo{
-			Subnet:     ipSubnet("172.20.1.0/24"),
-			NtpServers: []net.IP{net.ParseIP("132.163.96.6")},
+			IPv4Subnet:     ipSubnet("172.20.1.0/24"),
+			IPv4NtpServers: []net.IP{net.ParseIP("132.163.96.6")},
 		},
-		DNS: netmonitor.DNSInfo{
-			ResolvConfPath: "/etc/eth1-resolv.conf",
-			Domains:        []string{"eth-test-domain"},
-			DNSServers:     []net.IP{net.ParseIP("1.1.1.1")},
+		DNS: []netmonitor.DNSInfo{
+			{
+				ResolvConfPath: "/etc/eth1-resolv.conf",
+				Domains:        []string{"eth-test-domain"},
+				DNSServers:     []net.IP{net.ParseIP("1.1.1.1")},
+			},
 		},
 		HwAddr: macAddress("02:00:00:00:00:02"),
 	}
@@ -395,10 +399,61 @@ func mockEth1Routes() []netmonitor.Route {
 	}
 }
 
+func mockEth2() netmonitor.MockInterface {
+	eth2 := netmonitor.MockInterface{
+		Attrs: netmonitor.IfAttrs{
+			IfIndex:       3,
+			IfName:        "eth2",
+			IfType:        "device",
+			WithBroadcast: true,
+			AdminUp:       true,
+			LowerUp:       true,
+		},
+		IPAddrs: []*net.IPNet{
+			ipAddress("2001:1111::1/64"),
+		},
+		DHCP: netmonitor.DHCPInfo{
+			IPv6Subnets:    []*net.IPNet{ipSubnet("2001:1111::/64")},
+			IPv6NtpServers: []net.IP{net.ParseIP("2001:db8:3c4d:15::1")},
+		},
+		DNS: []netmonitor.DNSInfo{
+			{
+				ResolvConfPath: "/run/dhcpcd/resolv.conf/eth2.ra",
+				Domains:        []string{"eth2-ipv6-test-domain"},
+				DNSServers: []net.IP{
+					net.ParseIP("2001:4860:4860::8888"),
+					net.ParseIP("2001:4860:4860::8844"),
+				},
+			},
+		},
+		HwAddr: macAddress("02:00:00:00:00:03"),
+	}
+	return eth2
+}
+
+func mockEth2Routes() []netmonitor.Route {
+	gwIP := net.ParseIP("fe80::c225:2fff:fea2:dc73")
+	return []netmonitor.Route{
+		{
+			IfIndex: 3,
+			Dst:     nil,
+			Gw:      gwIP,
+			Table:   syscall.RT_TABLE_MAIN,
+			Data: netlink.Route{
+				LinkIndex: 3,
+				Dst:       nil,
+				Gw:        gwIP,
+				Table:     syscall.RT_TABLE_MAIN,
+				Family:    netlink.FAMILY_V6,
+			},
+		},
+	}
+}
+
 func mockWlan0() netmonitor.MockInterface {
 	wlan0 := netmonitor.MockInterface{
 		Attrs: netmonitor.IfAttrs{
-			IfIndex:       3,
+			IfIndex:       4,
 			IfName:        "wlan0",
 			IfType:        "device",
 			WithBroadcast: true,
@@ -407,15 +462,17 @@ func mockWlan0() netmonitor.MockInterface {
 		},
 		IPAddrs: []*net.IPNet{ipAddress("192.168.77.2/24")},
 		DHCP: netmonitor.DHCPInfo{
-			Subnet:     ipSubnet("192.168.77.0/24"),
-			NtpServers: []net.IP{net.ParseIP("129.6.15.32")},
+			IPv4Subnet:     ipSubnet("192.168.77.0/24"),
+			IPv4NtpServers: []net.IP{net.ParseIP("129.6.15.32")},
 		},
-		DNS: netmonitor.DNSInfo{
-			ResolvConfPath: "/etc/wlan0-resolv.conf",
-			Domains:        []string{"wlan-test-domain"},
-			DNSServers:     []net.IP{net.ParseIP("192.168.77.13")},
+		DNS: []netmonitor.DNSInfo{
+			{
+				ResolvConfPath: "/etc/wlan0-resolv.conf",
+				Domains:        []string{"wlan-test-domain"},
+				DNSServers:     []net.IP{net.ParseIP("192.168.77.13")},
+			},
 		},
-		HwAddr: macAddress("02:00:00:00:00:03"),
+		HwAddr: macAddress("02:00:00:00:00:04"),
 	}
 	return wlan0
 }
@@ -423,7 +480,7 @@ func mockWlan0() netmonitor.MockInterface {
 func mockWwan0() netmonitor.MockInterface {
 	wlan0 := netmonitor.MockInterface{
 		Attrs: netmonitor.IfAttrs{
-			IfIndex:       4,
+			IfIndex:       5,
 			IfName:        "wwan0",
 			IfType:        "device",
 			WithBroadcast: true,
@@ -432,15 +489,17 @@ func mockWwan0() netmonitor.MockInterface {
 		},
 		IPAddrs: []*net.IPNet{ipAddress("15.123.87.20/28")},
 		DHCP: netmonitor.DHCPInfo{
-			Subnet:     ipSubnet("15.123.87.16/28"),
-			NtpServers: []net.IP{net.ParseIP("128.138.141.177")},
+			IPv4Subnet:     ipSubnet("15.123.87.16/28"),
+			IPv4NtpServers: []net.IP{net.ParseIP("128.138.141.177")},
 		},
-		DNS: netmonitor.DNSInfo{
-			ResolvConfPath: "/etc/wlan0-resolv.conf",
-			Domains:        []string{"wwan-test-domain"},
-			DNSServers:     []net.IP{net.ParseIP("208.67.222.222")},
+		DNS: []netmonitor.DNSInfo{
+			{
+				ResolvConfPath: "/etc/wlan0-resolv.conf",
+				Domains:        []string{"wwan-test-domain"},
+				DNSServers:     []net.IP{net.ParseIP("208.67.222.222")},
+			},
 		},
-		HwAddr: macAddress("02:00:00:00:00:04"),
+		HwAddr: macAddress("02:00:00:00:00:05"),
 	}
 	return wlan0
 }
@@ -537,6 +596,7 @@ func mockWwan0LocationInfo() types.WwanLocationInfo {
 type selectedIntfs struct {
 	eth0  bool
 	eth1  bool
+	eth2  bool
 	wlan0 bool
 	wwan0 bool
 }
@@ -570,6 +630,19 @@ func makeDPC(key string, timePrio time.Time, intfs selectedIntfs) types.DevicePo
 			DhcpConfig: types.DhcpConfig{
 				Dhcp: types.DhcpTypeClient,
 				Type: types.NetworkTypeIPv4,
+			},
+		})
+	}
+	if intfs.eth2 {
+		dpc.Ports = append(dpc.Ports, types.NetworkPortConfig{
+			IfName:       "eth2",
+			Phylabel:     "eth2",
+			Logicallabel: "mock-eth2",
+			IsMgmt:       true,
+			IsL3Port:     true,
+			DhcpConfig: types.DhcpConfig{
+				Dhcp: types.DhcpTypeClient,
+				Type: types.NetworkTypeIpv6Only,
 			},
 		})
 	}
@@ -651,6 +724,19 @@ func makeAA(intfs selectedIntfs) types.AssignableAdapters {
 			Cost:         0,
 			Ifname:       "eth1",
 			MacAddr:      mockEth1().HwAddr.String(),
+			IsPCIBack:    false,
+			IsPort:       true,
+		})
+	}
+	if intfs.eth2 {
+		aa.IoBundleList = append(aa.IoBundleList, types.IoBundle{
+			Type:         types.IoNetEth,
+			Phylabel:     "eth2",
+			Logicallabel: "mock-eth2",
+			Usage:        evecommon.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
+			Cost:         0,
+			Ifname:       "eth2",
+			MacAddr:      mockEth2().HwAddr.String(),
 			IsPCIBack:    false,
 			IsPort:       true,
 		})
@@ -1032,7 +1118,7 @@ func TestDNS(test *testing.T) {
 	t.Expect(eth0State.DNSServers[0].String()).To(Equal("8.8.8.8"))
 	t.Expect(eth0State.DhcpNtpServers).To(HaveLen(1))
 	t.Expect(eth0State.DhcpNtpServers[0].String()).To(Equal("132.163.96.5"))
-	t.Expect(eth0State.Subnet.String()).To(Equal("192.168.10.0/24"))
+	t.Expect(eth0State.IPv4Subnet.String()).To(Equal("192.168.10.0/24"))
 	t.Expect(eth0State.MacAddr.String()).To(Equal("02:00:00:00:00:01"))
 	t.Expect(eth0State.Up).To(BeTrue())
 	t.Expect(eth0State.Type).To(BeEquivalentTo(types.NetworkTypeIPv4))
@@ -1055,7 +1141,7 @@ func TestDNS(test *testing.T) {
 	t.Expect(eth1State.DNSServers[0].String()).To(Equal("1.1.1.1"))
 	t.Expect(eth1State.DhcpNtpServers).To(HaveLen(1))
 	t.Expect(eth1State.DhcpNtpServers[0].String()).To(Equal("132.163.96.6"))
-	t.Expect(eth1State.Subnet.String()).To(Equal("172.20.1.0/24"))
+	t.Expect(eth1State.IPv4Subnet.String()).To(Equal("172.20.1.0/24"))
 	t.Expect(eth1State.MacAddr.String()).To(Equal("02:00:00:00:00:02"))
 	t.Expect(eth1State.Up).To(BeTrue())
 	t.Expect(eth1State.Type).To(BeEquivalentTo(types.NetworkTypeIPv4))
@@ -1589,23 +1675,27 @@ func TestVlansAndBonds(test *testing.T) {
 	// Simulate events of VLAN sub-interfaces receiving IP addresses from DHCP servers.
 	shopfloor100.IPAddrs = []*net.IPNet{ipAddress("192.168.10.5/24")}
 	shopfloor100.DHCP = netmonitor.DHCPInfo{
-		Subnet:     ipSubnet("192.168.10.0/24"),
-		NtpServers: []net.IP{net.ParseIP("132.163.96.5")},
+		IPv4Subnet:     ipSubnet("192.168.10.0/24"),
+		IPv4NtpServers: []net.IP{net.ParseIP("132.163.96.5")},
 	}
-	shopfloor100.DNS = netmonitor.DNSInfo{
-		ResolvConfPath: "/etc/shopfloor.100-resolv.conf",
-		Domains:        []string{"vlan100-test-domain"},
-		DNSServers:     []net.IP{net.ParseIP("8.8.8.8")},
+	shopfloor100.DNS = []netmonitor.DNSInfo{
+		{
+			ResolvConfPath: "/etc/shopfloor.100-resolv.conf",
+			Domains:        []string{"vlan100-test-domain"},
+			DNSServers:     []net.IP{net.ParseIP("8.8.8.8")},
+		},
 	}
 	shopfloor200.IPAddrs = []*net.IPNet{ipAddress("172.20.1.2/24")}
 	shopfloor200.DHCP = netmonitor.DHCPInfo{
-		Subnet:     ipSubnet("172.20.1.0/24"),
-		NtpServers: []net.IP{net.ParseIP("132.163.96.6")},
+		IPv4Subnet:     ipSubnet("172.20.1.0/24"),
+		IPv4NtpServers: []net.IP{net.ParseIP("132.163.96.6")},
 	}
-	shopfloor200.DNS = netmonitor.DNSInfo{
-		ResolvConfPath: "/etc/shopfloor.200-resolv.conf",
-		Domains:        []string{"vlan200-test-domain"},
-		DNSServers:     []net.IP{net.ParseIP("1.1.1.1")},
+	shopfloor200.DNS = []netmonitor.DNSInfo{
+		{
+			ResolvConfPath: "/etc/shopfloor.200-resolv.conf",
+			Domains:        []string{"vlan200-test-domain"},
+			DNSServers:     []net.IP{net.ParseIP("1.1.1.1")},
+		},
 	}
 	networkMonitor.AddOrUpdateInterface(shopfloor100)
 	networkMonitor.AddOrUpdateInterface(shopfloor200)
@@ -1648,7 +1738,7 @@ func TestVlansAndBonds(test *testing.T) {
 	t.Expect(eth0State.DomainName).To(BeEmpty())
 	t.Expect(eth0State.DNSServers).To(BeEmpty())
 	t.Expect(eth0State.DhcpNtpServers).To(BeEmpty())
-	t.Expect(eth0State.Subnet.IP).To(BeNil())
+	t.Expect(eth0State.IPv4Subnet).To(BeNil())
 	t.Expect(eth0State.MacAddr.String()).To(Equal("02:00:00:00:00:01"))
 	t.Expect(eth0State.Up).To(BeTrue())
 	t.Expect(eth0State.Type).To(BeEquivalentTo(types.NetworkTypeNOOP))
@@ -1665,7 +1755,7 @@ func TestVlansAndBonds(test *testing.T) {
 	t.Expect(eth1State.DomainName).To(BeEmpty())
 	t.Expect(eth1State.DNSServers).To(BeEmpty())
 	t.Expect(eth1State.DhcpNtpServers).To(BeEmpty())
-	t.Expect(eth1State.Subnet.IP).To(BeNil())
+	t.Expect(eth1State.IPv4Subnet).To(BeNil())
 	t.Expect(eth1State.MacAddr.String()).To(Equal("02:00:00:00:00:02"))
 	t.Expect(eth1State.Up).To(BeTrue())
 	t.Expect(eth1State.Type).To(BeEquivalentTo(types.NetworkTypeNOOP))
@@ -1681,7 +1771,7 @@ func TestVlansAndBonds(test *testing.T) {
 	t.Expect(bond0State.DomainName).To(BeEmpty())
 	t.Expect(bond0State.DNSServers).To(BeEmpty())
 	t.Expect(bond0State.DhcpNtpServers).To(BeEmpty())
-	t.Expect(bond0State.Subnet.IP).To(BeNil())
+	t.Expect(bond0State.IPv4Subnet).To(BeNil())
 	t.Expect(bond0State.MacAddr.String()).To(Equal("02:00:00:00:00:03"))
 	t.Expect(bond0State.Up).To(BeTrue())
 	t.Expect(bond0State.Type).To(BeEquivalentTo(types.NetworkTypeNOOP))
@@ -1700,7 +1790,7 @@ func TestVlansAndBonds(test *testing.T) {
 	t.Expect(vlan100State.DNSServers[0].String()).To(Equal("8.8.8.8"))
 	t.Expect(vlan100State.DhcpNtpServers).To(HaveLen(1))
 	t.Expect(vlan100State.DhcpNtpServers[0].String()).To(Equal("132.163.96.5"))
-	t.Expect(vlan100State.Subnet.String()).To(Equal("192.168.10.0/24"))
+	t.Expect(vlan100State.IPv4Subnet.String()).To(Equal("192.168.10.0/24"))
 	t.Expect(vlan100State.MacAddr.String()).To(Equal("02:00:00:00:00:04"))
 	t.Expect(vlan100State.Up).To(BeTrue())
 	t.Expect(vlan100State.Type).To(BeEquivalentTo(types.NetworkTypeIPv4))
@@ -1720,7 +1810,7 @@ func TestVlansAndBonds(test *testing.T) {
 	t.Expect(vlan200State.DNSServers[0].String()).To(Equal("1.1.1.1"))
 	t.Expect(vlan200State.DhcpNtpServers).To(HaveLen(1))
 	t.Expect(vlan200State.DhcpNtpServers[0].String()).To(Equal("132.163.96.6"))
-	t.Expect(vlan200State.Subnet.String()).To(Equal("172.20.1.0/24"))
+	t.Expect(vlan200State.IPv4Subnet.String()).To(Equal("172.20.1.0/24"))
 	t.Expect(vlan200State.MacAddr.String()).To(Equal("02:00:00:00:00:05"))
 	t.Expect(vlan200State.Up).To(BeTrue())
 	t.Expect(vlan200State.Type).To(BeEquivalentTo(types.NetworkTypeIPv4))
@@ -1736,7 +1826,7 @@ func TestTransientDNSError(test *testing.T) {
 	// Prepare simulated network stack.
 	eth0 := mockEth0()
 	eth0.IPAddrs = nil // eth0 does not yet provide working connectivity
-	eth0.DNS = netmonitor.DNSInfo{}
+	eth0.DNS = []netmonitor.DNSInfo{}
 	networkMonitor.AddOrUpdateInterface(eth0)
 
 	// Apply global config first.
@@ -2175,4 +2265,151 @@ func TestLastresortUpdate(test *testing.T) {
 	t.Expect(dpcList[0].Ports).To(HaveLen(2))
 	t.Expect(dpcList[0].Ports[0].IfName).To(Equal("eth0"))
 	t.Expect(dpcList[0].Ports[1].IfName).To(Equal("eth1"))
+}
+
+func TestDPCWithIPv6(test *testing.T) {
+	t := initTest(test)
+	t.Expect(dpcManager.GetDNS().DPCKey).To(BeEmpty())
+
+	// Prepare simulated network stack.
+	eth0 := mockEth0()
+	eth2 := mockEth2() // has IPv6 address
+	networkMonitor.AddOrUpdateInterface(eth0)
+	networkMonitor.AddOrUpdateInterface(eth2)
+	networkMonitor.UpdateRoutes(append(mockEth0Routes(), mockEth2Routes()...))
+	// lastresort will work through one interface (the one with IPv6 address)
+	connTester.SetConnectivityError("lastresort", "eth0",
+		errors.New("failed to connect over eth0"))
+	// DPC "zedagent" will not work at all
+	connTester.SetConnectivityError("zedagent", "eth0",
+		errors.New("failed to connect over eth0"))
+	connTester.SetConnectivityError("zedagent", "eth2",
+		errors.New("failed to connect over eth2"))
+
+	// Apply global config with enabled lastresort.
+	dpcManager.UpdateGCP(globalConfigWithLastresort())
+	lastResortTimePrio := time.Unix(0, 0)
+
+	// Publish AssignableAdapters.
+	aa := makeAA(selectedIntfs{eth0: true, eth2: true})
+	dpcManager.UpdateAA(aa)
+
+	// Verification should succeed even if connectivity over eth0 is failing.
+	t.Eventually(testingInProgressCb()).Should(BeTrue())
+	t.Eventually(testingInProgressCb()).Should(BeFalse())
+	t.Eventually(dpcIdxCb()).Should(Equal(0))
+	t.Eventually(dnsKeyCb()).Should(Equal("lastresort"))
+	t.Eventually(dpcStateCb(0)).Should(Equal(types.DPCStateSuccess))
+
+	idx, dpcList := getDPCList()
+	t.Expect(idx).To(Equal(0))
+	t.Expect(dpcList).To(HaveLen(1))
+	t.Expect(dpcList[0].Key).To(Equal("lastresort"))
+	t.Expect(dpcList[0].TimePriority.Equal(lastResortTimePrio)).To(BeTrue())
+	t.Expect(dpcList[0].State).To(Equal(types.DPCStateSuccess))
+	t.Expect(dpcList[0].LastSucceeded.After(dpcList[0].LastFailed)).To(BeTrue())
+	t.Expect(dpcList[0].LastError).To(BeEmpty())
+	t.Expect(dpcList[0].Ports).To(HaveLen(2))
+	// Check the working port.
+	eth2Port := dpcList[0].Ports[1]
+	t.Expect(eth2Port.IfName).To(Equal("eth2"))
+	t.Expect(eth2Port.LastSucceeded.After(eth2Port.LastFailed)).To(BeTrue())
+	t.Expect(eth2Port.IfName).To(Equal("eth2"))
+	t.Expect(eth2Port.LastError).To(BeEmpty())
+
+	// Put a new DPC.
+	// This one will fail for both ports and thus manager should fallback to lastresort.
+	timePrio2 := time.Now()
+	dpc := makeDPC("zedagent", timePrio2, selectedIntfs{eth0: true, eth2: true})
+	dpcManager.AddDPC(dpc)
+
+	t.Eventually(testingInProgressCb()).Should(BeTrue())
+	t.Eventually(testingInProgressCb()).Should(BeFalse())
+	t.Eventually(dpcStateCb(0)).Should(Equal(types.DPCStateFailWithIPAndDNS))
+	t.Eventually(dpcIdxCb()).Should(Equal(1))
+	idx, dpcList = getDPCList()
+	t.Expect(idx).To(Equal(1)) // not the highest priority
+	t.Expect(dpcList).To(HaveLen(2))
+	t.Expect(dpcList[0].Key).To(Equal("zedagent"))
+	t.Expect(dpcList[0].TimePriority.Equal(timePrio2)).To(BeTrue())
+	t.Expect(dpcList[0].State).To(Equal(types.DPCStateFailWithIPAndDNS))
+	t.Expect(dpcList[0].LastFailed.After(dpcList[0].LastSucceeded)).To(BeTrue())
+	t.Expect(dpcList[0].LastError).To(
+		Equal("not enough working ports (0); failed with: " +
+			"[failed to connect over eth0 failed to connect over eth2]"))
+	t.Expect(dpcList[1].Key).To(Equal("lastresort"))
+	t.Expect(dpcList[1].TimePriority.Equal(lastResortTimePrio)).To(BeTrue())
+	t.Expect(dpcList[1].State).To(Equal(types.DPCStateSuccess))
+	t.Expect(dpcList[1].LastSucceeded.After(dpcList[0].LastFailed)).To(BeTrue())
+	t.Expect(dpcList[1].LastError).To(BeEmpty())
+
+	// Put a new good DPC, configuring only eth2.
+	timePrio3 := time.Now()
+	dpc = makeDPC("zedagent", timePrio3, selectedIntfs{eth2: true})
+	connTester.SetConnectivityError("zedagent", "eth2", nil)
+	dpcManager.AddDPC(dpc)
+
+	t.Eventually(testingInProgressCb()).Should(BeTrue())
+	t.Eventually(testingInProgressCb()).Should(BeFalse())
+	t.Eventually(dpcStateCb(0)).Should(Equal(types.DPCStateSuccess))
+	t.Eventually(dpcIdxCb()).Should(Equal(0))
+	idx, dpcList = getDPCList()
+	t.Expect(idx).To(Equal(0))
+	t.Expect(dpcList).To(HaveLen(2)) // last-resort is enabled and therefore not compressed out
+	t.Expect(dpcList[0].Key).To(Equal("zedagent"))
+	t.Expect(dpcList[0].TimePriority.Equal(timePrio3)).To(BeTrue())
+	t.Expect(dpcList[0].State).To(Equal(types.DPCStateSuccess))
+	t.Expect(dpcList[0].LastSucceeded.After(dpcList[0].LastFailed)).To(BeTrue())
+	t.Expect(dpcList[0].LastError).To(BeEmpty())
+	t.Expect(dpcList[0].Ports).To(HaveLen(1))
+	eth2Port = dpcList[0].Ports[0]
+	t.Expect(eth2Port.IfName).To(Equal("eth2"))
+	t.Expect(eth2Port.LastSucceeded.After(eth2Port.LastFailed)).To(BeTrue())
+	t.Expect(eth2Port.IfName).To(Equal("eth2"))
+	t.Expect(eth2Port.LastError).To(BeEmpty())
+
+	// Check DNS.
+	t.Eventually(func() bool {
+		dnsObj, _ := pubDNS.Get("global")
+		dns := dnsObj.(types.DeviceNetworkStatus)
+		ports := dns.Ports
+		return dns.DPCKey == "zedagent" && !dns.Testing && len(ports) == 1
+	}).Should(BeTrue())
+
+	// Check DNS content.
+	dnsObj, _ := pubDNS.Get("global")
+	dns := dnsObj.(types.DeviceNetworkStatus)
+	t.Expect(dns.Version).To(Equal(types.DPCIsMgmt))
+	t.Expect(dns.State).To(Equal(types.DPCStateSuccess))
+	t.Expect(dns.Testing).To(BeFalse())
+	t.Expect(dns.DPCKey).To(Equal("zedagent"))
+	t.Expect(dns.CurrentIndex).To(Equal(0))
+	t.Expect(dns.RadioSilence.Imposed).To(BeFalse())
+	t.Expect(dns.Ports).To(HaveLen(1))
+	eth2State := dns.Ports[0]
+	t.Expect(eth2State.IfName).To(Equal("eth2"))
+	t.Expect(eth2State.LastSucceeded.After(eth2State.LastFailed)).To(BeTrue())
+	t.Expect(eth2State.IfName).To(Equal("eth2"))
+	t.Expect(eth2State.Phylabel).To(Equal("eth2"))
+	t.Expect(eth2State.Logicallabel).To(Equal("mock-eth2"))
+	t.Expect(eth2State.LastError).To(BeEmpty())
+	t.Expect(eth2State.AddrInfoList).To(HaveLen(1))
+	t.Expect(eth2State.AddrInfoList[0].Addr.String()).To(Equal("2001:1111::1"))
+	t.Expect(eth2State.IsMgmt).To(BeTrue())
+	t.Expect(eth2State.IsL3Port).To(BeTrue())
+	t.Expect(eth2State.DomainName).To(Equal("eth2-ipv6-test-domain"))
+	t.Expect(eth2State.DNSServers).To(HaveLen(2))
+	t.Expect(eth2State.DNSServers[0].String()).To(Equal("2001:4860:4860::8888"))
+	t.Expect(eth2State.DNSServers[1].String()).To(Equal("2001:4860:4860::8844"))
+	t.Expect(eth2State.DhcpNtpServers).To(HaveLen(1))
+	t.Expect(eth2State.DhcpNtpServers[0].String()).To(Equal("2001:db8:3c4d:15::1"))
+	t.Expect(eth2State.IPv4Subnet).To(BeNil())
+	t.Expect(eth2State.IPv6Subnets).To(HaveLen(1))
+	t.Expect(eth2State.IPv6Subnets[0].String()).To(Equal("2001:1111::/64"))
+	t.Expect(eth2State.MacAddr.String()).To(Equal("02:00:00:00:00:03"))
+	t.Expect(eth2State.Up).To(BeTrue())
+	t.Expect(eth2State.Type).To(BeEquivalentTo(types.NetworkTypeIpv6Only))
+	t.Expect(eth2State.Dhcp).To(BeEquivalentTo(types.DhcpTypeClient))
+	t.Expect(eth2State.DefaultRouters).To(HaveLen(1))
+	t.Expect(eth2State.DefaultRouters[0].String()).To(Equal("fe80::c225:2fff:fea2:dc73"))
 }
