@@ -284,13 +284,15 @@ var (
 		},
 		IPAddrs: []*net.IPNet{ipAddressWithPrefix("192.168.10.5/24")},
 		DHCP: netmonitor.DHCPInfo{
-			Subnet:     ipSubnet("192.168.10.0/24"),
-			NtpServers: []net.IP{ipAddress("132.163.96.5")},
+			IPv4Subnet:     ipSubnet("192.168.10.0/24"),
+			IPv4NtpServers: []net.IP{ipAddress("132.163.96.5")},
 		},
-		DNS: netmonitor.DNSInfo{
-			ResolvConfPath: "/etc/eth0-resolv.conf",
-			Domains:        []string{"eth0-test-domain"},
-			DNSServers:     []net.IP{ipAddress("8.8.8.8")},
+		DNS: []netmonitor.DNSInfo{
+			{
+				ResolvConfPath: "/etc/eth0-resolv.conf",
+				Domains:        []string{"eth0-test-domain"},
+				DNSServers:     []net.IP{ipAddress("8.8.8.8")},
+			},
 		},
 		HwAddr: macAddress("02:00:00:00:01:01"),
 	}
@@ -336,12 +338,14 @@ var (
 		},
 		IPAddrs: []*net.IPNet{ipAddressWithPrefix("172.20.0.40/16")},
 		DHCP: netmonitor.DHCPInfo{
-			Subnet: ipSubnet("172.20.0.0/16"),
+			IPv4Subnet: ipSubnet("172.20.0.0/16"),
 		},
-		DNS: netmonitor.DNSInfo{
-			ResolvConfPath: "/etc/eth1-resolv.conf",
-			Domains:        []string{"eth1-test-domain"},
-			DNSServers:     []net.IP{ipAddress("8.8.8.8"), ipAddress("1.1.1.1")},
+		DNS: []netmonitor.DNSInfo{
+			{
+				ResolvConfPath: "/etc/eth1-resolv.conf",
+				Domains:        []string{"eth1-test-domain"},
+				DNSServers:     []net.IP{ipAddress("8.8.8.8"), ipAddress("1.1.1.1")},
+			},
 		},
 		HwAddr: macAddress("02:00:00:00:01:02"),
 	}
@@ -386,10 +390,12 @@ var (
 			LowerUp:       true,
 		},
 		IPAddrs: []*net.IPNet{ipAddressWithPrefix("2001::20/64")},
-		DNS: netmonitor.DNSInfo{
-			ResolvConfPath: "/etc/eth1-resolv.conf",
-			Domains:        []string{"eth1-test-domain"},
-			DNSServers:     []net.IP{ipAddress("2001:4860:4860::8888")},
+		DNS: []netmonitor.DNSInfo{
+			{
+				ResolvConfPath: "/etc/eth1-resolv.conf",
+				Domains:        []string{"eth1-test-domain"},
+				DNSServers:     []net.IP{ipAddress("2001:4860:4860::8888")},
+			},
 		},
 		HwAddr: macAddress("02:00:00:00:01:03"),
 	}
@@ -435,12 +441,14 @@ var (
 		},
 		IPAddrs: []*net.IPNet{ipAddressWithPrefix("172.30.30.40/24")},
 		DHCP: netmonitor.DHCPInfo{
-			Subnet: ipSubnet("172.30.30.0/24"),
+			IPv4Subnet: ipSubnet("172.30.30.0/24"),
 		},
-		DNS: netmonitor.DNSInfo{
-			ResolvConfPath: "/etc/eth3-resolv.conf",
-			Domains:        []string{"eth3-test-domain"},
-			DNSServers:     []net.IP{ipAddress("172.30.30.57")},
+		DNS: []netmonitor.DNSInfo{
+			{
+				ResolvConfPath: "/etc/eth3-resolv.conf",
+				Domains:        []string{"eth3-test-domain"},
+				DNSServers:     []net.IP{ipAddress("172.30.30.57")},
+			},
 		},
 		HwAddr: macAddress("02:00:00:00:01:04"),
 	}
@@ -3117,13 +3125,15 @@ func TestSwitchNIWithMultiplePorts(test *testing.T) {
 		},
 		IPAddrs: []*net.IPNet{ipAddressWithPrefix("192.168.10.5/24")},
 		DHCP: netmonitor.DHCPInfo{
-			Subnet:     ipSubnet("192.168.10.0/24"),
-			NtpServers: []net.IP{ipAddress("132.163.96.5")},
+			IPv4Subnet:     ipSubnet("192.168.10.0/24"),
+			IPv4NtpServers: []net.IP{ipAddress("132.163.96.5")},
 		},
-		DNS: netmonitor.DNSInfo{
-			ResolvConfPath: "/etc/eth0-resolv.conf",
-			Domains:        []string{"eth0-test-domain"},
-			DNSServers:     []net.IP{ipAddress("8.8.8.8")},
+		DNS: []netmonitor.DNSInfo{
+			{
+				ResolvConfPath: "/etc/eth0-resolv.conf",
+				Domains:        []string{"eth0-test-domain"},
+				DNSServers:     []net.IP{ipAddress("8.8.8.8")},
+			},
 		},
 		HwAddr: macAddress("02:00:00:00:01:01"),
 	}

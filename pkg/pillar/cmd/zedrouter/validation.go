@@ -123,10 +123,12 @@ func (z *zedrouter) checkNetworkInstanceIPConflicts(
 	}
 	// Check for overlapping subnets between the NI and device ports.
 	for _, port := range z.deviceNetworkStatus.Ports {
-		if netutils.OverlappingSubnets(config.Subnet, &port.Subnet) {
+		// We only check IPv4 subnet for overlap because Local NI with IPv6 addressing
+		// is not yet supported.
+		if netutils.OverlappingSubnets(config.Subnet, port.IPv4Subnet) {
 			return fmt.Errorf("subnet (%s) overlaps with device port %s "+
 				"subnet (%s)", config.Subnet.String(), port.Logicallabel,
-				port.Subnet.String())
+				port.IPv4Subnet.String())
 		}
 	}
 	return nil

@@ -31,7 +31,7 @@ type MockInterface struct {
 	Attrs   IfAttrs
 	IPAddrs []*net.IPNet
 	HwAddr  net.HardwareAddr
-	DNS     DNSInfo
+	DNS     []DNSInfo
 	DHCP    DHCPInfo
 }
 
@@ -47,7 +47,7 @@ func (m *MockNetworkMonitor) AddOrUpdateInterface(mockIf MockInterface) {
 	prev, existed := m.interfaces[ifIndex]
 	m.interfaces[ifIndex] = mockIf
 	// Interface add/update event.
-	if !existed || !reflect.DeepEqual(mockIf.Attrs, prev.Attrs) {
+	if !existed || mockIf.Attrs != prev.Attrs {
 		m.publishEvent(IfChange{
 			Attrs: mockIf.Attrs,
 			Added: !existed,
@@ -119,7 +119,7 @@ func (m *MockNetworkMonitor) DelInterface(ifName string) {
 	}
 	m.publishEvent(DNSInfoChange{
 		IfIndex: ifIndex,
-		Info:    DNSInfo{},
+		Info:    []DNSInfo{},
 	})
 	m.publishEvent(IfChange{
 		Attrs:   mockIf.Attrs,
@@ -227,12 +227,12 @@ func (m *MockNetworkMonitor) GetInterfaceAddrs(ifIndex int) (
 }
 
 // GetInterfaceDNSInfo returns DNS info associated with the mock interface.
-func (m *MockNetworkMonitor) GetInterfaceDNSInfo(ifIndex int) (DNSInfo, error) {
+func (m *MockNetworkMonitor) GetInterfaceDNSInfo(ifIndex int) ([]DNSInfo, error) {
 	m.Lock()
 	defer m.Unlock()
 	mockIf, exists := m.interfaces[ifIndex]
 	if !exists {
-		return DNSInfo{}, m.ifNotFoundErr(ifIndex)
+		return []DNSInfo{}, m.ifNotFoundErr(ifIndex)
 	}
 	return mockIf.DNS, nil
 }

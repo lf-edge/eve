@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -53,7 +54,7 @@ type LinuxNetworkMonitor struct {
 	ifNameToIndex  map[string]int
 	ifIndexToAttrs map[int]IfAttrs
 	ifIndexToAddrs map[int]ifAddrs
-	ifIndexToDNS   map[int]DNSInfo
+	ifIndexToDNS   map[int][]DNSInfo
 	ifIndexToDHCP  map[int]DHCPInfo
 	ifIndexToGWs   map[int][]net.IP
 }
@@ -85,7 +86,7 @@ func (m *LinuxNetworkMonitor) initCache() {
 	m.ifNameToIndex = make(map[string]int)
 	m.ifIndexToAttrs = make(map[int]IfAttrs)
 	m.ifIndexToAddrs = make(map[int]ifAddrs)
-	m.ifIndexToDNS = make(map[int]DNSInfo)
+	m.ifIndexToDNS = make(map[int][]DNSInfo)
 	m.ifIndexToDHCP = make(map[int]DHCPInfo)
 	m.ifIndexToGWs = make(map[int][]net.IP)
 }
@@ -214,7 +215,7 @@ func (m *LinuxNetworkMonitor) GetInterfaceAddrs(ifIndex int) ([]*net.IPNet, net.
 
 // GetInterfaceDNSInfo returns DNS info for the interface obtained
 // from resolv.conf file.
-func (m *LinuxNetworkMonitor) GetInterfaceDNSInfo(ifIndex int) (info DNSInfo, err error) {
+func (m *LinuxNetworkMonitor) GetInterfaceDNSInfo(ifIndex int) (info []DNSInfo, err error) {
 	m.cacheLock.Lock()
 	defer m.cacheLock.Unlock()
 	if !m.initialized {
@@ -228,15 +229,17 @@ func (m *LinuxNetworkMonitor) GetInterfaceDNSInfo(ifIndex int) (info DNSInfo, er
 		return info, err
 	}
 	ifName := attrs.IfName
-	resolvConf := types.IfnameToResolvConf(ifName)
-	if resolvConf == "" {
+	resolvConfFiles := types.IfnameToResolvConf(ifName)
+	if len(resolvConfFiles) == 0 {
 		// Interface without IP is expected to not have resolv.conf file.
 		// We should be therefore careful about the log level here to avoid
 		// many log messages.
 		m.Log.Functionf("No resolv.conf for %s", ifName)
 		return info, nil
 	}
-	info = m.parseDNSInfo(resolvConf)
+	for _, resolvConfFile := range resolvConfFiles {
+		info = append(info, m.parseDNSInfo(resolvConfFile))
+	}
 	m.ifIndexToDNS[ifIndex] = info
 	return info, nil
 }
@@ -245,14 +248,19 @@ func (m *LinuxNetworkMonitor) parseDNSInfo(resolvConf string) (info DNSInfo) {
 	info.ResolvConfPath = resolvConf
 	dc := netclone.DnsReadConfig(resolvConf)
 	for _, server := range dc.Servers {
-		// Might have port number
-		s := strings.Split(server, ":")
-		ip := net.ParseIP(s[0])
+		// Split into host and port (handles IPv6 addresses correctly)
+		host, _, err := net.SplitHostPort(server)
+		if err != nil {
+			// If no port, assume the entire string is the host
+			host = server
+		}
+		ip := net.ParseIP(host)
 		if ip == nil {
 			m.Log.Warnf("failed to parse %s", server)
 			continue
 		}
 		info.DNSServers = append(info.DNSServers, ip)
+		info.ForIPv6 = ip.To4() == nil
 	}
 	for _, dn := range dc.Search {
 		info.Domains = append(info.Domains, dn)
@@ -276,65 +284,178 @@ func (m *LinuxNetworkMonitor) GetInterfaceDHCPInfo(ifIndex int) (info DHCPInfo, 
 		return info, err
 	}
 	ifName := attrs.IfName
-	// XXX Getting error -1 unless we add argument -4.
-	// XXX Add IPv6 support.
-	m.Log.Functionf("Calling dhcpcd -U -4 %s\n", ifName)
-	stdoutStderr, err := base.Exec(m.Log, "dhcpcd", "-U", "-4", ifName).CombinedOutput()
+	subnet, ntpServerIPs, ntpServerHostnames, err := m.getDHCPv4Info(ifName)
 	if err != nil {
-		if strings.Contains(string(stdoutStderr), "dhcp_dump: No such file or directory") {
-			// DHCP is not configured for this interface. Return empty DHCPInfo.
-			err = nil
-		} else {
-			err = fmt.Errorf("dhcpcd -U failed: %s: %s", string(stdoutStderr), err)
+		return info, err
+	}
+	info.IPv4Subnet = subnet
+	info.IPv4NtpServers = ntpServerIPs
+	info.HostnameNtpServers = ntpServerHostnames
+	subnets, ntpServerIPs, err := m.getDHCPv6Info(ifName)
+	if err != nil {
+		return info, err
+	}
+	info.IPv6Subnets = subnets
+	info.IPv6NtpServers = ntpServerIPs
+	m.ifIndexToDHCP[ifIndex] = info
+	return info, nil
+}
+
+func (m *LinuxNetworkMonitor) getDHCPv4Info(
+	ifName string) (subnet *net.IPNet, ntpServerIPs []net.IP, ntpServerHostnames []string, err error) {
+	m.Log.Functionf("Calling dhcpcd -U -4 %s", ifName)
+	cmd := base.Exec(m.Log, "dhcpcd", "-U", "-4", ifName)
+	outputBytes, err := cmd.CombinedOutput()
+	output := string(outputBytes)
+	if err != nil {
+		if m.isDhcpcdNotRunningErr(output) {
+			return nil, nil, nil, nil
 		}
+		err = fmt.Errorf("dhcpcd -U -4 %s failed: %s: %s", ifName, output, err)
 		return
 	}
-	m.Log.Tracef("dhcpcd -U got %v\n", string(stdoutStderr))
-	lines := strings.Split(string(stdoutStderr), "\n")
+	return ParseDHCPv4Lease(output)
+}
+
+func (m *LinuxNetworkMonitor) getDHCPv6Info(
+	ifName string) (subnets []*net.IPNet, ntpServerIPs []net.IP, err error) {
+	m.Log.Functionf("Calling dhcpcd -U -6 %s", ifName)
+	cmd := base.Exec(m.Log, "dhcpcd", "-U", "-6", ifName)
+	outputBytes, err := cmd.CombinedOutput()
+	output := string(outputBytes)
+	if err != nil {
+		if m.isDhcpcdNotRunningErr(output) {
+			return nil, nil, nil
+		}
+		err = fmt.Errorf("dhcpcd -U -6 %s failed: %s: %s", ifName, output, err)
+		return
+	}
+	return ParseDHCPv6Lease(output)
+}
+
+// Returns if dhcpcd call failed because dhcpcd is not running for the given interface.
+func (m *LinuxNetworkMonitor) isDhcpcdNotRunningErr(dhcpcdOutput string) bool {
+	if strings.Contains(dhcpcdOutput, "dhcpcd is not running") {
+		return true
+	}
+	if strings.Contains(dhcpcdOutput, "dhcp_dump: No such file or directory") {
+		return true
+	}
+	return false
+}
+
+// ParseDHCPv4Lease parses the DHCPv4 lease information for the given network interface.
+// It extracts the assigned subnet (network address and subnet mask) and any configured
+// NTP servers.
+func ParseDHCPv4Lease(
+	content string) (subnet *net.IPNet, ntpServerIPs []net.IP, ntpServerHostnames []string, err error) {
+	lines := strings.Split(content, "\n")
+	var netAddr net.IP
 	var masklen int
-	var subnet net.IP
+
 	for _, line := range lines {
-		items := strings.Split(line, "=")
+		items := strings.SplitN(line, "=", 2)
 		if len(items) != 2 {
 			continue
 		}
-		m.Log.Tracef("Got <%s> <%s>\n", items[0], items[1])
-		switch items[0] {
+		k, v := strings.TrimSpace(items[0]), trimQuotes(strings.TrimSpace(items[1]))
+		switch k {
 		case "network_number":
-			network := trimQuotes(items[1])
-			m.Log.Functionf("GetDhcpInfo(%s) network_number %s\n", ifName,
-				network)
-			ip := net.ParseIP(network)
-			if ip == nil {
-				m.Log.Errorf("Failed to parse %s\n", network)
-				continue
-			}
-			subnet = ip
+			netAddr = net.ParseIP(v)
 		case "subnet_cidr":
-			str := trimQuotes(items[1])
-			m.Log.Functionf("GetDhcpInfo(%s) subnet_cidr %s\n", ifName,
-				str)
-			masklen, err = strconv.Atoi(str)
+			m, err := strconv.Atoi(v)
 			if err != nil {
-				m.Log.Errorf("Failed to parse masklen %s\n", str)
 				continue
 			}
+			masklen = m
 		case "ntp_servers":
-			str := trimQuotes(items[1])
-			m.Log.Functionf("GetDhcpInfo(%s) ntp_servers %s\n", ifName,
-				str)
-			servers := strings.Split(str, " ")
-			for _, server := range servers {
-				ip := net.ParseIP(server)
-				if ip != nil {
-					info.NtpServers = append(info.NtpServers, ip)
+			for _, s := range strings.Fields(v) {
+				if ip := net.ParseIP(s); ip != nil {
+					ntpServerIPs = append(ntpServerIPs, ip)
+				} else {
+					ntpServerHostnames = append(ntpServerHostnames, s)
 				}
 			}
 		}
 	}
-	info.Subnet = &net.IPNet{IP: subnet, Mask: net.CIDRMask(masklen, 32)}
-	m.ifIndexToDHCP[ifIndex] = info
-	return info, nil
+
+	if netAddr != nil && masklen > 0 {
+		subnet = &net.IPNet{IP: netAddr, Mask: net.CIDRMask(masklen, 32)}
+	}
+	return subnet, ntpServerIPs, ntpServerHostnames, nil
+}
+
+var (
+	// Regex to match:
+	//   nd<routerIndex>_prefix_information<infoIndex>_prefix
+	//   nd<routerIndex>_prefix_information<infoIndex>_length
+	ipv6PrefixRe = regexp.MustCompile(`^nd(\d+)_prefix_information(\d+)_prefix$`)
+	ipv6LengthRe = regexp.MustCompile(`^nd(\d+)_prefix_information(\d+)_length$`)
+)
+
+// ParseDHCPv6Lease parses the DHCPv6/RA lease information for the given network interface.
+// It extracts IPv6 subnets (from RA prefix information) and any configured NTP servers
+// (if present).
+func ParseDHCPv6Lease(output string) ([]*net.IPNet, []net.IP, error) {
+	lines := strings.Split(output, "\n")
+
+	var subnets []*net.IPNet
+	var ntpServers []net.IP
+
+	// Map of "routerIndex-infoIndex" -> data
+	type key struct {
+		routerIdx string
+		infoIdx   string
+	}
+	prefixes := make(map[key]net.IP)
+	lengths := make(map[key]int)
+
+	for _, line := range lines {
+		items := strings.SplitN(line, "=", 2)
+		if len(items) != 2 {
+			continue
+		}
+		k, v := strings.TrimSpace(items[0]), trimQuotes(strings.TrimSpace(items[1]))
+
+		// Match prefix
+		if match := ipv6PrefixRe.FindStringSubmatch(k); len(match) == 3 {
+			ip := net.ParseIP(v)
+			if ip != nil {
+				prefixes[key{match[1], match[2]}] = ip
+			}
+			continue
+		}
+
+		// Match length
+		if match := ipv6LengthRe.FindStringSubmatch(k); len(match) == 3 {
+			if maskLen, err := strconv.Atoi(v); err == nil {
+				lengths[key{match[1], match[2]}] = maskLen
+			}
+			continue
+		}
+
+		// Parse NTP servers
+		if k == "dhcp6_ntp_server_addr" {
+			for _, s := range strings.Fields(v) {
+				if ip := net.ParseIP(s); ip != nil {
+					ntpServers = append(ntpServers, ip)
+				}
+			}
+		}
+	}
+
+	// Match prefix/length by key
+	for idx, ip := range prefixes {
+		if length, ok := lengths[idx]; ok {
+			subnet := &net.IPNet{
+				IP:   ip,
+				Mask: net.CIDRMask(length, 128),
+			}
+			subnets = append(subnets, subnet)
+		}
+	}
+
+	return subnets, ntpServers, nil
 }
 
 // GetInterfaceDefaultGWs return a list of IP addresses of default gateways
@@ -562,11 +683,13 @@ func (m *LinuxNetworkMonitor) watcher() {
 				event := DNSInfoChange{
 					IfIndex: ifIndex,
 				}
-				if dnsChange.Op != fsnotify.Remove {
-					event.Info = m.parseDNSInfo(dnsChange.Name)
+				// Re-load nameservers from all resolv.conf files.
+				resolvConfFiles := types.IfnameToResolvConf(ifName)
+				for _, resolvConfFile := range resolvConfFiles {
+					event.Info = append(event.Info, m.parseDNSInfo(resolvConfFile))
 				}
 				m.cacheLock.Lock()
-				if dnsChange.Op == fsnotify.Remove {
+				if len(event.Info) == 0 {
 					delete(m.ifIndexToDNS, ifIndex)
 				} else {
 					m.ifIndexToDNS[ifIndex] = event.Info
