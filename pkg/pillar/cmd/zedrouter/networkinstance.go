@@ -61,7 +61,7 @@ func (z *zedrouter) getArgsForNIStateCollecting(niID uuid.UUID) (
 func (z *zedrouter) getNIBridgeConfig(
 	status *types.NetworkInstanceStatus) nireconciler.NIBridge {
 	var ipAddr *net.IPNet
-	if status.BridgeIPAddr != nil {
+	if status.BridgeIPAddr != nil && status.Subnet != nil {
 		ipAddr = &net.IPNet{
 			IP:   status.BridgeIPAddr,
 			Mask: status.Subnet.Mask,
@@ -345,7 +345,7 @@ func (z *zedrouter) updateNIRoutes(status *types.NetworkInstanceStatus,
 		}
 		newRoutes = append(newRoutes, route)
 	}
-	if !hasDefaultRoute {
+	if !hasDefaultRoute && status.Subnet != nil {
 		var anyDst *net.IPNet
 		if status.Subnet.IP.To4() != nil {
 			_, anyDst, _ = net.ParseCIDR("0.0.0.0/0")

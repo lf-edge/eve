@@ -893,7 +893,7 @@ func (r *LinuxNIReconciler) getIntendedNIL3Cfg(niID uuid.UUID) dg.Graph {
 		Dst:      r.getNISubnet(ni),
 	}, nil)
 	// Add S-NAT iptables rules for the local network instance (only for IPv4).
-	if ni.config.Subnet.IP.To4() != nil {
+	if ni.config.Subnet != nil && ni.config.Subnet.IP.To4() != nil {
 		if ni.config.Type == types.NetworkInstanceTypeLocal {
 			for _, port := range ni.bridge.Ports {
 				intendedL3Cfg.PutItem(iptables.Rule{
@@ -1648,7 +1648,7 @@ func (r *LinuxNIReconciler) getVLANConfigForNI(ni *niInfo) (
 }
 
 func (r *LinuxNIReconciler) getNISubnet(ni *niInfo) *net.IPNet {
-	if ni.config.Subnet.IP == nil {
+	if ni.config.Subnet == nil {
 		return nil
 	}
 	return &net.IPNet{
