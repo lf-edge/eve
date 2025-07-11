@@ -42,6 +42,9 @@ up)
   mkdir -p "$VIF_TASK"/usr/bin
   mount --bind /usr/bin "$VIF_TASK"/usr/bin
 
+  mkdir -p "$VIF_TASK"/var/lib
+  mkdir -p "$VIF_TASK"/run
+
   nsenter --target "$VIF_NS" --net unshare --uts --mount --root="$VIF_TASK" dhcpcd
   ;;
 *)
