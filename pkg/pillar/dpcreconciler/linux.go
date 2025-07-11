@@ -27,6 +27,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
+	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
 	"github.com/lf-edge/eve/pkg/pillar/utils/netutils"
 	"github.com/vishvananda/netlink"
 )
@@ -923,13 +924,19 @@ func (r *LinuxDpcReconciler) getIntendedGlobalCfg(dpc types.DevicePortConfig,
 		if !found {
 			continue
 		}
-		dnsInfo, err := r.NetworkMonitor.GetInterfaceDNSInfo(ifIndex)
+		dnsInfoList, err := r.NetworkMonitor.GetInterfaceDNSInfo(ifIndex)
 		if err != nil {
 			r.Log.Errorf("getIntendedGlobalCfg: failed to get DNS info for %s: %v",
 				port.IfName, err)
 			continue
 		}
-		dnsServers[port.IfName] = dnsInfo.DNSServers
+		dnsServers[port.IfName] = []net.IP{}
+		for _, dnsInfo := range dnsInfoList {
+			dnsServers[port.IfName] = append(dnsServers[port.IfName], dnsInfo.DNSServers...)
+		}
+		dnsServers[port.IfName] = generics.FilterDuplicatesFn(
+			dnsServers[port.IfName], netutils.EqualIPs)
+
 	}
 	intendedCfg.PutItem(generic.ResolvConf{DNSServers: dnsServers}, nil)
 	return intendedCfg
