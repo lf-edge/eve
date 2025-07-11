@@ -174,7 +174,7 @@ func TestReconcileWithEmptyArgs(test *testing.T) {
 	t.Expect(itemCountWithType(iptables.ChainV4Typename)).To(Equal(14))
 	t.Expect(itemCountWithType(iptables.ChainV6Typename)).To(Equal(14))
 	t.Expect(itemCountWithType(iptables.RuleV4Typename)).To(Equal(22))
-	t.Expect(itemCountWithType(iptables.RuleV6Typename)).To(Equal(21))
+	t.Expect(itemCountWithType(iptables.RuleV6Typename)).To(Equal(22))
 	t.Expect(itemIsCreatedWithDescrSnippet("--dport 22 -j REJECT")).To(BeTrue())
 
 	// Enable SSH access
