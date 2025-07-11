@@ -719,7 +719,7 @@ type NetworkInstanceConfig struct {
 
 	// IP configuration for the Application
 	IpType          AddressType
-	Subnet          net.IPNet
+	Subnet          *net.IPNet
 	Gateway         net.IP
 	DomainName      string
 	NtpServers      []string
