@@ -3,7 +3,7 @@
 # Copyright (c) 2025 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-set -eu
+set -u
 
 export VECTOR_LOG="vector=info,vector::sources::util::unix_stream=warn"
 export VECTOR_LOG_FORMAT="text"
@@ -61,25 +61,40 @@ if [ ! -f "$LIVE_CONFIG" ]; then
   cp "$DEFAULT_VECTOR_CONFIG" "$LIVE_CONFIG"
 fi
 
-# --- launch & watch --------------------------------------------------------
+# --- watch for new config candidates in the background --------------------------------------
 
-echo "Starting Vector with $LIVE_CONFIG"
-vector --config-yaml "$LIVE_CONFIG" &
-echo $! > "$PIDFILE"
+(
+  echo "Watching for new config at $CONFIG_CANDIDATE"
+  inotifywait -m -e close_write "$(dirname "$CONFIG_CANDIDATE")" |
+  while read -r _ _ changed; do
+    [ "$changed" != "$(basename "$CONFIG_CANDIDATE")" ] && continue
 
-echo "Watching for new config at $CONFIG_CANDIDATE"
-inotifywait -m -e close_write "$(dirname "$CONFIG_CANDIDATE")" |
-while read -r _ _ changed; do
-  [ "$changed" != "$(basename "$CONFIG_CANDIDATE")" ] && continue
+    echo "Detected new candidate config…"
+    echo "Validating $CONFIG_CANDIDATE"
+    if vector validate --config-yaml "$CONFIG_CANDIDATE"; then
+      echo "✅ Candidate is valid — promoting to live config"
+      # atomic swap
+      mv "$CONFIG_CANDIDATE" "$LIVE_CONFIG"
+    else
+      echo "❌ Candidate invalid — discarding $CONFIG_CANDIDATE"
+      rm "$CONFIG_CANDIDATE"
+    fi
+  done
+) &
 
-  echo "Detected new candidate config…"
-  echo "Validating $CONFIG_CANDIDATE"
-  if vector validate --config-yaml "$CONFIG_CANDIDATE"; then
-    echo "✅ Candidate is valid — promoting to live config"
-    # atomic swap
-    mv "$CONFIG_CANDIDATE" "$LIVE_CONFIG"
-  else
-    echo "❌ Candidate invalid — discarding $CONFIG_CANDIDATE"
-    rm "$CONFIG_CANDIDATE"
-  fi
+# --- launch & auto-restart Vector forever -------------------------------
+while true; do
+  # make sure there are no sockets left over from previous runs
+  rm /run/devKeep_source.sock /run/devUpload_source.sock || true
+
+  echo "Starting Vector with $LIVE_CONFIG"
+  vector --config-yaml "$LIVE_CONFIG" &
+  VPID=$!
+  echo $VPID > "$PIDFILE"
+
+  # wait until it exits
+  wait $VPID
+  EXIT_CODE=$?
+  echo "Vector (pid $VPID) exited with code $EXIT_CODE — restarting in 5s…"
+  sleep 5
 done
