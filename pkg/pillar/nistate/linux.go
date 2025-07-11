@@ -427,9 +427,6 @@ func (lc *LinuxCollector) GetNetworkMetrics() (types.NetworkMetrics, error) {
 			metrics = append(metrics, metric)
 			continue
 		}
-		if ipVer == 0 {
-			ipVer = 4
-		}
 
 		metric.TxAclDrops = lc.getIptablesACLDrop(ac, brIfName, vifName, ipVer, true)
 		metric.RxAclDrops = lc.getIptablesACLDrop(ac, brIfName, vifName, ipVer, false)

@@ -79,10 +79,8 @@ func Ip6tableCmdOut(log *base.LogObject, args ...string) (string, error) {
 	args[1] = "5"
 	if log != nil {
 		log.Functionf("Calling command %s %v\n", ip6tablesCmd, args)
-		out, err = base.Exec(log, ip6tablesCmd, args...).CombinedOutput()
-	} else {
-		out, err = base.Exec(log, ip6tablesCmd, args...).Output()
 	}
+	out, err = base.Exec(log, ip6tablesCmd, args...).CombinedOutput()
 	if err != nil {
 		outStr := strings.TrimSpace(string(out))
 		outStr = strings.ReplaceAll(outStr, "\n", "; ")
