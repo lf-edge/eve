@@ -182,7 +182,7 @@ func (r Route) String() string {
 // Dependencies of a network route are:
 //   - the "via" interface must exist and be UP
 //   - the "via" interface must have an IP address assigned from the subnet
-//     of the route gateway.
+//     of the route gateway (unless the gateway is a link local IP, such as fe80:<something>).
 //   - if route has src IP, this IP must be assigned to the "via" interface
 func (r Route) Dependencies() (deps []dg.Dependency) {
 	gwAndSrcMatchesIP := func(item dg.Item) bool {
@@ -206,7 +206,7 @@ func (r Route) Dependencies() (deps []dg.Dependency) {
 				return false
 			}
 		}
-		if !r.GwViaLinkRoute && len(r.Gw) != 0 {
+		if !r.GwViaLinkRoute && len(r.Gw) != 0 && !r.Gw.IsLinkLocalUnicast() {
 			var gwMatch bool
 			for _, ip := range ips {
 				if ip.Contains(r.Gw) {
