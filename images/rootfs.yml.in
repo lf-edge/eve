@@ -46,6 +46,10 @@ services:
     image: MONITOR_TAG
     cgroupsPath: /eve/services/monitor
     oomScoreAdj: -999
+  - name: vector
+    image: VECTOR_TAG
+    cgroupsPath: /eve/services/vector
+    oomScoreAdj: -999
   - name: newlogd
     image: NEWLOGD_TAG
     cgroupsPath: /eve/services/newlogd

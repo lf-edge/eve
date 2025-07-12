@@ -41,6 +41,10 @@ type EdgeNodeClusterConfig struct {
 
 	// CipherBlockStatus, for encrypted cluster token data
 	CipherToken CipherBlockStatus
+
+	// CipherGzipRegistrationManifestYaml, for compressed bytes of a registration yaml file
+	// Shares the same CipherBlock as CipherToken
+	CipherGzipRegistrationManifestYaml CipherBlockStatus
 }
 
 // ENClusterAppStatus - Status of an App Instance in the multi-node cluster

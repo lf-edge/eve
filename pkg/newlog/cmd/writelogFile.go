@@ -19,6 +19,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 
 	nestedapp "github.com/lf-edge/eve-api/go/nestedappinstancemetrics"
 )
@@ -43,8 +44,84 @@ type statsLogFile struct {
 	notUpload bool
 }
 
+type appLog struct {
+	logline string
+	appUUID string
+}
+
+func sendLogsToVector(logChan <-chan inputEntry, appLogChan chan<- appLog, uploadLogChan, keepLogChan chan<- string) {
+	devSourceBytes = base.NewLockedStringMap()
+
+	var uploadSockWriter, keepSockWriter *BufferedSockWriter
+	if vectorEnabled.Load() {
+		// start only if sinks sockets already exist
+		for !(fileutils.FileExists(log, uploadSockVectorSink) && fileutils.FileExists(log, keepSockVectorSink)) {
+			log.Functionf("sendLogsToVector: waiting for uploadSockVectorSink %s and keepSockVectorSink %s to exist", uploadSockVectorSink, keepSockVectorSink)
+			time.Sleep(1 * time.Second)
+		}
+		uploadSockWriter = NewBufferedSockWriter(uploadSockVectorSource, 1000, 1*time.Second)
+		keepSockWriter = NewBufferedSockWriter(keepSockVectorSource, 1000, 1*time.Second)
+	}
+
+	for entry := range logChan {
+		appuuid := checkAppEntry(&entry)
+		timeS, _ := getPtypeTimestamp(entry.timestamp)
+		mapLog := logs.LogEntry{
+			Severity:  entry.severity,
+			Source:    entry.source,
+			Content:   entry.content,
+			Iid:       entry.pid,
+			Filename:  entry.filename,
+			Msgid:     updateLogMsgID(appuuid),
+			Function:  entry.function,
+			Timestamp: timeS,
+		}
+		mapJentry, _ := json.Marshal(&mapLog)
+		logline := string(mapJentry) + "\n"
+		if appuuid != "" {
+			// app logs don't need to go through vector,
+			// so we send them directly to the app log channel to be written to the app log file
+			appLogChan <- appLog{
+				logline: logline,
+				appUUID: appuuid,
+			}
+
+			logmetrics.AppMetrics.NumBytesWrite += uint64(len(logline))
+
+		} else {
+			if entry.sendToRemote {
+				if vectorEnabled.Load() {
+					if _, err := uploadSockWriter.Write([]byte(logline)); err != nil {
+						// we only report errors periodically to avoid flooding the logs
+						if numLogs := uploadSockWriter.ReportDroppedMsgs(); numLogs > 0 {
+							log.Warnf("writelogFile: uploadSockWriter dropped %d logs due to a write error: %s", numLogs, err)
+						}
+					}
+				} else {
+					uploadLogChan <- logline
+				}
+			}
+
+			if vectorEnabled.Load() {
+				// write all log entries to the log file to keep
+				_, err := keepSockWriter.Write([]byte(logline))
+				if err != nil {
+					// we only report errors periodically to avoid flooding the logs
+					if numLogs := keepSockWriter.ReportDroppedMsgs(); numLogs > 0 {
+						log.Warnf("writelogFile: keepSockWriter dropped %d logs due to a write error: %s", numLogs, err)
+					}
+				}
+			} else {
+				keepLogChan <- logline
+			}
+
+			updateDevInputlogStats(entry.source, uint64(len(logline)))
+		}
+	}
+}
+
 // writelogFile - a goroutine to format and write log entries into dev/app logfiles
-func writelogFile(logChan <-chan inputEntry, moveChan chan fileChanInfo) {
+func writelogFile(moveChan chan fileChanInfo, appLogChan <-chan appLog, uploadLogChan, keepLogChan chan string) {
 	// get EVE version and partition, UUID may not be available yet
 	getEveInfo()
 
@@ -73,11 +150,10 @@ func writelogFile(logChan <-chan inputEntry, moveChan chan fileChanInfo) {
 		}
 	}
 
-	devSourceBytes = base.NewLockedStringMap()
 	appStatsMap = make(map[string]statsLogFile)
-	checklogTimer := time.NewTimer(5 * time.Second)
 
 	timeIdx := 0
+	checklogTimer := time.NewTimer(5 * time.Second)
 	for {
 		select {
 		case <-checklogTimer.C:
@@ -85,46 +161,22 @@ func writelogFile(logChan <-chan inputEntry, moveChan chan fileChanInfo) {
 			checkLogTimeExpire(&devStatsUpload, moveChan)  // only check the upload log file, there is no need to hurry moving the keep log file
 			checklogTimer = time.NewTimer(5 * time.Second) // check the file time limit every 5 seconds
 
-		case entry := <-logChan:
-			appuuid := checkAppEntry(&entry)
-			var appM statsLogFile
-			if appuuid != "" {
-				appM = getAppStatsMap(appuuid)
-			}
-			timeS, _ := getPtypeTimestamp(entry.timestamp)
-			mapLog := logs.LogEntry{
-				Severity:  entry.severity,
-				Source:    entry.source,
-				Content:   entry.content,
-				Iid:       entry.pid,
-				Filename:  entry.filename,
-				Msgid:     updateLogMsgID(appuuid),
-				Function:  entry.function,
-				Timestamp: timeS,
-			}
-			mapJentry, _ := json.Marshal(&mapLog)
-			logline := string(mapJentry) + "\n"
-			if appuuid != "" {
-				bytesWritten := writelogEntry(&appM, logline)
+		case appLog := <-appLogChan:
+			appM := getAppStatsMap(appLog.appUUID)
 
-				logmetrics.AppMetrics.NumBytesWrite += uint64(bytesWritten)
-				appStatsMap[appuuid] = appM
+			writelogEntry(&appM, appLog.logline)
 
-				trigMoveToGzip(&appM, appuuid, moveChan, false)
+			trigMoveToGzip(&appM, appLog.appUUID, moveChan, false)
 
-			} else {
-				if entry.sendToRemote {
-					writelogEntry(&devStatsUpload, logline)
+		case logline := <-uploadLogChan:
+			writelogEntry(&devStatsUpload, logline)
 
-					trigMoveToGzip(&devStatsUpload, "", moveChan, false)
-				}
+			trigMoveToGzip(&devStatsUpload, "", moveChan, false)
 
-				// write all log entries to the log file to keep
-				n := writelogEntry(&devStatsKeep, logline)
-				updateDevInputlogStats(entry.source, uint64(n))
+		case logline := <-keepLogChan:
+			writelogEntry(&devStatsKeep, logline)
 
-				trigMoveToGzip(&devStatsKeep, "", moveChan, false)
-			}
+			trigMoveToGzip(&devStatsKeep, "", moveChan, false)
 		}
 	}
 }
@@ -151,6 +203,7 @@ func checkLogTimeExpire(devStats *statsLogFile, moveChan chan fileChanInfo) {
 		}
 	}
 }
+
 func checkAppEntry(entry *inputEntry) string {
 	appuuid := ""
 	var appVMlog bool
@@ -511,8 +564,8 @@ func formatNestedAppLogContent(containerName, msg string) string {
 }
 
 // formatParentRuntimeLogContent expects it's parameters already be sanitized for use in json
-func formatParentRuntimeLogContent(nestedAppId, containerName, msg string) string {
-	return "{\"nested-app-uuid\":\"" + nestedAppId + "\",\"container-name\":\"" + containerName + "\",\"msg\":\"" + msg + "\"}"
+func formatParentRuntimeLogContent(nestedAppID, containerName, msg string) string {
+	return "{\"nested-app-uuid\":\"" + nestedAppID + "\",\"container-name\":\"" + containerName + "\",\"msg\":\"" + msg + "\"}"
 }
 
 func createLogTmpfile(dirname, filename string) *os.File {
