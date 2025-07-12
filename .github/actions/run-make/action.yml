@@ -12,6 +12,10 @@ inputs:
   dockerhub-account:
     required: true
     type: string
+  clean:
+    required: false
+    type: boolean
+    default: true
 
 runs:
   using: 'composite'
@@ -27,7 +31,7 @@ runs:
       with:
         username: ${{ inputs.dockerhub-account }}
         password: ${{ inputs.dockerhub-token }}
-    - name: Build and push `make -e ${{ inputs.command }}`
+    - name: Running `make -e ${{ inputs.command }}`
       run: |
         make -e ${{ inputs.command }}
       shell: bash
@@ -41,6 +45,7 @@ runs:
         docker system df -v
       shell: bash
     - name: Pre clean report
+      if: ${{ inputs.clean == 'true' }}
       run: |
         echo Disk usage
         df -h
@@ -50,6 +55,7 @@ runs:
         docker system df -v
       shell: bash
     - name: Clean
+      if: ${{ inputs.clean == 'true' }}
       run: |
         make clean
         docker system prune -f -a
