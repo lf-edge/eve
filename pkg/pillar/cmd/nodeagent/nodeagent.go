@@ -754,6 +754,18 @@ func publishNodeAgentStatus(ctxPtr *nodeagentContext) {
 		WaitDrainInProgress:         ctxPtr.waitDrainInProgress,
 	}
 	ctxPtr.lastLock.Unlock()
+	// kubevirt eve in cluster mode will look at this file to see if device is shutting down.
+	// We do not want to pub/sub in hypervisor code to get the NodeAgentStatus.
+	// An empty temporary file is good enough
+	if status.DeviceReboot || status.DevicePoweroff || status.DeviceShutdown {
+		// Create a new empty file, it will be in /run and will be removed after reboot
+		file, err := os.Create(types.NodeRebootInProgressFile)
+		if err != nil {
+			log.Errorf("Failed to create file: %v", err)
+		}
+		defer file.Close()
+	}
+
 	pub.Publish(agentName, status)
 }
 
