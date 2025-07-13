@@ -34,6 +34,10 @@ jobs:
             platform: "generic"
             hv: kubevirt
           - os: zededa-ubuntu-2204
+            arch: amd64
+            platform: "evaluation"
+            hv: kvm
+          - os: zededa-ubuntu-2204
             arch: riscv64
             platform: "generic"
             hv: mini
@@ -258,6 +262,9 @@ jobs:
           - arch: amd64
             hv: kubevirt
             platform: "generic"
+          - arch: amd64
+            hv: kvm
+            platform: "evaluation"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
