@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # Run make (with no arguments) to see help on what targets are available
+# change to test Eden
 
 # disable parallel builds by default
 # it can be overridden from make command line using -jN
