@@ -22,7 +22,7 @@ jobs:
       matrix:
         os: [zededa-ubuntu-latest, zededa-ubuntu-2204]
         arch: [arm64, amd64]
-        platform: [generic, nvidia-jp5, nvidia-jp6]
+        platform: [generic, nvidia-jp5, nvidia-jp6, evaluation]
         include:
           - os: zededa-ubuntu-2204
             arch: riscv64
@@ -36,6 +36,9 @@ jobs:
             platform: nvidia-jp5
           - arch: amd64
             platform: nvidia-jp6
+          - arch: arm64
+            platform: evaluation
+
     steps:
       - name: Starting Report
         run: |
@@ -114,6 +117,9 @@ jobs:
           - arch: arm64
             hv: kvm
             platform: "nvidia-jp6"
+          - arch: amd64
+            hv: kvm
+            platform: "evaluation"
         exclude:
           - arch: arm64
             hv: kubevirt
