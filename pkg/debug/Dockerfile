@@ -34,9 +34,9 @@ RUN adduser -G abuild -D builder || :
 RUN su builder -c 'abuild-keygen -a -n'
 
 COPY --chown=builder:abuild abuild/ /
-ENV MUSL_VERSION="v1.2.3"
+ENV MUSL_VERSION="1.2.3"
 ENV DISTFILES_MIRROR="/tmp/mirror"
-ADD --chown=builder:abuild https://git.musl-libc.org/cgit/musl/snapshot/${MUSL_VERSION}.tar.gz ${DISTFILES_MIRROR}/musl-${MUSL_VERSION}.tar.gz
+ADD --chown=builder:abuild http://ftp.us.debian.org/debian/pool/main/m/musl/musl_${MUSL_VERSION}.orig.tar.gz ${DISTFILES_MIRROR}/musl-v${MUSL_VERSION}.tar.gz
 RUN su builder -c 'cd /musl && abuild checksum && abuild -r'
 
 # now install it locally so we can pick it up later on below

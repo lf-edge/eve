@@ -22,15 +22,23 @@ COPY --chown=builder:abuild patches/aports /home/builder/patches
 
 WORKDIR $APORTS
 
-RUN tar -xzvf aports.tar.gz --strip-components=1 && rm -rf aports.tar.gz
+RUN tar -xzvf aports.tar.gz --strip-components=1
+RUN rm -f aports.tar.gz
+ADD APKBUILD $APORTS/main/musl/APKBUILD
 
 # Versions must be aligned with content of APKBUILD
 ENV BINUTILS_VERSION 2.38
 ENV MUSL_VERSION 1.2.3
 ENV GCC_VERSION 11.2.1_git20220219
-ADD --chown=builder:abuild https://ftp.gnu.org/gnu/binutils/binutils-${BINUTILS_VERSION}.tar.xz /var/cache/distfiles/binutils-${BINUTILS_VERSION}.tar.xz
-ADD --chown=builder:abuild https://git.musl-libc.org/cgit/musl/snapshot/v${MUSL_VERSION}.tar.gz /var/cache/distfiles/musl-v${MUSL_VERSION}.tar.gz
+ADD --chown=builder:abuild https://mirror.kumi.systems/gnu/binutils/binutils-${BINUTILS_VERSION}.tar.xz /var/cache/distfiles/binutils-${BINUTILS_VERSION}.tar.xz
+#ADD --chown=builder:abuild https://git.musl-libc.org/cgit/musl/snapshot/v${MUSL_VERSION}.tar.gz /var/cache/distfiles/musl-v${MUSL_VERSION}.tar.gz
+ADD --chown=builder:abuild http://ftp.us.debian.org/debian/pool/main/m/musl/musl_${MUSL_VERSION}.orig.tar.gz /var/cache/distfiles//musl-v${MUSL_VERSION}.tar.gz
 ADD --chown=builder:abuild https://dev.alpinelinux.org/~nenolod/gcc-${GCC_VERSION}.tar.xz /var/cache/distfiles/gcc-${GCC_VERSION}.tar.xz
+
+ENV LANG_D=false
+ENV LANG_ADA=false
+ENV LANG_FORTRAN=false
+ENV LANG_JIT=false
 
 RUN for patch in /home/builder/patches/*patch ; do patch -p1 < "$patch" ; done
 RUN [ "riscv64" = "${EVE_BUILD_ARCH}" ] || sh -x ./scripts/bootstrap.sh "riscv64"
