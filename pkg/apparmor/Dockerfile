@@ -1,11 +1,11 @@
 # syntax=docker/dockerfile-upstream:1.5.0-rc2-labs
 
-# Copyright (c) 2023 Zededa, Inc.
+# Copyright (c) 2023-2025 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
 FROM lfedge/eve-alpine:0f2e0da38e30753c68410727a6cc269e57ff74f2 as build
-ENV BUILD_PKGS linux-headers musl-dev musl-utils musl-libintl git gcc g++ \
-               autoconf automake libtool make flex bison bash sed gettext
+ENV BUILD_PKGS="linux-headers musl-dev musl-utils musl-libintl git gcc g++ \
+               autoconf automake libtool make flex bison bash sed gettext"
 ENV PKGS alpine-baselayout
 RUN eve-alpine-deploy.sh
 
