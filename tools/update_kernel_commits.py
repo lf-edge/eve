@@ -665,22 +665,25 @@ def adjust_branches_by_docker_tags(new_commits, updated_branches, docker_tags):
         # always update to our source of truth
         new_commits[branch] = docker_commit
 
-        # if we have updated branches check that we have any docker tag for them
-        # it means that the branch is just added
-        saved_updated_branches = updated_branches.copy()
-        for branch in updated_branches:
+        # After processing all branches, handle branches not in docker_tags
+        # Make a copy of keys to avoid modification during iteration
+        branches_to_check = list(updated_branches.keys())
+
+        for branch in branches_to_check:
             if branch not in docker_tags:
-                is_error = True
+                current_gh_commit, latest_gh_commit = updated_branches[branch]
+
                 print(
-                    Fore.RED
-                    + "[Error]"
+                    Fore.YELLOW
+                    + "[ WARN ]"
                     + Style.RESET_ALL
-                    + f" :{branch}: the image for commit {new_commits[branch]}"
-                    + "was not pushed to docker.\n\tNo docker tag found for the branch."
-                    " Is this a new branch?"
+                    + f" :{branch}: the image for commit {latest_gh_commit} was not pushed to "
+                    + "docker.\n\tNo docker tag found for the branch. Is this a new branch?"
                 )
-                del saved_updated_branches[branch]
-        updated_branches = saved_updated_branches
+                print(f"Deleting the branch from updated branches. {branch} will not be updated.")
+                del updated_branches[branch]
+                del new_commits[branch]
+
         return is_error
 
 
