@@ -7,7 +7,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"os"
 	"sync"
 	"syscall"
 	"time"
@@ -112,12 +111,6 @@ func RunInDebugContainer(clientCtx context.Context, taskID string, w io.Writer, 
 	timeoutTimer.Stop()
 
 	if !exitStatus.killedByTimeout {
-		st, err := process.Status(ctx)
-		if err != nil {
-			return fmt.Errorf("process status failed: %+v", err)
-		}
-		fmt.Fprintf(os.Stderr, "process status is: %+v", st)
-
 		status, err := process.Delete(ctx)
 		if err != nil {
 			return fmt.Errorf("process delete (%+v) failed: %+v", status, err)
