@@ -1,0 +1,3 @@
+[submodule "evetest/grpcapi/eve-api"]
+    path = evetest/grpcapi/eve-api
+    url = https://github.com/lf-edge/eve-api

@@ -8,7 +8,7 @@ personality_globals() {
   BUILDTOOL=nobuild
 
   # configure buf
-  BUF_BASEDIR=api/proto
+  BUF_BASEDIR=evetest
 
   # we want this on so master does not break
   CONTINUOUS_IMPROVEMENT=true
@@ -27,5 +27,4 @@ personality_globals() {
   delete_test_type shelldocs
   delete_test_type spotbugs
   delete_test_type detsecrets
-
 }

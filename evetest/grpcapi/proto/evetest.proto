@@ -1,0 +1,278 @@
+// Copyright (c) 2026 Zededa, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package org.lfedge.evetest;
+
+option go_package = "github.com/lf-edge/eve/evetest/grpcapi/go";
+
+import "common.proto";
+import "sdn.proto";
+
+// Add github.com/lf-edge/eve-api/proto into the protoc import path.
+import "config/devconfig.proto";
+import "info/info.proto";
+import "metrics/metrics.proto";
+import "flowlog/flowlog.proto";
+
+// Evetest provides functions for interacting with the evetest framework.
+// It is used by evetest CLI.
+service Evetest {
+  // Continue test execution until the end/failure or another checkpoint.
+  rpc Continue(ContinueRequest) returns (ContinueResponse);
+  // Exit the test early, marking it as skipped or incomplete.
+  rpc Exit(ExitRequest) returns (ExitResponse);
+  // Returns current test execution state and active devices.
+  rpc Status(StatusRequest) returns (StatusResponse);
+
+  // Immediately force power cycle of the EVE device.
+  rpc HardRebootEVEDevice(EVEDeviceRequest) returns (EVERebootResponse);
+  // Request a clean OS-level reboot on the EVE device.
+  rpc SoftRebootEVEDevice(EVEDeviceRequest) returns (EVERebootResponse);
+
+  // Fetch the current configuration submitted to the EVE device.
+  rpc GetEVEConfig(EVEDeviceRequest) returns (EVEConfigResponse);
+  // Stream real-time system info from EVE device (ZInfoDevice).
+  rpc GetEVEInfo(EVEDeviceStreamableRequest) returns (stream EVEInfoResponse);
+  // Stream real-time metrics from EVE device (deviceMetric).
+  rpc GetEVEMetrics(EVEDeviceStreamableRequest) returns (stream EVEMetricsResponse);
+  // Stream logs from EVE device (agent logs, kernel logs, etc).
+  rpc GetEVELogs(EVEDeviceStreamableRequest) returns (stream LogMessage);
+  // Get current console output from the EVE device.
+  rpc GetEVEConsoleOutput(EVEDeviceRequest) returns (ConsoleOutputResponse);
+
+  // Stream application-specific info from a device (ZInfoApp).
+  rpc GetAppInfo(AppRequest) returns (stream AppInfoResponse);
+  // Stream application-level metrics from a device (appMetric).
+  rpc GetAppMetrics(AppRequest) returns (stream AppMetricsResponse);
+  // Stream logs from an EVE-managed application.
+  rpc GetAppLogs(AppRequest) returns (stream LogMessage);
+  // Stream flow logs and DNS request logs for an application.
+  rpc GetAppFlowLogs(AppRequest) returns (stream AppFlowLogsResponse);
+
+  // Stream info (ZInfoNetworkInstance) about a network instance (NI).
+  rpc GetNIInfo(NIRequest) returns (stream NIInfoResponse);
+  // Stream metrics (ZMetricNetworkInstance) for a network instance.
+  rpc GetNIMetrics(NIRequest) returns (stream NIMetricsResponse);
+
+  // Stream summary information for the entire Kubernetes cluster.
+  rpc GetClusterInfo(ClusterRequest) returns (stream ClusterInfoResponse);
+  // Stream information about ongoing cluster updates.
+  rpc GetClusterUpdateInfo(ClusterRequest) returns (stream ClusterUpdateInfoResponse);
+  // Stream metrics for the Kubernetes cluster (KubeClusterMetrics).
+  rpc GetClusterMetrics(ClusterRequest) returns (stream ClusterMetricsResponse);
+
+  // Obtain debug information from a device (eve-info tarball).
+  rpc CollectInfo(EVEDeviceRequest) returns (CollectInfoResponse);
+
+  // ConnectTunnelToEVE opens a single TCP tunnel over gRPC to a given port on
+  // an EVE device. The client first sends a ConnectTunnelToEVERequest with a
+  // Connect payload; the server responds with TunnelConnected once the EVE-side
+  // TCP connection is up. After that, both sides exchange raw bytes.
+  rpc ConnectTunnelToEVE(stream ConnectTunnelToEVERequest) returns (stream ConnectTunnelToEVEResponse);
+  // ConnectConsoleToEVE establishes an interactive serial-console session over
+  // gRPC. The client first sends a Connect payload; the server responds with
+  // ConsoleProperties, then both sides exchange raw bytes.
+  rpc ConnectConsoleToEVE(stream ConnectConsoleToEVERequest) returns (stream ConnectConsoleToEVEResponse);
+
+  // Get overall SDN (network emulator) status.
+  rpc GetSDNStatus(SDNRequest) returns (SDNStatusResponse);
+  // Get the SDN's abstract model of the network.
+  rpc GetSDNNetworkModel(SDNRequest) returns (SDNGetNetworkModelResponse);
+  // Get the SDN configuration visualized as a Graphviz dot-formatted graph.
+  rpc GetSDNConfigGraph(SDNRequest) returns (SDNConfigGraphResponse);
+  // Stream SDN logs.
+  rpc StreamSDNLogs(SDNRequest) returns (stream LogMessage);
+  // ConnectTunnelToSDN opens a TCP tunnel over gRPC to the SDN SSH port.
+  // Same handshake as ConnectTunnelToEVE: Connect payload first, then raw bytes.
+  rpc ConnectTunnelToSDN(stream ConnectSSHTunnelToSDNRequest) returns (stream ConnectSSHTunnelToSDNResponse);
+}
+
+// --- Messages ---
+
+// Request to continue test execution, optionally up to a checkpoint.
+message ContinueRequest {
+  string until_checkpoint = 1; // optional
+}
+
+// Empty response after test continues.
+message ContinueResponse {}
+
+// Request to exit the test run.
+message ExitRequest {}
+
+// Empty response after exiting the test.
+message ExitResponse {}
+
+// Request to retrieve test status.
+message StatusRequest {}
+
+// Response containing test metadata and active EVE devices.
+message StatusResponse {
+  string evetest_version = 1;
+  string test_name = 2;
+  string test_suite_name = 3;
+  bool paused = 4;
+  string current_checkpoint = 5;
+  string test_failure = 6;
+  repeated EVEDeviceStatus eve_devices = 7;
+}
+
+// Request targeting a specific EVE device.
+message EVEDeviceRequest {
+  string device_name = 1;
+}
+
+// Request to stream data from an EVE device.
+message EVEDeviceStreamableRequest {
+  string device_name = 1;
+  bool follow = 2;
+}
+
+// Response after a reboot command is issued.
+message EVERebootResponse {}
+
+// Configuration payload returned from controller to EVE device.
+message EVEConfigResponse {
+  org.lfedge.eve.config.EdgeDevConfig config = 1;
+}
+
+// Info about the EVE device, includes hardware, version, etc.
+message EVEInfoResponse {
+  org.lfedge.eve.info.ZInfoDevice device_info = 1;
+}
+
+// Device-wide performance metrics and counters.
+message EVEMetricsResponse {
+  org.lfedge.eve.metrics.deviceMetric device_metrics = 1;
+}
+
+// Request for data related to an app running on EVE.
+message AppRequest {
+  string device_name = 1;
+  string app_name_or_uuid = 2;
+  bool follow = 3;
+}
+
+// Detailed app state info.
+message AppInfoResponse {
+  org.lfedge.eve.info.ZInfoApp app_info = 1;
+}
+
+// App-level performance metrics.
+message AppMetricsResponse {
+  org.lfedge.eve.metrics.appMetric app_metrics = 1;
+}
+
+// Metadata for IP flows and DNS requests created by the app.
+message AppFlowLogsResponse {
+  repeated org.lfedge.eve.flowlog.FlowRecord ip_flows = 1;
+  repeated org.lfedge.eve.flowlog.DnsRequest dns_requests = 2;
+}
+
+// Request for network instance (NI) data.
+message NIRequest {
+  string device_name = 1;
+  string ni_name_or_uuid = 2;
+  bool follow = 3;
+}
+
+// NI info such as status, IP address assignments, VIF info, etc.
+message NIInfoResponse {
+  org.lfedge.eve.info.ZInfoNetworkInstance ni_info = 1;
+}
+
+// Network instance metrics.
+message NIMetricsResponse {
+  org.lfedge.eve.metrics.ZMetricNetworkInstance ni_metrics = 1;
+}
+
+// Request for querying cluster-wide data.
+message ClusterRequest {
+  bool follow = 1;
+}
+
+// Summary information for nodes, pods, and storage.
+message ClusterInfoResponse {
+  org.lfedge.eve.info.ZInfoKubeCluster cluster_info = 1;
+  string from_node = 2;
+}
+
+// Contains details about an ongoing cluster update.
+message ClusterUpdateInfoResponse {
+  org.lfedge.eve.info.ZInfoKubeClusterUpdateStatus cluster_update_info = 1;
+  string from_node = 2;
+}
+
+// Metrics from the Kubernetes cluster.
+message ClusterMetricsResponse {
+  org.lfedge.eve.metrics.KubeClusterMetrics cluster_metrics = 1;
+  string from_node = 2;
+}
+
+// Response with a path to the obtained eve-info tarball.
+message CollectInfoResponse {
+  string artifact_path = 1;
+}
+
+// Initial payload of ConnectTunnelToEVE: identifies the target device and port.
+message EVETunnelConnect {
+  string device_name = 1;
+  // Target TCP port on the EVE device (e.g. 22 for SSH).
+  uint32 target_port = 2;
+  // Optional: logical label of the EVE interface to connect through.
+  // If empty, the first interface where the target port is reachable is used.
+  string interface_name = 3;
+}
+
+// Acknowledgment sent by the server once the tunnel is established.
+message TunnelConnected {}
+
+// Client-to-server messages for ConnectTunnelToEVE.
+message ConnectTunnelToEVERequest {
+  oneof payload {
+    EVETunnelConnect connect = 1;
+    bytes data = 2;
+  }
+}
+
+// Server-to-client messages for ConnectTunnelToEVE.
+message ConnectTunnelToEVEResponse {
+  oneof payload {
+    TunnelConnected connected = 1;
+    bytes data = 2;
+  }
+}
+
+// Client-to-server messages for ConnectConsoleToEVE.
+message ConnectConsoleToEVERequest {
+  oneof payload {
+    EVEDeviceRequest connect = 1;
+    bytes data = 2;
+  }
+}
+
+// Server-to-client messages for ConnectConsoleToEVE.
+message ConnectConsoleToEVEResponse {
+  oneof payload {
+    ConsoleProperties connect_reply = 1;
+    bytes data = 2;
+  }
+}
+
+// Client-to-server messages for ConnectTunnelToSDN.
+message ConnectSSHTunnelToSDNRequest {
+  oneof payload {
+    SDNRequest connect = 1;
+    bytes data = 2;
+  }
+}
+
+// Server-to-client messages for ConnectTunnelToSDN.
+message ConnectSSHTunnelToSDNResponse {
+  oneof payload {
+    TunnelConnected connected = 1;
+    bytes data = 2;
+  }
+}

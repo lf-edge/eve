@@ -1,0 +1,143 @@
+// Copyright (c) 2026 Zededa, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package org.lfedge.evetest;
+
+option go_package = "github.com/lf-edge/eve/evetest/grpcapi/go";
+
+import "google/protobuf/timestamp.proto";
+
+// Supported EVE architectures.
+enum ArchType {
+  ARCH_UNKNOWN = 0;
+  ARCH_AMD64 = 1;
+  ARCH_ARM64 = 2;
+}
+
+// Supported EVE hypervisors.
+enum HypervisorType {
+  HV_UNKNOWN = 0;
+  HV_KVM = 1;
+  HV_XEN = 2;
+  HV_KUBEVIRT = 3;
+}
+
+// Reference to a specific EVE image used for provisioning or testing.
+message ImageRef {
+  string repo = 1; // e.g. "lfedge/eve"
+  string version = 2; // e.g. "14.5.0-lts"
+  HypervisorType hypervisor = 3;
+  ArchType arch = 4;
+}
+
+// Severity levels for logs generated during test or device operation.
+enum LogSeverity {
+  LOG_UNKNOWN = 0;
+  LOG_DEBUG = 1;
+  LOG_INFO = 2;
+  LOG_WARN = 3;
+  LOG_ERROR = 4;
+  LOG_FATAL = 5;
+}
+
+// A single log message, emitted by a device, edge app, or evetest component.
+message LogMessage {
+  string message = 1;
+  LogSeverity severity = 2;
+  string source = 3;
+  google.protobuf.Timestamp timestamp = 4;
+}
+
+// Describes a single EVE device instance managed by the test framework.
+message EVEDevice {
+  string device_name = 1;
+  uint32 cpus = 2;
+  uint64 memory_bytes = 3;
+  bool with_tpm = 4;
+  string serial_number = 5;
+  repeated EVEInterface interfaces = 6;
+  ImageRef image = 7;
+}
+
+// Represents the current lifecycle state of an EVE device.
+enum EVEDeviceState {
+    EVE_DEVICE_STATE_UNDEFINED = 0;
+    // Device is Online. This only means all components of EVE are up.
+    // This does not indicate the Status of Apps or other configured objects.
+    // During booting up after reboot, Device might be reported as ONLINE
+    // while apps are still being processed.
+    EVE_DEVICE_STATE_ONLINE = 1;
+    // Device is onboarded but stopped communicating with the controller.
+    EVE_DEVICE_STATE_SUSPECT = 2;
+    // Device is booting up. This state is reported when EVE is started and
+    // is able to communicate with the controller. When all the components of
+    // EVE are up, it transitions to ONLINE.
+    EVE_DEVICE_STATE_BOOTING = 3;
+    // Device Reboot in Progress. Device is in the process of going down.
+    // Once the device comes back up and EVE is started, device reports the
+    // state as "BOOTING"
+    EVE_DEVICE_STATE_REBOOTING = 4;
+    // Device is upgrading its EVE OS.
+    EVE_DEVICE_STATE_UPGRADING = 5;
+    // Device was upgraded and still is testing the new EVE version.
+    EVE_DEVICE_STATE_TESTING = 6;
+    // Maintenance mode in EVE is a special operational state where the device runs
+    // a minimal system without starting the full workload (no applications, no network
+    // instances). It is used for recovery and debugging scenarios — for example, when
+    // the device has a configuration or software problem that prevents normal operation.
+    EVE_DEVICE_STATE_MAINTENANCE_MODE = 7;
+    // Device preparing power off -- shutting down all app instances.
+    EVE_DEVICE_STATE_PREPARING_POWEROFF = 8;
+    // Device prepared power off -- all app instances are shut down.
+    EVE_DEVICE_STATE_PREPARED_POWEROFF = 9;
+    // Device is powering off as requested by the Local Profile Server (LPS).
+    EVE_DEVICE_STATE_POWERING_OFF = 10;
+}
+
+// Reports the current runtime status of an EVE device.
+message EVEDeviceStatus {
+  EVEDevice spec = 1;
+  EVEDeviceState state = 2;
+  repeated EVEInterfaceStatus interfaces = 3;
+}
+
+// Describes the runtime status of a network interface on the device.
+message EVEInterfaceStatus {
+  string logical_label = 1;
+  repeated string ip_addresses = 2;
+  string mac_address = 3;
+  bool up = 4;
+}
+
+// Describes a virtual network interface on an EVE device.
+message EVEInterface {
+  string name = 1;
+  string mac_address = 2;
+  string sdn_mac_address = 3; // MAC address of the cross-connected peer on the SDN side
+}
+
+// Response containing captured console output from a device.
+message ConsoleOutputResponse {
+  string console_output = 1;
+}
+
+// ConsoleProperties describes the characteristics of a device's console
+// connection, as reported by the underlying provider.
+message ConsoleProperties {
+  // If true, input sent to the console is echoed back by the device.
+  bool echoed = 1;
+  // If true, the console uses the Telnet protocol for communication.
+  bool telnet = 2;
+}
+
+// IPRoute represents a single static route entry.
+message IPRoute {
+  // Destination network in CIDR format (e.g., "192.168.100.0/24" or "fd00::/64").
+  string dst_network = 1;
+
+  // Gateway IP address for the route.
+  // Must be reachable from within the EVE port's network subnet.
+  string gateway = 2;
+}

@@ -1,0 +1,217 @@
+// Copyright (c) 2026 Zededa, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package org.lfedge.evetest;
+
+option go_package = "github.com/lf-edge/eve/evetest/grpcapi/go";
+
+import "common.proto";
+import "sdn.proto";
+
+// Evetest-Broker API.
+// Used by running evetest container (the client) to provision EVE devices
+// and the SDN emulator.
+service Broker {
+  // Establish a client session with the broker.
+  rpc Connect(ConnectRequest) returns (ConnectResponse);
+  // Terminate an active client session.
+  rpc Close(CloseRequest) returns (CloseResponse);
+  // KeepAlive is a bidirectional stream used by the client to maintain an active session
+  // with the broker. The client periodically sends KeepAlivePing messages, and the broker
+  // responds with KeepAlivePong messages. If the stream is closed or times out, the broker
+  // will automatically close the client's session and release its resources.
+  rpc KeepAlive(stream KeepAlivePing) returns (stream KeepAlivePong);
+  // Stream broker logs for the given client session.
+  rpc StreamLogs(LogsRequest) returns (stream LogMessage);
+
+  // Build a new EVE image with the given configuration.
+  rpc BuildImage(BuildImageRequest) returns (BuildImageResponse);
+  // PushEVEContainerImage streams a pre-built EVE container image to the broker.
+  rpc PushEVEContainerImage(stream PushImageChunk) returns (PushImageResponse);
+
+  // Provision and start up EVE devices and SDN for the client.
+  rpc SetupDevices(SetupDevicesRequest) returns (SetupDevicesResponse);
+  // Tear down and clean up resources for the client's devices and SDN.
+  rpc TeardownDevices(TeardownDevicesRequest) returns (TeardownDevicesResponse);
+
+  // Power on a specific EVE device.
+  rpc PowerOnDevice(DeviceControlRequest) returns (DeviceControlResponse);
+  // Power off a specific EVE device.
+  rpc PowerOffDevice(DeviceControlRequest) returns (DeviceControlResponse);
+  // Reboot a specific EVE device.
+  rpc RebootDevice(DeviceControlRequest) returns (DeviceControlResponse);
+
+  // Get the console output from the device.
+  rpc GetDeviceConsoleOutput(DeviceControlRequest) returns (ConsoleOutputResponse);
+  // ConnectConsoleToDevice establishes a bidirectional gRPC tunnel between
+  // the client and the serial console of a specific EVE device.
+  // The client first sends a `ConnectConsoleRequest` containing a `DeviceControlRequest`
+  // to identify the target device. The broker responds with a `ConnectConsoleResponse`
+  // containing `ConsoleProperties`, describing the console's communication mode.
+  // After that, both sides exchange raw byte streams (`data` payloads) representing
+  // input and output of the console connection.
+  rpc ConnectConsoleToDevice(stream ConnectConsoleRequest) returns (stream ConnectConsoleResponse);
+
+  // ConnectTunnelToSDN establishes a bidirectional gRPC tunnel between
+  // the client and the SDN, carrying raw IP packets over a virtual point-to-point link.
+  // The client first sends a `ConnectTunnelToSDNRequest` containing an `SDNTunnel` definition
+  // to initiate the tunnel. The broker responds with a `ConnectTunnelToSDNResponse`
+  // that includes initial tunnel properties, after which both sides exchange
+  // raw IP packet data bidirectionally using the `data` payload.
+  rpc ConnectTunnelToSDN(stream ConnectTunnelToSDNRequest) returns (stream ConnectTunnelToSDNResponse);
+}
+
+// --- Messages ---
+
+// Request to initiate a session with the broker.
+message ConnectRequest {
+  string existing_client_id = 1; // optional
+}
+
+// Response containing the assigned client session ID.
+message ConnectResponse {
+  string client_id = 1;
+  string broker_version = 2;
+  repeated ArchType supported_archs = 3;
+  // PEM-encoded proxy CA certificates loaded by the broker.
+  // Each string is a single PEM certificate.
+  repeated string proxy_ca_certs = 4;
+}
+
+// Request to close a client session.
+message CloseRequest {
+  string client_id = 1;
+}
+
+// Acknowledgment of closed client session.
+message CloseResponse {}
+
+// KeepAlivePing is sent by the client to notify the broker that it is still alive.
+message KeepAlivePing {
+  string client_id = 1;
+}
+
+// KeepAlivePong is sent by the broker in response to a KeepAlivePing.
+message KeepAlivePong {
+}
+
+// Request to stream logs associated with a client session.
+message LogsRequest {
+  string client_id = 1;
+}
+
+// Configuration parameters for building an EVE image.
+message EveConfig {
+  string server_name = 1; // controller IP/hostname
+  string soft_serial = 2;
+
+  string onboard_cert_pem = 3;
+  string onboard_key_pem = 4;
+
+  repeated string v2tls_certs_pem = 5;
+  string root_cert_pem = 6;
+  repeated string ssh_keys = 7;
+  repeated string grub_options = 8;
+
+  string global_json = 9;
+  string override_json = 10;
+  bytes bootstrap_config_pb = 11;
+}
+
+// Request to build an EVE image.
+message BuildImageRequest {
+  string client_id = 1;
+  string device_name = 2;
+  ImageRef image = 3;
+  bool make_installer = 4; // "live" image otherwise
+  uint64 disk_bytes = 5;
+  EveConfig config = 6;
+}
+
+// Response to a BuildImageRequest, indicating if broker is missing the EVE container image.
+message BuildImageResponse {
+  bool missing_eve_container_image = 1;
+}
+
+// PushImageChunk represents a single message in the EVE docker image upload stream.
+// The first message MUST contain a PushImageRequest to provide image metadata.
+// Subsequent messages contain chunks of the gzipped EVE container image data.
+message PushImageChunk {
+  oneof payload {
+    // Initial message containing metadata required to initiate the upload.
+    PushImageRequest request = 1;
+
+    // A chunk of gzipped EVE container image data.
+    bytes data_gzip_chunk = 2;
+  }
+}
+
+// PushImageRequest contains metadata describing the EVE docker image to be uploaded.
+message PushImageRequest {
+  string client_id = 1;
+  ImageRef image = 2;
+}
+
+// PushImageResponse is returned after the EVE docker image upload completes.
+message PushImageResponse {
+  bool already_exists = 1;
+}
+
+// Request to setup a group of EVE devices and the SDN.
+message SetupDevicesRequest {
+  string client_id = 1;
+  repeated EVEDevice devices = 2;
+  SDNConfig sdn_config = 3;
+}
+
+// Acknowledgment of successful device setup.
+message SetupDevicesResponse {
+  repeated string sdn_uplink_ips = 1;
+}
+
+// Request to teardown all resources associated with a client.
+// This does not include pushed eve container images, which are persisted
+// by the broker for a certain retention period.
+message TeardownDevicesRequest {
+  string client_id = 1;
+}
+
+// Acknowledgment of successful resource teardown.
+message TeardownDevicesResponse {}
+
+// Request to control a specific device (power on/off/reboot).
+message DeviceControlRequest {
+  string client_id = 1;
+  string device_name = 2;
+}
+
+// Generic response to a device control operation.
+message DeviceControlResponse {}
+
+// ConnectConsoleRequest carries data sent from the client to the broker
+// during a console session.
+message ConnectConsoleRequest {
+  oneof payload {
+    // Initial request from the client to open a console tunnel to a device.
+    DeviceControlRequest connect = 1;
+
+    // Subsequent messages containing raw input bytes destined for the
+    // device console (e.g., user keystrokes).
+    bytes data = 2;
+  }
+}
+
+// ConnectConsoleResponse carries data sent from the broker back to the client
+// during a console session.
+message ConnectConsoleResponse {
+  oneof payload {
+    // First response from the broker, containing information about
+    // the connected console.
+    ConsoleProperties connect_reply = 1;
+
+    // Subsequent messages containing raw output bytes from the device console.
+    bytes data = 2;
+  }
+}
