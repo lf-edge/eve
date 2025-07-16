@@ -17,6 +17,7 @@
 ^.+go.mod
 ^.+go.sum
 ^.+/vendor/.+
+^evetest/grpcapi/eve-api/
 ^.+/testdata/.+
 ^.codespellignorelines
 eve-tools/bpftrace-compiler/examples/.+\.bt
