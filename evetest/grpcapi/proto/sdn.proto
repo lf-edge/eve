@@ -1,0 +1,951 @@
+// Copyright (c) 2026 Zededa, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package org.lfedge.evetest;
+
+option go_package = "github.com/lf-edge/eve/evetest/grpcapi/go";
+
+import "common.proto";
+
+service SDN {
+  // Get overall SDN (network emulator) status.
+  rpc GetStatus(SDNRequest) returns (SDNStatusResponse);
+  // Get the SDN's abstract model of the topology.
+  rpc GetNetworkModel(SDNRequest) returns (SDNGetNetworkModelResponse);
+  // Apply the given abstract model of the SDN topology.
+  rpc SetNetworkModel(SDNSetNetworkModelRequest) returns (SDNSetNetworkModelResponse);
+  // Get the SDN configuration visualized as a Graphviz dot-formatted graph.
+  rpc GetConfigGraph(SDNRequest) returns (SDNConfigGraphResponse);
+  // Stream SDN logs.
+  rpc StreamLogs(SDNRequest) returns (stream LogMessage);
+
+  // Check if the given endpoint is reachable from SDN.
+  // This is checked separately for IPv4 and IPv6.
+  rpc CheckConnectivity(SDNConnectivityRequest) returns (SDNConnectivityResponse);
+
+  // ConnectTunnel establishes a bidirectional gRPC tunnel between
+  // the client and the SDN, carrying raw IP packets over a virtual point-to-point link.
+  // The client first sends a `ConnectTunnelToSDNRequest` containing an `SDNTunnel` definition
+  // to initiate the tunnel. The broker responds with a `ConnectTunnelToSDNResponse`
+  // that includes initial tunnel properties, after which both sides exchange
+  // raw IP packet data bidirectionally using the `data` payload.
+  rpc ConnectTunnel(stream ConnectTunnelToSDNRequest) returns (stream ConnectTunnelToSDNResponse);
+}
+
+// SDN configuration.
+// This does not include the network model applied.
+message SDNConfig {
+  string image_repo = 1; // e.g. "lfedge/evetest-sdn"
+  string image_version = 2; // e.g. "v1.0.0"
+  bool enable_ipv6 = 3;
+}
+
+// Request for SDN operations.
+message SDNRequest {}
+
+// Status of the SDN emulator and any detected config errors.
+message SDNStatusResponse {
+  repeated string mgmt_ips = 1;
+  repeated SDNConfigError config_errors = 2;
+}
+
+// Configuration error encountered in the SDN configuration.
+message SDNConfigError {
+  string item_ref = 1;
+  string error_msg = 2;
+}
+
+// Response with an abstract model of the SDN topology.
+message SDNGetNetworkModelResponse {
+  NetworkModel network_model = 1;
+}
+
+// Request to apply the given abstract model of the SDN topology.
+message SDNSetNetworkModelRequest {
+  NetworkModel network_model = 1;
+}
+
+// Empty response for SDNSetNetworkModelRequest.
+message SDNSetNetworkModelResponse {}
+
+// Graphviz dot representation of the SDN config graph.
+message SDNConfigGraphResponse {
+  string config_graphviz = 1;
+}
+
+// Request to check connectivity.
+message SDNConnectivityRequest {
+  string hostname = 1;
+  uint32 port = 2;
+}
+
+// Response to connectivity check.
+message SDNConnectivityResponse {
+  bool reachable_over_ipv4 = 1;
+  bool reachable_over_ipv6 = 2;
+}
+
+// Definition of a point-to-point tunnel into SDN.
+message SDNTunnel {
+  string client_id = 1;
+  repeated string ip_addresses = 2; // CIDR format, e.g.: "192.168.100.2/24"
+  uint32 mtu = 3;
+  repeated IPRoute routes = 4;
+}
+
+// ConnectTunnelToSDNRequest carries data sent from the client to the broker
+// during an active SDN tunnel session.
+message ConnectTunnelToSDNRequest {
+  oneof payload {
+    // Initial request from the client to establish a tunnel to the SDN.
+    SDNTunnel connect = 1;
+
+    // Subsequent messages containing raw IP packet data destined for the SDN.
+    bytes data = 2;
+  }
+}
+
+// ConnectTunnelToSDNResponse carries data sent from the broker back to the client
+// during an active SDN tunnel session.
+message ConnectTunnelToSDNResponse {
+  oneof payload {
+    // First message acknowledging successful tunnel establishment.
+    // Includes tunnel parameters and properties that may be useful to the client.
+    SDNTunnelProperties connect_reply = 1;
+
+    // Subsequent messages carrying raw IP packet data received from the SDN.
+    bytes data = 2;
+  }
+}
+
+// SDNTunnelProperties describes properties of the established tunnel.
+// This message is currently empty but reserved for future extensions.
+message SDNTunnelProperties {
+}
+
+// NetworkModel is used to declaratively describe the intended state of the networking
+// around EVE device(s) for testing purposes. It emulates the desired networking using
+// the Linux network stack, network namespaces, netfilter, and tools like dnsmasq,
+// radvd, goproxy, etc.
+message NetworkModel {
+  // Network interfaces connecting EVE devices with the Evetest-SDN.
+  // Each port is an interconnected pair of interfaces, one inside an EVE device and
+  // the other inside the SDN VM/host.
+  // The order of ports listed here is significant:
+  // - For each EVE device, the relative ordering of its ports determines how interfaces
+  //   will appear inside the device (e.g., the first listed will be "eth0", the next "eth1",
+  //   etc.).
+  repeated Port ports = 1;
+
+  // Bonds aggregate multiple ports for load-sharing and redundancy.
+  repeated Bond bonds = 2;
+
+  // Bridges provide Layer 2 (Ethernet) connectivity.
+  repeated Bridge bridges = 3;
+
+  // Networks provide Layer 3 (IP) connectivity.
+  repeated Network networks = 4;
+
+  // Endpoints simulate external clients and servers.
+  Endpoints endpoints = 5;
+
+  // Firewall is applied between Networks, Endpoints, and external entities
+  // like the controller and the Internet.
+  Firewall firewall = 6;
+
+  // Controller configuration known to Evetest-SDN.
+  ControllerConfig controller_config = 7;
+}
+
+// Port is a network interface connecting an EVE device with the Evetest-SDN VM.
+message Port {
+  // LogicalLabel is a logical name used for referencing the port.
+  string logical_label = 1;
+
+  // Name of the EVE device to which this SDN port is connected.
+  string eve_device_name = 2;
+
+  // MAC address assigned to the interface on the EVE side.
+  string eve_mac_address = 3;
+
+  // MAC address assigned to the interface on the SDN side.
+  string sdn_mac_address = 4;
+
+  // AdminUP determines whether the interface should be administratively UP on the SDN side.
+  // Set to false to simulate link-down scenarios on the EVE side.
+  bool admin_up = 5;
+
+  // Traffic control parameters applied to this port to emulate degraded network conditions.
+  TrafficControl traffic_control = 6;
+}
+
+// TrafficControl allows control over traffic going through a port.
+// Useful to emulate slow or faulty network links.
+message TrafficControl {
+  // Delay is the fixed latency in milliseconds applied to each packet.
+  uint32 delay = 1;
+
+  // DelayJitter is the variability (jitter) in delay, in milliseconds.
+  uint32 delay_jitter = 2;
+
+  // LossProbability is the percentage chance of a packet being dropped.
+  uint32 loss_probability = 3;
+
+  // CorruptProbability is the percentage chance of a packet being corrupted.
+  uint32 corrupt_probability = 4;
+
+  // DuplicateProbability is the percentage chance of a packet being duplicated.
+  uint32 duplicate_probability = 5;
+
+  // ReorderProbability is the percentage chance of packets being reordered.
+  uint32 reorder_probability = 6;
+
+  // RateLimit is the maximum throughput in kilobytes per second.
+  uint32 rate_limit = 7;
+
+  // QueueLimit is the queue buffer size in kilobytes; packets exceeding this are dropped.
+  // Required if rate_limit is set.
+  uint32 queue_limit = 8;
+
+  // BurstLimit is the maximum burst size in kilobytes allowed above rate_limit.
+  // Required if rate_limit is set.
+  uint32 burst_limit = 9;
+}
+
+// Bond aggregates multiple ports for load-sharing and redundancy
+// (Link Aggregation Group - LAG).
+message Bond {
+  // LogicalLabel is a logical name used for reference.
+  string logical_label = 1;
+
+  // Ports is a list of logical labels of the aggregated ports.
+  repeated string ports = 2;
+
+  // Mode defines the bonding policy.
+  BondMode mode = 3;
+
+  // LacpRate specifies the rate of LACPDU transmission.
+  // Applicable only for BOND_MODE_802_3AD.
+  LacpRate lacp_rate = 4;
+
+  // MIIMonitor specifies MII-based link monitoring parameters.
+  BondMIIMonitor mii_monitor = 5;
+
+  // ARPMonitor specifies ARP-based link monitoring parameters.
+  BondARPMonitor arp_monitor = 6;
+}
+
+// BondMIIMonitor defines MII link monitoring configuration.
+message BondMIIMonitor {
+  // Enabled indicates whether MII monitoring is active.
+  bool enabled = 1;
+
+  // Interval in milliseconds between link state checks.
+  uint32 interval = 2;
+
+  // UpDelay in milliseconds before enabling a link after recovery.
+  uint32 up_delay = 3;
+
+  // DownDelay in milliseconds before disabling a link after failure.
+  uint32 down_delay = 4;
+}
+
+// BondARPMonitor defines ARP-based link monitoring configuration.
+message BondARPMonitor {
+  // Enabled indicates whether ARP-based monitoring is active.
+  bool enabled = 1;
+
+  // Interval in milliseconds between ARP probes.
+  uint32 interval = 2;
+
+  // IPTargets are the IPv4 addresses used as ARP monitoring peers.
+  repeated string ip_targets = 3;
+}
+
+// BondMode specifies how bond slaves are used during network transmissions.
+enum BondMode {
+  BOND_MODE_UNSPECIFIED = 0;      // Default (balance-rr)
+  BOND_MODE_BALANCE_RR = 1;       // Round-Robin
+  BOND_MODE_ACTIVE_BACKUP = 2;    // Active/Backup
+  BOND_MODE_BALANCE_XOR = 3;      // XOR hash
+  BOND_MODE_BROADCAST = 4;        // Broadcast
+  BOND_MODE_802_3AD = 5;          // IEEE 802.3ad (LACP)
+  BOND_MODE_BALANCE_TLB = 6;      // Transmit Load Balancing
+  BOND_MODE_BALANCE_ALB = 7;      // Adaptive Load Balancing
+}
+
+// LacpRate controls how often LACPDU packets are sent in 802.3ad mode.
+enum LacpRate {
+  LACP_RATE_UNSPECIFIED = 0;  // Default (slow)
+  LACP_RATE_SLOW = 1;         // Every 30 seconds
+  LACP_RATE_FAST = 2;         // Every 1 second
+}
+
+// Provides L2 connectivity and optional 802.1X authentication.
+message Bridge {
+  // Logical name used to reference this bridge.
+  string logical_label = 1;
+
+  // Logical labels of ports attached to this bridge.
+  repeated string ports = 2;
+
+  // Logical labels of bonds (LAGs) attached to this bridge.
+  repeated string bonds = 3;
+
+  // Enable Spanning Tree Protocol (STP) for loop prevention.
+  bool with_stp = 4;
+
+  // Port-based Network Access Control configuration for this bridge.
+  PNAC pnac = 5;
+}
+
+// Port-based Network Access Control (802.1X) configuration.
+message PNAC {
+  // Enable 802.1X authentication on this bridge.
+  bool enable_8021x = 1;
+
+  // CA certificate in PEM format.
+  // Required for EAP-TLS, PEAP, and TTLS.
+  string ca_cert_pem = 2;
+
+  // CA private key in PEM format.
+  // Required for EAP-TLS, PEAP, and TTLS.
+  string ca_key_pem = 3;
+
+  // List of allowed EAP users (supplicants) for authentication.
+  repeated EAPUser users = 4;
+
+  // VLAN assigned to ports before successful 802.1X authentication.
+  // Used for unauthenticated or authentication-in-progress supplicants.
+  // In the context of EVE, this can act as an "onboarding VLAN", providing
+  // limited connectivity (e.g., access only to the controller and optionally
+  // to a SCEP server for certificate enrollment).
+  uint32 pre_auth_vlan_id = 5;
+
+  // VLAN assigned to ports after successful 802.1X authentication.
+  // Typically provides full network access for authenticated supplicants.
+  uint32 post_auth_vlan_id = 6;
+
+  // Re-authentication generation counter.
+  // Whenever this value changes, all currently authenticated supplicants
+  // are forcibly de-authenticated and required to re-authenticate.
+  uint32 reauth_generation = 7;
+}
+
+// Represents an individual EAP user for authentication.
+message EAPUser {
+  // User identity (EAP-Identity) presented during authentication.
+  // Supports hostapd-style wildcards:
+  //   "*" : matches any identity
+  //   "<prefix>*" : matches any identity starting with the given prefix
+  string identity = 1;
+
+  // Allowed EAP methods for this user.
+  repeated EAPMethod methods = 2;
+
+  // Optional password for password-based EAP methods (e.g., PEAP, TTLS).
+  // Not used for certificate-based EAP-TLS.
+  string password = 3;
+}
+
+// Supported EAP methods.
+enum EAPMethod {
+  EAP_METHOD_UNSPECIFIED = 0;
+
+  // EAP-TLS (certificate-based)
+  EAP_METHOD_TLS = 1;
+
+  // PEAP (password-based)
+  EAP_METHOD_PEAP = 2;
+
+  // EAP-TTLS (password-based)
+  EAP_METHOD_TTLS = 3;
+
+  // EAP-MD5 (legacy, password-based)
+  EAP_METHOD_MD5 = 4;
+}
+
+// Provides L3 connectivity.
+message Network {
+  // Logical name used for reference.
+  string logical_label = 1;
+
+  // Logical label of a Bridge to which the network is attached.
+  string bridge = 2;
+
+  // Leave zero to express intent of not using VLAN for this network.
+  uint32 vlan_id = 3;
+
+  // MTU (Maximum Transmission Unit) for this network.
+  // If set to zero, default MTU 1500 bytes will be used.
+  uint32 mtu = 4;
+
+  // IPv4 configuration. Leave unset for IPv6-only network.
+  NetworkIPConfig ipv4 = 5;
+
+  // IPv6 configuration. Leave unset for IPv4-only network.
+  NetworkIPConfig ipv6 = 6;
+
+  // Logical label of a TransparentProxy endpoint that handles HTTP/HTTPS proxying.
+  string transparent_proxy = 7;
+
+  // Routing configuration.
+  // If unset, everything is routed and accessible.
+  Router router = 8;
+}
+
+// IP configuration for Network (either v4 or v6).
+message NetworkIPConfig {
+  // Subnet address with netmask, e.g., "192.168.1.0/24" or "fd00::/64".
+  // For IPv6, the subnet prefix length MUST be at least /64.
+  string subnet = 1;
+
+  // Gateway IP address. Must be inside the subnet.
+  string gw_ip = 2;
+
+  // DHCP configuration.
+  DHCP dhcp = 3;
+}
+
+// DHCP configuration.
+// For IPv6, if only DNS-related options are set, SLAAC remains the sole method
+// for address assignment. Specifying any additional options (e.g., IP range,
+// NTP servers) enables DHCPv6.
+message DHCP {
+  // Enable DHCP. Set to false for static addressing in EVE.
+  // For IPv6, SLAAC remains enabled regardless.
+  bool enable = 1;
+
+  // Range of IPs to allocate from.
+  IPRange ip_range = 2;
+
+  // List of MAC->IP entries configured statically.
+  repeated MACToIP static_entries = 3;
+
+  // Do not advertise a default route to clients.
+  bool without_default_route = 4;
+
+  // Domain name assigned to the network.
+  // It is propagated to clients using the DHCP option 15 (24 in DHCPv6).
+  string domain_name = 5;
+
+  // DNS configuration passed to clients via DHCP.
+  DNSClientConfig dns = 6;
+
+  // Only one of the NTP sources should be defined.
+  oneof ntp_source {
+    // Public NTP server to announce via DHCP option 42 (56 in DHCPv6).
+    // Only one of public_ntp or private_ntp should be set.
+    string public_ntp = 7;
+
+    // Logical label of private NTP endpoint inside SDN.
+    // Only one of public_ntp or private_ntp should be set.
+    string private_ntp = 8;
+  }
+
+  // URL with a location of a PAC file, announced using the Web Proxy Auto-Discovery
+  // Protocol (WPAD) and DHCP.
+  // The PAC file should contain a javascript that the client will use to determine
+  // which proxy to use for a given request.
+  // URL example: http://wpad.example.com/wpad.dat
+  // The client will learn the PAC file location using the DHCP option 252.
+  // Not supported for IPv6.
+  // An alternative (and the only available for IPv6) approach is to use DNS
+  // (with a DNSServer endpoint).
+  string wpad = 9;
+
+  // Logical label of a NetbootServer endpoint which the client should use
+  // to boot EVE OS from. The IP address or FQDN and the provisioning file (iPXE script)
+  // location will be announced to the client using DHCP options 66 and 67 (59 in DHCPv6).
+  // Evetest-SDN will announce either IP address or FQDN depending on whether any of the assigned
+  // private DNS servers is able to resolve the NetbootServer domain name.
+  string netboot_server = 10;
+
+  // DHCP lease duration in seconds. Zero means the DHCP server default (1 hour).
+  // The minimum effective value is 120 s (dnsmasq enforces a 2-minute floor).
+  // Set to a small value (e.g. 120) in tests that switch the SDN model mid-test
+  // so that clients holding stale leases will re-DHCP quickly after the switch.
+  uint32 lease_time_seconds = 11;
+}
+
+// Range of IP addresses.
+message IPRange {
+  // Start of the range (inclusive).
+  string from_ip = 1;
+
+  // End of the range (inclusive).
+  string to_ip = 2;
+}
+
+// Maps MAC address to a static IP.
+message MACToIP {
+  // MAC address in colon-separated format.
+  string mac = 1;
+
+  // IP address to assign.
+  string ip = 2;
+}
+
+// DNS configuration for a DHCP client.
+message DNSClientConfig {
+  // List of public DNS server IPs (e.g., "1.1.1.1", "8.8.8.8").
+  repeated string public_dns = 1;
+
+  // Logical labels of DNS servers running inside SDN.
+  repeated string private_dns = 2;
+}
+
+// Routing configuration for a Network.
+message Router {
+  // Allow access to resources outside of SDN (e.g., Internet, controller).
+  bool outside_reachability = 1;
+
+  // Logical labels of reachable endpoints.
+  repeated string reachable_endpoints = 2;
+
+  // Logical labels of reachable networks.
+  repeated string reachable_networks = 3;
+
+  // Static routes for traffic going toward EVE devices.
+  // This is typically used if one of the apps running on EVE is used as a gateway
+  // for other apps. Static routes are then needed on the Evetest-SDN side to route
+  // returning traffic back via that gw app.
+  repeated IPRoute routes_towards_eve = 4;
+}
+
+// Endpoints simulate "remote" servers and proxies.
+message Endpoints {
+  // List of DNS servers. Can be referenced in DHCP.PrivateDNS.
+  repeated DNSServer dns_servers = 1;
+
+  // List of NTP servers. Can be referenced in DHCP.PrivateNTP.
+  repeated NTPServer ntp_servers = 2;
+
+  // List of HTTP(s) servers. Can be used to test HTTP(s) connectivity
+  // from EVE, to serve PAC files, etc.
+  repeated HTTPServer http_servers = 3;
+
+  // Proxies that must be configured explicitly.
+  // Consider using together with NetworkModel.Firewall, configured to block HTTP(s)
+  // traffic that tries to bypass a proxy.
+  repeated ExplicitProxy explicit_proxies = 4;
+
+  // Transparent proxies intercept and proxy both HTTP and HTTPS traffic without
+  // requiring explicit client configuration.
+  repeated TransparentProxy transparent_proxies = 5;
+
+  // HTTP/TFTP servers providing artifacts needed to boot EVE OS
+  // over a network (using netboot/PXE + iPXE).
+  repeated NetbootServer netboot_servers = 6;
+
+  // List of Simple Certificate Enrollment Protocol (SCEP) servers.
+  repeated SCEPServer scep_servers = 7;
+}
+
+// Endpoint simulates a "remote" client or a server.
+message Endpoint {
+  // Logical name used for reference.
+  string logical_label = 1;
+
+  // Fully qualified domain name of the endpoint.
+  string fqdn = 2;
+
+  // IPv4 configuration. Leave unset for IPv6-only endpoint.
+  EndpointIPConfig ipv4 = 3;
+
+  // IPv6 configuration. Leave unset for IPv4-only endpoint.
+  EndpointIPConfig ipv6 = 4;
+
+  // Configure direct L2 connectivity between the endpoint and EVE.
+  // Use alternatively or additionally to subnet + IP options.
+  DirectL2EpConnect direct_l2_connect = 5;
+
+  // MTU of the endpoint's interface.
+  // If not defined (zero value), the default MTU for Ethernet, 1500 bytes, will be set.
+  uint32 mtu = 6;
+}
+
+// IP configuration for Endpoint.
+message EndpointIPConfig {
+  // Network address + netmask (IPv4 or IPv6).
+  // Subnet needs to fit at least two host IP addresses,
+  // one for the endpoint, another for a gateway.
+  // For IPv6, the subnet prefix length MUST be at least /64.
+  string subnet = 1;
+
+  // IP should be inside the subnet.
+  string ip = 2;
+}
+
+// Direct L2 connection between an endpoint and EVE.
+message DirectL2EpConnect {
+  // Logical label of a bridge to which the endpoint is connected.
+  string bridge = 1;
+
+  // Access VLAN ID.
+  // Leave zero value to express intent of not using VLAN filtering for this endpoint.
+  uint32 vlan_id = 2;
+}
+
+// Endpoint providing DNS service.
+message DNSServer {
+  // Endpoint configuration.
+  Endpoint endpoint = 1;
+
+  // List of FQDN->IP entries statically configured for the server.
+  // These are typically used for endpoints running inside Evetest-SDN,
+  // which are obviously not known to the public DNS servers.
+  repeated DNSEntry static_entries = 2;
+
+  // List of IP addresses of public DNS servers to forward requests to
+  // (unless there is a static entry).
+  repeated string upstream_servers = 3;
+}
+
+// Mapping between FQDN and an IP address.
+message DNSEntry {
+  // Fully Qualified Domain Name.
+  // Can be either literal or a reference to an endpoint's FQDN.
+  oneof fqdn_source {
+    // Literal FQDN.
+    string fqdn_literal = 1;
+
+    // Reference to the FQDN of the endpoint identified by this logical label.
+    string endpoint_fqdn_ref = 2;
+  }
+
+  // IP address.
+  // Can be a literal IP or reference to IP(s) of an endpoint.
+  oneof ip_source {
+    // Literal IP address.
+    string ip_literal = 3;
+
+    // Reference to one or more IP addresses (v4/v6) of the specified endpoint.
+    EndpointIPRef endpoint_ip_ref = 4;
+  }
+}
+
+// Reference to IP address(es) of an endpoint.
+message EndpointIPRef {
+  // Logical label of the endpoint.
+  string logical_label = 1;
+
+  // Whether to use IPv4, IPv6, or both (dual-stack).
+  IPVersion ip_version = 2;
+}
+
+// IP version to select from an endpoint.
+enum IPVersion {
+  // Both IPv4 and IPv6 (if available).
+  ANY = 0;
+  // Only IPv4 address.
+  IPV4 = 1;
+  // Only IPv6 address.
+  IPV6 = 2;
+}
+
+// HTTP(S) server.
+message HTTPServer {
+  // Endpoint configuration.
+  Endpoint endpoint = 1;
+
+  // DNS configuration to be applied for the HTTP server.
+  DNSClientConfig dns_client_config = 2;
+
+  // Port to listen for HTTP requests.
+  // Zero disables HTTP.
+  uint32 http_port = 3;
+
+  // Port to listen for HTTPS requests.
+  // Zero disables HTTPS.
+  uint32 https_port = 4;
+
+  // Server certificate in PEM format. Required for HTTPS.
+  string cert_pem = 5;
+
+  // Server key in PEM format. Required for HTTPS.
+  string key_pem = 6;
+
+  // Maps URL path to HTTPContent to return in response body.
+  map<string, HTTPContent> paths = 7;
+}
+
+// Content returned by an HTTP(S) handler.
+message HTTPContent {
+  // HTTP(S) Content-Type header.
+  string content_type = 1;
+
+  // Content returned inside HTTP(s) response body.
+  // It is a string, so binary content is not supported currently.
+  string content = 2;
+}
+
+// NTP server.
+message NTPServer {
+  // endpoint configuration.
+  Endpoint endpoint = 1;
+
+  // List of public NTP servers to synchronize with,
+  // referenced by IP address or FQDN.
+  repeated string upstream_servers = 2;
+}
+
+// HTTP(S) proxy configured explicitly.
+message ExplicitProxy {
+  // Endpoint configuration.
+  Endpoint endpoint = 1;
+
+  // Proxy configuration (common to transparent and explicit proxies).
+  Proxy proxy = 2;
+
+  // Enable HTTP proxy; specify port+protocol to listen on.
+  // Zero disables HTTP proxy.
+  ProxyPort http_proxy = 3;
+
+  // Enable HTTPS proxy; specify port+protocol to listen on.
+  // Zero disables HTTPS proxy.
+  ProxyPort https_proxy = 4;
+
+  // Define username/password authentication, leave empty otherwise.
+  repeated UserCredentials users = 5;
+}
+
+// Proxy can be either transparent or configured explicitly.
+message Proxy {
+  // DNS configuration to be applied for the proxy.
+  DNSClientConfig dns_client_config = 1;
+
+  // Proxy certificate of the certificate authority in the PEM format.
+  // Proxy will use the CA certificate to sign certificates that it generates for itself.
+  // EVE should be configured to trust the CA certificate.
+  // Not needed if the proxy is just forwarding all flows (i.e., not terminating TLS).
+  string ca_cert_pem = 2;
+
+  // Proxy key of the certificate authority in the PEM format.
+  // Proxy will use the CA certificate to sign certificates that it generates for itself.
+  // EVE should be configured to trust the CA certificate.
+  // Not needed if the proxy is just forwarding all flows (i.e., not terminating TLS).
+  string ca_key_pem = 3;
+
+  // A set of rules that decide what to do with proxied traffic.
+  // By default (when no rules are defined), the proxy will just forward all flows.
+  repeated ProxyRule proxy_rules = 4;
+}
+
+// Rule used by a proxy to determine what action to take for matching traffic.
+message ProxyRule {
+  // Host from the HTTP request header (or the SNI value in the TLS ClientHello)
+  // to match this rule against (e.g., "google.com").
+  // An empty value should be used for the default rule (at most one).
+  string req_host = 1;
+
+  // Action to take.
+  ProxyAction action = 2;
+}
+
+// ProxyAction defines what a proxy should do with matching traffic.
+enum ProxyAction {
+  // Just forward proxied traffic.
+  PX_FORWARD = 0;
+  // Reject (block) proxied traffic.
+  PX_REJECT = 1;
+  // Act as a man-in-the-middle (split the TLS tunnel in two).
+  PX_MITM = 2;
+}
+
+// User credentials for an explicit proxy.
+message UserCredentials {
+  // Username
+  string username = 1;
+
+  // Password
+  string password = 2;
+}
+
+// Port + Protocol used to listen for incoming proxy requests.
+// Note that this can differ from the protocol being proxied.
+message ProxyPort {
+  // Port number on which the proxy listens.
+  uint32 port = 1;
+
+  // Protocol used to listen for incoming proxy requests
+  // (not necessarily the protocol being proxied).
+  ProxyListenProto listen_proto = 2;
+}
+
+// ProxyListenProto : protocol used to listen for incoming proxy requests.
+enum ProxyListenProto {
+  UNKNOWN = 0;
+  HTTP = 1;
+  HTTPS = 2;
+}
+
+// Transparent proxy intercepts and proxies both HTTP and HTTPS traffic without
+// requiring explicit client configuration.
+message TransparentProxy {
+  // Endpoint configuration.
+  Endpoint endpoint = 1;
+
+  // Proxy configuration (common to transparent and explicit proxies).
+  Proxy proxy = 2;
+}
+
+// NetbootServer provides HTTP and TFTP server endpoints, serving all artifacts
+// needed to boot EVE OS over a network (using iPXE, potentially also supporting
+// older PXE-only clients).
+//
+// Use in combination with DHCP (see DHCP.netboot_server).
+//
+// Note: In most cases, the TFTP server will serve an iPXE (UEFI) bootloader,
+// which once booted, will download and boot EVE artifacts over the HTTP endpoint.
+// This setup works with only minimal configuration magic in the DHCP server,
+// known as chainloading [1].
+//
+// If a client only understands PXE, DHCP will initially point it to the TFTP
+// endpoint. After booting iPXE, the client will be redirected via DHCP
+// to an iPXE script hosted on the HTTP endpoint.
+//
+// Example config for dnsmasq:
+//
+//   # Boot for iPXE. The idea is to send two different
+//   # filenames, the first loads iPXE, and the second tells iPXE what to load.
+//   # The dhcp-match sets the ipxe tag for requests from iPXE.
+//   #dhcp-boot=undionly.kpxe
+//   #dhcp-match=set:ipxe,175 # iPXE sends a 175 option.
+//   #dhcp-boot=tag:ipxe,http://boot.ipxe.org/demo/boot.php
+//
+// [1] https://ipxe.org/howto/chainloading
+message NetbootServer {
+  // Endpoint configuration.
+  Endpoint endpoint = 1;
+
+  // Boot artifacts served by the TFTP server.
+  // If not specified, Evetest will automatically put iPXE bootloader
+  // as the entrypoint.
+  repeated NetbootArtifact tftp_artifacts = 2;
+
+  // Boot artifacts served by the HTTP server.
+  // If not specified, Evetest will automatically put iPXE artifacts
+  // needed to boot EVE OS (as links to evetest HTTP datastore where these artifacts
+  // are uploaded).
+  repeated NetbootArtifact http_artifacts = 3;
+}
+
+// NetbootArtifact - one of the artifacts used to boot EVE OS over a network.
+message NetbootArtifact {
+  // Name of the file.
+  // It will be served by the associated NetbootServer at the endpoint:
+  // (http|tftp)://<netboot-server-fqdn>/<filename>
+  string filename = 1;
+
+  // HTTP URL from where the artifact will be downloaded
+  // by the netboot server. It can for example point to the evetest HTTP datastore.
+  // Note that Netboot server will forward the artifact content, not redirect
+  // to this URL.
+  string download_from_url = 2;
+
+  // Is this the entrypoint for netboot (i.e. the artifact to boot from)?
+  // In case of iPXE, this would be enabled for the initial iPXE script.
+  // Exactly one NetbootArtifact should be marked as entrypoint inside
+  // both lists NetbootServer.tftp_artifacts and NetbootServer.http_artifacts.
+  // If enabled, this file is then announced to netboot clients using DHCP
+  // option 67 (59 in DHCPv6).
+  bool entrypoint = 3;
+}
+
+// Simple Certificate Enrollment Protocol (SCEP) server.
+message SCEPServer {
+  // Endpoint configuration.
+  Endpoint endpoint = 1;
+
+  // TCP port on which the SCEP server listens.
+  // If not specified, the default SCEP port (80) is used.
+  uint32 port = 2;
+
+  // Certificate Authority (CA) certificate in PEM format.
+  // Used by the SCEP server to sign issued certificates.
+  string ca_cert_pem = 3;
+
+  // Private key of the Certificate Authority in PEM format.
+  string ca_key_pem = 4;
+
+  // Optional SCEP challenge password (shared secret).
+  // When set, clients must present this password during enrollment.
+  string challenge_password = 5;
+}
+
+// Network firewall.
+// Note that traffic not matched by any rule is allowed!
+message Firewall {
+  // Firewall rules applied in the order as configured.
+  //
+  // Applied to traffic going <from> -> <to>:
+  //   - network (EVE ports) -> another network
+  //   - network (EVE ports) -> endpoint
+  //   - network (EVE ports) -> outside of SDN (controller, Internet)
+  //   - endpoint -> network (EVE ports)
+  //   - endpoint -> another endpoint
+  //   - endpoint -> outside of SDN (controller, Internet)
+  //
+  // Note that once a connection is allowed, established and related traffic
+  // (going in the opposite direction) is automatically allowed as well.
+  repeated FwRule rules = 1;
+}
+
+// Firewall rule.
+message FwRule {
+  // Subnet to match the source IP address with.
+  // Can be empty to disable filtering based on source IP address.
+  string src_subnet = 1;
+
+  // Subnet to match the destination IP address with.
+  // Can be empty to disable filtering based on destination IP address.
+  string dst_subnet = 2;
+
+  // Filter by protocol.
+  FwProto protocol = 3;
+
+  // List of destination ports to which the rule applies.
+  // For a non-empty list, protocol must be either TCP or UDP.
+  // Empty = any.
+  repeated uint32 ports = 4;
+
+  // Action to take.
+  FwAction action = 5;
+}
+
+// Protocol to apply a firewall rule on.
+enum FwProto {
+  // Match any protocol.
+  ANY_PROTO = 0;
+  // Match ICMP protocol.
+  ICMP = 1;
+  // Match TCP protocol.
+  TCP = 2;
+  // Match UDP protocol.
+  UDP = 3;
+}
+
+// Firewall action.
+enum FwAction {
+  // Allow traffic.
+  FW_ALLOW = 0;
+  // Reject traffic.
+  // The sender will be informed using an ICMP packet that the destination
+  // is blocked/unavailable.
+  FW_REJECT = 1;
+  // Drop traffic.
+  // Traffic is silently dropped.
+  FW_DROP = 2;
+}
+
+// Controller configuration that Evetest-SDN needs to be informed about.
+message ControllerConfig {
+  // IP addresses on which controller listens for device requests.
+  repeated string controller_ips = 1;
+
+  // Port on which controller listens for device requests.
+  uint32 controller_port = 2;
+}

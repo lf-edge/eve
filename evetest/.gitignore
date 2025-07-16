@@ -1,0 +1,3 @@
+.config
+vendor/
+gh-runner/evetest-runner.env

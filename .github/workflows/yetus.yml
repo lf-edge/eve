@@ -42,6 +42,8 @@ jobs:
             --patch-dir=/workspace/out \
             --build-tool=nobuild \
             --continuous-improvement=true \
+            --buf-basedir=/workspace/src/evetest \
+            --user-plugins=/workspace/src/.yetus/plugins.d \
             --plugins='all,-asflicense,-author,-findbugs,-gitlab,-jira,-shelldocs' \
             --revive-config=.revive.toml \
             --brief-report-file=/workspace/out/brief.txt \
