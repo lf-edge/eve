@@ -98,7 +98,6 @@ func UnmarshalResponse(input string) (*Response, error) {
 	}
 
 	decodedParts := make(map[string][]byte)
-	fmt.Printf("AMIGO %s\n", input)
 	for i := 2; i < len(parts)-1; i += 2 {
 		data, err := base64.StdEncoding.DecodeString(parts[i+1])
 		if err != nil {
