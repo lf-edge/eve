@@ -288,10 +288,10 @@ func GetInfoFromNVMeDisk(diskName string) (*types.DiskSmartInfo, error) {
 		return diskInfo, diskInfo.Errors
 	}
 
-	smartTemperature := new(types.DAttrTable)
-	smartTemperature.ID = types.SmartAttrIDTemperatureCelsius
-	smartTemperature.RawValue = int(smartAttr.Temperature)
-	diskInfo.SmartAttrs = append(diskInfo.SmartAttrs, smartTemperature)
+	// processSmartAttributes extracts SMART attributes from the NvmeSMARTLog struct and stores them in diskInfo.
+	// Use reflection to inspect the structure of smartAttr at runtime
+	val := reflect.ValueOf(*smartAttr) // Get the actual values of the fields
+	typ := reflect.TypeOf(*smartAttr)  // Get the metadata (field names, types, etc.)
 
 	// Iterate through all fields in the struct
 	for i := 0; i < val.NumField(); i++ {
