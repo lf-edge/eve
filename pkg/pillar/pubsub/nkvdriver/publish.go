@@ -4,7 +4,6 @@
 package nkvdriver
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/nkval/go-nkv/pkg/client"
@@ -33,7 +32,7 @@ func (p *Publisher) Load() (map[string][]byte, int, error) {
 
 func (p *Publisher) Publish(key string, item []byte) error {
 	k := p.path() + "." + key
-	fmt.Printf("PUBLISHER %v %v", k, item)
+	// fmt.Printf("PUBLISHER %v %v", k, item)
 	_, err := p.nkvClient.Put(k, item)
 	return err
 }
@@ -59,7 +58,7 @@ func (p *Publisher) path() string {
 	t := strings.ReplaceAll(p.topic, "/", ".")
 	n := strings.ReplaceAll(p.name, "/", ".")
 	if t != "" && n != "" {
-		return t + "." + n
+		return n + "." + t
 	}
 	if t != "" {
 		return t

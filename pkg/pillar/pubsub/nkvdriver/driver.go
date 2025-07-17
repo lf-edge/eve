@@ -4,6 +4,9 @@
 package nkvdriver
 
 import (
+	"errors"
+	"fmt"
+
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/nkval/go-nkv/pkg/client"
 )
@@ -28,13 +31,57 @@ func NewNkvDriver(path string) *NkvDriver {
 }
 
 // (global bool, name, topic string, persistent bool, updaterList *pubsub.Updaters, restarted pubsub.Restarted, differ pubsub.Differ) (pubsub.DriverPublisher, error) {
-func (d *NkvDriver) Publisher(_ bool, name, topic string, _ bool, _ *pubsub.Updaters, _ pubsub.Restarted, _ pubsub.Differ) (pubsub.DriverPublisher, error) {
-	return &Publisher{nkvClient: d.client, name: name, topic: topic}, nil
+func (d *NkvDriver) Publisher(global bool, name, topic string, persistent bool, updaterList *pubsub.Updaters, restarted pubsub.Restarted, differ pubsub.Differ) (pubsub.DriverPublisher, error) {
+	var (
+		dirName      string
+		publishToDir bool
+	)
+	switch {
+	case persistent && global:
+		// No longer supported
+		return nil, errors.New("Persistent not supported for empty agentname")
+	case persistent && !global:
+		dirName = d.persistentDirName(name)
+	case !persistent && publishToDir:
+		// Special case for /run/global
+		dirName = d.fixedDirName(name)
+	default:
+		dirName = d.pubDirName(name)
+	}
+	return &Publisher{nkvClient: d.client, name: dirName, topic: topic}, nil
+}
+
+func (s *NkvDriver) pubDirName(name string) string {
+	return fmt.Sprintf("var.run.%s", name)
+}
+
+func (s *NkvDriver) fixedDirName(name string) string {
+	return fmt.Sprintf("run.gloabl.%s", name)
+}
+
+func (s *NkvDriver) persistentDirName(name string) string {
+	return fmt.Sprintf("persist..status.%s", name)
 }
 
 // TODO: perhaps channel is needed
-func (d *NkvDriver) Subscriber(_ bool, _, topic string, _ bool, C chan pubsub.Change) (pubsub.DriverSubscriber, error) {
-	return &Subscriber{nkvClient: d.client, topic: topic, C: C}, nil
+func (s *NkvDriver) Subscriber(global bool, name, topic string, persistent bool, C chan pubsub.Change) (pubsub.DriverSubscriber, error) {
+	var (
+		dirName      string
+		publishToDir bool
+	)
+	switch {
+	case persistent && global:
+		// No longer supported
+		return nil, errors.New("Persistent not supported for empty agentname")
+	case persistent && !global:
+		dirName = s.persistentDirName(name)
+	case !persistent && publishToDir:
+		// Special case for /run/global
+		dirName = s.fixedDirName(name)
+	default:
+		dirName = s.pubDirName(name)
+	}
+	return &Subscriber{nkvClient: s.client, name: dirName, topic: topic, C: C}, nil
 }
 
 func (d *NkvDriver) DefaultName() string {

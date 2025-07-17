@@ -62,11 +62,23 @@ func (e *Subscriber) Stop() error { return nil }
 func (e *Subscriber) LargeDirName() string { return "" }
 
 // WARN: should be the same as Publisher path
+//
+//	func (s *Subscriber) path() string {
+//		t := strings.ReplaceAll(s.topic, "/", ".")
+//		n := strings.ReplaceAll(s.name, "/", ".")
+//		if t != "" && n != "" {
+//			return n + "." + t
+//		}
+//		if t != "" {
+//			return t
+//		}
+//		return n // may be "" if both are empty
+//	}
 func (s *Subscriber) path() string {
 	t := strings.ReplaceAll(s.topic, "/", ".")
 	n := strings.ReplaceAll(s.name, "/", ".")
 	if t != "" && n != "" {
-		return t + "." + n
+		return n + "." + t
 	}
 	if t != "" {
 		return t
