@@ -27,8 +27,9 @@ func NewNkvDriver(path string) *NkvDriver {
 	}
 }
 
-func (d *NkvDriver) Publisher(_ bool, _, topic string, _ bool, _ *pubsub.Updaters, _ pubsub.Restarted, _ pubsub.Differ) (pubsub.DriverPublisher, error) {
-	return &Publisher{nkvClient: d.client, topic: topic}, nil
+// (global bool, name, topic string, persistent bool, updaterList *pubsub.Updaters, restarted pubsub.Restarted, differ pubsub.Differ) (pubsub.DriverPublisher, error) {
+func (d *NkvDriver) Publisher(_ bool, name, topic string, _ bool, _ *pubsub.Updaters, _ pubsub.Restarted, _ pubsub.Differ) (pubsub.DriverPublisher, error) {
+	return &Publisher{nkvClient: d.client, name: name, topic: topic}, nil
 }
 
 // TODO: perhaps channel is needed
