@@ -1211,7 +1211,7 @@ pkg-deps.mk: $(GET_DEPS)
 
 $(ROOTFS_FULL_NAME)-kvm-adam-$(ZARCH).$(ROOTFS_FORMAT): fullname-rootfs $(SSH_KEY)
 fullname-rootfs: $(ROOTFS_FULL_NAME)-$(HV)-$(ZARCH).$(ROOTFS_FORMAT) current
-$(ROOTFS_FULL_NAME)-%-$(ZARCH).$(ROOTFS_FORMAT): $(ROOTFS_IMG)
+$(ROOTFS_FULL_NAME)-%-$(ZARCH).$(ROOTFS_FORMAT): $(ROOTFS_IMG_BASE).img
 	@rm -f $@ && ln -s $(notdir $<) $@
 	$(QUIET): $@: Succeeded
 
