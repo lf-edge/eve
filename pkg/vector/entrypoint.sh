@@ -64,12 +64,20 @@ fi
 # --- watch for new config candidates in the background --------------------------------------
 
 (
-  echo "Watching for new config at $CONFIG_CANDIDATE"
-  inotifywait -m -e close_write "$(dirname "$CONFIG_CANDIDATE")" |
-  while read -r _ _ changed; do
-    [ "$changed" != "$(basename "$CONFIG_CANDIDATE")" ] && continue
+  WATCH_DIR="$(dirname "$CONFIG_CANDIDATE")"
+  WATCH_FILE="$(basename "$CONFIG_CANDIDATE")"
 
-    echo "Detected new candidate config…"
+  echo "Watching for new config at $CONFIG_CANDIDATE"
+  inotifywait -m \
+    -e close_write \
+    -e moved_to \
+    -e create \
+    --format '%e %f' \
+    "$WATCH_DIR" |
+  while read -r events filename; do
+    [ "$filename" != "$WATCH_FILE" ] && continue
+
+    echo "Detected new candidate config via [$events]…"
     echo "Validating $CONFIG_CANDIDATE"
     if vector validate --config-yaml "$CONFIG_CANDIDATE"; then
       echo "✅ Candidate is valid — promoting to live config"
