@@ -6,22 +6,22 @@ package awsutil
 import (
 	"bytes"
 	"compress/gzip"
+	"errors"
 	"fmt"
 	"io"
 	"math"
 	"net/http"
 	"os"
 	"path/filepath"
-	"strconv"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/awserr"
-	"github.com/aws/aws-sdk-go/service/s3"
-	"github.com/aws/aws-sdk-go/service/s3/s3manager"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
+
+	"github.com/aws/smithy-go"
 	"github.com/lf-edge/eve-libs/zedUpload/types"
 )
 
@@ -47,6 +47,7 @@ func (r *CustomReader) Read(p []byte) (int, error) {
 	}
 	return n, err
 }
+
 func (r *CustomReader) ReadAt(p []byte, off int64) (int, error) {
 	n, err := r.fp.ReadAt(p, off)
 	if err != nil {
@@ -127,12 +128,34 @@ func (r *CustomWriter) Seek(offset int64, whence int) (int64, error) {
 func (s *S3ctx) UploadFile(fname, bname, bkey string, compression bool, prgNotify types.StatsNotifChan) (string, error) {
 	location := ""
 
-	// if bucket doesn't exits, create one
-	ok := s.WaitUntilBucketExists(bname)
-	if !ok {
-		err := s.CreateBucket(bname)
-		if err != nil {
-			return location, err
+	// Check if the bucket exists; if not, create it.
+	_, err := s.client.HeadBucket(s.ctx, &s3.HeadBucketInput{
+		Bucket: aws.String(bname),
+	})
+	if err != nil {
+		// We got an error from HeadBucket; inspect it
+		var apiErr smithy.APIError
+		if errors.As(err, &apiErr) {
+			switch apiErr.ErrorCode() {
+			case "NoSuchBucket", "NotFound":
+				// Bucket doesn't exist — go ahead and create it
+				s.log.Printf("Creating bucket in %s region\n", s.client.Options().Region)
+				if err := s.CreateBucket(bname); err != nil {
+					return location, err
+				}
+
+			case "PermanentRedirect", "BadRequest":
+				// The bucket exists, but in a different region (or wrong endpoint).
+				// Treat that as "it exists" and move on.
+				s.log.Printf("Bucket %q exists in another region; continuing\n", bname)
+
+			default:
+				// Some other error (permissions, networking, etc.)
+				return location, fmt.Errorf("unable to verify bucket %q: %w", bname, err)
+			}
+		} else {
+			// Not an AWS API error?
+			return location, fmt.Errorf("unexpected error checking bucket %q: %w", bname, err)
 		}
 	}
 
@@ -154,29 +177,21 @@ func (s *S3ctx) UploadFile(fname, bname, bkey string, compression bool, prgNotif
 	}
 
 	reader, writer := io.Pipe()
-	if compression {
-		// Note required, but you could zip the file prior to uploading it
-		// using io.Pipe read/writer to stream gzip'ed file contents.
-		go func() {
-			gw := gzip.NewWriter(writer)
-			_, err := io.Copy(gw, creader)
+	go func() {
+		var w io.WriteCloser = writer
+		if compression {
+			w = gzip.NewWriter(writer)
+		}
+		_, err := io.Copy(w, creader)
+		w.Close()
+		writer.CloseWithError(err)
+	}()
 
-			file.Close()
-			gw.Close()
-			_ = writer.CloseWithError(err) //it always returns nil
-		}()
-	} else {
-		go func() {
-			_, err := io.Copy(writer, creader)
-
-			file.Close()
-			_ = writer.CloseWithError(err) //it always returns nil
-		}()
-	}
-
-	result, err := s.up.UploadWithContext(s.ctx, &s3manager.UploadInput{
-		Body: reader, Bucket: aws.String(bname),
-		Key: aws.String(bkey)})
+	result, err := s.uploader.Upload(s.ctx, &s3.PutObjectInput{
+		Bucket: aws.String(bname),
+		Key:    aws.String(bkey),
+		Body:   reader,
+	})
 	if err != nil {
 		return location, err
 	}
@@ -192,21 +207,42 @@ type partS3 struct {
 
 func (s *S3ctx) downloadPart(ch chan *partS3, wg *sync.WaitGroup) {
 	defer wg.Done()
-	for {
-		p, ok := <-ch
-		if !ok {
-			break
-		}
+	for p := range ch {
 		if p.cWriter.writerGlobalOptions.err != nil {
 			continue
 		}
-		//download range of bytes from file
-		byteRange := fmt.Sprintf("bytes=%d-%d", p.start, p.start+p.size-1)
-		_, err := s.dn.DownloadWithContext(s.ctx, p.cWriter, &s3.GetObjectInput{Bucket: aws.String(p.bname),
-			Key:   aws.String(p.bkey),
-			Range: aws.String(byteRange)})
+		rangeHeader := fmt.Sprintf("bytes=%d-%d", p.start, p.start+p.size-1)
+		resp, err := s.client.GetObject(s.ctx, &s3.GetObjectInput{
+			Bucket: aws.String(p.bname),
+			Key:    aws.String(p.bkey),
+			Range:  aws.String(rangeHeader),
+		})
 		if err != nil {
 			p.cWriter.writerGlobalOptions.err = err
+			continue
+		}
+		defer resp.Body.Close()
+
+		buf := make([]byte, 32*1024)
+		offset := int64(0)
+
+		for {
+			n, readErr := resp.Body.Read(buf)
+			if n > 0 {
+				_, writeErr := p.cWriter.WriteAt(buf[:n], offset)
+				if writeErr != nil {
+					p.cWriter.writerGlobalOptions.err = writeErr
+					break
+				}
+				offset += int64(n)
+			}
+			if readErr == io.EOF {
+				break
+			}
+			if readErr != nil {
+				p.cWriter.writerGlobalOptions.err = readErr
+				break
+			}
 		}
 	}
 }
@@ -252,10 +288,7 @@ func getNeededParts(cWriterOptions *writerOptions, bname, bkey string, doneParts
 func (s *S3ctx) DownloadFile(fname, bname, bkey string,
 	objMaxSize int64, doneParts types.DownloadedParts, prgNotify types.StatsNotifChan) (types.DownloadedParts, error) {
 
-	var fd *os.File
-	var wg sync.WaitGroup
-
-	err, bsize := s.GetObjectSize(bname, bkey)
+	bsize, err := s.GetObjectSize(bname, bkey)
 	if err != nil {
 		return doneParts, err
 	}
@@ -279,125 +312,85 @@ func (s *S3ctx) DownloadFile(fname, bname, bkey string,
 	// if PartSize differ from saved clean doneParts
 	// we may hit this in case of S3PartSize change or from different type of datastore
 	if doneParts.PartSize != S3PartSize {
-		// log only if parts provided
-		if len(doneParts.Parts) > 0 {
-			if s.log != nil {
-				s.log.Warnf("DownloadFile: stored PartSize (%d) is different from expected (%d), assume DownloadedParts are broken",
-					doneParts.PartSize, S3PartSize)
-			}
-		}
-		doneParts = types.DownloadedParts{
-			PartSize: S3PartSize,
-		}
+		doneParts = types.DownloadedParts{PartSize: S3PartSize}
 	}
-
-	if len(doneParts.Parts) > 0 {
-		fd, err = os.OpenFile(fname, os.O_RDWR, 0666)
-		if err != nil {
-			return doneParts, err
-		}
-	} else {
-		// Create the local file
-		fd, err = os.Create(fname)
-		if err != nil {
-			return doneParts, err
-		}
+	fd, err := os.OpenFile(fname, os.O_CREATE|os.O_RDWR, 0o666)
+	if err != nil {
+		return doneParts, err
 	}
 	defer fd.Close()
 
-	asize := int64(0)
+	// compute already downloaded
+	var asize int64
 	for _, p := range doneParts.Parts {
 		asize += p.Size
 	}
-
-	cWriterOpts := &writerOptions{
+	opts := &writerOptions{
 		fp:        fd,
 		upSize:    types.UpdateStats{Size: bsize, Asize: asize, DoneParts: doneParts},
 		name:      bkey,
 		prgNotify: prgNotify,
 	}
-
 	ch := make(chan *partS3, S3Concurrency)
-	neededPart := getNeededParts(cWriterOpts, bname, bkey, doneParts, bsize)
-	var retryParts []string
-	for _, el := range neededPart {
-		if el.cWriter.writtenBytes > 0 {
-			retryParts = append(retryParts, strconv.FormatInt(el.cWriter.partInd, 10))
-		}
-	}
-	if len(retryParts) > 0 {
-		if s.log != nil {
-			s.log.Infof("DownloadFile: Will continue download parts: %s", strings.Join(retryParts, ","))
-		}
-	}
-	//create goroutines to download parts in parallel
-	for c := 0; c < S3Concurrency; c++ {
+	parts := getNeededParts(opts, bname, bkey, doneParts, bsize)
+	// spawn workers
+	var wg sync.WaitGroup
+	for i := 0; i < S3Concurrency; i++ {
 		wg.Add(1)
 		go s.downloadPart(ch, &wg)
 	}
-	for _, el := range neededPart {
-		if cWriterOpts.err != nil {
-			break
-		}
-		ch <- el
+	for _, p := range parts {
+		ch <- p
 	}
 	close(ch)
 	wg.Wait()
-
-	return cWriterOpts.upSize.DoneParts, cWriterOpts.err
+	return opts.upSize.DoneParts, opts.err
 }
 
 // DownloadFileByChunks downloads the file from s3 chunk by chunk and passes it to the caller
 func (s *S3ctx) DownloadFileByChunks(fname, bname, bkey string) (io.ReadCloser, int64, error) {
-	err, bsize := s.GetObjectSize(bname, bkey)
+	bsize, err := s.GetObjectSize(bname, bkey)
 	if err != nil {
 		return nil, 0, err
 	}
-	fmt.Println("size,", bsize)
-	req, err := s.ss3.GetObjectWithContext(s.ctx, &s3.GetObjectInput{Bucket: aws.String(bname),
-		Key: aws.String(bkey)})
+
+	resp, err := s.client.GetObject(s.ctx, &s3.GetObjectInput{
+		Bucket: aws.String(bname), Key: aws.String(bkey),
+	})
 	if err != nil {
 		return nil, 0, err
 	}
-	return req.Body, bsize, nil
+	return resp.Body, bsize, nil
 }
 
 func (s *S3ctx) ListImages(bname string, prgNotify types.StatsNotifChan) ([]string, error) {
-	var img []string
-	input := &s3.ListObjectsInput{
+	var imgs []string
+	paginator := s3.NewListObjectsV2Paginator(s.client, &s3.ListObjectsV2Input{
 		Bucket: aws.String(bname),
-	}
-
-	result, err := s.ss3.ListObjectsWithContext(s.ctx, input)
-	if err != nil {
-		if aerr, ok := err.(awserr.Error); ok {
-			switch aerr.Code() {
-			case s3.ErrCodeNoSuchBucket:
-				return img, aerr
-			default:
-				return img, aerr
+	})
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(s.ctx)
+		if err != nil {
+			var apiErr smithy.APIError
+			if errors.As(err, &apiErr) && apiErr.ErrorCode() == "NoSuchBucket" {
+				return imgs, apiErr
 			}
-		} else {
-			// Print the error, cast err to awserr.Error to get the Code and
-			// Message from an error.
-			return img, aerr
+			return imgs, err
+		}
+		for _, obj := range page.Contents {
+			imgs = append(imgs, aws.ToString(obj.Key))
 		}
 	}
-
-	for _, list := range result.Contents {
-		img = append(img, *list.Key)
-	}
-	stats := types.UpdateStats{}
-	types.SendStats(prgNotify, stats)
-	return img, nil
+	types.SendStats(prgNotify, types.UpdateStats{})
+	return imgs, nil
 }
 
 func (s *S3ctx) GetObjectMetaData(bname, bkey string) (int64, string, error) {
-	err, bsize := s.GetObjectSize(bname, bkey)
+	bsize, err := s.GetObjectSize(bname, bkey)
 	if err != nil {
 		return 0, "", err
 	}
-	err, md5 := s.GetObjectMD5(bname, bkey)
+	md5, err := s.GetObjectMD5(bname, bkey)
 	if err != nil {
 		return 0, "", err
 	}
@@ -408,75 +401,66 @@ func (s *S3ctx) GetObjectMetaData(bname, bkey string) (int64, string, error) {
 func (s *S3ctx) UploadPart(bname, bkey string, chunk []byte, partNumber int64, uploadID string) (string, string, error) {
 	// initializing Multipart request before uploading parts
 	if uploadID == "" {
-		fileType := http.DetectContentType(chunk)
-		input := &s3.CreateMultipartUploadInput{
+		ct := http.DetectContentType(chunk)
+		out, err := s.client.CreateMultipartUpload(s.ctx, &s3.CreateMultipartUploadInput{
 			Bucket:      aws.String(bname),
 			Key:         aws.String(bkey),
-			ContentType: aws.String(fileType),
-		}
-		multiPartUplladCreateResponse, err := s.ss3.CreateMultipartUpload(input)
+			ContentType: aws.String(ct),
+		})
 		if err != nil {
 			return "", "", err
 		}
-		uploadID = *multiPartUplladCreateResponse.UploadId
+		uploadID = aws.ToString(out.UploadId)
 	}
-	partInput := &s3.UploadPartInput{
+	res, err := s.client.UploadPart(s.ctx, &s3.UploadPartInput{
+		Bucket:        aws.String(bname),
+		Key:           aws.String(bkey),
+		PartNumber:    aws.Int32(int32(partNumber)),
+		UploadId:      aws.String(uploadID),
 		Body:          bytes.NewReader(chunk),
-		Bucket:        &bname,
-		Key:           &bkey,
-		PartNumber:    aws.Int64(partNumber),
-		UploadId:      &uploadID,
 		ContentLength: aws.Int64(int64(len(chunk))),
-	}
-	uploadResult, err := s.ss3.UploadPart(partInput)
+	})
 	if err != nil {
 		return "", "", err
 	}
-	return *uploadResult.ETag, uploadID, err
+	return aws.ToString(res.ETag), uploadID, nil
 }
 
 // CompleteUploadedParts is used to complete the multiple uploaded parts
 func (s *S3ctx) CompleteUploadedParts(bname, bkey, uploadID string, parts []string) error {
-	completeInput := &s3.CompleteMultipartUploadInput{
-		Bucket:   &bname,
-		Key:      &bkey,
-		UploadId: &uploadID,
-		MultipartUpload: &s3.CompletedMultipartUpload{
-			Parts: getUploadedParts(parts),
+	completed := make([]s3types.CompletedPart, len(parts))
+	for i, etag := range parts {
+		completed[i] = s3types.CompletedPart{
+			ETag:       aws.String(etag),
+			PartNumber: aws.Int32(int32(i + 1)),
+		}
+	}
+	_, err := s.client.CompleteMultipartUpload(s.ctx, &s3.CompleteMultipartUploadInput{
+		Bucket:   aws.String(bname),
+		Key:      aws.String(bkey),
+		UploadId: aws.String(uploadID),
+		MultipartUpload: &s3types.CompletedMultipartUpload{
+			Parts: completed,
 		},
-	}
-	_, err := s.ss3.CompleteMultipartUpload(completeInput)
-	if err != nil {
-		return err
-	}
-	return nil
+	})
+	return err
 }
 
 // GetSignedURL is used to generate the URI which can be used to access the resource until the URI expries
 func (s *S3ctx) GetSignedURL(bname, bkey string, duration time.Duration) (string, error) {
-	_, err := s.ss3.HeadObject(&s3.HeadObjectInput{
-		Bucket: aws.String(bname),
-		Key:    aws.String(bkey)})
+	// ensure object exists
+	if _, err := s.client.HeadObject(s.ctx, &s3.HeadObjectInput{
+		Bucket: aws.String(bname), Key: aws.String(bkey),
+	}); err != nil {
+		return "", err
+	}
+	presigned, err := s.presigner.PresignGetObject(s.ctx, &s3.GetObjectInput{
+		Bucket: aws.String(bname), Key: aws.String(bkey),
+	}, func(opts *s3.PresignOptions) {
+		opts.Expires = duration
+	})
 	if err != nil {
 		return "", err
 	}
-	req, _ := s.ss3.GetObjectRequest(&s3.GetObjectInput{
-		Bucket: aws.String(bname),
-		Key:    aws.String(bkey)})
-
-	// Presign a request with specified duration.
-	signedURL, err := req.Presign(duration)
-
-	return signedURL, err
-}
-
-func getUploadedParts(parts []string) []*s3.CompletedPart {
-	var completedParts []*s3.CompletedPart
-	for i := 0; i < len(parts); i++ {
-		part := s3.CompletedPart{
-			ETag:       &parts[i],
-			PartNumber: aws.Int64(int64(i + 1))}
-		completedParts = append(completedParts, &part)
-	}
-	return completedParts
+	return presigned.URL, nil
 }

@@ -192,13 +192,13 @@ func (tr *tracedResolver) netResolver() *net.Resolver {
 }
 
 func (tr *tracedResolver) dial(ctx context.Context, network, address string) (net.Conn, error) {
+	ip, port, err := parseHostAddr(address)
+	if err != nil {
+		return nil, fmt.Errorf("nettrace: networkTracer id=%s: %w",
+			tr.caller.tracer.getTracerID(), err)
+	}
 	// Check if this nameserver is allowed by the user config.
 	if tr.caller.skipNameserver != nil {
-		ip, port, err := parseHostAddr(address)
-		if err != nil {
-			return nil, fmt.Errorf("nettrace: networkTracer id=%s: %w",
-				tr.caller.tracer.getTracerID(), err)
-		}
 		skip, reason := tr.caller.skipNameserver(ip, port)
 		if skip {
 			tr.ensureSkippedServersContains(address)
@@ -208,7 +208,7 @@ func (tr *tracedResolver) dial(ctx context.Context, network, address string) (ne
 
 	// Prepare the original Dialer from the net package.
 	var sourceAddr net.Addr
-	if tr.caller.sourceIP != nil {
+	if tr.caller.sourceIP != nil && !ip.IsLoopback() {
 		if strings.HasPrefix(network, "tcp") {
 			sourceAddr = &net.TCPAddr{IP: tr.caller.sourceIP}
 		} else {
