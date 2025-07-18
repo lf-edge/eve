@@ -5,6 +5,8 @@
 # [1] A poor man is a man on a deadline.
 #
 
+# LINUXKIT_ORG_TARGET environment variable can be used to override the organization when local registry is used.
+
 # if this has problems, it should fail right away
 set -e
 
@@ -71,7 +73,7 @@ _linuxkit_tag() {
     fi
 
     # shellcheck disable=SC2086
-    linuxkit pkg ${LINUXKIT_ORG_TARGET} show-tag "${build_yml_cmd[@]}" ${EVE_HASH:+--hash $EVE_HASH} "${EVE}/${pkg}"
+    linuxkit pkg ${LINUXKIT_ORG_TARGET} show-tag "${build_yml_cmd[@]}" ${EVE_HASH:+--hash $EVE_HASH} "${EVE}/${pkg}" ${LINUXKIT_ORG_TARGET}
 }
 
 immutable_tag() {
