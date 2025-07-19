@@ -60,6 +60,7 @@
 /pkg/storage-init/            @rouming
 /pkg/u-boot/                  @rene
 /pkg/uefi/                    @rucoder
+/pkg/vector/                  @europaul
 /pkg/verifier-rs/             @jsfakian
 /pkg/vtpm/                    @shjala
 /pkg/wwan/                    @milan-zededa
