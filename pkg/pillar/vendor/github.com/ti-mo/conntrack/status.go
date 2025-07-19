@@ -2,12 +2,7 @@ package conntrack
 
 import (
 	"github.com/mdlayher/netlink"
-	"github.com/pkg/errors"
 	"github.com/ti-mo/netfilter"
-)
-
-const (
-	opUnStatus = "Status unmarshal"
 )
 
 // Status represents a snapshot of a conntrack connection's state.
@@ -17,9 +12,8 @@ type Status struct {
 
 // unmarshal unmarshals a netfilter.Attribute into a Status structure.
 func (s *Status) unmarshal(ad *netlink.AttributeDecoder) error {
-
 	if ad.Len() != 1 {
-		return errors.Wrap(errNeedSingleChild, opUnStatus)
+		return errNeedSingleChild
 	}
 
 	if !ad.Next() {
@@ -27,7 +21,7 @@ func (s *Status) unmarshal(ad *netlink.AttributeDecoder) error {
 	}
 
 	if len(ad.Bytes()) != 4 {
-		return errors.Wrap(errIncorrectSize, opUnStatus)
+		return errIncorrectSize
 	}
 
 	s.Value = StatusFlag(ad.Uint32())

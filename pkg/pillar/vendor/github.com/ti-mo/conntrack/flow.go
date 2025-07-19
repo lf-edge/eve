@@ -1,10 +1,10 @@
 package conntrack
 
 import (
-	"net"
+	"fmt"
+	"net/netip"
 
 	"github.com/mdlayher/netlink"
-	"github.com/pkg/errors"
 	"github.com/ti-mo/netfilter"
 )
 
@@ -35,15 +35,17 @@ type Flow struct {
 	SynProxy SynProxy
 }
 
-// NewFlow returns a new Flow object with the minimum necessary attributes to create a Conntrack entry.
-// Writes values into the Status, Timeout, TupleOrig and TupleReply fields of the Flow.
+// NewFlow returns a new Flow object with the minimum necessary attributes to
+// create a Conntrack entry. Writes values into the Status, Timeout, TupleOrig
+// and TupleReply fields of the Flow.
 //
-// proto is the layer 4 protocol number of the connection.
-// status is a StatusFlag value, or an ORed combination thereof.
-// srcAddr and dstAddr are the source and destination addresses.
-// srcPort and dstPort are the source and destination ports.
-// timeout is the non-zero time-to-live of a connection in seconds.
-func NewFlow(proto uint8, status StatusFlag, srcAddr, destAddr net.IP, srcPort, destPort uint16, timeout, mark uint32) Flow {
+// proto is the layer 4 protocol number of the connection. status is a
+// StatusFlag value, or an ORed combination thereof. srcAddr and dstAddr are the
+// source and destination addresses. srcPort and dstPort are the source and
+// destination ports. timeout is the non-zero time-to-live of a connection in
+// seconds.
+func NewFlow(proto uint8, status StatusFlag, srcAddr, destAddr netip.Addr,
+	srcPort, destPort uint16, timeout, mark uint32) Flow {
 
 	var f Flow
 
@@ -68,16 +70,15 @@ func NewFlow(proto uint8, status StatusFlag, srcAddr, destAddr net.IP, srcPort, 
 	return f
 }
 
-// unmarshal unmarshals a list of netfilter.Attributes into a Flow structure.
+// unmarshal unmarshals netlink attributes into a Flow.
 func (f *Flow) unmarshal(ad *netlink.AttributeDecoder) error {
-
-	var at attributeType
-
 	for ad.Next() {
+		// Attribute has nested flag set, decode it and its children.
+		if err := f.unmarshalNested(ad); err != nil {
+			return err
+		}
 
-		at = attributeType(ad.Type())
-
-		switch at {
+		switch attributeType(ad.Type()) {
 		// CTA_TIMEOUT is the time until the Conntrack entry is automatically destroyed.
 		case ctaTimeout:
 			f.Timeout = ad.Uint32()
@@ -107,98 +108,85 @@ func (f *Flow) unmarshal(ad *netlink.AttributeDecoder) error {
 		// (eg. if packets are seen in both directions, etc.)
 		case ctaStatus:
 			f.Status.Value = StatusFlag(ad.Uint32())
-		// CTA_TUPLE_* attributes are nested and contain source and destination values for:
-		// - the IPv4/IPv6 addresses involved
-		// - ports used in the connection
-		// - (optional) the Conntrack Zone of the originating/replying side of the flow
-		case ctaTupleOrig:
-			if !nestedFlag(ad.TypeFlags()) {
-				return errors.Wrap(errNotNested, opUnTup)
-			}
-			ad.Nested(f.TupleOrig.unmarshal)
-		case ctaTupleReply:
-			if !nestedFlag(ad.TypeFlags()) {
-				return errors.Wrap(errNotNested, opUnTup)
-			}
-			ad.Nested(f.TupleReply.unmarshal)
-		case ctaTupleMaster:
-			if !nestedFlag(ad.TypeFlags()) {
-				return errors.Wrap(errNotNested, opUnTup)
-			}
-			ad.Nested(f.TupleMaster.unmarshal)
-		// CTA_PROTOINFO is sent for TCP, DCCP and SCTP protocols only. It conveys extra metadata
-		// about the state flags seen on the wire. Update events are sent when these change.
-		case ctaProtoInfo:
-			if !nestedFlag(ad.TypeFlags()) {
-				return errors.Wrap(errNotNested, opUnProtoInfo)
-			}
-			ad.Nested(f.ProtoInfo.unmarshal)
-		case ctaHelp:
-			if !nestedFlag(ad.TypeFlags()) {
-				return errors.Wrap(errNotNested, opUnHelper)
-			}
-			ad.Nested(f.Helper.unmarshal)
-		// CTA_COUNTERS_* attributes are nested and contain byte and packet counters for flows in either direction.
-		case ctaCountersOrig:
-			if !nestedFlag(ad.TypeFlags()) {
-				return errors.Wrap(errNotNested, opUnCounter)
-			}
-			ad.Nested(f.CountersOrig.unmarshal)
-		case ctaCountersReply:
-			if !nestedFlag(ad.TypeFlags()) {
-				return errors.Wrap(errNotNested, opUnCounter)
-			}
-			f.CountersReply.Direction = true
-			ad.Nested(f.CountersReply.unmarshal)
-		// CTA_SECCTX is the SELinux security context of a Conntrack entry.
-		case ctaSecCtx:
-			if !nestedFlag(ad.TypeFlags()) {
-				return errors.Wrap(errNotNested, opUnSecurity)
-			}
-			ad.Nested(f.SecurityContext.unmarshal)
-		// CTA_TIMESTAMP is a nested attribute that describes the start and end timestamp of a flow.
-		// It is sent by the kernel with dumps and DESTROY events.
-		case ctaTimestamp:
-			if !nestedFlag(ad.TypeFlags()) {
-				return errors.Wrap(errNotNested, opUnTimestamp)
-			}
-			ad.Nested(f.Timestamp.unmarshal)
-		// CTA_SEQADJ_* is generalized TCP window adjustment metadata. It is not (yet) emitted in Conntrack events.
-		// The reason for its introduction is outlined in https://lwn.net/Articles/563151.
-		// Patch set is at http://www.spinics.net/lists/netdev/msg245785.html.
-		case ctaSeqAdjOrig:
-			if !nestedFlag(ad.TypeFlags()) {
-				return errors.Wrap(errNotNested, opUnSeqAdj)
-			}
-			ad.Nested(f.SeqAdjOrig.unmarshal)
-		case ctaSeqAdjReply:
-			if !nestedFlag(ad.TypeFlags()) {
-				return errors.Wrap(errNotNested, opUnSeqAdj)
-			}
-			f.SeqAdjReply.Direction = true
-			ad.Nested(f.SeqAdjReply.unmarshal)
-		// CTA_SYNPROXY are the connection's SYN proxy parameters
-		case ctaSynProxy:
-			if !nestedFlag(ad.TypeFlags()) {
-				return errors.Wrap(errNotNested, opUnSynProxy)
-			}
-			ad.Nested(f.SynProxy.unmarshal)
 		}
 	}
 
 	return ad.Err()
 }
 
+// unmarshalNested unmarshals nested netlink attributes. Returns errNotNested if
+// a nested attribute was recognized but its nested flag was not set.
+func (f *Flow) unmarshalNested(ad *netlink.AttributeDecoder) error {
+	var fn func(nad *netlink.AttributeDecoder) error
+	t := attributeType(ad.Type())
+	switch t {
+	// CTA_TUPLE_* attributes are nested and contain source and destination values for:
+	// - the IPv4/IPv6 addresses involved
+	// - ports used in the connection
+	// - (optional) the Conntrack Zone of the originating/replying side of the flow
+	case ctaTupleOrig:
+		fn = f.TupleOrig.unmarshal
+	case ctaTupleReply:
+		fn = f.TupleReply.unmarshal
+	case ctaTupleMaster:
+		fn = f.TupleMaster.unmarshal
+	// CTA_PROTOINFO is sent for TCP, DCCP and SCTP protocols only. It conveys extra metadata
+	// about the state flags seen on the wire. Update events are sent when these change.
+	case ctaProtoInfo:
+		fn = f.ProtoInfo.unmarshal
+	case ctaHelp:
+		fn = f.Helper.unmarshal
+	// CTA_COUNTERS_* attributes are nested and contain byte and packet counters for flows in either direction.
+	case ctaCountersOrig:
+		fn = f.CountersOrig.unmarshal
+	case ctaCountersReply:
+		f.CountersReply.Direction = true
+		fn = f.CountersReply.unmarshal
+	// CTA_SECCTX is the SELinux security context of a Conntrack entry.
+	case ctaSecCtx:
+		fn = f.SecurityContext.unmarshal
+	// CTA_TIMESTAMP is a nested attribute that describes the start and end timestamp of a flow.
+	// It is sent by the kernel with dumps and DESTROY events.
+	case ctaTimestamp:
+		fn = f.Timestamp.unmarshal
+	// CTA_SEQADJ_* is generalized TCP window adjustment metadata. It is not (yet) emitted in Conntrack events.
+	// The reason for its introduction is outlined in https://lwn.net/Articles/563151.
+	// Patch set is at http://www.spinics.net/lists/netdev/msg245785.html.
+	case ctaSeqAdjOrig:
+		fn = f.SeqAdjOrig.unmarshal
+	case ctaSeqAdjReply:
+		f.SeqAdjReply.Direction = true
+		fn = f.SeqAdjReply.unmarshal
+	// CTA_SYNPROXY are the connection's SYN proxy parameters
+	case ctaSynProxy:
+		fn = f.SynProxy.unmarshal
+	default:
+		// No nested attributes matched, nothing to do.
+		return nil
+	}
+
+	// Found nested attribute, but missing nested flag.
+	if !nestedFlag(ad.TypeFlags()) {
+		return fmt.Errorf("attribute %v: %w", t, errNotNested)
+	}
+
+	ad.Nested(fn)
+	if err := ad.Err(); err != nil {
+		return fmt.Errorf("unmarshal %s: %w", t, err)
+	}
+
+	return nil
+}
+
 // marshal marshals a Flow object into a list of netfilter.Attributes.
 func (f Flow) marshal() ([]netfilter.Attribute, error) {
-
 	// Flow updates need one of TupleOrig or TupleReply,
 	// so we enforce having either of those.
 	if !f.TupleOrig.filled() && !f.TupleReply.filled() {
 		return nil, errNeedTuples
 	}
 
-	attrs := make([]netfilter.Attribute, 0, 12)
+	attrs := make([]netfilter.Attribute, 0, 14)
 
 	if f.TupleOrig.filled() {
 		to, err := f.TupleOrig.marshal(uint16(ctaTupleOrig))
@@ -256,15 +244,27 @@ func (f Flow) marshal() ([]netfilter.Attribute, error) {
 	}
 
 	if f.SeqAdjOrig.filled() {
-		attrs = append(attrs, f.SeqAdjOrig.marshal())
+		attrs = append(attrs, f.SeqAdjOrig.marshal(false))
 	}
 
 	if f.SeqAdjReply.filled() {
-		attrs = append(attrs, f.SeqAdjReply.marshal())
+		attrs = append(attrs, f.SeqAdjReply.marshal(true))
 	}
 
 	if f.SynProxy.filled() {
 		attrs = append(attrs, f.SynProxy.marshal())
+	}
+
+	if len(f.Labels) > 0 {
+		a := netfilter.Attribute{Type: uint16(ctaLabels)}
+		a.Data = f.Labels
+		attrs = append(attrs, a)
+	}
+
+	if len(f.LabelsMask) > 0 {
+		a := netfilter.Attribute{Type: uint16(ctaLabelsMask)}
+		a.Data = f.LabelsMask
+		attrs = append(attrs, a)
 	}
 
 	return attrs, nil
@@ -273,9 +273,7 @@ func (f Flow) marshal() ([]netfilter.Attribute, error) {
 // unmarshalFlow unmarshals a Flow from a netlink.Message.
 // The Message must contain valid attributes.
 func unmarshalFlow(nlm netlink.Message) (Flow, error) {
-
 	var f Flow
-
 	_, ad, err := netfilter.DecodeNetlink(nlm)
 	if err != nil {
 		return f, err
@@ -292,12 +290,10 @@ func unmarshalFlow(nlm netlink.Message) (Flow, error) {
 // unmarshalFlows unmarshals a list of flows from a list of Netlink messages.
 // This method can be used to parse the result of a dump or get query.
 func unmarshalFlows(nlm []netlink.Message) ([]Flow, error) {
-
 	// Pre-allocate to avoid re-allocating output slice on every op
 	out := make([]Flow, 0, len(nlm))
 
 	for i := 0; i < len(nlm); i++ {
-
 		f, err := unmarshalFlow(nlm[i])
 		if err != nil {
 			return nil, err

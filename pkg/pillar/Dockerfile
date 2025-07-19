@@ -38,7 +38,7 @@ FROM --platform=${BUILDPLATFORM} lfedge/eve-cross-compilers:fb809cfb1909752acb56
 # will use several packages from target arch and copy them to sysroot
 # hadolint ignore=DL3006
 FROM ${EVE_ALPINE_IMAGE} AS cross-compile-libs
-ENV PKGS musl-dev libgcc libintl libuuid libtirpc libblkid
+ENV PKGS musl-dev libgcc libintl libuuid libtirpc libblkid linux-headers
 RUN eve-alpine-deploy.sh
 # we need zfs files during build
 COPY --from=zfs / /
@@ -73,6 +73,27 @@ ARG TARGETARCH
 # some parts of pillar are build conditionally based on the hypervisor
 ARG HV
 
+# We need dhcpcd version 10.0.0 at least, especially for IPv6, containing these patches:
+#   - https://github.com/NetworkConfiguration/dhcpcd/commit/5f6f61cbe3edfc8313d7db63d6ecf1b08d7232f1
+#     Fixes: https://github.com/NetworkConfiguration/dhcpcd/issues/69
+#     Without this, NetworkMonitor fails to retrieve DHCPv6/RA info from dhcpcd.
+#   - https://github.com/NetworkConfiguration/dhcpcd/commit/2b4fe4c12b5d4366ff21fabf3a6c3799f8e4fa53
+#     Fixes: https://github.com/NetworkConfiguration/dhcpcd/issues/183
+#     Without this, dhcpcd will not obtain NTP server IPs from a DHCPv6 server.
+# I tried version 10.0.0, but "dhcpcd --release <interface>" crashes with a segfault.
+# Version 10.1.0 seems to be stable across all the features that we are using.
+# Note: After upgrading Alpine to version v3.21 or newer, a sufficiently up-to-date dhcpcd
+# will be available in the official Alpine repositories, so building it manually will no longer
+# be necessary.
+ENV DHCPCD_VERSION=v10.1.0
+
+ENV CC=${CROSS_COMPILE_ENV}gcc
+
+ADD --keep-git-dir=true https://github.com/NetworkConfiguration/dhcpcd.git#${DHCPCD_VERSION} /dhcpcd
+WORKDIR /dhcpcd
+RUN ./configure --libexecdir=/usr/lib/dhcpcd --dbdir=/var/lib/dhcpcd --runstatedir=/run && \
+    make -j "$(getconf _NPROCESSORS_ONLN)" && make install
+
 # building with runtime stats
 ARG RSTATS=n
 ARG RSTATS_ENDPOINT=
@@ -91,7 +112,6 @@ ENV GO111MODULE=on
 ENV CGO_ENABLED=1
 ENV GOOS=linux
 ENV GOARCH=${TARGETARCH}
-ENV CC=${CROSS_COMPILE_ENV}gcc
 ARG GOPKGVERSION
 
 # hadolint ignore=DL4006
@@ -125,7 +145,7 @@ FROM lfedge/eve-gpt-tools:825f5ad1b706cffeb1dccd75f0759d755d87289e as gpttools
 # hadolint ignore=DL3006
 FROM ${EVE_ALPINE_IMAGE} as collector
 ENV BUILD_PKGS patch
-ENV PKGS alpine-baselayout musl-utils libtasn1-progs pciutils yajl xz bash iptables ip6tables iproute2 dhcpcd \
+ENV PKGS alpine-baselayout musl-utils libtasn1-progs pciutils yajl xz bash iptables ip6tables iproute2 \
     coreutils dmidecode libbz2 libuuid ipset curl radvd ethtool util-linux e2fsprogs libcrypto1.1 xorriso \
     qemu-img jq e2fsprogs-extra keyutils ca-certificates ip6tables-openrc iptables-openrc ipset-openrc hdparm \
     libintl libtirpc libblkid zlib rsync chrony
@@ -134,13 +154,6 @@ RUN eve-alpine-deploy.sh
 SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
 
 WORKDIR /
-
-COPY patches/* /sys-patches/
-# hadolint ignore=SC1097
-RUN set -e && for patch in /sys-patches/*.patch; do \
-        echo "Applying $patch"; \
-        patch -p0 --no-backup-if-mismatch -r /tmp/deleteme.rej < "$patch"; \
-    done
 
 RUN mkdir -p /out/usr/lib/xen/boot
 COPY --from=uefi-build /OVMF_VARS.fd /out/usr/lib/xen/boot/OVMF_VARS.fd
@@ -152,6 +165,8 @@ COPY --from=dnsmasq /usr/sbin/dnsmasq /out/opt/zededa/bin/dnsmasq
 # we use final directory and move the line to the bottom
 # to avoid conflicts and speedup re-builds
 COPY --from=build /final /out
+COPY --from=build /usr/lib/dhcpcd /out/usr/lib/dhcpcd
+COPY --from=build /sbin/dhcpcd /out/sbin/dhcpcd
 
 ADD scripts/device-steps.sh \
     scripts/onboot.sh \
@@ -161,6 +176,13 @@ ADD scripts/device-steps.sh \
     scripts/copy-image-to-qcow.sh \
   /out/opt/zededa/bin/
 ADD conf/lisp.config.base /out/var/tmp/zededa/lisp.config.base
+
+COPY patches/* /sys-patches/
+# hadolint ignore=SC1097
+RUN set -e && for patch in /sys-patches/*.patch; do \
+        echo "Applying $patch"; \
+        patch -p0 --no-backup-if-mismatch -r /tmp/deleteme.rej < "$patch"; \
+    done
 
 # And now a few local tweaks
 COPY rootfs/ /out

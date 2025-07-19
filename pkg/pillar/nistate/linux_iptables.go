@@ -51,13 +51,21 @@ func (lc *LinuxCollector) fetchIptablesCounters() []aclCounters {
 	type vif struct {
 		ifName string
 		bridge string
+		ipv4   bool
+		ipv6   bool
 	}
 	var vifs []vif
 	for _, niState := range lc.nis {
+		ipv4 := niState.config.Type == types.NetworkInstanceTypeSwitch ||
+			!niState.config.IsIPv6()
+		ipv6 := niState.config.Type == types.NetworkInstanceTypeSwitch ||
+			niState.config.IsIPv6()
 		for _, niVif := range niState.vifs {
 			vifs = append(vifs, vif{
 				ifName: niVif.HostIfName,
 				bridge: niState.bridge.BrIfName,
+				ipv4:   ipv4,
+				ipv6:   ipv6,
 			})
 		}
 	}
@@ -65,16 +73,32 @@ func (lc *LinuxCollector) fetchIptablesCounters() []aclCounters {
 	for table, chains := range chainsWithCounters {
 		for _, chain := range chains {
 			for _, vif := range vifs {
-				output, err := iptables.IptableCmdOut(
-					nil, "-t", table, "-S", chain+"-"+vif.ifName, "-v")
-				if err != nil {
-					lc.log.Errorf("%s: fetchIptablesCounters: iptables -S failed: %v",
-						LogAndErrPrefix, err)
-				} else {
-					c := lc.parseIptablesCounters(output, table, chain,
-						vif.bridge, vif.ifName, 4)
-					if c != nil {
-						counters = append(counters, c...)
+				if vif.ipv4 {
+					output, err := iptables.IptableCmdOut(
+						nil, "-t", table, "-S", chain+"-"+vif.ifName, "-v")
+					if err != nil {
+						lc.log.Errorf("%s: fetchIptablesCounters: iptables -S failed: %v",
+							LogAndErrPrefix, err)
+					} else {
+						c := lc.parseIptablesCounters(output, table, chain,
+							vif.bridge, vif.ifName, 4)
+						if c != nil {
+							counters = append(counters, c...)
+						}
+					}
+				}
+				if vif.ipv6 {
+					output, err := iptables.Ip6tableCmdOut(
+						nil, "-t", table, "-S", chain+"-"+vif.ifName, "-v")
+					if err != nil {
+						lc.log.Errorf("%s: fetchIptablesCounters: ip6tables -S failed: %v",
+							LogAndErrPrefix, err)
+					} else {
+						c := lc.parseIptablesCounters(output, table, chain,
+							vif.bridge, vif.ifName, 6)
+						if c != nil {
+							counters = append(counters, c...)
+						}
 					}
 				}
 			}
@@ -220,7 +244,8 @@ func (lc *LinuxCollector) parseIptablesLine(
 func (lc *LinuxCollector) getIptablesCounters(
 	counters []aclCounters, match aclCounters) aclCounters {
 	for i, c := range counters {
-		if c.ipVer != match.ipVer || c.dropCounter != match.dropCounter ||
+		if (match.ipVer != 0 && c.ipVer != match.ipVer) ||
+			c.dropCounter != match.dropCounter ||
 			c.drop != match.drop || c.limit != match.limit {
 			continue
 		}

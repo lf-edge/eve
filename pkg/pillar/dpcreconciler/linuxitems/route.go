@@ -130,7 +130,7 @@ func (r Route) String() string {
 // Dependencies of a network route are:
 //   - the "via" adapter must exist and be UP
 //   - the "via" adapter must have an IP address assigned from the subnet
-//     of the route gateway.
+//     of the route gateway (unless the gateway is a link local IP, such as fe80:<something>).
 func (r Route) Dependencies() (deps []depgraph.Dependency) {
 	return []depgraph.Dependency{
 		{
@@ -149,6 +149,9 @@ func (r Route) Dependencies() (deps []depgraph.Dependency) {
 				addrs := item.(genericitems.AdapterAddrs)
 				if len(addrs.IPAddrs) == 0 {
 					return false
+				}
+				if r.Gw.IsLinkLocalUnicast() {
+					return true
 				}
 				if len(r.Gw) > 0 {
 					for _, addr := range addrs.IPAddrs {

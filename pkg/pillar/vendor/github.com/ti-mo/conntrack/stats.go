@@ -25,14 +25,15 @@ type Stats struct {
 
 func (s Stats) String() string {
 	return fmt.Sprintf(
-		"<CPU %d - Found: %d, Invalid: %d, Ignore: %d, Insert: %d, InsertFailed: %d, Drop: %d, EarlyDrop: %d, Error: %d, SearchRestart: %d>",
-		s.CPUID, s.Found, s.Invalid, s.Ignore, s.Insert, s.InsertFailed, s.Drop, s.EarlyDrop, s.Error, s.SearchRestart,
+		"<CPU %d - Found: %d, Invalid: %d, Ignore: %d, Insert: %d, InsertFailed: %d, "+
+			"Drop: %d, EarlyDrop: %d, Error: %d, SearchRestart: %d>",
+		s.CPUID, s.Found, s.Invalid, s.Ignore, s.Insert, s.InsertFailed,
+		s.Drop, s.EarlyDrop, s.Error, s.SearchRestart,
 	)
 }
 
 // unmarshal unmarshals a list of netfilter.Attributes into a Stats structure.
 func (s *Stats) unmarshal(attrs []netfilter.Attribute) {
-
 	for _, attr := range attrs {
 		switch at := cpuStatsType(attr.Type); at {
 		case ctaStatsFound:

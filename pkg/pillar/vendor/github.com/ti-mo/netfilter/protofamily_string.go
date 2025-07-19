@@ -32,7 +32,7 @@ var (
 
 func (i ProtoFamily) String() string {
 	switch {
-	case 0 <= i && i <= 3:
+	case i <= 3:
 		return _ProtoFamily_name_0[_ProtoFamily_index_0[i]:_ProtoFamily_index_0[i+1]]
 	case i == 5:
 		return _ProtoFamily_name_1

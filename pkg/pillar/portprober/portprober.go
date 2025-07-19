@@ -30,6 +30,8 @@ import (
 // Whenever the selected port changes, zedrouter is notified by the prober.
 // It is up to the zedrouter to perform update of the route from one port to another
 // inside the network stack.
+// Note: PortProber is used only for Local network instances. Since IPv6 addressing is
+// not supported for Local NIs, PortProber only needs to handle IPv4 addresses.
 type PortProber struct {
 	sync.Mutex
 	log             *base.LogObject
@@ -490,7 +492,7 @@ func (p *PortProber) applyPendingDNS() {
 				p.log.Noticef("PortProber: Updated config of the probed port %s", portLL)
 			} else {
 				// Just update IP status.
-				port.localAddrs = getLocalIPs(dnsPort)
+				port.localAddrs = getLocalIPv4s(dnsPort)
 				port.nextHops = getNextHops(dnsPort)
 				port.dnsServers = dnsPort.DNSServers
 			}
@@ -505,9 +507,9 @@ func (p *PortProber) addPort(dnsPort types.NetworkPortStatus) {
 		ifName:       dnsPort.IfName,
 		cost:         dnsPort.Cost,
 		isWwan:       dnsPort.WirelessCfg.WType == types.WirelessTypeCellular,
-		localAddrs:   getLocalIPs(dnsPort),
+		localAddrs:   getLocalIPv4s(dnsPort),
 		nextHops:     getNextHops(dnsPort),
-		dnsServers:   dnsPort.DNSServers,
+		dnsServers:   getDNSServers(dnsPort),
 		// Mark as new so that the following probing will run fully
 		// and decide the UP/DOWN states.
 		newlyAdded: true,
@@ -937,10 +939,13 @@ func (p *PortProber) getWwanRSSI(portLabel string) (rssi int32) {
 	return minRSSI // unavailable RSSI is worse than any actual RSSI
 }
 
-func getLocalIPs(port types.NetworkPortStatus) (ips []net.IP) {
+func getLocalIPv4s(port types.NetworkPortStatus) (ips []net.IP) {
 	for _, addr := range port.AddrInfoList {
-		if !addr.Addr.IsUnspecified() {
-			ips = append(ips, addr.Addr)
+		if addr.Addr.IsUnspecified() {
+			continue
+		}
+		if ip := addr.Addr.To4(); ip != nil {
+			ips = append(ips, ip)
 		}
 	}
 	return ips
@@ -948,8 +953,20 @@ func getLocalIPs(port types.NetworkPortStatus) (ips []net.IP) {
 
 func getNextHops(port types.NetworkPortStatus) (ips []net.IP) {
 	for _, dr := range port.DefaultRouters {
-		if !dr.IsUnspecified() {
-			ips = append(ips, dr)
+		if dr.IsUnspecified() {
+			continue
+		}
+		if ip := dr.To4(); ip != nil {
+			ips = append(ips, ip)
+		}
+	}
+	return ips
+}
+
+func getDNSServers(port types.NetworkPortStatus) (ips []net.IP) {
+	for _, srv := range port.DNSServers {
+		if ip := srv.To4(); ip != nil {
+			ips = append(ips, ip)
 		}
 	}
 	return ips

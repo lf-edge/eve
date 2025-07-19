@@ -212,6 +212,13 @@ func (c *DhcpcdConfigurator) Delete(ctx context.Context, item depgraph.Item) err
 		case types.DhcpTypeStatic, types.DhcpTypeClient:
 			startTime := time.Now()
 			var extras []string
+			// --release and --exit need to know if dhcpcd is running in v4/v6-only mode.
+			switch config.Type {
+			case types.NetworkTypeIpv4Only:
+				extras = append(extras, "--ipv4only")
+			case types.NetworkTypeIpv6Only:
+				extras = append(extras, "--ipv6only")
+			}
 			// Run release, wait for a bit, then exit and give up.
 			failed := false
 			for {
@@ -281,12 +288,12 @@ func (c *DhcpcdConfigurator) DhcpcdArgs(config types.DhcpConfig) (op string, arg
 	switch config.Dhcp {
 	case types.DhcpTypeClient:
 		op = "--request"
-		args = []string{"-f", "/dhcpcd.conf", "--noipv4ll", "-b", "-t", "0"}
+		args = []string{"-f", "/etc/dhcpcd.conf", "--noipv4ll", "-b", "-t", "0"}
 		switch config.Type {
 		case types.NetworkTypeIpv4Only:
-			args = []string{"-f", "/dhcpcd.conf", "--noipv4ll", "--ipv4only", "-b", "-t", "0"}
+			args = []string{"-f", "/etc/dhcpcd.conf", "--noipv4ll", "--ipv4only", "-b", "-t", "0"}
 		case types.NetworkTypeIpv6Only:
-			args = []string{"-f", "/dhcpcd.conf", "--ipv6only", "-b", "-t", "0"}
+			args = []string{"-f", "/etc/dhcpcd.conf", "--ipv6only", "-b", "-t", "0"}
 		case types.NetworkTypeNOOP:
 		case types.NetworkTypeIPv4:
 		case types.NetworkTypeIPV6:
@@ -300,7 +307,7 @@ func (c *DhcpcdConfigurator) DhcpcdArgs(config types.DhcpConfig) (op string, arg
 	case types.DhcpTypeStatic:
 		op = "--static"
 		args = []string{fmt.Sprintf("ip_address=%s", config.AddrSubnet)}
-		extras := []string{"-f", "/dhcpcd.conf", "-b", "-t", "0"}
+		extras := []string{"-f", "/etc/dhcpcd.conf", "-b", "-t", "0"}
 		if config.Gateway == nil || config.Gateway.IsUnspecified() {
 			extras = append(extras, "--nogateway")
 		} else if config.Gateway.String() != "" {

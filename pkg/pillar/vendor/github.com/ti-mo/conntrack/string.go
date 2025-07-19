@@ -67,9 +67,7 @@ func (s Status) String() string {
 }
 
 func (e Event) String() string {
-
 	if e.Flow != nil {
-
 		// Status flag
 		status := ""
 		if !e.Flow.Status.SeenReply() {
@@ -117,17 +115,15 @@ func (e Event) String() string {
 			e.Flow.Zone,
 			acct, labels, mark,
 			seqadjo, seqadjr, secctx)
+	}
 
-	} else if e.Expect != nil {
-
+	if e.Expect != nil {
 		return fmt.Sprintf("[%s] Timeout: %d, Master: %s, Tuple: %s, Mask: %s, Zone: %d, Helper: '%s', Class: %#x",
 			e.Type, e.Expect.Timeout,
 			e.Expect.TupleMaster, e.Expect.Tuple, e.Expect.Mask,
 			e.Expect.Zone, e.Expect.HelpName, e.Expect.Class,
 		)
-
-	} else {
-		return fmt.Sprintf("[%s] <Empty Event>", e.Type)
 	}
 
+	return fmt.Sprintf("[%s] <Empty Event>", e.Type)
 }

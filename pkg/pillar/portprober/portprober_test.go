@@ -163,25 +163,31 @@ func mockEth0Status() types.NetworkPortStatus {
 		IsMgmt:         true,
 		IsL3Port:       true,
 		Cost:           0,
-		Subnet:         *subnet,
+		IPv4Subnet:     subnet,
 		AddrInfoList:   []types.AddrInfo{{Addr: ip}, {Addr: localOnlyIP}},
 		DefaultRouters: []net.IP{ipAddress("192.168.1.2")},
 	}
 }
 
 func mockEth1Status() types.NetworkPortStatus {
-	ip, subnet, _ := net.ParseCIDR("10.10.0.1/16")
+	ipv4Addr, ipv4Subnet, _ := net.ParseCIDR("10.10.0.1/16")
+	// IPv6 addresses are ignored by PortProber.
+	ipv6Addr, ipv6Subnet, _ := net.ParseCIDR("2001::20/64")
 	return types.NetworkPortStatus{
-		IfName:         portIfName(eth1LL),
-		Phylabel:       portIfName(eth1LL),
-		Logicallabel:   eth1LL,
-		SharedLabels:   []string{"all", "localnet", "ethernet"},
-		IsMgmt:         false,
-		IsL3Port:       true,
-		Cost:           0,
-		Subnet:         *subnet,
-		AddrInfoList:   []types.AddrInfo{{Addr: ip}},
-		DefaultRouters: []net.IP{ipAddress("10.10.0.250")},
+		IfName:       portIfName(eth1LL),
+		Phylabel:     portIfName(eth1LL),
+		Logicallabel: eth1LL,
+		SharedLabels: []string{"all", "localnet", "ethernet"},
+		IsMgmt:       false,
+		IsL3Port:     true,
+		Cost:         0,
+		IPv4Subnet:   ipv4Subnet,
+		IPv6Subnets:  []*net.IPNet{ipv6Subnet},
+		AddrInfoList: []types.AddrInfo{{Addr: ipv4Addr}, {Addr: ipv6Addr}},
+		DefaultRouters: []net.IP{
+			ipAddress("10.10.0.250"),
+			ipAddress("fe80::c225:2fff:fea2:dc73"),
+		},
 	}
 }
 
@@ -195,7 +201,7 @@ func mockWlanStatus() types.NetworkPortStatus {
 		IsMgmt:         false,
 		IsL3Port:       true,
 		Cost:           2,
-		Subnet:         *subnet,
+		IPv4Subnet:     subnet,
 		AddrInfoList:   []types.AddrInfo{{Addr: ip}},
 		DefaultRouters: []net.IP{ipAddress("172.30.1.10")},
 		WirelessCfg:    types.WirelessConfig{WType: types.WirelessTypeWifi},
@@ -212,7 +218,7 @@ func mockWwan0Status() types.NetworkPortStatus {
 		IsMgmt:         true,
 		IsL3Port:       true,
 		Cost:           10,
-		Subnet:         *subnet,
+		IPv4Subnet:     subnet,
 		AddrInfoList:   []types.AddrInfo{{Addr: ip}},
 		DefaultRouters: []net.IP{ipAddress("172.18.40.200")},
 		WirelessCfg:    types.WirelessConfig{WType: types.WirelessTypeCellular},
@@ -229,7 +235,7 @@ func mockWwan1Status() types.NetworkPortStatus {
 		IsMgmt:         true,
 		IsL3Port:       true,
 		Cost:           10,
-		Subnet:         *subnet,
+		IPv4Subnet:     subnet,
 		AddrInfoList:   []types.AddrInfo{{Addr: ip}},
 		DefaultRouters: []net.IP{ipAddress("172.95.6.11")},
 		WirelessCfg:    types.WirelessConfig{WType: types.WirelessTypeCellular},
@@ -238,7 +244,7 @@ func mockWwan1Status() types.NetworkPortStatus {
 
 var (
 	eth0NHAddr  = &net.IPAddr{IP: mockEth0Status().DefaultRouters[0]}
-	eth1NHAddr  = &net.IPAddr{IP: mockEth1Status().DefaultRouters[0]}
+	eth1NHAddr  = &net.IPAddr{IP: mockEth1Status().DefaultRouters[0]} // only the IPv4 GW is used by PortProber
 	wlan0NHAddr = &net.IPAddr{IP: mockWlanStatus().DefaultRouters[0]}
 	wwan0NHAddr = &net.IPAddr{IP: mockWwan0Status().DefaultRouters[0]}
 	wwan1NHAddr = &net.IPAddr{IP: mockWwan1Status().DefaultRouters[0]}

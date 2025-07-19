@@ -142,10 +142,6 @@ func ipSubnet(ipAddr string) *net.IPNet {
 	return subnet
 }
 
-func deref[T any](p *T) T {
-	return *p
-}
-
 func makeUUID(id string) types.UUIDandVersion {
 	uuid, _ := uuid.FromString(id)
 	return types.UUIDandVersion{UUID: uuid}
@@ -288,13 +284,15 @@ var (
 		},
 		IPAddrs: []*net.IPNet{ipAddressWithPrefix("192.168.10.5/24")},
 		DHCP: netmonitor.DHCPInfo{
-			Subnet:     ipSubnet("192.168.10.0/24"),
-			NtpServers: []net.IP{ipAddress("132.163.96.5")},
+			IPv4Subnet:     ipSubnet("192.168.10.0/24"),
+			IPv4NtpServers: []net.IP{ipAddress("132.163.96.5")},
 		},
-		DNS: netmonitor.DNSInfo{
-			ResolvConfPath: "/etc/eth0-resolv.conf",
-			Domains:        []string{"eth0-test-domain"},
-			DNSServers:     []net.IP{ipAddress("8.8.8.8")},
+		DNS: []netmonitor.DNSInfo{
+			{
+				ResolvConfPath: "/etc/eth0-resolv.conf",
+				Domains:        []string{"eth0-test-domain"},
+				DNSServers:     []net.IP{ipAddress("8.8.8.8")},
+			},
 		},
 		HwAddr: macAddress("02:00:00:00:01:01"),
 	}
@@ -340,12 +338,14 @@ var (
 		},
 		IPAddrs: []*net.IPNet{ipAddressWithPrefix("172.20.0.40/16")},
 		DHCP: netmonitor.DHCPInfo{
-			Subnet: ipSubnet("172.20.0.0/16"),
+			IPv4Subnet: ipSubnet("172.20.0.0/16"),
 		},
-		DNS: netmonitor.DNSInfo{
-			ResolvConfPath: "/etc/eth1-resolv.conf",
-			Domains:        []string{"eth1-test-domain"},
-			DNSServers:     []net.IP{ipAddress("8.8.8.8"), ipAddress("1.1.1.1")},
+		DNS: []netmonitor.DNSInfo{
+			{
+				ResolvConfPath: "/etc/eth1-resolv.conf",
+				Domains:        []string{"eth1-test-domain"},
+				DNSServers:     []net.IP{ipAddress("8.8.8.8"), ipAddress("1.1.1.1")},
+			},
 		},
 		HwAddr: macAddress("02:00:00:00:01:02"),
 	}
@@ -390,10 +390,12 @@ var (
 			LowerUp:       true,
 		},
 		IPAddrs: []*net.IPNet{ipAddressWithPrefix("2001::20/64")},
-		DNS: netmonitor.DNSInfo{
-			ResolvConfPath: "/etc/eth1-resolv.conf",
-			Domains:        []string{"eth1-test-domain"},
-			DNSServers:     []net.IP{ipAddress("2001:4860:4860::8888")},
+		DNS: []netmonitor.DNSInfo{
+			{
+				ResolvConfPath: "/etc/eth1-resolv.conf",
+				Domains:        []string{"eth1-test-domain"},
+				DNSServers:     []net.IP{ipAddress("2001:4860:4860::8888")},
+			},
 		},
 		HwAddr: macAddress("02:00:00:00:01:03"),
 	}
@@ -439,12 +441,14 @@ var (
 		},
 		IPAddrs: []*net.IPNet{ipAddressWithPrefix("172.30.30.40/24")},
 		DHCP: netmonitor.DHCPInfo{
-			Subnet: ipSubnet("172.30.30.0/24"),
+			IPv4Subnet: ipSubnet("172.30.30.0/24"),
 		},
-		DNS: netmonitor.DNSInfo{
-			ResolvConfPath: "/etc/eth3-resolv.conf",
-			Domains:        []string{"eth3-test-domain"},
-			DNSServers:     []net.IP{ipAddress("172.30.30.57")},
+		DNS: []netmonitor.DNSInfo{
+			{
+				ResolvConfPath: "/etc/eth3-resolv.conf",
+				Domains:        []string{"eth3-test-domain"},
+				DNSServers:     []net.IP{ipAddress("172.30.30.57")},
+			},
 		},
 		HwAddr: macAddress("02:00:00:00:01:04"),
 	}
@@ -473,7 +477,7 @@ var (
 		PortLabel:      "ethernet0",
 		Type:           types.NetworkInstanceTypeLocal,
 		IpType:         types.AddressTypeIPV4,
-		Subnet:         deref(ipAddressWithPrefix("10.10.10.0/24")),
+		Subnet:         ipAddressWithPrefix("10.10.10.0/24"),
 	}
 	ni1Bridge = nirec.NIBridge{
 		NI:         ni1UUID.UUID,
@@ -537,7 +541,7 @@ var (
 		PortLabel:      "ethernet2",
 		Type:           types.NetworkInstanceTypeLocal,
 		IpType:         types.AddressTypeIPV6,
-		Subnet:         deref(ipAddressWithPrefix("2001::1111:0000/112")),
+		Subnet:         ipAddressWithPrefix("2001::1111:0000/112"),
 		DnsServers:     []net.IP{ipAddress("2001:4860:4860::8888")},
 		DnsNameToIPList: []types.DNSNameToIP{
 			{
@@ -608,7 +612,7 @@ var (
 		PortLabel:      "shopfloor",
 		Type:           types.NetworkInstanceTypeLocal,
 		IpType:         types.AddressTypeIPV4,
-		Subnet:         deref(ipAddressWithPrefix("10.10.20.0/24")),
+		Subnet:         ipAddressWithPrefix("10.10.20.0/24"),
 	}
 	ni5Bridge = nirec.NIBridge{
 		NI:         ni5UUID.UUID,
@@ -2096,6 +2100,10 @@ func TestIPv4LocalAndSwitchNIsWithFlowlogging(test *testing.T) {
 	ni5Config.EnableFlowlog = false
 }
 
+// Note: Local network instances with IPv6 addressing are not currently supported.
+// Some initial work has been done in this area, but it remains incomplete, primarily due
+// to the lack of practical use cases for NATed IPv6 NIs.
+// However, Switch NIs connected to IPv6 networks are fully supported.
 func TestIPv6LocalAndSwitchNIs(test *testing.T) {
 	t := initTest(test, false)
 	networkMonitor.AddOrUpdateInterface(keth2)
@@ -2133,14 +2141,15 @@ func TestIPv6LocalAndSwitchNIs(test *testing.T) {
 	t.Expect(recUpdate.UpdateType).To(Equal(nirec.NIReconcileStatusChanged))
 	t.Expect(recUpdate.NIStatus.Equal(niStatus)).To(BeTrue())
 
+	// Not running metadata server for IPv6 NI.
 	t.Expect(itemIsCreated(dg.Reference(
 		genericitems.HTTPServer{
 			ListenIf: genericitems.NetworkIf{IfName: "bn3"}, Port: 80,
-		}))).To(BeTrue())
+		}))).To(BeFalse())
 	t.Expect(itemIsCreated(dg.Reference(
 		genericitems.HTTPServer{
 			ListenIf: genericitems.NetworkIf{IfName: "eth2"}, Port: 80,
-		}))).To(BeTrue())
+		}))).To(BeFalse())
 	t.Expect(itemIsCreated(dg.Reference(
 		linuxitems.VLANBridge{BridgeIfName: "eth2"}))).To(BeTrue())
 
@@ -2221,10 +2230,6 @@ func TestIPv6LocalAndSwitchNIs(test *testing.T) {
 		"ntpServers: [2610:20:6f15:15::27]"))
 	t.Expect(itemDescription(dg.Reference(dnsmasq))).To(ContainSubstring(
 		"staticEntries: [{test-hostname [2001:db8::1]} {router [2001::1111:1]} {app3 [2001::1111:2]}]"))
-	httpSrvN3 := genericitems.HTTPServer{
-		ListenIf: genericitems.NetworkIf{IfName: "bn3"}, Port: 80}
-	t.Expect(itemDescription(dg.Reference(httpSrvN3))).To(ContainSubstring(
-		"listenIP: 2001::1111:1"))
 	vif1Eidset := linuxitems.IPSet{SetName: "ipv6.eids.nbu1x3"}
 	t.Expect(itemDescription(dg.Reference(vif1Eidset))).To(ContainSubstring(
 		"entries: [2001:db8::1 2001::1111:2]"))
@@ -2262,10 +2267,6 @@ func TestIPv6LocalAndSwitchNIs(test *testing.T) {
 	t.Expect(itemIsCreated(dg.Reference(ni3PortMapRuleOut))).To(BeTrue())
 
 	// Check items created in the scope of NI4.
-	httpSrvN4 := genericitems.HTTPServer{
-		ListenIf: genericitems.NetworkIf{IfName: "eth2"}, Port: 80}
-	t.Expect(itemDescription(dg.Reference(httpSrvN4))).To(ContainSubstring(
-		"listenIP: 2001::20"))
 	vif2Eidset := linuxitems.IPSet{SetName: "ipv6.eids.nbu2x3"}
 	t.Expect(itemDescription(dg.Reference(vif2Eidset))).To(ContainSubstring(
 		"entries: [2001::101]"))
@@ -3124,13 +3125,15 @@ func TestSwitchNIWithMultiplePorts(test *testing.T) {
 		},
 		IPAddrs: []*net.IPNet{ipAddressWithPrefix("192.168.10.5/24")},
 		DHCP: netmonitor.DHCPInfo{
-			Subnet:     ipSubnet("192.168.10.0/24"),
-			NtpServers: []net.IP{ipAddress("132.163.96.5")},
+			IPv4Subnet:     ipSubnet("192.168.10.0/24"),
+			IPv4NtpServers: []net.IP{ipAddress("132.163.96.5")},
 		},
-		DNS: netmonitor.DNSInfo{
-			ResolvConfPath: "/etc/eth0-resolv.conf",
-			Domains:        []string{"eth0-test-domain"},
-			DNSServers:     []net.IP{ipAddress("8.8.8.8")},
+		DNS: []netmonitor.DNSInfo{
+			{
+				ResolvConfPath: "/etc/eth0-resolv.conf",
+				Domains:        []string{"eth0-test-domain"},
+				DNSServers:     []net.IP{ipAddress("8.8.8.8")},
+			},
 		},
 		HwAddr: macAddress("02:00:00:00:01:01"),
 	}

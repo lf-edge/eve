@@ -34,8 +34,8 @@ func conntrackToExportedEntry(flow *conntrack.Flow, capturedAt Timestamp) *Connt
 func conntrackToAddrTuple(tuple conntrack.Tuple) addrTuple {
 	return addrTuple{
 		proto:   tuple.Proto.Protocol,
-		srcIP:   tuple.IP.SourceAddress,
-		dstIP:   tuple.IP.DestinationAddress,
+		srcIP:   tuple.IP.SourceAddress.AsSlice(),
+		dstIP:   tuple.IP.DestinationAddress.AsSlice(),
 		srcPort: tuple.Proto.SourcePort,
 		dstPort: tuple.Proto.DestinationPort,
 	}

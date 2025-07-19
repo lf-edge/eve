@@ -19,20 +19,15 @@ import (
 
 const matchAll = "all"
 
-// Rule installed by default for the Local table.
-var defaultLocalRule = IPRule{
-	Priority: 0,
-	Table:    unix.RT_TABLE_LOCAL,
-	Src:      nil,
-	Dst:      nil,
-}
-
 // IPRule : Linux IP rule.
 type IPRule struct {
 	Priority int
 	Table    int
-	Src      *net.IPNet
-	Dst      *net.IPNet
+	// We need to know the IP family of the rule and cannot determine that from
+	// Src or Dst because both of those can be nil.
+	IPv6 bool
+	Src  *net.IPNet
+	Dst  *net.IPNet
 }
 
 // Name combines all attributes to construct a unique identifier for IP rule.
@@ -50,7 +45,10 @@ func (r IPRule) Label() string {
 
 // Type of the item.
 func (r IPRule) Type() string {
-	return IPRuleTypename
+	if r.IPv6 {
+		return IPv6RuleTypename
+	}
+	return IPv4RuleTypename
 }
 
 // Equal compares two IPRule instances.
@@ -61,6 +59,7 @@ func (r IPRule) Equal(other dg.Item) bool {
 	}
 	return r.Priority == r2.Priority &&
 		r.Table == r2.Table &&
+		r.IPv6 == r2.IPv6 &&
 		netutils.EqualIPNets(r.Src, r2.Src) &&
 		netutils.EqualIPNets(r.Dst, r2.Dst)
 }
@@ -72,9 +71,13 @@ func (r IPRule) External() bool {
 
 // String describes IPRule in detail.
 func (r IPRule) String() string {
-	return fmt.Sprintf("IP rule: "+
+	version := "v4"
+	if r.IPv6 {
+		version = "v6"
+	}
+	return fmt.Sprintf("IP%v rule: "+
 		"{prio: %d, Src: %s, Dst: %s, Table: %d}",
-		r.Priority, r.srcToString(), r.dstToString(), r.Table)
+		version, r.Priority, r.srcToString(), r.dstToString(), r.Table)
 }
 
 // Dependencies returns no dependencies (table does not have to exist).
@@ -103,6 +106,25 @@ func (r IPRule) replacesDefaultLocalRule() bool {
 	return r.Src == nil && r.Dst == nil && r.Table == unix.RT_TABLE_LOCAL
 }
 
+// Get rule installed by default for the Local table.
+func getDefaultRule(ipv6 bool) IPRule {
+	if ipv6 {
+		return IPRule{
+			Priority: 0,
+			Table:    unix.RT_TABLE_LOCAL,
+			IPv6:     true,
+			Src:      nil,
+			Dst:      nil,
+		}
+	}
+	return IPRule{
+		Priority: 0,
+		Table:    unix.RT_TABLE_LOCAL,
+		Src:      nil,
+		Dst:      nil,
+	}
+}
+
 // IPRuleConfigurator implements Configurator interface (libs/reconciler)
 // for Linux IP rule.
 type IPRuleConfigurator struct {
@@ -117,7 +139,7 @@ func (c *IPRuleConfigurator) Create(ctx context.Context, item dg.Item) error {
 	}
 	if rule.replacesDefaultLocalRule() {
 		// First remove the default rule for the Local table.
-		netlinkRule := c.makeNetlinkRule(defaultLocalRule)
+		netlinkRule := c.makeNetlinkRule(getDefaultRule(rule.IPv6))
 		err := netlink.RuleDel(netlinkRule)
 		if err != nil {
 			err = fmt.Errorf("failed to delete default local IP rule %+v: %w",
@@ -143,10 +165,7 @@ func (c *IPRuleConfigurator) makeNetlinkRule(rule IPRule) *netlink.Rule {
 	r.Table = rule.Table
 	r.Priority = rule.Priority
 	r.Family = netlink.FAMILY_V4
-	if rule.Src != nil && rule.Src.IP.To4() == nil {
-		r.Family = netlink.FAMILY_V6
-	}
-	if rule.Dst != nil && rule.Dst.IP.To4() == nil {
+	if rule.IPv6 {
 		r.Family = netlink.FAMILY_V6
 	}
 	return r
@@ -172,7 +191,7 @@ func (c *IPRuleConfigurator) Delete(ctx context.Context, item dg.Item) error {
 	}
 	if rule.replacesDefaultLocalRule() {
 		// Bring back the default rule for the Local table.
-		netlinkRule = c.makeNetlinkRule(defaultLocalRule)
+		netlinkRule = c.makeNetlinkRule(getDefaultRule(rule.IPv6))
 		err = netlink.RuleAdd(netlinkRule)
 		if err != nil {
 			err = fmt.Errorf("failed to add default local IP rule %+v: %w",
