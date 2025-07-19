@@ -578,6 +578,12 @@ func (ctx kubevirtContext) Create(domainName string, cfgFilename string, config 
 // There is no such thing as stop VMI, so delete it.
 func (ctx kubevirtContext) Stop(domainName string, force bool) error {
 	logrus.Debugf("Stop called for Domain: %s", domainName)
+
+	// If this node is in a cluster and reboot in progress, do not stop app. It will failover to
+	// another node.
+	if rebootInProgress() && kubeapi.IsClusterMode() {
+		return nil
+	}
 	err := getConfig(&ctx)
 	if err != nil {
 		return err
@@ -609,6 +615,11 @@ func (ctx kubevirtContext) Stop(domainName string, force bool) error {
 
 func (ctx kubevirtContext) Delete(domainName string) (result error) {
 	logrus.Debugf("Delete called for Domain: %s", domainName)
+
+	// If this node is in a cluster and reboot in progress, do not delete app. It will failover to other other node.
+	if rebootInProgress() && kubeapi.IsClusterMode() {
+		return nil
+	}
 	err := getConfig(&ctx)
 	if err != nil {
 		return err
@@ -670,6 +681,12 @@ func StopReplicaVMI(kubeconfig *rest.Config, repVmiName string) error {
 func (ctx kubevirtContext) Info(domainName string) (int, types.SwState, error) {
 
 	logrus.Debugf("Info called for Domain: %s", domainName)
+
+	// If this node is in cluster and rebooting, app will failover to other node so just return unknown status
+	if rebootInProgress() && kubeapi.IsClusterMode() {
+		return 0, types.UNKNOWN, nil
+	}
+
 	nodeName, ok := ctx.nodeNameMap["nodename"]
 	if !ok {
 		return 0, types.BROKEN, logError("Failed to get nodeName")
@@ -1760,4 +1777,15 @@ func checkAndReturnStatus(vmis *vmiMetaData, gotUnknown bool) (string, error) {
 		vmis.startUnknownTime = time.Time{}
 	}
 	return "", nil
+}
+
+// rebootInProgress returns true if types.NodeRebootInProgressFile exists
+func rebootInProgress() bool {
+	_, err := os.Stat(types.NodeRebootInProgressFile)
+	// file not exists is expected error so basically any error return false.
+	if err != nil {
+		logrus.Debugf("Could not stat file %s err %v", types.NodeRebootInProgressFile, err)
+		return false
+	}
+	return true
 }

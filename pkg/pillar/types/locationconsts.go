@@ -146,6 +146,8 @@ const (
 	LocalActiveAppConfigDir = "/persist/vault/active-app-instance-config/"
 	// EdgeNodeClusterConfigFile - the file which contains edgenodecluster config
 	EdgeNodeClusterConfigFile = PersistStatusDir + "/zedagent/EdgeNodeClusterConfig/global.json"
+	// NodeRebootInProgressFile - A temp file to mark this device reboot is in progress
+	NodeRebootInProgressFile = "/run/node-reboot-inprogress"
 )
 
 var (
