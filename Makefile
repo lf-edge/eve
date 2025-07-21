@@ -207,7 +207,7 @@ ROOTFS_TAR_EVAL_LTS=$(ROOTFS_TAR_BASE)-evaluation-lts.tar
 
 # for evaluation platform we generate 3 rootfs tarballs:
 ROOTFS_TARS= $(if $(findstring evaluation,$(PLATFORM)), \
-	$(ROOTFS_TAR_EVAL_HWE) $(ROOTFS_TAR_EVAL_LTS) $(ROOTFS_TAR_BASE)-evaluation-generic.tar, \
+	$(ROOTFS_TAR_BASE)-evaluation-generic.tar $(ROOTFS_TAR_EVAL_HWE) $(ROOTFS_TAR_EVAL_LTS), \
 	$(ROOTFS_TAR_BASE)-$(PLATFORM).tar)
 
 CONFIG_IMG=$(INSTALLER)/config.img
