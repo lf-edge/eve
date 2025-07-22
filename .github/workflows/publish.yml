@@ -128,13 +128,13 @@ jobs:
       max-parallel: 1
       matrix:
         include:
-          - os: zededa-ubuntu-2204
+          - os: zededa-ubuntu-2204-arm64
             arch: arm64
             platform: "generic"
-          - os: zededa-ubuntu-2204
+          - os: zededa-ubuntu-2204-arm64
             arch: arm64
             platform: "nvidia-jp5"
-          - os: zededa-ubuntu-2204
+          - os: zededa-ubuntu-2204-arm64
             arch: arm64
             platform: "nvidia-jp6"
     steps:
