@@ -20,7 +20,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [zededa-ubuntu-latest, zededa-ubuntu-2204]
+        os: [zededa-ubuntu-2204, zededa-ubuntu-2204-arm64]
         arch: [arm64, amd64]
         platform: [generic, nvidia-jp5, nvidia-jp6, evaluation]
         include:
@@ -28,7 +28,7 @@ jobs:
             arch: riscv64
             platform: generic
         exclude:
-          - os: zededa-ubuntu-latest
+          - os: zededa-ubuntu-2204-arm64
             arch: amd64
           - os: zededa-ubuntu-2204
             arch: arm64
