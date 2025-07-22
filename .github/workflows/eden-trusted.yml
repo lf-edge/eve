@@ -128,63 +128,52 @@ jobs:
           fi
 
   status_ui:
-    name: Status UI
+    name: Reset & Render Eden statuses
     runs-on: ubuntu-latest
     needs: context
     if: needs.context.outputs.skip_run == 'false'
     env:
-      EDEN_IN_PR_STATUS_TITLE: ${{ needs.context.outputs.eden_in_pr_status_title }}
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      PR_SHA: ${{ needs.context.outputs.pr_sha }}
+      EDEN_RUNNER_CTX: ${{ needs.context.outputs.eden_in_pr_status_title }}
+      EDEN_TESTS_PREFIX: ${{ needs.context.outputs.eden_parent_job_title }}
+      EDEN_DETAILS_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
     steps:
-      - name: Switch Gate Status to Green
-        if: ${{ github.event.workflow_run.conclusion == 'success' }}
+      - name: Reset Eden Runner & Eden jobs statuses
         uses: actions/github-script@v7
         with:
           script: |
             const { owner, repo } = context.repo;
-            // Get new target URL for the Gate status that passes and called this workflow
-            const targetUrlPrefix = `${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ needs.context.outputs.gate_run_id }}`;
-            // Find the job that triggered this workflow
-            const { data: jobs } = await github.rest.actions.listJobsForWorkflowRun({
-              owner, repo, run_id: ${{ needs.context.outputs.gate_run_id }}
-            });
-            // Print the jobs for debugging
-            console.log(jobs.jobs.map(j => j.name).join(', '));
-            const job = jobs.jobs.find(j => j.name.startsWith('${{ needs.context.outputs.gate_status_name }}'));
-            const targetUrl = `${targetUrlPrefix}/job/${job.id}?pr=${{ needs.context.outputs.pr_id }}`;
-            await github.rest.repos.createCommitStatus({
-              owner, repo,
-              sha: '${{ needs.context.outputs.pr_sha }}',
-              state: 'success',
-              context: 'PR Gate / ${{ needs.context.outputs.gate_status_name }}',
-              description: 'Gate Passed!',
-              target_url: targetUrl
-            });
-      - name: Check if exists
-        uses: actions/github-script@v7
-        id: check_status
-        with:
-          script: |
-            const { owner, repo } = context.repo;
+            const sha = process.env.PR_SHA;
+
+            // Get the current commit statuses for the PR
             const { data: statuses } = await github.rest.repos.listCommitStatusesForRef({
-              owner, repo, ref: '${{ needs.context.outputs.pr_sha }}'
+              owner, repo, ref: sha
             });
-            const status = statuses.find(s => s.context === process.env.EDEN_IN_PR_STATUS_TITLE);
-            core.setOutput('exists', status ? 'true' : 'false');
-      - name: Create entity in check list
-        if: ${{ steps.check_status.outputs.exists == 'false' }}
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const { owner, repo } = context.repo;
+
+            // Reset the Eden Runner status
             await github.rest.repos.createCommitStatus({
-              owner, repo,
-              sha: '${{ needs.context.outputs.pr_sha }}',
-              state: 'pending',
-              context: process.env.EDEN_IN_PR_STATUS_TITLE,
-              description: 'Tests running ...',
-              target_url: process.env.EDEN_IN_PR_DETAILS_URL
+              owner, repo, sha,
+              state:       'pending',
+              context:     process.env.EDEN_RUNNER_CTX,
+              description: 'Eden tests queued…',
+              target_url:  process.env.EDEN_DETAILS_URL
             });
+
+            // Reset the Eden tests non-green statuses
+            const prefix = `${process.env.EDEN_TESTS_PREFIX} / `;
+            for (const s of statuses) {
+              if (s.context.startsWith(prefix) && s.state !== 'success') {
+                await github.rest.repos.createCommitStatus({
+                  owner, repo, sha,
+                  state:       'pending',
+                  context:     s.context,
+                  description: 'Rerunning…',
+                  target_url:  process.env.EDEN_DETAILS_URL
+                });
+              }
+            }
+
 
   tests:
     name: ${{ needs.context.outputs.eden_parent_job_title }}
@@ -200,6 +189,7 @@ jobs:
       eden_version: "1.0.6"
 
   finalize:
+    name: Finalize Eden Runner status
     if: always() && needs.context.outputs.skip_run == 'false'
     needs: [context, tests]
     runs-on: ubuntu-latest
@@ -225,6 +215,7 @@ jobs:
             });
 
   subjob_statuses:
+    name: Render each Eden jobs status
     if: always() && needs.context.outputs.skip_run == 'false'
     needs: [context, tests]   # ensure Eden has finished
     runs-on: ubuntu-latest
