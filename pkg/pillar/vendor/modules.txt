@@ -781,7 +781,7 @@ github.com/leodido/go-urn
 github.com/lf-edge/edge-containers/pkg/registry
 github.com/lf-edge/edge-containers/pkg/resolver
 github.com/lf-edge/edge-containers/pkg/tgz
-# github.com/lf-edge/eve-api/go v0.0.0-20250626182814-c725ece2f435
+# github.com/lf-edge/eve-api/go v0.0.0-20250722142628-6e701eb3256b
 ## explicit; go 1.20
 github.com/lf-edge/eve-api/go/attest
 github.com/lf-edge/eve-api/go/auth

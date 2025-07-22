@@ -1,13 +1,15 @@
 module github.com/lf-edge/eve/pkg/edgeview
 
-go 1.23
+go 1.23.0
+
+toolchain go1.24.5
 
 require (
 	github.com/coreos/go-semver v0.3.1
 	github.com/fsnotify/fsnotify v1.6.0
 	github.com/gorilla/websocket v1.5.0
 	github.com/grandcat/zeroconf v1.0.0
-	github.com/lf-edge/eve-api/go v0.0.0-20250502212418-fc1e3bad8f0f
+	github.com/lf-edge/eve-api/go v0.0.0-20250722142628-6e701eb3256b
 	github.com/lf-edge/eve/pkg/pillar v0.0.0-20250605040644-0de9f5c8d1ce
 	github.com/onsi/gomega v1.29.0
 	github.com/satori/go.uuid v1.2.1-0.20180404165556-75cca531ea76
