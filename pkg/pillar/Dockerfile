@@ -81,7 +81,7 @@ ARG RSTATS_TAG=
 # we need zfs files during build
 COPY --from=zfs /out /
 
-ADD ./  /pillar/
+COPY ./  /pillar/
 
 # go vet/format and go install
 WORKDIR /pillar
@@ -106,12 +106,13 @@ ENV DELVE_VERSION 1.20.1
 ENV DELVE_SOURCE=https://github.com/go-delve/delve/archive/refs/tags/v${DELVE_VERSION}.tar.gz
 # hadolint ignore=DL3020
 ADD ${DELVE_SOURCE} /delve.tar.gz
+RUN if [ ${DEV} = "y" ]; then tar --absolute-names -xz < /delve.tar.gz; fi
+WORKDIR /delve-${DELVE_VERSION}
 RUN --mount=type=cache,target=/root/.cache/go-build if [ ${DEV} = "y" ]; then \
-    tar --absolute-names -xz < /delve.tar.gz && \
-    cd "/delve-${DELVE_VERSION}" &&  \
     GOFLAGS= CGO_ENABLED=0 go build -ldflags "-s -w -extldflags '-static'" github.com/go-delve/delve/cmd/dlv && \
     cp dlv /final/opt/ ; \
 fi
+WORKDIR /
 RUN --mount=type=cache,target=/root/.cache/go-build if [ "${TEST_TOOLS}" = "y" ]; then \
     GOBIN=/final/opt/ GOFLAGS="" go install gotest.tools/gotestsum@v1.7.0; \
 fi
@@ -153,14 +154,14 @@ COPY --from=dnsmasq /usr/sbin/dnsmasq /out/opt/zededa/bin/dnsmasq
 # to avoid conflicts and speedup re-builds
 COPY --from=build /final /out
 
-ADD scripts/device-steps.sh \
+COPY scripts/device-steps.sh \
     scripts/onboot.sh \
     scripts/handlezedserverconfig.sh \
     scripts/veth.sh \
     scripts/dhcpcd.sh \
     scripts/copy-image-to-qcow.sh \
   /out/opt/zededa/bin/
-ADD conf/lisp.config.base /out/var/tmp/zededa/lisp.config.base
+COPY conf/lisp.config.base /out/var/tmp/zededa/lisp.config.base
 
 # And now a few local tweaks
 COPY rootfs/ /out
