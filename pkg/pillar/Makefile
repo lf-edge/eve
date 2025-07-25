@@ -81,6 +81,8 @@ build-docker-git:
 	git archive HEAD | docker build $(DOCKER_ARGS) -t $(DOCKER_TAG) -
 
 build-docker-test:
+	$(MAKE) -C ../../ pkg/alpine pkg/dom0-ztools pkg/recovertpm
+	$(MAKE) -C ../../ alpine-cache-export-docker-load dom0-ztools-cache-export-docker-load recovertpm-cache-export-docker-load
 	docker build $(DOCKER_ARGS) --build-arg TEST_TOOLS=y -t $(DOCKER_TAG) . --target build
 
 test: build-docker-test
