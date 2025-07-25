@@ -19,9 +19,9 @@ func WaitForKubernetes(string, *pubsub.PubSub, *time.Ticker,
 	panic("WaitForKubernetes is not built")
 }
 
-// CleanupStaleVMI in this file is just stub for non-kubevirt hypervisors.
-func CleanupStaleVMI() (int, error) {
-	panic("CleanupStaleVMI is not built")
+// CleanupStaleVMIRs in this file is just stub for non-kubevirt hypervisors.
+func CleanupStaleVMIRs() (int, error) {
+	panic("CleanupStaleVMIRs is not built")
 }
 
 // GetPVCList in this file is just stub for non-kubevirt hypervisors.
@@ -39,4 +39,9 @@ func RequestNodeDrain(pubsub.Publication, DrainRequester, string) error {
 func GetNodeDrainStatus(pubsub.Subscription, *base.LogObject) *NodeDrainStatus {
 	// No need to query for inprogress operations, just a noop
 	return &NodeDrainStatus{Status: NOTSUPPORTED}
+}
+
+// IsClusterMode  is a stub for non-kubevirt builds
+func IsClusterMode() bool {
+	return false
 }
