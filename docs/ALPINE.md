@@ -200,6 +200,73 @@ The rule of thumb then is:
 
 ![your package based on current alpine based on previous](./images/your-pkg-based-on-current-alpine-based-on-previous.png)
 
+## Alpine Package Management Tools
+
+EVE provides a set of Python tools in [tools/alpine-tools/](../tools/alpine-tools/) to help manage Alpine package lists and handle version migrations:
+
+### tools/alpine-tools/alpine_index.py
+
+Core library providing shared utilities for APKINDEX parsing, dependency resolution, and package classification. This module is used by the other Alpine tools and provides:
+
+* Download and parse APKINDEX files from Alpine mirrors
+* Recursive dependency resolution with cycle detection
+* Handle virtual packages (so:, cmd:, pc: prefixes) and metapackages
+* Package classification by branch and architecture availability
+* Missing dependency reporting
+
+### tools/alpine-tools/alpine_migrate.py
+
+Migrates complete package lists between Alpine versions (e.g., 3.16 → 3.21) or performs same-version migrations to update missing dependencies (e.g., 3.16 → 3.16). This tool is essential when upgrading EVE to a new Alpine base version or refreshing dependencies, as it handles:
+
+* Package relocations between main/community branches
+* Renamed or removed packages (reported for manual review)
+* Automatic dependency resolution for all existing packages
+* Architecture-specific package availability changes
+* Same-version dependency updates without changing Alpine version
+
+**Usage:**
+
+```bash
+# Migrate from Alpine 3.16 to 3.21
+python3 tools/alpine-tools/alpine_migrate.py 3.16 3.21
+
+# Same-version migration to update missing dependencies
+python3 tools/alpine-tools/alpine_migrate.py 3.16 3.16
+
+# With dependency chain analysis
+python3 tools/alpine-tools/alpine_migrate.py 3.16 3.21 --print-chains
+```
+
+### tools/alpine-tools/alpine_pkg_add.py
+
+Adds specific packages with full dependency resolution to existing Alpine package lists. Useful for expanding the package cache with new tools or libraries without doing a full migration:
+
+* Adds packages to existing package lists (preserves current packages)
+* Automatically resolves and includes all dependencies
+* Reports newly added packages for verification
+* Supports dependency chain analysis for debugging
+
+**Usage:**
+
+```bash
+# Add a single package
+python3 tools/alpine-tools/alpine_pkg_add.py 3.21 vim
+
+# Add multiple development tools
+python3 tools/alpine-tools/alpine_pkg_add.py 3.21 git curl wget build-base
+
+# Add with dependency chain analysis
+python3 tools/alpine-tools/alpine_pkg_add.py 3.21 python3-pip --print-chains
+```
+
+These tools are particularly useful when:
+
+* Migrating EVE to a new Alpine version where packages have moved between branches
+* Updating missing dependencies within the same Alpine version
+* Adding new packages to the eve-alpine cache
+* Debugging dependency resolution issues
+* Understanding why certain packages are included in the cache
+
 ## Rebasing eve-alpine on top of new Alpine release
 
 The first option requires update of eve-alpine-base image to use another minirootfs and repository and pointing eve-alpine to be based on novel eve-alpine-base using `FROM lfedge/eve-alpine-base`. This action will invalidate all stored packages inside eve-alpine and download them from repository.
@@ -211,7 +278,7 @@ The latter aspect makes maintaining `lfedge/eve-alpine` a bit tricky, even thoug
 1. adding new package names to the right manifest file (under `pkg/alpine/mirrors/<BASE ALPINE VERSION>/[main|community]`)
 2. updating `FROM ... AS cache` line in [pkg/alpine/Dockerfile](../pkg/alpine/Dockerfile) to point to the last version of the cache
 
-Step #2 guarantees that all _existing_ packages will simply be re-used from the previous version of the cache and _NOT_ re-downloaded from the Alpine http mirrors (remember that re-downloading always runs the risk of getting a different version of the same package). Step #1, of course, will download new packages and pin them in the new version of the cache.
+Step #2 guarantees that all _existing_ packages will simply be reused from the previous version of the cache and _NOT_ re-downloaded from the Alpine http mirrors (remember that re-downloading always runs the risk of getting a different version of the same package). Step #1, of course, will download new packages and pin them in the new version of the cache.
 
 If the above seems a bit confusing, don't despair: here's an [actual example](../../../commit/1340c1b6981ed3219f78a7a0209ff9222a0dacdf) of adding 4 new packages `libfdt`, `dtc`, `dtc-dev` and `uboot-tools` to the `lfedge/eve-alpine` cache.
 
