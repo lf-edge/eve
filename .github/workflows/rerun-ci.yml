@@ -71,8 +71,6 @@ jobs:
           REPO: ${{ github.repository }}
           MODE: ${{ steps.mode.outputs.mode }}
         run: |
-          set -euo pipefail
-
           # Get all runs for the branch (could be for old commits, so we'll filter below)
           RUNS=$(gh run list --repo "$REPO" --branch "$BRANCH" --json databaseId,status,conclusion,headSha,workflowName,displayTitle,event)
 
