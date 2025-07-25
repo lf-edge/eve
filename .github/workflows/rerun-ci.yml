@@ -76,6 +76,14 @@ jobs:
           # Get all runs for the branch (could be for old commits, so we'll filter below)
           RUNS=$(gh run list --repo "$REPO" --branch "$BRANCH" --json databaseId,status,conclusion,headSha,workflowName,displayTitle,event)
 
+          # Find Eden Runner run ID for this commit. We assume the PR already has an Eden Runner run as a status check (added by Eden Trusted WF)
+          EDEN_RUNNER_RUN=$(gh api "repos/$REPO/commits/$SHA/statuses" | jq -r \
+            '.[] | select(.context | contains("Eden Runner")) | .target_url' | \
+            grep -oE '/runs/[0-9]+' | awk -F'/' '{print $3}' | head -n 1 )
+
+          # Getting the status of the Eden Runner run if it exists
+          EDEN_RUNNER_STATUS=$(gh run view "$EDEN_RUNNER_RUN" --repo "$REPO" --json status -q .status 2>/dev/null || echo "not_found")
+
           # Cancel all in-progress runs for this commit if requested
           if [[ "$MODE" == "yellow" ]]; then
             echo "Cancelling all in-progress or queued runs for commit $SHA on branch $BRANCH..."
@@ -96,6 +104,30 @@ jobs:
               [ "$RUNS_LEFT" -eq 0 ] && break
             done
 
+            # Cancel the Eden Runner run if it exists and is in-progress
+            if [ -n "$EDEN_RUNNER_RUN" ] && [ "$EDEN_RUNNER_STATUS" != "completed" ]; then
+              echo "Eden Runner run $EDEN_RUNNER_RUN is in-progress, cancelling it..."
+              gh run cancel "$EDEN_RUNNER_RUN" --repo "$REPO"
+            else
+              echo "Eden Runner run $EDEN_RUNNER_RUN is not in-progress or does not exist."
+            fi
+
+            # Wait for the Eden Runner run to be fully cancelled
+            for i in {1..15}; do
+              sleep $((i))
+              # Check if the Eden Runner run is still in-progress
+              EDEN_RUNNER_STATUS=$(gh run view "$EDEN_RUNNER_RUN" --repo "$REPO" --json status -q .status 2>/dev/null || echo "not_found")
+              if [ "$EDEN_RUNNER_STATUS" == "completed" ]; then
+                echo "Eden Runner run $EDEN_RUNNER_RUN is now completed."
+                break
+              elif [ "$EDEN_RUNNER_STATUS" == "not_found" ]; then
+                echo "Eden Runner run $EDEN_RUNNER_RUN not found, assuming it was cancelled."
+                break
+              else
+                echo "Waiting for Eden Runner run $EDEN_RUNNER_RUN to complete..."
+              fi
+            done
+
             # Refresh RUNS after cancellation!
             RUNS=$(gh run list --repo "$REPO" --branch "$BRANCH" --json databaseId,status,conclusion,headSha,workflowName,displayTitle,event)
           fi
@@ -108,3 +140,10 @@ jobs:
                 echo "Re-running failed/canceled run $run_id"
                 gh run rerun "$run_id" --repo "$REPO"
               done
+          # Rerun the Eden Runner run if it exists
+          if [ -n "$EDEN_RUNNER_RUN" ]; then
+            echo "Re-running Eden Runner run $EDEN_RUNNER_RUN"
+            gh run rerun "$EDEN_RUNNER_RUN" --repo "$REPO"
+          else
+            echo "No Eden Runner run found for commit $SHA"
+          fi
