@@ -771,7 +771,7 @@ ifeq ($(ROOTFS_FORMAT),squash)
 endif
 	$(QUIET): $@: Succeeded
 
-$(GET_DEPS):
+$(GET_DEPS): tools/get-deps/*.go
 	$(MAKE) -C $(GET_DEPS_DIR) GOOS=$(LOCAL_GOOS)
 
 sbom_info:
