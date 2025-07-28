@@ -345,6 +345,9 @@ func main() {
 			if d != pkgName {
 				// Write a single dependency of the package
 				writeToFile(outfile, p.printDep(pkgName, d))
+				exportPkgName := fmt.Sprintf("%s-cache-export-docker-load", pkgName[4:])
+				exportD := fmt.Sprintf("%s-cache-export-docker-load", d[4:])
+				writeToFile(outfile, p.printDep(exportPkgName, exportD))
 			}
 		}
 	}
