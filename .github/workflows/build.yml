@@ -18,26 +18,18 @@ concurrency:
 
 jobs:
   packages:
-    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [zededa-ubuntu-2204, zededa-ubuntu-2204-arm64]
-        arch: [arm64, amd64]
-        platform: [generic, nvidia-jp5, nvidia-jp6]
+        arch: [ arm64, amd64, riscv64 ]
+        platform: [ generic ]
         include:
-          - os: zededa-ubuntu-2204
-            arch: riscv64
-            platform: generic
-        exclude:
-          - os: zededa-ubuntu-2204-arm64
-            arch: amd64
-          - os: zededa-ubuntu-2204
-            arch: arm64
-          - arch: amd64
+          - arch: arm64
             platform: nvidia-jp5
-          - arch: amd64
+          - arch: arm64
             platform: nvidia-jp6
+    runs-on: ${{ matrix.arch == 'arm64' && 'zededa-ubuntu-2204-arm64' || 'zededa-ubuntu-2204' }}
+
     steps:
       - name: Starting Report
         run: |
@@ -96,39 +88,29 @@ jobs:
 
   eve:
     needs: packages  # all packages for all platforms must be built first
-    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [zededa-ubuntu-2204, zededa-ubuntu-2204-arm64]
         arch: [arm64, amd64]
-        hv: [xen, kvm, kubevirt]
-        platform: ["generic"]
+        hv: [xen, kvm]
+        platform: [generic]
         include:
           - arch: riscv64
-            os: zededa-ubuntu-2204
             hv: mini
-            platform: "generic"
+            platform: generic
           - arch: amd64
-            os: zededa-ubuntu-2204
             hv: kvm
-            platform: "rt"
+            platform: rt
           - arch: arm64
-            os: zededa-ubuntu-2204-arm64
             hv: kvm
-            platform: "nvidia-jp5"
+            platform: nvidia-jp5
           - arch: arm64
-            os: zededa-ubuntu-2204-arm64
             hv: kvm
-            platform: "nvidia-jp6"
-        exclude:
-          - arch: arm64
-            os: zededa-ubuntu-2204
+            platform: nvidia-jp6
           - arch: amd64
-            os: zededa-ubuntu-2204-arm64
-          - arch: arm64
             hv: kubevirt
-            platform: "generic"
+            platform: generic
+    runs-on: ${{ matrix.arch == 'arm64' && 'zededa-ubuntu-2204-arm64' || 'zededa-ubuntu-2204' }}
 
     steps:
       - uses: actions/checkout@v4
