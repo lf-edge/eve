@@ -14,7 +14,7 @@ import (
 	"path/filepath"
 	"regexp"
 
-	"github.com/containerd/containerd/platforms"
+	"github.com/containerd/platforms"
 	"github.com/linuxkit/linuxkit/src/cmd/linuxkit/moby"
 	"github.com/moby/buildkit/frontend/dockerfile/instructions"
 	"github.com/moby/buildkit/frontend/dockerfile/parser"

@@ -3,18 +3,17 @@ module get-deps
 go 1.21
 
 require (
-	github.com/containerd/containerd v1.7.27
+	github.com/containerd/platforms v0.2.1
 	github.com/linuxkit/linuxkit/src/cmd/linuxkit v0.0.0-20240611152911-4f89f4f67e39
 	github.com/moby/buildkit v0.14.1
 	github.com/opencontainers/image-spec v1.1.0
 )
 
 require (
-	github.com/Microsoft/hcsshim v0.11.7 // indirect
 	github.com/agext/levenshtein v1.2.3 // indirect
+	github.com/containerd/containerd v1.7.27 // indirect
 	github.com/containerd/errdefs v0.3.0 // indirect
 	github.com/containerd/log v0.1.0 // indirect
-	github.com/containerd/platforms v0.2.1 // indirect
 	github.com/containerd/stargz-snapshotter/estargz v0.15.1 // indirect
 	github.com/containerd/typeurl/v2 v2.1.1 // indirect
 	github.com/docker/go-units v0.5.0 // indirect
