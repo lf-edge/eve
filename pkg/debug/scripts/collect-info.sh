@@ -6,7 +6,7 @@
 
 # Script version, don't forget to bump up once something is changed
 
-VERSION=38
+VERSION=39
 # Add required packages here, it will be passed to "apk add".
 # Once something added here don't forget to add the same package
 # to the Dockerfile ('ENV PKGS' line) of the debug container,
@@ -44,18 +44,18 @@ usage()
     echo "Collect-logs mode:"
     echo "       -s tar whole /sysfs"
     echo "       -t NUMBER-OF-DAYS    - collect logs from the last NUMBER-OF-DAYS [0-30]. Set to 0 to not include /persist/newlog logs."
-    echo ""
-    echo "Read-logs mode:"
-    echo "       -d                   - read device logs only"
-    echo "       -a APPLICATION-UUID  - read specified application logs only"
-    echo "       -e                   - additional edgeview string in filename"
-    echo "       -j                   - output logs in json"
     echo "       -u server            - upload logs via http to server with credentials in AUTHORIZATION environment variable"
     echo "                              AUTHORIZATION is the value for the http header called 'Authorization'"
     echo "                              To use basic auth with user-id 'Aladdin' and password 'open sesame', it would be the following:"
     echo "                              'Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ=='"
     echo "                              To create the base64-encoded value, the following can be used:"
     echo "                              echo -n 'Aladdin:open sesame' | base64"
+    echo ""
+    echo "Read-logs mode:"
+    echo "       -d                   - read device logs only"
+    echo "       -a APPLICATION-UUID  - read specified application logs only"
+    echo "       -e                   - additional edgeview string in filename"
+    echo "       -j                   - output logs in json"
     exit 1
 }
 
