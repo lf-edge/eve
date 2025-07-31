@@ -6,6 +6,7 @@ metadata:
   namespace: kubevirt
 spec:
   configuration:
+    vmStateStorageClass: longhorn
     permittedHostDevices:
       pciHostDevices:   # <- PCIe passthrough devices like nvme drives/NIC
       mediatedDevices:  # <- GPUs
@@ -17,3 +18,4 @@ spec:
         - Snapshot
         - HostDevices
         - GPU
+        - VMPersistentState
