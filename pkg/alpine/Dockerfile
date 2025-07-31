@@ -12,6 +12,7 @@ ARG ALPINE_VERSION=3.16
 # this is only needed once, when this package
 # is rebased on the new version of Alpine and
 # you have to have FROM alpine:x.y.z above:
+# Trigger update for go package
 RUN apk update && apk upgrade -a
 
 # Copy Dockerfile so we can include it in the hash
@@ -57,13 +58,13 @@ COPY eve-alpine-deploy.sh go-compile.sh /bin/
 RUN apk update && apk upgrade -a
 
 # define arch-specific envs
-FROM scratch as final-amd64
+FROM scratch AS final-amd64
 ENV EVE_BUILD_ARCH=x86_64
 ENV EVE_TARGET_ARCH=x86_64
-FROM scratch as final-arm64
+FROM scratch AS final-arm64
 ENV EVE_BUILD_ARCH=aarch64
 ENV EVE_TARGET_ARCH=aarch64
-FROM scratch as final-riscv64
+FROM scratch AS final-riscv64
 ENV EVE_BUILD_ARCH=riscv64
 ENV EVE_TARGET_ARCH=riscv64
 
