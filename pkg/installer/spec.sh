@@ -328,7 +328,6 @@ print_usb_devices() {
         then
             cost=10
             assigngrp="modem${busAndPort}"
-            assigngrp=$(get_assignmentgroup "${ifname}" "${pciaddr}")
             ztype="IO_TYPE_WWAN"
             labelprefix="WWAN"
         fi
