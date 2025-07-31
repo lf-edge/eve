@@ -318,6 +318,15 @@ func (ctx kubevirtContext) CreateReplicaVMIConfig(domainName string, config type
 	vmi.Spec.Networks = nads
 	vmi.Spec.Domain.Devices.Interfaces = intfs
 
+	// If FML type, set the firmware bootloader to EFI
+	if config.VirtualizationMode == types.FML {
+		if runtime.GOARCH == "amd64" {
+			addEFIBootLoader(&vmi.Spec)
+		} else {
+			return logError("FML app not supported on architecture %v", runtime.GOARCH)
+		}
+	}
+
 	// First check the diskStatusList and ignore 9P
 	// Set Storage
 	if len(diskStatusList) > 0 {
@@ -1709,6 +1718,19 @@ func addKernelBootContainer(spec *v1.VirtualMachineInstanceSpec, image, kernelAr
 	return spec
 }
 
+func addEFIBootLoader(spec *v1.VirtualMachineInstanceSpec) {
+	if spec.Domain.Firmware == nil {
+		spec.Domain.Firmware = &v1.Firmware{}
+	}
+	// Refer https://pkg.go.dev/kubevirt.io/api/core/v1#EFI
+	spec.Domain.Firmware.Bootloader = &v1.Bootloader{
+		EFI: &v1.EFI{
+			SecureBoot: ptrBool(false), // For this we need SMM CPU feature enabled
+			Persistent: ptrBool(true),
+		},
+	}
+}
+
 // PCIReserve reserves a PCI device for Kubevirt
 func (ctx kubevirtContext) PCIReserve(long string) error {
 	return PCIReserveGeneric(long)
@@ -1779,4 +1801,8 @@ func isK3sUnreachable(err error) bool {
 		return true
 	}
 	return false
+}
+
+func ptrBool(b bool) *bool {
+	return &b
 }
