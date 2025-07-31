@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"strconv"
 	"strings"
 	"time"
 
@@ -279,9 +280,12 @@ func RolloutDiskToPVC(ctx context.Context, log *base.LogObject, exists bool,
 	// virtctl image-upload -n eve-kube-app pvc pvcname  --no-create --storage-class longhorn --image-path=<diskfile>
 	// --insecure --uploadproxy-url https://10.43.31.180:8443  --access-mode RWO --block-volume --size 1000M
 
+	uploadPodServerStartTimeBase := int64(600) // First upload may need to wait for image download of the uploader itself
+	virtctlUploadServerRetryMax := int64(10)
 	args := []string{"image-upload", "-n", EVEKubeNameSpace, "pvc", pvcName,
 		"--storage-class", "longhorn", "--image-path", diskfile, "--insecure",
-		"--uploadproxy-url", uploadproxyURL, "--kubeconfig", EVEkubeConfigFile}
+		"--uploadproxy-url", uploadproxyURL, "--kubeconfig", EVEkubeConfigFile,
+		"--retry", strconv.FormatInt(virtctlUploadServerRetryMax, 10), "--wait-secs", strconv.FormatInt(uploadPodServerStartTimeBase, 10)}
 
 	args = append(args, "--access-mode", "ReadWriteOnce")
 
@@ -307,8 +311,8 @@ func RolloutDiskToPVC(ctx context.Context, log *base.LogObject, exists bool,
 	timeoutBaseSeconds := int64(300) // 5 min
 	volSizeGB := int64(pvcSize / 1024 / 1024 / 1024)
 	timeoutPer1GBSeconds := int64(120)
-	timeout := time.Duration(timeoutBaseSeconds + (volSizeGB * timeoutPer1GBSeconds))
-	log.Noticef("RolloutDiskToPVC calculated timeout to %d seconds due to volume size %d GB", timeout, volSizeGB)
+	timeout := time.Duration(uploadPodServerStartTimeBase + timeoutBaseSeconds + (volSizeGB * timeoutPer1GBSeconds))
+	log.Noticef("RolloutDiskToPVC pvc:%s calculated timeout to %d seconds due to volume size %d GB", pvcName, timeout, volSizeGB)
 
 	startTimeOverall := time.Now()
 
