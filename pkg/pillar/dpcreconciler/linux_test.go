@@ -723,9 +723,9 @@ func TestWireless(test *testing.T) {
 	t.Expect(itemDescription(wwan)).To(ContainSubstring("RadioSilence:true"))
 	t.Expect(itemDescription(wwan)).To(ContainSubstring(fmt.Sprintf("Timestamp:%v", rsTimestamp)))
 	t.Expect(itemCountWithType(generic.PhysIfTypename)).To(Equal(2))
-	t.Expect(itemCountWithType(generic.AdapterTypename)).To(Equal(2))
+	t.Expect(itemCountWithType(generic.AdapterTypename)).To(Equal(1))
 	t.Expect(itemCountWithType(generic.AdapterAddrsTypename)).To(Equal(2))
-	t.Expect(itemCountWithType(generic.DhcpcdTypename)).To(Equal(1))
+	t.Expect(itemCountWithType(generic.DhcpcdTypename)).To(Equal(0))
 	t.Expect(itemCountWithType(generic.IPv4RouteTypename)).To(Equal(0))
 	t.Expect(itemCountWithType(generic.ArpTypename)).To(Equal(0))
 }
