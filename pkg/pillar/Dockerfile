@@ -11,7 +11,7 @@ ARG BUILD_PKGS_BASE="git gcc linux-headers libc-dev make linux-pam-dev m4 findut
 ARG EVE_ALPINE_IMAGE=lfedge/eve-alpine:0f2e0da38e30753c68410727a6cc269e57ff74f2
 
 FROM lfedge/eve-uefi:506a15635db5b97f9540039a65d896a902d0e10d as uefi-build
-FROM lfedge/eve-dom0-ztools:09f378d92d6c8ada04fb8e9cf5d45fc8fdf934f9 as zfs
+FROM lfedge/eve-dom0-ztools:e785d3b52bd9b2db9bceb4c2501cd1f87fe96d1b as zfs
 RUN mkdir /out
 # copy zfs-related files from dom0-ztools using prepared list of files
 RUN while read -r x; do \
@@ -33,7 +33,7 @@ ARG BUILD_PKGS_BASE
 RUN BUILD_PKGS="${BUILD_PKGS_BASE}" eve-alpine-deploy.sh
 
 # hadolint ignore=DL3029
-FROM --platform=${BUILDPLATFORM} lfedge/eve-cross-compilers:250abc77c8c39664905b66a2673102ec5cd3b056 AS cross-compilers
+FROM --platform=${BUILDPLATFORM} lfedge/eve-cross-compilers:6c849909e9a62da563148c70897f74e6d2689dd0 AS cross-compilers
 
 # will use several packages from target arch and copy them to sysroot
 # hadolint ignore=DL3006
@@ -137,9 +137,9 @@ RUN --mount=type=cache,target=/root/.cache/go-build if [ "${TEST_TOOLS}" = "y" ]
     GOBIN=/final/opt/ GOFLAGS="" go install gotest.tools/gotestsum@v1.7.0; \
 fi
 
-FROM lfedge/eve-fscrypt:68d40d7e70585669adef91279ba39dd134d3a15f as fscrypt
+FROM lfedge/eve-fscrypt:d4cdcc1a6d34cb03ba17f05f6a493d156281e01e as fscrypt
 FROM lfedge/eve-dnsmasq:b8ca1cb29bf98184b90eeb91e0705696c0b80abd as dnsmasq
-FROM lfedge/eve-gpt-tools:51ecda7bc185c655c1d0423228dc83e29d4c674d as gpttools
+FROM lfedge/eve-gpt-tools:825f5ad1b706cffeb1dccd75f0759d755d87289e as gpttools
 
 # collector collects everything together and then does any processing like stripping binaries.
 # We use this interim "collector" so that we can do processing.
