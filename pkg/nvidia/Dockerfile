@@ -3,7 +3,7 @@
 # Copyright (c) 2024 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-FROM lfedge/eve-alpine:82df60e43ab9f8c935584b8c7b4d0a4b0271d608 as build-base
+FROM lfedge/eve-alpine:2ed33236f1eea746532f612d6c4b7779c5da2193 as build-base
 ENV BUILD_PKGS="autoconf automake build-base coreutils gettext git glib-dev go libtool libmd-dev ncurses-dev tar xz-dev yq zstd-dev"
 
 # This is an arm64 (only) package, nothing to do for other architectures
