@@ -1,4 +1,4 @@
-FROM lfedge/eve-alpine:82df60e43ab9f8c935584b8c7b4d0a4b0271d608 as build-base
+FROM lfedge/eve-alpine:2ed33236f1eea746532f612d6c4b7779c5da2193 as build-base
 ENV BUILD_PKGS abuild curl tar make linux-headers patch g++ git gcc ncurses-dev autoconf file sudo
 RUN eve-alpine-deploy.sh
 
@@ -28,8 +28,8 @@ RUN tar -xzvf aports.tar.gz --strip-components=1 && rm -rf aports.tar.gz
 ENV BINUTILS_VERSION 2.38
 ENV MUSL_VERSION 1.2.3
 ENV GCC_VERSION 11.2.1_git20220219
-ADD --chown=builder:abuild https://ftp.gnu.org/gnu/binutils/binutils-${BINUTILS_VERSION}.tar.xz /var/cache/distfiles/binutils-${BINUTILS_VERSION}.tar.xz
-ADD --chown=builder:abuild https://git.musl-libc.org/cgit/musl/snapshot/v${MUSL_VERSION}.tar.gz /var/cache/distfiles/musl-v${MUSL_VERSION}.tar.gz
+ADD --chown=builder:abuild https://launchpad.net/ubuntu/+archive/primary/+sourcefiles/binutils/2.38-4ubuntu2.6/binutils_${BINUTILS_VERSION}.orig.tar.xz /var/cache/distfiles/binutils-${BINUTILS_VERSION}.tar.xz
+ADD --chown=builder:abuild http://deb.debian.org/debian/pool/main/m/musl/musl_${MUSL_VERSION}.orig.tar.gz /var/cache/distfiles/musl-${MUSL_VERSION}.tar.gz
 ADD --chown=builder:abuild https://dev.alpinelinux.org/~nenolod/gcc-${GCC_VERSION}.tar.xz /var/cache/distfiles/gcc-${GCC_VERSION}.tar.xz
 
 RUN for patch in /home/builder/patches/*patch ; do patch -p1 < "$patch" ; done
@@ -47,7 +47,7 @@ FROM build-base as build-armhf
 # we do not support cross-compilers for riscv64 host
 # as gcc-gnat is not available on riscv64
 # we cannot build cross-compilers without additional patches
-FROM lfedge/eve-alpine:82df60e43ab9f8c935584b8c7b4d0a4b0271d608 as build-riscv64
+FROM lfedge/eve-alpine:2ed33236f1eea746532f612d6c4b7779c5da2193 as build-riscv64
 
 # hadolint ignore=DL3006
 FROM build-${TARGETARCH} as build

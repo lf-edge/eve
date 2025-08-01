@@ -3,3 +3,4 @@
 .*\.dts
 .*\.md
 ^.codespellignorelines
+pkg/cross-compilers/APKBUILD

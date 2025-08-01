@@ -8,9 +8,9 @@
 # has a fast path for stack unwinding. This also happens
 # to be a perfect place to put any other kind of debug info
 # into the package: see abuild/etc/abuild.conf.
-FROM lfedge/eve-recovertpm:0da17f65aba4fb09c83944cf5847dd7b523118b4 as recovertpm
+FROM lfedge/eve-recovertpm:b5f3dc2cd35dc2c763feade42d53aa9b94507b15 as recovertpm
 FROM lfedge/eve-bpftrace:64f87b9dfce42524b0364159a6cc3b88ae3445b2 AS bpftrace
-FROM lfedge/eve-alpine:82df60e43ab9f8c935584b8c7b4d0a4b0271d608 as build
+FROM lfedge/eve-alpine:2ed33236f1eea746532f612d6c4b7779c5da2193 as build
 ENV BUILD_PKGS abuild curl tar make linux-headers patch g++ git gcc gpg ncurses-dev autoconf openssl-dev zlib-dev
 # Feel free to add additional packages here, but be aware that
 # EVE's rootfs image can be no larger than 300Mb (and don't
@@ -34,11 +34,17 @@ RUN adduser -G abuild -D builder || :
 RUN su builder -c 'abuild-keygen -a -n'
 
 COPY --chown=builder:abuild abuild/ /
-ENV MUSL_VERSION v1.2.3
-ENV DISTFILES_MIRROR /tmp/mirror
-ADD --chown=builder:abuild https://git.musl-libc.org/cgit/musl/snapshot/${MUSL_VERSION}.tar.gz ${DISTFILES_MIRROR}/musl-${MUSL_VERSION}.tar.gz
-RUN su builder -c 'cd /musl && abuild checksum && abuild -r'
+ENV MUSL_VERSION="1.2.3"
+ENV DISTFILES_MIRROR="/tmp/mirror"
+RUN mkdir -p ${DISTFILES_MIRROR}
+ADD --chown=builder:abuild http://ftp.us.debian.org/debian/pool/main/m/musl/musl_${MUSL_VERSION}.orig.tar.gz /var/cache/distfiles//musl-v${MUSL_VERSION}.tar.gz
+USER builder
+WORKDIR /musl
+RUN abuild checksum
+RUN abuild -r
 
+USER root
+WORKDIR /
 # now install it locally so we can pick it up later on below
 # hadolint ignore=DL3019,DL3018
 RUN apk add -p /out --allow-untrusted /home/builder/packages/*/musl-1.2*.apk
