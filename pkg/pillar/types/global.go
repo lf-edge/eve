@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/sirupsen/logrus" // OK for logrus.Fatal
 )
@@ -33,6 +34,9 @@ const (
 	SenderStatusFailed                                 // Other failure
 	SenderStatusDebug                                  // Not a failure
 )
+
+// see also https://brandur.org/fragments/go-max-time-duration
+const maxDuration time.Duration = 1<<63 - 1
 
 // String prints ASCII
 func (status SenderStatus) String() string {
@@ -434,6 +438,8 @@ const (
 	ConfigItemTypeString
 	// ConfigItemTypeTriState - for config item's who's value is a tristate
 	ConfigItemTypeTriState
+	// ConfigItemTypeDuration - for config item's who's value is a duration
+	ConfigItemTypeDuration
 )
 
 var (
@@ -485,6 +491,10 @@ type ConfigItemSpec struct {
 	IntMax     uint32
 	IntDefault uint32
 
+	DurationMin     time.Duration
+	DurationMax     time.Duration
+	DurationDefault time.Duration
+
 	StringValidator Validator
 	StringDefault   string
 	BoolDefault     bool
@@ -505,6 +515,8 @@ func (configSpec ConfigItemSpec) DefaultValue() ConfigItemValue {
 		item.StrValue = configSpec.StringDefault
 	case ConfigItemTypeTriState:
 		item.TriStateValue = configSpec.TriStateDefault
+	case ConfigItemTypeDuration:
+		item.DurationValue = configSpec.DurationDefault
 	}
 	return item
 }
@@ -518,6 +530,24 @@ type ConfigItemSpecMap struct {
 	GlobalSettings map[GlobalSettingKey]ConfigItemSpec
 	// AgentSettingKey - Map Key: AgentSettingKey, ConfigItemValue.Key: AgentSettingKey
 	AgentSettings map[AgentSettingKey]ConfigItemSpec
+}
+
+// AddDurationItem - Adds integer item to specMap
+func (specMap *ConfigItemSpecMap) AddDurationItem(key GlobalSettingKey,
+	defaultDuration, minDuration, maxDuration time.Duration) {
+
+	if defaultDuration < minDuration || defaultDuration > maxDuration {
+		logrus.Fatalf("Adding int item %s failed. Value does not meet given min/max criteria", key)
+	}
+
+	configItem := ConfigItemSpec{
+		ItemType:        ConfigItemTypeDuration,
+		Key:             string(key),
+		DurationDefault: defaultDuration,
+		DurationMin:     minDuration,
+		DurationMax:     maxDuration,
+	}
+	specMap.GlobalSettings[key] = configItem
 }
 
 // AddIntItem - Adds integer item to specMap
@@ -691,6 +721,7 @@ type ConfigItemValue struct {
 	StrValue      string
 	BoolValue     bool
 	TriStateValue TriState
+	DurationValue time.Duration
 }
 
 // StringValue - Returns the value in String Format
@@ -704,6 +735,8 @@ func (val ConfigItemValue) StringValue() string {
 		return val.StrValue
 	case ConfigItemTypeTriState:
 		return FormatTriState(val.TriStateValue)
+	case ConfigItemTypeDuration:
+		return fmt.Sprintf("%d", uint64(val.DurationValue.Seconds()))
 	default:
 		return fmt.Sprintf("UnknownType(%d)", val.ItemType)
 	}
@@ -767,6 +800,17 @@ func (configPtr *ConfigItemValueMap) GlobalValueInt(key GlobalSettingKey) uint32
 		return val.IntValue
 	} else {
 		logrus.Fatalf("***Key(%s) is of Type(%d) NOT Int", key, val.ItemType)
+		return 0
+	}
+}
+
+// GlobalValueDuration - Gets a duration global setting value
+func (configPtr *ConfigItemValueMap) GlobalValueDuration(key GlobalSettingKey) time.Duration {
+	val := configPtr.globalConfigItemValue(key)
+	if val.ItemType == ConfigItemTypeDuration {
+		return val.DurationValue
+	} else {
+		logrus.Fatalf("***Key(%s) is of Type(%d) NOT time.Duration", key, val.ItemType)
 		return 0
 	}
 }
@@ -842,7 +886,7 @@ func (configPtr *ConfigItemValueMap) DelAgentValue(key AgentSettingKey, agentNam
 	}
 }
 
-// SetGlobalValueInt - sets a int value for a key
+// SetGlobalValueInt - sets an int value for a key
 func (configPtr *ConfigItemValueMap) SetGlobalValueInt(key GlobalSettingKey, value uint32) {
 	if configPtr.GlobalSettings == nil {
 		configPtr.GlobalSettings = make(map[GlobalSettingKey]ConfigItemValue)
@@ -896,22 +940,29 @@ func (configPtr *ConfigItemValueMap) ResetGlobalValue(key GlobalSettingKey) {
 	configPtr.GlobalSettings[key] = specMap.GlobalSettings[key].DefaultValue()
 }
 
+func (configSpec ConfigItemSpec) parseUint(itemValue string) (uint32, error) {
+	i64, err := strconv.ParseUint(itemValue, 10, 32)
+	if err == nil {
+		val := uint32(i64)
+		if val > configSpec.IntMax || val < configSpec.IntMin {
+			retErr := fmt.Errorf("value out of bounds. Parsed value: %d, Max: %d, Min: %d",
+				val, configSpec.IntMax, configSpec.IntMin)
+			return val, retErr
+		} else {
+			return val, err
+		}
+	}
+
+	return 0, err
+}
+
 func (configSpec ConfigItemSpec) parseValue(itemValue string) (ConfigItemValue, error) {
 	value := configSpec.DefaultValue()
 	var retErr error
 	if configSpec.ItemType == ConfigItemTypeInt {
-		i64, err := strconv.ParseUint(itemValue, 10, 32)
-		if err == nil {
-			val := uint32(i64)
-			if val > configSpec.IntMax || val < configSpec.IntMin {
-				retErr = fmt.Errorf("value out of bounds. Parsed value: %d, Max: %d, Min: %d",
-					val, configSpec.IntMax, configSpec.IntMin)
-			} else {
-				value.IntValue = val
-			}
-		} else {
+		value.IntValue, retErr = configSpec.parseUint(itemValue)
+		if retErr != nil {
 			value.IntValue = configSpec.IntDefault
-			retErr = err
 		}
 	} else if configSpec.ItemType == ConfigItemTypeTriState {
 		newTs, err := ParseTriState(itemValue)
@@ -936,6 +987,19 @@ func (configSpec ConfigItemSpec) parseValue(itemValue string) (ConfigItemValue, 
 		} else {
 			return value, err
 		}
+	} else if configSpec.ItemType == ConfigItemTypeDuration {
+		val, err := configSpec.parseUint(itemValue)
+		if err == nil {
+			if val > configSpec.IntMax || val < configSpec.IntMin {
+				retErr = fmt.Errorf("value out of bounds. Parsed value: %d, Max: %d, Min: %d",
+					val, configSpec.IntMax, configSpec.IntMin)
+			} else {
+				value.DurationValue = time.Duration(val * uint32(time.Second))
+			}
+		} else {
+			value.DurationValue = configSpec.DurationDefault
+			retErr = err
+		}
 	}
 	return value, retErr
 }
@@ -959,7 +1023,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddIntItem(ConfigInterval, 60, 5, HourInSec)
 	// Additional safety to periodically fetch the controller certificate
 	// Useful for odd cases when the triggered updates do not work.
-	configItemSpecMap.AddIntItem(CertInterval, 24*HourInSec, 60, 0xFFFFFFFF)
+	configItemSpecMap.AddDurationItem(CertInterval, 24*time.Hour, 60*time.Second, maxDuration)
 	// timer.metric.diskscan.interval (seconds)
 	// Shorter interval can lead to device scanning the disk frequently which is a costly operation.
 	configItemSpecMap.AddIntItem(DiskScanMetricInterval, 300, 5, HourInSec)
@@ -969,7 +1033,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddIntItem(MetricInterval, 60, 5, HourInSec)
 	// timer.metric.hardwarehealth.interval (seconds)
 	// Default value 12 hours minimum value 6 hours.
-	configItemSpecMap.AddIntItem(HardwareHealthInterval, 43200, 21600, 0xFFFFFFFF)
+	configItemSpecMap.AddDurationItem(HardwareHealthInterval, 43200*time.Second, 21600*time.Second, maxDuration)
 	// timer.reboot.no.network (seconds) - reboot after no controller connectivity
 	// Max designed to allow the option of never rebooting even if device
 	//  can't connect to the cloud
