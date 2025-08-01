@@ -76,9 +76,12 @@ func (a Adapter) String() string {
 	return fmt.Sprintf("Network Adapter: %#+v", a)
 }
 
-// Dependencies returns underlying lower-layer adapter as the dependency
+// Dependencies returns the underlying lower-layer adapter as the dependency
 // (unless this is physical interface at the lowest layer).
+// For WiFi we additionally require that rfkill for wlan is unblocked first
+// (otherwise LinkSetUp and other netlink calls will fail).
 func (a Adapter) Dependencies() (deps []depgraph.Dependency) {
+	// Dependency 1: underlying lower-layer adapter must exist.
 	var depType string
 	var mustSatisfy func(item depgraph.Item) bool
 	expectedParentUsage := genericitems.IOUsageL3Adapter
@@ -103,16 +106,30 @@ func (a Adapter) Dependencies() (deps []depgraph.Dependency) {
 			return bond.Usage == expectedParentUsage
 		}
 	}
-	return []depgraph.Dependency{
-		{
-			RequiredItem: depgraph.ItemRef{
-				ItemType: depType,
-				ItemName: a.IfName,
-			},
-			MustSatisfy: mustSatisfy,
-			Description: "Underlying network interface must exist",
+	deps = append(deps, depgraph.Dependency{
+		RequiredItem: depgraph.ItemRef{
+			ItemType: depType,
+			ItemName: a.IfName,
 		},
+		MustSatisfy: mustSatisfy,
+		Description: "Underlying network interface must exist",
+	})
+	// Dependency 2: WiFi requires rfkill unblock to be performed first.
+	if a.WirelessType == types.WirelessTypeWifi {
+		deps = append(deps, depgraph.Dependency{
+			RequiredItem: depgraph.Reference(Wlan{}),
+			MustSatisfy: func(item depgraph.Item) bool {
+				wlan, isWlan := item.(Wlan)
+				if !isWlan {
+					// unreachable
+					return false
+				}
+				return wlan.EnableRF
+			},
+			Description: "radio transmission must be enabled",
+		})
 	}
+	return deps
 }
 
 // GetMTU returns MTU configured for the Adapter (applied to bridge).
