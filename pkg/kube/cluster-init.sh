@@ -396,7 +396,7 @@ are_all_pods_ready() {
 check_and_run_vnc() {
   pid=$(pgrep -f "/usr/bin/virtctl vnc" )
   # if remote-console config file exist, and either has not started, or need to restart
-  if [ -f "$VMICONFIG_FILENAME" ] && { [ "$VNC_RUNNING" = false ] || [ -z "$pid" ]; } then
+  if [ -f "$VMICONFIG_FILENAME" ] && { [ "$VNC_RUNNING" = false ] || [ -z "$pid" ]; }; then
     vmiName=""
     vmiPort=""
 
@@ -554,6 +554,7 @@ check_cluster_config_change() {
         Registration_Cleanup
         rm /var/lib/left_edge_node_cluster_mode
         touch /var/lib/convert-to-single-node
+        # We're transitioning from cluster mode to single node, so reboot is still needed
         reboot
       fi
     else
@@ -596,6 +597,18 @@ check_cluster_config_change() {
 
             logmsg "provision config file for node to cluster mode"
             provision_cluster_config_file true
+            if [ "$is_bootstrap" = "false" ]; then
+              # we got here because we know the bootstrap node is already running
+              # For a non-bootstrap node, create transition file and record timestamp
+              # This will be checked by check_cluster_transition_done function
+              # We have seen in some cases, the k3s server on this node can not join the cluster
+              # due to CA cert issues, and reboot is needed to get out of this state
+              # so we do not always reboot here, only if it is needed
+              echo "$(date +%s) 0" > /var/lib/transition-to-cluster
+              logmsg "Created transition file for non-bootstrap node joining cluster"
+            else
+              logmsg "bootstrap node, wait for k3s to start"
+            fi
 
             ## Allow the k3s loop to restart k3s
             echo "DONE" > "$TRANSITION_PIPE"  # Signal completion
@@ -622,10 +635,68 @@ check_cluster_config_change() {
     fi
 }
 
+# Function to check if the cluster transition is complete
+check_cluster_transition_done() {
+    # If the transition file does not exist, nothing to do
+    if [ ! -f /var/lib/transition-to-cluster ]; then
+        return 0
+    fi
+
+    logmsg "Checking cluster transition status..."
+
+    # Try to get nodes from the cluster
+    if kubectl get nodes >/dev/null 2>&1; then
+        # Check if we have at least two nodes in ready state
+        ready_nodes=$(kubectl get nodes --no-headers | grep -c " Ready ")
+        total_nodes=$(kubectl get nodes --no-headers | wc -l)
+
+        logmsg "Found $ready_nodes ready nodes out of $total_nodes total nodes"
+
+        if [ "$ready_nodes" -ge 2 ]; then
+            logmsg "Cluster transition complete: At least 2 nodes are ready"
+            rm -f /var/lib/transition-to-cluster
+            return 0
+        fi
+    fi
+
+    # Check if we've been waiting too long (10 minutes)
+    # File format is "timestamp reboot_count"
+    # Maximum reboot attempts is 3
+    file_content=$(cat /var/lib/transition-to-cluster)
+    transition_timestamp=$(echo "$file_content" | awk '{print $1}')
+    reboot_count=$(echo "$file_content" | awk '{print $2}')
+
+    current_timestamp=$(date +%s)
+    elapsed_time=$((current_timestamp - transition_timestamp))
+
+    if [ "$elapsed_time" -ge 600 ]; then # 10 minutes in seconds
+        logmsg "Cluster transition timeout: Been waiting for ${elapsed_time} seconds"
+
+        # Increment reboot counter
+        reboot_count=$((reboot_count + 1))
+
+        if [ "$reboot_count" -le 3 ]; then
+            # Update timestamp and reboot count in the same file
+            echo "$(date +%s) $reboot_count" > /var/lib/transition-to-cluster
+            logmsg "Rebooting system to retry cluster transition (attempt $reboot_count of 3)..."
+            reboot
+        else
+            logmsg "Maximum reboot attempts (3) reached. We will not reboot again."
+            # We could consider adding some recovery action here
+            rm -f /var/lib/transition-to-cluster
+        fi
+    else
+        logmsg "Still waiting for cluster transition: ${elapsed_time} seconds elapsed (timeout: 600 seconds)"
+    fi
+
+    return 1
+}
+
 monitor_cluster_config_change() {
     rm -f "$TRANSITION_FLAG_FILE"
     while true; do
         check_cluster_config_change
+        check_cluster_transition_done
         sleep 15
     done
 }
@@ -721,7 +792,7 @@ EOF
         counter=0
         touch "$CLUSTER_WAIT_FILE"
 
-        # Initialize ping counters before the loop (add this near the top of your function/script)
+        # Initialize ping counters before the loop
         ping_success_count=0
         ping_fail_count=0
 
@@ -825,7 +896,7 @@ else # a restart case, found all_components_initialized
     # got the cluster config, make the config.ymal now
    logmsg "Cluster config status ok, provision config.yaml and bootstrap-config.yaml"
 
-    # if we just converted to single node, then we need to wait for the bootstrap
+    # if we just converted to cluster mode, then we need to wait for the bootstrap
     # 'cluster' status before moving on to cluster mode
     provision_cluster_config_file $convert_to_single_node
     convert_to_single_node=false
