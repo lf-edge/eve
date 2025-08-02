@@ -720,6 +720,11 @@ EOF
         # Check if the join Server is available by kubernetes, wait here until it is ready
         counter=0
         touch "$CLUSTER_WAIT_FILE"
+
+        # Initialize ping counters before the loop (add this near the top of your function/script)
+        ping_success_count=0
+        ping_fail_count=0
+
         while true; do
           counter=$((counter+1))
           if curl --insecure --max-time 2 "https://$join_serverIP:6443" >/dev/null 2>&1; then
@@ -739,8 +744,16 @@ EOF
                 fi
             fi
           else
+                # if curl failed, we want to see if ping fails on join_serverIP
+                if ping -c 1 -W 1 "$join_serverIP" >/dev/null 2>&1; then
+                        ping_success_count=$((ping_success_count + 1))
+                        ping_result="success"
+                else
+                        ping_fail_count=$((ping_fail_count + 1))
+                        ping_result="fail"
+                fi
                 if [ $((counter % 30)) -eq 1 ]; then
-                        logmsg "Attempt $counter: curl to Endpoint https://$join_serverIP:6443 failed. Waiting for 10 seconds..."
+                        logmsg "Attempt $counter: curl to Endpoint https://$join_serverIP:6443 failed (ping $join_serverIP: $ping_result, success=$ping_success_count, fail=$ping_fail_count). Waiting for 10 seconds..."
                 fi
           fi
           sleep 10
