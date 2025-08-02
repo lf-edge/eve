@@ -398,7 +398,12 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		select {
 		case change := <-subControllerCert.MsgChan():
 			subControllerCert.ProcessChange(change)
-			controllerCertInitialized = true
+			log.Noticef("ControllerCert, len %d", len(subControllerCert.GetAll()))
+			// Seen issues where the change is triggered with no controller cert is in it
+			// the publication can be empty, so check the length
+			if len(subControllerCert.GetAll()) > 0 {
+				controllerCertInitialized = true
+			}
 
 		case change := <-subEdgeNodeCert.MsgChan():
 			subEdgeNodeCert.ProcessChange(change)
