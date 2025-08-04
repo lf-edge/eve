@@ -87,7 +87,7 @@ usage()
     exit 1
 }
 
-while getopts "vu:sha:djet:" o; do
+while getopts "vu:sha:djewt:" o; do
     case "$o" in
         h)
             usage
@@ -111,6 +111,9 @@ while getopts "vu:sha:djet:" o; do
             ;;
         e)
             INFO_DIR_SUFFIX="eve-info-edgeview-v$VERSION-$DEVICE_ID-$DATE"
+            ;;
+        w)
+            INFO_DIR_SUFFIX="wd-$INFO_DIR_SUFFIX"
             ;;
         s)
             TAR_WHOLE_SYS=1

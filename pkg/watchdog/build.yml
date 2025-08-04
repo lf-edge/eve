@@ -6,6 +6,7 @@ config:
     - /dev:/dev
     - /etc/resolv.conf:/etc/resolv.conf
     - /persist:/persist
+    - /usr/bin/ctr:/usr/bin/ctr
   pid: host
   capabilities:
     - all
