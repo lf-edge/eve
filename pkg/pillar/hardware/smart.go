@@ -40,13 +40,14 @@ func ReadSMARTinfoForDisks() (*types.DisksInformation, error) {
 		diskType := dev.Type()
 		dev.Close()
 
-		if diskType == "sata" {
+		switch diskType {
+		case "sata":
 			diskSmartInfo, _ = GetInfoFromSATAdisk(diskName)
-		} else if diskType == "nvme" {
+		case "nvme":
 			diskSmartInfo, _ = GetInfoFromNVMeDisk(diskName)
-		} else if diskType == "scsi" {
+		case "scsi":
 			diskSmartInfo, _ = GetInfoFromSCSIDisk(diskName)
-		} else {
+		default:
 			diskSmartInfo = getInfoFromUnknownDisk(diskName, diskType)
 		}
 
@@ -210,10 +211,18 @@ func GetInfoFromSATAdisk(diskName string) (*types.DiskSmartInfo, error) {
 		return diskInfo, diskInfo.Errors
 	}
 
+	thr, err := dev.ReadSMARTThresholds()
+	if err != nil {
+		diskInfo.Errors = fmt.Errorf("failed read S.M.A.R.T. thresholds info from SATA device with name: %s; error:%v", diskName, err)
+	}
+
 	for _, smart := range smartAttrList.Attrs {
 		smartAttr := new(types.DAttrTable)
 		smartAttr.ID = int(smart.Id)
 		smartAttr.AttributeName = smartAttrMap(smart.Id)
+		if smartAttr.AttributeName == "Unknown_Attribute" {
+			continue
+		}
 		smartAttr.Flags = smart.Flags
 		// Decode RAW_VALUE based on known special attribute formats
 		switch smart.Id {
@@ -239,6 +248,7 @@ func GetInfoFromSATAdisk(diskName string) (*types.DiskSmartInfo, error) {
 		}
 		smartAttr.Value = int64(smart.Current)
 		smartAttr.Worst = smart.Worst
+		smartAttr.Threshold = thr.Thresholds[smart.Id]
 		smartAttr.Type = getSmartType(smart.Flags)
 		diskInfo.SmartAttrs = append(diskInfo.SmartAttrs, smartAttr)
 	}
