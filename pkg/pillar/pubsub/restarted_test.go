@@ -57,25 +57,25 @@ func TestRestarted(t *testing.T) {
 
 	var events []string
 	events = nil
-	subCreateHandler := func(ctxArg interface{}, key string, status interface{}) {
+	subCreateHandler := func(ctxArg any, key string, status any) {
 		log.Functionf("subCreateHandler %s", key)
 		events = append(events, "create "+key)
 	}
-	subModifyHandler := func(ctxArg interface{}, key string, status interface{}, oldStatus interface{}) {
+	subModifyHandler := func(ctxArg any, key string, status any, oldStatus any) {
 		log.Functionf("subModifyHandler %s", key)
 		events = append(events, "modify "+key)
 	}
-	subDeleteHandler := func(ctxArg interface{}, key string, status interface{}) {
+	subDeleteHandler := func(ctxArg any, key string, status any) {
 		log.Functionf("subDeleteHandler %s", key)
 		events = append(events, "delete "+key)
 
 	}
-	subRestartHandler := func(ctxArg interface{}, restartCounter int) {
+	subRestartHandler := func(ctxArg any, restartCounter int) {
 		str := fmt.Sprintf("%d", restartCounter)
 		log.Functionf("subRestartHandler %s", str)
 		events = append(events, "restarted "+str)
 	}
-	subSynchronizedHandler := func(ctxArg interface{}, synchronized bool) {
+	subSynchronizedHandler := func(ctxArg any, synchronized bool) {
 		str := fmt.Sprintf("%t", synchronized)
 		log.Functionf("subSynchronizedHandler %s", str)
 		events = append(events, "synchronized "+str)
