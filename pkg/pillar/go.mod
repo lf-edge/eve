@@ -43,6 +43,7 @@ require (
 	github.com/miekg/dns v1.1.43
 	github.com/moby/sys/mountinfo v0.7.1
 	github.com/multiplay/go-edac v1.0.1
+	github.com/nkval/go-nkv v0.0.0-20250429104035-28081f691ca8
 	github.com/onsi/gomega v1.36.0
 	github.com/opencontainers/go-digest v1.0.0
 	github.com/opencontainers/image-spec v1.1.0
@@ -228,7 +229,6 @@ require (
 	github.com/moby/spdystream v0.2.0 // indirect
 	github.com/moby/sys/userns v0.1.0 // indirect
 	github.com/monochromegane/go-gitignore v0.0.0-20200626010858-205db1a8cc00 // indirect
-	github.com/nkval/go-nkv v0.0.0-20250429104035-28081f691ca8 // indirect
 	github.com/opencontainers/runtime-tools v0.9.1-0.20221107090550-2e043c6bd626 // indirect
 	github.com/openshift/api v0.0.0-20230503133300-8bbcb7ca7183 // indirect
 	github.com/openshift/client-go v0.0.0-20210112165513-ebc401615f47 // indirect

@@ -19,6 +19,7 @@ type Subscriber struct {
 }
 
 func (e *Subscriber) Start() error {
+	e.C <- pubsub.Change{Operation: pubsub.Sync, Key: "done"}
 	_, err := e.nkvClient.Subscribe(e.path()+".*", func(n p.Notification) {
 		if n.Type == p.NotificationUpdate {
 			e.C <- pubsub.Change{Operation: pubsub.Modify, Key: n.Key, Value: n.Data}
