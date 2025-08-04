@@ -148,7 +148,7 @@ free_space() {
 }
 
 # Checking for low diskspace at bootup.
-# If there is less than 4Mbytes (MIN_DISKSPACE) then remove the content of the
+# If there is less than 4096 Mbytes (MIN_DISKSPACE) then remove the content of the
 # following directories in order until we have that amount of available space
 # following sub directories:
 PERSIST_CLEANUPS='log netdump kcrashes memory-monitor/output eve-info patchEnvelopesCache patchEnvelopesUsageCache newlog/keepSentQueue newlog/failedUpload newlog/appUpload newlog/devUpload kubelog containerd-system-root vault/downloader vault/verifier agentdebug'
