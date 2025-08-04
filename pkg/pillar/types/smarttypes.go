@@ -71,6 +71,7 @@ type DAttrTable struct {
 	AttributeName string
 	Value         int64
 	Worst         uint8
+	Threshold     uint8
 	Flags         uint16
 	RawValue      int
 	Type          string
