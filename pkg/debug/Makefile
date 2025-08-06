@@ -3,4 +3,5 @@
 
 .PHONY: test
 test:
+	make -C ../../ debug-cache-export-docker-load
 	docker build --rm --target test .
