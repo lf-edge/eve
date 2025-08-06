@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile-upstream:1.5.0-rc2-labs
 ARG PLATFORM=generic
 
-FROM lfedge/eve-alpine:0f2e0da38e30753c68410727a6cc269e57ff74f2 AS build-base
+FROM lfedge/eve-alpine:e799def68af51dba83ec5a41f34bd0109704574f AS build-base
 
 ARG TARGETARCH
 
@@ -96,7 +96,7 @@ ADD https://hailo-hailort.s3.eu-west-2.amazonaws.com/Hailo8/${HAILO_FW_VERSION}/
 
 # generate initrd for Intel's and AMD's microcode
 # it makes sense only for x86_64 platform
-FROM --platform=${TARGETPLATFORM} lfedge/eve-alpine:0f2e0da38e30753c68410727a6cc269e57ff74f2 AS ucode-build-common
+FROM --platform=${TARGETPLATFORM} lfedge/eve-alpine:e799def68af51dba83ec5a41f34bd0109704574f AS ucode-build-common
 RUN mkdir -p /boot /tmp/ucode/intel /tmp/ucode/amd /usr/share/licenses/ucode
 
 FROM ucode-build-common AS ucode-build-amd64
@@ -137,7 +137,7 @@ FROM ucode-build-common AS ucode-build-arm64
 FROM ucode-build-common AS ucode-build-riscv64
 FROM ucode-build-${TARGETARCH} AS ucode-build
 
-FROM lfedge/eve-alpine:0f2e0da38e30753c68410727a6cc269e57ff74f2 AS compactor-common
+FROM lfedge/eve-alpine:e799def68af51dba83ec5a41f34bd0109704574f AS compactor-common
 ENTRYPOINT []
 WORKDIR /
 COPY --from=build /lib/firmware/regulatory* /lib/firmware/
@@ -209,7 +209,7 @@ RUN if [ "$TARGETARCH" = "arm64" ]; then \
     fi
 
 
-FROM lfedge/eve-alpine:0f2e0da38e30753c68410727a6cc269e57ff74f2 AS compactor-full
+FROM lfedge/eve-alpine:e799def68af51dba83ec5a41f34bd0109704574f AS compactor-full
 # get all possible FW
 COPY --from=build /lib/firmware/ /lib/firmware/
 
