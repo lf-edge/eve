@@ -7,12 +7,12 @@ ARG BUILD_PKGS_BASE="autoconf automake bash binutils binutils-dev build-base bc 
 ARG EVE_ALPINE_IMAGE=lfedge/eve-alpine:0f2e0da38e30753c68410727a6cc269e57ff74f2
 
 # hadolint ignore=DL3006
-FROM ${EVE_ALPINE_IMAGE} as build-native
+FROM ${EVE_ALPINE_IMAGE} AS build-native
 ARG BUILD_PKGS_BASE
 RUN BUILD_PKGS="${BUILD_PKGS_BASE}" eve-alpine-deploy.sh
 
 # hadolint ignore=DL3006,DL3029
-FROM --platform=${BUILDPLATFORM} ${EVE_ALPINE_IMAGE} as build-cross
+FROM --platform=${BUILDPLATFORM} ${EVE_ALPINE_IMAGE} AS build-cross
 ARG BUILD_PKGS_BASE
 RUN BUILD_PKGS="${BUILD_PKGS_BASE}" eve-alpine-deploy.sh
 

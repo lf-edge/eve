@@ -10,12 +10,12 @@ ARG EVE_ALPINE_IMAGE=lfedge/eve-alpine:0f2e0da38e30753c68410727a6cc269e57ff74f2
 FROM lfedge/eve-optee-os:ac2e9c3c4b9cb9f1bd7280af7e646b2b69f389ab AS optee-os
 
 # hadolint ignore=DL3006
-FROM ${EVE_ALPINE_IMAGE} as build-native
+FROM ${EVE_ALPINE_IMAGE} AS build-native
 ARG BUILD_PKGS_BASE
 RUN BUILD_PKGS="${BUILD_PKGS_BASE}" eve-alpine-deploy.sh
 
 # hadolint ignore=DL3006,DL3029
-FROM --platform=${BUILDPLATFORM} ${EVE_ALPINE_IMAGE} as build-cross
+FROM --platform=${BUILDPLATFORM} ${EVE_ALPINE_IMAGE} AS build-cross
 ARG BUILD_PKGS_BASE
 RUN BUILD_PKGS="${BUILD_PKGS_BASE}" eve-alpine-deploy.sh
 
