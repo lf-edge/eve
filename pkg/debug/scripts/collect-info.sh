@@ -84,6 +84,8 @@ usage()
     echo "       -a APPLICATION-UUID  - read specified application logs only"
     echo "       -e                   - additional edgeview string in filename"
     echo "       -j                   - output logs in json"
+    echo ""
+    echo "WARNING: $0 does not have a stable CLI interface. Use with caution in scripts."
     exit 1
 }
 
