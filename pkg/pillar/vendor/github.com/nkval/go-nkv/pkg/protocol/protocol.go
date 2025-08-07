@@ -2,9 +2,9 @@ package protocol
 
 import (
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"strings"
-	"unicode/utf8"
 )
 
 // RequestType represents valid command types.
@@ -16,7 +16,17 @@ const (
 	RequestDel     RequestType = "DEL"
 	RequestSub     RequestType = "SUB"
 	RequestUnsub   RequestType = "UNSUB"
+	RequestTrace   RequestType = "TRACE"
+	RequestHealth  RequestType = "HEALTH"
+	RequestVersion RequestType = "VERSION"
 	RequestUnknown RequestType = "UNKNOWN"
+)
+
+var (
+	ErrMissingField      = errors.New("missing required field")
+	ErrUnknownCommand    = errors.New("unknown command")
+	ErrInvalidInput      = errors.New("invalid input")
+	ErrBase64DecodeError = errors.New("base64 decode error")
 )
 
 type Request struct {
@@ -64,7 +74,7 @@ func UnmarshalRequest(input string) (*Request, error) {
 
 func MarshalRequest(cmd *Request) string {
 	switch cmd.Request {
-	case RequestGet, RequestDel, RequestSub, RequestUnsub:
+	case RequestGet, RequestDel, RequestSub, RequestUnsub, RequestHealth, RequestTrace, RequestVersion:
 		return fmt.Sprintf("%s %s %s %s", string(cmd.Request), cmd.RequestID, cmd.ClientID, cmd.Key)
 	case RequestPut:
 		data := base64.StdEncoding.EncodeToString(cmd.Data)
@@ -75,20 +85,120 @@ func MarshalRequest(cmd *Request) string {
 
 }
 
+type Marshalable interface {
+	Marshal() string
+	Debug() string
+	Unmarshal(input string) error
+}
+
+type HashMapStringBytes map[string][]byte
+
+// Marshal converts the map to string
+func (h HashMapStringBytes) Marshal() string {
+	var result strings.Builder
+	for key, val := range h {
+		encoded := base64.StdEncoding.EncodeToString(val)
+		result.WriteString(fmt.Sprintf(" %s %s", key, encoded))
+	}
+	return result.String()
+}
+
+// Debug provides debug output
+func (h HashMapStringBytes) Debug() string {
+	var result strings.Builder
+	for key, val := range h {
+		if s, err := stringFromBytes(val); err == nil {
+			result.WriteString(fmt.Sprintf(" %s %s", key, s))
+		} else {
+			result.WriteString(fmt.Sprintf(" %s %v", key, val))
+		}
+	}
+	return result.String()
+}
+
+// Unmarshal parses string into the map
+func (h HashMapStringBytes) Unmarshal(input string) error {
+	parts := strings.Fields(input)
+	if len(parts)%2 != 0 {
+		return ErrInvalidInput
+	}
+
+	for i := 0; i < len(parts); i += 2 {
+		key := parts[i]
+		val, err := base64.StdEncoding.DecodeString(parts[i+1])
+		if err != nil {
+			return ErrBase64DecodeError
+		}
+		h[key] = val
+	}
+	return nil
+}
+
+// StringSlice implements Marshalable for []string
+type StringSlice []string
+
+// Marshal converts the slice to string
+func (s StringSlice) Marshal() string {
+	return " " + strings.Join(s, " ")
+}
+
+// Debug provides debug output
+func (s StringSlice) Debug() string {
+	var result strings.Builder
+	for _, val := range s {
+		result.WriteString(fmt.Sprintf(" %q", val))
+	}
+	return result.String()
+}
+
+// Unmarshal parses string into the slice
+func (s *StringSlice) Unmarshal(input string) error {
+	*s = strings.Fields(input)
+	return nil
+}
+
+// StringWrapper implements Marshalable for string
+type StringWrapper string
+
+// Marshal converts the string to output format
+func (s StringWrapper) Marshal() string {
+	return " " + string(s)
+}
+
+// Debug provides debug output
+func (s StringWrapper) Debug() string {
+	return fmt.Sprintf(" %q", s)
+}
+
+// Unmarshal parses string
+func (s *StringWrapper) Unmarshal(input string) error {
+	*s = StringWrapper(input)
+	return nil
+}
+
+func stringFromBytes(b []byte) (string, error) {
+	for _, v := range b {
+		if v < 32 || v > 126 {
+			return "", errors.New("non-printable character")
+		}
+	}
+	return string(b), nil
+}
+
 type Response struct {
 	RequestID string
 	Status    bool
-	Data      map[string][]byte // Decoded data (if present)
+	Data      Marshalable
 }
 
 func UnmarshalResponse(input string) (*Response, error) {
 	parts := strings.Fields(input)
-	if len(parts) < 2 {
+	if len(parts) < 3 {
 		return nil, fmt.Errorf("invalid input: expected at least 2 fields, got %d", len(parts))
 	}
 
 	status := false
-	switch parts[1] {
+	switch parts[2] {
 	case "OK":
 		status = true
 	case "FAILED":
@@ -97,45 +207,41 @@ func UnmarshalResponse(input string) (*Response, error) {
 		return nil, fmt.Errorf("invalid input: status is not recognized. Expected OK or FAILED got %s", parts[1])
 	}
 
-	decodedParts := make(map[string][]byte)
-	for i := 2; i < len(parts)-1; i += 2 {
-		data, err := base64.StdEncoding.DecodeString(parts[i+1])
-		if err != nil {
-			return nil, fmt.Errorf("Error decoding Base64: %v", err)
-		}
-		decodedParts[parts[i]] = data
+	data := strings.Join(parts[3:], " ")
+	switch parts[0] {
+	case "data":
+		d := make(HashMapStringBytes)
+		d.Unmarshal(data)
+		return &Response{
+			RequestID: parts[1],
+			Status:    status,
+			Data:      d,
+		}, nil
+
+	case "trace":
+		var d StringSlice
+		d.Unmarshal(data)
+		return &Response{
+			RequestID: parts[1],
+			Status:    status,
+			Data:      &d,
+		}, nil
+
+	case "version":
+		var d StringWrapper
+		d.Unmarshal(data)
+		return &Response{
+			RequestID: parts[1],
+			Status:    status,
+			Data:      &d,
+		}, nil
 	}
 
 	return &Response{
-		RequestID: parts[0],
+		RequestID: parts[1],
 		Status:    status,
-		Data:      decodedParts,
+		Data:      nil,
 	}, nil
-}
-
-func MarshalResponse(resp *Response) string {
-	status := ""
-	if resp.Status {
-		status = "OK"
-	} else {
-		status = "FAILED"
-	}
-
-	var b strings.Builder
-	for k, v := range resp.Data {
-		decoded := base64.StdEncoding.EncodeToString(v)
-		b.WriteString(k)
-		b.WriteByte(' ')
-		b.WriteString(decoded)
-		b.WriteByte(' ')
-	}
-
-	data := strings.TrimSpace(b.String())
-	if len(data) > 0 {
-		return fmt.Sprintf("%s %s %s", resp.RequestID, status, data)
-	} else {
-		return fmt.Sprintf("%s %s", resp.RequestID, status)
-	}
 }
 
 func MarshalResponseDebug(resp *Response) string {
@@ -146,20 +252,7 @@ func MarshalResponseDebug(resp *Response) string {
 		status = "FAILED"
 	}
 
-	var b strings.Builder
-	for k, d := range resp.Data {
-		b.WriteString(k)
-		b.WriteByte(' ')
-		if utf8.Valid(d) {
-			b.WriteString(string(d))
-		} else {
-			decoded := base64.StdEncoding.EncodeToString(d)
-			b.WriteString(decoded)
-		}
-		b.WriteByte(' ')
-	}
-
-	data := strings.TrimSpace(b.String())
+	data := strings.TrimSpace(resp.Data.Debug())
 	if len(data) > 0 {
 		return fmt.Sprintf("%s %s %s", resp.RequestID, status, data)
 	} else {
