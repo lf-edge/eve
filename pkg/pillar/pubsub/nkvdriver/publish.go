@@ -4,9 +4,11 @@
 package nkvdriver
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/nkval/go-nkv/pkg/client"
+	"github.com/nkval/go-nkv/pkg/protocol"
 )
 
 type Publisher struct {
@@ -27,12 +29,16 @@ func (p *Publisher) Load() (map[string][]byte, int, error) {
 		return nil, 0, err
 	}
 
-	return entries.Data, 0, nil
+	data, ok := entries.Data.(protocol.HashMapStringBytes)
+	if !ok {
+		return nil, 0, fmt.Errorf("Wrong response type")
+	}
+
+	return data, 0, nil
 }
 
 func (p *Publisher) Publish(key string, item []byte) error {
 	k := p.path() + "." + key
-	// fmt.Printf("PUBLISHER %v %v", k, item)
 	_, err := p.nkvClient.Put(k, item)
 	return err
 }

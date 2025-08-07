@@ -52,15 +52,15 @@ func (d *NkvDriver) Publisher(global bool, name, topic string, persistent bool, 
 }
 
 func (s *NkvDriver) pubDirName(name string) string {
-	return fmt.Sprintf("var.run.%s", name)
+	return fmt.Sprintf("default.%s", name)
 }
 
 func (s *NkvDriver) fixedDirName(name string) string {
-	return fmt.Sprintf("run.gloabl.%s", name)
+	return fmt.Sprintf("runtime.%s", name)
 }
 
 func (s *NkvDriver) persistentDirName(name string) string {
-	return fmt.Sprintf("persist..status.%s", name)
+	return fmt.Sprintf("persist.%s", name)
 }
 
 // TODO: perhaps channel is needed

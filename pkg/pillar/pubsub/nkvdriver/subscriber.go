@@ -4,6 +4,7 @@
 package nkvdriver
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
@@ -35,10 +36,11 @@ func (e *Subscriber) Start() error {
 	if err != nil {
 		return err
 	}
-	// if len(resp.Data) > 1 {
-	// fmt.Errorf("More data that needed")
-	// }
-	for key, val := range resp.Data {
+	data, ok := resp.Data.(p.HashMapStringBytes)
+	if !ok {
+		return fmt.Errorf("Couldn't convert data to HashMap type")
+	}
+	for key, val := range data {
 		e.C <- pubsub.Change{Operation: pubsub.Modify, Key: key, Value: val}
 	}
 	e.C <- pubsub.Change{Operation: pubsub.Sync, Key: "done"}
@@ -54,8 +56,12 @@ func (e *Subscriber) Load() (map[string][]byte, int, error) {
 	if err != nil {
 		return nil, 0, err
 	}
+	data, ok := entries.Data.(p.HashMapStringBytes)
+	if !ok {
+		return nil, 0, fmt.Errorf("Couldn't convert data to HashMap type")
+	}
 
-	return entries.Data, 1, nil
+	return data, 1, nil
 }
 
 func (e *Subscriber) Stop() error { return nil }
