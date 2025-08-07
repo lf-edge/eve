@@ -11,11 +11,13 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 )
 
 func listenHTTP() (*http.Request, error) {
+	var serverShutdown sync.Mutex
 	var s *http.Server
 	sm := http.NewServeMux()
 	var req *http.Request
@@ -27,9 +29,13 @@ func listenHTTP() (*http.Request, error) {
 
 		http.Error(w, "Bye", http.StatusOK)
 
-		bodyCloseErr = r.Body.Close()
-		shutdownErr = s.Shutdown(context.Background())
-
+		defer func() {
+			bodyCloseErr = r.Body.Close()
+			go func() {
+				shutdownErr = s.Shutdown(context.Background())
+				serverShutdown.Unlock()
+			}()
+		}()
 	})
 
 	s = &http.Server{
@@ -37,11 +43,13 @@ func listenHTTP() (*http.Request, error) {
 		Handler: sm,
 	}
 
+	serverShutdown.Lock()
 	err := s.ListenAndServe()
 	if !errors.Is(err, http.ErrServerClosed) {
 		panic(err)
 	}
 
+	serverShutdown.Lock()
 	if bodyCloseErr != nil {
 		return nil, bodyCloseErr
 	}
@@ -52,20 +60,32 @@ func listenHTTP() (*http.Request, error) {
 	return req, nil
 }
 
-// TestCollectInfoUpload creates an http server and calls collect-info.sh to upload the tarball to it
-func TestCollectInfoUpload(t *testing.T) {
+func cleanup(t *testing.T) {
+	for _, dir := range []string{"/proc/self", "/persist"} {
+		err := os.RemoveAll(filepath.Join("/out", dir))
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func runCollectInfo(t *testing.T, uploadServer string, cmdEnv []string, httpListener func() (*http.Request, error)) *http.Request {
 	var cmd *exec.Cmd
 	reqChan := make(chan *http.Request)
 	go func() {
-		req, err := listenHTTP()
+		req, err := httpListener()
 		if err != nil {
 			t.Logf("error from http server: %+v", err)
+		}
+		reqChan <- req
+
+		if cmd == nil {
+			return
 		}
 		err = cmd.Process.Kill()
 		if err != nil {
 			t.Logf("could not kill process: %+v", err)
 		}
-		reqChan <- req
 	}()
 
 	for _, dir := range []string{"/proc/self", "/persist/status"} {
@@ -74,15 +94,6 @@ func TestCollectInfoUpload(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-
-	defer func() {
-		for _, dir := range []string{"/proc/self", "/persist"} {
-			err := os.RemoveAll(filepath.Join("/out", dir))
-			if err != nil {
-				t.Fatal(err)
-			}
-		}
-	}()
 
 	for _, fileContent := range []struct {
 		file    string
@@ -104,8 +115,8 @@ func TestCollectInfoUpload(t *testing.T) {
 		}
 	}
 
-	cmd = exec.Command("/usr/bin/collect-info.sh", "-u", "http://localhost:8080")
-	cmd.Env = []string{"AUTHORIZATION=Bearer Vm0weGQxSXhiRmRXV0d4V1YwZDRWRmxyVm5kVmJGcHlWV3RLVUZWVU1Eaz0="}
+	cmd = exec.Command("/usr/bin/collect-info.sh", "-u", uploadServer)
+	cmd.Env = cmdEnv
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		Chroot: "/out",
 	}
@@ -117,6 +128,18 @@ func TestCollectInfoUpload(t *testing.T) {
 	_ = cmd.Run()
 
 	req := <-reqChan
+
+	return req
+}
+
+// TestCollectInfoUpload creates an http server and calls collect-info.sh to upload the tarball to it
+func TestCollectInfoUpload(t *testing.T) {
+	defer cleanup(t)
+
+	uploadServer := "http://localhost:8080"
+	cmdEnv := []string{"AUTHORIZATION=Bearer Vm0weGQxSXhiRmRXV0d4V1YwZDRWRmxyVm5kVmJGcHlWV3RLVUZWVU1Eaz0="}
+
+	req := runCollectInfo(t, uploadServer, cmdEnv, listenHTTP)
 	t.Logf("req: %+v", req)
 
 	if req.Header["Authorization"][0] != "Bearer Vm0weGQxSXhiRmRXV0d4V1YwZDRWRmxyVm5kVmJGcHlWV3RLVUZWVU1Eaz0=" {
@@ -125,5 +148,34 @@ func TestCollectInfoUpload(t *testing.T) {
 
 	if !strings.Contains(req.URL.Path, "123456") {
 		t.Fatalf("http file path does not contain uuid; req: %+v", req)
+	}
+
+	dirEntries, err := os.ReadDir("/out/persist/eve-info")
+	if err != nil {
+		t.Fatalf("could not read dir /out/persist/eve-info: %v", err)
+	}
+
+	if len(dirEntries) > 0 {
+		t.Fatalf("expected collect-info tarball to be cleaned up, but got %+v", dirEntries)
+	}
+}
+
+// TestCollectInfoFailingUpload - fails to upload the tarball and checks that it is not deleted
+func TestCollectInfoFailingUpload(t *testing.T) {
+	defer cleanup(t)
+
+	uploadServer := "http://localhost:8080"
+	cmdEnv := []string{"AUTHORIZATION=Bearer Vm0weGQxSXhiRmRXV0d4V1YwZDRWRmxyVm5kVmJGcHlWV3RLVUZWVU1Eaz0="}
+
+	req := runCollectInfo(t, uploadServer, cmdEnv, func() (*http.Request, error) { return nil, nil })
+	t.Logf("req: %+v", req)
+
+	dirEntries, err := os.ReadDir("/out/persist/eve-info")
+	if err != nil {
+		t.Fatalf("could not read dir /persist/eve-info: %v", err)
+	}
+
+	if len(dirEntries) < 1 {
+		t.Fatalf("expected collect-info tarball to NOT be cleaned up, but got %+v", dirEntries)
 	}
 }
