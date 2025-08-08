@@ -73,7 +73,7 @@ func (status SenderStatus) String() string {
 const (
 	// MinuteInSec is number of seconds in a minute
 	MinuteInSec = 60
-	// HourInSec is number of seconds in a minute
+	// HourInSec is number of seconds in an hour
 	HourInSec = 60 * MinuteInSec
 )
 
@@ -956,45 +956,45 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	// MaxValue needs to be limited. If configured too high, the device will wait
 	// too long to get next config and is practically unreachable for any config
 	// changes or reboot through cloud.
-	configItemSpecMap.AddIntItem(ConfigInterval, 60, 5, HourInSec)
+	configItemSpecMap.AddIntItem(ConfigInterval, MinuteInSec, 5, HourInSec)
 	// Additional safety to periodically fetch the controller certificate
 	// Useful for odd cases when the triggered updates do not work.
-	configItemSpecMap.AddIntItem(CertInterval, 24*HourInSec, 60, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(CertInterval, 24*HourInSec, MinuteInSec, 0xFFFFFFFF)
 	// timer.metric.diskscan.interval (seconds)
 	// Shorter interval can lead to device scanning the disk frequently which is a costly operation.
-	configItemSpecMap.AddIntItem(DiskScanMetricInterval, 300, 5, HourInSec)
+	configItemSpecMap.AddIntItem(DiskScanMetricInterval, 5*MinuteInSec, 5, HourInSec)
 	// timer.metric.interval (seconds)
 	// Need to be careful about max value. Controller may use metric message to
 	// update status of device (online / suspect etc ).
-	configItemSpecMap.AddIntItem(MetricInterval, 60, 5, HourInSec)
+	configItemSpecMap.AddIntItem(MetricInterval, MinuteInSec, 5, HourInSec)
 	// timer.metric.hardwarehealth.interval (seconds)
 	// Default value 12 hours minimum value 6 hours.
-	configItemSpecMap.AddIntItem(HardwareHealthInterval, 43200, 21600, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(HardwareHealthInterval, 12*HourInSec, 6*HourInSec, 0xFFFFFFFF)
 	// timer.reboot.no.network (seconds) - reboot after no controller connectivity
 	// Max designed to allow the option of never rebooting even if device
 	//  can't connect to the cloud
-	configItemSpecMap.AddIntItem(ResetIfCloudGoneTime, 7*24*3600, 120, 0xFFFFFFFF)
-	configItemSpecMap.AddIntItem(FallbackIfCloudGoneTime, 300, 60, 0xFFFFFFFF)
-	configItemSpecMap.AddIntItem(MintimeUpdateSuccess, 600, 30, HourInSec)
-	configItemSpecMap.AddIntItem(VdiskGCTime, 3600, 60, 0xFFFFFFFF)
-	configItemSpecMap.AddIntItem(DeferContentDelete, 0, 0, 24*3600)
-	configItemSpecMap.AddIntItem(DownloadRetryTime, 600, 60, 0xFFFFFFFF)
-	configItemSpecMap.AddIntItem(DownloadStalledTime, 600, 20, 0xFFFFFFFF)
-	configItemSpecMap.AddIntItem(DomainBootRetryTime, 600, 10, 0xFFFFFFFF)
-	configItemSpecMap.AddIntItem(NetworkGeoRedoTime, 3600, 60, 0xFFFFFFFF)
-	configItemSpecMap.AddIntItem(NetworkGeoRetryTime, 600, 5, 0xFFFFFFFF)
-	configItemSpecMap.AddIntItem(NetworkTestDuration, 30, 10, 3600)
-	configItemSpecMap.AddIntItem(NetworkTestInterval, 300, 300, 3600)
-	configItemSpecMap.AddIntItem(NetworkTestBetterInterval, 600, 0, 0xFFFFFFFF)
-	configItemSpecMap.AddIntItem(NetworkTestTimeout, 15, 0, 3600)
-	configItemSpecMap.AddIntItem(NetworkSendTimeout, 120, 0, 3600)
-	configItemSpecMap.AddIntItem(NetworkDialTimeout, 10, 0, 3600)
+	configItemSpecMap.AddIntItem(ResetIfCloudGoneTime, 7*24*HourInSec, 2*MinuteInSec, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(FallbackIfCloudGoneTime, 5*MinuteInSec, MinuteInSec, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(MintimeUpdateSuccess, 10*MinuteInSec, 30, HourInSec)
+	configItemSpecMap.AddIntItem(VdiskGCTime, HourInSec, MinuteInSec, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(DeferContentDelete, 0, 0, 24*HourInSec)
+	configItemSpecMap.AddIntItem(DownloadRetryTime, 10*MinuteInSec, MinuteInSec, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(DownloadStalledTime, 10*MinuteInSec, 20, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(DomainBootRetryTime, 10*MinuteInSec, 10, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(NetworkGeoRedoTime, HourInSec, 60, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(NetworkGeoRetryTime, 10*MinuteInSec, 5, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(NetworkTestDuration, 30, 10, HourInSec)
+	configItemSpecMap.AddIntItem(NetworkTestInterval, 5*MinuteInSec, 5*MinuteInSec, HourInSec)
+	configItemSpecMap.AddIntItem(NetworkTestBetterInterval, 10*MinuteInSec, 0, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(NetworkTestTimeout, 15, 0, HourInSec)
+	configItemSpecMap.AddIntItem(NetworkSendTimeout, 2*MinuteInSec, 0, HourInSec)
+	configItemSpecMap.AddIntItem(NetworkDialTimeout, 10, 0, HourInSec)
 	configItemSpecMap.AddIntItem(LocationCloudInterval, HourInSec, 5*MinuteInSec, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(LocationAppInterval, 20, 5, HourInSec)
 	configItemSpecMap.AddIntItem(NTPSourcesInterval, 10*MinuteInSec, MinuteInSec, 30*MinuteInSec)
 	configItemSpecMap.AddIntItem(Dom0MinDiskUsagePercent, 20, 20, 80)
-	configItemSpecMap.AddIntItem(AppContainerStatsInterval, 300, 1, 0xFFFFFFFF)
-	configItemSpecMap.AddIntItem(VaultReadyCutOffTime, 300, 60, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(AppContainerStatsInterval, 5*MinuteInSec, 1, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(VaultReadyCutOffTime, 5*MinuteInSec, MinuteInSec, 0xFFFFFFFF)
 	// Dom0DiskUsageMaxBytes - Default is 2GB, min is 100MB
 	configItemSpecMap.AddIntItem(Dom0DiskUsageMaxBytes, 2*1024*1024*1024,
 		100*1024*1024, 0xFFFFFFFF)
@@ -1087,8 +1087,8 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 
 	// Add NetDump settings
 	configItemSpecMap.AddBoolItem(NetDumpEnable, true)
-	configItemSpecMap.AddIntItem(NetDumpTopicPreOnboardInterval, HourInSec, 60, 0xFFFFFFFF)
-	configItemSpecMap.AddIntItem(NetDumpTopicPostOnboardInterval, 24*HourInSec, 60, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(NetDumpTopicPreOnboardInterval, HourInSec, MinuteInSec, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(NetDumpTopicPostOnboardInterval, 24*HourInSec, MinuteInSec, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(NetDumpTopicMaxCount, 10, 1, 0xFFFFFFFF)
 	configItemSpecMap.AddBoolItem(NetDumpDownloaderPCAP, false)
 	configItemSpecMap.AddBoolItem(NetDumpDownloaderHTTPWithFieldValue, false)
@@ -1096,7 +1096,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	// Add Metadata Server Prometheus metrics limits settings
 	configItemSpecMap.AddIntItem(MsrvPrometheusMetricsRequestPerSecond, 1, 1, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(MsrvPrometheusMetricsBurst, 10, 1, 0xFFFFFFFF)
-	configItemSpecMap.AddIntItem(MsrvPrometheusMetricsIdleTimeoutSeconds, 4*60, 1, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(MsrvPrometheusMetricsIdleTimeoutSeconds, 4*MinuteInSec, 1, 0xFFFFFFFF)
 
 	return configItemSpecMap
 }
