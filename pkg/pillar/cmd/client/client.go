@@ -231,11 +231,11 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 	ticker := flextimer.NewExpTicker(time.Second, maxDelay, 0)
 
-	server, err := os.ReadFile(types.ServerFileName)
+	server, err := types.Server()
 	if err != nil {
 		log.Fatal(err)
 	}
-	serverNameAndPort = strings.TrimSpace(string(server))
+	serverNameAndPort = server
 
 	var onboardCert tls.Certificate
 	var deviceCertPem []byte
@@ -368,14 +368,14 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 		case <-ticker.C:
 			// Check in case /config/server changes while running
-			nserver, err := os.ReadFile(types.ServerFileName)
+			nserver, err := types.Server()
 			if err != nil {
 				log.Error(err)
-			} else if len(nserver) != 0 && string(server) != string(nserver) {
+			} else if len(nserver) != 0 && server != nserver {
 				log.Warnf("/config/server changed from %s to %s",
 					server, nserver)
 				server = nserver
-				serverNameAndPort = strings.TrimSpace(string(server))
+				serverNameAndPort = server
 				// Force a refresh
 				ok := fetchCertChain(ctrlClient, devtlsConfig, retryCount, true)
 				if !ok && !ctrlClient.NoLedManager {

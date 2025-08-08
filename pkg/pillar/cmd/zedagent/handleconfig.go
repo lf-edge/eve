@@ -332,20 +332,7 @@ func initZedcloudContext(getconfigCtx *getconfigContext,
 	agentMetrics *controllerconn.AgentMetrics) *controllerconn.Client {
 
 	// get the server name
-	var bytes []byte
-	var err error
-	for len(bytes) == 0 {
-		bytes, err = os.ReadFile(types.ServerFileName)
-		if err != nil {
-			log.Error(err)
-			time.Sleep(10 * time.Second)
-		} else if len(bytes) == 0 {
-			log.Warnf("Empty %s file - waiting for it",
-				types.ServerFileName)
-			time.Sleep(10 * time.Second)
-		}
-	}
-	serverNameAndPort = strings.TrimSpace(string(bytes))
+	serverNameAndPort = types.WaitServer(log, func() {})
 
 	ctrlClient := controllerconn.NewClient(log, controllerconn.ClientOptions{
 		DeviceNetworkStatus: deviceNetworkStatus,
@@ -377,7 +364,7 @@ func initZedcloudContext(getconfigCtx *getconfigContext,
 		ctrlClient.DevSerial, ctrlClient.DevSoftSerial, ctrlClient.UsingV2API())
 
 	// XXX need to redo this since the root certificates can change
-	err = ctrlClient.UpdateTLSConfig(nil)
+	err := ctrlClient.UpdateTLSConfig(nil)
 	if err != nil {
 		log.Fatal(err)
 	}
