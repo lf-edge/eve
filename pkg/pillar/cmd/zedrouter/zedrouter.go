@@ -224,24 +224,8 @@ func (z *zedrouter) init() (err error) {
 
 	gcp := *types.DefaultConfigItemValueMap()
 	z.appContainerStatsInterval = gcp.GlobalValueInt(types.AppContainerStatsInterval)
-	var content []byte
-	for len(content) == 0 {
-		content, err = os.ReadFile(types.ServerFileName)
-		if err != nil {
-			z.log.Errorf("Failed to read %s: %v; "+
-				"waiting for it",
-				types.ServerFileName, err)
-			time.Sleep(10 * time.Second)
-			z.pubSub.StillRunning(agentName, warningTime, errorTime)
-		} else if len(content) == 0 {
-			z.log.Errorf("Empty %s file - waiting for it",
-				types.ServerFileName)
-			time.Sleep(10 * time.Second)
-			z.pubSub.StillRunning(agentName, warningTime, errorTime)
-		}
-	}
-	z.controllerHostname = string(content)
-	z.controllerHostname = strings.TrimSpace(z.controllerHostname)
+
+	z.controllerHostname = types.WaitServer(z.log, func() { z.pubSub.StillRunning(agentName, warningTime, errorTime) })
 	z.controllerPort = 443
 	if host, port, err := net.SplitHostPort(z.controllerHostname); err == nil {
 		z.controllerHostname = host

@@ -5,8 +5,6 @@ package nim
 
 import (
 	"net"
-	"os"
-	"strings"
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/controllerconn"
@@ -27,23 +25,8 @@ const (
 // The cached IP address can be used with SendOnIntf function to speed up
 // controller API calls by avoiding repeated hostname resolutions.
 func (n *nim) runResolverCacheForController() {
-	var content []byte
-	var err error
-	for len(content) == 0 {
-		content, err = os.ReadFile(types.ServerFileName)
-		if err != nil {
-			n.Log.Errorf("Failed to read %s: %v; "+
-				"waiting for it",
-				types.ServerFileName, err)
-			time.Sleep(10 * time.Second)
-		} else if len(content) == 0 {
-			n.Log.Errorf("Empty %s file - waiting for it",
-				types.ServerFileName)
-			time.Sleep(10 * time.Second)
-		}
-	}
-	controllerHostname := string(content)
-	controllerHostname = strings.TrimSpace(controllerHostname)
+	controllerHostname := types.WaitServer(n.Log, func() {})
+
 	if host, _, err := net.SplitHostPort(controllerHostname); err == nil {
 		controllerHostname = host
 	}
