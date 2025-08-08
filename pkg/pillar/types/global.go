@@ -161,6 +161,8 @@ const (
 	MetricInterval GlobalSettingKey = "timer.metric.interval"
 	// HardwareHealthInterval global setting key
 	HardwareHealthInterval GlobalSettingKey = "timer.hardwarehealth.interval"
+	// DevInfoInterval global setting key
+	DevInfoInterval GlobalSettingKey = "timer.deviceinfo.interval"
 	// DiskScanMetricInterval global setting key
 	DiskScanMetricInterval GlobalSettingKey = "timer.metric.diskscan.interval"
 	// ResetIfCloudGoneTime global setting key
@@ -970,6 +972,10 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	// timer.metric.hardwarehealth.interval (seconds)
 	// Default value 12 hours minimum value 6 hours.
 	configItemSpecMap.AddIntItem(HardwareHealthInterval, 12*HourInSec, 6*HourInSec, 0xFFFFFFFF)
+	// timer.deviceinfo.interval (seconds)
+	// Forces the device to send device info to the controller at least once in a while.
+	// Default value 10 minutes, minimum value 30 seconds
+	configItemSpecMap.AddIntItem(DevInfoInterval, 10*MinuteInSec, 30, 0xFFFFFFFF)
 	// timer.reboot.no.network (seconds) - reboot after no controller connectivity
 	// Max designed to allow the option of never rebooting even if device
 	//  can't connect to the cloud

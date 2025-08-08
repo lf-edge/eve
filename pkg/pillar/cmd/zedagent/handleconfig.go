@@ -450,8 +450,9 @@ func configTimerTask(getconfigCtx *getconfigContext, handleChannel chan interfac
 	// Return handle to caller
 	handleChannel <- ticker
 
-	// ticker for periodical info publish around 10 min when no real change
-	interval2 := time.Duration(600) * time.Second
+	// ticker for periodical info publish when no real change
+	devInfoInterval := ctx.globalConfig.GlobalValueInt(types.DevInfoInterval)
+	interval2 := time.Duration(devInfoInterval) * time.Second
 	max2 := float64(interval2) * 1.2
 	min2 := float64(interval2) * 0.8
 	tickerInfo := flextimer.NewRangeTicker(time.Duration(min2),
