@@ -21,7 +21,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: zededa-ubuntu-latest
+          - os: zededa-ubuntu-2204-arm64
             arch: arm64
           - os: zededa-ubuntu-2204
             arch: amd64
