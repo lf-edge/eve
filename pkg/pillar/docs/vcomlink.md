@@ -8,91 +8,118 @@ VComLink is a communication agent that facilitates asynchronous communication be
 
 VComLink utilizes vsock, a communication protocol designed specifically for VM-host interactions. The vsock communication channel operates on a unique port `2000`. This port enables the guest VM to establish a connection with the host.
 
-## Channel and Request Identifiers
+## TPM Service Protobuf API
 
-VComLink uses two primary identifiers to manage communication:
+This section describes the Protocol Buffer (protobuf) message definitions used for TPM operations. Definitions use `proto3` syntax
 
-- `ChannelID`: Uniquely identifies a communication channel between the host and a VM.
-- `RequestID`: Uniquely identifies a specific request within a communication channel.
+### Messages
 
-These identifiers are defined as types in `pkg/pillar/vcom`.
+#### TpmRequestGetPub
 
-### Channels
+Request to retrieve the public part of a TPM key.
 
-- `ErrorChannel`: Channel dedicated to handling error responses (ID 1).
-- `ChannelTpm`: Channel dedicated to handling TPM (Trusted Platform Module) related requests (ID 2).
+| Field | Type | Description |
+| - | - | - |
+| index | uint32 | TPM index of the key to get |
 
-### Request Identifiers
+#### TpmResponseGetPub
 
-The following request identifiers are associated with specific channels:
+Response containing the public part of a TPM key.
 
-- `RequestTpmGetEk`: Request to retrieve the TPM Endorsement Key (ID 1).
+| Field | Type | Description |
+| - | - | - |
+| public | bytes | Public part of the key in TPM wire format |
+| algorithm | uint32 | Algorithm used in the key as a TPM_ALG_ID value |
+| attributes | uint32 | Bitmask of key attributes |
 
-## Data Structures
+#### TpmRequestSign
 
-VComLink utilizes the following JSON-formatted data structures to handle communication between the host and VMs. All packets in VComLink are derived from the Base struct. It includes the channel ID to ensure that packets are routed correctly.
+Request to sign data using a TPM key.
 
-### Error message
+| Field | Type | Description |
+| - | - | - |
+| index | uint32 | TPM index of the signing key |
+| data | bytes | Data to be signed |
 
-The Error struct is used to send error messages from the host or VM.
+#### TpmResponseSign
 
-```json
-{
-  "channel": 1,
-  "error": "Error message"
-}
-```
+Response containing the generated signature.
 
-- `channel`: An integer representing the channel ID, in this case 1 for error.
-- `error`: A string containing the error message.
+| Field | Type | Description |
+| - | - | - |
+| algorithm | string | Signing algorithm used |
+| rsa_signature | bytes | RSA signature (if applicable) |
+| rsa_hash | string | Hash algorithm used with RSA |
+| ecc_signature_r | bytes | ECC signature R component |
+| ecc_signature_s | bytes | ECC signature S component |
+| ecc_hash | string | Hash algorithm used with ECC |
 
-### TPM Request Packet
+#### TpmRequestReadNv
 
-The TpmRequest struct is used for sending TPM-related requests.
+Request to read from a TPM non-volatile (NV) index.
 
-```json
-{
-  "channel": 2,
-  "request": <num>
-}
-```
+| Field | Type | Description |
+| - | - | - |
+| index | uint32 | TPM NV index to read |
 
-- `channel`: An integer representing the channel ID, in this case 2 for TPM related requests.
-- `request`: An unsigned integer representing the specific TPM request ID.
+#### TpmResponseReadNv
 
-### TPM Response Packet
+Response containing data read from a TPM NV index.
 
-The TpmResponseEk struct is used to send the response for a TPM Endorsement Key request.
+| Field | Type | Description |
+| - | - | - |
+| data | bytes | Data read from the NV index |
 
-```json
-{
-  "channel": 2,
-  "ek": "Endorsement Key"
-}
-```
+#### TpmRequestActivateCredParams
 
-- `channel`: An integer representing the channel ID, in this case 2 for TPM related requests.
-- `ek`: A string containing the TPM Endorsement Key.
+Request to get parameters for activating a TPM credential.
 
-## Example Workflow
+| Field | Type | Description |
+| - | - | - |
+| index | uint32 | TPM index of the signing key (must be restricted signing key, for example AIK) |
 
-1. Establishing a Connection: The guest VM connects to the host using the predefined vsock port (2000).
+#### TpmResponseActivateCredParams
 
-2. Sending a Request: The guest sends a TpmRequest packet via the ChannelTpm channel, with RequestTpmGetEk as the request identifier.
+Response with EK and AIK parameters needed for credential activation.
 
-3. Receiving a Response: The host processes the request and sends back a TpmResponseEk packet containing the TPM Endorsement Key.
+| Field | Type | Description |
+| - | - | - |
+| ek | bytes | Public part of the Endorsement Key (EK) |
+| aik_pub | bytes | Public part of the Attestation Identity Key (AIK) |
+| aik_name | bytes | Name of the AIK in TPM wire format |
 
-4. Handling Errors: If any error occurs during the request, the host returns an Error packet on the Error channel.
+#### TpmRequestGeneratedCred
 
-```bash
-$ # send a request to get the ek
-$ echo -n '{"channel":2,"request":1}' | socat - VSOCK-CONNECT:2:2000
-{"channel":2,"ek":"AAEACwADALIAIINxl2..."}
-$ # send an invalid request
-$ echo '{"channel":-1,"request":-1}' | socat - VSOCK-CONNECT:2:2000
-{"channel":1,"error":"received malformed packet"}
-```
+Request to submit a credential and secret for activation.
 
-## Extensibility
+| Field | Type | Description |
+| - | - | - |
+| cred | bytes | Credential to be activated |
+| secret | bytes | Encrypted secret to be decrypted |
+| aik_index | uint32 | Index of the Attestation Key (AIK) |
 
-VComLink is designed to be extensible. New channels and requests can be added by defining additional ChannelID and RequestID constants, as well as creating corresponding request/response structs in JSON format.
+#### TpmResponseActivatedCred
+
+Response containing the decrypted secret.
+
+| Field | Type | Description |
+| - | - | - |
+| secret | bytes | Decrypted secret from the activated credential |
+
+#### TpmRequestCertify
+
+Request to certify a key using AK.
+
+| Field | Type | Description |
+| - | - | - |
+| index | uint32 | Index is the TPM nv index of the key to certify |
+
+#### TpmResponseCertify
+
+Response to TpmRequestCertify, containing attestation data and signature.
+
+| Field | Type | Description |
+| - | - | - |
+| public | bytes | Public is the public part of the certified key, in TPM wire format. |
+| sig | bytes | Sig is the signature of the attestation payload, in TPM wire format. |
+| attest | bytes | Attest is the attestation data, in TPM wire format. |
