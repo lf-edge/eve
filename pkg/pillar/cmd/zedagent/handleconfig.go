@@ -516,16 +516,15 @@ func updateConfigTimer(configInterval uint32, tickerHandle interface{}) {
 
 // updateTaskTimer updates the given tickerHandle to use a new interval based on configInterval.
 // It adjusts the ticker's range and triggers an immediate tick to ensure the new interval takes effect promptly.
-func updateTaskTimer(configInterval uint32, tickerHandle interface{}) {
+func updateTaskTimer(configInterval time.Duration, tickerHandle interface{}) {
 
 	if tickerHandle == nil {
 		// Happens if the tickerHandle has not been initialized yet.
 		log.Warnf("updateConfigTimer: no tickerHandle yet")
 		return
 	}
-	interval := time.Duration(configInterval) * time.Second
-	log.Functionf("updateTaskTimer() change to %v", interval)
-	max := float64(interval)
+	log.Functionf("updateTaskTimer() change to %v", configInterval)
+	max := float64(configInterval)
 	min := max * 0.3
 	// Update the ticker to use the new interval range.
 	flextimer.UpdateRangeTicker(tickerHandle,
