@@ -209,6 +209,20 @@ func (status AppNetworkStatus) GetAdaptersStatusForNI(netUUID uuid.UUID) []*AppN
 	return adapters
 }
 
+// GetAllAppIPs returns all IPv4 and IPv6 addresses currently assigned
+// to the application across its network adapters.
+func (status AppNetworkStatus) GetAllAppIPs() (appIPs []net.IP) {
+	for _, adapter := range status.AppNetAdapterList {
+		for _, assignedAddr := range adapter.AssignedAddresses.IPv4Addrs {
+			appIPs = append(appIPs, assignedAddr.Address)
+		}
+		for _, assignedAddr := range adapter.AssignedAddresses.IPv6Addrs {
+			appIPs = append(appIPs, assignedAddr.Address)
+		}
+	}
+	return appIPs
+}
+
 // AppContainerMetrics - App Container Metrics
 type AppContainerMetrics struct {
 	UUIDandVersion UUIDandVersion // App UUID

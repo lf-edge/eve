@@ -6,6 +6,7 @@ package monitor
 import (
 	"io/fs"
 	"os"
+	"reflect"
 	"regexp"
 
 	"github.com/lf-edge/eve/pkg/pillar/evetpm"
@@ -78,7 +79,7 @@ func (ctx *monitor) sendNodeStatus() {
 	nodeStatus.ZedAgentStatus = ctx.getZedAgentStatus()
 	nodeStatus.AppSummary = ctx.getAppSummary()
 
-	if ctx.lastNodeStatus != nil && *ctx.lastNodeStatus == nodeStatus {
+	if ctx.lastNodeStatus != nil && reflect.DeepEqual(*ctx.lastNodeStatus, nodeStatus) {
 		return
 	}
 	ctx.lastNodeStatus = &nodeStatus
