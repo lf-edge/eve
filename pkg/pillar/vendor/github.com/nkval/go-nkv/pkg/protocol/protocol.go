@@ -75,10 +75,10 @@ func UnmarshalRequest(input string) (*Request, error) {
 func MarshalRequest(cmd *Request) string {
 	switch cmd.Request {
 	case RequestGet, RequestDel, RequestSub, RequestUnsub, RequestHealth, RequestTrace, RequestVersion:
-		return fmt.Sprintf("%s %s %s %s", string(cmd.Request), cmd.RequestID, cmd.ClientID, cmd.Key)
+		return fmt.Sprintf("%s %s %s %s\n", string(cmd.Request), cmd.RequestID, cmd.ClientID, cmd.Key)
 	case RequestPut:
 		data := base64.StdEncoding.EncodeToString(cmd.Data)
-		return fmt.Sprintf("%s %s %s %s %s", string(cmd.Request), cmd.RequestID, cmd.ClientID, cmd.Key, data)
+		return fmt.Sprintf("%s %s %s %s %s\n", string(cmd.Request), cmd.RequestID, cmd.ClientID, cmd.Key, data)
 	default:
 		return string(RequestUnknown)
 	}
@@ -252,12 +252,14 @@ func MarshalResponseDebug(resp *Response) string {
 		status = "FAILED"
 	}
 
-	data := strings.TrimSpace(resp.Data.Debug())
-	if len(data) > 0 {
-		return fmt.Sprintf("%s %s %s", resp.RequestID, status, data)
-	} else {
-		return fmt.Sprintf("%s %s", resp.RequestID, status)
+	if resp.Data != nil {
+		data := strings.TrimSpace(resp.Data.Debug())
+		if len(data) > 0 {
+			return fmt.Sprintf("%s %s %s", resp.RequestID, status, data)
+		}
 	}
+
+	return fmt.Sprintf("%s %s", resp.RequestID, status)
 }
 
 type NotifcationType string
@@ -281,7 +283,7 @@ func MarshalNotification(n *Notification) string {
 		encoded := base64.StdEncoding.EncodeToString(n.Data)
 		return fmt.Sprintf("%s %s %s", string(n.Type), n.Key, encoded)
 	} else {
-		return fmt.Sprintf("%s %s", string(n.Type), n.Key)
+		return fmt.Sprintf("%s", string(n.Type))
 	}
 }
 
@@ -296,16 +298,13 @@ func parseNotificationType(input string) NotifcationType {
 
 func UnmarshalNotification(input string) (*Notification, error) {
 	parts := strings.Fields(input)
-	if len(parts) < 2 {
-		return nil, fmt.Errorf("invalid input: expected at least 2 fields, got %d", len(parts))
-	}
 
 	n := &Notification{
 		Type: parseNotificationType(parts[0]),
-		Key:  parts[1],
 	}
 
 	if len(parts) > 2 {
+		n.Key = parts[1]
 		data, err := base64.StdEncoding.DecodeString(parts[2])
 		if err != nil {
 			return nil, fmt.Errorf("invalid base64 data: %w", err)

@@ -51,6 +51,7 @@ func (s *Subscriber) connect() error {
 		ClientID:  s.clientUuid,
 		Key:       s.key,
 	}
+	fmt.Printf("Sending request %v\n", p.MarshalRequest(&req))
 	_, err = conn.Write([]byte(p.MarshalRequest(&req)))
 	if err != nil {
 		return fmt.Errorf("Failed to send message: %v\n", err)
@@ -68,5 +69,4 @@ func (s *Subscriber) connect() error {
 			s.tx <- *n
 		}
 	}
-
 }

@@ -67,11 +67,8 @@ func (c *Client) Subscribe(key string, hdlr func(p.Notification)) (*p.Response, 
 	go subscriber.Start()
 
 	go func() {
-		for {
-			select {
-			case msg := <-rx:
-				hdlr(msg)
-			}
+		for msg := range rx {
+			hdlr(msg)
 		}
 	}()
 
@@ -111,7 +108,6 @@ func (c *Client) sendRequest(req p.Request) (*p.Response, error) {
 		return nil, fmt.Errorf("Failed to send message: %v\n", err)
 	}
 
-	fmt.Println("-->READING RESPONSE...")
 	response, err := bufio.NewReader(conn).ReadString('\n')
 	if err != nil {
 		return nil, fmt.Errorf("Failed to read response: %v\n", err)
