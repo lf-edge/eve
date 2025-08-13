@@ -1027,9 +1027,6 @@ if [ ! -f /var/lib/all_components_initialized ]; then
 
 
         if [ -f /var/lib/longhorn_initialized ]; then
-                logmsg "All components initialized"
-                touch /var/lib/node-labels-initialized
-                touch /var/lib/all_components_initialized
                 sleep 5
                 logmsg "stop the k3s server and wait for copy /var/lib"
                 terminate_k3s
@@ -1037,6 +1034,9 @@ if [ ! -f /var/lib/all_components_initialized ]; then
                 sleep 5
                 save_var_lib
                 logmsg "saved the copy of /var/lib, done"
+                logmsg "All components initialized"
+                touch /var/lib/node-labels-initialized
+                touch /var/lib/all_components_initialized
         fi
 else
         if ! check_start_k3s; then
