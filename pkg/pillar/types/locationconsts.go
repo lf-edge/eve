@@ -142,6 +142,10 @@ const (
 	// CustomOVMFSettingsDir - directory for custom OVMF settings (for different resolutions)
 	CustomOVMFSettingsDir = "/hostfs/etc/ovmf"
 
+	// CheckpointDirname - directory for persisting received configuration
+	// (from controller, LPS, etc.).
+	CheckpointDirname = PersistDir + "/checkpoint"
+
 	// LocalActiveAppConfigDir - directory to put JSON of the apps that are running.
 	LocalActiveAppConfigDir = "/persist/vault/active-app-instance-config/"
 	// EdgeNodeClusterConfigFile - the file which contains edgenodecluster config

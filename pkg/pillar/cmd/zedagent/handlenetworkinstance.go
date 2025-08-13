@@ -16,6 +16,9 @@ import (
 	zmet "github.com/lf-edge/eve-api/go/metrics" // zinfo and zmet here
 	"github.com/lf-edge/eve/pkg/pillar/controllerconn"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
+	"github.com/lf-edge/eve/pkg/pillar/utils/netutils"
+	"github.com/lf-edge/eve/pkg/pillar/utils/persist"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -229,6 +232,36 @@ func protoEncodeGenericInstanceMetric(status types.NetworkInstanceMetrics,
 	networkStats.Rx = rxStats
 	networkStats.Tx = txStats
 	metric.NetworkStats = networkStats
+}
+
+func handleAppNetworkStatusCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	ctx := ctxArg.(*zedagentContext)
+	// Application providing LPS may have just been deployed.
+	// Invalidate cached LPS addresses so they will be rediscovered.
+	ctx.getconfigCtx.localCmdAgent.RefreshLpsAddresses()
+}
+
+func handleAppNetworkStatusModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	ctx := ctxArg.(*zedagentContext)
+	newAppStatus := statusArg.(types.AppNetworkStatus)
+	oldAppStatus := oldStatusArg.(types.AppNetworkStatus)
+	appIPsChanged := !generics.EqualSetsFn(
+		newAppStatus.GetAllAppIPs(), oldAppStatus.GetAllAppIPs(), netutils.EqualIPs)
+	if appIPsChanged {
+		// Application IP addresses have changed. This may affect the set of
+		// reachable LPS endpoints. Invalidate cached LPS addresses to trigger rediscovery.
+		ctx.getconfigCtx.localCmdAgent.RefreshLpsAddresses()
+	}
+}
+
+func handleAppNetworkStatusDelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	ctx := ctxArg.(*zedagentContext)
+	// Application providing LPS may have been removed.
+	// Invalidate cached LPS addresses.
+	ctx.getconfigCtx.localCmdAgent.RefreshLpsAddresses()
 }
 
 func handleAppFlowMonitorCreate(ctxArg interface{}, key string,
@@ -453,7 +486,7 @@ func publishFlowMessage(flowMsg *flowlog.FlowMessage, iteration int, expectNoCon
 }
 
 func saveSentFlowProtoMessage(contents []byte) {
-	saveConfig("lastflowlog", contents)
+	persist.SaveConfig(log, "lastflowlog", contents)
 }
 
 func handleAppContainerMetricsCreate(ctxArg interface{}, key string,

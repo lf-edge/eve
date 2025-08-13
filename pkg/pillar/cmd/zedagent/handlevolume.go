@@ -66,7 +66,7 @@ func parseVolumeConfig(ctx *getconfigContext,
 			log.Functionf("parseVolumeConfig: deleting %s\n", volume.Key())
 			unpublishVolumeConfig(ctx.pubVolumeConfig, volume.Key())
 			if !foundVolume {
-				delLocalVolumeConfig(ctx, uuid)
+				ctx.localCmdAgent.DelLocalVolumeGenCounter(volume.VolumeID)
 			}
 		} else {
 			// check links from apps
@@ -104,8 +104,9 @@ func parseVolumeConfig(ctx *getconfigContext,
 		volumeConfig.HasNoAppReferences = checkVolumeHasNoAppReferences(ctx, cfgVolume, config)
 		volumeConfig.Target = cfgVolume.GetTarget()
 
-		// Add config submitted via local profile server.
-		addLocalVolumeConfig(ctx, volumeConfig)
+		// Set local generation counter, updated by local app purge commands.
+		volumeConfig.LocalGenerationCounter =
+			ctx.localCmdAgent.GetLocalVolumeGenCounter(volumeConfig.VolumeID)
 
 		controllerDNID := cfgVolume.GetDesignatedNodeId()
 		// If this node is designated node id set IsReplicated to false.
@@ -135,16 +136,19 @@ func parseVolumeConfig(ctx *getconfigContext,
 		publishVolumeConfig(ctx.pubVolumeConfig, *volumeConfig)
 	}
 
-	//signal publisher restarted to apply deferred changes inside volumemgr
-	signalVolumeConfigRestarted(ctx)
+	signalVolumeConfigChange(ctx)
 	log.Tracef("parsing volume config done\n")
 }
 
-func signalVolumeConfigRestarted(ctx *getconfigContext) {
-	log.Trace("signalVolumeConfigRestarted")
+// SignalVolumeConfigChange requests volumemgr to process any pending
+// volume configuration changes. This is achieved via pubsub's
+// SignalRestarted method, which triggers volumemgr's RestartHandler
+// to apply all deferred changes in a single batch.
+func signalVolumeConfigChange(ctx *getconfigContext) {
+	log.Trace("signalVolumeConfigChange")
 	pub := ctx.pubVolumeConfig
 	pub.SignalRestarted()
-	log.Trace("signalVolumeConfigRestarted done")
+	log.Trace("signalVolumeConfigChange done")
 }
 
 // checkVolumeHasNoAppReferences returns true if there are no apps using this image in new config

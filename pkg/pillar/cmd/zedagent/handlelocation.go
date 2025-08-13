@@ -5,9 +5,6 @@ package zedagent
 
 import (
 	"bytes"
-	"fmt"
-	"net/http"
-	"strings"
 	"time"
 
 	"github.com/lf-edge/eve-api/go/info"
@@ -15,14 +12,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
-)
-
-const (
-	// URL path at which the location information is published to the Local profile server.
-	lpsLocationURLPath = "/api/v1/location"
-	// Local profile server may decrease the rate of location reporting to 1 per 5 minutes
-	// (at most) by returning 404 to a Location POST request coming from EVE.
-	lpsLocationThrottledInterval = 5 * time.Minute
 )
 
 // Run a periodic post of the location information.
@@ -105,21 +94,21 @@ func updateLocationAppTimer(ctx *getconfigContext, appInterval uint32) {
 
 func publishLocation(ctx *zedagentContext, iter *int, wdName string,
 	dest destinationBitset) {
-	locInfo := getLocationInfo(ctx)
-	if locInfo == nil {
+	locationInfo := getLocationInfo(ctx)
+	if locationInfo == nil {
 		// Not available.
 		return
 	}
 	if dest&(ControllerDest|LOCDest) != 0 {
 		*iter++
 		start := time.Now()
-		publishLocationToDest(ctx, locInfo, *iter, dest)
+		publishLocationToDest(ctx, locationInfo, *iter, dest)
 		ctx.ps.CheckMaxTimeTopic(wdName, "publishLocationToDest", start,
 			warningTime, errorTime)
 	}
 	if dest&LPSDest != 0 {
 		start := time.Now()
-		publishLocationToLocalServer(ctx.getconfigCtx, locInfo)
+		ctx.getconfigCtx.localCmdAgent.PublishLocationToLps(locationInfo)
 		ctx.ps.CheckMaxTimeTopic(wdName, "publishLocationToLocalServer", start,
 			warningTime, errorTime)
 	}
@@ -156,72 +145,6 @@ func publishLocationToDest(ctx *zedagentContext, locInfo *info.ZInfoLocation,
 	forcePeriodic := true
 	queueInfoToDest(ctx, dest, key, buf, bailOnHTTPErr, withNetTrace,
 		forcePeriodic, info.ZInfoTypes_ZiLocation)
-}
-
-func publishLocationToLocalServer(ctx *getconfigContext, locInfo *info.ZInfoLocation) {
-	if ctx.sideController.lpsThrottledLocation {
-		if time.Since(ctx.sideController.lpsLastPublishedLocation) < lpsLocationThrottledInterval {
-			return
-		}
-	}
-	localProfileServer := ctx.sideController.localProfileServer
-	if localProfileServer == "" {
-		return
-	}
-	localServerURL, err := makeLocalServerBaseURL(localProfileServer)
-	if err != nil {
-		log.Errorf("publishLocationToLocalServer: makeLocalServerBaseURL: %v", err)
-		return
-	}
-	if !ctx.sideController.localServerMap.upToDate {
-		err := updateLocalServerMap(ctx, localServerURL)
-		if err != nil {
-			log.Errorf("publishLocationToLocalServer: updateLocalServerMap: %v", err)
-			return
-		}
-		// Make sure HasLocalServer is set correctly for the AppInstanceConfig
-		updateHasLocalServer(ctx)
-	}
-	srvMap := ctx.sideController.localServerMap.servers
-	if len(srvMap) == 0 {
-		log.Functionf("publishLocationToLocalServer: cannot find any configured "+
-			"apps for localServerURL: %s", localServerURL)
-		return
-	}
-
-	var errList []string
-	for bridgeName, servers := range srvMap {
-		for _, srv := range servers {
-			fullURL := srv.localServerAddr + lpsLocationURLPath
-			resp, err := ctrlClient.SendLocalProto(
-				fullURL, bridgeName, srv.bridgeIP, locInfo, nil)
-			ctx.sideController.lpsLastPublishedLocation = time.Now()
-			if err != nil {
-				errList = append(errList, fmt.Sprintf("SendLocalProto: %v", err))
-				if resp == nil {
-					continue
-				}
-			}
-			switch resp.StatusCode {
-			case http.StatusNotFound:
-				ctx.sideController.lpsThrottledLocation = true
-				return
-			case http.StatusOK, http.StatusCreated, http.StatusNoContent:
-				ctx.sideController.lpsThrottledLocation = false
-				return
-			default:
-				if err == nil {
-					errList = append(errList,
-						fmt.Sprintf("SendLocalProto: wrong response status code: %d",
-							resp.StatusCode))
-				}
-				continue
-			}
-		}
-	}
-	log.Errorf("publishLocationToLocalServer: all attempts failed: %s",
-		strings.Join(errList, ";"))
-	return
 }
 
 func getLocationInfo(ctx *zedagentContext) *info.ZInfoLocation {
