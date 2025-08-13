@@ -4,8 +4,9 @@
 package nkvdriver
 
 import (
+	"encoding/json"
 	"fmt"
-	"strings"
+	"strconv"
 
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/nkval/go-nkv/pkg/client"
@@ -15,24 +16,37 @@ import (
 type Subscriber struct {
 	nkvClient *client.Client
 	name      string
-	topic     string
 	C         chan<- pubsub.Change
+	topic     string
 }
 
 func (e *Subscriber) Start() error {
-	e.C <- pubsub.Change{Operation: pubsub.Sync, Key: "done"}
-	_, err := e.nkvClient.Subscribe(e.path()+".*", func(n p.Notification) {
+	_, err := e.nkvClient.Subscribe(e.name, func(n p.Notification) {
 		if n.Type == p.NotificationUpdate {
-			e.C <- pubsub.Change{Operation: pubsub.Modify, Key: n.Key, Value: n.Data}
+			e.C <- pubsub.Change{Operation: pubsub.Modify, Key: stripKey(n.Key), Value: n.Data}
 		}
 		if n.Type == p.NotificationClose {
-			e.C <- pubsub.Change{Operation: pubsub.Delete, Key: n.Key}
+			change := pubsub.Change{Operation: pubsub.Delete, Key: stripKey(n.Key)}
+			e.C <- change
 		}
 	})
 	if err != nil {
 		return err
 	}
-	resp, err := e.nkvClient.Get(e.path() + ".*")
+
+	key := restartCounterKey(e.name)
+	_, err = e.nkvClient.Subscribe(key, func(n p.Notification) {
+		if n.Type == p.NotificationUpdate {
+			var valInt map[string]int
+			json.Unmarshal(n.Data, &valInt)
+			e.C <- pubsub.Change{Operation: pubsub.Restart, Key: strconv.Itoa(valInt["value"])}
+		}
+	})
+	if err != nil {
+		return err
+	}
+
+	resp, err := e.nkvClient.Get(e.name + ".*")
 	if err != nil {
 		return err
 	}
@@ -41,9 +55,12 @@ func (e *Subscriber) Start() error {
 		return fmt.Errorf("Couldn't convert data to HashMap type")
 	}
 	for key, val := range data {
-		e.C <- pubsub.Change{Operation: pubsub.Modify, Key: key, Value: val}
+		e.C <- pubsub.Change{Operation: pubsub.Modify, Key: stripKey(key), Value: val}
 	}
+
+	// TODO: add handling with __restart__ and __sync__ counters
 	e.C <- pubsub.Change{Operation: pubsub.Sync, Key: "done"}
+	e.C <- pubsub.Change{Operation: pubsub.Restart, Key: "1"}
 	return nil
 }
 
@@ -52,43 +69,24 @@ func (e *Subscriber) Load() (map[string][]byte, int, error) {
 	// no need for load, left for backward compatibility
 	// with PubSub interface
 
-	entries, err := e.nkvClient.Get(e.path() + ".*")
+	entries, err := e.nkvClient.Get(e.name + ".*")
 	if err != nil {
-		return nil, 0, err
+		return nil, 1, err
 	}
 	data, ok := entries.Data.(p.HashMapStringBytes)
 	if !ok {
-		return nil, 0, fmt.Errorf("Couldn't convert data to HashMap type")
+		return nil, 1, fmt.Errorf("Couldn't convert data to HashMap type")
+	}
+	// data is in format default.global.item.key1 -> value
+	// we just need key1 -> value
+	ans := make(map[string][]byte)
+	for k, v := range data {
+		ans[stripKey(k)] = v
 	}
 
-	return data, 1, nil
+	return ans, 1, nil
 }
 
 func (e *Subscriber) Stop() error { return nil }
 
 func (e *Subscriber) LargeDirName() string { return "" }
-
-// WARN: should be the same as Publisher path
-//
-//	func (s *Subscriber) path() string {
-//		t := strings.ReplaceAll(s.topic, "/", ".")
-//		n := strings.ReplaceAll(s.name, "/", ".")
-//		if t != "" && n != "" {
-//			return n + "." + t
-//		}
-//		if t != "" {
-//			return t
-//		}
-//		return n // may be "" if both are empty
-//	}
-func (s *Subscriber) path() string {
-	t := strings.ReplaceAll(s.topic, "/", ".")
-	n := strings.ReplaceAll(s.name, "/", ".")
-	if t != "" && n != "" {
-		return n + "." + t
-	}
-	if t != "" {
-		return t
-	}
-	return n // may be "" if both are empty
-}

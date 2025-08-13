@@ -191,9 +191,9 @@ func (sub *SubscriptionImpl) nameString() string {
 		agentName = sub.defaultName
 	}
 	if sub.agentScope == "" {
-		name = fmt.Sprintf("%s/%s", sub.agentName, sub.topic)
+		name = fmt.Sprintf("%s.%s", agentName, sub.topic)
 	} else {
-		name = fmt.Sprintf("%s/%s/%s", sub.agentName, sub.agentScope, sub.topic)
+		name = fmt.Sprintf("%s.%s.%s", agentName, sub.agentScope, sub.topic)
 	}
 	return name
 }

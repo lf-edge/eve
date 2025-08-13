@@ -6,6 +6,7 @@ package nkvdriver
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/nkval/go-nkv/pkg/client"
@@ -48,19 +49,35 @@ func (d *NkvDriver) Publisher(global bool, name, topic string, persistent bool, 
 	default:
 		dirName = d.pubDirName(name)
 	}
-	return &Publisher{nkvClient: d.client, name: dirName, topic: topic}, nil
+	return &Publisher{
+		nkvClient: d.client,
+		name:      dirName,
+		topic:     topic,
+	}, nil
 }
 
 func (s *NkvDriver) pubDirName(name string) string {
-	return fmt.Sprintf("default.%s", name)
+	if name != "" {
+		return fmt.Sprintf("default.%s", name)
+	} else {
+		return "default"
+	}
 }
 
 func (s *NkvDriver) fixedDirName(name string) string {
-	return fmt.Sprintf("runtime.%s", name)
+	if name != "" {
+		return fmt.Sprintf("runtime.%s", name)
+	} else {
+		return "runtime"
+	}
 }
 
 func (s *NkvDriver) persistentDirName(name string) string {
-	return fmt.Sprintf("persist.%s", name)
+	if name != "" {
+		return fmt.Sprintf("persist.%s", name)
+	} else {
+		return "persist"
+	}
 }
 
 // TODO: perhaps channel is needed
@@ -85,5 +102,12 @@ func (s *NkvDriver) Subscriber(global bool, name, topic string, persistent bool,
 }
 
 func (d *NkvDriver) DefaultName() string {
-	return "nkv"
+	return "global"
+}
+
+func stripKey(k string) string {
+	// data is in format default.global.item.key1 -> value
+	// we just need key1 -> value
+	parts := strings.Split(k, ".")
+	return parts[len(parts)-1]
 }

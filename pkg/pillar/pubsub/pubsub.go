@@ -100,7 +100,7 @@ func (p *PubSub) NewSubscription(options SubscriptionOptions) (Subscription, err
 
 	// Need some buffering to make sure that when we Close the subscription
 	// the goroutines exit
-	changes := make(chan Change, 3)
+	changes := make(chan Change, 5)
 	sub := &SubscriptionImpl{
 		C:                   changes,
 		agentName:           options.AgentName,

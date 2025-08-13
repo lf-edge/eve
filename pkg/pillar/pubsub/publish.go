@@ -345,13 +345,18 @@ func (pub *PublicationImpl) DetermineDiffs(localCollection LocalCollection) []st
 
 func (pub *PublicationImpl) nameString() string {
 	var name string
+	agentName := pub.agentName
+	if agentName == "" {
+		// global
+		agentName = pub.defaultName
+	}
 	switch {
 	case pub.global:
 		name = Global
 	case pub.agentScope == "":
-		name = fmt.Sprintf("%s/%s", pub.agentName, pub.topic)
+		name = fmt.Sprintf("%s.%s", agentName, pub.topic)
 	default:
-		name = fmt.Sprintf("%s/%s/%s", pub.agentName, pub.agentScope, pub.topic)
+		name = fmt.Sprintf("%s.%s.%s", agentName, pub.agentScope, pub.topic)
 	}
 	return name
 }

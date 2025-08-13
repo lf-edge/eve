@@ -121,26 +121,16 @@ func TestRestarted(t *testing.T) {
 			sub.Activate()
 			// Process subscription to populate
 			for !sub.Synchronized() || !sub.Restarted() {
-				select {
-				case change := <-sub.MsgChan():
-					log.Functionf("ProcessChange")
-					sub.ProcessChange(change)
-				}
+				change := <-sub.MsgChan()
+				log.Functionf("ProcessChange")
+				sub.ProcessChange(change)
 			}
 			items := sub.GetAll()
-			assert.Equal(t, 1, len(items))
-			assert.Equal(t, 3, len(events))
-			if len(events) == 3 {
-				assert.Equal(t, "create key1", events[0])
-				// Could be in either order
-				if events[1] == "restarted 1" {
-					assert.Equal(t, "synchronized true", events[2])
-				} else {
-					assert.Equal(t, "synchronized true", events[1])
-					assert.Equal(t, "restarted 1", events[2])
-				}
-			}
-			events = nil
+			assert.Equal(t, 1, len(items))  // because __restarted__ is added
+			assert.Equal(t, 3, len(events)) // because __restarted__ is added
+			expected := []string{"create key1", "synchronized true", "restarted 1"}
+			assert.ElementsMatch(t, expected, events, "elements should match in any order")
+			events = []string{}
 
 			item1modified := item{FieldA: "item1modified"}
 			log.Functionf("Publishing key1")
@@ -160,29 +150,19 @@ func TestRestarted(t *testing.T) {
 					sub.ProcessChange(change)
 					if len(events) == 3 {
 						done = true
-						break
 					}
 				case <-timer.C:
 					log.Errorf("Timed out for three: got %d: %+v",
 						len(events), events)
 					done = true
-					break
 				}
 			}
 			items = sub.GetAll()
-			assert.Equal(t, 2, len(items))
+			assert.Equal(t, 2, len(items)) // __restarted__ is added
 			assert.Equal(t, 3, len(events))
-			if len(events) == 3 {
-				// modify and create in any order
-				if events[0] == "modify key1" {
-					assert.Equal(t, "create key2", events[1])
-				} else {
-					assert.Equal(t, "create key2", events[0])
-					assert.Equal(t, "modify key1", events[1])
-				}
-				assert.Equal(t, "restarted 2", events[2])
-			}
-			events = nil
+			expected = []string{"modify key1", "create key2", "restarted 2"}
+			assert.ElementsMatch(t, expected, events, "elements should match in any order")
+			events = []string{}
 
 			pub.Unpublish("key1")
 			log.Functionf("SignalRestarted")
@@ -197,24 +177,21 @@ func TestRestarted(t *testing.T) {
 					sub.ProcessChange(change)
 					if len(events) == 2 {
 						done = true
-						break
 					}
 				case <-timer.C:
 					log.Errorf("Timed out for two: got %d: %+v",
 						len(events), events)
 					done = true
-					break
 				}
 			}
 			items = sub.GetAll()
 			assert.Equal(t, 1, len(items))
 			assert.Equal(t, 2, len(events))
-			if len(events) == 2 {
-				assert.Equal(t, "delete key1", events[0])
-				assert.Equal(t, "restarted 3", events[1])
-			}
+			assert.Equal(t, "delete key1", events[0])
+			assert.Equal(t, "restarted 3", events[1])
 			events = nil
 		})
+		break
 	}
 	os.RemoveAll(rootPath)
 }
