@@ -117,23 +117,6 @@ func lookupAppDiskMetric(ctx *zedagentContext, diskPath string) *types.AppDiskMe
 	return &metric
 }
 
-func encodeErrorInfo(et types.ErrorDescription) *info.ErrorInfo {
-	if et.ErrorTime.IsZero() {
-		// No Success / Error to report
-		return nil
-	}
-	errInfo := new(info.ErrorInfo)
-	errInfo.Description = et.Error
-	errInfo.Timestamp = timestamppb.New(et.ErrorTime)
-	errInfo.Severity = info.Severity(et.ErrorSeverity)
-	errInfo.RetryCondition = et.ErrorRetryCondition
-	errInfo.Entities = make([]*info.DeviceEntity, len(et.ErrorEntities))
-	for i, el := range et.ErrorEntities {
-		errInfo.Entities[i] = &info.DeviceEntity{EntityId: el.EntityID, Entity: info.Entity(el.EntityType)}
-	}
-	return errInfo
-}
-
 // We reuse the info.ErrorInfo to pass both failure and success. If success
 // the Description is left empty
 func encodeTestResults(tr types.TestResults) *info.ErrorInfo {
@@ -185,7 +168,7 @@ func metricsAndInfoTimerTask(ctx *zedagentContext, handleChannel chan interface{
 			ctx.ps.CheckMaxTimeTopic(wdName, "publishMetrics", start,
 				warningTime, errorTime)
 
-			locConfig := ctx.getconfigCtx.sideController.locConfig
+			locConfig := ctx.getconfigCtx.locConfig
 			if locConfig != nil {
 				// Publish all info by timer only for LOC. LOC is
 				// always special due its volatile nature, so set
@@ -871,35 +854,7 @@ func getCellularMetrics(ctx *zedagentContext) (cellularMetrics []*metrics.Cellul
 		log.Errorln("unexpected type of wwan metrics")
 		return
 	}
-	for _, network := range wwanMetrics.Networks {
-		if network.LogicalLabel == "" {
-			// skip unmanaged modems for now
-			continue
-		}
-		cellularMetrics = append(cellularMetrics,
-			&metrics.CellularMetric{
-				Logicallabel: network.LogicalLabel,
-				SignalStrength: &metrics.CellularSignalStrength{
-					Rssi: network.SignalInfo.RSSI,
-					Rsrq: network.SignalInfo.RSRQ,
-					Rsrp: network.SignalInfo.RSRP,
-					Snr:  network.SignalInfo.SNR,
-				},
-				PacketStats: &metrics.CellularPacketStats{
-					Rx: &metrics.NetworkStats{
-						TotalPackets: network.PacketStats.RxPackets,
-						Drops:        network.PacketStats.RxDrops,
-						TotalBytes:   network.PacketStats.RxBytes,
-					},
-					Tx: &metrics.NetworkStats{
-						TotalPackets: network.PacketStats.TxPackets,
-						Drops:        network.PacketStats.TxDrops,
-						TotalBytes:   network.PacketStats.TxBytes,
-					},
-				},
-			})
-	}
-	return cellularMetrics
+	return wwanMetrics.ToProto(log)
 }
 
 func getDiskInfo(ctx *zedagentContext, vrs types.VolumeRefStatus, appDiskDetails *metrics.AppDiskMetric) error {
@@ -1172,10 +1127,8 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 		ReportAppInfo.AppName = aiStatus.DisplayName
 		ReportAppInfo.State = aiStatus.State.ZSwState()
 		if !aiStatus.ErrorTime.IsZero() {
-			errInfo := encodeErrorInfo(
-				aiStatus.ErrorAndTimeWithSource.ErrorDescription)
-			ReportAppInfo.AppErr = append(ReportAppInfo.AppErr,
-				errInfo)
+			errInfo := aiStatus.ErrorAndTimeWithSource.ErrorDescription.ToProto()
+			ReportAppInfo.AppErr = append(ReportAppInfo.AppErr, errInfo)
 		}
 
 		if aiStatus.BootTime.IsZero() {
@@ -1263,7 +1216,7 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 			snapInfo.ConfigVersion = snap.ConfigVersion.Version
 			snapInfo.CreateTime = timestamppb.New(snap.TimeCreated)
 			snapInfo.Type = snap.Snapshot.SnapshotType.ConvertToInfoSnapshotType()
-			snapInfo.SnapErr = encodeErrorInfo(snap.Error)
+			snapInfo.SnapErr = snap.Error.ToProto()
 			ReportAppInfo.Snapshots = append(ReportAppInfo.Snapshots, snapInfo)
 		}
 
@@ -1318,8 +1271,7 @@ func PublishContentInfoToZedCloud(ctx *zedagentContext, uuid string,
 		ReportContentInfo.DisplayName = ctStatus.DisplayName
 		ReportContentInfo.State = ctStatus.State.ZSwState()
 		if !ctStatus.ErrorTime.IsZero() {
-			errInfo := encodeErrorInfo(
-				ctStatus.ErrorAndTimeWithSource.ErrorDescription)
+			errInfo := ctStatus.ErrorAndTimeWithSource.ErrorDescription.ToProto()
 			ReportContentInfo.Err = errInfo
 		}
 
@@ -1384,8 +1336,7 @@ func PublishVolumeToZedCloud(ctx *zedagentContext, uuid string,
 		ReportVolumeInfo.DisplayName = volStatus.DisplayName
 		ReportVolumeInfo.State = volStatus.State.ZSwState()
 		if !volStatus.ErrorTime.IsZero() {
-			errInfo := encodeErrorInfo(
-				volStatus.ErrorAndTimeWithSource.ErrorDescription)
+			errInfo := volStatus.ErrorAndTimeWithSource.ErrorDescription.ToProto()
 			ReportVolumeInfo.VolumeErr = errInfo
 		}
 
@@ -1644,7 +1595,7 @@ func sendMetricsProtobuf(ctx *getconfigContext,
 		devUUID, "metrics")
 	sendMetricsProtobufByURL(ctx, url, ReportMetrics, iteration, ctx.zedagentCtx.airgapMode)
 
-	locConfig := ctx.sideController.locConfig
+	locConfig := ctx.locConfig
 
 	// Repeat metrics for LOC as well
 	if locConfig != nil {
@@ -1712,7 +1663,7 @@ func sendHardwareHealthProtobuf(ctx *getconfigContext,
 	ret := sendHardwareHealthProtobufByURL(ctx, url, HardwareHealth, iteration,
 		ctx.zedagentCtx.airgapMode)
 
-	locConfig := ctx.sideController.locConfig
+	locConfig := ctx.locConfig
 
 	// Repeat hardwarehealth for LOC as well
 	if locConfig != nil && locConfig.LocURL != "" {

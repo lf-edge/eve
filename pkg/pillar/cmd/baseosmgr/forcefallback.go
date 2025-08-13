@@ -12,10 +12,8 @@ import (
 )
 
 const (
-	// checkpointDirname - location of forcefallbackfile
 	// XXX move to locationconst.go?
-	checkpointDirname     = types.PersistDir + "/checkpoint"
-	forcefallbackFilename = checkpointDirname + "/forceFallbackCounter"
+	forcefallbackFilename = types.CheckpointDirname + "/forceFallbackCounter"
 )
 
 // handle zedagent status events to look if the ForceFallbackCounter changes

@@ -168,8 +168,7 @@ func objectInfoTask(ctxPtr *zedagentContext, triggerInfo <-chan infoForObjectKey
 			case info.ZInfoTypes_ZiLocation:
 				locInfo := getLocationInfo(ctxPtr)
 				if locInfo != nil {
-					// Note that we use a zero iteration
-					// counter here.
+					// Note that we use a zero iteration counter here.
 					publishLocationToDest(ctxPtr, locInfo, 0, infoDest)
 				}
 			}
@@ -330,7 +329,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext, dest destinationBitset) {
 				log.Tracef("reportMetrics sending error time %v error %v for %s",
 					bos.ErrorTime, bos.Error,
 					bos.BaseOsVersion)
-				swInfo.SwErr = encodeErrorInfo(bos.ErrorAndTime.ErrorDescription)
+				swInfo.SwErr = bos.ErrorAndTime.ErrorDescription.ToProto()
 			}
 			if swInfo.ShortVersion == "" {
 				swInfo.Status = info.ZSwState_INITIAL
@@ -389,7 +388,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext, dest destinationBitset) {
 		if !bos.ErrorTime.IsZero() {
 			log.Tracef("reportMetrics sending error time %v error %v for %s",
 				bos.ErrorTime, bos.Error, bos.BaseOsVersion)
-			swInfo.SwErr = encodeErrorInfo(bos.ErrorAndTime.ErrorDescription)
+			swInfo.SwErr = bos.ErrorAndTime.ErrorDescription.ToProto()
 		}
 		addUserSwInfo(ctx, swInfo, bos.TooEarly)
 		ReportDeviceInfo.SwList = append(ReportDeviceInfo.SwList,
@@ -471,10 +470,10 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext, dest destinationBitset) {
 			for _, cellNet := range status.Networks {
 				ReportDeviceInfo.CellRadios = append(
 					ReportDeviceInfo.CellRadios,
-					encodeCellModuleInfo(cellNet.Module))
+					cellNet.Module.ToProto(log))
 				ReportDeviceInfo.Sims = append(
 					ReportDeviceInfo.Sims,
-					encodeSimCards(cellNet.Module.Name, cellNet.SimCards)...)
+					cellNet.SimCardsToProto()...)
 			}
 		}
 	}
@@ -633,7 +632,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext, dest destinationBitset) {
 	}
 	// For backward compatibility added new field
 	ReportDeviceInfo.MaintenanceModeReasons = append(ReportDeviceInfo.MaintenanceModeReasons,
-		infoMaintModeReason(ctx.maintModeReasons)...)
+		ctx.maintModeReasons.ToProto()...)
 
 	// Watchdog
 	ReportDeviceInfo.HardwareWatchdogPresent = getHardwareWatchdogPresent(ctx)
@@ -660,9 +659,9 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext, dest destinationBitset) {
 	ReportDeviceInfo.ApiCapability = info.APICapability_API_CAPABILITY_LOC_REBOOT_COLLECT_INFO
 
 	// Report if there is a local override of profile
-	if ctx.getconfigCtx.sideController.currentProfile !=
-		ctx.getconfigCtx.sideController.globalProfile {
-		ReportDeviceInfo.LocalProfile = ctx.getconfigCtx.sideController.currentProfile
+	if ctx.getconfigCtx.localCmdAgent.GetCurrentProfile() !=
+		ctx.getconfigCtx.localCmdAgent.GetGlobalProfile() {
+		ReportDeviceInfo.LocalProfile = ctx.getconfigCtx.localCmdAgent.GetCurrentProfile()
 	}
 
 	ReportInfo.InfoContent = new(info.ZInfoMsg_Dinfo)
@@ -683,7 +682,8 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext, dest destinationBitset) {
 			State: info.AttestationState(ctx.attestCtx.attestFsmCtx.GetState()),
 		}
 		if ctx.attestCtx.attestFsmCtx.HasError() {
-			ReportDeviceInfo.AttestationInfo.Error = encodeErrorInfo(ctx.attestCtx.attestFsmCtx.ErrorDescription)
+			ReportDeviceInfo.AttestationInfo.Error =
+				ctx.attestCtx.attestFsmCtx.ErrorDescription.ToProto()
 		}
 		if ctx.attestCtx.Started {
 			attestFsmCtx := ctx.attestCtx.attestFsmCtx
@@ -895,150 +895,6 @@ func encodeNetInfo(port types.NetworkPortStatus) *info.ZInfoNetwork {
 	return networkInfo
 }
 
-func encodeCellModuleInfo(wwanModule types.WwanCellModule) *info.ZCellularModuleInfo {
-	var opState info.ZCellularOperatingState
-	switch wwanModule.OpMode {
-	case types.WwanOpModeUnspecified:
-		opState = info.ZCellularOperatingState_Z_CELLULAR_OPERATING_STATE_UNSPECIFIED
-	case types.WwanOpModeOnline:
-		opState = info.ZCellularOperatingState_Z_CELLULAR_OPERATING_STATE_ONLINE
-	case types.WwanOpModeConnected:
-		opState = info.ZCellularOperatingState_Z_CELLULAR_OPERATING_STATE_ONLINE_AND_CONNECTED
-	case types.WwanOpModeRadioOff:
-		opState = info.ZCellularOperatingState_Z_CELLULAR_OPERATING_STATE_RADIO_OFF
-	case types.WwanOpModeOffline:
-		opState = info.ZCellularOperatingState_Z_CELLULAR_OPERATING_STATE_OFFLINE
-	case types.WwanOpModeUnrecognized:
-		opState = info.ZCellularOperatingState_Z_CELLULAR_OPERATING_STATE_UNRECOGNIZED
-	default:
-		log.Errorf("Invalid wwan module operating state: %v", wwanModule.OpMode)
-	}
-
-	var ctrlProto info.ZCellularControlProtocol
-	switch wwanModule.ControlProtocol {
-	case types.WwanCtrlProtUnspecified:
-		ctrlProto = info.ZCellularControlProtocol_Z_CELLULAR_CONTROL_PROTOCOL_UNSPECIFIED
-	case types.WwanCtrlProtQMI:
-		ctrlProto = info.ZCellularControlProtocol_Z_CELLULAR_CONTROL_PROTOCOL_QMI
-	case types.WwanCtrlProtMBIM:
-		ctrlProto = info.ZCellularControlProtocol_Z_CELLULAR_CONTROL_PROTOCOL_MBIM
-	default:
-		log.Errorf("Invalid wwan module control protocol: %v", wwanModule.ControlProtocol)
-	}
-	return &info.ZCellularModuleInfo{
-		Name:            wwanModule.Name,
-		Imei:            wwanModule.IMEI,
-		FirmwareVersion: wwanModule.Revision,
-		Model:           wwanModule.Model,
-		Manufacturer:    wwanModule.Manufacturer,
-		OperatingState:  opState,
-		ControlProtocol: ctrlProto,
-	}
-}
-
-func encodeSimCards(cellModule string, wwanSimCards []types.WwanSimCard) (simCards []*info.ZSimcardInfo) {
-	for _, simCard := range wwanSimCards {
-		simCards = append(simCards, &info.ZSimcardInfo{
-			Name:           simCard.Name,
-			CellModuleName: cellModule,
-			Imsi:           simCard.IMSI,
-			Iccid:          simCard.ICCID,
-			Type:           info.SimType(simCard.Type),
-			State:          simCard.State,
-			SlotNumber:     uint32(simCard.SlotNumber),
-			SlotActivated:  simCard.SlotActivated,
-		})
-	}
-	return simCards
-}
-
-func encodeCellProvider(wwanProvider types.WwanProvider) (provider *info.ZCellularProvider) {
-	return &info.ZCellularProvider{
-		Plmn:           wwanProvider.PLMN,
-		Description:    wwanProvider.Description,
-		CurrentServing: wwanProvider.CurrentServing,
-		Roaming:        wwanProvider.Roaming,
-		Forbidden:      wwanProvider.Forbidden,
-	}
-}
-
-func encodeCellProviders(wwanStatus types.WwanNetworkStatus) (providers []*info.ZCellularProvider) {
-	var includedCurrentProvider bool
-	for _, provider := range wwanStatus.VisibleProviders {
-		if provider == wwanStatus.CurrentProvider {
-			includedCurrentProvider = true
-		}
-		providers = append(providers, encodeCellProvider(provider))
-	}
-	if !includedCurrentProvider && wwanStatus.CurrentProvider.PLMN != "" {
-		providers = append(providers, encodeCellProvider(wwanStatus.CurrentProvider))
-	}
-	return providers
-}
-
-func encodeCellIPType(ipType types.WwanIPType) evecommon.CellularIPType {
-	switch ipType {
-	case types.WwanIPTypeUnspecified:
-		return evecommon.CellularIPType_CELLULAR_IP_TYPE_UNSPECIFIED
-	case types.WwanIPTypeIPv4:
-		return evecommon.CellularIPType_CELLULAR_IP_TYPE_IPV4
-	case types.WwanIPTypeIPv4AndIPv6:
-		return evecommon.CellularIPType_CELLULAR_IP_TYPE_IPV4_AND_IPV6
-	case types.WwanIPTypeIPv6:
-		return evecommon.CellularIPType_CELLULAR_IP_TYPE_IPV6
-	default:
-		log.Errorf("Invalid wwan IP type: %v", ipType)
-	}
-	return evecommon.CellularIPType_CELLULAR_IP_TYPE_UNSPECIFIED
-}
-
-func encodeCellBearerType(bearerType types.BearerType) evecommon.BearerType {
-	switch bearerType {
-	case types.BearerTypeUnspecified:
-		return evecommon.BearerType_BEARER_TYPE_UNSPECIFIED
-	case types.BearerTypeAttach:
-		return evecommon.BearerType_BEARER_TYPE_ATTACH
-	case types.BearerTypeDefault:
-		return evecommon.BearerType_BEARER_TYPE_DEFAULT
-	case types.BearerTypeDedicated:
-		return evecommon.BearerType_BEARER_TYPE_DEDICATED
-	default:
-		log.Errorf("Invalid wwan bearer type: %v", bearerType)
-	}
-	return evecommon.BearerType_BEARER_TYPE_UNSPECIFIED
-}
-
-func encodeCellBearers(wwanStatus types.WwanNetworkStatus) (bearers []*info.CellularBearer) {
-	for _, bearer := range wwanStatus.Bearers {
-		var connectedAt *timestamppb.Timestamp
-		if bearer.ConnectedAt != 0 {
-			connectedAt = timestamppb.New(time.Unix(int64(bearer.ConnectedAt), 0))
-		}
-		bearers = append(bearers, &info.CellularBearer{
-			Apn:             bearer.APN,
-			BearerType:      encodeCellBearerType(bearer.Type),
-			IpType:          encodeCellIPType(bearer.IPType),
-			Connected:       bearer.Connected,
-			ConnectionError: bearer.ConnectionError,
-			ConnectedAt:     connectedAt,
-		})
-	}
-	return bearers
-}
-
-func encodeCellProfiles(wwanStatus types.WwanNetworkStatus) (profiles []*info.CellularProfile) {
-	for _, profile := range wwanStatus.Profiles {
-		profiles = append(profiles, &info.CellularProfile{
-			ProfileName:   profile.Name,
-			Apn:           profile.APN,
-			BearerType:    encodeCellBearerType(profile.BearerType),
-			IpType:        encodeCellIPType(profile.IPType),
-			ForbidRoaming: profile.ForbidRoaming,
-		})
-	}
-	return profiles
-}
-
 func encodeSystemAdapterInfo(ctx *zedagentContext) *info.SystemAdapterInfo {
 	dpcl := *ctx.DevicePortConfigList
 	sainfo := new(info.SystemAdapterInfo)
@@ -1169,13 +1025,13 @@ func encodeNetworkPortStatus(ctx *zedagentContext,
 			Cellular: &info.ZCellularStatus{
 				CellularModule: wwanStatus.Module.Name,
 				SimCards:       simCards,
-				Providers:      encodeCellProviders(wwanStatus),
+				Providers:      wwanStatus.CellProvidersToProto(),
 				CurrentRats:    rats,
 				ConnectedAt:    connectedAt,
 				ConfigError:    wwanStatus.ConfigError,
 				ProbeError:     wwanStatus.ProbeError,
-				Bearers:        encodeCellBearers(wwanStatus),
-				Profiles:       encodeCellProfiles(wwanStatus),
+				Bearers:        wwanStatus.CellBearersToProto(log),
+				Profiles:       wwanStatus.CellProfilesToProto(log),
 			},
 		}
 	case types.WirelessTypeWifi:
@@ -1251,7 +1107,7 @@ func getDataSecAtRestInfo(ctx *zedagentContext) *info.DataSecAtRest {
 		vaultInfo.Status = v.Status
 		vaultInfo.PcrStatus = v.PCRStatus
 		if !v.ErrorTime.IsZero() {
-			vaultInfo.VaultErr = encodeErrorInfo(v.ErrorAndTime.ErrorDescription)
+			vaultInfo.VaultErr = v.ErrorAndTime.ErrorDescription.ToProto()
 		}
 		ReportDataSecAtRestInfo.VaultList = append(ReportDataSecAtRestInfo.VaultList, vaultInfo)
 	}

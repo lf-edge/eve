@@ -42,6 +42,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/controllerconn"
+	"github.com/lf-edge/eve/pkg/pillar/localcommand"
 	"github.com/lf-edge/eve/pkg/pillar/netdump"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -51,11 +52,7 @@ import (
 )
 
 const (
-	agentName               = "zedagent"
-	restartCounterFile      = types.PersistStatusDir + "/restartcounter"
-	lastDevCmdTimestampFile = types.PersistStatusDir + "/lastdevcmdtimestamp"
-	// checkpointDirname - location of config checkpoint
-	checkpointDirname = types.PersistDir + "/checkpoint"
+	agentName = "zedagent"
 	// Time limits for event loop handlers
 	errorTime   = 3 * time.Minute
 	warningTime = 40 * time.Second
@@ -303,7 +300,10 @@ func queueInfoToDest(ctx *zedagentContext, dest destinationBitset,
 	key string, buf *bytes.Buffer, bailOnHTTPErr,
 	withNetTracing, forcePeriodic bool, itemType interface{}) {
 
-	locConfig := ctx.getconfigCtx.sideController.locConfig
+	var locURL string
+	if ctx.getconfigCtx.locConfig != nil {
+		locURL = ctx.getconfigCtx.locConfig.LocURL
+	}
 
 	if dest&ControllerDest != 0 {
 		url := controllerconn.URLPathString(serverNameAndPort, ctrlClient.UsingV2API(),
@@ -322,8 +322,8 @@ func queueInfoToDest(ctx *zedagentContext, dest destinationBitset,
 				SuppressLogs:   ctx.airgapMode,
 			})
 	}
-	if dest&LOCDest != 0 && locConfig != nil {
-		url := controllerconn.URLPathString(locConfig.LocURL, ctrlClient.UsingV2API(),
+	if dest&LOCDest != 0 && locURL != "" {
+		url := controllerconn.URLPathString(locURL, ctrlClient.UsingV2API(),
 			devUUID, "info")
 		ctx.deferredLOCPeriodicQueue.SetDeferred(key, buf, url, itemType,
 			controllerconn.DeferredItemOpts{
@@ -384,6 +384,13 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	zedagentCtx.triggerClusterInfo = triggerClusterInfo
 	zedagentCtx.triggerClusterUpdateInfo = triggerClusterUpdateInfo
 
+	zedagentCtx.getconfigCtx.localCmdAgent = localcommand.NewLocalCmdAgent(
+		localcommand.ConstructorArgs{
+			Log:         log,
+			Watchdog:    ps,
+			ConfigAgent: zedagentCtx,
+		})
+
 	// Initialize all zedagent publications.
 	initPublications(zedagentCtx)
 
@@ -402,6 +409,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	item, err := zedagentCtx.pubGlobalConfig.Get("global")
 	if err == nil {
 		zedagentCtx.globalConfig = item.(types.ConfigItemValueMap)
+		getconfigCtx.localCmdAgent.UpdateGlobalConfig(&zedagentCtx.globalConfig)
 	} else {
 		log.Warnf("GlobalConfig is missing, publishing default values")
 		zedagentCtx.globalConfig = *types.DefaultConfigItemValueMap()
@@ -415,9 +423,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	// (otherwise the log.Fatalf above exits zedagent).
 	zedagentCtx.globalConfigPublished = true
 	log.Noticef("Initialized GlobalConfig: %v", zedagentCtx.globalConfig)
-
-	// Apply saved radio config ASAP.
-	initializeRadioConfig(getconfigCtx)
 
 	// Wait until we have been onboarded aka know our own UUID.
 	// Onboarding is done by client (pillar/cmd/client).
@@ -562,19 +567,21 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	go kubeClusterUpdateStatusTask(zedagentCtx, triggerClusterUpdateInfo)
 	triggerPublishKubeClusterUpdateStatus(zedagentCtx)
 
-	//trigger channel for localProfile state machine
-	getconfigCtx.sideController.localProfileTrigger = make(chan Notify, 1)
-	//process saved local profile
-	processSavedProfile(getconfigCtx)
-
-	// initialize localInfo
-	initializeLocalAppInfo(getconfigCtx)
-	go localAppInfoPOSTTask(getconfigCtx)
-	initializeLocalCommands(getconfigCtx)
-
-	initializeLocalDevCmdTimestamp(getconfigCtx)
-	initializeLocalDevInfo(getconfigCtx)
-	go localDevInfoPOSTTask(getconfigCtx)
+	// Start tasks of the agent responsible for processing locally requested commands.
+	getconfigCtx.localCmdAgent.RunTasks(localcommand.RunArgs{
+		CtrlClient:            ctrlClient,
+		OnboardingStatus:      zedagentCtx.subOnboardStatus,
+		AppInstanceStatus:     zedagentCtx.getconfigCtx.subAppInstanceStatus,
+		AppInstanceConfig:     zedagentCtx.getconfigCtx.pubAppInstanceConfig,
+		AppNetworkStatus:      zedagentCtx.getconfigCtx.subAppNetworkStatus,
+		DeviceNetworkStatus:   zedagentCtx.dnsCtx.subDeviceNetworkStatus,
+		NetworkInstanceConfig: zedagentCtx.getconfigCtx.pubNetworkInstanceConfig,
+		WwanMetrics:           zedagentCtx.subWwanMetrics,
+		NodeAgentStatus:       zedagentCtx.getconfigCtx.subNodeAgentStatus,
+		ZedagentStatus:        zedagentCtx.getconfigCtx.pubZedAgentStatus,
+	})
+	// Fetch and apply persisted radio-silence configuration immediately.
+	publishZedAgentStatus(getconfigCtx)
 
 	// start the config fetch tasks, when zboot status is ready
 	log.Functionf("Creating %s at %s", "configTimerTask", agentlog.GetMyStack())
@@ -582,15 +589,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	configTickerHandle := <-handleChannel
 	// XXX close handleChannels?
 	getconfigCtx.configTickerHandle = configTickerHandle
-
-	// start the local profile fetch tasks
-	log.Functionf("Creating %s at %s", "localProfileTimerTask", agentlog.GetMyStack())
-	go localProfileTimerTask(handleChannel, getconfigCtx)
-	localProfileTickerHandle := <-handleChannel
-	getconfigCtx.localProfileTickerHandle = localProfileTickerHandle
-
-	// start task fetching radio config from local server
-	go radioPOSTTask(getconfigCtx)
 
 	// start cipher module tasks
 	cipherModuleStart(zedagentCtx)
@@ -657,7 +655,6 @@ func (zedagentCtx *zedagentContext) init() {
 		// edge-view configure
 		configEdgeview: &types.EdgeviewConfig{},
 	}
-	getconfigCtx.sideController.localServerMap = &localServerMap{}
 
 	cipherCtx := &cipherContext{}
 	attestCtx := &attestContext{}
@@ -690,9 +687,9 @@ func initializeDirs() {
 			log.Fatal(err)
 		}
 	}
-	if _, err := os.Stat(checkpointDirname); err != nil {
-		log.Tracef("Create %s", checkpointDirname)
-		if err := os.MkdirAll(checkpointDirname, 0700); err != nil {
+	if _, err := os.Stat(types.CheckpointDirname); err != nil {
+		log.Tracef("Create %s", types.CheckpointDirname)
+		if err := os.MkdirAll(types.CheckpointDirname, 0700); err != nil {
 			log.Fatal(err)
 		}
 	}
@@ -809,7 +806,6 @@ func waitUntilDNSReady(zedagentCtx *zedagentContext, stillRunning *time.Ticker) 
 			zedagentCtx.subEncryptedKeyFromDevice.ProcessChange(change)
 
 		case change := <-getconfigCtx.subAppNetworkStatus.MsgChan():
-			getconfigCtx.sideController.localServerMap.upToDate = false
 			getconfigCtx.subAppNetworkStatus.ProcessChange(change)
 
 		case change := <-zedagentCtx.subWwanStatus.MsgChan():
@@ -878,7 +874,6 @@ func mainEventLoop(zedagentCtx *zedagentContext, stillRunning *time.Ticker) {
 			getconfigCtx.subNodeAgentStatus.ProcessChange(change)
 
 		case change := <-getconfigCtx.subAppNetworkStatus.MsgChan():
-			getconfigCtx.sideController.localServerMap.upToDate = false
 			getconfigCtx.subAppNetworkStatus.ProcessChange(change)
 
 		case change := <-dnsCtx.subDeviceNetworkStatus.MsgChan():
@@ -903,7 +898,7 @@ func mainEventLoop(zedagentCtx *zedagentContext, stillRunning *time.Ticker) {
 				dnsCtx.triggerHandleDeferred = false
 			}
 			if dnsCtx.triggerRadioPOST {
-				triggerRadioPOST(getconfigCtx)
+				getconfigCtx.localCmdAgent.TriggerRadioPOST()
 				dnsCtx.triggerRadioPOST = false
 			}
 
@@ -1409,13 +1404,16 @@ func initPostOnboardSubs(zedagentCtx *zedagentContext) {
 	}
 
 	getconfigCtx.subAppNetworkStatus, err = ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:   "zedrouter",
-		MyAgentName: agentName,
-		TopicImpl:   types.AppNetworkStatus{},
-		Activate:    true,
-		Ctx:         zedagentCtx,
-		WarningTime: warningTime,
-		ErrorTime:   errorTime,
+		AgentName:     "zedrouter",
+		MyAgentName:   agentName,
+		TopicImpl:     types.AppNetworkStatus{},
+		Activate:      true,
+		Ctx:           zedagentCtx,
+		CreateHandler: handleAppNetworkStatusCreate,
+		ModifyHandler: handleAppNetworkStatusModify,
+		DeleteHandler: handleAppNetworkStatusDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -2152,7 +2150,7 @@ func triggerPublishDevInfoToDest(ctxPtr *zedagentContext, dest destinationBitset
 		log.Warnf("Failed to send on PublishDeviceInfo")
 	}
 	if dest&LPSDest != 0 {
-		triggerLocalDevInfoPOST(ctxPtr.getconfigCtx)
+		ctxPtr.getconfigCtx.localCmdAgent.TriggerDevInfoPOST()
 	}
 }
 
@@ -2276,8 +2274,8 @@ func handleAppInstanceStatusCreate(ctxArg interface{}, key string,
 	PublishAppInfoToZedCloud(ctx, uuidStr, &status, ctx.assignableAdapters,
 		ctx.iteration, AllDest)
 	triggerPublishDevInfo(ctx)
-	processAppCommandStatus(ctx.getconfigCtx, status)
-	triggerLocalAppInfoPOST(ctx.getconfigCtx)
+	ctx.getconfigCtx.localCmdAgent.ProcessAppCommandStatus(status)
+	ctx.getconfigCtx.localCmdAgent.TriggerAppInfoPOST()
 	log.Functionf("handleAppInstanceStatusCreate(%s) DONE", key)
 }
 
@@ -2293,8 +2291,8 @@ func handleAppInstanceStatusModify(ctxArg interface{}, key string,
 	uuidStr := status.Key()
 	PublishAppInfoToZedCloud(ctx, uuidStr, &status, ctx.assignableAdapters,
 		ctx.iteration, AllDest)
-	processAppCommandStatus(ctx.getconfigCtx, status)
-	triggerLocalAppInfoPOST(ctx.getconfigCtx)
+	ctx.getconfigCtx.localCmdAgent.ProcessAppCommandStatus(status)
+	ctx.getconfigCtx.localCmdAgent.TriggerAppInfoPOST()
 	log.Functionf("handleAppInstanceStatusModify(%s) DONE", key)
 }
 
@@ -2307,7 +2305,7 @@ func handleAppInstanceStatusDelete(ctxArg interface{}, key string,
 	PublishAppInfoToZedCloud(ctx, uuidStr, nil, ctx.assignableAdapters,
 		ctx.iteration, AllDest)
 	triggerPublishDevInfo(ctx)
-	triggerLocalAppInfoPOST(ctx.getconfigCtx)
+	ctx.getconfigCtx.localCmdAgent.TriggerAppInfoPOST()
 	log.Functionf("handleAppInstanceStatusDelete(%s) DONE", key)
 }
 
@@ -2545,6 +2543,7 @@ func handleGlobalConfigImpl(ctxArg interface{}, key string,
 		ctx.gcpMaintenanceMode = gcp.GlobalValueTriState(types.MaintenanceMode)
 		mergeMaintenanceMode(ctx, "handleGlobalConfigImpl")
 		reinitNetdumper(ctx)
+		ctx.getconfigCtx.localCmdAgent.UpdateGlobalConfig(gcp)
 	}
 
 	log.Functionf("handleGlobalConfigImpl done for %s", key)
@@ -2561,7 +2560,9 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 	log.Functionf("handleGlobalConfigDelete for %s", key)
 	agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
 		ctx.CLIParams().DebugOverride, logger)
-	ctx.globalConfig = *types.DefaultConfigItemValueMap()
+	defaultConfig := types.DefaultConfigItemValueMap()
+	ctx.globalConfig = *defaultConfig
+	ctx.getconfigCtx.localCmdAgent.UpdateGlobalConfig(defaultConfig)
 	reinitNetdumper(ctx)
 	log.Functionf("handleGlobalConfigDelete done for %s", key)
 }

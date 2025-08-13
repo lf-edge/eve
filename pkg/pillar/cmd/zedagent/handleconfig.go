@@ -7,11 +7,8 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"net"
 	"net/http"
-	"net/url"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -24,12 +21,14 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/controllerconn"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
+	"github.com/lf-edge/eve/pkg/pillar/localcommand"
 	"github.com/lf-edge/eve/pkg/pillar/netdump"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
+	"github.com/lf-edge/eve/pkg/pillar/utils/persist"
 	"github.com/lf-edge/eve/pkg/pillar/zboot"
 	uuid "github.com/satori/go.uuid"
 	"google.golang.org/protobuf/proto"
@@ -45,23 +44,6 @@ const (
 // This is set once at init time and not changed
 var serverName string
 var serverNameAndPort string
-
-// Notify simple struct to pass notification messages
-type Notify struct{}
-
-// localServerAddr contains a source IP and a destination URL (without path)
-// to use to connect to a particular local server.
-type localServerAddr struct {
-	bridgeIP        net.IP
-	localServerAddr string
-	appUUID         uuid.UUID
-}
-
-// localServerMap is a map of all local (profile, radio, ...) servers
-type localServerMap struct {
-	servers  map[string][]localServerAddr // key = bridge name, value = local servers
-	upToDate bool
-}
 
 // L2Adapter is used to represent L2 Adapter (VLAN, bond) during configuration parsing.
 type L2Adapter struct {
@@ -94,7 +76,6 @@ type getconfigContext struct {
 	hardwareHealthTickerHandle interface{}
 	locationCloudTickerHandle  interface{}
 	locationAppTickerHandle    interface{}
-	localProfileTickerHandle   interface{}
 	ntpSourcesTickerHandle     interface{}
 	pubDevicePortConfig        pubsub.Publication
 	pubPhysicalIOAdapters      pubsub.Publication
@@ -136,37 +117,12 @@ type getconfigContext struct {
 	vlans []L2Adapter
 	bonds []L2Adapter
 
-	// radio-silence
-	radioSilence     types.RadioSilence // the intended state of radio devices
-	triggerRadioPOST chan Notify
+	// LOC configuration
+	compoundConfLastTimestamp uint64 // used for compound config acknowledgement
+	locConfig                 *types.LOCConfig
 
-	// Combines both LPS (local profile server) and LOC (local operator console)
-	// configurations and structures
-	sideController struct {
-		sync.Mutex
-		localProfileServer        string
-		profileServerToken        string
-		currentProfile            string
-		globalProfile             string
-		localProfile              string
-		localProfileTrigger       chan Notify
-		localServerMap            *localServerMap
-		lastDevCmdTimestamp       uint64 // From lastDevCmdTimestampFile
-		compoundConfLastTimestamp uint64 // used for compound config acknowledgement
-		locConfig                 *types.LOCConfig
-
-		localAppInfoPOSTTicker flextimer.FlexTickerHandle
-		localDevInfoPOSTTicker flextimer.FlexTickerHandle
-
-		// When enabled, device location reports are being published to the Local profile server
-		// at a significantly decreased rate.
-		lpsThrottledLocation     bool
-		lpsLastPublishedLocation time.Time
-
-		// localCommands : list of commands requested from a local server.
-		// This information is persisted under /persist/checkpoint/localcommands
-		localCommands *types.LocalCommands
-	}
+	// Handles operational commands submitted locally via LPS or LOC.
+	localCmdAgent *localcommand.LocalCmdAgent
 
 	deviceInfoFields deviceInfoFields
 
@@ -435,7 +391,6 @@ func configTimerTask(getconfigCtx *getconfigContext, handleChannel chan interfac
 		getconfigCtx.configProcessingRV = retVal
 		triggerPublishDevInfo(ctx)
 	}
-	getconfigCtx.sideController.localServerMap.upToDate = false
 	publishZedAgentStatus(getconfigCtx)
 	if withNetTracing {
 		publishConfigNetdump(ctx, retVal, tracedReqs)
@@ -477,7 +432,6 @@ func configTimerTask(getconfigCtx *getconfigContext, handleChannel chan interfac
 				getconfigCtx.configProcessingRV = retVal
 				triggerPublishDevInfo(ctx)
 			}
-			getconfigCtx.sideController.localServerMap.upToDate = false
 			ctx.ps.CheckMaxTimeTopic(wdName, "getLastestConfig", start,
 				warningTime, errorTime)
 			publishZedAgentStatus(getconfigCtx)
@@ -725,7 +679,7 @@ func requestConfigByURL(getconfigCtx *getconfigContext, url string,
 					ctx.bootReason)
 			} else {
 				config, ts, err := readSavedProtoMessageConfig(
-					ctrlClient, url, checkpointDirname+"/lastconfig")
+					ctrlClient, url, "lastconfig")
 				if err != nil {
 					log.Errorf("getconfig: %v", err)
 					return invalidConfig, rv.TracedReqs
@@ -878,7 +832,9 @@ cfgReceived:
 		// config was applied successfully, all possible errors
 		// from the auxiliary members from the compound config
 		// are ignored.
-		inhaleCompoundDeviceConfig(getconfigCtx, &compoundConfig)
+		getconfigCtx.localCmdAgent.ProcessLocalCommandsFromLoc(&compoundConfig)
+		// Acknowledge the config has been processed
+		getconfigCtx.compoundConfLastTimestamp = compoundConfig.Timestamp
 	}
 
 	return configOK, rv.TracedReqs
@@ -889,8 +845,9 @@ cfgReceived:
 // read from the file)
 func needRequestLocConfig(getconfigCtx *getconfigContext,
 	rv configProcessingRetval) bool {
-
-	return (rv != configOK && getconfigCtx.sideController.locConfig != nil && getconfigCtx.sideController.locConfig.LocURL != "")
+	return rv != configOK &&
+		getconfigCtx.locConfig != nil &&
+		getconfigCtx.locConfig.LocURL != ""
 }
 
 func getLatestConfig(getconfigCtx *getconfigContext, iteration int,
@@ -904,7 +861,7 @@ func getLatestConfig(getconfigCtx *getconfigContext, iteration int,
 
 	// Request configuration from the LOC
 	if needRequestLocConfig(getconfigCtx, rv) {
-		locURL := getconfigCtx.sideController.locConfig.LocURL
+		locURL := getconfigCtx.locConfig.LocURL
 		url = controllerconn.URLPathString(locURL, ctrlClient.UsingV2API(),
 			devUUID, "compound-config")
 
@@ -924,85 +881,39 @@ func getLatestConfig(getconfigCtx *getconfigContext, iteration int,
 }
 
 func saveReceivedProtoMessage(contents []byte) {
-	saveConfig("lastconfig", contents)
+	persist.SaveConfig(log, "lastconfig", contents)
 }
 
 // Update timestamp - no content changes
 func touchReceivedProtoMessage() {
-	touchSavedConfig("lastconfig")
+	persist.TouchSavedConfig(log, "lastconfig")
 }
 
 // XXX for debug we track these
 func saveSentMetricsProtoMessage(contents []byte) {
-	saveConfig("lastmetrics", contents)
+	persist.SaveConfig(log, "lastmetrics", contents)
 }
 
 // XXX for debug we track these
 func saveSentHardwareHealthProtoMessage(contents []byte) {
-	saveConfig("lasthardwarehealth", contents)
+	persist.SaveConfig(log, "lasthardwarehealth", contents)
 }
 
 // XXX for debug we track these
 func saveSentDeviceInfoProtoMessage(contents []byte) {
-	saveConfig("lastdeviceinfo", contents)
+	persist.SaveConfig(log, "lastdeviceinfo", contents)
 }
 
 // XXX for debug we track these
 func saveSentAppInfoProtoMessage(contents []byte) {
-	saveConfig("lastappinfo", contents)
-}
-
-func saveConfig(filename string, contents []byte) {
-	filename = checkpointDirname + "/" + filename
-	err := fileutils.WriteRename(filename, contents)
-	if err != nil {
-		// Can occur if no space in filesystem
-		log.Errorf("saveConfig failed: %s", err)
-		return
-	}
-}
-
-// Remove saved config file if it exists.
-func cleanSavedConfig(filename string) {
-	filename = checkpointDirname + "/" + filename
-	if err := os.Remove(filename); err != nil {
-		log.Functionf("cleanSavedConfig failed: %s", err)
-	}
-}
-
-// Update modification time
-func touchSavedConfig(filename string) {
-	filename = checkpointDirname + "/" + filename
-	_, err := os.Stat(filename)
-	if err != nil {
-		log.Warnf("touchSavedConfig stat failed: %s", err)
-	}
-	currentTime := time.Now()
-	err = os.Chtimes(filename, currentTime, currentTime)
-	if err != nil {
-		// Can occur if no space in filesystem?
-		log.Errorf("touchSavedConfig failed: %s", err)
-	}
-}
-
-// Check if SavedConfig exists
-func existsSavedConfig(filename string) bool {
-	filename = filepath.Join(checkpointDirname, filename)
-	_, err := os.Stat(filename)
-	if err != nil {
-		if !os.IsNotExist(err) {
-			log.Errorf("existsSavedConfig: cannot stat %s: %s", filename, err)
-		}
-		return false
-	}
-	return true
+	persist.SaveConfig(log, "lastappinfo", contents)
 }
 
 // If the file exists then read the config, and return is modify time
 // Ignore if older than StaleConfigTime seconds
 func readSavedProtoMessageConfig(ctrlClient *controllerconn.Client, URL string,
 	filename string) (*zconfig.EdgeDevConfig, time.Time, error) {
-	contents, ts, err := readSavedConfig(filename)
+	contents, ts, err := persist.ReadSavedConfig(log, filename)
 	if err != nil {
 		log.Errorln("readSavedProtoMessageConfig", err)
 		return nil, ts, err
@@ -1028,20 +939,6 @@ func readSavedProtoMessageConfig(ctrlClient *controllerconn.Client, URL string,
 	return config, ts, nil
 }
 
-// If the file exists then read the config content from it, and return its modify time.
-func readSavedConfig(filename string) ([]byte, time.Time, error) {
-	info, err := os.Stat(filename)
-	if err != nil {
-		return nil, time.Time{}, err
-	}
-	contents, err := os.ReadFile(filename)
-	if err != nil {
-		log.Errorln("readSavedConfig", err)
-		return nil, info.ModTime(), err
-	}
-	return contents, info.ModTime(), nil
-}
-
 // The most recent config hash we received. Starts empty
 var prevConfigHash string
 
@@ -1059,7 +956,7 @@ func generateConfigRequest(getconfigCtx *getconfigContext, isCompoundConfig bool
 	var b []byte
 	if isCompoundConfig {
 		compoundRequest := &zconfig.CompoundEdgeDevConfigRequest{
-			LastCmdTimestamp: getconfigCtx.sideController.compoundConfLastTimestamp,
+			LastCmdTimestamp: getconfigCtx.compoundConfLastTimestamp,
 			CfgReq:           configRequest,
 		}
 		b, err = proto.Marshal(compoundRequest)
@@ -1152,23 +1049,6 @@ func parseCompoundDeviceConfig(getconfigCtx *getconfigContext,
 	return nil
 }
 
-func inhaleCompoundDeviceConfig(getconfigCtx *getconfigContext,
-	compoundConfig *zconfig.CompoundEdgeDevConfig) {
-
-	appCmdList := compoundConfig.GetAppCmdList()
-	if appCmdList != nil {
-		processReceivedAppCommands(getconfigCtx, appCmdList)
-	}
-	devCmd := compoundConfig.GetDevCmd()
-	if devCmd != nil {
-		processReceivedDevCommands(getconfigCtx, devCmd)
-	}
-
-	// Acknowledge the config has been processed
-	getconfigCtx.sideController.compoundConfLastTimestamp =
-		compoundConfig.Timestamp
-}
-
 var (
 	lastDevUUIDChange       = time.Now()
 	potentialUUIDUpdateLock sync.Mutex
@@ -1209,137 +1089,31 @@ func potentialUUIDUpdate(_ *getconfigContext) {
 func publishZedAgentStatus(getconfigCtx *getconfigContext) {
 	ctx := getconfigCtx.zedagentCtx
 	status := types.ZedAgentStatus{
-		Name:                  agentName,
-		ConfigGetStatus:       getconfigCtx.configGetStatus,
-		RebootCmd:             ctx.rebootCmd,
-		ShutdownCmd:           ctx.shutdownCmd,
-		PoweroffCmd:           ctx.poweroffCmd,
-		RequestedRebootReason: ctx.requestedRebootReason,
-		RequestedBootReason:   ctx.requestedBootReason,
-		MaintenanceMode:       ctx.maintenanceMode,
-		ForceFallbackCounter:  ctx.forceFallbackCounter,
-		CurrentProfile:        getconfigCtx.sideController.currentProfile,
-		RadioSilence:          getconfigCtx.radioSilence,
-		DeviceState:           ctx.devState,
-		AttestState:           ctx.attestState,
-		AttestError:           ctx.attestError,
-		VaultStatus:           ctx.vaultStatus,
-		PCRStatus:             ctx.pcrStatus,
-		VaultErr:              ctx.vaultErr,
-		AirgapMode:            ctx.airgapMode,
+		Name:                   agentName,
+		ConfigGetStatus:        getconfigCtx.configGetStatus,
+		RebootCmd:              ctx.rebootCmd,
+		ShutdownCmd:            ctx.shutdownCmd,
+		PoweroffCmd:            ctx.poweroffCmd,
+		RequestedRebootReason:  ctx.requestedRebootReason,
+		RequestedBootReason:    ctx.requestedBootReason,
+		MaintenanceMode:        ctx.maintenanceMode,
+		MaintenanceModeReasons: ctx.maintModeReasons,
+		ForceFallbackCounter:   ctx.forceFallbackCounter,
+		CurrentProfile:         getconfigCtx.localCmdAgent.GetCurrentProfile(),
+		RadioSilence:           getconfigCtx.localCmdAgent.GetRadioSilenceConfig(),
+		DeviceState:            ctx.devState,
+		AttestState:            ctx.attestState,
+		AttestError:            ctx.attestError,
+		VaultStatus:            ctx.vaultStatus,
+		PCRStatus:              ctx.pcrStatus,
+		VaultErr:               ctx.vaultErr,
+		AirgapMode:             ctx.airgapMode,
 	}
-	if getconfigCtx.sideController.locConfig != nil {
-		status.LOCUrl = getconfigCtx.sideController.locConfig.LocURL
+	if getconfigCtx.locConfig != nil {
+		status.LOCUrl = getconfigCtx.locConfig.LocURL
 	}
 	pub := getconfigCtx.pubZedAgentStatus
 	pub.Publish(agentName, status)
-}
-
-// updateLocalServerMap processes configuration of network instances to locate all local servers matching
-// the given localServerURL.
-// Returns the source IP and a normalized URL for one or more network instances on which the local server
-// was found to be hosted.
-func updateLocalServerMap(getconfigCtx *getconfigContext, localServerURL string) error {
-	url, err := url.Parse(localServerURL)
-	if err != nil {
-		return fmt.Errorf("updateLocalServerMap: url.Parse: %v", err)
-	}
-
-	srvMap := &localServerMap{servers: make(map[string][]localServerAddr), upToDate: true}
-	appNetworkStatuses := getconfigCtx.subAppNetworkStatus.GetAll()
-	networkInstanceConfigs := getconfigCtx.pubNetworkInstanceConfig.GetAll()
-	localServerHostname := url.Hostname()
-	localServerIP := net.ParseIP(localServerHostname)
-
-	for _, entry := range appNetworkStatuses {
-		appNetworkStatus := entry.(types.AppNetworkStatus)
-		for _, adapterStatus := range appNetworkStatus.AppNetAdapterList {
-			if len(adapterStatus.BridgeIPAddr) == 0 {
-				continue
-			}
-			if localServerIP != nil {
-				// Check if the defined IP of localServer equals one of the IPs
-				// allocated to the app.
-				var matchesApp bool
-				for _, ip := range adapterStatus.AssignedAddresses.IPv4Addrs {
-					if ip.Address.Equal(localServerIP) {
-						matchesApp = true
-						break
-					}
-				}
-				for _, ip := range adapterStatus.AssignedAddresses.IPv6Addrs {
-					if ip.Address.Equal(localServerIP) {
-						matchesApp = true
-						break
-					}
-				}
-				if matchesApp {
-					srvAddr := localServerAddr{
-						localServerAddr: localServerURL,
-						bridgeIP:        adapterStatus.BridgeIPAddr,
-						appUUID:         appNetworkStatus.UUIDandVersion.UUID,
-					}
-					srvMap.servers[adapterStatus.Bridge] = append(srvMap.servers[adapterStatus.Bridge], srvAddr)
-				}
-				continue
-			}
-			// check if defined hostname of localServer is in DNS records
-			for _, ni := range networkInstanceConfigs {
-				networkInstanceConfig := ni.(types.NetworkInstanceConfig)
-				for _, dnsNameToIPList := range networkInstanceConfig.DnsNameToIPList {
-					if dnsNameToIPList.HostName != localServerHostname {
-						continue
-					}
-					for _, ip := range dnsNameToIPList.IPs {
-						localServerURLReplaced := strings.Replace(
-							localServerURL, localServerHostname, ip.String(), 1)
-						log.Functionf(
-							"updateLocalServerMap: will use %s for bridge %s",
-							localServerURLReplaced, adapterStatus.Bridge)
-						srvAddr := localServerAddr{
-							localServerAddr: localServerURLReplaced,
-							bridgeIP:        adapterStatus.BridgeIPAddr,
-							appUUID:         appNetworkStatus.UUIDandVersion.UUID,
-						}
-						srvMap.servers[adapterStatus.Bridge] = append(srvMap.servers[adapterStatus.Bridge], srvAddr)
-					}
-				}
-			}
-		}
-	}
-	// To handle concurrent access to localServerMap (from localProfileTimerTask, radioPOSTTask and potentially from
-	// some more future tasks), we replace the map pointer at the very end of this function once the map is fully
-	// constructed.
-	getconfigCtx.sideController.localServerMap = srvMap
-	return nil
-}
-
-// updateHasLocalServer sets HasLocalServer on the app instances
-// Note that if there are changes to the AppInstanceConfig or the allocated IP
-// addresses the HasLocalServer will not immediately reflect that since we need
-// the IP address from AppNetworkStatus.
-func updateHasLocalServer(ctx *getconfigContext) {
-	srvMap := ctx.sideController.localServerMap.servers
-	items := ctx.pubAppInstanceConfig.GetAll()
-	for _, item := range items {
-		aic := item.(types.AppInstanceConfig)
-		hasLocalServer := false
-		for _, servers := range srvMap {
-			for _, srv := range servers {
-				if srv.appUUID == aic.UUIDandVersion.UUID {
-					hasLocalServer = true
-					break
-				}
-			}
-		}
-		if hasLocalServer != aic.HasLocalServer {
-			aic.HasLocalServer = hasLocalServer
-			log.Noticef("HasLocalServer(%s) for %s change to %t",
-				aic.Key(), aic.DisplayName, hasLocalServer)
-			// Verify that it fits and if not publish with error
-			checkAndPublishAppInstanceConfig(ctx.pubAppInstanceConfig, aic)
-		}
-	}
 }
 
 // Is network tracing enabled (for any request)?
