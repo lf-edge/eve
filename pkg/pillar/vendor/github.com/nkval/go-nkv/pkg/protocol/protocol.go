@@ -283,7 +283,7 @@ func MarshalNotification(n *Notification) string {
 		encoded := base64.StdEncoding.EncodeToString(n.Data)
 		return fmt.Sprintf("%s %s %s", string(n.Type), n.Key, encoded)
 	} else {
-		return fmt.Sprintf("%s", string(n.Type))
+		return fmt.Sprintf("%s %s", string(n.Type), n.Key)
 	}
 }
 
@@ -301,6 +301,10 @@ func UnmarshalNotification(input string) (*Notification, error) {
 
 	n := &Notification{
 		Type: parseNotificationType(parts[0]),
+	}
+
+	if len(parts) > 1 {
+		n.Key = parts[1]
 	}
 
 	if len(parts) > 2 {
