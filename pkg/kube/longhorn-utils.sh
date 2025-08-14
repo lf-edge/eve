@@ -3,7 +3,7 @@
 # Copyright (c) 2024 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-LONGHORN_VERSION=v1.6.3
+LONGHORN_VERSION=v1.9.1
 
 longhorn_install() {
     node_name=$1
