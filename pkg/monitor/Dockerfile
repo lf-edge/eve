@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 ARG MONITOR_RS_VERSION=v0.6.0
-ARG RUST_VERSION=lfedge/eve-rust:1.85.1-1
+ARG RUST_VERSION=lfedge/eve-rust:1.85.1-2
 FROM --platform=$BUILDPLATFORM ${RUST_VERSION} AS toolchain-base
 ARG TARGETARCH
 
