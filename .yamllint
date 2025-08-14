@@ -9,3 +9,5 @@ rules:
 ignore:
   - pkg/kube/lh-cfg-v1.6.2.yaml
   - pkg/kube/descheduler_rbac.yaml
+  - pkg/kube/lh-cfg-v1.9.1.yaml
+  - pkg/kube/kubevirt-operator.yaml
