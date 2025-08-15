@@ -3,11 +3,13 @@
 # Copyright (c) 2025 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-KUBEVIRT_VERSION=v1.1.0
+KUBEVIRT_VERSION=v1.6.0
 CDI_VERSION=v1.57.1
 
 Kubevirt_install() {
-    # This patched version will be removed once the following PR https://github.com/kubevirt/kubevirt/pull/9668 is merged
+    # Though PR https://github.com/kubevirt/kubevirt/pull/9668 is merged to upstream kubevirt
+    # we need to pass in env KV_IO_EXTRA_ENV_VIRT_IN_CONTAINER = "true" for our environment.
+    # so we download kubevirt-operator.yaml and patch it
     logmsg "Installing patched Kubevirt"
     kubectl apply -f /etc/kubevirt-operator.yaml
     logmsg "Updating replica to 1 for virt-operator and virt-controller"
