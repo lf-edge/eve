@@ -38,6 +38,7 @@ COPY config.yaml /etc/rancher/k3s
 COPY debuguser-role-binding.yaml /etc/
 COPY k3s-pod-logs.sh /usr/bin/
 COPY registration-utils.sh /usr/bin/
+COPY all-kube-events.sh /usr/bin/
 
 # kubevirt yaml files are patched files and will be removed later, look at cluster-init.sh
 COPY multus-daemonset.yaml /etc
@@ -53,6 +54,7 @@ COPY iscsid.conf /etc/iscsi/
 COPY longhorn-generate-support-bundle.sh /usr/bin/
 COPY nsmounter /usr/bin/
 COPY longhorn_uninstall_settings.yaml /etc/
+COPY failover-events.sh /usr/bin/
 
 # descheduler
 COPY descheduler-utils.sh /usr/bin/

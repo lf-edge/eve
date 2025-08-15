@@ -13,6 +13,16 @@ if ! kubectl get namespace/longhorn-system; then
     exit 1
 fi
 
+echo "============"
+echo "kubectl -n longhorn-system get replicaset,deployment,daemonset,service,pod,volume,replica,engine,engineimage,nodes.longhorn.io,volumeattachments.longhorn.io -o wide"
+echo "============"
+kubectl -n longhorn-system get replicaset,deployment,daemonset,service,pod,volume,replica,engine,engineimage,nodes.longhorn.io,volumeattachments.longhorn.io -o wide
+echo "============"
+echo "kubectl -n longhorn-system get volume fields:  .metadata.name spec.nodeID status.currentNodeID status.ownerID status.pendingNodeId"
+echo "============"
+kubectl -n longhorn-system get volume -o json | jq '.items[] | "name:\(.metadata.name) spec.nodeID:\(.spec.nodeID) status.currentNodeID:\(.status.currentNodeID) status.ownerID:\(.status.ownerID) status.pendingNodeId:\(.status.pendingNodeID)"'
+echo "============"
+
 echo "Apply longhorn support bundle yaml at $(date)"
 
 cat <<EOF | kubectl apply -f -
