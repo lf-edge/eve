@@ -31,6 +31,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"sync/atomic"
 	"time"
 
 	"github.com/eriknordmark/ipinfo"
@@ -657,6 +658,7 @@ func (zedagentCtx *zedagentContext) init() {
 		// edge-view configure
 		configEdgeview: &types.EdgeviewConfig{},
 	}
+	getconfigCtx.sideControllerSentInitialDeviceInfoMsg.Store(false)
 	getconfigCtx.sideController.localServerMap = &localServerMap{}
 
 	cipherCtx := &cipherContext{}
