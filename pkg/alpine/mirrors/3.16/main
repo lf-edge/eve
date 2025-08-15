@@ -71,6 +71,7 @@ gtk-doc
 hdparm
 iasl
 ifupdown-ng
+inotify-tools
 installkernel
 ip6tables
 ip6tables-openrc
