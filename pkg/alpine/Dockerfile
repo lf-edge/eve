@@ -45,10 +45,11 @@ RUN for repo in main community testing; do \
 
 # set the default repository to use
 RUN cp /mirror/${ALPINE_VERSION}/rootfs/etc/apk/repositories /etc/apk
-RUN cat /mirror/edge/rootfs/etc/apk/repositories >> /etc/apk/repositories
 RUN apk update
 
 FROM lfedge/eve-alpine:591df01e581889c3027514c8a91feaca1c8ad49f AS compactor
+ARG TARGETARCH
+ARG GO_VERSION=1.24.6
 
 COPY --from=cache-build /etc/apk/repositories* /etc/apk/
 COPY --from=cache-build /etc/apk/keys /etc/apk/keys/
@@ -56,6 +57,11 @@ COPY --from=cache-build /mirror /mirror/
 COPY eve-alpine-deploy.sh go-compile.sh /bin/
 
 RUN apk update && apk upgrade -a
+
+ADD "https://go.dev/dl/go${GO_VERSION}.linux-${TARGETARCH}.tar.gz" /tmp/go.tar.gz
+RUN rm -rf /usr/local/go && tar -C /usr/local -xzf /tmp/go.tar.gz
+RUN ln -s /usr/local/go/bin/go /usr/bin/go
+RUN ln -s /usr/local/go/bin/gofmt /usr/bin/gofmt
 
 # define arch-specific envs
 FROM scratch AS final-amd64
@@ -73,4 +79,5 @@ ENV EVE_TARGET_ARCH=riscv64
 # hadolint ignore=DL3006
 FROM final-${TARGETARCH}
 COPY --from=compactor / /
+ENV GOTOOLCHAIN=local
 CMD ["/bin/sh"]
