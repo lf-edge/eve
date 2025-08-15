@@ -226,6 +226,11 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext, dest destinationBitset) {
 	log.Functionf("PublishDeviceInfoToZedCloud uuid %s", deviceUUID)
 
 	ReportDeviceInfo := new(info.ZInfoDevice)
+	ReportDeviceInfo.DeviceName = ctx.getconfigCtx.deviceInfoFields.enterpriseName
+	ReportDeviceInfo.EnterpriseName = ctx.getconfigCtx.deviceInfoFields.enterpriseName
+	ReportDeviceInfo.EnterpriseId = ctx.getconfigCtx.deviceInfoFields.enterpriseID
+	ReportDeviceInfo.ProjectName = ctx.getconfigCtx.deviceInfoFields.projectName
+	ReportDeviceInfo.ProjectId = ctx.getconfigCtx.deviceInfoFields.projectID
 
 	// Get the remote access status
 	ReportDeviceInfo.RemoteAccessDisabled = utils.RemoteAccessDisabled()

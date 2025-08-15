@@ -70,6 +70,16 @@ type L2Adapter struct {
 	lowerPhysPorts []*types.PhysicalIOAdapter
 }
 
+// contains fields that are sent in the DeviceInfo message to the
+// controller and to LOC
+type deviceInfoFields struct {
+	deviceName     string
+	enterpriseName string
+	enterpriseID   string
+	projectName    string
+	projectID      string
+}
+
 type getconfigContext struct {
 	zedagentCtx                *zedagentContext    // Cross link
 	ledBlinkCount              types.LedBlinkCount // Current count
@@ -157,6 +167,8 @@ type getconfigContext struct {
 		// This information is persisted under /persist/checkpoint/localcommands
 		localCommands *types.LocalCommands
 	}
+
+	deviceInfoFields deviceInfoFields
 
 	configRetryUpdateCounter uint32 // received from config
 
@@ -884,6 +896,11 @@ func getLatestConfig(getconfigCtx *getconfigContext, iteration int,
 		locURL := getconfigCtx.sideController.locConfig.LocURL
 		url = controllerconn.URLPathString(locURL, ctrlClient.UsingV2API(),
 			devUUID, "compound-config")
+
+		// send DeviceInfoMsg to inform LOC about device name, enterprise and project
+		// send it regularly in case LOC exits (f.e. crash), as the LOC is expected
+		// in to be in the local network, the traffic is negligible
+		getconfigCtx.zedagentCtx.triggerDeviceInfo <- LOCDest
 
 		// Request compound config, if LOC configuration is outdated, then we
 		// get @obsoleteConfig return value (see parseConfig() for details)
