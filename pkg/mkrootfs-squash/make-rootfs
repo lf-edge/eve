@@ -35,7 +35,7 @@ IMGFILE=/rootfs.img
   ROOTFS_PART_SIZE_KB=$(( ( ($ROOTFS_PART_SIZE + 1024) / 1024 * 1024) / 1024 ))
   ROOTFS_PART_SECTORS=$(( $ROOTFS_PART_SIZE_KB * 2 ))
 
-  mksquashfs /tmp/rootfs/ $IMGFILE -noappend -comp xz -no-recovery
+  mksquashfs /tmp/rootfs/ $IMGFILE -noappend -comp xz -Xbcj x86,arm -no-recovery
 )
 
 $EXPORT_CMD
