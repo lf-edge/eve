@@ -31,7 +31,7 @@ require (
 	github.com/jackwakefield/gopac v1.0.2
 	github.com/jaypipes/ghw v0.8.0
 	github.com/k8snetworkplumbingwg/network-attachment-definition-client v1.5.0
-	github.com/lf-edge/edge-containers v0.0.0-20240207093504-5dfda0619b80
+	github.com/lf-edge/edge-containers v0.0.0-20250318135001-d53466c3f229
 	github.com/lf-edge/eve-api/go v0.0.0-20250722142628-6e701eb3256b
 	github.com/lf-edge/eve-libs v0.0.0-20250708204318-622ead38398a
 	github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20240315102754-0f6d1f182e0d
@@ -226,6 +226,7 @@ require (
 	github.com/go-kit/kit v0.13.0 // indirect
 	github.com/go-kit/log v0.2.1 // indirect
 	github.com/go-logfmt/logfmt v0.6.0 // indirect
+	github.com/gofrs/uuid v4.4.0+incompatible // indirect
 	github.com/golang/glog v1.2.4 // indirect
 	github.com/golang/mock v1.6.0 // indirect
 	github.com/google/btree v1.0.1 // indirect
