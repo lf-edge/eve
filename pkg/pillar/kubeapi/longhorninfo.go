@@ -63,6 +63,17 @@ func min(a, b types.ServiceStatus) types.ServiceStatus {
 	return b
 }
 
+// replicaHasNoFsBacking : No disk image created on any nodes yet
+// exists only as a kubernetes object so far
+func replicaHasNoFsBacking(lhReplica lhv1beta2.Replica) bool {
+	// If the replica existed on some other node and accepted data in the past
+	// it would have an OwnerID at a minimum.  This set of conditions marks
+	// a replica which has not scheduled/started.
+	return (lhReplica.Status.OwnerID == "") &&
+		(lhReplica.Status.InstanceManagerName == "") &&
+		(lhReplica.Status.CurrentImage == "")
+}
+
 // PopulateKVIFromPVCName uses the longhorn api to retrieve volume and replica health
 // to be sent out to the controller as info messages
 func populateKVIFromPVCName(kvi *types.KubeVolumeInfo) (*types.KubeVolumeInfo, error) {
@@ -147,6 +158,12 @@ func populateKVIFromPVCName(kvi *types.KubeVolumeInfo) (*types.KubeVolumeInfo, e
 	onlineReps := 0
 	consistentReps := 0
 	for _, lhReplica := range replicas.Items {
+		if replicaHasNoFsBacking(lhReplica) {
+			// Skip this as we have no actionable status to report to
+			// an end user.
+			continue
+		}
+
 		kviRep := types.KubeVolumeReplicaInfo{}
 		kviRep.Name = lhReplica.ObjectMeta.Name
 		kviRep.OwnerNode = ""
