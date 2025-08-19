@@ -5,6 +5,15 @@
 
 LONGHORN_VERSION=v1.9.1
 
+# Used to gate logging only once in Longhorn_is_ready
+bootLhRdyComplete=""
+
+longhorn_rdy_complete_file() {
+    if [ "$bootLhRdyComplete" = "" ]; then
+        bootLhRdyComplete=$(mktemp /tmp/lhreadyXXXXXX)
+    fi
+}
+
 longhorn_install() {
     node_name=$1
     logmsg "Installing longhorn version ${LONGHORN_VERSION}"
@@ -55,10 +64,98 @@ Longhorn_uninstall() {
     return 0
 }
 
-longhorn_is_ready() {
+longhorn_node_create() {
+    node="$1"
+    kubectl apply -f - <<EOF
+---
+apiVersion: longhorn.io/v1beta2
+kind: Node
+metadata:
+  name: ${node}
+  namespace: longhorn-system
+spec:
+  allowScheduling: true
+  evictionRequested: false
+  tags: []
+EOF
+}
+
+# Longhorn_is_ready is expected to be called periodically during runtime
+# It attempts to detect and recover from various installation issues
+# which block unattended install/config experience.
+Longhorn_is_ready() {
+    longhorn_rdy_complete_file
+
+    if ! kubectl get namespace/longhorn-system; then
+        return 0
+    fi
+
+    # All ds ready
     lhStatus=$(kubectl -n longhorn-system get daemonsets -o json | jq '.items[].status | .numberReady==.desiredNumberScheduled' | tr -d '\n')
     if [ "$lhStatus" != "truetruetrue" ]; then
-            return 1
+        if [ -e "${bootLhRdyComplete}" ]; then
+                # Allow the final ready log message when its reached.
+                rm "$bootLhRdyComplete"
+        fi
+        return 1
+    fi
+
+    if [ ! -e /persist/status/zedagent/EdgeNodeInfo/global.json ]; then
+        return 1
+    fi
+
+    node=$(jq -r '.DeviceName' < /persist/status/zedagent/EdgeNodeInfo/global.json | tr -d '\n')
+    node=$(echo "$node" | tr '[:upper:]' '[:lower:]')
+
+    # longhorn node exists
+    if ! kubectl -n longhorn-system get nodes.longhorn.io "$node"; then
+        if [ -e "${bootLhRdyComplete}" ]; then
+                # Allow the final ready log message when its reached.
+                rm "$bootLhRdyComplete"
+        fi
+
+        logmsg "lh nodes.longhorn.io $node missing, creating"
+
+        # Recovery attempt
+        longhorn_node_create "$node"
+        return 1
+    fi
+
+    # ndm has all nodes
+    ndm=$(kubectl -n longhorn-system get engineimage -o json | jq .items[].status.nodeDeploymentMap)
+    dep=$(echo "$ndm" | jq --arg n "$node" '.[$n]')
+    if [ "$dep" != "true" ]; then
+        logmsg "lh node:$node engine not deployed"
+        # find engine pod name
+        pod=$(kubectl -n longhorn-system get pod -l longhorn.io/component=engine-image -o json | jq -r --arg n "$node" '.items[] | select(.spec.nodeName==$n) | .metadata.name')
+        if [ "$pod" = "" ]; then
+                # maybe restarting or not yet created (new install)
+                return 1
+        fi
+        phase=$(kubectl -n longhorn-system get "pod/${pod}" -o json | jq -r .status.phase)
+        if [ "$phase" != "Running" ]; then
+                # maybe restarting
+                return 1
+        fi
+        # delete it
+        kubectl -n longhorn-system delete "pod/${pod}"
+        logmsg "lh node:$node engine:$pod deleted for re-init due to ndm inconsistency"
+
+        # Find the owner of the node deployment map and cycle that pod so it regenerates.
+        ndmOwnerID=$(kubectl -n longhorn-system get engineimage -o json | jq -r .items[].status.ownerID)
+        if [ "$ndmOwnerID" != "" ]; then
+            ndmMgrPod=$(kubectl -n longhorn-system get pod -l app=longhorn-manager  -o json | jq -r --arg n "$ndmOwnerID" '.items[] | select(.spec.nodeName==$n) | .metadata.name')
+            if [ "$ndmMgrPod" != "" ]; then
+                logmsg "lh ownerID node:$ndmOwnerID manager:$ndmMgrPod deleted for re-init due to ndm inconsistency"
+                kubectl -n longhorn-system delete "pod/${ndmMgrPod}"
+            fi
+        fi
+
+        return 1
+    fi
+    if [ ! -e "${bootLhRdyComplete}" ]; then
+        logmsg "longhorn ds ready, node:$node nodedeploymentmap:$(echo "$ndm" | tr -d '\n')"
+        touch "${bootLhRdyComplete}"
     fi
     return 0
 }

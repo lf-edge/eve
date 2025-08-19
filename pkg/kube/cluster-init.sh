@@ -1007,7 +1007,7 @@ if [ ! -f /var/lib/all_components_initialized ]; then
         if ! longhorn_install "$HOSTNAME"; then
                 continue
         fi
-        if ! longhorn_is_ready; then
+        if ! Longhorn_is_ready; then
                 # It can take a moment for the new pods to get to ContainerCreating
                 # Just back off until they are caught by the earlier are_all_pods_ready
                 sleep 30
@@ -1093,7 +1093,7 @@ else
                         fi
                 fi
 
-                if longhorn_is_ready; then
+                if Longhorn_is_ready; then
                         check_overwrite_nsmounter
                 fi
                 if [ ! -e /var/lib/longhorn_configured ]; then
