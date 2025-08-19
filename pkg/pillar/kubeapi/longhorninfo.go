@@ -147,6 +147,11 @@ func populateKVIFromPVCName(kvi *types.KubeVolumeInfo) (*types.KubeVolumeInfo, e
 	onlineReps := 0
 	consistentReps := 0
 	for _, lhReplica := range replicas.Items {
+		if (lhReplica.Status.OwnerID == "") && (lhReplica.Status.InstanceManagerName == "") && (lhReplica.Status.CurrentImage == "") {
+			// Not fully created yet
+			continue
+		}
+
 		kviRep := types.KubeVolumeReplicaInfo{}
 		kviRep.Name = lhReplica.ObjectMeta.Name
 		kviRep.OwnerNode = ""
