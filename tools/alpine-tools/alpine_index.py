@@ -470,7 +470,8 @@ def resolve_dependencies(pkgname, index, provides, resolved, missing, presence,
     if pkgname in index:
         pkg = index[pkgname]
         resolved.add(pkgname)
-        presence[pkgname].add((branch, arch))
+        # Always track package in its actual branch, not the requested branch
+        presence[pkgname].add((pkg.branch, arch))
         chains.setdefault(pkgname, []).append(chain)
         deps = pkg.depends
 
@@ -629,40 +630,52 @@ def write_packages(base_path: str, version: str,
     for branch in BRANCHES:
         # Handle common packages (available on all architectures)
         common = classified[branch]["all"]
-        if common:
-            fpath = outdir / branch
-            if track_newly_added:
-                current = load_existing(fpath)
-                new = common - current
-                # Since these are common packages, they're new for all architectures
-                if newly_added is not None:
-                    for arch in available_arches:
-                        newly_added[arch][branch].update(new)
-                # Write merged package list (existing + new)
+        fpath = outdir / branch
+        if track_newly_added:
+            current = load_existing(fpath)
+            new = common - current
+            # Since these are common packages, they're new for all architectures
+            if newly_added is not None:
+                for arch in available_arches:
+                    newly_added[arch][branch].update(new)
+            # Write merged package list (existing + new) or remove if empty
+            merged = current.union(common)
+            if merged:
                 with fpath.open("w") as common_file:
-                    common_file.write("\n".join(sorted(current.union(common))) + "\n")
-            else:
-                # Overwrite with new package list
+                    common_file.write("\n".join(sorted(merged)) + "\n")
+            elif fpath.exists():
+                fpath.unlink()
+        else:
+            # Write file if has packages, remove if empty
+            if common:
                 with fpath.open("w") as common_file:
                     common_file.write("\n".join(sorted(common)) + "\n")
+            elif fpath.exists():
+                fpath.unlink()
 
         # Handle architecture-specific packages
         for arch in available_arches:
             arch_pkgs = classified[branch][arch]
-            if arch_pkgs:
-                fpath = outdir / f"{branch}.{arch}"
-                if track_newly_added:
-                    current = load_existing(fpath)
-                    new = arch_pkgs - current
-                    if newly_added is not None:
-                        newly_added[arch][branch].update(new)
-                    # Write merged package list (existing + new)
+            fpath = outdir / f"{branch}.{arch}"
+            if track_newly_added:
+                current = load_existing(fpath)
+                new = arch_pkgs - current
+                if newly_added is not None:
+                    newly_added[arch][branch].update(new)
+                # Write merged package list (existing + new) or remove if empty
+                merged = current.union(arch_pkgs)
+                if merged:
                     with fpath.open("w") as arch_file:
-                        arch_file.write("\n".join(sorted(current.union(arch_pkgs))) + "\n")
-                else:
-                    # Overwrite with new package list
+                        arch_file.write("\n".join(sorted(merged)) + "\n")
+                elif fpath.exists():
+                    fpath.unlink()
+            else:
+                # Write file if has packages, remove if empty
+                if arch_pkgs:
                     with fpath.open("w") as arch_file:
                         arch_file.write("\n".join(sorted(arch_pkgs)) + "\n")
+                elif fpath.exists():
+                    fpath.unlink()
 
     return newly_added if track_newly_added else None
 
@@ -897,7 +910,7 @@ def classify_packages(resolved_by_branch_arch, presence, available_archs):
 
     return classified
 
-def print_dependency_chain(chains_by_branch_arch, available_archs):
+def print_dependency_chain(chains_by_branch_arch, available_archs, apk_indexes=None):
     """
     Print detailed dependency resolution chains for debugging and analysis.
 
@@ -911,27 +924,44 @@ def print_dependency_chain(chains_by_branch_arch, available_archs):
             chains_by_branch_arch[branch][arch][package] = [dependency_paths]
             where each dependency_path is a list showing the resolution chain
         available_archs (list): Architectures to display chains for
+        apk_indexes (dict, optional): Maps arch -> package_name -> ApkPackage
+            for adding branch indicators to package names
 
     Output Format:
         [Branch: main, Arch: x86_64]
-        curl:
-          - curl → libssl3 → zlib
-          - curl → libcurl4
-        wget:
-          - wget → libssl3 → zlib
+        curl:m:
+          - curl:m → libssl3:m → zlib:m
+          - curl:m → libcurl4:m
+        wget:m:
+          - wget:m → libssl3:m → zlib:m
 
     Chain Notation:
-        - package: Direct package dependency
+        - package:m: Package from main branch
+        - package:c: Package from community branch
+        - package:t: Package from testing branch
         - package[virtual]: Package resolved via virtual provides
         - Arrow (→): Dependency relationship direction
 
     Examples:
         >>> chains = {'main': {'x86_64': {'curl': [['curl', 'libssl3']]}}}
-        >>> print_dependency_chain(chains, ['x86_64'])
+        >>> print_dependency_chain(chains, ['x86_64'], apk_indexes)
         [Branch: main, Arch: x86_64]
-        curl:
-          - curl → libssl3
+        curl:m:
+          - curl:m → libssl3:m
     """
+    def get_branch_indicator(pkg_name, arch):
+        """Get branch indicator (:m/:c/:t) for a package."""
+        if not apk_indexes or arch not in apk_indexes:
+            return ""
+
+        # Remove [virtual] annotations for lookup
+        clean_name = pkg_name.split('[')[0]
+
+        if clean_name in apk_indexes[arch]:
+            branch = apk_indexes[arch][clean_name].branch
+            return f":{branch[0]}"
+        return ""
+
     print("\n📋 Dependency chains:\n")
 
     for branch in BRANCHES:
@@ -940,7 +970,8 @@ def print_dependency_chain(chains_by_branch_arch, available_archs):
             chains = chains_by_branch_arch[branch][arch]
 
             for parent_pkg, paths in chains.items():
-                print(f"{parent_pkg}:")
+                parent_indicator = get_branch_indicator(parent_pkg, arch)
+                print(f"{parent_pkg}{parent_indicator}:")
 
                 # Remove duplicate paths to avoid redundant output
                 unique_paths = []
@@ -948,7 +979,11 @@ def print_dependency_chain(chains_by_branch_arch, available_archs):
                     if path not in unique_paths:
                         unique_paths.append(path)
 
-                # Print each unique dependency path
+                # Print each unique dependency path with branch indicators
                 for path in unique_paths:
-                    print("  - " + " → ".join(path))
+                    annotated_path = []
+                    for pkg in path:
+                        indicator = get_branch_indicator(pkg, arch)
+                        annotated_path.append(f"{pkg}{indicator}")
+                    print("  - " + " → ".join(annotated_path))
             print()

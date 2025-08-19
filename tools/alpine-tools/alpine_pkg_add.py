@@ -190,7 +190,7 @@ def main(version: str, packages_to_add: List[str], print_chains: bool = False,
         print("ℹ️  No new packages were added (all already present)")
 
     if print_chains and chains_by_branch_arch is not None:
-        print_dependency_chain(chains_by_branch_arch, available_archs)
+        print_dependency_chain(chains_by_branch_arch, available_archs, apk_indexes)
 
     # Write missing packages report
     write_missing_report(base_path, version, missing_by_branch_arch, available_archs)
