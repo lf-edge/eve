@@ -25,7 +25,9 @@ shift 2
 # check for existing packages in the cache: we NEVER overwrite packages
 #shellcheck disable=SC2068
 for p in ${@}; do
-  [ -f "$(echo "$CACHE/${p}"-[0-9]*)" ] || PKGS="$PKGS $p"
+  if ! ls "$CACHE/${p}"-[0-9]*.apk >/dev/null 2>&1; then
+    PKGS="$PKGS $p"
+  fi
 done
 
 # fetch the missing packages
