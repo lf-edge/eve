@@ -87,6 +87,68 @@ from alpine_index import (
     BRANCHES,
 )
 
+def resolve_all_packages(all_packages_to_resolve, apk_indexes, provides_indexes,
+                        available_archs, presence):
+    """
+    Resolve dependencies for all packages across all architectures.
+
+    Returns:
+        tuple: (resolved_by_branch_arch, missing_by_branch_arch, chains_by_branch_arch)
+    """
+    results = {
+        'resolved': {branch: {arch: set() for arch in available_archs} for branch in BRANCHES},
+        'missing': {branch: {arch: set() for arch in available_archs} for branch in BRANCHES},
+        'chains': {branch: {arch: {} for arch in available_archs} for branch in BRANCHES}
+    }
+
+    # Resolve each package and organize by its actual branch location
+    for arch in available_archs:
+        print(f"   Processing {len(all_packages_to_resolve)} packages for {arch}...")
+
+        # Use single sets per architecture to avoid duplicates
+        arch_data = {'resolved': set(), 'missing': set(), 'chains': {}}
+
+        for pkgname in all_packages_to_resolve:
+            # Find which branch this package actually belongs to
+            actual_branch = _get_package_branch(pkgname, apk_indexes[arch], provides_indexes[arch])
+
+            resolve_dependencies(
+                pkgname, apk_indexes[arch], provides_indexes[arch],
+                arch_data['resolved'], arch_data['missing'], presence,
+                actual_branch, arch, chain=[pkgname], chains=arch_data['chains']
+            )
+
+        # Organize resolved packages by their actual branch
+        _organize_packages_by_branch(arch_data, results, presence, arch)
+
+    return results['resolved'], results['missing'], results['chains']
+
+
+def _get_package_branch(pkgname, apk_index, provides_index):
+    """Get the actual branch for a package."""
+    if pkgname in apk_index:
+        return apk_index[pkgname].branch
+    if pkgname in provides_index:
+        providing_pkg = provides_index[pkgname][0]
+        if providing_pkg in apk_index:
+            return apk_index[providing_pkg].branch
+    return 'main'  # fallback
+
+
+def _organize_packages_by_branch(arch_data, results, presence, arch):
+    """Organize resolved packages by their actual branch."""
+    for pkgname in arch_data['resolved']:
+        pkg_branches = {b for (b, a) in presence[pkgname] if a == arch}
+        for pkg_branch in pkg_branches:
+            results['resolved'][pkg_branch][arch].add(pkgname)
+            if pkgname in arch_data['chains']:
+                results['chains'][pkg_branch][arch][pkgname] = arch_data['chains'][pkgname]
+
+    # Add missing packages to main branch
+    for pkgname in arch_data['missing']:
+        results['missing']['main'][arch].add(pkgname)
+
+
 # pylint: disable=too-many-locals
 def main(base_path, old_version, new_version, print_chains):
     """
@@ -163,45 +225,38 @@ def main(base_path, old_version, new_version, print_chains):
     print("📦 Fetching APKINDEX files...")
     apk_indexes, provides_indexes, available_archs = fetch_all_indexes(new_version)
 
-    # Prepare presence and resolved sets by branch and arch
+    # Prepare presence tracking
     presence = defaultdict(set)  # key: pkgname, value: set of (branch, arch)
-    resolved_by_branch_arch = {branch: {arch: set() for arch in available_archs}
-                              for branch in BRANCHES}
-    missing_by_branch_arch = {branch: {arch: set() for arch in available_archs}
-                             for branch in BRANCHES}
-    chains_by_branch_arch = {branch: {arch: {} for arch in available_archs} for branch in BRANCHES}
 
     print("📂 Reading old package lists...")
     input_packages_by_branch_arch = read_package_lists(base_path, old_version)
 
     print("🔄 Resolving dependencies...")
+
+    # Collect all unique packages from all source branches
+    all_packages_to_resolve = set()
     for branch in BRANCHES:
         for arch in available_archs:
             all_set = input_packages_by_branch_arch[branch].get('all', set())
             arch_set = input_packages_by_branch_arch[branch].get(arch, set())
-            to_resolve = all_set.union(arch_set)
-            for pkgname in to_resolve:
-                resolve_dependencies(
-                    pkgname,
-                    apk_indexes[arch],
-                    provides_indexes[arch],
-                    resolved_by_branch_arch[branch][arch],
-                    missing_by_branch_arch[branch][arch],
-                    presence,
-                    branch,
-                    arch,
-                    chain=[pkgname],
-                    chains=chains_by_branch_arch[branch][arch]
-                )
+            all_packages_to_resolve.update(all_set.union(arch_set))
+
+    # Resolve dependencies for all packages
+    resolved_by_branch_arch, missing_by_branch_arch, chains_by_branch_arch = resolve_all_packages(
+        all_packages_to_resolve, apk_indexes, provides_indexes, available_archs, presence
+    )
 
     print("📊 Classifying packages by architecture and branch...")
     classified = classify_packages(resolved_by_branch_arch, presence, available_archs)
+
+
+
 
     print("📂 Writing output files...")
     write_packages(base_path, new_version, classified, available_archs)
 
     if print_chains:
-        print_dependency_chain(chains_by_branch_arch, available_archs)
+        print_dependency_chain(chains_by_branch_arch, available_archs, apk_indexes)
 
     write_missing_report(base_path, new_version, missing_by_branch_arch, available_archs)
     print("✅ Done. Missing packages written to missing.txt")
