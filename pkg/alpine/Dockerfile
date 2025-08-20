@@ -1,6 +1,6 @@
-# image was bootstraped using FROM lfedge/eve-alpine-base:353bf866797f6e60f91cbe1b00c439634adfcf13 AS cache
-# to update please see https://github.com/lf-edge/eve/blob/master/docs/BUILD.md#how-to-update-eve-alpine-package
-FROM lfedge/eve-alpine-base:353bf866797f6e60f91cbe1b00c439634adfcf13 AS cache
+# DON'T FORGET TO UPDATE THE HASH WHEN SOMETHING CHANGES!
+# please see https://github.com/lf-edge/eve/blob/master/docs/BUILD.md#how-to-update-eve-alpine-package
+FROM lfedge/eve-alpine:e799def68af51dba83ec5a41f34bd0109704574f AS cache
 
 FROM lfedge/eve-alpine:b96ae7c5b776702cdc7596e3722e40cc0d353ad7 AS cache-riscv64
 FROM cache AS cache-amd64
@@ -47,7 +47,7 @@ RUN for repo in main community testing; do \
 RUN cp /mirror/${ALPINE_VERSION}/rootfs/etc/apk/repositories /etc/apk
 RUN apk update
 
-FROM lfedge/eve-alpine:591df01e581889c3027514c8a91feaca1c8ad49f AS compactor
+FROM lfedge/eve-alpine:e799def68af51dba83ec5a41f34bd0109704574f AS compactor
 ARG TARGETARCH
 ARG GO_VERSION=1.24.6
 

@@ -549,6 +549,8 @@ Reliance on `lfedge/eve-alpine` archive enforces a particular structure on indiv
 * PKGS, PKGS_amd64, PKGS_arm64, PKGS_riscv64: used to list packages required for the final binary output of the build
 * BUILD_PKGS, BUILD_PKGS_amd64, BUILD_PKGS_arm64, BUILD_PKGS_riscv64: used to list packages required to be present for the build itself, but not in the final output
 
+_Note_: `lfedge/eve-alpine` already includes the go toolchain, so you don't need to include it in the `BUILD_PKGS` list. The version of the go toolchain is set in [Dockerfile](../pkg/alpine/Dockerfile) of `eve-alpine` package.
+
 The only tiny annoyance is that one should not forget an explicit `RUN eve-alpine-deploy.sh` stanza in the Dockerfile after these ENV variables are defined. Calling `eve-alpine-deploy.sh` in the RUN stanza has an effect of all the BUILD time packages getting installed in the build context and all the runtime packages getting installed in the special folder `/out` (if there are additional binary artifacts produced by the build -- they too need to be added to the `/out` folder).
 
 A typical EVE Dockerfile drving the build will start from something like:
@@ -557,7 +559,7 @@ A typical EVE Dockerfile drving the build will start from something like:
 FROM lfedge/eve-alpine:XXX as build
 ENV PKGS foo bar
 ENV PKGS_arm64 baz-for-arm
-ENV BUILD_PKGS gcc go
+ENV BUILD_PKGS gcc
 RUN eve-alpine-deploy.sh
 ...
 FROM scratch
@@ -878,7 +880,7 @@ Below we provide step-by-step processes for cross-compilation in Dockerfile, eac
 1. Add another base eve-alpine image with `--platform=${BUILDPLATFORM}`. This way we enforce builder to use the same platform we are running on (not the target platform):
 
     ```dockerfile
-    ARG BUILD_PKGS_BASE="git gcc linux-headers libc-dev make linux-pam-dev m4 findutils go util-linux make patch \
+    ARG BUILD_PKGS_BASE="git gcc linux-headers libc-dev make linux-pam-dev m4 findutils util-linux make patch \
                          libintl libuuid libtirpc libblkid libcrypto1.1 zlib tar"
     # native base image
     FROM lfedge/eve-alpine:e0280f097450d1f53dd483ab98acd7c7cf2273ce as build-native
