@@ -4,15 +4,15 @@
 | ---- | ---- | ------- | ----------- |
 | app.allow.vnc | boolean | false (only local access) | allow access to EVE's VNC ports from external IPs |
 | app.fml.resolution | string | notset | Set system-wide value of forced resolution for applications running in FML mode, it can be one of [predefined](/pkg/pillar/types/global.go) FmlResolution* values. |
-| timer.config.interval | integer in seconds | 60 | how frequently device gets config |
+| timer.config.interval | integer in seconds | 60 | how frequently device gets config (needs a reboot to take effect) |
 | timer.cert.interval | integer in seconds | 1 day (24*3600) | how frequently device checks for new controller certificates |
 | timer.metric.interval | integer in seconds | 60 | how frequently device reports metrics |
 | timer.hardwarehealth.interval | integer in seconds | 12 hours (43200) | how frequently device reports hardware health information to controller |
-| timer.deviceinfo.interval | integer in seconds | 10 minutes (600) | how frequently device is forced to report device info to controller even though nothing changed |
+| timer.deviceinfo.interval | integer in seconds | 10 minutes (600) | how frequently device is forced to report device info to controller even though nothing changed (needs a reboot to take effect) |
 | timer.metric.diskscan.interval | integer in seconds | 300 | how frequently device should scan the disk for metrics |
 | timer.location.cloud.interval | integer in seconds | 1 hour | how frequently device reports geographic location information to controller |
 | timer.location.app.interval | integer in seconds | 20 | how frequently device reports geographic location information to applications (to local profile server and to other apps via metadata server) |
-| timer.ntpsources.interval | integer in seconds | 10 minutes | how frequently device forcibly reports information about NTP sources to which EVE has established a connection for the NTP synchronization. Requests are also sent to the controller if the list of NTP peers or NTP peer fields, such as mode, state, have changed. |
+| timer.ntpsources.interval | integer in seconds | 10 minutes | how frequently device forcibly reports information about NTP sources to which EVE has established a connection for the NTP synchronization. Requests are also sent to the controller if the list of NTP peers or NTP peer fields, such as mode, state, have changed. (doesn't need a reboot to take effect) |
 | timer.send.timeout | timer in seconds | 120 | time for each http/send |
 | timer.dial.timeout | timer in seconds | 10 | maximum time allowed to establish connection |
 | timer.reboot.no.network | integer in seconds | 7 days | reboot after no cloud connectivity |
