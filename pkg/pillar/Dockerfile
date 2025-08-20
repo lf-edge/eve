@@ -1,17 +1,22 @@
 # Copyright (c) 2018 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
+ARG REL_HASH_LFEDGE_EVE_ALPINE
+ARG REL_HASH_LFEDGE_EVE_UEFI
+ARG REL_HASH_LFEDGE_EVE_DOM0_ZTOOLS
+ARG REL_HASH_LFEDGE_EVE_CROSS_COMPILERS
+ARG REL_HASH_LFEDGE_EVE_FSCRYPT
+ARG REL_HASH_LFEDGE_EVE_DNSMASQ
+ARG REL_HASH_LFEDGE_EVE_GPT_TOOLS
+
 # Dockerfile to build pillar
 
 # use the same set of packages for simplicity
 ARG BUILD_PKGS_BASE="git gcc linux-headers libc-dev make linux-pam-dev m4 findutils util-linux make patch \
                      libintl libuuid libtirpc libblkid libcrypto1.1 zlib tar"
 
-# we use the same image in several places
-ARG EVE_ALPINE_IMAGE=lfedge/eve-alpine:745ae9066273c73b0fd879c4ba4ff626a8392d04
-
-FROM lfedge/eve-uefi:88d6376870a774e6f7a5f529084d68740287e6cb AS uefi-build
-FROM lfedge/eve-dom0-ztools:000adaabe42b4f34dc196b722f143d3ae39f47fa AS zfs
+FROM ${REL_HASH_LFEDGE_EVE_UEFI} AS uefi-build
+FROM ${REL_HASH_LFEDGE_EVE_DOM0_ZTOOLS} AS zfs
 RUN mkdir /out
 # copy zfs-related files from dom0-ztools using prepared list of files
 RUN while read -r x; do \
@@ -23,21 +28,21 @@ RUN while read -r x; do \
     done < /etc/zfs-files
 
 # hadolint ignore=DL3006
-FROM ${EVE_ALPINE_IMAGE} AS build-native
+FROM ${REL_HASH_LFEDGE_EVE_ALPINE} AS build-native
 ARG BUILD_PKGS_BASE
 RUN BUILD_PKGS="${BUILD_PKGS_BASE}" eve-alpine-deploy.sh
 
 # hadolint ignore=DL3006,DL3029
-FROM --platform=${BUILDPLATFORM} ${EVE_ALPINE_IMAGE} AS build-cross
+FROM --platform=${BUILDPLATFORM} ${REL_HASH_LFEDGE_EVE_ALPINE} AS build-cross
 ARG BUILD_PKGS_BASE
 RUN BUILD_PKGS="${BUILD_PKGS_BASE}" eve-alpine-deploy.sh
 
 # hadolint ignore=DL3029
-FROM --platform=${BUILDPLATFORM} lfedge/eve-cross-compilers:f476a79bcd086759592a105a49f9ed5bfa2c4ffa AS cross-compilers
+FROM --platform=${BUILDPLATFORM} ${REL_HASH_LFEDGE_EVE_CROSS_COMPILERS} AS cross-compilers
 
 # will use several packages from target arch and copy them to sysroot
 # hadolint ignore=DL3006
-FROM ${EVE_ALPINE_IMAGE} AS cross-compile-libs
+FROM ${REL_HASH_LFEDGE_EVE_ALPINE} AS cross-compile-libs
 ENV PKGS musl-dev libgcc libintl libuuid libtirpc libblkid linux-headers
 RUN eve-alpine-deploy.sh
 # we need zfs files during build
@@ -137,14 +142,14 @@ RUN --mount=type=cache,target=/root/.cache/go-build if [ "${TEST_TOOLS}" = "y" ]
     GOBIN=/final/opt/ GOFLAGS="" go install gotest.tools/gotestsum@v1.7.0; \
 fi
 
-FROM lfedge/eve-fscrypt:d528516ed00f61a5ba4ba2407ab3a94bd55aff90 AS fscrypt
-FROM lfedge/eve-dnsmasq:66334faad5620503b542c8faa2012c3697659ce2 AS dnsmasq
-FROM lfedge/eve-gpt-tools:584939b50f49ed3ef8f9d26a1b315918f4bf598c AS gpttools
+FROM ${REL_HASH_LFEDGE_EVE_FSCRYPT} AS fscrypt
+FROM ${REL_HASH_LFEDGE_EVE_DNSMASQ} AS dnsmasq
+FROM ${REL_HASH_LFEDGE_EVE_GPT_TOOLS} AS gpttools
 
 # collector collects everything together and then does any processing like stripping binaries.
 # We use this interim "collector" so that we can do processing.
 # hadolint ignore=DL3006
-FROM ${EVE_ALPINE_IMAGE} AS collector
+FROM ${REL_HASH_LFEDGE_EVE_ALPINE} AS collector
 ENV BUILD_PKGS patch
 ENV PKGS alpine-baselayout musl-utils libtasn1-progs pciutils yajl xz bash iptables ip6tables iproute2 \
     coreutils dmidecode libbz2 libuuid ipset curl radvd ethtool util-linux e2fsprogs libcrypto1.1 xorriso \

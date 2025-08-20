@@ -27,3 +27,4 @@ config:
       type: a
 buildArgs:
   - HV=kubevirt
+  - REL_HASH_%=@lkt:pkgs:../*
