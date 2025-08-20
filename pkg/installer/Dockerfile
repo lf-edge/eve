@@ -29,7 +29,7 @@ RUN cargo sbom > sbom.spdx.json
 RUN cp "/usr/local/my-installer/target/$CARGO_BUILD_TARGET/release/installer" /usr/local/my-installer/target/installer
 
 # Dockerfile to build installer img initrd
-FROM lfedge/eve-alpine:0f2e0da38e30753c68410727a6cc269e57ff74f2 AS build
+FROM lfedge/eve-alpine:745ae9066273c73b0fd879c4ba4ff626a8392d04 AS build
 SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
 ENV BUILD_PKGS="mkinitfs grep patch make coreutils musl-dev gcc g++ perl \
     autoconf automake libtool file bsd-compat-headers libc-dev \
@@ -37,7 +37,7 @@ ENV BUILD_PKGS="mkinitfs grep patch make coreutils musl-dev gcc g++ perl \
     libusb-dev kmod-dev curl eudev-dev libdrm-dev i2c-tools-dev hwinfo \
     binutils-dev libaio-dev zlib-static libvncserver-dev python3 pixman-dev \
     py3-setuptools bash cmake m4 pkgconf pkgconfig autoconf-archive tpm2-tss-dev \
-    cryptsetup-dev go lddtree git"
+    cryptsetup-dev lddtree git"
 ENV PKGS="mtools dosfstools libarchive-tools sgdisk e2fsprogs util-linux \
     squashfs-tools coreutils tar dmidecode smartmontools libaio libaio-dev \
     glib zlib libusb curl xz pciutils usbutils hdparm ncurses-dev jq \
