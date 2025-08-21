@@ -957,7 +957,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	// MaxValue needs to be limited. If configured too high, the device will wait
 	// too long to get next config and is practically unreachable for any config
 	// changes or reboot through cloud.
-	configItemSpecMap.AddIntItem(ConfigInterval, MinuteInSec, 5, HourInSec)
+	configItemSpecMap.AddIntItem(ConfigInterval, MinuteInSec, 5, 24*HourInSec)
 	// Additional safety to periodically fetch the controller certificate
 	// Useful for odd cases when the triggered updates do not work.
 	configItemSpecMap.AddIntItem(CertInterval, 24*HourInSec, MinuteInSec, 0xFFFFFFFF)
