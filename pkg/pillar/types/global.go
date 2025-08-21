@@ -996,7 +996,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddIntItem(NetworkDialTimeout, 10, 0, HourInSec)
 	configItemSpecMap.AddIntItem(LocationCloudInterval, HourInSec, 5*MinuteInSec, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(LocationAppInterval, 20, 5, HourInSec)
-	configItemSpecMap.AddIntItem(NTPSourcesInterval, 10*MinuteInSec, MinuteInSec, 30*MinuteInSec)
+	configItemSpecMap.AddIntItem(NTPSourcesInterval, 10*MinuteInSec, MinuteInSec, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(Dom0MinDiskUsagePercent, 20, 20, 80)
 	configItemSpecMap.AddIntItem(AppContainerStatsInterval, 5*MinuteInSec, 1, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(VaultReadyCutOffTime, 5*MinuteInSec, MinuteInSec, 0xFFFFFFFF)
