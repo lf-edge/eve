@@ -624,7 +624,7 @@ func (specMap *ConfigItemSpecMap) parseAgentItem(
 	}
 	itemSpec, ok := specMap.AgentSettings[asKey]
 	if !ok {
-		err := fmt.Errorf("Cannot find key (%s) in AgentSettings. asKey: %s",
+		err := fmt.Errorf("cannot find key (%s) in AgentSettings. asKey: %s",
 			key, asKey)
 		return ConfigItemValue{}, err
 	}
@@ -664,21 +664,19 @@ func (specMap *ConfigItemSpecMap) ParseItem(newConfigMap *ConfigItemValueMap,
 	}
 	// Global Setting
 	val, err := itemSpec.parseValue(value)
-	if err == nil {
-		newConfigMap.GlobalSettings[gsKey] = val
-		return val, nil
-	}
-	// Parse Error. Get the Value from old config
-	val, ok = oldConfigMap.GlobalSettings[gsKey]
-	if ok {
-		err = fmt.Errorf("***ParseItem: Error in parsing Item. Replacing it "+
-			"with existing Value. key: %s, value: %s, Existing Value: %+v. "+
-			"Err: %s", key, value, val, err)
-	} else {
-		val = itemSpec.DefaultValue()
-		err = fmt.Errorf("***ParseItem: Error in parsing Item. No Existing "+
-			"Value Found. Using Default Value. key: %s, value: %s, "+
-			"Default Value: %+v. Err: %s", key, value, val, err)
+	if err != nil {
+		// Parse Error. Get the Value from old config
+		val, ok = oldConfigMap.GlobalSettings[gsKey]
+		if ok {
+			err = fmt.Errorf("***ParseItem: Error in parsing Item. Replacing it "+
+				"with existing Value. key: %s, value: %s, Existing Value: %+v. "+
+				"Err: %s", key, value, val, err)
+		} else {
+			val = itemSpec.DefaultValue()
+			err = fmt.Errorf("***ParseItem: Error in parsing Item. No Existing "+
+				"Value Found. Using Default Value. key: %s, value: %s, "+
+				"Default Value: %+v. Err: %s", key, value, val, err)
+		}
 	}
 	newConfigMap.GlobalSettings[gsKey] = val
 	return val, err
@@ -744,9 +742,9 @@ func (configPtr *ConfigItemValueMap) agentConfigItemValue(agentName string,
 		if ok {
 			return val, nil
 		}
-		return blankValue, fmt.Errorf("Failed to find %s settings for %s", string(key), agentName)
+		return blankValue, fmt.Errorf("failed to find %s settings for %s", string(key), agentName)
 	}
-	return blankValue, fmt.Errorf("Failed to find any per-agent settings for agent %s", agentName)
+	return blankValue, fmt.Errorf("failed to find any per-agent settings for agent %s", agentName)
 }
 
 // AgentSettingStringValue - Gets the value of a per-agent setting for a certain agentname and per-agent key
@@ -901,7 +899,8 @@ func (configPtr *ConfigItemValueMap) ResetGlobalValue(key GlobalSettingKey) {
 func (configSpec ConfigItemSpec) parseValue(itemValue string) (ConfigItemValue, error) {
 	value := configSpec.DefaultValue()
 	var retErr error
-	if configSpec.ItemType == ConfigItemTypeInt {
+	switch configSpec.ItemType {
+	case ConfigItemTypeInt:
 		i64, err := strconv.ParseUint(itemValue, 10, 32)
 		if err == nil {
 			val := uint32(i64)
@@ -915,7 +914,7 @@ func (configSpec ConfigItemSpec) parseValue(itemValue string) (ConfigItemValue, 
 			value.IntValue = configSpec.IntDefault
 			retErr = err
 		}
-	} else if configSpec.ItemType == ConfigItemTypeTriState {
+	case ConfigItemTypeTriState:
 		newTs, err := ParseTriState(itemValue)
 		if err == nil {
 			value.TriStateValue = newTs
@@ -923,7 +922,7 @@ func (configSpec ConfigItemSpec) parseValue(itemValue string) (ConfigItemValue, 
 			value.TriStateValue = configSpec.TriStateDefault
 			retErr = err
 		}
-	} else if configSpec.ItemType == ConfigItemTypeBool {
+	case ConfigItemTypeBool:
 		newBool, err := strconv.ParseBool(itemValue)
 		if err == nil {
 			value.BoolValue = newBool
@@ -931,12 +930,12 @@ func (configSpec ConfigItemSpec) parseValue(itemValue string) (ConfigItemValue, 
 			value.BoolValue = configSpec.BoolDefault
 			retErr = err
 		}
-	} else if configSpec.ItemType == ConfigItemTypeString {
+	case ConfigItemTypeString:
 		err := configSpec.StringValidator(itemValue)
 		if err == nil {
 			value.StrValue = itemValue
 		} else {
-			return value, err
+			retErr = err
 		}
 	}
 	return value, retErr
