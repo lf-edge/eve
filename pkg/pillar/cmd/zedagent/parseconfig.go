@@ -114,7 +114,7 @@ func parseConfig(getconfigCtx *getconfigContext, config *zconfig.EdgeDevConfig,
 		publishZedAgentStatus(ctx.getconfigCtx)
 	}
 
-	if source == fromController {
+	if source == fromController || source == fromLOC {
 		rebootFlag, shutdownFlag := parseOpCmds(getconfigCtx, config)
 
 		// Any new reboot command?
@@ -177,7 +177,7 @@ func parseConfig(getconfigCtx *getconfigContext, config *zconfig.EdgeDevConfig,
 
 			// We have handled the volumes, so we can now process the app instances. But we need to check if
 			// we are in the middle of a baseOS upgrade, and if so, we need to skip processing the app instances.
-			if (source == fromController && activateNewBaseOS) ||
+			if ((source == fromController || source == fromLOC) && activateNewBaseOS) ||
 				(getconfigCtx.configProcessingRV == skipConfigUpdate) {
 				// We need to activate the new baseOS
 				// before we can process the app instances
@@ -452,7 +452,8 @@ func parseStaticRoute(route *zconfig.IPRoute, config *types.NetworkInstanceConfi
 			return errors.New("gateway IP address is all-zeroes")
 		}
 	}
-	customProbe, err := parseConnectivityProbe(route.GetProbe().GetCustomProbe())
+	var customProbe types.ConnectivityProbe
+	err = customProbe.FromProto(route.GetProbe().GetCustomProbe())
 	if err != nil {
 		return fmt.Errorf("invalid connectivity probe config: %v", err)
 	}
@@ -591,52 +592,6 @@ func publishNetworkInstanceConfig(ctx *getconfigContext,
 	// potentially altering the set of reachable LPS addresses.
 	// Mark cached LPS addresses as stale to force re-discovery.
 	ctx.localCmdAgent.RefreshLpsAddresses()
-}
-
-func parseConnectivityProbe(probe *zevecommon.ConnectivityProbe) (
-	parsedProbe types.ConnectivityProbe, err error) {
-	if probe == nil {
-		return types.ConnectivityProbe{}, nil
-	}
-	switch probe.ProbeMethod {
-	case zevecommon.ConnectivityProbeMethod_CONNECTIVITY_PROBE_METHOD_UNSPECIFIED:
-		parsedProbe.Method = types.ConnectivityProbeMethodNone
-	case zevecommon.ConnectivityProbeMethod_CONNECTIVITY_PROBE_METHOD_ICMP:
-		parsedProbe.Method = types.ConnectivityProbeMethodICMP
-		parsedProbe.ProbeHost = probe.GetProbeEndpoint().GetHost()
-		// Undefined host for ICMP probing is allowed - EVE will probe Google DNS
-		// (8.8.8.8) in that case.
-		// However, if host address is defined, it should be a valid IP address.
-		if parsedProbe.ProbeHost != "" {
-			probeIP := net.ParseIP(parsedProbe.ProbeHost)
-			if probeIP == nil {
-				return parsedProbe, fmt.Errorf("invalid IP address for ICMP probe: %s",
-					parsedProbe.ProbeHost)
-			}
-		}
-	case zevecommon.ConnectivityProbeMethod_CONNECTIVITY_PROBE_METHOD_TCP:
-		parsedProbe.Method = types.ConnectivityProbeMethodTCP
-		// Host address should be a valid (and non-empty) IP address.
-		parsedProbe.ProbeHost = probe.GetProbeEndpoint().GetHost()
-		if parsedProbe.ProbeHost == "" {
-			return parsedProbe, errors.New("missing endpoint host address for TCP probe")
-		}
-		probeIP := net.ParseIP(parsedProbe.ProbeHost)
-		if probeIP == nil {
-			return parsedProbe, fmt.Errorf("invalid IP address for TCP probe: %s",
-				parsedProbe.ProbeHost)
-		}
-		probePort := probe.GetProbeEndpoint().GetPort()
-		if probePort == 0 {
-			return parsedProbe, errors.New("missing endpoint port number for TCP probe")
-		}
-		if probePort > 65535 {
-			return parsedProbe, fmt.Errorf("TCP probe port number (%d) is out of range",
-				probePort)
-		}
-		parsedProbe.ProbePort = uint16(probePort)
-	}
-	return parsedProbe, nil
 }
 
 var networkInstancePrevConfigHash []byte
@@ -1008,8 +963,26 @@ func parseSystemAdapterConfig(getconfigCtx *getconfigContext, config *zconfig.Ed
 		// yet the timestamp be new. HandleDPCModify takes care of that.
 		portConfig.TimePriority = time.Now()
 	}
-	getconfigCtx.devicePortConfig = *portConfig
 
+	// Set configuration source for every port.
+	var origin types.NetworkConfigOrigin
+	switch source {
+	case fromController:
+		origin = types.NetworkConfigOriginController
+	case fromLOC:
+		origin = types.NetworkConfigOriginLOC
+	case fromBootstrap:
+		origin = types.NetworkConfigOriginBootstrap
+	}
+	configSource := types.PortConfigSource{
+		Origin:      origin,
+		SubmittedAt: getconfigCtx.lastReceivedConfig,
+	}
+	for i := range portConfig.Ports {
+		portConfig.Ports[i].ConfigSource = configSource
+	}
+
+	getconfigCtx.devicePortConfig = *portConfig
 	getconfigCtx.pubDevicePortConfig.Publish("zedagent", *portConfig)
 
 	log.Functionf("parseSystemAdapterConfig: Done")
@@ -1310,6 +1283,7 @@ func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
 	port.Logicallabel = sysAdapter.Name // XXX Rename field in protobuf?
 	port.SharedLabels = sysAdapter.SharedLabels
 	port.Alias = sysAdapter.Alias
+	port.AllowLocalModifications = sysAdapter.AllowLocalModifications
 	port.IsL3Port = true // this one has SystemAdapter directly attached to it
 	lowerLayerName := sysAdapter.LowerLayerName
 	if lowerLayerName == "" {
@@ -2109,21 +2083,8 @@ func parseOneNetworkXObjectConfig(ctx *getconfigContext, netEnt *zconfig.Network
 
 		// parse the static proxy entries
 		for _, proxy := range netProxyConfig.Proxies {
-			proxyEntry := types.ProxyEntry{
-				Server: proxy.Server,
-				Port:   proxy.Port,
-			}
-			switch proxy.Proto {
-			case zevecommon.ProxyProto_PROXY_HTTP:
-				proxyEntry.Type = types.NetworkProxyTypeHTTP
-			case zevecommon.ProxyProto_PROXY_HTTPS:
-				proxyEntry.Type = types.NetworkProxyTypeHTTPS
-			case zevecommon.ProxyProto_PROXY_SOCKS:
-				proxyEntry.Type = types.NetworkProxyTypeSOCKS
-			case zevecommon.ProxyProto_PROXY_FTP:
-				proxyEntry.Type = types.NetworkProxyTypeFTP
-			default:
-			}
+			var proxyEntry types.ProxyEntry
+			proxyEntry.FromProto(proxy)
 			proxyConfig.Proxies = append(proxyConfig.Proxies, proxyEntry)
 			log.Tracef("parseOneNetworkXObjectConfig: Adding proxy entry %s:%d in %s",
 				proxyEntry.Server, proxyEntry.Port, netEnt.Id)
@@ -2244,7 +2205,7 @@ func parseNetworkWirelessConfig(ctx *getconfigContext,
 			// should be activated.
 			ap.Activated = cellNetConfig.ActivatedSimSlot == 0 ||
 				cellNetConfig.ActivatedSimSlot == accessPoint.SimSlot
-			ap.AuthProtocol, err = parseCellularAuthProtocol(accessPoint.AuthProtocol)
+			err = ap.AuthProtocol.FromProto(accessPoint.AuthProtocol)
 			if err != nil {
 				return wconfig, err
 			}
@@ -2266,17 +2227,16 @@ func parseNetworkWirelessConfig(ctx *getconfigContext,
 				}
 			}
 			ap.ForbidRoaming = accessPoint.ForbidRoaming
-			ap.IPType, err = parseCellularIPType(accessPoint.IpType)
+			err = ap.IPType.FromProto(accessPoint.IpType)
 			if err != nil {
 				return wconfig, err
 			}
 			ap.AttachAPN = accessPoint.AttachApn
-			ap.AttachIPType, err = parseCellularIPType(accessPoint.AttachIpType)
+			err = ap.AttachIPType.FromProto(accessPoint.AttachIpType)
 			if err != nil {
 				return wconfig, err
 			}
-			ap.AttachAuthProtocol, err = parseCellularAuthProtocol(
-				accessPoint.AttachAuthProtocol)
+			err = ap.AttachAuthProtocol.FromProto(accessPoint.AttachAuthProtocol)
 			if err != nil {
 				return wconfig, err
 			}
@@ -2299,7 +2259,8 @@ func parseNetworkWirelessConfig(ctx *getconfigContext,
 			wconfig.CellularV2.AccessPoints = append(wconfig.CellularV2.AccessPoints, ap)
 		}
 		probeCfg := cellNetConfig.Probe
-		customProbe, err := parseConnectivityProbe(probeCfg.GetCustomProbe())
+		var customProbe types.ConnectivityProbe
+		err = customProbe.FromProto(probeCfg.GetCustomProbe())
 		if err != nil {
 			return wconfig, err
 		}
@@ -2328,14 +2289,9 @@ func parseNetworkWirelessConfig(ctx *getconfigContext,
 		for _, wificfg := range wificfgs {
 			var wifi types.WifiConfig
 			wifi.SSID = wificfg.GetWifiSSID()
-			switch wificfg.GetKeyScheme() {
-			case zevecommon.WiFiKeyScheme_WPAPSK:
-				wifi.KeyScheme = types.KeySchemeWpaPsk
-			case zevecommon.WiFiKeyScheme_WPAEAP:
-				wifi.KeyScheme = types.KeySchemeWpaEap
-			default:
-				return wconfig, fmt.Errorf("unrecognized WiFi Key scheme: %+v",
-					wificfg.GetKeyScheme())
+			err = wifi.KeyScheme.FromProto(wificfg.GetKeyScheme())
+			if err != nil {
+				return wconfig, err
 			}
 			wifi.Identity = wificfg.GetIdentity()
 			wifi.Password = wificfg.GetPassword()
@@ -2353,40 +2309,6 @@ func parseNetworkWirelessConfig(ctx *getconfigContext,
 		return wconfig, fmt.Errorf("unsupported wireless type: %d", wType)
 	}
 	return wconfig, nil
-}
-
-func parseCellularAuthProtocol(
-	authProtocol zevecommon.CellularAuthProtocol) (types.WwanAuthProtocol, error) {
-	switch authProtocol {
-	case zevecommon.CellularAuthProtocol_CELLULAR_AUTH_PROTOCOL_NONE:
-		return types.WwanAuthProtocolNone, nil
-	case zevecommon.CellularAuthProtocol_CELLULAR_AUTH_PROTOCOL_PAP:
-		return types.WwanAuthProtocolPAP, nil
-	case zevecommon.CellularAuthProtocol_CELLULAR_AUTH_PROTOCOL_CHAP:
-		return types.WwanAuthProtocolCHAP, nil
-	case zevecommon.CellularAuthProtocol_CELLULAR_AUTH_PROTOCOL_PAP_AND_CHAP:
-		return types.WwanAuthProtocolPAPAndCHAP, nil
-	default:
-		return types.WwanAuthProtocolNone, fmt.Errorf(
-			"unrecognized cellular AuthProtocol: %+v", authProtocol)
-	}
-}
-
-func parseCellularIPType(
-	ipType zevecommon.CellularIPType) (types.WwanIPType, error) {
-	switch ipType {
-	case zevecommon.CellularIPType_CELLULAR_IP_TYPE_UNSPECIFIED:
-		return types.WwanIPTypeUnspecified, nil
-	case zevecommon.CellularIPType_CELLULAR_IP_TYPE_IPV4:
-		return types.WwanIPTypeIPv4, nil
-	case zevecommon.CellularIPType_CELLULAR_IP_TYPE_IPV4_AND_IPV6:
-		return types.WwanIPTypeIPv4AndIPv6, nil
-	case zevecommon.CellularIPType_CELLULAR_IP_TYPE_IPV6:
-		return types.WwanIPTypeIPv6, nil
-	default:
-		return types.WwanIPTypeUnspecified, fmt.Errorf(
-			"unrecognized cellular IP type: %+v", ipType)
-	}
 }
 
 func parseIpspecNetworkXObject(ipspec *zevecommon.Ipspec, config *types.NetworkXObjectConfig) error {

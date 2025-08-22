@@ -581,9 +581,13 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		WwanMetrics:           zedagentCtx.subWwanMetrics,
 		NodeAgentStatus:       zedagentCtx.getconfigCtx.subNodeAgentStatus,
 		ZedagentStatus:        zedagentCtx.getconfigCtx.pubZedAgentStatus,
+		DevicePortConfigList:  zedagentCtx.subDevicePortConfigList,
 	})
 	// Fetch and apply persisted radio-silence configuration immediately.
 	publishZedAgentStatus(getconfigCtx)
+	// Fetch and apply persisted local network configuration immediately.
+	localNetConfig := getconfigCtx.localCmdAgent.GetNetworkConfig()
+	zedagentCtx.ApplyLocalNetworkConfig(localNetConfig)
 
 	// start the config fetch tasks, when zboot status is ready
 	log.Functionf("Creating %s at %s", "configTimerTask", agentlog.GetMyStack())

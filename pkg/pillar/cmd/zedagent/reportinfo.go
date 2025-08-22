@@ -949,6 +949,7 @@ func encodeNetworkPortStatus(ctx *zedagentContext,
 	devicePort.IsMgmt = port.IsMgmt
 	devicePort.Free = port.Cost == 0 // To be deprecated
 	devicePort.NetworkUUID = network.String()
+	devicePort.ConfigSource = port.ConfigSource.ToProto()
 	devicePort.DhcpType = uint32(port.Dhcp)
 	if port.IPv4Subnet != nil {
 		devicePort.Subnet = port.IPv4Subnet.String()
@@ -1061,6 +1062,8 @@ func encodeNetworkPortConfig(ctx *zedagentContext,
 	dp.IsMgmt = npc.IsMgmt
 	dp.Cost = uint32(npc.Cost)
 	dp.Free = npc.Cost == 0 // To be deprecated
+	dp.ConfigSource = npc.ConfigSource.ToProto()
+
 	// DhcpConfig
 	dp.DhcpType = uint32(npc.Dhcp)
 	dp.Subnet = npc.AddrSubnet

@@ -4,6 +4,7 @@
 package types
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"path"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/lf-edge/eve-api/go/evecommon"
 	"github.com/lf-edge/eve/pkg/kube/cnirpc"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/objtonum"
@@ -852,15 +854,90 @@ type ConnectivityProbe struct {
 	ProbePort uint16
 }
 
-// String returns human-readable description of the probe.
-func (r ConnectivityProbe) String() string {
-	probeStr := "<none>"
-	switch r.Method {
+// FromProto populates the ConnectivityProbe from its protobuf representation.
+// Returns an error if the probe configuration is invalid.
+func (cp *ConnectivityProbe) FromProto(probe *evecommon.ConnectivityProbe) error {
+	if probe == nil {
+		return nil
+	}
+
+	switch probe.ProbeMethod {
+	case evecommon.ConnectivityProbeMethod_CONNECTIVITY_PROBE_METHOD_UNSPECIFIED:
+		cp.Method = ConnectivityProbeMethodNone
+
+	case evecommon.ConnectivityProbeMethod_CONNECTIVITY_PROBE_METHOD_ICMP:
+		cp.Method = ConnectivityProbeMethodICMP
+		cp.ProbeHost = probe.GetProbeEndpoint().GetHost()
+		// Undefined host for ICMP probing is allowed - EVE will probe Google DNS
+		// (8.8.8.8) in that case.
+		if cp.ProbeHost != "" {
+			if net.ParseIP(cp.ProbeHost) == nil {
+				return fmt.Errorf("invalid IP address for ICMP probe: %s",
+					cp.ProbeHost)
+			}
+		}
+
+	case evecommon.ConnectivityProbeMethod_CONNECTIVITY_PROBE_METHOD_TCP:
+		cp.Method = ConnectivityProbeMethodTCP
+		cp.ProbeHost = probe.GetProbeEndpoint().GetHost()
+		if cp.ProbeHost == "" {
+			return errors.New("missing endpoint host address for TCP probe")
+		}
+		if net.ParseIP(cp.ProbeHost) == nil {
+			return fmt.Errorf("invalid IP address for TCP probe: %s", cp.ProbeHost)
+		}
+		probePort := probe.GetProbeEndpoint().GetPort()
+		if probePort == 0 {
+			return errors.New("missing endpoint port number for TCP probe")
+		}
+		if probePort > 65535 {
+			return fmt.Errorf("TCP probe port number (%d) is out of range", probePort)
+		}
+		cp.ProbePort = uint16(probePort)
+	}
+	return nil
+}
+
+// ToProto converts ConnectivityProbe into its protobuf representation.
+func (cp ConnectivityProbe) ToProto() *evecommon.ConnectivityProbe {
+	probe := &evecommon.ConnectivityProbe{}
+
+	switch cp.Method {
+	case ConnectivityProbeMethodNone:
+		probe.ProbeMethod =
+			evecommon.ConnectivityProbeMethod_CONNECTIVITY_PROBE_METHOD_UNSPECIFIED
+
 	case ConnectivityProbeMethodICMP:
-		probeStr = fmt.Sprintf("icmp://%s", r.ProbeHost)
+		probe.ProbeMethod = evecommon.ConnectivityProbeMethod_CONNECTIVITY_PROBE_METHOD_ICMP
+		probe.ProbeEndpoint = &evecommon.ProbeEndpoint{
+			Host: cp.ProbeHost,
+		}
+
 	case ConnectivityProbeMethodTCP:
-		probeStr = fmt.Sprintf("tcp://%s:%d", r.ProbeHost,
-			r.ProbePort)
+		probe.ProbeMethod = evecommon.ConnectivityProbeMethod_CONNECTIVITY_PROBE_METHOD_TCP
+		probe.ProbeEndpoint = &evecommon.ProbeEndpoint{
+			Host: cp.ProbeHost,
+			Port: uint32(cp.ProbePort),
+		}
+
+	default:
+		// Fall back to UNSPECIFIED for unknown methods
+		probe.ProbeMethod =
+			evecommon.ConnectivityProbeMethod_CONNECTIVITY_PROBE_METHOD_UNSPECIFIED
+	}
+
+	return probe
+}
+
+// String returns human-readable description of the probe.
+func (cp ConnectivityProbe) String() string {
+	probeStr := "<none>"
+	switch cp.Method {
+	case ConnectivityProbeMethodICMP:
+		probeStr = fmt.Sprintf("icmp://%s", cp.ProbeHost)
+	case ConnectivityProbeMethodTCP:
+		probeStr = fmt.Sprintf("tcp://%s:%d", cp.ProbeHost,
+			cp.ProbePort)
 	}
 	return probeStr
 }

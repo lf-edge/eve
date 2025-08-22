@@ -13,10 +13,12 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/lf-edge/eve-api/go/evecommon"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
 	"github.com/lf-edge/eve/pkg/pillar/utils/netutils"
 	uuid "github.com/satori/go.uuid"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // DevicePortConfigVersion is used to track major changes in DPC semantics.
@@ -83,6 +85,57 @@ func (status DPCState) String() string {
 		return "DPC_WWAN_WAIT"
 	default:
 		return fmt.Sprintf("Unknown status %d", status)
+	}
+}
+
+// Describe returns a short human-readable description of the current DPC state.
+func (status DPCState) Describe() string {
+	switch status {
+	case DPCStateNone:
+		return "undefined state"
+	case DPCStateFail:
+		return "DPC verification failed"
+	case DPCStateFailWithIPAndDNS:
+		return "DPC verification failed, but interface has IP and DNS"
+	case DPCStateSuccess:
+		return "DPC verification succeeded"
+	case DPCStateIPDNSWait:
+		return "waiting for interface IP address(es) and/or DNS server(s)"
+	case DPCStatePCIWait:
+		return "waiting for interface from pciback"
+	case DPCStateIntfWait:
+		return "waiting for interface to appear in network stack"
+	case DPCStateRemoteWait:
+		return "controller encountered an internal error or is using an outdated certificate"
+	case DPCStateAsyncWait:
+		return "waiting for asynchronous config operations to complete"
+	case DPCStateWwanWait:
+		return "waiting for wwan microservice to apply cellular configuration"
+	default:
+		return fmt.Sprintf("unknown state %d", status)
+	}
+}
+
+// InProgress returns true if the DPC verification is still in progress
+// (i.e., the state is not final).
+func (status DPCState) InProgress() bool {
+	switch status {
+	case DPCStateIPDNSWait,
+		DPCStatePCIWait,
+		DPCStateIntfWait,
+		DPCStateAsyncWait,
+		DPCStateWwanWait:
+		return true
+	case DPCStateNone,
+		DPCStateFail,
+		DPCStateFailWithIPAndDNS,
+		DPCStateSuccess,
+		// Although we wait for the controller to be fixed, connectivity testing
+		// has actually completed.
+		DPCStateRemoteWait:
+		return false
+	default:
+		return false
 	}
 }
 
@@ -463,7 +516,9 @@ func (config *DevicePortConfig) MostlyEqual(config2 *DevicePortConfig) bool {
 			p1.Alias != p2.Alias ||
 			p1.IsMgmt != p2.IsMgmt ||
 			p1.Cost != p2.Cost ||
-			p1.MTU != p2.MTU {
+			p1.MTU != p2.MTU ||
+			p1.AllowLocalModifications != p2.AllowLocalModifications ||
+			p1.ConfigSource.Origin != p2.ConfigSource.Origin {
 			return false
 		}
 		if !reflect.DeepEqual(p1.DhcpConfig, p2.DhcpConfig) ||
@@ -533,6 +588,14 @@ func (config DevicePortConfig) WasDPCWorking() bool {
 	return false
 }
 
+// LastTestTime returns the most recent test time.
+func (config DevicePortConfig) LastTestTime() time.Time {
+	if config.LastFailed.After(config.LastSucceeded) {
+		return config.LastFailed
+	}
+	return config.LastSucceeded
+}
+
 // UpdatePortStatusFromIntfStatusMap - Set TestResults for ports in DevicePortConfig to
 // those from intfStatusMap. If a port is not found in intfStatusMap, it means
 // the port was not tested, so we retain the original TestResults for the port.
@@ -599,6 +662,9 @@ type NetworkPortConfig struct {
 	// to particular ports automatically.
 	SharedLabels []string
 	Alias        string // From SystemAdapter's alias
+	// Allow the local operator to make (limited) configuration changes to this
+	// network adapter using Local Profile Server.
+	AllowLocalModifications bool
 	// NetworkUUID - UUID of the Network Object configured for the port.
 	NetworkUUID uuid.UUID
 	IsMgmt      bool // Used to talk to controller
@@ -619,6 +685,7 @@ type NetworkPortConfig struct {
 	IgnoreDhcpIPAddresses bool // Ignore IP addresses from DHCP
 	IgnoreDhcpGateways    bool // Ignore gateways from DHCP
 	IgnoreDhcpDNSConfig   bool // Ignore DNS config (DomainName + DNSServers) from DHCP
+	ConfigSource          PortConfigSource
 }
 
 // EVE-defined port labels.
@@ -630,6 +697,74 @@ const (
 	// FreeUplinkLabel references all management ports with 0 cost.
 	FreeUplinkLabel = "freeuplink"
 )
+
+// NetworkConfigOrigin enumerates all possible origins of a network port configuration.
+// The values directly match those from the corresponding proto definition
+// (evecommon.NetworkConfigOrigin).
+type NetworkConfigOrigin uint8
+
+const (
+	// NetworkConfigOriginUnspecified : unknown or unset origin.
+	NetworkConfigOriginUnspecified NetworkConfigOrigin = iota
+	// NetworkConfigOriginController : config received from the controller.
+	NetworkConfigOriginController
+	// NetworkConfigOriginBootstrap : initial device config embedded in the EVE installer,
+	// signed by the controller.
+	NetworkConfigOriginBootstrap
+	// NetworkConfigOriginOverride : manually created JSON config injected into
+	// the installer.
+	NetworkConfigOriginOverride
+	// NetworkConfigOriginLastResort : fallback configuration automatically generated
+	// to enable DHCP on all Ethernet ports when no network config is available or when
+	// "network.fallback.any.eth" is enabled and none of the existing configs provide
+	// controller connectivity.
+	NetworkConfigOriginLastResort
+	// NetworkConfigOriginTUI : config entered via the terminal UI (TUI).
+	NetworkConfigOriginTUI
+	// NetworkConfigOriginLOC : configuration signed by the controller and delivered
+	// through the Local Operator Console (LOC) in an air-gapped environment.
+	NetworkConfigOriginLOC
+	// NetworkConfigOriginLPS : config changes made locally through the Local Profile
+	// Server (LPS).
+	NetworkConfigOriginLPS
+)
+
+// PortConfigSource describes the origin of the configuration used for a network port.
+// It helps distinguish between controller-provided, locally-modified, or initial configs.
+type PortConfigSource struct {
+	// Indicates where EVE obtained the network config.
+	Origin NetworkConfigOrigin
+
+	// Timestamp when the port’s configuration was originally submitted
+	// or created at its source.
+	//
+	// Meaning depends on the origin:
+	// - Controller, LOC, bootstrap: timestamp provided by the controller.
+	// - Local override.json: when the file was first loaded by EVE.
+	// - Last-resort: when EVE generated the fallback config.
+	// - LPS modifications: when the modified config was received.
+	// - TUI: when the user submitted the configuration.
+	//
+	// This is different from DevicePortConfig.TimePriority, which is used
+	// to compare and prioritize different sources of network configuration
+	// (and may be synthetic for some sources, e.g. year 2000 for override.json,
+	// epoch 0 for last-resort). By contrast, SubmittedAt represents when the
+	// port’s configuration first came into existence, regardless of when or whether
+	// the device applied it.
+	//
+	// Note: this is a per-port timestamp. The underlying network config may
+	// cover multiple ports, but only the portion relevant to this port is
+	// reflected here.
+	SubmittedAt time.Time
+}
+
+// ToProto converts PortConfigSource into its protobuf representation.
+func (src PortConfigSource) ToProto() *evecommon.PortConfigSource {
+	return &evecommon.PortConfigSource{
+		Origin:      evecommon.NetworkConfigOrigin(src.Origin),
+		SubmittedAt: timestamppb.New(src.SubmittedAt),
+	}
+}
 
 // IsEveDefinedPortLabel returns true if the given port label is defined by EVE
 // and not by the user.
@@ -744,6 +879,47 @@ type ProxyEntry struct {
 	Port   uint32           `json:"port"`
 }
 
+// FromProto populates a ProxyEntry from its protobuf representation.
+func (pe *ProxyEntry) FromProto(proxy *evecommon.ProxyServer) {
+	if proxy == nil {
+		return
+	}
+	pe.Server = proxy.Server
+	pe.Port = proxy.Port
+	switch proxy.Proto {
+	case evecommon.ProxyProto_PROXY_HTTP:
+		pe.Type = NetworkProxyTypeHTTP
+	case evecommon.ProxyProto_PROXY_HTTPS:
+		pe.Type = NetworkProxyTypeHTTPS
+	case evecommon.ProxyProto_PROXY_SOCKS:
+		pe.Type = NetworkProxyTypeSOCKS
+	case evecommon.ProxyProto_PROXY_FTP:
+		pe.Type = NetworkProxyTypeFTP
+	}
+}
+
+// ToProto converts a ProxyEntry to its protobuf representation.
+func (pe ProxyEntry) ToProto() *evecommon.ProxyServer {
+	var protoType evecommon.ProxyProto
+	switch pe.Type {
+	case NetworkProxyTypeHTTP:
+		protoType = evecommon.ProxyProto_PROXY_HTTP
+	case NetworkProxyTypeHTTPS:
+		protoType = evecommon.ProxyProto_PROXY_HTTPS
+	case NetworkProxyTypeSOCKS:
+		protoType = evecommon.ProxyProto_PROXY_SOCKS
+	case NetworkProxyTypeFTP:
+		protoType = evecommon.ProxyProto_PROXY_FTP
+	default:
+		protoType = evecommon.ProxyProto_PROXY_OTHER
+	}
+	return &evecommon.ProxyServer{
+		Proto:  protoType,
+		Server: pe.Server,
+		Port:   pe.Port,
+	}
+}
+
 // ProxyConfig : proxy configuration for a network port.
 type ProxyConfig struct {
 	Proxies    []ProxyEntry
@@ -760,6 +936,37 @@ type ProxyConfig struct {
 
 // WifiKeySchemeType - types of key management
 type WifiKeySchemeType uint8
+
+// FromProto sets the WifiKeySchemeType from the protobuf value.
+// Returns an error if the protobuf value is unrecognized.
+func (kt *WifiKeySchemeType) FromProto(protoKeyScheme evecommon.WiFiKeyScheme) error {
+	switch protoKeyScheme {
+	case evecommon.WiFiKeyScheme_SchemeNOOP:
+		*kt = KeySchemeNone
+	case evecommon.WiFiKeyScheme_WPAPSK:
+		*kt = KeySchemeWpaPsk
+	case evecommon.WiFiKeyScheme_WPAEAP:
+		*kt = KeySchemeWpaEap
+	default:
+		*kt = KeySchemeOther
+		return fmt.Errorf("unrecognized WiFi key scheme: %v", protoKeyScheme)
+	}
+	return nil
+}
+
+// ToProto converts a WifiKeySchemeType to its protobuf representation.
+func (kt WifiKeySchemeType) ToProto() evecommon.WiFiKeyScheme {
+	switch kt {
+	case KeySchemeNone:
+		return evecommon.WiFiKeyScheme_SchemeNOOP
+	case KeySchemeWpaPsk:
+		return evecommon.WiFiKeyScheme_WPAPSK
+	case KeySchemeWpaEap:
+		return evecommon.WiFiKeyScheme_WPAEAP
+	default:
+		return evecommon.WiFiKeyScheme_SchemeNOOP
+	}
+}
 
 // Key Scheme type
 const (
@@ -871,6 +1078,9 @@ type CellularAccessPoint struct {
 	IPType WwanIPType
 	// Authentication protocol used for the default bearer.
 	AuthProtocol WwanAuthProtocol
+	// Cleartext user credentials for the default bearer.
+	// Used only for network configuration submitted via Local Profile Server.
+	CleartextCredentials WwanCleartextCredentials
 	// Encrypted user credentials for the default bearer and/or the attach bearer
 	// (when required).
 	EncryptedCredentials CipherBlockStatus
@@ -889,6 +1099,9 @@ type CellularAccessPoint struct {
 	AttachIPType WwanIPType
 	// Authentication protocol used for the attach bearer.
 	AttachAuthProtocol WwanAuthProtocol
+	// Cleartext user credentials for the attach bearer.
+	// Used only for network configuration submitted via Local Profile Server.
+	AttachCleartextCredentials WwanCleartextCredentials
 }
 
 // Equal compares two instances of CellularAccessPoint for equality.
@@ -898,6 +1111,7 @@ func (ap CellularAccessPoint) Equal(ap2 CellularAccessPoint) bool {
 		ap.APN != ap2.APN ||
 		ap.IPType != ap2.IPType ||
 		ap.AuthProtocol != ap2.AuthProtocol ||
+		ap.CleartextCredentials != ap2.CleartextCredentials ||
 		!ap.EncryptedCredentials.Equal(ap2.EncryptedCredentials) {
 		return false
 	}
@@ -908,7 +1122,8 @@ func (ap CellularAccessPoint) Equal(ap2 CellularAccessPoint) bool {
 	}
 	if ap.AttachAPN != ap2.AttachAPN ||
 		ap.AttachIPType != ap2.AttachIPType ||
-		ap.AttachAuthProtocol != ap2.AttachAuthProtocol {
+		ap.AttachAuthProtocol != ap2.AttachAuthProtocol ||
+		ap.AttachCleartextCredentials != ap2.AttachCleartextCredentials {
 		return false
 	}
 	return true
