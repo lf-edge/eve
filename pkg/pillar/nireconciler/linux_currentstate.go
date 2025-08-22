@@ -90,6 +90,7 @@ func (r *LinuxNIReconciler) updateCurrentGlobalState(onlyPortsChanged bool) (cha
 					LogAndErrPrefix, portIfName, err)
 				// Continue as if this port interface didn't have any IP addresses...
 			}
+			ips = r.filterIgnoredDhcpIPs(port, ips...)
 			currentPorts.PutItem(generic.Port{
 				IfName:       portIfName,
 				LogicalLabel: port.LogicalLabel,
@@ -385,6 +386,7 @@ func (r *LinuxNIReconciler) getBridgeAddrs(niID uuid.UUID) (ipsWithSubnet,
 			if err != nil {
 				return
 			}
+			ips = r.filterIgnoredDhcpIPs(ni.bridge.Ports[0], ips...)
 			// Take global unicast IPs.
 			for _, ip := range ips {
 				if ip.IP.IsGlobalUnicast() {

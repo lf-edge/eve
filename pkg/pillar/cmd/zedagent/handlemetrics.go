@@ -1240,16 +1240,12 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 			networkInfo.DevName = *proto.String(name)
 			niStatus := appIfnameToNetworkInstance(ctx, aiStatus, ifname)
 			if niStatus != nil {
-				networkInfo.NtpServers = append(networkInfo.NtpServers, niStatus.NTPServers...)
+				networkInfo.NtpServers = utils.ToStrings(niStatus.NtpServers)
 				networkInfo.DefaultRouters = []string{niStatus.Gateway.String()}
 				networkInfo.Dns = &info.ZInfoDNS{
 					DNSservers: []string{},
 				}
-				networkInfo.Dns.DNSservers = []string{}
-				for _, dnsServer := range niStatus.DnsServers {
-					networkInfo.Dns.DNSservers = append(networkInfo.Dns.DNSservers,
-						dnsServer.String())
-				}
+				networkInfo.Dns.DNSservers = utils.ToStrings(niStatus.DnsServers)
 			}
 			ReportAppInfo.Network = append(ReportAppInfo.Network,
 				networkInfo)
@@ -1855,14 +1851,10 @@ func protoEncodeProbeMetrics(probeMetrics types.ProbeMetrics) *metrics.ZProbeNIM
 		UplinkCnt:      probeMetrics.PortCount,
 	}
 	for _, intfStats := range probeMetrics.IntfProbeStats {
-		var nextHops []string
-		for _, nh := range intfStats.NexthopIPs {
-			nextHops = append(nextHops, nh.String())
-		}
 		protoMetrics.IntfMetric = append(protoMetrics.IntfMetric,
 			&metrics.ZProbeNIMetrics_ZProbeIntfMetric{
 				IntfName:           intfStats.IntfName,
-				GatewayNexhtop:     strings.Join(nextHops, ", "),
+				GatewayNexhtop:     utils.JoinStrings(intfStats.NexthopIPs, ", "),
 				GatewayUP:          intfStats.NexthopUP,
 				RemoteHostUP:       intfStats.RemoteUP,
 				NexthopUpCount:     intfStats.NexthopUPCnt,

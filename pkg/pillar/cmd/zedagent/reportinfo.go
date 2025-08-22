@@ -855,20 +855,13 @@ func encodeNetInfo(port types.NetworkPortStatus) *info.ZInfoNetwork {
 	networkInfo.DevName = port.Logicallabel
 
 	networkInfo.Alias = port.Alias
-	// Default routers from kernel whether or not we are using DHCP
-	networkInfo.DefaultRouters = make([]string, len(port.DefaultRouters))
-	for index, dr := range port.DefaultRouters {
-		networkInfo.DefaultRouters[index] = *proto.String(dr.String())
-	}
+	networkInfo.DefaultRouters = utils.ToStrings(port.DefaultRouters)
 
 	networkInfo.Uplink = port.IsMgmt
 	// fill in ZInfoDNS from what is currently used
 	networkInfo.Dns = new(info.ZInfoDNS)
 	networkInfo.Dns.DNSdomain = port.DomainName
-	for _, server := range port.DNSServers {
-		networkInfo.Dns.DNSservers = append(networkInfo.Dns.DNSservers,
-			server.String())
-	}
+	networkInfo.Dns.DNSservers = utils.ToStrings(port.DNSServers)
 
 	// XXX we potentially have geoloc information for each IP
 	// address.
@@ -893,12 +886,7 @@ func encodeNetInfo(port types.NetworkPortStatus) *info.ZInfoNetwork {
 	networkInfo.NetworkErr = encodeTestResults(port.TestResults)
 
 	networkInfo.Proxy = encodeProxyStatus(&port.ProxyConfig)
-	networkInfo.NtpServers = []string{}
-	if !port.IgnoreDhcpNtpServers {
-		for _, server := range port.DhcpNtpServers {
-			networkInfo.NtpServers = append(networkInfo.NtpServers, server.String())
-		}
-	}
+	networkInfo.NtpServers = utils.ToStrings(port.NtpServers)
 	return networkInfo
 }
 
@@ -1111,18 +1099,7 @@ func encodeNetworkPortStatus(ctx *zedagentContext,
 	devicePort.Up = port.Up
 	devicePort.Mtu = uint32(port.MTU)
 	devicePort.Domainname = port.DomainName
-	ntpServers := make([]string, 0)
-	if port.ConfiguredNtpServers != nil {
-		ntpServers = append(ntpServers, port.ConfiguredNtpServers...)
-	}
-	if len(port.DhcpNtpServers) > 0 && !port.IgnoreDhcpNtpServers {
-		ntpServers = append(ntpServers, port.DhcpNtpServers[0].String())
-		if len(port.DhcpNtpServers) > 1 {
-			for _, ntpServer := range port.DhcpNtpServers[1:] {
-				ntpServers = append(ntpServers, ntpServer.String())
-			}
-		}
-	}
+	ntpServers := utils.ToStrings(port.NtpServers)
 	if len(ntpServers) > 0 {
 		devicePort.NtpServer = ntpServers[0]
 	}
@@ -1136,15 +1113,11 @@ func encodeNetworkPortStatus(ctx *zedagentContext,
 		devicePort.IPAddrs = append(devicePort.IPAddrs, ipAddr.Addr.String())
 	}
 	// devicePort.Gateway is deprecated - replaced by DefaultRouters
-	for _, router := range port.DefaultRouters {
-		devicePort.DefaultRouters = append(devicePort.DefaultRouters, router.String())
-	}
+	devicePort.DefaultRouters = utils.ToStrings(port.DefaultRouters)
 	// devicePort.DNSServers is deprecated - replaced by Dns
 	devicePort.Dns = new(info.ZInfoDNS)
 	devicePort.Dns.DNSdomain = port.DomainName
-	for _, dnsServer := range port.DNSServers {
-		devicePort.Dns.DNSservers = append(devicePort.Dns.DNSservers, dnsServer.String())
-	}
+	devicePort.Dns.DNSservers = utils.ToStrings(port.DNSServers)
 	// TODO We may have geoloc information for each IP address.
 	// For now fill in using the first IP address which has location info available.
 	for _, ai := range port.AddrInfoList {
@@ -1231,23 +1204,20 @@ func encodeNetworkPortConfig(ctx *zedagentContext,
 	dp.DhcpType = uint32(npc.Dhcp)
 	dp.Subnet = npc.AddrSubnet
 
-	dp.DefaultRouters = make([]string, 0)
-	dp.DefaultRouters = append(dp.DefaultRouters, npc.Gateway.String())
+	if npc.Gateway != nil {
+		dp.DefaultRouters = []string{npc.Gateway.String()}
+	}
 
-	if npc.NTPServers != nil && len(npc.NTPServers) > 0 {
-		dp.NtpServer = npc.NTPServers[0]
-
+	if len(npc.NTPServers) > 0 {
+		dp.NtpServer = npc.NTPServers[0].String()
 		if len(npc.NTPServers) > 1 {
-			dp.MoreNtpServers = append(dp.MoreNtpServers, npc.NTPServers[1:]...)
+			dp.MoreNtpServers = utils.ToStrings(npc.NTPServers[1:])
 		}
 	}
 
 	dp.Dns = new(info.ZInfoDNS)
 	dp.Dns.DNSdomain = npc.DomainName
-	dp.Dns.DNSservers = make([]string, 0)
-	for _, d := range npc.DNSServers {
-		dp.Dns.DNSservers = append(dp.Dns.DNSservers, d.String())
-	}
+	dp.Dns.DNSservers = utils.ToStrings(npc.DNSServers)
 	// XXX Not in definition. Remove?
 	// XXX  string dhcpRangeLow = 17;
 	// XXX  string dhcpRangeHigh = 18;

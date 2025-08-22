@@ -27,6 +27,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/iptables"
 	"github.com/lf-edge/eve/pkg/pillar/netmonitor"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils/netutils"
 )
 
 var (
@@ -277,7 +278,7 @@ func TestSingleEthInterface(test *testing.T) {
 	eth0.IPAddrs = append(eth0.IPAddrs, eth0IP)
 	eth0.DHCP = netmonitor.DHCPInfo{
 		IPv4Subnet:     ipSubnet("192.168.10.0/24"),
-		IPv4NtpServers: []net.IP{net.ParseIP("132.163.96.5")},
+		IPv4NtpServers: netutils.NewHostnameOrIPs("132.163.96.5"),
 	}
 	eth0.DNS = []netmonitor.DNSInfo{
 		{
@@ -479,7 +480,7 @@ func TestMultipleEthsSameSubnet(test *testing.T) {
 	// Simulate IP addresses being allocated by DHCP server.
 	// Both interfaces will be in the same subnet.
 	subnet := ipSubnet("192.168.10.0/24")
-	ntpServers := []net.IP{net.ParseIP("132.163.96.5")}
+	ntpServers := netutils.NewHostnameOrIPs("132.163.96.5")
 	eth0IP := ipAddress("192.168.10.5/24")
 	eth0.IPAddrs = append(eth0.IPAddrs, eth0IP)
 	eth0.DHCP = netmonitor.DHCPInfo{
@@ -1436,7 +1437,7 @@ func TestSingleEthInterfaceWithIPv6(test *testing.T) {
 	eth0.IPAddrs = append(eth0.IPAddrs, eth0IP)
 	eth0.DHCP = netmonitor.DHCPInfo{
 		IPv4Subnet:     ipSubnet("2000:1111::/64"),
-		IPv4NtpServers: []net.IP{net.ParseIP("2001:db8:3c4d:15::1")},
+		IPv4NtpServers: netutils.NewHostnameOrIPs("2001:db8:3c4d:15::1"),
 	}
 	eth0.DNS = []netmonitor.DNSInfo{
 		{

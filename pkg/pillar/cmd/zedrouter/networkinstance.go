@@ -60,13 +60,7 @@ func (z *zedrouter) getArgsForNIStateCollecting(niID uuid.UUID) (
 // Return arguments describing network instance bridge config as required by NIReconciler.
 func (z *zedrouter) getNIBridgeConfig(
 	status *types.NetworkInstanceStatus) nireconciler.NIBridge {
-	var ipAddr *net.IPNet
-	if status.BridgeIPAddr != nil && status.Subnet != nil {
-		ipAddr = &net.IPNet{
-			IP:   status.BridgeIPAddr,
-			Mask: status.Subnet.Mask,
-		}
-	}
+	ipAddr := netutils.NewIPNet(status.BridgeIPAddr, status.Subnet)
 	var staticRoutes []nireconciler.IPRoute
 	for _, route := range status.IntendedRoutes {
 		if route.RunningPortProbing && route.SelectedPort == "" {
@@ -96,33 +90,31 @@ func (z *zedrouter) getNIBridgeConfig(
 func (z *zedrouter) attachNTPServersToPortConfigs(portConfigs []nireconciler.Port) {
 	for i := range portConfigs {
 		pc := &portConfigs[i]
-		ntpServerIPs, ntpServerDomainsOrIPs := types.GetNTPServers(*z.deviceNetworkStatus, pc.IfName)
-
-		ntpServers := make([]net.IP, 0, len(ntpServerDomainsOrIPs))
-		for _, ntpServer := range ntpServerDomainsOrIPs {
-			ip := net.ParseIP(ntpServer)
-			if ip != nil {
-				ntpServers = append(ntpServers, ip)
+		ps := z.deviceNetworkStatus.LookupPortByLogicallabel(pc.LogicalLabel)
+		if ps == nil {
+			continue
+		}
+		ntpServers := make([]net.IP, 0, len(ps.NtpServers))
+		for _, ntpServer := range ps.NtpServers {
+			if ntpServer.IsIP() {
+				ntpServers = append(ntpServers, ntpServer.GetIP())
 				continue
 			}
 			z.pubSub.StillRunning(agentName, warningTime, errorTime)
 			dnsResponses, err := controllerconn.ResolveWithPortsLambda(
-				ntpServer,
+				ntpServer.String(),
 				*z.deviceNetworkStatus,
 				controllerconn.ResolveCacheWrap(controllerconn.ResolveWithSrcIP),
 			)
 			if err != nil {
 				z.log.Warnf("could not resolve '%s': %v", ntpServer, err)
 			}
-
 			for _, dnsResponse := range dnsResponses {
 				ntpServers = append(ntpServers, dnsResponse.IP)
 			}
 		}
 
-		ntpServers = append(ntpServers, ntpServerIPs...)
 		generics.FilterDuplicatesFn(ntpServers, netutils.EqualIPs)
-
 		pc.NTPServers = ntpServers
 	}
 }
@@ -140,13 +132,15 @@ func (z *zedrouter) getNIPortConfig(
 			continue
 		}
 		portConfigs = append(portConfigs, nireconciler.Port{
-			LogicalLabel: port.Logicallabel,
-			SharedLabels: port.SharedLabels,
-			IfName:       port.IfName,
-			IsMgmt:       port.IsMgmt,
-			MTU:          port.MTU,
-			DhcpType:     port.Dhcp,
-			DNSServers:   types.GetDNSServers(*z.deviceNetworkStatus, port.IfName),
+			LogicalLabel:  port.Logicallabel,
+			SharedLabels:  port.SharedLabels,
+			IfName:        port.IfName,
+			IsMgmt:        port.IsMgmt,
+			MTU:           port.MTU,
+			DhcpType:      port.Dhcp,
+			DNSServers:    types.GetDNSServers(*z.deviceNetworkStatus, port.IfName),
+			StaticIP:      netutils.NewIPNet(port.ConfiguredIP, port.ConfiguredSubnet),
+			IgnoreDhcpIPs: port.IgnoredDhcpIPs,
 		})
 	}
 	return portConfigs
@@ -159,13 +153,11 @@ func (z *zedrouter) updateNIPorts(niConfig types.NetworkInstanceConfig,
 	var (
 		newPorts         []*types.NetworkPortStatus
 		validatedPortLLs []string
-		newNTPServers    []string
+		newNTPServers    []netutils.HostnameOrIP
 		errorMsgs        []string
 	)
-	if niStatus.NtpServers != nil {
-		// The NTP server explicitly configured for the NI.
-		newNTPServers = append(newNTPServers, niStatus.NtpServers...)
-	}
+	// The NTP servers explicitly configured for the NI.
+	newNTPServers = append(newNTPServers, niConfig.NtpServers...)
 	if niStatus.PortLabel != "" {
 		newPorts = z.deviceNetworkStatus.LookupPortsByLabel(niStatus.PortLabel)
 	}
@@ -240,26 +232,19 @@ func (z *zedrouter) updateNIPorts(niConfig types.NetworkInstanceConfig,
 		}
 		// Port is valid for this network instance.
 		validatedPortLLs = append(validatedPortLLs, port.Logicallabel)
-		if port.ConfiguredNtpServers != nil {
-			// The NTP server explicitly configured for the port.
-			newNTPServers = append(newNTPServers, port.ConfiguredNtpServers...)
-		}
-		// NTP servers received via DHCP.
-		if !port.IgnoreDhcpNtpServers {
-			for _, dhcpNtpserver := range port.DhcpNtpServers {
-				newNTPServers = append(newNTPServers, dhcpNtpserver.String())
-			}
-		}
+		// Append NTP servers associated with the port.
+		newNTPServers = append(newNTPServers, port.NtpServers...)
 	}
 	if niStatus.PortLabel != "" && len(newPorts) == 0 {
 		// This is potentially a transient state, wait for DNS update.
 		errorMsgs = append(errorMsgs,
 			fmt.Sprintf("no port is matching label '%s'", niStatus.PortLabel))
 	}
-	newNTPServers = generics.FilterDuplicates(newNTPServers)
+	newNTPServers = generics.FilterDuplicatesFn(newNTPServers, netutils.EqualHostnameOrIPs)
 	changed = changed || !generics.EqualSets(niStatus.Ports, validatedPortLLs)
 	niStatus.Ports = validatedPortLLs
-	changed = changed || !generics.EqualSets(niStatus.NTPServers, newNTPServers)
+	changed = changed || !generics.EqualSetsFn(niStatus.NTPServers, newNTPServers,
+		netutils.EqualHostnameOrIPs)
 	niStatus.NTPServers = newNTPServers
 	// Update BridgeMac for Switch NI bridge created by NIM.
 	if z.niBridgeIsCreatedByNIM(niConfig) {

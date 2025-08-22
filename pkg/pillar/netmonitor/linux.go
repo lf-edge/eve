@@ -19,6 +19,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/netclone"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils/netutils"
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
 )
@@ -272,32 +273,31 @@ func (m *LinuxNetworkMonitor) GetInterfaceDHCPInfo(ifIndex int) (info DHCPInfo, 
 		return info, err
 	}
 	ifName := attrs.IfName
-	subnet, ntpServerIPs, ntpServerHostnames, err := m.getDHCPv4Info(ifName)
+	subnet, ntpServers, err := m.getDHCPv4Info(ifName)
 	if err != nil {
 		return info, err
 	}
 	info.IPv4Subnet = subnet
-	info.IPv4NtpServers = ntpServerIPs
-	info.HostnameNtpServers = ntpServerHostnames
-	subnets, ntpServerIPs, err := m.getDHCPv6Info(ifName)
+	info.IPv4NtpServers = ntpServers
+	subnets, ntpServers, err := m.getDHCPv6Info(ifName)
 	if err != nil {
 		return info, err
 	}
 	info.IPv6Subnets = subnets
-	info.IPv6NtpServers = ntpServerIPs
+	info.IPv6NtpServers = ntpServers
 	m.ifIndexToDHCP[ifIndex] = info
 	return info, nil
 }
 
 func (m *LinuxNetworkMonitor) getDHCPv4Info(
-	ifName string) (subnet *net.IPNet, ntpServerIPs []net.IP, ntpServerHostnames []string, err error) {
+	ifName string) (subnet *net.IPNet, ntpServers []netutils.HostnameOrIP, err error) {
 	m.Log.Functionf("Calling dhcpcd -U -4 %s", ifName)
 	cmd := base.Exec(m.Log, "dhcpcd", "-U", "-4", ifName)
 	outputBytes, err := cmd.CombinedOutput()
 	output := string(outputBytes)
 	if err != nil {
 		if m.isDhcpcdNotRunningErr(output) {
-			return nil, nil, nil, nil
+			return nil, nil, nil
 		}
 		err = fmt.Errorf("dhcpcd -U -4 %s failed: %s: %s", ifName, output, err)
 		return
@@ -306,7 +306,7 @@ func (m *LinuxNetworkMonitor) getDHCPv4Info(
 }
 
 func (m *LinuxNetworkMonitor) getDHCPv6Info(
-	ifName string) (subnets []*net.IPNet, ntpServerIPs []net.IP, err error) {
+	ifName string) (subnets []*net.IPNet, ntpServerIPs []netutils.HostnameOrIP, err error) {
 	m.Log.Functionf("Calling dhcpcd -U -6 %s", ifName)
 	cmd := base.Exec(m.Log, "dhcpcd", "-U", "-6", ifName)
 	outputBytes, err := cmd.CombinedOutput()
@@ -336,7 +336,7 @@ func (m *LinuxNetworkMonitor) isDhcpcdNotRunningErr(dhcpcdOutput string) bool {
 // It extracts the assigned subnet (network address and subnet mask) and any configured
 // NTP servers.
 func ParseDHCPv4Lease(
-	content string) (subnet *net.IPNet, ntpServerIPs []net.IP, ntpServerHostnames []string, err error) {
+	content string) (subnet *net.IPNet, ntpServers []netutils.HostnameOrIP, err error) {
 	lines := strings.Split(content, "\n")
 	var netAddr net.IP
 	var masklen int
@@ -357,20 +357,15 @@ func ParseDHCPv4Lease(
 			}
 			masklen = m
 		case "ntp_servers":
-			for _, s := range strings.Fields(v) {
-				if ip := net.ParseIP(s); ip != nil {
-					ntpServerIPs = append(ntpServerIPs, ip)
-				} else {
-					ntpServerHostnames = append(ntpServerHostnames, s)
-				}
-			}
+			ntpServers = append(ntpServers,
+				netutils.NewHostnameOrIPs(strings.Fields(v)...)...)
 		}
 	}
 
 	if netAddr != nil && masklen > 0 {
 		subnet = &net.IPNet{IP: netAddr, Mask: net.CIDRMask(masklen, 32)}
 	}
-	return subnet, ntpServerIPs, ntpServerHostnames, nil
+	return subnet, ntpServers, nil
 }
 
 var (
@@ -384,11 +379,11 @@ var (
 // ParseDHCPv6Lease parses the DHCPv6/RA lease information for the given network interface.
 // It extracts IPv6 subnets (from RA prefix information) and any configured NTP servers
 // (if present).
-func ParseDHCPv6Lease(output string) ([]*net.IPNet, []net.IP, error) {
+func ParseDHCPv6Lease(output string) ([]*net.IPNet, []netutils.HostnameOrIP, error) {
 	lines := strings.Split(output, "\n")
 
 	var subnets []*net.IPNet
-	var ntpServers []net.IP
+	var ntpServers []netutils.HostnameOrIP
 
 	// Map of "routerIndex-infoIndex" -> data
 	type key struct {
@@ -424,11 +419,8 @@ func ParseDHCPv6Lease(output string) ([]*net.IPNet, []net.IP, error) {
 
 		// Parse NTP servers
 		if k == "dhcp6_ntp_server_addr" {
-			for _, s := range strings.Fields(v) {
-				if ip := net.ParseIP(s); ip != nil {
-					ntpServers = append(ntpServers, ip)
-				}
-			}
+			ntpServers = append(ntpServers,
+				netutils.NewHostnameOrIPs(strings.Fields(v)...)...)
 		}
 	}
 
