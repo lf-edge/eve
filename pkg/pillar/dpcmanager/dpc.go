@@ -31,10 +31,18 @@ func (m *DpcManager) doAddDPC(ctx context.Context, dpc types.DevicePortConfig) {
 			"will be ignored", dpc.Key)
 	}
 
-	// always delete the existing manual DPC regardless of its time priority
-	// there can be only one!
 	if dpc.Key == ManualDPCKey {
+		// Always delete the existing manual DPC regardless of its time priority
+		// there can be only one!
 		m.removeAllDPCbyKey(ManualDPCKey)
+		// Make sure to record the source for the configuration received from TUI.
+		configSource := types.PortConfigSource{
+			Origin:      types.NetworkConfigOriginTUI,
+			SubmittedAt: dpc.TimePriority,
+		}
+		for i := range dpc.Ports {
+			dpc.Ports[i].ConfigSource = configSource
+		}
 	}
 
 	// XXX really need to know whether anything with current or lower
