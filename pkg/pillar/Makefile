@@ -10,6 +10,7 @@ ZARCH         ?= $(HOSTARCH)
 DISTDIR       := dist/$(ZARCH)
 BUILD_VERSION ?=
 
+DOCKER_BUILD_ARGS:=$(shell ../../build-tools/bin/linuxkit pkg build-args --docker ./)
 DOCKER_ARCH_ARGS:=--platform linux/$(ZARCH)
 DOCKER_ARGS:=$(DOCKER_ARCH_ARGS) --build-arg ZARCH=$(ZARCH)
 DOCKER_TAG:=lfedge/eve-pillar:local-$(ZARCH)
@@ -69,20 +70,20 @@ shell:
 	make -C ../.. shell
 
 build-docker:
-	docker build $(DOCKER_ARGS) -t $(DOCKER_TAG) .
+	docker build $(DOCKER_ARGS) -t $(DOCKER_TAG) $(DOCKER_BUILD_ARGS) .
 
 build-docker-dev:
-	docker build $(DOCKER_ARGS) -t $(DOCKER_TAG) . --target build
+	docker build $(DOCKER_ARGS) -t $(DOCKER_TAG) . --target build $(DOCKER_BUILD_ARGS)
 
 enter-docker-dev: build-docker-dev
 	docker run --platform linux/$(ZARCH) -it --rm --entrypoint /bin/sh $(DOCKER_TAG)
 
 build-docker-git:
-	git archive HEAD | docker build $(DOCKER_ARGS) -t $(DOCKER_TAG) -
+	git archive HEAD | docker build $(DOCKER_ARGS) $(DOCKER_BUILD_ARGS) -t $(DOCKER_TAG) -
 
 build-docker-test:
 	make -C ../../ pillar-cache-export-docker-load
-	docker build $(DOCKER_ARGS) --build-arg TEST_TOOLS=y -t $(DOCKER_TAG) . --target build
+	docker build $(DOCKER_ARGS) --build-arg TEST_TOOLS=y $(DOCKER_BUILD_ARGS) -t $(DOCKER_TAG) . --target build
 
 test: build-docker-test
 	rm -f results.json
