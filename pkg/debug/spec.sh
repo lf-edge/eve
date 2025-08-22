@@ -1,5 +1,9 @@
 #!/bin/sh
-#shellcheck disable=SC2039
+#shellcheck disable=SC2039,SC3043,SC3057
+
+# Copyright (c) 2024 Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
 # This script creates an initial hardware model file.
 # It should be run on KVM and without having already made some adapters be
 # app direct
@@ -50,7 +54,7 @@ fi
 # $1 is the PciLong value
 # If running on Xen we can't tell the safe groups
 pci_iommu_group() {
-    local pcilong=$1
+    local pcilong="$1"
     if [ -e /dev/xen ]; then
         echo "warning:no_group_determined_using_xen"
     else
@@ -64,7 +68,7 @@ pci_iommu_group() {
 # verify that there are no other functions on that controller
 # $1 is the name; $2 is the PciLong value
 get_assignmentgroup() {
-    local pcilong=$2
+    local pcilong="$2"
     local grp
     grp=$(pci_iommu_group "$pcilong")
     if [ -z "$grp" ]; then
@@ -83,8 +87,8 @@ get_assignmentgroup() {
 FIND_IOMMU_GROUPS=$(find /sys/kernel/iommu_groups/ -type l)
 
 pci_iommugroup_includes_unknown() {
-    local pcilong=$1
-    local iommugrpnum=$2
+    local pcilong="$1"
+    local iommugrpnum="$2"
     local grp
     local pci
     local ztype
@@ -110,7 +114,7 @@ pci_iommugroup_includes_unknown() {
 
 # pci_to_ztype($PCI_ID) returns a numeric ztype
 pci_to_ztype() {
-    local pci=$1
+    local pci="$1"
     lspci_ds=$(lspci -D -s "$pci")
 
     if [ -d "/sys/bus/pci/devices/${pci}/net" ]; then
