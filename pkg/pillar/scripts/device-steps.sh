@@ -1,6 +1,6 @@
 #!/bin/sh
 #
-# Copyright (c) 2018 Zededa, Inc.
+# Copyright (c) 2018-2025 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
 WATCHDOG_PID=/run/watchdog/pid
@@ -275,12 +275,25 @@ access_usb() {
         if [ -d /mnt/dump ]; then
             echo "$(date -Ins -u) Dumping diagnostics to USB stick"
             # Check if it fits without clobbering an existing tar file
+            # This mount point may exist if a user has inserted a usb stick created via
+            # tools/makeusbconf.sh which creates a usb device with partition label EVEDPC and /dump dir.
             if ! $BINDIR/tpmmgr saveTpmInfo $TPMINFOTEMPFILE; then
                 echo "$(date -Ins -u) saveTpmInfo failed" > $TPMINFOTEMPFILE
             fi
             NETDUMPDIR="/persist/netdump"
             [ -d "$NETDUMPDIR" ] || NETDUMPDIR=""
-            if tar cf /mnt/dump/diag1.tar /persist/status/ /var/run/ /persist/log /persist/newlog "$NETDUMPDIR" $TPMINFOTEMPFILE; then
+            DIAGPATHS="/persist/status/ /var/run/ /persist/log /persist/newlog $NETDUMPDIR"
+            [ -e "$TPMINFOTEMPFILE" ] && DIAGPATHS="$DIAGPATHS $TPMINFOTEMPFILE"
+            KCRASHESDIR="/persist/kcrashes"
+            [ -d $KCRASHESDIR ] && DIAGPATHS="$DIAGPATHS $KCRASHESDIR"
+            BOOTREASON="/persist/boot-reason"
+            [ -e $BOOTREASON ] && DIAGPATHS="$DIAGPATHS $BOOTREASON"
+            REBOOTREASON="/persist/reboot-reason"
+            [ -e $REBOOTREASON ] && DIAGPATHS="$DIAGPATHS $REBOOTREASON"
+            REBOOTSTACK="/persist/reboot-stack"
+            [ -e $REBOOTSTACK ] && DIAGPATHS="$DIAGPATHS $REBOOTSTACK"
+            # shellcheck disable=SC2086
+            if tar cf /mnt/dump/diag1.tar $DIAGPATHS; then
                 mv /mnt/dump/diag1.tar /mnt/dump/diag.tar
             else
                 rm -f /mnt/dump/diag1.tar
