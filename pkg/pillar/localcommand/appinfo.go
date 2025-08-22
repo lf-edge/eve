@@ -474,7 +474,7 @@ func (lc *LocalCmdAgent) prepareAppInfo() *profile.LocalAppInfoList {
 
 // readSavedAppCommands loads persisted local app commands from disk
 // (if any exist) and unmarshals them into a LocalCommands structure.
-// Also returns the timestamp when the commands were last modified.
+// Also logs the timestamp when the commands were last modified.
 // If no file exists, returns an empty LocalCommands structure without error.
 func (lc *LocalCmdAgent) readSavedAppCommands() (types.LocalCommands, error) {
 	var commands types.LocalCommands
@@ -496,12 +496,12 @@ func (lc *LocalCmdAgent) readSavedAppCommands() (types.LocalCommands, error) {
 
 // readSavedAppCommands loads persisted local app commands from disk
 // (if any exist) and unmarshals them into a LocalCommands structure.
-// Also returns the timestamp when the commands were last modified.
+// Also logs the timestamp when the commands were last modified.
 // If no file exists, returns an empty LocalCommands structure without error.
 func (lc *LocalCmdAgent) loadSavedAppCommands() bool {
 	commands, err := lc.readSavedAppCommands()
 	if err != nil {
-		lc.Log.Errorf("%s: loadSavedAppCommands failed: %v", logPrefix, err)
+		lc.Log.Errorf("%s: readSavedAppCommands failed: %v", logPrefix, err)
 		return false
 	}
 	for _, appCmd := range commands.AppCommands {

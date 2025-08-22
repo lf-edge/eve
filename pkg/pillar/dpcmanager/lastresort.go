@@ -48,6 +48,10 @@ func (m *DpcManager) makeLastResortDPC() (types.DevicePortConfig, error) {
 				Dhcp: types.DhcpTypeClient,
 				Type: types.NetworkTypeIPv4, // Dual-stack, IPv4 preferred
 			},
+			ConfigSource: types.PortConfigSource{
+				Origin:      types.NetworkConfigOriginLastResort,
+				SubmittedAt: time.Now(),
+			},
 		}
 		config.Ports = append(config.Ports, port)
 	}

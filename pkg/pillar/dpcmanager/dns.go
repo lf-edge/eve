@@ -58,6 +58,7 @@ func (m *DpcManager) updateDNS() {
 		m.deviceNetStatus.Ports[ix].Cost = port.Cost
 		m.deviceNetStatus.Ports[ix].ProxyConfig = port.ProxyConfig
 		m.deviceNetStatus.Ports[ix].WirelessCfg = port.WirelessCfg
+		m.deviceNetStatus.Ports[ix].ConfigSource = port.ConfigSource
 		// Set fields from the config...
 		m.deviceNetStatus.Ports[ix].Dhcp = port.Dhcp
 		m.deviceNetStatus.Ports[ix].Type = port.Type

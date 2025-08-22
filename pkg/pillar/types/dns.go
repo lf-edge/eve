@@ -65,6 +65,7 @@ type NetworkPortStatus struct {
 	MTU              uint16
 	WirelessCfg      WirelessConfig
 	WirelessStatus   WirelessStatus
+	ConfigSource     PortConfigSource
 	ProxyConfig
 	L2LinkConfig
 	// TestResults provides recording of failure and success
@@ -235,7 +236,8 @@ func (status DeviceNetworkStatus) MostlyEqual(status2 DeviceNetworkStatus) bool 
 			p1.IsL3Port != p2.IsL3Port ||
 			p1.InvalidConfig != p2.InvalidConfig ||
 			p1.Cost != p2.Cost ||
-			p1.MTU != p2.MTU {
+			p1.MTU != p2.MTU ||
+			p1.ConfigSource.Origin != p2.ConfigSource.Origin {
 			return false
 		}
 		if p1.Dhcp != p2.Dhcp ||

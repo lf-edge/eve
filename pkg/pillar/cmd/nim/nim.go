@@ -937,6 +937,15 @@ func (n *nim) ingestDevicePortConfigFile(oldDirname string, newDirname string, n
 		return
 	}
 
+	// Set the configuration source for each port.
+	configSource := types.PortConfigSource{
+		Origin:      types.NetworkConfigOriginOverride,
+		SubmittedAt: time.Now(),
+	}
+	for i := range dpc.Ports {
+		dpc.Ports[i].ConfigSource = configSource
+	}
+
 	// Save New config to file.
 	var data []byte
 	data, err = json.Marshal(dpc)
