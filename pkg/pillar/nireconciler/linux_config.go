@@ -709,12 +709,12 @@ func (r *LinuxNIReconciler) getIntendedNIL3Cfg(niID uuid.UUID) dg.Graph {
 		// (should be unreachable)
 		return intendedL3Cfg
 	}
-	// Copy routes relevant for this NI from the main routing table into per-NI RT.
-	srcTable := unix.RT_TABLE_MAIN
+	// Copy routes relevant for this NI into per-NI RT.
 	dstTable := types.NIBaseRTIndex + ni.bridge.BrNum
 	type outIf struct {
 		IfName  string
 		ItemRef dg.ItemRef
+		RT      int
 	}
 	outIfs := make(map[int]outIf) // key: ifIndex
 	ifIndex, found, err := r.netMonitor.GetInterfaceIndex(ni.brIfName)
@@ -725,6 +725,7 @@ func (r *LinuxNIReconciler) getIntendedNIL3Cfg(niID uuid.UUID) dg.Graph {
 	if err == nil && found {
 		outIfs[ifIndex] = outIf{
 			IfName:  ni.brIfName,
+			RT:      unix.RT_TABLE_MAIN,
 			ItemRef: dg.Reference(linux.Bridge{IfName: ni.brIfName}),
 		}
 	}
@@ -737,6 +738,7 @@ func (r *LinuxNIReconciler) getIntendedNIL3Cfg(niID uuid.UUID) dg.Graph {
 		if err == nil && found {
 			outIfs[ifIndex] = outIf{
 				IfName:  port.IfName,
+				RT:      types.DPCBaseRTIndex + ifIndex,
 				ItemRef: dg.Reference(generic.Port{IfName: port.IfName}),
 			}
 		}
@@ -744,7 +746,7 @@ func (r *LinuxNIReconciler) getIntendedNIL3Cfg(niID uuid.UUID) dg.Graph {
 	for outIfIndex, rtOutIf := range outIfs {
 		routes, err := r.netMonitor.ListRoutes(netmonitor.RouteFilters{
 			FilterByTable: true,
-			Table:         srcTable,
+			Table:         rtOutIf.RT,
 			FilterByIf:    true,
 			IfIndex:       outIfIndex,
 		})
@@ -1225,6 +1227,7 @@ func (r *LinuxNIReconciler) getIntendedDnsmasqCfg(niID uuid.UUID) (items []dg.It
 					// Continue as if this port didn't have any IP addresses...
 				}
 			}
+			portIPs = r.filterIgnoredDhcpIPs(port, portIPs...)
 			for _, portIP := range portIPs {
 				if portIP.IP.To4() == nil {
 					continue
@@ -1703,7 +1706,7 @@ func (r *LinuxNIReconciler) niHasDefRoute(ni *niInfo) bool {
 		}
 		routes, err := r.netMonitor.ListRoutes(netmonitor.RouteFilters{
 			FilterByTable: true,
-			Table:         unix.RT_TABLE_MAIN,
+			Table:         types.DPCBaseRTIndex + ifIndex,
 			FilterByIf:    true,
 			IfIndex:       ifIndex,
 		})
@@ -1809,6 +1812,18 @@ func (r *LinuxNIReconciler) ipAddrIsConnected(ipAddr net.IP, portIfName string) 
 		}
 	}
 	return false
+}
+
+// Filter out port's DHCP-assigned IP addresses if IgnoreDhcpIPAddresses is enabled.
+func (r *LinuxNIReconciler) filterIgnoredDhcpIPs(
+	port Port, ips ...*net.IPNet) []*net.IPNet {
+	if !port.IgnoreDhcpIPs {
+		return ips
+	}
+	keepFunc := func(ip *net.IPNet) bool {
+		return ip.IP.To4() == nil || netutils.EqualIPNets(ip, port.StaticIP)
+	}
+	return generics.FilterList(ips, keepFunc)
 }
 
 // gwViaLinkRoute returns true if the given route uses gateway routed by another

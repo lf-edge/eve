@@ -789,6 +789,7 @@ func (r *LinuxDpcReconciler) updateCurrentAdapterAddrs(
 				port.IfName, err)
 			continue
 		}
+		ipAddrs = r.filterIgnoredDhcpIPs(port, ipAddrs...)
 		currentAddrs.PutItem(generic.AdapterAddrs{
 			AdapterIfName: port.IfName,
 			AdapterLL:     port.Logicallabel,
@@ -936,13 +937,16 @@ func (r *LinuxDpcReconciler) getIntendedGlobalCfg(dpc types.DevicePortConfig,
 		if !found {
 			continue
 		}
+		dnsServers[port.IfName] = append([]net.IP{}, port.DNSServers...) // copy slice
+		if port.IgnoreDhcpDNSConfig {
+			continue
+		}
 		dnsInfoList, err := r.NetworkMonitor.GetInterfaceDNSInfo(ifIndex)
 		if err != nil {
 			r.Log.Errorf("getIntendedGlobalCfg: failed to get DNS info for %s: %v",
 				port.IfName, err)
 			continue
 		}
-		dnsServers[port.IfName] = []net.IP{}
 		for _, dnsInfo := range dnsInfoList {
 			dnsServers[port.IfName] = append(dnsServers[port.IfName], dnsInfo.DNSServers...)
 		}
@@ -1152,6 +1156,13 @@ func (r *LinuxDpcReconciler) getIntendedAdapters(dpc types.DevicePortConfig,
 				staticIPs = append(staticIPs, clusterStatus.ClusterIPPrefix)
 			}
 		}
+		if port.Dhcp == types.DhcpTypeClient && port.AddrSubnet != "" {
+			// If a static IP is configured, include it in addition to the DHCP-assigned
+			// addresses.
+			if ip, subnet, err := net.ParseCIDR(port.AddrSubnet); err == nil {
+				staticIPs = append(staticIPs, netutils.NewIPNet(ip, subnet))
+			}
+		}
 		adapter := linux.Adapter{
 			LogicalLabel:     port.Logicallabel,
 			IfName:           port.IfName,
@@ -1166,15 +1177,17 @@ func (r *LinuxDpcReconciler) getIntendedAdapters(dpc types.DevicePortConfig,
 		if port.Dhcp != types.DhcpTypeNone &&
 			port.WirelessCfg.WType != types.WirelessTypeCellular {
 			intendedAdapters.PutItem(generic.Dhcpcd{
-				AdapterLL:     port.Logicallabel,
-				AdapterIfName: port.IfName,
-				DhcpConfig:    port.DhcpConfig,
+				AdapterLL:          port.Logicallabel,
+				AdapterIfName:      port.IfName,
+				DhcpConfig:         port.DhcpConfig,
+				IgnoreDhcpGateways: port.IgnoreDhcpGateways,
 			}, nil)
 		}
 		// Inside the intended state the external items (like AdapterAddrs)
 		// are only informatory, hence ignore any errors below.
 		if ifIndex, found, _ := r.NetworkMonitor.GetInterfaceIndex(port.IfName); found {
 			if ipAddrs, _, err := r.NetworkMonitor.GetInterfaceAddrs(ifIndex); err == nil {
+				ipAddrs = r.filterIgnoredDhcpIPs(port, ipAddrs...)
 				dg.PutItemInto(intendedAdapters,
 					generic.AdapterAddrs{
 						AdapterIfName: port.IfName,
@@ -1212,6 +1225,7 @@ func (r *LinuxDpcReconciler) getIntendedSrcIPRules(dpc types.DevicePortConfig) d
 				port.IfName, err)
 			continue
 		}
+		ipAddrs = r.filterIgnoredDhcpIPs(port, ipAddrs...)
 		for _, ipAddr := range ipAddrs {
 			intendedRules.PutItem(linux.IPRule{
 				Src:      netutils.HostSubnet(ipAddr.IP),
@@ -1257,9 +1271,38 @@ func (r *LinuxDpcReconciler) getIntendedRoutes(dpc types.DevicePortConfig,
 			r.Log.Errorf("getIntendedRoutes: ListRoutes failed for ifIndex %d: %v",
 				ifIndex, err)
 		}
+		ignoreDHCPRoutes := port.Dhcp == types.DhcpTypeClient && port.IgnoreDhcpIPAddresses
+		staticIP, staticSubnet, _ := net.ParseCIDR(port.AddrSubnet)
 		for _, rt := range routes {
 			rtCopy := rt.Data.(netlink.Route)
 			rtCopy.Table = dstTable
+			if ignoreDHCPRoutes && rtCopy.Family == netlink.FAMILY_V4 {
+				if staticIP == nil {
+					// No IPv4 routes should be configured.
+					continue
+				}
+				// Make sure that route uses the static IP as source.
+				if rtCopy.Src != nil {
+					rtCopy.Src = staticIP
+				}
+				if rtCopy.Protocol == unix.RTPROT_DHCP {
+					keep := false
+					if rt.IsDefaultRoute() {
+						// Keep default route, even if it is from DHCP.
+						// (source IP is already updated to the static IP).
+						keep = true
+					} else if rtCopy.Scope == netlink.SCOPE_LINK &&
+						netutils.EqualIPNets(rtCopy.Dst, staticSubnet) {
+						// Keep on-link route if it matches the static subnet
+						// (otherwise we will have RTPROT_KERNEL on-link route
+						// created for the static subnet instead).
+						keep = true
+					}
+					if !keep {
+						continue
+					}
+				}
+			}
 			r.prepareRouteForCopy(&rtCopy)
 			intendedRoutes.PutItem(linux.Route{
 				Route:         rtCopy,
@@ -1339,6 +1382,7 @@ func (r *LinuxDpcReconciler) groupPortAddrs(dpc types.DevicePortConfig) map[stri
 		if len(macAddr) == 0 {
 			continue
 		}
+		ipAddrs = r.filterIgnoredDhcpIPs(port, ipAddrs...)
 		for _, ipAddr := range ipAddrs {
 			if netutils.HostFamily(ipAddr.IP) != syscall.AF_INET {
 				continue
@@ -2677,4 +2721,17 @@ func (r *LinuxDpcReconciler) AddKubeServiceRules(kubeUserServices types.KubeUser
 // GetLastArgs returns the last arguments used by the reconciler
 func (r *LinuxDpcReconciler) GetLastArgs() Args {
 	return r.lastArgs
+}
+
+// Filter out port's DHCP-assigned IP addresses if IgnoreDhcpIPAddresses is enabled.
+func (r *LinuxDpcReconciler) filterIgnoredDhcpIPs(
+	port types.NetworkPortConfig, ips ...*net.IPNet) []*net.IPNet {
+	if !port.IgnoreDhcpIPAddresses {
+		return ips
+	}
+	staticIP, _, _ := net.ParseCIDR(port.AddrSubnet)
+	keepFunc := func(ip *net.IPNet) bool {
+		return ip.IP.To4() == nil || netutils.EqualIPs(ip.IP, staticIP)
+	}
+	return generics.FilterList(ips, keepFunc)
 }

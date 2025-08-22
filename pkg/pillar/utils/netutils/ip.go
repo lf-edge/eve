@@ -57,6 +57,18 @@ func AddToIP(ip net.IP, addition int) net.IP {
 	return net.IP{}
 }
 
+// NewIPNet combines a given IP and subnet into net.IPNet.
+// Returns nil if either the IP or subnet is nil.
+func NewIPNet(ip net.IP, subnet *net.IPNet) *net.IPNet {
+	if ip == nil || subnet == nil {
+		return nil
+	}
+	return &net.IPNet{
+		IP:   ip,
+		Mask: subnet.Mask,
+	}
+}
+
 // GetIPAddrCountOnSubnet return the number or available IP addresses inside a subnet.
 func GetIPAddrCountOnSubnet(subnet *net.IPNet) int {
 	if subnet == nil {

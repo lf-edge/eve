@@ -22,6 +22,8 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/sriov"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
+	"github.com/lf-edge/eve/pkg/pillar/utils/netutils"
 )
 
 func initGetConfigCtx(g *GomegaWithT) *getconfigContext {
@@ -1680,7 +1682,8 @@ func TestParseIpspecNetworkXObject_ValidConfig(t *testing.T) {
 	g.Expect(config.DhcpRange.Start.String()).To(Equal("192.168.1.100"))
 	g.Expect(config.DhcpRange.End.String()).To(Equal("192.168.1.120"))
 	g.Expect(config.IgnoreDhcpNtpServers).To(BeTrue())
-	g.Expect(config.NTPServers).To(ConsistOf("192.168.1.10", "192.168.1.11"))
+	expNTPs := netutils.NewHostnameOrIPs("192.168.1.10", "192.168.1.11")
+	g.Expect(generics.EqualSetsFn(config.NTPServers, expNTPs, netutils.EqualHostnameOrIPs)).To(BeTrue())
 }
 
 func TestParseIpspecNetworkXObject_ValidConfig_IPv6(t *testing.T) {
@@ -1722,7 +1725,8 @@ func TestParseIpspecNetworkXObject_ValidConfig_IPv6(t *testing.T) {
 	Expect(config.DhcpRange.End.String()).To(Equal("fd00::1ff"))
 
 	Expect(config.IgnoreDhcpNtpServers).To(BeTrue())
-	Expect(config.NTPServers).To(ConsistOf("fd00::123", "fd00::124"))
+	expNTPs := netutils.NewHostnameOrIPs("fd00::123", "fd00::124")
+	Expect(generics.EqualSetsFn(config.NTPServers, expNTPs, netutils.EqualHostnameOrIPs)).To(BeTrue())
 }
 
 func TestParseIpspecNetworkXObject_InvalidSubnet(t *testing.T) {
@@ -1804,7 +1808,8 @@ func TestParseIpspec_Valid(t *testing.T) {
 	g.Expect(err).To(BeNil())
 	g.Expect(config.DomainName).To(Equal("test.local"))
 	g.Expect(config.Gateway.String()).To(Equal("192.168.0.1"))
-	g.Expect(config.NtpServers).To(ConsistOf("192.168.0.5"))
+	expNTPs := netutils.NewHostnameOrIPs("192.168.0.5")
+	Expect(generics.EqualSetsFn(config.NtpServers, expNTPs, netutils.EqualHostnameOrIPs)).To(BeTrue())
 	g.Expect(config.DnsServers[0].String()).To(Equal("192.168.0.2"))
 	g.Expect(config.DhcpRange.Start).ToNot(BeNil())
 	g.Expect(config.DhcpRange.End).ToNot(BeNil())

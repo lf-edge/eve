@@ -136,14 +136,16 @@ func (b NIBridge) GetPort(logicalLabel string) *Port {
 // Port is a physical network device used by a network instance to provide external
 // connectivity for applications.
 type Port struct {
-	LogicalLabel string
-	SharedLabels []string
-	IfName       string
-	IsMgmt       bool
-	MTU          uint16
-	DhcpType     types.DhcpType
-	DNSServers   []net.IP
-	NTPServers   []net.IP
+	LogicalLabel  string
+	SharedLabels  []string
+	IfName        string
+	IsMgmt        bool
+	MTU           uint16
+	DhcpType      types.DhcpType
+	DNSServers    []net.IP
+	NTPServers    []net.IP
+	StaticIP      *net.IPNet
+	IgnoreDhcpIPs bool
 }
 
 // Equal compares two ports for equality.

@@ -10,6 +10,7 @@ import (
 	"log"
 	"math"
 	"net"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -19,6 +20,7 @@ import (
 	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 	"github.com/vishvananda/netlink"
+	"golang.org/x/sys/unix"
 
 	"github.com/lf-edge/eve-api/go/evecommon"
 	dg "github.com/lf-edge/eve-libs/depgraph"
@@ -33,6 +35,8 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/netmonitor"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
+	"github.com/lf-edge/eve/pkg/pillar/utils/netutils"
 )
 
 var (
@@ -134,6 +138,14 @@ func printCurrentState() {
 	fmt.Println(dot)
 }
 
+func printIntendedState() {
+	intendedState, release := dpcReconciler.GetIntendedState()
+	defer release()
+	dotExporter := &dg.DotExporter{CheckDeps: true}
+	dot, _ := dotExporter.Export(intendedState)
+	fmt.Println(dot)
+}
+
 func itemDescription(itemRef dg.ItemRef) string {
 	currentState, release := dpcReconciler.GetCurrentState()
 	defer release()
@@ -155,6 +167,111 @@ func itemIsCreatedCb(itemRef dg.ItemRef) func() bool {
 	return func() bool {
 		return itemIsCreated(itemRef)
 	}
+}
+
+func itemIsCreatedWithLabel(label string) bool {
+	currentState, release := dpcReconciler.GetCurrentState()
+	defer release()
+	iter := currentState.Items(true)
+	for iter.Next() {
+		item, state := iter.Item()
+		if item.Label() == label {
+			return state.IsCreated()
+		}
+	}
+	return false
+}
+
+func itemIsCreatedWithLabelCb(label string) func() bool {
+	return func() bool {
+		return itemIsCreatedWithLabel(label)
+	}
+}
+
+func dhcpcdArgs(ifName string) string {
+	currentState, release := dpcReconciler.GetCurrentState()
+	defer release()
+	itemRef := dg.Reference(generic.Dhcpcd{AdapterIfName: ifName})
+	item, _, _, found := currentState.Item(itemRef)
+	if !found {
+		return ""
+	}
+	dhcpcd, ok := item.(generic.Dhcpcd)
+	if !ok {
+		return ""
+	}
+	configurator := generic.DhcpcdConfigurator{Log: logObj}
+	op, args := configurator.DhcpcdArgs(dhcpcd.DhcpConfig, dhcpcd.IgnoreDhcpGateways)
+	return fmt.Sprintf("%s %s", op, strings.Join(args, " "))
+}
+
+func adapterStaticIPs(ifName string) []*net.IPNet {
+	currentState, release := dpcReconciler.GetCurrentState()
+	defer release()
+	itemRef := dg.Reference(linux.Adapter{IfName: ifName})
+	item, _, _, found := currentState.Item(itemRef)
+	if !found {
+		return nil
+	}
+	adapter, ok := item.(linux.Adapter)
+	if !ok {
+		return nil
+	}
+	return adapter.StaticIPs
+}
+
+func ipRoutes(table int, ipv6 bool) (routes []linux.Route) {
+	currentState, release := dpcReconciler.GetCurrentState()
+	defer release()
+	iter := currentState.Items(true)
+	routeType := generic.IPv4RouteTypename
+	if ipv6 {
+		routeType = generic.IPv6RouteTypename
+	}
+	for iter.Next() {
+		item, state := iter.Item()
+		if state.IsCreated() && item.Type() == routeType {
+			route := item.(linux.Route)
+			if route.Table == table {
+				routes = append(routes, route)
+			}
+		}
+	}
+	return routes
+}
+
+func ipRoutesCb(table int, ipv6 bool) func() []linux.Route {
+	return func() []linux.Route {
+		return ipRoutes(table, ipv6)
+	}
+}
+
+func dnsServers(ifName string) []net.IP {
+	currentState, release := dpcReconciler.GetCurrentState()
+	defer release()
+	itemRef := dg.Reference(generic.ResolvConf{})
+	item, _, _, found := currentState.Item(itemRef)
+	if !found {
+		return nil
+	}
+	resolvConf, ok := item.(generic.ResolvConf)
+	if !ok {
+		return nil
+	}
+	if resolvConf.DNSServers == nil {
+		return nil
+	}
+	return resolvConf.DNSServers[ifName]
+}
+
+func dnsServersCb(ifName string) func() []net.IP {
+	return func() []net.IP {
+		return dnsServers(ifName)
+	}
+}
+
+func equalPortAddresses(a, b types.AddrInfo) bool {
+	return netutils.EqualIPs(a.Addr, b.Addr)
 }
 
 func dnsKeyCb() func() string {
@@ -310,7 +427,7 @@ func mockEth0() netmonitor.MockInterface {
 		IPAddrs: []*net.IPNet{ipAddress("192.168.10.5/24")},
 		DHCP: netmonitor.DHCPInfo{
 			IPv4Subnet:     ipSubnet("192.168.10.0/24"),
-			IPv4NtpServers: []net.IP{net.ParseIP("132.163.96.5")},
+			IPv4NtpServers: netutils.NewHostnameOrIPs("132.163.96.5"),
 		},
 		DNS: []netmonitor.DNSInfo{
 			{
@@ -337,6 +454,7 @@ func mockEth0Routes() []netmonitor.Route {
 				Dst:       nil,
 				Gw:        gwIP,
 				Table:     syscall.RT_TABLE_MAIN,
+				Family:    netlink.FAMILY_V4,
 			},
 		},
 	}
@@ -367,7 +485,7 @@ func mockEth1() netmonitor.MockInterface {
 		IPAddrs: []*net.IPNet{ipAddress("172.20.1.2/24")},
 		DHCP: netmonitor.DHCPInfo{
 			IPv4Subnet:     ipSubnet("172.20.1.0/24"),
-			IPv4NtpServers: []net.IP{net.ParseIP("132.163.96.6")},
+			IPv4NtpServers: netutils.NewHostnameOrIPs("132.163.96.6"),
 		},
 		DNS: []netmonitor.DNSInfo{
 			{
@@ -390,10 +508,11 @@ func mockEth1Routes() []netmonitor.Route {
 			Gw:      gwIP,
 			Table:   syscall.RT_TABLE_MAIN,
 			Data: netlink.Route{
-				LinkIndex: 1,
+				LinkIndex: 2,
 				Dst:       nil,
 				Gw:        gwIP,
 				Table:     syscall.RT_TABLE_MAIN,
+				Family:    netlink.FAMILY_V4,
 			},
 		},
 	}
@@ -414,7 +533,7 @@ func mockEth2() netmonitor.MockInterface {
 		},
 		DHCP: netmonitor.DHCPInfo{
 			IPv6Subnets:    []*net.IPNet{ipSubnet("2001:1111::/64")},
-			IPv6NtpServers: []net.IP{net.ParseIP("2001:db8:3c4d:15::1")},
+			IPv6NtpServers: netutils.NewHostnameOrIPs("2001:db8:3c4d:15::1"),
 		},
 		DNS: []netmonitor.DNSInfo{
 			{
@@ -463,7 +582,7 @@ func mockWlan0() netmonitor.MockInterface {
 		IPAddrs: []*net.IPNet{ipAddress("192.168.77.2/24")},
 		DHCP: netmonitor.DHCPInfo{
 			IPv4Subnet:     ipSubnet("192.168.77.0/24"),
-			IPv4NtpServers: []net.IP{net.ParseIP("129.6.15.32")},
+			IPv4NtpServers: netutils.NewHostnameOrIPs("129.6.15.32"),
 		},
 		DNS: []netmonitor.DNSInfo{
 			{
@@ -490,7 +609,7 @@ func mockWwan0() netmonitor.MockInterface {
 		IPAddrs: []*net.IPNet{ipAddress("15.123.87.20/28")},
 		DHCP: netmonitor.DHCPInfo{
 			IPv4Subnet:     ipSubnet("15.123.87.16/28"),
-			IPv4NtpServers: []net.IP{net.ParseIP("128.138.141.177")},
+			IPv4NtpServers: netutils.NewHostnameOrIPs("128.138.141.177"),
 		},
 		DNS: []netmonitor.DNSInfo{
 			{
@@ -1116,8 +1235,8 @@ func TestDNS(test *testing.T) {
 	t.Expect(eth0State.DomainName).To(Equal("eth-test-domain"))
 	t.Expect(eth0State.DNSServers).To(HaveLen(1))
 	t.Expect(eth0State.DNSServers[0].String()).To(Equal("8.8.8.8"))
-	t.Expect(eth0State.DhcpNtpServers).To(HaveLen(1))
-	t.Expect(eth0State.DhcpNtpServers[0].String()).To(Equal("132.163.96.5"))
+	t.Expect(eth0State.NtpServers).To(HaveLen(1))
+	t.Expect(eth0State.NtpServers[0].String()).To(Equal("132.163.96.5"))
 	t.Expect(eth0State.IPv4Subnet.String()).To(Equal("192.168.10.0/24"))
 	t.Expect(eth0State.MacAddr.String()).To(Equal("02:00:00:00:00:01"))
 	t.Expect(eth0State.Up).To(BeTrue())
@@ -1139,8 +1258,8 @@ func TestDNS(test *testing.T) {
 	t.Expect(eth1State.DomainName).To(Equal("eth-test-domain"))
 	t.Expect(eth1State.DNSServers).To(HaveLen(1))
 	t.Expect(eth1State.DNSServers[0].String()).To(Equal("1.1.1.1"))
-	t.Expect(eth1State.DhcpNtpServers).To(HaveLen(1))
-	t.Expect(eth1State.DhcpNtpServers[0].String()).To(Equal("132.163.96.6"))
+	t.Expect(eth1State.NtpServers).To(HaveLen(1))
+	t.Expect(eth1State.NtpServers[0].String()).To(Equal("132.163.96.6"))
 	t.Expect(eth1State.IPv4Subnet.String()).To(Equal("172.20.1.0/24"))
 	t.Expect(eth1State.MacAddr.String()).To(Equal("02:00:00:00:00:02"))
 	t.Expect(eth1State.Up).To(BeTrue())
@@ -1676,7 +1795,7 @@ func TestVlansAndBonds(test *testing.T) {
 	shopfloor100.IPAddrs = []*net.IPNet{ipAddress("192.168.10.5/24")}
 	shopfloor100.DHCP = netmonitor.DHCPInfo{
 		IPv4Subnet:     ipSubnet("192.168.10.0/24"),
-		IPv4NtpServers: []net.IP{net.ParseIP("132.163.96.5")},
+		IPv4NtpServers: netutils.NewHostnameOrIPs("132.163.96.5"),
 	}
 	shopfloor100.DNS = []netmonitor.DNSInfo{
 		{
@@ -1688,7 +1807,7 @@ func TestVlansAndBonds(test *testing.T) {
 	shopfloor200.IPAddrs = []*net.IPNet{ipAddress("172.20.1.2/24")}
 	shopfloor200.DHCP = netmonitor.DHCPInfo{
 		IPv4Subnet:     ipSubnet("172.20.1.0/24"),
-		IPv4NtpServers: []net.IP{net.ParseIP("132.163.96.6")},
+		IPv4NtpServers: netutils.NewHostnameOrIPs("132.163.96.6"),
 	}
 	shopfloor200.DNS = []netmonitor.DNSInfo{
 		{
@@ -1737,7 +1856,7 @@ func TestVlansAndBonds(test *testing.T) {
 	t.Expect(eth0State.IsL3Port).To(BeFalse())
 	t.Expect(eth0State.DomainName).To(BeEmpty())
 	t.Expect(eth0State.DNSServers).To(BeEmpty())
-	t.Expect(eth0State.DhcpNtpServers).To(BeEmpty())
+	t.Expect(eth0State.NtpServers).To(BeEmpty())
 	t.Expect(eth0State.IPv4Subnet).To(BeNil())
 	t.Expect(eth0State.MacAddr.String()).To(Equal("02:00:00:00:00:01"))
 	t.Expect(eth0State.Up).To(BeTrue())
@@ -1754,7 +1873,7 @@ func TestVlansAndBonds(test *testing.T) {
 	t.Expect(eth1State.IsL3Port).To(BeFalse())
 	t.Expect(eth1State.DomainName).To(BeEmpty())
 	t.Expect(eth1State.DNSServers).To(BeEmpty())
-	t.Expect(eth1State.DhcpNtpServers).To(BeEmpty())
+	t.Expect(eth1State.NtpServers).To(BeEmpty())
 	t.Expect(eth1State.IPv4Subnet).To(BeNil())
 	t.Expect(eth1State.MacAddr.String()).To(Equal("02:00:00:00:00:02"))
 	t.Expect(eth1State.Up).To(BeTrue())
@@ -1770,7 +1889,7 @@ func TestVlansAndBonds(test *testing.T) {
 	t.Expect(bond0State.IsL3Port).To(BeFalse())
 	t.Expect(bond0State.DomainName).To(BeEmpty())
 	t.Expect(bond0State.DNSServers).To(BeEmpty())
-	t.Expect(bond0State.DhcpNtpServers).To(BeEmpty())
+	t.Expect(bond0State.NtpServers).To(BeEmpty())
 	t.Expect(bond0State.IPv4Subnet).To(BeNil())
 	t.Expect(bond0State.MacAddr.String()).To(Equal("02:00:00:00:00:03"))
 	t.Expect(bond0State.Up).To(BeTrue())
@@ -1788,8 +1907,8 @@ func TestVlansAndBonds(test *testing.T) {
 	t.Expect(vlan100State.DomainName).To(Equal("vlan100-test-domain"))
 	t.Expect(vlan100State.DNSServers).To(HaveLen(1))
 	t.Expect(vlan100State.DNSServers[0].String()).To(Equal("8.8.8.8"))
-	t.Expect(vlan100State.DhcpNtpServers).To(HaveLen(1))
-	t.Expect(vlan100State.DhcpNtpServers[0].String()).To(Equal("132.163.96.5"))
+	t.Expect(vlan100State.NtpServers).To(HaveLen(1))
+	t.Expect(vlan100State.NtpServers[0].String()).To(Equal("132.163.96.5"))
 	t.Expect(vlan100State.IPv4Subnet.String()).To(Equal("192.168.10.0/24"))
 	t.Expect(vlan100State.MacAddr.String()).To(Equal("02:00:00:00:00:04"))
 	t.Expect(vlan100State.Up).To(BeTrue())
@@ -1808,8 +1927,8 @@ func TestVlansAndBonds(test *testing.T) {
 	t.Expect(vlan200State.DomainName).To(Equal("vlan200-test-domain"))
 	t.Expect(vlan200State.DNSServers).To(HaveLen(1))
 	t.Expect(vlan200State.DNSServers[0].String()).To(Equal("1.1.1.1"))
-	t.Expect(vlan200State.DhcpNtpServers).To(HaveLen(1))
-	t.Expect(vlan200State.DhcpNtpServers[0].String()).To(Equal("132.163.96.6"))
+	t.Expect(vlan200State.NtpServers).To(HaveLen(1))
+	t.Expect(vlan200State.NtpServers[0].String()).To(Equal("132.163.96.6"))
 	t.Expect(vlan200State.IPv4Subnet.String()).To(Equal("172.20.1.0/24"))
 	t.Expect(vlan200State.MacAddr.String()).To(Equal("02:00:00:00:00:05"))
 	t.Expect(vlan200State.Up).To(BeTrue())
@@ -2401,8 +2520,8 @@ func TestDPCWithIPv6(test *testing.T) {
 	t.Expect(eth2State.DNSServers).To(HaveLen(2))
 	t.Expect(eth2State.DNSServers[0].String()).To(Equal("2001:4860:4860::8888"))
 	t.Expect(eth2State.DNSServers[1].String()).To(Equal("2001:4860:4860::8844"))
-	t.Expect(eth2State.DhcpNtpServers).To(HaveLen(1))
-	t.Expect(eth2State.DhcpNtpServers[0].String()).To(Equal("2001:db8:3c4d:15::1"))
+	t.Expect(eth2State.NtpServers).To(HaveLen(1))
+	t.Expect(eth2State.NtpServers[0].String()).To(Equal("2001:db8:3c4d:15::1"))
 	t.Expect(eth2State.IPv4Subnet).To(BeNil())
 	t.Expect(eth2State.IPv6Subnets).To(HaveLen(1))
 	t.Expect(eth2State.IPv6Subnets[0].String()).To(Equal("2001:1111::/64"))
@@ -2412,4 +2531,563 @@ func TestDPCWithIPv6(test *testing.T) {
 	t.Expect(eth2State.Dhcp).To(BeEquivalentTo(types.DhcpTypeClient))
 	t.Expect(eth2State.DefaultRouters).To(HaveLen(1))
 	t.Expect(eth2State.DefaultRouters[0].String()).To(Equal("fe80::c225:2fff:fea2:dc73"))
+}
+
+func TestOverrideDhcpGateway(test *testing.T) {
+	expectBootstrapDPC := true
+	t := initTest(test, expectBootstrapDPC)
+
+	// Prepare simulated network stack.
+	eth0 := mockEth0()
+	eth1 := mockEth1()
+	networkMonitor.AddOrUpdateInterface(eth0)
+	networkMonitor.AddOrUpdateInterface(eth1)
+	networkMonitor.UpdateRoutes(append(mockEth0Routes(), mockEth1Routes()...))
+
+	// Two interfaces available for mgmt.
+	aa := makeAA(selectedIntfs{eth0: true, eth1: true})
+	dpcManager.UpdateAA(aa)
+
+	// Apply global config.
+	dpcManager.UpdateGCP(globalConfig())
+
+	// Apply initial "bootstrap" DPC using both ports.
+	timePrio1 := time.Now()
+	dpc := makeDPC("bootstrap", timePrio1, selectedIntfs{eth0: true, eth1: true})
+	dpcManager.AddDPC(dpc)
+	t.Eventually(testingInProgressCb()).Should(BeTrue())
+	t.Eventually(testingInProgressCb()).Should(BeFalse())
+	t.Eventually(dpcIdxCb()).Should(Equal(0))
+	t.Eventually(dnsKeyCb()).Should(Equal("bootstrap"))
+	t.Eventually(dpcStateCb(0)).Should(Equal(types.DPCStateSuccess))
+	t.Eventually(itemIsCreatedWithLabelCb("IPv4 route table 502 dst <default> dev mock-eth1 via 172.20.1.1")).Should(BeTrue())
+	t.Expect(dhcpcdArgs("eth1")).To(Equal("--request -f /etc/dhcpcd.conf --noipv4ll -b -t 0"))
+
+	// Apply "zedagent" DPC which enables DHCP but overwrites gateway for eth1.
+	timePrio2 := time.Now()
+	dpc = makeDPC("zedagent", timePrio2, selectedIntfs{eth0: true, eth1: true})
+	eth1StaticGw := net.ParseIP("172.20.1.100")
+	dpc.Ports[1].Gateway = eth1StaticGw
+	dpcManager.AddDPC(dpc)
+	t.Eventually(testingInProgressCb()).Should(BeTrue())
+	newEth1DefRoute := netmonitor.Route{
+		IfIndex: 2,
+		Dst:     nil,
+		Gw:      eth1StaticGw,
+		Table:   syscall.RT_TABLE_MAIN,
+		Data: netlink.Route{
+			LinkIndex: 2,
+			Dst:       nil,
+			Gw:        eth1StaticGw,
+			Table:     syscall.RT_TABLE_MAIN,
+			Family:    netlink.FAMILY_V4,
+		},
+	}
+	networkMonitor.UpdateRoutes(append(mockEth0Routes(), newEth1DefRoute))
+	t.Eventually(testingInProgressCb()).Should(BeFalse())
+	t.Eventually(dpcIdxCb()).Should(Equal(0))
+	t.Eventually(dpcKeyCb(0)).Should(Equal("zedagent"))
+	t.Eventually(dpcTimePrioCb(0, timePrio2)).Should(BeTrue())
+	t.Eventually(dnsKeyCb()).Should(Equal("zedagent"))
+	t.Expect(getDPC(0).State).To(Equal(types.DPCStateSuccess))
+
+	// Check routing table for default route update.
+	t.Eventually(itemIsCreatedWithLabelCb("IPv4 route table 502 dst <default> dev mock-eth1 via 172.20.1.100")).Should(BeTrue())
+	t.Expect(dhcpcdArgs("eth1")).To(ContainSubstring("--static routers=172.20.1.100"))
+	t.Expect(itemIsCreatedWithLabel("IPv4 route table 502 dst <default> dev mock-eth1 via 172.20.1.1")).To(BeFalse())
+
+	// Check device network state.
+	t.Eventually(func() bool {
+		dnsObj, _ := pubDNS.Get("global")
+		dns := dnsObj.(types.DeviceNetworkStatus)
+		ports := dns.Ports
+		return len(ports) == 2 && len(ports[1].DefaultRouters) == 1 &&
+			netutils.EqualIPs(ports[1].DefaultRouters[0], eth1StaticGw)
+	}).Should(BeTrue())
+
+	// Apply new "zedagent" DPC, which removes the static gateway previously set
+	// for eth1, allowing it to fall back to the gateway provided via DHCP.
+	timePrio3 := time.Now()
+	dpc = makeDPC("zedagent", timePrio3, selectedIntfs{eth0: true, eth1: true})
+	dpcManager.AddDPC(dpc)
+	t.Eventually(testingInProgressCb()).Should(BeTrue())
+	networkMonitor.UpdateRoutes(append(mockEth0Routes(), mockEth1Routes()...))
+	t.Eventually(testingInProgressCb()).Should(BeFalse())
+	t.Eventually(dpcIdxCb()).Should(Equal(0))
+	t.Eventually(dpcKeyCb(0)).Should(Equal("zedagent"))
+	t.Eventually(dpcTimePrioCb(0, timePrio3)).Should(BeTrue())
+	t.Eventually(dnsKeyCb()).Should(Equal("zedagent"))
+	t.Expect(getDPC(0).State).To(Equal(types.DPCStateSuccess))
+	t.Eventually(itemIsCreatedWithLabelCb("IPv4 route table 502 dst <default> dev mock-eth1 via 172.20.1.1")).Should(BeTrue())
+	t.Expect(dhcpcdArgs("eth1")).To(Equal("--request -f /etc/dhcpcd.conf --noipv4ll -b -t 0"))
+
+	// Check device network state.
+	eth1DhcpGw := net.ParseIP("172.20.1.1")
+	t.Eventually(func() bool {
+		dnsObj, _ := pubDNS.Get("global")
+		dns := dnsObj.(types.DeviceNetworkStatus)
+		ports := dns.Ports
+		return len(ports) == 2 && len(ports[1].DefaultRouters) == 1 &&
+			netutils.EqualIPs(ports[1].DefaultRouters[0], eth1DhcpGw)
+	}).Should(BeTrue())
+
+	// Apply new "zedagent" DPC, which enabled IgnoreDhcpGateways while leaving the static
+	// gateway unset. This should have the effect of configuring the interface without
+	// default route.
+	timePrio4 := time.Now()
+	dpc = makeDPC("zedagent", timePrio4, selectedIntfs{eth0: true, eth1: true})
+	dpc.Ports[1].IgnoreDhcpGateways = true
+	dpcManager.AddDPC(dpc)
+	t.Eventually(testingInProgressCb()).Should(BeTrue())
+	networkMonitor.UpdateRoutes(mockEth0Routes())
+	t.Eventually(testingInProgressCb()).Should(BeFalse())
+	t.Eventually(dpcIdxCb()).Should(Equal(0))
+	t.Eventually(dpcKeyCb(0)).Should(Equal("zedagent"))
+	t.Eventually(dpcTimePrioCb(0, timePrio4)).Should(BeTrue())
+	t.Eventually(dnsKeyCb()).Should(Equal("zedagent"))
+	t.Expect(getDPC(0).State).To(Equal(types.DPCStateSuccess))
+	t.Eventually(itemIsCreatedWithLabelCb("IPv4 route table 502 dst <default> dev mock-eth1 via 172.20.1.1")).Should(Not(BeTrue()))
+	t.Expect(dhcpcdArgs("eth1")).To(ContainSubstring("--nogateway"))
+
+	// Check device network state.
+	t.Eventually(func() bool {
+		dnsObj, _ := pubDNS.Get("global")
+		dns := dnsObj.(types.DeviceNetworkStatus)
+		ports := dns.Ports
+		return len(ports) == 2 && len(ports[1].DefaultRouters) == 0
+	}).Should(BeTrue())
+}
+
+func TestOverrideDhcpIPs(test *testing.T) {
+	expectBootstrapDPC := true
+	t := initTest(test, expectBootstrapDPC)
+
+	// Prepare simulated network stack.
+	eth0 := mockEth0()
+	eth1 := mockEth1()
+	networkMonitor.AddOrUpdateInterface(eth0)
+	networkMonitor.AddOrUpdateInterface(eth1)
+	eth1DhcpGw := net.ParseIP("172.20.1.1")
+	eth1DhcpSubnet := ipSubnet("172.20.1.0/24")
+	eth1DefaultRoute := netmonitor.Route{
+		IfIndex: 2,
+		Dst:     nil,
+		Gw:      eth1DhcpGw,
+		Table:   syscall.RT_TABLE_MAIN,
+		Data: netlink.Route{
+			LinkIndex: 2,
+			Dst:       nil,
+			Gw:        eth1DhcpGw,
+			Table:     syscall.RT_TABLE_MAIN,
+			Family:    netlink.FAMILY_V4,
+			Scope:     netlink.SCOPE_UNIVERSE,
+		},
+	}
+	eth1LinkRoute := netmonitor.Route{
+		IfIndex: 2,
+		Dst:     eth1DhcpSubnet,
+		Table:   syscall.RT_TABLE_MAIN,
+		Data: netlink.Route{
+			LinkIndex: 2,
+			Dst:       eth1DhcpSubnet,
+			Table:     syscall.RT_TABLE_MAIN,
+			Family:    netlink.FAMILY_V4,
+			Scope:     netlink.SCOPE_LINK,
+			Protocol:  unix.RTPROT_DHCP,
+		},
+	}
+	networkMonitor.UpdateRoutes(append(mockEth0Routes(), eth1DefaultRoute, eth1LinkRoute))
+
+	// Two interfaces available for mgmt.
+	aa := makeAA(selectedIntfs{eth0: true, eth1: true})
+	dpcManager.UpdateAA(aa)
+
+	// Apply global config.
+	dpcManager.UpdateGCP(globalConfig())
+
+	// Apply initial "bootstrap" DPC using both ports.
+	timePrio1 := time.Now()
+	dpc := makeDPC("bootstrap", timePrio1, selectedIntfs{eth0: true, eth1: true})
+	dpcManager.AddDPC(dpc)
+	t.Eventually(testingInProgressCb()).Should(BeTrue())
+	t.Eventually(testingInProgressCb()).Should(BeFalse())
+	t.Eventually(dpcIdxCb()).Should(Equal(0))
+	t.Eventually(dnsKeyCb()).Should(Equal("bootstrap"))
+	t.Eventually(dpcStateCb(0)).Should(Equal(types.DPCStateSuccess))
+	t.Eventually(itemIsCreatedWithLabelCb("IPv4 route table 502 dst <default> dev mock-eth1 via 172.20.1.1")).Should(BeTrue())
+	t.Eventually(itemIsCreatedWithLabelCb("IPv4 route table 502 dst 172.20.1.0/24 dev mock-eth1 via <nil>")).Should(BeTrue())
+	t.Expect(adapterStaticIPs("eth1")).To(BeEmpty())
+
+	// Check device network state.
+	eth1DhcpIP := ipAddress("172.20.1.2/24")
+	expectedAddrs := []types.AddrInfo{
+		{Addr: eth1DhcpIP.IP},
+	}
+	t.Eventually(func() bool {
+		dnsObj, _ := pubDNS.Get("global")
+		dns := dnsObj.(types.DeviceNetworkStatus)
+		ports := dns.Ports
+		return len(ports) == 2 &&
+			generics.EqualSetsFn(ports[1].AddrInfoList, expectedAddrs, equalPortAddresses)
+	}).Should(BeTrue())
+
+	// Apply "zedagent" DPC which enables DHCP but additionally adds another IP for eth1.
+	timePrio2 := time.Now()
+	dpc = makeDPC("zedagent", timePrio2, selectedIntfs{eth0: true, eth1: true})
+	eth1StaticIP := ipAddress("172.20.1.200/24")
+	dpc.Ports[1].AddrSubnet = eth1StaticIP.String()
+	dpcManager.AddDPC(dpc)
+	t.Eventually(testingInProgressCb()).Should(BeTrue())
+	eth1.IPAddrs = []*net.IPNet{eth1DhcpIP, eth1StaticIP}
+	networkMonitor.AddOrUpdateInterface(eth1)
+	t.Eventually(testingInProgressCb()).Should(BeFalse())
+	t.Eventually(dpcIdxCb()).Should(Equal(0))
+	t.Eventually(dpcKeyCb(0)).Should(Equal("zedagent"))
+	t.Eventually(dpcTimePrioCb(0, timePrio2)).Should(BeTrue())
+	t.Eventually(dnsKeyCb()).Should(Equal("zedagent"))
+	t.Expect(getDPC(0).State).To(Equal(types.DPCStateSuccess))
+
+	// Check routing table and the adapter for IP update.
+	t.Eventually(itemIsCreatedWithLabelCb("IPv4 route table 502 dst <default> dev mock-eth1 via 172.20.1.1")).Should(BeTrue())
+	t.Eventually(itemIsCreatedWithLabelCb("IPv4 route table 502 dst 172.20.1.0/24 dev mock-eth1 via <nil>")).Should(BeTrue())
+	t.Expect(generics.EqualSetsFn(adapterStaticIPs("eth1"), []*net.IPNet{eth1StaticIP}, netutils.EqualIPNets)).To(BeTrue())
+
+	// Check device network state.
+	expectedAddrs = []types.AddrInfo{
+		{Addr: eth1DhcpIP.IP}, {Addr: eth1StaticIP.IP},
+	}
+	t.Eventually(func() bool {
+		dnsObj, _ := pubDNS.Get("global")
+		dns := dnsObj.(types.DeviceNetworkStatus)
+		ports := dns.Ports
+		return len(ports) == 2 &&
+			generics.EqualSetsFn(ports[1].AddrInfoList, expectedAddrs, equalPortAddresses)
+	}).Should(BeTrue())
+
+	// Apply new "zedagent" DPC which overwrites DHCP IP with a static address.
+	timePrio3 := time.Now()
+	dpc = makeDPC("zedagent", timePrio3, selectedIntfs{eth0: true, eth1: true})
+	eth1StaticIP = ipAddress("172.20.10.10/16")
+	dpc.Ports[1].AddrSubnet = eth1StaticIP.String()
+	dpc.Ports[1].IgnoreDhcpIPAddresses = true
+	dpcManager.AddDPC(dpc)
+	t.Eventually(testingInProgressCb()).Should(BeTrue())
+	eth1.IPAddrs = []*net.IPNet{eth1DhcpIP, eth1StaticIP} // dhcpcd still assigns the DHCP-received IP, EVE just ignores it
+	networkMonitor.AddOrUpdateInterface(eth1)
+	eth1StaticSubnet := ipSubnet("172.20.0.0/16")
+	eth1LinkRoute2 := netmonitor.Route{
+		IfIndex: 2,
+		Dst:     eth1StaticSubnet,
+		Table:   syscall.RT_TABLE_MAIN,
+		Data: netlink.Route{
+			LinkIndex: 2,
+			Dst:       eth1StaticSubnet,
+			Table:     syscall.RT_TABLE_MAIN,
+			Family:    netlink.FAMILY_V4,
+			Scope:     netlink.SCOPE_LINK,
+			Protocol:  unix.RTPROT_DHCP,
+		},
+	}
+	networkMonitor.UpdateRoutes(append(mockEth0Routes(), eth1DefaultRoute, eth1LinkRoute, eth1LinkRoute2))
+	t.Eventually(testingInProgressCb()).Should(BeFalse())
+	t.Eventually(dpcIdxCb()).Should(Equal(0))
+	t.Eventually(dpcKeyCb(0)).Should(Equal("zedagent"))
+	t.Eventually(dpcTimePrioCb(0, timePrio3)).Should(BeTrue())
+	t.Eventually(dnsKeyCb()).Should(Equal("zedagent"))
+	t.Expect(getDPC(0).State).To(Equal(types.DPCStateSuccess))
+
+	// Check routing table and the adapter for IP update.
+	// Note that the DHCP-received gateway was not statically changed.
+	t.Eventually(itemIsCreatedWithLabelCb("IPv4 route table 502 dst <default> dev mock-eth1 via 172.20.1.1")).Should(BeTrue())
+	t.Eventually(itemIsCreatedWithLabelCb("IPv4 route table 502 dst 172.20.0.0/16 dev mock-eth1 via <nil>")).Should(BeTrue())
+	t.Expect(generics.EqualSetsFn(adapterStaticIPs("eth1"), []*net.IPNet{eth1StaticIP}, netutils.EqualIPNets)).To(BeTrue())
+
+	// Check device network state.
+	expectedAddrs = []types.AddrInfo{
+		{Addr: eth1StaticIP.IP},
+	}
+	t.Eventually(func() bool {
+		dnsObj, _ := pubDNS.Get("global")
+		dns := dnsObj.(types.DeviceNetworkStatus)
+		ports := dns.Ports
+		return len(ports) == 2 &&
+			generics.EqualSetsFn(ports[1].AddrInfoList, expectedAddrs, equalPortAddresses)
+	}).Should(BeTrue())
+
+	// The final "zedagent" DPC clears the static IP and at the same time enabled the flag
+	// to ignore DHCP-received IP addresses, meaning that no IP address should be configured
+	// on the interface.
+	timePrio4 := time.Now()
+	dpc = makeDPC("zedagent", timePrio4, selectedIntfs{eth0: true, eth1: true})
+	dpc.Ports[1].AddrSubnet = ""
+	dpc.Ports[1].IgnoreDhcpIPAddresses = true
+	dpcManager.AddDPC(dpc)
+	t.Eventually(testingInProgressCb()).Should(BeTrue())
+	eth1.IPAddrs = []*net.IPNet{eth1DhcpIP} // dhcpcd still assigns the DHCP-received IP, EVE just ignores it
+	networkMonitor.AddOrUpdateInterface(eth1)
+	networkMonitor.UpdateRoutes(append(mockEth0Routes(), eth1DefaultRoute, eth1LinkRoute))
+	t.Eventually(testingInProgressCb()).Should(BeFalse())
+	t.Eventually(dpcIdxCb()).Should(Equal(0))
+	t.Eventually(dpcKeyCb(0)).Should(Equal("zedagent"))
+	t.Eventually(dpcTimePrioCb(0, timePrio4)).Should(BeTrue())
+	t.Eventually(dnsKeyCb()).Should(Equal("zedagent"))
+	t.Expect(getDPC(0).State).To(Equal(types.DPCStateSuccess))
+
+	// Check routing table and the adapter for IP update.
+	t.Eventually(ipRoutesCb(502, false)).Should(BeEmpty())
+	t.Expect(adapterStaticIPs("eth1")).To(BeEmpty())
+
+	// Check device network state.
+	t.Eventually(func() bool {
+		dnsObj, _ := pubDNS.Get("global")
+		dns := dnsObj.(types.DeviceNetworkStatus)
+		ports := dns.Ports
+		return len(ports) == 2 && len(ports[1].AddrInfoList) == 0
+	}).Should(BeTrue())
+}
+
+func TestOverrideDhcpDNS(test *testing.T) {
+	expectBootstrapDPC := true
+	t := initTest(test, expectBootstrapDPC)
+
+	// Prepare simulated network stack.
+	eth0 := mockEth0()
+	eth1 := mockEth1()
+	networkMonitor.AddOrUpdateInterface(eth0)
+	networkMonitor.AddOrUpdateInterface(eth1)
+	networkMonitor.UpdateRoutes(append(mockEth0Routes(), mockEth1Routes()...))
+
+	// Two interfaces available for mgmt.
+	aa := makeAA(selectedIntfs{eth0: true, eth1: true})
+	dpcManager.UpdateAA(aa)
+
+	// Apply global config.
+	dpcManager.UpdateGCP(globalConfig())
+
+	// Apply initial "bootstrap" DPC using both ports.
+	timePrio1 := time.Now()
+	dpc := makeDPC("bootstrap", timePrio1, selectedIntfs{eth0: true, eth1: true})
+	dpcManager.AddDPC(dpc)
+	t.Eventually(testingInProgressCb()).Should(BeTrue())
+	t.Eventually(testingInProgressCb()).Should(BeFalse())
+	t.Eventually(dpcIdxCb()).Should(Equal(0))
+	t.Eventually(dnsKeyCb()).Should(Equal("bootstrap"))
+	t.Eventually(dpcStateCb(0)).Should(Equal(types.DPCStateSuccess))
+	eth1DhcpDNS := net.ParseIP("1.1.1.1")
+	expDNSServers := []net.IP{eth1DhcpDNS}
+	t.Expect(generics.EqualSetsFn(dnsServers("eth1"), expDNSServers, netutils.EqualIPs)).To(BeTrue())
+
+	// Check device network state.
+	t.Eventually(func() bool {
+		dnsObj, _ := pubDNS.Get("global")
+		dns := dnsObj.(types.DeviceNetworkStatus)
+		ports := dns.Ports
+		return len(ports) == 2 &&
+			generics.EqualSetsFn(ports[1].DNSServers, expDNSServers, netutils.EqualIPs) &&
+			ports[1].DomainName == "eth-test-domain"
+	}).Should(BeTrue())
+
+	// Apply "zedagent" DPC which enables DHCP but additionally adds some DNS servers for eth1.
+	timePrio2 := time.Now()
+	dpc = makeDPC("zedagent", timePrio2, selectedIntfs{eth0: true, eth1: true})
+	eth1StaticDNS1 := net.ParseIP("8.8.8.8")
+	eth1StaticDNS2 := net.ParseIP("192.168.50.40")
+	dpc.Ports[1].DNSServers = []net.IP{eth1StaticDNS1, eth1StaticDNS2}
+	dpcManager.AddDPC(dpc)
+	t.Eventually(testingInProgressCb()).Should(BeTrue())
+	t.Eventually(testingInProgressCb()).Should(BeFalse())
+	t.Eventually(dpcIdxCb()).Should(Equal(0))
+	t.Eventually(dpcKeyCb(0)).Should(Equal("zedagent"))
+	t.Eventually(dpcTimePrioCb(0, timePrio2)).Should(BeTrue())
+	t.Eventually(dnsKeyCb()).Should(Equal("zedagent"))
+	t.Expect(getDPC(0).State).To(Equal(types.DPCStateSuccess))
+
+	// Check resolv.conf after the DNS config update.
+	expDNSServers = []net.IP{eth1DhcpDNS, eth1StaticDNS1, eth1StaticDNS2}
+	t.Expect(generics.EqualSetsFn(dnsServers("eth1"), expDNSServers, netutils.EqualIPs)).To(BeTrue())
+
+	// Check device network state.
+	t.Eventually(func() bool {
+		dnsObj, _ := pubDNS.Get("global")
+		dns := dnsObj.(types.DeviceNetworkStatus)
+		ports := dns.Ports
+		return len(ports) == 2 &&
+			generics.EqualSetsFn(ports[1].DNSServers, expDNSServers, netutils.EqualIPs) &&
+			ports[1].DomainName == "eth-test-domain"
+	}).Should(BeTrue())
+
+	// Apply new "zedagent" DPC which replaces DHCP-received DNS servers with statically configured ones.
+	timePrio3 := time.Now()
+	dpc = makeDPC("zedagent", timePrio3, selectedIntfs{eth0: true, eth1: true})
+	dpc.Ports[1].DNSServers = []net.IP{eth1StaticDNS1, eth1StaticDNS2}
+	dpc.Ports[1].IgnoreDhcpDNSConfig = true
+	dpcManager.AddDPC(dpc)
+	t.Eventually(testingInProgressCb()).Should(BeTrue())
+	t.Eventually(testingInProgressCb()).Should(BeFalse())
+	t.Eventually(dpcIdxCb()).Should(Equal(0))
+	t.Eventually(dpcKeyCb(0)).Should(Equal("zedagent"))
+	t.Eventually(dpcTimePrioCb(0, timePrio3)).Should(BeTrue())
+	t.Eventually(dnsKeyCb()).Should(Equal("zedagent"))
+	t.Expect(getDPC(0).State).To(Equal(types.DPCStateSuccess))
+
+	// Check resolv.conf after the DNS config update.
+	expDNSServers = []net.IP{eth1StaticDNS1, eth1StaticDNS2}
+	t.Expect(generics.EqualSetsFn(dnsServers("eth1"), expDNSServers, netutils.EqualIPs)).To(BeTrue())
+
+	// Check device network state.
+	t.Eventually(func() bool {
+		dnsObj, _ := pubDNS.Get("global")
+		dns := dnsObj.(types.DeviceNetworkStatus)
+		ports := dns.Ports
+		return len(ports) == 2 &&
+			generics.EqualSetsFn(ports[1].DNSServers, expDNSServers, netutils.EqualIPs) &&
+			ports[1].DomainName == "" // cleared by static config
+	}).Should(BeTrue())
+
+	// Apply new "zedagent" DPC which configures no static DNS servers and at the same
+	// time enables the flag to ignore DHCP-received DNS servers, thus no DNS servers
+	// should be configured.
+	// We set some DomainName just to test this as well.
+	timePrio4 := time.Now()
+	dpc = makeDPC("zedagent", timePrio4, selectedIntfs{eth0: true, eth1: true})
+	dpc.Ports[1].DNSServers = nil
+	dpc.Ports[1].DomainName = "test-domain"
+	dpc.Ports[1].IgnoreDhcpDNSConfig = true
+	dpcManager.AddDPC(dpc)
+	t.Eventually(testingInProgressCb()).Should(BeTrue())
+	t.Eventually(testingInProgressCb()).Should(BeFalse())
+	t.Eventually(dpcIdxCb()).Should(Equal(0))
+	t.Eventually(dpcKeyCb(0)).Should(Equal("zedagent"))
+	t.Eventually(dpcTimePrioCb(0, timePrio4)).Should(BeTrue())
+	t.Eventually(dnsKeyCb()).Should(Equal("zedagent"))
+	t.Expect(getDPC(0).State).To(Equal(types.DPCStateSuccess))
+
+	// Check resolv.conf after the DNS config update.
+	expDNSServers = []net.IP{}
+	t.Expect(generics.EqualSetsFn(dnsServers("eth1"), expDNSServers, netutils.EqualIPs)).To(BeTrue())
+
+	// Check device network state.
+	t.Eventually(func() bool {
+		dnsObj, _ := pubDNS.Get("global")
+		dns := dnsObj.(types.DeviceNetworkStatus)
+		ports := dns.Ports
+		return len(ports) == 2 &&
+			generics.EqualSetsFn(ports[1].DNSServers, expDNSServers, netutils.EqualIPs) &&
+			ports[1].DomainName == "test-domain"
+	}).Should(BeTrue())
+}
+
+func TestOverrideDhcpNTP(test *testing.T) {
+	expectBootstrapDPC := true
+	t := initTest(test, expectBootstrapDPC)
+
+	// Prepare simulated network stack.
+	eth0 := mockEth0()
+	eth1 := mockEth1()
+	networkMonitor.AddOrUpdateInterface(eth0)
+	networkMonitor.AddOrUpdateInterface(eth1)
+	networkMonitor.UpdateRoutes(append(mockEth0Routes(), mockEth1Routes()...))
+
+	// Two interfaces available for mgmt.
+	aa := makeAA(selectedIntfs{eth0: true, eth1: true})
+	dpcManager.UpdateAA(aa)
+
+	// Apply global config.
+	dpcManager.UpdateGCP(globalConfig())
+
+	// Apply initial "bootstrap" DPC using both ports.
+	timePrio1 := time.Now()
+	dpc := makeDPC("bootstrap", timePrio1, selectedIntfs{eth0: true, eth1: true})
+	dpcManager.AddDPC(dpc)
+	t.Eventually(testingInProgressCb()).Should(BeTrue())
+	t.Eventually(testingInProgressCb()).Should(BeFalse())
+	t.Eventually(dpcIdxCb()).Should(Equal(0))
+	t.Eventually(dnsKeyCb()).Should(Equal("bootstrap"))
+	t.Eventually(dpcStateCb(0)).Should(Equal(types.DPCStateSuccess))
+
+	// Check device network state.
+	eth1DhcpNTP := netutils.NewHostnameOrIP("132.163.96.6")
+	expNTPServers := []netutils.HostnameOrIP{eth1DhcpNTP}
+	t.Eventually(func() bool {
+		dnsObj, _ := pubDNS.Get("global")
+		dns := dnsObj.(types.DeviceNetworkStatus)
+		ports := dns.Ports
+		return len(ports) == 2 &&
+			generics.EqualSetsFn(ports[1].NtpServers, expNTPServers, netutils.EqualHostnameOrIPs)
+	}).Should(BeTrue())
+
+	// Apply "zedagent" DPC which enables DHCP but additionally adds some NTP servers for eth1.
+	timePrio2 := time.Now()
+	dpc = makeDPC("zedagent", timePrio2, selectedIntfs{eth0: true, eth1: true})
+	eth1StaticNTP1 := netutils.NewHostnameOrIP("129.6.15.28")
+	eth1StaticNTP2 := netutils.NewHostnameOrIP("time.google.com")
+	dpc.Ports[1].NTPServers = []netutils.HostnameOrIP{eth1StaticNTP1, eth1StaticNTP2}
+	dpcManager.AddDPC(dpc)
+	t.Eventually(testingInProgressCb()).Should(BeTrue())
+	t.Eventually(testingInProgressCb()).Should(BeFalse())
+	t.Eventually(dpcIdxCb()).Should(Equal(0))
+	t.Eventually(dpcKeyCb(0)).Should(Equal("zedagent"))
+	t.Eventually(dpcTimePrioCb(0, timePrio2)).Should(BeTrue())
+	t.Eventually(dnsKeyCb()).Should(Equal("zedagent"))
+	t.Expect(getDPC(0).State).To(Equal(types.DPCStateSuccess))
+
+	// Check device network state.
+	expNTPServers = []netutils.HostnameOrIP{eth1DhcpNTP, eth1StaticNTP1, eth1StaticNTP2}
+	t.Eventually(func() bool {
+		dnsObj, _ := pubDNS.Get("global")
+		dns := dnsObj.(types.DeviceNetworkStatus)
+		ports := dns.Ports
+		return len(ports) == 2 &&
+			generics.EqualSetsFn(ports[1].NtpServers, expNTPServers, netutils.EqualHostnameOrIPs)
+	}).Should(BeTrue())
+
+	// Apply new "zedagent" DPC which replaces DHCP-received NTP servers with statically configured ones.
+	timePrio3 := time.Now()
+	dpc = makeDPC("zedagent", timePrio3, selectedIntfs{eth0: true, eth1: true})
+	dpc.Ports[1].NTPServers = []netutils.HostnameOrIP{eth1StaticNTP1, eth1StaticNTP2}
+	dpc.Ports[1].IgnoreDhcpNtpServers = true
+	dpcManager.AddDPC(dpc)
+	t.Eventually(testingInProgressCb()).Should(BeTrue())
+	t.Eventually(testingInProgressCb()).Should(BeFalse())
+	t.Eventually(dpcIdxCb()).Should(Equal(0))
+	t.Eventually(dpcKeyCb(0)).Should(Equal("zedagent"))
+	t.Eventually(dpcTimePrioCb(0, timePrio3)).Should(BeTrue())
+	t.Eventually(dnsKeyCb()).Should(Equal("zedagent"))
+	t.Expect(getDPC(0).State).To(Equal(types.DPCStateSuccess))
+
+	// Check device network state.
+	expNTPServers = []netutils.HostnameOrIP{eth1StaticNTP1, eth1StaticNTP2}
+	t.Eventually(func() bool {
+		dnsObj, _ := pubDNS.Get("global")
+		dns := dnsObj.(types.DeviceNetworkStatus)
+		ports := dns.Ports
+		return len(ports) == 2 &&
+			generics.EqualSetsFn(ports[1].NtpServers, expNTPServers, netutils.EqualHostnameOrIPs)
+	}).Should(BeTrue())
+
+	// Apply new "zedagent" DPC which configures no static NTP servers and at the same
+	// time enables the flag to ignore DHCP-received NTP servers, thus no NTP servers
+	// should be configured.
+	timePrio4 := time.Now()
+	dpc = makeDPC("zedagent", timePrio4, selectedIntfs{eth0: true, eth1: true})
+	dpc.Ports[1].NTPServers = nil
+	dpc.Ports[1].IgnoreDhcpNtpServers = true
+	dpcManager.AddDPC(dpc)
+	t.Eventually(testingInProgressCb()).Should(BeTrue())
+	t.Eventually(testingInProgressCb()).Should(BeFalse())
+	t.Eventually(dpcIdxCb()).Should(Equal(0))
+	t.Eventually(dpcKeyCb(0)).Should(Equal("zedagent"))
+	t.Eventually(dpcTimePrioCb(0, timePrio4)).Should(BeTrue())
+	t.Eventually(dnsKeyCb()).Should(Equal("zedagent"))
+	t.Expect(getDPC(0).State).To(Equal(types.DPCStateSuccess))
+
+	// Check device network state.
+	expNTPServers = nil
+	t.Eventually(func() bool {
+		dnsObj, _ := pubDNS.Get("global")
+		dns := dnsObj.(types.DeviceNetworkStatus)
+		ports := dns.Ports
+		return len(ports) == 2 &&
+			generics.EqualSetsFn(ports[1].NtpServers, expNTPServers, netutils.EqualHostnameOrIPs)
+	}).Should(BeTrue())
 }
