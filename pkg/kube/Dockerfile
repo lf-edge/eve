@@ -48,7 +48,7 @@ COPY kubevirt-utils.sh /usr/bin/
 
 # Longhorn config
 COPY longhorn-utils.sh /usr/bin/
-COPY lh-cfg-v1.6.3.yaml /etc/
+COPY lh-cfg-v1.9.1.yaml /etc/
 COPY iscsid.conf /etc/iscsi/
 COPY longhorn-generate-support-bundle.sh /usr/bin/
 COPY nsmounter /usr/bin/
