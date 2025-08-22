@@ -10,8 +10,7 @@ ZARCH         ?= $(HOSTARCH)
 DISTDIR       := dist/$(ZARCH)
 BUILD_VERSION ?=
 
-DOCKER_ARCH_ARGS:=--platform linux/$(ZARCH)
-DOCKER_ARGS:=$(DOCKER_ARCH_ARGS) --build-arg ZARCH=$(ZARCH)
+DOCKER_LIKE_LKT:=$(shell ../../build-tools/bin/linuxkit pkg build --network --platforms linux/$(ZARCH) --dry-run --force ./ | tail -n1)
 DOCKER_TAG:=lfedge/eve-pillar:local-$(ZARCH)
 
 APPS = zedbox
@@ -69,20 +68,15 @@ shell:
 	make -C ../.. shell
 
 build-docker:
-	docker build $(DOCKER_ARGS) -t $(DOCKER_TAG) .
+	$(DOCKER_LIKE_LKT) -t $(DOCKER_TAG)
 
-build-docker-dev:
-	docker build $(DOCKER_ARGS) -t $(DOCKER_TAG) . --target build
-
-enter-docker-dev: build-docker-dev
+enter-docker-dev: build-docker-test
 	docker run --platform linux/$(ZARCH) -it --rm --entrypoint /bin/sh $(DOCKER_TAG)
-
-build-docker-git:
-	git archive HEAD | docker build $(DOCKER_ARGS) -t $(DOCKER_TAG) -
 
 build-docker-test:
 	make -C ../../ pillar-cache-export-docker-load
-	docker build $(DOCKER_ARGS) --build-arg TEST_TOOLS=y -t $(DOCKER_TAG) . --target build
+	$(DOCKER_LIKE_LKT) --build-arg TEST_TOOLS=y --load --target build
+	docker image tag $(shell $(DOCKER_LIKE_LKT) --build-arg TEST_TOOLS=y --load -q --target build) $(DOCKER_TAG)
 
 test: build-docker-test
 	rm -f results.json
