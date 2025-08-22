@@ -4,6 +4,3 @@
 # SPDX-License-Identifier: Apache-2.0
 org: lfedge
 image: eve-external-boot-image
-buildArgs:
-  - KERNEL=KERNEL_TAG
-  - XENTOOLS=XENTOOLS_TAG
