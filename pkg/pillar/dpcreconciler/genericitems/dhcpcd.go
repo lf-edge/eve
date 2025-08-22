@@ -19,6 +19,7 @@ import (
 	"github.com/lf-edge/eve-libs/reconciler"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
 )
 
 const (
@@ -30,9 +31,10 @@ const (
 // Dhcpcd : DHCP client (https://wiki.archlinux.org/title/dhcpcd).
 type Dhcpcd struct {
 	// AdapterLL : Adapter's logical label.
-	AdapterLL     string
-	AdapterIfName string
-	DhcpConfig    types.DhcpConfig
+	AdapterLL          string
+	AdapterIfName      string
+	DhcpConfig         types.DhcpConfig
+	IgnoreDhcpGateways bool // Ignore gateways from DHCP
 }
 
 // Name is based on the adapter interface name (one client per interface).
@@ -59,17 +61,9 @@ func (c Dhcpcd) Equal(other depgraph.Item) bool {
 	// Consider two DHCP configs as equal if they result in the same set of arguments for dhcpcd.
 	// This avoids unnecessary restarts of dhcpcd (when e.g. going from override to zedagent DPC).
 	configurator := &DhcpcdConfigurator{}
-	op1, args1 := configurator.DhcpcdArgs(c.DhcpConfig)
-	op2, args2 := configurator.DhcpcdArgs(c2.DhcpConfig)
-	if op1 != op2 || len(args1) != len(args2) {
-		return false
-	}
-	for i := range args1 {
-		if args1[i] != args2[i] {
-			return false
-		}
-	}
-	return true
+	op1, args1 := configurator.DhcpcdArgs(c.DhcpConfig, c.IgnoreDhcpGateways)
+	op2, args2 := configurator.DhcpcdArgs(c2.DhcpConfig, c2.IgnoreDhcpGateways)
+	return op1 == op2 && generics.EqualLists(args1, args2)
 }
 
 // External returns false.
@@ -151,7 +145,7 @@ func (c *DhcpcdConfigurator) Create(ctx context.Context, item depgraph.Item) err
 		}
 
 		// Prepare input arguments for dhcpcd.
-		op, args := c.DhcpcdArgs(config)
+		op, args := c.DhcpcdArgs(config, client.IgnoreDhcpGateways)
 
 		// Start DHCP client.
 		if c.dhcpcdExists(client.AdapterIfName, config.Type) {
@@ -284,7 +278,8 @@ func (c *DhcpcdConfigurator) NeedsRecreate(oldItem, newItem depgraph.Item) (recr
 
 // DhcpcdArgs returns command line arguments for dhcpcd corresponding to the given
 // DHCP config. The method is exported only for the purpose of unit testing.
-func (c *DhcpcdConfigurator) DhcpcdArgs(config types.DhcpConfig) (op string, args []string) {
+func (c *DhcpcdConfigurator) DhcpcdArgs(
+	config types.DhcpConfig, ignoreDhcpGws bool) (op string, args []string) {
 	switch config.Dhcp {
 	case types.DhcpTypeClient:
 		op = "--request"
@@ -300,7 +295,22 @@ func (c *DhcpcdConfigurator) DhcpcdArgs(config types.DhcpConfig) (op string, arg
 		case types.NetworkTypeDualStack:
 		default:
 		}
-		if config.Gateway != nil && config.Gateway.IsUnspecified() {
+		if config.Gateway != nil {
+			if config.Gateway.IsUnspecified() {
+				// The legacy approach of setting "0.0.0.0" to disable the default
+				// route for this interface. Today, the same effect is achieved
+				// more cleanly by enabling the IgnoreDhcpGateways flag and leaving
+				// the static gateway unset.
+				args = append(args, "--nogateway")
+			} else {
+				// A statically configured gateway takes precedence over the
+				// DHCP-provided gateways. We currently do not support combining
+				// static and DHCP gateways; only the static one is applied.
+				args = append(args, "--static",
+					fmt.Sprintf("routers=%s", config.Gateway.String()))
+			}
+		} else if ignoreDhcpGws {
+			// No static gateway is set, and DHCP gateways are explicitly disabled.
 			args = append(args, "--nogateway")
 		}
 

@@ -648,6 +648,7 @@ func (r *LinuxNIReconciler) getIntendedAppConnACLs(vif vifInfo,
 			ips = generics.FilterList(ips, func(ipNet *net.IPNet) bool {
 				return ipNet.IP.IsGlobalUnicast()
 			})
+			ips = r.filterIgnoredDhcpIPs(port, ips...)
 			portIPs[port.IfName] = ips
 		}
 	}

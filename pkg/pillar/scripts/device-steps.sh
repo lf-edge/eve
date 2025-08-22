@@ -74,36 +74,21 @@ NTPSERVERS=
 
 # Return one line with all the NTP servers for all the ports
 get_ntp_servers_from_nim() {
-    if [ ! -f "$INPUTFILE" ];  then
+    if [ ! -f "$INPUTFILE" ]; then
         return
     fi
 
-    # Select static NTP sources
-    ntp_static=$(jq -r  -c  \
-                '.Ports[] |
-                 select (.ConfiguredNtpServers != null) |
-                 .ConfiguredNtpServers | .[]' $INPUTFILE)
+    # Collect all NTP servers from all ports (deduplicated)
+    ntp_all=$(jq -r '.Ports[].NtpServers[]?' "$INPUTFILE" | sort -u)
 
-    # Select dynamic (from DHCP) NTP sources
-    ntp_dynamic=$(jq -r  -c  \
-                '.Ports[] |
-                 select(.DhcpNtpServers != null and .IgnoreDhcpNtpServers == false) |
-                 .DhcpNtpServers | .[]' $INPUTFILE)
-
-    # Concat all in one string
-    # shellcheck disable=SC3037
-    ntp_all=$(echo -e "$ntp_static\n$ntp_dynamic" | sort | uniq)
-
-    # Make the following: "$mode $ntp" and separate
-    # each with \n for further processing in a caller
+    # Format as: server\n<ntp>\n
     list=
     for ntp in $ntp_all; do
         list="$list server\n$ntp\n"
     done
-    ntp_all="$list"
 
     # shellcheck disable=SC3037
-    echo -n "$ntp_all"
+    echo -n "$list"
 }
 
 get_ntp_servers() {

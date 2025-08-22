@@ -157,6 +157,49 @@ which depends on the network adapter type. Ethernet and WiFi adapters default to
 while cellular modems typically receive their MTU value from the network provider,
 which EVE will use unless the user overrides the MTU value.
 
+### DHCP Option Control
+
+Normally, the user configures a network interface either to use DHCP client mode
+or to assign a static IP configuration. However, it is possible to combine both
+approaches: static values can be applied on top of DHCP-received configuration.
+This is useful when DHCP does not provide a particular option (e.g., a DNS server
+that must be used) or when DHCP provides an incorrect value that should be overridden.
+
+EVE allows per-option control of how DHCP-provided values are combined with static
+configuration using the `DhcpOptionsIgnore` message. This lets the user specify,
+for each option, whether to merge DHCP values with static ones or to override them
+entirely.
+
+Currently supported options and their corresponding
+[EVE-API boolean flags](https://github.com/lf-edge/eve-api/blob/9bb7705/proto/evecommon/netcmn.proto#L101-L145):
+
+- **IP addresses** → `ip_addresses_exclusively`
+- **DNS servers and domain names** → `dns_config_exclusively`
+- **NTP servers** → `ntp_server_exclusively`
+- **Gateway (router) addresses** → `gateways_exclusively`
+
+By default, static and DHCP-provided values are merged. If the corresponding exclusivity
+flag is enabled, the static value for that option overrides the DHCP-provided value.
+If no static value is configured while the flag is enabled, the resulting configuration is
+empty for that option (e.g., no DNS servers, no IP address).
+
+Domain name and gateway are special cases, since only one value per port is supported.
+A non-empty static value always takes priority over DHCP. If static is empty and
+the exclusivity flag is disabled, the DHCP-provided value is used. If static is empty
+and the flag is enabled, the field is cleared (empty value applied).
+
+Even when DHCP-provided IP addresses are ignored, the DHCP lease is still acquired
+and the address is configured on the interface by the DHCP client (`dhcpcd`). However,
+EVE ignores this address and does not propagate it and its routes into per-port and per-NI
+routing tables, ensuring that only the static configuration is effective for both the EVE
+management plane and the deployed applications.
+
+> **Note:** The `DhcpOptionsIgnore` flags are primarily intended for troubleshooting.
+> They allow users to temporarily test different configurations than what the DHCP server
+> provides, often to verify whether a problem lies with the server’s settings.
+> This should not be treated as a permanent solution — the correct long-term fix is to
+> update or correct the DHCP server configuration rather than relying on overrides.
+
 ## Load spreading and failover
 
 Load spreading means that there are two or more similar uplink networks, for instance

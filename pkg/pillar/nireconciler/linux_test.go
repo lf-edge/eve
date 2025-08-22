@@ -285,7 +285,7 @@ var (
 		IPAddrs: []*net.IPNet{ipAddressWithPrefix("192.168.10.5/24")},
 		DHCP: netmonitor.DHCPInfo{
 			IPv4Subnet:     ipSubnet("192.168.10.0/24"),
-			IPv4NtpServers: []net.IP{ipAddress("132.163.96.5")},
+			IPv4NtpServers: netutils.NewHostnameOrIPs("132.163.96.5"),
 		},
 		DNS: []netmonitor.DNSInfo{
 			{
@@ -307,6 +307,20 @@ var (
 				Dst:       nil,
 				Gw:        ipAddress("192.168.10.1"),
 				Table:     unix.RT_TABLE_MAIN,
+				Family:    netlink.FAMILY_V4,
+				Protocol:  unix.RTPROT_DHCP,
+			},
+		},
+		{
+			IfIndex: 2,
+			Dst:     ipAddressWithPrefix("0.0.0.0/0"),
+			Gw:      ipAddress("192.168.10.1"),
+			Table:   types.DPCBaseRTIndex + 2,
+			Data: netlink.Route{
+				LinkIndex: 2,
+				Dst:       nil,
+				Gw:        ipAddress("192.168.10.1"),
+				Table:     types.DPCBaseRTIndex + 2,
 				Family:    netlink.FAMILY_V4,
 				Protocol:  unix.RTPROT_DHCP,
 			},
@@ -364,6 +378,20 @@ var (
 				Protocol:  unix.RTPROT_DHCP,
 			},
 		},
+		{
+			IfIndex: 4,
+			Dst:     ipAddressWithPrefix("0.0.0.0/0"),
+			Gw:      ipAddress("172.20.0.1"),
+			Table:   types.DPCBaseRTIndex + 4,
+			Data: netlink.Route{
+				LinkIndex: 4,
+				Dst:       nil,
+				Gw:        ipAddress("172.20.0.1"),
+				Table:     types.DPCBaseRTIndex + 4,
+				Family:    netlink.FAMILY_V4,
+				Protocol:  unix.RTPROT_DHCP,
+			},
+		},
 	}
 
 	// Device network port "eth2" (IPv6 connectivity)
@@ -410,6 +438,20 @@ var (
 				Dst:       ipAddressWithPrefix("::/0"),
 				Gw:        ipAddress("2001::1"),
 				Table:     unix.RT_TABLE_MAIN,
+				Family:    netlink.FAMILY_V4,
+				Protocol:  unix.RTPROT_DHCP,
+			},
+		},
+		{
+			IfIndex: 6,
+			Dst:     ipAddressWithPrefix("::/0"),
+			Gw:      ipAddress("2001::1"),
+			Table:   types.DPCBaseRTIndex + 6,
+			Data: netlink.Route{
+				LinkIndex: 6,
+				Dst:       ipAddressWithPrefix("::/0"),
+				Gw:        ipAddress("2001::1"),
+				Table:     types.DPCBaseRTIndex + 6,
 				Family:    netlink.FAMILY_V4,
 				Protocol:  unix.RTPROT_DHCP,
 			},
@@ -463,6 +505,20 @@ var (
 				Dst:       nil,
 				Gw:        ipAddress("172.30.30.1"),
 				Table:     unix.RT_TABLE_MAIN,
+				Family:    netlink.FAMILY_V4,
+				Protocol:  unix.RTPROT_DHCP,
+			},
+		},
+		{
+			IfIndex: 8,
+			Dst:     ipAddressWithPrefix("0.0.0.0/0"),
+			Gw:      ipAddress("172.30.30.1"),
+			Table:   types.DPCBaseRTIndex + 8,
+			Data: netlink.Route{
+				LinkIndex: 8,
+				Dst:       nil,
+				Gw:        ipAddress("172.30.30.1"),
+				Table:     types.DPCBaseRTIndex + 8,
 				Family:    netlink.FAMILY_V4,
 				Protocol:  unix.RTPROT_DHCP,
 			},
@@ -3126,7 +3182,7 @@ func TestSwitchNIWithMultiplePorts(test *testing.T) {
 		IPAddrs: []*net.IPNet{ipAddressWithPrefix("192.168.10.5/24")},
 		DHCP: netmonitor.DHCPInfo{
 			IPv4Subnet:     ipSubnet("192.168.10.0/24"),
-			IPv4NtpServers: []net.IP{ipAddress("132.163.96.5")},
+			IPv4NtpServers: netutils.NewHostnameOrIPs("132.163.96.5"),
 		},
 		DNS: []netmonitor.DNSInfo{
 			{

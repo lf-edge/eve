@@ -14,11 +14,10 @@ import (
 
 func TestParseDHCPv4Lease(t *testing.T) {
 	tests := []struct {
-		name                string
-		leaseData           string
-		wantSubnet          *net.IPNet
-		wantNTPSrvIPs       []net.IP
-		wantNTPSrvHostnames []string
+		name           string
+		leaseData      string
+		wantSubnet     *net.IPNet
+		wantNTPServers []netutils.HostnameOrIP
 	}{
 		{
 			name: "With one NTP server",
@@ -31,7 +30,7 @@ func TestParseDHCPv4Lease(t *testing.T) {
 				IP:   net.IPv4(192, 168, 1, 0),
 				Mask: net.CIDRMask(24, 32),
 			},
-			wantNTPSrvIPs: []net.IP{net.ParseIP("132.163.96.5")},
+			wantNTPServers: netutils.NewHostnameOrIPs("132.163.96.5"),
 		},
 		{
 			name: "With multiple NTP servers",
@@ -44,10 +43,7 @@ func TestParseDHCPv4Lease(t *testing.T) {
 				IP:   net.IPv4(10, 0, 0, 0),
 				Mask: net.CIDRMask(8, 32),
 			},
-			wantNTPSrvIPs: []net.IP{
-				net.ParseIP("8.8.8.8"),
-				net.ParseIP("1.1.1.1"),
-			},
+			wantNTPServers: netutils.NewHostnameOrIPs("8.8.8.8", "1.1.1.1"),
 		},
 		{
 			name: "No NTP servers",
@@ -59,23 +55,23 @@ func TestParseDHCPv4Lease(t *testing.T) {
 				IP:   net.IPv4(172, 16, 0, 0),
 				Mask: net.CIDRMask(12, 32),
 			},
-			wantNTPSrvIPs: nil,
+			wantNTPServers: nil,
 		},
 		{
 			name: "Missing subnet_cidr",
 			leaseData: `
 				network_number=192.168.5.0
 			`,
-			wantSubnet:    nil,
-			wantNTPSrvIPs: nil,
+			wantSubnet:     nil,
+			wantNTPServers: nil,
 		},
 		{
 			name: "Missing network_number",
 			leaseData: `
 				subnet_cidr=24
 			`,
-			wantSubnet:    nil,
-			wantNTPSrvIPs: nil,
+			wantSubnet:     nil,
+			wantNTPServers: nil,
 		},
 		{
 			name: "With NTP hostname address",
@@ -88,14 +84,14 @@ func TestParseDHCPv4Lease(t *testing.T) {
 				IP:   net.IPv4(192, 168, 1, 0),
 				Mask: net.CIDRMask(24, 32),
 			},
-			wantNTPSrvIPs:       []net.IP{net.ParseIP("1.2.3.4")},
-			wantNTPSrvHostnames: []string{"pool.ntp.org", "1.ubnt.pool.ntp.org"},
+			wantNTPServers: netutils.NewHostnameOrIPs(
+				"1.2.3.4", "pool.ntp.org", "1.ubnt.pool.ntp.org"),
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			subnet, ntpSrvIPs, ntpSrvHostnames, err :=
+			subnet, ntpServers, err :=
 				netmonitor.ParseDHCPv4Lease(tt.leaseData)
 			if err != nil {
 				t.Fatalf("Unexpected error: %v", err)
@@ -103,12 +99,9 @@ func TestParseDHCPv4Lease(t *testing.T) {
 			if !netutils.EqualIPNets(subnet, tt.wantSubnet) {
 				t.Errorf("Expected subnet %v, got %v", tt.wantSubnet, subnet)
 			}
-			if !generics.EqualSetsFn(ntpSrvIPs, tt.wantNTPSrvIPs, netutils.EqualIPs) {
-				t.Errorf("Expected NTP server IPs %v, got %v", tt.wantNTPSrvIPs, ntpSrvIPs)
-			}
-			if !generics.EqualSets(ntpSrvHostnames, tt.wantNTPSrvHostnames) {
-				t.Errorf("Expected NTP server hostnames %v, got %v",
-					tt.wantNTPSrvHostnames, ntpSrvHostnames)
+			if !generics.EqualSetsFn(
+				ntpServers, tt.wantNTPServers, netutils.EqualHostnameOrIPs) {
+				t.Errorf("Expected NTP servers %v, got %v", tt.wantNTPServers, ntpServers)
 			}
 		})
 	}
@@ -116,10 +109,10 @@ func TestParseDHCPv4Lease(t *testing.T) {
 
 func TestParseDHCPv6Lease(t *testing.T) {
 	tests := []struct {
-		name        string
-		leaseData   string
-		wantSubnets []*net.IPNet
-		wantNTP     []net.IP
+		name           string
+		leaseData      string
+		wantSubnets    []*net.IPNet
+		wantNTPServers []netutils.HostnameOrIP
 	}{
 		{
 			name: "Single router with one prefix and multiple NTP servers",
@@ -133,10 +126,8 @@ func TestParseDHCPv6Lease(t *testing.T) {
 			wantSubnets: []*net.IPNet{
 				{IP: net.ParseIP("fd00::"), Mask: net.CIDRMask(64, 128)},
 			},
-			wantNTP: []net.IP{
-				net.ParseIP("2001:4860:4860::64"),
-				net.ParseIP("2001:4860:4860::65"),
-			},
+			wantNTPServers: netutils.NewHostnameOrIPs(
+				"2001:4860:4860::64", "2001:4860:4860::65"),
 		},
 		{
 			name: "Multiple routers and prefixes",
@@ -181,15 +172,16 @@ func TestParseDHCPv6Lease(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			subnets, ntp, err := netmonitor.ParseDHCPv6Lease(tt.leaseData)
+			subnets, ntpServers, err := netmonitor.ParseDHCPv6Lease(tt.leaseData)
 			if err != nil {
 				t.Fatalf("Unexpected error: %v", err)
 			}
 			if !generics.EqualSetsFn(subnets, tt.wantSubnets, netutils.EqualIPNets) {
 				t.Errorf("Expected subnets %v, got %v", tt.wantSubnets, subnets)
 			}
-			if !generics.EqualSetsFn(ntp, tt.wantNTP, netutils.EqualIPs) {
-				t.Errorf("Expected NTP servers %v, got %v", tt.wantNTP, ntp)
+			if !generics.EqualSetsFn(
+				ntpServers, tt.wantNTPServers, netutils.EqualHostnameOrIPs) {
+				t.Errorf("Expected NTP servers %v, got %v", tt.wantNTPServers, ntpServers)
 			}
 		})
 	}

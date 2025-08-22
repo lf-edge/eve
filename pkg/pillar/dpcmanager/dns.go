@@ -61,15 +61,11 @@ func (m *DpcManager) updateDNS() {
 		// Set fields from the config...
 		m.deviceNetStatus.Ports[ix].Dhcp = port.Dhcp
 		m.deviceNetStatus.Ports[ix].Type = port.Type
-		_, subnet, _ := net.ParseCIDR(port.AddrSubnet)
-		if subnet != nil {
-			m.deviceNetStatus.Ports[ix].ConfiguredSubnet = subnet
-		}
-		// Start with any statically assigned values; update below
-		m.deviceNetStatus.Ports[ix].DomainName = port.DomainName
-		m.deviceNetStatus.Ports[ix].DNSServers = port.DNSServers
-		m.deviceNetStatus.Ports[ix].ConfiguredNtpServers = port.NTPServers
-		m.deviceNetStatus.Ports[ix].IgnoreDhcpNtpServers = port.IgnoreDhcpNtpServers
+		staticIP, staticSubnet, _ := net.ParseCIDR(port.AddrSubnet)
+		m.deviceNetStatus.Ports[ix].ConfiguredSubnet = staticSubnet
+		m.deviceNetStatus.Ports[ix].ConfiguredIP = staticIP
+		staticIPNet := netutils.NewIPNet(staticIP, staticSubnet)
+		m.deviceNetStatus.Ports[ix].IgnoredDhcpIPs = port.IgnoreDhcpIPAddresses
 		// Prefer errors recorded by DPC verification.
 		// New errors are recorded from this function only when there is none yet
 		// (HasError() == false).
@@ -137,20 +133,26 @@ func (m *DpcManager) updateDNS() {
 			continue
 		}
 
-		m.deviceNetStatus.Ports[ix].AddrInfoList = make([]types.AddrInfo, len(ipAddrs))
+		addrInfoList := make([]types.AddrInfo, 0, len(ipAddrs))
 		if len(ipAddrs) == 0 {
 			m.Log.Functionf("updateDNS: interface %s has NO IP addresses", port.IfName)
 		}
-		for i, addr := range ipAddrs {
-			m.deviceNetStatus.Ports[ix].AddrInfoList[i].Addr = addr.IP
+		for _, addr := range ipAddrs {
+			if port.IgnoreDhcpIPAddresses && addr.IP.To4() != nil &&
+				!netutils.EqualIPNets(addr, staticIPNet) {
+				// IP address received over DHCP is ignored.
+				continue
+			}
+			addrInfoList = append(addrInfoList, types.AddrInfo{Addr: addr.IP})
 		}
+		m.deviceNetStatus.Ports[ix].AddrInfoList = addrInfoList
 
 		// Get DNS etc info from dhcpcd. Updates DomainName and DNSServers.
-		err = m.getDHCPInfo(&m.deviceNetStatus.Ports[ix])
+		err = m.getDHCPInfo(&m.deviceNetStatus.Ports[ix], port)
 		if err != nil && dpc.State != types.DPCStateAsyncWait {
 			m.Log.Error(err)
 		}
-		err = m.getDNSInfo(&m.deviceNetStatus.Ports[ix])
+		err = m.getDNSInfo(&m.deviceNetStatus.Ports[ix], port)
 		if err != nil && dpc.State != types.DPCStateAsyncWait {
 			m.Log.Error(err)
 		}
@@ -249,79 +251,92 @@ func (m *DpcManager) updateGeo() {
 	}
 }
 
-func (m *DpcManager) getDHCPInfo(port *types.NetworkPortStatus) error {
-	// Run this even for static configuration, since dhcpcd is also used to apply it.
-	if port.Dhcp != types.DhcpTypeClient && port.Dhcp != types.DhcpTypeStatic {
+func (m *DpcManager) getDHCPInfo(
+	portStatus *types.NetworkPortStatus, portConfig types.NetworkPortConfig) error {
+	if portStatus.Dhcp != types.DhcpTypeClient && portStatus.Dhcp != types.DhcpTypeStatic {
+		// Neither DHCP not static IP config is enabled.
 		return nil
 	}
-	if port.WirelessStatus.WType == types.WirelessTypeCellular {
+	// Static configuration is either merged with or replaces DHCP-provided
+	// settings, depending on the IgnoreDhcp* flags.
+	portStatus.NtpServers = append(
+		[]netutils.HostnameOrIP{}, portConfig.NTPServers...) // copy slice
+
+	if portStatus.WirelessStatus.WType == types.WirelessTypeCellular {
 		// IP configuration for cellular modems is retrieved and set by mmagent
 		// from the wwan microservice. dhcpcd is not used.
 		return nil
 	}
-	ifIndex, exists, err := m.NetworkMonitor.GetInterfaceIndex(port.IfName)
+	ifIndex, exists, err := m.NetworkMonitor.GetInterfaceIndex(portConfig.IfName)
 	if !exists {
 		return nil
 	}
 	if err != nil {
 		return fmt.Errorf("getDHCPInfo: failed to get index for interface %s: %v",
-			port.IfName, err)
+			portConfig.IfName, err)
 	}
 	dhcpInfo, err := m.NetworkMonitor.GetInterfaceDHCPInfo(ifIndex)
 	if err != nil {
 		return fmt.Errorf("getDHCPInfo: failed to get DHCP info for interface %s: %v",
-			port.IfName, err)
+			portConfig.IfName, err)
 	}
-	// Subnets configured on the interface.
-	// The origin can be either an external DHCP server or a static IP config applied
-	// via dhcpcd.
-	port.IPv4Subnet = dhcpInfo.IPv4Subnet
-	port.IPv6Subnets = dhcpInfo.IPv6Subnets
-	// NTP servers obtained via DHCP and those configured manually are stored separately.
-	// This allows to implement the IgnoreDhcpNtpServers option.
-	if port.Dhcp == types.DhcpTypeClient {
-		port.DhcpNtpServers = dhcpInfo.IPv4NtpServers
-		port.DhcpNtpServers = append(port.DhcpNtpServers, dhcpInfo.IPv6NtpServers...)
-		// dhcpInfo.HostnameNtpServers is empty in this case because neither DHCP
-		// nor DHCPv6 allow to advertise NTP servers with hostname addresses.
-	} else {
-		port.ConfiguredNtpServers = dhcpInfo.HostnameNtpServers
-		for _, ntpServer := range dhcpInfo.IPv4NtpServers {
-			port.ConfiguredNtpServers = append(port.ConfiguredNtpServers, ntpServer.String())
-		}
-		for _, ntpServer := range dhcpInfo.IPv6NtpServers {
-			port.ConfiguredNtpServers = append(port.ConfiguredNtpServers, ntpServer.String())
-		}
+	// Subnets currently configured on the interface.
+	// Obtained either from an external DHCP server or from static IP settings
+	// applied via dhcpcd.
+	portStatus.IPv4Subnet = dhcpInfo.IPv4Subnet
+	portStatus.IPv6Subnets = dhcpInfo.IPv6Subnets
+	// Add NTP servers learned via DHCP unless overridden by static configuration.
+	if !portConfig.IgnoreDhcpNtpServers {
+		portStatus.NtpServers = append(portStatus.NtpServers, dhcpInfo.IPv4NtpServers...)
+		portStatus.NtpServers = append(portStatus.NtpServers, dhcpInfo.IPv6NtpServers...)
 	}
 	return nil
 }
 
-func (m *DpcManager) getDNSInfo(port *types.NetworkPortStatus) error {
-	ifIndex, exists, err := m.NetworkMonitor.GetInterfaceIndex(port.IfName)
+func (m *DpcManager) getDNSInfo(
+	portStatus *types.NetworkPortStatus, portConfig types.NetworkPortConfig) error {
+	if portStatus.Dhcp != types.DhcpTypeClient && portStatus.Dhcp != types.DhcpTypeStatic {
+		// Neither DHCP not static IP config is enabled.
+		return nil
+	}
+	// Static configuration is either merged with or replaces DHCP-provided
+	// settings, depending on the IgnoreDhcp* flags. Since only one DomainName
+	// can be reported per port, a statically configured value (if set) takes
+	// precedence over the DHCP-provided one. And in the case of multiple DHCP-provided
+	// domain names, we pick the domain name for the preferred IP version
+	// (specified by types.NetworkType).
+	portStatus.DomainName = portConfig.DomainName
+	haveStaticDN := portConfig.DomainName != ""
+	portStatus.DNSServers = append([]net.IP{}, portConfig.DNSServers...) // copy slice
+	if portConfig.IgnoreDhcpDNSConfig {
+		return nil
+	}
+	ifIndex, exists, err := m.NetworkMonitor.GetInterfaceIndex(portConfig.IfName)
 	if !exists {
 		return nil
 	}
 	if err != nil {
 		return fmt.Errorf("getDNSInfo: failed to get index for interface %s: %v",
-			port.IfName, err)
+			portConfig.IfName, err)
 	}
 	dnsInfoList, err := m.NetworkMonitor.GetInterfaceDNSInfo(ifIndex)
 	if err != nil {
 		return fmt.Errorf("getDNSInfo: failed to get DNS info for interface %s: %v",
-			port.IfName, err)
+			portConfig.IfName, err)
 	}
-	preferIPv6 := port.Type == types.NetworkTypeIPV6 ||
-		port.Type == types.NetworkTypeIpv6Only
+	preferIPv6 := portConfig.Type == types.NetworkTypeIPV6 ||
+		portConfig.Type == types.NetworkTypeIpv6Only
 	for _, dnsInfo := range dnsInfoList {
-		port.DNSServers = append(port.DNSServers, dnsInfo.DNSServers...)
-		if len(dnsInfo.Domains) > 0 {
+		portStatus.DNSServers = append(portStatus.DNSServers, dnsInfo.DNSServers...)
+		if !haveStaticDN && len(dnsInfo.Domains) > 0 {
 			// We have only one DomainName field to report.
 			// With dual-stack we pick the domain name for the preferred IP version.
-			if port.DomainName == "" || dnsInfo.ForIPv6 == preferIPv6 {
-				port.DomainName = dnsInfo.Domains[0]
+			if portStatus.DomainName == "" || dnsInfo.ForIPv6 == preferIPv6 {
+				portStatus.DomainName = dnsInfo.Domains[0]
 			}
 		}
 	}
-	port.DNSServers = generics.FilterDuplicatesFn(port.DNSServers, netutils.EqualIPs)
+	portStatus.DNSServers = generics.FilterDuplicatesFn(portStatus.DNSServers,
+		netutils.EqualIPs)
 	return nil
 }

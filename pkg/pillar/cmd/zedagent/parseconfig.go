@@ -1435,6 +1435,9 @@ func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
 			port.DNSServers = network.DNSServers
 			// Need to be careful since zedcloud can feed us bad Dhcp type
 			port.Dhcp = network.Dhcp
+			port.IgnoreDhcpIPAddresses = network.IgnoreDhcpIPAddresses
+			port.IgnoreDhcpGateways = network.IgnoreDhcpGateways
+			port.IgnoreDhcpDNSConfig = network.IgnoreDhcpDNSConfig
 			port.IgnoreDhcpNtpServers = network.IgnoreDhcpNtpServers
 			// Skip port config validation if the associated network config is invalid,
 			// to avoid overriding the inherited network error.
@@ -2382,14 +2385,14 @@ func parseIpspecNetworkXObject(ipspec *zevecommon.Ipspec, config *types.NetworkX
 
 	ntpServers := append([]string{ipspec.GetNtp()}, ipspec.GetMoreNtp()...)
 	if len(ntpServers) > 0 && ntpServers[0] != "" {
-		config.NTPServers = ntpServers
+		config.NTPServers = netutils.NewHostnameOrIPs(ntpServers...)
 	}
 
-	config.IgnoreDhcpNtpServers = false
 	dhcpOptionsIgnore := ipspec.GetDhcpOptionsIgnore()
-	if dhcpOptionsIgnore != nil {
-		config.IgnoreDhcpNtpServers = dhcpOptionsIgnore.NtpServerExclusively
-	}
+	config.IgnoreDhcpIPAddresses = dhcpOptionsIgnore.GetIpAddressesExclusively()
+	config.IgnoreDhcpGateways = dhcpOptionsIgnore.GetGatewaysExclusively()
+	config.IgnoreDhcpDNSConfig = dhcpOptionsIgnore.GetDnsConfigExclusively()
+	config.IgnoreDhcpNtpServers = dhcpOptionsIgnore.GetNtpServerExclusively()
 
 	for _, dsStr := range ipspec.GetDns() {
 		ds := net.ParseIP(dsStr)
@@ -2450,11 +2453,8 @@ func parseIpspec(ipspec *zevecommon.Ipspec,
 	config.Subnet = subnet
 	config.DomainName = ipspec.GetDomain()
 	// Parse NTP Server
-	if config.NtpServers == nil {
-		config.NtpServers = make([]string, 0)
-	}
 	if n := ipspec.GetNtp(); n != "" {
-		config.NtpServers = append(config.NtpServers, n)
+		config.NtpServers = append(config.NtpServers, netutils.NewHostnameOrIP(n))
 	}
 	// Parse Dns Servers
 	for _, dsStr := range ipspec.GetDns() {
