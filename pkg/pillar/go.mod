@@ -33,9 +33,9 @@ require (
 	github.com/jaypipes/ghw v0.8.0
 	github.com/k8snetworkplumbingwg/network-attachment-definition-client v1.5.0
 	github.com/lf-edge/edge-containers v0.0.0-20240207093504-5dfda0619b80
-	github.com/lf-edge/eve-api/go v0.0.0-20250502212418-fc1e3bad8f0f
+	github.com/lf-edge/eve-api/go v0.0.0-20250722142628-6e701eb3256b
 	github.com/lf-edge/eve-libs v0.0.0-20250708204318-622ead38398a
-	github.com/lf-edge/eve-tools/runtimemetrics/go v0.0.0-20250320220227-713ea9d6c6d2
+	github.com/lf-edge/eve-tools/runtimemetrics/go v0.0.0-20250625152713-6890d8e138ae
 	github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20240315102754-0f6d1f182e0d
 	github.com/lf-edge/go-qemu v0.0.0-20231121152149-4c467eda0c56
 	github.com/linuxkit/linuxkit/src/cmd/linuxkit v0.0.0-20240507172735-6d37353ca1ee
@@ -62,7 +62,7 @@ require (
 	golang.org/x/net v0.39.0
 	golang.org/x/sys v0.33.0
 	google.golang.org/grpc v1.61.0
-	google.golang.org/protobuf v1.36.5
+	google.golang.org/protobuf v1.36.6
 	gopkg.in/yaml.v2 v2.4.0
 	k8s.io/api v0.29.3
 	k8s.io/apimachinery v0.29.3
