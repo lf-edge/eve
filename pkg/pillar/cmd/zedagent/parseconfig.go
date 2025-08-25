@@ -43,6 +43,14 @@ const (
 	maxVlanID = 4094
 )
 
+func (dif *deviceInfoFields) parseConfig(config *zconfig.EdgeDevConfig) {
+	dif.deviceName = config.DeviceName
+	dif.enterpriseName = config.EnterpriseName
+	dif.enterpriseId = config.EnterpriseId
+	dif.projectName = config.ProductName
+	dif.projectId = config.ProjectId
+}
+
 func parseConfig(getconfigCtx *getconfigContext, config *zconfig.EdgeDevConfig,
 	source configSource) configProcessingRetval {
 
@@ -50,6 +58,8 @@ func parseConfig(getconfigCtx *getconfigContext, config *zconfig.EdgeDevConfig,
 	// from the primary controller is being applied. Or vice versa.
 	getconfigCtx.sideController.Lock()
 	defer getconfigCtx.sideController.Unlock()
+
+	getconfigCtx.deviceInfoFields.parseConfig(config)
 
 	// Make sure we do not accidentally revert to an older configuration.
 	// This depends on the controller attaching config timestamp.
