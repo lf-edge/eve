@@ -71,6 +71,7 @@ func (z *zedkube) applyClusterConfig(config, oldconfig *types.EdgeNodeClusterCon
 	if config == nil {
 		// Before we let NIM to remove the cluster IP, we need to remove the node
 		// from the cluster.
+		drainAndDeleteNode(z)
 		z.stopClusterStatusServer()
 		z.clusterConfig = types.EdgeNodeClusterConfig{}
 		return
