@@ -5,7 +5,7 @@
 
 FROM lfedge/eve-uefi:88d6376870a774e6f7a5f529084d68740287e6cb AS uefi-build
 FROM lfedge/eve-alpine:745ae9066273c73b0fd879c4ba4ff626a8392d04 AS runx-build
-ENV BUILD_PKGS mkinitfs gcc musl-dev e2fsprogs chrony agetty
+ENV BUILD_PKGS="mkinitfs gcc musl-dev e2fsprogs chrony agetty"
 RUN eve-alpine-deploy.sh
 
 RUN rm -f /sbin/poweroff /etc/mkinitfs/features.d/base.files
@@ -21,18 +21,18 @@ RUN gcc -s -o /hacf /tmp/hacf.c -Wall -Werror
 RUN mkinitfs -n -F base -i /init-initrd -o /runx-initrd
 
 FROM lfedge/eve-alpine:745ae9066273c73b0fd879c4ba4ff626a8392d04 AS build
-ENV BUILD_PKGS \
+ENV BUILD_PKGS="\
     gcc make libc-dev dev86 xz-dev perl bash python3-dev \
     gettext iasl util-linux-dev ncurses-dev glib-dev \
     pixman-dev libaio-dev yajl-dev argp-standalone \
     linux-headers git patch texinfo tar libcap-ng-dev \
     attr-dev flex bison cmake libusb-dev zstd-dev \
-    python3 build-base ninja gnutls-dev agetty
+    python3 build-base ninja gnutls-dev agetty"
 
-ENV BUILD_PKGS_arm64 dtc-dev
+ENV BUILD_PKGS_arm64=dtc-dev
 
-ENV PKGS alpine-baselayout libgcc bash musl-utils libaio libbz2 glib pixman yajl keyutils libusb xz-libs libuuid zstd-libs util-linux-misc gnutls
-ENV PKGS_arm64 libfdt
+ENV PKGS="alpine-baselayout libgcc bash musl-utils libaio libbz2 glib pixman yajl keyutils libusb xz-libs libuuid zstd-libs util-linux-misc gnutls"
+ENV PKGS_arm64=libfdt
 
 RUN eve-alpine-deploy.sh
 
@@ -42,7 +42,7 @@ WORKDIR /
 COPY alpine.patch /
 RUN patch -p1 < alpine.patch
 
-ENV LIBURING_VERSION 0.7
+ENV LIBURING_VERSION=0.7
 ENV LIBURING_SOURCE=https://git.kernel.org/pub/scm/linux/kernel/git/axboe/liburing.git/snapshot/liburing-${LIBURING_VERSION}.tar.gz
 
 # Download and verify liburing
@@ -59,11 +59,11 @@ RUN rm -rf /out/usr/man
 RUN strip /out/usr/lib/* || :
 
 # When changing this version, also update SEABIOS_UPSTREAM_REVISION to whatever is in `Config.mk` in the xen source
-ENV XEN_VERSION 4.19.0
+ENV XEN_VERSION=4.19.0
 ENV XEN_SOURCE=https://downloads.xenproject.org/release/xen/${XEN_VERSION}/xen-${XEN_VERSION}.tar.gz
 ENV EXTRA_QEMUU_CONFIGURE_ARGS="--enable-libusb --enable-linux-aio \
---enable-vhost-net --enable-vhost-kernel \
---enable-vhost-user --enable-linux-io-uring --enable-zstd"
+    --enable-vhost-net --enable-vhost-kernel \
+    --enable-vhost-user --enable-linux-io-uring --enable-zstd"
 
 WORKDIR /
 
@@ -96,11 +96,11 @@ WORKDIR /xen
 
 # disable golang as it does not play well together with musl (stderr is defined as FILE* const and fails to compile)
 RUN ./configure --prefix=/usr --disable-xen --disable-golang --disable-qemu-traditional --disable-docs --enable-9pfs \
- --with-system-ovmf=/usr/lib/xen/boot/ovmf.bin --disable-stubdom --disable-openbios \
- --enable-vhost-vsock --enable-vhost-scsi \
- --disable-microblaze --disable-mips --disable-ppc \
- --disable-sparc --disable-tricore --disable-alpha --disable-hppa \
- --disable-storage-daemon
+    --with-system-ovmf=/usr/lib/xen/boot/ovmf.bin --disable-stubdom --disable-openbios \
+    --enable-vhost-vsock --enable-vhost-scsi \
+    --disable-microblaze --disable-mips --disable-ppc \
+    --disable-sparc --disable-tricore --disable-alpha --disable-hppa \
+    --disable-storage-daemon
 RUN make -j "$(getconf _NPROCESSORS_ONLN)" && make dist
 RUN dist/install.sh /out
 
@@ -114,8 +114,8 @@ RUN if [ "$(uname -m)" = "x86_64" ]; then rm -f qemu-system-i386 && ln -s "qemu-
 
 COPY --from=uefi-build / /uefi/
 RUN mkdir -p /out/usr/lib/xen/boot && cp /uefi/OVMF.fd /out/usr/lib/xen/boot/ovmf.bin && \
-  cp /uefi/OVMF_PVH.fd /out/usr/lib/xen/boot/ovmf-pvh.bin && \
-  [ -f /uefi/OVMF_CODE.fd ] && cp /uefi/OVMF_CODE.fd /out/usr/lib/xen/boot/OVMF_CODE.fd || :
+    cp /uefi/OVMF_PVH.fd /out/usr/lib/xen/boot/ovmf-pvh.bin && \
+    [ -f /uefi/OVMF_CODE.fd ] && cp /uefi/OVMF_CODE.fd /out/usr/lib/xen/boot/OVMF_CODE.fd || :
 
 FROM scratch
 COPY --from=build /out/ /
