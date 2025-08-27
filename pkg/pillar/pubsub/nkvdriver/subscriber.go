@@ -46,21 +46,29 @@ func (e *Subscriber) Start() error {
 		return err
 	}
 
-	resp, err := e.nkvClient.Get(e.name + ".*")
-	if err != nil {
-		return err
-	}
-	data, ok := resp.Data.(p.HashMapStringBytes)
-	if !ok {
-		return fmt.Errorf("Couldn't convert data to HashMap type")
-	}
-	for key, val := range data {
-		e.C <- pubsub.Change{Operation: pubsub.Modify, Key: stripKey(key), Value: val}
-	}
+	// resp, err := e.nkvClient.Get(e.name + ".*")
+	// if err != nil {
+	// 	return err
+	// }
+	// data, ok := resp.Data.(p.HashMapStringBytes)
+	// if !ok {
+	// 	return fmt.Errorf("Couldn't convert data to HashMap type")
+	// }
+	// for key, val := range data {
+	// 	go func(key string, value []byte) {
+	// 		e.C <- pubsub.Change{
+	// 			Operation: pubsub.Modify,
+	// 			Key:       stripKey(key),
+	// 			Value:     value,
+	// 		}
+	// 	}(key, val)
+	// }
 
 	// TODO: add handling with __restart__ and __sync__ counters
-	e.C <- pubsub.Change{Operation: pubsub.Sync, Key: "done"}
-	e.C <- pubsub.Change{Operation: pubsub.Restart, Key: "1"}
+	go func() {
+		e.C <- pubsub.Change{Operation: pubsub.Sync, Key: "done"}
+		// e.C <- pubsub.Change{Operation: pubsub.Restart, Key: "1"}
+	}()
 	return nil
 }
 
