@@ -7,7 +7,6 @@ toolchain go1.24.1
 require (
 	github.com/anatol/smart.go v0.0.0-20241126061019-f03d79b340d2
 	github.com/andrewd-zededa/go-libzfs v0.0.0-20240304231806-6a64e99da97d
-	github.com/armon/circbuf v0.0.0-20190214190532-5111143e8da2
 	github.com/containerd/cgroups/v3 v3.0.5
 	github.com/containerd/containerd v1.7.27
 	github.com/containerd/containerd/api v1.8.0
