@@ -37,7 +37,7 @@ import (
 	runtimespecs "github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/vishvananda/netlink"
 
-	v1stat "github.com/containerd/cgroups/stats/v1"
+	v2stat "github.com/containerd/cgroups/v3/cgroup2/stats"
 	imagespecs "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/sirupsen/logrus"
 )
@@ -456,7 +456,7 @@ func (client *Client) CtrListContainer(ctx context.Context) ([]containerd.Contai
 }
 
 // CtrGetContainerMetrics returns all runtime metrics associated with a container ID
-func (client *Client) CtrGetContainerMetrics(ctx context.Context, containerID string) (*v1stat.Metrics, error) {
+func (client *Client) CtrGetContainerMetrics(ctx context.Context, containerID string) (*v2stat.Metrics, error) {
 	if err := client.verifyCtr(ctx, true); err != nil {
 		return nil, fmt.Errorf("CtrGetContainerMetrics: exception while verifying ctrd client: %s", err.Error())
 	}
@@ -481,7 +481,7 @@ func (client *Client) CtrGetContainerMetrics(ctx context.Context, containerID st
 	}
 
 	switch v := data.(type) {
-	case *v1stat.Metrics:
+	case *v2stat.Metrics:
 		return v, nil
 	default:
 		return nil, fmt.Errorf("can't parse task metric %v", data)

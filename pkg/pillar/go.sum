@@ -177,12 +177,16 @@ github.com/changkun/lockfree v0.0.1/go.mod h1:3bKiaXn/iNzIPlSvSOMSVbRQUQtAp8qUAy
 github.com/chzyer/logex v1.1.10/go.mod h1:+Ywpsq7O8HXn0nuIou7OrIPyXbp3wmkHB+jjWRnGsAI=
 github.com/chzyer/readline v0.0.0-20180603132655-2972be24d48e/go.mod h1:nSuG5e5PlCu98SY8svDHJxuZscDgtXS6KTTbou5AhLI=
 github.com/chzyer/test v0.0.0-20180213035817-a1ea475d72b1/go.mod h1:Q3SI9o4m/ZMnBNeIyt5eFwwo7qiLfzFZmjNmxjkiQlU=
+github.com/cilium/ebpf v0.9.1 h1:64sn2K3UKw8NbP/blsixRpF3nXuyhz/VjRlRzvlBRu4=
+github.com/cilium/ebpf v0.9.1/go.mod h1:+OhNOIXx/Fnu1IE8bJz2dzOA+VSfyTfdNUVdlQnxUFY=
 github.com/client9/misspell v0.3.4/go.mod h1:qj6jICC3Q7zFZvVWo7KLAzC3yx5G7kyvSDkc90ppPyw=
 github.com/cncf/udpa/go v0.0.0-20191209042840-269d4d468f6f/go.mod h1:M8M6+tZqaGXZJjfX53e64911xZQV5JYwmTeXPW+k8Sc=
 github.com/cncf/xds/go v0.0.0-20250501225837-2ac532fd4443 h1:aQ3y1lwWyqYPiWZThqv1aFbZMiM9vblcSArJRf2Irls=
 github.com/cncf/xds/go v0.0.0-20250501225837-2ac532fd4443/go.mod h1:W+zGtBO5Y1IgJhy4+A9GOqVhqLpfZi+vwmdNXUehLA8=
 github.com/containerd/cgroups v1.1.0 h1:v8rEWFl6EoqHB+swVNjVoCJE8o3jX7e8nqBGPLaDFBM=
 github.com/containerd/cgroups v1.1.0/go.mod h1:6ppBcbh/NOOUU+dMKrykgaBnK9lCIBxHqJDGwsa1mIw=
+github.com/containerd/cgroups/v3 v3.0.2 h1:f5WFqIVSgo5IZmtTT3qVBo6TzI1ON6sycSBKkymb9L0=
+github.com/containerd/cgroups/v3 v3.0.2/go.mod h1:JUgITrzdFqp42uI2ryGA+ge0ap/nxzYgkGmIcetmErE=
 github.com/containerd/containerd v1.7.29 h1:90fWABQsaN9mJhGkoVnuzEY+o1XDPbg9BTC9QTAHnuE=
 github.com/containerd/containerd v1.7.29/go.mod h1:azUkWcOvHrWvaiUjSQH0fjzuHIwSPg1WL5PshGP4Szs=
 github.com/containerd/containerd/api v1.8.0 h1:hVTNJKR8fMc/2Tiw60ZRijntNMd1U+JVMyTRdsD2bS0=
@@ -289,6 +293,8 @@ github.com/facebook/time v0.0.0-20240605113323-bdee26e8523f h1:qEpaI5a4QYn7voX3z
 github.com/facebook/time v0.0.0-20240605113323-bdee26e8523f/go.mod h1:2UFAomOuD2vAK1x68czUtCVjAqmyWCEnAXOlmGqf+G0=
 github.com/felixge/httpsnoop v1.0.4 h1:NFTV2Zj1bL4mc9sqWACXbQFVBBg2W3GPvqp8/ESS2Wg=
 github.com/felixge/httpsnoop v1.0.4/go.mod h1:m8KPJKqk1gH5J9DgRY2ASl2lWCfGKXixSwevea8zH2U=
+github.com/frankban/quicktest v1.14.0 h1:+cqqvzZV87b4adx/5ayVOaYZ2CrvM4ejQvUdBzPPUss=
+github.com/frankban/quicktest v1.14.0/go.mod h1:NeW+ay9A/U67EYXNFA1nPE8e/tnQv/09mUdL/ijj8og=
 github.com/fsnotify/fsnotify v1.4.7/go.mod h1:jwhsz4b93w/PPRr/qN1Yymfu8t87LnFCMoQvtojpjFo=
 github.com/fsnotify/fsnotify v1.4.9/go.mod h1:znqG4EE+3YCdAaPaxE2ZRY/06pZUdp0tY4IgpuI1SZQ=
 github.com/fsnotify/fsnotify v1.6.0 h1:n+5WquG0fcWoWp6xPWfHdbskMCQaFnG6PfBrh1Ky4HY=
@@ -573,8 +579,6 @@ github.com/lf-edge/edge-containers v0.0.0-20251107072102-46bed3192170 h1:bzTmpY7
 github.com/lf-edge/edge-containers v0.0.0-20251107072102-46bed3192170/go.mod h1:ta4JI0ank21dn8T1GFZDRLmxVZ6kWVe32cnhKkqMJJQ=
 github.com/lf-edge/eve-api/go v0.0.0-20251015130922-bab09e4f470c h1:ZHFiYgv+N9xedVVVSl3IVQm3ot42pob1DnVRLdhPW3o=
 github.com/lf-edge/eve-api/go v0.0.0-20251015130922-bab09e4f470c/go.mod h1:6HxNA/qKJVEqwpuOFkcQ0h3QyotvAs/cjHLC961FPOY=
-github.com/lf-edge/eve-libs v0.0.0-20251022164455-de07a00e55b4 h1:QaCrNQque+N20sUo3Z67rLcYjFVRcezbK3pWWRMqTsI=
-github.com/lf-edge/eve-libs v0.0.0-20251022164455-de07a00e55b4/go.mod h1:aW4soDIg+Q9FQtRrc/VWchwIryN5aV/HJdEt4IFEZgI=
 github.com/lf-edge/eve-libs v0.0.0-20251105072030-1c066d586f1b h1:Jx92e1MTt666EtbODjhbMc+eQ30VOZeSzKARQLt22SU=
 github.com/lf-edge/eve-libs v0.0.0-20251105072030-1c066d586f1b/go.mod h1:aW4soDIg+Q9FQtRrc/VWchwIryN5aV/HJdEt4IFEZgI=
 github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20240315102754-0f6d1f182e0d h1:tUBb9M6u42LXwHAYHyh22wJeUUQlTpDkXwRXalpRqbo=

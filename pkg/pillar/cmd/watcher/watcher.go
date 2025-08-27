@@ -4,18 +4,21 @@
 package watcher
 
 import (
+	"bufio"
 	"context"
 	"flag"
 	"fmt"
-	ctrdd "github.com/containerd/containerd"
-	"github.com/lf-edge/eve/pkg/pillar/containerd"
 	"math"
 	"os"
 	"runtime"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
-	"github.com/containerd/cgroups"
+	ctrdd "github.com/containerd/containerd"
+	"github.com/lf-edge/eve/pkg/pillar/containerd"
+
 	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
@@ -269,77 +272,175 @@ func updateMemoryMonitorConfig(ctx *watcherContext) {
 	return
 }
 
-// Listens to root cgroup in hierarchy mode (events always propagate
-// up to the root) and call Go garbage collector with reasonable
-// interval when certain amount of memory has been allocated (presumably
-// there is something to reclaim) by an application.
+// Memory pressure monitoring for cgroup v2
 func handleMemoryPressureEvents() {
-	controller, err := cgroups.Load(cgroups.V1, cgroups.StaticPath(""))
-	if err != nil {
-		log.Warnf("handleMemoryPressureEvents(): failed to find root cgroups directory")
-		return
-	}
-	defer controller.Delete()
-	event := cgroups.MemoryPressureEvent(cgroups.MediumPressure,
-		cgroups.HierarchyMode)
-	efd, err := controller.RegisterMemoryEvent(event)
+	memoryEventsFile := "/sys/fs/cgroup/eve/memory.events"
+	pressureFile := "/sys/fs/cgroup/eve/memory.pressure"
 
-	fd := os.NewFile(efd, "efd")
-	defer fd.Close()
+	// Polling-based approach for v2
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
 
-	buf := make([]byte, 8)
-
+	var lastOomKill, lastOom uint64
 	var before, after runtime.MemStats
 	var expected uint64
 	var ts time.Time
 
-	// Infinite loop until error or death
+	log.Functionf("Starting cgroup v2 memory pressure monitoring")
+
 	for {
-		if _, err := fd.Read(buf); err != nil {
-			log.Warnf("handleMemoryPressureEvents(): can't read eventfd, exiting loop")
-			return
-		}
-		// GC is called explicitly no more than once every @interval,
-		// and only if the application has already growth at least
-		// @minGrowthMemAbs and certain fraction from the last
-		// reclaim, so shortly:
-		//     limit = MAX(minGrowthMemAbs, reclaimed * minGrowthMemPerc / 100)
-		interval, minGrowthMemAbs, minGrowthMemPerc := getForcedGOGCParams()
+		select {
+		case <-ticker.C:
+			// Check memory.events for OOM events
+			if events, err := readMemoryEvents(memoryEventsFile); err == nil {
+				if events.oom > lastOom || events.oomKill > lastOomKill {
+					log.Warnf("Memory pressure detected: oom=%d oom_kill=%d",
+						events.oom, events.oomKill)
 
-		if interval == 0 || time.Now().Sub(ts) < interval {
-			// Don't call GC frequently in case of many sequential events
-			continue
-		}
-		runtime.ReadMemStats(&before)
-		if before.Alloc < expected {
-			// Not enough allocated since last GC call, skip this event
-			continue
-		}
-		runtime.GC()
-		runtime.ReadMemStats(&after)
+					// Apply same GC logic as v1
+					interval, minGrowthMemAbs, minGrowthMemPerc := getForcedGOGCParams()
+					if interval == 0 || time.Now().Sub(ts) >= interval {
+						runtime.ReadMemStats(&before)
+						runtime.GC()
+						runtime.ReadMemStats(&after)
 
-		var reclaimed uint64
-		// Careful, unlikely but can be negative if nothing was
-		// reclaimed but allocation has happened just in between the
-		// GC call and stats collection
-		reclaimed = 0
-		if before.Alloc > after.Alloc {
-			reclaimed = before.Alloc - after.Alloc
-		}
-		// Limit on both criteria: absolute and relative to @reclaimed
-		limit := reclaimed * minGrowthMemPerc / 100
-		if limit < minGrowthMemAbs {
-			limit = minGrowthMemAbs
-		}
-		expected = after.Alloc + limit
-		ts = time.Now()
+						var reclaimed uint64
+						reclaimed = 0
+						if before.Alloc > after.Alloc {
+							reclaimed = before.Alloc - after.Alloc
+						}
+						limit := reclaimed * minGrowthMemPerc / 100
+						if limit < minGrowthMemAbs {
+							limit = minGrowthMemAbs
+						}
+						expected = after.Alloc + limit
+						ts = time.Now()
 
-		log.Warnf("Received memory pressure event, before GC MemStats.Alloc=%vKB, after GC MemStats.Alloc=%vKB, reclaimed %vKB, next GC when MemStats.Alloc=%vKB is reached",
-			before.Alloc>>10,
-			after.Alloc>>10,
-			reclaimed>>10,
-			expected>>10)
+						log.Warnf("OOM event triggered GC: before=%vKB, after=%vKB, reclaimed=%vKB",
+							before.Alloc>>10, after.Alloc>>10, reclaimed>>10)
+					}
+
+					lastOom = events.oom
+					lastOomKill = events.oomKill
+				}
+			}
+
+			// Check memory.pressure for PSI data
+			if pressure, err := readMemoryPressure(pressureFile); err == nil {
+				// Trigger GC if pressure is high (60 second average > 50%)
+				if pressure.some.avg60 > 50.0 {
+					interval, minGrowthMemAbs, minGrowthMemPerc := getForcedGOGCParams()
+					if interval == 0 || time.Now().Sub(ts) >= interval {
+						runtime.ReadMemStats(&before)
+						if before.Alloc >= expected {
+							runtime.GC()
+							runtime.ReadMemStats(&after)
+
+							var reclaimed uint64
+							reclaimed = 0
+							if before.Alloc > after.Alloc {
+								reclaimed = before.Alloc - after.Alloc
+							}
+							limit := reclaimed * minGrowthMemPerc / 100
+							if limit < minGrowthMemAbs {
+								limit = minGrowthMemAbs
+							}
+							expected = after.Alloc + limit
+							ts = time.Now()
+
+							log.Functionf("High memory pressure (%.1f%%) triggered GC: before=%vKB, after=%vKB",
+								pressure.some.avg60, before.Alloc>>10, after.Alloc>>10)
+						}
+					}
+				}
+			}
+		}
 	}
+}
+
+type MemoryEvents struct {
+	low     uint64
+	high    uint64
+	max     uint64
+	oom     uint64
+	oomKill uint64
+}
+
+type MemoryPressure struct {
+	some PSIMetrics
+	full PSIMetrics
+}
+
+type PSIMetrics struct {
+	avg10  float64
+	avg60  float64
+	avg300 float64
+	total  uint64
+}
+
+func readMemoryEvents(filename string) (*MemoryEvents, error) {
+	file, err := os.Open(filename)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	events := &MemoryEvents{}
+	scanner := bufio.NewScanner(file)
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		parts := strings.Split(line, " ")
+		if len(parts) != 2 {
+			continue
+		}
+
+		value, err := strconv.ParseUint(parts[1], 10, 64)
+		if err != nil {
+			continue
+		}
+
+		switch parts[0] {
+		case "low":
+			events.low = value
+		case "high":
+			events.high = value
+		case "max":
+			events.max = value
+		case "oom":
+			events.oom = value
+		case "oom_kill":
+			events.oomKill = value
+		}
+	}
+
+	return events, scanner.Err()
+}
+
+func readMemoryPressure(filename string) (*MemoryPressure, error) {
+	file, err := os.Open(filename)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	pressure := &MemoryPressure{}
+	scanner := bufio.NewScanner(file)
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.HasPrefix(line, "some ") {
+			fmt.Sscanf(line, "some avg10=%f avg60=%f avg300=%f total=%d",
+				&pressure.some.avg10, &pressure.some.avg60,
+				&pressure.some.avg300, &pressure.some.total)
+		} else if strings.HasPrefix(line, "full ") {
+			fmt.Sscanf(line, "full avg10=%f avg60=%f avg300=%f total=%d",
+				&pressure.full.avg10, &pressure.full.avg60,
+				&pressure.full.avg300, &pressure.full.total)
+		}
+	}
+
+	return pressure, scanner.Err()
 }
 
 func movingAverage(data []int, windowSize int) []float64 {

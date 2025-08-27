@@ -12,27 +12,34 @@ import (
 )
 
 // GetPillarHardMemoryLimitInBytes returns hard memory limit
-// reserved for pillar in bytes
+// reserved for pillar in bytes (cgroup v2)
 func GetPillarHardMemoryLimitInBytes() (uint64, error) {
 	return readUint64File(PillarHardMemoryLimitFile)
 }
 
 // GetEveMemoryLimitInBytes returns memory limit
-// reserved for eve in bytes
+// reserved for eve in bytes (cgroup v2)
 func GetEveMemoryLimitInBytes() (uint64, error) {
 	return readUint64File(EveMemoryLimitFile)
 }
 
-// GetEveMemoryUsageInBytes returns memory limit
-// reserved for eve in bytes
+// GetEveMemoryUsageInBytes returns current memory usage
+// for eve in bytes (cgroup v2)
 func GetEveMemoryUsageInBytes() (uint64, error) {
 	return readUint64File(EveMemoryUsageFile)
 }
 
-// GetEveKmemUsageInBytes returns memory limit
-// reserved for eve in bytes
+// GetEveMemoryHighInBytes returns memory soft limit
+// for eve in bytes (cgroup v2)
+func GetEveMemoryHighInBytes() (uint64, error) {
+	return readUint64File(EveMemoryHighFile)
+}
+
+// GetEveKmemUsageInBytes returns memory usage for eve in bytes
+// Note: cgroup v2 doesn't separate kernel memory, so we return
+// the same as current usage
 func GetEveKmemUsageInBytes() (uint64, error) {
-	return readUint64File(EveKmemUsageFile)
+	return GetEveMemoryUsageInBytes()
 }
 
 // GetZFSArcMaxSizeInBytes returns memory limit
