@@ -24,7 +24,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/containerd/cgroups"
+	cgroups "github.com/containerd/cgroups/v3/cgroup2"
 	"github.com/google/go-cmp/cmp"
 	envp "github.com/hashicorp/go-envparse"
 	zconfig "github.com/lf-edge/eve-api/go/config"
@@ -49,7 +49,6 @@ import (
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	"github.com/lf-edge/eve/pkg/pillar/utils/wait"
 	zfsutil "github.com/lf-edge/eve/pkg/pillar/utils/zfs"
-	"github.com/opencontainers/runtime-spec/specs-go"
 	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 	"github.com/vishvananda/netlink"
@@ -1332,26 +1331,36 @@ func lookupDomainConfig(ctx *domainContext, key string) *types.DomainConfig {
 
 func setCgroupCpuset(config *types.DomainConfig, status *types.DomainStatus) error {
 	cgroupName := filepath.Join(containerd.GetServicesNamespace(), config.GetTaskName())
-	cgroupPath := cgroups.StaticPath(cgroupName)
-	controller, err := cgroups.Load(cgroups.V1, cgroupPath)
+
+	// Use cgroup v2 manager directly (no systemd)
+	manager, err := cgroups.Load(cgroupName)
 	if err != nil {
 		// It's still not an error, since the path may still not exist
-		log.Warnf("Failed to find cgroups directory for %s", config.DisplayName)
+		log.Warnf("Failed to find cgroups v2 directory for %s: %v", config.DisplayName, err)
 		return nil
 	}
-	// Convert a list of CPUs to a CPU string
+
+	// Prepare CPU mask
 	cpuStrings := make([]string, 0)
 	for _, cpu := range status.VmConfig.CPUs {
 		cpuStrings = append(cpuStrings, strconv.Itoa(cpu))
 	}
 	cpuMask := strings.Join(cpuStrings, ",")
 
-	err = controller.Update(&specs.LinuxResources{CPU: &specs.LinuxCPU{Cpus: cpuMask}})
+	// Update cgroup v2 resources
+	resources := &cgroups.Resources{
+		CPU: &cgroups.CPU{
+			Cpus: cpuMask,
+		},
+	}
+
+	err = manager.Update(resources)
 	if err != nil {
-		log.Warnf("Failed to update CPU set for %s", config.DisplayName)
+		log.Warnf("Failed to update CPU set for %s: %v", config.DisplayName, err)
 		return err
 	}
-	log.Functionf("Adjust the cgroups cpuset of %s to %v", config.DisplayName, status.VmConfig.CPUs)
+
+	log.Functionf("Adjust the cgroups v2 cpuset of %s to %v", config.DisplayName, status.VmConfig.CPUs)
 	return nil
 }
 
