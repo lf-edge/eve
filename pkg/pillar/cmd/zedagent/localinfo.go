@@ -720,6 +720,7 @@ func processReceivedDevCommands(getconfigCtx *getconfigContext, cmd *profile.Loc
 		if err != nil {
 			log.Warnf("could not publish collect info cmd: %v", err)
 		}
+		return
 	}
 
 	if getconfigCtx.updateInprogress {
