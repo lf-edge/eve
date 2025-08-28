@@ -67,7 +67,7 @@ func (e *Subscriber) Start() error {
 	// TODO: add handling with __restart__ and __sync__ counters
 	go func() {
 		e.C <- pubsub.Change{Operation: pubsub.Sync, Key: "done"}
-		// e.C <- pubsub.Change{Operation: pubsub.Restart, Key: "1"}
+		e.C <- pubsub.Change{Operation: pubsub.Restart, Key: "1"}
 	}()
 	return nil
 }
