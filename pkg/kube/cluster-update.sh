@@ -2,7 +2,7 @@
 #
 # Copyright (c) 2024 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
-K3S_VERSION=v1.28.5+k3s1
+K3S_VERSION=v1.33.3+k3s1
 
 #
 # Handle any migrations needed due to updated cluster-init.sh
