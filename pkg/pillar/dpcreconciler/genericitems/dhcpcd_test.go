@@ -10,6 +10,7 @@ import (
 	configitems "github.com/lf-edge/eve/pkg/pillar/dpcreconciler/genericitems"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
+	"github.com/lf-edge/eve/pkg/pillar/utils/netutils"
 )
 
 func TestDhcpcdEqual(t *testing.T) {
@@ -26,11 +27,10 @@ func TestDhcpcdEqual(t *testing.T) {
 			item1: configitems.Dhcpcd{
 				DhcpConfig: types.DhcpConfig{
 					Dhcp:       types.DhcpTypeClient,
-					AddrSubnet: "192.168.1.44/24",          // irrelevant
-					Gateway:    net.ParseIP("192.168.1.1"), // irrelevant
-					DomainName: "mydomain",                 // irrelevant
-					NTPServers: []string{"192.168.1.1"},    // irrelevant
-					Type:       types.NetworkTypeIpv4Only,  // must match
+					AddrSubnet: "192.168.1.44/24",                        // irrelevant
+					DomainName: "mydomain",                               // irrelevant
+					NTPServers: netutils.NewHostnameOrIPs("192.168.1.1"), // irrelevant
+					Type:       types.NetworkTypeIpv4Only,                // must match
 				},
 			},
 			item2: configitems.Dhcpcd{
@@ -97,7 +97,7 @@ func TestDhcpcdEqual(t *testing.T) {
 					Dhcp:       types.DhcpTypeStatic,
 					AddrSubnet: "192.168.1.44/24",
 					DomainName: "mydomain",
-					NTPServers: []string{"192.168.1.1"},
+					NTPServers: netutils.NewHostnameOrIPs("192.168.1.1"),
 					DNSServers: []net.IP{net.ParseIP("8.8.8.8")},
 					Type:       types.NetworkTypeIpv4Only, // irrelevant
 				},
@@ -107,7 +107,7 @@ func TestDhcpcdEqual(t *testing.T) {
 					Dhcp:       types.DhcpTypeStatic,
 					AddrSubnet: "192.168.1.44/24",
 					DomainName: "mydomain",
-					NTPServers: []string{"192.168.1.1"},
+					NTPServers: netutils.NewHostnameOrIPs("192.168.1.1"),
 					DNSServers: []net.IP{net.ParseIP("8.8.8.8")},
 					Type:       types.NetworkTypeIPv4, // irrelevant
 				},
@@ -121,7 +121,7 @@ func TestDhcpcdEqual(t *testing.T) {
 					Dhcp:       types.DhcpTypeStatic,
 					AddrSubnet: "192.168.1.44/24",
 					DomainName: "mydomain",
-					NTPServers: []string{"192.168.1.1"},
+					NTPServers: netutils.NewHostnameOrIPs("192.168.1.1"),
 					DNSServers: []net.IP{net.ParseIP("8.8.8.8")}, // does not match
 				},
 			},
@@ -130,7 +130,7 @@ func TestDhcpcdEqual(t *testing.T) {
 					Dhcp:       types.DhcpTypeStatic,
 					AddrSubnet: "192.168.1.44/24",
 					DomainName: "mydomain",
-					NTPServers: []string{"192.168.1.1"},
+					NTPServers: netutils.NewHostnameOrIPs("192.168.1.1"),
 					DNSServers: []net.IP{net.ParseIP("1.1.1.1")}, // does not match
 				},
 			},
@@ -148,10 +148,11 @@ func TestDhcpcdEqual(t *testing.T) {
 func TestDhcpcdArgs(t *testing.T) {
 	t.Parallel()
 	type test struct {
-		name    string
-		config  types.DhcpConfig
-		expOp   string
-		expArgs []string
+		name          string
+		config        types.DhcpConfig
+		ignoreDhcpGws bool
+		expOp         string
+		expArgs       []string
 	}
 	var tests = []test{
 		{
@@ -172,6 +173,27 @@ func TestDhcpcdArgs(t *testing.T) {
 			},
 			expOp:   "--request",
 			expArgs: []string{"-f", "/etc/dhcpcd.conf", "--noipv4ll", "--ipv4only", "-b", "-t", "0", "--nogateway"},
+		},
+		{
+			name: "DHCP client for IPv4 only with ignored gateway",
+			config: types.DhcpConfig{
+				Dhcp: types.DhcpTypeClient,
+				Type: types.NetworkTypeIpv4Only,
+			},
+			ignoreDhcpGws: true,
+			expOp:         "--request",
+			expArgs:       []string{"-f", "/etc/dhcpcd.conf", "--noipv4ll", "--ipv4only", "-b", "-t", "0", "--nogateway"},
+		},
+		{
+			name: "DHCP client for IPv4 with statically overridden gateway",
+			config: types.DhcpConfig{
+				Dhcp:    types.DhcpTypeClient,
+				Type:    types.NetworkTypeIpv4Only,
+				Gateway: net.IP{192, 168, 1, 1},
+			},
+			expOp: "--request",
+			expArgs: []string{"-f", "/etc/dhcpcd.conf", "--noipv4ll", "--ipv4only", "-b", "-t", "0",
+				"--static", "routers=192.168.1.1"},
 		},
 		{
 			name: "DHCP client for IPv6 only",
@@ -198,7 +220,7 @@ func TestDhcpcdArgs(t *testing.T) {
 				AddrSubnet: "192.168.1.44/24",
 				Gateway:    net.IP{192, 168, 1, 1},
 				DomainName: "mydomain",
-				NTPServers: []string{"192.168.1.1", "10.10.12.13"},
+				NTPServers: netutils.NewHostnameOrIPs("192.168.1.1", "10.10.12.13"),
 				DNSServers: []net.IP{net.ParseIP("8.8.8.8")},
 				Type:       types.NetworkTypeIpv4Only, // irrelevant
 			},
@@ -214,7 +236,7 @@ func TestDhcpcdArgs(t *testing.T) {
 				Dhcp:       types.DhcpTypeStatic,
 				AddrSubnet: "192.168.1.44/24",
 				DomainName: "mydomain",
-				NTPServers: []string{"192.168.1.1", "10.10.12.13"},
+				NTPServers: netutils.NewHostnameOrIPs("192.168.1.1", "10.10.12.13"),
 				DNSServers: []net.IP{net.ParseIP("8.8.8.8")},
 				Type:       types.NetworkTypeIpv4Only, // irrelevant
 			},
@@ -227,7 +249,7 @@ func TestDhcpcdArgs(t *testing.T) {
 	}
 	configurator := configitems.DhcpcdConfigurator{}
 	for _, test := range tests {
-		op, args := configurator.DhcpcdArgs(test.config)
+		op, args := configurator.DhcpcdArgs(test.config, test.ignoreDhcpGws)
 		if op != test.expOp || !generics.EqualLists(args, test.expArgs) {
 			t.Errorf("TEST CASE \"%s\" FAILED - DhcpcdArgs() returned: %s %v, "+
 				"expected: %s %v", test.name, op, args, test.expOp, test.expArgs)

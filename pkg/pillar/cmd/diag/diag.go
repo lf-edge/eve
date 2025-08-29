@@ -30,6 +30,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
@@ -962,23 +963,27 @@ func printOutput(ctx *diagContext, caller string) {
 			}
 			continue
 		}
-		ctx.ph.Print("INFO: %s: DNS servers: ", ifname)
-		for _, ds := range port.DNSServers {
-			ctx.ph.Print("%s, ", ds.String())
+		if len(port.DNSServers) != 0 {
+			ctx.ph.Print("INFO: %s: DNS servers: %s\n", ifname,
+				utils.JoinStrings(port.DNSServers, ", "))
+		} else {
+			ctx.ph.Print("WARNING: %s: No DNS servers configured\n", ifname)
 		}
-		ctx.ph.Print("\n")
-		// If static print static config
-		if port.Dhcp == types.DhcpTypeStatic {
+		if port.ConfiguredSubnet != nil {
 			ctx.ph.Print("INFO: %s: Static IP subnet: %s\n",
 				ifname, port.ConfiguredSubnet.String())
-			for _, r := range port.DefaultRouters {
-				ctx.ph.Print("INFO: %s: Static IP router: %s\n",
-					ifname, r.String())
-			}
-			ctx.ph.Print("INFO: %s: Static Domain Name: %s\n",
+		}
+		if len(port.DefaultRouters) != 0 {
+			ctx.ph.Print("INFO: %s: IP routers: %s\n", ifname,
+				utils.JoinStrings(port.DefaultRouters, ", "))
+		}
+		if port.DomainName != "" {
+			ctx.ph.Print("INFO: %s: Domain Name: %s\n",
 				ifname, port.DomainName)
-			ctx.ph.Print("INFO: %s: Static NTP server: %+v\n",
-				ifname, port.ConfiguredNtpServers)
+		}
+		if len(port.NtpServers) != 0 {
+			ctx.ph.Print("INFO: %s: NTP servers: %s\n", ifname,
+				utils.JoinStrings(port.NtpServers, ", "))
 		}
 		printProxy(ctx, port, ifname)
 		if port.HasError() {

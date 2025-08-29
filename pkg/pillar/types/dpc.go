@@ -456,6 +456,12 @@ func (config *DevicePortConfig) MostlyEqual(config2 *DevicePortConfig) bool {
 			!reflect.DeepEqual(p1.WirelessCfg, p2.WirelessCfg) {
 			return false
 		}
+		if p1.IgnoreDhcpNtpServers != p2.IgnoreDhcpNtpServers ||
+			p1.IgnoreDhcpIPAddresses != p2.IgnoreDhcpIPAddresses ||
+			p1.IgnoreDhcpGateways != p2.IgnoreDhcpGateways ||
+			p1.IgnoreDhcpDNSConfig != p2.IgnoreDhcpDNSConfig {
+			return false
+		}
 	}
 	return true
 }
@@ -594,7 +600,10 @@ type NetworkPortConfig struct {
 	WirelessCfg WirelessConfig
 	// TestResults - Errors from parsing plus success/failure from testing
 	TestResults
-	IgnoreDhcpNtpServers bool
+	IgnoreDhcpNtpServers  bool // Ignore NTP servers from DHCP
+	IgnoreDhcpIPAddresses bool // Ignore IP addresses from DHCP
+	IgnoreDhcpGateways    bool // Ignore gateways from DHCP
+	IgnoreDhcpDNSConfig   bool // Ignore DNS config (DomainName + DNSServers) from DHCP
 }
 
 // EVE-defined port labels.
@@ -694,7 +703,7 @@ type DhcpConfig struct {
 	AddrSubnet string
 	Gateway    net.IP
 	DomainName string
-	NTPServers []string
+	NTPServers []netutils.HostnameOrIP
 	DNSServers []net.IP    // If not set we use Gateway as DNS server
 	Type       NetworkType // IPv4 or IPv6 or Dual stack
 }
@@ -1089,22 +1098,35 @@ type NetworkXObjectConfig struct {
 	UUID uuid.UUID
 	Type NetworkType
 	Dhcp DhcpType
-	// Subnet, Gateway, DomainName, and DNSServers are configured by user
-	// (and used by EVE) only when Dhcp == DhcpTypeStatic.
-	// NTPServers can be set even when Dhcp == DhcpTypeClient. In that case, the
-	// statically configured NTPServers are either merged with those received from DHCP,
-	// or -- if IgnoreDhcpNtpServers is true -- they override the DHCP-provided servers.
-	Subnet               *net.IPNet
-	Gateway              net.IP
-	DomainName           string
-	NTPServers           []string
+
+	// Subnet, Gateway, NTPServers, DomainName, and DNSServers can all be configured
+	// even when Dhcp == DhcpTypeClient. By default, DHCP-provided and statically
+	// configured values are merged. Setting the corresponding Ignore* flag causes
+	// the static value(s) to override DHCP for that field.
+
+	// IP addresses.
+	Subnet                *net.IPNet
+	DhcpRange             IPRange
+	IgnoreDhcpIPAddresses bool
+
+	// IP gateway.
+	Gateway            net.IP
+	IgnoreDhcpGateways bool
+
+	// DNS configuration.
+	DomainName string
+	// If Dhcp=DhcpTypeStatic and DNSServers are not set, Gateway is used as DNS server.
+	DNSServers          []net.IP
+	DNSNameToIPList     []DNSNameToIP // Used for DNS and ACL ipset
+	IgnoreDhcpDNSConfig bool
+
+	// NTP servers.
+	NTPServers           []netutils.HostnameOrIP
 	IgnoreDhcpNtpServers bool
-	DNSServers           []net.IP // If not set we use Gateway as DNS server
-	DhcpRange            IPRange
-	DNSNameToIPList      []DNSNameToIP // Used for DNS and ACL ipset
-	Proxy                *ProxyConfig
-	WirelessCfg          WirelessConfig
-	MTU                  uint16
+
+	Proxy       *ProxyConfig
+	WirelessCfg WirelessConfig
+	MTU         uint16
 	// Any errors from the parser
 	// ErrorAndTime provides SetErrorNow() and ClearError()
 	ErrorAndTime

@@ -15,7 +15,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
 	"github.com/lf-edge/eve/pkg/pillar/utils/netutils"
-	"github.com/sirupsen/logrus"
 )
 
 // DeviceNetworkStatus is published to microservices which needs to know about ports and IP addresses
@@ -47,25 +46,25 @@ type NetworkPortStatus struct {
 	// InvalidConfig is used to flag port config which failed parsing or (static) validation
 	// checks, such as: malformed IP address, undefined required field, IP address not inside
 	// the subnet, etc.
-	InvalidConfig        bool
-	Cost                 uint8
-	Dhcp                 DhcpType
-	Type                 NetworkType  // IPv4 or IPv6 or Dual stack
-	ConfiguredSubnet     *net.IPNet   // entered by user in the static IP config
-	IPv4Subnet           *net.IPNet   // actually configured on the interface (IPv4)
-	IPv6Subnets          []*net.IPNet // actually configured on the interface (IPv6)
-	ConfiguredNtpServers []string     // This comes from network configuration
-	IgnoreDhcpNtpServers bool
-	DomainName           string
-	DNSServers           []net.IP // If not set we use Gateway as DNS server
-	DhcpNtpServers       []net.IP // This comes from DHCP done on uplink port
-	AddrInfoList         []AddrInfo
-	Up                   bool
-	MacAddr              net.HardwareAddr
-	DefaultRouters       []net.IP
-	MTU                  uint16
-	WirelessCfg          WirelessConfig
-	WirelessStatus       WirelessStatus
+	InvalidConfig    bool
+	Cost             uint8
+	Dhcp             DhcpType
+	Type             NetworkType             // IPv4 or IPv6 or Dual stack
+	ConfiguredSubnet *net.IPNet              // entered by user in the static IP config
+	ConfiguredIP     net.IP                  // entered by user in the static IP config
+	IgnoredDhcpIPs   bool                    // true if IPs received from DHCP are not used
+	IPv4Subnet       *net.IPNet              // actually configured on the interface (IPv4)
+	IPv6Subnets      []*net.IPNet            // actually configured on the interface (IPv6)
+	DomainName       string                  // from DHCP or static configuration
+	DNSServers       []net.IP                // from DHCP + static combined (with Gateway as fallback)
+	NtpServers       []netutils.HostnameOrIP // from DHCP + static combined
+	AddrInfoList     []AddrInfo              // from DHCP + static combined
+	DefaultRouters   []net.IP                // from DHCP + static combined
+	Up               bool
+	MacAddr          net.HardwareAddr
+	MTU              uint16
+	WirelessCfg      WirelessConfig
+	WirelessStatus   WirelessStatus
 	ProxyConfig
 	L2LinkConfig
 	// TestResults provides recording of failure and success
@@ -217,7 +216,8 @@ func (status DeviceNetworkStatus) LogKey() string {
 	return string(base.DeviceNetworkStatusLogType) + "-" + status.Key()
 }
 
-// MostlyEqual compares two DeviceNetworkStatus but skips things the test status/results aspects, including State and Testing.
+// MostlyEqual compares two DeviceNetworkStatus but skips things the test status/results
+// aspects, including State and Testing.
 // We compare the Ports in array order.
 func (status DeviceNetworkStatus) MostlyEqual(status2 DeviceNetworkStatus) bool {
 
@@ -241,40 +241,29 @@ func (status DeviceNetworkStatus) MostlyEqual(status2 DeviceNetworkStatus) bool 
 		if p1.Dhcp != p2.Dhcp ||
 			!netutils.EqualIPNets(p1.ConfiguredSubnet, p2.ConfiguredSubnet) ||
 			!netutils.EqualIPNets(p1.IPv4Subnet, p2.IPv4Subnet) ||
-			!generics.EqualSetsFn(p1.IPv6Subnets, p2.IPv6Subnets, netutils.EqualIPNets) ||
-			!generics.EqualSets(p1.ConfiguredNtpServers, p2.ConfiguredNtpServers) ||
+			!generics.EqualSetsFn(p1.IPv6Subnets, p2.IPv6Subnets, netutils.EqualIPNets) {
+			return false
+		}
+		if !generics.EqualSetsFn(p1.DNSServers, p2.DNSServers, netutils.EqualIPs) ||
 			p1.DomainName != p2.DomainName {
 			return false
 		}
-		if len(p1.DNSServers) != len(p2.DNSServers) {
+		if !generics.EqualSetsFn(p1.NtpServers, p2.NtpServers, netutils.EqualHostnameOrIPs) {
 			return false
 		}
-		for i := range p1.DNSServers {
-			if !p1.DNSServers[i].Equal(p2.DNSServers[i]) {
-				return false
-			}
-		}
-		if len(p1.AddrInfoList) != len(p2.AddrInfoList) {
+		if !generics.EqualSetsFn(p1.AddrInfoList, p2.AddrInfoList,
+			func(a, b AddrInfo) bool {
+				return a.Addr.Equal(b.Addr)
+			}) {
 			return false
-		}
-		for i := range p1.AddrInfoList {
-			if !p1.AddrInfoList[i].Addr.Equal(p2.AddrInfoList[i].Addr) {
-				return false
-			}
 		}
 		if p1.Up != p2.Up ||
 			!bytes.Equal(p1.MacAddr, p2.MacAddr) {
 			return false
 		}
-		if len(p1.DefaultRouters) != len(p2.DefaultRouters) {
+		if !generics.EqualSetsFn(p1.DefaultRouters, p2.DefaultRouters, netutils.EqualIPs) {
 			return false
 		}
-		for i := range p1.DefaultRouters {
-			if !p1.DefaultRouters[i].Equal(p2.DefaultRouters[i]) {
-				return false
-			}
-		}
-
 		if !reflect.DeepEqual(p1.ProxyConfig, p2.ProxyConfig) ||
 			!reflect.DeepEqual(p1.WirelessStatus, p2.WirelessStatus) {
 			return false
@@ -563,37 +552,6 @@ func GetDNSServers(dns DeviceNetworkStatus, ifname string) []net.IP {
 	// Avoid duplicates.
 	servers = generics.FilterDuplicatesFn(servers, netutils.EqualIPs)
 	return servers
-}
-
-// GetNTPServers returns all, or the ones on one interface if ifname is set
-// Duplicate entries ared filtered out, but no DNS resolution happens, i.e.
-// 1.2.3.4.nip.io and 1.2.3.4 can be in the list at the same time
-func GetNTPServers(dns DeviceNetworkStatus, ifname string) ([]net.IP, []string) {
-	var serverDomainsOrIPs []string
-	var serverIPs []net.IP
-	for _, us := range dns.Ports {
-		if ifname != "" && ifname != us.IfName {
-			continue
-		}
-		// NTP servers received via DHCP.
-		if !us.IgnoreDhcpNtpServers {
-			for _, ntpServer := range us.DhcpNtpServers {
-				// from golang/src/net/ip.go
-				if len(ntpServer) != net.IPv4len && len(ntpServer) != net.IPv6len {
-					logrus.Warnf("parsing ntp server '%v' failed", ntpServer)
-					continue
-				}
-				serverIPs = append(serverIPs, ntpServer)
-			}
-		}
-		// Add statically configured NTP server as well.
-		if us.ConfiguredNtpServers != nil {
-			serverDomainsOrIPs = append(serverDomainsOrIPs, us.ConfiguredNtpServers...)
-		}
-	}
-	// Avoid duplicates.
-	serverDomainsOrIPs = generics.FilterDuplicates(serverDomainsOrIPs)
-	return serverIPs, serverDomainsOrIPs
 }
 
 // CountLocalIPv4AddrAnyNoLinkLocalIf is like CountLocalAddrAnyNoLinkLocalIf but

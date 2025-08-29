@@ -6,6 +6,8 @@ package netmonitor
 import (
 	"context"
 	"net"
+
+	"github.com/lf-edge/eve/pkg/pillar/utils/netutils"
 )
 
 // NetworkMonitor should allow to:
@@ -188,8 +190,6 @@ type DNSInfo struct {
 type DHCPInfo struct {
 	IPv4Subnet     *net.IPNet
 	IPv6Subnets    []*net.IPNet
-	IPv4NtpServers []net.IP
-	IPv6NtpServers []net.IP
-	// NTP servers configured with hostname instead of IP address.
-	HostnameNtpServers []string
+	IPv4NtpServers []netutils.HostnameOrIP
+	IPv6NtpServers []netutils.HostnameOrIP
 }
