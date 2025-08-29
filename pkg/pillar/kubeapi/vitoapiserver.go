@@ -329,7 +329,7 @@ func RolloutDiskToPVC(ctx context.Context, log *base.LogObject, exists bool,
 
 		uploadDuration := time.Since(startTimeThisUpload)
 		if err != nil && !strings.Contains(string(output), "already successfully imported") {
-			err = fmt.Errorf("RolloutDiskToPVC: Failed after %f seconds to convert qcow to PVC %s: %v", uploadDuration.Seconds(), output, err)
+			err = fmt.Errorf("RolloutDiskToPVC: pvc:%s Failed after %f seconds to convert qcow to PVC %s: %v", pvcName, uploadDuration.Seconds(), output, err)
 			log.Error(err)
 
 			// This is a backoff to handle cases where the kubernetes api server
@@ -344,18 +344,60 @@ func RolloutDiskToPVC(ctx context.Context, log *base.LogObject, exists bool,
 		// Eventually the command should return something like:
 		// PVC 688b9728-6f21-4bb6-b2f7-4928813fefdc-pvc-0 already successfully imported/cloned/updated
 		overallDuration := time.Since(startTimeOverall)
-		log.Functionf("RolloutDiskToPVC image upload completed on try:%d after %f seconds, total elapsed time %f seconds", uploadTry, uploadDuration.Seconds(), overallDuration.Seconds())
+		log.Functionf("RolloutDiskToPVC pvc:%s image upload completed on try:%d after %f seconds, total elapsed time %f seconds",
+			pvcName, uploadTry, uploadDuration.Seconds(), overallDuration.Seconds())
+
+		waitCdiAnnotationStart := time.Now()
 		err = waitForPVCUploadComplete(ctx, pvcName, log)
+		waitCdiAnnotationDuration := time.Since(waitCdiAnnotationStart)
 		if err != nil {
 			err = fmt.Errorf("RolloutDiskToPVC: error wait for PVC %v", err)
 			log.Error(err)
 			return err
 		}
-		log.Noticef("RolloutDiskToPVC image upload completed on try:%d after %f seconds, total elapsed time %f seconds", uploadTry, uploadDuration.Seconds(), overallDuration.Seconds())
+		overallDuration = time.Since(startTimeOverall)
+		log.Noticef("RolloutDiskToPVC pvc:%s image upload completed on try:%d after virtctl-image-upload:%f seconds, cdi-upload-annotation-wait:%f seconds, total-elapsed-time:%f seconds",
+			pvcName, uploadTry, uploadDuration.Seconds(), waitCdiAnnotationDuration.Seconds(), overallDuration.Seconds())
 		return nil
 	}
 
-	return fmt.Errorf("RolloutDiskToPVC attempts to upload image failed")
+	//
+	// This failure path can mask a list of possible failure points.
+	// Attempt to diagnose the root causes and provide
+	// differentiated detailed strings.
+	//
+
+	// 1. Use the PVC as our starting point to diagnose, we have it's name
+	pvc, err := PVCGet(pvcName, log)
+	if err != nil {
+		return fmt.Errorf("PVC Upload for pvc:%s attempts to upload image failed, pvc not created", pvcName)
+	}
+	pvName := pvc.Spec.VolumeName
+	// 2. Check if the uploader marked its annotation on the pvc
+	cdiUploadPodName, exists := pvc.ObjectMeta.Annotations["cdi.kubevirt.io/storage.uploadPodName"]
+	if !exists {
+		return fmt.Errorf("PVC Upload for pvc:%s attempts to upload image failed, no upload pod annotation", pvcName)
+	}
+	// 3. Did the uploader get created?
+	pod, err := PODGet(cdiUploadPodName, log)
+	if err != nil {
+		return fmt.Errorf("PVC Upload for pvc:%s attempts to upload image failed, upload pod:%s does not exist", pvcName, cdiUploadPodName)
+	}
+	uploadNodeName := pod.Spec.NodeName
+	// 4. Did the PVC claim get a backing pv?
+	lhVol, err := lhVolGet(pvName)
+	if err != nil {
+		return fmt.Errorf("PVC Upload for pvc:%s attempts to upload image failed, pv:%s does not exist", pvcName, pvName)
+	}
+	lhVolEi := lhVol.Status.CurrentImage
+	// 5. Does the backing vol have an engine? Is that engine deployed on the node where the uploader is?
+	deployed, err := lhEiDeployedOnNode(lhVolEi, uploadNodeName)
+	if !deployed {
+		return fmt.Errorf("PVC Upload for pvc:%s attempts to upload image failed, engine not deployed on node:%s %v", pvcName, uploadNodeName, err)
+	}
+
+	// Fallback to generic failure message
+	return fmt.Errorf("RolloutDiskToPVC pvc:%s attempts to upload image failed", pvcName)
 }
 
 // GetPVFromPVC : Returns volume name (PV) from the PVC name
@@ -446,4 +488,37 @@ func DeleteVolumeAttachment(vaName string, log *base.LogObject) error {
 
 func stringPtr(str string) *string {
 	return &str
+}
+
+// PVCGet : returns the kubernetes pvc object matched by name
+func PVCGet(pvcName string, log *base.LogObject) (*corev1.PersistentVolumeClaim, error) {
+	// Get the Kubernetes clientset
+	clientset, err := GetClientSet()
+	if err != nil {
+		err = fmt.Errorf("failed to get clientset: %v", err)
+		log.Error(err)
+		return nil, err
+	}
+	pvc, err := clientset.CoreV1().PersistentVolumeClaims(EVEKubeNameSpace).
+		Get(context.Background(), pvcName, metav1.GetOptions{})
+	if err != nil {
+		return nil, err
+	}
+	return pvc, nil
+}
+
+// PODGet : returns the kubernetes pod object matched by name
+func PODGet(podName string, log *base.LogObject) (*corev1.Pod, error) {
+	clientset, err := GetClientSet()
+	if err != nil {
+		err = fmt.Errorf("failed to get clientset: %v", err)
+		log.Error(err)
+		return nil, err
+	}
+	pod, err := clientset.CoreV1().Pods(EVEKubeNameSpace).
+		Get(context.Background(), podName, metav1.GetOptions{})
+	if err != nil {
+		return nil, err
+	}
+	return pod, nil
 }
