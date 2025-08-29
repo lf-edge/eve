@@ -162,6 +162,8 @@ type zedagentContext struct {
 	subClusterUpdateStatus pubsub.Subscription
 	subKubeClusterInfo     pubsub.Subscription
 
+	subNestedAppRuntimeStorageMetric pubsub.Subscription
+
 	// All controller HTTP requests which can't be dropped and send
 	// should be repeated in case of a transmission error are added to
 	// this queue.
@@ -2072,6 +2074,18 @@ func initPostOnboardSubs(zedagentCtx *zedagentContext) {
 	}
 
 	initKubeSubs(zedagentCtx)
+
+	zedagentCtx.subNestedAppRuntimeStorageMetric, err = ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:   "msrv",
+		MyAgentName: agentName,
+		TopicImpl:   types.NestedAppRuntimeDiskMetric{},
+		Activate:    true,
+		WarningTime: warningTime,
+		ErrorTime:   errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
 }
 
 func triggerPublishHwInfoToDest(ctxPtr *zedagentContext, dest destinationBitset) {

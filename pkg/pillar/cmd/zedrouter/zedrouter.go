@@ -155,7 +155,8 @@ type zedrouter struct {
 	cniRequests        chan *rpcRequest
 
 	// publist nested App Status
-	pubNestedAppDomainStatus pubsub.Publication
+	pubNestedAppDomainStatus         pubsub.Publication
+	pubNestedAppRuntimeStorageMetric pubsub.Publication
 }
 
 // AddAgentSpecificCLIFlags adds CLI options
@@ -589,6 +590,14 @@ func (z *zedrouter) initPublications() (err error) {
 		return err
 	}
 
+	z.pubNestedAppRuntimeStorageMetric, err = z.pubSub.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName: agentName,
+			TopicType: types.NestedAppRuntimeDiskMetric{},
+		})
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
