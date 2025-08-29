@@ -700,3 +700,19 @@ func (z *zedrouter) handleAppNetworkDelete(ctxArg interface{}, key string,
 	z.log.Functionf("handleAppNetworkDelete(%s) done for %s",
 		key, config.DisplayName)
 }
+
+func (z *zedrouter) handleAppInstanceStatusDelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	// Check if we have a runtime supplied storage metric object.
+	// If the runtime is being deleted, then delete the storage metric as well.
+	// The storage metric is read from an http server on the runtime
+	// If the app instance is removed then the storage metric should follow
+	z.log.Functionf("handleAppInstanceStatusDelete key:%s", key)
+
+	items := z.pubNestedAppRuntimeStorageMetric.GetAll()
+	_, exists := items[key].(types.NestedAppRuntimeDiskMetric)
+	if exists {
+		z.log.Functionf("unpublishing NestedAppRuntimeDiskMetric id:%s", key)
+		z.pubNestedAppRuntimeStorageMetric.Unpublish(key)
+	}
+}
