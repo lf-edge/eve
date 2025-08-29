@@ -471,8 +471,17 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 
 	log.Functionf("doUpdateVol(%s) name %s", status.Key(), status.DisplayName)
 
-	// If volume is already created or if is a replicated volume, do nothing.
-	if status.State == types.CREATED_VOLUME || status.IsReplicated {
+	// Anything to do?
+	// If volume is a replicated volume, we expect it to be created on owner node, so set the status
+	// as such and publish
+	if status.IsReplicated {
+		status.State = types.CREATED_VOLUME
+		status.SubState = types.VolumeSubStateCreated
+		return true, true
+	}
+
+	// If volume is already created, do nothing
+	if status.State == types.CREATED_VOLUME {
 		log.Functionf("doUpdateVol(%s) name %s nothing to do",
 			status.Key(), status.DisplayName)
 		return false, true
