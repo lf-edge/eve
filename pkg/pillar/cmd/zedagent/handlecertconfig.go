@@ -200,13 +200,13 @@ func controllerCertsTask(ctx *zedagentContext, triggerCerts <-chan struct{}) {
 	// Run a timer for extra safety to handle controller certificates updates
 	// If we failed with the initial we have a short timer, otherwise
 	// the configurable one.
-	const shortTime = 120 // Two minutes
-	certInterval := ctx.globalConfig.GlobalValueInt(types.CertInterval)
+	const shortTime = 2 * time.Minute
+	certInterval := ctx.globalConfig.GlobalValueDuration(types.CertInterval)
 	if retry {
 		log.Noticef("Initial getCertsFromController failed; switching to short timer")
 		certInterval = shortTime
 	}
-	interval := time.Duration(certInterval) * time.Second
+	interval := certInterval
 	max := float64(interval)
 	min := max * 0.3
 	periodicTicker := flextimer.NewRangeTicker(time.Duration(min),
@@ -232,14 +232,13 @@ func controllerCertsTask(ctx *zedagentContext, triggerCerts <-chan struct{}) {
 		ctx.ps.StillRunning(wdName, warningTime, errorTime)
 		if retry && success {
 			log.Noticef("getCertsFromController succeeded; switching to long timer %d seconds",
-				ctx.globalConfig.GlobalValueInt(types.CertInterval))
-			updateTaskTimer(ctx.globalConfig.GlobalValueInt(types.CertInterval),
+				ctx.globalConfig.GlobalValueDuration(types.CertInterval))
+			updateTaskTimer(ctx.globalConfig.GlobalValueDuration(types.CertInterval),
 				ctx.getconfigCtx.certTickerHandle)
 			retry = false
 		} else if !retry && !success {
 			log.Noticef("getCertsFromController failed; switching to short timer")
-			updateTaskTimer(shortTime,
-				ctx.getconfigCtx.certTickerHandle)
+			updateTaskTimer(shortTime, ctx.getconfigCtx.certTickerHandle)
 			retry = true
 		}
 	}

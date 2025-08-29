@@ -23,6 +23,8 @@ func TestDefaultValue(t *testing.T) {
 			assert.Equal(t, item.TriStateDefault, defaultValue.TriStateValue)
 		} else if item.ItemType == ConfigItemTypeString {
 			assert.Equal(t, item.StringDefault, defaultValue.StrValue)
+		} else if item.ItemType == ConfigItemTypeDuration {
+			assert.Equal(t, item.DurationDefault, defaultValue.DurationValue)
 		}
 	}
 
