@@ -18,6 +18,7 @@ import (
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/google/go-cmp/cmp"
+	metrics "github.com/lf-edge/eve-api/go/metrics"
 	nestedapp "github.com/lf-edge/eve-api/go/nestedappinstancemetrics"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -25,6 +26,7 @@ import (
 	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 )
 
 // dockerAPIPort - unencrypted docker socket for remote password-less access
@@ -44,6 +46,8 @@ const (
 	nestedAppDomainAppListURL = "/api/v1/inventory/nested-app-id"
 	// nestedAppDomainAppMetricsURL - URL to get nested domain app metrics with nested-app uuid
 	nestedAppDomainAppMetricsURL = "/api/v1/metrics/nested-app-id/"
+	// nestedAppRuntimeDiskMetricURL - URL to get the runtime level storage metrics
+	nestedAppRuntimeDiskMetricURL = "/api/v1/storagemetrics/runtime"
 )
 
 // check if we need to launch the goroutine to collect App container stats
@@ -99,6 +103,7 @@ func (z *zedrouter) collectAppContainerStats() {
 					switch status.DeploymentType {
 					case types.AppRuntimeTypeDocker:
 						z.getNestedDomainAppMetrics(status, &acNum)
+						z.getNestedAppRuntimeDiskMetric(status)
 					default:
 						z.getIotEdgeMetricsAndLogs(status, collectTime, lastLogTime, &acNum, &numlogs)
 					}
@@ -517,4 +522,34 @@ func fetchHTTPData(url string) ([]byte, error) {
 	}
 
 	return data, nil
+}
+
+func (z *zedrouter) getNestedAppRuntimeDiskMetric(status types.AppNetworkStatus) {
+	url := buildNestedAppURL(status, nestedAppRuntimeDiskMetricURL, "")
+	data, err := fetchHTTPData(url)
+	if err != nil {
+		z.log.Errorf("getNestedAppRuntimeDiskMetric: %v", err)
+		return
+	}
+
+	var naStorageMetric metrics.NestedAppRuntimeDiskMetric
+	if err := proto.Unmarshal(data, &naStorageMetric); err != nil {
+		z.log.Errorf("getNestedAppRuntimeDiskMetric: failed to decode proto data, error: %v", err)
+		return
+	}
+
+	psMetric := types.NestedAppRuntimeDiskMetric{
+		UUID:             naStorageMetric.Uuid,
+		TotalMb:          naStorageMetric.TotalMb,
+		UsedMb:           naStorageMetric.UsedMb,
+		AllocatedMb:      naStorageMetric.AllocatedMb,
+		DependentSpaceMb: make(map[string]types.FsUsedMetric),
+	}
+	for naAppID, naAppFsUsed := range naStorageMetric.GetDependentSpaceMb() {
+		psMetric.DependentSpaceMb[naAppID] = types.FsUsedMetric{
+			UsedMb:      naAppFsUsed.UsedMb,
+			AllocatedMb: naAppFsUsed.AllocatedMb,
+		}
+	}
+	z.pubNestedAppRuntimeStorageMetric.Publish(psMetric.Key(), psMetric)
 }
