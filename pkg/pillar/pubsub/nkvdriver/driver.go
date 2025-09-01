@@ -25,10 +25,14 @@ func NewNkvDriver(path string) *NkvDriver {
 	}
 	nkvClient := client.NewClient(path)
 
-	return &NkvDriver{
+	driver := NkvDriver{
 		socketPath: sockPath,
 		client:     nkvClient,
 	}
+
+	// driver.client.Delete(driver.pubDirName("*"))
+
+	return &driver
 }
 
 // (global bool, name, topic string, persistent bool, updaterList *pubsub.Updaters, restarted pubsub.Restarted, differ pubsub.Differ) (pubsub.DriverPublisher, error) {
@@ -58,7 +62,7 @@ func (d *NkvDriver) Publisher(global bool, name, topic string, persistent bool, 
 
 func (s *NkvDriver) pubDirName(name string) string {
 	if name != "" {
-		return fmt.Sprintf("default.%s", name)
+		return fmt.Sprintf("runtime.%s", name)
 	} else {
 		return "default"
 	}
@@ -66,7 +70,7 @@ func (s *NkvDriver) pubDirName(name string) string {
 
 func (s *NkvDriver) fixedDirName(name string) string {
 	if name != "" {
-		return fmt.Sprintf("runtime.%s", name)
+		return fmt.Sprintf("runtime.fixeddir.%s", name)
 	} else {
 		return "runtime"
 	}
