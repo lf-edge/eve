@@ -5,13 +5,12 @@ if test -f /proc/vmcore; then
     exit 0;
 fi
 
-# Create 'memory' controller for the 'memlogd' making it part
-# of the eve/services
-mkdir -p /sys/fs/cgroup/memory/eve/services/memlogd
+# Create EVE services cgroup for memlogd (v2 style)
+# The cgroup structure is created by 010-eve-cgroup script
+# We just need to ensure the memlogd cgroup exists
+mkdir -p /sys/fs/cgroup/eve/services/memlogd
 
-# Add 'memlogd' to the 'memory' controller. Further 'memlogd'
-# cgroup changes happen in the 010-eve-cgroup, see all the
-# details there.
-echo $$ > /sys/fs/cgroup/memory/eve/services/memlogd/tasks
+# Move current process to memlogd cgroup (v2 style)
+echo $$ > /sys/fs/cgroup/eve/services/memlogd/cgroup.procs
 
 /usr/bin/memlogd -daemonize -max-line-len 8192
