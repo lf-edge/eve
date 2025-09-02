@@ -239,7 +239,6 @@ func (q *qemuRunner) qemuVerboseArgs() {
 }
 
 func (q *qemuRunner) qemuQuietArgs() {
-	q.appendArgs["console=null"] = struct{}{}
 	q.appendArgs["quiet"] = struct{}{}
 }
 
