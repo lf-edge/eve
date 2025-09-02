@@ -1,7 +1,7 @@
 kernel:
   image: KERNEL_TAG
-  # force cgroup v2 
-  cmdline: "rootdelay=3 linuxkit.unified_cgroup_hierarchy=1"
+  # force cgroup v2
+  cmdline: "rootdelay=3 linuxkit.unified_cgroup_hierarchy=1 linuxkit.runc_console=1 linuxkit.runc_debug=1"
 init:
   # init using runc 1.3.0 and containerd 2.1.4
   - linuxkit/init:680da6e6f79bb8236a095147d532cd2160e23c9f
