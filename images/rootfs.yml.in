@@ -1,7 +1,7 @@
 kernel:
   image: KERNEL_TAG
-  # the unified_cgroup_hierarchy forces cgroupsv1, which is required until pillar is ready to support v2
-  cmdline: "rootdelay=3 linuxkit.unified_cgroup_hierarchy=0"
+  # force cgroup v2 
+  cmdline: "rootdelay=3 linuxkit.unified_cgroup_hierarchy=1"
 init:
   # init using runc 1.3.0 and containerd 2.1.4
   - linuxkit/init:680da6e6f79bb8236a095147d532cd2160e23c9f
