@@ -16,6 +16,8 @@ config:
     - /persist:/persist:rshared,rbind
     - /usr/bin/containerd:/usr/bin/containerd
     - /opt/vendor:/opt/vendor:ro
+    - /sys/fs/cgroup:/sys/fs/cgroup:rshared,rbind,rw
+
   net: host
   capabilities:
     - all
