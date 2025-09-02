@@ -359,6 +359,8 @@ func RebootStack(log *base.LogObject, stacks string, agentName string, agentPid 
 		log.Errorf("printToFile failed %s\n", err)
 	}
 	agentDebugDir := fmt.Sprintf("%s/%s/", types.PersistDebugDir, agentName)
+	// create the directory if it does not exist
+	_ = os.MkdirAll(agentDebugDir, 0755)
 	agentStackTraceFile := agentDebugDir + "/fatal-stack"
 	err = overWriteFile(agentStackTraceFile, fmt.Sprintf("%v\n", stacks))
 	if err != nil {

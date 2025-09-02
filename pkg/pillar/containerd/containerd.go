@@ -1031,6 +1031,8 @@ func StartUserContainerdInstance() error {
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("user containerd cannot start: %v", err)
 	}
+
+	logrus.Infof("Started user containerd with PID: %d", cmd.Process.Pid)
 	go func() {
 		err := cmd.Wait()
 		logrus.Fatalf("user containerd stopped: %v", err)
