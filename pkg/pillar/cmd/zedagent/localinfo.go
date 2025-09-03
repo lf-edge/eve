@@ -294,7 +294,7 @@ func triggerLocalCommand(ctx *getconfigContext, cmd types.AppCommand,
 		appCounters.RestartCmd.Counter++
 		appCounters.RestartCmd.ApplyTime = timestamp
 		app.LocalRestartCmd = appCounters.RestartCmd
-		checkAndPublishAppInstanceConfig(ctx, *app)
+		checkAndPublishAppInstanceConfig(ctx.pubAppInstanceConfig, *app)
 
 	case types.AppCommandPurge:
 		// To trigger application purge we take the previously published
@@ -327,16 +327,16 @@ func triggerLocalCommand(ctx *getconfigContext, cmd types.AppCommand,
 				continue
 			}
 			volume := volObj.(types.VolumeConfig)
-			unpublishVolumeConfig(ctx, volKey)
+			unpublishVolumeConfig(ctx.pubVolumeConfig, volKey)
 			// Publish volume with an increased local generation counter.
 			localGenCounter++
 			ctx.sideController.localCommands.VolumeGenCounters[uuid] = localGenCounter
 			vr.LocalGenerationCounter = localGenCounter
 			volume.LocalGenerationCounter = localGenCounter
-			publishVolumeConfig(ctx, volume)
+			publishVolumeConfig(ctx.pubVolumeConfig, volume)
 			changedVolumes = true
 		}
-		checkAndPublishAppInstanceConfig(ctx, *app)
+		checkAndPublishAppInstanceConfig(ctx.pubAppInstanceConfig, *app)
 	}
 	return changedVolumes
 }
@@ -708,6 +708,21 @@ func processReceivedDevCommands(getconfigCtx *getconfigContext, cmd *profile.Loc
 		return
 	}
 	command := types.DevCommand(cmd.Command)
+
+	if command == types.DevCommandCollectInfo {
+		for key := range getconfigCtx.pubCollectInfoCmd.GetAll() {
+			getconfigCtx.pubCollectInfoCmd.Unpublish(key)
+		}
+		key := time.Now().String()
+		err := getconfigCtx.pubCollectInfoCmd.Publish(key, types.CollectInfoCmd{
+			Time: time.Unix(0, int64(cmd.Timestamp)),
+		})
+		if err != nil {
+			log.Warnf("could not publish collect info cmd: %v", err)
+		}
+		return
+	}
+
 	if getconfigCtx.updateInprogress {
 		switch command {
 		case types.DevCommandUnspecified:

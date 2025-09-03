@@ -6,7 +6,7 @@
 
 # Script version, don't forget to bump up once something is changed
 
-VERSION=35
+VERSION=40
 # Add required packages here, it will be passed to "apk add".
 # Once something added here don't forget to add the same package
 # to the Dockerfile ('ENV PKGS' line) of the debug container,
@@ -16,7 +16,35 @@ VERSION=35
 PKG_DEPS="procps tar dmidecode iptables dhcpcd"
 
 DATE=$(date "+%Y-%m-%d-%H-%M-%S")
-INFO_DIR_SUFFIX="eve-info-v$VERSION-$DATE"
+# Function to get device identifier (UUID if onboarding, serial otherwise)
+get_device_identifier() {
+    local device_id=""
+    # Check if device is onboarded by looking for device UUID
+    # During onboarding, the device UUID is typically stored in /persist/status/uuid
+    if [ -f "/persist/status/uuid" ]; then
+        device_id=$(tr -d '\n' < /persist/status/uuid 2>/dev/null)
+    fi
+    # If no UUID found or device is not onboarded, attempt to retrieve the device serial
+    if [ -z "$device_id" ] ; then
+        #Get device serial number from DMI/SMBIOS
+        device_id=$(dmidecode -s system-serial-number 2>/dev/null | head -1)
+    fi
+    # Clean up the identifier (remove spaces, special chars, limit length)
+    device_id=$(echo "$device_id" | tr -d ' \t\n\r' | tr -cd '[:alnum:]-' | cut -c1-32)
+    # If still empty return "unknown"
+    if [ -z "$device_id" ]; then
+        logger -s "Could not get either device UUID or device serial"
+        device_id="unknown"
+    fi
+    echo "$device_id"
+}
+
+# Get device identifier
+DEVICE_ID=$(get_device_identifier)
+
+# Generate filename with device identifier
+INFO_DIR_SUFFIX="eve-info-v$VERSION-$DEVICE_ID-$DATE"
+
 SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
 
 COLLECT_LOGS_DAYS=
@@ -44,6 +72,13 @@ usage()
     echo "Collect-logs mode:"
     echo "       -s tar whole /sysfs"
     echo "       -t NUMBER-OF-DAYS    - collect logs from the last NUMBER-OF-DAYS [0-30]. Set to 0 to not include /persist/newlog logs."
+    echo "       -u server            - upload logs via http to server with credentials in AUTHORIZATION environment variable"
+    echo "                              AUTHORIZATION is the value for the http header called 'Authorization'"
+    echo "                              To use basic auth with user-id 'Aladdin' and password 'open sesame', it would be the following:"
+    echo "                              'Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ=='"
+    echo "                              To create the base64-encoded value, the following can be used:"
+    echo "                              echo -n 'Aladdin:open sesame' | base64"
+    echo "                              After uploading the tarball will be deleted."
     echo ""
     echo "Read-logs mode:"
     echo "       -d                   - read device logs only"
@@ -53,7 +88,7 @@ usage()
     exit 1
 }
 
-while getopts "vhsa:djet:" o; do
+while getopts "vu:sha:djet:" o; do
     case "$o" in
         h)
             usage
@@ -76,13 +111,16 @@ while getopts "vhsa:djet:" o; do
             READ_LOGS_DEV=1
             ;;
         e)
-            INFO_DIR_SUFFIX="eve-info-edgeview-v$VERSION-$DATE"
+            INFO_DIR_SUFFIX="eve-info-edgeview-v$VERSION-$DEVICE_ID-$DATE"
             ;;
         s)
             TAR_WHOLE_SYS=1
             ;;
         j)
             OUT_LOGS_IN_JSON=1
+            ;;
+        u)
+            UPLOAD="$OPTARG"
             ;;
         :)
             usage
@@ -533,4 +571,12 @@ sync
 
 echo "- done"
 echo
-echo "EVE info is collected '$TARBALL_FILE'"
+echo "EVE info is collected into '$TARBALL_FILE'"
+
+if [ -n "$UPLOAD" ];
+then
+    echo "Uploading tarball to $UPLOAD"
+    curl --retry-all-errors --retry 10 --retry-delay 3 -s -d @"$TARBALL_FILE" -H "Authorization: $AUTHORIZATION" "$UPLOAD/$INFO_DIR_SUFFIX.tar.gz" && \
+        rm -f "$TARBALL_FILE"
+    echo "Uploading tarball to $UPLOAD done"
+fi

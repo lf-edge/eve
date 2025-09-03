@@ -21,6 +21,7 @@ import (
 	zconfig "github.com/lf-edge/eve-api/go/config"
 	zevecommon "github.com/lf-edge/eve-api/go/evecommon"
 	"github.com/lf-edge/eve/pkg/pillar/objtonum"
+	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/sriov"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
@@ -78,7 +79,7 @@ func parseConfig(getconfigCtx *getconfigContext, config *zconfig.EdgeDevConfig,
 
 	// Prepare LOC structure before everything to be ready to
 	// publish info
-	parseLocConfig(getconfigCtx, config)
+	publishLocConfig(getconfigCtx, config)
 
 	// Look for timers and other settings in configItems
 	// Process Config items even when configProcessingSkipFlagReboot is set.
@@ -811,7 +812,7 @@ func parseAppInstanceConfig(getconfigCtx *getconfigContext,
 		}
 
 		// Verify that it fits and if not publish with error
-		checkAndPublishAppInstanceConfig(getconfigCtx, appInstance)
+		checkAndPublishAppInstanceConfig(getconfigCtx.pubAppInstanceConfig, appInstance)
 	}
 }
 
@@ -2936,12 +2937,11 @@ func mergeMaintenanceMode(ctx *zedagentContext, caller string) {
 		ctx.apiMaintenanceMode, ctx.localMaintenanceMode)
 }
 
-func checkAndPublishAppInstanceConfig(getconfigCtx *getconfigContext,
+func checkAndPublishAppInstanceConfig(pub pubsub.Publication,
 	config types.AppInstanceConfig) {
 
 	key := config.Key()
 	log.Tracef("checkAndPublishAppInstanceConfig UUID %s", key)
-	pub := getconfigCtx.pubAppInstanceConfig
 	if err := pub.CheckMaxSize(key, config); err != nil {
 		log.Error(err)
 		var clearNumBytes int
@@ -3099,16 +3099,45 @@ func isLocConfigValid(locConfig *zconfig.LOCConfig) bool {
 	return err == nil
 }
 
-// parseLocConfig() - assign LOC config only if URL is valid
-func parseLocConfig(getconfigCtx *getconfigContext,
+// publishLocConfig() - assign LOC config only if URL is valid and publish
+func publishLocConfig(getconfigCtx *getconfigContext,
 	config *zconfig.EdgeDevConfig) {
 	locConfig := config.GetLocConfig()
-	if isLocConfigValid(locConfig) {
-		getconfigCtx.sideController.locConfig = &types.LOCConfig{
-			LocURL: locConfig.LocUrl,
-		}
-	} else {
+	if locConfig == nil || !isLocConfigValid(locConfig) {
 		getconfigCtx.sideController.locConfig = nil
+		err := getconfigCtx.pubLOCConfig.Publish("", types.LOCConfig{})
+		if err != nil {
+			log.Warnf("could not publish empty locConfig: %+v", err)
+		}
+
+		return
+	}
+
+	var collectInfoDatastore string
+	collectInfoDatastoreKeys := locConfig.GetDatastoreCollectInfoId()
+	var collectInfoDatastoreConfig types.DatastoreConfig
+	if len(collectInfoDatastoreKeys) > 0 && collectInfoDatastoreKeys[0] != "" {
+		collectInfoDatastore = collectInfoDatastoreKeys[0]
+		ds, err := getconfigCtx.pubDatastoreConfig.Get(collectInfoDatastore)
+		if err != nil {
+			log.Warnf("could not retrieve datastoreconfig for key '%s': %+v", collectInfoDatastore, err)
+		} else {
+			var ok bool
+			collectInfoDatastoreConfig, ok = ds.(types.DatastoreConfig)
+			if !ok {
+				log.Warnf("could not cast to datastoreconfig for key '%s', is %T", collectInfoDatastore, collectInfoDatastoreConfig)
+			}
+		}
+	}
+
+	getconfigCtx.sideController.locConfig = &types.LOCConfig{
+		LocURL:               locConfig.LocUrl,
+		CollectInfoDatastore: collectInfoDatastoreConfig,
+	}
+
+	err := getconfigCtx.pubLOCConfig.Publish("", *getconfigCtx.sideController.locConfig)
+	if err != nil {
+		log.Warnf("could not publish locConfig: %+v", err)
 	}
 }
 
