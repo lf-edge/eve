@@ -31,7 +31,7 @@ func TestRestarted(t *testing.T) {
 	logger.SetFormatter(&formatter)
 	logger.SetReportCaller(true)
 	log := base.NewSourceLogObject(logger, "test", 1234)
-	driver := nkvdriver.NewNkvDriver("/tmp/nkv/nkv.sock")
+	driver := nkvdriver.NewNkvDriver("/tmp/nkv/nkv.sock", "")
 	ps := pubsub.New(driver, logger, log)
 
 	myCtx := context{}

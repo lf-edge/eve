@@ -16,7 +16,7 @@ import (
 func foo() {
 	logger := logrus.StandardLogger()
 	log := base.NewSourceLogObject(logger, "test", 1234)
-	driver := nkvdriver.NewNkvDriver("/tmp/nkv/nkv.sock")
+	driver := nkvdriver.NewNkvDriver("/tmp/nkv/nkv.sock", "")
 	ps := pubsub.New(driver, logger, log)
 	fmt.Println(ps)
 }

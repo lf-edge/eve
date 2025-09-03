@@ -19,11 +19,12 @@ type NkvDriver struct {
 	client     *client.Client
 }
 
-func NewNkvDriver(path string) *NkvDriver {
+func NewNkvDriver(path, uuid string) *NkvDriver {
 	if path == "" {
 		path = sockPath
 	}
-	nkvClient := client.NewClient(path)
+
+	nkvClient := client.NewClient(path, uuid)
 
 	driver := NkvDriver{
 		socketPath: sockPath,

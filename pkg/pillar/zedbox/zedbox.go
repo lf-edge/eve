@@ -158,7 +158,7 @@ func runService(serviceName string, sep entrypoint, inline bool) int {
 		log.Functionf("Running inline command %s args: %+v",
 			serviceName, arguments)
 		ps := pubsub.New(
-			nkvdriver.NewNkvDriver(""),
+			nkvdriver.NewNkvDriver("", serviceName),
 			logger, log)
 		return sep.f(ps, logger, log, arguments, "")
 	}
@@ -222,7 +222,7 @@ func handleService(serviceName string, cmdArgs []string) {
 	log.Functionf("zedbox: Received command = %s args = %v", serviceName, cmdArgs)
 	srvLogger, srvLog := agentlog.Init(serviceName)
 	srvPs := pubsub.New(
-		nkvdriver.NewNkvDriver(""),
+		nkvdriver.NewNkvDriver("", serviceName),
 		srvLogger, srvLog)
 	sep, ok := entrypoints[serviceName]
 	if !ok {
