@@ -840,23 +840,23 @@ func getZfsDisksMetrics(disk libzfs.VDevTree) *types.StorageDiskMetrics {
 }
 
 func getZpoolChildrenMetrics(vdev libzfs.VDevTree) *types.StorageChildrenMetrics {
-	сhildrenMetrics := new(types.StorageChildrenMetrics)
-	сhildrenMetrics.GUID = vdev.GUID
-	сhildrenMetrics.DisplayName = vdev.Name
-	сhildrenMetrics.Metrics = GetZfsVDevMetrics(vdev.Stat, "", true)
+	childrenMetrics := new(types.StorageChildrenMetrics)
+	childrenMetrics.GUID = vdev.GUID
+	childrenMetrics.DisplayName = vdev.Name
+	childrenMetrics.Metrics = GetZfsVDevMetrics(vdev.Stat, "", true)
 
 	for _, vdev := range vdev.Devices {
 		if vdev.Type == libzfs.VDevTypeMirror ||
 			vdev.Type == libzfs.VDevTypeRaidz {
-			сhildrenMetrics.Children = append(сhildrenMetrics.Children,
+			childrenMetrics.Children = append(childrenMetrics.Children,
 				getZpoolChildrenMetrics(vdev))
 		} else if vdev.Type == libzfs.VDevTypeDisk {
-			сhildrenMetrics.Disks = append(сhildrenMetrics.Disks,
+			childrenMetrics.Disks = append(childrenMetrics.Disks,
 				getZfsDisksMetrics(vdev))
 		}
 	}
 
-	return сhildrenMetrics
+	return childrenMetrics
 }
 
 // GetZpoolMetrics returns metrics for provided zpool

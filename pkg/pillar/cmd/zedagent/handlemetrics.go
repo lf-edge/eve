@@ -1007,7 +1007,7 @@ func setMetricAnyValue(item *metrics.MetricItem, val interface{}) {
 func hardwareHealthTimerTask(ctx *zedagentContext, handleChannel chan interface{}) {
 	iteration := 0
 	log.Functionln("starting report health check timer task")
-	success := publishΗealthChecksReport(ctx, iteration)
+	success := publishHealthChecksReport(ctx, iteration)
 	retry := !success
 
 	// Run a timer for extra safety to send hardwarehealth updates
@@ -1038,7 +1038,7 @@ func hardwareHealthTimerTask(ctx *zedagentContext, handleChannel chan interface{
 		case <-ticker.C:
 			start := time.Now()
 			iteration++
-			success = publishΗealthChecksReport(ctx, iteration) // update success status
+			success = publishHealthChecksReport(ctx, iteration) // update success status
 			ctx.ps.CheckMaxTimeTopic(wdName, "publishHardwareHealth", start,
 				warningTime, errorTime)
 
@@ -1058,7 +1058,7 @@ func hardwareHealthTimerTask(ctx *zedagentContext, handleChannel chan interface{
 	}
 }
 
-// publishΗealthChecksReport collects hardware health metrics, currently only for ECC memory
+// publishHealthChecksReport collects hardware health metrics, currently only for ECC memory
 // and publishes a health report to the controller. If ECC memory controllers are not present
 // or an error occurs during collection, an empty report is sent to indicate the inability to
 // gather the information.
@@ -1066,8 +1066,8 @@ func hardwareHealthTimerTask(ctx *zedagentContext, handleChannel chan interface{
 // Returns:
 //
 //	bool - The result of the sendHardwareHealthProtobuf operation.
-func publishΗealthChecksReport(ctx *zedagentContext, iteration int) bool {
-	log.Functionf("publishΗealthChecksReport")
+func publishHealthChecksReport(ctx *zedagentContext, iteration int) bool {
+	log.Functionf("publishHealthChecksReport")
 	var ReportHardwareHealth = &hardwarehealth.ZHardwareHealth{}
 
 	ReportHardwareHealth.DevId = *proto.String(devUUID.String())
