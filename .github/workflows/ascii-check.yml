@@ -1,0 +1,37 @@
+# Copyright (c) 2025, Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+---
+name: ASCII Identifier Check
+
+on:  # yamllint disable-line rule:truthy
+  pull_request:
+    branches:
+      - "master"
+      - "[0-9]+.[0-9]+"
+      - "[0-9]+.[0-9]+-stable"
+
+jobs:
+  ascii-lint:
+    name: Ensure Go code uses ASCII-only identifiers
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.base_ref }}
+          fetch-depth: 0
+
+      - name: Fetch the PR's head ref
+        run: |
+          git fetch origin ${{ github.event.pull_request.head.sha }}:${{ github.event.pull_request.head.ref }}
+          git checkout ${{ github.event.pull_request.head.ref }}
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 1.24
+
+      - name: Run ASCII identifier check
+        run: |
+          echo "🔍 Running ASCII-only identifier linter..."
+          go run tools/find-non-ascii-chars-in-code/find-non-ascii-in-code.go
