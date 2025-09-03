@@ -850,6 +850,8 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 	createVolumeInstanceMetrics(ctx, ReportMetrics)
 	createProcessMetrics(ctx, ReportMetrics)
 
+	ReportMetrics.NestMetric = getNestedAppRuntimeStorageMetrics(ctx)
+
 	log.Tracef("PublishMetricsToZedCloud sending %s", ReportMetrics)
 	sendMetricsProtobuf(ctx.getconfigCtx, ReportMetrics, iteration)
 	log.Tracef("publishMetrics: after send, total elapse sec %v", time.Since(startPubTime).Seconds())
@@ -1974,4 +1976,32 @@ func fillStorageMetrics(zpoolMetrics *types.ZFSPoolMetrics) *metrics.StorageMetr
 	}
 
 	return storageMetrics
+}
+
+// generate NestedAppRuntimeDiskMetric for use in publishMetrics
+func getNestedAppRuntimeStorageMetrics(ctx *zedagentContext) []*zmet.NestedAppRuntimeDiskMetric {
+	items := ctx.subNestedAppRuntimeStorageMetric.GetAll()
+
+	var metrics []*zmet.NestedAppRuntimeDiskMetric
+	for _, psMetric := range items {
+		psStorageMetric := psMetric.(types.NestedAppRuntimeDiskMetric)
+
+		metric := &zmet.NestedAppRuntimeDiskMetric{
+			Uuid:             psStorageMetric.Key(),
+			TotalMb:          psStorageMetric.TotalMb,
+			UsedMb:           psStorageMetric.UsedMb,
+			AllocatedMb:      psStorageMetric.AllocatedMb,
+			DependentSpaceMb: make(map[string]*zmet.FsUsedMetric),
+		}
+		for nestedAppID, nestedAppFsMetric := range psStorageMetric.DependentSpaceMb {
+			metric.DependentSpaceMb[nestedAppID] = &zmet.FsUsedMetric{
+				UsedMb:      nestedAppFsMetric.UsedMb,
+				AllocatedMb: nestedAppFsMetric.AllocatedMb,
+			}
+		}
+
+		metrics = append(metrics, metric)
+	}
+
+	return metrics
 }
