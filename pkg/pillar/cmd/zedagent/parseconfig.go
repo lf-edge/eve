@@ -150,7 +150,15 @@ func parseConfig(getconfigCtx *getconfigContext, config *zconfig.EdgeDevConfig,
 		parseSystemAdapterConfig(getconfigCtx, config, source, forceSystemAdaptersParse)
 
 		if source != fromBootstrap {
-			activateNewBaseOS := parseBaseOS(getconfigCtx, config)
+			// Determine if we should skip parsing BaseOS from saved-config during upgrade test/in-progress
+			activateNewBaseOS := false
+			skipSavedBaseOS := (source == savedConfig) && getconfigCtx.updateInprogress
+			if skipSavedBaseOS {
+				log.Noticef("parseConfig: Upgrade test in progress; ignoring BaseOS from saved config")
+				// Do not call parseBaseOS; ensure activateNewBaseOS remains false
+			} else {
+				activateNewBaseOS = parseBaseOS(getconfigCtx, config)
+			}
 			parseNetworkInstanceConfig(getconfigCtx, config)
 			parseContentInfoConfig(getconfigCtx, config)
 			parseVolumeConfig(getconfigCtx, config)
