@@ -846,7 +846,17 @@ func requestConfigByURL(getconfigCtx *getconfigContext, url string,
 
 	cfgRetval = inhaleDeviceConfig(getconfigCtx, config, fromController)
 	if cfgRetval != configOK {
-		log.Errorf("inhaleDeviceConfig failed: %d", cfgRetval)
+		log.Warnf("inhaleDeviceConfig failed or skipped: %s", cfgRetval.String())
+		// Even if we skip processing the config (e.g. due to BaseOS activation),
+		// we still need to persist the received proto message. Otherwise the
+		// on-disk lastconfig remains stale, and after reboot EVE will reload
+		// the old config, potentially triggering unwanted BaseOS downloads
+		// or downgrades. Saving it here ensures the checkpoint is always up
+		// to date, even when we intentionally skip applying it right away.
+		if cfgRetval.isSkip() {
+			log.Trace("Skipping config processing, but saving received config")
+			saveReceivedProtoMessage(authWrappedRV.RespContents)
+		}
 		return cfgRetval, rv.TracedReqs
 	}
 
