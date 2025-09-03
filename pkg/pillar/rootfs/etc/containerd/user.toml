@@ -1,4 +1,4 @@
-version = 2
+version = 3
 state = "/run/containerd-user"
 root = "/persist/vault/containerd"
 disabled_plugins = [
@@ -15,20 +15,15 @@ disabled_plugins = [
     "io.containerd.monitor.v1.cgroups",
     "io.containerd.snapshotter.v1.native",
     "io.containerd.internal.v1.tracing",
-    "io.containerd.tracing.processor.v1.otlp"
+    "io.containerd.tracing.processor.v1.otlp",
 ]
 
 [grpc]
   address = "/run/containerd-user/containerd.sock"
-  uid = 0
-  gid = 0
 
 [debug]
   address = "/run/containerd-user/debug.sock"
   level = "info"
-
-[metrics]
-  address = ""
 
 [cgroup]
   path = "/eve/containerd"
