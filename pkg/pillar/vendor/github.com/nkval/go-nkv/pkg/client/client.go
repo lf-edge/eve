@@ -17,10 +17,13 @@ type Client struct {
 	subscriptions map[string]string
 }
 
-func NewClient(addr string) *Client {
+func NewClient(addr, uuid string) *Client {
+	if uuid == "" {
+		uuid = generateUuid()
+	}
 	return &Client{
 		addr:          addr,
-		clientUUID:    generateUuid(),
+		clientUUID:    uuid,
 		subscriptions: make(map[string]string),
 	}
 }
