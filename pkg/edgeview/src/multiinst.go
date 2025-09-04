@@ -8,16 +8,19 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"sync"
 
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
 const multiInstStatsEPString = "localhost:8234"
+const maxStatsBodySize int64 = 64 * 1024 // 64KB
 
 var (
 	evInstStats    [types.EdgeviewMaxInstNum]evLocalStats // instances stats
 	edgeviewInstID int                                    // if set, range 1 to 5
+	evInstStatsMu  sync.Mutex                             // protects evInstStats
 )
 
 type evLocalStats struct {
@@ -41,6 +44,7 @@ func doInfoPub(infoPub pubsub.Publication) {
 				log.Noticef("evinfopub: publish error: %v\n", err)
 			}
 		} else if edgeviewInstID == 1 {
+			evInstStatsMu.Lock()
 			evInstStats[0].Stats = evStatus
 			for i, s := range evInstStats {
 				if i == 0 {
@@ -50,6 +54,7 @@ func doInfoPub(infoPub pubsub.Publication) {
 				evInstStats[0].Stats.CmdCountApp += s.Stats.CmdCountApp
 				evInstStats[0].Stats.CmdCountExt += s.Stats.CmdCountExt
 			}
+			evInstStatsMu.Unlock()
 			err := infoPub.Publish("global", evInstStats[0].Stats)
 			if err != nil {
 				log.Errorf("evinfopub: publish error: %v\n", err)
@@ -68,6 +73,8 @@ func evStatsHandler(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case "POST":
 		var localStats evLocalStats
+		// Limit request body to prevent abuse
+		r.Body = http.MaxBytesReader(w, r.Body, maxStatsBodySize)
 		content, err := io.ReadAll(r.Body)
 		if err != nil {
 			log.Errorf("stats server read error: %v", err)
@@ -83,7 +90,9 @@ func evStatsHandler(w http.ResponseWriter, r *http.Request) {
 			log.Errorf("stats server receive incorrect stats: %v", localStats)
 			return
 		}
+		evInstStatsMu.Lock()
 		evInstStats[localStats.InstID-1] = localStats
+		evInstStatsMu.Unlock()
 		log.Tracef("InstStats: received stats from inst %d ok, %v", localStats.InstID, localStats) // XXX
 
 		trigPubchan <- true
