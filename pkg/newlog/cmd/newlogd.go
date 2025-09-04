@@ -18,7 +18,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
-	"github.com/lf-edge/eve/pkg/pillar/pubsub/socketdriver"
+	"github.com/lf-edge/eve/pkg/pillar/pubsub/nkvdriver"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/sirupsen/logrus"
 )
@@ -163,7 +163,7 @@ func main() {
 	uploadLogChan := make(chan string)
 	keepLogChan := make(chan string)
 
-	ps := *pubsub.New(&socketdriver.SocketDriver{Logger: logger, Log: log}, logger, log)
+	ps := *pubsub.New(nkvdriver.NewNkvDriver("", agentName), logger, log)
 
 	// create the necessary directories upfront
 	for _, dir := range []string{collectDir, uploadDevDir, uploadAppDir, keepSentDir, panicFileDir} {
