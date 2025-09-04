@@ -102,10 +102,15 @@ func reportInstStats() {
 		return
 	}
 
-	_, err = http.Post("http://"+multiInstStatsEPString+"/evStats", "application/json", bytes.NewBuffer(jmsg))
+	resp, err := http.Post("http://"+multiInstStatsEPString+"/evStats", "application/json", bytes.NewBuffer(jmsg))
 	if err != nil {
 		log.Errorf("InstStats: stats client http post error: %v", err)
 		return
+	}
+	defer resp.Body.Close()
+	// Drain body to allow connection reuse; ignore content but check error to satisfy linters
+	if _, err := io.Copy(io.Discard, resp.Body); err != nil {
+		log.Tracef("InstStats: drain response body error: %v", err)
 	}
 	log.Tracef("InstStats: inst %d, posted ok", edgeviewInstID)
 }
