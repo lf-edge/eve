@@ -327,6 +327,9 @@ func decryptEvMsg(data []byte) (bool, []byte) {
 	return true, plainText
 }
 
+// The JWT token signature verification is performed in parseEvConfig() in
+// pkg/pillar/cmd/zedagent/parseedgeview.go on the device side before this
+// Edgeview container is started.
 func encryptVarInit(jdata types.EvjwtInfo) {
 	jwtNonce = jdata.Key
 	nonceOpEncrption = jdata.Enc

@@ -178,6 +178,9 @@ func isDefinedOpt(value string, optslice []string) bool {
 }
 
 // get url and path from JWT token string
+// The JWT token signature verification is performed in parseEvConfig() in
+// pkg/pillar/cmd/zedagent/parseedgeview.go on the device side before this
+// Edgeview container is started.
 func getAddrFromJWT(token string, isServer bool, instID int) (string, string, types.EvAuthType, error) {
 	var addrport, path string
 	var evAuth types.EvAuthType
