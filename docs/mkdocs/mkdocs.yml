@@ -98,6 +98,8 @@ nav:
           - 'Jetson Orin': 'docs/NVIDIA-ORIN.md'
           - 'Jetson Xavier NX': 'docs/NVIDIA-NX.md'
           - 'Jetson Nano': 'boards/nvidia/jetson/README.md'
+  - 'Local Control & Management':
+      - 'Local Profile Server (LPS)': 'docs/LPS.md'
   - Debugging:
       - Information: 'pkg/debug/abuild/README.md'
       - Debugging: 'docs/DEBUGGING.md'
