@@ -1,6 +1,9 @@
 image: eve-edgeview
 org: lfedge
 config:
+  # The reason for not specifying a non-zero uid/gid is that the edgeview container
+  # needs to add entries to /etc/hosts, and it needs to read in various files such
+  # as /run/..., in which many files currently accessable only to root.
   binds:
     - /:/hostfs:ro
     - /dev:/dev:ro
@@ -12,8 +15,14 @@ config:
     - /etc/resolv.conf:/etc/resolv.conf:ro
     - /proc:/host/proc:ro
   capabilities:
-    - all
+    - CAP_NET_ADMIN  # netlink rulelist/routelist, iptables listing, conntrack flows
+    - CAP_NET_RAW    # ICMP (fastping), tcpdump
+    - CAP_SYSLOG     # read kernel dmesg via SYSLOG syscall
+    - CAP_KILL       # pprof pkill
+  # net host, is required for (tcpdump, netlink rules/routes/conttrack,
+  #                            ICMP ping on interfaces, etc)
   net: host
+  # pid host, is required for (ps over host processes, pkill in pprof, etc)
   pid: host
   devices:
     - path: all
