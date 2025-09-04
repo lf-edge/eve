@@ -898,7 +898,7 @@ github.com/multiplay/go-edac/lib/edac
 # github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822
 ## explicit
 github.com/munnerz/goautoneg
-# github.com/nkval/go-nkv v0.0.0-20250429104035-28081f691ca8 => /home/pabramov/go/src/github.com/uncleDecart/go-nkv
+# github.com/nkval/go-nkv v0.0.0-20250429104035-28081f691ca8 => /home/pabramov/go/src/github.com/nkval/go-nkv
 ## explicit; go 1.23.1
 github.com/nkval/go-nkv/pkg/client
 github.com/nkval/go-nkv/pkg/protocol
@@ -1896,7 +1896,7 @@ tags.cncf.io/container-device-interface/pkg/parser
 # tags.cncf.io/container-device-interface/specs-go v0.8.0
 ## explicit; go 1.19
 tags.cncf.io/container-device-interface/specs-go
-# github.com/nkval/go-nkv => /home/pabramov/go/src/github.com/uncleDecart/go-nkv
+# github.com/nkval/go-nkv => /home/pabramov/go/src/github.com/nkval/go-nkv
 # github.com/openshift/api => github.com/openshift/api v0.0.0-20210105115604-44119421ec6b
 # k8s.io/api => k8s.io/api v0.26.3
 # k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.26.3

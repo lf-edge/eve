@@ -272,7 +272,7 @@ require (
 )
 
 replace (
-	github.com/nkval/go-nkv => /home/pabramov/go/src/github.com/uncleDecart/go-nkv
+	github.com/nkval/go-nkv => /home/pabramov/go/src/github.com/nkval/go-nkv
 	github.com/openshift/api => github.com/openshift/api v0.0.0-20210105115604-44119421ec6b
 	k8s.io/api => k8s.io/api v0.26.3
 	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.26.3

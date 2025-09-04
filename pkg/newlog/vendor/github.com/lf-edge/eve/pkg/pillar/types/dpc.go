@@ -517,8 +517,8 @@ func (config DevicePortConfig) WasDPCWorking() bool {
 // the port was not tested, so we retain the original TestResults for the port.
 func (config *DevicePortConfig) UpdatePortStatusFromIntfStatusMap(
 	intfStatusMap IntfStatusMap) {
-	for indx := range config.Ports {
-		portPtr := &config.Ports[indx]
+	for index := range config.Ports {
+		portPtr := &config.Ports[index]
 		tr, ok := intfStatusMap.StatusMap[portPtr.IfName]
 		if ok {
 			portPtr.TestResults.Update(tr)
@@ -649,7 +649,12 @@ const (
 	DhcpTypeNone
 	// DhcpTypeDeprecated : defined here just to match deprecated value in EVE API.
 	DhcpTypeDeprecated
-	// DhcpTypeClient : run DHCP client to obtain IP address.
+	// DhcpTypeClient : run a DHCP client to obtain an IP address.
+	// For IPv6, we also use dhcpcd, but its behavior is RA-driven:
+	//   - dhcpcd listens to Router Advertisement (RA) messages.
+	//   - If the RA contains the M (Managed) flag, it runs stateful DHCPv6 to get an address.
+	//   - If the RA contains the O (Other) flag, it may run stateless DHCPv6 (e.g., for DNS).
+	//   - If neither flag is set, it uses only SLAAC and does not run DHCPv6.
 	DhcpTypeClient
 )
 
@@ -680,8 +685,13 @@ const (
 
 // DhcpConfig : DHCP configuration for network port.
 type DhcpConfig struct {
-	Dhcp       DhcpType // If DhcpTypeStatic use below; if DhcpTypeNone do nothing
-	AddrSubnet string   // In CIDR e.g., 192.168.1.44/24
+	Dhcp DhcpType // If DhcpTypeStatic use below; if DhcpTypeNone do nothing
+	// AddrSubnet is in CIDR format (e.g., 192.168.1.44/24).
+	// It's a string (rather than *net.IPNet) to allow unmarshalling from
+	// user-edited override.json, since *net.IPNet does not implement
+	// encoding.TextUnmarshaler. (net.IP does, and is therefore used for
+	// Gateway and DNSServers)
+	AddrSubnet string
 	Gateway    net.IP
 	DomainName string
 	NTPServers []string
@@ -790,6 +800,15 @@ type WifiConfig struct {
 	// CipherBlockStatus, for encrypted credentials
 	CipherBlockStatus
 }
+
+const (
+	// WpaFilename : path to WiFi wpa_supplicant file.
+	WpaFilename = "/run/wlan/wpa_supplicant.conf"
+	// RunWlanDir : directory for WLAN-related configuration.
+	RunWlanDir = "/run/wlan"
+	// WpaTempname : name used for a temporary wpa_supplicant file.
+	WpaTempname = "wpa_supplicant.temp"
+)
 
 // DeprecatedCellConfig : old and now deprecated structure for storing cellular
 // network port config. It is preserved only to support upgrades from older EVE
@@ -1067,10 +1086,15 @@ func (config DevicePortConfigList) LogKey() string {
 // from protobuf API into DevicePortConfig.
 // XXX replace by inline once we have device model
 type NetworkXObjectConfig struct {
-	UUID                 uuid.UUID
-	Type                 NetworkType
-	Dhcp                 DhcpType // If DhcpTypeStatic or DhcpTypeClient use below
-	Subnet               net.IPNet
+	UUID uuid.UUID
+	Type NetworkType
+	Dhcp DhcpType
+	// Subnet, Gateway, DomainName, and DNSServers are configured by user
+	// (and used by EVE) only when Dhcp == DhcpTypeStatic.
+	// NTPServers can be set even when Dhcp == DhcpTypeClient. In that case, the
+	// statically configured NTPServers are either merged with those received from DHCP,
+	// or -- if IgnoreDhcpNtpServers is true -- they override the DHCP-provided servers.
+	Subnet               *net.IPNet
 	Gateway              net.IP
 	DomainName           string
 	NTPServers           []string

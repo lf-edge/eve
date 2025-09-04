@@ -298,6 +298,9 @@ const (
 
 	// MaintenanceMode global setting key
 	MaintenanceMode GlobalSettingKey = "maintenance.mode"
+	// AirGapMode should be enabled when device is operated in an air-gapped network environment,
+	// where connectivity to the main controller is not available.
+	AirGapMode GlobalSettingKey = "airgap.mode"
 
 	// String Items
 	// SSHAuthorizedKeys global setting key
@@ -967,7 +970,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	// timer.metric.hardwarehealth.interval (seconds)
 	// Default value 12 hours minimum value 6 hours.
 	configItemSpecMap.AddIntItem(HardwareHealthInterval, 43200, 21600, 0xFFFFFFFF)
-	// timer.reboot.no.network (seconds) - reboot after no cloud connectivity
+	// timer.reboot.no.network (seconds) - reboot after no controller connectivity
 	// Max designed to allow the option of never rebooting even if device
 	//  can't connect to the cloud
 	configItemSpecMap.AddIntItem(ResetIfCloudGoneTime, 7*24*3600, 120, 0xFFFFFFFF)
@@ -1030,8 +1033,8 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddIntItem(GoroutineLeakDetectionCooldownMinutes, 5, 1, 0xFFFFFFFF)
 
 	// Kubevirt Drain Section
-	configItemSpecMap.AddIntItem(KubevirtDrainTimeout, 24, 1, 0xFFFFFFFF)
-	configItemSpecMap.AddIntItem(KubevirtDrainSkipK8sAPINotReachableTimeout, 300, 1, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(KubevirtDrainTimeout, DefaultDrainTimeoutHours, 1, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(KubevirtDrainSkipK8sAPINotReachableTimeout, DefaultDrainSkipK8sAPINotReachableTimeoutSeconds, 1, 0xFFFFFFFF)
 
 	// Add Bool Items
 	configItemSpecMap.AddBoolItem(UsbAccess, true) // Controller likely default to false
@@ -1055,6 +1058,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	// Add TriState Items
 	configItemSpecMap.AddTriStateItem(NetworkFallbackAnyEth, TS_DISABLED)
 	configItemSpecMap.AddTriStateItem(MaintenanceMode, TS_NONE)
+	configItemSpecMap.AddTriStateItem(AirGapMode, TS_NONE)
 
 	// Add String Items
 	configItemSpecMap.AddStringItem(SSHAuthorizedKeys, "", blankValidator)
