@@ -20,6 +20,8 @@ const (
 	VLANBridgeTypename = "VLANBridge"
 	// VLANPortTypename : typename for bridged port with configured VLAN(s).
 	VLANPortTypename = "VLANPort"
+	// VLANSubIntfTypename : typename for VLAN sub-interface.
+	VLANSubIntfTypename = "VLANSubinterface"
 	// SysctlTypename : typename for kernel config applied via sysctl.
 	SysctlTypename = "Sysctl"
 	// BPDUGuardTypename : typename for BPDU guard enabled on a bridge port.

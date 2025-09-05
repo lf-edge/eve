@@ -1023,22 +1023,18 @@ func (r *LinuxDpcReconciler) getIntendedPhysicalIfs(dpc types.DevicePortConfig) 
 				intendedIfs.PutItem(linux.PhysIf{
 					PhysIfLL:     port.Logicallabel,
 					PhysIfName:   port.IfName,
-					Usage:        generic.IOUsageL3Adapter,
+					Usage:        generic.IOUsageAdapter,
 					WirelessType: port.WirelessCfg.WType,
 					MTU:          r.intfMTU[port.Logicallabel],
 				}, nil)
 			}
 		case types.L2LinkTypeVLAN:
 			parent := dpc.LookupPortByLogicallabel(port.VLAN.ParentPort)
-			usage := generic.IOUsageVlanParent
-			if parent.IsL3Port {
-				usage = generic.IOUsageVlanParentAndL3Adapter
-			}
 			if parent != nil && parent.L2Type == types.L2LinkTypeNone {
 				intendedIfs.PutItem(linux.PhysIf{
 					PhysIfLL:     parent.Logicallabel,
 					PhysIfName:   parent.IfName,
-					Usage:        usage,
+					Usage:        generic.IOUsageAdapter,
 					WirelessType: port.WirelessCfg.WType,
 					MTU:          r.intfMTU[port.Logicallabel],
 				}, nil)
@@ -1076,14 +1072,12 @@ func (r *LinuxDpcReconciler) getIntendedLogicalIO(dpc types.DevicePortConfig) dg
 			parent := dpc.LookupPortByLogicallabel(port.VLAN.ParentPort)
 			if parent != nil {
 				vlan := linux.Vlan{
-					LogicalLabel:   port.Logicallabel,
-					IfName:         port.IfName,
-					ParentLL:       port.VLAN.ParentPort,
-					ParentIfName:   parent.IfName,
-					ParentL2Type:   parent.L2Type,
-					ParentIsL3Port: parent.IsL3Port,
-					ID:             port.VLAN.ID,
-					MTU:            r.intfMTU[port.Logicallabel],
+					LogicalLabel: port.Logicallabel,
+					IfName:       port.IfName,
+					ParentLL:     port.VLAN.ParentPort,
+					ParentIfName: parent.IfName,
+					ID:           port.VLAN.ID,
+					MTU:          r.intfMTU[port.Logicallabel],
 				}
 				intendedIO.PutItem(vlan, nil)
 			}
@@ -1095,22 +1089,11 @@ func (r *LinuxDpcReconciler) getIntendedLogicalIO(dpc types.DevicePortConfig) dg
 					aggrIfNames = append(aggrIfNames, nps.IfName)
 				}
 			}
-			var usage generic.IOUsage
-			if dpc.IsPortUsedAsVlanParent(port.Logicallabel) {
-				if port.IsL3Port {
-					usage = generic.IOUsageVlanParentAndL3Adapter
-				} else {
-					usage = generic.IOUsageVlanParent
-				}
-			} else if port.IsL3Port {
-				usage = generic.IOUsageL3Adapter
-			}
 			intendedIO.PutItem(linux.Bond{
 				BondConfig:        port.Bond,
 				LogicalLabel:      port.Logicallabel,
 				IfName:            port.IfName,
 				AggregatedIfNames: aggrIfNames,
-				Usage:             usage,
 				MTU:               r.intfMTU[port.Logicallabel],
 			}, nil)
 		}
@@ -1146,7 +1129,9 @@ func (r *LinuxDpcReconciler) getIntendedAdapters(dpc types.DevicePortConfig,
 	}
 	intendedAdapters := dg.New(graphArgs)
 	for _, port := range dpc.Ports {
-		if !port.IsL3Port || port.IfName == "" || port.InvalidConfig {
+		// As long as port can have Switch NI attached, we should create Adapter.
+		if dpc.IsPortAggregatedByBond(port.Logicallabel) ||
+			port.IfName == "" || port.InvalidConfig {
 			continue
 		}
 		var staticIPs []*net.IPNet
@@ -1174,7 +1159,7 @@ func (r *LinuxDpcReconciler) getIntendedAdapters(dpc types.DevicePortConfig,
 			StaticIPs:        staticIPs,
 		}
 		intendedAdapters.PutItem(adapter, nil)
-		if port.Dhcp != types.DhcpTypeNone &&
+		if port.Dhcp != types.DhcpTypeNone && port.Dhcp != types.DhcpTypeNOOP &&
 			port.WirelessCfg.WType != types.WirelessTypeCellular {
 			intendedAdapters.PutItem(generic.Dhcpcd{
 				AdapterLL:          port.Logicallabel,

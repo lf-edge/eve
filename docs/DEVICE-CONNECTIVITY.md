@@ -110,6 +110,9 @@ EVE supports:
   VLAN network adapter is not used in this case.
 - Separating VLANs from untagged network traffic: VLAN sub-interfaces enable access to tagged
   VLANs, while the parent port can serve as an L3 endpoint for the untagged segment of the network
+- Bridging VLAN parent ports with their sub-interfaces, enabling Switch NIs to connect
+  applications via access/trunk ports while using VLAN sub-interfaces on the same port
+  for management or Local NIs
 
 Both VLAN and LAG adapters can be used as ports for Local network instance and for EVE
 management traffic.

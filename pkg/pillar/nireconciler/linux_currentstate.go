@@ -149,6 +149,7 @@ func (r *LinuxNIReconciler) updateCurrentGlobalState(onlyPortsChanged bool) (cha
 
 func (r *LinuxNIReconciler) updateCurrentNIState(niID uuid.UUID) (changed bool) {
 	changed = r.updateCurrentNIBridge(niID)
+	changed = r.updateCurrentVLANSubIfs(niID) || changed
 	changed = r.updateCurrentNIRoutes(niID) || changed
 	changed = r.updateCurrentVIFs(niID) || changed
 	return changed
@@ -204,6 +205,121 @@ func (r *LinuxNIReconciler) updateCurrentNIBridge(niID uuid.UUID) (changed bool)
 		WithSTP:      false,
 	}
 	return r.updateSingleItem(prevExtBridge, bridge, l2SG)
+}
+
+// Update the set of VLAN sub-interfaces inside the depgraph for the current state
+// of the given NI to reflect the set of sub-interfaces actually present inside
+// the network stack at the current moment.
+func (r *LinuxNIReconciler) updateCurrentVLANSubIfs(niID uuid.UUID) (changed bool) {
+	ni := r.nis[niID]
+	niSG := r.getOrAddNISubgraph(niID)
+	var l2SG dg.Graph
+	if readHandle := niSG.SubGraph(L2SG); readHandle != nil {
+		l2SG = niSG.EditSubGraph(readHandle)
+	} else {
+		l2SG = dg.New(dg.InitArgs{Name: L2SG})
+		niSG.PutSubGraph(l2SG)
+	}
+	prevSubIfs := make(map[dg.ItemRef]dg.Item)
+	iter := l2SG.Items(false)
+	for iter.Next() {
+		item, _ := iter.Item()
+		if item.Type() == linux.VLANSubIntfTypename {
+			prevSubIfs[dg.Reference(item)] = item
+		}
+	}
+	defer func() {
+		// Remove obsolete sub-interface(s) at the end.
+		for itemRef := range prevSubIfs {
+			l2SG.DelItem(itemRef)
+			changed = true
+		}
+		if changed {
+			r.log.Noticef(
+				"%s: Current state of VLAN sub-interfaces of NI %s has been updated",
+				LogAndErrPrefix, niID)
+		}
+	}()
+	// Local NI bridge does not have VLAN sub-interfaces.
+	if ni.config.Type == types.NetworkInstanceTypeLocal {
+		return changed
+	}
+	for _, port := range ni.bridge.Ports {
+		for _, vlanSubIf := range port.VLANSubinterfaces {
+			ifIndex, found, err := r.netMonitor.GetInterfaceIndex(vlanSubIf.IfName)
+			if err != nil {
+				r.log.Errorf(
+					"%s: updateCurrentVLANSubIfs: failed to get ifIndex for %s: %v",
+					LogAndErrPrefix, vlanSubIf.IfName, err)
+				continue
+			}
+			if !found {
+				continue
+			}
+			ifAttrs, err := r.netMonitor.GetInterfaceAttrs(ifIndex)
+			if err != nil {
+				r.log.Errorf(
+					"%s: updateCurrentVLANSubIfs: failed to get interface %s attrs: %v",
+					LogAndErrPrefix, vlanSubIf.IfName, err)
+				continue
+			}
+			if ifAttrs.IfType == "bridge" {
+				// Was this originally a VLAN sub-interface turned into a bridge by NIM?
+				renamedIfName := "k" + vlanSubIf.IfName
+				ifIndex, found, err = r.netMonitor.GetInterfaceIndex(renamedIfName)
+				if err != nil {
+					r.log.Errorf(
+						"%s: updateCurrentVLANSubIfs: failed to get ifIndex for %s: %v",
+						LogAndErrPrefix, renamedIfName, err)
+					continue
+				}
+				if !found {
+					continue
+				}
+				ifAttrs, err = r.netMonitor.GetInterfaceAttrs(ifIndex)
+				if err != nil {
+					r.log.Errorf(
+						"%s: updateCurrentVLANSubIfs: failed to get interface %s attrs: %v",
+						LogAndErrPrefix, renamedIfName, err)
+					continue
+				}
+			}
+			if ifAttrs.IfType != "vlan" || ifAttrs.VlanID == 0 ||
+				ifAttrs.VlanParentIfIndex == 0 {
+				// Not a VLAN sub-interface.
+				continue
+			}
+			parentIfAttrs, err := r.netMonitor.GetInterfaceAttrs(
+				ifAttrs.VlanParentIfIndex)
+			if err != nil {
+				r.log.Errorf("%s: updateCurrentVLANSubIfs: failed to get attrs "+
+					"for VLAN sub-interface %s parent (ifIndex: %d): %v",
+					LogAndErrPrefix, vlanSubIf.IfName, ifAttrs.VlanParentIfIndex, err)
+				continue
+			}
+			subIf := linux.VLANSubIf{
+				LogicalLabel: vlanSubIf.LogicalLabel,
+				IfName:       vlanSubIf.IfName,
+				ParentLL:     port.LogicalLabel,
+				ParentIfName: parentIfAttrs.IfName,
+				ID:           ifAttrs.VlanID,
+			}
+			subIfRef := dg.Reference(subIf)
+			prevSubIf := prevSubIfs[subIfRef]
+			if prevSubIf == nil || !prevSubIf.Equal(subIf) {
+				l2SG.PutItem(subIf, &reconciler.ItemStateData{
+					State:         reconciler.ItemStateCreated,
+					LastOperation: reconciler.OperationCreate,
+				})
+				changed = true
+			}
+			// Remove from the list of no-longer-existing sub-interfaces,
+			// which are deleted from the graph by defer function (see above).
+			delete(prevSubIfs, subIfRef)
+
+		}
+	}
+	return changed
 }
 
 // Update the set of routes inside the depgraph for the current state of the given NI

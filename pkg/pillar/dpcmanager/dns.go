@@ -66,6 +66,8 @@ func (m *DpcManager) updateDNS() {
 		m.deviceNetStatus.Ports[ix].ConfiguredIP = staticIP
 		staticIPNet := netutils.NewIPNet(staticIP, staticSubnet)
 		m.deviceNetStatus.Ports[ix].IgnoredDhcpIPs = port.IgnoreDhcpIPAddresses
+		m.deviceNetStatus.Ports[ix].L2Type = port.L2Type
+		m.deviceNetStatus.Ports[ix].L2LinkConfig = port.L2LinkConfig
 		// Prefer errors recorded by DPC verification.
 		// New errors are recorded from this function only when there is none yet
 		// (HasError() == false).

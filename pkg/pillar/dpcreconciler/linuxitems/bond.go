@@ -26,9 +26,6 @@ type Bond struct {
 	// AggregatedIfNames : interface names of PhysicalIO network adapters aggregated
 	// by this bond.
 	AggregatedIfNames []string
-	// Usage : How is the bond being used.
-	// A change in the usage will trigger bond recreate.
-	Usage genericitems.IOUsage // IOUsageBondAggrIf is not applicable
 	// MTU : Maximum transmission unit size.
 	MTU uint16
 }
@@ -56,7 +53,6 @@ func (b Bond) Equal(other depgraph.Item) bool {
 		b.Mode == b2.Mode &&
 		b.ARPMonitor.Equal(b2.ARPMonitor) &&
 		generics.EqualSets(b.AggregatedIfNames, b2.AggregatedIfNames) &&
-		b.Usage == b2.Usage &&
 		b.MTU == b2.MTU
 }
 
@@ -327,9 +323,6 @@ func (c *BondConfigurator) NeedsRecreate(oldItem, newItem depgraph.Item) (recrea
 		oldBondCfg.MIIMonitor != newBondCfg.MIIMonitor ||
 		oldBondCfg.Mode != newBondCfg.Mode ||
 		!oldBondCfg.ARPMonitor.Equal(newBondCfg.ARPMonitor) {
-		return true
-	}
-	if oldBondCfg.Usage != newBondCfg.Usage {
 		return true
 	}
 	return false

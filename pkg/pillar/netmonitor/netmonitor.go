@@ -162,6 +162,10 @@ type IfAttrs struct {
 	MasterIfIndex int
 	// Maximum Transmission Unit configured on the interface.
 	MTU uint16
+	// Index of the VLAN parent interface (only set for VLAN sub-interfaces).
+	VlanParentIfIndex int
+	// VLAN ID assigned to this subinterface (only set for VLAN sub-interfaces).
+	VlanID uint16
 }
 
 // Equal allows to compare two sets of interface attributes for equality.
@@ -175,7 +179,9 @@ func (a IfAttrs) Equal(a2 IfAttrs) bool {
 		a.LowerUp == a2.LowerUp &&
 		a.Enslaved == a2.Enslaved &&
 		a.MasterIfIndex == a2.MasterIfIndex &&
-		a.MTU == a2.MTU
+		a.MTU == a2.MTU &&
+		a.VlanParentIfIndex == a2.VlanParentIfIndex &&
+		a.VlanID == a2.VlanID
 }
 
 // DNSInfo : DNS information associated with an interface.
