@@ -34,16 +34,24 @@ type BridgePortVariant struct {
 	PortIfName string
 	// VIFIfName : bridged VIF.
 	VIFIfName string
+	// VLANSubinterface : VLAN sub-interface.
+	VLANSubinterface *VLANSubinterface
 }
 
-// Name returns the interface name of the bridged port
+// BridgePortName combines bridge name and the interface name of the bridged port
+// to construct a unique BridgePort ID.
+func BridgePortName(bridgeIfName, portIfName string) string {
+	return fmt.Sprintf("%s/%s", bridgeIfName, portIfName)
+}
+
+// Name uses BridgePortName to get unique BridgePort ID.
 func (p BridgePort) Name() string {
-	return p.portIfName()
+	return BridgePortName(p.BridgeIfName, p.portIfName())
 }
 
 // Label for BridgePort.
 func (p BridgePort) Label() string {
-	return p.portIfName() + " (bridge port)"
+	return fmt.Sprintf("add port %s into bridge %s", p.portIfName(), p.BridgeIfName)
 }
 
 // Type of the item.
@@ -81,7 +89,8 @@ func (p BridgePort) Dependencies() (deps []dg.Dependency) {
 		},
 		Description: "Bridge must exist",
 	})
-	if p.Variant.VIFIfName != "" {
+	switch {
+	case p.Variant.VIFIfName != "":
 		deps = append(deps, dg.Dependency{
 			RequiredItem: dg.ItemRef{
 				ItemType: VIFTypename,
@@ -92,7 +101,7 @@ func (p BridgePort) Dependencies() (deps []dg.Dependency) {
 				AutoDeletedByExternal: true,
 			},
 		})
-	} else if p.Variant.PortIfName != "" {
+	case p.Variant.PortIfName != "":
 		var mustSatisfy func(item dg.Item) bool
 		if p.ExternallyBridged {
 			// Bridging is actually done outside zedrouter (e.g. in NIM).
@@ -119,16 +128,44 @@ func (p BridgePort) Dependencies() (deps []dg.Dependency) {
 				AutoDeletedByExternal: true,
 			},
 		})
+	case p.Variant.VLANSubinterface != nil:
+		var mustSatisfy func(item dg.Item) bool
+		// Note: p.ExternallyBridged is always true in this case.
+		// VLAN subinterface is created outside zedrouter (in NIM).
+		// BridgePort is only used for dependency purposes in this case
+		// (VLANPort and BPDUGuard depend on BridgePort).
+		mustSatisfy = func(item dg.Item) bool {
+			vlanSubIf, isVLANSubIf := item.(VLANSubIf)
+			if !isVLANSubIf {
+				// unreachable
+				return false
+			}
+			return vlanSubIf.ParentIfName == p.BridgeIfName &&
+				vlanSubIf.ID == p.Variant.VLANSubinterface.VID
+		}
+		deps = append(deps, dg.Dependency{
+			RequiredItem: dg.ItemRef{
+				ItemType: VLANSubIntfTypename,
+				ItemName: p.Variant.VLANSubinterface.IfName,
+			},
+			MustSatisfy: mustSatisfy,
+			Description: "VLAN sub-interface must exist",
+			Attributes: dg.DependencyAttributes{
+				AutoDeletedByExternal: true,
+			},
+		})
 	}
 	return deps
 }
 
 func (p BridgePort) portIfName() string {
-	if p.Variant.VIFIfName != "" {
+	switch {
+	case p.Variant.VIFIfName != "":
 		return p.Variant.VIFIfName
-	}
-	if p.Variant.PortIfName != "" {
+	case p.Variant.PortIfName != "":
 		return p.Variant.PortIfName
+	case p.Variant.VLANSubinterface != nil:
+		return p.Variant.VLANSubinterface.IfName
 	}
 	return ""
 }
@@ -282,8 +319,8 @@ func (c *BridgePortConfigurator) Delete(ctx context.Context, item dg.Item) (err 
 	return nil
 }
 
-// NeedsRecreate returns true if the target bridge changes.
-// However, MTU can be changed without re-creating the bridge port.
+// NeedsRecreate returns false if only MTU changed.
+// MTU can be changed without re-creating the bridge port.
 func (c *BridgePortConfigurator) NeedsRecreate(oldItem, newItem dg.Item) (recreate bool) {
 	oldCfg, isBridgePort := oldItem.(BridgePort)
 	if !isBridgePort {
@@ -295,6 +332,5 @@ func (c *BridgePortConfigurator) NeedsRecreate(oldItem, newItem dg.Item) (recrea
 		// unreachable
 		return false
 	}
-	return oldCfg.BridgeIfName != newCfg.BridgeIfName ||
-		oldCfg.ExternallyBridged != newCfg.ExternallyBridged
+	return oldCfg.ExternallyBridged != newCfg.ExternallyBridged
 }

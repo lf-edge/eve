@@ -59,9 +59,10 @@ func (v VIF) Name() string {
 	return v.HostIfName
 }
 
-// Label returns the logical label from NetworkAdapter.
+// Label returns the logical label from NetworkAdapter (+ host interface name
+// for clarity).
 func (v VIF) Label() string {
-	return v.NetAdapterName
+	return fmt.Sprintf("%s (%s)", v.NetAdapterName, v.HostIfName)
 }
 
 // Type of the item.

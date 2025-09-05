@@ -139,14 +139,26 @@ func (z *zedrouter) getNIPortConfig(
 		if port == nil {
 			continue
 		}
+		var vlanSubIfs []nireconciler.VLANSubinterface
+		for _, port2 := range z.deviceNetworkStatus.Ports {
+			if port2.L2Type == types.L2LinkTypeVLAN && port2.VLAN.ParentPort == portLL {
+				vlanSubIfs = append(vlanSubIfs, nireconciler.VLANSubinterface{
+					LogicalLabel: port2.Logicallabel,
+					IfName:       port2.IfName,
+					VLAN:         port2.VLAN.ID,
+					MTU:          port2.MTU,
+				})
+			}
+		}
 		portConfigs = append(portConfigs, nireconciler.Port{
-			LogicalLabel: port.Logicallabel,
-			SharedLabels: port.SharedLabels,
-			IfName:       port.IfName,
-			IsMgmt:       port.IsMgmt,
-			MTU:          port.MTU,
-			DhcpType:     port.Dhcp,
-			DNSServers:   types.GetDNSServers(*z.deviceNetworkStatus, port.IfName),
+			LogicalLabel:      port.Logicallabel,
+			SharedLabels:      port.SharedLabels,
+			IfName:            port.IfName,
+			IsMgmt:            port.IsMgmt,
+			MTU:               port.MTU,
+			DhcpType:          port.Dhcp,
+			DNSServers:        types.GetDNSServers(*z.deviceNetworkStatus, port.IfName),
+			VLANSubinterfaces: vlanSubIfs,
 		})
 	}
 	return portConfigs
@@ -203,20 +215,19 @@ func (z *zedrouter) updateNIPorts(niConfig types.NetworkInstanceConfig,
 						port.Logicallabel))
 				continue
 			}
-			if z.deviceNetworkStatus.IsPortUsedAsVlanParent(port.Logicallabel) {
-				// It is not supported/valid to bridge port which has VLAN
-				// sub-interfaces configured.
-				errorMsgs = append(errorMsgs,
-					fmt.Sprintf("port %s with VLAN sub-interfaces cannot be used "+
-						"in Switch Network Instance", port.Logicallabel))
-				continue
-			}
-			if len(newPorts) > 1 && port.Dhcp != types.DhcpTypeNone {
-				errorMsgs = append(errorMsgs,
-					fmt.Sprintf(
-						"L3 port %s cannot be used in multi-port Switch Network Instance",
-						port.Logicallabel))
-				continue
+			if len(newPorts) > 1 {
+				if port.Dhcp != types.DhcpTypeNone {
+					errorMsgs = append(errorMsgs,
+						fmt.Sprintf("L3 port %s cannot be used in multi-port "+
+							"Switch Network Instance", port.Logicallabel))
+					continue
+				}
+				if z.deviceNetworkStatus.IsPortUsedAsVlanParent(port.Logicallabel) {
+					errorMsgs = append(errorMsgs,
+						fmt.Sprintf("VLAN-parent port %s cannot be used in multi-port "+
+							"Switch Network Instance", port.Logicallabel))
+					continue
+				}
 			}
 			if len(newPorts) > 1 {
 				// Port used by multi-port Switch NI cannot be used by any other NI.

@@ -15,13 +15,8 @@ type IOUsage uint8
 const (
 	// IOUsageUnspecified : not specified how the network IO is being used.
 	IOUsageUnspecified IOUsage = iota
-	// IOUsageL3Adapter : network IO is used as L3 adapter.
-	IOUsageL3Adapter
-	// IOUsageVlanParent : network IO is used as VLAN parent interface.
-	IOUsageVlanParent
-	// IOUsageVlanParentAndL3Adapter : network IO is used as a VLAN parent interface
-	// and at the same time as an L3 endpoint (for untagged traffic).
-	IOUsageVlanParentAndL3Adapter
+	// IOUsageAdapter : network IO is used with Adapter.
+	IOUsageAdapter
 	// IOUsageBondAggrIf : network IO is aggregated by Bond interface.
 	IOUsageBondAggrIf
 )

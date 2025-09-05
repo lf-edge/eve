@@ -81,15 +81,7 @@ func (g BPDUGuard) Dependencies() (deps []dg.Dependency) {
 	deps = append(deps, dg.Dependency{
 		RequiredItem: dg.ItemRef{
 			ItemType: BridgePortTypename,
-			ItemName: g.PortIfName,
-		},
-		MustSatisfy: func(item dg.Item) bool {
-			bridgePort, isBridgePort := item.(BridgePort)
-			if !isBridgePort {
-				// unreachable
-				return false
-			}
-			return bridgePort.BridgeIfName == g.BridgeIfName
+			ItemName: BridgePortName(g.BridgeIfName, g.PortIfName),
 		},
 		Description: "Port must be attached to the bridge",
 	})
