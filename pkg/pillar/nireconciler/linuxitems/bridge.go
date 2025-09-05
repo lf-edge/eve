@@ -42,9 +42,9 @@ func (b Bridge) Name() string {
 	return b.IfName
 }
 
-// Label is not provided.
+// Label for Bridge.
 func (b Bridge) Label() string {
-	return ""
+	return b.IfName + " (bridge)"
 }
 
 // Type of the item.

@@ -26,17 +26,27 @@ type VLANPort struct {
 	// PortIfName : interface name of the bridge port.
 	PortIfName string
 	// ForVIF : true if this is VLAN config applied to application VIF
-	// (and not to device network port).
+	// (and not to device network port or a VLAN subinterface).
 	ForVIF bool
 	// VLANConfig : VLAN configuration to apply on the bridged interface.
 	VLANConfig VLANConfig
 }
 
-// VLANConfig : VLAN configuration to apply on the bridge port.
-// Port is either configured as a trunk or as an access port (use this struct as union).
+// VLANConfig : VLAN configuration to apply either on a bridge port or as a VLAN sub-interface.
+// Exactly one of the fields should be non-nil.
 type VLANConfig struct {
-	AccessPort *AccessPort
-	TrunkPort  *TrunkPort
+	AccessPort *AccessPort // Untagged traffic for a single VLAN (PVID)
+	TrunkPort  *TrunkPort  // Tagged traffic for multiple VLANs
+
+	// VLAN sub-interfaces attached to a bridge with VLAN filtering enabled
+	// are represented as "self" entries. A "self" entry assigns VLAN membership
+	// to the bridge device itself (not its member ports). This is required for
+	// the bridge to locally terminate VLAN traffic — for example, on a VLAN
+	// sub-interface used for management or a Local NI. Without the "self" entry,
+	// the bridge would forward VLAN traffic between ports but drop frames
+	// destined for its own sub-interfaces, since from the VLAN filtering
+	// perspective the bridge itself acts as the input/output port.
+	VLANSubinterface *VLANSubinterface
 }
 
 // TrunkPort : port carries tagged traffic from multiple VLANs.
@@ -50,15 +60,22 @@ type AccessPort struct {
 	VID uint16
 }
 
-// Name returns the interface name of the bridged port
-// (there can be at most one instance of VLANPort associated with a given bridged port).
+// VLANSubinterface : VLAN configured as a sub-interface of the bridge itself.
+type VLANSubinterface struct {
+	IfName string
+	VID    uint16
+}
+
+// Name reuses BridgePortName to get unique ID also for VLANPort (in the scope
+// of other VLANPorts).
 func (v VLANPort) Name() string {
-	return v.PortIfName
+	return BridgePortName(v.BridgeIfName, v.PortIfName)
 }
 
 // Label for VLANPort.
 func (v VLANPort) Label() string {
-	return v.PortIfName + " (VLAN port)"
+	return fmt.Sprintf("set VLANs for port %s inside bridge %s",
+		v.PortIfName, v.BridgeIfName)
 }
 
 // Type of the item.
@@ -72,21 +89,28 @@ func (v VLANPort) Equal(other dg.Item) bool {
 	if !isVLANPort {
 		return false
 	}
-	isTrunk1 := v.VLANConfig.TrunkPort != nil
-	isTrunk2 := v2.VLANConfig.TrunkPort != nil
-	if isTrunk1 != isTrunk2 {
-		return false
-	}
-	if isTrunk1 {
+
+	// Compare VLANConfig union type
+	switch {
+	case v.VLANConfig.TrunkPort != nil && v2.VLANConfig.TrunkPort != nil:
 		if v.VLANConfig.TrunkPort.AllVIDs != v2.VLANConfig.TrunkPort.AllVIDs ||
 			!generics.EqualSets(v.VLANConfig.TrunkPort.VIDs, v2.VLANConfig.TrunkPort.VIDs) {
 			return false
 		}
-	} else {
+	case v.VLANConfig.AccessPort != nil && v2.VLANConfig.AccessPort != nil:
 		if v.VLANConfig.AccessPort.VID != v2.VLANConfig.AccessPort.VID {
 			return false
 		}
+	case v.VLANConfig.VLANSubinterface != nil && v2.VLANConfig.VLANSubinterface != nil:
+		if v.VLANConfig.VLANSubinterface.VID != v2.VLANConfig.VLANSubinterface.VID {
+			return false
+		}
+	default:
+		// Mismatched config types (e.g., one is trunk, other is access)
+		return false
 	}
+
+	// Compare common fields
 	return v.BridgeIfName == v2.BridgeIfName &&
 		v.PortIfName == v2.PortIfName &&
 		v.ForVIF == v2.ForVIF
@@ -100,15 +124,23 @@ func (v VLANPort) External() bool {
 // String describes VLANPort.
 func (v VLANPort) String() string {
 	var vlanConfig string
-	if v.VLANConfig.TrunkPort != nil {
-		vlanConfig = fmt.Sprintf("trunkPort: {allVIDs: %t, vids:%v}",
+	switch {
+	case v.VLANConfig.TrunkPort != nil:
+		vlanConfig = fmt.Sprintf("trunkPort: {allVIDs: %t, vids: %v}",
 			v.VLANConfig.TrunkPort.AllVIDs, v.VLANConfig.TrunkPort.VIDs)
+	case v.VLANConfig.AccessPort != nil:
+		vlanConfig = fmt.Sprintf("accessPort: {vid: %d}",
+			v.VLANConfig.AccessPort.VID)
+	case v.VLANConfig.VLANSubinterface != nil:
+		vlanConfig = fmt.Sprintf("vlanSubinterface: {vid: %d}",
+			v.VLANConfig.VLANSubinterface.VID)
+	default:
+		vlanConfig = "vlanConfig: none"
 	}
-	if v.VLANConfig.AccessPort != nil {
-		vlanConfig = fmt.Sprintf("accessPort: {vid: %d}", v.VLANConfig.AccessPort.VID)
-	}
-	return fmt.Sprintf("VLANPort: {bridgeIfName: %s, portIfName: %s, forVIF: %t, %s}",
-		v.BridgeIfName, v.PortIfName, v.ForVIF, vlanConfig)
+	return fmt.Sprintf(
+		"VLANPort: {bridgeIfName: %s, portIfName: %s, forVIF: %t, %s}",
+		v.BridgeIfName, v.PortIfName, v.ForVIF, vlanConfig,
+	)
 }
 
 // Dependencies returns the (VLAN-enabled) bridge and the port as the dependencies.
@@ -126,7 +158,7 @@ func (v VLANPort) Dependencies() (deps []dg.Dependency) {
 	deps = append(deps, dg.Dependency{
 		RequiredItem: dg.ItemRef{
 			ItemType: BridgePortTypename,
-			ItemName: v.PortIfName,
+			ItemName: BridgePortName(v.BridgeIfName, v.PortIfName),
 		},
 		MustSatisfy: func(item dg.Item) bool {
 			bridgePort, isBridgePort := item.(BridgePort)
@@ -134,7 +166,14 @@ func (v VLANPort) Dependencies() (deps []dg.Dependency) {
 				// unreachable
 				return false
 			}
-			return bridgePort.BridgeIfName == v.BridgeIfName
+			if v.VLANConfig.VLANSubinterface != nil {
+				// Make sure that VID of VLANPort and BridgePort match.
+				bpSubIf := bridgePort.Variant.VLANSubinterface
+				if bpSubIf == nil || bpSubIf.VID != v.VLANConfig.VLANSubinterface.VID {
+					return false
+				}
+			}
+			return true
 		},
 		Description: "Port must be attached to the bridge",
 	})
@@ -166,10 +205,12 @@ func (c *VLANPortConfigurator) createOrDelete(item dg.Item, del bool) (err error
 			}
 		}
 	}()
+
 	vlanPort, isVLANPort := item.(VLANPort)
 	if !isVLANPort {
 		return fmt.Errorf("invalid item type %T, expected VLANPort", item)
 	}
+
 	link, err := netlink.LinkByName(vlanPort.PortIfName)
 	if err != nil {
 		err = fmt.Errorf("failed to get link for bridge port %s: %w",
@@ -178,49 +219,76 @@ func (c *VLANPortConfigurator) createOrDelete(item dg.Item, del bool) (err error
 		// Dependencies should prevent this.
 		return err
 	}
-	if vlanPort.VLANConfig.TrunkPort != nil {
-		isTrunk := true
+
+	brLink, err := netlink.LinkByName(vlanPort.BridgeIfName)
+	if err != nil {
+		err = fmt.Errorf("failed to get link for bridge %s: %w",
+			vlanPort.BridgeIfName, err)
+		c.Log.Error(err)
+		// Dependencies should prevent this.
+		return err
+	}
+
+	switch {
+	case vlanPort.VLANConfig.TrunkPort != nil:
+		const isTrunk = true
+		const self = false
 		if vlanPort.VLANConfig.TrunkPort.AllVIDs {
 			for vid := firstValidVID; vid <= lastValidVID; vid++ {
-				err = c.setVIDForPort(link, vid, isTrunk, del)
-				if err != nil {
+				if err = c.setVIDForPort(link, vid, isTrunk, self, del); err != nil {
 					return err
 				}
 			}
 		} else {
 			for _, vid := range vlanPort.VLANConfig.TrunkPort.VIDs {
-				err = c.setVIDForPort(link, vid, isTrunk, del)
-				if err != nil {
+				if err = c.setVIDForPort(link, vid, isTrunk, self, del); err != nil {
 					return err
 				}
 			}
 		}
-	} else if vlanPort.VLANConfig.AccessPort != nil {
-		isTrunk := false
+
+	case vlanPort.VLANConfig.AccessPort != nil:
+		const isTrunk = false
+		const self = false
 		vid := vlanPort.VLANConfig.AccessPort.VID
-		err = c.setVIDForPort(link, vid, isTrunk, del)
-		if err != nil {
+		if err = c.setVIDForPort(link, vid, isTrunk, self, del); err != nil {
+			return err
+		}
+
+	case vlanPort.VLANConfig.VLANSubinterface != nil:
+		// Add VLAN ID to the bridge itself ("self" mode), not to the sub-interface.
+		// In this mode the port is neither trunk nor access.
+		const isTrunk = false
+		const self = true
+		vid := vlanPort.VLANConfig.VLANSubinterface.VID
+		if err = c.setVIDForPort(brLink, vid, isTrunk, self, del); err != nil {
 			return err
 		}
 	}
+
 	return nil
 }
 
-func (c *VLANPortConfigurator) setVIDForPort(link netlink.Link,
-	vid uint16, trunk, del bool) (err error) {
-	pvid := !trunk
-	untagged := !trunk
-	const self = false
+func (c *VLANPortConfigurator) setVIDForPort(
+	link netlink.Link, vid uint16, trunk, self, del bool) (err error) {
+	pvid := !trunk && !self // PVID only applies to access ports
+	untagged := !trunk && !self
 	const master = false
+
 	if del {
 		err = netlink.BridgeVlanDel(link, vid, pvid, untagged, self, master)
 	} else {
 		err = netlink.BridgeVlanAdd(link, vid, pvid, untagged, self, master)
 	}
 	if err != nil {
-		portType := "access"
-		if trunk {
+		var portType string
+		switch {
+		case self:
+			portType = "self"
+		case trunk:
 			portType = "trunk"
+		default:
+			portType = "access"
 		}
 		op := "enable"
 		if del {
