@@ -32,9 +32,9 @@ func (p Port) Name() string {
 	return p.IfName
 }
 
-// Label returns the logical label.
+// Label returns the logical label + interface name for clarity.
 func (p Port) Label() string {
-	return p.LogicalLabel
+	return fmt.Sprintf("%s (%s)", p.LogicalLabel, p.IfName)
 }
 
 // Type of the item.

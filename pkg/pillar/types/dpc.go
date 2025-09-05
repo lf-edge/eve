@@ -318,6 +318,21 @@ func (config DevicePortConfig) IsPortUsedAsVlanParent(portLabel string) bool {
 	return false
 }
 
+// IsPortAggregatedByBond - returns true if port with the given logical label
+// is aggregated by a Bond (LAG).
+func (config DevicePortConfig) IsPortAggregatedByBond(portLabel string) bool {
+	for _, port2 := range config.Ports {
+		if port2.L2Type == L2LinkTypeBond {
+			for _, aggrPort := range port2.Bond.AggregatedPorts {
+				if aggrPort == portLabel {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
 // DPCSanitizeArgs : arguments for DevicePortConfig.DoSanitize().
 type DPCSanitizeArgs struct {
 	SanitizeTimePriority bool

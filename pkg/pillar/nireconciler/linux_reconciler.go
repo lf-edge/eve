@@ -317,6 +317,7 @@ func (r *LinuxNIReconciler) runWatcher(netEvents <-chan netmonitor.Event) {
 				// Check if this is intended and/or current port, bridge or vif.
 				portRef := dg.Reference(generic.Port{IfName: ifName})
 				brRef := dg.Reference(linux.Bridge{IfName: ifName})
+				vlanSubIfRef := dg.Reference(linux.VLANSubIf{IfName: ifName})
 				vifRef := dg.Reference(linux.VIF{HostIfName: ifName})
 				graphs := []dg.GraphR{r.intendedState, r.currentState}
 				var found bool
@@ -344,6 +345,15 @@ func (r *LinuxNIReconciler) runWatcher(netEvents <-chan netmonitor.Event) {
 							brChanged := r.updateCurrentNIBridge(niID)
 							if brChanged {
 								r.scheduleNICfgRebuild(niID, "bridge state change")
+								needReconcile = true
+							}
+							break
+						}
+						if _, _, _, found = subG.Item(vlanSubIfRef); found {
+							changed := r.updateCurrentVLANSubIfs(niID)
+							if changed {
+								r.scheduleNICfgRebuild(
+									niID, "VLAN sub-interface state change")
 								needReconcile = true
 							}
 							break

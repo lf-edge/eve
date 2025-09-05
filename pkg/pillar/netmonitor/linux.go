@@ -151,7 +151,7 @@ func (m *LinuxNetworkMonitor) getInterfaceAttrs(ifIndex int) (attrs IfAttrs, err
 }
 
 func (m *LinuxNetworkMonitor) ifAttrsFromLink(link netlink.Link) IfAttrs {
-	return IfAttrs{
+	attrs := IfAttrs{
 		IfIndex:       link.Attrs().Index,
 		IfName:        link.Attrs().Name,
 		IfType:        link.Type(),
@@ -163,6 +163,11 @@ func (m *LinuxNetworkMonitor) ifAttrsFromLink(link netlink.Link) IfAttrs {
 		MasterIfIndex: link.Attrs().MasterIndex,
 		MTU:           uint16(link.Attrs().MTU),
 	}
+	if vlan, ok := link.(*netlink.Vlan); ok {
+		attrs.VlanID = uint16(vlan.VlanId)
+		attrs.VlanParentIfIndex = vlan.ParentIndex
+	}
+	return attrs
 }
 
 // GetInterfaceAddrs returns IP addresses and the HW address assigned

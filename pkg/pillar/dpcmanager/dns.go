@@ -70,6 +70,8 @@ func (m *DpcManager) updateDNS() {
 		m.deviceNetStatus.Ports[ix].DNSServers = port.DNSServers
 		m.deviceNetStatus.Ports[ix].ConfiguredNtpServers = port.NTPServers
 		m.deviceNetStatus.Ports[ix].IgnoreDhcpNtpServers = port.IgnoreDhcpNtpServers
+		m.deviceNetStatus.Ports[ix].L2Type = port.L2Type
+		m.deviceNetStatus.Ports[ix].L2LinkConfig = port.L2LinkConfig
 		// Prefer errors recorded by DPC verification.
 		// New errors are recorded from this function only when there is none yet
 		// (HasError() == false).

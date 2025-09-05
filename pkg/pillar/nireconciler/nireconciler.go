@@ -136,14 +136,15 @@ func (b NIBridge) GetPort(logicalLabel string) *Port {
 // Port is a physical network device used by a network instance to provide external
 // connectivity for applications.
 type Port struct {
-	LogicalLabel string
-	SharedLabels []string
-	IfName       string
-	IsMgmt       bool
-	MTU          uint16
-	DhcpType     types.DhcpType
-	DNSServers   []net.IP
-	NTPServers   []net.IP
+	LogicalLabel      string
+	SharedLabels      []string
+	IfName            string
+	IsMgmt            bool
+	MTU               uint16
+	DhcpType          types.DhcpType
+	DNSServers        []net.IP
+	NTPServers        []net.IP
+	VLANSubinterfaces []VLANSubinterface
 }
 
 // Equal compares two ports for equality.
@@ -155,12 +156,21 @@ func (p Port) Equal(p2 Port) bool {
 		p.MTU == p2.MTU &&
 		p.DhcpType == p2.DhcpType &&
 		generics.EqualSetsFn(p.DNSServers, p2.DNSServers, netutils.EqualIPs) &&
-		generics.EqualSetsFn(p.NTPServers, p2.NTPServers, netutils.EqualIPs)
+		generics.EqualSetsFn(p.NTPServers, p2.NTPServers, netutils.EqualIPs) &&
+		generics.EqualSets(p.VLANSubinterfaces, p2.VLANSubinterfaces)
 }
 
 // UsedWithIP returns true if the port is (potentially) used with an IP address.
 func (p Port) UsedWithIP() bool {
 	return p.DhcpType == types.DhcpTypeStatic || p.DhcpType == types.DhcpTypeClient
+}
+
+// VLANSubinterface : VLAN sub-interface.
+type VLANSubinterface struct {
+	LogicalLabel string
+	IfName       string
+	VLAN         uint16
+	MTU          uint16
 }
 
 // IPRoute is a static IP route configured inside the NI routing table.

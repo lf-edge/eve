@@ -861,7 +861,7 @@ func TestVlansAndBonds(test *testing.T) {
 	t.Expect(itemCountWithType(generic.PhysIfTypename)).To(Equal(2))
 	t.Expect(itemCountWithType(generic.BondTypename)).To(Equal(1))
 	t.Expect(itemCountWithType(generic.VlanTypename)).To(Equal(2))
-	t.Expect(itemCountWithType(generic.AdapterTypename)).To(Equal(2))
+	t.Expect(itemCountWithType(generic.AdapterTypename)).To(Equal(3))
 
 	t.Expect(itemIsCreatedWithLabel("dhcpcd for shopfloor-vlan100")).To(BeTrue())
 	t.Expect(itemIsCreatedWithLabel("dhcpcd for shopfloor-vlan200")).To(BeTrue())
@@ -880,7 +880,6 @@ func TestVlansAndBonds(test *testing.T) {
 	t.Expect(bond.MIIMonitor.Interval).To(BeEquivalentTo(400))
 	t.Expect(bond.MIIMonitor.UpDelay).To(BeEquivalentTo(800))
 	t.Expect(bond.MIIMonitor.DownDelay).To(BeEquivalentTo(1200))
-	t.Expect(bond.Usage).To(Equal(generic.IOUsageVlanParent))
 	t.Expect(bond.MTU).To(BeEquivalentTo(3000)) // max of VLAN sub-interfaces
 
 	vlan100Ref := dg.Reference(linux.Vlan{IfName: "shopfloor.100"})
@@ -891,7 +890,6 @@ func TestVlansAndBonds(test *testing.T) {
 	t.Expect(vlan100.ID).To(BeEquivalentTo(100))
 	t.Expect(vlan100.ParentLL).To(BeEquivalentTo("bond-shopfloor"))
 	t.Expect(vlan100.ParentIfName).To(BeEquivalentTo("bond0"))
-	t.Expect(vlan100.ParentIsL3Port).To(BeFalse())
 	t.Expect(vlan100.MTU).To(BeEquivalentTo(2000))
 
 	vlan200Ref := dg.Reference(linux.Vlan{IfName: "shopfloor.200"})
@@ -902,7 +900,6 @@ func TestVlansAndBonds(test *testing.T) {
 	t.Expect(vlan200.ID).To(BeEquivalentTo(200))
 	t.Expect(vlan200.ParentLL).To(BeEquivalentTo("bond-shopfloor"))
 	t.Expect(vlan200.ParentIfName).To(BeEquivalentTo("bond0"))
-	t.Expect(vlan200.ParentIsL3Port).To(BeFalse())
 	t.Expect(vlan200.MTU).To(BeEquivalentTo(3000))
 
 	vlan100AdapterRef := dg.Reference(linux.Adapter{IfName: "shopfloor.100"})
@@ -912,7 +909,6 @@ func TestVlansAndBonds(test *testing.T) {
 	t.Expect(vlan100Adapter.IfName).To(Equal("shopfloor.100"))
 	t.Expect(vlan100Adapter.L2Type).To(BeEquivalentTo(types.L2LinkTypeVLAN))
 	t.Expect(vlan100Adapter.MTU).To(BeEquivalentTo(2000))
-	t.Expect(vlan100Adapter.UsedAsVlanParent).To(BeFalse())
 
 	vlan200AdapterRef := dg.Reference(linux.Adapter{IfName: "shopfloor.200"})
 	item, _, _, found = currentState.Item(vlan200AdapterRef)
@@ -921,7 +917,6 @@ func TestVlansAndBonds(test *testing.T) {
 	t.Expect(vlan200Adapter.IfName).To(Equal("shopfloor.200"))
 	t.Expect(vlan200Adapter.L2Type).To(BeEquivalentTo(types.L2LinkTypeVLAN))
 	t.Expect(vlan200Adapter.MTU).To(BeEquivalentTo(3000))
-	t.Expect(vlan200Adapter.UsedAsVlanParent).To(BeFalse())
 
 	eth0Ref := dg.Reference(linux.PhysIf{PhysIfName: "eth0"})
 	item, _, _, found = currentState.Item(eth0Ref)
@@ -976,7 +971,6 @@ func TestVlansAndBonds(test *testing.T) {
 	t.Expect(bond.MIIMonitor.Interval).To(BeEquivalentTo(400))
 	t.Expect(bond.MIIMonitor.UpDelay).To(BeEquivalentTo(800))
 	t.Expect(bond.MIIMonitor.DownDelay).To(BeEquivalentTo(1200))
-	t.Expect(bond.Usage).To(Equal(generic.IOUsageVlanParentAndL3Adapter))
 	t.Expect(bond.MTU).To(BeEquivalentTo(4000)) // from bond adapter
 
 	item, _, _, found = currentState.Item(vlan100Ref)
@@ -986,7 +980,6 @@ func TestVlansAndBonds(test *testing.T) {
 	t.Expect(vlan100.ID).To(BeEquivalentTo(100))
 	t.Expect(vlan100.ParentLL).To(BeEquivalentTo("bond-shopfloor"))
 	t.Expect(vlan100.ParentIfName).To(BeEquivalentTo("bond0"))
-	t.Expect(vlan100.ParentIsL3Port).To(BeTrue())
 	t.Expect(vlan100.MTU).To(BeEquivalentTo(2000))
 
 	item, _, _, found = currentState.Item(vlan200Ref)
@@ -996,7 +989,6 @@ func TestVlansAndBonds(test *testing.T) {
 	t.Expect(vlan200.ID).To(BeEquivalentTo(200))
 	t.Expect(vlan200.ParentLL).To(BeEquivalentTo("bond-shopfloor"))
 	t.Expect(vlan200.ParentIfName).To(BeEquivalentTo("bond0"))
-	t.Expect(vlan200.ParentIsL3Port).To(BeTrue())
 	t.Expect(vlan200.MTU).To(BeEquivalentTo(3000))
 
 	item, _, _, found = currentState.Item(vlan100AdapterRef)
@@ -1005,7 +997,6 @@ func TestVlansAndBonds(test *testing.T) {
 	t.Expect(vlan100Adapter.IfName).To(Equal("shopfloor.100"))
 	t.Expect(vlan100Adapter.L2Type).To(BeEquivalentTo(types.L2LinkTypeVLAN))
 	t.Expect(vlan100Adapter.MTU).To(BeEquivalentTo(2000))
-	t.Expect(vlan100Adapter.UsedAsVlanParent).To(BeFalse())
 
 	item, _, _, found = currentState.Item(vlan200AdapterRef)
 	t.Expect(found).To(BeTrue())
@@ -1013,7 +1004,6 @@ func TestVlansAndBonds(test *testing.T) {
 	t.Expect(vlan200Adapter.IfName).To(Equal("shopfloor.200"))
 	t.Expect(vlan200Adapter.L2Type).To(BeEquivalentTo(types.L2LinkTypeVLAN))
 	t.Expect(vlan200Adapter.MTU).To(BeEquivalentTo(3000))
-	t.Expect(vlan200Adapter.UsedAsVlanParent).To(BeFalse())
 
 	bondAdapterRef := dg.Reference(linux.Adapter{IfName: "bond0"})
 	item, _, _, found = currentState.Item(bondAdapterRef)
@@ -1022,7 +1012,6 @@ func TestVlansAndBonds(test *testing.T) {
 	t.Expect(bondAdapter.IfName).To(Equal("bond0"))
 	t.Expect(bondAdapter.L2Type).To(BeEquivalentTo(types.L2LinkTypeBond))
 	t.Expect(bondAdapter.MTU).To(BeEquivalentTo(4000))
-	t.Expect(bondAdapter.UsedAsVlanParent).To(BeTrue())
 
 	item, _, _, found = currentState.Item(eth0Ref)
 	t.Expect(found).To(BeTrue())

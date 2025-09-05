@@ -112,11 +112,11 @@ import (
 //  |   |   |      +---------------+    |  (device port)  |      |   |   |
 //  |   |   |                           +-----------------+      |   |   |
 //  |   |   |                                                    |   |   |
-//  |   |   |               +-----------------+                  |   |   |
-//  |   |   |               |    BPDUGuard    |                  |   |   |
-//  |   |   |               |   (for L2 NI)   | ...              |   |   |
-//  |   |   |               |  (device port)  |                  |   |   |
-//  |   |   |               +-----------------+                  |   |   |
+//  |   |   |    +---------------+      +-----------------+      |   |   |
+//  |   |   |    |  VLANSubIf    |      |    BPDUGuard    |      |   |   |
+//  |   |   |    |  (for L2 NI)  | ...  |   (for L2 NI)   | ...  |   |   |
+//  |   |   |    |  (external)   |      |  (device port)  |      |   |   |
+//  |   |   |    +---------------+      +-----------------+      |   |   |
 //  |   |   |                                                    |   |   |
 //  |   |   |      +--------------------------------------+      |   |   |
 //  |   |   |      |             IptablesRule             |      |   |   |
@@ -325,7 +325,7 @@ func AppConnSGName(appID uuid.UUID, netAdapterName string) string {
 }
 
 func portPhysIfName(port Port) string {
-	if port.UsedWithIP() {
+	if port.UsedWithIP() || len(port.VLANSubinterfaces) > 0 {
 		// NIM renames the port and uses the original name for the bridge.
 		return "k" + port.IfName
 	}
@@ -634,6 +634,26 @@ func (r *LinuxNIReconciler) getIntendedNIL2Cfg(niID uuid.UUID) dg.Graph {
 				}, nil)
 			}
 		}
+		for _, vlanSubIf := range port.VLANSubinterfaces {
+			intendedL2Cfg.PutItem(linux.VLANSubIf{
+				LogicalLabel: vlanSubIf.LogicalLabel,
+				IfName:       vlanSubIf.IfName,
+				ParentLL:     port.LogicalLabel,
+				ParentIfName: port.IfName,
+				ID:           vlanSubIf.VLAN,
+			}, nil)
+			intendedL2Cfg.PutItem(linux.BridgePort{
+				BridgeIfName: ni.brIfName,
+				Variant: linux.BridgePortVariant{
+					VLANSubinterface: &linux.VLANSubinterface{
+						IfName: vlanSubIf.IfName,
+						VID:    vlanSubIf.VLAN,
+					},
+				},
+				ExternallyBridged: true,
+				MTU:               vlanSubIf.MTU,
+			}, nil)
+		}
 		if !enableVLANFiltering {
 			continue
 		}
@@ -662,6 +682,19 @@ func (r *LinuxNIReconciler) getIntendedNIL2Cfg(niID uuid.UUID) dg.Graph {
 				ForVIF:       false,
 				VLANConfig: linux.VLANConfig{
 					TrunkPort: &trunkPort,
+				},
+			}, nil)
+		}
+		for _, vlanSubIf := range port.VLANSubinterfaces {
+			intendedL2Cfg.PutItem(linux.VLANPort{
+				BridgeIfName: ni.brIfName,
+				PortIfName:   vlanSubIf.IfName,
+				ForVIF:       false,
+				VLANConfig: linux.VLANConfig{
+					VLANSubinterface: &linux.VLANSubinterface{
+						VID:    vlanSubIf.VLAN,
+						IfName: vlanSubIf.IfName,
+					},
 				},
 			}, nil)
 		}
@@ -1629,10 +1662,12 @@ func (r *LinuxNIReconciler) generateVifHostIfName(vifNum, appNum int) string {
 
 func (r *LinuxNIReconciler) niBridgeIsCreatedByNIM(
 	niConfig types.NetworkInstanceConfig, br NIBridge) bool {
-	// If Switch NI has single port which is also used for EVE mgmt or for Local NI,
-	// then the associated bridge is managed by NIM.
+	// If a Switch NI has a single port that is also used for EVE management,
+	// for a local NI, or as a VLAN parent, then the associated bridge is
+	// managed by NIM.
 	return niConfig.Type == types.NetworkInstanceTypeSwitch &&
-		len(br.Ports) == 1 && br.Ports[0].UsedWithIP()
+		len(br.Ports) == 1 &&
+		(br.Ports[0].UsedWithIP() || len(br.Ports[0].VLANSubinterfaces) > 0)
 }
 
 func (r *LinuxNIReconciler) getVLANConfigForNI(ni *niInfo) (
