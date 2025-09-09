@@ -195,3 +195,50 @@ longhorn_post_install_config() {
         fi
         kubectl  -n longhorn-system patch settings.longhorn.io/upgrade-checker -p '[{"op":"replace","path":"/value","value":"false"}]' --type json
 }
+
+longhorn_node_set_sched() {
+        node_name=$1
+        # string "true" or "false"
+        enabled=$2
+        if [ "$enabled" != "true" ] && [ "$enabled" != "false" ]; then
+                logmsg "invalid request for node config: $enabled"
+        fi
+        sched=$enabled
+        evict="false"
+        if [ "$enabled" = "false" ]; then
+                evict="true"
+        fi
+        default_disk_name=$(kubectl -n longhorn-system get nodes.longhorn.io "${node_name}" -o json | jq -r '.spec.disks | keys[]')
+        {
+                kubectl -n longhorn-system patch nodes.longhorn.io "${node_name}" -p "[{'op':'replace','path':'/spec/allowScheduling','value':$sched}]" --type json
+                kubectl -n longhorn-system patch nodes.longhorn.io "${node_name}" -p "[{'op':'replace','path':'/spec/evictionRequested','value':$evict}]" --type json
+                kubectl -n longhorn-system patch nodes.longhorn.io "${node_name}" -p "[{'op':'replace','path':\"/spec/disks/${default_disk_name}/allowScheduling\",'value':$sched}]" --type json
+                kubectl -n longhorn-system patch nodes.longhorn.io "${node_name}" -p "[{'op':'replace','path':\"/spec/disks/${default_disk_name}/evictionRequested\",'value':$evict}]" --type json
+        } >> "$INSTALL_LOG" 2>&1
+}
+
+
+longhorn_rescale() {
+        req_replica_count=$1
+
+        # Scale all deployments
+        depList="csi-attacher csi-provisioner csi-resizer csi-snapshotter"
+        for dep in $depList; do
+                replica_count=$(kubectl -n longhorn-system get deployment "$dep" -o json | jq -r .spec.replicas)
+                if [ "$replica_count" != "$req_replica_count" ]; then
+                        logmsg "scaling:$dep"
+                        # shellcheck disable=SC2086
+                        kubectl -n longhorn-system scale --replicas=${req_replica_count} deployment "$dep" >> "$INSTALL_LOG" 2>&1
+                fi
+        done
+
+        dsList=$(kubectl -n longhorn-system get daemonset -o json | jq -r .items[].metadata.name)
+        for ds in $dsList; do
+                for i in $(seq 1 5); do
+                        logmsg "setting node selector for ds:$ds"
+                        if kubectl patch daemonset "$ds" -n longhorn-system -p '{"spec":{"template":{"spec":{"nodeSelector":{"tie-breaker-node":"false"}}}}}' >> "$INSTALL_LOG" 2>&1; then
+                                break
+                        fi
+                done
+        done
+}

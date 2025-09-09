@@ -40,6 +40,8 @@ const (
 	NetworkInstanceNAD = "network-instance-attachment"
 	// VolumeCSIClusterStorageClass : CSI clustered storage class
 	VolumeCSIClusterStorageClass = "longhorn"
+	// VolumeCSIStorageClassReplicaPrefix : prefix for storage classes defining different replica counts
+	VolumeCSIStorageClassReplicaPrefix = "lh-sc-rep"
 	// VolumeCSILocalStorageClass : default local storage class
 	VolumeCSILocalStorageClass = "local-path"
 	// KubevirtPodsRunning : Wait for node to be ready, and require kubevirt namespace have at least 4 pods running
@@ -49,6 +51,11 @@ const (
 	EVEAppDomainNameLbl = "App-Domain-Name"
 	// KubevirtVMINameLbl is a label applied to a virt-launcher pod which contains the associated vmi object name
 	KubevirtVMINameLbl = "vm.kubevirt.io/name"
+
+	// TieBreakerNodeLbl is the label key applied to a kubernetes node
+	TieBreakerNodeLbl = "tie-breaker-node"
+	// TieBreakerNodeSet is the label value expected with the label TieBreakerNodeLbl
+	TieBreakerNodeSet = "true"
 )
 
 const (
@@ -1026,4 +1033,31 @@ func IsClusterMode() bool {
 	}
 
 	return false
+}
+
+// GetSupportedReplicaCountForCluster : returns the max replica count a cluster can support
+func GetSupportedReplicaCountForCluster() (int, error) {
+	config, err := GetKubeConfig()
+	if err != nil {
+		return 3, err
+	}
+
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		return 3, err
+	}
+
+	nodes, err := clientset.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{
+		LabelSelector: TieBreakerNodeLbl + "=" + TieBreakerNodeSet,
+	})
+	if (err != nil) || (len(nodes.Items) == 0) {
+		return 3, err
+	}
+	// Tie breaker Node exists, limit replicas
+	return 2, nil
+}
+
+// GetStorageClassForReplicaCount : returns the storage class associated with the replica count
+func GetStorageClassForReplicaCount(count int) string {
+	return fmt.Sprintf("%s%d", VolumeCSIStorageClassReplicaPrefix, count)
 }

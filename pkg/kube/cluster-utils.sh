@@ -7,6 +7,9 @@ LOG_SIZE=$((5*1024*1024))
 K3s_LOG_FILE="k3s.log"
 SAVE_KUBE_VAR_LIB_DIR="/persist/kube-save-var-lib"
 K3S_SERVER_CMD="k3s server"
+TIE_BREAKER_NODE_LABEL="tie-breaker-node"
+TIE_BREAKER_NODE_LABEL_SET_VALUE="true"
+TIE_BREAKER_NODE_LABEL_UNSET_VALUE="false"
 
 logmsg() {
         local MSG
@@ -332,4 +335,45 @@ Multus_uninstall() {
         logmsg "multus uninstall"
         kubectl delete -f /etc/multus-daemonset-new.yaml
         rm /var/lib/multus_initialized
+}
+
+Multus_config() {
+    dsList=$(kubectl -n kube-system get daemonset -o json | jq -r .items[].metadata.name)
+    for ds in $dsList; do
+            logmsg "setting node selector for ds:$ds"
+            kubectl patch daemonset "$ds" -n kube-system -p '{"spec":{"template":{"spec":{"nodeSelector":{"tie-breaker-node":"false"}}}}}'
+    done
+}
+
+node_name_from_uuid() {
+        node_uuid=$1
+        kubectl get nodes -l node-uuid="${node_uuid}" -o jsonpath='{.items[*].metadata.name}'
+}
+
+self_node_name() {
+        EdgeNodeInfoPath="/persist/status/zedagent/EdgeNodeInfo/global.json"
+        if [ ! -f $EdgeNodeInfoPath ]; then
+                echo ""
+                return
+        fi
+        jq -r '.DeviceName' $EdgeNodeInfoPath
+        return
+}
+
+# Configure tie breaker attributes for node objects, all nodes should run this locally
+Nodes_tie_breaker_config_apply() {
+        tie_breaker_node_uuid=$1
+        nodes=$(kubectl get nodes -l node-uuid="${tie_breaker_node_uuid}" -o jsonpath='{.items[*].metadata.name}')
+        for tbNode in $nodes; do
+                logmsg "node $tbNode is tie-breaker"
+                kubectl label node "${tbNode}" "${TIE_BREAKER_NODE_LABEL}=${TIE_BREAKER_NODE_LABEL_SET_VALUE}" --overwrite
+                kubectl cordon "${tbNode}"
+        done
+
+        nodes=$(kubectl get nodes -l node-uuid!="${tie_breaker_node_uuid}" -o jsonpath='{.items[*].metadata.name}')
+        for notTbNode in $nodes; do
+                logmsg "node $notTbNode is not tie-breaker"
+                kubectl label node "${notTbNode}" "${TIE_BREAKER_NODE_LABEL}=${TIE_BREAKER_NODE_LABEL_UNSET_VALUE}" --overwrite
+                kubectl uncordon "${notTbNode}"
+        done
 }

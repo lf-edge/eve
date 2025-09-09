@@ -831,6 +831,13 @@ func nodeOnBootHealthStatusWatcher(z *zedkube) {
 			continue
 		}
 
+		// Handle Tie-breaker config, leave that node cordoned
+		labelVal, exists := node.ObjectMeta.Labels[kubeapi.TieBreakerNodeLbl]
+		if exists && (labelVal == kubeapi.TieBreakerNodeSet) {
+			// Leave it cordoned, exit...
+			return
+		}
+
 		// Is the node is ready?
 		var ready = false
 		for _, condition := range node.Status.Conditions {

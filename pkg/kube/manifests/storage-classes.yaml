@@ -1,0 +1,35 @@
+# Copyright (c) 2025 Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+---
+kind: StorageClass
+apiVersion: storage.k8s.io/v1
+metadata:
+  name: lh-sc-rep1
+provisioner: driver.longhorn.io
+allowVolumeExpansion: true
+reclaimPolicy: Delete
+volumeBindingMode: Immediate
+parameters:
+  numberOfReplicas: "1"
+---
+kind: StorageClass
+apiVersion: storage.k8s.io/v1
+metadata:
+  name: lh-sc-rep2
+provisioner: driver.longhorn.io
+allowVolumeExpansion: true
+reclaimPolicy: Delete
+volumeBindingMode: Immediate
+parameters:
+  numberOfReplicas: "2"
+---
+kind: StorageClass
+apiVersion: storage.k8s.io/v1
+metadata:
+  name: lh-sc-rep3
+provisioner: driver.longhorn.io
+allowVolumeExpansion: true
+reclaimPolicy: Delete
+volumeBindingMode: Immediate
+parameters:
+  numberOfReplicas: "3"
