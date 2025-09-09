@@ -7,7 +7,8 @@
 | timer.config.interval | integer in seconds | 60 | how frequently device gets config (needs a reboot to take effect) |
 | timer.cert.interval | integer in seconds | 1 day (24*3600) | how frequently device checks for new controller certificates |
 | timer.metric.interval | integer in seconds | 60 | how frequently device reports metrics |
-| timer.hardwarehealth.interval | integer in seconds | 12 hours (43200) | how frequently device reports hardware health information to controller |
+| timer.hardwarehealth.interval | integer in seconds | 12 hours (43200) | how frequently device reports hardware health information (ECC) to controller |
+| timer.hardwareinfo.interval | integer in seconds | 3 hours (10800) | how frequently device reports hardware information (SMART) to controller |
 | timer.deviceinfo.interval | integer in seconds | 10 minutes (600) | how frequently device is forced to report device info to controller even though nothing changed (needs a reboot to take effect) |
 | timer.metric.diskscan.interval | integer in seconds | 300 | how frequently device should scan the disk for metrics |
 | timer.location.cloud.interval | integer in seconds | 1 hour | how frequently device reports geographic location information to controller |

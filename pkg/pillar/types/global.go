@@ -161,6 +161,8 @@ const (
 	MetricInterval GlobalSettingKey = "timer.metric.interval"
 	// HardwareHealthInterval global setting key
 	HardwareHealthInterval GlobalSettingKey = "timer.hardwarehealth.interval"
+	// HardwareInfoInterval global setting key
+	HardwareInfoInterval GlobalSettingKey = "timer.hardwareinfo.interval"
 	// DevInfoInterval global setting key
 	DevInfoInterval GlobalSettingKey = "timer.deviceinfo.interval"
 	// DiskScanMetricInterval global setting key
@@ -971,6 +973,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	// timer.metric.hardwarehealth.interval (seconds)
 	// Default value 12 hours minimum value 6 hours.
 	configItemSpecMap.AddIntItem(HardwareHealthInterval, 12*HourInSec, 6*HourInSec, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(HardwareInfoInterval, 3*HourInSec, 3*HourInSec, 0xFFFFFFFF)
 	// timer.deviceinfo.interval (seconds)
 	// Forces the device to send device info to the controller at least once in a while.
 	// Default value 10 minutes, minimum value 30 seconds
