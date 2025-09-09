@@ -13,6 +13,7 @@ import (
 )
 
 const progressFileSuffix = ".progress"
+const tmpFileSuffix = ".tmp"
 
 // Create the object download directories we own
 func createDownloadDirs() {
