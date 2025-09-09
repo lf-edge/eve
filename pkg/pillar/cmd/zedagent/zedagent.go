@@ -839,8 +839,6 @@ func mainEventLoop(zedagentCtx *zedagentContext, stillRunning *time.Ticker) {
 	getconfigCtx := zedagentCtx.getconfigCtx
 	dnsCtx := zedagentCtx.dnsCtx
 
-	hwInfoTiker := time.NewTicker(3 * time.Hour)
-
 	for {
 		select {
 		case change := <-zedagentCtx.subOnboardStatus.MsgChan():
@@ -1108,9 +1106,6 @@ func mainEventLoop(zedagentCtx *zedagentContext, stillRunning *time.Ticker) {
 
 		case change := <-zedagentCtx.subPatchEnvelopeUsage.MsgChan():
 			zedagentCtx.subPatchEnvelopeUsage.ProcessChange(change)
-
-		case <-hwInfoTiker.C:
-			triggerPublishHwInfo(zedagentCtx)
 
 		case change := <-zedagentCtx.subEdgeviewStatus.MsgChan():
 			zedagentCtx.subEdgeviewStatus.ProcessChange(change)
@@ -2072,23 +2067,6 @@ func initPostOnboardSubs(zedagentCtx *zedagentContext) {
 	}
 
 	initKubeSubs(zedagentCtx)
-}
-
-func triggerPublishHwInfoToDest(ctxPtr *zedagentContext, dest destinationBitset) {
-
-	log.Function("Triggered PublishHardwareInfo")
-	select {
-	case ctxPtr.triggerHwInfo <- dest:
-		// Do nothing more
-	default:
-		// This occurs if we are already trying to send a hardware info
-		// and we get a second and third trigger before that is complete.
-		log.Warnf("Failed to send on PublishHardwareInfo")
-	}
-}
-
-func triggerPublishHwInfo(ctxPtr *zedagentContext) {
-	triggerPublishHwInfoToDest(ctxPtr, AllDest)
 }
 
 func handleClusterUpdateStatusCreate(ctxArg interface{}, key string,

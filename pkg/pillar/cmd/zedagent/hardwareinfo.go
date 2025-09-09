@@ -18,10 +18,13 @@ import (
 func hardwareInfoTask(ctxPtr *zedagentContext, triggerHwInfo <-chan destinationBitset) {
 	wdName := agentName + "hwinfo"
 
+	ticker := time.NewTicker(10 * time.Second)
+
 	stillRunning := time.NewTicker(30 * time.Second)
 	ctxPtr.ps.StillRunning(wdName, warningTime, errorTime)
 	ctxPtr.ps.RegisterFileWatchdog(wdName)
 
+	ts := time.Now()
 	for {
 		select {
 		case dest := <-triggerHwInfo:
@@ -33,10 +36,36 @@ func hardwareInfoTask(ctxPtr *zedagentContext, triggerHwInfo <-chan destinationB
 			log.Function("HardwareInfoTask done with message")
 			ctxPtr.ps.CheckMaxTimeTopic(wdName, "PublishHardwareInfo", start,
 				warningTime, errorTime)
+		case <-ticker.C: // even if no trigger comes, publish hardware info periodically
+			if time.Now().Sub(ts) > getHardwareInfoInterval(ctxPtr) {
+				ts = time.Now()
+				triggerPublishHwInfo(ctxPtr)
+			}
 		case <-stillRunning.C:
 		}
 		ctxPtr.ps.StillRunning(wdName, warningTime, errorTime)
 	}
+}
+
+func getHardwareInfoInterval(ctx *zedagentContext) time.Duration {
+	interval := ctx.globalConfig.GlobalValueInt(types.HardwareInfoInterval)
+	return time.Duration(interval) * time.Second
+}
+
+func triggerPublishHwInfoToDest(ctxPtr *zedagentContext, dest destinationBitset) {
+	log.Function("Triggered PublishHardwareInfo")
+	select {
+	case ctxPtr.triggerHwInfo <- dest:
+		// Do nothing more
+	default:
+		// This occurs if we are already trying to send a hardware info
+		// and we get a second and third trigger before that is complete.
+		log.Warnf("Failed to send on PublishHardwareInfo")
+	}
+}
+
+func triggerPublishHwInfo(ctxPtr *zedagentContext) {
+	triggerPublishHwInfoToDest(ctxPtr, AllDest)
 }
 
 // PublishHardwareInfoToZedCloud send ZInfoHardware message
