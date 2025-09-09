@@ -51,6 +51,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 	// As of this writing, the file is downloaded directly to `config.Target`
 	locFilename = config.Target
 	locDirname = path.Dir(locFilename)
+	tempLocFilename := locFilename + ".part"
 	cleanOnError := true
 
 	// by default the metricsURL _is_ the DownloadURL, but can override in switch
@@ -66,7 +67,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 
 	downloadMaxPortCost := ctx.downloadMaxPortCost
 	log.Functionf("Downloading <%s> to <%s> using %d downloadMaxPortCost",
-		config.Name, locFilename, downloadMaxPortCost)
+		config.Name, tempLocFilename, downloadMaxPortCost)
 
 	dsPath := dsCtx.Dpath
 
@@ -264,7 +265,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 		downloadStartTime := time.Now()
 		contentType, cancelled, tracedReq, err = download(ctx, trType, st, syncOp,
 			serverURL, auth, dsPath, dsCtx.Region,
-			config.Size, ifname, ipSrc, remoteName, locFilename, dst.DsCertPEM,
+			config.Size, ifname, ipSrc, remoteName, tempLocFilename, dst.DsCertPEM,
 			withNetTracing, traceOpts, receiveChan)
 		if withNetTracing {
 			tracedReq.RequestName = fmt.Sprintf("download-addr%d", addrIndex)
@@ -288,9 +289,21 @@ func handleSyncOp(ctx *downloaderContext, key string,
 			}
 			continue
 		}
+
+		// Finalize: fsync and atomically move temp -> final.
+		if f, ferr := os.OpenFile(tempLocFilename, os.O_RDWR, 0); ferr == nil {
+			_ = f.Sync()
+			_ = f.Close()
+		}
+		if errStr := os.Rename(tempLocFilename, locFilename); errStr != nil {
+			log.Errorf("Rename failed: %v", errStr)
+			return handleSyncOpResponse(ctx, config, status, locFilename,
+				key, errStr.Error(), cancelled, cleanOnError)
+		}
+
 		// Record how much we downloaded
 		size := int64(0)
-		info, err := os.Stat(locFilename)
+		info, err := os.Stat(tempLocFilename)
 		if err != nil {
 			log.Error(err)
 		} else {
