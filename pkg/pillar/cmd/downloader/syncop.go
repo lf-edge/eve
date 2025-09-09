@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -19,6 +20,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/cipher"
 	"github.com/lf-edge/eve/pkg/pillar/netdump"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	utils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	logutils "github.com/lf-edge/eve/pkg/pillar/utils/logging"
 )
 
@@ -51,7 +53,6 @@ func handleSyncOp(ctx *downloaderContext, key string,
 	// As of this writing, the file is downloaded directly to `config.Target`
 	locFilename = config.Target
 	locDirname = path.Dir(locFilename)
-	cleanOnError := true
 
 	// by default the metricsURL _is_ the DownloadURL, but can override in switch
 	metricsURL := dsCtx.DownloadURL
@@ -106,7 +107,6 @@ func handleSyncOp(ctx *downloaderContext, key string,
 			remoteName = path.Join(splittedPath[1:]...)
 		}
 		metricsURL = fmt.Sprintf("S3:%s/%s", dsPath, remoteName)
-		cleanOnError = false
 
 	case zconfig.DsType_DsAzureBlob.String():
 		auth = &zedUpload.AuthInput{
@@ -129,7 +129,6 @@ func handleSyncOp(ctx *downloaderContext, key string,
 		// pass in the config.Name instead of 'filename' which
 		// does not contain the prefix of the relative path with '/'s
 		remoteName = config.Name
-		cleanOnError = false
 
 	case zconfig.DsType_DsSFTP.String():
 		auth = &zedUpload.AuthInput{
@@ -179,7 +178,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 	if errStr != "" {
 		log.Errorf("Error preparing to download. All errors:%s", errStr)
 		return handleSyncOpResponse(ctx, config, status, locFilename,
-			key, errStr, cancelled, cleanOnError)
+			key, errStr, cancelled)
 	}
 
 	// if the server URL ends with '.local', it is considered to be local data store
@@ -194,7 +193,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 				downloadMaxPortCost)
 			log.Error(err.Error())
 			return handleSyncOpResponse(ctx, config, status, locFilename,
-				key, err.Error(), cancelled, cleanOnError)
+				key, err.Error(), cancelled)
 		}
 	}
 	// Note that network tracing of image downloads over SFTP is not supported.
@@ -288,6 +287,14 @@ func handleSyncOp(ctx *downloaderContext, key string,
 			}
 			continue
 		}
+
+		// Sync the dir
+		if err := utils.DirSync(filepath.Dir(locFilename)); err != nil {
+			log.Errorf("Directory sync failed: %v", err)
+			return handleSyncOpResponse(ctx, config, status, locFilename,
+				key, err.Error(), cancelled)
+		}
+
 		// Record how much we downloaded
 		size := int64(0)
 		info, err := os.Stat(locFilename)
@@ -309,7 +316,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 			publishNetdump(ctx, true, tracedReqs)
 		}
 		return handleSyncOpResponse(ctx, config, status,
-			locFilename, key, "", cancelled, cleanOnError)
+			locFilename, key, "", cancelled)
 	}
 	// we skip this error earlier but we must fill errStr
 	if errStr == "" {
@@ -323,7 +330,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 		publishNetdump(ctx, false, tracedReqs)
 	}
 	return handleSyncOpResponse(ctx, config, status, locFilename,
-		key, errStr, cancelled, cleanOnError)
+		key, errStr, cancelled)
 }
 
 // DownloadURL format : http://<serverURL>/dpath/filename
@@ -338,17 +345,13 @@ func getServerURL(dsCtx *types.DatastoreContext) (string, error) {
 
 func handleSyncOpResponse(ctx *downloaderContext, config types.DownloaderConfig,
 	status *types.DownloaderStatus, locFilename,
-	key, errStr string, cancelled, cleanOnError bool) (bool, string) {
+	key, errStr string, cancelled bool) (bool, string) {
 
 	// have finished the download operation
 	// based on the result, perform some storage
 	// management also
 
 	if errStr != "" {
-		if cleanOnError {
-			// Delete downloaded + progress files
-			doDelete(ctx, key, locFilename, status)
-		}
 		return cancelled, errStr
 	}
 
