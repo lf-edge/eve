@@ -5,6 +5,8 @@
 
 # shellcheck source=/dev/null
 . /usr/bin/cluster-utils.sh
+# Dir which kube service container has access to and k3s monitors
+KUBE_MANIFESTS_DIR=/var/lib/rancher/k3s/server/manifests
 
 LONGHORN_VERSION=v1.9.1
 
@@ -28,6 +30,10 @@ longhorn_install() {
     if ! kubectl apply -f "$lhCfgPath"; then
             return 1
     fi
+
+    longhorn_storageclass_create 1
+    longhorn_storageclass_create 2
+    longhorn_storageclass_create 3
     return 0
 }
 
@@ -194,4 +200,75 @@ longhorn_post_install_config() {
                 return
         fi
         kubectl  -n longhorn-system patch settings.longhorn.io/upgrade-checker -p '[{"op":"replace","path":"/value","value":"false"}]' --type json
+}
+
+longhorn_storageclass_create() {
+        replica_count=$1
+        yaml_dir=$(mktemp -d)
+        name="lh-sc-rep${replica_count}"
+        cat <<EOF > "${yaml_dir}/${name}.yaml"
+---
+kind: StorageClass
+apiVersion: storage.k8s.io/v1
+metadata:
+  name: ${name}
+provisioner: driver.longhorn.io
+allowVolumeExpansion: true
+reclaimPolicy: Delete
+volumeBindingMode: Immediate
+parameters:
+  numberOfReplicas: "$replica_count"
+EOF
+        mv "${yaml_dir}/${name}.yaml" "$KUBE_MANIFESTS_DIR/"
+        rmdir "${yaml_dir}"
+}
+
+longhorn_node_set_sched() {
+        node_name=$1
+        # string "true" or "false"
+        enabled=$2
+        if [ "$enabled" != "true" ] && [ "$enabled" != "false" ]; then
+                logmsg "invalid request for node config: $enabled"
+        fi
+        sched=$enabled
+        evict="false"
+        if [ "$enabled" = "false" ]; then
+                evict="true"
+        fi
+        default_disk_name=$(kubectl -n longhorn-system get nodes.longhorn.io "${node_name}" -o json | jq -r '.spec.disks | keys[]')
+        kubectl  -n longhorn-system patch nodes.longhorn.io "${node_name}" -p "[{'op':'replace','path':'/spec/allowScheduling','value':$sched}]" --type json
+        kubectl  -n longhorn-system patch nodes.longhorn.io "${node_name}" -p "[{'op':'replace','path':'/spec/evictionRequested','value':$evict}]" --type json
+        kubectl  -n longhorn-system patch nodes.longhorn.io "${node_name}" -p "[{'op':'replace','path':\"/spec/disks/${default_disk_name}/allowScheduling\",'value':$sched}]" --type json
+        kubectl  -n longhorn-system patch nodes.longhorn.io "${node_name}" -p "[{'op':'replace','path':\"/spec/disks/${default_disk_name}/evictionRequested\",'value':$evict}]" --type json
+        if [ "$enabled" = "false" ]; then
+                kubectl cordon node "$node_name"
+        fi
+}
+
+
+longhorn_rescale() {
+        req_replica_count=$1
+
+        longhorn_storageclass_create "$req_replica_count"
+
+        # Scale all deployments
+        depList="csi-attacher csi-provisioner csi-resizer csi-snapshotter"
+        for dep in $depList; do
+                replica_count=$(kubectl -n longhorn-system get deployment "$dep" -o json | jq -r .spec.replicas)
+                if [ "$replica_count" != "$req_replica_count" ]; then
+                        echo "scaling:$dep"
+                        # shellcheck disable=SC2086
+                        kubectl -n longhorn-system scale --replicas=${req_replica_count} deployment "$dep" 
+                fi
+        done
+
+        dsList=$(kubectl -n longhorn-system get daemonset -o json | jq -r .items[].metadata.name)
+        for ds in $dsList; do
+                echo "setting node selector for ds:$ds"
+                for i in $(seq 1 10); do
+                        if kubectl patch daemonset "$ds" -n longhorn-system -p '{"spec":{"template":{"spec":{"nodeSelector":{"tie-breaker-node":"false"}}}}}'; then
+                                break
+                        fi
+                done
+        done
 }

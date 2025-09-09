@@ -407,6 +407,9 @@ const (
 	MsrvPrometheusMetricsBurst GlobalSettingKey = "msrv.prometheus.metrics.burst"
 	// MsrvPrometheusMetricsIdleTimeoutSeconds: idle timeout for the connection
 	MsrvPrometheusMetricsIdleTimeoutSeconds GlobalSettingKey = "msrv.prometheus.metrics.idletimeout.seconds"
+
+	// Tie Breaker Node ID
+	TieBreakerNodeId GlobalSettingKey = "tiebreaker.nodeid"
 )
 
 // AgentSettingKey - keys for per-agent settings
@@ -1079,6 +1082,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddStringItem(FmlCustomResolution, FmlResolutionUnset, blankValidator)
 	configItemSpecMap.AddStringItem(TUIMonitorLogLevel, "info", blankValidator)
 	configItemSpecMap.AddStringItem(EdgeviewPublicKeys, "", blankValidator)
+	configItemSpecMap.AddStringItem(TieBreakerNodeId, "", blankValidator)
 
 	// Log deduplication and filtering settings
 	configItemSpecMap.AddIntItem(LogDedupWindowSize, 0, 0, 0xFFFFFFFF)

@@ -23,6 +23,7 @@ All_PODS_READY=true
 install_kubevirt=1
 TRANSITION_PIPE="/tmp/cluster_transition_pipe$$"
 TRANSITION_FLAG_FILE="/tmp/cluster_transition_flag"
+ENCC_FILE_PATH="/persist/status/zedagent/EdgeNodeClusterConfig/global.json"
 
 # shellcheck source=pkg/kube/descheduler-utils.sh
 . /usr/bin/descheduler-utils.sh
@@ -470,6 +471,111 @@ get_enc_status() {
     fi
 }
 
+tie_breaker_config_isSet() {
+    # Read the JSON data from the file, return 0 if successful, 1 if not
+    if [ ! -f "$ENCC_FILE_PATH" ]; then
+      return 1
+    fi 
+    encc_data=$(cat "$ENCC_FILE_PATH")
+    tie_breaker_node_id=$(echo "$encc_data" | jq -r '.TieBreakerNodeId')
+    if [ "$tie_breaker_node_id" != "" ]; then
+        return 0
+    fi
+    return 1
+}
+tie_breaker_config_getNodeUuid() {
+    # Read the JSON data from the file, return 0 if successful, 1 if not
+    if [ ! -f "$ENCC_FILE_PATH" ]; then
+      echo ""
+      return 1
+    fi 
+    encc_data=$(cat "$ENCC_FILE_PATH")
+    tie_breaker_node_id=$(echo "$encc_data" | jq -r '.TieBreakerNodeId.UUID')
+    if [ "$tie_breaker_node_id" != "" ]; then
+        echo "$tie_breaker_node_id"
+        return 0
+    fi
+    echo ""
+    return 1 
+}
+
+tie_breaker_status_isSelf() {
+        tie_breaker_node_uuid=$1
+        if [ "$DEVUUID" = "$tie_breaker_node_uuid" ]; then
+                return 0
+        else 
+                return 1
+        fi
+}
+TIE_BREAKER_STATUSLABEL="tie-breaker-feature=1"
+tie_breaker_status_set() {
+        node=$1
+        kubectl label node "${node}" "${TIE_BREAKER_STATUSLABEL}"
+}
+tie_breaker_status_get() {
+        nodeCount=$(kubectl get node -l "${TIE_BREAKER_STATUSLABEL}" -o go-template='{{len .items}}')
+        if [ "$nodeCount" = "1" ]; then
+                return 0
+        fi
+        return 1
+}
+node_count_is_cluster() {
+        nodeCount=$(kubectl get node -o go-template='{{len .items}}')
+        if [ "$nodeCount" = "3" ]; then
+                return 0
+        fi
+        return 1    
+}
+
+# Intended to only be run at cluster creation time by all nodes
+tie_breaker_configApply() {
+        if ! tie_breaker_config_isSet; then
+                return
+        fi
+
+        if [ ! -f /var/lib/node-labels-initialized ]; then
+                return
+        fi
+
+        if ! node_count_is_cluster; then
+                return
+        fi
+
+        tie_breaker_node_uuid=$(tie_breaker_config_getNodeUuid)
+
+        if ! tie_breaker_status_isSelf "$tie_breaker_node_uuid"; then
+                return
+        fi
+        # If you're the tie-breaker node: config components then start the drain...
+
+        if tie_breaker_status_get; then
+                return
+        fi
+
+        tie_breaker_k8s_node_name=$(node_name_from_uuid "$tie_breaker_node_uuid")
+        if [ "$tie_breaker_k8s_node_name" = "" ]; then
+                return
+        fi
+
+        logmsg "tie-breaker config-apply for nodeId:${tie_breaker_node_uuid} node:${tie_breaker_k8s_node_name}"
+        Nodes_tie_breaker_config "$tie_breaker_node_uuid"
+
+        logmsg "tie-breaker config-apply:kubevirt"
+        Kubevirt_config
+
+        logmsg "tie-breaker config-apply:cdi"
+        Cdi_config
+
+        logmsg "tie-breaker config-apply:longhorn"
+        longhorn_node_set_sched "${node}" "false"
+        longhorn_rescale 2
+
+        logmsg "evicting tie-breaker nodeId:${tie_breaker_node_uuid} node:${tie_breaker_k8s_node_name}"
+        kubectl drain "${tie_breaker_k8s_node_name}" --delete-emptydir-data=true --ignore-daemonsets >> "$INSTALL_LOG" 2>&1
+        logmsg "evicted tie-breaker nodeId:${tie_breaker_node_uuid} node:${tie_breaker_k8s_node_name}"
+
+        tie_breaker_status_set "${tie_breaker_k8s_node_name}"
+}
 
 # When transitioning from single node to cluster mode, need change the controller
 # provided token for the cluster
@@ -547,7 +653,7 @@ check_cluster_config_change() {
       else
         # check to see if the persistent config file exists, if yes, then we need to
         # wait until zedkube to publish the ENC status file
-        if [ -f /persist/status/zedagent/EdgeNodeClusterConfig/global.json ]; then
+        if [ -f "${ENCC_FILE_PATH}" ]; then
           logmsg "EdgeNodeClusterConfig file found, but the EdgeNodeClusterStatus file is missing, wait..."
           return 0
         fi
@@ -865,6 +971,12 @@ if [ -f /var/lib/convert-to-single-node ]; then
         # if we immediately convert back to cluster mode, we need to wait for the
         # bootstrap status before moving on to cluster mode
         convert_to_single_node=true
+
+        #
+        # During first boot this is only set after the save var-lib process
+        # So when converting back to single node its missing, set it again here.
+        #
+        touch /var/lib/all_components_initialized
 fi
 # since we can wait for long time, always start the containerd first
 check_start_containerd
@@ -1105,6 +1217,7 @@ else
 
                 if Longhorn_is_ready; then
                         check_overwrite_nsmounter
+                        tie_breaker_configApply
                 fi
                 if [ ! -e /var/lib/longhorn_configured ]; then
                         longhorn_post_install_config

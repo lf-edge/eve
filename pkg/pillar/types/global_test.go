@@ -243,6 +243,7 @@ func TestNewConfigItemSpecMap(t *testing.T) {
 		MsrvPrometheusMetricsRequestPerSecond,
 		MsrvPrometheusMetricsBurst,
 		MsrvPrometheusMetricsIdleTimeoutSeconds,
+		TieBreakerNodeId,
 	}
 	if len(specMap.GlobalSettings) != len(gsKeys) {
 		t.Errorf("GlobalSettings has more (%d) than expected keys (%d)",

@@ -121,6 +121,12 @@ func (handler *volumeHandlerCSI) CreateVolume() (string, error) {
 	}
 	handler.log.Noticef("CreateVolume called for PVC %s size %v", pvcName, pvcSize)
 
+	repCount, err := kubeapi.GetSupportedReplicaCountForCluster()
+	if err != nil {
+		handler.log.Errorf("Can't determine dynamic replica count, defaulting to: %d due to: %v", repCount, err)
+	}
+	storageClassName := kubeapi.GetStorageClassForReplicaCount(repCount)
+
 	// Reference Name is set for downloaded volumes. virtctl in RolloutImgToPVC can create PVC if not exists
 	// so we need not explicitly create the PVC here.
 	if handler.status.ReferenceName != "" {
@@ -174,7 +180,7 @@ func (handler *volumeHandlerCSI) CreateVolume() (string, error) {
 			}
 
 			// Convert to PVC
-			pvcerr := kubeapi.RolloutDiskToPVC(createContext, handler.log, false, rawImgFile, pvcName, false, pvcSize)
+			pvcerr := kubeapi.RolloutDiskToPVC(createContext, handler.log, false, rawImgFile, pvcName, false, pvcSize, storageClassName)
 
 			// Since we succeeded or failed to create PVC above, no point in keeping the rawImgFile.
 			// Delete it to save space.
@@ -199,7 +205,7 @@ func (handler *volumeHandlerCSI) CreateVolume() (string, error) {
 				return pvcName, errors.New(errStr)
 			}
 			// Convert qcow2 to PVC
-			err = kubeapi.RolloutDiskToPVC(createContext, handler.log, false, qcowFile, pvcName, false, pvcSize)
+			err = kubeapi.RolloutDiskToPVC(createContext, handler.log, false, qcowFile, pvcName, false, pvcSize, storageClassName)
 
 			if err != nil {
 				errStr := fmt.Sprintf("Error converting %s to PVC %s: %v",
@@ -209,7 +215,7 @@ func (handler *volumeHandlerCSI) CreateVolume() (string, error) {
 			}
 		}
 	} else {
-		err := kubeapi.CreatePVC(pvcName, pvcSize, handler.log)
+		err := kubeapi.CreatePVC(pvcName, pvcSize, handler.log, storageClassName)
 		if err != nil {
 			errStr := fmt.Sprintf("Error creating PVC %s", pvcName)
 			handler.log.Error(errStr)
