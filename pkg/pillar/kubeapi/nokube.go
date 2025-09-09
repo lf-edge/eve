@@ -50,3 +50,13 @@ func IsClusterMode() bool {
 func DetachOldWorkload(log *base.LogObject, virtLauncherPodName string) error {
 	return nil
 }
+
+// GetSupportedReplicaCountForCluster is an empty implementation for non-kubevirt builds
+func GetSupportedReplicaCountForCluster() (int, error) {
+	return 0, nil
+}
+
+// GetStorageClassForReplicaCount is an empty implementation for non-kubevirt builds
+func GetStorageClassForReplicaCount(count int) string {
+	return ""
+}

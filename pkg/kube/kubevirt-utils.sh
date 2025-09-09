@@ -12,12 +12,25 @@ Kubevirt_install() {
     # so we download kubevirt-operator.yaml and patch it
     logmsg "Installing patched Kubevirt"
     kubectl apply -f /etc/kubevirt-operator.yaml
-    logmsg "Updating replica to 3 for virt-operator and virt-controller"
-    kubectl patch deployment virt-operator -n kubevirt --patch '{"spec":{"replicas": 3 }}'
     kubectl apply -f https://github.com/kubevirt/kubevirt/releases/download/${KUBEVIRT_VERSION}/kubevirt-cr.yaml
-    kubectl patch KubeVirt kubevirt -n kubevirt --patch '{"spec": {"infra": {"replicas": 3}}}' --type='merge'
+    Kubevirt_config 3
     #Add kubevirt feature gates
     kubectl apply -f /etc/kubevirt-features.yaml
+}
+
+Kubevirt_config() {
+    replica_count=$1
+    logmsg "Updating replica count to ${replica_count} for virt-operator and virt-controller"
+    kubectl patch deployment virt-operator -n kubevirt --patch "{'spec':{'replicas': ${replica_count} }}"
+    kubectl patch KubeVirt kubevirt -n kubevirt --patch "{'spec': {'infra': {'replicas': ${replica_count} }}}" --type='merge'
+}
+
+Kubevirt_tie_breaker_config_apply() {
+    dsList=$(kubectl -n kubevirt get daemonset -o json | jq -r .items[].metadata.name)
+    for ds in $dsList; do
+            logmsg "setting node selector for ds:$ds"
+            kubectl patch daemonset "$ds" -n kubevirt -p '{"spec":{"template":{"spec":{"nodeSelector":{"tie-breaker-node":"false"}}}}}'
+    done
 }
 
 Kubevirt_uninstall() {
@@ -47,4 +60,12 @@ Cdi_uninstall() {
     logmsg "Removing CDI version $CDI_VERSION"
     kubectl delete -f https://github.com/kubevirt/containerized-data-importer/releases/download/$CDI_VERSION/cdi-cr.yaml
     kubectl delete -f https://github.com/kubevirt/containerized-data-importer/releases/download/$CDI_VERSION/cdi-operator.yaml
+}
+
+Cdi_config() {
+    depList=$(kubectl -n cdi get deployment -o json | jq -r .items[].metadata.name)
+    for dep in $depList; do
+            logmsg "setting node selector for dep:$dep"
+            kubectl patch deployment "$dep" -n cdi -p '{"spec":{"template":{"spec":{"nodeSelector":{"tie-breaker-node":"false"}}}}}'
+    done
 }

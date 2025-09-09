@@ -23,7 +23,7 @@ import (
 )
 
 // CreatePVC : creates a Persistent volume of given name and size.
-func CreatePVC(pvcName string, size uint64, log *base.LogObject) error {
+func CreatePVC(pvcName string, size uint64, log *base.LogObject, storageClass string) error {
 	// Get the Kubernetes clientset
 	clientset, err := GetClientSet()
 	if err != nil {
@@ -37,7 +37,7 @@ func CreatePVC(pvcName string, size uint64, log *base.LogObject) error {
 		size = 10 * 1024 * 1024
 	}
 	// Define the Longhorn PVC object
-	pvc := NewPVCDefinition(pvcName, fmt.Sprint(size), nil, nil)
+	pvc := NewPVCDefinition(pvcName, fmt.Sprint(size), nil, nil, storageClass)
 
 	// Create the PVC in Kubernetes
 	result, err := clientset.CoreV1().PersistentVolumeClaims(pvc.Namespace).
@@ -176,7 +176,7 @@ func convertBytesToSize(b uint64) string {
 
 // NewPVCDefinition : returns a default PVC object
 func NewPVCDefinition(pvcName string, size string, annotations,
-	labels map[string]string) *corev1.PersistentVolumeClaim {
+	labels map[string]string, storageClass string) *corev1.PersistentVolumeClaim {
 
 	var (
 		// Filesystem is default so no need to declare
@@ -190,7 +190,7 @@ func NewPVCDefinition(pvcName string, size string, annotations,
 			Namespace:   EVEKubeNameSpace,
 		},
 		Spec: corev1.PersistentVolumeClaimSpec{
-			StorageClassName: stringPtr(VolumeCSIClusterStorageClass),
+			StorageClassName: stringPtr(storageClass),
 			AccessModes:      []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
 			VolumeMode:       &volumeModeBlock,
 			Resources: corev1.ResourceRequirements{
@@ -208,7 +208,7 @@ func NewPVCDefinition(pvcName string, size string, annotations,
 // This does currently have extended retries but does not need to
 // bump a watchdog as the volumecreate worker does not have one.
 func RolloutDiskToPVC(ctx context.Context, log *base.LogObject, exists bool,
-	diskfile string, pvcName string, filemode bool, pvcSize uint64) error {
+	diskfile string, pvcName string, filemode bool, pvcSize uint64, storageClass string) error {
 
 	// Get the Kubernetes clientset
 	clientset, err := GetClientSet()
@@ -267,7 +267,7 @@ func RolloutDiskToPVC(ctx context.Context, log *base.LogObject, exists bool,
 
 	// Create PVC and then copy data. We create PVC to set the designated node id label.
 	if !exists {
-		err = CreatePVC(pvcName, pvcSize, log)
+		err = CreatePVC(pvcName, pvcSize, log, storageClass)
 		if err != nil {
 			err = fmt.Errorf("Error creating PVC %s", pvcName)
 			log.Error(err)

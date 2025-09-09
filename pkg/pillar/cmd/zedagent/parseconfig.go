@@ -3410,6 +3410,8 @@ func parseEdgeNodeClusterConfig(getconfigCtx *getconfigContext,
 		JoinServerIP:     joinServerIP,
 		BootstrapNode:    isJoinNode,
 		// XXX EncryptedClusterToken is only for gcp config
+
+		ClusterType: types.ClusterType(zcfgCluster.ClusterType),
 	}
 	enClusterConfig.CipherToken, err = parseCipherBlock(getconfigCtx,
 		enClusterConfig.Key(), zcfgCluster.GetEncryptedClusterToken())
@@ -3420,6 +3422,15 @@ func parseEdgeNodeClusterConfig(getconfigCtx *getconfigContext,
 	}
 	// These share a cipherblock
 	enClusterConfig.CipherGzipRegistrationManifestYaml = enClusterConfig.CipherToken
+
+	if zcfgCluster.GetTieBreakerNodeId() != "" {
+		tieBreakerNodeID, err := uuid.FromString(zcfgCluster.GetTieBreakerNodeId())
+		if err != nil {
+			log.Errorf("parseEdgeNodeClusterConfig: failed to parse tie breaker UUID: %v", err)
+			return
+		}
+		enClusterConfig.TieBreakerNodeID = types.UUIDandVersion{UUID: tieBreakerNodeID}
+	}
 
 	log.Functionf("parseEdgeNodeClusterConfig: ENCluster API, Config %+v, %v", zcfgCluster, enClusterConfig)
 	ctx.pubEdgeNodeClusterConfig.Publish("global", enClusterConfig)

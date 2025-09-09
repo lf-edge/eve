@@ -24,6 +24,8 @@ install_kubevirt=1
 TRANSITION_PIPE="/tmp/cluster_transition_pipe$$"
 TRANSITION_FLAG_FILE="/tmp/cluster_transition_flag"
 
+# shellcheck source=pkg/kube/pubsub.sh
+. /usr/bin/pubsub.sh
 # shellcheck source=pkg/kube/descheduler-utils.sh
 . /usr/bin/descheduler-utils.sh
 # shellcheck source=pkg/kube/longhorn-utils.sh
@@ -39,6 +41,8 @@ TRANSITION_FLAG_FILE="/tmp/cluster_transition_flag"
 . /usr/bin/utils.sh
 # shellcheck source=pkg/kube/kubevirt-utils.sh
 . /usr/bin/kubevirt-utils.sh
+# shellcheck source=pkg/kube/tie-breaker-utils.sh
+. /usr/bin/tie-breaker-utils.sh
 
 # get cluster IP address from the cluster status file
 get_cluster_node_ip() {
@@ -470,7 +474,6 @@ get_enc_status() {
     fi
 }
 
-
 # When transitioning from single node to cluster mode, need change the controller
 # provided token for the cluster
 
@@ -547,7 +550,7 @@ check_cluster_config_change() {
       else
         # check to see if the persistent config file exists, if yes, then we need to
         # wait until zedkube to publish the ENC status file
-        if [ -f /persist/status/zedagent/EdgeNodeClusterConfig/global.json ]; then
+        if [ -f "${ENCC_FILE_PATH}" ]; then
           logmsg "EdgeNodeClusterConfig file found, but the EdgeNodeClusterStatus file is missing, wait..."
           return 0
         fi
@@ -853,6 +856,12 @@ setup_prereqs
 
 Update_CheckNodeComponents
 
+#
+# k3s is installed now
+# Handle once-per-boot steps which require the k3s directory structure to exist
+#
+cp /etc/k3s-manifests/* "${KUBE_MANIFESTS_DIR}/"
+
 
 if [ -f /var/lib/convert-to-single-node ]; then
         logmsg "remove /var/lib and copy saved single node /var/lib"
@@ -1020,17 +1029,19 @@ if [ ! -f /var/lib/all_components_initialized ]; then
         # Longhorn
         #
         wait_for_item "longhorn"
-        if ! longhorn_install "$HOSTNAME"; then
-                continue
+        if [ ! -f /var/lib/longhorn_initialized ]; then
+                if ! longhorn_install "$HOSTNAME"; then
+                        continue
+                fi
+                if ! Longhorn_is_ready; then
+                        # It can take a moment for the new pods to get to ContainerCreating
+                        # Just back off until they are caught by the earlier are_all_pods_ready
+                        sleep 30
+                        continue
+                fi
+                logmsg "longhorn ready"
+                touch /var/lib/longhorn_initialized
         fi
-        if ! Longhorn_is_ready; then
-                # It can take a moment for the new pods to get to ContainerCreating
-                # Just back off until they are caught by the earlier are_all_pods_ready
-                sleep 30
-                continue
-        fi
-        logmsg "longhorn ready"
-        touch /var/lib/longhorn_initialized
 
         #
         # Descheduler
@@ -1111,6 +1122,7 @@ else
 
                 if Longhorn_is_ready; then
                         check_overwrite_nsmounter
+                        Tie_breaker_configApply
                 fi
                 if [ ! -e /var/lib/longhorn_configured ]; then
                         longhorn_post_install_config
