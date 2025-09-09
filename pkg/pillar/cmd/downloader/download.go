@@ -5,12 +5,16 @@ package downloader
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -19,41 +23,89 @@ import (
 	"github.com/lf-edge/eve-libs/zedUpload/types"
 	"github.com/lf-edge/eve/pkg/pillar/controllerconn"
 	"github.com/lf-edge/eve/pkg/pillar/netdump"
+	utils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 )
 
 const AWSS3IDENTIFIER = "amazonaws"
 
-func loadDownloadedParts(locFilename string) types.DownloadedParts {
-	var downloadedParts types.DownloadedParts
-	fd, err := os.Open(locFilename + progressFileSuffix)
-	if err == nil {
-		decoder := json.NewDecoder(fd)
-		err = decoder.Decode(&downloadedParts)
-		if err != nil {
-			log.Errorf("failed to decode progress file: %s", err)
-		}
-		err := fd.Close()
-		if err != nil {
-			log.Errorf("failed to close progress file: %s", err)
-		}
-	}
-	return downloadedParts
+// on-disk format with self-check
+type progressFile struct {
+	Version int                   `json:"version"`
+	Hash    string                `json:"hash"` // sha256 of Parts JSON encoded as hex
+	Parts   types.DownloadedParts `json:"parts"`
 }
 
-func saveDownloadedParts(locFilename string, downloadedParts types.DownloadedParts) {
-	fd, err := os.Create(locFilename + progressFileSuffix)
+func hashParts(p types.DownloadedParts) string {
+	b, err := json.Marshal(p)
 	if err != nil {
-		log.Errorf("error creating progress file: %s", err)
-	} else {
-		encoder := json.NewEncoder(fd)
-		err = encoder.Encode(downloadedParts)
-		if err != nil {
-			log.Errorf("failed to encode progress file: %s", err)
+		log.Error("Failed to marshal downloaded parts")
+		return ""
+	}
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:])
+}
+
+// helper to readSavedParts+verify one file
+func readSavedParts(p string) (types.DownloadedParts, bool) {
+	var zero types.DownloadedParts
+	fd, err := os.Open(p)
+	if err != nil {
+		return zero, false
+	}
+	defer fd.Close()
+	data, err := io.ReadAll(fd)
+	if err != nil {
+		return zero, false
+	}
+	var pf progressFile
+	if err := json.Unmarshal(data, &pf); err != nil {
+		return zero, false
+	}
+	if pf.Hash != hashParts(pf.Parts) {
+		log.Warnf("progress file hash mismatch for %s (discarding)", p)
+		return zero, false
+	}
+	return pf.Parts, true
+}
+
+func loadDownloadedParts(partLocFilename string) types.DownloadedParts {
+	var zero types.DownloadedParts
+	tmpFilePath := partLocFilename + tmpFileSuffix
+
+	// try the main file
+	if parts, ok := readSavedParts(partLocFilename); ok {
+		return parts
+	}
+
+	// recover from a valid, newer tmp (leftover from crash between fsync and rename)
+	dir := filepath.Dir(partLocFilename)
+	stProgress, errProgress := os.Stat(partLocFilename)
+	stProgressTmp, errProgressTmp := os.Stat(tmpFilePath)
+	// main file does not exist or tmp exists and is newer than main -> promote
+	if errProgress != nil ||
+		(errProgressTmp == nil && stProgressTmp.ModTime().After(stProgress.ModTime())) {
+		if parts, ok := readSavedParts(tmpFilePath); ok {
+			if err := os.Rename(tmpFilePath, partLocFilename); err == nil {
+				utils.DirSync(dir)
+			} else {
+				log.Error("Error when loading downloaded parts, rename failed")
+			}
+			return parts
 		}
-		err := fd.Close()
-		if err != nil {
-			log.Errorf("failed to close progress file: %s", err)
-		}
+	}
+
+	// nothing valid -> return empty (fresh download or resume from 0)
+	return zero
+}
+
+func saveDownloadedParts(partLocFilename string, downloadedParts types.DownloadedParts) {
+	pf := progressFile{
+		Version: 1,
+		Hash:    hashParts(downloadedParts),
+		Parts:   downloadedParts,
+	}
+	if err := utils.WriteRenameJSON(partLocFilename, partLocFilename+tmpFileSuffix, pf); err != nil {
+		log.Errorf("saving progress file failed: %v", err)
 	}
 }
 
@@ -76,7 +128,7 @@ func serverURL(downloadURL string) string {
 func download(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 	status Status, syncOp zedUpload.SyncOpType, downloadURL string,
 	auth *zedUpload.AuthInput, dpath, region string, maxsize uint64, ifname string,
-	ipSrc net.IP, filename, locFilename string, certs [][]byte, withNetTracing bool,
+	ipSrc net.IP, filename, partLocFilename string, certs [][]byte, withNetTracing bool,
 	traceOpts []nettrace.TraceOpt, receiveChan chan<- CancelChannel) (
 	reqType string, cancel bool, tracedReq netdump.TracedNetRequest, err error) {
 
@@ -144,7 +196,7 @@ func download(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 		}
 	}
 
-	downloadedParts := loadDownloadedParts(locFilename)
+	downloadedParts := loadDownloadedParts(partLocFilename)
 	downloadedPartsHash := downloadedParts.Hash()
 	preDownloadParts := downloadedParts
 
@@ -178,7 +230,7 @@ func download(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 				description := fmt.Sprintf("%v download URL: %s, dpath: %s, "+
 					"region: %s, filename: %s, maxsize: %d, ifname: %s, ipSrc: %v, "+
 					"locFilename: %s", trType, downloadURL, dpath, region, filename, maxsize,
-					ifname, ipSrc, locFilename)
+					ifname, ipSrc, partLocFilename)
 				// Use err2 to not change the return value of err.
 				preDownloadProg, err2 := json.Marshal(preDownloadParts)
 				if err2 == nil {
@@ -204,10 +256,10 @@ func download(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 	log.Functionf("%s syncOp for dpath:<%s>, region: <%s>, filename: <%s>, "+
 		"downloadURL: <%s>, maxsize: %d, ifname: %s, ipSrc: %+v, locFilename: %s",
 		trType, dpath, region, filename, downloadURL, maxsize, ifname, ipSrc,
-		locFilename)
+		partLocFilename)
 
 	// create Request
-	req := dEndPoint.NewRequest(syncOp, filename, locFilename,
+	req := dEndPoint.NewRequest(syncOp, filename, partLocFilename,
 		int64(maxsize), true, respChan)
 	if req == nil {
 		return "", cancel, tracedReq, errors.New("NewRequest failed")
@@ -252,7 +304,7 @@ func download(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 		if downloadedPartsHash != newDownloadedPartsHash {
 			downloadedPartsHash = newDownloadedPartsHash
 			downloadedParts = newDownloadedParts
-			saveDownloadedParts(locFilename, downloadedParts)
+			saveDownloadedParts(partLocFilename, downloadedParts)
 		}
 
 		if resp.IsDnUpdate() {
