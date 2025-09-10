@@ -139,6 +139,12 @@ in grub.cfg with graphical GRUB menu to get the device to boot again.
 3. General kernel parameters may be adjusted with `set_global dom0_extra_args "$dom0_extra_args OPTION1=VAL1 OPTION2 "`.
    They will be added to kernel cmdline.
 
+4. **Dynamic kernel parameters via EFI variables (Available since EVE 15.9.0):** Kernel command line arguments can be dynamically set at runtime using EFI variables. This method allows adding kernel parameters without modifying grub.cfg files, making it safer for runtime configuration changes. The parameters are read from the EFI variable `eve-kernel-extra-cmdline` with GUID `7AD58F29-2B49-4F5A-9F0B-4E7BF7C2C311` and appended to the existing kernel command line.
+
+   **Note:** The EFI variable content must be null-terminated (ASCII string ending with '\0').
+
+   **Security Note:** This dynamic modification is secure because grub.cfg is measured to PCR 8, maintaining boot integrity verification through TPM attestation.
+
 As an example of using serial port and VGA as a console for the Dom0 (in Xen terminology,
 but also applies for KVM, which means the "host" operating system) the following
 arguments should be used:

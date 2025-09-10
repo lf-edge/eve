@@ -1,7 +1,9 @@
 # syntax=docker/dockerfile-upstream:1.5.0-rc2-labs
+# Copyright (c) 2025 Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
 
 FROM lfedge/eve-alpine:745ae9066273c73b0fd879c4ba4ff626a8392d04 AS grub-build-base
-ENV BUILD_PKGS automake \
+ENV BUILD_PKGS="automake \
                make \
                bison \
                gettext \
@@ -17,9 +19,9 @@ ENV BUILD_PKGS automake \
                patch \
                gettext-dev \
                bash \
-               gawk
-ENV BUILD_PKGS_arm64 coreutils
-ENV BUILD_PKGS_riscv64 coreutils
+               gawk"
+ENV BUILD_PKGS_arm64=coreutils
+ENV BUILD_PKGS_riscv64=coreutils
 RUN eve-alpine-deploy.sh
 
 # list of grub modules that are portable between x86_64 and aarch64
@@ -28,7 +30,7 @@ search_disk_uuid search_part_label search_label xzio xfs video gfxterm serial gp
 part_msdos cat echo test configfile loopback net tftp http true"
 
 FROM grub-build-base AS grub-build-amd64
-ENV GRUB_MODULES="multiboot multiboot2 efi_uga efi_gop linuxefi gpt verify gcry_sha256 measurefs efinet"
+ENV GRUB_MODULES="multiboot multiboot2 efi_uga efi_gop linuxefi gpt verify gcry_sha256 measurefs efinet getenv"
 ENV GRUB_MODULES_i386_pc="multiboot multiboot2 biosdisk gpt verify"
 ENV GRUB_COMMIT=71f9e4ac44142af52c3fc1860436cf9e432bf764
 ENV GRUB_PATCHES=patches
