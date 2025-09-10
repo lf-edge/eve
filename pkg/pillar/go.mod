@@ -46,6 +46,7 @@ require (
 	github.com/opencontainers/runtime-spec v1.1.0
 	github.com/packetcap/go-pcap v0.0.0-20230717110547-c34843f9206d
 	github.com/prometheus/procfs v0.12.0
+	github.com/robertmin1/u-root/v3 v3.0.0-20230320092305-66753cad62af
 	github.com/satori/go.uuid v1.2.1-0.20180404165556-75cca531ea76
 	github.com/shirou/gopsutil v3.21.11+incompatible
 	github.com/shjala/gostats v0.0.0-20230215094906-69a32327600f
