@@ -53,7 +53,7 @@ ENV GRUB_PLATFORM=efi
 # hadolint ignore=DL3006
 FROM grub-build-${TARGETARCH} AS grub-build
 
-ENV GRUB_REPO=https://git.savannah.gnu.org/cgit/grub.git
+ENV GRUB_REPO=https://cgit.git.savannah.gnu.org/cgit/grub.git
 
 COPY patches /patches
 COPY patches-2.06  /patches-2.06
