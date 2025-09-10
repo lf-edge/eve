@@ -1112,6 +1112,9 @@ github.com/robertkrimen/otto/file
 github.com/robertkrimen/otto/parser
 github.com/robertkrimen/otto/registry
 github.com/robertkrimen/otto/token
+# github.com/robertmin1/u-root/v3 v3.0.0-20230320092305-66753cad62af
+## explicit; go 1.19
+github.com/robertmin1/u-root/v3/pkg/efivarfs
 # github.com/russross/blackfriday/v2 v2.1.0
 ## explicit
 github.com/russross/blackfriday/v2
