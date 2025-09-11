@@ -8,7 +8,6 @@ FROM build-base AS build-amd64
 FROM build-base AS build-arm64
 FROM build-base AS build-riscv64
 
-# hadolint ignore=DL3006
 FROM build-${TARGETARCH} AS build
 
 ENV BUILD_PKGS git gcc make libc-dev linux-pam-dev m4 findutils util-linux make patch

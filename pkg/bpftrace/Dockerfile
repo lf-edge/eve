@@ -50,5 +50,4 @@ FROM bin AS bin-amd64
 FROM bin AS bin-arm64
 FROM scratch AS bin-riscv64
 
-# hadolint ignore=DL3006
 FROM bin-${TARGETARCH} AS bpftrace

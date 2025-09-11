@@ -16,7 +16,6 @@ ENV CARGO_BUILD_TARGET="aarch64-unknown-linux-musl"
 FROM rust-host AS target-riscv64
 ENV CARGO_BUILD_TARGET="riscv64gc-unknown-linux-gnu"
 
-# hadolint ignore=DL3006
 FROM target-$TARGETARCH AS rust
 
 WORKDIR /usr/local/my-installer

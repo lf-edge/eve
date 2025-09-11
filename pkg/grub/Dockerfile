@@ -50,7 +50,6 @@ ENV GRUB_COMMIT=2.06
 ENV GRUB_PATCHES="patches-${GRUB_COMMIT} patches-riscv64-${GRUB_COMMIT}"
 ENV GRUB_PLATFORM=efi
 
-# hadolint ignore=DL3006
 FROM grub-build-${TARGETARCH} AS grub-build
 
 ENV GRUB_REPO=https://cgit.git.savannah.gnu.org/cgit/grub.git
