@@ -396,3 +396,77 @@ func longhornAPIExists() (bool, error) {
 	}
 	return true, nil
 }
+
+func lhVolGet(lhVolName string) (*lhv1beta2.Volume, error) {
+	apiExists, err := longhornAPIExists()
+	if err != nil {
+		return nil, err
+	}
+	if !apiExists {
+		return nil, nil
+	}
+
+	config, err := GetKubeConfig()
+	if err != nil {
+		return nil, fmt.Errorf("lhVolGet can't get kubeconfig %v", err)
+	}
+
+	lhClient, err := versioned.NewForConfig(config)
+	if err != nil {
+		return nil, fmt.Errorf("lhVolGet can't get versioned config: %v", err)
+	}
+
+	// Don't allow a k8s api timeout keep us waiting forever, set this one explicitly as its used in metrics path
+	shortContext, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	lhVol, err := lhClient.LonghornV1beta2().Volumes(longhornNamespace).Get(shortContext, lhVolName, metav1.GetOptions{})
+	if err != nil || lhVol == nil {
+		return nil, fmt.Errorf("lhVolGet can't get lh vol err:%v", err)
+	}
+
+	return lhVol, nil
+}
+
+func lhEiDeployedOnNode(lhEiName string, nodeName string) (deployed bool, err error) {
+	apiExists, err := longhornAPIExists()
+	if err != nil {
+		return false, err
+	}
+	if !apiExists {
+		return false, nil
+	}
+
+	config, err := GetKubeConfig()
+	if err != nil {
+		return false, fmt.Errorf("lhEiDeployedOnNode can't get kubeconfig %v", err)
+	}
+
+	lhClient, err := versioned.NewForConfig(config)
+	if err != nil {
+		return false, fmt.Errorf("lhEiDeployedOnNode can't get versioned config: %v", err)
+	}
+
+	// Don't allow a k8s api timeout keep us waiting forever, set this one explicitly as its used in metrics path
+	shortContext, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	eiList, err := lhClient.LonghornV1beta2().EngineImages(longhornNamespace).List(shortContext, metav1.ListOptions{})
+	if err != nil || eiList == nil {
+		return false, fmt.Errorf("lhEiDeployedOnNode can't get lh ei err:%v", err)
+	}
+
+	for _, ei := range eiList.Items {
+		if ei.Spec.Image != lhEiName {
+			continue
+		}
+		ndm := ei.Status.NodeDeploymentMap
+		val, exists := ndm[nodeName]
+		if !exists {
+			return false, fmt.Errorf("engineimage deployment map missing node:%s", nodeName)
+		}
+		deployed = val
+	}
+
+	return deployed, nil
+}
