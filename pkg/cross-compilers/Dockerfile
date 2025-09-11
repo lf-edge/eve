@@ -49,7 +49,6 @@ FROM build-base AS build-armhf
 # we cannot build cross-compilers without additional patches
 FROM lfedge/eve-alpine:745ae9066273c73b0fd879c4ba4ff626a8392d04 AS build-riscv64
 
-# hadolint ignore=DL3006
 FROM build-${TARGETARCH} AS build
 RUN mkdir -p /packages
 

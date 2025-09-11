@@ -5,7 +5,6 @@ FROM lfedge/eve-alpine:e799def68af51dba83ec5a41f34bd0109704574f AS cache
 FROM lfedge/eve-alpine:b96ae7c5b776702cdc7596e3722e40cc0d353ad7 AS cache-riscv64
 FROM cache AS cache-amd64
 FROM cache AS cache-arm64
-# hadolint ignore=DL3006
 FROM cache-${TARGETARCH} AS cache-build
 
 ARG ALPINE_VERSION=3.16
@@ -76,7 +75,6 @@ ENV EVE_TARGET_ARCH=riscv64
 
 # we merge layers in previous step
 # so we should avoid large possible diff
-# hadolint ignore=DL3006
 FROM final-${TARGETARCH}
 COPY --from=compactor / /
 ENV GOTOOLCHAIN=local

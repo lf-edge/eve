@@ -53,7 +53,6 @@ FROM build-base AS build-riscv64
 ENV TARGET qemu-riscv64_smode_defconfig
 RUN for p in /tmp/patches/patches-"${VERSION}"/*.patch ; do patch -p1 < "$p" || exit 1 ; done
 
-# hadolint ignore=DL3006
 FROM build-${TARGETARCH} AS build
 
 # need to tweak u-boot config with our local settings

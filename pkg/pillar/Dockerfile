@@ -27,12 +27,11 @@ RUN while read -r x; do \
         fi \
     done < /etc/zfs-files
 
-# hadolint ignore=DL3006
 FROM ${REL_HASH_LFEDGE_EVE_ALPINE} AS build-native
 ARG BUILD_PKGS_BASE
 RUN BUILD_PKGS="${BUILD_PKGS_BASE}" eve-alpine-deploy.sh
 
-# hadolint ignore=DL3006,DL3029
+# hadolint ignore=DL3029
 FROM --platform=${BUILDPLATFORM} ${REL_HASH_LFEDGE_EVE_ALPINE} AS build-cross
 ARG BUILD_PKGS_BASE
 RUN BUILD_PKGS="${BUILD_PKGS_BASE}" eve-alpine-deploy.sh
@@ -41,7 +40,6 @@ RUN BUILD_PKGS="${BUILD_PKGS_BASE}" eve-alpine-deploy.sh
 FROM --platform=${BUILDPLATFORM} ${REL_HASH_LFEDGE_EVE_CROSS_COMPILERS} AS cross-compilers
 
 # will use several packages from target arch and copy them to sysroot
-# hadolint ignore=DL3006
 FROM ${REL_HASH_LFEDGE_EVE_ALPINE} AS cross-compile-libs
 ENV PKGS musl-dev libgcc libintl libuuid libtirpc libblkid linux-headers
 RUN eve-alpine-deploy.sh
@@ -54,7 +52,6 @@ ENV EVE_TARGET_ARCH=aarch64
 FROM build-cross AS build-cross-target-amd64
 ENV EVE_TARGET_ARCH=x86_64
 
-# hadolint ignore=DL3006
 FROM build-cross-target-${TARGETARCH} AS build-cross-target
 ENV CROSS_COMPILE_ENV="${EVE_TARGET_ARCH}"-alpine-linux-musl-
 COPY --from=cross-compilers /packages /packages
@@ -69,7 +66,6 @@ FROM build-cross-target AS target-amd64-build-arm64
 FROM build-native AS target-amd64-build-amd64
 FROM build-native AS target-arm64-build-arm64
 
-# hadolint ignore=DL3006
 FROM target-${TARGETARCH}-build-${BUILDARCH} AS build
 ARG DEV=n
 ARG TEST_TOOLS=n
@@ -148,7 +144,6 @@ FROM ${REL_HASH_LFEDGE_EVE_GPT_TOOLS} AS gpttools
 
 # collector collects everything together and then does any processing like stripping binaries.
 # We use this interim "collector" so that we can do processing.
-# hadolint ignore=DL3006
 FROM ${REL_HASH_LFEDGE_EVE_ALPINE} AS collector
 ENV BUILD_PKGS patch
 ENV PKGS alpine-baselayout musl-utils libtasn1-progs pciutils yajl xz bash iptables ip6tables iproute2 \
