@@ -31,3 +31,4 @@ config:
     - 2345:2345
 buildArgs:
   - DEV=y
+  - REL_HASH_%=@lkt:pkgs:../*

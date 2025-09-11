@@ -6,3 +6,6 @@ image: eve-fscrypt
 # we allow network in building fscrypt because we need it to downlaod go modules,
 # and it is limited to just this single target output.
 network: yes
+
+buildArgs:
+  - REL_HASH_%=@lkt:pkgs:../*

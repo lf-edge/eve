@@ -5,3 +5,6 @@ config:
     - /sys:/sys
   capabilities:
     - all
+
+buildArgs:
+  - REL_HASH_%=@lkt:pkgs:../*

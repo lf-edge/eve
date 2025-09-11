@@ -3,3 +3,4 @@ org: lfedge
 tag: "{{.Hash}}-generic"
 buildArgs:
   - PLATFORM=generic
+  - REL_HASH_%=@lkt:pkgs:../*

@@ -9,3 +9,4 @@ org: lfedge
 tag: "{{.Hash}}-evaluation"
 buildArgs:
     - PLATFORM=evaluation
+    - REL_HASH_%=@lkt:pkgs:../*

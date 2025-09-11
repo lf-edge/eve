@@ -3,9 +3,10 @@
 # Copyright (c) 2024 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
+ARG REL_HASH_LFEDGE_EVE_ALPINE
 ARG PLATFORM=generic
 
-FROM lfedge/eve-alpine:745ae9066273c73b0fd879c4ba4ff626a8392d04 AS build-base
+FROM ${REL_HASH_LFEDGE_EVE_ALPINE} AS build-base
 ENV BUILD_PKGS="autoconf automake build-base coreutils gettext git glib-dev libtool libmd-dev ncurses-dev tar xz-dev yq zstd-dev"
 
 RUN eve-alpine-deploy.sh
