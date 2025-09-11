@@ -1,2 +1,5 @@
 org: lfedge
 image: eve-mkimage-raw-efi
+
+buildArgs:
+  - REL_HASH_%=@lkt:pkgs:../*

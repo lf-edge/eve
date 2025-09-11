@@ -7,3 +7,6 @@ config:
   readonly: true
   net: new
   ipc: new
+
+buildArgs:
+  - REL_HASH_%=@lkt:pkgs:../*
