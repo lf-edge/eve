@@ -155,7 +155,10 @@ type zedrouter struct {
 	cniRequests        chan *rpcRequest
 
 	// publist nested App Status
-	pubNestedAppDomainStatus pubsub.Publication
+	pubNestedAppDomainStatus         pubsub.Publication
+	pubNestedAppRuntimeStorageMetric pubsub.Publication
+
+	subAppInstanceStatus pubsub.Subscription
 }
 
 // AddAgentSpecificCLIFlags adds CLI options
@@ -341,6 +344,7 @@ func (z *zedrouter) run(ctx context.Context) (err error) {
 		z.subNetworkInstanceConfig,
 		z.subAppNetworkConfig,
 		z.subAppNetworkConfigAg,
+		z.subAppInstanceStatus,
 	}
 	for _, sub := range inactiveSubs {
 		if err = sub.Activate(); err != nil {
@@ -504,6 +508,9 @@ func (z *zedrouter) run(ctx context.Context) (err error) {
 			z.pubSub.CheckMaxTimeTopic(agentName, "scanAppNetworkStatus", start,
 				warningTime, errorTime)
 
+		case change := <-z.subAppInstanceStatus.MsgChan():
+			z.subAppInstanceStatus.ProcessChange(change)
+
 		case <-stillRunning.C:
 		}
 		z.pubSub.StillRunning(agentName, warningTime, errorTime)
@@ -589,6 +596,14 @@ func (z *zedrouter) initPublications() (err error) {
 		return err
 	}
 
+	z.pubNestedAppRuntimeStorageMetric, err = z.pubSub.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName: agentName,
+			TopicType: types.NestedAppRuntimeDiskMetric{},
+		})
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -686,6 +701,19 @@ func (z *zedrouter) initSubscriptions() (err error) {
 		return err
 	}
 
+	// Subscribe to AppInstanceStatus from zedmanager, to cleanup NestedAppRuntimeDiskMetric
+	z.subAppInstanceStatus, err = z.pubSub.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "zedmanager",
+		MyAgentName:   agentName,
+		TopicImpl:     types.AppInstanceStatus{},
+		Activate:      false,
+		DeleteHandler: z.handleAppInstanceStatusDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
