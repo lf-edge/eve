@@ -22,11 +22,7 @@ appliedRegistrationYamlFilePath="${KUBE_MANIFESTS_DIR}/${appliedRegistrationYaml
 # Pillar may download a yaml for registration, copy it in so that k3s handles applying it
 # This should be called in a very infrequently called cluster-config-change path
 Registration_CheckApply() {
-    if [ ! -d "${PERSIST_MANIFESTS_DIR}" ]; then
-        return
-    fi
-
-    if [ ! -e "${registrationYamlFilePath}" ]; then
+    if ! Registration_ConfigExists; then
         return
     fi
 
@@ -48,6 +44,20 @@ Registration_Exists() {
         return 0
     fi
     return 1
+}
+
+# Registration_ConfigExists is used to do some needed cleanup on a node before
+# applying registration manifest and before joining a pre-existing cluster
+Registration_ConfigExists() {
+    if [ ! -d "${PERSIST_MANIFESTS_DIR}" ]; then
+        return 1
+    fi
+
+    if [ ! -e "${registrationYamlFilePath}" ]; then
+        return 1
+    fi
+
+    return 0
 }
 
 # Registration_Applied checks if the cluster contains the pointer
