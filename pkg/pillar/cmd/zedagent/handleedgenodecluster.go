@@ -64,7 +64,7 @@ func publishKubeClusterUpdateStatus(ctx *zedagentContext, dest destinationBitset
 	updateStatus.CurrentNode = psKubeUpdateStatusGlb.CurrentNode
 	updateStatus.Error = nil
 	if !psKubeUpdateStatusGlb.ErrorTime.IsZero() {
-		updateStatus.Error = encodeErrorInfo(psKubeUpdateStatusGlb.ErrorAndTime.ErrorDescription)
+		updateStatus.Error = psKubeUpdateStatusGlb.ErrorAndTime.ErrorDescription.ToProto()
 	}
 
 	UpdateStatusInfo.InfoContent = new(info.ZInfoMsg_ClusterUpdateInfo)

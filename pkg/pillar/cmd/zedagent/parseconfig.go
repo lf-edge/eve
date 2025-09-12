@@ -20,6 +20,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	zconfig "github.com/lf-edge/eve-api/go/config"
 	zevecommon "github.com/lf-edge/eve-api/go/evecommon"
+	"github.com/lf-edge/eve/pkg/pillar/activeapp"
 	"github.com/lf-edge/eve/pkg/pillar/objtonum"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/sriov"
@@ -56,8 +57,8 @@ func parseConfig(getconfigCtx *getconfigContext, config *zconfig.EdgeDevConfig,
 
 	// Do not accept new commands from side controller while new config
 	// from the primary controller is being applied. Or vice versa.
-	getconfigCtx.sideController.Lock()
-	defer getconfigCtx.sideController.Unlock()
+	resume := getconfigCtx.localCmdAgent.Pause()
+	defer resume()
 
 	getconfigCtx.deviceInfoFields.parseConfig(config)
 
@@ -185,8 +186,10 @@ func parseConfig(getconfigCtx *getconfigContext, config *zconfig.EdgeDevConfig,
 				return skipConfigUpdate
 			}
 
-			// parseProfile must be called before processing of app instances from config
-			parseProfile(getconfigCtx, config)
+			// LPS config must be updated before parsing app instances from the config.
+			getconfigCtx.localCmdAgent.UpdateLpsConfig(
+				config.GetGlobalProfile(), config.GetLocalProfileServer(),
+				config.GetProfileServerToken())
 			parseAppInstanceConfig(getconfigCtx, config)
 
 			parseDisksConfig(getconfigCtx, config)
@@ -204,13 +207,15 @@ func parseConfig(getconfigCtx *getconfigContext, config *zconfig.EdgeDevConfig,
 // Note that we don't currently wait for the shutdown to complete.
 // If withLocalServer is set we skip the app instances which are running
 // a Local Profile Server, and return the number of Local Profile Server apps
-func shutdownApps(getconfigCtx *getconfigContext, withLocalServer bool) (lpsCount uint) {
+func shutdownApps(getconfigCtx *getconfigContext, withLps bool) (lpsCount uint) {
 	pub := getconfigCtx.pubAppInstanceConfig
 	items := pub.GetAll()
 	for _, c := range items {
 		config := c.(types.AppInstanceConfig)
 		if config.Activate {
-			if config.HasLocalServer && !withLocalServer {
+			runsLps := getconfigCtx.localCmdAgent.IsAppRunningLps(
+				config.UUIDandVersion.UUID)
+			if runsLps && !withLps {
 				log.Noticef("shutdownApps: defer for %s uuid %s",
 					config.DisplayName, config.Key())
 				lpsCount++
@@ -240,8 +245,8 @@ func countRunningApps(getconfigCtx *getconfigContext) (runningCount uint) {
 	return runningCount
 }
 
-// Defer shutting down app instances with HasLocalServer until all other app
-// instances has halted
+// Defer shutting down app instances running LPS until all other app
+// instances have halted.
 func shutdownAppsGlobal(ctx *zedagentContext) {
 	lpsCount := shutdownApps(ctx.getconfigCtx, false)
 	if lpsCount == 0 {
@@ -581,6 +586,11 @@ func publishNetworkInstanceConfig(ctx *getconfigContext,
 		ctx.pubNetworkInstanceConfig.Publish(networkInstanceConfig.UUID.String(),
 			networkInstanceConfig)
 	}
+
+	// DnsNameToIPList may have changed for one or more network instances,
+	// potentially altering the set of reachable LPS addresses.
+	// Mark cached LPS addresses as stale to force re-discovery.
+	ctx.localCmdAgent.RefreshLpsAddresses()
 }
 
 func parseConnectivityProbe(probe *zevecommon.ConnectivityProbe) (
@@ -694,7 +704,8 @@ func parseAppInstanceConfig(getconfigCtx *getconfigContext,
 		if !found {
 			log.Functionf("Remove app config %s", uuidStr)
 			getconfigCtx.pubAppInstanceConfig.Unpublish(uuidStr)
-			delLocalAppConfig(getconfigCtx, uuidStr)
+			getconfigCtx.localCmdAgent.DelLocalAppCmds(uuidStr)
+			activeapp.DelLocalAppActiveFile(log, uuidStr)
 		}
 	}
 
@@ -813,8 +824,15 @@ func parseAppInstanceConfig(getconfigCtx *getconfigContext,
 
 		appInstance.ProfileList = cfgApp.ProfileList
 
-		// Add config submitted via local profile server.
-		addLocalAppConfig(getconfigCtx, &appInstance)
+		// Add config for commands submitted locally via LPS or LOC.
+		appUUID := appInstance.UUIDandVersion.UUID
+		localCmdAgent := getconfigCtx.localCmdAgent
+		appInstance.LocalRestartCmd = localCmdAgent.GetLocalAppRestartCmd(appUUID)
+		appInstance.LocalPurgeCmd = localCmdAgent.GetLocalAppPurgeCmd(appUUID)
+		for i := range appInstance.VolumeRefConfigList {
+			vr := &appInstance.VolumeRefConfigList[i]
+			vr.LocalGenerationCounter = localCmdAgent.GetLocalVolumeGenCounter(vr.VolumeID)
+		}
 
 		controllerDNID := cfgApp.GetDesignatedNodeId()
 		// If this node is designated node id set IsDesignatedNodeID to true else false.
@@ -2883,7 +2901,6 @@ func parseConfigItems(ctx *getconfigContext, config *zconfig.EdgeDevConfig,
 			log.Functionf("parseConfigItems: %s change from %d to %d",
 				"ConfigInterval", oldConfigInterval, newConfigInterval)
 			updateConfigTimer(newConfigInterval, ctx.configTickerHandle)
-			updateConfigTimer(newConfigInterval, ctx.localProfileTickerHandle)
 		}
 		if newCertInterval != oldCertInterval {
 			log.Functionf("parseConfigItems: %s change from %d to %d",
@@ -2951,6 +2968,7 @@ func mergeMaintenanceMode(ctx *zedagentContext, caller string) {
 	log.Noticef("%s changed maintenanceMode to %t, with reason as %s, considering {%v, %v, %v}",
 		caller, ctx.maintenanceMode, ctx.maintModeReasons.String(), ctx.gcpMaintenanceMode,
 		ctx.apiMaintenanceMode, ctx.localMaintenanceMode)
+	publishZedAgentStatus(ctx.getconfigCtx)
 }
 
 func checkAndPublishAppInstanceConfig(pub pubsub.Publication,
@@ -3120,12 +3138,12 @@ func publishLocConfig(getconfigCtx *getconfigContext,
 	config *zconfig.EdgeDevConfig) {
 	locConfig := config.GetLocConfig()
 	if locConfig == nil || !isLocConfigValid(locConfig) {
-		getconfigCtx.sideController.locConfig = nil
+		getconfigCtx.locConfig = nil
 		err := getconfigCtx.pubLOCConfig.Publish("", types.LOCConfig{})
 		if err != nil {
 			log.Warnf("could not publish empty locConfig: %+v", err)
 		}
-
+		getconfigCtx.localCmdAgent.UpdateLocConfig(types.LOCConfig{})
 		return
 	}
 
@@ -3146,15 +3164,16 @@ func publishLocConfig(getconfigCtx *getconfigContext,
 		}
 	}
 
-	getconfigCtx.sideController.locConfig = &types.LOCConfig{
+	getconfigCtx.locConfig = &types.LOCConfig{
 		LocURL:               locConfig.LocUrl,
 		CollectInfoDatastore: collectInfoDatastoreConfig,
 	}
 
-	err := getconfigCtx.pubLOCConfig.Publish("", *getconfigCtx.sideController.locConfig)
+	err := getconfigCtx.pubLOCConfig.Publish("", *getconfigCtx.locConfig)
 	if err != nil {
 		log.Warnf("could not publish locConfig: %+v", err)
 	}
+	getconfigCtx.localCmdAgent.UpdateLocConfig(*getconfigCtx.locConfig)
 }
 
 func removeDeviceOpsCmdConfig(op types.DeviceOperation) {
