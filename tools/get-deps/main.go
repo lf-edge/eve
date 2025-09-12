@@ -5,9 +5,9 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"flag"
 	"fmt"
-	"io"
 	"log"
 	"os"
 	"os/exec"
@@ -81,9 +81,31 @@ func parseYMLfile(fileName string) []string {
 	return deps
 }
 
-func parseDockerfile(f io.Reader) []string {
-	dt, err := io.ReadAll(f)
+type argsEnvGetter struct {
+	args map[string]string
+}
+
+func (aeg *argsEnvGetter) Get(key string) (string, bool) {
+	val, found := aeg.args[key]
+	return val, found
+}
+
+func (aeg *argsEnvGetter) Keys() []string {
+	keys := make([]string, 0, len(aeg.args))
+	for key := range aeg.args {
+		keys = append(keys, key)
+	}
+
+	return keys
+}
+
+func parseDockerfile(pkgName string) []string {
+	dockerfilePath := filepath.Join(pkgName, "Dockerfile")
+	dt, err := os.ReadFile(dockerfilePath)
 	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return []string{}
+		}
 		panic(err)
 	}
 
@@ -93,40 +115,16 @@ func parseDockerfile(f io.Reader) []string {
 	}
 	stages, metaArgs, err := instructions.Parse(dockerfile.AST, nil)
 	if err != nil {
-		panic(err)
+		log.Fatalf("parsing instructions of %s failed: %v", dockerfilePath, err)
 	}
 
-	buildPlatform := []ocispecs.Platform{platforms.DefaultSpec()}[0]
-	targetPlatform := ocispecs.Platform{
-		Architecture: TARGETARCH,
-		OS:           TARGETOS,
-		Variant:      TARGETVARIANT,
-	}
-
-	// from github.com/moby/buildkit/frontend/dockerfile/dockerfile2llb/platform.go:getPlatformArgs
-	args := map[string]string{
-		"BUILDPLATFORM":  platforms.Format(buildPlatform),
-		"BUILDOS":        buildPlatform.OS,
-		"BUILDARCH":      buildPlatform.Architecture,
-		"BUILDVARIANT":   buildPlatform.Variant,
-		"TARGETPLATFORM": platforms.Format(targetPlatform),
-		"TARGETOS":       targetPlatform.OS,
-		"TARGETARCH":     targetPlatform.Architecture,
-		"TARGETVARIANT":  targetPlatform.Variant,
-	}
-	for _, ma := range metaArgs {
-		for _, arg := range ma.Args {
-			key := arg.Key
-			val := arg.ValueString()
-			args[key] = val
-		}
-	}
+	aeg := createDockerEnvGetter(filepath.Join(pkgName, "build.yml"), metaArgs)
 
 	shlex := shell.NewLex(dockerfile.EscapeToken)
 
 	targetsMap := make(map[string]struct{})
 	for _, st := range stages {
-		pResult, err := shlex.ProcessWordWithMatches(st.BaseName, args)
+		pResult, err := shlex.ProcessWordWithMatches(st.BaseName, &aeg)
 		if err != nil {
 			panic(err)
 		}
@@ -137,6 +135,42 @@ func parseDockerfile(f io.Reader) []string {
 		targets = append(targets, target)
 	}
 	return targets
+}
+
+func createDockerEnvGetter(buildYmlFile string, metaArgs []instructions.ArgCommand) argsEnvGetter {
+	buildPlatform := []ocispecs.Platform{platforms.DefaultSpec()}[0]
+	targetPlatform := ocispecs.Platform{
+		Architecture: TARGETARCH,
+		OS:           TARGETOS,
+		Variant:      TARGETVARIANT,
+	}
+
+	aeg := argsEnvGetter{
+		// from github.com/moby/buildkit/frontend/dockerfile/dockerfile2llb/platform.go:getPlatformArgs
+		args: map[string]string{
+			"BUILDPLATFORM":  platforms.Format(buildPlatform),
+			"BUILDOS":        buildPlatform.OS,
+			"BUILDARCH":      buildPlatform.Architecture,
+			"BUILDVARIANT":   buildPlatform.Variant,
+			"TARGETPLATFORM": platforms.Format(targetPlatform),
+			"TARGETOS":       targetPlatform.OS,
+			"TARGETARCH":     targetPlatform.Architecture,
+			"TARGETVARIANT":  targetPlatform.Variant,
+		},
+	}
+	for _, ma := range metaArgs {
+		for _, arg := range ma.Args {
+			key := arg.Key
+			val := arg.ValueString()
+			aeg.args[key] = val
+		}
+	}
+
+	for k, v := range lktBuildArgs(buildYmlFile) {
+		aeg.args[k] = v
+	}
+
+	return aeg
 }
 
 // Print a single dependency package, only suitable for dot file
@@ -222,15 +256,8 @@ func filterPkg(deps []string) []string {
 }
 
 // Return a list of all dependencies (packages) listed in a Dockerfile
-func getDeps(dockerfile string) []string {
-	var depList []string
-	f, err := os.Open(dockerfile)
-	if err != nil {
-		fmt.Println(err)
-		return depList
-	}
-	defer f.Close()
-	ss := parseDockerfile(f)
+func getDeps(pkgName string) []string {
+	ss := parseDockerfile(pkgName)
 
 	return filterPkg(ss)
 }
@@ -310,37 +337,23 @@ func main() {
 		if _, err := os.Stat(dockerFile); err != nil {
 			if _, errIn := os.Stat(dockerFileIn); errIn == nil {
 				// Process Dockerfile.in
-				cmd := exec.Command("./tools/parse-pkgs.sh", dockerFileIn)
+				cmd := exec.Command("make", dockerFile)
 				out, err := cmd.Output()
 				if err != nil {
-					log.Println("Failed to process", dockerFileIn)
+					log.Println("Failed to process, out: %s", dockerFileIn, out)
 					continue
 				}
 
-				f, errTmp := os.CreateTemp("", "eve-dockerfile-")
-				if errTmp != nil {
-					log.Println(errTmp)
-					continue
-				}
-				dockerFile = f.Name()
-				defer os.Remove(dockerFile)
-				if _, errW := f.Write(out); errW != nil {
-					log.Println("Failed to write to", dockerFile)
-					continue
-				}
-				f.Close()
 			} else {
 				continue
 			}
 
-			pkgName = "pkg/" + e.Name()
-		} else {
-			pkgName = filepath.Dir(dockerFile)
 		}
+		pkgName = "pkg/" + e.Name()
 
 		// Get package dependencies from Dockerfile
 		writeToFile(outfile, p.printSingleDep(pkgName))
-		depList := getDeps(dockerFile)
+		depList := getDeps(pkgName)
 		for _, d := range depList {
 			if d != pkgName {
 				// Write a single dependency of the package
