@@ -1,4 +1,4 @@
-SOURCES=main.go
+SOURCES=main.go lktargs.go
 MODULES=go.mod go.sum
 EXECUTABLE=get-deps
 
