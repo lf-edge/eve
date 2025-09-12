@@ -10,7 +10,6 @@ ZARCH         ?= $(HOSTARCH)
 DISTDIR       := dist/$(ZARCH)
 BUILD_VERSION ?=
 
-DOCKER_LIKE_LKT:=$(shell ../../build-tools/bin/linuxkit pkg build --network --platforms linux/$(ZARCH) --dry-run --force ./ | tail -n1 | perl -pe 's/ buildx / /g')
 DOCKER_TAG:=lfedge/eve-pillar:local-$(ZARCH)
 
 APPS = zedbox
@@ -66,6 +65,8 @@ $(APPS1): $(DISTDIR)
 
 shell:
 	make -C ../.. shell
+
+build-docker build-docker-test: DOCKER_LIKE_LKT = $(shell ../../build-tools/bin/linuxkit pkg build --network --platforms linux/$(ZARCH) --dry-run --force ./ | tail -n1 | perl -pe 's/ buildx / /g')
 
 build-docker:
 	$(DOCKER_LIKE_LKT) -t $(DOCKER_TAG)
