@@ -2,8 +2,8 @@ package main
 
 import (
 	"os"
+	"path/filepath"
 	"sort"
-	"strings"
 	"testing"
 )
 
@@ -36,7 +36,7 @@ func TestParseDockerfile(t *testing.T) {
 }
 
 func readDockerFile() []string {
-	f := strings.NewReader(`
+	f := `
 			FROM abcd:12345 AS f
 			RUN echo \
 			FROM thisshouldnotbeincluded:666666
@@ -49,9 +49,32 @@ func readDockerFile() []string {
 			RUN echo
 
 			FROM f-${TARGETARCH}
-		`)
+		`
 
-	targets := parseDockerfile(f)
+	b := `
+org: lfedge
+image: eve-pillar
+`
+
+	tempDir, err := os.MkdirTemp("", "get-deps-test")
+	if err != nil {
+		panic(err)
+	}
+
+	dockerfilePath := filepath.Join(tempDir, "Dockerfile")
+	buildYmlPath := filepath.Join(tempDir, "build.yml")
+
+	err = os.WriteFile(dockerfilePath, []byte(f), 0600)
+	if err != nil {
+		panic(err)
+	}
+
+	err = os.WriteFile(buildYmlPath, []byte(b), 0600)
+	if err != nil {
+		panic(err)
+	}
+
+	targets := parseDockerfile(tempDir)
 	return targets
 }
 
