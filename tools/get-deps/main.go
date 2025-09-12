@@ -81,6 +81,24 @@ func parseYMLfile(fileName string) []string {
 	return deps
 }
 
+type argsEnvGetter struct {
+	args map[string]string
+}
+
+func (aeg *argsEnvGetter) Get(key string) (string, bool) {
+	val, found := aeg.args[key]
+	return val, found
+}
+
+func (aeg *argsEnvGetter) Keys() []string {
+	keys := make([]string, 0, len(aeg.args))
+	for key := range aeg.args {
+		keys = append(keys, key)
+	}
+
+	return keys
+}
+
 func parseDockerfile(f io.Reader) []string {
 	dt, err := io.ReadAll(f)
 	if err != nil {
@@ -104,21 +122,24 @@ func parseDockerfile(f io.Reader) []string {
 	}
 
 	// from github.com/moby/buildkit/frontend/dockerfile/dockerfile2llb/platform.go:getPlatformArgs
-	args := map[string]string{
-		"BUILDPLATFORM":  platforms.Format(buildPlatform),
-		"BUILDOS":        buildPlatform.OS,
-		"BUILDARCH":      buildPlatform.Architecture,
-		"BUILDVARIANT":   buildPlatform.Variant,
-		"TARGETPLATFORM": platforms.Format(targetPlatform),
-		"TARGETOS":       targetPlatform.OS,
-		"TARGETARCH":     targetPlatform.Architecture,
-		"TARGETVARIANT":  targetPlatform.Variant,
+	aeg := argsEnvGetter{
+		// args: map[string]string{},
+		args: map[string]string{
+			"BUILDPLATFORM":  platforms.Format(buildPlatform),
+			"BUILDOS":        buildPlatform.OS,
+			"BUILDARCH":      buildPlatform.Architecture,
+			"BUILDVARIANT":   buildPlatform.Variant,
+			"TARGETPLATFORM": platforms.Format(targetPlatform),
+			"TARGETOS":       targetPlatform.OS,
+			"TARGETARCH":     targetPlatform.Architecture,
+			"TARGETVARIANT":  targetPlatform.Variant,
+		},
 	}
 	for _, ma := range metaArgs {
 		for _, arg := range ma.Args {
 			key := arg.Key
 			val := arg.ValueString()
-			args[key] = val
+			aeg.args[key] = val
 		}
 	}
 
@@ -126,7 +147,7 @@ func parseDockerfile(f io.Reader) []string {
 
 	targetsMap := make(map[string]struct{})
 	for _, st := range stages {
-		pResult, err := shlex.ProcessWordWithMatches(st.BaseName, args)
+		pResult, err := shlex.ProcessWordWithMatches(st.BaseName, &aeg)
 		if err != nil {
 			panic(err)
 		}
