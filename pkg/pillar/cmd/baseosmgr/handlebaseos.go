@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2018 Zededa, Inc.
+// Copyright (c) 2017-2025 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 // base os event handlers
@@ -831,7 +831,7 @@ func baseOsSetPartitionInfoInStatus(ctx *baseOsMgrContext, status *types.BaseOsS
 // scratch
 func updateAndPublishZbootStatusAll(ctx *baseOsMgrContext) {
 	log.Functionf("updateAndPublishZbootStatusAll")
-	partitionNames := []string{"IMGA", "IMGB"}
+	partitionNames := zboot.GetValidPartitionLabels()
 	for _, partName := range partitionNames {
 		status := getZbootStatus(ctx, partName)
 		if status == nil {
@@ -848,7 +848,7 @@ func updateAndPublishZbootStatusAll(ctx *baseOsMgrContext) {
 func createZbootStatus(ctx *baseOsMgrContext, partName string) *types.ZbootStatus {
 	var err error
 	partName = strings.TrimSpace(partName)
-	if !isValidBaseOsPartitionLabel(partName) {
+	if !zboot.IsValidPartitionLabel(partName) {
 		return nil
 	}
 	testComplete := false
@@ -869,7 +869,7 @@ func createZbootStatus(ctx *baseOsMgrContext, partName string) *types.ZbootStatu
 // Updates current and partitionstate by default. If updateVersions
 // is set the version strings are also updated.
 func updateAndPublishZbootStatus(ctx *baseOsMgrContext, partName string, updateVersions bool) {
-	if !isValidBaseOsPartitionLabel(partName) {
+	if !zboot.IsValidPartitionLabel(partName) {
 		log.Errorf("Invalid partname %s", partName)
 		return
 	}
@@ -901,7 +901,7 @@ func publishZbootStatus(ctx *baseOsMgrContext, status types.ZbootStatus) {
 
 func getZbootStatus(ctx *baseOsMgrContext, partName string) *types.ZbootStatus {
 	partName = strings.TrimSpace(partName)
-	if !isValidBaseOsPartitionLabel(partName) {
+	if !zboot.IsValidPartitionLabel(partName) {
 		return nil
 	}
 	pub := ctx.pubZbootStatus
@@ -912,17 +912,6 @@ func getZbootStatus(ctx *baseOsMgrContext, partName string) *types.ZbootStatus {
 	}
 	status := st.(types.ZbootStatus)
 	return &status
-}
-
-func isValidBaseOsPartitionLabel(name string) bool {
-	partitionNames := []string{"IMGA", "IMGB"}
-	name = strings.TrimSpace(name)
-	for _, partName := range partitionNames {
-		if name == partName {
-			return true
-		}
-	}
-	return false
 }
 
 // only thing to do is to look at the other partition and update

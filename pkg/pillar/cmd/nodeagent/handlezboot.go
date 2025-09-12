@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2018 Zededa, Inc.
+// Copyright (c) 2017-2025 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 // zboot config, status and util APIs
@@ -8,9 +8,10 @@ package nodeagent
 import (
 	"syscall"
 
+	"strings"
+
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zboot"
-	"strings"
 )
 
 func lookupZbootStatus(ctx *nodeagentContext, key string) *types.ZbootStatus {
@@ -67,7 +68,7 @@ func getZbootConfigAll(ctx *nodeagentContext) []types.ZbootConfig {
 }
 
 func publishZbootConfig(ctx *nodeagentContext, config types.ZbootConfig) {
-	if !isValidZbootPartitionLabel(config.PartitionLabel) {
+	if !zboot.IsValidPartitionLabel(config.PartitionLabel) {
 		return
 	}
 	pub := ctx.pubZbootConfig
@@ -78,7 +79,7 @@ func publishZbootConfig(ctx *nodeagentContext, config types.ZbootConfig) {
 
 func publishZbootConfigAll(ctx *nodeagentContext) {
 	log.Tracef("publishZbootConfigAll")
-	partitionNames := []string{"IMGA", "IMGB"}
+	partitionNames := zboot.GetValidPartitionLabels()
 	for _, partName := range partitionNames {
 		config := types.ZbootConfig{}
 		partName = strings.TrimSpace(partName)
@@ -108,15 +109,4 @@ func isZbootOtherPartitionStateUpdating(ctx *nodeagentContext) bool {
 		return false
 	}
 	return zboot.IsOtherPartitionStateUpdating()
-}
-
-func isValidZbootPartitionLabel(name string) bool {
-	partitionNames := []string{"IMGA", "IMGB"}
-	name = strings.TrimSpace(name)
-	for _, partName := range partitionNames {
-		if name == partName {
-			return true
-		}
-	}
-	return false
 }

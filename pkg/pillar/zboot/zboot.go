@@ -1,4 +1,4 @@
-// Copyright (c) 2017 Zededa, Inc.
+// Copyright (c) 2017-2025 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 // zboot APIs for IMGA  & IMGB
@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -37,11 +38,23 @@ const (
 // XXX not bullet proof since this can be invoked by different agents/processes
 var zbootMutex *sync.Mutex
 
+// validPartitionLabels is cached list of valid partition labels for this platform
+var validPartitionLabels []string
+
 func init() {
 	zbootMutex = new(sync.Mutex)
 	if zbootMutex == nil {
 		logrus.Fatal("Mutex Init")
 	}
+
+	// Initialize valid partition labels
+	validPartitionLabels = []string{"IMGA", "IMGB"}
+	logrus.Infof("zboot: initialized valid partitions: %v", validPartitionLabels)
+}
+
+// GetValidPartitionLabels returns list of valid partition names for this platform
+func GetValidPartitionLabels() []string {
+	return validPartitionLabels
 }
 
 // Reset routine
@@ -153,7 +166,7 @@ func GetCurrentPartition() string {
 
 	partName := string(ret)
 	partName = strings.TrimSpace(partName)
-	validatePartitionName(partName)
+	validatePartitionLabel(partName)
 	currentPartition = partName
 	return partName
 }
@@ -174,9 +187,15 @@ func GetOtherPartition() string {
 	return partName
 }
 
-func validatePartitionName(partName string) {
+// IsValidPartitionLabel returns true if the partition name is valid for this platform
+func IsValidPartitionLabel(partName string) bool {
+	partName = strings.TrimSpace(partName)
+	validNames := GetValidPartitionLabels()
+	return slices.Contains(validNames, partName)
+}
 
-	if partName == "IMGA" || partName == "IMGB" {
+func validatePartitionLabel(partName string) {
+	if IsValidPartitionLabel(partName) {
 		return
 	}
 	errStr := fmt.Sprintf("invalid partition %s", partName)
@@ -194,14 +213,14 @@ func validatePartitionState(partState string) {
 
 // IsCurrentPartition determine if partName is the currently active partition
 func IsCurrentPartition(partName string) bool {
-	validatePartitionName(partName)
+	validatePartitionLabel(partName)
 	curPartName := GetCurrentPartition()
 	return curPartName == partName
 }
 
 // IsOtherPartition determine if partName is the other, not-currently-active, partition
 func IsOtherPartition(partName string) bool {
-	validatePartitionName(partName)
+	validatePartitionLabel(partName)
 	otherPartName := GetOtherPartition()
 	return otherPartName == partName
 }
@@ -211,7 +230,7 @@ func IsOtherPartition(partName string) bool {
 // GetPartitionState get the state of partition partName
 func GetPartitionState(partName string) string {
 
-	validatePartitionName(partName)
+	validatePartitionLabel(partName)
 	ret, err := execWithRetry(nil, "zboot", "partstate", partName)
 	if err != nil {
 		logrus.Fatalf("zboot partstate %s: err %v\n", partName, err)
@@ -224,7 +243,7 @@ func GetPartitionState(partName string) string {
 // IsPartitionState determine if partition partName is in the state partState
 func IsPartitionState(partName string, partState string) bool {
 
-	validatePartitionName(partName)
+	validatePartitionLabel(partName)
 	validatePartitionState(partState)
 
 	curPartState := GetPartitionState(partName)
@@ -235,7 +254,7 @@ func IsPartitionState(partName string, partState string) bool {
 func setPartitionState(log *base.LogObject, partName string, partState string) {
 
 	log.Functionf("setPartitionState(%s, %s)\n", partName, partState)
-	validatePartitionName(partName)
+	validatePartitionLabel(partName)
 	validatePartitionState(partState)
 
 	_, err := execWithRetry(log, "zboot", "set_partstate",
@@ -251,7 +270,7 @@ var partDev = make(map[string]string)
 
 // GetPartitionDevname get the device name for partition partName
 func GetPartitionDevname(partName string) string {
-	validatePartitionName(partName)
+	validatePartitionLabel(partName)
 	dev, ok := partDev[partName]
 	if ok {
 		return dev
@@ -269,7 +288,7 @@ func GetPartitionDevname(partName string) string {
 
 // GetPartitionSizeInBytes get the partition size for partition partName
 func GetPartitionSizeInBytes(partName string) uint64 {
-	validatePartitionName(partName)
+	validatePartitionLabel(partName)
 	_, ok := partDev[partName]
 	if ok {
 		ret, err := execWithRetry(nil, "zboot", "partdevsize", partName)
@@ -382,6 +401,11 @@ func SetOtherPartitionStateUpdating(log *base.LogObject) {
 func SetOtherPartitionStateUnused(log *base.LogObject) {
 	partName := GetOtherPartition()
 	setPartitionState(log, partName, "unused")
+}
+
+// SetPartitionState sets the state of a specific partition
+func SetPartitionState(log *base.LogObject, partName string, partState string) {
+	setPartitionState(log, partName, partState)
 }
 
 // GetCurrentPartitionDevName get the device name for the current partition
@@ -522,7 +546,7 @@ func GetLongVersion(part string) string {
 // XXX explore a loopback mount to be able to read version
 // from a downloaded image file
 func getVersion(log *base.LogObject, part string, verFilename string) (string, error) {
-	validatePartitionName(part)
+	validatePartitionLabel(part)
 
 	if part == GetCurrentPartition() {
 		filename := verFilename
@@ -562,7 +586,7 @@ func getVersion(log *base.LogObject, part string, verFilename string) (string, e
 		log.Noticef("Mounted %s on %s", devname, target)
 		defer func() {
 			log.Noticef("Unmount(%s)", target)
-			for i := 0; i < 10; i++ {
+			for i := range 10 {
 				err := zbootUnmount(target, i > 0)
 				if err != nil {
 					errStr := fmt.Sprintf("Unmount of %s %d failed: %s",
