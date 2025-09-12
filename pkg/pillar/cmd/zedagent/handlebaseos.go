@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2018 Zededa, Inc.
+// Copyright (c) 2017-2025 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 // basic zboot partition status APIs
@@ -6,8 +6,10 @@
 package zedagent
 
 import (
-	"github.com/lf-edge/eve/pkg/pillar/types"
 	"strings"
+
+	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/zboot"
 )
 
 // base os status event handlers
@@ -53,7 +55,7 @@ func handleZbootStatusImpl(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
 	ctx := ctxArg.(*zedagentContext)
-	if !isZbootValidPartitionLabel(key) {
+	if !zboot.IsValidPartitionLabel(key) {
 		log.Errorf("handleZbootStatusImpl: invalid key %s", key)
 		return
 	}
@@ -64,7 +66,7 @@ func handleZbootStatusImpl(ctxArg interface{}, key string,
 
 func handleZbootStatusDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
-	if !isZbootValidPartitionLabel(key) {
+	if !zboot.IsValidPartitionLabel(key) {
 		log.Errorf("handleZbootStatusDelete: invalid key %s", key)
 		return
 	}
@@ -73,15 +75,6 @@ func handleZbootStatusDelete(ctxArg interface{}, key string,
 }
 
 // utility routines to access baseos partition status
-func isZbootValidPartitionLabel(name string) bool {
-	partitionNames := []string{"IMGA", "IMGB"}
-	for _, partName := range partitionNames {
-		if name == partName {
-			return true
-		}
-	}
-	return false
-}
 
 func getZbootPartitionStatusAll(ctx *zedagentContext) map[string]interface{} {
 	sub := ctx.subZbootStatus
@@ -91,7 +84,7 @@ func getZbootPartitionStatusAll(ctx *zedagentContext) map[string]interface{} {
 
 func getZbootPartitionStatus(ctx *zedagentContext, partName string) *types.ZbootStatus {
 	partName = strings.TrimSpace(partName)
-	if !isZbootValidPartitionLabel(partName) {
+	if !zboot.IsValidPartitionLabel(partName) {
 		log.Errorf("getZbootPartitionStatus(%s) invalid partition", partName)
 		return nil
 	}
