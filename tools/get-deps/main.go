@@ -331,33 +331,19 @@ func main() {
 		if _, err := os.Stat(dockerFile); err != nil {
 			if _, errIn := os.Stat(dockerFileIn); errIn == nil {
 				// Process Dockerfile.in
-				cmd := exec.Command("./tools/parse-pkgs.sh", dockerFileIn)
+				cmd := exec.Command("make", dockerFile)
 				out, err := cmd.Output()
 				if err != nil {
-					log.Println("Failed to process", dockerFileIn)
+					log.Println("Failed to process, out: %s", dockerFileIn, out)
 					continue
 				}
 
-				f, errTmp := os.CreateTemp("", "eve-dockerfile-")
-				if errTmp != nil {
-					log.Println(errTmp)
-					continue
-				}
-				dockerFile = f.Name()
-				defer os.Remove(dockerFile)
-				if _, errW := f.Write(out); errW != nil {
-					log.Println("Failed to write to", dockerFile)
-					continue
-				}
-				f.Close()
 			} else {
 				continue
 			}
 
-			pkgName = "pkg/" + e.Name()
-		} else {
-			pkgName = filepath.Dir(dockerFile)
 		}
+		pkgName = "pkg/" + e.Name()
 
 		// Get package dependencies from Dockerfile
 		writeToFile(outfile, p.printSingleDep(pkgName))
