@@ -1,2 +1,5 @@
 image: eve-gpt-tools
 org: lfedge
+
+buildArgs:
+  - REL_HASH_%=@lkt:pkgs:../*

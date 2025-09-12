@@ -1,3 +1,6 @@
 image: eve-alpine-base
 org: lfedge
 network: yes
+
+buildArgs:
+  - REL_HASH_%=@lkt:pkgs:../*

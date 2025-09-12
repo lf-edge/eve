@@ -1,4 +1,6 @@
-FROM lfedge/eve-alpine:745ae9066273c73b0fd879c4ba4ff626a8392d04 AS build
+ARG REL_HASH_LFEDGE_EVE_ALPINE
+
+FROM ${REL_HASH_LFEDGE_EVE_ALPINE} AS build
 # Building qemu in strip-down mirovm only mode:
 # qemu 5.1 dependencies: python3 glib-dev pixman-dev
 # qemu 5.2+ dependencies: py3-setuptools bash perl

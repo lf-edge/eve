@@ -18,3 +18,6 @@ config:
   devices:
     - path: all
       type: a
+
+buildArgs:
+  - REL_HASH_%=@lkt:pkgs:../*

@@ -1,4 +1,6 @@
-FROM lfedge/eve-alpine:745ae9066273c73b0fd879c4ba4ff626a8392d04 AS build
+ARG REL_HASH_LFEDGE_EVE_ALPINE
+
+FROM ${REL_HASH_LFEDGE_EVE_ALPINE} AS build
 
 ENV BUILD_PKGS patch curl make gcc perl util-linux-dev git mtools linux-headers musl-dev xz-dev elfutils-dev libbz2
 ENV PKGS xz-libs util-linux elfutils-dev libbz2
