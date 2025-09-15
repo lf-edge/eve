@@ -26,7 +26,7 @@ type AppNetworkConfig struct {
 	Activate          bool
 	GetStatsIPAddr    net.IP
 	AppNetAdapterList []AppNetAdapterConfig
-	CloudInitUserData *string `json:"pubsub-large-CloudInitUserData"`
+	CloudInitUserData *string
 	CipherBlockStatus CipherBlockStatus
 	MetaDataType      MetaDataType
 	DeploymentType    AppRuntimeType
