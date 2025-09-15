@@ -305,6 +305,15 @@ func getQuote(nonce []byte) ([]byte, []byte, []types.PCRValue, error) {
 		return nil, nil, nil, nil
 	}
 
+	// Nonce length should be at least 96 bits (12 bytes), the upper limit is defined
+	// by size of TPMT_HA struct, which consists of 2 bytes for algo and union
+	// of digest which its size may vary depending on what is the highest
+	// algo supported by TPM. We expect TPM to support SHA256, so let set the
+	// upper limit to 32 bytes.
+	if len(nonce) < 12 || len(nonce) > 32 {
+		return nil, nil, nil, fmt.Errorf("invalid nonce length %d", len(nonce))
+	}
+
 	rw, err := tpm2.OpenTPM(etpm.TpmDevicePath)
 	if err != nil {
 		log.Errorf("Unable to open TPM device handle (%v), returning empty quote/PCRs", err)
@@ -1616,6 +1625,7 @@ func handleAttestNonceImpl(ctxArg interface{}, key string,
 	ctx := ctxArg.(*tpmMgrContext)
 	nonceReq := statusArg.(types.AttestNonce)
 	log.Functionf("Received quote request from %s", nonceReq.Requester)
+	log.Noticef("TPM Quote Nonce: %x", nonceReq.Nonce)
 	quote, signature, pcrs, err := getQuote(nonceReq.Nonce)
 	if err != nil {
 		log.Errorf("Error in fetching quote %v", err)
@@ -1686,9 +1696,18 @@ func tpmSanityCheck() *tpmSanityCheckError {
 		}
 	}
 
+	// This should succeed on the first try,
+	// but just to be safe.
+	nonce := make([]byte, 12)
+	for i := 0; i < 8; i++ {
+		_, err := rand.Read(nonce)
+		if err == nil {
+			break
+		}
+	}
 	// sanity check TPM quote operation, this is key to successful attestation
 	// and if this fails we can't attest the device and recover the vault key.
-	_, _, _, err = getQuote([]byte(message))
+	_, _, _, err = getQuote(nonce)
 	if err != nil {
 		return &tpmSanityCheckError{
 			fmt.Errorf("failed to get quote using TPM: %w", err),
