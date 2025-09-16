@@ -3,8 +3,7 @@
 
 #include <tunables/global>
 
-@{exec_path} = /usr/bin/vtpm
-profile vtpm @{exec_path} {
+profile vtpm /usr/bin/vtpm {
     #include <abstractions/base>
 
     # allow necessary access for operations

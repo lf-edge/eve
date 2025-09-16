@@ -3,8 +3,7 @@
 
 #include <tunables/global>
 
-@{exec_path} = /usr/sbin/guacd
-profile guacd @{exec_path} {
+profile guacd /usr/sbin/guacd {
     #include <abstractions/base>
 
     # allow network access

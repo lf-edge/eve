@@ -1,0 +1,22 @@
+# Copyright (c) 2025 Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+#include <tunables/global>
+
+profile vector /usr/bin/vector {
+    #include <abstractions/base>
+
+    # allow access to vector's config and buffers
+    owner /persist/vector/** rwk,
+
+    # allow to access the sockets to communicate with newlogd
+    owner /run/devKeep_source.sock w,
+    owner /run/devUpload_source.sock w,
+
+    # allow to inspect it's own state / environment
+    owner /proc/*/cgroup r,
+    owner /proc/*/mountinfo r,
+    owner /proc/*/mounts r,
+    owner /sys/fs/cgroup/cpu/cpu.cfs_period_us r,
+    owner /sys/fs/cgroup/cpu/cpu.cfs_quota_us r,
+}

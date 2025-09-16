@@ -3,8 +3,7 @@
 
 #include <tunables/global>
 
-@{exec_path} = /usr/bin/tpm2
-profile tpm2 @{exec_path} {
+profile tpm2 /usr/bin/tpm2 {
     #include <abstractions/base>
 
     # allow necessary access for operations
