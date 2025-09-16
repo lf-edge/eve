@@ -3,8 +3,7 @@
 
 #include <tunables/global>
 
-@{exec_path} = /usr/bin/ptpm
-profile ptpm @{exec_path} {
+profile ptpm /usr/bin/ptpm {
     #include <abstractions/base>
 
     # allow necessary access for operations
