@@ -34,8 +34,9 @@ func (e *Subscriber) Start() error {
 		return err
 	}
 
-	key := restartCounterKey(e.name)
-	_, err = e.nkvClient.Subscribe(key, func(n p.Notification) {
+	restartKey := restartCounterKey(e.name)
+
+	_, err = e.nkvClient.Subscribe(restartKey, func(n p.Notification) {
 		if n.Type == p.NotificationUpdate {
 			var valInt map[string]int
 			json.Unmarshal(n.Data, &valInt)
@@ -64,10 +65,17 @@ func (e *Subscriber) Start() error {
 		}(key, val)
 	}
 
-	// TODO: add handling with __restart__ and __sync__ counters
+	restartResp, err := e.nkvClient.Get(restartKey)
+	restartData, ok := restartResp.Data.(p.HashMapStringBytes)
+	if !ok {
+		return fmt.Errorf("Wrong convertion from HashMap type of restart counter")
+	}
+	// TODO: add handling with __sync__ counters
 	go func() {
+		var restartMap map[string]int
+		json.Unmarshal(restartData[restartKey], &restartMap)
+		e.C <- pubsub.Change{Operation: pubsub.Restart, Key: strconv.Itoa(restartMap["value"])}
 		e.C <- pubsub.Change{Operation: pubsub.Sync, Key: "done"}
-		e.C <- pubsub.Change{Operation: pubsub.Restart, Key: "1"}
 	}()
 	return nil
 }

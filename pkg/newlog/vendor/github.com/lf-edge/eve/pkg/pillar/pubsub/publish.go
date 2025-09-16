@@ -146,7 +146,6 @@ func (pub *PublicationImpl) Publish(key string, item any) error {
 
 	// We pass the full json to the driver including any pubsub-large
 	// items to have a complete checkpoint.
-	pub.log.Errorf("PUBLISH DRIVER %v", key)
 	return pub.driver.Publish(key, b)
 }
 

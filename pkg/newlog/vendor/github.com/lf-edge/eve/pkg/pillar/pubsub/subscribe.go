@@ -82,7 +82,6 @@ func (sub *SubscriptionImpl) Close() error {
 // XXX can we miss a handleDelete call if the file is deleted after we load?
 // Need for a mark and then sweep when handleSynchronized is called?
 func (sub *SubscriptionImpl) populate() {
-
 	name := sub.nameString()
 
 	sub.log.Functionf("populate(%s)", name)
@@ -220,7 +219,7 @@ func (sub *SubscriptionImpl) dump(infoStr string) {
 func handleModify(ctxArg any, key string, itemcb []byte) {
 	sub := ctxArg.(*SubscriptionImpl)
 	name := sub.nameString()
-	sub.log.Errorf("AMIGO: pubsub.handleModify(%s) key %s\n", name, key)
+	sub.log.Tracef("pubsub.handleModify(%s) key %s\n", name, key)
 	// Any large items which were stored separately?
 	itemcb, err := readAddLarge(sub.log, itemcb)
 	if err != nil {

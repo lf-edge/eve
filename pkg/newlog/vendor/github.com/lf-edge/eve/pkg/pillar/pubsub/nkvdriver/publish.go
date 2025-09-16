@@ -53,7 +53,6 @@ func (p *Publisher) Load() (map[string][]byte, int, error) {
 
 func (p *Publisher) Publish(key string, item []byte) error {
 	k := p.name + "." + key
-	fmt.Printf("PUBLISHING AMIGO %v\n", k)
 	_, err := p.nkvClient.Put(k, item)
 	return err
 }
