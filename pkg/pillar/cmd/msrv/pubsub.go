@@ -206,6 +206,7 @@ func (srv *Msrv) publishAppInstMetadata(appInstMetadata *types.AppInstMetaData) 
 	}
 	key := appInstMetadata.Key()
 	pub := srv.pubAppInstMetaData
+	srv.Log.Errorf("MI AMORE PUBLISHING FOR %s", key)
 	err := pub.Publish(key, *appInstMetadata)
 	if err != nil {
 		srv.Log.Errorf("publishAppInstMetadata failed: %v", err)
