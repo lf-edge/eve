@@ -67,7 +67,12 @@ func (l *VSOCKListener) Addr() net.Addr {
 
 // Read reads data from the vsock connection.
 func (c *VSOCKConn) Read(b []byte) (n int, err error) {
-	return unix.Read(c.fd, b)
+	n, err = unix.Read(c.fd, b)
+	// read syscall can return n < 0, which then panics the bufio
+	if n < 0 {
+		n = 0
+	}
+	return n, err
 }
 
 // Write writes data to the vsock connection.
