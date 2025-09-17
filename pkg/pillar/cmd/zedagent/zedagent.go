@@ -2454,6 +2454,7 @@ func handleDPCLModify(ctxArg interface{}, key string,
 
 func handleDPCLImpl(ctxArg interface{}, key string,
 	statusArg interface{}) {
+	log.Errorf("AMIGO %v", ctxArg)
 	ctx := ctxArg.(*zedagentContext)
 	if key != "global" {
 		log.Functionf("handleDPCLImpl: ignoring %s", key)

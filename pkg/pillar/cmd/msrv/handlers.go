@@ -226,12 +226,14 @@ func (msrv *Msrv) handleOpenStack() func(http.ResponseWriter, *http.Request) {
 
 func (msrv *Msrv) handleAppInstMeta(maxResponseLen int, publishDataType types.AppInstMetaDataType) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
+		msrv.Log.Errorf("MI AMORE handleAppInstMeta 1")
 		if r.Method != http.MethodPost {
 			msg := "appInstMetaHandler: request method is not Post"
 			msrv.Log.Error(msg)
 			http.Error(w, msg, http.StatusMethodNotAllowed)
 			return
 		}
+		msrv.Log.Errorf("MI AMORE handleAppInstMeta 2")
 		if r.Header.Get("Content-Type") != "application/json" {
 			msg := "appInstMetaHandler: Content-Type header is not application/json"
 			msrv.Log.Error(msg)
@@ -239,6 +241,7 @@ func (msrv *Msrv) handleAppInstMeta(maxResponseLen int, publishDataType types.Ap
 			return
 		}
 
+		msrv.Log.Errorf("MI AMORE handleAppInstMeta 3")
 		kubeConfig, err := io.ReadAll(io.LimitReader(r.Body, AppInstMetadataResponseSizeLimitInBytes))
 		if err != nil {
 			msg := fmt.Sprintf("appInstMetaHandler: ReadAll failed: %v", err)
@@ -247,6 +250,7 @@ func (msrv *Msrv) handleAppInstMeta(maxResponseLen int, publishDataType types.Ap
 			return
 		}
 
+		msrv.Log.Errorf("MI AMORE handleAppInstMeta 4")
 		if binary.Size(kubeConfig) > maxResponseLen {
 			msg := fmt.Sprintf("appInstMetaHandler: kubeconfig size exceeds limit. Expected <= %v, actual size: %v",
 				maxResponseLen, binary.Size(kubeConfig))
@@ -254,6 +258,7 @@ func (msrv *Msrv) handleAppInstMeta(maxResponseLen int, publishDataType types.Ap
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			return
 		}
+		msrv.Log.Errorf("MI AMORE handleAppInstMeta 5")
 		remoteIP := net.ParseIP(strings.Split(r.RemoteAddr, ":")[0])
 		anStatus := msrv.lookupAppNetworkStatusByAppIP(remoteIP)
 		if anStatus == nil {
@@ -263,6 +268,7 @@ func (msrv *Msrv) handleAppInstMeta(maxResponseLen int, publishDataType types.Ap
 			return
 		}
 
+		msrv.Log.Errorf("MI AMORE handleAppInstMeta 6")
 		var appInstMetaData = &types.AppInstMetaData{
 			AppInstUUID: anStatus.UUIDandVersion.UUID,
 			Data:        kubeConfig,

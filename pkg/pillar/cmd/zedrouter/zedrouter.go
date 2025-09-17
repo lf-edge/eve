@@ -174,6 +174,8 @@ func Run(ps *pubsub.PubSub, logger *logrus.Logger, log *base.LogObject, args []s
 		},
 	}
 
+	log.Errorf("AMIGO ZEDR Run 1")
+
 	agentbase.Init(&zedrouter, logger, log, agentName,
 		agentbase.WithPidFile(),
 		agentbase.WithBaseDir(baseDir),
@@ -192,18 +194,23 @@ func Run(ps *pubsub.PubSub, logger *logrus.Logger, log *base.LogObject, args []s
 	// but we will have to bridge LocalNIs to network namespace of metadata server
 	agentbase.Init(&zedrouter.metadataServer, logger, log, "msrv")
 
+	log.Errorf("AMIGO ZEDR Run 2")
+
 	if err := zedrouter.metadataServer.Init(types.PersistCachePatchEnvelopesUsage, false); err != nil {
 		log.Fatal(err)
 	}
+	log.Errorf("AMIGO ZEDR Run 3")
 	go func() {
 		if err := zedrouter.metadataServer.Run(context.Background()); err != nil {
 			log.Fatal(err)
 		}
 	}()
 
+	log.Errorf("AMIGO ZEDR Run 4")
 	if err := zedrouter.init(); err != nil {
 		log.Fatal(err)
 	}
+	log.Errorf("AMIGO ZEDR Run 5")
 	if err := zedrouter.run(context.Background()); err != nil {
 		log.Fatal(err)
 	}
@@ -279,7 +286,7 @@ func (z *zedrouter) init() (err error) {
 
 func (z *zedrouter) run(ctx context.Context) (err error) {
 	z.runCtx = ctx
-	z.log.Noticef("Starting %s", agentName)
+	z.log.Errorf("AMIGO ZEDR Starting %s", agentName)
 
 	if base.IsHVTypeKube() {
 		if err = z.runRPCServer(); err != nil {
@@ -296,7 +303,7 @@ func (z *zedrouter) run(ctx context.Context) (err error) {
 		return err
 	}
 	for !z.gcInitialized {
-		z.log.Noticef("Waiting for GCInitialized")
+		z.log.Errorf("AMIGO ZEDR Waiting for GCInitialized")
 		select {
 		case change := <-z.subGlobalConfig.MsgChan():
 			z.subGlobalConfig.ProcessChange(change)
@@ -304,7 +311,7 @@ func (z *zedrouter) run(ctx context.Context) (err error) {
 		}
 		z.pubSub.StillRunning(agentName, warningTime, errorTime)
 	}
-	z.log.Noticef("Processed GlobalConfig")
+	z.log.Errorf("AMIGO ZEDR Processed GlobalConfig")
 
 	// Wait until we have been onboarded aka know our own UUID
 	// (even though zedrouter does not use the UUID).
@@ -312,7 +319,7 @@ func (z *zedrouter) run(ctx context.Context) (err error) {
 	if err != nil {
 		return err
 	}
-	z.log.Noticef("Received device UUID")
+	z.log.Errorf("AMIGO ZEDROUTER Received device UUID")
 
 	// Timer used to retry failed configuration
 	z.retryTimer = time.NewTimer(1 * time.Second)
@@ -348,7 +355,7 @@ func (z *zedrouter) run(ctx context.Context) (err error) {
 		}
 	}
 
-	z.log.Noticef("Entering main event loop")
+	z.log.Errorf("AMIGO ZEDROUTER Entering main event loop")
 	for {
 		select {
 
@@ -813,10 +820,10 @@ func (z *zedrouter) ensureDir(path string) error {
 func (z *zedrouter) checkAndProcessNetworkInstanceConfig() {
 	select {
 	case change := <-z.subNetworkInstanceConfig.MsgChan():
-		z.log.Functionf("Processing NetworkInstanceConfig before AppNetworkConfig")
+		z.log.Errorf("AMIGO ZEDROUTER Processing NetworkInstanceConfig before AppNetworkConfig")
 		z.subNetworkInstanceConfig.ProcessChange(change)
 	default:
-		z.log.Functionf("NO NetworkInstanceConfig before AppNetworkConfig")
+		z.log.Errorf("AMIGO ZEDROUTER NO NetworkInstanceConfig before AppNetworkConfig")
 	}
 }
 

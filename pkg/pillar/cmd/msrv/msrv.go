@@ -527,6 +527,7 @@ func (msrv *Msrv) initSubscriptions(persist bool) (err error) {
 
 // Activate all subscriptions.
 func (msrv *Msrv) Activate() error {
+	msrv.Log.Errorf("MI AMORE MSRV Activate start")
 	inactiveSubs := []pubsub.Subscription{
 		msrv.subNetworkInstanceStatus,
 		msrv.subEdgeNodeInfo,
@@ -553,6 +554,7 @@ func (msrv *Msrv) Activate() error {
 			return err
 		}
 	}
+	msrv.Log.Errorf("MI AMORE MSRV Activate finish")
 	return nil
 }
 
@@ -561,7 +563,7 @@ func (msrv *Msrv) Run(ctx context.Context) (err error) {
 	if err = pidfile.CheckAndCreatePidfile(msrv.Log, agentName); err != nil {
 		return err
 	}
-	msrv.Log.Noticef("Starting %s", agentName)
+	msrv.Log.Errorf("MI AMORE msrv Starting %s", agentName)
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(stillRunTime)
@@ -570,6 +572,7 @@ func (msrv *Msrv) Run(ctx context.Context) (err error) {
 	if err = msrv.subGlobalConfig.Activate(); err != nil {
 		return err
 	}
+	msrv.Log.Errorf("MI AMORE msrv subGlobalConfig activated")
 	for !msrv.gcInitialized {
 		msrv.Log.Noticef("Waiting for GCInitialized")
 		select {
@@ -579,7 +582,7 @@ func (msrv *Msrv) Run(ctx context.Context) (err error) {
 		}
 		msrv.PubSub.StillRunning(agentName, warningTime, errorTime)
 	}
-	msrv.Log.Noticef("Processed GlobalConfig")
+	msrv.Log.Errorf("MI AMORE msrv Processed GlobalConfig")
 
 	// Publish network metrics (interface counters, etc.)
 	interval := time.Duration(msrv.metricInterval) * time.Second
@@ -589,9 +592,11 @@ func (msrv *Msrv) Run(ctx context.Context) (err error) {
 		time.Duration(max))
 	msrv.publishTicker = &publishTicker
 
+	msrv.Log.Errorf("MI AMORE msrv before activated")
 	if err = msrv.Activate(); err != nil {
 		return err
 	}
+	msrv.Log.Errorf("MI AMORE msrv activated")
 
 	// Wait for the EdgeNodeInfo, and EdgeNodeCert and ControllerCert publications
 	var edgenodeCertInitialized, controllerCertInitialized, edgenodeInfoInitialized bool

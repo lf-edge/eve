@@ -193,7 +193,7 @@ func publishDomainConfig(ctx *zedmanagerContext,
 	config *types.DomainConfig) {
 
 	key := config.Key()
-	log.Tracef("publishDomainConfig(%s)", key)
+	log.Errorf("AMIGO ZEDMGR publishDomainConfig(%s)", key)
 	pub := ctx.pubDomainConfig
 	pub.Publish(key, *config)
 }

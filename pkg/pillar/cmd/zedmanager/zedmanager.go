@@ -112,7 +112,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Functionf("processed onboarded")
+	log.Errorf("AMIGO ZEDMGR processed onboarded")
 
 	// Create publish for SnapshotConfig
 	pubSnapshotConfig, err := ps.NewPublication(pubsub.PublicationOptions{
@@ -221,8 +221,10 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	if err != nil {
 		log.Fatal(err)
 	}
+	log.Errorf("AMIGO ZEDMANAGER STARTING TO ACTIVATE APP INSTANCE CONFIG")
 	ctx.subAppInstanceConfig = subAppInstanceConfig
 	subAppInstanceConfig.Activate()
+	log.Errorf("AMIGO ZEDMANAGER DONE ACTIVATING APP INSTANCE CONFIG")
 
 	// Get AppInstanceConfig from zedmanager itself
 	subLocalAppInstanceConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
@@ -429,6 +431,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	_ = subEdgeNodeInfo.Activate()
 
 	// Pick up debug aka log level before we start real work
+	log.Errorf("AMIGO ZEDMGR waiting for GCInitialized")
 	edgenodeInfoInitialized := false
 	for !ctx.GCInitialized || (ctx.hvTypeKube && !edgenodeInfoInitialized) {
 		log.Functionf("waiting for GCInitialized and EdgeNodeInfo")
@@ -444,6 +447,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		}
 		ps.StillRunning(agentName, warningTime, errorTime)
 	}
+	log.Errorf("AMIGO ZEDMGR passed GCInitialized")
 
 	//use timer for free resource checker to run it after stabilising of other changes
 	freeResourceChecker := flextimer.NewRangeTicker(5*time.Second, 10*time.Second)
@@ -1139,6 +1143,7 @@ func handleCreate(ctxArg interface{}, key string,
 	configArg interface{}) {
 	ctx := ctxArg.(*zedmanagerContext)
 	config := configArg.(types.AppInstanceConfig)
+	log.Errorf("AMIGO ZEDMGR handleCreate start")
 
 	log.Functionf("handleCreate(%v) for %s",
 		config.UUIDandVersion, config.DisplayName)
@@ -1252,6 +1257,7 @@ func handleCreateAppInstanceStatus(ctx *zedmanagerContext, config types.AppInsta
 
 func handleModify(ctxArg interface{}, key string,
 	configArg interface{}, oldConfigArg interface{}) {
+	log.Errorf("AMIGO ZEDMGR handleModify start")
 
 	ctx := ctxArg.(*zedmanagerContext)
 	config := configArg.(types.AppInstanceConfig)

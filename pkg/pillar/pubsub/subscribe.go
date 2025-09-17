@@ -87,13 +87,15 @@ func (sub *SubscriptionImpl) populate() {
 	sub.log.Functionf("populate(%s)", name)
 
 	pairs, restartCounter, err := sub.driver.Load()
+	// sub.log.Errorf("MI AMORE populate %s, %v", sub.driver.LargeDirName(), pairs)
 	if err != nil {
 		// Could be a truncated or empty file
 		sub.log.Error(err)
 		return
 	}
 	for key, itemB := range pairs {
-		sub.log.Functionf("populate(%s) key %s", name, key)
+		// sub.log.Errorf("MI AMORE populate %s, %s, ", name, key)
+		sub.log.Errorf("MI AMORE populate(%s) key %s %s", name, key, string(itemB))
 		handleModify(sub, key, itemB)
 	}
 	if restartCounter != 0 {

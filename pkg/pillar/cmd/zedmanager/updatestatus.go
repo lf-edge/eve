@@ -150,7 +150,7 @@ func doUpdate(ctx *zedmanagerContext,
 	changed := false
 	done := false
 
-	log.Functionf("doUpdate: UUID:%s, Name", uuidStr)
+	log.Errorf("AMIGO ZEDMGR doUpdate: UUID:%s, Name", uuidStr)
 
 	// Manage events necessitating VM shutdown (such as snapshot removal, rollback).
 	// This is different from instances where the VM is deactivated due to a purge&update
@@ -196,7 +196,7 @@ func doUpdate(ctx *zedmanagerContext,
 		activeAppsUUIDs = []string{} // Fallback to an empty list
 	}
 	// Check if the app is in the active list
-	log.Functionf("Processing AppInstanceConfig for app with UUID: %s", config.UUIDandVersion.UUID.String())
+	log.Errorf("AMIGO ZEDMGR Processing AppInstanceConfig for app with UUID: %s", config.UUIDandVersion.UUID.String())
 	for _, uuid := range activeAppsUUIDs {
 		log.Functionf("active app instance UUID: %s", uuid)
 		if uuid == config.UUIDandVersion.UUID.String() {
@@ -600,7 +600,7 @@ func doPrepare(ctx *zedmanagerContext,
 func doActivate(ctx *zedmanagerContext, uuidStr string,
 	config types.AppInstanceConfig, status *types.AppInstanceStatus) bool {
 
-	log.Functionf("doActivate for %s", uuidStr)
+	log.Errorf("UPD STAT doActivate for %s", uuidStr)
 	changed := false
 
 	// Are we doing a restart and it came down?
@@ -725,13 +725,14 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 	// Track that we have cleanup work in case something fails
 	status.ActivateInprogress = true
 
+	log.Errorf("UPD STAT doActivate for %s 2", uuidStr)
 	// Make sure we have an AppNetworkConfig
 	MaybeAddAppNetworkConfig(ctx, config, status)
 
 	// Check AppNetworkStatus
 	ns := lookupAppNetworkStatus(ctx, uuidStr)
 	if ns == nil {
-		log.Functionf("Waiting for AppNetworkStatus for %s", uuidStr)
+		log.Errorf("UPD STAT Waiting for AppNetworkStatus for %s", uuidStr)
 		return changed
 	}
 	if ns.Pending() {

@@ -31,10 +31,10 @@ func (z *zedrouter) handleGlobalConfigModify(ctxArg interface{}, key string,
 func (z *zedrouter) handleGlobalConfigImpl(ctxArg interface{}, key string,
 	statusArg interface{}) {
 	if key != "global" {
-		z.log.Functionf("handleGlobalConfigImpl: ignoring %s", key)
+		z.log.Errorf("AMIGO ZEDR handleGlobalConfigImpl: ignoring %s", key)
 		return
 	}
-	z.log.Functionf("handleGlobalConfigImpl for %s", key)
+	z.log.Errorf("AMIGO ZEDR handleGlobalConfigImpl for %s", key)
 	gcp := agentlog.HandleGlobalConfig(z.log, z.subGlobalConfig, agentName,
 		z.CLIParams().DebugOverride, z.logger)
 	if gcp != nil {
@@ -80,7 +80,7 @@ func (z *zedrouter) handleGlobalConfigImpl(ctxArg interface{}, key string,
 		z.localLegacyMACAddr = gcp.GlobalValueBool(types.NetworkLocalLegacyMACAddress)
 		z.niReconciler.ApplyUpdatedGCP(z.runCtx, *gcp)
 	}
-	z.log.Functionf("handleGlobalConfigImpl done for %s", key)
+	z.log.Errorf("AMIGO ZEDR handleGlobalConfigImpl done for %s", key)
 }
 
 func (z *zedrouter) handleGlobalConfigDelete(ctxArg interface{}, key string,
@@ -184,9 +184,9 @@ func (z *zedrouter) handleNetworkInstanceCreate(ctxArg interface{}, key string,
 	configArg interface{}) {
 
 	config := configArg.(types.NetworkInstanceConfig)
-	z.log.Functionf("handleNetworkInstanceCreate: (UUID: %s, name:%s)",
+	z.log.Errorf("AMIGO ZEDROUTER handleNetworkInstanceCreate: (UUID: %s, name:%s)",
 		key, config.DisplayName)
-	defer z.log.Functionf("handleNetworkInstanceCreate(%s) done", key)
+	defer z.log.Errorf("AMIGO ZEDROUTER handleNetworkInstanceCreate(%s) done", key)
 
 	if !z.initReconcileDone {
 		z.niReconciler.RunInitialReconcile(z.runCtx)
@@ -453,7 +453,7 @@ func (z *zedrouter) handleNetworkInstanceDelete(ctxArg interface{}, key string,
 func (z *zedrouter) handleAppNetworkCreate(ctxArg interface{}, key string,
 	configArg interface{}) {
 	config := configArg.(types.AppNetworkConfig)
-	z.log.Functionf("handleAppNetworkCreate(%v) for %s",
+	z.log.Errorf("AMIGO ZEDROUTER handleAppNetworkCreate(%v) for %s",
 		config.UUIDandVersion, config.DisplayName)
 
 	if !z.initReconcileDone {
@@ -538,7 +538,7 @@ func (z *zedrouter) handleAppNetworkCreate(ctxArg interface{}, key string,
 	}
 
 	z.maybeScheduleRetry()
-	z.log.Functionf("handleAppNetworkCreate(%s) done for %s", key, config.DisplayName)
+	z.log.Errorf("AMIGO ZEDROUTER handleAppNetworkCreate(%s) done for %s", key, config.DisplayName)
 }
 
 // handleAppNetworkModify cannot handle any change.
@@ -547,6 +547,7 @@ func (z *zedrouter) handleAppNetworkModify(ctxArg interface{}, key string,
 	configArg interface{}, oldConfigArg interface{}) {
 	newConfig := configArg.(types.AppNetworkConfig)
 	oldConfig := oldConfigArg.(types.AppNetworkConfig)
+	z.log.Errorf("AMIGO ZEDROUTER handleAppNetworkModify")
 
 	// re-activate network instances of edge apps in order to resolve NTP servers again
 	for _, appNetConfig := range newConfig.AppNetAdapterList {

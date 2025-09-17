@@ -23,6 +23,7 @@ func (srv *Msrv) lookupAppNetworkStatusByAppIP(ip net.IP) *types.AppNetworkStatu
 	items := sub.GetAll()
 	for _, st := range items {
 		status := st.(types.AppNetworkStatus)
+		srv.Log.Errorf("MI AMORE lookupAppNetworkStatusByAppIP %v %v", ip, status)
 		for _, adapterStatus := range status.AppNetAdapterList {
 			for _, adapterIP := range adapterStatus.AssignedAddresses.IPv4Addrs {
 				if adapterIP.Address.Equal(ip) {
@@ -200,6 +201,7 @@ func (srv *Msrv) lookupAppNetworkConfig(key string) *types.AppNetworkConfig {
 }
 
 func (srv *Msrv) publishAppInstMetadata(appInstMetadata *types.AppInstMetaData) {
+	srv.Log.Errorf("MI AMORE 1")
 	if appInstMetadata == nil {
 		srv.Log.Errorf("publishAppInstMetadata: nil appInst metadata")
 		return
