@@ -20,6 +20,10 @@ var (
 	counterSuppressedLogs = 0
 )
 
+func init() {
+	logsToCount.Store([]string{})
+}
+
 func countLogsInFile(file *os.File) map[string]int {
 	logCounter := make(map[string]int)
 	for _, logSrcLine := range logsToCount.Load().([]string) {
