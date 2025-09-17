@@ -45,6 +45,12 @@ const (
 // CONFIG_VSOCKETS_LOOPBACK=m
 // $ sudo modprobe vsock
 // $ sudo modprobe vsock_loopback
+// To test this locally then do:
+// $ cd eve/tests/tpm
+// $ ./prep-and-run.sh
+// in another terminal window do:
+// $ go test -c ../../../pkg/pillar/cmd/vcomlink
+// $ go test -v -run TestValidGetPublic github.com/lf-edge/eve/pkg/pillar/cmd/vcomlink
 
 func isVsockSupported() bool {
 	_, err := os.Stat("/sys/module/vsock")
