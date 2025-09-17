@@ -139,7 +139,7 @@ func (s *S3ctx) UploadFile(fname, bname, bkey string, compression bool, prgNotif
 			switch apiErr.ErrorCode() {
 			case "NoSuchBucket", "NotFound":
 				// Bucket doesn't exist — go ahead and create it
-				s.log.Printf("Creating bucket in %s region\n", s.client.Options().Region)
+				s.log.Printf("Creating bucket in %s region", s.client.Options().Region)
 				if err := s.CreateBucket(bname); err != nil {
 					return location, err
 				}
