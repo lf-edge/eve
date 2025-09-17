@@ -15,6 +15,10 @@ var (
 	filterSuppressedLogs = 0
 )
 
+func init() {
+	filenameFilter.Store(map[string]struct{}{})
+}
+
 // filterOut checks if the log entry should be filtered out
 // based on the filename or severity + function name
 func filterOut(l *logs.LogEntry) bool {
