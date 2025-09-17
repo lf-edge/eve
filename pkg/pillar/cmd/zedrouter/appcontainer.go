@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	apitypes "github.com/docker/docker/api/types"
+	containertypes "github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/google/go-cmp/cmp"
@@ -151,7 +151,7 @@ func (z *zedrouter) maybeStopAppContainerStatsCollecting() (map[string]interface
 }
 
 func (z *zedrouter) getAppContainerStats(cli *client.Client,
-	containers []apitypes.Container) types.AppContainerMetrics {
+	containers []containertypes.Summary) types.AppContainerMetrics {
 	var acMetrics types.AppContainerMetrics
 
 	for _, container := range containers {
@@ -184,10 +184,10 @@ func (z *zedrouter) getAppContainerStats(cli *client.Client,
 	return acMetrics
 }
 
-func (z *zedrouter) processAppContainerStats(stats apitypes.ContainerStats,
-	container apitypes.Container, startTime time.Time) (types.AppContainerStats, error) {
+func (z *zedrouter) processAppContainerStats(stats containertypes.StatsResponseReader,
+	container containertypes.Summary, startTime time.Time) (types.AppContainerStats, error) {
 	var acStats types.AppContainerStats
-	var v *apitypes.StatsJSON
+	var v *containertypes.StatsResponse
 
 	dec := json.NewDecoder(stats.Body)
 	err := dec.Decode(&v)
@@ -233,7 +233,7 @@ func (z *zedrouter) processAppContainerStats(stats apitypes.ContainerStats,
 }
 
 func (z *zedrouter) getAppContainerLogs(status types.AppNetworkStatus,
-	last map[string]time.Time, cli *client.Client, containers []apitypes.Container) int {
+	last map[string]time.Time, cli *client.Client, containers []containertypes.Summary) int {
 	var buf bytes.Buffer
 	var numlogs int
 
@@ -244,7 +244,7 @@ func (z *zedrouter) getAppContainerLogs(status types.AppNetworkStatus,
 			lasttime = lt.Format(time.RFC3339Nano)
 		}
 		out, err := cli.ContainerLogs(context.Background(), container.ID,
-			apitypes.ContainerLogsOptions{
+			containertypes.LogsOptions{
 				ShowStdout: true,
 				ShowStderr: true,
 				Timestamps: true,
@@ -315,7 +315,7 @@ func (z *zedrouter) getAppContainerLogs(status types.AppNetworkStatus,
 }
 
 func (z *zedrouter) getAppContainers(status types.AppNetworkStatus) (
-	*client.Client, []apitypes.Container, error) {
+	*client.Client, []containertypes.Summary, error) {
 	containerEndpoint := "tcp://" + status.GetStatsIPAddr.String() +
 		":" + strconv.Itoa(dockerAPIPort)
 	cli, err := client.NewClientWithOpts(
@@ -328,7 +328,7 @@ func (z *zedrouter) getAppContainers(status types.AppNetworkStatus) (
 	}
 
 	containers, err := cli.ContainerList(
-		context.Background(), apitypes.ContainerListOptions{})
+		context.Background(), containertypes.ListOptions{})
 	if err != nil {
 		z.log.Errorf("getAppContainers: Container list error %v", err)
 		return nil, nil, err
