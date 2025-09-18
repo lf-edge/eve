@@ -8,6 +8,7 @@ on:  # yamllint disable-line rule:truthy
       - "master"
       - "[0-9]+.[0-9]+"
       - "[0-9]+.[0-9]+-stable"
+      - "feature/*"
     paths-ignore:
       - '**/*.md'
       - '.github/**'
