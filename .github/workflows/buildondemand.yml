@@ -1,3 +1,5 @@
+# Copyright (c) 2025, Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
 ---
 name: build and publish packages on demand
 on:  # yamllint disable-line rule:truthy
