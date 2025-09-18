@@ -466,7 +466,7 @@ func (n *nim) initSubscriptions() (err error) {
 		AgentName:     "monitor",
 		MyAgentName:   agentName,
 		TopicImpl:     types.DevicePortConfig{},
-		Persistent:    false,
+		Persistent:    true,
 		Activate:      false,
 		CreateHandler: n.handleDPCCreate,
 		ModifyHandler: n.handleDPCModify,

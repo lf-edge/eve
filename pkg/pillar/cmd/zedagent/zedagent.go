@@ -1708,11 +1708,13 @@ func initPostOnboardSubs(zedagentCtx *zedagentContext) {
 		log.Fatal(err)
 	}
 
+	zedagentCtx.DevicePortConfigList = &types.DevicePortConfigList{}
 	zedagentCtx.subDevicePortConfigList, err = ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "nim",
 		MyAgentName:   agentName,
 		TopicImpl:     types.DevicePortConfigList{},
 		Activate:      true,
+		Persistent:    true,
 		Ctx:           zedagentCtx,
 		CreateHandler: handleDPCLCreate,
 		ModifyHandler: handleDPCLModify,
@@ -1723,7 +1725,6 @@ func initPostOnboardSubs(zedagentCtx *zedagentContext) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	zedagentCtx.DevicePortConfigList = &types.DevicePortConfigList{}
 
 	zedagentCtx.subBlobStatus, err = ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "volumemgr",
