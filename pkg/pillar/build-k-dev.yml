@@ -12,11 +12,13 @@ config:
     - /lib/modules:/lib/modules
     - /dev:/dev
     - /etc/resolv.conf:/etc/resolv.conf
+    - /etc/cdi:/etc/cdi
     - /run:/run
     - /config:/config
     - /:/hostfs
     - /persist:/persist:rshared,rbind
     - /usr/bin/containerd:/usr/bin/containerd
+    - /opt/vendor:/opt/vendor:ro
   net: host
   capabilities:
     - all
