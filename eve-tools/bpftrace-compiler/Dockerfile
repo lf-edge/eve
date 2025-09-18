@@ -1,7 +1,7 @@
 # Copyright (c) 2024 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-FROM alpine:3.20
+FROM alpine:3.21
 
 # hadolint ignore=DL3018
 RUN apk add --no-cache qemu-system-x86_64 qemu-system-aarch64 go make git docker
