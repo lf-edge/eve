@@ -48,7 +48,7 @@ func (dif *deviceInfoFields) parseConfig(config *zconfig.EdgeDevConfig) {
 	dif.deviceName = config.DeviceName
 	dif.enterpriseName = config.EnterpriseName
 	dif.enterpriseID = config.EnterpriseId
-	dif.projectName = config.ProductName
+	dif.projectName = config.ProjectName
 	dif.projectID = config.ProjectId
 }
 
