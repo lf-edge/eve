@@ -8,7 +8,7 @@
 # has a fast path for stack unwinding. This also happens
 # to be a perfect place to put any other kind of debug info
 # into the package: see abuild/etc/abuild.conf.
-FROM lfedge/eve-nkv:72d12c414cf47f410cc6a690c035ccba7f63c964 AS nkv
+FROM lfedge/eve-nkv:0a9900acd37f78dd193f1c725d1290dc72a4afa9 AS nkv
 FROM lfedge/eve-recovertpm:6bfac2a42181926d6e9144f30c0a6ee634a75156 AS recovertpm
 FROM lfedge/eve-bpftrace:abb65c7e35c1236f406ca8c56b39feeb560c13b3 AS bpftrace
 FROM lfedge/eve-alpine:e799def68af51dba83ec5a41f34bd0109704574f AS build
