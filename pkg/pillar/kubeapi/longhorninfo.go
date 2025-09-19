@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	lhv1beta2 "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	"github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
@@ -339,6 +340,33 @@ func PopulateKSI() (types.KubeStorageInfo, error) {
 	return ksi, nil
 }
 
+// lhVolHasRedundancy returns true if a volume can support losing a replica on the provided node name
+// and still have an online replica
+func lhVolHasRedundancyWithoutNode(log *base.LogObject, repList *lhv1beta2.ReplicaList, ignoreRepOnNode string) (redundant bool) {
+	var healthyReplicas []lhv1beta2.Replica
+	// filter list to replicas which are healthy
+	for _, lhReplica := range repList.Items {
+		if lhReplica.Spec.NodeID == ignoreRepOnNode {
+			log.Warnf("replica:%s Spec.NodeID:%s", lhReplica.ObjectMeta.Name, ignoreRepOnNode)
+			continue
+		}
+		if lhReplica.Status.OwnerID == ignoreRepOnNode {
+			log.Warnf("replica:%s Status.OwnerID:%s", lhReplica.ObjectMeta.Name, ignoreRepOnNode)
+			continue
+		}
+		if lhReplica.Spec.HealthyAt == "" {
+			log.Warnf("replica:%s Spec.HealthyAt empty", lhReplica.ObjectMeta.Name)
+			continue
+		}
+		healthyReplicas = append(healthyReplicas, lhReplica)
+	}
+	if len(healthyReplicas) > 1 {
+		redundant = true
+	}
+	log.Warnf("replica count:%d redundant:%t", len(healthyReplicas), redundant)
+	return redundant
+}
+
 // LonghornReplicaList returns the replica for a given longhorn volume which is hosted on a given kubernetes node
 func LonghornReplicaList(ownerNodeName string, longhornVolName string) (*lhv1beta2.ReplicaList, error) {
 	apiExists, err := longhornAPIExists()
@@ -373,6 +401,87 @@ func LonghornReplicaList(ownerNodeName string, longhornVolName string) (*lhv1bet
 		return nil, fmt.Errorf("LonghornReplicaList labelSelector:%s can't get replicas: %v", strings.Join(labelSelectors, ","), err)
 	}
 	return replicas, nil
+}
+
+// longhornReplicaDelete deletes replicas for a given longhorn volume which is hosted on a given kubernetes node
+func longhornReplicaDelete(lhRepName string) error {
+	apiExists, err := longhornAPIExists()
+	if err != nil {
+		return err
+	}
+	if !apiExists {
+		return nil
+	}
+
+	config, err := GetKubeConfig()
+	if err != nil {
+		return err
+	}
+
+	lhClient, err := versioned.NewForConfig(config)
+	if err != nil {
+		return err
+	}
+
+	gracePeriod := int64(0)
+	propagationPolicy := metav1.DeletePropagationBackground
+	err = lhClient.LonghornV1beta2().Replicas(longhornNamespace).Delete(context.Background(), lhRepName, metav1.DeleteOptions{
+		GracePeriodSeconds: &gracePeriod,
+		PropagationPolicy:  &propagationPolicy,
+	})
+
+	return err
+}
+
+func longhornVolumeSetNode(lhVolName string, kubeNodeName string) error {
+	apiExists, err := longhornAPIExists()
+	if err != nil {
+		return err
+	}
+	if !apiExists {
+		return nil
+	}
+
+	config, err := GetKubeConfig()
+	if err != nil {
+		return err
+	}
+
+	lhClient, err := versioned.NewForConfig(config)
+	if err != nil {
+		return err
+	}
+
+	// First fix the logical volume object nodeID
+	vol, err := lhClient.LonghornV1beta2().Volumes(longhornNamespace).Get(context.Background(), lhVolName, metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+	vol.Spec.NodeID = kubeNodeName
+	vol.Status.OwnerID = kubeNodeName
+	vol.Status.CurrentNodeID = kubeNodeName
+	_, err = lhClient.LonghornV1beta2().Volumes(longhornNamespace).Update(context.Background(), vol, metav1.UpdateOptions{})
+	if err != nil {
+		return err
+	}
+
+	// Next fix the volume's engine nodeID
+	engines, err := lhClient.LonghornV1beta2().Engines(longhornNamespace).List(context.Background(), metav1.ListOptions{})
+	if err != nil {
+		return nil
+	}
+	for _, eng := range engines.Items {
+		if eng.Spec.VolumeName != lhVolName {
+			continue
+		}
+		eng.Spec.NodeID = kubeNodeName
+		_, err := lhClient.LonghornV1beta2().Engines(longhornNamespace).Update(context.Background(), &eng, metav1.UpdateOptions{})
+		if err != nil {
+			return err
+		}
+	}
+
+	return err
 }
 
 // longhornAPIExists will check for longhorn components installed and set
