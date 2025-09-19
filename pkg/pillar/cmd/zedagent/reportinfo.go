@@ -225,7 +225,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext, dest destinationBitset) {
 	log.Functionf("PublishDeviceInfoToZedCloud uuid %s", deviceUUID)
 
 	ReportDeviceInfo := new(info.ZInfoDevice)
-	ReportDeviceInfo.DeviceName = ctx.getconfigCtx.deviceInfoFields.enterpriseName
+	ReportDeviceInfo.DeviceName = ctx.getconfigCtx.deviceInfoFields.deviceName
 	ReportDeviceInfo.EnterpriseName = ctx.getconfigCtx.deviceInfoFields.enterpriseName
 	ReportDeviceInfo.EnterpriseId = ctx.getconfigCtx.deviceInfoFields.enterpriseID
 	ReportDeviceInfo.ProjectName = ctx.getconfigCtx.deviceInfoFields.projectName
