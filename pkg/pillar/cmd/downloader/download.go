@@ -9,7 +9,9 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/url"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/lf-edge/eve-libs/nettrace"
@@ -18,6 +20,8 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/controllerconn"
 	"github.com/lf-edge/eve/pkg/pillar/netdump"
 )
+
+const AWSS3IDENTIFIER = "amazonaws"
 
 func loadDownloadedParts(locFilename string) types.DownloadedParts {
 	var downloadedParts types.DownloadedParts
@@ -53,6 +57,16 @@ func saveDownloadedParts(locFilename string, downloadedParts types.DownloadedPar
 	}
 }
 
+// serverURL returns the server URL from the download url
+func serverURL(downloadURL string) string {
+	u, err := url.Parse(downloadURL)
+	if err != nil {
+		return ""
+	}
+	// Reconstruct just scheme://host[:port]
+	return (&url.URL{Scheme: u.Scheme, Host: u.Host}).String()
+}
+
 // download perform the actual download, given the necessary information.
 // Returns the content-type of the object downloaded, normally from the
 // Content-Type header, but subject to whatever the DronaRequest implementation
@@ -74,7 +88,13 @@ func download(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 	case zedUpload.SyncAzureTr:
 		dEndPoint, err = ctx.dCtx.NewSyncerDest(trType, downloadURL, dpath, auth)
 	case zedUpload.SyncAwsTr:
-		dEndPoint, err = ctx.dCtx.NewSyncerDest(trType, region, dpath, auth)
+		if strings.Contains(downloadURL, AWSS3IDENTIFIER) {
+			dEndPoint, err = ctx.dCtx.NewSyncerDest(trType, region, dpath, auth)
+		} else { // S3 compatible object store different from AWS, e.g., MinIO
+			dEndPoint, err = ctx.dCtx.NewSyncerDest(trType, region, dpath, auth,
+				zedUpload.WithS3Endpoint(serverURL(downloadURL)))
+		}
+
 	case zedUpload.SyncOCIRegistryTr:
 		dEndPoint, err = ctx.dCtx.NewSyncerDest(trType, downloadURL, filename, auth)
 	case zedUpload.SyncGSTr:

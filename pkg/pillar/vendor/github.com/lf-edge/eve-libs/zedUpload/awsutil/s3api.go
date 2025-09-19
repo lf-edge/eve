@@ -38,34 +38,45 @@ type S3ctx struct {
 }
 
 // NewAwsCtx initializes AWS S3 context using SDK v2
-func NewAwsCtx(id, secret, region string, useIPv6 bool, hctx *http.Client) (*S3ctx, error) {
+func NewAwsCtx(id, secret, region string, useIPv6 bool, endpointOverride string, hctx *http.Client) (*S3ctx, error) {
 	ctx := context.Background()
 	logger := logrus.New()
 	logger.SetLevel(logrus.TraceLevel)
 
-	// Enable dual-stack (IPv4 + IPv6) endpoint if IPv6 is in use.
-	dualStackState := aws.DualStackEndpointStateUnset
-	if useIPv6 {
-		dualStackState = aws.DualStackEndpointStateEnabled
-	}
-	// Load config with static credentials
-	cfg, err := awsConfig.LoadDefaultConfig(ctx,
+	cfgOpts := []func(*awsConfig.LoadOptions) error{
 		awsConfig.WithRegion(region),
-		awsConfig.WithCredentialsProvider(
-			credentials.NewStaticCredentialsProvider(id, secret, ""),
-		),
-		awsConfig.WithUseDualStackEndpoint(dualStackState),
-	)
-	if err != nil {
-		return nil, err
+		awsConfig.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(id, secret, "")),
 	}
 
 	// Override HTTP client if provided
 	if hctx != nil {
-		cfg.HTTPClient = hctx
+		cfgOpts = append(cfgOpts, awsConfig.WithHTTPClient(hctx))
 	}
 
-	client := s3.NewFromConfig(cfg)
+	// Enable dual-stack (IPv4 + IPv6) endpoint if IPv6 is in use and we do not use a custom endpoint
+	if endpointOverride == "" && useIPv6 {
+		cfgOpts = append(cfgOpts, awsConfig.WithUseDualStackEndpoint(aws.DualStackEndpointStateEnabled))
+	}
+
+	cfg, err := awsConfig.LoadDefaultConfig(ctx, cfgOpts...)
+	if err != nil {
+		return nil, err
+	}
+
+	client := s3.NewFromConfig(cfg,
+		func(o *s3.Options) {
+			// make sure SDK still signs with our desired region
+			o.Region = region
+
+			if endpointOverride != "" {
+				// point every S3 call at this base URL
+				o.BaseEndpoint = aws.String(endpointOverride)
+				// Most S3 compatible datastore require path‐style rather than virtual‐host
+				o.UsePathStyle = true
+			}
+		},
+	)
+
 	// Presigner for generating pre-signed URLs
 	presigner := s3.NewPresignClient(client)
 

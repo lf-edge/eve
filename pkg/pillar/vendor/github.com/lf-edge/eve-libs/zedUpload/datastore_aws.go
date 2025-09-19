@@ -104,6 +104,18 @@ func (ep *AwsTransportMethod) WithNetTracing(opts ...nettrace.TraceOpt) error {
 	return ep.hClientWrap.withNetTracing(opts...)
 }
 
+// WithS3Endpoint tells an AwsTransportMethod to talk to this HTTP URL
+func WithS3Endpoint(endpoint string) SyncerDestOption {
+	return func(ep DronaEndPoint) error {
+		awsEp, ok := ep.(*AwsTransportMethod)
+		if !ok {
+			return fmt.Errorf("WithS3Endpoint: not an AWS endpoint")
+		}
+		awsEp.endpointOverride = endpoint
+		return nil
+	}
+}
+
 // GetNetTrace returns collected network trace and packet captures.
 func (ep *AwsTransportMethod) GetNetTrace(description string) (
 	nettrace.AnyNetTrace, []nettrace.PacketCapture, error) {
@@ -128,7 +140,7 @@ func (ep *AwsTransportMethod) processS3Upload(req *DronaRequest) (error, int) {
 
 	// FiXME: strings.TrimSuffix needs to go away once final soultion is done.
 	// upload, always the compression file.
-	sc, err := zedAWS.NewAwsCtx(ep.token, ep.apiKey, ep.region, ep.useIPv6, hClient)
+	sc, err := zedAWS.NewAwsCtx(ep.token, ep.apiKey, ep.region, ep.useIPv6, ep.endpointOverride, hClient)
 	if err != nil {
 		return fmt.Errorf("unable to create S3 context: %v", err), 0
 	}
@@ -159,7 +171,7 @@ func (ep *AwsTransportMethod) processS3Download(req *DronaRequest) (error, int) 
 	}
 
 	if req.ackback {
-		s, err := zedAWS.NewAwsCtx(ep.token, pwd, ep.region, ep.useIPv6, hClient)
+		s, err := zedAWS.NewAwsCtx(ep.token, pwd, ep.region, ep.useIPv6, ep.endpointOverride, hClient)
 		if err != nil {
 			return fmt.Errorf("unable to create S3 context: %v", err), 0
 		}
@@ -178,7 +190,7 @@ func (ep *AwsTransportMethod) processS3Download(req *DronaRequest) (error, int) 
 		go statsUpdater(req, ep.ctx, prgChan)
 	}
 
-	sc, err := zedAWS.NewAwsCtx(ep.token, pwd, ep.region, ep.useIPv6, hClient)
+	sc, err := zedAWS.NewAwsCtx(ep.token, pwd, ep.region, ep.useIPv6, ep.endpointOverride, hClient)
 	if err != nil {
 		return fmt.Errorf("unable to create S3 context: %v", err), 0
 	}
@@ -209,7 +221,7 @@ func (ep *AwsTransportMethod) processS3DownloadByChunks(req *DronaRequest) error
 		return err
 	}
 	pwd := strings.TrimSuffix(ep.apiKey, "\n")
-	sc, err := zedAWS.NewAwsCtx(ep.token, pwd, ep.region, ep.useIPv6, hClient)
+	sc, err := zedAWS.NewAwsCtx(ep.token, pwd, ep.region, ep.useIPv6, ep.endpointOverride, hClient)
 	if err != nil {
 		return fmt.Errorf("unable to create S3 context: %v", err)
 	}
@@ -239,7 +251,7 @@ func (ep *AwsTransportMethod) processS3Delete(req *DronaRequest) error {
 	if err != nil {
 		return err
 	}
-	s3ctx, err := zedAWS.NewAwsCtx(ep.token, ep.apiKey, ep.region, ep.useIPv6, hClient)
+	s3ctx, err := zedAWS.NewAwsCtx(ep.token, ep.apiKey, ep.region, ep.useIPv6, ep.endpointOverride, hClient)
 	if s3ctx != nil {
 		if req.cancelContext != nil {
 			s3ctx = s3ctx.WithContext(req.cancelContext)
@@ -275,7 +287,7 @@ func (ep *AwsTransportMethod) processS3List(req *DronaRequest) ([]string, error,
 	if err != nil {
 		return s, err, 0
 	}
-	sc, err := zedAWS.NewAwsCtx(ep.token, pwd, ep.region, ep.useIPv6, hClient)
+	sc, err := zedAWS.NewAwsCtx(ep.token, pwd, ep.region, ep.useIPv6, ep.endpointOverride, hClient)
 	if err != nil {
 		return s, fmt.Errorf("unable to create S3 context: %v", err), 0
 	}
@@ -303,7 +315,7 @@ func (ep *AwsTransportMethod) processS3ObjectMetaData(req *DronaRequest) (int64,
 		return 0, "", err
 	}
 	pwd := strings.TrimSuffix(ep.apiKey, "\n")
-	sc, err := zedAWS.NewAwsCtx(ep.token, pwd, ep.region, ep.useIPv6, hClient)
+	sc, err := zedAWS.NewAwsCtx(ep.token, pwd, ep.region, ep.useIPv6, ep.endpointOverride, hClient)
 	if err != nil {
 		return 0, "", fmt.Errorf("unable to create S3 context: %v", err)
 	}
@@ -351,7 +363,7 @@ func (ep *AwsTransportMethod) processMultipartUpload(req *DronaRequest) (string,
 	if err != nil {
 		return "", "", err
 	}
-	s3ctx, err := zedAWS.NewAwsCtx(ep.token, ep.apiKey, ep.region, ep.useIPv6, hClient)
+	s3ctx, err := zedAWS.NewAwsCtx(ep.token, ep.apiKey, ep.region, ep.useIPv6, ep.endpointOverride, hClient)
 	if err != nil {
 		return "", "", err
 	}
@@ -370,7 +382,7 @@ func (ep *AwsTransportMethod) completeMultipartUpload(req *DronaRequest) error {
 	if err != nil {
 		return err
 	}
-	s3ctx, err := zedAWS.NewAwsCtx(ep.token, ep.apiKey, ep.region, ep.useIPv6, hClient)
+	s3ctx, err := zedAWS.NewAwsCtx(ep.token, ep.apiKey, ep.region, ep.useIPv6, ep.endpointOverride, hClient)
 	if err != nil {
 		return err
 	}
@@ -388,7 +400,7 @@ func (ep *AwsTransportMethod) generateSignedURL(req *DronaRequest) (string, erro
 	if err != nil {
 		return "", err
 	}
-	s3ctx, err := zedAWS.NewAwsCtx(ep.token, ep.apiKey, ep.region, ep.useIPv6, hClient)
+	s3ctx, err := zedAWS.NewAwsCtx(ep.token, ep.apiKey, ep.region, ep.useIPv6, ep.endpointOverride, hClient)
 	if err != nil {
 		return "", err
 	}
@@ -402,9 +414,10 @@ func (ep *AwsTransportMethod) generateSignedURL(req *DronaRequest) (string, erro
 }
 
 type AwsTransportMethod struct {
-	transport SyncTransportType
-	region    string
-	bucket    string
+	transport        SyncTransportType
+	region           string
+	endpointOverride string
+	bucket           string
 
 	//Auth
 	token  string
