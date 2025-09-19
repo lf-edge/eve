@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # notify key value 
 
-ARG NKV_VERSION=t12
+ARG NKV_VERSION=t4242
 ARG RUST_VERSION=lfedge/eve-rust:1.84.1
 FROM --platform=$BUILDPLATFORM ${RUST_VERSION} AS toolchain-base
 ARG TARGETARCH
