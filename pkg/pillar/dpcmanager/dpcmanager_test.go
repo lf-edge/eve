@@ -329,6 +329,36 @@ func getDNS() types.DeviceNetworkStatus {
 	return dnsObj.(types.DeviceNetworkStatus)
 }
 
+func portHasIP(portLL string, ip net.IP) bool {
+	dns := getDNS()
+	portStatus := dns.LookupPortByLogicallabel(portLL)
+	if portStatus == nil {
+		return false
+	}
+	if len(portStatus.AddrInfoList) != 1 {
+		return false
+	}
+	return portStatus.AddrInfoList[0].Addr.Equal(ip)
+}
+
+func portHasConfigSource(portLL string, source types.PortConfigSource) bool {
+	dns := getDNS()
+	portStatus := dns.LookupPortByLogicallabel(portLL)
+	if portStatus == nil {
+		return false
+	}
+	return portStatus.ConfigSource.Equal(source)
+}
+
+func getPortLpsConfigErr(portLL string) string {
+	dns := getDNS()
+	portStatus := dns.LookupPortByLogicallabel(portLL)
+	if portStatus == nil {
+		return ""
+	}
+	return portStatus.LpsConfigError
+}
+
 func getDPC(idx int) types.DevicePortConfig {
 	_, dpcList := getDPCList()
 	if idx < 0 || idx >= len(dpcList) {
@@ -726,6 +756,15 @@ func makeDPC(key string, timePrio time.Time, intfs selectedIntfs) types.DevicePo
 		Key:          key,
 		TimePriority: timePrio,
 	}
+	cfgSrc := types.PortConfigSource{
+		Origin:      types.NetworkConfigOriginController,
+		SubmittedAt: timePrio,
+	}
+	if key == "lps" {
+		cfgSrc = types.PortConfigSource{
+			Origin: types.NetworkConfigOriginLPS,
+		}
+	}
 	if intfs.eth0 {
 		dpc.Ports = append(dpc.Ports, types.NetworkPortConfig{
 			IfName:       "eth0",
@@ -737,6 +776,7 @@ func makeDPC(key string, timePrio time.Time, intfs selectedIntfs) types.DevicePo
 				Dhcp: types.DhcpTypeClient,
 				Type: types.NetworkTypeIPv4,
 			},
+			ConfigSource: cfgSrc,
 		})
 	}
 	if intfs.eth1 {
@@ -750,6 +790,7 @@ func makeDPC(key string, timePrio time.Time, intfs selectedIntfs) types.DevicePo
 				Dhcp: types.DhcpTypeClient,
 				Type: types.NetworkTypeIPv4,
 			},
+			ConfigSource: cfgSrc,
 		})
 	}
 	if intfs.eth2 {
@@ -763,6 +804,7 @@ func makeDPC(key string, timePrio time.Time, intfs selectedIntfs) types.DevicePo
 				Dhcp: types.DhcpTypeClient,
 				Type: types.NetworkTypeIpv6Only,
 			},
+			ConfigSource: cfgSrc,
 		})
 	}
 	if intfs.wlan0 {
@@ -787,6 +829,7 @@ func makeDPC(key string, timePrio time.Time, intfs selectedIntfs) types.DevicePo
 					},
 				},
 			},
+			ConfigSource: cfgSrc,
 		})
 	}
 	if intfs.wwan0 {
@@ -812,6 +855,7 @@ func makeDPC(key string, timePrio time.Time, intfs selectedIntfs) types.DevicePo
 					LocationTracking: true,
 				},
 			},
+			ConfigSource: cfgSrc,
 		})
 	}
 	return dpc
@@ -3090,4 +3134,237 @@ func TestOverrideDhcpNTP(test *testing.T) {
 		return len(ports) == 2 &&
 			generics.EqualSetsFn(ports[1].NtpServers, expNTPServers, netutils.EqualHostnameOrIPs)
 	}).Should(BeTrue())
+}
+
+func TestLPSConfig(test *testing.T) {
+	expectBootstrapDPC := true
+	t := initTest(test, expectBootstrapDPC)
+
+	// Prepare simulated network stack.
+	eth0 := mockEth0()
+	eth1 := mockEth1()
+	wlan0 := mockWlan0()
+	wlan0.IPAddrs = nil
+	wwan0 := mockWwan0()
+	wwan0.IPAddrs = nil
+	networkMonitor.AddOrUpdateInterface(eth0)
+	networkMonitor.AddOrUpdateInterface(eth1)
+	networkMonitor.AddOrUpdateInterface(wlan0)
+	networkMonitor.AddOrUpdateInterface(wwan0)
+
+	// Apply global config first.
+	dpcManager.UpdateGCP(globalConfig())
+
+	// Apply "zedagent" DPC, allowing local changes for wireless adapters and eth1,
+	// but not for eth0.
+	intfs := selectedIntfs{eth0: true, eth1: true, wlan0: true, wwan0: true}
+	aa := makeAA(intfs)
+	timePrio1 := time.Now()
+	dpc := makeDPC("zedagent", timePrio1, intfs)
+	dpc.Ports[0].AllowLocalModifications = false // eth0
+	dpc.Ports[1].AllowLocalModifications = true  // eth1
+	dpc.Ports[2].AllowLocalModifications = true  // wlan0
+	dpc.Ports[3].AllowLocalModifications = true  // wwan0
+	dpcManager.UpdateAA(aa)
+	dpcManager.AddDPC(dpc)
+
+	// Simulate working wlan connectivity.
+	wlan0 = mockWlan0() // with IP
+	networkMonitor.AddOrUpdateInterface(wlan0)
+
+	// Simulate working wwan connectivity.
+	rs := types.RadioSilence{}
+	wwan0Status := mockWwan0Status(dpc, rs)
+	dpcManager.ProcessWwanStatus(wwan0Status)
+	wwan0 = mockWwan0() // with IP
+	networkMonitor.AddOrUpdateInterface(wwan0)
+
+	// Verification should succeed and eventually all interfaces are reported
+	// with IP addresses.
+	t.Eventually(dpcIdxCb()).Should(Equal(0))
+	t.Expect(getDPC(0).State).To(Equal(types.DPCStateSuccess))
+	t.Eventually(func() bool {
+		return portHasIP("mock-eth0", net.ParseIP("192.168.10.5")) &&
+			portHasIP("mock-eth1", net.ParseIP("172.20.1.2")) &&
+			portHasIP("mock-wlan0", net.ParseIP("192.168.77.2")) &&
+			portHasIP("mock-wwan0", net.ParseIP("15.123.87.20"))
+	}).Should(BeTrue())
+
+	// Change eth1 and wwan0 config locally.
+	eth1StaticDNS1 := net.ParseIP("8.8.8.8")
+	eth1StaticDNS2 := net.ParseIP("192.168.50.40")
+	eth1StaticNTP1 := netutils.NewHostnameOrIP("132.163.96.6")
+	dpc = makeDPC("lps", time.Time{}, selectedIntfs{eth1: true, wwan0: true})
+	eth1ChangedDhcpConfig := types.DhcpConfig{
+		Dhcp:       types.DhcpTypeStatic,
+		AddrSubnet: "172.20.1.50/24",
+		Gateway:    net.ParseIP("10.10.1.1"),
+		NTPServers: []netutils.HostnameOrIP{eth1StaticNTP1},
+		DNSServers: []net.IP{eth1StaticDNS1, eth1StaticDNS2},
+		Type:       types.NetworkTypeIpv4Only,
+	}
+	dpc.Ports[0].DhcpConfig = eth1ChangedDhcpConfig
+	dpc.Ports[1].WirelessCfg.CellularV2.AccessPoints[0].APN = "changed-apn"
+	dpcManager.AddDPC(dpc)
+
+	// Simulate that eth1 got the statically configured IP.
+	eth1 = mockEth1()
+	eth1.IPAddrs = []*net.IPNet{ipAddress("172.20.1.50/24")}
+	eth1.DHCP.IPv4NtpServers = []netutils.HostnameOrIP{eth1StaticNTP1}
+	eth1.DNS[0].DNSServers = []net.IP{eth1StaticDNS1, eth1StaticDNS2}
+	networkMonitor.AddOrUpdateInterface(eth1)
+
+	// Still using the same underlying DPC, but with local changes overriding
+	// eth1 and wwan0 configuration.
+	t.Eventually(testingInProgressCb()).Should(BeTrue())
+	t.Eventually(testingInProgressCb()).Should(BeFalse())
+	t.Eventually(dpcIdxCb()).Should(Equal(0))
+	t.Eventually(dpcKeyCb(0)).Should(Equal("zedagent"))
+	t.Eventually(dpcTimePrioCb(0, timePrio1)).Should(BeTrue())
+	t.Eventually(dnsKeyCb()).Should(Equal("zedagent"))
+	t.Expect(getDPC(0).State).To(Equal(types.DPCStateSuccess))
+
+	// Wait until DNS reports the LPS config being used.
+	zedagentSrc := types.PortConfigSource{
+		Origin:      types.NetworkConfigOriginController,
+		SubmittedAt: timePrio1,
+	}
+	lpsSrc := types.PortConfigSource{
+		Origin: types.NetworkConfigOriginLPS,
+	}
+	t.Eventually(func() bool {
+		return portHasConfigSource("mock-eth0", zedagentSrc) &&
+			portHasConfigSource("mock-eth1", lpsSrc) &&
+			portHasConfigSource("mock-wlan0", zedagentSrc) &&
+			portHasConfigSource("mock-wwan0", lpsSrc) &&
+			portHasIP("mock-eth1", net.ParseIP("172.20.1.50"))
+	}).Should(BeTrue())
+
+	// Check that local configuration is applied.
+	t.Expect(getPortLpsConfigErr("mock-eth1")).To(BeEmpty())
+	t.Expect(getPortLpsConfigErr("mock-wwan0")).To(BeEmpty())
+	t.Expect(dhcpcdArgs("eth1")).To(ContainSubstring("--static ip_address=172.20.1.50/24"))
+	wwan := dg.Reference(generic.Wwan{})
+	t.Expect(itemDescription(wwan)).To(ContainSubstring("APN:changed-apn"))
+
+	// Remove wwan APN change from the LPS config and also try to change
+	// eth0 config, which should be forbidden.
+	dpc = makeDPC("lps", time.Time{}, selectedIntfs{eth0: true, eth1: true})
+	dpc.Ports[0].MTU = 9000
+	dpc.Ports[1].DhcpConfig = eth1ChangedDhcpConfig
+	dpcManager.AddDPC(dpc)
+
+	// Still using the same underlying DPC, but with local changes overriding
+	// eth1 configuration.
+	t.Eventually(testingInProgressCb()).Should(BeTrue())
+	t.Eventually(testingInProgressCb()).Should(BeFalse())
+	t.Eventually(dpcIdxCb()).Should(Equal(0))
+	t.Eventually(dpcKeyCb(0)).Should(Equal("zedagent"))
+	t.Eventually(dpcTimePrioCb(0, timePrio1)).Should(BeTrue())
+	t.Eventually(dnsKeyCb()).Should(Equal("zedagent"))
+	t.Expect(getDPC(0).State).To(Equal(types.DPCStateSuccess))
+
+	// Wait until DNS reports the LPS config being used.
+	t.Eventually(func() bool {
+		return portHasConfigSource("mock-eth0", zedagentSrc) &&
+			portHasConfigSource("mock-eth1", lpsSrc) &&
+			portHasConfigSource("mock-wlan0", zedagentSrc) &&
+			portHasConfigSource("mock-wwan0", zedagentSrc) &&
+			portHasIP("mock-eth1", net.ParseIP("172.20.1.50"))
+	}).Should(BeTrue())
+
+	// Verify that:
+	// - wwan0 has reverted to the controller-provided configuration,
+	// - eth1 continues to use the LPS configuration,
+	// - changing the MTU for eth0 via LPS was not permitted.
+	t.Expect(getPortLpsConfigErr("mock-eth0")).To(Equal(
+		"local modifications not permitted for port \"mock-eth0\""))
+	t.Expect(getPortLpsConfigErr("mock-eth1")).To(BeEmpty())
+	t.Expect(dhcpcdArgs("eth1")).To(ContainSubstring("--static ip_address=172.20.1.50/24"))
+	t.Expect(itemDescription(wwan)).To(ContainSubstring("APN:apn"))
+
+	// Simulate the controller submitting a new network configuration that
+	// now permits local changes for eth0.
+	//   - eth0 switches to the LPS configuration (previously denied),
+	//   - wlan0 and wwan0 switch to the new controller configuration,
+	//   - eth1 continues using the LPS-provided configuration.
+	timePrio2 := time.Now()
+	dpc = makeDPC("zedagent", timePrio2, intfs)
+	dpc.Ports[0].AllowLocalModifications = true // eth0
+	dpc.Ports[1].AllowLocalModifications = true // eth1
+	dpc.Ports[2].AllowLocalModifications = true // wlan0
+	dpc.Ports[2].WirelessCfg.Wifi[0].SSID = "ssid2"
+	dpc.Ports[3].AllowLocalModifications = true // wwan0
+	dpc.Ports[3].WirelessCfg.CellularV2.AccessPoints[0].APN = "apn2"
+	dpcManager.AddDPC(dpc)
+
+	// Underlying DPC should change.
+	t.Eventually(testingInProgressCb()).Should(BeTrue())
+	t.Eventually(testingInProgressCb()).Should(BeFalse())
+	t.Eventually(dpcIdxCb()).Should(Equal(0))
+	t.Eventually(dpcKeyCb(0)).Should(Equal("zedagent"))
+	t.Eventually(dpcTimePrioCb(0, timePrio2)).Should(BeTrue())
+	t.Eventually(dnsKeyCb()).Should(Equal("zedagent"))
+	t.Expect(getDPC(0).State).To(Equal(types.DPCStateSuccess))
+
+	// Wait until DNS reports:
+	//  - eth0 using the LPS provided config
+	//  - updated config timestamp for wlan0 and wwan0.
+	zedagentSrcNew := types.PortConfigSource{
+		Origin:      types.NetworkConfigOriginController,
+		SubmittedAt: timePrio2,
+	}
+	t.Eventually(func() bool {
+		return portHasConfigSource("mock-eth0", lpsSrc) &&
+			portHasConfigSource("mock-eth1", lpsSrc) &&
+			portHasConfigSource("mock-wlan0", zedagentSrcNew) &&
+			portHasConfigSource("mock-wwan0", zedagentSrcNew) &&
+			portHasIP("mock-eth1", net.ParseIP("172.20.1.50"))
+	}).Should(BeTrue())
+
+	// Verify that:
+	// - eth0 is using LPS configuration with increased MTU
+	// - eth1 continues to use the LPS configuration
+	// - wlan0 and wwan0 use the new controller configuration.
+	t.Expect(getPortLpsConfigErr("mock-eth0")).To(BeEmpty())
+	t.Expect(getPortLpsConfigErr("mock-eth1")).To(BeEmpty())
+	eth0PhysIf := dg.Reference(linux.PhysIf{PhysIfName: "eth0"})
+	t.Expect(itemDescription(eth0PhysIf)).To(ContainSubstring("MTU:0x2328"))
+	t.Expect(dhcpcdArgs("eth1")).To(ContainSubstring("--static ip_address=172.20.1.50/24"))
+	t.Expect(itemDescription(wwan)).To(ContainSubstring("APN:apn2"))
+	wlan := dg.Reference(linux.Wlan{})
+	t.Expect(itemDescription(wlan)).To(ContainSubstring("SSID: ssid2"))
+
+	// Now completely revert LPS configuration.
+	// We do this by publishing LPS DPC with an empty set of ports.
+	dpc = makeDPC("lps", time.Time{}, selectedIntfs{})
+	dpcManager.AddDPC(dpc)
+
+	// Underlying DPC remains the same.
+	t.Eventually(testingInProgressCb()).Should(BeTrue())
+	t.Eventually(testingInProgressCb()).Should(BeFalse())
+	t.Eventually(dpcIdxCb()).Should(Equal(0))
+	t.Eventually(dpcKeyCb(0)).Should(Equal("zedagent"))
+	t.Eventually(dpcTimePrioCb(0, timePrio2)).Should(BeTrue())
+	t.Eventually(dnsKeyCb()).Should(Equal("zedagent"))
+	t.Expect(getDPC(0).State).To(Equal(types.DPCStateSuccess))
+
+	// Simulate that eth1 got back the original IP from DHCP.
+	eth1 = mockEth1()
+	networkMonitor.AddOrUpdateInterface(eth1)
+
+	// Wait until DNS reports that all ports are using controller config.
+	t.Eventually(func() bool {
+		return portHasConfigSource("mock-eth0", zedagentSrcNew) &&
+			portHasConfigSource("mock-eth1", zedagentSrcNew) &&
+			portHasConfigSource("mock-wlan0", zedagentSrcNew) &&
+			portHasConfigSource("mock-wwan0", zedagentSrcNew) &&
+			portHasIP("mock-eth1", net.ParseIP("172.20.1.2"))
+	}).Should(BeTrue())
+
+	// Verify that all ports are using controller config.
+	t.Expect(itemDescription(eth0PhysIf)).To(ContainSubstring("MTU:0x5dc"))
+	t.Expect(dhcpcdArgs("eth1")).To(ContainSubstring("--request"))
+	t.Expect(itemDescription(wwan)).To(ContainSubstring("APN:apn2"))
+	t.Expect(itemDescription(wlan)).To(ContainSubstring("SSID: ssid2"))
 }

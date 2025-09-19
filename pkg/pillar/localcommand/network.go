@@ -41,7 +41,7 @@ const (
 // Used as a constant.
 var emptyConfig = types.DevicePortConfig{
 	Version: types.DPCIsMgmt,
-	Key:     "lps",
+	Key:     types.LpsDPCKey,
 }
 
 // initializeNetworkConfig initializes the local network configuration and sets up
@@ -300,7 +300,7 @@ func (lc *LocalCmdAgent) dpcToProto(dpc types.DevicePortConfig,
 		// Determine if this port's config is currently applied.
 		portStatus := dns.LookupPortByLogicallabel(port.Logicallabel)
 		if portStatus != nil {
-			if port.ConfigSource == portStatus.ConfigSource {
+			if port.ConfigSource.Equal(portStatus.ConfigSource) {
 				protoConfig.ConfigApplied = true
 			}
 		}
@@ -318,8 +318,18 @@ func (lc *LocalCmdAgent) dpcToProto(dpc types.DevicePortConfig,
 		}
 
 		// Copy error message if the port is in error state.
-		if port.HasError() {
-			protoConfig.ErrorMessage = dpc.LastError
+		if port.ConfigSource.Origin == types.NetworkConfigOriginLPS &&
+			portStatus.LpsConfigError != "" {
+			// Prefer LPS-specific error.
+			protoConfig.ErrorMessage = portStatus.LpsConfigError
+		} else if protoConfig.ConfigApplied {
+			// If the config is applied, then prefer error from DNS over the error
+			// stored in DPC.
+			if portStatus.HasError() {
+				protoConfig.ErrorMessage = portStatus.LastError
+			}
+		} else if port.HasError() {
+			protoConfig.ErrorMessage = port.LastError
 		}
 
 		// Convert proxy entries to proto.

@@ -34,8 +34,8 @@ func (g *geoService) GetGeolocationInfo(ipAddr net.IP) (*ipinfo.IPInfo, error) {
 
 func (m *DpcManager) updateDNS() {
 	defer m.publishDNS()
-	dpc := m.currentDPC()
-	if dpc == nil {
+	dpc, haveDPC := m.getCurrentDPC()
+	if !haveDPC {
 		m.deviceNetStatus = types.DeviceNetworkStatus{}
 		return
 	}
@@ -74,9 +74,14 @@ func (m *DpcManager) updateDNS() {
 		// (HasError() == false).
 		m.deviceNetStatus.Ports[ix].InvalidConfig = port.InvalidConfig
 		m.deviceNetStatus.Ports[ix].TestResults = port.TestResults
-		m.deviceNetStatus.Ports[ix].WirelessStatus.WType = port.WirelessCfg.WType
+		// Error specific to locally-made configuration reported back to LPS.
+		lpsConfigErr := m.getPortLpsConfigErr(port.Logicallabel)
+		if lpsConfigErr != nil {
+			m.deviceNetStatus.Ports[ix].LpsConfigError = lpsConfigErr.Error()
+		}
 		// If this is a cellular network connectivity, add status information
 		// obtained from the wwan service.
+		m.deviceNetStatus.Ports[ix].WirelessStatus.WType = port.WirelessCfg.WType
 		if port.WirelessCfg.WType == types.WirelessTypeCellular {
 			wwanNetStatus := m.wwanStatus.GetNetworkStatus(port.Logicallabel)
 			if wwanNetStatus != nil {

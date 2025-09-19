@@ -7,21 +7,193 @@ import (
 	"context"
 	"crypto/x509"
 	"fmt"
+	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
+	uuid "github.com/satori/go.uuid"
 )
 
-func (m *DpcManager) currentDPC() *types.DevicePortConfig {
-	if len(m.dpcList.PortConfigList) == 0 ||
-		m.dpcList.CurrentIndex < 0 ||
-		m.dpcList.CurrentIndex >= len(m.dpcList.PortConfigList) {
+// haveCurrentDPC returns true if there is a DevicePortConfig currently applied.
+func (m *DpcManager) haveCurrentDPC() bool {
+	return len(m.dpcList.PortConfigList) != 0 &&
+		m.dpcList.CurrentIndex >= 0 &&
+		m.dpcList.CurrentIndex < len(m.dpcList.PortConfigList)
+}
+
+// getCurrentDPCState returns the state of the current DevicePortConfig,
+// or DPCStateNone if no current DPC exists.
+func (m *DpcManager) getCurrentDPCState() types.DPCState {
+	if !m.haveCurrentDPC() {
+		return types.DPCStateNone
+	}
+	return m.dpcList.PortConfigList[m.dpcList.CurrentIndex].State
+}
+
+// getCurrentDPCKey returns the key and time priority of the current
+// base DevicePortConfig (without local/LPS modifications). If no
+// current base DPC exists, it returns empty values.
+func (m *DpcManager) getCurrentDPCKey() (key string, timePrio time.Time) {
+	if !m.haveCurrentDPC() {
+		return "", time.Time{}
+	}
+	dpc := m.dpcList.PortConfigList[m.dpcList.CurrentIndex]
+	return dpc.Key, dpc.TimePriority
+}
+
+// getCurrentDPC returns the current DevicePortConfig merged with LPS config.
+// The second return value is false if no current DPC exists.
+func (m *DpcManager) getCurrentDPC() (dpc types.DevicePortConfig, haveDPC bool) {
+	if !m.haveCurrentDPC() {
+		return types.DevicePortConfig{}, false
+	}
+	dpc = m.dpcList.PortConfigList[m.dpcList.CurrentIndex]
+	return m.mergeWithLpsConfig(dpc), true
+}
+
+// logCurrentDPC logs the current DevicePortConfig (including local changes from LPS
+// if there are any) by publishing it via the dummy publisher. This is purely for
+// logging/debugging purposes.
+// If no current DPC exists, the function does nothing.
+func (m *DpcManager) logCurrentDPC() {
+	dpc, haveDPC := m.getCurrentDPC()
+	if !haveDPC {
+		return
+	}
+	_ = m.PubDummyDevicePortConfig.Publish(dpc.PubKey(), dpc)
+}
+
+// recordDPCFailure records a failure for the current DevicePortConfig.
+// This is stored inside the base DPC (never inside DPC from LPS, which is kept
+// separate from DPCL).
+func (m *DpcManager) recordDPCFailure(err error) {
+	baseDPC := m.getCurrentBaseDPCRef()
+	if baseDPC == nil {
+		return
+	}
+	baseDPC.RecordFailure(err.Error())
+}
+
+// recordDPCSuccess records a success for the current DevicePortConfig.
+// This is stored inside the base DPC (never inside DPC from LPS, which is kept
+// separate from DPCL).
+func (m *DpcManager) recordDPCSuccess() {
+	baseDPC := m.getCurrentBaseDPCRef()
+	if baseDPC == nil {
+		return
+	}
+	baseDPC.RecordSuccess()
+}
+
+// recordDPCSuccessWithWarning records a warning for the current DevicePortConfig.
+// This is stored inside the base DPC (never inside DPC from LPS, which is kept
+// separate from DPCL).
+func (m *DpcManager) recordDPCSuccessWithWarning(warn error) {
+	baseDPC := m.getCurrentBaseDPCRef()
+	if baseDPC == nil {
+		return
+	}
+	baseDPC.RecordSuccessWithWarning(warn.Error())
+}
+
+// updateDPCState updates the state of the current DevicePortConfig.
+// State is always updated inside the base DPC (never inside DPC from LPS, which is kept
+// separate from DPCL).
+func (m *DpcManager) updateDPCState(newState types.DPCState) {
+	baseDPC := m.getCurrentBaseDPCRef()
+	if baseDPC == nil {
+		return
+	}
+	baseDPC.State = newState
+}
+
+// updateDPCLastIPTimestamp updates the last IP/DNS timestamp for the
+// current DevicePortConfig.
+// This timestamp is always updated inside the base DPC (never inside DPC from LPS,
+// which is kept separate from DPCL).
+func (m *DpcManager) updateDPCLastIPTimestamp(timestamp time.Time) {
+	baseDPC := m.getCurrentBaseDPCRef()
+	if baseDPC == nil {
+		return
+	}
+	baseDPC.LastIPAndDNS = timestamp
+}
+
+// recordDPCPortFailure records a port-specific failure for the current
+// DevicePortConfig, or under LPS config if applied.
+func (m *DpcManager) recordDPCPortFailure(ifName string, err error) {
+	baseDPC := m.getCurrentBaseDPCRef()
+	if baseDPC == nil {
+		return
+	}
+	portConfig := baseDPC.LookupPortByIfName(ifName)
+	if portConfig == nil {
+		return
+	}
+	lpsPortCfg, hasLPSConfig := m.lpsConfig[portConfig.Logicallabel]
+	if hasLPSConfig && lpsPortCfg.applied {
+		// Record port error under the LPS-provided local port config.
+		lpsPortCfg.config.RecordFailure(err.Error())
+		return
+	}
+	portConfig.RecordFailure(err.Error())
+}
+
+// updateDPCPortTestResults updates port test results for the current
+// DevicePortConfig, or under LPS config if applied.
+func (m *DpcManager) updateDPCPortTestResults(results types.IntfStatusMap) {
+	baseDPC := m.getCurrentBaseDPCRef()
+	if baseDPC == nil {
+		return
+	}
+	for index := range baseDPC.Ports {
+		portConfig := &baseDPC.Ports[index]
+		testResults, haveTestResults := results.StatusMap[portConfig.IfName]
+		if !haveTestResults {
+			// Port not tested hence no change.
+			continue
+		}
+		lpsPortCfg, hasLPSConfig := m.lpsConfig[portConfig.Logicallabel]
+		if hasLPSConfig && lpsPortCfg.applied {
+			// Update port test results under the LPS-provided local port config.
+			lpsPortCfg.config.Update(testResults)
+			continue
+		}
+		portConfig.TestResults.Update(testResults)
+	}
+}
+
+// getCurrentBaseDPCRef returns a pointer to the current base DevicePortConfig
+// stored in dpcList (i.e. as received from the controller), without merging
+// locally-submitted LPS configuration. Returns nil if there is no current DPC.
+func (m *DpcManager) getCurrentBaseDPCRef() *types.DevicePortConfig {
+	if !m.haveCurrentDPC() {
 		return nil
 	}
 	return &m.dpcList.PortConfigList[m.dpcList.CurrentIndex]
 }
 
+// isAnyPortInPciBack checks if any of the Ports are part of IO bundles
+// which are in PCIback.
+func (m *DpcManager) isAnyPortInPciBack(filterUnassigned bool) (
+	assignedPort bool, ifName string, usedByUUID uuid.UUID) {
+	if !m.haveCurrentDPC() {
+		return false, "", uuid.UUID{}
+	}
+	dpc := m.dpcList.PortConfigList[m.dpcList.CurrentIndex]
+	return dpc.IsAnyPortInPciBack(m.Log, &m.adapters, filterUnassigned)
+}
+
 func (m *DpcManager) doAddDPC(ctx context.Context, dpc types.DevicePortConfig) {
+	if dpc.Key == types.LpsDPCKey {
+		// Load DPC received from LPS and restart verification.
+		m.loadLpsConfig(dpc)
+		m.dpcVerify.inProgress = false
+		m.restartVerify(ctx,
+			fmt.Sprintf("new LPS DPC (%s/%v)", dpc.Key, dpc.TimePriority))
+		return
+	}
+
 	m.setDiscoveredWwanIfNames(&dpc)
 	mgmtCount := dpc.CountMgmtPorts(false)
 	if mgmtCount == 0 {
@@ -31,10 +203,10 @@ func (m *DpcManager) doAddDPC(ctx context.Context, dpc types.DevicePortConfig) {
 			"will be ignored", dpc.Key)
 	}
 
-	if dpc.Key == ManualDPCKey {
+	if dpc.Key == types.ManualDPCKey {
 		// Always delete the existing manual DPC regardless of its time priority
 		// there can be only one!
-		m.removeAllDPCbyKey(ManualDPCKey)
+		m.removeAllDPCbyKey(types.ManualDPCKey)
 		// Make sure to record the source for the configuration received from TUI.
 		configSource := types.PortConfigSource{
 			Origin:      types.NetworkConfigOriginTUI,
@@ -70,6 +242,15 @@ func (m *DpcManager) doAddDPC(ctx context.Context, dpc types.DevicePortConfig) {
 }
 
 func (m *DpcManager) doDelDPC(ctx context.Context, dpc types.DevicePortConfig) {
+	if dpc.Key == types.LpsDPCKey {
+		// Clear LPS config and restart verification.
+		m.revertLpsConfig()
+		m.dpcVerify.inProgress = false
+		m.restartVerify(ctx,
+			fmt.Sprintf("removed LPS DPC (%s/%v)", dpc.Key, dpc.TimePriority))
+		return
+	}
+
 	m.setDiscoveredWwanIfNames(&dpc)
 	configChanged := m.updateDPCListAndPublish(dpc, true)
 	if !configChanged {
@@ -79,75 +260,81 @@ func (m *DpcManager) doDelDPC(ctx context.Context, dpc types.DevicePortConfig) {
 	m.restartVerify(ctx, fmt.Sprintf("removed DPC (%s/%v)", dpc.Key, dpc.TimePriority))
 }
 
-// Returns true if the current config has actually changed.
+// updateDPCListAndPublish updates the DPC list with the given config and republishes it.
+// Returns true if the effective configuration has changed (i.e., requires reprocessing).
 func (m *DpcManager) updateDPCListAndPublish(
 	dpc types.DevicePortConfig, delete bool) bool {
-	// Look up based on timestamp, then content.
-	current := m.currentDPC() // used to determine if index needs to change
+	// Look up the current base DPC (by timestamp and content).
+	// baseDPC is used later to detect if the current index needs to change.
+	baseDPC := m.getCurrentBaseDPCRef()
 	currentIndex := m.dpcList.CurrentIndex
 	oldConfig, _ := m.lookupDPC(dpc)
 
 	if delete {
 		if oldConfig == nil {
-			m.Log.Errorf("updateDPCListAndPublish - Delete. "+
+			m.Log.Errorf("updateDPCListAndPublish - Delete: "+
 				"Config not found: %+v\n", dpc)
 			return false
 		}
-		m.Log.Functionf("updateDPCListAndPublish: Delete. "+
-			"oldCOnfig %+v found: %+v\n", *oldConfig, dpc)
+		m.Log.Functionf("updateDPCListAndPublish - Delete: "+
+			"oldConfig %+v found: %+v\n", *oldConfig, dpc)
 		m.removeDPC(*oldConfig)
 	} else if oldConfig != nil {
-		// Compare everything but TimePriority since that is
-		// modified by zedagent even if there are no changes.
-		// If we modify the timestamp for other than current
-		// then treat as a change since it could have moved up
-		// in the list.
+		// Compare everything except TimePriority (which zedagent updates
+		// even without changes). For non-current DPCs, a timestamp update
+		// still counts as a change since it may affect ordering.
 		if oldConfig.MostlyEqual(&dpc) {
-			m.Log.Functionf("updateDPCListAndPublish: no change but timestamps %v %v\n",
+			m.Log.Functionf("updateDPCListAndPublish: no change, "+
+				"but timestamps differ %v vs %v\n",
 				oldConfig.TimePriority, dpc.TimePriority)
 
-			// If this is current and current is in use (index=0)
-			// then no work needed. Otherwise we reorder.
-			if current != nil && current.MostlyEqual(oldConfig) && currentIndex == 0 {
+			// If this is the current base DPC and it is in use (index=0),
+			// then nothing further is needed. Otherwise, reorder it.
+			if baseDPC != nil && baseDPC.MostlyEqual(oldConfig) && currentIndex == 0 {
 				m.Log.Functionf(
-					"updateDPCListAndPublish: no change and same Ports as currentIndex=0")
+					"updateDPCListAndPublish: no change and same Ports at currentIndex=0")
 				return false
 			}
 			m.Log.Functionf(
-				"updateDPCListAndPublish: changed ports from current; reorder\n")
+				"updateDPCListAndPublish: unchanged but reordered from current")
 		} else {
 			m.Log.Functionf(
-				"updateDPCListAndPublish: change from %+v to %+v\n", *oldConfig, dpc)
+				"updateDPCListAndPublish: updated config %+v -> %+v\n", *oldConfig, dpc)
 		}
 		m.updateDPC(oldConfig, dpc)
 	} else {
+		// Insert new config.
 		m.insertDPC(dpc)
 	}
-	// Check if current moved to a different index or was deleted
-	if current == nil {
-		// No current index to update
-		m.Log.Functionf("updateDPCListAndPublish: no current %d",
+
+	// Check if the current DPC moved, was reordered, or deleted.
+	if baseDPC == nil {
+		// No current DPC to track.
+		m.Log.Functionf("updateDPCListAndPublish: no current DPC at index %d",
 			currentIndex)
 		m.compressAndPublishDPCL()
 		return true
 	}
-	newplace, newIndex := m.lookupDPC(*current)
+	newplace, newIndex := m.lookupDPC(*baseDPC)
 	if newplace == nil {
-		// Current Got deleted. If [0] was working we stick to it, otherwise we
-		// restart looking through the list.
+		// Current DPC was deleted.
+		// If [0] was working, stick with it; otherwise restart selection.
 		if len(m.dpcList.PortConfigList) != 0 &&
 			m.dpcList.PortConfigList[0].WasDPCWorking() {
 			m.dpcList.CurrentIndex = 0
+			m.mergeWithLpsConfig(m.dpcList.PortConfigList[0])
 		} else {
 			m.dpcList.CurrentIndex = -1
+			m.revertLpsConfig()
 		}
 	} else if newIndex != currentIndex {
-		m.Log.Functionf("updateDPCListAndPublish: current %d moved to %d",
+		m.Log.Functionf("updateDPCListAndPublish: current moved from %d to %d",
 			currentIndex, newIndex)
 		if m.dpcList.PortConfigList[newIndex].WasDPCWorking() {
 			m.dpcList.CurrentIndex = newIndex
 		} else {
 			m.dpcList.CurrentIndex = -1
+			m.revertLpsConfig()
 		}
 	}
 	m.compressAndPublishDPCL()
@@ -379,12 +566,12 @@ func (m *DpcManager) compressDPCL() {
 			// retain fallback options by keeping the most recent DPC from each source.
 			keep = true
 		}
-		if dpc.Key == ManualDPCKey {
+		if dpc.Key == types.ManualDPCKey {
 			// Never remove the "manual" DPC (there is always at most one).
 			// Note: we will revisit this...
 			keep = true
 		}
-		if dpc.Key == LastResortKey && m.enableLastResort {
+		if dpc.Key == types.LastResortKey && m.enableLastResort {
 			// If network.fallback.any.eth is enabled, do not remove the lastresort config.
 			keep = true
 		}
@@ -410,7 +597,7 @@ func (m *DpcManager) compressDPCL() {
 						dpc.ShaFile, dpc.PubKey())
 				}
 			}
-			if dpc.Key == LastResortKey {
+			if dpc.Key == types.LastResortKey {
 				m.lastResort = nil
 			}
 			if i <= m.dpcList.CurrentIndex {
