@@ -250,13 +250,17 @@ func (msrv *Msrv) initPublications() (err error) {
 	return nil
 }
 
+// initSubscriptions sets up all msrv subscriptions.
+// Note: Persistent and non-persistent subscriptions must be consistent.
+// Use the `persistent` flag to specify persistence. When deployed, it defaults to false.
+// This flag is required for the PubSub memdriver, which only works with persistent subscriptions.
 func (msrv *Msrv) initSubscriptions(persist bool) (err error) {
 	msrv.subGlobalConfig, err = msrv.PubSub.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "zedagent",
 		MyAgentName:   agentName,
 		TopicImpl:     types.ConfigItemValueMap{},
 		Persistent:    persist,
-		Activate:      false,
+		Activate:      true,
 		CreateHandler: msrv.handleGlobalConfigCreate,
 		ModifyHandler: msrv.handleGlobalConfigModify,
 		DeleteHandler: msrv.handleGlobalConfigDelete,
@@ -272,7 +276,7 @@ func (msrv *Msrv) initSubscriptions(persist bool) (err error) {
 		MyAgentName: agentName,
 		TopicImpl:   types.EdgeNodeInfo{},
 		Activate:    false,
-		Persistent:  persist,
+		Persistent:  true,
 	})
 	if err != nil {
 		return err
@@ -299,7 +303,7 @@ func (msrv *Msrv) initSubscriptions(persist bool) (err error) {
 		Activate:    false,
 		WarningTime: warningTime,
 		ErrorTime:   errorTime,
-		Persistent:  persist,
+		Persistent:  true,
 	})
 	if err != nil {
 		return err
@@ -313,7 +317,7 @@ func (msrv *Msrv) initSubscriptions(persist bool) (err error) {
 		Activate:    false,
 		WarningTime: warningTime,
 		ErrorTime:   errorTime,
-		Persistent:  persist,
+		Persistent:  true,
 	})
 	if err != nil {
 		return err
@@ -447,6 +451,7 @@ func (msrv *Msrv) initSubscriptions(persist bool) (err error) {
 		Activate:    false,
 		WarningTime: warningTime,
 		ErrorTime:   errorTime,
+		Persistent:  persist,
 	})
 	if err != nil {
 		return err
@@ -463,7 +468,7 @@ func (msrv *Msrv) initSubscriptions(persist bool) (err error) {
 		DeleteHandler: msrv.handlePatchEnvelopeDelete,
 		WarningTime:   warningTime,
 		ErrorTime:     errorTime,
-		Persistent:    persist,
+		Persistent:    true,
 	})
 	if err != nil {
 		return err
@@ -511,6 +516,7 @@ func (msrv *Msrv) initSubscriptions(persist bool) (err error) {
 		Activate:    false,
 		WarningTime: warningTime,
 		ErrorTime:   errorTime,
+		Persistent:  persist,
 	})
 	if err != nil {
 		return err
