@@ -197,5 +197,5 @@ func (zedagentCtx *zedagentContext) ApplyLocalAppPurgeCmd(
 func (zedagentCtx *zedagentContext) ApplyLocalNetworkConfig(dpc types.DevicePortConfig) {
 	// Publish to NIM under the key "lps" to distinguish it from controller/LOC
 	// configuration (which is published under "zedagent").
-	zedagentCtx.getconfigCtx.pubDevicePortConfig.Publish("lps", dpc)
+	zedagentCtx.getconfigCtx.pubDevicePortConfig.Publish(types.LpsDPCKey, dpc)
 }

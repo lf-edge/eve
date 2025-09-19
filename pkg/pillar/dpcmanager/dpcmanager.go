@@ -28,12 +28,6 @@ const (
 	watchdogPeriod = 25 * time.Second
 )
 
-// LastResortKey : key used for DPC used as a last-resort.
-const LastResortKey = "lastresort"
-
-// ManualDPCKey : key used for DPC set manually by the user.
-const ManualDPCKey = "manual"
-
 var nilUUID = uuid.UUID{} // used as a constant
 
 // DpcManager manages a list of received device port configurations.
@@ -41,6 +35,7 @@ var nilUUID = uuid.UUID{} // used as a constant
 // to DPC) represents configuration for all (physical) network interfaces
 // to be used for device management or to be shared by applications
 // (i.e. excluding NIC pass-through).
+//
 // The goal is to select and apply DPC with a working external connectivity,
 // so that EVE is able to access the controller, and among the working DPCs
 // prefer the one with the highest assigned priority (typically the last received).
@@ -51,6 +46,13 @@ var nilUUID = uuid.UUID{} // used as a constant
 // it periodically and switch to it as soon as the probing succeeds.
 // DPC is applied into the device state using DpcReconciler (see pillar/dpcreconciler).
 // The reconciler is able to switch from one DPC to another.
+//
+// DpcManager can also receive locally defined configuration from the Local Profile
+// Server (LPS), published by zedagent as a DevicePortConfig under the key "lps".
+// This configuration is merged with the active controller-provided DPC, with local
+// settings overwriting controller values for any ports that have local modifications
+// and are permitted (by the controller) to be locally configured.
+//
 // Lastly, NetworkMonitor is used to monitor network stack for interesting
 // events, such as link state changes, and to collect state information.
 // Manager publishes device network status (DeviceNetworkStatus struct; abbreviated
@@ -95,6 +97,7 @@ type DpcManager struct {
 
 	// Current configuration
 	dpcList          types.DevicePortConfigList
+	lpsConfig        map[string]*lpsPortConfig // key : port logical label
 	adapters         types.AssignableAdapters
 	globalCfg        types.ConfigItemValueMap
 	hasGlobalCfg     bool
@@ -143,6 +146,16 @@ type DpcManager struct {
 	netdumpInterval time.Duration
 	lastNetdumpPub  time.Time // last call to publishNetdump
 	startTime       time.Time
+}
+
+// Locally submitted configuration for a single port, received from
+// the Local Profile Server (LPS).
+type lpsPortConfig struct {
+	config  types.NetworkPortConfig
+	applied bool
+	// Error encountered while applying the LPS-provided port configuration
+	// (e.g., local changes not permitted, mismatched port type, invalid values).
+	err error
 }
 
 // Watchdog : methods used by DpcManager to interact with Watchdog.
@@ -245,6 +258,7 @@ func (m *DpcManager) Init(ctx context.Context) error {
 		m.DpcAvailTimeLimit = time.Minute
 	}
 	m.dpcList.CurrentIndex = -1
+	m.lpsConfig = make(map[string]*lpsPortConfig)
 	// We start assuming controller connectivity works
 	m.dpcVerify.controllerConnWorks = true
 
@@ -436,9 +450,9 @@ func (m *DpcManager) run(ctx context.Context) {
 					continue
 				}
 				if m.isInterfaceCrucial(ifAttrs.IfName) {
-					if dpc := m.currentDPC(); dpc != nil {
+					if m.haveCurrentDPC() {
 						reasonForVerify := "IP address change for interface " + ifAttrs.IfName
-						switch dpc.State {
+						switch m.getCurrentDPCState() {
 						case types.DPCStateIPDNSWait,
 							types.DPCStatePCIWait,
 							types.DPCStateIntfWait,
@@ -477,8 +491,8 @@ func (m *DpcManager) reconcilerArgs() dpcreconciler.Args {
 		ClusterStatus:    m.clusterStatus,
 		KubeUserServices: m.kubeUserServices,
 	}
-	if m.currentDPC() != nil {
-		args.DPC = *m.currentDPC()
+	if dpc, haveDPC := m.getCurrentDPC(); haveDPC {
+		args.DPC = dpc
 	}
 	return args
 }
@@ -675,7 +689,7 @@ func (m *DpcManager) doUpdateGCP(ctx context.Context, gcp types.ConfigItemValueM
 
 	// If we have persisted DPCs then go ahead and pick a working one
 	// with the highest priority, do not wait for dpcTestTimer to fire.
-	if firstGCP && m.currentDPC() == nil && len(m.dpcList.PortConfigList) > 0 {
+	if firstGCP && !m.haveCurrentDPC() && len(m.dpcList.PortConfigList) > 0 {
 		m.restartVerify(ctx, "looking for working (persisted) DPC")
 	}
 }
@@ -687,21 +701,19 @@ func (m *DpcManager) doUpdateAA(ctx context.Context, adapters types.AssignableAd
 	}
 
 	// In case a verification is in progress and is waiting for return from pciback
-	if dpc := m.currentDPC(); dpc != nil {
-		if dpc.State == types.DPCStatePCIWait || dpc.State == types.DPCStateIntfWait {
-			m.runVerify(ctx, "assignable adapters were updated")
-		}
+	dpcState := m.getCurrentDPCState()
+	if dpcState == types.DPCStatePCIWait || dpcState == types.DPCStateIntfWait {
+		m.runVerify(ctx, "assignable adapters were updated")
 	}
 	m.reconcileStatus = m.DpcReconciler.Reconcile(ctx, m.reconcilerArgs())
 }
 
 func (m *DpcManager) resumeVerifyIfAsyncDone(ctx context.Context) {
-	if dpc := m.currentDPC(); dpc != nil {
-		asyncInProgress := m.reconcileStatus.AsyncInProgress
-		if dpc.State == types.DPCStateAsyncWait && !asyncInProgress {
-			// Config is ready, continue verification.
-			m.runVerify(ctx, "async ops no longer in progress")
-		}
+	dpcState := m.getCurrentDPCState()
+	asyncInProgress := m.reconcileStatus.AsyncInProgress
+	if dpcState == types.DPCStateAsyncWait && !asyncInProgress {
+		// Config is ready, continue verification.
+		m.runVerify(ctx, "async ops no longer in progress")
 	}
 }
 

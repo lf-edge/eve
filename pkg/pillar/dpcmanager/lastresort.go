@@ -15,7 +15,7 @@ import (
 
 func (m *DpcManager) makeLastResortDPC() (types.DevicePortConfig, error) {
 	config := types.DevicePortConfig{}
-	config.Key = LastResortKey
+	config.Key = types.LastResortKey
 	config.Version = types.DPCIsMgmt
 	// Set to the lowest priority possible.
 	config.TimePriority = time.Unix(0, 0)

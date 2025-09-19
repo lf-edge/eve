@@ -666,7 +666,8 @@ func (n *nim) applyGlobalConfig(gcp *types.ConfigItemValueMap) {
 // handleDPCCreate handles three different sources in this priority order:
 // 1. A request from monitor TUI application
 // 2. DPC from zedagent (received from the controller or LOC)
-// 3. "override"/"usb" key from build or USB stick file
+// 3. Local configuration changes submitted by LPS
+// 4. "override"/"usb" key from build or USB stick file
 // We determine the priority from TimePriority in the config.
 func (n *nim) handleDPCCreate(_ interface{}, key string, configArg interface{}) {
 	n.handleDPCImpl(key, configArg, false)
@@ -688,7 +689,7 @@ func (n *nim) handleDPCFileModify(_ interface{}, key string, configArg, _ interf
 func (n *nim) handleDPCImpl(key string, configArg interface{}, fromFile bool) {
 	dpc := configArg.(types.DevicePortConfig)
 	dpc.DoSanitize(n.Log, types.DPCSanitizeArgs{
-		SanitizeTimePriority: true,
+		SanitizeTimePriority: key != types.LpsDPCKey,
 		SanitizeKey:          true,
 		KeyToUseIfEmpty:      key,
 		SanitizeName:         true,

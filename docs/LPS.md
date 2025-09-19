@@ -105,8 +105,20 @@ via **HTTP GET**.
 
 - **From edge-node → LPS:** current location obtained from a GNSS module integrated
   in a cellular modem (standalone GNSS receivers are not supported).
-- **From LPS → device (response):** none (status-only endpoint).
+- **From LPS → edge-node (response):** none (status-only endpoint).
 - **Interval:** triggered by zedagent when location changes (not periodic).
+
+### 6. `/api/v1/network`
+
+- **From edge-node → LPS:** current network state (configuration and status of all
+  network adapters, excluding passthrough).
+- **From LPS → edge-node (response):** optional locally-declared network configuration
+  for one or more adapters, validated and applied by EVE if permitted by controller.
+- **Effect:** enable local overrides of network adapter-level settings (IP, wireless, proxy).
+  Non-overridable attributes (e.g., interface usage, cost, labels, L2 config) remain under
+  controller control.
+- **Interval:** every 1min (normal), throttled to every 1h if LPS responds with *404*.
+- See [formal specification](https://github.com/lf-edge/eve-api/blob/main/PROFILE.md#network)
 
 ## Implementation Notes
 

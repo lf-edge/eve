@@ -28,9 +28,15 @@ func (m *DpcManager) restartVerify(ctx context.Context, reason string) {
 		m.Log.Noticef("DPC verify: DPC list verification in progress")
 		return
 	}
-	if m.currentDPC() != nil &&
+	if m.haveCurrentDPC() &&
 		!m.rsStatus.ChangeInProgress && m.rsStatus.Imposed {
 		m.Log.Noticef("DPC verify: Radio-silence is imposed, skipping DPC verification")
+		return
+	}
+
+	if m.areAllMgmtPortUsingLpsConfig() {
+		m.Log.Functionf("DPC verify: All mgmt ports have config overridden " +
+			"with LPS config, skipping DPC verification")
 		return
 	}
 
@@ -64,8 +70,11 @@ func (m *DpcManager) setupVerify(index int, reason string) {
 	m.dpcList.CurrentIndex = index
 	m.dpcVerify.inProgress = true
 	m.dpcVerify.startedAt = time.Now()
-	if dpc := m.currentDPC(); dpc != nil {
-		m.setDiscoveredWwanIfNames(dpc)
+	if baseDPC := m.getCurrentBaseDPCRef(); baseDPC != nil {
+		m.setDiscoveredWwanIfNames(baseDPC)
+		m.mergeWithLpsConfig(*baseDPC)
+	} else {
+		m.revertLpsConfig()
 	}
 	m.Log.Functionf("DPC verify: Started testing DPC (index %d): %v",
 		m.dpcList.CurrentIndex, m.dpcList.PortConfigList[m.dpcList.CurrentIndex])
@@ -77,7 +86,7 @@ func (m *DpcManager) runVerify(ctx context.Context, reason string) {
 		m.Log.Warn("DPC verify: not In-progress\n")
 		return
 	}
-	if m.currentDPC() == nil {
+	if !m.haveCurrentDPC() {
 		m.Log.Warn("DPC verify: nothing to verify")
 		return
 	}
@@ -97,10 +106,7 @@ func (m *DpcManager) runVerify(ctx context.Context, reason string) {
 		res = m.verifyDPC(ctx)
 		m.Log.Noticef("DPC verify: Received status %s for DPC at index %d",
 			res.String(), m.dpcList.CurrentIndex)
-
-		// Publish DPC via dummy for logging purposes.
-		dpc := m.currentDPC()
-		_ = m.PubDummyDevicePortConfig.Publish(dpc.PubKey(), *dpc)
+		m.logCurrentDPC()
 
 		// Decide next action based on the verification status.
 		switch res {
@@ -192,7 +198,7 @@ func (m *DpcManager) runVerify(ctx context.Context, reason string) {
 }
 
 func (m *DpcManager) verifyDPC(ctx context.Context) (status types.DPCState) {
-	dpc := m.currentDPC()
+	dpc, _ := m.getCurrentDPC() // used only for logging
 	defer m.updateDNS()
 
 	// Stop pending timer if its running.
@@ -201,15 +207,15 @@ func (m *DpcManager) verifyDPC(ctx context.Context) (status types.DPCState) {
 	}
 
 	// Check if there is any port assigned to an application.
-	assignedPort, ifName, usedByUUID := dpc.IsAnyPortInPciBack(m.Log, &m.adapters, true)
+	assignedPort, ifName, usedByUUID := m.isAnyPortInPciBack(true)
 	if assignedPort {
-		errStr := fmt.Sprintf("port %s in PCIBack is "+
+		portErr := fmt.Errorf("port %s in PCIBack is "+
 			"used by %s", ifName, usedByUUID.String())
-		m.Log.Errorf("DPC verify: %s\n", errStr)
-		dpc.RecordFailure(errStr)
-		dpc.RecordPortFailure(ifName, errStr)
+		m.Log.Errorf("DPC verify: %v", portErr)
+		m.recordDPCFailure(portErr)
+		m.recordDPCPortFailure(ifName, portErr)
 		status = types.DPCStateFail
-		dpc.State = status
+		m.updateDPCState(status)
 		return status
 	}
 
@@ -221,7 +227,7 @@ func (m *DpcManager) verifyDPC(ctx context.Context) (status types.DPCState) {
 	if m.reconcileStatus.AsyncInProgress {
 		if elapsed < waitForAsyncRetries*m.dpcTestDuration {
 			status = types.DPCStateAsyncWait
-			dpc.State = status
+			m.updateDPCState(status)
 			return status
 		}
 		// Async operations were running for too long, cancel them and try connectivity.
@@ -238,18 +244,18 @@ func (m *DpcManager) verifyDPC(ctx context.Context) (status types.DPCState) {
 	// Use TestResults to update the DevicePortConfigList and DeviceNetworkStatus
 	// Note that the TestResults will at least have an updated timestamp
 	// for one of the ports.
-	dpc.UpdatePortStatusFromIntfStatusMap(intfStatusMap)
+	m.updateDPCPortTestResults(intfStatusMap)
 	m.deviceNetStatus.UpdatePortStatusFromIntfStatusMap(intfStatusMap)
 	defer func() {
 		// Publish DPCL, DNS and potentially also netdump at the end when dpc.State
 		// is determined.
-		_ = m.PubDummyDevicePortConfig.Publish(dpc.PubKey(), *dpc) // for logging
+		m.logCurrentDPC()
 		m.publishDPCL()
-		m.deviceNetStatus.State = dpc.State
+		m.deviceNetStatus.State = m.getCurrentDPCState()
 		m.publishDNS()
 		if withNetTrace {
 			var controllerConnWorks bool
-			switch dpc.State {
+			switch m.getCurrentDPCState() {
 			case types.DPCStateFail, types.DPCStateFailWithIPAndDNS:
 				controllerConnWorks = false
 			case types.DPCStateSuccess, types.DPCStateRemoteWait:
@@ -266,12 +272,12 @@ func (m *DpcManager) verifyDPC(ctx context.Context) (status types.DPCState) {
 
 	if err == nil {
 		if m.checkIfMgmtPortsHaveIPandDNS() {
-			dpc.LastIPAndDNS = time.Now()
+			m.updateDPCLastIPTimestamp(time.Now())
 		}
-		dpc.RecordSuccess()
+		m.recordDPCSuccess()
 		m.Log.Noticef("DPC verify: DPC passed network test: %+v", dpc)
 		status = types.DPCStateSuccess
-		dpc.State = status
+		m.updateDPCState(status)
 		return status
 	}
 
@@ -280,21 +286,21 @@ func (m *DpcManager) verifyDPC(ctx context.Context) (status types.DPCState) {
 		m.Log.Errorf("DPC verify: remoteTemporaryFailure: %v", err)
 		// We treat RemoteTemporaryFailure as a success because the connectivity is working.
 		// Save and publish the server-side error only as a warning.
-		dpc.RecordSuccessWithWarning(err.Error())
+		m.recordDPCSuccessWithWarning(err)
 		status = types.DPCStateRemoteWait
-		dpc.State = status
+		m.updateDPCState(status)
 		return status
 	}
 
 	// Connectivity test failed, maybe we are missing an interface or an address.
 	elapsed = time.Since(m.dpcVerify.startedAt)
-	portInPciBack, ifName, _ := dpc.IsAnyPortInPciBack(m.Log, &m.adapters, false)
+	portInPciBack, ifName, _ := m.isAnyPortInPciBack(false)
 	if portInPciBack {
 		if elapsed < waitForIfRetries*m.dpcTestDuration {
 			m.Log.Noticef("DPC verify: port %s is still in PCIBack (waiting for %v)",
 				ifName, elapsed)
 			status = types.DPCStatePCIWait
-			dpc.State = status
+			m.updateDPCState(status)
 			return status
 		}
 		// Continue...
@@ -308,7 +314,7 @@ func (m *DpcManager) verifyDPC(ctx context.Context) (status types.DPCState) {
 			m.Log.Noticef("DPC verify: cellular connectivity reconciliation "+
 				"is still in progress (waiting for %v)", elapsed)
 			status = types.DPCStateWwanWait
-			dpc.State = status
+			m.updateDPCState(status)
 			return status
 		}
 		// Continue...
@@ -324,7 +330,7 @@ func (m *DpcManager) verifyDPC(ctx context.Context) (status types.DPCState) {
 				"retry due to missing ports: %v (waiting for %v)",
 				missingPorts, elapsed)
 			status = types.DPCStateIntfWait
-			dpc.State = status
+			m.updateDPCState(status)
 			return status
 		}
 		m.Log.Warnf("DPC verify: Mgmt ports %v are missing (waited for %v)",
@@ -334,17 +340,17 @@ func (m *DpcManager) verifyDPC(ctx context.Context) (status types.DPCState) {
 	}
 
 	for _, ifName = range missingPorts {
-		errStr := fmt.Sprintf("missing interface %s", ifName)
-		m.Log.Warnf("DPC verify: %s", errStr)
-		dpc.RecordPortFailure(ifName, errStr)
+		portErr := fmt.Errorf("missing interface %s", ifName)
+		m.Log.Warnf("DPC verify: %s", portErr)
+		m.recordDPCPortFailure(ifName, portErr)
 	}
 
 	if len(availablePorts) == 0 {
 		m.Log.Errorf("DPC verify: no available mgmt ports: exceeded timeout "+
 			"(waited for %v): %v for %+v\n", elapsed, err, dpc)
-		dpc.RecordFailure(err.Error())
+		m.recordDPCFailure(err)
 		status = types.DPCStateFail
-		dpc.State = status
+		m.updateDPCState(status)
 		return status
 	}
 
@@ -355,14 +361,14 @@ func (m *DpcManager) verifyDPC(ctx context.Context) (status types.DPCState) {
 			m.Log.Noticef("DPC verify: no IP/DNS: will retry (waiting for %v): "+
 				"%v for %+v\n", elapsed, err, dpc)
 			status = types.DPCStateIPDNSWait
-			dpc.State = status
+			m.updateDPCState(status)
 			return status
 		}
 		m.Log.Errorf("DPC verify: no IP/DNS: exceeded timeout (waited for %v): "+
 			"%v for %+v\n", elapsed, err, dpc)
-		dpc.RecordFailure(unwrapPortsNotReady(err).Error())
+		m.recordDPCFailure(unwrapPortsNotReady(err))
 		status = types.DPCStateFail
-		dpc.State = status
+		m.updateDPCState(status)
 		return status
 	}
 
@@ -379,28 +385,27 @@ func (m *DpcManager) verifyDPC(ctx context.Context) (status types.DPCState) {
 			m.Log.Noticef("DPC verify: ports %v are not ready: will retry (waiting for %v): "+
 				"%v for %+v\n", notReadyErr.Ports, elapsed, err, dpc)
 			status = types.DPCStateIPDNSWait
-			dpc.State = status
+			m.updateDPCState(status)
 			return status
 		}
 		m.Log.Errorf("DPC verify: ports %v are not ready: exceeded timeout (waited for %v): "+
 			"%v for %+v\n", notReadyErr.Ports, elapsed, err, dpc)
-		dpc.RecordFailure(unwrapPortsNotReady(err).Error())
+		m.recordDPCFailure(unwrapPortsNotReady(err))
 		status = types.DPCStateFailWithIPAndDNS
-		dpc.State = status
+		m.updateDPCState(status)
 		return status
 	}
 
 	m.Log.Errorf("DPC verify: %s\n", err)
-	dpc.RecordFailure(err.Error())
-	dpc.LastIPAndDNS = dpc.LastFailed
+	m.recordDPCFailure(err)
+	m.updateDPCLastIPTimestamp(time.Now())
 	status = types.DPCStateFailWithIPAndDNS
-	dpc.State = status
+	m.updateDPCState(status)
 	return status
 }
 
 func (m *DpcManager) testConnectivityToController(ctx context.Context) error {
-	dpc := m.currentDPC()
-	if dpc == nil {
+	if !m.haveCurrentDPC() {
 		err := errors.New("device port config is not applied")
 		m.Log.Warnf("testConnectivityToController: %v", err)
 		return err
@@ -409,12 +414,12 @@ func (m *DpcManager) testConnectivityToController(ctx context.Context) error {
 	withNetTrace := m.traceNextConnTest()
 	intfStatusMap, tracedProbes, err := m.ConnTester.TestConnectivity(
 		m.deviceNetStatus, m.getAirGapModeConf(), withNetTrace)
-	dpc.UpdatePortStatusFromIntfStatusMap(intfStatusMap)
+	m.updateDPCPortTestResults(intfStatusMap)
 	if err == nil {
-		dpc.State = types.DPCStateSuccess
-		dpc.TestResults.RecordSuccess()
+		m.recordDPCSuccess()
+		m.updateDPCState(types.DPCStateSuccess)
 	}
-	_ = m.PubDummyDevicePortConfig.Publish(dpc.PubKey(), *dpc)
+	m.logCurrentDPC()
 	m.publishDPCL() // publish updated port errors
 	m.updateDNS()
 
@@ -601,12 +606,12 @@ func (m *DpcManager) checkMgmtPortsPresence() (available, missing []string) {
 }
 
 func (m *DpcManager) waitForWwanUpdate() bool {
-	dpc := m.currentDPC()
-	if dpc == nil {
+	baseDPC := m.getCurrentBaseDPCRef()
+	if baseDPC == nil {
 		return false
 	}
 	var hasUsedMgmtWwan bool
-	for _, port := range dpc.Ports {
+	for _, port := range baseDPC.Ports {
 		if port.IsMgmt && port.WirelessCfg.WType == types.WirelessTypeCellular &&
 			!port.WirelessCfg.IsEmpty() {
 			hasUsedMgmtWwan = true
@@ -616,8 +621,8 @@ func (m *DpcManager) waitForWwanUpdate() bool {
 	if !hasUsedMgmtWwan {
 		return false
 	}
-	statusIsUpToDate := dpc.Key == m.wwanStatus.DPCKey &&
-		dpc.TimePriority.Equal(m.wwanStatus.DPCTimestamp)
+	statusIsUpToDate := baseDPC.Key == m.wwanStatus.DPCKey &&
+		baseDPC.TimePriority.Equal(m.wwanStatus.DPCTimestamp)
 	return !statusIsUpToDate
 }
 
