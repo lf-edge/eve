@@ -160,6 +160,7 @@ type configSource int
 
 const (
 	fromController configSource = iota
+	fromLOC
 	savedConfig
 	fromBootstrap
 )
@@ -168,6 +169,8 @@ func (s configSource) String() string {
 	switch s {
 	case fromController:
 		return "from-controller"
+	case fromLOC:
+		return "from-loc"
 	case fromBootstrap:
 		return "from-bootstrap"
 	case savedConfig:
@@ -790,6 +793,11 @@ func requestConfigByURL(getconfigCtx *getconfigContext, url string,
 		return invalidConfig, rv.TracedReqs
 	}
 
+	configurationSource := fromController
+	if isCompoundConfig {
+		configurationSource = fromLOC
+	}
+
 	cfgRetval := configOK
 	if !changed {
 		log.Tracef("Configuration from zedcloud is unchanged")
@@ -798,7 +806,7 @@ func requestConfigByURL(getconfigCtx *getconfigContext, url string,
 		goto cfgReceived
 	}
 
-	cfgRetval = inhaleDeviceConfig(getconfigCtx, config, fromController)
+	cfgRetval = inhaleDeviceConfig(getconfigCtx, config, configurationSource)
 	if cfgRetval != configOK {
 		log.Warnf("inhaleDeviceConfig failed or skipped: %s", cfgRetval.String())
 		// Even if we skip processing the config (e.g. due to BaseOS activation),

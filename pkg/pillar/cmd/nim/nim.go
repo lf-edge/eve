@@ -894,18 +894,18 @@ func (n *nim) ingestDevicePortConfig() {
 func (n *nim) ingestDevicePortConfigFile(oldDirname string, newDirname string, name string) {
 	filename := path.Join(oldDirname, name)
 	n.Log.Noticef("ingestDevicePortConfigFile(%s)", filename)
-	b, err := fileutils.ReadWithMaxSize(n.Log, filename, maxReadSize)
+	content, modTime, err := fileutils.StatAndRead(n.Log, filename, maxReadSize)
 	if err != nil {
 		n.Log.Errorf("Failed to read file %s: %v", filename, err)
 		return
 	}
-	if len(b) == 0 {
+	if len(content) == 0 {
 		n.Log.Errorf("Ignore empty file %s", filename)
 		return
 	}
 
 	var dpc types.DevicePortConfig
-	err = json.Unmarshal(b, &dpc)
+	err = json.Unmarshal([]byte(content), &dpc)
 	if err != nil {
 		n.Log.Errorf("Could not parse json data in file %s: %s",
 			filename, err)
@@ -935,6 +935,18 @@ func (n *nim) ingestDevicePortConfigFile(oldDirname string, newDirname string, n
 	} else {
 		n.Log.Noticef("No change to %s", filename)
 		return
+	}
+
+	// Set the configuration source for each port.
+	if modTime.IsZero() {
+		modTime = time.Now()
+	}
+	configSource := types.PortConfigSource{
+		Origin:      types.NetworkConfigOriginOverride,
+		SubmittedAt: modTime,
+	}
+	for i := range dpc.Ports {
+		dpc.Ports[i].ConfigSource = configSource
 	}
 
 	// Save New config to file.

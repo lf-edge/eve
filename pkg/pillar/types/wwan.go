@@ -137,6 +137,41 @@ const (
 	WwanAuthProtocolPAPAndCHAP WwanAuthProtocol = "pap-and-chap"
 )
 
+// FromProto converts proto enum CellularAuthProtocol to the corresponding WwanAuthProtocol.
+func (wp *WwanAuthProtocol) FromProto(authProtocol evecommon.CellularAuthProtocol) error {
+	switch authProtocol {
+	case evecommon.CellularAuthProtocol_CELLULAR_AUTH_PROTOCOL_NONE:
+		*wp = WwanAuthProtocolNone
+	case evecommon.CellularAuthProtocol_CELLULAR_AUTH_PROTOCOL_PAP:
+		*wp = WwanAuthProtocolPAP
+	case evecommon.CellularAuthProtocol_CELLULAR_AUTH_PROTOCOL_CHAP:
+		*wp = WwanAuthProtocolCHAP
+	case evecommon.CellularAuthProtocol_CELLULAR_AUTH_PROTOCOL_PAP_AND_CHAP:
+		*wp = WwanAuthProtocolPAPAndCHAP
+	default:
+		*wp = WwanAuthProtocolNone
+		return fmt.Errorf("unrecognized cellular AuthProtocol: %+v", authProtocol)
+	}
+	return nil
+}
+
+// ToProto converts WwanAuthProtocol into the corresponding proto enum CellularAuthProtocol.
+func (wp WwanAuthProtocol) ToProto() evecommon.CellularAuthProtocol {
+	switch wp {
+	case WwanAuthProtocolNone:
+		return evecommon.CellularAuthProtocol_CELLULAR_AUTH_PROTOCOL_NONE
+	case WwanAuthProtocolPAP:
+		return evecommon.CellularAuthProtocol_CELLULAR_AUTH_PROTOCOL_PAP
+	case WwanAuthProtocolCHAP:
+		return evecommon.CellularAuthProtocol_CELLULAR_AUTH_PROTOCOL_CHAP
+	case WwanAuthProtocolPAPAndCHAP:
+		return evecommon.CellularAuthProtocol_CELLULAR_AUTH_PROTOCOL_PAP_AND_CHAP
+	default:
+		// Return NONE as a safe default for unknown values.
+		return evecommon.CellularAuthProtocol_CELLULAR_AUTH_PROTOCOL_NONE
+	}
+}
+
 // WwanRAT : Radio Access Technology.
 type WwanRAT string
 
@@ -167,6 +202,24 @@ const (
 	WwanIPTypeIPv6 WwanIPType = "ipv6"
 )
 
+// FromProto converts proto enum CellularIPType to the corresponding WwanIPType.
+func (ipt *WwanIPType) FromProto(ipType evecommon.CellularIPType) error {
+	switch ipType {
+	case evecommon.CellularIPType_CELLULAR_IP_TYPE_UNSPECIFIED:
+		*ipt = WwanIPTypeUnspecified
+	case evecommon.CellularIPType_CELLULAR_IP_TYPE_IPV4:
+		*ipt = WwanIPTypeIPv4
+	case evecommon.CellularIPType_CELLULAR_IP_TYPE_IPV4_AND_IPV6:
+		*ipt = WwanIPTypeIPv4AndIPv6
+	case evecommon.CellularIPType_CELLULAR_IP_TYPE_IPV6:
+		*ipt = WwanIPTypeIPv6
+	default:
+		*ipt = WwanIPTypeUnspecified
+		return fmt.Errorf("unrecognized cellular IP type: %+v", ipType)
+	}
+	return nil
+}
+
 // ToProto converts a WwanIPType to its corresponding protobuf value.
 func (ipt WwanIPType) ToProto(log *base.LogObject) evecommon.CellularIPType {
 	switch ipt {
@@ -190,6 +243,14 @@ type WwanProbe struct {
 	Disable bool
 	// User-defined probe for cellular connectivity testing.
 	UserDefinedProbe ConnectivityProbe
+}
+
+// WwanCleartextCredentials stores plain-text APN credentials.
+// Used only with LPS where cipher context is unavailable.
+// Must never be transmitted outside of secure local use.
+type WwanCleartextCredentials struct {
+	Username string
+	Password string
 }
 
 // Equal compares two instances of WwanNetworkConfig for equality.

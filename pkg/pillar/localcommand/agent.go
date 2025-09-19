@@ -84,6 +84,12 @@ type LocalCmdAgent struct {
 	throttledLocation bool
 	// At most one publish triggered from outside at a time.
 	locationMx sync.Mutex
+
+	// network
+	networkConfig   types.DevicePortConfig
+	networkConfigMx sync.RWMutex
+	networkTicker   *taskTicker
+	lastNetworkErr  error
 }
 
 // ConstructorArgs are required input arguments for creating a LocalCmdAgent.
@@ -107,6 +113,7 @@ type RunArgs struct {
 	WwanMetrics           PubSubTopicReader
 	NodeAgentStatus       PubSubTopicReader
 	ZedagentStatus        PubSubTopicReader
+	DevicePortConfigList  PubSubTopicReader
 }
 
 // Watchdog : methods used by LocalCmdAgent to interact with Watchdog.
@@ -142,6 +149,10 @@ type ConfigAgent interface {
 	// ApplyLocalAppPurgeCmd applies a locally requested purge command for an app.
 	ApplyLocalAppPurgeCmd(appUUID uuid.UUID, localCmd types.AppInstanceOpsCmd,
 		localVolumeGenCounters map[string]int64)
+
+	// ApplyLocalNetworkConfig applies a network port configuration received from LPS,
+	// overriding the active configuration for the set of locally changed ports.
+	ApplyLocalNetworkConfig(types.DevicePortConfig)
 }
 
 // PubSubTopicReader : methods used by LocalCmdAgent to read messages from pubsub topics.
@@ -327,6 +338,7 @@ func NewLocalCmdAgent(args ConstructorArgs) *LocalCmdAgent {
 	lc.initializeRadioConfig()
 	lc.initializeAppCommands()
 	lc.initializeDevCommands()
+	lc.initializeNetworkConfig()
 	return lc
 }
 
@@ -343,6 +355,7 @@ func (lc *LocalCmdAgent) RunTasks(args RunArgs) {
 	go lc.runRadioTask()
 	go lc.runAppInfoTask()
 	go lc.runDevInfoTask()
+	go lc.runNetworkTask()
 }
 
 // Pause temporarily suspends all tasks, blocking the processing of
@@ -437,6 +450,8 @@ func (lc *LocalCmdAgent) UpdateLpsConfig(globalProfile, lpsAddr, lpsToken string
 		lc.TriggerAppInfoPOST()
 		lc.updateDevInfoTicker(false)
 		lc.TriggerDevInfoPOST()
+		lc.updateNetworkTicker(false)
+		lc.TriggerNetworkPOST()
 		lc.throttledLocation = false
 	}
 	return nil
