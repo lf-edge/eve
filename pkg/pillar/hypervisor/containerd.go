@@ -308,12 +308,12 @@ func (ctx ctrdContext) GetDomsCPUMem() (map[string]types.DomainMetric, error) {
 		var cpuTotal uint64
 
 		if metric, err := ctx.ctrdClient.CtrGetContainerMetrics(ctrdCtx, id); err == nil {
-			if metric.Memory == nil || metric.Memory.Usage == nil {
+			if metric.Memory == nil {
 				logrus.Errorf("GetDomsCPUMem nil returned in metric.Memory: %v", metric)
 			} else {
-				usedMem = uint32(roundFromBytesToMbytes(metric.Memory.Usage.Usage))
-				maxUsedMem = uint32(roundFromBytesToMbytes(metric.Memory.Usage.Max))
-				totalMem = uint32(roundFromBytesToMbytes(metric.Memory.HierarchicalMemoryLimit))
+				usedMem = uint32(roundFromBytesToMbytes(metric.Memory.Usage))
+				maxUsedMem = uint32(roundFromBytesToMbytes(metric.Memory.MaxUsage))
+				totalMem = uint32(roundFromBytesToMbytes(metric.Memory.UsageLimit))
 				availMem = 0
 				if totalMem > usedMem {
 					availMem = totalMem - usedMem
@@ -324,10 +324,11 @@ func (ctx ctrdContext) GetDomsCPUMem() (map[string]types.DomainMetric, error) {
 					usedMemPerc = 0
 				}
 			}
-			if metric.CPU == nil || metric.CPU.Usage == nil {
+			if metric.CPU == nil {
 				logrus.Errorf("GetDomsCPUMem nil returned in metric.CPU: %v", metric)
 			} else {
-				cpuTotal = metric.CPU.Usage.Total
+				// Convert from microseconds to nanoseconds for v2 compatibility
+				cpuTotal = metric.CPU.UsageUsec * 1000
 			}
 		} else {
 			logrus.Errorf("GetDomsCPUMem failed with error %v", err)

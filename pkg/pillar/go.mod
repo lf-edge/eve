@@ -7,7 +7,7 @@ toolchain go1.24.1
 require (
 	github.com/anatol/smart.go v0.0.0-20241126061019-f03d79b340d2
 	github.com/andrewd-zededa/go-libzfs v0.0.0-20240304231806-6a64e99da97d
-	github.com/containerd/cgroups v1.1.0
+	github.com/containerd/cgroups/v3 v3.0.5
 	github.com/containerd/containerd v1.7.27
 	github.com/containerd/containerd/api v1.8.0
 	github.com/containerd/typeurl v1.0.2
@@ -44,7 +44,7 @@ require (
 	github.com/onsi/gomega v1.29.0
 	github.com/opencontainers/go-digest v1.0.0
 	github.com/opencontainers/image-spec v1.1.0
-	github.com/opencontainers/runtime-spec v1.1.0
+	github.com/opencontainers/runtime-spec v1.2.0
 	github.com/packetcap/go-pcap v0.0.0-20230717110547-c34843f9206d
 	github.com/prometheus/procfs v0.12.0
 	github.com/satori/go.uuid v1.2.1-0.20180404165556-75cca531ea76
@@ -175,7 +175,7 @@ require (
 	go.opentelemetry.io/otel v1.23.1 // indirect
 	go.opentelemetry.io/otel/metric v1.23.1 // indirect
 	go.opentelemetry.io/otel/trace v1.23.1 // indirect
-	golang.org/x/mod v0.17.0 // indirect
+	golang.org/x/mod v0.22.0 // indirect
 	golang.org/x/oauth2 v0.27.0 // indirect
 	golang.org/x/sync v0.14.0 // indirect
 	golang.org/x/term v0.31.0 // indirect
@@ -218,6 +218,8 @@ require (
 	github.com/aws/smithy-go v1.22.2 // indirect
 	github.com/bicomsystems/go-libzfs v0.4.0 // indirect
 	github.com/chai2010/gettext-go v1.0.2 // indirect
+	github.com/cilium/ebpf v0.16.0 // indirect
+	github.com/containerd/cgroups v1.1.0 // indirect
 	github.com/containerd/errdefs v0.3.0 // indirect
 	github.com/containerd/platforms v0.2.1 // indirect
 	github.com/evanphx/json-patch v5.6.0+incompatible // indirect
@@ -254,6 +256,7 @@ require (
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/xlab/treeprint v1.1.0 // indirect
 	go.starlark.net v0.0.0-20200306205701-8dd3e2ee1dd5 // indirect
+	golang.org/x/exp v0.0.0-20241108190413-2d47ceb2692f // indirect
 	k8s.io/apiextensions-apiserver v0.28.1 // indirect
 	k8s.io/cli-runtime v0.28.5 // indirect
 	k8s.io/component-base v0.28.5 // indirect
