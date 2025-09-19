@@ -1427,3 +1427,32 @@ type NestedAppDomainStatus struct {
 func (status NestedAppDomainStatus) Key() string {
 	return status.UUIDandVersion.UUID.String()
 }
+
+// FsUsedMetric - contains the used and allocated
+// space of a NestedApp running on a runtime
+// app instance.
+type FsUsedMetric struct {
+	UsedMb      float64
+	AllocatedMb float64
+}
+
+// NestedAppRuntimeDiskMetric - contains the overall
+// fs usage of a volume instance attached to a runtime
+// app instance.  All storage of child/NestedApps running in
+// this runtime app instance is included.
+type NestedAppRuntimeDiskMetric struct {
+	UUID        string
+	TotalMb     float64
+	UsedMb      float64
+	AllocatedMb float64
+	// DependentSpaceMb is a representation of the space used by Nested Apps
+	// which share a persistent filesystem of a runtime.
+	// Key is a nested app instance uuid running on the runtime,
+	// a NestedAppDomainStatus uuid.
+	DependentSpaceMb map[string]FsUsedMetric
+}
+
+// Key - returns the UUID for the nested app runtime disk metric
+func (metric NestedAppRuntimeDiskMetric) Key() string {
+	return metric.UUID
+}

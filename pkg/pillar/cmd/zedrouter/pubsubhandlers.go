@@ -636,11 +636,34 @@ func (z *zedrouter) handleAppNetworkModify(ctxArg interface{}, key string,
 		key, newConfig.DisplayName)
 }
 
+func (z *zedrouter) cleanupDeploymentNestedArtifacts(runtimeKey string) {
+	nestDomainStatusList := z.pubNestedAppDomainStatus.GetAll()
+	for dsKey, dsObj := range nestDomainStatusList {
+		nestDomainStatus, ok := dsObj.(types.NestedAppDomainStatus)
+		if ok && (nestDomainStatus.ParentAppUUID.String() == runtimeKey) {
+			z.pubNestedAppDomainStatus.Unpublish(dsKey)
+		}
+	}
+	items := z.pubNestedAppRuntimeStorageMetric.GetAll()
+	_, exists := items[runtimeKey].(types.NestedAppRuntimeDiskMetric)
+	if exists {
+		z.log.Functionf("unpublishing NestedAppRuntimeDiskMetric id:%s", runtimeKey)
+		z.pubNestedAppRuntimeStorageMetric.Unpublish(runtimeKey)
+	}
+}
+
 func (z *zedrouter) handleAppNetworkDelete(ctxArg interface{}, key string,
 	configArg interface{}) {
 	config := configArg.(types.AppNetworkConfig)
 	z.log.Functionf("handleAppNetworkDelete(%v) for %s",
 		config.UUIDandVersion, config.DisplayName)
+
+	switch config.DeploymentType {
+	case types.AppRuntimeTypeDocker:
+		z.cleanupDeploymentNestedArtifacts(key)
+	default:
+
+	}
 
 	status := z.lookupAppNetworkStatus(key)
 	if status == nil {
