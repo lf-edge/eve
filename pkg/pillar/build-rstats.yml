@@ -25,3 +25,4 @@ buildArgs:
   - RSTATS=y
   - RSTATS_TAG=pillar
   - RSTATS_ENDPOINT=localhost:8125
+  - REL_HASH_%=@lkt:pkgs:../*

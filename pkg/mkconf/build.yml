@@ -1,2 +1,5 @@
 org: lfedge
 image: eve-mkconf
+
+buildArgs:
+  - REL_HASH_%=@lkt:pkgs:../*

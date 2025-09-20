@@ -2,7 +2,9 @@
 # Copyright (c) 2025 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-FROM lfedge/eve-alpine:745ae9066273c73b0fd879c4ba4ff626a8392d04 AS grub-build-base
+ARG REL_HASH_LFEDGE_EVE_ALPINE
+
+FROM ${REL_HASH_LFEDGE_EVE_ALPINE} AS grub-build-base
 ENV BUILD_PKGS="automake \
                make \
                bison \
@@ -50,7 +52,6 @@ ENV GRUB_COMMIT=2.06
 ENV GRUB_PATCHES="patches-${GRUB_COMMIT} patches-riscv64-${GRUB_COMMIT}"
 ENV GRUB_PLATFORM=efi
 
-# hadolint ignore=DL3006
 FROM grub-build-${TARGETARCH} AS grub-build
 
 ENV GRUB_REPO=https://cgit.git.savannah.gnu.org/cgit/grub.git

@@ -10,3 +10,6 @@ config:
     - /persist:/persist
   net: new
   pid: host
+
+buildArgs:
+  - REL_HASH_%=@lkt:pkgs:../*

@@ -9,3 +9,4 @@ image: eve-nvidia
 tag: "{{.Hash}}-nvidia-jp6"
 buildArgs:
   - PLATFORM=nvidia-jp6
+  - REL_HASH_%=@lkt:pkgs:../*

@@ -9,3 +9,4 @@ org: lfedge
 tag: "{{.Hash}}-nvidia-jp5"
 buildArgs:
   - PLATFORM=nvidia-jp5
+  - REL_HASH_%=@lkt:pkgs:../*

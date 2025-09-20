@@ -1,2 +1,5 @@
 org: lfedge
 image: eve-mkrootfs-ext4
+
+buildArgs:
+  - REL_HASH_%=@lkt:pkgs:../*

@@ -1,6 +1,8 @@
 # Copyright (c) 2024 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
+ARG REL_HASH_LFEDGE_EVE_ALPINE
+
 ARG MONITOR_RS_VERSION=v0.6.0
 ARG RUST_VERSION=lfedge/eve-rust:1.85.1-2
 FROM --platform=$BUILDPLATFORM ${RUST_VERSION} AS toolchain-base
@@ -48,8 +50,7 @@ RUN cargo build --release
 RUN cargo sbom > sbom.spdx.json
 RUN cp /app/target/$CARGO_BUILD_TARGET/release/monitor /app/target/
 
-
-FROM lfedge/eve-alpine:745ae9066273c73b0fd879c4ba4ff626a8392d04 AS runtime
+FROM ${REL_HASH_LFEDGE_EVE_ALPINE} AS runtime
 ENV PKGS="kbd pciutils usbutils"
 RUN eve-alpine-deploy.sh
 
