@@ -216,6 +216,18 @@ func (s *Subscriber) connectAndRead() (string, string, []byte) {
 			}
 		}
 		if s.sock == nil {
+			// Do we have a persistent mismatch between publisher
+			// and subscriber?
+			if !strings.Contains(s.sockName, "-persistent.sock") {
+				otherSockName := strings.Replace(s.sockName,
+					".sock", "-persistent.sock", 1)
+				s.log.Noticef("XXX try socket %s", otherSockName)
+				if _, err := os.Stat(otherSockName); err == nil {
+					s.log.Fatalf("Subscriber for %s persistent mismatch",
+						s.name)
+				}
+			}
+
 			sock, err := net.Dial("unixpacket", s.sockName)
 			if err != nil {
 				errStr := fmt.Sprintf("connectAndRead(%s): Dial failed %s",

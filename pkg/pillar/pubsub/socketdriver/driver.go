@@ -105,7 +105,7 @@ func (s *SocketDriver) Publisher(global bool, name, topic string, persistent boo
 	}
 
 	if !publishToDir && publishToSock {
-		sockName = s.sockName(name)
+		sockName = s.sockName(name, persistent)
 		dir := path.Dir(sockName)
 		if _, err := os.Stat(dir); err != nil {
 			s.Log.Functionf("Publish Create %s\n", dir)
@@ -161,11 +161,20 @@ func (s *SocketDriver) Publisher(global bool, name, topic string, persistent boo
 // `SocketDriver`
 func (s *SocketDriver) Subscriber(global bool, name, topic string, persistent bool, C chan pubsub.Change) (pubsub.DriverSubscriber, error) {
 	var (
-		sockName   = s.sockName(name)
+		sockName   = s.sockName(name, persistent)
 		dirName    string
 		subFromDir bool
 	)
 
+	// Check if there is a mismatch and this should be a persistent
+	// subscription to match a persistent publication
+	if !persistent {
+		otherSockName := s.sockName(name, true)
+		if _, err := os.Stat(otherSockName); err == nil {
+			s.Log.Fatalf("Subscriber for %s persistent mismatch",
+				name)
+		}
+	}
 	// Special case for files in /run/global/ and also
 	// for zedclient going away yet metrics being read after it
 	// is gone.
@@ -218,8 +227,12 @@ func (s *SocketDriver) DefaultName() string {
 	return fixedName
 }
 
-func (s *SocketDriver) sockName(name string) string {
-	return fmt.Sprintf("%s/var/run/%s.sock", s.RootDir, name)
+func (s *SocketDriver) sockName(name string, persistent bool) string {
+	if !persistent {
+		return fmt.Sprintf("%s/var/run/%s.sock", s.RootDir, name)
+	} else {
+		return fmt.Sprintf("%s/var/run/%s-persistent.sock", s.RootDir, name)
+	}
 }
 
 func (s *SocketDriver) pubDirName(name string) string {
