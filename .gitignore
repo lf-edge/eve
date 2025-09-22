@@ -22,6 +22,7 @@ conf/device.cert.pem
 conf/device.key.pem
 conf/soft_serial
 pkg/kube/external-boot-image.tar
+pkg/eve/Dockerfile
 pkg/external-boot-image/Dockerfile
 pkg/external-boot-image/*.tar
 tools/compare-sbom-sources/vendor
