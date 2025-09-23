@@ -267,11 +267,11 @@ func handleModify(ctxArg any, key string, itemcb []byte) {
 	newItem := DeepCopy(sub.log, item)
 	if created {
 		if sub.CreateHandler != nil {
-			(sub.CreateHandler)(sub.userCtx, key, newItem)
+			sub.CreateHandler(sub.userCtx, key, newItem)
 		}
 	} else {
 		if sub.ModifyHandler != nil {
-			(sub.ModifyHandler)(sub.userCtx, key, newItem, m)
+			sub.ModifyHandler(sub.userCtx, key, newItem, m)
 		}
 	}
 	sub.log.Tracef("pubsub.handleModify(%s) done for key %s\n", name, key)
@@ -299,7 +299,7 @@ func handleDelete(ctxArg any, key string) {
 		sub.dump("after handleDelete")
 	}
 	if sub.DeleteHandler != nil {
-		(sub.DeleteHandler)(sub.userCtx, key, m)
+		sub.DeleteHandler(sub.userCtx, key, m)
 	}
 	sub.log.Tracef("pubsub.handleDelete(%s) done for key %s\n", name, key)
 }
