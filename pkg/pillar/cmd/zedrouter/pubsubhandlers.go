@@ -476,9 +476,11 @@ func (z *zedrouter) handleAppNetworkCreate(ctxArg interface{}, key string,
 	}
 	z.doCopyAppNetworkConfigToStatus(config, &status)
 	status.PendingAdd = true
+	z.log.Errorf("AMIGO ZEDR NEED 1")
 	z.publishAppNetworkStatus(&status)
 	defer func() {
 		status.PendingAdd = false
+		z.log.Errorf("AMIGO ZEDR NEED 2")
 		z.publishAppNetworkStatus(&status)
 	}()
 

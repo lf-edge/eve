@@ -365,6 +365,7 @@ func (z *zedrouter) run(ctx context.Context) (err error) {
 		case change := <-z.subAppNetworkConfig.MsgChan():
 			// If we have NetworkInstanceConfig process it first
 			z.checkAndProcessNetworkInstanceConfig()
+			z.log.Errorf("AMIGO ZEDROUTER MOVING TO PROCESSING")
 			z.subAppNetworkConfig.ProcessChange(change)
 
 		case change := <-z.subAppNetworkConfigAg.MsgChan():
@@ -676,6 +677,7 @@ func (z *zedrouter) initSubscriptions() (err error) {
 	if err != nil {
 		return err
 	}
+	z.log.Errorf("ADDRESSES ARE %p %p", z.handleAppNetworkCreate, z.handleAppNetworkModify)
 
 	// Subscribe to AppNetworkConfig from zedagent
 	z.subAppNetworkConfigAg, err = z.pubSub.NewSubscription(pubsub.SubscriptionOptions{
@@ -924,6 +926,7 @@ func (z *zedrouter) publishAppNetworkStatus(status *types.AppNetworkStatus) {
 	key := status.Key()
 	pub := z.pubAppNetworkStatus
 	err := pub.Publish(key, *status)
+	z.log.Errorf("AMIGO ZEDR publishAppNetworkStatus finished for %s!", key)
 	if err != nil {
 		z.log.Errorf("publishAppNetworkStatus failed: %v", err)
 	}
