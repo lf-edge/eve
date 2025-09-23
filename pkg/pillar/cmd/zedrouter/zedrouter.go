@@ -302,10 +302,12 @@ func (z *zedrouter) run(ctx context.Context) (err error) {
 	if err = z.subGlobalConfig.Activate(); err != nil {
 		return err
 	}
+	globalCh := z.subGlobalConfig.MsgChan()
 	for !z.gcInitialized {
 		z.log.Errorf("AMIGO ZEDR Waiting for GCInitialized")
 		select {
-		case change := <-z.subGlobalConfig.MsgChan():
+		case change := <-globalCh:
+			z.log.Errorf("AMIGO ZEDR PROCESSING CHANGE")
 			z.subGlobalConfig.ProcessChange(change)
 		case <-stillRunning.C:
 		}

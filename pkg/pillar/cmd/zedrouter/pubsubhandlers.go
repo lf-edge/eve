@@ -20,11 +20,13 @@ func (z *zedrouter) handleRestart(ctxArg interface{}, restartCounter int) {
 
 func (z *zedrouter) handleGlobalConfigCreate(ctxArg interface{}, key string,
 	statusArg interface{}) {
+	z.log.Errorf("AMIGO ZEDR handleGlobalConfigCreate goes")
 	z.handleGlobalConfigImpl(ctxArg, key, statusArg)
 }
 
 func (z *zedrouter) handleGlobalConfigModify(ctxArg interface{}, key string,
 	statusArg interface{}, oldStatusArg interface{}) {
+	z.log.Errorf("AMIGO ZEDR handleGlobalConfigModify goes")
 	z.handleGlobalConfigImpl(ctxArg, key, statusArg)
 }
 

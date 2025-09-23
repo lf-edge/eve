@@ -112,7 +112,7 @@ func (sub *SubscriptionImpl) populate() {
 //	fooAll := s1.GetAll()
 func (sub *SubscriptionImpl) ProcessChange(change Change) {
 	start := time.Now()
-	sub.log.Errorf("AMIGO ProcessChange agentName(%s) agentScope(%s) topic(%s): %#v", sub.agentName, sub.agentScope, sub.topic, change)
+	sub.log.Errorf("AMIGO ProcessChange agentName(%s) agentScope(%s) topic(%s)", sub.agentName, sub.agentScope, sub.topic)
 
 	switch change.Operation {
 	case Restart:
@@ -267,9 +267,10 @@ func handleModify(ctxArg any, key string, itemcb []byte) {
 	}
 	// Need a copy in case the caller will modify e.g., embedded maps
 	newItem := DeepCopy(sub.log, item)
-	sub.log.Errorf("pubsub.handleModify(%s) starts %v %p %p %v\n", name, created, sub.CreateHandler, sub.ModifyHandler, sub.CreateHandler != nil)
+	sub.log.Errorf("pubsub.handleModify(%s) from %s starts %v %p %p %v\n", name, sub.myAgentName, created, sub.CreateHandler, sub.ModifyHandler, sub.CreateHandler != nil)
 	if created {
 		if sub.CreateHandler != nil {
+			sub.log.Errorf("pubsub.handleModify(%s) createhdnler ", name)
 			sub.CreateHandler(sub.userCtx, key, newItem)
 		}
 	} else {
