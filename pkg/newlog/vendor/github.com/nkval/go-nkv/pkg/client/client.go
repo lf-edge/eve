@@ -59,6 +59,7 @@ func (c *Client) Delete(key string) (*p.Response, error) {
 
 func (c *Client) Subscribe(key string, hdlr func(p.Notification)) (*p.Response, error) {
 	if reqID, ok := c.subscriptions[key]; ok {
+		fmt.Printf("HERMANOOOO DUPLICATE %s for %s", key, c.clientUUID)
 		return &p.Response{
 			RequestID: reqID,
 			Status:    false,

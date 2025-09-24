@@ -87,13 +87,15 @@ func (sub *SubscriptionImpl) populate() {
 	sub.log.Functionf("populate(%s)", name)
 
 	pairs, restartCounter, err := sub.driver.Load()
+	// sub.log.Errorf("MI AMORE populate %s, %v", sub.driver.LargeDirName(), pairs)
 	if err != nil {
 		// Could be a truncated or empty file
 		sub.log.Error(err)
 		return
 	}
 	for key, itemB := range pairs {
-		sub.log.Functionf("populate(%s) key %s", name, key)
+		// sub.log.Errorf("MI AMORE populate %s, %s, ", name, key)
+		sub.log.Errorf("MI AMORE populate(%s) key %s %s", name, key, string(itemB))
 		handleModify(sub, key, itemB)
 	}
 	if restartCounter != 0 {
@@ -110,7 +112,7 @@ func (sub *SubscriptionImpl) populate() {
 //	fooAll := s1.GetAll()
 func (sub *SubscriptionImpl) ProcessChange(change Change) {
 	start := time.Now()
-	sub.log.Tracef("ProcessChange agentName(%s) agentScope(%s) topic(%s): %#v", sub.agentName, sub.agentScope, sub.topic, change)
+	sub.log.Errorf("AMIGO ProcessChange agentName(%s) agentScope(%s) topic(%s)", sub.agentName, sub.agentScope, sub.topic)
 
 	switch change.Operation {
 	case Restart:
@@ -265,13 +267,15 @@ func handleModify(ctxArg any, key string, itemcb []byte) {
 	}
 	// Need a copy in case the caller will modify e.g., embedded maps
 	newItem := DeepCopy(sub.log, item)
+	sub.log.Errorf("pubsub.handleModify(%s) from %s starts %v %p %p %v\n", name, sub.myAgentName, created, sub.CreateHandler, sub.ModifyHandler, sub.CreateHandler != nil)
 	if created {
 		if sub.CreateHandler != nil {
-			(sub.CreateHandler)(sub.userCtx, key, newItem)
+			sub.log.Errorf("pubsub.handleModify(%s) createhdnler ", name)
+			sub.CreateHandler(sub.userCtx, key, newItem)
 		}
 	} else {
 		if sub.ModifyHandler != nil {
-			(sub.ModifyHandler)(sub.userCtx, key, newItem, m)
+			sub.ModifyHandler(sub.userCtx, key, newItem, m)
 		}
 	}
 	sub.log.Tracef("pubsub.handleModify(%s) done for key %s\n", name, key)
@@ -299,7 +303,7 @@ func handleDelete(ctxArg any, key string) {
 		sub.dump("after handleDelete")
 	}
 	if sub.DeleteHandler != nil {
-		(sub.DeleteHandler)(sub.userCtx, key, m)
+		sub.DeleteHandler(sub.userCtx, key, m)
 	}
 	sub.log.Tracef("pubsub.handleDelete(%s) done for key %s\n", name, key)
 }
