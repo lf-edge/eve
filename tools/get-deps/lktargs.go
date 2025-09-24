@@ -108,6 +108,7 @@ func lktBuildArgs(ymlPath string) map[string]string {
 	opts = append(opts, pkglib.WithBuildBuilderImage(defaultBuilderImage))
 	opts = append(opts, pkglib.WithBuildBuilderRestart(false))
 	opts = append(opts, pkglib.WithProgress("auto"))
+	opts = append(opts, pkglib.WithBuildForce())
 
 	for _, pkg := range pkgs {
 		plats := []imagespec.Platform{{OS: TARGETOS, Architecture: TARGETARCH}}
