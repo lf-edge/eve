@@ -58,7 +58,7 @@ func LoadActiveAppInstanceUUIDs(log *base.LogObject) ([]string, error) {
 		if !entry.IsDir() && filepath.Ext(entry.Name()) == ".json" {
 			// Remove the .json extension to get the UUID.
 			uuid := strings.TrimSuffix(entry.Name(), ".json")
-			log.Noticef("Found active app instance UUID: %s", uuid)
+			log.Functionf("Found active app instance UUID: %s", uuid)
 			uuids = append(uuids, uuid)
 		}
 	}
