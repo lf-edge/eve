@@ -462,6 +462,8 @@ func (z *zedrouter) handleAppNetworkCreate(ctxArg interface{}, key string,
 		z.niReconciler.RunInitialReconcile(z.runCtx)
 		z.initReconcileDone = true
 	}
+	z.log.Errorf("AMIGO ZEDROUTER handleAppNetworkCreate(%v) 1 for %s",
+		config.UUIDandVersion, config.DisplayName)
 
 	// If this is the first time, update the timer for GC of allocated
 	// app and bridge numbers.
@@ -470,23 +472,33 @@ func (z *zedrouter) handleAppNetworkCreate(ctxArg interface{}, key string,
 		z.receivedConfigTime = time.Now()
 		z.triggerNumGC = true
 	}
+	z.log.Errorf("AMIGO ZEDROUTER handleAppNetworkCreate(%v) 2 for %s",
+		config.UUIDandVersion, config.DisplayName)
 
 	// Start by marking with PendingAdd
 	status := types.AppNetworkStatus{
 		UUIDandVersion: config.UUIDandVersion,
 		DisplayName:    config.DisplayName,
 	}
+	z.log.Errorf("AMIGO ZEDROUTER handleAppNetworkCreate(%v) 3 for %s",
+		config.UUIDandVersion, config.DisplayName)
 	z.doCopyAppNetworkConfigToStatus(config, &status)
 	status.PendingAdd = true
-	z.log.Errorf("AMIGO ZEDR NEED 1")
+	z.log.Errorf("AMIGO ZEDROUTER handleAppNetworkCreate(%v) 4 for %s",
+		config.UUIDandVersion, config.DisplayName)
 	z.publishAppNetworkStatus(&status)
 	defer func() {
 		status.PendingAdd = false
-		z.log.Errorf("AMIGO ZEDR NEED 2")
+		z.log.Errorf("AMIGO ZEDROUTER handleAppNetworkCreate(%v) 41 for %s",
+			config.UUIDandVersion, config.DisplayName)
 		z.publishAppNetworkStatus(&status)
 	}()
 
+	z.log.Errorf("AMIGO ZEDROUTER handleAppNetworkCreate(%v) 5 for %s",
+		config.UUIDandVersion, config.DisplayName)
 	if err := z.validateAppNetworkConfig(config); err != nil {
+		z.log.Errorf("AMIGO ZEDROUTER handleAppNetworkCreate(%v) 51 for %s",
+			config.UUIDandVersion, config.DisplayName)
 		z.log.Errorf("handleAppNetworkCreate(%v): validation failed: %v",
 			config.UUIDandVersion.UUID, err)
 		z.addAppNetworkError(&status, "handleAppNetworkCreate", err)
@@ -504,6 +516,8 @@ func (z *zedrouter) handleAppNetworkCreate(ctxArg interface{}, key string,
 		z.addAppNetworkError(&status, "handleAppNetworkCreate", err)
 		return
 	}
+	z.log.Errorf("AMIGO ZEDROUTER handleAppNetworkCreate(%v) 6 for %s",
+		config.UUIDandVersion, config.DisplayName)
 	status.AppNum = appNum
 
 	err = z.selectMACGeneratorForApp(&status)
@@ -512,6 +526,8 @@ func (z *zedrouter) handleAppNetworkCreate(ctxArg interface{}, key string,
 		z.addAppNetworkError(&status, "handleAppNetworkCreate", err)
 		return
 	}
+	z.log.Errorf("AMIGO ZEDROUTER handleAppNetworkCreate(%v) 7 for %s",
+		config.UUIDandVersion, config.DisplayName)
 	z.publishAppNetworkStatus(&status)
 
 	// Allocate application numbers on network instances.
@@ -525,6 +541,8 @@ func (z *zedrouter) handleAppNetworkCreate(ctxArg interface{}, key string,
 		return
 	}
 
+	z.log.Errorf("AMIGO ZEDROUTER handleAppNetworkCreate(%v) 8 for %s",
+		config.UUIDandVersion, config.DisplayName)
 	// Check that Network exists for all AppNetAdapters.
 	// We look for apps with raised AwaitNetworkInstance when a NetworkInstance is added.
 	netInErrState, err := z.checkNetworkReferencesFromApp(config)
@@ -537,6 +555,8 @@ func (z *zedrouter) handleAppNetworkCreate(ctxArg interface{}, key string,
 		return
 	}
 
+	z.log.Errorf("AMIGO ZEDROUTER handleAppNetworkCreate(%v) 9 for %s",
+		config.UUIDandVersion, config.DisplayName)
 	if config.Activate {
 		z.doActivateAppNetwork(config, &status)
 	}
