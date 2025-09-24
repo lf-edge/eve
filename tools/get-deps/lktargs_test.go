@@ -24,8 +24,8 @@ func Test_lktBuildArgs(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			buildArgs := lktBuildArgs(tt.ymlPath)
-			for _, buildArg := range buildArgs {
-				_, found := tt.want[buildArg]
+			for buildArg := range tt.want {
+				_, found := buildArgs[buildArg]
 				if !found {
 					t.Errorf("lktBuildArgs() = %v, want %v", buildArgs, tt.want)
 				}
