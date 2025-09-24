@@ -174,29 +174,6 @@ func main() {
 		}
 	}
 
-	if vectorEnabled.Load() {
-		go listenOnSocketAndWriteToChan(uploadSockVectorSink, uploadLogChan)
-		go listenOnSocketAndWriteToChan(keepSockVectorSink, keepLogChan)
-	}
-
-	// handle the write log messages to /persist/newlog/collect/ logfiles
-	go writelogFile(movefileChan, appLogChan, uploadLogChan, keepLogChan)
-
-	// put the logs through vector before writing to logfiles
-	go sendLogsToVector(loggerChan, appLogChan, uploadLogChan, keepLogChan)
-
-	// handle the kernel messages
-	go getKernelMsg(loggerChan)
-
-	// handle collect other container log messages from memlogd
-	go getMemlogMsg(loggerChan, panicFileChan)
-
-	// handle linux Syslog /dev/log messages
-	go getSyslogMsg(loggerChan)
-
-	stillRunning := time.NewTicker(stillRunningInerval)
-	ps.StillRunning(agentName, warningTime, errorTime)
-
 	// Publish newlog metrics
 	metricsPub, err := ps.NewPublication(
 		pubsub.PublicationOptions{
@@ -245,7 +222,7 @@ func main() {
 		AgentName:     "zedagent",
 		TopicImpl:     types.ConfigItemValueMap{},
 		Persistent:    true,
-		Activate:      false,
+		Activate:      false, // needs to be activated separately, since getting the config depends on the subscription already existing
 		CreateHandler: handleGlobalConfigCreate,
 		ModifyHandler: handleGlobalConfigModify,
 		WarningTime:   warningTime,
@@ -254,6 +231,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	// Activate calls populate() internally to retrieve persistent data (if any) and call handlers
 	err = subGlobalConfig.Activate()
 	if err != nil {
 		log.Fatal(err)
@@ -286,6 +264,29 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	if vectorEnabled.Load() {
+		go listenOnSocketAndWriteToChan(uploadSockVectorSink, uploadLogChan)
+		go listenOnSocketAndWriteToChan(keepSockVectorSink, keepLogChan)
+	}
+
+	// handle the write log messages to /persist/newlog/collect/ logfiles
+	go writelogFile(movefileChan, appLogChan, uploadLogChan, keepLogChan)
+
+	// put the logs through vector before writing to logfiles
+	go sendLogsToVector(loggerChan, appLogChan, uploadLogChan, keepLogChan)
+
+	// handle the kernel messages
+	go getKernelMsg(loggerChan)
+
+	// handle collect other container log messages from memlogd
+	go getMemlogMsg(loggerChan, panicFileChan)
+
+	// handle linux Syslog /dev/log messages
+	go getSyslogMsg(loggerChan)
+
+	stillRunning := time.NewTicker(stillRunningInerval)
+	ps.StillRunning(agentName, warningTime, errorTime)
 
 	// newlog Metrics publish timer. Publish log metrics every 5 minutes.
 	interval := time.Duration(metricsPublishInterval)
