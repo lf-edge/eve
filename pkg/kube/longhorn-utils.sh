@@ -3,6 +3,9 @@
 # Copyright (c) 2024 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
+# shellcheck source=/dev/null
+. /usr/bin/cluster-utils.sh
+
 LONGHORN_VERSION=v1.9.1
 
 # Used to gate logging only once in Longhorn_is_ready
@@ -105,7 +108,7 @@ Longhorn_is_ready() {
     fi
 
     node=$(jq -r '.DeviceName' < /persist/status/zedagent/EdgeNodeInfo/global.json | tr -d '\n')
-    node=$(echo "$node" | tr '[:upper:]' '[:lower:]')
+    node=$(convert_to_k8s_compatible "$node")
 
     # longhorn node exists
     if ! kubectl -n longhorn-system get nodes.longhorn.io "$node"; then
