@@ -1705,10 +1705,10 @@ func updateBasedOnProfile(ctx *zedmanagerContext, oldProfile string) {
 func countRunningAppsForUUIDs(ctx *zedmanagerContext, uuidMap map[string]struct{}) (runningCount uint) {
 	sub := ctx.subAppInstanceStatus
 	items := sub.GetAll()
-	log.Noticef("countRunningAppsForUUIDs: %d items", len(items))
+	log.Functionf("countRunningAppsForUUIDs: %d items", len(items))
 	for _, s := range items {
 		status := s.(types.AppInstanceStatus)
-		log.Noticef("countRunningAppsForUUIDs: %s %s", status.UUIDandVersion, status.State)
+		log.Functionf("countRunningAppsForUUIDs: %s %s", status.UUIDandVersion, status.State)
 		// Check if this status belongs to one of the app UUIDs in our map.
 		if _, exists := uuidMap[status.UUIDandVersion.UUID.String()]; !exists {
 			continue
