@@ -2,6 +2,10 @@
 #
 # Copyright (c) 2024 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
+
+# shellcheck source=/dev/null
+. /usr/bin/cluster-utils.sh
+
 K3S_VERSION=v1.33.3+k3s1
 
 #
@@ -173,6 +177,7 @@ Update_RunDeschedulerOnBoot() {
     fi
     # node ready and allowing scheduling
     node=$(jq -r '.DeviceName' < $EdgeNodeInfoPath | tr -d '\n' | tr '[:upper:]' '[:lower:]')
+    node=$(convert_to_k8s_compatible "$node")
     node_count_ready=$(kubectl get "node/${node}" | grep -v SchedulingDisabled | grep -cw Ready )
     if [ "$node_count_ready" -ne 1 ]; then
         return
