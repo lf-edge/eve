@@ -157,7 +157,9 @@ func (p Port) Equal(p2 Port) bool {
 		p.MTU == p2.MTU &&
 		p.DhcpType == p2.DhcpType &&
 		generics.EqualSetsFn(p.DNSServers, p2.DNSServers, netutils.EqualIPs) &&
-		generics.EqualSetsFn(p.NTPServers, p2.NTPServers, netutils.EqualIPs)
+		generics.EqualSetsFn(p.NTPServers, p2.NTPServers, netutils.EqualIPs) &&
+		netutils.EqualIPNets(p.StaticIP, p2.StaticIP) &&
+		p.IgnoreDhcpIPs == p2.IgnoreDhcpIPs
 }
 
 // UsedWithIP returns true if the port is (potentially) used with an IP address.
