@@ -232,6 +232,7 @@ func main() {
 		log.Fatal(err)
 	}
 	// Activate calls populate() internally to retrieve persistent data (if any) and call handlers
+	// We thus assume that once Activate returns the handleGlobalConfigCreate has been called.
 	err = subGlobalConfig.Activate()
 	if err != nil {
 		log.Fatal(err)
