@@ -441,7 +441,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		log.Fatal(err)
 	}
 	domainCtx.subZFSPoolStatus = subZFSPoolStatus
-	subZFSPoolStatus.Activate()
 
 	// Look for edge node info
 	subEdgeNodeInfo, err := ps.NewSubscription(pubsub.SubscriptionOptions{
