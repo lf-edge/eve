@@ -363,7 +363,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		log.Fatal(err)
 	}
 	ctx.subAppInstanceStatus = subAppInstanceStatus
-	subAppInstanceStatus.Activate()
 
 	// Look for DownloaderStatus from downloader
 	subDownloaderStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{

@@ -258,7 +258,7 @@ func (ci *collectInfo) subscribe(ps *pubsub.PubSub) {
 		AgentName:   "zedagent",
 		MyAgentName: agentName,
 		TopicImpl:   types.LOCConfig{},
-		Activate:    true,
+		Activate:    false,
 	})
 	if err != nil {
 		log.Fatalf("could not subscribe to LOCConfig: %+v", err)
@@ -269,13 +269,13 @@ func (ci *collectInfo) subscribe(ps *pubsub.PubSub) {
 		WarningTime:   warningTime,
 		ErrorTime:     errorTime,
 		CreateHandler: ci.handleCollectInfoCmd,
-		ModifyHandler: func(ctx interface{}, key string, status, oldStatus interface{}) {
+		ModifyHandler: func(ctx any, key string, status, oldStatus any) {
 			ci.handleCollectInfoCmd(ctx, key, status)
 		},
 		AgentName:   "zedagent",
 		MyAgentName: agentName,
 		TopicImpl:   types.CollectInfoCmd{},
-		Activate:    true,
+		Activate:    false,
 	})
 	if err != nil {
 		log.Fatalf("could not subscribe to CollectInfoCmd: %+v", err)

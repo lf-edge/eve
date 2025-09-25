@@ -26,7 +26,6 @@ func initDrainSub(ps *pubsub.PubSub, ctx *diagContext) {
 		log.Fatal(err)
 	}
 	ctx.subNodeDrainStatus = subNodeDrainStatus
-	ctx.subNodeDrainStatus.Activate()
 }
 
 func handleNodeDrainStatusCreate(ctxArg interface{}, key string,
