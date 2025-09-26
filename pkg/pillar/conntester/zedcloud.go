@@ -7,6 +7,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -34,6 +35,12 @@ type ZedcloudConnectivityTester struct {
 	AgentName   string
 	TestTimeout time.Duration // can be changed in run-time
 	Metrics     *zedcloud.AgentMetrics
+
+	// Configurable remote endpoints used to query and collect nettrace when
+	// the controller is not accessible, to provide information about
+	// network connectivity for troubleshooting purposes.
+	// This list is injected and potentially updated at runtime by NIM.
+	DiagRemoteEndpoints []*url.URL
 
 	iteration     int
 	prevTLSConfig *tls.Config
@@ -121,7 +128,11 @@ func (t *ZedcloudConnectivityTester) TestConnectivity(dns types.DeviceNetworkSta
 	}
 	if withNetTrace {
 		if (!rv.CloudReachable || err != nil) && !rv.RemoteTempFailure {
-			rv.TracedReqs = append(rv.TracedReqs, t.tryGoogleWithTracing(dns)...)
+			// When network tracing is enabled and controller connectivity is not working,
+			// we additionally perform connectivity tests towards configurable remote
+			// endpoints and include network traces from them in the netdump for
+			// troubleshooting purposes.
+			rv.TracedReqs = append(rv.TracedReqs, t.tryRemoteEndpointsWithTracing(dns)...)
 		}
 	}
 	if err != nil {
@@ -177,7 +188,7 @@ func (t *ZedcloudConnectivityTester) getPortsNotReady(
 	return ports
 }
 
-// Enable all net traces, including packet capture - ping and google.com requests
+// Enable all net traces, including packet capture - ping and diag requests
 // are quite small.
 func (t *ZedcloudConnectivityTester) netTraceOpts(
 	dns types.DeviceNetworkStatus) []nettrace.TraceOpt {
@@ -201,10 +212,10 @@ func (t *ZedcloudConnectivityTester) netTraceOpts(
 }
 
 // If net tracing is enabled and the controller connectivity test fails, we try to access
-// google.com over HTTP and HTTPS and include collected traces in the output.
-// This can help to determine if the issue is with the Internet access or with
+// configured remote HTTP and HTTPS endpoints and include collected traces in the output.
+// This can help to determine if the issue is with the network connectivity or with
 // something specific to the controller.
-func (t *ZedcloudConnectivityTester) tryGoogleWithTracing(
+func (t *ZedcloudConnectivityTester) tryRemoteEndpointsWithTracing(
 	dns types.DeviceNetworkStatus) (tracedReqs []netdump.TracedNetRequest) {
 	const bailOnHTTPErr = true
 	const withNetTracing = true
@@ -216,19 +227,16 @@ func (t *ZedcloudConnectivityTester) tryGoogleWithTracing(
 	})
 	ctxWork, cancel := zedcloud.GetContextForAllIntfFunctions(&zedcloudCtx)
 	defer cancel()
-	tests := []struct {
-		url  string
-		name string
-	}{
-		{url: "http://www.google.com", name: "google.com-over-http"},
-		{url: "https://www.google.com", name: "google.com-over-https"},
-	}
-	for _, test := range tests {
-		rv, _ := zedcloud.SendOnAllIntf(ctxWork, &zedcloudCtx, test.url, 0, nil,
+	for _, url := range t.DiagRemoteEndpoints {
+		if url == nil {
+			continue
+		}
+		rv, _ := zedcloud.SendOnAllIntf(ctxWork, &zedcloudCtx, url.String(), 0, nil,
 			t.iteration, bailOnHTTPErr, withNetTracing)
 		for i := range rv.TracedReqs {
 			reqName := rv.TracedReqs[i].RequestName
-			rv.TracedReqs[i].RequestName = test.name + "-" + reqName
+			rv.TracedReqs[i].RequestName = strings.Join(
+				[]string{url.Scheme, url.Hostname(), reqName}, "-")
 		}
 		tracedReqs = append(tracedReqs, rv.TracedReqs...)
 	}

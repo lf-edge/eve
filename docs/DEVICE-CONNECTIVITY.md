@@ -598,9 +598,14 @@ what is the status of connectivity between the device and the controller and whe
 has already onboarded. Diag also prints the list of physical network adapters visible to EVE
 (i.e. not assigned to applications) with their assigned IP addresses, associated DNS servers
 and proxy config (if any). Finally, it also outputs results of some connectivity checks that
-it performs, including `/ping` request to the controller and `GET google.com` request, both
-performed via each management interface.
-It does not send this information to the Controller or to the log, however. One must access
+it performs, including `/ping` request to the controller and `GET` requests to configurable
+remote endpoints over HTTP/HTTPS when the controller is unreachable to assess the state of
+network connectivity. Previously, these requests were hardcoded to `www.google.com`,
+but they can now be configured via the global configuration properties
+`diag.probe.remote.http.endpoint` and `diag.probe.remote.https.endpoint`. These probes are
+used only for diagnostics and can be disabled by setting the properties to an empty string.
+
+Diag does not send this information to the Controller or to the log, however. One must access
 the device console to have this information printed on the stdout. With ssh access, you can
 view this output in `/run/diag.out`. Should this diag output interfere with other work
 performed via the console, disable the printing of diagnostics with `eve verbose off`.
@@ -771,6 +776,13 @@ Currently, traced HTTP requests are:
  by `netdump.topic.preonboard.interval` and `netdump.topic.postonboard.interval`, respectively).
  The pre-onboard interval is intentionally lower (by default) to get more frequent diagnostics
  for initial connectivity troubleshooting.
+ When network tracing is enabled and controller connectivity is not working, NIM additionally
+ performs connectivity tests towards configurable remote endpoints over HTTP and HTTPS and
+ includes network traces from them in the netdump for troubleshooting purposes. The URLs
+ of remote endpoints used are configurable via `diag.probe.remote.http.endpoint` and
+ `diag.probe.remote.https.endpoint` and can be disabled by setting them to empty strings
+ (default is `www.google.com` for both).
+
 - `/config` and `/info` requests done by zedagent to obtain device configuration and publish info
  messages, respectively. Packet capture is not enabled in this case. Netdump is produced at the interval
  as given by `netdump.topic.postonboard.interval` (`/config` and `/info` requests are not run before
@@ -782,6 +794,7 @@ Currently, traced HTTP requests are:
  remotely manageable).
  Netdumps are published separately into topics `zedagent-config-<ok|fail>`
  and `zedagent-info-<ok|fail>`.
+
 - *every* download request performed by [downloader](../pkg/pillar/cmd/downloader) using the HTTP
  protocol is traced and netdump is published into the topic `downloader-ok` or `downloader-fail`,
  depending on the outcome of the download process. By default, this does not include any packet

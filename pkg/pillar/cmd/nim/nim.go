@@ -595,6 +595,7 @@ func (n *nim) applyGlobalConfig(gcp *types.ConfigItemValueMap) {
 	n.dpcManager.UpdateGCP(n.globalConfig)
 	timeout := gcp.GlobalValueInt(types.NetworkTestTimeout)
 	n.connTester.TestTimeout = time.Second * time.Duration(timeout)
+	n.connTester.DiagRemoteEndpoints = types.GetDiagRemoteEndpointURLs(n.Log, gcp)
 	n.gcInitialized = true
 }
 
