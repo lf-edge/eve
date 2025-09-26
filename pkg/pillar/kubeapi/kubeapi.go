@@ -40,6 +40,8 @@ const (
 	NetworkInstanceNAD = "network-instance-attachment"
 	// VolumeCSIClusterStorageClass : CSI clustered storage class
 	VolumeCSIClusterStorageClass = "longhorn"
+	// VolumeCSIStorageClassReplicaPrefix : prefix for storage classes defining different replica counts
+	VolumeCSIStorageClassReplicaPrefix = "lh-sc-rep"
 	// VolumeCSILocalStorageClass : default local storage class
 	VolumeCSILocalStorageClass = "local-path"
 	// KubevirtPodsRunning : Wait for node to be ready, and require kubevirt namespace have at least 4 pods running
@@ -1026,4 +1028,30 @@ func IsClusterMode() bool {
 	}
 
 	return false
+}
+
+func GetSupportedReplicaCountForCluster() (int, error) {
+	config, err := GetKubeConfig()
+	if err != nil {
+		return 3, err
+	}
+
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		return 3, err
+	}
+
+	nodes, err := clientset.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{
+		LabelSelector: "tie-breaker-node=true",
+	})
+	if (err != nil) || (len(nodes.Items) == 0) {
+		return 3, err
+	}
+	// Tie breaker Node exists, limit replicas
+	return 2, nil
+}
+
+// GetStorageClassForReplicaCount : return
+func GetStorageClassForReplicaCount(count int) string {
+	return fmt.Sprintf("%s%d", VolumeCSIStorageClassReplicaPrefix, count)
 }

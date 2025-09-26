@@ -16,6 +16,17 @@ const (
 	ClusterStatusPort = "12346"
 )
 
+// ClusterType
+type ClusterType uint8
+
+// Cluster Types
+const (
+	ClusterTypeNone ClusterType = iota
+	ClusterTypeK3sBase
+	ClusterTypeReplicatedStorage
+	ClusterTypeHA
+)
+
 // EdgeNodeClusterConfig - Configuration for cluster multi-node from controller
 type EdgeNodeClusterConfig struct {
 	ClusterName string
@@ -45,6 +56,12 @@ type EdgeNodeClusterConfig struct {
 	// CipherGzipRegistrationManifestYaml, for compressed bytes of a registration yaml file
 	// Shares the same CipherBlock as CipherToken
 	CipherGzipRegistrationManifestYaml CipherBlockStatus
+
+	// ClusterType notes the base, replicated storage, ha attributes of the cluster
+	ClusterType ClusterType
+
+	// TieBreakerNodeId - ID of a node which will be unscheduled for all workloads
+	TieBreakerNodeId UUIDandVersion
 }
 
 // ENClusterAppStatus - Status of an App Instance in the multi-node cluster

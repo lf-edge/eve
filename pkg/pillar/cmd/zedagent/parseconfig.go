@@ -3488,6 +3488,8 @@ func parseEdgeNodeClusterConfig(getconfigCtx *getconfigContext,
 		JoinServerIP:     joinServerIP,
 		BootstrapNode:    isJoinNode,
 		// XXX EncryptedClusterToken is only for gcp config
+
+		ClusterType: types.ClusterType(zcfgCluster.ClusterType),
 	}
 	enClusterConfig.CipherToken, err = parseCipherBlock(getconfigCtx,
 		enClusterConfig.Key(), zcfgCluster.GetEncryptedClusterToken())
@@ -3499,6 +3501,26 @@ func parseEdgeNodeClusterConfig(getconfigCtx *getconfigContext,
 	// These share a cipherblock
 	enClusterConfig.CipherGzipRegistrationManifestYaml = enClusterConfig.CipherToken
 
+	if zcfgCluster.GetTieBreakerNodeId() != "" {
+		tieBreakerNodeId, err := uuid.FromString(zcfgCluster.GetTieBreakerNodeId())
+		if err != nil {
+			log.Errorf("parseEdgeNodeClusterConfig: failed to parse tie breaker UUID: %v", err)
+			return
+		}
+		enClusterConfig.TieBreakerNodeId = types.UUIDandVersion{UUID: tieBreakerNodeId}
+	}
+
+	overrideENClusterConfig(ctx.globalConfig, &enClusterConfig)
+
 	log.Functionf("parseEdgeNodeClusterConfig: ENCluster API, Config %+v, %v", zcfgCluster, enClusterConfig)
 	ctx.pubEdgeNodeClusterConfig.Publish("global", enClusterConfig)
+}
+
+// overrideENClusterConfig allows for override of tie-breaker node via eve Config Property only
+// at cluster creation time
+func overrideENClusterConfig(config types.ConfigItemValueMap, enClusterConfig *types.EdgeNodeClusterConfig) {
+	tieBreakerNodeId := config.GlobalValueString(types.TieBreakerNodeId)
+	if tieBreakerNodeId != "" {
+		enClusterConfig.TieBreakerNodeId = types.UUIDandVersion{UUID: uuid.FromStringOrNil(tieBreakerNodeId)}
+	}
 }

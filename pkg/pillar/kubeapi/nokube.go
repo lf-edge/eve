@@ -50,3 +50,12 @@ func IsClusterMode() bool {
 func DetachOldWorkload(log *base.LogObject, virtLauncherPodName string) error {
 	return nil
 }
+
+func GetSupportedReplicaCountForCluster() (int, error) {
+	return 0, nil
+}
+
+// GetStorageClassForReplicaCount : returns a kube storage class name
+func GetStorageClassForReplicaCount(count int) string {
+	return ""
+}
