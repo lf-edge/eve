@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"flag"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -26,6 +27,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
+	"github.com/lf-edge/eve/pkg/pillar/utils/netutils"
 	"github.com/sirupsen/logrus"
 )
 
@@ -660,6 +662,28 @@ func (n *nim) applyGlobalConfig(gcp *types.ConfigItemValueMap) {
 	n.dpcManager.UpdateGCP(n.globalConfig)
 	timeout := gcp.GlobalValueInt(types.NetworkTestTimeout)
 	n.connTester.TestTimeout = time.Second * time.Duration(timeout)
+	var diagURLs []*url.URL
+	httpEp := gcp.GlobalValueString(types.DiagProbeInternetHTTPEndpoint)
+	if httpEp != "" {
+		httpEpURL, err := netutils.BuildURLWithScheme(httpEp, "http")
+		if err != nil {
+			n.Log.Errorf("Failed to build URL for %s: %v",
+				types.DiagProbeInternetHTTPEndpoint, err)
+		} else {
+			diagURLs = append(diagURLs, httpEpURL)
+		}
+	}
+	httpsEp := gcp.GlobalValueString(types.DiagProbeInternetHTTPSEndpoint)
+	if httpsEp != "" {
+		httpsEpURL, err := netutils.BuildURLWithScheme(httpsEp, "https")
+		if err != nil {
+			n.Log.Errorf("Failed to build URL for %s: %v",
+				types.DiagProbeInternetHTTPSEndpoint, err)
+		} else {
+			diagURLs = append(diagURLs, httpsEpURL)
+		}
+	}
+	n.connTester.DiagInternetEndpoints = diagURLs
 	n.gcInitialized = true
 }
 
