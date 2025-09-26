@@ -4,15 +4,18 @@
 package downloader
 
 import (
+	"encoding/json"
 	"os"
 	"path"
 	"path/filepath"
 	"strings"
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"golang.org/x/sys/unix"
 )
 
 const progressFileSuffix = ".progress"
+const progressTmpSuffix = ".tmp"
 
 // Create the object download directories we own
 func createDownloadDirs() {
@@ -88,4 +91,48 @@ func clearInProgressDownloadDirs(ctx *downloaderContext) {
 
 func getPendingDir() string {
 	return path.Join(downloaderBasePath, "pending")
+}
+
+// fsync a directory (best-effort; ignore on failure)
+func fsyncDir(dir string) {
+	f, err := os.Open(dir)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	_ = unix.Fsync(int(f.Fd()))
+}
+
+func atomicWriteJSON(path string, v any) error {
+	dir := filepath.Dir(path)
+	tmp := path + progressTmpSuffix
+
+	f, err := os.OpenFile(tmp, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+	if err != nil {
+		return err
+	}
+	enc := json.NewEncoder(f)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(v); err != nil {
+		_ = f.Close()
+		_ = os.Remove(tmp)
+		return err
+	}
+	// make durable
+	if err := f.Sync(); err != nil {
+		_ = f.Close()
+		_ = os.Remove(tmp)
+		return err
+	}
+	if err := f.Close(); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	// ensure directory entry is durable, too
+	fsyncDir(dir)
+	return nil
 }

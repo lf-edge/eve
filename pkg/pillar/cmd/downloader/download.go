@@ -5,12 +5,16 @@ package downloader
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -23,37 +27,84 @@ import (
 
 const AWSS3IDENTIFIER = "amazonaws"
 
+// on-disk format with self-check
+type progressFile struct {
+	Version int                   `json:"version"`
+	Hash    string                `json:"hash"` // sha256 of Parts JSON
+	Parts   types.DownloadedParts `json:"parts"`
+}
+
+func hashParts(p types.DownloadedParts) string {
+	b, _ := json.Marshal(p)
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:])
+}
+
 func loadDownloadedParts(locFilename string) types.DownloadedParts {
-	var downloadedParts types.DownloadedParts
-	fd, err := os.Open(locFilename + progressFileSuffix)
-	if err == nil {
-		decoder := json.NewDecoder(fd)
-		err = decoder.Decode(&downloadedParts)
+	var zero types.DownloadedParts
+	path := locFilename + progressFileSuffix
+	tmp := path + progressTmpSuffix
+
+	// helper to read+verify one file
+	read := func(p string) (types.DownloadedParts, bool) {
+		fd, err := os.Open(p)
 		if err != nil {
-			log.Errorf("failed to decode progress file: %s", err)
+			return zero, false
 		}
-		err := fd.Close()
+		defer fd.Close()
+		data, err := io.ReadAll(fd)
 		if err != nil {
-			log.Errorf("failed to close progress file: %s", err)
+			return zero, false
+		}
+		var pf progressFile
+		if err := json.Unmarshal(data, &pf); err != nil {
+			return zero, false
+		}
+		if pf.Hash != hashParts(pf.Parts) {
+			log.Warnf("progress file hash mismatch for %s (discarding)", p)
+			return zero, false
+		}
+		return pf.Parts, true
+	}
+
+	// try the main file
+	if parts, ok := read(path); ok {
+		return parts
+	}
+
+	// recover from a valid, newer tmp (leftover from crash between fsync and rename)
+	if stMain, err := os.Stat(path); err != nil && os.IsNotExist(err) {
+		if parts, ok := read(tmp); ok {
+			// promote it
+			if err := os.Rename(tmp, path); err == nil {
+				fsyncDir(filepath.Dir(path))
+			}
+			return parts
+		}
+	} else if stTmp, err := os.Stat(tmp); err == nil {
+		if stMain != nil && stTmp.ModTime().After(stMain.ModTime()) {
+			if parts, ok := read(tmp); ok {
+				if err := os.Rename(tmp, path); err == nil {
+					fsyncDir(filepath.Dir(path))
+				}
+				return parts
+			}
 		}
 	}
-	return downloadedParts
+
+	// nothing valid -> return empty (fresh download or resume from 0)
+	return zero
 }
 
 func saveDownloadedParts(locFilename string, downloadedParts types.DownloadedParts) {
-	fd, err := os.Create(locFilename + progressFileSuffix)
-	if err != nil {
-		log.Errorf("error creating progress file: %s", err)
-	} else {
-		encoder := json.NewEncoder(fd)
-		err = encoder.Encode(downloadedParts)
-		if err != nil {
-			log.Errorf("failed to encode progress file: %s", err)
-		}
-		err := fd.Close()
-		if err != nil {
-			log.Errorf("failed to close progress file: %s", err)
-		}
+	path := locFilename + progressFileSuffix
+	pf := progressFile{
+		Version: 1,
+		Hash:    hashParts(downloadedParts),
+		Parts:   downloadedParts,
+	}
+	if err := atomicWriteJSON(path, pf); err != nil {
+		log.Errorf("saving progress file failed: %v", err)
 	}
 }
 
