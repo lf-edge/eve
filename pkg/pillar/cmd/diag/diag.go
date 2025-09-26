@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"syscall"
@@ -32,6 +33,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
+	"github.com/lf-edge/eve/pkg/pillar/utils/netutils"
 	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/protobuf/proto"
@@ -91,6 +93,7 @@ type diagContext struct {
 	columnPtr              *int
 	triggerPrintChan       chan<- string
 	ph                     *PrintHandle
+	internetProbes         []*url.URL
 }
 
 // AddAgentSpecificCLIFlags adds CLI options
@@ -1012,28 +1015,12 @@ func printOutput(ctx *diagContext, caller string) {
 		}
 		// ping and getUuid calls
 		if !tryPing(ctx, ifname, "") {
-			ctx.ph.Print("ERROR: %s: ping failed to %s; trying google\n",
-				ifname, ctx.serverNameAndPort)
-			origServerName := ctx.serverName
-			origServerNameAndPort := ctx.serverNameAndPort
-			ctx.serverName = "www.google.com"
-			ctx.serverNameAndPort = ctx.serverName
-			if tryPing(ctx, ifname, "http://www.google.com") {
-				ctx.ph.Print("WARNING: %s: Can reach http://google.com but not https://%s\n",
-					ifname, origServerNameAndPort)
-			} else {
-				ctx.ph.Print("ERROR: %s: Can't reach http://google.com; likely lack of Internet connectivity\n",
-					ifname)
+			if len(ctx.internetProbes) != 0 {
+				ctx.ph.Print("ERROR: %s: ping failed to %s; trying %v\n",
+					ifname, ctx.serverNameAndPort,
+					utils.JoinStrings(ctx.internetProbes, ", "))
+				tryInternetConnectivity(ctx, ifname)
 			}
-			if tryPing(ctx, ifname, "https://www.google.com") {
-				ctx.ph.Print("WARNING: %s: Can reach https://google.com but not https://%s\n",
-					ifname, origServerNameAndPort)
-			} else {
-				ctx.ph.Print("ERROR: %s: Can't reach https://google.com; likely lack of Internet connectivity\n",
-					ifname)
-			}
-			ctx.serverName = origServerName
-			ctx.serverNameAndPort = origServerNameAndPort
 			continue
 		}
 		if !tryPostUUID(ctx, ifname) {
@@ -1158,6 +1145,21 @@ func printProxy(ctx *diagContext, port types.NetworkPortStatus,
 		if len(port.ProxyCertPEM) > 0 {
 			ctx.ph.Print("INFO: %d proxy certificate(s)",
 				len(port.ProxyCertPEM))
+		}
+	}
+}
+
+func tryInternetConnectivity(ctx *diagContext, ifname string) {
+	for _, probeURL := range ctx.internetProbes {
+		if probeURL == nil {
+			continue
+		}
+		if tryPing(ctx, ifname, probeURL.String()) {
+			ctx.ph.Print("WARNING: %s: Can reach %v but not https://%s\n",
+				ifname, probeURL, ctx.serverNameAndPort)
+		} else {
+			ctx.ph.Print("ERROR: %s: Can't reach %v; "+
+				"likely lack of Internet connectivity\n", ifname, probeURL)
 		}
 	}
 }
@@ -1530,8 +1532,29 @@ func handleGlobalConfigImpl(ctxArg interface{}, key string,
 	log.Functionf("handleGlobalConfigImpl for %s", key)
 	gcp := agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
 		ctx.CLIParams().DebugOverride, logger)
+	ctx.internetProbes = nil
 	if gcp != nil {
 		ctx.globalConfig = gcp
+		httpEp := gcp.GlobalValueString(types.DiagProbeInternetHTTPEndpoint)
+		if httpEp != "" {
+			httpEpURL, err := netutils.BuildURLWithScheme(httpEp, "http")
+			if err != nil {
+				log.Errorf("Failed to build URL for %s: %v",
+					types.DiagProbeInternetHTTPEndpoint, err)
+			} else {
+				ctx.internetProbes = append(ctx.internetProbes, httpEpURL)
+			}
+		}
+		httpsEp := gcp.GlobalValueString(types.DiagProbeInternetHTTPSEndpoint)
+		if httpsEp != "" {
+			httpsEpURL, err := netutils.BuildURLWithScheme(httpsEp, "https")
+			if err != nil {
+				log.Errorf("Failed to build URL for %s: %v",
+					types.DiagProbeInternetHTTPSEndpoint, err)
+			} else {
+				ctx.internetProbes = append(ctx.internetProbes, httpsEpURL)
+			}
+		}
 	}
 	ctx.GCInitialized = true
 	log.Functionf("handleGlobalConfigImpl done for %s", key)

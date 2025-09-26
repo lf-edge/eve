@@ -6,6 +6,7 @@ package types
 import (
 	"encoding/base64"
 	"fmt"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -407,6 +408,13 @@ const (
 	MsrvPrometheusMetricsBurst GlobalSettingKey = "msrv.prometheus.metrics.burst"
 	// MsrvPrometheusMetricsIdleTimeoutSeconds: idle timeout for the connection
 	MsrvPrometheusMetricsIdleTimeoutSeconds GlobalSettingKey = "msrv.prometheus.metrics.idletimeout.seconds"
+
+	// DiagProbeInternetHTTPEndpoint : Internet endpoint queried over **HTTP** to assess
+	// the state of Internet connectivity whenever the controller is not reachable.
+	DiagProbeInternetHTTPEndpoint GlobalSettingKey = "diag.probe.internet.http.endpoint"
+	// DiagProbeInternetHTTPSEndpoint : Internet endpoint queried over **HTTPS** to assess
+	// the state of Internet connectivity whenever the controller is not reachable.
+	DiagProbeInternetHTTPSEndpoint GlobalSettingKey = "diag.probe.internet.https.endpoint"
 )
 
 // AgentSettingKey - keys for per-agent settings
@@ -1106,6 +1114,10 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddIntItem(MsrvPrometheusMetricsBurst, 10, 1, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(MsrvPrometheusMetricsIdleTimeoutSeconds, 4*MinuteInSec, 1, 0xFFFFFFFF)
 
+	// Add diag probing settings
+	configItemSpecMap.AddStringItem(DiagProbeInternetHTTPEndpoint, "www.google.com", makeURLValidator("http"))
+	configItemSpecMap.AddStringItem(DiagProbeInternetHTTPSEndpoint, "www.google.com", makeURLValidator("https"))
+
 	return configItemSpecMap
 }
 
@@ -1128,6 +1140,28 @@ func validateSyslogKernelLevel(level string) error {
 		return fmt.Errorf("validateSyslogKernelLevel: unknown loglevel '%v'", level)
 	}
 	return nil
+}
+
+// makeURLValidator returns a validator that checks if an address is either empty,
+// or a valid URL with no scheme, or with the specified allowed scheme.
+// The returned validator will also accept a bare IP address.
+func makeURLValidator(allowedScheme string) func(addr string) error {
+	return func(addr string) error {
+		if addr == "" {
+			// Accept empty value.
+			return nil
+		}
+		u, err := url.Parse(addr)
+		if err != nil {
+			return err
+		}
+		// Accept if scheme is empty (no scheme) or matches the allowed scheme.
+		if u.Scheme != "" && strings.ToLower(u.Scheme) != strings.ToLower(allowedScheme) {
+			return fmt.Errorf("invalid URL scheme: %q (expected %q)",
+				u.Scheme, allowedScheme)
+		}
+		return nil
+	}
 }
 
 // blankValidator - A validator that accepts any string
