@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"syscall"
@@ -90,6 +91,7 @@ type diagContext struct {
 	columnPtr              *int
 	triggerPrintChan       chan<- string
 	ph                     *PrintHandle
+	remoteProbes           []*url.URL
 }
 
 // AddAgentSpecificCLIFlags adds CLI options
@@ -999,28 +1001,11 @@ func printOutput(ctx *diagContext, caller string) {
 		}
 		// ping and getUuid calls
 		if !tryPing(ctx, ifname, "") {
-			ctx.ph.Print("ERROR: %s: ping failed to %s; trying google\n",
-				ifname, ctx.serverNameAndPort)
-			origServerName := ctx.serverName
-			origServerNameAndPort := ctx.serverNameAndPort
-			ctx.serverName = "www.google.com"
-			ctx.serverNameAndPort = ctx.serverName
-			if tryPing(ctx, ifname, "http://www.google.com") {
-				ctx.ph.Print("WARNING: %s: Can reach http://google.com but not https://%s\n",
-					ifname, origServerNameAndPort)
-			} else {
-				ctx.ph.Print("ERROR: %s: Can't reach http://google.com; likely lack of Internet connectivity\n",
-					ifname)
+			if len(ctx.remoteProbes) != 0 {
+				ctx.ph.Print("ERROR: %s: ping failed to %s; trying %v\n",
+					ifname, ctx.serverNameAndPort, ctx.remoteProbes)
+				tryNetworkConnectivity(ctx, ifname)
 			}
-			if tryPing(ctx, ifname, "https://www.google.com") {
-				ctx.ph.Print("WARNING: %s: Can reach https://google.com but not https://%s\n",
-					ifname, origServerNameAndPort)
-			} else {
-				ctx.ph.Print("ERROR: %s: Can't reach https://google.com; likely lack of Internet connectivity\n",
-					ifname)
-			}
-			ctx.serverName = origServerName
-			ctx.serverNameAndPort = origServerNameAndPort
 			continue
 		}
 		if !tryPostUUID(ctx, ifname) {
@@ -1145,6 +1130,21 @@ func printProxy(ctx *diagContext, port types.NetworkPortStatus,
 		if len(port.ProxyCertPEM) > 0 {
 			ctx.ph.Print("INFO: %d proxy certificate(s)",
 				len(port.ProxyCertPEM))
+		}
+	}
+}
+
+func tryNetworkConnectivity(ctx *diagContext, ifname string) {
+	for _, probeURL := range ctx.remoteProbes {
+		if probeURL == nil {
+			continue
+		}
+		if tryPing(ctx, ifname, probeURL.String()) {
+			ctx.ph.Print("WARNING: %s: Can reach %v but not https://%s\n",
+				ifname, probeURL, ctx.serverNameAndPort)
+		} else {
+			ctx.ph.Print("ERROR: %s: Can't reach %v; "+
+				"likely lack of network connectivity\n", ifname, probeURL)
 		}
 	}
 }
@@ -1520,6 +1520,7 @@ func handleGlobalConfigImpl(ctxArg interface{}, key string,
 	if gcp != nil {
 		ctx.globalConfig = gcp
 	}
+	ctx.remoteProbes = types.GetDiagRemoteEndpointURLs(log, gcp)
 	ctx.GCInitialized = true
 	log.Functionf("handleGlobalConfigImpl done for %s", key)
 }
