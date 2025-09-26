@@ -85,6 +85,8 @@
 | wwan.modem.recovery.watchdog | boolean | false | Enable watchdog for cellular modems. If a modem firmware crashes and fails to recover, the device will automatically reboot.|
 | wwan.modem.recovery.reload.drivers | boolean | false | If a modem firmware crashes and fails to recover, EVE will attempt to reload the MBIM/QMI/MHI drivers as a recovery step. This occurs before the watchdog mechanism is triggered (if enabled). |
 | wwan.modem.recovery.restart.modemmanager | boolean | false | If a modem firmware crash occurs and ModemManager fails to properly recognize or manage the restarted modem, EVE will attempt to restart ModemManager as a recovery step. This occurs before the watchdog mechanism is triggered (if enabled) and can be combined with driver reload recovery mechanism. |
+| diag.probe.remote.http.endpoint | string | `"http://www.google.com"` | Remote endpoint (URL, IP instead of hostname is accepted) queried over HTTP to assess the state of network connectivity whenever the controller is not reachable. Used only for diagnostics (no functional impact). Set to an empty string to disable. |
+| diag.probe.remote.https.endpoint | string | `"https://www.google.com"` | Remote endpoint (URL, IP instead of hostname is NOT accepted) queried over HTTPS to assess the state of network connectivity whenever the controller is not reachable. Used only for diagnostics (no functional impact). Set to an empty string to disable. |
 
 ## Log levels
 
