@@ -57,6 +57,7 @@ func (sub *SubscriptionImpl) Activate() error {
 }
 
 // Close stops the subscription and removes the content
+// XXX does this imply a delete? Or just undo an Activate?
 func (sub *SubscriptionImpl) Close() error {
 	sub.driver.Stop()
 	items := sub.GetAll()

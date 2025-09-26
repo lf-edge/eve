@@ -80,6 +80,15 @@ func New(driver Driver, logger *logrus.Logger, log *base.LogObject) *PubSub {
 	}
 }
 
+// Clone returns a new `PubSub` handle using the same settings such as `Driver`
+func (p *PubSub) Clone() {
+	return &PubSub{
+		driver: p.driver,
+		logger: p.logger,
+		log:    p.log,
+	}
+}
+
 // methods unique to this implementation
 
 // NewSubscription creates a new Subscription with given options
@@ -98,6 +107,12 @@ func (p *PubSub) NewSubscription(options SubscriptionOptions) (Subscription, err
 			topic)
 	}
 
+	// Check if we already have a matching <p, agentName, topic>
+	// subscription and if not add it.
+	if checkAndAddSubscription(p, options.AgentName, topic) {
+		log.Fatalf("Duplicate subscription from %s: <%s, %s">",
+			options.MyAgentName, options.AgentName, topic)
+	}
 	// Need some buffering to make sure that when we Close the subscription
 	// the goroutines exit
 	changes := make(chan Change, 3)
