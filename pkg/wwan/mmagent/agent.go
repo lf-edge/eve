@@ -1800,6 +1800,14 @@ func (a *MMAgent) decryptCredentials(modem *ModemInfo) {
 	modem.decryptedAttachPassword = ""
 	encryptedCreds := modem.config.AccessPoint.EncryptedCredentials
 	if !encryptedCreds.IsCipher {
+		// Maybe clear-text credentials are provided by LPS.
+		// If not, we simply return empty credentials.
+		cleartextCredentials := modem.config.AccessPoint.CleartextCredentials
+		modem.decryptedUsername = cleartextCredentials.Username
+		modem.decryptedPassword = cleartextCredentials.Password
+		attachCleartextCredentials := modem.config.AccessPoint.AttachCleartextCredentials
+		modem.decryptedAttachUsername = attachCleartextCredentials.Username
+		modem.decryptedAttachPassword = attachCleartextCredentials.Password
 		return
 	}
 	// Regardless of how decryption will go, metrics will be updated.
