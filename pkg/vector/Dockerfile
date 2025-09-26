@@ -1,6 +1,7 @@
 # Copyright (c) 2025 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
+ARG REL_HASH_LFEDGE_EVE_ALPINE
 ARG RUST_VERSION=lfedge/eve-rust:1.85.1-2
 ARG VECTOR_FEATURES='--no-default-features --features \
 sources-socket,\
@@ -21,7 +22,6 @@ sinks-socket,\
 sources-prometheus-scrape,\
 sinks-prometheus'
 
-# hadolint ignore=DL3006
 FROM --platform=$BUILDPLATFORM ${RUST_VERSION} AS toolchain-base
 ARG TARGETARCH
 
@@ -34,7 +34,6 @@ ENV CARGO_BUILD_TARGET="aarch64-unknown-linux-musl"
 FROM toolchain-base AS target-riscv64
 ENV CARGO_BUILD_TARGET="riscv64gc-unknown-linux-gnu"
 
-# hadolint ignore=DL3006
 FROM target-$TARGETARCH AS toolchain
 RUN echo "Cargo target: $CARGO_BUILD_TARGET"
 
@@ -62,7 +61,7 @@ RUN strip "/app/target/$CARGO_BUILD_TARGET/release/vector"
 RUN cargo sbom > sbom.spdx.json
 RUN cp "/app/target/$CARGO_BUILD_TARGET/release/vector" /app/target/
 
-FROM lfedge/eve-alpine:745ae9066273c73b0fd879c4ba4ff626a8392d04 AS runtime
+FROM ${REL_HASH_LFEDGE_EVE_ALPINE} AS runtime
 ENV PKGS="inotify-tools"
 RUN eve-alpine-deploy.sh
 

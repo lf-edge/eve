@@ -4,3 +4,6 @@
 org: lfedge
 image: eve-bpftrace
 network: no
+
+buildArgs:
+  - REL_HASH_%=@lkt:pkgs:../*

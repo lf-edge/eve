@@ -3,28 +3,28 @@
 # use the same set of packages for simplicity
 ARG BUILD_PKGS_BASE="bash binutils-dev build-base bc bison flex openssl-dev util-linux-dev swig gnutls-dev perl python3 python3-dev py3-setuptools py3-pycryptodome py3-elftools"
 
-# we use the same image in several places
-ARG EVE_ALPINE_IMAGE=lfedge/eve-alpine:745ae9066273c73b0fd879c4ba4ff626a8392d04
+ARG REL_HASH_LFEDGE_EVE_ALPINE
+ARG REL_HASH_LFEDGE_EVE_OPTEE_OS
+ARG REL_HASH_LFEDGE_EVE_CROSS_COMPILERS
 
 # OPTEE-OS images
-FROM lfedge/eve-optee-os:9224bc23bc238d0f499dadb134de32dc3a2abdf9 AS optee-os
+FROM ${REL_HASH_LFEDGE_EVE_OPTEE_OS} AS optee-os
 
 # hadolint ignore=DL3006
-FROM ${EVE_ALPINE_IMAGE} AS build-native
-ARG BUILD_PKGS_BASE
-RUN BUILD_PKGS="${BUILD_PKGS_BASE}" eve-alpine-deploy.sh
-
-# hadolint ignore=DL3006,DL3029
-FROM --platform=${BUILDPLATFORM} ${EVE_ALPINE_IMAGE} AS build-cross
+FROM ${REL_HASH_LFEDGE_EVE_ALPINE} AS build-native
 ARG BUILD_PKGS_BASE
 RUN BUILD_PKGS="${BUILD_PKGS_BASE}" eve-alpine-deploy.sh
 
 # hadolint ignore=DL3029
-FROM --platform=${BUILDPLATFORM} lfedge/eve-cross-compilers:f476a79bcd086759592a105a49f9ed5bfa2c4ffa AS cross-compilers
+FROM --platform=${BUILDPLATFORM} ${REL_HASH_LFEDGE_EVE_ALPINE} AS build-cross
+ARG BUILD_PKGS_BASE
+RUN BUILD_PKGS="${BUILD_PKGS_BASE}" eve-alpine-deploy.sh
+
+# hadolint ignore=DL3029
+FROM --platform=${BUILDPLATFORM} ${REL_HASH_LFEDGE_EVE_CROSS_COMPILERS} AS cross-compilers
 
 # will use several packages from target arch and copy them to sysroot
-# hadolint ignore=DL3006
-FROM ${EVE_ALPINE_IMAGE} AS cross-compile-libs
+FROM ${REL_HASH_LFEDGE_EVE_ALPINE} AS cross-compile-libs
 ENV PKGS="musl-dev libgcc libintl libuuid libtirpc libblkid"
 RUN eve-alpine-deploy.sh
 
@@ -36,7 +36,6 @@ ENV EVE_TARGET_ARCH=aarch64
 FROM build-cross AS build-cross-target-riscv64
 ENV EVE_TARGET_ARCH=riscv64
 
-# hadolint ignore=DL3006
 FROM build-cross-target-${TARGETARCH} AS build-cross-target
 ENV CROSS_COMPILE_ENV="${EVE_TARGET_ARCH}-alpine-linux-musl-"
 COPY --from=cross-compilers /packages /packages
@@ -54,7 +53,6 @@ FROM build-native AS target-amd64-build-amd64
 FROM build-native AS target-arm64-build-arm64
 FROM build-native AS target-riscv64-build-riscv64
 
-# hadolint ignore=DL3006
 FROM target-${TARGETARCH}-build-${BUILDARCH} AS build
 
 SHELL ["/bin/bash", "-eo", "pipefail", "-c"]

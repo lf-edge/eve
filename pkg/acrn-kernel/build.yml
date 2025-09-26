@@ -1,2 +1,5 @@
 image: eve-acrn-kernel
 org: lfedge
+
+buildArgs:
+  - REL_HASH_%=@lkt:pkgs:../*

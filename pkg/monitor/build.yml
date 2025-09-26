@@ -55,3 +55,6 @@ config:
   capabilities:
     - all
   rootfsPropagation: shared
+
+buildArgs:
+  - REL_HASH_%=@lkt:pkgs:../*

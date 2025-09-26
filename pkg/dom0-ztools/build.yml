@@ -1,2 +1,5 @@
 org: lfedge
 image: eve-dom0-ztools
+
+buildArgs:
+  - REL_HASH_%=@lkt:pkgs:../*

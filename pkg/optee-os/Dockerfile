@@ -1,27 +1,25 @@
 # syntax=docker/dockerfile-upstream:1.5.0-rc2-labs
 
+ARG REL_HASH_LFEDGE_EVE_ALPINE
+ARG REL_HASH_LFEDGE_EVE_CROSS_COMPILERS
+
 # use the same set of packages for simplicity
 ARG BUILD_PKGS_BASE="autoconf automake bash binutils binutils-dev build-base bc bison curl dtc expat flex openssl-dev util-linux-dev swig gnutls-dev perl python3 python3-dev py3-setuptools py3-pycryptodome py3-elftools py3-cryptography"
 
-# we use the same image in several places
-ARG EVE_ALPINE_IMAGE=lfedge/eve-alpine:745ae9066273c73b0fd879c4ba4ff626a8392d04
-
-# hadolint ignore=DL3006
-FROM ${EVE_ALPINE_IMAGE} AS build-native
-ARG BUILD_PKGS_BASE
-RUN BUILD_PKGS="${BUILD_PKGS_BASE}" eve-alpine-deploy.sh
-
-# hadolint ignore=DL3006,DL3029
-FROM --platform=${BUILDPLATFORM} ${EVE_ALPINE_IMAGE} AS build-cross
+FROM ${REL_HASH_LFEDGE_EVE_ALPINE} AS build-native
 ARG BUILD_PKGS_BASE
 RUN BUILD_PKGS="${BUILD_PKGS_BASE}" eve-alpine-deploy.sh
 
 # hadolint ignore=DL3029
-FROM --platform=${BUILDPLATFORM} lfedge/eve-cross-compilers:f476a79bcd086759592a105a49f9ed5bfa2c4ffa AS cross-compilers
+FROM --platform=${BUILDPLATFORM} ${REL_HASH_LFEDGE_EVE_ALPINE} AS build-cross
+ARG BUILD_PKGS_BASE
+RUN BUILD_PKGS="${BUILD_PKGS_BASE}" eve-alpine-deploy.sh
+
+# hadolint ignore=DL3029
+FROM --platform=${BUILDPLATFORM} ${REL_HASH_LFEDGE_EVE_CROSS_COMPILERS} AS cross-compilers
 
 # will use several packages from target arch and copy them to sysroot
-# hadolint ignore=DL3006
-FROM ${EVE_ALPINE_IMAGE} AS cross-compile-libs
+FROM ${REL_HASH_LFEDGE_EVE_ALPINE} AS cross-compile-libs
 ENV PKGS musl-dev libgcc libintl libuuid libtirpc libblkid libattr
 RUN eve-alpine-deploy.sh
 
@@ -33,7 +31,6 @@ ENV EVE_TARGET_ARCH=aarch64
 FROM build-cross AS build-cross-target-riscv64
 ENV EVE_TARGET_ARCH=riscv64
 
-# hadolint ignore=DL3006
 FROM build-cross-target-${TARGETARCH} AS build-cross-target
 ENV CROSS_COMPILE_ENV="${EVE_TARGET_ARCH}"-alpine-linux-musl-
 ENV CROSS_COMPILE_ARM32_ENV="armv6-alpine-linux-musleabihf-"
@@ -52,7 +49,6 @@ FROM build-native AS target-amd64-build-amd64
 FROM build-native AS target-arm64-build-arm64
 FROM build-native AS target-riscv64-build-riscv64
 
-# hadolint ignore=DL3006
 FROM target-${TARGETARCH}-build-${BUILDARCH} AS build
 
 # ARM32 compiler is needed on all platforms

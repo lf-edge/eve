@@ -2,6 +2,9 @@
 # Copyright (c) 2024 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
+ARG REL_HASH_LFEDGE_EVE_ALPINE
+ARG REL_HASH_LFEDGE_EVE_DEBUG
+
 # Interactive mode for the installer
 FROM --platform=$BUILDPLATFORM lfedge/eve-rust:1.84.1 AS rust-host
 ARG TARGETARCH
@@ -16,7 +19,6 @@ ENV CARGO_BUILD_TARGET="aarch64-unknown-linux-musl"
 FROM rust-host AS target-riscv64
 ENV CARGO_BUILD_TARGET="riscv64gc-unknown-linux-gnu"
 
-# hadolint ignore=DL3006
 FROM target-$TARGETARCH AS rust
 
 WORKDIR /usr/local/my-installer
@@ -28,10 +30,10 @@ RUN cargo sbom > sbom.spdx.json
 
 RUN cp "/usr/local/my-installer/target/$CARGO_BUILD_TARGET/release/installer" /usr/local/my-installer/target/installer
 
-FROM lfedge/eve-debug:244ebacb4055d54c50610c407b910b4143506172 AS debug
+FROM ${REL_HASH_LFEDGE_EVE_DEBUG} AS debug
 
 # Dockerfile to build installer img initrd
-FROM lfedge/eve-alpine:745ae9066273c73b0fd879c4ba4ff626a8392d04 AS build
+FROM ${REL_HASH_LFEDGE_EVE_ALPINE} AS build
 SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
 ENV BUILD_PKGS="mkinitfs grep patch make coreutils musl-dev gcc g++ perl \
     autoconf automake libtool file bsd-compat-headers libc-dev \
