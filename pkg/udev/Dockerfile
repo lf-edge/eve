@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 FROM lfedge/eve-alpine:0f2e0da38e30753c68410727a6cc269e57ff74f2 AS build
-ENV PKGS udev
+ENV PKGS="udev kmod"
 RUN eve-alpine-deploy.sh
 
 COPY etc/init.d/008-udevd /out/etc/init.d/
