@@ -1,0 +1,5 @@
+# Copyright (c) 2025 Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+# Load kernel modules by modalias on device add
+ACTION=="add", ENV{MODALIAS}!="", RUN{builtin}+="kmod load $env{MODALIAS}"
