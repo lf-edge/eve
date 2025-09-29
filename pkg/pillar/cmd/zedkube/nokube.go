@@ -1,7 +1,7 @@
 // Copyright (c) 2024 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-//go:build !kubevirt
+//go:build !k
 
 package zedkube
 
@@ -26,7 +26,7 @@ type zedkubeContext struct {
 	agentbase.AgentBase
 }
 
-// Run in this file is just stub for non-kubevirt hypervisors.
+// Run in this file is just stub for non-k hypervisors.
 func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string, baseDir string) int {
 	logger := loggerArg
 	log := logArg

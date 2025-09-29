@@ -608,7 +608,7 @@ func gcImagesFromCAS(ctx *volumemgrContext) {
 
 	for _, image := range casImages {
 		if _, ok := referenceMap[image]; !ok {
-			// In kubevirt eve k3s specific images are not downloaded by EVE.
+			// In EVE 'k' the k3s specific images are not downloaded by EVE.
 			// We cannot garbage collect those, so make sure this image was actually downloaded
 			// by eve, by checking label eve_downloaded=true
 			if ctx.hvTypeKube {

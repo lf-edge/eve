@@ -791,7 +791,7 @@ func parseAppInstanceConfig(getconfigCtx *getconfigContext,
 
 		controllerDNID := cfgApp.GetDesignatedNodeId()
 		// If this node is designated node id set IsDesignatedNodeID to true else false.
-		// On single node eve either kvm or kubevirt based, this node will always be designated node.
+		// On single node EVE (either kvm or k), this node will always be designated node.
 		if controllerDNID != "" && controllerDNID != devUUIDStr {
 			appInstance.IsDesignatedNodeID = false
 		} else {
@@ -3266,7 +3266,7 @@ func scheduleDeviceOperation(getconfigCtx *getconfigContext, opsCmd *zconfig.Dev
 		return false
 	}
 
-	// If HV=kubevirt and clustered, we ma need to drain a replica first
+	// If HV=k and clustered, we ma need to drain a replica first
 	// If so defer/block the node outage
 	deferForDrain := shouldDeferForNodeDrain(ctx, op)
 	if deferForDrain {

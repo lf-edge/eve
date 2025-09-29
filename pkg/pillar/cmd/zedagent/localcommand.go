@@ -63,7 +63,7 @@ func (zedagentCtx *zedagentContext) ApplyLocalDeviceCommand(
 		return false
 	}
 
-	// If HV=kubevirt and clustered, we may need to drain a replica first.
+	// If HV=k and clustered, we may need to drain a replica first.
 	// If so defer/block the node outage.
 	if getconfigCtx.waitDrainInProgress {
 		switch devCmd {

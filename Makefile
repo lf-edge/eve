@@ -42,7 +42,7 @@ endif
 EVE_SNAPSHOT_VERSION=0.0.0
 # which language bindings to generate for EVE API
 PROTO_LANGS=go python
-# Use 'make HV=acrn|xen|kvm|kubevirt' to build ACRN images (AMD64 only), Xen or KVM
+# Use 'make HV=acrn|xen|kvm|k' to build ACRN images (AMD64 only), Xen or KVM
 HV=$(HV_DEFAULT)
 # Enable development build (disabled by default)
 DEV=n
@@ -436,15 +436,15 @@ endif
 
 # The rootfs partition size is set to 512MB after 10.2.0 release (see commit 719b4d516)
 # Before 10.2.0 it was 300MB. We must maintain compatibility with older versions so rootfs size cannot exceed 300MB.
-# kubevirt and nvidia are not affected by this limitation because there no installation of kubevirt prior to 10.2.0
-# Nevertheless lets check for ROOTFS_MAXSIZE_MB not exceeding 900MB for kubevirt, 450MB for NVIDIA based platforms (arm64) and 270MB for x86_64 and other arm64 platforms
+# 'k' and nvidia are not affected by this limitation because there no installation of kubevirt/k3s prior to 10.2.0
+# Nevertheless lets check for ROOTFS_MAXSIZE_MB not exceeding 900MB for 'k', 450MB for NVIDIA based platforms (arm64) and 285MB for x86_64 and other arm64 platforms
 # That helps in catching image size increases earlier than at later stage.
 # We are currently filtering out a few packages from bulk builds since they are not getting published in Docker HUB
-ifeq ($(HV),kubevirt)
+ifeq ($(HV),k)
         PKGS_$(ZARCH)=$(shell find pkg -maxdepth 1 -type d | grep -Ev "eve|alpine|sources$$")
         ROOTFS_MAXSIZE_MB=900
 else
-        #kube container will not be in non-kubevirt builds
+        #kube container will not be in non-k builds
         PKGS_$(ZARCH)=$(shell find pkg -maxdepth 1 -type d | grep -Ev "eve|alpine|sources|kube|external-boot-image$$")
         # evaluation platform is not limited by rootfs size, set to some large value
         ifeq ($(PLATFORM),evaluation)
@@ -1098,18 +1098,18 @@ endif
 
 # If DEV=y and file pkg/my_package/build-dev.yml exists, returns the path to that file.
 # If RSTATS=y and file pkg/my_package/build-rstats.yml exists, returns the path to that file.
-# If HV=kubevirt and DEV=y and file pkg/my_package/build-kubevirt-dev.yml exists, returns the path to that file.
-# If HV=kubevirt and DEV!=y and file pkg/my_package/build-kubevirt.yml exists, returns the path to that file.
+# If HV=k and DEV=y and file pkg/my_package/build-k-dev.yml exists, returns the path to that file.
+# If HV=k and DEV!=y and file pkg/my_package/build-k.yml exists, returns the path to that file.
 # If pkg/my_package/build-<PLATFORM>.yml exists, returns the path to that file.
 # Otherwise returns pkg/my_package/build.yml.
-get_pkg_build_yml = $(if $(filter kubevirt,$(HV)), $(call get_pkg_build_kubevirt_yml,$1), \
+get_pkg_build_yml = $(if $(filter k,$(HV)), $(call get_pkg_build_k_yml,$1), \
                     $(if $(filter y,$(RSTATS)), $(call get_pkg_build_rstats_yml,$1), \
                     $(if $(filter y,$(DEV)), $(call get_pkg_build_dev_yml,$1), \
                     $(if $(wildcard pkg/$1/build-$(PLATFORM).yml),build-$(PLATFORM).yml,build.yml))))
 get_pkg_build_dev_yml = $(if $(wildcard pkg/$1/build-dev.yml),build-dev.yml,build.yml)
 get_pkg_build_rstats_yml = $(if $(wildcard pkg/$1/build-rstats.yml),build-rstats.yml,build.yml)
-get_pkg_build_kubevirt_yml = $(if $(and $(filter y,$(DEV)),$(wildcard pkg/$1/build-kubevirt-dev.yml)),build-kubevirt-dev.yml, \
-                             $(if $(wildcard pkg/$1/build-kubevirt.yml),build-kubevirt.yml,build.yml))
+get_pkg_build_k_yml = $(if $(and $(filter y,$(DEV)),$(wildcard pkg/$1/build-k-dev.yml)),build-k-dev.yml, \
+                             $(if $(wildcard pkg/$1/build-k.yml),build-k.yml,build.yml))
 
 eve-%: pkg/%/Dockerfile $(LINUXKIT) $(RESCAN_DEPS)
 	$(QUIET): "$@: Begin: LINUXKIT_PKG_TARGET=$(LINUXKIT_PKG_TARGET)"

@@ -52,7 +52,7 @@ type hypervisorDesc struct {
 var knownHypervisors = map[string]hypervisorDesc{
 	XenHypervisorName:        {constructor: newXen, enabled: func() bool { return fileutils.FileExists(nil, "/proc/xen") }, hvTypeFileContent: "xen"},
 	KVMHypervisorName:        {constructor: newKvm, enabled: func() bool { return fileutils.FileExists(nil, "/dev/kvm") && !base.IsHVTypeKube() }, hvTypeFileContent: "kvm"},
-	KubevirtHypervisorName:   {constructor: newKubevirt, enabled: func() bool { return fileutils.FileExists(nil, "/dev/kvm") && base.IsHVTypeKube() }, hvTypeFileContent: "kubevirt"},
+	KubevirtHypervisorName:   {constructor: newKubevirt, enabled: func() bool { return fileutils.FileExists(nil, "/dev/kvm") && base.IsHVTypeKube() }, hvTypeFileContent: "k"},
 	ACRNHypervisorName:       {constructor: newAcrn, enabled: func() bool { return fileutils.FileExists(nil, "/dev/acrn") }, hvTypeFileContent: "acrn"},
 	ContainerdHypervisorName: {constructor: newContainerd, enabled: func() bool { return fileutils.FileExists(nil, "/run/containerd/containerd.sock") }},
 	NullHypervisorName:       {constructor: newNull, enabled: func() bool { return fileutils.DirExists(nil, "/") }},
@@ -160,7 +160,7 @@ func logError(format string, a ...interface{}) error {
 	return fmt.Errorf(format, a...)
 }
 
-// PCIReserveGeneric : Common Reserve function used by both kvm and kubevirt
+// PCIReserveGeneric : Common Reserve function used by both EVE kvm and 'k'
 func PCIReserveGeneric(long string) error {
 	logrus.Infof("PCIReserve long addr is %s", long)
 
@@ -199,7 +199,7 @@ func PCIReserveGeneric(long string) error {
 	return nil
 }
 
-// PCIReleaseGeneric :  Common function used by kvm and kubevirt
+// PCIReleaseGeneric :  Common function used by both EVE kvm and 'k'
 func PCIReleaseGeneric(long string) error {
 	logrus.Infof("PCIRelease long addr is %s", long)
 
@@ -230,7 +230,7 @@ func PCIReleaseGeneric(long string) error {
 	return nil
 }
 
-// PCISameControllerGeneric : Common function for kvm and kubevirt
+// PCISameControllerGeneric : Common function for both EVE kvm and 'k'
 func PCISameControllerGeneric(id1 string, id2 string) bool {
 	tag1, err := types.PCIGetIOMMUGroup(id1)
 	if err != nil {

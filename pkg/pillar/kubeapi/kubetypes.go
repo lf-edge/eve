@@ -10,7 +10,7 @@ type DrainStatus uint8
 
 const (
 	UNKNOWN       DrainStatus = iota + 0 // UNKNOWN Unable to determine
-	NOTSUPPORTED                         // NOTSUPPORTED System not (HV=kubevirt and clustered)
+	NOTSUPPORTED                         // NOTSUPPORTED System not (HV=k and clustered)
 	NOTREQUESTED                         // NOTREQUESTED Not yet requested
 	REQUESTED                            // REQUESTED From zedagent device operation or baseosmgr new update
 	STARTING                             // STARTING Zedkube go routine started, not yet cordoned

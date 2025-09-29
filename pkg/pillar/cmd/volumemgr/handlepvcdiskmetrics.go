@@ -1,7 +1,7 @@
 // Copyright (c) 2025 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-//go:build kubevirt
+//go:build k
 
 package volumemgr
 
@@ -10,7 +10,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
-// createOrUpdatePvcDiskMetrics creates or updates metrics for all kubevirt PVCs
+// createOrUpdatePvcDiskMetrics creates or updates metrics for all longhorn PVCs
 // PVC mknod will match one of existing sdX devices, create copies for convenience
 func createOrUpdatePvcDiskMetrics(ctx *volumemgrContext) {
 	log.Functionf("createOrUpdatePvcDiskMetrics")

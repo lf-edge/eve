@@ -104,7 +104,7 @@ type volumemgrContext struct {
 
 	// cli options
 
-	// kube mode
+	// EVE 'k' mode
 	hvTypeKube bool
 }
 
@@ -249,7 +249,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 	if ctx.persistType == types.PersistZFS {
 		if isZvol, _ := zfs.IsDatasetTypeZvol(types.SealedDataset); isZvol {
-			// This code is called only on kubevirt eve
+			// This code is called only for EVE 'k' images
 			initializeDirs()
 			populateExistingVolumesFormatPVC(&ctx)
 		} else {

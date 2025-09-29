@@ -26,7 +26,7 @@ defaults, when possible.
 | --- | --- | --- | --- |
 | `ROOTFS_VERSION` | Version ID of the EVE image | calculated from the git commit | `snapshot`, `1.2.3-abcd567` |
 | `ZARCH` | Hardware architecture of the resulting image | your current platform | `amd64`, `arm64`, `riscv64` |
-| `HV` | Hypervisor flavor of the resulting image | `kvm` (amd64, arm64) or `mini` (riscv64) | `kvm`, `xen`, `acrn`, `mini`, `kubevirt` |
+| `HV` | Hypervisor flavor of the resulting image | `kvm` (amd64, arm64) or `mini` (riscv64) | `kvm`, `xen`, `acrn`, `mini`, `k` |
 | `PLATFORM` | Specific platform for which to build | `generic` | `generic`, `rt`, `nvidia-jp6`, `imx8mp_pollux` |
 
 Finally, the target determines what type of image you are building, e.g.`live`, `installer`.
@@ -330,7 +330,7 @@ Note that once you flash `installer.raw` on the installer media, such as USB dri
 
 The core `rootfs.tar` or `installer.tar` files are generated using `linuxkit build`, which is driven by a `yml` file.
 The `yml` file is in the `images/out` directory and is named `rootfs-$(HV)-$(PLATFORM)-<rootfs flavor>.yml`, where `HV` is the hypervisor,
-e.g. `kvm`, `xen`, `acrn`, `mini`, `kubevirt`, and can be set in the environment variable `HV`, and `PLATFORM` is the platform, e.g. `generic`, `rt`, `nvidia-jp6`, `imx8mp_pollux`, etc. and can be set in the environment variable `PLATFORM`.
+e.g. `kvm`, `xen`, `acrn`, `mini`, `k`, and can be set in the environment variable `HV`, and `PLATFORM` is the platform, e.g. `generic`, `rt`, `nvidia-jp6`, `imx8mp_pollux`, etc. and can be set in the environment variable `PLATFORM`.
 e.g. `make rootfs.tar HV=kvm PLATFORM=generic`.
 
 Rootfs flavor is not currently used by any platform except for `evaluation`.
@@ -522,16 +522,16 @@ Depending on the values of optional variables, the following pillar build varian
 * `make pkg/pillar DEV=y`: Development version of pillar for the KVM or Xen hypervisor. Debug symbols
   are preserved and seccomp is disabled in the pillar container.
   The name of the built pillar container is `lfedge/eve-pillar:<hash>-dev`.
-* `make pkg/pillar HV=kubevirt`: Production version of pillar for the KubeVirt hypervisor (EVE using
-  K3s + KubeVirt to deploy applications as VMs inside Kubernetes Pods). Contains additional
+* `make pkg/pillar HV=k`: Production version of pillar for the k3s hypervisor (EVE using
+  K3s and optionally KubeVirt to deploy applications as VMs inside Kubernetes Pods). Contains additional
   microservices and Go package dependencies specific to Kubernetes.
   The name of the built pillar container is `lfedge/eve-pillar:<hash>-kube`.
-* `make pkg/pillar HV=kubevirt DEV=y`: Development version of pillar for the KubeVirt hypervisor.
+* `make pkg/pillar HV=k DEV=y`: Development version of pillar for the k3s hypervisor.
   Debug symbols are preserved and seccomp is disabled in the pillar container.
   The name of the built pillar container is `lfedge/eve-pillar:<hash>-kube-dev`.
 
-Note that the final image tag for the dev and kubevirt variants is the
-combination of the image hash + the variant string (dev, kube or kube-dev).
+Note that the final image tag for the dev and k variants is the
+combination of the image hash + the variant string (dev, k or k-dev).
 
 The `lfedge/eve-pillar` regular + kube variant images are published to Dockerhub
 as part of `lf-edge/eve` Github actions for the master branch and EVE releases.

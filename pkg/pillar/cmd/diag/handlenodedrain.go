@@ -53,7 +53,7 @@ func printNodeDrainStatus(ctx *diagContext) {
 		switch nds.Status {
 		case kubeapi.UNKNOWN:
 		case kubeapi.NOTSUPPORTED:
-			// not kubevirt-EVE or not clustered, skipping unnecessary logging
+			// not EVE 'k' or not clustered, skipping unnecessary logging
 		case kubeapi.NOTREQUESTED:
 			fallthrough
 		case kubeapi.REQUESTED:

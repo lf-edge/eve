@@ -113,7 +113,7 @@ jobs:
             hv: kvm
             platform: "imx8mp_epc_r3720"
           - arch: amd64
-            hv: kubevirt
+            hv: k
             platform: "generic"
     steps:
       - uses: actions/checkout@v4

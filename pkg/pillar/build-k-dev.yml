@@ -6,7 +6,7 @@
 ---
 org: lfedge
 image: eve-pillar
-tag: "{{.Hash}}-kube"
+tag: "{{.Hash}}-kube-dev"
 config:
   binds:
     - /lib/modules:/lib/modules
@@ -25,6 +25,8 @@ config:
   devices:
     - path: all
       type: a
+  security_opt:
+    - seccomp:unconfined
 buildArgs:
-  - HV=kubevirt
-  - REL_HASH_%=@lkt:pkgs:../*
+  - HV=k
+  - DEV=y

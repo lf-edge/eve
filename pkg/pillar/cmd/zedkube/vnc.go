@@ -1,7 +1,7 @@
 // Copyright (c) 2024 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-//go:build kubevirt
+//go:build k
 
 package zedkube
 
@@ -20,7 +20,7 @@ import (
 	"kubevirt.io/client-go/kubecli"
 )
 
-// runAppVNC - run vnc for kubevirt VMI remote console
+// runAppVNC - run vnc for EVE 'k' VMI remote console
 func (z *zedkube) runAppVNC(config *types.AppInstanceConfig) {
 	vmconfig := config.FixedResources
 

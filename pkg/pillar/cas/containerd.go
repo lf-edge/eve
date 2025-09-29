@@ -731,7 +731,7 @@ func (c *containerdCAS) PrepareContainerRootDir(rootPath, reference, _ string) e
 
 func (c *containerdCAS) prepareContainerRootDirForKubevirt(clientImageSpec *ocispec.Image, snapshotID string, rootPath string) error {
 
-	// On kubevirt eve we also write the mountpoints and cmdline files to the rootPath.
+	// On EVE 'k' we also write the mountpoints and cmdline files to the rootPath.
 	// Once rootPath is populated with all necessary files, this rootPath directory will be
 	// converted to a PVC and passed in to domainmgr to attach to VM as rootdisk
 	// NOTE: For kvm eve these files are generated and passed to bootloader in pkg/pillar/containerd/oci.go:AddLoader()

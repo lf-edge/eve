@@ -113,7 +113,7 @@ The designated device will start the application and publishes AppInstanceStatus
 * [zedagent/handlemetrics.go](../cmd/zedagent/handlemetrics.go)
 
 ```golang
-  // For Clustered apps on HV=kubevirt, 'ClusterAppRunning' designates
+  // For Clustered apps on HV=k, 'ClusterAppRunning' designates
   // the app is running on this node either naturally or after some failover event.
   ReportAppInfo.ClusterAppRunning = aiStatus.Activated
 ```

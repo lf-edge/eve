@@ -562,7 +562,7 @@ run by EVE inside shim-VM will pick them up and apply them).
 
 In the case of VM applications, it is mostly the responsibility of the app/user to set
 and keep the MTUs up-to-date. When device provides HW-assisted virtualization capabilities,
-EVE (with kvm or kubevirt hypervisor) connects VM with network instances using para-virtualized
+EVE (with kvm or 'k' hypervisor) connects VM with network instances using para-virtualized
 virtio interfaces, which allow to propagate MTU value from the host to the guest.
 If the virtio driver used by the app supports the MTU propagation, the initial MTU values
 will be set using virtio (regardless of the network instance type).

@@ -1,7 +1,7 @@
 // Copyright (c) 2025 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-//go:build kubevirt
+//go:build k
 
 package zedkube
 
@@ -125,9 +125,9 @@ func (z *zedkube) checkAppsFailover(wdFunc func()) {
 		//
 		// App is not running, but kubernetes has not scheduled a new copy yet.
 		//
-		// Sometimes when a node becomes unreachable, the kubevirt control-plane seems to
+		// Sometimes when a node becomes unreachable, the k3s control-plane seems to
 		// Get stuck and not schedule a new VMI or virt-launcher pod.  This tested step seems
-		// to push kubevirt into scheduling a new replica.
+		// to push k3s into scheduling a new replica.
 		//
 		if !foundNewSchedulingPod && ((durationTerminating > (time.Minute * 2)) && z.isDecisionNode()) {
 			log.Noticef("aiDisplayName:%s aiUUID:%s only a terminating pod for 2+min, moving to reset vmirs",
