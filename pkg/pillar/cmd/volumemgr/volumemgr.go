@@ -183,7 +183,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 	// Pick up debug aka log level before we start real work
 	for !ctx.GCInitialized {
-		log.Functionf("waiting for GCInitialized")
+		log.Errorf("BZVM waiting for GCInitialized")
 		select {
 		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
@@ -191,7 +191,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		}
 		ps.StillRunning(agentName, warningTime, errorTime)
 	}
-	log.Functionf("processed GlobalConfig")
+	log.Errorf("BZVM processed GlobalConfig")
 
 	// Look for capabilities
 	subCapabilities, err := ps.NewSubscription(pubsub.SubscriptionOptions{
@@ -211,7 +211,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 	// wait for capabilities
 	for ctx.capabilities == nil {
-		log.Functionf("waiting for Capabilities")
+		log.Errorf("BZVM waiting for Capabilities")
 		select {
 		case change := <-subCapabilities.MsgChan():
 			subCapabilities.ProcessChange(change)
@@ -221,19 +221,19 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 	// we do not expect any changes in capabilities
 	if err := subCapabilities.Close(); err != nil {
-		log.Errorf("cannot close subCapabilities: %v", err)
+		log.Errorf("BZVM cannot close subCapabilities: %v", err)
 	}
-	log.Functionf("processed Capabilities")
+	log.Errorf("BZVM processed Capabilities")
 
 	if err := wait.WaitForVault(ps, log, agentName, warningTime, errorTime); err != nil {
 		log.Fatal(err)
 	}
-	log.Functionf("processed Vault Status")
+	log.Errorf("BZVM processed Vault Status")
 
 	if err := containerd.WaitForUserContainerd(ps, log, agentName, warningTime, errorTime); err != nil {
 		log.Fatal(err)
 	}
-	log.Functionf("user containerd ready")
+	log.Errorf("BZVM user containerd ready")
 
 	// wait for kubernetes up if in kube mode, if gets error, move on
 	if ctx.hvTypeKube {

@@ -16,7 +16,7 @@ func MaybeAddAppNetworkConfig(ctx *zedmanagerContext,
 
 	key := aiConfig.Key()
 	displayName := aiConfig.DisplayName
-	log.Functionf("MaybeAddAppNetworkConfig for %s displayName %s", key,
+	log.Errorf("BAZINGA MaybeAddAppNetworkConfig for %s displayName %s", key,
 		displayName)
 
 	effectiveActivate := effectiveActivateCombined(aiConfig, ctx)
@@ -24,46 +24,46 @@ func MaybeAddAppNetworkConfig(ctx *zedmanagerContext,
 	changed := false
 	m := lookupAppNetworkConfig(ctx, key)
 	if m != nil {
-		log.Functionf("appNetwork config already exists for %s", key)
+		log.Errorf("BAZINGA appNetwork config already exists for %s", key)
 		if len(aiConfig.AppNetAdapterList) != len(m.AppNetAdapterList) {
-			log.Errorln("Unsupported: Changed number of AppNetAdapter for ",
+			log.Errorln("BAZINGA Unsupported: Changed number of AppNetAdapter for ",
 				aiConfig.UUIDandVersion)
 			return
 		}
 		if m.Activate != effectiveActivate {
-			log.Functionf("MaybeAddAppNetworkConfig Activate changed from %v to %v",
+			log.Errorf("BAZINGA MaybeAddAppNetworkConfig Activate changed from %v to %v",
 				m.Activate, effectiveActivate)
 			changed = true
 		}
 		if !m.GetStatsIPAddr.Equal(aiConfig.CollectStatsIPAddr) {
-			log.Functionf("MaybeAddAppNetworkConfig: stats ip changed from  %s to %s",
+			log.Errorf("BAZINGA MaybeAddAppNetworkConfig: stats ip changed from  %s to %s",
 				m.GetStatsIPAddr.String(), aiConfig.CollectStatsIPAddr.String())
 			changed = true
 		}
 		if m.MetaDataType != aiConfig.MetaDataType {
-			log.Functionf("MaybeAddAppNetworkConfig: MetaDataType changed from  %s to %s",
+			log.Errorf("BAZINGA MaybeAddAppNetworkConfig: MetaDataType changed from  %s to %s",
 				m.MetaDataType.String(), aiConfig.MetaDataType.String())
 			changed = true
 		}
 		if m.CloudInitUserData != aiConfig.CloudInitUserData {
-			log.Functionf("MaybeAddAppNetworkConfig: CloudInitUserData changed")
+			log.Errorf("BAZINGA MaybeAddAppNetworkConfig: CloudInitUserData changed")
 			changed = true
 		}
 		if bytes.Compare(m.CipherBlockStatus.CipherData, aiConfig.CipherBlockStatus.CipherData) != 0 {
-			log.Functionf("MaybeAddAppNetworkConfig: CipherBlockStatus.CipherData changed")
+			log.Errorf("BAZINGA MaybeAddAppNetworkConfig: CipherBlockStatus.CipherData changed")
 			changed = true
 		}
 		for i, new := range aiConfig.AppNetAdapterList {
 			old := m.AppNetAdapterList[i]
 			if !reflect.DeepEqual(new.ACLs, old.ACLs) {
-				log.Functionf("Under ACLs changed from %v to %v",
+				log.Errorf("BAZINGA Under ACLs changed from %v to %v",
 					old.ACLs, new.ACLs)
 				changed = true
 				break
 			}
 		}
 	} else {
-		log.Tracef("appNetwork config add for %s", key)
+		log.Errorf("BAZINGA appNetwork config add for %s", key)
 		changed = true
 	}
 	if changed {
@@ -83,9 +83,10 @@ func MaybeAddAppNetworkConfig(ctx *zedmanagerContext,
 			ul := &nc.AppNetAdapterList[i]
 			*ul = ulc
 		}
+		log.Errorf("BAZINGA MaybeAddAppNetworkConfig publishAppNetworkConfig for %s", key)
 		publishAppNetworkConfig(ctx, &nc)
 	}
-	log.Functionf("MaybeAddAppNetworkConfig done for %s", key)
+	log.Errorf("BAZINGA MaybeAddAppNetworkConfig done for %s", key)
 }
 
 func lookupAppNetworkConfig(ctx *zedmanagerContext, key string) *types.AppNetworkConfig {

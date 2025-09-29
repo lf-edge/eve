@@ -26,10 +26,10 @@ import (
 // from the name of the volume and prepares map of it
 func populateExistingVolumesFormatObjects(_ *volumemgrContext, dirName string) {
 
-	log.Functionf("populateExistingVolumesFormatObjects(%s)", dirName)
+	log.Errorf("BZVM populateExistingVolumesFormatObjects(%s)", dirName)
 	locations, err := os.ReadDir(dirName)
 	if err != nil {
-		log.Errorf("populateExistingVolumesFormatObjects: read directory '%s' failed: %v",
+		log.Errorf("BZVM populateExistingVolumesFormatObjects: read directory '%s' failed: %v",
 			dirName, err)
 		return
 	}
@@ -39,10 +39,10 @@ func populateExistingVolumesFormatObjects(_ *volumemgrContext, dirName string) {
 			log.Error(err)
 			continue
 		}
-		log.Noticef("populateExistingVolumesFormatObjects: saving format %s for volume %s", tempStatus.ContentFormat, tempStatus.Key())
+		log.Errorf("BZVM populateExistingVolumesFormatObjects: saving format %s for volume %s", tempStatus.ContentFormat, tempStatus.Key())
 		volumeFormat[tempStatus.Key()] = tempStatus.ContentFormat
 	}
-	log.Functionf("populateExistingVolumesFormatObjects(%s) Done", dirName)
+	log.Errorf("BZVM populateExistingVolumesFormatObjects(%s) Done", dirName)
 }
 
 // populateExistingVolumesFormatDatasets iterates over the dataset and takes format

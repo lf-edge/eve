@@ -16,7 +16,7 @@ import (
 func handleVolumeCreate(ctxArg interface{}, key string,
 	configArg interface{}) {
 
-	log.Functionf("handleVolumeCreate(%s)", key)
+	log.Errorf("BVMGR handleVolumeCreate(%s)", key)
 	config := configArg.(types.VolumeConfig)
 	ctx := ctxArg.(*volumemgrContext)
 	// we received volume configuration
@@ -27,13 +27,13 @@ func handleVolumeCreate(ctxArg interface{}, key string,
 	}
 	//defer creation to restart handler
 	ctx.volumeConfigCreateDeferredMap[key] = &config
-	log.Functionf("handleVolumeCreate(%s) Done", key)
+	log.Errorf("BVMGR handleVolumeCreate(%s) Done", key)
 }
 
 func handleVolumeModify(ctxArg interface{}, key string,
 	configArg interface{}, oldConfigArg interface{}) {
 
-	log.Functionf("handleVolumeModify(%s)", key)
+	log.Errorf("BVMGR handleVolumeModify(%s)", key)
 	config := configArg.(types.VolumeConfig)
 	ctx := ctxArg.(*volumemgrContext)
 
@@ -43,13 +43,13 @@ func handleVolumeModify(ctxArg interface{}, key string,
 	} else {
 		status := ctx.LookupVolumeStatus(config.Key())
 		if status == nil {
-			log.Fatalf("status doesn't exist at handleVolumeModify for %s", config.Key())
+			log.Fatalf("BVMGR status doesn't exist at handleVolumeModify for %s", config.Key())
 		}
 		needRegeneration, regenerationReason := quantifyChanges(config, *status)
 		if needRegeneration {
 			errStr := fmt.Sprintf("Need volume regeneration due to %s but generation counter not incremented",
 				regenerationReason)
-			log.Errorf("handleVolumeModify(%s) failed: %s", status.Key(), errStr)
+			log.Errorf("BVMGR handleVolumeModify(%s) failed: %s", status.Key(), errStr)
 			status.SetError(errStr, time.Now())
 			publishVolumeStatus(ctx, status)
 			updateVolumeRefStatus(ctx, status)

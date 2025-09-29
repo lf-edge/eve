@@ -221,7 +221,7 @@ func (sub *SubscriptionImpl) dump(infoStr string) {
 func handleModify(ctxArg any, key string, itemcb []byte) {
 	sub := ctxArg.(*SubscriptionImpl)
 	name := sub.nameString()
-	sub.log.Tracef("pubsub.handleModify(%s) key %s\n", name, key)
+	sub.log.Errorf("pubsub.handleModify(%s) key %s\n", name, key)
 	// Any large items which were stored separately?
 	itemcb, err := readAddLarge(sub.log, itemcb)
 	if err != nil {
@@ -278,7 +278,7 @@ func handleModify(ctxArg any, key string, itemcb []byte) {
 			sub.ModifyHandler(sub.userCtx, key, newItem, m)
 		}
 	}
-	sub.log.Tracef("pubsub.handleModify(%s) done for key %s\n", name, key)
+	sub.log.Errorf("pubsub.handleModify(%s) done for key %s\n", name, key)
 }
 
 func handleDelete(ctxArg any, key string) {

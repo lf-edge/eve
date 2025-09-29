@@ -150,7 +150,7 @@ func doUpdate(ctx *zedmanagerContext,
 	changed := false
 	done := false
 
-	log.Errorf("AMIGO ZEDMGR doUpdate: UUID:%s, Name", uuidStr)
+	log.Errorf("BAZINGA doUpdate: UUID:%s", uuidStr)
 
 	// Manage events necessitating VM shutdown (such as snapshot removal, rollback).
 	// This is different from instances where the VM is deactivated due to a purge&update
@@ -192,19 +192,19 @@ func doUpdate(ctx *zedmanagerContext,
 	var hasPriority bool
 	activeAppsUUIDs, err := activeapp.LoadActiveAppInstanceUUIDs(log)
 	if err != nil {
-		log.Warningf("checkLowPriorityApps: failed to load active app instance UUIDs: %v", err)
+		log.Errorf("BAZINGA checkLowPriorityApps: failed to load active app instance UUIDs: %v", err)
 		activeAppsUUIDs = []string{} // Fallback to an empty list
 	}
 	// Check if the app is in the active list
-	log.Errorf("AMIGO ZEDMGR Processing AppInstanceConfig for app with UUID: %s", config.UUIDandVersion.UUID.String())
+	log.Errorf("BAZINGA Processing AppInstanceConfig for app with UUID: %s", config.UUIDandVersion.UUID.String())
 	for _, uuid := range activeAppsUUIDs {
-		log.Functionf("active app instance UUID: %s", uuid)
+		log.Errorf("BAZINGA active app instance UUID: %s", uuid)
 		if uuid == config.UUIDandVersion.UUID.String() {
 			hasPriority = true
 		}
 	}
 	if !hasPriority && !status.NoBootPriority {
-		log.Functionf("low priority app %s", uuidStr)
+		log.Errorf("BAZINGA low priority app %s", uuidStr)
 		status.NoBootPriority = true
 		return true
 	}
@@ -218,7 +218,7 @@ func doUpdate(ctx *zedmanagerContext,
 
 	// Are we doing a purge?
 	if status.PurgeInprogress == types.DownloadAndVerify {
-		log.Functionf("PurgeInprogress(%s) volumemgr done",
+		log.Errorf("BAZINGA PurgeInprogress(%s) volumemgr done",
 			status.Key())
 		status.PurgeInprogress = types.BringDown
 		status.State = types.HALTING
@@ -226,11 +226,11 @@ func doUpdate(ctx *zedmanagerContext,
 		// Keep the old volumes in place
 		_, done := doRemove(ctx, status, false)
 		if !done {
-			log.Functionf("PurgeInprogress(%s) waiting for removal",
+			log.Errorf("BAZINGA PurgeInprogress(%s) waiting for removal",
 				status.Key())
 			return changed
 		}
-		log.Functionf("PurgeInprogress(%s) bringing it up",
+		log.Errorf("BAZINGA PurgeInprogress(%s) bringing it up",
 			status.Key())
 	}
 
@@ -247,7 +247,7 @@ func doUpdate(ctx *zedmanagerContext,
 
 	// Check if we are still rolling back. Should not activate in that case.
 	if status.SnapStatus.RollbackInProgress {
-		log.Functionf("Rollback in progress for %s", uuidStr)
+		log.Errorf("BAZINGA Rollback in progress for %s", uuidStr)
 		return changed
 	}
 
@@ -268,14 +268,14 @@ func doUpdate(ctx *zedmanagerContext,
 				changed = true
 			}
 		}
-		log.Functionf("Waiting for config.Activate for %s", uuidStr)
+		log.Errorf("BAZINGA Waiting for config.Activate for %s", uuidStr)
 		return changed
 	}
-	log.Functionf("Have config.Activate for %s", uuidStr)
+	log.Errorf("BAZINGA Have config.Activate for %s", uuidStr)
 
 	c = doActivate(ctx, uuidStr, config, status)
 	changed = changed || c
-	log.Functionf("doUpdate done for %s", uuidStr)
+	log.Errorf("BAZINGA doUpdate done for %s", uuidStr)
 	return changed
 }
 
@@ -348,7 +348,7 @@ func doInstall(ctx *zedmanagerContext,
 
 	uuidStr := status.Key()
 
-	log.Functionf("doInstall: UUID: %s", uuidStr)
+	log.Errorf("BAZINGA doInstall: UUID: %s", uuidStr)
 	allErrors := ""
 	var errorSource interface{}
 	var errorTime time.Time
@@ -358,7 +358,7 @@ func doInstall(ctx *zedmanagerContext,
 	changed := false
 
 	if len(config.VolumeRefConfigList) != len(status.VolumeRefStatusList) {
-		errString := fmt.Sprintf("Mismatch in volumeRefConfig vs. Status length: %d vs %d",
+		errString := fmt.Sprintf("BAZINGA Mismatch in volumeRefConfig vs. Status length: %d vs %d",
 			len(config.VolumeRefConfigList),
 			len(status.VolumeRefStatusList))
 		if status.PurgeInprogress == types.NotInprogress {
@@ -391,10 +391,10 @@ func doInstall(ctx *zedmanagerContext,
 				newVrs = append(newVrs, *vrs)
 				continue
 			}
-			log.Functionf("Removing potentially bad VolumeRefStatus %v",
+			log.Errorf("BAZINGA Removing potentially bad VolumeRefStatus %v",
 				vrs)
 			if status.IsErrorSource(vrs.ErrorSourceType) {
-				log.Functionf("Removing error %s", status.Error)
+				log.Errorf("BAZINGA Removing error %s", status.Error)
 				status.ClearErrorWithSource()
 			}
 			MaybeRemoveVolumeRefConfig(ctx, config.UUIDandVersion.UUID,
@@ -407,11 +407,11 @@ func doInstall(ctx *zedmanagerContext,
 				removed = true
 			}
 		}
-		log.Functionf("purge inactive (%s) volumeRefStatus from %d to %d",
+		log.Errorf("BAZINGA purge inactive (%s) volumeRefStatus from %d to %d",
 			config.Key(), len(status.VolumeRefStatusList), len(newVrs))
 		status.VolumeRefStatusList = newVrs
 		if removed {
-			log.Functionf("Waiting for bad VolumeRefStatus to go away for AppInst %s",
+			log.Errorf("BAZINGA Waiting for bad VolumeRefStatus to go away for AppInst %s",
 				status.Key())
 			return removed, false
 		}
@@ -425,7 +425,7 @@ func doInstall(ctx *zedmanagerContext,
 		}
 		if status.PurgeInprogress == types.NotInprogress {
 			errString := fmt.Sprintf(
-				"New volumeRefConfig (VolumeID: %s, GenerationCounter: %d, "+
+				"BAZINGA New volumeRefConfig (VolumeID: %s, GenerationCounter: %d, "+
 					"LocalGenerationCounter: %d) found. "+
 					"New Storage configs are not allowed unless purged",
 				vrc.VolumeID, vrc.GenerationCounter, vrc.LocalGenerationCounter)
@@ -442,7 +442,7 @@ func doInstall(ctx *zedmanagerContext,
 			State:                  types.INITIAL,
 			VerifyOnly:             vrc.VerifyOnly,
 		}
-		log.Functionf("Adding new VolumeRefStatus %v", newVrs)
+		log.Errorf("BAZINGA Adding new VolumeRefStatus %v", newVrs)
 		status.VolumeRefStatusList = append(status.VolumeRefStatusList, newVrs)
 		changed = true
 	}
@@ -456,6 +456,7 @@ func doInstall(ctx *zedmanagerContext,
 			}
 			if vrsPubSub.VerifyOnly && vrsPubSub.State == types.LOADED {
 				vrc.VerifyOnly = false
+				log.Errorf("BAZINGA doInstall: UUID: %s publishVolumeRefConfig", uuidStr)
 				publishVolumeRefConfig(ctx, vrc)
 			}
 		}
@@ -465,6 +466,7 @@ func doInstall(ctx *zedmanagerContext,
 		vrs := &status.VolumeRefStatusList[i]
 		// install volume ref again if we had an error
 		if status.State < types.CREATED_VOLUME || status.PurgeInprogress != types.NotInprogress || vrs.HasError() {
+			log.Errorf("BAZINGA doInstall: UUID: %s doInstallVolumeRef", uuidStr)
 			c := doInstallVolumeRef(ctx, config, status, vrs)
 			if c {
 				changed = true
@@ -520,22 +522,22 @@ func doInstall(ctx *zedmanagerContext,
 		status.SetErrorWithSourceAndDescription(description, errorSource)
 	}
 	if allErrors != "" {
-		log.Errorf("Volumemgr error for %s: %s", uuidStr, allErrors)
+		log.Errorf("BAZINGA Volumemgr error for %s: %s", uuidStr, allErrors)
 		return changed, false
 	}
 
 	if status.PurgeInprogress != types.DownloadAndVerify && status.PurgeInprogress != types.BringDown && minState < types.CREATED_VOLUME {
-		log.Functionf("Waiting for all new volumes for %s", uuidStr)
+		log.Errorf("BAZINGA Waiting for all new volumes for %s", uuidStr)
 		return changed, false
 	}
 
 	if status.PurgeInprogress == types.DownloadAndVerify && minState < types.LOADED {
-		log.Functionf("Waiting for all volumes to be loaded for %s", uuidStr)
+		log.Errorf("BAZINGA Waiting for all volumes to be loaded for %s", uuidStr)
 		return changed, false
 	}
 
-	log.Functionf("Done with volumes for %s", uuidStr)
-	log.Functionf("doInstall done for %s", uuidStr)
+	log.Errorf("BAZINGA Done with volumes for %s", uuidStr)
+	log.Errorf("BAZINGA doInstall done for %s", uuidStr)
 	return changed, true
 }
 
@@ -600,7 +602,7 @@ func doPrepare(ctx *zedmanagerContext,
 func doActivate(ctx *zedmanagerContext, uuidStr string,
 	config types.AppInstanceConfig, status *types.AppInstanceStatus) bool {
 
-	log.Errorf("UPD STAT doActivate for %s", uuidStr)
+	log.Errorf("BAZINGA doActivate for %s", uuidStr)
 	changed := false
 
 	// Are we doing a restart and it came down?
@@ -615,7 +617,7 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 				changed = true
 			}
 			if status.BootTime != ds.BootTime {
-				log.Functionf("Update boottime to %s for %s",
+				log.Errorf("BAZINGA Update boottime to %s for %s",
 					ds.BootTime.Format(time.RFC3339Nano),
 					status.Key())
 				status.BootTime = ds.BootTime
@@ -626,7 +628,7 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 				changed = true
 			}
 			if !ds.Activated && !ds.HasError() {
-				log.Functionf("RestartInprogress(%s) came down - set bring up",
+				log.Errorf("BAZINGA RestartInprogress(%s) came down - set bring up",
 					status.Key())
 				status.RestartInprogress = types.BringUp
 				changed = true
@@ -643,7 +645,7 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 			// Get hypervisor
 			hyp, err := hypervisor.GetHypervisor(*ctx.hypervisorPtr)
 			if err != nil {
-				log.Fatalf("Cannot get hypervisor: %s", err)
+				log.Fatalf("BAZINGA Cannot get hypervisor: %s", err)
 			}
 
 			status.MemOverhead, err = hyp.CountMemOverhead(status.DomainName, config.UUIDandVersion.UUID,
@@ -651,6 +653,7 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 				int64(config.FixedResources.MaxCpus), int64(config.FixedResources.VCpus), config.IoAdapterList,
 				ctx.assignableAdapters, ctx.globalConfig)
 			// We have to publish the status here, because we need to save the memory overhead value, it's used in getRemainingMemory
+			log.Errorf("BAZINGA doActivate publishAppInstanceStatus for %s", uuidStr)
 			publishAppInstanceStatus(ctx, status)
 		}
 
@@ -658,7 +661,7 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 		if err != nil {
 			errStr := fmt.Sprintf("getRemainingMemory failed: %s\n",
 				err)
-			log.Errorf("doActivate(%s) failed: %s",
+			log.Errorf("BAZINGA doActivate(%s) failed: %s",
 				status.Key(), errStr)
 			description := types.ErrorDescription{
 				Error:               errStr,
@@ -698,7 +701,7 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 				}
 				retryCondition = "Retry will be triggered when one or more apps will shutdown"
 			}
-			log.Errorf("doActivate(%s) failed: %s",
+			log.Errorf("BAZINGA doActivate(%s) failed: %s",
 				status.Key(), errStr)
 			description := types.ErrorDescription{
 				Error:               errStr,
@@ -712,11 +715,11 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 			return changed
 		}
 		if remaining < latent+need {
-			log.Warnf("Deploying %s memory %d kB remaining %d kB but latent memory use %d kB",
+			log.Errorf("BAZINGA Deploying %s memory %d kB remaining %d kB but latent memory use %d kB",
 				config.DisplayName, config.FixedResources.Memory,
 				remaining>>10, latent>>10)
 		} else {
-			log.Functionf("Deploying %s memory %d kB remaining %d kB latent %d kB",
+			log.Errorf("BAZINGA Deploying %s memory %d kB remaining %d kB latent %d kB",
 				config.DisplayName, config.FixedResources.Memory,
 				remaining>>10, latent>>10)
 		}
@@ -725,22 +728,22 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 	// Track that we have cleanup work in case something fails
 	status.ActivateInprogress = true
 
-	log.Errorf("UPD STAT doActivate for %s 2", uuidStr)
+	log.Errorf("BAZINGA doActivate for %s 2", uuidStr)
 	// Make sure we have an AppNetworkConfig
 	MaybeAddAppNetworkConfig(ctx, config, status)
 
 	// Check AppNetworkStatus
 	ns := lookupAppNetworkStatus(ctx, uuidStr)
 	if ns == nil {
-		log.Errorf("UPD STAT Waiting for AppNetworkStatus for %s", uuidStr)
+		log.Errorf("BAZINGA Waiting for AppNetworkStatus for %s", uuidStr)
 		return changed
 	}
 	if ns.Pending() {
-		log.Functionf("Waiting for AppNetworkStatus !Pending for %s", uuidStr)
+		log.Errorf("BAZINGA Waiting for AppNetworkStatus !Pending for %s", uuidStr)
 		return changed
 	}
 	if ns.HasError() {
-		log.Errorf("Received error from zedrouter for %s: %s",
+		log.Errorf("BAZINGA Received error from zedrouter for %s: %s",
 			uuidStr, ns.Error)
 		status.SetErrorWithSource(ns.Error, types.AppNetworkStatus{},
 			ns.ErrorTime)
@@ -748,22 +751,22 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 		return changed
 	}
 	if ns.AwaitNetworkInstance {
-		log.Functionf("Waiting for required network instances to arrive for %s", uuidStr)
+		log.Errorf("BAZINGA Waiting for required network instances to arrive for %s", uuidStr)
 		status.State = types.AWAITNETWORKINSTANCE
 		changed = true
 		return changed
 	}
 	updateAppNetworkStatus(status, ns)
 	if !ns.Activated {
-		log.Functionf("Waiting for AppNetworkStatus Activated for %s", uuidStr)
+		log.Errorf("BAZINGA Waiting for AppNetworkStatus Activated for %s", uuidStr)
 		return changed
 	}
 	if status.IsErrorSource(types.AppNetworkStatus{}) {
-		log.Functionf("Clearing zedrouter error %s", status.Error)
+		log.Errorf("BAZINGA Clearing zedrouter error %s", status.Error)
 		status.ClearErrorWithSource()
 		changed = true
 	}
-	log.Tracef("Done with AppNetworkStatus for %s", uuidStr)
+	log.Errorf("BAZINGA Done with AppNetworkStatus for %s", uuidStr)
 
 	// Do we try to activate an application earlier than it's configured to start?
 	if time.Now().Before(status.StartTime) {
@@ -790,7 +793,7 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 			}
 			findcontainer = true
 			if vrs.ReferenceName == "" {
-				log.Noticef("doActivate: waiting for referencename ")
+				log.Errorf("BAZINGA doActivate: waiting for referencename ")
 				if status.State != types.START_DELAYED {
 					status.State = types.START_DELAYED
 					return true
@@ -799,7 +802,7 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 			}
 		}
 		if !findcontainer {
-			log.Noticef("doActivate: no container found, wait")
+			log.Errorf("BAZINGA doActivate: no container found, wait")
 			if status.State != types.START_DELAYED {
 				status.State = types.START_DELAYED
 				return true
@@ -828,7 +831,7 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 	// Check DomainStatus; update AppInstanceStatus if error
 	ds := lookupDomainStatus(ctx, uuidStr)
 	if ds == nil {
-		log.Functionf("Waiting for DomainStatus for %s", uuidStr)
+		log.Errorf("BAZINGA Waiting for DomainStatus for %s", uuidStr)
 		publishDomainConfig(ctx, dc)
 		return changed
 	}
@@ -837,7 +840,7 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 		changed = true
 	}
 	if status.BootTime != ds.BootTime {
-		log.Functionf("Update boottime to %s for %s",
+		log.Errorf("BAZINGA Update boottime to %s for %s",
 			ds.BootTime.Format(time.RFC3339Nano), status.Key())
 		status.BootTime = ds.BootTime
 		changed = true
@@ -849,17 +852,17 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 	// Are we doing a restart?
 	if status.RestartInprogress == types.BringDown {
 		if dc.Activate {
-			log.Functionf("RestartInprogress(%s) Clear Activate",
+			log.Errorf("BAZINGA RestartInprogress(%s) Clear Activate",
 				status.Key())
 			dc.Activate = false
 		} else if !ds.Activated {
-			log.Functionf("RestartInprogress(%s) Set Activate",
+			log.Errorf("BAZINGA RestartInprogress(%s) Set Activate",
 				status.Key())
 			status.RestartInprogress = types.BringUp
 			changed = true
 			dc.Activate = true
 		} else {
-			log.Functionf("RestartInprogress(%s) waiting for domain down",
+			log.Errorf("BAZINGA RestartInprogress(%s) waiting for domain down",
 				status.Key())
 		}
 	}
@@ -867,28 +870,28 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 	// Look for xen errors. Ignore if we are going down
 	if status.RestartInprogress != types.BringDown {
 		if ds.HasError() {
-			log.Errorf("Received error from domainmgr for %s: %s",
+			log.Errorf("BAZINGA Received error from domainmgr for %s: %s",
 				uuidStr, ds.Error)
 			status.SetErrorWithSourceAndDescription(ds.ErrorDescription, types.DomainStatus{})
 			changed = true
 		} else if status.IsErrorSource(types.DomainStatus{}) {
-			log.Functionf("Clearing domainmgr error %s", status.Error)
+			log.Errorf("BAZINGA Clearing domainmgr error %s", status.Error)
 			status.ClearErrorWithSource()
 			changed = true
 		}
 	} else {
 		if ds.HasError() {
-			log.Warnf("bringDown sees error from domainmgr for %s: %s",
+			log.Errorf("BAZINGA bringDown sees error from domainmgr for %s: %s",
 				uuidStr, ds.Error)
 		}
 		if status.IsErrorSource(types.DomainStatus{}) {
-			log.Functionf("Clearing domainmgr error %s", status.Error)
+			log.Errorf("BAZINGA Clearing domainmgr error %s", status.Error)
 			status.ClearErrorWithSource()
 			changed = true
 		}
 	}
 	if ds.State != status.State {
-		log.Functionf("Set State from DomainStatus from %d to %d",
+		log.Errorf("BAZINGA Set State from DomainStatus from %d to %d",
 			status.State, ds.State)
 		status.State = ds.State
 		changed = true
@@ -897,15 +900,15 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 	status.IoAdapterList = ds.IoAdapterList
 	changed = true
 	if ds.State < types.BOOTING {
-		log.Functionf("Waiting for DomainStatus to BOOTING for %s",
+		log.Errorf("BAZINGA Waiting for DomainStatus to BOOTING for %s",
 			uuidStr)
 		return changed
 	}
 	if ds.Pending() {
-		log.Functionf("Waiting for DomainStatus !Pending for %s", uuidStr)
+		log.Errorf("BAZINGA Waiting for DomainStatus !Pending for %s", uuidStr)
 		return changed
 	}
-	log.Functionf("Done with DomainStatus for %s", uuidStr)
+	log.Errorf("BAZINGA Done with DomainStatus for %s", uuidStr)
 
 	if !status.Activated {
 		status.Activated = true
@@ -915,29 +918,29 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 	// Are we doing a restart?
 	if status.RestartInprogress == types.BringUp {
 		if ds.Activated {
-			log.Functionf("RestartInprogress(%s) activated",
+			log.Errorf("BAZINGA RestartInprogress(%s) activated",
 				status.Key())
 			status.RestartInprogress = types.NotInprogress
 			status.State = types.RUNNING
 			changed = true
 		} else {
-			log.Functionf("RestartInprogress(%s) waiting for Activated",
+			log.Errorf("BAZINGA RestartInprogress(%s) waiting for Activated",
 				status.Key())
 		}
 	}
 	if status.PurgeInprogress == types.BringUp {
 		if ds.Activated {
-			log.Functionf("PurgeInprogress(%s) activated",
+			log.Errorf("BAZINGA PurgeInprogress(%s) activated",
 				status.Key())
 			status.PurgeInprogress = types.NotInprogress
 			status.State = types.RUNNING
 			changed = true
 		} else {
-			log.Functionf("PurgeInprogress(%s) waiting for Activated",
+			log.Errorf("BAZINGA PurgeInprogress(%s) waiting for Activated",
 				status.Key())
 		}
 	}
-	log.Functionf("doActivate done for %s", uuidStr)
+	log.Errorf("BAZINGA doActivate done for %s", uuidStr)
 	return changed
 }
 

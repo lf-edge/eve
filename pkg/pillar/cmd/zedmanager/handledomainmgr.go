@@ -32,15 +32,15 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 
 	key := aiConfig.Key()
 	displayName := aiConfig.DisplayName
-	log.Functionf("MaybeAddDomainConfig for %s displayName %s", key,
+	log.Errorf("BAZINGA MaybeAddDomainConfig for %s displayName %s", key,
 		displayName)
 
 	m := lookupDomainConfig(ctx, key)
 	if m != nil {
 		// Always update to pick up new disks, vifs, Activate etc
-		log.Functionf("Domain config already exists for %s", key)
+		log.Errorf("BAZINGA Domain config already exists for %s", key)
 	} else {
-		log.Functionf("Domain config add for %s", key)
+		log.Errorf("BAZINGA Domain config add for %s", key)
 	}
 	AppNum := 0
 	if ns != nil {
@@ -73,7 +73,7 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 	for _, vrc := range aiConfig.VolumeRefConfigList {
 		vrs := getVolumeRefStatusFromAIStatus(&aiStatus, vrc)
 		if vrs == nil {
-			log.Errorf("Missing VolumeRefStatus for "+
+			log.Errorf("BAZINGA Missing VolumeRefStatus for "+
 				"(VolumeID: %s, GenerationCounter: %d, LocalGenerationCounter: %d)",
 				vrc.VolumeID, vrc.GenerationCounter, vrc.LocalGenerationCounter)
 			continue
@@ -82,7 +82,7 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 		// Volumes in kubevirt eve are of PVC type and managed by kubernetes.
 		// There is no specific filelocation
 		if location == "" && !ctx.hvTypeKube {
-			errStr := fmt.Sprintf("No ActiveFileLocation for %s", vrs.DisplayName)
+			errStr := fmt.Sprintf("BAZINGA No ActiveFileLocation for %s", vrs.DisplayName)
 			log.Error(errStr)
 			return nil, errors.New(errStr)
 		}
@@ -161,7 +161,7 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 			dc.ExtraArgs += " mtu=" + strings.Join(mtuStrList, ",")
 		}
 	}
-	log.Functionf("MaybeAddDomainConfig done for %s", key)
+	log.Errorf("BAZINGA MaybeAddDomainConfig done for %s", key)
 	return &dc, nil
 }
 
@@ -193,7 +193,7 @@ func publishDomainConfig(ctx *zedmanagerContext,
 	config *types.DomainConfig) {
 
 	key := config.Key()
-	log.Errorf("AMIGO ZEDMGR publishDomainConfig(%s)", key)
+	log.Errorf("BAZINGA publishDomainConfig(%s)", key)
 	pub := ctx.pubDomainConfig
 	pub.Publish(key, *config)
 }
