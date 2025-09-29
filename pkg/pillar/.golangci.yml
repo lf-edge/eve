@@ -28,7 +28,7 @@ linters:
     - wsl               # Way to opinionated
     - whitespace        # Too opinionated about whitespace
     - wrapcheck         # XXX should we switch to wrapped errors etc?
-    - goerr113          # XXX should we switch to wrapped errors etc?
+    - err113            # Too opinioned about error handling (also yetus probably doesn't run it correctly)
     - exhaustivestruct  # Too opinionated
     - gofumpt           # Too opinionated about whitespace
     - gomnd             # We use plenty of magic constants
