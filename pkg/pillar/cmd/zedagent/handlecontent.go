@@ -101,7 +101,7 @@ func parseContentInfoConfig(ctx *getconfigContext,
 		// If this node is not designated node id set IsLocal to false.
 		// Content will be downloaded to only to the designated node id of that content tree.
 		// So on other nodes in the cluster mark the content tree as non-local.
-		// On single node eve either kvm or kubevirt based, this node will always be designated node.
+		// On single node EVE (either kvm or 'k'), this node will always be designated node.
 		// But if this is the contenttree of a container, we download it to all nodes of the cluster,
 		// so set IsLocal true in such case.
 		if controllerDNID != "" && controllerDNID != devUUID.String() {

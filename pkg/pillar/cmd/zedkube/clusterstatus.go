@@ -1,7 +1,7 @@
 // Copyright (c) 2024 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-//go:build kubevirt
+//go:build k
 
 package zedkube
 
@@ -234,7 +234,7 @@ func (z *zedkube) startClusterStatusServer() {
 		z.clusterConfig.ClusterIPPrefix.IP.String(), types.ClusterStatusPort)
 	z.statusServer = &http.Server{
 		// Listen on the ClusterIPPrefix IP and the ClusterStatusPort
-		// the firewall rule is explicitly added to allow traffic to this port in kubevirt
+		// the firewall rule is explicitly added to allow traffic to this port in EVE 'k'
 		// this is documented in pkg/pillar/docs/zedkube.md section "Cluster Status Server"
 		Addr:    serverAddr,
 		Handler: mux,

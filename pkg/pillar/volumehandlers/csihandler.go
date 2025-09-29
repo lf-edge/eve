@@ -1,7 +1,7 @@
 // Copyright (c) 2024 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-//go:build kubevirt
+//go:build k
 
 package volumehandlers
 
@@ -140,7 +140,7 @@ func (handler *volumeHandlerCSI) CreateVolume() (string, error) {
 
 			chandler := &volumeHandlerContainer{handler.commonVolumeHandler}
 
-			// This lays out container rootfs directory and creates all bootloader files for kubevirt eve.
+			// This lays out container rootfs directory and creates all bootloader files for EVE 'k'.
 			imgDirLocation, err := chandler.CreateVolume()
 
 			handler.log.Noticef("After CreateVolume fileloc %s err %v", imgDirLocation, err)

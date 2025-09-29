@@ -32,7 +32,7 @@ jobs:
           - os: zededa-ubuntu-2204
             arch: amd64
             platform: "generic"
-            hv: kubevirt
+            hv: k
           - os: zededa-ubuntu-2204
             arch: amd64
             platform: "evaluation"
@@ -260,7 +260,7 @@ jobs:
             hv: kvm
             platform: "nvidia-jp6"
           - arch: amd64
-            hv: kubevirt
+            hv: k
             platform: "generic"
           - arch: amd64
             hv: kvm

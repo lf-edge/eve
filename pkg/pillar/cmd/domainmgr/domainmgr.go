@@ -134,7 +134,7 @@ type domainContext struct {
 	// CPUs management
 	cpuAllocator        *cpuallocator.CPUAllocator
 	cpuPinningSupported bool
-	// Is it kubevirt eve
+	// Is it EVE 'k'
 	hvTypeKube bool
 	nodeName   string
 }
@@ -635,7 +635,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 	log.Functionf("user containerd ready")
 
-	// wait for kubernetes to be ready in kubevirt mode, if gets error, move on
+	// wait for kubernetes to be ready in EVE 'k' mode, if gets error, move on
 	if domainCtx.hvTypeKube {
 		log.Noticef("Domainmgr run: wait for kubernetes")
 		err = kubeapi.WaitForKubernetes(agentName, ps, stillRunning)

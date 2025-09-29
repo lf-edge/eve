@@ -185,7 +185,7 @@ prepare_mounts_and_zfs_pool() {
   [ -e /persist ] || mkdir /persist && mount --rbind --make-rslave /root/persist /persist
 
   if [ "$2" = false ]; then
-    # kubevirt persist/vault is an ext4 zvol
+    # Not clustered storage; persist/vault is an ext4 zvol
     chroot /root zfs create -o mountpoint="/persist/containerd/io.containerd.snapshotter.v1.zfs" persist/snapshots
   fi
 }
@@ -390,7 +390,7 @@ RAID_LEVEL="none"
 
 eve_flavor=$(cat /root/etc/eve-hv-type)
 
-if [ "$eve_flavor" = "kubevirt" ]; then
+if [ "$eve_flavor" = "k" ]; then
    INSTALL_CLUSTERED_STORAGE=true
    INSTALL_ZFS=true
    logmsg "Kubevirt image installing ZFS"

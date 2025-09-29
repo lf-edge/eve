@@ -1,7 +1,7 @@
 // Copyright (c) 2024 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-//go:build kubevirt
+//go:build k
 
 package kubeapi
 
@@ -92,7 +92,7 @@ func GetNodeDrainStatus(subNodeDrainStatus pubsub.Subscription, log *base.LogObj
 	items := subNodeDrainStatus.GetAll()
 	glbStatus, ok := items["global"].(NodeDrainStatus)
 	if !ok {
-		// This should only be expected on an HV=kubevirt build
+		// This should only be expected in EVE-k builds
 		// and only very early in boot (before zedkube starts)
 		return &NodeDrainStatus{Status: UNKNOWN, RequestedBy: NONE}
 	}

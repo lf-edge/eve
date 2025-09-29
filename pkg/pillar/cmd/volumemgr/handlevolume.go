@@ -167,7 +167,7 @@ func handleDeferredVolumeCreate(ctx *volumemgrContext, key string, config *types
 
 		if ctStatus != nil {
 			status.ReferenceName = ctStatus.ReferenceID()
-			// In kubevirt eve though we created PVC from container image, we still set the content format as container.
+			// In EVE 'k' though we created PVC from container image, we still set the content format as container.
 			// This will help domainmgr to load the external boot kernel (support shim VM container)
 			if ctStatus.Format == zconfig.Format_CONTAINER {
 				status.ContentFormat = zconfig.Format_CONTAINER

@@ -9,7 +9,7 @@ OUTPUT_IMG=/tmp/output.img
 DEFAULT_LIVE_IMG_SIZE=592
 DEFAULT_INSTALLER_IMG_SIZE=592
 DEFAULT_NVIDIA_IMG_SIZE=900
-DEFAULT_KUBEVIRT_IMG_SIZE=2048
+DEFAULT_K_IMG_SIZE=2048
 DEFAULT_EVALUATION_INSTALLER_IMG_SIZE=3000
 DEFAULT_EVALUATION_LIVE_IMG_SIZE=2000
 
@@ -267,11 +267,11 @@ prepare_for_hv() {
     case "$hv" in
     kvm|xen|acrn)
         ;;
-    kubevirt)
+    k)
         # Override image sizes with the max of the two values
-        if [ "$DEFAULT_KUBEVIRT_IMG_SIZE" -gt "$DEFAULT_INSTALLER_IMG_SIZE" ]; then
-            DEFAULT_INSTALLER_IMG_SIZE="$DEFAULT_KUBEVIRT_IMG_SIZE"
-            DEFAULT_LIVE_IMG_SIZE="$DEFAULT_KUBEVIRT_IMG_SIZE"
+        if [ "$DEFAULT_K_IMG_SIZE" -gt "$DEFAULT_INSTALLER_IMG_SIZE" ]; then
+            DEFAULT_INSTALLER_IMG_SIZE="$DEFAULT_K_IMG_SIZE"
+            DEFAULT_LIVE_IMG_SIZE="$DEFAULT_K_IMG_SIZE"
         fi
         ;;
     *) #shellcheck disable=SC2039,SC2104

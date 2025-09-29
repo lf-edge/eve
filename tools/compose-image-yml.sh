@@ -20,25 +20,25 @@ process-image-template() {
     IFS='-' read -r -a bits <<< "${flags}"
 
     local dev=0
-    local kubevirt=0
+    local k=0
     for bit in "${bits[@]}"; do
         case "${bit}" in
             dev)
                 dev=1
                 ;;
-            kubevirt)
-                kubevirt=1
+            k)
+                k=1
                 ;;
         esac
     done
 
     local pillar_tag="PILLAR_TAG"
-    if [[ $dev -eq 1 && $kubevirt -eq 1 ]]; then
-      pillar_tag="PILLAR_KUBEVIRT_DEV_TAG"
+    if [[ $dev -eq 1 && $k -eq 1 ]]; then
+      pillar_tag="PILLAR_K_DEV_TAG"
     elif [[ $dev -eq 1 ]]; then
       pillar_tag="PILLAR_DEV_TAG"
-    elif [[ $kubevirt -eq 1 ]]; then
-      pillar_tag="PILLAR_KUBEVIRT_TAG"
+    elif [[ $k -eq 1 ]]; then
+      pillar_tag="PILLAR_K_TAG"
     fi
 
     # shellcheck disable=SC2094

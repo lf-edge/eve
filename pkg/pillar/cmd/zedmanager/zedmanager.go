@@ -74,7 +74,7 @@ type zedmanagerContext struct {
 	// hypervisorPtr is the name of the hypervisor to use
 	hypervisorPtr      *string
 	assignableAdapters *types.AssignableAdapters
-	// Is it kubevirt eve
+	// EVE 'k' mode
 	hvTypeKube bool
 	nodeUUID   uuid.UUID
 }

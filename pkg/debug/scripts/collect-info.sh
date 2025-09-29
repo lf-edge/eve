@@ -353,7 +353,7 @@ collect_zfs_info()
 collect_kube_info()
 {
     type=$(cat /run/eve-hv-type)
-    if [ "$type" = "kubevirt" ]; then
+    if [ "$type" = "k" ]; then
        echo "- Collecting Kube specific info"
        {
            echo "kubectl get nodes"
@@ -430,7 +430,7 @@ collect_kube_info()
 collect_longhorn_info()
 {
     type=$(cat /run/eve-hv-type)
-    if [ "$type" != "kubevirt" ]; then
+    if [ "$type" != "k" ]; then
         return
     fi
     echo "- Collecting Longhorn specific info"

@@ -114,7 +114,7 @@ jobs:
             hv: kvm
             platform: evaluation
           - arch: amd64
-            hv: kubevirt
+            hv: k
             platform: generic
     runs-on: ${{ matrix.arch == 'arm64' && 'zededa-ubuntu-2204-arm64' || 'zededa-ubuntu-2204' }}
 

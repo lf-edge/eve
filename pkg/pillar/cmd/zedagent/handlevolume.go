@@ -110,7 +110,7 @@ func parseVolumeConfig(ctx *getconfigContext,
 
 		controllerDNID := cfgVolume.GetDesignatedNodeId()
 		// If this node is designated node id set IsReplicated to false.
-		// On single node eve either kvm or kubevirt based, this node will always be designated node.
+		// On single node EVE (either kvm or 'k'), this node will always be designated node.
 		if controllerDNID != "" && controllerDNID != devUUID.String() {
 			volumeConfig.IsReplicated = true
 		} else {

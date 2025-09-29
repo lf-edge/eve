@@ -16,7 +16,7 @@ import (
 // GetVolumeFormat returns format of the volume
 func GetVolumeFormat(log *base.LogObject, fileLocation string) (config.Format, error) {
 
-	// If kubevirt type, format is always PVC.
+	// If EVE 'k' type, format is always PVC. XXX code mismatch?
 	if base.IsHVTypeKube() {
 		// Might be cleaner to call GetImgInfo(), i'll cleanup in a later commit
 		if strings.HasSuffix(fileLocation, ".cidata") {

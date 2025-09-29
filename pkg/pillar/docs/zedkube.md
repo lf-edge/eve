@@ -8,13 +8,13 @@ zedkube is a service in pillar/cmd/zedkube. The main purpose of the service is t
 
 ### App VNC for remote console
 
-For Kubevirt VMs, it does not like in KVM image to have QEMU service the VNC port 5900s ready for connection into the VM's console. In kubevirt image, we need to use 'virtctl' tool and specify the needed KubeConfig YAML file for access to the VMI's console.
+For Kubevirt VMs, it does not like in KVM image to have QEMU service the VNC port 5900s ready for connection into the VM's console. In the EVE 'k' image, we need to use 'virtctl' tool and specify the needed KubeConfig YAML file for access to the VMI's console.
 
 zedkube service subscribe to the AppInstanceConfig, and monitor if the user has requested the RemoteConsole access. If there is, the service will write to a file in /run/zedkube/vmiVNC.run with specifying the VMI name, VNC port number. The container 'kube' process is monitoring this file, and launch the 'virtctl vnc' commands with the VMI and port. This will enable the VNC port 590x to be enabled and ready to handle the VNC client request. The user can then use the RemoteConsole to connect through the 'guacd' to the VNC port as the same in the KVM image.
 
 ### Cluster Status
 
-The kubevirt EVE image supports either running in kubernetes with single node or with cluster mode (at least 3 nodes). In single-node mode, there is no change to the EVE API from the controller with EVE devices. In the cluster mode, controller will send 'EdgeNodeClusterConfig' to the device, and being published in 'zedagent' and zedkube subscribe to that, then it will publish the 'EdgeNodeClusterStatus'. The container 'kube' will monitor the 'EdgeNodeClusterStatus' for cluster mode changes. zedkube will subscribe also to the deviceNetworkStatus from 'nim' and make sure the cluster prefix is ready for the kubernetes.
+The EVE 'k'' image supports either running in kubernetes with single node or with cluster mode (at least 3 nodes). In single-node mode, there is no change to the EVE API from the controller with EVE devices. In the cluster mode, controller will send 'EdgeNodeClusterConfig' to the device, and being published in 'zedagent' and zedkube subscribe to that, then it will publish the 'EdgeNodeClusterStatus'. The container 'kube' will monitor the 'EdgeNodeClusterStatus' for cluster mode changes. zedkube will subscribe also to the deviceNetworkStatus from 'nim' and make sure the cluster prefix is ready for the kubernetes.
 
 ### Collect App Container Logs
 
@@ -48,7 +48,7 @@ When the application is launched and managed in KubeVirt mode, the Kubernetes cl
 
 ### Description
 
-As a part of kubevirt-eve we have multiple cluster nodes each hosting app workloads and volume replicas.
+As a part of the EVE 'k' image we have multiple cluster nodes each hosting app workloads and volume replicas.
 zedkube implements defer for eve mgmt config operations which will result in unavailability of storage
 replicas until the cluster volume is not running on a single replica.  This defer is implemented
 through cordoning, uncordoning, and draining of clustered eve-os nodes.

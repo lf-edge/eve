@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	// EveVirtTypeFile contains the virtualization type, ie kvm, xen or kubevirt
+	// EveVirtTypeFile contains the virtualization type, i.e., kvm, xen or k
 	EveVirtTypeFile = "/run/eve-hv-type"
 	// KubeAppNameMaxLen limits the length of the app name for Kubernetes.
 	// This also includes the appended UUID prefix.
@@ -38,7 +38,7 @@ func IsHVTypeKube() bool {
 		return false
 	}
 
-	if strings.Contains(string(retbytes), "kubevirt") {
+	if strings.TrimSpace(string(retbytes)) == "k" {
 		return true
 	}
 	return false

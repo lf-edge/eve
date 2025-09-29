@@ -11,7 +11,7 @@ It works in conjunction with the NIM microservice to provide external connectivi
 for these network instances and applications that connect to them.
 If kvm or xen hypervisor is used, zedrouter cooperates with domainmgr to attach applications
 to selected network instances using virtual interfaces, aka *VIFs*.
-When running kubevirt hypervisor, application VIFs are created in cooperation between
+When running the EVE-k build, application VIFs are created in cooperation between
 the zedrouter, [eve-bridge CNI plugin](../../kube/eve-bridge/README.md) and the Kubevirt.
 
 ## Zedrouter Objects
@@ -50,7 +50,7 @@ instance on one side and to the application container or to a guest VM domain on
 
 How VIF is implemented depends on how the application is deployed (native container,
 or a container running inside an EVE-created Alpine VM, or a full-fledged VM)
-and on the hypervisor (kvm, xen, kubevirt, etc.).
+and on the hypervisor (kvm, xen, k, etc.).
 
 For application running as a native container or as a K3s pod, zedrouter uses veth pair,
 with one end of the pair being placed inside the net namespace of the container/pod,
@@ -133,7 +133,7 @@ DHCP/DNS config, etc.
     and destination IP addresses and ports, protocol, number of packets and bytes
     sent/received, ID of the ACL entry applied, etc.
 
-With kubevirt hypervisor, zedrouter also accepts **RPC calls** from the eve-bridge CNI plugin.
+In the EVE-k build, zedrouter also accepts **RPC calls** from the eve-bridge CNI plugin.
 Refer to the [plugin documentation](../../kube/eve-bridge/README.md) for more information.
 
 ## Components
@@ -161,7 +161,7 @@ On startup, zedrouter first instantiates all components described below, then it
 to several pubsub topics to receive input from other microservices (most notably zedagent and
 zedmanager), creates publications to output status and metrics for network instances
 and application connectivity (see [Key Input/Output](#key-inputoutput) above), starts CNI RPC
-server if kubevirt hypervisor is used and finally it enters the main event loop
+server if the EVE-k build is used and finally it enters the main event loop
 (endless `for` loop with `select`).
 
 Inside the main event loop, zedrouter processes:
@@ -191,7 +191,7 @@ Inside the main event loop, zedrouter processes:
   which then performs all necessary config changes in the network stack (updates the routing
   table of the (local) NI).
 * RPC calls from [eve-bridge CNI plugin](../../kube/eve-bridge/README.md)
-  (only with kubevirt hypervisor).
+  (only in EVE-k builds).
 
 ### NIReconciler
 

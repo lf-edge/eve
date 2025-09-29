@@ -79,7 +79,7 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 			continue
 		}
 		location := vrs.ActiveFileLocation
-		// Volumes in kubevirt eve are of PVC type and managed by kubernetes.
+		// Volumes in EVE 'k' are of PVC type and managed by kubernetes.
 		// There is no specific filelocation
 		if location == "" && !ctx.hvTypeKube {
 			errStr := fmt.Sprintf("No ActiveFileLocation for %s", vrs.DisplayName)
@@ -98,8 +98,8 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 		disk.CustomMeta = vrs.CustomMeta
 		dc.DiskConfigList = append(dc.DiskConfigList, disk)
 		// For NOHYPER type virtualization mode pass the KubeImageName to domainmgr
-		// pods will be launched using that KubeImageName in kubevirt eve
-		// Reference name can be empty for non-kubevirt eve and KubeImageName will be ignored in such cases.
+		// pods will be launched using that KubeImageName in EVE 'k'
+		// Reference name can be empty for non-k EVE and KubeImageName will be ignored in such cases.
 		if aiConfig.FixedResources.VirtualizationMode == types.NOHYPER {
 			dc.VirtualizationMode = types.NOHYPER
 			// App may have a second disk passed in which is an

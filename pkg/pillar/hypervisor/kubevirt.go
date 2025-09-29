@@ -1,7 +1,7 @@
 // Copyright (c) 2024 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-//go:build kubevirt
+//go:build k
 
 package hypervisor
 
@@ -40,9 +40,9 @@ import (
 	"kubevirt.io/client-go/kubecli"
 )
 
-// KubevirtHypervisorName is a name of kubevirt hypervisor
+// KubevirtHypervisorName is a name of the imaginary EVE 'k' hypervisor
 const (
-	KubevirtHypervisorName = "kubevirt"
+	KubevirtHypervisorName = "k"
 	kubevirtStateDir       = "/run/hypervisor/kubevirt/"
 	eveLabelKey            = "App-Domain-Name"
 	waitForPodCheckCounter = 5  // Check 5 times
@@ -342,7 +342,7 @@ func (ctx kubevirtContext) CreateReplicaVMIConfig(domainName string, config type
 			if ds.Devtype == "9P" {
 				// kvm based EVE supports launching a container as VM. It generates a runtime ocispec and passes in
 				// kernel and initrd along with other generated files.
-				// The concept is same in kubevirt eve too. Kubevirt supports this functionality through feature
+				// The concept is same in kubevirt too. Kubevirt supports this functionality through feature
 				// https://kubevirt.io/user-guide/virtual_machines/boot_from_external_source/
 				// Since disks are virtio disks we assume /dev/vda is the boot disk
 				kernelArgs := "console=tty0 root=/dev/vda dhcp=1 rootfstype=ext4"
@@ -425,7 +425,7 @@ func (ctx kubevirtContext) CreateReplicaVMIConfig(domainName string, config type
 			}
 			if ib.Type == types.IoNetEth && ib.Ifname != adapter.Name {
 				// if we get here, means we have a PCI device which is in the same group
-				// as the ethernet passthrogh port, will have error if register to the kubevirt
+				// as the Ethernet passthrough port, will have error if register to the kubevirt
 				logrus.Infof("Skip PCI device %s which does not match adapter %s\n", ib.Ifname, adapter.Name)
 				continue
 			}
@@ -670,7 +670,7 @@ func (ctx kubevirtContext) replicaPodScheduledOnMe(rsName string) (onMe bool, er
 
 // scheduledOnMe compares local node name to the node name kubernetes reports running/scheduling on
 // this is used in cluster environments to determine if action should be taken on an app only if the app
-// is running on the local node.  kubevirt hypervisor actions should call this to check it the app has
+// is running on the local node. The functions/actions should call this to check it the app has
 // recently failed over to another node, if so then take no action (defer to the new node's pillar).
 func (ctx kubevirtContext) scheduledOnMe(mtype MetaDataType, objectName string) (onMe bool, err error) {
 	if mtype == IsMetaReplicaPod {

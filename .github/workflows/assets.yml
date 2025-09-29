@@ -58,7 +58,7 @@ jobs:
             hv: "kvm"
           - arch: amd64
             platform: "generic"
-            hv: "kubevirt"
+            hv: "k"
           - arch: amd64
             platform: "evaluation"
             hv: "kvm"
