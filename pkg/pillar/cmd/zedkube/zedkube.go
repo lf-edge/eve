@@ -700,8 +700,8 @@ func handleGlobalConfigImpl(ctxArg interface{}, key string,
 		newConfigItemValueMap := gcp
 
 		// Handle Drain Timeout Change
-		newDrainTimeout := newConfigItemValueMap.GlobalValueInt(types.KubevirtDrainTimeout)
-		existingDrainTimeout := currentConfigItemValueMap.GlobalValueInt(types.KubevirtDrainTimeout)
+		newDrainTimeout := newConfigItemValueMap.GlobalValueInt(types.KubernetesDrainTimeout)
+		existingDrainTimeout := currentConfigItemValueMap.GlobalValueInt(types.KubernetesDrainTimeout)
 		if newDrainTimeout != 0 && newDrainTimeout != existingDrainTimeout {
 			log.Functionf("handleGlobalConfigImpl: Updating drainTimeoutHours from %d to %d",
 				existingDrainTimeout, newDrainTimeout)
@@ -711,8 +711,8 @@ func handleGlobalConfigImpl(ctxArg interface{}, key string,
 		//
 		// Handle cases of kubernetes node unavailability
 		//
-		newDrainK8sAPINotReachableTimeout := newConfigItemValueMap.GlobalValueInt(types.KubevirtDrainSkipK8sAPINotReachableTimeout)
-		existingDrainK8sAPINotReachableTimeout := currentConfigItemValueMap.GlobalValueInt(types.KubevirtDrainSkipK8sAPINotReachableTimeout)
+		newDrainK8sAPINotReachableTimeout := newConfigItemValueMap.GlobalValueInt(types.DrainSkipK8sAPINotReachableTimeout)
+		existingDrainK8sAPINotReachableTimeout := currentConfigItemValueMap.GlobalValueInt(types.DrainSkipK8sAPINotReachableTimeout)
 		if newDrainK8sAPINotReachableTimeout != 0 && newDrainK8sAPINotReachableTimeout != existingDrainK8sAPINotReachableTimeout {
 			log.Functionf("handleGlobalConfigImpl: Updating drainSkipK8sApiTimeout from %d to %d",
 				existingDrainK8sAPINotReachableTimeout, newDrainK8sAPINotReachableTimeout)
