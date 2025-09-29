@@ -98,7 +98,7 @@ func handleVolumeDelete(ctxArg interface{}, key string,
 
 func handleDeferredVolumeCreate(ctx *volumemgrContext, key string, config *types.VolumeConfig) {
 
-	log.Tracef("handleDeferredVolumeCreate(%s)", key)
+	log.Errorf("BZVM handleDeferredVolumeCreate(%s)", key)
 	status := ctx.LookupVolumeStatus(config.Key())
 	if status != nil {
 		if config.IsReplicated {
@@ -127,7 +127,7 @@ func handleDeferredVolumeCreate(ctx *volumemgrContext, key string, config *types
 		IsNativeContainer:       config.IsNativeContainer,
 	}
 	updateVolumeStatusRefCount(ctx, status)
-	log.Noticef("handleDeferredVolumeCreate(%s) setting contentFormat to %s", key, volumeFormat[status.Key()])
+	log.Errorf("BZVM handleDeferredVolumeCreate(%s) setting contentFormat to %s", key, volumeFormat[status.Key()])
 	status.ContentFormat = volumeFormat[status.Key()]
 
 	created, err := volumehandlers.GetVolumeHandler(log, ctx, status).Populate()
@@ -189,18 +189,18 @@ func handleDeferredVolumeCreate(ctx *volumemgrContext, key string, config *types
 	if err := createOrUpdateAppDiskMetrics(ctx, agentName, status); err != nil {
 		log.Errorf("handleDeferredVolumeCreate(%s): exception while publishing diskmetric. %s", key, err.Error())
 	}
-	log.Tracef("handleDeferredVolumeCreate(%s) done", key)
+	log.Errorf("BZVM handleDeferredVolumeCreate(%s) done", key)
 }
 
 func handleVolumeRestart(ctxArg interface{}, restartCount int) {
 
-	log.Tracef("handleVolumeRestart: %d", restartCount)
+	log.Errorf("BZVM handleVolumeRestart: %d", restartCount)
 	ctx := ctxArg.(*volumemgrContext)
 	for key, config := range ctx.volumeConfigCreateDeferredMap {
 		handleDeferredVolumeCreate(ctx, key, config)
 		delete(ctx.volumeConfigCreateDeferredMap, key)
 	}
-	log.Tracef("handleVolumeRestart done: %d", restartCount)
+	log.Errorf("BZVM handleVolumeRestart done: %d", restartCount)
 }
 
 func publishVolumeStatus(ctx *volumemgrContext,

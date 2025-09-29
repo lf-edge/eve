@@ -136,8 +136,9 @@ func parseVolumeConfig(ctx *getconfigContext,
 	}
 
 	//signal publisher restarted to apply deferred changes inside volumemgr
+	log.Errorf("BAZINGA ZEDAGENT PUSHING UPDATE ")
 	signalVolumeConfigRestarted(ctx)
-	log.Tracef("parsing volume config done\n")
+	log.Errorf("BAZINGA ZEDAGENT parsing volume config done\n")
 }
 
 func signalVolumeConfigRestarted(ctx *getconfigContext) {
