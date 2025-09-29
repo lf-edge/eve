@@ -589,7 +589,7 @@ echo "EVE info is collected into '$TARBALL_FILE'"
 if [ -n "$UPLOAD" ];
 then
     echo "Uploading tarball to $UPLOAD"
-    curl --retry-all-errors --retry 10 --retry-delay 3 -s -d @"$TARBALL_FILE" -H "Authorization: $AUTHORIZATION" "$UPLOAD/$INFO_DIR_SUFFIX.tar.gz" && \
+    curl --retry-all-errors --retry 10 --retry-delay 3 -s --data-binary @"$TARBALL_FILE" -H "Authorization: $AUTHORIZATION" "$UPLOAD/$INFO_DIR_SUFFIX.tar.gz" && \
         rm -f "$TARBALL_FILE"
     echo "Uploading tarball to $UPLOAD done"
 fi
