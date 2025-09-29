@@ -11,6 +11,7 @@ init:
   - GRUB_TAG
   - DOM0ZTOOLS_TAG
   - FW_TAG
+  - UDEV_TAG
 onboot:
   - name: sysctl
     image: linuxkit/sysctl:c6f23919b8610c7645a89a89f863c6209bc84bee
