@@ -192,8 +192,8 @@ github.com/lf-edge/eve-api/go v0.0.0-20250905090851-cf53cd9d7e41 h1:w+159iA1xPIn
 github.com/lf-edge/eve-api/go v0.0.0-20250905090851-cf53cd9d7e41/go.mod h1:ot6MhAhBXapUDl/hXklaX4kY88T3uC4PTg0D2wD8DzA=
 github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20240315102754-0f6d1f182e0d h1:tUBb9M6u42LXwHAYHyh22wJeUUQlTpDkXwRXalpRqbo=
 github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20240315102754-0f6d1f182e0d/go.mod h1:Nn3juMJJ1G8dyHOebdZyS4jOB/fuxAd5fIajBaWjHr8=
-github.com/lf-edge/eve/pkg/pillar v0.0.0-20250926150154-37b98e3d6ac8 h1:PnqmjY6GOsH/b7jFWUCpEwZeF2jFnq96BJ1hQqabBbw=
-github.com/lf-edge/eve/pkg/pillar v0.0.0-20250926150154-37b98e3d6ac8/go.mod h1:n+iyxXmBI5AFeYIzW1nLE7HBMqaVjh2yP29S75Gq9No=
+github.com/lf-edge/eve/pkg/pillar v0.0.0-20250930143934-3567bcf46ad4 h1:4Txy+m+UsFcryBAx3EkM480/eHoiqZ8qCcWiT8y+X9Y=
+github.com/lf-edge/eve/pkg/pillar v0.0.0-20250930143934-3567bcf46ad4/go.mod h1:n+iyxXmBI5AFeYIzW1nLE7HBMqaVjh2yP29S75Gq9No=
 github.com/linuxkit/linuxkit/src/cmd/linuxkit v0.0.0-20240507172735-6d37353ca1ee h1:ASS39H/5OkVqkGSOR2xtcIsu3EZH4aDQOKhE1OfazUo=
 github.com/linuxkit/linuxkit/src/cmd/linuxkit v0.0.0-20240507172735-6d37353ca1ee/go.mod h1:UMA/+cd1QZElFCZAhuGv0TEEdWP9AgcRSXSI6S+r/KA=
 github.com/matttproud/golang_protobuf_extensions v1.0.1/go.mod h1:D8He9yQNgCq6Z5Ld7szi9bcBfOoFv/3dc6xSMkL2PC0=

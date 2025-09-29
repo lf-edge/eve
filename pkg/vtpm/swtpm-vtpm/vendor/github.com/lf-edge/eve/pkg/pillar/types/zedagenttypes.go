@@ -412,6 +412,15 @@ func (mmmr MaintenanceModeMultiReason) String() string {
 	return strings.Join(reason, "|")
 }
 
+// ToProto return the protobuf representation of multiple maintenance mode reasons.
+func (mmmr MaintenanceModeMultiReason) ToProto() []info.MaintenanceModeReason {
+	var reasonsProto []info.MaintenanceModeReason
+	for _, v := range mmmr {
+		reasonsProto = append(reasonsProto, info.MaintenanceModeReason(v))
+	}
+	return reasonsProto
+}
+
 // String returns the verbose equivalent of MaintenanceModeReason code
 func (mmr MaintenanceModeReason) String() string {
 	switch mmr {
@@ -534,23 +543,26 @@ func (do DeviceOperation) String() string {
 
 // ZedAgentStatus :
 type ZedAgentStatus struct {
-	Name                  string
-	ConfigGetStatus       ConfigGetStatus
-	RebootCmd             bool
-	ShutdownCmd           bool
-	PoweroffCmd           bool
-	RequestedRebootReason string       // Why we will reboot
-	RequestedBootReason   BootReason   // Why we will reboot
-	MaintenanceMode       bool         // Don't run apps etc
-	ForceFallbackCounter  int          // Try image fallback when counter changes
-	CurrentProfile        string       // Current profile
-	RadioSilence          RadioSilence // Currently requested state of radio devices
-	DeviceState           DeviceState
-	AttestState           AttestState
-	AttestError           string
-	VaultStatus           info.DataSecAtRestStatus
-	PCRStatus             info.PCRStatus
-	VaultErr              string
+	Name                   string
+	ConfigGetStatus        ConfigGetStatus
+	RebootCmd              bool
+	ShutdownCmd            bool
+	PoweroffCmd            bool
+	RequestedRebootReason  string     // Why we will reboot
+	RequestedBootReason    BootReason // Why we will reboot
+	MaintenanceMode        bool       // Don't run apps etc
+	MaintenanceModeReasons MaintenanceModeMultiReason
+	ForceFallbackCounter   int          // Try image fallback when counter changes
+	CurrentProfile         string       // Current profile
+	RadioSilence           RadioSilence // Currently requested state of radio devices
+	DeviceState            DeviceState
+	AttestState            AttestState
+	AttestError            string
+	VaultStatus            info.DataSecAtRestStatus
+	PCRStatus              info.PCRStatus
+	VaultErr               string
+	AirgapMode             bool
+	LOCUrl                 string
 }
 
 // DeviceState represents overall state
@@ -655,7 +667,7 @@ type BaseOSMgrStatus struct {
 
 // RadioSilence : used in ZedAgentStatus to record the *requested* state of radio devices.
 // Also used in DeviceNetworkStatus to publish the *actual* state of radios.
-// InProgress is used to wait for the operation changing the radio state
+// ChangeInProgress is used to wait for the operation changing the radio state
 // to finalize before publishing the status update.
 // RequestedAt is used to match the request published by zedagent with the response
 // published by nim.
@@ -698,7 +710,7 @@ func (am RadioSilence) String() string {
 	return "Radio transmitters ON"
 }
 
-// LocalCommands : commands triggered locally via Local profile server.
+// LocalCommands : app commands triggered locally via Local profile server.
 type LocalCommands struct {
 	// Locally issued app commands.
 	// For every app there is entry only for the last command (completed
@@ -766,10 +778,46 @@ const (
 	DevCommandShutdown
 	// DevCommandShutdownPoweroff : shut down all app instances + poweroff
 	DevCommandShutdownPoweroff
+	// DevCommandGracefulReboot : shut down all app instances + reboot
+	DevCommandGracefulReboot
+	// DevCommandCollectInfo : starts a collect-info.sh
+	DevCommandCollectInfo
 )
+
+// String returns the human-readable name of the DevCommand.
+// If the command is not recognized, it returns "Unknown".
+func (c DevCommand) String() string {
+	switch c {
+	case DevCommandUnspecified:
+		return "Unspecified"
+	case DevCommandShutdown:
+		return "Shutdown"
+	case DevCommandShutdownPoweroff:
+		return "Shutdown + Poweroff"
+	case DevCommandGracefulReboot:
+		return "Graceful Reboot"
+	case DevCommandCollectInfo:
+		return "Collect Info"
+	default:
+		return "Unknown"
+	}
+}
 
 // LOCConfig : configuration of the Local Operator Console
 type LOCConfig struct {
 	// LOC URL
 	LocURL string
+	// Collect-Info Datastore UUID
+	CollectInfoDatastore DatastoreConfig
+}
+
+// LPSConfig : configuration of the Local Profile Server
+type LPSConfig struct {
+	LpsAddress string // hostname or IP
+	LpsToken   string
+}
+
+// CollectInfoCmd : passing this to trigger a collect-info.sh call
+type CollectInfoCmd struct {
+	Time time.Time
 }

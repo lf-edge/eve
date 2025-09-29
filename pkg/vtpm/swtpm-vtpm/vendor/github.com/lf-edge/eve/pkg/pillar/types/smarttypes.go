@@ -67,11 +67,14 @@ const (
 
 // DAttrTable have smart attr received via API
 type DAttrTable struct {
-	ID       int
-	Value    int
-	Worst    int
-	Flags    int
-	RawValue int
+	ID            int
+	AttributeName string
+	Value         int64
+	Worst         uint8
+	Threshold     uint8
+	Flags         uint16
+	RawValue      int
+	Type          string
 }
 
 // DiskSmartInfo have smart data received via API

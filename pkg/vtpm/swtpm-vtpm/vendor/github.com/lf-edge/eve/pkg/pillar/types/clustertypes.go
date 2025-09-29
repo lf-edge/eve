@@ -41,6 +41,10 @@ type EdgeNodeClusterConfig struct {
 
 	// CipherBlockStatus, for encrypted cluster token data
 	CipherToken CipherBlockStatus
+
+	// CipherGzipRegistrationManifestYaml, for compressed bytes of a registration yaml file
+	// Shares the same CipherBlock as CipherToken
+	CipherGzipRegistrationManifestYaml CipherBlockStatus
 }
 
 // ENClusterAppStatus - Status of an App Instance in the multi-node cluster
@@ -49,9 +53,13 @@ type ENClusterAppStatus struct {
 	IsDNidNode          bool      // DesignatedNodeID is set on the App for this node
 	ScheduledOnThisNode bool      // App is running on this device
 	StatusRunning       bool      // Status of the app in "Running" state
-	IsVolumeDetached    bool      // Are volumes detached after failover ?
 	AppIsVMI            bool      // Is this a VMI app, vs a Pod app
 	AppKubeName         string    // Kube name of the app, either VMI or Pod
+}
+
+// Equal returns true if all ENClusterAppStatus fields are equal
+func (enc ENClusterAppStatus) Equal(newEnc ENClusterAppStatus) bool {
+	return newEnc == enc
 }
 
 // Key - returns the key for the config of EdgeNodeClusterConfig

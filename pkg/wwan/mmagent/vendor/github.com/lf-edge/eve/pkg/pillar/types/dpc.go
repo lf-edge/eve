@@ -159,6 +159,17 @@ const (
 	MaxMTU = 65535
 )
 
+const (
+	// LastResortKey : key used for the Last-Resort DPC.
+	LastResortKey = "lastresort"
+
+	// ManualDPCKey : key used for DPC submitted from TUI.
+	ManualDPCKey = "manual"
+
+	// LpsDPCKey : key used for DPC containing local configuration changes submitted by LPS.
+	LpsDPCKey = "lps"
+)
+
 // DevicePortConfig is a misnomer in that it includes the total test results
 // plus the test results for a given port. The complete status with
 // IP addresses lives in DeviceNetworkStatus
@@ -766,6 +777,12 @@ func (src PortConfigSource) ToProto() *evecommon.PortConfigSource {
 	}
 }
 
+// Equal compares two PortConfigSource instances for equality.
+func (src PortConfigSource) Equal(src2 PortConfigSource) bool {
+	return src.Origin == src2.Origin &&
+		src.SubmittedAt.Equal(src2.SubmittedAt)
+}
+
 // IsEveDefinedPortLabel returns true if the given port label is defined by EVE
 // and not by the user.
 func IsEveDefinedPortLabel(label string) bool {
@@ -985,6 +1002,20 @@ const (
 	WirelessTypeCellular
 	WirelessTypeWifi
 )
+
+// String returns a human-readable representation of WirelessType.
+func (wt WirelessType) String() string {
+	switch wt {
+	case WirelessTypeNone:
+		return "none"
+	case WirelessTypeCellular:
+		return "cellular"
+	case WirelessTypeWifi:
+		return "wifi"
+	default:
+		return fmt.Sprintf("unknown(%d)", wt)
+	}
+}
 
 // WirelessConfig - wireless structure
 type WirelessConfig struct {

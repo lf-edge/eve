@@ -4,11 +4,15 @@
 package types
 
 import (
+	"encoding/base64"
 	"fmt"
+	"net"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
 
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/sirupsen/logrus" // OK for logrus.Fatal
 )
 
@@ -72,7 +76,7 @@ func (status SenderStatus) String() string {
 const (
 	// MinuteInSec is number of seconds in a minute
 	MinuteInSec = 60
-	// HourInSec is number of seconds in a minute
+	// HourInSec is number of seconds in an hour
 	HourInSec = 60 * MinuteInSec
 )
 
@@ -160,6 +164,10 @@ const (
 	MetricInterval GlobalSettingKey = "timer.metric.interval"
 	// HardwareHealthInterval global setting key
 	HardwareHealthInterval GlobalSettingKey = "timer.hardwarehealth.interval"
+	// HardwareInfoInterval global setting key
+	HardwareInfoInterval GlobalSettingKey = "timer.hardwareinfo.interval"
+	// DevInfoInterval global setting key
+	DevInfoInterval GlobalSettingKey = "timer.deviceinfo.interval"
 	// DiskScanMetricInterval global setting key
 	DiskScanMetricInterval GlobalSettingKey = "timer.metric.diskscan.interval"
 	// ResetIfCloudGoneTime global setting key
@@ -297,6 +305,9 @@ const (
 
 	// MaintenanceMode global setting key
 	MaintenanceMode GlobalSettingKey = "maintenance.mode"
+	// AirGapMode should be enabled when device is operated in an air-gapped network environment,
+	// where connectivity to the main controller is not available.
+	AirGapMode GlobalSettingKey = "airgap.mode"
 
 	// String Items
 	// SSHAuthorizedKeys global setting key
@@ -329,6 +340,10 @@ const (
 	LogFilenamesToCount GlobalSettingKey = "log.count.filenames"
 	// LogFilenamesToFilter a comma-separated list of log filenames to filter
 	LogFilenamesToFilter GlobalSettingKey = "log.filter.filenames"
+	// VectorEnabled is a global setting key to enable Vector
+	VectorEnabled GlobalSettingKey = "vector.enabled"
+	// VectorConfig is a full base64-encoded configuration for Vector in yaml format.
+	VectorConfig GlobalSettingKey = "vector.config"
 
 	// DisableDHCPAllOnesNetMask option is deprecated and has no effect.
 	// Zedrouter no longer uses the all-ones netmask as it adds unnecessary complexity,
@@ -395,6 +410,13 @@ const (
 	MsrvPrometheusMetricsBurst GlobalSettingKey = "msrv.prometheus.metrics.burst"
 	// MsrvPrometheusMetricsIdleTimeoutSeconds: idle timeout for the connection
 	MsrvPrometheusMetricsIdleTimeoutSeconds GlobalSettingKey = "msrv.prometheus.metrics.idletimeout.seconds"
+
+	// DiagProbeRemoteHTTPEndpoint : remote endpoint queried over **HTTP** to assess
+	// the state of network connectivity whenever the controller is not reachable.
+	DiagProbeRemoteHTTPEndpoint GlobalSettingKey = "diag.probe.remote.http.endpoint"
+	// DiagProbeRemoteHTTPSEndpoint : remote endpoint queried over **HTTPS** to assess
+	// the state of network connectivity whenever the controller is not reachable.
+	DiagProbeRemoteHTTPSEndpoint GlobalSettingKey = "diag.probe.remote.https.endpoint"
 )
 
 // AgentSettingKey - keys for per-agent settings
@@ -614,7 +636,7 @@ func (specMap *ConfigItemSpecMap) parseAgentItem(
 	}
 	itemSpec, ok := specMap.AgentSettings[asKey]
 	if !ok {
-		err := fmt.Errorf("Cannot find key (%s) in AgentSettings. asKey: %s",
+		err := fmt.Errorf("cannot find key (%s) in AgentSettings. asKey: %s",
 			key, asKey)
 		return ConfigItemValue{}, err
 	}
@@ -654,21 +676,19 @@ func (specMap *ConfigItemSpecMap) ParseItem(newConfigMap *ConfigItemValueMap,
 	}
 	// Global Setting
 	val, err := itemSpec.parseValue(value)
-	if err == nil {
-		newConfigMap.GlobalSettings[gsKey] = val
-		return val, nil
-	}
-	// Parse Error. Get the Value from old config
-	val, ok = oldConfigMap.GlobalSettings[gsKey]
-	if ok {
-		err = fmt.Errorf("***ParseItem: Error in parsing Item. Replacing it "+
-			"with existing Value. key: %s, value: %s, Existing Value: %+v. "+
-			"Err: %s", key, value, val, err)
-	} else {
-		val = itemSpec.DefaultValue()
-		err = fmt.Errorf("***ParseItem: Error in parsing Item. No Existing "+
-			"Value Found. Using Default Value. key: %s, value: %s, "+
-			"Default Value: %+v. Err: %s", key, value, val, err)
+	if err != nil {
+		// Parse Error. Get the Value from old config
+		val, ok = oldConfigMap.GlobalSettings[gsKey]
+		if ok {
+			err = fmt.Errorf("***ParseItem: Error in parsing Item. Replacing it "+
+				"with existing Value. key: %s, value: %s, Existing Value: %+v. "+
+				"Err: %s", key, value, val, err)
+		} else {
+			val = itemSpec.DefaultValue()
+			err = fmt.Errorf("***ParseItem: Error in parsing Item. No Existing "+
+				"Value Found. Using Default Value. key: %s, value: %s, "+
+				"Default Value: %+v. Err: %s", key, value, val, err)
+		}
 	}
 	newConfigMap.GlobalSettings[gsKey] = val
 	return val, err
@@ -734,9 +754,9 @@ func (configPtr *ConfigItemValueMap) agentConfigItemValue(agentName string,
 		if ok {
 			return val, nil
 		}
-		return blankValue, fmt.Errorf("Failed to find %s settings for %s", string(key), agentName)
+		return blankValue, fmt.Errorf("failed to find %s settings for %s", string(key), agentName)
 	}
-	return blankValue, fmt.Errorf("Failed to find any per-agent settings for agent %s", agentName)
+	return blankValue, fmt.Errorf("failed to find any per-agent settings for agent %s", agentName)
 }
 
 // AgentSettingStringValue - Gets the value of a per-agent setting for a certain agentname and per-agent key
@@ -891,7 +911,8 @@ func (configPtr *ConfigItemValueMap) ResetGlobalValue(key GlobalSettingKey) {
 func (configSpec ConfigItemSpec) parseValue(itemValue string) (ConfigItemValue, error) {
 	value := configSpec.DefaultValue()
 	var retErr error
-	if configSpec.ItemType == ConfigItemTypeInt {
+	switch configSpec.ItemType {
+	case ConfigItemTypeInt:
 		i64, err := strconv.ParseUint(itemValue, 10, 32)
 		if err == nil {
 			val := uint32(i64)
@@ -905,7 +926,7 @@ func (configSpec ConfigItemSpec) parseValue(itemValue string) (ConfigItemValue, 
 			value.IntValue = configSpec.IntDefault
 			retErr = err
 		}
-	} else if configSpec.ItemType == ConfigItemTypeTriState {
+	case ConfigItemTypeTriState:
 		newTs, err := ParseTriState(itemValue)
 		if err == nil {
 			value.TriStateValue = newTs
@@ -913,7 +934,7 @@ func (configSpec ConfigItemSpec) parseValue(itemValue string) (ConfigItemValue, 
 			value.TriStateValue = configSpec.TriStateDefault
 			retErr = err
 		}
-	} else if configSpec.ItemType == ConfigItemTypeBool {
+	case ConfigItemTypeBool:
 		newBool, err := strconv.ParseBool(itemValue)
 		if err == nil {
 			value.BoolValue = newBool
@@ -921,12 +942,12 @@ func (configSpec ConfigItemSpec) parseValue(itemValue string) (ConfigItemValue, 
 			value.BoolValue = configSpec.BoolDefault
 			retErr = err
 		}
-	} else if configSpec.ItemType == ConfigItemTypeString {
+	case ConfigItemTypeString:
 		err := configSpec.StringValidator(itemValue)
 		if err == nil {
 			value.StrValue = itemValue
 		} else {
-			return value, err
+			retErr = err
 		}
 	}
 	return value, retErr
@@ -948,45 +969,50 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	// MaxValue needs to be limited. If configured too high, the device will wait
 	// too long to get next config and is practically unreachable for any config
 	// changes or reboot through cloud.
-	configItemSpecMap.AddIntItem(ConfigInterval, 60, 5, HourInSec)
+	configItemSpecMap.AddIntItem(ConfigInterval, MinuteInSec, 5, 24*HourInSec)
 	// Additional safety to periodically fetch the controller certificate
 	// Useful for odd cases when the triggered updates do not work.
-	configItemSpecMap.AddIntItem(CertInterval, 24*HourInSec, 60, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(CertInterval, 24*HourInSec, MinuteInSec, 0xFFFFFFFF)
 	// timer.metric.diskscan.interval (seconds)
 	// Shorter interval can lead to device scanning the disk frequently which is a costly operation.
-	configItemSpecMap.AddIntItem(DiskScanMetricInterval, 300, 5, HourInSec)
+	configItemSpecMap.AddIntItem(DiskScanMetricInterval, 5*MinuteInSec, 5, HourInSec)
 	// timer.metric.interval (seconds)
 	// Need to be careful about max value. Controller may use metric message to
 	// update status of device (online / suspect etc ).
-	configItemSpecMap.AddIntItem(MetricInterval, 60, 5, HourInSec)
+	configItemSpecMap.AddIntItem(MetricInterval, MinuteInSec, 5, HourInSec)
 	// timer.metric.hardwarehealth.interval (seconds)
 	// Default value 12 hours minimum value 6 hours.
-	configItemSpecMap.AddIntItem(HardwareHealthInterval, 43200, 21600, 0xFFFFFFFF)
-	// timer.reboot.no.network (seconds) - reboot after no cloud connectivity
+	configItemSpecMap.AddIntItem(HardwareHealthInterval, 12*HourInSec, 6*HourInSec, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(HardwareInfoInterval, 3*HourInSec, 3*HourInSec, 0xFFFFFFFF)
+	// timer.deviceinfo.interval (seconds)
+	// Forces the device to send device info to the controller at least once in a while.
+	// Default value 10 minutes, minimum value 30 seconds
+	configItemSpecMap.AddIntItem(DevInfoInterval, 10*MinuteInSec, 30, 0xFFFFFFFF)
+	// timer.reboot.no.network (seconds) - reboot after no controller connectivity
 	// Max designed to allow the option of never rebooting even if device
 	//  can't connect to the cloud
-	configItemSpecMap.AddIntItem(ResetIfCloudGoneTime, 7*24*3600, 120, 0xFFFFFFFF)
-	configItemSpecMap.AddIntItem(FallbackIfCloudGoneTime, 300, 60, 0xFFFFFFFF)
-	configItemSpecMap.AddIntItem(MintimeUpdateSuccess, 600, 30, HourInSec)
-	configItemSpecMap.AddIntItem(VdiskGCTime, 3600, 60, 0xFFFFFFFF)
-	configItemSpecMap.AddIntItem(DeferContentDelete, 0, 0, 24*3600)
-	configItemSpecMap.AddIntItem(DownloadRetryTime, 600, 60, 0xFFFFFFFF)
-	configItemSpecMap.AddIntItem(DownloadStalledTime, 600, 20, 0xFFFFFFFF)
-	configItemSpecMap.AddIntItem(DomainBootRetryTime, 600, 10, 0xFFFFFFFF)
-	configItemSpecMap.AddIntItem(NetworkGeoRedoTime, 3600, 60, 0xFFFFFFFF)
-	configItemSpecMap.AddIntItem(NetworkGeoRetryTime, 600, 5, 0xFFFFFFFF)
-	configItemSpecMap.AddIntItem(NetworkTestDuration, 30, 10, 3600)
-	configItemSpecMap.AddIntItem(NetworkTestInterval, 300, 300, 3600)
-	configItemSpecMap.AddIntItem(NetworkTestBetterInterval, 600, 0, 0xFFFFFFFF)
-	configItemSpecMap.AddIntItem(NetworkTestTimeout, 15, 0, 3600)
-	configItemSpecMap.AddIntItem(NetworkSendTimeout, 120, 0, 3600)
-	configItemSpecMap.AddIntItem(NetworkDialTimeout, 10, 0, 3600)
+	configItemSpecMap.AddIntItem(ResetIfCloudGoneTime, 7*24*HourInSec, 2*MinuteInSec, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(FallbackIfCloudGoneTime, 5*MinuteInSec, MinuteInSec, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(MintimeUpdateSuccess, 10*MinuteInSec, 30, HourInSec)
+	configItemSpecMap.AddIntItem(VdiskGCTime, HourInSec, MinuteInSec, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(DeferContentDelete, 0, 0, 24*HourInSec)
+	configItemSpecMap.AddIntItem(DownloadRetryTime, 10*MinuteInSec, MinuteInSec, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(DownloadStalledTime, 10*MinuteInSec, 20, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(DomainBootRetryTime, 10*MinuteInSec, 10, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(NetworkGeoRedoTime, HourInSec, 60, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(NetworkGeoRetryTime, 10*MinuteInSec, 5, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(NetworkTestDuration, 30, 10, HourInSec)
+	configItemSpecMap.AddIntItem(NetworkTestInterval, 5*MinuteInSec, 5*MinuteInSec, HourInSec)
+	configItemSpecMap.AddIntItem(NetworkTestBetterInterval, 10*MinuteInSec, 0, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(NetworkTestTimeout, 15, 0, HourInSec)
+	configItemSpecMap.AddIntItem(NetworkSendTimeout, 2*MinuteInSec, 0, HourInSec)
+	configItemSpecMap.AddIntItem(NetworkDialTimeout, 10, 0, HourInSec)
 	configItemSpecMap.AddIntItem(LocationCloudInterval, HourInSec, 5*MinuteInSec, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(LocationAppInterval, 20, 5, HourInSec)
-	configItemSpecMap.AddIntItem(NTPSourcesInterval, 10*MinuteInSec, MinuteInSec, 30*MinuteInSec)
+	configItemSpecMap.AddIntItem(NTPSourcesInterval, 10*MinuteInSec, MinuteInSec, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(Dom0MinDiskUsagePercent, 20, 20, 80)
-	configItemSpecMap.AddIntItem(AppContainerStatsInterval, 300, 1, 0xFFFFFFFF)
-	configItemSpecMap.AddIntItem(VaultReadyCutOffTime, 300, 60, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(AppContainerStatsInterval, 5*MinuteInSec, 1, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(VaultReadyCutOffTime, 5*MinuteInSec, MinuteInSec, 0xFFFFFFFF)
 	// Dom0DiskUsageMaxBytes - Default is 2GB, min is 100MB
 	configItemSpecMap.AddIntItem(Dom0DiskUsageMaxBytes, 2*1024*1024*1024,
 		100*1024*1024, 0xFFFFFFFF)
@@ -1025,8 +1051,8 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddIntItem(GoroutineLeakDetectionCooldownMinutes, 5, 1, 0xFFFFFFFF)
 
 	// Kubevirt Drain Section
-	configItemSpecMap.AddIntItem(KubevirtDrainTimeout, 24, 1, 0xFFFFFFFF)
-	configItemSpecMap.AddIntItem(KubevirtDrainSkipK8sAPINotReachableTimeout, 300, 1, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(KubevirtDrainTimeout, DefaultDrainTimeoutHours, 1, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(KubevirtDrainSkipK8sAPINotReachableTimeout, DefaultDrainSkipK8sAPINotReachableTimeoutSeconds, 1, 0xFFFFFFFF)
 
 	// Add Bool Items
 	configItemSpecMap.AddBoolItem(UsbAccess, true) // Controller likely default to false
@@ -1050,6 +1076,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	// Add TriState Items
 	configItemSpecMap.AddTriStateItem(NetworkFallbackAnyEth, TS_DISABLED)
 	configItemSpecMap.AddTriStateItem(MaintenanceMode, TS_NONE)
+	configItemSpecMap.AddTriStateItem(AirGapMode, TS_NONE)
 
 	// Add String Items
 	configItemSpecMap.AddStringItem(SSHAuthorizedKeys, "", blankValidator)
@@ -1068,14 +1095,18 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddStringItem(LogFilenamesToCount, "", blankValidator)
 	configItemSpecMap.AddStringItem(LogFilenamesToFilter, "", blankValidator)
 
+	// Vector
+	configItemSpecMap.AddBoolItem(VectorEnabled, true)
+	configItemSpecMap.AddStringItem(VectorConfig, "", base64Validator)
+
 	// Add Agent Settings
 	configItemSpecMap.AddAgentSettingStringItem(LogLevel, "info", validateLogLevel)
 	configItemSpecMap.AddAgentSettingStringItem(RemoteLogLevel, "info", validateLogLevel)
 
 	// Add NetDump settings
 	configItemSpecMap.AddBoolItem(NetDumpEnable, true)
-	configItemSpecMap.AddIntItem(NetDumpTopicPreOnboardInterval, HourInSec, 60, 0xFFFFFFFF)
-	configItemSpecMap.AddIntItem(NetDumpTopicPostOnboardInterval, 24*HourInSec, 60, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(NetDumpTopicPreOnboardInterval, HourInSec, MinuteInSec, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(NetDumpTopicPostOnboardInterval, 24*HourInSec, MinuteInSec, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(NetDumpTopicMaxCount, 10, 1, 0xFFFFFFFF)
 	configItemSpecMap.AddBoolItem(NetDumpDownloaderPCAP, false)
 	configItemSpecMap.AddBoolItem(NetDumpDownloaderHTTPWithFieldValue, false)
@@ -1083,7 +1114,11 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	// Add Metadata Server Prometheus metrics limits settings
 	configItemSpecMap.AddIntItem(MsrvPrometheusMetricsRequestPerSecond, 1, 1, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(MsrvPrometheusMetricsBurst, 10, 1, 0xFFFFFFFF)
-	configItemSpecMap.AddIntItem(MsrvPrometheusMetricsIdleTimeoutSeconds, 4*60, 1, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(MsrvPrometheusMetricsIdleTimeoutSeconds, 4*MinuteInSec, 1, 0xFFFFFFFF)
+
+	// Add diag probing settings
+	configItemSpecMap.AddStringItem(DiagProbeRemoteHTTPEndpoint, "www.google.com", makeURLValidator("http", true))
+	configItemSpecMap.AddStringItem(DiagProbeRemoteHTTPSEndpoint, "www.google.com", makeURLValidator("https", false))
 
 	return configItemSpecMap
 }
@@ -1109,8 +1144,84 @@ func validateSyslogKernelLevel(level string) error {
 	return nil
 }
 
+// makeURLValidator returns a validator that checks if an address is either empty,
+// a hostname with no scheme, or a valid URL using the specified allowed scheme.
+// If allowIP is false, bare or scheme-prefixed IP addresses are rejected.
+func makeURLValidator(allowedScheme string, allowIP bool) func(addr string) error {
+	return func(addr string) error {
+		if addr == "" {
+			// Accept empty value.
+			return nil
+		}
+		u, err := parseURL(addr, allowedScheme)
+		if err != nil {
+			return err
+		}
+		if !allowIP && net.ParseIP(u.Hostname()) != nil {
+			return fmt.Errorf("IP addresses are not allowed: %q", u.Hostname())
+		}
+		if strings.ToLower(u.Scheme) != strings.ToLower(allowedScheme) {
+			return fmt.Errorf("invalid URL scheme: %q (expected %q)",
+				u.Scheme, allowedScheme)
+		}
+		return nil
+	}
+}
+
+// parseURL parses the provided address into a *url.URL.
+// If no scheme is provided, it prepends the default scheme.
+func parseURL(address, defaultScheme string) (*url.URL, error) {
+	if address == "" {
+		return nil, fmt.Errorf("address cannot be empty")
+	}
+	if !strings.Contains(address, "://") {
+		address = defaultScheme + "://" + address
+	}
+	return url.Parse(address)
+}
+
+// GetDiagRemoteEndpointURLs returns diagnostic probe endpoint URLs configured
+// in the provided ConfigItemValueMap. It looks up both HTTP and HTTPS endpoints,
+// parses them into *url.URL values with the correct scheme enforced, and
+// returns a slice containing all successfully parsed URLs.
+func GetDiagRemoteEndpointURLs(log *base.LogObject, gcp *ConfigItemValueMap) []*url.URL {
+	if gcp == nil {
+		return nil
+	}
+	var diagURLs []*url.URL
+	httpEp := gcp.GlobalValueString(DiagProbeRemoteHTTPEndpoint)
+	if httpEp != "" {
+		httpEpURL, err := parseURL(httpEp, "http")
+		if err != nil {
+			log.Errorf("Failed to build URL for %s: %v",
+				DiagProbeRemoteHTTPEndpoint, err)
+		} else {
+			diagURLs = append(diagURLs, httpEpURL)
+		}
+	}
+	httpsEp := gcp.GlobalValueString(DiagProbeRemoteHTTPSEndpoint)
+	if httpsEp != "" {
+		httpsEpURL, err := parseURL(httpsEp, "https")
+		if err != nil {
+			log.Errorf("Failed to build URL for %s: %v",
+				DiagProbeRemoteHTTPSEndpoint, err)
+		} else {
+			diagURLs = append(diagURLs, httpsEpURL)
+		}
+	}
+	return diagURLs
+}
+
 // blankValidator - A validator that accepts any string
 func blankValidator(s string) error {
+	return nil
+}
+
+func base64Validator(s string) error {
+	_, err := base64.StdEncoding.DecodeString(s)
+	if err != nil {
+		return fmt.Errorf("base64Validator: %s is not a valid base64 string: %w", s, err)
+	}
 	return nil
 }
 

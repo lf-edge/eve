@@ -11,9 +11,13 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/lf-edge/eve-api/go/evecommon"
+	"github.com/lf-edge/eve-api/go/info"
+	"github.com/lf-edge/eve-api/go/metrics"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
 	"github.com/lf-edge/eve/pkg/pillar/utils/netutils"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // WwanConfig is published by nim and consumed by the wwan service.
@@ -133,6 +137,41 @@ const (
 	WwanAuthProtocolPAPAndCHAP WwanAuthProtocol = "pap-and-chap"
 )
 
+// FromProto converts proto enum CellularAuthProtocol to the corresponding WwanAuthProtocol.
+func (wp *WwanAuthProtocol) FromProto(authProtocol evecommon.CellularAuthProtocol) error {
+	switch authProtocol {
+	case evecommon.CellularAuthProtocol_CELLULAR_AUTH_PROTOCOL_NONE:
+		*wp = WwanAuthProtocolNone
+	case evecommon.CellularAuthProtocol_CELLULAR_AUTH_PROTOCOL_PAP:
+		*wp = WwanAuthProtocolPAP
+	case evecommon.CellularAuthProtocol_CELLULAR_AUTH_PROTOCOL_CHAP:
+		*wp = WwanAuthProtocolCHAP
+	case evecommon.CellularAuthProtocol_CELLULAR_AUTH_PROTOCOL_PAP_AND_CHAP:
+		*wp = WwanAuthProtocolPAPAndCHAP
+	default:
+		*wp = WwanAuthProtocolNone
+		return fmt.Errorf("unrecognized cellular AuthProtocol: %+v", authProtocol)
+	}
+	return nil
+}
+
+// ToProto converts WwanAuthProtocol into the corresponding proto enum CellularAuthProtocol.
+func (wp WwanAuthProtocol) ToProto() evecommon.CellularAuthProtocol {
+	switch wp {
+	case WwanAuthProtocolNone:
+		return evecommon.CellularAuthProtocol_CELLULAR_AUTH_PROTOCOL_NONE
+	case WwanAuthProtocolPAP:
+		return evecommon.CellularAuthProtocol_CELLULAR_AUTH_PROTOCOL_PAP
+	case WwanAuthProtocolCHAP:
+		return evecommon.CellularAuthProtocol_CELLULAR_AUTH_PROTOCOL_CHAP
+	case WwanAuthProtocolPAPAndCHAP:
+		return evecommon.CellularAuthProtocol_CELLULAR_AUTH_PROTOCOL_PAP_AND_CHAP
+	default:
+		// Return NONE as a safe default for unknown values.
+		return evecommon.CellularAuthProtocol_CELLULAR_AUTH_PROTOCOL_NONE
+	}
+}
+
 // WwanRAT : Radio Access Technology.
 type WwanRAT string
 
@@ -149,12 +188,69 @@ const (
 	WwanRAT5GNR WwanRAT = "5gnr"
 )
 
+// WwanIPType : the IP addressing type to use for a given attach or default bearer.
+type WwanIPType string
+
+const (
+	// WwanIPTypeUnspecified : IP type is not specified.
+	WwanIPTypeUnspecified WwanIPType = ""
+	// WwanIPTypeIPv4 : IPv4 only.
+	WwanIPTypeIPv4 WwanIPType = "ipv4"
+	// WwanIPTypeIPv4AndIPv6 : IPv4 and IPv6.
+	WwanIPTypeIPv4AndIPv6 WwanIPType = "ipv4v6"
+	// WwanIPTypeIPv6 : IPv6 only.
+	WwanIPTypeIPv6 WwanIPType = "ipv6"
+)
+
+// FromProto converts proto enum CellularIPType to the corresponding WwanIPType.
+func (ipt *WwanIPType) FromProto(ipType evecommon.CellularIPType) error {
+	switch ipType {
+	case evecommon.CellularIPType_CELLULAR_IP_TYPE_UNSPECIFIED:
+		*ipt = WwanIPTypeUnspecified
+	case evecommon.CellularIPType_CELLULAR_IP_TYPE_IPV4:
+		*ipt = WwanIPTypeIPv4
+	case evecommon.CellularIPType_CELLULAR_IP_TYPE_IPV4_AND_IPV6:
+		*ipt = WwanIPTypeIPv4AndIPv6
+	case evecommon.CellularIPType_CELLULAR_IP_TYPE_IPV6:
+		*ipt = WwanIPTypeIPv6
+	default:
+		*ipt = WwanIPTypeUnspecified
+		return fmt.Errorf("unrecognized cellular IP type: %+v", ipType)
+	}
+	return nil
+}
+
+// ToProto converts a WwanIPType to its corresponding protobuf value.
+func (ipt WwanIPType) ToProto(log *base.LogObject) evecommon.CellularIPType {
+	switch ipt {
+	case WwanIPTypeUnspecified:
+		return evecommon.CellularIPType_CELLULAR_IP_TYPE_UNSPECIFIED
+	case WwanIPTypeIPv4:
+		return evecommon.CellularIPType_CELLULAR_IP_TYPE_IPV4
+	case WwanIPTypeIPv4AndIPv6:
+		return evecommon.CellularIPType_CELLULAR_IP_TYPE_IPV4_AND_IPV6
+	case WwanIPTypeIPv6:
+		return evecommon.CellularIPType_CELLULAR_IP_TYPE_IPV6
+	default:
+		log.Errorf("Invalid wwan IP type: %v", ipt)
+	}
+	return evecommon.CellularIPType_CELLULAR_IP_TYPE_UNSPECIFIED
+}
+
 // WwanProbe : cellular connectivity verification probe.
 type WwanProbe struct {
 	// If true, then probing is disabled.
 	Disable bool
 	// User-defined probe for cellular connectivity testing.
 	UserDefinedProbe ConnectivityProbe
+}
+
+// WwanCleartextCredentials stores plain-text APN credentials.
+// Used only with LPS where cipher context is unavailable.
+// Must never be transmitted outside of secure local use.
+type WwanCleartextCredentials struct {
+	Username string
+	Password string
 }
 
 // Equal compares two instances of WwanNetworkConfig for equality.
@@ -339,6 +435,11 @@ type WwanNetworkStatus struct {
 	IPSettings WwanIPSettings
 	// True if location tracking is successfully running.
 	LocationTracking bool
+	// Contains all bearers currently associated with the cellular connection,
+	// including the attach (initial) bearer.
+	Bearers []WwanBearer
+	// Cellular connection profiles stored on the modem.
+	Profiles []WwanProfile
 }
 
 // WwanCellModule contains cellular module specs.
@@ -355,6 +456,49 @@ type WwanCellModule struct {
 	// QMI or MBIM.
 	ControlProtocol WwanCtrlProt
 	OpMode          WwanOpMode
+}
+
+// ToProto converts internal representation of the cellular module spec
+// into the corresponding proto definition from EVE API.
+func (m WwanCellModule) ToProto(log *base.LogObject) *info.ZCellularModuleInfo {
+	var opState info.ZCellularOperatingState
+	switch m.OpMode {
+	case WwanOpModeUnspecified:
+		opState = info.ZCellularOperatingState_Z_CELLULAR_OPERATING_STATE_UNSPECIFIED
+	case WwanOpModeOnline:
+		opState = info.ZCellularOperatingState_Z_CELLULAR_OPERATING_STATE_ONLINE
+	case WwanOpModeConnected:
+		opState = info.ZCellularOperatingState_Z_CELLULAR_OPERATING_STATE_ONLINE_AND_CONNECTED
+	case WwanOpModeRadioOff:
+		opState = info.ZCellularOperatingState_Z_CELLULAR_OPERATING_STATE_RADIO_OFF
+	case WwanOpModeOffline:
+		opState = info.ZCellularOperatingState_Z_CELLULAR_OPERATING_STATE_OFFLINE
+	case WwanOpModeUnrecognized:
+		opState = info.ZCellularOperatingState_Z_CELLULAR_OPERATING_STATE_UNRECOGNIZED
+	default:
+		log.Errorf("Invalid wwan module operating state: %v", m.OpMode)
+	}
+
+	var ctrlProto info.ZCellularControlProtocol
+	switch m.ControlProtocol {
+	case WwanCtrlProtUnspecified:
+		ctrlProto = info.ZCellularControlProtocol_Z_CELLULAR_CONTROL_PROTOCOL_UNSPECIFIED
+	case WwanCtrlProtQMI:
+		ctrlProto = info.ZCellularControlProtocol_Z_CELLULAR_CONTROL_PROTOCOL_QMI
+	case WwanCtrlProtMBIM:
+		ctrlProto = info.ZCellularControlProtocol_Z_CELLULAR_CONTROL_PROTOCOL_MBIM
+	default:
+		log.Errorf("Invalid wwan module control protocol: %v", m.ControlProtocol)
+	}
+	return &info.ZCellularModuleInfo{
+		Name:            m.Name,
+		Imei:            m.IMEI,
+		FirmwareVersion: m.Revision,
+		Model:           m.Model,
+		Manufacturer:    m.Manufacturer,
+		OperatingState:  opState,
+		ControlProtocol: ctrlProto,
+	}
 }
 
 // WwanSimCard describes either empty SIM slot or a slot with a SIM card inserted.
@@ -410,6 +554,18 @@ type WwanProvider struct {
 	Forbidden bool
 }
 
+// ToProto converts internal representation of the cellular network provider spec
+// into the corresponding proto definition from EVE API.
+func (wp WwanProvider) ToProto() (provider *info.ZCellularProvider) {
+	return &info.ZCellularProvider{
+		Plmn:           wp.PLMN,
+		Description:    wp.Description,
+		CurrentServing: wp.CurrentServing,
+		Roaming:        wp.Roaming,
+		Forbidden:      wp.Forbidden,
+	}
+}
+
 // WwanOpMode : wwan operating mode
 type WwanOpMode string
 
@@ -456,6 +612,77 @@ func (wips WwanIPSettings) Equal(wips2 WwanIPSettings) bool {
 		wips.MTU == wips2.MTU
 }
 
+// WwanBearer represents a logical connection established between a User Equipment (UE)
+// and a cellular network.
+type WwanBearer struct {
+	// Access Point Network of the bearer.
+	APN string
+	// Purpose of the bearer.
+	Type BearerType
+	// The IP addressing type to use for the bearer.
+	IPType WwanIPType
+	// Indicates whether or not the bearer is connected.
+	Connected bool
+	// Provides additional information specifying the reason why the modem is not connected
+	// (either due to a failed connection attempt, or due to a network initiated disconnection).
+	ConnectionError string
+	// Unix timestamp in seconds made when the current connection was established.
+	// Zero value if the bearer is not connected.
+	ConnectedAt uint64
+}
+
+// BearerType : purpose of a given cellular bearer.
+type BearerType int32
+
+// The values here should be same as the ones defined in info.proto of EVE API.
+const (
+	// BearerTypeUnspecified : bearer type is not specified/known.
+	BearerTypeUnspecified BearerType = iota
+	// BearerTypeAttach : bearer used for the initial attach procedure.
+	BearerTypeAttach
+	// BearerTypeDefault : default connection bearer providing packet data access
+	// to the network.
+	BearerTypeDefault
+	// BearerTypeDedicated : secondary context (2G/3G) or dedicated bearer (4G),
+	// defined by the user of the API. These bearers use the same IP address used
+	// by a primary context or default bearer and provide a dedicated flow for specific
+	// traffic with different QoS settings.
+	BearerTypeDedicated
+)
+
+// ToProto converts a BearerType to its corresponding protobuf enum representation.
+func (bt BearerType) ToProto(log *base.LogObject) evecommon.BearerType {
+	switch bt {
+	case BearerTypeUnspecified:
+		return evecommon.BearerType_BEARER_TYPE_UNSPECIFIED
+	case BearerTypeAttach:
+		return evecommon.BearerType_BEARER_TYPE_ATTACH
+	case BearerTypeDefault:
+		return evecommon.BearerType_BEARER_TYPE_DEFAULT
+	case BearerTypeDedicated:
+		return evecommon.BearerType_BEARER_TYPE_DEDICATED
+	default:
+		log.Errorf("Invalid wwan bearer type: %v", bt)
+	}
+	return evecommon.BearerType_BEARER_TYPE_UNSPECIFIED
+}
+
+// WwanProfile is a modem-stored configuration that defines how the device
+// connects to a network. It is used mostly during the initial attach procedure.
+type WwanProfile struct {
+	// The name of the profile.
+	Name string
+	// Access Point Name used by the profile.
+	APN string
+	// Which bearer type this profile is for.
+	BearerType BearerType
+	// The IP addressing type used by the profile.
+	IPType WwanIPType
+	// When true, the modem will not connect to networks that require roaming
+	// when using this profile.
+	ForbidRoaming bool
+}
+
 // Equal compares two instances of WwanNetworkStatus for equality.
 func (wns WwanNetworkStatus) Equal(wns2 WwanNetworkStatus) bool {
 	if wns.LogicalLabel != wns2.LogicalLabel ||
@@ -484,7 +711,82 @@ func (wns WwanNetworkStatus) Equal(wns2 WwanNetworkStatus) bool {
 		wns.LocationTracking != wns2.LocationTracking {
 		return false
 	}
+	if !generics.EqualSets(wns.Bearers, wns2.Bearers) ||
+		!generics.EqualSets(wns.Profiles, wns2.Profiles) {
+		return false
+	}
 	return true
+}
+
+// CellProvidersToProto exports proto-representation of all network providers listed inside
+// the WwanNetworkStatus.
+func (wns WwanNetworkStatus) CellProvidersToProto() (providers []*info.ZCellularProvider) {
+	var includedCurrentProvider bool
+	for _, provider := range wns.VisibleProviders {
+		if provider == wns.CurrentProvider {
+			includedCurrentProvider = true
+		}
+		providers = append(providers, provider.ToProto())
+	}
+	if !includedCurrentProvider && wns.CurrentProvider.PLMN != "" {
+		providers = append(providers, wns.CurrentProvider.ToProto())
+	}
+	return providers
+}
+
+// SimCardsToProto converts internal representation of the cellular SIM cards info
+// into the corresponding proto definition from EVE API.
+func (wns WwanNetworkStatus) SimCardsToProto() (simCards []*info.ZSimcardInfo) {
+	for _, simCard := range wns.SimCards {
+		simCards = append(simCards, &info.ZSimcardInfo{
+			Name:           simCard.Name,
+			CellModuleName: wns.Module.Name,
+			Imsi:           simCard.IMSI,
+			Iccid:          simCard.ICCID,
+			Type:           info.SimType(simCard.Type),
+			State:          simCard.State,
+			SlotNumber:     uint32(simCard.SlotNumber),
+			SlotActivated:  simCard.SlotActivated,
+		})
+	}
+	return simCards
+}
+
+// CellBearersToProto converts internal representation of the cellular bearers info
+// into the corresponding proto definition from EVE API.
+func (wns WwanNetworkStatus) CellBearersToProto(
+	log *base.LogObject) (bearers []*info.CellularBearer) {
+	for _, bearer := range wns.Bearers {
+		var connectedAt *timestamppb.Timestamp
+		if bearer.ConnectedAt != 0 {
+			connectedAt = timestamppb.New(time.Unix(int64(bearer.ConnectedAt), 0))
+		}
+		bearers = append(bearers, &info.CellularBearer{
+			Apn:             bearer.APN,
+			BearerType:      bearer.Type.ToProto(log),
+			IpType:          bearer.IPType.ToProto(log),
+			Connected:       bearer.Connected,
+			ConnectionError: bearer.ConnectionError,
+			ConnectedAt:     connectedAt,
+		})
+	}
+	return bearers
+}
+
+// CellProfilesToProto converts internal representation of the cellular profiles info
+// into the corresponding proto definition from EVE API.
+func (wns WwanNetworkStatus) CellProfilesToProto(
+	log *base.LogObject) (profiles []*info.CellularProfile) {
+	for _, profile := range wns.Profiles {
+		profiles = append(profiles, &info.CellularProfile{
+			ProfileName:   profile.Name,
+			Apn:           profile.APN,
+			BearerType:    profile.BearerType.ToProto(log),
+			IpType:        profile.IPType.ToProto(log),
+			ForbidRoaming: profile.ForbidRoaming,
+		})
+	}
+	return profiles
 }
 
 // WwanMetrics is published by the wwan service.
@@ -559,6 +861,41 @@ func (wm WwanMetrics) LogDelete(logBase *base.LogObject) {
 // LogKey :
 func (wm WwanMetrics) LogKey() string {
 	return string(base.WwanMetricsLogType) + "-" + wm.Key()
+}
+
+// ToProto converts internal representation of the cellular metrics
+// into the corresponding proto definition from EVE API.
+func (wm WwanMetrics) ToProto(log *base.LogObject) []*metrics.CellularMetric {
+	var cellularMetrics []*metrics.CellularMetric
+	for _, network := range wm.Networks {
+		if network.LogicalLabel == "" {
+			// skip unmanaged modems for now
+			continue
+		}
+		cellularMetrics = append(cellularMetrics,
+			&metrics.CellularMetric{
+				Logicallabel: network.LogicalLabel,
+				SignalStrength: &metrics.CellularSignalStrength{
+					Rssi: network.SignalInfo.RSSI,
+					Rsrq: network.SignalInfo.RSRQ,
+					Rsrp: network.SignalInfo.RSRP,
+					Snr:  network.SignalInfo.SNR,
+				},
+				PacketStats: &metrics.CellularPacketStats{
+					Rx: &metrics.NetworkStats{
+						TotalPackets: network.PacketStats.RxPackets,
+						Drops:        network.PacketStats.RxDrops,
+						TotalBytes:   network.PacketStats.RxBytes,
+					},
+					Tx: &metrics.NetworkStats{
+						TotalPackets: network.PacketStats.TxPackets,
+						Drops:        network.PacketStats.TxDrops,
+						TotalBytes:   network.PacketStats.TxBytes,
+					},
+				},
+			})
+	}
+	return cellularMetrics
 }
 
 // WwanNetworkMetrics contains metrics for a single cellular network.
