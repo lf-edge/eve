@@ -24,7 +24,7 @@ const (
 	// VMIPodNamePrefix : prefix added to name of every pod created to run VM.
 	VMIPodNamePrefix = "virt-launcher-"
 	// InstallOptionEtcdSizeGB grub option at install time.  Size of etcd volume in GB.
-	InstallOptionEtcdSizeGB = "eve_install_kubevirt_etcd_sizeGB"
+	InstallOptionEtcdSizeGB = "eve_install_k3s_etcd_sizeGB"
 	// DefaultEtcdSizeGB default for InstallOptionEtcdSizeGB
 	DefaultEtcdSizeGB uint32 = 10
 	// EtcdVolBlockSizeBytes is the block size for the etcd volume
