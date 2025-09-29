@@ -21,22 +21,9 @@ type Subscriber struct {
 }
 
 func (e *Subscriber) Start() error {
-	_, err := e.nkvClient.Subscribe(e.name, func(n p.Notification) {
-		if n.Type == p.NotificationUpdate {
-			e.C <- pubsub.Change{Operation: pubsub.Modify, Key: stripKey(n.Key), Value: n.Data}
-		}
-		if n.Type == p.NotificationClose {
-			change := pubsub.Change{Operation: pubsub.Delete, Key: stripKey(n.Key)}
-			e.C <- change
-		}
-	})
-	if err != nil {
-		return err
-	}
-
 	restartKey := restartCounterKey(e.name)
 
-	_, err = e.nkvClient.Subscribe(restartKey, func(n p.Notification) {
+	_, err := e.nkvClient.Subscribe(restartKey, func(n p.Notification) {
 		if n.Type == p.NotificationUpdate {
 			var valInt map[string]int
 			json.Unmarshal(n.Data, &valInt)
@@ -47,23 +34,38 @@ func (e *Subscriber) Start() error {
 		return err
 	}
 
-	// resp, err := e.nkvClient.Get(e.name + ".*")
-	// if err != nil {
-	// 	return err
-	// }
-	// data, ok := resp.Data.(p.HashMapStringBytes)
-	// if !ok {
-	// 	return fmt.Errorf("Couldn't convert data to HashMap type")
-	// }
-	// for key, val := range data {
-	// 	go func(key string, value []byte) {
-	// 		e.C <- pubsub.Change{
-	// 			Operation: pubsub.Modify,
-	// 			Key:       stripKey(key),
-	// 			Value:     value,
-	// 		}
-	// 	}(key, val)
-	// }
+	resp, err := e.nkvClient.Get(e.name + ".*")
+	if err != nil {
+		return err
+	}
+	data, ok := resp.Data.(p.HashMapStringBytes)
+	if !ok {
+		return fmt.Errorf("Couldn't convert data to HashMap type")
+	}
+	done := make(chan int)
+	go func() {
+		for key, val := range data {
+			e.C <- pubsub.Change{
+				Operation: pubsub.Modify,
+				Key:       stripKey(key),
+				Value:     val,
+			}
+		}
+		close(done)
+	}()
+
+	go func() {
+		<-done // wait initial lookup to propagate
+		_, _ = e.nkvClient.Subscribe(e.name, func(n p.Notification) {
+			if n.Type == p.NotificationUpdate {
+				e.C <- pubsub.Change{Operation: pubsub.Modify, Key: stripKey(n.Key), Value: n.Data}
+			}
+			if n.Type == p.NotificationClose {
+				change := pubsub.Change{Operation: pubsub.Delete, Key: stripKey(n.Key)}
+				e.C <- change
+			}
+		})
+	}()
 
 	restartResp, err := e.nkvClient.Get(restartKey)
 	restartData, ok := restartResp.Data.(p.HashMapStringBytes)
