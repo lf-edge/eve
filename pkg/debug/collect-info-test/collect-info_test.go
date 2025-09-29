@@ -4,8 +4,12 @@
 package main
 
 import (
+	"archive/tar"
+	"bytes"
+	"compress/gzip"
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"os"
 	"os/exec"
@@ -16,16 +20,22 @@ import (
 	"testing"
 )
 
-func listenHTTP() (*http.Request, error) {
+func listenHTTP() (*http.Request, io.Reader, error) {
 	var serverShutdown sync.Mutex
 	var s *http.Server
 	sm := http.NewServeMux()
 	var req *http.Request
+	var body bytes.Buffer
 	var bodyCloseErr error
+	var ioCopyErr error
 	var shutdownErr error
 
 	sm.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		req = r
+
+		if req.Body != nil {
+			_, ioCopyErr = io.Copy(&body, req.Body)
+		}
 
 		http.Error(w, "Bye", http.StatusOK)
 
@@ -51,13 +61,16 @@ func listenHTTP() (*http.Request, error) {
 
 	serverShutdown.Lock()
 	if bodyCloseErr != nil {
-		return nil, bodyCloseErr
+		return nil, nil, bodyCloseErr
 	}
 	if shutdownErr != nil {
-		return nil, shutdownErr
+		return nil, nil, shutdownErr
+	}
+	if ioCopyErr != nil {
+		return nil, nil, ioCopyErr
 	}
 
-	return req, nil
+	return req, &body, nil
 }
 
 func cleanup(t *testing.T) {
@@ -69,15 +82,18 @@ func cleanup(t *testing.T) {
 	}
 }
 
-func runCollectInfo(t *testing.T, uploadServer string, cmdEnv []string, httpListener func() (*http.Request, error)) *http.Request {
+func runCollectInfo(t *testing.T, uploadServer string, cmdEnv []string, httpListener func() (*http.Request, io.Reader, error)) (*http.Request, io.Reader) {
 	var cmd *exec.Cmd
 	reqChan := make(chan *http.Request)
+	bodyChan := make(chan io.Reader)
+
 	go func() {
-		req, err := httpListener()
+		req, body, err := httpListener()
 		if err != nil {
 			t.Logf("error from http server: %+v", err)
 		}
 		reqChan <- req
+		bodyChan <- body
 
 		if cmd == nil {
 			return
@@ -88,11 +104,15 @@ func runCollectInfo(t *testing.T, uploadServer string, cmdEnv []string, httpList
 		}
 	}()
 
-	for _, dir := range []string{"/proc/self", "/persist/status"} {
+	for _, dir := range []string{"/proc/self", "/persist/status", "/persist/tmp", "/run"} {
 		err := os.MkdirAll(filepath.Join("/out", dir), 0700)
 		if err != nil {
 			t.Fatal(err)
 		}
+	}
+	err := os.WriteFile("/out/run/eve-hv-type", []byte("gotest"), 0600)
+	if err != nil {
+		t.Fatalf("could not write /out/run/eve-hv-type: %v", err)
 	}
 
 	for _, fileContent := range []struct {
@@ -128,22 +148,61 @@ func runCollectInfo(t *testing.T, uploadServer string, cmdEnv []string, httpList
 	_ = cmd.Run()
 
 	req := <-reqChan
+	body := <-bodyChan
 
-	return req
+	return req, body
 }
 
 // TestCollectInfoUpload creates an http server and calls collect-info.sh to upload the tarball to it
 func TestCollectInfoUpload(t *testing.T) {
 	defer cleanup(t)
 
+	var eveHvType string
+
 	uploadServer := "http://localhost:8080"
 	cmdEnv := []string{"AUTHORIZATION=Bearer Vm0weGQxSXhiRmRXV0d4V1YwZDRWRmxyVm5kVmJGcHlWV3RLVUZWVU1Eaz0="}
 
-	req := runCollectInfo(t, uploadServer, cmdEnv, listenHTTP)
+	req, body := runCollectInfo(t, uploadServer, cmdEnv, listenHTTP)
 	t.Logf("req: %+v", req)
 
 	if req.Header["Authorization"][0] != "Bearer Vm0weGQxSXhiRmRXV0d4V1YwZDRWRmxyVm5kVmJGcHlWV3RLVUZWVU1Eaz0=" {
 		t.Fatalf("authorization header wrong or not set - was %+v", req.Header["Authorization"])
+	}
+
+	if req.Body == nil {
+		t.Fatalf("request body empty")
+	}
+
+	gz, err := gzip.NewReader(body)
+	if err != nil {
+		t.Fatalf("could not initialize gzip reader: %+v", err)
+	}
+	defer gz.Close()
+
+	tr := tar.NewReader(gz)
+
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatalf("next tar header failed: %v", err)
+		}
+
+		t.Logf("- %s\n", hdr.Name)
+		if filepath.Base(hdr.Name) == "eve-hv-type" {
+			bs, err := io.ReadAll(tr)
+			if err != nil {
+				t.Fatalf("could not read from uploaded tar file: %v", err)
+			}
+
+			eveHvType = string(bs)
+		}
+	}
+
+	if eveHvType != "gotest" {
+		t.Fatalf("wrong eve-hv-type file content in collect-info tar file; expected 'gotest', got '%s'", eveHvType)
 	}
 
 	if !strings.Contains(req.URL.Path, "123456") {
@@ -167,7 +226,7 @@ func TestCollectInfoFailingUpload(t *testing.T) {
 	uploadServer := "http://localhost:8080"
 	cmdEnv := []string{"AUTHORIZATION=Bearer Vm0weGQxSXhiRmRXV0d4V1YwZDRWRmxyVm5kVmJGcHlWV3RLVUZWVU1Eaz0="}
 
-	req := runCollectInfo(t, uploadServer, cmdEnv, func() (*http.Request, error) { return nil, nil })
+	req, _ := runCollectInfo(t, uploadServer, cmdEnv, func() (*http.Request, io.Reader, error) { return nil, nil, nil })
 	t.Logf("req: %+v", req)
 
 	dirEntries, err := os.ReadDir("/out/persist/eve-info")
