@@ -6,7 +6,8 @@ package base
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/satori/go.uuid"
+
+	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 )
 
@@ -174,6 +175,8 @@ const (
 	CachedResolvedIPsLogType LogObjectType = "cached_resolved_ips"
 	// AppMACGeneratorLogType : type for AppMACGenerator log entries
 	AppMACGeneratorLogType LogObjectType = "app_mac_generator"
+	// KubeAppFailover
+	KubeAppFailover LogObjectType = "kube_app_failover"
 )
 
 // RelationObjectType :

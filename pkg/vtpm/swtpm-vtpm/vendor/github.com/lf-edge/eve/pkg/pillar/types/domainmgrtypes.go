@@ -66,6 +66,8 @@ type DomainConfig struct {
 	// OemWindowsLicenseKeyInfo provides the information required to propagate the OEM license key
 	// to the VM.
 	OemWindowsLicenseKeyInfo OemWindowsLicenseKeyInfo
+
+	DeploymentType AppRuntimeType
 }
 
 // MetaDataType of metadata service for app
@@ -269,6 +271,8 @@ type VmConfig struct {
 	EnforceNetworkInterfaceOrder bool
 	// EnableOemWinLicenseKey indicates the app should receive the embedded Windows license key (if available)
 	EnableOemWinLicenseKey bool
+	// DisableVirtualTPM disables virtual TPM for the domain
+	DisableVirtualTPM bool
 }
 
 // VmMode is the type for the virtualization mode
@@ -340,6 +344,8 @@ type DomainStatus struct {
 	// PassthroughWindowsLicenseKey is true if eveything it available to propagate
 	// the OEM license key to the VM.
 	PassthroughWindowsLicenseKey bool
+	// DeploymentType is the type of deployment for the app
+	DeploymentType AppRuntimeType
 }
 
 func (status DomainStatus) Key() string {

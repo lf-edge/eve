@@ -156,10 +156,11 @@ type EncryptionBlock struct {
 	CellularNetUsername string
 	CellularNetPassword string
 	// Credentials for the cellular attach bearer:
-	CellularNetAttachUsername string
-	CellularNetAttachPassword string
-	ProtectedUserData         string
-	ClusterToken              string
-	User                      zcommon.EncryptionBlockUser
-	EncryptedData             string
+	CellularNetAttachUsername    string
+	CellularNetAttachPassword    string
+	ProtectedUserData            string
+	ClusterToken                 string
+	User                         zcommon.EncryptionBlockUser
+	EncryptedData                string
+	GzipRegistrationManifestYaml []byte
 }

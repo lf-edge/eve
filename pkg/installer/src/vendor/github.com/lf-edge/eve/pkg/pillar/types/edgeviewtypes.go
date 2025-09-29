@@ -91,16 +91,27 @@ type EvjwtAlgo struct {
 	Typ string `json:"typ"` // type, is 'JWT' string
 }
 
+// EvAuthType - enum for authentication type of edge-view
+type EvAuthType int32
+
+// EvAuthType defines the authentication types for edge-view.
+const (
+	EvAuthTypeUnspecified    EvAuthType = iota // EvAuthTypeUnspecified - an unspecified authentication type.
+	EvAuthTypeControllerCert                   // EvAuthTypeControllerCert - using authen of controller cert
+	EvAuthTypeSSHRsaKeys                       // EvAuthTypeSSHRsaKeys - using ssh rsa keys
+)
+
 // EvjwtInfo - token embedded info
 // the info specifies where is the dispatcher endpoint, the intended EVE
 // device with UUID string, the token expiration time and authentication nonce
 type EvjwtInfo struct {
-	Dep string `json:"dep"` // dispatcher end-point string e.g. ip:port
-	Sub string `json:"sub"` // jwt subject, the device UUID string
-	Exp uint64 `json:"exp"` // expiration time for the token
-	Key string `json:"key"` // key or nonce for payload hmac authentication
-	Num uint8  `json:"num"` // number of instances, default is 1
-	Enc bool   `json:"enc"` // payload with encryption, default is authentication
+	Dep string     `json:"dep"` // dispatcher end-point string e.g. ip:port
+	Sub string     `json:"sub"` // jwt subject, the device UUID string
+	Exp uint64     `json:"exp"` // expiration time for the token
+	Key string     `json:"key"` // key or nonce for payload hmac authentication
+	Num uint8      `json:"num"` // number of instances, default is 1
+	Enc bool       `json:"enc"` // payload with encryption, default is authentication
+	Aut EvAuthType `json:"aut"` // authentication type
 }
 
 // EdgeviewStatus - status advertised by edge-view

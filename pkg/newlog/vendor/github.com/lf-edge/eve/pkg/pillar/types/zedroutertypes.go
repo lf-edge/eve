@@ -4,12 +4,15 @@
 package types
 
 import (
+	"errors"
 	"fmt"
 	"net"
+	"path"
 	"strings"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/lf-edge/eve-api/go/evecommon"
 	"github.com/lf-edge/eve/pkg/kube/cnirpc"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/objtonum"
@@ -208,6 +211,20 @@ func (status AppNetworkStatus) GetAdaptersStatusForNI(netUUID uuid.UUID) []*AppN
 	return adapters
 }
 
+// GetAllAppIPs returns all IPv4 and IPv6 addresses currently assigned
+// to the application across its network adapters.
+func (status AppNetworkStatus) GetAllAppIPs() (appIPs []net.IP) {
+	for _, adapter := range status.AppNetAdapterList {
+		for _, assignedAddr := range adapter.AssignedAddresses.IPv4Addrs {
+			appIPs = append(appIPs, assignedAddr.Address)
+		}
+		for _, assignedAddr := range adapter.AssignedAddresses.IPv6Addrs {
+			appIPs = append(appIPs, assignedAddr.Address)
+		}
+	}
+	return appIPs
+}
+
 // AppContainerMetrics - App Container Metrics
 type AppContainerMetrics struct {
 	UUIDandVersion UUIDandVersion // App UUID
@@ -290,7 +307,7 @@ type AppNetAdapterConfig struct {
 	// Error
 	//	If there is a parsing error and this AppNetAdapterNetwork config cannot be
 	//	processed, set the error here. This allows the error to be propagated
-	//  back to zedcloud
+	//  back to the controller
 	Error           string
 	Network         uuid.UUID // Points to a NetworkInstance.
 	ACLs            []ACE
@@ -403,6 +420,16 @@ func (aa AssignedAddrs) GetInternallyLeasedIPv4Addr() net.IP {
 		}
 	}
 	return nil
+}
+
+// DnsmasqLeaseDir is a directory with files (one per NI bridge) storing IP leases
+// granted to applications by dnsmasq.
+const DnsmasqLeaseDir = "/run/zedrouter/dnsmasq.leases/"
+
+// DnsmasqLeaseFilePath returns the path to a file with IP leases granted
+// to applications connected to a given bridge.
+func DnsmasqLeaseFilePath(bridgeIfName string) string {
+	return path.Join(DnsmasqLeaseDir, bridgeIfName)
 }
 
 // AddressSource determines the source of an IP address assigned to an app VIF.
@@ -708,10 +735,10 @@ type NetworkInstanceConfig struct {
 
 	// IP configuration for the Application
 	IpType          AddressType
-	Subnet          net.IPNet
+	Subnet          *net.IPNet
 	Gateway         net.IP
 	DomainName      string
-	NtpServers      []string
+	NtpServers      []netutils.HostnameOrIP
 	DnsServers      []net.IP // If not set we use Gateway as DNS server
 	DhcpRange       IPRange
 	DnsNameToIPList []DNSNameToIP // Used for DNS and ACL ipset
@@ -827,15 +854,90 @@ type ConnectivityProbe struct {
 	ProbePort uint16
 }
 
-// String returns human-readable description of the probe.
-func (r ConnectivityProbe) String() string {
-	probeStr := "<none>"
-	switch r.Method {
+// FromProto populates the ConnectivityProbe from its protobuf representation.
+// Returns an error if the probe configuration is invalid.
+func (cp *ConnectivityProbe) FromProto(probe *evecommon.ConnectivityProbe) error {
+	if probe == nil {
+		return nil
+	}
+
+	switch probe.ProbeMethod {
+	case evecommon.ConnectivityProbeMethod_CONNECTIVITY_PROBE_METHOD_UNSPECIFIED:
+		cp.Method = ConnectivityProbeMethodNone
+
+	case evecommon.ConnectivityProbeMethod_CONNECTIVITY_PROBE_METHOD_ICMP:
+		cp.Method = ConnectivityProbeMethodICMP
+		cp.ProbeHost = probe.GetProbeEndpoint().GetHost()
+		// Undefined host for ICMP probing is allowed - EVE will probe Google DNS
+		// (8.8.8.8) in that case.
+		if cp.ProbeHost != "" {
+			if net.ParseIP(cp.ProbeHost) == nil {
+				return fmt.Errorf("invalid IP address for ICMP probe: %s",
+					cp.ProbeHost)
+			}
+		}
+
+	case evecommon.ConnectivityProbeMethod_CONNECTIVITY_PROBE_METHOD_TCP:
+		cp.Method = ConnectivityProbeMethodTCP
+		cp.ProbeHost = probe.GetProbeEndpoint().GetHost()
+		if cp.ProbeHost == "" {
+			return errors.New("missing endpoint host address for TCP probe")
+		}
+		if net.ParseIP(cp.ProbeHost) == nil {
+			return fmt.Errorf("invalid IP address for TCP probe: %s", cp.ProbeHost)
+		}
+		probePort := probe.GetProbeEndpoint().GetPort()
+		if probePort == 0 {
+			return errors.New("missing endpoint port number for TCP probe")
+		}
+		if probePort > 65535 {
+			return fmt.Errorf("TCP probe port number (%d) is out of range", probePort)
+		}
+		cp.ProbePort = uint16(probePort)
+	}
+	return nil
+}
+
+// ToProto converts ConnectivityProbe into its protobuf representation.
+func (cp ConnectivityProbe) ToProto() *evecommon.ConnectivityProbe {
+	probe := &evecommon.ConnectivityProbe{}
+
+	switch cp.Method {
+	case ConnectivityProbeMethodNone:
+		probe.ProbeMethod =
+			evecommon.ConnectivityProbeMethod_CONNECTIVITY_PROBE_METHOD_UNSPECIFIED
+
 	case ConnectivityProbeMethodICMP:
-		probeStr = fmt.Sprintf("icmp://%s", r.ProbeHost)
+		probe.ProbeMethod = evecommon.ConnectivityProbeMethod_CONNECTIVITY_PROBE_METHOD_ICMP
+		probe.ProbeEndpoint = &evecommon.ProbeEndpoint{
+			Host: cp.ProbeHost,
+		}
+
 	case ConnectivityProbeMethodTCP:
-		probeStr = fmt.Sprintf("tcp://%s:%d", r.ProbeHost,
-			r.ProbePort)
+		probe.ProbeMethod = evecommon.ConnectivityProbeMethod_CONNECTIVITY_PROBE_METHOD_TCP
+		probe.ProbeEndpoint = &evecommon.ProbeEndpoint{
+			Host: cp.ProbeHost,
+			Port: uint32(cp.ProbePort),
+		}
+
+	default:
+		// Fall back to UNSPECIFIED for unknown methods
+		probe.ProbeMethod =
+			evecommon.ConnectivityProbeMethod_CONNECTIVITY_PROBE_METHOD_UNSPECIFIED
+	}
+
+	return probe
+}
+
+// String returns human-readable description of the probe.
+func (cp ConnectivityProbe) String() string {
+	probeStr := "<none>"
+	switch cp.Method {
+	case ConnectivityProbeMethodICMP:
+		probeStr = fmt.Sprintf("icmp://%s", cp.ProbeHost)
+	case ConnectivityProbeMethodTCP:
+		probeStr = fmt.Sprintf("tcp://%s:%d", cp.ProbeHost,
+			cp.ProbePort)
 	}
 	return probeStr
 }
@@ -991,7 +1093,7 @@ type NetworkInstanceStatus struct {
 	// List of NTP servers published to applications connected to this network instance.
 	// This includes the NTP server from the NI config (if any) and all NTP servers
 	// associated with ports used by the network instance for external connectivity.
-	NTPServers []string
+	NTPServers []netutils.HostnameOrIP
 	// The intended state of the routing table.
 	// Includes user-configured static routes and potentially also automatically
 	// generated default route.
@@ -1401,4 +1503,33 @@ type NestedAppDomainStatus struct {
 // Key - returns the UUID for the nested app domain status
 func (status NestedAppDomainStatus) Key() string {
 	return status.UUIDandVersion.UUID.String()
+}
+
+// FsUsedMetric - contains the used and allocated
+// space of a NestedApp running on a runtime
+// app instance.
+type FsUsedMetric struct {
+	UsedMb      float64
+	AllocatedMb float64
+}
+
+// NestedAppRuntimeDiskMetric - contains the overall
+// fs usage of a volume instance attached to a runtime
+// app instance.  All storage of child/NestedApps running in
+// this runtime app instance is included.
+type NestedAppRuntimeDiskMetric struct {
+	UUID        string
+	TotalMb     float64
+	UsedMb      float64
+	AllocatedMb float64
+	// DependentSpaceMb is a representation of the space used by Nested Apps
+	// which share a persistent filesystem of a runtime.
+	// Key is a nested app instance uuid running on the runtime,
+	// a NestedAppDomainStatus uuid.
+	DependentSpaceMb map[string]FsUsedMetric
+}
+
+// Key - returns the UUID for the nested app runtime disk metric
+func (metric NestedAppRuntimeDiskMetric) Key() string {
+	return metric.UUID
 }

@@ -70,6 +70,9 @@ type NetworkPortStatus struct {
 	L2LinkConfig
 	// TestResults provides recording of failure and success
 	TestResults
+	// Error message related to configuration submitted via the Local Profile
+	// Server (LPS). Reported only back to LPS and never sent to the controller.
+	LpsConfigError string
 }
 
 type AddrInfo struct {

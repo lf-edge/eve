@@ -6,10 +6,13 @@ package types
 import (
 	"encoding/base64"
 	"fmt"
+	"net"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
 
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/sirupsen/logrus" // OK for logrus.Fatal
 )
 
@@ -407,6 +410,13 @@ const (
 	MsrvPrometheusMetricsBurst GlobalSettingKey = "msrv.prometheus.metrics.burst"
 	// MsrvPrometheusMetricsIdleTimeoutSeconds: idle timeout for the connection
 	MsrvPrometheusMetricsIdleTimeoutSeconds GlobalSettingKey = "msrv.prometheus.metrics.idletimeout.seconds"
+
+	// DiagProbeRemoteHTTPEndpoint : remote endpoint queried over **HTTP** to assess
+	// the state of network connectivity whenever the controller is not reachable.
+	DiagProbeRemoteHTTPEndpoint GlobalSettingKey = "diag.probe.remote.http.endpoint"
+	// DiagProbeRemoteHTTPSEndpoint : remote endpoint queried over **HTTPS** to assess
+	// the state of network connectivity whenever the controller is not reachable.
+	DiagProbeRemoteHTTPSEndpoint GlobalSettingKey = "diag.probe.remote.https.endpoint"
 )
 
 // AgentSettingKey - keys for per-agent settings
@@ -1106,6 +1116,10 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddIntItem(MsrvPrometheusMetricsBurst, 10, 1, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(MsrvPrometheusMetricsIdleTimeoutSeconds, 4*MinuteInSec, 1, 0xFFFFFFFF)
 
+	// Add diag probing settings
+	configItemSpecMap.AddStringItem(DiagProbeRemoteHTTPEndpoint, "www.google.com", makeURLValidator("http", true))
+	configItemSpecMap.AddStringItem(DiagProbeRemoteHTTPSEndpoint, "www.google.com", makeURLValidator("https", false))
+
 	return configItemSpecMap
 }
 
@@ -1128,6 +1142,74 @@ func validateSyslogKernelLevel(level string) error {
 		return fmt.Errorf("validateSyslogKernelLevel: unknown loglevel '%v'", level)
 	}
 	return nil
+}
+
+// makeURLValidator returns a validator that checks if an address is either empty,
+// a hostname with no scheme, or a valid URL using the specified allowed scheme.
+// If allowIP is false, bare or scheme-prefixed IP addresses are rejected.
+func makeURLValidator(allowedScheme string, allowIP bool) func(addr string) error {
+	return func(addr string) error {
+		if addr == "" {
+			// Accept empty value.
+			return nil
+		}
+		u, err := parseURL(addr, allowedScheme)
+		if err != nil {
+			return err
+		}
+		if !allowIP && net.ParseIP(u.Hostname()) != nil {
+			return fmt.Errorf("IP addresses are not allowed: %q", u.Hostname())
+		}
+		if strings.ToLower(u.Scheme) != strings.ToLower(allowedScheme) {
+			return fmt.Errorf("invalid URL scheme: %q (expected %q)",
+				u.Scheme, allowedScheme)
+		}
+		return nil
+	}
+}
+
+// parseURL parses the provided address into a *url.URL.
+// If no scheme is provided, it prepends the default scheme.
+func parseURL(address, defaultScheme string) (*url.URL, error) {
+	if address == "" {
+		return nil, fmt.Errorf("address cannot be empty")
+	}
+	if !strings.Contains(address, "://") {
+		address = defaultScheme + "://" + address
+	}
+	return url.Parse(address)
+}
+
+// GetDiagRemoteEndpointURLs returns diagnostic probe endpoint URLs configured
+// in the provided ConfigItemValueMap. It looks up both HTTP and HTTPS endpoints,
+// parses them into *url.URL values with the correct scheme enforced, and
+// returns a slice containing all successfully parsed URLs.
+func GetDiagRemoteEndpointURLs(log *base.LogObject, gcp *ConfigItemValueMap) []*url.URL {
+	if gcp == nil {
+		return nil
+	}
+	var diagURLs []*url.URL
+	httpEp := gcp.GlobalValueString(DiagProbeRemoteHTTPEndpoint)
+	if httpEp != "" {
+		httpEpURL, err := parseURL(httpEp, "http")
+		if err != nil {
+			log.Errorf("Failed to build URL for %s: %v",
+				DiagProbeRemoteHTTPEndpoint, err)
+		} else {
+			diagURLs = append(diagURLs, httpEpURL)
+		}
+	}
+	httpsEp := gcp.GlobalValueString(DiagProbeRemoteHTTPSEndpoint)
+	if httpsEp != "" {
+		httpsEpURL, err := parseURL(httpsEp, "https")
+		if err != nil {
+			log.Errorf("Failed to build URL for %s: %v",
+				DiagProbeRemoteHTTPSEndpoint, err)
+		} else {
+			diagURLs = append(diagURLs, httpsEpURL)
+		}
+	}
+	return diagURLs
 }
 
 // blankValidator - A validator that accepts any string

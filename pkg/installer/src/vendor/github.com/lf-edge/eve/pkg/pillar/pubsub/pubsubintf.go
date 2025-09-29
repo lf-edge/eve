@@ -54,7 +54,7 @@ type Subscription interface {
 	ProcessChange(change Change)
 	// MsgChan - Message Channel for Subscription
 	MsgChan() <-chan Change
-	// Activate starts the subscription
+	// Activate starts the subscription and populates the state if it's persisted
 	Activate() error
 	// Close stops the subscription and removes the state
 	Close() error

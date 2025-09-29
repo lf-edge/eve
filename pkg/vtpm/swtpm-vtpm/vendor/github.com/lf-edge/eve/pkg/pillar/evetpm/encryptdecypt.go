@@ -138,7 +138,21 @@ func deriveSessionKey(X, Y *big.Int, publicKey *ecdsa.PublicKey) ([32]byte, erro
 		return [32]byte{}, fmt.Errorf("TPM open failed: %v", err)
 	}
 	defer rw.Close()
-	p := tpm2.ECPoint{XRaw: X.Bytes(), YRaw: Y.Bytes()}
+
+	// ECPoint expects the point to be of specific size. Using big.Int.Bytes()
+	// can lead to issues if the integers are slightly less than the max size of
+	// the curve, and it can lead to missing leading zeros and errors like :
+	// "error code 0x27 : point is not on the required curve"
+	// FillBytes() is an option but it requires explicit size, here we use
+	// EccIntToBytes to get the correctly sized byte array based on the curve.
+	// If I understood the spec correctly, this issue should not occur
+	// in TPMs that implement the >= v1.38 spec, specifically:
+	// Trusted Platform Module Library, "Part 1: Architecture",
+	// Family “2.0” Level 00 Revision 01.38, C.8 ECC Point Padding.
+	p := tpm2.ECPoint{
+		XRaw: EccIntToBytes(publicKey.Curve, X),
+		YRaw: EccIntToBytes(publicKey.Curve, Y),
+	}
 
 	//Recover the key, and decrypt the message
 	z, err := tpm2.ECDHZGen(rw, TpmEcdhKeyHdl, "", p)
@@ -185,4 +199,14 @@ func EncryptDecryptUsingTpm(in []byte, encrypt bool) ([]byte, error) {
 		err = AESDecrypt(out, in, key[:], iv)
 	}
 	return out, err
+}
+
+// EccIntToBytes - ECC coordinates need to maintain a specific size based on the curve, so we pad the front with zeros.
+// This is particularly an issue for NIST-P521 coordinates, as they are frequently missing their first byte.
+// This is copied from go-tpm-tools library and is more future-proof than FillBytes().
+// https://github.com/google/go-tpm-tools/blob/3e063ade7f302972d7b893ca080a75efa3db5506/server/ecc_utils.go#L11
+func EccIntToBytes(curve elliptic.Curve, i *big.Int) []byte {
+	bytes := i.Bytes()
+	curveBytes := (curve.Params().BitSize + 7) / 8
+	return append(make([]byte, curveBytes-len(bytes)), bytes...)
 }
