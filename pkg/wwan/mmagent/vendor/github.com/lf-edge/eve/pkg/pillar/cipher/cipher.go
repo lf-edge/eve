@@ -30,6 +30,7 @@ func getEncryptionBlock(
 	decBlock.CellularNetAttachPassword = zconfigDecBlockPtr.CellularNetAttachPassword
 	decBlock.ProtectedUserData = zconfigDecBlockPtr.ProtectedUserData
 	decBlock.ClusterToken = zconfigDecBlockPtr.ClusterToken
+	decBlock.GzipRegistrationManifestYaml = zconfigDecBlockPtr.GzipRegistrationManifestYaml
 	return decBlock
 }
 

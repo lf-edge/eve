@@ -71,7 +71,7 @@ func (pub *PublicationImpl) RestartCounter() int {
 
 // CheckMaxSize returns an error if the item is too large and would result
 // in a fatal if it was published
-func (pub *PublicationImpl) CheckMaxSize(key string, item interface{}) error {
+func (pub *PublicationImpl) CheckMaxSize(key string, item any) error {
 	topic := TypeToName(item)
 	name := pub.nameString()
 	if topic != pub.topic {
@@ -97,7 +97,7 @@ func (pub *PublicationImpl) CheckMaxSize(key string, item interface{}) error {
 }
 
 // Publish publish a key-value pair
-func (pub *PublicationImpl) Publish(key string, item interface{}) error {
+func (pub *PublicationImpl) Publish(key string, item any) error {
 	topic := TypeToName(item)
 	name := pub.nameString()
 	if topic != pub.topic {
@@ -187,7 +187,7 @@ func (pub *PublicationImpl) ClearRestarted() error {
 }
 
 // Get the value for a given key
-func (pub *PublicationImpl) Get(key string) (interface{}, error) {
+func (pub *PublicationImpl) Get(key string) (any, error) {
 	m, ok := pub.km.key.Load(key)
 	if ok {
 		newIntf := DeepCopy(pub.log, m)
@@ -200,9 +200,9 @@ func (pub *PublicationImpl) Get(key string) (interface{}, error) {
 }
 
 // GetAll enumerate all the key-value pairs for the collection
-func (pub *PublicationImpl) GetAll() map[string]interface{} {
-	result := make(map[string]interface{})
-	assigner := func(key string, val interface{}) bool {
+func (pub *PublicationImpl) GetAll() map[string]any {
+	result := make(map[string]any)
+	assigner := func(key string, val any) bool {
 		newVal := DeepCopy(pub.log, val)
 		result[key] = newVal
 		return true
@@ -345,13 +345,18 @@ func (pub *PublicationImpl) DetermineDiffs(localCollection LocalCollection) []st
 
 func (pub *PublicationImpl) nameString() string {
 	var name string
+	agentName := pub.agentName
+	if agentName == "" {
+		// global
+		agentName = pub.defaultName
+	}
 	switch {
 	case pub.global:
 		name = Global
 	case pub.agentScope == "":
-		name = fmt.Sprintf("%s/%s", pub.agentName, pub.topic)
+		name = fmt.Sprintf("%s.%s", agentName, pub.topic)
 	default:
-		name = fmt.Sprintf("%s/%s/%s", pub.agentName, pub.agentScope, pub.topic)
+		name = fmt.Sprintf("%s.%s.%s", agentName, pub.agentScope, pub.topic)
 	}
 	return name
 }
@@ -384,7 +389,7 @@ func (pub *PublicationImpl) dump(infoStr string) {
 
 	name := pub.nameString()
 	pub.log.Tracef("dump(%s) %s\n", name, infoStr)
-	dumper := func(key string, val interface{}) bool {
+	dumper := func(key string, val any) bool {
 		_, err := json.Marshal(val)
 		if err != nil {
 			pub.log.Fatal("json Marshal in dump", err)

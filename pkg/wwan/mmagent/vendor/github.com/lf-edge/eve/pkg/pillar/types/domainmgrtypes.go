@@ -46,7 +46,7 @@ type DomainConfig struct {
 	IsDNidNode bool
 
 	// XXX: to be deprecated, use CipherBlockStatus instead
-	CloudInitUserData *string `json:"pubsub-large-CloudInitUserData"` // base64-encoded
+	CloudInitUserData *string // base64-encoded
 
 	// CipherBlockStatus, for encrypted cloud-init data
 	CipherBlockStatus
@@ -271,6 +271,8 @@ type VmConfig struct {
 	EnforceNetworkInterfaceOrder bool
 	// EnableOemWinLicenseKey indicates the app should receive the embedded Windows license key (if available)
 	EnableOemWinLicenseKey bool
+	// DisableVirtualTPM disables virtual TPM for the domain
+	DisableVirtualTPM bool
 }
 
 // VmMode is the type for the virtualization mode

@@ -6,6 +6,7 @@ package types
 import (
 	"fmt"
 	"net"
+	"path"
 	"strings"
 	"time"
 
@@ -25,7 +26,7 @@ type AppNetworkConfig struct {
 	Activate          bool
 	GetStatsIPAddr    net.IP
 	AppNetAdapterList []AppNetAdapterConfig
-	CloudInitUserData *string `json:"pubsub-large-CloudInitUserData"`
+	CloudInitUserData *string
 	CipherBlockStatus CipherBlockStatus
 	MetaDataType      MetaDataType
 	DeploymentType    AppRuntimeType
@@ -290,7 +291,7 @@ type AppNetAdapterConfig struct {
 	// Error
 	//	If there is a parsing error and this AppNetAdapterNetwork config cannot be
 	//	processed, set the error here. This allows the error to be propagated
-	//  back to zedcloud
+	//  back to the controller
 	Error           string
 	Network         uuid.UUID // Points to a NetworkInstance.
 	ACLs            []ACE
@@ -403,6 +404,16 @@ func (aa AssignedAddrs) GetInternallyLeasedIPv4Addr() net.IP {
 		}
 	}
 	return nil
+}
+
+// DnsmasqLeaseDir is a directory with files (one per NI bridge) storing IP leases
+// granted to applications by dnsmasq.
+const DnsmasqLeaseDir = "/run/zedrouter/dnsmasq.leases/"
+
+// DnsmasqLeaseFilePath returns the path to a file with IP leases granted
+// to applications connected to a given bridge.
+func DnsmasqLeaseFilePath(bridgeIfName string) string {
+	return path.Join(DnsmasqLeaseDir, bridgeIfName)
 }
 
 // AddressSource determines the source of an IP address assigned to an app VIF.
@@ -708,7 +719,7 @@ type NetworkInstanceConfig struct {
 
 	// IP configuration for the Application
 	IpType          AddressType
-	Subnet          net.IPNet
+	Subnet          *net.IPNet
 	Gateway         net.IP
 	DomainName      string
 	NtpServers      []string
@@ -741,6 +752,15 @@ type NetworkInstanceConfig struct {
 	// VLAN configuration for application interfaces is applied separately via AppNetAdapterConfig
 	// (see AppNetAdapterConfig.AccessVlanID).
 	VlanAccessPorts []VlanAccessPort
+
+	// Enables forwarding of LLDP (Link Layer Discovery Protocol) frames across this
+	// network instance.
+	// LLDP is used by devices to advertise identity and capabilities to directly
+	// connected neighbors, and is often required for topology discovery and network
+	// management tools.
+	// When enabled, LLDP frames (EtherType 0x88cc) are not dropped or suppressed
+	// by the forwarding plane.
+	ForwardLLDP bool
 
 	// Any errors from the parser
 	// ErrorAndTime provides SetErrorNow() and ClearError()

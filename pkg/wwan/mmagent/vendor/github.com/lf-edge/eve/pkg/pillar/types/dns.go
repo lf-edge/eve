@@ -50,9 +50,11 @@ type NetworkPortStatus struct {
 	InvalidConfig        bool
 	Cost                 uint8
 	Dhcp                 DhcpType
-	Type                 NetworkType // IPv4 or IPv6 or Dual stack
-	Subnet               net.IPNet
-	ConfiguredNtpServers []string // This comes from network configuration
+	Type                 NetworkType  // IPv4 or IPv6 or Dual stack
+	ConfiguredSubnet     *net.IPNet   // entered by user in the static IP config
+	IPv4Subnet           *net.IPNet   // actually configured on the interface (IPv4)
+	IPv6Subnets          []*net.IPNet // actually configured on the interface (IPv6)
+	ConfiguredNtpServers []string     // This comes from network configuration
 	IgnoreDhcpNtpServers bool
 	DomainName           string
 	DNSServers           []net.IP // If not set we use Gateway as DNS server
@@ -237,7 +239,9 @@ func (status DeviceNetworkStatus) MostlyEqual(status2 DeviceNetworkStatus) bool 
 			return false
 		}
 		if p1.Dhcp != p2.Dhcp ||
-			!netutils.EqualIPNets(&p1.Subnet, &p2.Subnet) ||
+			!netutils.EqualIPNets(p1.ConfiguredSubnet, p2.ConfiguredSubnet) ||
+			!netutils.EqualIPNets(p1.IPv4Subnet, p2.IPv4Subnet) ||
+			!generics.EqualSetsFn(p1.IPv6Subnets, p2.IPv6Subnets, netutils.EqualIPNets) ||
 			!generics.EqualSets(p1.ConfiguredNtpServers, p2.ConfiguredNtpServers) ||
 			p1.DomainName != p2.DomainName {
 			return false
