@@ -865,6 +865,12 @@ if [ -f /var/lib/convert-to-single-node ]; then
         # if we immediately convert back to cluster mode, we need to wait for the
         # bootstrap status before moving on to cluster mode
         convert_to_single_node=true
+
+        #
+        # During first boot this is only set after the save var-lib process
+        # So when converting back to single node its missing, set it again here.
+        #
+        touch /var/lib/all_components_initialized
 fi
 # since we can wait for long time, always start the containerd first
 check_start_containerd
