@@ -52,7 +52,6 @@ import (
 
 const (
 	agentName               = "zedagent"
-	restartCounterFile      = types.PersistStatusDir + "/restartcounter"
 	lastDevCmdTimestampFile = types.PersistStatusDir + "/lastdevcmdtimestamp"
 	// checkpointDirname - location of config checkpoint
 	checkpointDirname = types.PersistDir + "/checkpoint"
