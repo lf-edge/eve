@@ -1531,6 +1531,9 @@ func handleGlobalConfigImpl(ctxArg interface{}, key string,
 	log.Functionf("handleGlobalConfigImpl for %s", key)
 	gcp := agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
 		ctx.CLIParams().DebugOverride, logger)
+	if gcp != nil {
+		ctx.globalConfig = gcp
+	}
 	ctx.remoteProbes = types.GetDiagRemoteEndpointURLs(log, gcp)
 	ctx.GCInitialized = true
 	log.Functionf("handleGlobalConfigImpl done for %s", key)
