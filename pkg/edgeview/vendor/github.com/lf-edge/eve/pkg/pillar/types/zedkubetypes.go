@@ -7,7 +7,24 @@ import (
 	"time"
 
 	"github.com/lf-edge/eve-api/go/info"
+	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
 	"google.golang.org/protobuf/types/known/timestamppb"
+	corev1 "k8s.io/api/core/v1"
+)
+
+const (
+	// DefaultDrainSkipK8sAPINotReachableTimeoutSeconds is the time duration which the drain request handler
+	// will continue retrying the k8s api before declaring the node is unavailable and continuing
+	// device operations (reboot/shutdown/upgrade)
+	// This covers the following k8s.io/apimachinery/pkg/api/errors
+	// IsInternalError
+	// IsServerTimeout
+	// IsServiceUnavailable
+	// IsTimeout
+	// IsTooManyRequests
+	DefaultDrainSkipK8sAPINotReachableTimeoutSeconds = 300
+	// DefaultDrainTimeoutHours is time allowed for a node drain before a failure is returned
+	DefaultDrainTimeoutHours = 24
 )
 
 // KubeNodeStatus - Enum for the status of a Kubernetes node
@@ -419,4 +436,78 @@ func (ksi KubeStorageInfo) ZKubeStorageInfo() *info.KubeStorageInfo {
 		iKsi.Volumes = append(iKsi.Volumes, vol.ZKubeVolumeInfo())
 	}
 	return iKsi
+}
+
+// KubeServiceInfo represents information about a Kubernetes Service
+type KubeServiceInfo struct {
+	Name           string             // Name of the service
+	Namespace      string             // Namespace of the service
+	Protocol       corev1.Protocol    // Protocol used by the service (TCP, UDP, etc.)
+	Port           int32              // Port number for the service
+	NodePort       int32              // NodePort number for NodePort services
+	Type           corev1.ServiceType // Type of the service (ClusterIP, NodePort, LoadBalancer, etc.)
+	LoadBalancerIP string             // IP address assigned to LoadBalancer service
+	ACEenabled     bool               // Authorized Cluster Endpoint access is enabled
+}
+
+// Define the K8s service CIDR that we want to exclude from external IP handling
+const (
+	KubeServicePrefix = "10.43.0.0/16" // Standard K3s service CIDR
+)
+
+// KubeIngressInfo represents information about a Kubernetes Ingress
+type KubeIngressInfo struct {
+	Name        string             // Name of the Ingress resource
+	Namespace   string             // Namespace of the Ingress resource
+	Hostname    string             // e.g. "example.com"
+	Path        string             // e.g. "/api/v1"
+	PathType    string             // "Prefix" or "Exact"
+	Protocol    string             // "http" or "https"
+	Service     string             // Target service name
+	ServicePort int32              // Target service port
+	ServiceType corev1.ServiceType // Type of the target service (LoadBalancer, NodePort, etc.)
+	IngressIP   []string           // LoadBalancer IPs if available
+}
+
+// KubeUserServices - Collected User services from kubernetes
+type KubeUserServices struct {
+	UserService []KubeServiceInfo
+	UserIngress []KubeIngressInfo
+}
+
+// Equal checks if two KubeUserServices instances are equal
+func (s KubeUserServices) Equal(s2 KubeUserServices) bool {
+	// Use generics.EqualSetsFn to compare service arrays
+	servicesEqual := generics.EqualSetsFn(s.UserService, s2.UserService,
+		func(svc1, svc2 KubeServiceInfo) bool {
+			return svc1.Namespace == svc2.Namespace &&
+				svc1.Name == svc2.Name &&
+				svc1.Protocol == svc2.Protocol &&
+				svc1.Port == svc2.Port &&
+				svc1.NodePort == svc2.NodePort &&
+				svc1.LoadBalancerIP == svc2.LoadBalancerIP &&
+				svc1.Type == svc2.Type &&
+				svc1.ACEenabled == svc2.ACEenabled
+		})
+
+	if !servicesEqual {
+		return false
+	}
+
+	// Use generics.EqualSetsFn to compare ingress arrays
+	return generics.EqualSetsFn(s.UserIngress, s2.UserIngress,
+		func(ing1, ing2 KubeIngressInfo) bool {
+			if ing1.Namespace != ing2.Namespace ||
+				ing1.Name != ing2.Name ||
+				ing1.Hostname != ing2.Hostname ||
+				ing1.Path != ing2.Path ||
+				ing1.PathType != ing2.PathType ||
+				ing1.ServiceType != ing2.ServiceType ||
+				ing1.Protocol != ing2.Protocol {
+				return false
+			}
+
+			// Compare the ingress IPs
+			return generics.EqualSets(ing1.IngressIP, ing2.IngressIP)
+		})
 }

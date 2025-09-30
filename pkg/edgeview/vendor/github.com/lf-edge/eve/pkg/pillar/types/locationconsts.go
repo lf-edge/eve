@@ -86,7 +86,7 @@ const (
 	//EveVersionFile contains the running version of EVE
 	EveVersionFile = "/run/eve-release"
 	//DefaultVaultName is the name of the default vault
-	DefaultVaultName = "Application Data Store"
+	DefaultVaultName = "Application-Data-Store"
 
 	// NewlogDir - newlog directories
 	NewlogDir = "/persist/newlog"
@@ -144,6 +144,8 @@ const (
 
 	// LocalActiveAppConfigDir - directory to put JSON of the apps that are running.
 	LocalActiveAppConfigDir = "/persist/vault/active-app-instance-config/"
+	// EdgeNodeClusterConfigFile - the file which contains edgenodecluster config
+	EdgeNodeClusterConfigFile = PersistStatusDir + "/zedagent/EdgeNodeClusterConfig/global.json"
 )
 
 var (

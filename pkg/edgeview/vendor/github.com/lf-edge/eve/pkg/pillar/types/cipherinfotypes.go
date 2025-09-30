@@ -84,7 +84,7 @@ type CipherBlockStatus struct {
 	CipherBlockID   string // constructed using individual reference
 	CipherContextID string // cipher context id
 	InitialValue    []byte
-	CipherData      []byte `json:"pubsub-large-CipherData"`
+	CipherData      []byte
 	ClearTextHash   []byte
 	IsCipher        bool
 	CipherContext   *CipherContext
@@ -156,10 +156,11 @@ type EncryptionBlock struct {
 	CellularNetUsername string
 	CellularNetPassword string
 	// Credentials for the cellular attach bearer:
-	CellularNetAttachUsername string
-	CellularNetAttachPassword string
-	ProtectedUserData         string
-	ClusterToken              string
-	User                      zcommon.EncryptionBlockUser
-	EncryptedData             string
+	CellularNetAttachUsername    string
+	CellularNetAttachPassword    string
+	ProtectedUserData            string
+	ClusterToken                 string
+	User                         zcommon.EncryptionBlockUser
+	EncryptedData                string
+	GzipRegistrationManifestYaml []byte
 }
