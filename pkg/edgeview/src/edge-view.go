@@ -19,7 +19,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
-	"github.com/lf-edge/eve/pkg/pillar/pubsub/socketdriver"
+	"github.com/lf-edge/eve/pkg/pillar/pubsub/nkvdriver"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/time/rate"
@@ -612,7 +612,7 @@ func initpubInfo(logger *logrus.Logger) pubsub.Publication {
 	if edgeviewInstID > 1 {
 		return nil
 	}
-	ps := *pubsub.New(&socketdriver.SocketDriver{Logger: logger, Log: log}, logger, log)
+	ps := *pubsub.New(nkvdriver.NewNkvDriver("", agentName), logger, log)
 	infoPub, err := ps.NewPublication(
 		pubsub.PublicationOptions{
 			AgentName: agentName,
