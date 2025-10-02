@@ -17,6 +17,7 @@ import (
 	"github.com/google/go-tpm/legacy/tpm2"
 	"github.com/google/go-tpm/tpmutil"
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/types"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	"github.com/sirupsen/logrus"
 )
@@ -28,8 +29,8 @@ func TestMain(m *testing.M) {
 
 	// setup variables
 	TpmDevicePath = SimTpmPath
-	measurementLogFile = "/tmp/eve-tpm/binary_bios_measurement"
-	measurefsTpmEventLog = "/tmp/eve-tpm/measurefs_tpm_event_log"
+	types.TpmMeasurementLogFile = "/tmp/eve-tpm/binary_bios_measurement"
+	types.TpmMeasurefsEventLog = "/tmp/eve-tpm/measurefs_tpm_event_log"
 	savedSealingPcrsFile = "/tmp/eve-tpm/sealingpcrs"
 	measurementLogSealSuccess = "/tmp/eve-tpm/tpm_measurement_seal_success"
 	measurementLogUnsealFail = "/tmp/eve-tpm/tpm_measurement_unseal_fail"

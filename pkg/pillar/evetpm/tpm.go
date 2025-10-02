@@ -104,10 +104,6 @@ var (
 	// test usage.
 	TpmDevicePath = "/dev/tpmrm0"
 
-	// measurementLogFile is a kernel exposed variable that contains the
-	// TPM measurements and events log. it is not a constant due to test usage.
-	measurementLogFile = "/hostfs/sys/kernel/security/tpm0/binary_bios_measurements"
-
 	// savedSealingPcrsFile is the file that holds a copy of PCR values at the
 	// time of generating and sealing the disk key into the TPM. it is not a
 	// constant due to test usage.
@@ -122,10 +118,6 @@ var (
 	// time EVE fails to unseal the vault key from TPM. it is not a constant due
 	// to test usage.
 	measurementLogUnsealFail = types.PersistStatusDir + "/tpm_measurement_unseal_fail"
-
-	// measurefsTpmEventLog is the file containing the event log from the measure-config.
-	// it is not a constant due to test usage.
-	measurefsTpmEventLog = types.PersistStatusDir + "/measurefs_tpm_event_log"
 
 	// we do not make backup copies of following directories because we use them
 	// only when we couldn't unseal the key from TPM and remote attestation fails
@@ -1113,12 +1105,12 @@ func removeCopiedMeasurementLogs() {
 
 func copyMeasurementLog(dstPath string) error {
 	var appendErr error
-	tpmEventLog, err := os.ReadFile(measurementLogFile)
+	tpmEventLog, err := os.ReadFile(types.TpmMeasurementLogFile)
 	if err != nil {
 		return fmt.Errorf("failed to read TPM measurements log file: %w", err)
 	}
 
-	measurefsEventLog, err := os.ReadFile(measurefsTpmEventLog)
+	measurefsEventLog, err := os.ReadFile(types.TpmMeasurefsEventLog)
 	if err == nil {
 		// append the measurefs event log to the tpm event log
 		tpmEventLog = append(tpmEventLog, measurefsEventLog...)

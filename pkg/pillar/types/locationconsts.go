@@ -3,7 +3,9 @@
 
 package types
 
-import "strings"
+import (
+	"strings"
+)
 
 const (
 	// TmpDirname - used for files fed into pubsub as global subscriptions
@@ -171,4 +173,10 @@ var (
 	VolumeEncryptedZFSDataset = SealedDataset + "/volumes"
 	// EtcdZvol - zvol encrypted for etcd storage
 	EtcdZvol = PersistDataset + "/etcd-storage"
+	// TpmMeasurementLogFile is a kernel exposed variable that contains the
+	// TPM measurements and events log. it is not a constant so tests can override it.
+	TpmMeasurementLogFile = "/hostfs/sys/kernel/security/tpm0/binary_bios_measurements"
+	// TpmMeasurefsEventLog is the file containing the event log from the measure-config.
+	// it is not a constant so tests can override it.
+	TpmMeasurefsEventLog = PersistStatusDir + "/measurefs_tpm_event_log"
 )
