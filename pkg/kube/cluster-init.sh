@@ -104,6 +104,14 @@ assign_multus_nodeip() {
   awk -v new_ip="$ip_prefix" '{gsub("IPAddressReplaceMe", new_ip)}1' /etc/multus-daemonset.yaml > /etc/multus-daemonset-new.yaml
 }
 
+# Check for link request from k3s upgrade and create a multus link
+check_for_multus_link_request() {
+        if [ -f /var/lib/request-retouch-multus ]; then
+                rm -f /var/lib/request-retouch-multus
+                link_multus_into_k3s
+        fi
+}
+
 apply_multus_cni() {
         # remove get_default_intf_IP_prefix
         #get_default_intf_IP_prefix
@@ -988,6 +996,7 @@ if [ ! -f /var/lib/all_components_initialized ]; then
                         continue
                 fi
         fi
+        check_for_multus_link_request
         if ! pidof dhcp; then
                 # if the dhcp.sock exist, then the daemon can not be restarted
                 if [ -f /run/cni/dhcp.sock ]; then
@@ -1092,6 +1101,7 @@ else
                         fi
                         apply_multus_cni
                 fi
+                check_for_multus_link_request
                 if ! pidof dhcp; then
                         # if the dhcp.sock exist, then the daemon can not be restarted
                         if [ -f /run/cni/dhcp.sock ]; then
