@@ -28,8 +28,8 @@ func TestMain(m *testing.M) {
 
 	// setup variables
 	TpmDevicePath = SimTpmPath
-	measurementLogFile = "/tmp/eve-tpm/binary_bios_measurement"
-	measurefsTpmEventLog = "/tmp/eve-tpm/measurefs_tpm_event_log"
+	TpmMeasurementLogFile = "/tmp/eve-tpm/binary_bios_measurement"
+	TpmMeasurefsEventLog = "/tmp/eve-tpm/measurefs_tpm_event_log"
 	savedSealingPcrsFile = "/tmp/eve-tpm/sealingpcrs"
 	measurementLogSealSuccess = "/tmp/eve-tpm/tpm_measurement_seal_success"
 	measurementLogUnsealFail = "/tmp/eve-tpm/tpm_measurement_unseal_fail"

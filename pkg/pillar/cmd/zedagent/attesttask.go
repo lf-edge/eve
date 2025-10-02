@@ -7,16 +7,20 @@ package zedagent
 
 import (
 	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"reflect"
 	"strings"
+	"sync/atomic"
 
 	"github.com/lf-edge/eve-api/go/attest"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	zattest "github.com/lf-edge/eve/pkg/pillar/attest"
 	"github.com/lf-edge/eve/pkg/pillar/controllerconn"
+	"github.com/lf-edge/eve/pkg/pillar/evetpm"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -25,9 +29,9 @@ import (
 )
 
 const (
-	attestWdName            = agentName + "attest"
-	eventLogBinarySizeLimit = 2048  // 2KB
-	maxQuotePayloadSize     = 63488 // 62KB
+	attestWdName        = agentName + "attest"
+	maxQuotePayloadSize = 63488 // 62KB
+	maxWarningCount     = 2
 )
 
 // TpmAgentImpl implements zattest.TpmAgent interface
@@ -62,6 +66,10 @@ type attestContext struct {
 const (
 	watchdogInterval  = 15
 	retryTimeInterval = 15
+)
+
+var (
+	warnCount int32 = 0
 )
 
 // One shot send, if fails, return an error to the state machine to retry later
@@ -305,8 +313,52 @@ func (server *VerifierImpl) SendAttestQuote(ctx *zattest.Context) error {
 		return zattest.ErrControllerReqFailed
 	}
 
+	// XXX : add the measurefs eventlog in another field
+	fi, err := os.Stat(evetpm.TpmMeasurementLogFile)
+	if err == nil {
+		// if it is too big, skip it, there is no way gzip will help
+		if fi.Size() > maxQuotePayloadSize*2 {
+			warnAndLog("TPM event log size %d exceeds max attestation payload size %d, skipping event log...",
+				fi.Size(), maxQuotePayloadSize)
+		} else {
+			eventLogFile, err := os.Open(evetpm.TpmMeasurementLogFile)
+			if err != nil {
+				log.Errorf("failed to read TPM event log file %s: %v", evetpm.TpmMeasurementLogFile, err)
+			} else {
+				var buf bytes.Buffer
+				writer := gzip.NewWriter(&buf)
+				_, errWrite := io.Copy(writer, eventLogFile)
+				errClose := writer.Close()
+				eventLogFile.Close()
+				if errWrite != nil || errClose != nil {
+					quote.TpmBinaryEventLog = nil
+					log.Errorf("failed to gzip TPM event log %v/%v", errWrite, errClose)
+				} else {
+					quote.TpmBinaryEventLog = buf.Bytes()
+				}
+			}
+		}
+	} else {
+		warnAndLog("TPM event log file %s does not exist: %v",
+			evetpm.TpmMeasurementLogFile, err)
+	}
+
+	// Add quote
 	attestReq.Quote = quote
-	// We may add the binary TPM logs to the attestation request here.
+
+	// XXX : this should be doubled in controller side, just in case
+	// Check if the payload exceeds max size with event log included
+	if quote.TpmBinaryEventLog != nil {
+		payloadSize := proto.Size(attestReq)
+		if payloadSize <= 0 {
+			quote.TpmBinaryEventLog = nil
+			log.Errorf("Failed to calculate TPM attestation payload size, skipping event log...")
+		} else if payloadSize > maxQuotePayloadSize {
+			quote.TpmBinaryEventLog = nil
+			log.Errorf("TPM event log size %d exceeds max attestation payload size %d, skipping event log...",
+				len(quote.TpmBinaryEventLog), maxQuotePayloadSize)
+		}
+	}
 
 	//Increment Iteration for interface rotation
 	attestCtx.Iteration++
@@ -845,4 +897,15 @@ func restartAttestation(zedagentCtx *zedagentContext) error {
 	//Trigger event on the state machine
 	zattest.RestartAttestation(attestCtx.attestFsmCtx)
 	return nil
+}
+
+func warnAndLog(format string, args ...interface{}) {
+	// don't spam logs
+	count := atomic.LoadInt32(&warnCount)
+	if count < maxWarningCount {
+		log.Warnf(format, args...)
+		atomic.AddInt32(&warnCount, 1)
+	} else {
+		log.Tracef(format, args...)
+	}
 }
