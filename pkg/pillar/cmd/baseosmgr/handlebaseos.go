@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	"github.com/lf-edge/eve/pkg/pillar/zboot"
@@ -209,6 +210,30 @@ func doBaseOsStatusUpdate(ctx *baseOsMgrContext, uuidStr string,
 		status.State = types.DOWNLOADED
 		status.Activated = false
 		changed = true
+	}
+
+	// Check to avoid upgrading from not-EVE-k (e.g., kvm) to EVE-k
+	// and vice versa since that can result in odd failures due to
+	// different /persist layout etc.
+	// TBD Remove this if EVE-k in the future can have kvm personality.
+	isCurrentKube := base.IsHVTypeKube()
+	isUpdateKube, err := base.IsVersionHVTypeKube(config.BaseOsVersion)
+	if err != nil {
+		log.Warnf("doBaseOsStatusUpdate(%s): %s",
+			config.BaseOsVersion, err)
+	} else if isCurrentKube != isUpdateKube {
+		var errString string
+		if isUpdateKube {
+			errString = fmt.Sprintf("Upgrade to EVE-k (%s) from non EVE-k (%s) is not supported",
+				config.BaseOsVersion, shortVerCurPart)
+		} else {
+			errString = fmt.Sprintf("Upgrade to non EVE-k (%s) from  EVE-k (%s) is not supported",
+				config.BaseOsVersion, shortVerCurPart)
+		}
+		log.Error(errString)
+		status.SetErrorNow(errString)
+		changed = true
+		return changed
 	}
 
 	c, proceed := doBaseOsInstall(ctx, uuidStr, config, status)

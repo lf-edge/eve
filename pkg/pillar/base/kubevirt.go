@@ -4,6 +4,7 @@
 package base
 
 import (
+	"fmt"
 	"os"
 	"regexp"
 	"strings"
@@ -29,19 +30,40 @@ const (
 	DefaultEtcdSizeGB uint32 = 10
 	// EtcdVolBlockSizeBytes is the block size for the etcd volume
 	EtcdVolBlockSizeBytes = uint64(4 * 1024)
+	// KubevirtHypervisorName is the name of the imaginary EVE 'k' hypervisor
+	KubevirtHypervisorName = "k"
 )
 
-// IsHVTypeKube - return true if the EVE image is kube cluster type.
+// IsHVTypeKube - return true if the current EVE image is kube cluster type.
 func IsHVTypeKube() bool {
 	retbytes, err := os.ReadFile(EveVirtTypeFile)
 	if err != nil {
 		return false
 	}
 
-	if strings.TrimSpace(string(retbytes)) == "k" {
-		return true
+	return strings.TrimSpace(string(retbytes)) == KubevirtHypervisorName
+}
+
+// IsVersionHVTypeKube - return true if the EVE version string is kube cluster type.
+func IsVersionHVTypeKube(baseOsVersion string) (bool, error) {
+	hv, err := versionToHVType(baseOsVersion)
+	if err != nil {
+		return false, err
 	}
-	return false
+	return strings.TrimSpace(hv) == KubevirtHypervisorName, nil
+}
+
+// Returns HVType from the version string.
+// Assumes HVType is before the last dash i.e.,
+// FULL_VERSION:=$(ROOTFS_VERSION)-$(HV)-$(ZARCH)
+func versionToHVType(baseOsVersion string) (string, error) {
+	comp := strings.Split(baseOsVersion, "-")
+	num := len(comp)
+	if num < 3 {
+		return "", fmt.Errorf("Short baseOsVersion string: %s",
+			baseOsVersion)
+	}
+	return comp[num-2], nil
 }
 
 var (
