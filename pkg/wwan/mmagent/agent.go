@@ -332,6 +332,12 @@ func (a *MMAgent) Run(ctx context.Context) error {
 	a.stillRunning = time.NewTicker(wdTouchPeriod)
 	a.ps.StillRunning(agentName, warningTime, errorTime)
 
+	// Initialize metricPollInterval before calling startModemManager(),
+	// which passes this value to Client.RunModemMonitoring().
+	metricsMaxInterval := float64(metricsPublishPeriod)
+	metricsMinInterval := metricsMaxInterval * 0.3
+	a.metricPollInterval = time.Duration(metricsMinInterval)
+
 	// Start ModemManager and wait for it to appear on DBus.
 	// This method calls a.ps.StillRunning while waiting.
 	// It ensures that a.mmClient is initialized and connected to DBus.
@@ -365,11 +371,8 @@ func (a *MMAgent) Run(ctx context.Context) error {
 	scanTicker := time.NewTicker(scanProvidersPeriod)
 
 	// Publish metrics for zedagent
-	maxInterval := float64(metricsPublishPeriod)
-	minInterval := maxInterval * 0.3
-	a.metricPollInterval = time.Duration(minInterval)
 	publishMetricsTimer := flextimer.NewRangeTicker(
-		time.Duration(minInterval), time.Duration(maxInterval))
+		time.Duration(metricsMinInterval), time.Duration(metricsMaxInterval))
 
 	// Start receiving configuration.
 	if err := a.subWwanConfig.Activate(); err != nil {
