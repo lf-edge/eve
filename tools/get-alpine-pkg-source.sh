@@ -226,7 +226,22 @@ while read -r line ; do
             case $url in
                 https://*|http://*|ftp://*)
                     [ -n "$verbose" ] && echo "found $s basename ${filename}" >&2
-                    if ! curl -sSLo "${dstdir}/${filename}" "${url}"; then
+                    # Enhanced download logic with GNU mirrors and retries
+                    download_ok=0
+                    if echo "$url" | grep -q 'ftp.gnu.org'; then
+                        # Rewrite to a mirror: ftp.fau.de
+                        candidate=$(echo "$url" | sed -E 's#^(https?|ftp)://ftp\.gnu\.org#https://ftp.fau.de#')
+                        [ -n "$verbose" ] && echo "Attempting download (mirror): $candidate" >&2
+                        if curl -sS --retry 5 --retry-delay 5 --retry-all-errors -L -o "${dstdir}/${filename}" "$candidate"; then
+                            download_ok=1
+                            [ -n "$verbose" ] && echo "Success: $candidate" >&2
+                        fi
+                    else
+                        if curl -sS --retry 5 --retry-delay 5 --retry-all-errors -L -o "${dstdir}/${filename}" "${url}"; then
+                            download_ok=1
+                        fi
+                    fi
+                    if [ $download_ok -ne 1 ]; then
                         >&2 echo "Failed to download $url"
                         rm -f "${dstdir}/${filename}"
                         badfileslist="${badfileslist} missing:${pkgpath}:${filename}"
