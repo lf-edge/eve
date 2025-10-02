@@ -52,6 +52,7 @@ func printNodeDrainStatus(ctx *diagContext) {
 		sev := ""
 		switch nds.Status {
 		case kubeapi.UNKNOWN:
+			fallthrough
 		case kubeapi.NOTSUPPORTED:
 			// not EVE 'k' or not clustered, skipping unnecessary logging
 		case kubeapi.NOTREQUESTED:
@@ -72,7 +73,10 @@ func printNodeDrainStatus(ctx *diagContext) {
 		case kubeapi.COMPLETE:
 			sev = "INFO"
 		}
-		ctx.ph.Print("%s: Node Drain -> %s\n", sev, nds.Status.String())
+		if sev != "" {
+			ctx.ph.Print("%s: Node Drain -> %s\n",
+				sev, nds.Status.String())
+		}
 	}
 }
 
