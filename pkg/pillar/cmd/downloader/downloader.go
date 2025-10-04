@@ -443,6 +443,7 @@ func doDelete(ctx *downloaderContext, key string, filename string,
 
 	deletePath(filename)
 	deletePath(filename + progressFileSuffix)
+	deletePath(filename + partFileSuffix)
 }
 
 type datastoreConfAndCtx struct {

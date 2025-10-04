@@ -4,11 +4,13 @@
 package downloader
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"net/url"
 	"os"
 	"path"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -19,6 +21,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/cipher"
 	"github.com/lf-edge/eve/pkg/pillar/netdump"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	utils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	logutils "github.com/lf-edge/eve/pkg/pillar/utils/logging"
 )
 
@@ -52,6 +55,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 	locFilename = config.Target
 	locDirname = path.Dir(locFilename)
 	cleanOnError := true
+	partLocFilename := locFilename + partFileSuffix
 
 	// by default the metricsURL _is_ the DownloadURL, but can override in switch
 	metricsURL := dsCtx.DownloadURL
@@ -66,7 +70,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 
 	downloadMaxPortCost := ctx.downloadMaxPortCost
 	log.Functionf("Downloading <%s> to <%s> using %d downloadMaxPortCost",
-		config.Name, locFilename, downloadMaxPortCost)
+		config.Name, partLocFilename, downloadMaxPortCost)
 
 	dsPath := dsCtx.Dpath
 
@@ -264,7 +268,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 		downloadStartTime := time.Now()
 		contentType, cancelled, tracedReq, err = download(ctx, trType, st, syncOp,
 			serverURL, auth, dsPath, dsCtx.Region,
-			config.Size, ifname, ipSrc, remoteName, locFilename, dst.DsCertPEM,
+			config.Size, ifname, ipSrc, remoteName, partLocFilename, dst.DsCertPEM,
 			withNetTracing, traceOpts, receiveChan)
 		if withNetTracing {
 			tracedReq.RequestName = fmt.Sprintf("download-addr%d", addrIndex)
@@ -288,6 +292,38 @@ func handleSyncOp(ctx *downloaderContext, key string,
 			}
 			continue
 		}
+
+		// Finalize: fsync and atomically move tempLocFilename -> locFilename.
+		f, ferr := os.OpenFile(partLocFilename, os.O_RDWR, 0644)
+		if ferr != nil {
+			log.Errorf("Failed to open file %s: %v", partLocFilename, ferr)
+			return handleSyncOpResponse(ctx, config, status, locFilename,
+				key, ferr.Error(), cancelled, cleanOnError)
+		}
+
+		// Sync the tempLocFilename
+		syncErr := f.Sync()
+		closeErr := f.Close()
+		if syncErr != nil || closeErr != nil {
+			err := errors.Join(syncErr, closeErr)
+			log.Errorf("Failed to persist temp file %s (sync: %v, close: %v)", partLocFilename, syncErr, closeErr)
+			return handleSyncOpResponse(ctx, config, status, locFilename, key, err.Error(), cancelled, cleanOnError)
+		}
+
+		// Move tempLocFilename -> locFilename.
+		if err := os.Rename(partLocFilename, locFilename); err != nil {
+			log.Errorf("Rename failed: %v", err)
+			return handleSyncOpResponse(ctx, config, status, locFilename,
+				key, err.Error(), cancelled, cleanOnError)
+		}
+
+		// Sync the dir
+		if err := utils.DirSync(filepath.Dir(locFilename)); err != nil {
+			log.Errorf("Directory sync failed: %v", err)
+			return handleSyncOpResponse(ctx, config, status, locFilename,
+				key, err.Error(), cancelled, cleanOnError)
+		}
+
 		// Record how much we downloaded
 		size := int64(0)
 		info, err := os.Stat(locFilename)
