@@ -18,56 +18,149 @@ import (
 )
 
 const (
-	ansi = "[\u0009\u001B\u009B][[\\]()#;?]*(?:(?:(?:[a-zA-Z\\d]*(?:;[a-zA-Z\\d]*)*)?\u0007)|(?:(?:\\d{1,4}(?:;\\d{0,4})*)?[\\dA-PRZcf-ntqry=><~]))"
+	ansi = "\u001B\\[[0-9;]*[A-Za-z]|\u001B[\\(\\)\\[\\]#;?]*[A-Za-z0-9]|\u009B[0-9;]*[A-Za-z]"
+)
+
+var (
+	memlogdSocket = "/run/memlogdq.sock"
 )
 
 // getMemlogMsg - goroutine to get messages from memlogd queue
 func getMemlogMsg(logChan chan inputEntry, panicFileChan chan []byte) {
-	sockName := fmt.Sprintf("/run/%s.sock", "memlogdq")
-	s, err := net.Dial("unix", sockName)
+	s, err := net.Dial("unix", memlogdSocket)
 	if err != nil {
 		log.Fatal("getMemlogMsg: Dial:", err)
 	}
 	defer s.Close()
 	log.Functionf("getMemlogMsg: got socket for memlogdq")
 
+	processMemlogStream(s, logChan, panicFileChan)
+}
+
+// processMemlogStream processes the memlogd stream from the provided connection.
+// This function is extracted to enable better testing.
+func processMemlogStream(conn net.Conn, logChan chan inputEntry, panicFileChan chan []byte) {
 	var writeByte byte = 2
 	readTimeout := 30 * time.Second
 
 	// have to write byte value 2 to trigger memlogd queue streaming
-	_, err = s.Write([]byte{writeByte})
+	_, err := conn.Write([]byte{writeByte})
 	if err != nil {
-		log.Fatal("getMemlogMsg: write to memlogd failed:", err)
+		log.Fatal("processMemlogStream: write to memlogd failed:", err)
 	}
 
 	var panicStackCount int
-	bufReader := bufio.NewReader(s)
+	bufReader := bufio.NewReader(conn)
 	for {
-		if err = s.SetDeadline(time.Now().Add(readTimeout)); err != nil {
-			log.Fatal("getMemlogMsg: SetDeadline:", err)
+		if err = conn.SetDeadline(time.Now().Add(readTimeout)); err != nil {
+			log.Fatal("processMemlogStream: SetDeadline:", err)
 		}
 
 		bytes, err := bufReader.ReadBytes('\n')
 		if err != nil {
 			if err != io.EOF && !strings.HasSuffix(err.Error(), "i/o timeout") {
-				log.Fatal("getMemlogMsg: bufRead Read:", err)
+				log.Fatal("processMemlogStream: bufRead Read:", err)
 			}
 		}
 		if len(bytes) == 0 {
 			time.Sleep(5 * time.Second)
 			continue
 		}
-		var pidStr string
-		// Everything is json, in some cases with an embedded json Msg
-		var logEntry MemlogLogEntry
-		if err := json.Unmarshal(bytes, &logEntry); err != nil {
-			log.Warnf("Received non-json from memlogd: %s\n",
-				string(bytes))
+
+		// Parse and convert the memlog entry
+		entry, err := parseMemlogEntry(bytes)
+		if err != nil {
+			log.Warn(err)
+			continue
+		} else if entry == (inputEntry{}) {
 			continue
 		}
 
-		// Is the Msg itself json?
-		var logInfo Loginfo
+		// if we are in watchdog going down. fsync often
+		checkWatchdogRestart(&entry, &panicStackCount, string(bytes), panicFileChan)
+
+		logChan <- entry
+	}
+}
+
+// parseMemlogEntry parses a raw memlogd entry and converts it to an inputEntry.
+// Returns the parsed entry and any error encountered during parsing.
+func parseMemlogEntry(rawBytes []byte) (inputEntry, error) {
+	var logEntry MemlogLogEntry
+	if err := json.Unmarshal(rawBytes, &logEntry); err != nil {
+		return inputEntry{}, fmt.Errorf("received non-json from memlogd: %s", string(rawBytes))
+	}
+
+	// Parse the log info from the memlog entry
+	logInfo := parseLogInfo(logEntry)
+
+	// don't process kube logs, since they are handled separately in /persist/kubelog
+	if logInfo.Source == "kube" {
+		return inputEntry{}, nil
+	}
+
+	// all logs must have the level field
+	if logInfo.Level == "" {
+		logInfo.Level = logrus.InfoLevel.String()
+	}
+
+	logFromApp := isAppLog(logInfo)
+
+	// Update metrics
+	if logFromApp {
+		logmetrics.AppMetrics.NumInputEvent++
+	} else {
+		logmetrics.DevMetrics.NumInputEvent++
+	}
+
+	var pidStr string
+	if logInfo.Pid != 0 {
+		pidStr = strconv.Itoa(logInfo.Pid)
+	}
+
+	sendToRemote := shouldSendToRemote(logInfo, logFromApp)
+
+	entry := inputEntry{
+		source:       logInfo.Source,
+		content:      logInfo.Msg,
+		pid:          pidStr,
+		timestamp:    logInfo.Time,
+		function:     logInfo.Function,
+		filename:     logInfo.Filename,
+		severity:     logInfo.Level,
+		appUUID:      logInfo.Appuuid,
+		acName:       logInfo.Containername,
+		acLogTime:    logInfo.Eventtime,
+		sendToRemote: sendToRemote,
+	}
+
+	return entry, nil
+}
+
+// parseLogInfo extracts structured log information from a MemlogLogEntry.
+// It handles different log formats including JSON, key=value pairs, and plain text.
+func parseLogInfo(logEntry MemlogLogEntry) Loginfo {
+	var logInfo Loginfo
+	// Start with the envelope - if there is no additional info inside msg, then just use the envelope info
+	logInfo.Source = logEntry.Source
+	logInfo.Time = logEntry.Time
+	logInfo.Msg = logEntry.Msg
+
+	switch logEntry.Source {
+	// most logs coming from our services have one of these three formats:
+	// 1. JSON with logrus fields
+	// 2. key=value pairs (logrus's standard text format)
+	// 3. plain text (watchdog, debug and other non-go services as well as guest_vm)
+	// We handle those three cases in the default case below
+	// Some services use other logging libraries and formats and need to be added
+	// as exceptions to ensure proper handling. Those are added as special cases:
+	case "vector", "vector.err", "vector.out":
+		// These messages come from vector in different format
+		// Treat them as plain text for now
+		// (Vector's JSON format doesn't produce valid JSON (key collision), so we're not using it)
+
+	default:
+		// These messages come from golang's logrus package
 		if err := json.Unmarshal([]byte(logEntry.Msg), &logInfo); err == nil {
 			// Use the inner JSON struct
 			// Go back to the envelope for anything not in the inner JSON
@@ -80,11 +173,6 @@ func getMemlogMsg(logChan chan inputEntry, panicFileChan chan []byte) {
 			// and keep the original message text and fields
 			logInfo.Msg = logEntry.Msg
 		} else {
-			// Start with the envelope
-			logInfo.Source = logEntry.Source
-			logInfo.Time = logEntry.Time
-			logInfo.Msg = logEntry.Msg
-
 			// Some messages have attr=val syntax
 			// If the inner message has Level, Time or Msg set they take
 			// precedence over the envelope
@@ -99,68 +187,41 @@ func getMemlogMsg(logChan chan inputEntry, panicFileChan chan []byte) {
 				logInfo.Msg = msg
 			}
 		}
-
-		// all logs must have the level field
-		if logInfo.Level == "" {
-			logInfo.Level = logrus.InfoLevel.String()
-		}
-
-		logFromApp := strings.Contains(logInfo.Source, "guest_vm") || logInfo.Containername != ""
-
-		if logFromApp {
-			logmetrics.AppMetrics.NumInputEvent++
-		} else {
-			logmetrics.DevMetrics.NumInputEvent++
-		}
-
-		if logInfo.Pid != 0 {
-			pidStr = strconv.Itoa(logInfo.Pid)
-		}
-
-		// not to upload 'kube' container logs, one can find in /persist/kubelog for detail
-		if logInfo.Source == "kube" {
-			continue
-		}
-
-		sendToRemote := false
-		if !logFromApp { // there are no granularity nobs for the edge apps' log levels
-			loglevel, err := logrus.ParseLevel(logInfo.Level)
-			if err != nil {
-				log.Errorf("getMemlogMsg: found invalid log level %s in message from %s", logInfo.Level, logInfo.Source)
-			} else {
-				// see if we have an agent specific log level
-				if remoteLogLevel, ok := agentsRemoteLogLevel.Load(logInfo.Source); ok {
-					sendToRemote = loglevel <= remoteLogLevel.(logrus.Level)
-				} else {
-					sendToRemote = loglevel <= agentDefaultRemoteLogLevel.Load().(logrus.Level)
-				}
-			}
-		}
-
-		entry := inputEntry{
-			source:       logInfo.Source,
-			content:      logInfo.Msg,
-			pid:          pidStr,
-			timestamp:    logInfo.Time,
-			function:     logInfo.Function,
-			filename:     logInfo.Filename,
-			severity:     logInfo.Level,
-			appUUID:      logInfo.Appuuid,
-			acName:       logInfo.Containername,
-			acLogTime:    logInfo.Eventtime,
-			sendToRemote: sendToRemote,
-		}
-
-		// if we are in watchdog going down. fsync often
-		checkWatchdogRestart(&entry, &panicStackCount, string(bytes), panicFileChan)
-
-		logChan <- entry
 	}
+
+	return logInfo
+}
+
+// isAppLog determines if a log entry is from an application (as opposed to device/system).
+func isAppLog(logInfo Loginfo) bool {
+	return strings.Contains(logInfo.Source, "guest_vm") || logInfo.Containername != ""
+}
+
+// shouldSendToRemote determines if a log should be sent to the remote endpoint
+// based on the configured log levels.
+func shouldSendToRemote(logInfo Loginfo, logFromApp bool) bool {
+	if logFromApp {
+		// there are no granularity knobs for the edge apps' log levels
+		return false
+	}
+
+	loglevel, err := logrus.ParseLevel(logInfo.Level)
+	if err != nil {
+		log.Errorf("shouldSendToRemote: found invalid log level %s in message from %s",
+			logInfo.Level, logInfo.Source)
+		return false
+	}
+
+	// see if we have an agent specific log level
+	if remoteLogLevel, ok := agentsRemoteLogLevel.Load(logInfo.Source); ok {
+		return loglevel <= remoteLogLevel.(logrus.Level)
+	}
+	return loglevel <= agentDefaultRemoteLogLevel.Load().(logrus.Level)
 }
 
 // Returns level, time and msg if the string contains those attr=val
 func parseLevelTimeMsg(content string) (level string, timeStr string, msg string) {
-	content = remNonPrintable(content)
+	content = cleanForLogParsing(content)
 	if strings.Contains(content, ",\"msg\":") {
 		// Json or something - bail
 		return
@@ -168,30 +229,34 @@ func parseLevelTimeMsg(content string) (level string, timeStr string, msg string
 	level1 := strings.SplitN(content, "level=", 2)
 	if len(level1) == 2 {
 		level2 := strings.Split(level1[1], " ")
-		level = level2[0]
+		level = strings.ToLower(level2[0])
 	}
 	time1 := strings.SplitN(content, "time=", 2)
-	if len(time1) == 2 {
+	if len(time1) == 2 && strings.HasPrefix(time1[1], "\"") {
 		time2 := strings.Split(time1[1], "\"")
-		if len(time2) == 3 {
+		if len(time2) >= 3 {
 			timeStr = time2[1]
 		}
 	}
 	msg1 := strings.SplitN(content, "msg=", 2)
-	if len(msg1) == 2 {
+	if len(msg1) == 2 && strings.HasPrefix(msg1[1], "\"") {
 		msg2 := strings.Split(msg1[1], "\"")
-		if len(msg2) == 3 {
+		if len(msg2) >= 3 {
 			msg = msg2[1]
 		}
 	}
 	return
 }
 
-func remNonPrintable(str string) string {
+func cleanForLogParsing(str string) string {
+	// Remove ANSI escape sequences (colors, cursor movement, etc.)
 	var re = regexp.MustCompile(ansi)
-	myStr := re.ReplaceAllString(str, "")
-	myStr = strings.Trim(myStr, "\r")
-	return strings.Trim(myStr, "\n")
+	cleaned := re.ReplaceAllString(str, "")
+
+	// Remove leading/trailing whitespace that interferes with parsing
+	cleaned = strings.Trim(cleaned, "\r\n")
+
+	return cleaned
 }
 
 // flush more often when we are going down by reading from watchdog log message itself
