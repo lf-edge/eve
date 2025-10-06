@@ -319,6 +319,7 @@ func TestSendOnIntf_WithNetTrace(test *testing.T) {
 			UseOnboard:       false,
 			SuppressLogs:     false,
 			WithNetTracing:   true,
+			NetTraceFolder:   "/tmp/nettrace",
 			DryRun:           false,
 			BailOnHTTPErr:    false,
 			Accept4xxErrors:  true,

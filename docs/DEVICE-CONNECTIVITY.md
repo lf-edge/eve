@@ -893,3 +893,28 @@ With this method, the entire `/persist/netdump` directory will be copied over.
 If device is remotely accessible, published netdumps can be listed and copied over ssh (if enabled
 by config), edgeview (`ls` + `cp` commands; to download all netdumps at once use: `tar//persist/netdump`)
 or using a remote console if available.
+
+#### Nettrace offload mode in EVE:
+
+EVE uses offload mode from eve-libs/nettrace to keep memory use predictable during heavy network
+activity. A small, capped slice of recent metadata stays in RAM while older metadata
+is streamed to a lightweight on-disk store (bbolt). At the end of tracing, EVE exports the
+complete trace into `nettrace_<session-uuid>.json` and removes the temporary DB.
+
+Where files live:
+
+Nettrace files are created under /persist/nettrace. If the directory does not exist, EVE creates it at
+runtime.
+
+How files are created:
+
+- When tracing starts, EVE generates a session UUID and opens a per-session DB,
+`nettrace_<session-uuid>.db`, Bbolt database receiving streamed batches via the offload callback.
+- When tracing ends (or GetTrace is called for finalization), EVE writes the consolidated JSON,
+`nettrace_<session-uuid>.json`,full trace assembled from the DB contents. Then it copies the
+contents into the `nettrace.json` file and deletes the `nettrace_<session-uuid>.json` file.
+
+Cleanup behavior:
+
+After a successful export, EVE deletes the corresponding .db file. On EVE boot, a housekeeping
+pass cleans up orphaned .db and incomplete .json files left from interrupted runs.
