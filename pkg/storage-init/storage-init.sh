@@ -102,22 +102,44 @@ if grep -q 'eve_install_zfs_with_raid_level' /proc/cmdline; then
 fi
 
 # First lets see if we're running with the disk that hasn't been properly
-# initialized. This could happen when we run in a virtualized cloud
-# environment where the initial disk image gets resized to its proper
-# size when EVE is started (it can also happen when you're preparing a
-# live image for something like HiKey and put it directly on the flash
-# card bypassing using EVE's installer).
+# initialized. This could happen in two situations:
+#   1. when we run in a virtualized cloud environment
+#       where the initial disk image gets resized to its proper
+#       size when EVE is started (it can also happen when you're preparing a
+#       live image for something like HiKey and put it directly on the flash
+#       card bypassing using EVE's installer).
 #
-# The criteria we're using to determine if the disk hasn't been fully
-# initialized is when it is missing both P3 (/persist) and IMGB partition
-# entries. If that's the case we're willing to (potentially destructively)
-# manipulate partition table. The logic here is simple: if we're missing
-# both IMGB and P3 the following code is probably the *least* risky thing
-# we can do.
+#       The criteria we're using to determine if the disk hasn't been fully
+#       initialized is when it is missing both P3 (/persist) and IMGB partition
+#       entries. If that's the case we're willing to (potentially destructively)
+#       manipulate partition table. The logic here is simple: if we're missing
+#       both IMGB and P3 the following code is probably the *least* risky thing
+#       we can do.
+#
+#   2. PLATFORM=evaluation where there are three OS image slots.
+#
+#   Its possible that P3 is missing in cases where the EVE installer was
+#   configured to place persist on a zfs pool which could span 1 or more
+#   other disks. This P3 partition init path must be skipped here.
+#
 P3=$(findfs PARTLABEL=P3)
 IMGA=$(findfs PARTLABEL=IMGA)
 IMGB=$(findfs PARTLABEL=IMGB)
-if [ -n "$IMGA" ] && [ -z "$P3" ]; then
+IMGC=$(findfs PARTLABEL=IMGC)
+is_first_boot_virt_eve() {
+    if [ -n "$IMGA" ] && [ -z "$P3" ] && [ -z "$IMGB" ]; then
+        return 0
+    fi
+    return 1
+}
+is_first_boot_eval_eve() {
+    if [ -n "$IMGA" ] && [ -z "$P3" ] && [ -n "$IMGC" ]; then
+        return 0
+    fi
+    return 1
+}
+
+if is_first_boot_virt_eve || is_first_boot_eval_eve; then
    DEV=$(echo /sys/block/*/"${IMGA#/dev/}")
    DEV="/dev/$(echo "$DEV" | cut -f4 -d/)"
 
