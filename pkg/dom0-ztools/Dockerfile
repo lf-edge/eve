@@ -11,7 +11,7 @@ RUN eve-alpine-deploy.sh
 
 # should be aligned with kernel
 #  * ZFS on Linux
-ENV ZFS_VERSION=2.2.2
+ENV ZFS_VERSION=2.3.3
 ENV ZFS_COMMIT=zfs-${ZFS_VERSION}
 ENV ZFS_REPO=https://github.com/openzfs/zfs.git
 
