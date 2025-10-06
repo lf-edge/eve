@@ -89,6 +89,8 @@ type NetTrace struct {
 	TraceBeginAt Timestamp `json:"traceBeginAt"`
 	// TraceEndAt : time (relative to TraceBeginAt) when the tracing ended.
 	TraceEndAt Timestamp `json:"traceEndAt"`
+	// SessionUUID : unique identifier of the trace.
+	SessionUUID string `json:"uuid"`
 	// Dials : all attempts to establish connection with a remote endpoint.
 	Dials DialTraces `json:"dials"`
 	// TCPConns : all established or failed TCP connections.

@@ -17,15 +17,15 @@ type tracedHTTPBody struct {
 	length      uint64
 }
 
-// httpBodyTrace is used to signal how many bytes of HTTP req/resp body was already read.
-type httpBodyTrace struct {
-	httpReqID   TraceID
-	isRequest   bool
-	readBodyLen uint64
-	eof         bool
+// HTTPBodyTrace is used to signal how many bytes of HTTP req/resp body was already read.
+type HTTPBodyTrace struct {
+	HTTPReqID   TraceID
+	ISRequest   bool
+	ReadBodyLen uint64
+	EOF         bool
 }
 
-func (httpBodyTrace) isInternalNetTrace() {}
+func (HTTPBodyTrace) isInternalNetTrace() {}
 
 func newTracedHTTPBody(httpReqID TraceID, tracer networkTracer, isReq bool,
 	body io.ReadCloser) *tracedHTTPBody {
@@ -40,11 +40,11 @@ func newTracedHTTPBody(httpReqID TraceID, tracer networkTracer, isReq bool,
 func (hbt *tracedHTTPBody) Read(p []byte) (n int, err error) {
 	n, err = hbt.wrappedBody.Read(p)
 	hbt.length += uint64(n)
-	hbt.tracer.publishTrace(httpBodyTrace{
-		httpReqID:   hbt.httpReqID,
-		isRequest:   hbt.isRequest,
-		readBodyLen: hbt.length,
-		eof:         err == io.EOF,
+	hbt.tracer.publishTrace(HTTPBodyTrace{
+		HTTPReqID:   hbt.httpReqID,
+		ISRequest:   hbt.isRequest,
+		ReadBodyLen: hbt.length,
+		EOF:         err == io.EOF,
 	})
 	return n, err
 }

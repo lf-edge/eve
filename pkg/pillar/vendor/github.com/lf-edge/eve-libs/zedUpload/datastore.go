@@ -174,7 +174,7 @@ type SyncerDestOption func(endpoint DronaEndPoint) error
 
 // NewSyncerDest add another location end point to syncer.
 // The options are passed directly to the specific transport and should match its type.
-func (ctx *DronaCtx) NewSyncerDest(tr SyncTransportType, UrlOrRegion, PathOrBkt string, auth *AuthInput, opts ...SyncerDestOption) (DronaEndPoint, error) {
+func (ctx *DronaCtx) NewSyncerDest(tr SyncTransportType, UrlOrRegion, nettraceDirPATH, PathOrBkt string, auth *AuthInput, opts ...SyncerDestOption) (DronaEndPoint, error) {
 	var endpoint DronaEndPoint
 	switch tr {
 	case SyncAwsTr:
@@ -184,6 +184,7 @@ func (ctx *DronaCtx) NewSyncerDest(tr SyncTransportType, UrlOrRegion, PathOrBkt 
 			syncEp.apiKey = auth.Password
 		}
 		syncEp.hClientWrap = &httpClientWrapper{}
+		syncEp.hClientWrap.nettraceDirPath = nettraceDirPATH
 		syncEp.failPostTime = time.Now()
 		endpoint = syncEp
 	case SyncAzureTr:
@@ -194,6 +195,7 @@ func (ctx *DronaCtx) NewSyncerDest(tr SyncTransportType, UrlOrRegion, PathOrBkt 
 			syncEp.acKey = auth.Password
 		}
 		syncEp.hClientWrap = &httpClientWrapper{}
+		syncEp.hClientWrap.nettraceDirPath = nettraceDirPATH
 		syncEp.failPostTime = time.Now()
 		endpoint = syncEp
 	case SyncHttpTr:
@@ -202,6 +204,7 @@ func (ctx *DronaCtx) NewSyncerDest(tr SyncTransportType, UrlOrRegion, PathOrBkt 
 			syncEp.authType = auth.AuthType
 		}
 		syncEp.hClientWrap = &httpClientWrapper{}
+		syncEp.hClientWrap.nettraceDirPath = nettraceDirPATH
 		syncEp.failPostTime = time.Now()
 		endpoint = syncEp
 	case SyncSftpTr:
@@ -221,6 +224,7 @@ func (ctx *DronaCtx) NewSyncerDest(tr SyncTransportType, UrlOrRegion, PathOrBkt 
 			syncEp.apiKey = auth.Password
 		}
 		syncEp.hClientWrap = &httpClientWrapper{}
+		syncEp.hClientWrap.nettraceDirPath = nettraceDirPATH
 		syncEp.failPostTime = time.Now()
 		endpoint = syncEp
 	case SyncGSTr:
@@ -230,6 +234,7 @@ func (ctx *DronaCtx) NewSyncerDest(tr SyncTransportType, UrlOrRegion, PathOrBkt 
 			syncEp.apiKey = auth.Password
 		}
 		syncEp.hClientWrap = &httpClientWrapper{}
+		syncEp.hClientWrap.nettraceDirPath = nettraceDirPATH
 		syncEp.failPostTime = time.Now()
 		endpoint = syncEp
 	default:

@@ -13,10 +13,14 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/lf-edge/eve-libs/nettrace"
+	ntStore "github.com/lf-edge/eve-libs/nettraceStorage"
 )
 
 const (
@@ -31,6 +35,8 @@ const (
 	idleConnTimeout       = 90 * time.Second
 	tlsHandshakeTimeout   = 10 * time.Second
 	expectContinueTimeout = 1 * time.Second
+	enableOffload         = true // or false
+
 )
 
 // ChunkData contains the details of Chunks being downloaded
@@ -76,8 +82,12 @@ type httpClientWrapper struct {
 	withTracing bool
 	tracingOpts []nettrace.TraceOpt
 	// initialization
-	initOnce sync.Once
-	initErr  error
+	initOnce        sync.Once
+	initErr         error
+	nettraceSink    *ntStore.BoltBatchSink
+	nettraceDirPath string
+
+	sessionUUID string
 }
 
 func (c *httpClientWrapper) unwrap() (*http.Client, error) {
@@ -93,6 +103,7 @@ func (c *httpClientWrapper) unwrap() (*http.Client, error) {
 			}
 			tlsConfig = &tls.Config{RootCAs: caCertPool}
 		}
+
 		if c.withTracing {
 			cfg := nettrace.HTTPClientCfg{
 				SourceIP:              c.srcIP,
@@ -105,26 +116,67 @@ func (c *httpClientWrapper) unwrap() (*http.Client, error) {
 				Proxy:                 http.ProxyURL(c.proxy),
 				TLSClientConfig:       tlsConfig,
 			}
-			traceClient, err := nettrace.NewHTTPClient(cfg, c.tracingOpts...)
+
+			// Ensure folder exists for the sink DB.
+			if err := os.MkdirAll(c.nettraceDirPath, 0o755); err != nil {
+				c.initErr = fmt.Errorf("create %s: %w", c.nettraceDirPath, err)
+				return
+			}
+
+			// Create session UUID (string) if not already set
+			if c.sessionUUID == "" {
+				c.sessionUUID = uuid.NewString()
+			}
+			opts := make([]nettrace.TraceOpt, 0, len(c.tracingOpts)+1)
+			opts = append(opts, c.tracingOpts...)
+
+			// enableOffload decides whether we stream to Bolt via WithBatchOffload.
+			// Drive this from your config/flag.
+			if enableOffload {
+				// Make sure the folder exists.
+				if err := os.MkdirAll(c.nettraceDirPath, 0o755); err != nil {
+					c.initErr = fmt.Errorf("create %s: %w", c.nettraceDirPath, err)
+					return
+				}
+				// One DB per session.
+				dbPath := fmt.Sprintf("%s/nettrace_%s.db", c.nettraceDirPath, c.sessionUUID)
+
+				sink, err := ntStore.NewBoltBatchSink(dbPath)
+				if err != nil {
+					c.initErr = fmt.Errorf("failed to create nettrace sink: %w", err)
+					return
+				}
+				c.nettraceSink = sink // remember it for later ExportToJSON / Close
+
+				// Add the batch offload so server streams to our sink.
+				opts = append(opts, &nettrace.WithBatchOffload{
+					Callback:          sink.Handler(),
+					Threshold:         1000, // per-map threshold
+					FinalFlushOnClose: true, // flush leftovers on Close()
+				})
+			} else {
+				// Pure in-memory path — no sink, no DB.
+				c.nettraceSink = nil
+			}
+
+			traceClient, err := nettrace.NewHTTPClient(cfg, c.sessionUUID, opts...)
 			if err != nil {
 				c.initErr = fmt.Errorf("failed to create HTTP client with tracing: %w", err)
+				traceClient.Close()
 				return
 			}
 			c.tracedClient = traceClient
+
 		} else {
+			// ----- existing non-tracing branch unchanged -----
 			dialer := &net.Dialer{
 				Timeout:   tcpHandshakeTimeout,
 				KeepAlive: tcpKeepAliveInterval,
 			}
 			if c.srcIP != nil {
-				// You also need to do this to make it work and not give you a
-				// "mismatched local address type ip"
-				// This will make the ResolveIPAddr a TCPAddr without needing to
-				// say what SRC port number to use.
 				localTCPAddr := &net.TCPAddr{IP: c.srcIP}
 				localUDPAddr := &net.UDPAddr{IP: c.srcIP}
-				resolverDial := func(
-					ctx context.Context, network, address string) (net.Conn, error) {
+				resolverDial := func(ctx context.Context, network, address string) (net.Conn, error) {
 					switch network {
 					case "udp", "udp4", "udp6":
 						d := net.Dialer{LocalAddr: localUDPAddr}
@@ -160,6 +212,7 @@ func (c *httpClientWrapper) unwrap() (*http.Client, error) {
 			c.client = client
 		}
 	})
+
 	if c.initErr != nil {
 		return nil, c.initErr
 	}
@@ -210,7 +263,33 @@ func (c *httpClientWrapper) getNetTrace(description string) (
 	if c.tracedClient == nil {
 		return nil, nil, nil
 	}
-	return c.tracedClient.GetTrace(description)
+
+	httpTrace, packetCapture, err := c.tracedClient.GetTrace(description)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	jsonPath := filepath.Join(c.nettraceDirPath, fmt.Sprintf("nettrace_%s.json", c.sessionUUID))
+	if c.nettraceSink != nil {
+		// Using batch-offload + Bolt sink
+		err = c.nettraceSink.ExportToJSON(jsonPath, httpTrace.NetTrace)
+	} else {
+		// No sink: dump the in-memory trace directly
+		err = c.tracedClient.ExportHTTPTraceToJSON(jsonPath, httpTrace)
+	}
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Delete db file
+	if c.nettraceSink != nil {
+		if err := c.nettraceSink.DeleteDBFile(); err != nil {
+			return nil, nil, err
+		}
+	}
+
+	httpTrace.SessionUUID = c.sessionUUID
+	return httpTrace, packetCapture, err
 }
 
 func (c *httpClientWrapper) close() error {
