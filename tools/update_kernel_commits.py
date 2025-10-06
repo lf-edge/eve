@@ -34,6 +34,15 @@ try:
 except ImportError:
     PYTEST_AVAILABLE = False
 
+
+class LinuxKernelTagNotPushedError(Exception):
+    """Exception raised when a Linux kernel tag is referenced but not pushed to the repository."""
+
+
+class CommitFetchError(Exception):
+    """Exception raised when fetching commit information from GitHub API fails."""
+
+
 def get_short_arch_flavor(branch_name):
     """
     Get a short representation of the architecture and flavor from the branch name.
@@ -232,32 +241,42 @@ def github_fetch_commit_range(repo_owner, repo_name, old_commit, new_commit, ver
     - list: A list of tuples containing commit hashes and their subjects.
     - None: If the retrieval of commit information fails.
     """
+
+    # first check if 'old_commit' is known to gitgub. it may happen when the
+    # new branch is added the tag was not pushed to github so nothing to compare against
+    headers = {"Accept": "application/vnd.github.v3+json"}
+    check_url = f"https://api.github.com/repos/{repo_owner}/{repo_name}/commits/{old_commit}"
+    response = requests.get(check_url, headers=headers, timeout=30)
+    if response.status_code != 200:
+        # check that the commit matches a tag vX.Y.Z to provide a helpful hint
+        error_msg = f"commit '{old_commit}' is not found in the repository."
+        if re.match(r'^v\d+\.\d+\.\d+$', old_commit):
+            error_msg += (
+                " This appears to be a Linux kernel tag (vX.Y.Z format)"
+                " that must be pushed to the repository first."
+            )
+        raise LinuxKernelTagNotPushedError(error_msg)
+
     api_url = (
-        "https://api.github.com/"
-        f"repos/{repo_owner}/{repo_name}/compare/{old_commit}...{new_commit}"
+        f"https://api.github.com/repos/{repo_owner}/{repo_name}"
+        f"/compare/{old_commit}...{new_commit}"
     )
-    headers = {
-        "Accept": "application/vnd.github.v3+json",
-    }
 
     if verbose:
         print(f"Fetching commit subjects for {old_commit}..{new_commit}...")
         print(f"API URL: {api_url}")
 
     response = requests.get(api_url, headers=headers, timeout=30)
-    if response.status_code == 200:
-        comparison = response.json()
-        commit_info = []
+    if response.status_code != 200:
+        raise CommitFetchError(
+            f"Failed to fetch commit range from GitHub API. Status: {response.status_code}"
+        )
 
-        for commit in comparison.get("commits", []):
-            commit_subject = commit.get("commit", {}).get("message", "").split("\n")[0]
-            commit_hash = commit.get("sha")
-            commit_info.append((commit_hash[:12], commit_subject))
+    commit_info = []
+    for commit in response.json().get("commits", []):
+        commit_info.append((commit["sha"][:12], commit["commit"]["message"].split("\n")[0]))
 
-        return commit_info
-
-    print(Fore.RED + Style.BRIGHT + "Error:", response.status_code, response.text)
-    sys.exit(1)
+    return commit_info
 
 
 def generate_commit_message(branches, repo_owner, repo_name, verbose=False):
@@ -270,9 +289,11 @@ def generate_commit_message(branches, repo_owner, repo_name, verbose=False):
     - new_commits (dict): A dictionary of branch names and new commit hashes.
 
     Returns:
-    - str: A commit message containing commit information for updated branches.
+    - tuple: A tuple containing (commit_message: str, errors: list)
+    where errors is a list of error messages.
     """
     commit_message = ""
+    errors = []
 
     for branch in branches:
         old_commit, new_commit = branches[branch]
@@ -284,25 +305,30 @@ def generate_commit_message(branches, repo_owner, repo_name, verbose=False):
         commit_message += f"{branch}\n"
         # Fetch a limited number of commit subjects and their corresponding
         # commit hashes between old and new commits for the branch
-        commit_infos = github_fetch_commit_range(
-            repo_owner,
-            repo_name,
-            old_commit,
-            new_commit,
-            verbose=verbose,
-        )
-        if commit_infos:
-            for commit_hash, commit_subject in reversed(commit_infos):
-                commit_message += f"    {commit_hash}: {commit_subject}\n"
-        else:
-            commit_message += "    Unable to fetch commit subjects\n"
+        try:
+            commit_infos = github_fetch_commit_range(
+                repo_owner,
+                repo_name,
+                old_commit,
+                new_commit,
+                verbose=verbose,
+            )
+            if commit_infos:
+                for commit_hash, commit_subject in reversed(commit_infos):
+                    commit_message += f"    {commit_hash}: {commit_subject}\n"
+            else:
+                commit_message += "    Unable to fetch commit subjects\n"
+        except (LinuxKernelTagNotPushedError, CommitFetchError) as error:
+            # Collect the error and continue processing other branches
+            errors.append((branch, str(error)))
+            commit_message += "    [ERROR: commit not found]\n"
         commit_message += "\n"
 
     arch_list = f"[{', '.join(get_short_arch_flavor(branch) for branch in branches)}]"
     commit_subject = f"Kernel update - {arch_list}\n\nThis commit changes:\n"
 
     commit_message = commit_subject + commit_message
-    return commit_message
+    return commit_message, errors
 
 
 def pattern_to_regex(pattern):
@@ -687,6 +713,63 @@ def adjust_branches_by_docker_tags(new_commits, updated_branches, docker_tags):
         return is_error
 
 
+def print_commit_errors(errors):
+    """
+    Print formatted error messages for missing commits.
+
+    Parameters:
+    - errors (list): List of tuples containing (branch_name, error_message).
+    """
+    print(
+        Fore.RED
+        + Style.BRIGHT
+        + "\n[Error] The following commits were not found in the repository:\n"
+        + Style.RESET_ALL
+    )
+    for branch, error_msg in errors:
+        # Extract just the error message without the "Error: " prefix if present
+        clean_msg = error_msg.replace("Error: ", "")
+        print(
+            "  "
+            + Fore.RED
+            + Style.BRIGHT
+            + "ERROR: "
+            + Style.RESET_ALL
+            + Style.BRIGHT
+            + Fore.WHITE
+            + branch
+            + Style.RESET_ALL
+            + ": "
+            + clean_msg
+        )
+    print(
+        Fore.RED + Style.BRIGHT +
+        "\nPlease push the missing tags/commits to the repository and rerun the script."
+    )
+
+
+def print_updated_branches(updated_branches):
+    """
+    Print the list of updated branches with color formatting.
+
+    Parameters:
+    - updated_branches (dict): Dictionary of branch names and their commits.
+    """
+    print("Updated branches:")
+    for branch, commits in updated_branches.items():
+        if commits[0] is None and commits[1] is None:
+            print(
+                Fore.YELLOW + Style.BRIGHT + "  REMOVED: "
+                + Style.RESET_ALL + Style.BRIGHT + f"{branch}"
+            )
+        else:
+            print(
+                Fore.GREEN + Style.BRIGHT + "  UPDATED: "
+                + Style.RESET_ALL + Style.BRIGHT + f"{branch}" + Style.RESET_ALL
+                + f" {commits[0]} -> {commits[1]}"
+            )
+
+
 def main():
     """
     The main function that orchestrates the generation of a commit message for kernel updates.
@@ -699,54 +782,40 @@ def main():
 
     # parse command line arguments. Only token is supported for now
     args = parse_cmd_args()
-    github_user_token = get_github_token(args.token)
-
-    new_commits = fetch_latest_commits_from_github(gh_user, github_user_token,args.verbose)
+    new_commits = fetch_latest_commits_from_github(
+        gh_user, get_github_token(args.token), args.verbose
+    )
     old_commits = parse_kernel_commits_file(kernel_commits_mk_file)
-    # updated on github
     updated_branches = find_updated_branches(old_commits, new_commits, args.verbose)
 
     if not updated_branches:
         print("No kernel updates available.")
         return
 
-    # print updated branches
-    print("Updated branches:")
-    for branch, commits in updated_branches.items():
-        if commits[0] is None and commits[1] is None:
-            print(Fore.YELLOW + Style.BRIGHT +   "  REMOVED: "
-                + Style.RESET_ALL + Style.BRIGHT + f"{branch}")
-        else:
-            print(Fore.GREEN + Style.BRIGHT +   "  UPDATED: "
-                + Style.RESET_ALL + Style.BRIGHT + f"{branch}" + Style.RESET_ALL
-                + f" {commits[0]} -> {commits[1]}")
-
+    print_updated_branches(updated_branches)
 
     # fetch tags from docker hub and convert them to branch names
-    docker_tags = fetch_docker_tags(args.verbose)
-
-    is_error = adjust_branches_by_docker_tags(new_commits, updated_branches, docker_tags)
-
-    if is_error:
+    if adjust_branches_by_docker_tags(new_commits, updated_branches,
+        fetch_docker_tags(args.verbose)):
         print(
-            Fore.RED
-            + "[Error]"
-            + Style.RESET_ALL
-            + ": Please fix the issues and rerun the script."
+            Fore.RED + "[Error]" + Style.RESET_ALL +
+            ": Please fix the issues and rerun the script."
         )
         return
 
     if not updated_branches:
         print(
-            Fore.YELLOW
-            + "[warning]"
-            + Style.RESET_ALL
-            + ":No possible kernel updates available on docker hub,"
+            Fore.YELLOW + "[warning]" + Style.RESET_ALL +
+            ":No possible kernel updates available on docker hub,"
             + " but github has more recent commits."
         )
         return
 
-    commit_message = generate_commit_message(updated_branches, gh_user, "eve-kernel")
+    commit_message, errors = generate_commit_message(updated_branches, gh_user, "eve-kernel")
+
+    if errors:
+        print_commit_errors(errors)
+        sys.exit(1)
 
     # dump updated commits to kernel-commits.mk
     with open(kernel_commits_mk_file, "w", encoding="utf-8") as new_file:
