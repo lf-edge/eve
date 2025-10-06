@@ -5,7 +5,11 @@ ENV BUILD_PKGS git
 ENV PKGS coreutils
 RUN eve-alpine-deploy.sh
 
-COPY ./  /newlog/.
+COPY go.mod /newlog/
+COPY go.sum /newlog/
+COPY cmd /newlog/cmd
+COPY vendor /newlog/vendor
+
 WORKDIR /newlog
 ARG GOPKGVERSION
 
