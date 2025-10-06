@@ -905,10 +905,11 @@ github.com/lf-edge/eve-api/go/metrics
 github.com/lf-edge/eve-api/go/nestedappinstancemetrics
 github.com/lf-edge/eve-api/go/profile
 github.com/lf-edge/eve-api/go/register
-# github.com/lf-edge/eve-libs v0.0.0-20250919075833-d09764e0471a
+# github.com/lf-edge/eve-libs v0.0.0-20250926132726-e59020478fca
 ## explicit; go 1.23.0
 github.com/lf-edge/eve-libs/depgraph
 github.com/lf-edge/eve-libs/nettrace
+github.com/lf-edge/eve-libs/nettraceStorage
 github.com/lf-edge/eve-libs/reconciler
 github.com/lf-edge/eve-libs/zedUpload
 github.com/lf-edge/eve-libs/zedUpload/awsutil
@@ -1209,6 +1210,9 @@ github.com/yusufpapurcu/wmi
 # github.com/zeebo/errs v1.4.0
 ## explicit; go 1.12
 github.com/zeebo/errs
+# go.etcd.io/bbolt v1.3.10
+## explicit; go 1.21
+go.etcd.io/bbolt
 # go.opencensus.io v0.24.0
 ## explicit; go 1.13
 go.opencensus.io

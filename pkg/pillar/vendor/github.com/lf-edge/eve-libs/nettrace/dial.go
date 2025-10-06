@@ -50,41 +50,41 @@ type tracerWithDial interface {
 	traceNewSocket(sock *inetSocket)
 }
 
-// dialTrace is published after each Dial (except those targeted at nameservers,
+// DialTraceEnv is published after each Dial (except those targeted at nameservers,
 // for those resolverDialTrace is published instead).
 // Does not contain DialTrace.ResolverDials - those are published as resolverDialTrace.
-type dialTrace struct {
+type DialTraceEnv struct {
 	DialTrace
-	conn      net.Conn
-	justBegan bool // read only TraceID, DialBeginAt, DstAddress, httpReqID, SourceIP
-	ctxClosed bool // read only TraceID and CtxCloseAt
-	httpReqID TraceID
+	Conn      net.Conn
+	JustBegan bool
+	CTXClosed bool
+	HTTPReqID TraceID
 }
 
-func (dialTrace) isInternalNetTrace() {}
+func (DialTraceEnv) isInternalNetTrace() {}
 
-// Trace published after every attempt to dial a nameserver.
-type resolverDialTrace struct {
-	resolvDial  TraceID
-	parentDial  TraceID
-	nameserver  string
-	dialBeginAt Timestamp
-	dialEndAt   Timestamp
-	dialErr     error
-	conn        net.Conn
-	connID      TraceID
+// ResolverDialTr trace published after every attempt to dial a nameserver.
+type ResolverDialTr struct {
+	ResolvDial  TraceID
+	ParentDial  TraceID
+	Nameserver  string
+	DialBeginAt Timestamp
+	DialEndAt   Timestamp
+	DialErr     error
+	Conn        net.Conn
+	ConnID      TraceID
 }
 
-func (resolverDialTrace) isInternalNetTrace() {}
+func (ResolverDialTr) isInternalNetTrace() {}
 
-// Sent by the resolver at the end of its use.
-type resolverCloseTrace struct {
-	parentDial     TraceID
-	skippedServers []string
-	triedServers   []string
+// ResolverCloseTraceEnv trace sent by the resolver at the end of its use.
+type ResolverCloseTraceEnv struct {
+	ParentDial     TraceID
+	SkippedServers []string
+	TriedServers   []string
 }
 
-func (resolverCloseTrace) isInternalNetTrace() {}
+func (ResolverCloseTraceEnv) isInternalNetTrace() {}
 
 func newTracedDialer(tracer tracerWithDial, log Logger, sourceIP net.IP,
 	handshakeTimeout, keepAliveInterval time.Duration, withDNSTrace bool,
@@ -117,7 +117,6 @@ func (td *tracedDialer) dial(ctx context.Context, network, address string) (net.
 	//
 	// Anything that expects those to be set, should *not* expect them to be set
 	// if http.Client times out.
-
 	// Prepare the original Dialer from the net package.
 	var sourceAddr net.Addr
 	if td.sourceIP != nil {
@@ -134,43 +133,42 @@ func (td *tracedDialer) dial(ctx context.Context, network, address string) (net.
 	// Monitor context for closure.
 	go func() {
 		<-ctx.Done()
-		td.tracer.publishTrace(dialTrace{
+		td.tracer.publishTrace(DialTraceEnv{
 			DialTrace: DialTrace{
 				TraceID:    td.dialID,
 				CtxCloseAt: td.tracer.getRelTimestamp(),
 			},
-			ctxClosed: true,
+			CTXClosed: true,
 		})
 	}()
 
 	// Run DialContext method of the original Dialer.
-	dial := dialTrace{
+	dial := DialTraceEnv{
 		DialTrace: DialTrace{
 			TraceID:     td.dialID,
 			DialBeginAt: td.tracer.getRelTimestamp(),
 			DstAddress:  address,
 		},
-		justBegan: true,
-		httpReqID: getHTTPReqID(ctx),
+		JustBegan: true,
+		HTTPReqID: getHTTPReqID(ctx),
 	}
 	if td.sourceIP != nil {
 		dial.SourceIP = td.sourceIP.String()
 	}
 	td.tracer.publishTrace(dial)
-
 	// if the http.Client.Timeout is reached, this will *not* return an error.
 	// It simply will be abandoned. Listening for a ctx.Done() or setting a defer()
 	// will not help either.
 	conn, err := netDialer.DialContext(ctx, network, address)
 	resolver.close()
-	dial.justBegan = false
+	dial.JustBegan = false
 	dial.DialEndAt = td.tracer.getRelTimestamp()
 	if err != nil {
 		dial.DialErr = err.Error()
 		td.tracer.publishTrace(dial)
 		return conn, err
 	}
-	dial.conn = conn
+	dial.Conn = conn
 	dial.EstablishedConn = IDGenerator()
 	td.tracer.publishTrace(dial)
 
@@ -224,27 +222,27 @@ func (tr *tracedResolver) dial(ctx context.Context, network, address string) (ne
 	netDialer := net.Dialer{Control: tfd.controlFD, LocalAddr: sourceAddr}
 
 	// Run DialContext method of the original Dialer.
-	trace := resolverDialTrace{
-		resolvDial:  resolvDialID,
-		parentDial:  tr.caller.dialID,
-		nameserver:  address,
-		dialBeginAt: tr.caller.tracer.getRelTimestamp(),
+	trace := ResolverDialTr{
+		ResolvDial:  resolvDialID,
+		ParentDial:  tr.caller.dialID,
+		Nameserver:  address,
+		DialBeginAt: tr.caller.tracer.getRelTimestamp(),
 	}
 	conn, err := netDialer.DialContext(ctx, network, address)
-	trace.dialEndAt = tr.caller.tracer.getRelTimestamp()
+	trace.DialEndAt = tr.caller.tracer.getRelTimestamp()
 	tr.ensureTriedServersContains(address)
 	if err != nil {
-		trace.dialErr = err
+		trace.DialErr = err
 		tr.caller.tracer.publishTrace(trace)
 		return conn, err
 	}
-	trace.conn = conn
-	trace.connID = IDGenerator()
+	trace.Conn = conn
+	trace.ConnID = IDGenerator()
 	tr.caller.tracer.publishTrace(trace)
 
 	// Trace established connection.
 	tracedConn := newTracedConn(
-		tr.caller.tracer, trace.connID, conn, tr.caller.log, true, tr.caller.withDNSTrace)
+		tr.caller.tracer, trace.ConnID, conn, tr.caller.log, true, tr.caller.withDNSTrace)
 	if packetConn, isPacketConn := conn.(net.PacketConn); isPacketConn {
 		return &tracedPacketConn{
 			tracedConn: tracedConn,
@@ -256,10 +254,10 @@ func (tr *tracedResolver) dial(ctx context.Context, network, address string) (ne
 
 // Run by tracedDialer when resolution is completed.
 func (tr *tracedResolver) close() {
-	tr.caller.tracer.publishTrace(resolverCloseTrace{
-		parentDial:     tr.caller.dialID,
-		skippedServers: tr.skippedServers,
-		triedServers:   tr.triedServers,
+	tr.caller.tracer.publishTrace(ResolverCloseTraceEnv{
+		ParentDial:     tr.caller.dialID,
+		SkippedServers: tr.skippedServers,
+		TriedServers:   tr.triedServers,
 	})
 }
 

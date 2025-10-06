@@ -61,50 +61,50 @@ type tracedHTTPReq struct {
 	proxyURL   *url.URL
 }
 
-// httpConnTrace is published when we learn which connection is going to be used
+// HTTPConnTrace is published when we learn which connection is going to be used
 // for a given HTTP request.
-type httpConnTrace struct {
-	httpReqID TraceID
-	conn      net.Conn
+type HTTPConnTrace struct {
+	HTTPReqID TraceID
+	Conn      net.Conn
 }
 
-func (httpConnTrace) isInternalNetTrace() {}
+func (HTTPConnTrace) isInternalNetTrace() {}
 
-// tlsTrace is published when TLS tunnel is established or fails to establish.
-type tlsTrace struct {
+// TLSTrace is published when TLS tunnel is established or fails to establish.
+type TLSTrace struct {
 	TLSTunnelTrace // TCPConn is not set here
-	httpReqID      TraceID
-	forProxy       bool
+	HTTPReqID      TraceID
+	ForProxy       bool
 }
 
-func (tlsTrace) isInternalNetTrace() {}
+func (TLSTrace) isInternalNetTrace() {}
 
-// httpReqTrace is published just before RoundTrip is triggered.
-type httpReqTrace struct {
-	httpReqID  TraceID
-	protoMajor uint8
-	protoMinor uint8
-	sentAt     Timestamp
-	reqMethod  string
-	reqURL     string
-	header     HTTPHeader
-	netProxy   string
+// HTTPReqTraceEnv is published just before RoundTrip is triggered.
+type HTTPReqTraceEnv struct {
+	HTTPReqID  TraceID
+	ProtoMajor uint8
+	ProtoMinor uint8
+	SentAt     Timestamp
+	ReqMethod  string
+	ReqURL     string
+	Header     HTTPHeader
+	NetProxy   string
 }
 
-func (httpReqTrace) isInternalNetTrace() {}
+func (HTTPReqTraceEnv) isInternalNetTrace() {}
 
-// httpRespTrace is published when RoundTrip returns.
-type httpRespTrace struct {
-	httpReqID  TraceID
-	protoMajor uint8
-	protoMinor uint8
-	rtErr      error
-	recvAt     Timestamp
-	statusCode int
-	header     HTTPHeader
+// HTTPRespTrace is published when RoundTrip returns.
+type HTTPRespTrace struct {
+	HTTPReqID  TraceID
+	ProtoMajor uint8
+	ProtoMinor uint8
+	RtErr      error
+	RecvAt     Timestamp
+	StatusCode int
+	Header     HTTPHeader
 }
 
-func (httpRespTrace) isInternalNetTrace() {}
+func (HTTPRespTrace) isInternalNetTrace() {}
 
 func newTracedRoundTripper(
 	forTracer httpClientTracer, opts WithHTTPReqTrace) *tracedRoundTripper {
@@ -150,15 +150,15 @@ func (rt *tracedRoundTripper) RoundTrip(req *http.Request) (*http.Response, erro
 	}
 
 	// Publish networkTrace about the HTTP request.
-	reqTrace := httpReqTrace{
-		httpReqID:  reqID,
-		protoMajor: uint8(req.ProtoMajor),
-		protoMinor: uint8(req.ProtoMinor),
-		sentAt:     rt.tracer.getRelTimestamp(),
-		reqMethod:  req.Method,
-		reqURL:     req.URL.String(),
-		header:     rt.captureHeader(req.Header),
-		netProxy:   netProxy,
+	reqTrace := HTTPReqTraceEnv{
+		HTTPReqID:  reqID,
+		ProtoMajor: uint8(req.ProtoMajor),
+		ProtoMinor: uint8(req.ProtoMinor),
+		SentAt:     rt.tracer.getRelTimestamp(),
+		ReqMethod:  req.Method,
+		ReqURL:     req.URL.String(),
+		Header:     rt.captureHeader(req.Header),
+		NetProxy:   netProxy,
 	}
 	rt.tracer.publishTrace(reqTrace)
 
@@ -167,13 +167,13 @@ func (rt *tracedRoundTripper) RoundTrip(req *http.Request) (*http.Response, erro
 
 	// Publish networkTrace about the HTTP response.
 	if err == nil && resp != nil {
-		respTrace := httpRespTrace{
-			httpReqID:  reqID,
-			protoMajor: uint8(resp.ProtoMajor),
-			protoMinor: uint8(resp.ProtoMinor),
-			recvAt:     rt.tracer.getRelTimestamp(),
-			statusCode: resp.StatusCode,
-			header:     rt.captureHeader(resp.Header),
+		respTrace := HTTPRespTrace{
+			HTTPReqID:  reqID,
+			ProtoMajor: uint8(resp.ProtoMajor),
+			ProtoMinor: uint8(resp.ProtoMinor),
+			RecvAt:     rt.tracer.getRelTimestamp(),
+			StatusCode: resp.StatusCode,
+			Header:     rt.captureHeader(resp.Header),
 		}
 		rt.tracer.publishTrace(respTrace)
 		// tracedHTTPBody used to find out the response body length.
@@ -187,9 +187,9 @@ func (rt *tracedRoundTripper) RoundTrip(req *http.Request) (*http.Response, erro
 		}
 	}
 	if err != nil {
-		respTrace := httpRespTrace{
-			httpReqID: reqID,
-			rtErr:     err,
+		respTrace := HTTPRespTrace{
+			HTTPReqID: reqID,
+			RtErr:     err,
 		}
 		rt.tracer.publishTrace(respTrace)
 	}
@@ -226,9 +226,9 @@ func (rt *tracedRoundTripper) captureHeader(httpHdr http.Header) (hdr HTTPHeader
 }
 
 func (t *tracedHTTPReq) gotConn(connInfo httptrace.GotConnInfo) {
-	t.tracer.publishTrace(httpConnTrace{
-		httpReqID: t.httpReqID,
-		conn:      connInfo.Conn,
+	t.tracer.publishTrace(HTTPConnTrace{
+		HTTPReqID: t.httpReqID,
+		Conn:      connInfo.Conn,
 	})
 }
 
@@ -238,7 +238,7 @@ func (t *tracedHTTPReq) tlsHandshakeStart() {
 }
 
 func (t *tracedHTTPReq) tlsHandshakeDone(tlsState tls.ConnectionState, err error) {
-	tlsTrace := tlsTrace{
+	tlsTrace := TLSTrace{
 		TLSTunnelTrace: TLSTunnelTrace{
 			TraceID:          IDGenerator(),
 			HandshakeBeginAt: t.tlsStartAt,
@@ -249,7 +249,7 @@ func (t *tracedHTTPReq) tlsHandshakeDone(tlsState tls.ConnectionState, err error
 			NegotiatedProto:  tlsState.NegotiatedProtocol,
 			ServerName:       tlsState.ServerName,
 		},
-		httpReqID: t.httpReqID,
+		HTTPReqID: t.httpReqID,
 	}
 	var (
 		certErr        x509.CertificateInvalidError
@@ -270,7 +270,7 @@ func (t *tracedHTTPReq) tlsHandshakeDone(tlsState tls.ConnectionState, err error
 	if t.tlsCounter == 1 &&
 		t.proxyURL != nil &&
 		strings.ToLower(t.proxyURL.Scheme) == "https" {
-		tlsTrace.forProxy = true
+		tlsTrace.ForProxy = true
 	}
 	t.tracer.publishTrace(tlsTrace)
 	t.tlsStartAt = Timestamp{} // clear

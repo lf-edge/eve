@@ -22,33 +22,33 @@ type tracedConn struct {
 	withDNSTrace bool
 }
 
-// socketOpTrace is published for every socket read/write operation.
-type socketOpTrace struct {
+// SocketOpTrace is published for every socket read/write operation.
+type SocketOpTrace struct {
 	SocketOp
-	conn   net.Conn
-	connID TraceID
-	closed bool // true if the socket was closed
+	Conn   net.Conn
+	ConnID TraceID
+	Closed bool // true if the socket was closed
 }
 
-func (socketOpTrace) isInternalNetTrace() {}
+func (SocketOpTrace) isInternalNetTrace() {}
 
-// socketOpTrace is published for every DNS query sent over the connection.
-type dnsQueryTrace struct {
+// DNSQueryTraceEnv is published for every DNS query sent over the connection.
+type DNSQueryTraceEnv struct {
 	DNSQueryMsg
-	conn   net.Conn
-	connID TraceID
+	Conn   net.Conn
+	ConnID TraceID
 }
 
-func (dnsQueryTrace) isInternalNetTrace() {}
+func (DNSQueryTraceEnv) isInternalNetTrace() {}
 
-// dnsReplyTrace is published for every DNS reply received over the connection.
-type dnsReplyTrace struct {
+// DNSReplyTrace is published for every DNS reply received over the connection.
+type DNSReplyTrace struct {
 	DNSReplyMsg
 	conn   net.Conn
 	connID TraceID
 }
 
-func (dnsReplyTrace) isInternalNetTrace() {}
+func (DNSReplyTrace) isInternalNetTrace() {}
 
 func newTracedConn(tracer networkTracer, connID TraceID, conn net.Conn, log Logger,
 	forResolver, withDNSTrace bool) *tracedConn {
@@ -110,7 +110,7 @@ func (tc *tracedConn) parseDNSQuery(data []byte, sentAt Timestamp) {
 		}
 		_ = p.SkipAdditional()
 	}
-	tc.tracer.publishTrace(dnsQueryTrace{
+	tc.tracer.publishTrace(DNSQueryTraceEnv{
 		DNSQueryMsg: DNSQueryMsg{
 			SentAt:            sentAt,
 			ID:                header.ID,
@@ -120,8 +120,8 @@ func (tc *tracedConn) parseDNSQuery(data []byte, sentAt Timestamp) {
 			Questions:         questions,
 			OptUDPPayloadSize: udpMaxSize,
 		},
-		conn:   tc.conn,
-		connID: tc.connID,
+		Conn:   tc.conn,
+		ConnID: tc.connID,
 	})
 }
 
@@ -224,7 +224,7 @@ func (tc *tracedConn) parseDNSReply(data []byte, recvAt Timestamp) {
 	if _, recognized := DNSRCodeToString[rCode]; !recognized {
 		rCode = DNSRCodeUnrecognized
 	}
-	tc.tracer.publishTrace(dnsReplyTrace{
+	tc.tracer.publishTrace(DNSReplyTrace{
 		DNSReplyMsg: DNSReplyMsg{
 			RecvAt:             recvAt,
 			ID:                 header.ID,
@@ -244,7 +244,7 @@ func (tc *tracedConn) Read(b []byte) (n int, err error) {
 	callAt := tc.tracer.getRelTimestamp()
 	n, err = tc.conn.Read(b)
 	returnAt := tc.tracer.getRelTimestamp()
-	tc.tracer.publishTrace(socketOpTrace{
+	tc.tracer.publishTrace(SocketOpTrace{
 		SocketOp: SocketOp{
 			Type:      SocketOpTypeRead,
 			CallAt:    callAt,
@@ -252,8 +252,8 @@ func (tc *tracedConn) Read(b []byte) (n int, err error) {
 			ReturnErr: errToString(err),
 			DataLen:   uint32(n),
 		},
-		conn:   tc.conn,
-		connID: tc.connID,
+		Conn:   tc.conn,
+		ConnID: tc.connID,
 	})
 	if err == nil && tc.forResolver && tc.withDNSTrace {
 		// XXX Large DNS reply could be in theory split across multiple reads.
@@ -267,7 +267,7 @@ func (tc *tracedConn) Write(b []byte) (n int, err error) {
 	callAt := tc.tracer.getRelTimestamp()
 	n, err = tc.conn.Write(b)
 	returnAt := tc.tracer.getRelTimestamp()
-	tc.tracer.publishTrace(socketOpTrace{
+	tc.tracer.publishTrace(SocketOpTrace{
 		SocketOp: SocketOp{
 			Type:      SocketOpTypeWrite,
 			CallAt:    callAt,
@@ -275,8 +275,8 @@ func (tc *tracedConn) Write(b []byte) (n int, err error) {
 			ReturnErr: errToString(err),
 			DataLen:   uint32(n),
 		},
-		conn:   tc.conn,
-		connID: tc.connID,
+		Conn:   tc.conn,
+		ConnID: tc.connID,
 	})
 	if err == nil && tc.forResolver && tc.withDNSTrace {
 		tc.parseDNSQuery(b[:n], returnAt)
@@ -288,15 +288,15 @@ func (tc *tracedConn) Close() error {
 	callAt := tc.tracer.getRelTimestamp()
 	err := tc.conn.Close()
 	returnAt := tc.tracer.getRelTimestamp()
-	tc.tracer.publishTrace(socketOpTrace{
+	tc.tracer.publishTrace(SocketOpTrace{
 		SocketOp: SocketOp{
 			CallAt:    callAt,
 			ReturnAt:  returnAt,
 			ReturnErr: errToString(err),
 		},
-		conn:   tc.conn,
-		connID: tc.connID,
-		closed: true,
+		Conn:   tc.conn,
+		ConnID: tc.connID,
+		Closed: true,
 	})
 	return err
 }
@@ -331,7 +331,7 @@ func (tpc *tracedPacketConn) ReadFrom(b []byte) (n int, addr net.Addr, err error
 	callAt := tpc.tracer.getRelTimestamp()
 	n, addr, err = tpc.packetConn.ReadFrom(b)
 	returnAt := tpc.tracer.getRelTimestamp()
-	tpc.tracer.publishTrace(socketOpTrace{
+	tpc.tracer.publishTrace(SocketOpTrace{
 		SocketOp: SocketOp{
 			Type:       SocketOpTypeReadFrom,
 			CallAt:     callAt,
@@ -340,8 +340,8 @@ func (tpc *tracedPacketConn) ReadFrom(b []byte) (n int, addr net.Addr, err error
 			RemoteAddr: addr.String(),
 			DataLen:    uint32(n),
 		},
-		conn:   tpc.conn,
-		connID: tpc.connID,
+		Conn:   tpc.conn,
+		ConnID: tpc.connID,
 	})
 	if err == nil && tpc.forResolver {
 		tpc.parseDNSReply(b[:n], returnAt)
@@ -353,7 +353,7 @@ func (tpc *tracedPacketConn) WriteTo(b []byte, addr net.Addr) (n int, err error)
 	callAt := tpc.tracer.getRelTimestamp()
 	n, err = tpc.packetConn.WriteTo(b, addr)
 	returnAt := tpc.tracer.getRelTimestamp()
-	tpc.tracer.publishTrace(socketOpTrace{
+	tpc.tracer.publishTrace(SocketOpTrace{
 		SocketOp: SocketOp{
 			Type:       SocketOpTypeWriteTo,
 			CallAt:     callAt,
@@ -362,8 +362,8 @@ func (tpc *tracedPacketConn) WriteTo(b []byte, addr net.Addr) (n int, err error)
 			RemoteAddr: addr.String(),
 			DataLen:    uint32(n),
 		},
-		conn:   tpc.conn,
-		connID: tpc.connID,
+		Conn:   tpc.conn,
+		ConnID: tpc.connID,
 	})
 	if err == nil && tpc.forResolver {
 		tpc.parseDNSQuery(b[:n], returnAt)

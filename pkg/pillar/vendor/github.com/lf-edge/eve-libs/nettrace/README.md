@@ -110,6 +110,10 @@ func main() {
         &nettrace.WithHTTPReqTrace{
             HeaderFields: nettrace.HdrFieldsOptDisabled,
         },
+        &nettrace.WithBatchOffload{
+            Callback:          mySink{}.HandleBatch, // receives batches
+            FinalFlushOnClose: true,                 // flush leftovers on Close()
+        },
         &nettrace.WithPacketCapture{
             Interfaces:  []string{"eth0"},
             IncludeICMP: true,
@@ -139,8 +143,24 @@ but still should call the wrapped Transport for the HTTP request execution.
 An example of this is [Transport from the oauth2 package][oauth2-transp], adding
 an Authorization header with a token.
 
-With the client constructed, run one or more HTTP requests (using the embedded `http.Client`)
-and later use `GetTrace()` to obtain collected network traces:
+### Three ways to collect traces
+
+You can run **unbounded in-memory (default)**, **bounded in-memory**, or
+**offload traces** to your own storage (e.g., BoltDB) via a callback. We added
+the bounded/offload modes because in real cases (e.g., downloading a very large
+image >15 GB) the number of emitted traces can surge and spike memory. Bounded
+in-memory keeps only the most recent N items per trace type. Offload keeps a
+recent window in RAM and streams older batches to disk. We provide a
+BoltDB-backed sink that’s fast, mmap-based, and lightweight—but you can plug
+in any sink you prefer. (Enable with WithBoundedInMemory{...} or
+WithBatchOffload{...}; omit both for the default unbounded in-memory mode.)
+
+#### Default Unbounded In-memory mode
+
+In this mode, nettrace keeps all the traces in-memory and returns them directly
+from `GetTrace`. Nothing is written to disk unless you export it. With the
+client constructed, run one or more HTTP requests (using the embedded
+`http.Client`) and later use `GetTrace()` to obtain collected network traces:
 
 ```go
 ctx := context.Background()
@@ -175,6 +195,139 @@ fmt.Printf("Network traces collected from the HTTP client: %s\n", string(traceIn
 Note that communication with the HTTP server continues until the request fails
 or the returned body is fully read or closed. In other words, prefer getting network
 traces AFTER reading response body.
+
+#### Offload mode (via `WithBatchOffload`)
+
+With **WithBatchOffload** enabled, nettrace keeps only a recent window of
+records in RAM and streams older items to your callback, so memory stays
+bounded by the in-memory capacity you configure. The Threshold just controls
+how often batches are delivered (smaller = more frequent), not how much is
+retained. Use FinalFlushOnClose to push any leftovers on shutdown. If you don’t
+enable offload, you can run purely in memory either unbounded (default) or
+bounded via the “bounded in-memory” option. In this mode the nettrace
+returned by client.GetTrace() should not be processed inside the user program,
+as it does not contain any data — everything is instead flushed to disk in
+separate batches. The purpose of this mode is to generate the JSON file
+while minimizing memory usage, but it is not suitable if in-memory processing
+of the trace is required.
+
+```go
+import (
+    "fmt"
+    "os"
+    "path/filepath"
+
+    nettrace "github.com/lf-edge/eve-libs/nettrace"
+    ntStore  "github.com/lf-edge/eve-libs/nettraceStorage" // your sink package
+)
+
+// Prepare a per-session directory + UUID-based filenames (choose how you make UUIDs).
+nettraceDirPath := "/persist/nettrace"
+_ = os.MkdirAll(nettraceDirPath, 0o755)
+
+sessionUUID := "<your-session-uuid>" // e.g., satori/go.uuid: uuid.NewV4().String()
+
+// Create one BoltDB file per session to collect batches.
+dbPath := fmt.Sprintf("%s/nettrace_%s.db", nettraceDirPath, sessionUUID)
+sink, err := ntStore.NewBoltBatchSink(dbPath)
+if err != nil {
+    // handle error
+}
+
+// Build tracing options and add the offload callback.
+// Threshold is per trace-type (dials, http reqs, dns, tls, tcp, udp).
+opts := []nettrace.TraceOpt{
+    &nettrace.WithBatchOffload{
+        Callback:          sink.Handler(), // func(BatchSnapshot)
+        Threshold:         1000,           // tune to your needs
+        FinalFlushOnClose: true,           // flush leftovers on Close()
+    },
+    // ... any other tracing options ...
+}
+
+// Create the traced client as usual.
+client, err := nettrace.NewHTTPClient(cfg, opts...)
+if err != nil {
+    // handle error
+}
+
+// -------------------- do your HTTP work here -------------------- //
+
+// When done, get the meta (begin/end, description) *and* let the client finish.
+httpTrace, _, err := client.GetTrace("optional description")
+if err != nil {
+    // handle error
+}
+
+// Export a single consolidated JSON from everything the sink has persisted.
+jsonPath := filepath.Join(nettraceDirPath, fmt.Sprintf("nettrace_%s.json", sessionUUID))
+if err := sink.ExportToJSON(jsonPath, httpTrace.NetTrace); err != nil {
+    // handle error
+}
+   ```
+
+#### In-Memory Bounded option (via `WithBoundedInMemory`)
+
+With **WithBoundedInMemory** enabled, nettrace keeps only the most recent
+N records in RAM and does not offload to any storage—evicted items are simply
+dropped. This caps memory deterministically while keeping things simple: you
+still call **GetTrace(...)** to retrieve whatever remains in the in-memory
+windows, but anything older than the configured capacity is not retained.
+Use this when you want a hard memory limit and don’t need persistence, tune
+the capacity to balance detail vs. footprint.
+
+```go
+import (
+    "fmt"
+    "os"
+    "path/filepath"
+
+    nettrace "github.com/lf-edge/eve-libs/nettrace"
+    ntStore  "github.com/lf-edge/eve-libs/nettraceStorage" // your sink package
+)
+
+// Prepare a per-session directory + UUID-based filenames (choose how you make UUIDs).
+nettraceDirPath := "/persist/nettrace"
+_ = os.MkdirAll(nettraceDirPath, 0o755)
+
+sessionUUID := "<your-session-uuid>" // e.g., satori/go.uuid: uuid.NewV4().String()
+
+// Create one BoltDB file per session to collect batches.
+dbPath := fmt.Sprintf("%s/nettrace_%s.db", nettraceDirPath, sessionUUID)
+sink, err := ntStore.NewBoltBatchSink(dbPath)
+if err != nil {
+    // handle error
+}
+
+// Build tracing options and add the offload callback.
+// Threshold is per trace-type (dials, http reqs, dns, tls, tcp, udp).
+opts := []nettrace.TraceOpt{
+    &nettrace.WithBoundedInMemory{
+        Threshold:         1000,           // tune to your needs
+    },
+    // ... any other tracing options ...
+}
+
+// Create the traced client as usual.
+client, err := nettrace.NewHTTPClient(cfg, opts...)
+if err != nil {
+    // handle error
+}
+
+// -------------------- do your HTTP work here -------------------- //
+
+httpTrace, pcaps, err := client.GetTrace("example")
+if err != nil {
+    fmt.Println(err)
+    os.Exit(1)
+}
+traceInJson, err := json.MarshalIndent(httpTrace, "", "  ")
+if err != nil {
+    fmt.Println(err)
+    os.Exit(1)
+}
+fmt.Printf("Network traces collected from the HTTP client: %s\n", string(traceInJson))
+   ```
 
 The returned packet captures (`pcaps` in the example; one for each configured interface)
 can be each saved to a file using `PacketCapture.WriteToFile(filename)` and analyzed
