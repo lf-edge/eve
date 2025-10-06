@@ -455,15 +455,6 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext, dest destinationBitset) {
 		log.Tracef("report metrics sending info for EXT4 storage type")
 	}
 
-	// We report all the ports in DeviceNetworkStatus
-	// Note that this is deprecated in favour of SystemAdapterInfo.
-	for _, p := range deviceNetworkStatus.Ports {
-		ReportDeviceNetworkInfo := encodeNetInfo(p)
-		// XXX rename DevName to Logicallabel in proto file
-		ReportDeviceNetworkInfo.DevName = p.Logicallabel
-		ReportDeviceInfo.Network = append(ReportDeviceInfo.Network,
-			ReportDeviceNetworkInfo)
-	}
 	// Report all SIM cards and cellular modules, including those not in use.
 	if statusObj, _ := ctx.subWwanStatus.Get("global"); statusObj != nil {
 		if status, ok := statusObj.(types.WwanStatus); ok {
@@ -844,55 +835,6 @@ func addUserSwInfo(ctx *zedagentContext, swInfo *info.ZInfoDevSW, tooEarly bool)
 	if swInfo.SwErr != nil && swInfo.SwErr.Description != "" {
 		swInfo.UserStatus = info.BaseOsStatus_FAILED
 	}
-}
-
-// encodeNetInfo encodes info from the port
-func encodeNetInfo(port types.NetworkPortStatus) *info.ZInfoNetwork {
-
-	networkInfo := new(info.ZInfoNetwork)
-	networkInfo.LocalName = port.IfName
-	networkInfo.IPAddrs = make([]string, len(port.AddrInfoList))
-	for index, ai := range port.AddrInfoList {
-		networkInfo.IPAddrs[index] = ai.Addr.String()
-	}
-	networkInfo.Ipv4Up = port.Up
-	networkInfo.MacAddr = port.MacAddr.String()
-	networkInfo.DevName = port.Logicallabel
-
-	networkInfo.Alias = port.Alias
-	networkInfo.DefaultRouters = utils.ToStrings(port.DefaultRouters)
-
-	networkInfo.Uplink = port.IsMgmt
-	// fill in ZInfoDNS from what is currently used
-	networkInfo.Dns = new(info.ZInfoDNS)
-	networkInfo.Dns.DNSdomain = port.DomainName
-	networkInfo.Dns.DNSservers = utils.ToStrings(port.DNSServers)
-
-	// XXX we potentially have geoloc information for each IP
-	// address.
-	// For now fill in using the first IP address which has location
-	// info.
-	for _, ai := range port.AddrInfoList {
-		if ai.Geo == nilIPInfo {
-			continue
-		}
-		geo := new(info.GeoLoc)
-		geo.UnderlayIP = ai.Geo.IP
-		geo.Hostname = ai.Geo.Hostname
-		geo.City = ai.Geo.City
-		geo.Country = ai.Geo.Country
-		geo.Loc = ai.Geo.Loc
-		geo.Org = ai.Geo.Org
-		geo.Postal = ai.Geo.Postal
-		networkInfo.Location = geo
-		break
-	}
-	// Any error or test result?
-	networkInfo.NetworkErr = encodeTestResults(port.TestResults)
-
-	networkInfo.Proxy = encodeProxyStatus(&port.ProxyConfig)
-	networkInfo.NtpServers = utils.ToStrings(port.NtpServers)
-	return networkInfo
 }
 
 func encodeSystemAdapterInfo(ctx *zedagentContext) *info.SystemAdapterInfo {
