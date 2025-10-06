@@ -23,11 +23,11 @@ sudo apt-get -qq update -y > /dev/null
 sudo apt-get install curl swtpm tpm2-tools -y -qq > /dev/null
 
 echo "[+] Installing zfs (pillar dependency)..."
-ZFS_URL="https://github.com/openzfs/zfs/archive/refs/tags/zfs-2.2.2.tar.gz"
+ZFS_URL="https://github.com/openzfs/zfs/archive/refs/tags/zfs-2.3.3.tar.gz"
 mkdir -p /tmp/zfs
 cd /tmp/zfs
 curl -s -LO $ZFS_URL > /dev/null
-tar -xf zfs-2.2.2.tar.gz --strip-components=1 > /dev/null
+tar -xf zfs-2.3.3.tar.gz --strip-components=1 > /dev/null
 ./autogen.sh > /dev/null 2>&1
 ./configure \
   --prefix=/usr \
