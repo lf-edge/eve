@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/netdump"
+	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zboot"
 )
 
@@ -58,7 +59,8 @@ func (m *DpcManager) publishNetdump(
 	} else {
 		topic = m.netDumpFailTopic()
 	}
-	filename, err := netDumper.Publish(topic, tracedConnProbes...)
+
+	filename, err := netDumper.Publish(topic, types.NetTraceFolder, tracedConnProbes...)
 	if err != nil {
 		m.Log.Warnf("Failed to publish netdump for topic %s: %v", topic, err)
 	} else {

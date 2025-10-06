@@ -30,7 +30,9 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/eriknordmark/ipinfo"
@@ -2889,8 +2891,35 @@ func handleEdgeviewStatusImpl(ctxArg interface{}, key string, statusArg interfac
 	PublishEdgeviewToZedCloud(ctx, &status, AllDest)
 }
 
+// deleteOldNetTraceFiles removes old nettrace files
+func deleteOldNetTraceFiles(gcp *types.ConfigItemValueMap) {
+	log.Noticef("cleanupNettraceFiles")
+
+	// Implement the cleanup logic for nettrace files that start with "nettrace_"
+	// and have either .db or .json extension.
+	dirEntries, err := os.ReadDir(types.NetTraceFolder)
+	if err != nil {
+		log.Warnf("cleanupNettraceFiles: unable to read dir %s: %v", types.NetTraceFolder, err)
+		return
+	}
+	for _, entry := range dirEntries {
+		fileName := entry.Name()
+		if strings.HasPrefix(fileName, "nettrace_") && (strings.HasSuffix(fileName, ".db") || strings.HasSuffix(fileName, ".json")) {
+			fullPath := filepath.Join(types.NetTraceFolder, fileName)
+			err = os.Remove(fullPath)
+			if err != nil {
+				log.Warnf("cleanupNettraceFiles: failed to remove %s: %v", fullPath, err)
+			}
+		}
+	}
+}
+
 func reinitNetdumper(ctx *zedagentContext) {
 	gcp := ctx.globalConfig
+
+	// Delete old nettrace files
+	deleteOldNetTraceFiles(&gcp)
+
 	netDumper := ctx.netDumper
 	netdumpEnabled := gcp.GlobalValueBool(types.NetDumpEnable)
 	if netdumpEnabled {

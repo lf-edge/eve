@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/lf-edge/eve-libs/nettrace"
+	"github.com/lf-edge/eve-libs/nettraceStorage"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/netdump"
 	"github.com/lf-edge/eve/pkg/pillar/netmonitor"
@@ -138,6 +139,8 @@ type RequestOptions struct {
 	SuppressLogs bool
 	// WithNetTracing enables network tracing for post-mortem troubleshooting purposes.
 	WithNetTracing bool
+	// NetTraceFolder specifies the directory where network trace files should be stored.
+	NetTraceFolder string
 	// DryRun performs all pre-send checks to verify interface readiness, but skips
 	// actually sending the data.
 	DryRun bool
@@ -663,6 +666,7 @@ func (c *Client) SendOnIntf(ctx context.Context, destURL string, intf string,
 
 	var rv SendRetval
 	var reqURL string
+	var nettraceSessionUUID string
 	var useTLS, isEdgenode, isGet bool
 
 	if strings.HasPrefix(destURL, "http:") {
@@ -756,11 +760,37 @@ func (c *Client) SendOnIntf(ctx context.Context, destURL string, intf string,
 		// Prepare the HTTP client.
 		var client *http.Client
 		var tracing tracedReq
+		var sink *nettraceStorage.BoltBatchSink
+
 		if opts.WithNetTracing {
 			// Note that resolver cache is not supported when network tracing is enabled.
 			// This is actually intentional - when tracing, we want to run normal hostname
 			// IP resolution and collect traces of DNS queries.
-			tracing.client, err = nettrace.NewHTTPClient(clientConfig, c.NetTraceOpts...)
+			if err := os.MkdirAll(opts.NetTraceFolder, 0o755); err != nil {
+				errorLog(fmt.Sprintf("SendOnIntf: failed to create nettrace folder %s: %v", opts.NetTraceFolder, err))
+				attempt.Err = err
+				attempts = append(attempts, attempt)
+				continue
+			}
+			// Create a per-session UUID (string) and a per-session Bolt DB sink.
+			id, _ := uuid.NewV4()
+			dateTime := time.Now().Format("20060102-150405")
+			nettraceSessionUUID = fmt.Sprintf("%s-%s", dateTime, id.String())
+
+			dbPath := fmt.Sprintf("%s/nettrace_%s.db", opts.NetTraceFolder, nettraceSessionUUID)
+			sink, err = nettraceStorage.NewBoltBatchSink(dbPath)
+			if err != nil {
+				c.log.Warningf("SendOnIntf: failed to create nettrace sink: %v", err)
+				continue
+			}
+			optsnt := make([]nettrace.TraceOpt, 0, len(c.NetTraceOpts)+1)
+			optsnt = append(optsnt, c.NetTraceOpts...)
+			optsnt = append(optsnt, &nettrace.WithBatchOffload{
+				Callback:          sink.Handler(),
+				Threshold:         1000, // per-map threshold
+				FinalFlushOnClose: true, // flush leftovers on Close()
+			})
+			tracing.client, err = nettrace.NewHTTPClient(clientConfig, nettraceSessionUUID, optsnt...)
 			if err != nil {
 				// Log error and revert to running send operation without tracing.
 				errorLog("SendOnIntf: nettrace.NewHTTPClient failed: %v", err)
@@ -822,6 +852,21 @@ func (c *Client) SendOnIntf(ctx context.Context, destURL string, intf string,
 			if err != nil {
 				errorLog(err.Error())
 			} else {
+				if sink != nil {
+					jsonPath := fmt.Sprintf("%s/nettrace_%s.json", opts.NetTraceFolder, nettraceSessionUUID)
+					if err := sink.ExportToJSON(jsonPath, netTrace.NetTrace); err != nil {
+						errorLog(err.Error())
+					}
+				}
+
+				// Delete db file
+				if sink != nil {
+					if err := sink.DeleteDBFile(); err != nil {
+						errorLog(err.Error())
+					}
+				}
+
+				netTrace.SessionUUID = nettraceSessionUUID
 				rv.TracedReqs = append(rv.TracedReqs, netdump.TracedNetRequest{
 					RequestName:    tracing.reqName,
 					NetTrace:       netTrace,

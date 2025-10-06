@@ -472,6 +472,7 @@ func publishFlowMessage(flowMsg *flowlog.FlowMessage, iteration int, expectNoCon
 	rv, err := ctrlClient.SendOnAllIntf(ctxWork, flowlogURL, buf,
 		controllerconn.RequestOptions{
 			WithNetTracing: false,
+			NetTraceFolder: "",
 			BailOnHTTPErr:  false,
 			Iteration:      iteration,
 			SuppressLogs:   expectNoConn,

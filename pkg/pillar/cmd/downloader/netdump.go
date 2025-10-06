@@ -5,6 +5,7 @@ package downloader
 
 import (
 	"github.com/lf-edge/eve/pkg/pillar/netdump"
+	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
 const (
@@ -27,7 +28,8 @@ func publishNetdump(ctx *downloaderContext,
 	} else {
 		topic = netDumpFailTopic
 	}
-	filename, err := netDumper.Publish(topic, tracedDownloadReqs...)
+
+	filename, err := netDumper.Publish(topic, types.NetTraceFolder, tracedDownloadReqs...)
 	if err != nil {
 		log.Warnf("Failed to publish netdump for topic %s: %v", topic, err)
 	} else {

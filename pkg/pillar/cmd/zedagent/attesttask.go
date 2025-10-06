@@ -83,6 +83,7 @@ func trySendToController(attestReq *attest.ZAttestReq,
 	rv, err := ctrlClient.SendOnAllIntf(ctxWork, attestURL, buf,
 		controllerconn.RequestOptions{
 			WithNetTracing: withNetTracing,
+			NetTraceFolder: "",
 			BailOnHTTPErr:  bailOnHTTPErr,
 			Iteration:      attestCtx.Iteration,
 			SuppressLogs:   expectNoConn,
