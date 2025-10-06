@@ -1,7 +1,6 @@
 package netdump
 
 import (
-	"encoding/json"
 	"fmt"
 	"net"
 	"os"
@@ -164,7 +163,7 @@ func (dumper *NetDumper) LastPublishAt(topics ...string) (time.Time, error) {
 // should use different topic(s) (e.g. topic = microservice name).
 // Topic name should not contain characters which are not suitable for filenames
 // (across all OSes).
-func (dumper *NetDumper) Publish(topic string,
+func (dumper *NetDumper) Publish(topic, netTraceFolderPath string,
 	requests ...TracedNetRequest) (filepath string, err error) {
 
 	// Generate name for the network dump.
@@ -300,7 +299,6 @@ func (dumper *NetDumper) Publish(topic string,
 			content: strings.NewReader(string(output)),
 		})
 	}
-
 	// Attach provided network traces and packet captures.
 	for _, req := range requests {
 		dirName := path.Join(netdumpName, "requests", req.RequestName)
@@ -308,18 +306,33 @@ func (dumper *NetDumper) Publish(topic string,
 			dstPath: dirName,
 			isDir:   true,
 		})
-		if req.NetTrace != nil {
-			traceInJSON, err := json.MarshalIndent(req.NetTrace, "", "  ")
+		if nt, ok := req.NetTrace.(nettrace.HTTPTrace); ok {
+			file := "nettrace_" + nt.SessionUUID + ".json"
+			filePath := netTraceFolderPath + "/" + file
+			fileInfo, err := os.Stat(filePath)
 			if err != nil {
-				err = fmt.Errorf("netdump: failed to marshal nettrace of the request "+
-					"%s: %w", req.RequestName, err)
-				return "", err
+				continue
 			}
+
+			fileHandle, err := os.Open(filePath)
+			if err != nil {
+				continue
+			}
+
+			// Defer in this order so Close() runs first, then Remove():
+			defer func() {
+				_ = fileHandle.Close()
+				_ = os.Remove(filePath)
+			}()
+
 			files = append(files, fileForTar{
-				dstPath: path.Join(dirName, "nettrace.json"),
-				content: strings.NewReader(string(traceInJSON)),
+				info:    fileInfo,
+				dstPath: path.Join(netdumpName, "nettrace.json"),
+				content: fileHandle,
 			})
+
 		}
+
 		for _, pcap := range req.PacketCaptures {
 			pcapName := pcap.InterfaceName
 			if pcap.Truncated {

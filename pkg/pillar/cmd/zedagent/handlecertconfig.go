@@ -283,9 +283,9 @@ func requestCertsByURL(ctx *zedagentContext, certURL string, desc string,
 	log.Functionf("getCertsFromController started for %s", desc)
 	ctxWork, cancel := ctrlClient.GetContextForAllIntfFunctions()
 	defer cancel()
-
 	rv, err := ctrlClient.SendOnAllIntf(ctxWork, certURL, nil, controllerconn.RequestOptions{
 		WithNetTracing: false,
+		NetTraceFolder: "",
 		BailOnHTTPErr:  false,
 		Iteration:      0,
 		SuppressLogs:   expectNoConn,

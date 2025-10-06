@@ -1286,7 +1286,8 @@ func publishInfoNetdump(ctx *zedagentContext,
 	default:
 		topic = netDumpInfoFailTopic
 	}
-	filename, err := netDumper.Publish(topic, tracedInfoReqs...)
+
+	filename, err := netDumper.Publish(topic, types.NetTraceFolder, tracedInfoReqs...)
 	if err != nil {
 		log.Warnf("Failed to publish netdump for topic %s: %v", topic, err)
 	} else {

@@ -608,6 +608,7 @@ func requestConfigByURL(getconfigCtx *getconfigContext, url string,
 	rv, err := ctrlClient.SendOnAllIntf(ctxWork, url, buf,
 		controllerconn.RequestOptions{
 			WithNetTracing: withNetTracing,
+			NetTraceFolder: types.NetTraceFolder,
 			// For 4xx and 5xx HTTP errors we try other interfaces
 			// except http.StatusForbidden(which returns error
 			// irrespective of bailOnHTTPErr)
@@ -1182,7 +1183,8 @@ func publishConfigNetdump(ctx *zedagentContext,
 	default:
 		topic = netDumpConfigFailTopic
 	}
-	filename, err := netDumper.Publish(topic, tracedConfigReqs...)
+
+	filename, err := netDumper.Publish(topic, types.NetTraceFolder, tracedConfigReqs...)
 	if err != nil {
 		log.Warnf("Failed to publish netdump for topic %s: %v", topic, err)
 	} else {

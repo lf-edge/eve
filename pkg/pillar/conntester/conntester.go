@@ -17,7 +17,7 @@ type ConnectivityTester interface {
 	// Additionally, it returns test result for each tested device network interface
 	// and network traces of executed probes if withNetTrace was enabled.
 	TestConnectivity(dns types.DeviceNetworkStatus, airGapMode AirGapMode,
-		withNetTrace bool) (types.IntfStatusMap, []netdump.TracedNetRequest, error)
+		withNetTrace bool, netTraceFolder string) (types.IntfStatusMap, []netdump.TracedNetRequest, error)
 }
 
 // AirGapMode defines the configuration for operating the device in an air-gapped

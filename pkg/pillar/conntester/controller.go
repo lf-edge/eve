@@ -54,7 +54,7 @@ type ControllerConnectivityTester struct {
 // tries to call the "ping" API of the controller.
 func (t *ControllerConnectivityTester) TestConnectivity(
 	dns types.DeviceNetworkStatus, airGapMode AirGapMode,
-	withNetTrace bool) (types.IntfStatusMap, []netdump.TracedNetRequest, error) {
+	withNetTrace bool, netTraceFolder string) (types.IntfStatusMap, []netdump.TracedNetRequest, error) {
 
 	t.iteration++
 	intfStatusMap := *types.NewIntfStatusMap()
@@ -118,10 +118,11 @@ func (t *ControllerConnectivityTester) TestConnectivity(
 	}
 
 	connTest := connTestSetup{
-		ctrlClient:   ctrlClient,
-		dns:          dns,
-		withNetTrace: withNetTrace,
-		airGapMode:   airGapMode,
+		ctrlClient:     ctrlClient,
+		dns:            dns,
+		withNetTrace:   withNetTrace,
+		airGapMode:     airGapMode,
+		netTraceFolder: netTraceFolder,
 	}
 	var tracedReqs []netdump.TracedNetRequest
 	if airGapMode.Enabled && airGapMode.LocURL != "" {
@@ -153,10 +154,11 @@ func (t *ControllerConnectivityTester) TestConnectivity(
 }
 
 type connTestSetup struct {
-	ctrlClient   *controllerconn.Client
-	dns          types.DeviceNetworkStatus
-	withNetTrace bool
-	airGapMode   AirGapMode
+	ctrlClient     *controllerconn.Client
+	dns            types.DeviceNetworkStatus
+	withNetTrace   bool
+	airGapMode     AirGapMode
+	netTraceFolder string
 }
 
 type connectivityTestRV struct {
@@ -187,6 +189,7 @@ func (t *ControllerConnectivityTester) testControllerConnectivity(
 			WithNetTracing: connTest.withNetTrace,
 			Iteration:      t.iteration,
 			SuppressLogs:   suppressLogs,
+			NetTraceFolder: connTest.netTraceFolder,
 		})
 
 	rv.intfStatusMap = verifyRV.IntfStatusMap

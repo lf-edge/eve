@@ -505,6 +505,7 @@ func myPost(ctrlClient *controllerconn.Client, tlsConfig *tls.Config,
 	defer cancel()
 	rv, err := ctrlClient.SendOnAllIntf(ctx, requrl, b, controllerconn.RequestOptions{
 		WithNetTracing: withNetTrace,
+		NetTraceFolder: types.NetTraceFolder,
 		BailOnHTTPErr:  bailOnHTTPErr,
 		Iteration:      retryCount,
 	})

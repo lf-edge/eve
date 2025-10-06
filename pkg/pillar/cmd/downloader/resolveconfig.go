@@ -268,7 +268,7 @@ func resolveTagsToHash(ctx *downloaderContext, rc types.ResolveConfig,
 		log.Functionf("Using IP source %v if %s transport %v",
 			ipSrc, ifname, dsCtx.TransportMethod)
 
-		sha256, cancelled, err = objectMetadata(ctx, trType, syncOp, serverURL, auth,
+		sha256, cancelled, err = objectMetadata(ctx, trType, syncOp, serverURL, types.NetTraceFolder, auth,
 			dsCtx.Dpath, dsCtx.Region,
 			ifname, ipSrc, remoteName, receiveChan)
 		if err != nil {
