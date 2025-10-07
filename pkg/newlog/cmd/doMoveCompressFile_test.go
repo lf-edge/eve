@@ -10,8 +10,24 @@ import (
 )
 
 func TestGetFileInfo(t *testing.T) {
-	t.Parallel()
+	// Note: Not using t.Parallel() because this test modifies global directory variables
+	// that are also modified by other tests (like dedup_test.go)
 	g := gomega.NewWithT(t)
+
+	// Set up directory paths for testing - restore original production paths
+	originalKeepSentDir := keepSentDir
+	originalUploadDevDir := uploadDevDir
+	originalUploadAppDir := uploadAppDir
+	defer func() {
+		keepSentDir = originalKeepSentDir
+		uploadDevDir = originalUploadDevDir
+		uploadAppDir = originalUploadAppDir
+	}()
+
+	// Use production paths for this test
+	keepSentDir = "/persist/newlog/keepSentQueue"
+	uploadDevDir = "/persist/newlog/devUpload"
+	uploadAppDir = "/persist/newlog/appUpload"
 
 	tests := []struct {
 		name          string
@@ -63,7 +79,7 @@ func TestGetFileInfo(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
+			// Note: Not using t.Parallel() due to global variable conflicts
 			dirName, appuuid := getFileInfo(tt.fileChanInfo)
 			g.Expect(dirName).To(gomega.Equal(tt.expectedDir))
 			g.Expect(appuuid).To(gomega.Equal(tt.expectedAppID))
