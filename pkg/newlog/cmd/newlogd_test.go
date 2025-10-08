@@ -18,7 +18,6 @@ func init() {
 }
 
 func TestGetTimestampFromGzipName(t *testing.T) {
-	t.Parallel()
 	g := gomega.NewWithT(t)
 
 	comparisonMap := map[string]time.Time{
@@ -28,6 +27,12 @@ func TestGetTimestampFromGzipName(t *testing.T) {
 		"dev.log.1731491940142.gz":                                      time.Unix(0, 1731491940142*int64(time.Millisecond)),
 	}
 
+	origKeepSentDir := keepSentDir
+	defer func() {
+		keepSentDir = origKeepSentDir
+	}()
+
+	// Use test data directory
 	keepSentDir = "../testdata/keepSentQueue"
 	files, err := os.ReadDir(keepSentDir)
 	g.Expect(err).To(gomega.BeNil())
