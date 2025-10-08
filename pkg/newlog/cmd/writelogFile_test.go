@@ -11,11 +11,17 @@ import (
 )
 
 func TestGzipParsing(t *testing.T) {
-	t.Parallel()
 	g := gomega.NewWithT(t)
 
-	// Test the gzip parsing function
+	origKeepSentDir := keepSentDir
+	defer func() {
+		keepSentDir = origKeepSentDir
+	}()
+
+	// Use test data directory
 	keepSentDir = "../testdata/keepSentQueue"
+
+	// Test the gzip parsing function
 	oldestLogEntry, err := getOldestLog()
 
 	g.Expect(err).To(gomega.BeNil())
