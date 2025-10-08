@@ -63,6 +63,11 @@ Longhorn_uninstall() {
     kubectl delete -f https://raw.githubusercontent.com/longhorn/longhorn/${LONGHORN_VERSION}/uninstall/uninstall.yaml
     logmsg "longhorn_uninstall job deletion"
 
+    lhScs=$(kubectl get sc -o jsonpath='{range .items[?(@.provisioner=="driver.longhorn.io")]}{.metadata.name}{" "}{end}')
+    for sc in $lhScs; do
+        kubectl delete sc "$sc" >> "$INSTALL_LOG" 2>&1
+    done
+
     rm /var/lib/longhorn_initialized
     return 0
 }
