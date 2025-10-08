@@ -6,11 +6,13 @@ package main
 import (
 	"bufio"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"net"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 )
@@ -25,25 +27,44 @@ var (
 	candidateConfigPath = "/persist/vector/config/vector.yaml.new"
 )
 
+func createVectorSockets(sockPath string, backoffTime time.Duration) *net.UnixListener {
+	for {
+		// Create unix socket
+		if err := os.Remove(sockPath); errors.Is(err, os.ErrNotExist) {
+			// Socket doesn't exist, this is expected
+		} else if err != nil {
+			log.Errorf("createIncomingSockListener: Remove socket failed: %v", err)
+			time.Sleep(backoffTime) // wait before retry
+			continue
+		}
+		unixAddr, err := net.ResolveUnixAddr("unix", sockPath)
+		if err != nil {
+			log.Errorf("createIncomingSockListener: ResolveUnixAddr failed: %v", err)
+			time.Sleep(backoffTime) // wait before retry
+			continue
+		}
+		unixListener, err := net.ListenUnix("unix", unixAddr)
+		if err != nil {
+			log.Errorf("createIncomingSockListener: ListenUnix failed: %v", err)
+			time.Sleep(backoffTime) // wait before retry
+			continue
+		}
+		// Set permissions on socket
+		if err := os.Chmod(sockPath, 0666); err != nil {
+			log.Errorf("createIncomingSockListener: chmod socket failed: %v", err)
+			unixListener.Close()
+			time.Sleep(backoffTime) // wait before retry
+			continue
+		}
+		return unixListener
+	}
+}
+
 // listenOnSocketAndWriteToChan - goroutine to listen on unix sockets for incoming log entries
 func listenOnSocketAndWriteToChan(sockPath string, sendToChan chan<- string) {
-	// Create unix socket
-	os.Remove(sockPath) // Remove any existing socket
-	unixAddr, err := net.ResolveUnixAddr("unix", sockPath)
-	if err != nil {
-		log.Fatalf("createIncomingSockListener: ResolveUnixAddr failed: %v", err)
-	}
-	unixListener, err := net.ListenUnix("unix", unixAddr)
-	if err != nil {
-		log.Fatalf("createIncomingSockListener: ListenUnix failed: %v", err)
-	}
-	defer unixListener.Close()
+	unixListener := createVectorSockets(sockPath, 10*time.Second)
 	defer os.Remove(sockPath)
-
-	// Set permissions on socket
-	if err := os.Chmod(sockPath, 0666); err != nil {
-		log.Fatalf("createIncomingSockListener: chmod socket failed: %v", err)
-	}
+	defer unixListener.Close()
 
 	// Handle socket connections
 	for {
