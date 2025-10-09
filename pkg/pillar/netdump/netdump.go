@@ -308,7 +308,7 @@ func (dumper *NetDumper) Publish(topic, netTraceFolderPath string,
 		})
 		if nt, ok := req.NetTrace.(nettrace.HTTPTrace); ok {
 			file := "nettrace_" + nt.SessionUUID + ".json"
-			filePath := netTraceFolderPath + "/" + file
+			filePath := path.Join(netTraceFolderPath, file)
 			fileInfo, err := os.Stat(filePath)
 			if err != nil {
 				continue

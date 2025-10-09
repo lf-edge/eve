@@ -375,6 +375,7 @@ func (t *ControllerConnectivityTester) tryRemoteEndpointsWithTracing(
 		rv, _ := client.SendOnAllIntf(ctx, url.String(), nil,
 			controllerconn.RequestOptions{
 				WithNetTracing: true,
+				NetTraceFolder: types.NetTraceFolder,
 				BailOnHTTPErr:  true,
 				Iteration:      t.iteration,
 			})

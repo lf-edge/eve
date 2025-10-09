@@ -2894,6 +2894,7 @@ func handleEdgeviewStatusImpl(ctxArg interface{}, key string, statusArg interfac
 // deleteOldNetTraceFiles removes old nettrace files
 func deleteOldNetTraceFiles(gcp *types.ConfigItemValueMap) {
 	log.Noticef("cleanupNettraceFiles")
+	var removedFiles []string
 
 	// Implement the cleanup logic for nettrace files that start with "nettrace_"
 	// and have either .db or .json extension.
@@ -2909,9 +2910,12 @@ func deleteOldNetTraceFiles(gcp *types.ConfigItemValueMap) {
 			err = os.Remove(fullPath)
 			if err != nil {
 				log.Warnf("cleanupNettraceFiles: failed to remove %s: %v", fullPath, err)
+			} else {
+				removedFiles = append(removedFiles, fileName)
 			}
 		}
 	}
+	log.Noticef("cleanupNettraceFiles: removed files: %v", removedFiles)
 }
 
 func reinitNetdumper(ctx *zedagentContext) {
