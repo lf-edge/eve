@@ -230,6 +230,7 @@ func (q *DeferredQueue) handleDeferred() bool {
 				RequestOptions{
 					SuppressLogs:     item.opts.SuppressLogs,
 					WithNetTracing:   item.opts.WithNetTracing,
+					NetTraceFolder:   types.NetTraceFolder,
 					BailOnHTTPErr:    item.opts.BailOnHTTPErr,
 					Iteration:        q.iteration,
 					AllowLoopbackDNS: item.opts.AllowLoopbackDNS,

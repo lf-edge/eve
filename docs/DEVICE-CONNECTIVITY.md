@@ -894,7 +894,7 @@ If device is remotely accessible, published netdumps can be listed and copied ov
 by config), edgeview (`ls` + `cp` commands; to download all netdumps at once use: `tar//persist/netdump`)
 or using a remote console if available.
 
-#### Nettrace offload mode in EVE:
+#### Nettrace offload mode in EVE
 
 EVE uses offload mode from eve-libs/nettrace to keep memory use predictable during heavy network
 activity. A small, capped slice of recent metadata stays in RAM while older metadata
