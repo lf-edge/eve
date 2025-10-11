@@ -100,6 +100,7 @@ type PoolScanStat struct {
 	EndTime   uint64 // Scan end time
 	ToExamine uint64 // Total bytes to scan
 	Examined  uint64 // Total bytes scaned
+	ToProcess uint64 // Total bytes to processed
 	Processed uint64 // Total bytes processed
 	Errors    uint64 // Scan errors
 	// Values not stored on disk
@@ -213,6 +214,7 @@ func poolGetConfig(name string, nv C.nvlist_ptr) (vdevs VDevTree, err error) {
 		vdevs.ScanStat.EndTime = uint64(ps.pss_end_time)
 		vdevs.ScanStat.ToExamine = uint64(ps.pss_to_examine)
 		vdevs.ScanStat.Examined = uint64(ps.pss_examined)
+		// pss_to_process field removed in ZFS 2.3.3
 		vdevs.ScanStat.Processed = uint64(ps.pss_processed)
 		vdevs.ScanStat.Errors = uint64(ps.pss_errors)
 		vdevs.ScanStat.PassExam = uint64(ps.pss_pass_exam)
@@ -523,10 +525,19 @@ func (pool *Pool) ReloadProperties() (err error) {
 		return
 	}
 
-	pool.Properties = make([]Property, PoolNumProps+1)
+	// Allocate array +1 for sentinel entry. C code adds entry with id=ZPOOL_NUM_PROPS
+	pool.Properties = make([]Property, int(C.ZPOOL_NUM_PROPS)+1)
+
 	next := propList
-	for i := 0; next != nil && i < int(PoolNumProps); i++ {
-		pool.Properties[next.property] = Property{Value: C.GoString(&(next.value[0])), Source: C.GoString(&(next.source[0]))}
+	for next != nil {
+		idx := int(next.property)
+		// Bounds check before accessing array
+		if idx >= 0 && idx < len(pool.Properties) {
+			pool.Properties[idx] = Property{
+				Value:  C.GoString(&(next.value[0])),
+				Source: C.GoString(&(next.source[0])),
+			}
+		}
 		next = C.next_property(next)
 	}
 	C.free_properties(propList)
@@ -935,25 +946,6 @@ func PoolCreate(name string, vdev VDevTree, features map[string]string,
 	features["edonr"] = FENABLED
 	features["userobj_accounting"] = FENABLED
 
-	// Enable 2.1.x features per default
-	features["encryption"] = FENABLED
-	features["project_quota"] = FENABLED
-	features["device_removal"] = FENABLED
-	features["obsolete_counts"] = FENABLED
-	features["zpool_checkpoint"] = FENABLED
-	features["spacemap_v2"] = FENABLED
-	features["allocation_classes"] = FENABLED
-	features["resilver_defer"] = FENABLED
-	features["bookmark_v2"] = FENABLED
-	features["redaction_bookmarks"] = FENABLED
-	features["redacted_datasets"] = FENABLED
-	features["bookmark_written"] = FENABLED
-	features["log_spacemap"] = FENABLED
-	features["livelist"] = FENABLED
-	features["device_rebuild"] = FENABLED
-	features["zstd_compress"] = FENABLED
-	features["draid"] = FENABLED
-
 	// convert properties
 	cprops := toCPoolProperties(props)
 	if cprops != nil {
@@ -1123,7 +1115,7 @@ func (pool *Pool) initialize(action PoolInitializeAction) (err error) {
 	C.collect_zpool_leaves(pool.list.zph, nvroot, vds)
 
 	if C.zpool_initialize(pool.list.zph, C.pool_initialize_func_t(action), vds) != 0 {
-		err = fmt.Errorf("Initialization action %s failed. (%s)", action.String(), LastError())
+		err = fmt.Errorf("Initialization action %s failed", action.String())
 		return
 	}
 	return
@@ -1176,11 +1168,89 @@ func (s VDevState) String() string {
 }
 
 func (s PoolStatus) String() string {
-	str, known := PoolStatusStrings[s]
-	if !known {
-		return "UNKNOWN"
+	switch s {
+	case PoolStatusCorruptCache:
+		return "CORRUPT_CACHE"
+	case PoolStatusMissingDevR:
+		return "MISSING_DEV_R" /* missing device with replicas */
+	case PoolStatusMissingDevNr: /* missing device with no replicas */
+		return "MISSING_DEV_NR"
+	case PoolStatusCorruptLabelR: /* bad device label with replicas */
+		return "CORRUPT_LABEL_R"
+	case PoolStatusCorruptLabelNr: /* bad device label with no replicas */
+		return "CORRUPT_LABEL_NR"
+	case PoolStatusBadGUIDSum: /* sum of device guids didn't match */
+		return "BAD_GUID_SUM"
+	case PoolStatusCorruptPool: /* pool metadata is corrupted */
+		return "CORRUPT_POOL"
+	case PoolStatusCorruptData: /* data errors in user (meta)data */
+		return "CORRUPT_DATA"
+	case PoolStatusFailingDev: /* device experiencing errors */
+		return "FAILLING_DEV"
+	case PoolStatusVersionNewer: /* newer on-disk version */
+		return "VERSION_NEWER"
+	case PoolStatusHostidMismatch: /* last accessed by another system */
+		return "HOSTID_MISMATCH"
+	case PoolStatusHosidActive: /* currently active on another system */
+		return "HOSTID_ACTIVE"
+	case PoolStatusHostidRequired: /* multihost=on and hostid=0 */
+		return "HOSTID_REQUIRED"
+	case PoolStatusIoFailureWait: /* failed I/O, failmode 'wait' */
+		return "FAILURE_WAIT"
+	case PoolStatusIoFailureContinue: /* failed I/O, failmode 'continue' */
+		return "FAILURE_CONTINUE"
+	case PoolStatusIOFailureMap: /* ailed MMP, failmode not 'panic' */
+		return "HOSTID_FAILURE_MAP"
+	case PoolStatusBadLog: /* cannot read log chain(s) */
+		return "BAD_LOG"
+	case PoolStatusErrata: /* informational errata available */
+		return "ERRATA"
+
+	/*
+	 * If the pool has unsupported features but can still be opened in
+	 * read-only mode, its status is ZPOOL_STATUS_UNSUP_FEAT_WRITE. If the
+	 * pool has unsupported features but cannot be opened at all, its
+	 * status is ZPOOL_STATUS_UNSUP_FEAT_READ.
+	 */
+	case PoolStatusUnsupFeatRead: /* unsupported features for read */
+		return "UNSUP_FEAT_READ"
+	case PoolStatusUnsupFeatWrite: /* unsupported features for write */
+		return "UNSUP_FEAT_WRITE"
+
+	/*
+	* These faults have no corresponding message ID.  At the time we are
+	* checking the status, the original reason for the FMA fault (I/O or
+	* checksum errors) has been lost.
+	 */
+	case PoolStatusFaultedDevR: /* faulted device with replicas */
+		return "FAULTED_DEV_R"
+	case PoolStatusFaultedDevNr: /* faulted device with no replicas */
+		return "FAULTED_DEV_NR"
+
+	/*
+	* The following are not faults per se, but still an error possibly
+	* requiring administrative attention.  There is no corresponding
+	* message ID.
+	 */
+	case PoolStatusVersionOlder: /* older legacy on-disk version */
+		return "VERSION_OLDER"
+	case PoolStatusFeatDisabled: /* supported features are disabled */
+		return "FEAT_DISABLED"
+	case PoolStatusResilvering: /* device being resilvered */
+		return "RESILVERIN"
+	case PoolStatusOfflineDev: /* device online */
+		return "OFFLINE_DEV"
+	case PoolStatusRemovedDev: /* removed device */
+		return "REMOVED_DEV"
+
+		/*
+		 * Finally, the following indicates a healthy pool.
+		 */
+	case PoolStatusOk:
+		return "OK"
+	default:
+		return "OK"
 	}
-	return str
 }
 
 func (s PoolInitializeAction) String() string {

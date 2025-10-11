@@ -43,7 +43,7 @@ FROM --platform=${BUILDPLATFORM} ${REL_HASH_LFEDGE_EVE_CROSS_COMPILERS} AS cross
 # will use several packages from target arch and copy them to sysroot
 # hadolint ignore=DL3006
 FROM ${REL_HASH_LFEDGE_EVE_ALPINE} AS cross-compile-libs
-ENV PKGS musl-dev libgcc libintl libuuid libtirpc libblkid linux-headers
+ENV PKGS="musl-dev libgcc libintl libuuid libtirpc libblkid linux-headers"
 RUN eve-alpine-deploy.sh
 # we need zfs files during build
 COPY --from=zfs / /
@@ -56,7 +56,7 @@ ENV EVE_TARGET_ARCH=x86_64
 
 # hadolint ignore=DL3006
 FROM build-cross-target-${TARGETARCH} AS build-cross-target
-ENV CROSS_COMPILE_ENV="${EVE_TARGET_ARCH}"-alpine-linux-musl-
+ENV CROSS_COMPILE_ENV=${EVE_TARGET_ARCH}-alpine-linux-musl-
 COPY --from=cross-compilers /packages /packages
 # hadolint ignore=DL3018
 RUN apk add --no-cache --allow-untrusted -X /packages build-base-"${EVE_TARGET_ARCH}"
@@ -151,10 +151,10 @@ FROM ${REL_HASH_LFEDGE_EVE_GPT_TOOLS} AS gpttools
 # hadolint ignore=DL3006
 FROM ${REL_HASH_LFEDGE_EVE_ALPINE} AS collector
 ENV BUILD_PKGS patch
-ENV PKGS alpine-baselayout musl-utils libtasn1-progs pciutils yajl xz bash iptables ip6tables iproute2 \
+ENV PKGS="alpine-baselayout musl-utils libtasn1-progs pciutils yajl xz bash iptables ip6tables iproute2 \
     coreutils dmidecode libbz2 libuuid ipset curl radvd ethtool util-linux e2fsprogs libcrypto1.1 xorriso \
     qemu-img jq e2fsprogs-extra keyutils ca-certificates ip6tables-openrc iptables-openrc ipset-openrc hdparm \
-    libintl libtirpc libblkid zlib rsync chrony
+    libintl libtirpc libblkid zlib rsync chrony"
 RUN eve-alpine-deploy.sh
 
 SHELL ["/bin/ash", "-eo", "pipefail", "-c"]

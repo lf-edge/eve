@@ -155,7 +155,7 @@ github.com/StackExchange/wmi
 # github.com/anatol/smart.go v0.0.0-20241126061019-f03d79b340d2
 ## explicit; go 1.22
 github.com/anatol/smart.go
-# github.com/andrewd-zededa/go-libzfs v0.0.0-20240304231806-6a64e99da97d
+# github.com/andrewd-zededa/go-libzfs v0.0.0-20240304231806-6a64e99da97d => ./go-libzfs
 ## explicit; go 1.13
 github.com/andrewd-zededa/go-libzfs
 # github.com/aws/aws-sdk-go-v2 v1.36.3
@@ -2156,3 +2156,4 @@ tags.cncf.io/container-device-interface/specs-go
 # k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.26.3
 # k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.26.3
 # k8s.io/sample-controller => k8s.io/sample-controller v0.26.3
+# github.com/andrewd-zededa/go-libzfs => ./go-libzfs

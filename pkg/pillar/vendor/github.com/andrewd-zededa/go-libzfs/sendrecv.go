@@ -21,10 +21,11 @@ import (
 
 // SendFlags send flags
 type SendFlags struct {
-	Verbosity  int  // -v
+	Verbose    bool // -v
 	Replicate  bool // -R
 	DoAll      bool // -I
 	FromOrigin bool // -o
+	Dedup      bool // -D
 	Props      bool // -p
 	DryRun     bool // -n
 	Parsable   bool // -P
@@ -74,10 +75,11 @@ func to_boolean_t(a bool) C.boolean_t {
 
 func to_sendflags_t(flags *SendFlags) (cflags *C.sendflags_t) {
 	cflags = C.alloc_sendflags()
-	cflags.verbosity = C.int(flags.Verbosity)
+	cflags.verbosity = C.int(to_boolean_t(flags.Verbose))
 	cflags.replicate = to_boolean_t(flags.Replicate)
 	cflags.doall = to_boolean_t(flags.DoAll)
 	cflags.fromorigin = to_boolean_t(flags.FromOrigin)
+	// dedup field removed in ZFS 2.3.3
 	cflags.props = to_boolean_t(flags.Props)
 	cflags.dryrun = to_boolean_t(flags.DryRun)
 	cflags.parsable = to_boolean_t(flags.Parsable)
@@ -232,7 +234,7 @@ func (d *Dataset) SendSize(FromName string, flags SendFlags) (size int64, err er
 		close(errch)
 	}()
 	flags.DryRun = true
-	flags.Verbosity = 1
+	flags.Verbose = true
 	flags.Progress = true
 	flags.Parsable = true
 	if r, w, err = os.Pipe(); err != nil {
