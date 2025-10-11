@@ -1021,10 +1021,16 @@ func runPprof() {
 }
 
 func stopPprof() {
-	_, err := http.Post("http://localhost:6543/stop", "", nil)
-	if err != nil && !errors.Is(err, io.EOF) {
-		fmt.Printf("could not stop pprof: %+v\n", err)
+	// Use a short timeout; server may be shutting down.
+	client := &http.Client{Timeout: 2 * time.Second}
+	resp, err := client.Post("http://localhost:6543/stop", "", nil)
+	if err != nil {
+		if !errors.Is(err, io.EOF) {
+			fmt.Printf("could not stop pprof: %+v\n", err)
+		}
+		return
 	}
+	resp.Body.Close()
 }
 
 func getTarFile(opt string, timeRange *logSearchRange) {
