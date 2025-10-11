@@ -1,9 +1,9 @@
 # syntax=docker/dockerfile-upstream:1.5.0-rc2-labs
 
-# Copyright (c) 2023 Zededa, Inc.
+# Copyright (c) 2023-2025 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-FROM lfedge/eve-dom0-ztools:6408eb8235e77a0fd07f7b47e907574775e84a77 AS dom0
+FROM lfedge/eve-dom0-ztools:e2c0ed2ea3ae6cb155fa0b0ab320412e20ca0962 AS dom0
 FROM lfedge/eve-alpine:745ae9066273c73b0fd879c4ba4ff626a8392d04 AS build
 ENV BUILD_PKGS="gcc g++ autoconf automake libtool make openssl-dev libtasn1-dev \
     json-glib-dev gnutls bash expect gawk socat libseccomp-dev gmp-dev \
