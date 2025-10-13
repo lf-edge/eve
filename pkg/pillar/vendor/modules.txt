@@ -1012,13 +1012,18 @@ github.com/multiplay/go-edac/lib/edac
 # github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822
 ## explicit
 github.com/munnerz/goautoneg
-# github.com/onsi/gomega v1.29.0
-## explicit; go 1.18
+# github.com/nkval/go-nkv v0.0.0-20250912100718-c87c5e65193e
+## explicit; go 1.23.1
+github.com/nkval/go-nkv/pkg/client
+github.com/nkval/go-nkv/pkg/protocol
+# github.com/onsi/gomega v1.36.0
+## explicit; go 1.22
 github.com/onsi/gomega
 github.com/onsi/gomega/format
 github.com/onsi/gomega/internal
 github.com/onsi/gomega/internal/gutil
 github.com/onsi/gomega/matchers
+github.com/onsi/gomega/matchers/internal/miter
 github.com/onsi/gomega/matchers/support/goraph/bipartitegraph
 github.com/onsi/gomega/matchers/support/goraph/edge
 github.com/onsi/gomega/matchers/support/goraph/node

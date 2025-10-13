@@ -1,8 +1,8 @@
 module github.com/lf-edge/eve/pkg/pillar
 
-go 1.23.0
+go 1.23.1
 
-toolchain go1.24.1
+toolchain go1.24.2
 
 require (
 	github.com/anatol/smart.go v0.0.0-20241126061019-f03d79b340d2
@@ -41,7 +41,8 @@ require (
 	github.com/miekg/dns v1.1.43
 	github.com/moby/sys/mountinfo v0.7.1
 	github.com/multiplay/go-edac v1.0.1
-	github.com/onsi/gomega v1.29.0
+	github.com/nkval/go-nkv v0.0.0-20250912100718-c87c5e65193e
+	github.com/onsi/gomega v1.36.0
 	github.com/opencontainers/go-digest v1.0.0
 	github.com/opencontainers/image-spec v1.1.1
 	github.com/opencontainers/runtime-spec v1.1.0
