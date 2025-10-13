@@ -123,7 +123,9 @@ func (c *VLANBridgeConfigurator) setVlanFiltering(
 	}
 	err = netlink.BridgeSetVlanFiltering(link, enable)
 	if err != nil {
-		brIsBusy = errors.Is(err, unix.EBUSY)
+		// On Linux 6.12, we get EINVAL instead of EBUSY when bridge is not yet
+		// ready for VLAN filtering to be enabled.
+		brIsBusy = errors.Is(err, unix.EBUSY) || errors.Is(err, unix.EINVAL)
 		return brIsBusy, fmt.Errorf("failed to set VLAN filtering to %t for bridge %s: %w",
 			enable, brIfName, err)
 	}
