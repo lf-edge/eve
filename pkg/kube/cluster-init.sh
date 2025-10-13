@@ -578,6 +578,7 @@ check_cluster_config_change() {
             logmsg "got the EdgeNodeClusterStatus successfully"
             # mark it cluster mode before changing the config file
             touch /var/lib/edge-node-cluster-mode
+
             if Registration_ConfigExists; then
                 # Hold on, don't apply yet, complete conversion to base mode first
                 if [ ! -f /var/lib/base-k3s-mode ]; then
@@ -864,13 +865,6 @@ setup_prereqs
 
 Update_CheckNodeComponents
 
-#
-# k3s is installed now
-# Handle once-per-boot steps which require the k3s directory structure to exist
-#
-cp /etc/k3s-manifests/* "${KUBE_MANIFESTS_DIR}/"
-
-
 if [ -f /var/lib/convert-to-single-node ]; then
         logmsg "remove /var/lib and copy saved single node /var/lib"
         restore_var_lib
@@ -1035,6 +1029,15 @@ if [ ! -f /var/lib/all_components_initialized ]; then
         fi
 
         #
+        # k3s is installed now and manifests dir should exist
+        #
+        if [ ! -e "${KUBE_MANIFESTS_DIR}/" ]; then
+                logmsg "k3s manifests dir (${KUBE_MANIFESTS_DIR}/) does not exist yet"
+                continue
+        fi
+        cp /etc/k3s-manifests/storage-classes.yaml "${KUBE_MANIFESTS_DIR}/storage-classes.yaml"
+
+        #
         # Longhorn
         #
         wait_for_item "longhorn"
@@ -1133,6 +1136,21 @@ else
                 if Longhorn_is_ready; then
                         check_overwrite_nsmounter
                         Tie_breaker_configApply
+
+                        #
+                        # Handle new manifests after eve baseos update
+                        #
+                        if [ -e "${KUBE_MANIFESTS_DIR}/" ]; then
+                                if ! Registration_Applied; then
+                                        # Replicated Storage wants extra storage classes
+                                        if [ ! -e "${KUBE_MANIFESTS_DIR}/storage-classes.yaml" ]; then
+                                                cp /etc/k3s-manifests/storage-classes.yaml "${KUBE_MANIFESTS_DIR}/storage-classes.yaml"
+                                        fi
+                                else
+                                        # Base Mode does not want extra pre-installed storage classes
+                                        cleanup_storageclasses
+                                fi
+                        fi
                 fi
                 if [ ! -e /var/lib/longhorn_configured ]; then
                         longhorn_post_install_config

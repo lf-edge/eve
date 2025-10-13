@@ -146,12 +146,13 @@ func (z *zedkube) checkAppsFailover(wdFunc func()) {
 			continue
 		}
 
-		log.Noticef("aiDisplayName:%s aiUUID:%s newStatus:%v",
+		log.Functionf("aiDisplayName:%s aiUUID:%s newStatus:%v",
 			aiconfig.DisplayName, aiconfig.UUIDandVersion.UUID, encAppStatus)
 
 		if encAppStatus.ScheduledOnThisNode {
+			log.Noticef("checkAppsFailover: failover start for appDomainName: %s", appDomainNameLbl)
 			kubeapi.DetachOldWorkload(log, terminatingNodeName, appDomainNameLbl, wdFunc)
-			log.Noticef("checkAppsFailover: complete for appDomainName: %s", appDomainNameLbl)
+			log.Noticef("checkAppsFailover: failover complete for appDomainName: %s", appDomainNameLbl)
 			continue
 		}
 	}

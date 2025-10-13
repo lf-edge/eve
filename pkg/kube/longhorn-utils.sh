@@ -72,6 +72,19 @@ Longhorn_uninstall() {
     return 0
 }
 
+cleanup_storageclasses() {
+        if [ -e "${KUBE_MANIFESTS_DIR}/storage-classes.yaml" ]; then
+                rm "${KUBE_MANIFESTS_DIR}/storage-classes.yaml"
+        fi
+        if kubectl -n kube-system get AddOn/storage-classes; then
+                kubectl -n kube-system delete AddOn/storage-classes >> "$INSTALL_LOG" 2>&1
+        fi
+        if kubectl get sc lh-sc-rep1; then
+                logmsg "Removing storage-classes"
+                kubectl delete -f /etc/k3s-manifests/storage-classes.yaml
+        fi
+}
+
 longhorn_node_create() {
     node="$1"
     kubectl apply -f - <<EOF
