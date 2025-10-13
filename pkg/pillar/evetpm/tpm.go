@@ -416,11 +416,6 @@ func ReadOwnerCrdl() (string, error) {
 // TpmSign is used by external packages to get a digest signed by
 // device key in TPM
 func TpmSign(digest []byte) (*big.Int, *big.Int, error) {
-	// First make sure TPM is somewhat trustworthy
-	if err := ValidateKernelNullPrimary(nil); err != nil {
-		return nil, nil, fmt.Errorf("failed to verify null primary, possibly due to a tpm reset attack: %v", err)
-	}
-
 	rw, err := tpm2.OpenTPM(TpmDevicePath)
 	if err != nil {
 		return nil, nil, err
