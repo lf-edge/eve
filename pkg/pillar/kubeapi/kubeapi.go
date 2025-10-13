@@ -56,6 +56,14 @@ const (
 	TieBreakerNodeLbl = "tie-breaker-node"
 	// TieBreakerNodeSet is the label value expected with the label TieBreakerNodeLbl
 	TieBreakerNodeSet = "true"
+
+	// DefaultLonghornScFullReplicaCount is the default replica count for a volume using the default
+	// 'longhorn' StorageClass which can sustain a replica failure and still be redundant.
+	DefaultLonghornScFullReplicaCount = 3
+
+	// DefaultTieBreakerReplicaCount is the replica count for a tie breaker cluster using
+	// the VolumeCSIStorageClassReplicaPrefix+"2" storage class.
+	DefaultTieBreakerReplicaCount = 2
 )
 
 const (
@@ -1039,25 +1047,28 @@ func IsClusterMode() bool {
 func GetSupportedReplicaCountForCluster() (int, error) {
 	config, err := GetKubeConfig()
 	if err != nil {
-		return 3, err
+		return DefaultLonghornScFullReplicaCount, err
 	}
 
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
-		return 3, err
+		return DefaultLonghornScFullReplicaCount, err
 	}
 
 	nodes, err := clientset.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{
 		LabelSelector: TieBreakerNodeLbl + "=" + TieBreakerNodeSet,
 	})
 	if (err != nil) || (len(nodes.Items) == 0) {
-		return 3, err
+		return DefaultLonghornScFullReplicaCount, err
 	}
 	// Tie breaker Node exists, limit replicas
-	return 2, nil
+	return DefaultTieBreakerReplicaCount, nil
 }
 
 // GetStorageClassForReplicaCount : returns the storage class associated with the replica count
 func GetStorageClassForReplicaCount(count int) string {
+	if count == DefaultLonghornScFullReplicaCount {
+		return VolumeCSIClusterStorageClass
+	}
 	return fmt.Sprintf("%s%d", VolumeCSIStorageClassReplicaPrefix, count)
 }
