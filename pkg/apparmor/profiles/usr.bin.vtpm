@@ -26,6 +26,15 @@ profile vtpm /usr/bin/vtpm {
     # allow saving boot variables
     /persist/status                 rw,
 
+    # allow reading null_name
+    /sys/devices/**/tpm/tpm0/**                             r,
+
+    # allow reading upper limit backlog for listen(2) (golang)
+    /proc/sys/net/core/somaxconn                            r,
+
+    # allow reading transparent hugepage size (golang)
+    /sys/kernel/mm/transparent_hugepage/hpage_pmd_size      r,
+
     # allow vtpm to send term signal to swtpm
     signal (send) peer=swtpm,
 }
