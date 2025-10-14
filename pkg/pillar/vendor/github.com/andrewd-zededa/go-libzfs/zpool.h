@@ -82,7 +82,7 @@ nvlist_ptr go_zpool_search_import(libzfs_handle_ptr zfsh, int paths, char **path
 
 uint64_t set_zpool_vdev_online(zpool_list_t *pool, const char *path, int flags);
 int set_zpool_vdev_offline(zpool_list_t *pool, const char *path, boolean_t istmp, boolean_t force);
-int do_zpool_clear(zpool_list_t *pool, const char *device, u_int32_t rewind_policy);
+int do_zpool_clear(zpool_list_t *pool, const char *device, uint32_t rewind_policy);
 void collect_zpool_leaves(zpool_handle_t *zhp, nvlist_t *nvroot, nvlist_t *nv);
 
 

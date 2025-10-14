@@ -132,8 +132,10 @@ int dataset_promote(dataset_list_ptr dataset) {
 	return zfs_promote(dataset->zh);
 }
 
-int dataset_rename(dataset_list_ptr dataset, const char* new_name, boolean_t recur, boolean_t nounmount, boolean_t force_unm) {
-	renameflags_t flags = {recur,nounmount,force_unm};
+int dataset_rename(dataset_list_ptr dataset, const char* new_name, boolean_t recur, boolean_t force_unm) {
+	renameflags_t flags = { 0 };
+	flags.recursive = recur;
+	flags.forceunmount = force_unm;
 	return zfs_rename(dataset->zh, new_name, flags);
 }
 
@@ -205,9 +207,9 @@ property_list_t *read_user_property(dataset_list_t *dataset, const char* prop) {
 		strval = "-";
 	} else {
 		verify(nvlist_lookup_string(propval,
-			ZPROP_VALUE, &strval) == 0);
+			ZPROP_VALUE, (const char **)&strval) == 0);
 		verify(nvlist_lookup_string(propval,
-			ZPROP_SOURCE, &sourceval) == 0);
+			ZPROP_SOURCE, (const char **)&sourceval) == 0);
 
 		if (strcmp(sourceval,
 			zfs_get_name(dataset->zh)) == 0) {

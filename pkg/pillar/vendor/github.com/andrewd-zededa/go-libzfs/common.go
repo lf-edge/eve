@@ -8,7 +8,7 @@ package zfs
 
 /*
 #cgo CFLAGS: -I /usr/include/libzfs -I /usr/include/libspl -DHAVE_IOCTL_IN_SYS_IOCTL_H -D_GNU_SOURCE
-#cgo LDFLAGS: -lzfs -lzpool -lnvpair -lzfs_core
+#cgo LDFLAGS: -lzfs -lzpool -lnvpair
 
 #include <stdlib.h>
 #include <libzfs.h>
@@ -67,7 +67,6 @@ type Property struct {
 	Source string
 }
 
-// Global - global objects
 var Global struct {
 	Mtx sync.Mutex
 }
@@ -93,7 +92,7 @@ const (
 	PoolStatusHostidRequired                      /* multihost=on and hostid=0 */
 	PoolStatusIoFailureWait                       /* failed I/O, failmode 'wait' */
 	PoolStatusIoFailureContinue                   /* failed I/O, failmode 'continue' */
-	PoolStatusIOFailureMMP                        /* ailed MMP, failmode not 'panic' */
+	PoolStatusIOFailureMap                        /* ailed MMP, failmode not 'panic' */
 	PoolStatusBadLog                              /* cannot read log chain(s) */
 	PoolStatusErrata                              /* informational errata available */
 
@@ -119,16 +118,11 @@ const (
 	 * requiring administrative attention.  There is no corresponding
 	 * message ID.
 	 */
-	PoolStatusVersionOlder     /* older legacy on-disk version */
-	PoolStatusFeatDisabled     /* supported features are disabled */
-	PoolStatusResilvering      /* device being resilvered */
-	PoolStatusOfflineDev       /* device offline */
-	PoolStatusRemovedDev       /* removed device */
-	PoolStatusRebuilding       /* device being rebuilt */
-	PoolStatusRebuildScrub     /* recommend scrubbing the pool */
-	PoolStatusNonNativeAshift  /* (e.g. 512e dev with ashift of 9) */
-	PoolStatusCompatibilityErr /* bad 'compatibility' property */
-	PoolStatusIncompatibleFeat /* feature set outside compatibility */
+	PoolStatusVersionOlder /* older legacy on-disk version */
+	PoolStatusFeatDisabled /* supported features are disabled */
+	PoolStatusResilvering  /* device being resilvered */
+	PoolStatusOfflineDev   /* device online */
+	PoolStatusRemovedDev   /* removed device */
 
 	/*
 	 * Finally, the following indicates a healthy pool.
@@ -189,6 +183,10 @@ const (
 	PoolPropBcloneUsed
 	PoolPropBcloneSaved
 	PoolPropBcloneRatio
+	PoolPropDedupTableSize
+	PoolPropDedupTableQuota
+	PoolPropDedupcached
+	PoolPropLastScrubbedTxg
 	PoolNumProps
 )
 
@@ -436,84 +434,168 @@ const (
 // vdev aux states.  When a vdev is in the VDevStateCantOpen state, the aux field
 // of the vdev stats structure uses these constants to distinguish why.
 const (
-	VDevAuxNone            VDevAux = iota // no error
-	VDevAuxOpenFailed                     // ldi_open_*() or vn_open() failed
-	VDevAuxCorruptData                    // bad label or disk contents
-	VDevAuxNoReplicas                     // insufficient number of replicas
-	VDevAuxBadGUIDSum                     // vdev guid sum doesn't match
-	VDevAuxTooSmall                       // vdev size is too small
-	VDevAuxBadLabel                       // the label is OK but invalid
-	VDevAuxVersionNewer                   // on-disk version is too new
-	VDevAuxVersionOlder                   // on-disk version is too old
-	VDevAuxUnsupFeat                      // unsupported features
-	VDevAuxSpared                         // hot spare used in another pool
-	VDevAuxErrExceeded                    // too many errors
-	VDevAuxIOFailure                      // experienced I/O failure
-	VDevAuxBadLog                         // cannot read log chain(s)
-	VDevAuxExternal                       // external diagnosis
-	VDevAuxSplitPool                      // vdev was split off into another pool
-	VdevAuxBadAshift                      // vdev ashift is invalid
-	VdevAuxExternalPersist                // persistent forced fault
-	VdevAuxActive                         // vdev active on a different host
-	VdevAuxChildrenOffline                // all children are offline
-	VdevAuxAshiftTooBig                   // vdev's min block size is too large
+	VDevAuxNone         VDevAux = iota // no error
+	VDevAuxOpenFailed                  // ldi_open_*() or vn_open() failed
+	VDevAuxCorruptData                 // bad label or disk contents
+	VDevAuxNoReplicas                  // insufficient number of replicas
+	VDevAuxBadGUIDSum                  // vdev guid sum doesn't match
+	VDevAuxTooSmall                    // vdev size is too small
+	VDevAuxBadLabel                    // the label is OK but invalid
+	VDevAuxVersionNewer                // on-disk version is too new
+	VDevAuxVersionOlder                // on-disk version is too old
+	VDevAuxUnsupFeat                   // unsupported features
+	VDevAuxSpared                      // hot spare used in another pool
+	VDevAuxErrExceeded                 // too many errors
+	VDevAuxIOFailure                   // experienced I/O failure
+	VDevAuxBadLog                      // cannot read log chain(s)
+	VDevAuxExternal                    // external diagnosis
+	VDevAuxSplitPool                   // vdev was split off into another pool
 )
 
-var PoolStatusStrings = map[PoolStatus]string{
-	PoolStatusCorruptCache:      "CORRUPT_CACHE",
-	PoolStatusMissingDevR:       "MISSING_DEV_R", /* missing device with replicas */
-	PoolStatusMissingDevNr:      "MISSING_DEV_NR",
-	PoolStatusCorruptLabelR:     "CORRUPT_LABEL_R",
-	PoolStatusCorruptLabelNr:    "CORRUPT_LABEL_NR",
-	PoolStatusBadGUIDSum:        "BAD_GUID_SUM",
-	PoolStatusCorruptPool:       "CORRUPT_POOL",
-	PoolStatusCorruptData:       "CORRUPT_DATA",
-	PoolStatusFailingDev:        "FAILLING_DEV",
-	PoolStatusVersionNewer:      "VERSION_NEWER",
-	PoolStatusHostidMismatch:    "HOSTID_MISMATCH",
-	PoolStatusHosidActive:       "HOSTID_ACTIVE",
-	PoolStatusHostidRequired:    "HOSTID_REQUIRED",
-	PoolStatusIoFailureWait:     "FAILURE_WAIT",
-	PoolStatusIoFailureContinue: "FAILURE_CONTINUE",
-	PoolStatusIOFailureMMP:      "HOSTID_FAILURE_MMP",
-	PoolStatusBadLog:            "BAD_LOG",
-	PoolStatusErrata:            "ERRATA",
+// status strings used by the zfs CLI when reporting zpool status.
+// These make it easier for users of this library to report status.
+const (
+	MsgPoolStatusMissingDevR       = `One or more devices could not be opened.  Sufficient replicas exist for the pool to continue functioning in a degraded state.`
+	MsgPoolStatusMissingDevNr      = `One or more devices could not be opened.  There are insufficient replicas for the pool to continue functioning.`
+	MsgPoolStatusCorruptLabelR     = `One or more devices could not be used because the label is missing or invalid. Sufficient replicas exist for the pool to continue functioning in a degraded state.`
+	MsgPoolStatusCorruptLabelNr    = `One or more devices could not be used because the label is missing or invalid. There are insufficient replicas for the pool to continue functioning.`
+	MsgPoolStatusCorruptPool       = `The pool metadata is corrupted and the pool cannot be opened.`
+	MsgPoolStatusCorruptData       = `One or more devices has experienced an error resulting in data corruption. Applications may be affected.`
+	MsgPoolStatusFailingDev        = `One or more devices has experienced an unrecoverable error. An attempt was made to correct the error.  Applications are unaffected.`
+	MsgPoolStatusOfflineDev        = `One or more devices has been taken offline by the administrator. Sufficient replicas exist for the pool to continue functioning in a degraded state.`
+	MsgPoolStatusRemovedDev        = `One or more devices has been removed by the administrator. Sufficient replicas exist for the pool to continue functioning in a degraded state.`
+	MsgPoolStatusResilvering       = `One or more devices is currently being resilvered. The pool will continue to function, possibly in a degraded state.`
+	MsgPoolStatusRebuilding        = MsgPoolStatusResilvering
+	MsgPoolStatusVersionNewer      = `The pool has been upgraded to a newer, incompatible on-disk version. The pool cannot be accessed on this system.`
+	MsgPoolStatusVersionOlder      = `The pool is formatted using a legacy on-disk format.  The pool can still be used, but some features are unavailable.`
+	MsgPoolStatusFeatDisabled      = `Some supported and requested features are not enabled on the pool. The pool can still be used, but some features are unavailable.`
+	MsgPoolStatusUnsupFeatRead     = `The pool cannot be accessed on this system because it uses feature(s) not supported on this system.`
+	MsgPoolStatusUnsupFeatWrite    = `The pool can only be accessed in read-only mode on this system. It cannot be accessed in read-write mode because it uses feature(s) not supported on this system.`
+	MsgPoolStatusFaultedDevR       = `One or more devices are faulted in response to persistent errors. Sufficient replicas exist for the pool to continue functioning in a degraded state.`
+	MsgPoolStatusFaultedDevNr      = `One or more devices are faulted in response to persistent errors. There are insufficient replicas for the pool to continue functioning.`
+	MsgPoolStatusHostidMismatch    = `Mismatch between pool hostid and system hostid on imported pool. This pool was previously imported into a system with a different hostid, and then was verbatim imported into this system.`
+	MsgPoolStatusHosidActive       = `The pool is currently imported by another system.`
+	MsgPoolStatusHostidRequired    = `The pool has the multihost property on.  It cannot be safely imported when the system hostid is not set.`
+	MsgPoolStatusIoFailureWait     = `One or more devices are faulted in response to IO failures.`
+	MsgPoolStatusIoFailureContinue = MsgPoolStatusIoFailureWait
+	MsgPoolStatusIOFailureMap      = `The pool is suspended because multihost writes failed or were delayed; another system could import the pool undetected.`
+	MsgPoolStatusBadLog            = `An intent log record could not be read. Waiting for administrator intervention to fix the faulted pool.`
+	MsgPoolStatusErrata            = `Errate detected.`
+)
 
-	/*
-	 * If the pool has unsupported features but can still be opened in
-	 * read-only mode, its status is ZPOOL_STATUS_UNSUP_FEAT_WRITE. If the
-	 * pool has unsupported features but cannot be opened at all, its
-	 * status is ZPOOL_STATUS_UNSUP_FEAT_READ.
-	 */
-	PoolStatusUnsupFeatRead:  "UNSUP_FEAT_READ",
-	PoolStatusUnsupFeatWrite: "UNSUP_FEAT_WRITE",
+// action strings
+const (
+	ActionPoolStatusMissingDevR       = `Attach the missing device and online it using 'zpool online'.`
+	ActionPoolStatusMissingDevNr      = `Attach the missing device and online it using 'zpool online'.`
+	ActionPoolStatusCorruptLabelR     = `Replace the device using 'zpool replace'.`
+	ActionPoolStatusCorruptLabelNr    = ``
+	ActionPoolStatusCorruptPool       = ``
+	ActionPoolStatusCorruptData       = `Restore the file in question if possible.  Otherwise restore the entire pool from backup.`
+	ActionPoolStatusFailingDev        = `Determine if the device needs to be replaced, and clear the errors using 'zpool clear' or replace the device with 'zpool replace'.`
+	ActionPoolStatusOfflineDev        = `Online the device using 'zpool online' or replace the device with 'zpool replace'.`
+	ActionPoolStatusRemovedDev        = `Online the device using zpool online' or replace the device with 'zpool replace'.`
+	ActionPoolStatusResilvering       = `Wait for the resilver to complete.`
+	ActionPoolStatusRebuilding        = ActionPoolStatusResilvering
+	ActionPoolStatusVersionNewer      = `Access the pool from a system running more recent software, or restore the pool from backup.`
+	ActionPoolStatusVersionOlder      = `Upgrade the pool using 'zpool upgrade'.  Once this is done, the pool will no longer be accessible on software that does not support feature flags.`
+	ActionPoolStatusFeatDisabled      = `Enable all features using 'zpool upgrade'. Once this is done, the pool may no longer be accessible by software that does not support the features. See zpool-features(7) for details.`
+	ActionPoolStatusUnsupFeatRead     = `Access the pool from a system that supports the required feature(s), or restore the pool from backup.`
+	ActionPoolStatusUnsupFeatWrite    = `The pool cannot be accessed in read-write mode. Import the pool with "-o readonly=on", access the pool from a system that supports the required feature(s), or restore the pool from backup.`
+	ActionPoolStatusFaultedDevR       = `Replace the faulted device, or use 'zpool clear' to mark the device repaired.`
+	ActionPoolStatusFaultedDevNr      = `Destroy and re-create the pool from a backup source.  Manually marking the device repaired using 'zpool clear' may allow some data to be recovered.`
+	ActionPoolStatusHostidMismatch    = `Export this pool on all systems on which it is imported. Then import it to correct the mismatch.`
+	ActionPoolStatusHosidActive       = ``
+	ActionPoolStatusHostidRequired    = ``
+	ActionPoolStatusIoFailureWait     = `Make sure the affected devices are connected, then run 'zpool clear'.`
+	ActionPoolStatusIoFailureContinue = ActionPoolStatusIoFailureWait
+	ActionPoolStatusIOFailureMap      = `Make sure the pool's devices are connected, then reboot your system and import the pool.`
+	ActionPoolStatusBadLog            = `Either restore the affected device(s) and run 'zpool online', or ignore the intent log records by running 'zpool clear'.`
+	ActionPoolStatusErrata            = ``
+)
 
-	/*
-	* These faults have no corresponding message ID.  At the time we are
-	* checking the status, the original reason for the FMA fault (I/O or
-	* checksum errors) has been lost.
-	 */
-	PoolStatusFaultedDevR:  "FAULTED_DEV_R",
-	PoolStatusFaultedDevNr: "FAULTED_DEV_NR",
-
-	/*
-	* The following are not faults per se, but still an error possibly
-	* requiring administrative attention.  There is no corresponding
-	* message ID.
-	 */
-	PoolStatusVersionOlder:     "VERSION_OLDER",
-	PoolStatusFeatDisabled:     "FEAT_DISABLED",
-	PoolStatusResilvering:      "RESILVERIN",
-	PoolStatusOfflineDev:       "OFFLINE_DEV",
-	PoolStatusRemovedDev:       "REMOVED_DEV",
-	PoolStatusRebuilding:       "REBUILDING",
-	PoolStatusRebuildScrub:     "REBUILD_SCRUB",
-	PoolStatusNonNativeAshift:  "NON_NATIVE_ASHIFT",
-	PoolStatusCompatibilityErr: "COMPATIBILITY_ERR",
-	PoolStatusIncompatibleFeat: "INCOMPATIBLE_FEAT",
-
-	/*
-	 * Finally, the following indicates a healthy pool.
-	 */
-	PoolStatusOk: "OK",
+// GetStatusMessages get the status and action message for a given PoolStatus.
+// If none is available, return "" for each.
+func GetStatusMessages(status PoolStatus) (msg, action string) {
+	switch status {
+	case PoolStatusCorruptCache:
+		// no msg or status for this, but leaving blank as a sign for later
+	case PoolStatusMissingDevNr:
+		msg = MsgPoolStatusMissingDevNr
+		action = ActionPoolStatusMissingDevNr
+	case PoolStatusCorruptLabelR:
+		msg = MsgPoolStatusCorruptLabelR
+		action = ActionPoolStatusCorruptLabelR
+	case PoolStatusCorruptLabelNr:
+		msg = MsgPoolStatusCorruptLabelNr
+		action = ActionPoolStatusCorruptLabelNr
+	case PoolStatusBadGUIDSum:
+		// no msg or status for this, but leaving blank as a sign for later
+	case PoolStatusCorruptPool:
+		msg = MsgPoolStatusCorruptPool
+		action = ActionPoolStatusCorruptPool
+	case PoolStatusCorruptData:
+		msg = MsgPoolStatusCorruptData
+		action = ActionPoolStatusCorruptData
+	case PoolStatusFailingDev:
+		msg = MsgPoolStatusFailingDev
+		action = ActionPoolStatusFailingDev
+	case PoolStatusVersionNewer:
+		msg = MsgPoolStatusVersionNewer
+		action = ActionPoolStatusVersionNewer
+	case PoolStatusHostidMismatch:
+		msg = MsgPoolStatusHostidMismatch
+		action = ActionPoolStatusHostidMismatch
+	case PoolStatusHosidActive:
+		msg = MsgPoolStatusHosidActive
+		action = ActionPoolStatusHosidActive
+	case PoolStatusHostidRequired:
+		msg = MsgPoolStatusHostidRequired
+		action = ActionPoolStatusHostidRequired
+	case PoolStatusIoFailureWait:
+		msg = MsgPoolStatusIoFailureWait
+		action = ActionPoolStatusIoFailureWait
+	case PoolStatusIoFailureContinue:
+		msg = MsgPoolStatusIoFailureContinue
+		action = ActionPoolStatusIoFailureContinue
+	case PoolStatusIOFailureMap:
+		msg = MsgPoolStatusIOFailureMap
+		action = ActionPoolStatusIOFailureMap
+	case PoolStatusBadLog:
+		msg = MsgPoolStatusBadLog
+		action = ActionPoolStatusBadLog
+	case PoolStatusErrata:
+		msg = MsgPoolStatusErrata
+		action = ActionPoolStatusErrata
+	case PoolStatusUnsupFeatRead:
+		msg = MsgPoolStatusUnsupFeatRead
+		action = ActionPoolStatusUnsupFeatRead
+	case PoolStatusUnsupFeatWrite:
+		msg = MsgPoolStatusUnsupFeatWrite
+		action = ActionPoolStatusUnsupFeatWrite
+	case PoolStatusFaultedDevR:
+		msg = MsgPoolStatusFaultedDevR
+		action = ActionPoolStatusFaultedDevR
+	case PoolStatusFaultedDevNr:
+		msg = MsgPoolStatusFaultedDevNr
+		action = ActionPoolStatusFaultedDevNr
+	case PoolStatusVersionOlder:
+		msg = MsgPoolStatusVersionOlder
+		action = ActionPoolStatusVersionOlder
+	case PoolStatusFeatDisabled:
+		msg = MsgPoolStatusFeatDisabled
+		action = ActionPoolStatusFeatDisabled
+	case PoolStatusResilvering:
+		msg = MsgPoolStatusResilvering
+		action = ActionPoolStatusResilvering
+	case PoolStatusOfflineDev:
+		msg = MsgPoolStatusOfflineDev
+		action = ActionPoolStatusOfflineDev
+	case PoolStatusRemovedDev:
+		msg = MsgPoolStatusRemovedDev
+		action = ActionPoolStatusRemovedDev
+	case PoolStatusOk:
+		msg = ""
+		action = ""
+	}
+	return msg, action
 }

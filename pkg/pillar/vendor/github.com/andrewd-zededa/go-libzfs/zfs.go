@@ -56,7 +56,7 @@ type Dataset struct {
 	Children   []Dataset
 }
 
-// RenameFlags structure contains information for ZFS 2.0.x Rename Dataset feature
+// RenameFlags structure contains information for ZFS 2.0.x+ Rename Dataset feature
 type RenameFlags struct {
 	// Recursive rename
 	Recursive bool
@@ -338,12 +338,14 @@ func (d *Dataset) ReloadProperties() (err error) {
 	}
 	d.Properties = make(map[Prop]Property)
 	C.zfs_refresh_properties(d.list.zh)
-	for prop := DatasetPropType; prop < DatasetNumProps; prop++ {
-		plist := C.read_dataset_property(d.list, C.int(prop))
+	// Iterate using the value from headers so we don't miss newly-added props.
+	for ip := int(C.ZFS_PROP_TYPE); ip < int(C.ZFS_NUM_PROPS); ip++ {
+		plist := C.read_dataset_property(d.list, C.int(ip))
 		if plist == nil {
 			continue
 		}
-		d.Properties[prop] = Property{Value: C.GoString(&(*plist).value[0]),
+		d.Properties[Prop(ip)] = Property{
+			Value:  C.GoString(&(*plist).value[0]),
 			Source: C.GoString(&(*plist).source[0])}
 		C.free_properties(plist)
 	}
@@ -528,7 +530,7 @@ func (d *Dataset) Rename(newName string, recur,
 	csNewName := C.CString(newName)
 	defer C.free(unsafe.Pointer(csNewName))
 	if errc := C.dataset_rename(d.list, csNewName,
-		booleanT(recur), booleanT(false), booleanT(forceUnmount)); errc != 0 {
+		booleanT(recur), booleanT(forceUnmount)); errc != 0 {
 		err = LastError()
 		return
 	}
@@ -545,7 +547,7 @@ func (d *Dataset) Rename2(newName string, flags RenameFlags) (err error) {
 	csNewName := C.CString(newName)
 	defer C.free(unsafe.Pointer(csNewName))
 	if errc := C.dataset_rename(d.list, csNewName,
-		booleanT(flags.Recursive), booleanT(flags.Nounmount), booleanT(flags.Forceunmount)); errc != 0 {
+		booleanT(flags.Recursive), booleanT(flags.Forceunmount)); errc != 0 {
 		err = LastError()
 		return
 	}
@@ -646,7 +648,8 @@ func (d *Dataset) Hold(flag string) (err error) {
 
 // Release - Removes a single reference, named with the tag argument, from the specified snapshot.
 // The tag must already exist for each snapshot.  If a hold exists on a snapshot, attempts to destroy
-//  that snapshot by using the zfs destroy command return EBUSY.
+//
+//	that snapshot by using the zfs destroy command return EBUSY.
 func (d *Dataset) Release(flag string) (err error) {
 	var path string
 	var pd Dataset

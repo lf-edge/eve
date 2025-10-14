@@ -247,6 +247,23 @@ property_list_t *read_zpool_properties(zpool_list_ptr pool) {
 	root = read_append_zpool_property(pool, root, ZPOOL_PROP_COMMENT);
 	root = read_append_zpool_property(pool, root, ZPOOL_PROP_EXPANDSZ);
 	root = read_append_zpool_property(pool, root, ZPOOL_PROP_FREEING);
+	root = read_append_zpool_property(pool, root, ZPOOL_PROP_FRAGMENTATION);
+	root = read_append_zpool_property(pool, root, ZPOOL_PROP_LEAKED);
+	root = read_append_zpool_property(pool, root, ZPOOL_PROP_MAXBLOCKSIZE);
+	root = read_append_zpool_property(pool, root, ZPOOL_PROP_TNAME);
+	root = read_append_zpool_property(pool, root, ZPOOL_PROP_MAXDNODESIZE);
+	root = read_append_zpool_property(pool, root, ZPOOL_PROP_MULTIHOST);
+	root = read_append_zpool_property(pool, root, ZPOOL_PROP_CHECKPOINT);
+	root = read_append_zpool_property(pool, root, ZPOOL_PROP_LOAD_GUID);
+	root = read_append_zpool_property(pool, root, ZPOOL_PROP_AUTOTRIM);
+	root = read_append_zpool_property(pool, root, ZPOOL_PROP_COMPATIBILITY);
+	root = read_append_zpool_property(pool, root, ZPOOL_PROP_BCLONEUSED);
+	root = read_append_zpool_property(pool, root, ZPOOL_PROP_BCLONESAVED);
+	root = read_append_zpool_property(pool, root, ZPOOL_PROP_BCLONERATIO);
+	root = read_append_zpool_property(pool, root, ZPOOL_PROP_DEDUP_TABLE_SIZE);
+	root = read_append_zpool_property(pool, root, ZPOOL_PROP_DEDUP_TABLE_QUOTA);
+	root = read_append_zpool_property(pool, root, ZPOOL_PROP_DEDUPCACHED);
+	root = read_append_zpool_property(pool, root, ZPOOL_PROP_LAST_SCRUBBED_TXG);
 
 	list = new_property_list();
 	list->property = ZPOOL_NUM_PROPS;
@@ -523,7 +540,7 @@ nvlist_ptr go_zpool_search_import(libzfs_handle_ptr zfsh, int paths, char **path
 }
 
 
-int do_zpool_clear(zpool_list_t *pool, const char *device, u_int32_t load_policy) {
+int do_zpool_clear(zpool_list_t *pool, const char *device, uint32_t load_policy) {
 	nvlist_t *policy = NULL;
 	int ret = 0;
 	if (nvlist_alloc(&policy, NV_UNIQUE_NAME, 0) != 0 ||
