@@ -1106,11 +1106,12 @@ endif
 get_pkg_build_yml = $(if $(filter k,$(HV)), $(call get_pkg_build_k_yml,$1), \
                     $(if $(filter y,$(RSTATS)), $(call get_pkg_build_rstats_yml,$1), \
                     $(if $(filter y,$(DEV)), $(call get_pkg_build_dev_yml,$1), \
-                    $(if $(wildcard pkg/$1/build-$(PLATFORM).yml),build-$(PLATFORM).yml,build.yml))))
+                    $(call get_pkg_build_plat_yml,$1))))
+get_pkg_build_plat_yml = $(if $(wildcard pkg/$1/build-$(PLATFORM).yml),build-$(PLATFORM).yml,build.yml)
 get_pkg_build_dev_yml = $(if $(wildcard pkg/$1/build-dev.yml),build-dev.yml,build.yml)
 get_pkg_build_rstats_yml = $(if $(wildcard pkg/$1/build-rstats.yml),build-rstats.yml,build.yml)
 get_pkg_build_k_yml = $(if $(and $(filter y,$(DEV)),$(wildcard pkg/$1/build-k-dev.yml)),build-k-dev.yml, \
-                             $(if $(wildcard pkg/$1/build-k.yml),build-k.yml,build.yml))
+                             $(if $(wildcard pkg/$1/build-k.yml),build-k.yml,$(call get_pkg_build_plat_yml,$1)))
 
 eve-%: pkg/%/Dockerfile $(LINUXKIT) $(RESCAN_DEPS)
 	$(QUIET): "$@: Begin: LINUXKIT_PKG_TARGET=$(LINUXKIT_PKG_TARGET)"
