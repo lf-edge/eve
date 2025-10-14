@@ -174,11 +174,19 @@ const (
 	PoolPropLeaked
 	PoolPropMaxBlockSize
 	PoolPropTName
-	PoolPropMaxNodeSize
+	PoolPropMaxDNodeSize
 	PoolPropMultiHost
 	PoolPropCheckpoint
-	PoolPropLoadGuid
+	PoolPropLoadGUID
 	PoolPropAutotrim
+	PoolPropCompatibility
+	PoolPropBcloneUsed
+	PoolPropBcloneSaved
+	PoolPropBcloneRatio
+	PoolPropDedupTableSize
+	PoolPropDedupTableQuota
+	PoolPropDedupcached
+	PoolPropLastScrubbedTxg
 	PoolNumProps
 )
 
@@ -282,6 +290,11 @@ const (
 	DatasetPropKeyGUID
 	DatasetPropKeyStatus
 	DatasetPropRemapTXG /* not exposed to the user */
+	DatasetPropSpecialSmallBlocks
+	DatasetPropIVSetGuid /* not exposed to the user */
+	DatasetPropRedacted
+	DatasetPropRedactSnaps
+	DatasetPropSnapshotsChanged
 	DatasetNumProps
 )
 
@@ -396,6 +409,12 @@ const (
 	ETrimNotsup                             /* device does not support trim */
 	ENoResilverDefer                        /* pool doesn't support resilver_defer */
 	EExportInProgress                       /* currently exporting the pool */
+	ERebuilding                             /* resilvering (sequential reconstrution) */
+	EVdevNotSup                             /* ops not supported for this type of vdev */
+	ENotUserNamespace                       /* a file is not a user namespace */
+	ECksum                                  /* insufficient replicas */
+	EResumeExists                           /* resume on existing dataset without force */
+	EShareFailed                            /* filesystem share failed */
 	EUnknown
 )
 
