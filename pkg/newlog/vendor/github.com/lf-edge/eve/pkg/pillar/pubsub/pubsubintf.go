@@ -11,15 +11,15 @@ import (
 
 // Getter - Interface for pub/sub
 type Getter interface {
-	Get(key string) (interface{}, error)
+	Get(key string) (any, error)
 }
 
 // Publication - Interface to be implemented by a Publication
 type Publication interface {
 	// CheckMaxSize returns an error if the item is too large
-	CheckMaxSize(key string, item interface{}) error
+	CheckMaxSize(key string, item any) error
 	// Publish - Publish an object
-	Publish(key string, item interface{}) error
+	Publish(key string, item any) error
 	// Unpublish - Delete / UnPublish an object
 	Unpublish(key string) error
 	// SignalRestarted - Signal the publisher has started one more time
@@ -27,9 +27,9 @@ type Publication interface {
 	// ClearRestarted clear the restarted flag
 	ClearRestarted() error
 	// Get - Lookup an object
-	Get(key string) (interface{}, error)
+	Get(key string) (any, error)
 	// GetAll - Get a copy of the objects.
-	GetAll() map[string]interface{}
+	GetAll() map[string]any
 	// Iterate - Perform some action on all items
 	Iterate(function base.StrMapFunc)
 	// Close - delete the publisher
@@ -39,9 +39,9 @@ type Publication interface {
 // Subscription - Interface to be implemented by a Subscription
 type Subscription interface {
 	// Get - get / lookup an object by key
-	Get(key string) (interface{}, error)
+	Get(key string) (any, error)
 	// GetAll - Get a copy of the objects.
-	GetAll() map[string]interface{}
+	GetAll() map[string]any
 	// Iterate - Perform some action on all items
 	Iterate(function base.StrMapFunc)
 	// Restarted report if this subscription has been marked as restarted

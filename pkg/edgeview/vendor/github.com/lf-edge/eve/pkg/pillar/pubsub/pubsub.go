@@ -27,29 +27,29 @@ type SubscriptionOptions struct {
 	ErrorTime      time.Duration // we log an error if the subscription handler took longer than this to run
 	AgentName      string
 	AgentScope     string
-	TopicImpl      interface{}
+	TopicImpl      any
 	Activate       bool
-	Ctx            interface{}
+	Ctx            any
 	Persistent     bool
 	MyAgentName    string // For logging
 }
 
 // SubCreateHandler is a handler to handle creates
-type SubCreateHandler func(ctx interface{}, key string, status interface{})
+type SubCreateHandler func(ctx any, key string, status any)
 
 // SubModifyHandler is a handler for modify notifications which carries
 // the oldStatus
-type SubModifyHandler func(ctx interface{}, key string, status interface{},
-	oldStatus interface{})
+type SubModifyHandler func(ctx any, key string, status any,
+	oldStatus any)
 
 // SubDeleteHandler is a handler to handle delete
-type SubDeleteHandler func(ctx interface{}, key string, status interface{})
+type SubDeleteHandler func(ctx any, key string, status any)
 
 // SubRestartHandler generic handler for restarts
-type SubRestartHandler func(ctx interface{}, restartCount int)
+type SubRestartHandler func(ctx any, restartCount int)
 
 // SubSyncHandler generic handler for synchronized
-type SubSyncHandler func(ctx interface{}, synchronized bool)
+type SubSyncHandler func(ctx any, synchronized bool)
 
 // Maintain a collection which is used to handle the restart of a subscriber
 // map of agentname, key to get a json string
@@ -100,7 +100,7 @@ func (p *PubSub) NewSubscription(options SubscriptionOptions) (Subscription, err
 
 	// Need some buffering to make sure that when we Close the subscription
 	// the goroutines exit
-	changes := make(chan Change, 3)
+	changes := make(chan Change, 5)
 	sub := &SubscriptionImpl{
 		C:                   changes,
 		agentName:           options.AgentName,
@@ -148,7 +148,7 @@ func (p *PubSub) NewSubscription(options SubscriptionOptions) (Subscription, err
 type PublicationOptions struct {
 	AgentName  string
 	AgentScope string
-	TopicType  interface{}
+	TopicType  any
 	Persistent bool
 }
 

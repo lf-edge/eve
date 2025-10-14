@@ -33,7 +33,7 @@ type SubscriptionImpl struct {
 	topic        string
 	topicType    reflect.Type
 	km           keyMap
-	userCtx      interface{}
+	userCtx      any
 	synchronized bool
 	driver       DriverSubscriber
 	defaultName  string
@@ -136,7 +136,7 @@ func (sub *SubscriptionImpl) ProcessChange(change Change) {
 }
 
 // Get - Get object with specified Key from this Subscription.
-func (sub *SubscriptionImpl) Get(key string) (interface{}, error) {
+func (sub *SubscriptionImpl) Get(key string) (any, error) {
 	m, ok := sub.km.key.Load(key)
 	if ok {
 		return m, nil
@@ -148,9 +148,9 @@ func (sub *SubscriptionImpl) Get(key string) (interface{}, error) {
 }
 
 // GetAll - Enumerate all the key, value for the collection
-func (sub *SubscriptionImpl) GetAll() map[string]interface{} {
-	result := make(map[string]interface{})
-	assigner := func(key string, val interface{}) bool {
+func (sub *SubscriptionImpl) GetAll() map[string]any {
+	result := make(map[string]any)
+	assigner := func(key string, val any) bool {
 		result[key] = val
 		return true
 	}
@@ -187,12 +187,13 @@ func (sub *SubscriptionImpl) nameString() string {
 	var name string
 	agentName := sub.agentName
 	if agentName == "" {
+		// global
 		agentName = sub.defaultName
 	}
 	if sub.agentScope == "" {
-		name = fmt.Sprintf("%s/%s", sub.agentName, sub.topic)
+		name = fmt.Sprintf("%s.%s", agentName, sub.topic)
 	} else {
-		name = fmt.Sprintf("%s/%s/%s", sub.agentName, sub.agentScope, sub.topic)
+		name = fmt.Sprintf("%s.%s.%s", agentName, sub.agentScope, sub.topic)
 	}
 	return name
 }
@@ -200,7 +201,7 @@ func (sub *SubscriptionImpl) nameString() string {
 func (sub *SubscriptionImpl) dump(infoStr string) {
 	name := sub.nameString()
 	sub.log.Tracef("dump(%s) %s\n", name, infoStr)
-	dumper := func(key string, val interface{}) bool {
+	dumper := func(key string, val any) bool {
 		_, err := json.Marshal(val)
 		if err != nil {
 			sub.log.Fatal("json Marshal in dump", err)
@@ -215,7 +216,7 @@ func (sub *SubscriptionImpl) dump(infoStr string) {
 }
 
 // handlers
-func handleModify(ctxArg interface{}, key string, itemcb []byte) {
+func handleModify(ctxArg any, key string, itemcb []byte) {
 	sub := ctxArg.(*SubscriptionImpl)
 	name := sub.nameString()
 	sub.log.Tracef("pubsub.handleModify(%s) key %s\n", name, key)
@@ -266,17 +267,17 @@ func handleModify(ctxArg interface{}, key string, itemcb []byte) {
 	newItem := DeepCopy(sub.log, item)
 	if created {
 		if sub.CreateHandler != nil {
-			(sub.CreateHandler)(sub.userCtx, key, newItem)
+			sub.CreateHandler(sub.userCtx, key, newItem)
 		}
 	} else {
 		if sub.ModifyHandler != nil {
-			(sub.ModifyHandler)(sub.userCtx, key, newItem, m)
+			sub.ModifyHandler(sub.userCtx, key, newItem, m)
 		}
 	}
 	sub.log.Tracef("pubsub.handleModify(%s) done for key %s\n", name, key)
 }
 
-func handleDelete(ctxArg interface{}, key string) {
+func handleDelete(ctxArg any, key string) {
 	sub := ctxArg.(*SubscriptionImpl)
 	name := sub.nameString()
 	sub.log.Tracef("pubsub.handleDelete(%s) key %s\n", name, key)
@@ -298,12 +299,12 @@ func handleDelete(ctxArg interface{}, key string) {
 		sub.dump("after handleDelete")
 	}
 	if sub.DeleteHandler != nil {
-		(sub.DeleteHandler)(sub.userCtx, key, m)
+		sub.DeleteHandler(sub.userCtx, key, m)
 	}
 	sub.log.Tracef("pubsub.handleDelete(%s) done for key %s\n", name, key)
 }
 
-func handleRestart(ctxArg interface{}, restartCounter int) {
+func handleRestart(ctxArg any, restartCounter int) {
 	sub := ctxArg.(*SubscriptionImpl)
 	name := sub.nameString()
 	sub.log.Tracef("pubsub.handleRestart(%s) restartCounter %d",
@@ -320,7 +321,7 @@ func handleRestart(ctxArg interface{}, restartCounter int) {
 		name, restartCounter)
 }
 
-func handleSynchronized(ctxArg interface{}, synchronized bool) {
+func handleSynchronized(ctxArg any, synchronized bool) {
 	sub := ctxArg.(*SubscriptionImpl)
 	name := sub.nameString()
 	sub.log.Tracef("pubsub.handleSynchronized(%s) synchronized %v\n", name, synchronized)

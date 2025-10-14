@@ -7,7 +7,7 @@ package types
 
 const (
 	// KubeSvcRT : index of the routing table used for the Kubernetes service prefix.
-	// Only used in the Kubevirt mode.
+	// Only used in the EVE 'k' image.
 	KubeSvcRT = 400
 
 	// DPCBaseRTIndex : base index for per-port routing tables used for device

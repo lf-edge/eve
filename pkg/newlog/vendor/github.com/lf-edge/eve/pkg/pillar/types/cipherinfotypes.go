@@ -84,7 +84,7 @@ type CipherBlockStatus struct {
 	CipherBlockID   string // constructed using individual reference
 	CipherContextID string // cipher context id
 	InitialValue    []byte
-	CipherData      []byte `json:"pubsub-large-CipherData"`
+	CipherData      []byte
 	ClearTextHash   []byte
 	IsCipher        bool
 	CipherContext   *CipherContext

@@ -6,9 +6,9 @@ require (
 	github.com/euank/go-kmsg-parser v2.0.0+incompatible
 	github.com/golang/protobuf v1.5.4
 	github.com/google/go-cmp v0.7.0
-	github.com/lf-edge/eve-api/go v0.0.0-20250905090851-cf53cd9d7e41
-	github.com/lf-edge/eve/pkg/pillar v0.0.0-20250930143934-3567bcf46ad4
-	github.com/onsi/gomega v1.29.0
+	github.com/lf-edge/eve-api/go v0.0.0-20250922144401-abfd2fa2b728
+	github.com/lf-edge/eve/pkg/pillar v0.0.0-20251013110648-3bcdb1d76bb4
+	github.com/onsi/gomega v1.36.0
 	github.com/sirupsen/logrus v1.9.3
 )
 
@@ -43,6 +43,7 @@ require (
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/fsnotify/fsnotify v1.6.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.2 // indirect
+	github.com/getlantern/framed v0.0.0-20190601192238-ceb6431eeede // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect
@@ -68,11 +69,13 @@ require (
 	github.com/moby/sys/userns v0.1.0 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
+	github.com/nkval/go-nkv v0.0.0-20250912100718-c87c5e65193e // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.1.1 // indirect
 	github.com/opencontainers/runtime-spec v1.1.0 // indirect
 	github.com/opencontainers/runtime-tools v0.9.1-0.20221107090550-2e043c6bd626 // indirect
 	github.com/opencontainers/selinux v1.11.0 // indirect
+	github.com/oxtoacart/bpool v0.0.0-20190530202638-03653db5a59c // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/prometheus/client_golang v1.18.0 // indirect
 	github.com/prometheus/client_model v0.6.1 // indirect
@@ -116,3 +119,5 @@ require (
 	tags.cncf.io/container-device-interface v0.8.1 // indirect
 	tags.cncf.io/container-device-interface/specs-go v0.8.0 // indirect
 )
+
+replace github.com/lf-edge/eve/pkg/pillar => github.com/uncleDecart/eve/pkg/pillar v0.0.0-20251013133229-1c1a9d34fd38
