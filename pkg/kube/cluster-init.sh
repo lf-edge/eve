@@ -23,6 +23,9 @@ All_PODS_READY=true
 install_kubevirt=1
 TRANSITION_PIPE="/tmp/cluster_transition_pipe$$"
 TRANSITION_FLAG_FILE="/tmp/cluster_transition_flag"
+RebootReasonFile="/persist/reboot-reason"
+BootReasonFile="/persist/boot-reason"
+BootReasonKubeTransition="BootReasonKubeTransition" # Must match string in types package
 
 # shellcheck source=pkg/kube/pubsub.sh
 . /usr/bin/pubsub.sh
@@ -404,6 +407,32 @@ are_all_pods_ready() {
         return 0
 }
 
+# Reboot the system with a recorded reason
+# Usage: reboot_with_reason "reason string"
+# The "BootReasonKubeTransition" will be written to /persist/boot-reason and
+# the reason will be written to /persist/reboot-reason before rebooting
+reboot_with_reason() {
+    local reason="$1"
+    local timestamp
+    timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+
+    if [ -z "$reason" ]; then
+        reason="kube cluster conversion reboot"
+    fi
+
+    logmsg "Rebooting system: $reason"
+    if [ ! -f "$BootReasonFile" ]; then
+        echo "$BootReasonKubeTransition" > "$BootReasonFile"
+    fi
+    echo " [$timestamp]: $BootReasonKubeTransition, $reason" >> "$RebootReasonFile"
+
+    # Sync to ensure the file is written to disk
+    sync
+    sleep 1  # Give sync a moment to complete
+    # Perform the reboot
+    reboot
+}
+
 # run virtctl vnc
 check_and_run_vnc() {
   pid=$(pgrep -f "/usr/bin/virtctl vnc" )
@@ -452,18 +481,27 @@ check_and_run_vnc() {
 
 # get the EdgeNodeClusterStatus
 enc_status_file="/run/zedkube/EdgeNodeClusterStatus/global.json"
+# If the node is part of a cluster, even if the case of only one node in the cluster
+# the clusrter_intf, is_bootstrap, join_serverIP, cluster_token, cluster_node_ip
+# cluster_uuid are all obtained from the enc_status_file published by zedkube;
+# When the kubernetes node is in 'single node' mode, these variables are empty
 cluster_intf=""
 is_bootstrap=""
 join_serverIP=""
 cluster_token=""
 cluster_node_ip=""
+cluster_uuid=""
 convert_to_single_node=false
 
 # get the EdgeNodeClusterStatus from zedkube publication
+# Return values:
+#   0 - Success: file exists and all validations passed
+#   1 - File exists but validation failed (incomplete/invalid data)
+#   2 - File does not exist
 get_enc_status() {
     # Read the JSON data from the file, return 0 if successful, 1 if not
     if [ ! -f "$enc_status_file" ]; then
-      return 1
+      return 2
     fi
 
     enc_data=$(cat "$enc_status_file")
@@ -473,8 +511,10 @@ get_enc_status() {
     cluster_token=$(echo "$enc_data" | jq -r '.EncryptedClusterToken')
     cluster_node_ip=$(echo "$enc_data" | jq -r '.ClusterIPPrefix.IP')
     cluster_node_ip_is_ready=$(echo "$enc_data" | jq -r '.ClusterIPIsReady')
+    cluster_uuid=$(echo "$enc_data" | jq -r '.ClusterID.UUID')
     if [ -n "$cluster_intf" ] && [ -n "$join_serverIP" ] && [ -n "$cluster_token" ] &&\
        [ -n "$cluster_node_ip" ] && [ "$cluster_node_ip_is_ready" = "true" ] &&\
+       [ -n "$cluster_uuid" ] && [ "$cluster_uuid" != "null" ] &&\
        { [ "$is_bootstrap" = "true" ] || [ "$is_bootstrap" = "false" ]; }; then
       return 0
     else
@@ -544,6 +584,43 @@ change_to_new_token() {
 
 # monitor function to check if the cluster mode has changed, either from single node to cluster
 # or from cluster to single node
+#
+# Return values:
+#   0 - No action needed or transition initiated successfully
+#
+# Operational Cases:
+#
+# 1. NOT INITIALIZED: Skip checks until /var/lib/all_components_initialized exists
+#
+# 2. CLUSTER-TO-SINGLE TRANSITION (enc_status=2, enc_status_file missing):
+#    - If not in cluster mode: no action
+#    - Otherwise: cleanup registration, mark for single-node conversion, REBOOT
+#
+# 3. SINGLE-TO-CLUSTER TRANSITION (enc_status=0, no edge-node-cluster-mode flag):
+#    - EdgeNodeClusterStatus valid AND node was in single mode
+#    - Wait loop until valid enc_status received
+#    - Mark node as cluster mode before config changes
+#    - If zks registration exists: uninstall cluster components (kubevirt, longhorn) first
+#    - Bootstrap node case: rotate k3s token to controller-provided token
+#    - Remove old multus config, reassign with cluster node IP
+#    - Remove node labels for reapplication
+#    - Create transition pipe/flag for k3s restart coordination
+#    - Terminate k3s process
+#    - Non-bootstrap node join case: remove TLS certs, mark debuguser for reinit
+#    - Provision cluster config (bootstrap or join mode)
+#    - If enc_status_file disappears during wait for joining cluster: revert back to single-node, REBOOT
+#    - Non-bootstrap: create transition tracking file with timestamp, if joining cluster fails repeatedly, may REBOOT
+#    - Bootstrap: wait for k3s to start
+#    - Signal k3s restart via pipe, cleanup transition flag
+#
+# 4. ALREADY IN DESIRED MODE: No action taken
+#
+# 5. POST-CONVERSION REGISTRATION: If base-k3s-mode flag exists, uninstall kubevirt, longhorn, apply registration
+#
+# REBOOT SCENARIOS:
+# - Cluster-to-single: Always reboots after cleanup
+# - Single-to-cluster: Only non-bootstrap nodes may reboot if join fails (see check_cluster_transition_done) repeatedly
+# - Interrupted transition for non-bootstrap nodes: Reboots to single-node if enc_status_file disappears
 check_cluster_config_change() {
 
     # only check the cluster change when it's fully initialized
@@ -551,8 +628,11 @@ check_cluster_config_change() {
         return 0
     fi
 
-    if [ ! -f "$enc_status_file" ]; then
-      #logmsg "EdgeNodeClusterStatus file not found"
+    get_enc_status
+    enc_status=$?
+
+    if [ $enc_status -eq 2 ]; then
+      # the EdgeNodeClusterStatus file does not exist
       if [ ! -f /var/lib/edge-node-cluster-mode ]; then
         return 0
       else
@@ -566,15 +646,16 @@ check_cluster_config_change() {
         rm /var/lib/base-k3s-mode
         touch /var/lib/convert-to-single-node
         # We're transitioning from cluster mode to single node, so reboot is still needed
-        reboot
+        reboot_with_reason "Transition from cluster mode to single node"
       fi
-    else
+    elif [ -n "$cluster_token" ] && [ "$cluster_node_ip_is_ready" = "true" ]; then
       # record we have seen this ENC status file
       if [ ! -f /var/lib/edge-node-cluster-mode ]; then
         logmsg "EdgeNodeClusterStatus file found, but the node does not have edge-node-cluster-mode"
         logmsg "*** check_cluster_config_change, before while loop. cluster_node_ip: $cluster_node_ip" # XXX
         while true; do
           if get_enc_status; then
+            # got the enc_status successfully, start single node to cluster transition
             logmsg "got the EdgeNodeClusterStatus successfully"
             # mark it cluster mode before changing the config file
             touch /var/lib/edge-node-cluster-mode
@@ -615,6 +696,17 @@ check_cluster_config_change() {
 
             logmsg "provision config file for node to cluster mode"
             provision_cluster_config_file true
+            provision_status=$?
+
+            # If in the middle of waiting for bootstrap node to be ready, the node is converted again to single node
+            # we need to get out of this loop and go back to single node mode
+            if [ $provision_status -eq 1 ]; then
+              logmsg "EdgeNodeClusterStatus file disappeared, reset the status and back to single node and reboot"
+              rm /var/lib/base-k3s-mode
+              touch /var/lib/convert-to-single-node
+              reboot_with_reason "EdgeNodeClusterStatus file disappeared during cluster join, revert to single node"
+            fi
+
             if [ "$is_bootstrap" = "false" ]; then
               # we got here because we know the bootstrap node is already running
               # For a non-bootstrap node, create transition file and record timestamp
@@ -634,10 +726,16 @@ check_cluster_config_change() {
             logmsg "WARNING: changing the node to cluster mode, k3s can restart"
             break
           else
+            # In the case, check get_enc_status fails, and the EdgeNodeClusterStatus file is removed
+            # we need to exit the loop and try again
+            if [ ! -f "$enc_status_file" ]; then
+              logmsg "EdgeNodeClusterStatus file disappeared, exit the loop and try again"
+              return 0
+            fi
             sleep 10
           fi
-        done
-      else
+        done # end of while true
+      else # enc_status exists but not in all valid states
         return 0
       fi
     fi
@@ -673,7 +771,7 @@ check_cluster_transition_done() {
         fi
     fi
 
-    # Check if we've been waiting too long (10 minutes)
+    # Check if we've been waiting too long (5 minutes)
     # File format is "timestamp reboot_count"
     # Maximum reboot attempts is 3
     file_content=$(cat /var/lib/transition-to-cluster)
@@ -683,7 +781,7 @@ check_cluster_transition_done() {
     current_timestamp=$(date +%s)
     elapsed_time=$((current_timestamp - transition_timestamp))
 
-    if [ "$elapsed_time" -ge 600 ]; then # 10 minutes in seconds
+    if [ "$elapsed_time" -ge 300 ]; then # 5 minutes in seconds
         logmsg "Cluster transition timeout: Been waiting for ${elapsed_time} seconds"
 
         # Increment reboot counter
@@ -693,7 +791,7 @@ check_cluster_transition_done() {
             # Update timestamp and reboot count in the same file
             echo "$(date +%s) $reboot_count" > /var/lib/transition-to-cluster
             logmsg "Rebooting system to retry cluster transition (attempt $reboot_count of 3)..."
-            reboot
+            reboot_with_reason "Reboot after retry cluster transition attempt $reboot_count"
         else
             logmsg "Maximum reboot attempts (3) reached. We will not reboot again."
             # We could consider adding some recovery action here
@@ -763,6 +861,9 @@ uninstall_components() {
 }
 
 # provision the config.yaml and bootstrap-config.yaml for cluster node, passing $1 as k3s needs initializing
+# Return values:
+#   0 - Success: configuration completed successfully
+#   1 - enc_status_file file disappeared during bootstrap wait
 provision_cluster_config_file() {
 # prepare the config.yaml and bootstrap-config.yaml on node
 bootstrapContent=$(cat <<- EOF
@@ -823,17 +924,31 @@ EOF
           if curl --insecure --max-time 2 "https://$join_serverIP:6443" >/dev/null 2>&1; then
             #logmsg "curl to Endpoint https://$join_serverIP:6443 ready, check cluster status"
             # if we are here, check the bootstrap server is single or cluster mode
+            # cluster status is reported via http://<join_serverIP>:8080/status API and the result if successful is
+            # cluster:<cluster-uuid>, we need to verify the cluster-uuid matches our cluster_uuid in case we are joining
+            # a wrong cluster in duplicate cluster IP address
             if ! status=$(curl --max-time 2 -s "http://$join_serverIP:$clusterStatusPort/status"); then
                 if [ $((counter % 30)) -eq 1 ]; then
                         logmsg "Attempt $counter: Failed to connect to the server. Waiting for 10 seconds..."
                 fi
-            elif [ "$status" = "cluster" ]; then
-                logmsg "Server is in 'cluster' status. done"
-                rm "$CLUSTER_WAIT_FILE"
-                break
+            elif echo "$status" | grep -q "^cluster:"; then
+                # Extract the reported cluster UUID from the status
+                reported_uuid=$(echo "$status" | cut -d':' -f2)
+
+                # Validate the cluster UUID matches
+                if [ "$reported_uuid" = "$cluster_uuid" ]; then
+                    logmsg "Server is in 'cluster' status with matching UUID: $cluster_uuid. Done"
+                    rm "$CLUSTER_WAIT_FILE"
+                    break
+                else
+                    if [ $((counter % 30)) -eq 1 ]; then
+                        logmsg "WARNING: Cluster UUID mismatch, may have duplicate Cluster IP address! Our UUID: $cluster_uuid, Reported UUID: $reported_uuid"
+                        logmsg "Attempt $counter: Cluster UUID does not match. Waiting for 10 seconds..."
+                    fi
+                fi
             else
                 if [ $((counter % 30)) -eq 1 ]; then
-                        logmsg "Attempt $counter: Server is not in 'cluster' status. Waiting for 10 seconds..."
+                        logmsg "Attempt $counter: Server is not in 'cluster' status (got: $status). Waiting for 10 seconds..."
                 fi
             fi
           else
@@ -849,12 +964,18 @@ EOF
                         logmsg "Attempt $counter: curl to Endpoint https://$join_serverIP:6443 failed (ping $join_serverIP: $ping_result, success=$ping_success_count, fail=$ping_fail_count). Waiting for 10 seconds..."
                 fi
           fi
+          if [ ! -f "$enc_status_file" ]; then
+                logmsg "EdgeNodeClusterStatus file disappeared, exit the loop query bootstrap status"
+                rm "$CLUSTER_WAIT_FILE"
+                return 1
+          fi
           sleep 10
         done
       else
         logmsg "restart case with k3s already installed, no need to wait"
       fi
     fi
+    return 0
 }
 
 DATESTR=$(date)

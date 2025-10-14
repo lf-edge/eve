@@ -271,6 +271,10 @@ func (z *zedkube) stopClusterStatusServer() {
 	log.Noticef("Cluster status server goroutine has stopped")
 }
 
+// clusterStatusHTTPHandler handles HTTP requests for the cluster status
+// If the node is a master and etcd node, it returns the cluster status in the format:
+// cluster:<cluster-uuid>
+// Otherwise, it returns an empty response.
 func (z *zedkube) clusterStatusHTTPHandler(w http.ResponseWriter, r *http.Request) {
 	// Check if the request method is GET
 	if r.Method != http.MethodGet {
@@ -304,7 +308,9 @@ func (z *zedkube) clusterStatusHTTPHandler(w http.ResponseWriter, r *http.Reques
 	}
 
 	if isMaster && useEtcd {
-		fmt.Fprint(w, "cluster")
+		// Return cluster status with cluster UUID: cluster:<cluster-uuid>
+		clusterUUID := z.clusterConfig.ClusterID.UUID.String()
+		fmt.Fprintf(w, "cluster:%s", clusterUUID)
 		return
 	}
 	log.Functionf("clusterStatusHTTPHandler: not master or etcd")
