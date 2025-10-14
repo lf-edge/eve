@@ -122,7 +122,7 @@ int dataset_clone(dataset_list_ptr dataset, const char *target, nvlist_ptr props
 int dataset_snapshot(const char *path, boolean_t recur, nvlist_ptr props);
 int dataset_rollback(dataset_list_ptr dataset, dataset_list_ptr snapshot, boolean_t force);
 int dataset_promote(dataset_list_ptr dataset);
-int dataset_rename(dataset_list_ptr dataset, const char* new_name, boolean_t recur, boolean_t nounmount, boolean_t force_unm);
+int dataset_rename(dataset_list_ptr dataset, const char* new_name, boolean_t recur, boolean_t force_unm);
 const char* dataset_is_mounted(dataset_list_ptr dataset);
 int dataset_mount(dataset_list_ptr dataset, const char *options, int flags);
 int dataset_unmount(dataset_list_ptr dataset, int flags);
