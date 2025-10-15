@@ -2,5 +2,5 @@ KERNEL_COMMIT_amd64_next_generic = 693a035c10a7
 KERNEL_COMMIT_amd64_v6.12.49_generic = 770b90183ee7
 KERNEL_COMMIT_arm64_v5.10.192_nvidia-jp5 = b4464b03583e
 KERNEL_COMMIT_arm64_v5.15.136_nvidia-jp6 = 2154a157c3f4
-KERNEL_COMMIT_arm64_v6.1.155_generic = 33b7efaa0702
+KERNEL_COMMIT_arm64_v6.1.155_generic = ece043d8b403
 KERNEL_COMMIT_riscv64_v6.1.112_generic = 18e1d313b90b
