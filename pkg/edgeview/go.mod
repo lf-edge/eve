@@ -1,6 +1,6 @@
 module github.com/lf-edge/eve/pkg/edgeview
 
-go 1.23.0
+go 1.23.1
 
 toolchain go1.24.5
 
@@ -10,8 +10,8 @@ require (
 	github.com/gorilla/websocket v1.5.0
 	github.com/grandcat/zeroconf v1.0.0
 	github.com/lf-edge/eve-api/go v0.0.0-20250922144401-abfd2fa2b728
-	github.com/lf-edge/eve/pkg/pillar v0.0.0-20251004201737-038d6ccc3d00
-	github.com/onsi/gomega v1.29.0
+	github.com/lf-edge/eve/pkg/pillar v0.0.0-20251013110648-3bcdb1d76bb4
+	github.com/onsi/gomega v1.36.0
 	github.com/satori/go.uuid v1.2.1-0.20180404165556-75cca531ea76
 	github.com/shirou/gopsutil v3.21.11+incompatible
 	github.com/sirupsen/logrus v1.9.3
@@ -26,6 +26,7 @@ require (
 	github.com/cenkalti/backoff v2.2.1+incompatible // indirect
 	github.com/eriknordmark/ipinfo v0.0.0-20230728132417-2d8f4da903d7 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.2 // indirect
+	github.com/getlantern/framed v0.0.0-20190601192238-ceb6431eeede // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-ole/go-ole v1.2.6 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect
@@ -36,12 +37,15 @@ require (
 	github.com/google/go-containerregistry v0.14.0 // indirect
 	github.com/google/go-tpm v0.9.1 // indirect
 	github.com/google/gofuzz v1.2.0 // indirect
+	github.com/google/uuid v1.6.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/leodido/go-urn v1.2.4 // indirect
 	github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20240315102754-0f6d1f182e0d // indirect
 	github.com/miekg/dns v1.1.43 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
+	github.com/nkval/go-nkv v0.0.0-20250912100718-c87c5e65193e // indirect
+	github.com/oxtoacart/bpool v0.0.0-20190530202638-03653db5a59c // indirect
 	github.com/tklauser/go-sysconf v0.3.12 // indirect
 	github.com/tklauser/numcpus v0.6.1 // indirect
 	github.com/vishvananda/netns v0.0.5 // indirect
@@ -59,3 +63,5 @@ require (
 	sigs.k8s.io/json v0.0.0-20221116044647-bc3834ca7abd // indirect
 	sigs.k8s.io/structured-merge-diff/v4 v4.4.1 // indirect
 )
+
+replace github.com/lf-edge/eve/pkg/pillar => github.com/uncleDecart/eve/pkg/pillar v0.0.0-20251013133229-1c1a9d34fd38

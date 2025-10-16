@@ -1,8 +1,8 @@
 module github.com/lf-edge/eve/pkg/pillar
 
-go 1.23.0
+go 1.23.1
 
-toolchain go1.24.1
+toolchain go1.24.2
 
 require (
 	github.com/anatol/smart.go v0.0.0-20241126061019-f03d79b340d2
@@ -41,10 +41,12 @@ require (
 	github.com/miekg/dns v1.1.43
 	github.com/moby/sys/mountinfo v0.7.1
 	github.com/multiplay/go-edac v1.0.1
-	github.com/onsi/gomega v1.29.0
+	github.com/nkval/go-nkv v0.0.0-20250912100718-c87c5e65193e
+	github.com/onsi/gomega v1.36.0
 	github.com/opencontainers/go-digest v1.0.0
 	github.com/opencontainers/image-spec v1.1.1
-	github.com/opencontainers/runtime-spec v1.1.0
+	github.com/opencontainers/runtime-spec v1.2.0
+	github.com/ory/dockertest/v3 v3.12.0
 	github.com/packetcap/go-pcap v0.0.0-20230717110547-c34843f9206d
 	github.com/prometheus/procfs v0.12.0
 	github.com/satori/go.uuid v1.2.1-0.20180404165556-75cca531ea76
@@ -89,7 +91,7 @@ require (
 	github.com/bugsnag/panicwrap v1.2.0 // indirect
 	github.com/cenkalti/backoff v2.2.1+incompatible // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
-	github.com/containerd/continuity v0.4.4 // indirect
+	github.com/containerd/continuity v0.4.5 // indirect
 	github.com/containerd/fifo v1.1.0 // indirect
 	github.com/containerd/log v0.1.0 // indirect
 	github.com/containerd/stargz-snapshotter/estargz v0.14.3 // indirect
@@ -99,7 +101,7 @@ require (
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/digitalocean/go-libvirt v0.0.0-20221020193630-0d0212f5ead2 // indirect
 	github.com/distribution/reference v0.6.0 // indirect
-	github.com/docker/cli v25.0.3+incompatible // indirect
+	github.com/docker/cli v27.4.1+incompatible // indirect
 	github.com/docker/distribution v2.8.3+incompatible // indirect
 	github.com/docker/docker-credential-helpers v0.8.1 // indirect
 	github.com/docker/go-connections v0.5.0 // indirect
@@ -197,6 +199,7 @@ require (
 	cloud.google.com/go/auth v0.16.5 // indirect
 	cloud.google.com/go/auth/oauth2adapt v0.2.8 // indirect
 	cloud.google.com/go/monitoring v1.24.2 // indirect
+	dario.cat/mergo v1.0.1 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.17.0 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/internal v1.10.0 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/storage/azblob v1.6.0 // indirect
@@ -204,6 +207,7 @@ require (
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/metric v0.53.0 // indirect
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/internal/resourcemapping v0.53.0 // indirect
 	github.com/MakeNowJust/heredoc v1.0.0 // indirect
+	github.com/Nvveen/Gotty v0.0.0-20120604004816-cd527374f1e5 // indirect
 	github.com/aws/aws-sdk-go-v2 v1.36.3 // indirect
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.6.10 // indirect
 	github.com/aws/aws-sdk-go-v2/config v1.29.14 // indirect
@@ -224,6 +228,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sts v1.33.19 // indirect
 	github.com/aws/smithy-go v1.22.2 // indirect
 	github.com/bicomsystems/go-libzfs v0.4.0 // indirect
+	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/chai2010/gettext-go v1.0.2 // indirect
 	github.com/cncf/xds/go v0.0.0-20250501225837-2ac532fd4443 // indirect
 	github.com/containerd/errdefs v1.0.0 // indirect
@@ -238,6 +243,7 @@ require (
 	github.com/go-kit/kit v0.13.0 // indirect
 	github.com/go-kit/log v0.2.1 // indirect
 	github.com/go-logfmt/logfmt v0.6.0 // indirect
+	github.com/go-viper/mapstructure/v2 v2.1.0 // indirect
 	github.com/gofrs/uuid v4.4.0+incompatible // indirect
 	github.com/golang/glog v1.2.5 // indirect
 	github.com/golang/mock v1.6.0 // indirect
@@ -256,6 +262,7 @@ require (
 	github.com/moby/sys/atomicwriter v0.1.0 // indirect
 	github.com/moby/sys/userns v0.1.0 // indirect
 	github.com/monochromegane/go-gitignore v0.0.0-20200626010858-205db1a8cc00 // indirect
+	github.com/opencontainers/runc v1.2.3 // indirect
 	github.com/opencontainers/runtime-tools v0.9.1-0.20221107090550-2e043c6bd626 // indirect
 	github.com/openshift/api v0.0.0-20230503133300-8bbcb7ca7183 // indirect
 	github.com/openshift/client-go v0.0.0-20210112165513-ebc401615f47 // indirect

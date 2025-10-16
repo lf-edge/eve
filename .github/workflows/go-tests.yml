@@ -29,6 +29,11 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha }}
+      - name: Check Docker environment
+        run: |
+          docker --version
+          ls -l /var/run/docker.sock || echo "Docker socket is missing"
+          docker info || echo "Docker not running"
       - name: Test
         run: |
           make test

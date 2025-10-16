@@ -46,7 +46,7 @@ type DomainConfig struct {
 	IsDNidNode bool
 
 	// XXX: to be deprecated, use CipherBlockStatus instead
-	CloudInitUserData *string `json:"pubsub-large-CloudInitUserData"` // base64-encoded
+	CloudInitUserData *string // base64-encoded
 
 	// CipherBlockStatus, for encrypted cloud-init data
 	CipherBlockStatus

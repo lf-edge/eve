@@ -46,6 +46,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/objtonum"
 	"github.com/lf-edge/eve/pkg/pillar/portprober"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
+	"github.com/lf-edge/eve/pkg/pillar/pubsub/nkvdriver"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
 	"github.com/lf-edge/eve/pkg/pillar/utils/wait"
@@ -164,12 +165,20 @@ func (z *zedrouter) AddAgentSpecificCLIFlags(flagSet *flag.FlagSet) {
 }
 
 func Run(ps *pubsub.PubSub, logger *logrus.Logger, log *base.LogObject, args []string, baseDir string) int {
+	// msrv in intself is a service, which requires its own
+	// pubsub driver, because you can't reuse nkvClient for
+	// two different clients
+	msrvServiceName := "msrv"
+	msrvPs := pubsub.New(
+		nkvdriver.NewNkvDriver("", msrvServiceName),
+		logger, log)
+
 	zedrouter := zedrouter{
 		pubSub: ps,
 		logger: logger,
 		log:    log,
 		metadataServer: msrv.Msrv{
-			PubSub: ps,
+			PubSub: msrvPs,
 			Logger: logger,
 			Log:    log,
 		},
@@ -191,7 +200,7 @@ func Run(ps *pubsub.PubSub, logger *logrus.Logger, log *base.LogObject, args []s
 	// Alternatively, we can create separate Metadata server and wrap it in a network
 	// namespace for metadata service so that we won't run into any collisions,
 	// but we will have to bridge LocalNIs to network namespace of metadata server
-	agentbase.Init(&zedrouter.metadataServer, logger, log, "msrv")
+	agentbase.Init(&zedrouter.metadataServer, logger, log, msrvServiceName)
 
 	if err := zedrouter.metadataServer.Init(types.PersistCachePatchEnvelopesUsage, false); err != nil {
 		log.Fatal(err)

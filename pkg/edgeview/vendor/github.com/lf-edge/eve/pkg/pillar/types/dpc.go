@@ -948,7 +948,7 @@ type ProxyConfig struct {
 	NetworkProxyURL    string // Complete URL i.e., with /wpad.dat
 	WpadURL            string // The URL determined from DNS
 	// List of certs which will be added to TLS trust
-	ProxyCertPEM [][]byte `json:"pubsub-large-ProxyCertPEM"` //nolint:tagliatelle
+	ProxyCertPEM [][]byte //nolint:tagliatelle
 }
 
 // WifiKeySchemeType - types of key management

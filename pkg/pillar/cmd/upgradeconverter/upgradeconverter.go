@@ -52,6 +52,10 @@ var preVaultconversionHandlers = []ConversionHandler{
 		description: "Move /status/zedrouter/AppInstMetaData to /status/msrv/AppInstMetaData",
 		handlerFunc: movePersistPubsub,
 	},
+	{
+		description: "Move /status/<agent> to /nkv-storage/digest/<agent>",
+		handlerFunc: movePersistPubsubToNkv,
+	},
 }
 
 // postVaultconversionHandlers run after vault is setup

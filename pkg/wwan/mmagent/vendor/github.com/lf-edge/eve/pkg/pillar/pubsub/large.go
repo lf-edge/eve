@@ -24,7 +24,7 @@ const (
 )
 
 // The generic type for a json decode
-type jsonTree map[string]interface{}
+type jsonTree map[string]any
 
 // removeLarge removes all json with the tagLarge prefix
 func removeLarge(log *base.LogObject, b []byte, rootDir string) ([]byte, error) {
@@ -67,8 +67,8 @@ func writeRemoveTree(log *base.LogObject,
 	tree jsonTree, dirname string, rootDir string) (jsonTree, error) {
 
 	// function to recursively descend into a subtree
-	descend := func(k string, v interface{}) (interface{}, error) {
-		subtree, ok := v.(map[string]interface{})
+	descend := func(k string, v any) (any, error) {
+		subtree, ok := v.(map[string]any)
 		if !ok {
 			return v, nil
 		}
@@ -79,9 +79,9 @@ func writeRemoveTree(log *base.LogObject,
 	out := make(jsonTree)
 	for k, v := range tree {
 		if !strings.HasPrefix(k, tagLarge) {
-			list, ok := v.([]interface{})
+			list, ok := v.([]any)
 			if ok {
-				var subtrees []interface{}
+				var subtrees []any
 				// descend into each entry of a list
 				for _, entry := range list {
 					subtree, err := descend(k, entry)
@@ -209,8 +209,8 @@ func readAddLarge(log *base.LogObject, b []byte) ([]byte, error) {
 
 func readAddTree(log *base.LogObject, tree jsonTree) (jsonTree, error) {
 	// function to recursively descend into a subtree
-	descend := func(k string, v interface{}) (interface{}, error) {
-		subtree, ok := v.(map[string]interface{})
+	descend := func(k string, v any) (any, error) {
+		subtree, ok := v.(map[string]any)
 		if !ok {
 			return v, nil
 		}
@@ -221,9 +221,9 @@ func readAddTree(log *base.LogObject, tree jsonTree) (jsonTree, error) {
 	out := make(jsonTree)
 	for k, v := range tree {
 		if !strings.HasPrefix(k, tagFile) {
-			list, ok := v.([]interface{})
+			list, ok := v.([]any)
 			if ok {
-				var subtrees []interface{}
+				var subtrees []any
 				// descend into each entry of a list
 				for _, entry := range list {
 					subtree, err := descend(k, entry)

@@ -26,8 +26,7 @@ func handleVolumeCreate(ctxArg interface{}, key string,
 		log.Errorf("cannot disallow vault cleanup: %s", err)
 	}
 	//defer creation to restart handler
-	ctx.volumeConfigCreateDeferredMap[key] = &config
-	log.Functionf("handleVolumeCreate(%s) Done", key)
+	ctx.volumeConfigDeferredMapProcessor.Add(key, &config)
 }
 
 func handleVolumeModify(ctxArg interface{}, key string,
@@ -37,9 +36,9 @@ func handleVolumeModify(ctxArg interface{}, key string,
 	config := configArg.(types.VolumeConfig)
 	ctx := ctxArg.(*volumemgrContext)
 
-	if _, deferred := ctx.volumeConfigCreateDeferredMap[key]; deferred {
+	if ctx.volumeConfigDeferredMapProcessor.Contains(key) {
 		//update deferred creation if exists
-		ctx.volumeConfigCreateDeferredMap[key] = &config
+		ctx.volumeConfigDeferredMapProcessor.Add(key, &config)
 	} else {
 		status := ctx.LookupVolumeStatus(config.Key())
 		if status == nil {
@@ -80,9 +79,9 @@ func handleVolumeDelete(ctxArg interface{}, key string,
 	config := configArg.(types.VolumeConfig)
 	ctx := ctxArg.(*volumemgrContext)
 
-	if _, deferred := ctx.volumeConfigCreateDeferredMap[key]; deferred {
+	if ctx.volumeConfigDeferredMapProcessor.Contains(key) {
 		//remove deferred creation if exists
-		delete(ctx.volumeConfigCreateDeferredMap, key)
+		ctx.volumeConfigDeferredMapProcessor.Delete(key)
 	} else {
 		status := ctx.LookupVolumeStatus(config.Key())
 		if status == nil {
@@ -190,17 +189,6 @@ func handleDeferredVolumeCreate(ctx *volumemgrContext, key string, config *types
 		log.Errorf("handleDeferredVolumeCreate(%s): exception while publishing diskmetric. %s", key, err.Error())
 	}
 	log.Tracef("handleDeferredVolumeCreate(%s) done", key)
-}
-
-func handleVolumeRestart(ctxArg interface{}, restartCount int) {
-
-	log.Tracef("handleVolumeRestart: %d", restartCount)
-	ctx := ctxArg.(*volumemgrContext)
-	for key, config := range ctx.volumeConfigCreateDeferredMap {
-		handleDeferredVolumeCreate(ctx, key, config)
-		delete(ctx.volumeConfigCreateDeferredMap, key)
-	}
-	log.Tracef("handleVolumeRestart done: %d", restartCount)
 }
 
 func publishVolumeStatus(ctx *volumemgrContext,

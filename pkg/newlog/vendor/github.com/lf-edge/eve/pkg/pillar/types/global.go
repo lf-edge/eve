@@ -385,9 +385,9 @@ const (
 	// address, and MAC address change on EVE node upgrade (switch from old
 	// generation logic to new one) can cause problems with the guest network.
 	NetworkLocalLegacyMACAddress GlobalSettingKey = "network.local.legacy.mac.address"
-	// KubevirtDrainTimeout : how long in hours is allowed for a node drain before a failure is returned
-	KubevirtDrainTimeout GlobalSettingKey = "kubevirt.drain.timeout"
-	// KubevirtDrainSkipK8sApiTimeout : specifies the time duration in seconds which the drain request handler
+	// KubernetesDrainTimeout : how long in hours is allowed for a node drain before a failure is returned
+	KubernetesDrainTimeout GlobalSettingKey = "kubernetes.drain.timeout"
+	// DrainSkipK8sApiTimeout : specifies the time duration in seconds which the drain request handler
 	// will continue retrying the k8s api before declaring the node is unavailable and continuing
 	// device operations (reboot/shutdown/upgrade)
 	// This covers the following k8s.io/apimachinery/pkg/api/errors
@@ -396,7 +396,7 @@ const (
 	// IsServiceUnavailable
 	// IsTimeout
 	// IsTooManyRequests
-	KubevirtDrainSkipK8sAPINotReachableTimeout GlobalSettingKey = "kubevirt.drain.skip.k8sapinotreachable.timeout"
+	DrainSkipK8sAPINotReachableTimeout GlobalSettingKey = "drain.skip.k8sapinotreachable.timeout"
 
 	// MemoryMonitorEnabled : Enable memory monitor
 	MemoryMonitorEnabled GlobalSettingKey = "memory-monitor.enabled"
@@ -1050,9 +1050,9 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddIntItem(GoroutineLeakDetectionKeepStatsHours, 24, 1, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(GoroutineLeakDetectionCooldownMinutes, 5, 1, 0xFFFFFFFF)
 
-	// Kubevirt Drain Section
-	configItemSpecMap.AddIntItem(KubevirtDrainTimeout, DefaultDrainTimeoutHours, 1, 0xFFFFFFFF)
-	configItemSpecMap.AddIntItem(KubevirtDrainSkipK8sAPINotReachableTimeout, DefaultDrainSkipK8sAPINotReachableTimeoutSeconds, 1, 0xFFFFFFFF)
+	// Kubernetes Drain Section
+	configItemSpecMap.AddIntItem(KubernetesDrainTimeout, DefaultDrainTimeoutHours, 1, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(DrainSkipK8sAPINotReachableTimeout, DefaultDrainSkipK8sAPINotReachableTimeoutSeconds, 1, 0xFFFFFFFF)
 
 	// Add Bool Items
 	configItemSpecMap.AddBoolItem(UsbAccess, true) // Controller likely default to false
