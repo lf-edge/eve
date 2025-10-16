@@ -178,7 +178,7 @@ add_description() {
         desc=$(lspci -Ds "${DEVICE_TYPE}")
         desc="${desc#*: }"
             cat <<__EOT__
-      "description": ${desc},
+      "description": "${desc}",
 __EOT__
     fi
 }
