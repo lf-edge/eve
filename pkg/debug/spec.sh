@@ -137,6 +137,15 @@ pci_to_ztype() {
     echo "$ztype"
 }
 
+add_pci_description() {
+    local pci="$1"
+    desc=$(lspci -D -s "$pci" | sed "s/$pci //")
+    cat <<__EOT__
+      ,
+      "description": "${desc}"
+__EOT__
+}
+
 # add_pci_info($pci) adds information in the verbose case
 add_pci_info() {
     local pci="$1"
@@ -144,14 +153,17 @@ add_pci_info() {
     class=$(echo "$info" | cut -f2 -d\ )
     vendor=$(echo "$info" | cut -f3 -d\ )
     device=$(echo "$info" | cut -f4 -d\ )
-    desc=$(lspci -D -s "$pci" | sed "s/$pci //")
     iommu_group=$(pci_iommu_group "$pci")
     cat <<__EOT__
       ,
       "class": ${class},
       "vendor": ${vendor},
-      "device": ${device},
-      "description": "${desc}",
+      "device": ${device}
+__EOT__
+    add_pci_description "${pci}"
+    if [ -n "${iommu_group}" ]; then
+    cat <<__EOT__
+      ,
       "iommu_group": ${iommu_group}
 __EOT__
 }
@@ -167,17 +179,6 @@ fi
 DISK=$(lsblk -b -o NAME,TYPE,TRAN,SIZE | grep disk | grep -v usb | awk '{ total += $NF; } END { print int(total/(1024*1024*1024)); }')
 WDT=$([ -e /dev/watchdog ] && echo true || echo false)
 HSM=$([ -e /dev/tpmrm0 ] && echo 1 || echo 0)
-
-add_description() {
-    DEVICE_TYPE="$1"
-    if [ -n "$verbose" ]; then
-        desc=$(lspci -Ds "${DEVICE_TYPE}")
-        desc="${desc#*: }"
-            cat <<__EOT__
-      "description": "${desc}",
-__EOT__
-    fi
-}
 
 LSPCI_D=$(lspci -D)
 cat <<__EOT__
@@ -214,7 +215,6 @@ for VGA in $(echo "$LSPCI_D" | grep VGA | cut -f1 -d\ ); do
       },
       "logicallabel": "VGA${ID}",
 __EOT__
-    add_description "${VGA}"
     cat <<__EOT__
       "usagePolicy": {}
 __EOT__
@@ -242,7 +242,6 @@ print_usb_controllers() {
       },
       "logicallabel": "USB${ID}",
 __EOT__
-    add_description "${USB}"
     cat <<__EOT__
       "usagePolicy": {}
 __EOT__
@@ -262,7 +261,6 @@ __EOT__
       "assigngrp": "USB",
       "logicallabel": "USB",
 __EOT__
-    add_description "${USB}"
     cat <<__EOT__
       "usagePolicy": {}
     },
@@ -417,7 +415,6 @@ for NVME in $(echo "$LSPCI_D" | grep "Non-Volatile memory" | cut -f1 -d\ ); do
       },
       "logicallabel": "NVME${ID}",
 __EOT__
-    add_description "${NVME}"
     cat <<__EOT__
       "usagePolicy": {}
 __EOT__
@@ -497,31 +494,32 @@ for ETH in /sys/class/net/*; do
       "logicallabel": "${LABEL}",
 __EOT__
     BUS_ID=$(echo "$ETH" | sed -e 's#/net/.*'"${LABEL}"'##' -e 's#^.*/##')
-    if echo "${BUS_ID}" | grep -q "virtio"; then
-        PCI_ADDR=$(echo "$ETH" | sed -e 's#/'"${BUS_ID}"'/.*##' -e 's#^.*/##')
-        add_description "${PCI_ADDR}"
-    else
-        add_description "${BUS_ID}"
-    fi
     cat <<__EOT__
       "usagePolicy": {},
-      "cost": ${COST},
+      "cost": ${COST}
 __EOT__
+     if [ -n "$verbose" ]; then
+         if echo "${BUS_ID}" | grep -q "virtio"; then
+             PCI_ADDR=$(echo "$ETH" | sed -e 's#/'"${BUS_ID}"'/.*##' -e 's#^.*/##')
+             add_pci_description "${PCI_ADDR}"
+         else
+             add_pci_description "${BUS_ID}"
+         fi
+     fi
      # XXX shouldn't we check if on USB and use the group for the USB controller?
      if echo "$BUS_ID" | grep -q '[0-9a-f][0-9a-f][0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f].[0-9a-f]'; then
          grp=$(get_assignmentgroup "$LABEL" "$BUS_ID")
          cat <<__EOT__
+      ,
       "assigngrp": "${grp}",
       "phyaddrs": {
         "Ifname": "${LABEL}",
         "PciLong": "${BUS_ID}"
       }
 __EOT__
-         if [ -n "$verbose" ]; then
-             add_pci_info "${BUS_ID}"
-         fi
      else
 cat <<__EOT__
+      ,
       "phyaddrs": {
         "Ifname": "${LABEL}"
       }
@@ -569,7 +567,6 @@ for audio in $(echo "$LSPCI_D" | grep Audio | cut -f1 -d\ ); do
       },
       "logicallabel": "Audio${ID}",
 __EOT__
-    add_description "${audio}"
     cat <<__EOT__
       "usagePolicy": {}
 __EOT__
@@ -598,7 +595,6 @@ if [ -n "$verbose" ]; then
       },
       "logicallabel": "Other${ID}",
 __EOT__
-    add_description "${pci}"
     cat <<__EOT__
       "usagePolicy": {}
 __EOT__
