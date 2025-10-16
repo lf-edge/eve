@@ -11,7 +11,7 @@
 FROM lfedge/eve-recovertpm:3fead669f0143d8635c26a2975f61ae78eaa1ab8 as recovertpm
 FROM lfedge/eve-bpftrace:1879ada8a1ef7c67f2e8f6f38e3335a0c5a0b497 AS bpftrace
 FROM lfedge/eve-alpine:2ed33236f1eea746532f612d6c4b7779c5da2193 as build
-ENV BUILD_PKGS abuild curl tar make linux-headers patch g++ git gcc gpg ncurses-dev autoconf openssl-dev zlib-dev
+ENV BUILD_PKGS="abuild curl tar make linux-headers patch g++ git gcc gpg ncurses-dev autoconf openssl-dev zlib-dev jq pciutils usbutils lsblk"
 # Feel free to add additional packages here, but be aware that
 # EVE's rootfs image can be no larger than 300Mb (and don't
 # forget to check on all supported architectures: e.g. arm64
@@ -116,6 +116,12 @@ RUN mkdir -p /out/var/empty
 # tweaking various bit
 WORKDIR /out
 COPY debug-services.sh ssh-service.sh edgeview-collectinfo.sh spec.sh scripts/ ./usr/bin/
+
+SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
+# Ensure that the output of spec.sh is valid json
+RUN ./usr/bin/spec.sh -v 2>/dev/null | jq . > /dev/null
+RUN ./usr/bin/spec.sh 2>/dev/null | jq . > /dev/null
+
 RUN mkdir -p ./etc/ssh ./root/.ssh
 RUN chmod 0700 ./root/.ssh
 RUN cp /etc/passwd /etc/group ./etc/
