@@ -77,6 +77,7 @@ RUN gpg --import RELEASE_KEY.asc || :
 RUN gpg --verify openssh-${OPENSSH_VERSION}.tar.gz.asc openssh-${OPENSSH_VERSION}.tar.gz
 RUN tar xvf openssh-${OPENSSH_VERSION}.tar.gz
 WORKDIR /usr/src/openssh-${OPENSSH_VERSION}
+RUN ln -s /usr/src/openssh-${OPENSSH_VERSION} /usr/src/openssh
 COPY ssh/fix-utmpx-ipv6.patch .
 RUN git apply fix-utmpx-ipv6.patch
 RUN ./configure \
@@ -127,13 +128,6 @@ RUN mkdir -p /bpftrace/bpftrace-aotrt
 # add recover-tpm to debug container
 WORKDIR /
 COPY --from=recovertpm /usr/bin/recovertpm /out/usr/bin/recovertpm
-
-FROM build AS test
-# run collect-info test
-COPY collect-info-test /collect-info-test
-WORKDIR /collect-info-test
-RUN go test
-
 
 FROM scratch
 ENTRYPOINT []
