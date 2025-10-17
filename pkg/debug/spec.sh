@@ -46,13 +46,13 @@ else
    ARCH=4
 fi
 
-# pci_iommu_group returns the iommu_group, or "" if there is none
+# pci_iommu_group returns the iommu_group, or empty string if there is none
 # $1 is the PciLong value
 # If running on Xen we can't tell the safe groups
 pci_iommu_group() {
     local pcilong=$1
     if [ -e /dev/xen ]; then
-        echo "warning:no_group_determined_using_xen"
+        echo "warning:no_group_determined_using_xen" > /dev/stderr
     else
         readlink "/sys/bus/pci/devices/$pcilong/iommu_group" 2>/dev/null | sed 's,.*kernel/iommu_groups/,,'
     fi
@@ -166,6 +166,7 @@ __EOT__
       ,
       "iommu_group": ${iommu_group}
 __EOT__
+    fi
 }
 
 if [ -e /dev/xen ]; then
