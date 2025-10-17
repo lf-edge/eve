@@ -9,6 +9,7 @@ import (
 	"compress/gzip"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -20,7 +21,7 @@ import (
 	"testing"
 )
 
-func listenHTTP() (*http.Request, io.Reader, error) {
+func listenHTTP(method string) (*http.Request, io.Reader, error) {
 	var serverShutdown sync.Mutex
 	var s *http.Server
 	sm := http.NewServeMux()
@@ -31,6 +32,20 @@ func listenHTTP() (*http.Request, io.Reader, error) {
 	var shutdownErr error
 
 	sm.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			if r.Body != nil {
+				bodyCloseErr = r.Body.Close()
+			}
+			go func() {
+				shutdownErr = s.Shutdown(context.Background())
+				serverShutdown.Unlock()
+			}()
+		}()
+
+		if r.Method != method {
+			http.Error(w, fmt.Sprintf("wrong method, allowed: %s, got %s", method, r.Method), http.StatusMethodNotAllowed)
+			return
+		}
 		req = r
 
 		if req.Body != nil {
@@ -39,13 +54,6 @@ func listenHTTP() (*http.Request, io.Reader, error) {
 
 		http.Error(w, "Bye", http.StatusOK)
 
-		defer func() {
-			bodyCloseErr = r.Body.Close()
-			go func() {
-				shutdownErr = s.Shutdown(context.Background())
-				serverShutdown.Unlock()
-			}()
-		}()
 	})
 
 	s = &http.Server{
@@ -82,28 +90,7 @@ func cleanup(t *testing.T) {
 	}
 }
 
-func runCollectInfo(t *testing.T, uploadServer string, cmdEnv []string, httpListener func() (*http.Request, io.Reader, error)) (*http.Request, io.Reader) {
-	var cmd *exec.Cmd
-	reqChan := make(chan *http.Request)
-	bodyChan := make(chan io.Reader)
-
-	go func() {
-		req, body, err := httpListener()
-		if err != nil {
-			t.Logf("error from http server: %+v", err)
-		}
-		reqChan <- req
-		bodyChan <- body
-
-		if cmd == nil {
-			return
-		}
-		err = cmd.Process.Kill()
-		if err != nil {
-			t.Logf("could not kill process: %+v", err)
-		}
-	}()
-
+func preparePersist(t *testing.T) {
 	for _, dir := range []string{"/proc/self", "/persist/status", "/persist/tmp", "/run"} {
 		err := os.MkdirAll(filepath.Join("/out", dir), 0700)
 		if err != nil {
@@ -134,6 +121,31 @@ func runCollectInfo(t *testing.T, uploadServer string, cmdEnv []string, httpList
 			t.Fatal(err)
 		}
 	}
+}
+
+func runCollectInfo(t *testing.T, uploadServer string, cmdEnv []string, httpListener func() (*http.Request, io.Reader, error)) (*http.Request, io.Reader) {
+	var cmd *exec.Cmd
+	reqChan := make(chan *http.Request)
+	bodyChan := make(chan io.Reader)
+
+	preparePersist(t)
+
+	go func() {
+		req, body, err := httpListener()
+		if err != nil {
+			t.Logf("error from http server: %+v", err)
+		}
+		reqChan <- req
+		bodyChan <- body
+
+		if cmd == nil {
+			return
+		}
+		err = cmd.Process.Kill()
+		if err != nil {
+			t.Logf("could not kill process: %+v", err)
+		}
+	}()
 
 	cmd = exec.Command("/usr/bin/collect-info.sh", "-u", uploadServer)
 	cmd.Env = cmdEnv
@@ -153,6 +165,30 @@ func runCollectInfo(t *testing.T, uploadServer string, cmdEnv []string, httpList
 	return req, body
 }
 
+// TestCollectInfoUploadPUTFailover creates an http server and calls collect-info.sh to upload the tarball to it
+// it only accepts http PUT
+func TestCollectInfoUploadPUTFailover(t *testing.T) {
+	defer cleanup(t)
+
+	uploadServer := "http://localhost:8080"
+	cmdEnv := []string{"AUTHORIZATION=Bearer Vm0weGQxSXhiRmRXV0d4V1YwZDRWRmxyVm5kVmJGcHlWV3RLVUZWVU1Eaz0="}
+
+	req, _ := runCollectInfo(t, uploadServer, cmdEnv, func() (*http.Request, io.Reader, error) {
+		var req *http.Request
+		var err error
+		var body io.Reader
+		for req == nil {
+			req, body, err = listenHTTP("PUT")
+			t.Logf("req: %+v, err: %+v", req, err)
+		}
+		return req, body, err
+	})
+
+	if req.Method != "PUT" {
+		t.Fatalf("expected http method PUT, but got %s", req.Method)
+	}
+}
+
 // TestCollectInfoUpload creates an http server and calls collect-info.sh to upload the tarball to it
 func TestCollectInfoUpload(t *testing.T) {
 	defer cleanup(t)
@@ -162,7 +198,9 @@ func TestCollectInfoUpload(t *testing.T) {
 	uploadServer := "http://localhost:8080"
 	cmdEnv := []string{"AUTHORIZATION=Bearer Vm0weGQxSXhiRmRXV0d4V1YwZDRWRmxyVm5kVmJGcHlWV3RLVUZWVU1Eaz0="}
 
-	req, body := runCollectInfo(t, uploadServer, cmdEnv, listenHTTP)
+	req, body := runCollectInfo(t, uploadServer, cmdEnv, func() (*http.Request, io.Reader, error) {
+		return listenHTTP("POST")
+	})
 	t.Logf("req: %+v", req)
 
 	if req.Header["Authorization"][0] != "Bearer Vm0weGQxSXhiRmRXV0d4V1YwZDRWRmxyVm5kVmJGcHlWV3RLVUZWVU1Eaz0=" {
