@@ -170,7 +170,7 @@ collect_black_box() {
    /tpmmgr saveTpmInfo "$1"/tpminfo.txt
 }
 
-# prepare_mounts_and_zfs_pool POOL_CREATION_COMMAND_SUFFIX_SUFFIX INSTALL_CLUSTERED_STORAGE
+# prepare_mounts_and_zfs_pool POOL_CREATION_COMMAND_SUFFIX INSTALL_CLUSTERED_STORAGE
 prepare_mounts_and_zfs_pool() {
   logmsg "Preparing ZFS pool and mounts"
   [ -e /root/sys ] || mkdir /root/sys && mount -t sysfs sysfs /root/sys
