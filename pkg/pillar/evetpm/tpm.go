@@ -114,7 +114,9 @@ var (
 	pcrBank256Status = PCRBank256StatusUnknown
 
 	//DiskKeySealingPCRs represents PCRs that we use for sealing
-	DiskKeySealingPCRs = tpm2.PCRSelection{Hash: tpm2.AlgSHA256, PCRs: []int{0, 1, 2, 3, 4, 6, 7, 8, 9, 13, 14}}
+	// WARNING: This version excludes PCR 1 which is included in all other EVE versions.
+	// Check out docs/PCR1.md for possible security implications.
+	DiskKeySealingPCRs = tpm2.PCRSelection{Hash: tpm2.AlgSHA256, PCRs: []int{0, 2, 3, 4, 6, 7, 8, 9, 13, 14}}
 )
 
 // SealedKeyType holds different types of sealed key
@@ -568,6 +570,9 @@ func FetchSealedVaultKey(log *base.LogObject) ([]byte, error) {
 
 // SealDiskKey seals key into TPM2.0, with provided PCRs
 func SealDiskKey(log *base.LogObject, key []byte, pcrSel tpm2.PCRSelection) error {
+	// Warn about excluding PCR 1
+	log.Warnf("sealing disk key with PCRs excluding PCR 1")
+
 	rw, err := tpm2.OpenTPM(TpmDevicePath)
 	if err != nil {
 		return err
