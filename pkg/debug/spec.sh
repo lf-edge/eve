@@ -211,6 +211,7 @@ ID=""
 for VGA in $(echo "$LSPCI_D" | grep VGA | cut -f1 -d\ ); do
     grp=$(get_assignmentgroup "VGA${ID}" "$VGA")
     cat <<__EOT__
+    ${COMMA}
     {
       "ztype": 7,
       "phylabel": "VGA${ID}",
@@ -227,9 +228,9 @@ __EOT__
         add_pci_info "${VGA}"
     fi
     cat <<__EOT__
-    },
 __EOT__
     ID=$(( ${ID:-0} + 1 ))
+    COMMA="},"
 done
 
 #enumerate USB controller
@@ -238,6 +239,7 @@ print_usb_controllers() {
     for USB in $(echo "$LSPCI_D" | grep USB | cut -f1 -d\ ); do
         grp="group$(pci_iommu_group "$USB")"
         cat <<__EOT__
+    ${COMMA}
     {
       "ztype": "IO_TYPE_USB_CONTROLLER",
       "phylabel": "USB${ID}",
@@ -254,12 +256,13 @@ __EOT__
             add_pci_info "${USB}"
         fi
         cat <<__EOT__
-    },
 __EOT__
         ID=$(( ${ID:-0} + 1 ))
+        COMMA="},"
     done
     if [ -z "$ID" ] && [ "$(lsusb -t | wc -l)" -gt 0 ]; then
     cat <<__EOT__
+    ${COMMA}
     {
       "ztype": "IO_TYPE_USB_CONTROLLER",
       "phylabel": "USB",
@@ -268,7 +271,7 @@ __EOT__
 __EOT__
     cat <<__EOT__
       "usagePolicy": {}
-    },
+    COMMA="},"
 __EOT__
     fi
 }
@@ -411,6 +414,7 @@ ID=""
 for NVME in $(echo "$LSPCI_D" | grep "Non-Volatile memory" | cut -f1 -d\ ); do
     grp=$(get_assignmentgroup "NVME${ID}" "$NVME")
     cat <<__EOT__
+    ${COMMA}
     {
       "ztype": 255,
       "phylabel": "NVME${ID}",
@@ -427,9 +431,9 @@ __EOT__
         add_pci_info "${NVME}"
     fi
     cat <<__EOT__
-    },
 __EOT__
     ID=$(( ${ID:-0} + 1 ))
+    COMMA="},"
 done
 
 #enumerate serial ports
@@ -449,6 +453,7 @@ for TTY in /sys/class/tty/*; do
    TTY=$(echo "$TTY" | cut -f5 -d/)
    if [ -n "$IO" ] || [ -n "$IRQ" ]; then
 cat <<__EOT__
+    ${COMMA}
     {
       "ztype": 3,
       "phylabel": "COM${ID}",
@@ -466,9 +471,9 @@ cat <<__EOT__
       },
       "logicallabel": "COM${ID}",
       "usagePolicy": {}
-    },
 __EOT__
      ID=$(( ${ID:-0} + 1 ))
+     COMMA="},"
    fi
 done
 
