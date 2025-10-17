@@ -8,3 +8,11 @@
           ...............   ................
 
               Edge Virtualization Engine
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! WARNING !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+This build excludes PCR 1 from its TPM key sealing policy. If you
+accidentally picked up this build, discontinue use immediately and
+replace it with the correct build to ensure proper security enforcement.
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! WARNING !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
