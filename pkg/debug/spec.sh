@@ -441,6 +441,7 @@ for TTY in /sys/class/tty/*; do
    TTY=$(echo "$TTY" | cut -f5 -d/)
    if [ -n "$IO" ] || [ -n "$IRQ" ]; then
 cat <<__EOT__
+    ${COMMA}
     {
       "ztype": 3,
       "phylabel": "COM${ID}",
@@ -458,9 +459,9 @@ cat <<__EOT__
       },
       "logicallabel": "COM${ID}",
       "usagePolicy": {}
-    },
 __EOT__
      ID=$(( ${ID:-0} + 1 ))
+     COMMA="},"
    fi
 done
 
