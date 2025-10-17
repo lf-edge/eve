@@ -114,7 +114,7 @@ var (
 	pcrBank256Status = PCRBank256StatusUnknown
 
 	//DiskKeySealingPCRs represents PCRs that we use for sealing
-	DiskKeySealingPCRs = tpm2.PCRSelection{Hash: tpm2.AlgSHA256, PCRs: []int{0, 1, 2, 3, 4, 6, 7, 8, 9, 13, 14}}
+	DiskKeySealingPCRs = tpm2.PCRSelection{Hash: tpm2.AlgSHA256, PCRs: []int{0, 2, 3, 4, 6, 7, 8, 9, 13, 14}}
 )
 
 // SealedKeyType holds different types of sealed key
