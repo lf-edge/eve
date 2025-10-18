@@ -160,7 +160,7 @@ func (z *zedkube) checkAppsStatus() {
 		// Both Pods will be of the pattern <appname>-<uuid prefix>-<pod uuid suffix>
 		for _, pod := range pods.Items {
 			contVMIName := "virt-launcher-" + contName
-			log.Noticef("checkAppsStatus: pod %s, looking for cont %s", pod.Name, contName)
+			log.Functionf("checkAppsStatus: pod %s, looking for cont %s", pod.Name, contName)
 			foundVMIPod := strings.HasPrefix(pod.Name, contVMIName)
 			if strings.HasPrefix(pod.Name, contName) || foundVMIPod {
 				// Case 1
