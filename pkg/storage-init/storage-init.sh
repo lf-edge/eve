@@ -70,6 +70,16 @@ SMART_DETAILS_FILE=$PERSISTDIR/SMART_details.json
 SMART_DETAILS_PREVIOUS_FILE=$PERSISTDIR/SMART_details_previous.json
 IS_IN_KDUMP_KERNEL=$(! test -f /proc/vmcore; echo $?)
 
+INSTALL_CLUSTERED_STORAGE=false
+INSTALL_ZFS=false
+eve_flavor=$(cat /hostfs/etc/eve-hv-type)
+
+if [ "$eve_flavor" = "k" ]; then
+   INSTALL_CLUSTERED_STORAGE=true
+   INSTALL_ZFS=true
+   echo "$(date -Ins -u) Kubevirt image - might recreate ZFS /persist"
+fi
+
 # the following is here just for compatibility reasons and it should go away soon
 ln -s "$CONFIGDIR" "/var/$CONFIGDIR"
 ln -s "$PERSISTDIR" "/var/$PERSISTDIR"
@@ -98,6 +108,8 @@ P3_FS_TYPE_DEFAULT=ext4
 # check if we have eve_install_zfs_with_raid_level in kernel command line
 # if so use zfs as default
 if grep -q 'eve_install_zfs_with_raid_level' /proc/cmdline; then
+   P3_FS_TYPE_DEFAULT=zfs
+elif [ "$INSTALL_ZFS" = true ]; then
    P3_FS_TYPE_DEFAULT=zfs
 fi
 
@@ -256,7 +268,10 @@ if P3=$(findfs PARTLABEL=P3) && [ -n "$P3" ]; then
                       chroot /hostfs zfs create -o refreservation="$(chroot /hostfs zfs get -o value -Hp available persist | awk '{ print ($1/1024/1024)/5 }')"m persist/reserved && \
                       chroot /hostfs zfs set mountpoint="$PERSISTDIR" persist                                          && \
                       chroot /hostfs zfs set primarycache=metadata persist                                             && \
-                      chroot /hostfs zfs create -p -o mountpoint="$PERSISTDIR/containerd/io.containerd.snapshotter.v1.zfs" persist/snapshots
+                      if [ "$INSTALL_CLUSTERED_STORAGE" = false ]; then
+                          # Not clustered storage; persist/vault is an ext4 zvol
+                          chroot /hostfs zfs create -p -o mountpoint="$PERSISTDIR/containerd/io.containerd.snapshotter.v1.zfs" persist/snapshots
+                      fi
                    fi
                    ;;
     esac || echo "$(date -Ins -u) mount of $P3 as $P3_FS_TYPE failed"
