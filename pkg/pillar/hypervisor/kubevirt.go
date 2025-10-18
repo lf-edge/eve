@@ -736,7 +736,7 @@ func (ctx kubevirtContext) Delete(domainName string) (result error) {
 		return logError("delete domain %s failed to get vmlist", domainName)
 	}
 
-	onMe, err := ctx.replicaVmiScheduledOnMe(vmis.name)
+	onMe, err := ctx.scheduledOnMe(vmis.mtype, vmis.name)
 	if err != nil {
 		return err
 	}
@@ -813,9 +813,12 @@ func (ctx kubevirtContext) Info(domainName string) (int, types.SwState, error) {
 		return 0, types.HALTED, logError("info domain %s failed to get vmlist", domainName)
 	}
 
-	onMe, err := ctx.replicaVmiScheduledOnMe(vmis.name)
+	onMe, err := ctx.scheduledOnMe(vmis.mtype, vmis.name)
 	if err != nil {
-		return 0, types.BROKEN, logError("Failed to determine scheduled node")
+		if isK3sUnreachable(err) {
+			return 0, types.UNKNOWN, nil
+		}
+		return 0, types.BROKEN, logError("Failed to determine scheduled node: %s", err)
 	}
 	if !onMe {
 		return 0, types.UNKNOWN, nil

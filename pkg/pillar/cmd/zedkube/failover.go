@@ -76,7 +76,7 @@ func (z *zedkube) checkAppsFailover(wdFunc func()) {
 
 		for _, pod := range pods.Items {
 			contVMIName := "virt-launcher-" + contName
-			log.Noticef("checkAppsStatus: pod %s, looking for cont %s", pod.Name, contName)
+			log.Functionf("checkAppsFailover: pod %s, looking for cont %s", pod.Name, contName)
 			foundVMIPod := strings.HasPrefix(pod.Name, contVMIName)
 			if strings.HasPrefix(pod.Name, contName) || foundVMIPod {
 				// Case 1

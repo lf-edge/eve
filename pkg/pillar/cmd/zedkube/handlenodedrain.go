@@ -38,7 +38,6 @@ func getNodeDrainRequester(ctx *zedkube) kubeapi.DrainRequester {
 	if len(items) == 1 {
 		return kubeapi.UPDATE
 	}
-	log.Errorf("getNodeDrainRequester should never get here")
 	return kubeapi.NONE
 }
 
