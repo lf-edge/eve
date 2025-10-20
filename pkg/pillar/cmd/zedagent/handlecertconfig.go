@@ -454,6 +454,10 @@ func edgeNodeCertsTask(ctx *zedagentContext, triggerEdgeNodeCerts chan struct{})
 }
 
 // prepare the edge node certs list proto message
+// Note that this can be rejected by the controller if a cert has changed
+// (which can happen if /persist, hence /persist/certs, have been destroyed
+// and recreated). In that case we set edgeNodeCertsRefused which will make
+// nodeagent put this device in maintenance mode.
 func publishEdgeNodeCertsToController(ctx *zedagentContext) {
 	var attestReq = &attest.ZAttestReq{}
 
