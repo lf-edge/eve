@@ -502,6 +502,17 @@ func handleZedAgentStatusImpl(ctxArg interface{}, key string,
 		handleDeviceCmd(ctxPtr, status, types.DeviceOperationPoweroff)
 	}
 	updateZedagentCloudConnectStatus(ctxPtr, status)
+	if status.EdgeNodeCertsRefused {
+		addMaintenanceModeReason(ctxPtr,
+			types.MaintenanceModeReasonEdgeNodeCertsRefused,
+			"handleZedAgentStatusImpl")
+		publishNodeAgentStatus(ctxPtr)
+	} else {
+		removeMaintenanceModeReason(ctxPtr,
+			types.MaintenanceModeReasonEdgeNodeCertsRefused,
+			"handleZedAgentStatusImpl")
+		publishNodeAgentStatus(ctxPtr)
+	}
 	log.Functionf("handleZedAgentStatusImpl(%s) done", key)
 }
 
