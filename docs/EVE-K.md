@@ -13,7 +13,10 @@ make HV=k ZARCH=amd64 clean pkgs eve
 Installation of `HV=k` eve is installed from an `installer-raw` image in a similar method as
 `HV=kvm` eve is, there are a few details:
 
-- all installs use zfs for the vault
+"eve-k" supports ext4 and zfs vaults.  Default installation uses ext4 on a single disk.
+To use a zfs vault specify the config grub parameter `eve_install_zfs_with_raid_level`
+with the requested raid level or use multiple persist disk with `eve_persist_disk`
+which will use zfs automatically.
 
 ## Upgrades
 
