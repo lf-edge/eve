@@ -26,6 +26,9 @@ TRANSITION_FLAG_FILE="/tmp/cluster_transition_flag"
 RebootReasonFile="/persist/reboot-reason"
 BootReasonFile="/persist/boot-reason"
 BootReasonKubeTransition="BootReasonKubeTransition" # Must match string in types package
+KUBE_ROOT_EXT4="/persist/vault/kube"
+KUBE_ROOT_ZFS="/dev/zvol/persist/etcd-storage"
+KUBE_ROOT_MOUNTPOINT="/var/lib"
 
 # shellcheck source=pkg/kube/pubsub.sh
 . /usr/bin/pubsub.sh
@@ -157,16 +160,25 @@ wait_for_vault() {
         logmsg "Vault ready"
 }
 
-mount_etcd_vol() {
-        # NOTE: We only support zfs storage in production systems because data is persisted on zvol.
-        # This is formatted in vaultmgr
-        logmsg "Wait for persist/etcd-storage zvol"
-        while [ ! -b /dev/zvol/persist/etcd-storage ];
-        do
-                sleep 1
-        done
-        mount /dev/zvol/persist/etcd-storage /var/lib  ## This is where we persist the cluster components (etcd)
-        logmsg "persist/etcd-storage available"
+mount_kube_root() {
+        persistType=$(cat /run/eve.persist_type)
+        if [ "$persistType" = "zfs" ]; then
+                logmsg "Using ZFS persistent storage"
+                # This is formatted in vaultmgr
+                logmsg "Wait for persist/etcd-storage zvol"
+                while [ ! -b $KUBE_ROOT_ZFS ];
+                do
+                        sleep 1
+                done
+                mount "$KUBE_ROOT_ZFS" "$KUBE_ROOT_MOUNTPOINT"  ## This is where we persist the cluster components (etcd)
+                logmsg "persist/etcd-storage available"
+        elif [ "$persistType" = "ext4" ]; then
+                logmsg "Using EXT4 persistent storage"
+                mkdir -p "$KUBE_ROOT_EXT4"
+                mount --bind "$KUBE_ROOT_EXT4" "$KUBE_ROOT_MOUNTPOINT"
+        else
+                logmsg "Unsupported persist type: $persistType"
+        fi
 }
 
 #Prereqs
@@ -177,7 +189,6 @@ setup_prereqs () {
         modprobe iscsi_tcp
         #Needed for iscsi tools
         mkdir -p /run/lock
-        mkdir -p "$K3S_LOG_DIR"
         rm -rf /var/log
         ln -s "$K3S_LOG_DIR" /var/log
         /usr/sbin/iscsid start
@@ -189,7 +200,7 @@ setup_prereqs () {
         wait_for_device_name
         chmod o+rw /dev/null
         wait_for_vault
-        mount_etcd_vol
+        mount_kube_root
 }
 
 config_cluster_roles() {
@@ -399,7 +410,7 @@ are_all_pods_ready() {
                 return 1
         fi
 
-        not_ready=$(echo "$pod_json" | jq '.items[] | select(.status.phase=="Running") | .status.conditions[] | select(.type=="ContainersReady" and .status!="True")' | jq -s length)
+        not_ready=$(echo "$pod_json" | jq '.items[] | select(.status.phase=="Running") | .status.conditions[] | select(.type=="ContainersReady" and .status!="True" and .reason!="PodCompleted")' | jq -s length)
         if [ "$not_ready" -ne 0 ]; then
                 return 1
         fi
@@ -979,11 +990,12 @@ EOF
 }
 
 DATESTR=$(date)
+mkdir -p "$K3S_LOG_DIR"
 echo "========================== $DATESTR ==========================" >> $INSTALL_LOG
-logmsg "Using ZFS persistent storage"
 
 setup_prereqs
 
+wait_for_item "k3s-install"
 Update_CheckNodeComponents
 
 if [ -f /var/lib/convert-to-single-node ]; then
@@ -1005,6 +1017,7 @@ if [ -f /var/lib/convert-to-single-node ]; then
         touch /var/lib/all_components_initialized
 fi
 # since we can wait for long time, always start the containerd first
+wait_for_item "containerd"
 check_start_containerd
 logmsg "containerd started"
 

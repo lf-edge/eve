@@ -391,9 +391,16 @@ RAID_LEVEL="none"
 eve_flavor=$(cat /root/etc/eve-hv-type)
 
 if [ "$eve_flavor" = "k" ]; then
-   INSTALL_CLUSTERED_STORAGE=true
-   INSTALL_ZFS=true
-   logmsg "Kubevirt image installing ZFS"
+   if echo "$INSTALL_PERSIST"| grep -q ","; then
+      # Multiple persist disk on HV=k should default to zfs
+      INSTALL_ZFS=true
+   fi
+   if [ "$INSTALL_ZFS" = "true" ]; then
+      INSTALL_CLUSTERED_STORAGE=true
+      logmsg "Kubevirt image installing ZFS"
+   else
+      logmsg "Kubevirt image installing ext4"
+   fi
 fi
 
 eve_platform=$(cat /root/etc/eve-platform)
