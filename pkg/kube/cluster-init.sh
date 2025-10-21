@@ -27,6 +27,10 @@ RebootReasonFile="/persist/reboot-reason"
 BootReasonFile="/persist/boot-reason"
 BootReasonKubeTransition="BootReasonKubeTransition" # Must match string in types package
 
+KUBE_ROOT_ZFS="/var/lib/"
+KUBE_ROOT_EXT4="/persist/vault/k3s"
+KUBE_ROOT="$KUBE_ROOT_ZFS"
+
 # shellcheck source=pkg/kube/pubsub.sh
 . /usr/bin/pubsub.sh
 # shellcheck source=pkg/kube/descheduler-utils.sh
@@ -85,7 +89,7 @@ get_cluster_prefix_len() {
 
 # Set the node IP to multus differently for single node and cluster mode
 assign_multus_nodeip() {
-  if [ -f /var/lib/edge-node-cluster-mode ]; then
+  if [ -f ${KUBE_ROOT}/edge-node-cluster-mode ]; then
     NODE_IP=$(get_cluster_node_ip "$1")
     ClusterPrefixMask=$(get_cluster_prefix_len)
     ip_prefix=$(ipcalc -n "$NODE_IP$ClusterPrefixMask" | cut -d "=" -f2)
@@ -113,8 +117,8 @@ assign_multus_nodeip() {
 
 # Check for link request from k3s upgrade and create a multus link
 check_for_multus_link_request() {
-        if [ -f /var/lib/request-retouch-multus ]; then
-                rm -f /var/lib/request-retouch-multus
+        if [ -f ${KUBE_ROOT}/request-retouch-multus ]; then
+                rm -f ${KUBE_ROOT}/request-retouch-multus
                 link_multus_into_k3s
         fi
 }
@@ -133,7 +137,7 @@ apply_multus_cni() {
         logmsg "Done applying Multus"
         link_multus_into_k3s
         # need to only do this once
-        touch /var/lib/multus_initialized
+        touch ${KUBE_ROOT}/multus_initialized
         return 0
 }
 
@@ -157,16 +161,38 @@ wait_for_vault() {
         logmsg "Vault ready"
 }
 
-mount_etcd_vol() {
-        # NOTE: We only support zfs storage in production systems because data is persisted on zvol.
-        # This is formatted in vaultmgr
-        logmsg "Wait for persist/etcd-storage zvol"
-        while [ ! -b /dev/zvol/persist/etcd-storage ];
-        do
-                sleep 1
-        done
-        mount /dev/zvol/persist/etcd-storage /var/lib  ## This is where we persist the cluster components (etcd)
-        logmsg "persist/etcd-storage available"
+mount_kube_root() {
+        persistType=$(cat /run/eve.persist_type)
+        if [ "$persistType" = "zfs" ]; then
+                logmsg "Using ZFS persistent storage"
+                KUBE_ROOT="$KUBE_ROOT_ZFS"
+                # NOTE: We only support zfs storage in production systems because data is persisted on zvol.
+                # This is formatted in vaultmgr
+                logmsg "Wait for persist/etcd-storage zvol"
+                while [ ! -b /dev/zvol/persist/etcd-storage ];
+                do
+                        sleep 1
+                done
+                mount /dev/zvol/persist/etcd-storage "$KUBE_ROOT"  ## This is where we persist the cluster components (etcd)
+                logmsg "persist/etcd-storage available"
+        fi
+        if [ "$persistType" = "ext4" ]; then
+                logmsg "Using EXT4 persistent storage"
+                KUBE_ROOT="$KUBE_ROOT_EXT4"
+                if [ ! -e "$KUBE_ROOT" ]; then
+                        mkdir -p "$KUBE_ROOT"
+                        mkdir -p "${KUBE_ROOT}/cni"
+                        mkdir -p "${KUBE_ROOT}/rancher"
+                        mkdir -p "${KUBE_ROOT}/k3s"
+                        mkdir -p "${KUBE_ROOT}/longhorn"
+                        mkdir -p "${KUBE_ROOT}/kubelet"
+                fi
+                ln -s "${KUBE_ROOT}/cni" /var/lib/cni
+                ln -s "${KUBE_ROOT}/rancher" /var/lib/rancher
+                ln -s "${KUBE_ROOT}/k3s" /var/lib/k3s
+                ln -s "${KUBE_ROOT}/longhorn" /var/lib/longhorn
+                ln -s "${KUBE_ROOT}/kubelet" /var/lib/kubelet
+        fi
 }
 
 #Prereqs
@@ -189,7 +215,7 @@ setup_prereqs () {
         wait_for_device_name
         chmod o+rw /dev/null
         wait_for_vault
-        mount_etcd_vol
+        mount_kube_root
 }
 
 config_cluster_roles() {
@@ -220,7 +246,7 @@ config_cluster_roles() {
 
         # apply kubernetes and kubevirt roles and binding to debugging-user
         kubectl apply -f /etc/debuguser-role-binding.yaml
-        touch /var/lib/debuguser-initialized
+        touch ${KUBE_ROOT}/debuguser-initialized
 }
 
 check_start_k3s() {
@@ -350,7 +376,12 @@ check_start_containerd() {
         pgrep -f "/var/lib/rancher/k3s/data/current/bin/containerd" > /dev/null 2>&1
         if [ $? -eq 1 ]; then
                 mkdir -p /run/containerd-user
-                nohup /var/lib/rancher/k3s/data/current/bin/containerd --config /etc/containerd/config-k3s.toml >> $CTRD_LOG 2>&1 &
+                if [ "$KUBE_ROOT" = "$KUBE_ROOT_ZFS" ]; then
+                        nohup /var/lib/rancher/k3s/data/current/bin/containerd --config /etc/containerd/config-k3s.toml >> $CTRD_LOG 2>&1 &
+                fi
+                if [ "$KUBE_ROOT" = "$KUBE_ROOT_EXT4" ]; then
+                        nohup /var/lib/rancher/k3s/data/current/bin/containerd --config /etc/containerd/config-k3s-ext4.toml >> $CTRD_LOG 2>&1 &
+                fi
                 containerd_pid=$!
                 logmsg "Started k3s-containerd at pid:$containerd_pid"
         fi
@@ -383,7 +414,7 @@ reapply_node_labels() {
 
         if [ "$node_count" -gt 0 ]; then
                 logmsg "Node labels re-applied successfully"
-                touch /var/lib/node-labels-initialized
+                touch ${KUBE_ROOT}/node-labels-initialized
         else
                 logmsg "Failed to re-apply node labels, on $HOSTNAME, uuid $DEVUUID"
         fi
@@ -624,7 +655,7 @@ change_to_new_token() {
 check_cluster_config_change() {
 
     # only check the cluster change when it's fully initialized
-    if [ ! -f /var/lib/all_components_initialized ]; then
+    if [ ! -f ${KUBE_ROOT}/all_components_initialized ]; then
         return 0
     fi
 
@@ -633,7 +664,7 @@ check_cluster_config_change() {
 
     if [ $enc_status -eq 2 ]; then
       # the EdgeNodeClusterStatus file does not exist
-      if [ ! -f /var/lib/edge-node-cluster-mode ]; then
+      if [ ! -f ${KUBE_ROOT}/edge-node-cluster-mode ]; then
         return 0
       else
         # check to see if the persistent config file exists, if yes, then we need to
@@ -643,14 +674,14 @@ check_cluster_config_change() {
           return 0
         fi
         Registration_Cleanup
-        rm /var/lib/base-k3s-mode
-        touch /var/lib/convert-to-single-node
+        rm ${KUBE_ROOT}/base-k3s-mode
+        touch ${KUBE_ROOT}/convert-to-single-node
         # We're transitioning from cluster mode to single node, so reboot is still needed
         reboot_with_reason "Transition from cluster mode to single node"
       fi
     elif [ -n "$cluster_token" ] && [ "$cluster_node_ip_is_ready" = "true" ]; then
       # record we have seen this ENC status file
-      if [ ! -f /var/lib/edge-node-cluster-mode ]; then
+      if [ ! -f ${KUBE_ROOT}/edge-node-cluster-mode ]; then
         logmsg "EdgeNodeClusterStatus file found, but the node does not have edge-node-cluster-mode"
         logmsg "*** check_cluster_config_change, before while loop. cluster_node_ip: $cluster_node_ip" # XXX
         while true; do
@@ -658,11 +689,11 @@ check_cluster_config_change() {
             # got the enc_status successfully, start single node to cluster transition
             logmsg "got the EdgeNodeClusterStatus successfully"
             # mark it cluster mode before changing the config file
-            touch /var/lib/edge-node-cluster-mode
+            touch ${KUBE_ROOT}/edge-node-cluster-mode
 
             if Registration_ConfigExists; then
                 # Hold on, don't apply yet, complete conversion to base mode first
-                if [ ! -f /var/lib/base-k3s-mode ]; then
+                if [ ! -f ${KUBE_ROOT}/base-k3s-mode ]; then
                         uninstall_components
                 fi
             fi
@@ -680,18 +711,18 @@ check_cluster_config_change() {
             assign_multus_nodeip "$cluster_node_ip"
 
             # need to reapply node labels later
-            rm /var/lib/node-labels-initialized
+            rm ${KUBE_ROOT}/node-labels-initialized
 
             mkfifo "$TRANSITION_PIPE"
             touch "$TRANSITION_FLAG_FILE"
 
             # restart k3s will run only if we are ready after the transition configs set
             terminate_k3s
-            # romove the /var/lib/rancher/k3s/server/tls directory files
+            # romove the ${KUBE_ROOT}/rancher/k3s/server/tls directory files
             if [ "$is_bootstrap" = "false" ]; then
               rm -rf /var/lib/rancher/k3s/server/tls/*
               # redo the debugger user role binding since certs are changed
-              rm /var/lib/debuguser-initialized
+              rm ${KUBE_ROOT}/debuguser-initialized
             fi
 
             logmsg "provision config file for node to cluster mode"
@@ -714,7 +745,7 @@ check_cluster_config_change() {
               # We have seen in some cases, the k3s server on this node can not join the cluster
               # due to CA cert issues, and reboot is needed to get out of this state
               # so we do not always reboot here, only if it is needed
-              echo "$(date +%s) 0" > /var/lib/transition-to-cluster
+              echo "$(date +%s) 0" > ${KUBE_ROOT}/transition-to-cluster
               logmsg "Created transition file for non-bootstrap node joining cluster"
             else
               logmsg "bootstrap node, wait for k3s to start"
@@ -742,7 +773,7 @@ check_cluster_config_change() {
     logmsg "Check cluster config change done"
 
     ## A conversion to base-k3s mode should be complete here, now complete registration
-    if [ -e /var/lib/base-k3s-mode ]; then
+    if [ -e ${KUBE_ROOT}/base-k3s-mode ]; then
         Registration_CheckApply
     fi
 }
@@ -750,7 +781,7 @@ check_cluster_config_change() {
 # Function to check if the cluster transition is complete
 check_cluster_transition_done() {
     # If the transition file does not exist, nothing to do
-    if [ ! -f /var/lib/transition-to-cluster ]; then
+    if [ ! -f ${KUBE_ROOT}/transition-to-cluster ]; then
         return 0
     fi
 
@@ -766,7 +797,7 @@ check_cluster_transition_done() {
 
         if [ "$ready_nodes" -ge 2 ]; then
             logmsg "Cluster transition complete: At least 2 nodes are ready"
-            rm -f /var/lib/transition-to-cluster
+            rm -f ${KUBE_ROOT}/transition-to-cluster
             return 0
         fi
     fi
@@ -774,7 +805,7 @@ check_cluster_transition_done() {
     # Check if we've been waiting too long (5 minutes)
     # File format is "timestamp reboot_count"
     # Maximum reboot attempts is 3
-    file_content=$(cat /var/lib/transition-to-cluster)
+    file_content=$(cat ${KUBE_ROOT}/transition-to-cluster)
     transition_timestamp=$(echo "$file_content" | awk '{print $1}')
     reboot_count=$(echo "$file_content" | awk '{print $2}')
 
@@ -789,13 +820,13 @@ check_cluster_transition_done() {
 
         if [ "$reboot_count" -le 3 ]; then
             # Update timestamp and reboot count in the same file
-            echo "$(date +%s) $reboot_count" > /var/lib/transition-to-cluster
+            echo "$(date +%s) $reboot_count" > ${KUBE_ROOT}/transition-to-cluster
             logmsg "Rebooting system to retry cluster transition (attempt $reboot_count of 3)..."
             reboot_with_reason "Reboot after retry cluster transition attempt $reboot_count"
         else
             logmsg "Maximum reboot attempts (3) reached. We will not reboot again."
             # We could consider adding some recovery action here
-            rm -f /var/lib/transition-to-cluster
+            rm -f ${KUBE_ROOT}/transition-to-cluster
         fi
     else
         logmsg "Still waiting for cluster transition: ${elapsed_time} seconds elapsed (timeout: 600 seconds)"
@@ -840,24 +871,24 @@ uninstall_components() {
 
         logmsg "convert-to-basek3s: Cleanup longhorn"
         Longhorn_uninstall
-        rm /var/lib/longhorn_initialized
+        rm ${KUBE_ROOT}/longhorn_initialized
 
         logmsg "convert-to-basek3s: Cleanup cdi"
         Cdi_uninstall
 
         logmsg "convert-to-basek3s: Cleanup kubevirt"
         Kubevirt_uninstall
-        rm /var/lib/kubevirt_initialized
+        rm ${KUBE_ROOT}/kubevirt_initialized
 
         logmsg "convert-to-basek3s: Cleanup multus"
         Multus_uninstall
-        rm /var/lib/multus_initialized
+        rm ${KUBE_ROOT}/multus_initialized
 
         logmsg "convert-to-basek3s: complete"
         rm /tmp/replicated-storage-uninstall-inprogress
 
-        touch /var/lib/base-k3s-mode
-        touch /var/lib/replicated-storage-uninstall-complete
+        touch ${KUBE_ROOT}/base-k3s-mode
+        touch ${KUBE_ROOT}/replicated-storage-uninstall-complete
 }
 
 # provision the config.yaml and bootstrap-config.yaml for cluster node, passing $1 as k3s needs initializing
@@ -980,14 +1011,14 @@ EOF
 
 DATESTR=$(date)
 echo "========================== $DATESTR ==========================" >> $INSTALL_LOG
-logmsg "Using ZFS persistent storage"
 
 setup_prereqs
 
+wait_for_item "k3s-install"
 Update_CheckNodeComponents
 
-if [ -f /var/lib/convert-to-single-node ]; then
-        logmsg "remove /var/lib and copy saved single node /var/lib"
+if [ -f ${KUBE_ROOT}/convert-to-single-node ]; then
+        logmsg "remove ${KUBE_ROOT} and copy saved single node ${KUBE_ROOT}"
         restore_var_lib
         logmsg "wiping unreferenced replicas"
         rm -rf /persist/vault/volumes/replicas/*
@@ -1002,9 +1033,10 @@ if [ -f /var/lib/convert-to-single-node ]; then
         # During first boot this is only set after the save var-lib process
         # So when converting back to single node its missing, set it again here.
         #
-        touch /var/lib/all_components_initialized
+        touch ${KUBE_ROOT}/all_components_initialized
 fi
 # since we can wait for long time, always start the containerd first
+wait_for_item "containerd"
 check_start_containerd
 logmsg "containerd started"
 
@@ -1013,12 +1045,12 @@ monitor_cluster_config_change &
 
 # if this is the first time to run install, we may wait for the
 # cluster config and status
-if [ ! -f /var/lib/all_components_initialized ]; then
+if [ ! -f ${KUBE_ROOT}/all_components_initialized ]; then
   logmsg "First time for k3s install"
 
   # if we are in edge-node cluster mode prepare the config.yaml and bootstrap-config.yaml
   # for single node mode, we basically use the existing config.yaml
-  if [ -f /var/lib/edge-node-cluster-mode ]; then
+  if [ -f ${KUBE_ROOT}/edge-node-cluster-mode ]; then
     provision_cluster_config_file true
   else
     logmsg "Single node mode prepare config.yaml for $HOSTNAME"
@@ -1031,7 +1063,7 @@ if [ ! -f /var/lib/all_components_initialized ]; then
   assign_multus_nodeip "$cluster_node_ip"
 else # a restart case, found all_components_initialized
   # k3s initialized already and installed, get the config.yaml if not in cluster mode
-  if [ -f /var/lib/edge-node-cluster-mode ]; then
+  if [ -f ${KUBE_ROOT}/edge-node-cluster-mode ]; then
     logmsg "Cluster config case, restarted k3s node, wait for cluster config"
     while true; do
       if get_enc_status; then
@@ -1070,7 +1102,7 @@ fi
 #Forever loop every 15 secs
 while true;
 do
-if [ ! -f /var/lib/all_components_initialized ]; then
+if [ ! -f ${KUBE_ROOT}/all_components_initialized ]; then
         if ! check_start_k3s; then
                 sleep 5  # Ensure minimum sleep time before retrying
                 continue
@@ -1108,13 +1140,13 @@ if [ ! -f /var/lib/all_components_initialized ]; then
         fi
         All_PODS_READY=true
 
-        if [ ! -f /var/lib/multus_initialized ]; then
+        if [ ! -f ${KUBE_ROOT}/multus_initialized ]; then
                 if [ ! -f /etc/multus-daemonset-new.yaml ]; then
                         assign_multus_nodeip "$cluster_node_ip"
                 fi
                 apply_multus_cni
                 continue
-                if [ ! -f /var/lib/multus_initialized ]; then
+                if [ ! -f ${KUBE_ROOT}/multus_initialized ]; then
                         logmsg "Failed to apply multus cni, wait a while"
                         sleep 10
                         continue
@@ -1131,20 +1163,20 @@ if [ ! -f /var/lib/all_components_initialized ]; then
         fi
 
         # setup debug user credential, role and binding
-        if [ ! -f /var/lib/debuguser-initialized ]; then
+        if [ ! -f ${KUBE_ROOT}/debuguser-initialized ]; then
                 config_cluster_roles
                 continue
         fi
 
         if [ "$install_kubevirt" = "1" ]; then
-                if [ ! -f /var/lib/kubevirt_initialized ]; then
+                if [ ! -f ${KUBE_ROOT}/kubevirt_initialized ]; then
                         wait_for_item "kubevirt"
                         Kubevirt_install
 
                         wait_for_item "cdi"
                         Cdi_install
 
-                        touch /var/lib/kubevirt_initialized
+                        touch ${KUBE_ROOT}/kubevirt_initialized
                         continue
                 fi
         fi
@@ -1162,7 +1194,7 @@ if [ ! -f /var/lib/all_components_initialized ]; then
         # Longhorn
         #
         wait_for_item "longhorn"
-        if [ ! -f /var/lib/longhorn_initialized ]; then
+        if [ ! -f ${KUBE_ROOT}/longhorn_initialized ]; then
                 if ! longhorn_install "$HOSTNAME"; then
                         continue
                 fi
@@ -1173,7 +1205,7 @@ if [ ! -f /var/lib/all_components_initialized ]; then
                         continue
                 fi
                 logmsg "longhorn ready"
-                touch /var/lib/longhorn_initialized
+                touch ${KUBE_ROOT}/longhorn_initialized
         fi
 
         #
@@ -1186,17 +1218,17 @@ if [ ! -f /var/lib/all_components_initialized ]; then
         fi
 
 
-        if [ -f /var/lib/longhorn_initialized ]; then
+        if [ -f ${KUBE_ROOT}/longhorn_initialized ]; then
                 sleep 5
-                logmsg "stop the k3s server and wait for copy /var/lib"
+                logmsg "stop the k3s server and wait for copy ${KUBE_ROOT}"
                 terminate_k3s
                 sync
                 sleep 5
                 save_var_lib
-                logmsg "saved the copy of /var/lib, done"
+                logmsg "saved the copy of ${KUBE_ROOT}, done"
                 logmsg "All components initialized"
-                touch /var/lib/node-labels-initialized
-                touch /var/lib/all_components_initialized
+                touch ${KUBE_ROOT}/node-labels-initialized
+                touch ${KUBE_ROOT}/all_components_initialized
         fi
 else
         if ! check_start_k3s; then
@@ -1219,7 +1251,7 @@ else
                     continue
                 fi
         else
-                if [ ! -f /var/lib/node-labels-initialized ]; then
+                if [ ! -f ${KUBE_ROOT}/node-labels-initialized ]; then
                         reapply_node_labels
                 fi
                 if ! external_boot_image_import; then
@@ -1230,7 +1262,7 @@ else
                 if [ ! -d /var/lib/cni/bin ] || [ ! -d /opt/cni/bin ]; then
                         copy_cni_plugin_files
                 fi
-                if [ ! -f /var/lib/multus_initialized ]; then
+                if [ ! -f ${KUBE_ROOT}/multus_initialized ]; then
                         if [ ! -f /etc/multus-daemonset-new.yaml ]; then
                                 assign_multus_nodeip "$cluster_node_ip"
                         fi
@@ -1246,7 +1278,7 @@ else
                         /opt/cni/bin/dhcp daemon &
                 fi
                 # setup debug user credential, role and binding
-                if [ ! -f /var/lib/debuguser-initialized ]; then
+                if [ ! -f ${KUBE_ROOT}/debuguser-initialized ]; then
                         config_cluster_roles
                 else
                         if [ ! -e /run/.kube/k3s/user.yaml ]; then
@@ -1273,9 +1305,9 @@ else
                                 fi
                         fi
                 fi
-                if [ ! -e /var/lib/longhorn_configured ]; then
+                if [ ! -e ${KUBE_ROOT}/longhorn_configured ]; then
                         longhorn_post_install_config
-                        touch /var/lib/longhorn_configured
+                        touch ${KUBE_ROOT}/longhorn_configured
                 fi
         fi
 fi

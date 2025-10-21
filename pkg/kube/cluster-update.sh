@@ -15,7 +15,7 @@ K3S_VERSION=v1.33.3+k3s1
 #       - a version bump of: K3s, multus, kubevirt, cdi, longhorn
 #
 KUBE_VERSION=1
-APPLIED_KUBE_VERSION_PATH="/var/lib/applied-kube-version"
+APPLIED_KUBE_VERSION_PATH="${KUBE_ROOT}/applied-kube-version"
 update_Version_Set() {
     version=$1
     echo "$version" > "$APPLIED_KUBE_VERSION_PATH"
@@ -64,7 +64,7 @@ link_multus_into_k3s() {
 update_k3s() {
     logmsg "Installing K3S version $K3S_VERSION"
     mkdir -p /var/lib/k3s/bin
-    /usr/bin/curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION=${K3S_VERSION} INSTALL_K3S_SKIP_ENABLE=true INSTALL_K3S_SKIP_START=true INSTALL_K3S_BIN_DIR=/var/lib/k3s/bin sh -
+    /usr/bin/curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION=${K3S_VERSION} INSTALL_K3S_SKIP_ENABLE=true INSTALL_K3S_SKIP_START=true INSTALL_K3S_BIN_DIR=/var/lib/k3s/bin INSTALL_K3S_EXEC="--k3s-data-dir /var/lib/rancher/k3s" sh -
     sleep 5
     logmsg "Initializing K3S version $K3S_VERSION"
     ln -s /var/lib/k3s/bin/* /usr/bin

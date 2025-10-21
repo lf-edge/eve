@@ -79,7 +79,7 @@ Tie_breaker_configApply() {
                 return
         fi
 
-        if [ ! -f /var/lib/node-labels-initialized ]; then
+        if [ ! -f "${KUBE_ROOT}"/node-labels-initialized ]; then
                 return
         fi
 

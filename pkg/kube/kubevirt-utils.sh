@@ -52,7 +52,7 @@ Kubevirt_uninstall() {
         # shellcheck disable=SC2086
         kubectl label $n $labelsToRemove
     done
-    rm /var/lib/kubevirt_initialized
+    rm "${KUBE_ROOT}"/kubevirt_initialized
 }
 
 Cdi_install() {
