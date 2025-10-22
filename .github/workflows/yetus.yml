@@ -10,37 +10,61 @@
 # yamllint enable rule:line-length
 ---
 name: Apache Yetus
-on:  # yamllint disable-line rule:truthy
-  pull_request:
-    branches:
-      - "master"
-      - "[0-9]+.[0-9]+"
-      - "[0-9]+.[0-9]+-stable"
-      - "feature/*"
+on: # yamllint disable-line rule:truthy
+    pull_request:
+        branches:
+            - "master"
+            - "[0-9]+.[0-9]+"
+            - "[0-9]+.[0-9]+-stable"
+            - "feature/*"
 
 jobs:
-  yetus:
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          path: src
-          fetch-depth: 0
+    yetus:
+        permissions:
+            actions: read
+            statuses: write
+            issues: read
+            pull-requests: read
+            contents: read
+        runs-on: ubuntu-24.04
+        steps:
+            - name: Debug GitHub Context
+              run: |
+                  echo "GITHUB_BASE_REF: $GITHUB_BASE_REF"
+                  echo "GITHUB_HEAD_REF: $GITHUB_HEAD_REF"
+                  echo "GITHUB_REF: $GITHUB_REF"
+                  echo "GITHUB_EVENT_NAME: $GITHUB_EVENT_NAME"
+                  echo "PR Number: ${{ github.event.number }}"
+                  echo "Base SHA: ${{ github.event.pull_request.base.sha }}"
+                  echo "Head SHA: ${{ github.event.pull_request.head.sha }}"
 
-      - name: Yetus
-        uses: rene/yetus-test-patch-action@eve
-        with:
-          basedir: ./src
-          buildtool: nobuild
-          continuousimprovement: true
-          githubtoken: ${{ secrets.GITHUB_TOKEN }}
-          patchdir: ./out
-          reviveconfig: .revive.toml
+            - name: Checkout
+              uses: actions/checkout@v4
+              with:
+                  path: src
+                  fetch-depth: 0
+                  ref: ${{ github.event.pull_request.head.sha }}
 
-      - name: Store Yetus artifacts
-        if: ${{ always() }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: 'yetus-scan'
-          path: ${{ github.workspace }}/out
+            - name: Fetch base branch
+              run: |
+                  cd src
+                  git fetch origin ${{ github.base_ref }}:refs/remotes/origin/${{ github.base_ref }}
+                  git branch -a
+
+            - name: Yetus
+              uses: rene/yetus-test-patch-action@eve
+              with:
+                  basedir: ./src
+                  buildtool: nobuild
+                  continuousimprovement: true
+                  githubtoken: ${{ secrets.GITHUB_TOKEN }}
+                  patchdir: ./out
+                  reviveconfig: .revive.toml
+                  args: "--branch=${{ github.base_ref }}"
+
+            - name: Store Yetus artifacts
+              if: ${{ always() }}
+              uses: actions/upload-artifact@v4
+              with:
+                  name: "yetus-scan"
+                  path: ${{ github.workspace }}/out
