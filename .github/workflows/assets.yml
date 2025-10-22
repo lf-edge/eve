@@ -64,7 +64,7 @@ jobs:
             hv: "kvm"
     steps:
       - name: checkout repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@1e31de5234b9f8995739874a8ce0492dc87873e2 # v4.0.0
         with:
           ref: ${{ inputs.tag_ref }}
           fetch-depth: 0
