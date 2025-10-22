@@ -74,6 +74,7 @@
 | log.filter.filenames | string | "" | Comma-separated list of log's filenames to be filtered out. Example `/my-pkg/main.go:123,/other-pkg/code.go:42`. Empty string `""` doesn't filter anything out, however a single comma `","` will filter out all entries that don't have a filename field set (e.g. logs not coming from components written in Golang). See logging [docs](LOGGING.md#log-filtering-counting-and-deduplication) for details. |
 | diag.probe.remote.http.endpoint | string | `"http://www.google.com"` | Remote endpoint (URL, IP instead of hostname is accepted) queried over HTTP to assess the state of network connectivity whenever the controller is not reachable. Used only for diagnostics (no functional impact). Set to an empty string to disable. |
 | diag.probe.remote.https.endpoint | string | `"https://www.google.com"` | Remote endpoint (URL, IP instead of hostname is NOT accepted) queried over HTTPS to assess the state of network connectivity whenever the controller is not reachable. Used only for diagnostics (no functional impact). Set to an empty string to disable. |
+| app.enable.tcp.mss.clamping | bool | true | Configuration property that enables EVE to automatically adjust (clamp) the TCP MSS on forwarded application traffic to match the path MTU, preventing fragmentation and connectivity issues on lower-MTU links. |
 
 ## Log levels
 

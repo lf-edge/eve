@@ -91,6 +91,14 @@ import (
 //  |   |      |    | IptablesChain |   |  IptablesRule |     |      |   |
 //  |   |      |    +---------------+   +---------------+     |      |   |
 //  |   |      +----------------------------------------------+      |   |
+//  |   |                                                            |   |
+//  |   |      +----------------------------------------------+      |   |
+//  |   |      |                TCPMSSClamping                |      |   |
+//  |   |      |     +--------------+   +---------------+     |      |   |
+//  |   |      |     | IptablesRule |   |  IptablesRule |     |      |   |
+//  |   |      |     |    (IPv4)    |   |     (IPv6)    |     |      |   |
+//  |   |      |     +--------------+   +---------------+     |      |   |
+//  |   |      +----------------------------------------------+      |   |
 //  |   +------------------------------------------------------------+   |
 //  |                                                                    |
 //  |   +------------------------------------------------------------+   |
@@ -246,6 +254,9 @@ const (
 	// IPv6ChainsSG : subgraph with ip6tables chains for IPv6 traffic.
 	// Used under ACLRootChains.
 	IPv6ChainsSG = "IPv6Chains"
+	// TCPMSSClampingSG : subgraph with iptables rules automatically adjusting (clamping)
+	// the TCP MSS on forwarded application traffic to match the path MTU.
+	TCPMSSClampingSG = "TCPMSSClamping"
 	// NISGPrefix : prefix used for name of the subgraph encapsulating the entire
 	// configuration of the given network instance.
 	NISGPrefix = "NI-"
@@ -355,6 +366,9 @@ func (r *LinuxNIReconciler) getIntendedGlobalState() dg.Graph {
 	}
 	intendedCfg := dg.New(graphArgs)
 	intendedCfg.PutItem(r.getIntendedHostSysctl(), nil)
+	if r.enableTCPMssClamping {
+		intendedCfg.PutSubGraph(r.getIntendedTCPMssClampingCfg())
+	}
 	intendedCfg.PutSubGraph(r.getIntendedPorts())
 	intendedCfg.PutSubGraph(r.getIntendedGlobalIPSets())
 	if r.withFlowlog() {
@@ -386,6 +400,31 @@ func (r *LinuxNIReconciler) getIntendedHostSysctl() linux.Sysctl {
 		BridgeCallIptables:  &bridgeCallIptables,
 		BridgeCallIp6tables: &bridgeCallIp6tables,
 	}
+}
+
+func (r *LinuxNIReconciler) getIntendedTCPMssClampingCfg() dg.Graph {
+	graphArgs := dg.InitArgs{
+		Name: TCPMSSClampingSG,
+		Description: "Automatically adjust (clamp) the TCP MSS on forwarded " +
+			"application traffic to match the path MTU,",
+	}
+	intendedCfg := dg.New(graphArgs)
+	clampRule := iptables.Rule{
+		RuleLabel:  "Clamp TCP MSS",
+		Table:      "mangle",
+		ChainName:  appChain("FORWARD"),
+		MatchOpts:  []string{"-p", "tcp", "--tcp-flags", "SYN,RST", "SYN"},
+		Target:     "TCPMSS",
+		TargetOpts: []string{"--clamp-mss-to-pmtu"},
+		Description: "Automatically adjust the TCP MSS value on forwarded SYN packets " +
+			"to match the path MTU, preventing IP fragmentation and connectivity " +
+			"issues on links with lower MTU.",
+	}
+	intendedCfg.PutItem(clampRule, nil)
+	clampRuleV6 := clampRule
+	clampRuleV6.ForIPv6 = true
+	intendedCfg.PutItem(clampRuleV6, nil)
+	return intendedCfg
 }
 
 func (r *LinuxNIReconciler) getIntendedPorts() dg.Graph {
