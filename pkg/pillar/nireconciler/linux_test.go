@@ -3413,3 +3413,44 @@ func TestSwitchNIWithMultiplePorts(test *testing.T) {
 	t.Expect(niStatus.NI).To(Equal(niUUID.UUID))
 	t.Expect(niStatus.Deleted).To(BeTrue())
 }
+
+func TestTCPMSSClampingConfig(test *testing.T) {
+	t := initTest(test, false)
+	updatesCh := niReconciler.WatchReconcilerUpdates()
+	ctx := reconciler.MockRun(context.Background())
+	niReconciler.RunInitialReconcile(ctx)
+
+	// Enable TCP MSS clamping.
+	gcp := types.DefaultConfigItemValueMap()
+	gcp.SetGlobalValueBool(types.EnableTCPMSSClamping, true)
+	niReconciler.ApplyUpdatedGCP(ctx, *gcp)
+
+	// No reconciler notification expected.
+	var recUpdate nirec.ReconcilerUpdate
+	t.Consistently(updatesCh).ShouldNot(Receive(&recUpdate))
+
+	ipv4ClampingRuleRef := dg.Reference(iptables.Rule{
+		RuleLabel: "Clamp TCP MSS",
+		Table:     "mangle",
+		ChainName: "FORWARD-apps",
+	})
+	ipv6ClampingRuleRef := dg.Reference(iptables.Rule{
+		RuleLabel: "Clamp TCP MSS",
+		Table:     "mangle",
+		ChainName: "FORWARD-apps",
+		ForIPv6:   true,
+	})
+	expectedRuleArgs := "-p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu"
+	t.Expect(itemIsCreated(ipv4ClampingRuleRef)).To(BeTrue())
+	t.Expect(itemDescription(ipv4ClampingRuleRef)).To(ContainSubstring(expectedRuleArgs))
+	t.Expect(itemIsCreated(ipv6ClampingRuleRef)).To(BeTrue())
+	t.Expect(itemDescription(ipv6ClampingRuleRef)).To(ContainSubstring(expectedRuleArgs))
+
+	// Disable TCP MSS clamping.
+	gcp = types.DefaultConfigItemValueMap()
+	gcp.SetGlobalValueBool(types.EnableTCPMSSClamping, false)
+	niReconciler.ApplyUpdatedGCP(ctx, *gcp)
+
+	t.Expect(itemIsCreated(ipv4ClampingRuleRef)).To(BeFalse())
+	t.Expect(itemIsCreated(ipv6ClampingRuleRef)).To(BeFalse())
+}

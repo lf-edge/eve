@@ -1574,7 +1574,7 @@ func (r *LinuxDpcReconciler) getIntendedACLs(
 		{Table: "filter", ChainName: "INPUT"}:       {devACLs: true, appACLs: true},
 		{Table: "filter", ChainName: "FORWARD"}:     {devACLs: true, appACLs: true},
 		{Table: "mangle", ChainName: "PREROUTING"}:  {devACLs: true, appACLs: true},
-		{Table: "mangle", ChainName: "FORWARD"}:     {devACLs: true, appACLs: false},
+		{Table: "mangle", ChainName: "FORWARD"}:     {devACLs: false, appACLs: true},
 		{Table: "mangle", ChainName: "POSTROUTING"}: {devACLs: false, appACLs: true},
 		{Table: "mangle", ChainName: "OUTPUT"}:      {devACLs: true, appACLs: false},
 		{Table: "nat", ChainName: "PREROUTING"}:     {devACLs: false, appACLs: true},
