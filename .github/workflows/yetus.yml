@@ -23,13 +23,13 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@1e31de5234b9f8995739874a8ce0492dc87873e2 # v4.0.0
         with:
           path: src
           fetch-depth: 0
 
       - name: Yetus
-        uses: rene/yetus-test-patch-action@eve
+        uses: rene/yetus-test-patch-action@2c78be9d0ab197724faa2360968469d6a9e84da1 #eve
         with:
           basedir: ./src
           buildtool: nobuild
@@ -40,7 +40,7 @@ jobs:
 
       - name: Store Yetus artifacts
         if: ${{ always() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@c7d193f32edcb7bfad88892161225aeda64e9392 # v4.0.0
         with:
           name: 'yetus-scan'
           path: ${{ github.workspace }}/out
