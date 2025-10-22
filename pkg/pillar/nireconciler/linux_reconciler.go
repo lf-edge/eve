@@ -66,6 +66,7 @@ type LinuxNIReconciler struct {
 	exportCurrentState       bool
 	exportIntendedState      bool
 	withKubernetesNetworking bool
+	enableTCPMssClamping     bool
 
 	reconcileMu   sync.Mutex
 	currentState  dg.Graph
@@ -810,7 +811,19 @@ func (r *LinuxNIReconciler) ResumeReconcile(ctx context.Context) {
 // ApplyUpdatedGCP : apply change in the global config properties.
 func (r *LinuxNIReconciler) ApplyUpdatedGCP(ctx context.Context,
 	newGCP types.ConfigItemValueMap) {
-	// NOOP
+	contWatcher := r.pauseWatcher()
+	defer contWatcher()
+	enableTCPMssClamping := newGCP.GlobalValueBool(types.EnableTCPMSSClamping)
+	if r.enableTCPMssClamping == enableTCPMssClamping {
+		// Nothing to change in the network config.
+		return
+	}
+	r.enableTCPMssClamping = enableTCPMssClamping
+	reconcileReason := fmt.Sprintf("global config property %s changed to %t",
+		types.EnableTCPMSSClamping, r.enableTCPMssClamping)
+	r.scheduleGlobalCfgRebuild(reconcileReason)
+	updates := r.reconcile(ctx)
+	r.publishReconcilerUpdates(updates...)
 }
 
 // AddNI : create this new network instance inside the network stack.

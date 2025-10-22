@@ -72,7 +72,7 @@ var (
 	usedIptablesChains = map[string][]string{ // table -> chains
 		"raw":    {"PREROUTING"},
 		"filter": {"INPUT", "FORWARD"},
-		"mangle": {"PREROUTING", "POSTROUTING"},
+		"mangle": {"PREROUTING", "FORWARD", "POSTROUTING"},
 		"nat":    {"PREROUTING", "POSTROUTING"},
 	}
 )
