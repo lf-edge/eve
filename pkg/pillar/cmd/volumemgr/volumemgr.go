@@ -9,8 +9,6 @@ package volumemgr
 import (
 	"flag"
 	"fmt"
-	"time"
-
 	zconfig "github.com/lf-edge/eve-api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
@@ -21,11 +19,14 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/kubeapi"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
 	"github.com/lf-edge/eve/pkg/pillar/utils/persist"
 	"github.com/lf-edge/eve/pkg/pillar/utils/wait"
+	"github.com/lf-edge/eve/pkg/pillar/volumehandlers"
 	"github.com/lf-edge/eve/pkg/pillar/worker"
 	"github.com/lf-edge/eve/pkg/pillar/zfs"
 	"github.com/sirupsen/logrus"
+	"time"
 )
 
 const (
@@ -96,7 +97,7 @@ type volumemgrContext struct {
 	// There is no shared data so its safe to be used by multiple goroutines
 	casClient cas.CAS
 
-	volumeConfigCreateDeferredMap map[string]*types.VolumeConfig
+	volumeConfigDeferredMapProcessor *generics.DeferredMapProcessor[*types.VolumeConfig]
 
 	persistType types.PersistType
 
@@ -122,6 +123,98 @@ func (ctxPtr *volumemgrContext) lookupVolumeStatusByUUID(id string) *types.Volum
 
 func (ctxPtr *volumemgrContext) GetCasClient() cas.CAS {
 	return ctxPtr.casClient
+}
+
+func (ctxPtr *volumemgrContext) handleDeferredVolumeCreate(key string, config *types.VolumeConfig) {
+	status := ctxPtr.LookupVolumeStatus(config.Key())
+	if status != nil {
+		if config.IsReplicated {
+			// Objects are replicated across cluster nodes, just exit.
+			return
+		}
+		log.Fatalf("status exists at handleVolumeCreate for %s", config.Key())
+	}
+	status = &types.VolumeStatus{
+		VolumeID:                config.VolumeID,
+		ContentID:               config.ContentID,
+		VolumeContentOriginType: config.VolumeContentOriginType,
+		MaxVolSize:              config.MaxVolSize,
+		ReadOnly:                config.ReadOnly,
+		GenerationCounter:       config.GenerationCounter,
+		LocalGenerationCounter:  config.LocalGenerationCounter,
+		Encrypted:               config.Encrypted,
+		DisplayName:             config.DisplayName,
+		RefCount:                1,
+		Target:                  config.Target,
+		CustomMeta:              config.CustomMeta,
+		LastRefCountChangeTime:  time.Now(),
+		LastUse:                 time.Now(),
+		State:                   types.INITIAL,
+		IsReplicated:            config.IsReplicated,
+		IsNativeContainer:       config.IsNativeContainer,
+	}
+	updateVolumeStatusRefCount(ctxPtr, status)
+	status.ContentFormat = volumeFormat[status.Key()]
+
+	created, err := volumehandlers.GetVolumeHandler(log, ctxPtr, status).Populate()
+	if err != nil {
+		status.SetError(err.Error(), time.Now())
+		publishVolumeStatus(ctxPtr, status)
+		updateVolumeRefStatus(ctxPtr, status)
+		if err := createOrUpdateAppDiskMetrics(ctxPtr, agentName, status); err != nil {
+			log.Errorf("handleDeferredVolumeCreate(%s): exception while publishing diskmetric. %s", key, err.Error())
+		}
+		return
+	}
+
+	if created {
+		status.State = types.CREATED_VOLUME
+		status.Progress = 100
+		status.SubState = types.VolumeSubStateCreated
+		status.CreateTime = time.Now()
+		actualSize, maxSize, _, _, err := volumehandlers.GetVolumeHandler(log, ctxPtr, status).GetVolumeDetails()
+		if err != nil {
+			log.Error(err)
+		} else {
+			if status.MaxVolSize == 0 {
+				status.MaxVolSize = maxSize
+			}
+			// XXX this is not the same as what we downloaded
+			// and created but the best we know
+			if (status.TotalSize != 0) && (status.TotalSize != int64(actualSize)) {
+				log.Warnf("handleDeferredVolumeCreate(%s) from ds set status.TotalSize %d, was %d", key, actualSize, status.TotalSize)
+			}
+			status.TotalSize = int64(actualSize)
+			status.CurrentSize = int64(actualSize)
+		}
+
+		// Fill the ReferenceName which will be used by domainmgr to launch native containers.
+		ctStatus := ctxPtr.LookupContentTreeStatus(status.ContentID.String())
+
+		if ctStatus != nil {
+			status.ReferenceName = ctStatus.ReferenceID()
+			// In kubevirt eve though we created PVC from container image, we still set the content format as container.
+			// This will help domainmgr to load the external boot kernel (support shim VM container)
+			if ctStatus.Format == zconfig.Format_CONTAINER {
+				status.ContentFormat = zconfig.Format_CONTAINER
+			}
+		}
+		publishVolumeStatus(ctxPtr, status)
+		updateVolumeRefStatus(ctxPtr, status)
+		if err := createOrUpdateAppDiskMetrics(ctxPtr, agentName, status); err != nil {
+			log.Errorf("handleDeferredVolumeCreate(%s): exception while publishing diskmetric. %s", key, err.Error())
+		}
+		return
+	}
+	publishVolumeStatus(ctxPtr, status)
+	changed, _ := doUpdateVol(ctxPtr, status)
+	if changed {
+		publishVolumeStatus(ctxPtr, status)
+		updateVolumeRefStatus(ctxPtr, status)
+	}
+	if err := createOrUpdateAppDiskMetrics(ctxPtr, agentName, status); err != nil {
+		log.Errorf("handleDeferredVolumeCreate(%s): exception while publishing diskmetric. %s", key, err.Error())
+	}
 }
 
 // AddAgentSpecificCLIFlags adds CLI options
@@ -467,19 +560,24 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	ctx.subContentTreeConfig = subContentTreeConfig
 	subContentTreeConfig.Activate()
 
-	ctx.volumeConfigCreateDeferredMap = make(map[string]*types.VolumeConfig)
+	ctx.volumeConfigDeferredMapProcessor = generics.NewDeferredMapProcessor(
+		15*time.Second,
+		func(key string, config *types.VolumeConfig) bool {
+			ctx.handleDeferredVolumeCreate(key, config)
+			return true
+		},
+	)
 
 	subVolumeConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		CreateHandler:  handleVolumeCreate,
-		ModifyHandler:  handleVolumeModify,
-		DeleteHandler:  handleVolumeDelete,
-		RestartHandler: handleVolumeRestart,
-		WarningTime:    warningTime,
-		ErrorTime:      errorTime,
-		AgentName:      "zedagent",
-		MyAgentName:    agentName,
-		TopicImpl:      types.VolumeConfig{},
-		Ctx:            &ctx,
+		CreateHandler: handleVolumeCreate,
+		ModifyHandler: handleVolumeModify,
+		DeleteHandler: handleVolumeDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+		AgentName:     "zedagent",
+		MyAgentName:   agentName,
+		TopicImpl:     types.VolumeConfig{},
+		Ctx:           &ctx,
 	})
 	if err != nil {
 		log.Fatal(err)

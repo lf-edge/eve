@@ -236,7 +236,7 @@ func (s *SocketDriver) persistentDirName(name string) string {
 
 // Use a buffer pool to minimize memory usage
 var bufPool = &sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		buffer := make([]byte, maxsize+1)
 		return buffer
 	},

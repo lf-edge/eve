@@ -98,3 +98,18 @@ func (lm *LockedMap[K, V]) ApplyOrStore(key K, applyFn LockedMapApplyFunc[V], de
 
 	return applied
 }
+
+// Drain iterates over the map and applies the callback to every element.
+// Each element is removed from the map after the callback is invoked.
+// The map is locked for writing during the entire operation,
+// so the callback must not call any method on the map (e.g., Store, Delete, or Load)
+// to avoid deadlock.
+func (lm *LockedMap[K, V]) Drain(callback LockedMapFunc[K, V]) {
+	lm.Lock()
+	defer lm.Unlock()
+
+	for k, v := range lm.locked {
+		callback(k, v)
+		delete(lm.locked, k)
+	}
+}
