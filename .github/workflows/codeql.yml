@@ -46,20 +46,20 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@1e31de5234b9f8995739874a8ce0492dc87873e2 # v4.0.0
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
+        uses: github/codeql-action/init@16140ae1a102900babc80a33c44059580f687047 # v4.30.9
         with:
           languages: ${{ matrix.language }}
 
       - name: Autobuild
-        uses: github/codeql-action/autobuild@v3
+        uses: github/codeql-action/autobuild@16140ae1a102900babc80a33c44059580f687047 # v4.30.9
 
       # Command-line programs to run using the OS shell.
       # See https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#jobsjob_idstepsrun
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v3
+        uses: github/codeql-action/analyze@16140ae1a102900babc80a33c44059580f687047 # v4.30.9
         with:
           category: "/language:${{matrix.language}}"
