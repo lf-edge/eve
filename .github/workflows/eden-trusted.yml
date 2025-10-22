@@ -38,7 +38,7 @@ jobs:
       skip_run: ${{ steps.check_gate.outputs.skip_run }}
     steps:
       - name: Download
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@7a1cd3216ca9260cd8022db641d960b1db4d1be4 # v4.0.0
         with:
           name: run-context
           run-id: ${{ github.event.workflow_run.id }}
@@ -140,7 +140,7 @@ jobs:
       EDEN_DETAILS_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
     steps:
       - name: Reset Eden Runner & Eden jobs statuses
-        uses: actions/github-script@v7
+        uses: actions/github-script@e69ef5462fd455e02edcaf4dd7708eda96b9eda0 # v7.0.0
         with:
           script: |
             const { owner, repo } = context.repo;
@@ -179,7 +179,7 @@ jobs:
     name: ${{ needs.context.outputs.eden_parent_job_title }}
     needs: context
     if: needs.context.outputs.skip_run == 'false'
-    uses: lf-edge/eden/.github/workflows/test.yml@1.0.12
+    uses: lf-edge/eden/.github/workflows/test.yml@226f84ca8fddc5fc8f434f1ee401bb2bf343c8a6 #1.0.12
     secrets: inherit
     with:
       eve_image: "evebuild/pr:${{ needs.context.outputs.pr_id }}"
@@ -195,7 +195,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Update commit status
-        uses: actions/github-script@v7
+        uses: actions/github-script@e69ef5462fd455e02edcaf4dd7708eda96b9eda0 # v7.0.0
         env:
           SHA: ${{ needs.context.outputs.pr_sha }}
           RESULT: ${{ needs.tests.result }}    # success / failure / cancelled
@@ -221,7 +221,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Surface each Eden job as PR status
-        uses: actions/github-script@v7
+        uses: actions/github-script@e69ef5462fd455e02edcaf4dd7708eda96b9eda0 # v7.0.0
         env:
           SHA: ${{ needs.context.outputs.pr_sha }}
           EDEN_PARENT_JOB_TITLE: ${{ needs.context.outputs.eden_parent_job_title }}
