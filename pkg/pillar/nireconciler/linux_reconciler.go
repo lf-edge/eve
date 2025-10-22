@@ -66,6 +66,7 @@ type LinuxNIReconciler struct {
 	exportCurrentState       bool
 	exportIntendedState      bool
 	withKubernetesNetworking bool
+	enableTCPMssClamping     bool
 
 	// From GCP
 	disableAllOnesNetmask bool
@@ -805,23 +806,33 @@ func (r *LinuxNIReconciler) ApplyUpdatedGCP(ctx context.Context,
 	newGCP types.ConfigItemValueMap) {
 	contWatcher := r.pauseWatcher()
 	defer contWatcher()
+	var runReconcile bool
 	disableAllOnesNetmask := newGCP.GlobalValueBool(types.DisableDHCPAllOnesNetMask)
-	if r.disableAllOnesNetmask == disableAllOnesNetmask {
-		// No change in GCP relevant for network instances.
-		return
-	}
-	r.disableAllOnesNetmask = disableAllOnesNetmask
-	for niID, ni := range r.nis {
-		if ni.config.Type == types.NetworkInstanceTypeSwitch {
-			// Not running DHCP server for switch NI inside EVE.
-			continue
+	if r.disableAllOnesNetmask != disableAllOnesNetmask {
+		r.disableAllOnesNetmask = disableAllOnesNetmask
+		for niID, ni := range r.nis {
+			if ni.config.Type == types.NetworkInstanceTypeSwitch {
+				// Not running DHCP server for switch NI inside EVE.
+				continue
+			}
+			runReconcile = true
+			r.scheduleNICfgRebuild(niID,
+				fmt.Sprintf("global config property %s changed to %t",
+					types.DisableDHCPAllOnesNetMask, r.disableAllOnesNetmask))
 		}
-		r.scheduleNICfgRebuild(niID,
-			fmt.Sprintf("global config property %s changed to %t",
-				types.DisableDHCPAllOnesNetMask, r.disableAllOnesNetmask))
 	}
-	updates := r.reconcile(ctx)
-	r.publishReconcilerUpdates(updates...)
+	enableTCPMssClamping := newGCP.GlobalValueBool(types.EnableTCPMSSClamping)
+	if r.enableTCPMssClamping != enableTCPMssClamping {
+		r.enableTCPMssClamping = enableTCPMssClamping
+		runReconcile = true
+		reconcileReason := fmt.Sprintf("global config property %s changed to %t",
+			types.EnableTCPMSSClamping, r.enableTCPMssClamping)
+		r.scheduleGlobalCfgRebuild(reconcileReason)
+	}
+	if runReconcile {
+		updates := r.reconcile(ctx)
+		r.publishReconcilerUpdates(updates...)
+	}
 }
 
 // AddNI : create this new network instance inside the network stack.

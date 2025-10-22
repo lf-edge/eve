@@ -219,6 +219,7 @@ func TestNewConfigItemSpecMap(t *testing.T) {
 		NetDumpDownloaderHTTPWithFieldValue,
 		DiagProbeRemoteHTTPEndpoint,
 		DiagProbeRemoteHTTPSEndpoint,
+		EnableTCPMSSClamping,
 	}
 	if len(specMap.GlobalSettings) != len(gsKeys) {
 		t.Errorf("GlobalSettings has more (%d) than expected keys (%d)",

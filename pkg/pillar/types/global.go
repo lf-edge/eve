@@ -334,6 +334,10 @@ const (
 	// DiagProbeRemoteHTTPSEndpoint : remote endpoint queried over **HTTPS** to assess
 	// the state of network connectivity whenever the controller is not reachable.
 	DiagProbeRemoteHTTPSEndpoint GlobalSettingKey = "diag.probe.remote.https.endpoint"
+
+	// EnableTCPMSSClamping : Configuration property to enable or disable TCP MSS clamping
+	// for application traffic forwarded by EVE.
+	EnableTCPMSSClamping GlobalSettingKey = "app.enable.tcp.mss.clamping"
 )
 
 // AgentSettingKey - keys for per-agent settings
@@ -994,6 +998,9 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	// Add diag probing settings
 	configItemSpecMap.AddStringItem(DiagProbeRemoteHTTPEndpoint, "www.google.com", makeURLValidator("http", true))
 	configItemSpecMap.AddStringItem(DiagProbeRemoteHTTPSEndpoint, "www.google.com", makeURLValidator("https", false))
+
+	// TCP MSS Clamping
+	configItemSpecMap.AddBoolItem(EnableTCPMSSClamping, true)
 	return configItemSpecMap
 }
 
