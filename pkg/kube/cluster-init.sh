@@ -363,7 +363,7 @@ apply_node_uuid_label () {
         else
                 logmsg "Not all pods are ready, Continue to wait while applying node labels"
         fi
-        kubectl label node "$HOSTNAME" node-uuid="$DEVUUID"
+        kubectl label node "$HOSTNAME" node-uuid="$DEVUUID" --overwrite
 }
 
 node_uuid_label_set() {
