@@ -106,7 +106,7 @@ save_crash_log() {
         if [ "$file_count" -gt 10 ]; then
                 files_to_delete=$(find "$K3S_LOG_DIR" -type f -name "${K3s_LOG_FILE}.restart.*.gz" -print0 | xargs -0 ls -t | tail -n +11)
                 echo "$files_to_delete" | while read -r file; do
-                        rm -f "${K3S_LOG_DIR}/${file}"
+                        rm -f "$file"
                 done
         fi
 }
