@@ -27,12 +27,12 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@1e31de5234b9f8995739874a8ce0492dc87873e2 # v4.0.0
         with:
           ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Cache Go modules
-        uses: actions/cache@v4
+        uses: actions/cache@13aacd865c20de90d75de3b17ebe84f7a17d57d2 # v4.0.0
         with:
           path: |
             ~/.cache/go-build
