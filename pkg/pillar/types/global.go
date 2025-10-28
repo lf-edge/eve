@@ -299,6 +299,12 @@ const (
 	// this period no stack traces are collected, only warning messages are logged.
 	GoroutineLeakDetectionCooldownMinutes GlobalSettingKey = "goroutine.leak.detection.cooldown.minutes"
 
+	// Internal Memory Monitor settings
+	// InternalMemoryMonitorStoreEnabled - collect probes and store CSV
+	InternalMemoryMonitorStoreEnabled GlobalSettingKey = "internal-memory-monitor.store.enabled"
+	// InternalMemoryMonitorAnalyzeEnabled - run analysis and compute scores
+	InternalMemoryMonitorAnalyzeEnabled GlobalSettingKey = "internal-memory-monitor.analyze.enabled"
+
 	// TriState Items
 	// NetworkFallbackAnyEth global setting key
 	NetworkFallbackAnyEth GlobalSettingKey = "network.fallback.any.eth"
@@ -1057,6 +1063,9 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	// Kubernetes Drain Section
 	configItemSpecMap.AddIntItem(KubernetesDrainTimeout, DefaultDrainTimeoutHours, 1, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(DrainSkipK8sAPINotReachableTimeout, DefaultDrainSkipK8sAPINotReachableTimeoutSeconds, 1, 0xFFFFFFFF)
+	// Internal Memory Monitoring section
+	configItemSpecMap.AddBoolItem(InternalMemoryMonitorStoreEnabled, true)
+	configItemSpecMap.AddBoolItem(InternalMemoryMonitorAnalyzeEnabled, true)
 
 	// Add Bool Items
 	configItemSpecMap.AddBoolItem(UsbAccess, true) // Controller likely default to false

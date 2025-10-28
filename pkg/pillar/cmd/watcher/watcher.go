@@ -46,6 +46,8 @@ type watcherContext struct {
 
 	// Global goroutine leak detection parameters
 	GRLDParams GoroutineLeakDetectionParams
+	// Internal memory monitor parameters
+	IMMParams InternalMemoryMonitorParams
 }
 
 // AddAgentSpecificCLIFlags adds CLI options
@@ -340,6 +342,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	go handleMemoryPressureEvents()
 
 	go GoroutinesMonitor(&ctx)
+	go InternalMemoryMonitor(&ctx)
 
 	for {
 		select {
@@ -561,6 +564,7 @@ func handleGlobalConfigImpl(ctxArg interface{}, key string,
 		ctx.GCInitialized = true
 	}
 	updateGoroutineLeakDetectionConfig(ctx)
+	updateInternalMemoryMonitorConfig(ctx)
 	updateMemoryMonitorConfig(ctx)
 	log.Functionf("handleGlobalConfigImpl done for %s", key)
 }
