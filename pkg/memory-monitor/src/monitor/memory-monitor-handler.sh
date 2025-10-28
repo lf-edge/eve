@@ -46,6 +46,14 @@ cleanup() {
   if [ -f "$PSI_FILE" ]; then
     total_size=$((total_size - $(stat -c %s "$PSI_FILE") / 1024))
   fi
+  # Subtract the size of the memory_usage.csv* files (if they exist) as they are created and
+  # deleted by the internal Pillar memory monitor. Also ignore imm-profile.dat, as it is
+  # created only in debug builds and used for profiling operations in internal-memory-monitor.
+  for unhandled_file in memory_usage.csv* imm-profile.dat ; do
+    if [ -f "$unhandled_file" ]; then
+      total_size=$((total_size - $(stat -c %s "$unhandled_file") / 1024))
+    fi
+  done
   while [ "$total_size" -gt "$MAX_OUTPUT_SIZE_KB" ]; do
     found_archives=$(find . -type f -name "*.tar.gz" -print | sort -n)
     if [ -z "$found_archives" ]; then
