@@ -12,7 +12,6 @@ spec:
       usb:              # <- USB passthrough
     developerConfiguration:
       featureGates:
-        - LiveMigration
         - HostDisk
         - Snapshot
         - HostDevices
