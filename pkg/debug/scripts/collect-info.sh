@@ -6,7 +6,7 @@
 
 # Script version, don't forget to bump up once something is changed
 
-VERSION=41
+VERSION=42
 # Add required packages here, it will be passed to "apk add".
 # Once something added here don't forget to add the same package
 # to the Dockerfile ('ENV PKGS' line) of the debug container,
@@ -53,11 +53,152 @@ READ_LOGS_APP=
 TAR_WHOLE_SYS=
 OUT_LOGS_IN_JSON=
 
+visualize_memory_usage() {
+    echo "=== Memory Usage Visualization ==="
+
+    # This feature only works from an extracted archive (read-logs mode)
+    if [ ! -d "$SCRIPT_DIR/persist-newlog" ]; then
+        echo "Error: This feature only works from an extracted collect-info archive."
+        echo "Please extract the collect-info tarball first, then run:"
+        echo "  cd <extracted-directory>/"
+        echo "  ./collect-info.sh --mem-usage-visualize"
+        exit 1
+    fi
+
+    # Running from extracted archive
+    MEM_MONITOR_DIR="$SCRIPT_DIR/persist-memory-monitor-output"
+
+    # Check if memory-monitor output directory exists
+    if [ ! -d "$MEM_MONITOR_DIR" ]; then
+        echo "Error: Memory monitor output directory not found at $MEM_MONITOR_DIR"
+        echo "This archive does not contain memory-monitor data."
+        exit 1
+    fi
+
+    # Find available memory_usage.csv files
+    echo "Looking for memory usage CSV files..."
+    CSV_FILES=$(find "$MEM_MONITOR_DIR" -name "memory_usage.csv*" -type f 2>/dev/null | sort)
+
+    if [ -z "$CSV_FILES" ]; then
+        echo "Error: No memory_usage.csv files found in $MEM_MONITOR_DIR"
+        exit 1
+    fi
+
+    # Display available files
+    echo ""
+    echo "Available memory usage files:"
+    echo "$CSV_FILES" | nl -w2 -s'. '
+    echo ""
+
+    # Get user selection
+    printf "Select a file number to visualize: "
+    read -r selection
+
+    # Validate selection
+    total_files=$(echo "$CSV_FILES" | wc -l)
+    if ! echo "$selection" | grep -qE '^[0-9]+$' || [ "$selection" -lt 1 ] || [ "$selection" -gt "$total_files" ]; then
+        echo "Error: Invalid selection. Please enter a number between 1 and $total_files"
+        exit 1
+    fi
+
+    # Get the selected file
+    SELECTED_FILE=$(echo "$CSV_FILES" | sed -n "${selection}p")
+    echo ""
+    echo "Selected file: $SELECTED_FILE"
+
+    # Setup paths for visualize.py - use a cache directory in the archive
+    CACHE_DIR="$SCRIPT_DIR/.visualizer-cache"
+    mkdir -p "$CACHE_DIR"
+
+    VISUALIZE_SCRIPT="$CACHE_DIR/visualize.py"
+    REQUIREMENTS_FILE="$CACHE_DIR/requirements.txt"
+    OUTPUT_HTML="$CACHE_DIR/memory_usage_visualization.html"
+    VENV_DIR="$CACHE_DIR/venv"
+
+    # Check if files already exist in cache directory (from previous run)
+    if [ -f "$VISUALIZE_SCRIPT" ] && [ -f "$REQUIREMENTS_FILE" ]; then
+        echo "Files already exist in cache directory, using existing files..."
+    else
+        # Download from GitHub
+        VISUALIZE_URL="https://raw.githubusercontent.com/lf-edge/eve/master/pkg/debug/collect-info-extra-content/imm-visualizer/visualize.py"
+        REQUIREMENTS_URL="https://raw.githubusercontent.com/lf-edge/eve/master/pkg/debug/collect-info-extra-content/imm-visualizer/requirements.txt"
+
+        echo "Downloading visualize.py from GitHub..."
+        if ! curl -f -s -o "$VISUALIZE_SCRIPT" "$VISUALIZE_URL"; then
+            echo "Error: Failed to download visualize.py from $VISUALIZE_URL"
+            echo "Please check your internet connection."
+            rm -rf "$CACHE_DIR"
+            exit 1
+        fi
+
+        echo "Downloading requirements.txt from GitHub..."
+        if ! curl -f -s -o "$REQUIREMENTS_FILE" "$REQUIREMENTS_URL"; then
+            echo "Error: Failed to download requirements.txt from $REQUIREMENTS_URL"
+            rm -rf "$CACHE_DIR"
+            exit 1
+        fi
+
+        echo "Download successful!"
+    fi
+
+    # Make the script executable
+    chmod +x "$VISUALIZE_SCRIPT"
+
+    # Check for Python
+    if ! command -v python3 >/dev/null 2>&1; then
+        echo "Error: python3 is not installed."
+        echo "Please install Python 3 first."
+        exit 1
+    fi
+
+    # Create virtual environment and install dependencies (skip if venv already exists)
+    if [ ! -d "$VENV_DIR" ]; then
+        echo "Creating Python virtual environment..."
+        if ! python3 -m venv "$VENV_DIR"; then
+            echo "Error: Failed to create virtual environment."
+            echo "You may need to install python3-venv:"
+            echo "  sudo apt install python3-venv      # Debian/Ubuntu"
+            echo "  sudo dnf install python3-venv      # Fedora"
+            echo "  sudo yum install python3-venv      # RHEL/CentOS"
+            exit 1
+        fi
+
+        echo "Installing required Python packages from requirements.txt..."
+        if ! "$VENV_DIR/bin/pip" install --quiet -r "$REQUIREMENTS_FILE"; then
+            echo "Error: Failed to install Python dependencies."
+            echo "Please ensure you have internet connectivity and pip is working."
+            exit 1
+        fi
+    else
+        echo "Using existing virtual environment..."
+    fi
+
+    # Run the visualization script
+    echo ""
+    echo "Running visualization on $SELECTED_FILE..."
+    if "$VENV_DIR/bin/python3" "$VISUALIZE_SCRIPT" "$SELECTED_FILE" -o "$OUTPUT_HTML" --no-show; then
+        echo ""
+        echo "Success! Visualization generated at: $OUTPUT_HTML"
+        echo ""
+        echo "To view the visualization:"
+        echo "  Open the file in a web browser: $OUTPUT_HTML"
+    else
+        echo "Error: Visualization failed. Check the CSV file format and Python dependencies."
+        exit 1
+    fi
+
+    echo ""
+    echo "Cache directory: $CACHE_DIR"
+    echo "You can remove it with: rm -rf $CACHE_DIR"
+    exit 0
+}
+
 usage()
 {
     echo "Usage: collect-info.sh [-v] [-h] [-a APPLICATION-UUID] [-d]"
     echo "       -h   show this help"
     echo "       -v   show the script version"
+    echo "       --mem-usage-visualize   visualize memory usage data from memory-monitor"
     echo ""
     echo "The script works in two modes depending on the location where it"
     echo "is invoked:"
@@ -89,6 +230,15 @@ usage()
     echo "WARNING: $0 does not have a stable CLI interface. Use with caution in scripts."
     exit 1
 }
+
+# Handle long options before getopts
+for arg in "$@"; do
+    case "$arg" in
+        --mem-usage-visualize)
+            visualize_memory_usage
+            ;;
+    esac
+done
 
 while getopts "vu:sha:djewt:" o; do
     case "$o" in
