@@ -298,7 +298,16 @@ func setAndStartProxyTCP(opt string) {
 
 	var hasProxy, hasKube bool
 	var proxyDNSIP, kubeAddrPort string
+	// In multiple edgeview instances, for the first instance the 'edgeviewInstID' is assigned as '1',
+	// but in single instance case, this 'edgeviewInstID' is not assigned so default is '0'.
+	// To calculate the kube port used by the client side, we have this logic below:
+	// 9001 + i + kubenum*types.EdgeviewMaxInstNum
+	// So, for both single instance and for the 1st instance in multi-instance case, the assigned
+	// port number needs to be '9001'.
 	kubenum := edgeviewInstID - 1
+	if kubenum < 0 {
+		kubenum = 0
+	}
 	if strings.Contains(opt, "/") {
 		var gotProxy, gotKube bool
 		params := strings.Split(opt, "/")
