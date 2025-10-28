@@ -272,7 +272,7 @@ func TestGoroutinesMonitorNoLeak(t *testing.T) {
 	ctx.GRLDParams.Set(goroutinesThreshold, checkInterval, checkStatsFor, keepStatsFor, cooldownPeriod)
 	ctx.GRLDParams.MakeStoppable()
 
-	go goroutinesMonitor(ctx)
+	go GoroutinesMonitor(ctx)
 	defer ctx.GRLDParams.Stop()
 
 	timeStart := time.Now()
@@ -288,7 +288,7 @@ func TestGoroutinesMonitorNoLeak(t *testing.T) {
 	}
 
 	// Close the pipe
-	w.Close()
+	_ = w.Close()
 
 	// Read the log output
 	output, _ := io.ReadAll(r)
@@ -319,7 +319,7 @@ func TestGoroutinesMonitorLeak(t *testing.T) {
 	ctx.GRLDParams.Set(goroutinesThreshold, checkInterval, checkStatsFor, keepStatsFor, cooldownPeriod)
 	ctx.GRLDParams.MakeStoppable()
 
-	go goroutinesMonitor(ctx)
+	go GoroutinesMonitor(ctx)
 	defer ctx.GRLDParams.Stop()
 
 	timeStart := time.Now()
@@ -373,7 +373,7 @@ func TestGoroutinesMonitorUpdateParamsKeepStatsDecrease(t *testing.T) {
 	ctx.GRLDParams.Set(goroutinesThreshold, checkInterval, checkStatsFor, keepStatsFor, cooldownPeriod)
 	ctx.GRLDParams.MakeStoppable()
 
-	go goroutinesMonitor(ctx)
+	go GoroutinesMonitor(ctx)
 	defer ctx.GRLDParams.Stop()
 
 	// Wait until we fill the stats slice
@@ -406,7 +406,7 @@ func TestGoroutinesMonitorUpdateParamsKeepStatsDecrease(t *testing.T) {
 	// Check if the log output contains the expected messages
 	for _, expectedMsg := range expectedMsgs {
 		if !strings.Contains(string(output), expectedMsg) {
-			t.Errorf("Expected log output to contain '%s', but got '%s'", expectedMsg, output)
+			t.Errorf("Expected log output to contain '%s'", expectedMsg)
 		}
 	}
 }
@@ -438,7 +438,7 @@ func TestGoroutinesMonitorUpdateParamsKeepStatsIncrease(t *testing.T) {
 	ctx.GRLDParams.Set(goroutinesThreshold, checkInterval, checkStatsFor, keepStatsFor, cooldownPeriod)
 	ctx.GRLDParams.MakeStoppable()
 
-	go goroutinesMonitor(ctx)
+	go GoroutinesMonitor(ctx)
 	defer ctx.GRLDParams.Stop()
 
 	// Wait until we fill the stats slice
@@ -490,7 +490,7 @@ func TestGoroutineMonitorStops(t *testing.T) {
 	ctx.GRLDParams.Set(goroutinesThreshold, checkInterval, checkStatsFor, keepStatsFor, cooldownPeriod)
 	ctx.GRLDParams.MakeStoppable()
 
-	go goroutinesMonitor(ctx)
+	go GoroutinesMonitor(ctx)
 
 	// Let the monitor run for a while
 	time.Sleep(keepStatsFor * 2)
@@ -540,7 +540,7 @@ func TestGoroutineMonitorRunsFineUnstoppable(t *testing.T) {
 	ctx := &watcherContext{}
 	ctx.GRLDParams.Set(goroutinesThreshold, checkInterval, checkStatsFor, keepStatsFor, cooldownPeriod)
 
-	go goroutinesMonitor(ctx)
+	go GoroutinesMonitor(ctx)
 
 	time.Sleep(keepStatsFor * 2)
 
@@ -558,4 +558,17 @@ func TestGoroutineMonitorRunsFineUnstoppable(t *testing.T) {
 		}
 	}
 
+}
+
+func BenchmarkMovingAverage(b *testing.B) {
+	data := make([]int, 1000)
+	for i := 0; i < 1000; i++ {
+		data[i] = i
+	}
+	windowSize := 10
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		movingAverage(data, windowSize)
+	}
 }
