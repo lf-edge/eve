@@ -9,7 +9,7 @@ require (
 	github.com/fsnotify/fsnotify v1.6.0
 	github.com/gorilla/websocket v1.5.0
 	github.com/grandcat/zeroconf v1.0.0
-	github.com/lf-edge/eve-api/go v0.0.0-20250922144401-abfd2fa2b728
+	github.com/lf-edge/eve-api/go v0.0.0-20251015130922-bab09e4f470c
 	github.com/lf-edge/eve/pkg/pillar v0.0.0-20251004201737-038d6ccc3d00
 	github.com/onsi/gomega v1.29.0
 	github.com/satori/go.uuid v1.2.1-0.20180404165556-75cca531ea76
