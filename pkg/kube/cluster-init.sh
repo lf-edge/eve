@@ -142,11 +142,15 @@ apply_multus_cni() {
 }
 
 copy_cni_plugin_files() {
-        mkdir -p /var/lib/cni/bin
+        mkdir -p ${KUBE_ROOT}/cni/bin
         mkdir -p /opt/cni/bin
-        cp /usr/libexec/cni/* /var/lib/cni/bin
+        cp /usr/libexec/cni/* ${KUBE_ROOT}/cni/bin
         cp /usr/libexec/cni/* /opt/cni/bin
-        cp /usr/bin/eve-bridge /var/lib/cni/bin
+        cp /usr/bin/eve-bridge ${KUBE_ROOT}/cni/bin
+        if [ "$KUBE_ROOT" = "$KUBE_ROOT_EXT4" ]; then
+                # TODO: this needs an extra copy...
+                cp /usr/bin/eve-bridge /var/lib/cni/bin/
+        fi
         cp /usr/bin/eve-bridge /opt/cni/bin
         logmsg "CNI plugins are installed"
 }
@@ -181,17 +185,17 @@ mount_kube_root() {
                 KUBE_ROOT="$KUBE_ROOT_EXT4"
                 if [ ! -e "$KUBE_ROOT" ]; then
                         mkdir -p "$KUBE_ROOT"
-                        mkdir -p "${KUBE_ROOT}/cni"
-                        mkdir -p "${KUBE_ROOT}/rancher"
-                        mkdir -p "${KUBE_ROOT}/k3s"
-                        mkdir -p "${KUBE_ROOT}/longhorn"
-                        mkdir -p "${KUBE_ROOT}/kubelet"
+                #        mkdir -p "${KUBE_ROOT}/cni"
+                #        mkdir -p "${KUBE_ROOT}/rancher"
+                #        mkdir -p "${KUBE_ROOT}/k3s"
+                #        mkdir -p "${KUBE_ROOT}/longhorn"
+                #        mkdir -p "${KUBE_ROOT}/kubelet"
                 fi
-                ln -s "${KUBE_ROOT}/cni" /var/lib/cni
-                ln -s "${KUBE_ROOT}/rancher" /var/lib/rancher
-                ln -s "${KUBE_ROOT}/k3s" /var/lib/k3s
-                ln -s "${KUBE_ROOT}/longhorn" /var/lib/longhorn
-                ln -s "${KUBE_ROOT}/kubelet" /var/lib/kubelet
+                #ln -s "${KUBE_ROOT}/cni" /var/lib/cni
+                #ln -s "${KUBE_ROOT}/rancher" /var/lib/rancher
+                #ln -s "${KUBE_ROOT}/k3s" /var/lib/k3s
+                #ln -s "${KUBE_ROOT}/longhorn" /var/lib/longhorn
+                #ln -s "${KUBE_ROOT}/kubelet" /var/lib/kubelet
         fi
 }
 
@@ -226,8 +230,8 @@ config_cluster_roles() {
 
         # generate user debugging-user certificates
         # 10 year expiration for now
-        if ! /usr/bin/cert-gen -l 315360000 --ca-cert /var/lib/rancher/k3s/server/tls/client-ca.crt \
-                --ca-key /var/lib/rancher/k3s/server/tls/client-ca.key \
+        if ! /usr/bin/cert-gen -l 315360000 --ca-cert ${KUBE_ROOT}/rancher/k3s/server/tls/client-ca.crt \
+                --ca-key ${KUBE_ROOT}/rancher/k3s/server/tls/client-ca.key \
                 -o k3s-debuguser --output-dir /tmp --cert-cn debugging-user --cert-o rbac; then
                 logmsg "Failed to generate debuguser cert"
                 return 1
@@ -238,7 +242,7 @@ config_cluster_roles() {
         user_crt_base64=$(base64 -w0 < "$user_crt_path")
 
         # generate kubeConfigure user for debugging-user
-        user_yaml_path=/var/lib/rancher/k3s/user.yaml
+        user_yaml_path=${KUBE_ROOT}/rancher/k3s/user.yaml
         cp /etc/rancher/k3s/k3s.yaml "$user_yaml_path"
         sed -i "s|client-certificate-data:.*|client-certificate-data: $user_crt_base64|g" "$user_yaml_path"
         sed -i "s|client-key-data:.*|client-key-data: $user_key_base64|g" "$user_yaml_path"
@@ -284,10 +288,10 @@ check_start_k3s() {
 
         ## Must be after reboot, or from k3s restart
         save_crash_log
-        ln -s /var/lib/k3s/bin/* /usr/bin
-        if [ ! -d /var/lib/cni/bin ] || [ ! -d /opt/cni/bin ]; then
-                copy_cni_plugin_files
-        fi
+        ln -s ${KUBE_ROOT}/k3s/bin/* /usr/bin
+        #if [ ! -d ${KUBE_ROOT}/cni/bin ] || [ ! -d /opt/cni/bin ]; then
+        copy_cni_plugin_files
+        #fi
         # for now, always copy to get the latest
 
         # start the k3s server now
@@ -331,7 +335,7 @@ external_boot_image_import() {
         boot_img_path="/etc/external-boot-image.tar"
 
         # Is containerd up?
-        if ! /var/lib/k3s/bin/k3s ctr -a /run/containerd-user/containerd.sock info > /dev/null 2>&1; then
+        if ! ${KUBE_ROOT}/k3s/bin/k3s ctr -a /run/containerd-user/containerd.sock info > /dev/null 2>&1; then
                 logmsg "k3s-containerd not yet running for image import"
                 return 1
         fi
@@ -339,7 +343,7 @@ external_boot_image_import() {
         eve_external_boot_img_name="docker.io/lfedge/eve-external-boot-image"
         eve_external_boot_img_tag=$(cat /run/eve-release)
         eve_external_boot_img="${eve_external_boot_img_name}:${eve_external_boot_img_tag}"
-        if /var/lib/k3s/bin/k3s crictl --runtime-endpoint=unix:///run/containerd-user/containerd.sock inspecti "$eve_external_boot_img"; then
+        if ${KUBE_ROOT}/k3s/bin/k3s crictl --runtime-endpoint=unix:///run/containerd-user/containerd.sock inspecti "$eve_external_boot_img"; then
                 # Already imported
                 return 0
         fi
@@ -351,12 +355,12 @@ external_boot_image_import() {
                 return 1
         fi
 
-        if ! /var/lib/k3s/bin/k3s ctr -a /run/containerd-user/containerd.sock image import "$boot_img_path"; then
+        if ! ${KUBE_ROOT}/k3s/bin/k3s ctr -a /run/containerd-user/containerd.sock image import "$boot_img_path"; then
                 logmsg "import $boot_img_path failed"
                 return 1
         fi
 
-        if ! /var/lib/k3s/bin/k3s ctr -a /run/containerd-user/containerd.sock image tag "$import_name_tag" "$eve_external_boot_img"; then
+        if ! ${KUBE_ROOT}/k3s/bin/k3s ctr -a /run/containerd-user/containerd.sock image tag "$import_name_tag" "$eve_external_boot_img"; then
                 logmsg "re-tag external-boot-image failed"
                 return 1
         fi
@@ -367,20 +371,20 @@ external_boot_image_import() {
 check_start_containerd() {
         # Needed to get the pods to start
         if [ ! -L /usr/bin/runc ]; then
-                ln -s /var/lib/rancher/k3s/data/current/bin/runc /usr/bin/runc
+                ln -s ${KUBE_ROOT}/rancher/k3s/data/current/bin/runc /usr/bin/runc
         fi
         if [ ! -L /usr/bin/containerd-shim-runc-v2 ]; then
-                ln -s /var/lib/rancher/k3s/data/current/bin/containerd-shim-runc-v2 /usr/bin/containerd-shim-runc-v2
+                ln -s ${KUBE_ROOT}/rancher/k3s/data/current/bin/containerd-shim-runc-v2 /usr/bin/containerd-shim-runc-v2
         fi
 
-        pgrep -f "/var/lib/rancher/k3s/data/current/bin/containerd" > /dev/null 2>&1
+        pgrep -f "${KUBE_ROOT}/rancher/k3s/data/current/bin/containerd" > /dev/null 2>&1
         if [ $? -eq 1 ]; then
                 mkdir -p /run/containerd-user
                 if [ "$KUBE_ROOT" = "$KUBE_ROOT_ZFS" ]; then
-                        nohup /var/lib/rancher/k3s/data/current/bin/containerd --config /etc/containerd/config-k3s.toml >> $CTRD_LOG 2>&1 &
+                        nohup ${KUBE_ROOT}/rancher/k3s/data/current/bin/containerd --config /etc/containerd/config-k3s.toml >> $CTRD_LOG 2>&1 &
                 fi
                 if [ "$KUBE_ROOT" = "$KUBE_ROOT_EXT4" ]; then
-                        nohup /var/lib/rancher/k3s/data/current/bin/containerd --config /etc/containerd/config-k3s-ext4.toml >> $CTRD_LOG 2>&1 &
+                        nohup ${KUBE_ROOT}/rancher/k3s/data/current/bin/containerd --config /etc/containerd/config-k3s-ext4.toml >> $CTRD_LOG 2>&1 &
                 fi
                 containerd_pid=$!
                 logmsg "Started k3s-containerd at pid:$containerd_pid"
@@ -430,7 +434,7 @@ are_all_pods_ready() {
                 return 1
         fi
 
-        not_ready=$(echo "$pod_json" | jq '.items[] | select(.status.phase=="Running") | .status.conditions[] | select(.type=="ContainersReady" and .status!="True")' | jq -s length)
+        not_ready=$(echo "$pod_json" | jq '.items[] | select(.status.phase=="Running") | .status.conditions[] | select(.type=="ContainersReady" and .status!="True" and .reason!="PodCompleted")' | jq -s length)
         if [ "$not_ready" -ne 0 ]; then
                 return 1
         fi
@@ -576,7 +580,7 @@ change_to_new_token() {
     starttime=$(date +%s)
 
     while true; do
-        if grep -q "server:$cluster_token" /var/lib/rancher/k3s/server/token; then
+        if grep -q "server:$cluster_token" ${KUBE_ROOT}/rancher/k3s/server/token; then
             logmsg "Token change has taken effect."
             break
         else
@@ -594,7 +598,7 @@ change_to_new_token() {
     done
   else
     # save the content of the token file
-    current_token=$(cat /var/lib/rancher/k3s/server/token)
+    current_token=$(cat ${KUBE_ROOT}/rancher/k3s/server/token)
 
     # let k3s generate a new token
     /usr/bin/k3s token rotate
@@ -602,7 +606,7 @@ change_to_new_token() {
 
     # loop to check if the token file has changed
     while true; do
-      if grep -q "$current_token" /var/lib/rancher/k3s/server/token; then
+      if grep -q "$current_token" ${KUBE_ROOT}/rancher/k3s/server/token; then
         logmsg "Token change has not taken effect yet. Sleeping for 2 seconds..."
         sleep 2
       else
@@ -720,7 +724,7 @@ check_cluster_config_change() {
             terminate_k3s
             # romove the ${KUBE_ROOT}/rancher/k3s/server/tls directory files
             if [ "$is_bootstrap" = "false" ]; then
-              rm -rf /var/lib/rancher/k3s/server/tls/*
+              rm -rf ${KUBE_ROOT}/rancher/k3s/server/tls/*
               # redo the debugger user role binding since certs are changed
               rm ${KUBE_ROOT}/debuguser-initialized
             fi
@@ -1014,7 +1018,7 @@ echo "========================== $DATESTR ==========================" >> $INSTAL
 
 setup_prereqs
 
-wait_for_item "k3s-install"
+#wait_until_item "k3s-install"
 Update_CheckNodeComponents
 
 if [ -f ${KUBE_ROOT}/convert-to-single-node ]; then
@@ -1036,7 +1040,7 @@ if [ -f ${KUBE_ROOT}/convert-to-single-node ]; then
         touch ${KUBE_ROOT}/all_components_initialized
 fi
 # since we can wait for long time, always start the containerd first
-wait_for_item "containerd"
+#wait_until_item "containerd"
 check_start_containerd
 logmsg "containerd started"
 
@@ -1168,6 +1172,9 @@ if [ ! -f ${KUBE_ROOT}/all_components_initialized ]; then
                 continue
         fi
 
+        # Temp workaround
+        cp /usr/bin/eve-bridge /var/lib/cni/bin/
+
         if [ "$install_kubevirt" = "1" ]; then
                 if [ ! -f ${KUBE_ROOT}/kubevirt_initialized ]; then
                         wait_for_item "kubevirt"
@@ -1259,9 +1266,9 @@ else
                 fi
 
                 # Initialize CNI after k3s reboot
-                if [ ! -d /var/lib/cni/bin ] || [ ! -d /opt/cni/bin ]; then
-                        copy_cni_plugin_files
-                fi
+                #if [ ! -d ${KUBE_ROOT}/cni/bin ] || [ ! -d /opt/cni/bin ]; then
+                copy_cni_plugin_files
+                #fi
                 if [ ! -f ${KUBE_ROOT}/multus_initialized ]; then
                         if [ ! -f /etc/multus-daemonset-new.yaml ]; then
                                 assign_multus_nodeip "$cluster_node_ip"
@@ -1282,7 +1289,7 @@ else
                         config_cluster_roles
                 else
                         if [ ! -e /run/.kube/k3s/user.yaml ]; then
-                                cp /var/lib/rancher/k3s/user.yaml /run/.kube/k3s/user.yaml
+                                cp ${KUBE_ROOT}/rancher/k3s/user.yaml /run/.kube/k3s/user.yaml
                         fi
                 fi
 

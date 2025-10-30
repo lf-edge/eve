@@ -150,19 +150,19 @@ is_valid_uuid() {
 }
 
 remove_server_tls_dir() {
-  if [ -d /var/lib/rancher/k3s/server/tls ]; then
-    rm /var/lib/rancher/k3s/server/tls/request-header-ca.key
-    rm /var/lib/rancher/k3s/server/tls/server-ca.key
-    rm /var/lib/rancher/k3s/server/tls/etcd/peer-ca.key
-    rm /var/lib/rancher/k3s/server/tls/etcd/server-ca.crt
-    rm /var/lib/rancher/k3s/server/tls/request-header-ca.crt
-    rm /var/lib/rancher/k3s/server/tls/etcd/server-ca.key
-    rm /var/lib/rancher/k3s/server/cred/ipsec.psk
-    rm /var/lib/rancher/k3s/server/tls/server-ca.crt
-    rm /var/lib/rancher/k3s/server/tls/service.key
-    rm /var/lib/rancher/k3s/server/tls/client-ca.crt
-    rm /var/lib/rancher/k3s/server/tls/client-ca.key
-    rm /var/lib/rancher/k3s/server/tls/etcd/peer-ca.crt
+  if [ -d "${KUBE_ROOT}"/rancher/k3s/server/tls ]; then
+    rm "${KUBE_ROOT}"/rancher/k3s/server/tls/request-header-ca.key
+    rm "${KUBE_ROOT}"/rancher/k3s/server/tls/server-ca.key
+    rm "${KUBE_ROOT}"/rancher/k3s/server/tls/etcd/peer-ca.key
+    rm "${KUBE_ROOT}"/rancher/k3s/server/tls/etcd/server-ca.crt
+    rm "${KUBE_ROOT}"/rancher/k3s/server/tls/request-header-ca.crt
+    rm "${KUBE_ROOT}"/rancher/k3s/server/tls/etcd/server-ca.key
+    rm "${KUBE_ROOT}"/rancher/k3s/server/cred/ipsec.psk
+    rm "${KUBE_ROOT}"/rancher/k3s/server/tls/server-ca.crt
+    rm "${KUBE_ROOT}"/rancher/k3s/server/tls/service.key
+    rm "${KUBE_ROOT}"/rancher/k3s/server/tls/client-ca.crt
+    rm "${KUBE_ROOT}"/rancher/k3s/server/tls/client-ca.key
+    rm "${KUBE_ROOT}"/rancher/k3s/server/tls/etcd/peer-ca.crt
   fi
 }
 

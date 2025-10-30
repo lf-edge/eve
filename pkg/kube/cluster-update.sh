@@ -48,6 +48,10 @@ update_Failed() {
 
 trigger_k3s_selfextraction() {
     # Run some k3s cli command so that binaries are self-extracted
+    if [ "$KUBE_ROOT" = "$KUBE_ROOT_EXT4" ]; then
+        mkdir -p "${KUBE_ROOT}/rancher"
+        ln -s ${KUBE_ROOT_EXT4}/rancher /var/lib/rancher
+    fi
     /usr/bin/k3s check-config >> "$INSTALL_LOG" 2>&1
 }
 
@@ -58,28 +62,31 @@ EdgeNodeInfoPath="/persist/status/zedagent/EdgeNodeInfo/global.json"
 COMP_UPDATE_PATH="/usr/bin/update-component"
 
 link_multus_into_k3s() {
-    ln -s /var/lib/cni/bin/multus /var/lib/rancher/k3s/data/current/bin/multus
+    ln -s "${KUBE_ROOT}"/cni/bin/multus "${KUBE_ROOT}"/rancher/k3s/data/current/bin/multus
+    if [ "$KUBE_ROOT" = "$KUBE_ROOT_EXT4" ]; then
+        ln -s /var/lib/cni/bin/multus /persist/vault/k3s/cni/bin/multus
+    fi
 }
 
 update_k3s() {
     logmsg "Installing K3S version $K3S_VERSION"
-    mkdir -p /var/lib/k3s/bin
-    /usr/bin/curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION=${K3S_VERSION} INSTALL_K3S_SKIP_ENABLE=true INSTALL_K3S_SKIP_START=true INSTALL_K3S_BIN_DIR=/var/lib/k3s/bin INSTALL_K3S_EXEC="--k3s-data-dir /var/lib/rancher/k3s" sh -
+    mkdir -p "${KUBE_ROOT}"/k3s/bin
+    /usr/bin/curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION=${K3S_VERSION} INSTALL_K3S_SKIP_ENABLE=true INSTALL_K3S_SKIP_START=true INSTALL_K3S_BIN_DIR="${KUBE_ROOT}"/k3s/bin INSTALL_K3S_EXEC="--k3s-data-dir ${KUBE_ROOT}/rancher/k3s" sh -
     sleep 5
     logmsg "Initializing K3S version $K3S_VERSION"
-    ln -s /var/lib/k3s/bin/* /usr/bin
+    ln -s "${KUBE_ROOT}"/k3s/bin/* /usr/bin
     trigger_k3s_selfextraction
     link_multus_into_k3s
-    touch /var/lib/k3s_installed_unpacked
+    touch "${KUBE_ROOT}"/k3s_installed_unpacked
 }
 
 # k3s_get_version: return version in form "vW.X.Y+k3sZ"
 k3s_get_version() {
-    if [ ! -f /var/lib/k3s/bin/k3s ]; then
+    if [ ! -f "${KUBE_ROOT}"/k3s/bin/k3s ]; then
         echo "v0.0.0+k3s0"
         return
     fi
-    /var/lib/k3s/bin/k3s --version | awk '$1=="k3s" {print $3}' | tr -d '\n'
+    "${KUBE_ROOT}"/k3s/bin/k3s --version | awk '$1=="k3s" {print $3}' | tr -d '\n'
 }
 
 # Run on every boot before k3s starts

@@ -6,7 +6,7 @@
 # Dir which pillar service container has access to
 PERSIST_MANIFESTS_DIR=/persist/vault/manifests
 # Dir which kube service container has access to and k3s monitors
-KUBE_MANIFESTS_DIR=/var/lib/rancher/k3s/server/manifests
+KUBE_MANIFESTS_DIR="${KUBE_ROOT}"/rancher/k3s/server/manifests
 
 YAML_EXT="yaml"
 # The source yaml, which pillar inflates.
