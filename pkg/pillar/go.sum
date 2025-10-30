@@ -104,8 +104,6 @@ github.com/anatol/smart.go v0.0.0-20241126061019-f03d79b340d2 h1:ha5+W2OHFJOEY4u
 github.com/anatol/smart.go v0.0.0-20241126061019-f03d79b340d2/go.mod h1:NoOw2eVExhZPtVxpYJzEvdRc5OSbCQZJT2vSe3dflPg=
 github.com/anatol/vmtest v0.0.0-20230711210602-87511df0d4bc h1:xMQuzBhj6hXQZufedPQM2OiGX2UcQHSptXtG3+28S8Q=
 github.com/anatol/vmtest v0.0.0-20230711210602-87511df0d4bc/go.mod h1:NC+g66bgkUjV1unIJXhHO35RHxVViWUzNeeKAkkO7DU=
-github.com/andrewd-zededa/go-libzfs v0.0.0-20240304231806-6a64e99da97d h1:/L/7th+IDBOJVHUEBuCOr4aurp5t5cMT2mRrARuMsPU=
-github.com/andrewd-zededa/go-libzfs v0.0.0-20240304231806-6a64e99da97d/go.mod h1:vr7ylGirAMvXzO7cdSQkMKFn0k9XDij67ZgDfPXsKKg=
 github.com/andrewd-zededa/go-libzfs v0.0.0-20251014191158-755aaeb96a92 h1:4NO/CYYiQ3AzOtAgCcG8KdZ5LCyCy+7ox00ZbVNqfHw=
 github.com/andrewd-zededa/go-libzfs v0.0.0-20251014191158-755aaeb96a92/go.mod h1:vr7ylGirAMvXzO7cdSQkMKFn0k9XDij67ZgDfPXsKKg=
 github.com/armon/consul-api v0.0.0-20180202201655-eb2c6b5be1b6/go.mod h1:grANhF5doyWs3UAsr3K4I6qtAmlQcZDesFNEHPZAzj8=
@@ -154,8 +152,6 @@ github.com/beorn7/perks v0.0.0-20180321164747-3a771d992973/go.mod h1:Dwedo/Wpr24
 github.com/beorn7/perks v1.0.0/go.mod h1:KWe93zE9D1o94FZ5RNwFwVgaQK1VOXiVxmqh+CedLV8=
 github.com/beorn7/perks v1.0.1 h1:VlbKKnNfV8bJzeqoa4cOKqO6bYr3WgKZxO8Z16+hsOM=
 github.com/beorn7/perks v1.0.1/go.mod h1:G2ZrVWU2WbWT9wwq4/hrbKbnv/1ERSJQ0ibhJ6rlkpw=
-github.com/bicomsystems/go-libzfs v0.4.0 h1:rezv5ZTVe31o2MbACEDrTYAeRO4rSHm70DHOTTas/yU=
-github.com/bicomsystems/go-libzfs v0.4.0/go.mod h1:/ABUjxseIy72AxJV8ROgSfeZ5YA8/ZSp1mMzfDKi0Mw=
 github.com/blang/semver/v4 v4.0.0 h1:1PFHFE6yCCTv8C1TeyNNarDzntLi7wMI5i/pzqYIsAM=
 github.com/blang/semver/v4 v4.0.0/go.mod h1:IbckMUScFkM3pff0VJDNKRiT6TG/YpiHIM2yvyW5YoQ=
 github.com/bshuster-repo/logrus-logstash-hook v1.0.0 h1:e+C0SB5R1pu//O4MQ3f9cFuPGoOVeF2fE4Og9otCc70=
@@ -571,8 +567,6 @@ github.com/leodido/go-urn v1.2.4 h1:XlAE/cm/ms7TE/VMVoduSpNBoyc2dOxHs5MZSwAN63Q=
 github.com/leodido/go-urn v1.2.4/go.mod h1:7ZrI8mTSeBSHl/UaRyKQW1qZeMgak41ANeCNaVckg+4=
 github.com/lf-edge/edge-containers v0.0.0-20250318135001-d53466c3f229 h1:gvw8bEFL4isjLKbI/dIfa4X0ob9mb2+TBzt2ciioLJo=
 github.com/lf-edge/edge-containers v0.0.0-20250318135001-d53466c3f229/go.mod h1:dDNyAmsU7qV0hisOeWDfdEMLgPgWdsJGnl4aVzOgFDs=
-github.com/lf-edge/eve-api/go v0.0.0-20250922144401-abfd2fa2b728 h1:MieVGF6Sp12dcgBBZPG7GODDBSIEQF2vOfio3qQ/UVE=
-github.com/lf-edge/eve-api/go v0.0.0-20250922144401-abfd2fa2b728/go.mod h1:6HxNA/qKJVEqwpuOFkcQ0h3QyotvAs/cjHLC961FPOY=
 github.com/lf-edge/eve-api/go v0.0.0-20251015130922-bab09e4f470c h1:ZHFiYgv+N9xedVVVSl3IVQm3ot42pob1DnVRLdhPW3o=
 github.com/lf-edge/eve-api/go v0.0.0-20251015130922-bab09e4f470c/go.mod h1:6HxNA/qKJVEqwpuOFkcQ0h3QyotvAs/cjHLC961FPOY=
 github.com/lf-edge/eve-libs v0.0.0-20250926132726-e59020478fca h1:zdMDpvkuq3VJrV0NJPMTnXRHoCsUUNJZJRn2s4VLVuo=
