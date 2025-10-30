@@ -7,7 +7,7 @@ toolchain go1.24.6
 require (
 	github.com/google/go-tpm v0.9.1
 	github.com/lf-edge/eve/api/go v0.0.0-20230726103732-fec97665f8c9
-	github.com/lf-edge/eve/pkg/pillar v0.0.0-20250930143934-3567bcf46ad4
+	github.com/lf-edge/eve/pkg/pillar v0.0.0-20251029075156-4a3aedeeddf7
 	github.com/schollz/progressbar/v3 v3.14.2
 	google.golang.org/protobuf v1.36.7
 )

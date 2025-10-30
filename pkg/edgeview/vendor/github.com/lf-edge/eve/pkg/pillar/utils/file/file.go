@@ -5,6 +5,7 @@ package utils
 
 import (
 	"bufio"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -100,14 +101,35 @@ func WriteRenameWithBackup(fileName string, b []byte) error {
 	return writeRename(fileName, b, true)
 }
 
-func writeRename(fileName string, b []byte, withBackup bool) error {
+// WriteRenameJSON marshals the provided value 'v' into indented JSON format,
+// appends a newline, and writes it atomically to the specified file path.
+// The write operation is performed using an atomic write-rename strategy
+// with fsync and directory sync to ensure data integrity. No backup of the
+// previous file is created. Returns an error if marshalling or writing fails.
+func WriteRenameJSON(path, tmpPath string, v any) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	// Atomic write with fsync + rename + DirSync.
+	return writeRename(path, b, false, tmpPath)
+}
+
+func writeRename(fileName string, b []byte, withBackup bool, tmpPath ...string) error {
 	dirName := filepath.Dir(fileName)
 	// Do atomic rename to avoid partially written files
-	tmpfile, err := os.CreateTemp(dirName, "tmp")
+	var (
+		tmpfile *os.File
+		err     error
+	)
+	if len(tmpPath) > 0 && tmpPath[0] != "" {
+		tmpfile, err = os.OpenFile(tmpPath[0], os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+	} else {
+		tmpfile, err = os.CreateTemp(dirName, "tmp")
+	}
 	if err != nil {
-		errStr := fmt.Sprintf("WriteRename(%s): %s",
-			fileName, err)
-		return errors.New(errStr)
+		return fmt.Errorf("writeRename(%s): create temp: %w", fileName, err)
 	}
 	defer tmpfile.Close()
 	defer os.Remove(tmpfile.Name())

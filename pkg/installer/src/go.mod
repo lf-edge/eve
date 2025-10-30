@@ -4,7 +4,7 @@ go 1.23.0
 
 require (
 	github.com/google/go-tpm v0.9.1
-	github.com/lf-edge/eve/pkg/pillar v0.0.0-20250930143934-3567bcf46ad4
+	github.com/lf-edge/eve/pkg/pillar v0.0.0-20251029075156-4a3aedeeddf7
 	github.com/satori/go.uuid v1.2.1-0.20180404165556-75cca531ea76
 	github.com/sirupsen/logrus v1.9.3
 )
