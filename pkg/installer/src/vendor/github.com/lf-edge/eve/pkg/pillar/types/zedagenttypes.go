@@ -250,21 +250,22 @@ type BootReason uint8
 const (
 	BootReasonNone BootReason = iota
 
-	BootReasonFirst              // Normal - was not yet onboarded
-	BootReasonRebootCmd          // Normal - result of a reboot command in the API
-	BootReasonUpdate             // Normal - from an EVE image update in the API
-	BootReasonFallback           // Fallback from a failed EVE image update
-	BootReasonDisconnect         // Disconnected from controller for too long
-	BootReasonFatal              // Fatal error causing log.Fatal
-	BootReasonOOM                // OOM causing process to be killed
-	BootReasonWatchdogHung       // Software watchdog due stuck agent
-	BootReasonWatchdogPid        // Software watchdog due to e.g., golang panic
-	BootReasonKernel             // Set by dump-capture kernel, see docs/KERNEL-DUMPS.md and pkg/kdump/kdump.sh for details
-	BootReasonPowerFail          // Known power failure e.g., from disk controller S.M.A.R.T counter increase
-	BootReasonUnknown            // Could be power failure, kernel panic, or hardware watchdog
-	BootReasonVaultFailure       // Vault was not ready within the expected time
-	BootReasonPoweroffCmd        // Start after Local Profile Server poweroff
-	BootReasonParseFail    = 255 // BootReasonFromString didn't find match
+	BootReasonFirst                // Normal - was not yet onboarded
+	BootReasonRebootCmd            // Normal - result of a reboot command in the API
+	BootReasonUpdate               // Normal - from an EVE image update in the API
+	BootReasonFallback             // Fallback from a failed EVE image update
+	BootReasonDisconnect           // Disconnected from controller for too long
+	BootReasonFatal                // Fatal error causing log.Fatal
+	BootReasonOOM                  // OOM causing process to be killed
+	BootReasonWatchdogHung         // Software watchdog due stuck agent
+	BootReasonWatchdogPid          // Software watchdog due to e.g., golang panic
+	BootReasonKernel               // Set by dump-capture kernel, see docs/KERNEL-DUMPS.md and pkg/kdump/kdump.sh for details
+	BootReasonPowerFail            // Known power failure e.g., from disk controller S.M.A.R.T counter increase
+	BootReasonUnknown              // Could be power failure, kernel panic, or hardware watchdog
+	BootReasonVaultFailure         // Vault was not ready within the expected time
+	BootReasonPoweroffCmd          // Start after Local Profile Server poweroff
+	BootReasonKubeTransition       // Transition to/from kubernetes single/cluster modes
+	BootReasonParseFail      = 255 // BootReasonFromString didn't find match
 )
 
 // String returns the string name
@@ -300,6 +301,8 @@ func (br BootReason) String() string {
 		return "BootReasonVaultFailure"
 	case BootReasonPoweroffCmd:
 		return "BootReasonPoweroffCmd"
+	case BootReasonKubeTransition:
+		return "BootReasonKubeTransition"
 	default:
 		return fmt.Sprintf("Unknown BootReason %d", br)
 	}
@@ -339,6 +342,8 @@ func (br BootReason) StartWithSavedConfig() bool {
 	case BootReasonVaultFailure:
 		return false
 	case BootReasonPoweroffCmd:
+		return true
+	case BootReasonKubeTransition:
 		return true
 	default:
 		return false
@@ -381,6 +386,8 @@ func BootReasonFromString(str string) BootReason {
 		return BootReasonVaultFailure
 	case "BootReasonPoweroffCmd":
 		return BootReasonPoweroffCmd
+	case "BootReasonKubeTransition":
+		return BootReasonKubeTransition
 	default:
 		return BootReasonParseFail
 	}

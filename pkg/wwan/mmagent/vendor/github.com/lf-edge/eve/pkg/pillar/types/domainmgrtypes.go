@@ -40,7 +40,7 @@ type DomainConfig struct {
 	VifList        []VifConfig
 	IoAdapterList  []IoAdapter
 	// KubeImageName: is the container image reference we pass to domainmgr to launch a native container
-	// in kubevirt eve
+	// in EVE k
 	KubeImageName string
 	// if this node is the DNiD of the App
 	IsDNidNode bool
