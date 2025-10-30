@@ -354,6 +354,8 @@ func (req *DronaRequest) WithDoneParts(doneParts types.DownloadedParts) *DronaRe
 
 // GetDoneParts returns already downloaded parts indexes
 func (req *DronaRequest) GetDoneParts() types.DownloadedParts {
+	req.RLock()
+	defer req.RUnlock()
 	return req.doneParts
 }
 

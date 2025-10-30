@@ -280,7 +280,9 @@ func NewDronaCtx(name string, noHandlers int) (*DronaCtx, error) {
 }
 
 func reqPostSize(req *DronaRequest, dronaCtx *DronaCtx, stats types.UpdateStats) {
+	req.Lock()
 	req.doneParts = stats.DoneParts
+	req.Unlock()
 	dronaCtx.postSize(req, stats.Size, stats.Asize)
 }
 
