@@ -136,6 +136,7 @@ func getSmartAttr(diskData []*types.DAttrTable) []*info.SmartAttr {
 			Id:            uint32(attr.ID),
 			AttributeName: attr.AttributeName,
 			RawValue:      uint64(attr.RawValue),
+			Thresh:        uint64(attr.Threshold),
 			Worst:         uint64(attr.Worst),
 			Value:         uint64(attr.Value),
 			Type:          attr.Type,
