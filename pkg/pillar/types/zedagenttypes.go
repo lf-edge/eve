@@ -408,6 +408,8 @@ const (
 	MaintenanceModeReasonNoDiskSpace     = MaintenanceModeReason(info.MaintenanceModeReason_MAINTENANCE_MODE_REASON_LOW_DISK_SPACE)
 	MaintenanceModeReasonTpmEncFailure   = MaintenanceModeReason(info.MaintenanceModeReason_MAINTENANCE_MODE_REASON_TPM_ENCRYPTION_FAILURE)
 	MaintenanceModeReasonTpmQuoteFailure = MaintenanceModeReason(info.MaintenanceModeReason_MAINTENANCE_MODE_REASON_TPM_QUOTE_FAILURE)
+	// XXX fix - add to API enum
+	MaintenanceModeReasonEdgeNodeCertsRefused = MaintenanceModeReason(info.MaintenanceModeReason_MAINTENANCE_MODE_REASON_TPM_QUOTE_FAILURE)
 )
 
 // String returns the verbose equivalent of MaintenanceModeMultiReason code
@@ -441,6 +443,8 @@ func (mmr MaintenanceModeReason) String() string {
 		return "MaintenanceModeReasonNoDiskSpace"
 	case MaintenanceModeReasonTpmEncFailure:
 		return "MaintenanceModeReasonTpmEncFailure"
+	case MaintenanceModeReasonEdgeNodeCertsRefused:
+		return "MaintenanceModeReasonEdgeNodeCertsRefused"
 	default:
 		return "Unknown MaintenanceModeReason"
 	}
@@ -559,6 +563,7 @@ type ZedAgentStatus struct {
 	RequestedBootReason    BootReason // Why we will reboot
 	MaintenanceMode        bool       // Don't run apps etc
 	MaintenanceModeReasons MaintenanceModeMultiReason
+	EdgeNodeCertsRefused   bool         // Causes maintenance mode
 	ForceFallbackCounter   int          // Try image fallback when counter changes
 	CurrentProfile         string       // Current profile
 	RadioSilence           RadioSilence // Currently requested state of radio devices
