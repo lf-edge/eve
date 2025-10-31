@@ -207,6 +207,8 @@ func TestNewConfigItemSpecMap(t *testing.T) {
 		WwanModemRecoveryRestartModemManager,
 		NetworkLocalLegacyMACAddress,
 		MemoryMonitorEnabled,
+		InternalMemoryMonitorStoreEnabled,
+		InternalMemoryMonitorAnalyzeEnabled,
 		// TriState Items
 		NetworkFallbackAnyEth,
 		MaintenanceMode,
