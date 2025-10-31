@@ -877,7 +877,7 @@ func DetachOldWorkload(log *base.LogObject, failedNodeName string, appDomainName
 			log.Errorf("DetachOldWorkload Can't get failed replicas err:%v", err)
 			continue
 		}
-		volRedundant := lhVolHasRedundancyWithoutNode(log, lhVolAllReps, failedNodeName)
+		volRedundant := lhVolHasHealthyReplicaWithoutNode(log, lhVolAllReps, failedNodeName)
 		if !volRedundant {
 			appHasStorageRedundancy = false
 			break

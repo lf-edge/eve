@@ -35,8 +35,15 @@ Kubevirt_tie_breaker_config_apply() {
 
 Kubevirt_uninstall() {
     logmsg "Removing patched Kubevirt"
-    kubectl delete -f /etc/kubevirt-features.yaml
-    kubectl delete -f /etc/kubevirt-operator.yaml
+    {
+        kubectl delete -n kubevirt kubevirt kubevirt --wait=true
+        kubectl delete apiservices v1.subresources.kubevirt.io
+        kubectl delete mutatingwebhookconfigurations virt-api-mutator
+        kubectl delete validatingwebhookconfigurations virt-operator-validator
+        kubectl delete validatingwebhookconfigurations virt-api-validator
+        kubectl delete -f /etc/kubevirt-operator.yaml
+        kubectl delete -f /etc/kubevirt-features.yaml
+    } >> "$INSTALL_LOG" 2>&1
 
     # Kubevirt applies a large amount of labels to nodes detailing available cpu flags, remove them
     for n in $(kubectl get node -o NAME); do
