@@ -340,9 +340,9 @@ func PopulateKSI() (types.KubeStorageInfo, error) {
 	return ksi, nil
 }
 
-// lhVolHasRedundancy returns true if a volume can support losing a replica on the provided node name
+// lhVolHasHealthyReplicaWithoutNode returns true if a volume can support losing a replica on the provided node name
 // and still have an online replica
-func lhVolHasRedundancyWithoutNode(log *base.LogObject, repList *lhv1beta2.ReplicaList, ignoreRepOnNode string) (redundant bool) {
+func lhVolHasHealthyReplicaWithoutNode(log *base.LogObject, repList *lhv1beta2.ReplicaList, ignoreRepOnNode string) (hasHealthyReplica bool) {
 	var healthyReplicas []lhv1beta2.Replica
 	// filter list to replicas which are healthy
 	for _, lhReplica := range repList.Items {
@@ -360,11 +360,9 @@ func lhVolHasRedundancyWithoutNode(log *base.LogObject, repList *lhv1beta2.Repli
 		}
 		healthyReplicas = append(healthyReplicas, lhReplica)
 	}
-	if len(healthyReplicas) > 1 {
-		redundant = true
-	}
-	log.Warnf("replica count:%d redundant:%t", len(healthyReplicas), redundant)
-	return redundant
+	hasHealthyReplica = (len(healthyReplicas) > 0)
+	log.Warnf("replica healthyReplicaCount:%d hasHealthyReplica:%t", len(healthyReplicas), hasHealthyReplica)
+	return hasHealthyReplica
 }
 
 // LonghornReplicaList returns the replica for a given longhorn volume which is hosted on a given kubernetes node
