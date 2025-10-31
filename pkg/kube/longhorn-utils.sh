@@ -107,6 +107,15 @@ EOF
 Longhorn_is_ready() {
     longhorn_rdy_complete_file
 
+    # Namespace will exist while longhorn uninstall job completes.
+    # Don't get in its way, submitting node creations.
+    if [ -f /tmp/replicated-storage-uninstall-inprogress ]; then
+        return 1
+    fi
+    if [ -f /var/lib/base-k3s-mode ]; then
+        return 0
+    fi
+
     if ! kubectl get namespace/longhorn-system; then
         return 0
     fi
