@@ -9,6 +9,7 @@ See [EVE Wiki](https://wiki.lfedge.org/display/EVE/Community) for governance gui
 * Avi Deitcher `avi@deitcher.net`
 * Erik Nordmark `erik@zededa.com`
 * Milan Lenco `milan@zededa.com`
-* Roman Penyaev `romanp@zededa.com`
 * Renê Pinto `rene@zededa.com`
+* Roman Penyaev `romanp@zededa.com`
 * Roman Shaposhnik `rvs@apache.org`
+* Shahriyar Jalayeri `shahriyar@zededa.com`
