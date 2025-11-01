@@ -600,18 +600,78 @@ the old MTU value.
 
 #### Network Instance MTU vs. Network Adapter MTU
 
-Please note that application traffic leaving or entering the device via a network
-adapter associated with the network instance is additionally limited by MTU values
-of NI ports, configured within their `NetworkConfig` objects
-(see [DEVICE-CONNECTIVITY.md](DEVICE-CONNECTIVITY.md), section "Network Adapter MTU").
-If the configured network instance MTU is higher than MTU of any of the NI ports,
-EVE will flag the network instance with an error and use the lowest MTU among
-all the NI ports for the network instance instead. This is to prevent apps from sending
-packets exceeding the path MTU. Packets entering NI via port with a higher MTU and with
-size exceeding the NI MTU will get fragmented inside EVE (if allowed by IP header).
-By default (if MTU is not configured by the user, i.e. 'mtu' is zero), EVE uses 1500
-as MTU for air-gapped network instances and the lowest MTU among NI ports for NIs with
-external connectivity.
+Application traffic leaving or entering the device via a network adapter associated
+with a network instance is also constrained by the MTU of NI ports, as configured
+in their `NetworkConfig` objects (see [DEVICE-CONNECTIVITY.md](DEVICE-CONNECTIVITY.md),
+section "Network Adapter MTU").
+
+If the user does not configure an MTU (mtu = 0), EVE automatically sets:
+
+* 1500 bytes for air-gapped network instances, and
+* The lowest MTU among NI ports for network instances with external connectivity.
+
+If the user configures an MTU, EVE verifies it against the NI port MTUs. If the configured
+network instance MTU is higher than any NI port MTU, EVE flags the network instance
+with an error and enforces the lowest MTU among all NI ports. This ensures that
+applications do not send packets larger than what the physical or virtual interfaces
+can handle.
+
+Packets larger than the effective MTU will either be fragmented, which can reduce
+performance, or, if the *Don’t Fragment* (DF) flag is set, dropped by routers along
+the path.
+
+To further reduce fragmentation and improve reliability, EVE can automatically clamp
+the TCP Maximum Segment Size (MSS) for forwarded traffic, ensuring TCP segments fit
+within the path MTU. This is described in the following section.
+
+#### TCP MSS Clamping
+
+EVE automatically applies TCP Maximum Segment Size (MSS) clamping to forwarded application
+TCP traffic to prevent IP fragmentation when the path MTU cannot be reliably propagated
+to the application.
+
+##### Why it is needed
+
+Applications running in VMs or containers often cannot receive the actual MTU of the egress
+network interface:
+
+* MTU propagation requires a DHCP client inside the app that is configured to request
+  the MTU option, or a recent virtio driver that supports MTU propagation.
+* When the network instance is rerouted to a different uplink, the new MTU is applied
+  only after the app’s DHCP lease expires.
+* Containers inside VMs may ignore propagated MTU values altogether.
+
+Without MSS clamping, applications might continue sending packets larger than the real
+path MTU, causing fragmentation or even dropped packets if *Don’t Fragment* (DF)
+flag is set. If ICMP *Fragmentation Needed* messages are filtered, the sender
+cannot detect the issue, leading to retransmissions and connection stalls.
+
+##### How it works
+
+The kernel’s Netfilter subsystem automatically adjusts (clamps) the TCP MSS
+in SYN and SYN-ACK packets to fit the path MTU.
+
+The path MTU is determined from the output interface MTU and cached ICMP feedback
+(if available). Even if ICMPs are blocked, the interface MTU still provides a safe
+upper bound (especially when device is running at the network edge).
+
+The MSS is determined by taking the minimum of the path MTUs in both directions
+of the flow, ensuring packets in either direction fit the path.
+The MSS in the packet is only ever reduced, never increased.
+
+The calculated MSS is written into the TCP options of the packet, and the TCP checksum
+is automatically recalculated to reflect the change.
+
+The rule is implemented in the mangle table (FORWARD chain) using iptables:
+
+* One rule for IPv4 (iptables)
+* One rule for IPv6 (ip6tables)
+
+##### Configuration
+
+By default, MSS clamping is enabled for all forwarded application traffic.
+It can be disabled using the global configuration property: `app.enable.tcp.mss.clamping`
+This allows to disable clamping in case it causes some undesired behaviour.
 
 ### Flow Logging
 
