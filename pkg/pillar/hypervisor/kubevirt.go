@@ -1863,7 +1863,7 @@ func addEFIBootLoader(spec *v1.VirtualMachineInstanceSpec) {
 	spec.Domain.Firmware.Bootloader = &v1.Bootloader{
 		EFI: &v1.EFI{
 			SecureBoot: ptrBool(false), // For this we need SMM CPU feature enabled
-			Persistent: ptrBool(true),
+			Persistent: ptrBool(false),
 		},
 	}
 }
