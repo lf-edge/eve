@@ -37,7 +37,7 @@ jobs:
           bash tests/tpm/prep-and-test.sh
       - name: Report test results as Annotations
         if: ${{ always() }}
-        uses: guyarb/golang-test-annoations@v0.6.0
+        uses: guyarb/golang-test-annoations@2941118d7ef622b1b3771d1ff6eae9e90659eb26  # v0.8.0
         with:
           test-results: dist/amd64/results.json
       - name: Store raw test results
