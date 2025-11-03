@@ -155,7 +155,7 @@ jobs:
       # load them into docker, and then clear the cache so we can load the cache for the target arch.
       - name: update linuxkit cache for runner arch so we can get desired images
         id: cache_for_docker
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830  # v4.3.0
         with:
           path: ~/.linuxkit/cache
           key: linuxkit-amd64-${{ github.event.pull_request.head.sha }}-generic
@@ -171,7 +171,7 @@ jobs:
       - name: update linuxkit cache for our arch
         id: cache_for_packages
         if: ${{ steps.arch_runner_equals_matrix.outputs.matched != 'true' }}
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830  # v4.3.0
         with:
           path: ~/.linuxkit/cache
           key: linuxkit-${{ matrix.arch }}-${{ github.event.pull_request.head.sha }}-${{ matrix.platform }}
