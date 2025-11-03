@@ -200,7 +200,7 @@ jobs:
         run: |
           make cache-export ZARCH=${{ matrix.arch }} IMAGE=lfedge/eve:$VERSION-${{ matrix.hv }} OUTFILE=eve-${{ matrix.hv }}-${{ matrix.arch }}-${{ matrix.platform }}.tar IMAGE_NAME=$TAG-${{ matrix.hv }}-${{ matrix.arch }}
       - name: Upload EVE ${{ matrix.hv }}-${{ matrix.arch }}-${{ matrix.platform }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4  # v5.0.0
         with:
           name: eve-${{ matrix.hv }}-${{ matrix.arch }}-${{ matrix.platform }}
           path: eve-${{ matrix.hv }}-${{ matrix.arch }}-${{ matrix.platform }}.tar
