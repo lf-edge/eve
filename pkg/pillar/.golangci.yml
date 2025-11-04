@@ -9,18 +9,18 @@ linters-settings:
         list-mode: lax  # allow unless explicitly denied
         files:
           - $all
+        allow:
+          - $gostd
+          - $ven
 
 linters:
   enable-all: true
   disable:
     - gochecknoglobals  # unreliable
-    - golint            # covered by revive
-    - interfacer        # deprecated
     - lll               # line length check
     - mnd               # troublesome with little value
     - stylecheck        # covered by revive
     - typecheck         # See golangci/golangci-lint#419
-    - varcheck          # unreliable
     - varnamelen        # Too opinionated about var length
     - funlen            # function length checks
     - godot             # Don't mandate periods at end of comments
@@ -29,23 +29,18 @@ linters:
     - whitespace        # Too opinionated about whitespace
     - wrapcheck         # XXX should we switch to wrapped errors etc?
     - err113            # Too opinioned about error handling (also yetus probably doesn't run it correctly)
-    - exhaustivestruct  # Too opinionated
     - gofumpt           # Too opinionated about whitespace
-    - gomnd             # We use plenty of magic constants
-    - scopelint         # Obsoleted
     - gocognit          # Too opinionated on existing code
     - gocyclo           # Too opinionated on existing code
-    - maligned          # Too opinionated on existing structs
     - nestif            # Too opinionated on existing code
     - exhaustruct       # Too opinionated on existing code
-    - nosnakecase       # Uppercase with underscores is in some cases used for enum values
     - nonamedreturns    # Named return is not a bad practice
     - cyclop            # Raises warnings even for relatively simple functions
     - ireturn           # Returning interfaces is a common practise for constructors in defensive programming
     - exhaustive        # Complains even if struct has default branch
     - musttag           # pillar uses implicit tags for all structs
     - maintidx          # Disable maintainability index
-    - ifshort
+    - tenv              # Deprecated
     - dupl
 
 issues:
@@ -56,4 +51,4 @@ issues:
 # that is we should return all errors
 # not only the first hit
 output:
-  uniq-by-line: false
+  issues.uniq-by-line: false
