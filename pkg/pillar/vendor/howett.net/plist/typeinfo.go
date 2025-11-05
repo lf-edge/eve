@@ -6,6 +6,24 @@ import (
 	"sync"
 )
 
+func isEmptyValue(v reflect.Value) bool {
+	switch v.Kind() {
+	case reflect.Array, reflect.Map, reflect.Slice, reflect.String:
+		return v.Len() == 0
+	case reflect.Bool:
+		return !v.Bool()
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return v.Int() == 0
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+		return v.Uint() == 0
+	case reflect.Float32, reflect.Float64:
+		return v.Float() == 0
+	case reflect.Interface, reflect.Ptr:
+		return v.IsNil()
+	}
+	return false
+}
+
 // typeInfo holds details for the plist representation of a type.
 type typeInfo struct {
 	fields []fieldInfo
@@ -13,9 +31,22 @@ type typeInfo struct {
 
 // fieldInfo holds details for the plist representation of a single field.
 type fieldInfo struct {
-	idx       []int
-	name      string
-	omitEmpty bool
+	idx  []int
+	name string
+
+	// omitEmptyDepthMap stores, for each entry in idx, whether at that level the user had specified
+	// omitempty. This matters for anonymous embedded structs, where the index path to a given field
+	// may traverse different struct types
+	//
+	// For example, given struct S{ *I } and struct I{ V int }, the path to V is [0,0].
+	// If S.I were marked `omitempty`, we would need to record that omitempty was seen at the first index entry.
+	//    *I,         int
+	// [   0,           0 ]
+	// [omit, do not omit ]
+	//
+	// As an optimization, we store it as a bit field. This means anonymous embedded structs more than 64 entries
+	// may forget their omitempty states.
+	omitEmptyDepthMap uint64
 }
 
 var tinfoMap = make(map[reflect.Type]*typeInfo)
@@ -39,6 +70,11 @@ func getTypeInfo(typ reflect.Type) (*typeInfo, error) {
 				continue // Private field
 			}
 
+			finfo, err := structFieldInfo(typ, &f)
+			if err != nil {
+				return nil, err
+			}
+
 			// For embedded structs, embed its fields.
 			if f.Anonymous {
 				t := f.Type
@@ -50,19 +86,15 @@ func getTypeInfo(typ reflect.Type) (*typeInfo, error) {
 					if err != nil {
 						return nil, err
 					}
-					for _, finfo := range inner.fields {
-						finfo.idx = append([]int{i}, finfo.idx...)
-						if err := addFieldInfo(typ, tinfo, &finfo); err != nil {
+					for _, innerFinfo := range inner.fields {
+						innerFinfo.idx = append(finfo.idx, innerFinfo.idx...)
+						innerFinfo.omitEmptyDepthMap = finfo.omitEmptyDepthMap | (innerFinfo.omitEmptyDepthMap << uint(len(finfo.idx)))
+						if err := addFieldInfo(typ, tinfo, &innerFinfo); err != nil {
 							return nil, err
 						}
 					}
 					continue
 				}
-			}
-
-			finfo, err := structFieldInfo(typ, &f)
-			if err != nil {
-				return nil, err
 			}
 
 			// Add the field if it doesn't conflict with other fields.
@@ -92,7 +124,7 @@ func structFieldInfo(typ reflect.Type, f *reflect.StructField) (*fieldInfo, erro
 		for _, flag := range tokens[1:] {
 			switch flag {
 			case "omitempty":
-				finfo.omitEmpty = true
+				finfo.omitEmptyDepthMap = 1 << uint(len(f.Index)-1)
 			}
 		}
 	}
@@ -150,10 +182,10 @@ func addFieldInfo(typ reflect.Type, tinfo *typeInfo, newf *fieldInfo) error {
 	return nil
 }
 
-// value returns v's field value corresponding to finfo.
+// valueForWriting returns v's field value corresponding to finfo.
 // It's equivalent to v.FieldByIndex(finfo.idx), but initializes
 // and dereferences pointers as necessary.
-func (finfo *fieldInfo) value(v reflect.Value) reflect.Value {
+func (finfo *fieldInfo) valueForWriting(v reflect.Value) reflect.Value {
 	for i, x := range finfo.idx {
 		if i > 0 {
 			t := v.Type()
@@ -165,6 +197,25 @@ func (finfo *fieldInfo) value(v reflect.Value) reflect.Value {
 			}
 		}
 		v = v.Field(x)
+	}
+	return v
+}
+
+// valueForWriting returns v's field value corresponding to finfo.
+// It's equivalent to v.FieldByIndex(finfo.idx), but bails out if one of the
+// indices indicated that it should be omitted if it's empty and it is empty.
+func (finfo *fieldInfo) value(v reflect.Value) reflect.Value {
+	for i, x := range finfo.idx {
+		t := v.Type()
+		if t.Kind() == reflect.Ptr && t.Elem().Kind() == reflect.Struct {
+			v = v.Elem()
+		}
+
+		v = v.Field(x)
+
+		if (finfo.omitEmptyDepthMap&(1<<uint(i))) != 0 && isEmptyValue(v) {
+			return reflect.Value{}
+		}
 	}
 	return v
 }

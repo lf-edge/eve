@@ -155,9 +155,6 @@ github.com/Microsoft/hcsshim/internal/wclayer
 github.com/Microsoft/hcsshim/internal/winapi
 github.com/Microsoft/hcsshim/osversion
 github.com/Microsoft/hcsshim/pkg/ociwclayer
-# github.com/StackExchange/wmi v0.0.0-20190523213315-cbe66965904d
-## explicit
-github.com/StackExchange/wmi
 # github.com/anatol/smart.go v0.0.0-20241126061019-f03d79b340d2
 ## explicit; go 1.22
 github.com/anatol/smart.go
@@ -619,9 +616,6 @@ github.com/gabriel-vasile/mimetype/internal/magic
 # github.com/getlantern/framed v0.0.0-20190601192238-ceb6431eeede
 ## explicit; go 1.12
 github.com/getlantern/framed
-# github.com/ghodss/yaml v1.0.0
-## explicit
-github.com/ghodss/yaml
 # github.com/go-chi/chi/v5 v5.2.2
 ## explicit; go 1.20
 github.com/go-chi/chi/v5
@@ -650,7 +644,7 @@ github.com/go-logr/logr/slogr
 # github.com/go-logr/stdr v1.2.2
 ## explicit; go 1.16
 github.com/go-logr/stdr
-# github.com/go-ole/go-ole v1.2.6
+# github.com/go-ole/go-ole v1.3.0
 ## explicit; go 1.12
 github.com/go-ole/go-ole
 github.com/go-ole/go-ole/oleutil
@@ -835,32 +829,11 @@ github.com/inconshreveable/mousetrap
 # github.com/jackwakefield/gopac v1.0.2
 ## explicit
 github.com/jackwakefield/gopac
-# github.com/jaypipes/ghw v0.8.0
-## explicit; go 1.12
-github.com/jaypipes/ghw
-github.com/jaypipes/ghw/pkg/baseboard
-github.com/jaypipes/ghw/pkg/bios
-github.com/jaypipes/ghw/pkg/block
-github.com/jaypipes/ghw/pkg/chassis
-github.com/jaypipes/ghw/pkg/context
-github.com/jaypipes/ghw/pkg/cpu
-github.com/jaypipes/ghw/pkg/gpu
-github.com/jaypipes/ghw/pkg/linuxdmi
-github.com/jaypipes/ghw/pkg/linuxpath
-github.com/jaypipes/ghw/pkg/marshal
-github.com/jaypipes/ghw/pkg/memory
-github.com/jaypipes/ghw/pkg/net
-github.com/jaypipes/ghw/pkg/option
-github.com/jaypipes/ghw/pkg/pci
-github.com/jaypipes/ghw/pkg/pci/address
-github.com/jaypipes/ghw/pkg/product
-github.com/jaypipes/ghw/pkg/snapshot
-github.com/jaypipes/ghw/pkg/topology
-github.com/jaypipes/ghw/pkg/unitutil
-github.com/jaypipes/ghw/pkg/util
-# github.com/jaypipes/pcidb v0.6.0
-## explicit; go 1.11
+# github.com/jaypipes/pcidb v1.1.1
+## explicit; go 1.21
 github.com/jaypipes/pcidb
+github.com/jaypipes/pcidb/internal
+github.com/jaypipes/pcidb/types
 # github.com/jinzhu/copier v0.3.5
 ## explicit; go 1.13
 github.com/jinzhu/copier
@@ -906,7 +879,7 @@ github.com/leodido/go-urn
 github.com/lf-edge/edge-containers/pkg/registry
 github.com/lf-edge/edge-containers/pkg/resolver
 github.com/lf-edge/edge-containers/pkg/tgz
-# github.com/lf-edge/eve-api/go v0.0.0-20260105135946-ca16739db889
+# github.com/lf-edge/eve-api/go v0.0.0-20260114160322-5feda2767927
 ## explicit; go 1.21.1
 github.com/lf-edge/eve-api/go/attest
 github.com/lf-edge/eve-api/go/auth
@@ -1160,10 +1133,10 @@ github.com/shjala/gostats
 # github.com/sirupsen/logrus v1.9.3
 ## explicit; go 1.13
 github.com/sirupsen/logrus
-# github.com/spf13/cobra v1.8.0
+# github.com/spf13/cobra v1.9.1
 ## explicit; go 1.15
 github.com/spf13/cobra
-# github.com/spf13/pflag v1.0.5
+# github.com/spf13/pflag v1.0.6
 ## explicit; go 1.12
 github.com/spf13/pflag
 # github.com/spiffe/go-spiffe/v2 v2.5.0
@@ -1224,6 +1197,35 @@ github.com/xlab/treeprint
 # github.com/yusufpapurcu/wmi v1.2.4
 ## explicit; go 1.16
 github.com/yusufpapurcu/wmi
+# github.com/zededa/ghw v0.0.0-20260121174541-9df1086a4e7a
+## explicit; go 1.21
+github.com/zededa/ghw
+github.com/zededa/ghw/pkg/accelerator
+github.com/zededa/ghw/pkg/baseboard
+github.com/zededa/ghw/pkg/bios
+github.com/zededa/ghw/pkg/block
+github.com/zededa/ghw/pkg/bus
+github.com/zededa/ghw/pkg/can
+github.com/zededa/ghw/pkg/chassis
+github.com/zededa/ghw/pkg/cpu
+github.com/zededa/ghw/pkg/gpu
+github.com/zededa/ghw/pkg/linuxdmi
+github.com/zededa/ghw/pkg/linuxpath
+github.com/zededa/ghw/pkg/marshal
+github.com/zededa/ghw/pkg/memory
+github.com/zededa/ghw/pkg/net
+github.com/zededa/ghw/pkg/option
+github.com/zededa/ghw/pkg/pci
+github.com/zededa/ghw/pkg/pci/address
+github.com/zededa/ghw/pkg/product
+github.com/zededa/ghw/pkg/serial
+github.com/zededa/ghw/pkg/topology
+github.com/zededa/ghw/pkg/tpm
+github.com/zededa/ghw/pkg/unitutil
+github.com/zededa/ghw/pkg/usb
+github.com/zededa/ghw/pkg/usb/address
+github.com/zededa/ghw/pkg/util
+github.com/zededa/ghw/pkg/watchdog
 # github.com/zeebo/errs v1.4.0
 ## explicit; go 1.12
 github.com/zeebo/errs
@@ -1364,7 +1366,7 @@ golang.org/x/oauth2/jwt
 ## explicit; go 1.24.0
 golang.org/x/sync/errgroup
 golang.org/x/sync/semaphore
-# golang.org/x/sys v0.38.0
+# golang.org/x/sys v0.40.0
 ## explicit; go 1.24.0
 golang.org/x/sys/cpu
 golang.org/x/sys/plan9
@@ -1651,8 +1653,8 @@ gopkg.in/yaml.v2
 # gopkg.in/yaml.v3 v3.0.1
 ## explicit
 gopkg.in/yaml.v3
-# howett.net/plist v0.0.0-20181124034731-591f970eefbb
-## explicit
+# howett.net/plist v1.0.2-0.20250314012144-ee69052608d9
+## explicit; go 1.12
 howett.net/plist
 # k8s.io/api v0.29.3 => k8s.io/api v0.26.3
 ## explicit; go 1.19
