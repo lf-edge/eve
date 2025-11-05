@@ -1,0 +1,435 @@
+// Use and distribution licensed under the Apache license version 2.
+//
+// See the COPYING file in the root project directory for full text.
+//
+
+package pci
+
+import (
+	"os"
+	"path/filepath"
+	"regexp"
+	"strings"
+
+	"github.com/jaypipes/pcidb"
+
+	"github.com/zededa/ghw/pkg/linuxpath"
+	"github.com/zededa/ghw/pkg/option"
+	pciaddr "github.com/zededa/ghw/pkg/pci/address"
+	"github.com/zededa/ghw/pkg/topology"
+	"github.com/zededa/ghw/pkg/util"
+)
+
+const (
+	// found running `wc` against real linux systems
+	modAliasExpectedLength = 54
+)
+
+func (i *Info) load(opts *option.Options) error {
+	pcidbOpt := &pcidb.WithOption{}
+	if path := os.Getenv("PCIDB_PATH"); path != "" {
+		pcidbOpt = pcidb.WithPath(path)
+	}
+	if i.db == nil {
+		db, err := pcidb.New(pcidbOpt)
+		if err != nil {
+			return err
+		}
+		i.db = db
+	}
+	i.Devices = i.getDevices(opts)
+	return nil
+}
+
+func getDeviceModaliasPath(paths *linuxpath.Paths, pciAddr *pciaddr.Address) string {
+	return filepath.Join(
+		paths.SysBusPciDevices,
+		pciAddr.String(),
+		"modalias",
+	)
+}
+
+func getDeviceRevision(paths *linuxpath.Paths, pciAddr *pciaddr.Address) string {
+	revisionPath := filepath.Join(
+		paths.SysBusPciDevices,
+		pciAddr.String(),
+		"revision",
+	)
+
+	if _, err := os.Stat(revisionPath); err != nil {
+		return ""
+	}
+	revision, err := os.ReadFile(revisionPath)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(revision))
+}
+
+func getDeviceNUMANode(opts *option.Options, pciAddr *pciaddr.Address) *topology.Node {
+	paths := linuxpath.New(opts)
+	numaNodePath := filepath.Join(paths.SysBusPciDevices, pciAddr.String(), "numa_node")
+
+	if _, err := os.Stat(numaNodePath); err != nil {
+		return nil
+	}
+
+	nodeIdx := util.SafeIntFromFile(opts, numaNodePath)
+	if nodeIdx == -1 {
+		return nil
+	}
+
+	return &topology.Node{
+		ID: nodeIdx,
+	}
+}
+
+func getDeviceIommuGroup(paths *linuxpath.Paths, pciAddr *pciaddr.Address) string {
+	iommuGroupPath := filepath.Join(paths.SysBusPciDevices, pciAddr.String(), "iommu_group")
+
+	dest, err := os.Readlink(iommuGroupPath)
+	if err != nil {
+		return ""
+	}
+	return filepath.Base(dest)
+}
+
+func getDeviceParentAddress(paths *linuxpath.Paths, pciAddr *pciaddr.Address) string {
+	devPath := filepath.Join(paths.SysBusPciDevices, pciAddr.String())
+
+	dest, err := os.Readlink(devPath)
+	if err != nil {
+		return ""
+	}
+
+	parentAddr := filepath.Base(filepath.Dir(dest))
+
+	if pciaddr.FromString(parentAddr) == nil {
+		return ""
+	}
+
+	return parentAddr
+}
+
+func getDeviceDriver(paths *linuxpath.Paths, pciAddr *pciaddr.Address) string {
+	driverPath := filepath.Join(paths.SysBusPciDevices, pciAddr.String(), "driver")
+
+	if _, err := os.Stat(driverPath); err != nil {
+		return ""
+	}
+
+	dest, err := os.Readlink(driverPath)
+	if err != nil {
+		return ""
+	}
+	return filepath.Base(dest)
+}
+
+type deviceModaliasInfo struct {
+	vendorID     string
+	productID    string
+	subproductID string
+	subvendorID  string
+	classID      string
+	subclassID   string
+	progIfaceID  string
+}
+
+func parseModaliasFile(fp string) *deviceModaliasInfo {
+	if _, err := os.Stat(fp); err != nil {
+		return nil
+	}
+	data, err := os.ReadFile(fp)
+	if err != nil {
+		return nil
+	}
+
+	return parseModaliasData(string(data))
+}
+
+func parseModaliasData(data string) *deviceModaliasInfo {
+	// extra sanity check to avoid segfaults. We actually expect
+	// the data to be exactly long `modAliasExpectedlength`, but
+	// we will happily ignore any extra data we don't know how to
+	// handle.
+	if len(data) < modAliasExpectedLength {
+		return nil
+	}
+	// The modalias file is an encoded file that looks like this:
+	//
+	// $ cat /sys/devices/pci0000\:00/0000\:00\:03.0/0000\:03\:00.0/modalias
+	// pci:v000010DEd00001C82sv00001043sd00008613bc03sc00i00
+	//
+	// It is interpreted like so:
+	//
+	// pci: -- ignore
+	// v000010DE -- PCI vendor ID
+	// d00001C82 -- PCI device ID (the product/model ID)
+	// sv00001043 -- PCI subsystem vendor ID
+	// sd00008613 -- PCI subsystem device ID (subdevice product/model ID)
+	// bc03 -- PCI base class
+	// sc00 -- PCI subclass
+	// i00 -- programming interface
+	vendorID := strings.ToLower(data[9:13])
+	productID := strings.ToLower(data[18:22])
+	subvendorID := strings.ToLower(data[28:32])
+	subproductID := strings.ToLower(data[38:42])
+	classID := strings.ToLower(data[44:46])
+	subclassID := strings.ToLower(data[48:50])
+	progIfaceID := strings.ToLower(data[51:53])
+	return &deviceModaliasInfo{
+		vendorID:     vendorID,
+		productID:    productID,
+		subproductID: subproductID,
+		subvendorID:  subvendorID,
+		classID:      classID,
+		subclassID:   subclassID,
+		progIfaceID:  progIfaceID,
+	}
+}
+
+// Returns a pointer to a pcidb.Vendor struct matching the supplied vendor
+// ID string. If no such vendor ID string could be found, returns the
+// pcidb.Vendor struct populated with "unknown" vendor Name attribute and
+// empty Products attribute.
+func findPCIVendor(info *Info, vendorID string) *pcidb.Vendor {
+	vendor := info.db.Vendors[vendorID]
+	if vendor == nil {
+		return &pcidb.Vendor{
+			ID:       vendorID,
+			Name:     util.UNKNOWN,
+			Products: []*pcidb.Product{},
+		}
+	}
+	return vendor
+}
+
+// Returns a pointer to a pcidb.Product struct matching the supplied vendor
+// and product ID strings. If no such product could be found, returns the
+// pcidb.Product struct populated with "unknown" product Name attribute and
+// empty Subsystems attribute.
+func findPCIProduct(
+	info *Info,
+	vendorID string,
+	productID string,
+) *pcidb.Product {
+	product := info.db.Products[vendorID+productID]
+	if product == nil {
+		return &pcidb.Product{
+			ID:         productID,
+			Name:       util.UNKNOWN,
+			Subsystems: []*pcidb.Product{},
+		}
+	}
+	return product
+}
+
+// Returns a pointer to a pcidb.Product struct matching the supplied vendor,
+// product, subvendor and subproduct ID strings. If no such product could be
+// found, returns the pcidb.Product struct populated with "unknown" product
+// Name attribute and empty Subsystems attribute.
+func findPCISubsystem(
+	info *Info,
+	vendorID string,
+	productID string,
+	subvendorID string,
+	subproductID string,
+) *pcidb.Product {
+	product := info.db.Products[vendorID+productID]
+	subvendor := info.db.Vendors[subvendorID]
+	if subvendor != nil && product != nil {
+		for _, p := range product.Subsystems {
+			if p.ID == subproductID {
+				return p
+			}
+		}
+	}
+	return &pcidb.Product{
+		VendorID: subvendorID,
+		ID:       subproductID,
+		Name:     util.UNKNOWN,
+	}
+}
+
+// Returns a pointer to a pcidb.Class struct matching the supplied class ID
+// string. If no such class ID string could be found, returns the
+// pcidb.Class struct populated with "unknown" class Name attribute and
+// empty Subclasses attribute.
+func findPCIClass(info *Info, classID string) *pcidb.Class {
+	class := info.db.Classes[classID]
+	if class == nil {
+		return &pcidb.Class{
+			ID:         classID,
+			Name:       util.UNKNOWN,
+			Subclasses: []*pcidb.Subclass{},
+		}
+	}
+	return class
+}
+
+// Returns a pointer to a pcidb.Subclass struct matching the supplied class
+// and subclass ID strings.  If no such subclass could be found, returns the
+// pcidb.Subclass struct populated with "unknown" subclass Name attribute
+// and empty ProgrammingInterfaces attribute.
+func findPCISubclass(
+	info *Info,
+	classID string,
+	subclassID string,
+) *pcidb.Subclass {
+	class := info.db.Classes[classID]
+	if class != nil {
+		for _, sc := range class.Subclasses {
+			if sc.ID == subclassID {
+				return sc
+			}
+		}
+	}
+	return &pcidb.Subclass{
+		ID:                    subclassID,
+		Name:                  util.UNKNOWN,
+		ProgrammingInterfaces: []*pcidb.ProgrammingInterface{},
+	}
+}
+
+// Returns a pointer to a pcidb.ProgrammingInterface struct matching the
+// supplied class, subclass and programming interface ID strings.  If no such
+// programming interface could be found, returns the
+// pcidb.ProgrammingInterface struct populated with "unknown" Name attribute
+func findPCIProgrammingInterface(
+	info *Info,
+	classID string,
+	subclassID string,
+	progIfaceID string,
+) *pcidb.ProgrammingInterface {
+	subclass := findPCISubclass(info, classID, subclassID)
+	for _, pi := range subclass.ProgrammingInterfaces {
+		if pi.ID == progIfaceID {
+			return pi
+		}
+	}
+	return &pcidb.ProgrammingInterface{
+		ID:   progIfaceID,
+		Name: util.UNKNOWN,
+	}
+}
+
+// GetDevice returns a pointer to a Device struct that describes the PCI
+// device at the requested address. If no such device could be found, returns nil.
+func (info *Info) GetDevice(address string) *Device {
+	return info.lookupDevice(address)
+}
+
+// ParseDevice returns a pointer to a Device given its describing data.
+// The PCI device obtained this way may not exist in the system;
+// use GetDevice to get a *Device which is found in the system
+func (info *Info) ParseDevice(address, modalias string) *Device {
+	modaliasInfo := parseModaliasData(modalias)
+	if modaliasInfo == nil {
+		return nil
+	}
+	return info.getDeviceFromModaliasInfo(address, modaliasInfo)
+}
+
+func (info *Info) getDeviceFromModaliasInfo(
+	address string,
+	modaliasInfo *deviceModaliasInfo,
+) *Device {
+	vendor := findPCIVendor(info, modaliasInfo.vendorID)
+	product := findPCIProduct(
+		info,
+		modaliasInfo.vendorID,
+		modaliasInfo.productID,
+	)
+	subsystem := findPCISubsystem(
+		info,
+		modaliasInfo.vendorID,
+		modaliasInfo.productID,
+		modaliasInfo.subvendorID,
+		modaliasInfo.subproductID,
+	)
+	class := findPCIClass(info, modaliasInfo.classID)
+	subclass := findPCISubclass(
+		info,
+		modaliasInfo.classID,
+		modaliasInfo.subclassID,
+	)
+	progIface := findPCIProgrammingInterface(
+		info,
+		modaliasInfo.classID,
+		modaliasInfo.subclassID,
+		modaliasInfo.progIfaceID,
+	)
+
+	return &Device{
+		Address:              address,
+		Vendor:               vendor,
+		Subsystem:            subsystem,
+		Product:              product,
+		Class:                class,
+		Subclass:             subclass,
+		ProgrammingInterface: progIface,
+	}
+}
+
+// getDevices returns a list of pointers to Device structs present on the
+// host system
+func (info *Info) getDevices(opts *option.Options) []*Device {
+	paths := linuxpath.New(opts)
+	devs := make([]*Device, 0)
+	// We scan the /sys/bus/pci/devices directory which contains a collection
+	// of symlinks. The names of the symlinks are all the known PCI addresses
+	// for the host. For each address, we grab a *Device matching the
+	// address and append to the returned array.
+	links, err := os.ReadDir(paths.SysBusPciDevices)
+	if err != nil {
+		opts.Warn("failed to read /sys/bus/pci/devices")
+		return nil
+	}
+	for _, link := range links {
+		address := link.Name()
+		pciAddr := pciaddr.FromString(address)
+		if pciAddr == nil {
+			opts.Warn("error parsing the pci address %q", address)
+			return nil
+		}
+
+		// no cached data, let's get the information from system.
+		fp := getDeviceModaliasPath(paths, pciAddr)
+		if fp == "" {
+			opts.Warn("error finding modalias info for device %q", address)
+			return nil
+		}
+
+		modaliasInfo := parseModaliasFile(fp)
+		if modaliasInfo == nil {
+			opts.Warn("error parsing modalias info for device %q", address)
+			return nil
+		}
+
+		device := info.getDeviceFromModaliasInfo(address, modaliasInfo)
+		device.Revision = getDeviceRevision(paths, pciAddr)
+		if info.arch == topology.ArchitectureNUMA {
+			device.Node = getDeviceNUMANode(opts, pciAddr)
+		}
+		device.Driver = getDeviceDriver(paths, pciAddr)
+		device.ParentAddress = getDeviceParentAddress(paths, pciAddr)
+		device.IOMMUGroup = getDeviceIommuGroup(paths, pciAddr)
+		devs = append(devs, device)
+	}
+	return devs
+}
+
+// FindPCIAddress extract the pci address from a sysfs path without /sys
+func FindPCIAddress(path string) string {
+	re := regexp.MustCompile(`\/?devices\/pci[\d:.]*\/(\d{4}:[a-f\d:\.]+)`)
+
+	matches := re.FindStringSubmatch(path)
+	// first element is the full string match like /devices/pci0000:00/0000:00:0d.0
+	// but we need the first substring match so we take the second element
+	if len(matches) != 2 {
+		return ""
+	}
+	pciAddress := matches[1]
+
+	return pciAddress
+}
