@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2025 Zededa, Inc.
+// Copyright (c) 2017-2026 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 // zboot APIs for IMGA  & IMGB
@@ -22,6 +22,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/cas"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/sirupsen/logrus" // Used for log.Fatal only
 )
 
@@ -47,8 +48,11 @@ func init() {
 		logrus.Fatal("Mutex Init")
 	}
 
-	// Initialize valid partition labels
+	// Initialize valid partition labels based on platform
 	validPartitionLabels = []string{"IMGA", "IMGB"}
+	if utils.IsEvaluationPlatform() {
+		validPartitionLabels = append(validPartitionLabels, "IMGC")
+	}
 	logrus.Infof("zboot: initialized valid partitions: %v", validPartitionLabels)
 }
 
