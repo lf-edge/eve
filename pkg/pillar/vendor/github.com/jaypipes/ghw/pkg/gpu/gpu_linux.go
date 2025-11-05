@@ -6,9 +6,9 @@
 package gpu
 
 import (
-	"io/ioutil"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -18,6 +18,12 @@ import (
 	"github.com/jaypipes/ghw/pkg/topology"
 	"github.com/jaypipes/ghw/pkg/util"
 )
+
+const (
+	validPCIAddress = `\b(0{0,4}:[[:xdigit:]]{2}:[[:xdigit:]]{2}\.[[:xdigit:]]:?\w*)`
+)
+
+var reValidPCIAddress = regexp.MustCompile(validPCIAddress)
 
 const (
 	_WARN_NO_SYS_CLASS_DRM = `
@@ -55,7 +61,7 @@ func (i *Info) load() error {
 	// subsystem (we query the modalias file of the PCI device's sysfs
 	// directory using the `ghw.PCIInfo.GetDevice()` function.
 	paths := linuxpath.New(i.ctx)
-	links, err := ioutil.ReadDir(paths.SysClassDRM)
+	links, err := os.ReadDir(paths.SysClassDRM)
 	if err != nil {
 		i.ctx.Warn(_WARN_NO_SYS_CLASS_DRM)
 		return nil
@@ -84,8 +90,19 @@ func (i *Info) load() error {
 			continue
 		}
 		pathParts := strings.Split(dest, "/")
-		numParts := len(pathParts)
-		pciAddress := pathParts[numParts-3]
+		// The PCI address of the graphics card is the *last* PCI address in
+		// the filepath...
+		pciAddress := ""
+		for x := len(pathParts) - 1; x >= 0; x-- {
+			part := pathParts[x]
+			if reValidPCIAddress.MatchString(part) {
+				pciAddress = part
+				break
+			}
+		}
+		if pciAddress == "" {
+			continue
+		}
 		card := &GraphicsCard{
 			Address: pciAddress,
 			Index:   cardIdx,
@@ -101,8 +118,9 @@ func (i *Info) load() error {
 // Loops through each GraphicsCard struct and attempts to fill the DeviceInfo
 // attribute with PCI device information
 func gpuFillPCIDevice(ctx *context.Context, cards []*GraphicsCard) {
-	pci, err := pci.NewWithContext(ctx)
+	pci, err := pci.New(context.WithContext(ctx))
 	if err != nil {
+		ctx.Warn("failed to PCI device database: %s", err)
 		return
 	}
 	for _, card := range cards {
@@ -117,12 +135,12 @@ func gpuFillPCIDevice(ctx *context.Context, cards []*GraphicsCard) {
 // system is not a NUMA system, the Node field will be set to nil.
 func gpuFillNUMANodes(ctx *context.Context, cards []*GraphicsCard) {
 	paths := linuxpath.New(ctx)
-	topo, err := topology.NewWithContext(ctx)
+	topo, err := topology.New(context.WithContext(ctx))
 	if err != nil {
 		// Problem getting topology information so just set the graphics card's
 		// node to nil
 		for _, card := range cards {
-			if topo.Architecture != topology.ARCHITECTURE_NUMA {
+			if topo.Architecture != topology.ArchitectureNUMA {
 				card.Node = nil
 			}
 		}
