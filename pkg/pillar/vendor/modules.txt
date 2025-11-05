@@ -155,9 +155,6 @@ github.com/Microsoft/hcsshim/internal/wclayer
 github.com/Microsoft/hcsshim/internal/winapi
 github.com/Microsoft/hcsshim/osversion
 github.com/Microsoft/hcsshim/pkg/ociwclayer
-# github.com/StackExchange/wmi v0.0.0-20190523213315-cbe66965904d
-## explicit
-github.com/StackExchange/wmi
 # github.com/anatol/smart.go v0.0.0-20241126061019-f03d79b340d2
 ## explicit; go 1.22
 github.com/anatol/smart.go
@@ -619,9 +616,6 @@ github.com/gabriel-vasile/mimetype/internal/magic
 # github.com/getlantern/framed v0.0.0-20190601192238-ceb6431eeede
 ## explicit; go 1.12
 github.com/getlantern/framed
-# github.com/ghodss/yaml v1.0.0
-## explicit
-github.com/ghodss/yaml
 # github.com/go-chi/chi/v5 v5.2.2
 ## explicit; go 1.20
 github.com/go-chi/chi/v5
@@ -835,14 +829,15 @@ github.com/inconshreveable/mousetrap
 # github.com/jackwakefield/gopac v1.0.2
 ## explicit
 github.com/jackwakefield/gopac
-# github.com/jaypipes/ghw v0.8.0
-## explicit; go 1.12
+# github.com/jaypipes/ghw v0.8.0 => /home/paul/zededa/ghw
+## explicit; go 1.21
 github.com/jaypipes/ghw
+github.com/jaypipes/ghw/pkg/accelerator
 github.com/jaypipes/ghw/pkg/baseboard
 github.com/jaypipes/ghw/pkg/bios
 github.com/jaypipes/ghw/pkg/block
+github.com/jaypipes/ghw/pkg/can
 github.com/jaypipes/ghw/pkg/chassis
-github.com/jaypipes/ghw/pkg/context
 github.com/jaypipes/ghw/pkg/cpu
 github.com/jaypipes/ghw/pkg/gpu
 github.com/jaypipes/ghw/pkg/linuxdmi
@@ -854,13 +849,18 @@ github.com/jaypipes/ghw/pkg/option
 github.com/jaypipes/ghw/pkg/pci
 github.com/jaypipes/ghw/pkg/pci/address
 github.com/jaypipes/ghw/pkg/product
-github.com/jaypipes/ghw/pkg/snapshot
+github.com/jaypipes/ghw/pkg/serial
 github.com/jaypipes/ghw/pkg/topology
+github.com/jaypipes/ghw/pkg/tpm
 github.com/jaypipes/ghw/pkg/unitutil
+github.com/jaypipes/ghw/pkg/usb
 github.com/jaypipes/ghw/pkg/util
-# github.com/jaypipes/pcidb v0.6.0
-## explicit; go 1.11
+github.com/jaypipes/ghw/pkg/watchdog
+# github.com/jaypipes/pcidb v1.1.1
+## explicit; go 1.21
 github.com/jaypipes/pcidb
+github.com/jaypipes/pcidb/internal
+github.com/jaypipes/pcidb/types
 # github.com/jinzhu/copier v0.3.5
 ## explicit; go 1.13
 github.com/jinzhu/copier
@@ -906,7 +906,7 @@ github.com/leodido/go-urn
 github.com/lf-edge/edge-containers/pkg/registry
 github.com/lf-edge/edge-containers/pkg/resolver
 github.com/lf-edge/edge-containers/pkg/tgz
-# github.com/lf-edge/eve-api/go v0.0.0-20251118212149-2208af2d72d9
+# github.com/lf-edge/eve-api/go v0.0.0-20251210153724-4cbb70e445bb => /home/paul/zededa/eve-api/go
 ## explicit; go 1.21.1
 github.com/lf-edge/eve-api/go/attest
 github.com/lf-edge/eve-api/go/auth
@@ -1160,10 +1160,10 @@ github.com/shjala/gostats
 # github.com/sirupsen/logrus v1.9.3
 ## explicit; go 1.13
 github.com/sirupsen/logrus
-# github.com/spf13/cobra v1.8.0
+# github.com/spf13/cobra v1.9.1
 ## explicit; go 1.15
 github.com/spf13/cobra
-# github.com/spf13/pflag v1.0.5
+# github.com/spf13/pflag v1.0.6
 ## explicit; go 1.12
 github.com/spf13/pflag
 # github.com/spiffe/go-spiffe/v2 v2.5.0
@@ -1651,8 +1651,8 @@ gopkg.in/yaml.v2
 # gopkg.in/yaml.v3 v3.0.1
 ## explicit
 gopkg.in/yaml.v3
-# howett.net/plist v0.0.0-20181124034731-591f970eefbb
-## explicit
+# howett.net/plist v1.0.2-0.20250314012144-ee69052608d9
+## explicit; go 1.12
 howett.net/plist
 # k8s.io/api v0.29.3 => k8s.io/api v0.26.3
 ## explicit; go 1.19
@@ -2177,3 +2177,5 @@ tags.cncf.io/container-device-interface/specs-go
 # k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.26.3
 # k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.26.3
 # k8s.io/sample-controller => k8s.io/sample-controller v0.26.3
+# github.com/jaypipes/ghw => /home/paul/zededa/ghw
+# github.com/lf-edge/eve-api/go => /home/paul/zededa/eve-api/go

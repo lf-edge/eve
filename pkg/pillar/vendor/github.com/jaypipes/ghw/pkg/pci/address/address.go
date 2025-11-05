@@ -13,29 +13,28 @@ import (
 
 var (
 	regexAddress *regexp.Regexp = regexp.MustCompile(
-		`^(([0-9a-f]{0,4}):)?([0-9a-f]{2}):([0-9a-f]{2})\.([0-9a-f]{1})$`,
+		`^((1?[0-9a-f]{0,4}):)?([0-9a-f]{2}):([0-9a-f]{2})\.([0-9a-f]{1})$`,
 	)
 )
 
+// Address contains the components of a PCI Address
 type Address struct {
 	Domain   string
 	Bus      string
-	Slot     string
+	Device   string
 	Function string
 }
 
-// String() returns the canonical [D]BSF representation of this Address
+// String() returns the canonical [D]BDF representation of this Address
 func (addr *Address) String() string {
-	return addr.Domain + ":" + addr.Bus + ":" + addr.Slot + "." + addr.Function
+	return addr.Domain + ":" + addr.Bus + ":" + addr.Device + "." + addr.Function
 }
 
-// Given a string address, returns a complete Address struct, filled in with
-// domain, bus, slot and function components. The address string may either
-// be in $BUS:$SLOT.$FUNCTION (BSF) format or it can be a full PCI address
-// that includes the 4-digit $DOMAIN information as well:
-// $DOMAIN:$BUS:$SLOT.$FUNCTION.
+// FromString returns [Address] from an address string in either
+// $BUS:$DEVICE.$FUNCTION (BDF) format or a full PCI address that
+// includes the domain: $DOMAIN:$BUS:$DEVICE.$FUNCTION.
 //
-// Returns "" if the address string wasn't a valid PCI address.
+// If the address string isn't a valid PCI address, then nil is returned.
 func FromString(address string) *Address {
 	addrLowered := strings.ToLower(address)
 	matches := regexAddress.FindStringSubmatch(addrLowered)
@@ -47,7 +46,7 @@ func FromString(address string) *Address {
 		return &Address{
 			Domain:   dom,
 			Bus:      matches[3],
-			Slot:     matches[4],
+			Device:   matches[4],
 			Function: matches[5],
 		}
 	}

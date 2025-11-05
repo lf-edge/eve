@@ -7,11 +7,12 @@
 package topology
 
 import (
+	"encoding/json"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
-	"github.com/jaypipes/ghw/pkg/context"
 	"github.com/jaypipes/ghw/pkg/cpu"
 	"github.com/jaypipes/ghw/pkg/marshal"
 	"github.com/jaypipes/ghw/pkg/memory"
@@ -24,15 +25,34 @@ type Architecture int
 
 const (
 	// SMP is a Symmetric Multi-Processor system
-	ARCHITECTURE_SMP Architecture = iota
+	ArchitectureSMP Architecture = iota
 	// NUMA is a Non-Uniform Memory Access system
-	ARCHITECTURE_NUMA
+	ArchitectureNUMA
+)
+
+const (
+	// DEPRECATED: please use ArchitectureSMP.
+	// TODO(jaypipes): Remove before v1.0
+	ARCHITECTURE_SMP = ArchitectureSMP
+	// DEPRECATED: please use ArchitectureNUMA.
+	// TODO(jaypipes): Remove before v1.0
+	ARCHITECTURE_NUMA = ArchitectureNUMA
 )
 
 var (
 	architectureString = map[Architecture]string{
-		ARCHITECTURE_SMP:  "SMP",
-		ARCHITECTURE_NUMA: "NUMA",
+		ArchitectureSMP:  "SMP",
+		ArchitectureNUMA: "NUMA",
+	}
+
+	// NOTE(fromani): the keys are all lowercase and do not match
+	// the keys in the opposite table `architectureString`.
+	// This is done because of the choice we made in
+	// Architecture:MarshalJSON.
+	// We use this table only in UnmarshalJSON, so it should be OK.
+	stringArchitecture = map[string]Architecture{
+		"smp":  ArchitectureSMP,
+		"numa": ArchitectureNUMA,
 	}
 )
 
@@ -44,7 +64,21 @@ func (a Architecture) String() string {
 // get, let's lowercase the string output when serializing, in order to
 // "normalize" the expected serialized output
 func (a Architecture) MarshalJSON() ([]byte, error) {
-	return []byte("\"" + strings.ToLower(a.String()) + "\""), nil
+	return []byte(strconv.Quote(strings.ToLower(a.String()))), nil
+}
+
+func (a *Architecture) UnmarshalJSON(b []byte) error {
+	var s string
+	if err := json.Unmarshal(b, &s); err != nil {
+		return err
+	}
+	key := strings.ToLower(s)
+	val, ok := stringArchitecture[key]
+	if !ok {
+		return fmt.Errorf("unknown architecture: %q", key)
+	}
+	*a = val
+	return nil
 }
 
 // Node is an abstract construct representing a collection of processors and
@@ -59,6 +93,7 @@ type Node struct {
 	Cores     []*cpu.ProcessorCore `json:"cores"`
 	Caches    []*memory.Cache      `json:"caches"`
 	Distances []int                `json:"distances"`
+	Memory    *memory.Area         `json:"memory"`
 }
 
 func (n *Node) String() string {
@@ -71,23 +106,19 @@ func (n *Node) String() string {
 
 // Info describes the system topology for the host hardware
 type Info struct {
-	ctx          *context.Context
 	Architecture Architecture `json:"architecture"`
 	Nodes        []*Node      `json:"nodes"`
 }
 
 // New returns a pointer to an Info struct that contains information about the
 // NUMA topology on the host system
-func New(opts ...*option.Option) (*Info, error) {
-	return NewWithContext(context.New(opts...))
-}
-
-// NewWithContext returns a pointer to an Info struct that contains information about
-// the NUMA topology on the host system. Use this function when you want to consume
-// the topology package from another package (e.g. pci, gpu)
-func NewWithContext(ctx *context.Context) (*Info, error) {
-	info := &Info{ctx: ctx}
-	if err := ctx.Do(info.load); err != nil {
+func New(opt ...option.Option) (*Info, error) {
+	opts := &option.Options{}
+	for _, o := range opt {
+		o(opts)
+	}
+	info := &Info{}
+	if err := info.load(opts); err != nil {
 		return nil, err
 	}
 	for _, node := range info.Nodes {
@@ -98,7 +129,7 @@ func NewWithContext(ctx *context.Context) (*Info, error) {
 
 func (i *Info) String() string {
 	archStr := "SMP"
-	if i.Architecture == ARCHITECTURE_NUMA {
+	if i.Architecture == ArchitectureNUMA {
 		archStr = "NUMA"
 	}
 	res := fmt.Sprintf(
@@ -118,11 +149,11 @@ type topologyPrinter struct {
 // YAMLString returns a string with the topology information formatted as YAML
 // under a top-level "topology:" key
 func (i *Info) YAMLString() string {
-	return marshal.SafeYAML(i.ctx, topologyPrinter{i})
+	return marshal.SafeYAML(topologyPrinter{i})
 }
 
 // JSONString returns a string with the topology information formatted as JSON
 // under a top-level "topology:" key
 func (i *Info) JSONString(indent bool) string {
-	return marshal.SafeJSON(i.ctx, topologyPrinter{i}, indent)
+	return marshal.SafeJSON(topologyPrinter{i}, indent)
 }
