@@ -1,4 +1,4 @@
-// Copyright (c) 2020 Zededa, Inc.
+// Copyright (c) 2020-2026 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 package base
@@ -15,7 +15,7 @@ import (
 type LogEventType string
 
 const (
-	// UnknownType : Invalid event typ
+	// UnknownType : Invalid event type
 	UnknownType LogEventType = ""
 	// LogObjectEventType : Used for logging object state when a change happens
 	LogObjectEventType LogEventType = "log"
@@ -177,6 +177,8 @@ const (
 	AppMACGeneratorLogType LogObjectType = "app_mac_generator"
 	// KubeAppFailover
 	KubeAppFailover LogObjectType = "kube_app_failover"
+	// EvalStatusLogType : type for EvalStatus log entries
+	EvalStatusLogType LogObjectType = "eval_status"
 )
 
 // RelationObjectType :
