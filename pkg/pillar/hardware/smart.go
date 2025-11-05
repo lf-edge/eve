@@ -21,7 +21,7 @@ import (
 func ReadSMARTinfoForDisks() (*types.DisksInformation, error) {
 	disksInfo := new(types.DisksInformation)
 	// Get information about disks
-	block, err := ghw.Block()
+	block, err := ghw.Block(option.WithDisableTools())
 	if err != nil {
 		return nil, fmt.Errorf("error getting block storage info: %v", err)
 	}
