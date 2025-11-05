@@ -73,6 +73,17 @@ func (status SenderStatus) String() string {
 	}
 }
 
+func (status SenderStatus) Failure() bool {
+	if status == SenderStatusNone {
+		return false
+	}
+	if status == SenderStatusDebug {
+		return false
+	}
+
+	return true
+}
+
 const (
 	// MinuteInSec is number of seconds in a minute
 	MinuteInSec = 60
