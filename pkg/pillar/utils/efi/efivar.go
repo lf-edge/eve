@@ -20,7 +20,6 @@ const (
 	softLimit                 = 2048
 )
 
-// Pre-created descriptor (hidden; no parsing at call sites).
 var extraKernelCmdLineVar = efivarfs.VariableDescriptor{
 	Name: kernelExtraCmdLineVarName,
 	GUID: guid.MustParse(eveVarGUID),
