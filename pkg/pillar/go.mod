@@ -29,10 +29,9 @@ require (
 	github.com/grandcat/zeroconf v1.0.0
 	github.com/hashicorp/go-envparse v0.1.0
 	github.com/jackwakefield/gopac v1.0.2
-	github.com/jaypipes/ghw v0.8.0
 	github.com/k8snetworkplumbingwg/network-attachment-definition-client v1.5.0
 	github.com/lf-edge/edge-containers v0.0.0-20251107072102-46bed3192170
-	github.com/lf-edge/eve-api/go v0.0.0-20260105135946-ca16739db889
+	github.com/lf-edge/eve-api/go v0.0.0-20260114160322-5feda2767927
 	github.com/lf-edge/eve-libs v0.0.0-20251217132956-95b6654d8655
 	github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20240315102754-0f6d1f182e0d
 	github.com/lf-edge/go-qemu v0.0.0-20231121152149-4c467eda0c56
@@ -51,14 +50,15 @@ require (
 	github.com/shirou/gopsutil v3.21.11+incompatible
 	github.com/shjala/gostats v0.0.0-20230215094906-69a32327600f
 	github.com/sirupsen/logrus v1.9.3
-	github.com/spf13/cobra v1.8.0
+	github.com/spf13/cobra v1.9.1
 	github.com/stretchr/testify v1.11.1
 	github.com/tatsushid/go-fastping v0.0.0-20160109021039-d7bb493dee3e
 	github.com/vishvananda/netlink v1.3.1
+	github.com/zededa/ghw v0.0.0-20260121174541-9df1086a4e7a
 	go.uber.org/goleak v1.3.0
 	golang.org/x/crypto v0.45.0
 	golang.org/x/net v0.47.0
-	golang.org/x/sys v0.38.0
+	golang.org/x/sys v0.40.0
 	google.golang.org/grpc v1.75.0
 	google.golang.org/protobuf v1.36.7
 	gopkg.in/yaml.v2 v2.4.0
@@ -83,7 +83,6 @@ require (
 	github.com/Azure/go-ansiterm v0.0.0-20230124172434-306776ec8161 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/Microsoft/hcsshim v0.11.7 // indirect
-	github.com/StackExchange/wmi v0.0.0-20190523213315-cbe66965904d // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bugsnag/bugsnag-go v1.4.1 // indirect
 	github.com/bugsnag/panicwrap v1.2.0 // indirect
@@ -110,10 +109,8 @@ require (
 	github.com/emicklei/go-restful/v3 v3.11.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.2 // indirect
-	github.com/ghodss/yaml v1.0.0 // indirect
-	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
-	github.com/go-ole/go-ole v1.2.6 // indirect
+	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/go-openapi/jsonpointer v0.20.0 // indirect
 	github.com/go-openapi/jsonreference v0.20.2 // indirect
 	github.com/go-openapi/swag v0.22.4 // indirect
@@ -129,7 +126,7 @@ require (
 	github.com/googleapis/enterprise-certificate-proxy v0.3.6 // indirect
 	github.com/googleapis/gax-go/v2 v2.15.0 // indirect
 	github.com/gorilla/mux v1.8.1 // indirect
-	github.com/jaypipes/pcidb v0.6.0 // indirect
+	github.com/jaypipes/pcidb v1.1.1 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/josharian/native v1.1.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
@@ -188,7 +185,7 @@ require (
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/sourcemap.v1 v1.0.5 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-	howett.net/plist v0.0.0-20181124034731-591f970eefbb // indirect
+	howett.net/plist v1.0.2-0.20250314012144-ee69052608d9 // indirect
 	oras.land/oras-go v1.2.5 // indirect
 )
 
@@ -239,6 +236,7 @@ require (
 	github.com/go-kit/kit v0.13.0 // indirect
 	github.com/go-kit/log v0.2.1 // indirect
 	github.com/go-logfmt/logfmt v0.6.0 // indirect
+	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/gofrs/uuid v4.4.0+incompatible // indirect
 	github.com/golang/glog v1.2.5 // indirect
 	github.com/golang/mock v1.6.0 // indirect
@@ -267,7 +265,7 @@ require (
 	github.com/planetscale/vtprotobuf v0.6.1-0.20240319094008-0393e58bdf10 // indirect
 	github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring v0.68.0 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
-	github.com/spf13/pflag v1.0.5 // indirect
+	github.com/spf13/pflag v1.0.6 // indirect
 	github.com/spiffe/go-spiffe/v2 v2.5.0 // indirect
 	github.com/xlab/treeprint v1.1.0 // indirect
 	github.com/zeebo/errs v1.4.0 // indirect

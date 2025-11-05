@@ -6,24 +6,6 @@ import (
 	"time"
 )
 
-func isEmptyValue(v reflect.Value) bool {
-	switch v.Kind() {
-	case reflect.Array, reflect.Map, reflect.Slice, reflect.String:
-		return v.Len() == 0
-	case reflect.Bool:
-		return !v.Bool()
-	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		return v.Int() == 0
-	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
-		return v.Uint() == 0
-	case reflect.Float32, reflect.Float64:
-		return v.Float() == 0
-	case reflect.Interface, reflect.Ptr:
-		return v.IsNil()
-	}
-	return false
-}
-
 var (
 	plistMarshalerType = reflect.TypeOf((*Marshaler)(nil)).Elem()
 	textMarshalerType  = reflect.TypeOf((*encoding.TextMarshaler)(nil)).Elem()
@@ -31,14 +13,19 @@ var (
 )
 
 func implementsInterface(val reflect.Value, interfaceType reflect.Type) (interface{}, bool) {
-	if val.CanInterface() && val.Type().Implements(interfaceType) {
-		return val.Interface(), true
+	if val.CanInterface() {
+		itf := val.Interface()
+		if itf != nil && reflect.TypeOf(itf).Implements(interfaceType) {
+			return itf, true
+		}
 	}
 
 	if val.CanAddr() {
-		pv := val.Addr()
-		if pv.CanInterface() && pv.Type().Implements(interfaceType) {
-			return pv.Interface(), true
+		if pv := val.Addr(); pv.CanInterface() {
+			itf := pv.Interface()
+			if itf != nil && reflect.TypeOf(itf).Implements(interfaceType) {
+				return itf, true
+			}
 		}
 	}
 	return nil, false
@@ -71,7 +58,7 @@ func (p *Encoder) marshalStruct(typ reflect.Type, val reflect.Value) cfValue {
 	}
 	for _, finfo := range tinfo.fields {
 		value := finfo.value(val)
-		if !value.IsValid() || finfo.omitEmpty && isEmptyValue(value) {
+		if !value.IsValid() {
 			continue
 		}
 		dict.keys = append(dict.keys, finfo.name)
@@ -84,6 +71,13 @@ func (p *Encoder) marshalStruct(typ reflect.Type, val reflect.Value) cfValue {
 func (p *Encoder) marshalTime(val reflect.Value) cfValue {
 	time := val.Interface().(time.Time)
 	return cfDate(time)
+}
+
+func innermostValue(val reflect.Value) reflect.Value {
+	for val.Kind() == reflect.Ptr || (val.Kind() == reflect.Interface && val.NumMethod() == 0) {
+		val = val.Elem()
+	}
+	return val
 }
 
 func (p *Encoder) marshal(val reflect.Value) cfValue {
@@ -100,7 +94,7 @@ func (p *Encoder) marshal(val reflect.Value) cfValue {
 		return p.marshalTime(val)
 	}
 	if val.Kind() == reflect.Ptr || (val.Kind() == reflect.Interface && val.NumMethod() == 0) {
-		ival := val.Elem()
+		ival := innermostValue(val)
 		if ival.IsValid() && ival.Type() == timeType {
 			return p.marshalTime(ival)
 		}
@@ -112,9 +106,7 @@ func (p *Encoder) marshal(val reflect.Value) cfValue {
 	}
 
 	// Descend into pointers or interfaces
-	if val.Kind() == reflect.Ptr || (val.Kind() == reflect.Interface && val.NumMethod() == 0) {
-		val = val.Elem()
-	}
+	val = innermostValue(val)
 
 	// We got this far and still may have an invalid anything or nil ptr/interface
 	if !val.IsValid() || ((val.Kind() == reflect.Ptr || val.Kind() == reflect.Interface) && val.IsNil()) {
@@ -147,7 +139,8 @@ func (p *Encoder) marshal(val reflect.Value) cfValue {
 	case reflect.Slice, reflect.Array:
 		if typ.Elem().Kind() == reflect.Uint8 {
 			bytes := []byte(nil)
-			if val.CanAddr() {
+			if val.CanAddr() && val.Kind() == reflect.Slice {
+				// arrays are may be addressable but do not support .Bytes
 				bytes = val.Bytes()
 			} else {
 				bytes = make([]byte, val.Len())
