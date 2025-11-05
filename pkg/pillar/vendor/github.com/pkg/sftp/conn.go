@@ -2,10 +2,9 @@ package sftp
 
 import (
 	"encoding"
+	"fmt"
 	"io"
 	"sync"
-
-	"github.com/pkg/errors"
 )
 
 // conn implements a bidirectional channel on which client and server
@@ -19,7 +18,9 @@ type conn struct {
 }
 
 // the orderID is used in server mode if the allocator is enabled.
-// For the client mode just pass 0
+// For the client mode just pass 0.
+// It returns io.EOF if the connection is closed and
+// there are no more packets to read.
 func (c *conn) recvPacket(orderID uint32) (uint8, []byte, error) {
 	return recvPacket(c, c.alloc, orderID)
 }
@@ -62,14 +63,6 @@ func (c *clientConn) Close() error {
 	return c.conn.Close()
 }
 
-func (c *clientConn) loop() {
-	defer c.wg.Done()
-	err := c.recv()
-	if err != nil {
-		c.broadcastErr(err)
-	}
-}
-
 // recv continuously reads from the server and forwards responses to the
 // appropriate channel.
 func (c *clientConn) recv() error {
@@ -90,7 +83,7 @@ func (c *clientConn) recv() error {
 			// This is an unexpected occurrence. Send the error
 			// back to all listeners so that they terminate
 			// gracefully.
-			return errors.Errorf("sid not found: %d", sid)
+			return fmt.Errorf("sid not found: %d", sid)
 		}
 
 		ch <- result{typ: typ, data: data}
