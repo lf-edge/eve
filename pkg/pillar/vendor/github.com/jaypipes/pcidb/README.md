@@ -1,9 +1,13 @@
-# `pcidb` - the Golang PCI DB library [![Build Status](https://travis-ci.org/jaypipes/pcidb.svg?branch=master)](https://travis-ci.org/jaypipes/pcidb)
+# `pcidb` - the Golang PCI DB library
 
-`pcidb` is a small Golang library for programmatic querying of PCI vendor,
-product and class information.
+[![Build Status](https://github.com/jaypipes/pcidb/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/jaypipes/pcidb/actions)
+[![Go Report Card](https://goreportcard.com/badge/github.com/jaypipes/pcidb)](https://goreportcard.com/report/github.com/jaypipes/pcidb)
+[![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-2.1-4baaaa.svg)](CODE_OF_CONDUCT.md)
 
-We currently [test](https://travis-ci.org/jaypipes/pcidb/) `pcidb` on Linux, Windows and MacOSX.
+`pcidb` is a small Go library for programmatic querying of PCI vendor, product
+and class information.
+
+We test `pcidb` on Linux, Windows and MacOSX.
 
 ## Usage
 
@@ -14,12 +18,24 @@ product information.
 The `pcidb.New()` function returns a `pcidb.PCIDB` struct or an error if the
 PCI database could not be loaded.
 
-> `pcidb`'s default behaviour is to first search for pci-ids DB files on the
-> local host system in well-known filesystem paths. If `pcidb` cannot find a
-> pci-ids DB file on the local host system, it will then fetch a current
-> pci-ids DB file from the network. You can disable this network-fetching
-> behaviour with the `pcidb.WithDisableNetworkFetch()` function or set the
-> `PCIDB_DISABLE_NETWORK_FETCH` to a non-0 value.
+```go
+package main
+
+import (
+    "fmt"
+
+    "github.com/jaypipes/pcidb"
+)
+
+func main() {
+    pci, err := pcidb.New()
+    if err != nil {
+        fmt.Printf("Error getting PCI info: %v", err)
+    }
+}
+```
+
+> Learn about [how `pcidb` discovers `pci.ids` database files](#discovery).
 
 The `pcidb.PCIDB` struct contains a number of fields that may be queried for
 PCI information:
@@ -37,27 +53,6 @@ PCI information:
 **NOTE**: PCI products are often referred to by their "device ID". We use
 the term "product ID" in `pcidb` because it more accurately reflects what the
 identifier is for: a specific product line produced by the vendor.
-
-### Overriding the root mountpoint `pcidb` uses
-
-The default root mountpoint that `pcidb` uses when looking for information
-about the host system is `/`. So, for example, when looking up known PCI IDS DB
-files on Linux, `pcidb` will attempt to discover a pciids DB file at
-`/usr/share/misc/pci.ids`. If you are calling `pcidb` from a system that has an
-alternate root mountpoint, you can either set the `PCIDB_CHROOT` environment
-variable to that alternate path, or call the `pcidb.New()` function with the
-`pcidb.WithChroot()` modifier.
-
-For example, if you are executing from within an application container that has
-bind-mounted the root host filesystem to the mount point `/host`, you would set
-`PCIDB_CHROOT` to `/host` so that pcidb can find files like
-`/usr/share/misc/pci.ids` at `/host/usr/share/misc/pci.ids`.
-
-Alternately, you can use the `pcidb.WithChroot()` function like so:
-
-```go
-pci := pcidb.New(pcidb.WithChroot("/host"))
-```
 
 ### PCI device classes
 
@@ -174,24 +169,10 @@ package main
 
 import (
     "fmt"
-    "sort"
+    "slices"
 
     "github.com/jaypipes/pcidb"
 )
-
-type ByCountProducts []*pcidb.Vendor
-
-func (v ByCountProducts) Len() int {
-    return len(v)
-}
-
-func (v ByCountProducts) Swap(i, j int) {
-    v[i], v[j] = v[j], v[i]
-}
-
-func (v ByCountProducts) Less(i, j int) bool {
-    return len(v[i].Products) > len(v[j].Products)
-}
 
 func main() {
     pci, err := pcidb.New()
@@ -206,7 +187,10 @@ func main() {
         x++
     }
 
-    sort.Sort(ByCountProducts(vendors))
+    slices.SortFunc(vendors, func(a, b *pcidb.Vendor) int {
+        return cmp.Compare(len(a.Products), len(b.Products))
+    })
+    slices.Reverse(vendors)
 
     fmt.Println("Top 5 vendors by product")
     fmt.Println("====================================================")
@@ -216,16 +200,16 @@ func main() {
 }
 ```
 
-which yields (on my local workstation as of July 7th, 2018):
+which yields (on my local workstation as of August 23rd, 2025):
 
 ```
 Top 5 vendors by product
 ====================================================
-Intel Corporation ('8086') has 3389 products
-NVIDIA Corporation ('10de') has 1358 products
-Advanced Micro Devices, Inc. [AMD/ATI] ('1002') has 886 products
-National Instruments ('1093') has 601 products
-Chelsio Communications Inc ('1425') has 525 products
+Intel Corporation ('8086') has 4461 products
+NVIDIA Corporation ('10de') has 1853 products
+Advanced Micro Devices, Inc. [AMD/ATI] ('1002') has 1115 products
+Chelsio Communications Inc ('1425') has 669 products
+National Instruments ('1093') has 609 products
 ```
 
 The following is an example of querying the PCI product and subsystem
@@ -320,80 +304,143 @@ func main() {
 }
 ```
 
-which yields (on my local workstation as of July 7th, 2018):
+which yields (on my local workstation as of August 23rd, 2025):
 
 ```
 Top 2 products by # different subvendors
 ====================================================
 RTL-8100/8101L/8139 PCI Fast Ethernet Adapter ('8139') from Realtek Semiconductor Co., Ltd.
  -> 34 subsystems under the following different vendors:
-      - OVISLINK Corp. ('149c')
-      - EPoX Computer Co., Ltd. ('1695')
-      - Red Hat, Inc ('1af4')
+      - ASUSTeK Computer Inc. ('1043')
+      - Matsushita Electric Industrial Co., Ltd. ('10f7')
+      - Compex ('11f6')
+      - Allied Telesis ('1259')
+      - Samsung Electronics Co Ltd ('144d')
+      - Micro-Star International Co., Ltd. [MSI] ('1462')
+      - Ruby Tech Corp. ('146c')
+      - ZyXEL Communications Corporation ('187e')
+      - TTTech Computertechnik AG (Wrong ID) ('0357')
+      - Accton Technology Corporation ('1113')
+      - Billionton Systems Inc ('14cb')
+      - Belkin ('1799')
+      - Hangzhou Silan Microelectronics Co., Ltd. ('1904')
+      - AOPEN Inc. ('a0a0')
+      - Acer Incorporated [ALI] ('1025')
+      - Surecom Technology ('10bd')
+      - D-Link System Inc ('1186')
+      - Hewlett-Packard Company ('103c')
       - Mitac ('1071')
       - Netgear ('1385')
-      - Micro-Star International Co., Ltd. [MSI] ('1462')
-      - Hangzhou Silan Microelectronics Co., Ltd. ('1904')
-      - Compex ('11f6')
       - Edimax Computer Co. ('1432')
-      - KYE Systems Corporation ('1489')
-      - ZyXEL Communications Corporation ('187e')
-      - Acer Incorporated [ALI] ('1025')
-      - Matsushita Electric Industrial Co., Ltd. ('10f7')
-      - Ruby Tech Corp. ('146c')
-      - Belkin ('1799')
-      - Allied Telesis ('1259')
-      - Unex Technology Corp. ('1429')
-      - CIS Technology Inc ('1436')
-      - D-Link System Inc ('1186')
-      - Ambicom Inc ('1395')
-      - AOPEN Inc. ('a0a0')
-      - TTTech Computertechnik AG (Wrong ID) ('0357')
-      - Gigabyte Technology Co., Ltd ('1458')
       - Packard Bell B.V. ('1631')
-      - Billionton Systems Inc ('14cb')
-      - Kingston Technologies ('2646')
-      - Accton Technology Corporation ('1113')
-      - Samsung Electronics Co Ltd ('144d')
-      - Biostar Microtech Int'l Corp ('1565')
-      - U.S. Robotics ('16ec')
+      - Gigabyte Technology Co., Ltd ('1458')
       - KTI ('8e2e')
-      - Hewlett-Packard Company ('103c')
-      - ASUSTeK Computer Inc. ('1043')
-      - Surecom Technology ('10bd')
+      - CIS Technology Inc ('1436')
+      - Red Hat, Inc. ('1af4')
+      - Kingston Technology Company, Inc. ('2646')
+      - KYE Systems Corporation ('1489')
+      - Ambicom Inc ('1395')
+      - Unex Technology Corp. ('1429')
+      - OVISLINK Corp. ('149c')
+      - Biostar Microtech Int'l Corp ('1565')
+      - EPoX Computer Co., Ltd. ('1695')
+      - U.S. Robotics ('16ec')
 Bt878 Video Capture ('036e') from Brooktree Corporation
- -> 30 subsystems under the following different vendors:
-      - iTuner ('aa00')
-      - Nebula Electronics Ltd. ('0071')
-      - DViCO Corporation ('18ac')
-      - iTuner ('aa05')
-      - iTuner ('aa0d')
-      - LeadTek Research Inc. ('107d')
-      - Avermedia Technologies Inc ('1461')
-      - Chaintech Computer Co. Ltd ('270f')
-      - iTuner ('aa07')
-      - iTuner ('aa0a')
-      - Microtune, Inc. ('1851')
-      - iTuner ('aa01')
-      - iTuner ('aa04')
-      - iTuner ('aa06')
-      - iTuner ('aa0f')
-      - iTuner ('aa02')
-      - iTuner ('aa0b')
-      - Pinnacle Systems, Inc. (Wrong ID) ('bd11')
-      - Rockwell International ('127a')
-      - Askey Computer Corp. ('144f')
-      - Twinhan Technology Co. Ltd ('1822')
-      - Anritsu Corp. ('1852')
-      - iTuner ('aa08')
+ -> 32 subsystems under the following different vendors:
       - Hauppauge computer works Inc. ('0070')
+      - Askey Computer Corp. ('144f')
+      - Avermedia Technologies Inc ('1461')
+      - iTuner ('aa00')
+      - iTuner ('aa0f')
       - Pinnacle Systems Inc. ('11bd')
+      - Euresys S.A. ('1805')
+      - Twinhan Technology Co. Ltd ('1822')
+      - iTuner ('aa05')
+      - iTuner ('aa08')
+      - Nebula Electronics Ltd. ('0071')
+      - Chaintech Computer Co. Ltd ('270f')
       - Conexant Systems, Inc. ('14f1')
-      - iTuner ('aa09')
+      - iTuner ('aa01')
       - iTuner ('aa03')
+      - iTuner ('aa0b')
+      - iTuner ('aa0d')
+      - Microtune, Inc. ('1851')
+      - iTuner ('aa02')
+      - iTuner ('aa06')
+      - iTuner ('aa09')
+      - Anritsu Corp. ('1852')
+      - iTuner ('aa04')
+      - iTuner ('aa07')
       - iTuner ('aa0c')
+      - Pinnacle Systems, Inc. (Wrong ID) ('bd11')
+      - Unknown subvendor ('0000')
+      - Rockwell International ('127a')
+      - DViCO Corporation ('18ac')
       - iTuner ('aa0e')
+      - LeadTek Research Inc. ('107d')
+      - iTuner ('aa0a')
 ```
+
+## Discovery
+
+`pcidb` tries its best to automatically discover a `pci.ids` database file on
+the local host.
+
+`pcidb`'s default behaviour is to first search for `pci.ids` DB files on the
+local host system in well-known filesystem paths (Linux and MacOS):
+
+* `/usr/share/hwdata/pci.ids`
+* `/usr/share/misc/pci.ids.gz`
+* `/usr/share/hwdata/pci.ids`
+* `/usr/share/misc/pci.ids.gz`
+
+> **NOTE**: Windows does not have a `pci.ids` database file installed by
+> default.
+
+You can influence this discovery behaviour with the functions discussed in the
+following sections.
+
+### Overriding the location of the `pci.ids` database file
+
+If you have a copy of a `pci.ids` database file in a non-standard location or
+are working in an environment like Windows that does not have a `pci.ids`
+database file installed by default and do not want `pcidb` to fetch an
+up-to-date `pci.ids` database file over the network, you can tell `pcidb`
+exactly where to find the `pci.ids` database using the `pcidb.WithPath()`
+function, like so:
+
+```go
+pci := pcidb.New(pcidb.WithPath("/path/to/pci.ids.gz"))
+```
+
+### Overriding the root mountpoint `pcidb` uses
+
+The default root mountpoint that `pcidb` uses when looking for information
+about the host system is `/`. So, for example, when looking up known `pci.ids`
+database files on Linux, `pcidb` will attempt to discover a `pci.ids` database
+file at `/usr/share/misc/pci.ids`. If you are calling `pcidb` from a system
+that has an alternate root mountpoint, you can either set the `PCIDB_CHROOT`
+environment variable to that alternate path, or call the `pcidb.New()` function
+with the `pcidb.WithChroot()` modifier.
+
+For example, if you are executing from within an application container that has
+bind-mounted the root host filesystem to the mount point `/host`, you would set
+`PCIDB_CHROOT` to `/host` so that pcidb can find files like
+`/usr/share/misc/pci.ids` at `/host/usr/share/misc/pci.ids`.
+
+Alternately, you can use the `pcidb.WithChroot()` function like so:
+
+```go
+pci := pcidb.New(pcidb.WithChroot("/host"))
+```
+
+### Fetching `pci.ids` database file over the network
+
+If `pcidb` cannot find a `pci.ids` DB file on the local host system, you can
+configure `pcidb` to fetch a current `pci.ids` DB file from the network. You
+can enable this network-fetching behaviour with the
+`pcidb.WithEnableNetworkFetch()` function or set the
+`PCIDB_ENABLE_NETWORK_FETCH` environs variable to a non-0 value.
 
 ## Developers
 
@@ -404,7 +451,6 @@ request or bug report.
 ### Running tests
 
 You can run unit tests easily using the `make test` command, like so:
-
 
 ```
 [jaypipes@uberbox pcidb]$ make test

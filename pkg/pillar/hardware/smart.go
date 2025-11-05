@@ -11,8 +11,9 @@ import (
 	"time"
 
 	smart "github.com/anatol/smart.go"
-	"github.com/jaypipes/ghw"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/zededa/ghw"
+	"github.com/zededa/ghw/pkg/option"
 )
 
 // ReadSMARTinfoForDisks - сollects disks information via API,
