@@ -234,7 +234,7 @@ func UseV2API() bool {
 	return true
 }
 
-// URLPathString - generate url for either v1 or v1 API path
+// URLPathString - generate url string for either v1 or v1 API path
 func URLPathString(server string, isV2api bool, devUUID uuid.UUID, action string) string {
 	var urlstr string
 	if !isV2api {
