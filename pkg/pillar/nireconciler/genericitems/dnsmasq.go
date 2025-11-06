@@ -6,6 +6,7 @@ package genericitems
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -796,6 +797,10 @@ func (c *DnsmasqConfigurator) delDNSHostFile(instanceName string,
 	entry HostnameToIPs) error {
 	hostFilename := filepath.Join(c.dnsmasqDNSHostsDir(instanceName), entry.Hostname)
 	if err := os.Remove(hostFilename); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			c.Log.Warnf("DNS host file %s not found (nothing to remove)", hostFilename)
+			return nil
+		}
 		err = fmt.Errorf("failed to remove DNS host file %s: %w", hostFilename, err)
 		c.Log.Error(err)
 		return err
@@ -871,6 +876,10 @@ func (c *DnsmasqConfigurator) delDHCPHostFile(instanceName string,
 	hostFilename := filepath.Join(c.dnsmasqDHCPHostsDir(instanceName),
 		entry.MAC.String()+suffix)
 	if err := os.Remove(hostFilename); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			c.Log.Warnf("DHCP host file %s not found (nothing to remove)", hostFilename)
+			return nil
+		}
 		err = fmt.Errorf("failed to remove DHCP host file %s: %w", hostFilename, err)
 		c.Log.Error(err)
 		return err
