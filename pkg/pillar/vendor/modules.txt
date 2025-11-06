@@ -323,8 +323,8 @@ github.com/cncf/xds/go/xds/type/v3
 ## explicit; go 1.17
 github.com/containerd/cgroups
 github.com/containerd/cgroups/stats/v1
-# github.com/containerd/containerd v1.7.27
-## explicit; go 1.21
+# github.com/containerd/containerd v1.7.29
+## explicit; go 1.23.0
 github.com/containerd/containerd
 github.com/containerd/containerd/archive
 github.com/containerd/containerd/archive/compression
