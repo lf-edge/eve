@@ -13,6 +13,8 @@ import (
 
 	"github.com/lf-edge/eve-libs/depgraph"
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
+	"github.com/lf-edge/eve/pkg/pillar/utils/netutils"
 )
 
 const (
@@ -108,41 +110,49 @@ func (c *ResolvConfConfigurator) generateResolvConf(item depgraph.Item) error {
 		c.Log.Error(err)
 		return err
 	}
-	var written []net.IP
+
+	// Collect interface names (for deterministic order) and max DNS count.
+	ifNames := make([]string, 0, len(config.DNSServers))
+	maxServers := 0
 	for ifName, dnsServers := range config.DNSServers {
+		ifNames = append(ifNames, ifName)
+		if len(dnsServers) > maxServers {
+			maxServers = len(dnsServers)
+		}
 		c.Log.Functionf("generateResolvConf: %s has %d servers: %v",
 			ifName, len(dnsServers), dnsServers)
-		_, err = destfile.WriteString(fmt.Sprintf("# From %s\n", ifName))
-		if err != nil {
-			c.Log.Error(err)
-			return err
-		}
-		// Avoid duplicate IP addresses for nameservers.
-		for _, server := range dnsServers {
-			duplicate := false
-			for _, a := range written {
-				if a.Equal(server) {
-					duplicate = true
-				}
+	}
+
+	// Interleave nameservers across interfaces
+	var written []net.IP
+	for i := 0; i < maxServers; i++ {
+		for _, ifName := range ifNames {
+			dnsServers := config.DNSServers[ifName]
+			if i >= len(dnsServers) {
+				continue
 			}
+			server := dnsServers[i]
+			duplicate := generics.ContainsItemFn(written, server, netutils.EqualIPs)
 			if duplicate {
 				_, err = destfile.WriteString(
-					fmt.Sprintf("# nameserver %s\n", server))
+					fmt.Sprintf("# From %s (duplicate)\n# nameserver %s\n",
+						ifName, server))
 				if err != nil {
 					c.Log.Error(err)
 					return err
 				}
-			} else {
-				_, err = destfile.WriteString(
-					fmt.Sprintf("nameserver %s\n", server))
-				if err != nil {
-					c.Log.Error(err)
-					return err
-				}
-				written = append(written, server)
+				continue
 			}
+			_, err = destfile.WriteString(
+				fmt.Sprintf("# From %s\nnameserver %s\n", ifName, server))
+			if err != nil {
+				c.Log.Error(err)
+				return err
+			}
+			written = append(written, server)
 		}
 	}
+
 	if _, err = destfile.WriteString("options rotate\n"); err != nil {
 		c.Log.Error(err)
 		return err
