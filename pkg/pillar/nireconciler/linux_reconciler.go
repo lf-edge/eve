@@ -947,6 +947,17 @@ func (r *LinuxNIReconciler) AddAppConn(ctx context.Context,
 		return appStatus, fmt.Errorf("%s: App %v is already connected",
 			LogAndErrPrefix, appID)
 	}
+	// Check for duplicate DisplayName.
+	// Deploying multiple apps with the same DisplayName would cause their
+	// DNS host files to overwrite each other.
+	for _, anotherApp := range r.apps {
+		if appNetConfig.DisplayName == anotherApp.config.DisplayName {
+			return appStatus, fmt.Errorf(
+				"%s: another app (%v) is already using display name %q",
+				LogAndErrPrefix, anotherApp.config.UUIDandVersion.UUID,
+				appNetConfig.DisplayName)
+		}
+	}
 	appInfo := &appInfo{
 		config: appNetConfig,
 		appNum: appNum,
