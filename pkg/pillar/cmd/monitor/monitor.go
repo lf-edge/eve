@@ -45,17 +45,14 @@ type monitor struct {
 }
 
 func (ctx *monitor) readServerFile() error {
-	if _, err := os.Stat(types.ServerFileName); errors.Is(err, fs.ErrNotExist) {
-		// server file does not exist. This is not an error but a possible case
-		ctx.serverNameAndPort = ""
-		return nil
-	}
-	server, err := os.ReadFile(types.ServerFileName)
-	if err != nil {
-		log.Fatal(err)
+	var err error
+
+	ctx.serverNameAndPort, err = types.Server()
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		log.Warn(err)
 		return err
 	}
-	ctx.serverNameAndPort = strings.TrimSpace(string(server))
+
 	return nil
 }
 
@@ -84,7 +81,7 @@ func (ctx *monitor) updateServerFile(newServer string) error {
 	defer syscall.Unmount(tempDir, 0)
 
 	// 4. Write new server file
-	tempServerFile := filepath.Join(tempDir, filepath.Base(types.ServerFileName))
+	tempServerFile := filepath.Join(tempDir, filepath.Base(types.ServerFileName()))
 	if err := os.WriteFile(tempServerFile, []byte(newServer), 0644); err != nil {
 		return fmt.Errorf("failed to write new server file: %v", err)
 	}
@@ -106,8 +103,9 @@ func (ctx *monitor) updateServerFile(newServer string) error {
 	}()
 
 	// 6. Update shadow copy in /config
-	if err := os.WriteFile(types.ServerFileName, []byte(newServer), 0644); err != nil {
-		return fmt.Errorf("failed to update shadow copy: %v", err)
+	err = types.WriteServer(newServer)
+	if err != nil {
+		return err
 	}
 
 	if remountErr != nil {

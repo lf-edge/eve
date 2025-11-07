@@ -6,6 +6,7 @@ package zedagent
 import (
 	"bytes"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/lf-edge/eve-api/go/info"
@@ -108,9 +109,18 @@ func PublishHardwareInfoToZedCloud(ctx *zedagentContext, dest destinationBitset)
 		hwInfo.Disks = append(hwInfo.Disks, stDiskInfo)
 	}
 
+	fmt.Fprintf(os.Stderr, "BBBBB AddInventoryInfo\n")
+	err = hardware.AddInventoryInfo(hwInfo)
+	if err != nil {
+		log.Warnf("could not add inventory info: %v", err)
+	}
+	fmt.Fprintf(os.Stderr, "BBBBB AddInventoryInfo done\n")
+
 	ReportHwInfo.InfoContent = new(info.ZInfoMsg_Hwinfo)
 	if x, ok := ReportHwInfo.GetInfoContent().(*info.ZInfoMsg_Hwinfo); ok {
 		x.Hwinfo = hwInfo
+	} else {
+		fmt.Fprintf(os.Stderr, "BBBBB I don't know\n")
 	}
 
 	log.Tracef("PublishHardwareInfoToZedCloud sending %v", ReportHwInfo)
@@ -126,6 +136,7 @@ func PublishHardwareInfoToZedCloud(ctx *zedagentContext, dest destinationBitset)
 
 	queueInfoToDest(ctx, dest, hwInfoKey, buf, bailOnHTTPErr, false, false,
 		info.ZInfoTypes_ZiHardware)
+	fmt.Fprintf(os.Stderr, "BBBBB queueInfoToDest dest: %d done\n", dest)
 }
 
 func getSmartAttr(diskData []*types.DAttrTable) []*info.SmartAttr {

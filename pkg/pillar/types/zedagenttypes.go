@@ -828,3 +828,8 @@ type LPSConfig struct {
 type CollectInfoCmd struct {
 	Time time.Time
 }
+
+type InventoryStatus struct {
+	Time              time.Time
+	InventoryFilepath string
+}

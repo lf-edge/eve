@@ -27,6 +27,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/cmd/executor"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/faultinjection"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/hardwaremodel"
+	"github.com/lf-edge/eve/pkg/pillar/cmd/inventory"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/ipcmonitor"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/ledmanager"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/loguploader"
@@ -111,6 +112,7 @@ var (
 		"zfsmanager":       {f: zfsmanager.Run},
 		"usbmanager":       {f: usbmanager.Run},
 		"collectinfo":      {f: collectinfo.Run},
+		"inventory":        {f: inventory.Run},
 		"vcomlink":         {f: vcomlink.Run},
 		"monitor":          {f: monitor.Run},
 	}

@@ -233,7 +233,7 @@ func UseV2API() bool {
 	return true
 }
 
-// URLPathString - generate url for either v1 or v1 API path
+// URLPathString - generate url string for either v1 or v1 API path
 func URLPathString(server string, isV2api bool, devUUID uuid.UUID, action string) string {
 	var urlstr string
 	if !isV2api {
@@ -246,6 +246,16 @@ func URLPathString(server string, isV2api bool, devUUID uuid.UUID, action string
 		urlstr = urlstr + action
 	}
 	return urlstr
+}
+
+// URLPath - generate url for either v1 or v1 API path
+func URLPath(server string, isV2api bool, devUUID uuid.UUID, action string) *url.URL {
+	u, err := url.Parse(URLPathString(server, isV2api, devUUID, action))
+	if err != nil {
+		return nil
+	}
+
+	return u
 }
 
 // ValidateProtoContentType checks content-type of what is supposed to be binary

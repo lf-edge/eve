@@ -10,20 +10,21 @@ import (
 	"compress/gzip"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
 
+	"github.com/jaypipes/ghw/pkg/context"
 	"github.com/jaypipes/ghw/pkg/linuxpath"
 	"github.com/jaypipes/ghw/pkg/unitutil"
 	"github.com/jaypipes/ghw/pkg/util"
 )
 
 const (
-	_WARN_CANNOT_DETERMINE_PHYSICAL_MEMORY = `
+	warnCannotDeterminePhysicalMemory = `
 Could not determine total physical bytes of memory. This may
 be due to the host being a virtual machine or container with no
 /var/log/syslog file or /sys/devices/system/memory directory, or
@@ -36,7 +37,11 @@ the total usable amount of memory
 var (
 	// System log lines will look similar to the following:
 	// ... kernel: [0.000000] Memory: 24633272K/25155024K ...
-	_REGEX_SYSLOG_MEMLINE = regexp.MustCompile(`Memory:\s+\d+K\/(\d+)K`)
+	regexSyslogMemline = regexp.MustCompile(`Memory:\s+\d+K\/(\d+)K`)
+	// regexMemoryBlockDirname matches a subdirectory in either
+	// /sys/devices/system/memory or /sys/devices/system/node/nodeX that
+	// represents information on a specific memory cell/block
+	regexMemoryBlockDirname = regexp.MustCompile(`memory\d+$`)
 )
 
 func (i *Info) load() error {
@@ -49,11 +54,101 @@ func (i *Info) load() error {
 	tpb := memTotalPhysicalBytes(paths)
 	i.TotalPhysicalBytes = tpb
 	if tpb < 1 {
-		i.ctx.Warn(_WARN_CANNOT_DETERMINE_PHYSICAL_MEMORY)
+		i.ctx.Warn(warnCannotDeterminePhysicalMemory)
 		i.TotalPhysicalBytes = tub
 	}
-	i.SupportedPageSizes = memSupportedPageSizes(paths)
+	i.SupportedPageSizes, _ = memorySupportedPageSizes(paths.SysKernelMMHugepages)
+	i.DefaultHugePageSize, _ = memoryDefaultHPSizeFromPath(paths.ProcMeminfo)
+	i.TotalHugePageBytes, _ = memoryHugeTLBFromPath(paths.ProcMeminfo)
+	hugePageAmounts := make(map[uint64]*HugePageAmounts)
+	for _, p := range i.SupportedPageSizes {
+		info, err := memoryHPInfo(paths.SysKernelMMHugepages, p)
+		if err != nil {
+			return err
+		}
+		hugePageAmounts[p] = info
+	}
+	i.HugePageAmountsBySize = hugePageAmounts
 	return nil
+}
+
+func AreaForNode(ctx *context.Context, nodeID int) (*Area, error) {
+	paths := linuxpath.New(ctx)
+	path := filepath.Join(
+		paths.SysDevicesSystemNode,
+		fmt.Sprintf("node%d", nodeID),
+	)
+
+	var err error
+	var blockSizeBytes uint64
+	var totPhys int64
+	var totUsable int64
+
+	totUsable, err = memoryTotalUsableBytesFromPath(filepath.Join(path, "meminfo"))
+	if err != nil {
+		return nil, err
+	}
+
+	blockSizeBytes, err = memoryBlockSizeBytes(paths.SysDevicesSystemMemory)
+	if err == nil {
+		totPhys, err = memoryTotalPhysicalBytesFromPath(path, blockSizeBytes)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		// NOTE(jaypipes): Some platforms (e.g. ARM) will not have a
+		// /sys/device/system/memory/block_size_bytes file. If this is the
+		// case, we set physical bytes equal to either the physical memory
+		// determined from syslog or the usable bytes
+		//
+		// see: https://bugzilla.redhat.com/show_bug.cgi?id=1794160
+		// see: https://github.com/jaypipes/ghw/issues/336
+		totPhys = memTotalPhysicalBytesFromSyslog(paths)
+	}
+
+	supportedHP, err := memorySupportedPageSizes(filepath.Join(path, "hugepages"))
+	if err != nil {
+		return nil, err
+	}
+
+	defHPSize, err := memoryDefaultHPSizeFromPath(paths.ProcMeminfo)
+	if err != nil {
+		return nil, err
+	}
+
+	totHPSize, err := memoryHugeTLBFromPath(paths.ProcMeminfo)
+	if err != nil {
+		return nil, err
+	}
+
+	hugePageAmounts := make(map[uint64]*HugePageAmounts)
+	for _, p := range supportedHP {
+		info, err := memoryHPInfo(filepath.Join(path, "hugepages"), p)
+		if err != nil {
+			return nil, err
+		}
+		hugePageAmounts[p] = info
+	}
+
+	return &Area{
+		TotalPhysicalBytes:    totPhys,
+		TotalUsableBytes:      totUsable,
+		SupportedPageSizes:    supportedHP,
+		DefaultHugePageSize:   defHPSize,
+		TotalHugePageBytes:    totHPSize,
+		HugePageAmountsBySize: hugePageAmounts,
+	}, nil
+}
+
+func memoryBlockSizeBytes(dir string) (uint64, error) {
+	// get the memory block size in byte in hexadecimal notation
+	blockSize := filepath.Join(dir, "block_size_bytes")
+
+	d, err := os.ReadFile(blockSize)
+	if err != nil {
+		return 0, err
+	}
+	return strconv.ParseUint(strings.TrimSpace(string(d)), 16, 64)
 }
 
 func memTotalPhysicalBytes(paths *linuxpath.Paths) (total int64) {
@@ -66,42 +161,56 @@ func memTotalPhysicalBytes(paths *linuxpath.Paths) (total int64) {
 
 	// detect physical memory from /sys/devices/system/memory
 	dir := paths.SysDevicesSystemMemory
-
-	// get the memory block size in byte in hexadecimal notation
-	blockSize := filepath.Join(dir, "block_size_bytes")
-
-	d, err := ioutil.ReadFile(blockSize)
+	blockSizeBytes, err := memoryBlockSizeBytes(dir)
 	if err != nil {
-		return -1
-	}
-	blockSizeBytes, err := strconv.ParseUint(strings.TrimSpace(string(d)), 16, 64)
-	if err != nil {
-		return -1
+		total = -1
+		return total
 	}
 
-	// iterate over memory's block /sys/devices/system/memory/memory*,
-	// if the memory block state is 'online' we increment the total
-	// with the memory block size to determine the amount of physical
-	// memory available on this system
-	sysMemory, err := filepath.Glob(filepath.Join(dir, "memory*"))
+	total, err = memoryTotalPhysicalBytesFromPath(dir, blockSizeBytes)
 	if err != nil {
-		return -1
-	} else if sysMemory == nil {
-		return -1
+		total = -1
 	}
+	return total
+}
 
-	for _, path := range sysMemory {
-		s, err := ioutil.ReadFile(filepath.Join(path, "state"))
-		if err != nil {
-			return -1
+// memoryTotalPhysicalBytesFromPath accepts a directory -- either
+// /sys/devices/system/memory (for the entire system) or
+// /sys/devices/system/node/nodeX (for a specific NUMA node) -- and a block
+// size in bytes and iterates over the sysfs memory block subdirectories,
+// accumulating blocks that are "online" to determine a total physical memory
+// size in bytes
+func memoryTotalPhysicalBytesFromPath(dir string, blockSizeBytes uint64) (int64, error) {
+	var total int64
+	files, err := os.ReadDir(dir)
+	if err != nil {
+		return -1, err
+	}
+	// There are many subdirectories of /sys/devices/system/memory or
+	// /sys/devices/system/node/nodeX that are named memory{cell} where {cell}
+	// is a 0-based index of the memory block. These subdirectories contain a
+	// state file (e.g. /sys/devices/system/memory/memory64/state that will
+	// contain the string "online" if that block is active.
+	for _, file := range files {
+		fname := file.Name()
+		// NOTE(jaypipes): we cannot rely on file.IsDir() here because the
+		// memory{cell} sysfs directories are not actual directories.
+		if !regexMemoryBlockDirname.MatchString(fname) {
+			continue
 		}
+		s, err := os.ReadFile(filepath.Join(dir, fname, "state"))
+		if err != nil {
+			return -1, err
+		}
+		// if the memory block state is 'online' we increment the total with
+		// the memory block size to determine the amount of physical
+		// memory available on this system.
 		if strings.TrimSpace(string(s)) != "online" {
 			continue
 		}
 		total += int64(blockSizeBytes)
 	}
-
-	return total
+	return total, nil
 }
 
 func memTotalPhysicalBytesFromSyslog(paths *linuxpath.Paths) int64 {
@@ -110,7 +219,7 @@ func memTotalPhysicalBytesFromSyslog(paths *linuxpath.Paths) int64 {
 	// so instead we examine the system logs for startup information containing
 	// total physical memory and cache the results of this.
 	findPhysicalKb := func(line string) int64 {
-		matches := _REGEX_SYSLOG_MEMLINE.FindStringSubmatch(line)
+		matches := regexSyslogMemline.FindStringSubmatch(line)
 		if len(matches) == 2 {
 			i, err := strconv.Atoi(matches[1])
 			if err != nil {
@@ -126,14 +235,14 @@ func memTotalPhysicalBytesFromSyslog(paths *linuxpath.Paths) int64 {
 	// search each, stopping when we match a system log record line that
 	// contains physical memory information.
 	logDir := paths.VarLog
-	logFiles, err := ioutil.ReadDir(logDir)
+	logFiles, err := os.ReadDir(logDir)
 	if err != nil {
 		return -1
 	}
 	for _, file := range logFiles {
 		if strings.HasPrefix(file.Name(), "syslog") {
 			fullPath := filepath.Join(logDir, file.Name())
-			unzip := strings.HasSuffix(file.Name(), ".gz")
+			unzip := filepath.Ext(file.Name()) == ".gz"
 			var r io.ReadCloser
 			r, err = os.Open(fullPath)
 			if err != nil {
@@ -161,7 +270,123 @@ func memTotalPhysicalBytesFromSyslog(paths *linuxpath.Paths) int64 {
 }
 
 func memTotalUsableBytes(paths *linuxpath.Paths) int64 {
-	// In Linux, /proc/meminfo contains a set of memory-related amounts, with
+	amount, err := memoryTotalUsableBytesFromPath(paths.ProcMeminfo)
+	if err != nil {
+		return -1
+	}
+	return amount
+}
+
+func memorySupportedPageSizes(hpDir string) ([]uint64, error) {
+	// In Linux, /sys/kernel/mm/hugepages contains a directory per page size
+	// supported by the kernel. The directory name corresponds to the pattern
+	// 'hugepages-{pagesize}kb'
+	out := make([]uint64, 0)
+
+	files, err := os.ReadDir(hpDir)
+	if err != nil {
+		return out, err
+	}
+	for _, file := range files {
+		parts := strings.Split(file.Name(), "-")
+		sizeStr := parts[1]
+		// Cut off the 'kb'
+		sizeStr = sizeStr[0 : len(sizeStr)-2]
+		size, err := strconv.Atoi(sizeStr)
+		if err != nil {
+			return out, err
+		}
+		out = append(out, uint64(size*int(unitutil.KB)))
+	}
+	return out, nil
+}
+
+func memoryHPInfo(hpDir string, sizeBytes uint64) (*HugePageAmounts, error) {
+	// In linux huge page info can be obtained in several places
+	// /sys/kernel/mm/hugepages/hugepages-{pagesize}kb/ directory, which contains
+	//		nr_hugepages
+	//		nr_hugepages_mempolicy
+	//		nr_overcommit_hugepages
+	//		free_hugepages
+	//		resv_hugepages
+	//		surplus_hugepages
+	// or NUMA specific data /sys/devices/system/node/node[0-9]*/hugepages/hugepages-{pagesize}kb/, which contains
+	//		nr_hugepages
+	//		free_hugepages
+	//		surplus_hugepages
+	targetPath := filepath.Join(hpDir, fmt.Sprintf("hugepages-%vkB", sizeBytes/uint64(unitutil.KB)))
+	files, err := os.ReadDir(targetPath)
+	if err != nil {
+		return nil, err
+	}
+
+	var (
+		total    int64
+		free     int64
+		surplus  int64
+		reserved int64
+	)
+
+	for _, f := range files {
+		switch f.Name() {
+		case "nr_hugepages":
+			count, err := readFileToInt64(path.Join(targetPath, f.Name()))
+			if err != nil {
+				return nil, err
+			}
+			total = count
+		case "free_hugepages":
+			count, err := readFileToInt64(path.Join(targetPath, f.Name()))
+			if err != nil {
+				return nil, err
+			}
+			free = count
+		case "surplus_hugepages":
+			count, err := readFileToInt64(path.Join(targetPath, f.Name()))
+			if err != nil {
+				return nil, err
+			}
+			surplus = count
+		case "resv_hugepages":
+			count, err := readFileToInt64(path.Join(targetPath, f.Name()))
+			if err != nil {
+				return nil, err
+			}
+			reserved = count
+		}
+	}
+
+	return &HugePageAmounts{
+		Total:    total,
+		Free:     free,
+		Surplus:  surplus,
+		Reserved: reserved,
+	}, nil
+}
+
+func memoryTotalUsableBytesFromPath(meminfoPath string) (int64, error) {
+	const key = "MemTotal"
+	return getMemInfoField(meminfoPath, key)
+}
+
+func memoryDefaultHPSizeFromPath(meminfoPath string) (uint64, error) {
+	const key = "Hugepagesize"
+	got, err := getMemInfoField(meminfoPath, key)
+	if err != nil {
+		return 0, err
+	}
+	return uint64(got), nil
+}
+
+func memoryHugeTLBFromPath(meminfoPath string) (int64, error) {
+	const key = "Hugetlb"
+	return getMemInfoField(meminfoPath, key)
+}
+
+func getMemInfoField(meminfoPath string, wantKey string) (int64, error) {
+	// In Linux, /proc/meminfo or its close relative
+	// /sys/devices/system/node/node*/meminfo
+	// contains a set of memory-related amounts, with
 	// lines looking like the following:
 	//
 	// $ cat /proc/meminfo
@@ -179,59 +404,43 @@ func memTotalUsableBytes(paths *linuxpath.Paths) int64 {
 	// "theoretical" information. For instance, on the above system, I have
 	// 24GB of RAM but MemTotal is indicating only around 23GB. This is because
 	// MemTotal contains the exact amount of *usable* memory after accounting
-	// for the kernel's resident memory size and a few reserved bits. For more
-	// information, see:
+	// for the kernel's resident memory size and a few reserved bits.
+	// Please note GHW cares about the subset of lines shared between system-wide
+	// and per-NUMA-node meminfos. For more information, see:
 	//
 	//  https://www.kernel.org/doc/Documentation/filesystems/proc.txt
-	filePath := paths.ProcMeminfo
-	r, err := os.Open(filePath)
+	r, err := os.Open(meminfoPath)
 	if err != nil {
-		return -1
+		return -1, err
 	}
 	defer util.SafeClose(r)
 
 	scanner := bufio.NewScanner(r)
 	for scanner.Scan() {
 		line := scanner.Text()
-		parts := strings.Fields(line)
-		key := strings.Trim(parts[0], ": \t")
-		if key != "MemTotal" {
+		parts := strings.Split(line, ":")
+		key := parts[0]
+		if !strings.Contains(key, wantKey) {
 			continue
 		}
-		value, err := strconv.Atoi(strings.TrimSpace(parts[1]))
+		rawValue := parts[1]
+		inKb := strings.HasSuffix(rawValue, "kB")
+		value, err := strconv.Atoi(strings.TrimSpace(strings.TrimSuffix(rawValue, "kB")))
 		if err != nil {
-			return -1
+			return -1, err
 		}
-		inKb := (len(parts) == 3 && strings.TrimSpace(parts[2]) == "kB")
 		if inKb {
 			value = value * int(unitutil.KB)
 		}
-		return int64(value)
+		return int64(value), nil
 	}
-	return -1
+	return -1, fmt.Errorf("failed to find '%s' entry in path %q", wantKey, meminfoPath)
 }
 
-func memSupportedPageSizes(paths *linuxpath.Paths) []uint64 {
-	// In Linux, /sys/kernel/mm/hugepages contains a directory per page size
-	// supported by the kernel. The directory name corresponds to the pattern
-	// 'hugepages-{pagesize}kb'
-	dir := paths.SysKernelMMHugepages
-	out := make([]uint64, 0)
-
-	files, err := ioutil.ReadDir(dir)
+func readFileToInt64(filename string) (int64, error) {
+	data, err := os.ReadFile(filename)
 	if err != nil {
-		return out
+		return -1, err
 	}
-	for _, file := range files {
-		parts := strings.Split(file.Name(), "-")
-		sizeStr := parts[1]
-		// Cut off the 'kb'
-		sizeStr = sizeStr[0 : len(sizeStr)-2]
-		size, err := strconv.Atoi(sizeStr)
-		if err != nil {
-			return out
-		}
-		out = append(out, uint64(size*int(unitutil.KB)))
-	}
-	return out
+	return strconv.ParseInt(strings.TrimSpace(string(data)), 10, 64)
 }
