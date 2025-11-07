@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/spf13/afero"
 )
 
@@ -17,30 +18,52 @@ const (
 	AllowOnboardOverrideFile = "/persist/eval/allow_onboard"
 )
 
-// initializeEvaluation performs initial evaluation setup for evaluation platforms
-// Note: This function assumes ctx.isEvaluationPlatform is already set and true
+// initializeEvaluation performs initial evaluation setup
 func (ctx *evalMgrContext) initializeEvaluation() error {
 	log.Functionf("initializeEvaluation starting")
+
+	// Detect if this is an evaluation platform
+	ctx.isEvaluationPlatform = utils.IsEvaluationPlatformFS(ctx.fs)
+	log.Noticef("Evaluation platform detection: isEvaluationPlatform=%t", ctx.isEvaluationPlatform)
 
 	// Get current partition
 	currentPartStr := ctx.partitionMgr.GetCurrentPartition()
 	ctx.currentSlot = types.SlotName(currentPartStr)
 	log.Noticef("Current partition: %s", ctx.currentSlot)
 
-	// Perform partition state reconciliation
-	log.Functionf("Performing partition state reconciliation")
-	if err := ctx.reconcilePartitionStates(); err != nil {
-		log.Errorf("Partition reconciliation failed: %v", err)
+	if ctx.isEvaluationPlatform {
+		log.Functionf("Performing partition state reconciliation")
+
+		if err := ctx.reconcilePartitionStates(); err != nil {
+			log.Errorf("Partition reconciliation failed: %v", err)
+		}
+
+		// Collect hardware inventory as early as possible
+		log.Noticef("Collecting hardware inventory for partition %s", ctx.currentSlot)
+		collector := NewInventoryCollector(log, ctx.fs)
+		if err := collector.CollectInventory(string(ctx.currentSlot)); err != nil {
+			log.Errorf("Failed to collect inventory: %v", err)
+			// Continue execution even if inventory collection fails
+		} else {
+			log.Noticef("Successfully collected hardware inventory for %s", ctx.currentSlot)
+		}
+
+		// Cleanup old inventories (keep last 30 days)
+		if err := collector.CleanupOldInventories(30 * 24 * time.Hour); err != nil {
+			log.Warnf("Failed to cleanup old inventories: %v", err)
+		}
 	}
 
 	// Load persistent state to restore phase before creating evalStatus
 	initialPhase := types.EvalPhaseInit
-	state, err := ctx.loadEvalState()
-	if err != nil {
-		log.Warnf("Could not load persistent state during init: %v - using default phase", err)
-	} else {
-		initialPhase = state.Phase
-		log.Noticef("Restored phase from persistent state: %s", initialPhase)
+	if ctx.isEvaluationPlatform {
+		state, err := ctx.loadEvalState()
+		if err != nil {
+			log.Warnf("Could not load persistent state during init: %v - using default phase", err)
+		} else {
+			initialPhase = state.Phase
+			log.Noticef("Restored phase from persistent state: %s", initialPhase)
+		}
 	}
 
 	allowOnboard := ctx.shouldAllowOnboard()
@@ -50,14 +73,12 @@ func (ctx *evalMgrContext) initializeEvaluation() error {
 		ctx.isEvaluationPlatform, ctx.currentSlot, initialPhase, allowOnboard)
 
 	ctx.evalStatus = types.EvalStatus{
-		IsEvaluationPlatform: true, // This function only called for eval platforms
+		IsEvaluationPlatform: ctx.isEvaluationPlatform,
 		CurrentSlot:          ctx.currentSlot,
 		Phase:                initialPhase,
 		AllowOnboard:         allowOnboard,
 		Note:                 statusNote,
 		LastUpdated:          time.Now(),
-		InventoryCollected:   false, // Will be set after inventory collection
-		InventoryDir:         "",    // Will be set after inventory collection
 	}
 
 	log.Functionf("initializeEvaluation completed")
@@ -161,13 +182,10 @@ func (ctx *evalMgrContext) updateEvalStatus() {
 	ctx.evalStatus.AllowOnboard = ctx.shouldAllowOnboard()
 	ctx.evalStatus.Note = ctx.generateStatusNote()
 	ctx.evalStatus.LastUpdated = time.Now()
-	ctx.evalStatus.InventoryCollected = ctx.inventoryCollected
-	ctx.evalStatus.InventoryDir = ctx.inventoryDir
 
 	if oldStatus.AllowOnboard != ctx.evalStatus.AllowOnboard ||
 		oldStatus.Note != ctx.evalStatus.Note ||
-		oldStatus.Phase != ctx.evalStatus.Phase ||
-		oldStatus.InventoryCollected != ctx.evalStatus.InventoryCollected {
+		oldStatus.Phase != ctx.evalStatus.Phase {
 		ctx.publishEvalStatus()
 	}
 }
