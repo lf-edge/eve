@@ -1,6 +1,6 @@
 #!/bin/sh
 #
-# Copyright (c) 2018-2025 Zededa, Inc.
+# Copyright (c) 2018-2026 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
 WATCHDOG_PID=/run/watchdog/pid
@@ -18,7 +18,7 @@ ZTMPDIR=/run/global
 DPCDIR=$ZTMPDIR/DevicePortConfig
 FIRSTBOOTFILE=$ZTMPDIR/first-boot
 FIRSTBOOT=
-AGENTS="diag monitor zedagent ledmanager nim nodeagent domainmgr loguploader tpmmgr vaultmgr zedmanager zedrouter downloader verifier baseosmgr wstunnelclient volumemgr watcher zfsmanager usbmanager zedkube vcomlink collectinfo"
+AGENTS="diag monitor evalmgr zedagent ledmanager nim nodeagent domainmgr loguploader tpmmgr vaultmgr zedmanager zedrouter downloader verifier baseosmgr wstunnelclient volumemgr watcher zfsmanager usbmanager zedkube vcomlink collectinfo"
 TPM_DEVICE_PATH="/dev/tpmrm0"
 PATH=$BINDIR:$PATH
 TPMINFOTEMPFILE=/var/tmp/tpminfo.txt
