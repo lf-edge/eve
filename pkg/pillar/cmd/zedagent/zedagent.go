@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2022 Zededa, Inc.
+// Copyright (c) 2017-2026 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 // zedAgent interfaces with zedcloud for
@@ -726,6 +726,7 @@ func waitUntilOnboarded(zedagentCtx *zedagentContext, stillRunning *time.Ticker)
 		}
 		zedagentCtx.ps.StillRunning(agentName, warningTime, errorTime)
 	}
+	log.Functionf("Device UUID: %s", devUUID)
 }
 
 func waitUntilGCReady(zedagentCtx *zedagentContext, stillRunning *time.Ticker) {
