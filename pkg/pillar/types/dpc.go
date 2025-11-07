@@ -174,16 +174,16 @@ const (
 // plus the test results for a given port. The complete status with
 // IP addresses lives in DeviceNetworkStatus
 type DevicePortConfig struct {
-	Version      DevicePortConfigVersion
-	Key          string
-	TimePriority time.Time // All zero's is fallback lowest priority
-	State        DPCState
-	ShaFile      string // File in which to write ShaValue once DevicePortConfigList published
-	ShaValue     []byte
+	Version      DevicePortConfigVersion `json:",omitempty"`
+	Key          string                  `json:",omitempty"`
+	TimePriority time.Time               `json:",omitempty"` // All zero's is fallback lowest priority
+	State        DPCState                `json:",omitempty"`
+	ShaFile      string                  `json:",omitempty"` // File in which to write ShaValue once DevicePortConfigList published
+	ShaValue     []byte                  `json:",omitempty"`
 	TestResults
-	LastIPAndDNS time.Time // Time when we got some IP addresses and DNS
+	LastIPAndDNS time.Time `json:",omitempty"` // Time when we got some IP addresses and DNS
 
-	Ports []NetworkPortConfig
+	Ports []NetworkPortConfig `json:",omitempty"`
 }
 
 // PubKey is used for pubsub. Key string plus TimePriority
@@ -660,43 +660,43 @@ func (config *DevicePortConfig) IsAnyPortInPciBack(
 // a corresponding Status struct.
 // Note that if fields are added the MostlyEqual function needs to be updated.
 type NetworkPortConfig struct {
-	IfName       string
-	USBAddr      string
-	PCIAddr      string
-	Phylabel     string // Physical name set by controller/model
-	Logicallabel string // SystemAdapter's name which is logical label in phyio
+	IfName       string `json:",omitempty"`
+	USBAddr      string `json:",omitempty"`
+	PCIAddr      string `json:",omitempty"`
+	Phylabel     string `json:",omitempty"` // Physical name set by controller/model
+	Logicallabel string `json:",omitempty"` // SystemAdapter's name which is logical label in phyio
 	// Unlike the logicallabel, which is defined in the device model and unique
 	// for each port, these user-configurable "shared" labels are potentially
 	// assigned to multiple ports so that they can be used all together with
 	// some config object (e.g. multiple ports assigned to NI).
 	// Some special shared labels, such as "uplink" or "freeuplink", are assigned
 	// to particular ports automatically.
-	SharedLabels []string
-	Alias        string // From SystemAdapter's alias
+	SharedLabels []string `json:",omitempty"`
+	Alias        string   `json:",omitempty"` // From SystemAdapter's alias
 	// Allow the local operator to make (limited) configuration changes to this
 	// network adapter using Local Profile Server.
-	AllowLocalModifications bool
+	AllowLocalModifications bool `json:",omitempty"`
 	// NetworkUUID - UUID of the Network Object configured for the port.
-	NetworkUUID uuid.UUID
-	IsMgmt      bool // Used to talk to controller
-	IsL3Port    bool // True if port is applicable to operate on the network layer
+	NetworkUUID uuid.UUID `json:",omitempty"`
+	IsMgmt      bool      `json:",omitempty"` // Used to talk to controller
+	IsL3Port    bool      `json:",omitempty"` // True if port is applicable to operate on the network layer
 	// InvalidConfig is used to flag port config which failed parsing or (static) validation
 	// checks, such as: malformed IP address, undefined required field, IP address not inside
 	// the subnet, etc.
-	InvalidConfig bool
-	Cost          uint8 // Zero is free
-	MTU           uint16
+	InvalidConfig bool   `json:",omitempty"`
+	Cost          uint8  `json:",omitempty"` // Zero is free
+	MTU           uint16 `json:",omitempty"`
 	DhcpConfig
 	ProxyConfig
 	L2LinkConfig
-	WirelessCfg WirelessConfig
+	WirelessCfg WirelessConfig `json:",omitempty"`
 	// TestResults - Errors from parsing plus success/failure from testing
 	TestResults
-	IgnoreDhcpNtpServers  bool // Ignore NTP servers from DHCP
-	IgnoreDhcpIPAddresses bool // Ignore IP addresses from DHCP
-	IgnoreDhcpGateways    bool // Ignore gateways from DHCP
-	IgnoreDhcpDNSConfig   bool // Ignore DNS config (DomainName + DNSServers) from DHCP
-	ConfigSource          PortConfigSource
+	IgnoreDhcpNtpServers  bool             `json:",omitempty"` // Ignore NTP servers from DHCP
+	IgnoreDhcpIPAddresses bool             `json:",omitempty"` // Ignore IP addresses from DHCP
+	IgnoreDhcpGateways    bool             `json:",omitempty"` // Ignore gateways from DHCP
+	IgnoreDhcpDNSConfig   bool             `json:",omitempty"` // Ignore DNS config (DomainName + DNSServers) from DHCP
+	ConfigSource          PortConfigSource `json:",omitempty"`
 }
 
 // EVE-defined port labels.
@@ -744,7 +744,7 @@ const (
 // It helps distinguish between controller-provided, locally-modified, or initial configs.
 type PortConfigSource struct {
 	// Indicates where EVE obtained the network config.
-	Origin NetworkConfigOrigin
+	Origin NetworkConfigOrigin `json:",omitempty"`
 
 	// Timestamp when the port’s configuration was originally submitted
 	// or created at its source.
@@ -766,7 +766,7 @@ type PortConfigSource struct {
 	// Note: this is a per-port timestamp. The underlying network config may
 	// cover multiple ports, but only the portion relevant to this port is
 	// reflected here.
-	SubmittedAt time.Time
+	SubmittedAt time.Time `json:",omitempty"`
 }
 
 // ToProto converts PortConfigSource into its protobuf representation.
@@ -861,18 +861,18 @@ const (
 
 // DhcpConfig : DHCP configuration for network port.
 type DhcpConfig struct {
-	Dhcp DhcpType // If DhcpTypeStatic use below; if DhcpTypeNone do nothing
+	Dhcp DhcpType `json:",omitempty"` // If DhcpTypeStatic use below; if DhcpTypeNone do nothing
 	// AddrSubnet is in CIDR format (e.g., 192.168.1.44/24).
 	// It's a string (rather than *net.IPNet) to allow unmarshalling from
 	// user-edited override.json, since *net.IPNet does not implement
 	// encoding.TextUnmarshaler. (net.IP does, and is therefore used for
 	// Gateway and DNSServers)
-	AddrSubnet string
-	Gateway    net.IP
-	DomainName string
-	NTPServers []netutils.HostnameOrIP
-	DNSServers []net.IP    // If not set we use Gateway as DNS server
-	Type       NetworkType // IPv4 or IPv6 or Dual stack
+	AddrSubnet string                  `json:",omitempty"`
+	Gateway    net.IP                  `json:",omitempty"`
+	DomainName string                  `json:",omitempty"`
+	NTPServers []netutils.HostnameOrIP `json:",omitempty"`
+	DNSServers []net.IP                `json:",omitempty"` // If not set we use Gateway as DNS server
+	Type       NetworkType             `json:",omitempty"` // IPv4 or IPv6 or Dual stack
 }
 
 // NetworkProxyType is used to differentiate proxies for different network protocols.
@@ -891,9 +891,9 @@ const (
 
 // ProxyEntry is used to store address of a single network proxy.
 type ProxyEntry struct {
-	Type   NetworkProxyType `json:"type"`
-	Server string           `json:"server"`
-	Port   uint32           `json:"port"`
+	Type   NetworkProxyType `json:"type,omitempty"`
+	Server string           `json:"server,omitempty"`
+	Port   uint32           `json:"port,omitempty"`
 }
 
 // FromProto populates a ProxyEntry from its protobuf representation.
@@ -939,14 +939,14 @@ func (pe ProxyEntry) ToProto() *evecommon.ProxyServer {
 
 // ProxyConfig : proxy configuration for a network port.
 type ProxyConfig struct {
-	Proxies    []ProxyEntry
-	Exceptions string
-	Pacfile    string
+	Proxies    []ProxyEntry `json:",omitempty"`
+	Exceptions string       `json:",omitempty"`
+	Pacfile    string       `json:",omitempty"`
 	// If Enable is set we use WPAD. If the URL is not set we try
 	// the various DNS suffixes until we can download a wpad.dat file
-	NetworkProxyEnable bool   // Enable WPAD
-	NetworkProxyURL    string // Complete URL i.e., with /wpad.dat
-	WpadURL            string // The URL determined from DNS
+	NetworkProxyEnable bool   `json:",omitempty"` // Enable WPAD
+	NetworkProxyURL    string `json:",omitempty"` // Complete URL i.e., with /wpad.dat
+	WpadURL            string `json:",omitempty"` // The URL determined from DNS
 	// List of certs which will be added to TLS trust
 	ProxyCertPEM [][]byte `json:"pubsub-large-ProxyCertPEM"` //nolint:tagliatelle
 }
@@ -1020,19 +1020,19 @@ func (wt WirelessType) String() string {
 // WirelessConfig - wireless structure
 type WirelessConfig struct {
 	// WType : Wireless Type, either Cellular or WiFi.
-	WType WirelessType
+	WType WirelessType `json:",omitempty"`
 	// CellularV2 : configuration for Cellular connectivity.
 	// This is version 2 of the cellular APIs. With the introduction of support
 	// for multiple modems and multiple SIMs, the previously used CellConfig
 	// structure was no longer suitable for storing all the new config attributes.
-	CellularV2 CellNetPortConfig
+	CellularV2 CellNetPortConfig `json:",omitempty"`
 	// Wifi : configuration for WiFi connectivity.
-	Wifi []WifiConfig
+	Wifi []WifiConfig `json:",omitempty"`
 	// Cellular : old and now deprecated structure for the cellular connectivity
 	// configuration (aka version 1).
 	// It is kept here only for backward-compatibility, i.e. to support upgrades from
 	// EVE versions which still use this structure.
-	Cellular []DeprecatedCellConfig
+	Cellular []DeprecatedCellConfig `json:",omitempty"`
 }
 
 // IsEmpty returns true if the wireless config is empty.
@@ -1049,15 +1049,15 @@ func (wc WirelessConfig) IsEmpty() bool {
 
 // WifiConfig - Wifi structure
 type WifiConfig struct {
-	SSID      string            // wifi SSID
-	KeyScheme WifiKeySchemeType // such as WPA-PSK, WPA-EAP
+	SSID      string            `json:",omitempty"` // wifi SSID
+	KeyScheme WifiKeySchemeType `json:",omitempty"` // such as WPA-PSK, WPA-EAP
 
 	// XXX: to be deprecated, use CipherBlockStatus instead
-	Identity string // identity or username for WPA-EAP
+	Identity string `json:",omitempty"` // identity or username for WPA-EAP
 
 	// XXX: to be deprecated, use CipherBlockStatus instead
-	Password string // string of pass phrase or password hash
-	Priority int32
+	Password string `json:",omitempty"` // string of pass phrase or password hash
+	Priority int32  `json:",omitempty"`
 
 	// CipherBlockStatus, for encrypted credentials
 	CipherBlockStatus
@@ -1076,21 +1076,21 @@ const (
 // network port config. It is preserved only to support upgrades from older EVE
 // versions where this is still being used (under the original struct name "CellConfig")
 type DeprecatedCellConfig struct {
-	APN              string
-	ProbeAddr        string
-	DisableProbe     bool
-	LocationTracking bool
+	APN              string `json:",omitempty"`
+	ProbeAddr        string `json:",omitempty"`
+	DisableProbe     bool   `json:",omitempty"`
+	LocationTracking bool   `json:",omitempty"`
 }
 
 // CellNetPortConfig - configuration for cellular network port (part of DPC).
 type CellNetPortConfig struct {
 	// Parameters to apply for connecting to cellular networks.
 	// Configured separately for every SIM card inserted into the modem.
-	AccessPoints []CellularAccessPoint
+	AccessPoints []CellularAccessPoint `json:",omitempty"`
 	// Probe used to detect broken connection.
-	Probe WwanProbe
+	Probe WwanProbe `json:",omitempty"`
 	// Enable to get location info from the GNSS receiver of the cellular modem.
-	LocationTracking bool
+	LocationTracking bool `json:",omitempty"`
 }
 
 // CellularAccessPoint contains config parameters for connecting to a cellular network.
@@ -1100,39 +1100,39 @@ type CellularAccessPoint struct {
 	// 1 - config for SIM card in the first slot
 	// 2 - config for SIM card in the second slot
 	// etc.
-	SIMSlot uint8
+	SIMSlot uint8 `json:",omitempty"`
 	// If true, then this configuration is currently activated.
-	Activated bool
+	Activated bool `json:",omitempty"`
 	// Access Point Network for the default bearer.
-	APN string
+	APN string `json:",omitempty"`
 	// The IP addressing type to use for the default bearer.
-	IPType WwanIPType
+	IPType WwanIPType `json:",omitempty"`
 	// Authentication protocol used for the default bearer.
-	AuthProtocol WwanAuthProtocol
+	AuthProtocol WwanAuthProtocol `json:",omitempty"`
 	// Cleartext user credentials for the default bearer.
 	// Used only for network configuration submitted via Local Profile Server.
-	CleartextCredentials WwanCleartextCredentials
+	CleartextCredentials WwanCleartextCredentials `json:",omitempty"`
 	// Encrypted user credentials for the default bearer and/or the attach bearer
 	// (when required).
 	EncryptedCredentials CipherBlockStatus
 	// The set of cellular network operators that modem should preferably try to register
 	// and connect into.
 	// Network operator should be referenced by PLMN (Public Land Mobile Network) code.
-	PreferredPLMNs []string
+	PreferredPLMNs []string `json:",omitempty"`
 	// The list of preferred Radio Access Technologies (RATs) to use for connecting
 	// to the network.
-	PreferredRATs []WwanRAT
+	PreferredRATs []WwanRAT `json:",omitempty"`
 	// If true, then modem will avoid connecting to networks with roaming.
-	ForbidRoaming bool
+	ForbidRoaming bool `json:",omitempty"`
 	// Access Point Network for the attach (aka initial) bearer.
-	AttachAPN string
+	AttachAPN string `json:",omitempty"`
 	// The IP addressing type to use for the attach bearer.
-	AttachIPType WwanIPType
+	AttachIPType WwanIPType `json:",omitempty"`
 	// Authentication protocol used for the attach bearer.
-	AttachAuthProtocol WwanAuthProtocol
+	AttachAuthProtocol WwanAuthProtocol `json:",omitempty"`
 	// Cleartext user credentials for the attach bearer.
 	// Used only for network configuration submitted via Local Profile Server.
-	AttachCleartextCredentials WwanCleartextCredentials
+	AttachCleartextCredentials WwanCleartextCredentials `json:",omitempty"`
 }
 
 // Equal compares two instances of CellularAccessPoint for equality.
@@ -1175,17 +1175,17 @@ const (
 // L2LinkConfig - contains either VLAN or Bond interface configuration,
 // depending on the L2Type.
 type L2LinkConfig struct {
-	L2Type L2LinkType
-	VLAN   VLANConfig
-	Bond   BondConfig
+	L2Type L2LinkType `json:",omitempty"`
+	VLAN   VLANConfig `json:",omitempty"`
+	Bond   BondConfig `json:",omitempty"`
 }
 
 // VLANConfig - VLAN sub-interface configuration.
 type VLANConfig struct {
 	// Logical name of the parent port.
-	ParentPort string
+	ParentPort string `json:",omitempty"`
 	// VLAN ID.
-	ID uint16
+	ID uint16 `json:",omitempty"`
 }
 
 // BondMode specifies the policy indicating how bonding slaves are used
@@ -1227,34 +1227,34 @@ const (
 // BondConfig - Bond (LAG) interface configuration.
 type BondConfig struct {
 	// Logical names of PhysicalIO network adapters aggregated by this bond.
-	AggregatedPorts []string
+	AggregatedPorts []string `json:",omitempty"`
 
 	// Bonding policy.
-	Mode BondMode
+	Mode BondMode `json:",omitempty"`
 
 	// LACPDU packets transmission rate.
 	// Applicable for BondMode802Dot3AD only.
-	LacpRate LacpRate
+	LacpRate LacpRate `json:",omitempty"`
 
 	// Link monitoring is either disabled or one of the monitors
 	// is enabled, never both at the same time.
-	MIIMonitor BondMIIMonitor
-	ARPMonitor BondArpMonitor
+	MIIMonitor BondMIIMonitor `json:",omitempty"`
+	ARPMonitor BondArpMonitor `json:",omitempty"`
 }
 
 // BondMIIMonitor : MII link monitoring parameters (see devmodel.proto for description).
 type BondMIIMonitor struct {
-	Enabled   bool
-	Interval  uint32
-	UpDelay   uint32
-	DownDelay uint32
+	Enabled   bool   `json:",omitempty"`
+	Interval  uint32 `json:",omitempty"`
+	UpDelay   uint32 `json:",omitempty"`
+	DownDelay uint32 `json:",omitempty"`
 }
 
 // BondArpMonitor : ARP-based link monitoring parameters (see devmodel.proto for description).
 type BondArpMonitor struct {
-	Enabled   bool
-	Interval  uint32
-	IPTargets []net.IP
+	Enabled   bool     `json:",omitempty"`
+	Interval  uint32   `json:",omitempty"`
+	IPTargets []net.IP `json:",omitempty"`
 }
 
 // Equal compares two BondArpMonitor configs for equality.
@@ -1269,8 +1269,8 @@ func (m BondArpMonitor) Equal(m2 BondArpMonitor) bool {
 // It includes test results hence is misnamed - should have a separate status
 // This is only published under the key "global"
 type DevicePortConfigList struct {
-	CurrentIndex   int
-	PortConfigList []DevicePortConfig
+	CurrentIndex   int                `json:",omitempty"`
+	PortConfigList []DevicePortConfig `json:",omitempty"`
 }
 
 // MostlyEqual - Equal if everything else other than timestamps is equal.
@@ -1356,9 +1356,9 @@ func (config DevicePortConfigList) LogKey() string {
 // from protobuf API into DevicePortConfig.
 // XXX replace by inline once we have device model
 type NetworkXObjectConfig struct {
-	UUID uuid.UUID
-	Type NetworkType
-	Dhcp DhcpType
+	UUID uuid.UUID   `json:",omitempty"`
+	Type NetworkType `json:",omitempty"`
+	Dhcp DhcpType    `json:",omitempty"`
 
 	// Subnet, Gateway, NTPServers, DomainName, and DNSServers can all be configured
 	// even when Dhcp == DhcpTypeClient. By default, DHCP-provided and statically
@@ -1366,28 +1366,28 @@ type NetworkXObjectConfig struct {
 	// the static value(s) to override DHCP for that field.
 
 	// IP addresses.
-	Subnet                *net.IPNet
-	DhcpRange             IPRange
-	IgnoreDhcpIPAddresses bool
+	Subnet                *net.IPNet `json:",omitempty"`
+	DhcpRange             IPRange    `json:",omitempty"`
+	IgnoreDhcpIPAddresses bool       `json:",omitempty"`
 
 	// IP gateway.
-	Gateway            net.IP
-	IgnoreDhcpGateways bool
+	Gateway            net.IP `json:",omitempty"`
+	IgnoreDhcpGateways bool   `json:",omitempty"`
 
 	// DNS configuration.
-	DomainName string
+	DomainName string `json:",omitempty"`
 	// If Dhcp=DhcpTypeStatic and DNSServers are not set, Gateway is used as DNS server.
-	DNSServers          []net.IP
-	DNSNameToIPList     []DNSNameToIP // Used for DNS and ACL ipset
-	IgnoreDhcpDNSConfig bool
+	DNSServers          []net.IP      `json:",omitempty"`
+	DNSNameToIPList     []DNSNameToIP `json:",omitempty"` // Used for DNS and ACL ipset
+	IgnoreDhcpDNSConfig bool          `json:",omitempty"`
 
 	// NTP servers.
-	NTPServers           []netutils.HostnameOrIP
-	IgnoreDhcpNtpServers bool
+	NTPServers           []netutils.HostnameOrIP `json:",omitempty"`
+	IgnoreDhcpNtpServers bool                    `json:",omitempty"`
 
-	Proxy       *ProxyConfig
-	WirelessCfg WirelessConfig
-	MTU         uint16
+	Proxy       *ProxyConfig   `json:",omitempty"`
+	WirelessCfg WirelessConfig `json:",omitempty"`
+	MTU         uint16         `json:",omitempty"`
 	// Any errors from the parser
 	// ErrorAndTime provides SetErrorNow() and ClearError()
 	ErrorAndTime
@@ -1395,14 +1395,14 @@ type NetworkXObjectConfig struct {
 
 // DNSNameToIP : static mapping between hostname and IP addresses.
 type DNSNameToIP struct {
-	HostName string
-	IPs      []net.IP
+	HostName string   `json:",omitempty"`
+	IPs      []net.IP `json:",omitempty"`
 }
 
 // IPRange : range of consecutive IP addresses.
 type IPRange struct {
-	Start net.IP
-	End   net.IP
+	Start net.IP `json:",omitempty"`
+	End   net.IP `json:",omitempty"`
 }
 
 // Contains used to evaluate whether an IP address
