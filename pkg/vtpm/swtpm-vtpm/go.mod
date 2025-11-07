@@ -22,7 +22,7 @@ require (
 	github.com/google/gofuzz v1.2.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/leodido/go-urn v1.2.4 // indirect
-	github.com/lf-edge/eve-api/go v0.0.0-20251015130922-bab09e4f470c // indirect
+	github.com/lf-edge/eve-api/go v0.0.0-20251118212149-2208af2d72d9 // indirect
 	github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20240315102754-0f6d1f182e0d // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
