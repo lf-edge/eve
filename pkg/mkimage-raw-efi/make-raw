@@ -680,20 +680,56 @@ for p in $PARTS ; do
 done
 
 # set the appropriate boot partition for grub gptprio.next
-# rule is: installer, then imga then imgb
-BOOTABLE_PART=""
+# Partition attribute initialization - can apply multiple:
+#   1. Installer partition (if installer present) - installer bootable
+#   2. Evaluation rootfs partitions (if platform=evaluation) - all rootfs scheduled
+#   3. Regular rootfs partition (otherwise) - one rootfs bootable
+
+# Step 1: Initialize installer partition if present
 if echo "$PARTS" | grep -q "installer"; then
-  BOOTABLE_PART=$INSTALLER_PART
-elif echo "$PARTS" | grep -q "imga"; then
-  BOOTABLE_PART=$IMGA_PART
-elif echo "$PARTS" | grep -q "imgb"; then
-  BOOTABLE_PART=$IMGB_PART
-elif echo "$PARTS" | grep -q "imgc"; then
-  BOOTABLE_PART=$IMGC_PART
+  # Installer partition: priority=2, successful=1 (0x102 "active")
+  sgdisk --attributes=$INSTALLER_PART:set:49 --attributes=$INSTALLER_PART:set:56 "$IMGFILE"
 fi
 
-if [ -n "$BOOTABLE_PART" ]; then
-  sgdisk --attributes=$BOOTABLE_PART:set:56 --attributes=$BOOTABLE_PART:set:49 "$IMGFILE"
+# Step 2: Initialize rootfs partitions for evaluation platform
+if [ "$PLATFORM" = "evaluation" ]; then
+  # Evaluation EVE image: All three rootfs partitions start in "scheduled" state
+  # Priority is encoded in GPT attribute bits 48-51 (4 bits, 0-15)
+  # Tries left is encoded in bits 52-55 (4 bits, 0-15)
+  # Bit 56 = successful flag
+  # Initial state: all priority=3, tries=1, successful=0 (0x013 = "scheduled")
+  # This allows evalmgr to test all three partitions during evaluation
+  # GRUB will boot IMGA first (alphabetically first at priority=3)
+
+  if echo "$PARTS" | grep -q "imga"; then
+    # IMGA: priority=3 (bits 48,49), tries=1 (bit 52), successful=0 - creates 0x013 "scheduled"
+    sgdisk --attributes=$IMGA_PART:set:48 --attributes=$IMGA_PART:set:49 --attributes=$IMGA_PART:set:52 "$IMGFILE"
+  fi
+
+  if echo "$PARTS" | grep -q "imgb"; then
+    # IMGB: priority=3 (bits 48,49), tries=1 (bit 52), successful=0 - creates 0x013 "scheduled"
+    sgdisk --attributes=$IMGB_PART:set:48 --attributes=$IMGB_PART:set:49 --attributes=$IMGB_PART:set:52 "$IMGFILE"
+  fi
+
+  if echo "$PARTS" | grep -q "imgc"; then
+    # IMGC: priority=3 (bits 48,49), tries=1 (bit 52), successful=0 - creates 0x013 "scheduled"
+    sgdisk --attributes=$IMGC_PART:set:48 --attributes=$IMGC_PART:set:49 --attributes=$IMGC_PART:set:52 "$IMGFILE"
+  fi
+else
+  # Regular EVE image: Only one rootfs partition bootable (imga > imgb > imgc)
+  BOOTABLE_PART=""
+  if echo "$PARTS" | grep -q "imga"; then
+    BOOTABLE_PART=$IMGA_PART
+  elif echo "$PARTS" | grep -q "imgb"; then
+    BOOTABLE_PART=$IMGB_PART
+  elif echo "$PARTS" | grep -q "imgc"; then
+    BOOTABLE_PART=$IMGC_PART
+  fi
+
+  if [ -n "$BOOTABLE_PART" ]; then
+    # Set priority bits and successful flag (creates "active" state)
+    sgdisk --attributes=$BOOTABLE_PART:set:49 --attributes=$BOOTABLE_PART:set:56 "$IMGFILE"
+  fi
 fi
 
 if [ "$PARTS" = usb_conf ]; then
