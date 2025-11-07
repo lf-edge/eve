@@ -978,6 +978,9 @@ bump-eve-libs:
 bump-eve-pillar:
 	find . -type f -name "go.mod" -exec grep -q 'github.com/lf-edge/eve/pkg/pillar' {} \; -execdir go get -u github.com/lf-edge/eve/pkg/pillar \; -execdir go mod tidy \; -execdir go mod vendor \;
 
+bump-edge-containers:
+	find . -type f -name "go.mod" -exec grep -q 'github.com/lf-edge/edge-containers/go' {} \; -execdir go get -u github.com/lf-edge/edge-containers \; -execdir go mod tidy \; -execdir go mod vendor \;
+
 .PHONY: proto-api-%
 
 rc-release:
@@ -1277,6 +1280,7 @@ help:
 	@echo "   bump-eve-api    bump eve-api in all subprojects"
 	@echo "   bump-eve-libs   bump eve-libs in all subprojects"
 	@echo "   bump-eve-pillar bump eve/pkg/pillar in all subprojects"
+	@echo "   bump-edge-containers bump edge-containers in all subprojects"
 	@echo
 	@echo "Commonly used build targets:"
 	@echo "   config               builds a bundle with initial EVE configs"
