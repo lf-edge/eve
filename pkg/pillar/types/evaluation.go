@@ -86,6 +86,10 @@ type EvalStatus struct {
 	TestDuration time.Duration
 	// RebootCountdown seconds until reboot (0 if no reboot pending)
 	RebootCountdown int
+	// InventoryCollected indicates if hardware inventory was collected for current slot
+	InventoryCollected bool
+	// InventoryDir is the directory path where inventory was stored (empty if not collected)
+	InventoryDir string
 }
 
 // Key returns the key for pubsub (single instance)
@@ -292,6 +296,10 @@ func (status EvalStatus) DetailedNote() string {
 
 	if rebootStatus := status.RebootStatusString(); rebootStatus != "" {
 		parts = append(parts, rebootStatus)
+	}
+
+	if status.InventoryCollected && status.InventoryDir != "" {
+		parts = append(parts, fmt.Sprintf("inventory=%s", status.InventoryDir))
 	}
 
 	return strings.Join(parts, "; ")

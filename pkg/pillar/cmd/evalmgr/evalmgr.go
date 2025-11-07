@@ -46,6 +46,8 @@ func (ctx *evalMgrContext) initializeEvaluation() error {
 			// Continue execution even if inventory collection fails
 		} else {
 			log.Noticef("Successfully collected hardware inventory for %s", ctx.currentSlot)
+			ctx.inventoryCollected = true
+			ctx.inventoryDir = collector.GetInventoryDir(string(ctx.currentSlot))
 		}
 
 		// Cleanup old inventories (keep last 30 days)
@@ -79,6 +81,8 @@ func (ctx *evalMgrContext) initializeEvaluation() error {
 		AllowOnboard:         allowOnboard,
 		Note:                 statusNote,
 		LastUpdated:          time.Now(),
+		InventoryCollected:   ctx.inventoryCollected,
+		InventoryDir:         ctx.inventoryDir,
 	}
 
 	log.Functionf("initializeEvaluation completed")
@@ -182,10 +186,13 @@ func (ctx *evalMgrContext) updateEvalStatus() {
 	ctx.evalStatus.AllowOnboard = ctx.shouldAllowOnboard()
 	ctx.evalStatus.Note = ctx.generateStatusNote()
 	ctx.evalStatus.LastUpdated = time.Now()
+	ctx.evalStatus.InventoryCollected = ctx.inventoryCollected
+	ctx.evalStatus.InventoryDir = ctx.inventoryDir
 
 	if oldStatus.AllowOnboard != ctx.evalStatus.AllowOnboard ||
 		oldStatus.Note != ctx.evalStatus.Note ||
-		oldStatus.Phase != ctx.evalStatus.Phase {
+		oldStatus.Phase != ctx.evalStatus.Phase ||
+		oldStatus.InventoryCollected != ctx.evalStatus.InventoryCollected {
 		ctx.publishEvalStatus()
 	}
 }
