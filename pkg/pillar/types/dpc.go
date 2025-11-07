@@ -527,9 +527,8 @@ func (config *DevicePortConfig) UpdatePortStatusFromIntfStatusMap(
 	}
 }
 
-// IsAnyPortInPciBack
+// IsAnyPortInPciBack checks if any of the Ports are part of IO bundles which are in PCIback.
 //
-//	Checks if any of the Ports are part of IO bundles which are in PCIback.
 //	If true, it also returns the ifName ( NOT bundle name )
 //	Also returns whether it is currently used by an application by
 //	returning a UUID. If the UUID is zero it is in PCIback but available.
@@ -1122,6 +1121,7 @@ func (ipRange IPRange) Size() uint32 {
 	return ip2Int - ip1Int
 }
 
+// Key : called to get the key for pubsub
 func (config NetworkXObjectConfig) Key() string {
 	return config.UUID.String()
 }
