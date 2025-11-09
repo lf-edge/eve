@@ -593,6 +593,8 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 		case change := <-subControllerCert.MsgChan():
 			subControllerCert.ProcessChange(change)
+			// Additional controller cert updates
+			zedkubeCtx.applyControllerCerts()
 
 		case change := <-subEdgeNodeCert.MsgChan():
 			subEdgeNodeCert.ProcessChange(change)
