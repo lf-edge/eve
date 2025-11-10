@@ -28,7 +28,8 @@ import (
 
 const (
 	// SingleMB contains chunk size
-	SingleMB    int64 = 4 * 1024 * 1024
+	SingleMB    int64 = 1 * 1024 * 1024
+	chunkSize   int64 = 4 * SingleMB
 	parallelism       = 16
 )
 
@@ -203,7 +204,7 @@ func DeleteAzureBlob(
 //  1. Open/create local file.
 //  2. Reuse existing downloaded parts (doneParts) if resuming.
 //  3. Uses DoBatchTransfer:
-//     a. Splits download into SingleMB (1 MB) chunks.
+//     a. Splits download into chunkSize (4 MB) chunks.
 //     b. Downloads 16 parts in parallel (parallelism).
 //     c. Uses buffer pool (sync.Pool) to reuse memory.
 //     d. Tracks progress and sends updates via prgNotify.
@@ -249,8 +250,20 @@ func DownloadAzureBlob(
 	}
 	defer f.Close()
 
-	totalChunks := int((objSize + SingleMB - 1) / SingleMB)
-	progress := int64(0)
+	totalChunks := int((objSize + chunkSize - 1) / chunkSize)
+	// Build a fast lookup for completed chunks and compute accurate progress
+	doneChunks := make([]bool, totalChunks)
+	var progress int64
+	for _, p := range doneParts.Parts {
+		idx := int(p.Ind)
+		if 0 <= idx && idx < totalChunks && !doneChunks[idx] {
+			doneChunks[idx] = true
+			progress += p.Size // real bytes written
+		}
+	}
+	stats.Asize = progress
+	stats.Size = objSize
+
 	errCh := make(chan error, totalChunks)
 	mu := &sync.Mutex{}
 	var wg sync.WaitGroup
@@ -263,8 +276,11 @@ func DownloadAzureBlob(
 		}
 
 		for chunkIndex := i; chunkIndex < endChunk; chunkIndex++ {
-			start := int64(chunkIndex) * SingleMB
-			end := start + SingleMB - 1
+			if doneChunks[chunkIndex] { // already downloaded in a previous run
+				continue
+			}
+			start := int64(chunkIndex) * chunkSize
+			end := start + chunkSize - 1
 			if end >= objSize {
 				end = objSize - 1
 			}

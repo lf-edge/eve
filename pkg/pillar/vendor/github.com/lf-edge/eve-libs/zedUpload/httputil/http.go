@@ -64,8 +64,15 @@ func getHref(token html.Token) (ok bool, href string) {
 
 // ExecCmd performs various commands such as "ls", "get", etc.
 // Note that "host" needs to contain the URL in the case of a get
-func ExecCmd(ctx context.Context, cmd, host, remoteFile, localFile string, objSize int64,
-	prgNotify types.StatsNotifChan, client *http.Client, inactivityTimeout time.Duration) (types.UpdateStats, Resp) {
+func ExecCmd(
+	ctx context.Context,
+	cmd, host, remoteFile, localFile string,
+	objSize int64,
+	prgNotify types.StatsNotifChan,
+	doneParts types.DownloadedParts,
+	client *http.Client,
+	inactivityTimeout time.Duration,
+) (types.UpdateStats, Resp) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -121,7 +128,7 @@ func ExecCmd(ctx context.Context, cmd, host, remoteFile, localFile string, objSi
 		rsp.List = imgList
 		return stats, rsp
 	case "get":
-		return execCmdGet(ctx, objSize, localFile, host, client, prgNotify, inactivityTimeout)
+		return execCmdGet(ctx, objSize, localFile, host, client, doneParts, prgNotify, inactivityTimeout)
 	case "post":
 		file, err := os.Open(localFile)
 		if err != nil {
@@ -196,8 +203,16 @@ func ExecCmd(ctx context.Context, cmd, host, remoteFile, localFile string, objSi
 
 // execCmdGet executes the get command.
 // NOTE: These **must** be named return values, or our defer to modify them will not work.
-func execCmdGet(ctx context.Context, objSize int64, localFile string, host string, client *http.Client, prgNotify types.StatsNotifChan, inactivityTimeout time.Duration) (stats types.UpdateStats, rsp Resp) {
-	var copiedSize int64
+func execCmdGet(
+	ctx context.Context,
+	objSize int64,
+	localFile, host string,
+	client *http.Client,
+	doneParts types.DownloadedParts,
+	prgNotify types.StatsNotifChan,
+	inactivityTimeout time.Duration,
+) (stats types.UpdateStats, rsp Resp) {
+	copiedSize := doneParts.PartSize
 
 	stats.Size = objSize
 	dirErr := os.MkdirAll(filepath.Dir(localFile), 0755)
@@ -205,12 +220,21 @@ func execCmdGet(ctx context.Context, objSize int64, localFile string, host strin
 		stats.Error = dirErr
 		return stats, Resp{}
 	}
-	local, fileErr := os.Create(localFile)
-	if fileErr != nil {
-		stats.Error = fileErr
+
+	// Ensures we seek 0 bytes when the local file is created
+	if _, err := os.Stat(localFile); os.IsNotExist(err) {
+		copiedSize = 0
+	}
+
+	var local *os.File
+	local, stats.Error = os.OpenFile(localFile, os.O_RDWR|os.O_CREATE, 0644)
+	if stats.Error != nil {
 		return stats, Resp{}
 	}
 	defer local.Close()
+	if _, stats.Error = local.Seek(copiedSize, io.SeekStart); stats.Error != nil {
+		return stats, Resp{}
+	}
 
 	var errorList []string
 	defer func() {
@@ -218,7 +242,8 @@ func execCmdGet(ctx context.Context, objSize int64, localFile string, host strin
 			stats.Error = fmt.Errorf("%s: %s", host, strings.Join(errorList, "; "))
 		}
 	}()
-	supportRange := false //is server supports ranges requests, false for the first request
+
+	supportRange := copiedSize > 0
 	forceRestart := false
 	delay := time.Second
 	lastModified := ""
@@ -240,8 +265,8 @@ func execCmdGet(ctx context.Context, objSize int64, localFile string, host strin
 			}
 		}
 
-		// restart from the beginning if server do not support ranges or we forced to restart
-		if !supportRange || forceRestart {
+		// restart from the beginning if forced
+		if forceRestart {
 			err := local.Truncate(0)
 			if err != nil {
 				appendToErrorList("failed truncate file: %s", err)
@@ -290,15 +315,18 @@ func execCmdGet(ctx context.Context, objSize int64, localFile string, host strin
 
 		// supportRange indicates if server supports range requests
 		supportRange = resp.Header.Get("Accept-Ranges") == "bytes"
+		if supportRange && resp.StatusCode == http.StatusOK {
+			appendToErrorList("server ignored Range; skipping copiedBytes manually")
+		}
 
 		//if we not receive StatusOK for request without Range header or StatusPartialContent for request with range
 		//it indicates that server misconfigured
-		if !withRange && resp.StatusCode != http.StatusOK || withRange && resp.StatusCode != http.StatusPartialContent {
-			respErr := fmt.Sprintf("bad response code: %d", resp.StatusCode)
-			appendToErrorList(respErr)
-			//we do not want to process server misconfiguration here
+		if (!withRange && resp.StatusCode != http.StatusOK) ||
+			(withRange && resp.StatusCode != http.StatusPartialContent) {
+			appendToErrorList(fmt.Sprintf("bad response code: %d", resp.StatusCode))
 			break
 		}
+
 		newLastModified := resp.Header.Get("Last-Modified")
 		if lastModified != "" && newLastModified != lastModified {
 			// last modified changed, retry from the beginning
@@ -311,16 +339,36 @@ func execCmdGet(ctx context.Context, objSize int64, localFile string, host strin
 			// we received StatusOK which is the response for the whole content, not for the partial one
 			rsp.BodyLength = int(resp.ContentLength)
 		}
-		var written int64
 
 		// use the inactivityReader to trigger failure for the timeouts
 		inactivityReader := NewTimeoutReader(inactivityTimeout, resp.Body)
-		for {
-			var copyErr error
+		lenParts := int64(len(doneParts.Parts))
+		stats.Asize = copiedSize
+		stats.DoneParts = doneParts
 
-			written, copyErr = io.CopyN(local, inactivityReader, chunkSize)
+		// if server ignored Range and we have copied some chunks
+		if !supportRange && copiedSize > 0 {
+			if _, derr := io.CopyN(io.Discard, inactivityReader, copiedSize); derr != nil {
+				if errors.Is(derr, io.EOF) {
+					// We already had the whole file
+					errorList = nil
+					return stats, rsp
+				}
+				appendToErrorList("discard %d failed: %v", copiedSize, derr)
+				continue
+			}
+			// From here on, we append the remainder.
+		}
+
+		for partIdx := lenParts; ; partIdx++ {
+			written, copyErr := io.CopyN(local, inactivityReader, chunkSize)
 			copiedSize += written
 			stats.Asize = copiedSize
+			stats.DoneParts.Parts = append(stats.DoneParts.Parts, &types.PartDefinition{
+				Ind:  partIdx,
+				Size: written,
+			})
+			stats.DoneParts.PartSize = copiedSize
 
 			// possible situations:
 			// err != nil && err == io.EOF - end of file, wrap up and return
