@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -202,7 +203,8 @@ type LinuxDpcReconciler struct {
 	prevStatus   ReconcileStatus
 	radioSilence types.RadioSilence
 	HVTypeKube   bool
-	intfMTU      map[string]uint16
+	intfMTU      map[string]uint16 // logical label -> MTU
+	intfMetric   map[string]uint32 // logical label -> route metric
 }
 
 type pendingReconcile struct {
@@ -444,6 +446,7 @@ func (r *LinuxDpcReconciler) Reconcile(ctx context.Context, args Args) Reconcile
 	reconcileStartTime := time.Now()
 	if reconcileAll {
 		r.rebuildMTUMap(args.DPC)
+		r.rebuildRouteMetricMap(args.DPC)
 		r.updateIntendedState(args)
 		r.updateCurrentState(args)
 		r.Log.Noticef("Running a full state reconciliation, reasons: %s",
@@ -467,8 +470,10 @@ func (r *LinuxDpcReconciler) Reconcile(ctx context.Context, args Args) Reconcile
 			intSG = r.getIntendedLogicalIO(args.DPC)
 		case L3SG:
 			r.rebuildMTUMap(args.DPC)
+			r.rebuildRouteMetricMap(args.DPC)
 			intSG = r.getIntendedL3Cfg(args.DPC, args.ClusterStatus)
 		case WirelessSG:
+			r.rebuildRouteMetricMap(args.DPC)
 			intSG = r.getIntendedWirelessCfg(args.DPC, args.AA, args.RS)
 		case ACLsSG:
 			intSG = r.getIntendedACLs(args.DPC, args.ClusterStatus, args.GCP,
@@ -1007,6 +1012,53 @@ func (r *LinuxDpcReconciler) rebuildMTUMap(dpc types.DevicePortConfig) {
 	}
 }
 
+func (r *LinuxDpcReconciler) rebuildRouteMetricMap(dpc types.DevicePortConfig) {
+	r.intfMetric = make(map[string]uint32)
+
+	type portInfo struct {
+		logicalLabel string
+		isMgmt       bool
+		cost         uint8
+		index        int
+	}
+
+	var ports []portInfo
+	for i, port := range dpc.Ports {
+		if port.InvalidConfig {
+			continue
+		}
+		ports = append(ports, portInfo{
+			logicalLabel: port.Logicallabel,
+			isMgmt:       port.IsMgmt,
+			cost:         port.Cost,
+			index:        i,
+		})
+	}
+
+	// Sort by isMgmt first, then cost ascending, and finally by DPC order for stability.
+	sort.SliceStable(ports, func(i, j int) bool {
+		if ports[i].isMgmt != ports[j].isMgmt {
+			return ports[i].isMgmt // mgmt ports first
+		}
+		if ports[i].cost != ports[j].cost {
+			return ports[i].cost < ports[j].cost
+		}
+		return ports[i].index < ports[j].index
+	})
+
+	// Assign metrics in ascending order (ensuring uniqueness)
+	var mgmtRank, appRank uint32
+	for _, p := range ports {
+		if p.isMgmt {
+			r.intfMetric[p.logicalLabel] = types.MgmtPortBaseMetric + mgmtRank
+			mgmtRank++
+		} else {
+			r.intfMetric[p.logicalLabel] = types.AppSharedPortBaseMetric + appRank
+			appRank++
+		}
+	}
+}
+
 func (r *LinuxDpcReconciler) getIntendedPhysicalIfs(dpc types.DevicePortConfig) dg.Graph {
 	graphArgs := dg.InitArgs{
 		Name:        PhysicalIfsSG,
@@ -1166,6 +1218,7 @@ func (r *LinuxDpcReconciler) getIntendedAdapters(dpc types.DevicePortConfig,
 				AdapterIfName:      port.IfName,
 				DhcpConfig:         port.DhcpConfig,
 				IgnoreDhcpGateways: port.IgnoreDhcpGateways,
+				RouteMetric:        r.intfMetric[port.Logicallabel],
 			}, nil)
 		}
 		// Inside the intended state the external items (like AdapterAddrs)
@@ -1616,6 +1669,7 @@ func (r *LinuxDpcReconciler) getIntendedWwanConfig(dpc types.DevicePortConfig,
 			Probe:            probeCfg,
 			MTU:              port.MTU,
 			LocationTracking: locationTracking,
+			RouteMetric:      r.intfMetric[port.Logicallabel],
 		}
 		config.Networks = append(config.Networks, network)
 	}

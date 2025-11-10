@@ -35,6 +35,7 @@ type Dhcpcd struct {
 	AdapterIfName      string
 	DhcpConfig         types.DhcpConfig
 	IgnoreDhcpGateways bool // Ignore gateways from DHCP
+	RouteMetric        uint32
 }
 
 // Name is based on the adapter interface name (one client per interface).
@@ -61,8 +62,10 @@ func (c Dhcpcd) Equal(other depgraph.Item) bool {
 	// Consider two DHCP configs as equal if they result in the same set of arguments for dhcpcd.
 	// This avoids unnecessary restarts of dhcpcd (when e.g. going from override to zedagent DPC).
 	configurator := &DhcpcdConfigurator{}
-	op1, args1 := configurator.DhcpcdArgs(c.DhcpConfig, c.IgnoreDhcpGateways)
-	op2, args2 := configurator.DhcpcdArgs(c2.DhcpConfig, c2.IgnoreDhcpGateways)
+	op1, args1 := configurator.DhcpcdArgs(
+		c.DhcpConfig, c.IgnoreDhcpGateways, c.RouteMetric)
+	op2, args2 := configurator.DhcpcdArgs(
+		c2.DhcpConfig, c2.IgnoreDhcpGateways, c2.RouteMetric)
 	return op1 == op2 && generics.EqualLists(args1, args2)
 }
 
@@ -145,7 +148,7 @@ func (c *DhcpcdConfigurator) Create(ctx context.Context, item depgraph.Item) err
 		}
 
 		// Prepare input arguments for dhcpcd.
-		op, args := c.DhcpcdArgs(config, client.IgnoreDhcpGateways)
+		op, args := c.DhcpcdArgs(config, client.IgnoreDhcpGateways, client.RouteMetric)
 
 		// Start DHCP client.
 		if c.dhcpcdExists(client.AdapterIfName, config.Type) {
@@ -278,8 +281,8 @@ func (c *DhcpcdConfigurator) NeedsRecreate(oldItem, newItem depgraph.Item) (recr
 
 // DhcpcdArgs returns command line arguments for dhcpcd corresponding to the given
 // DHCP config. The method is exported only for the purpose of unit testing.
-func (c *DhcpcdConfigurator) DhcpcdArgs(
-	config types.DhcpConfig, ignoreDhcpGws bool) (op string, args []string) {
+func (c *DhcpcdConfigurator) DhcpcdArgs(config types.DhcpConfig,
+	ignoreDhcpGws bool, routeMetric uint32) (op string, args []string) {
 	switch config.Dhcp {
 	case types.DhcpTypeClient:
 		op = "--request"
@@ -351,6 +354,9 @@ func (c *DhcpcdConfigurator) DhcpcdArgs(
 		args = append(args, extras...)
 	}
 
+	if routeMetric != 0 {
+		args = append(args, "--metric", strconv.Itoa(int(routeMetric)))
+	}
 	return op, args
 }
 
