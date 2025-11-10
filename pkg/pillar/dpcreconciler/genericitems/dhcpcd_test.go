@@ -151,6 +151,7 @@ func TestDhcpcdArgs(t *testing.T) {
 		name          string
 		config        types.DhcpConfig
 		ignoreDhcpGws bool
+		routeMetric   uint32
 		expOp         string
 		expArgs       []string
 	}
@@ -246,10 +247,21 @@ func TestDhcpcdArgs(t *testing.T) {
 				"--static", "ntp_servers=192.168.1.1", "--static", "ntp_servers=10.10.12.13",
 				"-f", "/etc/dhcpcd.conf", "-b", "-t", "0", "--nogateway"},
 		},
+		{
+			name: "DHCP client for IPv4 with route metric",
+			config: types.DhcpConfig{
+				Dhcp: types.DhcpTypeClient,
+				Type: types.NetworkTypeIpv4Only,
+			},
+			routeMetric: 500,
+			expOp:       "--request",
+			expArgs: []string{"-f", "/etc/dhcpcd.conf", "--noipv4ll", "--ipv4only", "-b", "-t", "0",
+				"--metric", "500"},
+		},
 	}
 	configurator := configitems.DhcpcdConfigurator{}
 	for _, test := range tests {
-		op, args := configurator.DhcpcdArgs(test.config, test.ignoreDhcpGws)
+		op, args := configurator.DhcpcdArgs(test.config, test.ignoreDhcpGws, test.routeMetric)
 		if op != test.expOp || !generics.EqualLists(args, test.expArgs) {
 			t.Errorf("TEST CASE \"%s\" FAILED - DhcpcdArgs() returned: %s %v, "+
 				"expected: %s %v", test.name, op, args, test.expOp, test.expArgs)
