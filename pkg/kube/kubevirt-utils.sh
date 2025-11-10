@@ -41,8 +41,7 @@ Kubevirt_uninstall() {
         kubectl delete mutatingwebhookconfigurations virt-api-mutator
         kubectl delete validatingwebhookconfigurations virt-operator-validator
         kubectl delete validatingwebhookconfigurations virt-api-validator
-        kubectl delete -f /etc/kubevirt-operator.yaml
-        kubectl delete -f /etc/kubevirt-features.yaml
+        kubectl delete -f /etc/kubevirt-operator.yaml --wait=false
     } >> "$INSTALL_LOG" 2>&1
 
     # Kubevirt applies a large amount of labels to nodes detailing available cpu flags, remove them
