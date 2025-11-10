@@ -4,6 +4,10 @@
 package volumemgr
 
 import (
+	"fmt"
+	"slices"
+
+	"github.com/lf-edge/eve/pkg/pillar/activeapp"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
@@ -46,6 +50,7 @@ func handleVolumeRefCreate(ctxArg interface{}, key string,
 		} else if vrs.IsErrorSource(types.VolumeStatus{}) {
 			vrs.ClearErrorWithSource()
 		}
+		checkReferences(vs, vrs)
 		needUpdateVol = true
 	} else {
 		vrs = &types.VolumeRefStatus{
@@ -117,6 +122,7 @@ func handleVolumeRefDelete(ctxArg interface{}, key string,
 	if vs != nil {
 		updateVolumeStatusRefCount(ctx, vs)
 		publishVolumeStatus(ctx, vs)
+		updateVolumeRefStatus(ctx, vs)
 		maybeDeleteVolume(ctx, vs)
 		maybeSpaceAvailable(ctx)
 	}
@@ -219,8 +225,43 @@ func updateVolumeRefStatus(ctx *volumemgrContext, vs *types.VolumeStatus) {
 			} else if vrs.IsErrorSource(types.VolumeStatus{}) {
 				vrs.ClearErrorWithSource()
 			}
+
+			checkReferences(vs, vrs)
+
 			publishVolumeRefStatus(ctx, vrs)
 		}
 	}
 	log.Functionf("updateVolumeRefStatus(%s) Done", vs.Key())
+}
+
+func checkReferences(vs *types.VolumeStatus, vrs *types.VolumeRefStatus) {
+	// without VolumeStatus or VolumeRefStatus, it doesn't make sense to check
+	if vs == nil || vrs == nil {
+		return
+	}
+
+	activeAppsUUIDs, err := activeapp.LoadActiveAppInstanceUUIDs(log)
+	if err != nil {
+		log.Warningf("checkReferences: failed to load active app instance UUIDs: %v", err)
+		activeAppsUUIDs = []string{} // Fallback to an empty list
+	}
+	appIsActive := slices.Contains(activeAppsUUIDs, vrs.AppUUID.String())
+
+	// when sharing a persistent volume between multiple apps, one must use a container-based volume
+	// a file-based volume cannot be shared and would result in a race condition and error - thus we check for that and log error
+	// this error takes precedence over the errors coming from the volume itself
+	// also this error doesn't apply to the apps that were able to run successfully (active) - only to the new ones trying to start
+	if vs.RefCount > 2 && !vs.IsContainer() && !vs.ReadOnly && !appIsActive {
+		errStr := fmt.Sprintf("Multiple app instances (%d) are trying to use the same file-based volume %s",
+			vs.RefCount-1, vs.DisplayName)
+		// don't update the error time if nothing changed
+		if vrs.Error != errStr {
+			log.Functionf("updateVolumeRefStatus(%s): setting the error (previous error: %s, source: %s)", vrs.Key(), vrs.Error, vrs.ErrorSourceType)
+			log.Errorf(errStr)
+			vrs.SetErrorWithSourceAndDescription(types.ErrorDescription{Error: errStr}, types.VolumeRefConfig{})
+		}
+	} else if vrs.IsErrorSource(types.VolumeRefConfig{}) {
+		log.Functionf("updateVolumeRefStatus: Clearing volume ref status error %s", vrs.Error)
+		vrs.ClearErrorWithSource()
+	}
 }
