@@ -201,7 +201,8 @@ func dhcpcdArgs(ifName string) string {
 		return ""
 	}
 	configurator := generic.DhcpcdConfigurator{Log: logObj}
-	op, args := configurator.DhcpcdArgs(dhcpcd.DhcpConfig, dhcpcd.IgnoreDhcpGateways)
+	op, args := configurator.DhcpcdArgs(
+		dhcpcd.DhcpConfig, dhcpcd.IgnoreDhcpGateways, dhcpcd.RouteMetric)
 	return fmt.Sprintf("%s %s", op, strings.Join(args, " "))
 }
 
@@ -772,6 +773,7 @@ func makeDPC(key string, timePrio time.Time, intfs selectedIntfs) types.DevicePo
 			Logicallabel: "mock-eth0",
 			IsMgmt:       true,
 			IsL3Port:     true,
+			Cost:         10,
 			DhcpConfig: types.DhcpConfig{
 				Dhcp: types.DhcpTypeClient,
 				Type: types.NetworkTypeIPv4,
@@ -786,6 +788,7 @@ func makeDPC(key string, timePrio time.Time, intfs selectedIntfs) types.DevicePo
 			Logicallabel: "mock-eth1",
 			IsMgmt:       true,
 			IsL3Port:     true,
+			Cost:         0,
 			DhcpConfig: types.DhcpConfig{
 				Dhcp: types.DhcpTypeClient,
 				Type: types.NetworkTypeIPv4,
@@ -800,6 +803,7 @@ func makeDPC(key string, timePrio time.Time, intfs selectedIntfs) types.DevicePo
 			Logicallabel: "mock-eth2",
 			IsMgmt:       true,
 			IsL3Port:     true,
+			Cost:         5,
 			DhcpConfig: types.DhcpConfig{
 				Dhcp: types.DhcpTypeClient,
 				Type: types.NetworkTypeIpv6Only,
@@ -814,6 +818,7 @@ func makeDPC(key string, timePrio time.Time, intfs selectedIntfs) types.DevicePo
 			Logicallabel: "mock-wlan0",
 			IsMgmt:       true,
 			IsL3Port:     true,
+			Cost:         20,
 			DhcpConfig: types.DhcpConfig{
 				Dhcp: types.DhcpTypeClient,
 				Type: types.NetworkTypeIPv4,
@@ -839,6 +844,7 @@ func makeDPC(key string, timePrio time.Time, intfs selectedIntfs) types.DevicePo
 			Logicallabel: "mock-wwan0",
 			IsMgmt:       true,
 			IsL3Port:     true,
+			Cost:         50,
 			DhcpConfig: types.DhcpConfig{
 				Dhcp: types.DhcpTypeClient,
 				Type: types.NetworkTypeIPv4,
@@ -1199,9 +1205,10 @@ func TestDPCWithMultipleEths(test *testing.T) {
 	t.Expect(dpcList[0].TimePriority.Equal(timePrio2)).To(BeTrue())
 	t.Expect(dpcList[0].State).To(Equal(types.DPCStateFailWithIPAndDNS))
 	t.Expect(dpcList[0].LastFailed.After(dpcList[0].LastSucceeded)).To(BeTrue())
+	fmt.Println(dpcList[0].LastError)
 	t.Expect(dpcList[0].LastError).To(
 		Equal("not enough working ports (0); failed with: " +
-			"[failed to connect over eth0 failed to connect over eth1]"))
+			"[failed to connect over eth1 failed to connect over eth0]"))
 	t.Expect(dpcList[1].Key).To(Equal("lastresort"))
 	t.Expect(dpcList[1].TimePriority.Equal(lastResortTimePrio)).To(BeTrue())
 	t.Expect(dpcList[1].State).To(Equal(types.DPCStateSuccess))
@@ -2499,7 +2506,7 @@ func TestDPCWithIPv6(test *testing.T) {
 	t.Expect(dpcList[0].LastFailed.After(dpcList[0].LastSucceeded)).To(BeTrue())
 	t.Expect(dpcList[0].LastError).To(
 		Equal("not enough working ports (0); failed with: " +
-			"[failed to connect over eth0 failed to connect over eth2]"))
+			"[failed to connect over eth2 failed to connect over eth0]"))
 	t.Expect(dpcList[1].Key).To(Equal("lastresort"))
 	t.Expect(dpcList[1].TimePriority.Equal(lastResortTimePrio)).To(BeTrue())
 	t.Expect(dpcList[1].State).To(Equal(types.DPCStateSuccess))
@@ -2605,7 +2612,7 @@ func TestOverrideDhcpGateway(test *testing.T) {
 	t.Eventually(dnsKeyCb()).Should(Equal("bootstrap"))
 	t.Eventually(dpcStateCb(0)).Should(Equal(types.DPCStateSuccess))
 	t.Eventually(itemIsCreatedWithLabelCb("IPv4 route table 502 dst <default> dev mock-eth1 via 172.20.1.1")).Should(BeTrue())
-	t.Expect(dhcpcdArgs("eth1")).To(Equal("--request -f /etc/dhcpcd.conf --noipv4ll -b -t 0"))
+	t.Expect(dhcpcdArgs("eth1")).To(Equal("--request -f /etc/dhcpcd.conf --noipv4ll -b -t 0 --metric 5000"))
 
 	// Apply "zedagent" DPC which enables DHCP but overwrites gateway for eth1.
 	timePrio2 := time.Now()
@@ -2663,7 +2670,7 @@ func TestOverrideDhcpGateway(test *testing.T) {
 	t.Eventually(dnsKeyCb()).Should(Equal("zedagent"))
 	t.Expect(getDPC(0).State).To(Equal(types.DPCStateSuccess))
 	t.Eventually(itemIsCreatedWithLabelCb("IPv4 route table 502 dst <default> dev mock-eth1 via 172.20.1.1")).Should(BeTrue())
-	t.Expect(dhcpcdArgs("eth1")).To(Equal("--request -f /etc/dhcpcd.conf --noipv4ll -b -t 0"))
+	t.Expect(dhcpcdArgs("eth1")).To(Equal("--request -f /etc/dhcpcd.conf --noipv4ll -b -t 0 --metric 5000"))
 
 	// Check device network state.
 	eth1DhcpGw := net.ParseIP("172.20.1.1")
@@ -3367,4 +3374,70 @@ func TestLPSConfig(test *testing.T) {
 	t.Expect(dhcpcdArgs("eth1")).To(ContainSubstring("--request"))
 	t.Expect(itemDescription(wwan)).To(ContainSubstring("APN:apn2"))
 	t.Expect(itemDescription(wlan)).To(ContainSubstring("SSID: ssid2"))
+}
+
+func TestRouteMetrics(test *testing.T) {
+	expectBootstrapDPC := true
+	t := initTest(test, expectBootstrapDPC)
+
+	// Prepare simulated network stack.
+	eth0 := mockEth0()
+	eth1 := mockEth1()
+	eth2 := mockEth2()
+	wlan0 := mockWlan0()
+	wwan0 := mockWwan0()
+	networkMonitor.AddOrUpdateInterface(eth0)
+	networkMonitor.AddOrUpdateInterface(eth1)
+	networkMonitor.AddOrUpdateInterface(eth2)
+	networkMonitor.AddOrUpdateInterface(wlan0)
+	networkMonitor.AddOrUpdateInterface(wwan0)
+
+	// 5 interfaces, all with management usage initially.
+	aa := makeAA(selectedIntfs{
+		eth0: true, eth1: true, eth2: true, wlan0: true, wwan0: true})
+	dpcManager.UpdateAA(aa)
+
+	// Apply global config.
+	dpcManager.UpdateGCP(globalConfig())
+
+	// Apply initial "bootstrap" DPC using all the ports for management.
+	timePrio1 := time.Now()
+	dpc := makeDPC("bootstrap", timePrio1, selectedIntfs{
+		eth0: true, eth1: true, eth2: true, wlan0: true, wwan0: true})
+	dpcManager.AddDPC(dpc)
+	t.Eventually(testingInProgressCb()).Should(BeTrue())
+	t.Eventually(testingInProgressCb()).Should(BeFalse())
+	t.Eventually(dpcIdxCb()).Should(Equal(0))
+	t.Eventually(dnsKeyCb()).Should(Equal("bootstrap"))
+	t.Eventually(dpcStateCb(0)).Should(Equal(types.DPCStateSuccess))
+
+	// Check route metrics assigned to ports.
+	t.Expect(dhcpcdArgs("eth0")).To(Equal("--request -f /etc/dhcpcd.conf --noipv4ll -b -t 0 --metric 5002"))
+	t.Expect(dhcpcdArgs("eth1")).To(Equal("--request -f /etc/dhcpcd.conf --noipv4ll -b -t 0 --metric 5000"))
+	t.Expect(dhcpcdArgs("eth2")).To(Equal("--request -f /etc/dhcpcd.conf --ipv6only -b -t 0 --metric 5001"))
+	t.Expect(dhcpcdArgs("wlan0")).To(Equal("--request -f /etc/dhcpcd.conf --noipv4ll -b -t 0 --metric 5003"))
+	wwan := dg.Reference(generic.Wwan{})
+	t.Expect(itemDescription(wwan)).To(ContainSubstring("RouteMetric:5004"))
+
+	// Apply "zedagent" DPC which changes eth1 and wlan0 usage to app-shared.
+	timePrio2 := time.Now()
+	dpc = makeDPC("zedagent", timePrio2, selectedIntfs{
+		eth0: true, eth1: true, eth2: true, wlan0: true, wwan0: true})
+	dpc.Ports[1].IsMgmt = false
+	dpc.Ports[3].IsMgmt = false
+	dpcManager.AddDPC(dpc)
+	t.Eventually(testingInProgressCb()).Should(BeTrue())
+	t.Eventually(testingInProgressCb()).Should(BeFalse())
+	t.Eventually(dpcIdxCb()).Should(Equal(0))
+	t.Eventually(dpcKeyCb(0)).Should(Equal("zedagent"))
+	t.Eventually(dpcTimePrioCb(0, timePrio2)).Should(BeTrue())
+	t.Eventually(dnsKeyCb()).Should(Equal("zedagent"))
+	t.Expect(getDPC(0).State).To(Equal(types.DPCStateSuccess))
+
+	// Check route metrics assigned to ports after the change.
+	t.Expect(dhcpcdArgs("eth0")).To(Equal("--request -f /etc/dhcpcd.conf --noipv4ll -b -t 0 --metric 5001"))
+	t.Expect(dhcpcdArgs("eth1")).To(Equal("--request -f /etc/dhcpcd.conf --noipv4ll -b -t 0 --metric 10000"))
+	t.Expect(dhcpcdArgs("eth2")).To(Equal("--request -f /etc/dhcpcd.conf --ipv6only -b -t 0 --metric 5000"))
+	t.Expect(dhcpcdArgs("wlan0")).To(Equal("--request -f /etc/dhcpcd.conf --noipv4ll -b -t 0 --metric 10001"))
+	t.Expect(itemDescription(wwan)).To(ContainSubstring("RouteMetric:5002"))
 }
