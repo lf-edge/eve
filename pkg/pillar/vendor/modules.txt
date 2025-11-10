@@ -922,7 +922,7 @@ github.com/lf-edge/eve-api/go/metrics
 github.com/lf-edge/eve-api/go/nestedappinstancemetrics
 github.com/lf-edge/eve-api/go/profile
 github.com/lf-edge/eve-api/go/register
-# github.com/lf-edge/eve-libs v0.0.0-20251022164455-de07a00e55b4
+# github.com/lf-edge/eve-libs v0.0.0-20251105072030-1c066d586f1b
 ## explicit; go 1.23.0
 github.com/lf-edge/eve-libs/depgraph
 github.com/lf-edge/eve-libs/nettrace
