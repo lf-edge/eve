@@ -32,6 +32,12 @@ TAGS=
 ifeq ($(RSTATS),y)
 	TAGS+=rstats
 endif
+ifeq ($(IMM_PROFILING),y)
+	TAGS+=immprofiling
+endif
+ifeq ($(ARTIFICIAL_LEAK),y)
+	TAGS+=artificialleak
+endif
 ifneq ($(HV),)
 	TAGS+=$(HV)
 endif
