@@ -384,7 +384,36 @@ ifdef LIVE_FAST
 UPDATE_TAR=-u
 endif
 
-RESCAN_DEPS=FORCE
+# For all possible env variable that later can be handle by a Dockerfile as a build-arg-file of
+# a given package, we create a target of the form lk-extra-opt/<pkg-name>/<env-var-name>
+LK_POSSIBLE_PKG_PLUS_BUILD_ARGS := pillar/IMM_PROFILING pillar/ARTIFICIAL_LEAK
+LK_POSSIBLE_BUILD_ARG_TARGETS := $(addprefix lk-extra-opt/,$(LK_POSSIBLE_PKG_PLUS_BUILD_ARGS))
+
+.PHONY: lk-extra-opt/%
+
+# This target handles setting up extra linuxkit build arguments for a given package
+# It creates a file lk-build-arg-<env-var-name> in the package directory, so that it
+# 1) Can be picked up by the linuxkit build command as a --build-arg-file <file>
+# 2) Affects the package git hash, so the hash is unique for a given set of build args
+lk-extra-opt/%: FORCE
+	$(eval LK_EXTRA_PKG_NAME := $(word 1,$(subst /, ,$*)))
+	$(eval LK_EXTRA_BUILD_ARG := $(word 2,$(subst /, ,$*)))
+	$(eval LK_EXTRA_BUILD_ARG_FILE := ./pkg/$(LK_EXTRA_PKG_NAME)/lk-build-arg-$(LK_EXTRA_BUILD_ARG))
+	@$(if $(strip $($(LK_EXTRA_BUILD_ARG))), \
+		echo "$(LK_EXTRA_BUILD_ARG)=y" > $(LK_EXTRA_BUILD_ARG_FILE); \
+		echo "Passing $(LK_EXTRA_BUILD_ARG)=y via $(LK_EXTRA_BUILD_ARG_FILE)"; \
+		$(eval LINUXKIT_EXTRA_BUILD_ARGS += --build-arg-file $(LK_EXTRA_BUILD_ARG_FILE)) \
+	, \
+		echo "Removing file $(LK_EXTRA_BUILD_ARG_FILE) if it exists"; \
+		rm -f $(LK_EXTRA_BUILD_ARG_FILE) || true; \
+	)
+
+# We put LK_POSSIBLE_BUILD_ARG_TARGETS as dependencies of RESCAN_DEPS so that
+# if any extra build args are changed, we will create or remove the corresponding
+# lk-build-arg-<env-var-name> files in the package directories, this way changing
+# the package hash. It should be done before invoke of the parse-pkgs.sh script
+# which calculates the package hashes.
+RESCAN_DEPS=FORCE $(LK_POSSIBLE_BUILD_ARG_TARGETS)
 # set FORCE_BUILD to --force to enforce rebuild
 FORCE_BUILD=
 
@@ -899,7 +928,7 @@ $(LIVE).parallels: $(LIVE).raw
 
 # top-level linuxkit packages targets, note the one enforcing ordering between packages
 pkgs: RESCAN_DEPS=
-pkgs: $(LINUXKIT) $(PKGS)
+pkgs: $(LINUXKIT) $(PKGS) $(LK_POSSIBLE_BUILD_ARG_TARGETS)
 	@echo Done building packages
 
 # No-op target for get-deps which looks at
@@ -1123,7 +1152,7 @@ eve-%: pkg/%/Dockerfile $(LINUXKIT) $(RESCAN_DEPS)
 	$(eval LINUXKIT_BUILD_PLATFORMS_LIST := $(call uniq,linux/$(ZARCH) $(if $(filter $(PKGS_HOSTARCH),$*),linux/$(HOSTARCH),)))
 	$(eval LINUXKIT_BUILD_PLATFORMS := --platforms $(subst $(space),$(comma),$(strip $(LINUXKIT_BUILD_PLATFORMS_LIST))))
 	$(eval LINUXKIT_FLAGS := $(if $(filter manifest,$(LINUXKIT_PKG_TARGET)),,$(FORCE_BUILD) $(LINUXKIT_DOCKER_LOAD) $(LINUXKIT_BUILD_PLATFORMS)))
-	$(QUIET)$(LINUXKIT) $(DASH_V) pkg $(LINUXKIT_PKG_TARGET) $(LINUXKIT_ORG_TARGET) $(LINUXKIT_OPTS) $(LINUXKIT_FLAGS) --build-yml $(call get_pkg_build_yml,$*) pkg/$*
+	$(QUIET)$(LINUXKIT) $(DASH_V) pkg $(LINUXKIT_PKG_TARGET) $(LINUXKIT_ORG_TARGET) $(LINUXKIT_OPTS) $(LINUXKIT_EXTRA_BUILD_ARGS) $(LINUXKIT_FLAGS) --build-yml $(call get_pkg_build_yml,$*) pkg/$*
 	$(QUIET)if [ -n "$(PRUNE)" ]; then \
 		flock $(PARALLEL_BUILD_LOCK) docker image prune -f; \
 	fi
