@@ -7,6 +7,7 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.56"
+crossbeam-channel = "0.5.15"
 num-traits = "0.2.15"
 rbmenu = "0.6.3"
 serde = { version = "1.0.207", features = ["derive"] }
