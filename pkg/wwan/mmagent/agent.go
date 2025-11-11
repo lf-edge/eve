@@ -47,7 +47,6 @@ const (
 	retryPeriod            = 1 * time.Minute
 	suspendReconcilePeriod = retryPeriod >> 1
 	connProbePeriod        = 5 * time.Minute
-	defRouteBaseMetric     = 65000
 	icmpProbeMaxRTT        = time.Second
 	icmpProbeMaxAttempts   = 3
 	tcpProbeTimeout        = 5 * time.Second
@@ -144,6 +143,8 @@ type ModemInfo struct {
 	appliedIPSettings types.WwanIPSettings
 	// Last applied user-configured MTU.
 	appliedUserMTU uint16
+	// Last applied NIM-calculated route metric.
+	appliedRouteMetric uint32
 	// Decrypted username and password to use for the default bearer.
 	// (decrypted from Config.AccessPoint.EncryptedCredentials).
 	decryptedUsername string
@@ -1126,12 +1127,14 @@ func (a *MMAgent) reconcileModem(
 	}
 	if connErr == nil &&
 		!modem.appliedIPSettings.Equal(modem.Status.IPSettings) ||
-		modem.appliedUserMTU != modem.config.MTU {
+		modem.appliedUserMTU != modem.config.MTU ||
+		modem.appliedRouteMetric != modem.config.RouteMetric {
 		// IP settings between modem (+ user intent) and Linux network stack are out-of-sync.
 		// This could happen if:
 		//  * modem re-connects behind the scenes, or
 		//  * if network changes IP settings in run-time, or
 		//  * if user changes MTU config
+		//  * if NIM changes route metric
 		opReason := "IP settings are out-of-sync"
 		connErr = a.removeIPSettings(modem)
 		a.logReconcileOp(modem, "remove (obsolete) IP settings", opReason, connErr)
@@ -1504,17 +1507,11 @@ func (a *MMAgent) applyIPSettings(modem *ModemInfo, ipSettings types.WwanIPSetti
 		LinkIndex: link.Attrs().Index,
 		Dst:       anyDst,
 		Gw:        ipSettings.Gateway,
-		// With multiple modems there will be multiple default routes and each should have
-		// different metric otherwise there is a conflict.
-		// Note that the actual metric value does not matter all that much. EVE does not use
-		// the main routing table, instead it chooses uplink interface for a particular mgmt
-		// request or network instance and routes the traffic using the interface-specific
-		// table where this route is copied to.
-		Priority: defRouteBaseMetric + link.Attrs().Index,
-		Table:    unix.RT_TABLE_MAIN,
-		Scope:    netlink.SCOPE_UNIVERSE,
-		Protocol: unix.RTPROT_STATIC,
-		Family:   netlink.FAMILY_V4,
+		Priority:  int(modem.config.RouteMetric),
+		Table:     unix.RT_TABLE_MAIN,
+		Scope:     netlink.SCOPE_UNIVERSE,
+		Protocol:  unix.RTPROT_STATIC,
+		Family:    netlink.FAMILY_V4,
 	}
 	err = netlink.RouteAdd(defaultRoute)
 	if err != nil {
@@ -1522,6 +1519,7 @@ func (a *MMAgent) applyIPSettings(modem *ModemInfo, ipSettings types.WwanIPSetti
 			"of the modem %s: %v", defaultRoute, wwanIfaceName,
 			modem.config.LogicalLabel, err)
 	}
+	modem.appliedRouteMetric = modem.config.RouteMetric
 	mtu := modem.config.MTU
 	if mtu == 0 {
 		// MTU is not specified by the user.
