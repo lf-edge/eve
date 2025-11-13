@@ -291,8 +291,6 @@ github.com/aws/smithy-go/waiter
 # github.com/beorn7/perks v1.0.1
 ## explicit; go 1.11
 github.com/beorn7/perks/quantile
-# github.com/bicomsystems/go-libzfs v0.4.0
-## explicit; go 1.13
 # github.com/bugsnag/bugsnag-go v1.4.1
 ## explicit
 # github.com/bugsnag/panicwrap v1.2.0
