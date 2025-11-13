@@ -1,0 +1,17 @@
+name: release
+on:
+  release:
+    types: [published]
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Publish to crates.io
+        run: cargo publish --token "${CARGO_TOKEN}" --no-verify
+        env:
+          CARGO_TOKEN: ${{ secrets.CARGO_TOKEN }}

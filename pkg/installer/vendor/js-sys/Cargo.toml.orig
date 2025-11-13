@@ -1,0 +1,32 @@
+[package]
+authors = ["The wasm-bindgen Developers"]
+categories = ["wasm"]
+description = """
+Bindings for all JS global objects and functions in all JS environments like
+Node.js and browsers, built on `#[wasm_bindgen]` using the `wasm-bindgen` crate.
+"""
+documentation = "https://docs.rs/js-sys"
+edition = "2021"
+homepage = "https://rustwasm.github.io/wasm-bindgen/"
+include = ["/LICENSE-*", "/src"]
+license = "MIT OR Apache-2.0"
+name = "js-sys"
+readme = "./README.md"
+repository = "https://github.com/rustwasm/wasm-bindgen/tree/master/crates/js-sys"
+rust-version = "1.57"
+version = "0.3.70"
+
+[lib]
+doctest = false
+test = false
+
+[dependencies]
+wasm-bindgen = { path = "../..", version = "0.2.93" }
+
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+wasm-bindgen-futures = { path = '../futures' }
+wasm-bindgen-test = { path = '../test' }
+web-sys = { path = "../web-sys", features = ["Headers", "Response", "ResponseInit"] }
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(js_sys_unstable_apis)'] }

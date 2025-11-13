@@ -139,7 +139,7 @@
 //!   - If you want only panics to have backtraces, set `RUST_BACKTRACE=1` and
 //!     `RUST_LIB_BACKTRACE=0`.
 //!
-//!   [`std::backtrace`]: https://doc.rust-lang.org/std/backtrace/index.html#environment-variables
+//!   [`std::backtrace`]: std::backtrace#environment-variables
 //!
 //! - Anyhow works with any error type that has an impl of `std::error::Error`,
 //!   including ones defined in your crate. We do not bundle a `derive(Error)`
@@ -201,14 +201,13 @@
 //! anyhow = { version = "1.0", default-features = false }
 //! ```
 //!
-//! Since the `?`-based error conversions would normally rely on the
-//! `std::error::Error` trait which is only available through std, no_std mode
-//! will require an explicit `.map_err(Error::msg)` when working with a
-//! non-Anyhow error type inside a function that returns Anyhow's error type.
+//! With versions of Rust older than 1.81, no_std mode may require an additional
+//! `.map_err(Error::msg)` when working with a non-Anyhow error type inside a
+//! function that returns Anyhow's error type, as the trait that `?`-based error
+//! conversions are defined by is only available in std in those old versions.
 
-#![doc(html_root_url = "https://docs.rs/anyhow/1.0.85")]
+#![doc(html_root_url = "https://docs.rs/anyhow/1.0.100")]
 #![cfg_attr(error_generic_member_access, feature(error_generic_member_access))]
-#![cfg_attr(doc_cfg, feature(doc_cfg))]
 #![no_std]
 #![deny(dead_code, unused_imports, unused_mut)]
 #![cfg_attr(
@@ -218,6 +217,7 @@
 #![cfg_attr(anyhow_no_unsafe_op_in_unsafe_fn_lint, allow(unused_unsafe))]
 #![allow(
     clippy::doc_markdown,
+    clippy::elidable_lifetime_names,
     clippy::enum_glob_use,
     clippy::explicit_auto_deref,
     clippy::extra_unused_type_parameters,
@@ -228,6 +228,7 @@
     clippy::module_name_repetitions,
     clippy::must_use_candidate,
     clippy::needless_doctest_main,
+    clippy::needless_lifetimes,
     clippy::new_ret_no_self,
     clippy::redundant_else,
     clippy::return_self_not_must_use,
@@ -237,6 +238,7 @@
     clippy::wildcard_imports,
     clippy::wrong_self_convention
 )]
+#![allow(unknown_lints, mismatched_lifetime_syntaxes)]
 
 #[cfg(all(
     anyhow_nightly_testing,
@@ -259,6 +261,8 @@ mod error;
 mod fmt;
 mod kind;
 mod macros;
+#[cfg(error_generic_member_access)]
+mod nightly;
 mod ptr;
 mod wrapper;
 
@@ -266,13 +270,16 @@ use crate::error::ErrorImpl;
 use crate::ptr::Own;
 use core::fmt::Display;
 
-#[cfg(not(feature = "std"))]
+#[cfg(all(not(feature = "std"), anyhow_no_core_error))]
 use core::fmt::Debug;
 
 #[cfg(feature = "std")]
 use std::error::Error as StdError;
 
-#[cfg(not(feature = "std"))]
+#[cfg(not(any(feature = "std", anyhow_no_core_error)))]
+use core::error::Error as StdError;
+
+#[cfg(all(not(feature = "std"), anyhow_no_core_error))]
 trait StdError: Debug + Display {
     fn source(&self) -> Option<&(dyn StdError + 'static)> {
         None
@@ -407,8 +414,7 @@ pub struct Error {
 ///     None
 /// }
 /// ```
-#[cfg(feature = "std")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
+#[cfg(any(feature = "std", not(anyhow_no_core_error)))]
 #[derive(Clone)]
 pub struct Chain<'a> {
     state: crate::chain::ChainState<'a>,
@@ -625,11 +631,11 @@ pub trait Context<T, E>: context::private::Sealed {
         F: FnOnce() -> C;
 }
 
-/// Equivalent to Ok::<_, anyhow::Error>(value).
+/// Equivalent to `Ok::<_, anyhow::Error>(value)`.
 ///
-/// This simplifies creation of an anyhow::Result in places where type inference
-/// cannot deduce the `E` type of the result &mdash; without needing to write
-/// `Ok::<_, anyhow::Error>(value)`.
+/// This simplifies creation of an `anyhow::Result` in places where type
+/// inference cannot deduce the `E` type of the result &mdash; without needing
+/// to write`Ok::<_, anyhow::Error>(value)`.
 ///
 /// One might think that `anyhow::Result::Ok(value)` would work in such cases
 /// but it does not.
@@ -644,8 +650,8 @@ pub trait Context<T, E>: context::private::Sealed {
 ///    |         consider giving this pattern the explicit type `std::result::Result<i32, E>`, where the type parameter `E` is specified
 /// ```
 #[allow(non_snake_case)]
-pub fn Ok<T>(t: T) -> Result<T> {
-    Result::Ok(t)
+pub fn Ok<T>(value: T) -> Result<T> {
+    Result::Ok(value)
 }
 
 // Not public API. Referenced by macro-generated code.
@@ -670,7 +676,7 @@ pub mod __private {
         #[doc(hidden)]
         pub use crate::kind::{AdhocKind, TraitKind};
 
-        #[cfg(feature = "std")]
+        #[cfg(any(feature = "std", not(anyhow_no_core_error)))]
         #[doc(hidden)]
         pub use crate::kind::BoxedKind;
     }
