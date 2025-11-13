@@ -20,7 +20,6 @@ var ReportDiskPaths = []string{
 // ReportDirPaths  Report directory usage for these paths
 var ReportDirPaths = []string{
 	PersistConfigDir,
-	NetTraceFolder,
 	PersistStatusDir,
 	CertificateDirname,
 	SealedDirName,
