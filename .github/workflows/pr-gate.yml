@@ -45,9 +45,11 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           pr_id=$(gh api /search/issues -X GET -f q="type:pr is:open repo:${GH_REPO} sha:${{ github.event.workflow_run.head_sha }}" -q '.items[0].number')
+          pr_base_ref=$(gh pr view "$pr_id" --json baseRefName -q '.baseRefName')
           echo "pr_id=$pr_id" >> "$GITHUB_OUTPUT"
           echo "pr_sha=${{ github.event.workflow_run.head_sha }}" >> "$GITHUB_OUTPUT"
           echo "original_run_id=${{ github.event.workflow_run.id }}" >> "$GITHUB_OUTPUT"
+          echo "pr_base_ref=$pr_base_ref" >> "$GITHUB_OUTPUT"
 
       - name: Gather Context (pull_request_review)
         id: from_review
@@ -60,6 +62,7 @@ jobs:
           echo "pr_id=${{ github.event.pull_request.number }}" >> "$GITHUB_OUTPUT"
           echo "pr_sha=$pr_sha" >> "$GITHUB_OUTPUT"
           echo "original_run_id=$original_run_id" >> "$GITHUB_OUTPUT"
+          echo "pr_base_ref=${{ github.event.pull_request.base.ref }}" >> "$GITHUB_OUTPUT"
 
       - name: Promote Context for Local Use
         id: meta
@@ -67,6 +70,7 @@ jobs:
           echo "pr_id=${{ steps.from_run.outputs.pr_id   || steps.from_review.outputs.pr_id }}" >> "$GITHUB_OUTPUT"
           echo "pr_sha=${{ steps.from_run.outputs.pr_sha  || steps.from_review.outputs.pr_sha }}" >> "$GITHUB_OUTPUT"
           echo "original_run_id=${{ steps.from_run.outputs.original_run_id || steps.from_review.outputs.original_run_id }}" >> "$GITHUB_OUTPUT"
+          echo "pr_base_ref=${{ steps.from_run.outputs.pr_base_ref || steps.from_review.outputs.pr_base_ref }}" >> "$GITHUB_OUTPUT"
 
       - name: Check Review Decision
         id: reviews
@@ -123,6 +127,7 @@ jobs:
           echo '{ "pr_id":  "${{ steps.meta.outputs.pr_id }}",
                   "original_run_id": "${{ steps.meta.outputs.original_run_id }}",
                   "pr_sha": "${{ steps.meta.outputs.pr_sha }}",
+                  "pr_base_ref": "${{ steps.meta.outputs.pr_base_ref }}",
                   "hv": "${{ matrix.hv }}",
                   "arch": "${{ matrix.arch }}",
                   "platform": "${{ matrix.platform }}",
