@@ -4,7 +4,7 @@ use core::convert::Infallible;
 use core::fmt::{self, Debug, Display, Write};
 
 #[cfg(error_generic_member_access)]
-use std::error::Request;
+use crate::nightly::{self, Request};
 
 mod ext {
     use super::*;
@@ -15,17 +15,17 @@ mod ext {
             C: Display + Send + Sync + 'static;
     }
 
-    #[cfg(feature = "std")]
+    #[cfg(any(feature = "std", not(anyhow_no_core_error)))]
     impl<E> StdError for E
     where
-        E: std::error::Error + Send + Sync + 'static,
+        E: crate::StdError + Send + Sync + 'static,
     {
         fn ext_context<C>(self, context: C) -> Error
         where
             C: Display + Send + Sync + 'static,
         {
             let backtrace = backtrace_if_absent!(&self);
-            Error::from_context(context, self, backtrace)
+            Error::construct_from_context(context, self, backtrace)
         }
     }
 
@@ -96,7 +96,7 @@ impl<T> Context<T, Infallible> for Option<T> {
         // backtrace.
         match self {
             Some(ok) => Ok(ok),
-            None => Err(Error::from_display(context, backtrace!())),
+            None => Err(Error::construct_from_display(context, backtrace!())),
         }
     }
 
@@ -107,7 +107,7 @@ impl<T> Context<T, Infallible> for Option<T> {
     {
         match self {
             Some(ok) => Ok(ok),
-            None => Err(Error::from_display(context(), backtrace!())),
+            None => Err(Error::construct_from_display(context(), backtrace!())),
         }
     }
 }
@@ -145,7 +145,7 @@ where
 
     #[cfg(error_generic_member_access)]
     fn provide<'a>(&'a self, request: &mut Request<'a>) {
-        StdError::provide(&self.error, request);
+        nightly::provide(&self.error, request);
     }
 }
 

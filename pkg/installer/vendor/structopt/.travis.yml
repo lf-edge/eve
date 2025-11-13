@@ -1,0 +1,35 @@
+if: type != push OR branch = master
+
+language: rust
+matrix:
+  include:
+    - rust: stable
+      name: check if `cargo fmt --all` is applied
+      before_script: rustup component add rustfmt-preview
+      script: cargo fmt --all -- --check
+
+    - language: node_js
+      node_js: node
+      name: check links
+      install: npm install -g markdown-link-check
+      script:
+        - markdown-link-check -c link-check-headers.json README.md
+        - markdown-link-check -c link-check-headers.json CHANGELOG.md
+        - markdown-link-check -c link-check-headers.json examples/README.md
+
+    - rust: stable
+      name: clippy
+      before_script: rustup component add clippy
+      script: cargo clippy --all -- -D warnings
+
+    - rust: 1.46.0
+    - rust: stable
+    - rust: beta
+    - rust: nightly
+
+script:
+  - cargo test
+
+jobs:
+  allow_failures:
+    - name: clippy

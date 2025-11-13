@@ -1,0 +1,38 @@
+[package]
+name = "structopt"
+version = "0.3.26"
+edition = "2018"
+authors = ["Guillaume Pinot <texitoi@texitoi.eu>", "others"]
+description = "Parse command line argument by defining a struct."
+documentation = "https://docs.rs/structopt"
+repository = "https://github.com/TeXitoi/structopt"
+keywords = ["clap", "cli", "derive", "docopt"]
+categories = ["command-line-interface"]
+license = "Apache-2.0 OR MIT"
+readme = "README.md"
+
+[features]
+default = ["clap/default"]
+suggestions = ["clap/suggestions"]
+color = ["clap/color"]
+wrap_help = ["clap/wrap_help"]
+yaml = ["clap/yaml"]
+lints = ["clap/lints"]
+debug = ["clap/debug"]
+no_cargo = ["clap/no_cargo"]
+doc = ["clap/doc"]
+paw = ["structopt-derive/paw", "paw_dep"]
+
+[badges]
+travis-ci = { repository = "TeXitoi/structopt" }
+
+[dependencies]
+clap = { version = "2.33", default-features = false }
+structopt-derive = { path = "structopt-derive", version = "=0.4.18" }
+lazy_static = "1.4.0"
+paw_dep = { version = "1", optional = true, package = "paw" }
+
+[dev-dependencies]
+trybuild = { version = "1.0.5", features = ["diff"] }
+rustversion = "1"
+strum = { version = "0.21", features = ["derive"] }

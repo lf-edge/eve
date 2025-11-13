@@ -11,6 +11,7 @@
     clippy::items_after_statements,
     clippy::let_and_return,
     clippy::let_underscore_untyped,
+    clippy::literal_string_with_formatting_args,
     clippy::match_bool,
     clippy::needless_else,
     clippy::never_loop,
@@ -153,18 +154,18 @@ fn test_closure() {
     // identifier, nor as `(S + move || 1) == (1)` by misinterpreting the
     // closure precedence.
     let test = || Ok(ensure!(S + move || 1 == 1));
-    assert_err(test, "Condition failed: `S + (move || 1 == 1)`");
+    assert_err(test, "Condition failed: `S + move || 1 == 1`");
 
     let test = || Ok(ensure!(S + || 1 == 1));
-    assert_err(test, "Condition failed: `S + (|| 1 == 1)`");
+    assert_err(test, "Condition failed: `S + || 1 == 1`");
 
     // Must not partition as `S + ((move | ()) | 1) == 1` by treating those
     // pipes as bitwise-or.
     let test = || Ok(ensure!(S + move |()| 1 == 1));
-    assert_err(test, "Condition failed: `S + (move |()| 1 == 1)`");
+    assert_err(test, "Condition failed: `S + move |()| 1 == 1`");
 
     let test = || Ok(ensure!(S + |()| 1 == 1));
-    assert_err(test, "Condition failed: `S + (|()| 1 == 1)`");
+    assert_err(test, "Condition failed: `S + |()| 1 == 1`");
 }
 
 #[test]
@@ -184,6 +185,17 @@ fn test_unary() {
 
     let test = || Ok(ensure!(&mut x == *&&mut &2));
     assert_err(test, "Condition failed: `&mut x == *&&mut &2` (1 vs 2)");
+}
+
+#[rustversion::since(1.82)]
+#[test]
+fn test_raw_addr() {
+    let mut x = 1;
+    let test = || Ok(ensure!(S + &raw const x != S + &raw mut x));
+    assert_err(
+        test,
+        "Condition failed: `S + &raw const x != S + &raw mut x` (false vs false)",
+    );
 }
 
 #[test]
@@ -224,7 +236,7 @@ fn test_if() {
     let test = || Ok(ensure!(if let | 1 | 2 = 2 {}.t(1) == 2));
     assert_err(
         test,
-        "Condition failed: `if let 1 | 2 = 2 {}.t(1) == 2` (1 vs 2)",
+        "Condition failed: `if let | 1 | 2 = 2 {}.t(1) == 2` (1 vs 2)",
     );
 }
 
@@ -269,7 +281,7 @@ fn test_loop() {
     let test = || Ok(ensure!(for | _x in iter::once(0) {}.t(1) == 2));
     assert_err(
         test,
-        "Condition failed: `for _x in iter::once(0) {}.t(1) == 2` (1 vs 2)",
+        "Condition failed: `for | _x in iter::once(0) {}.t(1) == 2` (1 vs 2)",
     );
 
     #[rustfmt::skip]
@@ -286,7 +298,7 @@ fn test_match() {
     let test = || Ok(ensure!(match 1 == 1 { true => 1, false => 0 } == 2));
     assert_err(
         test,
-        "Condition failed: `match 1 == 1 { true => 1, false => 0, } == 2` (1 vs 2)",
+        "Condition failed: `match 1 == 1 { true => 1, false => 0 } == 2` (1 vs 2)",
     );
 }
 
@@ -343,7 +355,7 @@ fn test_path() {
     let test = || Ok(ensure!(Error::msg::<&str,>.t(1) == 2));
     assert_err(
         test,
-        "Condition failed: `Error::msg::<&str>.t(1) == 2` (1 vs 2)",
+        "Condition failed: `Error::msg::<&str,>.t(1) == 2` (1 vs 2)",
     );
 
     let test = || Ok(ensure!(Error::msg::<<str as ToOwned>::Owned>.t(1) == 2));
@@ -362,7 +374,7 @@ fn test_path() {
     let test = || Ok(ensure!(Chain::<'static,>::new.t(1) == 2));
     assert_err(
         test,
-        "Condition failed: `Chain::<'static>::new.t(1) == 2` (1 vs 2)",
+        "Condition failed: `Chain::<'static,>::new.t(1) == 2` (1 vs 2)",
     );
 
     fn f<const I: isize>() {}
@@ -394,7 +406,7 @@ fn test_path() {
 
     #[rustfmt::skip]
     let test = || Ok(ensure!(E::U::<u8,>>E::U));
-    assert_err(test, "Condition failed: `E::U::<u8> > E::U` (U vs U)");
+    assert_err(test, "Condition failed: `E::U::<u8,> > E::U` (U vs U)");
 
     let test = || Ok(ensure!(Generic::<dyn Debug + Sync> != Generic));
     assert_err(
@@ -416,7 +428,7 @@ fn test_path() {
     };
     assert_err(
         test,
-        "Condition failed: `Generic::<dyn Fn() + ::std::marker::Sync> != Generic` (Generic vs Generic)",
+        "Condition failed: `Generic::<dyn Fn::() + ::std::marker::Sync> != Generic` (Generic vs Generic)",
     );
 }
 
@@ -602,6 +614,7 @@ fn test_as() {
 
     extern "C" fn extern_fn() {}
     #[rustfmt::skip]
+    #[allow(missing_abi)]
     let test = || Ok(ensure!(extern_fn as extern fn() as usize * 0 != 0));
     assert_err(
         test,
@@ -655,7 +668,7 @@ fn test_as() {
     assert_err(test, "Condition failed: `0 as int![...] != 0` (0 vs 0)");
 
     let test = || Ok(ensure!(0 as int! {...} != 0));
-    assert_err(test, "Condition failed: `0 as int! { ... } != 0` (0 vs 0)");
+    assert_err(test, "Condition failed: `0 as int! {...} != 0` (0 vs 0)");
 }
 
 #[test]
