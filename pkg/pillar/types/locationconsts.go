@@ -102,14 +102,18 @@ const (
 	NewlogUploadAppDir = NewlogDir + "/appUpload"
 	// NewlogKeepSentQueueDir - a circular queue of gzip files already been sent
 	NewlogKeepSentQueueDir = NewlogDir + "/keepSentQueue"
-	// PillarHardMemoryLimitFile - hard memory reserved for pillar
-	PillarHardMemoryLimitFile = "/hostfs/sys/fs/cgroup/memory/eve/services/pillar/memory.limit_in_bytes"
-	// EveMemoryLimitFile - stores memory reserved for eve
-	EveMemoryLimitFile = "/hostfs/sys/fs/cgroup/memory/eve/memory.limit_in_bytes"
-	// EveMemoryUsageFile - current usage
-	EveMemoryUsageFile = "/hostfs/sys/fs/cgroup/memory/eve/memory.usage_in_bytes"
-	// EveKmemUsageFile - current kernel usage
-	EveKmemUsageFile = "/hostfs/sys/fs/cgroup/memory/eve/memory.kmem.usage_in_bytes"
+	// PillarHardMemoryLimitFile - hard memory reserved for pillar (cgroup v2)
+	PillarHardMemoryLimitFile = "/hostfs/sys/fs/cgroup/eve/services/pillar/memory.max"
+	// EveMemoryLimitFile - stores memory reserved for eve (cgroup v2)
+	EveMemoryLimitFile = "/hostfs/sys/fs/cgroup/eve/memory.max"
+	// EveMemoryUsageFile - current usage (cgroup v2)
+	EveMemoryUsageFile = "/hostfs/sys/fs/cgroup/eve/memory.current"
+	// EveMemoryHighFile - soft limit (cgroup v2)
+	EveMemoryHighFile = "/hostfs/sys/fs/cgroup/eve/memory.high"
+	// EveMemoryEventsFile - memory events (cgroup v2)
+	EveMemoryEventsFile = "/hostfs/sys/fs/cgroup/eve/memory.events"
+	// EvePressureFile - memory pressure info (cgroup v2)
+	EvePressureFile = "/hostfs/sys/fs/cgroup/eve/memory.pressure"
 	// ZFSArcMaxSizeFile - file with zfs_arc_max size in bytes
 	ZFSArcMaxSizeFile = "/hostfs/sys/module/zfs/parameters/zfs_arc_max"
 

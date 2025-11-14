@@ -5,7 +5,7 @@ if test -f /proc/vmcore; then
     exit 0;
 fi
 
-hv=`cat /run/eve-hv-type`
+hv=$(cat /run/eve-hv-type)
 default_cgroup_cpus_limit=1
 
 default_cgroup_memory_limit=838860800 #800M
@@ -19,6 +19,7 @@ case $hv in
        ;;
 esac
 
+# Parse kernel command line parameters for cgroup limits
 dom0_cgroup_memory_soft_limit=$(</proc/cmdline grep -o '\bdom0_mem=[^, ]*' | cut -d = -f 2)
 dom0_cgroup_memory_limit=$(</proc/cmdline grep -o "\bdom0_mem=[^,]*,max:[^ ]*" | cut -d : -f 2)
 dom0_cgroup_cpus_limit=$(</proc/cmdline grep -o '\bdom0_max_vcpus=[^ ]*' | cut -d = -f 2)
@@ -31,6 +32,7 @@ ctrd_cgroup_memory_soft_limit=$(</proc/cmdline grep -o '\bctrd_mem=[^, ]*' | cut
 ctrd_cgroup_memory_limit=$(</proc/cmdline grep -o "\bctrd_mem=[^,]*,max:[^ ]*" | cut -d : -f 2)
 ctrd_cgroup_cpus_limit=$(</proc/cmdline grep -o '\bctrd_max_vcpus=[^ ]*' | cut -d = -f 2)
 
+# Set defaults if not specified in kernel command line
 if [ -z "${dom0_cgroup_memory_soft_limit}" ]; then
     echo "Setting default value of $default_cgroup_memory_limit for dom0_cgroup_memory_soft_limit"
     dom0_cgroup_memory_soft_limit=$default_cgroup_memory_limit
@@ -76,57 +78,85 @@ if [ -z "${ctrd_cgroup_cpus_limit}" ] || [ "${ctrd_cgroup_cpus_limit}" = "0" ]; 
     ctrd_cgroup_cpus_limit=$default_cgroup_cpus_limit
 fi
 
-CGROUPS="cpuset cpu cpuacct blkio memory devices freezer net_cls perf_event net_prio hugetlb pids systemd "
+# Check if cgroup v2 is available
+if [ ! -f /sys/fs/cgroup/cgroup.controllers ]; then
+  echo "ERROR: cgroup v2 not available - cgroup v1 is no longer supported"
+  exit 1
+fi
+echo "Using cgroup v2 unified hierarchy"
+CGROOT="/sys/fs/cgroup"
 
-#Creating eve cgroup which will be parent/dom0 cgroup
-for cg in $CGROUPS; do
-    mkdir -p /sys/fs/cgroup/"${cg}"/eve
+# Enable controllers at root level for children to inherit
+echo "+cpu +cpuset +memory +io +pids" > "$CGROOT/cgroup.subtree_control" 2>/dev/null || true
+
+# Create EVE cgroup hierarchy for v2
+mkdir -p "$CGROOT/eve"
+mkdir -p "$CGROOT/eve/containerd"
+mkdir -p "$CGROOT/eve/services"
+
+# Enable controllers for eve cgroup
+echo "+cpu +cpuset +memory +io +pids" > "$CGROOT/eve/cgroup.subtree_control" 2>/dev/null || true
+echo "+cpu +cpuset +memory +io +pids" > "$CGROOT/eve/services/cgroup.subtree_control" 2>/dev/null || true
+
+# Create individual service cgroups
+for srv in $EVESERVICES; do
+    mkdir -p "$CGROOT/eve/services/${srv}"
 done
 
-#Creating cgroup for individual eve services
-for srv in $EVESERVICES; do
-    for cg in $CGROUPS; do
-        mkdir -p /sys/fs/cgroup/"${cg}"/eve/services/"${srv}"
-    done
-done
+# Get effective CPU range from parent
+parent_cpus=$(cat "$CGROOT/cpuset.cpus.effective" 2>/dev/null || echo "0")
+parent_mems=$(cat "$CGROOT/cpuset.mems.effective" 2>/dev/null || echo "0")
 
-#Creating cgroup for containerd
-mkdir -p /sys/fs/cgroup/memory/eve/containerd
+# Set eve cgroup limits (cgroup v2 uses different file names)
+echo "$dom0_cgroup_memory_limit" > "$CGROOT/eve/memory.max" 2>/dev/null || true
+echo "$dom0_cgroup_memory_soft_limit" > "$CGROOT/eve/memory.high" 2>/dev/null || true
+echo "$parent_cpus" > "$CGROOT/eve/cpuset.cpus" 2>/dev/null || true
+echo "$parent_mems" > "$CGROOT/eve/cpuset.mems" 2>/dev/null || true
 
-existingCPULimit=$(</sys/fs/cgroup/cpuset/cpuset.cpus grep -o '0-[1-9]*' | cut -d '-' -f 2)
-if [ -z "${existingCPULimit}" ]; then
-    existingCPULimit=$(cat /sys/fs/cgroup/cpuset/cpuset.cpus)
-fi
-
-/bin/echo $dom0_cgroup_memory_limit > /sys/fs/cgroup/memory/eve/memory.limit_in_bytes
-/bin/echo $dom0_cgroup_memory_soft_limit > /sys/fs/cgroup/memory/eve/memory.soft_limit_in_bytes
-#Value that we are trying to update should not be greater than the existing value in cgroup system.
-if [ -n "${existingCPULimit}" ] && [ "$existingCPULimit" -ge "$dom0_cgroup_cpus_limit" ]; then
-    /bin/echo "0-$((dom0_cgroup_cpus_limit-1))" > /sys/fs/cgroup/cpuset/eve/cpuset.cpus
-    /bin/echo "0-$((dom0_cgroup_cpus_limit-1))" > /sys/fs/cgroup/cpuset/eve/cpuset.mems
-fi
-
-/bin/echo $ctrd_cgroup_memory_limit > /sys/fs/cgroup/memory/eve/containerd/memory.limit_in_bytes
-/bin/echo $ctrd_cgroup_memory_soft_limit > /sys/fs/cgroup/memory/eve/containerd/memory.soft_limit_in_bytes
-
-/bin/echo $eve_cgroup_memory_limit > /sys/fs/cgroup/memory/eve/services/memory.limit_in_bytes
-/bin/echo $eve_cgroup_memory_soft_limit > /sys/fs/cgroup/memory/eve/services/memory.soft_limit_in_bytes
-if [ -n "${existingCPULimit}" ] && [ "$existingCPULimit" -ge "$eve_cgroup_cpus_limit" ]; then
-    /bin/echo "0-$((eve_cgroup_cpus_limit-1))" > /sys/fs/cgroup/cpuset/eve/services/cpuset.cpus
-    /bin/echo "0-$((eve_cgroup_cpus_limit-1))" > /sys/fs/cgroup/cpuset/eve/services/cpuset.mems
-fi
-
-for srv in $EVESERVICES; do
-    /bin/echo $eve_cgroup_memory_limit > /sys/fs/cgroup/memory/eve/services/"${srv}"/memory.limit_in_bytes
-    /bin/echo $eve_cgroup_memory_soft_limit > /sys/fs/cgroup/memory/eve/services/"${srv}"/memory.soft_limit_in_bytes
-    if [ -n "${existingCPULimit}" ] && [ "$existingCPULimit" -ge "$eve_cgroup_cpus_limit" ]; then
-        /bin/echo "0-$((eve_cgroup_cpus_limit-1))" > /sys/fs/cgroup/cpuset/eve/services/"${srv}"/cpuset.cpus
-        /bin/echo "0-$((eve_cgroup_cpus_limit-1))" > /sys/fs/cgroup/cpuset/eve/services/"${srv}"/cpuset.mems
+# Calculate CPU range for dom0 and eve services
+if [ -n "$parent_cpus" ] && [ "$dom0_cgroup_cpus_limit" -gt 0 ]; then
+    # Extract max CPU from parent range (e.g., "0-3" -> 3)
+    max_cpu=$(echo "$parent_cpus" | grep -o '[0-9]*$' | head -1)
+    if [ -n "$max_cpu" ] && [ "$max_cpu" -ge "$((dom0_cgroup_cpus_limit-1))" ]; then
+        cpu_range="0-$((dom0_cgroup_cpus_limit-1))"
+    else
+        cpu_range="$parent_cpus"
     fi
+else
+    cpu_range="$parent_cpus"
+fi
+
+# Set containerd limits
+echo "$ctrd_cgroup_memory_limit" > "$CGROOT/eve/containerd/memory.max" 2>/dev/null || true
+echo "$ctrd_cgroup_memory_soft_limit" > "$CGROOT/eve/containerd/memory.high" 2>/dev/null || true
+echo "$cpu_range" > "$CGROOT/eve/containerd/cpuset.cpus" 2>/dev/null || true
+echo "$parent_mems" > "$CGROOT/eve/containerd/cpuset.mems" 2>/dev/null || true
+
+# Set services aggregate limits
+echo "$eve_cgroup_memory_limit" > "$CGROOT/eve/services/memory.max" 2>/dev/null || true
+echo "$eve_cgroup_memory_soft_limit" > "$CGROOT/eve/services/memory.high" 2>/dev/null || true
+
+# Calculate CPU range for eve services
+if [ -n "$parent_cpus" ] && [ "$eve_cgroup_cpus_limit" -gt 0 ]; then
+    max_cpu=$(echo "$parent_cpus" | grep -o '[0-9]*$' | head -1)
+    if [ -n "$max_cpu" ] && [ "$max_cpu" -ge "$((eve_cgroup_cpus_limit-1))" ]; then
+        eve_cpu_range="0-$((eve_cgroup_cpus_limit-1))"
+    else
+        eve_cpu_range="$parent_cpus"
+    fi
+else
+    eve_cpu_range="$parent_cpus"
+fi
+
+echo "$eve_cpu_range" > "$CGROOT/eve/services/cpuset.cpus" 2>/dev/null || true
+echo "$parent_mems" > "$CGROOT/eve/services/cpuset.mems" 2>/dev/null || true
+
+# Set individual service limits
+for srv in $EVESERVICES; do
+    echo "$eve_cgroup_memory_limit" > "$CGROOT/eve/services/${srv}/memory.max" 2>/dev/null || true
+    echo "$eve_cgroup_memory_soft_limit" > "$CGROOT/eve/services/${srv}/memory.high" 2>/dev/null || true
+    echo "$eve_cpu_range" > "$CGROOT/eve/services/${srv}/cpuset.cpus" 2>/dev/null || true
+    echo "$parent_mems" > "$CGROOT/eve/services/${srv}/cpuset.mems" 2>/dev/null || true
 done
 
-# Once all 'cpuset.cpus' and 'cpuset.mems' are prepared copy memlogd
-# tasks from 'memory' controller to the 'cpuset' controller.
-for pid in $(cat /sys/fs/cgroup/memory/eve/services/memlogd/tasks); do
-    echo $pid > /sys/fs/cgroup/cpuset/eve/services/memlogd/tasks;
-done
+echo "cgroup v2 setup completed successfully"

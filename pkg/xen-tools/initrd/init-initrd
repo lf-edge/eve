@@ -7,7 +7,7 @@ mount -t proc proc /proc
 mount -t sysfs sysfs /sys
 mount -t devtmpfs -o size=10m,nr_inodes=248418,mode=755,nosuid,noexec,relatime devtmpfs /dev
 
-root=`cat /proc/cmdline | grep -o '\broot=[^ ]*' | cut -d = -f 2`
+root=$(grep -o '\broot=[^ ]*' /proc/cmdline | cut -d = -f 2)
 if test -z "$root"
 then
     exit 1
@@ -38,20 +38,25 @@ if [ -d /mnt/rootfs/dev/eve ]; then
 fi
 mount -o rbind /dev /mnt/rootfs/dev
 mount -o bind /sys /mnt/rootfs/sys
-mount -t tmpfs -o uid=0,gid=0,mode=0755 cgroup /mnt/rootfs/sys/fs/cgroup
-awk '!/^#/ { if ($4 == 1) print $1 }' /proc/cgroups | while IFS= read -r sys
-do
-  cgroup="/mnt/rootfs/sys/fs/cgroup/$sys"
-  mkdir -p "$cgroup"
-  if ! mountpoint -q "$cgroup"; then
-    if ! mount -n -t cgroup -o "$sys" cgroup "$cgroup"; then
-      rmdir "$cgroup" || true
-    fi
-  fi
-done
-if [ -e /mnt/rootfs/sys/fs/cgroup/memory/memory.use_hierarchy ]; then
-  echo 1 > /mnt/rootfs/sys/fs/cgroup/memory/memory.use_hierarchy
+
+if ! mountpoint -q /mnt/rootfs/sys/fs/cgroup; then
+    mount -t cgroup2 -o nsdelegate,memory_recursiveprot none /mnt/rootfs/sys/fs/cgroup 2>/dev/null \
+    || mount -t cgroup2 none /mnt/rootfs/sys/fs/cgroup
 fi
+[ -f /mnt/rootfs/sys/fs/cgroup/cgroup.controllers ] || { echo "no v2"; exit 1; }
+
+# 1) SEED CPUSET ON THE PARENT (root of the future tree) FIRST
+eff_cpus="$(cat /mnt/rootfs/sys/fs/cgroup/cpuset.cpus.effective 2>/dev/null || echo "")"
+eff_mems="$(cat /mnt/rootfs/sys/fs/cgroup/cpuset.mems.effective 2>/dev/null || echo "")"
+[ -n "$eff_cpus" ] && echo "$eff_cpus" > /mnt/rootfs/sys/fs/cgroup/cpuset.cpus 2>/dev/null || true
+[ -n "$eff_mems" ] && echo "$eff_mems" > /mnt/rootfs/sys/fs/cgroup/cpuset.mems 2>/dev/null || true
+
+# 2) THEN enable controllers for children (cpuset last, after seeding)
+for ctrl in cpu memory io pids; do
+  echo "+$ctrl" > /mnt/rootfs/sys/fs/cgroup/cgroup.subtree_control 2>/dev/null || true
+done
+echo "+cpuset" > /mnt/rootfs/sys/fs/cgroup/cgroup.subtree_control 2>/dev/null || true
+
 mount -t devpts -o gid=5,mode=0620,noexec,nosuid devpts /mnt/rootfs/dev/pts
 mount -t tmpfs -o nodev,nosuid,noexec,size=20% shm /mnt/rootfs/dev/shm
 mount -t tmpfs -o nodev,nosuid,size=20% tmp /mnt/rootfs/tmp
@@ -61,11 +66,11 @@ ln -s /proc/self/fd/0 /mnt/rootfs/dev/stdin
 ln -s /proc/self/fd/1 /mnt/rootfs/dev/stdout
 ln -s /proc/self/fd/2 /mnt/rootfs/dev/stderr
 
-ip=`cat /proc/cmdline | grep -o '\bip=[^ ]*' | cut -d = -f 2`
-gw=`cat /proc/cmdline | grep -o '\bgw=[^ ]*' | cut -d = -f 2`
-route=`cat /proc/cmdline | grep -o '\broute=[^ ]*' | cut -d = -f 2`
-pvcalls=`cat /proc/cmdline | grep  'pvcalls=1'`
-dhcp=`cat /proc/cmdline | grep  'dhcp=1'`
+ip=$(grep -o '\bip=[^ ]*' /proc/cmdline | cut -d = -f 2)
+gw=$(grep -o '\bgw=[^ ]*' /proc/cmdline | cut -d = -f 2)
+route=$(grep -o '\broute=[^ ]*' /proc/cmdline | cut -d = -f 2)
+pvcalls=$(grep  'pvcalls=1' /proc/cmdline)
+dhcp=$(grep  'dhcp=1' /proc/cmdline)
 if test "$pvcalls"
 then
         mkdir -p /mnt/rootfs/etc
@@ -141,6 +146,13 @@ mount -t overlay -o rw,relatime,lowerdir=/mnt/modules,upperdir=/mnt/rootfs/tmp/m
 echo "Executing /mount_disk.sh"
 /mount_disk.sh
 
+# Guarantee /persist is writable before containerd starts; fallback to tmpfs if not mounted.
+mkdir -p /mnt/rootfs/persist
+if ! mountpoint -q /mnt/rootfs/persist; then
+    echo "init-initrd: /persist not mounted by mount_disk.sh; mounting tmpfs fallback"
+    mount -t tmpfs -o mode=0755,size=256M tmpfs /mnt/rootfs/persist
+fi
+
 # Check if the environment file can be successfully processed by the shell,
 # otherwise write an error message and exit with the input data error code
 # shellcheck disable=SC1091,SC2091
@@ -191,7 +203,7 @@ echo "Executing agetty"
 # run agetty on the virtual shim console
 run_agetty_loop hvc1 &
 
-cmd=`cat /mnt/cmdline`
+cmd=$(cat /mnt/cmdline)
 echo "Executing $cmd"
 
 ug="0 0"

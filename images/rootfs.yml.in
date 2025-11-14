@@ -1,11 +1,14 @@
 kernel:
   image: KERNEL_TAG
-  # the unified_cgroup_hierarchy forces cgroupsv1, which is required until pillar is ready to support v2
-  cmdline: "rootdelay=3 linuxkit.unified_cgroup_hierarchy=0"
+  # force cgroup v2
+  cmdline: "rootdelay=3 linuxkit.unified_cgroup_hierarchy=1 linuxkit.runc_console=1 linuxkit.runc_debug=1"
 init:
-  - linuxkit/init:e120ea2a30d906bd1ee1874973d6e4b1403b5ca3
-  - linuxkit/runc:6062483d748609d505f2bcde4e52ee64a3329f5f
-  - linuxkit/containerd:95d5f0d2d8dc63bd87e96b7b39cf026cb86125c9
+  # init using runc 1.3.0 and containerd 2.1.4
+  - linuxkit/init:680da6e6f79bb8236a095147d532cd2160e23c9f
+  # runc v 1.3.0
+  - linuxkit/runc:2dfee46421e963d6c0d946137e46fe36fa606d29
+  # containerd v2.1.4
+  - linuxkit/containerd:62ca4864a7d029c5201e55812a2e4b3ae9f72df9
   # pillar's logic rely on existence of getty and /etc/init.d/001-getty inside
   - linuxkit/getty:e74e6cad132403d1a6d6cd25b136a7c69c99f3f7
   - linuxkit/memlogd:1ded209c4cc10aa8de2099f4156164b59df14e3c
@@ -78,10 +81,11 @@ services:
     image: PILLAR_TAG
     cgroupsPath: /eve/services/pillar
     oomScoreAdj: -999
-  - name: memory-monitor
-    image: MEMORY_MONITOR_TAG
-    cgroupsPath: /eve/services/memory-monitor
-    oomScoreAdj: -1000
+  # Temporarily disable memory-monitor until it supports cgroups v2
+  # - name: memory-monitor
+  #   image: MEMORY_MONITOR_TAG
+  #   cgroupsPath: /eve/services/memory-monitor
+  #   oomScoreAdj: -1000
   - name: vtpm
     image: VTPM_TAG
     cgroupsPath: /eve/services/vtpm
@@ -104,13 +108,13 @@ files:
   - path: /etc/linuxkit-eve-config.yml
     metadata: yaml
   - path: /etc/eve-hv-type
-    contents: 'EVE_HV'
+    contents: "EVE_HV"
   - path: /etc/issue
     source: etc_issue
   - path: /opt/vendor
     directory: true
   - path: /etc/eve-platform
-    contents: 'EVE_PLATFORM'
+    contents: "EVE_PLATFORM"
   - path: /etc/securetty
     contents: |
       console

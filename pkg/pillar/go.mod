@@ -7,7 +7,7 @@ toolchain go1.24.1
 require (
 	github.com/anatol/smart.go v0.0.0-20241126061019-f03d79b340d2
 	github.com/andrewd-zededa/go-libzfs v0.0.0-20251014191158-755aaeb96a92
-	github.com/containerd/cgroups v1.1.0
+	github.com/containerd/cgroups/v3 v3.0.2
 	github.com/containerd/containerd v1.7.29
 	github.com/containerd/containerd/api v1.8.0
 	github.com/containerd/typeurl v1.0.2
@@ -225,7 +225,9 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sts v1.33.19 // indirect
 	github.com/aws/smithy-go v1.22.2 // indirect
 	github.com/chai2010/gettext-go v1.0.2 // indirect
+	github.com/cilium/ebpf v0.9.1 // indirect
 	github.com/cncf/xds/go v0.0.0-20250501225837-2ac532fd4443 // indirect
+	github.com/containerd/cgroups v1.1.0 // indirect
 	github.com/containerd/errdefs v1.0.0 // indirect
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect
 	github.com/containerd/platforms v0.2.1 // indirect
