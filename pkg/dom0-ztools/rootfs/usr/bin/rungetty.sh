@@ -9,11 +9,13 @@ infinite_loop() {
 # run getty on all known consoles
 start_getty() {
 	tty=${1%,*}
-	speed=${1#*,}
+	# Extract speed after comma and strip non-numeric suffix (e.g., "n8" from "115200n8")
+	speed=${1#*,}; speed=${speed%%[!0-9]*}
 	securetty="$2"
 	line=
 	term="linux"
-	[ "$speed" = "$1" ] && speed=115200
+	# Default to 115200 if no comma was present or speed is empty/invalid
+	[ -z "$speed" ] && speed=115200
 
 	# if console=tty0 is specified on the kernel command line, we should not start a getty on tty0
 	# but instead start it on the first available tty. tty0 points to the current console, so if
