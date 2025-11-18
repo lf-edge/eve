@@ -100,14 +100,15 @@ EFI_PART_SIZE=$((36 * 1024 * 1024))
 # Warning: free space and rellocate all tables if image has
 # Warning: been bloated.
 ROOTFS_PART_SIZE_MIN=$((512 * 1024 * 1024))
-# For eve-k lets set partition size to 1GB
+# For eve-k lets set partition size to 4GB and EFI partition size to 2GB
 # Check if file /root/etc/eve-hv-type exists.
 # make-raw will be called twice during compilation and during installation.
 # The eve-hv-type file will be present only during installation.
 if [ -f /root/etc/eve-hv-type ]; then
    eve_flavor=$(cat /root/etc/eve-hv-type)
    if [ "$eve_flavor" = "k" ]; then
-      ROOTFS_PART_SIZE_MIN=$((1 * 1024 * 1024 * 1024))
+      EFI_PART_SIZE=$((2 * 1024 * 1024 * 1024))
+      ROOTFS_PART_SIZE_MIN=$((4 * 1024 * 1024 * 1024))
    fi
 fi
 
