@@ -3,9 +3,9 @@ kernel:
   # the unified_cgroup_hierarchy forces cgroupsv1, which is required until pillar is ready to support v2
   cmdline: "rootdelay=3 linuxkit.unified_cgroup_hierarchy=0"
 init:
-  - linuxkit/init:e120ea2a30d906bd1ee1874973d6e4b1403b5ca3
-  - linuxkit/runc:6062483d748609d505f2bcde4e52ee64a3329f5f
-  - linuxkit/containerd:95d5f0d2d8dc63bd87e96b7b39cf026cb86125c9
+  - linuxkit/init:b5506cc74a6812dc40982cacfd2f4328f8a4b12a
+  - linuxkit/runc:24bcd37e33b5eb445c4fa85b354061fa98b78f26
+  - linuxkit/containerd:ba19f64efd3331a8fd0a33e00eabd14f6ee1780e
   # pillar's logic rely on existence of getty and /etc/init.d/001-getty inside
   - linuxkit/getty:e74e6cad132403d1a6d6cd25b136a7c69c99f3f7
   - linuxkit/memlogd:1ded209c4cc10aa8de2099f4156164b59df14e3c
