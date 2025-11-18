@@ -437,12 +437,12 @@ endif
 # The rootfs partition size is set to 512MB after 10.2.0 release (see commit 719b4d516)
 # Before 10.2.0 it was 300MB. We must maintain compatibility with older versions so rootfs size cannot exceed 300MB.
 # 'k' and nvidia are not affected by this limitation because there no installation of kubevirt/k3s prior to 10.2.0
-# Nevertheless lets check for ROOTFS_MAXSIZE_MB not exceeding 900MB for 'k', 450MB for NVIDIA based platforms (arm64) and 285MB for x86_64 and other arm64 platforms
+# Nevertheless lets check for ROOTFS_MAXSIZE_MB not exceeding 4GB for 'k', 450MB for NVIDIA based platforms (arm64) and 285MB for x86_64 and other arm64 platforms
 # That helps in catching image size increases earlier than at later stage.
 # We are currently filtering out a few packages from bulk builds since they are not getting published in Docker HUB
 ifeq ($(HV),k)
         PKGS_$(ZARCH)=$(shell find pkg -maxdepth 1 -type d | grep -Ev "eve|alpine|sources$$")
-        ROOTFS_MAXSIZE_MB=900
+        ROOTFS_MAXSIZE_MB=4096
 else
         #kube container will not be in non-k builds
         PKGS_$(ZARCH)=$(shell find pkg -maxdepth 1 -type d | grep -Ev "eve|alpine|sources|kube|external-boot-image$$")
