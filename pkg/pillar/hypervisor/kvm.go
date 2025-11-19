@@ -754,24 +754,23 @@ func mmioVMMOverhead(domainName string, aa *types.AssignableAdapters, domainAdap
 	var mmioSize uint64
 
 	for _, adapter := range domainAdapterList {
-		logrus.Debugf("processing adapter %d %s\n", adapter.Type, adapter.Name)
+		logrus.Debugf("mmioVMMOverhead: processing adapter %d %s for overhead estimation (not reserving) for domain %s (UUID: %s)",
+			adapter.Type, adapter.Name, domainName, domainUUID)
 		aaList := aa.LookupIoBundleAny(adapter.Name)
-		// We reserved it in handleCreate so nobody could have stolen it
 		if len(aaList) == 0 {
-			return 0, logError("IoBundle disappeared %d %s for %s\n",
-				adapter.Type, adapter.Name, domainName)
+			return 0, logError("mmioVMMOverhead: IoBundle not found %d %s for domain %s (UUID: %s)\n",
+				adapter.Type, adapter.Name, domainName, domainUUID)
 		}
 		for _, ib := range aaList {
 			if ib == nil {
 				continue
 			}
-			if ib.UsedByUUID != domainUUID {
-				return 0, logError("IoBundle not ours %s: %d %s for %s\n",
-					ib.UsedByUUID, adapter.Type, adapter.Name,
-					domainName)
-			}
+			// For memory overhead calculation, we process all matching adapters
+			// regardless of UsedByUUID status, since this is for estimation only,
+			// not actual reservation.
 			if ib.PciLong != "" && ib.UsbAddr == "" {
-				logrus.Infof("Adding PCI device <%s>\n", ib.PciLong)
+				logrus.Infof("mmioVMMOverhead: counting MMIO for PCI device <%s> (not reserving) for domain %s (UUID: %s)",
+					ib.PciLong, domainName, domainUUID)
 				tap := pciDevice{ioBundle: *ib}
 				pciAssignments = addNoDuplicatePCI(pciAssignments, tap)
 			}
@@ -779,7 +778,8 @@ func mmioVMMOverhead(domainName string, aa *types.AssignableAdapters, domainAdap
 	}
 
 	for _, dev := range pciAssignments {
-		logrus.Infof("PCI device %s %d\n", dev.ioBundle.PciLong, dev.ioBundle.Type)
+		logrus.Infof("mmioVMMOverhead: reading MMIO size for PCI device %s %d for domain %s",
+			dev.ioBundle.PciLong, dev.ioBundle.Type, domainName)
 		// read the size of the PCI device aperture. Only GPU/VGA devices for now
 		if dev.ioBundle.Type != types.IoOther && dev.ioBundle.Type != types.IoHDMI {
 			continue
@@ -788,20 +788,20 @@ func mmioVMMOverhead(domainName string, aa *types.AssignableAdapters, domainAdap
 		isBridge, err := dev.isBridge()
 		if err != nil {
 			// do not treat as fatal error
-			logrus.Warnf("Can't read PCI device class, treat as bridge %s: %v\n",
+			logrus.Warnf("mmioVMMOverhead: can't read PCI device class, treating as bridge %s: %v",
 				dev.ioBundle.PciLong, err)
 			isBridge = true
 		}
 
 		if isBridge {
-			logrus.Infof("Skipping bridge %s\n", dev.ioBundle.PciLong)
+			logrus.Infof("mmioVMMOverhead: skipping PCI bridge %s\n", dev.ioBundle.PciLong)
 			continue
 		}
 
 		// read all resources of the PCI device
 		resources, err := dev.readResources(sysfsPciDevices)
 		if err != nil {
-			return 0, logError("Can't read PCI device resources %s: %v\n",
+			return 0, logError("mmioVMMOverhead: can't read PCI device resources %s: %v\n",
 				dev.ioBundle.PciLong, err)
 		}
 
@@ -816,7 +816,8 @@ func mmioVMMOverhead(domainName string, aa *types.AssignableAdapters, domainAdap
 	// 1% of the total MMIO size in bytes
 	mmioOverhead := int64(mmioSize) / 100
 
-	logrus.Infof("MMIO size: %d / overhead: %d for %s", mmioSize, mmioOverhead, domainName)
+	logrus.Infof("mmioVMMOverhead: calculated MMIO overhead for domain %s (UUID: %s): total MMIO %d bytes, overhead %d bytes",
+		domainName, domainUUID, mmioSize, mmioOverhead)
 
 	return int64(mmioOverhead), nil
 }
