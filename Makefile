@@ -415,7 +415,7 @@ else
         PKGS_$(ZARCH)=$(shell find pkg -maxdepth 1 -type d | grep -Ev "eve|alpine|sources|kube|external-boot-image$$")
         # nvidia platform requires more space
         ifeq (, $(findstring nvidia,$(PLATFORM)))
-            ROOTFS_MAXSIZE_MB=270
+            ROOTFS_MAXSIZE_MB=290
         else
             ROOTFS_MAXSIZE_MB=450
         endif
