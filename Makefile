@@ -412,7 +412,7 @@ else
         ifeq ($(PLATFORM),nvidia)
             ROOTFS_MAXSIZE_MB=450
         else
-            ROOTFS_MAXSIZE_MB=270
+            ROOTFS_MAXSIZE_MB=290
         endif
 endif
 
