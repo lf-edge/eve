@@ -1,0 +1,154 @@
+From 488effbdeb31e0c9d7620414e539680dab7e8904 Mon Sep 17 00:00:00 2001
+From: Gary Lin <glin@suse.com>
+Date: Fri, 25 Nov 2022 15:37:35 +0800
+Subject: [PATCH] loader/linux: Ensure the newc pathname is NULL-terminated
+
+Per "man 5 cpio", the namesize in the cpio header includes the trailing
+NUL byte of the pathname and the pathname is followed by NUL bytes, but
+the current implementation ignores the trailing NUL byte when making
+the newc header. Although make_header() tries to pad the pathname string,
+the padding won't happen when strlen(name) + sizeof(struct newc_head)
+is a multiple of 4, and the non-NULL-terminated pathname may lead to
+unexpected results.
+
+Assume that a file is created with 'echo -n aaaa > /boot/test12' and
+loaded by grub2:
+
+    linux /boot/vmlinuz
+    initrd newc:test12:/boot/test12 /boot/initrd
+
+The initrd command eventually invoked grub_initrd_load() and sent
+'t''e''s''t''1''2' to make_header() to generate the header:
+
+00000070  30 37 30 37 30 31 33 30  31 43 41 30 44 45 30 30  |070701301CA0DE00|
+00000080  30 30 38 31 41 34 30 30  30 30 30 33 45 38 30 30  |0081A4000003E800|
+00000090  30 30 30 30 36 34 30 30  30 30 30 30 30 31 36 33  |0000640000000163|
+000000a0  37 36 45 34 35 32 30 30  30 30 30 30 30 34 30 30  |76E4520000000400|
+000000b0  30 30 30 30 30 38 30 30  30 30 30 30 31 33 30 30  |0000080000001300|
+000000c0  30 30 30 30 30 30 30 30  30 30 30 30 30 30 30 30  |0000000000000000|
+000000d0  30 30 30 30 30 36 30 30  30 30 30 30 30 30 74 65  |00000600000000te|
+                                                                  ^namesize
+000000e0  73 74 31 32 61 61 61 61  30 37 30 37 30 31 30 30  |st12aaaa07070100|
+                   ^^ end of the pathname
+
+Since strlen("test12") + sizeof(struct newc_head) is 116 = 29 * 4,
+make_header() didn't pad the pathname, and the file content followed
+"test12" immediately. This violates the cpio format and may trigger such
+error during linux boot:
+
+    Initramfs unpacking failed: ZSTD-compressed data is trunc
+
+To avoid the potential problems, this commit counts the trailing NUL byte
+in when calling make_header() and adjusts the initrd size accordingly.
+
+Now the header becomes
+
+00000070  30 37 30 37 30 31 33 30  31 43 41 30 44 45 30 30  |070701301CA0DE00|
+00000080  30 30 38 31 41 34 30 30  30 30 30 33 45 38 30 30  |0081A4000003E800|
+00000090  30 30 30 30 36 34 30 30  30 30 30 30 30 31 36 33  |0000640000000163|
+000000a0  37 36 45 34 35 32 30 30  30 30 30 30 30 34 30 30  |76E4520000000400|
+000000b0  30 30 30 30 30 38 30 30  30 30 30 30 31 33 30 30  |0000080000001300|
+000000c0  30 30 30 30 30 30 30 30  30 30 30 30 30 30 30 30  |0000000000000000|
+000000d0  30 30 30 30 30 37 30 30  30 30 30 30 30 30 74 65  |00000700000000te|
+                                                                  ^namesize
+000000e0  73 74 31 32 00 00 00 00  61 61 61 61 30 37 30 37  |st12....aaaa0707|
+                      ^^ end of the pathname
+
+Besides the trailing NUL byte, make_header() pads 3 more NUL bytes, and
+the user can safely read the pathname without a further check.
+
+To conform to the cpio format, the headers for "TRAILER!!!" are also
+adjusted to include the trailing NUL byte, not ignore it.
+
+Signed-off-by: Gary Lin <glin@suse.com>
+Reviewed-by: Daniel Kiper <daniel.kiper@oracle.com>
+---
+ grub-core/loader/linux.c | 27 +++++++++++++++++++--------
+ 1 file changed, 19 insertions(+), 8 deletions(-)
+
+diff --git a/grub-core/loader/linux.c b/grub-core/loader/linux.c
+index 3fe390f17..4ccbbafb7 100644
+--- a/grub-core/loader/linux.c
++++ b/grub-core/loader/linux.c
+@@ -127,12 +127,23 @@ insert_dir (const char *name, struct dir **root,
+ 	  n->name = grub_strndup (cb, ce - cb);
+ 	  if (ptr)
+ 	    {
++	      /*
++	       * Create the substring with the trailing NUL byte
++	       * to be included in the cpio header.
++	       */
++	      char *tmp_name = grub_strndup (name, ce - name);
++	      if (!tmp_name) {
++		grub_free (n->name);
++		grub_free (n);
++		return grub_errno;
++	      }
+ 	      grub_dprintf ("linux", "Creating directory %s, %s\n", name, ce);
+-	      ptr = make_header (ptr, name, ce - name,
++	      ptr = make_header (ptr, tmp_name, ce - name + 1,
+ 				 040777, 0);
++	      grub_free (tmp_name);
+ 	    }
+ 	  if (grub_add (*size,
+-		        ALIGN_UP ((ce - (char *) name)
++		        ALIGN_UP ((ce - (char *) name + 1)
+ 				  + sizeof (struct newc_head), 4),
+ 			size))
+ 	    {
+@@ -191,7 +202,7 @@ grub_initrd_init (int argc, char *argv[],
+ 		  grub_initrd_close (initrd_ctx);
+ 		  return grub_errno;
+ 		}
+-	      name_len = grub_strlen (initrd_ctx->components[i].newc_name);
++	      name_len = grub_strlen (initrd_ctx->components[i].newc_name) + 1;
+ 	      if (grub_add (initrd_ctx->size,
+ 			    ALIGN_UP (sizeof (struct newc_head) + name_len, 4),
+ 			    &initrd_ctx->size) ||
+@@ -205,7 +216,7 @@ grub_initrd_init (int argc, char *argv[],
+ 	{
+ 	  if (grub_add (initrd_ctx->size,
+ 			ALIGN_UP (sizeof (struct newc_head)
+-				  + sizeof ("TRAILER!!!") - 1, 4),
++				  + sizeof ("TRAILER!!!"), 4),
+ 			&initrd_ctx->size))
+ 	    goto overflow;
+ 	  free_dir (root);
+@@ -233,7 +244,7 @@ grub_initrd_init (int argc, char *argv[],
+       initrd_ctx->size = ALIGN_UP (initrd_ctx->size, 4);
+       if (grub_add (initrd_ctx->size,
+ 		    ALIGN_UP (sizeof (struct newc_head)
+-			      + sizeof ("TRAILER!!!") - 1, 4),
++			      + sizeof ("TRAILER!!!"), 4),
+ 		    &initrd_ctx->size))
+ 	goto overflow;
+       free_dir (root);
+@@ -297,14 +308,14 @@ grub_initrd_load (struct grub_linux_initrd_context *initrd_ctx,
+ 	    }
+ 	  ptr += dir_size;
+ 	  ptr = make_header (ptr, initrd_ctx->components[i].newc_name,
+-			     grub_strlen (initrd_ctx->components[i].newc_name),
++			     grub_strlen (initrd_ctx->components[i].newc_name) + 1,
+ 			     0100777,
+ 			     initrd_ctx->components[i].size);
+ 	  newc = 1;
+ 	}
+       else if (newc)
+ 	{
+-	  ptr = make_header (ptr, "TRAILER!!!", sizeof ("TRAILER!!!") - 1,
++	  ptr = make_header (ptr, "TRAILER!!!", sizeof ("TRAILER!!!"),
+ 			     0, 0);
+ 	  free_dir (root);
+ 	  root = 0;
+@@ -327,7 +338,7 @@ grub_initrd_load (struct grub_linux_initrd_context *initrd_ctx,
+     {
+       grub_memset (ptr, 0, ALIGN_UP_OVERHEAD (cursize, 4));
+       ptr += ALIGN_UP_OVERHEAD (cursize, 4);
+-      ptr = make_header (ptr, "TRAILER!!!", sizeof ("TRAILER!!!") - 1, 0, 0);
++      ptr = make_header (ptr, "TRAILER!!!", sizeof ("TRAILER!!!"), 0, 0);
+     }
+   free_dir (root);
+   root = 0;
+-- 
+2.51.1
+
