@@ -24,11 +24,34 @@ on:  # yamllint disable-line rule:truthy
 
 jobs:
   test:
-    runs-on: ubuntu-24.04
+    runs-on: zededa-ubuntu-2204
     steps:
+      - name: Starting Report
+        run: |
+          echo Git Ref: ${GH_REF}
+          echo GitHub Event: ${{ github.event_name }}
+          echo Disk usage
+          df -h
+          echo Memory
+          free -m
+        env:
+          GH_REF: ${{ github.ref }}
+      - name: Clear repository
+        run: |
+          sudo rm -fr "$GITHUB_WORKSPACE" && mkdir "$GITHUB_WORKSPACE"
+          rm -fr ~/.linuxkit
+          docker system prune --all --force --volumes
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8  # v5.0.0
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+      - name: Login to Docker Hub
+        if: ${{ github.event.repository.full_name == 'lf-edge/eve'}}
+        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef  # v3.6.0
+        with:
+          username: ${{ secrets.DOCKERHUB_PULL_USER }}
+          password: ${{ secrets.DOCKERHUB_PULL_TOKEN }}
       - name: Test
         run: |
           make test
@@ -48,3 +71,10 @@ jobs:
           path: ${{ github.workspace }}/dist
       - name: Get code coverage
         uses: codecov/codecov-action@5a1091511ad55cbe89839c7260b706298ca349f7  # v5.5.1
+      - name: Clean
+        if: ${{ always() }}
+        run: |
+          make clean || :
+          docker system prune -f -a || :
+          docker rm -f $(docker ps -aq) && docker volume rm -f $(docker volume ls -q) || :
+          rm -rf ~/.linuxkit || :
