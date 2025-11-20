@@ -35,6 +35,7 @@ jobs:
           echo Memory
           free -m
         env:
+          REPO_NAME: ${{ github.event.repository.full_name }}
           GH_REF: ${{ github.ref }}
       - name: Clear repository
         run: |
@@ -47,7 +48,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
       - name: Login to Docker Hub
-        if: ${{ github.event.repository.full_name == 'lf-edge/eve'}}
+        if: ${{ env.REPO_NAME == 'lf-edge/eve' }}
         uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef  # v3.6.0
         with:
           username: ${{ secrets.DOCKERHUB_PULL_USER }}
