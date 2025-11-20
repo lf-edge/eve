@@ -25,6 +25,9 @@ on:  # yamllint disable-line rule:truthy
 jobs:
   test:
     runs-on: zededa-ubuntu-2204
+    env:
+      REPO_NAME: ${{ github.event.repository.full_name }}
+      GH_REF: ${{ github.ref }}
     steps:
       - name: Starting Report
         run: |
@@ -34,9 +37,6 @@ jobs:
           df -h
           echo Memory
           free -m
-        env:
-          REPO_NAME: ${{ github.event.repository.full_name }}
-          GH_REF: ${{ github.ref }}
       - name: Clear repository
         run: |
           sudo rm -fr "$GITHUB_WORKSPACE" && mkdir "$GITHUB_WORKSPACE"
