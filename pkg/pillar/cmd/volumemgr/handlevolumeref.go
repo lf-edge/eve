@@ -257,7 +257,7 @@ func checkReferences(vs *types.VolumeStatus, vrs *types.VolumeRefStatus) {
 		// don't update the error time if nothing changed
 		if vrs.Error != errStr {
 			log.Functionf("updateVolumeRefStatus(%s): setting the error (previous error: %s, source: %s)", vrs.Key(), vrs.Error, vrs.ErrorSourceType)
-			log.Errorf(errStr)
+			log.Error(errStr)
 			vrs.SetErrorWithSourceAndDescription(types.ErrorDescription{Error: errStr}, types.VolumeRefConfig{})
 		}
 	} else if vrs.IsErrorSource(types.VolumeRefConfig{}) {
