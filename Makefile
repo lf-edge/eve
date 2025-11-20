@@ -629,15 +629,15 @@ run-installer-raw: $(SWTPM) GETTY
 	$(QEMU_SYSTEM) -drive file=$(TARGET_IMG),format=$(IMG_FORMAT) -drive file=$(CURRENT_INSTALLER).raw,format=raw $(QEMU_OPTS)
 
 run-installer-net: QEMU_TFTP_OPTS=,tftp=$(dir $(CURRENT_IPXE_IMG)),bootfile=$(notdir $(CURRENT_IPXE_IMG))
-run-installer-net: $(SWTPM) GETTY
+run-installer-net: $(SWTPM) GETTY $(DEVICETREE_DTB)
 	tar -C $(CURRENT_NETBOOT) -xvf $(CURRENT_INSTALLER).net || :
 	qemu-img create -f ${IMG_FORMAT} $(TARGET_IMG) ${MEDIA_SIZE}M
 	$(QEMU_SYSTEM) -drive file=$(TARGET_IMG),format=$(IMG_FORMAT) $(QEMU_OPTS)
 
 # run MUST NOT change the current dir; it depends on the output being correct from a previous build
-run-live run: $(SWTPM) GETTY
+run-live run: $(SWTPM) GETTY $(DEVICETREE_DTB)
 	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive file=$(CURRENT_IMG),format=$(IMG_FORMAT),id=uefi-disk
-run-live-gui: $(SWTPM) GETTY
+run-live-gui: $(SWTPM) GETTY $(DEVICETREE_DTB)
 	$(QEMU_SYSTEM) $(QEMU_OPTS_GUI) -drive file=$(CURRENT_IMG),format=$(IMG_FORMAT),id=uefi-disk
 
 run-target: $(SWTPM) GETTY
