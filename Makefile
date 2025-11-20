@@ -1016,7 +1016,8 @@ shell: $(GOBUILDER)
 linuxkit: $(LINUXKIT)
 
 LINUXKIT_SOURCE=https://github.com/linuxkit/linuxkit
-PARALLEL_BUILD_LOCK:=$(shell mktemp -u $(BUILD_DIR)/eve-parallel-build-XXXXXX)
+PARALLEL_BUILD_LOCK_FNAME:=$(shell mktemp -u eve-parallel-build-XXXXXX)
+PARALLEL_BUILD_LOCK:=$(BUILD_DIR)/$(PARALLEL_BUILD_LOCK_FNAME)
 
 $(PARALLEL_BUILD_LOCK): $(BUILD_DIR)
 	$(QUIET): "$@: Begin: PARALLEL_BUILD_LOCK=$(PARALLEL_BUILD_LOCK)"
