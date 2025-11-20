@@ -73,6 +73,24 @@ func (ic *InventoryCollector) CollectInventory(slot string) error {
 			},
 		},
 		{
+			name: "lsmod.txt",
+			command: func() ([]byte, error) {
+				return exec.Command("lsmod").CombinedOutput()
+			},
+		},
+		{
+			name: "dmidecode.txt",
+			command: func() ([]byte, error) {
+				return exec.Command("dmidecode").CombinedOutput()
+			},
+		},
+		{
+			name: "dmesg.txt",
+			command: func() ([]byte, error) {
+				return exec.Command("dmesg").CombinedOutput()
+			},
+		},
+		{
 			name: "cmdline.txt",
 			command: func() ([]byte, error) {
 				return os.ReadFile("/proc/cmdline")

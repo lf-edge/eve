@@ -43,7 +43,7 @@ func (s SchedulerState) String() string {
 // Constants for stability period and reboot reasons
 const (
 	// DefaultStabilityPeriod is how long we wait to consider a slot stable
-	DefaultStabilityPeriod = 5 * time.Minute
+	DefaultStabilityPeriod = 3 * time.Minute
 	// RebootReasonEvalNextSlot is the reason we write when switching to next slot
 	RebootReasonEvalNextSlot = "evaluation-next-slot"
 	// RebootReasonEvalFinalize is the reason when switching to best slot
