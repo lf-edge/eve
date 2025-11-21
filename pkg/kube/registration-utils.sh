@@ -6,7 +6,7 @@
 # Dir which pillar service container has access to
 PERSIST_MANIFESTS_DIR=/persist/vault/manifests
 # Dir which kube service container has access to and k3s monitors
-KUBE_MANIFESTS_DIR=/var/lib/rancher/k3s/server/manifests
+KUBE_MANIFESTS_DIR="${KUBE_ROOT}"/rancher/k3s/server/manifests
 
 YAML_EXT="yaml"
 # The source yaml, which pillar inflates.
@@ -70,7 +70,7 @@ Registration_Applied() {
 }
 
 # delete the files from persist so that we don't re-apply them
-# when node converts to single node it also reverts /var/lib/ back to
+# when node converts to single node it also reverts "${KUBE_ROOT}"/ back to
 # sqlite from before registration existed, no need to
 # manually manage deletion of those objects
 cleanup_persist_manifest_registration() {

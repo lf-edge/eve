@@ -150,29 +150,29 @@ is_valid_uuid() {
 }
 
 remove_server_tls_dir() {
-  if [ -d /var/lib/rancher/k3s/server/tls ]; then
-    rm /var/lib/rancher/k3s/server/tls/request-header-ca.key
-    rm /var/lib/rancher/k3s/server/tls/server-ca.key
-    rm /var/lib/rancher/k3s/server/tls/etcd/peer-ca.key
-    rm /var/lib/rancher/k3s/server/tls/etcd/server-ca.crt
-    rm /var/lib/rancher/k3s/server/tls/request-header-ca.crt
-    rm /var/lib/rancher/k3s/server/tls/etcd/server-ca.key
-    rm /var/lib/rancher/k3s/server/cred/ipsec.psk
-    rm /var/lib/rancher/k3s/server/tls/server-ca.crt
-    rm /var/lib/rancher/k3s/server/tls/service.key
-    rm /var/lib/rancher/k3s/server/tls/client-ca.crt
-    rm /var/lib/rancher/k3s/server/tls/client-ca.key
-    rm /var/lib/rancher/k3s/server/tls/etcd/peer-ca.crt
+  if [ -d "${KUBE_ROOT}"/rancher/k3s/server/tls ]; then
+    rm "${KUBE_ROOT}"/rancher/k3s/server/tls/request-header-ca.key
+    rm "${KUBE_ROOT}"/rancher/k3s/server/tls/server-ca.key
+    rm "${KUBE_ROOT}"/rancher/k3s/server/tls/etcd/peer-ca.key
+    rm "${KUBE_ROOT}"/rancher/k3s/server/tls/etcd/server-ca.crt
+    rm "${KUBE_ROOT}"/rancher/k3s/server/tls/request-header-ca.crt
+    rm "${KUBE_ROOT}"/rancher/k3s/server/tls/etcd/server-ca.key
+    rm "${KUBE_ROOT}"/rancher/k3s/server/cred/ipsec.psk
+    rm "${KUBE_ROOT}"/rancher/k3s/server/tls/server-ca.crt
+    rm "${KUBE_ROOT}"/rancher/k3s/server/tls/service.key
+    rm "${KUBE_ROOT}"/rancher/k3s/server/tls/client-ca.crt
+    rm "${KUBE_ROOT}"/rancher/k3s/server/tls/client-ca.key
+    rm "${KUBE_ROOT}"/rancher/k3s/server/tls/etcd/peer-ca.crt
   fi
 }
 
 remove_multus_cni() {
         kubectl delete -f /etc/multus-daemonset-new.yaml
         rm /etc/multus-daemonset-new.yaml
-        rm /var/lib/multus_initialized
+        rm "${KUBE_ROOT}"/multus_initialized
 }
 
-# save the /var/lib to /persist/kube-save-var-lib
+# save the "${KUBE_ROOT}" to /persist/kube-save-var-lib
 save_var_lib() {
   local dest_dir="${SAVE_KUBE_VAR_LIB_DIR}"
   # Check if destination directory exists, if not create it
@@ -183,19 +183,19 @@ save_var_lib() {
   # Remove everything in the destination directory
   rm -rf "${dest_dir:?}"/*
 
-  # Copy all contents from /var/lib to destination directory
-  cp -a /var/lib/. "$dest_dir"
+  # Copy all contents from "${KUBE_ROOT}" to destination directory
+  cp -a "${KUBE_ROOT}"/. "$dest_dir"
 }
 
-# Function to restore contents from /persist/kube-save-var-lib back to /var/lib
+# Function to restore contents from /persist/kube-save-var-lib back to "${KUBE_ROOT}"
 restore_var_lib() {
   local source_dir="${SAVE_KUBE_VAR_LIB_DIR}"
-  # Remove everything under /var/lib
-  rm -rf /var/lib/*
+  # Remove everything under "${KUBE_ROOT}"
+  rm -rf "${KUBE_ROOT}"/*
 
-  # Copy everything from /persist/kube-save-var-lib back to /var/lib
+  # Copy everything from /persist/kube-save-var-lib back to "${KUBE_ROOT}"
   if [ -d "$source_dir" ]; then
-        cp -a "${source_dir}/." /var/lib
+        cp -a "${source_dir}/." "${KUBE_ROOT}"
   else
         ## the saved files are missing, have do install again
         Update_CheckNodeComponents
@@ -291,6 +291,20 @@ wait_for_item() {
         done
 }
 
+wait_until_item() {
+        filename="/persist/k3s/wait_$1"
+        while [ ! -e "$filename" ]; do
+                k3sproc=""
+                if pgrep -x "$K3S_SERVER_CMD" > /dev/null; then
+                        k3sproc="k3s server is running"
+                else
+                        k3sproc="k3s server is NOT running"
+                fi
+                logmsg "Did not find $filename file. $k3sproc, Waiting for 60 seconds..."
+                sleep 60
+        done 
+}
+
 wait_for_device_name() {
         logmsg "Waiting for DeviceName from controller..."
         EdgeNodeInfoPath="/persist/status/zedagent/EdgeNodeInfo/global.json"
@@ -334,7 +348,7 @@ wait_for_default_route() {
 Multus_uninstall() {
         logmsg "multus uninstall"
         kubectl delete -f /etc/multus-daemonset-new.yaml
-        rm /var/lib/multus_initialized
+        rm "${KUBE_ROOT}"/multus_initialized
 }
 
 Multus_config() {
