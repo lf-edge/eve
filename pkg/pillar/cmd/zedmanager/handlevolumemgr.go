@@ -12,6 +12,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/lf-edge/eve/pkg/pillar/activeapp"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
@@ -302,6 +303,9 @@ func reactToSnapshotRollback(ctx *zedmanagerContext, volumesSnapshotStatus types
 	}
 	unpublishLocalAppInstanceConfig(ctx, appInstanceStatus.Key())
 	publishAppInstanceStatus(ctx, appInstanceStatus)
+	// Mark the app as active locally to ensure it immediately restarts after rollback from a snapshot.
+	// This avoids delays in app activation that can occur due to edge app priority scheduling.
+	activeapp.CreateLocalAppActiveFile(log, appInstanceStatus.UUIDandVersion.UUID.String())
 	doUpdate(ctx, *config, appInstanceStatus)
 }
 
