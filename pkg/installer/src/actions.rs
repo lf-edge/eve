@@ -21,7 +21,7 @@ use crate::{
 
 use crate::state::Move;
 
-fn new_state(state: GlobalState) -> (Box<(dyn cursive::View + 'static)>, bool) {
+fn new_state(state: GlobalState) -> (Box<dyn cursive::View + 'static>, bool) {
     let map = state.data.map.clone();
     match state.current_state {
         CurrentState::INIT => {
