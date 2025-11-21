@@ -1,12 +1,10 @@
 // Copyright (c) 2024 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-package watcher
+package watcher //nolint:testpackage // Internal tests need access to unexported helpers
 
 import (
 	"fmt"
-	"github.com/lf-edge/eve/pkg/pillar/agentlog"
-	"github.com/sirupsen/logrus"
 	"io"
 	"math"
 	"os"
@@ -14,17 +12,20 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/lf-edge/eve/pkg/pillar/agentlog"
+	"github.com/sirupsen/logrus"
 )
 
 // Scenario 1: Initial growth that slows down and then stabilizes
 func emulateSystemStart(startDuration, stabilizationDuration int) []int {
 	totalDuration := startDuration + stabilizationDuration
-	data := make([]int, startDuration)
+	data := make([]int, 0, totalDuration)
 	baseGoroutines := 0
-	for i := 0; i < startDuration; i++ {
+	for i := range startDuration {
 		// Simulate fast growth that slows down
 		growth := int(500 * (1 - math.Exp(-float64(i)/10))) // Exponential decay
-		data[i] = baseGoroutines + growth
+		data = append(data, baseGoroutines+growth)
 	}
 	// Stabilize after growth
 	stableGoroutines := data[len(data)-1]
@@ -56,7 +57,7 @@ func emulateDecreaseAfterSpike(decreaseDuration, spikeDuration, stabilizationDur
 	data := emulateSpikeAfterSystemStart(startDuration, stabilizationDuration, spikeDuration)
 	decreaseStart := len(data)
 	baseGoroutines := data[decreaseStart-1]
-	for i := 0; i < decreaseDuration; i++ {
+	for i := range decreaseDuration {
 		decrease := int(float64(baseGoroutines) * (1 - float64(i)/float64(decreaseDuration)))
 		data = append(data, decrease)
 	}
@@ -109,10 +110,9 @@ func TestMovingAverageWindowSizeEqualDataLength(t *testing.T) {
 
 // Handles empty data array gracefully
 func TestMovingAverageEmptyData(t *testing.T) {
-	data := []int{}
+	var data []int
 	windowSize := 3
 	var expected []float64
-	expected = nil
 
 	result := movingAverage(data, windowSize)
 
@@ -204,7 +204,7 @@ func TestGoroutineLeakDetectorWithLeakEachStep(t *testing.T) {
 	leakMustBeDetectedAfter := leakMayBeDetectedAfter + possibleFalsePositives
 	stats := emulateLeakAfterSpike(leakDuration, stabilizationDuration, spikeDuration, startDuration)
 	// Now check the behavior of detector on each new data point
-	for i := 0; i < len(stats); i++ {
+	for i := range stats {
 		detected, _ := detectGoroutineLeaks(stats[:i])
 		// Leak should be detected after the slow increase starts
 		if detected && i < startDuration+stabilizationDuration+spikeDuration+stabilizationDuration {
@@ -272,7 +272,7 @@ func TestGoroutinesMonitorNoLeak(t *testing.T) {
 	ctx.GRLDParams.Set(goroutinesThreshold, checkInterval, checkStatsFor, keepStatsFor, cooldownPeriod)
 	ctx.GRLDParams.MakeStoppable()
 
-	go goroutinesMonitor(ctx)
+	go GoroutinesMonitor(ctx)
 	defer ctx.GRLDParams.Stop()
 
 	timeStart := time.Now()
@@ -288,7 +288,7 @@ func TestGoroutinesMonitorNoLeak(t *testing.T) {
 	}
 
 	// Close the pipe
-	w.Close()
+	_ = w.Close()
 
 	// Read the log output
 	output, _ := io.ReadAll(r)
@@ -319,7 +319,7 @@ func TestGoroutinesMonitorLeak(t *testing.T) {
 	ctx.GRLDParams.Set(goroutinesThreshold, checkInterval, checkStatsFor, keepStatsFor, cooldownPeriod)
 	ctx.GRLDParams.MakeStoppable()
 
-	go goroutinesMonitor(ctx)
+	go GoroutinesMonitor(ctx)
 	defer ctx.GRLDParams.Stop()
 
 	timeStart := time.Now()
@@ -373,7 +373,7 @@ func TestGoroutinesMonitorUpdateParamsKeepStatsDecrease(t *testing.T) {
 	ctx.GRLDParams.Set(goroutinesThreshold, checkInterval, checkStatsFor, keepStatsFor, cooldownPeriod)
 	ctx.GRLDParams.MakeStoppable()
 
-	go goroutinesMonitor(ctx)
+	go GoroutinesMonitor(ctx)
 	defer ctx.GRLDParams.Stop()
 
 	// Wait until we fill the stats slice
@@ -406,7 +406,7 @@ func TestGoroutinesMonitorUpdateParamsKeepStatsDecrease(t *testing.T) {
 	// Check if the log output contains the expected messages
 	for _, expectedMsg := range expectedMsgs {
 		if !strings.Contains(string(output), expectedMsg) {
-			t.Errorf("Expected log output to contain '%s', but got '%s'", expectedMsg, output)
+			t.Errorf("Expected log output to contain '%s'", expectedMsg)
 		}
 	}
 }
@@ -438,7 +438,7 @@ func TestGoroutinesMonitorUpdateParamsKeepStatsIncrease(t *testing.T) {
 	ctx.GRLDParams.Set(goroutinesThreshold, checkInterval, checkStatsFor, keepStatsFor, cooldownPeriod)
 	ctx.GRLDParams.MakeStoppable()
 
-	go goroutinesMonitor(ctx)
+	go GoroutinesMonitor(ctx)
 	defer ctx.GRLDParams.Stop()
 
 	// Wait until we fill the stats slice
@@ -490,7 +490,7 @@ func TestGoroutineMonitorStops(t *testing.T) {
 	ctx.GRLDParams.Set(goroutinesThreshold, checkInterval, checkStatsFor, keepStatsFor, cooldownPeriod)
 	ctx.GRLDParams.MakeStoppable()
 
-	go goroutinesMonitor(ctx)
+	go GoroutinesMonitor(ctx)
 
 	// Let the monitor run for a while
 	time.Sleep(keepStatsFor * 2)
@@ -540,7 +540,7 @@ func TestGoroutineMonitorRunsFineUnstoppable(t *testing.T) {
 	ctx := &watcherContext{}
 	ctx.GRLDParams.Set(goroutinesThreshold, checkInterval, checkStatsFor, keepStatsFor, cooldownPeriod)
 
-	go goroutinesMonitor(ctx)
+	go GoroutinesMonitor(ctx)
 
 	time.Sleep(keepStatsFor * 2)
 
@@ -558,4 +558,17 @@ func TestGoroutineMonitorRunsFineUnstoppable(t *testing.T) {
 		}
 	}
 
+}
+
+func BenchmarkMovingAverage(b *testing.B) {
+	data := make([]int, 1000)
+	for i := range 1000 {
+		data[i] = i
+	}
+	windowSize := 10
+
+	b.ResetTimer()
+	for range b.N {
+		movingAverage(data, windowSize)
+	}
 }

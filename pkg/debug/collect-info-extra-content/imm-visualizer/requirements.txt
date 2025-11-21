@@ -1,0 +1,3 @@
+pandas>=2.0
+plotly>=5.15
+scikit-learn>=1.5.0

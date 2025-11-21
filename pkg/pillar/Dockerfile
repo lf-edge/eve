@@ -103,6 +103,10 @@ RUN ./configure --libexecdir=/usr/lib/dhcpcd --dbdir=/var/lib/dhcpcd --runstated
 ARG RSTATS=n
 ARG RSTATS_ENDPOINT=
 ARG RSTATS_TAG=
+ARG IMM_PROFILING=n
+ENV IMM_PROFILING=${IMM_PROFILING}
+ARG ARTIFICIAL_LEAK=n
+ENV ARTIFICIAL_LEAK=${ARTIFICIAL_LEAK}
 
 # we need zfs files during build
 COPY --from=zfs /out /
@@ -119,11 +123,15 @@ ENV GOOS=linux
 ENV GOARCH=${TARGETARCH}
 ARG GOPKGVERSION
 
+# make LK build args affect a layer, so value change will invalidate cache
+RUN echo "IMM_PROFILING: ${IMM_PROFILING}"
+RUN echo "ARTIFICIAL_LEAK: ${ARTIFICIAL_LEAK}"
+
 # hadolint ignore=DL4006
 RUN --mount=type=cache,target=/root/.cache/go-build echo "Running go vet" && make HV="$HV" vet && \
     echo "Running go fmt" && ERR="$(find . -name \*.go | grep -v /vendor/ | xargs gofmt -d -e -l -s)" && \
        if [ -n "$ERR" ] ; then printf 'go fmt Failed - ERR: %s' "$ERR" ; exit 1 ; fi && \
-       make ZARCH=${TARGETARCH} HV="$HV" DEV="$DEV" RSTATS=$RSTATS RSTATS_ENDPOINT=$RSTATS_ENDPOINT RSTATS_TAG=$RSTATS_TAG DISTDIR=/final/opt/zededa/bin BUILD_VERSION=${GOPKGVERSION} build
+       make ZARCH=${TARGETARCH} HV="$HV" DEV="$DEV" RSTATS=$RSTATS RSTATS_ENDPOINT=$RSTATS_ENDPOINT RSTATS_TAG=$RSTATS_TAG IMM_PROFILING=$IMM_PROFILING ARTIFICIAL_LEAK=$ARTIFICIAL_LEAK DISTDIR=/final/opt/zededa/bin BUILD_VERSION=${GOPKGVERSION} build
 
 WORKDIR /
 
