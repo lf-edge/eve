@@ -1,0 +1,19 @@
+# Copyright (c) 2025, Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+---
+# Eden version mapping for different EVE branches
+# Maps EVE base branch names to Eden workflow versions
+# Format:
+#   branch-name:
+#     eden_version: "<version>"
+
+# LTS releases (13.4 and 14.5) use older Eden version
+13.4-stable:
+  eden_version: "1.0.9"
+
+14.5-stable:
+  eden_version: "1.0.9"
+
+# Default mapping for all other branches (master, development branches, etc.)
+default:
+  eden_version: "1.0.13"
