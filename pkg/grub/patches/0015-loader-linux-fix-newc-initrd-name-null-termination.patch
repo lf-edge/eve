@@ -1,0 +1,96 @@
+From bc8e8991b0f6e789619ec90399a097750d8fb5be Mon Sep 17 00:00:00 2001
+From: othonas soultatos <othonas.s@gmail.com>
+Date: Wed, 19 Nov 2025 12:40:34 +0200
+Subject: [PATCH] loader/linux: fix newc initrd name null termination
+
+The newc CPIO format requires the filename to be null-terminated.
+The current implementation calculates namesize as strlen(name), which
+excludes the null terminator. This causes newer kernels (e.g. 6.12)
+to reject the initramfs with "initramfs name without nulterm".
+
+This patch fixes it by including the null terminator in the namesize
+and copying it to the header.
+
+Signed-off-by: Othonas Soultatos <othonas.s@gmail.com>
+---
+ grub-core/loader/linux.c | 18 +++++++++---------
+ 1 file changed, 9 insertions(+), 9 deletions(-)
+
+diff --git a/grub-core/loader/linux.c b/grub-core/loader/linux.c
+index be6fa0f4d..e78f7cc72 100644
+--- a/grub-core/loader/linux.c
++++ b/grub-core/loader/linux.c
+@@ -127,10 +127,10 @@ insert_dir (const char *name, struct dir **root,
+ 	  if (ptr)
+ 	    {
+ 	      grub_dprintf ("linux", "Creating directory %s, %s\n", name, ce);
+-	      ptr = make_header (ptr, name, ce - name,
++	      ptr = make_header (ptr, name, ce - name + 1,
+ 				 040777, 0);
+ 	    }
+-	  size += ALIGN_UP ((ce - (char *) name)
++	  size += ALIGN_UP ((ce - (char *) name + 1)
+ 			    + sizeof (struct newc_head), 4);
+ 	  *head = n;
+ 	  cur = n;
+@@ -182,7 +182,7 @@ grub_initrd_init (int argc, char *argv[],
+ 		}
+ 	      initrd_ctx->size
+ 		+= ALIGN_UP (sizeof (struct newc_head)
+-			    + grub_strlen (initrd_ctx->components[i].newc_name),
++			    + grub_strlen (initrd_ctx->components[i].newc_name) + 1,
+ 			     4);
+ 	      initrd_ctx->size += insert_dir (initrd_ctx->components[i].newc_name,
+ 					      &root, 0);
+@@ -193,7 +193,7 @@ grub_initrd_init (int argc, char *argv[],
+       else if (newc)
+ 	{
+ 	  initrd_ctx->size += ALIGN_UP (sizeof (struct newc_head)
+-					+ sizeof ("TRAILER!!!") - 1, 4);
++					+ sizeof ("TRAILER!!!"), 4);
+ 	  free_dir (root);
+ 	  root = 0;
+ 	  newc = 0;
+@@ -215,11 +215,11 @@ grub_initrd_init (int argc, char *argv[],
+     {
+       initrd_ctx->size = ALIGN_UP (initrd_ctx->size, 4);
+       initrd_ctx->size += ALIGN_UP (sizeof (struct newc_head)
+-				    + sizeof ("TRAILER!!!") - 1, 4);
++				    + sizeof ("TRAILER!!!"), 4);
+       free_dir (root);
+       root = 0;
+     }
+-  
++
+   return GRUB_ERR_NONE;
+ }
+ 
+@@ -264,14 +264,14 @@ grub_initrd_load (struct grub_linux_initrd_context *initrd_ctx,
+ 	  ptr += insert_dir (initrd_ctx->components[i].newc_name,
+ 			     &root, ptr);
+ 	  ptr = make_header (ptr, initrd_ctx->components[i].newc_name,
+-			     grub_strlen (initrd_ctx->components[i].newc_name),
++			     grub_strlen (initrd_ctx->components[i].newc_name) +1 ,
+ 			     0100777,
+ 			     initrd_ctx->components[i].size);
+ 	  newc = 1;
+ 	}
+       else if (newc)
+ 	{
+-	  ptr = make_header (ptr, "TRAILER!!!", sizeof ("TRAILER!!!") - 1,
++	  ptr = make_header (ptr, "TRAILER!!!", sizeof ("TRAILER!!!"),
+ 			     0, 0);
+ 	  free_dir (root);
+ 	  root = 0;
+@@ -294,7 +294,7 @@ grub_initrd_load (struct grub_linux_initrd_context *initrd_ctx,
+     {
+       grub_memset (ptr, 0, ALIGN_UP_OVERHEAD (cursize, 4));
+       ptr += ALIGN_UP_OVERHEAD (cursize, 4);
+-      ptr = make_header (ptr, "TRAILER!!!", sizeof ("TRAILER!!!") - 1, 0, 0);
++      ptr = make_header (ptr, "TRAILER!!!", sizeof ("TRAILER!!!"), 0, 0);
+     }
+   free_dir (root);
+   root = 0;
+-- 
+2.51.1
+

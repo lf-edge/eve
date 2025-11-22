@@ -285,7 +285,7 @@ IPS_NET1_FIRST_IP=192.168.1.10
 IPS_NET2=192.168.2.0/24
 IPS_NET2_FIRST_IP=192.168.2.10
 
-QEMU_MEMORY?=4096
+QEMU_MEMORY?=8192
 QEMU_EVE_SERIAL?=31415926
 
 PFLASH_amd64=y
@@ -629,15 +629,15 @@ run-installer-raw: $(SWTPM) GETTY
 	$(QEMU_SYSTEM) -drive file=$(TARGET_IMG),format=$(IMG_FORMAT) -drive file=$(CURRENT_INSTALLER).raw,format=raw $(QEMU_OPTS)
 
 run-installer-net: QEMU_TFTP_OPTS=,tftp=$(dir $(CURRENT_IPXE_IMG)),bootfile=$(notdir $(CURRENT_IPXE_IMG))
-run-installer-net: $(SWTPM) GETTY
+run-installer-net: $(SWTPM) GETTY $(DEVICETREE_DTB)
 	tar -C $(CURRENT_NETBOOT) -xvf $(CURRENT_INSTALLER).net || :
 	qemu-img create -f ${IMG_FORMAT} $(TARGET_IMG) ${MEDIA_SIZE}M
 	$(QEMU_SYSTEM) -drive file=$(TARGET_IMG),format=$(IMG_FORMAT) $(QEMU_OPTS)
 
 # run MUST NOT change the current dir; it depends on the output being correct from a previous build
-run-live run: $(SWTPM) GETTY
+run-live run: $(SWTPM) GETTY $(DEVICETREE_DTB)
 	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive file=$(CURRENT_IMG),format=$(IMG_FORMAT),id=uefi-disk
-run-live-gui: $(SWTPM) GETTY
+run-live-gui: $(SWTPM) GETTY $(DEVICETREE_DTB)
 	$(QEMU_SYSTEM) $(QEMU_OPTS_GUI) -drive file=$(CURRENT_IMG),format=$(IMG_FORMAT),id=uefi-disk
 
 run-target: $(SWTPM) GETTY
@@ -1013,7 +1013,8 @@ shell: $(GOBUILDER)
 linuxkit: $(LINUXKIT)
 
 LINUXKIT_SOURCE=https://github.com/linuxkit/linuxkit
-PARALLEL_BUILD_LOCK:=$(shell mktemp -u $(BUILD_DIR)/eve-parallel-build-XXXXXX)
+PARALLEL_BUILD_LOCK_FNAME:=$(shell mktemp -u eve-parallel-build-XXXXXX)
+PARALLEL_BUILD_LOCK:=$(BUILD_DIR)/$(PARALLEL_BUILD_LOCK_FNAME)
 
 $(PARALLEL_BUILD_LOCK): $(BUILD_DIR)
 	$(QUIET): "$@: Begin: PARALLEL_BUILD_LOCK=$(PARALLEL_BUILD_LOCK)"
