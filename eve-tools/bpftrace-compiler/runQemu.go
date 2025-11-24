@@ -45,7 +45,7 @@ func newQemuAmd64Runner(imageDir, bpfPath, aotPath string) *qemuRunner {
 		qemuArgs:     map[string]string{},
 		appendArgs:   map[string]struct{}{},
 		qemuArchArgs: qemuArchArgsAmd64{},
-		timeout:      2 * time.Minute,
+		timeout:      8 * time.Minute,
 	}
 }
 
@@ -57,7 +57,7 @@ func newQemuArm64Runner(imageDir, bpfPath, aotPath string) *qemuRunner {
 		units:        []string{},
 		qemuArchArgs: qemuArchArgsArm64{},
 		appendArgs:   map[string]struct{}{},
-		timeout:      2 * time.Minute,
+		timeout:      8 * time.Minute,
 	}
 }
 
