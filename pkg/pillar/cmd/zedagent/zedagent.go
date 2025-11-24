@@ -230,6 +230,7 @@ type zedagentContext struct {
 	apiMaintenanceMode    bool
 	localMaintenanceMode  bool                             //maintenance mode triggered by local failure
 	localMaintModeReasons types.MaintenanceModeMultiReason //local failure reason for maintenance mode
+	edgeNodeCertsRefused  bool                             // causes maintenance mode
 	devState              types.DeviceState
 	attestState           types.AttestState
 	attestError           string
@@ -2781,7 +2782,11 @@ func getDeferredSentHandlerFunction(ctx *zedagentContext) controllerconn.SentHan
 			}
 			if el, ok := itemType.(attest.ZAttestReqType); ok && el == attest.ZAttestReqType_ATTEST_REQ_CERT {
 				log.Noticef("sendAttestReqProtobuf: Sent EdgeNodeCerts")
-				ctx.publishedEdgeNodeCerts = true
+				if !ctx.publishedEdgeNodeCerts {
+					ctx.publishedEdgeNodeCerts = true
+					ctx.edgeNodeCertsRefused = false
+					publishZedAgentStatus(ctx.getconfigCtx)
+				}
 			}
 		} else {
 			if el, ok := itemType.(attest.ZAttestReqType); ok {
@@ -2801,9 +2806,26 @@ func getDeferredSentHandlerFunction(ctx *zedagentContext) controllerconn.SentHan
 				if el == attest.ZAttestReqType_ATTEST_REQ_CERT {
 					log.Warnf("sendAttestReqProtobuf: Failed to send EdgeNodeCerts: %s",
 						result.String())
-					// XXX should we declare maintenance mode?
 					// We get SenderStatusNotFound when a cert can
 					// not be replaced in the controller for security reasons.
+					if !ctx.publishedEdgeNodeCerts &&
+						ctx.getconfigCtx.configGetStatus == types.ConfigGetSuccess {
+						// Force maintenance mode
+						// Note: If the network is flaky we might set it early
+						// when we have ConfigGetSuccess and then clear it once the certs published
+						log.Errorf("Failed to send EdgeNodeCerts: %s, maint %t, %v",
+							result.String(),
+							ctx.maintenanceMode,
+							ctx.maintModeReasons)
+						ctx.edgeNodeCertsRefused = true
+						publishZedAgentStatus(ctx.getconfigCtx)
+					} else if ctx.getconfigCtx.configGetStatus != types.ConfigGetSuccess {
+						// Lost controller connectivity
+						// Currently no need for maintenance mode - it will
+						// be determined when connectivity is back
+						ctx.edgeNodeCertsRefused = false
+						publishZedAgentStatus(ctx.getconfigCtx)
+					}
 				}
 				if !ctx.publishedEdgeNodeCerts {
 					// Attestation request does not clog the send queue (issued

@@ -1107,6 +1107,7 @@ func publishZedAgentStatus(getconfigCtx *getconfigContext) {
 		RequestedBootReason:    ctx.requestedBootReason,
 		MaintenanceMode:        ctx.maintenanceMode,
 		MaintenanceModeReasons: ctx.maintModeReasons,
+		EdgeNodeCertsRefused:   ctx.edgeNodeCertsRefused,
 		ForceFallbackCounter:   ctx.forceFallbackCounter,
 		CurrentProfile:         getconfigCtx.localCmdAgent.GetCurrentProfile(),
 		RadioSilence:           getconfigCtx.localCmdAgent.GetRadioSilenceConfig(),
