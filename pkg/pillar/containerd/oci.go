@@ -27,7 +27,6 @@ import (
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/sirupsen/logrus"
-	"golang.org/x/sys/unix"
 	"tags.cncf.io/container-device-interface/pkg/cdi"
 )
 
@@ -135,19 +134,23 @@ func (s *ociSpec) AddLoader(volume string) error {
 	snapshotPath := strings.TrimSuffix(snapshotMount[0].Source, "/fs")
 	logrus.Debugf("Snapshot path: %s", snapshotPath)
 
-	xenToolsMount := specs.Mount{
-		Type:        "overlay",
-		Source:      "overlay",
-		Destination: "/",
-		Options: []string{
-			"index=off",
-			"workdir=" + snapshotPath + "/work",
-			"upperdir=" + snapshotPath + "/fs",
-			"lowerdir=" + volume + "/rootfs",
-		}}
+	// Create the mount point for the overlay filesystem
+	overlayMountPoint := snapshotPath + "/merged"
+	if err := os.MkdirAll(overlayMountPoint, 0755); err != nil {
+		return fmt.Errorf("failed to create overlay mount point: %w", err)
+	}
 
-	// we need to prepend the loader mount to the existing mounts to make sure it's mounted first because it's the rootfs
-	spec.Mounts = append([]specs.Mount{xenToolsMount}, spec.Mounts...)
+	// Mount the overlay filesystem on the host
+	// This creates a writable overlay with the original rootfs as the lower layer
+	// and the snapshot's fs directory as the upper layer
+	if err := mountOverlay(volume+"/rootfs", snapshotPath+"/fs", snapshotPath+"/work", overlayMountPoint); err != nil {
+		return err
+	}
+
+	// Set the container's root to the mounted overlay filesystem
+	// This replaces the need for a mount to "/" which is not allowed in newer runc versions
+	spec.Root.Path = overlayMountPoint
+	spec.Root.Readonly = true
 
 	s.containerOpts = append(s.containerOpts, containerd.WithSnapshot(snapshotName))
 
@@ -316,38 +319,6 @@ func (s *ociSpec) AdjustMemLimit(dom types.DomainConfig, addMemory int64) {
 		m := int64(dom.Memory)*1024 + addMemory
 		s.Linux.Resources.Memory.Limit = &m
 	}
-}
-
-func getDeviceInfo(path string) (specs.LinuxDevice, error) {
-	var statInfo unix.Stat_t
-	var devType string
-	ociDev := specs.LinuxDevice{}
-
-	err := unix.Stat(path, &statInfo)
-	if err != nil {
-		return ociDev, err
-	}
-
-	switch statInfo.Mode & unix.S_IFMT {
-	case unix.S_IFBLK:
-		devType = "b"
-	case unix.S_IFCHR:
-		devType = "c"
-	case unix.S_IFDIR:
-		devType = "d"
-	case unix.S_IFIFO:
-		devType = "p"
-	case unix.S_IFLNK:
-		devType = "l"
-	case unix.S_IFSOCK:
-		devType = "s"
-	}
-
-	ociDev.Path = path
-	ociDev.Type = devType
-	ociDev.Major = int64(unix.Major(statInfo.Rdev))
-	ociDev.Minor = int64(unix.Minor(statInfo.Rdev))
-	return ociDev, nil
 }
 
 func (s *ociSpec) UpdateWithIoBundles(config *types.DomainConfig, aa *types.AssignableAdapters, domainID int) error {
