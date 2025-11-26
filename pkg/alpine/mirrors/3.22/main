@@ -441,6 +441,7 @@ libxi-dev
 libxinerama
 libxinerama-dev
 libxml2
+libxml2-dev
 libxml2-utils
 libxrandr
 libxrandr-dev
@@ -455,8 +456,13 @@ linux-headers
 linux-pam
 linux-pam-dev
 llvm18-libs
+llvm20
+llvm20-dev
+llvm20-gtest
 llvm20-libs
 llvm20-linker-tools
+llvm20-static
+llvm20-test-utils
 lm-sensors
 lm-sensors-libs
 lua5.4-libs
