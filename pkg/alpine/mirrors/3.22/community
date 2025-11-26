@@ -30,6 +30,7 @@ libvirt-qemu
 libvncserver
 libvncserver-dev
 ossp-uuid
+ossp-uuid-libs
 perf
 py3-cachecontrol
 py3-colorama
