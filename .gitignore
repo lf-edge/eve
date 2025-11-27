@@ -29,5 +29,7 @@ tools/compare-sbom-sources/vendor
 tools/get-deps/get-deps
 tools/get-deps/vendor
 pkg/installer/target
-pkg/installer/vendor
+pkg/installer/vendor/windows*/lib
+pkg/installer/vendor/winapi-*/lib
+pkg/installer/vendor/windows-sys*/src/Windows/
 pkg/monitor/eve-monitor-rs
