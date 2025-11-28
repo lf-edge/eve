@@ -26,7 +26,7 @@ tar_opts="$(tar --version | grep -qi 'GNU tar' && echo --warning=no-unknown-keyw
 
 # This is a bit of a hack, but we need to extract the rootfs tar to a directory, and it fails if
 # we try to extract character devices, block devices or pipes, so we just exclude the dir.
-# Same issue for var/lock, that comes from linuxkit/runc image and it's a symbolic link to
+# Same issue for var/lock, that comes from linuxkit/init image and it's a symbolic link to
 # ../run/lock directory.
 tar "${tar_opts}" -xf "$rootfs" -C "$tmproot" --exclude "dev/*" --exclude "var/lock"
 echo "${tmpout}"
