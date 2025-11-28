@@ -1,0 +1,8 @@
+[
+    "zfs-libs",
+    "zfs-dev",
+    "build-base",
+    "linux-headers",
+    "zfs-dev",
+    "util-linux-dev"
+]
