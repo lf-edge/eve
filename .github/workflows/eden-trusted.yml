@@ -28,6 +28,7 @@ jobs:
       pr_id: ${{ steps.extract.outputs.pr_id }}
       original_run_id: ${{ steps.extract.outputs.original_run_id }}
       pr_sha: ${{ steps.extract.outputs.pr_sha }}
+      pr_base_ref: ${{ steps.extract.outputs.pr_base_ref }}
       hv: ${{ steps.extract.outputs.hv }}
       arch: ${{ steps.extract.outputs.arch }}
       platform: ${{ steps.extract.outputs.platform }}
@@ -64,7 +65,7 @@ jobs:
         if: ${{ steps.check_gate.outputs.skip_run == 'false' }}
         env:
           RUN_CONTEXT_FILE: ${{ env.RUN_CONTEXT_FILE }}
-          REQUIRED_FIELDS: pr_id, original_run_id, pr_sha, hv, arch, platform, gate_run_id, gate_status_name
+          REQUIRED_FIELDS: pr_id, original_run_id, pr_sha, pr_base_ref, hv, arch, platform, gate_run_id, gate_status_name
         run: |
           if [[ ! -f "$RUN_CONTEXT_FILE" ]]; then
             echo "$RUN_CONTEXT_FILE file not found"
@@ -95,7 +96,7 @@ jobs:
         if: ${{ steps.check_gate.outputs.skip_run == 'false' }}
         id: extract
         env:
-          FIELDS: pr_id, original_run_id, pr_sha, hv, arch, platform, gate_run_id, gate_status_name
+          FIELDS: pr_id, original_run_id, pr_sha, pr_base_ref, hv, arch, platform, gate_run_id, gate_status_name
         run: |
           # Extract fields from the JSON file
           for field in $(echo "$FIELDS" | tr ',' ' '); do
@@ -175,18 +176,134 @@ jobs:
             }
 
 
-  tests:
-    name: ${{ needs.context.outputs.eden_parent_job_title }}
+  select_eden_version:
+    name: Select Eden Version
+    runs-on: ubuntu-latest
     needs: context
     if: needs.context.outputs.skip_run == 'false'
-    uses: lf-edge/eden/.github/workflows/test.yml@1.0.13
-    secrets: inherit
-    with:
-      eve_image: "evebuild/pr:${{ needs.context.outputs.pr_id }}"
-      eve_log_level: "debug"
-      eve_artifact_name: "eve-${{ needs.context.outputs.hv }}-${{ needs.context.outputs.arch }}-${{ needs.context.outputs.platform }}"
-      artifact_run_id: ${{ needs.context.outputs.original_run_id }}
-      eden_version: "1.0.13"
+    outputs:
+      eden_version: ${{ steps.select.outputs.eden_version }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      - name: Select Eden version based on target branch
+        id: select
+        env:
+          BASE_REF: ${{ needs.context.outputs.pr_base_ref }}
+        run: |
+          MAPPING_FILE=".github/eden-version-map.yml"
+
+          if [[ ! -f "$MAPPING_FILE" ]]; then
+            echo "::error::Eden version mapping file not found: $MAPPING_FILE"
+            exit 1
+          fi
+
+          echo "PR target branch: $BASE_REF"
+
+          # Try to get the mapping for the specific branch
+          eden_version=$(yq eval ".\"$BASE_REF\".eden_version" "$MAPPING_FILE")
+
+          # If no specific mapping exists, use the default
+          if [[ "$eden_version" == "null" || -z "$eden_version" ]]; then
+            echo "No specific mapping found for branch '$BASE_REF', using default"
+            eden_version=$(yq eval '.default.eden_version' "$MAPPING_FILE")
+          fi
+
+          # Verify that we have valid values
+          if [[ "$eden_version" == "null" || -z "$eden_version" ]]; then
+            echo "::error::Failed to determine eden_version for branch '$BASE_REF'"
+            exit 1
+          fi
+
+          echo "Selected Eden version: $eden_version"
+
+          echo "eden_version=$eden_version" >> "$GITHUB_OUTPUT"
+
+
+  tests:
+    name: ${{ needs.context.outputs.eden_parent_job_title }}
+    needs: [context, select_eden_version]
+    if: needs.context.outputs.skip_run == 'false'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Eden tests via repository dispatch
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd  # v8.0.0
+        env:
+          EDEN_VERSION: ${{ needs.select_eden_version.outputs.eden_version }}
+          EVE_IMAGE: "evebuild/pr:${{ needs.context.outputs.pr_id }}"
+          EVE_ARTIFACT_NAME: "eve-${{ needs.context.outputs.hv }}-${{ needs.context.outputs.arch }}-${{ needs.context.outputs.platform }}"
+          ARTIFACT_RUN_ID: ${{ needs.context.outputs.original_run_id }}
+        with:
+          script: |
+            const [owner, repo] = 'lf-edge/eden'.split('/');
+            const dispatchResponse = await github.rest.actions.createWorkflowDispatch({
+              owner,
+              repo,
+              workflow_id: 'test.yml',
+              ref: process.env.EDEN_VERSION,
+              inputs: {
+              eve_image: process.env.EVE_IMAGE,
+              eve_log_level: 'debug',
+              eve_artifact_name: process.env.EVE_ARTIFACT_NAME,
+              artifact_run_id: process.env.ARTIFACT_RUN_ID,
+              eden_version: process.env.EDEN_VERSION
+              }
+            });
+
+            // Wait briefly for the workflow run to be created
+            await new Promise(resolve => setTimeout(resolve, 2000));
+
+            // Get the workflow run that was just triggered
+            const { data: runs } = await github.rest.actions.listWorkflowRuns({
+              owner,
+              repo,
+              workflow_id: 'test.yml',
+              branch: process.env.EDEN_VERSION,
+              per_page: 1
+            });
+
+            const triggeredRunId = runs.workflow_runs[0]?.id;
+            if (triggeredRunId) {
+              core.setOutput('eden_run_id', triggeredRunId);
+              console.log(`Triggered Eden workflow run ID: ${triggeredRunId}`);
+            } else {
+              console.log('Warning: Could not retrieve triggered workflow run ID');
+            }
+            });
+
+            // Wait for the Eden workflow to complete
+            console.log('Waiting for Eden workflow to complete...');
+            let workflowCompleted = false;
+            let conclusion = null;
+            const maxWaitTime = 4 * 60 * 60 * 1000; // 4 hours
+            const pollInterval = 30000; // 30 seconds
+            const startTime = Date.now();
+
+            while (!workflowCompleted && (Date.now() - startTime) < maxWaitTime) {
+              const { data: run } = await github.rest.actions.getWorkflowRun({
+              owner,
+              repo,
+              run_id: triggeredRunId
+              });
+
+              if (run.status === 'completed') {
+              workflowCompleted = true;
+              conclusion = run.conclusion;
+              console.log(`Eden workflow completed with conclusion: ${conclusion}`);
+              } else {
+              console.log(`Eden workflow status: ${run.status}, waiting...`);
+              await new Promise(resolve => setTimeout(resolve, pollInterval));
+              }
+            }
+
+            if (!workflowCompleted) {
+              core.setFailed('Eden workflow did not complete within the timeout period');
+            } else if (conclusion !== 'success') {
+              core.setFailed(`Eden workflow completed with conclusion: ${conclusion}`);
+            }
+
+            core.setOutput('eden_conclusion', conclusion);
 
   finalize:
     name: Finalize Eden Runner status
