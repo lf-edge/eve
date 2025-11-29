@@ -1,0 +1,33 @@
+
+version = 2
+
+state = "/run/containerd-user"
+root = "/persist/vault/containerd"
+
+[plugins."io.containerd.internal.v1.opt"]
+  path = "/persist/vault/containerd"
+[plugins."io.containerd.grpc.v1.cri"]
+  stream_server_address = "127.0.0.1"
+  stream_server_port = "10010"
+  enable_selinux = false
+  enable_unprivileged_ports = true
+  enable_unprivileged_icmp = true
+  sandbox_image = "rancher/mirrored-pause:3.6"
+  device_ownership_from_security_context = true
+
+[plugins."io.containerd.grpc.v1.cri".containerd]
+  snapshotter = "overlayfs"
+  disable_snapshot_annotations = true
+
+[grpc]
+  address = "/run/containerd-user/containerd.sock"
+
+[plugins."io.containerd.grpc.v1.cri".cni]
+  bin_dir = "/persist/vault/k3s/rancher/k3s/data/current/bin"
+  conf_dir = "/persist/vault/k3s/rancher/k3s/agent/etc/cni/net.d"
+
+[plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc]
+  runtime_type = "io.containerd.runc.v2"
+
+[plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc.options]
+  SystemdCgroup = false

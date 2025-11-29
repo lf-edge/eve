@@ -391,9 +391,13 @@ RAID_LEVEL="none"
 eve_flavor=$(cat /root/etc/eve-hv-type)
 
 if [ "$eve_flavor" = "k" ]; then
-   INSTALL_CLUSTERED_STORAGE=true
-   INSTALL_ZFS=true
-   logmsg "Kubevirt image installing ZFS"
+   logmsg "cmdline: $(cat /proc/cmdline)"
+   if [ "$INSTALL_ZFS" = "true" ]; then
+      INSTALL_CLUSTERED_STORAGE=true
+      logmsg "Kubevirt image installing ZFS"
+   else
+      logmsg "Kubevirt image installing ext4"
+   fi
 fi
 
 eve_platform=$(cat /root/etc/eve-platform)

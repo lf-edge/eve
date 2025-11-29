@@ -72,6 +72,7 @@ COPY kube-api-authn-webhook.yaml /etc
 # Containerd config
 RUN mkdir -p /etc/containerd
 COPY config-k3s.toml /etc/containerd/
+COPY config-k3s-ext4.toml /etc/containerd/
 WORKDIR /
 
 # Kube-VIP
