@@ -685,6 +685,28 @@ run-live run: $(SWTPM) GETTY $(DEVICETREE_DTB)
 run-live-gui: $(SWTPM) GETTY $(DEVICETREE_DTB)
 	$(QEMU_SYSTEM) $(QEMU_OPTS_GUI) -drive file=$(CURRENT_IMG),format=$(IMG_FORMAT),id=uefi-disk
 
+# EVE Single Image / multi-rootfs - experimental
+# Run with bootstrap rootfs only (for testing minimal critical services)
+# This runs a complete live disk image with bootstrap rootfs, similar to run-live
+run-bootstrap: $(SWTPM) GETTY
+	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive file=$(CURRENT_DIR)/live-bootstrap.$(IMG_FORMAT),format=$(IMG_FORMAT),id=uefi-disk
+
+# Run bootstrap with external services from pkgs.img
+# Exposes pkgs.img via VVFAT disk (appears as /dev/sdb1 in VM)
+# External services will be auto-loaded and appear in 'eve list'
+run-bootstrap-with-pkgs: $(SWTPM) GETTY
+	@echo "Preparing pkgs.img for VM..."
+	@mkdir -p $(CURRENT_DIR)/pkgs-inject
+	@cp $(CURRENT_DIR)/installer/rootfs-pkgs.img $(CURRENT_DIR)/pkgs-inject/pkgs.img
+	@echo "Starting VM with pkgs.img available on /dev/sdb1..."
+	@echo "======================================================================"
+	@echo "pkgs.img will be available in the VM via VVFAT disk"
+	@echo "External services will be auto-loaded by Pillar"
+	@echo "======================================================================"
+	$(QEMU_SYSTEM) $(QEMU_OPTS) \
+		-drive file=$(CURRENT_DIR)/live-bootstrap.$(IMG_FORMAT),format=$(IMG_FORMAT),id=uefi-disk \
+		-drive file=fat:rw:$(CURRENT_DIR)/pkgs-inject,format=vvfat,id=pkgs-disk
+
 run-target: $(SWTPM) GETTY
 	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive file=$(TARGET_IMG),format=$(IMG_FORMAT)
 
@@ -796,6 +818,14 @@ pkgs_rootfs: $(ROOTFS_PKGS_IMG) current
 
 multi_rootfs: bootstrap_rootfs pkgs_rootfs
 	$(QUIET): "$@: Succeeded"
+
+# Build live disk image with bootstrap rootfs only
+live-bootstrap: $(LIVE)-bootstrap.$(IMG_FORMAT) $(BIOS_IMG) current
+	$(QUIET): "$@: Succeeded, LIVE_BOOTSTRAP=$(LIVE)-bootstrap.$(IMG_FORMAT)"
+
+# Build live disk with both bootstrap and pkgs rootfs images
+live-multirootfs: multi_rootfs $(BIOS_IMG) current
+	$(QUIET): "$@: Succeeded, built bootstrap and pkgs rootfs images"
 
 live: $(LIVE_IMG) $(BIOS_IMG) current	; $(QUIET): "$@: Succeeded, LIVE_IMG=$(LIVE_IMG)"
 live-%: $(LIVE).%		current ;  $(QUIET): "$@: Succeeded, LIVE=$(LIVE)"
@@ -950,6 +980,17 @@ $(LIVE).raw: $(BOOT_PART) $(EFI_PART) $(ROOTFS_IMGS) $(CONFIG_IMG) $(PERSIST_IMG
 	./tools/prepare-platform.sh "$(PLATFORM)" "$(BUILD_DIR)" "$(INSTALLER)"
 	./tools/makeflash.sh "mkimage-raw-efi" -C $| $@ $(LIVE_PART_SPEC)
 	$(QUIET): $@: Succeeded
+
+# EVE Single Image / multi-rootfs - experimental
+# Build live disk image with bootstrap rootfs only (for testing minimal critical services)
+$(LIVE)-bootstrap.raw: $(BOOT_PART) $(EFI_PART) $(ROOTFS_BOOTSTRAP_IMG) $(CONFIG_IMG) $(PERSIST_IMG) $(BSP_IMX_PART) $(BIOS_IMG) | $(INSTALLER)
+	./tools/prepare-platform.sh "$(PLATFORM)" "$(BUILD_DIR)" "$(INSTALLER)"
+	# Temporarily create symlink so makeflash.sh finds rootfs-bootstrap.img as rootfs.img
+	ln -sf rootfs-bootstrap.img $(INSTALLER)/rootfs.img
+	./tools/makeflash.sh "mkimage-raw-efi" -C $| $@ $(LIVE_PART_SPEC)
+	rm -f $(INSTALLER)/rootfs.img
+	$(QUIET): $@: Succeeded
+
 
 $(INSTALLER_IMG): $(INSTALLER_TAR) | $(INSTALLER)
 	$(QUIET): $@: Begin
@@ -1336,7 +1377,7 @@ kernel-tag:
 	@echo $(KERNEL_TAG)
 
 .PRECIOUS: rootfs-% $(ROOTFS)-%.img $(ROOTFS_COMPLETE)
-.PHONY: all clean test run pkgs help live rootfs config installer live current bootstrap_rootfs pkgs_rootfs multi_rootfs cache-images FORCE $(DIST) HOSTARCH image-set cache-export eden
+.PHONY: all clean test run pkgs help live rootfs config installer live current bootstrap_rootfs pkgs_rootfs multi_rootfs live-bootstrap live-multirootfs run-bootstrap run-bootstrap-with-pkgs cache-images FORCE $(DIST) HOSTARCH image-set cache-export eden
 FORCE:
 
 help:
@@ -1394,6 +1435,8 @@ help:
 	@echo "   pkgs_rootfs          builds pkgs rootfs image (experimental: EVE Single Image / multi-rootfs)"
 	@echo "   multi_rootfs         builds both bootstrap and pkgs rootfs images (experimental)"
 	@echo "   live                 builds a full disk image of EVE which can be function as a virtual device"
+	@echo "   live-bootstrap       builds live disk image with bootstrap rootfs only (experimental)"
+	@echo "   live-multirootfs     builds both bootstrap and pkgs rootfs images (experimental: ready for deployment)"
 	@echo "   LIVE_UPDATE=1 live   updates existing qcow2 disk image of EVE with RW rootfs (ext4) by only"
 	@echo "                        copying generated rootfs tarball. This significantly reduced overall build"
 	@echo "                        time of the disk image. Used by developers only!"
@@ -1407,6 +1450,8 @@ help:
 	@echo "   run-build-vm         runs a build VM image"
 	@echo "   run-live             runs a full fledged virtual device on qemu (as close as it gets to actual h/w)"
 	@echo "   run-live-gui         same as run-live but with an emulated graphics card"
+	@echo "   run-bootstrap        runs live-bootstrap disk image (experimental: minimal critical services)"
+	@echo "   run-bootstrap-with-pkgs  runs live-bootstrap with pkgs.img (extsloader agent auto-loads external services)"
 	@echo "   run-live-parallels   runs a full fledged virtual device on Parallels Desktop"
 	@echo "   run-live-vb          runs a full fledged virtual device on VirtualBox"
 	@echo "   run-rootfs           runs a rootfs.img (limited usefulness e.g. quick test before cloud upload)"
