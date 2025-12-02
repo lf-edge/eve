@@ -14,7 +14,7 @@ init:
   - UDEV_TAG
 onboot:
   - name: sysctl
-    image: linuxkit/sysctl:c6f23919b8610c7645a89a89f863c6209bc84bee
+    image: linuxkit/sysctl:43ac1d39da329c3567fcb9689e5ca99de6d169b6
     binds:
       - /etc/sysctl.d:/etc/sysctl.d
     capabilities:

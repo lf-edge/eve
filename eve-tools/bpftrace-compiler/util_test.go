@@ -18,7 +18,7 @@ onboot:
   - /sbin/rngd
   - "-1"
 - name: sysctl
-  image: docker.io/linuxkit/sysctl:c6f23919b8610c7645a89a89f863c6209bc84bee
+  image: docker.io/linuxkit/sysctl:43ac1d39da329c3567fcb9689e5ca99de6d169b6
   capabilities:
   - CAP_SYS_ADMIN
   - CAP_NET_ADMIN
