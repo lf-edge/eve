@@ -1,0 +1,31 @@
+# EVE Single Image / multi-rootfs (bootstrap + pkgs) - experimental
+# Pkgs rootfs template - non-critical services for incremental testing
+#
+# IMPORTANT: This rootfs is NOT meant to be booted directly!
+# It will be mounted by the bootstrap rootfs and used as a blob to extract services.
+# Therefore, we omit kernel and init containers to save space.
+#
+# For incremental testing in the POC, we move memory-monitor, node-exporter, edgeview, and guacd here.
+# Other services remain in bootstrap rootfs initially and can be migrated later.
+
+# No kernel needed - this image is mounted as a blob, not booted
+# No init needed - services will be started by bootstrap rootfs after mounting
+
+services:
+  # memory-monitor, node-exporter, edgeview, guacd moved from bootstrap for incremental testing
+  - name: memory-monitor
+    image: MEMORY_MONITOR_TAG
+    cgroupsPath: /eve/services/memory-monitor
+    oomScoreAdj: -1000
+  - name: node-exporter
+    image: NODE_EXPORTER_TAG
+    cgroupsPath: /eve/services/node-exporter
+    oomScoreAdj: -999
+  - name: edgeview
+    image: EDGEVIEW_TAG
+    cgroupsPath: /eve/services/eve-edgeview
+    oomScoreAdj: -800
+  - name: guacd
+    image: GUACD_TAG
+    cgroupsPath: /eve/services/guacd
+    oomScoreAdj: -999
