@@ -18,7 +18,7 @@ ZTMPDIR=/run/global
 DPCDIR=$ZTMPDIR/DevicePortConfig
 FIRSTBOOTFILE=$ZTMPDIR/first-boot
 FIRSTBOOT=
-AGENTS="diag monitor zedagent ledmanager nim nodeagent \
+AGENTS="diag extsloader monitor zedagent ledmanager nim nodeagent \
 domainmgr loguploader tpmmgr vaultmgr zedmanager zedrouter \
 downloader verifier baseosmgr wstunnelclient volumemgr watcher \
 zfsmanager usbmanager zedkube vcomlink collectinfo scepclient \

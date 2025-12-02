@@ -23,6 +23,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/cmd/diag"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/domainmgr"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/downloader"
+	"github.com/lf-edge/eve/pkg/pillar/cmd/extsloader"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/faultinjection"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/hardwaremodel"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/ipcmonitor"
@@ -84,6 +85,7 @@ var (
 		"diag":             {f: diag.Run},
 		"domainmgr":        {f: domainmgr.Run},
 		"downloader":       {f: downloader.Run},
+		"extsloader":       {f: extsloader.Run},
 		"faultinjection":   {f: faultinjection.Run},
 		"hardwaremodel":    {f: hardwaremodel.Run, inline: inlineAlways},
 		"ledmanager":       {f: ledmanager.Run},
