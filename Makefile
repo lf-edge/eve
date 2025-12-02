@@ -210,6 +210,13 @@ ROOTFS_TARS= $(if $(findstring evaluation,$(PLATFORM)), \
 	$(ROOTFS_TAR_BASE)-evaluation-generic.tar $(ROOTFS_TAR_EVAL_HWE) $(ROOTFS_TAR_EVAL_LTS), \
 	$(ROOTFS_TAR_BASE)-$(PLATFORM).tar)
 
+# EVE Single Image / multi-rootfs (bootstrap + pkgs) - experimental
+# Variables for split rootfs images (bootstrap + pkgs)
+ROOTFS_BOOTSTRAP_IMG=$(ROOTFS_IMG_BASE)-bootstrap.img
+ROOTFS_PKGS_IMG=$(ROOTFS_IMG_BASE)-pkgs.img
+ROOTFS_BOOTSTRAP_TAR=$(ROOTFS_TAR_BASE)-bootstrap.tar
+ROOTFS_PKGS_TAR=$(ROOTFS_TAR_BASE)-pkgs.tar
+
 CONFIG_IMG=$(INSTALLER)/config.img
 INITRD_IMG=$(INSTALLER)/initrd.img
 INSTALLER_TAR=$(BUILD_DIR)/installer.tar
@@ -233,7 +240,6 @@ DEVICETREE_DTB=$(DEVICETREE_DTB_$(ZARCH))
 
 CONF_FILES=$(shell ls -d $(CONF_DIR)/*)
 LIVE_PART_SPEC=$(if $(findstring evaluation,$(PLATFORM)), efi conf imga imgb imgc, efi conf imga)
-
 # parallels settings
 # https://github.com/qemu/qemu/blob/595123df1d54ed8fbab9e1a73d5a58c5bb71058f/docs/interop/prl-xml.txt
 # predefined GUID according link ^
@@ -779,6 +785,18 @@ config: $(CONFIG_IMG)		; $(QUIET): "$@: Succeeded, CONFIG_IMG=$(CONFIG_IMG)"
 ssh-key: $(SSH_KEY)
 rootfs: $(ROOTFS_IMGS) current
 sbom: $(SBOM)
+
+# EVE Single Image / multi-rootfs (bootstrap + pkgs) - experimental
+# New targets for building split rootfs images
+bootstrap_rootfs: $(ROOTFS_BOOTSTRAP_IMG) current
+	$(QUIET): "$@: Succeeded, ROOTFS_BOOTSTRAP_IMG=$(ROOTFS_BOOTSTRAP_IMG)"
+
+pkgs_rootfs: $(ROOTFS_PKGS_IMG) current
+	$(QUIET): "$@: Succeeded, ROOTFS_PKGS_IMG=$(ROOTFS_PKGS_IMG)"
+
+multi_rootfs: bootstrap_rootfs pkgs_rootfs
+	$(QUIET): "$@: Succeeded"
+
 live: $(LIVE_IMG) $(BIOS_IMG) current	; $(QUIET): "$@: Succeeded, LIVE_IMG=$(LIVE_IMG)"
 live-%: $(LIVE).%		current ;  $(QUIET): "$@: Succeeded, LIVE=$(LIVE)"
 installer: $(INSTALLER).raw current
@@ -845,6 +863,32 @@ ifeq ($(ROOTFS_FORMAT),squash)
 	@[ $$(wc -c < "$@") -gt $$(( $(ROOTFS_MAXSIZE_MB) * 1024 * 1024 )) ] && \
 	        echo "ERROR: size of $@ is greater than $(ROOTFS_MAXSIZE_MB)MB (bigger than allocated partition)" && exit 1 || :
 endif
+	$(QUIET): $@: Succeeded
+
+# EVE Single Image / multi-rootfs - bootstrap rootfs image
+$(ROOTFS_BOOTSTRAP_IMG): pkg/mkrootfs-$(ROOTFS_FORMAT)
+ifdef LIVE_UPDATE
+$(ROOTFS_BOOTSTRAP_IMG): | $(ROOTFS_BOOTSTRAP_TAR) $(INSTALLER)
+else
+$(ROOTFS_BOOTSTRAP_IMG): $(ROOTFS_BOOTSTRAP_TAR) | $(INSTALLER)
+endif
+	$(QUIET): $@: Begin
+	echo "Building bootstrap rootfs image $@ from $<"
+	./tools/makerootfs.sh imagefromtar -t $< -i $@ -f $(ROOTFS_FORMAT) -a $(ZARCH)
+	@echo "size of $@ is $$(wc -c < "$@")B"
+	$(QUIET): $@: Succeeded
+
+# EVE Single Image / multi-rootfs - pkgs rootfs image
+$(ROOTFS_PKGS_IMG): pkg/mkrootfs-$(ROOTFS_FORMAT)
+ifdef LIVE_UPDATE
+$(ROOTFS_PKGS_IMG): | $(ROOTFS_PKGS_TAR) $(INSTALLER)
+else
+$(ROOTFS_PKGS_IMG): $(ROOTFS_PKGS_TAR) | $(INSTALLER)
+endif
+	$(QUIET): $@: Begin
+	echo "Building pkgs rootfs image $@ from $<"
+	./tools/makerootfs.sh imagefromtar -t $< -i $@ -f $(ROOTFS_FORMAT) -a $(ZARCH)
+	@echo "size of $@ is $$(wc -c < "$@")B"
 	$(QUIET): $@: Succeeded
 
 $(GET_DEPS): tools/get-deps/*.go
@@ -1239,6 +1283,21 @@ $(if $(wildcard images/modifiers/platform/$(PLATFORM)/), \
 )
 endef
 
+# EVE Single Image / multi-rootfs (bootstrap + pkgs) - experimental
+# Specific rules for bootstrap and pkgs rootfs YAML generation
+# These MUST come before the generic rootfs-%.yml.in rule to take precedence
+.PRECIOUS: images/out/rootfs-%-bootstrap.yml.in
+images/out/rootfs-%-bootstrap.yml.in: images/rootfs_bootstrap.yml.in $(RESCAN_DEPS) | images/out
+	$(info [INFO] Building bootstrap rootfs for target: $*)
+	$(info [INFO] Building $@ from $<)
+	$(QUIET)tools/compose-image-yml.sh -b $< -v "$(ROOTFS_VERSION)-$*-bootstrap-$(ZARCH)" -o $@ -h $(HV) -p $(PLATFORM) $(call find-modifiers-rootfs,$*-bootstrap)
+
+.PRECIOUS: images/out/rootfs-%-pkgs.yml.in
+images/out/rootfs-%-pkgs.yml.in: images/rootfs_pkgs.yml.in $(RESCAN_DEPS) | images/out
+	$(info [INFO] Building pkgs rootfs for target: $*)
+	$(info [INFO] Building $@ from $<)
+	$(QUIET)tools/compose-image-yml.sh -b $< -v "$(ROOTFS_VERSION)-$*-pkgs-$(ZARCH)" -o $@ -h $(HV) -p $(PLATFORM) $(call find-modifiers-rootfs,$*-pkgs)
+
 .PRECIOUS: images/out/rootfs-%.yml.in
 images/out/rootfs-%.yml.in: images/rootfs.yml.in $(RESCAN_DEPS) | images/out
 	$(info [INFO] Building rootfs for target: $*)
@@ -1277,7 +1336,7 @@ kernel-tag:
 	@echo $(KERNEL_TAG)
 
 .PRECIOUS: rootfs-% $(ROOTFS)-%.img $(ROOTFS_COMPLETE)
-.PHONY: all clean test run pkgs help live rootfs config installer live current FORCE $(DIST) HOSTARCH image-set cache-export eden
+.PHONY: all clean test run pkgs help live rootfs config installer live current bootstrap_rootfs pkgs_rootfs multi_rootfs cache-images FORCE $(DIST) HOSTARCH image-set cache-export eden
 FORCE:
 
 help:
@@ -1331,6 +1390,9 @@ help:
 	@echo "   pkgs                 builds all EVE packages"
 	@echo "   pkg/XXX              builds XXX EVE package"
 	@echo "   rootfs               builds default EVE rootfs image (upload it to the cloud as BaseImage)"
+	@echo "   bootstrap_rootfs     builds bootstrap rootfs image (experimental: EVE Single Image / multi-rootfs)"
+	@echo "   pkgs_rootfs          builds pkgs rootfs image (experimental: EVE Single Image / multi-rootfs)"
+	@echo "   multi_rootfs         builds both bootstrap and pkgs rootfs images (experimental)"
 	@echo "   live                 builds a full disk image of EVE which can be function as a virtual device"
 	@echo "   LIVE_UPDATE=1 live   updates existing qcow2 disk image of EVE with RW rootfs (ext4) by only"
 	@echo "                        copying generated rootfs tarball. This significantly reduced overall build"

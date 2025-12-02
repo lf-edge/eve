@@ -1,0 +1,136 @@
+# EVE Single Image / multi-rootfs (bootstrap + pkgs) - experimental
+# Bootstrap rootfs template - contains CRITICAL packages only
+# This template should include only packages essential for basic EVE operation:
+# - kernel, firmware, drivers
+# - pillar and core management
+# - storage, networking basics
+# - security/measurement
+# Non-critical packages (debug, vtpm, guacd, edgeview, etc.) go in rootfs_pkgs.yml.in
+
+kernel:
+  image: KERNEL_TAG
+  # the unified_cgroup_hierarchy forces cgroupsv1, which is required until pillar is ready to support v2
+  cmdline: "rootdelay=3 linuxkit.unified_cgroup_hierarchy=0"
+init:
+  - linuxkit/init:e120ea2a30d906bd1ee1874973d6e4b1403b5ca3
+  - linuxkit/runc:6062483d748609d505f2bcde4e52ee64a3329f5f
+  - linuxkit/containerd:95d5f0d2d8dc63bd87e96b7b39cf026cb86125c9
+  # pillar's logic rely on existence of getty and /etc/init.d/001-getty inside
+  - linuxkit/getty:e74e6cad132403d1a6d6cd25b136a7c69c99f3f7
+  - linuxkit/memlogd:1ded209c4cc10aa8de2099f4156164b59df14e3c
+  - DOM0ZTOOLS_TAG
+  - GRUB_TAG
+  - FW_TAG
+  - XEN_TAG
+  - GPTTOOLS_TAG
+  - KEXEC_TAG
+  - UDEV_TAG
+onboot:
+  - name: rngd
+    image: RNGD_TAG
+    command: ["/sbin/rngd", "-1"]
+  - name: sysctl
+    image: linuxkit/sysctl:c6f23919b8610c7645a89a89f863c6209bc84bee
+    binds:
+      - /etc/sysctl.d:/etc/sysctl.d
+    capabilities:
+      - CAP_SYS_ADMIN
+      - CAP_NET_ADMIN
+  - name: storage-init
+    image: STORAGE_INIT_TAG
+  # kdump goes strictly after storage-init
+  - name: kdump
+    image: KDUMP_TAG
+  - name: pillar-onboot
+    image: PILLAR_TAG
+    command: ["/opt/zededa/bin/onboot.sh"]
+  - name: apparmor
+    image: APPARMOR_TAG
+  # measure-config must be executed after any other container that changes
+  # /config. Let's keep it the latest
+  - name: measure-config
+    image: MEASURE_CONFIG_TAG
+services:
+  # Bootstrap services - critical services only
+  # Moved to pkgs.img: memory-monitor, node-exporter, edgeview, guacd
+  - name: monitor
+    image: MONITOR_TAG
+    cgroupsPath: /eve/services/monitor
+    oomScoreAdj: -999
+  - name: vector
+    image: VECTOR_TAG
+    cgroupsPath: /eve/services/vector
+    oomScoreAdj: -999
+  - name: newlogd
+    image: NEWLOGD_TAG
+    cgroupsPath: /eve/services/newlogd
+    oomScoreAdj: -999
+  - name: debug
+    image: DEBUG_TAG
+    cgroupsPath: /eve/services/debug
+    oomScoreAdj: -999
+  - name: wwan
+    image: WWAN_TAG
+    cgroupsPath: /eve/services/wwan
+    oomScoreAdj: -999
+  - name: wlan
+    image: WLAN_TAG
+    cgroupsPath: /eve/services/wlan
+    oomScoreAdj: -999
+  # guacd moved to pkgs.img
+  - name: pillar
+    image: PILLAR_TAG
+    cgroupsPath: /eve/services/pillar
+    oomScoreAdj: -999
+  # memory-monitor is EXCLUDED - it's in pkgs.img for testing
+  - name: vtpm
+    image: VTPM_TAG
+    cgroupsPath: /eve/services/vtpm
+    oomScoreAdj: -999
+  - name: watchdog
+    image: WATCHDOG_TAG
+    cgroupsPath: /eve/services/watchdog
+    oomScoreAdj: -1000
+  - name: xen-tools
+    image: XENTOOLS_TAG
+    cgroupsPath: /eve/services/xen-tools
+    oomScoreAdj: -999
+files:
+  - path: /etc/eve-release
+    source: eve_version
+  - path: /etc/linuxkit-eve-config.yml
+    metadata: yaml
+  - path: /etc/eve-hv-type
+    contents: 'EVE_HV'
+  - path: /etc/issue
+    source: etc_issue
+  - path: /opt/vendor
+    directory: true
+  - path: /etc/eve-platform
+    contents: 'EVE_PLATFORM'
+  - path: /etc/securetty
+    contents: |
+      console
+      tty0
+      tty1
+      tty2
+      tty3
+      tty4
+      tty5
+      tty6
+      tty7
+      tty8
+      tty9
+      tty10
+      tty11
+      hvc0
+      ttyS0
+      ttyS1
+      ttyS2
+      ttyAMA0
+      ttyAMA1
+      ttyTCU0
+      ttyTHS0
+      ttyTHS1
+      ttymxc0
+      ttymxc2
