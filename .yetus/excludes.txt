@@ -9,6 +9,7 @@
 ^pkg/kvm-tools/include
 ^pkg/kvm-tools/dtrace
 ^pkg/kube/kubevirt-operator.yaml
+^pkg/kube/nvidia-container-runtime/nvidia-device-plugin-18.0.yml
 ^api/python/
 ^api/go/
 ^api/images/
