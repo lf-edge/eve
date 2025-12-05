@@ -81,6 +81,13 @@ COPY kubevip-apply.sh /usr/bin/
 COPY kubevip-delete.sh /usr/bin/
 RUN chmod +x /usr/bin/kubevip-apply.sh /usr/bin/kubevip-delete.sh
 
+# nvidia-container-runtime config
+RUN mkdir -p /etc/nvidia-container-runtime
+COPY nvidia-container-runtime/config.toml /etc/nvidia-container-runtime
+COPY nvidia-container-runtime/setup.sh /etc/nvidia-container-runtime
+COPY nvidia-container-runtime/nvidia-device-plugin-18.0.yml /etc/k3s-manifests/
+RUN chmod +x /etc/nvidia-container-runtime/setup.sh
+
 ARG TARGETARCH
 
 # Actual k3s install and config happens when this container starts during EVE bootup, look at cluster-init.sh

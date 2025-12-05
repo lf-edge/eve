@@ -169,6 +169,16 @@ mount_etcd_vol() {
         logmsg "persist/etcd-storage available"
 }
 
+setup_nvidia_runtime() {
+        # We need to do this everytime the node reboots.
+        if [ -d /opt/vendor/nvidia/bin ]; then
+           logmsg "Found nvidia vendor directory, calling setup script"
+           . /etc/nvidia-container-runtime/setup.sh
+        else
+           logmsg "Not nvidia env, nothing to setup"
+        fi
+}
+
 #Prereqs
 setup_prereqs () {
         modprobe tun
@@ -190,6 +200,7 @@ setup_prereqs () {
         chmod o+rw /dev/null
         wait_for_vault
         mount_etcd_vol
+        setup_nvidia_runtime
 }
 
 config_cluster_roles() {
@@ -1156,7 +1167,9 @@ if [ ! -f /var/lib/all_components_initialized ]; then
                 logmsg "k3s manifests dir (${KUBE_MANIFESTS_DIR}/) does not exist yet"
                 continue
         fi
-        cp /etc/k3s-manifests/storage-classes.yaml "${KUBE_MANIFESTS_DIR}/storage-classes.yaml"
+
+        # Copy all the manifests we are shipping
+        cp /etc/k3s-manifests/* "${KUBE_MANIFESTS_DIR}/"
 
         #
         # Longhorn

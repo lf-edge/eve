@@ -80,6 +80,8 @@ RUN for x in /nvct/*.patch; do \
 RUN mkdir -p dist
 RUN make cmd-nvidia-ctk && cp nvidia-ctk dist/
 RUN make cmd-nvidia-cdi-hook && cp nvidia-cdi-hook dist/
+RUN make cmd-nvidia-container-runtime && cp nvidia-container-runtime dist/
+RUN make cmd-nvidia-container-runtime-hook && cp nvidia-container-runtime-hook dist/
 
 # Build nvfanctrl
 COPY nvfanctrl/ /nvfanctrl
@@ -110,6 +112,8 @@ RUN mkdir -p /ldconfig-bin /nvfanctrl/dist /nvct/dist /cdi /rootfs-dist /cdi-dis
             /process-cdi.sh "$x" /rootfs /rootfs-dist &&  \
             yq '. | (.devices[].containerEdits.hooks[] | select(.path == "/usr/bin/nvidia-ctk")).path = "/opt/vendor/nvidia/bin/nvidia-ctk"' -i "$x" && \
             yq '. | (.devices[].containerEdits.hooks[] | select(.path == "/usr/bin/nvidia-cdi-hook")).path = "/opt/vendor/nvidia/bin/nvidia-cdi-hook"' -i "$x" && \
+            yq '. | (.devices[].containerEdits.hooks[] | select(.path == "/usr/bin/nvidia-container-runtime")).path = "/opt/vendor/nvidia/bin/nvidia-container-runtime"' -i "$x" && \
+            yq '. | (.devices[].containerEdits.hooks[] | select(.path == "/usr/bin/nvidia-container-runtime-hook")).path = "/opt/vendor/nvidia/bin/nvidia-container-runtime-hook"' -i "$x" && \
             /nvct/dist/nvidia-ctk cdi transform root --relative-to host \
                 --from /usr --to /opt/vendor/nvidia/dist/usr --input "$x" | \
             /nvct/dist/nvidia-ctk cdi transform root --relative-to host \
