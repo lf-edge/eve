@@ -1,0 +1,24 @@
+#accept-nvidia-visible-devices-as-volume-mounts = false
+#accept-nvidia-visible-devices-envvar-when-unprivileged = true
+disable-require = false
+supported-driver-capabilities = "compat32,compute,display,graphics,ngx,utility,video"
+
+[nvidia-container-runtime]
+debug = "/var/log/nvidia-container-runtime.log"
+log-level = "debug"
+mode = "cdi"
+runtimes = ["runc"]
+
+[nvidia-container-runtime.modes]
+
+[nvidia-container-runtime.modes.cdi]
+annotation-prefixes = ["cdi.k8s.io/"]
+default-kind = "nvidia.com/gpu"
+spec-dirs = ["/etc/cdi", "/var/run/cdi"]
+
+[nvidia-container-runtime-hook]
+path = "nvidia-container-runtime-hook"
+skip-mode-detection = false
+
+[nvidia-ctk]
+path = "nvidia-ctk"
