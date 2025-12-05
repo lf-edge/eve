@@ -828,8 +828,8 @@ else
 $(ROOTFS_IMG_BASE)-%.img: $(ROOTFS_TAR_BASE)-%.tar | $(INSTALLER)
 endif
 	$(QUIET): $@: Begin
-	echo "Building rootfs image $@ from $<"
-	./tools/makerootfs.sh imagefromtar -t $< -i $@ -f $(ROOTFS_FORMAT) -a $(ZARCH)
+	echo "Building rootfs image $@ from $(ROOTFS_TAR_BASE)-$*.tar"
+	./tools/makerootfs.sh imagefromtar -t $(ROOTFS_TAR_BASE)-$*.tar -i $@ -f $(ROOTFS_FORMAT) -a $(ZARCH)
 	@echo "size of $@ is $$(wc -c < "$@")B"
 ifeq ($(ROOTFS_FORMAT),squash)
 	@[ $$(wc -c < "$@") -gt $$(( $(ROOTFS_MAXSIZE_MB) * 1024 * 1024 )) ] && \
