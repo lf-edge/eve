@@ -28,6 +28,8 @@ RUN cargo sbom > sbom.spdx.json
 
 RUN cp "/usr/local/my-installer/target/$CARGO_BUILD_TARGET/release/installer" /usr/local/my-installer/target/installer
 
+FROM lfedge/eve-debug:ed3dfc54963684f3728860a0f23821aee8dfac82 AS debug
+
 # Dockerfile to build installer img initrd
 FROM lfedge/eve-alpine:0f2e0da38e30753c68410727a6cc269e57ff74f2 AS build
 SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
@@ -93,7 +95,8 @@ COPY --from=rust /usr/local/my-installer/sbom.spdx.json /out/sbin/sbom.spdx.json
 
 FROM scratch
 COPY --from=build /out/ /
-COPY install parse-installer-conf.sh spec.sh verify verifytpm.sh /
+COPY --from=debug /usr/bin/spec.sh /
+COPY install parse-installer-conf.sh verify verifytpm.sh /
 ENV RUST_BACKTRACE full
 
 WORKDIR /
