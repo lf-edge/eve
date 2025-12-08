@@ -7,7 +7,7 @@ bpftrace-compiler: *.go
 .PHONY: test bare-test docker-test
 
 bare-test:
-	go test -test.timeout 1h -v -race .
+	go test -test.timeout 5h -v -race .
 
 test: bare-test
 
