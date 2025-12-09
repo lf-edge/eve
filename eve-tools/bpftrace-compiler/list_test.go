@@ -63,6 +63,7 @@ func skip(t *testing.T) bool {
 }
 
 func TestListKernelProbesAmd64(t *testing.T) {
+	t.Parallel()
 	if skip(t) {
 		return
 	}
@@ -74,6 +75,7 @@ func TestListKernelProbesAmd64(t *testing.T) {
 }
 
 func TestListKernelProbesArm64(t *testing.T) {
+	t.Parallel()
 	if skip(t) {
 		return
 	}
@@ -85,6 +87,7 @@ func TestListKernelProbesArm64(t *testing.T) {
 }
 
 func TestListKernelProbesAmd64WithModules(t *testing.T) {
+	t.Parallel()
 	if skip(t) {
 		return
 	}
@@ -185,6 +188,7 @@ func testKernels() []eveKernelWithArch {
 }
 
 func TestCurrentKernels(t *testing.T) {
+	t.Parallel()
 	if skip(t) {
 		return
 	}

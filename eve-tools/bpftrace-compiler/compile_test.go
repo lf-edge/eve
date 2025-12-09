@@ -53,6 +53,7 @@ func testCompile(t *testing.T, arch, eveKernel string) {
 }
 
 func TestCompileAmd64(t *testing.T) {
+	t.Parallel()
 	_, err := exec.LookPath("/usr/bin/qemu-system-x86_64")
 	if err != nil {
 		t.Skipf("no qemu for amd64 installed, skipping this test")
@@ -69,6 +70,7 @@ func TestCompileAmd64(t *testing.T) {
 }
 
 func TestCompileArm64(t *testing.T) {
+	t.Parallel()
 	_, err := exec.LookPath("/usr/bin/qemu-system-aarch64")
 	if err != nil {
 		t.Skipf("no qemu for aarch64 installed, skipping this test")
