@@ -62,6 +62,8 @@ services:
     image: DEBUG_TAG
     cgroupsPath: /eve/services/debug
     oomScoreAdj: -999
+    binds.add:
+      - debug-tools:/debug:ro
   - name: wwan
     image: WWAN_TAG
     cgroupsPath: /eve/services/wwan
@@ -78,6 +80,8 @@ services:
     image: PILLAR_TAG
     cgroupsPath: /eve/services/pillar
     oomScoreAdj: -999
+    binds.add:
+      - debug-tools:/debug:ro
   - name: memory-monitor
     image: MEMORY_MONITOR_TAG
     cgroupsPath: /eve/services/memory-monitor
@@ -104,13 +108,13 @@ files:
   - path: /etc/linuxkit-eve-config.yml
     metadata: yaml
   - path: /etc/eve-hv-type
-    contents: 'EVE_HV'
+    contents: "EVE_HV"
   - path: /etc/issue
     source: etc_issue
   - path: /opt/vendor
     directory: true
   - path: /etc/eve-platform
-    contents: 'EVE_PLATFORM'
+    contents: "EVE_PLATFORM"
   - path: /etc/securetty
     contents: |
       console
@@ -137,3 +141,7 @@ files:
       ttyTHS1
       ttymxc0
       ttymxc2
+volumes:
+  - name: debug-tools
+    image: DEBUG_TAG
+    readonly: true

@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2018 Zededa, Inc.
+// Copyright (c) 2017-2025 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 package client
@@ -63,7 +63,9 @@ type clientContext struct {
 	networkState           types.DPCState
 	subGlobalConfig        pubsub.Subscription
 	subCachedResolvedIPs   pubsub.Subscription
+	subEvalStatus          pubsub.Subscription
 	globalConfig           *types.ConfigItemValueMap
+	evalStatus             *types.EvalStatus
 	getCertsTimer          *time.Timer
 	ctrlClient             *controllerconn.Client
 	agentMetrics           *controllerconn.AgentMetrics
@@ -202,6 +204,36 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 	clientCtx.subDeviceNetworkStatus = subDeviceNetworkStatus
 	subDeviceNetworkStatus.Activate()
+
+	// Subscribe to EvalStatus from evalmgr for onboarding gating
+	subEvalStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		CreateHandler: handleEvalStatusCreate,
+		ModifyHandler: handleEvalStatusModify,
+		DeleteHandler: handleEvalStatusDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+		AgentName:     "evalmgr",
+		MyAgentName:   agentName,
+		TopicImpl:     types.EvalStatus{},
+		Ctx:           &clientCtx,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	clientCtx.subEvalStatus = subEvalStatus
+	subEvalStatus.Activate()
+
+	// Check if we have existing EvalStatus
+	item, err = subEvalStatus.Get("evalmgr")
+	if err == nil {
+		evalStatus := item.(types.EvalStatus)
+		clientCtx.evalStatus = &evalStatus
+		log.Noticef("Found existing EvalStatus: allowOnboard=%t, phase=%s",
+			evalStatus.IsOnboardingAllowed(), evalStatus.Phase)
+	} else {
+		// No EvalStatus found - will wait for evalmgr to publish initial status
+		log.Noticef("No EvalStatus found, will wait for evalmgr")
+	}
 	sendTimeoutSecs := clientCtx.globalConfig.GlobalValueInt(types.NetworkSendTimeout)
 	dialTimeoutSecs := clientCtx.globalConfig.GlobalValueInt(types.NetworkDialTimeout)
 	ctrlClient := controllerconn.NewClient(log, controllerconn.ClientOptions{
@@ -222,6 +254,22 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
 	ps.StillRunning(agentName, warningTime, errorTime)
+	clientCtx.ctrlClient = ctrlClient
+
+	// Wait for initial EvalStatus from evalmgr if not already available
+	if clientCtx.evalStatus == nil {
+		log.Noticef("Waiting for initial EvalStatus from evalmgr before proceeding...")
+	}
+
+	for clientCtx.evalStatus == nil {
+		select {
+		case change := <-clientCtx.subEvalStatus.MsgChan():
+			clientCtx.subEvalStatus.ProcessChange(change)
+		case <-stillRunning.C:
+			ps.StillRunning(agentName, warningTime, errorTime)
+		}
+	}
+	log.Noticef("Received initial EvalStatus, proceeding with client logic")
 
 	// Wait for a usable IP address.
 	// After 5 seconds we check; if we already have a UUID we proceed.
@@ -295,6 +343,13 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 			return 0
 		}
 
+		// Check if onboarding is allowed by evaluation manager
+		if clientCtx.evalStatus != nil && !clientCtx.evalStatus.IsOnboardingAllowed() {
+			reason := clientCtx.evalStatus.OnboardingBlockReason()
+			log.Noticef("tryRegister: onboarding blocked by evaluation manager: %s", reason)
+			return 0
+		}
+
 		// try to fetch the server certs chain first, if it's V2
 		if !gotServerCerts && ctrlClient.UsingV2API() {
 			// Set force so we re-download certs on each boot
@@ -365,6 +420,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 		case change := <-subCachedResolvedIPs.MsgChan():
 			subCachedResolvedIPs.ProcessChange(change)
+
+		case change := <-clientCtx.subEvalStatus.MsgChan():
+			clientCtx.subEvalStatus.ProcessChange(change)
 
 		case <-ticker.C:
 			// Check in case /config/server changes while running
@@ -895,4 +953,57 @@ func handleDNSDelete(ctxArg interface{}, key string,
 	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(*ctx.deviceNetworkStatus)
 	ctx.usableAddressCount = newAddrCount
 	log.Functionf("handleDNSDelete done for %s", key)
+}
+
+func handleEvalStatusCreate(ctxArg interface{}, key string, statusArg interface{}) {
+	handleEvalStatusImpl(ctxArg, key, statusArg)
+}
+
+func handleEvalStatusModify(ctxArg interface{}, key string, statusArg interface{}, oldStatusArg interface{}) {
+	handleEvalStatusImpl(ctxArg, key, statusArg)
+}
+
+func handleEvalStatusDelete(ctxArg interface{}, key string, statusArg interface{}) {
+	log.Functionf("handleEvalStatusDelete for %s", key)
+	ctx := ctxArg.(*clientContext)
+	if key != "global" {
+		log.Functionf("handleEvalStatusDelete: ignoring %s", key)
+		return
+	}
+	// Default to allowing onboarding if EvalStatus is deleted
+	ctx.evalStatus = nil
+	log.Noticef("EvalStatus deleted, defaulting to allow onboarding")
+}
+
+func handleEvalStatusImpl(ctxArg interface{}, key string, statusArg interface{}) {
+	status := statusArg.(types.EvalStatus)
+	ctx := ctxArg.(*clientContext)
+	if key != "global" {
+		log.Functionf("handleEvalStatusImpl: ignoring %s", key)
+		return
+	}
+
+	log.Functionf("handleEvalStatusImpl for %s", key)
+
+	// Check if allowOnboard status changed
+	oldAllowed := false
+	if ctx.evalStatus != nil {
+		oldAllowed = ctx.evalStatus.IsOnboardingAllowed()
+	}
+	newAllowed := status.IsOnboardingAllowed()
+
+	ctx.evalStatus = &status
+
+	if oldAllowed != newAllowed {
+		log.Noticef("EvalStatus onboarding permission changed from %t to %t (phase=%s)",
+			oldAllowed, newAllowed, status.Phase)
+		if newAllowed {
+			log.Noticef("Onboarding now permitted by evaluation manager")
+		} else {
+			reason := status.OnboardingBlockReason()
+			log.Noticef("Onboarding blocked by evaluation manager: %s", reason)
+		}
+	}
+
+	log.Functionf("handleEvalStatusImpl done for %s", key)
 }
