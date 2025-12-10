@@ -6,6 +6,7 @@
 package zedkube
 
 import (
+	"encoding/base64"
 	"io"
 	"net/http"
 	"os"
@@ -22,6 +23,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/kubeapi"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	utils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 	"k8s.io/client-go/rest"
@@ -724,8 +726,51 @@ func handleGlobalConfigImpl(ctxArg interface{}, key string,
 				existingDrainK8sAPINotReachableTimeout, newDrainK8sAPINotReachableTimeout)
 			z.drainSkipK8sAPINotReachableTimeout = time.Second * time.Duration(newDrainK8sAPINotReachableTimeout)
 		}
+
+		handleK3sConfigOverrideChanged(currentConfigItemValueMap, newConfigItemValueMap)
 	}
 	log.Functionf("handleGlobalConfigImpl(%s): done", key)
+}
+
+func handleK3sConfigOverrideChanged(currentGcp *types.ConfigItemValueMap, newGcp *types.ConfigItemValueMap) {
+	oldVal := currentGcp.GlobalValueString(types.K3sConfigOverride)
+	newVal := newGcp.GlobalValueString(types.K3sConfigOverride)
+
+	log.Functionf("%s old:%s new:%s", types.K3sConfigOverride, oldVal, newVal)
+
+	writeK3sConfigOverride(newVal)
+}
+
+func writeK3sConfigOverride(base64Config string) {
+	const k3sConfigOverrideDir string = types.SealedDirName
+	const k3sConfigOverrideFilePath string = k3sConfigOverrideDir + "/k3s-user-override.yaml"
+	if len(base64Config) == 0 {
+		if _, err := os.Stat(k3sConfigOverrideFilePath); os.IsNotExist(err) {
+			return
+		}
+		// Remove config
+		err := os.Remove(k3sConfigOverrideFilePath)
+		if err != nil {
+			log.Errorf("Unable to delete %s: %v ", k3sConfigOverrideFilePath, err)
+		}
+		log.Noticef("Removed k3s config override")
+		return
+	}
+	//Set config
+	if _, err := os.Stat(k3sConfigOverrideDir); err != nil {
+		log.Errorf("zedkube k3s override config handling before vault ready: %v", err)
+		return
+	}
+	decodedConfig, err := base64.StdEncoding.DecodeString(base64Config)
+	if err != nil {
+		log.Errorf("failed to decode k3s config: %v", err)
+		return
+	}
+	err = utils.WriteRename(k3sConfigOverrideFilePath, decodedConfig)
+	if err != nil {
+		log.Errorf("k3s config override write error: %v", err)
+	}
+	return
 }
 
 func handleEdgeNodeClusterConfigCreate(ctxArg interface{}, key string,

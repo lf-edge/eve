@@ -12,8 +12,6 @@ HOSTNAME=""
 VMICONFIG_FILENAME="/run/zedkube/vmiVNC.run"
 VNC_RUNNING=false
 ClusterPrefixMask=""
-config_file="/etc/rancher/k3s/config.yaml"
-k3s_config_file="/etc/rancher/k3s/k3s-config.yaml"
 clusterStatusPort="12346"
 INITIAL_WAIT_TIME=5
 MAX_WAIT_TIME=$((10 * 60)) # 10 minutes in seconds, exponential backoff for k3s restart
@@ -27,6 +25,8 @@ RebootReasonFile="/persist/reboot-reason"
 BootReasonFile="/persist/boot-reason"
 BootReasonKubeTransition="BootReasonKubeTransition" # Must match string in types package
 
+# shellcheck source=pkg/kube/kube-vars.sh
+. /usr/bin/kube-vars.sh
 # shellcheck source=pkg/kube/pubsub.sh
 . /usr/bin/pubsub.sh
 # shellcheck source=pkg/kube/descheduler-utils.sh
@@ -180,6 +180,7 @@ setup_prereqs () {
         mkdir -p "$K3S_LOG_DIR"
         rm -rf /var/log
         ln -s "$K3S_LOG_DIR" /var/log
+        mkdir -p "$K3S_CONFIG_DIR"
         /usr/sbin/iscsid start
         mount --make-rshared /
         setup_cgroup
@@ -265,7 +266,7 @@ check_start_k3s() {
         # for now, always copy to get the latest
 
         # start the k3s server now
-        nohup /usr/bin/k3s server --config "$k3s_config_file" &
+        nohup /usr/bin/k3s server &
 
         k3s_pid=$!
         # Give the embedded etcd in k3s priority over io as its fsync latencies are critical
@@ -892,22 +893,18 @@ EOF
     if [ "$is_bootstrap" = "true" ]; then
         #Bootstrap_Node=true
         if [ "$1" = "true" ]; then
-                cp "$config_file" "$k3s_config_file"
-                echo "$bootstrapContent" >> "$k3s_config_file"
+                echo "$bootstrapContent" >> "$k3s_cluster_config_file"
                 logmsg "bootstrap config.yaml configured with $join_serverIP and $HOSTNAME"
         else # if we are in restart case, and we are the bootstrap node, wait for some other nodes to join
                 # we go here, means we can not find node to join the cluster, we have waited long enough
                 # but still put in the server config.yaml for now
                 logmsg "join the cluster, use server content config.yaml"
-                cp "$config_file" "$k3s_config_file"
-                #echo "$bootstrapContent" >> "$k3s_config_file"
-                echo "$serverContent" >> "$k3s_config_file"
+                echo "$serverContent" >> "$k3s_cluster_config_file"
         fi
     else
       # non-bootstrap node, decide if we need to wait for the join server to be ready
       #Bootstrap_Node=false
-      cp "$config_file" "$k3s_config_file"
-      echo "$serverContent" >> "$k3s_config_file"
+      echo "$serverContent" >> "$k3s_cluster_config_file"
       logmsg "config.yaml configured with Join-ServerIP $join_serverIP and hostname $HOSTNAME"
       if [ "$1" = true ]; then
         logmsg "Check if the Endpoint https://$join_serverIP:6443 is in cluster mode, and wait if not..."
@@ -985,6 +982,7 @@ logmsg "Using ZFS persistent storage"
 setup_prereqs
 
 Update_CheckNodeComponents
+Config_k3s_override_apply
 
 if [ -f /var/lib/convert-to-single-node ]; then
         logmsg "remove /var/lib and copy saved single node /var/lib"
@@ -1022,9 +1020,6 @@ if [ ! -f /var/lib/all_components_initialized ]; then
     provision_cluster_config_file true
   else
     logmsg "Single node mode prepare config.yaml for $HOSTNAME"
-
-    # append the hostname to the config.yaml and bootstrap-config.yaml
-    cp "$config_file" "$k3s_config_file"
   fi
 
   # assign node-ip to multus
@@ -1051,10 +1046,9 @@ else # a restart case, found all_components_initialized
     logmsg "provision config.yaml done"
   else # single node mode
     logmsg "Single node mode, prepare config.yaml for $HOSTNAME"
-    cp "$config_file" "$k3s_config_file"
-    # append the hostname to the config.yaml
-    if ! grep -q node-name "$k3s_config_file"; then
-      echo "node-name: $HOSTNAME" >> "$k3s_config_file"
+    # append the hostname to the config.yamls
+    if ! grep -q node-name "$k3s_nodename_config_file"; then
+      echo "node-name: $HOSTNAME" > "$k3s_nodename_config_file"
     fi
   fi
 fi
@@ -1279,6 +1273,7 @@ else
                         longhorn_post_install_config
                         touch /var/lib/longhorn_configured
                 fi
+                Config_k3s_override_apply
         fi
 fi
         check_log_file_size "k3s.log"

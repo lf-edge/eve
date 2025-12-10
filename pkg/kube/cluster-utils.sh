@@ -3,6 +3,9 @@
 # Copyright (c) 2024 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
+# shellcheck source=pkg/kube/kube-vars.sh
+. /usr/bin/kube-vars.sh
+
 LOG_SIZE=$((5*1024*1024))
 K3s_LOG_FILE="k3s.log"
 SAVE_KUBE_VAR_LIB_DIR="/persist/kube-save-var-lib"
@@ -313,8 +316,8 @@ wait_for_device_name() {
                 fi
         done
 
-        if ! grep -q node-name /etc/rancher/k3s/config.yaml; then
-                echo "node-name: $HOSTNAME" >> /etc/rancher/k3s/config.yaml
+        if [ ! -f "$k3s_nodename_config_file" ]; then
+                echo "node-name: $HOSTNAME" > "$k3s_nodename_config_file"
         fi
         logmsg "Hostname: $HOSTNAME"
 }
@@ -376,4 +379,35 @@ Nodes_tie_breaker_config_apply() {
                 kubectl label node "${notTbNode}" "${TIE_BREAKER_NODE_LABEL}=${TIE_BREAKER_NODE_LABEL_UNSET_VALUE}" --overwrite
                 kubectl uncordon "${notTbNode}"
         done
+}
+
+# Config_k3s_override_apply - sync config, stop k3s so that next restart can apply it.
+Config_k3s_override_apply() {
+        # Config not defined from controller
+        if [ ! -f "$K3S_USER_OVERRIDE_CONFIG_SRC" ]; then
+                if [ ! -f "$K3S_USER_OVERRIDE_CONFIG_DST" ]; then
+                        # No current config exists, no change, exit
+                        return
+                fi
+                logmsg "k3s config override removed, will terminate k3s"
+                rm "$K3S_USER_OVERRIDE_CONFIG_DST"
+                terminate_k3s
+                return
+        fi
+
+        # Config set from controller
+        if [ ! -f "$K3S_USER_OVERRIDE_CONFIG_DST" ]; then
+                logmsg "k3s config override added, will terminate k3s"
+                cp "$K3S_USER_OVERRIDE_CONFIG_SRC" "$K3S_USER_OVERRIDE_CONFIG_DST"
+                terminate_k3s
+                return
+        fi
+
+        # Config may be updated from controller
+        if ! cmp -s "$K3S_USER_OVERRIDE_CONFIG_SRC" "$K3S_USER_OVERRIDE_CONFIG_DST"; then
+                logmsg "k3s config override changed, will terminate k3s"
+                cp -f "$K3S_USER_OVERRIDE_CONFIG_SRC" "$K3S_USER_OVERRIDE_CONFIG_DST"
+                terminate_k3s
+        fi
+        # Config unchanged
 }

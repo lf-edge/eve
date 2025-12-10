@@ -427,6 +427,12 @@ const (
 	// EnableTCPMSSClamping : Configuration property to enable or disable TCP MSS clamping
 	// for application traffic forwarded by EVE.
 	EnableTCPMSSClamping GlobalSettingKey = "app.enable.tcp.mss.clamping"
+
+	// K3s Config Overrides: To properly override existing config settings, the following rules must be followed:
+	// - config merge: https://docs.k3s.io/installation/configuration#value-merge-behavior
+	// - server config spec: https://docs.k3s.io/cli/server
+	// - agent config spec: https://docs.k3s.io/cli/agent
+	K3sConfigOverride GlobalSettingKey = "k3s.config.override"
 )
 
 // AgentSettingKey - keys for per-agent settings
@@ -1135,6 +1141,9 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 
 	// TCP MSS Clamping
 	configItemSpecMap.AddBoolItem(EnableTCPMSSClamping, true)
+
+	//K3s Settings
+	configItemSpecMap.AddStringItem(K3sConfigOverride, "", base64Validator)
 	return configItemSpecMap
 }
 
