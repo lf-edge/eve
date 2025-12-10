@@ -248,6 +248,7 @@ func TestNewConfigItemSpecMap(t *testing.T) {
 		DiagProbeRemoteHTTPEndpoint,
 		DiagProbeRemoteHTTPSEndpoint,
 		EnableTCPMSSClamping,
+		K3sConfigOverride,
 	}
 	if len(specMap.GlobalSettings) != len(gsKeys) {
 		t.Errorf("GlobalSettings has more (%d) than expected keys (%d)",
