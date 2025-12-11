@@ -6,7 +6,7 @@
 # shellcheck source=/dev/null
 . /usr/bin/cluster-utils.sh
 
-K3S_VERSION=v1.33.3+k3s1
+K3S_VERSION=v1.34.2+k3s1
 
 #
 # Handle any migrations needed due to updated cluster-init.sh
