@@ -231,16 +231,11 @@ func PCIReleaseGeneric(long string) error {
 }
 
 // PCISameControllerGeneric : Common function for both EVE kvm and 'k'
+// XXX We can not currently do enforcement based on iommu groups for since
+// the groups at runtime might be different than the groups used to create
+// the hardware model due to the ACS override patch being in place for the
+// model creation but not in the currently running Linux kernel.
 func PCISameControllerGeneric(id1 string, id2 string) bool {
-	tag1, err := types.PCIGetIOMMUGroup(id1)
-	if err != nil {
-		return types.PCISameController(id1, id2)
-	}
-
-	tag2, err := types.PCIGetIOMMUGroup(id2)
-	if err != nil {
-		return types.PCISameController(id1, id2)
-	}
-
-	return tag1 == tag2
+	logrus.Infof("can't validate that %s and %s can be assigned separately: trusting the hardware model to be correct", id1, id2)
+	return false
 }
