@@ -421,6 +421,14 @@ func handleVaultKeyFromControllerImpl(ctxArg interface{}, key string,
 			return
 		}
 
+		// better safe than sorry, even if golang GC should take care of it.
+		defer func() {
+			// zero out decrypted key
+			for i := range decryptedKey {
+				decryptedKey[i] = 0
+			}
+		}()
+
 		hash := sha256.New()
 		hash.Write(decryptedKey)
 		digest256 := hash.Sum(nil)
@@ -430,18 +438,36 @@ func handleVaultKeyFromControllerImpl(ctxArg interface{}, key string,
 		}
 		log.Functionf("Computed and provided SHA are matching")
 
+		// TODO : update this after eve-api change is merged
+		pcrSelection := etpm.DefaultDiskKeySealingPCRs
+		mockSealingPCRs := etpm.SealingPcrPolicyIndexes{
+			Pcrs: etpm.DefaultDiskKeySealingPCRs.PCRs,
+			Id:   0,
+		}
+		pcrSelection, policyChanged, err := etpm.SaveDiskKeySealingPCRs(mockSealingPCRs, etpm.PcrPolicyIndexesFile, etpm.PcrPolicyIndexesHashFile)
+		if err != nil {
+			log.Errorf("Failed to save controller provided PCR Policy sealing PCRs: %v", err)
+			return
+		}
+
+		// if policy has changed, or we have not yet unlocked the vault,
+		// re-seal the disk key we got from controller.
+		if policyChanged || !ctx.defaultVaultUnlocked {
+			log.Noticef("Sealing disk key, Vault Unlocked: %v, Policy Changed: %v", ctx.defaultVaultUnlocked, policyChanged)
+			err = etpm.SealDiskKey(log, decryptedKey, pcrSelection)
+			if err != nil {
+				log.Errorf("Failed to re-seal disk key in TPM %v", err)
+				return
+			}
+			log.Noticef("Re-sealed disk key in TPM.")
+		}
+
+		// If we have already unlocked the vault, nothing to do
 		if ctx.defaultVaultUnlocked {
 			return
 		}
-		// Try unlocking the vault now, in case it is not yet unlocked
-		log.Noticef("Vault is still locked, trying to unlock")
-		err = etpm.SealDiskKey(log, decryptedKey, etpm.DiskKeySealingPCRs)
-		if err != nil {
-			log.Errorf("Failed to Seal key in TPM %v", err)
-			return
-		}
-		log.Noticef("Sealed key in TPM, unlocking %s", types.DefaultVaultName)
 
+		log.Noticef("Sealed key in TPM, unlocking %s", types.DefaultVaultName)
 		err = handler.UnlockDefaultVault()
 		if err != nil {
 			log.Errorf("Failed to unlock zfs vault after receiving Controller key, %v",

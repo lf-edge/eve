@@ -10,6 +10,7 @@ import (
 	"crypto/x509"
 	"encoding/asn1"
 	"encoding/gob"
+	"encoding/json"
 	"encoding/pem"
 	"fmt"
 	"io"
@@ -72,7 +73,16 @@ const (
 	//EmptyPassword is an empty string
 	EmptyPassword  = ""
 	vaultKeyLength = 32 //Bytes
+
+	// TODO : rename and move this to locations
+	PcrPolicyIndexesFile     = types.PersistStatusDir + "/sealingpcrs.json"
+	PcrPolicyIndexesHashFile = types.PersistStatusDir + "/sealingpcrs.hash"
 )
+
+type SealingPcrPolicyIndexes struct {
+	Pcrs []int
+	Id   int
+}
 
 // PCRBank256Status stores info about support for
 // SHA256 PCR bank on this device
@@ -98,7 +108,7 @@ var (
 	pcrBank256Status = PCRBank256StatusUnknown
 
 	//DiskKeySealingPCRs represents PCRs that we use for sealing
-	DiskKeySealingPCRs = tpm2.PCRSelection{Hash: tpm2.AlgSHA256, PCRs: []int{0, 1, 2, 3, 4, 6, 7, 8, 9, 13, 14}}
+	DefaultDiskKeySealingPCRs = tpm2.PCRSelection{Hash: tpm2.AlgSHA256, PCRs: []int{0, 1, 2, 3, 4, 6, 7, 8, 9, 13, 14}}
 
 	// TpmDevicePath is the TPM device file path, it is not a constant due to
 	// test usage.
@@ -258,6 +268,109 @@ var (
 		},
 	}
 )
+
+// GetDiskKeySealingPCRs returns the PCR selection to use for sealing the disk key.
+// It reads from the saved sealing PCRs file if it exists, otherwise returns the default.
+func GetDiskKeySealingPCRs(log *base.LogObject, path string) tpm2.PCRSelection {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if log != nil {
+			log.Warnf("failed to read sealing PCRs file: %v, using default PCR list: %v", err, DefaultDiskKeySealingPCRs.PCRs)
+		}
+		return DefaultDiskKeySealingPCRs
+	}
+
+	var sp SealingPcrPolicyIndexes
+	if err := json.Unmarshal(data, &sp); err != nil {
+		if log != nil {
+			log.Warnf("failed to unmarshal sealing PCRs: %v, using default PCR list: %v", err, DefaultDiskKeySealingPCRs.PCRs)
+		}
+		return DefaultDiskKeySealingPCRs
+	}
+
+	pcrs := make([]int, len(sp.Pcrs))
+	for i, pcr := range sp.Pcrs {
+		pcrs[i] = int(pcr)
+	}
+
+	return tpm2.PCRSelection{Hash: tpm2.AlgSHA256, PCRs: pcrs}
+}
+
+// SaveDiskKeySealingPCRs saves the PCR policy indexes to a file.
+func SaveDiskKeySealingPCRs(sp SealingPcrPolicyIndexes, policyPath, policyHashPath string) (tpm2.PCRSelection, bool, error) {
+	// Check if the list is empty
+	if len(sp.Pcrs) == 0 {
+		return tpm2.PCRSelection{}, false, fmt.Errorf("PCR list cannot be empty")
+	}
+
+	// Check for maximum count (reasonable limit for PCR selection)
+	if len(sp.Pcrs) > 16 {
+		return tpm2.PCRSelection{}, false, fmt.Errorf("too many PCRs in policy: maximum 16 allowed, got %d", len(sp.Pcrs))
+	}
+
+	hasPCR0 := false
+	seenPCRs := make(map[int]bool)
+	for _, pcr := range sp.Pcrs {
+		// Check for duplicate PCR indexes
+		if seenPCRs[pcr] {
+			return tpm2.PCRSelection{}, false, fmt.Errorf("duplicate PCR index %d in policy", pcr)
+		}
+		seenPCRs[pcr] = true
+		// PCR indexes must be between 0 and 15 inclusive, otherwise reject the policy.
+		if pcr < 0 || pcr > 15 {
+			return tpm2.PCRSelection{}, false, fmt.Errorf("invalid PCR index %d in policy: must be between 0 and 15", pcr)
+		}
+		// PCR 5 is used for GPT partition table and boot manager configuration,
+		// which can be volatile and unsuitable for sealing in many scenarios.
+		if pcr == 5 {
+			return tpm2.PCRSelection{}, false, fmt.Errorf("invalid policy, PCR 5 is volatile (GPT/boot manager) and should not be included")
+		}
+		// PCR 16 is resetable debug PCR, reject it.
+		if pcr == 16 {
+			return tpm2.PCRSelection{}, false, fmt.Errorf("invalid policy, PCR 16 is a debug PCR and should not be included")
+		}
+		// PCR 17-22 are used for DTRM, PCR 23 is resetable and also used for DTRM, reject them.
+		if pcr >= 17 && pcr <= 23 {
+			return tpm2.PCRSelection{}, false, fmt.Errorf("invalid policy, PCR %d is used for DTRM and should not be included", pcr)
+		}
+		// PCR 0 is static root of trust for measurement (SRTM), must be included.
+		if pcr == 0 {
+			hasPCR0 = true
+		}
+	}
+	if !hasPCR0 {
+		return tpm2.PCRSelection{}, false, fmt.Errorf("PCR 0 must be in the list")
+	}
+
+	data, err := json.Marshal(sp)
+	if err != nil {
+		return tpm2.PCRSelection{}, false, fmt.Errorf("failed to marshal sealing PCR policy indexes: %w", err)
+	}
+
+	// Calculate hash of the policy
+	hash := crypto.SHA256.New()
+	hash.Write(data)
+	policyHash := hash.Sum(nil)
+
+	// Check if policy has changed
+	existingHash, err := os.ReadFile(policyHashPath)
+	if err == nil && bytes.Equal(existingHash, policyHash) {
+		return tpm2.PCRSelection{Hash: tpm2.AlgSHA256, PCRs: sp.Pcrs}, false, nil
+	}
+
+	// Save the policy file
+	if err := fileutils.WriteRename(policyPath, data); err != nil {
+		return tpm2.PCRSelection{}, false, fmt.Errorf("failed to write sealing PCRs policy (id=%d, pcrs=%v) to %s: %w",
+			sp.Id, sp.Pcrs, policyPath, err)
+	}
+
+	// Save the hash file
+	if err := fileutils.WriteRename(policyHashPath, policyHash); err != nil {
+		return tpm2.PCRSelection{}, false, fmt.Errorf("failed to write sealing PCRs hash file: %w", err)
+	}
+
+	return tpm2.PCRSelection{Hash: tpm2.AlgSHA256, PCRs: sp.Pcrs}, true, nil
+}
 
 // GetTpmLogFileNames returns paths to saved TPM logs
 func GetTpmLogFileNames() (string, string) {
@@ -699,6 +812,7 @@ func FetchSealedVaultKey(log *base.LogObject) ([]byte, error) {
 	//gain some knowledge about existing environment
 	sealedKeyPresent := isSealedKeyPresent()
 	legacyKeyPresent := isLegacyKeyPresent()
+	pcrSelection := GetDiskKeySealingPCRs(log, PcrPolicyIndexesFile)
 
 	if !sealedKeyPresent && !legacyKeyPresent {
 		log.Noticef("neither legacy nor sealed disk key present, generating a fresh key")
@@ -723,7 +837,7 @@ func FetchSealedVaultKey(log *base.LogObject) ([]byte, error) {
 		if err != nil {
 			return nil, fmt.Errorf("GetRandom failed: %w", err)
 		}
-		err = SealDiskKey(log, key, DiskKeySealingPCRs)
+		err = SealDiskKey(log, key, pcrSelection)
 		if err != nil {
 			return nil, fmt.Errorf("sealing the fresh disk key failed: %w", err)
 		}
@@ -750,7 +864,7 @@ func FetchSealedVaultKey(log *base.LogObject) ([]byte, error) {
 
 		log.Noticef("try to convert the legacy key into a sealed key")
 
-		err = SealDiskKey(log, key, DiskKeySealingPCRs)
+		err = SealDiskKey(log, key, pcrSelection)
 		if err != nil {
 			return nil, fmt.Errorf("sealing the legacy disk key into TPM failed: %w", err)
 		}
@@ -761,7 +875,7 @@ func FetchSealedVaultKey(log *base.LogObject) ([]byte, error) {
 		log.Noticef("sealed disk key present int TPM, about to unseal it")
 	}
 	//at this point, we have a key sealed into TPM
-	key, err := UnsealDiskKey(DiskKeySealingPCRs)
+	key, err := UnsealDiskKey(pcrSelection)
 	if err == nil {
 		// be more verbose, lets celebrate
 		log.Noticef("successfully unsealed the disk key from TPM")
@@ -1011,7 +1125,7 @@ func CompareLegacyandSealedKey() SealedKeyType {
 		//no cloning case, return SealedKeyTypeNew
 		return SealedKeyTypeNew
 	}
-	unsealedKey, err := UnsealDiskKey(DiskKeySealingPCRs)
+	unsealedKey, err := UnsealDiskKey(GetDiskKeySealingPCRs(nil, PcrPolicyIndexesFile))
 	if err != nil {
 		//key is present but can't unseal it
 		//but legacy key is present
@@ -1217,7 +1331,8 @@ func FindMismatchingPCRs() ([]int, error) {
 		// this should never happen, except when we update EVE and adding new
 		// indexes to the DiskKeySealingPCRs, anyways, better safe than sorry!
 		if !ok {
-			return nil, fmt.Errorf("saved PCR index %d doesn't exist at run-time PCRs list %v", i, DiskKeySealingPCRs.PCRs)
+			pcrSelection := GetDiskKeySealingPCRs(nil, PcrPolicyIndexesFile)
+			return nil, fmt.Errorf("saved PCR index %d doesn't exist at run-time PCRs list %v", i, pcrSelection.PCRs)
 		}
 
 		if !bytes.Equal(readPCR, savedPCR) {
@@ -1236,10 +1351,13 @@ func readDiskKeySealingPCRs() (map[int][]byte, error) {
 	}
 	defer rw.Close()
 
+	// Get the PCRs used in sealing the disk key
+	pcrSelection := GetDiskKeySealingPCRs(nil, PcrPolicyIndexesFile)
+
 	// tpm2.ReadPCRs returns at most 8 PCRs, so loop over and read one by one
 	readPCRs := make(map[int][]byte)
-	for _, v := range DiskKeySealingPCRs.PCRs {
-		p, err := tpm2.ReadPCR(rw, v, DiskKeySealingPCRs.Hash)
+	for _, v := range pcrSelection.PCRs {
+		p, err := tpm2.ReadPCR(rw, v, pcrSelection.Hash)
 		if err != nil {
 			return nil, err
 		}
