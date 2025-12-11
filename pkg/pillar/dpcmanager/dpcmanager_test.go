@@ -964,7 +964,7 @@ func TestSingleDPC(test *testing.T) {
 	t.Eventually(dpcKeyCb(0)).Should(Equal("zedagent"))
 	t.Eventually(dpcTimePrioCb(0, timePrio1)).Should(BeTrue())
 	t.Eventually(dnsKeyCb()).Should(Equal("zedagent"))
-	t.Expect(getDPC(0).State).To(Equal(types.DPCStateSuccess))
+	t.Eventually(dpcStateCb(0)).Should(Equal(types.DPCStateSuccess))
 	idx, dpcList := getDPCList()
 	t.Expect(idx).To(Equal(0))
 	t.Expect(dpcList).To(HaveLen(1))
