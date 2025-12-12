@@ -815,3 +815,39 @@ func (aa *AssignableAdapters) ExpandControllers(log *base.LogObject, list []*IoB
 	}
 	return elist
 }
+
+// WarnLargerGroup logs warnings if there are other PCI functions on
+// the same PCI controller and/or IOMMU group that are not part of
+// the assigngrp. That indicates a mismatch between the IOMMU groups used
+// to create the model we receive in IoBundleList and the IOMMU groups
+// in the running Linux kernel.
+func (aa *AssignableAdapters) WarnLargerGroup(log *base.LogObject, list []*IoBundle, PCISameController func(string, string) bool) {
+
+	for _, ib := range list {
+		for i := range aa.IoBundleList {
+			ib2 := &aa.IoBundleList[i]
+			already := false
+			for _, ib3 := range llist {
+				if ib2.Phylabel == ib3.Phylabel {
+					already = true
+					break
+				}
+			}
+			if already {
+				log.Tracef("WarnLargerGroup already %s long %s",
+					ib2.Phylabel, ib2.PciLong)
+				continue
+			}
+			if ib.UsbAddr != "" || ib2.UsbAddr != "" {
+				continue
+			}
+			if ib.UsbProduct != "" || ib2.UsbProduct != "" {
+				continue
+			}
+			if PCISameController != nil && PCISameController(ib.PciLong, ib2.PciLong) {
+				log.Warnf("WarnLargerGroup %s/%s not included in assigngrp but same PCI controller/IOMUU group as %s/%s",
+					ib2.Phylabel, ib2.PciLong, ib.Phylabel, ib.PciLong)
+			}
+		}
+	}
+}

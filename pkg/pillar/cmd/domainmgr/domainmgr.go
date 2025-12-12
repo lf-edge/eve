@@ -3277,21 +3277,20 @@ func updatePortAndPciBackIoBundle(ctx *domainContext, ib *types.IoBundle) (chang
 		list = append(list, ib)
 	}
 
+	// Log warnings if the kernel PCI controller/IOMMU group would
+	// include other PCI devices in the group.
+	aa.WarnLargerGroup(log, list, hyper.PCISameController)
+
 	keepInHostUsbControllers := usbControllersWithoutPCIReserve(ctx.assignableAdapters.IoBundleList)
 
 	// Is any member a network port?
-	// We look across all members in the assignment group (expanded below
-	// for safety when the model is incorrect) and if any member is a port
+	// We look across all members in the assignment group and if any member is a port
 	// providing network connectivity (therefore needed to be kept in the host),
 	// we set it for all the members.
 	isPort := false
 	// Keep device in the host?
 	// Note that without isPort enabled assignments still take precedence.
 	keepInHost := false
-	// expand list to include other PCI functions on the same PCI controller
-	// since they need to be treated as part of the same bundle even if the
-	// EVE controller doesn't know it
-	list = aa.ExpandControllers(log, list, hyper.PCISameController)
 	for _, ib := range list {
 		if types.IsPort(ctx.deviceNetworkStatus, ib.Ifname) && ib.Type.IsNet() {
 			isPort = true
