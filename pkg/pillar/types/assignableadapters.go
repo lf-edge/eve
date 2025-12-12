@@ -779,43 +779,6 @@ func (aa *AssignableAdapters) CheckBadAssignmentGroups(log *base.LogObject, PCIS
 	return changed || aa.CheckParentAssigngrp()
 }
 
-// ExpandControllers expands the list to include other PCI functions on the same PCI controller
-// (while ignoring the function number). The output might have duplicate entries.
-func (aa *AssignableAdapters) ExpandControllers(log *base.LogObject, list []*IoBundle, PCISameController func(string, string) bool) []*IoBundle {
-	var elist []*IoBundle
-
-	elist = list
-	for _, ib := range list {
-		for i := range aa.IoBundleList {
-			ib2 := &aa.IoBundleList[i]
-			already := false
-			for _, ib3 := range elist {
-				if ib2.Phylabel == ib3.Phylabel {
-					already = true
-					break
-				}
-			}
-			if already {
-				log.Tracef("ExpandController already %s long %s",
-					ib2.Phylabel, ib2.PciLong)
-				continue
-			}
-			if ib.UsbAddr != "" || ib2.UsbAddr != "" {
-				continue
-			}
-			if ib.UsbProduct != "" || ib2.UsbProduct != "" {
-				continue
-			}
-			if PCISameController != nil && PCISameController(ib.PciLong, ib2.PciLong) {
-				log.Warnf("ExpandController found %s matching %s; long %s long %s",
-					ib2.Phylabel, ib.Phylabel, ib2.PciLong, ib.PciLong)
-				elist = append(elist, ib2)
-			}
-		}
-	}
-	return elist
-}
-
 // WarnLargerGroup logs warnings if there are other PCI functions on
 // the same PCI controller and/or IOMMU group that are not part of
 // the assigngrp. That indicates a mismatch between the IOMMU groups used
@@ -827,7 +790,7 @@ func (aa *AssignableAdapters) WarnLargerGroup(log *base.LogObject, list []*IoBun
 		for i := range aa.IoBundleList {
 			ib2 := &aa.IoBundleList[i]
 			already := false
-			for _, ib3 := range llist {
+			for _, ib3 := range list {
 				if ib2.Phylabel == ib3.Phylabel {
 					already = true
 					break
