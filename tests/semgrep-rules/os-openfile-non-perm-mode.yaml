@@ -1,0 +1,22 @@
+# Copyright (c) 2025 Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+---
+rules:
+  - id: os-openfile-non-perm-mode
+    message: "os.OpenFile called with os.O_CREATE but invalid permission mode ($MODE). Use an octal permission like 0o644 or 0644."
+    severity: ERROR
+    languages:
+      - go
+    options:
+      constant_propagation: true
+    patterns:
+      - pattern: os.OpenFile($FILENAME, $FLAGS, $MODE)
+      - metavariable-pattern:
+          metavariable: $FLAGS
+          patterns:
+            - pattern-regex: '.*O_CREATE.*'
+      - metavariable-pattern:
+          metavariable: $MODE
+          patterns:
+            - pattern-not-regex: '^0[oO]?[0-7]{3,4}$'
