@@ -6,7 +6,9 @@
 # shellcheck source=/dev/null
 . /usr/bin/cluster-utils.sh
 
+# NOTE: Whenever K3S_VERSION is updated, please bump up KUBE_VERSION value too.
 K3S_VERSION=v1.34.2+k3s1
+KUBE_VERSION=2
 
 #
 # Handle any migrations needed due to updated cluster-init.sh
@@ -14,7 +16,6 @@ K3S_VERSION=v1.34.2+k3s1
 #       - a migration is needed (new path for something)
 #       - a version bump of: K3s, multus, kubevirt, cdi, longhorn
 #
-KUBE_VERSION=1
 APPLIED_KUBE_VERSION_PATH="/var/lib/applied-kube-version"
 update_Version_Set() {
     version=$1
