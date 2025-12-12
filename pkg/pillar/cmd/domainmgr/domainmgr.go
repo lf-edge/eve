@@ -3137,6 +3137,7 @@ func handlePhysicalIOAdapterListImpl(ctxArg interface{}, key string,
 		aa.CheckBadUSBBundles()
 		// check for mismatched PCI-ids and assignment groups and mark as errors
 		aa.CheckBadAssignmentGroups(log, hyper.PCISameController)
+		aa.CheckParentAssigngrp()
 		for i := range aa.IoBundleList {
 			ib := &aa.IoBundleList[i]
 			log.Functionf("handlePhysicalIOAdapterListImpl: new Adapter: %+v",
@@ -3181,6 +3182,7 @@ func handlePhysicalIOAdapterListImpl(ctxArg interface{}, key string,
 			aa.CheckBadUSBBundles()
 			// check for mismatched PCI-ids and assignment groups and mark as errors
 			aa.CheckBadAssignmentGroups(log, hyper.PCISameController)
+			aa.CheckParentAssigngrp()
 			// Lookup since it could have changed
 			ib = aa.LookupIoBundlePhylabel(ib.Phylabel)
 			updatePortAndPciBackIoBundle(ctx, ib)
@@ -3276,10 +3278,6 @@ func updatePortAndPciBackIoBundle(ctx *domainContext, ib *types.IoBundle) (chang
 	} else {
 		list = append(list, ib)
 	}
-
-	// Log warnings if the kernel PCI controller/IOMMU group would
-	// include other PCI devices in the group.
-	aa.WarnLargerGroup(log, list, hyper.PCISameController)
 
 	keepInHostUsbControllers := usbControllersWithoutPCIReserve(ctx.assignableAdapters.IoBundleList)
 

@@ -745,11 +745,9 @@ func (aa *AssignableAdapters) CheckBadUSBBundles() {
 	}
 }
 
-// CheckBadAssignmentGroups sets ib.Error/ErrorTime if two IoBundles in different
-// assignment groups have the same PCI ID (ignoring the PCI function number)
-// Returns true if there was a modification so caller can publish.
-func (aa *AssignableAdapters) CheckBadAssignmentGroups(log *base.LogObject, PCISameController func(string, string) bool) bool {
-	changed := false
+// CheckBadAssignmentGroups logs a warning if two IoBundles in different
+// assignment groups have the same IOMMU group or PCI ID (ignoring the PCI function number)
+func (aa *AssignableAdapters) CheckBadAssignmentGroups(log *base.LogObject, PCISameController func(string, string) bool) {
 	for i := range aa.IoBundleList {
 		ib := &aa.IoBundleList[i]
 		for _, ib2 := range aa.IoBundleList {
@@ -767,49 +765,8 @@ func (aa *AssignableAdapters) CheckBadAssignmentGroups(log *base.LogObject, PCIS
 				continue
 			}
 			if PCISameController != nil && PCISameController(ib.PciLong, ib2.PciLong) {
-				err := fmt.Errorf("CheckBadAssignmentGroup: %s same PCI controller as %s; pci long %s vs %s",
-					ib2.Ifname, ib.Ifname, ib2.PciLong, ib.PciLong)
-				log.Error(err)
-				ib.Error.Append(err)
-				changed = true
-			}
-		}
-	}
-
-	return changed || aa.CheckParentAssigngrp()
-}
-
-// WarnLargerGroup logs warnings if there are other PCI functions on
-// the same PCI controller and/or IOMMU group that are not part of
-// the assigngrp. That indicates a mismatch between the IOMMU groups used
-// to create the model we receive in IoBundleList and the IOMMU groups
-// in the running Linux kernel.
-func (aa *AssignableAdapters) WarnLargerGroup(log *base.LogObject, list []*IoBundle, PCISameController func(string, string) bool) {
-
-	for _, ib := range list {
-		for i := range aa.IoBundleList {
-			ib2 := &aa.IoBundleList[i]
-			already := false
-			for _, ib3 := range list {
-				if ib2.Phylabel == ib3.Phylabel {
-					already = true
-					break
-				}
-			}
-			if already {
-				log.Tracef("WarnLargerGroup already %s long %s",
-					ib2.Phylabel, ib2.PciLong)
-				continue
-			}
-			if ib.UsbAddr != "" || ib2.UsbAddr != "" {
-				continue
-			}
-			if ib.UsbProduct != "" || ib2.UsbProduct != "" {
-				continue
-			}
-			if PCISameController != nil && PCISameController(ib.PciLong, ib2.PciLong) {
-				log.Warnf("WarnLargerGroup %s/%s not included in assigngrp but same PCI controller/IOMUU group as %s/%s",
-					ib2.Phylabel, ib2.PciLong, ib.Phylabel, ib.PciLong)
+				log.Warnf("CheckBadAssignmentGroup: %s/%s same IOMMU group %s/%s",
+					ib2.Ifname, ib2.PciLong, ib.Ifname, ib.PciLong)
 			}
 		}
 	}
