@@ -231,6 +231,11 @@ func PCIReleaseGeneric(long string) error {
 }
 
 // PCISameControllerGeneric : Common function for both EVE kvm and 'k'
+// This is only used to generate warnings as we assume that the hardware
+// model has the correct assigngrp.
+// There can be differences between the IOMMU groups at runtime might and
+// the groups used to create the hardware model due to the ACS override patch
+// being in place for the model creation but not in the currently running Linux kernel.
 func PCISameControllerGeneric(id1 string, id2 string) bool {
 	tag1, err := types.PCIGetIOMMUGroup(id1)
 	if err != nil {
