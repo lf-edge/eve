@@ -1156,7 +1156,9 @@ if [ ! -f /var/lib/all_components_initialized ]; then
                 logmsg "k3s manifests dir (${KUBE_MANIFESTS_DIR}/) does not exist yet"
                 continue
         fi
-        cp /etc/k3s-manifests/storage-classes.yaml "${KUBE_MANIFESTS_DIR}/storage-classes.yaml"
+
+        # Copy all the manifests we are shipping
+        cp /etc/k3s-manifests/* "${KUBE_MANIFESTS_DIR}/"
 
         #
         # Longhorn

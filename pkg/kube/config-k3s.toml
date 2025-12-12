@@ -14,6 +14,8 @@ root = "/persist/vault/containerd"
   enable_unprivileged_icmp = true
   sandbox_image = "rancher/mirrored-pause:3.6"
   device_ownership_from_security_context = true
+  enable_cdi = true
+  cdi_spec_dirs = ["/etc/cdi", "/var/run/cdi"]
 
 [plugins."io.containerd.grpc.v1.cri".containerd]
   snapshotter = "overlayfs"
@@ -31,3 +33,12 @@ root = "/persist/vault/containerd"
 
 [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc.options]
   SystemdCgroup = false
+
+[plugins."io.containerd.grpc.v1.cri".containerd.runtimes.nvidia]
+  privileged_without_host_devices = false
+  runtime_engine = ""
+  runtime_root = ""
+  runtime_type = "io.containerd.runc.v2"
+
+[plugins."io.containerd.grpc.v1.cri".containerd.runtimes.nvidia.options]
+  BinaryName = "/opt/vendor/nvidia/bin/nvidia-container-runtime"

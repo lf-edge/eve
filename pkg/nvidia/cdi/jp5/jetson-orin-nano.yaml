@@ -3331,5 +3331,5 @@ devices:
             - nosuid
             - nodev
             - bind
-    name: all
-kind: nvidia.com/orin-gpu
+    name: tegra
+kind: nvidia.com/gpu
