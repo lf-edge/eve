@@ -74,12 +74,6 @@ INSTALL_CLUSTERED_STORAGE=false
 INSTALL_ZFS=false
 eve_flavor=$(cat /hostfs/etc/eve-hv-type)
 
-if [ "$eve_flavor" = "k" ]; then
-   INSTALL_CLUSTERED_STORAGE=true
-   INSTALL_ZFS=true
-   echo "$(date -Ins -u) Kubevirt image - might recreate ZFS /persist"
-fi
-
 # the following is here just for compatibility reasons and it should go away soon
 ln -s "$CONFIGDIR" "/var/$CONFIGDIR"
 ln -s "$PERSISTDIR" "/var/$PERSISTDIR"
@@ -111,6 +105,14 @@ if grep -q 'eve_install_zfs_with_raid_level' /proc/cmdline; then
    P3_FS_TYPE_DEFAULT=zfs
 elif [ "$INSTALL_ZFS" = true ]; then
    P3_FS_TYPE_DEFAULT=zfs
+fi
+
+if [ "$eve_flavor" = "k" ]; then
+   if [ "$P3_FS_TYPE_DEFAULT" = "zfs" ]; then
+      INSTALL_CLUSTERED_STORAGE=true
+      INSTALL_ZFS=true
+      echo "$(date -Ins -u) Kubevirt image - might recreate ZFS /persist"
+   fi
 fi
 
 # First lets see if we're running with the disk that hasn't been properly
