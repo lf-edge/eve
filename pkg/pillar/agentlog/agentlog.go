@@ -397,8 +397,7 @@ func GetRebootImage(log *base.LogObject) string {
 
 // Append if file exists.
 func printToFile(filename string, str string) error {
-	f, err := os.OpenFile(filename, os.O_APPEND|os.O_WRONLY|os.O_CREATE,
-		os.ModeAppend)
+	f, err := os.OpenFile(filename, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644)
 	if err != nil {
 		return err
 	}
