@@ -429,6 +429,12 @@ func (c *AdapterConfigurator) NeedsRecreate(oldItem, newItem depgraph.Item) (rec
 	}
 	return oldCfg.L2Type != newCfg.L2Type ||
 		oldCfg.WirelessType != newCfg.WirelessType ||
-		oldCfg.UsedAsVlanParent != newCfg.UsedAsVlanParent ||
-		oldCfg.DhcpType != newCfg.DhcpType
+		oldCfg.DhcpType != newCfg.DhcpType ||
+		// There is no need to re-create the adapter when VLANs are added or removed,
+		// as long as the bridge continues to be managed by the same microservice
+		// (NIM or zedrouter).
+		// For this reason, we do not compare UsedAsVlanParent directly and instead
+		// only check whether the adapter’s bridge ownership (isAdapterBridgedByNIM)
+		// has changed.
+		c.isAdapterBridgedByNIM(oldCfg) != c.isAdapterBridgedByNIM(newCfg)
 }
