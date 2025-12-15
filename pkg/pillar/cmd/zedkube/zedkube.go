@@ -431,7 +431,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 		case change := <-subEdgeNodeCert.MsgChan():
 			subEdgeNodeCert.ProcessChange(change)
-			edgenodeCertInitialized = true
+			if len(subEdgeNodeCert.GetAll()) > 0 {
+				edgenodeCertInitialized = true
+			}
 
 		case change := <-subEdgeNodeInfo.MsgChan():
 			subEdgeNodeInfo.ProcessChange(change)
@@ -594,10 +596,12 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		case change := <-subControllerCert.MsgChan():
 			subControllerCert.ProcessChange(change)
 			// Additional controller cert updates
-			zedkubeCtx.applyControllerCerts()
+			zedkubeCtx.applyCertsChange("controller")
 
 		case change := <-subEdgeNodeCert.MsgChan():
 			subEdgeNodeCert.ProcessChange(change)
+			// Additional edgenode cert updates
+			zedkubeCtx.applyCertsChange("edgenode")
 
 		case change := <-subEdgeNodeInfo.MsgChan():
 			subEdgeNodeInfo.ProcessChange(change)
