@@ -79,8 +79,9 @@ func (v Vlan) Dependencies() (deps []depgraph.Dependency) {
 					// unreachable
 					return false
 				}
-				// MTU of the adapter must not be smaller.
-				return adapter.GetMTU() >= v.GetMTU()
+				// The adapter must be configured for use as a VLAN parent,
+				// and its MTU must be greater than or equal to the VLAN MTU.
+				return adapter.UsedAsVlanParent && adapter.GetMTU() >= v.GetMTU()
 			},
 			Description: "Adapter of the parent interface must exist",
 		},
