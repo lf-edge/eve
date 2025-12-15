@@ -62,9 +62,9 @@ func (z *zedkube) applyDNS(dns types.DeviceNetworkStatus) {
 	}
 }
 
-// The controller cert the Token decryption depends on might be updated
+// The controller or edge-node cert the Token decryption depends on might be updated
 // later than the initial waiting for. Re-publish it.
-func (z *zedkube) applyControllerCerts() {
+func (z *zedkube) applyCertsChange(certtype string) {
 	if z.clusterIPIsReady && z.clusterConfig.ClusterInterface != "" {
 		// Publication is created in Run(); just check if there's a published value.
 		st, err := z.pubEdgeNodeClusterStatus.Get("global")
@@ -77,7 +77,7 @@ func (z *zedkube) applyControllerCerts() {
 		existing, ok := st.(types.EdgeNodeClusterStatus)
 		if !ok || existing.EncryptedClusterToken == "" {
 			// unexpected type or token missing -> publish
-			log.Noticef("applyControllerCerts: re-publishing kube config status due to controller cert update")
+			log.Noticef("applyCertsChange: re-publishing kube config status due to %s cert update", certtype)
 			z.publishKubeConfigStatus()
 		}
 	}
@@ -157,6 +157,7 @@ func (z *zedkube) publishKubeConfigStatus() {
 	}
 
 	// publish the cluster status for the kube container
+	log.Functionf("publishKubeConfigStatus: publishing")
 	z.pubEdgeNodeClusterStatus.Publish("global", status)
 }
 
