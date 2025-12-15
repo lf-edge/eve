@@ -228,7 +228,7 @@ func getAddrFromJWT(token string, isServer bool, instID int) (string, string, ty
 	now := time.Now()
 	nowSec := uint64(now.Unix())
 	if nowSec > jdata.Exp {
-		return addrport, path, evAuth, fmt.Errorf("JWT expired %d sec ago", nowSec-jdata.Exp)
+		return addrport, path, evAuth, fmt.Errorf("JWT expired %v", humanTimeAgo(nowSec-jdata.Exp))
 	}
 
 	if jdata.Num > 1 && instID < 1 {
@@ -608,6 +608,22 @@ func getKubeServerIPandPort(kubeConfigFile string) (string, error) {
 	}
 
 	return strings.TrimSpace(matches[1]), nil
+}
+
+// convert seconds difference to human readable time ago string
+func humanTimeAgo(secDiff uint64) string {
+	d := time.Duration(secDiff) * time.Second
+	switch {
+	case d < time.Minute:
+		return fmt.Sprintf("%d seconds ago", int(d.Seconds()))
+	case d < time.Hour:
+		return fmt.Sprintf("%d minutes ago", int(d.Minutes()))
+	case d < 24*time.Hour:
+		return fmt.Sprintf("%d hours ago", int(d.Hours()))
+	default:
+		days := int(d.Hours() / 24)
+		return fmt.Sprintf("%d days ago", days)
+	}
 }
 
 var helpStr = `eve-edgeview [ -token <session-token> ] [ -inst <instance-id> ] <query command>
