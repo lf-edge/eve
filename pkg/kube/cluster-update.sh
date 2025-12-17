@@ -136,10 +136,10 @@ Update_CheckClusterComponents() {
             continue
         fi
 
-        while ! update_Component_CheckReady "$comp"; do
+        if ! update_Component_CheckReady "$comp"; then
             logmsg "Component: $comp not ready on existing version"
-            sleep 60
-        done
+            return
+        fi
         logmsg "Component: $comp ready on existing version"
         if update_Component_IsRunningExpectedVersion "$comp"; then
             logmsg "Component:$comp running expected version, continuing"
