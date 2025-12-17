@@ -4,7 +4,6 @@
 package controllerconn
 
 import (
-	"context"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -581,8 +580,10 @@ func getPacFile(log *base.LogObject, url string, dns *types.DeviceNetworkStatus,
 		DeviceNetworkStatus: dns,
 	})
 	// Avoid using a proxy to fetch the wpad.dat; 15 second timeout
+	ctx, cancel := client.GetContextForAllIntfFunctions()
+	defer cancel()
 	rv, err := client.SendOnIntf(
-		context.Background(), url, ifname, nil, RequestOptions{})
+		ctx, url, ifname, nil, RequestOptions{})
 	if err != nil {
 		return "", err
 	}
