@@ -1,4 +1,4 @@
-// Copyright (c) 2022 Zededa, Inc.
+// Copyright (c) 2022, 2025 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 package reconciler
@@ -259,10 +259,11 @@ func (r *reconciler) reconcileItems(ctx context.Context, asyncManager *asyncMana
 	//     Created -> Deleting/Modifying -> Failure/<Deleted>
 	// Only at the transition from Created we trigger DFS from an item.
 	var (
-		dfsRunning bool
-		dfsOrigin  dg.ItemRef
-		wait       bool
-		globalErr  error
+		dfsRunning      bool
+		dfsOrigin       dg.ItemRef
+		wait            bool
+		globalErr       error
+		asyncOpInStage1 bool
 	)
 	for !stage1Stack.isEmpty() {
 		elem, _ := stage1Stack.pop()
@@ -351,6 +352,7 @@ func (r *reconciler) reconcileItems(ctx context.Context, asyncManager *asyncMana
 			continue
 		}
 		if inProgress {
+			asyncOpInStage1 = true
 			if dfsRunning {
 				wait = true
 			}
@@ -410,6 +412,7 @@ func (r *reconciler) reconcileItems(ctx context.Context, asyncManager *asyncMana
 						continue
 					}
 					if async {
+						asyncOpInStage1 = true
 						stateData.asyncOpID = opID
 						stateData.State = ItemStateDeleting
 						putItem()
@@ -455,6 +458,7 @@ func (r *reconciler) reconcileItems(ctx context.Context, asyncManager *asyncMana
 						continue
 					}
 					if async {
+						asyncOpInStage1 = true
 						stateData.asyncOpID = opID
 						stateData.State = ItemStateDeleting
 						putItem()
@@ -495,6 +499,7 @@ func (r *reconciler) reconcileItems(ctx context.Context, asyncManager *asyncMana
 					continue
 				}
 				if async {
+					asyncOpInStage1 = true
 					stateData.asyncOpID = opID
 					stateData.State = ItemStateDeleting
 					putItem()
@@ -547,6 +552,7 @@ func (r *reconciler) reconcileItems(ctx context.Context, asyncManager *asyncMana
 					continue
 				}
 				if async {
+					asyncOpInStage1 = true
 					stateData.asyncOpID = opID
 					stateData.State = ItemStateModifying
 					putItem()
@@ -586,7 +592,14 @@ func (r *reconciler) reconcileItems(ctx context.Context, asyncManager *asyncMana
 	// on it in the DFS *pre-order*.
 	// At this stage, an item state may change only in this direction:
 	//     <Pending> -> Created/Failure
-	for !stage2Stack.isEmpty() {
+	// Do not run stage 2 if there are any asynchronous operations still in progress
+	// from stage 1. This is a simple (though not the most efficient) approach to
+	// prevent creating items that directly or transitively depend on items
+	// scheduled to be removed or re-created in the future (after all dependent
+	// asynchronous deletes have completed). Without this, the system can enter
+	// an endless loop of forward and backward reconciliation steps, never reaching
+	// the intended state and thereby breaking the eventual consistency guarantee.
+	for !stage2Stack.isEmpty() && !asyncOpInStage1 {
 		elem, _ := stage2Stack.pop()
 		itemRef := elem.itemRef
 		if r.externalItem(currentFullState, intendedFullState, itemRef) {
