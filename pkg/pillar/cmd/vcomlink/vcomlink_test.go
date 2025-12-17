@@ -306,13 +306,13 @@ func TestValidGetEkCert(t *testing.T) {
 		if err != nil {
 			t.Fatalf("failed to download issuing CA cert: %v", err)
 		}
-		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
 			t.Fatalf("failed to download issuing CA cert, status code: %d", resp.StatusCode)
 		}
 
 		caCertData, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
 		if err != nil {
 			t.Fatalf("failed to read issuing CA cert response body: %v", err)
 		}
