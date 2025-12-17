@@ -1386,7 +1386,9 @@ func myGet(ctx *diagContext, reqURL string, ifname string,
 			ifname, proxyURL.String(), reqURL)
 	}
 	// No verification of AuthContainer for this GET
-	rv, err := ctrlClient.SendOnIntf(context.Background(), reqURL, ifname, nil,
+	ctxWork, cancel := ctrlClient.GetContextForAllIntfFunctions()
+	defer cancel()
+	rv, err := ctrlClient.SendOnIntf(ctxWork, reqURL, ifname, nil,
 		controllerconn.RequestOptions{
 			AllowProxy:     true,
 			UseOnboard:     ctx.usingOnboardCert,
@@ -1456,7 +1458,9 @@ func myPost(ctx *diagContext, reqURL string, ifname string,
 		ctx.ph.Print("INFO: %s: Proxy %s to reach %s\n",
 			ifname, proxyURL.String(), reqURL)
 	}
-	rv, err := ctrlClient.SendOnIntf(context.Background(), reqURL, ifname, b,
+	ctxWork, cancel := ctrlClient.GetContextForAllIntfFunctions()
+	defer cancel()
+	rv, err := ctrlClient.SendOnIntf(ctxWork, reqURL, ifname, b,
 		controllerconn.RequestOptions{
 			AllowProxy:     true,
 			UseOnboard:     ctx.usingOnboardCert,
