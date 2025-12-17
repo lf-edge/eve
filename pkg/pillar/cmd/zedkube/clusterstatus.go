@@ -413,7 +413,6 @@ func (z *zedkube) clusterAppIDHandler(w http.ResponseWriter, r *http.Request) {
 				}
 				continue
 			}
-			defer resp.Body.Close()
 
 			if resp.StatusCode != http.StatusOK {
 				log.Errorf("clusterAppIDHandler: received non-OK status %d from %s", resp.StatusCode, host)
@@ -421,6 +420,7 @@ func (z *zedkube) clusterAppIDHandler(w http.ResponseWriter, r *http.Request) {
 			}
 
 			remoteAppInfoJSON, err := ioutil.ReadAll(resp.Body)
+			resp.Body.Close()
 			if err != nil {
 				log.Errorf("clusterAppIDHandler: error reading response from %s: %v", host, err)
 				continue
