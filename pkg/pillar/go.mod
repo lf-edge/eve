@@ -33,7 +33,7 @@ require (
 	github.com/k8snetworkplumbingwg/network-attachment-definition-client v1.5.0
 	github.com/lf-edge/edge-containers v0.0.0-20251107072102-46bed3192170
 	github.com/lf-edge/eve-api/go v0.0.0-20251118212149-2208af2d72d9
-	github.com/lf-edge/eve-libs v0.0.0-20251105072030-1c066d586f1b
+	github.com/lf-edge/eve-libs v0.0.0-20251217132956-95b6654d8655
 	github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20240315102754-0f6d1f182e0d
 	github.com/lf-edge/go-qemu v0.0.0-20231121152149-4c467eda0c56
 	github.com/linuxkit/linuxkit/src/cmd/linuxkit v0.0.0-20240507172735-6d37353ca1ee

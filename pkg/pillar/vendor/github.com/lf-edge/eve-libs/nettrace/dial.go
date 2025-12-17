@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
@@ -130,17 +131,22 @@ func (td *tracedDialer) dial(ctx context.Context, network, address string) (net.
 	netDialer := net.Dialer{Resolver: resolver.netResolver(), Control: td.tfd.controlFD,
 		LocalAddr: sourceAddr, Timeout: td.handshakeTimeout, KeepAlive: td.keepAliveInterval}
 
-	// Monitor context for closure.
-	go func() {
-		<-ctx.Done()
-		td.tracer.publishTrace(DialTraceEnv{
-			DialTrace: DialTrace{
-				TraceID:    td.dialID,
-				CtxCloseAt: td.tracer.getRelTimestamp(),
-			},
-			CTXClosed: true,
-		})
-	}()
+	if ctx == nil || ctx.Done() == nil {
+		td.log.Errorf("nettrace dial: nil or non-cancelable context passed. Dumping the stack to trace the context\n%s",
+			debug.Stack())
+	} else {
+		// Monitor context for closure.
+		go func(ctx context.Context) {
+			<-ctx.Done()
+			td.tracer.publishTrace(DialTraceEnv{
+				DialTrace: DialTrace{
+					TraceID:    td.dialID,
+					CtxCloseAt: td.tracer.getRelTimestamp(),
+				},
+				CTXClosed: true,
+			})
+		}(ctx)
+	}
 
 	// Run DialContext method of the original Dialer.
 	dial := DialTraceEnv{
