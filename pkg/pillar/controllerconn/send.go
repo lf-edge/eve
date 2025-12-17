@@ -27,6 +27,7 @@ import (
 
 	"github.com/lf-edge/eve-libs/nettrace"
 	"github.com/lf-edge/eve-libs/nettraceStorage"
+	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/netdump"
 	"github.com/lf-edge/eve/pkg/pillar/netmonitor"
@@ -656,6 +657,11 @@ type tracedReq struct {
 // Set RequestOptions.DryRun to perform pre-send checks without actually sending data.
 func (c *Client) SendOnIntf(ctx context.Context, destURL string, intf string,
 	b *bytes.Buffer, opts RequestOptions) (SendRetval, error) {
+
+	if ctx == nil || ctx.Done() == nil {
+		c.log.Errorf("SendOnIntf: nil or non-cancelable context passed. Dumping the stack to trace the context\n%s",
+			agentlog.GetMyStack())
+	}
 
 	errorLog := c.log.Errorf
 	warnLog := c.log.Warnf
