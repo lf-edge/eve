@@ -901,12 +901,12 @@ github.com/kubernetes-csi/external-snapshotter/client/v4/apis/volumesnapshot/v1
 # github.com/leodido/go-urn v1.2.4
 ## explicit; go 1.16
 github.com/leodido/go-urn
-# github.com/lf-edge/edge-containers v0.0.0-20250318135001-d53466c3f229
-## explicit; go 1.21
+# github.com/lf-edge/edge-containers v0.0.0-20251107072102-46bed3192170
+## explicit; go 1.23.0
 github.com/lf-edge/edge-containers/pkg/registry
 github.com/lf-edge/edge-containers/pkg/resolver
 github.com/lf-edge/edge-containers/pkg/tgz
-# github.com/lf-edge/eve-api/go v0.0.0-20251015130922-bab09e4f470c
+# github.com/lf-edge/eve-api/go v0.0.0-20251118212149-2208af2d72d9
 ## explicit; go 1.21.1
 github.com/lf-edge/eve-api/go/attest
 github.com/lf-edge/eve-api/go/auth
@@ -922,8 +922,8 @@ github.com/lf-edge/eve-api/go/metrics
 github.com/lf-edge/eve-api/go/nestedappinstancemetrics
 github.com/lf-edge/eve-api/go/profile
 github.com/lf-edge/eve-api/go/register
-# github.com/lf-edge/eve-libs v0.0.0-20251105072030-1c066d586f1b
-## explicit; go 1.23.0
+# github.com/lf-edge/eve-libs v0.0.0-20251217132956-95b6654d8655
+## explicit; go 1.24.0
 github.com/lf-edge/eve-libs/depgraph
 github.com/lf-edge/eve-libs/nettrace
 github.com/lf-edge/eve-libs/nettraceStorage
