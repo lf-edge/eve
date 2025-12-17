@@ -121,6 +121,8 @@ type WwanNetworkConfig struct {
 	LocationTracking bool
 	// Maximum transmission unit (IP MTU) to apply on the wwan interface.
 	MTU uint16
+	// Metric assigned to routes configured for this wwan interface.
+	RouteMetric uint32
 }
 
 // WwanAuthProtocol : authentication protocol used by cellular network.
@@ -267,7 +269,8 @@ func (wnc WwanNetworkConfig) Equal(wnc2 WwanNetworkConfig) bool {
 	}
 	if wnc.Probe != wnc2.Probe ||
 		wnc.LocationTracking != wnc2.LocationTracking ||
-		wnc.MTU != wnc2.MTU {
+		wnc.MTU != wnc2.MTU ||
+		wnc.RouteMetric != wnc2.RouteMetric {
 		return false
 	}
 	return true

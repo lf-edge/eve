@@ -6,7 +6,7 @@ toolchain go1.24.1
 
 require (
 	github.com/godbus/dbus/v5 v5.1.0
-	github.com/lf-edge/eve/pkg/pillar v0.0.0-20251111034223-e81177b68a3e
+	github.com/lf-edge/eve/pkg/pillar v0.0.0-20251217080232-319babc383d4
 	github.com/miekg/dns v1.1.55
 	github.com/sirupsen/logrus v1.9.3
 	github.com/tatsushid/go-fastping v0.0.0-20160109021039-d7bb493dee3e
@@ -63,7 +63,7 @@ require (
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/leodido/go-urn v1.2.4 // indirect
-	github.com/lf-edge/edge-containers v0.0.0-20250318135001-d53466c3f229 // indirect
+	github.com/lf-edge/edge-containers v0.0.0-20251107072102-46bed3192170 // indirect
 	github.com/lf-edge/eve-api/go v0.0.0-20251118212149-2208af2d72d9 // indirect
 	github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20240315102754-0f6d1f182e0d // indirect
 	github.com/linuxkit/linuxkit/src/cmd/linuxkit v0.0.0-20240507172735-6d37353ca1ee // indirect

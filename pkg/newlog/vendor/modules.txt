@@ -325,8 +325,8 @@ github.com/klauspost/compress/zstd/internal/xxhash
 # github.com/leodido/go-urn v1.2.4
 ## explicit; go 1.16
 github.com/leodido/go-urn
-# github.com/lf-edge/edge-containers v0.0.0-20250318135001-d53466c3f229
-## explicit; go 1.21
+# github.com/lf-edge/edge-containers v0.0.0-20251107072102-46bed3192170
+## explicit; go 1.23.0
 github.com/lf-edge/edge-containers/pkg/resolver
 # github.com/lf-edge/eve-api/go v0.0.0-20251118212149-2208af2d72d9
 ## explicit; go 1.21.1
@@ -342,8 +342,8 @@ github.com/lf-edge/eve-api/go/profile
 # github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20240315102754-0f6d1f182e0d
 ## explicit; go 1.20
 github.com/lf-edge/eve/pkg/kube/cnirpc
-# github.com/lf-edge/eve/pkg/pillar v0.0.0-20251029075156-4a3aedeeddf7
-## explicit; go 1.23.0
+# github.com/lf-edge/eve/pkg/pillar v0.0.0-20251217080232-319babc383d4
+## explicit; go 1.24.0
 github.com/lf-edge/eve/pkg/pillar/agentlog
 github.com/lf-edge/eve/pkg/pillar/base
 github.com/lf-edge/eve/pkg/pillar/containerd
