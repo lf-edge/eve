@@ -1170,8 +1170,12 @@ if [ ! -f /var/lib/all_components_initialized ]; then
                 continue
         fi
 
-        # Copy all the manifests we are shipping
-        cp /etc/k3s-manifests/* "${KUBE_MANIFESTS_DIR}/"
+        # Selectively copy the manifest files.
+        cp /etc/k3s-manifests/storage-classes.yaml "${KUBE_MANIFESTS_DIR}/"
+        if [ -d "/opt/vendor/nvidia" ]; then
+              logmsg "NVIDIA platform, copying the manifest files to ${KUBE_MANIFESTS_DIR}"
+              cp /etc/k3s-manifests/nvidia-device-plugin-18.0.yml "${KUBE_MANIFESTS_DIR}/"
+        fi
 
         #
         # Longhorn
