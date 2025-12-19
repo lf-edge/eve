@@ -941,7 +941,7 @@ bump-eve-api:
 	find . -type f -name "go.mod" -exec grep -q 'github.com/lf-edge/eve-api/go' {} \; -execdir go get -u github.com/lf-edge/eve-api/go \; -execdir go mod tidy \; -execdir go mod vendor \;
 
 bump-eve-libs:
-	find . -type f -name "go.mod" -exec grep -q 'github.com/lf-edge/eve-libs' {} \; -execdir go get -u github.com/lf-edge/eve-libs \; -execdir go mod tidy \; -execdir go mod vendor \;
+	find . -type f -name "go.mod" -exec grep -q 'github.com/lf-edge/eve-libs' {} \; -execdir go get github.com/lf-edge/eve-libs@14.5-stable \; -execdir go mod tidy \; -execdir go mod vendor \;
 
 bump-eve-pillar:
 	find . -type f -name "go.mod" -exec grep -q 'github.com/lf-edge/eve/pkg/pillar' {} \; -execdir go get -u github.com/lf-edge/eve/pkg/pillar \; -execdir go mod tidy \; -execdir go mod vendor \;
