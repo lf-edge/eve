@@ -44,13 +44,14 @@ const (
 	agentName         = "edgeview"
 	closeMessage      = "+++Done+++"
 	tarCopyDoneMsg    = "+++TarCopyDone+++"
-	edgeViewVersion   = "0.8.6" // set the version now to 0.8.6
+	edgeViewVersion   = "0.8.7"
 	cpLogFileString   = "copy-logfiles"
 	clientIPMsg       = "YourEndPointIPAddr:"
 	serverRateMsg     = "ServerRateLimit:disable"
 	tcpPktRate        = MbpsToBytes * 5 * 1.2 // 125k Bytes * 5 * 1.2, or 5Mbits add 20%
 	tcpPktBurst       = 65536                 // burst allow bytes
 	tarMinVersion     = "0.8.5"               // for tar operation, expect client to have newer version
+	encMinVersion     = "0.8.7"               // for encryption operation, expect client to have newer version
 	verifyFailed      = "+++Verify failed+++"
 	keepaliveInterval = 30 * time.Second // interval for sending websocket ping messages
 )
