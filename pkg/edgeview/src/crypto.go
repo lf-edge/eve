@@ -10,7 +10,6 @@ import (
 	"crypto/cipher"
 	"crypto/ecdsa"
 	"crypto/hmac"
-	"crypto/md5"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
@@ -34,7 +33,6 @@ const hashBytesNum = 32 // Hmac Sha256 Hash is 32 bytes fixed
 var (
 	nonceOpEncrption bool
 	nonceHash        [32]byte         // JWT Nonce with Sha256Sum for encryption
-	viBytes          [16]byte         // vi 16 bytes data for encryption
 	jwtNonce         string           // JWT session Nonce for authentication
 	clientAuthType   types.EvAuthType // edgeview client authentication type
 	evSSHPrivateKey  string           // path to Edgeview SSH private key
@@ -47,6 +45,7 @@ type envelopeMsg struct {
 	Message    []byte             `json:"message"`
 	Sha256Hash [hashBytesNum]byte `json:"sha256Hash"`
 	Signature  []byte             // Field to store the cert auth signature
+	IV         []byte             `json:"iv,omitempty"`
 }
 
 // LoadPublicKey loads a public key from a PEM file and determines its type (RSA or EC)
@@ -178,6 +177,13 @@ func addEnvelopeAndWriteWss(msg []byte, isText bool, clientAuthNeeded bool) erro
 	return err
 }
 
+func rawTextMsgWriteWss(msg []byte) error {
+	wssWrMutex.Lock()
+	err := websocketConn.WriteMessage(websocket.TextMessage, msg)
+	wssWrMutex.Unlock()
+	return err
+}
+
 func addEvelopeToData(msg []byte) []byte {
 	if nonceOpEncrption {
 		return encryptData(msg)
@@ -208,7 +214,7 @@ func signAuthenData(msg []byte) []byte {
 }
 
 func encryptData(msg []byte) []byte {
-	eMsg, err := encryptEvMsg(msg)
+	iv, eMsg, err := encryptEvMsg(msg)
 	if err != nil {
 		log.Errorf("encrypt failed %v", err)
 		return nil
@@ -216,6 +222,7 @@ func encryptData(msg []byte) []byte {
 	jmsg := envelopeMsg{
 		Message:    eMsg,
 		Sha256Hash: sha256.Sum256(msg),
+		IV:         iv,
 	}
 
 	jdata, err := json.Marshal(jmsg)
@@ -284,7 +291,7 @@ func verifyEnvelopeData(data []byte, checkClientAuth bool) (bool, bool, []byte, 
 	}
 
 	if nonceOpEncrption {
-		ok, msg := decryptEvMsg(envelope.Message)
+		ok, msg := decryptEvMsg(envelope.IV, envelope.Message)
 		if !ok {
 			return true, false, nil, keyComment
 		}
@@ -304,24 +311,37 @@ func verifyEnvelopeData(data []byte, checkClientAuth bool) (bool, bool, []byte, 
 	return true, true, envelope.Message, keyComment
 }
 
-func encryptEvMsg(msg []byte) ([]byte, error) {
+func encryptEvMsg(msg []byte) ([]byte, []byte, error) {
 	block, err := aes.NewCipher(nonceHash[:])
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	cfb := cipher.NewCFBEncrypter(block, viBytes[:])
+	iv := make([]byte, aes.BlockSize)
+	if _, err := rand.Read(iv); err != nil {
+		return nil, nil, err
+	}
+
+	cfb := cipher.NewCFBEncrypter(block, iv)
 	cipherText := make([]byte, len(msg))
 	cfb.XORKeyStream(cipherText, msg)
-	return cipherText, nil
+
+	return iv, cipherText, nil
 }
 
-func decryptEvMsg(data []byte) (bool, []byte) {
+func decryptEvMsg(iv, data []byte) (bool, []byte) {
+	if len(iv) != aes.BlockSize {
+		// can not use encryption for sending this message, otherwise client side won't be able to decrypt
+		_ = rawTextMsgWriteWss([]byte(fmt.Sprintf("Edgeview encrypted message missing or invalid IV. Need Edgeview Client version %s or higher\n", encMinVersion)))
+		return false, nil
+	}
+
 	block, err := aes.NewCipher(nonceHash[:])
 	if err != nil {
 		return false, nil
 	}
-	cfb := cipher.NewCFBDecrypter(block, viBytes[:])
+
+	cfb := cipher.NewCFBDecrypter(block, iv)
 	plainText := make([]byte, len(data))
 	cfb.XORKeyStream(plainText, data)
 	return true, plainText
@@ -335,7 +355,6 @@ func encryptVarInit(jdata types.EvjwtInfo) {
 	nonceOpEncrption = jdata.Enc
 	if nonceOpEncrption {
 		nonceHash = sha256.Sum256([]byte(jdata.Key))
-		viBytes = md5.Sum([]byte(jdata.Key))
 	}
 }
 
