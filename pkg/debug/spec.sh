@@ -271,8 +271,8 @@ __EOT__
 __EOT__
     cat <<__EOT__
       "usagePolicy": {}
-    COMMA="},"
 __EOT__
+    COMMA="},"
     fi
 }
 
@@ -479,6 +479,10 @@ done
 
 #enumerate NICs (ignoring USB devices)
 for ETH in /sys/class/net/*; do
+   if [ ! -L "$ETH" ]; then
+        # skip bonding_masters file
+        continue
+   fi
    LABEL=$(echo "$ETH" | sed -e 's#/sys/class/net/##' -e 's#^k##')
    # Does $LABEL start with wlan or wwan? Change ztype and cost
    COST=0
