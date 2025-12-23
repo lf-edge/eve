@@ -168,6 +168,9 @@ type AppInstanceConfig struct {
 	// Am I Cluster Designated Node Id for this app
 	IsDesignatedNodeID bool
 
+	// Node Affinity for cluster IsDesignatedNodeID
+	AffinityType Affinity
+
 	// AppRuntimeType specifies the runtime type of the application
 	DeploymentType AppRuntimeType
 
@@ -558,3 +561,15 @@ func GetSnapshotInstanceStatusFile(snapshotID string) string {
 func GetSnapshotAppInstanceConfigFile(snapshotID string) string {
 	return filepath.Join(GetSnapshotDir(snapshotID), SnapshotAppInstanceConfigFilename)
 }
+
+// Affinity - Cluster App Instance Node Affinity
+type Affinity uint8
+
+const (
+	// PreferredDuringScheduling - designated_node_id is preferred for placement but
+	// if the node is unhealthy, app can run on other nodes.
+	PreferredDuringScheduling Affinity = iota
+	// RequiredDuringScheduling - designated_node_id is required to be healthy for
+	// app instance to boot, app will not failover to other nodes.
+	RequiredDuringScheduling
+)

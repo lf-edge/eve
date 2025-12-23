@@ -120,15 +120,23 @@ The designated device will start the application and publishes AppInstanceStatus
 
 There is also additional flag in AppInstanceStatus named NoUploadStatsToController. Zedagent looks at that flag and decides to upload stats to controller or not. The reason to have such flag is that app can move between nodes and only one node is supposed to upload stats to controller. Hence that flag will be toggled accordingly.
 
-eve-api has been enhanced to add designated node id to AppInstanceConfig
+eve-api has been enhanced to add designated node id and affinity type to AppInstanceConfig
 
 * [config/appinfo.config](https://github.com/lf-edge/eve-api/blob/main/proto/config/appconfig.proto)
 
 ```golang
   message AppInstanceConfig {
   ....
-  // This edge-node UUID for the Designate Node for the Application
+  // Designated Node Id is used for cluster nodes to determine placement of
+  // the AppInstance when an EdgeNodeCluster config is present.
+  // See affinity below to set the desired node affinity.
+  // eg. Preferred or Required.
   string designated_node_id = 26;
+  ....
+  // Affinity is used for cluster nodes to determine
+  // preferred or required node scheduling for app instances.
+  // Node Id for scheduling is defined in designated_node_id.
+  AffinityType affinity = 29;
   }
 ```
 
@@ -143,7 +151,8 @@ eve-api has been enhanced to add designated node id to AppInstanceConfig
   }
 ```
 
-EVE specific changes to AppInstanceConfig and AppInstanceStatus structs to carry bool IsDesignatedNodeID
+EVE specific changes to AppInstanceConfig and AppInstanceStatus structs to carry bool IsDesignatedNodeID.
+AffinityType is also added to AppInstanceConfig
 
 * [types/zedmanagertypes.go](pkg/pillar/types/zedmanagertypes.go)
 
@@ -152,6 +161,9 @@ EVE specific changes to AppInstanceConfig and AppInstanceStatus structs to carry
   ....
   // Am I Cluster Designated Node Id for this app
   IsDesignatedNodeID bool
+
+  // Node Affinity for cluster IsDesignatedNodeID
+  AffinityType Affinity
   }
   type AppInstanceStatus struct {
   ....
@@ -181,6 +193,8 @@ There are various scenarios that can trigger the application failover. Some of t
 
 We depend on the kubernetes infrastructure to detect and the trigger the failover of an application.
 Kubernetes scheduler makes the decision to move the app to some other existing node in a cluster.
+If an application is defined with AppInstanceConfig.AffinityType==RequiredDuringScheduling then
+the application cannot failover to another node, failover is disabled for only that application.
 
 Once the application gets Scheduled on a particular node after failover. EVE code does the following;
 

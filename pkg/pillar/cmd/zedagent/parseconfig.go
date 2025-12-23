@@ -838,6 +838,12 @@ func parseAppInstanceConfig(getconfigCtx *getconfigContext,
 		} else {
 			appInstance.IsDesignatedNodeID = true
 		}
+		switch cfgApp.GetAffinity() {
+		case zconfig.AffinityType_AFFINITY_TYPE_REQUIRED:
+			appInstance.AffinityType = types.RequiredDuringScheduling
+		default:
+			appInstance.AffinityType = types.PreferredDuringScheduling
+		}
 
 		// Verify that it fits and if not publish with error
 		checkAndPublishAppInstanceConfig(getconfigCtx.pubAppInstanceConfig, appInstance)

@@ -46,6 +46,9 @@ type DomainConfig struct {
 	// if this node is the DNiD of the App
 	IsDNidNode bool
 
+	// Node Affinity for cluster IsDesignatedNodeID
+	AffinityType Affinity
+
 	// XXX: to be deprecated, use CipherBlockStatus instead
 	CloudInitUserData *string `json:"pubsub-large-CloudInitUserData"` // base64-encoded
 
