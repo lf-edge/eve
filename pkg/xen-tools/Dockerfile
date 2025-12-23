@@ -1,9 +1,9 @@
 # syntax=docker/dockerfile-upstream:1.5.0-rc2-labs
 
-# Copyright (c) 2023 Zededa, Inc.
+# Copyright (c) 2023-2026 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-FROM lfedge/eve-uefi:8bab7035e4b254ace0bd0dd182de2b1588b94355 as uefi-build
+FROM lfedge/eve-uefi:41e98aa9985c2bc9c1a3626bf822bfdb62c008df AS uefi-build
 
 FROM lfedge/eve-alpine:1f7685f95a475c6bbe682f0b976f12180b6c8726 as runx-build
 ENV BUILD_PKGS mkinitfs gcc musl-dev e2fsprogs chrony agetty
