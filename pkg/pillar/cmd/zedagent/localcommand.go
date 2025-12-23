@@ -5,9 +5,10 @@ package zedagent
 
 import (
 	"fmt"
+	"time"
+
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	uuid "github.com/satori/go.uuid"
-	"time"
 )
 
 // ApplyRadioSilence applies radio silence configuration.
@@ -198,4 +199,42 @@ func (zedagentCtx *zedagentContext) ApplyLocalNetworkConfig(dpc types.DevicePort
 	// Publish to NIM under the key "lps" to distinguish it from controller/LOC
 	// configuration (which is published under "zedagent").
 	zedagentCtx.getconfigCtx.pubDevicePortConfig.Publish(types.LpsDPCKey, dpc)
+}
+
+// ApplyAppBootConfig applies boot configuration for an app received from LPS.
+// bootOrder can be "usb", "nousb", or "" (empty for default).
+func (zedagentCtx *zedagentContext) ApplyAppBootConfig(appUUID uuid.UUID, bootOrder string) {
+	log.Noticef("ApplyAppBootConfig: UUID=%s, BootOrder=%s", appUUID.String(), bootOrder)
+
+	// Validate bootOrder value
+	if bootOrder != "" && bootOrder != "usb" && bootOrder != "nousb" {
+		log.Warnf("ApplyAppBootConfig: invalid bootOrder value %q for %s, ignoring",
+			bootOrder, appUUID.String())
+		return
+	}
+
+	pubAppInstanceConfig := zedagentCtx.getconfigCtx.pubAppInstanceConfig
+	appObj, err := pubAppInstanceConfig.Get(appUUID.String())
+	if err != nil {
+		// App not found - might not be deployed yet or already deleted
+		log.Warnf("ApplyAppBootConfig: AppInstanceConfig not found for %s: %v",
+			appUUID.String(), err)
+		return
+	}
+
+	appConfig := appObj.(types.AppInstanceConfig)
+
+	// Update boot order if changed
+	// FixedResources.BootOrder is what gets passed to DomainConfig.VmConfig
+	if appConfig.FixedResources.BootOrder != bootOrder {
+		log.Noticef("ApplyAppBootConfig: Updating %s (%s) BootOrder: %s -> %s",
+			appUUID.String(), appConfig.DisplayName,
+			appConfig.FixedResources.BootOrder, bootOrder)
+
+		appConfig.FixedResources.BootOrder = bootOrder
+		checkAndPublishAppInstanceConfig(pubAppInstanceConfig, appConfig)
+	} else {
+		log.Functionf("ApplyAppBootConfig: No change needed for %s (already %s)",
+			appUUID.String(), bootOrder)
+	}
 }
