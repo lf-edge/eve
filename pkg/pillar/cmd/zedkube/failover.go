@@ -52,6 +52,11 @@ func (z *zedkube) checkAppsFailover(wdFunc func()) {
 		wdFunc()
 
 		aiconfig := item.(types.AppInstanceConfig)
+		if aiconfig.AffinityType == types.RequiredDuringScheduling {
+			// Don't attempt failover on apps with strict node affinity
+			continue
+		}
+
 		encAppStatus := types.ENClusterAppStatus{
 			AppUUID:    aiconfig.UUIDandVersion.UUID,
 			IsDNidNode: aiconfig.IsDesignatedNodeID,
