@@ -455,7 +455,7 @@ func (ctx kubevirtContext) CreateReplicaVMIConfig(domainName string, config type
 	}
 
 	// Set the affinity to this node the VMI is preferred to run on
-	affinity := setKubeAffinity(nodeName)
+	affinity := setKubeAffinity(nodeName, config.AffinityType)
 
 	// Set tolerations to handle node conditions
 	tolerations := setKubeToleration(int64(tolerateSec))
@@ -1337,7 +1337,7 @@ func (ctx kubevirtContext) CreateReplicaPodConfig(domainName string, config type
 				},
 				Spec: k8sv1.PodSpec{
 					Tolerations: setKubeToleration(int64(tolerateSec)),
-					Affinity:    setKubeAffinity(nodeName),
+					Affinity:    setKubeAffinity(nodeName, config.AffinityType),
 					Containers: []k8sv1.Container{
 						{
 							Name:            kubeName,
@@ -1421,26 +1421,38 @@ func (ctx kubevirtContext) CreateReplicaPodConfig(domainName string, config type
 	return nil
 }
 
-func setKubeAffinity(nodeName string) *k8sv1.Affinity {
-	affinity := &k8sv1.Affinity{
-		NodeAffinity: &k8sv1.NodeAffinity{
-			PreferredDuringSchedulingIgnoredDuringExecution: []k8sv1.PreferredSchedulingTerm{
-				{
-					Preference: k8sv1.NodeSelectorTerm{
-						MatchExpressions: []k8sv1.NodeSelectorRequirement{
-							{
-								Key:      "kubernetes.io/hostname",
-								Operator: "In",
-								Values:   []string{nodeName},
-							},
-						},
-					},
-					Weight: 100,
-				},
-			},
+func setKubeAffinity(nodeName string, affinityType types.Affinity) *k8sv1.Affinity {
+	matchExpressions := []k8sv1.NodeSelectorRequirement{
+		{
+			Key:      "kubernetes.io/hostname",
+			Operator: "In",
+			Values:   []string{nodeName},
 		},
 	}
-	return affinity
+
+	k8sAffinity := &k8sv1.Affinity{
+		NodeAffinity: &k8sv1.NodeAffinity{},
+	}
+	switch affinityType {
+	case types.PreferredDuringScheduling:
+		k8sAffinity.NodeAffinity.PreferredDuringSchedulingIgnoredDuringExecution = []k8sv1.PreferredSchedulingTerm{
+			{
+				Preference: k8sv1.NodeSelectorTerm{
+					MatchExpressions: matchExpressions,
+				},
+				Weight: 100,
+			},
+		}
+	case types.RequiredDuringScheduling:
+		k8sAffinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution = &k8sv1.NodeSelector{
+			NodeSelectorTerms: []k8sv1.NodeSelectorTerm{
+				{
+					MatchExpressions: matchExpressions,
+				},
+			},
+		}
+	}
+	return k8sAffinity
 }
 
 func setKubeToleration(timeOutSec int64) []k8sv1.Toleration {

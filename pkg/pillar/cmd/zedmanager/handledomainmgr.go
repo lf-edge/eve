@@ -64,7 +64,8 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 		DisableLogs:       aiConfig.DisableLogs,
 		// This isDNiDnode will be set to true even if the App is not in cluster mode,
 		// This will be set in zedagent parseConfig for the case of single node/device App case.
-		IsDNidNode: aiConfig.IsDesignatedNodeID,
+		IsDNidNode:   aiConfig.IsDesignatedNodeID,
+		AffinityType: aiConfig.AffinityType,
 		// DeploymentType is set to the value of the DeploymentType of the AppInstanceConfig
 		DeploymentType: aiConfig.DeploymentType,
 	}
