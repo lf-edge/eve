@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2022 Zededa, Inc.
+// Copyright (c) 2017-2026 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 package zedagent
@@ -787,6 +787,27 @@ func parseAppInstanceConfig(getconfigCtx *getconfigContext,
 		for i := range appInstance.VolumeRefConfigList {
 			vr := &appInstance.VolumeRefConfigList[i]
 			vr.LocalGenerationCounter = localCmdAgent.GetLocalVolumeGenCounter(vr.VolumeID)
+		}
+
+		// Preserve LPS-set boot order setting.
+		// Boot order precedence (highest to lowest):
+		//   1. LPS (Local Profile Server) - can override controller setting
+		//   2. Controller API (VmConfig.BootOrder from EdgeDevConfig)
+		//   3. Device configuration property (app.boot.order) - handled in hypervisor
+		//   4. Default (BOOT_ORDER_UNSPECIFIED)
+		// This value is passed through DomainConfig.VmConfig to domainmgr,
+		// which writes it to QEMU's fw_cfg as "opt/eve.bootorder" for OVMF to read.
+		//
+		// Start with controller's boot_order setting as the baseline.
+		appInstance.FixedResources.BootOrder = cfgApp.Fixedresources.GetBootOrder()
+		// If LPS has a non-UNSPECIFIED boot config for this app, it takes precedence.
+		// BOOT_ORDER_UNSPECIFIED means "no override" - fall back to the
+		// next priority level (Controller API, then Device Property).
+		// This allows operators to selectively override only specific apps via LPS
+		// while letting others use their Controller-configured or device-default values.
+		appBootConfig := localCmdAgent.GetAppBootConfig(appUUID)
+		if appBootConfig != nil && appBootConfig.BootOrder != zevecommon.BootOrder_BOOT_ORDER_UNSPECIFIED {
+			appInstance.FixedResources.BootOrder = appBootConfig.BootOrder
 		}
 
 		controllerDNID := cfgApp.GetDesignatedNodeId()
