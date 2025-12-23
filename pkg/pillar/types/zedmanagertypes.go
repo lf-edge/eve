@@ -175,6 +175,15 @@ type AppInstanceOpsCmd struct {
 	ApplyTime string // XXX not currently used
 }
 
+// AppBootConfig contains boot configuration for a single application received
+// from Local Profile Server (LPS). This is cached by localcommand and used
+// by parseconfig to preserve LPS-set boot order when processing controller config.
+type AppBootConfig struct {
+	AppUUID     uuid.UUID // UUID of the application instance
+	DisplayName string    // Display name for logging
+	BootOrder   string    // Boot order: "" (default), "usb" (prioritize USB), "nousb" (deprioritize USB)
+}
+
 // IoAdapter specifies that a group of ports should be assigned
 type IoAdapter struct {
 	Type      IoType
