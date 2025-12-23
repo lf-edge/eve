@@ -120,6 +120,22 @@ via **HTTP GET**.
 - **Interval:** every 1min (normal), throttled to every 1h if LPS responds with *404*.
 - See [formal specification](https://github.com/lf-edge/eve-api/blob/main/PROFILE.md#network)
 
+### 7. `/api/v1/app-boot-config`
+
+- **From edge-node → LPS:** HTTP **GET** request for app boot configurations.
+- **From LPS → edge-node (response):** boot configuration for one or more
+  applications (USB boot priority settings).
+- **Effect:** Controls USB boot order for VMs. Supported values:
+  - `""` (empty): Default boot order (behavior depends on OVMF configuration)
+  - `"usb"`: Prioritize USB devices in boot order
+  - `"nousb"`: Deprioritize USB devices (disk boots first)
+- **Persistence:** Configuration is saved to disk and reapplied on EVE restart.
+- **Interval:** every 10sec (normal), throttled to every 5min if LPS responds
+  with *404*.
+- **Changes take effect:** On next VM restart.
+- See [formal specification](https://github.com/lf-edge/eve-api/blob/main/PROFILE.md#app-boot-config)
+  and [VM Boot Order documentation](./VM-BOOT-ORDER.md) for detailed usage.
+
 ## Implementation Notes
 
 - There is currently **no open-source production-ready implementation** of the LPS.
