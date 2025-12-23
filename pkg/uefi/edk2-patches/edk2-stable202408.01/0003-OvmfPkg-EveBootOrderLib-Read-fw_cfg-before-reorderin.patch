@@ -1,0 +1,380 @@
+From 9eb6fdc29c6d61233eec6f78eefec8b1755fb0d1 Mon Sep 17 00:00:00 2001
+From: Nikolay Martyanov <nikolay@zededa.com>
+Date: Tue, 23 Dec 2025 14:11:08 +0100
+Subject: [PATCH] OvmfPkg/EveBootOrderLib: Read fw_cfg before reordering boot
+ options
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Previously, SetBootOrderFromEve() unconditionally prioritized USB boot
+devices. This change makes USB boot order manipulation configurable via
+the opt/eve.bootorder fw_cfg file, allowing the behavior to be
+controlled at runtime.
+
+A new ReadEveBootOrderFromFwCfg() helper reads the configuration from
+QEMU’s fw_cfg interface. When set to "usb", USB devices are moved to the
+front of the boot order. When set to "nousb", USB devices are removed
+from the boot order entirely. If the file is absent or contains an
+unrecognized value, the existing boot order is left unchanged.
+
+This approach is used instead of QEMU’s bootindex mechanism because EVE
+attaches USB devices via dynamic hotplug using QMP device_add after VM
+startup. The bootindex parameter can only be applied to statically
+defined devices at VM launch time and cannot be specified for devices
+added later via QMP. As a result, OVMF observes hotplugged USB devices
+and applies default UEFI boot prioritization (favoring removable media)
+with no opportunity for QEMU-side control. Handling boot order in
+firmware allows consistent treatment of both statically defined and
+hotplugged devices.
+
+Additional Print()-based debug output has been added to aid
+troubleshooting boot order issues. The IsUSBDevice() helper also
+received minor formatting and syntax cleanups.
+
+Signed-off-by: Nikolay Martyanov <nikolay@zededa.com>
+---
+ .../Library/EveBootOrderLib/EveBootOrderLib.c | 219 ++++++++++++++++--
+ .../EveBootOrderLib/EveBootOrderLib.inf       |   1 +
+ 2 files changed, 197 insertions(+), 23 deletions(-)
+
+diff --git a/OvmfPkg/Library/EveBootOrderLib/EveBootOrderLib.c b/OvmfPkg/Library/EveBootOrderLib/EveBootOrderLib.c
+index 33b37f86a4..718ea7c582 100644
+--- a/OvmfPkg/Library/EveBootOrderLib/EveBootOrderLib.c
++++ b/OvmfPkg/Library/EveBootOrderLib/EveBootOrderLib.c
+@@ -19,6 +19,7 @@
+ #include <Library/DevicePathLib.h>
+ #include <Library/EveBootOrderLib.h>
+ #include <Library/BaseMemoryLib.h>
++#include <Library/UefiLib.h>
+ #include <Guid/GlobalVariable.h>
+ #include <Guid/VirtioMmioTransport.h>
+ 
+@@ -31,12 +32,26 @@ typedef struct {
+   UINTN  Produced;
+ } BOOT_ORDER;
+ 
++/**
++  The fw_cfg file name that EVE uses to signal USB boot priority.
++**/
++#define EVE_BOOTORDER_FW_CFG_FILE  "opt/eve.bootorder"
++#define EVE_BOOTORDER_USB_VALUE    "usb"
++#define EVE_BOOTORDER_NOUSB_VALUE  "nousb"
++
++/**
++  Maximum reasonable size for the boot order configuration string.
++  The expected values are "usb" or "nousb" (5 bytes max), but we allow
++  some margin for future extensions while still protecting against
++  unreasonable allocations from corrupted fw_cfg data.
++**/
++#define EVE_BOOTORDER_MAX_SIZE     64
+ 
+ /**
+   Check if a DevicePath is an USB Device
+ **/
+ STATIC
+-  BOOLEAN
++BOOLEAN
+ IsUSBDevice (
+   IN EFI_DEVICE_PATH_PROTOCOL *DevicePath
+   )
+@@ -45,8 +60,8 @@ IsUSBDevice (
+ 
+   for (Node = DevicePath; !IsDevicePathEnd(Node); Node = NextDevicePathNode(Node)) {
+     if (DevicePathType(Node) == MESSAGING_DEVICE_PATH &&
+-       ((DevicePathSubType(Node) == MSG_USB_DP ||
+-         DevicePathSubType(Node) == MSG_USB_CLASS_DP))) {
++       ((DevicePathSubType(Node) == MSG_USB_DP) ||
++        (DevicePathSubType(Node) == MSG_USB_CLASS_DP))) {
+         return TRUE;
+     }
+   }
+@@ -55,25 +70,89 @@ IsUSBDevice (
+ }
+ 
+ /**
++  Read the EVE boot order configuration from fw_cfg.
++
++  @param[out] BootOrderValue   On success, contains the boot order string
++                               (e.g., "usb"). Caller must free with FreePool().
++
++  @retval RETURN_SUCCESS       The fw_cfg file was found and read.
++  @retval RETURN_UNSUPPORTED   fw_cfg is not available.
++  @retval RETURN_NOT_FOUND     The fw_cfg file does not exist.
++  @retval RETURN_OUT_OF_RESOURCES  Memory allocation failed.
++**/
++STATIC
++RETURN_STATUS
++ReadEveBootOrderFromFwCfg (
++  OUT CHAR8  **BootOrderValue
++  )
++{
++  RETURN_STATUS        Status;
++  FIRMWARE_CONFIG_ITEM FwCfgItem;
++  UINTN                FwCfgSize;
++  CHAR8                *Buffer;
++
++  Print (L"[EVE-BOOT] ReadEveBootOrderFromFwCfg: Checking fw_cfg availability\n");
++
++  if (!QemuFwCfgIsAvailable ()) {
++    Print (L"[EVE-BOOT] fw_cfg NOT available\n");
++    return RETURN_UNSUPPORTED;
++  }
++
++  Print (L"[EVE-BOOT] fw_cfg available, looking for 'opt/eve.bootorder'\n");
++
++  Status = QemuFwCfgFindFile (EVE_BOOTORDER_FW_CFG_FILE, &FwCfgItem, &FwCfgSize);
++  if (RETURN_ERROR (Status)) {
++    Print (L"[EVE-BOOT] fw_cfg file 'opt/eve.bootorder' NOT FOUND\n");
++    return RETURN_NOT_FOUND;
++  }
++
++  Print (L"[EVE-BOOT] fw_cfg file FOUND, size=%u bytes\n", FwCfgSize);
+ 
++  if (FwCfgSize == 0) {
++    Print (L"[EVE-BOOT] fw_cfg file is EMPTY\n");
++    return RETURN_NOT_FOUND;
++  }
++
++  //
++  // Sanity check to protect against corrupted or malicious fw_cfg data
++  // causing excessive memory allocation. The expected values are short
++  // strings like "usb" or "nousb".
++  //
++  if (FwCfgSize > EVE_BOOTORDER_MAX_SIZE) {
++    Print (L"[EVE-BOOT] fw_cfg file size %u exceeds maximum %u\n",
++           FwCfgSize, EVE_BOOTORDER_MAX_SIZE);
++    return RETURN_INVALID_PARAMETER;
++  }
++
++  Buffer = AllocatePool (FwCfgSize + 1);
++  if (Buffer == NULL) {
++    Print (L"[EVE-BOOT] Failed to allocate memory\n");
++    return RETURN_OUT_OF_RESOURCES;
++  }
++
++  QemuFwCfgSelectItem (FwCfgItem);
++  QemuFwCfgReadBytes (FwCfgSize, Buffer);
++  Buffer[FwCfgSize] = '\0';
++  *BootOrderValue = Buffer;
++
++  Print (L"[EVE-BOOT] Read value: '%a'\n", Buffer);
++
++  return RETURN_SUCCESS;
++}
++
++/**
+   Attempt to retrieve the "opt/eve.bootorder" fw_cfg file from QEMU. In
+   case the file is found, set the boot order based on configuration
+   retrieved from QEMU for EVE-OS.
+ 
+-
+   @retval RETURN_SUCCESS            The "opt/eve.bootorder" fw_cfg file has been
+                                     parsed, and the referenced device-subtrees
+                                     have been connected.
+-
+   @retval RETURN_UNSUPPORTED        QEMU's fw_cfg is not supported.
+-
+   @retval RETURN_NOT_FOUND          Empty or nonexistent "opt/eve.bootorder" fw_cfg
+                                     file.
+-
+   @retval RETURN_INVALID_PARAMETER  Parse error in the "opt/eve.bootorder" fw_cfg file.
+-
+   @retval RETURN_OUT_OF_RESOURCES   Memory allocation failed.
+-
+   @return                           Error statuses propagated from underlying
+                                     functions.
+ **/
+@@ -88,18 +167,78 @@ SetBootOrderFromEve (
+   EFI_BOOT_MANAGER_LOAD_OPTION     *BootOptions;
+   UINTN                            BootOptionCount;
+   UINT16                           BootOptionAux;
+-  UINT16                           UsbPos;
++  UINTN                            UsbPos;
++  UINTN                            UsbCount;
++  CHAR8                            *EveBootOrder;
++
++  Print (L"[EVE-BOOT] ========================================\n");
++  Print (L"[EVE-BOOT] SetBootOrderFromEve: CALLED\n");
++  Print (L"[EVE-BOOT] ========================================\n");
+ 
+-  DEBUG ((DEBUG_ERROR, "%a: Force prioritize USB devices for Boot\n", __FUNCTION__));
++  // First, log current boot options for debugging (regardless of fw_cfg)
++  BootOptions = EfiBootManagerGetLoadOptions (
++      &BootOptionCount, LoadOptionTypeBoot
++      );
++  if (BootOptions != NULL) {
++    Print (L"[EVE-BOOT] Current boot options (%u total):\n", BootOptionCount);
++    for (UINTN Index = 0; Index < BootOptionCount; Index++) {
++      Print (L"[EVE-BOOT]   Boot%04x %s %a\n",
++             BootOptions[Index].OptionNumber,
++             BootOptions[Index].Description,
++             IsUSBDevice(BootOptions[Index].FilePath) ? "[USB]" : "");
++    }
++    EfiBootManagerFreeLoadOptions (BootOptions, BootOptionCount);
++    BootOptions = NULL;
++  } else {
++    Print (L"[EVE-BOOT] WARNING: Could not enumerate boot options\n");
++  }
++
++  // Now check if EVE has configured USB boot priority via fw_cfg
++  Status = ReadEveBootOrderFromFwCfg (&EveBootOrder);
++  if (RETURN_ERROR (Status)) {
++    // No fw_cfg file found - USB boot priority is not enabled
++    Print (L"[EVE-BOOT] No config found, boot order NOT modified\n");
++    return Status;
++  }
++
++  // Check if the config requests USB boot priority or de-priority
++  BOOLEAN PrioritizeUsb = (AsciiStrCmp (EveBootOrder, EVE_BOOTORDER_USB_VALUE) == 0);
++  BOOLEAN DeprioritizeUsb = (AsciiStrCmp (EveBootOrder, EVE_BOOTORDER_NOUSB_VALUE) == 0);
++
++  if (!PrioritizeUsb && !DeprioritizeUsb) {
++    Print (L"[EVE-BOOT] Unknown value '%a', boot order NOT modified\n", EveBootOrder);
++    FreePool (EveBootOrder);
++    return RETURN_SUCCESS;
++  }
++
++  FreePool (EveBootOrder);
++
++  if (PrioritizeUsb) {
++    Print (L"[EVE-BOOT] USB boot priority ENABLED (usb) - moving USB to FRONT\n");
++  } else {
++    Print (L"[EVE-BOOT] USB boot disabled (nousb) - removing USB from boot order\n");
++  }
+ 
+   // Load boot options
+   BootOptions = EfiBootManagerGetLoadOptions (
+       &BootOptionCount, LoadOptionTypeBoot
+       );
+   if (BootOptions == NULL) {
++    Print (L"[EVE-BOOT] No boot options found!\n");
+     return RETURN_NOT_FOUND;
+   }
+ 
++  Print (L"[EVE-BOOT] Found %u boot options\n", BootOptionCount);
++
++  // Log current boot order BEFORE changes
++  Print (L"[EVE-BOOT] Boot order BEFORE:\n");
++  for (UINTN Index = 0; Index < BootOptionCount; Index++) {
++    Print (L"[EVE-BOOT]   [%u] Boot%04x %s %a\n",
++           Index, BootOptions[Index].OptionNumber,
++           BootOptions[Index].Description,
++           IsUSBDevice(BootOptions[Index].FilePath) ? "[USB]" : "");
++  }
++
+   // Create an array for boot order
+   BootOrder.Produced  = BootOptionCount;
+   BootOrder.Allocated = BootOptionCount;
+@@ -107,31 +246,65 @@ SetBootOrderFromEve (
+       BootOrder.Allocated * sizeof (*BootOrder.Data)
+       );
+   if (BootOrder.Data == NULL) {
++    Print (L"[EVE-BOOT] Memory allocation failed!\n");
+     Status = RETURN_OUT_OF_RESOURCES;
+     goto ErrorFreeBootOptions;
+   }
++
+   // Store the current boot sequence (indexes)
+   for (UINTN Index = 0; Index < BootOptionCount; Index++) {
+     BootOrder.Data[Index] = BootOptions[Index].OptionNumber;
+   }
+ 
+-  // TODO: This is a partial implementation, for now it will only
+-  // prioritize USB devices in the boot list.
+-  // Search for USB devices and move them to the top of the list
+-  UsbPos = 0;
++  // Count USB devices
++  UsbCount = 0;
+   for (UINTN Index = 0; Index < BootOptionCount; Index++) {
+     if (IsUSBDevice(BootOptions[Index].FilePath)) {
+-      BootOptionAux          = BootOrder.Data[UsbPos];
+-      BootOrder.Data[UsbPos] = BootOrder.Data[Index];
+-      BootOrder.Data[Index]  = BootOptionAux;
+-      UsbPos++;
++      UsbCount++;
+     }
+   }
++  Print (L"[EVE-BOOT] Found %u USB devices\n", UsbCount);
++
++  if (PrioritizeUsb) {
++    // Move USB devices to the FRONT of the list
++    UsbPos = 0;
++    for (UINTN Index = 0; Index < BootOptionCount; Index++) {
++      if (IsUSBDevice(BootOptions[Index].FilePath)) {
++        Print (L"[EVE-BOOT] Moving Boot%04x to position %u (front)\n",
++               BootOrder.Data[Index], UsbPos);
++        BootOptionAux          = BootOrder.Data[UsbPos];
++        BootOrder.Data[UsbPos] = BootOrder.Data[Index];
++        BootOrder.Data[Index]  = BootOptionAux;
++        UsbPos++;
++      }
++    }
++  } else {
++    // Remove USB devices from boot order completely (DeprioritizeUsb / nousb)
++    UINTN NonUsbPos = 0;
++    for (UINTN Index = 0; Index < BootOptionCount; Index++) {
++      if (!IsUSBDevice(BootOptions[Index].FilePath)) {
++        BootOrder.Data[NonUsbPos] = BootOptions[Index].OptionNumber;
++        NonUsbPos++;
++      } else {
++        Print (L"[EVE-BOOT] Removing Boot%04x from boot order (USB device)\n",
++               BootOptions[Index].OptionNumber);
++      }
++    }
++    BootOrder.Produced = NonUsbPos;
++    Print (L"[EVE-BOOT] Removed %u USB devices from boot order\n", UsbCount);
++  }
++
++  // Log new boot order AFTER changes
++  Print (L"[EVE-BOOT] Boot order AFTER (%u entries):\n", BootOrder.Produced);
++  for (UINTN Index = 0; Index < BootOrder.Produced; Index++) {
++    Print (L"[EVE-BOOT]   [%u] Boot%04x\n", Index, BootOrder.Data[Index]);
++  }
+ 
+   //
+   // See Table 10 in the UEFI Spec 2.3.1 with Errata C for the required
+   // attributes.
+   //
++  Print (L"[EVE-BOOT] Setting BootOrder variable...\n");
+   Status = gRT->SetVariable (
+       L"BootOrder",
+       &gEfiGlobalVariableGuid,
+@@ -142,18 +315,18 @@ SetBootOrderFromEve (
+       BootOrder.Data
+       );
+   if (EFI_ERROR (Status)) {
+-    DEBUG ((DEBUG_ERROR, "%a: setting BootOrder: %r\n", __FUNCTION__,
+-          Status));
++    Print (L"[EVE-BOOT] SetVariable FAILED: %r\n", Status);
+     goto ErrorFreeBootOrder;
+   }
+ 
+- DEBUG ((DEBUG_INFO, "%a: setting BootOrder: success\n", __FUNCTION__));
++  Print (L"[EVE-BOOT] Boot order modified SUCCESSFULLY!\n");
++  Print (L"[EVE-BOOT] ========================================\n");
+ 
+ ErrorFreeBootOrder:
+   FreePool (BootOrder.Data);
+ 
+ ErrorFreeBootOptions:
+   EfiBootManagerFreeLoadOptions (BootOptions, BootOptionCount);
+-
+   return Status;
+ }
++
+diff --git a/OvmfPkg/Library/EveBootOrderLib/EveBootOrderLib.inf b/OvmfPkg/Library/EveBootOrderLib/EveBootOrderLib.inf
+index 5e11df7242..98a7ae715a 100644
+--- a/OvmfPkg/Library/EveBootOrderLib/EveBootOrderLib.inf
++++ b/OvmfPkg/Library/EveBootOrderLib/EveBootOrderLib.inf
+@@ -35,6 +35,7 @@
+   DevicePathLib
+   BaseMemoryLib
+   OrderedCollectionLib
++  UefiLib
+ 
+ [Guids]
+   gEfiGlobalVariableGuid
+-- 
+2.52.0
+
