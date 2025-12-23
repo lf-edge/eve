@@ -18,6 +18,30 @@ To use a zfs vault specify the config grub parameter `eve_install_zfs_with_raid_
 with the requested raid level or use multiple persist disk with `eve_persist_disk`
 which will use zfs automatically.
 
+## k3s Config
+
+Config for k3s uses the standard layout of a base `/etc/rancher/k3s/config.yaml` with
+additional layers applied from `/etc/rancher/k3s/config.yaml.d` detailed
+in [k3s-configuration-file](https://docs.k3s.io/installation/configuration#configuration-file).
+
+Base config in config.yaml contains all static config applicable to every cluster mode (ENC, BaseK3s).
+Additional layers provide dynamic config provided from the controller such as:
+
+- node name in `/etc/rancher/k3s/config.yaml.d/00-nodename.yaml`
+- cluster config in `/etc/rancher/k3s/config.yaml.d/01-clusterconfig.yaml`
+- user override config in `/etc/rancher/k3s/config.yaml.d/99-k3s-config-user-overrides.yaml`
+
+### User Override Config
+
+To set additional k3s configuration parameters or override default options, the EVE-OS config property
+`k3s.config.override` is available which accepts a base64 encoded yaml string which is written to
+`/persist/vault/k3s-user-override.yaml` by pillar/zedkube.  The kube container monitors this file contents
+and synchronizes it with `/etc/rancher/k3s/config.yaml.d/99-k3s-config-user-overrides.yaml`.  Upon any recognized
+changes, kube will terminate k3s processes and restart it to apply the config.
+
+To override previously set config it is required to follow the k3s config merge rules defined in
+[k3s-config-value-merging](https://docs.k3s.io/installation/configuration#value-merge-behavior).
+
 ## Upgrades
 
 Upgrades of `HV=k` EVE-OS are supported through the existing interfaces.
