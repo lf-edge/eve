@@ -273,6 +273,13 @@ type VmConfig struct {
 	EnableOemWinLicenseKey bool
 	// DisableVirtualTPM disables virtual TPM for the domain
 	DisableVirtualTPM bool
+	// BootOrder controls boot device priority for this VM.
+	// Supported values:
+	//   - "" (empty): Default boot order (no modification)
+	//   - "usb": Prioritize USB devices in boot order
+	//   - "nousb": Deprioritize USB devices in boot order
+	// This setting is controlled by LPS via /api/v1/app-boot-config endpoint.
+	BootOrder string
 }
 
 // VmMode is the type for the virtualization mode
