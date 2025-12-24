@@ -90,6 +90,12 @@ type LocalCmdAgent struct {
 	networkConfigMx sync.RWMutex
 	networkTicker   *taskTicker
 	lastNetworkErr  error
+
+	// LPS app boot configuration (USB boot priority, etc.)
+	// key = app UUID
+	currentAppBootConfigs map[uuid.UUID]types.AppBootConfig
+	appBootConfigMx       sync.RWMutex
+	appBootConfigTicker   *taskTicker
 }
 
 // ConstructorArgs are required input arguments for creating a LocalCmdAgent.
@@ -153,6 +159,10 @@ type ConfigAgent interface {
 	// ApplyLocalNetworkConfig applies a network port configuration received from LPS,
 	// overriding the active configuration for the set of locally changed ports.
 	ApplyLocalNetworkConfig(types.DevicePortConfig)
+
+	// ApplyAppBootConfig applies boot configuration for an app received from LPS.
+	// bootOrder can be "usb", "nousb", or "" (empty for default).
+	ApplyAppBootConfig(appUUID uuid.UUID, bootOrder string)
 }
 
 // PubSubTopicReader : methods used by LocalCmdAgent to read messages from pubsub topics.
@@ -339,6 +349,7 @@ func NewLocalCmdAgent(args ConstructorArgs) *LocalCmdAgent {
 	lc.initializeAppCommands()
 	lc.initializeDevCommands()
 	lc.initializeNetworkConfig()
+	lc.initializeAppBootConfig()
 	return lc
 }
 
@@ -356,6 +367,7 @@ func (lc *LocalCmdAgent) RunTasks(args RunArgs) {
 	go lc.runAppInfoTask()
 	go lc.runDevInfoTask()
 	go lc.runNetworkTask()
+	go lc.runAppBootConfigTask()
 }
 
 // Pause temporarily suspends all tasks, blocking the processing of
@@ -452,6 +464,8 @@ func (lc *LocalCmdAgent) UpdateLpsConfig(globalProfile, lpsAddr, lpsToken string
 		lc.TriggerDevInfoPOST()
 		lc.updateNetworkTicker(false)
 		lc.TriggerNetworkPOST()
+		lc.updateAppBootConfigTicker(false)
+		lc.TriggerAppBootConfigGET()
 		lc.throttledLocation = false
 	}
 	return nil

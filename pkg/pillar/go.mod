@@ -294,6 +294,8 @@ require (
 )
 
 replace (
+	github.com/lf-edge/eve-api/go => ../../../eve-api/go
+
 	github.com/openshift/api => github.com/openshift/api v0.0.0-20210105115604-44119421ec6b
 
 	k8s.io/api => k8s.io/api v0.26.3

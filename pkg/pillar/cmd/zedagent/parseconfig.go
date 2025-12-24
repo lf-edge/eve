@@ -789,6 +789,20 @@ func parseAppInstanceConfig(getconfigCtx *getconfigContext,
 			vr.LocalGenerationCounter = localCmdAgent.GetLocalVolumeGenCounter(vr.VolumeID)
 		}
 
+		// Preserve LPS-set boot order setting.
+		// The controller doesn't know about this setting, so we must preserve
+		// the value set by LPS when parsing a new config from the controller.
+		// BootOrder can be:
+		//   - "" (empty): default boot order (no USB prioritization)
+		//   - "usb": prioritize USB devices in UEFI boot order
+		//   - "nousb": deprioritize USB devices in UEFI boot order
+		// This value is passed through DomainConfig.VmConfig to domainmgr,
+		// which writes it to QEMU's fw_cfg as "opt/eve.bootorder" for OVMF to read.
+		appBootConfig := localCmdAgent.GetAppBootConfig(appUUID)
+		if appBootConfig != nil {
+			appInstance.FixedResources.BootOrder = appBootConfig.BootOrder
+		}
+
 		controllerDNID := cfgApp.GetDesignatedNodeId()
 		// If this node is designated node id set IsDesignatedNodeID to true else false.
 		// On single node EVE (either kvm or k), this node will always be designated node.

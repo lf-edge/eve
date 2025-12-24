@@ -921,6 +921,141 @@ func (x *LocalDevCmd) GetCommand() LocalDevCmd_Command {
 	return LocalDevCmd_COMMAND_UNSPECIFIED
 }
 
+// AppBootConfig contains boot configuration for a single application instance.
+// This message is part of the AppBootConfigList sent from LPS to EVE via GET /api/v1/app-boot-config.
+type AppBootConfig struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	// Reference the application by its ID (UUID). At least one of id/displayname must be set.
+	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	// Reference the application by its user-friendly displayname.
+	Displayname string `protobuf:"bytes,2,opt,name=displayname,proto3" json:"displayname,omitempty"`
+	// USB boot mode for this application.
+	// Supported values:
+	//   - "" (empty string) or unset: Default boot order (no modification).
+	//     The actual behavior depends on whether a custom OVMF.fd is used:
+	//     if custom OVMF.fd is provided, its precooked boot order applies;
+	//     otherwise, USB has priority according to the UEFI standard.
+	//   - "usb": Enable USB boot priority - OVMF will prioritize USB devices in boot order
+	//   - "nousb": Disable USB boot - OVMF will deprioritize USB devices in boot order
+	//
+	// The setting is passed to OVMF via fw_cfg "opt/eve.bootorder" when the VM starts.
+	UsbBoot string `protobuf:"bytes,3,opt,name=usb_boot,json=usbBoot,proto3" json:"usb_boot,omitempty"`
+}
+
+func (x *AppBootConfig) Reset() {
+	*x = AppBootConfig{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_profile_local_profile_proto_msgTypes[10]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *AppBootConfig) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AppBootConfig) ProtoMessage() {}
+
+func (x *AppBootConfig) ProtoReflect() protoreflect.Message {
+	mi := &file_profile_local_profile_proto_msgTypes[10]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AppBootConfig.ProtoReflect.Descriptor instead.
+func (*AppBootConfig) Descriptor() ([]byte, []int) {
+	return file_profile_local_profile_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *AppBootConfig) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *AppBootConfig) GetDisplayname() string {
+	if x != nil {
+		return x.Displayname
+	}
+	return ""
+}
+
+func (x *AppBootConfig) GetUsbBoot() string {
+	if x != nil {
+		return x.UsbBoot
+	}
+	return ""
+}
+
+// AppBootConfigList contains boot configurations for applications.
+// Sent from LPS to EVE in response to GET /api/v1/app-boot-config.
+// This is a one-way configuration - EVE does not report status back.
+type AppBootConfigList struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	ServerToken string           `protobuf:"bytes,1,opt,name=server_token,json=serverToken,proto3" json:"server_token,omitempty"`
+	AppConfigs  []*AppBootConfig `protobuf:"bytes,2,rep,name=app_configs,json=appConfigs,proto3" json:"app_configs,omitempty"`
+}
+
+func (x *AppBootConfigList) Reset() {
+	*x = AppBootConfigList{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_profile_local_profile_proto_msgTypes[11]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *AppBootConfigList) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AppBootConfigList) ProtoMessage() {}
+
+func (x *AppBootConfigList) ProtoReflect() protoreflect.Message {
+	mi := &file_profile_local_profile_proto_msgTypes[11]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AppBootConfigList.ProtoReflect.Descriptor instead.
+func (*AppBootConfigList) Descriptor() ([]byte, []int) {
+	return file_profile_local_profile_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *AppBootConfigList) GetServerToken() string {
+	if x != nil {
+		return x.ServerToken
+	}
+	return ""
+}
+
+func (x *AppBootConfigList) GetAppConfigs() []*AppBootConfig {
+	if x != nil {
+		return x.AppConfigs
+	}
+	return nil
+}
+
 var File_profile_local_profile_proto protoreflect.FileDescriptor
 
 var file_profile_local_profile_proto_rawDesc = []byte{
@@ -1066,12 +1201,25 @@ var file_profile_local_profile_proto_rawDesc = []byte{
 	0x17, 0x43, 0x4f, 0x4d, 0x4d, 0x41, 0x4e, 0x44, 0x5f, 0x47, 0x52, 0x41, 0x43, 0x45, 0x46, 0x55,
 	0x4c, 0x5f, 0x52, 0x45, 0x42, 0x4f, 0x4f, 0x54, 0x10, 0x03, 0x12, 0x18, 0x0a, 0x14, 0x43, 0x4f,
 	0x4d, 0x4d, 0x41, 0x4e, 0x44, 0x5f, 0x43, 0x4f, 0x4c, 0x4c, 0x45, 0x43, 0x54, 0x5f, 0x49, 0x4e,
-	0x46, 0x4f, 0x10, 0x04, 0x1a, 0x02, 0x10, 0x01, 0x42, 0x3f, 0x0a, 0x16, 0x6f, 0x72, 0x67, 0x2e,
-	0x6c, 0x66, 0x65, 0x64, 0x67, 0x65, 0x2e, 0x65, 0x76, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x66, 0x69,
-	0x6c, 0x65, 0x5a, 0x25, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62, 0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x6c,
-	0x66, 0x2d, 0x65, 0x64, 0x67, 0x65, 0x2f, 0x65, 0x76, 0x65, 0x2d, 0x61, 0x70, 0x69, 0x2f, 0x67,
-	0x6f, 0x2f, 0x70, 0x72, 0x6f, 0x66, 0x69, 0x6c, 0x65, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f,
-	0x33,
+	0x46, 0x4f, 0x10, 0x04, 0x1a, 0x02, 0x10, 0x01, 0x22, 0x5c, 0x0a, 0x0d, 0x41, 0x70, 0x70, 0x42,
+	0x6f, 0x6f, 0x74, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x12, 0x0e, 0x0a, 0x02, 0x69, 0x64, 0x18,
+	0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x02, 0x69, 0x64, 0x12, 0x20, 0x0a, 0x0b, 0x64, 0x69, 0x73,
+	0x70, 0x6c, 0x61, 0x79, 0x6e, 0x61, 0x6d, 0x65, 0x18, 0x02, 0x20, 0x01, 0x28, 0x09, 0x52, 0x0b,
+	0x64, 0x69, 0x73, 0x70, 0x6c, 0x61, 0x79, 0x6e, 0x61, 0x6d, 0x65, 0x12, 0x19, 0x0a, 0x08, 0x75,
+	0x73, 0x62, 0x5f, 0x62, 0x6f, 0x6f, 0x74, 0x18, 0x03, 0x20, 0x01, 0x28, 0x09, 0x52, 0x07, 0x75,
+	0x73, 0x62, 0x42, 0x6f, 0x6f, 0x74, 0x22, 0x7e, 0x0a, 0x11, 0x41, 0x70, 0x70, 0x42, 0x6f, 0x6f,
+	0x74, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x4c, 0x69, 0x73, 0x74, 0x12, 0x21, 0x0a, 0x0c, 0x73,
+	0x65, 0x72, 0x76, 0x65, 0x72, 0x5f, 0x74, 0x6f, 0x6b, 0x65, 0x6e, 0x18, 0x01, 0x20, 0x01, 0x28,
+	0x09, 0x52, 0x0b, 0x73, 0x65, 0x72, 0x76, 0x65, 0x72, 0x54, 0x6f, 0x6b, 0x65, 0x6e, 0x12, 0x46,
+	0x0a, 0x0b, 0x61, 0x70, 0x70, 0x5f, 0x63, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x73, 0x18, 0x02, 0x20,
+	0x03, 0x28, 0x0b, 0x32, 0x25, 0x2e, 0x6f, 0x72, 0x67, 0x2e, 0x6c, 0x66, 0x65, 0x64, 0x67, 0x65,
+	0x2e, 0x65, 0x76, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x66, 0x69, 0x6c, 0x65, 0x2e, 0x41, 0x70, 0x70,
+	0x42, 0x6f, 0x6f, 0x74, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x52, 0x0a, 0x61, 0x70, 0x70, 0x43,
+	0x6f, 0x6e, 0x66, 0x69, 0x67, 0x73, 0x42, 0x3f, 0x0a, 0x16, 0x6f, 0x72, 0x67, 0x2e, 0x6c, 0x66,
+	0x65, 0x64, 0x67, 0x65, 0x2e, 0x65, 0x76, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x66, 0x69, 0x6c, 0x65,
+	0x5a, 0x25, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62, 0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x6c, 0x66, 0x2d,
+	0x65, 0x64, 0x67, 0x65, 0x2f, 0x65, 0x76, 0x65, 0x2d, 0x61, 0x70, 0x69, 0x2f, 0x67, 0x6f, 0x2f,
+	0x70, 0x72, 0x6f, 0x66, 0x69, 0x6c, 0x65, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
 }
 
 var (
@@ -1087,7 +1235,7 @@ func file_profile_local_profile_proto_rawDescGZIP() []byte {
 }
 
 var file_profile_local_profile_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_profile_local_profile_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
+var file_profile_local_profile_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
 var file_profile_local_profile_proto_goTypes = []interface{}{
 	(AppCommand_Command)(0),          // 0: org.lfedge.eve.profile.AppCommand.Command
 	(LocalDevCmd_Command)(0),         // 1: org.lfedge.eve.profile.LocalDevCmd.Command
@@ -1101,38 +1249,41 @@ var file_profile_local_profile_proto_goTypes = []interface{}{
 	(*AppCommand)(nil),               // 9: org.lfedge.eve.profile.AppCommand
 	(*LocalDevInfo)(nil),             // 10: org.lfedge.eve.profile.LocalDevInfo
 	(*LocalDevCmd)(nil),              // 11: org.lfedge.eve.profile.LocalDevCmd
-	(*metrics.CellularMetric)(nil),   // 12: org.lfedge.eve.metrics.CellularMetric
-	(*info.ZCellularModuleInfo)(nil), // 13: org.lfedge.eve.info.ZCellularModuleInfo
-	(*info.ZSimcardInfo)(nil),        // 14: org.lfedge.eve.info.ZSimcardInfo
-	(*info.ZCellularProvider)(nil),   // 15: org.lfedge.eve.info.ZCellularProvider
-	(*info.ErrorInfo)(nil),           // 16: org.lfedge.eve.info.ErrorInfo
-	(info.ZSwState)(0),               // 17: org.lfedge.eve.info.ZSwState
-	(info.ZDeviceState)(0),           // 18: org.lfedge.eve.info.ZDeviceState
-	(info.MaintenanceModeReason)(0),  // 19: org.lfedge.eve.info.MaintenanceModeReason
-	(*timestamppb.Timestamp)(nil),    // 20: google.protobuf.Timestamp
-	(info.BootReason)(0),             // 21: org.lfedge.eve.info.BootReason
+	(*AppBootConfig)(nil),            // 12: org.lfedge.eve.profile.AppBootConfig
+	(*AppBootConfigList)(nil),        // 13: org.lfedge.eve.profile.AppBootConfigList
+	(*metrics.CellularMetric)(nil),   // 14: org.lfedge.eve.metrics.CellularMetric
+	(*info.ZCellularModuleInfo)(nil), // 15: org.lfedge.eve.info.ZCellularModuleInfo
+	(*info.ZSimcardInfo)(nil),        // 16: org.lfedge.eve.info.ZSimcardInfo
+	(*info.ZCellularProvider)(nil),   // 17: org.lfedge.eve.info.ZCellularProvider
+	(*info.ErrorInfo)(nil),           // 18: org.lfedge.eve.info.ErrorInfo
+	(info.ZSwState)(0),               // 19: org.lfedge.eve.info.ZSwState
+	(info.ZDeviceState)(0),           // 20: org.lfedge.eve.info.ZDeviceState
+	(info.MaintenanceModeReason)(0),  // 21: org.lfedge.eve.info.MaintenanceModeReason
+	(*timestamppb.Timestamp)(nil),    // 22: google.protobuf.Timestamp
+	(info.BootReason)(0),             // 23: org.lfedge.eve.info.BootReason
 }
 var file_profile_local_profile_proto_depIdxs = []int32{
 	4,  // 0: org.lfedge.eve.profile.RadioStatus.cellular_status:type_name -> org.lfedge.eve.profile.CellularStatus
-	12, // 1: org.lfedge.eve.profile.RadioStatus.cellular_metrics:type_name -> org.lfedge.eve.metrics.CellularMetric
-	13, // 2: org.lfedge.eve.profile.CellularStatus.module:type_name -> org.lfedge.eve.info.ZCellularModuleInfo
-	14, // 3: org.lfedge.eve.profile.CellularStatus.sim_cards:type_name -> org.lfedge.eve.info.ZSimcardInfo
-	15, // 4: org.lfedge.eve.profile.CellularStatus.providers:type_name -> org.lfedge.eve.info.ZCellularProvider
+	14, // 1: org.lfedge.eve.profile.RadioStatus.cellular_metrics:type_name -> org.lfedge.eve.metrics.CellularMetric
+	15, // 2: org.lfedge.eve.profile.CellularStatus.module:type_name -> org.lfedge.eve.info.ZCellularModuleInfo
+	16, // 3: org.lfedge.eve.profile.CellularStatus.sim_cards:type_name -> org.lfedge.eve.info.ZSimcardInfo
+	17, // 4: org.lfedge.eve.profile.CellularStatus.providers:type_name -> org.lfedge.eve.info.ZCellularProvider
 	7,  // 5: org.lfedge.eve.profile.LocalAppInfoList.apps_info:type_name -> org.lfedge.eve.profile.LocalAppInfo
-	16, // 6: org.lfedge.eve.profile.LocalAppInfo.err:type_name -> org.lfedge.eve.info.ErrorInfo
-	17, // 7: org.lfedge.eve.profile.LocalAppInfo.state:type_name -> org.lfedge.eve.info.ZSwState
+	18, // 6: org.lfedge.eve.profile.LocalAppInfo.err:type_name -> org.lfedge.eve.info.ErrorInfo
+	19, // 7: org.lfedge.eve.profile.LocalAppInfo.state:type_name -> org.lfedge.eve.info.ZSwState
 	9,  // 8: org.lfedge.eve.profile.LocalAppCmdList.app_commands:type_name -> org.lfedge.eve.profile.AppCommand
 	0,  // 9: org.lfedge.eve.profile.AppCommand.command:type_name -> org.lfedge.eve.profile.AppCommand.Command
-	18, // 10: org.lfedge.eve.profile.LocalDevInfo.state:type_name -> org.lfedge.eve.info.ZDeviceState
-	19, // 11: org.lfedge.eve.profile.LocalDevInfo.maintenance_mode_reasons:type_name -> org.lfedge.eve.info.MaintenanceModeReason
-	20, // 12: org.lfedge.eve.profile.LocalDevInfo.boot_time:type_name -> google.protobuf.Timestamp
-	21, // 13: org.lfedge.eve.profile.LocalDevInfo.last_boot_reason:type_name -> org.lfedge.eve.info.BootReason
+	20, // 10: org.lfedge.eve.profile.LocalDevInfo.state:type_name -> org.lfedge.eve.info.ZDeviceState
+	21, // 11: org.lfedge.eve.profile.LocalDevInfo.maintenance_mode_reasons:type_name -> org.lfedge.eve.info.MaintenanceModeReason
+	22, // 12: org.lfedge.eve.profile.LocalDevInfo.boot_time:type_name -> google.protobuf.Timestamp
+	23, // 13: org.lfedge.eve.profile.LocalDevInfo.last_boot_reason:type_name -> org.lfedge.eve.info.BootReason
 	1,  // 14: org.lfedge.eve.profile.LocalDevCmd.command:type_name -> org.lfedge.eve.profile.LocalDevCmd.Command
-	15, // [15:15] is the sub-list for method output_type
-	15, // [15:15] is the sub-list for method input_type
-	15, // [15:15] is the sub-list for extension type_name
-	15, // [15:15] is the sub-list for extension extendee
-	0,  // [0:15] is the sub-list for field type_name
+	12, // 15: org.lfedge.eve.profile.AppBootConfigList.app_configs:type_name -> org.lfedge.eve.profile.AppBootConfig
+	16, // [16:16] is the sub-list for method output_type
+	16, // [16:16] is the sub-list for method input_type
+	16, // [16:16] is the sub-list for extension type_name
+	16, // [16:16] is the sub-list for extension extendee
+	0,  // [0:16] is the sub-list for field type_name
 }
 
 func init() { file_profile_local_profile_proto_init() }
@@ -1261,6 +1412,30 @@ func file_profile_local_profile_proto_init() {
 				return nil
 			}
 		}
+		file_profile_local_profile_proto_msgTypes[10].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*AppBootConfig); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_profile_local_profile_proto_msgTypes[11].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*AppBootConfigList); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -1268,7 +1443,7 @@ func file_profile_local_profile_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: file_profile_local_profile_proto_rawDesc,
 			NumEnums:      2,
-			NumMessages:   10,
+			NumMessages:   12,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
