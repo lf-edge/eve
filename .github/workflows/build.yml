@@ -3,7 +3,7 @@
 ---
 name: PR build
 on:  # yamllint disable-line rule:truthy
-  pull_request_target:
+  pull_request:
     branches:
       - "master"
       - "[0-9]+.[0-9]+"
@@ -54,10 +54,8 @@ jobs:
           fetch-depth: 0
       - name: Login to Docker Hub
         if: ${{ github.event.repository.full_name }}== 'lf-edge/eve'
-        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef  # v3.6.0
-        with:
-          username: ${{ secrets.DOCKERHUB_PULL_USER }}
-          password: ${{ secrets.DOCKERHUB_PULL_TOKEN }}
+        run: | # Runners must provide default credentials
+          docker login
       - name: ensure zstd for cache  # this should be removed once the arm64 VM includes zstd
         if: ${{ matrix.os == 'buildjet-4vcpu-ubuntu-2204-arm' || matrix.os == 'arm64-secure' }}
         run: |
@@ -127,10 +125,8 @@ jobs:
 
       - name: Login to Docker Hub
         if: ${{ github.event.repository.full_name }}== 'lf-edge/eve'
-        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef  # v3.6.0
-        with:
-          username: ${{ secrets.DOCKERHUB_PULL_USER }}
-          password: ${{ secrets.DOCKERHUB_PULL_TOKEN }}
+        run: | # Runners must provide default credentials
+          docker login
 
       - name: Arch Runner is Matrix
         id: arch_runner_equals_matrix
