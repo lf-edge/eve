@@ -22,7 +22,7 @@ import (
 
 // Types of CAN interfaces
 const (
-	// LinkVCAN Virtual CAN interface type
+	// LinkVCAN Virtual CAN interface type - Test
 	LinkVCAN = "vcan"
 	// LinkCAN Physical CAN interface type
 	LinkCAN = "can"
