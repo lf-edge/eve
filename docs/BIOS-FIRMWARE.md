@@ -211,7 +211,7 @@ resolution), the boot order configuration interacts as follows:
 | Configuration | Standard OVMF | Custom OVMF.fd |
 |---------------|---------------|----------------|
 | `"usb"`       | USB prioritized | USB prioritized |
-| `"nousb"`     | USB deprioritized | USB deprioritized |
+| `"nousb"`     | USB removed from boot order | USB removed from boot order |
 | `""` (default)| USB prioritized (UEFI standard) | Uses precooked boot order |
 
 The `EveBootOrderLib` honors the fw_cfg setting regardless of whether standard

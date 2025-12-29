@@ -7,11 +7,6 @@ VMs) running on EVE, with a focus on USB boot priority control.
 
 By default, UEFI-based VMs prioritize USB devices in their boot order according
 to the UEFI specification. EVE provides runtime control over VM boot order
-<<<<<<< HEAD
-through the **Local Profile Server (LPS)** API, allowing operators to enable or
-disable USB boot priority on a per-application basis without modifying firmware
-files.
-=======
 through three mechanisms:
 
 1. **Controller API**: The `boot_order` field in `VmConfig` allows setting boot
@@ -96,7 +91,6 @@ The property is set via the controller's device configuration:
 - Further overridden by LPS per-app setting
 - Changes take effect on next VM start
 - See [CONFIG-PROPERTIES.md](CONFIG-PROPERTIES.md) for more device properties
->>>>>>> d881b77af (fixup! docs: add VM boot order configuration documentation.)
 
 ## LPS-Controlled Boot Order
 
@@ -111,92 +105,64 @@ persisted and survive EVE reboots. Changes take effect on the next VM restart.
 ### Architecture
 
 ```text
-<<<<<<< HEAD
-┌─────────────────────────────────────────────────────────────────────┐
-│                     Local Profile Server (LPS)                      │
-│                                                                     │
-│  GET /api/v1/app-boot-config returns:                              │
-│  {                                                                  │
-│    "server_token": "...",                                          │
-│    "app_configs": [                                                │
-│      { "id": "vm-uuid", "usb_boot": "nousb" }                      │
-│    ]                                                                │
-│  }                                                                  │
-└─────────────────────────────────────────────────────────────────────┘
-                                │
-                                ▼ HTTP GET (every 10s)
-┌─────────────────────────────────────────────────────────────────────┐
-│                              EVE                                    │
-│                                                                     │
-│  ┌──────────────┐    ┌──────────────┐    ┌──────────────────────┐  │
-│  │  zedagent    │───▶│  domainmgr   │───▶│  KVM/Xen hypervisor  │  │
-│  │              │    │              │    │                      │  │
-│  │ Fetches LPS  │    │ Stores boot  │    │ Passes boot order    │  │
-│  │ config       │    │ order in     │    │ to QEMU via fw_cfg   │  │
-│  │              │    │ DomainConfig │    │                      │  │
-│  └──────────────┘    └──────────────┘    └──────────────────────┘  │
-│                                                   │                 │
-└───────────────────────────────────────────────────│─────────────────┘
-=======
-┌───────────────────────────────────────────────────────────────────┐
-│                          Controller                               │
-│                                                                   │
-│  Device Property: app.boot.order = "nousb"  (device-wide default) │
-│  App Config: apps[].fixedresources.boot_order = BOOT_ORDER_USB    │
-│                                                                   │
-└───────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────┐
+│                          Controller                                     │
+│                                                                         │
+│  Device Property: app.boot.order = "nousb"  (device-wide default)       │
+│  App Config: apps[].fixedresources.boot_order = BOOT_ORDER_USB (per VM) │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
         │
         │ Config delivery
         │
-        │       ┌───────────────────────────────────────────────────┐
-        │       │         Local Profile Server (LPS)                │
-        │       │             (Optional Override)                   │
-        │       │                                                   │
-        │       │  GET /api/v1/app-boot-config returns:             │
-        │       │  {                                                │
-        │       │    "server_token": "...",                         │
-        │       │    "app_configs": [                               │
-        │       │      { "id": "vm-uuid", "usb_boot": "BOOT_ORDER_NOUSB" }
-        │       │    ]                                              │
-        │       │  }                                                │
-        │       └───────────────────────────────────────────────────┘
+        │       ┌─────────────────────────────────────────────────────────┐
+        │       │         Local Profile Server (LPS)                      │
+        │       │             (Optional Override)                         │
+        │       │                                                         │
+        │       │  GET /api/v1/app-boot-config returns:                   │
+        │       │  {                                                      │
+        │       │    "server_token": "...",                               │
+        │       │    "app_configs": [                                     │
+        │       │      { "id": "vm-uuid", "usb_boot": "BOOT_ORDER_NOUSB" }│
+        │       │    ]                                                    │
+        │       │  }                                                      │
+        │       └─────────────────────────────────────────────────────────┘
         │                          │
         │                          │ HTTP GET (every 10s)
         ▼                          ▼
-┌───────────────────────────────────────────────────────────────────┐
-│                              EVE                                  │
-│                                                                   │
-│  ┌──────────────┐    ┌──────────────┐    ┌────────────────────┐   │
-│  │  zedagent    │───▶│  domainmgr   │───▶│ KVM/Xen hypervisor │   │
-│  │              │    │              │    │                    │   │
-│  │ Receives     │    │ Merges boot  │    │ Passes boot order  │   │
-│  │ Controller + │    │ order:       │    │ to QEMU via fw_cfg │   │
-│  │ LPS config   │    │ LPS > App >  │    │                    │   │
-│  │              │    │ DeviceProp   │    │                    │   │
-│  └──────────────┘    └──────────────┘    └────────────────────┘   │
-│                                                   │               │
-└───────────────────────────────────────────────────│───────────────┘
->>>>>>> d881b77af (fixup! docs: add VM boot order configuration documentation.)
+┌─────────────────────────────────────────────────────────────────────────┐
+│                              EVE                                        │
+│                                                                         │
+│  ┌──────────────┐    ┌──────────────┐    ┌────────────────────┐         │
+│  │  zedagent    │--->│  domainmgr   │--->│ KVM/Xen hypervisor │         │
+│  │              │    │              │    │                    │         │
+│  │ Receives     │    │ Merges boot  │    │ Passes boot order  │         │
+│  │ Controller + │    │ order:       │    │ to QEMU via fw_cfg │         │
+│  │ LPS config   │    │ LPS > App >  │    │                    │         │
+│  │              │    │ DeviceProp   │    │                    │         │
+│  └──────────────┘    └──────────────┘    └────────────────────┘         │
+│                                                   │                     │
+└───────────────────────────────────────────────────│─────────────────────┘
                                                     ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                         QEMU (per VM)                               │
-│                                                                     │
-│  [fw_cfg]                                                          │
-│    name = "opt/eve.bootorder"                                      │
-│    string = "nousb"    # or "usb" or absent                        │
-│                                                                     │
-└─────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────┐
+│                         QEMU (per VM)                                   │
+│                                                                         │
+│  [fw_cfg]                                                               │
+│    name = "opt/eve.bootorder"                                           │
+│    string = "nousb"    # or "usb" or absent                             │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
                                 │
                                 ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                    OVMF Firmware (per VM)                           │
-│                                                                     │
-│  EveBootOrderLib reads opt/eve.bootorder:                          │
-│  - "usb"   → Prioritize USB devices in boot order                  │
-│  - "nousb" → Deprioritize USB devices in boot order                │
-│  - absent  → Use default UEFI boot order                           │
-│                                                                     │
-└─────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────┐
+│                    OVMF Firmware (per VM)                               │
+│                                                                         │
+│  EveBootOrderLib reads opt/eve.bootorder:                               │
+│  - "usb"   → Prioritize USB devices in boot order                       │
+│  - "nousb" → Remove USB devices from boot order completely              │
+│  - absent  → Use default UEFI boot order                                │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Boot Order Values
@@ -204,7 +170,7 @@ persisted and survive EVE reboots. Changes take effect on the next VM restart.
 | Value    | Effect                                                        |
 |----------|---------------------------------------------------------------|
 | `"usb"`  | USB devices are prioritized in the boot order                 |
-| `"nousb"`| USB devices are deprioritized (disk boots first)              |
+| `"nousb"`| USB devices are removed from boot order (disk boots first)   |
 | `""`     | Default behavior (see "Default Behavior" section below)       |
 
 ### Default Behavior
@@ -260,21 +226,18 @@ GET /api/v1/app-boot-config
 
 *At least one of `id` or `displayname` must be provided.
 
-### Behavior
+### LPS Behavior
 
 Each LPS response represents the complete desired state. Applications NOT
 included in the response will use default boot order. Sending the same
 configuration multiple times has no effect. Changes take effect on the next VM
 restart. Configuration is saved to disk and survives EVE reboots.
 
-<<<<<<< HEAD
-=======
 **BOOT_ORDER_UNSPECIFIED handling**: When `usb_boot` is set to `BOOT_ORDER_UNSPECIFIED`
 (or omitted), it means "no override" - the next priority level is used (Controller
 API setting, then Device Property). This allows operators to selectively override
 only specific apps via LPS while letting others use their configured values.
 
->>>>>>> d881b77af (fixup! docs: add VM boot order configuration documentation.)
 ### Throttling
 
 Normal polling interval is every 10 seconds. When LPS returns 404, polling is
@@ -349,8 +312,35 @@ and is restored on EVE restart. This ensures that VMs maintain their configured
 boot order across EVE reboots, boot order is applied even if LPS is temporarily
 unreachable at boot time, and configuration survives power cycles.
 
+Note: Device property (`app.boot.order`) and Controller API boot order are
+persisted as part of the device/application configuration, while LPS boot order
+is persisted separately. When EVE restarts, all sources are merged with LPS
+taking highest precedence, followed by Controller API, then device property.
+
+## When to Use Boot Order Configuration
+
+The primary use case for boot order configuration is when an operator needs to
+**install an operating system to a VM from a USB stick**. In this scenario:
+
+1. Attach a bootable USB drive with the OS installer to the device
+2. Configure the VM's boot order to `"usb"` to prioritize USB boot
+3. Pass through the USB device to the VM
+4. Start the VM - it will boot from the USB installer
+5. Complete the OS installation to the VM's disk
+6. Change boot order back to `"nousb"` or default to boot from disk
+7. Restart the VM to boot the newly installed OS
+
+All three mechanisms (Device Property, Controller API, and LPS) provide this
+capability:
+
+- Use **Device Property** (`app.boot.order`) to set a device-wide default
+- Use **Controller API** (`VmConfig.boot_order`) to configure specific VMs
+- Use **LPS** for air-gapped environments where controller connectivity is
+  limited
+
 ## Related Documentation
 
+- [CONFIG-PROPERTIES.md](./CONFIG-PROPERTIES.md) - Device configuration properties including `app.boot.order`
 - [LPS.md](./LPS.md) - Overview of Local Profile Server and all its endpoints
 - [BIOS-FIRMWARE.md](./BIOS-FIRMWARE.md) - OVMF firmware configuration and usage
-- [eve-api PROFILE.md](https://github.com/lf-edge/eve-api/blob/main/PROFILE.md) - Formal API specification for all LPS endpoints
+- [eve-api PROFILE.md](https://github.com/lf-edge/eve-api/blob/main/PROFILE.md) - Formal API specification for LPS endpoints
