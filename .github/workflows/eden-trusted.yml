@@ -201,6 +201,19 @@ jobs:
       artifact_run_id: ${{ needs.context.outputs.original_run_id }}
       eden_version: "1.0.9"
 
+  tests-16-0:
+    name: ${{ needs.context.outputs.eden_parent_job_title }} for 16.0
+    needs: context
+    if: needs.context.outputs.skip_run == 'false' && needs.context.outputs.pr_base_ref == '16.0'
+    uses: lf-edge/eden/.github/workflows/test.yml@1.0.13
+    secrets: inherit
+    with:
+      eve_image: "evebuild/pr:${{ needs.context.outputs.pr_id }}"
+      eve_log_level: "debug"
+      eve_artifact_name: "eve-${{ needs.context.outputs.hv }}-${{ needs.context.outputs.arch }}-${{ needs.context.outputs.platform }}"
+      artifact_run_id: ${{ needs.context.outputs.original_run_id }}
+      eden_version: "1.0.13"
+
   tests-master:
     name: ${{ needs.context.outputs.eden_parent_job_title }} for master
     needs: context
@@ -216,7 +229,7 @@ jobs:
 
   finalize:
     name: Eden Tests Complete
-    needs: [context, tests-13-4-stable, tests-14-5-stable, tests-master]
+    needs: [context, tests-13-4-stable, tests-14-5-stable, tests-16-0, tests-master]
     if: always() && needs.context.outputs.skip_run == 'false'
     runs-on: ubuntu-latest
     steps:
@@ -228,6 +241,8 @@ jobs:
             result="${{ needs.tests-13-4-stable.result }}"
           elif [[ "${{ needs.tests-14-5-stable.result }}" != "skipped" ]]; then
             result="${{ needs.tests-14-5-stable.result }}"
+          elif [[ "${{ needs.tests-16-0.result }}" != "skipped" ]]; then
+            result="${{ needs.tests-16-0.result }}"
           else
             result="${{ needs.tests-master.result }}"
           fi
