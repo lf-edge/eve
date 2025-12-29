@@ -873,7 +873,8 @@ func vmmOverhead(domainName string, domainUUID uuid.UUID, domainRAMSize int64, v
 	// Fetch VMM max memory setting (aka vmm overhead)
 	overhead = vmmMaxMem << 10
 
-	// Global node setting has a higher priority
+	// Global node setting has a higher priority.
+	// Note: globalConfig can be nil only in unit tests.
 	if globalConfig != nil {
 		VmmOverheadOverrideCfgItem, ok := globalConfig.GlobalSettings[types.VmmMemoryLimitInMiB]
 		if !ok {
@@ -958,6 +959,8 @@ func cleanupOVMFSettings(domainName string) error {
 }
 
 // Setup sets up kvm
+// Note: globalConfig can be nil only in unit tests. In production, it is always
+// provided by domainmgr from agentlog.GetGlobalConfig().
 func (ctx KvmContext) Setup(status types.DomainStatus, config types.DomainConfig,
 	aa *types.AssignableAdapters, globalConfig *types.ConfigItemValueMap, file *os.File) error {
 
@@ -1068,6 +1071,7 @@ func (ctx KvmContext) Setup(status types.DomainStatus, config types.DomainConfig
 // Coalesce per-app `EnableVncShimVM` flag and global `debug.enable.vnc.shim.vm`
 // debug flag, making sure we don't activate VNC for shim VM if VNC for
 // this application is disabled.
+// Note: globalConfig can be nil only in unit tests.
 func isVncShimVMEnabled(
 	globalConfig *types.ConfigItemValueMap, config types.DomainConfig) bool {
 	globalShimVnc := false
@@ -1080,7 +1084,8 @@ func isVncShimVMEnabled(
 
 func getFmlCustomResolution(status *types.DomainStatus, globalConfig *types.ConfigItemValueMap) (string, error) {
 	fmlResolutions := status.FmlCustomResolution
-	// if not set in the domain status, try to get it from the global config
+	// if not set in the domain status, try to get it from the global config.
+	// Note: globalConfig can be nil only in unit tests.
 	if fmlResolutions == types.FmlResolutionUnset {
 		if globalConfig != nil {
 			item, ok := globalConfig.GlobalSettings[types.FmlCustomResolution]
