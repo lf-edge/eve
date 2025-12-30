@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2021 Zededa, Inc.
+// Copyright (c) 2017-2026 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 // Manage Xen guest domains based on the subscribed collection of DomainConfig
@@ -1225,7 +1225,8 @@ func maybeRetryBoot(ctx *domainContext, status *types.DomainStatus) {
 		}
 	}
 
-	if err := hyper.Task(status).Setup(*status, *config, ctx.assignableAdapters, nil, file); err != nil {
+	globalConfig := agentlog.GetGlobalConfig(log, ctx.subGlobalConfig)
+	if err := hyper.Task(status).Setup(*status, *config, ctx.assignableAdapters, globalConfig, file); err != nil {
 		//it is retry, so omit error
 		log.Errorf("Failed to create DomainStatus from %+v: %s",
 			config, err)
