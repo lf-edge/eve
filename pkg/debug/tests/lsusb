@@ -1,0 +1,8 @@
+#!/bin/sh
+
+# Copyright (c) 2026 Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+echo "Bus 001 Device 001: ID 1d6b:0002 Linux 6.12.49-linuxkit-core-ef7ccc4d151c xhci-hcd xHCI Host Controller"
+echo "Bus 002 Device 002: ID 46f4:0001 QEMU QEMU USB HARDDRIVE"
+echo "Bus 002 Device 001: ID 1d6b:0003 Linux 6.12.49-linuxkit-core-ef7ccc4d151c xhci-hcd xHCI Host Controller"
