@@ -320,22 +320,26 @@ func (z *zedkube) clusterStatusHTTPHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	var isMaster, useEtcd bool
+	var isControlPlane, isMaster, useEtcd bool
 	labels := node.GetLabels()
 	if _, ok := labels["node-role.kubernetes.io/master"]; ok {
 		isMaster = true
+	}
+	// Master label removed: https://github.com/k3s-io/k3s/pull/12395
+	if controlPlaneVal, ok := labels["node-role.kubernetes.io/control-plane"]; ok {
+		isControlPlane = (controlPlaneVal == "true")
 	}
 	if _, ok := labels["node-role.kubernetes.io/etcd"]; ok {
 		useEtcd = true
 	}
 
-	if isMaster && useEtcd {
+	if (isControlPlane || isMaster) && useEtcd {
 		// Return cluster status with cluster UUID: cluster:<cluster-uuid>
 		clusterUUID := z.clusterConfig.ClusterID.UUID.String()
 		fmt.Fprintf(w, "cluster:%s", clusterUUID)
 		return
 	}
-	log.Functionf("clusterStatusHTTPHandler: not master or etcd")
+	log.Functionf("clusterStatusHTTPHandler: not control-plane and etcd")
 	fmt.Fprint(w, "")
 }
 
