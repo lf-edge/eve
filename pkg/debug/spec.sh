@@ -383,6 +383,7 @@ print_usb_devices() {
         fi
 
         cat <<__EOT__
+    ${COMMA}
     {
       "ztype": "${ztype}",
       "phylabel": "${label}",
@@ -395,8 +396,8 @@ print_usb_devices() {
       },
       "logicallabel": "$label",
       "usagePolicy": {}
-    },
 __EOT__
+    COMMA="},"
     done
 }
 
