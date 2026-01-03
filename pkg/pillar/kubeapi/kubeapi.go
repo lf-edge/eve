@@ -64,6 +64,12 @@ const (
 	// DefaultTieBreakerReplicaCount is the replica count for a tie breaker cluster using
 	// the VolumeCSIStorageClassReplicaPrefix+"2" storage class.
 	DefaultTieBreakerReplicaCount = 2
+
+	// K3sConfigOverrideDir - default dir for k3s config override
+	K3sConfigOverrideDir string = types.SealedDirName
+
+	// K3sConfigOverrideFilename - path for controller defined k3s config additions and overridden keys
+	K3sConfigOverrideFilename string = "k3s-user-override.yaml"
 )
 
 const (

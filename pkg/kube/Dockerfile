@@ -26,6 +26,7 @@ COPY cgconfig.conf /etc
 COPY utils.sh /usr/bin/
 COPY pubsub.sh /usr/bin/
 COPY tie-breaker-utils.sh /usr/bin/
+COPY lib/* /usr/bin/
 RUN mkdir -p /etc/k3s-manifests
 COPY manifests/* /etc/k3s-manifests/
 

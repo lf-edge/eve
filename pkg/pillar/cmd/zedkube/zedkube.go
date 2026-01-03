@@ -6,9 +6,12 @@
 package zedkube
 
 import (
+	"encoding/base64"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -22,6 +25,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/kubeapi"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	utils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 	"k8s.io/client-go/rest"
@@ -724,8 +728,52 @@ func handleGlobalConfigImpl(ctxArg interface{}, key string,
 				existingDrainK8sAPINotReachableTimeout, newDrainK8sAPINotReachableTimeout)
 			z.drainSkipK8sAPINotReachableTimeout = time.Second * time.Duration(newDrainK8sAPINotReachableTimeout)
 		}
+
+		handleK3sConfigOverrideChanged(currentConfigItemValueMap, newConfigItemValueMap)
 	}
 	log.Functionf("handleGlobalConfigImpl(%s): done", key)
+}
+
+func handleK3sConfigOverrideChanged(currentGcp *types.ConfigItemValueMap, newGcp *types.ConfigItemValueMap) {
+	oldVal := currentGcp.GlobalValueString(types.K3sConfigOverride)
+	newVal := newGcp.GlobalValueString(types.K3sConfigOverride)
+
+	log.Functionf("%s old:%s new:%s", types.K3sConfigOverride, oldVal, newVal)
+
+	err := WriteBase64Cfg(kubeapi.K3sConfigOverrideDir, kubeapi.K3sConfigOverrideFilename, newVal)
+	if err != nil {
+		log.Errorf("k3s override write failed:%v", err)
+		return
+	}
+}
+
+// WriteBase64Cfg - writes or removes a user defined base64 encoded config file
+func WriteBase64Cfg(parentDir string, filename string, base64Config string) error {
+	dstFilepath := filepath.Join(parentDir, filename)
+	if len(base64Config) == 0 {
+		if _, err := os.Stat(dstFilepath); os.IsNotExist(err) {
+			return nil
+		}
+		// Remove config
+		err := os.Remove(dstFilepath)
+		if err != nil {
+			return fmt.Errorf("Unable to delete %s: %v ", dstFilepath, err)
+		}
+		return nil
+	}
+	//Set config
+	if _, err := os.Stat(parentDir); err != nil {
+		return fmt.Errorf("zedkube k3s override config handling before parentdir:%s ready err:%v", parentDir, err)
+	}
+	decodedConfig, err := base64.StdEncoding.DecodeString(base64Config)
+	if err != nil {
+		return fmt.Errorf("failed to decode config: %v", err)
+	}
+	err = utils.WriteRename(dstFilepath, decodedConfig)
+	if err != nil {
+		return fmt.Errorf("config write error: %v", err)
+	}
+	return nil
 }
 
 func handleEdgeNodeClusterConfigCreate(ctxArg interface{}, key string,
