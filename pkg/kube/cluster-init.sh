@@ -32,6 +32,8 @@ KUBE_ROOT_MOUNTPOINT="/var/lib"
 
 # shellcheck source=pkg/kube/pubsub.sh
 . /usr/bin/pubsub.sh
+# shellcheck source=pkg/kube/lib/config.sh
+. /usr/bin/kube/config.sh
 # shellcheck source=pkg/kube/descheduler-utils.sh
 . /usr/bin/descheduler-utils.sh
 # shellcheck source=pkg/kube/longhorn-utils.sh
@@ -649,7 +651,7 @@ check_cluster_config_change() {
       else
         # check to see if the persistent config file exists, if yes, then we need to
         # wait until zedkube to publish the ENC status file
-        if [ -f "${ENCC_FILE_PATH}" ]; then
+        if ! Config_cluster_exists; then
           logmsg "EdgeNodeClusterConfig file found, but the EdgeNodeClusterStatus file is missing, wait..."
           return 0
         fi
@@ -672,9 +674,13 @@ check_cluster_config_change() {
             touch /var/lib/edge-node-cluster-mode
 
             if Registration_ConfigExists; then
-                # Hold on, don't apply yet, complete conversion to base mode first
-                if [ ! -f /var/lib/base-k3s-mode ]; then
-                        uninstall_components
+                Config_cluster_type_get
+                cluster_type=$?
+                if [ $cluster_type -eq $CLUSTER_TYPE_K3S_BASE ]; then
+                        # Hold on, don't apply yet, complete conversion to base mode first
+                        if [ ! -f /var/lib/base-k3s-mode ]; then
+                                uninstall_components
+                        fi
                 fi
             fi
 
@@ -752,10 +758,8 @@ check_cluster_config_change() {
     fi
     logmsg "Check cluster config change done"
 
-    ## A conversion to base-k3s mode should be complete here, now complete registration
-    if [ -e /var/lib/base-k3s-mode ]; then
-        Registration_CheckApply
-    fi
+    # Registration can exist in multiple types, apply now
+    Registration_CheckApply
 }
 
 # Function to check if the cluster transition is complete
