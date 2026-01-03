@@ -8,6 +8,7 @@ import (
 	"crypto/cipher"
 	"crypto/ecdsa"
 	"crypto/elliptic"
+	"crypto/rand"
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/pem"
@@ -186,19 +187,48 @@ func deriveEncryptDecryptKey() ([32]byte, error) {
 // The AES key is derived from a seed, which is further derived from device certificate
 // and ECDH private key, which is protected inside the TPM. IOW, to decrypt secret successfully,
 // one will need to be on the same device.
+// For encryption, the random IV is prepended to the ciphertext in the returned bytes.
+// For decryption, the IV is expected to be the first aes.BlockSize bytes of the input.
 func EncryptDecryptUsingTpm(in []byte, encrypt bool) ([]byte, error) {
 	key, err := deriveEncryptDecryptKey()
 	if err != nil {
 		return nil, err
 	}
-	iv := make([]byte, aes.BlockSize)
-	out := make([]byte, len(in))
 	if encrypt {
-		err = AESEncrypt(out, in, key[:], iv)
+		// Generate random IV for encryption
+		iv := make([]byte, aes.BlockSize)
+		if _, err := rand.Read(iv); err != nil {
+			return nil, fmt.Errorf("failed to generate random IV: %v", err)
+		}
+		ciphertext := make([]byte, len(in))
+		if err := AESEncrypt(ciphertext, in, key[:], iv); err != nil {
+			return nil, err
+		}
+		// Prepend IV to the ciphertext, return IV + ciphertext
+		result := make([]byte, aes.BlockSize+len(ciphertext))
+		copy(result, iv)
+		copy(result[aes.BlockSize:], ciphertext)
+		return result, nil
 	} else {
-		err = AESDecrypt(out, in, key[:], iv)
+		// Try new format first, IV prepended to ciphertext
+		if len(in) >= aes.BlockSize {
+			iv := in[:aes.BlockSize]
+			ciphertext := in[aes.BlockSize:]
+			if len(ciphertext) > 0 {
+				plaintext := make([]byte, len(ciphertext))
+				if err = AESDecrypt(plaintext, ciphertext, key[:], iv); err == nil {
+					return plaintext, nil
+				}
+			}
+		}
+		// Fall back to old format, all-zero IV, entire input is ciphertext
+		iv := make([]byte, aes.BlockSize)
+		plaintext := make([]byte, len(in))
+		if err := AESDecrypt(plaintext, in, key[:], iv); err != nil {
+			return nil, err
+		}
+		return plaintext, nil
 	}
-	return out, err
 }
 
 // EccIntToBytes - ECC coordinates need to maintain a specific size based on the curve, so we pad the front with zeros.
