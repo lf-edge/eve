@@ -3,6 +3,8 @@ package sftp
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
+	"fmt"
 	"io"
 	"math"
 	"os"
@@ -13,7 +15,6 @@ import (
 	"time"
 
 	"github.com/kr/fs"
-	"github.com/pkg/errors"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -226,15 +227,22 @@ func NewClientPipe(rd io.Reader, wr io.WriteCloser, opts ...ClientOption) (*Clie
 
 	if err := sftp.sendInit(); err != nil {
 		wr.Close()
-		return nil, err
+		return nil, fmt.Errorf("error sending init packet to server: %w", err)
 	}
+
 	if err := sftp.recvVersion(); err != nil {
 		wr.Close()
-		return nil, err
+		return nil, fmt.Errorf("error receiving version packet from server: %w", err)
 	}
 
 	sftp.clientConn.wg.Add(1)
-	go sftp.loop()
+	go func() {
+		defer sftp.clientConn.wg.Done()
+
+		if err := sftp.clientConn.recv(); err != nil {
+			sftp.clientConn.broadcastErr(err)
+		}
+	}()
 
 	return sftp, nil
 }
@@ -251,11 +259,11 @@ func (c *Client) Create(path string) (*File, error) {
 	return c.open(path, flags(os.O_RDWR|os.O_CREATE|os.O_TRUNC))
 }
 
-const sftpProtocolVersion = 3 // http://tools.ietf.org/html/draft-ietf-secsh-filexfer-02
+const sftpProtocolVersion = 3 // https://filezilla-project.org/specs/draft-ietf-secsh-filexfer-02.txt
 
 func (c *Client) sendInit() error {
 	return c.clientConn.conn.sendPacket(&sshFxInitPacket{
-		Version: sftpProtocolVersion, // http://tools.ietf.org/html/draft-ietf-secsh-filexfer-02
+		Version: sftpProtocolVersion, // https://filezilla-project.org/specs/draft-ietf-secsh-filexfer-02.txt
 	})
 }
 
@@ -267,8 +275,13 @@ func (c *Client) nextID() uint32 {
 func (c *Client) recvVersion() error {
 	typ, data, err := c.recvPacket(0)
 	if err != nil {
+		if err == io.EOF {
+			return fmt.Errorf("server unexpectedly closed connection: %w", io.ErrUnexpectedEOF)
+		}
+
 		return err
 	}
+
 	if typ != sshFxpVersion {
 		return &unexpectedPacketErr{sshFxpVersion, typ}
 	}
@@ -277,6 +290,7 @@ func (c *Client) recvVersion() error {
 	if err != nil {
 		return err
 	}
+
 	if version != sftpProtocolVersion {
 		return &unexpectedVersionErr{sftpProtocolVersion, version}
 	}
@@ -910,6 +924,45 @@ func (c *Client) MkdirAll(path string) error {
 	return nil
 }
 
+// RemoveAll delete files recursively in the directory and Recursively delete subdirectories.
+// An error will be returned if no file or directory with the specified path exists
+func (c *Client) RemoveAll(path string) error {
+
+	// Get the file/directory information
+	fi, err := c.Stat(path)
+	if err != nil {
+		return err
+	}
+
+	if fi.IsDir() {
+		// Delete files recursively in the directory
+		files, err := c.ReadDir(path)
+		if err != nil {
+			return err
+		}
+
+		for _, file := range files {
+			if file.IsDir() {
+				// Recursively delete subdirectories
+				err = c.RemoveAll(path + "/" + file.Name())
+				if err != nil {
+					return err
+				}
+			} else {
+				// Delete individual files
+				err = c.Remove(path + "/" + file.Name())
+				if err != nil {
+					return err
+				}
+			}
+		}
+
+	}
+
+	return c.Remove(path)
+
+}
+
 // File represents a remote file.
 type File struct {
 	c      *Client
@@ -999,9 +1052,6 @@ func (f *File) readAtSequential(b []byte, off int64) (read int, err error) {
 			read += n
 		}
 		if err != nil {
-			if errors.Is(err, io.EOF) {
-				return read, nil // return nil explicitly.
-			}
 			return read, err
 		}
 	}
@@ -1028,7 +1078,17 @@ func (f *File) ReadAt(b []byte, off int64) (int, error) {
 
 	cancel := make(chan struct{})
 
+	concurrency := len(b)/f.c.maxPacket + 1
+	if concurrency > f.c.maxConcurrentRequests || concurrency < 1 {
+		concurrency = f.c.maxConcurrentRequests
+	}
+
+	resPool := newResChanPool(concurrency)
+
 	type work struct {
+		id  uint32
+		res chan result
+
 		b   []byte
 		off int64
 	}
@@ -1048,8 +1108,18 @@ func (f *File) ReadAt(b []byte, off int64) (int, error) {
 				rb = rb[:chunkSize]
 			}
 
+			id := f.c.nextID()
+			res := resPool.Get()
+
+			f.c.dispatchRequest(res, &sshFxpReadPacket{
+				ID:     id,
+				Handle: f.handle,
+				Offset: uint64(offset),
+				Len:    uint32(chunkSize),
+			})
+
 			select {
-			case workCh <- work{rb, offset}:
+			case workCh <- work{id, res, rb, offset}:
 			case <-cancel:
 				return
 			}
@@ -1065,11 +1135,6 @@ func (f *File) ReadAt(b []byte, off int64) (int, error) {
 	}
 	errCh := make(chan rErr)
 
-	concurrency := len(b)/f.c.maxPacket + 1
-	if concurrency > f.c.maxConcurrentRequests || concurrency < 1 {
-		concurrency = f.c.maxConcurrentRequests
-	}
-
 	var wg sync.WaitGroup
 	wg.Add(concurrency)
 	for i := 0; i < concurrency; i++ {
@@ -1077,10 +1142,40 @@ func (f *File) ReadAt(b []byte, off int64) (int, error) {
 		go func() {
 			defer wg.Done()
 
-			ch := make(chan result, 1) // reusable channel per mapper.
-
 			for packet := range workCh {
-				n, err := f.readChunkAt(ch, packet.b, packet.off)
+				var n int
+
+				s := <-packet.res
+				resPool.Put(packet.res)
+
+				err := s.err
+				if err == nil {
+					switch s.typ {
+					case sshFxpStatus:
+						err = normaliseError(unmarshalStatus(packet.id, s.data))
+
+					case sshFxpData:
+						sid, data := unmarshalUint32(s.data)
+						if packet.id != sid {
+							err = &unexpectedIDErr{packet.id, sid}
+
+						} else {
+							l, data := unmarshalUint32(data)
+							n = copy(packet.b, data[:l])
+
+							// For normal disk files, it is guaranteed that this will read
+							// the specified number of bytes, or up to end of file.
+							// This implies, if we have a short read, that means EOF.
+							if n < len(packet.b) {
+								err = io.EOF
+							}
+						}
+
+					default:
+						err = unimplementedPacketErr(s.typ)
+					}
+				}
+
 				if err != nil {
 					// return the offset as the start + how much we read before the error.
 					errCh <- rErr{packet.off + int64(n), err}
@@ -1134,11 +1229,11 @@ func (f *File) writeToSequential(w io.Writer) (written int64, err error) {
 		if n > 0 {
 			f.offset += int64(n)
 
-			m, err2 := w.Write(b[:n])
+			m, err := w.Write(b[:n])
 			written += int64(m)
 
-			if err == nil {
-				err = err2
+			if err != nil {
+				return written, err
 			}
 		}
 
@@ -1416,10 +1511,19 @@ func (f *File) writeAtConcurrent(b []byte, off int64) (int, error) {
 	cancel := make(chan struct{})
 
 	type work struct {
-		b   []byte
+		id  uint32
+		res chan result
+
 		off int64
 	}
 	workCh := make(chan work)
+
+	concurrency := len(b)/f.c.maxPacket + 1
+	if concurrency > f.c.maxConcurrentRequests || concurrency < 1 {
+		concurrency = f.c.maxConcurrentRequests
+	}
+
+	pool := newResChanPool(concurrency)
 
 	// Slice: cut up the Read into any number of buffers of length <= f.c.maxPacket, and at appropriate offsets.
 	go func() {
@@ -1434,8 +1538,20 @@ func (f *File) writeAtConcurrent(b []byte, off int64) (int, error) {
 				wb = wb[:chunkSize]
 			}
 
+			id := f.c.nextID()
+			res := pool.Get()
+			off := off + int64(read)
+
+			f.c.dispatchRequest(res, &sshFxpWritePacket{
+				ID:     id,
+				Handle: f.handle,
+				Offset: uint64(off),
+				Length: uint32(len(wb)),
+				Data:   wb,
+			})
+
 			select {
-			case workCh <- work{wb, off + int64(read)}:
+			case workCh <- work{id, res, off}:
 			case <-cancel:
 				return
 			}
@@ -1450,11 +1566,6 @@ func (f *File) writeAtConcurrent(b []byte, off int64) (int, error) {
 	}
 	errCh := make(chan wErr)
 
-	concurrency := len(b)/f.c.maxPacket + 1
-	if concurrency > f.c.maxConcurrentRequests || concurrency < 1 {
-		concurrency = f.c.maxConcurrentRequests
-	}
-
 	var wg sync.WaitGroup
 	wg.Add(concurrency)
 	for i := 0; i < concurrency; i++ {
@@ -1462,13 +1573,22 @@ func (f *File) writeAtConcurrent(b []byte, off int64) (int, error) {
 		go func() {
 			defer wg.Done()
 
-			ch := make(chan result, 1) // reusable channel per mapper.
+			for work := range workCh {
+				s := <-work.res
+				pool.Put(work.res)
 
-			for packet := range workCh {
-				n, err := f.writeChunkAt(ch, packet.b, packet.off)
+				err := s.err
+				if err == nil {
+					switch s.typ {
+					case sshFxpStatus:
+						err = normaliseError(unmarshalStatus(work.id, s.data))
+					default:
+						err = unimplementedPacketErr(s.typ)
+					}
+				}
+
 				if err != nil {
-					// return the offset as the start + how much we wrote before the error.
-					errCh <- wErr{packet.off + int64(n), err}
+					errCh <- wErr{work.off, err}
 				}
 			}
 		}()
@@ -1503,7 +1623,7 @@ func (f *File) writeAtConcurrent(b []byte, off int64) (int, error) {
 	return len(b), nil
 }
 
-// WriteAt writess up to len(b) byte to the File at a given offset `off`. It returns
+// WriteAt writes up to len(b) byte to the File at a given offset `off`. It returns
 // the number of bytes written and an error, if any. WriteAt follows io.WriterAt semantics,
 // so the file offset is not altered during the write.
 func (f *File) WriteAt(b []byte, off int64) (written int, err error) {
@@ -1553,8 +1673,9 @@ func (f *File) ReadFromWithConcurrency(r io.Reader, concurrency int) (read int64
 	cancel := make(chan struct{})
 
 	type work struct {
-		b   []byte
-		n   int
+		id  uint32
+		res chan result
+
 		off int64
 	}
 	workCh := make(chan work)
@@ -1569,24 +1690,34 @@ func (f *File) ReadFromWithConcurrency(r io.Reader, concurrency int) (read int64
 		concurrency = f.c.maxConcurrentRequests
 	}
 
-	pool := newBufPool(concurrency, f.c.maxPacket)
+	pool := newResChanPool(concurrency)
 
 	// Slice: cut up the Read into any number of buffers of length <= f.c.maxPacket, and at appropriate offsets.
 	go func() {
 		defer close(workCh)
 
+		b := make([]byte, f.c.maxPacket)
 		off := f.offset
 
 		for {
-			b := pool.Get()
-
 			n, err := r.Read(b)
+
 			if n > 0 {
 				read += int64(n)
 
+				id := f.c.nextID()
+				res := pool.Get()
+
+				f.c.dispatchRequest(res, &sshFxpWritePacket{
+					ID:     id,
+					Handle: f.handle,
+					Offset: uint64(off),
+					Length: uint32(n),
+					Data:   b[:n],
+				})
+
 				select {
-				case workCh <- work{b, n, off}:
-					// We need the pool.Put(b) to put the whole slice, not just trunced.
+				case workCh <- work{id, res, off}:
 				case <-cancel:
 					return
 				}
@@ -1610,15 +1741,23 @@ func (f *File) ReadFromWithConcurrency(r io.Reader, concurrency int) (read int64
 		go func() {
 			defer wg.Done()
 
-			ch := make(chan result, 1) // reusable channel per mapper.
+			for work := range workCh {
+				s := <-work.res
+				pool.Put(work.res)
 
-			for packet := range workCh {
-				n, err := f.writeChunkAt(ch, packet.b[:packet.n], packet.off)
-				if err != nil {
-					// return the offset as the start + how much we wrote before the error.
-					errCh <- rwErr{packet.off + int64(n), err}
+				err := s.err
+				if err == nil {
+					switch s.typ {
+					case sshFxpStatus:
+						err = normaliseError(unmarshalStatus(work.id, s.data))
+					default:
+						err = unimplementedPacketErr(s.typ)
+					}
 				}
-				pool.Put(packet.b)
+
+				if err != nil {
+					errCh <- rwErr{work.off, err}
+				}
 			}
 		}()
 	}
@@ -1651,7 +1790,7 @@ func (f *File) ReadFromWithConcurrency(r io.Reader, concurrency int) (read int64
 		// * the offset of the first error from writing,
 		// * the last successfully read offset.
 		//
-		// This could be less than the last succesfully written offset,
+		// This could be less than the last successfully written offset,
 		// which is the whole reason for the UseConcurrentWrites() ClientOption.
 		//
 		// Callers are responsible for truncating any SFTP files to a safe length.
@@ -1818,13 +1957,6 @@ func (f *File) Truncate(size int64) error {
 	return f.c.setfstat(f.handle, sshFileXferAttrSize, uint64(size))
 }
 
-func min(a, b int) int {
-	if a > b {
-		return b
-	}
-	return a
-}
-
 // normaliseError normalises an error into a more standard form that can be
 // checked against stdlib errors like io.EOF or os.ErrNotExist.
 func normaliseError(err error) error {
@@ -1845,28 +1977,6 @@ func normaliseError(err error) error {
 	default:
 		return err
 	}
-}
-
-func unmarshalStatus(id uint32, data []byte) error {
-	sid, data := unmarshalUint32(data)
-	if sid != id {
-		return &unexpectedIDErr{id, sid}
-	}
-	code, data := unmarshalUint32(data)
-	msg, data, _ := unmarshalStringSafe(data)
-	lang, _, _ := unmarshalStringSafe(data)
-	return &StatusError{
-		Code: code,
-		msg:  msg,
-		lang: lang,
-	}
-}
-
-func marshalStatus(b []byte, err StatusError) []byte {
-	b = marshalUint32(b, err.Code)
-	b = marshalString(b, err.msg)
-	b = marshalString(b, err.lang)
-	return b
 }
 
 // flags converts the flags passed to OpenFile into ssh flags.
