@@ -1,4 +1,4 @@
-// Copyright (c) 2017 Zededa, Inc.
+// Copyright (c) 2017-2026 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 package types
@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	zcommon "github.com/lf-edge/eve-api/go/evecommon"
 	"github.com/lf-edge/eve-api/go/info"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/sriov"
@@ -173,6 +174,15 @@ type AppInstanceConfig struct {
 type AppInstanceOpsCmd struct {
 	Counter   uint32
 	ApplyTime string // XXX not currently used
+}
+
+// AppBootConfig contains boot configuration for a single application received
+// from Local Profile Server (LPS). This is cached by localcommand and used
+// by parseconfig to preserve LPS-set boot order when processing controller config.
+type AppBootConfig struct {
+	AppUUID     uuid.UUID         // UUID of the application instance
+	DisplayName string            // Display name for logging
+	BootOrder   zcommon.BootOrder // Boot order setting from LPS
 }
 
 // IoAdapter specifies that a group of ports should be assigned

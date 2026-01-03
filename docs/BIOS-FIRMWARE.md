@@ -172,3 +172,50 @@ settings files. We can achieve this by creating a tool that allows EVE to set
 the necessary firmware configurations programmatically. An example of such a
 tool can be found in some popular Linux distributions. Technically, it is the
 same as the manual approach, but it is automated and can be run as a script.
+
+### Runtime Boot Order Configuration
+
+While OVMF settings files provide static boot configuration, EVE also supports
+**runtime boot order control** for VMs via the Local Profile Server (LPS).
+
+#### The Challenge
+
+By default, UEFI firmware (OVMF) prioritizes USB devices in the boot order.
+This can be problematic when bootable USB drives are attached to VMs via
+USB passthrough - the VM may accidentally boot from USB instead of its
+configured disk, potentially causing data loss or service disruption.
+
+#### The Solution
+
+EVE uses a patched OVMF that includes `EveBootOrderLib`, which reads boot
+order hints from QEMU's fw_cfg mechanism at runtime. This allows operators to:
+
+* **Disable USB boot** (`nousb`): Deprioritize USB devices, ensuring the VM
+  boots from disk even if a bootable USB is attached
+* **Enable USB boot** (`usb`): Prioritize USB devices in boot order
+* **Use default** (empty): Fall back to standard UEFI boot order behavior
+
+#### How It Works
+
+1. LPS provides boot order configuration via `GET /api/v1/app-boot-config`
+2. EVE stores the configuration and passes it to QEMU when starting VMs
+3. QEMU exposes the setting via fw_cfg file `opt/eve.bootorder`
+4. OVMF's `EveBootOrderLib` reads this file during early boot
+5. Boot order is adjusted before the UEFI boot menu is displayed
+
+#### Interaction with Custom OVMF.fd
+
+When a custom `OVMF.fd` is used (e.g., for FML mode with custom framebuffer
+resolution), the boot order configuration interacts as follows:
+
+| Configuration | Standard OVMF | Custom OVMF.fd |
+|---------------|---------------|----------------|
+| `"usb"`       | USB prioritized | USB prioritized |
+| `"nousb"`     | USB removed from boot order | USB removed from boot order |
+| `""` (default)| USB prioritized (UEFI standard) | Uses precooked boot order |
+
+The `EveBootOrderLib` honors the fw_cfg setting regardless of whether standard
+or custom OVMF is used. The only difference is the fallback behavior when no
+explicit setting is provided.
+
+For detailed configuration instructions, see [VM Boot Order](./VM-BOOT-ORDER.md).
