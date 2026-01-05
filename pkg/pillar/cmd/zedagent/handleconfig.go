@@ -87,7 +87,6 @@ type getconfigContext struct {
 	subHostMemory              pubsub.Subscription
 	subNodeAgentStatus         pubsub.Subscription
 	pubZedAgentStatus          pubsub.Publication
-	pubAppInstanceConfig       pubsub.Publication
 	pubAppNetworkConfig        pubsub.Publication
 	subAppNetworkStatus        pubsub.Subscription
 	pubBaseOsConfig            pubsub.Publication
@@ -112,6 +111,15 @@ type getconfigContext struct {
 	lastProcessedConfig        time.Time // controller or local clocks
 	lastConfigTimestamp        time.Time // controller clocks (zero if not available)
 	lastConfigSource           configSource
+
+	// App instance configuration publication and its synchronization.
+	// pubAppInstanceConfig is written by multiple goroutines:
+	// - Main event loop: parseAppInstanceConfig(), ApplyDevicePropertyBootOrder()
+	// - appBootConfigTask goroutine: ApplyAppBootConfig()
+	// bootOrderUpdateMx protects the read-modify-write cycle for BootOrder fields.
+	// See docs/VM-BOOT-ORDER.md "Concurrency Model" section for details.
+	pubAppInstanceConfig pubsub.Publication
+	bootOrderUpdateMx    sync.Mutex
 
 	// parsed L2 adapters
 	vlans []L2Adapter
