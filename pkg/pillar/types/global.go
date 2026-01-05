@@ -1,4 +1,4 @@
-// Copyright (c) 2018 Zededa, Inc.
+// Copyright (c) 2018-2026 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 package types
@@ -310,6 +310,9 @@ const (
 	KernelRemoteLogLevel GlobalSettingKey = "debug.kernel.remote.loglevel"
 	// FmlCustomResolution global setting key
 	FmlCustomResolution GlobalSettingKey = "app.fml.resolution"
+	// AppBootOrder global setting key for device-wide default boot order for VMs
+	// Supported values: "" (default), "usb" (prioritize USB), "nousb" (deprioritize USB)
+	AppBootOrder GlobalSettingKey = "app.boot.order"
 
 	// Log filtering and dedupliction
 	// LogDedupWindowSize is a measure of how many log entries are saved to search for duplicates
@@ -1056,6 +1059,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddIntItem(LogDedupWindowSize, 0, 0, 0xFFFFFFFF)
 	configItemSpecMap.AddStringItem(LogFilenamesToCount, "", blankValidator)
 	configItemSpecMap.AddStringItem(LogFilenamesToFilter, "", blankValidator)
+	configItemSpecMap.AddStringItem(AppBootOrder, "", validateBootOrder)
 
 	// Add Agent Settings
 	configItemSpecMap.AddAgentSettingStringItem(LogLevel, "info", validateLogLevel)
@@ -1086,6 +1090,16 @@ func validateLogLevel(level string) error {
 	default:
 		_, err := logrus.ParseLevel(level)
 		return err
+	}
+}
+
+// validateBootOrder - make sure the boot order has one of the supported values
+func validateBootOrder(bootOrder string) error {
+	switch bootOrder {
+	case "", "usb", "nousb":
+		return nil
+	default:
+		return fmt.Errorf("validateBootOrder: invalid boot order '%s', must be '', 'usb', or 'nousb'", bootOrder)
 	}
 }
 
