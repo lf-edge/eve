@@ -234,6 +234,7 @@ func TestNewConfigItemSpecMap(t *testing.T) {
 		DiagProbeRemoteHTTPEndpoint,
 		DiagProbeRemoteHTTPSEndpoint,
 		EnableTCPMSSClamping,
+		AppBootOrder,
 	}
 	if len(specMap.GlobalSettings) != len(gsKeys) {
 		t.Errorf("GlobalSettings has more (%d) than expected keys (%d)",
@@ -593,4 +594,123 @@ func TestSetGlobalValue(t *testing.T) {
 	assert.Equal(t, true, valueMap.GlobalValueBool(UsbAccess))
 	assert.Equal(t, TS_DISABLED, valueMap.GlobalValueTriState(FallbackIfCloudGoneTime))
 	assert.Equal(t, "hola amigo", valueMap.GlobalValueString(SSHAuthorizedKeys))
+}
+
+func TestValidateBootOrder(t *testing.T) {
+	testCases := []struct {
+		name        string
+		bootOrder   string
+		expectError bool
+	}{
+		{
+			name:        "Empty string (default)",
+			bootOrder:   "",
+			expectError: false,
+		},
+		{
+			name:        "USB boot order",
+			bootOrder:   "usb",
+			expectError: false,
+		},
+		{
+			name:        "NoUSB boot order",
+			bootOrder:   "nousb",
+			expectError: false,
+		},
+		{
+			name:        "Invalid boot order - random string",
+			bootOrder:   "invalid",
+			expectError: true,
+		},
+		{
+			name:        "Invalid boot order - uppercase USB",
+			bootOrder:   "USB",
+			expectError: true,
+		},
+		{
+			name:        "Invalid boot order - uppercase NOUSB",
+			bootOrder:   "NOUSB",
+			expectError: true,
+		},
+		{
+			name:        "Invalid boot order - mixed case",
+			bootOrder:   "Usb",
+			expectError: true,
+		},
+		{
+			name:        "Invalid boot order - with spaces",
+			bootOrder:   " usb",
+			expectError: true,
+		},
+		{
+			name:        "Invalid boot order - disk",
+			bootOrder:   "disk",
+			expectError: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateBootOrder(tc.bootOrder)
+			if tc.expectError {
+				assert.NotNil(t, err, "Expected error for boot order: %s", tc.bootOrder)
+				assert.Contains(t, err.Error(), "validateBootOrder")
+			} else {
+				assert.Nil(t, err, "Unexpected error for boot order: %s", tc.bootOrder)
+			}
+		})
+	}
+}
+
+func TestAppBootOrderConfigItem(t *testing.T) {
+	specMap := NewConfigItemSpecMap()
+
+	// Verify AppBootOrder is registered in the spec map
+	spec, exists := specMap.GlobalSettings[AppBootOrder]
+	assert.True(t, exists, "AppBootOrder should be registered in GlobalSettings")
+	assert.Equal(t, ConfigItemTypeString, spec.ItemType, "AppBootOrder should be a string type")
+	assert.Equal(t, "", spec.StringDefault, "AppBootOrder default should be empty string")
+
+	// Test parsing valid values
+	testCases := []struct {
+		name        string
+		value       string
+		expectError bool
+	}{
+		{"empty value", "", false},
+		{"usb value", "usb", false},
+		{"nousb value", "nousb", false},
+		{"invalid value", "invalid", true},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			newConfig := DefaultConfigItemValueMap()
+			oldConfig := DefaultConfigItemValueMap()
+			_, err := specMap.ParseItem(newConfig, oldConfig, string(AppBootOrder), tc.value)
+			if tc.expectError {
+				assert.NotNil(t, err, "Expected error for value: %s", tc.value)
+			} else {
+				assert.Nil(t, err, "Unexpected error for value: %s", tc.value)
+				assert.Equal(t, tc.value, newConfig.GlobalValueString(AppBootOrder))
+			}
+		})
+	}
+}
+
+func TestAppBootOrderRetainsOldValueOnError(t *testing.T) {
+	specMap := NewConfigItemSpecMap()
+
+	// Set up old config with a valid boot order
+	oldConfig := DefaultConfigItemValueMap()
+	oldConfig.SetGlobalValueString(AppBootOrder, "usb")
+
+	// Try to parse an invalid value
+	newConfig := DefaultConfigItemValueMap()
+	_, err := specMap.ParseItem(newConfig, oldConfig, string(AppBootOrder), "invalid")
+
+	// Should fail and retain old value
+	assert.NotNil(t, err, "Expected error for invalid boot order")
+	assert.Equal(t, "usb", newConfig.GlobalValueString(AppBootOrder),
+		"Should retain old value 'usb' when new value is invalid")
 }
