@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Masterminds/semver"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/sirupsen/logrus" // OK for logrus.Fatal
 )
@@ -427,6 +428,10 @@ const (
 	// EnableTCPMSSClamping : Configuration property to enable or disable TCP MSS clamping
 	// for application traffic forwarded by EVE.
 	EnableTCPMSSClamping GlobalSettingKey = "app.enable.tcp.mss.clamping"
+
+	// K3sVersionOverride : user override k3s version.  This version will take priority
+	// over any EVE-OS baseos version defined k3s version (pkg/kube/cluster-update.sh)
+	K3sVersionOverride GlobalSettingKey = "k3s.version"
 )
 
 // AgentSettingKey - keys for per-agent settings
@@ -1135,6 +1140,9 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 
 	// TCP MSS Clamping
 	configItemSpecMap.AddBoolItem(EnableTCPMSSClamping, true)
+
+	// Kube Config
+	configItemSpecMap.AddStringItem(K3sVersionOverride, "", makeSemverValidator("k3s"))
 	return configItemSpecMap
 }
 
@@ -1238,6 +1246,26 @@ func base64Validator(s string) error {
 		return fmt.Errorf("base64Validator: %s is not a valid base64 string: %w", s, err)
 	}
 	return nil
+}
+
+func makeSemverValidator(metadataPrefix string) func(s string) error {
+	return func(s string) error {
+		if s == "" {
+			// Accept empty value.
+			return nil
+		}
+		v, err := semver.NewVersion(s)
+		if err != nil {
+			return fmt.Errorf("semverValidator: %s is not a valid semantic version: %w", s, err)
+		}
+		if metadataPrefix != "" {
+			metadata := v.Metadata()
+			if metadata == "" || !strings.HasPrefix(metadata, metadataPrefix) {
+				return fmt.Errorf("semverValidator: %s has invalid metadata:%s err:%w", s, metadata, err)
+			}
+		}
+		return nil
+	}
 }
 
 // NewConfigItemValueMap - Create new instance of ConfigItemValueMap

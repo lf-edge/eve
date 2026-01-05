@@ -1084,12 +1084,18 @@ fi
 while true;
 do
 if [ ! -f /var/lib/all_components_initialized ]; then
+        if [ ! -f /var/lib/k3s_installed_unpacked ]; then
+                Update_CheckNodeComponents
+                sleep 5
+                continue
+        fi
         if ! check_start_k3s; then
                 sleep 5  # Ensure minimum sleep time before retrying
                 continue
         fi
 
         if ! external_boot_image_import; then
+                sleep 5
                 continue
         fi
 
@@ -1308,6 +1314,7 @@ fi
         check_and_run_vnc
         if ! Registration_Applied; then
                 # Upgrades declared via EVE baseOS updates
+                Update_CheckNodeComponents
                 Update_CheckClusterComponents
                 Update_RunDeschedulerOnBoot
         fi

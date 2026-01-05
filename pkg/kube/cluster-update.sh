@@ -6,20 +6,21 @@
 # shellcheck source=/dev/null
 . /usr/bin/cluster-utils.sh
 
-# NOTE: Whenever K3S_VERSION is updated, please bump up KUBE_VERSION value too.
+# shellcheck source=pkg/kube/pubsub.sh
+. /usr/bin/pubsub.sh
+
 K3S_VERSION=v1.34.2+k3s1
-KUBE_VERSION=2
 
 #
 # Handle any migrations needed due to updated cluster-init.sh
 #   This is expected to be bumped any time:
 #       - a migration is needed (new path for something)
-#       - a version bump of: K3s, multus, kubevirt, cdi, longhorn
+#       - a version bump of: multus, kubevirt, cdi, longhorn
 #
+KUBE_VERSION=2
 APPLIED_KUBE_VERSION_PATH="/var/lib/applied-kube-version"
 update_Version_Set() {
-    version=$1
-    echo "$version" > "$APPLIED_KUBE_VERSION_PATH"
+    echo "$KUBE_VERSION" > "$APPLIED_KUBE_VERSION_PATH"
 }
 
 update_Version_Get() {
@@ -63,11 +64,21 @@ link_multus_into_k3s() {
 }
 
 update_k3s() {
-    logmsg "Installing K3S version $K3S_VERSION"
+    dst_k3s_version=$1
+    logmsg "Installing K3S version $dst_k3s_version"
     mkdir -p /var/lib/k3s/bin
-    /usr/bin/curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION=${K3S_VERSION} INSTALL_K3S_SKIP_ENABLE=true INSTALL_K3S_SKIP_START=true INSTALL_K3S_BIN_DIR=/var/lib/k3s/bin sh -
+    k3s_installer=/tmp/k3s-install.sh
+    /usr/bin/curl -sfL https://get.k3s.io -o "$k3s_installer" || {
+        logmsg "k3s installer download failed"
+        return
+    }
+    chmod +x "$k3s_installer"
+    if ! INSTALL_K3S_VERSION=${dst_k3s_version} INSTALL_K3S_SKIP_ENABLE=true INSTALL_K3S_SKIP_START=true INSTALL_K3S_BIN_DIR=/var/lib/k3s/bin "$k3s_installer"; then
+        logmsg "k3s installer failed"
+        return
+    fi
     sleep 5
-    logmsg "Initializing K3S version $K3S_VERSION"
+    logmsg "Initializing K3S version $dst_k3s_version"
     ln -s /var/lib/k3s/bin/* /usr/bin
     trigger_k3s_selfextraction
     link_multus_into_k3s
@@ -86,29 +97,26 @@ k3s_get_version() {
 # Run on every boot before k3s starts
 Update_CheckNodeComponents() {
     applied_version=$(update_Version_Get)
-    if [ "$KUBE_VERSION" = "$applied_version" ]; then
+    k3s_version_override=$(ZedKube_KubeConfig_k3sVersion)
+    dst_k3s_version=$K3S_VERSION
+    if [ "$k3s_version_override" != "" ]; then
+        dst_k3s_version=$k3s_version_override
+    fi
+    current_k3s_version=$(k3s_get_version)
+    if [ "$current_k3s_version" == "$dst_k3s_version" ]; then
         return
     fi
 
-    if update_Failed; then
-        return
-    fi
-    logmsg "update_HandleNode: version:$KUBE_VERSION appliedversion:$applied_version continuing"
-
-    # Handle version specific node migrations here
-
-    # Handle node specific updates, just k3s for now
-    if [ "$(k3s_get_version)" != "$K3S_VERSION" ]; then
-        publishUpdateStatus "k3s" "download"
-        update_k3s
-        current_k3s_version=$(k3s_get_version)
-        if [ "$current_k3s_version" != "$K3S_VERSION" ]; then
-            logmsg "k3s version mismatch after install:$current_k3s_version"
-            publishUpdateStatus "k3s" "failed" "version mismatch after install:$current_k3s_version"
-        else
-            logmsg "k3s installed and unpacked or copied"
-            publishUpdateStatus "k3s" "completed"
-        fi
+    logmsg "Update_CheckNodeComponents: k3s ${current_k3s_version} to ${dst_kube_version}"
+    publishUpdateStatus "k3s" "download"
+    update_k3s "$dst_k3s_version"
+    current_k3s_version=$(k3s_get_version)
+    if [ "$current_k3s_version" != "$dst_k3s_version" ]; then
+        logmsg "k3s version mismatch after install:$current_k3s_version"
+        publishUpdateStatus "k3s" "failed" "version mismatch after install:$current_k3s_version"
+    else
+        logmsg "k3s installed and unpacked or copied"
+        publishUpdateStatus "k3s" "completed"
     fi
 }
 
@@ -152,7 +160,7 @@ Update_CheckClusterComponents() {
         fi
     done
 
-    update_Version_Set "$KUBE_VERSION"
+    update_Version_Set
     wait_for_item "update_cluster_post"
 }
 
