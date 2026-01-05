@@ -1,4 +1,4 @@
-// Copyright (c) 2025 Zededa, Inc.
+// Copyright (c) 2026 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 package localcommand
@@ -90,6 +90,15 @@ type LocalCmdAgent struct {
 	networkConfigMx sync.RWMutex
 	networkTicker   *taskTicker
 	lastNetworkErr  error
+
+	// LPS app boot configuration (USB boot priority, etc.)
+	// key = app UUID (uuid.UUID), value = types.AppBootConfig
+	// Uses sync.Map for lock-free reads from multiple goroutines.
+	// Only appBootInfoTask goroutine writes to this map.
+	currentAppBootConfigs sync.Map
+
+	// LPS app boot info posting and boot config receiving
+	appBootInfoTicker *taskTicker
 }
 
 // ConstructorArgs are required input arguments for creating a LocalCmdAgent.
@@ -153,6 +162,14 @@ type ConfigAgent interface {
 	// ApplyLocalNetworkConfig applies a network port configuration received from LPS,
 	// overriding the active configuration for the set of locally changed ports.
 	ApplyLocalNetworkConfig(types.DevicePortConfig)
+
+	// ApplyAppBootConfig applies boot configuration for an app received from LPS.
+	ApplyAppBootConfig(appUUID uuid.UUID)
+
+	// ApplyDevicePropertyBootOrder applies boot order from device property to all apps
+	// that don't have LPS or Controller overrides. Called when app.boot.order changes.
+	// Returns true if any app was actually updated.
+	ApplyDevicePropertyBootOrder() (changed bool)
 }
 
 // PubSubTopicReader : methods used by LocalCmdAgent to read messages from pubsub topics.
@@ -339,6 +356,7 @@ func NewLocalCmdAgent(args ConstructorArgs) *LocalCmdAgent {
 	lc.initializeAppCommands()
 	lc.initializeDevCommands()
 	lc.initializeNetworkConfig()
+	lc.initializeAppBootInfo()
 	return lc
 }
 
@@ -356,6 +374,7 @@ func (lc *LocalCmdAgent) RunTasks(args RunArgs) {
 	go lc.runAppInfoTask()
 	go lc.runDevInfoTask()
 	go lc.runNetworkTask()
+	go lc.runAppBootInfoTask()
 }
 
 // Pause temporarily suspends all tasks, blocking the processing of
@@ -389,12 +408,32 @@ func (lc *LocalCmdAgent) ProcessLocalCommandsFromLoc(
 }
 
 // UpdateGlobalConfig updates the LocalCmdAgent with the latest global configuration.
-// Currently, this is used only to adjust the local profile timer interval.
-// Task suspension is not required, as no other routines read GlobalConfig outside
-// this function call.
+// This handles:
+// - Adjusting the local profile timer interval
+// - Detecting changes to app.boot.order and updating affected apps
 func (lc *LocalCmdAgent) UpdateGlobalConfig(config *types.ConfigItemValueMap) {
+	oldBootOrder := ""
+	if lc.globalConfig != nil {
+		oldBootOrder = lc.globalConfig.GlobalValueString(types.AppBootOrder)
+	}
 	lc.globalConfig = config
 	lc.updateProfileTicker()
+
+	// Check if app.boot.order changed
+	newBootOrder := ""
+	if config != nil {
+		newBootOrder = config.GlobalValueString(types.AppBootOrder)
+	}
+	if oldBootOrder != newBootOrder {
+		lc.Log.Noticef("%s: app.boot.order changed from %q to %q",
+			logPrefix, oldBootOrder, newBootOrder)
+		// Apply the new device property boot order to all affected apps.
+		// Returns true if any app was actually updated.
+		if lc.ConfigAgent.ApplyDevicePropertyBootOrder() {
+			// Trigger immediate POST of boot order info to LPS
+			lc.TriggerAppBootInfoPOST()
+		}
+	}
 }
 
 // UpdateLocConfig updates the LocalCmdAgent with the latest LOC configuration.
@@ -452,6 +491,8 @@ func (lc *LocalCmdAgent) UpdateLpsConfig(globalProfile, lpsAddr, lpsToken string
 		lc.TriggerDevInfoPOST()
 		lc.updateNetworkTicker(false)
 		lc.TriggerNetworkPOST()
+		lc.updateAppBootInfoTicker(false)
+		lc.TriggerAppBootInfoPOST()
 		lc.throttledLocation = false
 	}
 	return nil
