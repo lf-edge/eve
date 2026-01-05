@@ -1,4 +1,4 @@
-// Copyright (c) 2018 Zededa, Inc.
+// Copyright (c) 2018-2026 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 package types
@@ -336,6 +336,9 @@ const (
 	KernelRemoteLogLevel GlobalSettingKey = "debug.kernel.remote.loglevel"
 	// FmlCustomResolution global setting key
 	FmlCustomResolution GlobalSettingKey = "app.fml.resolution"
+	// AppBootOrder global setting key for device-wide default boot order for VMs
+	// Supported values: "" (default), "usb" (prioritize USB), "nousb" (deprioritize USB)
+	AppBootOrder GlobalSettingKey = "app.boot.order"
 	// EdgeviewPublicKeys global setting key
 	EdgeviewPublicKeys GlobalSettingKey = "edgeview.authen.publickey"
 
@@ -1106,6 +1109,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddStringItem(SyslogRemoteLogLevel, "info", validateSyslogKernelLevel)
 	configItemSpecMap.AddStringItem(KernelRemoteLogLevel, "info", validateSyslogKernelLevel)
 	configItemSpecMap.AddStringItem(FmlCustomResolution, FmlResolutionUnset, blankValidator)
+	configItemSpecMap.AddStringItem(AppBootOrder, "", validateBootOrder)
 	configItemSpecMap.AddStringItem(TUIMonitorLogLevel, "info", blankValidator)
 	configItemSpecMap.AddStringItem(EdgeviewPublicKeys, "", blankValidator)
 
@@ -1155,6 +1159,16 @@ func validateLogLevel(level string) error {
 	default:
 		_, err := logrus.ParseLevel(level)
 		return err
+	}
+}
+
+// validateBootOrder - make sure the boot order has one of the supported values
+func validateBootOrder(bootOrder string) error {
+	switch bootOrder {
+	case "", "usb", "nousb":
+		return nil
+	default:
+		return fmt.Errorf("validateBootOrder: invalid boot order '%s', must be '', 'usb', or 'nousb'", bootOrder)
 	}
 }
 
