@@ -78,6 +78,8 @@ type zedkube struct {
 	subNodeDrainRequestBoM pubsub.Subscription
 	pubNodeDrainStatus     pubsub.Publication
 
+	pubKubeConfig pubsub.Publication
+
 	networkInstanceStatusMap sync.Map
 	ioAdapterMap             sync.Map
 	deviceNetworkStatus      types.DeviceNetworkStatus
@@ -343,6 +345,16 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		log.Fatal(err)
 	}
 	zedkubeCtx.pubLeaderElectInfo = pubLeaderElectInfo
+
+	pubKubeConfig, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName:  agentName,
+		TopicType:  types.KubeConfig{},
+		Persistent: true,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	zedkubeCtx.pubKubeConfig = pubKubeConfig
 
 	// Look for global config such as log levels
 	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
@@ -724,8 +736,28 @@ func handleGlobalConfigImpl(ctxArg interface{}, key string,
 				existingDrainK8sAPINotReachableTimeout, newDrainK8sAPINotReachableTimeout)
 			z.drainSkipK8sAPINotReachableTimeout = time.Second * time.Duration(newDrainK8sAPINotReachableTimeout)
 		}
+
+		z.handleK3sVersionOverride(currentConfigItemValueMap, newConfigItemValueMap)
 	}
 	log.Functionf("handleGlobalConfigImpl(%s): done", key)
+}
+
+func (ctx *zedkube) handleK3sVersionOverride(currentGcp *types.ConfigItemValueMap, newGcp *types.ConfigItemValueMap) {
+	oldVal := currentGcp.GlobalValueString(types.K3sVersionOverride)
+	newVal := newGcp.GlobalValueString(types.K3sVersionOverride)
+
+	if newVal == oldVal {
+		return
+	}
+	kubeConfig := types.KubeConfig{}
+	items := ctx.pubKubeConfig.GetAll()
+	glbKubeConfig, ok := items["global"].(types.KubeConfig)
+	if ok {
+		kubeConfig = glbKubeConfig
+	}
+	kubeConfig.K3sVersion = newVal
+	ctx.pubKubeConfig.Publish("global", kubeConfig)
+	currentGcp.SetGlobalValueString(types.K3sVersionOverride, newVal)
 }
 
 func handleEdgeNodeClusterConfigCreate(ctxArg interface{}, key string,

@@ -6,6 +6,9 @@
 # shellcheck source=/dev/null
 . /usr/bin/cluster-utils.sh
 
+# shellcheck source=pkg/kube/pubsub.sh
+. /usr/bin/pubsub.sh
+
 # NOTE: Whenever K3S_VERSION is updated, please bump up KUBE_VERSION value too.
 K3S_VERSION=v1.34.2+k3s1
 KUBE_VERSION=2
@@ -63,11 +66,12 @@ link_multus_into_k3s() {
 }
 
 update_k3s() {
-    logmsg "Installing K3S version $K3S_VERSION"
+    dst_k3s_version=$1
+    logmsg "Installing K3S version $dst_k3s_version"
     mkdir -p /var/lib/k3s/bin
-    /usr/bin/curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION=${K3S_VERSION} INSTALL_K3S_SKIP_ENABLE=true INSTALL_K3S_SKIP_START=true INSTALL_K3S_BIN_DIR=/var/lib/k3s/bin sh -
+    /usr/bin/curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION=${dst_k3s_version} INSTALL_K3S_SKIP_ENABLE=true INSTALL_K3S_SKIP_START=true INSTALL_K3S_BIN_DIR=/var/lib/k3s/bin sh -
     sleep 5
-    logmsg "Initializing K3S version $K3S_VERSION"
+    logmsg "Initializing K3S version $dst_k3s_version"
     ln -s /var/lib/k3s/bin/* /usr/bin
     trigger_k3s_selfextraction
     link_multus_into_k3s
@@ -98,9 +102,26 @@ Update_CheckNodeComponents() {
     # Handle version specific node migrations here
 
     # Handle node specific updates, just k3s for now
+    # Get possible override k3s version
+    k3s_version_override=$(ZedKube_KubeConfig_k3sVersion)
+    if [ "$k3s_version_override" != "" ]; then
+        if [ "$(k3s_get_version)" != "$k3s_version_override" ]; then
+            publishUpdateStatus "k3s" "download"
+            update_k3s "$k3s_version_override"
+            current_k3s_version=$(k3s_get_version)
+            if [ "$current_k3s_version" != "$k3s_version_override" ]; then
+                logmsg "k3s version mismatch after install:$current_k3s_version"
+                publishUpdateStatus "k3s" "failed" "version mismatch after install:$current_k3s_version"
+            else
+                logmsg "k3s installed and unpacked or copied"
+                publishUpdateStatus "k3s" "completed"
+            fi
+        fi
+        return
+    fi
     if [ "$(k3s_get_version)" != "$K3S_VERSION" ]; then
         publishUpdateStatus "k3s" "download"
-        update_k3s
+        update_k3s "$K3S_VERSION"
         current_k3s_version=$(k3s_get_version)
         if [ "$current_k3s_version" != "$K3S_VERSION" ]; then
             logmsg "k3s version mismatch after install:$current_k3s_version"
