@@ -173,8 +173,6 @@ func tlsDial(isServer bool, pIP string, pport int, src []net.IP, idx int) (*webs
 		}
 		tlsConfig.RootCAs = caCertPool
 		log.Noticef("wss server cert appended to TLS")
-	} else {
-		tlsConfig.InsecureSkipVerify = true
 	}
 
 	dialer := &websocket.Dialer{
