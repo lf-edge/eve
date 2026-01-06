@@ -5,7 +5,6 @@ package zedagent
 
 import (
 	"bytes"
-	"fmt"
 	"os"
 	"strings"
 	"time"
@@ -92,33 +91,7 @@ func PublishHardwareInfoToZedCloud(ctx *zedagentContext, dest destinationBitset)
 	hwInfo.KernelCmdline = getKernelCmdline()
 	hwInfo.KernelFlavor = getKernelFlavor()
 
-	// Get information about disks
-	disksInfo, err := hardware.ReadSMARTinfoForDisks()
-	if err != nil {
-		log.Fatal("PublishHardwareInfoToZedCloud get information about disks failed. Error: ", err)
-		return
-	}
-
-	for _, disk := range disksInfo.Disks {
-		stDiskInfo := new(info.StorageDiskInfo)
-		if disk.CollectingStatus != types.SmartCollectingStatusSuccess {
-			stDiskInfo.DiskName = *proto.String(disk.DiskName)
-			stDiskInfo.CollectorErrors = *proto.String(disk.Errors.Error())
-			hwInfo.Disks = append(hwInfo.Disks, stDiskInfo)
-			continue
-		}
-
-		stDiskInfo.DiskName = *proto.String(disk.DiskName)
-		stDiskInfo.SerialNumber = *proto.String(disk.SerialNumber)
-		stDiskInfo.Model = *proto.String(disk.ModelNumber)
-		stDiskInfo.Wwn = *proto.String(fmt.Sprintf("%x", disk.Wwn))
-
-		stDiskInfo.SmartAttr = getSmartAttr(disk.SmartAttrs)
-
-		hwInfo.Disks = append(hwInfo.Disks, stDiskInfo)
-	}
-
-	err = hardware.AddInventoryInfo(hwInfo)
+	err := hardware.AddInventoryInfo(hwInfo)
 	if err != nil {
 		log.Warnf("could not add inventory info: %v", err)
 	}
