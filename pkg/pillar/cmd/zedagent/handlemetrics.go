@@ -24,6 +24,7 @@ import (
 	zmet "github.com/lf-edge/eve-api/go/metrics" // zinfo and zmet here
 	"github.com/lf-edge/eve/pkg/pillar/controllerconn"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
+	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/lf-edge/eve/pkg/pillar/utils/persist"
@@ -1024,12 +1025,12 @@ func hardwareHealthTimerTask(ctx *zedagentContext, handleChannel chan interface{
 //	bool - The result of the sendHardwareHealthProtobuf operation.
 func publishHealthChecksReport(ctx *zedagentContext, iteration int) bool {
 	log.Functionf("publishHealthChecksReport")
-	var ReportHardwareHealth = &hardwarehealth.ZHardwareHealth{}
+	var hwHealthReport = &hardwarehealth.ZHardwareHealth{}
 
-	ReportHardwareHealth.DevId = *proto.String(devUUID.String())
-	ReportHardwareHealth.AtTimeStamp = timestamppb.Now()
+	hwHealthReport.DevId = devUUID.String()
+	hwHealthReport.AtTimeStamp = timestamppb.Now()
 
-	ReportMemoryInfo := new(hardwarehealth.ECCMemoryReport)
+	memoryInfoReport := new(hardwarehealth.ECCMemoryReport)
 
 	mcs, err := edac.MemoryControllers()
 	if err != nil {
@@ -1066,12 +1067,37 @@ func publishHealthChecksReport(ctx *zedagentContext, iteration int) bool {
 			memoryInfo.Ranks = append(memoryInfo.Ranks, dimmRank)
 		}
 
-		ReportMemoryInfo.MemoryControllers = append(ReportMemoryInfo.MemoryControllers, memoryInfo)
+		memoryInfoReport.MemoryControllers = append(memoryInfoReport.MemoryControllers, memoryInfo)
 	}
-	ReportHardwareHealth.Mr = ReportMemoryInfo
+	hwHealthReport.Mr = memoryInfoReport
 
-	log.Tracef("PublishHardwareHealthToZedCloud sending %s", ReportHardwareHealth)
-	return sendHardwareHealthProtobuf(ctx.getconfigCtx, ReportHardwareHealth, iteration)
+	// Get information about disks
+	disksInfo, err := hardware.ReadSMARTinfoForDisks()
+	if err != nil {
+		log.Error("PublishHardwareInfoToZedCloud get information about disks failed. Error: ", err)
+	} else {
+		for _, disk := range disksInfo.Disks {
+			stDiskInfo := new(info.StorageDiskInfo)
+			if disk.CollectingStatus != types.SmartCollectingStatusSuccess {
+				stDiskInfo.DiskName = disk.DiskName
+				stDiskInfo.CollectorErrors = disk.Errors.Error()
+				hwHealthReport.Disks = append(hwHealthReport.Disks, stDiskInfo)
+				continue
+			}
+
+			stDiskInfo.DiskName = disk.DiskName
+			stDiskInfo.SerialNumber = disk.SerialNumber
+			stDiskInfo.Model = disk.ModelNumber
+			stDiskInfo.Wwn = fmt.Sprintf("%x", disk.Wwn)
+
+			stDiskInfo.SmartAttr = getSmartAttr(disk.SmartAttrs)
+
+			hwHealthReport.Disks = append(hwHealthReport.Disks, stDiskInfo)
+		}
+	}
+
+	log.Tracef("PublishHardwareHealthToZedCloud sending %s", hwHealthReport)
+	return sendHardwareHealthProtobuf(ctx.getconfigCtx, hwHealthReport, iteration)
 }
 
 func encodeProxyStatus(proxyConfig *types.ProxyConfig) *info.ProxyStatus {
