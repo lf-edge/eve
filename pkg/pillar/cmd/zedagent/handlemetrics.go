@@ -1100,6 +1100,26 @@ func publishHealthChecksReport(ctx *zedagentContext, iteration int) bool {
 	return sendHardwareHealthProtobuf(ctx.getconfigCtx, hwHealthReport, iteration)
 }
 
+func getSmartAttr(diskData []*types.DAttrTable) []*info.SmartAttr {
+	attrResults := []*info.SmartAttr{} // Store pointers instead of structs
+
+	for _, attr := range diskData {
+		attrResult := &info.SmartAttr{ // Allocate on heap
+			Id:            uint32(attr.ID),
+			AttributeName: attr.AttributeName,
+			RawValue:      uint64(attr.RawValue),
+			Thresh:        uint64(attr.Threshold),
+			Worst:         uint64(attr.Worst),
+			Value:         uint64(attr.Value),
+			Type:          attr.Type,
+		}
+
+		attrResults = append(attrResults, attrResult) // Append pointer
+	}
+
+	return attrResults
+}
+
 func encodeProxyStatus(proxyConfig *types.ProxyConfig) *info.ProxyStatus {
 	status := new(info.ProxyStatus)
 	status.Proxies = make([]*info.ProxyEntry, len(proxyConfig.Proxies))
