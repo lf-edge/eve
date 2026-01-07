@@ -137,7 +137,7 @@ jobs:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       PR_SHA: ${{ needs.context.outputs.pr_sha }}
       EDEN_RUNNER_CTX: ${{ needs.context.outputs.eden_in_pr_status_title }}
-      EDEN_TESTS_PREFIX: ${{ needs.context.outputs.eden_parent_job_title }}
+      EDEN_TESTS_PREFIX: ${{ needs.context.outputs.eden_parent_job_title }} for ${{ needs.context.outputs.pr_base_ref }}
       EDEN_DETAILS_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
     steps:
       - name: Reset Eden Runner & Eden jobs statuses
@@ -286,7 +286,7 @@ jobs:
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd  # v8.0.0
         env:
           SHA: ${{ needs.context.outputs.pr_sha }}
-          EDEN_PARENT_JOB_TITLE: ${{ needs.context.outputs.eden_parent_job_title }}
+          EDEN_PARENT_JOB_TITLE: ${{ needs.context.outputs.eden_parent_job_title }} for ${{ needs.context.outputs.pr_base_ref }}
         with:
           script: |
             const { owner, repo } = context.repo;
