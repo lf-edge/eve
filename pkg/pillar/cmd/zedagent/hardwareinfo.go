@@ -5,12 +5,13 @@ package zedagent
 
 import (
 	"bytes"
-	"fmt"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/lf-edge/eve-api/go/info"
+	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
-	"github.com/lf-edge/eve/pkg/pillar/types"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -18,13 +19,10 @@ import (
 func hardwareInfoTask(ctxPtr *zedagentContext, triggerHwInfo <-chan destinationBitset) {
 	wdName := agentName + "hwinfo"
 
-	ticker := time.NewTicker(10 * time.Second)
-
 	stillRunning := time.NewTicker(30 * time.Second)
 	ctxPtr.ps.StillRunning(wdName, warningTime, errorTime)
 	ctxPtr.ps.RegisterFileWatchdog(wdName)
 
-	ts := time.Now()
 	for {
 		select {
 		case dest := <-triggerHwInfo:
@@ -36,20 +34,10 @@ func hardwareInfoTask(ctxPtr *zedagentContext, triggerHwInfo <-chan destinationB
 			log.Function("HardwareInfoTask done with message")
 			ctxPtr.ps.CheckMaxTimeTopic(wdName, "PublishHardwareInfo", start,
 				warningTime, errorTime)
-		case <-ticker.C: // even if no trigger comes, publish hardware info periodically
-			if time.Now().Sub(ts) > getHardwareInfoInterval(ctxPtr) {
-				ts = time.Now()
-				triggerPublishHwInfo(ctxPtr)
-			}
 		case <-stillRunning.C:
 		}
 		ctxPtr.ps.StillRunning(wdName, warningTime, errorTime)
 	}
-}
-
-func getHardwareInfoInterval(ctx *zedagentContext) time.Duration {
-	interval := ctx.globalConfig.GlobalValueInt(types.HardwareInfoInterval)
-	return time.Duration(interval) * time.Second
 }
 
 func triggerPublishHwInfoToDest(ctxPtr *zedagentContext, dest destinationBitset) {
@@ -82,30 +70,16 @@ func PublishHardwareInfoToZedCloud(ctx *zedagentContext, dest destinationBitset)
 
 	hwInfo := new(info.ZInfoHardware)
 
-	// Get information about disks
-	disksInfo, err := hardware.ReadSMARTinfoForDisks()
+	hwInfo.EveRelease = agentlog.EveVersion()
+	hwInfo.EvePlatform = hardware.GetHardwareModel(log)
+	hwInfo.Partition = agentlog.EveCurrentPartition()
+	hwInfo.KernelVersion = getKernelVersion()
+	hwInfo.KernelCmdline = getKernelCmdline()
+	hwInfo.KernelFlavor = getKernelFlavor()
+
+	err := hardware.AddInventoryInfo(hwInfo)
 	if err != nil {
-		log.Fatal("PublishHardwareInfoToZedCloud get information about disks failed. Error: ", err)
-		return
-	}
-
-	for _, disk := range disksInfo.Disks {
-		stDiskInfo := new(info.StorageDiskInfo)
-		if disk.CollectingStatus != types.SmartCollectingStatusSuccess {
-			stDiskInfo.DiskName = *proto.String(disk.DiskName)
-			stDiskInfo.CollectorErrors = *proto.String(disk.Errors.Error())
-			hwInfo.Disks = append(hwInfo.Disks, stDiskInfo)
-			continue
-		}
-
-		stDiskInfo.DiskName = *proto.String(disk.DiskName)
-		stDiskInfo.SerialNumber = *proto.String(disk.SerialNumber)
-		stDiskInfo.Model = *proto.String(disk.ModelNumber)
-		stDiskInfo.Wwn = *proto.String(fmt.Sprintf("%x", disk.Wwn))
-
-		stDiskInfo.SmartAttr = getSmartAttr(disk.SmartAttrs)
-
-		hwInfo.Disks = append(hwInfo.Disks, stDiskInfo)
+		log.Warnf("could not add inventory info: %v", err)
 	}
 
 	ReportHwInfo.InfoContent = new(info.ZInfoMsg_Hwinfo)
@@ -128,22 +102,35 @@ func PublishHardwareInfoToZedCloud(ctx *zedagentContext, dest destinationBitset)
 		info.ZInfoTypes_ZiHardware)
 }
 
-func getSmartAttr(diskData []*types.DAttrTable) []*info.SmartAttr {
-	attrResults := []*info.SmartAttr{} // Store pointers instead of structs
-
-	for _, attr := range diskData {
-		attrResult := &info.SmartAttr{ // Allocate on heap
-			Id:            uint32(attr.ID),
-			AttributeName: attr.AttributeName,
-			RawValue:      uint64(attr.RawValue),
-			Thresh:        uint64(attr.Threshold),
-			Worst:         uint64(attr.Worst),
-			Value:         uint64(attr.Value),
-			Type:          attr.Type,
-		}
-
-		attrResults = append(attrResults, attrResult) // Append pointer
+func getKernelVersion() string {
+	out, err := os.ReadFile("/proc/sys/kernel/osrelease")
+	if err != nil {
+		return ""
 	}
+	return strings.TrimSpace(string(out))
+}
 
-	return attrResults
+func getKernelCmdline() string {
+	out, err := os.ReadFile("/proc/cmdline")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
+func getKernelFlavor() string {
+	// Try to deduce from kernel version or /proc/version
+	version := getKernelVersion()
+	if strings.Contains(version, "-rt") {
+		return "rt"
+	}
+	// Check /proc/version for more details
+	out, err := os.ReadFile("/proc/version")
+	if err == nil {
+		content := string(out)
+		if strings.Contains(content, "PREEMPT_RT") {
+			return "rt"
+		}
+	}
+	return "pc"
 }

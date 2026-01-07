@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"syscall"
 	"unsafe"
+
+	"github.com/jaypipes/ghw/pkg/option"
 )
 
 const (
@@ -24,16 +26,16 @@ const (
 	relationGroup            = 4
 )
 
-func (i *Info) load() error {
+func (i *Info) load(opts *option.Options) error {
 	nodes, err := topologyNodes()
 	if err != nil {
 		return err
 	}
 	i.Nodes = nodes
 	if len(nodes) == 1 {
-		i.Architecture = ARCHITECTURE_SMP
+		i.Architecture = ArchitectureSMP
 	} else {
-		i.Architecture = ARCHITECTURE_NUMA
+		i.Architecture = ArchitectureNUMA
 	}
 	return nil
 }

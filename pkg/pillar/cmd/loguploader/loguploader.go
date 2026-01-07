@@ -450,25 +450,10 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 }
 
 func sendCtxInit(ps *pubsub.PubSub, ctx *loguploaderContext) {
-	//get server name
-	var bytes []byte
 	var err error
-	for len(bytes) == 0 {
-		bytes, err = os.ReadFile(types.ServerFileName)
-		if err != nil {
-			log.Errorf("sendCtxInit: Failed to read ServerFileName(%s). Err: %s",
-				types.ServerFileName, err)
-			time.Sleep(10 * time.Second)
-			ps.StillRunning(agentName, warningTime, errorTime)
-		} else if len(bytes) == 0 {
-			log.Warnf("Empty %s file - waiting for it",
-				types.ServerFileName)
-			time.Sleep(10 * time.Second)
-			ps.StillRunning(agentName, warningTime, errorTime)
-		}
-	}
+	//get server name
 	// Preserve port
-	ctx.serverNameAndPort = strings.TrimSpace(string(bytes))
+	ctx.serverNameAndPort = types.WaitServer(log, func() { ps.StillRunning(agentName, warningTime, errorTime) })
 
 	SendTimeoutSecs := ctx.globalConfig.GlobalValueInt(types.NetworkSendTimeout)
 	DialTimeoutSecs := ctx.globalConfig.GlobalValueInt(types.NetworkDialTimeout)

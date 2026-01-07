@@ -178,20 +178,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		}
 	}
 	log.Functionf("processed GlobalConfig")
-
-	var server []byte
-	for len(server) == 0 {
-		server, err = os.ReadFile(types.ServerFileName)
-		if err != nil {
-			log.Warn(err)
-			time.Sleep(10 * time.Second)
-		} else if len(server) == 0 {
-			log.Warnf("Empty %s file - waiting for it",
-				types.ServerFileName)
-			time.Sleep(10 * time.Second)
-		}
-	}
-	ctx.serverNameAndPort = strings.TrimSpace(string(server))
+	ctx.serverNameAndPort = types.WaitServer(log, func() {})
 	ctx.serverName = strings.Split(ctx.serverNameAndPort, ":")[0]
 
 	sendTimeoutSecs := ctx.globalConfig.GlobalValueInt(types.NetworkSendTimeout)
@@ -458,14 +445,13 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 			ctx.usingOnboardCert = false
 		}
 		// Check in case /config/server changes while running
-		nserver, err := os.ReadFile(types.ServerFileName)
+		nserver, err := types.Server()
 		if err != nil {
 			log.Error(err)
-		} else if len(nserver) != 0 && string(server) != string(nserver) {
+		} else if len(nserver) != 0 && ctx.serverNameAndPort != nserver {
 			log.Warnf("/config/server changed from %s to %s",
-				server, nserver)
-			server = nserver
-			ctx.serverNameAndPort = strings.TrimSpace(string(server))
+				ctx.serverNameAndPort, nserver)
+			ctx.serverNameAndPort = nserver
 			ctx.serverName = strings.Split(ctx.serverNameAndPort, ":")[0]
 		}
 	}

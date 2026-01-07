@@ -9,37 +9,24 @@ package pci
 import (
 	"encoding/json"
 	"fmt"
-	"regexp"
 
 	"github.com/jaypipes/pcidb"
 
-	"github.com/jaypipes/ghw/pkg/context"
 	"github.com/jaypipes/ghw/pkg/marshal"
 	"github.com/jaypipes/ghw/pkg/option"
-	pciaddr "github.com/jaypipes/ghw/pkg/pci/address"
 	"github.com/jaypipes/ghw/pkg/topology"
 	"github.com/jaypipes/ghw/pkg/util"
 )
 
-// backward compatibility, to be removed in 1.0.0
-type Address pciaddr.Address
-
-// backward compatibility, to be removed in 1.0.0
-var AddressFromString = pciaddr.FromString
-
-var (
-	regexAddress *regexp.Regexp = regexp.MustCompile(
-		`^(([0-9a-f]{0,4}):)?([0-9a-f]{2}):([0-9a-f]{2})\.([0-9a-f]{1})$`,
-	)
-)
-
 type Device struct {
 	// The PCI address of the device
-	Address   string         `json:"address"`
-	Vendor    *pcidb.Vendor  `json:"vendor"`
-	Product   *pcidb.Product `json:"product"`
-	Revision  string         `json:"revision"`
-	Subsystem *pcidb.Product `json:"subsystem"`
+	Address string `json:"address"`
+	// The PCI address of the parent device
+	ParentAddress string         `json:"parent_address"`
+	Vendor        *pcidb.Vendor  `json:"vendor"`
+	Product       *pcidb.Product `json:"product"`
+	Revision      string         `json:"revision"`
+	Subsystem     *pcidb.Product `json:"subsystem"`
 	// optional subvendor/sub-device information
 	Class *pcidb.Class `json:"class"`
 	// optional sub-class for the device
@@ -48,7 +35,11 @@ type Device struct {
 	ProgrammingInterface *pcidb.ProgrammingInterface `json:"programming_interface"`
 	// Topology node that the PCI device is affined to. Will be nil if the
 	// architecture is not NUMA.
-	Node *topology.Node `json:"node,omitempty"`
+	Node   *topology.Node `json:"node,omitempty"`
+	Driver string         `json:"driver"`
+	// for IOMMU Groups see also:
+	// https://docs.redhat.com/en/documentation/red_hat_enterprise_linux/7/html/virtualization_deployment_and_administration_guide/sect-iommu-deep-dive
+	IOMMUGroup string `json:"iommu_group"`
 }
 
 type devIdent struct {
@@ -57,14 +48,17 @@ type devIdent struct {
 }
 
 type devMarshallable struct {
-	Address   string   `json:"address"`
-	Vendor    devIdent `json:"vendor"`
-	Product   devIdent `json:"product"`
-	Revision  string   `json:"revision"`
-	Subsystem devIdent `json:"subsystem"`
-	Class     devIdent `json:"class"`
-	Subclass  devIdent `json:"subclass"`
-	Interface devIdent `json:"programming_interface"`
+	Driver        string   `json:"driver"`
+	Address       string   `json:"address"`
+	ParentAddress string   `json:"parent_address"`
+	Vendor        devIdent `json:"vendor"`
+	Product       devIdent `json:"product"`
+	Revision      string   `json:"revision"`
+	Subsystem     devIdent `json:"subsystem"`
+	Class         devIdent `json:"class"`
+	Subclass      devIdent `json:"subclass"`
+	Interface     devIdent `json:"programming_interface"`
+	IOMMUGroup    string   `json:"iommu_group"`
 }
 
 // NOTE(jaypipes) Device has a custom JSON marshaller because we don't want
@@ -73,7 +67,9 @@ type devMarshallable struct {
 // human-readable name of the vendor, product, class, etc.
 func (d *Device) MarshalJSON() ([]byte, error) {
 	dm := devMarshallable{
-		Address: d.Address,
+		Driver:        d.Driver,
+		Address:       d.Address,
+		ParentAddress: d.ParentAddress,
 		Vendor: devIdent{
 			ID:   d.Vendor.ID,
 			Name: d.Vendor.Name,
@@ -99,6 +95,7 @@ func (d *Device) MarshalJSON() ([]byte, error) {
 			ID:   d.ProgrammingInterface.ID,
 			Name: d.ProgrammingInterface.Name,
 		},
+		IOMMUGroup: d.IOMMUGroup,
 	}
 	return json.Marshal(dm)
 }
@@ -117,8 +114,9 @@ func (d *Device) String() string {
 		className = d.Class.Name
 	}
 	return fmt.Sprintf(
-		"%s -> class: '%s' vendor: '%s' product: '%s'",
+		"%s -> driver: '%s' class: '%s' vendor: '%s' product: '%s'",
 		d.Address,
+		d.Driver,
 		className,
 		vendorName,
 		productName,
@@ -126,22 +124,10 @@ func (d *Device) String() string {
 }
 
 type Info struct {
+	db   *pcidb.PCIDB
 	arch topology.Architecture
-	ctx  *context.Context
 	// All PCI devices on the host system
 	Devices []*Device
-	// hash of class ID -> class information
-	// DEPRECATED. Will be removed in v1.0. Please use
-	// github.com/jaypipes/pcidb to explore PCIDB information
-	Classes map[string]*pcidb.Class `json:"-"`
-	// hash of vendor ID -> vendor information
-	// DEPRECATED. Will be removed in v1.0. Please use
-	// github.com/jaypipes/pcidb to explore PCIDB information
-	Vendors map[string]*pcidb.Vendor `json:"-"`
-	// hash of vendor ID + product/device ID -> product information
-	// DEPRECATED. Will be removed in v1.0. Please use
-	// github.com/jaypipes/pcidb to explore PCIDB information
-	Products map[string]*pcidb.Product `json:"-"`
 }
 
 func (i *Info) String() string {
@@ -150,28 +136,25 @@ func (i *Info) String() string {
 
 // New returns a pointer to an Info struct that contains information about the
 // PCI devices on the host system
-func New(opts ...*option.Option) (*Info, error) {
-	return NewWithContext(context.New(opts...))
-}
-
-// NewWithContext returns a pointer to an Info struct that contains information about
-// the PCI devices on the host system. Use this function when you want to consume
-// the topology package from another package (e.g. gpu)
-func NewWithContext(ctx *context.Context) (*Info, error) {
+func New(opt ...option.Option) (*Info, error) {
+	topo, err := topology.New(opt...)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"failed to initialize PCI info dur to failure to initialize "+
+				"Topology info: %w",
+			err,
+		)
+	}
+	opts := &option.Options{}
+	for _, o := range opt {
+		o(opts)
+	}
 	// by default we don't report NUMA information;
 	// we will only if are sure we are running on NUMA architecture
-	arch := topology.ARCHITECTURE_SMP
-	topo, err := topology.NewWithContext(ctx)
-	if err == nil {
-		arch = topo.Architecture
-	} else {
-		ctx.Warn("error detecting system topology: %v", err)
-	}
 	info := &Info{
-		arch: arch,
-		ctx:  ctx,
+		arch: topo.Architecture,
 	}
-	if err := ctx.Do(info.load); err != nil {
+	if err := info.load(opts); err != nil {
 		return nil, err
 	}
 	return info, nil
@@ -196,11 +179,11 @@ type pciPrinter struct {
 // YAMLString returns a string with the PCI information formatted as YAML
 // under a top-level "pci:" key
 func (i *Info) YAMLString() string {
-	return marshal.SafeYAML(i.ctx, pciPrinter{i})
+	return marshal.SafeYAML(pciPrinter{i})
 }
 
 // JSONString returns a string with the PCI information formatted as JSON
 // under a top-level "pci:" key
 func (i *Info) JSONString(indent bool) string {
-	return marshal.SafeJSON(i.ctx, pciPrinter{i}, indent)
+	return marshal.SafeJSON(pciPrinter{i}, indent)
 }
