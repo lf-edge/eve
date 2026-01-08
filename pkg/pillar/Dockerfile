@@ -188,7 +188,8 @@ COPY scripts/device-steps.sh \
     scripts/veth.sh \
     scripts/dhcpcd.sh \
     scripts/copy-image-to-qcow.sh \
-  /out/opt/zededa/bin/
+    scripts/check-eval-state.sh \
+    /out/opt/zededa/bin/
 COPY conf/lisp.config.base /out/var/tmp/zededa/lisp.config.base
 
 COPY patches/* /sys-patches/
