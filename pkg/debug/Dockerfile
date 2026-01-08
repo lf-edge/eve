@@ -154,3 +154,4 @@ COPY --from=build /out/ /
 COPY --from=build /bpftrace/bpftrace-aotrt /
 
 CMD ["/sbin/tini", "/usr/bin/debug-services.sh"]
+
