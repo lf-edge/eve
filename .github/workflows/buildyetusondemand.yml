@@ -1,0 +1,73 @@
+# Copyright (c) 2025, Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+---
+name: Yetus image - build and publish on demand
+on:  # yamllint disable-line rule:truthy
+  workflow_dispatch:
+    inputs:
+      force:
+        description: 'Force build even if no changes'
+        type: boolean
+        required: false
+        default: false
+
+env:
+  FORCE_BUILD: FORCE_BUILD=${{ inputs.force && '--force' || '' }}
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+jobs:
+  yetus-image:
+    # Only run for the default branch
+    if: github.ref_name == github.event.repository.default_branch
+    runs-on: zededa-ubuntu-2204
+    permissions:
+      contents: read
+    env:
+      HEAD_REF: ${{ github.event.pull_request.head.ref }}
+      REPO_NAME: ${{ github.event.repository.full_name }}
+      IMG_NAME: "lf-edge/eve-yetus"
+      IMG_TAG: "0.15.1-eve-1"
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64]
+
+    steps:
+      - name: Starting Report
+        run: |
+          echo Git Ref: "${HEAD_REF}"
+          echo GitHub Event: ${{ github.event_name }}
+          echo Disk usage
+          df -h
+          echo Memory
+          free -m
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8  # v5.0.0
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Login to Docker Hub
+        if: ${{ env.REPO_NAME == 'lf-edge/eve' }}
+        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef  # v3.6.0
+        with:
+          username: ${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}
+          password: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
+      - name: Build and push Yetus image
+        run: |
+          docker buildx build --platform linux/${{ matrix.arch }} --push --tag ${{ env.IMG_NAME }}:${{ env.IMG_TAG }} tools/yetus
+      - name: Post package report
+        run: |
+          echo Disk usage
+          df -h
+          echo Memory
+          free -m
+      - name: Clean up
+        run: |
+          docker system prune -f -a || :
+          docker rm -f $(docker ps -aq) && docker volume rm -f $(docker volume ls -q) || :
