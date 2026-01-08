@@ -120,6 +120,35 @@ via **HTTP GET**.
 - **Interval:** every 1min (normal), throttled to every 1h if LPS responds with *404*.
 - See [formal specification](https://github.com/lf-edge/eve-api/blob/main/PROFILE.md#network)
 
+### 7. `/api/v1/appbootinfo`
+
+- **From edge-node → LPS:** HTTP **POST** with effective boot order and source
+  for each application (`AppBootInfoList`).
+- **From LPS → edge-node (response):** optionally, boot configuration for one
+  or more applications (`AppBootConfigList` with USB boot priority settings).
+- **Effect:** Bidirectional endpoint for boot order management:
+  - Allows LPS to display which configuration source "won" when multiple sources
+    (LPS, Controller API, Device Property) are configured.
+  - Allows LPS to send boot configuration updates in response.
+- **Boot order values:**
+  - `BOOT_ORDER_UNSPECIFIED`: No override - use next priority level
+  - `BOOT_ORDER_USB`: Prioritize USB devices in boot order
+  - `BOOT_ORDER_NOUSB`: Deprioritize USB devices (disk boots first)
+- **Source values (in request):**
+  - `BOOT_ORDER_SOURCE_UNSPECIFIED`: No explicit boot order configured
+  - `BOOT_ORDER_SOURCE_LPS`: Set by LPS via this endpoint
+  - `BOOT_ORDER_SOURCE_CONTROLLER`: Set by Controller API via `VmConfig.boot_order`
+  - `BOOT_ORDER_SOURCE_DEVICE_PROPERTY`: Set by device property `app.boot.order`
+- **HTTP status codes:**
+  - `200`: Config included in response body
+  - `204`: No changes needed; preserve current config
+  - `404`: Not implemented or no config; clear cached config
+- **Persistence:** Configuration is saved to disk and reapplied on EVE restart.
+- **Interval:** every 1min (normal), throttled to every 1h if LPS responds with *404*.
+- **Changes take effect:** On next VM restart.
+- See [formal specification](https://github.com/lf-edge/eve-api/blob/main/PROFILE.md#app-boot-info)
+  and [VM Boot Order documentation](./VM-BOOT-ORDER.md) for detailed usage.
+
 ## Implementation Notes
 
 - There is currently **no open-source production-ready implementation** of the LPS.
