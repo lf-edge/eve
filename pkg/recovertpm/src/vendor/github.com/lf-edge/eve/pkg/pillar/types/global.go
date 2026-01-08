@@ -299,6 +299,12 @@ const (
 	// this period no stack traces are collected, only warning messages are logged.
 	GoroutineLeakDetectionCooldownMinutes GlobalSettingKey = "goroutine.leak.detection.cooldown.minutes"
 
+	// Internal Memory Monitor settings
+	// InternalMemoryMonitorStoreEnabled - collect probes and store CSV
+	InternalMemoryMonitorStoreEnabled GlobalSettingKey = "internal-memory-monitor.store.enabled"
+	// InternalMemoryMonitorAnalyzeEnabled - run analysis and compute scores
+	InternalMemoryMonitorAnalyzeEnabled GlobalSettingKey = "internal-memory-monitor.analyze.enabled"
+
 	// TriState Items
 	// NetworkFallbackAnyEth global setting key
 	NetworkFallbackAnyEth GlobalSettingKey = "network.fallback.any.eth"
@@ -417,6 +423,10 @@ const (
 	// DiagProbeRemoteHTTPSEndpoint : remote endpoint queried over **HTTPS** to assess
 	// the state of network connectivity whenever the controller is not reachable.
 	DiagProbeRemoteHTTPSEndpoint GlobalSettingKey = "diag.probe.remote.https.endpoint"
+
+	// EnableTCPMSSClamping : Configuration property to enable or disable TCP MSS clamping
+	// for application traffic forwarded by EVE.
+	EnableTCPMSSClamping GlobalSettingKey = "app.enable.tcp.mss.clamping"
 )
 
 // AgentSettingKey - keys for per-agent settings
@@ -1053,6 +1063,9 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	// Kubernetes Drain Section
 	configItemSpecMap.AddIntItem(KubernetesDrainTimeout, DefaultDrainTimeoutHours, 1, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(DrainSkipK8sAPINotReachableTimeout, DefaultDrainSkipK8sAPINotReachableTimeoutSeconds, 1, 0xFFFFFFFF)
+	// Internal Memory Monitoring section
+	configItemSpecMap.AddBoolItem(InternalMemoryMonitorStoreEnabled, true)
+	configItemSpecMap.AddBoolItem(InternalMemoryMonitorAnalyzeEnabled, true)
 
 	// Add Bool Items
 	configItemSpecMap.AddBoolItem(UsbAccess, true) // Controller likely default to false
@@ -1120,6 +1133,8 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddStringItem(DiagProbeRemoteHTTPEndpoint, "www.google.com", makeURLValidator("http", true))
 	configItemSpecMap.AddStringItem(DiagProbeRemoteHTTPSEndpoint, "www.google.com", makeURLValidator("https", false))
 
+	// TCP MSS Clamping
+	configItemSpecMap.AddBoolItem(EnableTCPMSSClamping, true)
 	return configItemSpecMap
 }
 
