@@ -4,7 +4,6 @@
 package main
 
 import (
-	"bytes"
 	"crypto"
 	"crypto/aes"
 	"crypto/cipher"
@@ -311,7 +310,8 @@ func verifyEnvelopeData(data []byte, checkClientAuth bool) (bool, bool, []byte, 
 
 	h := hmac.New(sha256.New, []byte(jwtNonce))
 	_, _ = h.Write(envelope.Message)
-	if !bytes.Equal(envelope.Sha256Hash[:], h.Sum(nil)) {
+	// use constant-time comparison for HMAC verification to avoid timing attacks
+	if !hmac.Equal(envelope.Sha256Hash[:], h.Sum(nil)) {
 		return true, false, nil, keyComment
 	}
 
