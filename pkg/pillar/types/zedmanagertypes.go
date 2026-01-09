@@ -1,4 +1,4 @@
-// Copyright (c) 2017 Zededa, Inc.
+// Copyright (c) 2017-2026 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 package types
@@ -10,7 +10,9 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	zcommon "github.com/lf-edge/eve-api/go/evecommon"
 	"github.com/lf-edge/eve-api/go/info"
+	"github.com/lf-edge/eve-api/go/profile"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/sriov"
 	uuid "github.com/satori/go.uuid"
@@ -143,11 +145,41 @@ type AppInstanceConfig struct {
 
 	// allow AppInstance to discover other AppInstances attached to its network instances
 	AllowToDiscover bool
+
+	// ControllerBootOrder stores the raw boot order value from the Controller API.
+	// This is used to re-evaluate the effective boot order when LPS clears its
+	// override or when device property changes. The effective boot order
+	// (FixedResources.BootOrder) is determined by precedence: LPS > Controller > DeviceProperty.
+	ControllerBootOrder zcommon.BootOrder
+
+	// BootOrderSource indicates which configuration source determined the effective
+	// boot order (FixedResources.BootOrder). This is stored at AppInstanceConfig level
+	// (not in FixedResources) because it's purely informational for LPS reporting
+	// and shouldn't trigger domain restarts when only the source changes.
+	BootOrderSource profile.BootOrderSource
 }
 
 type AppInstanceOpsCmd struct {
 	Counter   uint32
 	ApplyTime string // XXX not currently used
+}
+
+// AppBootConfig contains boot configuration for a single application received
+// from Local Profile Server (LPS). This is cached by localcommand and used
+// by parseconfig to preserve LPS-set boot order when processing controller config.
+type AppBootConfig struct {
+	AppUUID     uuid.UUID         // UUID of the application instance
+	DisplayName string            // Display name for logging
+	BootOrder   zcommon.BootOrder // Boot order setting from LPS
+}
+
+// AppBootInfo contains the effective boot order and its source for an application.
+// This is published to LPS via POST /api/v1/appbootinfo.
+type AppBootInfo struct {
+	AppUUID     uuid.UUID               // UUID of the application instance
+	DisplayName string                  // Display name for the application
+	BootOrder   zcommon.BootOrder       // Effective boot order applied
+	Source      profile.BootOrderSource // Which source determined the boot order
 }
 
 // IoAdapter specifies that a group of ports should be assigned

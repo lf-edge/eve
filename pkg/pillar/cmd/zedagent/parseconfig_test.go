@@ -92,9 +92,9 @@ func TestParsePhysicalNetworkAdapters(t *testing.T) {
 		Networks: []*zconfig.NetworkConfig{
 			{
 				Id:   networkUUID,
-				Type: zconfig.NetworkType_V4,
-				Ip: &zconfig.Ipspec{
-					Dhcp: zconfig.DHCPType_Client,
+				Type: zcommon.NetworkType_V4,
+				Ip: &zcommon.Ipspec{
+					Dhcp: zcommon.DHCPType_Client,
 				},
 			},
 		},
@@ -221,26 +221,26 @@ func TestParseVlans(t *testing.T) {
 		Networks: []*zconfig.NetworkConfig{
 			{
 				Id:   network1UUID,
-				Type: zconfig.NetworkType_V4,
-				Ip: &zconfig.Ipspec{
-					Dhcp: zconfig.DHCPType_Client,
+				Type: zcommon.NetworkType_V4,
+				Ip: &zcommon.Ipspec{
+					Dhcp: zcommon.DHCPType_Client,
 				},
 			},
 			{
 				Id:   network2UUID,
-				Type: zconfig.NetworkType_V6,
-				Ip: &zconfig.Ipspec{
-					Dhcp: zconfig.DHCPType_Client,
+				Type: zcommon.NetworkType_V6,
+				Ip: &zcommon.Ipspec{
+					Dhcp: zcommon.DHCPType_Client,
 				},
 			},
 			{
 				Id:   network3UUID,
-				Type: zconfig.NetworkType_V4,
-				Ip: &zconfig.Ipspec{
-					Dhcp:    zconfig.DHCPType_Static,
+				Type: zcommon.NetworkType_V4,
+				Ip: &zcommon.Ipspec{
+					Dhcp:    zcommon.DHCPType_Static,
 					Subnet:  "192.168.1.0/24",
 					Gateway: "192.168.1.1",
-					DhcpRange: &zconfig.IpRange{
+					DhcpRange: &zcommon.IpRange{
 						Start: "192.168.1.10",
 						End:   "192.168.1.100",
 					},
@@ -453,9 +453,9 @@ func TestParseBonds(t *testing.T) {
 		Networks: []*zconfig.NetworkConfig{
 			{
 				Id:   networkUUID,
-				Type: zconfig.NetworkType_V4,
-				Ip: &zconfig.Ipspec{
-					Dhcp: zconfig.DHCPType_Client,
+				Type: zcommon.NetworkType_V4,
+				Ip: &zcommon.Ipspec{
+					Dhcp: zcommon.DHCPType_Client,
 				},
 			},
 		},
@@ -596,16 +596,16 @@ func TestParseVlansOverBonds(t *testing.T) {
 		Networks: []*zconfig.NetworkConfig{
 			{
 				Id:   network1UUID,
-				Type: zconfig.NetworkType_V4,
-				Ip: &zconfig.Ipspec{
-					Dhcp: zconfig.DHCPType_Client,
+				Type: zcommon.NetworkType_V4,
+				Ip: &zcommon.Ipspec{
+					Dhcp: zcommon.DHCPType_Client,
 				},
 			},
 			{
 				Id:   network2UUID,
-				Type: zconfig.NetworkType_V4,
-				Ip: &zconfig.Ipspec{
-					Dhcp: zconfig.DHCPType_Client,
+				Type: zcommon.NetworkType_V4,
+				Ip: &zcommon.Ipspec{
+					Dhcp: zcommon.DHCPType_Client,
 				},
 			},
 		},
@@ -849,16 +849,16 @@ func TestInvalidLowerLayerReferences(t *testing.T) {
 		Networks: []*zconfig.NetworkConfig{
 			{
 				Id:   network1UUID,
-				Type: zconfig.NetworkType_V4,
-				Ip: &zconfig.Ipspec{
-					Dhcp: zconfig.DHCPType_Client,
+				Type: zcommon.NetworkType_V4,
+				Ip: &zcommon.Ipspec{
+					Dhcp: zcommon.DHCPType_Client,
 				},
 			},
 			{
 				Id:   network2UUID,
-				Type: zconfig.NetworkType_V4,
-				Ip: &zconfig.Ipspec{
-					Dhcp: zconfig.DHCPType_Client,
+				Type: zcommon.NetworkType_V4,
+				Ip: &zcommon.Ipspec{
+					Dhcp: zcommon.DHCPType_Client,
 				},
 			},
 		},
@@ -1531,16 +1531,16 @@ func TestParseSharedLabels(t *testing.T) {
 		Networks: []*zconfig.NetworkConfig{
 			{
 				Id:   network1UUID,
-				Type: zconfig.NetworkType_V4,
-				Ip: &zconfig.Ipspec{
-					Dhcp: zconfig.DHCPType_Client,
+				Type: zcommon.NetworkType_V4,
+				Ip: &zcommon.Ipspec{
+					Dhcp: zcommon.DHCPType_Client,
 				},
 			},
 			{
 				Id:   network2UUID,
-				Type: zconfig.NetworkType_V4,
-				Ip: &zconfig.Ipspec{
-					Dhcp: zconfig.DHCPType_Client,
+				Type: zcommon.NetworkType_V4,
+				Ip: &zcommon.Ipspec{
+					Dhcp: zcommon.DHCPType_Client,
 				},
 			},
 		},
