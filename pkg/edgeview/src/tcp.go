@@ -326,7 +326,7 @@ func setAndStartProxyTCP(opt string) {
 			if gotProxy {
 				hasProxy = true
 			} else if gotKube {
-				if !IsHVTypeKube {
+				if !isHVTypeKube {
 					fmt.Printf("tcp kube option is only supported in the eve 'k' images\n")
 					return
 				}

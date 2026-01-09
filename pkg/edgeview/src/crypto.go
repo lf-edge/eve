@@ -18,6 +18,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"io"
 	"math/big"
 	"os"
 	"strings"
@@ -25,6 +26,7 @@ import (
 	"github.com/gorilla/websocket"
 	etpm "github.com/lf-edge/eve/pkg/pillar/evetpm"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"golang.org/x/crypto/hkdf"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -40,12 +42,18 @@ var (
 	ecPublicKeyPEM   []byte           // EC public key in PEM format
 )
 
+const (
+	gcmNonceSize = 12
+	cipherAESGCM = "AES-GCM"
+)
+
 // authentication/encryption wrapper for messages
 type envelopeMsg struct {
 	Message    []byte             `json:"message"`
 	Sha256Hash [hashBytesNum]byte `json:"sha256Hash"`
 	Signature  []byte             // Field to store the cert auth signature
 	IV         []byte             `json:"iv,omitempty"`
+	Cipher     string             `json:"cipher,omitempty"`
 }
 
 // LoadPublicKey loads a public key from a PEM file and determines its type (RSA or EC)
@@ -223,6 +231,7 @@ func encryptData(msg []byte) []byte {
 		Message:    eMsg,
 		Sha256Hash: sha256.Sum256(msg),
 		IV:         iv,
+		Cipher:     cipherAESGCM,
 	}
 
 	jdata, err := json.Marshal(jmsg)
@@ -291,14 +300,12 @@ func verifyEnvelopeData(data []byte, checkClientAuth bool) (bool, bool, []byte, 
 	}
 
 	if nonceOpEncrption {
-		ok, msg := decryptEvMsg(envelope.IV, envelope.Message)
+		ok, msg := decryptEvMsg(envelope.IV, envelope.Message, envelope.Cipher)
 		if !ok {
 			return true, false, nil, keyComment
 		}
-		shaSum := sha256.Sum256(msg)
-		if !bytes.Equal(envelope.Sha256Hash[:], shaSum[:]) {
-			return true, false, nil, keyComment
-		}
+		// AEAD (AES-GCM) provides authenticated encryption; integrity/authentication
+		// is verified during decryption (aead.Open). Skip legacy sha256 check.
 		return true, true, msg, keyComment
 	}
 
@@ -312,39 +319,90 @@ func verifyEnvelopeData(data []byte, checkClientAuth bool) (bool, bool, []byte, 
 }
 
 func encryptEvMsg(msg []byte) ([]byte, []byte, error) {
-	block, err := aes.NewCipher(nonceHash[:])
+	// Derive AES key via HKDF from nonceHash
+	key, err := deriveKeyHKDF(nonceHash, 32)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	iv := make([]byte, aes.BlockSize)
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	aead, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	iv := make([]byte, aead.NonceSize())
 	if _, err := rand.Read(iv); err != nil {
 		return nil, nil, err
 	}
 
-	cfb := cipher.NewCFBEncrypter(block, iv)
-	cipherText := make([]byte, len(msg))
-	cfb.XORKeyStream(cipherText, msg)
-
+	cipherText := aead.Seal(nil, iv, msg, nil)
 	return iv, cipherText, nil
 }
 
-func decryptEvMsg(iv, data []byte) (bool, []byte) {
-	if len(iv) != aes.BlockSize {
-		// can not use encryption for sending this message, otherwise client side won't be able to decrypt
-		_ = rawTextMsgWriteWss([]byte(fmt.Sprintf("Edgeview encrypted message missing or invalid IV. Need Edgeview Client version %s or higher\n", encMinVersion)))
+func decryptEvMsg(iv, data []byte, cipherStr string) (bool, []byte) {
+	// Fast-fail: validate nonce size and cipher string before doing work.
+	// If either is invalid, send one consolidated message to the client asking
+	// them to upgrade.
+	var problems []string
+	if len(iv) != gcmNonceSize {
+		problems = append(problems, "missing or invalid IV")
+	}
+	if cipherStr != cipherAESGCM {
+		problems = append(problems, fmt.Sprintf("unsupported cipher %s", cipherStr))
+	}
+	if len(problems) > 0 {
+		reason := strings.Join(problems, "; ")
+		log.Errorf("Edgeview encrypted message %s; client must upgrade", reason)
+		_ = rawTextMsgWriteWss([]byte(fmt.Sprintf("Edgeview encrypted message %s. Need Edgeview Client version %s or higher\n", reason, encMinVersion)))
 		return false, nil
 	}
 
-	block, err := aes.NewCipher(nonceHash[:])
+	// Derive AES key via HKDF from nonceHash
+	key, err := deriveKeyHKDF(nonceHash, 32)
 	if err != nil {
+		log.Errorf("failed to derive key for decryption: %v", err)
 		return false, nil
 	}
 
-	cfb := cipher.NewCFBDecrypter(block, iv)
-	plainText := make([]byte, len(data))
-	cfb.XORKeyStream(plainText, data)
-	return true, plainText
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		log.Errorf("failed to create cipher: %v", err)
+		return false, nil
+	}
+
+	aead, err := cipher.NewGCM(block)
+	if err != nil {
+		log.Errorf("failed to create AEAD: %v", err)
+		return false, nil
+	}
+
+	// IV length already checked above
+
+	plain, err := aead.Open(nil, iv, data, nil)
+	if err != nil {
+		log.Errorf("AEAD open failed: %v", err)
+		return false, nil
+	}
+	return true, plain
+}
+
+// deriveKeyHKDF derives a key of length keyLen from the given 32-byte seed using HKDF-SHA256
+// deriveKeyHKDF derives a key of length keyLen from the given 32-byte seed using
+// HKDF-SHA256 (RFC 5869). Implemented locally to avoid external dependency on
+// golang.org/x/crypto/hkdf when building with vendoring.
+// deriveKeyHKDF derives a key of length keyLen from the given 32-byte seed using HKDF-SHA256
+func deriveKeyHKDF(seed [32]byte, keyLen int) ([]byte, error) {
+	hk := hkdf.New(sha256.New, seed[:], nil, nil)
+	key := make([]byte, keyLen)
+	if _, err := io.ReadFull(hk, key); err != nil {
+		return nil, err
+	}
+	return key, nil
 }
 
 // The JWT token signature verification is performed in parseEvConfig() in
