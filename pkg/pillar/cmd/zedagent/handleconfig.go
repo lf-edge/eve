@@ -152,6 +152,18 @@ type getconfigContext struct {
 		// localCommands : list of commands requested from a local server.
 		// This information is persisted under /persist/checkpoint/localcommands
 		localCommands *types.LocalCommands
+
+		// LPS app boot configuration (USB boot priority, etc.)
+		localAppBootInfoPOSTTicker flextimer.FlexTickerHandle
+		// currentAppBootConfigs caches boot configurations received from LPS.
+		// key = app UUID string, value = types.AppBootConfig
+		currentAppBootConfigs map[string]types.AppBootConfig
+
+		// bootOrderUpdateMx protects the read-modify-write cycle for BootOrder fields.
+		// pubAppInstanceConfig is written by multiple goroutines:
+		// - Main event loop: parseAppInstanceConfig(), applyDevicePropertyBootOrder()
+		// - appBootInfoTask goroutine: applyAppBootConfig()
+		bootOrderUpdateMx sync.Mutex
 	}
 
 	configRetryUpdateCounter uint32 // received from config
