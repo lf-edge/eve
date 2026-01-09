@@ -6,13 +6,12 @@ package zedagent
 import (
 	"bytes"
 	"fmt"
-	"os"
-	"strings"
 	"time"
 
 	"github.com/lf-edge/eve-api/go/info"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
+	"github.com/lf-edge/eve/pkg/pillar/types"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -74,9 +73,9 @@ func PublishHardwareInfoToZedCloud(ctx *zedagentContext, dest destinationBitset)
 	hwInfo.EveRelease = agentlog.EveVersion()
 	hwInfo.EvePlatform = hardware.GetHardwareModel(log)
 	hwInfo.Partition = agentlog.EveCurrentPartition()
-	hwInfo.KernelVersion = getKernelVersion()
-	hwInfo.KernelCmdline = getKernelCmdline()
-	hwInfo.KernelFlavor = getKernelFlavor()
+	hwInfo.KernelVersion = hardware.GetKernelVersion()
+	hwInfo.KernelCmdline = hardware.GetKernelCmdline()
+	hwInfo.KernelFlavor = hardware.GetKernelFlavor()
 
 	// Get information about disks
 	disksInfo, err := hardware.ReadSMARTinfoForDisks()
@@ -127,37 +126,4 @@ func PublishHardwareInfoToZedCloud(ctx *zedagentContext, dest destinationBitset)
 
 	queueInfoToDest(ctx, dest, hwInfoKey, buf, bailOnHTTPErr, false, false,
 		info.ZInfoTypes_ZiHardware)
-}
-
-func getKernelVersion() string {
-	out, err := os.ReadFile("/proc/sys/kernel/osrelease")
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(string(out))
-}
-
-func getKernelCmdline() string {
-	out, err := os.ReadFile("/proc/cmdline")
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(string(out))
-}
-
-func getKernelFlavor() string {
-	// Try to deduce from kernel version or /proc/version
-	version := getKernelVersion()
-	if strings.Contains(version, "-rt") {
-		return "rt"
-	}
-	// Check /proc/version for more details
-	out, err := os.ReadFile("/proc/version")
-	if err == nil {
-		content := string(out)
-		if strings.Contains(content, "PREEMPT_RT") {
-			return "rt"
-		}
-	}
-	return "pc"
 }
