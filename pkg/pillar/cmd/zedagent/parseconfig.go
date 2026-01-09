@@ -20,6 +20,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	zconfig "github.com/lf-edge/eve-api/go/config"
 	zevecommon "github.com/lf-edge/eve-api/go/evecommon"
+	"github.com/lf-edge/eve-api/go/profile"
 	"github.com/lf-edge/eve/pkg/pillar/objtonum"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/sriov"
@@ -685,6 +686,9 @@ func parseAppInstanceConfig(getconfigCtx *getconfigContext,
 		}
 	}
 
+	// Track if any app's boot order info changed (for LPS POST trigger)
+	var bootOrderChanged bool
+
 	for _, cfgApp := range Apps {
 		// Note that we repeat this even if the app config didn't
 		// change but something else in the EdgeDeviceConfig did
@@ -799,6 +803,47 @@ func parseAppInstanceConfig(getconfigCtx *getconfigContext,
 
 		appInstance.ProfileList = cfgApp.ProfileList
 
+		// Determine boot order from multiple sources with precedence (highest to lowest):
+		//   1. LPS (Local Profile Server) - can override controller setting
+		//   2. Controller API (VmConfig.BootOrder from EdgeDevConfig)
+		//   3. Device configuration property (app.boot.order)
+		//   4. Default (BOOT_ORDER_UNSPECIFIED)
+		// This value is passed through DomainConfig.VmConfig to domainmgr,
+		// which writes it to QEMU's fw_cfg as "opt/eve.bootorder" for OVMF to read.
+		//
+		// Track which source determined the boot order for reporting to LPS.
+		// BootOrderSource is stored at AppInstanceConfig level (not in FixedResources)
+		// because it's purely informational and shouldn't trigger domain restarts.
+		//
+		// Lock to protect against concurrent updates from LPS/DeviceProperty handlers.
+		// This ensures the boot order evaluation and publish is atomic.
+		getconfigCtx.sideController.bootOrderUpdateMx.Lock()
+		// Get old values from existing published config to detect changes.
+		appUUID := appInstance.UUIDandVersion.UUID
+		var oldBootOrder zevecommon.BootOrder
+		var oldBootOrderSource profile.BootOrderSource
+		if existingConfig, err := getconfigCtx.pubAppInstanceConfig.Get(appUUID.String()); err == nil {
+			if existing, ok := existingConfig.(types.AppInstanceConfig); ok {
+				oldBootOrder = existing.FixedResources.BootOrder
+				oldBootOrderSource = existing.BootOrderSource
+			}
+		}
+		// Store the raw controller boot order for re-evaluation when LPS/DeviceProp changes.
+		controllerBootOrder := cfgApp.Fixedresources.GetBootOrder()
+		appInstance.ControllerBootOrder = controllerBootOrder
+		// Evaluate effective boot order using the helper function.
+		// NOTE: evaluateAppBootOrder requires sideController.Mutex to be held,
+		// which is acquired at the top of parseConfig().
+		bootOrderResult := evaluateAppBootOrder(appUUID, controllerBootOrder, getconfigCtx)
+		appInstance.FixedResources.BootOrder = bootOrderResult.BootOrder
+		appInstance.BootOrderSource = bootOrderResult.Source
+		// Track if boot order info changed for any app
+		if appInstance.FixedResources.BootOrder != oldBootOrder ||
+			appInstance.BootOrderSource != oldBootOrderSource {
+			bootOrderChanged = true
+		}
+		getconfigCtx.sideController.bootOrderUpdateMx.Unlock()
+
 		// Add config submitted via local profile server.
 		addLocalAppConfig(getconfigCtx, &appInstance)
 
@@ -813,6 +858,11 @@ func parseAppInstanceConfig(getconfigCtx *getconfigContext,
 
 		// Verify that it fits and if not publish with error
 		checkAndPublishAppInstanceConfig(getconfigCtx.pubAppInstanceConfig, appInstance)
+	}
+
+	// Trigger immediate POST of boot order info to LPS if any app's boot order changed.
+	if bootOrderChanged {
+		triggerLocalAppBootInfoPOST(getconfigCtx)
 	}
 }
 
@@ -2896,6 +2946,15 @@ func parseConfigItems(ctx *getconfigContext, config *zconfig.EdgeDevConfig,
 		if oldMaintenanceMode != newMaintenanceMode {
 			ctx.zedagentCtx.gcpMaintenanceMode = newMaintenanceMode
 			mergeMaintenanceMode(ctx.zedagentCtx, "parseConfigItems")
+		}
+
+		// Handle app.boot.order device property change - re-evaluate boot order for all apps.
+		oldBootOrder := oldGlobalConfig.GlobalValueString(types.AppBootOrder)
+		newBootOrder := newGlobalConfig.GlobalValueString(types.AppBootOrder)
+		if oldBootOrder != newBootOrder {
+			log.Functionf("parseConfigItems: %s change from %q to %q",
+				"AppBootOrder", oldBootOrder, newBootOrder)
+			applyDevicePropertyBootOrder(ctx)
 		}
 
 		pub := ctx.zedagentCtx.pubGlobalConfig
