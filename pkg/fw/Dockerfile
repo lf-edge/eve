@@ -150,7 +150,8 @@ COPY --from=build /lib/firmware/iwlwifi-8265* /lib/firmware/
 COPY --from=build /lib/firmware/iwlwifi-7260* /lib/firmware/
 COPY --from=build /lib/firmware/iwlwifi-9260* /lib/firmware/
 # AX210 160MHZ
-COPY --from=build /lib/firmware/iwlwifi-ty-a0-gf-a0-59.ucode /lib/firmware/
+COPY --from=build /lib/firmware/iwlwifi-ty-a0-gf-a0-72.ucode /lib/firmware/
+COPY --from=build /lib/firmware/iwlwifi-ty-a0-gf-a0-89.ucode /lib/firmware/
 COPY --from=build /lib/firmware/intel/ibt-0041-0041* /lib/firmware/intel/
 # Intel AX211NGW
 COPY --from=build /lib/firmware/iwlwifi-so-a0-gf-a0* /lib/firmware/
