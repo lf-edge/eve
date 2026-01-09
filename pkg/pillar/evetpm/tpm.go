@@ -10,6 +10,7 @@ import (
 	"crypto/x509"
 	"encoding/asn1"
 	"encoding/gob"
+	"encoding/hex"
 	"encoding/pem"
 	"fmt"
 	"io"
@@ -519,15 +520,6 @@ var vendorRegistry = map[uint32]string{
 	0x474F4F47: "Google",
 }
 
-// till we have next version of go-tpm released, use this
-const (
-	tpmPropertyManufacturer tpm2.TPMProp = 0x105
-	tpmPropertyVendorStr1   tpm2.TPMProp = 0x106
-	tpmPropertyVendorStr2   tpm2.TPMProp = 0x107
-	tpmPropertyFirmVer1     tpm2.TPMProp = 0x10b
-	tpmPropertyFirmVer2     tpm2.TPMProp = 0x10c
-)
-
 // FetchTpmHwInfo returns TPM Hardware properties in a string
 func FetchTpmHwInfo() (string, error) {
 	//If we had done this earlier, return the last result
@@ -543,23 +535,23 @@ func FetchTpmHwInfo() (string, error) {
 	}
 
 	//First time. Fetch it from TPM and cache it.
-	v1, err := GetTpmProperty(tpmPropertyManufacturer)
+	v1, err := GetTpmProperty(tpm2.Manufacturer)
 	if err != nil {
 		return "", err
 	}
-	v2, err := GetTpmProperty(tpmPropertyVendorStr1)
+	v2, err := GetTpmProperty(tpm2.VendorString1)
 	if err != nil {
 		return "", err
 	}
-	v3, err := GetTpmProperty(tpmPropertyVendorStr2)
+	v3, err := GetTpmProperty(tpm2.VendorString2)
 	if err != nil {
 		return "", err
 	}
-	v4, err := GetTpmProperty(tpmPropertyFirmVer1)
+	v4, err := GetTpmProperty(tpm2.FirmwareVersion1)
 	if err != nil {
 		return "", err
 	}
-	v5, err := GetTpmProperty(tpmPropertyFirmVer2)
+	v5, err := GetTpmProperty(tpm2.FirmwareVersion2)
 	if err != nil {
 		return "", err
 	}
@@ -568,6 +560,20 @@ func FetchTpmHwInfo() (string, error) {
 		GetFirmwareVersion(v4, v5))
 
 	return tpmHwInfo, nil
+}
+
+// GetSpecVersion returns TPM specification version string
+func GetSpecVersion() (string, error) {
+	value, err := GetTpmProperty(tpm2.FamilyIndicator)
+	if err != nil {
+		return "", err
+	}
+	hx, err := hex.DecodeString(fmt.Sprintf("%08x", value))
+	if err != nil {
+		return "", err
+	}
+	specVersion := bytes.Trim(hx, "\x00")
+	return string(specVersion), nil
 }
 
 // FetchVaultKey retrieves TPM part of the vault key

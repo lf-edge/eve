@@ -14,11 +14,11 @@ import (
 	"github.com/jaypipes/pcidb"
 	pcitypes "github.com/jaypipes/pcidb/types"
 	"github.com/lf-edge/eve-api/go/info"
+	"github.com/lf-edge/eve/pkg/pillar/evetpm"
 	"github.com/zededa/ghw"
 	"github.com/zededa/ghw/pkg/can"
 	"github.com/zededa/ghw/pkg/option"
 	"github.com/zededa/ghw/pkg/pci/address"
-	"github.com/zededa/ghw/pkg/tpm"
 	"github.com/zededa/ghw/pkg/watchdog"
 )
 
@@ -405,15 +405,35 @@ func (imc *inventoryMsgCreator) fillWatchdog() error {
 }
 
 func (imc *inventoryMsgCreator) fillTPM() error {
-	tpmInfo, err := tpm.New()
-	if err != nil {
-		return err
-	}
+	present := evetpm.IsTpmEnabled()
 	imc.msg.Inventory.Tpm = &info.TPM{
-		Present:         tpmInfo.Present,
-		Manufacturer:    tpmInfo.Manufacturer,
-		FirmwareVersion: tpmInfo.FirmwareVersion,
-		SpecVersion:     tpmInfo.SpecVersion,
+		Present: present,
+	}
+
+	if present {
+		tpmInfo, err := evetpm.FetchTpmHwInfo()
+		if err != nil {
+			return err
+		}
+		// The string returned by FetchTpmHwInfo is formatted as:
+		// "Manufacturer-Model, FW Version Version"
+		// We try to parse it to fill the individual fields
+		parts := strings.Split(tpmInfo, ", FW Version ")
+		if len(parts) == 2 {
+			imc.msg.Inventory.Tpm.FirmwareVersion = parts[1]
+			vendorParts := strings.Split(parts[0], "-")
+			if len(vendorParts) >= 1 {
+				imc.msg.Inventory.Tpm.Manufacturer = vendorParts[0]
+			}
+		} else {
+			// Fallback if formatting is unexpected
+			imc.msg.Inventory.Tpm.Manufacturer = tpmInfo
+		}
+		specVersion, err := evetpm.GetSpecVersion()
+		if err != nil {
+			return err
+		}
+		imc.msg.Inventory.Tpm.SpecVersion = specVersion
 	}
 	return nil
 }
