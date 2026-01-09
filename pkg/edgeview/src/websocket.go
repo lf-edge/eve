@@ -46,7 +46,10 @@ var (
 	pipeBufHalfSize int
 )
 
-func setupWebC(hostname, token string, u url.URL, isServer bool) bool {
+// setupWebC establishes connection to the dispatcher. If probe is true
+// it will perform a lightweight HTTP probe (no websocket upgrade) and
+// return the response body. Returns (connected, probeBody).
+func setupWebC(hostname, token string, u url.URL, isServer bool, probe bool) (bool, string) {
 	var pport int
 	var pIP, serverStr string
 	var useProxy int
@@ -115,8 +118,43 @@ func setupWebC(hostname, token string, u url.URL, isServer bool) bool {
 			}
 			tlsDialer, err := tlsDial(isServer, proxyIP, proxyPort, intfSrcs, idx)
 			if err != nil {
-				return false
+				return false, ""
 			}
+			// transport built from the configured dialer so proxy and TLS
+			// settings are honored.
+			if probe {
+				transport := &http.Transport{
+					TLSClientConfig: tlsDialer.TLSClientConfig,
+					Proxy:           tlsDialer.Proxy,
+					DialContext:     tlsDialer.NetDialContext,
+				}
+				client := &http.Client{Transport: transport, Timeout: 10 * time.Second}
+				// Use HTTPS for probe requests regardless of websocket scheme
+				// The probe part in dispatcher is before upgrade to websocket
+				probeURL := u
+				probeURL.Scheme = "https"
+				req, err := http.NewRequest("GET", probeURL.String(), nil)
+				if err != nil {
+					return false, ""
+				}
+				req.Header.Set("X-Session-Probe", "true")
+				req.Header.Set("X-Session-Token", token)
+				resp, err := client.Do(req)
+				if err != nil {
+					// try next interface/proxy option
+					durr = durr * (retry + 1)
+					if durr > maxReconnWait {
+						durr = maxReconnWait
+					}
+					time.Sleep(time.Duration(durr) * time.Millisecond)
+					continue
+				}
+				body, _ := io.ReadAll(resp.Body)
+				resp.Body.Close()
+				return true, string(body)
+			}
+
+			// Not a probe: perform the websocket dial (existing behavior)
 			c, resp, err := tlsDialer.Dial(u.String(),
 				http.Header{
 					"X-Session-Token":    []string{token},
@@ -142,11 +180,14 @@ func setupWebC(hostname, token string, u url.URL, isServer bool) bool {
 				} else {
 					fmt.Printf("connect success to websocket server\n")
 				}
-				return true
+				return true, ""
 			}
 			if !isServer && retry > 1 {
-				return false
+				return false, ""
 			}
+		}
+		if probe { // only the client does probe, we don't need to retry, user can try again
+			return false, ""
 		}
 		// do exponential backoff after walking through all the interfaces
 		// to speed up the connection retrial
@@ -154,6 +195,7 @@ func setupWebC(hostname, token string, u url.URL, isServer bool) bool {
 	}
 }
 
+// probeDispatcher function removed as its logic is integrated into setupWebC
 // TLS Dialer
 func tlsDial(isServer bool, pIP string, pport int, src []net.IP, idx int) (*websocket.Dialer, error) {
 	tlsConfig := &tls.Config{}
@@ -308,14 +350,13 @@ func retryWebSocket(hostname, token string, urlWSS url.URL, err error) bool {
 		fmt.Printf("retryWebSocket: client timeout or reset, close and resetup websocket, %v\n", err)
 	}
 	time.Sleep(time.Duration(duration) * time.Millisecond)
-	ok := setupWebC(hostname, token, urlWSS, true)
+	ok, _ := setupWebC(hostname, token, urlWSS, true, false)
 	tcpRetryWait = false
 	if ok {
 		reconnectCnt = 0
 		return true
-	} else {
-		log.Noticef("retry failed.")
 	}
+	log.Noticef("retry failed.")
 	return false
 }
 

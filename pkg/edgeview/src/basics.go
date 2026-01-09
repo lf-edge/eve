@@ -524,17 +524,29 @@ func getJSONFileID(path string) string {
 	return ""
 }
 
+// we still keep this for backward compatibility, can remove this later when
+// all the EVE versions are supporting full SHA256 hash
 func getTokenHashString(token string) []byte {
 	if edgeviewInstID > 0 {
 		token = token + "." + strconv.Itoa(edgeviewInstID)
 	}
 	h := sha256.New()
-	_, err := h.Write([]byte(token))
-	if err != nil {
-		fmt.Printf("hash write error: %v\n", err)
-	}
+	h.Write([]byte(token))
 	hash16 := h.Sum(nil)[:16]
 	return []byte(base64.RawURLEncoding.EncodeToString(hash16))
+}
+
+// getTokenHashStringFull returns the full 32-byte SHA256 hash of the token
+// encoded with base64 RawURLEncoding. Newer dispatchers should accept this
+// stronger form but older ones may still expect the 16-byte truncated version.
+func getTokenHashStringFull(token string) []byte {
+	if edgeviewInstID > 0 {
+		token = token + "." + strconv.Itoa(edgeviewInstID)
+	}
+	h := sha256.New()
+	h.Write([]byte(token))
+	full := h.Sum(nil)
+	return []byte(base64.RawURLEncoding.EncodeToString(full))
 }
 
 // in the format of yyyyMMDDhhmmss to use as part of the file name
