@@ -196,6 +196,8 @@ func parseProfile(ctx *getconfigContext, config *zconfig.EdgeDevConfig) {
 		triggerLocalAppInfoPOST(ctx)
 		updateLocalDevInfoTicker(ctx, false)
 		triggerLocalDevInfoPOST(ctx)
+		updateLocalAppBootInfoTicker(ctx, false)
+		triggerLocalAppBootInfoPOST(ctx)
 		ctx.sideController.lpsThrottledLocation = false
 	}
 	profileStateMachine(ctx, true)

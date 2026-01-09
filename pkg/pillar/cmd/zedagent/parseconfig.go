@@ -778,6 +778,28 @@ func parseAppInstanceConfig(getconfigCtx *getconfigContext,
 
 		appInstance.ProfileList = cfgApp.ProfileList
 
+		// Determine boot order from multiple sources with precedence (highest to lowest):
+		//   1. LPS (Local Profile Server) - can override controller setting
+		//   2. Controller API (VmConfig.BootOrder from EdgeDevConfig)
+		//   3. Device configuration property (app.boot.order)
+		//   4. Default (BOOT_ORDER_UNSPECIFIED)
+		// This value is passed through DomainConfig.VmConfig to domainmgr,
+		// which writes it to QEMU's fw_cfg as "opt/eve.bootorder" for OVMF to read.
+		//
+		// Store the raw controller boot order for re-evaluation when LPS/DeviceProp changes.
+		controllerBootOrder := cfgApp.Fixedresources.GetBootOrder()
+		appInstance.ControllerBootOrder = controllerBootOrder
+		// Evaluate effective boot order using the helper function.
+		// NOTE: evaluateAppBootOrder requires sideController.Mutex to be held,
+		// which is acquired at the top of parseConfig().
+		appUUID := appInstance.UUIDandVersion.UUID
+		bootOrderResult := evaluateAppBootOrder(appUUID, controllerBootOrder, getconfigCtx)
+		// Acquire bootOrderUpdateMx to update the fields atomically.
+		getconfigCtx.sideController.bootOrderUpdateMx.Lock()
+		appInstance.FixedResources.BootOrder = bootOrderResult.BootOrder
+		appInstance.BootOrderSource = bootOrderResult.Source
+		getconfigCtx.sideController.bootOrderUpdateMx.Unlock()
+
 		// Add config submitted via local profile server.
 		addLocalAppConfig(getconfigCtx, &appInstance)
 
