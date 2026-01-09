@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/golang/protobuf/ptypes"
+	zevecommon "github.com/lf-edge/eve-api/go/evecommon"
 	"github.com/lf-edge/eve-api/go/info"
 	"github.com/lf-edge/eve-api/go/profile"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
@@ -22,6 +23,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	uuid "github.com/satori/go.uuid"
 	"github.com/shirou/gopsutil/host"
+	"google.golang.org/protobuf/proto"
 )
 
 const (
@@ -32,11 +34,17 @@ const (
 	localDevInfoURLPath               = "/api/v1/devinfo"
 	localDevInfoPOSTInterval          = time.Minute
 	localDevInfoPOSTThrottledInterval = time.Hour
+	// App boot info constants
+	localAppBootInfoURLPath               = "/api/v1/appbootinfo"
+	localAppBootInfoPOSTInterval          = time.Minute
+	localAppBootInfoPOSTThrottledInterval = time.Hour
+	savedAppBootConfigFile                = "lastappbootconfig"
 )
 
 var (
-	throttledLocalAppInfo bool
-	throttledLocalDevInfo bool
+	throttledLocalAppInfo     bool
+	throttledLocalDevInfo     bool
+	throttledLocalAppBootInfo bool
 )
 
 // updateLocalAppInfoTicker sets ticker options to the initial value
@@ -761,4 +769,453 @@ func processReceivedDevCommands(getconfigCtx *getconfigContext, cmd *profile.Loc
 	// a power cycle from a UPS to power on again.
 	getconfigCtx.sideController.lastDevCmdTimestamp = cmd.Timestamp
 	saveLocalDevCmdTimestamp(getconfigCtx)
+}
+
+// ============================================================================
+// App Boot Info LPS Task - handles boot order configuration from LPS
+// ============================================================================
+
+// updateLocalAppBootInfoTicker sets ticker options to the initial value
+// if throttle set, will use localAppBootInfoPOSTThrottledInterval as interval
+func updateLocalAppBootInfoTicker(ctx *getconfigContext, throttle bool) {
+	interval := float64(localAppBootInfoPOSTInterval)
+	if throttle {
+		interval = float64(localAppBootInfoPOSTThrottledInterval)
+	}
+	max := 1.1 * interval
+	min := 0.8 * max
+	throttledLocalAppBootInfo = throttle
+	ctx.sideController.localAppBootInfoPOSTTicker.UpdateRangeTicker(
+		time.Duration(min), time.Duration(max))
+}
+
+func initializeLocalAppBootInfo(ctx *getconfigContext) {
+	max := 1.1 * float64(localAppBootInfoPOSTInterval)
+	min := 0.8 * max
+	ctx.sideController.localAppBootInfoPOSTTicker =
+		flextimer.NewRangeTicker(time.Duration(min), time.Duration(max))
+	ctx.sideController.currentAppBootConfigs = make(map[string]types.AppBootConfig)
+	if !loadSavedAppBootConfig(ctx) {
+		// Invalid or missing configuration - start with empty.
+		saveAppBootConfig(&profile.AppBootConfigList{AppConfigs: nil})
+	}
+}
+
+func triggerLocalAppBootInfoPOST(ctx *getconfigContext) {
+	log.Functionf("Triggering POST for %s to local server", localAppBootInfoURLPath)
+	if throttledLocalAppBootInfo {
+		log.Functionln("throttledLocalAppBootInfo flag set")
+		return
+	}
+	ctx.sideController.localAppBootInfoPOSTTicker.TickNow()
+}
+
+// Run a periodic POST request to send boot order information to local server
+// and receive boot configuration in response.
+func localAppBootInfoPOSTTask(ctx *getconfigContext) {
+	log.Functionf("localAppBootInfoPOSTTask: waiting for localAppBootInfoPOSTTicker")
+	// wait for the first trigger
+	<-ctx.sideController.localAppBootInfoPOSTTicker.C
+	log.Functionln("localAppBootInfoPOSTTask: waiting for localAppBootInfoPOSTTicker done")
+	// trigger again to pass into the loop
+	triggerLocalAppBootInfoPOST(ctx)
+
+	wdName := agentName + "-localappbootinfo"
+
+	// Run a periodic timer so we always update StillRunning
+	stillRunning := time.NewTicker(25 * time.Second)
+	ctx.zedagentCtx.ps.StillRunning(wdName, warningTime, errorTime)
+	ctx.zedagentCtx.ps.RegisterFileWatchdog(wdName)
+
+	// On first run, apply any saved boot configs from disk.
+	// This ensures boot order is set even if LPS is unreachable.
+	ctx.sideController.Lock()
+	for _, bootConfig := range ctx.sideController.currentAppBootConfigs {
+		log.Noticef("Applying saved AppBootConfig: UUID=%s, BootOrder=%s",
+			bootConfig.AppUUID.String(), bootConfig.BootOrder)
+		// Unlock temporarily to avoid deadlock with applyAppBootConfig
+		ctx.sideController.Unlock()
+		applyAppBootConfig(ctx, bootConfig.AppUUID)
+		ctx.sideController.Lock()
+	}
+	ctx.sideController.Unlock()
+
+	for {
+		select {
+		case <-ctx.sideController.localAppBootInfoPOSTTicker.C:
+			start := time.Now()
+			bootConfig := postLocalAppBootInfo(ctx)
+			processReceivedAppBootConfig(ctx, bootConfig)
+			ctx.zedagentCtx.ps.CheckMaxTimeTopic(wdName, "localAppBootInfoPOSTTask", start,
+				warningTime, errorTime)
+		case <-stillRunning.C:
+		}
+		ctx.zedagentCtx.ps.StillRunning(wdName, warningTime, errorTime)
+	}
+}
+
+// Post the current boot order information for all apps to the local server
+// and receive boot configuration in response.
+func postLocalAppBootInfo(ctx *getconfigContext) *profile.AppBootConfigList {
+	localProfileServer := ctx.sideController.localProfileServer
+	if localProfileServer == "" {
+		return nil
+	}
+	localServerURL, err := makeLocalServerBaseURL(localProfileServer)
+	if err != nil {
+		log.Errorf("postLocalAppBootInfo: makeLocalServerBaseURL: %v", err)
+		return nil
+	}
+	if !ctx.sideController.localServerMap.upToDate {
+		err := updateLocalServerMap(ctx, localServerURL)
+		if err != nil {
+			log.Errorf("postLocalAppBootInfo: updateLocalServerMap: %v", err)
+			return nil
+		}
+		updateHasLocalServer(ctx)
+	}
+	srvMap := ctx.sideController.localServerMap.servers
+	if len(srvMap) == 0 {
+		log.Functionf("postLocalAppBootInfo: cannot find any configured apps for localServerURL: %s",
+			localServerURL)
+		return nil
+	}
+
+	bootInfoList := prepareAppBootInfo(ctx)
+
+	var errList []string
+	for bridgeName, servers := range srvMap {
+		for _, srv := range servers {
+			fullURL := srv.localServerAddr + localAppBootInfoURLPath
+			bootConfig := &profile.AppBootConfigList{}
+			resp, err := zedcloud.SendLocalProto(
+				zedcloudCtx, fullURL, bridgeName, srv.bridgeIP, bootInfoList, bootConfig)
+			if err != nil {
+				errList = append(errList, fmt.Sprintf("SendLocalProto: %v", err))
+				continue
+			}
+			switch resp.StatusCode {
+			case http.StatusNotFound:
+				// 404 means LPS has no config for this device - clear all LPS-set boot orders.
+				updateLocalAppBootInfoTicker(ctx, true)
+				log.Noticef("LPS returned 404 - clearing all app boot configs")
+				return &profile.AppBootConfigList{AppConfigs: nil}
+			case http.StatusOK, http.StatusCreated:
+				if bootConfig.GetServerToken() != ctx.sideController.profileServerToken {
+					errList = append(errList,
+						fmt.Sprintf("invalid token submitted by local server (%s)", bootConfig.GetServerToken()))
+					continue
+				}
+				if len(bootConfig.GetAppConfigs()) > 0 {
+					log.Noticef("Received app boot config for %d apps",
+						len(bootConfig.GetAppConfigs()))
+				}
+				updateLocalAppBootInfoTicker(ctx, false)
+				return bootConfig
+			case http.StatusNoContent:
+				log.Functionf("postLocalAppBootInfo: successfully posted boot info, no config changes")
+				updateLocalAppBootInfoTicker(ctx, false)
+				return nil
+			default:
+				errList = append(errList, fmt.Sprintf("SendLocal: wrong response status code: %d",
+					resp.StatusCode))
+				continue
+			}
+		}
+	}
+	log.Errorf("postLocalAppBootInfo: all attempts failed: %s", strings.Join(errList, ";"))
+	return nil
+}
+
+// prepareAppBootInfo builds the AppBootInfoList message from current app configs.
+func prepareAppBootInfo(ctx *getconfigContext) *profile.AppBootInfoList {
+	msg := &profile.AppBootInfoList{}
+	iterateApps := func(_ string, value interface{}) bool {
+		appConfig := value.(types.AppInstanceConfig)
+		bootInfo := &profile.AppBootInfo{
+			Id:          appConfig.UUIDandVersion.UUID.String(),
+			Displayname: appConfig.DisplayName,
+			BootOrder:   appConfig.FixedResources.BootOrder,
+			Source:      appConfig.BootOrderSource,
+		}
+		msg.AppsBootInfo = append(msg.AppsBootInfo, bootInfo)
+		return true
+	}
+	ctx.pubAppInstanceConfig.Iterate(iterateApps)
+	return msg
+}
+
+// processReceivedAppBootConfig processes app boot configuration received from LPS.
+func processReceivedAppBootConfig(ctx *getconfigContext, config *profile.AppBootConfigList) {
+	if config == nil {
+		return
+	}
+
+	ctx.sideController.Lock()
+	defer ctx.sideController.Unlock()
+
+	// Track which apps are in this config (used to detect removed apps)
+	seenApps := make(map[string]bool)
+	var configChanged bool
+
+	// Process each app in the received config
+	for _, protoConfig := range config.AppConfigs {
+		var err error
+		appUUID := nilUUID
+		displayName := protoConfig.GetDisplayname()
+
+		if protoConfig.GetId() != "" {
+			appUUID, err = uuid.FromString(protoConfig.GetId())
+			if err != nil {
+				log.Warnf("Failed to parse UUID from app boot config: %v", err)
+				continue
+			}
+		}
+
+		if appUUID == nilUUID && displayName == "" {
+			log.Warnf("App boot config is missing both UUID and display name")
+			continue
+		}
+
+		// Resolve app instance by UUID or displayname
+		appInst := findAppInstance(ctx, appUUID, displayName)
+		if appInst == nil {
+			log.Warnf("Failed to find app instance with UUID=%s, displayName=%s",
+				appUUID, displayName)
+			continue
+		}
+
+		appUUID = appInst.UUIDandVersion.UUID
+		bootOrder := protoConfig.GetUsbBoot()
+		seenApps[appUUID.String()] = true
+
+		// Skip if unchanged
+		if existingConfig, exists := ctx.sideController.currentAppBootConfigs[appUUID.String()]; exists {
+			if existingConfig.BootOrder == bootOrder {
+				continue
+			}
+		}
+
+		// Update cache
+		if bootOrder == zevecommon.BootOrder_BOOT_ORDER_UNSPECIFIED {
+			delete(ctx.sideController.currentAppBootConfigs, appUUID.String())
+		} else {
+			ctx.sideController.currentAppBootConfigs[appUUID.String()] = types.AppBootConfig{
+				AppUUID:     appUUID,
+				DisplayName: appInst.DisplayName,
+				BootOrder:   bootOrder,
+			}
+		}
+
+		log.Noticef("Applying AppBootConfig: UUID=%s, Name=%s, BootOrder=%s",
+			appUUID.String(), appInst.DisplayName, bootOrder)
+		// Unlock temporarily to apply boot config
+		ctx.sideController.Unlock()
+		applyAppBootConfig(ctx, appUUID)
+		ctx.sideController.Lock()
+		configChanged = true
+	}
+
+	// Reset boot order for apps that were removed from LPS config
+	for uuidStr, bootConfig := range ctx.sideController.currentAppBootConfigs {
+		if !seenApps[uuidStr] {
+			log.Noticef("Resetting BootOrder for app no longer in LPS config: %s", uuidStr)
+			delete(ctx.sideController.currentAppBootConfigs, uuidStr)
+			ctx.sideController.Unlock()
+			applyAppBootConfig(ctx, bootConfig.AppUUID)
+			ctx.sideController.Lock()
+			configChanged = true
+		}
+	}
+
+	if configChanged {
+		saveAppBootConfig(config)
+	}
+}
+
+// bootOrderEvalResult holds the result of evaluating boot order from all sources.
+type bootOrderEvalResult struct {
+	BootOrder zevecommon.BootOrder
+	Source    profile.BootOrderSource
+}
+
+// evaluateAppBootOrder determines the effective boot order for an app by checking
+// all configuration sources in precedence order:
+//  1. LPS (Local Profile Server) - highest priority
+//  2. Controller API (controllerBootOrder parameter)
+//  3. Device configuration property (app.boot.order)
+//  4. Default (BOOT_ORDER_UNSPECIFIED)
+//
+// IMPORTANT: The caller MUST already hold sideController.Mutex (e.g., parseConfig
+// acquires it at the top level). This function reads currentAppBootConfigs without
+// acquiring the lock since the caller already holds it.
+func evaluateAppBootOrder(
+	appUUID uuid.UUID,
+	controllerBootOrder zevecommon.BootOrder,
+	ctx *getconfigContext,
+) bootOrderEvalResult {
+	result := bootOrderEvalResult{
+		BootOrder: zevecommon.BootOrder_BOOT_ORDER_UNSPECIFIED,
+		Source:    profile.BootOrderSource_BOOT_ORDER_SOURCE_UNSPECIFIED,
+	}
+
+	// Start with device property as the lowest-priority source.
+	devicePropBootOrder := ctx.zedagentCtx.globalConfig.GlobalValueString(types.AppBootOrder)
+	if devicePropBootOrder != "" {
+		switch devicePropBootOrder {
+		case "usb":
+			result.BootOrder = zevecommon.BootOrder_BOOT_ORDER_USB
+			result.Source = profile.BootOrderSource_BOOT_ORDER_SOURCE_DEVICE_PROPERTY
+		case "nousb":
+			result.BootOrder = zevecommon.BootOrder_BOOT_ORDER_NOUSB
+			result.Source = profile.BootOrderSource_BOOT_ORDER_SOURCE_DEVICE_PROPERTY
+		}
+	}
+
+	// Controller API takes precedence over device property.
+	if controllerBootOrder != zevecommon.BootOrder_BOOT_ORDER_UNSPECIFIED {
+		result.BootOrder = controllerBootOrder
+		result.Source = profile.BootOrderSource_BOOT_ORDER_SOURCE_CONTROLLER
+	}
+
+	// LPS takes highest precedence.
+	// NOTE: sideController.Mutex is already held by the caller (parseConfig),
+	// so we can safely read currentAppBootConfigs without acquiring the lock.
+	lpsConfig, exists := ctx.sideController.currentAppBootConfigs[appUUID.String()]
+	if exists && lpsConfig.BootOrder != zevecommon.BootOrder_BOOT_ORDER_UNSPECIFIED {
+		result.BootOrder = lpsConfig.BootOrder
+		result.Source = profile.BootOrderSource_BOOT_ORDER_SOURCE_LPS
+	}
+
+	return result
+}
+
+// applyAppBootConfig applies boot configuration for an app received from LPS.
+// This re-evaluates the effective boot order using the stored ControllerBootOrder
+// and current device property, respecting the precedence: LPS > Controller > DeviceProperty.
+func applyAppBootConfig(ctx *getconfigContext, appUUID uuid.UUID) {
+
+	// Lock ordering: sideController.Mutex BEFORE bootOrderUpdateMx to avoid deadlock.
+	// sideController.Mutex protects currentAppBootConfigs accessed by evaluateAppBootOrder.
+	ctx.sideController.Lock()
+	defer ctx.sideController.Unlock()
+
+	ctx.sideController.bootOrderUpdateMx.Lock()
+	defer ctx.sideController.bootOrderUpdateMx.Unlock()
+
+	appObj, err := ctx.pubAppInstanceConfig.Get(appUUID.String())
+	if err != nil {
+		log.Warnf("applyAppBootConfig: AppInstanceConfig not found for %s: %v",
+			appUUID.String(), err)
+		return
+	}
+
+	appConfig := appObj.(types.AppInstanceConfig)
+
+	// Re-evaluate boot order using the helper function.
+	result := evaluateAppBootOrder(appUUID, appConfig.ControllerBootOrder, ctx)
+
+	// Update boot order if changed
+	if appConfig.FixedResources.BootOrder != result.BootOrder ||
+		appConfig.BootOrderSource != result.Source {
+		log.Noticef("applyAppBootConfig: Updating %s (%s) BootOrder: %s -> %s (source: %s)",
+			appUUID.String(), appConfig.DisplayName,
+			appConfig.FixedResources.BootOrder, result.BootOrder, result.Source)
+
+		appConfig.FixedResources.BootOrder = result.BootOrder
+		appConfig.BootOrderSource = result.Source
+		checkAndPublishAppInstanceConfig(ctx, appConfig)
+
+		// Trigger immediate POST of boot order info to LPS
+		triggerLocalAppBootInfoPOST(ctx)
+	}
+}
+
+// applyDevicePropertyBootOrder is called when app.boot.order device property changes.
+// This re-evaluates the effective boot order for all apps using the stored
+// ControllerBootOrder, current LPS config, and the new device property value.
+// Returns true if any app was actually updated.
+// NOTE: This function is called from parseConfigItems which is called from parseConfig,
+// and parseConfig already holds sideController.Lock(). Therefore, we must NOT acquire
+// sideController.Lock() here to avoid deadlock.
+func applyDevicePropertyBootOrder(ctx *getconfigContext) (changed bool) {
+
+	// NOTE: sideController.Lock() is already held by parseConfig (the caller).
+	// We only need to acquire bootOrderUpdateMx here.
+	ctx.sideController.bootOrderUpdateMx.Lock()
+	defer ctx.sideController.bootOrderUpdateMx.Unlock()
+
+	for _, appObj := range ctx.pubAppInstanceConfig.GetAll() {
+		appConfig := appObj.(types.AppInstanceConfig)
+		appUUID := appConfig.UUIDandVersion.UUID
+
+		// Re-evaluate boot order using the helper function.
+		result := evaluateAppBootOrder(appUUID, appConfig.ControllerBootOrder, ctx)
+
+		// Update if changed
+		if appConfig.FixedResources.BootOrder != result.BootOrder ||
+			appConfig.BootOrderSource != result.Source {
+			log.Noticef("applyDevicePropertyBootOrder: Updating %s (%s) BootOrder: %s -> %s (source: %s)",
+				appUUID.String(), appConfig.DisplayName,
+				appConfig.FixedResources.BootOrder, result.BootOrder, result.Source)
+
+			appConfig.FixedResources.BootOrder = result.BootOrder
+			appConfig.BootOrderSource = result.Source
+			checkAndPublishAppInstanceConfig(ctx, appConfig)
+			changed = true
+		}
+	}
+	return changed
+}
+
+// loadSavedAppBootConfig loads the last saved app boot configuration from disk
+// and populates the currentAppBootConfigs cache.
+func loadSavedAppBootConfig(ctx *getconfigContext) bool {
+	configBytes, ts, err := readSavedConfig(
+		filepath.Join(checkpointDirname, savedAppBootConfigFile))
+	if err != nil {
+		log.Warnf("Failed to load saved app boot config: %v", err)
+		return false
+	}
+	if configBytes == nil {
+		log.Warnf("No saved app boot config found")
+		return false
+	}
+
+	config := &profile.AppBootConfigList{}
+	if err := proto.Unmarshal(configBytes, config); err != nil {
+		log.Errorf("Unmarshalling app boot config failed: %v", err)
+		return false
+	}
+
+	// Populate the cache with saved configs
+	var count int
+	for _, protoConfig := range config.GetAppConfigs() {
+		appUUID, err := uuid.FromString(protoConfig.GetId())
+		if err != nil {
+			log.Warnf("Invalid UUID in saved config: %s", protoConfig.GetId())
+			continue
+		}
+		ctx.sideController.currentAppBootConfigs[appUUID.String()] = types.AppBootConfig{
+			AppUUID:     appUUID,
+			DisplayName: protoConfig.GetDisplayname(),
+			BootOrder:   protoConfig.GetUsbBoot(),
+		}
+		count++
+	}
+
+	log.Noticef("Loaded saved app boot config dated %s with %d entries",
+		ts.Format(time.RFC3339Nano), count)
+	return true
+}
+
+// saveAppBootConfig saves app boot configuration to disk for persistence.
+func saveAppBootConfig(config *profile.AppBootConfigList) {
+	contents, err := proto.Marshal(config)
+	if err != nil {
+		log.Errorf("Marshalling app boot config failed: %v", err)
+		return
+	}
+	saveConfig(savedAppBootConfigFile, contents)
+	log.Tracef("Saved app boot config to disk")
 }
