@@ -15,7 +15,18 @@ import (
 )
 
 func (z *zedrouter) generateBridgeMAC(brNum int) net.HardwareAddr {
-	return net.HardwareAddr{0x00, 0x16, 0x3e, 0x06, 0x00, byte(brNum)}
+	a := byte(0x06)
+	b := byte(0x00)
+	// If we have node UUID, hash it to get two bytes to be part of the Bridge MAC
+	if z.nodeUUID != uuid.Nil {
+		h := sha256.New()
+		h.Write(z.nodeUUID[:])
+		sum := h.Sum(nil)
+		// Use first two bytes of hash for A and B
+		a = sum[0]
+		b = sum[1]
+	}
+	return net.HardwareAddr{0x00, 0x16, 0x3e, a, b, byte(brNum)}
 }
 
 // generateAppMac calculates random but stable (not changing across reboots) MAC address
