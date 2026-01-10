@@ -14,8 +14,23 @@ import (
 	uuid "github.com/satori/go.uuid"
 )
 
+// generateBridgeMAC returns the MAC address used for a bridge (network instance).
 func (z *zedrouter) generateBridgeMAC(brNum int) net.HardwareAddr {
-	return net.HardwareAddr{0x00, 0x16, 0x3e, 0x06, 0x00, byte(brNum)}
+	a := byte(0x06)
+	b := byte(0x00)
+	// If we have node UUID, hash it to get two bytes to be part of the Bridge MAC
+	// This device bound bridge MAC address, at least for switch NI, is needed because for
+	// clustering or multiple devices in the same L2 domain on site, we want to avoid the
+	// bridge-ID collision in STP environment.
+	if z.nodeUUID != uuid.Nil {
+		h := sha256.New()
+		h.Write(z.nodeUUID[:])
+		sum := h.Sum(nil)
+		// Use first two bytes of hash for A and B
+		a = sum[0]
+		b = sum[1]
+	}
+	return net.HardwareAddr{0x00, 0x16, 0x3e, a, b, byte(brNum)}
 }
 
 // generateAppMac calculates random but stable (not changing across reboots) MAC address
