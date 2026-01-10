@@ -49,6 +49,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
 	"github.com/lf-edge/eve/pkg/pillar/utils/wait"
+	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 )
 
@@ -108,6 +109,9 @@ type zedrouter struct {
 	// To collect port info
 	subDeviceNetworkStatus pubsub.Subscription
 	subWwanMetrics         pubsub.Subscription
+
+	// Node UUID obtained from onboarding
+	nodeUUID uuid.UUID
 
 	// Configuration for Network Instances
 	subNetworkInstanceConfig pubsub.Subscription
@@ -308,12 +312,13 @@ func (z *zedrouter) run(ctx context.Context) (err error) {
 	z.log.Noticef("Processed GlobalConfig")
 
 	// Wait until we have been onboarded aka know our own UUID
-	// (even though zedrouter does not use the UUID).
-	err = wait.WaitForOnboarded(z.pubSub, z.log, agentName, warningTime, errorTime)
+	// Extract Device UUID from onboarding status and save it in zedrouter.
+	status, err := wait.WaitForOnboarded(z.pubSub, z.log, agentName, warningTime, errorTime)
 	if err != nil {
 		return err
 	}
-	z.log.Noticef("Received device UUID")
+	z.nodeUUID = status.DeviceUUID
+	z.log.Noticef("Received OnboardingStatus with device UUID: %s", z.nodeUUID.String())
 
 	// Timer used to retry failed configuration
 	z.retryTimer = time.NewTimer(1 * time.Second)
@@ -350,6 +355,7 @@ func (z *zedrouter) run(ctx context.Context) (err error) {
 	}
 
 	z.log.Noticef("Entering main event loop")
+
 	for {
 		select {
 

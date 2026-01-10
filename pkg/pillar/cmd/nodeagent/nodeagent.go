@@ -324,7 +324,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	subDomainStatus.Activate()
 
 	// Wait until we have been onboarded aka know our own UUID however we do not use the UUID
-	if err := wait.WaitForOnboarded(ps, log, agentName, warningTime, errorTime); err != nil {
+	if _, err := wait.WaitForOnboarded(ps, log, agentName, warningTime, errorTime); err != nil {
 		log.Fatal(err)
 	}
 	log.Functionf("Device is onboarded")

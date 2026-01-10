@@ -57,7 +57,7 @@ func (ctx *VerifierContext) Run(arguments []string, baseDir string) int {
 	ctx.ps.StillRunning(agentName, warningTime, errorTime)
 
 	// Wait until we have been onboarded aka know our own UUID, but we don't use the UUID
-	err := wait.WaitForOnboarded(ctx.ps, ctx.log, agentName, warningTime, errorTime)
+	_, err := wait.WaitForOnboarded(ctx.ps, ctx.log, agentName, warningTime, errorTime)
 	if err != nil {
 		ctx.log.Fatal(err)
 	}
