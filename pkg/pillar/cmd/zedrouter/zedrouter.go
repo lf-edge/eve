@@ -49,6 +49,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
 	"github.com/lf-edge/eve/pkg/pillar/utils/wait"
+	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 )
 
@@ -108,6 +109,10 @@ type zedrouter struct {
 	// To collect port info
 	subDeviceNetworkStatus pubsub.Subscription
 	subWwanMetrics         pubsub.Subscription
+
+	// Edge node info (node UUID)
+	subEdgeNodeInfo pubsub.Subscription
+	nodeUUID        uuid.UUID
 
 	// Configuration for Network Instances
 	subNetworkInstanceConfig pubsub.Subscription
@@ -339,6 +344,7 @@ func (z *zedrouter) run(ctx context.Context) (err error) {
 	inactiveSubs := []pubsub.Subscription{
 		z.subDeviceNetworkStatus,
 		z.subWwanMetrics,
+		z.subEdgeNodeInfo,
 		z.subNetworkInstanceConfig,
 		z.subAppNetworkConfig,
 		z.subAppNetworkConfigAg,
@@ -350,6 +356,21 @@ func (z *zedrouter) run(ctx context.Context) (err error) {
 	}
 
 	z.log.Noticef("Entering main event loop")
+
+	// Wait for EdgeNodeInfo to be initialized (to get node UUID)
+	var edgenodeInfoInitialized bool
+	for !edgenodeInfoInitialized {
+		z.log.Functionf("Waiting for EdgeNodeInfo initialization")
+		select {
+		case change := <-z.subEdgeNodeInfo.MsgChan():
+			z.subEdgeNodeInfo.ProcessChange(change)
+			edgenodeInfoInitialized = z.checkAndSaveEdgeNodeInfo()
+		case <-stillRunning.C:
+		}
+		z.pubSub.StillRunning(agentName, warningTime, errorTime)
+	}
+	z.log.Noticef("EdgeNodeInfo initialized, node UUID: %s", z.nodeUUID.String())
+
 	for {
 		select {
 
@@ -366,6 +387,9 @@ func (z *zedrouter) run(ctx context.Context) (err error) {
 
 		case change := <-z.subDeviceNetworkStatus.MsgChan():
 			z.subDeviceNetworkStatus.ProcessChange(change)
+
+		case change := <-z.subEdgeNodeInfo.MsgChan():
+			z.subEdgeNodeInfo.ProcessChange(change)
 
 		case change := <-z.subWwanMetrics.MsgChan():
 			z.subWwanMetrics.ProcessChange(change)
@@ -695,6 +719,19 @@ func (z *zedrouter) initSubscriptions() (err error) {
 		return err
 	}
 
+	// Look for edge node info
+	subEdgeNodeInfo, err := z.pubSub.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:   "zedagent",
+		MyAgentName: agentName,
+		TopicImpl:   types.EdgeNodeInfo{},
+		Persistent:  true,
+		Activate:    false,
+	})
+	if err != nil {
+		return err
+	}
+	z.subEdgeNodeInfo = subEdgeNodeInfo
+
 	return nil
 }
 
@@ -898,6 +935,22 @@ func (z *zedrouter) lookupAppNetworkStatus(key string) *types.AppNetworkStatus {
 	}
 	status := st.(types.AppNetworkStatus)
 	return &status
+}
+
+// checkAndSaveEdgeNodeInfo checks EdgeNodeInfo subscription and saves node UUID
+// returns true if valid EdgeNodeInfo was found and saved
+func (z *zedrouter) checkAndSaveEdgeNodeInfo() bool {
+	items := z.subEdgeNodeInfo.GetAll()
+	if len(items) > 0 {
+		for _, item := range items {
+			enInfo := item.(types.EdgeNodeInfo)
+			if enInfo.DeviceID != uuid.Nil {
+				z.nodeUUID = enInfo.DeviceID
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (z *zedrouter) publishNetworkInstanceStatus(status *types.NetworkInstanceStatus) {
