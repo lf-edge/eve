@@ -16,7 +16,6 @@ import (
 	"fmt"
 	"os"
 	"regexp"
-	"strings"
 	"syscall"
 	"time"
 
@@ -49,8 +48,7 @@ type ledManagerContext struct {
 	radioSilence           bool
 	derivedLedCounter      types.LedBlinkCount // Based on ledCounter, usableAddressCount and radioSilence
 	GCInitialized          bool
-	blinkSendStop          chan string // Used by sender to stop the running forever blink routine
-	blinkRecvStop          chan string // Sender waits for the ack.
+	hardware.BlinkContext
 	// cli options
 	fatalPtr *bool
 	hangPtr  *bool
@@ -62,219 +60,12 @@ func (ctxPtr *ledManagerContext) AddAgentSpecificCLIFlags(flagSet *flag.FlagSet)
 	ctxPtr.hangPtr = flagSet.Bool("H", false, "Cause watchdog .touch fault injection")
 }
 
-// DisplayFunc takes an argument which can be the name of a LED or display
-type DisplayFunc func(deviceNetworkStatus *types.DeviceNetworkStatus,
-	arg string, blinkCount types.LedBlinkCount)
-
-// InitFunc takes an argument which can be the name of a LED or display
-// The argument could be a comma-separated list.
-// Returns the one which works
-type InitFunc func(arg string) string
-
-// AppStatusDisplayFunc takes an argument to list of leds
-type AppStatusDisplayFunc func(ctx *ledManagerContext, arg []string, blink bool, color string)
-
-type modelToFuncs struct {
-	model                string
-	initFunc             InitFunc
-	displayFunc          DisplayFunc
-	arg                  string // Passed to initFunc and displayFunc
-	appStatusDisplayFunc AppStatusDisplayFunc
-	appStatusArgs        []string // Passed to appStatusDisplayFunc
-	regexp               bool     // model string is a regex
-	isDisplay            bool     // no periodic blinking/update
-}
-
-var mToF = []modelToFuncs{
-	{
-		model:       "Supermicro.SYS-E100-9APP",
-		initFunc:    InitForceDiskCmd,
-		displayFunc: ExecuteForceDiskCmd,
-	},
-	{
-		model:       "Supermicro.SYS-E100-9S",
-		initFunc:    InitForceDiskCmd,
-		displayFunc: ExecuteForceDiskCmd,
-	},
-	{
-		model:       "Supermicro.SYS-E50-9AP",
-		initFunc:    InitForceDiskCmd,
-		displayFunc: ExecuteForceDiskCmd,
-	},
-	{ // XXX temporary fix for old BIOS
-		model:       "Supermicro.Super Server",
-		initFunc:    InitForceDiskCmd,
-		displayFunc: ExecuteForceDiskCmd,
-	},
-	{
-		model:       "Supermicro.SYS-E300-8D",
-		initFunc:    InitForceDiskCmd,
-		displayFunc: ExecuteForceDiskCmd,
-	},
-	{
-		model:       "Supermicro.SYS-E300-9A-4CN10P",
-		initFunc:    InitForceDiskCmd,
-		displayFunc: ExecuteForceDiskCmd,
-	},
-	{
-		model:       "Supermicro.SYS-5018D-FN8T",
-		initFunc:    InitForceDiskCmd,
-		displayFunc: ExecuteForceDiskCmd,
-	},
-	{
-		model:       "PC Engines.apu2",
-		initFunc:    InitLedCmd,
-		displayFunc: ExecuteLedCmd,
-		arg:         "apu2:green:led3",
-	},
-	{
-		model:       "Dell Inc..Edge Gateway 3001",
-		initFunc:    InitDellCmd,
-		displayFunc: ExecuteLedCmd,
-		arg:         "/sys/class/gpio/gpio346/value",
-	},
-	{
-		model:       "Dell Inc..Edge Gateway 3002",
-		initFunc:    InitDellCmd,
-		displayFunc: ExecuteLedCmd,
-		arg:         "/sys/class/gpio/gpio346/value",
-	},
-	{
-		model:       "Dell Inc..Edge Gateway 3003",
-		initFunc:    InitDellCmd,
-		displayFunc: ExecuteLedCmd,
-		arg:         "/sys/class/gpio/gpio346/value",
-	},
-	{
-		model:                "SIEMENS AG.SIMATIC IPC127E",
-		initFunc:             InitLedCmd,
-		displayFunc:          ExecuteLedCmd,
-		arg:                  "ipc127:green:1",
-		appStatusDisplayFunc: executeAppStatusDisplayFunc,
-		appStatusArgs:        []string{"ipc127:green:3", "ipc127:red:3"}, // For this model we use led3 to display app status
-	},
-	{
-		model:       "hisilicon,hi6220-hikey.hisilicon,hi6220.",
-		initFunc:    InitLedCmd,
-		displayFunc: ExecuteLedCmd,
-		arg:         "wifi_active",
-	},
-	{
-		model:       "hisilicon,hikey.hisilicon,hi6220.",
-		initFunc:    InitLedCmd,
-		displayFunc: ExecuteLedCmd,
-		arg:         "wifi_active",
-	},
-	{
-		model:       "LeMaker.HiKey-6220",
-		initFunc:    InitLedCmd,
-		displayFunc: ExecuteLedCmd,
-		arg:         "wifi_active",
-	},
-	{
-		model:  "QEMU.*",
-		regexp: true,
-		// No disk light blinking on QEMU
-		initFunc:    createLogfile,
-		displayFunc: appendLogfile,
-		// XXX set this to test output to a file:
-		// arg:         "/persist/log/ledmanager-status.log",
-		isDisplay: true,
-	},
-	{
-		model:  "Red Hat.KVM",
-		regexp: true,
-		// No disk light blinking on Red Hat.KVM qemu
-	},
-	{
-		model:  "Parallels.*",
-		regexp: true,
-		// No disk light blinking on Parallels
-	},
-	{
-		model:  "Google.*",
-		regexp: true,
-		// No disk light blinking on Google
-	},
-	{
-		model:  "VMware.*",
-		regexp: true,
-		// No disk light blinking on VMware
-	},
-	{
-		model:       "raspberrypi.rpi.raspberrypi,4-model-b.brcm,bcm2711",
-		initFunc:    InitLedCmd,
-		displayFunc: ExecuteLedCmd,
-		arg:         "ACT,led0",
-	},
-	{
-		model:       "RaspberryPi.RPi4",
-		initFunc:    InitLedCmd,
-		displayFunc: ExecuteLedCmd,
-		arg:         "ACT,led0",
-	},
-	{
-		model:       "raspberrypi,4-compute-modulebrcm,bcm2711",
-		initFunc:    InitLedCmd,
-		displayFunc: ExecuteLedCmd,
-		arg:         "ACT",
-	},
-	{
-		model:       "raspberrypi,5-model-bbrcm,bcm2712",
-		initFunc:    InitLedCmd,
-		displayFunc: ExecuteLedCmd,
-		arg:         "ACT",
-	},
-	{
-		model:       "raspberrypi.uno-220.raspberrypi,4-model-b.brcm,bcm2711",
-		initFunc:    InitLedCmd,
-		displayFunc: ExecuteLedCmd,
-		arg:         "uno",
-	},
-	{
-		model:       "rockchip.evb_rk3399.NexCore,Q116.rockchip,rk3399",
-		initFunc:    InitLedCmd,
-		displayFunc: ExecuteLedCmd,
-		arg:         "eve",
-	},
-	{
-		model:       "AAEON.UP-APL01",
-		initFunc:    InitLedCmd,
-		displayFunc: ExecuteLedCmd,
-		arg:         "upboard:blue:",
-	},
-	{
-		model:       "Axiomtek Co., Ltd.EM320",
-		initFunc:    InitLedCmd,
-		displayFunc: ExecuteLedCmd,
-		arg:         "blue:status-0",
-	},
-	{
-		model:       "advantech.imx8mp_rsb3720a1.*",
-		regexp:      true,
-		initFunc:    InitLedCmd,
-		displayFunc: ExecuteLedCmd,
-		arg:         "user",
-	},
-	{
-		model:       "phytec,imx8mp-phyboard-pollux-rdk.*",
-		regexp:      true,
-		initFunc:    InitLedCmd,
-		displayFunc: ExecuteLedCmd,
-		arg:         "led3", // Blue LED
-	},
-	{
-		// Last in table as a default
-		model:       "",
-		initFunc:    InitForceDiskCmd,
-		displayFunc: ExecuteForceDiskCmd,
-	},
-}
+// DisplayFunc, InitFunc, AppStatusDisplayFunc types are now in hardware package
 
 var logger *logrus.Logger
 var log *base.LogObject
 
-var appStatusDisplayFunc AppStatusDisplayFunc
+var appStatusDisplayFunc hardware.AppStatusDisplayFunc
 var appStatusArgs []string
 
 func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string, baseDir string) int {
@@ -300,38 +91,55 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	model := hardware.GetHardwareModel(log)
 	log.Noticef("Got HardwareModel %s", model)
 
-	var displayFunc DisplayFunc
-	var initFunc InitFunc
+	var displayFunc hardware.DisplayFunc
+	var initFunc hardware.InitFunc
 	var arg string
 	var isDisplay bool
 
-	setFuncs := func(m modelToFuncs) {
-		displayFunc = m.displayFunc
-		initFunc = m.initFunc
-		arg = m.arg
-		isDisplay = m.isDisplay
-		appStatusDisplayFunc = m.appStatusDisplayFunc
-		appStatusArgs = m.appStatusArgs
+	setFuncs := func(m hardware.LedModel) {
+		arg = m.Arg
+		isDisplay = m.IsDisplay
+		appStatusArgs = m.AppStatusArgs
+		if m.HasAppStatus {
+			appStatusDisplayFunc = hardware.ExecuteAppStatusDisplayFunc
+		}
+
+		switch m.Strategy {
+		case hardware.StrategyForceDisk:
+			initFunc = InitForceDiskCmd
+			displayFunc = func(log *base.LogObject, dns *types.DeviceNetworkStatus, arg string, bc types.LedBlinkCount) {
+				ExecuteForceDiskCmd(log, dns, arg, bc)
+			}
+		case hardware.StrategyLedCmd:
+			initFunc = hardware.InitLedCmd
+			displayFunc = hardware.ExecuteLedCmd
+		case hardware.StrategyDellCmd:
+			initFunc = hardware.InitDellCmd
+			displayFunc = hardware.ExecuteLedCmd
+		case hardware.StrategyLogfile:
+			initFunc = hardware.CreateLogfile
+			displayFunc = hardware.AppendLogfile
+		}
 	}
 
-	for _, m := range mToF {
-		if !m.regexp && m.model == model {
+	for _, m := range hardware.LedModels {
+		if !m.Regexp && m.Model == model {
 			setFuncs(m)
-			log.Functionf("Found %v arg %s for model %s",
-				displayFunc, arg, model)
+			log.Functionf("Found arg %s for model %s",
+				arg, model)
 			break
 		}
-		if m.regexp {
-			if re, err := regexp.Compile(m.model); err != nil {
+		if m.Regexp {
+			if re, err := regexp.Compile(m.Model); err != nil {
 				log.Errorf("Fail in regexp parse: %s", err)
 			} else if re.MatchString(model) {
 				setFuncs(m)
-				log.Functionf("Found %v arg %s for model %s by pattern %s",
-					displayFunc, arg, model, m.model)
+				log.Functionf("Found arg %s for model %s by pattern %s",
+					arg, model, m.Model)
 				break
 			}
 		}
-		if m.model == "" {
+		if m.Model == "" {
 			log.Functionf("No blink function for %s", model)
 			setFuncs(m)
 			break
@@ -339,11 +147,11 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 
 	if initFunc != nil {
-		arg = initFunc(arg)
+		arg = initFunc(log, arg)
 	}
 
 	if appStatusDisplayFunc != nil {
-		executeAppStatusDisplayFunc(&ctx, appStatusArgs, false, "off") // turn off at the start
+		appStatusDisplayFunc(log, &ctx.BlinkContext, appStatusArgs, false, "off") // turn off at the start
 	}
 	log.Functionf("Creating %s at %s", "handleDisplayUpdate",
 		agentlog.GetMyStack())
@@ -518,7 +326,7 @@ func handleLedBlinkDelete(ctxArg interface{}, key string,
 
 // handleDisplayUpdate waits for changes and displays/blinks the based on
 // the updated counter
-func handleDisplayUpdate(ctx *ledManagerContext, displayFunc DisplayFunc,
+func handleDisplayUpdate(ctx *ledManagerContext, displayFunc hardware.DisplayFunc,
 	arg string, isDisplay bool) {
 
 	var counter types.LedBlinkCount
@@ -536,7 +344,7 @@ func handleDisplayUpdate(ctx *ledManagerContext, displayFunc DisplayFunc,
 			log.Tracef("Displaying counter %d", counter)
 			// Skip unchanged updates if it is a true display
 			if changed || !isDisplay {
-				displayFunc(&ctx.deviceNetworkStatus, arg, counter)
+				displayFunc(log, &ctx.deviceNetworkStatus, arg, counter)
 			}
 		}
 		time.Sleep(1200 * time.Millisecond)
@@ -550,18 +358,7 @@ func DummyCmd() {
 var printOnce = true
 var diskRepeatCount int // Based on time for 200ms
 
-// InitDellCmd prepares "Cloud LED" on Dell IoT gateways by enabling GPIO endpoint
-func InitDellCmd(ledName string) string {
-	err := os.WriteFile("/sys/class/gpio/export", []byte("346"), 0644)
-	if err == nil {
-		if err = os.WriteFile("/sys/class/gpio/gpio346/direction", []byte("out"), 0644); err == nil {
-			log.Functionf("Enabled Dell Cloud LED")
-			return ledName
-		}
-	}
-	log.Warnf("Failed to enable Dell Cloud LED: %v", err)
-	return ""
-}
+// InitDellCmd removed
 
 // Keep avoid allocation and GC by keeping one buffer
 var (
@@ -571,7 +368,7 @@ var (
 
 // InitForceDiskCmd determines the disk (using the largest disk) and measures
 // the repetition count to get to 200ms dd time.
-func InitForceDiskCmd(ledName string) string {
+func InitForceDiskCmd(log *base.LogObject, ledName string) string {
 	disk := diskmetrics.FindLargestDisk(log)
 	if disk == "" {
 		return ""
@@ -603,7 +400,7 @@ func InitForceDiskCmd(ledName string) string {
 
 // ExecuteForceDiskCmd does counter number of 200ms blinks and returns
 // It assumes the init function has determined a diskRepeatCount and a disk.
-func ExecuteForceDiskCmd(deviceNetworkStatus *types.DeviceNetworkStatus,
+func ExecuteForceDiskCmd(log *base.LogObject, deviceNetworkStatus *types.DeviceNetworkStatus,
 	diskDevice string, blinkCount types.LedBlinkCount) {
 	for i := 0; i < int(blinkCount); i++ {
 		doForceDiskBlink(diskDevice)
@@ -655,221 +452,7 @@ const (
 	warningTime = 40 * time.Second
 )
 
-// InitLedCmd can use different LEDs in /sys/class/leds
-// Disable existing trigger
-// Write "none" to /sys/class/leds/<ledName>/trigger
-// If comma-separated list try until one is found.
-// Returns the led which worked.
-func InitLedCmd(ledName string) string {
-	log.Functionf("InitLedCmd(%s)", ledName)
-	// If there are multiple, comma-separated ones, find one which works
-	leds := strings.Split(ledName, ",")
-	for _, led := range leds {
-		triggerFilename := fmt.Sprintf("/sys/class/leds/%s/trigger", led)
-		b := []byte("none")
-		err := os.WriteFile(triggerFilename, b, 0600)
-		if err != nil {
-			log.Error(err, triggerFilename)
-			continue
-		}
-		return led
-	}
-	log.Errorf("No existing led among <%s", ledName)
-	return ""
-}
-
-// ExecuteLedCmd does counter number of 200ms blinks and returns
-func ExecuteLedCmd(deviceNetworkStatus *types.DeviceNetworkStatus,
-	ledName string, blinkCount types.LedBlinkCount) {
-	for i := 0; i < int(blinkCount); i++ {
-		doLedBlink(ledName)
-		time.Sleep(200 * time.Millisecond)
-	}
-}
-
-// Execute blink forever until there is a message to stop
-func executeBlinkLoop(ctx *ledManagerContext, color string, leds []string) {
-
-	log.Functionf("Started blink thread for color %s", color)
-	// Both of these channels are created here. This routine is considered as a receiver.
-	// But closing of these channels happens as follows:
-	// blinkSendStop will be closed by the sender and that signal is received by this routine to exit the loop
-	// blinkRecvStop will be closed by the sender after this routine sends done message.
-	ctx.blinkRecvStop = make(chan string)
-	ctx.blinkSendStop = make(chan string, 1)
-	var ok, valid bool
-	for {
-
-		select {
-		case _, valid = <-ctx.blinkSendStop:
-			ok = true
-		default:
-			ok = false
-		}
-
-		if ok && !valid { // This channel was closed
-			ctx.blinkRecvStop <- "done"
-			return
-		}
-
-		switch color {
-		case "Orange":
-			doLedAction(leds[0], false) // Green off
-			doLedAction(leds[1], false) // Red off
-			time.Sleep(200 * time.Millisecond)
-			doLedAction(leds[0], true) // Green on
-			doLedAction(leds[1], true) // Red on
-			time.Sleep(200 * time.Millisecond)
-		case "Green":
-			doLedAction(leds[0], false) // Green off
-			time.Sleep(200 * time.Millisecond)
-			doLedAction(leds[0], true) // Green on
-			time.Sleep(200 * time.Millisecond)
-		default:
-			log.Noticef("Unsupported Color")
-			close(ctx.blinkRecvStop)
-			close(ctx.blinkSendStop)
-			ctx.blinkRecvStop = nil
-			ctx.blinkSendStop = nil
-			return
-		}
-
-	}
-
-}
-
-// Sets the appStatusArgs
-func executeAppStatusDisplayFunc(ctx *ledManagerContext, appStatusArgs []string, blink bool, color string) {
-
-	switch color {
-	case "Red": // Solid Red
-		doLedAction(appStatusArgs[0], false) // Green off
-		doLedAction(appStatusArgs[1], true)  // Red on
-	case "Orange": // Orange can blink or solid
-		doLedAction(appStatusArgs[0], true) // Green on
-		doLedAction(appStatusArgs[1], true) // Red on
-		if blink == true {
-			go executeBlinkLoop(ctx, "Orange", appStatusArgs)
-		}
-
-	case "Green": // Green can blink or solid
-		doLedAction(appStatusArgs[1], false) // Red off
-		doLedAction(appStatusArgs[0], true)  // Green on
-		if blink == true {
-			go executeBlinkLoop(ctx, "Green", appStatusArgs)
-		}
-	default: // Turn off both red and green
-		doLedAction(appStatusArgs[0], false)
-		doLedAction(appStatusArgs[1], false)
-	}
-}
-
-// doLedAction can use different LEDs in /sys/class/leds and can turn on/off
-func doLedAction(ledName string, turnon bool) {
-	var brightnessFilename string
-	var b []byte
-	if turnon == true {
-		b = maxLEDBrightness(ledName)
-	} else {
-		b = []byte("0")
-	}
-
-	if strings.HasPrefix(ledName, "/") {
-		brightnessFilename = ledName
-	} else {
-		brightnessFilename = fmt.Sprintf("/sys/class/leds/%s/brightness", ledName)
-	}
-	err := os.WriteFile(brightnessFilename, b, 0644)
-	if err != nil {
-		log.Trace(err, brightnessFilename)
-	}
-	return
-}
-
-// doLedBlink can use different LEDs in /sys/class/leds
-// Enable the led for 200ms
-func doLedBlink(ledName string) {
-	if ledName == "" {
-		time.Sleep(200 * time.Millisecond)
-		return
-	}
-	var brightnessFilename string
-	if strings.HasPrefix(ledName, "/") {
-		brightnessFilename = ledName
-	} else {
-		brightnessFilename = fmt.Sprintf("/sys/class/leds/%s/brightness", ledName)
-	}
-	b := maxLEDBrightness(ledName)
-	err := os.WriteFile(brightnessFilename, b, 0644)
-	if err != nil {
-		if printOnce {
-			log.Error(err, brightnessFilename)
-			printOnce = false
-		} else {
-			log.Trace(err, brightnessFilename)
-		}
-		return
-	}
-	time.Sleep(200 * time.Millisecond)
-	b = []byte("0")
-	err = os.WriteFile(brightnessFilename, b, 0644)
-	if err != nil {
-		log.Trace(err, brightnessFilename)
-	}
-}
-
-// createLogfile will use the arg to create a file
-func createLogfile(filename string) string {
-	log.Functionf("createLogfile(%s)", filename)
-	return filename
-}
-
-// appendLogfile
-func appendLogfile(deviceNetworkStatus *types.DeviceNetworkStatus,
-	filename string, counter types.LedBlinkCount) {
-
-	if filename == "" {
-		// Disabled
-		return
-	}
-	msg := fmt.Sprintf("Progress: %d (%s)\n", counter, counter)
-	for _, p := range deviceNetworkStatus.Ports {
-		if p.IsMgmt {
-			addrs := ""
-			for _, ai := range p.AddrInfoList {
-				addrs += ai.Addr.String() + " "
-			}
-			m1 := fmt.Sprintf("%s IP %s\n", p.IfName, addrs)
-			msg = msg + m1
-		}
-	}
-	file, err := os.OpenFile(filename, os.O_CREATE|os.O_APPEND|os.O_WRONLY,
-		0644)
-	if err != nil {
-		log.Errorf("OpenFile %s failed: %v", filename, err)
-		return
-	}
-	defer file.Close()
-	if _, err := file.WriteString(msg); err != nil {
-		log.Errorf("WriteString %s failed: %v", filename, err)
-		return
-	}
-}
-
-func maxLEDBrightness(ledName string) []byte {
-	log.Functionf("maxLEDBrightness(%s)", ledName)
-	if !strings.HasPrefix(ledName, "/") {
-		bmaxFilename := fmt.Sprintf("/sys/class/leds/%s/max_brightness", ledName)
-		brightness, err := os.ReadFile(bmaxFilename)
-		if err == nil {
-			return brightness
-		} else {
-			return []byte("1")
-		}
-	} else {
-		return []byte("1")
-	}
-}
+// Functions moved to hardware package or removed
 
 func handleAppInstanceSummaryCreate(ctxArg interface{}, key string,
 	statusArg interface{}) {
@@ -894,27 +477,27 @@ func handleAppInstanceSummaryImpl(ctxArg interface{}, key string,
 	ctx := ctxArg.(*ledManagerContext)
 
 	// Check if a previous blink loop is running.
-	if ctx.blinkSendStop != nil && ctx.blinkRecvStop != nil {
-		close(ctx.blinkSendStop)
-		status := <-ctx.blinkRecvStop //This is blocking until blink is stopped
+	if ctx.BlinkSendStop != nil && ctx.BlinkRecvStop != nil {
+		close(ctx.BlinkSendStop)
+		status := <-ctx.BlinkRecvStop //This is blocking until blink is stopped
 		if status == "done" {
 			log.Functionf("Blink stopped")
 		}
-		close(ctx.blinkRecvStop)
-		ctx.blinkRecvStop = nil
-		ctx.blinkSendStop = nil
+		close(ctx.BlinkRecvStop)
+		ctx.BlinkRecvStop = nil
+		ctx.BlinkSendStop = nil
 	}
 
-	executeAppStatusDisplayFunc(ctx, appStatusArgs, false, "off") // turn off first before they get turned on
+	appStatusDisplayFunc(log, &ctx.BlinkContext, appStatusArgs, false, "off") // turn off first before they get turned on
 
 	if summary.TotalError > 0 {
-		executeAppStatusDisplayFunc(ctx, appStatusArgs, false, "Red") // Error state: Solid Red
+		appStatusDisplayFunc(log, &ctx.BlinkContext, appStatusArgs, false, "Red") // Error state: Solid Red
 	} else if summary.TotalStopping > 0 {
-		executeAppStatusDisplayFunc(ctx, appStatusArgs, true, "Orange") // Halted state: Blinking Orange
+		appStatusDisplayFunc(log, &ctx.BlinkContext, appStatusArgs, true, "Orange") // Halted state: Blinking Orange
 	} else if summary.TotalStarting > 0 {
-		executeAppStatusDisplayFunc(ctx, appStatusArgs, true, "Green") //  Init state: Blinking Green
+		appStatusDisplayFunc(log, &ctx.BlinkContext, appStatusArgs, true, "Green") //  Init state: Blinking Green
 	} else if summary.TotalRunning > 0 && summary.TotalStarting == 0 && summary.TotalStopping == 0 {
-		executeAppStatusDisplayFunc(ctx, appStatusArgs, false, "Green") // All good: Solid Green
+		appStatusDisplayFunc(log, &ctx.BlinkContext, appStatusArgs, false, "Green") // All good: Solid Green
 	}
 }
 
