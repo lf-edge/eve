@@ -14,6 +14,7 @@ import (
 	"github.com/jaypipes/pcidb"
 	pcitypes "github.com/jaypipes/pcidb/types"
 	"github.com/lf-edge/eve-api/go/info"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/evetpm"
 	"github.com/zededa/ghw"
 	"github.com/zededa/ghw/pkg/can"
@@ -26,7 +27,7 @@ type inventoryMsgCreator struct {
 	msg *info.ZInfoHardware
 }
 
-func AddInventoryInfo(msg *info.ZInfoHardware) error {
+func AddInventoryInfo(log *base.LogObject, msg *info.ZInfoHardware) error {
 	imc := &inventoryMsgCreator{}
 
 	imc.msg = msg
@@ -46,6 +47,8 @@ func AddInventoryInfo(msg *info.ZInfoHardware) error {
 	errs["Storage"] = imc.fillStorage()
 	errs["Watchdog"] = imc.fillWatchdog()
 	errs["TPM"] = imc.fillTPM()
+
+	imc.msg.Inventory.StatusLedPresent = GetStatusLedPresent(GetHardwareModel(log))
 
 	var finalErr error
 	for key, err := range errs {

@@ -103,7 +103,7 @@ func PublishHardwareInfoToZedCloud(ctx *zedagentContext, dest destinationBitset)
 		hwInfo.Disks = append(hwInfo.Disks, stDiskInfo)
 	}
 
-	err = hardware.AddInventoryInfo(hwInfo)
+	err = hardware.AddInventoryInfo(log, hwInfo)
 	if err != nil {
 		log.Warnf("could not add inventory info: %v", err)
 	}
