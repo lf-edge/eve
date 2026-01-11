@@ -6,6 +6,7 @@ package hardware
 import (
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -435,4 +436,55 @@ func ExecuteAppStatusDisplayFunc(log *base.LogObject, ctx *BlinkContext, appStat
 		doLedAction(log, appStatusArgs[0], false)
 		doLedAction(log, appStatusArgs[1], false)
 	}
+}
+
+// GetStatusLedPresent checks if valid status LED is present for the given model
+func GetStatusLedPresent(model string) bool {
+	if model == "" {
+		return false
+	}
+
+	var arg string
+	found := false
+
+	// match model
+	for _, m := range LedModels {
+		if m.Regexp {
+			matched, _ := regexp.MatchString(m.Model, model)
+			if matched {
+				arg = m.Arg
+				found = true
+				break
+			}
+		} else {
+			if m.Model == model {
+				arg = m.Arg
+				found = true
+				break
+			}
+		}
+	}
+
+	if !found {
+		return false
+	}
+
+	if found && arg == "" {
+		return true
+	}
+
+	// Check files
+	// If arg is a comma-separated list, check if any of them exists
+	parts := strings.Split(arg, ",")
+	for _, p := range parts {
+		path := p
+		if !strings.HasPrefix(p, "/") {
+			path = "/sys/class/leds/" + p
+		}
+		if _, err := os.Stat(path); err == nil {
+			return true
+		}
+	}
+
+	return false
 }

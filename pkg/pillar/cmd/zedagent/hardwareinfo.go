@@ -75,7 +75,7 @@ func PublishHardwareInfoToZedCloud(ctx *zedagentContext, dest destinationBitset)
 	hwInfo.KernelCmdline = hardware.GetKernelCmdline()
 	hwInfo.KernelFlavor = hardware.GetKernelFlavor()
 
-	err := hardware.AddInventoryInfo(hwInfo)
+	err := hardware.AddInventoryInfo(log, hwInfo)
 	if err != nil {
 		log.Warnf("could not add inventory info: %v", err)
 	}
