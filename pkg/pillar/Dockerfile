@@ -1,4 +1,4 @@
-# Copyright (c) 2018 Zededa, Inc.
+# Copyright (c) 2018-2026 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
 # Dockerfile to build pillar
@@ -148,7 +148,7 @@ fi
 
 FROM lfedge/eve-fscrypt:d528516ed00f61a5ba4ba2407ab3a94bd55aff90 AS fscrypt
 FROM lfedge/eve-dnsmasq:66334faad5620503b542c8faa2012c3697659ce2 AS dnsmasq
-FROM lfedge/eve-gpt-tools:584939b50f49ed3ef8f9d26a1b315918f4bf598c AS gpttools
+FROM lfedge/eve-gpt-tools:8e4f3e10e861373aa269b3ebeef483153f3399dc AS gpttools
 
 # collector collects everything together and then does any processing like stripping binaries.
 # We use this interim "collector" so that we can do processing.
@@ -184,7 +184,8 @@ COPY scripts/device-steps.sh \
     scripts/veth.sh \
     scripts/dhcpcd.sh \
     scripts/copy-image-to-qcow.sh \
-  /out/opt/zededa/bin/
+    scripts/check-eval-state.sh \
+    /out/opt/zededa/bin/
 COPY conf/lisp.config.base /out/var/tmp/zededa/lisp.config.base
 
 COPY patches/* /sys-patches/
