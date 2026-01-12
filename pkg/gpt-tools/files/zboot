@@ -25,13 +25,14 @@ usage() {
     echo "${ZX} Boot Control and Administration API tool."
     echo
     echo "Usage:"
-    echo "       $(basename "$0") {partdev|partstate|partdevsize} <LABEL>"
+    echo "       $(basename "$0") {partdev|partdevsize} <LABEL>"
+    echo "       $(basename "$0") partstate <LABEL> [-d]"
     echo "       $(basename "$0") set_partstate <LABEL> <STATE>"
     echo "       $(basename "$0") {curpart|reset}"
     echo
     echo "Commands:"
     echo "    partdev: return device of partition LABEL."
-    echo "    partstate: return state of partition LABEL."
+    echo "    partstate: return state of partition LABEL. Add -d flag for detailed decode."
     echo "    partdevsize: return device size of partition LABEL."
     echo "    set_partstate: Set state of partition LABEL to STATE."
     echo "    curpart: return label of current root partition."
@@ -94,22 +95,57 @@ partdevall() {
 }
 
 #
-# PARTSTATE <LABEL>: get state from partition label
+# DECODE_ATTR <attr>: decode and explain an unknown attribute value
+#
+decode_attr() {
+    attr=$1
+    # Extract bit fields using the formulas
+    priority=$((attr & 0x0F))
+    tries=$(((attr >> 4) & 0x0F))
+    successful=$(((attr >> 8) & 0x01))
+
+    # Check for unexpected bits (bits 9 and above)
+    high_bits=$((attr >> 9))
+
+    echo "UNKNOWN 0x$(printf %x "$attr") decoded:"
+    echo "  Priority: $priority"
+    echo "  Tries left: $tries"
+    echo "  Successful: $successful"
+    if [ $high_bits -ne 0 ]; then
+        echo "  Reserved bits set: 0x$(printf %x "$high_bits")"
+    fi
+}
+
+#
+# PARTSTATE <LABEL> [-d]: get state from partition label
 #
 partstate() {
-    if [ ! $# -eq 1 ]; then
+    decode_flag=0
+
+    if [ $# -lt 1 ] || [ $# -gt 2 ]; then
         usage
     fi
-    pn=$(partno $1)
-    attr=$(cgpt show -i ${pn} -A ${rootdsk})
-    case ${attr} in
+
+    # Parse optional -d flag (after label for backward compatibility)
+    if [ $# -eq 2 ] && [ "$2" = "-d" ]; then
+        decode_flag=1
+    fi
+
+    pn=$(partno "$1")
+    attr=$(cgpt show -i "${pn}" -A "${rootdsk}")
+
+    if [ "$decode_flag" -eq 1 ]; then
+        decode_attr "${attr}"
+    fi
+
+    case "${attr}" in
         0x102) state="active" ;;
         0x13) state="updating" ;;
         0x3) state="inprogress" ;;
         0x0) state="unused" ;;
-        *) state="INVALID" ;;
+        *) state="UNKNOWN ${attr}" ;;
     esac
-    echo ${state}
+    echo "${state}"
 }
 
 #
@@ -120,7 +156,7 @@ set_partstate() {
         usage
     fi
 
-    pn=$(partno $1)
+    pn=$(partno "$1")
     case $2 in
         "active") attr=0x102 ;;
         "updating") attr=0x13 ;;
@@ -131,7 +167,7 @@ set_partstate() {
             ;;
     esac
 
-    cgpt add -i ${pn} -A ${attr} ${rootdsk}
+    cgpt add -i "${pn}" -A "${attr}" "${rootdsk}"
 }
 
 #
