@@ -8,6 +8,8 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -353,12 +355,55 @@ func (imc *inventoryMsgCreator) fillBIOS() error {
 	if err != nil {
 		return err
 	}
+
+	// Collect firmware attributes from /sys/class/firmware-attributes
+	fwAttrs := getFirmwareAttributes()
+
 	imc.msg.Inventory.Bios = &info.BIOS{
 		Vendor:     biosInfo.Vendor,
 		Version:    biosInfo.Version,
-		Attributes: map[string]string{"date": biosInfo.Date},
+		Attributes: fwAttrs,
 	}
 	return nil
+}
+
+func getFirmwareAttributes() map[string]string {
+	settings := make(map[string]string)
+	root := "/sys/class/firmware-attributes"
+
+	drivers, err := os.ReadDir(root)
+	if err != nil {
+		return nil
+	}
+
+	for _, drv := range drivers {
+		// Look for 'attributes' subdirectory
+		attrDir := filepath.Join(root, drv.Name(), "attributes")
+		if _, err := os.Stat(attrDir); err != nil {
+			continue
+		}
+
+		// Iterate over settings
+		attrs, err := os.ReadDir(attrDir)
+		if err != nil {
+			continue
+		}
+
+		for _, attr := range attrs {
+			if !attr.IsDir() {
+				continue
+			}
+			// Read current_value
+			valPath := filepath.Join(attrDir, attr.Name(), "current_value")
+			valBytes, err := os.ReadFile(valPath)
+			if err == nil {
+				// We use "driver/setting" as key in the intermediate map
+				key := fmt.Sprintf("%s/%s", drv.Name(), attr.Name())
+				settings[key] = strings.TrimSpace(string(valBytes))
+			}
+		}
+	}
+	return settings
 }
 
 func (imc *inventoryMsgCreator) fillCPU() error {
