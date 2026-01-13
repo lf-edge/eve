@@ -8,11 +8,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"time"
+
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/go-qemu/qmp"
 	"github.com/sirupsen/logrus"
-	"os"
-	"time"
 )
 
 // this package implements subset of
@@ -209,26 +210,27 @@ func qmpEventHandler(listenerSocket, executorSocket string) {
 		logrus.Errorf("qmpEventHandler: Exception while getting event channel from listenerSocket: %s. %s", listenerSocket, err.Error())
 		return
 	}
-	for {
+
+	// Using 'for range' ensures we exit when channel is closed (QMP connection lost).
+	// This prevents infinite loop on VM restart when socket path is reused.
+	for event := range eventChan {
 		if _, err := os.Stat(listenerSocket); err != nil {
 			logrus.Errorf("qmpEventHandler: Exception while accessing listenerSocket: %s. %s", listenerSocket, err.Error())
 			return
 		}
-		select {
-		case event := <-eventChan:
-			switch event.Event {
-			case "SHUTDOWN":
-				logrus.Infof("qmpEventHandler: Received event: %s event details: %v. Calling quit on socket: %s", event.Event, event.Data, executorSocket)
-				if err := execStop(executorSocket); err != nil {
-					logrus.Errorf("qmpEventHandler: Exception while stopping domain with socket: %s. %s", executorSocket, err.Error())
-				}
-				if err := execQuit(executorSocket); err != nil {
-					logrus.Errorf("qmpEventHandler: Exception while quitting domain with socket: %s. %s", executorSocket, err.Error())
-				}
-			default:
-				//Not handling the following events: RESUME, NIC_RX_FILTER_CHANGED, RTC_CHANGE, POWERDOWN, STOP
-				logrus.Warnf("qmpEventHandler: Unhandled event: %s from QMP socket: %s", event.Event, listenerSocket)
+		switch event.Event {
+		case "SHUTDOWN":
+			logrus.Infof("qmpEventHandler: Received event: %s event details: %v. Calling quit on socket: %s", event.Event, event.Data, executorSocket)
+			if err := execStop(executorSocket); err != nil {
+				logrus.Errorf("qmpEventHandler: Exception while stopping domain with socket: %s. %s", executorSocket, err.Error())
 			}
+			if err := execQuit(executorSocket); err != nil {
+				logrus.Errorf("qmpEventHandler: Exception while quitting domain with socket: %s. %s", executorSocket, err.Error())
+			}
+		default:
+			//Not handling the following events: RESUME, NIC_RX_FILTER_CHANGED, RTC_CHANGE, POWERDOWN, STOP
+			logrus.Warnf("qmpEventHandler: Unhandled event: %s from QMP socket: %s", event.Event, listenerSocket)
 		}
 	}
+	logrus.Infof("qmpEventHandler: Event channel closed for socket: %s (QMP connection lost)", listenerSocket)
 }
