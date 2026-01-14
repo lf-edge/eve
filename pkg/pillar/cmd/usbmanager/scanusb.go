@@ -3,16 +3,14 @@
 package usbmanager
 
 import (
-	"bufio"
-	"fmt"
-	"io"
-	"os"
-	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/zededa/ghw"
+	"github.com/zededa/ghw/pkg/option"
+	"github.com/zededa/ghw/pkg/usb"
 )
 
 func trimSysPath(path string) string {
@@ -47,139 +45,73 @@ func extractUSBPort(path string) string {
 func walkUSBPorts() []*usbdevice {
 	uds := make([]*usbdevice, 0)
 
-	inSysPath := filepath.Join("bus", "usb", "devices")
-	usbDevicesPath := filepath.Join(sysFSPath, inSysPath)
-
-	files, err := os.ReadDir(usbDevicesPath)
+	info, err := ghw.USB(option.WithDisableTools())
 	if err != nil {
-		log.Fatal(err)
+		log.Warnf("requesting USB info failed: %+v", err)
+		return []*usbdevice{}
 	}
 
-	re := regexp.MustCompile(`^\d+-\d+`)
-	for _, file := range files {
-		if len(file.Name()) == 0 {
+	for _, dev := range info.Devices {
+		ud := ghwUSBDevice2usbdevice(dev)
+		if ud == nil {
 			continue
 		}
 
-		if !re.Match([]byte(file.Name())) {
-			continue
-		}
-
-		relPortPath := filepath.Join(usbDevicesPath, file.Name())
-		//fmt.Printf("%s -> %s\n", vals[0], vals[1])
-		ud := usbDeviceFromSysPath(relPortPath)
-		if ud != nil {
-			uds = append(uds, ud)
-		}
+		uds = append(uds, ud)
 	}
-
 	return uds
 }
 
-func usbDeviceFromSysPath(relPortPath string) *usbdevice {
-	portPath, err := os.Readlink(relPortPath)
+func ghwUSBDevice2usbdevice(dev *usb.Device) *usbdevice {
+	devnum, err := strconv.ParseUint(dev.Devnum, 10, 16)
 	if err != nil {
-		fmt.Printf("err: %+v\n", err)
+		// ignore hubs, devices with invalid devnum
 		return nil
 	}
 
-	inSysPath := filepath.Join("bus", "usb", "devices")
-	usbDevicesPath := filepath.Join(sysFSPath, inSysPath)
-	portPath = filepath.Join(usbDevicesPath, portPath)
+	// continue even if parsing vendor/product fails, because in the case of passthrough
+	// by port it still works
+	vendorID, err := strconv.ParseUint(dev.VendorID, 16, 32)
+	if err != nil {
+		log.Warnf("could not parse vendor id '%s' as uint32: %+v", dev.VendorID, err)
+	}
+	productID, err := strconv.ParseUint(dev.ProductID, 16, 32)
+	if err != nil {
+		log.Warnf("could not parse product id '%s' as uint32: %+v", dev.ProductID, err)
+	}
 
-	ueventFilePath := filepath.Join(portPath, "uevent")
-	return ueventFile2usbDevice(ueventFilePath)
+	var usbControllerPCIAddress string
+	if dev.Parent.PCI != nil {
+		usbControllerPCIAddress = dev.Parent.PCI.String()
+	}
+	ud := usbdevice{
+		busnum:                  dev.Busnum,
+		portnum:                 dev.Port,
+		devnum:                  uint16(devnum),
+		vendorID:                uint32(vendorID),
+		productID:               uint32(productID),
+		devicetype:              dev.Type,
+		usbControllerPCIAddress: usbControllerPCIAddress,
+		ueventFilePath:          dev.UEventFilePath,
+	}
+	return &ud
 }
 
 func ueventFile2usbDevice(ueventFilePath string) *usbdevice {
-	ueventFp, err := os.Open(ueventFilePath)
+	info, err := ghw.USB(option.WithUSBUeventPath(ueventFilePath), option.WithDisableTools())
 	if err != nil {
-		return nil
-	}
-	defer ueventFp.Close()
-
-	return ueventFile2usbDeviceImpl(ueventFilePath, ueventFp)
-}
-
-func ueventFile2usbDeviceImpl(ueventFilePath string, ueventFp io.Reader) *usbdevice {
-
-	var busnum uint16
-	var devnum uint16
-	var vendorID uint32
-	var productID uint32
-	var product string
-	var devicetype string
-
-	busnumSet := false
-	devnumSet := false
-	productSet := false
-
-	sc := bufio.NewScanner(ueventFp)
-	for sc.Scan() {
-		vals := strings.SplitN(sc.Text(), "=", 2)
-		if len(vals) != 2 {
-			continue
-		}
-
-		if vals[1] == "" {
-			continue
-		}
-
-		if vals[0] == "BUSNUM" {
-			val64, err := strconv.ParseUint(vals[1], 10, 16)
-			if err != nil {
-				log.Warnf("could not parse BUSNUM %+v", vals)
-				return nil
-			}
-			busnum = uint16(val64)
-			busnumSet = true
-		}
-		if vals[0] == "DEVNUM" {
-			val64, err := strconv.ParseUint(vals[1], 10, 16)
-			if err != nil {
-				log.Warnf("could not parse DEVNUM %+v", vals)
-				return nil
-			}
-			devnum = uint16(val64)
-			devnumSet = true
-		}
-		if vals[0] == "PRODUCT" {
-			product = vals[1]
-			vendorID, productID = parseProductString(product)
-			if vendorID != 0 || productID != 0 {
-				productSet = true
-			}
-		}
-		if vals[0] == "TYPE" {
-			devicetype = vals[1]
-		}
-	}
-
-	if sc.Err() != nil {
-		log.Warnf("Parsing of %s failed: %v", ueventFilePath, sc.Err())
+		log.Warnf("could not retrieve usb device for '%s': %v", ueventFilePath, err)
 		return nil
 	}
 
-	if !busnumSet || !devnumSet || !productSet {
-		return nil
+	for _, dev := range info.Devices {
+		ud := ghwUSBDevice2usbdevice(dev)
+		if ud != nil {
+			return ud
+		}
 	}
 
-	pciAddress := extractPCIaddress(ueventFilePath)
-
-	portnum := extractUSBPort(ueventFilePath)
-
-	ud := usbdevice{
-		busnum:                  busnum,
-		devnum:                  devnum,
-		portnum:                 portnum,
-		vendorID:                vendorID,
-		productID:               productID,
-		devicetype:              devicetype,
-		usbControllerPCIAddress: pciAddress,
-		ueventFilePath:          filepath.Clean(ueventFilePath),
-	}
-
-	return &ud
+	return nil
 }
 
 func parseProductString(product string) (uint32, uint32) {
