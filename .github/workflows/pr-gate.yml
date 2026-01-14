@@ -58,7 +58,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           pr_sha="${{ github.event.pull_request.head.sha }}"
-          original_run_id=$(gh run --repo ${{ github.repository }} list -c "$pr_sha" --json name,databaseId | jq ".[] | select(.name == \"${{ env.BUILD_WF_NAME }}\") | .databaseId " | head -n1)
+          original_run_id=$(gh run --repo ${{ github.repository }} list -c "$pr_sha" --json name,databaseId --limit 100 | jq ".[] | select(.name == \"${{ env.BUILD_WF_NAME }}\") | .databaseId " | head -n1)
           echo "pr_id=${{ github.event.pull_request.number }}" >> "$GITHUB_OUTPUT"
           echo "pr_sha=$pr_sha" >> "$GITHUB_OUTPUT"
           echo "original_run_id=$original_run_id" >> "$GITHUB_OUTPUT"
