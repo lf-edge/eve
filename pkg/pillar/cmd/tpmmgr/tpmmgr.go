@@ -314,11 +314,6 @@ func getQuote(nonce []byte) ([]byte, []byte, []types.PCRValue, error) {
 		return nil, nil, nil, fmt.Errorf("invalid nonce length %d", len(nonce))
 	}
 
-	// First make sure TPM is somewhat trustworthy
-	if err := etpm.ValidateKernelNullPrimary(log); err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to verify null primary, possibly due to a tpm reset attack: %v", err)
-	}
-
 	rw, err := tpm2.OpenTPM(etpm.TpmDevicePath)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("unable to open TPM device handle (%v), returning empty quote/PCRs", err)
