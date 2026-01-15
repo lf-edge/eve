@@ -82,6 +82,8 @@ type zedkube struct {
 	subNodeDrainRequestBoM pubsub.Subscription
 	pubNodeDrainStatus     pubsub.Publication
 
+	pubKubeConfig pubsub.Publication
+
 	networkInstanceStatusMap sync.Map
 	ioAdapterMap             sync.Map
 	deviceNetworkStatus      types.DeviceNetworkStatus
@@ -347,6 +349,16 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		log.Fatal(err)
 	}
 	zedkubeCtx.pubLeaderElectInfo = pubLeaderElectInfo
+
+	pubKubeConfig, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName:  agentName,
+		TopicType:  types.KubeConfig{},
+		Persistent: true,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	zedkubeCtx.pubKubeConfig = pubKubeConfig
 
 	// Look for global config such as log levels
 	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
@@ -730,6 +742,7 @@ func handleGlobalConfigImpl(ctxArg interface{}, key string,
 		}
 
 		handleK3sConfigOverrideChanged(currentConfigItemValueMap, newConfigItemValueMap)
+		z.handleK3sVersionOverride(currentConfigItemValueMap, newConfigItemValueMap)
 	}
 	log.Functionf("handleGlobalConfigImpl(%s): done", key)
 }
@@ -774,6 +787,27 @@ func WriteBase64Cfg(parentDir string, filename string, base64Config string) erro
 		return fmt.Errorf("config write error: %v", err)
 	}
 	return nil
+}
+
+func (ctx *zedkube) handleK3sVersionOverride(currentGcp *types.ConfigItemValueMap, newGcp *types.ConfigItemValueMap) {
+	oldVal := currentGcp.GlobalValueString(types.K3sVersionOverride)
+	newVal := newGcp.GlobalValueString(types.K3sVersionOverride)
+
+	if newVal == oldVal {
+		return
+	}
+	// If the field is empty we still publish that to the kube container.
+	// kube Update_CheckNodeComponents() will check this structure and revert
+	// the k3s version back to the baseos constant K3S_VERSION.
+	kubeConfig := types.KubeConfig{}
+	items := ctx.pubKubeConfig.GetAll()
+	glbKubeConfig, ok := items["global"].(types.KubeConfig)
+	if ok {
+		kubeConfig = glbKubeConfig
+	}
+	kubeConfig.K3sVersion = newVal
+	ctx.pubKubeConfig.Publish("global", kubeConfig)
+	currentGcp.SetGlobalValueString(types.K3sVersionOverride, newVal)
 }
 
 func handleEdgeNodeClusterConfigCreate(ctxArg interface{}, key string,

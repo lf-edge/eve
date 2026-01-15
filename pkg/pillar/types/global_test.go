@@ -249,6 +249,7 @@ func TestNewConfigItemSpecMap(t *testing.T) {
 		EnableTCPMSSClamping,
 		K3sConfigOverride,
 		AppBootOrder,
+		K3sVersionOverride,
 	}
 	if len(specMap.GlobalSettings) != len(gsKeys) {
 		t.Errorf("GlobalSettings has more (%d) than expected keys (%d)",
