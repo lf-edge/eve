@@ -1,4 +1,4 @@
-// Copyright (c) 2025 Zededa, Inc.
+// Copyright (c) 2025-2026 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 package main
@@ -170,8 +170,26 @@ func parseLogInfo(logEntry MemlogLogEntry) Loginfo {
 			if logInfo.Source == "" {
 				logInfo.Source = logEntry.Source
 			}
-			// and keep the original message text and fields
-			logInfo.Msg = logEntry.Msg
+			// Clean ANSI codes from the inner msg, then rebuild JSON string
+			cleanMsg := cleanForLogParsing(logInfo.Msg)
+			tempLogInfo := struct {
+				Appuuid       string `json:"appuuid,omitempty"`
+				Containername string `json:"containername,omitempty"`
+				Level         string `json:"level,omitempty"`
+				Msg           string `json:"msg"`
+				Time          string `json:"time,omitempty"`
+			}{
+				Appuuid:       logInfo.Appuuid,
+				Containername: logInfo.Containername,
+				Level:         logInfo.Level,
+				Msg:           cleanMsg,
+				Time:          logInfo.Time,
+			}
+			if jsonBytes, err := json.Marshal(tempLogInfo); err == nil {
+				logInfo.Msg = string(jsonBytes)
+			} else {
+				logInfo.Msg = logEntry.Msg
+			}
 		} else {
 			// Some messages have attr=val syntax
 			// If the inner message has Level, Time or Msg set they take
