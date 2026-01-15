@@ -56,8 +56,6 @@ const (
 	OnboardKeyName = IdentityDirname + "/onboard.key.pem"
 	// RootCertFileName - what we trust for signatures and object encryption
 	RootCertFileName = IdentityDirname + "/root-certificate.pem"
-	// V2TLSCertShaFilename - find TLS root cert for API V2 based on this sha
-	V2TLSCertShaFilename = CertificateDirname + "/v2tlsbaseroot-certificates.sha256"
 	// V2TLSBaseFile is where the initial file
 	V2TLSBaseFile = IdentityDirname + "/v2tlsbaseroot-certificates.pem"
 	// APIV1FileName - user can statically allow for API v1
