@@ -1090,12 +1090,21 @@ fi
 while true;
 do
 if [ ! -f /var/lib/all_components_initialized ]; then
+        if [ ! -f /var/lib/k3s_installed_unpacked ]; then
+                #
+                # Retries to handle issues downloading k3s
+                #
+                Update_CheckNodeComponents
+                sleep 5
+                continue
+        fi
         if ! check_start_k3s; then
                 sleep 5  # Ensure minimum sleep time before retrying
                 continue
         fi
 
         if ! external_boot_image_import; then
+                sleep 5
                 continue
         fi
 
@@ -1224,6 +1233,25 @@ if [ ! -f /var/lib/all_components_initialized ]; then
                 touch /var/lib/all_components_initialized
         fi
 else
+        # Apply config overrides in the main loop, may be necessary to start k3s
+        # Or to sync new config override to fix previously sent bad config
+        Config_k3s_override_apply || {
+                logmsg "k3s user override config sync:$?, starting k3s terminate"
+                terminate_k3s
+        }
+
+        # Check for k3s updates in the main loop to handle
+        # cases where current k3s cannot start
+        Config_cluster_type_get
+        cluster_type=$?
+        if [ $cluster_type -eq $CLUSTER_TYPE_REPLICATED_STORAGE ]; then
+                # Only ReplicatedStorage mode supports this method of updating k3s
+                # Base mode receives this config from the server specified in registration manifest.
+                Update_CheckNodeComponents || {
+                        logmsg "Update_CheckNodeComponents returned non-zero $?"
+                }
+        fi
+
         if ! check_start_k3s; then
                 start_time=$(date +%s)
                 while [ $(($(date +%s) - start_time)) -lt 120 ]; do
@@ -1299,16 +1327,21 @@ else
                                                 # Base Mode does not want extra pre-installed storage classes
                                                 cleanup_storageclasses
                                         fi
-                                fi
-                                if [ $cluster_type -eq $CLUSTER_TYPE_REPLICATED_STORAGE ]; then
+                                elif [ $cluster_type -eq $CLUSTER_TYPE_REPLICATED_STORAGE ]; then
                                         # Replicated Storage wants extra storage classes
                                         if [ ! -e "${KUBE_MANIFESTS_DIR}/storage-classes.yaml" ]; then
                                                 cp /etc/k3s-manifests/storage-classes.yaml "${KUBE_MANIFESTS_DIR}/storage-classes.yaml"
                                         fi
-                                fi
-                                if [ $cluster_type -eq $CLUSTER_TYPE_K3S_BASE ]; then
+                                        # EVE only manages cluster comp upgrades in this cluster mode
+                                        # Keep in this loop (k3s running, longhorn ready)
+                                        if Update_CheckClusterComponents; then
+                                                Update_RunDeschedulerOnBoot
+                                        fi
+                                elif [ $cluster_type -eq $CLUSTER_TYPE_K3S_BASE ]; then
                                         # Base Mode does not want extra pre-installed storage classes
                                         cleanup_storageclasses
+                                else
+                                        logmsg "possible unhandled cluster type $cluster_type in (k3s running, longhorn ready)"
                                 fi
                         fi
                 fi
@@ -1316,11 +1349,6 @@ else
                         longhorn_post_install_config
                         touch /var/lib/longhorn_configured
                 fi
-
-                Config_k3s_override_apply || {
-                        logmsg "k3s user override config sync:$?, starting k3s terminate"
-                        terminate_k3s
-                }
         fi
 fi
         check_log_file_size "k3s.log"
@@ -1331,11 +1359,6 @@ fi
         check_kubeconfig_yaml_files
         check_and_remove_excessive_k3s_logs
         check_and_run_vnc
-        if ! Registration_Applied; then
-                # Upgrades declared via EVE baseOS updates
-                Update_CheckClusterComponents
-                Update_RunDeschedulerOnBoot
-        fi
         wait_for_item "wait"
         sleep 15
 done
