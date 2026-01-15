@@ -6,20 +6,21 @@
 # shellcheck source=/dev/null
 . /usr/bin/cluster-utils.sh
 
-# NOTE: Whenever K3S_VERSION is updated, please bump up KUBE_VERSION value too.
+# shellcheck source=pkg/kube/pubsub.sh
+. /usr/bin/pubsub.sh
+
 K3S_VERSION=v1.34.2+k3s1
-KUBE_VERSION=2
 
 #
 # Handle any migrations needed due to updated cluster-init.sh
 #   This is expected to be bumped any time:
 #       - a migration is needed (new path for something)
-#       - a version bump of: K3s, multus, kubevirt, cdi, longhorn
+#       - a version bump of: multus, kubevirt, cdi, longhorn
 #
+KUBE_VERSION=2
 APPLIED_KUBE_VERSION_PATH="/var/lib/applied-kube-version"
 update_Version_Set() {
-    version=$1
-    echo "$version" > "$APPLIED_KUBE_VERSION_PATH"
+    echo "$KUBE_VERSION" > "$APPLIED_KUBE_VERSION_PATH"
 }
 
 update_Version_Get() {
@@ -63,15 +64,25 @@ link_multus_into_k3s() {
 }
 
 update_k3s() {
-    logmsg "Installing K3S version $K3S_VERSION"
+    dst_k3s_version=$1
+    logmsg "Installing K3S version $dst_k3s_version"
     mkdir -p /var/lib/k3s/bin
-    /usr/bin/curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION=${K3S_VERSION} INSTALL_K3S_SKIP_ENABLE=true INSTALL_K3S_SKIP_START=true INSTALL_K3S_BIN_DIR=/var/lib/k3s/bin sh -
-    sleep 5
-    logmsg "Initializing K3S version $K3S_VERSION"
+    k3s_installer=/tmp/k3s-install.sh
+    /usr/bin/curl -sfL https://get.k3s.io -o "$k3s_installer" || {
+        logmsg "k3s installer download failed $?"
+        return 1
+    }
+    chmod +x "$k3s_installer"
+    INSTALL_K3S_VERSION=${dst_k3s_version} INSTALL_K3S_SKIP_ENABLE=true INSTALL_K3S_SKIP_START=true INSTALL_K3S_BIN_DIR=/var/lib/k3s/bin "$k3s_installer" || {
+        logmsg "k3s installer failed $?"
+        return 1
+    }
+    logmsg "Initializing K3S version $dst_k3s_version"
     ln -s /var/lib/k3s/bin/* /usr/bin
     trigger_k3s_selfextraction
     link_multus_into_k3s
     touch /var/lib/k3s_installed_unpacked
+    return 0
 }
 
 # k3s_get_version: return version in form "vW.X.Y+k3sZ"
@@ -83,33 +94,44 @@ k3s_get_version() {
     /var/lib/k3s/bin/k3s --version | awk '$1=="k3s" {print $3}' | tr -d '\n'
 }
 
-# Run on every boot before k3s starts
+# Update_CheckNodeComponents is responsible for:
+#   - compare of configured vs running k3s version
+#   - terminate k3s
+#   - install/copy new k3s binaries
+#   - verification of the version of destination fs path k3s binaries
+# Returns 0 - (no change, k3s still running)
+#       1 - (k3s updated, not running)
+#       2 - (k3s update failed, not running)
 Update_CheckNodeComponents() {
     applied_version=$(update_Version_Get)
-    if [ "$KUBE_VERSION" = "$applied_version" ]; then
-        return
+    k3s_version_override=$(ZedKube_KubeConfig_k3sVersion)
+    # Default to baseos defined k3s version
+    dst_k3s_version=$K3S_VERSION
+    if [ "$k3s_version_override" != "" ]; then
+        # config property is set, use requested version
+        dst_k3s_version=$k3s_version_override
+    fi
+    current_k3s_version=$(k3s_get_version)
+    if [ "$current_k3s_version" = "$dst_k3s_version" ]; then
+        return 0
     fi
 
-    if update_Failed; then
-        return
+    logmsg "Update_CheckNodeComponents: k3s ${current_k3s_version} to ${dst_k3s_version}, terminating k3s"
+    terminate_k3s
+    publishUpdateStatus "k3s" "download"
+    update_k3s "$dst_k3s_version" || {
+        logmsg "k3s update $current_k3s_version to $dst_k3s_version failed, will retry"
+        return 2
+    }
+    current_k3s_version=$(k3s_get_version)
+    if [ "$current_k3s_version" != "$dst_k3s_version" ]; then
+        logmsg "k3s version mismatch after install current:$current_k3s_version expected:$dst_k3s_version"
+        publishUpdateStatus "k3s" "failed" "version mismatch after install:$current_k3s_version"
+        return 2
     fi
-    logmsg "update_HandleNode: version:$KUBE_VERSION appliedversion:$applied_version continuing"
-
-    # Handle version specific node migrations here
-
-    # Handle node specific updates, just k3s for now
-    if [ "$(k3s_get_version)" != "$K3S_VERSION" ]; then
-        publishUpdateStatus "k3s" "download"
-        update_k3s
-        current_k3s_version=$(k3s_get_version)
-        if [ "$current_k3s_version" != "$K3S_VERSION" ]; then
-            logmsg "k3s version mismatch after install:$current_k3s_version"
-            publishUpdateStatus "k3s" "failed" "version mismatch after install:$current_k3s_version"
-        else
-            logmsg "k3s installed and unpacked or copied"
-            publishUpdateStatus "k3s" "completed"
-        fi
-    fi
+    logmsg "k3s version $dst_k3s_version installed and unpacked or copied"
+    publishUpdateStatus "k3s" "completed"
+    return 1
 }
 
 # Run on every boot after k3s is started
@@ -118,15 +140,28 @@ Update_CheckClusterComponents() {
 
     applied_version=$(update_Version_Get)
     if [ "$KUBE_VERSION" = "$applied_version" ]; then
-        return
+        # zedagent checks for KubeClusterUpdateStatus to keep
+        # a node reporting DeviceState BaseOsUpdating while kube works.
+        # a k3s update above can set this after baseos update.
+        # Check if we have a KubeClusterUpdateStatus object and if we've
+        # made it this far, its safe to push up the state to the end.
+        if [ -f "$KCUS_FILE_PATH" ]; then
+            kcus_reports_k3s=$(jq -r '.Component==2 and .Status==5' < "$KCUS_FILE_PATH")
+            if [ "$kcus_reports_k3s" = "true" ]; then
+                # Push status forward, KUBE_VERSION matches
+                # and Update_CheckClusterComponents only called if longhorn ready
+                publishUpdateStatus "longhorn" "completed"
+            fi
+        fi
+        return 0
     fi
 
     if update_Failed; then
-        return
+        return 1
     fi
 
     if ! update_isClusterReady; then
-        return
+        return 1
     fi
     logmsg "update_HandleCluster: version:$KUBE_VERSION appliedversion:$applied_version continuing"
 
@@ -139,7 +174,7 @@ Update_CheckClusterComponents() {
         if ! update_Component_CheckReady "$comp"; then
             logmsg "Component: $comp not ready on existing version"
             # Intentional return to let main loop restart k3s
-            return
+            return 1
         fi
         logmsg "Component: $comp ready on existing version"
         if update_Component_IsRunningExpectedVersion "$comp"; then
@@ -153,8 +188,9 @@ Update_CheckClusterComponents() {
         fi
     done
 
-    update_Version_Set "$KUBE_VERSION"
+    update_Version_Set
     wait_for_item "update_cluster_post"
+    return 0
 }
 
 # Update_RunDeschedulerOnBoot will run the descheduler to evict pods from the edge node

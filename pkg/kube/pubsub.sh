@@ -5,3 +5,24 @@
 
 # shellcheck disable=SC2034
 ENCC_FILE_PATH="/persist/status/zedagent/EdgeNodeClusterConfig/global.json"
+
+# shellcheck disable=SC2034
+KUBECFG_FILE_PATH="/persist/status/zedkube/KubeConfig/global.json"
+
+# shellcheck disable=SC2034
+KCUS_FILE_PATH="/persist/status/zedagent/KubeClusterUpdateStatus/global.json"
+
+ZedKube_KubeConfig_exists() {
+    if [ -f "$KUBECFG_FILE_PATH" ]; then
+        return 0
+    fi
+    return 1
+}
+
+ZedKube_KubeConfig_k3sVersion() {
+    if ! ZedKube_KubeConfig_exists; then
+        echo ""
+        return
+    fi
+    jq -r .K3sVersion < "$KUBECFG_FILE_PATH"
+}

@@ -8,10 +8,12 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
 
+	"github.com/Masterminds/semver"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/sirupsen/logrus" // OK for logrus.Fatal
 )
@@ -434,6 +436,9 @@ const (
 	// - server config spec: https://docs.k3s.io/cli/server
 	// - agent config spec: https://docs.k3s.io/cli/agent
 	K3sConfigOverride GlobalSettingKey = "k3s.config.override"
+	// K3sVersionOverride : user override k3s version.  This version will take priority
+	// over any EVE-OS baseos version defined k3s version (pkg/kube/cluster-update.sh)
+	K3sVersionOverride GlobalSettingKey = "k3s.version"
 )
 
 // AgentSettingKey - keys for per-agent settings
@@ -1145,6 +1150,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 
 	//K3s Settings
 	configItemSpecMap.AddStringItem(K3sConfigOverride, "", base64Validator)
+	configItemSpecMap.AddStringItem(K3sVersionOverride, "", k3sVersionValidator)
 	return configItemSpecMap
 }
 
@@ -1258,6 +1264,57 @@ func base64Validator(s string) error {
 		return fmt.Errorf("base64Validator: %s is not a valid base64 string: %w", s, err)
 	}
 	return nil
+}
+
+func makeSemverValidator(metadataPrefix string, constraintStrings []string) func(destVer string) error {
+	return func(destVer string) error {
+		if destVer == "" {
+			// Accept empty value.
+			return nil
+		}
+		v, err := semver.NewVersion(destVer)
+		if err != nil {
+			return fmt.Errorf("semverValidator: %s is not a valid version format: %w", destVer, err)
+		}
+
+		for _, constraintStr := range constraintStrings {
+			c, err := semver.NewConstraint(constraintStr)
+			if err != nil {
+				return err
+			}
+			if !c.Check(v) {
+				return fmt.Errorf("Requested version denied due to constraint %s", constraintStr)
+			}
+		}
+
+		if metadataPrefix != "" {
+			metadata := v.Metadata()
+			if metadata == "" || !strings.HasPrefix(metadata, metadataPrefix) {
+				return fmt.Errorf("Version has invalid metadata format")
+			}
+		}
+		return nil
+	}
+}
+
+func k3sVersionValidator(destVer string) error {
+	if !base.IsHVTypeKube() {
+		return nil
+	}
+	if destVer == "" {
+		// Accept empty value.
+		return nil
+	}
+	if _, err := os.Stat(K3sInitialVersionPath); err != nil {
+		return fmt.Errorf("kube has not yet initialized k3s")
+	}
+	initialK3sVersionBytes, err := os.ReadFile(K3sInitialVersionPath)
+	if err != nil {
+		return fmt.Errorf("Unable to read %s:%v", K3sInitialVersionPath, err)
+	}
+	initialK3sDowngradeConstraint := ">=" + string(initialK3sVersionBytes)
+
+	return makeSemverValidator("k3s", []string{"~1.x", initialK3sDowngradeConstraint})(destVer)
 }
 
 // NewConfigItemValueMap - Create new instance of ConfigItemValueMap
