@@ -1,4 +1,4 @@
-// Copyright (c) 2018 Zededa, Inc.
+// Copyright (c) 2018-2026 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 package types
@@ -288,6 +288,9 @@ const (
 	KernelLogLevel GlobalSettingKey = "debug.kernel.loglevel"
 	// FmlCustomResolution global setting key
 	FmlCustomResolution GlobalSettingKey = "app.fml.resolution"
+	// AppBootOrder global setting key for device-wide default boot order for VMs
+	// Supported values: "" (default), "usb" (prioritize USB), "nousb" (deprioritize USB)
+	AppBootOrder GlobalSettingKey = "app.boot.order"
 
 	// XXX Temporary flag to disable RFC 3442 classless static route usage
 	DisableDHCPAllOnesNetMask GlobalSettingKey = "debug.disable.dhcp.all-ones.netmask"
@@ -982,6 +985,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddStringItem(SyslogLogLevel, "info", validateSyslogKernelLevel)
 	configItemSpecMap.AddStringItem(KernelLogLevel, "info", validateSyslogKernelLevel)
 	configItemSpecMap.AddStringItem(FmlCustomResolution, FmlResolutionUnset, blankValidator)
+	configItemSpecMap.AddStringItem(AppBootOrder, "", validateBootOrder)
 
 	// Add Agent Settings
 	configItemSpecMap.AddAgentSettingStringItem(LogLevel, "info", validateLogrusLevel)
@@ -1008,6 +1012,16 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 func validateLogrusLevel(level string) error {
 	_, err := logrus.ParseLevel(level)
 	return err
+}
+
+// validateBootOrder - make sure the boot order has one of the supported values
+func validateBootOrder(bootOrder string) error {
+	switch bootOrder {
+	case "", "usb", "nousb":
+		return nil
+	default:
+		return fmt.Errorf("validateBootOrder: invalid boot order '%s', must be '', 'usb', or 'nousb'", bootOrder)
+	}
 }
 
 // validateSyslogKernelLevel - Wrapper for validating syslog and kernel

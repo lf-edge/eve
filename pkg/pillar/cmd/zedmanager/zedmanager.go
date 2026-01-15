@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2018 Zededa, Inc.
+// Copyright (c) 2017-2026 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 // Get AppInstanceConfig from zedagent, drive config to VolumeMgr,
@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	zcommon "github.com/lf-edge/eve-api/go/evecommon"
 	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
@@ -1193,6 +1194,16 @@ func handleModify(ctxArg interface{}, key string,
 	if needPurge {
 		needRestart = false
 	}
+
+	// Check if ONLY BootOrder changed (special case)
+	usbBootOnlyChange := false
+	if needRestart && isOnlyBootOrderChanged(config, oldConfig) {
+		usbBootOnlyChange = true
+		log.Functionf("handleModify(%v) for %s: Only BootOrder changed from %s to %s",
+			config.UUIDandVersion, config.DisplayName,
+			oldConfig.FixedResources.BootOrder, config.FixedResources.BootOrder)
+	}
+
 	// A snapshot is deemed necessary whenever the application requires a restart, as this typically
 	// indicates a significant change in the application, such as an upgrade.
 	if status.SnapStatus.SnapshotOnUpgrade && (needRestart || needPurge) {
@@ -1230,12 +1241,29 @@ func handleModify(ctxArg interface{}, key string,
 			oldConfig.LocalRestartCmd.Counter = config.LocalRestartCmd.Counter
 		}
 	} else if needRestart {
-		errStr := fmt.Sprintf("Need restart due to %s but not a restartCmd",
-			restartReason)
-		log.Errorf("handleModify(%s) failed: %s", status.Key(), errStr)
-		status.SetError(errStr, time.Now())
-		publishAppInstanceStatus(ctx, status)
-		return
+		// Different handling for BootOrder only changes vs other FixedResources changes
+		if usbBootOnlyChange {
+			// Boot order changed - use Warning severity and more specific message
+			errStr := fmt.Sprintf("BootOrder changed from %s to %s - restart required to apply",
+				oldConfig.FixedResources.BootOrder, config.FixedResources.BootOrder)
+			log.Noticef("handleModify(%s): %s", status.Key(), errStr)
+			description := types.ErrorDescription{
+				Error:               errStr,
+				ErrorSeverity:       types.ErrorSeverityWarning,
+				ErrorRetryCondition: "Boot order setting will be applied when application is restarted",
+			}
+			status.SetErrorWithSourceAndDescription(description, types.AppInstanceStatus{})
+			publishAppInstanceStatus(ctx, status)
+			// Don't return - let the config be stored for next restart
+		} else {
+			// Other FixedResources changes - require explicit restart command
+			errStr := fmt.Sprintf("Need restart due to %s but not a restartCmd",
+				restartReason)
+			log.Errorf("handleModify(%s) failed: %s", status.Key(), errStr)
+			status.SetError(errStr, time.Now())
+			publishAppInstanceStatus(ctx, status)
+			return
+		}
 	}
 
 	if config.PurgeCmd.Counter != oldConfig.PurgeCmd.Counter ||
@@ -1410,6 +1438,8 @@ func quantifyChanges(config types.AppInstanceConfig, oldConfig types.AppInstance
 		needPurge = true
 		purgeReason += str + "\n"
 	}
+
+	// Check if FixedResources changed
 	if !cmp.Equal(config.FixedResources, oldConfig.FixedResources) {
 		str := fmt.Sprintf("FixedResources changed: %v",
 			cmp.Diff(oldConfig.FixedResources, config.FixedResources))
@@ -1420,6 +1450,27 @@ func quantifyChanges(config types.AppInstanceConfig, oldConfig types.AppInstance
 	log.Functionf("quantifyChanges for %s %s returns %v, %v",
 		config.Key(), config.DisplayName, needPurge, needRestart)
 	return needPurge, needRestart, purgeReason, restartReason
+}
+
+// isOnlyBootOrderChanged checks if ONLY BootOrder changed in FixedResources.
+// Returns true if BootOrder changed but everything else in FixedResources stayed the same.
+func isOnlyBootOrderChanged(config types.AppInstanceConfig, oldConfig types.AppInstanceConfig) bool {
+	// First check: Did BootOrder actually change?
+	if config.FixedResources.BootOrder == oldConfig.FixedResources.BootOrder {
+		return false // No change to boot order
+	}
+
+	// Second check: Did anything else change?
+	// Create temporary copies with BootOrder set to the same value
+	newFixed := config.FixedResources
+	oldFixed := oldConfig.FixedResources
+
+	// Normalize BootOrder to the same value so we can compare everything else
+	newFixed.BootOrder = zcommon.BootOrder_BOOT_ORDER_UNSPECIFIED
+	oldFixed.BootOrder = zcommon.BootOrder_BOOT_ORDER_UNSPECIFIED
+
+	// If everything else is equal, then ONLY BootOrder changed
+	return cmp.Equal(newFixed, oldFixed)
 }
 
 func configureGOGC(gcp *types.ConfigItemValueMap) {
