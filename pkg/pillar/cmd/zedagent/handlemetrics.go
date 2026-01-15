@@ -8,8 +8,8 @@ package zedagent
 import (
 	"bytes"
 	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -941,19 +941,16 @@ func getSecurityInfo(ctx *zedagentContext) *info.SecurityInfo {
 		hasher.Write(caCert1)
 		si.ShaRootCa = hasher.Sum(nil)
 	}
-	// Add the sha of the root CAs used for TLS
-	// Note that we have the sha in a logical symlink so we
-	// just read that file.
-	line, err := os.ReadFile(types.V2TLSCertShaFilename)
+	// Add the sha of the root CAs used for TLS, loaded from config directory (integrity protected)
+	f, err := os.Open(types.V2TLSBaseFile)
 	if err != nil {
 		log.Error(err)
 	} else {
-		shaStr := strings.TrimSpace(string(line))
-		sha, err := hex.DecodeString(shaStr)
-		if err != nil {
-			log.Errorf("DecodeString %s failed: %s", shaStr, err)
+		h := sha256.New()
+		if _, err := io.Copy(h, f); err != nil {
+			log.Errorf("failed to get sha256 of %s: %v", types.V2TLSBaseFile, err)
 		} else {
-			si.ShaTlsRootCa = sha
+			si.ShaTlsRootCa = h.Sum(nil)
 		}
 	}
 	log.Tracef("getSecurityInfo returns %+v", si)
