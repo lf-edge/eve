@@ -1,4 +1,4 @@
-// Copyright (c) 2025 Zededa, Inc.
+// Copyright (c) 2025-2026 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 package main
@@ -212,7 +212,10 @@ func checkAppEntry(entry *inputEntry) string {
 	var appSplitArr []string
 	if entry.appUUID != "" {
 		appuuid = entry.appUUID
-		entry.content = "{\"container\":\"" + entry.acName + "\",\"time\":\"" + entry.acLogTime + "\",\"msg\":\"" + entry.content + "\"}"
+		// Only for container runtime logs, not appending those if it is kubernetes pod logs
+		if entry.acName != "" {
+			entry.content = "{\"container\":\"" + entry.acName + "\",\"time\":\"" + entry.acLogTime + "\",\"msg\":\"" + entry.content + "\"}"
+		}
 	} else if strings.HasPrefix(entry.source, "guest_vm-") {
 		appSplitArr = strings.SplitN(entry.source, "guest_vm-", 2)
 		appVMlog = true
