@@ -33,7 +33,7 @@ require (
 	github.com/jaypipes/ghw v0.8.0
 	github.com/k8snetworkplumbingwg/network-attachment-definition-client v1.5.0
 	github.com/lf-edge/edge-containers v0.0.0-20240207093504-5dfda0619b80
-	github.com/lf-edge/eve-api/go v0.0.0-20250722142628-6e701eb3256b
+	github.com/lf-edge/eve-api/go v0.0.0-20260105135946-ca16739db889
 	github.com/lf-edge/eve-libs v0.0.0-20251219105351-edbadb5deb02
 	github.com/lf-edge/eve-tools/runtimemetrics/go v0.0.0-20250625152713-6890d8e138ae
 	github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20240315102754-0f6d1f182e0d

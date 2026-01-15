@@ -20,6 +20,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	zconfig "github.com/lf-edge/eve-api/go/config"
 	zevecommon "github.com/lf-edge/eve-api/go/evecommon"
+	"github.com/lf-edge/eve-api/go/profile"
 	"github.com/lf-edge/eve/pkg/pillar/objtonum"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/sriov"
@@ -572,15 +573,15 @@ func publishNetworkInstanceConfig(ctx *getconfigContext,
 	}
 }
 
-func parseConnectivityProbe(probe *zconfig.ConnectivityProbe) (
+func parseConnectivityProbe(probe *zevecommon.ConnectivityProbe) (
 	parsedProbe types.ConnectivityProbe, err error) {
 	if probe == nil {
 		return types.ConnectivityProbe{}, nil
 	}
 	switch probe.ProbeMethod {
-	case zconfig.ConnectivityProbeMethod_CONNECTIVITY_PROBE_METHOD_UNSPECIFIED:
+	case zevecommon.ConnectivityProbeMethod_CONNECTIVITY_PROBE_METHOD_UNSPECIFIED:
 		parsedProbe.Method = types.ConnectivityProbeMethodNone
-	case zconfig.ConnectivityProbeMethod_CONNECTIVITY_PROBE_METHOD_ICMP:
+	case zevecommon.ConnectivityProbeMethod_CONNECTIVITY_PROBE_METHOD_ICMP:
 		parsedProbe.Method = types.ConnectivityProbeMethodICMP
 		parsedProbe.ProbeHost = probe.GetProbeEndpoint().GetHost()
 		// Undefined host for ICMP probing is allowed - EVE will probe Google DNS
@@ -593,7 +594,7 @@ func parseConnectivityProbe(probe *zconfig.ConnectivityProbe) (
 					parsedProbe.ProbeHost)
 			}
 		}
-	case zconfig.ConnectivityProbeMethod_CONNECTIVITY_PROBE_METHOD_TCP:
+	case zevecommon.ConnectivityProbeMethod_CONNECTIVITY_PROBE_METHOD_TCP:
 		parsedProbe.Method = types.ConnectivityProbeMethodTCP
 		// Host address should be a valid (and non-empty) IP address.
 		parsedProbe.ProbeHost = probe.GetProbeEndpoint().GetHost()
@@ -684,6 +685,9 @@ func parseAppInstanceConfig(getconfigCtx *getconfigContext,
 			delLocalAppConfig(getconfigCtx, uuidStr)
 		}
 	}
+
+	// Track if any app's boot order info changed (for LPS POST trigger)
+	var bootOrderChanged bool
 
 	for _, cfgApp := range Apps {
 		// Note that we repeat this even if the app config didn't
@@ -799,6 +803,47 @@ func parseAppInstanceConfig(getconfigCtx *getconfigContext,
 
 		appInstance.ProfileList = cfgApp.ProfileList
 
+		// Determine boot order from multiple sources with precedence (highest to lowest):
+		//   1. LPS (Local Profile Server) - can override controller setting
+		//   2. Controller API (VmConfig.BootOrder from EdgeDevConfig)
+		//   3. Device configuration property (app.boot.order)
+		//   4. Default (BOOT_ORDER_UNSPECIFIED)
+		// This value is passed through DomainConfig.VmConfig to domainmgr,
+		// which writes it to QEMU's fw_cfg as "opt/eve.bootorder" for OVMF to read.
+		//
+		// Track which source determined the boot order for reporting to LPS.
+		// BootOrderSource is stored at AppInstanceConfig level (not in FixedResources)
+		// because it's purely informational and shouldn't trigger domain restarts.
+		//
+		// Lock to protect against concurrent updates from LPS/DeviceProperty handlers.
+		// This ensures the boot order evaluation and publish is atomic.
+		getconfigCtx.sideController.bootOrderUpdateMx.Lock()
+		// Get old values from existing published config to detect changes.
+		appUUID := appInstance.UUIDandVersion.UUID
+		var oldBootOrder zevecommon.BootOrder
+		var oldBootOrderSource profile.BootOrderSource
+		if existingConfig, err := getconfigCtx.pubAppInstanceConfig.Get(appUUID.String()); err == nil {
+			if existing, ok := existingConfig.(types.AppInstanceConfig); ok {
+				oldBootOrder = existing.FixedResources.BootOrder
+				oldBootOrderSource = existing.BootOrderSource
+			}
+		}
+		// Store the raw controller boot order for re-evaluation when LPS/DeviceProp changes.
+		controllerBootOrder := cfgApp.Fixedresources.GetBootOrder()
+		appInstance.ControllerBootOrder = controllerBootOrder
+		// Evaluate effective boot order using the helper function.
+		// NOTE: evaluateAppBootOrder requires sideController.Mutex to be held,
+		// which is acquired at the top of parseConfig().
+		bootOrderResult := evaluateAppBootOrder(appUUID, controllerBootOrder, getconfigCtx)
+		appInstance.FixedResources.BootOrder = bootOrderResult.BootOrder
+		appInstance.BootOrderSource = bootOrderResult.Source
+		// Track if boot order info changed for any app
+		if appInstance.FixedResources.BootOrder != oldBootOrder ||
+			appInstance.BootOrderSource != oldBootOrderSource {
+			bootOrderChanged = true
+		}
+		getconfigCtx.sideController.bootOrderUpdateMx.Unlock()
+
 		// Add config submitted via local profile server.
 		addLocalAppConfig(getconfigCtx, &appInstance)
 
@@ -813,6 +858,11 @@ func parseAppInstanceConfig(getconfigCtx *getconfigContext,
 
 		// Verify that it fits and if not publish with error
 		checkAndPublishAppInstanceConfig(getconfigCtx.pubAppInstanceConfig, appInstance)
+	}
+
+	// Trigger immediate POST of boot order info to LPS if any app's boot order changed.
+	if bootOrderChanged {
+		triggerLocalAppBootInfoPOST(getconfigCtx)
 	}
 }
 
@@ -2026,15 +2076,15 @@ func publishNetworkXObjectConfig(ctx *getconfigContext,
 func parseOneNetworkXObjectConfig(ctx *getconfigContext, netEnt *zconfig.NetworkConfig) *types.NetworkXObjectConfig {
 	config := new(types.NetworkXObjectConfig)
 	switch netEnt.Type {
-	case zconfig.NetworkType_NETWORKTYPENOOP:
+	case zevecommon.NetworkType_NETWORKTYPENOOP:
 		config.Type = types.NetworkTypeNOOP
-	case zconfig.NetworkType_V4:
+	case zevecommon.NetworkType_V4:
 		config.Type = types.NetworkTypeIPv4
-	case zconfig.NetworkType_V6:
+	case zevecommon.NetworkType_V6:
 		config.Type = types.NetworkTypeIPV6
-	case zconfig.NetworkType_V4Only:
+	case zevecommon.NetworkType_V4Only:
 		config.Type = types.NetworkTypeIpv4Only
-	case zconfig.NetworkType_V6Only:
+	case zevecommon.NetworkType_V6Only:
 		config.Type = types.NetworkTypeIpv6Only
 	default:
 		errStr := fmt.Sprintf("Unknown Network type (%s)", netEnt.Type.String())
@@ -2079,13 +2129,13 @@ func parseOneNetworkXObjectConfig(ctx *getconfigContext, netEnt *zconfig.Network
 				Port:   proxy.Port,
 			}
 			switch proxy.Proto {
-			case zconfig.ProxyProto_PROXY_HTTP:
+			case zevecommon.ProxyProto_PROXY_HTTP:
 				proxyEntry.Type = types.NetworkProxyTypeHTTP
-			case zconfig.ProxyProto_PROXY_HTTPS:
+			case zevecommon.ProxyProto_PROXY_HTTPS:
 				proxyEntry.Type = types.NetworkProxyTypeHTTPS
-			case zconfig.ProxyProto_PROXY_SOCKS:
+			case zevecommon.ProxyProto_PROXY_SOCKS:
 				proxyEntry.Type = types.NetworkProxyTypeSOCKS
-			case zconfig.ProxyProto_PROXY_FTP:
+			case zevecommon.ProxyProto_PROXY_FTP:
 				proxyEntry.Type = types.NetworkProxyTypeFTP
 			default:
 			}
@@ -2181,11 +2231,11 @@ func parseNetworkWirelessConfig(ctx *getconfigContext,
 
 	wType := netWireless.GetType()
 	switch wType {
-	case zconfig.WirelessType_TypeNOOP:
+	case zevecommon.WirelessType_TypeNOOP:
 		// This is not a wireless network adapter.
 		// Return an empty wireless configuration.
 		return wconfig, nil
-	case zconfig.WirelessType_Cellular:
+	case zevecommon.WirelessType_Cellular:
 		wconfig.WType = types.WirelessTypeCellular
 		cellNetConfigs := netWireless.GetCellularCfg()
 		if len(cellNetConfigs) == 0 {
@@ -2287,16 +2337,16 @@ func parseNetworkWirelessConfig(ctx *getconfigContext,
 		wconfig.CellularV2.LocationTracking = cellNetConfig.GetLocationTracking()
 		log.Functionf("parseNetworkWirelessConfig: Wireless of type Cellular, %v",
 			wconfig.CellularV2)
-	case zconfig.WirelessType_WiFi:
+	case zevecommon.WirelessType_WiFi:
 		wconfig.WType = types.WirelessTypeWifi
 		wificfgs := netWireless.GetWifiCfg()
 		for _, wificfg := range wificfgs {
 			var wifi types.WifiConfig
 			wifi.SSID = wificfg.GetWifiSSID()
 			switch wificfg.GetKeyScheme() {
-			case zconfig.WiFiKeyScheme_WPAPSK:
+			case zevecommon.WiFiKeyScheme_WPAPSK:
 				wifi.KeyScheme = types.KeySchemeWpaPsk
-			case zconfig.WiFiKeyScheme_WPAEAP:
+			case zevecommon.WiFiKeyScheme_WPAEAP:
 				wifi.KeyScheme = types.KeySchemeWpaEap
 			default:
 				return wconfig, fmt.Errorf("unrecognized WiFi Key scheme: %+v",
@@ -2321,15 +2371,15 @@ func parseNetworkWirelessConfig(ctx *getconfigContext,
 }
 
 func parseCellularAuthProtocol(
-	authProtocol zconfig.CellularAuthProtocol) (types.WwanAuthProtocol, error) {
+	authProtocol zevecommon.CellularAuthProtocol) (types.WwanAuthProtocol, error) {
 	switch authProtocol {
-	case zconfig.CellularAuthProtocol_CELLULAR_AUTH_PROTOCOL_NONE:
+	case zevecommon.CellularAuthProtocol_CELLULAR_AUTH_PROTOCOL_NONE:
 		return types.WwanAuthProtocolNone, nil
-	case zconfig.CellularAuthProtocol_CELLULAR_AUTH_PROTOCOL_PAP:
+	case zevecommon.CellularAuthProtocol_CELLULAR_AUTH_PROTOCOL_PAP:
 		return types.WwanAuthProtocolPAP, nil
-	case zconfig.CellularAuthProtocol_CELLULAR_AUTH_PROTOCOL_CHAP:
+	case zevecommon.CellularAuthProtocol_CELLULAR_AUTH_PROTOCOL_CHAP:
 		return types.WwanAuthProtocolCHAP, nil
-	case zconfig.CellularAuthProtocol_CELLULAR_AUTH_PROTOCOL_PAP_AND_CHAP:
+	case zevecommon.CellularAuthProtocol_CELLULAR_AUTH_PROTOCOL_PAP_AND_CHAP:
 		return types.WwanAuthProtocolPAPAndCHAP, nil
 	default:
 		return types.WwanAuthProtocolNone, fmt.Errorf(
@@ -2354,7 +2404,7 @@ func parseCellularIPType(
 	}
 }
 
-func parseIpspecNetworkXObject(ipspec *zconfig.Ipspec, config *types.NetworkXObjectConfig) error {
+func parseIpspecNetworkXObject(ipspec *zevecommon.Ipspec, config *types.NetworkXObjectConfig) error {
 	config.Dhcp = types.DhcpType(ipspec.Dhcp)
 	config.DomainName = ipspec.GetDomain()
 	if s := ipspec.GetSubnet(); s != "" {
@@ -2432,7 +2482,7 @@ func parseIpspecNetworkXObject(ipspec *zconfig.Ipspec, config *types.NetworkXObj
 	return nil
 }
 
-func parseIpspec(ipspec *zconfig.Ipspec,
+func parseIpspec(ipspec *zevecommon.Ipspec,
 	config *types.NetworkInstanceConfig) error {
 
 	// Parse Subnet - mandatory argument.
@@ -2646,7 +2696,7 @@ func parseAppNetAdapterConfig(appInstance *types.AppInstanceConfig,
 
 func isOverlayNetwork(netEnt *zconfig.NetworkConfig) bool {
 	switch netEnt.Type {
-	case zconfig.NetworkType_CryptoV4, zconfig.NetworkType_CryptoV6:
+	case zevecommon.NetworkType_CryptoV4, zevecommon.NetworkType_CryptoV6:
 		return true
 	default:
 	}
@@ -2896,6 +2946,15 @@ func parseConfigItems(ctx *getconfigContext, config *zconfig.EdgeDevConfig,
 		if oldMaintenanceMode != newMaintenanceMode {
 			ctx.zedagentCtx.gcpMaintenanceMode = newMaintenanceMode
 			mergeMaintenanceMode(ctx.zedagentCtx, "parseConfigItems")
+		}
+
+		// Handle app.boot.order device property change - re-evaluate boot order for all apps.
+		oldBootOrder := oldGlobalConfig.GlobalValueString(types.AppBootOrder)
+		newBootOrder := newGlobalConfig.GlobalValueString(types.AppBootOrder)
+		if oldBootOrder != newBootOrder {
+			log.Functionf("parseConfigItems: %s change from %q to %q",
+				"AppBootOrder", oldBootOrder, newBootOrder)
+			applyDevicePropertyBootOrder(ctx)
 		}
 
 		pub := ctx.zedagentCtx.pubGlobalConfig

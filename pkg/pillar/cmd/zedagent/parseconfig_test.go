@@ -93,9 +93,9 @@ func TestParsePhysicalNetworkAdapters(t *testing.T) {
 		Networks: []*zconfig.NetworkConfig{
 			{
 				Id:   networkUUID,
-				Type: zconfig.NetworkType_V4,
-				Ip: &zconfig.Ipspec{
-					Dhcp: zconfig.DHCPType_Client,
+				Type: zcommon.NetworkType_V4,
+				Ip: &zcommon.Ipspec{
+					Dhcp: zcommon.DHCPType_Client,
 				},
 			},
 		},
@@ -222,26 +222,26 @@ func TestParseVlans(t *testing.T) {
 		Networks: []*zconfig.NetworkConfig{
 			{
 				Id:   network1UUID,
-				Type: zconfig.NetworkType_V4,
-				Ip: &zconfig.Ipspec{
-					Dhcp: zconfig.DHCPType_Client,
+				Type: zcommon.NetworkType_V4,
+				Ip: &zcommon.Ipspec{
+					Dhcp: zcommon.DHCPType_Client,
 				},
 			},
 			{
 				Id:   network2UUID,
-				Type: zconfig.NetworkType_V6,
-				Ip: &zconfig.Ipspec{
-					Dhcp: zconfig.DHCPType_Client,
+				Type: zcommon.NetworkType_V6,
+				Ip: &zcommon.Ipspec{
+					Dhcp: zcommon.DHCPType_Client,
 				},
 			},
 			{
 				Id:   network3UUID,
-				Type: zconfig.NetworkType_V4,
-				Ip: &zconfig.Ipspec{
-					Dhcp:    zconfig.DHCPType_Static,
+				Type: zcommon.NetworkType_V4,
+				Ip: &zcommon.Ipspec{
+					Dhcp:    zcommon.DHCPType_Static,
 					Subnet:  "192.168.1.0/24",
 					Gateway: "192.168.1.1",
-					DhcpRange: &zconfig.IpRange{
+					DhcpRange: &zcommon.IpRange{
 						Start: "192.168.1.10",
 						End:   "192.168.1.100",
 					},
@@ -454,9 +454,9 @@ func TestParseBonds(t *testing.T) {
 		Networks: []*zconfig.NetworkConfig{
 			{
 				Id:   networkUUID,
-				Type: zconfig.NetworkType_V4,
-				Ip: &zconfig.Ipspec{
-					Dhcp: zconfig.DHCPType_Client,
+				Type: zcommon.NetworkType_V4,
+				Ip: &zcommon.Ipspec{
+					Dhcp: zcommon.DHCPType_Client,
 				},
 			},
 		},
@@ -597,16 +597,16 @@ func TestParseVlansOverBonds(t *testing.T) {
 		Networks: []*zconfig.NetworkConfig{
 			{
 				Id:   network1UUID,
-				Type: zconfig.NetworkType_V4,
-				Ip: &zconfig.Ipspec{
-					Dhcp: zconfig.DHCPType_Client,
+				Type: zcommon.NetworkType_V4,
+				Ip: &zcommon.Ipspec{
+					Dhcp: zcommon.DHCPType_Client,
 				},
 			},
 			{
 				Id:   network2UUID,
-				Type: zconfig.NetworkType_V4,
-				Ip: &zconfig.Ipspec{
-					Dhcp: zconfig.DHCPType_Client,
+				Type: zcommon.NetworkType_V4,
+				Ip: &zcommon.Ipspec{
+					Dhcp: zcommon.DHCPType_Client,
 				},
 			},
 		},
@@ -850,16 +850,16 @@ func TestInvalidLowerLayerReferences(t *testing.T) {
 		Networks: []*zconfig.NetworkConfig{
 			{
 				Id:   network1UUID,
-				Type: zconfig.NetworkType_V4,
-				Ip: &zconfig.Ipspec{
-					Dhcp: zconfig.DHCPType_Client,
+				Type: zcommon.NetworkType_V4,
+				Ip: &zcommon.Ipspec{
+					Dhcp: zcommon.DHCPType_Client,
 				},
 			},
 			{
 				Id:   network2UUID,
-				Type: zconfig.NetworkType_V4,
-				Ip: &zconfig.Ipspec{
-					Dhcp: zconfig.DHCPType_Client,
+				Type: zcommon.NetworkType_V4,
+				Ip: &zcommon.Ipspec{
+					Dhcp: zcommon.DHCPType_Client,
 				},
 			},
 		},
@@ -1532,16 +1532,16 @@ func TestParseSharedLabels(t *testing.T) {
 		Networks: []*zconfig.NetworkConfig{
 			{
 				Id:   network1UUID,
-				Type: zconfig.NetworkType_V4,
-				Ip: &zconfig.Ipspec{
-					Dhcp: zconfig.DHCPType_Client,
+				Type: zcommon.NetworkType_V4,
+				Ip: &zcommon.Ipspec{
+					Dhcp: zcommon.DHCPType_Client,
 				},
 			},
 			{
 				Id:   network2UUID,
-				Type: zconfig.NetworkType_V4,
-				Ip: &zconfig.Ipspec{
-					Dhcp: zconfig.DHCPType_Client,
+				Type: zcommon.NetworkType_V4,
+				Ip: &zcommon.Ipspec{
+					Dhcp: zcommon.DHCPType_Client,
 				},
 			},
 		},
@@ -1650,19 +1650,19 @@ func TestParseIpspecNetworkXObject_ValidConfig(t *testing.T) {
 	subnetStr := "192.168.1.0/24"
 	_, subnet, _ := net.ParseCIDR(subnetStr)
 
-	ipspec := &zconfig.Ipspec{
-		Dhcp:    zconfig.DHCPType_Static,
+	ipspec := &zcommon.Ipspec{
+		Dhcp:    zcommon.DHCPType_Static,
 		Subnet:  subnetStr,
 		Gateway: "192.168.1.1",
 		Domain:  "test.local",
 		Ntp:     "192.168.1.10",
 		MoreNtp: []string{"192.168.1.11"},
 		Dns:     []string{"192.168.1.2"},
-		DhcpRange: &zconfig.IpRange{
+		DhcpRange: &zcommon.IpRange{
 			Start: "192.168.1.100",
 			End:   "192.168.1.120",
 		},
-		DhcpOptionsIgnore: &zconfig.DhcpOptionsIgnore{
+		DhcpOptionsIgnore: &zcommon.DhcpOptionsIgnore{
 			NtpServerExclusively: true,
 		},
 	}
@@ -1689,19 +1689,19 @@ func TestParseIpspecNetworkXObject_ValidConfig_IPv6(t *testing.T) {
 	subnetStr := "fd00::/64"
 	_, subnet, _ := net.ParseCIDR(subnetStr)
 
-	ipspec := &zconfig.Ipspec{
-		Dhcp:    zconfig.DHCPType_Static,
+	ipspec := &zcommon.Ipspec{
+		Dhcp:    zcommon.DHCPType_Static,
 		Subnet:  subnetStr,
 		Gateway: "fd00::1",
 		Domain:  "ipv6.local",
 		Ntp:     "fd00::123",
 		MoreNtp: []string{"fd00::124"},
 		Dns:     []string{"fd00::53"},
-		DhcpRange: &zconfig.IpRange{
+		DhcpRange: &zcommon.IpRange{
 			Start: "fd00::100",
 			End:   "fd00::1ff",
 		},
-		DhcpOptionsIgnore: &zconfig.DhcpOptionsIgnore{
+		DhcpOptionsIgnore: &zcommon.DhcpOptionsIgnore{
 			NtpServerExclusively: true,
 		},
 	}
@@ -1728,7 +1728,7 @@ func TestParseIpspecNetworkXObject_ValidConfig_IPv6(t *testing.T) {
 func TestParseIpspecNetworkXObject_InvalidSubnet(t *testing.T) {
 	g := NewGomegaWithT(t)
 
-	ipspec := &zconfig.Ipspec{
+	ipspec := &zcommon.Ipspec{
 		Subnet: "not_a_cidr",
 	}
 
@@ -1742,7 +1742,7 @@ func TestParseIpspecNetworkXObject_InvalidSubnet(t *testing.T) {
 func TestParseIpspecNetworkXObject_InvalidGateway(t *testing.T) {
 	g := NewGomegaWithT(t)
 
-	ipspec := &zconfig.Ipspec{
+	ipspec := &zcommon.Ipspec{
 		Subnet:  "192.168.1.0/24",
 		Gateway: "bad_ip",
 	}
@@ -1757,7 +1757,7 @@ func TestParseIpspecNetworkXObject_InvalidGateway(t *testing.T) {
 func TestParseIpspecNetworkXObject_DNSMismatch(t *testing.T) {
 	g := NewGomegaWithT(t)
 
-	ipspec := &zconfig.Ipspec{
+	ipspec := &zcommon.Ipspec{
 		Subnet: "192.168.1.0/24",
 		Dns:    []string{"2001:db8::1"}, // IPv6 in IPv4 subnet
 	}
@@ -1772,9 +1772,9 @@ func TestParseIpspecNetworkXObject_DNSMismatch(t *testing.T) {
 func TestParseIpspecNetworkXObject_InvalidDHCPRange(t *testing.T) {
 	g := NewGomegaWithT(t)
 
-	ipspec := &zconfig.Ipspec{
+	ipspec := &zcommon.Ipspec{
 		Subnet: "192.168.1.0/24",
-		DhcpRange: &zconfig.IpRange{
+		DhcpRange: &zcommon.IpRange{
 			Start: "192.168.1.250",
 			End:   "192.168.1.240", // start > end
 		},
@@ -1790,7 +1790,7 @@ func TestParseIpspecNetworkXObject_InvalidDHCPRange(t *testing.T) {
 func TestParseIpspec_Valid(t *testing.T) {
 	g := NewGomegaWithT(t)
 
-	ipspec := &zconfig.Ipspec{
+	ipspec := &zcommon.Ipspec{
 		Subnet:  "192.168.0.0/24",
 		Gateway: "192.168.0.1",
 		Domain:  "test.local",
@@ -1813,7 +1813,7 @@ func TestParseIpspec_Valid(t *testing.T) {
 func TestParseIpspec_MissingSubnet(t *testing.T) {
 	g := NewGomegaWithT(t)
 
-	ipspec := &zconfig.Ipspec{}
+	ipspec := &zcommon.Ipspec{}
 
 	var config types.NetworkInstanceConfig
 	err := parseIpspec(ipspec, &config)
@@ -1825,7 +1825,7 @@ func TestParseIpspec_MissingSubnet(t *testing.T) {
 func TestParseIpspec_GatewayVersionMismatch(t *testing.T) {
 	g := NewGomegaWithT(t)
 
-	ipspec := &zconfig.Ipspec{
+	ipspec := &zcommon.Ipspec{
 		Subnet:  "192.168.1.0/24",
 		Gateway: "2001:db8::1", // mismatch
 	}
