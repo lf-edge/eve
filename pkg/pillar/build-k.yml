@@ -27,4 +27,3 @@ config:
       type: a
 buildArgs:
   - HV=k
-  - REL_HASH_%=@lkt:pkgs:../*
