@@ -11,8 +11,9 @@ import (
 	"time"
 
 	smart "github.com/anatol/smart.go"
-	"github.com/jaypipes/ghw"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/zededa/ghw"
+	"github.com/zededa/ghw/pkg/option"
 )
 
 // ReadSMARTinfoForDisks - сollects disks information via API,
@@ -20,7 +21,7 @@ import (
 func ReadSMARTinfoForDisks() (*types.DisksInformation, error) {
 	disksInfo := new(types.DisksInformation)
 	// Get information about disks
-	block, err := ghw.Block()
+	block, err := ghw.Block(option.WithDisableTools())
 	if err != nil {
 		return nil, fmt.Errorf("error getting block storage info: %v", err)
 	}
