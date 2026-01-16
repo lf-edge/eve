@@ -60,3 +60,8 @@ func GetSupportedReplicaCountForCluster() (int, error) {
 func GetStorageClassForReplicaCount(count int) string {
 	return ""
 }
+
+// K3sVersionRead is an empty implementation for non-kubevirt builds
+func K3sVersionRead() (string, error) {
+	return "", nil
+}

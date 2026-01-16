@@ -1078,3 +1078,17 @@ func GetStorageClassForReplicaCount(count int) string {
 	}
 	return fmt.Sprintf("%s%d", VolumeCSIStorageClassReplicaPrefix, count)
 }
+
+func K3sVersionRead() (string, error) {
+	// Cannot read a static version from the current baseOs defined version.
+	// k3s.version could be iterated and provide multiple upgrades.
+	clientset, err := GetClientSet()
+	if err != nil {
+		return "", fmt.Errorf("K3sVersionRead: failed to get clientset: %w", err)
+	}
+	serverVersion, err := clientset.Discovery().ServerVersion()
+	if err != nil {
+		return "", fmt.Errorf("K3sVersionRead: failed to get server version: %w", err)
+	}
+	return serverVersion.GitVersion, nil
+}

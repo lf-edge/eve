@@ -108,6 +108,8 @@ func GetKubeConfig() (*rest.Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Set a generous default timeout
+	config.Timeout = time.Second * 60
 	return config, nil
 }
 
