@@ -29,11 +29,14 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-const hashBytesNum = 32 // Hmac Sha256 Hash is 32 bytes fixed
+const (
+	hashBytesNum = 32 // Hmac Sha256 Hash is 32 bytes fixed
+	hkdfKeyLen   = 32 // HKDF-derived AES key length (bytes)
+)
 
 var (
 	nonceOpEncrption bool
-	nonceHash        [32]byte         // JWT Nonce with Sha256Sum for encryption
+	nonceHash        [hkdfKeyLen]byte // JWT Nonce with Sha256Sum for encryption
 	jwtNonce         string           // JWT session Nonce for authentication
 	clientAuthType   types.EvAuthType // edgeview client authentication type
 	evSSHPrivateKey  string           // path to Edgeview SSH private key
@@ -320,24 +323,28 @@ func verifyEnvelopeData(data []byte, checkClientAuth bool) (bool, bool, []byte, 
 
 func encryptEvMsg(msg []byte) ([]byte, []byte, error) {
 	// Derive AES key via HKDF from nonceHash
-	key, err := deriveKeyHKDF(nonceHash, 32)
+	var salt []byte
+	if jwtNonce != "" {
+		salt = []byte(jwtNonce)
+	}
+	key, err := deriveKeyHKDF(nonceHash, salt, hkdfKeyLen)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	block, err := aes.NewCipher(key)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("encryptEvMsg: aes.NewCipher failed: %w", err)
 	}
 
 	aead, err := cipher.NewGCM(block)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("encryptEvMsg: cipher.NewGCM failed: %w", err)
 	}
 
 	iv := make([]byte, aead.NonceSize())
 	if _, err := rand.Read(iv); err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("encryptEvMsg: rand.Read failed: %w", err)
 	}
 
 	cipherText := aead.Seal(nil, iv, msg, nil)
@@ -363,7 +370,11 @@ func decryptEvMsg(iv, data []byte, cipherStr string) (bool, []byte) {
 	}
 
 	// Derive AES key via HKDF from nonceHash
-	key, err := deriveKeyHKDF(nonceHash, 32)
+	var salt []byte
+	if jwtNonce != "" {
+		salt = []byte(jwtNonce)
+	}
+	key, err := deriveKeyHKDF(nonceHash, salt, hkdfKeyLen)
 	if err != nil {
 		log.Errorf("failed to derive key for decryption: %v", err)
 		return false, nil
@@ -371,13 +382,13 @@ func decryptEvMsg(iv, data []byte, cipherStr string) (bool, []byte) {
 
 	block, err := aes.NewCipher(key)
 	if err != nil {
-		log.Errorf("failed to create cipher: %v", err)
+		log.Errorf("decryptEvMsg: aes.NewCipher failed: %v", err)
 		return false, nil
 	}
 
 	aead, err := cipher.NewGCM(block)
 	if err != nil {
-		log.Errorf("failed to create AEAD: %v", err)
+		log.Errorf("decryptEvMsg: cipher.NewGCM failed: %v", err)
 		return false, nil
 	}
 
@@ -391,14 +402,12 @@ func decryptEvMsg(iv, data []byte, cipherStr string) (bool, []byte) {
 	return true, plain
 }
 
-// deriveKeyHKDF derives a key of length keyLen from the given 32-byte seed using HKDF-SHA256
-// deriveKeyHKDF derives a key of length keyLen from the given 32-byte seed using
-// HKDF-SHA256 (RFC 5869). Implemented locally to avoid external dependency on
-// golang.org/x/crypto/hkdf when building with vendoring.
-// deriveKeyHKDF derives a key of length keyLen from the given 32-byte seed using HKDF-SHA256
-func deriveKeyHKDF(seed [32]byte, keyLen int) ([]byte, error) {
-	hk := hkdf.New(sha256.New, seed[:], nil, nil)
-	key := make([]byte, keyLen)
+// deriveKeyHKDF derives a key of length keyLen from the 32-byte seed using
+// HKDF-SHA256 (RFC 5869). The optional `salt` provides key separation; pass
+// nil to omit. Implemented locally to avoid an extra external dependency.
+func deriveKeyHKDF(seed [hkdfKeyLen]byte, salt []byte, keyLen int) ([]byte, error) {
+	hk := hkdf.New(sha256.New, seed[:], salt, nil)
+	key := make([]byte, keyLen) // the keyLen is passed in as a constant defined above
 	if _, err := io.ReadFull(hk, key); err != nil {
 		return nil, err
 	}
