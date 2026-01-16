@@ -1,4 +1,4 @@
-// Copyright (c) 2022-2025 Zededa, Inc.
+// Copyright (c) 2022-2026 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 package main
@@ -29,11 +29,14 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-const hashBytesNum = 32 // Hmac Sha256 Hash is 32 bytes fixed
+const (
+	hashBytesNum = 32 // Hmac Sha256 Hash is 32 bytes fixed
+	hkdfKeyLen   = 32 // HKDF-derived AES key length (bytes)
+)
 
 var (
 	nonceOpEncrption bool
-	nonceHash        [32]byte         // JWT Nonce with Sha256Sum for encryption
+	sessionSecret    [hkdfKeyLen]byte // Randomly generated session secret for HKDF
 	jwtNonce         string           // JWT session Nonce for authentication
 	clientAuthType   types.EvAuthType // edgeview client authentication type
 	evSSHPrivateKey  string           // path to Edgeview SSH private key
@@ -319,25 +322,30 @@ func verifyEnvelopeData(data []byte, checkClientAuth bool) (bool, bool, []byte, 
 }
 
 func encryptEvMsg(msg []byte) ([]byte, []byte, error) {
-	// Derive AES key via HKDF from nonceHash
-	key, err := deriveKeyHKDF(nonceHash, 32)
+	// Derive AES key via HKDF from sessionSecret
+	var salt []byte
+	if jwtNonce != "" {
+		saltHash := sha256.Sum256([]byte(jwtNonce))
+		salt = saltHash[:]
+	}
+	key, err := deriveKeyHKDF(sessionSecret, salt, hkdfKeyLen)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	block, err := aes.NewCipher(key)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("encryptEvMsg: aes.NewCipher failed: %w", err)
 	}
 
 	aead, err := cipher.NewGCM(block)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("encryptEvMsg: cipher.NewGCM failed: %w", err)
 	}
 
 	iv := make([]byte, aead.NonceSize())
 	if _, err := rand.Read(iv); err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("encryptEvMsg: rand.Read failed: %w", err)
 	}
 
 	cipherText := aead.Seal(nil, iv, msg, nil)
@@ -362,8 +370,13 @@ func decryptEvMsg(iv, data []byte, cipherStr string) (bool, []byte) {
 		return false, nil
 	}
 
-	// Derive AES key via HKDF from nonceHash
-	key, err := deriveKeyHKDF(nonceHash, 32)
+	// Derive AES key via HKDF from sessionSecret
+	var salt []byte
+	if jwtNonce != "" {
+		saltHash := sha256.Sum256([]byte(jwtNonce))
+		salt = saltHash[:]
+	}
+	key, err := deriveKeyHKDF(sessionSecret, salt, hkdfKeyLen)
 	if err != nil {
 		log.Errorf("failed to derive key for decryption: %v", err)
 		return false, nil
@@ -371,13 +384,13 @@ func decryptEvMsg(iv, data []byte, cipherStr string) (bool, []byte) {
 
 	block, err := aes.NewCipher(key)
 	if err != nil {
-		log.Errorf("failed to create cipher: %v", err)
+		log.Errorf("decryptEvMsg: aes.NewCipher failed: %v", err)
 		return false, nil
 	}
 
 	aead, err := cipher.NewGCM(block)
 	if err != nil {
-		log.Errorf("failed to create AEAD: %v", err)
+		log.Errorf("decryptEvMsg: cipher.NewGCM failed: %v", err)
 		return false, nil
 	}
 
@@ -391,14 +404,12 @@ func decryptEvMsg(iv, data []byte, cipherStr string) (bool, []byte) {
 	return true, plain
 }
 
-// deriveKeyHKDF derives a key of length keyLen from the given 32-byte seed using HKDF-SHA256
-// deriveKeyHKDF derives a key of length keyLen from the given 32-byte seed using
-// HKDF-SHA256 (RFC 5869). Implemented locally to avoid external dependency on
-// golang.org/x/crypto/hkdf when building with vendoring.
-// deriveKeyHKDF derives a key of length keyLen from the given 32-byte seed using HKDF-SHA256
-func deriveKeyHKDF(seed [32]byte, keyLen int) ([]byte, error) {
-	hk := hkdf.New(sha256.New, seed[:], nil, nil)
-	key := make([]byte, keyLen)
+// deriveKeyHKDF derives a key of length keyLen from the 32-byte secret using
+// HKDF-SHA256 (RFC 5869). The optional `salt` provides key separation; pass
+// nil to omit. Implemented locally to avoid an extra external dependency.
+func deriveKeyHKDF(secret [hkdfKeyLen]byte, salt []byte, keyLen int) ([]byte, error) {
+	hk := hkdf.New(sha256.New, secret[:], salt, nil)
+	key := make([]byte, keyLen) // the keyLen is passed in as a constant defined above
 	if _, err := io.ReadFull(hk, key); err != nil {
 		return nil, err
 	}
@@ -408,12 +419,13 @@ func deriveKeyHKDF(seed [32]byte, keyLen int) ([]byte, error) {
 // The JWT token signature verification is performed in parseEvConfig() in
 // pkg/pillar/cmd/zedagent/parseedgeview.go on the device side before this
 // Edgeview container is started.
-func encryptVarInit(jdata types.EvjwtInfo) {
-	jwtNonce = jdata.Key
-	nonceOpEncrption = jdata.Enc
-	if nonceOpEncrption {
-		nonceHash = sha256.Sum256([]byte(jdata.Key))
+func encryptVarInit(jdata types.EvjwtInfo) error {
+	if jdata.Enc {
+		if _, err := rand.Read(sessionSecret[:]); err != nil {
+			return fmt.Errorf("failed to generate sessionSecret: %v", err)
+		}
 	}
+	return nil
 }
 
 // signClientSSHKeyAuthenData signs the message using the provided SSH private key
