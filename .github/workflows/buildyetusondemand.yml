@@ -30,7 +30,7 @@ jobs:
     env:
       HEAD_REF: ${{ github.event.pull_request.head.ref }}
       REPO_NAME: ${{ github.event.repository.full_name }}
-      IMG_NAME: "lf-edge/eve-yetus"
+      IMG_NAME: "lfedge/eve-yetus"
       IMG_TAG: "0.15.1-eve-1"
     strategy:
       fail-fast: false
