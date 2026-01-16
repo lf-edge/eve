@@ -23,6 +23,13 @@ logmsg() {
 }
 
 check_network_connection () {
+        # Address the case where device is installed and moved to a location with no internet access"
+        # If we already installed all the components, no internet access is not an issue.
+        if [ -f /var/lib/all_components_initialized ]; then
+           logmsg "All components already initialized, ignoring network connection check"
+           return
+        fi
+
         while true; do
                 ret=$(curl -o /dev/null -w "%{http_code}" -s "https://get.k3s.io")
                 if [ "$ret" -eq 200 ]; then
