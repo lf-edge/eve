@@ -1,4 +1,4 @@
-// Copyright (c) 2021 Zededa, Inc.
+// Copyright (c) 2021-2026 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 package main
@@ -267,7 +267,10 @@ func getAddrFromJWT(token string, isServer bool, instID int) (string, string, ty
 
 	evStatus.ExpireOn = jdata.Exp
 	evStatus.StartedOn = now
-	encryptVarInit(jdata)
+	err = encryptVarInit(jdata)
+	if err != nil {
+		return addrport, path, evAuth, err
+	}
 
 	return addrport, path, evAuth, nil
 }

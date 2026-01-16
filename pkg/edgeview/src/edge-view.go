@@ -1,4 +1,4 @@
-// Copyright (c) 2021 Zededa, Inc.
+// Copyright (c) 2021-2026 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 package main
@@ -44,7 +44,7 @@ const (
 	agentName         = "edgeview"
 	closeMessage      = "+++Done+++"
 	tarCopyDoneMsg    = "+++TarCopyDone+++"
-	edgeViewVersion   = "0.8.7"
+	edgeViewVersion   = "0.8.8"
 	cpLogFileString   = "copy-logfiles"
 	clientIPMsg       = "YourEndPointIPAddr:"
 	serverRateMsg     = "ServerRateLimit:disable"
