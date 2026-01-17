@@ -199,11 +199,12 @@ setup_prereqs () {
         setup_cgroup
         #Check network and default routes are up
         wait_for_default_route
-        check_network_connection
         wait_for_device_name
         chmod o+rw /dev/null
         wait_for_vault
         mount_kube_root
+        # We need /var/lib to be mounted before we go for network connection check.
+        check_network_connection
 }
 
 config_cluster_roles() {
