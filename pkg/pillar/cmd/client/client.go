@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2018 Zededa, Inc.
+// Copyright (c) 2017-2026 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 package client
@@ -26,6 +26,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
+	"github.com/lf-edge/eve/pkg/pillar/utils/wait"
 	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/protobuf/proto"
@@ -202,6 +203,13 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 	clientCtx.subDeviceNetworkStatus = subDeviceNetworkStatus
 	subDeviceNetworkStatus.Activate()
+
+	// Wait for EvalStatus from evalmgr that allows onboarding
+	err = wait.ForEvalStatus(ps, log, agentName, warningTime, errorTime)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	sendTimeoutSecs := clientCtx.globalConfig.GlobalValueInt(types.NetworkSendTimeout)
 	dialTimeoutSecs := clientCtx.globalConfig.GlobalValueInt(types.NetworkDialTimeout)
 	ctrlClient := controllerconn.NewClient(log, controllerconn.ClientOptions{

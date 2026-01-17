@@ -1,4 +1,4 @@
-// Copyright (c) 2018-2023 Zededa, Inc.
+// Copyright (c) 2018-2026 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 // Utility to dump diagnostic information about connectivity
@@ -71,6 +71,8 @@ type diagContext struct {
 	subAppInstanceStatus    pubsub.Subscription
 	subDownloaderStatus     pubsub.Subscription
 	subNodeDrainStatus      pubsub.Subscription
+	subEvalStatus           pubsub.Subscription
+	evalStatus              types.EvalStatus
 	agentMetrics            *controllerconn.AgentMetrics
 	gotBC                   bool
 	gotDNS                  bool
@@ -386,6 +388,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	subDownloaderStatus.Activate()
 
 	initDrainSub(ps, &ctx)
+	initEvalSub(ps, &ctx)
 
 	cloudPingMetricPub, err := ps.NewPublication(
 		pubsub.PublicationOptions{
@@ -438,6 +441,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 		case change := <-ctx.subNodeDrainStatus.MsgChan():
 			ctx.subNodeDrainStatus.ProcessChange(change)
+
+		case change := <-ctx.subEvalStatus.MsgChan():
+			ctx.subEvalStatus.ProcessChange(change)
 		}
 		// Is this the first time we have all the info to print?
 		if !gotAll && ctx.gotBC && ctx.gotDNS && ctx.gotDPCList {
@@ -805,6 +811,21 @@ func printOutput(ctx *diagContext, caller string) {
 		} else {
 			ctx.ph.Print("WARNING: Air-gap mode enabled without LOC configuration\n")
 		}
+	}
+
+	// Print evaluation platform status if available
+	if ctx.evalStatus.IsEvaluationPlatform {
+		evalLevel := "INFO"
+		if !ctx.evalStatus.AllowOnboard {
+			evalLevel = "WARNING"
+		}
+		if ctx.evalStatus.RebootCountdown > 0 {
+			evalLevel = "WARNING"
+		}
+		ctx.ph.Print("%s: evaluation: slot=%s phase=%s onboard=%t note=%s\n",
+			evalLevel,
+			ctx.evalStatus.CurrentSlot, ctx.evalStatus.Phase,
+			ctx.evalStatus.AllowOnboard, ctx.evalStatus.DetailedNote())
 	}
 
 	// Determine what we print for app summary
