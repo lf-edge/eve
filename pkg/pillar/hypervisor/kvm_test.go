@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	zconfig "github.com/lf-edge/eve-api/go/config"
+	zcommon "github.com/lf-edge/eve-api/go/evecommon"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	. "github.com/onsi/gomega"
 	uuid "github.com/satori/go.uuid"
@@ -1000,6 +1001,144 @@ func TestCreateDomConfigAmd64Fml(t *testing.T) {
 	result = setStaticVsockCid(result)
 	if string(result) != domConfigAmd64FML() {
 		t.Errorf("got an unexpected resulting config %s", cmp.Diff(string(result), domConfigAmd64FML()))
+	}
+}
+
+func TestCreateDomConfigAmd64FmlWithBootOrder(t *testing.T) {
+	t.Parallel()
+
+	conf, err := os.CreateTemp("/tmp", "config")
+	if err != nil {
+		t.Errorf("Can't create config file for a domain %v", err)
+	}
+	defer os.Remove(conf.Name())
+
+	diskConfigs, diskStatuses := qemuDisks()
+	config, aa := domainConfigAndAssignableAdapters(diskConfigs)
+	config.VirtualizationMode = types.FML
+	config.BootLoader = "/usr/lib/xen/boot/OVMF_CODE.fd"
+	config.BootOrder = zcommon.BootOrder_BOOT_ORDER_USB // Test USB boot order prioritization
+
+	if err := kvmIntel.CreateDomConfig(DefaultDomainName, config, types.DomainStatus{},
+		diskStatuses, &aa, nil, swtpmCtrlSock, conf); err != nil {
+		t.Errorf("CreateDomConfig failed %v", err)
+	}
+	defer os.Truncate(conf.Name(), 0)
+
+	result, err := os.ReadFile(conf.Name())
+	if err != nil {
+		t.Errorf("reading conf file failed %v", err)
+	}
+
+	// Verify that fw_cfg boot order section is present in the config
+	if !bytes.Contains(result, []byte(`[fw_cfg]`)) {
+		t.Error("expected [fw_cfg] section for boot order, but not found")
+	}
+	if !bytes.Contains(result, []byte(`name = "opt/eve.bootorder"`)) {
+		t.Error("expected opt/eve.bootorder fw_cfg name, but not found")
+	}
+	if !bytes.Contains(result, []byte(`string = "usb"`)) {
+		t.Error("expected boot order value 'usb', but not found")
+	}
+}
+
+func TestCreateDomConfigAmd64FmlWithNoUsbBootOrder(t *testing.T) {
+	t.Parallel()
+
+	conf, err := os.CreateTemp("/tmp", "config")
+	if err != nil {
+		t.Errorf("Can't create config file for a domain %v", err)
+	}
+	defer os.Remove(conf.Name())
+
+	diskConfigs, diskStatuses := qemuDisks()
+	config, aa := domainConfigAndAssignableAdapters(diskConfigs)
+	config.VirtualizationMode = types.FML
+	config.BootLoader = "/usr/lib/xen/boot/OVMF_CODE.fd"
+	config.BootOrder = zcommon.BootOrder_BOOT_ORDER_NOUSB // Test USB boot order deprioritization
+
+	if err := kvmIntel.CreateDomConfig(DefaultDomainName, config, types.DomainStatus{},
+		diskStatuses, &aa, nil, swtpmCtrlSock, conf); err != nil {
+		t.Errorf("CreateDomConfig failed %v", err)
+	}
+	defer os.Truncate(conf.Name(), 0)
+
+	result, err := os.ReadFile(conf.Name())
+	if err != nil {
+		t.Errorf("reading conf file failed %v", err)
+	}
+
+	// Verify that fw_cfg boot order section is present with nousb value
+	if !bytes.Contains(result, []byte(`[fw_cfg]`)) {
+		t.Error("expected [fw_cfg] section for boot order, but not found")
+	}
+	if !bytes.Contains(result, []byte(`string = "nousb"`)) {
+		t.Error("expected boot order value 'nousb', but not found")
+	}
+}
+
+func TestCreateDomConfigAmd64FmlWithoutBootOrder(t *testing.T) {
+	t.Parallel()
+
+	conf, err := os.CreateTemp("/tmp", "config")
+	if err != nil {
+		t.Errorf("Can't create config file for a domain %v", err)
+	}
+	defer os.Remove(conf.Name())
+
+	diskConfigs, diskStatuses := qemuDisks()
+	config, aa := domainConfigAndAssignableAdapters(diskConfigs)
+	config.VirtualizationMode = types.FML
+	config.BootLoader = "/usr/lib/xen/boot/OVMF_CODE.fd"
+	// config.BootOrder is empty (default) - no boot order modification
+
+	if err := kvmIntel.CreateDomConfig(DefaultDomainName, config, types.DomainStatus{},
+		diskStatuses, &aa, nil, swtpmCtrlSock, conf); err != nil {
+		t.Errorf("CreateDomConfig failed %v", err)
+	}
+	defer os.Truncate(conf.Name(), 0)
+
+	result, err := os.ReadFile(conf.Name())
+	if err != nil {
+		t.Errorf("reading conf file failed %v", err)
+	}
+
+	// Verify that fw_cfg boot order section is NOT present when boot order is empty
+	if bytes.Contains(result, []byte(`name = "opt/eve.bootorder"`)) {
+		t.Error("unexpected opt/eve.bootorder fw_cfg - should not be present when boot order is empty")
+	}
+}
+
+func TestCreateDomConfigArm64BootOrderIgnored(t *testing.T) {
+	t.Parallel()
+
+	conf, err := os.CreateTemp("/tmp", "config")
+	if err != nil {
+		t.Errorf("Can't create config file for a domain %v", err)
+	}
+	defer os.Remove(conf.Name())
+
+	diskConfigs, diskStatuses := qemuDisks()
+	config, aa := domainConfigAndAssignableAdapters(diskConfigs)
+	config.VirtualizationMode = types.FML
+	config.BootLoader = "/usr/lib/xen/boot/OVMF_CODE.fd"
+	config.BootOrder = zcommon.BootOrder_BOOT_ORDER_USB // Set boot order
+
+	// Use ARM context (virt machine) - boot order should be ignored
+	if err := kvmArm.CreateDomConfig(DefaultDomainName, config, types.DomainStatus{},
+		diskStatuses, &aa, nil, swtpmCtrlSock, conf); err != nil {
+		t.Errorf("CreateDomConfig failed %v", err)
+	}
+	defer os.Truncate(conf.Name(), 0)
+
+	result, err := os.ReadFile(conf.Name())
+	if err != nil {
+		t.Errorf("reading conf file failed %v", err)
+	}
+
+	// ARM (virt machine) uses an unpatched OVMF without EveBootOrderLib, so fw_cfg boot order should NOT be present
+	if bytes.Contains(result, []byte(`name = "opt/eve.bootorder"`)) {
+		t.Error("unexpected opt/eve.bootorder fw_cfg on ARM - EveBootOrderLib is not available on virt machine")
 	}
 }
 

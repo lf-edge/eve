@@ -3,6 +3,7 @@
 | Name | Type | Default | Min Value | Max Value | Description |
 | ---- | ---- | ------- | --------- | --------- | ----------- |
 | app.allow.vnc | boolean | false (only local access) | - | - | allow access to EVE's VNC ports from external IPs |
+| app.boot.order | string | "" | - | - | Set device-wide default boot order for VMs. Supported values: "" (default UEFI behavior), "usb" (prioritize USB devices), "nousb" (remove USB devices from boot order). Can be overridden per-VM via Controller API (VmConfig.boot_order) or LPS (/api/v1/appbootinfo). See [VM-BOOT-ORDER.md](VM-BOOT-ORDER.md) for details. |
 | app.fml.resolution | string | notset | - | - | Set system-wide value of forced resolution for applications running in FML mode, it can be one of [predefined](/pkg/pillar/types/global.go) FmlResolution* values. |
 | timer.config.interval | integer in seconds | 60 (1 minute) | 5 | 86400 (1 day) | how frequently device gets config (needs a reboot to take effect) |
 | timer.cert.interval | integer in seconds | 86400 (1 day) | 60 (1 minute) | 4294967295 (max uint32) | how frequently device checks for new controller certificates |
