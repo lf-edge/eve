@@ -164,3 +164,45 @@ jobs:
               echo "Error uploading $file_name: $upload_response"
             fi
           done
+
+  tpm_measurements_amd64:
+    runs-on: zededa-ubuntu-2204
+    needs: create_release
+    steps:
+      - name: checkout repo
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8  # v5.0.0
+        with:
+          ref: ${{ inputs.tag_ref }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Force fetch annotated tags (workaround)
+        run: |
+          git fetch --force --tags
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 qemu-utils swtpm
+      - name: Run TPM measurements collection (x86_64/amd64 only)
+        run: |
+          chmod +x tools/get_measurements.sh
+          ./tools/get_measurements.sh
+      - name: Create zip archive of TPM measurements
+        run: |
+          zip amd64.binary_bios_measurements.zip binary_bios_measurements_*
+      - name: Upload TPM measurements to release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          UPLOAD_URL: ${{ needs.create_release.outputs.upload_url }}
+        run: |
+          file="amd64.binary_bios_measurements.zip"
+          echo "Uploading ${file}..."
+          upload_response=$(curl -s -X POST \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "Content-Type: application/zip" \
+            -T "$file" \
+            "$UPLOAD_URL?name=$file")
+          if echo "$upload_response" | jq -e .id > /dev/null; then
+            echo "$file uploaded successfully."
+          else
+            echo "Error uploading $file: $upload_response"
+          fi
