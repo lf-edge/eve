@@ -157,6 +157,12 @@ const (
 
 	// K3sInitialVersionPath - file to store the first k3s version a node initializes to
 	K3sInitialVersionPath = PersistKubelogDir + "/initial_k3s_version"
+
+	// PolicyPcrFile - file to store TPM PCR policy indexes, this
+	// is just a hint to know which PCRs to use for sealing/unsealing,
+	// changing this file does not change the actual policy, hence
+	// needs not be protected.
+	PolicyPcrFile = PersistStatusDir + "/policy-pcr.json"
 )
 
 var (

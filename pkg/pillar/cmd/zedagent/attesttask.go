@@ -435,7 +435,19 @@ func (server *VerifierImpl) SendAttestQuote(ctx *zattest.Context) error {
 						log.Errorf("[ATTEST] received empty Controller-given encrypted key")
 						continue
 					}
-					publishEncryptedKeyFromController(attestCtx, encryptedKey)
+
+					// Do we have PCR policy associated with this key?
+					policyPcr := types.VaultKeyPolicyPCR{}
+					if sk.PolicyPcrList != nil && sk.HasPolicyPcrList {
+						policyPcr = types.VaultKeyPolicyPCR{
+							PolicyPresent: true,
+							Indexes:       uint32SliceToInt(sk.PolicyPcrList.PcrIndices),
+							ID:            int(sk.PolicyPcrList.PolicyId),
+						}
+						log.Noticef("[ATTEST] Received Controller-given encrypted key with valid Policy PCR (ID: %d)", sk.PolicyPcrList.PolicyId)
+					}
+
+					publishEncryptedKeyFromController(attestCtx, encryptedKey, policyPcr)
 					log.Noticef("[ATTEST] published Controller-given encrypted key")
 					publishedStorageKeys++
 				}
@@ -447,7 +459,7 @@ func (server *VerifierImpl) SendAttestQuote(ctx *zattest.Context) error {
 		// to receive no keys
 		if publishedStorageKeys == 0 {
 			log.Noticeln("[ATTEST] no storage keys received from controller")
-			publishEncryptedKeyFromController(attestCtx, nil)
+			publishEncryptedKeyFromController(attestCtx, nil, types.VaultKeyPolicyPCR{})
 		}
 		ctx.ClearError()
 		triggerPublishDevInfo(attestCtx.zedagentCtx)
@@ -837,10 +849,11 @@ func publishAttestNonce(ctx *attestContext) {
 	log.Tracef("[ATTEST] publishAttestNonce done for %s", key)
 }
 
-func publishEncryptedKeyFromController(ctx *attestContext, encryptedVaultKey []byte) {
+func publishEncryptedKeyFromController(ctx *attestContext, encryptedVaultKey []byte, policyPcr types.VaultKeyPolicyPCR) {
 	sK := types.EncryptedVaultKeyFromController{
 		Name:              types.DefaultVaultName,
 		EncryptedVaultKey: encryptedVaultKey,
+		PolicyPcr:         policyPcr,
 	}
 	key := sK.Key()
 	log.Tracef("[ATTEST] publishEncryptedKeyFromController %s", key)
@@ -912,4 +925,12 @@ func warnAndLog(format string, args ...interface{}) {
 	} else {
 		log.Tracef(format, args...)
 	}
+}
+
+func uint32SliceToInt(u []uint32) []int {
+	i := make([]int, len(u))
+	for idx, v := range u {
+		i[idx] = int(v)
+	}
+	return i
 }

@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"syscall"
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
@@ -264,4 +265,25 @@ func ReadSavedCounter(log *base.LogObject, fileName string) (uint32, bool) {
 		log.Functionf("ReadSavedCounter(%s): %s", fileName, err)
 	}
 	return 0, false
+}
+
+// AcquireLock acquires a file lock on the given path (appends .lock).
+// It returns the locked file handle which must be closed by the caller to release the lock.
+func AcquireLock(path string, exclusive bool) (*os.File, error) {
+	lockPath := path + ".lock"
+	lockFile, err := os.OpenFile(lockPath, os.O_RDWR|os.O_CREATE, 0644)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open lock file %s: %w", lockPath, err)
+	}
+
+	lockType := syscall.LOCK_SH
+	if exclusive {
+		lockType = syscall.LOCK_EX
+	}
+
+	if err := syscall.Flock(int(lockFile.Fd()), lockType); err != nil {
+		lockFile.Close()
+		return nil, fmt.Errorf("failed to acquire lock on %s: %w", lockPath, err)
+	}
+	return lockFile, nil
 }
