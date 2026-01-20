@@ -430,21 +430,44 @@ func handleVaultKeyFromControllerImpl(ctxArg interface{}, key string,
 		}
 		log.Functionf("Computed and provided SHA are matching")
 
+		policyChanged := false
+		if keyFromController.PolicyPcr.PolicyPresent {
+			if err := etpm.ValidatePolicyPcr(keyFromController.PolicyPcr); err != nil {
+				log.Warnf("Controller provided Policy PCR [ID:%d] is is not valid, ignoring it : %v",
+					keyFromController.PolicyPcr.ID, err)
+			} else {
+				policyChanged, err = etpm.SaveDiskKeyPolicyPcr(keyFromController.PolicyPcr, types.PolicyPcrFile)
+				if err != nil {
+					// This should never happen, just in case (SaveDiskKeyPolicyPcr calls Fatal on disk xerror)
+					log.Errorf("Failed to save controller provided Policy PCR: %v", err)
+				} else {
+					log.Noticef("Saved controller provided Policy PCR with id: %d", keyFromController.PolicyPcr.ID)
+				}
+			}
+		}
+
+		// if policy has changed, or we have not yet unlocked the vault,
+		// re-seal the disk key we got from controller.
+		if policyChanged || !ctx.defaultVaultUnlocked {
+			log.Noticef("Re-sealing disk key, Vault Unlocked: %v, Policy Changed: %v", ctx.defaultVaultUnlocked, policyChanged)
+
+			pcrSelection := etpm.GetDiskKeyPolicyPcrOrDefault(types.PolicyPcrFile)
+			err = etpm.SealDiskKey(log, decryptedKey, pcrSelection)
+			if err != nil {
+				log.Errorf("Failed to re-seal disk key in TPM %v", err)
+				return
+			}
+		}
+
+		// If we have already unlocked the vault, nothing to do
 		if ctx.defaultVaultUnlocked {
 			return
 		}
-		// Try unlocking the vault now, in case it is not yet unlocked
-		log.Noticef("Vault is still locked, trying to unlock")
-		err = etpm.SealDiskKey(log, decryptedKey, etpm.DiskKeySealingPCRs)
-		if err != nil {
-			log.Errorf("Failed to Seal key in TPM %v", err)
-			return
-		}
-		log.Noticef("Sealed key in TPM, unlocking %s", types.DefaultVaultName)
 
+		log.Noticef("Sealed key in TPM, unlocking %s", types.DefaultVaultName)
 		err = handler.UnlockDefaultVault()
 		if err != nil {
-			log.Errorf("Failed to unlock zfs vault after receiving Controller key, %v",
+			log.Errorf("Failed to unlock vault after receiving Controller key, %v",
 				err)
 			return
 		}
