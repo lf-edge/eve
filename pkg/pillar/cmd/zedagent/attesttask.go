@@ -20,6 +20,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	zattest "github.com/lf-edge/eve/pkg/pillar/attest"
 	"github.com/lf-edge/eve/pkg/pillar/controllerconn"
+	etpm "github.com/lf-edge/eve/pkg/pillar/evetpm"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -435,7 +436,33 @@ func (server *VerifierImpl) SendAttestQuote(ctx *zattest.Context) error {
 						log.Errorf("[ATTEST] received empty Controller-given encrypted key")
 						continue
 					}
-					publishEncryptedKeyFromController(attestCtx, encryptedKey)
+
+					policyPcr := types.VaultKeyPolicyPCR{}
+					policyPCRList := []int{}
+					policyID := 0
+					if sk.HasPolicyPcrList && sk.PolicyPcrList != nil {
+						policyPCRList = uint32SliceToInt(sk.PolicyPcrList.PcrIndices)
+						policyID = int(sk.PolicyPcrList.PolicyId)
+						policyPcr = types.VaultKeyPolicyPCR{
+							PolicyPresent: true,
+							Indexes:       policyPCRList,
+							ID:            policyID,
+						}
+
+						if errr := etpm.ValidatePolicyPcr(policyPcr); errr != nil {
+							log.Errorf("[ATTEST] Received invalid Policy PCR from controller: %v", errr)
+							continue
+						}
+
+						log.Noticef("[ATTEST] Received Controller-given encrypted key with valid Policy PCR (version: %d)", sk.PolicyPcrList.PolicyId)
+					}
+
+					controllerKey := types.EncryptedVaultKeyFromController{
+						Name:              types.DefaultVaultName,
+						EncryptedVaultKey: encryptedKey,
+						PolicyPcr:         policyPcr,
+					}
+					publishEncryptedKeyFromController(attestCtx, controllerKey)
 					log.Noticef("[ATTEST] published Controller-given encrypted key")
 					publishedStorageKeys++
 				}
@@ -447,7 +474,9 @@ func (server *VerifierImpl) SendAttestQuote(ctx *zattest.Context) error {
 		// to receive no keys
 		if publishedStorageKeys == 0 {
 			log.Noticeln("[ATTEST] no storage keys received from controller")
-			publishEncryptedKeyFromController(attestCtx, nil)
+			publishEncryptedKeyFromController(attestCtx, types.EncryptedVaultKeyFromController{
+				Name: types.DefaultVaultName,
+			})
 		}
 		ctx.ClearError()
 		triggerPublishDevInfo(attestCtx.zedagentCtx)
@@ -837,15 +866,11 @@ func publishAttestNonce(ctx *attestContext) {
 	log.Tracef("[ATTEST] publishAttestNonce done for %s", key)
 }
 
-func publishEncryptedKeyFromController(ctx *attestContext, encryptedVaultKey []byte) {
-	sK := types.EncryptedVaultKeyFromController{
-		Name:              types.DefaultVaultName,
-		EncryptedVaultKey: encryptedVaultKey,
-	}
-	key := sK.Key()
+func publishEncryptedKeyFromController(ctx *attestContext, controllerKey types.EncryptedVaultKeyFromController) {
+	key := controllerKey.Key()
 	log.Tracef("[ATTEST] publishEncryptedKeyFromController %s", key)
 	pub := ctx.pubEncryptedKeyFromController
-	pub.Publish(key, sK)
+	pub.Publish(key, controllerKey)
 	log.Tracef("[ATTEST] publishEncryptedKeyFromController done for %s", key)
 }
 
@@ -912,4 +937,12 @@ func warnAndLog(format string, args ...interface{}) {
 	} else {
 		log.Tracef(format, args...)
 	}
+}
+
+func uint32SliceToInt(u []uint32) []int {
+	i := make([]int, len(u))
+	for idx, v := range u {
+		i[idx] = int(v)
+	}
+	return i
 }
