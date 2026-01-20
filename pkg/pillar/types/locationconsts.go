@@ -139,6 +139,12 @@ const (
 	OVMFSettingsTemplate = "/usr/lib/xen/boot/OVMF_VARS.fd"
 	// CustomOVMFSettingsDir - directory for custom OVMF settings (for different resolutions)
 	CustomOVMFSettingsDir = "/hostfs/etc/ovmf"
+
+	// PolicyPcrFile - file to store TPM PCR policy indexes, this
+	// is just a hint to know which PCRs to use for sealing/unsealing,
+	// changing this file does not change the actual policy, hence
+	// needs not be protected.
+	PolicyPcrFile = PersistStatusDir + "/policy-pcr.json"
 )
 
 var (
