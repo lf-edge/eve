@@ -3092,27 +3092,11 @@ func handlePhysicalIOAdapterListImpl(ctxArg interface{}, key string,
 
 			// Adding PF before VF to have correct boot order
 			if ib.Type == types.IoNetEthPF && ib.Vfs.Count > 0 {
-				exists, ifName := types.PciLongToIfname(log, ib.PciLong)
-				if !exists {
-					log.Fatal("Failed to resolve ifname for PCI address ", ib.PciLong)
-				}
-
-				err = sriov.CreateVF(ifName, ib.Vfs.Count)
+				err := setupVf(ib, aa, log)
 				if err != nil {
-					log.Fatal("Failed to create VF for iface with PCI address", ib.PciLong)
-				}
-
-				vfs, err := sriov.GetVfByTimeout(150*time.Second, ifName, ib.Vfs.Count)
-				if err != nil {
-					log.Fatal("Failed to get VF for iface ", ifName, " ", err)
-				}
-
-				for _, vf := range vfs.Data {
-					vfIb, err := createVfIoBundle(*ib, vf)
-					if err != nil {
-						log.Fatal("createVfIoBundle failed ", err)
-					}
-					aa.AddOrUpdateIoBundle(log, vfIb)
+					err = fmt.Errorf("setupVf: %w", err)
+					log.Error(err)
+					ib.Error.Append(err)
 				}
 			} else if ib.Type == types.IoVCAN {
 				// Initialize (create and enable) Virtual CAN device
@@ -3190,6 +3174,33 @@ func handlePhysicalIOAdapterListImpl(ctxArg interface{}, key string,
 				"- No Change", phyAdapter.Phylabel)
 		}
 	}
+}
+
+func setupVf(ib *types.IoBundle, aa *types.AssignableAdapters, log *base.LogObject) error {
+	exists, ifName := types.PciLongToIfname(log, ib.PciLong)
+	if !exists {
+		return fmt.Errorf("Failed to resolve ifname for PCI address %s", ib.PciLong)
+	}
+
+	err := sriov.CreateVF(ifName, ib.Vfs.Count)
+	if err != nil {
+		return fmt.Errorf("Failed to create VF for iface with PCI address %s", ib.PciLong)
+	}
+
+	vfs, err := sriov.GetVfByTimeout(sriov.VfCreationTimeout, ifName, ib.Vfs.Count)
+	if err != nil {
+		return fmt.Errorf("Failed to get VF for iface %s: %w", ifName, err)
+	}
+
+	for _, vf := range vfs.Data {
+		vfIb, err := createVfIoBundle(*ib, vf)
+		if err != nil {
+			return fmt.Errorf("createVfIoBundle failed %w", err)
+		}
+		aa.AddOrUpdateIoBundle(log, vfIb)
+	}
+
+	return nil
 }
 
 func createVfIoBundle(pfIb types.IoBundle, vf sriov.EthVF) (types.IoBundle, error) {
