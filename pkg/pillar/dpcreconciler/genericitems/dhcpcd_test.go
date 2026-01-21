@@ -87,7 +87,7 @@ func TestDhcpcdEqual(t *testing.T) {
 			expEqual: false,
 		},
 		{
-			name: "equivalent static IP config",
+			name: "static IP config with different network type",
 			item1: configitems.Dhcpcd{
 				DhcpConfig: types.DhcpConfig{
 					Dhcp:       types.DhcpTypeStatic,
@@ -95,7 +95,7 @@ func TestDhcpcdEqual(t *testing.T) {
 					DomainName: "mydomain",
 					NTPServer:  net.ParseIP("192.168.1.1"),
 					DNSServers: []net.IP{net.ParseIP("8.8.8.8")},
-					Type:       types.NetworkTypeIpv4Only, // irrelevant
+					Type:       types.NetworkTypeIpv4Only,
 				},
 			},
 			item2: configitems.Dhcpcd{
@@ -105,10 +105,10 @@ func TestDhcpcdEqual(t *testing.T) {
 					DomainName: "mydomain",
 					NTPServer:  net.ParseIP("192.168.1.1"),
 					DNSServers: []net.IP{net.ParseIP("8.8.8.8")},
-					Type:       types.NetworkTypeIPv4, // irrelevant
+					Type:       types.NetworkTypeIPv4,
 				},
 			},
-			expEqual: true,
+			expEqual: false,
 		},
 		{
 			name: "different statically configured DNS servers",
