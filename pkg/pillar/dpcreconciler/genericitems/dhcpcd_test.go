@@ -91,7 +91,7 @@ func TestDhcpcdEqual(t *testing.T) {
 			expEqual: false,
 		},
 		{
-			name: "equivalent static IP config",
+			name: "static IP config with different network type",
 			item1: configitems.Dhcpcd{
 				DhcpConfig: types.DhcpConfig{
 					Dhcp:       types.DhcpTypeStatic,
@@ -99,7 +99,7 @@ func TestDhcpcdEqual(t *testing.T) {
 					DomainName: "mydomain",
 					NTPServers: netutils.NewHostnameOrIPs("192.168.1.1"),
 					DNSServers: []net.IP{net.ParseIP("8.8.8.8")},
-					Type:       types.NetworkTypeIpv4Only, // irrelevant
+					Type:       types.NetworkTypeIpv4Only,
 				},
 			},
 			item2: configitems.Dhcpcd{
@@ -109,10 +109,10 @@ func TestDhcpcdEqual(t *testing.T) {
 					DomainName: "mydomain",
 					NTPServers: netutils.NewHostnameOrIPs("192.168.1.1"),
 					DNSServers: []net.IP{net.ParseIP("8.8.8.8")},
-					Type:       types.NetworkTypeIPv4, // irrelevant
+					Type:       types.NetworkTypeIPv4,
 				},
 			},
-			expEqual: true,
+			expEqual: false,
 		},
 		{
 			name: "different statically configured DNS servers",
@@ -162,8 +162,9 @@ func TestDhcpcdArgs(t *testing.T) {
 				Dhcp: types.DhcpTypeClient,
 				Type: types.NetworkTypeIpv4Only,
 			},
-			expOp:   "--request",
-			expArgs: []string{"-f", "/etc/dhcpcd.conf", "--noipv4ll", "--ipv4only", "-b", "-t", "0"},
+			expOp: "--request",
+			expArgs: []string{"-f", "/etc/dhcpcd.conf", "-b", "-t", "0",
+				"--noipv4ll", "--ipv4only"},
 		},
 		{
 			name: "DHCP client for IPv4 only with zero gateway",
@@ -172,8 +173,9 @@ func TestDhcpcdArgs(t *testing.T) {
 				Type:    types.NetworkTypeIpv4Only,
 				Gateway: net.IP{0, 0, 0, 0},
 			},
-			expOp:   "--request",
-			expArgs: []string{"-f", "/etc/dhcpcd.conf", "--noipv4ll", "--ipv4only", "-b", "-t", "0", "--nogateway"},
+			expOp: "--request",
+			expArgs: []string{"--nogateway", "-f", "/etc/dhcpcd.conf", "-b", "-t", "0",
+				"--noipv4ll", "--ipv4only"},
 		},
 		{
 			name: "DHCP client for IPv4 only with ignored gateway",
@@ -183,7 +185,8 @@ func TestDhcpcdArgs(t *testing.T) {
 			},
 			ignoreDhcpGws: true,
 			expOp:         "--request",
-			expArgs:       []string{"-f", "/etc/dhcpcd.conf", "--noipv4ll", "--ipv4only", "-b", "-t", "0", "--nogateway"},
+			expArgs: []string{"--nogateway", "-f", "/etc/dhcpcd.conf", "-b", "-t", "0",
+				"--noipv4ll", "--ipv4only"},
 		},
 		{
 			name: "DHCP client for IPv4 with statically overridden gateway",
@@ -193,8 +196,8 @@ func TestDhcpcdArgs(t *testing.T) {
 				Gateway: net.IP{192, 168, 1, 1},
 			},
 			expOp: "--request",
-			expArgs: []string{"-f", "/etc/dhcpcd.conf", "--noipv4ll", "--ipv4only", "-b", "-t", "0",
-				"--static", "routers=192.168.1.1"},
+			expArgs: []string{"--static", "routers=192.168.1.1", "-f", "/etc/dhcpcd.conf",
+				"-b", "-t", "0", "--noipv4ll", "--ipv4only"},
 		},
 		{
 			name: "DHCP client for IPv6 only",
@@ -203,7 +206,7 @@ func TestDhcpcdArgs(t *testing.T) {
 				Type: types.NetworkTypeIpv6Only,
 			},
 			expOp:   "--request",
-			expArgs: []string{"-f", "/etc/dhcpcd.conf", "--ipv6only", "-b", "-t", "0"},
+			expArgs: []string{"-f", "/etc/dhcpcd.conf", "-b", "-t", "0", "--ipv6only"},
 		},
 		{
 			name: "DHCP client for dual stack",
@@ -212,7 +215,7 @@ func TestDhcpcdArgs(t *testing.T) {
 				Type: types.NetworkTypeDualStack,
 			},
 			expOp:   "--request",
-			expArgs: []string{"-f", "/etc/dhcpcd.conf", "--noipv4ll", "-b", "-t", "0"},
+			expArgs: []string{"-f", "/etc/dhcpcd.conf", "-b", "-t", "0", "--noipv4ll"},
 		},
 		{
 			name: "Static IPv4 config",
@@ -223,13 +226,16 @@ func TestDhcpcdArgs(t *testing.T) {
 				DomainName: "mydomain",
 				NTPServers: netutils.NewHostnameOrIPs("192.168.1.1", "10.10.12.13"),
 				DNSServers: []net.IP{net.ParseIP("8.8.8.8")},
-				Type:       types.NetworkTypeIpv4Only, // irrelevant
+				// Network type is relevant also with DhcpTypeStatic!
+				// dhcpcd would acquire IPv6 address additionally to setting the static
+				// IPv4 address if "--ipv4only" was not specified.
+				Type: types.NetworkTypeIpv4Only,
 			},
 			expOp: "--static",
 			expArgs: []string{"ip_address=192.168.1.44/24", "--static", "routers=192.168.1.1",
 				"--static", "domain_name=mydomain", "--static", "domain_name_servers=8.8.8.8",
 				"--static", "ntp_servers=192.168.1.1", "--static", "ntp_servers=10.10.12.13",
-				"-f", "/etc/dhcpcd.conf", "-b", "-t", "0"},
+				"-f", "/etc/dhcpcd.conf", "-b", "-t", "0", "--noipv4ll", "--ipv4only"},
 		},
 		{
 			name: "Static IPv4 config with unspecified gateway",
@@ -239,13 +245,13 @@ func TestDhcpcdArgs(t *testing.T) {
 				DomainName: "mydomain",
 				NTPServers: netutils.NewHostnameOrIPs("192.168.1.1", "10.10.12.13"),
 				DNSServers: []net.IP{net.ParseIP("8.8.8.8")},
-				Type:       types.NetworkTypeIpv4Only, // irrelevant
+				Type:       types.NetworkTypeIpv4Only,
 			},
 			expOp: "--static",
-			expArgs: []string{"ip_address=192.168.1.44/24",
+			expArgs: []string{"ip_address=192.168.1.44/24", "--nogateway",
 				"--static", "domain_name=mydomain", "--static", "domain_name_servers=8.8.8.8",
 				"--static", "ntp_servers=192.168.1.1", "--static", "ntp_servers=10.10.12.13",
-				"-f", "/etc/dhcpcd.conf", "-b", "-t", "0", "--nogateway"},
+				"-f", "/etc/dhcpcd.conf", "-b", "-t", "0", "--noipv4ll", "--ipv4only"},
 		},
 		{
 			name: "DHCP client for IPv4 with route metric",
@@ -255,8 +261,8 @@ func TestDhcpcdArgs(t *testing.T) {
 			},
 			routeMetric: 500,
 			expOp:       "--request",
-			expArgs: []string{"-f", "/etc/dhcpcd.conf", "--noipv4ll", "--ipv4only", "-b", "-t", "0",
-				"--metric", "500"},
+			expArgs: []string{"--metric", "500", "-f", "/etc/dhcpcd.conf", "-b", "-t", "0",
+				"--noipv4ll", "--ipv4only"},
 		},
 	}
 	configurator := configitems.DhcpcdConfigurator{}

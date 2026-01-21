@@ -2612,7 +2612,7 @@ func TestOverrideDhcpGateway(test *testing.T) {
 	t.Eventually(dnsKeyCb()).Should(Equal("bootstrap"))
 	t.Eventually(dpcStateCb(0)).Should(Equal(types.DPCStateSuccess))
 	t.Eventually(itemIsCreatedWithLabelCb("IPv4 route table 502 dst <default> dev mock-eth1 via 172.20.1.1")).Should(BeTrue())
-	t.Expect(dhcpcdArgs("eth1")).To(Equal("--request -f /etc/dhcpcd.conf --noipv4ll -b -t 0 --metric 5000"))
+	t.Expect(dhcpcdArgs("eth1")).To(Equal("--request --metric 5000 -f /etc/dhcpcd.conf -b -t 0 --noipv4ll"))
 
 	// Apply "zedagent" DPC which enables DHCP but overwrites gateway for eth1.
 	timePrio2 := time.Now()
@@ -2670,7 +2670,7 @@ func TestOverrideDhcpGateway(test *testing.T) {
 	t.Eventually(dnsKeyCb()).Should(Equal("zedagent"))
 	t.Expect(getDPC(0).State).To(Equal(types.DPCStateSuccess))
 	t.Eventually(itemIsCreatedWithLabelCb("IPv4 route table 502 dst <default> dev mock-eth1 via 172.20.1.1")).Should(BeTrue())
-	t.Expect(dhcpcdArgs("eth1")).To(Equal("--request -f /etc/dhcpcd.conf --noipv4ll -b -t 0 --metric 5000"))
+	t.Expect(dhcpcdArgs("eth1")).To(Equal("--request --metric 5000 -f /etc/dhcpcd.conf -b -t 0 --noipv4ll"))
 
 	// Check device network state.
 	eth1DhcpGw := net.ParseIP("172.20.1.1")
@@ -3412,10 +3412,10 @@ func TestRouteMetrics(test *testing.T) {
 	t.Eventually(dpcStateCb(0)).Should(Equal(types.DPCStateSuccess))
 
 	// Check route metrics assigned to ports.
-	t.Expect(dhcpcdArgs("eth0")).To(Equal("--request -f /etc/dhcpcd.conf --noipv4ll -b -t 0 --metric 5002"))
-	t.Expect(dhcpcdArgs("eth1")).To(Equal("--request -f /etc/dhcpcd.conf --noipv4ll -b -t 0 --metric 5000"))
-	t.Expect(dhcpcdArgs("eth2")).To(Equal("--request -f /etc/dhcpcd.conf --ipv6only -b -t 0 --metric 5001"))
-	t.Expect(dhcpcdArgs("wlan0")).To(Equal("--request -f /etc/dhcpcd.conf --noipv4ll -b -t 0 --metric 5003"))
+	t.Expect(dhcpcdArgs("eth0")).To(Equal("--request --metric 5002 -f /etc/dhcpcd.conf -b -t 0 --noipv4ll"))
+	t.Expect(dhcpcdArgs("eth1")).To(Equal("--request --metric 5000 -f /etc/dhcpcd.conf -b -t 0 --noipv4ll"))
+	t.Expect(dhcpcdArgs("eth2")).To(Equal("--request --metric 5001 -f /etc/dhcpcd.conf -b -t 0 --ipv6only"))
+	t.Expect(dhcpcdArgs("wlan0")).To(Equal("--request --metric 5003 -f /etc/dhcpcd.conf -b -t 0 --noipv4ll"))
 	wwan := dg.Reference(generic.Wwan{})
 	t.Expect(itemDescription(wwan)).To(ContainSubstring("RouteMetric:5004"))
 
@@ -3435,9 +3435,9 @@ func TestRouteMetrics(test *testing.T) {
 	t.Expect(getDPC(0).State).To(Equal(types.DPCStateSuccess))
 
 	// Check route metrics assigned to ports after the change.
-	t.Expect(dhcpcdArgs("eth0")).To(Equal("--request -f /etc/dhcpcd.conf --noipv4ll -b -t 0 --metric 5001"))
-	t.Expect(dhcpcdArgs("eth1")).To(Equal("--request -f /etc/dhcpcd.conf --noipv4ll -b -t 0 --metric 10000"))
-	t.Expect(dhcpcdArgs("eth2")).To(Equal("--request -f /etc/dhcpcd.conf --ipv6only -b -t 0 --metric 5000"))
-	t.Expect(dhcpcdArgs("wlan0")).To(Equal("--request -f /etc/dhcpcd.conf --noipv4ll -b -t 0 --metric 10001"))
+	t.Expect(dhcpcdArgs("eth0")).To(Equal("--request --metric 5001 -f /etc/dhcpcd.conf -b -t 0 --noipv4ll"))
+	t.Expect(dhcpcdArgs("eth1")).To(Equal("--request --metric 10000 -f /etc/dhcpcd.conf -b -t 0 --noipv4ll"))
+	t.Expect(dhcpcdArgs("eth2")).To(Equal("--request --metric 5000 -f /etc/dhcpcd.conf -b -t 0 --ipv6only"))
+	t.Expect(dhcpcdArgs("wlan0")).To(Equal("--request --metric 10001 -f /etc/dhcpcd.conf -b -t 0 --noipv4ll"))
 	t.Expect(itemDescription(wwan)).To(ContainSubstring("RouteMetric:5002"))
 }
