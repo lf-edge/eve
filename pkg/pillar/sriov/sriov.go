@@ -18,10 +18,11 @@ import (
 
 // constants for Linux paths for devices
 const (
-	NicLinuxPath     = "/sys/class/net/"
-	NumVfsDevicePath = "/device/sriov_numvfs"
-	VfCountFieldName = "sriov-vf-count"
-	MaxVfCount       = 255
+	NicLinuxPath      = "/sys/class/net/"
+	NumVfsDevicePath  = "/device/sriov_numvfs"
+	VfCountFieldName  = "sriov-vf-count"
+	MaxVfCount        = 255
+	VfCreationTimeout = 150 * time.Second
 )
 
 // CreateVF creates Virtual Functions of given count for given Physical Function
