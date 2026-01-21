@@ -922,6 +922,11 @@ func saveSentDeviceInfoProtoMessage(contents []byte) {
 }
 
 // XXX for debug we track these
+func saveSentHardwareInventoryProtoMessage(contents []byte) {
+	persist.SaveConfig(log, "lasthardwareinventory", contents)
+}
+
+// XXX for debug we track these
 func saveSentAppInfoProtoMessage(contents []byte) {
 	persist.SaveConfig(log, "lastappinfo", contents)
 }

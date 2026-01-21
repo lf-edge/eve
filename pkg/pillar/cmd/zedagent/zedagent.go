@@ -2777,6 +2777,9 @@ func getDeferredSentHandlerFunction(ctx *zedagentContext) controllerconn.SentHan
 			if el, ok := itemType.(info.ZInfoTypes); ok && el == info.ZInfoTypes_ZiDevice {
 				saveSentDeviceInfoProtoMessage(data.Bytes())
 			}
+			if el, ok := itemType.(info.ZInfoTypes); ok && el == info.ZInfoTypes_ZiHardware {
+				saveSentHardwareInventoryProtoMessage(data.Bytes())
+			}
 			if el, ok := itemType.(info.ZInfoTypes); ok && el == info.ZInfoTypes_ZiApp {
 				saveSentAppInfoProtoMessage(data.Bytes())
 			}
@@ -2850,6 +2853,13 @@ func getDeferredPriorityFunctions() []controllerconn.TypePriorityCheckFunction {
 
 	functions = append(functions, func(itemType interface{}) bool {
 		if el, ok := itemType.(info.ZInfoTypes); ok && el == info.ZInfoTypes_ZiApp {
+			return true
+		}
+		return false
+	})
+
+	functions = append(functions, func(itemType interface{}) bool {
+		if el, ok := itemType.(info.ZInfoTypes); ok && el == info.ZInfoTypes_ZiHardware {
 			return true
 		}
 		return false
