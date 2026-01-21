@@ -285,21 +285,19 @@ func (c *DhcpcdConfigurator) NeedsRecreate(oldItem, newItem depgraph.Item) (recr
 // DhcpcdArgs returns command line arguments for dhcpcd corresponding to the given
 // DHCP config. The method is exported only for the purpose of unit testing.
 func (c *DhcpcdConfigurator) DhcpcdArgs(config types.DhcpConfig) (op string, args []string) {
+	commonArgs := []string{"-f", "/etc/dhcpcd.conf", "-b", "-t", "0"}
+	switch config.Type {
+	case types.NetworkTypeIpv4Only:
+		commonArgs = append(commonArgs, "--noipv4ll", "--ipv4only")
+	case types.NetworkTypeIpv6Only:
+		commonArgs = append(commonArgs, "--ipv6only")
+	default:
+		// Default dual-stack behavior.
+		commonArgs = append(commonArgs, "--noipv4ll")
+	}
 	switch config.Dhcp {
 	case types.DhcpTypeClient:
 		op = "--request"
-		args = []string{"-f", "/etc/dhcpcd.conf", "--noipv4ll", "-b", "-t", "0"}
-		switch config.Type {
-		case types.NetworkTypeIpv4Only:
-			args = []string{"-f", "/etc/dhcpcd.conf", "--noipv4ll", "--ipv4only", "-b", "-t", "0"}
-		case types.NetworkTypeIpv6Only:
-			args = []string{"-f", "/etc/dhcpcd.conf", "--ipv6only", "-b", "-t", "0"}
-		case types.NetworkTypeNOOP:
-		case types.NetworkTypeIPv4:
-		case types.NetworkTypeIPV6:
-		case types.NetworkTypeDualStack:
-		default:
-		}
 		if config.Gateway != nil && config.Gateway.IsUnspecified() {
 			args = append(args, "--nogateway")
 		}
@@ -307,9 +305,8 @@ func (c *DhcpcdConfigurator) DhcpcdArgs(config types.DhcpConfig) (op string, arg
 	case types.DhcpTypeStatic:
 		op = "--static"
 		args = []string{fmt.Sprintf("ip_address=%s", config.AddrSubnet)}
-		extras := []string{"-f", "/etc/dhcpcd.conf", "-b", "-t", "0"}
 		if config.Gateway == nil || config.Gateway.IsUnspecified() {
-			extras = append(extras, "--nogateway")
+			args = append(args, "--nogateway")
 		} else if config.Gateway.String() != "" {
 			args = append(args, "--static",
 				fmt.Sprintf("routers=%s", config.Gateway.String()))
@@ -338,9 +335,9 @@ func (c *DhcpcdConfigurator) DhcpcdArgs(config types.DhcpConfig) (op string, arg
 				args = append(args, "--static", fmt.Sprintf("ntp_servers=%s", ntpServer))
 			}
 		}
-		args = append(args, extras...)
 	}
 
+	args = append(args, commonArgs...)
 	return op, args
 }
 
