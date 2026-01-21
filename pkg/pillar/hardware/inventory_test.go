@@ -6,7 +6,6 @@ package hardware
 import (
 	"testing"
 
-	"github.com/lf-edge/eve-api/go/info"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 )
 
@@ -14,11 +13,10 @@ func TestCreateInventory(t *testing.T) {
 
 	_, log := agentlog.Init("someAgent")
 
-	msg := info.ZInfoHardware{}
-	err := AddInventoryInfo(log, &msg)
+	inventory, err := GetInventoryInfo(log)
 	if err != nil {
 		panic(err)
 	}
 
-	t.Log(&msg)
+	t.Log(inventory)
 }

@@ -25,32 +25,23 @@ import (
 	"github.com/zededa/ghw/pkg/watchdog"
 )
 
-type inventoryMsgCreator struct {
-	msg *info.ZInfoHardware
-}
-
-func AddInventoryInfo(log *base.LogObject, msg *info.ZInfoHardware) error {
-	imc := &inventoryMsgCreator{}
-
-	imc.msg = msg
-	if imc.msg.Inventory == nil {
-		imc.msg.Inventory = &info.HardwareInventory{}
-	}
+func GetInventoryInfo(log *base.LogObject) (*info.HardwareInventory, error) {
+	inventory := &info.HardwareInventory{}
 
 	errs := make(map[string]error)
-	errs["PCI"] = imc.fillPCI()
-	errs["USB"] = imc.fillUSB()
-	errs["Serial"] = imc.fillSerial()
-	errs["Network"] = imc.fillNetwork()
-	errs["CAN"] = imc.fillCAN()
-	errs["BIOS"] = imc.fillBIOS()
-	errs["CPU"] = imc.fillCPU()
-	errs["Memory"] = imc.fillMemory()
-	errs["Storage"] = imc.fillStorage()
-	errs["Watchdog"] = imc.fillWatchdog()
-	errs["TPM"] = imc.fillTPM()
+	inventory.PciDevices, errs["PCI"] = getPCIDevices()
+	inventory.UsbDevices, errs["USB"] = getUSBDevices()
+	inventory.SerialDevices, errs["Serial"] = getSerialDevices()
+	inventory.NetworkDevices, errs["Network"] = getNetworkDevices()
+	inventory.CanDevices, errs["CAN"] = getCANDevices()
+	inventory.Bios, errs["BIOS"] = getBIOSInfo()
+	inventory.CpuInfo, errs["CPU"] = getCPUInfo()
+	inventory.TotalMemoryBytes, errs["Memory"] = getMemoryBytes()
+	inventory.TotalStorageBytes, errs["Storage"] = getStorageBytes()
+	inventory.WatchdogPresent, errs["Watchdog"] = watchdogPresent()
+	inventory.Tpm, errs["TPM"] = getTPMInfo()
 
-	imc.msg.Inventory.StatusLedPresent = GetStatusLedPresent(GetHardwareModel(log))
+	inventory.StatusLedPresent = GetStatusLedPresent(GetHardwareModel(log))
 
 	var finalErr error
 	for key, err := range errs {
@@ -59,7 +50,7 @@ func AddInventoryInfo(log *base.LogObject, msg *info.ZInfoHardware) error {
 		}
 	}
 
-	return finalErr
+	return inventory, finalErr
 }
 
 func stringToPCIAddress(str string) *info.PCIAddress {
@@ -80,10 +71,12 @@ func stringToPCIAddress(str string) *info.PCIAddress {
 	}
 }
 
-func (imc *inventoryMsgCreator) fillUSB() error {
+func getUSBDevices() ([]*info.USBDevice, error) {
+	usbDevices := []*info.USBDevice{}
+
 	usbs, err := ghw.USB(option.WithDisableTools())
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	for _, usb := range usbs.Devices {
@@ -118,13 +111,15 @@ func (imc *inventoryMsgCreator) fillUSB() error {
 			ClassId: classId,
 			Driver:  usb.Driver,
 		}
-		imc.msg.Inventory.UsbDevices = append(imc.msg.Inventory.UsbDevices, &ud)
+		usbDevices = append(usbDevices, &ud)
 	}
 
-	return nil
+	return usbDevices, nil
 }
 
-func (imc *inventoryMsgCreator) fillPCI() error {
+func getPCIDevices() ([]*info.PCIDevice, error) {
+	pciDevices := []*info.PCIDevice{}
+
 	db := pcidb.PCIDB{
 		Classes:  map[string]*pcitypes.Class{},
 		Vendors:  map[string]*pcitypes.Vendor{},
@@ -132,7 +127,7 @@ func (imc *inventoryMsgCreator) fillPCI() error {
 	}
 	pcis, err := ghw.PCI(option.WithPCIDB(&db), option.WithDisableTools())
 	if err != nil {
-		return fmt.Errorf("could not retrieve PCI information: %+w", err)
+		return nil, fmt.Errorf("could not retrieve PCI information: %+w", err)
 	}
 
 	for _, pci := range pcis.Devices {
@@ -149,7 +144,7 @@ func (imc *inventoryMsgCreator) fillPCI() error {
 		classId := pciHexToUint32(pci.Class.ID)
 		subclassId := pciHexToUint64(pci.Subclass.ID)
 
-		imc.msg.Inventory.PciDevices = append(imc.msg.Inventory.PciDevices, &info.PCIDevice{
+		pciDevices = append(pciDevices, &info.PCIDevice{
 			ParentPciDeviceAddress: stringToPCIAddress(pci.ParentAddress),
 			Driver:                 pci.Driver,
 			Address:                stringToPCIAddress(pci.Address),
@@ -163,7 +158,7 @@ func (imc *inventoryMsgCreator) fillPCI() error {
 		})
 	}
 
-	return nil
+	return pciDevices, nil
 }
 
 func pciHexToUint32(idString string) uint32 {
@@ -247,10 +242,12 @@ func pciHexToUint64(idString string) uint64 {
 	return 0
 }
 
-func (imc *inventoryMsgCreator) fillSerial() error {
+func getSerialDevices() ([]*info.SerialPort, error) {
+	serialDevices := []*info.SerialPort{}
+
 	serials, err := ghw.Serial(option.WithDisableTools())
 	if err != nil {
-		return err
+		return nil, err
 	}
 	for _, serial := range serials.Devices {
 		sp := info.SerialPort{
@@ -272,15 +269,17 @@ func (imc *inventoryMsgCreator) fillSerial() error {
 				Port: serial.Parent.USB.Port,
 			}
 		}
-		imc.msg.Inventory.SerialDevices = append(imc.msg.Inventory.SerialDevices, &sp)
+		serialDevices = append(serialDevices, &sp)
 	}
-	return nil
+	return serialDevices, nil
 }
 
-func (imc *inventoryMsgCreator) fillNetwork() error {
+func getNetworkDevices() ([]*info.NetworkDevice, error) {
+	networkDevices := []*info.NetworkDevice{}
+
 	netInfo, err := ghw.Network(option.WithDisableTools())
 	if err != nil {
-		return err
+		return nil, err
 	}
 	for _, nic := range netInfo.NICs {
 		nd := info.NetworkDevice{
@@ -321,15 +320,17 @@ func (imc *inventoryMsgCreator) fillNetwork() error {
 				PciParent: stringToPCIAddress(*nic.PCIAddress),
 			}
 		}
-		imc.msg.Inventory.NetworkDevices = append(imc.msg.Inventory.NetworkDevices, &nd)
+		networkDevices = append(networkDevices, &nd)
 	}
-	return nil
+	return networkDevices, nil
 }
 
-func (imc *inventoryMsgCreator) fillCAN() error {
+func getCANDevices() ([]*info.CANDevice, error) {
+	canDevices := []*info.CANDevice{}
+
 	canInfo, err := can.New()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	for _, dev := range canInfo.Devices {
 		cd := info.CANDevice{
@@ -345,26 +346,25 @@ func (imc *inventoryMsgCreator) fillCAN() error {
 				Port: dev.Parent.USB.Port,
 			}
 		}
-		imc.msg.Inventory.CanDevices = append(imc.msg.Inventory.CanDevices, &cd)
+		canDevices = append(canDevices, &cd)
 	}
-	return nil
+	return canDevices, nil
 }
 
-func (imc *inventoryMsgCreator) fillBIOS() error {
+func getBIOSInfo() (*info.BIOS, error) {
 	biosInfo, err := ghw.BIOS(option.WithDisableTools())
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// Collect firmware attributes from /sys/class/firmware-attributes
 	fwAttrs := getFirmwareAttributes()
 
-	imc.msg.Inventory.Bios = &info.BIOS{
+	return &info.BIOS{
 		Vendor:     biosInfo.Vendor,
 		Version:    biosInfo.Version,
 		Attributes: fwAttrs,
-	}
-	return nil
+	}, nil
 }
 
 func getFirmwareAttributes() map[string]string {
@@ -406,12 +406,12 @@ func getFirmwareAttributes() map[string]string {
 	return settings
 }
 
-func (imc *inventoryMsgCreator) fillCPU() error {
+func getCPUInfo() (*info.CPUInfo, error) {
 	cpuInfo, err := ghw.CPU(option.WithDisableTools())
 	if err != nil {
-		return err
+		return nil, err
 	}
-	imc.msg.Inventory.CpuInfo = &info.CPUInfo{}
+	cpuInfoProto := &info.CPUInfo{}
 	for _, proc := range cpuInfo.Processors {
 		for _, core := range proc.Cores {
 			c := info.CPU{
@@ -419,69 +419,66 @@ func (imc *inventoryMsgCreator) fillCPU() error {
 				Vendor: proc.Vendor,
 				Id:     uint32(core.ID),
 			}
-			imc.msg.Inventory.CpuInfo.Cpus = append(imc.msg.Inventory.CpuInfo.Cpus, &c)
+			cpuInfoProto.Cpus = append(cpuInfoProto.Cpus, &c)
 		}
 	}
-	return nil
+	return cpuInfoProto, nil
 }
 
-func (imc *inventoryMsgCreator) fillMemory() error {
+func getMemoryBytes() (uint64, error) {
 	memInfo, err := ghw.Memory(option.WithDisableTools())
 	if err != nil {
-		return err
+		return 0, err
 	}
-	imc.msg.Inventory.TotalMemoryBytes = uint64(memInfo.TotalPhysicalBytes)
-	return nil
+	return uint64(memInfo.TotalPhysicalBytes), nil
 }
 
-func (imc *inventoryMsgCreator) fillStorage() error {
+func getStorageBytes() (uint64, error) {
 	blockInfo, err := ghw.Block(option.WithDisableTools())
 	if err != nil {
-		return err
+		return 0, err
 	}
-	imc.msg.Inventory.TotalStorageBytes = uint64(blockInfo.TotalPhysicalBytes)
-	return nil
+	return uint64(blockInfo.TotalPhysicalBytes), nil
 }
 
-func (imc *inventoryMsgCreator) fillWatchdog() error {
+func watchdogPresent() (bool, error) {
 	wdInfo, err := watchdog.New()
 	if err != nil {
-		return err
+		return false, err
 	}
-	imc.msg.Inventory.WatchdogPresent = wdInfo.Present
-	return nil
+	return wdInfo.Present, nil
 }
 
-func (imc *inventoryMsgCreator) fillTPM() error {
+func getTPMInfo() (*info.TPM, error) {
 	present := evetpm.IsTpmEnabled()
-	imc.msg.Inventory.Tpm = &info.TPM{
+	tpmInfoProto := &info.TPM{
 		Present: present,
 	}
 
 	if present {
 		tpmInfo, err := evetpm.FetchTpmHwInfo()
 		if err != nil {
-			return err
+			return nil, err
 		}
 		// The string returned by FetchTpmHwInfo is formatted as:
 		// "Manufacturer-Model, FW Version Version"
 		// We try to parse it to fill the individual fields
 		parts := strings.Split(tpmInfo, ", FW Version ")
 		if len(parts) == 2 {
-			imc.msg.Inventory.Tpm.FirmwareVersion = parts[1]
+			tpmInfoProto.FirmwareVersion = parts[1]
 			vendorParts := strings.Split(parts[0], "-")
 			if len(vendorParts) >= 1 {
-				imc.msg.Inventory.Tpm.Manufacturer = vendorParts[0]
+				tpmInfoProto.Manufacturer = vendorParts[0]
 			}
 		} else {
 			// Fallback if formatting is unexpected
-			imc.msg.Inventory.Tpm.Manufacturer = tpmInfo
+			tpmInfoProto.Manufacturer = tpmInfo
 		}
 		specVersion, err := evetpm.GetSpecVersion()
 		if err != nil {
-			return err
+			return nil, err
 		}
-		imc.msg.Inventory.Tpm.SpecVersion = specVersion
+		tpmInfoProto.SpecVersion = specVersion
 	}
-	return nil
+	return tpmInfoProto, nil
 }
