@@ -44,6 +44,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/controllerconn"
+	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/localcommand"
 	"github.com/lf-edge/eve/pkg/pillar/netdump"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
@@ -238,6 +239,8 @@ type zedagentContext struct {
 	pcrStatus             info.PCRStatus
 	vaultErr              string
 
+	hwInventory *info.HardwareInventory
+
 	// Track the counter from force.fallback.counter to detect changes
 	forceFallbackCounter int
 
@@ -404,6 +407,14 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	ps.StillRunning(agentName, warningTime, errorTime)
 
 	initializeDirs()
+
+	// the HW inventory should be collected in it's pristine way
+	// before a config is applied so that the config doesn't change
+	// the reported HW info (e.g. vfio-pci etc)
+	zedagentCtx.hwInventory, err = hardware.GetInventoryInfo(log)
+	if err != nil {
+		log.Warnf("could not get hardware inventory: %v", err)
+	}
 
 	// Load bootstrap configuration if present.
 	getconfigCtx := zedagentCtx.getconfigCtx
