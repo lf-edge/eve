@@ -537,13 +537,13 @@ func (r *LinuxDpcReconciler) Reconcile(ctx context.Context, args Args) Reconcile
 
 	// Check the state of the radio silence.
 	r.radioSilence = args.RS
-	_, state, _, found := r.currentState.Item(dg.Reference(linux.Wlan{}))
+	_, state, _, found := r.currentState.Item(dg.Reference(linux.RFKill{}))
 	if found && state.WithError() != nil {
 		r.radioSilence.ConfigError = state.WithError().Error()
 	}
 	if r.radioSilence.Imposed {
 		if !found {
-			r.radioSilence.ConfigError = "missing WLAN configuration"
+			r.radioSilence.ConfigError = "missing rfkill configuration"
 		}
 		if !found || state.WithError() != nil {
 			r.radioSilence.Imposed = false
@@ -1484,8 +1484,9 @@ func (r *LinuxDpcReconciler) getIntendedWirelessCfg(dpc types.DevicePortConfig,
 		Description: "Configuration for wireless connectivity",
 	}
 	intendedWirelessCfg := dg.New(graphArgs)
-	intendedWirelessCfg.PutItem(
-		r.getIntendedWlanConfig(dpc, radioSilence), nil)
+	for _, item := range r.getIntendedWlanConfig(dpc, radioSilence) {
+		intendedWirelessCfg.PutItem(item, nil)
+	}
 	if dpc.Key != "" {
 		// Do not send config to wwan microservice until we receive DPC.
 		// The default behaviour of wwan microservice (i.e. without config) is to disable
@@ -1501,35 +1502,47 @@ func (r *LinuxDpcReconciler) getIntendedWirelessCfg(dpc types.DevicePortConfig,
 }
 
 func (r *LinuxDpcReconciler) getIntendedWlanConfig(
-	dpc types.DevicePortConfig, radioSilence types.RadioSilence) dg.Item {
-	var wifiPort *types.NetworkPortConfig
+	dpc types.DevicePortConfig, radioSilence types.RadioSilence) (items []dg.Item) {
+	var haveWiFiCfg bool
 	for _, portCfg := range dpc.Ports {
-		if portCfg.WirelessCfg.WType == types.WirelessTypeWifi &&
-			!portCfg.WirelessCfg.IsEmpty() {
-			wifiPort = &portCfg
-			break
+		if portCfg.WirelessCfg.WType != types.WirelessTypeWifi {
+			continue
 		}
-	}
-	var wifiConfig []linux.WifiConfig
-	if wifiPort != nil {
-		for _, wifi := range wifiPort.WirelessCfg.Wifi {
-			credentials, err := r.getWifiCredentials(wifi)
+		if portCfg.WirelessCfg.IsEmpty() {
+			continue
+		}
+		var wifiConfig []generic.WifiConfig
+		for _, wifi := range portCfg.WirelessCfg.Wifi {
+			username, password, err := r.getWifiCredentials(wifi)
 			if err != nil {
 				continue
 			}
-			wifiConfig = append(wifiConfig, linux.WifiConfig{
-				WifiConfig:  wifi,
-				Credentials: credentials,
+			wifiConfig = append(wifiConfig, generic.WifiConfig{
+				SSID:         wifi.SSID,
+				KeyScheme:    wifi.KeyScheme,
+				Identity:     username,
+				PasswordHash: password,
+				Priority:     wifi.Priority,
 			})
 		}
+		items = append(items,
+			generic.WpaSupplicant{
+				AdapterLL:     portCfg.Logicallabel,
+				AdapterIfName: portCfg.IfName,
+				WiFiConfigs:   wifiConfig,
+			})
+		haveWiFiCfg = true
 	}
-	return linux.Wlan{
-		Config:   wifiConfig,
-		EnableRF: wifiPort != nil && !radioSilence.Imposed,
-	}
+
+	items = append(items,
+		linux.RFKill{
+			EnableWlanRF: !radioSilence.Imposed && haveWiFiCfg,
+		})
+	return items
 }
 
-func (r *LinuxDpcReconciler) getWifiCredentials(wifi types.WifiConfig) (types.EncryptionBlock, error) {
+func (r *LinuxDpcReconciler) getWifiCredentials(
+	wifi types.WifiConfig) (username string, password string, err error) {
 	decryptAvailable := r.SubControllerCert != nil && r.SubEdgeNodeCert != nil
 	if !wifi.CipherBlockStatus.IsCipher || !decryptAvailable {
 		if !wifi.CipherBlockStatus.IsCipher {
@@ -1538,17 +1551,15 @@ func (r *LinuxDpcReconciler) getWifiCredentials(wifi types.WifiConfig) (types.En
 			r.Log.Warnf("%s, context for decryption of wifi credentials is not available\n",
 				wifi.SSID)
 		}
-		decBlock := types.EncryptionBlock{}
-		decBlock.WifiUserName = wifi.Identity
-		decBlock.WifiPassword = wifi.Password
 		if r.CipherMetrics != nil {
-			if decBlock.WifiUserName != "" || decBlock.WifiPassword != "" {
+			if wifi.Identity != "" || wifi.Password != "" {
 				r.CipherMetrics.RecordFailure(r.Log, types.NoCipher)
 			} else {
 				r.CipherMetrics.RecordFailure(r.Log, types.NoData)
 			}
 		}
-		return decBlock, nil
+		// Return cleartext credentials if provided.
+		return wifi.Identity, wifi.Password, nil
 	}
 	status, decBlock, err := cipher.GetCipherCredentials(
 		&cipher.DecryptCipherContext{
@@ -1565,23 +1576,21 @@ func (r *LinuxDpcReconciler) getWifiCredentials(wifi types.WifiConfig) (types.En
 	if err != nil {
 		r.Log.Errorf("%s, wifi config cipherblock decryption was unsuccessful, "+
 			"falling back to cleartext: %v\n", wifi.SSID, err)
-		decBlock.WifiUserName = wifi.Identity
-		decBlock.WifiPassword = wifi.Password
 		// We assume IsCipher is only set when there was some
 		// data. Hence this is a fallback if there is
 		// some cleartext.
 		if r.CipherMetrics != nil {
-			if decBlock.WifiUserName != "" || decBlock.WifiPassword != "" {
+			if wifi.Identity != "" || wifi.Password != "" {
 				r.CipherMetrics.RecordFailure(r.Log, types.CleartextFallback)
 			} else {
 				r.CipherMetrics.RecordFailure(r.Log, types.MissingFallback)
 			}
 		}
-		return decBlock, nil
+		return wifi.Identity, wifi.Password, nil
 	}
 	r.Log.Functionf("%s, wifi config cipherblock decryption was successful\n",
 		wifi.SSID)
-	return decBlock, nil
+	return decBlock.WifiUserName, decBlock.WifiPassword, nil
 }
 
 func (r *LinuxDpcReconciler) getIntendedWwanConfig(dpc types.DevicePortConfig,

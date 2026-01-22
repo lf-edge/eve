@@ -15,7 +15,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/utils"
+	procutils "github.com/lf-edge/eve/pkg/pillar/utils/proc"
 	"github.com/sirupsen/logrus"
 )
 
@@ -134,7 +134,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		if hwFlag {
 			procName := "/usr/sbin/watchdog"
 			log.Noticef("Killing %s", procName)
-			utils.PkillArgs(log, procName, true, true)
+			procutils.Pkill(log, procName, true, true)
 		}
 	}
 }

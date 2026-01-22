@@ -21,6 +21,7 @@ func RegisterItems(log *base.LogObject, registry *reconciler.DefaultRegistry,
 		{c: &ResolvConfConfigurator{Log: log}, t: ResolvConfTypename},
 		{c: &SSHAuthKeysConfigurator{Log: log}, t: SSHAuthKeysTypename},
 		{c: &WwanConfigurator{Log: log, PubWwanConfig: pubWwanConfig}, t: WwanTypename},
+		{c: &WpaSupplicantConfigurator{Log: log}, t: WpaSupplicantTypename},
 	}
 	for _, configurator := range configurators {
 		err := registry.Register(configurator.c, configurator.t)

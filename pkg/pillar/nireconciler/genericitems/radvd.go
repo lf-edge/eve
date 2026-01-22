@@ -14,6 +14,7 @@ import (
 	dg "github.com/lf-edge/eve-libs/depgraph"
 	"github.com/lf-edge/eve-libs/reconciler"
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/utils/proc"
 	uuid "github.com/satori/go.uuid"
 )
 
@@ -176,22 +177,36 @@ func (c *RadvdConfigurator) createRadvdConfigFile(radvd Radvd) error {
 	return nil
 }
 
-// Start radvd as a daemon process.
-func (c *RadvdConfigurator) startRadvd(ctx context.Context, instanceName string) error {
-	cmd := "nohup"
+func (c *RadvdConfigurator) initProcessManager(instanceName string) proc.ProcessManager {
 	pidFile := c.radvdPidFile(instanceName)
 	args := []string{
-		"radvd",
 		"-u", "radvd",
 		"-C", c.radvdConfigPath(instanceName),
 		"-p", pidFile,
 	}
-	return startProcess(ctx, c.Log, cmd, args, pidFile, radvdStartTimeout, true)
+	return proc.ProcessManager{
+		Log:       c.Log,
+		PidFile:   pidFile,
+		Cmd:       "radvd",
+		Args:      args,
+		WithNohup: true,
+		WillFork:  true,
+	}
+}
+
+// Start radvd as a daemon process.
+func (c *RadvdConfigurator) startRadvd(ctx context.Context, instanceName string) error {
+	pm := c.initProcessManager(instanceName)
+	ctx, cancel := context.WithTimeout(ctx, radvdStartTimeout)
+	defer cancel()
+	return pm.Start(ctx)
 }
 
 func (c *RadvdConfigurator) stopRadvd(ctx context.Context, instanceName string) error {
-	pidFile := c.radvdPidFile(instanceName)
-	return stopProcess(ctx, c.Log, pidFile, radvdStopTimeout)
+	pm := c.initProcessManager(instanceName)
+	ctx, cancel := context.WithTimeout(ctx, radvdStopTimeout)
+	defer cancel()
+	return pm.Stop(ctx)
 }
 
 func (c *RadvdConfigurator) removeRadvdConfigFile(instanceName string) error {

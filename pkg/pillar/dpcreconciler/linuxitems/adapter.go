@@ -111,14 +111,14 @@ func (a Adapter) Dependencies() (deps []depgraph.Dependency) {
 	// Dependency 2: WiFi requires rfkill unblock to be performed first.
 	if a.WirelessType == types.WirelessTypeWifi {
 		deps = append(deps, depgraph.Dependency{
-			RequiredItem: depgraph.Reference(Wlan{}),
+			RequiredItem: depgraph.Reference(RFKill{}),
 			MustSatisfy: func(item depgraph.Item) bool {
-				wlan, isWlan := item.(Wlan)
-				if !isWlan {
+				rfkill, isRFKill := item.(RFKill)
+				if !isRFKill {
 					// unreachable
 					return false
 				}
-				return wlan.EnableRF
+				return rfkill.EnableWlanRF
 			},
 			Description: "radio transmission must be enabled",
 		})

@@ -20,8 +20,10 @@ import (
 	"github.com/lf-edge/eve-libs/reconciler"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
 	"github.com/lf-edge/eve/pkg/pillar/utils/netutils"
+	"github.com/lf-edge/eve/pkg/pillar/utils/proc"
 	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 )
@@ -360,13 +362,16 @@ func (c *DnsmasqConfigurator) Create(ctx context.Context, item dg.Item) error {
 	if err := c.createDnsmasqConfigFile(dnsmasq); err != nil {
 		return err
 	}
-	if err := ensureDir(c.Log, c.dnsmasqDHCPHostsDir(dnsmasq.Name())); err != nil {
+	if err := fileutils.EnsureDir(c.dnsmasqDHCPHostsDir(dnsmasq.Name())); err != nil {
+		c.Log.Error(err)
 		return err
 	}
-	if err := ensureDir(c.Log, c.dnsmasqDNSHostsDir(dnsmasq.Name())); err != nil {
+	if err := fileutils.EnsureDir(c.dnsmasqDNSHostsDir(dnsmasq.Name())); err != nil {
+		c.Log.Error(err)
 		return err
 	}
-	if err := ensureDir(c.Log, types.DnsmasqLeaseDir); err != nil {
+	if err := fileutils.EnsureDir(types.DnsmasqLeaseDir); err != nil {
+		c.Log.Error(err)
 		return err
 	}
 	for _, host := range dnsmasq.DHCPServer.StaticEntries {
@@ -425,8 +430,8 @@ func (c *DnsmasqConfigurator) Modify(ctx context.Context, oldItem, newItem dg.It
 			return err
 		}
 	}
-	pidFile := c.dnsmasqPidFile(newDnsmasq.Name())
-	return sendSignalToProcess(c.Log, pidFile, syscall.SIGHUP)
+	pm := c.initProcessManager(newDnsmasq.Name())
+	return pm.SendSignal(syscall.SIGHUP)
 }
 
 // Delete stops dnsmasq.
@@ -887,21 +892,29 @@ func (c *DnsmasqConfigurator) delDHCPHostFile(instanceName string,
 	return nil
 }
 
-func (c *DnsmasqConfigurator) startDnsmasq(ctx context.Context, instanceName string) error {
-	cmd := "nohup"
-	pidFile := c.dnsmasqPidFile(instanceName)
-	cfgPath := c.dnsmasqConfigPath(instanceName)
-	args := []string{
-		dnsmasqBinary,
-		"-C",
-		cfgPath,
+func (c *DnsmasqConfigurator) initProcessManager(instanceName string) proc.ProcessManager {
+	return proc.ProcessManager{
+		Log:       c.Log,
+		PidFile:   c.dnsmasqPidFile(instanceName),
+		Cmd:       dnsmasqBinary,
+		Args:      []string{"-C", c.dnsmasqConfigPath(instanceName)},
+		WithNohup: true,
+		WillFork:  true,
 	}
-	return startProcess(ctx, c.Log, cmd, args, pidFile, dnsmasqStartTimeout, true)
+}
+
+func (c *DnsmasqConfigurator) startDnsmasq(ctx context.Context, instanceName string) error {
+	pm := c.initProcessManager(instanceName)
+	ctx, cancel := context.WithTimeout(ctx, dnsmasqStartTimeout)
+	defer cancel()
+	return pm.Start(ctx)
 }
 
 func (c *DnsmasqConfigurator) stopDnsmasq(ctx context.Context, instanceName string) error {
-	pidFile := c.dnsmasqPidFile(instanceName)
-	return stopProcess(ctx, c.Log, pidFile, dnsmasqStopTimeout)
+	pm := c.initProcessManager(instanceName)
+	ctx, cancel := context.WithTimeout(ctx, dnsmasqStopTimeout)
+	defer cancel()
+	return pm.Stop(ctx)
 }
 
 func (c *DnsmasqConfigurator) removeDnsmasqConfigFile(instanceName string) error {

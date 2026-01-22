@@ -11,7 +11,7 @@ ARG BUILD_PKGS_BASE="git gcc linux-headers libc-dev make linux-pam-dev m4 findut
 ARG EVE_ALPINE_IMAGE=lfedge/eve-alpine:745ae9066273c73b0fd879c4ba4ff626a8392d04
 
 FROM lfedge/eve-uefi:b3ef9ca37c99439c776673aeba83c52ea8b84626 AS uefi-build
-FROM lfedge/eve-dom0-ztools:728e9ccb619ccc27368fa93c7121200d85a81f88 AS zfs
+FROM lfedge/eve-dom0-ztools:1984cc6ffeab6842c34f8485178340158d0aa638 AS zfs
 RUN mkdir /out
 # copy zfs-related files from dom0-ztools using prepared list of files
 RUN while read -r x; do \
@@ -157,7 +157,7 @@ ENV BUILD_PKGS patch
 ENV PKGS alpine-baselayout musl-utils libtasn1-progs pciutils yajl xz bash iptables ip6tables iproute2 \
     coreutils dmidecode libbz2 libuuid ipset curl radvd ethtool util-linux e2fsprogs libcrypto1.1 xorriso \
     qemu-img jq e2fsprogs-extra keyutils ca-certificates ip6tables-openrc iptables-openrc ipset-openrc hdparm \
-    libintl libtirpc libblkid zlib rsync chrony
+    libintl libtirpc libblkid zlib rsync chrony wireless-tools wpa_supplicant
 RUN eve-alpine-deploy.sh
 
 SHELL ["/bin/ash", "-eo", "pipefail", "-c"]

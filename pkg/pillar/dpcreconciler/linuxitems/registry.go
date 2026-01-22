@@ -27,7 +27,7 @@ func RegisterItems(log *base.LogObject, registry *reconciler.DefaultRegistry,
 		{c: &RouteConfigurator{Log: log}, t: genericitems.IPv4RouteTypename},
 		{c: &RouteConfigurator{Log: log}, t: genericitems.IPv6RouteTypename},
 		{c: &VlanConfigurator{Log: log, NetworkMonitor: monitor}, t: genericitems.VlanTypename},
-		{c: &WlanConfigurator{Log: log}, t: genericitems.WlanTypename},
+		{c: &RFKillConfigurator{Log: log}, t: RFKillTypename},
 	}
 	for _, configurator := range configurators {
 		err := registry.Register(configurator.c, configurator.t)

@@ -127,10 +127,6 @@ services:
      image: lfedge/eve-wwan:d714ad6c7facffa1c2a6ae13b9e76d55b10cd1a4-amd64
      cgroupsPath: /eve/services/wwan
      oomScoreAdj: -999
-   - name: wlan
-     image: lfedge/eve-wlan:f60f85ed52a9731dc8714b058d2dec71dab97cfd-amd64
-     cgroupsPath: /eve/services/wlan
-     oomScoreAdj: -999
    - name: guacd
      image: lfedge/eve-guacd:98688a5b3c8972665225de789160c2bbdbdb4fd4-amd64
      cgroupsPath: /eve/services/guacd

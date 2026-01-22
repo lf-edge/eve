@@ -51,6 +51,20 @@ func DirExists(log *base.LogObject, dirname string) bool {
 	return false
 }
 
+// EnsureDir checks if the specified directory exists, and if not, creates it
+// along with any necessary parent directories with permission 0755.
+func EnsureDir(dirname string) error {
+	_, err := os.Stat(dirname)
+	if err != nil {
+		err = os.MkdirAll(dirname, 0755)
+		if err != nil {
+			err = fmt.Errorf("failed to create directory %s: %w", dirname, err)
+			return err
+		}
+	}
+	return nil
+}
+
 // DirSync flushes changes made to a directory.
 func DirSync(dirName string) error {
 	f, err := os.OpenFile(dirName, os.O_RDONLY, 0755)
