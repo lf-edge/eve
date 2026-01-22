@@ -16,6 +16,9 @@ config:
     - /persist:/persist:rshared,rbind
     - /usr/bin/containerd:/usr/bin/containerd
     - /opt/vendor:/opt/vendor:ro
+    # Expose host firmware for Wi-Fi drivers that defer firmware loading
+    # until first interface use, from within the container context.
+    - /lib/firmware:/lib/firmware
   capabilities:
     - all
   pid: host

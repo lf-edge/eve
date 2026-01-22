@@ -38,9 +38,9 @@ const (
 	// VlanTypename : typename for VLAN sub-interface.
 	// Not implemented in genericitems (implementation specific to network stack).
 	VlanTypename = "VLAN"
-	// WlanTypename : typename for WLAN configuration.
-	// Not implemented in genericitems (implementation specific to network stack).
-	WlanTypename = "WLAN"
 	// WwanTypename : typename for WWAN (LTE) configuration (read by wwan microservice).
 	WwanTypename = "WWAN"
+	// WpaSupplicantTypename : typename for wpa_supplicant program
+	// (Wi-Fi Protected Access client and IEEE 802.1X supplicant).
+	WpaSupplicantTypename = "WPA-Supplicant"
 )

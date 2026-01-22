@@ -431,7 +431,6 @@ cgroup:
 * sshd
 * vtpm
 * watchdog
-* wlan
 * wwan
 * xen-tools
 

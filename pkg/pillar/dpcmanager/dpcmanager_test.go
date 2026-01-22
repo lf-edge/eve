@@ -3339,8 +3339,8 @@ func TestLPSConfig(test *testing.T) {
 	t.Expect(itemDescription(eth0PhysIf)).To(ContainSubstring("MTU:0x2328"))
 	t.Expect(dhcpcdArgs("eth1")).To(ContainSubstring("--static ip_address=172.20.1.50/24"))
 	t.Expect(itemDescription(wwan)).To(ContainSubstring("APN:apn2"))
-	wlan := dg.Reference(linux.Wlan{})
-	t.Expect(itemDescription(wlan)).To(ContainSubstring("SSID: ssid2"))
+	wpaSupplicant := dg.Reference(generic.WpaSupplicant{AdapterIfName: "wlan0"})
+	t.Expect(itemDescription(wpaSupplicant)).To(ContainSubstring("SSID=\"ssid2\""))
 
 	// Now completely revert LPS configuration.
 	// We do this by publishing LPS DPC with an empty set of ports.
@@ -3373,7 +3373,7 @@ func TestLPSConfig(test *testing.T) {
 	t.Expect(itemDescription(eth0PhysIf)).To(ContainSubstring("MTU:0x5dc"))
 	t.Expect(dhcpcdArgs("eth1")).To(ContainSubstring("--request"))
 	t.Expect(itemDescription(wwan)).To(ContainSubstring("APN:apn2"))
-	t.Expect(itemDescription(wlan)).To(ContainSubstring("SSID: ssid2"))
+	t.Expect(itemDescription(wpaSupplicant)).To(ContainSubstring("SSID=\"ssid2\""))
 }
 
 func TestRouteMetrics(test *testing.T) {

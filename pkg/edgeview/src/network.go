@@ -1245,14 +1245,32 @@ func runWireless() {
 		return
 	}
 
-	printTitle("\n iwconfig wlan0", colorCYAN, false)
-	prog := "iwconfig"
-	args := []string{"wlan0"}
-	_, _ = runCmd(prog, args, true)
-
-	retbytes, err := os.ReadFile("/run/wlan/wpa_supplicant.conf")
+	var deviceNetStatus types.DeviceNetworkStatus
+	retbytes, err := os.ReadFile("/run/nim/DeviceNetworkStatus/global.json")
 	if err == nil {
-		printTitle(" wpa_supplicant.conf:", colorCYAN, false)
+		// Leave empty deviceNetStatus if reading/unmarshal fails.
+		_ = json.Unmarshal(retbytes, &deviceNetStatus)
+	}
+
+	for _, port := range deviceNetStatus.Ports {
+		if port.IfName == "" {
+			continue
+		}
+		if port.WirelessCfg.WType != types.WirelessTypeWifi {
+			continue
+		}
+		printTitle(fmt.Sprintf("\n iwconfig %s", port.IfName), colorCYAN, false)
+		prog := "iwconfig"
+		args := []string{port.IfName}
+		_, _ = runCmd(prog, args, true)
+
+		retbytes, err = os.ReadFile(
+			fmt.Sprintf("/run/nim/wpa_supplicant.%s.conf", port.IfName))
+		if err != nil {
+			continue
+		}
+		printTitle(fmt.Sprintf(" wpa_supplicant.conf for %s:", port.IfName),
+			colorCYAN, false)
 		lines := strings.Split(string(retbytes), "\n")
 		if len(lines) < 1 {
 			return

@@ -22,8 +22,8 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/containerd"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/utils"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
+	procutils "github.com/lf-edge/eve/pkg/pillar/utils/proc"
 	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/sys/unix"
@@ -2008,7 +2008,7 @@ func makeRequestAsync(client *http.Client, endpoint, id string, rChan chan<- vtp
 	rChan <- vtpmRequestResult{Body: string(body)}
 }
 
-func makeRequest(client *http.Client, wk *utils.WatchdogKicker, endpoint, id string) (body string, err error) {
+func makeRequest(client *http.Client, wk *procutils.WatchdogKicker, endpoint, id string) (body string, err error) {
 	rChan := make(chan vtpmRequestResult)
 	go makeRequestAsync(client, endpoint, id, rChan)
 
@@ -2018,7 +2018,7 @@ func makeRequest(client *http.Client, wk *utils.WatchdogKicker, endpoint, id str
 		case res := <-rChan:
 			return res.Body, res.Error
 		default:
-			utils.KickWatchdog(wk)
+			wk.Kick()
 			if time.Since(startTime).Seconds() >= float64(client.Timeout.Seconds()) {
 				return "", fmt.Errorf("timeout")
 			}
@@ -2028,7 +2028,7 @@ func makeRequest(client *http.Client, wk *utils.WatchdogKicker, endpoint, id str
 }
 
 func requestvTPMLaunch(id uuid.UUID, wp *types.WatchdogParam, timeoutSeconds uint) error {
-	wk := utils.NewWatchdogKicker(wp.Ps, wp.AgentName, wp.WarnTime, wp.ErrTime)
+	wk := procutils.NewWatchdogKicker(wp.Ps, wp.AgentName, wp.WarnTime, wp.ErrTime)
 	body, err := makeRequest(vTPMClient, wk, vtpmLaunchEndpoint, id.String())
 	if err != nil {
 		return fmt.Errorf("failed to launch vTPM instance: %w (%s)", err, body)
@@ -2036,7 +2036,7 @@ func requestvTPMLaunch(id uuid.UUID, wp *types.WatchdogParam, timeoutSeconds uin
 
 	// Wait for SWTPM to start.
 	pidPath := fmt.Sprintf(types.SwtpmPidPath, id.String())
-	_, err = utils.GetPidFromFileTimeout(pidPath, timeoutSeconds, wk)
+	_, err = procutils.GetPidFromFileTimeout(pidPath, timeoutSeconds, wk)
 	if err != nil {
 		return fmt.Errorf("failed to get pid from file %s: %w", pidPath, err)
 	}
@@ -2047,7 +2047,7 @@ func requestvTPMLaunch(id uuid.UUID, wp *types.WatchdogParam, timeoutSeconds uin
 func requestvTPMPurge(id uuid.UUID, wp *types.WatchdogParam) error {
 	// Send a request to vTPM control socket, ask it to purge the instance
 	// and all its data.
-	wk := utils.NewWatchdogKicker(wp.Ps, wp.AgentName, wp.WarnTime, wp.ErrTime)
+	wk := procutils.NewWatchdogKicker(wp.Ps, wp.AgentName, wp.WarnTime, wp.ErrTime)
 	body, err := makeRequest(vTPMClient, wk, vtpmPurgeEndpoint, id.String())
 	if err != nil {
 		return fmt.Errorf("failed to purge vTPM instance: %w (%s)", err, body)
@@ -2058,7 +2058,7 @@ func requestvTPMPurge(id uuid.UUID, wp *types.WatchdogParam) error {
 
 func requestvTPMTermination(id uuid.UUID, wp *types.WatchdogParam) error {
 	// Send a request to vTPM control socket, ask it to terminate the instance.
-	wk := utils.NewWatchdogKicker(wp.Ps, wp.AgentName, wp.WarnTime, wp.ErrTime)
+	wk := procutils.NewWatchdogKicker(wp.Ps, wp.AgentName, wp.WarnTime, wp.ErrTime)
 	body, err := makeRequest(vTPMClient, wk, vtpmTermEndpoint, id.String())
 	if err != nil {
 		return fmt.Errorf("failed to terminate vTPM instance: %w (%s)", err, body)

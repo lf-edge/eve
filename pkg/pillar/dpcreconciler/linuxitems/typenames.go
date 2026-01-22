@@ -8,4 +8,6 @@ const (
 	IPv4RuleTypename = "IPv4Rule"
 	// IPv6RuleTypename : typename for Linux IPv6 rules.
 	IPv6RuleTypename = "IPv6Rule"
+	// RFKillTypename : type for Linux rfkill.
+	RFKillTypename = "rfkill"
 )

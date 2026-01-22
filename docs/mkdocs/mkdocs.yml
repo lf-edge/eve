@@ -256,5 +256,4 @@ nav:
       - RNGD: 'pkg/rngd/cmd/rngd/vendor/golang.org/x/sys/unix/README.md'
       - U-boot: 'pkg/u-boot/README.md'
       - UEFI: 'pkg/uefi/rpi/README.md'
-      - WLAN: 'pkg/wlan/FIXME.md'
       - 'Clock Synchronization': 'docs/CLOCK-SYNCHRONIZATION.md'

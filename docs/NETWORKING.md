@@ -136,7 +136,7 @@ distributions, and could be confusing even for experienced Linux users, for exam
   network instances, but also as a DHCP server
 
 The process of configuring the data-plane and all its components is split between
-4 EVE microservices:
+3 EVE microservices:
 
 - [NIM](../pkg/pillar/docs/nim.md) takes care of everything related to device connectivity
   (network adapters, `dhcpcd`, network config testing & fallback procedure)
@@ -144,7 +144,6 @@ The process of configuring the data-plane and all its components is split betwee
   for applications
 - [wwan](../pkg/wwan/README.md) runs `ModemManager` and EVE's `mmagent` wrapper to establish
   and manage cellular connectivity
-- wlan runs `wpa_supplicant` to perform the WPA authentication for WiFi connectivity
 
 Diagram below depicts all the components of the data-plane and how they all fit together.
 Also shown is the separation of the management plane between EVE microservices.
