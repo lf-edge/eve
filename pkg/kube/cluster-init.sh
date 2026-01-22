@@ -328,7 +328,7 @@ external_boot_image_import() {
         eve_external_boot_img_name="docker.io/lfedge/eve-external-boot-image"
         eve_external_boot_img_tag=$(cat /run/eve-release)
         eve_external_boot_img="${eve_external_boot_img_name}:${eve_external_boot_img_tag}"
-        if /var/lib/k3s/bin/k3s crictl --runtime-endpoint=unix:///run/containerd-user/containerd.sock inspecti "$eve_external_boot_img"; then
+        if /var/lib/k3s/bin/k3s crictl --runtime-endpoint=unix:///run/containerd-user/containerd.sock inspecti "$eve_external_boot_img" > /dev/null 2>&1; then
                 # Already imported
                 return 0
         fi
@@ -350,7 +350,36 @@ external_boot_image_import() {
                 return 1
         fi
         logmsg "Successfully installed external-boot-image $import_name_tag as $eve_external_boot_img"
+
+        # Clean up old eve-external-boot-image versions that don't match current release
+        cleanup_old_external_boot_images "$eve_external_boot_img_name" "$eve_external_boot_img_tag"
         return 0
+}
+
+# Remove old eve-external-boot-image images that don't match the current tag
+# Usage: cleanup_old_external_boot_images <image_name> <current_tag>
+cleanup_old_external_boot_images() {
+        local img_name="$1"
+        local current_tag="$2"
+
+        logmsg "Cleaning up old external-boot-image versions, keeping tag: $current_tag"
+
+        # List all images and filter for eve-external-boot-image
+        old_images=$(/var/lib/k3s/bin/k3s ctr -a /run/containerd-user/containerd.sock images list -q | grep "^${img_name}:" | grep -v ":${current_tag}$")
+
+        if [ -z "$old_images" ]; then
+                logmsg "No old external-boot-image versions to clean up"
+                return 0
+        fi
+
+        for old_img in $old_images; do
+                logmsg "Removing old external-boot-image: $old_img"
+                if ! /var/lib/k3s/bin/k3s ctr -a /run/containerd-user/containerd.sock image rm "$old_img" 2>/dev/null; then
+                        logmsg "Warning: Failed to remove old image $old_img (may be in use)"
+                fi
+        done
+
+        logmsg "Old external-boot-image cleanup completed"
 }
 
 check_start_containerd() {
