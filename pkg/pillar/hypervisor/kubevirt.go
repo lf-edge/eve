@@ -345,7 +345,9 @@ func (ctx kubevirtContext) CreateReplicaVMIConfig(domainName string, config type
 				// The concept is same in kubevirt too. Kubevirt supports this functionality through feature
 				// https://kubevirt.io/user-guide/virtual_machines/boot_from_external_source/
 				// Since disks are virtio disks we assume /dev/vda is the boot disk
-				kernelArgs := "console=tty0 root=/dev/vda dhcp=1 rootfstype=ext4"
+				// Include both tty0 (video) and ttyS0 (serial) consoles so that logs are captured
+				// by kubevirt's guest-console-log container
+				kernelArgs := "console=tty0 console=ttyS0 root=/dev/vda dhcp=1 rootfstype=ext4"
 				eveRelease, err := os.ReadFile("/run/eve-release")
 				if err != nil {
 					return logError("Failed to fetch eve-release %v", err)
