@@ -95,7 +95,7 @@ func parseMemlogEntry(rawBytes []byte) (inputEntry, error) {
 	logInfo := parseLogInfo(logEntry)
 
 	// don't process kube logs, since they are handled separately in /persist/kubelog
-	if logInfo.Source == "kube" {
+	if logInfo.Source == "kube" || logInfo.Source == "kube.out" {
 		return inputEntry{}, nil
 	}
 
