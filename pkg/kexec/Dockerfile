@@ -6,13 +6,13 @@ ENV PKGS xz-libs util-linux elfutils-dev libbz2
 RUN eve-alpine-deploy.sh
 
 # Build kexec-tools
-ENV KEXEC_VERSION=2.0.23
+ENV KEXEC_VERSION=2.0.32
 WORKDIR /tmp/kexec/kexec-tools-${KEXEC_VERSION}
-ADD https://mirrors.edge.kernel.org/pub/linux/utils/kernel/kexec/kexec-tools-2.0.23.tar.gz /tmp/kexec/kexec-tools.tgz
+ADD https://mirrors.edge.kernel.org/pub/linux/utils/kernel/kexec/kexec-tools-${KEXEC_VERSION}.tar.gz /tmp/kexec/kexec-tools.tgz
 RUN tar -C .. -xzvf ../kexec-tools.tgz && rm -f ../kexec-tools.tgz
-RUN ./configure --prefix /usr && \
-    make -j "$(getconf _NPROCESSORS_ONLN)" && \
-    make DESTDIR=/out install
+RUN ./configure --prefix /usr
+RUN make -j "$(getconf _NPROCESSORS_ONLN)"
+RUN make DESTDIR=/out install
 
 FROM scratch
 COPY --from=build /out /
