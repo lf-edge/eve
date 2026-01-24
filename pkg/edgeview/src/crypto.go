@@ -420,6 +420,8 @@ func deriveKeyHKDF(secret [hkdfKeyLen]byte, salt []byte, keyLen int) ([]byte, er
 // pkg/pillar/cmd/zedagent/parseedgeview.go on the device side before this
 // Edgeview container is started.
 func encryptVarInit(jdata types.EvjwtInfo) error {
+	jwtNonce = jdata.Key
+	nonceOpEncrption = jdata.Enc
 	if jdata.Enc {
 		if _, err := rand.Read(sessionSecret[:]); err != nil {
 			return fmt.Errorf("failed to generate sessionSecret: %v", err)
