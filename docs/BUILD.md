@@ -1014,7 +1014,6 @@ EVE's build system allows to override the default docker registry through the `R
         "lfedge/eve-gpt-tools",
         "lfedge/eve-grub",
         "lfedge/eve-ipxe",
-        "lfedge/eve-kvm-tools",
         "lfedge/eve-measure-config",
         "lfedge/eve-memory-monitor",
         "lfedge/eve-mkconf",
