@@ -617,6 +617,7 @@ userspace-rcu
 util-linux
 util-linux-dev
 util-linux-misc
+util-linux-static
 util-macros
 utmps-libs
 vim
