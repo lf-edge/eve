@@ -28,7 +28,8 @@ const (
 // CreateVF creates Virtual Functions of given count for given Physical Function
 func CreateVF(device string, vfCount uint8) error {
 	name := filepath.Join(NicLinuxPath, device, NumVfsDevicePath)
-	f, err := os.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+
+	f, err := os.OpenFile(name, os.O_WRONLY, 0)
 	if err != nil {
 		return err
 	}
