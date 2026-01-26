@@ -139,14 +139,14 @@ func parseMemlogEntry(rawBytes []byte) (inputEntry, error) {
 
 // parseLogInfo extracts structured log information from a MemlogLogEntry.
 // It handles different log formats including JSON, key=value pairs, and plain text.
-func parseLogInfo(logEntry MemlogLogEntry) Loginfo {
+func parseLogInfo(memlogEntry MemlogLogEntry) Loginfo {
 	var logInfo Loginfo
 	// Start with the envelope - if there is no additional info inside msg, then just use the envelope info
-	logInfo.Source = logEntry.Source
-	logInfo.Time = logEntry.Time
-	logInfo.Msg = logEntry.Msg
+	logInfo.Source = memlogEntry.Source
+	logInfo.Time = memlogEntry.Time
+	logInfo.Msg = memlogEntry.Msg
 
-	switch logEntry.Source {
+	switch memlogEntry.Source {
 	// most logs coming from our services have one of these three formats:
 	// 1. JSON with logrus fields
 	// 2. key=value pairs (logrus's standard text format)
@@ -160,41 +160,24 @@ func parseLogInfo(logEntry MemlogLogEntry) Loginfo {
 		// (Vector's JSON format doesn't produce valid JSON (key collision), so we're not using it)
 
 	default:
+		cleanMsg := cleanForLogParsing(memlogEntry.Msg)
 		// These messages come from golang's logrus package
-		if err := json.Unmarshal([]byte(logEntry.Msg), &logInfo); err == nil {
+		if err := json.Unmarshal([]byte(cleanMsg), &logInfo); err == nil {
 			// Use the inner JSON struct
 			// Go back to the envelope for anything not in the inner JSON
 			if logInfo.Time == "" {
-				logInfo.Time = logEntry.Time
+				logInfo.Time = memlogEntry.Time
 			}
 			if logInfo.Source == "" {
-				logInfo.Source = logEntry.Source
+				logInfo.Source = memlogEntry.Source
 			}
-			// Clean ANSI codes from the inner msg, then rebuild JSON string
-			cleanMsg := cleanForLogParsing(logInfo.Msg)
-			tempLogInfo := struct {
-				Appuuid       string `json:"appuuid,omitempty"`
-				Containername string `json:"containername,omitempty"`
-				Level         string `json:"level,omitempty"`
-				Msg           string `json:"msg"`
-				Time          string `json:"time,omitempty"`
-			}{
-				Appuuid:       logInfo.Appuuid,
-				Containername: logInfo.Containername,
-				Level:         logInfo.Level,
-				Msg:           cleanMsg,
-				Time:          logInfo.Time,
-			}
-			if jsonBytes, err := json.Marshal(tempLogInfo); err == nil {
-				logInfo.Msg = string(jsonBytes)
-			} else {
-				logInfo.Msg = logEntry.Msg
-			}
+			// and keep the original message text and fields
+			logInfo.Msg = memlogEntry.Msg
 		} else {
 			// Some messages have attr=val syntax
 			// If the inner message has Level, Time or Msg set they take
 			// precedence over the envelope
-			level, timeStr, msg := parseLevelTimeMsg(logEntry.Msg)
+			level, timeStr, msg := parseLevelTimeMsg(memlogEntry.Msg)
 			if level != "" {
 				logInfo.Level = level
 			}
