@@ -7,9 +7,11 @@ import (
 	"bufio"
 	"encoding/json"
 	"os"
+	"reflect"
 	"testing"
 
 	"github.com/onsi/gomega"
+	"github.com/onsi/gomega/format"
 	"github.com/sirupsen/logrus"
 )
 
@@ -100,6 +102,7 @@ func TestParseMemlogEntryWithData(t *testing.T) {
 
 func TestParseMemlogEntryIndividual(t *testing.T) {
 	g := gomega.NewWithT(t)
+	format.TruncatedDiff = false // Disable truncation in gomega output
 
 	testCases := []struct {
 		name           string
@@ -125,6 +128,17 @@ func TestParseMemlogEntryIndividual(t *testing.T) {
 				"timestamp": "2025-10-06T18:30:00.123456789Z",
 				"source":    "pillar",
 				"severity":  "error", // Should parse from inner JSON
+			},
+		},
+		{
+			name:        "Entry with many non-standard fields in JSON message",
+			input:       `{"time":"2025-10-06T18:31:44.311189723Z","source":"pillar.out","msg":"{\"file\":\"/pillar/types/zedmanagertypes.go:364\",\"func\":\"github.com/lf-edge/eve/pkg/pillar/types.AppInstanceStatus.LogModify\",\"level\":\"info\",\"log_event_type\":\"log\",\"msg\":\"App instance status modify\",\"obj_key\":\"app_instance_status-173ee6b9-c454-45b8-959e-5c1e9c91a0ce\",\"obj_name\":\"nginx\",\"obj_type\":\"app_instance_status\",\"obj_uuid\":\"173ee6b9-c454-45b8-959e-5c1e9c91a0ce\",\"old-purge-in-progress\":0,\"old-restart-in-progress\":0,\"old-state\":\"BOOTING\",\"pid\":2221,\"purge-in-progress\":0,\"restart-in-progress\":0,\"source\":\"zedmanager\",\"state\":\"RUNNING\",\"time\":\"2025-10-06T18:31:44.311128265Z\"}"}`,
+			expectError: false,
+			expectedFields: map[string]string{
+				"timestamp": "2025-10-06T18:31:44.311128265Z",
+				"source":    "zedmanager",
+				"severity":  "info",
+				"content":   "{\"file\":\"/pillar/types/zedmanagertypes.go:364\",\"func\":\"github.com/lf-edge/eve/pkg/pillar/types.AppInstanceStatus.LogModify\",\"level\":\"info\",\"log_event_type\":\"log\",\"msg\":\"App instance status modify\",\"obj_key\":\"app_instance_status-173ee6b9-c454-45b8-959e-5c1e9c91a0ce\",\"obj_name\":\"nginx\",\"obj_type\":\"app_instance_status\",\"obj_uuid\":\"173ee6b9-c454-45b8-959e-5c1e9c91a0ce\",\"old-purge-in-progress\":0,\"old-restart-in-progress\":0,\"old-state\":\"BOOTING\",\"pid\":2221,\"purge-in-progress\":0,\"restart-in-progress\":0,\"source\":\"zedmanager\",\"state\":\"RUNNING\",\"time\":\"2025-10-06T18:31:44.311128265Z\"}",
 			},
 		},
 		{
@@ -170,15 +184,11 @@ func TestParseMemlogEntryIndividual(t *testing.T) {
 			g.Expect(err).To(gomega.BeNil(), "severity should be a valid log level")
 
 			// Check expected field values if provided
-			for field, expectedValue := range tc.expectedFields {
-				switch field {
-				case "timestamp":
-					g.Expect(entry.timestamp).To(gomega.Equal(expectedValue))
-				case "source":
-					g.Expect(entry.source).To(gomega.Equal(expectedValue))
-				case "severity":
-					g.Expect(entry.severity).To(gomega.Equal(expectedValue))
-				}
+			v := reflect.ValueOf(entry)
+			for fieldName, expectedValue := range tc.expectedFields {
+				f := v.FieldByName(fieldName)
+				g.Expect(f.IsValid()).To(gomega.BeTrue(), "Field %s not found in entry", fieldName)
+				g.Expect(f.String()).To(gomega.Equal(expectedValue), "Field %s mismatch", fieldName)
 			}
 
 			t.Logf("Entry: source='%s', severity='%s', timestamp='%s'",
