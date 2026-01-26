@@ -1022,7 +1022,6 @@ Use `LINUXKIT_PKG_ORG` to redirect package pushes to a local registry. For examp
         "lfedge/eve-gpt-tools",
         "lfedge/eve-grub",
         "lfedge/eve-ipxe",
-        "lfedge/eve-kvm-tools",
         "lfedge/eve-measure-config",
         "lfedge/eve-memory-monitor",
         "lfedge/eve-mkconf",
