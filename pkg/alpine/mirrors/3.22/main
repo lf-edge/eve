@@ -227,6 +227,7 @@ gettext-dev
 gettext-envsubst
 gettext-libs
 gettext-tiny
+gettext-static
 git
 glib
 glib-dev
