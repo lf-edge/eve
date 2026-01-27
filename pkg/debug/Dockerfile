@@ -11,41 +11,38 @@
 FROM lfedge/eve-recovertpm:17d72851d7001df1c6047ad7d1d1e623e0b83b86 AS recovertpm
 FROM lfedge/eve-bpftrace:c08d714db34b7cde90d20c56e74d2c11afe483df AS bpftrace
 FROM lfedge/eve-alpine:745ae9066273c73b0fd879c4ba4ff626a8392d04 AS build
-ENV BUILD_PKGS="abuild curl tar make linux-headers patch g++ git gcc gpg ncurses-dev autoconf openssl-dev zlib-dev jq pciutils usbutils lsblk"
+ENV BUILD_PKGS="abuild curl tar make linux-headers patch g++ git gcc gpg gettext gettext-static ncurses-dev jq autoconf openssl-dev zlib-dev zlib-static gpg-agent"
 # Feel free to add additional packages here, but be aware that
 # EVE's rootfs image can be no larger than 300Mb (and don't
 # forget to check on all supported architectures: e.g. arm64
-# binaries are typically larger and amd64 ones).
+# binaries are typically larger than amd64 ones).
 # RUN apk add --no-cache gdb valgrind
-ENV PKGS="openssl tini util-linux ca-certificates pciutils usbutils vim tcpdump perf strace iproute2-minimal curl zlib"
-
-# These packages are not available on the riscv arch, so I have no idea how
-# deliver those, but still install them on other archs.
-ENV PKGS_amd64="procps tar dmidecode iptables dhcpcd tio socat"
-ENV PKGS_arm64="procps tar dmidecode iptables dhcpcd tio socat"
+ENV PKGS="openssl tini util-linux ca-certificates pciutils usbutils vim tcpdump perf strace iproute2-minimal curl zlib procps-ng tar dmidecode iptables dhcpcd tio socat"
 
 RUN eve-alpine-deploy.sh
 
-ENV LSHW_VERSION="02.19.2"
-ENV OPENSSH_VERSION="9.8p1"
+ENV LSHW_VERSION="02.20"
+ENV OPENSSH_VERSION="10.0p1"
 
 # setting up building account
 RUN adduser -G abuild -D builder || :
 RUN abuild-keygen -a -n
 
 COPY --chown=builder:abuild abuild/ /
-ENV MUSL_VERSION="1.2.3"
+ENV MUSL_VERSION="1.2.5"
 ENV DISTFILES_MIRROR="/tmp/mirror"
 RUN mkdir -p ${DISTFILES_MIRROR}
 ADD --chown=builder:abuild http://ftp.us.debian.org/debian/pool/main/m/musl/musl_${MUSL_VERSION}.orig.tar.gz /var/cache/distfiles//musl-v${MUSL_VERSION}.tar.gz
 WORKDIR /musl
 RUN abuild -F checksum
-RUN abuild -r -F
+RUN abuild -r -F || :
 
 WORKDIR /
 # now install it locally so we can pick it up later on below
 # hadolint ignore=DL3019,DL3018
+RUN echo "apk add the packages"
 RUN apk add -p /out --allow-untrusted /root/packages/*/musl-1.2*.apk
+RUN echo "did the apk"
 
 # hadolint ignore=DL4006
 ADD https://www.ezix.org/software/files/lshw-B.${LSHW_VERSION}.tar.gz lshw.tar.gz
@@ -59,7 +56,7 @@ WORKDIR /lshw-B.${LSHW_VERSION}
 RUN for patch in *.patch; do \
     patch -p1 < "$patch"; \
     done && \
-    make -C src RPM_OPT_FLAGS=-DNONLS static && \
+    make -C src VERSION=B.${LSHW_VERSION} NO_VERSION_CHECK=1  RPM_OPT_FLAGS=-DNONLS ZLIB=1 GZIP="busybox gzip -n9" static && \
     cp src/lshw-static /out/usr/bin/lshw && strip /out/usr/bin/lshw
 
 # building hexedit
@@ -72,13 +69,12 @@ RUN ./autogen.sh && ./configure && make DESTDIR=/out install
 WORKDIR /usr/src
 ADD https://cdn.openbsd.org/pub/OpenBSD/OpenSSH/portable/openssh-${OPENSSH_VERSION}.tar.gz /usr/src
 ADD https://cdn.openbsd.org/pub/OpenBSD/OpenSSH/portable/openssh-${OPENSSH_VERSION}.tar.gz.asc /usr/src
-COPY ssh/RELEASE_KEY.asc /usr/src
+ADD https://cdn.openbsd.org/pub/OpenBSD/OpenSSH/RELEASE_KEY.asc /usr/src
+
 RUN gpg --import RELEASE_KEY.asc || :
 RUN gpg --verify openssh-${OPENSSH_VERSION}.tar.gz.asc openssh-${OPENSSH_VERSION}.tar.gz
 RUN tar xvf openssh-${OPENSSH_VERSION}.tar.gz
 WORKDIR /usr/src/openssh-${OPENSSH_VERSION}
-COPY ssh/fix-utmpx-ipv6.patch .
-RUN git apply fix-utmpx-ipv6.patch
 RUN ./configure \
     --prefix=/usr \
     --sysconfdir=/etc/ssh \
