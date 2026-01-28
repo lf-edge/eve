@@ -1,0 +1,15 @@
+# Copyright (c) 2025, Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+---
+extends: default
+
+rules:
+    line-length:
+        max: 300
+        level: warning
+
+ignore:
+  - pkg/kube/lh-cfg-v1.6.2.yaml
+  - pkg/kube/descheduler_rbac.yaml
+  - pkg/kube/lh-cfg-v1.9.1.yaml
+  - pkg/kube/kubevirt-operator.yaml
