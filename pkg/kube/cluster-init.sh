@@ -1274,6 +1274,9 @@ else
                     continue
                 fi
         else
+                #
+                # k3s is running, was not restarted
+                #
                 if [ ! -f /var/lib/node-labels-initialized ]; then
                         reapply_node_labels
                 fi
@@ -1351,6 +1354,13 @@ else
                         logmsg "k3s user override config sync:$?, starting k3s terminate"
                         terminate_k3s
                 }
+                if ! Registration_Applied; then
+                        # Upgrades declared via EVE baseOS updates
+                        if ! Update_CheckClusterComponents; then
+                                continue
+                        fi
+                        Update_RunDeschedulerOnBoot
+                fi
         fi
 fi
         check_log_file_size "k3s.log"
@@ -1361,11 +1371,6 @@ fi
         check_kubeconfig_yaml_files
         check_and_remove_excessive_k3s_logs
         check_and_run_vnc
-        if ! Registration_Applied; then
-                # Upgrades declared via EVE baseOS updates
-                Update_CheckClusterComponents
-                Update_RunDeschedulerOnBoot
-        fi
         wait_for_item "wait"
         sleep 15
 done
