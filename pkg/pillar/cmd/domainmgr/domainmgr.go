@@ -3182,7 +3182,7 @@ func setupVf(ib *types.IoBundle, aa *types.AssignableAdapters, log *base.LogObje
 		return fmt.Errorf("Failed to resolve ifname for PCI address %s", ib.PciLong)
 	}
 
-	err := sriov.CreateVF(ifName, ib.Vfs.Count)
+	err := sriov.CreateVF(ifName, ib.Vfs.Count, log)
 	if err != nil {
 		return fmt.Errorf("Failed to create VF for iface with PCI address %s: %w", ib.PciLong, err)
 	}
