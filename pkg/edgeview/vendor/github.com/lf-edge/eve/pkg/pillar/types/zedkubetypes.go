@@ -232,9 +232,9 @@ func (kvi KubeVMIInfo) ZKubeVMIInfo() *info.KubeVMIInfo {
 // KubeClusterInfo - Information about a Kubernetes cluster
 type KubeClusterInfo struct {
 	Nodes     []KubeNodeInfo         // List of nodes in the cluster
-	AppPods   []KubePodInfo          // List of EVE application pods
-	AppVMIs   []KubeVMIInfo          // List of VirtualMachineInstance
-	Storage   KubeStorageInfo        // Distributed storage info
+	AppPods   []KubePodInfo          `json:"pubsub-large-AppPods"` // List of EVE application pods
+	AppVMIs   []KubeVMIInfo          `json:"pubsub-large-AppVMIs"` // List of VirtualMachineInstance
+	Storage   KubeStorageInfo        `json:"pubsub-large-Storage"` // Distributed storage info
 	PodNsInfo []KubePodNameSpaceInfo // General namespace pod running/failed count
 }
 

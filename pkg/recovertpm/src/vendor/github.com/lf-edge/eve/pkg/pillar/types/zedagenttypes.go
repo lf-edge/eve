@@ -402,12 +402,13 @@ type MaintenanceModeMultiReason []MaintenanceModeReason
 // MaintenanceModeReason codes for storing reason for getting into maintenance mode,
 // this should match the values in api/proto/info/info.proto.MaintenanceModeReason
 const (
-	MaintenanceModeReasonNone            = MaintenanceModeReason(info.MaintenanceModeReason_MAINTENANCE_MODE_REASON_NONE)
-	MaintenanceModeReasonUserRequested   = MaintenanceModeReason(info.MaintenanceModeReason_MAINTENANCE_MODE_REASON_USER_REQUESTED)
-	MaintenanceModeReasonVaultLockedUp   = MaintenanceModeReason(info.MaintenanceModeReason_MAINTENANCE_MODE_REASON_VAULT_LOCKED_UP)
-	MaintenanceModeReasonNoDiskSpace     = MaintenanceModeReason(info.MaintenanceModeReason_MAINTENANCE_MODE_REASON_LOW_DISK_SPACE)
-	MaintenanceModeReasonTpmEncFailure   = MaintenanceModeReason(info.MaintenanceModeReason_MAINTENANCE_MODE_REASON_TPM_ENCRYPTION_FAILURE)
-	MaintenanceModeReasonTpmQuoteFailure = MaintenanceModeReason(info.MaintenanceModeReason_MAINTENANCE_MODE_REASON_TPM_QUOTE_FAILURE)
+	MaintenanceModeReasonNone                 = MaintenanceModeReason(info.MaintenanceModeReason_MAINTENANCE_MODE_REASON_NONE)
+	MaintenanceModeReasonUserRequested        = MaintenanceModeReason(info.MaintenanceModeReason_MAINTENANCE_MODE_REASON_USER_REQUESTED)
+	MaintenanceModeReasonVaultLockedUp        = MaintenanceModeReason(info.MaintenanceModeReason_MAINTENANCE_MODE_REASON_VAULT_LOCKED_UP)
+	MaintenanceModeReasonNoDiskSpace          = MaintenanceModeReason(info.MaintenanceModeReason_MAINTENANCE_MODE_REASON_LOW_DISK_SPACE)
+	MaintenanceModeReasonTpmEncFailure        = MaintenanceModeReason(info.MaintenanceModeReason_MAINTENANCE_MODE_REASON_TPM_ENCRYPTION_FAILURE)
+	MaintenanceModeReasonTpmQuoteFailure      = MaintenanceModeReason(info.MaintenanceModeReason_MAINTENANCE_MODE_REASON_TPM_QUOTE_FAILURE)
+	MaintenanceModeReasonEdgeNodeCertsRefused = MaintenanceModeReason(info.MaintenanceModeReason_MAINTENANCE_MODE_REASON_EDGE_NODE_CERTS_REFUSED)
 )
 
 // String returns the verbose equivalent of MaintenanceModeMultiReason code
@@ -441,6 +442,8 @@ func (mmr MaintenanceModeReason) String() string {
 		return "MaintenanceModeReasonNoDiskSpace"
 	case MaintenanceModeReasonTpmEncFailure:
 		return "MaintenanceModeReasonTpmEncFailure"
+	case MaintenanceModeReasonEdgeNodeCertsRefused:
+		return "MaintenanceModeReasonEdgeNodeCertsRefused"
 	default:
 		return "Unknown MaintenanceModeReason"
 	}
@@ -559,6 +562,7 @@ type ZedAgentStatus struct {
 	RequestedBootReason    BootReason // Why we will reboot
 	MaintenanceMode        bool       // Don't run apps etc
 	MaintenanceModeReasons MaintenanceModeMultiReason
+	EdgeNodeCertsRefused   bool         // Causes maintenance mode
 	ForceFallbackCounter   int          // Try image fallback when counter changes
 	CurrentProfile         string       // Current profile
 	RadioSilence           RadioSilence // Currently requested state of radio devices
