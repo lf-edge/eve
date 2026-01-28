@@ -474,11 +474,11 @@ func testEcdhAES() error {
 
 func testEncryptDecrypt() error {
 	plaintext := []byte("This is the Secret Key")
-	ciphertext, err := etpm.EncryptDecryptUsingTpm(plaintext, true)
+	ciphertext, err := etpm.EncryptDecryptUsingTpm(plaintext, types.EncryptionLegacy, true)
 	if err != nil {
 		return err
 	}
-	decryptedtext, err := etpm.EncryptDecryptUsingTpm(ciphertext, false)
+	decryptedtext, err := etpm.EncryptDecryptUsingTpm(ciphertext, types.EncryptionLegacy, false)
 	if reflect.DeepEqual(plaintext, decryptedtext) == true {
 		return nil
 	} else {
@@ -1670,14 +1670,14 @@ func tpmSanityCheck() *tpmSanityCheckError {
 	// encrypt/decrypt the vualt key and send/received it from controller.
 	// this can prevent the device from being upgraded.
 	message := []byte("TPM Sanity Check, may god have mercy on us")
-	encrypted, err := etpm.EncryptDecryptUsingTpm(message, true)
+	encrypted, err := etpm.EncryptDecryptUsingTpm(message, types.EncryptionAEAD, true)
 	if err != nil {
 		return &tpmSanityCheckError{
 			fmt.Errorf("failed to encrypt key using TPM: %w", err),
 			types.MaintenanceModeReasonTpmEncFailure,
 		}
 	}
-	decrypted, err := etpm.EncryptDecryptUsingTpm(encrypted, false)
+	decrypted, err := etpm.EncryptDecryptUsingTpm(encrypted, types.EncryptionAEAD, false)
 	if err != nil {
 		return &tpmSanityCheckError{
 			fmt.Errorf("failed to decrypt key using TPM: %w", err),
