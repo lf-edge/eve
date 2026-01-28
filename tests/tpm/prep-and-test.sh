@@ -18,7 +18,10 @@ TPM_CTR_PORT=$((TPM_SRV_PORT + 1))
 EK_HANDLE=0x81000001
 SRK_HANDLE=0x81000002
 AIK_HANDLE=0x81000003
+QUOTE_KEY_HANDLE=0x81000004
 ECDH_HANDLE=0x81000005
+DEVICE_KEY_HANDLE=0x817FFFFF
+EK_CERT_HANDLE=0x01C00002
 EVE_TPM_STATE=/tmp/eve-tpm
 EVE_TPM_CTRL="$EVE_TPM_STATE/ctrl.sock"
 # this path is hardcoded in the pkg/pillar/evetpm/testhelper.go, so if you change
@@ -145,19 +148,74 @@ tpm2 createprimary -C o -G rsa:rsassa-sha256:null -g sha256 -c aik.ctx \
                    -a 'fixedtpm|fixedparent|sensitivedataorigin|userwithauth|restricted|sign|noda'
 flushtpm
 
+# create quote key (same as aik but at different handle for attestation)
+tpm2 createprimary -C o -G rsa:rsassa-sha256:null -g sha256 -c quotekey.ctx \
+                   -a 'fixedtpm|fixedparent|sensitivedataorigin|userwithauth|restricted|sign|noda'
+flushtpm
+
 # create ecdh key
 tpm2 createprimary -C o -G ecc256:ecdh-sha256 -c ecdh.ctx \
                    -a 'noda|decrypt|sensitivedataorigin|userwithauth'
 flushtpm
 
-# make persisted know-good-handles out of ek, srk, aik and ecdh keys.
+# create device key (used for device certificate and EncryptDecryptUsingTpm)
+tpm2 createprimary -C o -G ecc256 -g sha256 -c device.ctx \
+                   -a 'sign|noda|decrypt|sensitivedataorigin|userwithauth'
+flushtpm
+
+# create and store a self signed EK certificate in NV index
+openssl genrsa -out ek_temp.key 2048 2>/dev/null
+openssl req -new -x509 -key ek_temp.key \
+        -out ek_cert.pem -days 3650 \
+        -subj "/CN=TPM Endorsement Key" 2>/dev/null
+
+
+# store it
+openssl x509 -in ek_cert.pem -outform DER -out ek_cert.der 2>/dev/null
+EK_CERT_SIZE=$(wc -c < ek_cert.der)
+tpm2 nvdefine $EK_CERT_HANDLE -C o -s $EK_CERT_SIZE \
+    -a "ownerread|ownerwrite|authread|policywrite|ppwrite" 2>/dev/null || true
+tpm2 nvwrite $EK_CERT_HANDLE -C o -i ek_cert.der 2>/dev/null
+flushtpm
+
+# make persisted know-good-handles out of ek, srk, aik, quotekey, ecdh and device keys.
 tpm2 evictcontrol -C o -c ek.ctx $EK_HANDLE;flushtpm
 tpm2 evictcontrol -C o -c srk.ctx $SRK_HANDLE;flushtpm
 tpm2 evictcontrol -C o -c aik.ctx $AIK_HANDLE;flushtpm
+tpm2 evictcontrol -C o -c quotekey.ctx $QUOTE_KEY_HANDLE;flushtpm
 tpm2 evictcontrol -C o -c ecdh.ctx $ECDH_HANDLE;flushtpm
+tpm2 evictcontrol -C o -c device.ctx $DEVICE_KEY_HANDLE;flushtpm
+
+# create device certificate (required by EncryptDecryptUsingTpm)
+# The EncryptDecryptUsingTpm function only needs to extract the ECC public key
+# from the certificate, so for testing we create a simple self-signed cert.
+openssl ecparam -genkey -name prime256v1 -out "$EVE_TPM_STATE/device.key.pem" 2>/dev/null
+openssl req -new -x509 -key "$EVE_TPM_STATE/device.key.pem" \
+        -out "$EVE_TPM_STATE/device.cert.pem" \
+        -days 3650 -subj "/O=The Linux Foundation/CN=EVE" \
+        -set_serial 1 2>/dev/null
+
+# Create ECDH certificate signed by device certificate
+# We use a temporary key for CSR, but force the public key to be the TPM's ECDH key
+tpm2 readpublic -c $ECDH_HANDLE -f pem -o "$EVE_TPM_STATE/ecdh.pub.pem" 2>/dev/null
+openssl ecparam -genkey -name prime256v1 -out "$EVE_TPM_STATE/temp_ecdh.key" 2>/dev/null
+openssl req -new -key "$EVE_TPM_STATE/temp_ecdh.key" \
+    -subj "/CN=Device ECDH certificate" \
+    -out "$EVE_TPM_STATE/ecdh.csr" 2>/dev/null
+
+openssl x509 -req -in "$EVE_TPM_STATE/ecdh.csr" \
+    -CA "$EVE_TPM_STATE/device.cert.pem" \
+    -CAkey "$EVE_TPM_STATE/device.key.pem" \
+    -CAcreateserial \
+    -out "$EVE_TPM_STATE/ecdh.cert.pem" \
+    -days 365 \
+    -force_pubkey "$EVE_TPM_STATE/ecdh.pub.pem" 2>/dev/null
+
+# Clean up temps
+rm "$EVE_TPM_STATE/temp_ecdh.key" "$EVE_TPM_STATE/ecdh.csr" "$EVE_TPM_STATE/ecdh.pub.pem"
 
 # clean up
-rm ek.ctx srk.ctx aik.ctx ecdh.ctx
+rm -f ek.ctx srk.ctx aik.ctx quotekey.ctx ecdh.ctx device.ctx ek_temp.key ek_cert.pem ek_cert.der
 
 # kill swtpm, we are going to start it again with unix sockets
 kill $PID
