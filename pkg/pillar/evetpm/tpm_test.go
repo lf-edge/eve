@@ -6,10 +6,16 @@ package evetpm
 
 import (
 	"bytes"
+	"crypto/aes"
 	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
 	"crypto/sha256"
+	"crypto/x509"
 	"encoding/hex"
+	"encoding/pem"
 	"fmt"
+	"io"
 	"os"
 	"reflect"
 	"testing"
@@ -31,6 +37,7 @@ func TestMain(m *testing.M) {
 	TpmDevicePath = SimTpmPath
 	types.TpmMeasurementLogFile = "/tmp/eve-tpm/binary_bios_measurement"
 	types.TpmMeasurefsEventLog = "/tmp/eve-tpm/measurefs_tpm_event_log"
+	types.DeviceCertName = "/tmp/eve-tpm/device.cert.pem"
 	savedSealingPcrsFile = "/tmp/eve-tpm/sealingpcrs"
 	measurementLogSealSuccess = "/tmp/eve-tpm/tpm_measurement_seal_success"
 	measurementLogUnsealFail = "/tmp/eve-tpm/tpm_measurement_unseal_fail"
@@ -549,5 +556,87 @@ func TestComputePolicyPCRAuthDigest(t *testing.T) {
 				t.Errorf("Mismatch in digest:\nWant: %s\nGot : %s", sc.expectedDigest, computedHex)
 			}
 		})
+	}
+}
+
+func TestTpmEcdhSupport(t *testing.T) {
+	rw, err := tpm2.OpenTPM(TpmDevicePath)
+	if err != nil {
+		t.Fatalf("OpenTPM failed with err: %v", err)
+	}
+	defer rw.Close()
+
+	z, p, err := tpm2.ECDHKeyGen(rw, TpmDeviceKeyHdl)
+	if err != nil {
+		t.Fatalf("generating Shared Secret failed: %s", err)
+	}
+
+	z1, err := tpm2.ECDHZGen(rw, TpmDeviceKeyHdl, EmptyPassword, *p)
+	if err != nil {
+		t.Fatalf("generating Shared Secret failed: %s", err)
+	}
+
+	if !reflect.DeepEqual(z, z1) {
+		t.Fatalf("Shared Secret mismatch")
+	}
+}
+
+// Test ECDH key exchange and a symmetric cipher based on ECDH
+func TestEcdhAES(t *testing.T) {
+	//Simulate Controller generating an ephemeral key
+	privateA, publicAX, publicAY, err := elliptic.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("Failed to generate A private/public key pair: %s", err)
+	}
+
+	//read public key from ecdh certificate
+	ecdhCertPath := "/tmp/eve-tpm/ecdh.cert.pem"
+	certBytes, err := os.ReadFile(ecdhCertPath)
+	if err != nil {
+		t.Fatalf("error in reading ecdh cert file: %v", err)
+	}
+	block, _ := pem.Decode(certBytes)
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		t.Fatalf("unable to parse certificate: %s", err)
+	}
+	publicB := cert.PublicKey.(*ecdsa.PublicKey)
+
+	//multiply privateA with publicB (Controller Part)
+	X, Y := elliptic.P256().Params().ScalarMult(publicB.X, publicB.Y, privateA)
+
+	fmt.Printf("publicAX, publicAY, X/Y = %v, %v, %v, %v\n", publicAX, publicAY, X, Y)
+	encryptKey, err := Sha256FromECPoint(X, Y, publicB)
+	if err != nil {
+		t.Fatalf("Sha256FromECPoint failed with error: %v", err)
+	}
+	iv := make([]byte, aes.BlockSize)
+	if _, err := io.ReadFull(rand.Reader, iv); err != nil {
+		fmt.Printf("Unable to generate Initial Value %v\n", err)
+	}
+
+	msg := []byte("this is the secret")
+	ciphertext := make([]byte, len(msg))
+	AESEncrypt(ciphertext, msg, encryptKey[:], iv)
+
+	recoveredMsg := make([]byte, len(ciphertext))
+	certHash, err := GetCertHash(certBytes, types.CertHashTypeSha256First16)
+	if err != nil {
+		t.Fatalf("GetCertHash failed with error: %v", err)
+	}
+
+	ecdhCert := &types.EdgeNodeCert{
+		HashAlgo: types.CertHashTypeSha256First16,
+		CertID:   certHash,
+		CertType: types.CertTypeEcdhXchange,
+		Cert:     certBytes,
+		IsTpm:    true,
+	}
+	err = DecryptSecretWithEcdhKey(logger, publicAX, publicAY, ecdhCert, iv, ciphertext, recoveredMsg)
+	if err != nil {
+		t.Fatalf("DecryptSecretWithEcdhKey failed with error: %v", err)
+	}
+	if !reflect.DeepEqual(msg, recoveredMsg) {
+		t.Fatalf("ECDH AES decrypt failed, want %v, but got %v", msg, recoveredMsg)
 	}
 }
