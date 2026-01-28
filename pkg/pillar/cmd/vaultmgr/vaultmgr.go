@@ -558,7 +558,7 @@ func handleVaultKeyFromControllerImpl(ctxArg interface{}, key string,
 			log.Errorf("Failed to unmarshal keyData %v", err)
 			return
 		}
-		decryptedKey, err := etpm.EncryptDecryptUsingTpm(keyData.EncryptedKey, false)
+		decryptedKey, err := etpm.EncryptDecryptUsingTpm(keyData.EncryptedKey, types.VaultKeyEncVersion(keyData.Version), false)
 		if err != nil {
 			log.Errorf("Failed to decrypt Controller provided key data: %v", err)
 			return
@@ -698,8 +698,15 @@ func publishVaultKey(ctx *vaultMgrContext, vaultName string) error {
 			return fmt.Errorf("failed to retrieve key from TPM %w", err)
 		}
 
-		// if this fails, tpm manager signals the controller something is wrong with TPM
-		encryptedKey, err := etpm.EncryptDecryptUsingTpm(keyBytes, true)
+		// If EVE is potentially unstable (PartitionState = inprogress), encrypt using
+		// AES-ZeroIV (LEGACY) regardless of what EVE version is running.
+		// If EVE is stable (PartitionState = active), encrypt using AEAD.
+		encVersion := types.EncryptionLegacy
+		partitionState := zboot.GetPartitionState(zboot.GetCurrentPartition())
+		if partitionState == "active" {
+			encVersion = types.EncryptionAEAD
+		}
+		encryptedKey, err := etpm.EncryptDecryptUsingTpm(keyBytes, encVersion, true)
 		if err != nil {
 			return fmt.Errorf("failed to encrypt vault key %w", err)
 		}
@@ -711,6 +718,7 @@ func publishVaultKey(ctx *vaultMgrContext, vaultName string) error {
 		keyData := &attest.AttestVolumeKeyData{
 			EncryptedKey: encryptedKey,
 			DigestSha256: digest256,
+			Version:      attest.AttestVolumeKeyVersion(encVersion),
 		}
 		encryptedVaultKey, err = proto.Marshal(keyData)
 		if err != nil {
