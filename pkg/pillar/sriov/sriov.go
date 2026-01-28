@@ -11,8 +11,10 @@ import (
 	"path/filepath"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/vishvananda/netlink"
 )
 
@@ -20,27 +22,131 @@ import (
 const (
 	NicLinuxPath      = "/sys/class/net/"
 	NumVfsDevicePath  = "/device/sriov_numvfs"
+	TotalVfsPath      = "/device/sriov_totalvfs"
+	AutoprobePath     = "/device/sriov_drivers_autoprobe"
 	VfCountFieldName  = "sriov-vf-count"
 	MaxVfCount        = 255
 	VfCreationTimeout = 150 * time.Second
 )
 
 // CreateVF creates Virtual Functions of given count for given Physical Function
-func CreateVF(device string, vfCount uint8) error {
-	name := filepath.Join(NicLinuxPath, device, NumVfsDevicePath)
+func CreateVF(device string, vfCount uint8, log *base.LogObject) error {
+	numVfsPath := filepath.Join(NicLinuxPath, device, NumVfsDevicePath)
+	autoprobePath := filepath.Join(NicLinuxPath, device, AutoprobePath)
+	totalVfsPath := filepath.Join(NicLinuxPath, device, TotalVfsPath)
 
-	f, err := os.OpenFile(name, os.O_WRONLY, 0)
+	totalBuf, err := os.ReadFile(totalVfsPath)
 	if err != nil {
-		return err
+		return fmt.Errorf("could not read max VFs: %w", err)
 	}
-	_, err = f.Write([]byte(strconv.Itoa(int(vfCount))))
-	if err1 := f.Sync(); err1 != nil && err == nil {
-		err = err1
+	totalMax, _ := strconv.Atoi(strings.TrimSpace(string(totalBuf)))
+	if int(vfCount) > totalMax {
+		return fmt.Errorf("requested %d VFs, but hardware only supports %d", vfCount, totalMax)
 	}
-	if err1 := f.Close(); err1 != nil && err == nil {
-		err = err1
+
+	if _, err := os.Stat(autoprobePath); err == nil {
+		if err := os.WriteFile(autoprobePath, []byte("0"), 0); err != nil {
+			log.Warnf("Warning: could not disable autoprobe on %s: %s", device, err)
+		}
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("error checking autoprobe: %w", err)
 	}
-	return err
+
+	currentBuf, err := os.ReadFile(numVfsPath)
+	if err != nil {
+		return fmt.Errorf("could not read current VFs: %w", err)
+	}
+	currentVal := strings.TrimSpace(string(currentBuf))
+
+	if currentVal == strconv.Itoa(int(vfCount)) {
+		return nil
+	}
+
+	if currentVal != "0" {
+		if err := os.WriteFile(numVfsPath, []byte("0"), 0); err != nil {
+			return fmt.Errorf("failed to reset VFs to 0 (check if VFs are in use): %w", err)
+		}
+		if err := pollNumVfs(numVfsPath, "0", 2*time.Second, 50*time.Millisecond); err != nil {
+			return fmt.Errorf("VFs did not deallocate in time: %w", err)
+		}
+	}
+
+	if vfCount > 0 {
+		if err := os.WriteFile(numVfsPath, []byte(strconv.Itoa(int(vfCount))), 0); err != nil {
+			return fmt.Errorf("kernel rejected VF count %d: %w", vfCount, err)
+		}
+
+		expected := strconv.Itoa(int(vfCount))
+		if err := pollNumVfs(numVfsPath, expected, 5*time.Second, 100*time.Millisecond); err != nil {
+			return fmt.Errorf("write succeeded but kernel reverted VFs (check dmesg): %w", err)
+		}
+	}
+
+	// After VF manipulation the PF can go operstate=down; detect and recover.
+	if err := ensurePFLinkUp(device); err != nil {
+		return fmt.Errorf("PF link recovery failed for %s: %w", device, err)
+	}
+
+	return nil
+}
+
+func pollNumVfs(path, expected string, timeout, interval time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for {
+		buf, err := os.ReadFile(path)
+		if err != nil {
+			return fmt.Errorf("read %s: %w", path, err)
+		}
+		if strings.TrimSpace(string(buf)) == expected {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("timed out waiting for %s to become %s (current: %s)",
+				path, expected, strings.TrimSpace(string(buf)))
+		}
+		time.Sleep(interval)
+	}
+}
+
+// ensurePFLinkUp checks if the PF interface is down and brings it up if needed.
+// device is the interface name directly (e.g. "enp3s0f0").
+func ensurePFLinkUp(device string) error {
+	link, err := netlink.LinkByName(device)
+	if err != nil {
+		return fmt.Errorf("netlink: could not find interface %s: %w", device, err)
+	}
+
+	if link.Attrs().OperState == netlink.OperUp {
+		return nil
+	}
+
+	if err := netlink.LinkSetUp(link); err != nil {
+		return fmt.Errorf("netlink: failed to bring %s up: %w", device, err)
+	}
+
+	if err := pollLinkUp(device, 3*time.Minute, 100*time.Millisecond); err != nil {
+		return fmt.Errorf("PF %s did not come up after LinkSetUp: %w", device, err)
+	}
+
+	return nil
+}
+
+func pollLinkUp(device string, timeout, interval time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for {
+		link, err := netlink.LinkByName(device)
+		if err != nil {
+			return fmt.Errorf("netlink: lookup %s: %w", device, err)
+		}
+		if link.Attrs().OperState == netlink.OperUp {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("timed out waiting for %s operstate to become up (current: %s)",
+				device, link.Attrs().OperState)
+		}
+		time.Sleep(interval)
+	}
 }
 
 // GetVfIfaceName returns formatted VF name
