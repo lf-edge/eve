@@ -2119,9 +2119,12 @@ func handleClusterUpdateStatusImpl(ctxArg interface{}, key string,
 		log.Errorf("handleClusterUpdateStatusImpl invalid type in ctxArg: %v", ctxArg)
 		return
 	}
-	state := getDeviceState(ctx)
-	log.Noticef("handleClusterUpdateStatusImpl key:%s devicestate:%s", key, state)
+	status := statusArg.(types.KubeClusterUpdateStatus)
+	ctx.devState = getDeviceState(ctx)
+	log.Noticef("handleClusterUpdateStatusImpl key:%s val:%v devicestate:%s", key, status, ctx.devState)
 	triggerPublishKubeClusterUpdateStatus(ctx)
+	publishZedAgentStatus(ctx.getconfigCtx)
+	triggerPublishDevInfo(ctx)
 }
 
 func triggerPublishKubeClusterUpdateStatusToDest(ctxPtr *zedagentContext, dest destinationBitset) {
