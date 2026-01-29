@@ -3184,7 +3184,7 @@ func setupVf(ib *types.IoBundle, aa *types.AssignableAdapters, log *base.LogObje
 
 	err := sriov.CreateVF(ifName, ib.Vfs.Count)
 	if err != nil {
-		return fmt.Errorf("Failed to create VF for iface with PCI address %s", ib.PciLong)
+		return fmt.Errorf("Failed to create VF for iface with PCI address %s: %w", ib.PciLong, err)
 	}
 
 	vfs, err := sriov.GetVfByTimeout(sriov.VfCreationTimeout, ifName, ib.Vfs.Count)
@@ -3194,6 +3194,7 @@ func setupVf(ib *types.IoBundle, aa *types.AssignableAdapters, log *base.LogObje
 
 	for _, vf := range vfs.Data {
 		vfIb, err := createVfIoBundle(*ib, vf)
+
 		if err != nil {
 			return fmt.Errorf("createVfIoBundle failed %w", err)
 		}
@@ -3204,10 +3205,6 @@ func setupVf(ib *types.IoBundle, aa *types.AssignableAdapters, log *base.LogObje
 }
 
 func createVfIoBundle(pfIb types.IoBundle, vf sriov.EthVF) (types.IoBundle, error) {
-	vfUserConfig := pfIb.Vfs.GetInfo(vf.Index)
-	if vfUserConfig == nil {
-		return types.IoBundle{}, fmt.Errorf("Can't find any with index %d", vf.Index)
-	}
 	vfIb := pfIb
 	vfIb.Type = types.IoNetEthVF
 	vfIb.Ifname = sriov.GetVfIfaceName(vf.Index, pfIb.Ifname)
@@ -3217,6 +3214,11 @@ func createVfIoBundle(pfIb types.IoBundle, vf sriov.EthVF) (types.IoBundle, erro
 	vfIb.AssignmentGroup = sriov.GetVfIfaceName(vf.Index, pfIb.AssignmentGroup)
 	vfIb.PciLong = vf.PciLong
 	vfIb.VfParams = types.VfInfo{Index: vf.Index, VlanID: vf.VlanID, PFIface: pfIb.Ifname}
+	vfUserConfig := pfIb.Vfs.GetInfo(vf.Index)
+	if vfUserConfig == nil {
+		// no specified configuration, return what it is
+		return vfIb, nil
+	}
 	if vfUserConfig.Mac != "" {
 		vfIb.MacAddr = vfUserConfig.Mac
 		if err := sriov.SetupVfHardwareAddr(vfIb.Ifname, vfIb.MacAddr, vf.Index); err != nil {
