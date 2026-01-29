@@ -141,6 +141,12 @@ requires participation of both parties, controller and device, to use the backup
 To decrypt the key, one has to be on the same device with access to the same TPM, and the firmware+software on that device has to pass the
 [remote attestation](https://wiki.lfedge.org/display/EVE/Measured+Boot+and+Remote+Attestation) check in the controller.
 
+### Flexible PCR Policy
+
+EVE supports a flexible mechanism for defining which Platform Configuration Registers (PCRs) are used to seal the vault encryption key. While EVE ships with a sensible default set of PCRs (typically measuring firmware, bootloader, root filesystem and kernel configuration), this policy is not static.
+
+The controller can instruct EVE to adopt a specific set of PCRs for sealing operations. When a new policy is received, EVE validates it against the device's capabilities. If the policy is accepted, the vault key is automatically unsealed with the old policy and resealed with the new set of PCRs. This capability allows security administrators to tighten or loosen the binding of the encrypted data to the platform state as needed, without requiring physical access or a complete reinstall of the device.
+
 ## Disabling Remote Access
 
 EVE provides a mechanism to build an image with remote access disabled (edge-view and ssh), this can be done by configuring EVE when building an installer. Enabling remote access back requires access to the cloud controller to enable console keyboard access on the edge node, plus physical access to the edge node to issue `eve remote-access` command on the edge node. In addition changing remote access status from its initial value to anything else will result in change of PCR-14 value and subsequent failure in unsealing the vault key that needs to be handled using the cloud controller. Check [config document](CONFIG.md#eve-configuration) for more information.
