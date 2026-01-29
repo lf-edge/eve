@@ -68,7 +68,9 @@ type getconfigContext struct {
 	configReceived             bool
 	configGetStatus            types.ConfigGetStatus
 	updateInprogress           bool
-	readSavedConfig            bool // Did we already read it?
+	readSavedConfig            bool      // Did we already read it?
+	lastConfigChange           time.Time // When did we handle a change
+	lastConfigBackup           time.Time // When did we back up
 	waitDrainInProgress        bool
 	configTickerHandle         interface{}
 	certTickerHandle           interface{}
@@ -464,6 +466,17 @@ func configTimerTask(getconfigCtx *getconfigContext, handleChannel chan interfac
 				log.Warning("Not yet published AttestEscrow")
 			}
 		}
+		// Have we been running for 10 minutes and not yet saved
+		// a backup of the config since the last config change
+		if getconfigCtx.lastConfigChange.After(getconfigCtx.lastConfigBackup) {
+			diff := getconfigCtx.lastConfigChange.Sub(getconfigCtx.lastConfigBackup)
+			if diff/time.Second > time.Duration(ctx.globalConfig.GlobalValueInt(types.MintimeUpdateSuccess)) {
+				log.Noticef("Time for a config backup; previous was at %v diff %v",
+					getconfigCtx.lastConfigBackup, diff)
+				backupSavedConfig()
+				getconfigCtx.lastConfigBackup = time.Now()
+			}
+		}
 		ctx.ps.StillRunning(wdName, warningTime, errorTime)
 	}
 }
@@ -681,36 +694,54 @@ func requestConfigByURL(getconfigCtx *getconfigContext, url string,
 		}
 
 		if !getconfigCtx.readSavedConfig && !getconfigCtx.configReceived {
-			// If we didn't yet get a config, then look for a file
-			// XXX should we try a few times?
-			// If we crashed we wait until we connect to zedcloud so that
-			// keyboard can be enabled and things can be debugged and not
-			// have e.g., an OOM reboot loop
+			// If we didn't yet get a config, then look for a file with
+			// a previous checkpoint of the config.
+			// If the reason we are booting is due to an earlier
+			// crash (panic, watchdog) then we do not ingest the last
+			// configuration but the most recent config which
+			// did not result in a crash.
+			// XXX means at 10 minutes we save backup config!
+			// Once we connect to the controller we will use its
+			// config.
+			// Together these avoid reboot loops since the controller
+			// can be used to enable the local keyboard etc for
+			// debugging purposes.
+			confName := "lastconfig"
 			if !ctx.bootReason.StartWithSavedConfig() {
-				log.Warnf("Ignore any saved config due to boot reason %s",
+				log.Warnf("Use backup config due to boot reason %s",
 					ctx.bootReason)
-			} else {
-				config, ts, err := readSavedProtoMessageConfig(
-					ctrlClient, url, "lastconfig")
-				if err != nil {
-					log.Errorf("getconfig: %v", err)
-					return invalidConfig, rv.TracedReqs
+				confName = "lastconfig.bak"
+			}
+			var err error
+			var config *zconfig.EdgeDevConfig
+			var ts time.Time
+			for {
+				config, ts, err = readSavedProtoMessageConfig(
+					ctrlClient, url, confName)
+				if err == nil {
+					break
 				}
-				if config != nil {
-					log.Noticef("Using saved config dated %s",
-						ts.Format(time.RFC3339Nano))
-
-					cfgRetval := inhaleDeviceConfig(getconfigCtx, config, savedConfig)
-					if cfgRetval != configOK {
-						log.Errorf("inhaleDeviceConfig failed: %d", cfgRetval)
-						return cfgRetval, rv.TracedReqs
-					}
-
-					getconfigCtx.readSavedConfig = true
-					getconfigCtx.configGetStatus = types.ConfigGetReadSaved
-
-					return configOK, rv.TracedReqs
+				log.Errorf("getconfig %s: %v", confName, err)
+				if confName == "lastconfig" {
+					confName = "lastconfig.bak"
+					continue
 				}
+				return invalidConfig, rv.TracedReqs
+			}
+			if config != nil {
+				log.Noticef("Using saved config dated %s",
+					ts.Format(time.RFC3339Nano))
+
+				cfgRetval := inhaleDeviceConfig(getconfigCtx, config, savedConfig)
+				if cfgRetval != configOK {
+					log.Errorf("inhaleDeviceConfig failed: %d", cfgRetval)
+					return cfgRetval, rv.TracedReqs
+				}
+
+				getconfigCtx.readSavedConfig = true
+				getconfigCtx.configGetStatus = types.ConfigGetReadSaved
+				getconfigCtx.lastConfigChange = time.Now()
+				return configOK, rv.TracedReqs
 			}
 		}
 		publishZedAgentStatus(getconfigCtx)
@@ -824,6 +855,9 @@ func requestConfigByURL(getconfigCtx *getconfigContext, url string,
 		// the old config, potentially triggering unwanted BaseOS downloads
 		// or downgrades. Saving it here ensures the checkpoint is always up
 		// to date, even when we intentionally skip applying it right away.
+		// We do not update lastConfigChange since we do not want to
+		// assume this received and unapplied config is not the source
+		// of problems.
 		if cfgRetval.isSkip() {
 			log.Trace("Skipping config processing, but saving received config")
 			saveReceivedProtoMessage(authWrappedRV.RespContents)
@@ -836,6 +870,7 @@ func requestConfigByURL(getconfigCtx *getconfigContext, url string,
 	getconfigCtx.ledBlinkCount = types.LedBlinkOnboarded
 
 	getconfigCtx.configGetStatus = types.ConfigGetSuccess
+	getconfigCtx.lastConfigChange = time.Now()
 	publishZedAgentStatus(getconfigCtx)
 
 	// Save configuration wrapped in AuthContainer.
@@ -899,6 +934,16 @@ func getLatestConfig(getconfigCtx *getconfigContext, iteration int,
 
 func saveReceivedProtoMessage(contents []byte) {
 	persist.SaveConfig(log, "lastconfig", contents)
+}
+
+// This is called after types.MintimeUpdateSuccess
+func backupSavedConfig() {
+	contents, _, err := persist.ReadSavedConfig(log, "lastconfig")
+	if err != nil {
+		log.Errorf("Failed to backup due to read failure: %s", err)
+		return
+	}
+	persist.SaveConfig(log, "lastconfig.bak", contents)
 }
 
 // Update timestamp - no content changes
