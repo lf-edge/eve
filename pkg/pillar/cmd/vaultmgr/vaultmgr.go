@@ -415,7 +415,7 @@ func handleVaultKeyFromControllerImpl(ctxArg interface{}, key string,
 			log.Errorf("Failed to unmarshal keyData %v", err)
 			return
 		}
-		decryptedKey, err := etpm.EncryptDecryptUsingTpm(keyData.EncryptedKey, false)
+		decryptedKey, err := etpm.EncryptDecryptUsingTpm(keyData.EncryptedKey, types.VaultKeyEncVersion(keyData.Version), false)
 		if err != nil {
 			log.Errorf("Failed to decrypt Controller provided key data: %v", err)
 			return
@@ -516,7 +516,7 @@ func publishVaultKey(ctx *vaultMgrContext, vaultName string) error {
 		}
 
 		// if this fails, tpm manager signals the controller something is wrong with TPM
-		encryptedKey, err := etpm.EncryptDecryptUsingTpm(keyBytes, true)
+		encryptedKey, err := etpm.EncryptDecryptUsingTpm(keyBytes, types.EncryptionAEAD, true)
 		if err != nil {
 			return fmt.Errorf("failed to encrypt vault key %w", err)
 		}
@@ -528,6 +528,7 @@ func publishVaultKey(ctx *vaultMgrContext, vaultName string) error {
 		keyData := &attest.AttestVolumeKeyData{
 			EncryptedKey: encryptedKey,
 			DigestSha256: digest256,
+			Version:      attest.AttestVolumeKeyVersion(types.EncryptionAEAD),
 		}
 		encryptedVaultKey, err = proto.Marshal(keyData)
 		if err != nil {
