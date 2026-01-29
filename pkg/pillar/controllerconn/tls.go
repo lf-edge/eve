@@ -7,13 +7,11 @@ package controllerconn
 
 import (
 	"bytes"
-	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -28,49 +26,11 @@ import (
 )
 
 // InitializeCertDir is called by zedbox to make sure we have the initial
-// files in /persist/certs from /config/ under a sha-based name.
-// Also, the currently used base file is indicated by the content of
-// /persist/certs/v2tlsbaseroot-certificates.sha256. This is to prepare for a
-// future feature where the controller can update the base file.
-// Note that programmatically we add any proxy certificates to the list of roots
-// we trust separately from the file content.
+// certs directory created.
 func InitializeCertDir(log *base.LogObject) error {
 	if _, err := os.Stat(types.CertificateDirname); err != nil {
 		log.Tracef("Create %s", types.CertificateDirname)
 		if err := os.MkdirAll(types.CertificateDirname, 0700); err != nil {
-			return err
-		}
-	}
-	f, err := os.Open(types.V2TLSBaseFile)
-	if err != nil {
-		return err
-	}
-	h := sha256.New()
-	if _, err := io.Copy(h, f); err != nil {
-		err = fmt.Errorf("Failed sha256 of %s: %w",
-			types.V2TLSBaseFile, err)
-		return err
-	}
-	sha := fmt.Sprintf("%x", h.Sum(nil))
-	// Copy base file to /persist/certs/<sha> if not exist or zero length
-	dstfile := fmt.Sprintf("%s/%s", types.CertificateDirname, sha)
-	st, err := os.Stat(dstfile)
-	if err != nil || st.Size() == 0 {
-		log.Noticef("Adding /config/v2tlsbaseroot-certificates.pem to %s",
-			dstfile)
-		err := fileutils.CopyFile("/config/v2tlsbaseroot-certificates.pem", dstfile)
-		if err != nil {
-			return err
-		}
-	}
-	// Write sha to types.V2TLSCertShaFilename if not exist or zero length
-	dstfile = types.V2TLSCertShaFilename
-	st, err = os.Stat(dstfile)
-	if err != nil || st.Size() == 0 {
-		log.Noticef("Setting /config/v2tlsbaseroot-certificates.pem as current")
-		line := sha + "\n"
-		err = fileutils.WriteRename(dstfile, []byte(line))
-		if err != nil {
 			return err
 		}
 	}
@@ -143,25 +103,14 @@ func (c *Client) GetTLSConfig(clientCert *tls.Certificate) (*tls.Config, error) 
 	caCertPool := x509.NewCertPool()
 
 	if c.v2API {
-		// Load the well-known CAs
-		line, err := os.ReadFile(types.V2TLSCertShaFilename)
-		if err != nil {
-			return nil, err
-		}
-		sha := strings.TrimSpace(string(line))
-		if len(sha) == 0 {
-			errStr := fmt.Sprintf("Read zero byte from sha file")
-			c.log.Error(errStr)
-			return nil, errors.New(errStr)
-		}
-		v2RootFilename := types.CertificateDirname + "/" + sha
-		caCert, err := os.ReadFile(v2RootFilename)
+		// Load the well-known CAs from config directory (integrity protected)
+		caCert, err := os.ReadFile(types.V2TLSBaseFile)
 		if err != nil {
 			return nil, err
 		}
 		if !caCertPool.AppendCertsFromPEM(caCert) {
 			errStr := fmt.Sprintf("Failed to append certs from %s",
-				v2RootFilename)
+				types.V2TLSBaseFile)
 			c.log.Error(errStr)
 			return nil, errors.New(errStr)
 		}
@@ -295,30 +244,17 @@ func (c *Client) UpdateTLSProxyCerts() bool {
 
 	var caCertPool *x509.CertPool
 	if len(c.prevCertPEM) > 0 {
-
 		// previous certs we have are different, lets rebuild from beginning
 		caCertPool = x509.NewCertPool()
-		line, err := os.ReadFile(types.V2TLSCertShaFilename)
+		// Load the well-known CAs from config directory (integrity protected)
+		caCert, err := os.ReadFile(types.V2TLSBaseFile)
 		if err != nil {
-			errStr := fmt.Sprintf("Failed to read V2TLSCertShaFilename")
-			c.log.Error(errStr)
-			return false
-		}
-		sha := strings.TrimSpace(string(line))
-		if len(sha) == 0 {
-			errStr := fmt.Sprintf("Read zero byte from sha file")
-			c.log.Error(errStr)
-			return false
-		}
-		v2RootFilename := types.CertificateDirname + "/" + sha
-		caCert, err := os.ReadFile(v2RootFilename)
-		if err != nil {
-			errStr := fmt.Sprintf("Failed to read v2RootFilename")
+			errStr := fmt.Sprintf("Failed to read %s", types.V2TLSBaseFile)
 			c.log.Error(errStr)
 			return false
 		}
 		if !caCertPool.AppendCertsFromPEM(caCert) {
-			errStr := fmt.Sprintf("Failed to append certs from %s", v2RootFilename)
+			errStr := fmt.Sprintf("Failed to append certs from %s", types.V2TLSBaseFile)
 			c.log.Error(errStr)
 			return false
 		}
