@@ -54,7 +54,7 @@ func ParseVfIfaceName(ifname string) (uint8, string, error) {
 	var index uint8
 	n, err := fmt.Sscanf(ifname, "%svf%d", &iface, &index)
 	if n != 2 {
-		err = fmt.Errorf("ParseVfIfaceName: could not parse all arguments expected 2, got %d", n)
+		err = fmt.Errorf("ParseVfIfaceName: could not parse all arguments for %s expected 2, got %d", ifname, n)
 	}
 	return index, iface, err
 }
@@ -105,7 +105,7 @@ func GetVf(device string) (*VFList, error) { //nolint:gocyclo
 			}
 		}
 	}
-	return &VFList{Data: res}, nil
+	return &VFList{Count: uint8(len(res)), Data: res}, nil
 }
 
 // GetVfByTimeout returns Vf for given PF by timeout
