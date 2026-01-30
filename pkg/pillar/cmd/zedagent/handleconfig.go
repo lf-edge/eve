@@ -809,11 +809,11 @@ func requestConfigByURL(getconfigCtx *getconfigContext, url string,
 	}
 	certChainBytes := ctrlClient.GetCertChainBytes()
 	if certChainBytes != nil {
-		changed, err := parseControllerCerts(ctx, certChainBytes)
+		changed, err := parsePublishControllerCerts(ctx, certChainBytes)
 		if err != nil {
-			log.Errorf("parseControllerCerts: %v", err)
+			log.Errorf("parsePublishControllerCerts: %v", err)
 		} else if changed {
-			log.Notice("parseControllerCerts: updated certs")
+			log.Notice("parsePublishControllerCerts: updated certs")
 		}
 	}
 	if err != nil {
