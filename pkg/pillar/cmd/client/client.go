@@ -13,7 +13,6 @@ import (
 	"mime"
 	"net/http"
 	"os"
-	"sort"
 	"strings"
 	"time"
 
@@ -29,6 +28,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
+	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
 	"github.com/lf-edge/eve/pkg/pillar/utils/persist"
 	"github.com/lf-edge/eve/pkg/pillar/utils/wait"
 	uuid "github.com/satori/go.uuid"
@@ -751,7 +751,7 @@ func fetchCertChain(ctrlClient *controllerconn.Client, tlsConfig *tls.Config, re
 	return true
 }
 
-// Return the sorted set of keys aka CertHash in the parsed protobuf
+// Return the set of keys aka CertHash in the parsed protobuf
 func parseKeysFromControllerCerts(contents []byte) ([]string, error) {
 	cfgConfig := &zcert.ZControllerCert{}
 	err := proto.Unmarshal(contents, cfgConfig)
@@ -765,28 +765,21 @@ func parseKeysFromControllerCerts(contents []byte) ([]string, error) {
 	for _, cfgConfig := range cfgCerts {
 		keys = append(keys, hex.EncodeToString(cfgConfig.GetCertHash()))
 	}
-	sort.Slice(keys, func(i, j int) bool {
-		return keys[i] < keys[j]
-	})
 	return keys, nil
 }
 
-// Returns true if there is a change/difference by comparing the sorted
-// list of certs
+// Returns true if there is a change/difference by comparing the set of
+// keys for the controller certs
+// Note that we can not just do a byte compare of the protobuf cert bytes
+// since the order of the certificates comes out as random (presumably due
+// to golang map randomization on the controller).
 func compareControllerCertBytes(newCertChainBytes, prevCertChainBytes []byte) bool {
 	newKeys, _ := parseKeysFromControllerCerts(newCertChainBytes)
 	prevKeys, _ := parseKeysFromControllerCerts(prevCertChainBytes)
-	allNewKeys := strings.Join(newKeys, " ")
-	allPrevKeys := strings.Join(prevKeys, " ")
-	if allNewKeys != allPrevKeys {
-		log.Noticef("ControllerCerts changed keys from %s to %s",
-			allPrevKeys, allNewKeys)
+	if !generics.EqualSets(newKeys, prevKeys) {
+		log.Noticef("ControllerCerts changed keys from %v to %v",
+			prevKeys, newKeys)
 		return true
-	}
-	if !bytes.Equal(newCertChainBytes, prevCertChainBytes) {
-		// We expect this to happen on each boot due to random
-		// order
-		log.Functionf("controllercerts protobuf bytes differ but certs unchanged")
 	}
 	return false
 }
