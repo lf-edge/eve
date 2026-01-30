@@ -290,7 +290,7 @@ func (ci *collectInfo) subscribe(ps *pubsub.PubSub) {
 		Activate:    false,
 		WarningTime: warningTime,
 		ErrorTime:   errorTime,
-		Persistent:  true,
+		Persistent:  false,
 	})
 	if err != nil {
 		log.Fatalf("could not subscribe to ControllerCert: %+v", err)
