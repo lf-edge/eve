@@ -6,13 +6,13 @@ package zedagent
 import (
 	"fmt"
 	"net/http"
-	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/lf-edge/eve-api/go/profile"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils/persist"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -226,8 +226,8 @@ func getRadioConfig(ctx *getconfigContext, radioStatus *profile.RadioStatus) *pr
 
 // read saved radio config in case of a reboot
 func readSavedRadioConfig(ctx *getconfigContext) (*profile.RadioConfig, error) {
-	radioConfigBytes, ts, err := readSavedConfig(
-		filepath.Join(checkpointDirname, savedRadioConfigFile))
+	radioConfigBytes, ts, err := persist.ReadSavedConfig(log,
+		savedRadioConfigFile)
 	if err != nil {
 		return nil, fmt.Errorf("readSavedRadioConfig: %v", err)
 	}
@@ -266,11 +266,11 @@ func saveRadioConfig(radioConfig *profile.RadioConfig) {
 	if err != nil {
 		log.Fatalf("saveRadioConfig: Marshalling failed: %v", err)
 	}
-	saveConfig(savedRadioConfigFile, contents)
+	persist.SaveConfig(log, savedRadioConfigFile, contents)
 	return
 }
 
 // touchRadioConfig is used to update the modification time of the persisted radio config.
 func touchRadioConfig() {
-	touchSavedConfig(savedRadioConfigFile)
+	persist.TouchSavedConfig(log, savedRadioConfigFile)
 }

@@ -30,6 +30,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
+	"github.com/lf-edge/eve/pkg/pillar/utils/persist"
 	"github.com/lf-edge/eve/pkg/pillar/zboot"
 	uuid "github.com/satori/go.uuid"
 	"google.golang.org/protobuf/proto"
@@ -319,15 +320,16 @@ func maybeLoadBootstrapConfig(getconfigCtx *getconfigContext) {
 
 	// Verify controller certificate chain.
 	tmpCtrlClient := controllerconn.NewClient(log, controllerconn.ClientOptions{})
-	sigCertBytes, err := tmpCtrlClient.VerifySigningCertChain(bootstrap.ControllerCerts)
+	sigCertBytes, err := controllerconn.VerifyLeavesCertChain(log, bootstrap.ControllerCerts)
 	if err != nil {
 		log.Errorf("Controller cert chain verification failed for bootstrap config: %v", err)
 		indicateInvalidBootstrapConfig(getconfigCtx)
 		return
 	}
 
-	// Verify payload signature
-	if err = tmpCtrlClient.LoadServerSigningCert(sigCertBytes); err != nil {
+	// Store the server signing cert in the client then
+	// verify the payload signature on the bootstrap config
+	if err = tmpCtrlClient.StoreServerSigningCert(sigCertBytes); err != nil {
 		log.Errorf("Failed to load signing server cert from bootstrap config: %v", err)
 		indicateInvalidBootstrapConfig(getconfigCtx)
 		return
@@ -747,8 +749,7 @@ func requestConfigByURL(getconfigCtx *getconfigContext, url string,
 			var ts time.Time
 			for {
 				config, ts, err = readSavedProtoMessageConfig(
-					ctrlClient, url,
-					filepath.Join(checkpointDirname, confName))
+					ctrlClient, url, confName)
 				if err == nil {
 					break
 				}
@@ -951,75 +952,40 @@ func getLatestConfig(getconfigCtx *getconfigContext, iteration int,
 }
 
 func saveReceivedProtoMessage(contents []byte) {
-	saveConfig("lastconfig", contents)
+	persist.SaveConfig(log, "lastconfig", contents)
 }
 
 // This is called after types.MintimeUpdateSuccess
+// Make sure we have a backup of a config that was successful.
+// This backup used if we have a crash which might potentially be caused
+// by a newer config.
 func backupSavedConfig() {
-	contents, _, err := readSavedConfig(filepath.Join(checkpointDirname, "lastconfig"))
-	if err != nil {
-		log.Errorf("Failed to backup due to read failure: %s", err)
-		return
-	}
-	saveConfig("lastconfig.bak", contents)
+	persist.CloneContentAndTimes(log, "lastconfig", "lastconfig.bak")
 }
 
 // Update timestamp - no content changes
 func touchReceivedProtoMessage() {
-	touchSavedConfig("lastconfig")
+	persist.TouchSavedConfig(log, "lastconfig")
 }
 
 // XXX for debug we track these
 func saveSentMetricsProtoMessage(contents []byte) {
-	saveConfig("lastmetrics", contents)
+	persist.SaveConfig(log, "lastmetrics", contents)
 }
 
 // XXX for debug we track these
 func saveSentHardwareHealthProtoMessage(contents []byte) {
-	saveConfig("lasthardwarehealth", contents)
+	persist.SaveConfig(log, "lasthardwarehealth", contents)
 }
 
 // XXX for debug we track these
 func saveSentDeviceInfoProtoMessage(contents []byte) {
-	saveConfig("lastdeviceinfo", contents)
+	persist.SaveConfig(log, "lastdeviceinfo", contents)
 }
 
 // XXX for debug we track these
 func saveSentAppInfoProtoMessage(contents []byte) {
-	saveConfig("lastappinfo", contents)
-}
-
-func saveConfig(filename string, contents []byte) {
-	filename = checkpointDirname + "/" + filename
-	err := fileutils.WriteRename(filename, contents)
-	if err != nil {
-		// Can occur if no space in filesystem
-		log.Errorf("saveConfig failed: %s", err)
-		return
-	}
-}
-
-// Remove saved config file if it exists.
-func cleanSavedConfig(filename string) {
-	filename = checkpointDirname + "/" + filename
-	if err := os.Remove(filename); err != nil {
-		log.Functionf("cleanSavedConfig failed: %s", err)
-	}
-}
-
-// Update modification time
-func touchSavedConfig(filename string) {
-	filename = checkpointDirname + "/" + filename
-	_, err := os.Stat(filename)
-	if err != nil {
-		log.Warnf("touchSavedConfig stat failed: %s", err)
-	}
-	currentTime := time.Now()
-	err = os.Chtimes(filename, currentTime, currentTime)
-	if err != nil {
-		// Can occur if no space in filesystem?
-		log.Errorf("touchSavedConfig failed: %s", err)
-	}
+	persist.SaveConfig(log, "lastappinfo", contents)
 }
 
 // Check if SavedConfig exists
@@ -1039,7 +1005,7 @@ func existsSavedConfig(filename string) bool {
 // Ignore if older than StaleConfigTime seconds
 func readSavedProtoMessageConfig(ctrlClient *controllerconn.Client, URL string,
 	filename string) (*zconfig.EdgeDevConfig, time.Time, error) {
-	contents, ts, err := readSavedConfig(filename)
+	contents, ts, err := persist.ReadSavedConfig(log, filename)
 	if err != nil {
 		log.Errorln("readSavedProtoMessageConfig", err)
 		return nil, ts, err
@@ -1063,20 +1029,6 @@ func readSavedProtoMessageConfig(ctrlClient *controllerconn.Client, URL string,
 	}
 	config := configResponse.GetConfig()
 	return config, ts, nil
-}
-
-// If the file exists then read the config content from it, and return its modify time.
-func readSavedConfig(filename string) ([]byte, time.Time, error) {
-	info, err := os.Stat(filename)
-	if err != nil {
-		return nil, time.Time{}, err
-	}
-	contents, err := os.ReadFile(filename)
-	if err != nil {
-		log.Errorln("readSavedConfig", err)
-		return nil, info.ModTime(), err
-	}
-	return contents, info.ModTime(), nil
 }
 
 // The most recent config hash we received. Starts empty

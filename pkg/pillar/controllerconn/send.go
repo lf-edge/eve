@@ -71,6 +71,7 @@ type Client struct {
 	onBoardCertHash       []byte
 	serverSigningCertHash []byte
 	onBoardCertBytes      []byte
+	certChainBytes        []byte // In case we fetch them from a checkpoint
 }
 
 // ClientOptions - options to be passed at NewClient.

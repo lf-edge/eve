@@ -16,6 +16,7 @@ import (
 	zmet "github.com/lf-edge/eve-api/go/metrics" // zinfo and zmet here
 	"github.com/lf-edge/eve/pkg/pillar/controllerconn"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils/persist"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -449,7 +450,7 @@ func publishFlowMessage(flowMsg *flowlog.FlowMessage, iteration int) error {
 }
 
 func saveSentFlowProtoMessage(contents []byte) {
-	saveConfig("lastflowlog", contents)
+	persist.SaveConfig(log, "lastflowlog", contents)
 }
 
 func handleAppContainerMetricsCreate(ctxArg interface{}, key string,

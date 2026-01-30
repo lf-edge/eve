@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -19,6 +18,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
+	"github.com/lf-edge/eve/pkg/pillar/utils/persist"
 	uuid "github.com/satori/go.uuid"
 	"github.com/shirou/gopsutil/host"
 	"google.golang.org/protobuf/proto"
@@ -471,8 +471,8 @@ func findAppInstance(
 
 func readSavedLocalCommands(ctx *getconfigContext) (*types.LocalCommands, error) {
 	commands := &types.LocalCommands{}
-	contents, ts, err := readSavedConfig(
-		filepath.Join(checkpointDirname, savedLocalCommandsFile))
+	contents, ts, err := persist.ReadSavedConfig(log,
+		savedLocalCommandsFile)
 	if err != nil {
 		return commands, err
 	}
@@ -507,14 +507,14 @@ func persistLocalCommands(localCommands *types.LocalCommands) {
 	if err != nil {
 		log.Fatalf("persistLocalCommands: Marshalling failed: %v", err)
 	}
-	saveConfig(savedLocalCommandsFile, contents)
+	persist.SaveConfig(log, savedLocalCommandsFile, contents)
 	return
 }
 
 // touchLocalCommands is used to update the modification time of the persisted
 // local commands.
 func touchLocalCommands() {
-	touchSavedConfig(savedLocalCommandsFile)
+	persist.TouchSavedConfig(log, savedLocalCommandsFile)
 }
 
 // updateLocalDevInfoTicker sets ticker options to the initial value
@@ -1210,8 +1210,8 @@ func applyDevicePropertyBootOrder(ctx *getconfigContext) (changed bool) {
 // loadSavedAppBootConfig loads the last saved app boot configuration from disk
 // and populates the currentAppBootConfigs cache.
 func loadSavedAppBootConfig(ctx *getconfigContext) bool {
-	configBytes, ts, err := readSavedConfig(
-		filepath.Join(checkpointDirname, savedAppBootConfigFile))
+	configBytes, ts, err := persist.ReadSavedConfig(log,
+		savedAppBootConfigFile)
 	if err != nil {
 		log.Warnf("Failed to load saved app boot config: %v", err)
 		return false
@@ -1255,6 +1255,6 @@ func saveAppBootConfig(config *profile.AppBootConfigList) {
 		log.Errorf("Marshalling app boot config failed: %v", err)
 		return
 	}
-	saveConfig(savedAppBootConfigFile, contents)
+	persist.SaveConfig(log, savedAppBootConfigFile, contents)
 	log.Tracef("Saved app boot config to disk")
 }
