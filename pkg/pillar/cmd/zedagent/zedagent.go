@@ -1302,7 +1302,7 @@ func initPublications(zedagentCtx *zedagentContext) {
 	getconfigCtx.pubControllerCert, err = ps.NewPublication(
 		pubsub.PublicationOptions{
 			AgentName:  agentName,
-			Persistent: true,
+			Persistent: false,
 			TopicType:  types.ControllerCert{},
 		})
 	if err != nil {
@@ -1311,10 +1311,11 @@ func initPublications(zedagentCtx *zedagentContext) {
 	getconfigCtx.pubControllerCert.ClearRestarted()
 
 	// for CipherContextStatus Publisher
+	// This now a local, non-persistent publication used for GetAll walks
 	getconfigCtx.pubCipherContext, err = ps.NewPublication(
 		pubsub.PublicationOptions{
 			AgentName:  agentName,
-			Persistent: true,
+			Persistent: false,
 			TopicType:  types.CipherContext{},
 		})
 	if err != nil {
