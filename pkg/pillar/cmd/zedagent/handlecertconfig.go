@@ -43,6 +43,7 @@ type cipherContext struct {
 var controllerCertHash []byte
 
 // parse and update controller certs
+// Returns true if there was a change to the set of certs.
 func parseControllerCerts(ctx *zedagentContext, contents []byte) (changed bool, err error) {
 	log.Functionf("Started parsing controller certs")
 	cfgConfig := &zcert.ZControllerCert{}
@@ -408,6 +409,10 @@ func requestCertsByURL(ctx *zedagentContext, certURL string, desc string,
 	if !changed {
 		return true
 	}
+
+	// Update the checkpoint - note that since we've verified semantic
+	// difference in parsePublishControllerCerts this will not be triggered
+	// due to mere order differences in the protobuf contents
 
 	// Save the signing cert in the client structure
 	if err = ctrlClient.StoreServerSigningCert(signingCertBytes); err != nil {
