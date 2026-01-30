@@ -29,8 +29,9 @@ If EVE is running on hardware with a trusted platform module (TPM), then these k
 | Certificate | Purpose | Type | Location | Reference |
 |-------------|---------|------|----------|-----------|
 | Root of trust | Validate legitimate controller | Any | /config/root-certificate.pem | [Trusting controller](SECURITY.md#eve-trusting-its-controller) |
-| Signing cert | Signing of API messages | Any | /persist/certs/server-signing-cert.pem | Populated using the EVE API. See [SIGNING](https://github.com/lf-edge/eve-api/tree/main/OBJECT-SIGNING.md) |
-| ECDH cert | Api object encryption | ECC (P-256) | Only in memory | [Config object encryption](OBJECT-LEVEL-ENCRYPTION.md) |
+| Signing cert | Signing of API messages | Any | Only in memory | Populated using the EVE API. See [SIGNING](https://github.com/lf-edge/eve-api/tree/main/OBJECT-SIGNING.md) |
+| ECDH cert | API object encryption | ECC (P-256) | Only in memory | [Config object encryption](OBJECT-LEVEL-ENCRYPTION.md) |
+| Intermedia certs | Signing and object encryption | Any | Only in memory | If needed to validate chain to the root of trust |
 
 ## Other certificates
 
