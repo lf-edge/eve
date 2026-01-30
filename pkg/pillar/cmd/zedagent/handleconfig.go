@@ -286,15 +286,16 @@ func maybeLoadBootstrapConfig(getconfigCtx *getconfigContext) {
 
 	// Verify controller certificate chain.
 	tmpCtrlClient := controllerconn.NewClient(log, controllerconn.ClientOptions{})
-	sigCertBytes, err := tmpCtrlClient.VerifySigningCertChain(bootstrap.ControllerCerts)
+	sigCertBytes, err := controllerconn.VerifyLeavesCertChain(log, bootstrap.ControllerCerts)
 	if err != nil {
 		log.Errorf("Controller cert chain verification failed for bootstrap config: %v", err)
 		indicateInvalidBootstrapConfig(getconfigCtx)
 		return
 	}
 
-	// Verify payload signature
-	if err = tmpCtrlClient.LoadServerSigningCert(sigCertBytes); err != nil {
+	// Store the server signing cert in the client then
+	// verify the payload signature on the bootstrap config
+	if err = tmpCtrlClient.StoreServerSigningCert(sigCertBytes); err != nil {
 		log.Errorf("Failed to load signing server cert from bootstrap config: %v", err)
 		indicateInvalidBootstrapConfig(getconfigCtx)
 		return
@@ -806,6 +807,17 @@ func requestConfigByURL(getconfigCtx *getconfigContext, url string,
 		err = ctrlClient.RemoveAndVerifyAuthContainer(&rv, false)
 		if err != nil {
 			log.Errorf("RemoveAndVerifyAuthContainer: %s", err)
+		}
+	}
+	certChainBytes := ctrlClient.GetCertChainBytes()
+	if certChainBytes != nil {
+		changed, err := parseControllerCerts(ctx, certChainBytes)
+		log.Noticef("XXX parseControllerCerts of %d bytes changed %t: %v",
+			len(certChainBytes), changed, err)
+		if err != nil {
+			log.Errorf("parseControllerCerts: %v", err)
+		} else if changed {
+			log.Notice("parseControllerCerts: updated certs")
 		}
 	}
 	if err != nil {

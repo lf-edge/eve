@@ -4,6 +4,7 @@
 package persist
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"time"
@@ -80,4 +81,40 @@ func ExistsSavedConfig(log *base.LogObject, filename string) bool {
 		return false
 	}
 	return true
+}
+
+// MaybeSaveControllerCerts saves a checkpoint of a verified chain
+// of controller certificates if it differs from the currently saved chain.
+// If so, the previous controllercerts file is moved to controllercerts.bak.
+func MaybeSaveControllerCerts(log *base.LogObject, contents []byte) {
+	filename := "controllercerts"
+	oldContents, ts, err := ReadSavedConfig(log, filename)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			log.Errorf("Reading checkpoint %s: %s", filename, err)
+		}
+	} else {
+		if bytes.Equal(oldContents, contents) {
+			log.Noticef("XXX debug: same content as at %v", ts)
+			return
+		}
+	}
+	pathname := filepath.Join(types.CheckpointDirname, filename)
+	err = fileutils.WriteRenameWithBackup(pathname, contents)
+	if err != nil {
+		// Can occur if no space in filesystem
+		log.Errorf("MaybeSaveControllerCerts failed: %s", err)
+		return
+	}
+}
+
+// ReadControllerCerts can read either "controllercerts" or "controllercerts.bak".
+// It is up to the caller to protobut unmarshal and verify the chain
+func ReadControllerCerts(log *base.LogObject, bak bool) ([]byte, time.Time, error) {
+	filename := "controllercerts"
+	if bak {
+		filename += ".bak"
+	}
+	log.Noticef("XXX debug reading %s", filename)
+	return ReadSavedConfig(log, filename)
 }

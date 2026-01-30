@@ -86,6 +86,7 @@ func parseControllerCerts(ctx *zedagentContext, contents []byte) (changed bool, 
 		if found {
 			continue
 		}
+		// XXX remove this check when we change pubsubs to !persist
 		// Is the ControllerCert in use?
 		if lookupCipherContextByCCH(ctx.getconfigCtx, configHash) != nil {
 			log.Noticef("ControllerCert %s hash %s in use",
@@ -245,6 +246,11 @@ func controllerCertsTask(ctx *zedagentContext, triggerCerts <-chan struct{}) {
 	}
 }
 
+// Returns an error if there are issues parsing or verifying
+// the certByte (a server signing cert) OR if that certificate is older
+// than the server signing certificate we've received/saved already.
+// If the server signing cert has not yet been receive/saved, than this
+// returns nil, indicating that certByte is acceptable.
 func verifySigningCertNewest(ctx *zedagentContext, certByte []byte) error {
 	block, _ := pem.Decode(certByte)
 	if block == nil {
@@ -256,7 +262,14 @@ func verifySigningCertNewest(ctx *zedagentContext, certByte []byte) error {
 		err = fmt.Errorf("verifyCertNewest: x509.ParseCertificate() failed: %w", err)
 		return err
 	}
-	err = ctrlClient.LoadSavedServerSigningCert()
+	// If we already have processed an AuthContainer this would be loaded.
+	// But if not we look at both /persist/checkpoint/controllercerts
+	// and controllercerts.bak
+	err = ctrlClient.LoadSavedServerSigningCert(false)
+	if err != nil {
+		log.Warnf("Failed to LoadSavedServerSigningCert - falling back: %s", err)
+		err = ctrlClient.LoadSavedServerSigningCert(true)
+	}
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			// Certificates were not loaded, accept
@@ -339,7 +352,8 @@ func requestCertsByURL(ctx *zedagentContext, certURL string, desc string,
 		}
 	}
 
-	// validate the certificate message payload
+	// validate the certificate message payload and certificate chains
+	// down to the signing and ECDH leaves
 	signingCertBytes, ret := ctrlClient.VerifyProtoSigningCertChain(rv.RespContents)
 	if ret != nil {
 		log.Errorf("getCertsFromController: verify err %v", ret)
@@ -361,7 +375,7 @@ func requestCertsByURL(ctx *zedagentContext, certURL string, desc string,
 		}
 	}
 
-	// manage the certificates through pubsub
+	// Parse and publish the controller certificates
 	changed, err := parseControllerCerts(ctx, rv.RespContents)
 	if err != nil {
 		// Note that err is already logged.
@@ -371,7 +385,7 @@ func requestCertsByURL(ctx *zedagentContext, certURL string, desc string,
 		return true
 	}
 
-	// write the signing cert to file
+	// Save the signing cert in the client structure
 	if err := ctrlClient.SaveServerSigningCert(signingCertBytes); err != nil {
 		errStr := fmt.Sprintf("%v", err)
 		log.Error("getCertsFromController: " + errStr)

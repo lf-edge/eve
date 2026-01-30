@@ -25,9 +25,11 @@ import (
 	zauth "github.com/lf-edge/eve-api/go/auth"
 	zcert "github.com/lf-edge/eve-api/go/certs"
 	zcommon "github.com/lf-edge/eve-api/go/evecommon"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	etpm "github.com/lf-edge/eve/pkg/pillar/evetpm"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
+	"github.com/lf-edge/eve/pkg/pillar/utils/persist"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -105,9 +107,29 @@ func (c *Client) removeAndVerifyAuthContainer(
 }
 
 // VerifyAuthContainerHeader verifies correctness of algorithm fields in header
+// A side effect of this is to load the working /persist/checkpoint/controllercerts or controllercerts.bak
+// The client captures the current chain of certs, which can be retrieved
+// using GetCertChainBytes() after the verification.
 func (c *Client) VerifyAuthContainerHeader(sm *zauth.AuthContainer) (
 	types.SenderStatus, error) {
-	err := c.LoadSavedServerSigningCert()
+	status, err := c.tryVerifyAuthContainerHeader(sm, false)
+	if status == types.SenderStatusCertMiss {
+		// Try backup
+		c.ClearServerCert()
+		status, err = c.tryVerifyAuthContainerHeader(sm, false)
+		if status == types.SenderStatusNone {
+			c.log.Notice("controllercerts.bak worked")
+		} else {
+			c.log.Errorf("controllercerts and controllercerts.bak failed: %s, %s",
+				status, err)
+		}
+	}
+	return status, err
+}
+
+func (c *Client) tryVerifyAuthContainerHeader(sm *zauth.AuthContainer, useBackup bool) (
+	types.SenderStatus, error) {
+	err := c.LoadSavedServerSigningCert(useBackup)
 	if err != nil {
 		return types.SenderStatusNone, err
 	}
@@ -168,22 +190,42 @@ func (c *Client) VerifyAuthContainer(sm *zauth.AuthContainer) (types.SenderStatu
 }
 
 // LoadSavedServerSigningCert loads server (i.e. controller) signing
-// certificate stored in the file into a Client's internal variable.
-func (c *Client) LoadSavedServerSigningCert() error {
+// certificate stored in a /persist/checkpoint/controllercerts* file into a Client's
+// internal variable after verifying the chain (since /persist might have been modified off line)
+// It also places all of the (verified) cert chain bytes in c.certChainBytes
+// publish
+func (c *Client) LoadSavedServerSigningCert(useBackup bool) error {
 	if c.serverSigningCert != nil {
 		// Already loaded
 		return nil
 	}
-	certBytes, err := os.ReadFile(types.ServerSigningCertFileName)
+	certBytes, _, err := persist.ReadControllerCerts(c.log, useBackup)
 	if err != nil {
-		c.log.Errorf("loadSavedServerSigningCert: can not read in server cert file, %v\n", err)
 		return err
 	}
-	err = c.LoadServerSigningCert(certBytes)
-	if err != nil {
-		c.log.Errorf("loadServerSigningCert: can not load save server cert, %v\n", err)
+	if len(certBytes) == 0 {
+		// Truncated file?
+		err = fmt.Errorf("ReadControllerCerts(%t) returned empty string", useBackup)
+		c.log.Error(err)
 		return err
 	}
+	// verify the certificate chains down to the signing and ECDH leaves
+	// XXX do we be more relaxed about timestamps if useBackup in case we have
+	// an ancient /persist/checkpoint/lastconfig to verify?
+	signerCertBytes, err := c.VerifyProtoSigningCertChain(certBytes)
+	if err != nil {
+		err := fmt.Errorf("VerifyProtoSigningCertChain(%t) fail: %v", useBackup, err)
+		c.log.Error(err)
+		return err
+	}
+	// Save signer cert in the client object
+	err = c.StoreServerSigningCert(signerCertBytes)
+	if err != nil {
+		err := fmt.Errorf("StoreServerSigningCert(%t) fail: %v", useBackup, err)
+		c.log.Error(err)
+		return err
+	}
+	c.certChainBytes = certBytes
 	return nil
 }
 
@@ -191,6 +233,13 @@ func (c *Client) LoadSavedServerSigningCert() error {
 func (c *Client) ClearServerCert() {
 	c.serverSigningCert = nil
 	c.serverSigningCertHash = nil
+	c.certChainBytes = nil
+}
+
+// GetCertChainBytes returns the chain set by LoadSavedServerSigningCert or
+// StoreCertChainBytes.
+func (c *Client) GetCertChainBytes() []byte {
+	return c.certChainBytes
 }
 
 // verify the signed data with controller certificate public key
@@ -405,6 +454,7 @@ func (c *Client) RSCombinedBytes(rBytes, sBytes []byte, pubKey *ecdsa.PublicKey)
 
 // SaveServerSigningCert saves server (i.e. controller) signing certificate into the persist
 // partition.
+// XXX remove
 func (c *Client) SaveServerSigningCert(certByte []byte) error {
 	err := fileutils.WriteRename(types.ServerSigningCertFileName, certByte)
 	if err != nil {
@@ -417,9 +467,10 @@ func (c *Client) SaveServerSigningCert(certByte []byte) error {
 	return nil
 }
 
-// LoadServerSigningCert loads server (i.e. controller) signing certificate
-// from bytes and into a Client's internal variable.
-func (c *Client) LoadServerSigningCert(certByte []byte) error {
+// StoreServerSigningCert takes the server (i.e. controller)signing certificate
+// from certByte and stores it in the Client's internal variable.
+// This assumes that the certificate chain has already been verified.
+func (c *Client) StoreServerSigningCert(certByte []byte) error {
 	// decode the certificate
 	block, _ := pem.Decode(certByte)
 	if block == nil {
@@ -484,25 +535,31 @@ func (c *Client) computeSha(data []byte) []byte {
 
 // VerifyProtoSigningCertChain - unmarshal and verify the content of ZControllerCert
 // received from the controller. The function combines the unmarshalling of ZControllerCert
-// with VerifySigningCertChain().
+// with VerifyLeavesCertChain().
 // Returns content of the signing certificate and the verification error/nil value.
 func (c *Client) VerifyProtoSigningCertChain(content []byte) ([]byte, error) {
+	return VerifyProtoLeavesCertChainImpl(c.log, content)
+}
+
+// VerifyProtoLeavesCertChainImpl is called without a needing a client to
+// be able to verify content from checkpoint files
+func VerifyProtoLeavesCertChainImpl(log *base.LogObject, content []byte) ([]byte, error) {
 	sm := &zcert.ZControllerCert{}
 	err := proto.Unmarshal(content, sm)
 	if err != nil {
 		errStr := fmt.Sprintf("unmarshal error, %v", err)
-		c.log.Errorln("VerifySigningCertChain: " + errStr)
+		log.Errorln("VerifyProtoLeavesCertChain: " + errStr)
 		return nil, errors.New(errStr)
 	}
-	return c.VerifySigningCertChain(sm.Certs)
+	return VerifyLeavesCertChain(log, sm.Certs)
 }
 
-// VerifySigningCertChain - verify signing certificate chain from controller
+// VerifyLeavesCertChain - verify signing certificate chain from controller to leaves
 // Returns content of the signing certificate and the verification error/nil value.
-func (c *Client) VerifySigningCertChain(certs []*zcert.ZCert) ([]byte, error) {
+func VerifyLeavesCertChain(log *base.LogObject, certs []*zcert.ZCert) ([]byte, error) {
 	// prepare intermediate certs and validate the payload
-	var sigCertBytes []byte
-	var keyCnt, signKeyCnt int
+	var signCertBytes []byte
+	var keyCnt, signKeyCnt, encrKeyCnt int
 	interm := x509.NewCertPool()
 	for _, cert := range certs {
 		keyCnt++
@@ -511,7 +568,7 @@ func (c *Client) VerifySigningCertChain(certs []*zcert.ZCert) ([]byte, error) {
 			ok := interm.AppendCertsFromPEM(cert.GetCert())
 			if !ok {
 				errStr := fmt.Sprintf("intermediate cert append fail")
-				c.log.Errorln("VerifySigningCertChain: " + errStr)
+				log.Errorln("VerifyLeavesCertChain: " + errStr)
 				return nil, errors.New(errStr)
 			}
 
@@ -519,25 +576,30 @@ func (c *Client) VerifySigningCertChain(certs []*zcert.ZCert) ([]byte, error) {
 			signKeyCnt++
 			if signKeyCnt > 1 {
 				errStr := fmt.Sprintf("received more than one signing cert")
-				c.log.Errorln("VerifySigningCertChain: " + errStr)
+				log.Errorln("VerifyLeavesCertChain: " + errStr)
 				return nil, errors.New(errStr)
 			}
-			sigCertBytes = cert.GetCert()
+			signCertBytes = cert.GetCert()
 
 		case zcert.ZCertType_CERT_TYPE_CONTROLLER_ECDH_EXCHANGE:
-			// nothing to do
+			encrKeyCnt++
 
 		default:
 			errStr := fmt.Sprintf("unknown certificate type(%d) received", cert.Type)
-			c.log.Errorln("VerifySigningCertChain: " + errStr)
+			log.Errorln("VerifyLeavesCertChain: " + errStr)
 			return nil, errors.New(errStr)
 		}
 	}
 
-	c.log.Tracef("VerifySigningCertChain: key count %d\n", keyCnt)
+	log.Tracef("VerifyLeavesCertChain: key count %d\n", keyCnt)
 	if signKeyCnt == 0 {
 		errStr := fmt.Sprintf("failed to acquire signing cert")
-		c.log.Errorln("VerifySigningCertChain: " + errStr)
+		log.Errorln("VerifyLeavesCertChain: " + errStr)
+		return nil, errors.New(errStr)
+	}
+	if encrKeyCnt == 0 {
+		errStr := fmt.Sprintf("failed to acquire ECDH cert")
+		log.Errorln("VerifyLeavesCertChain: " + errStr)
 		return nil, errors.New(errStr)
 	}
 
@@ -546,30 +608,31 @@ func (c *Client) VerifySigningCertChain(certs []*zcert.ZCert) ([]byte, error) {
 		if cert.Type == zcert.ZCertType_CERT_TYPE_CONTROLLER_SIGNING ||
 			cert.Type == zcert.ZCertType_CERT_TYPE_CONTROLLER_ECDH_EXCHANGE {
 			certByte := cert.GetCert()
-			if err := c.verifySignature(certByte, interm); err != nil {
-				errStr := fmt.Sprintf("signature verification fail")
-				c.log.Errorln("VerifySigningCertChain: " + errStr)
+			if err := verifySignature(log, certByte, interm); err != nil {
+				errStr := fmt.Sprintf("signature verification fail for %d",
+					cert.Type)
+				log.Errorln("VerifyLeavesCertChain: " + errStr)
 				return nil, err
 			}
 		}
 	}
-	c.log.Tracef("VerifySigningCertChain: success\n")
-	return sigCertBytes, nil
+	log.Tracef("VerifyLeavesCertChain: success\n")
+	return signCertBytes, nil
 }
 
-func (c *Client) verifySignature(certByte []byte, interm *x509.CertPool) error {
+func verifySignature(log *base.LogObject, certByte []byte, interm *x509.CertPool) error {
 
 	block, _ := pem.Decode(certByte)
 	if block == nil {
 		errStr := fmt.Sprintf("certificate block decode fail")
-		c.log.Errorln("verifySignature: " + errStr)
+		log.Errorln("verifySignature: " + errStr)
 		return errors.New(errStr)
 	}
 
 	leafcert, err := x509.ParseCertificate(block.Bytes)
 	if err != nil {
 		errStr := fmt.Sprintf("certificate parse fail, %v", err)
-		c.log.Errorln("verifySignature: " + errStr)
+		log.Errorln("verifySignature: " + errStr)
 		return errors.New(errStr)
 	}
 
@@ -578,13 +641,13 @@ func (c *Client) verifySignature(certByte []byte, interm *x509.CertPool) error {
 	caCert, err := os.ReadFile(types.RootCertFileName)
 	if err != nil {
 		errStr := fmt.Sprintf("root certificate read fail, %v", err)
-		c.log.Errorln("verifySignature: " + errStr)
+		log.Errorln("verifySignature: " + errStr)
 		return err
 	}
 	if !signingRoots.AppendCertsFromPEM(caCert) {
 		errStr := fmt.Sprintf("root certificate append fail, %s",
 			types.RootCertFileName)
-		c.log.Errorln("verifySignature: " + errStr)
+		log.Errorln("verifySignature: " + errStr)
 		return errors.New(errStr)
 	}
 
@@ -595,7 +658,7 @@ func (c *Client) verifySignature(certByte []byte, interm *x509.CertPool) error {
 	}
 	if _, err := leafcert.Verify(opts); err != nil {
 		errStr := fmt.Sprintf("signature verification fail, %v", err)
-		c.log.Errorln("verifySignature: " + errStr)
+		log.Errorln("verifySignature: " + errStr)
 		return errors.New(errStr)
 	}
 	return nil

@@ -26,6 +26,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
+	"github.com/lf-edge/eve/pkg/pillar/utils/persist"
 	"github.com/lf-edge/eve/pkg/pillar/utils/wait"
 	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
@@ -306,7 +307,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		// try to fetch the server certs chain first, if it's V2
 		if !gotServerCerts && ctrlClient.UsingV2API() {
 			// Set force so we re-download certs on each boot
-			gotServerCerts = fetchCertChain(ctrlClient, devtlsConfig, retryCount, true)
+			gotServerCerts = fetchCertChain(ctrlClient, devtlsConfig, retryCount)
 			if !gotServerCerts {
 				log.Errorf("Failed to fetch certs from %s. Wrong URL?",
 					serverNameAndPort)
@@ -385,7 +386,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 				server = nserver
 				serverNameAndPort = strings.TrimSpace(string(server))
 				// Force a refresh
-				ok := fetchCertChain(ctrlClient, devtlsConfig, retryCount, true)
+				ok := fetchCertChain(ctrlClient, devtlsConfig, retryCount)
 				if !ok && !ctrlClient.NoLedManager {
 					utils.UpdateLedManagerConfig(log, types.LedBlinkInvalidControllerCert)
 				}
@@ -415,7 +416,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 		case <-clientCtx.getCertsTimer.C:
 			// triggered by cert miss error in doGetUUID, so the TLS is device TLSConfig
-			ok := fetchCertChain(ctrlClient, devtlsConfig, retryCount, true)
+			ok := fetchCertChain(ctrlClient, devtlsConfig, retryCount)
 			if !ok && !ctrlClient.NoLedManager {
 				utils.UpdateLedManagerConfig(log, types.LedBlinkInvalidControllerCert)
 			}
@@ -673,14 +674,7 @@ func selfRegister(ctrlClient *controllerconn.Client, tlsConfig *tls.Config, devi
 
 // fetch V2 certs from cloud, return GotCloudCerts and ServerIsV1 boolean
 // if got certs, the leaf is saved to types.ServerSigningCertFileName file
-func fetchCertChain(ctrlClient *controllerconn.Client, tlsConfig *tls.Config, retryCount int, force bool) bool {
-	if !force {
-		_, err := os.Stat(types.ServerSigningCertFileName)
-		if err == nil {
-			return true
-		}
-	}
-
+func fetchCertChain(ctrlClient *controllerconn.Client, tlsConfig *tls.Config, retryCount int) bool {
 	// certs API is always V2, and without UUID, use https
 	requrl := controllerconn.URLPathString(serverNameAndPort, true, nilUUID, "certs")
 	// Save and restore since we don't want the fetch of /certs to
@@ -715,7 +709,7 @@ func fetchCertChain(ctrlClient *controllerconn.Client, tlsConfig *tls.Config, re
 	}
 
 	ctrlClient.TLSConfig = tlsConfig
-	// verify the certificate chain
+	// verify the certificate chains down to the signing and ECDH leaves
 	certBytes, err := ctrlClient.VerifyProtoSigningCertChain(rv.RespContents)
 	if err != nil {
 		errStr := fmt.Sprintf("controller certificate signature verify fail, %v", err)
@@ -723,7 +717,10 @@ func fetchCertChain(ctrlClient *controllerconn.Client, tlsConfig *tls.Config, re
 		return false
 	}
 
-	// write the signing cert to file
+	// If this differs from last set of certs, save into /persist/checkpoint
+	persist.MaybeSaveControllerCerts(log, rv.RespContents)
+
+	// XXX remove: write the signing cert to file
 	if err := ctrlClient.SaveServerSigningCert(certBytes); err != nil {
 		errStr := fmt.Sprintf("%v", err)
 		log.Errorln("fetchCertChain: " + errStr)
