@@ -25,6 +25,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/controllerconn"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils/persist"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -44,12 +45,12 @@ var controllerCertHash []byte
 
 // parse and update controller certs
 // Returns true if there was a change to the set of certs.
-func parseControllerCerts(ctx *zedagentContext, contents []byte) (changed bool, err error) {
+func parsePublishControllerCerts(ctx *zedagentContext, contents []byte) (changed bool, err error) {
 	log.Functionf("Started parsing controller certs")
 	cfgConfig := &zcert.ZControllerCert{}
 	err = proto.Unmarshal(contents, cfgConfig)
 	if err != nil {
-		err = fmt.Errorf("parseControllerCerts(): Unmarshal error %w", err)
+		err = fmt.Errorf("parsePublishControllerCerts(): Unmarshal error %w", err)
 		log.Error(err)
 		return false, err
 	}
@@ -63,7 +64,7 @@ func parseControllerCerts(ctx *zedagentContext, contents []byte) (changed bool, 
 	if bytes.Equal(newHash, controllerCertHash) {
 		return false, nil
 	}
-	log.Functionf("parseControllerCerts: Applying updated config "+
+	log.Functionf("parsePublishControllerCerts: Applying updated config "+
 		"Last Sha: % x, "+
 		"New  Sha: % x, "+
 		"Num of cfgCert: %d",
@@ -103,7 +104,7 @@ func parseControllerCerts(ctx *zedagentContext, contents []byte) (changed bool, 
 		certKey := hex.EncodeToString(cfgConfig.GetCertHash())
 		cert := lookupControllerCert(ctx.getconfigCtx, certKey)
 		if cert == nil {
-			log.Functionf("parseControllerCerts: not found %s", certKey)
+			log.Functionf("parsePublishControllerCerts: not found %s", certKey)
 			cert = &types.ControllerCert{
 				HashAlgo: cfgConfig.GetHashAlgo(),
 				Type:     cfgConfig.GetType(),
@@ -398,7 +399,7 @@ func requestCertsByURL(ctx *zedagentContext, certURL string, desc string,
 	}
 
 	// Parse and publish the controller certificates
-	changed, err := parseControllerCerts(ctx, rv.RespContents)
+	changed, err := parsePublishControllerCerts(ctx, rv.RespContents)
 	if err != nil {
 		// Note that err is already logged.
 		return false
@@ -410,8 +411,11 @@ func requestCertsByURL(ctx *zedagentContext, certURL string, desc string,
 	// Update the checkpoint - note that since we've verified semantic
 	// difference in parsePublishControllerCerts this will not be triggered
 	// due to mere order differences in the protobuf contents
+	persist.MaybeSaveControllerCerts(log, rv.RespContents)
 
-	// Save the signing cert in the client structure
+	// Save the chain in the client structure
+	ctrlClient.StoreCertChainBytes(rv.RespContents)
+
 	if err = ctrlClient.StoreServerSigningCert(signingCertBytes); err != nil {
 		errStr := fmt.Sprintf("%v", err)
 		log.Error("getCertsFromController: " + errStr)
