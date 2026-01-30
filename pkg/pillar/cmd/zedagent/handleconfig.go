@@ -838,6 +838,15 @@ func requestConfigByURL(getconfigCtx *getconfigContext, url string,
 			log.Errorf("RemoveAndVerifyAuthContainer: %s", err)
 		}
 	}
+	certChainBytes := ctrlClient.GetCertChainBytes()
+	if certChainBytes != nil {
+		changed, err := parsePublishControllerCerts(ctx, certChainBytes)
+		if err != nil {
+			log.Errorf("parsePublishControllerCerts: %v", err)
+		} else if changed {
+			log.Notice("parsePublishControllerCerts: updated certs")
+		}
+	}
 	if err != nil {
 		// Handles decrypt or verification error
 		switch rv.Status {
