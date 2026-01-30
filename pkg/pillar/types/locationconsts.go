@@ -73,9 +73,6 @@ const (
 	// BootstrapShaFileName - file to store SHA hash of an already ingested bootstrap config
 	BootstrapShaFileName = IngestedDirname + "/bootstrap-config.sha"
 
-	// ServerSigningCertFileName - filename for server signing leaf certificate
-	ServerSigningCertFileName = CertificateDirname + "/server-signing-cert.pem"
-
 	// ShareCertDirname - directory to place private proxy server certificates
 	ShareCertDirname = "/usr/local/share/ca-certificates"
 

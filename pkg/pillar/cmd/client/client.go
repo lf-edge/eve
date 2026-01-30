@@ -673,7 +673,7 @@ func selfRegister(ctrlClient *controllerconn.Client, tlsConfig *tls.Config, devi
 }
 
 // fetch V2 certs from cloud, return GotCloudCerts and ServerIsV1 boolean
-// if got certs, the leaf is saved to types.ServerSigningCertFileName file
+// if got certs, the chain is verified and then saved to /persist/checkpoint/controllercerts
 func fetchCertChain(ctrlClient *controllerconn.Client, tlsConfig *tls.Config, retryCount int) bool {
 	// certs API is always V2, and without UUID, use https
 	requrl := controllerconn.URLPathString(serverNameAndPort, true, nilUUID, "certs")
@@ -710,22 +710,22 @@ func fetchCertChain(ctrlClient *controllerconn.Client, tlsConfig *tls.Config, re
 
 	ctrlClient.TLSConfig = tlsConfig
 	// verify the certificate chains down to the signing and ECDH leaves
-	certBytes, err := ctrlClient.VerifyProtoSigningCertChain(rv.RespContents)
+	signerCertBytes, err := ctrlClient.VerifyProtoSigningCertChain(rv.RespContents)
 	if err != nil {
 		errStr := fmt.Sprintf("controller certificate signature verify fail, %v", err)
+		log.Errorln("fetchCertChain: " + errStr)
+		return false
+	}
+	// Save signer cert in the client object
+	err = ctrlClient.StoreServerSigningCert(signerCertBytes)
+	if err != nil {
+		errStr := fmt.Sprintf("StoreServerSigningCert fail: %v", err)
 		log.Errorln("fetchCertChain: " + errStr)
 		return false
 	}
 
 	// If this differs from last set of certs, save into /persist/checkpoint
 	persist.MaybeSaveControllerCerts(log, rv.RespContents)
-
-	// XXX remove: write the signing cert to file
-	if err := ctrlClient.SaveServerSigningCert(certBytes); err != nil {
-		errStr := fmt.Sprintf("%v", err)
-		log.Errorln("fetchCertChain: " + errStr)
-		return false
-	}
 
 	log.Functionf("client fetchCertChain: ok")
 	return true
