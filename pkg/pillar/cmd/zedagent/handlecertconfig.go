@@ -133,6 +133,31 @@ func lookupControllerCert(ctx *getconfigContext,
 	return &status
 }
 
+// look up the first controller cert of the specified type
+func lookupControllerCertByType(ctx *getconfigContext, certType zcert.ZCertType) *types.ControllerCert {
+	pub := ctx.pubControllerCert
+	items := pub.GetAll()
+	for _, item := range items {
+		cert := item.(types.ControllerCert)
+		if cert.Type == certType {
+			return &cert
+		}
+	}
+	return nil
+}
+
+// Return the first zcert.ZCertType_CERT_TYPE_CONTROLLER_SIGNING
+func lookupControllerSigningCert(ctx *getconfigContext) *types.ControllerCert {
+	return lookupControllerCertByType(ctx,
+		zcert.ZCertType_CERT_TYPE_CONTROLLER_SIGNING)
+}
+
+// Return the first zcert.ZCertType_CERT_TYPE_CONTROLLER_ECDH_EXCHANGE
+func lookupControllerEncryptionCert(ctx *getconfigContext) *types.ControllerCert {
+	return lookupControllerCertByType(ctx,
+		zcert.ZCertType_CERT_TYPE_CONTROLLER_ECDH_EXCHANGE)
+}
+
 // pubsub functions
 // for controller cert
 func publishControllerCert(ctx *getconfigContext,
@@ -386,7 +411,7 @@ func requestCertsByURL(ctx *zedagentContext, certURL string, desc string,
 	}
 
 	// Save the signing cert in the client structure
-	if err := ctrlClient.SaveServerSigningCert(signingCertBytes); err != nil {
+	if err = ctrlClient.StoreServerSigningCert(signingCertBytes); err != nil {
 		errStr := fmt.Sprintf("%v", err)
 		log.Error("getCertsFromController: " + errStr)
 		return false

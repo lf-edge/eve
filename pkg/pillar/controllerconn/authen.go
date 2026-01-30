@@ -28,7 +28,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	etpm "github.com/lf-edge/eve/pkg/pillar/evetpm"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	"github.com/lf-edge/eve/pkg/pillar/utils/persist"
 	"google.golang.org/protobuf/proto"
 )
@@ -450,21 +449,6 @@ func (c *Client) RSCombinedBytes(rBytes, sBytes []byte, pubKey *ecdsa.PublicKey)
 	startPos = keySize*2 - ssize
 	copy(buffer[startPos:], sBytes)
 	return buffer[:], nil
-}
-
-// SaveServerSigningCert saves server (i.e. controller) signing certificate into the persist
-// partition.
-// XXX remove
-func (c *Client) SaveServerSigningCert(certByte []byte) error {
-	err := fileutils.WriteRename(types.ServerSigningCertFileName, certByte)
-	if err != nil {
-		err = fmt.Errorf("failed to write %v: %w", types.ServerSigningCertFileName, err)
-		c.log.Errorf("SaveServerSignCert: %v", err)
-		return err
-	}
-	// Clear cached
-	c.ClearServerCert()
-	return nil
 }
 
 // StoreServerSigningCert takes the server (i.e. controller)signing certificate
