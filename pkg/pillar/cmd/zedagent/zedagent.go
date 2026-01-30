@@ -473,6 +473,10 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		zedagentCtx.globalConfig.GlobalValueInt(types.NetworkDialTimeout),
 		zedagentCtx.agentMetrics)
 
+	// initialize ControllerCerts by reading from its /persist/checkpoint
+	// if that exists
+	initializeControllerCerts(zedagentCtx, ctrlClient)
+
 	if parse != "" {
 		res, config := readValidateConfig(parse)
 		if !res {
@@ -621,6 +625,31 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	// Enter main zedagent event loop.
 	mainEventLoop(zedagentCtx, stillRunning) // never exits
 	return 0
+}
+
+// Use the .bak if /persist/checkpoint/controllercerts is missing or bad
+func initializeControllerCerts(ctx *zedagentContext, ctrlClient *controllerconn.Client) {
+	useBackup := false
+	err := ctrlClient.LoadSavedServerSigningCert(useBackup)
+	certChainBytes := ctrlClient.GetCertChainBytes()
+	if err != nil || certChainBytes == nil {
+		useBackup = true
+		err1 := ctrlClient.LoadSavedServerSigningCert(useBackup)
+		if err1 != nil {
+			log.Errorf("Primary and backup controllercerts checkpoint failed: %s, %s",
+				err, err1)
+		}
+		certChainBytes = ctrlClient.GetCertChainBytes()
+	}
+	log.Noticef("Found /persist/checkpoint/controllerCerts %d bytes",
+		len(certChainBytes))
+	if len(certChainBytes) == 0 {
+		return
+	}
+	// Parse and publish the controller certificates
+	// Note that any error will be logged by function so we
+	// ignore the return values
+	_, _ = parsePublishControllerCerts(ctx, certChainBytes)
 }
 
 func waitUntilInitializedFromNodeAgentStatus(ctx *zedagentContext, running *time.Ticker) {

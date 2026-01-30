@@ -7,15 +7,18 @@ import (
 	"bytes"
 	"crypto/tls"
 	"encoding/base64"
+	"encoding/hex"
 	"flag"
 	"fmt"
 	"mime"
 	"net/http"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	zcert "github.com/lf-edge/eve-api/go/certs"
 	"github.com/lf-edge/eve-api/go/register"
 	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
@@ -721,14 +724,70 @@ func fetchCertChain(ctrlClient *controllerconn.Client, tlsConfig *tls.Config, re
 	if err != nil {
 		errStr := fmt.Sprintf("StoreServerSigningCert fail: %v", err)
 		log.Errorln("fetchCertChain: " + errStr)
-		return false
+		return false // Try again to fetch and save
 	}
-
-	// If this differs from last set of certs, save into /persist/checkpoint
-	persist.MaybeSaveControllerCerts(log, rv.RespContents)
-
+	// Compare against the existing /persist/checkpoint/controllercerts
+	// to see if any certs were added or deleted. If so we write a new
+	// checkpoint. Since zedagent has not yet published ControllerCerts
+	// we compare against the checkpoint
+	// Note that it is not sufficient to compare the protobuf bytes
+	// since the controller might generate this from a golang map (with
+	// random order) thus we extract and compare they keys for
+	// the ControllerCert objects, which are the hashes of the certs.
+	changed := false
+	newCertChainBytes := rv.RespContents
+	prevCertChainBytes, _, _ := persist.ReadControllerCerts(log, false)
+	if prevCertChainBytes == nil {
+		changed = true // Need to checkpoint
+	} else {
+		changed = compareControllerCertBytes(newCertChainBytes,
+			prevCertChainBytes)
+	}
+	if changed {
+		// This differs from last set of certs - save into /persist/checkpoint
+		persist.MaybeSaveControllerCerts(log, newCertChainBytes)
+	}
 	log.Functionf("client fetchCertChain: ok")
 	return true
+}
+
+// Return the sorted set of keys aka CertHash in the parsed protobuf
+func parseKeysFromControllerCerts(contents []byte) ([]string, error) {
+	cfgConfig := &zcert.ZControllerCert{}
+	err := proto.Unmarshal(contents, cfgConfig)
+	if err != nil {
+		err = fmt.Errorf("Unmarshal error %w", err)
+		return nil, err
+	}
+	var keys []string
+	cfgCerts := cfgConfig.GetCerts()
+
+	for _, cfgConfig := range cfgCerts {
+		keys = append(keys, hex.EncodeToString(cfgConfig.GetCertHash()))
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		return keys[i] < keys[j]
+	})
+	return keys, nil
+}
+
+// Returns true if there is a change/difference
+func compareControllerCertBytes(newCertChainBytes, prevCertChainBytes []byte) bool {
+	newKeys, _ := parseKeysFromControllerCerts(newCertChainBytes)
+	prevKeys, _ := parseKeysFromControllerCerts(prevCertChainBytes)
+	allNewKeys := strings.Join(newKeys, " ")
+	allPrevKeys := strings.Join(prevKeys, " ")
+	if allNewKeys != allPrevKeys {
+		log.Noticef("ControllerCerts changed keys from %s to %s",
+			allPrevKeys, allNewKeys)
+		return true
+	}
+	if !bytes.Equal(newCertChainBytes, prevCertChainBytes) {
+		// We expect this to happen on each boot due to random
+		// order
+		log.Functionf("controllercerts protobuf bytes differ but certs unchanged")
+	}
+	return false
 }
 
 func doGetUUID(ctx *clientContext, tlsConfig *tls.Config,

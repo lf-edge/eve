@@ -228,6 +228,11 @@ func (c *Client) LoadSavedServerSigningCert(useBackup bool) error {
 	return nil
 }
 
+// StoreCertChainBytes updates the cached chain bytes
+func (c *Client) StoreCertChainBytes(certBytes []byte) {
+	c.certChainBytes = certBytes
+}
+
 // ClearServerCert - zero out cached server (controller) certs.
 func (c *Client) ClearServerCert() {
 	c.serverSigningCert = nil
@@ -454,9 +459,9 @@ func (c *Client) RSCombinedBytes(rBytes, sBytes []byte, pubKey *ecdsa.PublicKey)
 // StoreServerSigningCert takes the server (i.e. controller)signing certificate
 // from certByte and stores it in the Client's internal variable.
 // This assumes that the certificate chain has already been verified.
-func (c *Client) StoreServerSigningCert(certByte []byte) error {
+func (c *Client) StoreServerSigningCert(certBytes []byte) error {
 	// decode the certificate
-	block, _ := pem.Decode(certByte)
+	block, _ := pem.Decode(certBytes)
 	if block == nil {
 		err := errors.New("certificate decode fail")
 		c.log.Errorf("UpdateServerCert: %v", err)
@@ -475,7 +480,7 @@ func (c *Client) StoreServerSigningCert(certByte []byte) error {
 	c.serverSigningCert = leafCert
 
 	// store the certificate hash
-	c.serverSigningCertHash = c.computeSha(certByte)
+	c.serverSigningCertHash = c.computeSha(certBytes)
 	return nil
 }
 
