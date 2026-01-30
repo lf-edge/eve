@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -15,6 +14,7 @@ import (
 	"github.com/lf-edge/eve-api/go/profile"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils/persist"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -95,8 +95,8 @@ func parseLocalProfile(localProfileBytes []byte) (*profile.LocalProfile, error) 
 
 // read saved local profile in case of particular reboot reason
 func readSavedLocalProfile(getconfigCtx *getconfigContext) (*profile.LocalProfile, error) {
-	localProfileMessage, ts, err := readSavedConfig(
-		filepath.Join(checkpointDirname, savedLocalProfileFile))
+	localProfileMessage, ts, err := persist.ReadSavedConfig(log,
+		savedLocalProfileFile)
 	if err != nil {
 		return nil, fmt.Errorf("readSavedLocalProfile: %v", err)
 	}
@@ -162,7 +162,7 @@ func saveOrTouchReceivedLocalProfile(getconfigCtx *getconfigContext, localProfil
 	if getconfigCtx.sideController.localProfile == localProfile.GetLocalProfile() &&
 		getconfigCtx.sideController.profileServerToken == localProfile.GetServerToken() &&
 		existsSavedConfig(savedLocalProfileFile) {
-		touchSavedConfig(savedLocalProfileFile)
+		persist.TouchSavedConfig(log, savedLocalProfileFile)
 		return
 	}
 	contents, err := proto.Marshal(localProfile)
@@ -170,7 +170,7 @@ func saveOrTouchReceivedLocalProfile(getconfigCtx *getconfigContext, localProfil
 		log.Errorf("saveOrTouchReceivedLocalProfile Marshalling failed: %s", err)
 		return
 	}
-	saveConfig(savedLocalProfileFile, contents)
+	persist.SaveConfig(log, savedLocalProfileFile, contents)
 	return
 }
 
@@ -251,7 +251,7 @@ func getLocalProfile(ctx *getconfigContext, skipFetch bool) string {
 	if localProfileServer == "" {
 		if ctx.sideController.localProfile != "" {
 			log.Noticef("clearing localProfile checkpoint since no server")
-			cleanSavedConfig(savedLocalProfileFile)
+			persist.CleanSavedConfig(log, savedLocalProfileFile)
 		}
 		return ""
 	}
