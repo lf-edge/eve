@@ -339,7 +339,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		Ctx:         &domainCtx,
 		WarningTime: warningTime,
 		ErrorTime:   errorTime,
-		Persistent:  true,
+		Persistent:  false,
 	})
 	if err != nil {
 		log.Fatal(err)
