@@ -433,7 +433,7 @@ func (n *nim) initSubscriptions() (err error) {
 		Activate:    false,
 		WarningTime: warningTime,
 		ErrorTime:   errorTime,
-		Persistent:  true,
+		Persistent:  false,
 	})
 	if err != nil {
 		return err
