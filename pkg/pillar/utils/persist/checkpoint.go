@@ -42,6 +42,23 @@ func SaveConfig(log *base.LogObject, filename string, contents []byte) {
 	}
 }
 
+// CloneContentAndTimes Makes the backup have the same content and mtime as
+// the filename.
+func CloneContentAndTimes(log *base.LogObject, filename string, backupname string) {
+	contents, ts, err := ReadSavedConfig(log, filename)
+	if err != nil {
+		log.Errorf("Failed to backup due to read failure: %s", err)
+		return
+	}
+	SaveConfig(log, backupname, contents)
+	pathname := filepath.Join(types.CheckpointDirname, backupname)
+	if err := os.Chtimes(pathname, ts, ts); err != nil {
+		log.Errorf("Failed to set backup times on %s: %s",
+			pathname, err)
+		return
+	}
+}
+
 // CleanSavedConfig removes the specified saved config file from the checkpoint directory,
 // if it exists. Logs a message if removal fails.
 func CleanSavedConfig(log *base.LogObject, filename string) {
@@ -85,7 +102,10 @@ func ExistsSavedConfig(log *base.LogObject, filename string) bool {
 
 // MaybeSaveControllerCerts saves a checkpoint of a verified chain
 // of controller certificates if it differs from the currently saved chain.
-// If so, the previous controllercerts file is moved to controllercerts.bak.
+// If so, the previous controllercerts file is moved to controllercerts.bak
+// without changing its modification time.
+// XXX TBD whether caller needs to handle different order of certs in
+// the contents.
 func MaybeSaveControllerCerts(log *base.LogObject, contents []byte) {
 	filename := "controllercerts"
 	oldContents, ts, err := ReadSavedConfig(log, filename)

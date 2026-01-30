@@ -762,8 +762,6 @@ func requestConfigByURL(getconfigCtx *getconfigContext, url string,
 		publishZedAgentStatus(getconfigCtx)
 
 		log.Tracef("Configuration from zedcloud is unchanged")
-		// Update modification time since checked by readSavedConfig
-		touchReceivedProtoMessage()
 		return configOK, rv.TracedReqs
 	}
 
@@ -853,8 +851,6 @@ func requestConfigByURL(getconfigCtx *getconfigContext, url string,
 	cfgRetval := configOK
 	if !changed {
 		log.Tracef("Configuration from zedcloud is unchanged")
-		// Update modification time since checked by readSavedConfig
-		touchReceivedProtoMessage()
 		goto cfgReceived
 	}
 
@@ -949,18 +945,11 @@ func saveReceivedProtoMessage(contents []byte) {
 }
 
 // This is called after types.MintimeUpdateSuccess
+// Make sure we have a backup of a config that was successful.
+// This backup used if we have a crash which might potentially be caused
+// by a newer config.
 func backupSavedConfig() {
-	contents, _, err := persist.ReadSavedConfig(log, "lastconfig")
-	if err != nil {
-		log.Errorf("Failed to backup due to read failure: %s", err)
-		return
-	}
-	persist.SaveConfig(log, "lastconfig.bak", contents)
-}
-
-// Update timestamp - no content changes
-func touchReceivedProtoMessage() {
-	persist.TouchSavedConfig(log, "lastconfig")
+	persist.CloneContentAndTimes(log, "lastconfig", "lastconfig.bak")
 }
 
 // XXX for debug we track these
@@ -989,7 +978,7 @@ func saveSentAppInfoProtoMessage(contents []byte) {
 }
 
 // If the file exists then read the config, and return is modify time
-// Ignore if older than StaleConfigTime seconds
+// mtime is returned for callers pleasure
 func readSavedProtoMessageConfig(ctrlClient *controllerconn.Client, URL string,
 	filename string) (*zconfig.EdgeDevConfig, time.Time, error) {
 	contents, ts, err := persist.ReadSavedConfig(log, filename)
