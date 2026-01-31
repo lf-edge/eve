@@ -337,7 +337,7 @@ func initializeGlobalConfigHandles(ps *pubsub.PubSub, ctx *baseOsMgrContext) {
 			AgentName:     "zedagent",
 			MyAgentName:   agentName,
 			TopicImpl:     types.ConfigItemValueMap{},
-			Persistent:    true,
+			Persistent:    false,
 			Activate:      false,
 			Ctx:           ctx,
 			CreateHandler: handleGlobalConfigCreate,
