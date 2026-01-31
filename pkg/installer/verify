@@ -38,6 +38,10 @@ do
    fi
 
    network=$(ip a show "$nic" | awk '/inet / {print $2}' | cut -d"." -f1-3)
+   if [ -z "$network" ]; then
+      echo "No IP address found for $nic, skipping static configuration test" >> "$REPORT/summary.log";
+      continue
+   fi
    # Loop through all possible IP addresses in the network range
    for ip in $(seq 1 255)
    do
