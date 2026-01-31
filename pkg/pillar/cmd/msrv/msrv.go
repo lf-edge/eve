@@ -241,7 +241,7 @@ func (msrv *Msrv) initSubscriptions(persist bool) (err error) {
 		AgentName:     "zedagent",
 		MyAgentName:   agentName,
 		TopicImpl:     types.ConfigItemValueMap{},
-		Persistent:    persist,
+		Persistent:    false,
 		Activate:      false,
 		CreateHandler: msrv.handleGlobalConfigCreate,
 		ModifyHandler: msrv.handleGlobalConfigModify,

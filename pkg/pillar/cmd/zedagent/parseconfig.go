@@ -52,6 +52,12 @@ func parseConfig(getconfigCtx *getconfigContext, config *zconfig.EdgeDevConfig,
 	getconfigCtx.sideController.Lock()
 	defer getconfigCtx.sideController.Unlock()
 
+	if source == civmOnly {
+		// The initial pass to take care of ConfigItemValueMap
+		parseConfigItems(getconfigCtx, config, source)
+		return configOK
+	}
+
 	// Make sure we do not accidentally revert to an older configuration.
 	// This depends on the controller attaching config timestamp.
 	// If not provided, the check is skipped.
