@@ -477,6 +477,11 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	// if that exists
 	initializeControllerCerts(zedagentCtx, ctrlClient)
 
+	// initialize a ConfigItemValueMap starting with the defaults,
+	// then parse only the ConfigItemValueMap parts from /persist/checkpoint/lastconfig,
+	// and then publish it.
+	initializeConfigItemValueMap(zedagentCtx, ctrlClient)
+
 	if parse != "" {
 		res, config := readValidateConfig(parse)
 		if !res {
@@ -1188,7 +1193,7 @@ func initPublications(zedagentCtx *zedagentContext) {
 	zedagentCtx.pubGlobalConfig, err = ps.NewPublication(pubsub.PublicationOptions{
 		AgentName:  agentName,
 		TopicType:  types.ConfigItemValueMap{},
-		Persistent: true,
+		Persistent: false,
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -1428,7 +1433,7 @@ func initPostOnboardSubs(zedagentCtx *zedagentContext) {
 		AgentName:     agentName,
 		MyAgentName:   agentName,
 		TopicImpl:     types.ConfigItemValueMap{},
-		Persistent:    true,
+		Persistent:    false,
 		Activate:      false,
 		Ctx:           zedagentCtx,
 		CreateHandler: handleGlobalConfigCreate,

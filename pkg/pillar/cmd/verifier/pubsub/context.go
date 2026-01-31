@@ -79,7 +79,7 @@ func (ctx *VerifierContext) Run(arguments []string, baseDir string) int {
 		AgentName:     "zedagent",
 		MyAgentName:   agentName,
 		TopicImpl:     types.ConfigItemValueMap{},
-		Persistent:    true,
+		Persistent:    false,
 		Activate:      false,
 		Ctx:           ctx,
 		CreateHandler: ctx.handleGlobalConfigCreate,

@@ -173,6 +173,7 @@ const (
 	fromLOC
 	savedConfig
 	fromBootstrap
+	civmOnly // Not a source - only to parse any ConfigItemValueMap
 )
 
 func (s configSource) String() string {
@@ -185,6 +186,8 @@ func (s configSource) String() string {
 		return "from-bootstrap"
 	case savedConfig:
 		return "saved-config"
+	case civmOnly:
+		return "ConfigItemValueMap-only"
 	}
 	return "<invalid>"
 }
@@ -1251,4 +1254,37 @@ func publishConfigNetdump(ctx *zedagentContext,
 		log.Noticef("Published netdump for topic %s: %s", topic, filename)
 	}
 	ctx.lastConfigNetdumpPub = time.Now()
+}
+
+// Use the .bak if /persist/checkpoint/lastconfig is missing or bad
+// Only parses the ConfigItemValueMap from the lastconfig, and publishes it.
+func initializeConfigItemValueMap(ctx *zedagentContext, ctrlClient *controllerconn.Client) {
+	confName := "lastconfig"
+	url := "dummy"
+	var err error
+	var config *zconfig.EdgeDevConfig
+	var ts time.Time
+	for {
+		config, ts, err = readSavedProtoMessageConfig(
+			ctrlClient, url, confName)
+		if err == nil {
+			break
+		}
+		log.Errorf("initializeConfigItemValueMap %s: %v", confName, err)
+		if confName == "lastconfig" {
+			confName = "lastconfig.bak"
+			continue
+		}
+		return
+	}
+	if config != nil {
+		log.Noticef("initializeConfigItemValueMap: Using saved config dated %s",
+			ts.Format(time.RFC3339Nano))
+		cfgRetval := inhaleDeviceConfig(ctx.getconfigCtx, config, civmOnly)
+		if cfgRetval != configOK {
+			log.Errorf("inhaleDeviceConfig failed: %d", cfgRetval)
+		} else {
+			log.Noticef("initializeConfigItemValueMap done parsing")
+		}
+	}
 }
