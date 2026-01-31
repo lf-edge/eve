@@ -606,7 +606,7 @@ func (z *zedrouter) initSubscriptions() (err error) {
 		AgentName:     "zedagent",
 		MyAgentName:   agentName,
 		TopicImpl:     types.ConfigItemValueMap{},
-		Persistent:    true,
+		Persistent:    false,
 		Activate:      false,
 		CreateHandler: z.handleGlobalConfigCreate,
 		ModifyHandler: z.handleGlobalConfigModify,

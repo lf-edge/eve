@@ -432,7 +432,7 @@ func (ctx *monitor) subscribe(ps *pubsub.PubSub) error {
 		AgentName:     "zedagent",
 		MyAgentName:   agentName,
 		TopicImpl:     types.ConfigItemValueMap{},
-		Persistent:    true,
+		Persistent:    false,
 		Activate:      false,
 		Ctx:           ctx,
 		CreateHandler: handleGlobalConfigCreate,
