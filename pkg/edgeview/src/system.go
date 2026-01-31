@@ -630,7 +630,7 @@ func getCipher() {
 		}
 	}
 
-	jfiles, err = listJSONFiles("/persist/status/zedagent/CipherContext")
+	jfiles, err = listJSONFiles("/run/zedagent/CipherContext")
 	if err == nil {
 		printColor("\n - Cipher Context:", colorCYAN)
 		for _, l := range jfiles {
@@ -647,7 +647,7 @@ func getCipher() {
 		}
 	}
 
-	jfiles, err = listJSONFiles("/persist/status/zedagent/ControllerCert")
+	jfiles, err = listJSONFiles("/run/zedagent/ControllerCert")
 	if err == nil {
 		printColor("\n - Controller Certs:", colorCYAN)
 		for _, l := range jfiles {
@@ -716,7 +716,7 @@ func runConfigItems() {
 
 func getConfigItems() types.ConfigItemValueMap {
 	var cfgItem types.ConfigItemValueMap
-	retbytes, err := os.ReadFile("/persist/status/zedagent/ConfigItemValueMap/global.json")
+	retbytes, err := os.ReadFile("/run/zedagent/ConfigItemValueMap/global.json")
 	if err != nil {
 		return cfgItem
 	}
