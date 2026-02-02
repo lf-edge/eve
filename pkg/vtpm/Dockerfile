@@ -51,9 +51,9 @@ RUN for patch in /patches/*.patch; do \
     echo "Applying $patch"; \
     patch -d /tpm2-tools -p1 < "$patch" || exit 1 ; \
     done
-RUN ./bootstrap && \
-    ./configure && \
-    make -j$(nproc)
+RUN ./bootstrap
+RUN ./configure CFLAGS="-Wno-error"
+RUN make -j$(nproc)
 RUN cp lib/.libs/libcommon.so* /out/usr/lib/
 RUN cp tools/.libs/tpm2 /out/usr/bin/
 RUN strip --strip-unneeded /out/usr/lib/*.so*
