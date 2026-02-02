@@ -1,4 +1,4 @@
-// Copyright(c) 2017-2018 Zededa, Inc.
+// Copyright(c) 2017-2026 Zededa, Inc.
 // All rights reserved.
 
 package zedUpload
@@ -110,7 +110,10 @@ func (ep *HttpTransportMethod) GetNetTrace(description string) (
 
 // File upload to HTTP Datastore
 func (ep *HttpTransportMethod) processHttpUpload(req *DronaRequest) (error, int) {
-	postUrl := ep.hurl + "/" + ep.path
+	postUrl, err := url.JoinPath(ep.hurl, ep.path)
+	if err != nil {
+		return err, 0
+	}
 	prgChan := make(types.StatsNotifChan)
 	defer close(prgChan)
 	if req.ackback {
@@ -131,7 +134,11 @@ func (ep *HttpTransportMethod) processHttpUpload(req *DronaRequest) (error, int)
 func (ep *HttpTransportMethod) processHttpDownload(req *DronaRequest) (error, int) {
 	file := req.name
 	if ep.hurl != "" {
-		file = ep.hurl + "/" + ep.path + "/" + req.name
+		var err error
+		file, err = url.JoinPath(ep.hurl, ep.path, req.name)
+		if err != nil {
+			return err, 0
+		}
 	}
 	prgChan := make(types.StatsNotifChan)
 	defer close(prgChan)
@@ -156,7 +163,10 @@ func (ep *HttpTransportMethod) processHttpDelete(req *DronaRequest) error {
 
 // File list from HTTP Datastore
 func (ep *HttpTransportMethod) processHttpList(req *DronaRequest) ([]string, error) {
-	listUrl := ep.hurl + "/" + ep.path
+	listUrl, err := url.JoinPath(ep.hurl, ep.path)
+	if err != nil {
+		return nil, err
+	}
 	prgChan := make(types.StatsNotifChan)
 	defer close(prgChan)
 	if req.ackback {
@@ -177,7 +187,11 @@ func (ep *HttpTransportMethod) processHttpList(req *DronaRequest) ([]string, err
 func (ep *HttpTransportMethod) processHttpObjectMetaData(req *DronaRequest) (error, int64) {
 	file := req.name
 	if ep.hurl != "" {
-		file = ep.hurl + "/" + ep.path + "/" + req.name
+		var err error
+		file, err = url.JoinPath(ep.hurl, ep.path, req.name)
+		if err != nil {
+			return err, 0
+		}
 	}
 	prgChan := make(types.StatsNotifChan)
 	defer close(prgChan)

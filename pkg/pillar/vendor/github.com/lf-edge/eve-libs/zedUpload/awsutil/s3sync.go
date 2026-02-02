@@ -163,6 +163,8 @@ func (s *S3ctx) UploadFile(fname, bname, bkey string, compression bool, prgNotif
 	if err != nil {
 		return location, err
 	}
+	defer func() { _ = file.Close() }()
+
 
 	fileInfo, err := file.Stat()
 	if err != nil {
@@ -364,10 +366,20 @@ func (s *S3ctx) DownloadFileByChunks(fname, bname, bkey string) (io.ReadCloser, 
 }
 
 func (s *S3ctx) ListImages(bname string, prgNotify types.StatsNotifChan) ([]string, error) {
+	return s.ListImagesWithPrefix(bname, "", prgNotify)
+}
+
+// ListImagesWithPrefix returns a list of S3 objects in a bucket filtered by prefix.
+// Pass an empty prefix to list all objects (equivalent to ListImages).
+func (s *S3ctx) ListImagesWithPrefix(bname string, prefix string, prgNotify types.StatsNotifChan) ([]string, error) {
 	var imgs []string
-	paginator := s3.NewListObjectsV2Paginator(s.client, &s3.ListObjectsV2Input{
+	input := &s3.ListObjectsV2Input{
 		Bucket: aws.String(bname),
-	})
+	}
+	if prefix != "" {
+		input.Prefix = aws.String(prefix)
+	}
+	paginator := s3.NewListObjectsV2Paginator(s.client, input)
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(s.ctx)
 		if err != nil {
