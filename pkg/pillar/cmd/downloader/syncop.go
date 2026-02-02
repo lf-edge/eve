@@ -377,15 +377,22 @@ func handleSyncOpResponse(ctx *downloaderContext, config types.DownloaderConfig,
 
 // cloud storage interface functions/APIs
 func constructDatastoreContext(ctx *downloaderContext, configName string, NameIsURL bool, dst types.DatastoreConfig) (*types.DatastoreContext, error) {
+	var err error
 	dpath := dst.Dpath
 	downloadURL := configName
 	if !NameIsURL {
 		downloadURL = dst.Fqdn
 		if len(dpath) > 0 {
-			downloadURL = downloadURL + "/" + dpath
+			downloadURL, err = url.JoinPath(downloadURL, dpath)
+			if err != nil {
+				return nil, err
+			}
 		}
 		if len(configName) > 0 {
-			downloadURL = downloadURL + "/" + configName
+			downloadURL, err = url.JoinPath(downloadURL, configName)
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
 
