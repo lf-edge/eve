@@ -966,6 +966,9 @@ eve: $(INSTALLER) $(EVE_ARTIFACTS) current $(RUNME) $(BUILD_YML) | $(BUILD_DIR)
 	fi
 	$(QUIET): $@: Succeeded
 
+eden:
+	EVE_FLAVOR=$(HV) EVE_ARCH=$(ZARCH) ACCEL=$(if $(ACCEL),true,false) USE_TPM=$(if $(TPM),true,false) tests/eden/run.sh
+
 .PHONY: image-set outfile-set cache-export cache-export-docker-load cache-export-docker-load-all
 
 image-set:
@@ -1267,7 +1270,7 @@ kernel-tag:
 	@echo $(KERNEL_TAG)
 
 .PRECIOUS: rootfs-% $(ROOTFS)-%.img $(ROOTFS_COMPLETE)
-.PHONY: all clean test run pkgs help live rootfs config installer live current FORCE $(DIST) HOSTARCH image-set cache-export
+.PHONY: all clean test run pkgs help live rootfs config installer live current FORCE $(DIST) HOSTARCH image-set cache-export eden
 FORCE:
 
 help:
@@ -1286,6 +1289,7 @@ help:
 	@echo "Commonly used maintenance and development targets:"
 	@echo "   build-vm                         prepare a build VM for EVE in qcow2 format"
 	@echo "   test                             run EVE tests"
+	@echo "   eden                             run Eden tests"
 	@echo "   test-profiling                   run pillar tests with memory profiler"
 	@echo "   clean                            clean build artifacts in a current directory (doesn't clean Docker)"
 	@echo "   release                          prepare branch for a release (VERSION=x.y.z required)"

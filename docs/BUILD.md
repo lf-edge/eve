@@ -401,6 +401,38 @@ The current process uses the control knob `PLATFORM` in the following places in 
 
 This approach reduces creation of the resulting live image from 3 minutes to 20 seconds (approximately).
 
+#### Running Eden Tests
+
+To streamline the testing process using [Eden](https://github.com/lf-edge/eden), a convenience target `eden` is available. This target sets up the environment and executes the Eden test suite against the built EVE image.
+
+```shell
+make eden
+```
+
+You can customize the execution with standard Makefile variables (which configure the EVE image properties expected by Eden):
+
+* `HV`: Hypervisor flavor (e.g., `kvm`)
+* `ZARCH`: Architecture (e.g., `amd64`)
+* `TPM=y`: Enable TPM simulation (defaults to disabled)
+* `NOACCEL=1`: Disable hardware acceleration (defaults to enabled)
+
+To control which tests are run, you can pass environment variables to the Eden runner script:
+
+* `EDEN_TAG`: Tag of Eden to use (default: 1.0.13)
+* `TEST_SMOKE=y`: Run smoke tests, `TEST_NET=y` for running networking tests (check `TEST_XXX` for more targets).
+* `TEST_ALL=y`: Run all tests
+* `SETUP_ONLY=y`: Only perform setup (onboard EVE) and exit without running tests
+
+Example running only smoke tests with TPM enabled:
+
+```shell
+TEST_SMOKE=y make eden TPM=y
+```
+
+Logs are available at `dist/<arch>/current/eden/runlogs`. Since all Eden artifacts are stored within the `dist` directory, running `make clean` will also clean up all Eden-related resources and leftovers.
+
+> **Note:** The Eden tests currently rely on the `default` Eden context. Since Eden stores some global configuration in the user's home directory (e.g., `~/.eden`), running this target will override your `default` Eden configuration if you are using Eden independently on the same machine.
+
 ### Generating any yml
 
 Note that the process above can be used to generate any yml file, not just `rootfs-$(HV).yml`. As long as
