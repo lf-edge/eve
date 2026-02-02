@@ -1067,7 +1067,12 @@ func getPeerCerts(subStr string) {
 		if basics.server != "" {
 			subStr = basics.server
 			if basics.proxy != "" {
-				subStr = subStr + "/" + basics.proxy
+				var err error
+				subStr, err = url.JoinPath(subStr, basics.proxy)
+				if err != nil {
+					fmt.Printf("error joining URL path: %v\n", err)
+					return
+				}
 			}
 		}
 		if subStr == "" {
