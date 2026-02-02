@@ -10,7 +10,6 @@ CC = g++
 DEPS := $(OBJS:.o=.d)
 
 INC_FLAGS := $(addprefix -I,$(INC_DIR))
-LDLIBS := -lprotobuf
 
 C_SEC_WARN = -Wpedantic -Wformat=2 -Wformat-overflow=2 \
 -Wformat-truncation=2 -Wnull-dereference -Wstack-protector -Wstrict-overflow=3 \
@@ -25,10 +24,10 @@ C_SEC_FLAGS = $(C_SEC_WARN) -D_FORTIFY_SOURCE=3 \
 L_SEC_FLAGS = -Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack
 
 $(TARGET): $(PROTO_OBJS) $(SERVER_OBJS)
-	$(CC) $(C_SEC_FLAGS) $(L_SEC_FLAGS) $(PROTO_OBJS) $(SERVER_OBJS) -o $@ -lprotobuf
+	$(CC) $(C_SEC_FLAGS) $(L_SEC_FLAGS) $(PROTO_OBJS) $(SERVER_OBJS) -std=c++23 -o $@ $(shell pkg-config --libs protobuf)
 
 $(SERVER_OBJS): $(PROTO_OBJS)
-	$(CC) $(C_SEC_FLAGS) $(INC_FLAGS) -std=c++11 -c src/server.cpp -o $@
+	$(CC) $(C_SEC_FLAGS) $(INC_FLAGS) -std=c++23 -c src/server.cpp -o $@
 
 protoc_files: proto/api.proto
 	protoc --cpp_out=proto -Iproto api.proto
