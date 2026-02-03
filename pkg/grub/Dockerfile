@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile-upstream:1.5.0-rc2-labs
-# Copyright (c) 2025 Zededa, Inc.
+# Copyright (c) 2025-2026 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
 FROM lfedge/eve-alpine:745ae9066273c73b0fd879c4ba4ff626a8392d04 AS grub-build-base
@@ -40,20 +40,20 @@ ENV GRUB_PLATFORM="efi pc:--disable-efiemu"
 
 FROM grub-build-base AS grub-build-arm64
 ENV GRUB_MODULES="xen_boot efi_gop gpt gcry_sha256 measurefs efinet"
-ENV GRUB_COMMIT=2.06
-ENV GRUB_PATCHES="patches-${GRUB_COMMIT} patches-aarch64-${GRUB_COMMIT}"
+ENV GRUB_COMMIT=grub-2.06
+ENV GRUB_PATCHES="patches-2.06 patches-aarch64-2.06"
 ENV GRUB_PLATFORM=efi
 
 FROM grub-build-base AS grub-build-riscv64
 ENV GRUB_MODULES="efinet"
-ENV GRUB_COMMIT=2.06
-ENV GRUB_PATCHES="patches-${GRUB_COMMIT} patches-riscv64-${GRUB_COMMIT}"
+ENV GRUB_COMMIT=grub-2.06
+ENV GRUB_PATCHES="patches-2.06 patches-riscv64-2.06"
 ENV GRUB_PLATFORM=efi
 
 # hadolint ignore=DL3006
 FROM grub-build-${TARGETARCH} AS grub-build
 
-ENV GRUB_REPO=https://cgit.git.savannah.gnu.org/cgit/grub.git
+ENV GRUB_REPO=git://git.git.savannah.gnu.org/grub.git
 
 COPY patches /patches
 COPY patches-2.06  /patches-2.06
@@ -63,27 +63,19 @@ COPY patches-riscv64-2.06 /patches-riscv64-2.06
 RUN ln -s python3 /usr/bin/python && \
     mkdir /grub-lib
 
-ADD ${GRUB_REPO}/snapshot/grub-${GRUB_COMMIT}.tar.gz /grub.tar.gz
+ADD --keep-git-dir ${GRUB_REPO}#${GRUB_COMMIT} /grub
 ENV GNULIB_REVISION=d271f868a8df9bbec29049d01e056481b7a1a263
 ADD --keep-git-dir https://github.com/coreutils/gnulib.git#${GNULIB_REVISION} /gnulib
 
-# the below does a weird init of a git repo, because we are not cloning the
-# repo, yet we need to be in a repo to apply patches with `git am`.
 # hadolint ignore=DL3003,SC2086
-RUN if [ ! -d "grub" ]; then \
-        tar -xzf /grub.tar.gz && \
-        mv "grub-${GRUB_COMMIT}" grub && \
-        rm -f /grub.tar.gz && \
-        cd grub && \
-        mkdir -p /apply/patches && \
-        for dir in ${GRUB_PATCHES}; do \
-            cp -r /${dir}/* /apply/patches; \
-        done && \
-        git config --global user.name "Your Name" && \
-        git config --global user.email "you@example.com" && \
-        git init . && git add . && git commit -m "init" && \
-        git am /apply/patches/*; \
-    fi
+RUN cd /grub && \
+      mkdir -p /apply/patches && \
+      for dir in ${GRUB_PATCHES}; do \
+          cp -r /${dir}/* /apply/patches; \
+      done && \
+      git config --global user.name 'Project EVE' && \
+      git config --global user.email 'builder@projecteve.dev' && \
+      git am /apply/patches/*
 
 WORKDIR /grub
 
