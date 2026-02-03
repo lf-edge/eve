@@ -1,0 +1,28 @@
+python does not like the u-boot- prefix in the version, drop it.
+
+/usr/lib/python3.10/site-packages/setuptools/dist.py:544: UserWarning:
+The version specified ('u-boot-2022.10') is an invalid version, this may
+not work as expected with newer versions of setuptools, pip, and PyPI.
+Please see PEP 440 for more details.
+
+Signed-off-by: Michal Suchanek <msuchanek at suse.de>
+---
+
+ scripts/dtc/pylibfdt/Makefile | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/scripts/dtc/pylibfdt/Makefile b/scripts/dtc/pylibfdt/Makefile
+index 493995e303..a7579f0c5f 100644
+--- a/scripts/dtc/pylibfdt/Makefile
++++ b/scripts/dtc/pylibfdt/Makefile
+@@ -17,7 +17,7 @@ quiet_cmd_pymod = PYMOD   $@
+       cmd_pymod = unset CROSS_COMPILE; unset CFLAGS; \
+ 		CC="$(HOSTCC)" LDSHARED="$(HOSTCC) -shared " \
+ 		LDFLAGS="$(HOSTLDFLAGS)" \
+-		VERSION="u-boot-$(UBOOTVERSION)" \
++		VERSION="$(UBOOTVERSION)" \
+ 		CPPFLAGS="$(HOSTCFLAGS) -I$(LIBFDT_srcdir)" OBJDIR=$(obj) \
+ 		SOURCES="$(PYLIBFDT_srcs)" \
+ 		SWIG_OPTS="-I$(LIBFDT_srcdir) -I$(LIBFDT_srcdir)/.." \
+-- 
+2.37.3
