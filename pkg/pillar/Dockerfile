@@ -4,14 +4,14 @@
 # Dockerfile to build pillar
 
 # use the same set of packages for simplicity
-ARG BUILD_PKGS_BASE="git gcc linux-headers libc-dev make linux-pam-dev m4 findutils go util-linux make patch \
+ARG BUILD_PKGS_BASE="git gcc linux-headers libc-dev make linux-pam-dev m4 findutils util-linux make patch \
                      libintl libuuid libtirpc libblkid libcrypto1.1 zlib tar"
 
 # we use the same image in several places
-ARG EVE_ALPINE_IMAGE=lfedge/eve-alpine:2ed33236f1eea746532f612d6c4b7779c5da2193
+ARG EVE_ALPINE_IMAGE=lfedge/eve-alpine:cfcc44432b107927b6a12da994750fe37ca3fc3b
 
-FROM lfedge/eve-uefi:8bab7035e4b254ace0bd0dd182de2b1588b94355 as uefi-build
-FROM lfedge/eve-dom0-ztools:18c2c8a1b417c27fbf9c32808b72b4b583a2fd3f as zfs
+FROM lfedge/eve-uefi:37a07c59a51cb057d177bd1606c7dde140f53607 as uefi-build
+FROM lfedge/eve-dom0-ztools:16ffc1f59502c79928bbaf1fc1e36c4894b96dcc as zfs
 RUN mkdir /out
 # copy zfs-related files from dom0-ztools using prepared list of files
 RUN while read -r x; do \
@@ -33,7 +33,7 @@ ARG BUILD_PKGS_BASE
 RUN BUILD_PKGS="${BUILD_PKGS_BASE}" eve-alpine-deploy.sh
 
 # hadolint ignore=DL3029
-FROM --platform=${BUILDPLATFORM} lfedge/eve-cross-compilers:208c9e911fe397b8912e2d9592389a0625b3cfa5 AS cross-compilers
+FROM --platform=${BUILDPLATFORM} lfedge/eve-cross-compilers:2ad1b1119b61404045cc67709bf2081abbe42c62 AS cross-compilers
 
 # will use several packages from target arch and copy them to sysroot
 # hadolint ignore=DL3006

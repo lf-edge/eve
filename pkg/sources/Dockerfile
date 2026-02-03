@@ -1,4 +1,4 @@
-FROM lfedge/eve-alpine:2ed33236f1eea746532f612d6c4b7779c5da2193 as tools
+FROM lfedge/eve-alpine:cfcc44432b107927b6a12da994750fe37ca3fc3b as tools
 
 COPY collected_sources.tar.gz /var/collected_sources.tar.gz
 RUN mkdir -p /var/sources && tar -C /var/sources -xzf /var/collected_sources.tar.gz

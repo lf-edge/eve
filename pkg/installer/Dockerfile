@@ -31,7 +31,7 @@ RUN cp "/usr/local/my-installer/target/$CARGO_BUILD_TARGET/release/installer" /u
 FROM lfedge/eve-debug:617be5b69d5312000b0b1adef9bc247759533b21 AS debug
 
 # Dockerfile to build installer img initrd
-FROM lfedge/eve-alpine:c114cf1d3ea51534f061f9aa949beb6ac5c12fb3 AS build
+FROM lfedge/eve-alpine:cfcc44432b107927b6a12da994750fe37ca3fc3b AS build
 SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
 ENV BUILD_PKGS mkinitfs grep patch make coreutils musl-dev gcc g++ perl \
     autoconf automake libtool file bsd-compat-headers libc-dev \
@@ -39,7 +39,7 @@ ENV BUILD_PKGS mkinitfs grep patch make coreutils musl-dev gcc g++ perl \
     libusb-dev kmod-dev curl eudev-dev libdrm-dev i2c-tools-dev hwinfo \
     binutils-dev libaio-dev zlib-static libvncserver-dev python3 pixman-dev \
     py3-setuptools bash cmake m4 pkgconf pkgconfig autoconf-archive tpm2-tss-dev \
-    cryptsetup-dev go lddtree git
+    cryptsetup-dev lddtree git
 ENV PKGS mtools dosfstools libarchive-tools sgdisk e2fsprogs util-linux \
     squashfs-tools coreutils tar dmidecode smartmontools libaio libaio-dev \
     perl glib zlib libusb curl xz pciutils usbutils hdparm ncurses-dev jq \
