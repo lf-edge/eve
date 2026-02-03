@@ -1,0 +1,24 @@
+From d3d5b391b16de14b9a9a459666b399e7b653324d Tue, 3 Feb 2026 12:07:33 +0000
+From: Christoph Ostarek <christoph@zededa.com>
+Date: Tue, 3 Feb 2026 12:07:33 +0000
+Subject: [PATCH] fix missing include for basename
+
+---
+ tools/qemu-xen/hw/vfio/pci.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/tools/qemu-xen/hw/vfio/pci.c b/tools/qemu-xen/hw/vfio/pci.c
+index 62013c67..7ef95672 100644
+--- a/tools/qemu-xen/hw/vfio/pci.c
++++ b/tools/qemu-xen/hw/vfio/pci.c
+@@ -22,6 +22,8 @@
+ #include <linux/vfio.h>
+ #include <sys/ioctl.h>
+ 
++#include <libgen.h>
++
+ #include "hw/hw.h"
+ #include "hw/pci/msi.h"
+ #include "hw/pci/msix.h"
+-- 
+2.49.1
