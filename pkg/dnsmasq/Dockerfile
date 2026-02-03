@@ -1,7 +1,7 @@
 # Copyright (c) 2025 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-FROM lfedge/eve-alpine:2ed33236f1eea746532f612d6c4b7779c5da2193 as build
+FROM lfedge/eve-alpine:cfcc44432b107927b6a12da994750fe37ca3fc3b as build
 ENV BUILD_PKGS gcc make patch libc-dev linux-headers tar xz coreutils
 RUN eve-alpine-deploy.sh
 
@@ -26,8 +26,6 @@ RUN make  -j "$(getconf _NPROCESSORS_ONLN)"
 RUN make install DESTDIR=/out PREFIX=/usr
 
 FROM build AS test
-ENV BUILD_PKGS go
-RUN eve-alpine-deploy.sh
 
 COPY dnstest /dnstest
 WORKDIR /dnstest
