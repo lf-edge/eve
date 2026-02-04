@@ -42,7 +42,7 @@ func GetNodeDrainStatus(pubsub.Subscription, *base.LogObject) *NodeDrainStatus {
 }
 
 // IsClusterMode  is a stub for non EVE-k builds
-func IsClusterMode() bool {
+func IsClusterMode(ps *pubsub.PubSub, log *base.LogObject, agentName string) bool {
 	return false
 }
 

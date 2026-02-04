@@ -276,7 +276,7 @@ func (msrv *Msrv) initSubscriptions(persist bool) (err error) {
 		MyAgentName: agentName,
 		TopicImpl:   types.EdgeNodeInfo{},
 		Activate:    false,
-		Persistent:  true,
+		Persistent:  false,
 	})
 	if err != nil {
 		return err

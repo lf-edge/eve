@@ -66,14 +66,14 @@ type AppTrackerInfo struct {
 // This function can be called from 'zedkube' HTTP handler function on the live node, or
 // it can be called from offline for processing the same microservice publications in eve-info data
 // of the 'collect-info'. The publication directory locations are passed in to handle the various usages.
-func GetApplicationInfo(rootRun, persistStatus, persistKubelog, AppUUID string) AppTrackerInfo {
+func GetApplicationInfo(rootRun, persistKubelog, AppUUID string) AppTrackerInfo {
 	var appInfo []OrderedAppInfoItem
 	var err error
 
 	// 1) Get the Node Info
 	structName := "zedagent-EdgeNodeInfo"
 	nodeInfo := &types.EdgeNodeInfo{}
-	if structName, err = readJSONFile(persistStatus, structName, "global", nodeInfo); err != nil {
+	if structName, err = readJSONFile(rootRun, structName, "global", nodeInfo); err != nil {
 		return addHostnameAppInfo("unknown", appendFailedItem(appInfo, structName, "global", err))
 	}
 	ai := AppInfoItems{ // EdgeNodeInfo
