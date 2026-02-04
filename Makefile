@@ -254,6 +254,13 @@ CLOUD_PROJECT=-project lf-edge-eve
 CLOUD_BUCKET=-bucket eve-live
 CLOUD_INSTANCE=-zone us-west1-a -machine n1-standard-1
 
+HV_SUPPORTED=acrn kvm k mini xen
+
+# Check if HV is supported
+ifeq (, $(filter $(HV), $(HV_SUPPORTED)))
+    $(error "Unsupported hypervisor $(HV)")
+endif
+
 # qemu settings
 QEMU_SYSTEM_arm64=qemu-system-aarch64
 QEMU_SYSTEM_amd64=qemu-system-x86_64
