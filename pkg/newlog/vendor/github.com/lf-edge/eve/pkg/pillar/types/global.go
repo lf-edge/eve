@@ -1,4 +1,4 @@
-// Copyright (c) 2018 Zededa, Inc.
+// Copyright (c) 2018-2026 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 package types
@@ -8,10 +8,12 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
 
+	"github.com/Masterminds/semver"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/sirupsen/logrus" // OK for logrus.Fatal
 )
@@ -164,8 +166,6 @@ const (
 	MetricInterval GlobalSettingKey = "timer.metric.interval"
 	// HardwareHealthInterval global setting key
 	HardwareHealthInterval GlobalSettingKey = "timer.hardwarehealth.interval"
-	// HardwareInfoInterval global setting key
-	HardwareInfoInterval GlobalSettingKey = "timer.hardwareinfo.interval"
 	// DevInfoInterval global setting key
 	DevInfoInterval GlobalSettingKey = "timer.deviceinfo.interval"
 	// DiskScanMetricInterval global setting key
@@ -299,6 +299,12 @@ const (
 	// this period no stack traces are collected, only warning messages are logged.
 	GoroutineLeakDetectionCooldownMinutes GlobalSettingKey = "goroutine.leak.detection.cooldown.minutes"
 
+	// Internal Memory Monitor settings
+	// InternalMemoryMonitorStoreEnabled - collect probes and store CSV
+	InternalMemoryMonitorStoreEnabled GlobalSettingKey = "internal-memory-monitor.store.enabled"
+	// InternalMemoryMonitorAnalyzeEnabled - run analysis and compute scores
+	InternalMemoryMonitorAnalyzeEnabled GlobalSettingKey = "internal-memory-monitor.analyze.enabled"
+
 	// TriState Items
 	// NetworkFallbackAnyEth global setting key
 	NetworkFallbackAnyEth GlobalSettingKey = "network.fallback.any.eth"
@@ -330,6 +336,9 @@ const (
 	KernelRemoteLogLevel GlobalSettingKey = "debug.kernel.remote.loglevel"
 	// FmlCustomResolution global setting key
 	FmlCustomResolution GlobalSettingKey = "app.fml.resolution"
+	// AppBootOrder global setting key for device-wide default boot order for VMs
+	// Supported values: "" (default), "usb" (prioritize USB), "nousb" (deprioritize USB)
+	AppBootOrder GlobalSettingKey = "app.boot.order"
 	// EdgeviewPublicKeys global setting key
 	EdgeviewPublicKeys GlobalSettingKey = "edgeview.authen.publickey"
 
@@ -417,6 +426,19 @@ const (
 	// DiagProbeRemoteHTTPSEndpoint : remote endpoint queried over **HTTPS** to assess
 	// the state of network connectivity whenever the controller is not reachable.
 	DiagProbeRemoteHTTPSEndpoint GlobalSettingKey = "diag.probe.remote.https.endpoint"
+
+	// EnableTCPMSSClamping : Configuration property to enable or disable TCP MSS clamping
+	// for application traffic forwarded by EVE.
+	EnableTCPMSSClamping GlobalSettingKey = "app.enable.tcp.mss.clamping"
+
+	// K3s Config Overrides: To properly override existing config settings, the following rules must be followed:
+	// - config merge: https://docs.k3s.io/installation/configuration#value-merge-behavior
+	// - server config spec: https://docs.k3s.io/cli/server
+	// - agent config spec: https://docs.k3s.io/cli/agent
+	K3sConfigOverride GlobalSettingKey = "k3s.config.override"
+	// K3sVersionOverride : user override k3s version.  This version will take priority
+	// over any EVE-OS baseos version defined k3s version (pkg/kube/cluster-update.sh)
+	K3sVersionOverride GlobalSettingKey = "k3s.version"
 )
 
 // AgentSettingKey - keys for per-agent settings
@@ -983,7 +1005,6 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	// timer.metric.hardwarehealth.interval (seconds)
 	// Default value 12 hours minimum value 6 hours.
 	configItemSpecMap.AddIntItem(HardwareHealthInterval, 12*HourInSec, 6*HourInSec, 0xFFFFFFFF)
-	configItemSpecMap.AddIntItem(HardwareInfoInterval, 3*HourInSec, 3*HourInSec, 0xFFFFFFFF)
 	// timer.deviceinfo.interval (seconds)
 	// Forces the device to send device info to the controller at least once in a while.
 	// Default value 10 minutes, minimum value 30 seconds
@@ -1053,6 +1074,9 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	// Kubernetes Drain Section
 	configItemSpecMap.AddIntItem(KubernetesDrainTimeout, DefaultDrainTimeoutHours, 1, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(DrainSkipK8sAPINotReachableTimeout, DefaultDrainSkipK8sAPINotReachableTimeoutSeconds, 1, 0xFFFFFFFF)
+	// Internal Memory Monitoring section
+	configItemSpecMap.AddBoolItem(InternalMemoryMonitorStoreEnabled, true)
+	configItemSpecMap.AddBoolItem(InternalMemoryMonitorAnalyzeEnabled, true)
 
 	// Add Bool Items
 	configItemSpecMap.AddBoolItem(UsbAccess, true) // Controller likely default to false
@@ -1087,6 +1111,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddStringItem(SyslogRemoteLogLevel, "info", validateSyslogKernelLevel)
 	configItemSpecMap.AddStringItem(KernelRemoteLogLevel, "info", validateSyslogKernelLevel)
 	configItemSpecMap.AddStringItem(FmlCustomResolution, FmlResolutionUnset, blankValidator)
+	configItemSpecMap.AddStringItem(AppBootOrder, "", validateBootOrder)
 	configItemSpecMap.AddStringItem(TUIMonitorLogLevel, "info", blankValidator)
 	configItemSpecMap.AddStringItem(EdgeviewPublicKeys, "", blankValidator)
 
@@ -1120,6 +1145,12 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddStringItem(DiagProbeRemoteHTTPEndpoint, "www.google.com", makeURLValidator("http", true))
 	configItemSpecMap.AddStringItem(DiagProbeRemoteHTTPSEndpoint, "www.google.com", makeURLValidator("https", false))
 
+	// TCP MSS Clamping
+	configItemSpecMap.AddBoolItem(EnableTCPMSSClamping, true)
+
+	//K3s Settings
+	configItemSpecMap.AddStringItem(K3sConfigOverride, "", base64Validator)
+	configItemSpecMap.AddStringItem(K3sVersionOverride, "", k3sVersionValidator)
 	return configItemSpecMap
 }
 
@@ -1131,6 +1162,16 @@ func validateLogLevel(level string) error {
 	default:
 		_, err := logrus.ParseLevel(level)
 		return err
+	}
+}
+
+// validateBootOrder - make sure the boot order has one of the supported values
+func validateBootOrder(bootOrder string) error {
+	switch bootOrder {
+	case "", "usb", "nousb":
+		return nil
+	default:
+		return fmt.Errorf("validateBootOrder: invalid boot order '%s', must be '', 'usb', or 'nousb'", bootOrder)
 	}
 }
 
@@ -1223,6 +1264,57 @@ func base64Validator(s string) error {
 		return fmt.Errorf("base64Validator: %s is not a valid base64 string: %w", s, err)
 	}
 	return nil
+}
+
+func makeSemverValidator(metadataPrefix string, constraintStrings []string) func(destVer string) error {
+	return func(destVer string) error {
+		if destVer == "" {
+			// Accept empty value.
+			return nil
+		}
+		v, err := semver.NewVersion(destVer)
+		if err != nil {
+			return fmt.Errorf("semverValidator: %s is not a valid version format: %w", destVer, err)
+		}
+
+		for _, constraintStr := range constraintStrings {
+			c, err := semver.NewConstraint(constraintStr)
+			if err != nil {
+				return err
+			}
+			if !c.Check(v) {
+				return fmt.Errorf("Requested version denied due to constraint %s", constraintStr)
+			}
+		}
+
+		if metadataPrefix != "" {
+			metadata := v.Metadata()
+			if metadata == "" || !strings.HasPrefix(metadata, metadataPrefix) {
+				return fmt.Errorf("Version has invalid metadata format")
+			}
+		}
+		return nil
+	}
+}
+
+func k3sVersionValidator(destVer string) error {
+	if !base.IsHVTypeKube() {
+		return nil
+	}
+	if destVer == "" {
+		// Accept empty value.
+		return nil
+	}
+	if _, err := os.Stat(K3sInitialVersionPath); err != nil {
+		return fmt.Errorf("kube has not yet initialized k3s")
+	}
+	initialK3sVersionBytes, err := os.ReadFile(K3sInitialVersionPath)
+	if err != nil {
+		return fmt.Errorf("Unable to read %s:%v", K3sInitialVersionPath, err)
+	}
+	initialK3sDowngradeConstraint := ">=" + string(initialK3sVersionBytes)
+
+	return makeSemverValidator("k3s", []string{"~1.x", initialK3sDowngradeConstraint})(destVer)
 }
 
 // NewConfigItemValueMap - Create new instance of ConfigItemValueMap

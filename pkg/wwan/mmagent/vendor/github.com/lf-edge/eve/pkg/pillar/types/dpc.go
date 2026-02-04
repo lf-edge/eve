@@ -1062,15 +1062,6 @@ type WifiConfig struct {
 	CipherBlockStatus
 }
 
-const (
-	// WpaFilename : path to WiFi wpa_supplicant file.
-	WpaFilename = "/run/wlan/wpa_supplicant.conf"
-	// RunWlanDir : directory for WLAN-related configuration.
-	RunWlanDir = "/run/wlan"
-	// WpaTempname : name used for a temporary wpa_supplicant file.
-	WpaTempname = "wpa_supplicant.temp"
-)
-
 // DeprecatedCellConfig : old and now deprecated structure for storing cellular
 // network port config. It is preserved only to support upgrades from older EVE
 // versions where this is still being used (under the original struct name "CellConfig")

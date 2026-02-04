@@ -1,4 +1,4 @@
-// Copyright (c) 2017 Zededa, Inc.
+// Copyright (c) 2017-2026 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 package types
@@ -15,6 +15,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	zconfig "github.com/lf-edge/eve-api/go/config"
+	zcommon "github.com/lf-edge/eve-api/go/evecommon"
 	"github.com/lf-edge/eve/pkg/kube/cnirpc"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
@@ -44,6 +45,9 @@ type DomainConfig struct {
 	KubeImageName string
 	// if this node is the DNiD of the App
 	IsDNidNode bool
+
+	// Node Affinity for cluster IsDesignatedNodeID
+	AffinityType Affinity
 
 	// XXX: to be deprecated, use CipherBlockStatus instead
 	CloudInitUserData *string `json:"pubsub-large-CloudInitUserData"` // base64-encoded
@@ -273,6 +277,13 @@ type VmConfig struct {
 	EnableOemWinLicenseKey bool
 	// DisableVirtualTPM disables virtual TPM for the domain
 	DisableVirtualTPM bool
+	// BootOrder controls boot device priority for this VM.
+	// This setting can be configured via:
+	//   1. Controller API (VmConfig.boot_order in EdgeDevConfig)
+	//   2. LPS API (/api/v1/app-boot-config endpoint)
+	// LPS takes precedence over controller when both are set.
+	// The setting is passed to OVMF via fw_cfg "opt/eve.bootorder".
+	BootOrder zcommon.BootOrder
 }
 
 // VmMode is the type for the virtualization mode

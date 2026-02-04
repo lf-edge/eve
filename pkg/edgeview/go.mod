@@ -9,8 +9,8 @@ require (
 	github.com/fsnotify/fsnotify v1.6.0
 	github.com/gorilla/websocket v1.5.0
 	github.com/grandcat/zeroconf v1.0.0
-	github.com/lf-edge/eve-api/go v0.0.0-20251118212149-2208af2d72d9
-	github.com/lf-edge/eve/pkg/pillar v0.0.0-20251029075156-4a3aedeeddf7
+	github.com/lf-edge/eve-api/go v0.0.0-20260116205402-bac92fb1f235
+	github.com/lf-edge/eve/pkg/pillar v0.0.0-20260203234815-b6b41165272c
 	github.com/onsi/gomega v1.29.0
 	github.com/satori/go.uuid v1.2.1-0.20180404165556-75cca531ea76
 	github.com/shirou/gopsutil v3.21.11+incompatible
@@ -18,16 +18,17 @@ require (
 	github.com/tatsushid/go-fastping v0.0.0-20160109021039-d7bb493dee3e
 	github.com/vishvananda/netlink v1.3.1
 	golang.org/x/crypto v0.45.0
-	golang.org/x/sys v0.38.0
+	golang.org/x/sys v0.40.0
 	golang.org/x/time v0.12.0
 )
 
 require (
+	github.com/Masterminds/semver v1.5.0 // indirect
 	github.com/cenkalti/backoff v2.2.1+incompatible // indirect
 	github.com/eriknordmark/ipinfo v0.0.0-20230728132417-2d8f4da903d7 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.2 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
-	github.com/go-ole/go-ole v1.2.6 // indirect
+	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
 	github.com/go-playground/validator/v10 v10.15.5 // indirect

@@ -7,16 +7,22 @@ import (
 	"bytes"
 	"crypto"
 	"crypto/ecdsa"
+	"crypto/sha256"
 	"crypto/x509"
 	"encoding/asn1"
+	"encoding/binary"
 	"encoding/gob"
+	"encoding/hex"
+	"encoding/json"
 	"encoding/pem"
 	"fmt"
 	"io"
+	"log"
 	"math/big"
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"unsafe"
@@ -69,9 +75,23 @@ const (
 	//TpmSealedDiskPubHdl is the handle for constructing disk encryption key
 	TpmSealedDiskPubHdl tpmutil.Handle = 0x1900000
 
+	// TPM_CC_PolicyPCR is the TPM command code for PolicyPCR
+	TPM_CC_PolicyPCR tpmutil.Command = 0x0000017F //revive:disable-line:var-naming
+
 	//EmptyPassword is an empty string
 	EmptyPassword  = ""
 	vaultKeyLength = 32 //Bytes
+
+	// PCRIndexMaxCount is the maximum number of PCR indexes allowed for Policy PCR
+	PCRIndexMaxCount = 15
+	// PCRIndexMax is the maximum PCR index allowed for Policy PCR
+	PCRIndexMax = 15
+	// PCRIndexSRTM is the PCR index for Static Root of Trust for Measurement
+	PCRIndexSRTM = 0
+	// PCRIndexGPT is the PCR index for GPT partition table and boot manager configuration
+	PCRIndexGPT = 5
+	// PCRIndexOS is the PCR index for defined by the OS or user.
+	PCRIndexOS = 15
 )
 
 // PCRBank256Status stores info about support for
@@ -97,8 +117,22 @@ var (
 	tpmHwInfo        = ""
 	pcrBank256Status = PCRBank256StatusUnknown
 
-	//DiskKeySealingPCRs represents PCRs that we use for sealing
-	DiskKeySealingPCRs = tpm2.PCRSelection{Hash: tpm2.AlgSHA256, PCRs: []int{0, 1, 2, 3, 4, 6, 7, 8, 9, 13, 14}}
+	//DefaultDiskKeySealingPCRs represents PCRs default selection for sealing disk encryption
+	DefaultDiskKeySealingPCRs = func() tpm2.PCRSelection {
+		var pcrs []int
+		for i := PCRIndexSRTM; i <= PCRIndexMax; i++ {
+			// Skip PCR 5 (GPT/boot manager) it is volatile and unsuitable for sealing
+			if i == PCRIndexGPT {
+				continue
+			}
+			// Skip PCR 15 (OS/user defined) we are not using it by default
+			if i == PCRIndexOS {
+				continue
+			}
+			pcrs = append(pcrs, i)
+		}
+		return tpm2.PCRSelection{Hash: tpm2.AlgSHA256, PCRs: pcrs}
+	}()
 
 	// TpmDevicePath is the TPM device file path, it is not a constant due to
 	// test usage.
@@ -231,33 +265,294 @@ var (
 			CurveID: tpm2.CurveNISTP256,
 		},
 	}
-	// NullKeyTemplate is used for detecting TPM reset attacks
-	NullKeyTemplate = tpm2.Public{
-		Type:    tpm2.AlgECC,    // TPM_ALG_ECC
-		NameAlg: tpm2.AlgSHA256, // TPM_ALG_SHA256
-		Attributes: tpm2.FlagFixedTPM | tpm2.FlagFixedParent | tpm2.FlagSensitiveDataOrigin |
-			tpm2.FlagUserWithAuth | tpm2.FlagNoDA | tpm2.FlagRestricted | tpm2.FlagDecrypt, // TPM2_OA_NULL_KEY
-		AuthPolicy: []byte{}, // Empty auth policy
-		ECCParameters: &tpm2.ECCParams{
-			Symmetric: &tpm2.SymScheme{
-				Alg:     tpm2.AlgAES, // TPM_ALG_AES
-				KeyBits: 128,         // AES_KEY_BITS (128)
-				Mode:    tpm2.AlgCFB, // TPM_ALG_CFB
-			},
-			Sign: &tpm2.SigScheme{
-				Alg: tpm2.AlgNull, // TPM_ALG_NULL
-			},
-			CurveID: tpm2.CurveNISTP256, // TPM2_ECC_NIST_P256
-			KDF: &tpm2.KDFScheme{
-				Alg: tpm2.AlgNull, // TPM_ALG_NULL
-			},
-			Point: tpm2.ECPoint{
-				XRaw: []byte{}, // Zero size X point
-				YRaw: []byte{}, // Zero size Y point
-			},
-		},
-	}
 )
+
+// getDiskKeyAuthDigest reads the public area of the sealed disk key and
+// returns the auth policy digest.
+func getDiskKeyAuthDigest(tpmPath string, handle tpmutil.Handle) ([]byte, error) {
+	rwc, err := tpm2.OpenTPM(tpmPath)
+	if err != nil {
+		return nil, err
+	}
+	defer rwc.Close()
+
+	nvData, err := tpm2.NVReadEx(rwc, handle, tpm2.HandleOwner, EmptyPassword, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	pubData, err := tpm2.DecodePublic(nvData)
+	if err != nil {
+		return nil, err
+	}
+
+	return pubData.AuthPolicy, nil
+}
+
+// computePolicyPCRAuthDigest replicates the TPM's PolicyPCR digest calculation.
+//
+// The formula for the policy PCR digest is:
+// newPolicyDigest = Hash( oldPolicyDigest || TPM_CC_PolicyPCR || pcrs || digestTPM )
+//
+// Formula parameters:
+//   - oldPolicyDigest: The current policy digest.
+//   - TPM_CC_PolicyPCR: The command code for PolicyPCR (0x0000017F).
+//   - pcrs: The TPML_PCR_SELECTION structure indicating which PCRs are selected,
+//     It contains [Count (uint32) | HashAlg (uint16) | SizeOfSelect (uint8) | PcrSelect (bitmap)]
+//   - digestTPM: The hash of the values of the selected PCRs.
+//
+// Reference:
+//   - TPM 2.0, David Wooten - Microsoft Corp, Section "Authorization",
+//   - TCG Trusted Attestation Protocol (TAP) Information Model
+//     for TPM Families 1.2 and 2.0 and DICE Family 1.0,
+//     section 4.4 "Attestation of TPM 2.0 Signing Key used for Implicit Attestation"
+func computePolicyPCRAuthDigest(pcrValues map[int][]byte, pcrIndices []int) ([]byte, error) {
+	// Prepare "digestTPM", this is the hash of the concatenation of all selected PCR values.
+	sortedIndices := make([]int, len(pcrIndices))
+	copy(sortedIndices, pcrIndices)
+	sort.Ints(sortedIndices)
+	pcrValueHash := sha256.New()
+	for _, idx := range sortedIndices {
+		val, ok := pcrValues[idx]
+		if !ok {
+			return nil, fmt.Errorf("missing PCR value for index %d", idx)
+		}
+		pcrValueHash.Write(val)
+	}
+	pcrsDigest := pcrValueHash.Sum(nil)
+	digestTPM := new(bytes.Buffer)
+	digestTPM.Write(pcrsDigest)
+
+	// Prepare "pcrs" (TPML_PCR_SELECTION), This structure describes the PCR selection.
+	// We set the size of select bitmap to 3 bytes, which covers PCRs 0-23.
+	sizeOfSelect := uint8(3)
+	pcrs := new(bytes.Buffer)
+	// TPML_PCR_SELECTION.Count: Number of selection structures (1 since we select only SHA256)
+	binary.Write(pcrs, binary.BigEndian, uint32(1))
+	// TPMS_PCR_SELECTION.HashAlg: The hash algorithm of the PCR bank
+	binary.Write(pcrs, binary.BigEndian, uint16(tpm2.AlgSHA256))
+	// TPMS_PCR_SELECTION.SizeOfSelect: Size of the bitmap in bytes
+	binary.Write(pcrs, binary.BigEndian, sizeOfSelect)
+
+	// The bitmap indicates which PCRs are active, e.g. for PCR 0, bit 0 of byte 0 is set.
+	bitmap := make([]byte, sizeOfSelect)
+	for _, pcr := range sortedIndices {
+		bytePos := pcr / 8
+		// This should never happen, just in case
+		if int(bytePos) >= int(sizeOfSelect) {
+			return nil, fmt.Errorf("PCR index %d out of range for selection size %d", pcr, sizeOfSelect)
+		}
+		bitPos := pcr % 8
+		bitmap[bytePos] |= (1 << bitPos)
+	}
+	pcrs.Write(bitmap)
+
+	// because in our case TPM2_PolicyPCR is the first (and only) policy
+	// in the policy session, the old policy digest is set to zero.
+	// xxx : we should adjust this when we have multiple policies.
+	oldPolicyDigest := make([]byte, sha256.Size)
+
+	// Final calculation : Hash( oldPolicyDigest || TPM_CC_PolicyPCR || pcrs || digestTPM )
+	h := sha256.New()
+	h.Write(oldPolicyDigest)
+	binary.Write(h, binary.BigEndian, uint32(TPM_CC_PolicyPCR))
+	h.Write(pcrs.Bytes())
+	h.Write(digestTPM.Bytes())
+
+	return h.Sum(nil), nil
+}
+
+// getRuntimePCRValues reads the current PCR values from TPM for the given PCR indexes.
+func getRuntimePCRValues(tpmPath string, pcrIndices []int) (map[int][]byte, error) {
+	rwc, err := tpm2.OpenTPM(tpmPath)
+	if err != nil {
+		return nil, err
+	}
+	defer rwc.Close()
+
+	pcrValues := make(map[int][]byte)
+	for _, pdx := range pcrIndices {
+		val, err := tpm2.ReadPCR(rwc, pdx, tpm2.AlgSHA256)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read PCR %d: %v", pdx, err)
+		}
+		pcrValues[pdx] = val
+	}
+
+	return pcrValues, nil
+}
+
+// recoverPolicyPCRIndexes tries to find the correct combination of PCR indexes used
+// in the policy PCR by checking all possible subsets of the candidate PCRs,
+// it should compute at max 2^14 = 16384 combinations, which should happen in the
+// order of microseconds.
+func recoverPolicyPCRIndexes(tpmPath string, targetDigest []byte, candidatePcrs []int) ([]int, error) {
+	pcrValues, err := getRuntimePCRValues(tpmPath, candidatePcrs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get runtime PCR values: %v", err)
+	}
+
+	// There are 2^n subsets for n candidate PCRs
+	n := len(candidatePcrs)
+	limit := 1 << n
+	for i := 0; i < limit; i++ {
+		var subset []int
+		for j := 0; j < n; j++ {
+			// If the j-th bit of i is set (1), include candidates[j]
+			if i&(1<<j) != 0 {
+				subset = append(subset, candidatePcrs[j])
+			}
+		}
+		digest, err := computePolicyPCRAuthDigest(pcrValues, subset)
+		if err == nil && bytes.Equal(digest, targetDigest) {
+			return subset, nil
+		}
+	}
+
+	return nil, fmt.Errorf("no valid PCR index combination found")
+}
+
+// GetDiskKeyPolicyPcrOrDefault returns the PCR selection to use for sealing the disk key.
+// It reads from the (controller given) saved sealing PCRs file if it exists,
+// otherwise it return the default policy.
+func GetDiskKeyPolicyPcrOrDefault(path string) tpm2.PCRSelection {
+	if lockFile, err := fileutils.AcquireLock(path, false); err == nil {
+		defer lockFile.Close()
+
+		vaultPolicyPcr := types.VaultKeyPolicyPCR{}
+		if f, err := os.Open(path); err == nil {
+			defer f.Close()
+
+			data, err := io.ReadAll(f)
+			if err == nil && len(data) > 0 {
+				if err := json.Unmarshal(data, &vaultPolicyPcr); err == nil {
+					if err := ValidatePolicyPcr(vaultPolicyPcr); err == nil {
+						return tpm2.PCRSelection{Hash: tpm2.AlgSHA256, PCRs: vaultPolicyPcr.Indexes}
+					}
+				}
+			}
+		}
+	}
+
+	// If there is no saved policy, or saved policy was invalid, return the default policy.
+	return tpm2.PCRSelection{Hash: tpm2.AlgSHA256, PCRs: DefaultDiskKeySealingPCRs.PCRs}
+}
+
+// RecoverDiskKeyPolicyPcr tries to recover the PCR selection used for sealing
+// the disk key by comparing the auth digest in the sealed key public area
+// with the computed policy PCR digests from current PCR values. it first tries
+// the default PCR selection, if that fails it tries to find the correct PCR
+// indexes by checking all possible subsets of the default PCRs.
+func RecoverDiskKeyPolicyPcr() (tpm2.PCRSelection, error) {
+	authDigest, err := getDiskKeyAuthDigest(TpmDevicePath, TpmSealedDiskPubHdl)
+	if err != nil {
+		return tpm2.PCRSelection{}, err
+	}
+
+	// Use the Quote PCR values, which includes all possible PCRs used for sealing
+	runtimePCRs := PcrListForQuote.PCRs
+	pcrs, err := getRuntimePCRValues(TpmDevicePath, runtimePCRs)
+	if err != nil {
+		return tpm2.PCRSelection{}, err
+	}
+
+	// Give the default PCRs a chance before full recovery
+	computedDigest, err := computePolicyPCRAuthDigest(pcrs, DefaultDiskKeySealingPCRs.PCRs)
+	if err == nil && bytes.Equal(computedDigest, authDigest) {
+		// Save the recovered PCR policy for future use, ignore errors
+		_, _ = SaveDiskKeyPolicyPcr(types.VaultKeyPolicyPCR{Indexes: DefaultDiskKeySealingPCRs.PCRs, ID: types.PolicyPCRRecoveredDefault}, types.PolicyPcrFile)
+		return DefaultDiskKeySealingPCRs, nil
+	}
+
+	// try to recover the PCR indexes used in the policy PCR
+	pcrIndexes, err := recoverPolicyPCRIndexes(TpmDevicePath, authDigest, runtimePCRs)
+	if err != nil {
+		return tpm2.PCRSelection{}, err
+	}
+
+	// Save the recovered PCR policy for future use, ignore errors
+	_, _ = SaveDiskKeyPolicyPcr(types.VaultKeyPolicyPCR{Indexes: pcrIndexes, ID: types.PolicyPCRRecovered}, types.PolicyPcrFile)
+	return tpm2.PCRSelection{Hash: tpm2.AlgSHA256, PCRs: pcrIndexes}, nil
+}
+
+// ValidatePolicyPcr validates the given VaultKeyPolicyPCR  to make sure it is
+// correct and meets the minimum security requirements.
+func ValidatePolicyPcr(sp types.VaultKeyPolicyPCR) error {
+	// Check for maximum count (reasonable limit for PCR selection)
+	if len(sp.Indexes) > PCRIndexMaxCount {
+		return fmt.Errorf("too many PCRs in policy: maximum %d allowed, got %d", PCRIndexMaxCount, len(sp.Indexes))
+	}
+
+	hasPCR0 := false
+	seenPCRs := make(map[int]bool)
+	for _, pcr := range sp.Indexes {
+		// No duplicate PCR indexes
+		if seenPCRs[pcr] {
+			return fmt.Errorf("duplicate PCR index %d in policy", pcr)
+		}
+		seenPCRs[pcr] = true
+		// PCR indexes must be between 0 and 15 inclusive, PCR 16 is resettable debug PCR,
+		// PCR 17-22 are used for DTRM, PCR 23 is resettable and also used for DTRM.
+		if pcr < PCRIndexSRTM || pcr > PCRIndexMaxCount {
+			return fmt.Errorf("invalid PCR index %d in policy: must be between 0 and 15", pcr)
+		}
+		// PCR 5 is used for GPT partition table and boot manager configuration is
+		// volatile and unsuitable for sealing in many scenarios.
+		if pcr == PCRIndexGPT {
+			return fmt.Errorf("invalid policy, PCR 5 is volatile (GPT/boot manager) and should not be included")
+		}
+		// PCR 0, SRTM, must be included
+		if pcr == PCRIndexSRTM {
+			hasPCR0 = true
+		}
+	}
+	if !hasPCR0 {
+		return fmt.Errorf("PCR 0 must be in the list")
+	}
+
+	return nil
+}
+
+// SaveDiskKeyPolicyPcr saves the PCR policy indexes to a file,
+// beware that this function will crash the service if it fails to write the file.
+func SaveDiskKeyPolicyPcr(sp types.VaultKeyPolicyPCR, policyPath string) (bool, error) {
+	// Sort the PCR indexes, so we always have a consistent order for comparison.
+	sort.Ints(sp.Indexes)
+
+	lockFile, err := fileutils.AcquireLock(policyPath, true)
+	if err != nil {
+		// xxx : should we fatal here?
+		return false, fmt.Errorf("failed to acquire lock for writing policy PCR to %s: %w", policyPath, err)
+	}
+	defer lockFile.Close()
+
+	if f, err := os.Open(policyPath); err == nil {
+		defer f.Close()
+
+		existingPolicy := types.VaultKeyPolicyPCR{}
+		data, err := io.ReadAll(f)
+		if err == nil && len(data) > 0 {
+			if err := json.Unmarshal(data, &existingPolicy); err == nil {
+				sort.Ints(existingPolicy.Indexes)
+				if slices.Equal(existingPolicy.Indexes, sp.Indexes) && existingPolicy.ID == sp.ID {
+					return false, nil
+				}
+			}
+		}
+	}
+
+	// If there is a different existing policy, overwrite it with the new one.
+	policyData, err := json.Marshal(sp)
+	if err != nil {
+		return false, fmt.Errorf("failed to marshal new policy PCR (id=%d, pcrs=%v): %w", sp.ID, sp.Indexes, err)
+	}
+	if err := fileutils.WriteRename(policyPath, policyData); err != nil {
+		// Crash the service, this gives the system to try and recover at the next boot
+		log.Fatalf("failed to write new policy PCR (id=%d, pcrs=%v) to %s: %v", sp.ID, sp.Indexes, policyPath, err)
+	}
+
+	return true, nil
+}
 
 // GetTpmLogFileNames returns paths to saved TPM logs
 func GetTpmLogFileNames() (string, string) {
@@ -545,15 +840,6 @@ var vendorRegistry = map[uint32]string{
 	0x474F4F47: "Google",
 }
 
-// till we have next version of go-tpm released, use this
-const (
-	tpmPropertyManufacturer tpm2.TPMProp = 0x105
-	tpmPropertyVendorStr1   tpm2.TPMProp = 0x106
-	tpmPropertyVendorStr2   tpm2.TPMProp = 0x107
-	tpmPropertyFirmVer1     tpm2.TPMProp = 0x10b
-	tpmPropertyFirmVer2     tpm2.TPMProp = 0x10c
-)
-
 // FetchTpmHwInfo returns TPM Hardware properties in a string
 func FetchTpmHwInfo() (string, error) {
 	//If we had done this earlier, return the last result
@@ -569,23 +855,23 @@ func FetchTpmHwInfo() (string, error) {
 	}
 
 	//First time. Fetch it from TPM and cache it.
-	v1, err := GetTpmProperty(tpmPropertyManufacturer)
+	v1, err := GetTpmProperty(tpm2.Manufacturer)
 	if err != nil {
 		return "", err
 	}
-	v2, err := GetTpmProperty(tpmPropertyVendorStr1)
+	v2, err := GetTpmProperty(tpm2.VendorString1)
 	if err != nil {
 		return "", err
 	}
-	v3, err := GetTpmProperty(tpmPropertyVendorStr2)
+	v3, err := GetTpmProperty(tpm2.VendorString2)
 	if err != nil {
 		return "", err
 	}
-	v4, err := GetTpmProperty(tpmPropertyFirmVer1)
+	v4, err := GetTpmProperty(tpm2.FirmwareVersion1)
 	if err != nil {
 		return "", err
 	}
-	v5, err := GetTpmProperty(tpmPropertyFirmVer2)
+	v5, err := GetTpmProperty(tpm2.FirmwareVersion2)
 	if err != nil {
 		return "", err
 	}
@@ -594,6 +880,20 @@ func FetchTpmHwInfo() (string, error) {
 		GetFirmwareVersion(v4, v5))
 
 	return tpmHwInfo, nil
+}
+
+// GetSpecVersion returns TPM specification version string
+func GetSpecVersion() (string, error) {
+	value, err := GetTpmProperty(tpm2.FamilyIndicator)
+	if err != nil {
+		return "", err
+	}
+	hx, err := hex.DecodeString(fmt.Sprintf("%08x", value))
+	if err != nil {
+		return "", err
+	}
+	specVersion := bytes.Trim(hx, "\x00")
+	return string(specVersion), nil
 }
 
 // FetchVaultKey retrieves TPM part of the vault key
@@ -700,6 +1000,9 @@ func FetchSealedVaultKey(log *base.LogObject) ([]byte, error) {
 	sealedKeyPresent := isSealedKeyPresent()
 	legacyKeyPresent := isLegacyKeyPresent()
 
+	// Determine the PCR selection to use
+	pcrSelection := GetDiskKeyPolicyPcrOrDefault(types.PolicyPcrFile)
+
 	if !sealedKeyPresent && !legacyKeyPresent {
 		log.Noticef("neither legacy nor sealed disk key present, generating a fresh key")
 		//Fresh install, generate a new key
@@ -723,7 +1026,7 @@ func FetchSealedVaultKey(log *base.LogObject) ([]byte, error) {
 		if err != nil {
 			return nil, fmt.Errorf("GetRandom failed: %w", err)
 		}
-		err = SealDiskKey(log, key, DiskKeySealingPCRs)
+		err = SealDiskKey(log, key, pcrSelection)
 		if err != nil {
 			return nil, fmt.Errorf("sealing the fresh disk key failed: %w", err)
 		}
@@ -750,7 +1053,7 @@ func FetchSealedVaultKey(log *base.LogObject) ([]byte, error) {
 
 		log.Noticef("try to convert the legacy key into a sealed key")
 
-		err = SealDiskKey(log, key, DiskKeySealingPCRs)
+		err = SealDiskKey(log, key, pcrSelection)
 		if err != nil {
 			return nil, fmt.Errorf("sealing the legacy disk key into TPM failed: %w", err)
 		}
@@ -761,7 +1064,7 @@ func FetchSealedVaultKey(log *base.LogObject) ([]byte, error) {
 		log.Noticef("sealed disk key present int TPM, about to unseal it")
 	}
 	//at this point, we have a key sealed into TPM
-	key, err := UnsealDiskKey(DiskKeySealingPCRs)
+	key, err := UnsealDiskKeyWithRecovery(pcrSelection)
 	if err == nil {
 		// be more verbose, lets celebrate
 		log.Noticef("successfully unsealed the disk key from TPM")
@@ -772,11 +1075,6 @@ func FetchSealedVaultKey(log *base.LogObject) ([]byte, error) {
 
 // SealDiskKey seals key into TPM2.0, with provided PCRs
 func SealDiskKey(log *base.LogObject, key []byte, pcrSel tpm2.PCRSelection) error {
-	// First make sure TPM is somewhat trustworthy
-	if err := ValidateKernelNullPrimary(log); err != nil {
-		return fmt.Errorf("failed to verify null primary, possibly due to a tpm reset attack: %v", err)
-	}
-
 	rw, err := tpm2.OpenTPM(TpmDevicePath)
 	if err != nil {
 		return err
@@ -904,11 +1202,6 @@ func isLegacyKeyPresent() bool {
 
 // UnsealDiskKey unseals key from TPM2.0
 func UnsealDiskKey(pcrSel tpm2.PCRSelection) ([]byte, error) {
-	// First make sure TPM is somewhat trustworthy
-	if err := ValidateKernelNullPrimary(nil); err != nil {
-		return nil, fmt.Errorf("failed to verify null primary, possibly due to a tpm reset attack: %v", err)
-	}
-
 	rw, err := tpm2.OpenTPM(TpmDevicePath)
 	if err != nil {
 		return nil, err
@@ -969,6 +1262,23 @@ func UnsealDiskKey(pcrSel tpm2.PCRSelection) ([]byte, error) {
 	return key, nil
 }
 
+// UnsealDiskKeyWithRecovery unseals key from TPM2.0, with recovery option
+// to try recovering PCR indexes if saved ones don't work.
+func UnsealDiskKeyWithRecovery(pcrSel tpm2.PCRSelection) ([]byte, error) {
+	key, err := UnsealDiskKey(pcrSel)
+	if err == nil {
+		return key, nil
+	}
+
+	// Try recovering Policy PCR indexes and try again
+	pcrSelection, err := RecoverDiskKeyPolicyPcr()
+	if err != nil {
+		return nil, err
+	}
+
+	return UnsealDiskKey(pcrSelection)
+}
+
 // PolicyPCRSession prepares TPM2 Auth Policy session, with PCR as the policy
 func PolicyPCRSession(rw io.ReadWriteCloser, pcrSel tpm2.PCRSelection) (tpmutil.Handle, []byte, error) {
 	session, _, err := tpm2.StartAuthSession(
@@ -1011,7 +1321,9 @@ func CompareLegacyandSealedKey() SealedKeyType {
 		//no cloning case, return SealedKeyTypeNew
 		return SealedKeyTypeNew
 	}
-	unsealedKey, err := UnsealDiskKey(DiskKeySealingPCRs)
+
+	pcrSelection := GetDiskKeyPolicyPcrOrDefault(types.PolicyPcrFile)
+	unsealedKey, err := UnsealDiskKeyWithRecovery(pcrSelection)
 	if err != nil {
 		//key is present but can't unseal it
 		//but legacy key is present
@@ -1217,7 +1529,8 @@ func FindMismatchingPCRs() ([]int, error) {
 		// this should never happen, except when we update EVE and adding new
 		// indexes to the DiskKeySealingPCRs, anyways, better safe than sorry!
 		if !ok {
-			return nil, fmt.Errorf("saved PCR index %d doesn't exist at run-time PCRs list %v", i, DiskKeySealingPCRs.PCRs)
+			pcrSelection := GetDiskKeyPolicyPcrOrDefault(types.PolicyPcrFile)
+			return nil, fmt.Errorf("saved PCR index %d doesn't exist at run-time PCRs list %v", i, pcrSelection.PCRs)
 		}
 
 		if !bytes.Equal(readPCR, savedPCR) {
@@ -1236,10 +1549,13 @@ func readDiskKeySealingPCRs() (map[int][]byte, error) {
 	}
 	defer rw.Close()
 
+	// get the PCR selection used for sealing
+	pcrSelection := GetDiskKeyPolicyPcrOrDefault(types.PolicyPcrFile)
+
 	// tpm2.ReadPCRs returns at most 8 PCRs, so loop over and read one by one
 	readPCRs := make(map[int][]byte)
-	for _, v := range DiskKeySealingPCRs.PCRs {
-		p, err := tpm2.ReadPCR(rw, v, DiskKeySealingPCRs.Hash)
+	for _, v := range pcrSelection.PCRs {
+		p, err := tpm2.ReadPCR(rw, v, pcrSelection.Hash)
 		if err != nil {
 			return nil, err
 		}
