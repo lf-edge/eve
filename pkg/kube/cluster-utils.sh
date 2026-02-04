@@ -303,7 +303,7 @@ wait_for_item() {
 
 wait_for_device_name() {
         logmsg "Waiting for DeviceName from controller..."
-        EdgeNodeInfoPath="/persist/status/zedagent/EdgeNodeInfo/global.json"
+        EdgeNodeInfoPath="/run/zedagent/EdgeNodeInfo/global.json"
         while [ ! -f $EdgeNodeInfoPath ]; do
                 sleep 5
         done
@@ -360,8 +360,10 @@ node_name_from_uuid() {
         kubectl get nodes -l node-uuid="${node_uuid}" -o jsonpath='{.items[*].metadata.name}'
 }
 
+# We assume that when this is called zedagent has initialized and
+# published EdgeNodeInfo (from a checkpoint if disconnected),
 self_node_name() {
-        EdgeNodeInfoPath="/persist/status/zedagent/EdgeNodeInfo/global.json"
+        EdgeNodeInfoPath="/run/zedagent/EdgeNodeInfo/global.json"
         if [ ! -f $EdgeNodeInfoPath ]; then
                 echo ""
                 return

@@ -1523,9 +1523,11 @@ func gzipTechSuppFile(ifileName string) (string, error) {
 	return ofileName, nil
 }
 
+// We assume that when this is called zedagent has initialized and
+// published EdgeNodeInfo (from a checkpoint if disconnected),
 func getDevInfo() types.EdgeNodeInfo {
 	var devInfo types.EdgeNodeInfo
-	jfiles, err := listJSONFiles("/persist/status/zedagent/EdgeNodeInfo")
+	jfiles, err := listJSONFiles("/run/zedagent/EdgeNodeInfo")
 	if err == nil {
 		for _, l := range jfiles {
 			retbytes1, err := os.ReadFile(l)

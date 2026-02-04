@@ -32,6 +32,8 @@ const (
 
 // EdgeNodeClusterConfig - Configuration for cluster multi-node from controller
 type EdgeNodeClusterConfig struct {
+	Initialized bool // To tell a subscriber that publisher is done
+	Valid       bool // To tell a subscriber there is a cluster
 	ClusterName string
 	ClusterID   UUIDandVersion
 	// ClusterInterface - Interface to be used for kubernetes cluster for the node.

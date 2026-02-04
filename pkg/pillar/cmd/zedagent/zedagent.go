@@ -1221,7 +1221,7 @@ func initPublications(zedagentCtx *zedagentContext) {
 
 	zedagentCtx.pubEdgeNodeClusterConfig, err = ps.NewPublication(pubsub.PublicationOptions{
 		AgentName:  agentName,
-		Persistent: true,
+		Persistent: false,
 		TopicType:  types.EdgeNodeClusterConfig{},
 	})
 	if err != nil {
@@ -1380,7 +1380,7 @@ func initPublications(zedagentCtx *zedagentContext) {
 		pubsub.PublicationOptions{
 			AgentName:  agentName,
 			TopicType:  types.EdgeNodeInfo{},
-			Persistent: true,
+			Persistent: false,
 		})
 	if err != nil {
 		log.Fatal(err)
