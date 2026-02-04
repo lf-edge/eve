@@ -109,6 +109,7 @@ type zedkube struct {
 
 	// Block 'uncordon' after running it once at bootup
 	onBootUncordonCheckComplete bool
+	receivedENCC                bool
 }
 
 func inlineUsage() int {
@@ -412,7 +413,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		AgentName:   "zedagent",
 		MyAgentName: agentName,
 		TopicImpl:   types.EdgeNodeInfo{},
-		Persistent:  true,
+		Persistent:  false,
 		Activate:    false,
 	})
 	if err != nil {
@@ -518,7 +519,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		AgentName:     "zedagent",
 		MyAgentName:   agentName,
 		TopicImpl:     types.EdgeNodeClusterConfig{},
-		Persistent:    true,
+		Persistent:    false,
 		Activate:      false,
 		Ctx:           &zedkubeCtx,
 		CreateHandler: handleEdgeNodeClusterConfigCreate,
@@ -533,9 +534,19 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	zedkubeCtx.subEdgeNodeClusterConfig = subEdgeNodeClusterConfig
 	subEdgeNodeClusterConfig.Activate()
 
-	if len(subEdgeNodeClusterConfig.GetAll()) != 0 {
-		// Handle persistent existing cluster config
-		publishNodeDrainStatus(&zedkubeCtx, kubeapi.NOTREQUESTED)
+	// Wait for zedagent to provide a (possibly empty) EdgeNodeClusterConfig
+	for !zedkubeCtx.receivedENCC {
+		log.Noticef("Waiting for EdgeNodeClusterConfig")
+		select {
+		case change := <-subGlobalConfig.MsgChan():
+			subGlobalConfig.ProcessChange(change)
+
+		case change := <-subEdgeNodeClusterConfig.MsgChan():
+			subEdgeNodeClusterConfig.ProcessChange(change)
+
+		case <-stillRunning.C:
+		}
+		ps.StillRunning(agentName, warningTime, errorTime)
 	}
 
 	zedkubeCtx.config, err = kubeapi.GetKubeConfig()
@@ -836,9 +847,19 @@ func handleEdgeNodeClusterConfigImpl(ctxArg interface{}, key string,
 	log.Functionf("handleEdgeNodeClusterConfigImpl for %s, config %+v, oldconfig %+v",
 		key, config, oldconfig)
 
-	z.applyClusterConfig(&config, oldConfigPtr)
-
-	publishNodeDrainStatus(z, kubeapi.NOTREQUESTED)
+	if !z.receivedENCC && config.Valid {
+		// Handle initial cluster config
+		publishNodeDrainStatus(z, kubeapi.NOTREQUESTED)
+	} else if config.Valid {
+		z.applyClusterConfig(&config, oldConfigPtr)
+		publishNodeDrainStatus(z, kubeapi.NOTREQUESTED)
+	} else {
+		// Delete
+		z.applyClusterConfig(nil, oldConfigPtr)
+		z.pubEdgeNodeClusterStatus.Unpublish("global")
+		publishNodeDrainStatus(z, kubeapi.NOTSUPPORTED)
+	}
+	z.receivedENCC = true
 }
 
 func handleEdgeNodeClusterConfigDelete(ctxArg interface{}, key string,
