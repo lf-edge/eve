@@ -101,14 +101,18 @@ abseil-cpp-time-zone
 abseil-cpp-vlog-config-internal
 abuild
 acl
+acl-dev
 acl-libs
 acpi
 alpine-baselayout
 alpine-baselayout-data
+alpine-conf
 alpine-keys
 apk-tools
 argon2-libs
 argp-standalone
+asciidoc
+asciidoctor
 attr
 attr-dev
 augeas-libs
@@ -130,6 +134,9 @@ brotli-libs
 bsd-compat-headers
 build-base
 busybox
+busybox-mdev-openrc
+busybox-openrc
+busybox-suid
 busybox-binsh
 bzip2-dev
 c-ares
@@ -142,6 +149,7 @@ cairo-gobject
 cairo-tools
 ccache
 chrony
+chrpath
 clang18-libs
 clang20
 clang20-dev
@@ -218,6 +226,7 @@ gettext-asprintf
 gettext-dev
 gettext-envsubst
 gettext-libs
+gettext-tiny
 git
 glib
 glib-dev
@@ -456,6 +465,8 @@ libxxhash
 linux-headers
 linux-pam
 linux-pam-dev
+lua5.3
+lua5.3-lzlib
 llvm18-libs
 llvm20
 llvm20-dev
@@ -494,6 +505,7 @@ musl-libintl
 musl-obstack
 musl-utils
 nasm
+ncurses
 ncurses-dev
 ncurses-libs
 ncurses-terminfo-base
@@ -542,6 +554,7 @@ pixman
 pixman-dev
 pkgconf
 pm-utils
+po4a
 popt
 ppp
 ppp-atm
@@ -588,6 +601,7 @@ rsync
 run-parts
 samurai
 scanelf
+scdoc
 sed
 setarch
 sgdisk
