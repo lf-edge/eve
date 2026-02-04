@@ -31,6 +31,8 @@ const (
 	PersistDebugDir = PersistDir + "/agentdebug"
 	// PersistInstallerDir - location for installer output
 	PersistInstallerDir = PersistDir + "/installer"
+	// PersistKubelogDir - Location for kube service container logs
+	PersistKubelogDir = PersistDir + "/kubelog"
 	// IngestedDirname - location for shas of files we pulled from /config
 	IngestedDirname = PersistDir + "/ingested"
 	// SnapshotsDirname - location for snapshots
@@ -147,8 +149,15 @@ const (
 
 	// LocalActiveAppConfigDir - directory to put JSON of the apps that are running.
 	LocalActiveAppConfigDir = "/persist/vault/active-app-instance-config/"
-	// EdgeNodeClusterConfigFile - the file which contains edgenodecluster config
-	EdgeNodeClusterConfigFile = PersistStatusDir + "/zedagent/EdgeNodeClusterConfig/global.json"
+
+	// K3sInitialVersionPath - file to store the first k3s version a node initializes to
+	K3sInitialVersionPath = PersistKubelogDir + "/initial_k3s_version"
+
+	// PolicyPcrFile - file to store TPM PCR policy indexes, this
+	// is just a hint to know which PCRs to use for sealing/unsealing,
+	// changing this file does not change the actual policy, hence
+	// needs not be protected.
+	PolicyPcrFile = PersistStatusDir + "/policy-pcr.json"
 )
 
 var (
