@@ -18,7 +18,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	lhv1beta2 "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
-	"github.com/sirupsen/logrus"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -1028,25 +1027,54 @@ func DetachOldWorkload(log *base.LogObject, failedNodeName string, appDomainName
 	return
 }
 
-// IsClusterMode : Returns true if this node is part of a cluster by checking EdgeNodeClusterConfigFile
-// If EdgeNodeClusterConfigFile exists and is > 0 bytes then this node is part of a cluster.
-func IsClusterMode() bool {
-
-	fileInfo, err := os.Stat(types.EdgeNodeClusterConfigFile)
-	if os.IsNotExist(err) {
-		logrus.Debugf("This node is not in cluster mode")
-		return false
-	} else if err != nil {
-		logrus.Errorf("Error checking file '%s': %v", types.EdgeNodeClusterConfigFile, err)
-		return false
+// IsClusterMode : Returns true if this node is part of a cluster by checking EdgeNodeClusterConfig.Valid
+// We assume that caller has called WaitForKubernetes() thus the EdgeNodeClusterConfig has been filled in and we only need to extract it from pubsub.
+func IsClusterMode(ps *pubsub.PubSub, log *base.LogObject, agentName string) bool {
+	var encc types.EdgeNodeClusterConfig
+	// EdgeNodeClusterConfig subscription
+	subEdgeNodeClusterConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "zedagent",
+		MyAgentName:   agentName,
+		TopicImpl:     types.EdgeNodeClusterConfig{},
+		Ctx:           &encc,
+		CreateHandler: handleEdgeNodeClusterConfigCreate,
+		ModifyHandler: handleEdgeNodeClusterConfigModify,
+		WarningTime:   15 * time.Second,
+		ErrorTime:     30 * time.Second,
+	})
+	if err != nil {
+		log.Fatal(err)
 	}
+	subEdgeNodeClusterConfig.Activate()
 
-	if fileInfo.Size() > 0 {
-		logrus.Debugf("This node is in cluster mode")
-		return true
+	// Wait for zedagent to provide a (possibly empty) EdgeNodeClusterConfig
+	for !encc.Initialized {
+		log.Noticef("Waiting for EdgeNodeClusterConfig")
+		select {
+		case change := <-subEdgeNodeClusterConfig.MsgChan():
+			subEdgeNodeClusterConfig.ProcessChange(change)
+		}
 	}
+	log.Noticef("IsClusterMode returns %t", encc.Valid)
+	return encc.Valid
+}
 
-	return false
+func handleEdgeNodeClusterConfigCreate(ctxArg interface{}, key string,
+	configArg interface{}) {
+	handleEdgeNodeClusterConfigImpl(ctxArg, key, configArg, nil)
+}
+
+func handleEdgeNodeClusterConfigModify(ctxArg interface{}, key string,
+	configArg interface{}, oldConfigArg interface{}) {
+	handleEdgeNodeClusterConfigImpl(ctxArg, key, configArg, oldConfigArg)
+}
+
+func handleEdgeNodeClusterConfigImpl(ctxArg interface{}, key string,
+	configArg interface{}, oldConfigArg interface{}) {
+
+	config := configArg.(types.EdgeNodeClusterConfig)
+	encc := ctxArg.(*types.EdgeNodeClusterConfig)
+	*encc = config
 }
 
 // GetSupportedReplicaCountForCluster : returns the max replica count a cluster can support

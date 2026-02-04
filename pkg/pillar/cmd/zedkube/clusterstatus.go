@@ -343,7 +343,7 @@ func (z *zedkube) appIDHandler(w http.ResponseWriter, r *http.Request) {
 	uuidStr := strings.TrimPrefix(r.URL.Path, "/app")
 	uuidStr = strings.TrimPrefix(uuidStr, "/")
 
-	af := agentbase.GetApplicationInfo("/run/", "/persist/status/", "/persist/kubelog/", uuidStr)
+	af := agentbase.GetApplicationInfo("/run/", "/persist/kubelog/", uuidStr)
 	if af.AppInfo == nil {
 		http.Error(w, "App not found", http.StatusNotFound)
 		return
@@ -362,7 +362,7 @@ func (z *zedkube) clusterAppIDHandler(w http.ResponseWriter, r *http.Request) {
 	uuidStr := strings.TrimPrefix(r.URL.Path, "/cluster-app")
 	uuidStr = strings.TrimPrefix(uuidStr, "/")
 
-	af := agentbase.GetApplicationInfo("/run/", "/persist/status/", "/persist/kubelog/", uuidStr)
+	af := agentbase.GetApplicationInfo("/run/", "/persist/kubelog/", uuidStr)
 	if af.AppInfo == nil {
 		http.Error(w, "App not found", http.StatusNotFound)
 		return
