@@ -104,6 +104,8 @@ EOF
 # Longhorn_is_ready is expected to be called periodically during runtime
 # It attempts to detect and recover from various installation issues
 # which block unattended install/config experience.
+# We assume that when this is called zedagent has initialized and
+# published EdgeNodeInfo (from a checkpoint if disconnected),
 Longhorn_is_ready() {
     longhorn_rdy_complete_file
 
@@ -130,11 +132,11 @@ Longhorn_is_ready() {
         return 1
     fi
 
-    if [ ! -e /persist/status/zedagent/EdgeNodeInfo/global.json ]; then
+    if [ ! -e /run/zedagent/EdgeNodeInfo/global.json ]; then
         return 1
     fi
 
-    node=$(jq -r '.DeviceName' < /persist/status/zedagent/EdgeNodeInfo/global.json | tr -d '\n')
+    node=$(jq -r '.DeviceName' < /run/zedagent/EdgeNodeInfo/global.json | tr -d '\n')
     node=$(convert_to_k8s_compatible "$node")
 
     # longhorn node exists
