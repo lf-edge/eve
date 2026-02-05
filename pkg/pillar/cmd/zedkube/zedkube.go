@@ -352,8 +352,10 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	zedkubeCtx.pubLeaderElectInfo = pubLeaderElectInfo
 
 	pubKubeConfig, err := ps.NewPublication(pubsub.PublicationOptions{
-		AgentName:  agentName,
-		TopicType:  types.KubeConfig{},
+		AgentName: agentName,
+		TopicType: types.KubeConfig{},
+		// XXX why does KubeConfig need to be persistent? We
+		// do not access the value at boot
 		Persistent: true,
 	})
 	if err != nil {
