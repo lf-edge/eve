@@ -619,8 +619,12 @@ __EOT__
     done
 fi
 
+if [ -n "$COMMA" ]; then
 cat <<__EOT__
     }
+__EOT__
+fi
+cat <<__EOT__
   ]
 }
 __EOT__
