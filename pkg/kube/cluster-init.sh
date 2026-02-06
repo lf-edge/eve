@@ -9,8 +9,6 @@ K3S_LOG_DIR="/persist/kubelog"
 INSTALL_LOG="${K3S_LOG_DIR}/k3s-install.log"
 CTRD_LOG="${K3S_LOG_DIR}/containerd-user.log"
 HOSTNAME=""
-VMICONFIG_FILENAME="/run/zedkube/vmiVNC.run"
-VNC_RUNNING=false
 ClusterPrefixMask=""
 clusterStatusPort="12346"
 INITIAL_WAIT_TIME=5
@@ -27,6 +25,8 @@ BootReasonKubeTransition="BootReasonKubeTransition" # Must match string in types
 KUBE_ROOT_EXT4="/persist/vault/kube"
 KUBE_ROOT_ZFS="/dev/zvol/persist/etcd-storage"
 KUBE_ROOT_MOUNTPOINT="/var/lib"
+# Ensure KUBECONFIG is set for virtctl to access the k3s API server
+export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
 
 # shellcheck source=pkg/kube/lib/config.sh
 . /usr/bin/config.sh
@@ -51,6 +51,8 @@ KUBE_ROOT_MOUNTPOINT="/var/lib"
 . /usr/bin/kubevirt-utils.sh
 # shellcheck source=pkg/kube/tie-breaker-utils.sh
 . /usr/bin/tie-breaker-utils.sh
+# shellcheck source=pkg/kube/vnc-proxy.sh
+. /usr/bin/vnc-proxy.sh
 
 # get cluster IP address from the cluster status file
 get_cluster_node_ip() {
@@ -485,52 +487,6 @@ reboot_with_reason() {
     sleep 1  # Give sync a moment to complete
     # Perform the reboot
     reboot
-}
-
-# run virtctl vnc
-check_and_run_vnc() {
-  pid=$(pgrep -f "/usr/bin/virtctl vnc" )
-  # if remote-console config file exist, and either has not started, or need to restart
-  if [ -f "$VMICONFIG_FILENAME" ] && { [ "$VNC_RUNNING" = false ] || [ -z "$pid" ]; }; then
-    vmiName=""
-    vmiPort=""
-
-    # Read the file and extract values
-    while IFS= read -r line; do
-        case "$line" in
-            *"VMINAME:"*)
-                vmiName="${line#*VMINAME:}"   # Extract the part after "VMINAME:"
-                vmiName="${vmiName%%[[:space:]]*}"  # Remove leading/trailing whitespace
-                ;;
-            *"VNCPORT:"*)
-                vmiPort="${line#*VNCPORT:}"   # Extract the part after "VNCPORT:"
-                vmiPort="${vmiPort%%[[:space:]]*}"  # Remove leading/trailing whitespace
-                ;;
-        esac
-    done < "$VMICONFIG_FILENAME"
-
-    # Check if the 'vmiName' and 'vmiPort' values are empty, if so, log an error and return
-    if [ -z "$vmiName" ] || [ -z "$vmiPort" ]; then
-        logmsg "Error: VMINAME or VNCPORT is empty in $VMICONFIG_FILENAME"
-        return 1
-    fi
-
-    logmsg "virctl vnc on vmiName: $vmiName, port $vmiPort"
-    nohup /usr/bin/virtctl vnc "$vmiName" -n eve-kube-app --port "$vmiPort" --proxy-only &
-    VNC_RUNNING=true
-  else
-    if [ ! -f "$VMICONFIG_FILENAME" ]; then
-      if [ "$VNC_RUNNING" = true ]; then
-        if [ -n "$pid" ]; then
-            logmsg "Killing process with PID $pid"
-            kill -9 "$pid"
-        else
-            logmsg "Error: Process not found"
-        fi
-      fi
-      VNC_RUNNING=false
-    fi
-  fi
 }
 
 # get the EdgeNodeClusterStatus
@@ -1074,6 +1030,9 @@ logmsg "containerd started"
 # task running in the background to check if the cluster config has changed
 monitor_cluster_config_change &
 
+# task running in the background to monitor VNC config file changes
+monitor_vnc_config &
+
 # if this is the first time to run install, we may wait for the
 # cluster config and status
 if [ ! -f /var/lib/all_components_initialized ]; then
@@ -1409,7 +1368,6 @@ fi
         check_log_file_size "containerd-user.log"
         check_kubeconfig_yaml_files
         check_and_remove_excessive_k3s_logs
-        check_and_run_vnc
         wait_for_item "wait"
         sleep 15
 done
