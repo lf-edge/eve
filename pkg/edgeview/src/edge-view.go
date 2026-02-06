@@ -41,19 +41,21 @@ var (
 )
 
 const (
-	agentName         = "edgeview"
-	closeMessage      = "+++Done+++"
-	tarCopyDoneMsg    = "+++TarCopyDone+++"
-	edgeViewVersion   = "0.8.8"
-	cpLogFileString   = "copy-logfiles"
-	clientIPMsg       = "YourEndPointIPAddr:"
-	serverRateMsg     = "ServerRateLimit:disable"
-	tcpPktRate        = MbpsToBytes * 5 * 1.2 // 125k Bytes * 5 * 1.2, or 5Mbits add 20%
-	tcpPktBurst       = 65536                 // burst allow bytes
-	tarMinVersion     = "0.8.5"               // for tar operation, expect client to have newer version
-	encMinVersion     = "0.8.8"               // for encryption operation, expect client to have newer version
-	verifyFailed      = "+++Verify failed+++"
-	keepaliveInterval = 30 * time.Second // interval for sending websocket ping messages
+	agentName          = "edgeview"
+	closeMessage       = "+++Done+++"
+	tarCopyDoneMsg     = "+++TarCopyDone+++"
+	edgeViewVersion    = "0.8.8"
+	cpLogFileString    = "copy-logfiles"
+	clientIPMsg        = "YourEndPointIPAddr:"
+	noDeviceStr        = "no device online"
+	serverConnectedMsg = "server is connected"
+	serverRateMsg      = "ServerRateLimit:disable"
+	tcpPktRate         = MbpsToBytes * 5 * 1.2 // 125k Bytes * 5 * 1.2, or 5Mbits add 20%
+	tcpPktBurst        = 65536                 // burst allow bytes
+	tarMinVersion      = "0.8.5"               // for tar operation, expect client to have newer version
+	encMinVersion      = "0.8.7"               // for encryption operation, expect client to have newer version
+	verifyFailed       = "+++Verify failed+++"
+	keepaliveInterval  = 30 * time.Second // interval for sending websocket ping messages
 )
 
 type cmdOpt struct {
@@ -301,15 +303,57 @@ func main() {
 	urlWSS := url.URL{Scheme: "wss", Host: wsAddr, Path: pathStr}
 
 	var done chan struct{}
+	var tokenHash string
 	var tokenHash16 string
 	hostname, _ := os.Hostname()
 	if edgeviewInstID > 0 {
 		hostname = hostname + "-inst-" + strconv.Itoa(edgeviewInstID)
 	}
-	tokenHash16 = string(getTokenHashString(*ptoken))
+	// Prefer full 32-byte hash, but probe dispatcher to detect server compatibility.
+	fullHash := string(getTokenHashStringFull(*ptoken))
+	shortHash := string(getTokenHashString(*ptoken))
+	tokenHash16 = shortHash
+
 	fmt.Printf("%s connecting to %s\n", hostname, urlWSS.String())
-	// on server, the script will retry in some minutes later
-	ok := setupWebC(hostname, tokenHash16, urlWSS, runOnServer)
+
+	// When running as client (not runOnServer), probe the dispatcher to
+	// determine whether it accepts the full 32-byte hash. Try the full hash
+	// first, fall back to the 16-byte form if probe indicates "no device".
+	if !runOnServer {
+		// probe full hash and inspect response body
+		_, probeBody := setupWebC(hostname, fullHash, urlWSS, runOnServer, true)
+		if strings.Contains(probeBody, serverConnectedMsg) {
+			tokenHash = fullHash
+		} else if strings.Contains(probeBody, noDeviceStr) {
+			// Could be no device or hash mismatch; try short hash
+			_, probeBody2 := setupWebC(hostname, shortHash, urlWSS, runOnServer, true)
+			if strings.Contains(probeBody2, serverConnectedMsg) {
+				tokenHash = shortHash
+			} else {
+				// neither form returned serverConnectedMsg; print dispatcher response and exit
+				if probeBody2 != "" {
+					fmt.Printf("probe response: %s\n", probeBody2)
+				} else {
+					fmt.Printf("probe response: %s\n", probeBody)
+				}
+				return
+			}
+		} else {
+			// probe returned something else (e.g., error text) - print and exit
+			if probeBody != "" {
+				fmt.Printf("probe response: %s\n", probeBody)
+			} else {
+				fmt.Printf("probe failed for full hash and no fallback available\n")
+			}
+			return
+		}
+	} else {
+		// when running on server/device, prefer the full 32-byte hash
+		tokenHash = fullHash
+	}
+
+	// Now establish the real websocket connection (not a probe)
+	ok, _ := setupWebC(hostname, tokenHash, urlWSS, runOnServer, false)
 	if !ok {
 		return
 	}
@@ -383,7 +427,7 @@ func main() {
 				var recvCmds cmdOpt
 				isJSON, verifyOK, message, keyComment := verifyEnvelopeData(msg, mtype == websocket.TextMessage)
 				if !isJSON {
-					if strings.Contains(string(msg), "no device online") {
+					if strings.Contains(string(msg), noDeviceStr) {
 						log.Tracef("read: peer not there yet, continue")
 						lostClientPeer = true
 						if isTCPServer {
@@ -411,7 +455,7 @@ func main() {
 				lostClientPeer = false
 
 				if mtype == websocket.TextMessage {
-					if strings.Contains(string(message), "no device online") ||
+					if strings.Contains(string(message), noDeviceStr) ||
 						strings.Contains(string(message), closeMessage) {
 						log.Tracef("read: no device, continue")
 						continue
