@@ -286,7 +286,29 @@ func recvServerData(mtype int, message []byte) {
 }
 
 // TCP mapping on server side
-func setAndStartProxyTCP(opt string) {
+func setAndStartProxyTCP(opt string, appUUID string) {
+	var hasEveKVNC bool
+
+	// Check if this is an eve-k VNC request (port 4822 with AppUUID)
+	if isEveKVNC := isEveKVNCRequest(opt, appUUID); isEveKVNC {
+		log.Noticef("setAndStartProxyTCP: detected eve-k VNC request for app %s", appUUID)
+		vncPort, err := setupEveKVNC(appUUID)
+		if err != nil {
+			log.Errorf("setAndStartProxyTCP: eve-k VNC setup error: %v", err)
+			return
+		}
+		hasEveKVNC = true
+		// Wait for cluster-init.sh to pick up vmiVNC.run and start virtctl vnc proxy
+		// We check for the virtctl process AND that the port is listening (using ss)
+		log.Noticef("setAndStartProxyTCP: port %d, waiting for virtctl vnc proxy to start...", vncPort)
+		if !waitForVirtctlVNC(15*time.Second, int(vncPort)) {
+			log.Errorf("setAndStartProxyTCP: virtctl vnc process not ready after timeout")
+			cleanupEveKVNC()
+			return
+		}
+		log.Noticef("setAndStartProxyTCP: virtctl vnc process is ready and port %d is listening", vncPort)
+	}
+
 	var ipAddrPort []string
 	var proxySvr *http.Server
 	var kubeport int
@@ -421,6 +443,10 @@ func setAndStartProxyTCP(opt string) {
 			} else if !isClosed(proxyServerDone) {
 				close(proxyServerDone)
 			} else {
+				// Cleanup eve-k VNC file if we had a VNC session
+				if hasEveKVNC {
+					cleanupEveKVNC()
+				}
 				return
 			}
 		case <-tcpServerDone:
@@ -434,6 +460,10 @@ func setAndStartProxyTCP(opt string) {
 				fmt.Printf("TCP exist. calling proxSvr.Close\n")
 				proxySvr.Close()
 			}
+			// Cleanup eve-k VNC file if we had a VNC session
+			if hasEveKVNC {
+				cleanupEveKVNC()
+			}
 			isTCPServer = false
 			return
 
@@ -444,6 +474,10 @@ func setAndStartProxyTCP(opt string) {
 				}
 			}
 			t.Stop()
+			// Cleanup eve-k VNC file if we had a VNC session
+			if hasEveKVNC {
+				cleanupEveKVNC()
+			}
 			isTCPServer = false
 			return
 		}

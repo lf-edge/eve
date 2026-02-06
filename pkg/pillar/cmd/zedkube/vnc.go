@@ -7,9 +7,9 @@ package zedkube
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 
@@ -22,50 +22,74 @@ import (
 
 // runAppVNC - run vnc for EVE 'k' VMI remote console
 func (z *zedkube) runAppVNC(config *types.AppInstanceConfig) {
+	log.Noticef("runAppVNC: starting for app %s, RemoteConsole=%v",
+		config.DisplayName, config.RemoteConsole)
+
 	vmconfig := config.FixedResources
 
-	//vmiName := findXenCfgName(config.UUIDandVersion.UUID.String())
 	var vmiName string
-	i := 5
-	for {
+	for i := 5; i >= 0; i-- {
 		var err error
 		vmiName, err = z.getVMIdomainName(config)
 		if err != nil {
-			log.Functionf("runAppVNC: get vmi domainname error %v", err)
-			if i >= 0 {
-				time.Sleep(3 * time.Second)
-				continue
-			}
-		} else {
-			break
+			log.Noticef("runAppVNC: get vmi domainname error %v, retries left %d", err, i)
+			time.Sleep(3 * time.Second)
+			continue
 		}
-		i = i - 1
+		break
 	}
 	if vmiName == "" {
-		log.Functionf("runAppVNC: can not find vmiName")
+		log.Errorf("runAppVNC: can not find vmiName for app %s", config.DisplayName)
 		return
 	}
+	log.Noticef("runAppVNC: found vmiName %s for app %s", vmiName, config.DisplayName)
+
 	vncPort := vmconfig.VncDisplay + 5900
-	port := strconv.Itoa(int(vncPort))
 
 	if config.RemoteConsole {
-		content := fmt.Sprintf("VMINAME:%s\nVNCPORT:%s\n", vmiName, port)
-		err := os.WriteFile(vmiVNCFileName, []byte(content), 0644)
-		if err != nil {
-			log.Errorf("runAppVNC: Error creating file: %v", err)
+		// Check if file already exists (another VNC session is active)
+		if _, err := os.Stat(types.VmiVNCFileName); err == nil {
+			log.Errorf("runAppVNC: VNC file already exists, another session may be active")
 			return
 		}
-		log.Functionf("runAppVNC: vmiName %s, port %s, vmiVNC file created", vmiName, port)
+
+		// Ensure the VNC directory exists
+		if err := os.MkdirAll(types.VmiVNCDir, 0755); err != nil {
+			log.Errorf("runAppVNC: Error creating VNC directory %s: %v", types.VmiVNCDir, err)
+			return
+		}
+
+		// Write JSON format config file
+		vncConfig := types.VmiVNCConfig{
+			VMIName: vmiName,
+			VNCPort: uint32(vncPort),
+			// CallerPID is not set for remote-console VNC (only edgeview sets it)
+		}
+
+		content, err := json.Marshal(vncConfig)
+		if err != nil {
+			log.Errorf("runAppVNC: Error marshaling VNC config: %v", err)
+			return
+		}
+
+		err = os.WriteFile(types.VmiVNCFileName, content, 0644)
+		if err != nil {
+			log.Errorf("runAppVNC: Error creating file %s: %v", types.VmiVNCFileName, err)
+			return
+		}
+		log.Noticef("runAppVNC: vmiName %s, port %d, vmiVNC file %s created",
+			vmiName, vncPort, types.VmiVNCFileName)
 	} else {
-		if _, err := os.Stat(vmiVNCFileName); err == nil {
-			err = os.Remove(vmiVNCFileName)
+		if _, err := os.Stat(types.VmiVNCFileName); err == nil {
+			log.Noticef("runAppVNC: RemoteConsole disabled, removing VNC file %s", types.VmiVNCFileName)
+			err = os.Remove(types.VmiVNCFileName)
 			if err != nil {
 				log.Errorf("runAppVNC: Error remove file %v", err)
 				return
 			}
 		}
 	}
-	log.Functionf("runAppVNC: %v, done", vmiName)
+	log.Noticef("runAppVNC: %s done", vmiName)
 }
 
 func (z *zedkube) getVMIdomainName(config *types.AppInstanceConfig) (string, error) {
