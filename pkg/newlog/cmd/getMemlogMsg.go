@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	ansi = "\u001B\\[[0-9;]*[A-Za-z]|\u001B[\\(\\)\\[\\]#;?]*[A-Za-z0-9]|\u009B[0-9;]*[A-Za-z]"
+	ansi = "(?:\u001B|\\\\u001[bB])\\[[0-9;]*[A-Za-z]|(?:\u001B|\\\\u001[bB])[\\(\\)\\[\\]#;?]*[A-Za-z0-9]|(?:\u009B|\\\\u009[bB])[0-9;]*[A-Za-z]"
 )
 
 var (
@@ -171,8 +171,8 @@ func parseLogInfo(memlogEntry MemlogLogEntry) Loginfo {
 			if logInfo.Source == "" {
 				logInfo.Source = memlogEntry.Source
 			}
-			// and keep the original message text and fields
-			logInfo.Msg = memlogEntry.Msg
+			// and keep the cleaned message text and fields
+			logInfo.Msg = cleanMsg
 		} else {
 			// Some messages have attr=val syntax
 			// If the inner message has Level, Time or Msg set they take

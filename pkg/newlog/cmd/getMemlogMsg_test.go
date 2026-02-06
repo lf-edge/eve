@@ -138,7 +138,18 @@ func TestParseMemlogEntryIndividual(t *testing.T) {
 				"timestamp": "2025-10-06T18:31:44.311128265Z",
 				"source":    "zedmanager",
 				"severity":  "info",
-				"content":   "{\"file\":\"/pillar/types/zedmanagertypes.go:364\",\"func\":\"github.com/lf-edge/eve/pkg/pillar/types.AppInstanceStatus.LogModify\",\"level\":\"info\",\"log_event_type\":\"log\",\"msg\":\"App instance status modify\",\"obj_key\":\"app_instance_status-173ee6b9-c454-45b8-959e-5c1e9c91a0ce\",\"obj_name\":\"nginx\",\"obj_type\":\"app_instance_status\",\"obj_uuid\":\"173ee6b9-c454-45b8-959e-5c1e9c91a0ce\",\"old-purge-in-progress\":0,\"old-restart-in-progress\":0,\"old-state\":\"BOOTING\",\"pid\":2221,\"purge-in-progress\":0,\"restart-in-progress\":0,\"source\":\"zedmanager\",\"state\":\"RUNNING\",\"time\":\"2025-10-06T18:31:44.311128265Z\"}",
+				"content":   `{"file":"/pillar/types/zedmanagertypes.go:364","func":"github.com/lf-edge/eve/pkg/pillar/types.AppInstanceStatus.LogModify","level":"info","log_event_type":"log","msg":"App instance status modify","obj_key":"app_instance_status-173ee6b9-c454-45b8-959e-5c1e9c91a0ce","obj_name":"nginx","obj_type":"app_instance_status","obj_uuid":"173ee6b9-c454-45b8-959e-5c1e9c91a0ce","old-purge-in-progress":0,"old-restart-in-progress":0,"old-state":"BOOTING","pid":2221,"purge-in-progress":0,"restart-in-progress":0,"source":"zedmanager","state":"RUNNING","time":"2025-10-06T18:31:44.311128265Z"}`,
+			},
+		},
+		{
+			name:        "Entry with ANSI color codes in a JSON message",
+			input:       `{"time":"2026-02-05T18:52:28.551352594Z","source":"pillar","msg":"{\"appuuid\":\"ff9d588b-e22c-4256-abe4-9da5bae810d9\",\"level\":\"info\",\"msg\":\"Hello, \\u001b[31m this is my text \\u001b[0m. How does it look?\",\"time\":\"2026-02-05T18:52:28.551046324Z\"}"}`,
+			expectError: false,
+			expectedFields: map[string]string{
+				"timestamp": "2026-02-05T18:52:28.551046324Z",
+				"source":    "pillar",
+				"severity":  "info",
+				"content":   `{"appuuid":"ff9d588b-e22c-4256-abe4-9da5bae810d9","level":"info","msg":"Hello,  this is my text . How does it look?","time":"2026-02-05T18:52:28.551046324Z"}`,
 			},
 		},
 		{
@@ -267,6 +278,11 @@ func TestCleanForLogParsing(t *testing.T) {
 			name:     "ANSI color codes",
 			input:    "\x1b[31mRed text\x1b[0m",
 			expected: "Red text",
+		},
+		{
+			name:     "ANSI color codes (unicode)",
+			input:    "\u001b[31m this is my text \u001b[0m.",
+			expected: " this is my text .",
 		},
 		{
 			name:     "Newlines at start and end",
