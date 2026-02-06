@@ -3,7 +3,7 @@
 FROM lfedge/eve-alpine:745ae9066273c73b0fd879c4ba4ff626a8392d04 AS build
 ENV PKGS alpine-baselayout musl-utils iproute2 iptables curl openrc \
          open-iscsi libvirt libvirt-client util-linux grep findutils jq \
-         cni-plugins nfs-utils
+         cni-plugins nfs-utils inotify-tools
 RUN eve-alpine-deploy.sh
 
 COPY eve-bridge /plugins/eve-bridge
@@ -52,6 +52,7 @@ COPY kubevirt-operator.yaml /etc
 COPY kubevirt-features.yaml /etc
 COPY external-boot-image.tar /etc/
 COPY kubevirt-utils.sh /usr/bin/
+COPY vnc-proxy.sh /usr/bin/
 
 # Longhorn config
 COPY longhorn-utils.sh /usr/bin/
