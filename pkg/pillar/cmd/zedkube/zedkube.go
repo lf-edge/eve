@@ -38,8 +38,6 @@ const (
 	warningTime          = 40 * time.Second
 	stillRunningInterval = 25 * time.Second
 	logcollectInterval   = 10
-	// run VNC file
-	vmiVNCFileName = "/run/zedkube/vmiVNC.run"
 
 	inlineCmdKubeClusterUpdateStatus = "pubKubeClusterUpdateStatus"
 	inlineCmdVmiDetach               = "vmiDetach"
@@ -668,7 +666,8 @@ func handleAppInstanceConfigModify(ctxArg interface{}, key string,
 	err := z.checkIoAdapterEthernet(&config)
 
 	if oldconfig.RemoteConsole != config.RemoteConsole {
-		log.Functionf("handleAppInstancConfigModify: new remote console %v", config.RemoteConsole)
+		log.Functionf("handleAppInstancConfigModify: RemoteConsole changed from %v to %v for app %s",
+			oldconfig.RemoteConsole, config.RemoteConsole, config.DisplayName)
 		go z.runAppVNC(&config)
 	}
 	log.Functionf("handleAppInstancConfigModify: genAISpec %v", err)

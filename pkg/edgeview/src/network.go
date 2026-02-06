@@ -7,6 +7,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -124,7 +125,7 @@ func runNetwork(cmds cmdOpt) {
 		} else if opt == "mdns" {
 			runmDNS(substring)
 		} else if opt == "tcp" { // tcp and proxy are special
-			setAndStartProxyTCP(substring)
+			setAndStartProxyTCP(substring, cmds.AppUUID)
 		} else if opt == "showcerts" {
 			getPeerCerts(substring)
 		} else if opt == "addhost" {
@@ -558,6 +559,150 @@ func getAppIPs(status string) ([]string, uuid.UUID) {
 		}
 	}
 	return appIPs, appUUID
+}
+
+const (
+	encAppStatusDir = "/run/zedkube/ENClusterAppStatus"
+)
+
+// isEveKVNCRequest checks if this is an eve-k VNC request (port 4822 with AppUUID on eve-k device)
+func isEveKVNCRequest(opt string) bool {
+	// Filter out non-Kubernetes or non-Guacamole (4822) requests immediately
+	if !isHVTypeKube || !strings.Contains(opt, ":4822") {
+		return false
+	}
+	return true
+}
+
+// setupEveKVNC looks up the app's VNC info from ENClusterAppStatus and writes vmiVNC.run
+// Returns the VNC port to connect to, or error if setup fails
+func setupEveKVNC(appUUID string) (uint32, error) {
+	// Specific check for the error state: Kubernetes + Port present but missing UUID
+	if appUUID == "" {
+		return 0, errors.New("appUUID is required for eve-k VNC requests")
+	}
+	log.Noticef("setupEveKVNC: starting for app %s", appUUID)
+
+	// Check if file already exists (another VNC session is active)
+	if _, err := os.Stat(types.VmiVNCFileName); err == nil {
+		return 0, errors.New("VNC file already exists, another VNC session may be active")
+	}
+
+	// Verify appUUID is a valid UUID
+	if _, err := uuid.FromString(appUUID); err != nil {
+		return 0, fmt.Errorf("invalid appUUID: %s", appUUID)
+	}
+
+	// Read ENClusterAppStatus for the app by scanning the directory for a matching file
+	var data []byte
+	found := false
+	entries, err := os.ReadDir(encAppStatusDir)
+	if err != nil {
+		return 0, fmt.Errorf("failed to read ENClusterAppStatus dir: %v", err)
+	}
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if strings.HasPrefix(name, appUUID) && strings.HasSuffix(name, ".json") {
+			data, err = os.ReadFile(encAppStatusDir + "/" + name)
+			if err != nil {
+				return 0, fmt.Errorf("failed to read ENClusterAppStatus file %s: %v", name, err)
+			}
+			found = true
+			break
+		}
+	}
+	if !found {
+		return 0, fmt.Errorf("ENClusterAppStatus file for app %s not found", appUUID)
+	}
+
+	var encAppStatus types.ENClusterAppStatus
+	if err := json.Unmarshal(data, &encAppStatus); err != nil {
+		return 0, fmt.Errorf("failed to unmarshal ENClusterAppStatus: %v", err)
+	}
+
+	// Verify this is a VMI app with VNC port set
+	if !encAppStatus.AppIsVMI {
+		return 0, fmt.Errorf("app %s is not a VMI app", appUUID)
+	}
+	if encAppStatus.VNCPort == 0 {
+		return 0, fmt.Errorf("VNCPort not set for app %s", appUUID)
+	}
+	if encAppStatus.VMIName == "" {
+		return 0, fmt.Errorf("VMIName not set for app %s", appUUID)
+	}
+
+	if err := os.MkdirAll(types.VmiVNCDir, 0755); err != nil {
+		return 0, fmt.Errorf("failed to create VNC directory: %v", err)
+	}
+
+	// Write vmiVNC.run file in JSON format
+	vncConfig := types.VmiVNCConfig{
+		VMIName:   encAppStatus.VMIName,
+		VNCPort:   encAppStatus.VNCPort,
+		CallerPID: os.Getpid(),
+	}
+
+	content, err := json.Marshal(vncConfig)
+	if err != nil {
+		return 0, fmt.Errorf("failed to marshal VNC config: %v", err)
+	}
+
+	if err := os.WriteFile(types.VmiVNCFileName, content, 0644); err != nil {
+		return 0, fmt.Errorf("failed to write vmiVNC.run: %v", err)
+	}
+
+	log.Noticef("setupEveKVNC: wrote vmiVNC.run for VMI %s, port %d",
+		encAppStatus.VMIName, encAppStatus.VNCPort)
+
+	return encAppStatus.VNCPort, nil
+}
+
+// cleanupEveKVNC removes the vmiVNC.run file and notifies dispatcher that VNC session ended
+func cleanupEveKVNC() {
+	if _, err := os.Stat(types.VmiVNCFileName); err == nil {
+		if err := os.Remove(types.VmiVNCFileName); err != nil {
+			log.Errorf("cleanupEveKVNC: failed to remove vmiVNC.run: %v", err)
+		} else {
+			log.Noticef("cleanupEveKVNC: removed VNC port file")
+		}
+	}
+	// Notify dispatcher that VNC session ended
+	_ = addEnvelopeAndWriteWss([]byte(closeMessage), true, false)
+}
+
+// waitForVirtctlVNC waits for the VNC port to be listening.
+func waitForVirtctlVNC(timeout time.Duration, vncPort int) bool {
+	deadline := time.Now().Add(timeout)
+	checkInterval := 500 * time.Millisecond
+
+	for time.Now().Before(deadline) {
+		if isPortListening(vncPort) {
+			// Double-check after a short delay to ensure stability
+			time.Sleep(checkInterval)
+			if isPortListening(vncPort) {
+				return true
+			}
+		}
+		time.Sleep(checkInterval)
+	}
+	return false
+}
+
+// isPortListening checks if a specific port is listening using 'ss' command
+func isPortListening(port int) bool {
+	prog := "ss"
+	args := []string{"-tln", fmt.Sprintf("sport = :%d", port)}
+	output, err := runCmd(prog, args, false)
+	if err != nil {
+		return false
+	}
+	// ss output will contain the port if it's listening
+	// e.g., "LISTEN  0  128  *:5900  *:*"
+	portStr := fmt.Sprintf(":%d", port)
+	return strings.Contains(output, portStr)
 }
 
 // getConnectivity
