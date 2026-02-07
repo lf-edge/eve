@@ -741,4 +741,6 @@ The above is a reference to the original root source code for the binaries distr
 
 There is an example of a script which follows the above description to download the APKBUILD files, and any patches, as well as any http and https references i.e., the complete source for the underlying package plus the alpine build recipe in [tools/get-alpine-pkg-source.sh](../tools/get-alpine-pkg-source.sh). See comment in the script for its usage.
 
-The kernel is built from source using [pkg/kernel/Dockerfile](../pkg/kernel/Dockerfile). There is a script to collect the source code used for the kernel build (and in general, extract source code from Docker ADD commands). See comments in [tools/get-kernel-source.sh](../tools/get-kernel-source.sh) for the usage.
+**Note:** The kernel is no longer built from source under `pkg/kernel/`. It is now maintained in a separate repository ([lf-edge/eve-kernel](https://github.com/lf-edge/eve-kernel)) and consumed by EVE as a pre-built container image. See [KERNEL.md](KERNEL.md) for current kernel build documentation.
+
+The kernel generates SBOM (Software Bill of Materials) internally as part of the build process, and the SBOM is included in the kernel container image. The kernel source code can be traced through the eve-kernel repository. There is a script to collect the source code used for the kernel build (and in general, extract source code from Docker ADD commands). See comments in [tools/get-kernel-source.sh](../tools/get-kernel-source.sh) for the usage.
