@@ -272,7 +272,7 @@ how this process works read [baseimage update](BASEIMAGE-UPDATE.md) documentatio
 Both IMGA and IMGB host a filesystem containing the following software components
 
 * Second stage [GRUB bootloader](../pkg/grub) and [its configuration](../pkg/grub/rootfs.cfg) in `/EFI` folder
-* [Hypervisor](../pkg/xen) and [Linux Kernel](../pkg/kernel) in `/boot` folder
+* [Hypervisor](../pkg/xen) and Linux Kernel in `/boot` folder (kernel is now built from [lf-edge/eve-kernel](https://github.com/lf-edge/eve-kernel), see [KERNEL.md](KERNEL.md))
 * [EVE microservices](../pkg/pillar) in `/containers` folder
 * Minimalistic [Alpine Linux](https://alpinelinux.org)-derived UNIX environment
 

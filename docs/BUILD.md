@@ -646,7 +646,9 @@ While the EVE is running, navigate to `http://IP:8080/dashboard` and find the re
 
 #### Reproducible Kernel build and versioning
 
-Kernel packages ("pkg/kernel" and "pkg/new-kernel") are configured to produce a bit-by-bit reproducible kernel, to this end a `build.yml` is generated at build time to set the following variables to a static value:
+**Note:** The kernel is now built in a separate repository ([lf-edge/eve-kernel](https://github.com/lf-edge/eve-kernel)) and consumed as a pre-built container image. Previously, it was built from source under `pkg/kernel/`. See [KERNEL.md](KERNEL.md) for current kernel build documentation.
+
+The kernel packages are configured to produce a bit-by-bit reproducible kernel, to this end a `build.yml` is generated at build time to set the following variables to a static value:
 
 ```shell
 KBUILD_BUILD_USER=eve
@@ -693,6 +695,8 @@ openssl req -new -nodes -utf8 -sha256 -days 36500 -batch -x509 \
 ```
 
 and place the `.pem` file in the `/eve/pkg/kernel/certs` directory. You can respectively change the `x509.genkey` template too.
+
+**Note:** Since the kernel is now built in the [lf-edge/eve-kernel](https://github.com/lf-edge/eve-kernel) repository, kernel module signing configuration should be done there. See [KERNEL.md](KERNEL.md) for details.
 
 ## Summary of Build Process
 
