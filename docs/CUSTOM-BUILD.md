@@ -24,8 +24,9 @@ You can make changes in one or both of the following ways:
 
 To modify a package, you simply change the source of the package as you see fit.
 
-For example, to modify grub, change the desired source in [pkg/grub/](../pkg/grub); to modify the kernel,
-change the desired source in [pkg/kernel/](../pkg/kernel).
+For example, to modify grub, change the desired source in [pkg/grub/](../pkg/grub).
+
+**Note:** The kernel is no longer built from `pkg/kernel/`. It is now maintained in a separate repository ([lf-edge/eve-kernel](https://github.com/lf-edge/eve-kernel)) and consumed as a pre-built container image. To use a custom kernel, you must specify `KERNEL_TAG=<your-kernel-tag>` when building EVE. See [KERNEL.md](KERNEL.md) for complete instructions on building and modifying the kernel.
 
 Once you are done modifying the package, from the root directory of eve, build the package:
 

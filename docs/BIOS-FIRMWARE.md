@@ -92,7 +92,7 @@ functionality to a more HAT-specific one by simply changing one line in
 `config.txt`.
 
 For example, for an industrial HAT produced by Advantech [UNO-220](https://www.advantech.com/products/9a0cc561-8fc2-4e22-969c-9df90a3952b5/uno-220-p4n2/mod_92d93912-216e-4ee9-a5ed-be94a5f1eca8)
-here's how [EVE specific device tree](../pkg/new-kernel/patches-5.10.x/0021-Add-uno-220-dts.patch)
+here's how an EVE-specific device tree (historically in `pkg/new-kernel/patches-5.10.x/0021-Add-uno-220-dts.patch`, now maintained in [lf-edge/eve-kernel](https://github.com/lf-edge/eve-kernel))
 and a [u-boot specific overlay](../pkg/u-boot/rpi/overlays/raspberrypi-uno-220.dts)
 would look like.
 
