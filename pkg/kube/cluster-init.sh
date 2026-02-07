@@ -9,7 +9,10 @@ K3S_LOG_DIR="/persist/kubelog"
 INSTALL_LOG="${K3S_LOG_DIR}/k3s-install.log"
 CTRD_LOG="${K3S_LOG_DIR}/containerd-user.log"
 HOSTNAME=""
-VMICONFIG_FILENAME="/run/zedkube/vmiVNC.run"
+# VNC parameters - unified for both remote-console and edgeview VNC
+# Both methods now use the same file path and JSON format
+VNC_CONFIG_DIR="/run/edgeview/VncParams"
+VNC_CONFIG_FILE="${VNC_CONFIG_DIR}/vmiVNC.run"
 VNC_RUNNING=false
 ClusterPrefixMask=""
 clusterStatusPort="12346"
@@ -27,6 +30,8 @@ BootReasonKubeTransition="BootReasonKubeTransition" # Must match string in types
 KUBE_ROOT_EXT4="/persist/vault/kube"
 KUBE_ROOT_ZFS="/dev/zvol/persist/etcd-storage"
 KUBE_ROOT_MOUNTPOINT="/var/lib"
+# Ensure KUBECONFIG is set for virtctl to access the k3s API server
+export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
 
 # shellcheck source=pkg/kube/lib/config.sh
 . /usr/bin/config.sh
@@ -487,50 +492,163 @@ reboot_with_reason() {
     reboot
 }
 
-# run virtctl vnc
-check_and_run_vnc() {
-  pid=$(pgrep -f "/usr/bin/virtctl vnc" )
-  # if remote-console config file exist, and either has not started, or need to restart
-  if [ -f "$VMICONFIG_FILENAME" ] && { [ "$VNC_RUNNING" = false ] || [ -z "$pid" ]; }; then
-    vmiName=""
-    vmiPort=""
+# Handle VNC file creation/deletion - start or stop virtctl vnc
+# Unified handler for both remote-console VNC (from zedkube) and edgeview VNC
+# JSON format: {"VMIName": "...", "VNCPort": ..., "CallerPID": ...}
+# CallerPID is optional - only present for edgeview VNC (used to cleanup when edgeview exits)
+handle_vnc() {
 
-    # Read the file and extract values
-    while IFS= read -r line; do
-        case "$line" in
-            *"VMINAME:"*)
-                vmiName="${line#*VMINAME:}"   # Extract the part after "VMINAME:"
-                vmiName="${vmiName%%[[:space:]]*}"  # Remove leading/trailing whitespace
-                ;;
-            *"VNCPORT:"*)
-                vmiPort="${line#*VNCPORT:}"   # Extract the part after "VNCPORT:"
-                vmiPort="${vmiPort%%[[:space:]]*}"  # Remove leading/trailing whitespace
-                ;;
-        esac
-    done < "$VMICONFIG_FILENAME"
+    local virtctl_pid
+    virtctl_pid=$(pgrep -f "/usr/bin/virtctl.*vnc.*--proxy-only")
 
-    # Check if the 'vmiName' and 'vmiPort' values are empty, if so, log an error and return
-    if [ -z "$vmiName" ] || [ -z "$vmiPort" ]; then
-        logmsg "Error: VMINAME or VNCPORT is empty in $VMICONFIG_FILENAME"
-        return 1
-    fi
+    if [ -f "$VNC_CONFIG_FILE" ] && { [ "$VNC_RUNNING" = false ] || [ -z "$virtctl_pid" ]; }; then
+        # Parse JSON format using jq
+        local vmiName
+        local vmiPort
+        local callerPid
+        vmiName=$(jq -r '.VMIName // empty' "$VNC_CONFIG_FILE" 2>/dev/null)
+        vmiPort=$(jq -r '.VNCPort // empty' "$VNC_CONFIG_FILE" 2>/dev/null)
+        # CallerPID is optional - only present for edgeview VNC
+        callerPid=$(jq -r '.CallerPID // empty' "$VNC_CONFIG_FILE" 2>/dev/null)
 
-    logmsg "virctl vnc on vmiName: $vmiName, port $vmiPort"
-    nohup /usr/bin/virtctl vnc "$vmiName" -n eve-kube-app --port "$vmiPort" --proxy-only &
-    VNC_RUNNING=true
-  else
-    if [ ! -f "$VMICONFIG_FILENAME" ]; then
-      if [ "$VNC_RUNNING" = true ]; then
-        if [ -n "$pid" ]; then
-            logmsg "Killing process with PID $pid"
-            kill -9 "$pid"
-        else
-            logmsg "Error: Process not found"
+        if [ -z "$vmiName" ] || [ -z "$vmiPort" ]; then
+            logmsg "handle_vnc: Error: VMIName or VNCPort is empty in $VNC_CONFIG_FILE"
+            return 1
         fi
-      fi
-      VNC_RUNNING=false
+
+        # Retry logic - try 5 times with 2 second delays
+        local max_retries=5
+        local retry_delay=3
+        local attempt=1
+        # Log file uses shell PID for unique naming per session
+        local virtctl_log="/tmp/virtctl-vnc.$$"
+
+        while [ $attempt -le $max_retries ]; do
+            logmsg "handle_vnc: Attempt $attempt/$max_retries: Starting virtctl vnc for $vmiName on port $vmiPort"
+
+            # Add timestamp before each virtctl invocation
+            echo "" >> "$virtctl_log"
+            echo "==== $(date '+%Y-%m-%d %H:%M:%S') ====" >> "$virtctl_log"
+
+            # Use nohup to prevent process from being killed when parent shell exits
+            # Redirect stdout/stderr to log file for debugging
+            nohup /usr/bin/virtctl vnc "$vmiName" -n eve-kube-app --port "$vmiPort" --proxy-only >> "$virtctl_log" 2>&1 &
+
+            local vnc_pid=$!
+            sleep 2
+
+            if kill -0 "$vnc_pid" 2>/dev/null && \
+               pgrep -f "/usr/bin/virtctl.*vnc.*$vmiName" > /dev/null; then
+                logmsg "handle_vnc: Success: virtctl vnc started for $vmiName on port $vmiPort (PID: $vnc_pid)"
+                VNC_RUNNING=true
+                # Start monitoring the caller PID if present (edgeview VNC)
+                if [ -n "$callerPid" ]; then
+                    monitor_caller_pid "$callerPid" &
+                fi
+                return 0
+            fi
+
+            logmsg "handle_vnc: Attempt $attempt failed. Process not running."
+
+            if [ $attempt -lt $max_retries ]; then
+                sleep $retry_delay
+            fi
+            attempt=$((attempt + 1))
+        done
+
+        logmsg "handle_vnc: Error: Failed to start virtctl vnc for $vmiName after $max_retries attempts"
+        VNC_RUNNING=false
+        return 1
+
+    elif [ ! -f "$VNC_CONFIG_FILE" ] && [ "$VNC_RUNNING" = true ]; then
+        # File removed - stop virtctl vnc
+        if [ -n "$virtctl_pid" ]; then
+            logmsg "handle_vnc: Stopping virtctl vnc process (PID: $virtctl_pid)"
+            kill -9 "$virtctl_pid" 2>/dev/null
+        else
+            logmsg "handle_vnc: virtctl vnc process already exited"
+        fi
+        VNC_RUNNING=false
     fi
-  fi
+}
+
+# Monitor caller PID (edgeview) and cleanup when it crashes
+# This is only used for edgeview VNC - handles the case when edgeview process crashes
+# Normal cleanup when TCP session ends is done by edgeview itself (cleanupEveKVNC)
+monitor_caller_pid() {
+    local caller_pid="$1"
+    local check_interval=5
+
+    logmsg "monitor_caller_pid: Starting to monitor caller PID $caller_pid"
+
+    while true; do
+        sleep $check_interval
+
+        # Check if caller process (edgeview) crashed
+        if ! kill -0 "$caller_pid" 2>/dev/null; then
+            logmsg "monitor_caller_pid: Caller PID $caller_pid is gone (crashed?), cleaning up"
+
+            # Stop virtctl vnc process
+            local virtctl_pid
+            virtctl_pid=$(pgrep -f "/usr/bin/virtctl.*vnc.*--proxy-only")
+            if [ -n "$virtctl_pid" ]; then
+                logmsg "monitor_caller_pid: Stopping virtctl vnc process (PID: $virtctl_pid)"
+                kill -9 "$virtctl_pid" 2>/dev/null
+            fi
+
+            # Remove the VNC file
+            if [ -f "$VNC_CONFIG_FILE" ]; then
+                logmsg "monitor_caller_pid: Removing stale VNC file $VNC_CONFIG_FILE"
+                rm -f "$VNC_CONFIG_FILE"
+            fi
+
+            VNC_RUNNING=false
+            return 0
+        fi
+
+        # Check if the VNC file was removed (normal cleanup by edgeview)
+        if [ ! -f "$VNC_CONFIG_FILE" ]; then
+            logmsg "monitor_caller_pid: VNC file removed, stopping monitor"
+            return 0
+        fi
+    done
+}
+
+# Monitor VNC config file for changes using inotifywait
+# Uses inotifywait to get notified of filesystem events (event-driven, no polling)
+monitor_vnc_config() {
+    local vnc_dir="$VNC_CONFIG_DIR"
+
+    logmsg "monitor_vnc_config: Starting monitor for $vnc_dir"
+
+    # Create the VNC directory if it doesn't exist
+    # This ensures inotifywait can start monitoring immediately
+    if [ ! -d "$vnc_dir" ]; then
+        logmsg "monitor_vnc_config: Creating VNC config directory $vnc_dir"
+        mkdir -p "$vnc_dir"
+    fi
+
+    logmsg "monitor_vnc_config: VNC config directory $vnc_dir ready"
+
+    # Use inotifywait in non-monitor mode (-e without -m) to wait for single event
+    # Then handle virtctl OUTSIDE the pipe to avoid subshell issues
+    # Running virtctl from inside a pipe subshell causes websocket connection issues
+    while true; do
+        # Check if VNC file already exists before waiting for inotify event
+        if [ -f "$VNC_CONFIG_FILE" ] && [ "$VNC_RUNNING" = false ]; then
+            logmsg "monitor_vnc_config: VNC file already exists, handling it"
+            handle_vnc
+        fi
+
+        # Wait for a single filesystem event (not in monitor mode)
+        # This blocks until an event occurs, then returns
+        event=$(inotifywait -q -e create,modify,delete,moved_to,moved_from "$vnc_dir" 2>/dev/null)
+        if [ -n "$event" ]; then
+            logmsg "monitor_vnc_config: Event detected: $event"
+            # Handle virtctl outside the pipe - this is the key fix
+            handle_vnc
+        fi
+    done
 }
 
 # get the EdgeNodeClusterStatus
@@ -1074,6 +1192,9 @@ logmsg "containerd started"
 # task running in the background to check if the cluster config has changed
 monitor_cluster_config_change &
 
+# task running in the background to monitor VNC config file changes
+monitor_vnc_config &
+
 # if this is the first time to run install, we may wait for the
 # cluster config and status
 if [ ! -f /var/lib/all_components_initialized ]; then
@@ -1409,7 +1530,6 @@ fi
         check_log_file_size "containerd-user.log"
         check_kubeconfig_yaml_files
         check_and_remove_excessive_k3s_logs
-        check_and_run_vnc
         wait_for_item "wait"
         sleep 15
 done

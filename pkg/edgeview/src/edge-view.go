@@ -68,6 +68,7 @@ type cmdOpt struct {
 	Extraline    int    `json:"extraline"`
 	Logtype      string `json:"logtype"`
 	UserInfo     string `json:"userinfo"`
+	AppUUID      string `json:"appUUID,omitempty"`
 }
 
 func main() {
