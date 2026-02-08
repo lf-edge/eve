@@ -51,8 +51,8 @@ var (
 		return err == nil
 	}
 	getEncryptionKey = func() ([]byte, error) {
-		// FIX-ME : update this after pillar changes is merged!!!
-		return etpm.UnsealDiskKey(etpm.DiskKeySealingPCRs)
+		pcrSelection := etpm.GetDiskKeyPolicyPcrOrDefault(types.PolicyPcrFile)
+		return etpm.UnsealDiskKeyWithRecovery(pcrSelection)
 	}
 )
 

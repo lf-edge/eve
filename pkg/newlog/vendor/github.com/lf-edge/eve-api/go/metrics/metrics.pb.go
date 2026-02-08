@@ -3754,7 +3754,7 @@ type ZMetricProcess struct {
 	VmBytes       uint64                 `protobuf:"varint,11,opt,name=vm_bytes,json=vmBytes,proto3" json:"vm_bytes,omitempty"`
 	RssBytes      uint64                 `protobuf:"varint,12,opt,name=rss_bytes,json=rssBytes,proto3" json:"rss_bytes,omitempty"`
 	MemoryPercent float32                `protobuf:"fixed32,13,opt,name=memory_percent,json=memoryPercent,proto3" json:"memory_percent,omitempty"`
-	// We report the stack for !watched proceeses which have been running for a while
+	// We report the stack for !watched processes which have been running for a while
 	Stack string `protobuf:"bytes,14,opt,name=stack,proto3" json:"stack,omitempty"`
 }
 
