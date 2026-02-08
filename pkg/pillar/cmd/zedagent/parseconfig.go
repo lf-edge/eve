@@ -62,6 +62,12 @@ func parseConfig(getconfigCtx *getconfigContext, config *zconfig.EdgeDevConfig,
 	defer resume()
 
 	getconfigCtx.deviceInfoFields.parseConfig(config)
+	if source == civmOnly {
+		// The initial pass to take care of ConfigItemValueMap
+		parseConfigItems(getconfigCtx, config, source)
+		log.Noticef("XXX parseConfig did ConfigItemValueMap")
+		return configOK
+	}
 
 	// Make sure we do not accidentally revert to an older configuration.
 	// This depends on the controller attaching config timestamp.

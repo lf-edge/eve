@@ -25,6 +25,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/controllerconn"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils/persist"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -43,12 +44,12 @@ type cipherContext struct {
 var controllerCertHash []byte
 
 // parse and update controller certs
-func parseControllerCerts(ctx *zedagentContext, contents []byte) (changed bool, err error) {
+func parsePublishControllerCerts(ctx *zedagentContext, contents []byte) (changed bool, err error) {
 	log.Functionf("Started parsing controller certs")
 	cfgConfig := &zcert.ZControllerCert{}
 	err = proto.Unmarshal(contents, cfgConfig)
 	if err != nil {
-		err = fmt.Errorf("parseControllerCerts(): Unmarshal error %w", err)
+		err = fmt.Errorf("parsePublishControllerCerts(): Unmarshal error %w", err)
 		log.Error(err)
 		return false, err
 	}
@@ -62,7 +63,7 @@ func parseControllerCerts(ctx *zedagentContext, contents []byte) (changed bool, 
 	if bytes.Equal(newHash, controllerCertHash) {
 		return false, nil
 	}
-	log.Functionf("parseControllerCerts: Applying updated config "+
+	log.Functionf("parsePublishControllerCerts: Applying updated config "+
 		"Last Sha: % x, "+
 		"New  Sha: % x, "+
 		"Num of cfgCert: %d",
@@ -86,6 +87,7 @@ func parseControllerCerts(ctx *zedagentContext, contents []byte) (changed bool, 
 		if found {
 			continue
 		}
+		// XXX remove this check when we change pubsubs to !persist
 		// Is the ControllerCert in use?
 		if lookupCipherContextByCCH(ctx.getconfigCtx, configHash) != nil {
 			log.Noticef("ControllerCert %s hash %s in use",
@@ -102,7 +104,7 @@ func parseControllerCerts(ctx *zedagentContext, contents []byte) (changed bool, 
 		certKey := hex.EncodeToString(cfgConfig.GetCertHash())
 		cert := lookupControllerCert(ctx.getconfigCtx, certKey)
 		if cert == nil {
-			log.Functionf("parseControllerCerts: not found %s", certKey)
+			log.Functionf("parsePublishControllerCerts: not found %s", certKey)
 			cert = &types.ControllerCert{
 				HashAlgo: cfgConfig.GetHashAlgo(),
 				Type:     cfgConfig.GetType(),
@@ -130,6 +132,31 @@ func lookupControllerCert(ctx *getconfigContext,
 	status := item.(types.ControllerCert)
 	log.Functionf("lookupControllerCert(%s) Done", key)
 	return &status
+}
+
+// look up the first controller cert of the specified type
+func lookupControllerCertByType(ctx *getconfigContext, certType zcert.ZCertType) *types.ControllerCert {
+	pub := ctx.pubControllerCert
+	items := pub.GetAll()
+	for _, item := range items {
+		cert := item.(types.ControllerCert)
+		if cert.Type == certType {
+			return &cert
+		}
+	}
+	return nil
+}
+
+// Return the first zcert.ZCertType_CERT_TYPE_CONTROLLER_SIGNING
+func lookupControllerSigningCert(ctx *getconfigContext) *types.ControllerCert {
+	return lookupControllerCertByType(ctx,
+		zcert.ZCertType_CERT_TYPE_CONTROLLER_SIGNING)
+}
+
+// Return the first zcert.ZCertType_CERT_TYPE_CONTROLLER_ECDH_EXCHANGE
+func lookupControllerEncryptionCert(ctx *getconfigContext) *types.ControllerCert {
+	return lookupControllerCertByType(ctx,
+		zcert.ZCertType_CERT_TYPE_CONTROLLER_ECDH_EXCHANGE)
 }
 
 // pubsub functions
@@ -245,6 +272,11 @@ func controllerCertsTask(ctx *zedagentContext, triggerCerts <-chan struct{}) {
 	}
 }
 
+// Returns an error if there are issues parsing or verifying
+// the certByte (a server signing cert) OR if that certificate is older
+// than the server signing certificate we've received/saved already.
+// If the server signing cert has not yet been receive/saved, than this
+// returns nil, indicating that certByte is acceptable.
 func verifySigningCertNewest(ctx *zedagentContext, certByte []byte) error {
 	block, _ := pem.Decode(certByte)
 	if block == nil {
@@ -256,7 +288,14 @@ func verifySigningCertNewest(ctx *zedagentContext, certByte []byte) error {
 		err = fmt.Errorf("verifyCertNewest: x509.ParseCertificate() failed: %w", err)
 		return err
 	}
-	err = ctrlClient.LoadSavedServerSigningCert()
+	// If we already have processed an AuthContainer this would be loaded.
+	// But if not we look at both /persist/checkpoint/controllercerts
+	// and controllercerts.bak
+	err = ctrlClient.LoadSavedServerSigningCert(false)
+	if err != nil {
+		log.Warnf("Failed to LoadSavedServerSigningCert - falling back: %s", err)
+		err = ctrlClient.LoadSavedServerSigningCert(true)
+	}
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			// Certificates were not loaded, accept
@@ -339,7 +378,8 @@ func requestCertsByURL(ctx *zedagentContext, certURL string, desc string,
 		}
 	}
 
-	// validate the certificate message payload
+	// validate the certificate message payload and certificate chains
+	// down to the signing and ECDH leaves
 	signingCertBytes, ret := ctrlClient.VerifyProtoSigningCertChain(rv.RespContents)
 	if ret != nil {
 		log.Errorf("getCertsFromController: verify err %v", ret)
@@ -361,8 +401,8 @@ func requestCertsByURL(ctx *zedagentContext, certURL string, desc string,
 		}
 	}
 
-	// manage the certificates through pubsub
-	changed, err := parseControllerCerts(ctx, rv.RespContents)
+	// Parse and publish the controller certificates
+	changed, err := parsePublishControllerCerts(ctx, rv.RespContents)
 	if err != nil {
 		// Note that err is already logged.
 		return false
@@ -371,8 +411,16 @@ func requestCertsByURL(ctx *zedagentContext, certURL string, desc string,
 		return true
 	}
 
-	// write the signing cert to file
-	if err := ctrlClient.SaveServerSigningCert(signingCertBytes); err != nil {
+	// Update the checkpoint - note that since we've verified semantic
+	// difference above this should not be triggered due to mere order
+	// differences in the protobuf contents
+	persist.MaybeSaveControllerCerts(log, rv.RespContents)
+
+	// Save the chain in the client structure
+	ctrlClient.StoreCertChainBytes(rv.RespContents)
+
+	// Save the signing cert in the client structure
+	if err = ctrlClient.StoreServerSigningCert(signingCertBytes); err != nil {
 		errStr := fmt.Sprintf("%v", err)
 		log.Error("getCertsFromController: " + errStr)
 		return false

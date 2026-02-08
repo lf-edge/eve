@@ -4,6 +4,7 @@
 package persist
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"time"
@@ -37,6 +38,23 @@ func SaveConfig(log *base.LogObject, filename string, contents []byte) {
 	if err != nil {
 		// Can occur if no space in filesystem
 		log.Errorf("SaveConfig failed: %s", err)
+		return
+	}
+}
+
+// CloneContentAndTimes Makes the backup have the same content and mtime as
+// the filename.
+func CloneContentAndTimes(log *base.LogObject, filename string, backupname string) {
+	contents, ts, err := ReadSavedConfig(log, filename)
+	if err != nil {
+		log.Errorf("Failed to backup due to read failure: %s", err)
+		return
+	}
+	SaveConfig(log, backupname, contents)
+	pathname := filepath.Join(types.CheckpointDirname, backupname)
+	if err := os.Chtimes(pathname, ts, ts); err != nil {
+		log.Errorf("Failed to set backup times on %s: %s",
+			pathname, err)
 		return
 	}
 }
@@ -80,4 +98,43 @@ func ExistsSavedConfig(log *base.LogObject, filename string) bool {
 		return false
 	}
 	return true
+}
+
+// MaybeSaveControllerCerts saves a checkpoint of a verified chain
+// of controller certificates if it differs from the currently saved chain.
+// If so, the previous controllercerts file is moved to controllercerts.bak
+// without changing its modification time.
+// XXX TBD whether caller needs to handle different order of certs in
+// the contents.
+func MaybeSaveControllerCerts(log *base.LogObject, contents []byte) {
+	filename := "controllercerts"
+	oldContents, ts, err := ReadSavedConfig(log, filename)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			log.Errorf("Reading checkpoint %s: %s", filename, err)
+		}
+	} else {
+		if bytes.Equal(oldContents, contents) {
+			log.Noticef("XXX debug: same content as at %v", ts)
+			return
+		}
+	}
+	pathname := filepath.Join(types.CheckpointDirname, filename)
+	err = fileutils.WriteRenameWithBackup(pathname, contents)
+	if err != nil {
+		// Can occur if no space in filesystem
+		log.Errorf("MaybeSaveControllerCerts failed: %s", err)
+		return
+	}
+}
+
+// ReadControllerCerts can read either "controllercerts" or "controllercerts.bak".
+// It is up to the caller to protobut unmarshal and verify the chain
+func ReadControllerCerts(log *base.LogObject, bak bool) ([]byte, time.Time, error) {
+	filename := "controllercerts"
+	if bak {
+		filename += ".bak"
+	}
+	log.Noticef("XXX debug reading %s", filename)
+	return ReadSavedConfig(log, filename)
 }

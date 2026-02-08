@@ -259,7 +259,7 @@ func (msrv *Msrv) initSubscriptions(persist bool) (err error) {
 		AgentName:     "zedagent",
 		MyAgentName:   agentName,
 		TopicImpl:     types.ConfigItemValueMap{},
-		Persistent:    true,
+		Persistent:    false,
 		Activate:      false,
 		CreateHandler: msrv.handleGlobalConfigCreate,
 		ModifyHandler: msrv.handleGlobalConfigModify,
@@ -303,7 +303,7 @@ func (msrv *Msrv) initSubscriptions(persist bool) (err error) {
 		Activate:    false,
 		WarningTime: warningTime,
 		ErrorTime:   errorTime,
-		Persistent:  true,
+		Persistent:  false,
 	})
 	if err != nil {
 		return err
