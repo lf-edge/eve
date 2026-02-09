@@ -13,21 +13,16 @@ package ledmanager
 
 import (
 	"flag"
-	"fmt"
-	"os"
 	"regexp"
-	"syscall"
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
-	"github.com/lf-edge/eve/pkg/pillar/diskmetrics"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/sirupsen/logrus"
-	"golang.org/x/sys/unix"
 )
 
 const (
@@ -105,11 +100,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		}
 
 		switch m.Strategy {
-		case hardware.StrategyForceDisk:
-			initFunc = InitForceDiskCmd
-			displayFunc = func(log *base.LogObject, dns *types.DeviceNetworkStatus, arg string, bc types.LedBlinkCount) {
-				ExecuteForceDiskCmd(log, dns, arg, bc)
-			}
 		case hardware.StrategyLedCmd:
 			initFunc = hardware.InitLedCmd
 			displayFunc = hardware.ExecuteLedCmd
@@ -365,86 +355,6 @@ var (
 	bufferLength = int64(256 * 1024) //256k buffer length
 	readBuffer   []byte
 )
-
-// InitForceDiskCmd determines the disk (using the largest disk) and measures
-// the repetition count to get to 200ms dd time.
-func InitForceDiskCmd(log *base.LogObject, ledName string) string {
-	disk := diskmetrics.FindLargestDisk(log)
-	if disk == "" {
-		return ""
-	}
-	log.Functionf("InitForceDiskCmd using disk %s", disk)
-	readBuffer = make([]byte, bufferLength)
-	diskDevice := "/dev/" + disk
-	count := 100 * 16
-	// Prime before measuring
-	uncachedDiskRead(count, diskDevice)
-	uncachedDiskRead(count, diskDevice)
-	start := time.Now()
-	uncachedDiskRead(count, diskDevice)
-	elapsed := time.Since(start)
-	if elapsed == 0 {
-		log.Errorf("Measured 0 nanoseconds!")
-		return ""
-	}
-	// Adjust count but at least one
-	fl := time.Duration(count) * (200 * time.Millisecond) / elapsed
-	count = int(fl)
-	if count == 0 {
-		count = 1
-	}
-	log.Noticef("Measured %v; count %d", elapsed, count)
-	diskRepeatCount = count
-	return diskDevice
-}
-
-// ExecuteForceDiskCmd does counter number of 200ms blinks and returns
-// It assumes the init function has determined a diskRepeatCount and a disk.
-func ExecuteForceDiskCmd(log *base.LogObject, deviceNetworkStatus *types.DeviceNetworkStatus,
-	diskDevice string, blinkCount types.LedBlinkCount) {
-	for i := 0; i < int(blinkCount); i++ {
-		doForceDiskBlink(diskDevice)
-		time.Sleep(200 * time.Millisecond)
-	}
-}
-
-// doForceDiskBlink assumes the init function has determined a diskRepeatCount
-// which makes the disk LED light up for 200ms
-// We do this with caching disabled since there might be a filesystem on the
-// device in which case the disk LED would otherwise not light up.
-func doForceDiskBlink(diskDevice string) {
-	if diskDevice == "" || diskRepeatCount == 0 {
-		DummyCmd()
-		return
-	}
-	uncachedDiskRead(diskRepeatCount, diskDevice)
-}
-
-func uncachedDiskRead(count int, diskDevice string) {
-	offset := int64(0)
-	handler, err := os.Open(diskDevice)
-	if err != nil {
-		err = fmt.Errorf("uncachedDiskRead: Failed on open: %s", err)
-		log.Error(err.Error())
-		return
-	}
-	defer handler.Close()
-	for i := 0; i < count; i++ {
-		unix.Fadvise(int(handler.Fd()), offset, bufferLength, 4) // 4 == POSIX_FADV_DONTNEED
-		readBytes, err := handler.Read(readBuffer)
-		if err != nil {
-			err = fmt.Errorf("uncachedDiskRead: Failed on read: %s", err)
-			log.Error(err.Error())
-		}
-		syscall.Madvise(readBuffer, 4) // 4 == MADV_DONTNEED
-		log.Tracef("uncachedDiskRead: size: %d", readBytes)
-		if int64(readBytes) < bufferLength {
-			log.Tracef("uncachedDiskRead: done")
-			break
-		}
-		offset += bufferLength
-	}
-}
 
 const (
 	// Time limits for event loop handlers
