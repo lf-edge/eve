@@ -20,8 +20,6 @@ type LedStrategy string
 const (
 	// StrategyNone default
 	StrategyNone LedStrategy = ""
-	// StrategyForceDisk uses disk activity simulation
-	StrategyForceDisk LedStrategy = "ForceDisk"
 	// StrategyLedCmd uses sysfs LEDs
 	StrategyLedCmd LedStrategy = "LedCmd"
 	// StrategyDellCmd uses Dell GPIO setup
@@ -63,31 +61,31 @@ type LedModel struct {
 var LedModels = []LedModel{
 	{
 		Model:    "Supermicro.SYS-E100-9APP",
-		Strategy: StrategyForceDisk,
+		Strategy: StrategyNone,
 	},
 	{
 		Model:    "Supermicro.SYS-E100-9S",
-		Strategy: StrategyForceDisk,
+		Strategy: StrategyNone,
 	},
 	{
 		Model:    "Supermicro.SYS-E50-9AP",
-		Strategy: StrategyForceDisk,
+		Strategy: StrategyNone,
 	},
 	{ // XXX temporary fix for old BIOS
 		Model:    "Supermicro.Super Server",
-		Strategy: StrategyForceDisk,
+		Strategy: StrategyNone,
 	},
 	{
 		Model:    "Supermicro.SYS-E300-8D",
-		Strategy: StrategyForceDisk,
+		Strategy: StrategyNone,
 	},
 	{
 		Model:    "Supermicro.SYS-E300-9A-4CN10P",
-		Strategy: StrategyForceDisk,
+		Strategy: StrategyNone,
 	},
 	{
 		Model:    "Supermicro.SYS-5018D-FN8T",
-		Strategy: StrategyForceDisk,
+		Strategy: StrategyNone,
 	},
 	{
 		Model:    "PC Engines.apu2",
@@ -215,7 +213,7 @@ var LedModels = []LedModel{
 	{
 		// Last in table as a default
 		Model:    "",
-		Strategy: StrategyForceDisk,
+		Strategy: StrategyNone,
 	},
 }
 
