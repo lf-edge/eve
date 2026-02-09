@@ -40,9 +40,7 @@ RUN abuild -r -F || :
 WORKDIR /
 # now install it locally so we can pick it up later on below
 # hadolint ignore=DL3019,DL3018
-RUN echo "apk add the packages"
 RUN apk add -p /out --allow-untrusted /root/packages/*/musl-1.2*.apk
-RUN echo "did the apk"
 
 # hadolint ignore=DL4006
 ADD https://www.ezix.org/software/files/lshw-B.${LSHW_VERSION}.tar.gz lshw.tar.gz
@@ -71,8 +69,9 @@ ADD https://cdn.openbsd.org/pub/OpenBSD/OpenSSH/portable/openssh-${OPENSSH_VERSI
 ADD https://cdn.openbsd.org/pub/OpenBSD/OpenSSH/portable/openssh-${OPENSSH_VERSION}.tar.gz.asc /usr/src
 ADD https://cdn.openbsd.org/pub/OpenBSD/OpenSSH/RELEASE_KEY.asc /usr/src
 
-RUN gpg --import RELEASE_KEY.asc || :
-RUN gpg --verify openssh-${OPENSSH_VERSION}.tar.gz.asc openssh-${OPENSSH_VERSION}.tar.gz
+# import and verify in same `run` preventing db open race
+RUN gpg --import --allow-weak-key-signatures /usr/src/RELEASE_KEY.asc && \
+    gpg --verify --allow-weak-key-signatures openssh-${OPENSSH_VERSION}.tar.gz.asc openssh-${OPENSSH_VERSION}.tar.gz
 RUN tar xvf openssh-${OPENSSH_VERSION}.tar.gz
 WORKDIR /usr/src/openssh-${OPENSSH_VERSION}
 RUN ./configure \
