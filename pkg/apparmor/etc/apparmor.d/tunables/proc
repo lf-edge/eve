@@ -10,3 +10,6 @@
 
 # @{PROC} is the location where procfs is mounted.
 @{PROC}=/proc/
+
+# Also, include files in tunables/proc.d for site-specific adjustments
+include if exists <tunables/proc.d>

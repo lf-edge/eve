@@ -9,3 +9,6 @@
 include <tunables/securityfs>
 
 @{apparmorfs}=@{securityfs}/apparmor/
+
+# Also, include files in tunables/apparmorfs.d for site-specific adjustments
+include if exists <tunables/apparmorfs.d>

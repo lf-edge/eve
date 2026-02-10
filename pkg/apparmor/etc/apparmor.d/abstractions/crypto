@@ -11,7 +11,10 @@
 #
 # ------------------------------------------------------------------
 
-  abi <abi/3.0>,
+  abi <abi/4.0>,
+
+  # Global config of openssl
+  include <abstractions/openssl>
 
   @{etc_ro}/gcrypt/hwf.deny r,
   @{etc_ro}/gcrypt/random.conf r,
@@ -23,5 +26,9 @@
   # crypto policies used by various libraries
   /etc/crypto-policies/*/*.txt r,
   /usr/share/crypto-policies/*/*.txt r,
+
+  # Global gnutls config
+  @{etc_ro}/gnutls/config r,
+  @{etc_ro}/gnutls/pkcs11.conf r,
 
   include if exists <abstractions/crypto.d>

@@ -14,3 +14,6 @@
 #
 # Or if mysql databases are stored in /home:
 # alias /var/lib/mysql/ -> /home/mysql/,
+
+# Also, include files in tunables/alias.d for site-specific adjustments
+include if exists <tunables/alias.d>

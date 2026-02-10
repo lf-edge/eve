@@ -8,3 +8,6 @@
 
 # @{securityfs} is the location where securityfs is mounted.
 @{securityfs}=@{sys}/kernel/security/
+
+# Also, include files in tunables/securityfs.d for site-specific adjustments
+include if exists <tunables/securityfs.d>

@@ -9,6 +9,6 @@
 # Make sure to include at least tunables/proc and tunables/kernelvars
 # when using this abstraction, if not tunables/global.
 
-abi <abi/3.0>,
+abi <abi/4.0>,
 
 @{PROC}/@{pids}/attr/{apparmor/,}{current,prev,exec} r,
