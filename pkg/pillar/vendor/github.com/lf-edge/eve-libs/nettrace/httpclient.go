@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"sync"
 	"syscall"
@@ -592,11 +593,13 @@ func (c *HTTPClient) periodicSockUpdate(gettingTrace bool) {
 }
 
 func (c *HTTPClient) getConntrack(addr addrTuple, entry *conntrackEntry, now Timestamp) {
+	srcAddr, _ := netip.AddrFromSlice(addr.srcIP)
+	dstAddr, _ := netip.AddrFromSlice(addr.dstIP)
 	flow, err := c.nfConn.Get(conntrack.Flow{
 		TupleOrig: conntrack.Tuple{
 			IP: conntrack.IPTuple{
-				SourceAddress:      addr.srcIP,
-				DestinationAddress: addr.dstIP,
+				SourceAddress:      srcAddr,
+				DestinationAddress: dstAddr,
 			},
 			Proto: conntrack.ProtoTuple{
 				Protocol:        addr.proto,

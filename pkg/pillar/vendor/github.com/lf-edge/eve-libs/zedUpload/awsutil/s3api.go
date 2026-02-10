@@ -5,190 +5,215 @@ package awsutil
 
 import (
 	"context"
-	"log"
 	"net/http"
+	"strings"
 	"time"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/awserr"
-	"github.com/aws/aws-sdk-go/aws/credentials"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/s3"
-	"github.com/aws/aws-sdk-go/service/s3/s3manager"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	awsConfig "github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/lf-edge/eve-libs/zedUpload/types"
+	"github.com/sirupsen/logrus"
 )
 
 const (
-	//S3Concurrency parallels parts download limit
+	// S3Concurrency parallels parts download/upload limit
 	S3Concurrency = 5
-	//S3PartSize size of part to download
+	// S3PartSize size of part to download/upload
 	S3PartSize = 5 * 1024 * 1024
-	//S3PartLeaveError leaves parts to manual resolve errors on uploads
+	// S3PartLeaveError leaves parts to manual resolve errors on uploads
 	S3PartLeaveError = true
 )
 
 type S3ctx struct {
-	p   S3CredProvider
-	ss3 *s3.S3
-	dn  *s3manager.Downloader
-	up  *s3manager.Uploader
-	ctx context.Context
-	log types.Logger
+	client     *s3.Client
+	uploader   *manager.Uploader
+	downloader *manager.Downloader
+	presigner  *s3.PresignClient
+	ctx        context.Context
+	log        types.Logger
 }
 
-type S3CredProvider struct {
-	id, secret string
-}
+// NewAwsCtx initializes AWS S3 context using SDK v2
+func NewAwsCtx(id, secret, region string, useIPv6 bool, hctx *http.Client) (*S3ctx, error) {
+	ctx := context.Background()
+	logger := logrus.New()
+	logger.SetLevel(logrus.TraceLevel)
 
-func (p *S3CredProvider) Retrieve() (credentials.Value, error) {
-	token := ""
-	return credentials.Value{AccessKeyID: p.id, SecretAccessKey: p.secret,
-		SessionToken: token}, nil
-}
-
-func (p *S3CredProvider) IsExpired() bool {
-	return true
-}
-
-func NewAwsCtx(id, secret, region string, hctx *http.Client) *S3ctx {
-	ctx := S3ctx{
-		p:   S3CredProvider{id: id, secret: secret},
-		ctx: aws.BackgroundContext(),
+	// Enable dual-stack (IPv4 + IPv6) endpoint if IPv6 is in use.
+	dualStackState := aws.DualStackEndpointStateUnset
+	if useIPv6 {
+		dualStackState = aws.DualStackEndpointStateEnabled
 	}
-	cred := credentials.NewCredentials(&ctx.p)
+	// Load config with static credentials
+	cfg, err := awsConfig.LoadDefaultConfig(ctx,
+		awsConfig.WithRegion(region),
+		awsConfig.WithCredentialsProvider(
+			credentials.NewStaticCredentialsProvider(id, secret, ""),
+		),
+		awsConfig.WithUseDualStackEndpoint(dualStackState),
+	)
+	if err != nil {
+		return nil, err
+	}
 
-	cfg := aws.NewConfig()
-	cfg.WithCredentials(cred)
-
-	// regions
-	cfg.WithRegion(region)
-
+	// Override HTTP client if provided
 	if hctx != nil {
-		// This picks up the TLS settings including any extra proxy
-		// certificates.
-		cfg.WithHTTPClient(hctx)
+		cfg.HTTPClient = hctx
 	}
 
-	// s3.New is deprecated.. Ignoring the lint error as this is not new code.
-	ctx.ss3 = s3.New(session.New(), cfg) // nolint
-	ctx.up = s3manager.NewUploaderWithClient(ctx.ss3, func(u *s3manager.Uploader) {
+	client := s3.NewFromConfig(cfg)
+	// Presigner for generating pre-signed URLs
+	presigner := s3.NewPresignClient(client)
+
+	// Uploader
+	uploader := manager.NewUploader(client, func(u *manager.Uploader) {
 		u.PartSize = S3PartSize
 		u.LeavePartsOnError = S3PartLeaveError
 		u.Concurrency = S3Concurrency
-		u.BufferProvider = s3manager.NewBufferedReadSeekerWriteToPool(32 * 1024)
+		u.BufferProvider = manager.NewBufferedReadSeekerWriteToPool(32 * 1024)
 	})
-	ctx.dn = s3manager.NewDownloaderWithClient(ctx.ss3, func(d *s3manager.Downloader) {
+
+	// Downloader
+	downloader := manager.NewDownloader(client, func(d *manager.Downloader) {
 		d.PartSize = S3PartSize
 		d.Concurrency = S3Concurrency
-		d.BufferProvider = s3manager.NewPooledBufferedWriterReadFromProvider(32 * 1024)
+		d.BufferProvider = manager.NewPooledBufferedWriterReadFromProvider(32 * 1024)
 	})
 
-	return &ctx
+	return &S3ctx{
+		client:     client,
+		uploader:   uploader,
+		downloader: downloader,
+		presigner:  presigner,
+		ctx:        ctx,
+		log:        logger,
+	}, nil
 }
 
-// WithContext can be used to pass a context e.g., for cancellation
-func (s *S3ctx) WithContext(cancelContext context.Context) *S3ctx {
-	s.ctx = cancelContext
+// WithContext sets a custom context (e.g., for cancellation)
+func (s *S3ctx) WithContext(ctx context.Context) *S3ctx {
+	s.ctx = ctx
 	return s
 }
 
-// WithLogger pass logs to logger
+// WithLogger attaches a logger
 func (s *S3ctx) WithLogger(logger types.Logger) *S3ctx {
 	s.log = logger
 	return s
 }
 
+// CreateBucket creates a new S3 bucket
 func (s *S3ctx) CreateBucket(bname string) error {
-	_, err := s.ss3.CreateBucket(&s3.CreateBucketInput{Bucket: &bname})
+	input := &s3.CreateBucketInput{
+		Bucket: aws.String(bname),
+	}
+	if s.client.Options().Region != "us-east-1" {
+		input.CreateBucketConfiguration = &s3types.CreateBucketConfiguration{
+			// use the generated constant, not a free-form string
+			LocationConstraint: s3types.BucketLocationConstraintMeCentral1,
+		}
+	}
+	_, err := s.client.CreateBucket(s.ctx, input)
 	if err != nil {
-		log.Printf("Failed to create bucket %s/%v", bname, err)
+		s.log.Errorf("Failed to create bucket %q: %v", bname, err)
 		return err
 	}
-
 	return nil
 }
 
-func (s *S3ctx) IsBucketAvailable(bname string) (error, bool) {
-	result, err := s.ss3.ListBuckets(&s3.ListBucketsInput{})
+// IsBucketAvailable checks if a bucket exists in the account
+func (s *S3ctx) IsBucketAvailable(bname string) (bool, error) {
+	output, err := s.client.ListBuckets(s.ctx, &s3.ListBucketsInput{})
 	if err != nil {
-		log.Printf("Failed to list buckets %s/%s", bname, err.Error())
-		return err, false
+		s.log.Printf("Failed to list buckets: %v", err)
+		return false, err
 	}
-
-	for _, bucket := range result.Buckets {
-		if *bucket.Name == bname {
-			return nil, true
+	for _, b := range output.Buckets {
+		if aws.ToString(b.Name) == bname {
+			return true, nil
 		}
 	}
-
-	return nil, false
+	return false, nil
 }
 
+// WaitUntilBucketExists waits until the bucket exists or times out
 func (s *S3ctx) WaitUntilBucketExists(bname string) bool {
+	waiter := s3.NewBucketExistsWaiter(s.client)
 
-	// Checks for the http status and retries if 404 in 5s (returns false after 20 retries)
-	// Could be used as option for IsBucketAvailable - requires listBucket access
-
-	if err := s.ss3.WaitUntilBucketExists(&s3.HeadBucketInput{Bucket: &bname}); err != nil {
-		log.Printf("Failed to wait for bucket to exist %s, %s\n", bname, err)
+	maxWait := 100 * time.Second
+	err := waiter.Wait(
+		s.ctx,
+		&s3.HeadBucketInput{Bucket: aws.String(bname)},
+		maxWait,
+		func(o *s3.BucketExistsWaiterOptions) {
+			// cap the delay between retries to 5s
+			o.MaxDelay = 5 * time.Second
+		},
+	)
+	if err != nil {
+		s.log.Printf("Error waiting for bucket %q to exist: %v", bname, err)
 		return false
 	}
-
 	return true
 }
 
+// DeleteBucket deletes an S3 bucket
 func (s *S3ctx) DeleteBucket(bname string) error {
-	return nil
-}
-
-func (s *S3ctx) GetObjectURL(bname, bkey string) (error, string) {
-	req, _ := s.ss3.GetObjectRequest(&s3.GetObjectInput{
-		Bucket: aws.String(bname),
-		Key:    aws.String(bkey)})
-
-	// Presign a request with 1 minute expiration.
-	surl, err := req.Presign(1 * time.Minute)
-
-	return err, surl
-}
-
-func (s *S3ctx) DeleteObject(bname, bkey string) error {
-	_, err := s.ss3.DeleteObject(&s3.DeleteObjectInput{
-		Bucket: aws.String(bname),
-		Key:    aws.String(bkey)})
+	_, err := s.client.DeleteBucket(s.ctx, &s3.DeleteBucketInput{Bucket: aws.String(bname)})
 	return err
 }
 
-func (s *S3ctx) GetObjectSize(bname, bkey string) (error, int64) {
-	resp, err := s.ss3.HeadObject(&s3.HeadObjectInput{
-		Bucket: aws.String(bname),
-		Key:    aws.String(bkey)})
+// GetObjectURL generates a pre-signed GET URL valid for 1 minute
+func (s *S3ctx) GetObjectURL(bname, bkey string) (string, error) {
+	resp, err := s.presigner.PresignGetObject(
+		s.ctx,
+		&s3.GetObjectInput{
+			Bucket: aws.String(bname),
+			Key:    aws.String(bkey),
+		},
+		// set a 1-minute expiration
+		s3.WithPresignExpires(1*time.Minute),
+	)
 	if err != nil {
-		if aerr, ok := err.(awserr.Error); ok {
-			return aerr, 0
-		}
-		return err, 0
+		return "", err
 	}
-
-	if resp != nil {
-		return nil, *resp.ContentLength
-	}
-
-	return nil, 0
+	return resp.URL, nil
 }
 
-func (s *S3ctx) GetObjectMD5(bname, bkey string) (error, string) {
-	resp, err := s.ss3.HeadObject(&s3.HeadObjectInput{
+// DeleteObject removes an object from a bucket
+func (s *S3ctx) DeleteObject(bname, bkey string) error {
+	_, err := s.client.DeleteObject(s.ctx, &s3.DeleteObjectInput{
 		Bucket: aws.String(bname),
-		Key:    aws.String(bkey)})
+		Key:    aws.String(bkey),
+	})
+	return err
+}
+
+// GetObjectSize retrieves the size (ContentLength) of an object
+func (s *S3ctx) GetObjectSize(bname, bkey string) (int64, error) {
+	resp, err := s.client.HeadObject(s.ctx, &s3.HeadObjectInput{
+		Bucket: aws.String(bname),
+		Key:    aws.String(bkey),
+	})
 	if err != nil {
-		if aerr, ok := err.(awserr.Error); ok {
-			return aerr, ""
-		}
-		return err, ""
+		return 0, err
 	}
-	if resp != nil {
-		return nil, *resp.ETag
+	return *resp.ContentLength, nil
+}
+
+// GetObjectMD5 retrieves the ETag (often MD5) of an object
+func (s *S3ctx) GetObjectMD5(bname, bkey string) (string, error) {
+	resp, err := s.client.HeadObject(s.ctx, &s3.HeadObjectInput{
+		Bucket: aws.String(bname),
+		Key:    aws.String(bkey),
+	})
+	if err != nil {
+		return "", err
 	}
-	return nil, ""
+	etag := aws.ToString(resp.ETag)
+	return strings.Trim(etag, `"`), nil
 }

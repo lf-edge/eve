@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
@@ -106,7 +107,18 @@ func newTracedDialer(tracer tracerWithDial, log Logger, sourceIP net.IP,
 	}
 }
 
+// dial implement DialContext method of the net.Dialer interface.
 func (td *tracedDialer) dial(ctx context.Context, network, address string) (net.Conn, error) {
+	// Note that if the overall timeout to the http.Client is reached, this dial() method
+	// may simply be abandoned. You cannot expect any goroutine or defer to be reached.
+	// This matters in that this routine expects to set the following parameters:
+	// - dialTrace.DialTrace.CtxCloseAt
+	// - dialTrace.DialEndAt
+	// - dialTrace.ctxClosed
+	//
+	// Anything that expects those to be set, should *not* expect them to be set
+	// if http.Client times out.
+
 	// Prepare the original Dialer from the net package.
 	var sourceAddr net.Addr
 	if td.sourceIP != nil {
@@ -120,17 +132,22 @@ func (td *tracedDialer) dial(ctx context.Context, network, address string) (net.
 	netDialer := net.Dialer{Resolver: resolver.netResolver(), Control: td.tfd.controlFD,
 		LocalAddr: sourceAddr, Timeout: td.handshakeTimeout, KeepAlive: td.keepAliveInterval}
 
-	// Monitor context for closure.
-	go func() {
-		<-ctx.Done()
-		td.tracer.publishTrace(dialTrace{
-			DialTrace: DialTrace{
-				TraceID:    td.dialID,
-				CtxCloseAt: td.tracer.getRelTimestamp(),
-			},
-			ctxClosed: true,
-		})
-	}()
+	if ctx == nil || ctx.Done() == nil {
+		td.log.Errorf("nettrace dial: nil or non-cancelable context passed. Dumping the stack to trace the context\n%s",
+			debug.Stack())
+	} else {
+		// Monitor context for closure.
+		go func(ctx context.Context) {
+			<-ctx.Done()
+			td.tracer.publishTrace(dialTrace{
+				DialTrace: DialTrace{
+					TraceID:    td.dialID,
+					CtxCloseAt: td.tracer.getRelTimestamp(),
+				},
+				ctxClosed: true,
+			})
+		}(ctx)
+	}
 
 	// Run DialContext method of the original Dialer.
 	dial := dialTrace{
@@ -146,6 +163,10 @@ func (td *tracedDialer) dial(ctx context.Context, network, address string) (net.
 		dial.SourceIP = td.sourceIP.String()
 	}
 	td.tracer.publishTrace(dial)
+
+	// if the http.Client.Timeout is reached, this will *not* return an error.
+	// It simply will be abandoned. Listening for a ctx.Done() or setting a defer()
+	// will not help either.
 	conn, err := netDialer.DialContext(ctx, network, address)
 	resolver.close()
 	dial.justBegan = false
@@ -177,13 +198,13 @@ func (tr *tracedResolver) netResolver() *net.Resolver {
 }
 
 func (tr *tracedResolver) dial(ctx context.Context, network, address string) (net.Conn, error) {
+	ip, port, err := parseHostAddr(address)
+	if err != nil {
+		return nil, fmt.Errorf("nettrace: networkTracer id=%s: %w",
+			tr.caller.tracer.getTracerID(), err)
+	}
 	// Check if this nameserver is allowed by the user config.
 	if tr.caller.skipNameserver != nil {
-		ip, port, err := parseHostAddr(address)
-		if err != nil {
-			return nil, fmt.Errorf("nettrace: networkTracer id=%s: %w",
-				tr.caller.tracer.getTracerID(), err)
-		}
 		skip, reason := tr.caller.skipNameserver(ip, port)
 		if skip {
 			tr.ensureSkippedServersContains(address)
@@ -193,7 +214,7 @@ func (tr *tracedResolver) dial(ctx context.Context, network, address string) (ne
 
 	// Prepare the original Dialer from the net package.
 	var sourceAddr net.Addr
-	if tr.caller.sourceIP != nil {
+	if tr.caller.sourceIP != nil && !ip.IsLoopback() {
 		if strings.HasPrefix(network, "tcp") {
 			sourceAddr = &net.TCPAddr{IP: tr.caller.sourceIP}
 		} else {

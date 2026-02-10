@@ -1,4 +1,4 @@
-// Copyright(c) 2017-2018 Zededa, Inc.
+// Copyright(c) 2017-2026 Zededa, Inc.
 // All rights reserved.
 
 package zedUpload
@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
-	"strings"
+	"path"
 	"time"
 
 	"github.com/lf-edge/eve-libs/nettrace"
@@ -51,9 +51,9 @@ func (ep *SftpTransportMethod) Action(req *DronaRequest) error {
 
 	switch req.operation {
 	case SyncOpUpload:
-		err, size = ep.processSftpUpload(req)
+		size, err = ep.processSftpUpload(req)
 	case SyncOpDownload:
-		err, size = ep.processSftpDownload(req)
+		size, err = ep.processSftpDownload(req)
 	case SyncOpDelete:
 		err = ep.processSftpDelete(req)
 	case SyncOpList:
@@ -119,16 +119,17 @@ func (ep *SftpTransportMethod) GetNetTrace(description string) (
 	return nil, nil, fmt.Errorf("not supported")
 }
 
-// File upload to SFTP Datastore
-func (ep *SftpTransportMethod) processSftpUpload(req *DronaRequest) (error, int) {
-	file := req.name
+// resolvePath returns the full path for the given file name
+func (ep *SftpTransportMethod) resolvePath(name string) string {
 	if ep.path != "" {
-		if strings.HasSuffix(ep.path, "/") {
-			file = ep.path + req.name
-		} else {
-			file = ep.path + "/" + req.name
-		}
+		return path.Join(ep.path, name)
 	}
+	return name
+}
+
+// File upload to SFTP Datastore
+func (ep *SftpTransportMethod) processSftpUpload(req *DronaRequest) (int, error) {
+	file := ep.resolvePath(req.name)
 	prgChan := make(types.StatsNotifChan)
 	defer close(prgChan)
 	if req.ackback {
@@ -136,19 +137,11 @@ func (ep *SftpTransportMethod) processSftpUpload(req *DronaRequest) (error, int)
 	}
 
 	stats, _ := sftp.ExecCmd("put", ep.surl, ep.uname, ep.passwd, file, req.objloc, req.sizelimit, prgChan)
-	return stats.Error, int(stats.Asize)
+	return int(stats.Asize), stats.Error
 }
-
 // File download from SFTP Datastore
-func (ep *SftpTransportMethod) processSftpDownload(req *DronaRequest) (error, int) {
-	file := req.name
-	if ep.path != "" {
-		if strings.HasSuffix(ep.path, "/") {
-			file = ep.path + req.name
-		} else {
-			file = ep.path + "/" + req.name
-		}
-	}
+func (ep *SftpTransportMethod) processSftpDownload(req *DronaRequest) (int, error) {
+	file := ep.resolvePath(req.name)
 	prgChan := make(types.StatsNotifChan)
 	defer close(prgChan)
 	if req.ackback {
@@ -156,19 +149,12 @@ func (ep *SftpTransportMethod) processSftpDownload(req *DronaRequest) (error, in
 	}
 
 	stats, _ := sftp.ExecCmd("fetch", ep.surl, ep.uname, ep.passwd, file, req.objloc, req.sizelimit, prgChan)
-	return stats.Error, int(stats.Asize)
+	return int(stats.Asize), stats.Error
 }
 
 // File delete from SFTP Datastore
 func (ep *SftpTransportMethod) processSftpDelete(req *DronaRequest) error {
-	file := req.name
-	if ep.path != "" {
-		if strings.HasSuffix(ep.path, "/") {
-			file = ep.path + req.name
-		} else {
-			file = ep.path + "/" + req.name
-		}
-	}
+	file := ep.resolvePath(req.name)
 	stats, _ := sftp.ExecCmd("rm", ep.surl, ep.uname, ep.passwd, file, "", req.sizelimit, nil)
 	return stats.Error
 }
@@ -186,14 +172,7 @@ func (ep *SftpTransportMethod) processSftpList(req *DronaRequest) ([]string, err
 }
 
 func (ep *SftpTransportMethod) processSftpObjectMetaData(req *DronaRequest) (error, int64) {
-	file := req.name
-	if ep.path != "" {
-		if strings.HasSuffix(ep.path, "/") {
-			file = ep.path + req.name
-		} else {
-			file = ep.path + "/" + req.name
-		}
-	}
+	file := ep.resolvePath(req.name)
 	stats, resp := sftp.ExecCmd("stat", ep.surl, ep.uname, ep.passwd, file, "", req.sizelimit, nil)
 	return stats.Error, resp.ContentLength
 }

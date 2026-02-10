@@ -2,16 +2,26 @@ package conntrack
 
 import (
 	"fmt"
+	"sync"
 
 	"github.com/mdlayher/netlink"
 	"github.com/pkg/errors"
 	"github.com/ti-mo/netfilter"
+	"golang.org/x/sys/unix"
 )
 
 // Conn represents a Netlink connection to the Netfilter
 // subsystem and implements all Conntrack actions.
 type Conn struct {
 	conn *netfilter.Conn
+
+	workers sync.WaitGroup
+}
+
+// DumpOptions is passed as an option to `Dump`-related methods to modify their behaviour.
+type DumpOptions struct {
+	// ZeroCounters resets all flows' counters to zero after the dump operation.
+	ZeroCounters bool
 }
 
 // Dial opens a new Netfilter Netlink connection and returns it
@@ -22,12 +32,21 @@ func Dial(config *netlink.Config) (*Conn, error) {
 		return nil, err
 	}
 
-	return &Conn{c}, nil
+	return &Conn{conn: c}, nil
 }
 
 // Close closes a Conn.
+//
+// If any workers were started using [Conn.Listen], blocks until all have
+// terminated.
 func (c *Conn) Close() error {
-	return c.conn.Close()
+	if err := c.conn.Close(); err != nil {
+		return err
+	}
+
+	c.workers.Wait()
+
+	return nil
 }
 
 // SetOption enables or disables a netlink socket option for the Conn.
@@ -66,10 +85,11 @@ func (c *Conn) SetWriteBuffer(bytes int) error {
 // evChan consumers need to be able to keep up with the Event producers. When the channel is full,
 // messages will pile up in the Netlink socket's buffer, putting the socket at risk of being closed
 // by the kernel when it eventually fills up.
+//
+// Closing the Conn makes all workers terminate silently.
 func (c *Conn) Listen(evChan chan<- Event, numWorkers uint8, groups []netfilter.NetlinkGroup) (chan error, error) {
-
 	if numWorkers == 0 {
-		return nil, errors.Errorf(errWorkerCount, numWorkers)
+		return nil, errNoWorkers
 	}
 
 	// Prevent Listen() from being called twice on the same Conn.
@@ -87,6 +107,7 @@ func (c *Conn) Listen(evChan chan<- Event, numWorkers uint8, groups []netfilter.
 
 	// Start numWorkers amount of worker goroutines
 	for id := uint8(0); id < numWorkers; id++ {
+		c.workers.Add(1)
 		go c.eventWorker(id, evChan, errChan)
 	}
 
@@ -95,16 +116,33 @@ func (c *Conn) Listen(evChan chan<- Event, numWorkers uint8, groups []netfilter.
 
 // eventWorker is a worker function that decodes Netlink messages into Events.
 func (c *Conn) eventWorker(workerID uint8, evChan chan<- Event, errChan chan<- error) {
-
 	var err error
 	var recv []netlink.Message
 	var ev Event
 
+	defer c.workers.Done()
+
 	for {
-		// Receive data from the Netlink socket
+		// Receive data from the Netlink socket.
 		recv, err = c.conn.Receive()
+
+		// If the Conn gets closed while blocked in Receive(), Go's runtime poller
+		// will return an src/internal/poll.ErrFileClosing. Since we cannot match
+		// the underlying error using errors.Is(), retrieve it from the netlink.OpErr.
+		var opErr *netlink.OpError
+		if errors.As(err, &opErr) {
+			if opErr.Err.Error() == "use of closed file" {
+				return
+			}
+		}
+
+		// Underlying fd has been closed, exit receive loop.
+		if errors.Is(err, unix.EBADF) {
+			return
+		}
+
 		if err != nil {
-			errChan <- errors.Wrap(err, fmt.Sprintf(errWorkerReceive, workerID))
+			errChan <- fmt.Errorf("Receive() netlink error, closing worker %d: %w", workerID, err)
 			return
 		}
 
@@ -116,7 +154,7 @@ func (c *Conn) eventWorker(workerID uint8, evChan chan<- Event, errChan chan<- e
 
 		// Decode event and send on channel
 		ev = *new(Event)
-		err := ev.unmarshal(recv[0])
+		err := ev.Unmarshal(recv[0])
 		if err != nil {
 			errChan <- err
 			return
@@ -128,12 +166,16 @@ func (c *Conn) eventWorker(workerID uint8, evChan chan<- Event, errChan chan<- e
 
 // Dump gets all Conntrack connections from the kernel in the form of a list
 // of Flow objects.
-func (c *Conn) Dump() ([]Flow, error) {
+func (c *Conn) Dump(opts *DumpOptions) ([]Flow, error) {
+	msgType := ctGet
+	if opts != nil && opts.ZeroCounters {
+		msgType = ctGetCtrZero
+	}
 
 	req, err := netfilter.MarshalNetlink(
 		netfilter.Header{
 			SubsystemID: netfilter.NFSubsysCTNetlink,
-			MessageType: netfilter.MessageType(ctGet),
+			MessageType: netfilter.MessageType(msgType),
 			Family:      netfilter.ProtoUnspec, // ProtoUnspec dumps both IPv4 and IPv6
 			Flags:       netlink.Request | netlink.Dump,
 		},
@@ -153,12 +195,16 @@ func (c *Conn) Dump() ([]Flow, error) {
 
 // DumpFilter gets all Conntrack connections from the kernel in the form of a list
 // of Flow objects, but only returns Flows matching the connmark specified in the Filter parameter.
-func (c *Conn) DumpFilter(f Filter) ([]Flow, error) {
+func (c *Conn) DumpFilter(f Filter, opts *DumpOptions) ([]Flow, error) {
+	msgType := ctGet
+	if opts != nil && opts.ZeroCounters {
+		msgType = ctGetCtrZero
+	}
 
 	req, err := netfilter.MarshalNetlink(
 		netfilter.Header{
 			SubsystemID: netfilter.NFSubsysCTNetlink,
-			MessageType: netfilter.MessageType(ctGet),
+			MessageType: netfilter.MessageType(msgType),
 			Family:      netfilter.ProtoUnspec, // ProtoUnspec dumps both IPv4 and IPv6
 			Flags:       netlink.Request | netlink.Dump,
 		},
@@ -179,7 +225,6 @@ func (c *Conn) DumpFilter(f Filter) ([]Flow, error) {
 // DumpExpect gets all expected Conntrack expectations from the kernel in the form
 // of a list of Expect objects.
 func (c *Conn) DumpExpect() ([]Expect, error) {
-
 	req, err := netfilter.MarshalNetlink(
 		netfilter.Header{
 			SubsystemID: netfilter.NFSubsysCTNetlinkExp,
@@ -337,7 +382,7 @@ func (c *Conn) Get(f Flow) (Flow, error) {
 	}
 
 	pf := netfilter.ProtoIPv4
-	if f.TupleOrig.IP.IsIPv6() && f.TupleReply.IP.IsIPv6() {
+	if f.TupleOrig.IP.IsIPv6() || f.TupleReply.IP.IsIPv6() {
 		pf = netfilter.ProtoIPv6
 	}
 
@@ -374,7 +419,6 @@ func (c *Conn) Get(f Flow) (Flow, error) {
 // SynProxy, Labels. All other attributes are immutable past the point of creation.
 // See the ctnetlink_change_conntrack() kernel function for exact behaviour.
 func (c *Conn) Update(f Flow) error {
-
 	// Kernel rejects updates with a master tuple set
 	if f.TupleMaster.filled() {
 		return errUpdateMaster
@@ -414,7 +458,6 @@ func (c *Conn) Update(f Flow) error {
 // based on the original and reply tuple. When the Flow's ID field is filled, it must match the
 // ID on the connection returned from the tuple lookup, or the delete will fail.
 func (c *Conn) Delete(f Flow) error {
-
 	attrs, err := f.marshal()
 	if err != nil {
 		return err
