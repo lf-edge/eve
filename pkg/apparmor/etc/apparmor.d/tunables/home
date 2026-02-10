@@ -20,6 +20,5 @@
 # refer to a specific home directory
 @{HOME}=@{HOMEDIRS}/*/ /root/
 
-# Also, include files in tunables/home.d for site-specific adjustments to
-# @{HOMEDIRS}.
+# Also, include files in tunables/home.d for site-specific adjustments
 include if exists <tunables/home.d>

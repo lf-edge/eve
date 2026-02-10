@@ -10,7 +10,7 @@
 #
 # ------------------------------------------------------------------
 
-  abi <abi/3.0>,
+  abi <abi/4.0>,
 
   include <abstractions/crypto>
 
@@ -28,12 +28,14 @@
   # Allow access to the uuidd daemon (this daemon is a thin wrapper around
   # time and getrandom()/{,u}random and, when available, runs under an
   # unprivilged, dedicated user).
-  @{run}/uuidd/request           r,
+  @{run}/uuidd/request           rw,
   @{etc_ro}/locale/**          r,
   @{etc_ro}/locale.alias       r,
   @{etc_ro}/localtime          r,
+  @{etc_rw}/localtime          r,
   /usr/share/locale-bundle/**    r,
   /usr/share/locale-langpack/**  r,
+  /usr/share/locale/             r,
   /usr/share/locale/**           r,
   /usr/share/**/locale/**        r,
   /usr/share/zoneinfo{,-icu}/    r,
@@ -62,24 +64,25 @@
   @{etc_ro}/ld.so.conf                r,
   @{etc_ro}/ld.so.conf.d/{,*.conf}    r,
   @{etc_ro}/ld.so.preload             r,
-  /{usr/,usr/local/}lib{,32,64}/ld{,32,64}-*.so   mr,
-  /{usr/,usr/local/}lib/@{multiarch}/ld{,32,64}-*.so    mr,
-  /{usr/,usr/local/}lib/tls/i686/{cmov,nosegneg}/ld-*.so     mr,
-  /{usr/,usr/local/}lib/i386-linux-gnu/tls/i686/{cmov,nosegneg}/ld-*.so     mr,
+  @{etc_ro}/ld-musl-*.path            r,
+  /{usr/,}lib{,32,64}/ld{,32,64}-*.so   mr,
+  /{usr/,}lib/@{multiarch}/ld{,32,64}-*.so    mr,
+  /{usr/,}lib/tls/i686/{cmov,nosegneg}/ld-*.so     mr,
+  /{usr/,}lib/i386-linux-gnu/tls/i686/{cmov,nosegneg}/ld-*.so     mr,
   /opt/*-linux-uclibc/lib/ld-uClibc*so* mr,
 
   # we might as well allow everything to use common libraries
-  /{,usr/,usr/local/}lib{,32,64}/**                r,
-  /{,usr/,usr/local/}lib{,32,64}/**.so*       mr,
-  /{,usr/,usr/local/}lib/@{multiarch}/**            r,
-  /{,usr/,usr/local/}lib/@{multiarch}/**.so*   mr,
-  /{usr/,usr/local/}lib/tls/i686/{cmov,nosegneg}/*.so*    mr,
-  /{usr/,usr/local/}lib/i386-linux-gnu/tls/i686/{cmov,nosegneg}/*.so*    mr,
+  /{usr/,}lib{,32,64}/**                r,
+  /{usr/,}lib{,32,64}/**.so*       mr,
+  /{usr/,}lib/@{multiarch}/**            r,
+  /{usr/,}lib/@{multiarch}/**.so*   mr,
+  /{usr/,}lib/tls/i686/{cmov,nosegneg}/*.so*    mr,
+  /{usr/,}lib/i386-linux-gnu/tls/i686/{cmov,nosegneg}/*.so*    mr,
 
   # FIPS-140-2 versions of some crypto libraries need to access their
   # associated integrity verification file, or they will abort.
-  /{usr/,usr/local/}lib{,32,64}/.lib*.so*.hmac      r,
-  /{usr/,usr/local/}lib/@{multiarch}/.lib*.so*.hmac r,
+  /{usr/,}lib{,32,64}/.lib*.so*.hmac      r,
+  /{usr/,}lib/@{multiarch}/.lib*.so*.hmac r,
 
   # /dev/null is pretty harmless and frequently used
   /dev/null                      rw,
@@ -95,6 +98,9 @@
   # best place -- but many profiles require it, and it is quite harmless.
   @{PROC}/sys/kernel/ngroups_max r,
 
+  # Used to determine if Linux is running in FIPS mode
+  @{PROC}/sys/crypto/fips_enabled r,
+
   # glibc's sysconf(3) routine to determine free memory, etc
   @{PROC}/meminfo                r,
   @{PROC}/stat                   r,
@@ -102,6 +108,9 @@
   @{sys}/devices/system/cpu/       r,
   @{sys}/devices/system/cpu/online r,
   @{sys}/devices/system/cpu/possible r,
+
+  # transparent hugepage support
+  @{sys}/kernel/mm/transparent_hugepage/hpage_pmd_size r,
 
   # glibc's *printf protections read the maps file
   @{PROC}/@{pid}/{maps,auxv,status} r,

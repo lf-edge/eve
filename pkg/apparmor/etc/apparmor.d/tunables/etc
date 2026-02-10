@@ -24,6 +24,5 @@
 # For rules that only allows read access, use @{etc_ro}.
 @{etc_rw}=/etc/
 
-# Also, include files in tunables/etc.d/ for site-specific adjustments to
-# @{etc_ro} and @{etc_rw}.
+# Also, include files in tunables/etc.d for site-specific adjustments
 include if exists <tunables/etc.d>

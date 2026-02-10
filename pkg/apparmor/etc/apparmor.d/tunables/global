@@ -17,5 +17,11 @@ include <tunables/multiarch>
 include <tunables/proc>
 include <tunables/alias>
 include <tunables/kernelvars>
+include <tunables/system>
+include <tunables/xdg-user-dirs>
+include <tunables/share>
 include <tunables/etc>
 include <tunables/run>
+
+# Also, include files in tunables/global.d for site-specific adjustments
+include if exists <tunables/global.d>

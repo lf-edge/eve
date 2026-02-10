@@ -31,3 +31,6 @@
 
 # until kernel var is implemented
 @{sys}=/sys/
+
+# Also, include files in tunables/kernelvars.d for site-specific adjustments
+include if exists <tunables/kernelvars.d>
