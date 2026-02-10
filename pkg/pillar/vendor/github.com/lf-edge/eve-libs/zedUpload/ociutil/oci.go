@@ -1,3 +1,6 @@
+// Copyright(c) 2017-2026 Zededa, Inc.
+// All rights reserved.
+
 package ociutil
 
 import (
@@ -28,7 +31,7 @@ func Tags(registry, repository, username, apiKey string, client *http.Client, pr
 	var (
 		tags  []string
 		err   error
-		image = fmt.Sprintf("%s/%s", registry, repository)
+		image = path.Join(registry, repository)
 	)
 
 	repo, err := name.NewRepository(image)
@@ -82,7 +85,7 @@ func PullBlob(registry, repo, hash, localFile, username, apiKey string, maxsize 
 
 	// The OCI distribution spec only uses /blobs/ endpoint for layers or config, not index or manifest.
 	// I have no idea why you cannot get a manifest or index from the /blobs endpoint, but so be it.
-	image := fmt.Sprintf("%s/%s", registry, repo)
+	image := path.Join(registry, repo)
 	ref, err := name.ParseReference(image)
 	if err != nil {
 		return 0, "", fmt.Errorf("parsing reference %q: %v", image, err)
@@ -137,7 +140,9 @@ func PullBlob(registry, repo, hash, localFile, username, apiKey string, maxsize 
 		}
 		size, err = layer.Size()
 		if err != nil {
-			return 0, "", fmt.Errorf("could not get layer size %s: %v", ref.String(), err)
+			// Registry didn't reply correctly the HEAD request for size, fallback to the maxsize
+			size = maxsize
+			logrus.Errorf("could not get layer size %s: %v, trying maxsize %d ...", ref.String(), err, size)
 		}
 	}
 
