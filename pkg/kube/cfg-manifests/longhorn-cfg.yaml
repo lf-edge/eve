@@ -1,0 +1,14 @@
+---
+apiVersion: longhorn.io/v1beta2
+kind: Setting
+metadata:
+  name: node-down-pod-deletion-policy
+  namespace: longhorn-system
+value: "delete-both-statefulset-and-deployment-pod"
+---
+apiVersion: longhorn.io/v1beta2
+kind: Setting
+metadata:
+  name: upgrade-checker
+  namespace: longhorn-system
+value: "false"

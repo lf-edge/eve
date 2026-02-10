@@ -1369,6 +1369,7 @@ else
                                         else
                                                 # Base Mode does not want extra pre-installed storage classes
                                                 cleanup_storageclasses
+                                                longhorn_post_install_config_clean
                                         fi
                                 elif [ $cluster_type -eq $CLUSTER_TYPE_REPLICATED_STORAGE ]; then
                                         # Replicated Storage wants extra storage classes
@@ -1383,17 +1384,17 @@ else
                                 elif [ $cluster_type -eq $CLUSTER_TYPE_K3S_BASE ]; then
                                         # Base Mode does not want extra pre-installed storage classes
                                         cleanup_storageclasses
+                                        longhorn_post_install_config_clean
                                 else
                                         logmsg "possible unhandled cluster type $cluster_type in (k3s running, longhorn ready)"
                                 fi
                         fi
                 fi
-                if [ ! -e /var/lib/longhorn_configured ]; then
-                        longhorn_post_install_config
-                        touch /var/lib/longhorn_configured
-                fi
 
+                Config_cluster_type_get
+                cluster_type=$?
                 if [ $cluster_type -eq $CLUSTER_TYPE_REPLICATED_STORAGE ]; then
+                        longhorn_post_install_config
                         # Upgrades declared via EVE baseOS updates
                         if ! Update_CheckClusterComponents; then
                                 continue
