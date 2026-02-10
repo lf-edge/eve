@@ -61,6 +61,7 @@ COPY longhorn-generate-support-bundle.sh /usr/bin/
 COPY nsmounter /usr/bin/
 COPY longhorn_uninstall_settings.yaml /etc/
 COPY failover-events.sh /usr/bin/
+COPY cfg-manifests/longhorn-cfg.yaml /etc/
 
 # descheduler
 COPY descheduler-utils.sh /usr/bin/
