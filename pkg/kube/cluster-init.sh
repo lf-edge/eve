@@ -198,6 +198,8 @@ setup_prereqs () {
         modprobe tun
         modprobe vhost_net
         modprobe fuse
+
+        # Longhorn dependency, may fail on some arm kernels
         modprobe iscsi_tcp
         #Needed for iscsi tools
         mkdir -p /run/lock
@@ -902,16 +904,19 @@ uninstall_components() {
         logmsg "convert-to-basek3s: Cleanup Descheduler"
         Descheduler_uninstall
 
-        logmsg "convert-to-basek3s: Cleanup longhorn"
-        Longhorn_uninstall
-        rm /var/lib/longhorn_initialized
+        if [ -f /var/lib/longhorn_initialized ]; then
+                logmsg "convert-to-basek3s: Cleanup longhorn"
+                Longhorn_uninstall
+                rm /var/lib/longhorn_initialized
+        fi
 
-        logmsg "convert-to-basek3s: Cleanup cdi"
-        Cdi_uninstall
-
-        logmsg "convert-to-basek3s: Cleanup kubevirt"
-        Kubevirt_uninstall
-        rm /var/lib/kubevirt_initialized
+        if [ -f /var/lib/kubevirt_initialized ]; then
+                logmsg "convert-to-basek3s: Cleanup cdi"
+                Cdi_uninstall
+                logmsg "convert-to-basek3s: Cleanup kubevirt"
+                Kubevirt_uninstall
+                rm /var/lib/kubevirt_initialized
+        fi
 
         logmsg "convert-to-basek3s: Cleanup multus"
         Multus_uninstall
@@ -1232,22 +1237,24 @@ if [ ! -f /var/lib/all_components_initialized ]; then
               cp /etc/k3s-manifests/nvidia-device-plugin-18.0.yml "${KUBE_MANIFESTS_DIR}/"
         fi
 
-        #
-        # Longhorn
-        #
-        wait_for_item "longhorn"
-        if [ ! -f /var/lib/longhorn_initialized ]; then
-                if ! longhorn_install "$HOSTNAME"; then
-                        continue
+        if [ -d /sys/module/iscsi_tcp ]; then
+                #
+                # Longhorn
+                #
+                wait_for_item "longhorn"
+                if [ ! -f /var/lib/longhorn_initialized ]; then
+                        if ! longhorn_install "$HOSTNAME"; then
+                                continue
+                        fi
+                        if ! Longhorn_is_ready; then
+                                # It can take a moment for the new pods to get to ContainerCreating
+                                # Just back off until they are caught by the earlier are_all_pods_ready
+                                sleep 30
+                                continue
+                        fi
+                        logmsg "longhorn ready"
+                        touch /var/lib/longhorn_initialized
                 fi
-                if ! Longhorn_is_ready; then
-                        # It can take a moment for the new pods to get to ContainerCreating
-                        # Just back off until they are caught by the earlier are_all_pods_ready
-                        sleep 30
-                        continue
-                fi
-                logmsg "longhorn ready"
-                touch /var/lib/longhorn_initialized
         fi
 
         #
@@ -1259,19 +1266,16 @@ if [ ! -f /var/lib/all_components_initialized ]; then
                 continue
         fi
 
-
-        if [ -f /var/lib/longhorn_initialized ]; then
-                sleep 5
-                logmsg "stop the k3s server and wait for copy /var/lib"
-                terminate_k3s
-                sync
-                sleep 5
-                save_var_lib
-                logmsg "saved the copy of /var/lib, done"
-                logmsg "All components initialized"
-                touch /var/lib/node-labels-initialized
-                touch /var/lib/all_components_initialized
-        fi
+        sleep 5
+        logmsg "stop the k3s server and wait for copy /var/lib"
+        terminate_k3s
+        sync
+        sleep 5
+        save_var_lib
+        logmsg "saved the copy of /var/lib, done"
+        logmsg "All components initialized"
+        touch /var/lib/node-labels-initialized
+        touch /var/lib/all_components_initialized
 else
         # Apply config overrides in the main loop, may be necessary to start k3s
         # Or to sync new config override to fix previously sent bad config

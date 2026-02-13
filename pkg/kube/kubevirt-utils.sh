@@ -34,6 +34,10 @@ Kubevirt_tie_breaker_config_apply() {
 }
 
 Kubevirt_uninstall() {
+    if ! kubectl get namespace/kubevirt; then
+        return 0
+    fi
+
     logmsg "Removing patched Kubevirt"
     {
         kubectl delete -n kubevirt kubevirt kubevirt --wait=true
@@ -62,6 +66,9 @@ Cdi_install() {
 }
 
 Cdi_uninstall() {
+    if ! kubectl get namespace/cdi; then
+        return 0
+    fi
     #CDI (containerzed data importer) is need to convert qcow2/raw formats to Persistent Volumes and Data volumes
     logmsg "Removing CDI version $CDI_VERSION"
     kubectl delete -f https://github.com/kubevirt/containerized-data-importer/releases/download/$CDI_VERSION/cdi-cr.yaml
