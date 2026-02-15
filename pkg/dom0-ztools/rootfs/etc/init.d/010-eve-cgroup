@@ -136,3 +136,19 @@ fi
 for pid in $(cat /sys/fs/cgroup/memory/eve/services/memlogd/tasks); do
     echo $pid > /sys/fs/cgroup/cpuset/eve/services/memlogd/tasks;
 done
+
+# Disable cgroup v1 RT bandwidth throttling globally.
+#
+# By default the kernel sets sched_rt_runtime_us=950000 which means the
+# RT bandwidth check is enabled: every cgroup's cpu.rt_runtime_us must be
+# positive AND the sum of children's values <= parent's value.  This makes
+# it impossible to run multiple RT containers without splitting the budget
+# — even when they are pinned to non-overlapping CPUs.
+#
+# Setting the sysctl to -1 disables the bandwidth check entirely
+# (rt_bandwidth_enabled() returns false).  sched_setscheduler(SCHED_FIFO)
+# then succeeds regardless of the per-cgroup cpu.rt_runtime_us value.
+#
+# This is safe because RT containers are always pinned to isolated CPUs
+# via cpuset, so they cannot starve the rest of the system.
+/sbin/sysctl -w kernel.sched_rt_runtime_us=-1 2>/dev/null || true
