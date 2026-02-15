@@ -817,6 +817,9 @@ github.com/hashicorp/go-envparse
 # github.com/inconshreveable/mousetrap v1.1.0
 ## explicit; go 1.18
 github.com/inconshreveable/mousetrap
+# github.com/intel/intel-cmt-cat/lib/go v0.0.0-20260215105041-cde4f0ad7717 => github.com/rucoder/intel-cmt-cat/lib/go v0.0.0-20260215105041-cde4f0ad7717
+## explicit; go 1.21
+github.com/intel/intel-cmt-cat/lib/go/pqos
 # github.com/jackwakefield/gopac v1.0.2
 ## explicit
 github.com/jackwakefield/gopac
@@ -2316,6 +2319,7 @@ tags.cncf.io/container-device-interface/pkg/parser
 # tags.cncf.io/container-device-interface/specs-go v0.8.0
 ## explicit; go 1.19
 tags.cncf.io/container-device-interface/specs-go
+# github.com/intel/intel-cmt-cat/lib/go => github.com/rucoder/intel-cmt-cat/lib/go v0.0.0-20260215105041-cde4f0ad7717
 # github.com/openshift/api => github.com/openshift/api v0.0.0-20210105115604-44119421ec6b
 # k8s.io/api => k8s.io/api v0.32.5
 # k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.32.5
