@@ -1,4 +1,4 @@
-# linuxkit build template 
+# linuxkit build template
 #
 # Copyright (c) 2018 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
@@ -19,6 +19,10 @@ config:
     # Expose host firmware for Wi-Fi drivers that defer firmware loading
     # until first interface use, from within the container context.
     - /lib/firmware:/lib/firmware
+    # Intel RDT: resctrl filesystem for cache/bandwidth allocation
+    - /sys/fs/resctrl:/sys/fs/resctrl:rshared,rbind,rw
+    # Intel RDT: sysfs device topology for pqos capability detection
+    - /sys/devices:/sys/devices:rshared,rbind,rw
   net: host
   capabilities:
     - all

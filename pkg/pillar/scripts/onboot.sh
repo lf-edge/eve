@@ -41,6 +41,12 @@ if ! mount -t securityfs securityfs "$SECURITYFSPATH"; then
     echo "$(date -Ins -u) mounting securityfs failed"
 fi
 
+# mount resctrl filesystem for resource control
+# ignore errors - not available on non-RT kernels or hardware without RDT
+if ! mount -t resctrl resctrl /sys/fs/resctrl; then
+    echo "$(date -Ins -u) mounting resctrl filesystem failed"
+fi
+
 DIRS="$PERSIST_CERTS $PERSIST_AGENT_DEBUG /persist/status/zedclient/OnboardingStatus"
 
 # If /persist/installer/first-boot exists treat this as a first boot

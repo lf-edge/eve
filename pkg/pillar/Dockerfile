@@ -106,6 +106,13 @@ ENV ARTIFICIAL_LEAK=${ARTIFICIAL_LEAK}
 # we need zfs files during build
 COPY --from=zfs /out /
 
+# Clone and build intel-cmt-cat library for RDT support
+# Must happen before COPY/go vet/build so pqos.h is available for CGO
+ADD --keep-git-dir=true https://github.com/rucoder/intel-cmt-cat.git#rucoder/acpi-fix /intel-cmt-cat
+WORKDIR /intel-cmt-cat
+RUN make -C ./lib -j "$(getconf _NPROCESSORS_ONLN)" && make -C ./lib install PREFIX=/usr NOLDCONFIG=y
+RUN make -C ./pqos -j "$(getconf _NPROCESSORS_ONLN)" && make -C ./pqos install PREFIX=/usr NOLDCONFIG=y
+
 COPY ./  /pillar/
 
 # go vet/format and go install
@@ -177,6 +184,12 @@ COPY --from=dnsmasq /usr/sbin/dnsmasq /out/opt/zededa/bin/dnsmasq
 COPY --from=build /final /out
 COPY --from=build /usr/lib/dhcpcd /out/usr/lib/dhcpcd
 COPY --from=build /sbin/dhcpcd /out/sbin/dhcpcd
+# Copy libpqos shared library and pqos CLI tool for RDT support
+COPY --from=build /usr/lib/libpqos.so.6.0.1 /out/usr/lib/libpqos.so.6.0.1
+COPY --from=build /usr/bin/pqos /out/sbin/pqos
+RUN cd /out/usr/lib && \
+    ln -f -s libpqos.so.6.0.1 libpqos.so.6 && \
+    ln -f -s libpqos.so.6 libpqos.so
 
 COPY scripts/device-steps.sh \
     scripts/onboot.sh \
