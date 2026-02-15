@@ -66,7 +66,7 @@ func (ctx ctrdContext) GetCapabilities() (*types.Capabilities, error) {
 	return &types.Capabilities{
 		HWAssistedVirtualization: false,
 		IOVirtualization:         false,
-		CPUPinning:               false,
+		CPUPinning:               true,
 		UseVHost:                 false,
 	}, nil
 }

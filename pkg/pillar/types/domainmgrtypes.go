@@ -269,8 +269,27 @@ type VmConfig struct {
 	VncDisplay         uint32
 	VncPasswd          string
 	CPUsPinned         bool
-	VMMMaxMem          int // in kbytes
-	EnableVncShimVM    bool
+	// RTIntent signals that this workload has real-time requirements.
+	// When true, the topology-aware allocator is used even if RDT
+	// hardware is not available. Cores are allocated from the same
+	// NUMA/L3 domain for cache locality. Implies CPUsPinned=true.
+	RTIntent bool
+	// CacheSizeBytes is the desired L3 cache reservation in bytes.
+	// Zero means no L3 CAT isolation (workload uses CLOS 0 / shared cache).
+	// Requires RTIntent=true and hardware L3 CAT support.
+	CacheSizeBytes uint64
+	// MemBandwidthPercent is the desired memory bandwidth allocation
+	// as a percentage (1-100). Zero means no MBA throttling.
+	// Requires RTIntent=true and hardware MBA support.
+	MemBandwidthPercent uint32
+	// RTPriority is the SCHED_FIFO priority to set on the container's
+	// init process (1-99). Zero means do not call sched_setscheduler —
+	// the app is expected to set its own RT priorities via CAP_SYS_NICE.
+	// Typical value: 95 (above threaded IRQ handlers at 50, below
+	// migration/N at 99). Requires RTIntent=true.
+	RTPriority      int
+	VMMMaxMem       int // in kbytes
+	EnableVncShimVM bool
 	// Enables enforcement of user-defined ordering for network interfaces.
 	EnforceNetworkInterfaceOrder bool
 	// EnableOemWinLicenseKey indicates the app should receive the embedded Windows license key (if available)
@@ -357,6 +376,20 @@ type DomainStatus struct {
 	PassthroughWindowsLicenseKey bool
 	// DeploymentType is the type of deployment for the app
 	DeploymentType AppRuntimeType
+
+	// RDT state (populated by rdtManager after ApplyIsolation)
+	// L3CATID is the L3 CAT domain ID where CPUs were allocated
+	L3CATID uint
+	// RDTCLOSID is the CLOS ID assigned to this domain (0 = none/default)
+	RDTCLOSID uint
+	// RDTCacheWayMask is the L3 cache way bitmask assigned to this domain
+	RDTCacheWayMask uint64
+	// RDTCacheAllocBytes is the actual cache bytes allocated (ways * waySize)
+	RDTCacheAllocBytes uint64
+	// RDTMBAPercent is the actual MBA percentage applied (0 = no limit)
+	RDTMBAPercent uint32
+	// RDTActive is true if RDT isolation is currently active for this domain
+	RDTActive bool
 }
 
 func (status DomainStatus) Key() string {
@@ -515,6 +548,16 @@ type DomainMetric struct {
 	LastHeard         time.Time
 	Activated         bool
 	NodeName          string // the name of the kubernetes node on which the app is currently running
+
+	// RDT monitoring metrics (zero if RDT not active for this domain)
+	// LLCOccupancyBytes is the current L3 cache occupancy in bytes
+	LLCOccupancyBytes uint64
+	// MBMLocalBytesPerSec is the local memory bandwidth in bytes/sec
+	MBMLocalBytesPerSec uint64
+	// MBMTotalBytesPerSec is the total memory bandwidth in bytes/sec
+	MBMTotalBytesPerSec uint64
+	// LLCMissRate is the LLC miss rate (0.0 - 1.0)
+	LLCMissRate float64
 }
 
 // Key returns the key for pubsub
@@ -620,6 +663,28 @@ type Capabilities struct {
 	IOVirtualization         bool // I/O Virtualization support
 	CPUPinning               bool // CPU Pinning support
 	UseVHost                 bool // vHost support
+
+	// RDT capabilities
+	// RDTSupport is true if any Intel RDT feature is available
+	RDTSupport bool
+	// L3CATSupport is true if L3 Cache Allocation Technology is available
+	L3CATSupport bool
+	// L3CATNumClasses is the number of CLOS IDs per L3 domain
+	L3CATNumClasses uint
+	// L3CATNumWays is the number of L3 cache ways
+	L3CATNumWays uint
+	// L3CATWaySize is the size of each cache way in bytes
+	L3CATWaySize uint64
+	// L2CATSupport is true if L2 Cache Allocation Technology is available (future)
+	L2CATSupport bool
+	// MBASupport is true if Memory Bandwidth Allocation is available
+	MBASupport bool
+	// MBAGranularity is the MBA throttle step (e.g. 10 = 10% steps)
+	MBAGranularity uint
+	// CMTSupport is true if Cache Monitoring Technology is available
+	CMTSupport bool
+	// MBMSupport is true if Memory Bandwidth Monitoring is available
+	MBMSupport bool
 }
 
 // WatchdogParam is used in some proc functions that have a timeout,

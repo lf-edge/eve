@@ -23,6 +23,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unsafe"
 
 	"github.com/containerd/cgroups"
 	"github.com/google/go-cmp/cmp"
@@ -41,6 +42,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/hypervisor"
 	"github.com/lf-edge/eve/pkg/pillar/kubeapi"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
+	"github.com/lf-edge/eve/pkg/pillar/rdtmanager"
 	"github.com/lf-edge/eve/pkg/pillar/sema"
 	"github.com/lf-edge/eve/pkg/pillar/sriov"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -53,6 +55,7 @@ import (
 	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 	"github.com/vishvananda/netlink"
+	"golang.org/x/sys/unix"
 	"gopkg.in/yaml.v2"
 )
 
@@ -151,7 +154,10 @@ type domainContext struct {
 	hypervisorPtr *string
 	// CPUs management
 	cpuAllocator        *cpuallocator.CPUAllocator
+	topoAllocator       *cpuallocator.TopoAwareCPUAllocator
 	cpuPinningSupported bool
+	// RDT manager (nil if RDT not available)
+	rdtManager *rdtmanager.RDTManager
 	// Is it EVE 'k'
 	hvTypeKube bool
 	nodeName   string
@@ -632,6 +638,37 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		log.Fatal(err)
 	}
 
+	// Initialize RDT Manager and topology-aware allocator if RDT hardware is available
+	rdtmanager.SetLog(log)
+	rdtMgr := rdtmanager.GetRDTManager()
+	if err := rdtMgr.Init(); err != nil {
+		log.Warnf("RDT Manager init failed (RDT features disabled): %v", err)
+		// Fall back to simple topology without pqos
+		fallbackTopo := cpuallocator.BuildTopologyFallback(resources.Ncpus)
+		topoAlloc, topoErr := cpuallocator.InitTopoAware(fallbackTopo, cpusReserved)
+		if topoErr != nil {
+			log.Warnf("Topology-aware allocator init failed: %v", topoErr)
+		} else {
+			domainCtx.topoAllocator = topoAlloc
+			log.Noticef("Topology-aware allocator initialized (fallback, no RDT): %s", fallbackTopo.String())
+		}
+	} else {
+		domainCtx.rdtManager = rdtMgr
+		// Build topology from pqos via the RDT manager (keeps CGO isolated)
+		topo, topoErr := rdtMgr.BuildTopology()
+		if topoErr != nil {
+			log.Warnf("Failed to build topology from RDT manager: %v", topoErr)
+		} else {
+			topoAlloc, allocErr := cpuallocator.InitTopoAware(topo, cpusReserved)
+			if allocErr != nil {
+				log.Warnf("Topology-aware allocator init failed: %v", allocErr)
+			} else {
+				domainCtx.topoAllocator = topoAlloc
+				log.Noticef("Topology-aware allocator initialized with RDT: %s", topo.String())
+			}
+		}
+	}
+
 	// Wait until we have been onboarded aka know our own UUID however we do not use the UUID
 	if _, err := wait.WaitForOnboarded(ps, log, agentName, warningTime, errorTime); err != nil {
 		log.Fatal(err)
@@ -1004,7 +1041,14 @@ func runHandler(ctx *domainContext, key string, configChannel <-chan Notify, cpu
 					log.Errorf("No Status for %s", config.DisplayName)
 					continue
 				}
-				if !config.VmConfig.CPUsPinned {
+				// Check status.VmConfig (not config.VmConfig) because
+				// RT overrides from /persist/rt/domain-config.json are
+				// applied to the in-memory config during doActivate and
+				// propagated to status.VmConfig.  The pubsub config
+				// still has the original controller values (RTIntent=false,
+				// CPUsPinned=false) so checking config alone would cause
+				// updateNonPinnedCPUs to overwrite pinned cpusets.
+				if !status.VmConfig.CPUsPinned && !status.VmConfig.RTIntent {
 					if err = updateNonPinnedCPUs(ctx, &config, status); err != nil {
 						log.Warnf("failed to redistribute CPUs in %s", config.DisplayName)
 					}
@@ -1348,6 +1392,40 @@ func lookupDomainConfig(ctx *domainContext, key string) *types.DomainConfig {
 	return &config
 }
 
+// setRTScheduler sets SCHED_FIFO with the given priority on a process.
+// This is called on the container init PID after task creation but before
+// Start(), so the process exists in "created" (blocked) state.  All child
+// processes forked after Start() inherit the scheduling policy.
+//
+// Priority 95 is the industrial standard for PLC/RT workloads:
+//   - Above threaded IRQ handlers (typically priority 50)
+//   - Below migration/N (priority 99, kernel requirement)
+//   - Leaves 96-98 for the app to escalate critical sub-tasks
+//
+// We use the raw sched_setscheduler(2) syscall because golang.org/x/sys/unix
+// does not provide a high-level wrapper for it.
+func setRTScheduler(pid int, priority int, displayName string) error {
+	// sched_setscheduler(pid_t pid, int policy, const struct sched_param *param)
+	// struct sched_param { int sched_priority; }
+	type schedParam struct {
+		priority int32
+	}
+	param := schedParam{priority: int32(priority)}
+	_, _, errno := unix.Syscall(
+		unix.SYS_SCHED_SETSCHEDULER,
+		uintptr(pid),
+		uintptr(unix.SCHED_FIFO),
+		uintptr(unsafe.Pointer(&param)),
+	)
+	if errno != 0 {
+		return fmt.Errorf("sched_setscheduler(pid=%d, SCHED_FIFO, prio=%d): %w",
+			pid, priority, errno)
+	}
+	log.Noticef("Set SCHED_FIFO priority %d on %s init process (pid %d)",
+		priority, displayName, pid)
+	return nil
+}
+
 func setCgroupCpuset(config *types.DomainConfig, status *types.DomainStatus) error {
 	cgroupName := filepath.Join(containerd.GetServicesNamespace(), config.GetTaskName())
 	cgroupPath := cgroups.StaticPath(cgroupName)
@@ -1369,12 +1447,21 @@ func setCgroupCpuset(config *types.DomainConfig, status *types.DomainStatus) err
 		log.Warnf("Failed to update CPU set for %s", config.DisplayName)
 		return err
 	}
-	log.Functionf("Adjust the cgroups cpuset of %s to %v", config.DisplayName, status.VmConfig.CPUs)
+	log.Noticef("Adjust the cgroups cpuset of %s to %v", config.DisplayName, status.VmConfig.CPUs)
 	return nil
 }
 
 func updateNonPinnedCPUs(ctx *domainContext, config *types.DomainConfig, status *types.DomainStatus) error {
-	status.VmConfig.CPUs = ctx.cpuAllocator.GetAllFree()
+	// Use topoAllocator when available because it is the authoritative source
+	// of CPU allocation state.  RT domains are allocated via topoAllocator,
+	// and its inner CPUAllocator is a *separate* instance from ctx.cpuAllocator.
+	// Using ctx.cpuAllocator here would return all CPUs (including those
+	// exclusively pinned to RT domains) because it never saw those allocations.
+	if ctx.topoAllocator != nil {
+		status.VmConfig.CPUs = ctx.topoAllocator.GetAllFree()
+	} else {
+		status.VmConfig.CPUs = ctx.cpuAllocator.GetAllFree()
+	}
 	err := setCgroupCpuset(config, status)
 	if err != nil {
 		return errors.New("failed to redistribute CPUs between VMs, can affect the inter-VM isolation")
@@ -1386,16 +1473,43 @@ func updateNonPinnedCPUs(ctx *domainContext, config *types.DomainConfig, status 
 // By the assignment, we mean that the CPUs are assigned in the CPUAllocator context to the given VM
 // and the cpumask is updated in the *status*
 func assignCPUs(ctx *domainContext, config *types.DomainConfig, status *types.DomainStatus) error {
-	if config.VmConfig.CPUsPinned { // Pin the CPU
-		cpusToAssign, err := ctx.cpuAllocator.Allocate(config.UUIDandVersion.UUID, config.VCpus)
-		if err != nil {
-			return errors.New("failed to allocate necessary amount of CPUs")
+	// RTIntent implies CPUsPinned and uses the topology-aware allocator
+	if config.VmConfig.RTIntent && ctx.topoAllocator != nil {
+		result := ctx.topoAllocator.AllocateRT(config.UUIDandVersion.UUID, config.VCpus)
+		switch result.Status {
+		case cpuallocator.AllocSuccess:
+			status.VmConfig.CPUs = result.Cores
+			status.L3CATID = result.L3CATID
+			log.Noticef("RT CPU allocation for %s: %v (L3 domain %d, NUMA %d)",
+				config.DisplayName, result.Cores, result.L3CATID, result.NUMANode)
+			return nil
+		case cpuallocator.AllocNeedsRebalance:
+			return fmt.Errorf("RT allocation needs rebalance: %s", result.Message)
+		default:
+			return fmt.Errorf("RT allocation failed: %s", result.Message)
 		}
-		for _, cpu := range cpusToAssign {
-			status.VmConfig.CPUs = append(status.VmConfig.CPUs, cpu)
+	}
+
+	if config.VmConfig.CPUsPinned { // Pin the CPU
+		if ctx.topoAllocator != nil {
+			cpusToAssign, err := ctx.topoAllocator.Allocate(config.UUIDandVersion.UUID, config.VCpus)
+			if err != nil {
+				return errors.New("failed to allocate necessary amount of CPUs")
+			}
+			status.VmConfig.CPUs = append(status.VmConfig.CPUs, cpusToAssign...)
+		} else {
+			cpusToAssign, err := ctx.cpuAllocator.Allocate(config.UUIDandVersion.UUID, config.VCpus)
+			if err != nil {
+				return errors.New("failed to allocate necessary amount of CPUs")
+			}
+			status.VmConfig.CPUs = append(status.VmConfig.CPUs, cpusToAssign...)
 		}
 	} else { // VM has no pinned CPUs, assign all the CPUs from the shared set
-		status.VmConfig.CPUs = ctx.cpuAllocator.GetAllFree()
+		if ctx.topoAllocator != nil {
+			status.VmConfig.CPUs = ctx.topoAllocator.GetAllFree()
+		} else {
+			status.VmConfig.CPUs = ctx.cpuAllocator.GetAllFree()
+		}
 	}
 	return nil
 }
@@ -1403,9 +1517,15 @@ func assignCPUs(ctx *domainContext, config *types.DomainConfig, status *types.Do
 // releaseCPUs releases the CPUs that were previously assigned to the VM.
 // The cpumask in the *status* is updated accordingly, and the CPUs are released in the CPUAllocator context.
 func releaseCPUs(ctx *domainContext, config *types.DomainConfig, status *types.DomainStatus) {
-	if ctx.cpuPinningSupported && config.VmConfig.CPUsPinned && status.VmConfig.CPUs != nil {
-		if err := ctx.cpuAllocator.Free(config.UUIDandVersion.UUID); err != nil {
-			log.Errorf("Failed to free CPUs for %s: %s", config.DisplayName, err)
+	if ctx.cpuPinningSupported && (config.VmConfig.CPUsPinned || config.VmConfig.RTIntent) && status.VmConfig.CPUs != nil {
+		if ctx.topoAllocator != nil {
+			if err := ctx.topoAllocator.Free(config.UUIDandVersion.UUID); err != nil {
+				log.Errorf("Failed to free CPUs (topo) for %s: %s", config.DisplayName, err)
+			}
+		} else {
+			if err := ctx.cpuAllocator.Free(config.UUIDandVersion.UUID); err != nil {
+				log.Errorf("Failed to free CPUs for %s: %s", config.DisplayName, err)
+			}
 		}
 	}
 	status.VmConfig.CPUs = nil
@@ -1678,6 +1798,20 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 	log.Functionf("doActivate(%v) for %s",
 		config.UUIDandVersion, config.DisplayName)
 
+	// --- RT testing facility ---
+	// Apply any RT/RDT overrides from /persist/rt/domain-config.json
+	// before we use the config for CPU assignment or RDT isolation.
+	if applyRTConfigOverrides(&config) {
+		log.Noticef("doActivate(%s): RT config overrides applied from %s",
+			config.DisplayName, getRTConfigPath())
+		// Update the embedded VmConfig in status so downstream code
+		// (setCgroupCpuset, RDT hook) sees the overridden values.
+		status.VmConfig = config.VmConfig
+	}
+	// Ensure this domain has an entry in the persistent RT config file
+	// (no-op if already present — never overwrites operator edits).
+	ensureDomainInRTConfig(config)
+
 	if ctx.cpuPinningSupported {
 		if err := assignCPUs(ctx, &config, status); err != nil {
 			log.Warnf("failed to assign CPUs for %s", config.DisplayName)
@@ -1686,7 +1820,7 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 			publishDomainStatus(ctx, status)
 			return
 		}
-		log.Functionf("CPUs for %s assigned: %v", config.DisplayName, status.VmConfig.CPUs)
+		log.Noticef("CPUs for %s assigned: %v", config.DisplayName, status.VmConfig.CPUs)
 	}
 
 	if errDescription := reserveAdapters(ctx, config); errDescription != nil {
@@ -1890,8 +2024,103 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 			status.SetErrorDescription(errDescription)
 			publishDomainStatus(ctx, status)
 		}
-		if config.CPUsPinned {
+		if config.CPUsPinned || config.RTIntent {
 			triggerCPUNotification()
+		}
+	}
+
+	// Optionally set SCHED_FIFO on the container's init process BEFORE
+	// Start().  The process exists in "created" state at this point — all
+	// children forked after Start() will inherit the RT scheduling policy.
+	//
+	// RTPriority is controlled via /persist/rt/domain-config.json.
+	// When 0 (default), we do NOT call sched_setscheduler — the app is
+	// expected to set its own RT priorities via CAP_SYS_NICE (e.g. CODESYS
+	// does this automatically).  When non-zero (1-99), we set SCHED_FIFO
+	// at the requested priority on the init PID so all children inherit it.
+	//
+	// We cannot use OCI Process.Scheduler because runc rejects the
+	// combination of Scheduler + AllowedCPUs (cpuset pinning).
+	//
+	// The kernel's cgroup v1 RT bandwidth check is disabled at boot via
+	// sysctl kernel.sched_rt_runtime_us=-1 (see 010-eve-cgroup).  This
+	// means sched_setscheduler succeeds regardless of per-cgroup
+	// cpu.rt_runtime_us values.  Without this, the budget-splitting
+	// constraint (sum of children <= parent) makes it impossible to run
+	// multiple RT containers.  Disabling the throttle is safe because RT
+	// containers are always pinned to isolated CPUs via cpuset.
+	if config.RTIntent && config.RTPriority > 0 {
+		if err := setRTScheduler(domainID, config.RTPriority, config.DisplayName); err != nil {
+			log.Errorf("Failed to set RT scheduler for %s (pid %d): %v",
+				config.DisplayName, domainID, err)
+			// Non-fatal: container will still run as SCHED_OTHER.
+			// The app can elevate itself using CAP_SYS_NICE.
+		}
+	} else if config.RTIntent {
+		log.Noticef("RTIntent: rt_priority=0 for %s — app will set its own RT priorities via CAP_SYS_NICE",
+			config.DisplayName)
+	}
+
+	// Apply RDT isolation if RTIntent is set, RDT manager is initialized,
+	// AND the specific hardware capabilities (L3 CAT, MBA) are present.
+	// The RDT manager can be non-nil even when L3 CAT is absent — e.g.
+	// pqos initializes fine on L2-only hardware and still provides accurate
+	// NUMA/core topology for the CPU allocator. We must not call
+	// ApplyIsolation unless L3 CAT is actually available.
+	if ctx.rdtManager != nil && config.RTIntent &&
+		(config.CacheSizeBytes > 0 || config.MemBandwidthPercent > 0) {
+
+		rdtCaps := ctx.rdtManager.GetCapabilities()
+
+		// Determine what we can actually do with available hardware.
+		effectiveCacheBytes := config.CacheSizeBytes
+		effectiveMBAPct := config.MemBandwidthPercent
+
+		if effectiveCacheBytes > 0 && !rdtCaps.L3CATSupport {
+			log.Warnf("RTIntent: %s requests %d cache bytes but L3 CAT not available; skipping cache isolation",
+				config.DisplayName, effectiveCacheBytes)
+			effectiveCacheBytes = 0
+		}
+		if effectiveMBAPct > 0 && !rdtCaps.MBASupport {
+			log.Warnf("RTIntent: %s requests %d%% MBA but MBA not available; skipping bandwidth isolation",
+				config.DisplayName, effectiveMBAPct)
+			effectiveMBAPct = 0
+		}
+
+		// L3 CAT is required for CLOS assignment — without it MBA alone
+		// cannot work either (MBA needs a CLOS ID). Skip the entire RDT
+		// block if L3 CAT is absent; topology-aware CPU pinning from the
+		// allocator still provides NUMA/L3-locality benefits.
+		if effectiveCacheBytes > 0 || (effectiveMBAPct > 0 && rdtCaps.L3CATSupport) {
+			err := ctx.rdtManager.ApplyIsolation(
+				config.UUIDandVersion.UUID,
+				status.DomainName,
+				domainID, // = shim PID
+				status.L3CATID,
+				effectiveCacheBytes,
+				uint32(effectiveMBAPct),
+			)
+			if err != nil {
+				log.Errorf("RDT isolation failed for %s: %v", config.DisplayName, err)
+				status.SetErrorNow(fmt.Sprintf("RDT isolation failed: %v", err))
+				releaseCPUs(ctx, &config, status)
+				publishDomainStatus(ctx, status)
+				return
+			}
+			// Populate RDT status fields
+			ctx.rdtManager.PopulateDomainStatus(config.UUIDandVersion.UUID, status)
+			log.Noticef("RDT isolation applied for %s: CLOS=%d, ways=0x%x, MBA=%d%%",
+				config.DisplayName, status.RDTCLOSID, status.RDTCacheWayMask, status.RDTMBAPercent)
+		} else {
+			log.Warnf("RTIntent: %s has RDT manager but no usable L3 CAT/MBA hardware; "+
+				"proceeding with topology-aware CPU pinning only",
+				config.DisplayName)
+		}
+	} else if config.RTIntent {
+		if config.CacheSizeBytes > 0 || config.MemBandwidthPercent > 0 {
+			log.Warnf("RTIntent set for %s but RDT not initialized; "+
+				"cache/bandwidth isolation disabled, topology-aware CPU pinning still active",
+				config.DisplayName)
 		}
 	}
 
@@ -2112,9 +2341,25 @@ func doCleanup(ctx *domainContext, status *types.DomainStatus) {
 		}
 	}
 
+	// Release RDT resources before freeing CPUs
+	if ctx.rdtManager != nil && status.RDTActive {
+		if err := ctx.rdtManager.ReleaseIsolation(status.UUIDandVersion.UUID); err != nil {
+			log.Warnf("RDT cleanup failed for %s: %v", status.DisplayName, err)
+		}
+		status.RDTActive = false
+		status.RDTCLOSID = 0
+		status.RDTCacheWayMask = 0
+		status.RDTCacheAllocBytes = 0
+		status.RDTMBAPercent = 0
+	}
+
 	if ctx.cpuPinningSupported {
-		if status.VmConfig.CPUsPinned {
-			if err := ctx.cpuAllocator.Free(status.UUIDandVersion.UUID); err != nil {
+		if status.VmConfig.CPUsPinned || status.VmConfig.RTIntent {
+			if ctx.topoAllocator != nil {
+				if err := ctx.topoAllocator.Free(status.UUIDandVersion.UUID); err != nil {
+					log.Warnf("Failed to free (topo) for %s: %s", status.DisplayName, err)
+				}
+			} else if err := ctx.cpuAllocator.Free(status.UUIDandVersion.UUID); err != nil {
 				log.Warnf("Failed to free for %s: %s", status.DisplayName, err)
 			}
 			triggerCPUNotification()
@@ -3910,6 +4155,10 @@ func getAndPublishCapabilities(ctx *domainContext, hyper hypervisor.Hypervisor) 
 	capabilities, err := hyper.GetCapabilities()
 	if err != nil {
 		return fmt.Errorf("cannot get capabilities: %v", err)
+	}
+	// Populate RDT capabilities if RDT manager is available
+	if ctx.rdtManager != nil && ctx.rdtManager.IsInitialized() {
+		ctx.rdtManager.PopulateCapabilities(capabilities)
 	}
 	return ctx.pubCapabilities.Publish("global", *capabilities)
 }

@@ -531,6 +531,7 @@ func (s *ociSpec) UpdateFromDomain(dom *types.DomainConfig, status *types.Domain
 		s.Linux.Resources.Memory.Limit = &m
 		s.Linux.Resources.CPU.Period = &p
 		s.Linux.Resources.CPU.Quota = &q
+
 		if len(status.VmConfig.CPUs) != 0 {
 			cpusAsString := make([]string, len(status.VmConfig.CPUs))
 			for i, cpu := range status.VmConfig.CPUs {
@@ -546,6 +547,65 @@ func (s *ociSpec) UpdateFromDomain(dom *types.DomainConfig, status *types.Domain
 		s.Hostname = dom.UUIDandVersion.UUID.String()
 	}
 	s.Annotations[EVEOCIVNCPasswordLabel] = dom.VncPasswd
+
+	// RT containers get elevated capabilities so the workload can:
+	//  - adjust RT priorities via sched_setscheduler / chrt (CAP_SYS_NICE)
+	//  - lock memory pages to avoid page-fault jitter (CAP_IPC_LOCK)
+	//  - perform direct I/O for industrial fieldbus access (CAP_SYS_RAWIO)
+	//  - override resource limits internally (CAP_SYS_RESOURCE)
+	//  - set the hardware clock (CAP_SYS_TIME)
+	//  - send broadcast packets (CAP_NET_BROADCAST)
+	//  - configure network interfaces for fieldbus/EtherCAT (CAP_NET_ADMIN)
+	//  - mount overlays / manage cgroups inside the container (CAP_SYS_ADMIN)
+	//  - load out-of-tree fieldbus kernel modules (CAP_SYS_MODULE)
+	//  - allow IDE-level debugging / profiling (CAP_SYS_PTRACE)
+	//
+	// NOTE: We do NOT set Process.Scheduler here because runc rejects the
+	// combination of Process.Scheduler + Linux.Resources.CPU.Cpus (cpuset
+	// pinning) with: "process scheduler can't be used together with
+	// AllowedCPUs".  Since all RT containers have CPU pinning, SCHED_FIFO
+	// is applied post-create via sched_setscheduler() on the container's
+	// init PID — see setRTScheduler() in domainmgr.go.
+
+	if dom.VmConfig.RTIntent {
+		for _, cap := range []string{
+			"CAP_IPC_LOCK",
+			"CAP_NET_ADMIN",
+			"CAP_NET_BROADCAST",
+			"CAP_SYS_ADMIN",
+			"CAP_SYS_MODULE",
+			"CAP_SYS_NICE",
+			"CAP_SYS_PTRACE",
+			"CAP_SYS_RAWIO",
+			"CAP_SYS_RESOURCE",
+			"CAP_SYS_TIME",
+		} {
+			if s.Process != nil && s.Process.Capabilities != nil {
+				s.Process.Capabilities.Bounding = appendCapIfMissing(s.Process.Capabilities.Bounding, cap)
+				s.Process.Capabilities.Effective = appendCapIfMissing(s.Process.Capabilities.Effective, cap)
+				s.Process.Capabilities.Permitted = appendCapIfMissing(s.Process.Capabilities.Permitted, cap)
+				s.Process.Capabilities.Ambient = appendCapIfMissing(s.Process.Capabilities.Ambient, cap)
+			}
+		}
+
+		// Raise rlimits so the workload can use RT scheduling and
+		// lock memory without hitting the default-zero soft/hard
+		// limits.  CODESYS SysTask checks RLIMIT_RTPRIO before
+		// calling sched_setscheduler(); without this the "Binding
+		// of task … to group System failed" errors appear and the
+		// PLC scheduler cannot run cyclic IEC tasks.
+		if s.Process != nil {
+			unlimited := uint64(18446744073709551615) // RLIM_INFINITY
+			rtLimits := []specs.POSIXRlimit{
+				{Type: "RLIMIT_RTPRIO", Hard: 99, Soft: 99},
+				{Type: "RLIMIT_RTTIME", Hard: unlimited, Soft: unlimited},
+				{Type: "RLIMIT_MEMLOCK", Hard: unlimited, Soft: unlimited},
+			}
+			for _, rl := range rtLimits {
+				s.Process.Rlimits = appendRlimitIfMissing(s.Process.Rlimits, rl)
+			}
+		}
+	}
 }
 
 // appendCapIfMissing appends a capability string to a slice if it is not already present.
@@ -556,6 +616,16 @@ func appendCapIfMissing(caps []string, capName string) []string {
 		}
 	}
 	return append(caps, capName)
+}
+
+// appendRlimitIfMissing appends a POSIXRlimit to a slice if no entry with the same Type exists.
+func appendRlimitIfMissing(rlimits []specs.POSIXRlimit, rl specs.POSIXRlimit) []specs.POSIXRlimit {
+	for _, existing := range rlimits {
+		if existing.Type == rl.Type {
+			return rlimits
+		}
+	}
+	return append(rlimits, rl)
 }
 
 // UpdateFromVolume updates values in the OCI spec based on the location
