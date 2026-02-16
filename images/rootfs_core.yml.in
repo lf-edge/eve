@@ -1,0 +1,109 @@
+# Core EVE rootfs template - experimental (PoC)
+# Contains universal pillar (PILLAR_K_TAG) with only critical services.
+# Non-critical services (kube, vector, debug, wwan, wlan, guacd, edgeview,
+# vtpm, memory-monitor, node-exporter) are in rootfs_ext.yml.in.
+
+kernel:
+  image: KERNEL_TAG
+  # the unified_cgroup_hierarchy forces cgroupsv1, which is required until pillar is ready to support v2
+  cmdline: "rootdelay=3 linuxkit.unified_cgroup_hierarchy=0"
+init:
+  - linuxkit/init:b5506cc74a6812dc40982cacfd2f4328f8a4b12a
+  - linuxkit/runc:24bcd37e33b5eb445c4fa85b354061fa98b78f26       # runc v3.3.0
+  - linuxkit/containerd:ba19f64efd3331a8fd0a33e00eabd14f6ee1780e # containerd v2.2.0
+  # pillar's logic rely on existence of getty and /etc/init.d/001-getty inside
+  - linuxkit/getty:e74e6cad132403d1a6d6cd25b136a7c69c99f3f7
+  - linuxkit/memlogd:1ded209c4cc10aa8de2099f4156164b59df14e3c
+  - DOM0ZTOOLS_TAG
+  - GRUB_TAG
+  - FW_TAG
+  - XEN_TAG
+  - GPTTOOLS_TAG
+  - KEXEC_TAG
+  - UDEV_TAG
+onboot:
+  - name: rngd
+    image: RNGD_TAG
+    command: ["/sbin/rngd", "-1"]
+  - name: sysctl
+    image: linuxkit/sysctl:c6f23919b8610c7645a89a89f863c6209bc84bee
+    binds:
+      - /etc/sysctl.d:/etc/sysctl.d
+    capabilities:
+      - CAP_SYS_ADMIN
+      - CAP_NET_ADMIN
+  - name: storage-init
+    image: STORAGE_INIT_TAG
+  # kdump goes strictly after storage-init
+  - name: kdump
+    image: KDUMP_TAG
+  - name: pillar-onboot
+    image: PILLAR_K_TAG
+    command: ["/opt/zededa/bin/onboot.sh"]
+  - name: apparmor
+    image: APPARMOR_TAG
+  # measure-config must be executed after any other container that changes
+  # /config. Let's keep it the latest
+  - name: measure-config
+    image: MEASURE_CONFIG_TAG
+services:
+  # Core services only - non-critical services are in rootfs_ext.yml.in
+  - name: monitor
+    image: MONITOR_TAG
+    cgroupsPath: /eve/services/monitor
+    oomScoreAdj: -999
+  - name: newlogd
+    image: NEWLOGD_TAG
+    cgroupsPath: /eve/services/newlogd
+    oomScoreAdj: -999
+  - name: pillar
+    image: PILLAR_K_TAG
+    cgroupsPath: /eve/services/pillar
+    oomScoreAdj: -999
+  - name: watchdog
+    image: WATCHDOG_TAG
+    cgroupsPath: /eve/services/watchdog
+    oomScoreAdj: -1000
+  - name: xen-tools
+    image: XENTOOLS_TAG
+    cgroupsPath: /eve/services/xen-tools
+    oomScoreAdj: -999
+files:
+  - path: /etc/eve-release
+    source: eve_version
+  - path: /etc/linuxkit-eve-config.yml
+    metadata: yaml
+  - path: /etc/eve-hv-type
+    contents: 'EVE_HV'
+  - path: /etc/issue
+    source: etc_issue
+  - path: /opt/vendor
+    directory: true
+  - path: /etc/eve-platform
+    contents: 'EVE_PLATFORM'
+  - path: /etc/securetty
+    contents: |
+      console
+      tty0
+      tty1
+      tty2
+      tty3
+      tty4
+      tty5
+      tty6
+      tty7
+      tty8
+      tty9
+      tty10
+      tty11
+      hvc0
+      ttyS0
+      ttyS1
+      ttyS2
+      ttyAMA0
+      ttyAMA1
+      ttyTCU0
+      ttyTHS0
+      ttyTHS1
+      ttymxc0
+      ttymxc2

@@ -35,6 +35,14 @@ echo "$(date -Ins -u) Starting onboot.sh"
 mkdir -p $PERSISTDIR/coverage
 export GOCOVERDIR=$PERSISTDIR/coverage
 
+# Override HV type from CONFIG partition if present (post-build flavor selection)
+if [ -f "$CONFIGDIR/eve-hv-type" ]; then
+    echo "$(date -Ins -u) Overriding eve-hv-type from CONFIG: $(cat $CONFIGDIR/eve-hv-type)"
+    if ! cp "$CONFIGDIR/eve-hv-type" /run/eve-hv-type; then
+        echo "$(date -Ins -u) ERROR: Failed to copy eve-hv-type to /run"
+    fi
+fi
+
 # Copy pre-defined fscrypt.conf
 cp fscrypt.conf /etc/fscrypt.conf
 

@@ -72,7 +72,6 @@ IS_IN_KDUMP_KERNEL=$(! test -f /proc/vmcore; echo $?)
 
 INSTALL_CLUSTERED_STORAGE=false
 INSTALL_ZFS=false
-eve_flavor=$(cat /hostfs/etc/eve-hv-type)
 
 # the following is here just for compatibility reasons and it should go away soon
 ln -s "$CONFIGDIR" "/var/$CONFIGDIR"
@@ -95,6 +94,19 @@ if CONFIG=$(findfs PARTLABEL=CONFIG) && [ -n "$CONFIG" ]; then
     mount -o remount,ro $CONFIGDIR
 else
     echo "$(date -Ins -u) No separate $CONFIGDIR partition"
+fi
+
+# Determine HV flavor - check CONFIG override first, fall back to rootfs
+if [ -f "$CONFIGDIR/eve-hv-type" ]; then
+    eve_flavor=$(cat "$CONFIGDIR/eve-hv-type")
+else
+    eve_flavor=$(cat /hostfs/etc/eve-hv-type)
+fi
+
+if [ "$eve_flavor" = "k" ]; then
+   INSTALL_CLUSTERED_STORAGE=true
+   INSTALL_ZFS=true
+   echo "$(date -Ins -u) Kubevirt image - might recreate ZFS /persist"
 fi
 
 INIT_FS=0
