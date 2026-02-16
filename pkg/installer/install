@@ -388,7 +388,14 @@ INSTALL_CLUSTERED_STORAGE=false
 cmdline eve_install_zfs_with_raid_level && INSTALL_ZFS=true
 RAID_LEVEL="none"
 
-eve_flavor=$(cat /root/etc/eve-hv-type)
+# Check CONFIG for post-build HV override (e.g. set by ZFlash), fall back to rootfs
+if mcopy -i $CONFIG_IMG ::/eve-hv-type /tmp/eve-hv-type 2>/dev/null; then
+    eve_flavor=$(cat /tmp/eve-hv-type | tr -d '[:space:]')
+    logmsg "Using eve-hv-type from CONFIG: $eve_flavor"
+else
+    eve_flavor=$(cat /root/etc/eve-hv-type)
+    logmsg "Using eve-hv-type from rootfs: $eve_flavor"
+fi
 
 if [ "$eve_flavor" = "k" ]; then
    if echo "$INSTALL_PERSIST"| grep -q ","; then
@@ -539,6 +546,12 @@ else
   mount_part P3 "$INSTALL_PERSIST" /persist 2>/dev/null
 fi
 
+# Copy ext rootfs to persist as pkgs.img for extsloader (split rootfs PoC)
+if [ -f /bits/rootfs-ext.img ]; then
+    logmsg "Copying rootfs-ext.img to /persist/pkgs.img for extsloader"
+    cp /bits/rootfs-ext.img /persist/pkgs.img
+    logmsg "rootfs-ext.img copied ($(du -h /persist/pkgs.img | cut -f1))"
+fi
 
 # Note that /config is read only once the installer is done
 if mount_part CONFIG "$INSTALL_DEV" /config -t vfat -o iocharset=iso8859-1; then
