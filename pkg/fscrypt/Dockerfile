@@ -2,7 +2,7 @@
 
 # SPDX-License-Identifier: Apache-2.0
 
-FROM lfedge/eve-alpine:0f2e0da38e30753c68410727a6cc269e57ff74f2 AS build-base
+FROM lfedge/eve-alpine:308b37b2049096bc2385c28c1cbeef436985cc87 AS build-base
 
 FROM build-base AS build-amd64
 FROM build-base AS build-arm64
@@ -11,7 +11,7 @@ FROM build-base AS build-riscv64
 # hadolint ignore=DL3006
 FROM build-${TARGETARCH} AS build
 
-ENV BUILD_PKGS git gcc make libc-dev linux-pam-dev m4 findutils go util-linux make patch
+ENV BUILD_PKGS git gcc make libc-dev linux-pam-dev m4 findutils util-linux make patch
 RUN eve-alpine-deploy.sh
 
 ENV FSCRYPT_COMMIT=v0.3.4
