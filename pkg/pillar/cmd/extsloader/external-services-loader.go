@@ -40,7 +40,14 @@ const (
 	containerdSock      = "/run/containerd/containerd.sock"
 	containerdNamespace = "services.linuxkit"
 	scanInterval        = 30 * time.Second
+	hvTypePath          = "/run/eve-hv-type"
 )
+
+// hvOnlyServices maps service names to the HV flavor they require.
+// Services not listed here run on all flavors.
+var hvOnlyServices = map[string]string{
+	"kube": "k",
+}
 
 type externalServicesContext struct {
 	agentbase.AgentBase
@@ -338,6 +345,13 @@ func startAllServices(ctx *externalServicesContext) error {
 
 	log.Noticef("Found %d entries in services directory", len(entries))
 
+	// Read current HV flavor for filtering HV-specific services
+	hvFlavor := ""
+	if data, err := os.ReadFile(hvTypePath); err == nil {
+		hvFlavor = strings.TrimSpace(string(data))
+	}
+	log.Noticef("Current HV flavor: %q", hvFlavor)
+
 	serviceCount := 0
 	for _, entry := range entries {
 		if !entry.IsDir() {
@@ -346,6 +360,13 @@ func startAllServices(ctx *externalServicesContext) error {
 		}
 
 		serviceName := entry.Name()
+
+		// Skip services that require a different HV flavor
+		if requiredHV, ok := hvOnlyServices[serviceName]; ok && hvFlavor != requiredHV {
+			log.Noticef("Skipping service %s: requires HV %q, current is %q", serviceName, requiredHV, hvFlavor)
+			continue
+		}
+
 		servicePath := filepath.Join(servicesPath, serviceName)
 
 		log.Noticef("━━━ Starting service: %s ━━━", serviceName)

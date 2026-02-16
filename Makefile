@@ -217,6 +217,16 @@ ROOTFS_PKGS_IMG=$(ROOTFS_IMG_BASE)-pkgs.img
 ROOTFS_BOOTSTRAP_TAR=$(ROOTFS_TAR_BASE)-bootstrap.tar
 ROOTFS_PKGS_TAR=$(ROOTFS_TAR_BASE)-pkgs.tar
 
+# Universal / split rootfs - experimental (PoC)
+ROOTFS_UNIVERSAL_IMG=$(ROOTFS_IMG_BASE)-universal.img
+ROOTFS_CORE_IMG=$(ROOTFS_IMG_BASE)-core.img
+ROOTFS_EXT_IMG=$(ROOTFS_IMG_BASE)-ext.img
+ROOTFS_UNIVERSAL_TAR=$(ROOTFS_TAR_BASE)-universal.tar
+ROOTFS_CORE_TAR=$(ROOTFS_TAR_BASE)-core.tar
+ROOTFS_EXT_TAR=$(ROOTFS_TAR_BASE)-ext.tar
+INSTALLER_SPLIT_TAR=$(BUILD_DIR)/installer-split.tar
+INSTALLER_SPLIT_IMG=$(INSTALLER)/installer-split.img
+
 CONFIG_IMG=$(INSTALLER)/config.img
 INITRD_IMG=$(INSTALLER)/initrd.img
 INSTALLER_TAR=$(BUILD_DIR)/installer.tar
@@ -488,6 +498,10 @@ endif
 ifeq ($(HV),k)
         PKGS_$(ZARCH)=$(shell find pkg -maxdepth 1 -type d | grep -Ev "eve|alpine|sources$$")
         ROOTFS_MAXSIZE_MB=4096
+else ifdef UNIVERSAL
+        # UNIVERSAL=1: include kube (needed for universal/split rootfs images)
+        PKGS_$(ZARCH)=$(shell find pkg -maxdepth 1 -type d | grep -Ev "eve|alpine|sources$$")
+        ROOTFS_MAXSIZE_MB=4096
 else
         #kube container will not be in non-k builds
         PKGS_$(ZARCH)=$(shell find pkg -maxdepth 1 -type d | grep -Ev "eve|alpine|sources|kube|external-boot-image$$")
@@ -707,6 +721,21 @@ run-bootstrap-with-pkgs: $(SWTPM) GETTY
 		-drive file=$(CURRENT_DIR)/live-bootstrap.$(IMG_FORMAT),format=$(IMG_FORMAT),id=uefi-disk \
 		-drive file=fat:rw:$(CURRENT_DIR)/pkgs-inject,format=vvfat,id=pkgs-disk
 
+# Universal rootfs - experimental (PoC)
+run-universal: $(SWTPM) GETTY
+	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive file=$(CURRENT_DIR)/live-universal.$(IMG_FORMAT),format=$(IMG_FORMAT),id=uefi-disk
+
+# Split rootfs: core boots as imga, ext loaded by extsloader agent from pkgs.img
+# Ext rootfs is exposed as VVFAT disk (appears as /dev/sdb1 in VM)
+run-split: $(SWTPM) GETTY
+	@echo "Preparing ext rootfs as pkgs.img for VM..."
+	@mkdir -p $(CURRENT_DIR)/pkgs-inject
+	@cp $(CURRENT_DIR)/installer/rootfs-ext.img $(CURRENT_DIR)/pkgs-inject/pkgs.img
+	@echo "Starting VM with core rootfs + pkgs.img on /dev/sdb1..."
+	$(QEMU_SYSTEM) $(QEMU_OPTS) \
+		-drive file=$(CURRENT_DIR)/live-split.$(IMG_FORMAT),format=$(IMG_FORMAT),id=uefi-disk \
+		-drive file=fat:rw:$(CURRENT_DIR)/pkgs-inject,format=vvfat,id=pkgs-disk
+
 run-target: $(SWTPM) GETTY
 	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive file=$(TARGET_IMG),format=$(IMG_FORMAT)
 
@@ -827,9 +856,37 @@ live-bootstrap: $(LIVE)-bootstrap.$(IMG_FORMAT) $(BIOS_IMG) current
 live-multirootfs: multi_rootfs $(BIOS_IMG) current
 	$(QUIET): "$@: Succeeded, built bootstrap and pkgs rootfs images"
 
+# Universal / split rootfs - experimental (PoC)
+universal_rootfs: $(ROOTFS_UNIVERSAL_IMG) current
+	$(QUIET): "$@: Succeeded, ROOTFS_UNIVERSAL_IMG=$(ROOTFS_UNIVERSAL_IMG)"
+
+core_rootfs: $(ROOTFS_CORE_IMG) current
+	$(QUIET): "$@: Succeeded, ROOTFS_CORE_IMG=$(ROOTFS_CORE_IMG)"
+
+ext_rootfs: $(ROOTFS_EXT_IMG) current
+	$(QUIET): "$@: Succeeded, ROOTFS_EXT_IMG=$(ROOTFS_EXT_IMG)"
+
+split_rootfs: core_rootfs ext_rootfs
+	$(QUIET): "$@: Succeeded"
+
+live-universal: $(LIVE)-universal.$(IMG_FORMAT) $(BIOS_IMG) current
+	$(QUIET): "$@: Succeeded, LIVE_UNIVERSAL=$(LIVE)-universal.$(IMG_FORMAT)"
+
+# Split rootfs: core boots as imga, ext loaded by extsloader via pkgs.img
+live-split: $(LIVE)-split.$(IMG_FORMAT) $(ROOTFS_EXT_IMG) $(BIOS_IMG) current
+	$(QUIET): "$@: Succeeded, LIVE_SPLIT=$(LIVE)-split.$(IMG_FORMAT)"
+
+# Split rootfs k-variant: same core+ext but CONFIG has eve-hv-type=k (kubevirt mode)
+# Uses mcopy to inject eve-hv-type into CONFIG (same mechanism as lfedge/eve Docker image /in mount)
+live-split-k: $(LIVE)-split-k.$(IMG_FORMAT) $(ROOTFS_EXT_IMG) $(BIOS_IMG) current
+	$(QUIET): "$@: Succeeded, LIVE_SPLIT_K=$(LIVE)-split-k.$(IMG_FORMAT)"
+
 live: $(LIVE_IMG) $(BIOS_IMG) current	; $(QUIET): "$@: Succeeded, LIVE_IMG=$(LIVE_IMG)"
 live-%: $(LIVE).%		current ;  $(QUIET): "$@: Succeeded, LIVE=$(LIVE)"
 installer: $(INSTALLER).raw current
+# Split installer: bundles core rootfs + ext rootfs, HV type set at flash time via CONFIG
+installer-split: $(INSTALLER)-split.raw current
+	$(QUIET): "$@: Succeeded, INSTALLER_SPLIT=$(INSTALLER)-split.raw"
 installer.tar: $(INSTALLER_TAR)
 installertar: $(INSTALLER_TAR)
 installer-img: $(INSTALLER_IMG)
@@ -873,6 +930,30 @@ $(INSTALLER_TAR): images/out/installer-$(HV)-$(PLATFORM).yml $(ROOTFS_IMGS) $(PE
 	$(QUIET): $@: Begin
 	echo "Building installer tarball from $<"
 	./tools/makerootfs.sh tar $(UPDATE_TAR) -y $< -t $@ -d $(INSTALLER) -a $(ZARCH)
+	$(QUIET): $@: Succeeded
+
+# Split installer: uses core rootfs as rootfs.img, bundles ext rootfs for delivery to persist
+$(INSTALLER_SPLIT_TAR): images/out/installer-$(HV)-$(PLATFORM).yml $(ROOTFS_CORE_IMG) $(ROOTFS_EXT_IMG) $(PERSIST_IMG) $(CONFIG_IMG) | $(INSTALLER)
+	$(QUIET): $@: Begin
+	ln -sf rootfs-core.img $(INSTALLER)/rootfs.img
+	ln -sf rootfs-ext.img $(INSTALLER)/rootfs-ext.img
+	echo "Building split installer tarball from $<"
+	./tools/makerootfs.sh tar $(UPDATE_TAR) -y $< -t $@ -d $(INSTALLER) -a $(ZARCH)
+	rm -f $(INSTALLER)/rootfs.img $(INSTALLER)/rootfs-ext.img
+	$(QUIET): $@: Succeeded
+
+$(INSTALLER_SPLIT_IMG): $(INSTALLER_SPLIT_TAR) | $(INSTALLER)
+	$(QUIET): $@: Begin
+	./tools/makerootfs.sh imagefromtar -t $< -i $@ -f $(ROOTFS_FORMAT) -a $(ZARCH)
+	$(QUIET): $@: Succeeded
+
+$(INSTALLER)-split.raw: $(INSTALLER_SPLIT_IMG) $(EFI_PART) $(BOOT_PART) $(CONFIG_IMG) $(BSP_IMX_PART) $(BIOS_IMG) | $(INSTALLER)
+	./tools/prepare-platform.sh "$(PLATFORM)" "$(BUILD_DIR)" "$(INSTALLER)"
+	@# Embed supported HV types in CONFIG for ZFlash validation
+	printf "kvm\nk\nxen\n" | MTOOLS_SKIP_CHECK=1 mcopy -i $(CONFIG_IMG) - ::/eve-hv-supported
+	ln -sf installer-split.img $(INSTALLER)/installer.img
+	./tools/makeflash.sh "mkimage-raw-efi" -C $| $@ "efi conf_win installer inventory_win"
+	rm -f $(INSTALLER)/installer.img
 	$(QUIET): $@: Succeeded
 
 $(ROOTFS_IMG_BASE)-%.img: pkg/mkrootfs-$(ROOTFS_FORMAT)
@@ -991,6 +1072,35 @@ $(LIVE)-bootstrap.raw: $(BOOT_PART) $(EFI_PART) $(ROOTFS_BOOTSTRAP_IMG) $(CONFIG
 	rm -f $(INSTALLER)/rootfs.img
 	$(QUIET): $@: Succeeded
 
+# Universal rootfs - experimental (PoC)
+$(LIVE)-universal.raw: $(BOOT_PART) $(EFI_PART) $(ROOTFS_UNIVERSAL_IMG) $(CONFIG_IMG) $(PERSIST_IMG) $(BSP_IMX_PART) $(BIOS_IMG) | $(INSTALLER)
+	./tools/prepare-platform.sh "$(PLATFORM)" "$(BUILD_DIR)" "$(INSTALLER)"
+	ln -sf rootfs-universal.img $(INSTALLER)/rootfs.img
+	./tools/makeflash.sh "mkimage-raw-efi" -C $| $@ $(LIVE_PART_SPEC)
+	rm -f $(INSTALLER)/rootfs.img
+	$(QUIET): $@: Succeeded
+
+# Split rootfs: core boots as imga, ext loaded at runtime by extsloader
+$(LIVE)-split.raw: $(BOOT_PART) $(EFI_PART) $(ROOTFS_CORE_IMG) $(CONFIG_IMG) $(PERSIST_IMG) $(BSP_IMX_PART) $(BIOS_IMG) | $(INSTALLER)
+	./tools/prepare-platform.sh "$(PLATFORM)" "$(BUILD_DIR)" "$(INSTALLER)"
+	ln -sf rootfs-core.img $(INSTALLER)/rootfs.img
+	./tools/makeflash.sh "mkimage-raw-efi" -C $| $@ $(LIVE_PART_SPEC)
+	rm -f $(INSTALLER)/rootfs.img
+	$(QUIET): $@: Succeeded
+
+# Split rootfs k-variant: inject eve-hv-type=k into CONFIG partition for kubevirt mode
+# Reuses the core and ext images from split build, only re-creates config.img and disk image
+$(LIVE)-split-k.raw: $(LIVE)-split.raw
+	@echo "Creating k-variant split image (ZFS persist, kubevirt mode)..."
+	cp $(CONFIG_IMG) $(CONFIG_IMG).k
+	echo -n "k" | mcopy -i $(CONFIG_IMG).k -o - ::eve-hv-type
+	ln -sf rootfs-core.img $(INSTALLER)/rootfs.img
+	mv $(CONFIG_IMG) $(CONFIG_IMG).kvm
+	mv $(CONFIG_IMG).k $(CONFIG_IMG)
+	./tools/makeflash.sh "mkimage-raw-efi" -C $(INSTALLER) $@ $(LIVE_PART_SPEC)
+	mv $(CONFIG_IMG).kvm $(CONFIG_IMG)
+	rm -f $(INSTALLER)/rootfs.img
+	$(QUIET): $@: Succeeded
 
 $(INSTALLER_IMG): $(INSTALLER_TAR) | $(INSTALLER)
 	$(QUIET): $@: Begin
@@ -1023,8 +1133,14 @@ $(LIVE).parallels: $(LIVE).raw
 
 # top-level linuxkit packages targets, note the one enforcing ordering between packages
 pkgs: RESCAN_DEPS=
-pkgs: $(LINUXKIT) $(PKGS) $(LK_POSSIBLE_BUILD_ARG_TARGETS)
+pkgs: $(LINUXKIT) $(PKGS) $(LK_POSSIBLE_BUILD_ARG_TARGETS) $(if $(UNIVERSAL),eve-pillar-k)
 	@echo Done building packages
+
+# UNIVERSAL=1: build pillar-k variant (pillar with kubevirt support, uses build-k.yml)
+# This is needed because the universal/split rootfs templates reference PILLAR_K_TAG directly.
+eve-pillar-k: pkg/pillar/Dockerfile $(LINUXKIT) $(LK_POSSIBLE_BUILD_ARG_TARGETS)
+	$(QUIET): "$@: Building pillar with build-k.yml for universal image"
+	$(QUIET)$(LINUXKIT) $(DASH_V) pkg $(LINUXKIT_PKG_TARGET) $(LINUXKIT_ORG_TARGET) $(LINUXKIT_OPTS) $(LINUXKIT_EXTRA_BUILD_ARGS) --platforms linux/$(ZARCH) --build-yml build-k.yml pkg/pillar
 
 # No-op target for get-deps which looks at
 # external-boot-image and sees a dep for eve-kernel
@@ -1339,6 +1455,25 @@ images/out/rootfs-%-pkgs.yml.in: images/rootfs_pkgs.yml.in $(RESCAN_DEPS) | imag
 	$(info [INFO] Building $@ from $<)
 	$(QUIET)tools/compose-image-yml.sh -b $< -v "$(ROOTFS_VERSION)-$*-pkgs-$(ZARCH)" -o $@ -h $(HV) -p $(PLATFORM) $(call find-modifiers-rootfs,$*-pkgs)
 
+# Universal / split rootfs - experimental (PoC)
+.PRECIOUS: images/out/rootfs-%-universal.yml.in
+images/out/rootfs-%-universal.yml.in: images/rootfs_universal.yml.in $(RESCAN_DEPS) | images/out
+	$(info [INFO] Building universal rootfs for target: $*)
+	$(QUIET)tools/compose-image-yml.sh -b $< -v "$(ROOTFS_VERSION)-$*-universal-$(ZARCH)" \
+		-o $@ -h $(HV) -p $(PLATFORM)
+
+.PRECIOUS: images/out/rootfs-%-core.yml.in
+images/out/rootfs-%-core.yml.in: images/rootfs_core.yml.in $(RESCAN_DEPS) | images/out
+	$(info [INFO] Building core rootfs for target: $*)
+	$(QUIET)tools/compose-image-yml.sh -b $< -v "$(ROOTFS_VERSION)-$*-core-$(ZARCH)" \
+		-o $@ -h $(HV) -p $(PLATFORM)
+
+.PRECIOUS: images/out/rootfs-%-ext.yml.in
+images/out/rootfs-%-ext.yml.in: images/rootfs_ext.yml.in $(RESCAN_DEPS) | images/out
+	$(info [INFO] Building ext rootfs for target: $*)
+	$(QUIET)tools/compose-image-yml.sh -b $< -v "$(ROOTFS_VERSION)-$*-ext-$(ZARCH)" \
+		-o $@ -h $(HV) -p $(PLATFORM)
+
 .PRECIOUS: images/out/rootfs-%.yml.in
 images/out/rootfs-%.yml.in: images/rootfs.yml.in $(RESCAN_DEPS) | images/out
 	$(info [INFO] Building rootfs for target: $*)
@@ -1377,7 +1512,7 @@ kernel-tag:
 	@echo $(KERNEL_TAG)
 
 .PRECIOUS: rootfs-% $(ROOTFS)-%.img $(ROOTFS_COMPLETE)
-.PHONY: all clean test run pkgs help live rootfs config installer live current bootstrap_rootfs pkgs_rootfs multi_rootfs live-bootstrap live-multirootfs run-bootstrap run-bootstrap-with-pkgs cache-images FORCE $(DIST) HOSTARCH image-set cache-export eden
+.PHONY: all clean test run pkgs help live rootfs config installer installer-split live current bootstrap_rootfs pkgs_rootfs multi_rootfs live-bootstrap live-multirootfs run-bootstrap run-bootstrap-with-pkgs universal_rootfs core_rootfs ext_rootfs split_rootfs live-universal run-universal live-split live-split-k run-split eve-pillar-k cache-images FORCE $(DIST) HOSTARCH image-set cache-export eden
 FORCE:
 
 help:
@@ -1444,6 +1579,7 @@ help:
 	@echo "   installer-raw        builds raw disk installer image (to be installed on bootable media)"
 	@echo "   installer-iso        builds an ISO installers image (to be installed on bootable media)"
 	@echo "   installer-net        builds a tarball of artifacts to be used for PXE booting"
+	@echo "   installer-split      builds universal split installer (core+ext rootfs, HV set at flash time via ZFlash)"
 	@echo
 	@echo "Commonly used run targets (note they don't automatically rebuild images they run):"
 	@echo "   run-compose          runs all EVE microservices via docker-compose deployment"
@@ -1452,6 +1588,9 @@ help:
 	@echo "   run-live-gui         same as run-live but with an emulated graphics card"
 	@echo "   run-bootstrap        runs live-bootstrap disk image (experimental: minimal critical services)"
 	@echo "   run-bootstrap-with-pkgs  runs live-bootstrap with pkgs.img (extsloader agent auto-loads external services)"
+	@echo "   run-universal        runs universal live image (monolithic, all services in one rootfs)"
+	@echo "   run-split            runs split image: core boots, ext services loaded from pkgs.img via extsloader"
+	@echo "   live-split-k         builds split image with eve-hv-type=k in CONFIG (for flashing to real device)"
 	@echo "   run-live-parallels   runs a full fledged virtual device on Parallels Desktop"
 	@echo "   run-live-vb          runs a full fledged virtual device on VirtualBox"
 	@echo "   run-rootfs           runs a rootfs.img (limited usefulness e.g. quick test before cloud upload)"
