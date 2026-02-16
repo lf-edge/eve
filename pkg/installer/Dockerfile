@@ -36,17 +36,17 @@ SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
 ENV BUILD_PKGS="mkinitfs grep patch make coreutils musl-dev gcc g++ perl \
     autoconf automake libtool file bsd-compat-headers libc-dev \
     util-linux-dev flex linux-headers glib-dev libxrandr-dev zlib-dev \
-    libusb-dev kmod-dev curl eudev-dev libdrm-dev i2c-tools-dev hwinfo \
+    libusb-dev kmod-dev curl curl-dev eudev-dev libdrm-dev i2c-tools-dev hwinfo \
     binutils-dev libaio-dev zlib-static libvncserver-dev python3 pixman-dev \
-    py3-setuptools bash cmake m4 pkgconf pkgconfig autoconf-archive tpm2-tss-dev \
+    py3-setuptools bash cmake m4 pkgconf pkgconfig autoconf-archive \
     cryptsetup-dev lddtree git"
 ENV PKGS="mtools dosfstools libarchive-tools sgdisk e2fsprogs util-linux \
     squashfs-tools coreutils tar dmidecode smartmontools libaio libaio-dev \
-    glib zlib libusb curl xz pciutils usbutils hdparm ncurses-dev jq \
+    glib zlib libusb curl libcurl xz pciutils usbutils hdparm ncurses-dev jq \
     wireless-tools libxrandr eudev-libs sudo fio iperf3 sysstat \
-    lm-sensors acpi iw libdrm hwinfo dhclient e2fsprogs-extra \
+    lm-sensors acpi iw libdrm hwinfo dhcpcd e2fsprogs-extra \
     libgcc pixman libvncserver musl-utils \
-    tpm2-tss-dev tpm2-tss-esys tpm2-tss-fapi tpm2-tss-rc \
+    tpm2-tss-esys tpm2-tss-fapi tpm2-tss-rc \
     kmod-libs tpm2-tss-sys tpm2-tss-tctildr tpm2-abrmd libblkid cryptsetup-libs"
 RUN eve-alpine-deploy.sh
 
@@ -57,16 +57,24 @@ RUN go build -o /out/vmcap ./vmcap
 
 WORKDIR /out
 
-ADD https://github.com/tpm2-software/tpm2-tools/archive/5.2.tar.gz /out/5.2.tar.gz
+ADD --keep-git-dir=true https://github.com/tpm2-software/tpm2-tools.git#5.5 /out/tpm2-tools-5.5
 
-RUN tar -xf 5.2.tar.gz \
-    && rm -rf 5.2.tar.gz
-WORKDIR /out/tpm2-tools-5.2
-RUN ./bootstrap \
-    && ./configure --prefix=/out/usr \
-    && make -j"$(nproc)" \
-    && make install \
-    && rm -rf /out/tpm2-tools-5.2
+# build tpm2-tss, it is needed by tpm2-tools
+WORKDIR /tpm2-tss
+ADD --keep-git-dir=true https://github.com/tpm2-software/tpm2-tss.git#4.0.1 /tpm2-tss
+RUN ./bootstrap && \
+    ./configure --disable-dependency-tracking && \
+    make -j$(nproc) && \
+    make install
+RUN cp /usr/local/lib/libtss2* /out/usr/lib/
+RUN strip --strip-unneeded /out/usr/lib/libtss2*.so*
+
+WORKDIR /out/tpm2-tools-5.5
+RUN ./bootstrap
+RUN ./configure --prefix=/out/usr CFLAGS="-Wno-error"
+RUN make -j"$(nproc)" CFLAGS="-Wno-error"
+RUN make install
+RUN rm -rf /out/tpm2-tools-5.5
 
 COPY --from=rust /usr/local/my-installer/target/installer /out/sbin/installer
 COPY --from=rust /usr/local/my-installer/sbom.spdx.json /out/sbin/sbom.spdx.json
