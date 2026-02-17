@@ -6,6 +6,7 @@ package types
 import (
 	"encoding/base64"
 	"fmt"
+	"math"
 	"net"
 	"net/url"
 	"os"
@@ -981,8 +982,21 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	if err != nil {
 		logrus.Errorf("getEveMemoryLimitInBytes failed: %v", err)
 	}
-	// Round up to the nearest MiB
-	eveMemoryLimitInMiB := uint32((eveMemoryLimitInBytes + 1024*1024 - 1) / (1024 * 1024))
+	// Clamp Eve memory limit in bytes to uint32 range for config items.
+	var eveMemoryLimitInBytes32 uint32
+	if eveMemoryLimitInBytes > math.MaxUint32 {
+		eveMemoryLimitInBytes32 = math.MaxUint32
+	} else {
+		eveMemoryLimitInBytes32 = uint32(eveMemoryLimitInBytes)
+	}
+	// Round up to the nearest MiB, then clamp to uint32 range.
+	eveMemoryLimitInMiB64 := (eveMemoryLimitInBytes + 1024*1024 - 1) / (1024 * 1024)
+	var eveMemoryLimitInMiB32 uint32
+	if eveMemoryLimitInMiB64 > math.MaxUint32 {
+		eveMemoryLimitInMiB32 = math.MaxUint32
+	} else {
+		eveMemoryLimitInMiB32 = uint32(eveMemoryLimitInMiB64)
+	}
 	var configItemSpecMap ConfigItemSpecMap
 	configItemSpecMap.GlobalSettings = make(map[GlobalSettingKey]ConfigItemSpec)
 	configItemSpecMap.AgentSettings = make(map[AgentSettingKey]ConfigItemSpec)
@@ -1053,10 +1067,10 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	// Default forced GOGC growth memory percent
 	configItemSpecMap.AddIntItem(GOGCForcedGrowthMemPerc, 20, 5, 300)
 	//
-	configItemSpecMap.AddIntItem(EveMemoryLimitInBytes, uint32(eveMemoryLimitInBytes),
-		uint32(eveMemoryLimitInBytes), 0xFFFFFFFF)
-	configItemSpecMap.AddIntItem(EveMemoryLimitInMiB, eveMemoryLimitInMiB,
-		eveMemoryLimitInMiB, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(EveMemoryLimitInBytes, eveMemoryLimitInBytes32,
+		eveMemoryLimitInBytes32, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(EveMemoryLimitInMiB, eveMemoryLimitInMiB32,
+		eveMemoryLimitInMiB32, 0xFFFFFFFF)
 	// Limit manual vmm overhead override to 1 PiB
 	configItemSpecMap.AddIntItem(VmmMemoryLimitInMiB, 0, 0, uint32(1024*1024*1024))
 	// LogRemainToSendMBytes - Default is 2 Gbytes, minimum is 10 Mbytes
