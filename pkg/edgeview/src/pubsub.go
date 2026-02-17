@@ -8,9 +8,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
+// pubStr is a comma-separated list of EVE agents (a subset of pubsubopts)
+// with an optional '/' followed by a wildcard matched subdir string
 func runPubsub(pubStr string) {
 	opts, err := checkOpts(pubStr, pubsubopts)
 	if err != nil {
@@ -37,6 +40,21 @@ func runPubsub(pubStr string) {
 			subdir = ""
 		}
 
+		// Ensure that pubsubdir is a single alphanum string
+		// since above regex is more general
+		if !reDirPattern.MatchString(pubsubdir) {
+			fmt.Printf("pubsubdir has invalid string: %s\n",
+				pubsubdir)
+			return
+		}
+		if subdir != "" {
+			if !reDirPattern.MatchString(subdir) {
+				fmt.Printf("subdir has invalid string: %s\n",
+					subdir)
+				return
+			}
+		}
+
 		for _, sdir := range startdir {
 			if sdir == "/persist/status/" {
 				opts1, _ := checkOpts(pubStr, pubsubpersist)
@@ -53,7 +71,8 @@ func runPubsub(pubStr string) {
 			printColor("\n pubsub in: "+sdir, colorBLUE)
 
 			if subdir != "" {
-				files, err := os.ReadDir(sdir + pubsubdir)
+				files, err := os.ReadDir(filepath.Join(sdir,
+					pubsubdir))
 				if err != nil {
 					continue
 				}
@@ -61,6 +80,9 @@ func runPubsub(pubStr string) {
 					if !sub.IsDir() {
 						continue
 					}
+					// Allow substring matching e.g.,
+					// zedagent/config matching
+					// *config* under zedagent.
 					lowerName := strings.ToLower(sub.Name())
 					lowerStr := strings.ToLower(subdir)
 					if !strings.Contains(lowerName, lowerStr) {
@@ -70,7 +92,7 @@ func runPubsub(pubStr string) {
 					pubsubSvs(sdir, pubsubdir, subdir)
 				}
 			} else {
-				pubsubSvs(sdir, pubsubdir, subdir)
+				pubsubSvs(sdir, pubsubdir, "")
 			}
 			closePipe(true)
 		}
@@ -78,9 +100,9 @@ func runPubsub(pubStr string) {
 }
 
 func pubsubSvs(startDir, pubsubDir, subDir string) {
-	newdir := startDir + pubsubDir
+	newdir := filepath.Join(startDir, pubsubDir)
 	if subDir != "" {
-		newdir = newdir + "/" + subDir
+		newdir = filepath.Join(newdir, subDir)
 	}
 
 	jfiles, err := listRecursiveFiles(newdir, ".json")

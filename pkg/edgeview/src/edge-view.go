@@ -33,6 +33,7 @@ var (
 	log              *base.LogObject
 	trigPubchan      chan bool
 	rePattern        *regexp.Regexp
+	reDirPattern     *regexp.Regexp
 	evStatus         types.EdgeviewStatus
 	tcpRl            *rate.Limiter
 	disableRateLimit bool // ratelimit can be disabled by the message from dispatcher
@@ -654,4 +655,7 @@ func setupRegexp() {
 	// '/' for path, '.' for ip address, '@' for domain name, ':' for port; '-', '_' for filename
 	// '=' for flow match, '+' for " +0x" pattern, ',' for pub/
 	rePattern = regexp.MustCompile(`^[A-Za-z0-9 =\-_.:,/@]*$`)
+
+	// Check for a dirname/filename. Allows dash, underscore, and dot
+	reDirPattern = regexp.MustCompile(`^[A-Za-z0-9\-_.]*$`)
 }
