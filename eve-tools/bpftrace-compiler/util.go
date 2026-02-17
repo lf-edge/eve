@@ -5,7 +5,7 @@ package main
 
 import (
 	"bufio"
-	"crypto/md5"
+	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -97,7 +97,7 @@ func copyFile(srcPath, dstPath string) error {
 }
 
 func hashDir(dirs []string, extraHashes ...string) string {
-	hasher := md5.New()
+	hasher := sha256.New()
 
 	for _, dir := range dirs {
 		err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
