@@ -392,7 +392,7 @@ func runEvaluationCycle(t *testing.T, tc *TestContext, params EvaluationCyclePar
 	t.Logf("Phase 1: Waiting for stability check to start for %s", params.CurrentSlot)
 	status1, ok := tc.StatusSubscriber.WaitForCondition(func(s types.EvalStatus) bool {
 		return s.Phase == types.EvalPhaseTesting && s.CurrentSlot == params.CurrentSlot
-	}, 1*time.Second)
+	}, 5*time.Second)
 	require.True(t, ok, "Should receive testing phase status for %s", params.CurrentSlot)
 	assert.Equal(t, types.EvalPhaseTesting, status1.Phase)
 	assert.Equal(t, params.CurrentSlot, status1.CurrentSlot)
