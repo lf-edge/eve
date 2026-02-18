@@ -121,7 +121,7 @@ type domainContext struct {
 	GCInitialized       bool
 	domainBootRetryTime uint32 // In seconds
 	metricInterval      uint32 // In seconds
-	pids                map[int32]bool
+	pids                map[uint32]bool
 	// Common CAS client which can be used by multiple routines.
 	// There is no shared data so its safe to be used by multiple goroutines
 	casClient cas.CAS
@@ -170,7 +170,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		usbAccess:           true,
 		vgaAccess:           true,
 		domainBootRetryTime: 600,
-		pids:                make(map[int32]bool),
+		pids:                make(map[uint32]bool),
 		cipherMetrics:       cipher.NewAgentMetrics(agentName),
 		metricInterval:      10,
 		hvTypeKube:          base.IsHVTypeKube(),

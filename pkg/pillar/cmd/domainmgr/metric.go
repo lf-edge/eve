@@ -5,10 +5,11 @@ package domainmgr
 
 import (
 	"fmt"
-	"github.com/lf-edge/eve/pkg/pillar/hypervisor"
 	"time"
 
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
+	"github.com/lf-edge/eve/pkg/pillar/hypervisor"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/shirou/gopsutil/cpu"
 )
@@ -205,7 +206,7 @@ func formatAndPublishHostCPUMem(ctx *domainContext, hm types.HostMemory, now tim
 		CPUTotalNs:        uint64(busy * float64(nanoSecToSec)),
 		CPUScaled:         hm.Ncpus,
 		UsedMemory:        uint32(used),
-		AvailableMemory:   uint32(hm.FreeMemoryMB),
+		AvailableMemory:   base.ClampToUint32(hm.FreeMemoryMB),
 		UsedMemoryPercent: usedPerc,
 		LastHeard:         now,
 		Activated:         true,
