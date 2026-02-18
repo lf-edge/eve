@@ -22,6 +22,7 @@ import (
 	"github.com/lf-edge/eve-api/go/info"
 	"github.com/lf-edge/eve-api/go/metrics"
 	zmet "github.com/lf-edge/eve-api/go/metrics" // zinfo and zmet here
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/controllerconn"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
@@ -521,13 +522,13 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 		metric := metrics.DiskMetric{
 			Disk:       diskPath,
 			MountPath:  mountPath,
-			ReadBytes:  utils.RoundToMbytes(diskMetric.ReadBytes),
-			WriteBytes: utils.RoundToMbytes(diskMetric.WriteBytes),
+			ReadBytes:  base.RoundToMbytes(diskMetric.ReadBytes),
+			WriteBytes: base.RoundToMbytes(diskMetric.WriteBytes),
 			ReadCount:  diskMetric.ReadCount,
 			WriteCount: diskMetric.WriteCount,
-			Total:      utils.RoundToMbytes(diskMetric.TotalBytes),
-			Used:       utils.RoundToMbytes(diskMetric.UsedBytes),
-			Free:       utils.RoundToMbytes(diskMetric.FreeBytes),
+			Total:      base.RoundToMbytes(diskMetric.TotalBytes),
+			Used:       base.RoundToMbytes(diskMetric.UsedBytes),
+			Free:       base.RoundToMbytes(diskMetric.FreeBytes),
 		}
 		ReportDeviceMetric.Disk = append(ReportDeviceMetric.Disk, &metric)
 		if diskMetric.DiskPath == types.PersistDir {
@@ -865,8 +866,8 @@ func getDiskInfo(ctx *zedagentContext, vrs types.VolumeRefStatus, appDiskDetails
 		return fmt.Errorf("getDiskInfo: No AppDiskMetric found for %s", vrs.ActiveFileLocation)
 	}
 	appDiskDetails.Disk = vrs.ActiveFileLocation
-	appDiskDetails.Used = utils.RoundToMbytes(appDiskMetric.UsedBytes)
-	appDiskDetails.Provisioned = utils.RoundToMbytes(appDiskMetric.ProvisionedBytes)
+	appDiskDetails.Used = base.RoundToMbytes(appDiskMetric.UsedBytes)
+	appDiskDetails.Provisioned = base.RoundToMbytes(appDiskMetric.ProvisionedBytes)
 	appDiskDetails.DiskType = appDiskMetric.DiskType
 	appDiskDetails.Dirty = appDiskMetric.Dirty
 	return nil

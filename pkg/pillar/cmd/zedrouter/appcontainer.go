@@ -21,8 +21,8 @@ import (
 	metrics "github.com/lf-edge/eve-api/go/metrics"
 	nestedapp "github.com/lf-edge/eve-api/go/nestedappinstancemetrics"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/utils"
 	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -211,8 +211,8 @@ func (z *zedrouter) processAppContainerStats(stats containertypes.StatsResponseR
 	acStats.Uptime = startTime.UnixNano()
 
 	// Container memory stats, convert bytes to Mbytes
-	acStats.UsedMem = uint32(utils.RoundToMbytes(v.MemoryStats.Usage))
-	acStats.AllocatedMem = uint32(utils.RoundToMbytes(v.MemoryStats.Limit))
+	acStats.UsedMem = uint32(base.RoundToMbytes(v.MemoryStats.Usage))
+	acStats.AllocatedMem = uint32(base.RoundToMbytes(v.MemoryStats.Limit))
 
 	// Container network stats, in bytes
 	networks := v.Networks
@@ -231,8 +231,8 @@ func (z *zedrouter) processAppContainerStats(stats containertypes.StatsResponseR
 			acStats.WriteBytes += bioEntry.Value
 		}
 	}
-	acStats.ReadBytes = utils.RoundToMbytes(acStats.ReadBytes)
-	acStats.WriteBytes = utils.RoundToMbytes(acStats.WriteBytes)
+	acStats.ReadBytes = base.RoundToMbytes(acStats.ReadBytes)
+	acStats.WriteBytes = base.RoundToMbytes(acStats.WriteBytes)
 
 	return acStats, nil
 }
