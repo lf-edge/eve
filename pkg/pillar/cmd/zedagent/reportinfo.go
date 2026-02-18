@@ -17,6 +17,7 @@ import (
 	"github.com/eriknordmark/ipinfo"
 	"github.com/lf-edge/eve-api/go/evecommon"
 	"github.com/lf-edge/eve-api/go/info"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	etpm "github.com/lf-edge/eve/pkg/pillar/evetpm"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/netclone"
@@ -264,11 +265,11 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext, dest destinationBitset) {
 		is := info.ZInfoStorage{
 			Device:    diskPath,
 			MountPath: mountPath,
-			Total:     utils.RoundToMbytes(diskMetric.TotalBytes),
+			Total:     base.RoundToMbytes(diskMetric.TotalBytes),
 		}
 		if diskMetric.DiskPath == types.PersistDir {
 			is.StorageLocation = true
-			ReportDeviceInfo.Storage += *proto.Uint64(utils.RoundToMbytes(diskMetric.TotalBytes))
+			ReportDeviceInfo.Storage += *proto.Uint64(base.RoundToMbytes(diskMetric.TotalBytes))
 		}
 
 		ReportDeviceInfo.StorageList = append(ReportDeviceInfo.StorageList, &is)
