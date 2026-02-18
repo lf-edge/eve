@@ -336,12 +336,18 @@ func (z *zedrouter) doInactivateAppNetwork(config types.AppNetworkConfig,
 		z.log.Errorf("doInactivateAppNetwork(%v/%v): %v",
 			config.UUIDandVersion.UUID, config.DisplayName, err)
 		z.addAppNetworkError(status, "doInactivateAppNetwork", err)
-		return
-
+		// Still mark as deactivated to keep status in sync with the
+		// reconciler.  Previously we returned here, leaving
+		// status.Activated = true while the reconciler considered the
+		// app removed (or partially removed).  That mismatch caused
+		// the next activation attempt to call AddAppConn (because
+		// !status.Activated was false) which then failed with
+		// "already connected" if the reconciler still had a stale entry.
+	} else {
+		z.log.Functionf("Deactivated application network %s (%s)", status.UUIDandVersion.UUID,
+			status.DisplayName)
+		z.processAppConnReconcileStatus(appConnRecStatus, status)
 	}
-	z.log.Functionf("Deactivated application network %s (%s)", status.UUIDandVersion.UUID,
-		status.DisplayName)
-	z.processAppConnReconcileStatus(appConnRecStatus, status)
 
 	// Update AppNetwork and NetworkInstance status.
 	status.Activated = false
