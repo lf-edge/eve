@@ -583,8 +583,8 @@ func getCipher() {
 			var data types.DatastoreConfig
 			_ = json.Unmarshal(retbytes1, &data)
 			fmt.Printf(" %s:\n", getJSONFileID(l))
-			fmt.Printf("  type: %s, FQDN: %s, ApiKey: %s, path: %s, Is Cipher: %v\n",
-				data.DsType, data.Fqdn, data.ApiKey, data.Dpath, data.IsCipher)
+			fmt.Printf("  type: %s, FQDN: %s, ApiKey: <redacted>, path: %s, Is Cipher: %v\n",
+				data.DsType, data.Fqdn, data.Dpath, data.IsCipher)
 			if len(data.DsCertPEM) > 0 {
 				for _, c := range data.DsCertPEM {
 					printCert(c)
