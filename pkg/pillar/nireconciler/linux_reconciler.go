@@ -956,14 +956,28 @@ func (r *LinuxNIReconciler) AddAppConn(ctx context.Context,
 	defer contWatcher()
 	appID := appNetConfig.UUIDandVersion.UUID
 	appStatus := AppConnReconcileStatus{App: appID}
-	if _, duplicate := r.apps[appID]; duplicate {
-		return appStatus, fmt.Errorf("%s: App %v is already connected",
+	if existing, duplicate := r.apps[appID]; duplicate {
+		if !existing.deleted {
+			return appStatus, fmt.Errorf("%s: App %v is already connected",
+				LogAndErrPrefix, appID)
+		}
+		// The previous connection is still in the map because async cleanup
+		// operations have not finished yet (DelAppConn marks the entry as
+		// deleted but defers the actual removal until all async ops complete).
+		// Remove the stale entry now so that the new AddAppConn can proceed.
+		// The reconciler will clean up any leftover resources from the old
+		// connection as part of the reconciliation triggered below.
+		r.log.Noticef("%s: Replacing app %v entry that is pending deletion",
 			LogAndErrPrefix, appID)
+		delete(r.apps, appID)
 	}
 	// Check for duplicate DisplayName.
 	// Deploying multiple apps with the same DisplayName would cause their
 	// DNS host files to overwrite each other.
 	for _, anotherApp := range r.apps {
+		if anotherApp.deleted {
+			continue
+		}
 		if appNetConfig.DisplayName == anotherApp.config.DisplayName {
 			return appStatus, fmt.Errorf(
 				"%s: another app (%v) is already using display name %q",
