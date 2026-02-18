@@ -26,9 +26,9 @@ const (
 
 // Return a slice of all the ProcessMetric plus a map of the pids
 // Excludes kernel-only processes
-func gatherProcessMetricList(ctx *domainContext) ([]types.ProcessMetric, map[int32]bool) {
+func gatherProcessMetricList(ctx *domainContext) ([]types.ProcessMetric, map[uint32]bool) {
 	var ret []types.ProcessMetric
-	reportedPids := make(map[int32]bool)
+	reportedPids := make(map[uint32]bool)
 
 	watchedPids, err := getWatchedPids()
 	if err != nil {
@@ -50,7 +50,7 @@ func gatherProcessMetricList(ctx *domainContext) ([]types.ProcessMetric, map[int
 			continue
 		}
 		if pi.UserProcess {
-			if _, ok := watchedPids[pi.Pid]; ok {
+			if _, ok := watchedPids[uint32(pi.Pid)]; ok {
 				pi.Watched = true
 			} else if time.Since(pi.CreateTime) > time.Minute {
 				// Report stack for not watched processed which
@@ -78,7 +78,7 @@ func gatherProcessMetricList(ctx *domainContext) ([]types.ProcessMetric, map[int
 				}
 			}
 
-			reportedPids[int32(pi.Pid)] = true
+			reportedPids[uint32(pi.Pid)] = true
 			ret = append(ret, *pi)
 		}
 
@@ -93,12 +93,12 @@ const (
 
 // getWatchedPids returns a map will all the pids watched by watchdog
 // based on /run/watchdog/pid/<foo> by reading the content of /run/<foo>
-func getWatchedPids() (map[int32]bool, error) {
+func getWatchedPids() (map[uint32]bool, error) {
 	return getWatchedPidsFromDir(watchdogDirName, pidDirName)
 }
 
-func getWatchedPidsFromDir(wDirname string, pDirname string) (map[int32]bool, error) {
-	pids := make(map[int32]bool)
+func getWatchedPidsFromDir(wDirname string, pDirname string) (map[uint32]bool, error) {
+	pids := make(map[uint32]bool)
 	locations, err := os.ReadDir(wDirname)
 	if err != nil {
 		return pids, err
@@ -127,13 +127,13 @@ func getWatchedPidsFromDir(wDirname string, pDirname string) (map[int32]bool, er
 		pidStr := string(pidBytes)
 		pidStr = strings.TrimSuffix(pidStr, "\n")
 		pidStr = strings.TrimSpace(pidStr)
-		pid, err := strconv.Atoi(pidStr)
+		pid, err := strconv.ParseUint(pidStr, 10, 32)
 		if err != nil {
 			log.Errorf("pidFile %s with <%s> convert error %v",
 				pidFile, pidStr, err)
 			continue
 		}
-		pids[int32(pid)] = true
+		pids[uint32(pid)] = true
 	}
 	return pids, nil
 }
@@ -199,10 +199,10 @@ func getProcessMetric(p *process.Process) (*types.ProcessMetric, error) {
 }
 
 // unpublishRemovedPids removes the old ones which are not in new
-func unpublishRemovedPids(ctx *domainContext, oldPids, newPids map[int32]bool) {
+func unpublishRemovedPids(ctx *domainContext, oldPids, newPids map[uint32]bool) {
 	for pid := range oldPids {
 		if _, ok := newPids[pid]; !ok {
-			unpublishProcessMetric(ctx, uint32(pid))
+			unpublishProcessMetric(ctx, pid)
 		}
 	}
 }
