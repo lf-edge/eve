@@ -21,7 +21,7 @@ FIRSTBOOT=
 AGENTS="diag extsloader monitor zedagent ledmanager nim nodeagent \
 domainmgr loguploader tpmmgr vaultmgr zedmanager zedrouter \
 downloader verifier baseosmgr wstunnelclient volumemgr watcher \
-zfsmanager usbmanager zedkube vcomlink collectinfo scepclient \
+zfsmanager usbmanager vcomlink collectinfo scepclient \
 mgmtproxy"
 TPM_DEVICE_PATH="/dev/tpmrm0"
 PATH=$BINDIR:$PATH
@@ -39,6 +39,21 @@ echo "$(date -Ins -u) EVE version: $(cat /run/eve-release)"
 # Harmless on non-coverage builds.
 mkdir -p $PERSISTDIR/coverage
 export GOCOVERDIR=$PERSISTDIR/coverage
+
+# Start zedkube only for kubevirt flavor (k).
+# Prefer runtime override from /run/eve-hv-type and fall back to baked-in /etc/eve-hv-type.
+EVE_HV_TYPE=""
+if [ -f /run/eve-hv-type ]; then
+    EVE_HV_TYPE=$(tr -d '[:space:]' < /run/eve-hv-type)
+elif [ -f /etc/eve-hv-type ]; then
+    EVE_HV_TYPE=$(tr -d '[:space:]' < /etc/eve-hv-type)
+fi
+if [ "$EVE_HV_TYPE" = "k" ]; then
+    AGENTS="$AGENTS zedkube"
+    echo "$(date -Ins -u) HV flavor is 'k': enabling zedkube"
+else
+    echo "$(date -Ins -u) HV flavor is '${EVE_HV_TYPE:-unknown}': skipping zedkube"
+fi
 
 if [ -f "$FIRSTBOOTFILE" ]; then
   FIRSTBOOT=1

@@ -382,23 +382,28 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	ctx.subVolumesSnapStatus = subVolumesSnapshotStatus
 	_ = subVolumesSnapshotStatus.Activate()
 
-	subENClusterAppStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:     "zedkube",
-		MyAgentName:   agentName,
-		TopicImpl:     types.ENClusterAppStatus{},
-		Activate:      false,
-		Ctx:           &ctx,
-		CreateHandler: handleENClusterAppStatusCreate,
-		ModifyHandler: handleENClusterAppStatusModify,
-		DeleteHandler: handleENClusterAppStatusDelete,
-		WarningTime:   warningTime,
-		ErrorTime:     errorTime,
-	})
-	if err != nil {
-		log.Fatal(err)
+	var subENClusterAppStatus pubsub.Subscription
+	var subENClusterAppStatusMsgChan <-chan pubsub.Change
+	if ctx.hvTypeKube {
+		subENClusterAppStatus, err = ps.NewSubscription(pubsub.SubscriptionOptions{
+			AgentName:     "zedkube",
+			MyAgentName:   agentName,
+			TopicImpl:     types.ENClusterAppStatus{},
+			Activate:      false,
+			Ctx:           &ctx,
+			CreateHandler: handleENClusterAppStatusCreate,
+			ModifyHandler: handleENClusterAppStatusModify,
+			DeleteHandler: handleENClusterAppStatusDelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
+		if err != nil {
+			log.Fatal(err)
+		}
+		ctx.subENClusterAppStatus = subENClusterAppStatus
+		_ = subENClusterAppStatus.Activate()
+		subENClusterAppStatusMsgChan = subENClusterAppStatus.MsgChan()
 	}
-	ctx.subENClusterAppStatus = subENClusterAppStatus
-	_ = subENClusterAppStatus.Activate()
 
 	ctx.subAssignableAdapters, err = ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "domainmgr",
@@ -487,7 +492,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		case change := <-subVolumesSnapshotStatus.MsgChan():
 			subVolumesSnapshotStatus.ProcessChange(change)
 
-		case change := <-subENClusterAppStatus.MsgChan():
+		case change := <-subENClusterAppStatusMsgChan:
 			subENClusterAppStatus.ProcessChange(change)
 
 		case change := <-ctx.subAssignableAdapters.MsgChan():
