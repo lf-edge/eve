@@ -885,6 +885,8 @@ github.com/yvasiyarov/newrelic_platform_go v0.0.0-20140908184405-b21fdbd4370f h1
 github.com/yvasiyarov/newrelic_platform_go v0.0.0-20140908184405-b21fdbd4370f/go.mod h1:GlGEuHIJweS1mbCqG+7vt2nvWLzLLnRHbXz5JKd/Qbg=
 github.com/zededa/ghw v0.0.0-20260121174541-9df1086a4e7a h1:xX9ExXni2yWHFBxFftsvXE9Shewz+lgWHvUbtjBlVt4=
 github.com/zededa/ghw v0.0.0-20260121174541-9df1086a4e7a/go.mod h1:bLYU9IrgrtEUiJ6smjXtTaej/MVO17v+kxGIC/jfj9c=
+github.com/zededa/ghw v0.0.0-20260218160843-b4fc0f8a6aa5 h1:XpWbH6y+ijvzerElhvg8x1VcheqouFjc2h1MqimzgbQ=
+github.com/zededa/ghw v0.0.0-20260218160843-b4fc0f8a6aa5/go.mod h1:bLYU9IrgrtEUiJ6smjXtTaej/MVO17v+kxGIC/jfj9c=
 github.com/zeebo/errs v1.4.0 h1:XNdoD/RRMKP7HD0UhJnIzUy74ISdGGxURlYG8HSWSfM=
 github.com/zeebo/errs v1.4.0/go.mod h1:sgbWHsvVuTPHcqJJGQ1WhI5KbWlHYz+2+2C/LSEtCw4=
 go.etcd.io/bbolt v1.3.2/go.mod h1:IbVyRI1SCnLcuJnV2u8VeU0CEYM7e686BmAb1XKL+uU=

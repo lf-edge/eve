@@ -1208,7 +1208,7 @@ github.com/xlab/treeprint
 # github.com/yusufpapurcu/wmi v1.2.4
 ## explicit; go 1.16
 github.com/yusufpapurcu/wmi
-# github.com/zededa/ghw v0.0.0-20260121174541-9df1086a4e7a
+# github.com/zededa/ghw v0.0.0-20260218160843-b4fc0f8a6aa5
 ## explicit; go 1.21
 github.com/zededa/ghw
 github.com/zededa/ghw/pkg/accelerator
