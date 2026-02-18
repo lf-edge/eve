@@ -721,7 +721,7 @@ func incrementRestartCounter() uint32 {
 		if err != nil {
 			log.Errorf("incrementRestartCounter: %s", err)
 		} else {
-			c, err := strconv.Atoi(string(b))
+			c, err := strconv.ParseUint(string(b), 10, 32)
 			if err != nil {
 				log.Errorf("incrementRestartCounter: %s", err)
 			} else {

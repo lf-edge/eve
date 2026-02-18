@@ -252,7 +252,7 @@ func ReadSavedCounter(log *base.LogObject, fileName string) (uint32, bool) {
 
 	b, _, err := StatAndRead(log, fileName, maxCounterReadSize)
 	if err == nil {
-		c, err := strconv.Atoi(b)
+		c, err := strconv.ParseUint(b, 10, 32)
 		if err != nil {
 			if log != nil {
 				log.Errorf("ReadSavedCounter(%s): %s", fileName, err)

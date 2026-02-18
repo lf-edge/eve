@@ -739,7 +739,7 @@ func (r *LinuxNIReconciler) clearUDPFlows(ACLs []types.ACE, ipv6 bool) {
 			if ipv6 {
 				family = netlink.FAMILY_V6
 			}
-			dport, err := strconv.ParseInt(port, 10, 32)
+			dport, err := strconv.ParseUint(port, 10, 16)
 			if err != nil {
 				r.log.Errorf(
 					"%s: clearUDPFlows: Port number %s cannot be parsed to integer",
