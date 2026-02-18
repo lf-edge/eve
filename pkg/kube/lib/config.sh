@@ -13,10 +13,16 @@
 
 # Base Static k3s Config is in /etc/rancher/k3s/config.yaml, following config in each file
 K3S_CONFIG_DIR="/etc/rancher/k3s/config.yaml.d"
+# Kube container path for storage of manifests before applying to cluster
+# shellcheck disable=SC2034
+KUBE_MANIFESTS_SRC_DIR="/etc/kube"
 # shellcheck disable=SC2034
 K3S_NODENAME_CONFIG_FILE="${K3S_CONFIG_DIR}/00-nodename.yaml"
 # shellcheck disable=SC2034
 K3S_CLUSTER_CONFIG_FILE="${K3S_CONFIG_DIR}/01-clusterconfig.yaml"
+# 02-nodename skipped, defined in cluster-utils.sh
+# shellcheck disable=SC2034
+K3S_CONFIG_FILE_DISABLE_LOCAL_PATH="03-enc-disable-local-path.yaml"
 # shellcheck disable=SC2034
 K3S_USER_OVERRIDE_CONFIG_SRC="/persist/vault/k3s-user-override.yaml"
 # shellcheck disable=SC2034

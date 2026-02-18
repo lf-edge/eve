@@ -18,6 +18,15 @@ To use a zfs vault specify the config grub parameter `eve_install_zfs_with_raid_
 with the requested raid level or use multiple persist disk with `eve_persist_disk`
 which will use zfs automatically.
 
+## Modes
+
+EVE-API controller config will define a mode
+[`EdgeNodeCluster.cluster_type`](https://github.com/lf-edge/eve-api/blob/2d9b92e761a24f5def0dfe2dcfea363e95efcfdf/proto/config/edge_node_cluster.proto#L42)
+for EVE-k's k3s instance running in the kube service container.
+
+- CLUSTER_TYPE_K3S_BASE : Only k3s + multus installed.
+- CLUSTER_TYPE_REPLICATED_STORAGE : (k3s + multus) and kubevirt, cdi, longhorn.
+
 ## k3s Config
 
 Config for k3s uses the standard layout of a base `/etc/rancher/k3s/config.yaml` with
@@ -94,3 +103,12 @@ Volume replicas are blocked from scheduling onto a tie breaker node to decrease 
 ### Volumemgr changes
 
 Volumemgr queries the kubernetes node objects to determine if a tie breaker node exists.  If found then all volume instances are created using the above mentioned storage class 'lh-sc-rep2' which ensures that all volumes only contain 2 replicas and schedule to only nodes not set as a tie breaker.
+
+## User Volumes - Default PVC Options
+
+The available default storage classes will vary depending on the mode which eve-k is
+running as.  All storage classes installed by EVE will place volumes in /persist/vault/volumes/... by default.
+
+- Default single node 'First-Boot' Mode (No EdgeNodeCluster eve-api config): Longhorn and Local-Path
+- EdgeNodeCluster with Replicated Storage (CLUSTER_TYPE_REPLICATED_STORAGE): Longhorn and Local-Path
+- EdgeNodeCluster with Base Mode (CLUSTER_TYPE_K3S_BASE): Local-Path

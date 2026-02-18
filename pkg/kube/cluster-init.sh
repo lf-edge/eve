@@ -948,6 +948,22 @@ node-ip: "${cluster_node_ip}"
 EOF
       )
 
+    Config_cluster_type_get
+    cluster_type=$?
+    if [ $cluster_type -eq $CLUSTER_TYPE_UNSPECIFIED ]; then
+            if ! Registration_Applied; then
+                   cp "${KUBE_MANIFESTS_SRC_DIR}/${K3S_CONFIG_FILE_DISABLE_LOCAL_PATH}" "${K3S_CONFIG_DIR}/${K3S_CONFIG_FILE_DISABLE_LOCAL_PATH}"
+            else
+                   rm "${K3S_CONFIG_DIR}/${K3S_CONFIG_FILE_DISABLE_LOCAL_PATH}"
+            fi
+    elif [ $cluster_type -eq $CLUSTER_TYPE_REPLICATED_STORAGE ]; then
+            cp "${KUBE_MANIFESTS_SRC_DIR}/${K3S_CONFIG_FILE_DISABLE_LOCAL_PATH}" "${K3S_CONFIG_DIR}/${K3S_CONFIG_FILE_DISABLE_LOCAL_PATH}"
+    elif [ $cluster_type -eq $CLUSTER_TYPE_K3S_BASE ]; then
+            rm "${K3S_CONFIG_DIR}/${K3S_CONFIG_FILE_DISABLE_LOCAL_PATH}"
+    else
+            logmsg "possible unhandled cluster type $cluster_type in (provision_cluster_config_file)"
+    fi
+
     # we have 2 conditions, one is we are the bootstrap node or not, the other is we are
     # the first time configure k3s cluster or not. If both are true, then we need bootstrap config
     # otherwise, we just need normal server config to join the existing cluster
