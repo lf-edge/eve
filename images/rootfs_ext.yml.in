@@ -2,7 +2,7 @@
 # Non-critical services blob (not bootable on its own).
 # Pairs with rootfs_core.yml.in to form a complete EVE image.
 #
-# Contains: kube, vector, debug, wwan, wlan, guacd, edgeview,
+# Contains: kube, vector, debug, wwan, guacd, edgeview,
 # vtpm, memory-monitor, node-exporter
 
 services:
@@ -21,10 +21,6 @@ services:
   - name: wwan
     image: WWAN_TAG
     cgroupsPath: /eve/services/wwan
-    oomScoreAdj: -999
-  - name: wlan
-    image: WLAN_TAG
-    cgroupsPath: /eve/services/wlan
     oomScoreAdj: -999
   - name: guacd
     image: GUACD_TAG
