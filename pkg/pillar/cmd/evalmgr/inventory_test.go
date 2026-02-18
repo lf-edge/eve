@@ -22,6 +22,15 @@ func TestInventoryCollector(t *testing.T) {
 	// Use in-memory filesystem for testing
 	fs := afero.NewMemMapFs()
 
+	// Setup mock commands so inventory collection does not depend on host tools or container paths
+	tmpDir, err := setupMockCommands(fs)
+	if err != nil {
+		t.Fatalf("Failed to setup mock commands: %v", err)
+	}
+	t.Cleanup(func() {
+		cleanupMockCommands(tmpDir)
+	})
+
 	t.Run("CollectInventory creates directory structure", func(t *testing.T) {
 		collector := NewInventoryCollector(log, fs)
 
@@ -68,6 +77,9 @@ func TestInventoryCollector(t *testing.T) {
 		expectedFiles := []string{
 			"lspci.txt",
 			"lsusb.txt",
+			"lsmod.txt",
+			"dmidecode.txt",
+			"dmesg.txt",
 			"cmdline.txt",
 			"iommu-groups.txt",
 			"inventory.json",
@@ -193,6 +205,15 @@ func TestInventoryCollectorGracefulFailure(t *testing.T) {
 
 	// Use in-memory filesystem for testing
 	fs := afero.NewMemMapFs()
+
+	// Setup mock commands so inventory collection does not depend on host tools or container paths
+	tmpDir, err := setupMockCommands(fs)
+	if err != nil {
+		t.Fatalf("Failed to setup mock commands: %v", err)
+	}
+	t.Cleanup(func() {
+		cleanupMockCommands(tmpDir)
+	})
 
 	t.Run("CollectInventory continues on command failures", func(t *testing.T) {
 		collector := NewInventoryCollector(log, fs)

@@ -335,11 +335,19 @@ func newTestEvalContext(ps *pubsub.PubSub, testCtx *TestContext, partitionMgr *P
 	}
 }
 
-// genScript creates a mock executable script that returns "executed: <script_name>"
-func genScript(path string, scriptName string) error {
-	content := "#!/bin/sh\necho \"executed: " + scriptName + "\"\n"
+// genMockScript creates a mock executable script that exits successfully with no output.
+func genMockScript(path string) error {
+	content := "#!/bin/sh\nexit 0\n"
 	return os.WriteFile(path, []byte(content), 0755)
 }
+
+// savedPath stores the original PATH so cleanupMockCommands can restore it.
+// pathModified tracks whether setupMockCommands changed PATH (needed because
+// an empty PATH is legitimate and cannot be used as a sentinel).
+var (
+	savedPath    string
+	pathModified bool
+)
 
 // setupMockCommands creates mock command scripts for inventory collection
 func setupMockCommands(fs afero.Fs) (string, error) {
@@ -358,30 +366,39 @@ func setupMockCommands(fs afero.Fs) (string, error) {
 		return "", err
 	}
 
-	// Create mock scripts in temp directory
-	iommuScript := filepath.Join(tmpDir, "iommu-groups.sh")
-	if err := genScript(iommuScript, "iommu-groups.sh"); err != nil {
-		os.RemoveAll(tmpDir)
-		return "", err
-	}
-
-	specScript := filepath.Join(tmpDir, "spec.sh")
-	if err := genScript(specScript, "spec.sh"); err != nil {
-		os.RemoveAll(tmpDir)
-		return "", err
+	// Create mock scripts for all commands used by inventory collection so
+	// tests do not depend on host tools or container paths like /debug/usr/bin.
+	// Note: cmdline.txt is still read from the host /proc/cmdline.
+	allCmds := []string{"lspci", "lsusb", "lsmod", "dmidecode", "dmesg", "iommu-groups.sh", "spec.sh"}
+	for _, cmd := range allCmds {
+		if err := genMockScript(filepath.Join(tmpDir, cmd)); err != nil {
+			os.RemoveAll(tmpDir)
+			return "", err
+		}
 	}
 
 	// Override the script paths to point to our temp directory
-	IOMmuGroupsScript = iommuScript
-	SpecScript = specScript
+	IOMmuGroupsScript = filepath.Join(tmpDir, "iommu-groups.sh")
+	SpecScript = filepath.Join(tmpDir, "spec.sh")
+
+	// Prepend the temp directory to PATH so exec.Command finds our mocks first
+	savedPath = os.Getenv("PATH")
+	os.Setenv("PATH", tmpDir+string(os.PathListSeparator)+savedPath)
+	pathModified = true
 
 	return tmpDir, nil
 }
 
-// cleanupMockCommands removes mock command scripts
+// cleanupMockCommands removes mock command scripts and restores PATH
 func cleanupMockCommands(tmpDir string) error {
 	if tmpDir == "" {
 		return nil
+	}
+	// Restore original PATH
+	if pathModified {
+		os.Setenv("PATH", savedPath)
+		savedPath = ""
+		pathModified = false
 	}
 	return os.RemoveAll(tmpDir)
 }
