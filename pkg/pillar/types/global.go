@@ -982,7 +982,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 		logrus.Errorf("getEveMemoryLimitInBytes failed: %v", err)
 	}
 	// Round up to the nearest MiB
-	eveMemoryLimitInMiB := uint32((eveMemoryLimitInBytes + 1024*1024 - 1) / (1024 * 1024))
+	eveMemoryLimitInMiB := base.ClampToUint32(base.RoundUpToMbytes(eveMemoryLimitInBytes))
 	var configItemSpecMap ConfigItemSpecMap
 	configItemSpecMap.GlobalSettings = make(map[GlobalSettingKey]ConfigItemSpec)
 	configItemSpecMap.AgentSettings = make(map[AgentSettingKey]ConfigItemSpec)
@@ -1053,12 +1053,12 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	// Default forced GOGC growth memory percent
 	configItemSpecMap.AddIntItem(GOGCForcedGrowthMemPerc, 20, 5, 300)
 	//
-	configItemSpecMap.AddIntItem(EveMemoryLimitInBytes, uint32(eveMemoryLimitInBytes),
-		uint32(eveMemoryLimitInBytes), 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(EveMemoryLimitInBytes, base.ClampToUint32(eveMemoryLimitInBytes),
+		base.ClampToUint32(eveMemoryLimitInBytes), 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(EveMemoryLimitInMiB, eveMemoryLimitInMiB,
 		eveMemoryLimitInMiB, 0xFFFFFFFF)
 	// Limit manual vmm overhead override to 1 PiB
-	configItemSpecMap.AddIntItem(VmmMemoryLimitInMiB, 0, 0, uint32(1024*1024*1024))
+	configItemSpecMap.AddIntItem(VmmMemoryLimitInMiB, 0, 0, base.ClampToUint32(1024*1024*1024))
 	// LogRemainToSendMBytes - Default is 2 Gbytes, minimum is 10 Mbytes
 	configItemSpecMap.AddIntItem(LogRemainToSendMBytes, 2048, 10, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(DownloadMaxPortCost, 0, 0, 255)
