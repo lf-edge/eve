@@ -5,8 +5,7 @@ write-kubeconfig-mode: "0644"
 log: "/persist/kubelog/k3s.log"
 # disable agent tunneling, we are on the same network
 egress-selector-mode: "disabled"
-# Use longhorn storage
-disable: local-storage
+default-local-storage-path: "/persist/vault/volumes"
 etcd-arg:
   - "quota-backend-bytes=8589934592"
 etcd-expose-metrics: true
