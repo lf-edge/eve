@@ -29,7 +29,6 @@ const (
 // qmpRetrySleep between attempts
 func execRawCmd(socket, cmd string, doRetry bool) ([]byte, error) {
 	var retry int
-	logrus.Debugf("executing QMP command: %s", cmd)
 	var err error
 	var monitor *qmp.SocketMonitor
 
@@ -65,27 +64,38 @@ func execRawCmd(socket, cmd string, doRetry bool) ([]byte, error) {
 }
 
 func execContinue(socket string) error {
-	_, err := execRawCmd(socket, `{ "execute": "cont" }`, true)
+	cmd := `{ "execute": "cont" }`
+	logrus.Debugf("executing QMP command: %s", cmd)
+	_, err := execRawCmd(socket, cmd, true)
 	return err
 }
 
 func execStop(socket string) error {
-	_, err := execRawCmd(socket, `{ "execute": "stop" }`, true)
+	cmd := `{ "execute": "stop" }`
+	logrus.Debugf("executing QMP command: %s", cmd)
+	_, err := execRawCmd(socket, cmd, true)
 	return err
 }
 
 func execShutdown(socket string) error {
-	_, err := execRawCmd(socket, `{ "execute": "system_powerdown" }`, true)
+	cmd := `{ "execute": "system_powerdown" }`
+	logrus.Debugf("executing QMP command: %s", cmd)
+	_, err := execRawCmd(socket, cmd, true)
 	return err
 }
 
 func execQuit(socket string) error {
-	_, err := execRawCmd(socket, `{ "execute": "quit" }`, true)
+	cmd := `{ "execute": "quit" }`
+	logrus.Debugf("executing QMP command: %s", cmd)
+	_, err := execRawCmd(socket, cmd, true)
 	return err
 }
 
 func execVNCPassword(socket string, password string) error {
 	vncSetPwd := fmt.Sprintf(`{ "execute": "change-vnc-password", "arguments": { "password": "%s" } }`, password)
+	// But log this:
+	cmd := `{ "execute": "change-vnc-password", "arguments": { "password": <redacted> } }`
+	logrus.Debugf("executing QMP command: %s", cmd)
 	_, err := execRawCmd(socket, vncSetPwd, true)
 	return err
 }
@@ -93,6 +103,7 @@ func execVNCPassword(socket string, password string) error {
 // QmpExecDeviceDelete removes a device
 func QmpExecDeviceDelete(socket, id string) error {
 	qmpString := fmt.Sprintf(`{ "execute": "device_del", "arguments": { "id": "%s"}}`, id)
+	logrus.Debugf("executing QMP command: %s", qmpString)
 	_, err := execRawCmd(socket, qmpString, true)
 	return err
 }
@@ -100,6 +111,7 @@ func QmpExecDeviceDelete(socket, id string) error {
 // QmpExecDeviceAdd adds a usb device via busnum/devnum
 func QmpExecDeviceAdd(socket, id string, busnum, devnum uint16) error {
 	qmpString := fmt.Sprintf(`{ "execute": "device_add", "arguments": { "driver": "usb-host", "hostbus": %d, "hostaddr": %d, "id": "%s"} }`, busnum, devnum, id)
+	logrus.Debugf("executing QMP command: %s", qmpString)
 	_, err := execRawCmd(socket, qmpString, true)
 	return err
 }
@@ -143,8 +155,9 @@ func getQemuStatus(socket string) (types.SwState, error) {
 	var errs error
 	state := types.UNKNOWN
 	for attempt := 1; attempt <= qmpRetries; attempt++ {
-		raw, err := execRawCmd(socket, `{ "execute": "query-status" }`,
-			false)
+		cmd := `{ "execute": "query-status" }`
+		logrus.Debugf("executing QMP command: %s", cmd)
+		raw, err := execRawCmd(socket, cmd, false)
 		if err != nil {
 			err = fmt.Errorf("[attempt %d] qmp status failed for QMP socket '%s': err: '%v'; (JSON response: '%s')",
 				attempt, socket, err, raw)
