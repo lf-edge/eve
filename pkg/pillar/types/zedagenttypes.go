@@ -563,7 +563,7 @@ type ZedAgentStatus struct {
 	MaintenanceMode        bool       // Don't run apps etc
 	MaintenanceModeReasons MaintenanceModeMultiReason
 	EdgeNodeCertsRefused   bool         // Causes maintenance mode
-	ForceFallbackCounter   int          // Try image fallback when counter changes
+	ForceFallbackCounter   uint32       // Try image fallback when counter changes
 	CurrentProfile         string       // Current profile
 	RadioSilence           RadioSilence // Currently requested state of radio devices
 	DeviceState            DeviceState

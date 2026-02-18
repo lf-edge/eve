@@ -113,15 +113,14 @@ func handleForceFallback(ctxPtr *baseOsMgrContext, status types.ZedAgentStatus) 
 
 // readForceFallbackCounter reads the persistent file
 // If the file doesn't exist or doesn't contain an integer it returns false
-func readForceFallbackCounter() (int, bool) {
-	c, parsed := fileutils.ReadSavedCounter(log, forcefallbackFilename)
-	return int(c), parsed
+func readForceFallbackCounter() (uint32, bool) {
+	return fileutils.ReadSavedCounter(log, forcefallbackFilename)
 }
 
 // writeForceFallbackCounter writes the persistent file
 // Errors are logged but otherwise ignored
-func writeForceFallbackCounter(fallbackCounter int) {
-	b := []byte(strconv.Itoa(fallbackCounter))
+func writeForceFallbackCounter(fallbackCounter uint32) {
+	b := []byte(strconv.FormatUint(uint64(fallbackCounter), 10))
 	err := fileutils.WriteRename(forcefallbackFilename, b)
 	if err != nil {
 		log.Errorf("writeForceFallbackCounter write: %s", err)

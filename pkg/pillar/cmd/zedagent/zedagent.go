@@ -242,7 +242,7 @@ type zedagentContext struct {
 	hwInventory *info.HardwareInventory
 
 	// Track the counter from force.fallback.counter to detect changes
-	forceFallbackCounter int
+	forceFallbackCounter uint32
 
 	// Used for retry of EdgeNodeCerts
 	publishedEdgeNodeCerts bool

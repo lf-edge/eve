@@ -107,7 +107,7 @@ func parseConfig(getconfigCtx *getconfigContext, config *zconfig.EdgeDevConfig,
 
 	// Did the ForceFallbackCounter change? If so we publish for
 	// baseosmgr to take a look
-	newForceFallbackCounter := int(ctx.globalConfig.GlobalValueInt(types.ForceFallbackCounter))
+	newForceFallbackCounter := uint32(ctx.globalConfig.GlobalValueInt(types.ForceFallbackCounter))
 	if newForceFallbackCounter != ctx.forceFallbackCounter {
 		log.Noticef("ForceFallbackCounter update from %d to %d",
 			ctx.forceFallbackCounter, newForceFallbackCounter)
