@@ -318,6 +318,18 @@ func (ctx kubevirtContext) CreateReplicaVMIConfig(domainName string, config type
 	vmi.Spec.Networks = nads
 	vmi.Spec.Domain.Devices.Interfaces = intfs
 
+	// Set video device for better VNC resolution.
+	// Default KubeVirt VGA device has only 16MB VRAM which limits resolution to ~720x400.
+	// Options for Type: "virtio" (best for modern guests), "vga", "bochs" (EFI default), "cirrus", "ramfb" (ARM)
+	// - "virtio": Best performance, requires virtio-gpu drivers in guest
+	// - "vga": Legacy compatibility, works with most guests
+	// - "bochs": More efficient for EFI-based VMs on x86_64
+	// Architecture defaults: x86_64+BIOS=vga, x86_64+EFI=bochs, ARM64/s390x=virtio
+	// Note: Requires VideoConfig feature gate enabled in KubeVirt cluster configuration.
+	vmi.Spec.Domain.Devices.Video = &v1.VideoDevice{
+		Type: "virtio",
+	}
+
 	// If FML type, set the firmware bootloader to EFI
 	if config.VirtualizationMode == types.FML {
 		if runtime.GOARCH == "amd64" {
@@ -551,7 +563,7 @@ func (ctx kubevirtContext) Start(domainName string) error {
 	// Create the VMI ReplicaSet
 	i := 5
 	for {
-		_, err = virtClient.ReplicaSet(kubeapi.EVEKubeNameSpace).Create(repvmi)
+		_, err = virtClient.ReplicaSet(kubeapi.EVEKubeNameSpace).Create(context.Background(), repvmi, metav1.CreateOptions{})
 		if err != nil {
 			if errors.IsAlreadyExists(err) {
 				// VMI could have been already started, for example failover from other node.
@@ -605,13 +617,13 @@ func (ctx kubevirtContext) replicaVmiScheduledOnMe(vmirsName string) (scheduledO
 		return false, false, err
 	}
 
-	vmirs, err := virtClient.ReplicaSet(kubeapi.EVEKubeNameSpace).Get(vmirsName, metav1.GetOptions{})
+	vmirs, err := virtClient.ReplicaSet(kubeapi.EVEKubeNameSpace).Get(context.Background(), vmirsName, metav1.GetOptions{})
 	if err != nil {
 		return false, false, err
 	}
 	appDomainNameSelector := vmirs.Status.LabelSelector
 
-	vmis, err := virtClient.VirtualMachineInstance(kubeapi.EVEKubeNameSpace).List(context.Background(), &metav1.ListOptions{
+	vmis, err := virtClient.VirtualMachineInstance(kubeapi.EVEKubeNameSpace).List(context.Background(), metav1.ListOptions{
 		LabelSelector: appDomainNameSelector,
 	})
 	if err != nil {
@@ -823,7 +835,7 @@ func StopReplicaVMI(kubeconfig *rest.Config, repVmiName string) error {
 	logrus.Infof("Attempt to stop VMI:%s vmirs deleted", repVmiName)
 	// Stop the VMI ReplicaSet
 
-	err = virtClient.ReplicaSet(kubeapi.EVEKubeNameSpace).Delete(repVmiName, &metav1.DeleteOptions{})
+	err = virtClient.ReplicaSet(kubeapi.EVEKubeNameSpace).Delete(context.Background(), repVmiName, metav1.DeleteOptions{})
 	if errors.IsNotFound(err) {
 		logrus.Infof("Stop VMI Replicaset, Domain already deleted: %v", repVmiName)
 	} else {
@@ -956,7 +968,7 @@ func getVMIStatus(vmis *vmiMetaData, nodeName string) (string, error) {
 	}
 
 	// List VMIs with a label selector that matches the replicaset name
-	vmiList, err := virtClient.VirtualMachineInstance(kubeapi.EVEKubeNameSpace).List(context.Background(), &metav1.ListOptions{})
+	vmiList, err := virtClient.VirtualMachineInstance(kubeapi.EVEKubeNameSpace).List(context.Background(), metav1.ListOptions{})
 	if err != nil {
 
 		if isK3sUnreachable(err) {
@@ -1817,7 +1829,7 @@ func registerWithKV(kvClient kubecli.KubevirtClient, vmi *v1.VirtualMachineInsta
 	kubeVirtNamespace := "kubevirt"
 
 	// Retrieve the KubeVirt resource
-	kubeVirt, err := kvClient.KubeVirt(kubeVirtNamespace).Get(kubeVirtName, &metav1.GetOptions{})
+	kubeVirt, err := kvClient.KubeVirt(kubeVirtNamespace).Get(context.Background(), kubeVirtName, metav1.GetOptions{})
 	if err != nil {
 		return logError("can't fetch the PCI device info from kubevirt %v", err)
 	}
@@ -1855,7 +1867,7 @@ func registerWithKV(kvClient kubecli.KubevirtClient, vmi *v1.VirtualMachineInsta
 			}
 			logrus.Infof("Registering PCI device %s as resource %s with kubevirt", pciVendorSelector, resname)
 			kubeVirt.Spec.Configuration.PermittedHostDevices.PciHostDevices = append(kubeVirt.Spec.Configuration.PermittedHostDevices.PciHostDevices, newpcidev)
-			_, err = kvClient.KubeVirt(kubeVirtNamespace).Update(kubeVirt)
+			_, err = kvClient.KubeVirt(kubeVirtNamespace).Update(context.Background(), kubeVirt, metav1.UpdateOptions{})
 
 			if err != nil {
 				return logError("can't update the PCI device info from kubevirt %v", err)

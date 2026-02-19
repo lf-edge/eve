@@ -249,7 +249,7 @@ func getKubePodInfo(pod corev1.Pod) *types.KubePodInfo {
 
 func getAppVMIs(virtClient kubecli.KubevirtClient) ([]virtv1.VirtualMachineInstance, error) {
 	// List pods in the namespace
-	vmiList, err := virtClient.VirtualMachineInstance(kubeapi.EVEKubeNameSpace).List(context.Background(), &metav1.ListOptions{})
+	vmiList, err := virtClient.VirtualMachineInstance(kubeapi.EVEKubeNameSpace).List(context.Background(), metav1.ListOptions{})
 	if err != nil {
 		log.Errorf("getAppVMIs: can't get nodes %v", err)
 		return nil, err

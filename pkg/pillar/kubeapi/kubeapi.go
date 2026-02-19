@@ -418,7 +418,7 @@ func CleanupStaleVMIRs() (int, error) {
 	ctx := context.Background()
 
 	// get a list of our VM replica sets
-	vmrsList, err := virtClient.ReplicaSet(EVEKubeNameSpace).List(metav1.ListOptions{})
+	vmrsList, err := virtClient.ReplicaSet(EVEKubeNameSpace).List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return 0, fmt.Errorf("couldn't get the Kubevirt VM replcia sets: %v", err)
 	}
@@ -426,7 +426,7 @@ func CleanupStaleVMIRs() (int, error) {
 	var count int
 	for _, vmirs := range vmrsList.Items {
 
-		if err := virtClient.ReplicaSet(EVEKubeNameSpace).Delete(vmirs.ObjectMeta.Name, &metav1.DeleteOptions{}); err != nil {
+		if err := virtClient.ReplicaSet(EVEKubeNameSpace).Delete(ctx, vmirs.ObjectMeta.Name, metav1.DeleteOptions{}); err != nil {
 			return count, fmt.Errorf("delete vmirs error: %v", err)
 		}
 		count++
@@ -571,11 +571,11 @@ func vmirsReplicaCountSet(log *base.LogObject, vmiRsName string, replicaCount in
 		return err
 	}
 
-	vmirs, err := kvClientset.ReplicaSet(EVEKubeNameSpace).Get(vmiRsName, metav1.GetOptions{})
+	vmirs, err := kvClientset.ReplicaSet(EVEKubeNameSpace).Get(context.Background(), vmiRsName, metav1.GetOptions{})
 	if err == nil {
 		reps := int32(replicaCount)
 		vmirs.Spec.Replicas = &reps
-		_, err := kvClientset.ReplicaSet(EVEKubeNameSpace).Update(vmirs)
+		_, err := kvClientset.ReplicaSet(EVEKubeNameSpace).Update(context.Background(), vmirs, metav1.UpdateOptions{})
 		if err != nil {
 			log.Noticef("vmirsReplicaCountSet vmirs:%s scaled to %d err:%v", vmiRsName, replicaCount, err)
 			return err
@@ -649,7 +649,7 @@ func GetVmiRsName(log *base.LogObject, appDomainName string) (string, error) {
 	}
 
 	vmiRsName := ""
-	vmi, err := kvClientset.VirtualMachineInstance(EVEKubeNameSpace).Get(context.Background(), vmiName, &metav1.GetOptions{})
+	vmi, err := kvClientset.VirtualMachineInstance(EVEKubeNameSpace).Get(context.Background(), vmiName, metav1.GetOptions{})
 	if err != nil {
 		return "", err
 	}
@@ -707,7 +707,7 @@ func kubeNodeNotReporting(log *base.LogObject, node *corev1.Node) (notreporting 
 }
 
 func tryFastDeleteVmi(log *base.LogObject, kvClientset kubecli.KubevirtClient, vmiName string) error {
-	vmi, err := kvClientset.VirtualMachineInstance(EVEKubeNameSpace).Get(context.Background(), vmiName, &metav1.GetOptions{})
+	vmi, err := kvClientset.VirtualMachineInstance(EVEKubeNameSpace).Get(context.Background(), vmiName, metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
@@ -715,7 +715,7 @@ func tryFastDeleteVmi(log *base.LogObject, kvClientset kubecli.KubevirtClient, v
 	// VMI deletion can get stuck when the kubevirt control plane has been interrupted
 	// by some failover breaking access to a kubevirt api pod, remove finalizers and force the delete
 	vmi.ObjectMeta.Finalizers = []string{}
-	_, err = kvClientset.VirtualMachineInstance(vmi.ObjectMeta.Namespace).Update(context.Background(), vmi)
+	_, err = kvClientset.VirtualMachineInstance(vmi.ObjectMeta.Namespace).Update(context.Background(), vmi, metav1.UpdateOptions{})
 	if err != nil {
 		// Not fatal, just means the delete may take longer to process
 		// Don't return an error here and disrupt the failover process
@@ -726,7 +726,7 @@ func tryFastDeleteVmi(log *base.LogObject, kvClientset kubecli.KubevirtClient, v
 	gracePeriod := int64(0)
 	propagationPolicy := metav1.DeletePropagationForeground
 	return kvClientset.VirtualMachineInstance(EVEKubeNameSpace).Delete(context.Background(), vmiName,
-		&metav1.DeleteOptions{
+		metav1.DeleteOptions{
 			GracePeriodSeconds: &gracePeriod,
 			PropagationPolicy:  &propagationPolicy,
 		})
