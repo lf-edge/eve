@@ -5,6 +5,8 @@
 
 # shellcheck source=/dev/null
 . /usr/bin/cluster-utils.sh
+# shellcheck source=/dev/null
+. /usr/bin/registration-utils.sh
 
 LONGHORN_VERSION=v1.9.1
 
@@ -33,6 +35,7 @@ longhorn_install() {
 
 Longhorn_uninstall() {
     logmsg "longhorn_uninstall ${LONGHORN_VERSION} beginning"
+    longhorn_post_install_config_clean
     while ! kubectl apply -f /etc/longhorn_uninstall_settings.yaml; do
         sleep 5
     done
@@ -215,13 +218,22 @@ check_overwrite_nsmounter() {
 # A spot to do persistent configuration of longhorn
 # These are applied once per cluster
 longhorn_post_install_config() {
-        # Wait for longhorn objects to be available before patching them
-        lhSettingsAvailable=$(kubectl -n longhorn-system get settings -o json | jq '.items | length>0')
-        if [ "$lhSettingsAvailable" != "true" ]; then
-                return
+        lhCfgFilename=longhorn-cfg.yaml
+        lhCfgYamlSrcPath=/etc/${lhCfgFilename}
+        lhCfgYamlDstPath=${KUBE_MANIFESTS_DIR}/${lhCfgFilename}
+
+        if [ ! -f "$lhCfgYamlDstPath" ]; then
+                cp "$lhCfgYamlSrcPath" "$lhCfgYamlDstPath"
         fi
-        kubectl  -n longhorn-system patch settings.longhorn.io/upgrade-checker -p '[{"op":"replace","path":"/value","value":"false"}]' --type json
 }
+
+longhorn_post_install_config_clean() {
+        if [ -f "$lhCfgYamlDstPath" ]; then
+                rm "$lhCfgYamlDstPath"
+        fi
+}
+
+
 
 longhorn_node_set_sched() {
         node_name=$1
