@@ -27,6 +27,7 @@ BootReasonKubeTransition="BootReasonKubeTransition" # Must match string in types
 KUBE_ROOT_EXT4="/persist/vault/kube"
 KUBE_ROOT_ZFS="/dev/zvol/persist/etcd-storage"
 KUBE_ROOT_MOUNTPOINT="/var/lib"
+export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
 
 # shellcheck source=pkg/kube/lib/config.sh
 . /usr/bin/config.sh

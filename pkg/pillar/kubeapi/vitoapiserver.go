@@ -193,7 +193,7 @@ func NewPVCDefinition(pvcName string, size string, annotations,
 			StorageClassName: stringPtr(storageClass),
 			AccessModes:      []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
 			VolumeMode:       &volumeModeBlock,
-			Resources: corev1.ResourceRequirements{
+			Resources: corev1.VolumeResourceRequirements{
 				Requests: corev1.ResourceList{
 					corev1.ResourceName(corev1.ResourceStorage): resource.MustParse(size),
 				},
