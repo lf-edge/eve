@@ -42,6 +42,10 @@ func deviceExists(dev string) bool {
 // Clustered volumes are expected to not be static, they will
 // move between nodes.
 func CleanupDetachedDiskMetrics(pubDiskMetric pubsub.Publication, pvcToPvMap map[string]string) {
+	if ensureKubeRuntime("CleanupDetachedDiskMetrics") != nil {
+		return
+	}
+
 	existingMetrics := pubDiskMetric.GetAll()
 
 	for id, metric := range existingMetrics {
@@ -79,6 +83,9 @@ func CleanupDetachedDiskMetrics(pubDiskMetric pubsub.Publication, pvcToPvMap map
 func LonghornGetMajorMinorMaps() (map[string]string, map[string]string, error) {
 	lhMajMinToNameMap := make(map[string]string) // maj:min -> kube-pv-name/lh-volume-name
 	lhNameToMajMinMap := make(map[string]string) // kube-pv-name/lh-volume-name -> maj:min
+	if err := ensureKubeRuntime("LonghornGetMajorMinorMaps"); err != nil {
+		return lhMajMinToNameMap, lhNameToMajMinMap, err
+	}
 
 	lhPvcList, err := os.ReadDir(longhornDevPath)
 	for _, lhDirEnt := range lhPvcList {
@@ -102,6 +109,9 @@ func LonghornGetMajorMinorMaps() (map[string]string, map[string]string, error) {
 func SCSIGetMajMinMaps() (map[string]string, map[string]string, error) {
 	sdMajMinToNameMap := make(map[string]string) // maj:min -> sdX
 	sdNameToMajMinMap := make(map[string]string) // sdX -> maj:min
+	if err := ensureKubeRuntime("SCSIGetMajMinMaps"); err != nil {
+		return sdMajMinToNameMap, sdNameToMajMinMap, err
+	}
 
 	blockDevs, err := os.ReadDir("/sys/class/block/")
 	if err != nil {
@@ -126,6 +136,9 @@ func SCSIGetMajMinMaps() (map[string]string, map[string]string, error) {
 func PvPvcMaps() (map[string]string, map[string]string, error) {
 	pvsMap := make(map[string]string)
 	pvcsMap := make(map[string]string)
+	if err := ensureKubeRuntime("PvPvcMaps"); err != nil {
+		return pvsMap, pvcsMap, err
+	}
 
 	clientset, err := GetClientSet()
 	if err != nil {

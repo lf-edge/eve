@@ -123,6 +123,10 @@ func (v *vmis) Delete(ctx context.Context, name string, options *metav1.DeleteOp
 
 // KubeVirt returns the KubevirtInterface
 func KubeVirt(restClient *rest.RESTClient, namespace string) KubeVirtInterface {
+	if ensureKubeRuntime("KubeVirt") != nil {
+		return nil
+	}
+
 	return &kv{
 		restClient: restClient,
 		namespace:  namespace,
@@ -178,6 +182,10 @@ type KubeVirtInterface interface {
 
 // GetKubeRESTClient : Get handle to Kubernetes REST client
 func GetKubeRESTClient() (*rest.RESTClient, error) {
+	if err := ensureKubeRuntime("GetKubeRESTClient"); err != nil {
+		return nil, err
+	}
+
 	// Build the configuration from the provided kubeconfig file
 	config, err := GetKubeConfig()
 	if err != nil {

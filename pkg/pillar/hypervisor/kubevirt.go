@@ -814,6 +814,10 @@ func (ctx kubevirtContext) Delete(domainName string) (result error) {
 
 // StopReplicaVMI stops the VMI ReplicaSet
 func StopReplicaVMI(kubeconfig *rest.Config, repVmiName string) error {
+	if !base.IsHVTypeKube() {
+		return fmt.Errorf("StopReplicaVMI: kube runtime is not enabled")
+	}
+
 	virtClient, err := kubecli.GetKubevirtClientFromRESTConfig(kubeconfig)
 	if err != nil {
 		logrus.Errorf("couldn't get the kubernetes client API config: %v", err)
@@ -1477,6 +1481,10 @@ func setKubeToleration(timeOutSec int64) []k8sv1.Toleration {
 
 // StartReplicaPodContiner starts the ReplicaSet pod
 func StartReplicaPodContiner(ctx kubevirtContext, vmis *vmiMetaData) error {
+	if !base.IsHVTypeKube() {
+		return fmt.Errorf("StartReplicaPodContiner: kube runtime is not enabled")
+	}
+
 	rep := vmis.repPod
 	err := getConfig(&ctx)
 	if err != nil {
@@ -1541,6 +1549,9 @@ func checkForReplicaPod(ctx kubevirtContext, vmis *vmiMetaData) error {
 
 // InfoReplicaSetContainer gets the status of the ReplicaSet pod
 func InfoReplicaSetContainer(ctx kubevirtContext, vmis *vmiMetaData) (string, error) {
+	if !base.IsHVTypeKube() {
+		return "", fmt.Errorf("InfoReplicaSetContainer: kube runtime is not enabled")
+	}
 
 	repName := vmis.repPod.ObjectMeta.Name
 	err := getConfig(&ctx)
@@ -1708,6 +1719,9 @@ func getPodMetrics(clientset *metricsv.Clientset, pod k8sv1.Pod, vmis *vmiMetaDa
 
 // StopReplicaPodContainer stops the ReplicaSet pod
 func StopReplicaPodContainer(kubeconfig *rest.Config, repName string) error {
+	if !base.IsHVTypeKube() {
+		return fmt.Errorf("StopReplicaPodContainer: kube runtime is not enabled")
+	}
 
 	clientset, err := kubernetes.NewForConfig(kubeconfig)
 	if err != nil {
@@ -1737,6 +1751,10 @@ func encodeSelections(selections []netattdefv1.NetworkSelectionElement) string {
 
 // InfoPodContainer : Get the pod information
 func InfoPodContainer(ctx kubevirtContext, podName string) (string, error) {
+	if !base.IsHVTypeKube() {
+		return "", fmt.Errorf("InfoPodContainer: kube runtime is not enabled")
+	}
+
 	err := getConfig(&ctx)
 	if err != nil {
 		return "", err

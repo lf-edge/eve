@@ -68,6 +68,9 @@ func GetHypervisor(hint string) (Hypervisor, error) {
 	if _, found := knownHypervisors[hint]; !found {
 		return nil, fmt.Errorf("unknown hypervisor %s", hint)
 	}
+	if hint == KubevirtHypervisorName && !base.IsHVTypeKube() {
+		return nil, fmt.Errorf("kubevirt hypervisor requested but kube runtime is not enabled")
+	}
 
 	return knownHypervisors[hint].constructor(), nil
 }
