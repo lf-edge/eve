@@ -14,6 +14,11 @@ const (
 	// ClusterStatusPort - Port for k3s server for cluster status advertise
 	// See more detail description in pkg/pillar/docs/zedkube.md
 	ClusterStatusPort = "12346"
+	// run VNC file - unified path for both remote-console and edgeview VNC
+	// Using /run/edgeview because edgeview container has /run mounted read-only
+	// except for /run/edgeview which is read-write
+	VmiVNCDir      = "/run/edgeview/VncParams"
+	VmiVNCFileName = VmiVNCDir + "/vmiVNC.run"
 )
 
 // ClusterType represents a cluster configuration type including various preinstalled components
@@ -74,7 +79,8 @@ type ENClusterAppStatus struct {
 	ScheduledOnThisNode bool      // App is running on this device
 	StatusRunning       bool      // Status of the app in "Running" state
 	AppIsVMI            bool      // Is this a VMI app, vs a Pod app
-	AppKubeName         string    // Kube name of the app, either VMI or Pod
+	VMIName             string    // Kube name of the VMI
+	VNCPort             uint32    // VNC port for the VMI (e.g., 5901)
 }
 
 // Equal returns true if all ENClusterAppStatus fields are equal
@@ -126,4 +132,12 @@ type KubeLeaderElectInfo struct {
 	ElectionRunning  bool
 	LeaderIdentity   string
 	LatestChange     time.Time
+}
+
+// vmiVNCConfig is the JSON structure for vmiVNC.run file
+// This is the unified format used by both remote-console and edgeview VNC
+type VmiVNCConfig struct {
+	VMIName   string `json:"VMIName"`
+	VNCPort   uint32 `json:"VNCPort"`
+	CallerPID int    `json:"CallerPID,omitempty"` // Set by edgeview to allow cleanup when it exits
 }

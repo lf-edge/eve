@@ -202,7 +202,8 @@ func (z *zedkube) checkAppsStatus() {
 				}
 				if foundVMIPod {
 					encAppStatus.AppIsVMI = true
-					encAppStatus.AppKubeName, _ = base.GetVMINameFromVirtLauncher(pod.Name)
+					encAppStatus.VMIName, _, _ = base.GetVMINameFromVirtLauncher(pod.Name)
+					encAppStatus.VNCPort = uint32(aiconfig.FixedResources.VncDisplay + 5900)
 					log.Functionf("aiDisplayName:%s aiUUID:%s Pod:%s is attempting to start onNode:%s",
 						aiconfig.DisplayName, aiconfig.UUIDandVersion.UUID, pod.Name, pod.Spec.NodeName)
 				}

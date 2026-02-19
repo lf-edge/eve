@@ -326,9 +326,9 @@ func (z *zedrouter) niWithDHCP(netInstStatus *types.NetworkInstanceStatus) bool 
 func (z *zedrouter) getAppByPodName(
 	podName string) (*types.AppNetworkConfig, *types.AppNetworkStatus, error) {
 	appKubeName := podName
-	vmiName, isVirtLauncher := base.GetVMINameFromVirtLauncher(podName)
-	if isVirtLauncher {
-		appKubeName = vmiName
+	_, rsName, err := base.GetVMINameFromVirtLauncher(podName)
+	if err == nil {
+		appKubeName = rsName
 	}
 	for _, item := range z.pubAppNetworkStatus.GetAll() {
 		appStatus := item.(types.AppNetworkStatus)
