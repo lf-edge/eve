@@ -39,6 +39,10 @@ var (
 
 // RegistrationAdd is blocking for inflation and fs writes. Caller should run in goroutine.
 func RegistrationAdd(rootPath string, gzipYamlBody []byte) error {
+	if err := ensureKubeRuntime("RegistrationAdd"); err != nil {
+		return err
+	}
+
 	gz, err := gzip.NewReader(bytes.NewReader(gzipYamlBody))
 	if err != nil {
 		return err
@@ -61,6 +65,10 @@ func RegistrationAdd(rootPath string, gzipYamlBody []byte) error {
 
 // RegistrationExists returns nil if it exists
 func RegistrationExists(rootPath string) (bool, error) {
+	if err := ensureKubeRuntime("RegistrationExists"); err != nil {
+		return false, err
+	}
+
 	_, err := os.Stat(filepath.Join(rootPath, registrationFileName))
 	if err == nil {
 		return true, nil

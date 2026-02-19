@@ -55,7 +55,9 @@ func (z *zedkube) checkDelIoAdapterEthernet(aiConfig *types.AppInstanceConfig) {
 				z.ioAdapterMap.Delete(nadname)
 			}
 			// delete the NAD in kubernetes
-			kubeapi.DeleteNAD(log, nadname)
+			if err := kubeapi.DeleteNAD(log, nadname); err != nil {
+				log.Errorf("checkDelIoAdapterEthernet: failed to delete nad %s: %v", nadname, err)
+			}
 			log.Functionf("checkDelIoAdapterEthernet: delete existing nad %v", nadname)
 		}
 	}

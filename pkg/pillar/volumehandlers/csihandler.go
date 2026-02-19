@@ -32,6 +32,13 @@ type volumeHandlerCSI struct {
 
 // NewCSIHandler is a constructor for the kubernetes CSI handler.
 func NewCSIHandler(common commonVolumeHandler, useVHost bool) VolumeHandler {
+	if !base.IsHVTypeKube() {
+		if common.log != nil {
+			common.log.Errorf("NewCSIHandler: kube runtime is not enabled, falling back to file handler")
+		}
+		return &volumeHandlerFile{common}
+	}
+
 	return &volumeHandlerCSI{
 		commonVolumeHandler: common,
 		useVHost:            useVHost,

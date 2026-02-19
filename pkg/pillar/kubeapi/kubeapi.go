@@ -80,6 +80,10 @@ const (
 
 // GetKubeConfig : Get handle to Kubernetes config
 func GetKubeConfig() (*rest.Config, error) {
+	if err := ensureKubeRuntime("GetKubeConfig"); err != nil {
+		return nil, err
+	}
+
 	// Build the configuration from the kubeconfig file
 	config, err := clientcmd.BuildConfigFromFlags("", EVEkubeConfigFile)
 	if err != nil {
@@ -90,6 +94,9 @@ func GetKubeConfig() (*rest.Config, error) {
 
 // GetClientSet : Get handle to kubernetes clientset
 func GetClientSet() (*kubernetes.Clientset, error) {
+	if err := ensureKubeRuntime("GetClientSet"); err != nil {
+		return nil, err
+	}
 
 	// Build the configuration from the provided kubeconfig file
 	config, err := GetKubeConfig()
@@ -108,6 +115,9 @@ func GetClientSet() (*kubernetes.Clientset, error) {
 
 // GetNetClientSet : Get handle to kubernetes netclientset
 func GetNetClientSet() (*netclientset.Clientset, error) {
+	if err := ensureKubeRuntime("GetNetClientSet"); err != nil {
+		return nil, err
+	}
 
 	// Build the configuration from the provided kubeconfig file
 	config, err := GetKubeConfig()
@@ -179,6 +189,9 @@ type WaitForKubernetesOptions struct {
 // pubsub subscriptions.
 func WaitForKubernetes(agentName string, ps *pubsub.PubSub, stillRunning *time.Ticker,
 	opts WaitForKubernetesOptions, alsoWatch ...pubsub.ChannelWatch) (err error) {
+	if err = ensureKubeRuntime("WaitForKubernetes"); err != nil {
+		return err
+	}
 
 	var watches []pubsub.ChannelWatch
 	stillRunningWatch := pubsub.ChannelWatch{
@@ -415,6 +428,10 @@ func waitForNodeReady(client *kubernetes.Clientset, devUUID string) (string, err
 
 // WaitForPVCReady : Loop until PVC is ready for timeout
 func WaitForPVCReady(pvcName string, log *base.LogObject) error {
+	if err := ensureKubeRuntime("WaitForPVCReady"); err != nil {
+		return err
+	}
+
 	clientset, err := GetClientSet()
 	if err != nil {
 		log.Errorf("WaitForPVCReady failed to get clientset err %v", err)
@@ -460,6 +477,10 @@ func WaitForPVCReady(pvcName string, log *base.LogObject) error {
 // 2) podrs (Pod replica sets, basically native containers)
 // Iterate through all replicasets and delete those.
 func CleanupStaleVMIRs() (int, error) {
+	if err := ensureKubeRuntime("CleanupStaleVMIRs"); err != nil {
+		return 0, err
+	}
+
 	// Only wait for kubevirt if we are not in base-k3s mode.
 	if err := registrationAppliedToCluster(); err == nil {
 		// In base k3s mode, pillar not deploying kubevirt VM app instances
@@ -515,6 +536,10 @@ func CleanupStaleVMIRs() (int, error) {
 // - delete all control plane pods for kubevirt and longhorn-system
 // - update kubevirt label and annotation placed on node for scheduling/VMI ready state.
 func DeleteControlPlanePodsOnNode(log *base.LogObject, kubernetesHostName string) {
+	if ensureKubeRuntime("DeleteControlPlanePodsOnNode") != nil {
+		return
+	}
+
 	if log == nil {
 		return
 	}
@@ -658,6 +683,9 @@ func vmirsReplicaCountSet(ctx context.Context, log *base.LogObject, vmiRsName st
 // DetachUtilVmirsReplicaReset manages retries around scaling down and back up the replica
 // count of a vmirs to push the control plane into scheduling a new vmi
 func DetachUtilVmirsReplicaReset(log *base.LogObject, vmiRsName string) (err error) {
+	if err = ensureKubeRuntime("DetachUtilVmirsReplicaReset"); err != nil {
+		return err
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), detachUtilVmirsReplicaResetTimeout)
 	defer cancel()
 
@@ -702,6 +730,10 @@ func DetachUtilVmirsReplicaReset(log *base.LogObject, vmiRsName string) (err err
 
 // GetVmiRsName returns the replicated VMI object name, the parent of a vmi
 func GetVmiRsName(log *base.LogObject, appDomainName string) (string, error) {
+	if err := ensureKubeRuntime("GetVmiRsName"); err != nil {
+		return "", err
+	}
+
 	podList, err := GetVirtLauncherPods(log, appDomainName)
 	if err != nil {
 		return "", err
@@ -748,6 +780,10 @@ func GetVmiRsName(log *base.LogObject, appDomainName string) (string, error) {
 // the App-Domain-Name supplied.  There can be more than one pod if one has recently failed and
 // a new copy is currently scheduled (eg. app failover after a node becomes unreachable).
 func GetVirtLauncherPods(log *base.LogObject, appDomainName string) (*corev1.PodList, error) {
+	if err := ensureKubeRuntime("GetVirtLauncherPods"); err != nil {
+		return nil, err
+	}
+
 	//
 	// Setup Handles to kubernetes
 	//
@@ -866,6 +902,10 @@ func getPodsLhVols(log *base.LogObject, pod *corev1.Pod) (lhVolNames []string) {
 // can be started on a remaining ready node.
 // Caller is required to detect the VM app instances which
 func DetachOldWorkload(log *base.LogObject, failedNodeName string, appDomainName string, wdFunc func()) {
+	if ensureKubeRuntime("DetachOldWorkload") != nil {
+		return
+	}
+
 	detachStart := time.Now()
 	if log == nil {
 		return
@@ -1130,6 +1170,9 @@ func DetachOldWorkload(log *base.LogObject, failedNodeName string, appDomainName
 // IsClusterMode : Returns true if this node is part of a cluster by checking EdgeNodeClusterConfig.Valid
 // We assume that caller has called WaitForKubernetes() thus the EdgeNodeClusterConfig has been filled in and we only need to extract it from pubsub.
 func IsClusterMode(ps *pubsub.PubSub, log *base.LogObject, agentName string) bool {
+	if ensureKubeRuntime("IsClusterMode") != nil {
+		return false
+	}
 	var encc types.EdgeNodeClusterConfig
 	// EdgeNodeClusterConfig subscription
 	subEdgeNodeClusterConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
@@ -1179,6 +1222,10 @@ func handleEdgeNodeClusterConfigImpl(ctxArg interface{}, key string,
 
 // GetSupportedReplicaCountForCluster : returns the max replica count a cluster can support
 func GetSupportedReplicaCountForCluster() (int, error) {
+	if err := ensureKubeRuntime("GetSupportedReplicaCountForCluster"); err != nil {
+		return 0, err
+	}
+
 	config, err := GetKubeConfig()
 	if err != nil {
 		return DefaultLonghornScFullReplicaCount, err
@@ -1201,6 +1248,10 @@ func GetSupportedReplicaCountForCluster() (int, error) {
 
 // GetStorageClassForReplicaCount : returns the storage class associated with the replica count
 func GetStorageClassForReplicaCount(count int) string {
+	if ensureKubeRuntime("GetStorageClassForReplicaCount") != nil {
+		return ""
+	}
+
 	if count == DefaultLonghornScFullReplicaCount {
 		return VolumeCSIClusterStorageClass
 	}
