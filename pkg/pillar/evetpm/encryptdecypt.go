@@ -8,11 +8,14 @@ import (
 	"crypto/cipher"
 	"crypto/ecdsa"
 	"crypto/elliptic"
+	"crypto/rand"
 	"crypto/sha256"
 	"crypto/x509"
+	"encoding/binary"
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"io"
 	"math/big"
 
 	"github.com/google/go-tpm/legacy/tpm2"
@@ -83,6 +86,58 @@ func AESDecrypt(plaintext, ciphertext, key, iv []byte) error {
 	aesDecrypter := cipher.NewCFBDecrypter(aesBlockDecrypter, iv)
 	aesDecrypter.XORKeyStream(plaintext, ciphertext)
 	return nil
+}
+
+// AESGCMEncrypt encrypts plaintext using AES GCM mode and returns the ciphertext,
+// The returned ciphertext format is: [4 bytes nonce size][nonce][ciphertext].
+func AESGCMEncrypt(plaintext, key []byte) ([]byte, error) {
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, fmt.Errorf("AESGCMEncrypt: NewCipher error: %v", err)
+	}
+	aesgcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, fmt.Errorf("AESGCMEncrypt: NewGCM error: %v", err)
+	}
+	nonce := make([]byte, aesgcm.NonceSize())
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+		return nil, fmt.Errorf("AESGCMEncrypt: ReadFull error: %v", err)
+	}
+	ciphertext := aesgcm.Seal(nil, nonce, plaintext, nil)
+
+	// return 4 bytes nonce size, nonce and ciphertext
+	nonceSize := make([]byte, 4)
+	binary.BigEndian.PutUint32(nonceSize, uint32(len(nonce)))
+	result := append(nonceSize, nonce...)
+	result = append(result, ciphertext...)
+	return result, nil
+}
+
+// AESGCMDecrypt decrypts ciphertext using AES GCM mode and returns the plaintext.
+func AESGCMDecrypt(ciphertext, key []byte) ([]byte, error) {
+	if len(ciphertext) < 4 {
+		return nil, fmt.Errorf("AESGCMDecrypt: ciphertext too short")
+	}
+	nonceSize := binary.BigEndian.Uint32(ciphertext[:4])
+	if len(ciphertext) < int(4+nonceSize) {
+		return nil, fmt.Errorf("AESGCMDecrypt: ciphertext too short for nonce")
+	}
+	nonce := ciphertext[4 : 4+nonceSize]
+	rawCiphertext := ciphertext[4+nonceSize:]
+
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, fmt.Errorf("AESGCMDecrypt: NewCipher error: %v", err)
+	}
+	aesgcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, fmt.Errorf("AESGCMDecrypt: NewGCM error: %v", err)
+	}
+	plaintext, err := aesgcm.Open(nil, nonce, rawCiphertext, nil)
+	if err != nil {
+		return nil, fmt.Errorf("AESGCMDecrypt: Open error: %v", err)
+	}
+	return plaintext, nil
 }
 
 func ecdsakeyBytes(pubKey *ecdsa.PublicKey) (int, error) {
@@ -186,19 +241,36 @@ func deriveEncryptDecryptKey() ([32]byte, error) {
 // The AES key is derived from a seed, which is further derived from device certificate
 // and ECDH private key, which is protected inside the TPM. IOW, to decrypt secret successfully,
 // one will need to be on the same device.
-func EncryptDecryptUsingTpm(in []byte, encrypt bool) ([]byte, error) {
+func EncryptDecryptUsingTpm(in []byte, version types.VaultKeyEncVersion, encrypt bool) ([]byte, error) {
 	key, err := deriveEncryptDecryptKey()
 	if err != nil {
 		return nil, err
 	}
-	iv := make([]byte, aes.BlockSize)
+
 	out := make([]byte, len(in))
 	if encrypt {
-		err = AESEncrypt(out, in, key[:], iv)
+		switch version {
+		case types.EncryptionAEAD:
+			return AESGCMEncrypt(in, key[:])
+		case types.EncryptionLegacy:
+			iv := make([]byte, aes.BlockSize)
+			err := AESEncrypt(out, in, key[:], iv)
+			return out, err
+		default:
+			return nil, fmt.Errorf("unsupported encryption version %v", version)
+		}
 	} else {
-		err = AESDecrypt(out, in, key[:], iv)
+		switch version {
+		case types.EncryptionAEAD:
+			return AESGCMDecrypt(in, key[:])
+		case types.EncryptionLegacy:
+			iv := make([]byte, aes.BlockSize)
+			err = AESDecrypt(out, in, key[:], iv)
+			return out, err
+		default:
+			return nil, fmt.Errorf("unsupported decryption version %v", version)
+		}
 	}
-	return out, err
 }
 
 // EccIntToBytes - ECC coordinates need to maintain a specific size based on the curve, so we pad the front with zeros.
