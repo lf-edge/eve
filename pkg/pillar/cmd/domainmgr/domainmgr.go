@@ -56,6 +56,24 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
+// waitForPCINetworkInterface polls sysfs for a network interface to appear
+// on the given PCI device after releasing it from vfio-pci.  The kernel
+// driver needs a moment to rebind and register the netdev.  Returns the
+// actual kernel interface name, which may differ from the boot-time name
+// stored in IoBundle.Ifname (the kernel's ethN counter only goes up, so
+// after unbind+rebind the interface often gets a new sequential name).
+func waitForPCINetworkInterface(pciAddr string, timeout time.Duration) (string, error) {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if found, ifname := types.PciLongToIfname(log, pciAddr); found {
+			log.Noticef("waitForPCINetworkInterface: PCI %s appeared as %s", pciAddr, ifname)
+			return ifname, nil
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	return "", fmt.Errorf("no network interface appeared for PCI %s within %v", pciAddr, timeout)
+}
+
 const (
 	agentName  = "domainmgr"
 	runDirname = "/run/" + agentName
@@ -1545,20 +1563,59 @@ func doAssignIoAdaptersToDomain(ctx *domainContext, config types.DomainConfig,
 				log.Functionf("Assigning %s (%s) to %s",
 					ib.Phylabel, ib.UsbAddr, status.DomainName)
 				assignmentsUsb = addNoDuplicate(assignmentsUsb, ib.UsbAddr)
-			} else if ib.PciLong != "" && !ib.IsPCIBack {
-				if !(ctx.hvTypeKube && config.VirtualizationMode == types.NOHYPER) || ib.Type != types.IoNetEth {
-					log.Functionf("Assigning %s (%s) to %s",
-						ib.Phylabel, ib.PciLong, status.DomainName)
-					assignmentsPci = addNoDuplicate(assignmentsPci, ib.PciLong)
-					ib.IsPCIBack = true
-				} else {
-					// For native container with ethernet IO passthrough, we use the NAD for the Multus
-					// for the container to directly access the ethernet port through network mechanism
-					log.Noticef("doAssignIoAdaptersToDomain: skip IO assign %v", ib)
+			} else if ib.PciLong != "" && config.VirtualizationMode == types.NOHYPER && ib.Type == types.IoNetEth {
+				// NOHYPE containers cannot do PCI passthrough (no shim VM).
+				// For kube we use Multus/NAD; for non-kube we move the
+				// physical interface into the container's network namespace
+				// via an OCI prestart hook (direct-net.sh).
+				//
+				// The adapter may already be bound to vfio-pci from the
+				// early pciback assignment in updatePortAndPciBackIoMember.
+				// Release it so the original network driver rebinds and
+				// the kernel interface (e.g. eth1) reappears.
+				if ib.IsPCIBack {
+					log.Noticef("doAssignIoAdaptersToDomain: releasing %s (%s) from pciback for NOHYPE IoNetEth",
+						ib.Phylabel, ib.PciLong)
+					// Use PCIReleaseGeneric directly instead of hyper.PCIRelease
+					// because the containerd hypervisor's PCIRelease is a no-op
+					// (just bookkeeping) — it does not actually unbind vfio-pci
+					// via sysfs.  We need the real sysfs operations regardless
+					// of which hypervisor is active.
+					if err := hypervisor.PCIReleaseGeneric(ib.PciLong); err != nil {
+						log.Errorf("doAssignIoAdaptersToDomain: PCIRelease failed for %s: %v", ib.PciLong, err)
+						return fmt.Errorf("failed to release %s from pciback for NOHYPE: %v",
+							ib.Phylabel, err)
+					}
+					ib.IsPCIBack = false
+					publishAssignableAdapters = true
+					// Wait for the network driver to rebind and the
+					// interface to reappear after releasing from vfio-pci.
+					// Poll by PCI address rather than interface name because
+					// after unbind+rebind the kernel may assign a different
+					// name (e.g. eth2 instead of eth1).
+					actualIfname, err := waitForPCINetworkInterface(ib.PciLong, 10*time.Second)
+					if err != nil {
+						log.Warnf("doAssignIoAdaptersToDomain: interface for %s (%s) did not appear after PCIRelease: %v",
+							ib.Phylabel, ib.PciLong, err)
+					} else if actualIfname != ib.Ifname {
+						// The kernel assigned a different name after driver
+						// rebind.  Rename it back to the expected name so the
+						// OCI prestart hook (direct-net.sh) can find it.
+						log.Noticef("doAssignIoAdaptersToDomain: interface for %s reappeared as %s, renaming to %s",
+							ib.PciLong, actualIfname, ib.Ifname)
+						types.IfRename(log, actualIfname, ib.Ifname)
+					}
 				}
+				log.Noticef("doAssignIoAdaptersToDomain: skip PCI assign for NOHYPE IoNetEth %s (%s)",
+					ib.Phylabel, ib.PciLong)
+			} else if ib.PciLong != "" && !ib.IsPCIBack {
+				log.Functionf("Assigning %s (%s) to %s",
+					ib.Phylabel, ib.PciLong, status.DomainName)
+				assignmentsPci = addNoDuplicate(assignmentsPci, ib.PciLong)
+				ib.IsPCIBack = true
 			}
 		}
-		publishAssignableAdapters = len(assignmentsUsb) > 0 || len(assignmentsPci) > 0
+		publishAssignableAdapters = publishAssignableAdapters || len(assignmentsUsb) > 0 || len(assignmentsPci) > 0
 	}
 
 	for i, long := range assignmentsPci {
@@ -2125,7 +2182,27 @@ func releaseAdapters(ctx *domainContext, ioAdapterList []types.IoAdapter,
 			if ib == nil {
 				continue
 			}
-			if ctx.hvTypeKube && status != nil && status.VirtualizationMode == types.NOHYPER && ib.Type == types.IoNetEth {
+			if status != nil && status.VirtualizationMode == types.NOHYPER && ib.Type == types.IoNetEth {
+				// For NOHYPE containers, the adapter was released from
+				// pciback at domain activation time and the interface was
+				// moved into the container netns.  It returns to the root
+				// netns automatically when the container exits.
+				// Re-assign to pciback so it is ready for the next user
+				// (could be a VM or another container).
+				if ib.PciLong != "" && !ib.IsPCIBack {
+					log.Noticef("releaseAdapters: returning %s (%s) to pciback after NOHYPE use",
+						ib.Phylabel, ib.PciLong)
+					// Use PCIReserveGeneric directly (same reason as the
+					// PCIReleaseGeneric call in doAssignIoAdaptersToDomain:
+					// the containerd hypervisor's PCIReserve is a no-op).
+					if err := hypervisor.PCIReserveGeneric(ib.PciLong); err != nil {
+						log.Errorf("releaseAdapters: PCIReserve failed for %s: %v",
+							ib.PciLong, err)
+					} else {
+						ib.IsPCIBack = true
+					}
+				}
+				ib.UsedByUUID = nilUUID
 				continue
 			}
 			if ib.UsedByUUID != myUUID {
@@ -2314,8 +2391,13 @@ func reserveAdapters(ctx *domainContext, config types.DomainConfig) *types.Error
 			}
 			log.Functionf("reserveAdapters processing adapter %d %s phylabel %s",
 				adapter.Type, adapter.Name, ibp.Phylabel)
-			if ctx.hvTypeKube && config.VirtualizationMode == types.NOHYPER && ibp.Type == types.IoNetEth {
-				log.Noticef("reserveAdapters: ethernet io, skip reserve")
+			if config.VirtualizationMode == types.NOHYPER && ibp.Type == types.IoNetEth {
+				// For NOHYPE containers we do not need IO virtualization
+				// for ethernet adapters — we move the kernel interface
+				// into the container's network namespace instead.
+				// Still reserve (UsedByUUID) below, but skip PCI checks.
+				log.Noticef("reserveAdapters: NOHYPE ethernet io, skip PCI/IOV check for %s",
+					ibp.Phylabel)
 				continue
 			}
 			if ibp.AssignmentGroup == "" {
@@ -3434,7 +3516,19 @@ func updatePortAndPciBackIoMember(ctx *domainContext, ib *types.IoBundle, isPort
 	}
 
 	if !ib.KeepInHost && !ib.IsPCIBack {
-		if !ib.Error.Empty() {
+		if ib.UsedByUUID != nilUUID {
+			// Adapter is in active use by a domain — don't rebind to
+			// pciback.  For NOHYPE containers the adapter was
+			// intentionally released from pciback so the kernel
+			// network interface can be moved into the container's
+			// network namespace.  Without this guard,
+			// updatePortAndPciBackIoBundleAll (triggered by DNS or
+			// adapter-list changes) would immediately rebind the
+			// device to vfio-pci, destroying the interface before
+			// the OCI prestart hook can move it.
+			log.Functionf("Not assigning %s (%s) to pciback — in use by %s",
+				ib.Phylabel, ib.PciLong, ib.UsedByUUID)
+		} else if !ib.Error.Empty() {
 			log.Warningf("Not assigning %s (%s) to pciback due to error: %s at %s",
 				ib.Phylabel, ib.PciLong, ib.Error.String(), ib.Error.ErrorTime())
 		} else if ctx.deviceNetworkStatus.Testing && ib.Type.IsNet() {
