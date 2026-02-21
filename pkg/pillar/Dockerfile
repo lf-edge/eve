@@ -183,6 +183,7 @@ COPY scripts/device-steps.sh \
     scripts/handlezedserverconfig.sh \
     scripts/veth.sh \
     scripts/dhcpcd.sh \
+    scripts/direct-net.sh \
     scripts/copy-image-to-qcow.sh \
     scripts/check-eval-state.sh \
     /out/opt/zededa/bin/
