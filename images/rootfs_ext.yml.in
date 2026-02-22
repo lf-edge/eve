@@ -1,0 +1,44 @@
+# Extension EVE rootfs template - experimental (PoC)
+# Non-critical services blob (not bootable on its own).
+# Pairs with rootfs_core.yml.in to form a complete EVE image.
+#
+# Contains: kube, vector, debug, wwan, guacd, edgeview,
+# vtpm, memory-monitor, node-exporter
+
+services:
+  - name: kube
+    image: KUBE_TAG
+    cgroupsPath: /eve/services/kube
+    oomScoreAdj: -999
+  - name: vector
+    image: VECTOR_TAG
+    cgroupsPath: /eve/services/vector
+    oomScoreAdj: -999
+  - name: debug
+    image: DEBUG_TAG
+    cgroupsPath: /eve/services/debug
+    oomScoreAdj: -999
+  - name: wwan
+    image: WWAN_TAG
+    cgroupsPath: /eve/services/wwan
+    oomScoreAdj: -999
+  - name: guacd
+    image: GUACD_TAG
+    cgroupsPath: /eve/services/guacd
+    oomScoreAdj: -999
+  - name: edgeview
+    image: EDGEVIEW_TAG
+    cgroupsPath: /eve/services/eve-edgeview
+    oomScoreAdj: -800
+  - name: vtpm
+    image: VTPM_TAG
+    cgroupsPath: /eve/services/vtpm
+    oomScoreAdj: -999
+  - name: memory-monitor
+    image: MEMORY_MONITOR_TAG
+    cgroupsPath: /eve/services/memory-monitor
+    oomScoreAdj: -1000
+  - name: node-exporter
+    image: NODE_EXPORTER_TAG
+    cgroupsPath: /eve/services/node-exporter
+    oomScoreAdj: -999

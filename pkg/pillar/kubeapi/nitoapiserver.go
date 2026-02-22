@@ -17,6 +17,10 @@ import (
 
 // CreateOrUpdateNAD : create a new or update an existing NAD (NetworkAttachmentDefinition).
 func CreateOrUpdateNAD(log *base.LogObject, nadName, jsonSpec string) error {
+	if err := ensureKubeRuntime("CreateOrUpdateNAD"); err != nil {
+		return err
+	}
+
 	netClientset, err := GetNetClientSet()
 	if err != nil {
 		log.Errorf("CreateOrUpdateNAD: Failed to create netclientset: %v", err)
@@ -63,6 +67,10 @@ func CreateOrUpdateNAD(log *base.LogObject, nadName, jsonSpec string) error {
 
 // CheckEtherPassThroughNAD checks if network passthrough NetworkAttachmentDefinition is present
 func CheckEtherPassThroughNAD(nadName string) error {
+	if err := ensureKubeRuntime("CheckEtherPassThroughNAD"); err != nil {
+		return err
+	}
+
 	netClientset, err := GetNetClientSet()
 	if err != nil {
 		return err
@@ -81,6 +89,10 @@ func CheckEtherPassThroughNAD(nadName string) error {
 
 // DeleteNAD : delete NAD with the given name (NetworkAttachmentDefinition).
 func DeleteNAD(log *base.LogObject, nadName string) error {
+	if err := ensureKubeRuntime("DeleteNAD"); err != nil {
+		return err
+	}
+
 	netClientset, err := GetNetClientSet()
 	if err != nil {
 		log.Errorf("DeleteNAD: Failed to create netclientset: %v", err)

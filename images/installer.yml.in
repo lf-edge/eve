@@ -28,6 +28,7 @@ onboot:
     - /rootfs.img:/bits/rootfs.img:ro   # this is the rootfs it will install
     - /persist.img:/bits/persist.img:ro # this is the persist image
     - /config.img:/bits/config.img:ro   # this is the config image
+    - /rootfs-ext.img:/bits/rootfs-ext.img:ro # extension services for extsloader (split rootfs)
   - name: poweroff
     image: linuxkit/poweroff:401dc53c604c0b2179ed0369a6968fd4179cc176
     command: ["/bin/sh", "/poweroff.sh", "10"]
@@ -53,6 +54,9 @@ files:
     source: persist.img
   - path: /config.img
     source: config.img
+  - path: /rootfs-ext.img
+    source: rootfs-ext.img
+    optional: true
   - path: /EFI/BOOT/grub_include.cfg
     source: grub_installer.cfg
   - path: /etc/eve-platform

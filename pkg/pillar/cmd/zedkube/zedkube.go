@@ -205,6 +205,11 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	logger = loggerArg
 	log = logArg
 
+	if !base.IsHVTypeKube() {
+		log.Noticef("Run: kube runtime is not enabled, skipping %s", agentName)
+		return 0
+	}
+
 	zedkubeCtx := zedkube{
 		globalConfig:                       types.DefaultConfigItemValueMap(),
 		drainSkipK8sAPINotReachableTimeout: time.Duration(time.Second * types.DefaultDrainSkipK8sAPINotReachableTimeoutSeconds),
@@ -762,6 +767,10 @@ func handleK3sConfigOverrideChanged(currentGcp *types.ConfigItemValueMap, newGcp
 
 // WriteBase64Cfg - writes or removes a user defined base64 encoded config file
 func WriteBase64Cfg(parentDir string, filename string, base64Config string) error {
+	if !base.IsHVTypeKube() {
+		return fmt.Errorf("WriteBase64Cfg: kube runtime is not enabled")
+	}
+
 	dstFilepath := filepath.Join(parentDir, filename)
 	if len(base64Config) == 0 {
 		if _, err := os.Stat(dstFilepath); os.IsNotExist(err) {

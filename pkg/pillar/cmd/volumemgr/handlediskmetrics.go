@@ -274,6 +274,11 @@ func createOrUpdateDiskMetrics(ctx *volumemgrContext, wdName string) {
 	var excludeDirs []string
 	excludeDirs = append(excludeDirs, types.ReportDirPaths...)
 	excludeDirs = append(excludeDirs, types.AppPersistPaths...)
+	// External service images unpacked under /persist can contain many large files.
+	// Exclude them from per-file reporting to keep DiskMetric payload bounded.
+	excludeDirs = append(excludeDirs,
+		types.PersistDir+"/pkgs",
+		types.PersistDir+"/eve-services")
 	list, err := diskmetrics.FindLargeFiles(types.PersistDir, 1024*1024,
 		excludeDirs)
 	if err != nil {
