@@ -21,11 +21,16 @@ func getKernelMsg(loggerChan chan inputEntry) {
 
 	kmsg := parser.Parse()
 	for msg := range kmsg {
+		// Protect against bogus negative timestamps in kernel messages
+		ts := msg.Timestamp
+		if ts.Unix() < 0 {
+			ts = time.Now()
+		}
 		entry := inputEntry{
 			source:    "kernel",
 			severity:  types.SyslogKernelDefaultLogLevel,
 			content:   msg.Message,
-			timestamp: msg.Timestamp.Format(time.RFC3339Nano),
+			timestamp: ts.Format(time.RFC3339Nano),
 		}
 		if msg.Priority >= 0 {
 			entry.severity = types.SyslogKernelLogLevelStr[msg.Priority%8]
