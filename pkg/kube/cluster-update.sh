@@ -56,7 +56,7 @@ trigger_k3s_selfextraction() {
 # shellcheck source=pkg/kube/descheduler-utils.sh
 . /usr/bin/descheduler-utils.sh
 
-EdgeNodeInfoPath="/persist/status/zedagent/EdgeNodeInfo/global.json"
+EdgeNodeInfoPath="/run/zedagent/EdgeNodeInfo/global.json"
 COMP_UPDATE_PATH="/usr/bin/update-component"
 
 link_multus_into_k3s() {
@@ -196,6 +196,8 @@ Update_CheckClusterComponents() {
 # Update_RunDeschedulerOnBoot will run the descheduler to evict pods from the edge node
 # on boot. This is to allow rebalancing apps via re-scheduling them with an aim to meet
 # affinity as specified in the pod config.
+# We assume that when this is called zedagent has initialized and
+# published EdgeNodeInfo (from a checkpoint if disconnected),
 Update_RunDeschedulerOnBoot() {
     # Currently only run once per boot
     if [ -f /tmp/descheduler-ran-onboot ]; then
@@ -310,7 +312,7 @@ publishUpdateStatus() {
         return
     fi
 
-    node=$(jq -r '.DeviceName' < /persist/status/zedagent/EdgeNodeInfo/global.json | tr -d '\n')
+    node=$(jq -r '.DeviceName' < /run/zedagent/EdgeNodeInfo/global.json | tr -d '\n')
     logmsg "publishUpdateStatus() $node $component $status"
 
     pillarRootfs=/hostfs/containers/services/pillar/rootfs

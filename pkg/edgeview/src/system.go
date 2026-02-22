@@ -630,7 +630,7 @@ func getCipher() {
 		}
 	}
 
-	jfiles, err = listJSONFiles("/persist/status/zedagent/CipherContext")
+	jfiles, err = listJSONFiles("/run/zedagent/CipherContext")
 	if err == nil {
 		printColor("\n - Cipher Context:", colorCYAN)
 		for _, l := range jfiles {
@@ -647,7 +647,7 @@ func getCipher() {
 		}
 	}
 
-	jfiles, err = listJSONFiles("/persist/status/zedagent/ControllerCert")
+	jfiles, err = listJSONFiles("/run/zedagent/ControllerCert")
 	if err == nil {
 		printColor("\n - Controller Certs:", colorCYAN)
 		for _, l := range jfiles {
@@ -716,7 +716,7 @@ func runConfigItems() {
 
 func getConfigItems() types.ConfigItemValueMap {
 	var cfgItem types.ConfigItemValueMap
-	retbytes, err := os.ReadFile("/persist/status/zedagent/ConfigItemValueMap/global.json")
+	retbytes, err := os.ReadFile("/run/zedagent/ConfigItemValueMap/global.json")
 	if err != nil {
 		return cfgItem
 	}
@@ -1523,9 +1523,11 @@ func gzipTechSuppFile(ifileName string) (string, error) {
 	return ofileName, nil
 }
 
+// We assume that when this is called zedagent has initialized and
+// published EdgeNodeInfo (from a checkpoint if disconnected),
 func getDevInfo() types.EdgeNodeInfo {
 	var devInfo types.EdgeNodeInfo
-	jfiles, err := listJSONFiles("/persist/status/zedagent/EdgeNodeInfo")
+	jfiles, err := listJSONFiles("/run/zedagent/EdgeNodeInfo")
 	if err == nil {
 		for _, l := range jfiles {
 			retbytes1, err := os.ReadFile(l)

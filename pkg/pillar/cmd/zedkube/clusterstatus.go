@@ -348,6 +348,7 @@ func (z *zedkube) appIDHandler(w http.ResponseWriter, r *http.Request) {
 	uuidStr := strings.TrimPrefix(r.URL.Path, "/app")
 	uuidStr = strings.TrimPrefix(uuidStr, "/")
 
+	// XXX can remove second argument /persist/status
 	af := agentbase.GetApplicationInfo("/run/", "/persist/status/", "/persist/kubelog/", uuidStr)
 	if af.AppInfo == nil {
 		http.Error(w, "App not found", http.StatusNotFound)

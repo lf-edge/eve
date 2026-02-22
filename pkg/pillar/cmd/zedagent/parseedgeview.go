@@ -80,7 +80,7 @@ func parseEvConfig(ctx *getconfigContext, config *zconfig.EdgeDevConfig) {
 			removeEvFiles()
 		} else {
 			// need to validate the signature for JWT
-			err := verifyJWT(params)
+			err := verifyJWT(ctx, params)
 			if err == nil {
 				err = addEvFiles(evConfig, params)
 			}
@@ -93,15 +93,16 @@ func parseEvConfig(ctx *getconfigContext, config *zconfig.EdgeDevConfig) {
 	ctx.configEdgeview = &evConfig
 }
 
-func verifyJWT(params []string) error {
-	certBytes, err := os.ReadFile(types.ServerSigningCertFileName)
-	if err != nil {
-		log.Errorf("can not read signing cert: %v", err)
+func verifyJWT(ctx *getconfigContext, params []string) error {
+	var err error
+	config := lookupControllerSigningCert(ctx)
+	if config == nil {
+		err = fmt.Errorf("lookupControllerSigningCert: not found")
+		log.Error(err)
 		return err
 	}
-
 	var ecdsaKey *ecdsa.PublicKey
-	if ecdsaKey, err = jwt.ParseECPublicKeyFromPEM(certBytes); err != nil {
+	if ecdsaKey, err = jwt.ParseECPublicKeyFromPEM(config.Cert); err != nil {
 		log.Errorf("Unable to parse ECDSA public key: %v", err)
 		return err
 	}

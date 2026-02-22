@@ -4,14 +4,17 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # shellcheck disable=SC2034
-ENCC_FILE_PATH="/persist/status/zedagent/EdgeNodeClusterConfig/global.json"
+ENCC_FILE_PATH="/run/zedagent/EdgeNodeClusterConfig/global.json"
 
+# XXX also need to make this !persist
 # shellcheck disable=SC2034
 KUBECFG_FILE_PATH="/persist/status/zedkube/KubeConfig/global.json"
 
+# XXX need to unpersist this too
 # shellcheck disable=SC2034
 KCUS_FILE_PATH="/persist/status/zedagent/KubeClusterUpdateStatus/global.json"
 
+# XXX will callers wait for initial?
 ZedKube_KubeConfig_exists() {
     if [ -f "$KUBECFG_FILE_PATH" ]; then
         return 0

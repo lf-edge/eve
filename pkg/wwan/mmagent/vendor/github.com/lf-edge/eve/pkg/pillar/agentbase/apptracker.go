@@ -73,7 +73,7 @@ func GetApplicationInfo(rootRun, persistStatus, persistKubelog, AppUUID string) 
 	// 1) Get the Node Info
 	structName := "zedagent-EdgeNodeInfo"
 	nodeInfo := &types.EdgeNodeInfo{}
-	if structName, err = readJSONFile(persistStatus, structName, "global", nodeInfo); err != nil {
+	if structName, err = readJSONFile(rootRun, structName, "global", nodeInfo); err != nil {
 		return addHostnameAppInfo("unknown", appendFailedItem(appInfo, structName, "global", err))
 	}
 	ai := AppInfoItems{ // EdgeNodeInfo

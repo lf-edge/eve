@@ -473,6 +473,15 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		zedagentCtx.globalConfig.GlobalValueInt(types.NetworkDialTimeout),
 		zedagentCtx.agentMetrics)
 
+	// initialize ControllerCerts by reading from its /persist/checkpoint
+	// if that exists
+	initializeControllerCerts(zedagentCtx, ctrlClient)
+
+	// initialize a ConfigItemValueMap starting with the defaults,
+	// then parse only the ConfigItemValueMap parts from /persist/checkpoint/lastconfig,
+	// and then publish it.
+	initializeConfigItemValueMap(zedagentCtx, ctrlClient)
+
 	if parse != "" {
 		res, config := readValidateConfig(parse)
 		if !res {
@@ -621,6 +630,31 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	// Enter main zedagent event loop.
 	mainEventLoop(zedagentCtx, stillRunning) // never exits
 	return 0
+}
+
+// Use the .bak if /persist/checkpoint/controllercerts is missing or bad
+func initializeControllerCerts(ctx *zedagentContext, ctrlClient *controllerconn.Client) {
+	useBackup := false
+	err := ctrlClient.LoadSavedServerSigningCert(useBackup)
+	certChainBytes := ctrlClient.GetCertChainBytes()
+	if err != nil || certChainBytes == nil {
+		useBackup = true
+		err1 := ctrlClient.LoadSavedServerSigningCert(useBackup)
+		if err1 != nil {
+			log.Errorf("Primary and backup controllercerts checkpoint failed: %s, %s",
+				err, err1)
+		}
+		certChainBytes = ctrlClient.GetCertChainBytes()
+	}
+	log.Noticef("Found /persist/checkpoint/controllerCerts %d bytes",
+		len(certChainBytes))
+	if len(certChainBytes) == 0 {
+		return
+	}
+	// Parse and publish the controller certificates
+	// Note that any error will be logged by function so we
+	// ignore the return values
+	_, _ = parsePublishControllerCerts(ctx, certChainBytes)
 }
 
 func waitUntilInitializedFromNodeAgentStatus(ctx *zedagentContext, running *time.Ticker) {
@@ -1159,7 +1193,7 @@ func initPublications(zedagentCtx *zedagentContext) {
 	zedagentCtx.pubGlobalConfig, err = ps.NewPublication(pubsub.PublicationOptions{
 		AgentName:  agentName,
 		TopicType:  types.ConfigItemValueMap{},
-		Persistent: true,
+		Persistent: false,
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -1187,7 +1221,7 @@ func initPublications(zedagentCtx *zedagentContext) {
 
 	zedagentCtx.pubEdgeNodeClusterConfig, err = ps.NewPublication(pubsub.PublicationOptions{
 		AgentName:  agentName,
-		Persistent: true,
+		Persistent: false,
 		TopicType:  types.EdgeNodeClusterConfig{},
 	})
 	if err != nil {
@@ -1286,7 +1320,7 @@ func initPublications(zedagentCtx *zedagentContext) {
 	getconfigCtx.pubControllerCert, err = ps.NewPublication(
 		pubsub.PublicationOptions{
 			AgentName:  agentName,
-			Persistent: true,
+			Persistent: false,
 			TopicType:  types.ControllerCert{},
 		})
 	if err != nil {
@@ -1295,10 +1329,12 @@ func initPublications(zedagentCtx *zedagentContext) {
 	getconfigCtx.pubControllerCert.ClearRestarted()
 
 	// for CipherContextStatus Publisher
+	// XXX this now a local, non-persistent publication
+	// It is used for GetAll walks
 	getconfigCtx.pubCipherContext, err = ps.NewPublication(
 		pubsub.PublicationOptions{
 			AgentName:  agentName,
-			Persistent: true,
+			Persistent: false,
 			TopicType:  types.CipherContext{},
 		})
 	if err != nil {
@@ -1344,7 +1380,7 @@ func initPublications(zedagentCtx *zedagentContext) {
 		pubsub.PublicationOptions{
 			AgentName:  agentName,
 			TopicType:  types.EdgeNodeInfo{},
-			Persistent: true,
+			Persistent: false,
 		})
 	if err != nil {
 		log.Fatal(err)
@@ -1397,7 +1433,7 @@ func initPostOnboardSubs(zedagentCtx *zedagentContext) {
 		AgentName:     agentName,
 		MyAgentName:   agentName,
 		TopicImpl:     types.ConfigItemValueMap{},
-		Persistent:    true,
+		Persistent:    false,
 		Activate:      false,
 		Ctx:           zedagentCtx,
 		CreateHandler: handleGlobalConfigCreate,

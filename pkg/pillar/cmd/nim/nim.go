@@ -417,7 +417,7 @@ func (n *nim) initSubscriptions() (err error) {
 		AgentName:     "zedagent",
 		MyAgentName:   agentName,
 		TopicImpl:     types.ConfigItemValueMap{},
-		Persistent:    true,
+		Persistent:    false,
 		Activate:      false,
 		CreateHandler: n.handleGlobalConfigCreate,
 		ModifyHandler: n.handleGlobalConfigModify,
@@ -438,7 +438,7 @@ func (n *nim) initSubscriptions() (err error) {
 		Activate:    false,
 		WarningTime: warningTime,
 		ErrorTime:   errorTime,
-		Persistent:  true,
+		Persistent:  false,
 	})
 	if err != nil {
 		return err

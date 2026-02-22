@@ -7,15 +7,18 @@ import (
 	"bytes"
 	"crypto/tls"
 	"encoding/base64"
+	"encoding/hex"
 	"flag"
 	"fmt"
 	"mime"
 	"net/http"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	zcert "github.com/lf-edge/eve-api/go/certs"
 	"github.com/lf-edge/eve-api/go/register"
 	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
@@ -26,6 +29,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
+	"github.com/lf-edge/eve/pkg/pillar/utils/persist"
 	"github.com/lf-edge/eve/pkg/pillar/utils/wait"
 	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
@@ -165,7 +169,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		ErrorTime:     errorTime,
 		Activate:      false,
 		TopicImpl:     types.ConfigItemValueMap{},
-		Persistent:    true,
+		Persistent:    false,
 		Ctx:           &clientCtx,
 	})
 	if err != nil {
@@ -306,7 +310,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		// try to fetch the server certs chain first, if it's V2
 		if !gotServerCerts && ctrlClient.UsingV2API() {
 			// Set force so we re-download certs on each boot
-			gotServerCerts = fetchCertChain(ctrlClient, devtlsConfig, retryCount, true)
+			gotServerCerts = fetchCertChain(ctrlClient, devtlsConfig, retryCount)
 			if !gotServerCerts {
 				log.Errorf("Failed to fetch certs from %s. Wrong URL?",
 					serverNameAndPort)
@@ -385,7 +389,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 				server = nserver
 				serverNameAndPort = strings.TrimSpace(string(server))
 				// Force a refresh
-				ok := fetchCertChain(ctrlClient, devtlsConfig, retryCount, true)
+				ok := fetchCertChain(ctrlClient, devtlsConfig, retryCount)
 				if !ok && !ctrlClient.NoLedManager {
 					utils.UpdateLedManagerConfig(log, types.LedBlinkInvalidControllerCert)
 				}
@@ -415,7 +419,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 		case <-clientCtx.getCertsTimer.C:
 			// triggered by cert miss error in doGetUUID, so the TLS is device TLSConfig
-			ok := fetchCertChain(ctrlClient, devtlsConfig, retryCount, true)
+			ok := fetchCertChain(ctrlClient, devtlsConfig, retryCount)
 			if !ok && !ctrlClient.NoLedManager {
 				utils.UpdateLedManagerConfig(log, types.LedBlinkInvalidControllerCert)
 			}
@@ -672,15 +676,8 @@ func selfRegister(ctrlClient *controllerconn.Client, tlsConfig *tls.Config, devi
 }
 
 // fetch V2 certs from cloud, return GotCloudCerts and ServerIsV1 boolean
-// if got certs, the leaf is saved to types.ServerSigningCertFileName file
-func fetchCertChain(ctrlClient *controllerconn.Client, tlsConfig *tls.Config, retryCount int, force bool) bool {
-	if !force {
-		_, err := os.Stat(types.ServerSigningCertFileName)
-		if err == nil {
-			return true
-		}
-	}
-
+// if got certs, the chain is verified and then saved to /persist/checkpoint/controllercerts
+func fetchCertChain(ctrlClient *controllerconn.Client, tlsConfig *tls.Config, retryCount int) bool {
 	// certs API is always V2, and without UUID, use https
 	requrl := controllerconn.URLPathString(serverNameAndPort, true, nilUUID, "certs")
 	// Save and restore since we don't want the fetch of /certs to
@@ -715,23 +712,82 @@ func fetchCertChain(ctrlClient *controllerconn.Client, tlsConfig *tls.Config, re
 	}
 
 	ctrlClient.TLSConfig = tlsConfig
-	// verify the certificate chain
-	certBytes, err := ctrlClient.VerifyProtoSigningCertChain(rv.RespContents)
+	// verify the certificate chains down to the signing and ECDH leaves
+	signerCertBytes, err := ctrlClient.VerifyProtoSigningCertChain(rv.RespContents)
 	if err != nil {
 		errStr := fmt.Sprintf("controller certificate signature verify fail, %v", err)
 		log.Errorln("fetchCertChain: " + errStr)
 		return false
 	}
-
-	// write the signing cert to file
-	if err := ctrlClient.SaveServerSigningCert(certBytes); err != nil {
-		errStr := fmt.Sprintf("%v", err)
+	// Save signer cert in the client object
+	err = ctrlClient.StoreServerSigningCert(signerCertBytes)
+	if err != nil {
+		errStr := fmt.Sprintf("StoreServerSigningCert fail: %v", err)
 		log.Errorln("fetchCertChain: " + errStr)
-		return false
+		return false // Try again to fetch and save
 	}
-
+	// Compare against the existing /persist/checkpoint/controllercerts
+	// to see if any certs were added or deleted. If so we write a new
+	// checkpoint. Since zedagent has not yet published ControllerCerts
+	// we compare against the checkpoint
+	// Note that it is not sufficient to compare the protobuf bytes
+	// since the controller might generate this from a golang map (with
+	// random order) thus we extract and compare they keys for
+	// the ControllerCert objects, which are the hashes of the certs.
+	changed := false
+	newCertChainBytes := rv.RespContents
+	prevCertChainBytes, _, _ := persist.ReadControllerCerts(log, false)
+	if prevCertChainBytes == nil {
+		changed = true // Need to checkpoint
+	} else {
+		changed = compareControllerCertBytes(newCertChainBytes,
+			prevCertChainBytes)
+	}
+	if changed {
+		// This differs from last set of certs - save into /persist/checkpoint
+		persist.MaybeSaveControllerCerts(log, newCertChainBytes)
+	}
 	log.Functionf("client fetchCertChain: ok")
 	return true
+}
+
+// Return the sorted set of keys aka CertHash in the parsed protobuf
+func parseKeysFromControllerCerts(contents []byte) ([]string, error) {
+	cfgConfig := &zcert.ZControllerCert{}
+	err := proto.Unmarshal(contents, cfgConfig)
+	if err != nil {
+		err = fmt.Errorf("Unmarshal error %w", err)
+		return nil, err
+	}
+	var keys []string
+	cfgCerts := cfgConfig.GetCerts()
+
+	for _, cfgConfig := range cfgCerts {
+		keys = append(keys, hex.EncodeToString(cfgConfig.GetCertHash()))
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		return keys[i] < keys[j]
+	})
+	return keys, nil
+}
+
+// Returns true if there is a change/difference
+func compareControllerCertBytes(newCertChainBytes, prevCertChainBytes []byte) bool {
+	newKeys, _ := parseKeysFromControllerCerts(newCertChainBytes)
+	prevKeys, _ := parseKeysFromControllerCerts(prevCertChainBytes)
+	allNewKeys := strings.Join(newKeys, " ")
+	allPrevKeys := strings.Join(prevKeys, " ")
+	if allNewKeys != allPrevKeys {
+		log.Noticef("ControllerCerts changed keys from %s to %s",
+			allPrevKeys, allNewKeys)
+		return true
+	}
+	if !bytes.Equal(newCertChainBytes, prevCertChainBytes) {
+		// We expect this to happen on each boot due to random
+		// order
+		log.Functionf("controllercerts protobuf bytes differ but certs unchanged")
+	}
+	return false
 }
 
 func doGetUUID(ctx *clientContext, tlsConfig *tls.Config,

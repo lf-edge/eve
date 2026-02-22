@@ -62,6 +62,12 @@ func parseConfig(getconfigCtx *getconfigContext, config *zconfig.EdgeDevConfig,
 	defer resume()
 
 	getconfigCtx.deviceInfoFields.parseConfig(config)
+	if source == civmOnly {
+		// The initial pass to take care of ConfigItemValueMap
+		parseConfigItems(getconfigCtx, config, source)
+		log.Noticef("XXX parseConfig did ConfigItemValueMap")
+		return configOK
+	}
 
 	// Make sure we do not accidentally revert to an older configuration.
 	// This depends on the controller attaching config timestamp.
@@ -3421,26 +3427,32 @@ func handleDeviceOperation(ctxPtr *zedagentContext, op types.DeviceOperation) {
 	// nothing else to be done
 }
 
+// If we have not Cluster config, or if it doesn't parse, we publish
+// with only Initialized set to tell the subscribers we have provided
+// what we can and they can proceed.
+// If we have something useful we also set Valid to true.
 func parseEdgeNodeClusterConfig(getconfigCtx *getconfigContext,
 	config *zconfig.EdgeDevConfig) {
 
 	ctx := getconfigCtx.zedagentCtx
 	zcfgCluster := config.GetCluster()
 	if zcfgCluster == nil {
-		log.Functionf("parseEdgeNodeClusterConfig: Unpublishing EdgeNodeClusterConfig")
-		ctx.pubEdgeNodeClusterConfig.Unpublish("global")
+		// Tell subscribers we have at least processed the initial config
+		publishEmptyENCC(ctx)
 		return
 	}
 	ipAddr, ipNet, err := net.ParseCIDR(zcfgCluster.GetClusterIpPrefix())
 	if err != nil {
 		log.Errorf("parseEdgeNodeClusterConfig: ParseCIDR failed %s", err)
+		publishEmptyENCC(ctx)
 		return
 	}
 	ipNet.IP = ipAddr
 
 	joinServerIP := net.ParseIP(zcfgCluster.GetJoinServerIp())
 	if joinServerIP == nil {
-		log.Errorf("handleEdgeNodeConfigItem: parse JoinServerIP failed")
+		log.Errorf("parseEdgeNodeClusterConfig: parse JoinServerIP failed")
+		publishEmptyENCC(ctx)
 		return
 	}
 	var isJoinNode bool
@@ -3452,9 +3464,12 @@ func parseEdgeNodeClusterConfig(getconfigCtx *getconfigContext,
 	id, err := uuid.FromString(zcfgCluster.GetClusterId())
 	if err != nil {
 		log.Errorf("parseEdgeNodeClusterConfig: failed to parse UUID: %v", err)
+		publishEmptyENCC(ctx)
 		return
 	}
 	enClusterConfig := types.EdgeNodeClusterConfig{
+		Initialized:      true,
+		Valid:            true,
 		ClusterName:      zcfgCluster.GetClusterName(),
 		ClusterID:        types.UUIDandVersion{UUID: id},
 		ClusterInterface: zcfgCluster.GetClusterInterface(),
@@ -3471,6 +3486,7 @@ func parseEdgeNodeClusterConfig(getconfigCtx *getconfigContext,
 	if err != nil {
 		// TODO: Flag enClusterConfig with an error and propagate it to the controller.
 		log.Errorf("parseEdgeNodeClusterConfig: failed to parse encrypted cluster token: %v", err)
+		publishEmptyENCC(ctx)
 		return
 	}
 	// These share a cipherblock
@@ -3480,11 +3496,20 @@ func parseEdgeNodeClusterConfig(getconfigCtx *getconfigContext,
 		tieBreakerNodeID, err := uuid.FromString(zcfgCluster.GetTieBreakerNodeId())
 		if err != nil {
 			log.Errorf("parseEdgeNodeClusterConfig: failed to parse tie breaker UUID: %v", err)
+			publishEmptyENCC(ctx)
 			return
 		}
 		enClusterConfig.TieBreakerNodeID = types.UUIDandVersion{UUID: tieBreakerNodeID}
 	}
 
 	log.Functionf("parseEdgeNodeClusterConfig: ENCluster API, Config %+v, %v", zcfgCluster, enClusterConfig)
+	ctx.pubEdgeNodeClusterConfig.Publish("global", enClusterConfig)
+}
+
+func publishEmptyENCC(ctx *zedagentContext) {
+	log.Functionf("parseEdgeNodeClusterConfig: empty EdgeNodeClusterConfig")
+	enClusterConfig := types.EdgeNodeClusterConfig{
+		Initialized: true,
+	}
 	ctx.pubEdgeNodeClusterConfig.Publish("global", enClusterConfig)
 }
