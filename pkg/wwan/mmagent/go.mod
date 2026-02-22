@@ -6,18 +6,19 @@ toolchain go1.24.1
 
 require (
 	github.com/godbus/dbus/v5 v5.1.0
-	github.com/lf-edge/eve/pkg/pillar v0.0.0-20251111034223-e81177b68a3e
+	github.com/lf-edge/eve/pkg/pillar v0.0.0-20260203234815-b6b41165272c
 	github.com/miekg/dns v1.1.55
 	github.com/sirupsen/logrus v1.9.3
 	github.com/tatsushid/go-fastping v0.0.0-20160109021039-d7bb493dee3e
 	github.com/vishvananda/netlink v1.3.1
-	golang.org/x/sys v0.38.0
+	golang.org/x/sys v0.40.0
 )
 
 require (
 	cyphar.com/go-pathrs v0.2.1 // indirect
 	github.com/AdaLogics/go-fuzz-headers v0.0.0-20230811130428-ced1acdcaa24 // indirect
 	github.com/AdamKorcz/go-118-fuzz-build v0.0.0-20231105174938-2b5cbb29f3e2 // indirect
+	github.com/Masterminds/semver v1.5.0 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/Microsoft/hcsshim v0.11.7 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
@@ -63,8 +64,8 @@ require (
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/leodido/go-urn v1.2.4 // indirect
-	github.com/lf-edge/edge-containers v0.0.0-20250318135001-d53466c3f229 // indirect
-	github.com/lf-edge/eve-api/go v0.0.0-20251118212149-2208af2d72d9 // indirect
+	github.com/lf-edge/edge-containers v0.0.0-20251107072102-46bed3192170 // indirect
+	github.com/lf-edge/eve-api/go v0.0.0-20260116205402-bac92fb1f235 // indirect
 	github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20240315102754-0f6d1f182e0d // indirect
 	github.com/linuxkit/linuxkit/src/cmd/linuxkit v0.0.0-20240507172735-6d37353ca1ee // indirect
 	github.com/moby/locker v1.0.1 // indirect
