@@ -1,0 +1,6 @@
+# Requirements for dockerfile_linter.py with tree-sitter support
+tree-sitter>=0.20.0
+tree-sitter-dockerfile>=0.1.0
+
+# Development/testing dependencies (optional)
+pytest>=7.0.0
