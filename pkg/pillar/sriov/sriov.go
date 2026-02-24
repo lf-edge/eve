@@ -250,16 +250,16 @@ func AsyncGetVF(ctx context.Context, device string, expectedVfCount uint8) chan 
 
 // EthVF must match EthVF structure in devcommon.proto
 type EthVF struct {
-	Index   uint8
-	PciLong string // BFD notation
-	Mac     string
-	VlanID  uint16
+	Index   uint8  `json:",omitempty"`
+	PciLong string `json:",omitempty"` // BFD notation
+	Mac     string `json:",omitempty"`
+	VlanID  uint16 `json:",omitempty"`
 }
 
 // VFList is list of VF for given PF (Eth device)
 type VFList struct {
-	Count uint8
-	Data  []EthVF
+	Count uint8   `json:",omitempty"`
+	Data  []EthVF `json:",omitempty"`
 }
 
 // GetInfo get information on VF for given VF
