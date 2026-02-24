@@ -1,0 +1,9 @@
+diff --git a/pkg/kube/kubevirt-features.yaml b/pkg/kube/kubevirt-features.yaml
+index 9f0aa6bd6..31dae3035 100644
+--- a/pkg/kube/kubevirt-features.yaml
++++ b/pkg/kube/kubevirt-features.yaml
+@@ -16,3 +16,4 @@ spec:
+         - Snapshot
+         - HostDevices
+         - GPU
++        - VideoConfig
