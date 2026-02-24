@@ -25,13 +25,13 @@ import (
 )
 
 type AssignableAdapters struct {
-	Initialized  bool
-	IoBundleList []IoBundle
+	Initialized  bool       `json:",omitempty"`
+	IoBundleList []IoBundle `json:",omitempty"`
 }
 
 type ioBundleErrorBase struct {
-	ErrStr  string
-	TypeStr string
+	ErrStr  string `json:",omitempty"`
+	TypeStr string `json:",omitempty"`
 }
 
 func (i ioBundleErrorBase) Error() string {
@@ -40,8 +40,8 @@ func (i ioBundleErrorBase) Error() string {
 
 // IOBundleError is an error stored in IoBundles that can be marshalled
 type IOBundleError struct {
-	Errors      []ioBundleErrorBase
-	TimeOfError time.Time
+	Errors      []ioBundleErrorBase `json:",omitempty"`
+	TimeOfError time.Time           `json:",omitempty"`
 }
 
 // ErrorTime returns the time of the last error added
@@ -129,82 +129,82 @@ func (iobe *IOBundleError) Clear() {
 type IoBundle struct {
 	// Type
 	//	Type of the IoBundle
-	Type IoType
+	Type IoType `json:",omitempty"`
 	// Phylabel
 	//	Label on the outside of the enclosure
-	Phylabel string
+	Phylabel string `json:",omitempty"`
 
 	// Logical Label assigned to the Adapter. Could match Phylabel
 	// or could be a user-chosen string like "shopfloor"
-	Logicallabel string
+	Logicallabel string `json:",omitempty"`
 
 	// Assignment Group, is unique label that is applied across PhysicalIOs
 	// Entire group can be assigned to application or nothing at all
 	// If this is an empty string it means the IoBundle can not be assigned.
-	AssignmentGroup string
+	AssignmentGroup string `json:",omitempty"`
 
 	// Parent Assignment Group is there to reference the parent assignment group in order to make the device
 	// dependent on a different device.
 	// Currently the concrete reason to do this is to make a usb device dependent on the PCI address the USB
 	// controller is using to prevent passthrough of the USB controller in one application while trying to passthrough
 	// a USB device on this controller to another application.
-	ParentAssignmentGroup string
+	ParentAssignmentGroup string `json:",omitempty"`
 
-	Usage zcommon.PhyIoMemberUsage
+	Usage zcommon.PhyIoMemberUsage `json:",omitempty"`
 
 	// Cost is zero for the free ports; less desirable ports have higher numbers
-	Cost uint8
+	Cost uint8 `json:",omitempty"`
 
 	// The following set of I/O addresses and info/aliases are used to find
 	// a device, and also to configure it.
 	// XXX TBD: Add PciClass, PciVendor and PciDevice strings as well
 	// for matching
-	Ifname string // Matching for network PCI devices e.g., "eth1"
+	Ifname string `json:",omitempty"` // Matching for network PCI devices e.g., "eth1"
 
 	// Attributes from controller but can also be set locally.
-	PciLong string // Specific PCI bus address in Domain:Bus:Device.Function syntax
+	PciLong string `json:",omitempty"` // Specific PCI bus address in Domain:Bus:Device.Function syntax
 	// For non-PCI devices such as the ISA serial ports we have:
 	// XXX: Why is IRQ a string?? Should convert it into Int.
-	Irq        string // E.g., "5"
-	Ioports    string // E.g., "2f8-2ff"
-	Serial     string // E.g., "/dev/ttyS1"
-	UsbAddr    string // E.g., "1:2.3"
-	UsbProduct string // E.g., "0951:1666"
+	Irq        string `json:",omitempty"` // E.g., "5"
+	Ioports    string `json:",omitempty"` // E.g., "2f8-2ff"
+	Serial     string `json:",omitempty"` // E.g., "/dev/ttyS1"
+	UsbAddr    string `json:",omitempty"` // E.g., "1:2.3"
+	UsbProduct string `json:",omitempty"` // E.g., "0951:1666"
 
 	// Attributes Derived and assigned locally ( not from controller)
 
-	Unique  string // From firmware_node symlink; used for debug checks
-	MacAddr string // Set for networking adapters. XXX Note used for match.
+	Unique  string `json:",omitempty"` // From firmware_node symlink; used for debug checks
+	MacAddr string `json:",omitempty"` // Set for networking adapters. XXX Note used for match.
 
 	// UsedByUUID
 	//	Application UUID ( Can be Dom0 too ) that owns the Bundle.
 	//	For unassigned adapters, this is not set.
-	UsedByUUID uuid.UUID
+	UsedByUUID uuid.UUID `json:",omitempty"`
 
 	// IsPciBack
 	//	Is the IoBundle assigned to pciBack; means other bundles in the same group are also assigned
 	//  If the device is managed by dom0, this is False.
 	//  If the device is ( or to be ) managed by DomU, this is True
-	IsPCIBack bool // Assigned to pciback
-	IsPort    bool // Whole or part of the bundle is a zedrouter port
+	IsPCIBack bool `json:",omitempty"` // Assigned to pciback
+	IsPort    bool `json:",omitempty"` // Whole or part of the bundle is a zedrouter port
 	// Do not put device under pciBack, instead keep it in dom0 as long as it is not assigned to any application.
 	// In other words, this does not prevent assignments but keeps unassigned devices visible to EVE.
-	KeepInHost bool
-	Error      IOBundleError
+	KeepInHost bool          `json:",omitempty"`
+	Error      IOBundleError `json:",omitempty"`
 
 	// Only used in PhyIoNetEthPF
-	Vfs sriov.VFList
+	Vfs sriov.VFList `json:",omitempty"`
 	// Only used in PhyIoNetEthVF
-	VfParams VfInfo
+	VfParams VfInfo `json:",omitempty"`
 	// Used for additional attributes
-	Cbattr map[string]string
+	Cbattr map[string]string `json:",omitempty"`
 }
 
 // VfInfo Stores information about Virtual Function (VF)
 type VfInfo struct {
-	Index   uint8
-	VlanID  uint16
-	PFIface string
+	Index   uint8  `json:",omitempty"`
+	VlanID  uint16 `json:",omitempty"`
+	PFIface string `json:",omitempty"`
 }
 
 // Really a constant
