@@ -1,7 +1,7 @@
 package v1
 
 import (
-	"github.com/pborman/uuid"
+	"github.com/google/uuid"
 	"k8s.io/apimachinery/pkg/types"
 )
 
@@ -74,12 +74,6 @@ func SetDefaults_DiskDevice(obj *DiskDevice) {
 	}
 }
 
-func SetDefaults_Watchdog(obj *Watchdog) {
-	if obj.I6300ESB == nil {
-		obj.I6300ESB = &I6300ESBWatchdog{}
-	}
-}
-
 func SetDefaults_CDRomTarget(obj *CDRomTarget) {
 	if obj.ReadOnly == nil {
 		obj.ReadOnly = _true
@@ -98,15 +92,9 @@ func SetDefaults_FeatureSpinlocks(obj *FeatureSpinlocks) {
 	}
 }
 
-func SetDefaults_I6300ESBWatchdog(obj *I6300ESBWatchdog) {
-	if obj.Action == "" {
-		obj.Action = WatchdogActionReset
-	}
-}
-
 func SetDefaults_Firmware(obj *Firmware) {
 	if obj.UUID == "" {
-		obj.UUID = types.UID(uuid.NewRandom().String())
+		obj.UUID = types.UID(uuid.NewString())
 	}
 }
 
@@ -168,19 +156,6 @@ func SetDefaults_Probe(probe *Probe) {
 	}
 }
 
-func SetDefaults_NetworkInterface(obj *VirtualMachineInstance) {
-	autoAttach := obj.Spec.Domain.Devices.AutoattachPodInterface
-	if autoAttach != nil && *autoAttach == false {
-		return
-	}
-
-	// Override only when nothing is specified
-	if len(obj.Spec.Networks) == 0 {
-		obj.Spec.Domain.Devices.Interfaces = []Interface{*DefaultBridgeNetworkInterface()}
-		obj.Spec.Networks = []Network{*DefaultPodNetwork()}
-	}
-}
-
 func DefaultBridgeNetworkInterface() *Interface {
 	iface := &Interface{
 		Name: "default",
@@ -191,31 +166,11 @@ func DefaultBridgeNetworkInterface() *Interface {
 	return iface
 }
 
-func DefaultSlirpNetworkInterface() *Interface {
-	iface := &Interface{
-		Name: "default",
-		InterfaceBindingMethod: InterfaceBindingMethod{
-			Slirp: &InterfaceSlirp{},
-		},
-	}
-	return iface
-}
-
 func DefaultMasqueradeNetworkInterface() *Interface {
 	iface := &Interface{
 		Name: "default",
 		InterfaceBindingMethod: InterfaceBindingMethod{
 			Masquerade: &InterfaceMasquerade{},
-		},
-	}
-	return iface
-}
-
-func DefaultMacvtapNetworkInterface(ifaceName string) *Interface {
-	iface := &Interface{
-		Name: ifaceName,
-		InterfaceBindingMethod: InterfaceBindingMethod{
-			Macvtap: &InterfaceMacvtap{},
 		},
 	}
 	return iface
