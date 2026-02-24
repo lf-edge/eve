@@ -3,12 +3,24 @@
 CTR_CMD="ctr --namespace services.linuxkit"
 CTR_UA_CMD="ctr --namespace eve-user-apps"
 KVM_RUN_DIR="/run/hypervisor/kvm"
+APP_CONFIG_DIR="/run/zedagent/AppInstanceConfig"
+APP_STATUS_DIR="/run/zedmanager/AppInstanceStatus"
+
+# Locate jq: use the binary shipped inside the pillar onboot container.
+# The binary needs libonig from the same sysroot, so we set LD_LIBRARY_PATH.
+_JQ_SYSROOT="/containers/onboot/004-pillar-onboot/lower"
+jq() { LD_LIBRARY_PATH="${_JQ_SYSROOT}/usr/lib" "${_JQ_SYSROOT}/usr/bin/jq" "$@"; }
 
 help() {
   cat <<__EOT__
 Welcome to EVE!
-  commands: enter [service] [command (assumed sh)]
-            enter-user-app <service>
+  commands: app list                List user applications with display names
+            app enter <app>         Enter user app (real shell for NOHYPE containers;
+                                    containerd-shim context for VM/shim-VM apps —
+                                    use 'app console' for VM interactive access)
+            app console             List available app consoles
+            app console <console>   Attach to an application console
+            enter [service] [command (assumed sh)]
             exec [--fork] [service] command
             list
             status
@@ -16,8 +28,6 @@ Welcome to EVE!
             pause <service>
             resume <service>
             destroy <service>
-            list-app-consoles   Outputs list of available consoles for attach
-            attach-app-console <console id>   Attach to the application console, see 'eve list-app-consoles' for details
             persist list
             persist attach <disk>
             config mount <mountpoint>
@@ -33,6 +43,11 @@ Welcome to EVE!
             version
             uuid
             hv
+
+  deprecated aliases (kept for backward compatibility):
+            enter-user-app <app>           Same as 'app enter <app>'
+            list-app-consoles              Same as 'app console'
+            attach-app-console <console>   Same as 'app console <console>'
 __EOT__
   exit 1
 }
@@ -131,6 +146,257 @@ is_in_debug_service() {
     grep -q '/eve/services/debug' < /proc/self/cgroup
 }
 
+# --- App subcommand functions ---
+
+# VmMode values (from pkg/pillar/types/domainmgrtypes.go, iota+0)
+VMMODE_NOHYPER=4
+
+# Map VmMode numeric value to a human-readable string.
+vmmode_to_string() {
+    case "$1" in
+        0) echo "PV" ;;
+        1) echo "HVM" ;;
+        3) echo "FML" ;;
+        4) echo "NOHYPE" ;;
+        5) echo "LEGACY" ;;
+        *) echo "?" ;;
+    esac
+}
+
+# Determine app type string: "VM(<mode>)" or "CONTAINER(<mode>)"
+# by checking whether the boot image is a container image (ContentFormat==8)
+# or a VM disk image.  ContentFormat comes from VolumeRefStatusList in
+# AppInstanceStatus; VirtualizationMode comes from AppInstanceConfig.
+#   ContentFormat 8 = Format_CONTAINER (see eve-api config/storage.pb.go)
+# Usage: app_type_string <cfg_file> <status_file>
+app_type_string() {
+    _cfg="$1"
+    _sts="$2"
+    _vmode=$(jq -r '.FixedResources.VirtualizationMode // 0' "$_cfg" 2>/dev/null)
+    _vmode_str=$(vmmode_to_string "$_vmode")
+    # Check if any volume has ContentFormat==8 (CONTAINER)
+    _is_container=""
+    if [ -f "$_sts" ]; then
+        _is_container=$(jq -r \
+            '[.VolumeRefStatusList[]? | .ContentFormat] | if any(. == 8) then "yes" else "" end' \
+            "$_sts" 2>/dev/null)
+    fi
+    if [ "$_is_container" = "yes" ]; then
+        echo "CONTAINER(${_vmode_str})"
+    else
+        echo "VM(${_vmode_str})"
+    fi
+}
+
+# Map SwState numeric value (from pkg/pillar/types/types.go) to a
+# human-readable string.  The enum starts at iota+100.
+swstate_to_string() {
+    case "$1" in
+        100) echo "INITIAL" ;;
+        101) echo "RESOLVING_TAG" ;;
+        102) echo "RESOLVED_TAG" ;;
+        103) echo "DOWNLOADING" ;;
+        104) echo "DOWNLOADED" ;;
+        105) echo "VERIFYING" ;;
+        106) echo "VERIFIED" ;;
+        107) echo "LOADING" ;;
+        108) echo "LOADED" ;;
+        109) echo "CREATING_VOLUME" ;;
+        110) echo "CREATED_VOLUME" ;;
+        111) echo "INSTALLED" ;;
+        112) echo "AWAITNETWORKINSTANCE" ;;
+        113) echo "START_DELAYED" ;;
+        114) echo "BOOTING" ;;
+        115) echo "RUNNING" ;;
+        116) echo "PAUSING" ;;
+        117) echo "PAUSED" ;;
+        118) echo "HALTING" ;;
+        119) echo "HALTED" ;;
+        120) echo "BROKEN" ;;
+        121) echo "UNKNOWN" ;;
+        122) echo "PENDING" ;;
+        123) echo "SCHEDULING" ;;
+        124) echo "FAILED" ;;
+          *) echo "UNKNOWN($1)" ;;
+    esac
+}
+
+app_list() {
+    printf "%-20s %-38s %-18s %s\n" "DISPLAY NAME" "APP UUID" "TYPE" "STATUS"
+    printf "%-20s %-38s %-18s %s\n" "------------" "--------" "----" "------"
+    for _cfg in "${APP_CONFIG_DIR}"/*.json; do
+        [ -f "$_cfg" ] || continue
+        _uuid=$(basename "$_cfg" .json)
+        _dname=$(json_field "$_cfg" DisplayName)
+        [ -z "$_dname" ] && _dname="-"
+        _state_str="UNKNOWN"
+        _status_file="${APP_STATUS_DIR}/${_uuid}.json"
+        if [ -f "$_status_file" ]; then
+            _state_num=$(json_field "$_status_file" State)
+            _state_str=$(swstate_to_string "$_state_num")
+        fi
+        _type_str=$(app_type_string "$_cfg" "$_status_file")
+        printf "%-20s %-38s %-18s %s\n" "$_dname" "$_uuid" "$_type_str" "$_state_str"
+    done
+}
+
+app_enter() {
+    [ -z "$1" ] && help
+    RESOLVED=$(resolve_user_app "$1")
+    _rc=$?
+    if [ "$_rc" -eq 2 ]; then
+        echo "ERROR: app '$1' is halted (no running container)."
+        echo "Use 'eve app list' to see app status."
+        exit 1
+    elif [ -z "$RESOLVED" ]; then
+        echo "ERROR: no user app matching '$1' found."
+        echo "Use 'eve app list' to see available apps."
+        exit 1
+    fi
+    # Warn if this is not a native (NOHYPE) container
+    _enter_uuid=$(get_uuid_from_container_id "$RESOLVED")
+    _cfg_file="${APP_CONFIG_DIR}/${_enter_uuid}.json"
+    _sts_file="${APP_STATUS_DIR}/${_enter_uuid}.json"
+    if [ -f "$_cfg_file" ]; then
+        _vmode=$(jq -r '.FixedResources.VirtualizationMode // 0' "$_cfg_file" 2>/dev/null)
+        if [ "$_vmode" != "$VMMODE_NOHYPER" ]; then
+            _type_str=$(app_type_string "$_cfg_file" "$_sts_file")
+            echo "WARNING: this app is ${_type_str}, not a native container."
+            echo "You are entering the containerd-shim context, not the application itself."
+            echo "Use 'eve app console <console-id>' for interactive VM access."
+            echo ""
+        fi
+    fi
+    _shell=$(${CTR_UA_CMD} c info "${RESOLVED}" 2>/dev/null \
+        | jq -r '.Spec.process.env[] | select(startswith("SHELL=")) | sub("SHELL=";"")' 2>/dev/null)
+    if [ -z "$_shell" ]; then
+        if ${CTR_UA_CMD} t exec --exec-id "_probe_$$" "${RESOLVED}" /bin/bash -c "exit 0" >/dev/null 2>&1; then
+            _shell=/bin/bash
+        else
+            _shell=/bin/sh
+        fi
+    fi
+    # shellcheck disable=SC2046,SC2086
+    ${CTR_UA_CMD} t exec -t --exec-id $(basename $(mktemp)) ${RESOLVED} ${_shell} -l
+}
+
+app_console_list() {
+    if ! is_in_debug_service; then
+        eve enter debug "eve app console"
+        exit
+    fi
+    printf "PID\tAPP-UUID\t\t\t\tCONS-TYPE\tCONS-ID\n"
+    # shellcheck disable=SC3045
+    printf "---\t--------\t\t\t\t---------\t---------\n"
+    for pid in $(pgrep qemu-system); do
+        # shellcheck disable=SC2009
+        name=$(ps -p "$pid" --no-headers -o command | grep -o '\-name\s\+[^ ]\+' | awk '{print $2}')
+        # shellcheck disable=SC2009
+        uuid=$(ps -p "$pid" --no-headers -o command | grep -o '\-uuid\s\+[^ ]\+' | awk '{print $2}')
+        dir="$KVM_RUN_DIR/$name"
+        if [ -e "$dir/shim-cons" ]; then
+            printf "%s\t%s\tCONTAINER\t%s/cons\n" "$pid" "$uuid" "$name"
+            printf "%s\t%s\tVM\t\t%s/shim-cons\n" "$pid" "$uuid" "$name"
+        else
+            printf "%s\t%s\tVM\t\t%s/cons\n" "$pid" "$uuid" "$name"
+        fi
+    done
+}
+
+app_console_attach() {
+    if ! is_in_debug_service; then
+        eve enter debug "eve app console $1"
+        exit
+    fi
+    CONS="$KVM_RUN_DIR/$1"
+    if [ ! -e "$CONS" ]; then
+        echo "Error: console '$1' does not exist."
+        echo "Try 'eve app console' to list available consoles."
+        exit 1
+    fi
+    PTY=$(dirname "$CONS")/pty-$$
+    trap 'kill $SOCAT_PID 2>/dev/null' EXIT HUP INT QUIT TERM
+    socat "unix-connect:$CONS" "pty,link=$PTY" &
+    SOCAT_PID=$!
+    sleep 1
+    tio "$PTY"
+}
+
+# Extract the app UUID from a container ID (strip trailing .N.M suffix)
+get_uuid_from_container_id() {
+    echo "$1" | sed 's/\.[0-9]*\.[0-9]*$//'
+}
+
+# Read a top-level string field from a JSON file.
+# Usage: json_field <file> <field>
+json_field() {
+    jq -r ".$2 // empty" "$1" 2>/dev/null
+}
+
+# Look up the DisplayName for a given app UUID from AppInstanceConfig.
+# Falls back to AppInstanceStatus under /run/zedmanager if needed.
+get_app_display_name() {
+    _uuid="$1"
+    _name=""
+    if [ -f "${APP_CONFIG_DIR}/${_uuid}.json" ]; then
+        _name=$(json_field "${APP_CONFIG_DIR}/${_uuid}.json" DisplayName)
+    fi
+    if [ -z "$_name" ] && [ -f "${APP_STATUS_DIR}/${_uuid}.json" ]; then
+        _name=$(json_field "${APP_STATUS_DIR}/${_uuid}.json" DisplayName)
+    fi
+    echo "$_name"
+}
+
+# Resolve a user-friendly display name to a container ID.
+# If the argument already matches a container ID, return it as-is.
+# Otherwise search AppInstanceConfig for a matching DisplayName,
+# then pick the container that has a running task (preferred)
+# or the first matching container.
+resolve_user_app() {
+    _arg="$1"
+    # Check if argument is already a valid container ID
+    if ${CTR_UA_CMD} c ls -q 2>/dev/null | grep -qx "$_arg"; then
+        echo "$_arg"
+        return 0
+    fi
+    # Treat as display name: find the UUID whose DisplayName matches
+    _match_uuid=""
+    for _cfg in "${APP_CONFIG_DIR}"/*.json; do
+        [ -f "$_cfg" ] || continue
+        _cfg_name=$(json_field "$_cfg" DisplayName)
+        if [ "$_cfg_name" = "$_arg" ]; then
+            _match_uuid=$(basename "$_cfg" .json)
+            break
+        fi
+    done
+    if [ -z "$_match_uuid" ]; then
+        echo ""
+        return 1  # not found
+    fi
+    # Find containers belonging to this UUID; prefer one with a running task
+    _running=""
+    _first=""
+    for _cid in $(${CTR_UA_CMD} c ls -q 2>/dev/null); do
+        _cid_uuid=$(get_uuid_from_container_id "$_cid")
+        if [ "$_cid_uuid" = "$_match_uuid" ]; then
+            [ -z "$_first" ] && _first="$_cid"
+            if ${CTR_UA_CMD} t ls 2>/dev/null | grep -q "^${_cid} "; then
+                _running="$_cid"
+                break
+            fi
+        fi
+    done
+    if [ -n "$_running" ]; then
+        echo "$_running"
+        return 0
+    elif [ -n "$_first" ]; then
+        echo "$_first"
+        return 0
+    fi
+    echo ""
+    return 2  # found but no container (halted)
+}
+
 case "$1" in
     exec) NO_FORK="-F"
           if [ "$2" = "--fork" ]; then
@@ -145,60 +411,16 @@ case "$1" in
           # shellcheck disable=SC2086
           exec nsenter ${NO_FORK} -a -t "${ID:-1}" "$CMD" "$@"
           ;;
-    list-app-consoles)
-          if ! is_in_debug_service; then
-              # List can be executed only in debug service container
-              # due to missing convenient GNU tools
-              eve enter debug "eve $1"
-              exit
-          fi
-          printf "PID\tAPP-UUID\t\t\t\tCONS-TYPE\tCONS-ID\n"
-          # shellcheck disable=SC3045
-          printf "---\t--------\t\t\t\t---------\t---------\n"
-          for pid in $(pgrep qemu-system); do
-              # shellcheck disable=SC2009
-              name=$(ps -p "$pid" --no-headers -o command | grep -o '\-name\s\+[^ ]\+' | awk '{print $2}')
-              # shellcheck disable=SC2009
-              uuid=$(ps -p "$pid" --no-headers -o command | grep -o '\-uuid\s\+[^ ]\+' | awk '{print $2}')
-              dir="$KVM_RUN_DIR/$name"
-              if [ -e "$dir/shim-cons" ]; then
-                  printf "%s\t%s\tCONTAINER\t%s/cons\n" "$pid" "$uuid" "$name"
-                  printf "%s\t%s\tVM\t\t%s/shim-cons\n" "$pid" "$uuid" "$name"
-              else
-                  printf "%s\t%s\tVM\t\t%s/cons\n" "$pid" "$uuid" "$name"
-              fi
-          done
-          ;;
-    attach-app-console) [ -z "$2" ] && help
-          if ! is_in_debug_service; then
-              # Attach can be executed only in debug service container
-              # due to missing convenient GNU tools
-              eve enter debug "eve $1 $2"
-              exit
-          fi
-          CONS="$KVM_RUN_DIR/$2"
-          if [ ! -e "$CONS" ]; then
-              echo "Error: console '$2' does not exist."
-              echo "Try to use 'eve list-app-consoles'."
-              exit 1
-          fi
-          PTY=$(dirname "$CONS")/pty-$$
-          # Start socat in background to pump bytes between console socket and PTY
-          trap 'kill $SOCAT_PID 2>/dev/null' EXIT HUP INT QUIT TERM
-          socat "unix-connect:$CONS" "pty,link=$PTY" &
-          SOCAT_PID=$!
-          # Give some time to socat to create PTY
-          sleep 1
-          # Start tio
-          tio "$PTY"
+     app) case "$2" in
+            list)    app_list ;;
+            enter)   app_enter "$3" ;;
+            console) if [ -z "$3" ]; then app_console_list; else app_console_attach "$3"; fi ;;
+            *)       help ;;
+          esac
           ;;
    enter) PROMPT="[${2:-pillar}] \u@\h:\w\$ "
           # shellcheck disable=SC2086
           ${CTR_CMD} t exec -t --exec-id $(basename $(mktemp)) ${2:-pillar} ${3:-/bin/sh -lc "export PS1='$PROMPT'; exec /bin/sh"}
-          ;;
-   enter-user-app) [ -z "$2" ] && help
-          # shellcheck disable=SC2046,SC2086
-          ${CTR_UA_CMD} t exec -t --exec-id $(basename $(mktemp)) $2 sh -l
           ;;
     list) ${CTR_CMD} c ls
           ;;
@@ -378,6 +600,18 @@ __EOT__
                *) help
                      ;;
           esac
+          ;;
+ # Backward-compatible aliases for deprecated commands
+ list-app-consoles)
+          app_console_list
+          ;;
+ attach-app-console)
+          [ -z "$2" ] && help
+          app_console_attach "$2"
+          ;;
+ enter-user-app)
+          [ -z "$2" ] && help
+          app_enter "$2"
           ;;
        *) help
           ;;

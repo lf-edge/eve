@@ -97,14 +97,78 @@ tail -F /run/diag.out
 
 In addition this information is provided to application instances on the device using [the diag API endpoint](./ECO-METADATA.md).
 
-## Application console
+## Application management
 
-A running application on an EVE device has a console for input or output. You can attach to the application console from the EVE device as a control terminal if the application (VM or Container) listens to the TTY line and communicates with the virtual console /dev/hvc0 device. For example for popular linux distributions deployed as VM application this is usually the case.
+EVE provides the `eve app` family of subcommands for managing user applications
+from the device console.
 
-First list applications consoles of all running QEMU (KVM) processes:
+### Listing applications
+
+Use `eve app list` to display all configured applications together with their
+current state. The state is read from the pillar `AppInstanceStatus` published
+by `zedmanager`, so it reflects the authoritative EVE state machine (RUNNING,
+HALTED, BOOTING, etc.):
 
 ```bash
-# eve list-app-consoles
+# eve app list
+DISPLAY NAME         APP UUID                               TYPE               STATUS
+------------         --------                               ----               ------
+Log-Test             c401b61d-9ade-48fd-ac4b-98741a52480a   CONTAINER(NOHYPE)  RUNNING
+GH-Runner            e30db90e-bf75-4ceb-b04d-b372c3dc121b   CONTAINER(HVM)     RUNNING
+My-VM                a1234567-0000-1111-2222-333344445555   VM(HVM)            HALTED
+```
+
+The **TYPE** column shows the application kind and virtualization mode:
+
+* `VM(<mode>)` — a virtual machine application (boot image is a VM disk).
+* `CONTAINER(<mode>)` — a container application (boot image has
+  `ContentFormat` = `CONTAINER`).
+
+The mode in parentheses reflects the `VirtualizationMode` from
+`AppInstanceConfig`: `PV`, `HVM`, `FML`, `NOHYPE`, or `LEGACY`. Native
+containers that run directly on the host (without a shim VM) are shown as
+`CONTAINER(NOHYPE)`.
+
+### Entering a user application
+
+Use `eve app enter` to get a shell inside a running application. The argument
+can be either the application display name or a container ID:
+
+```bash
+# eve app enter Log-Test
+```
+
+The command detects the available shell inside the container (`bash` or `sh`)
+and starts an interactive session.
+
+The behavior depends on the application type:
+
+* **Native (NOHYPE) containers** — you get a shell directly inside the
+  application container. This is the most useful case: you are in the real
+  application filesystem and can inspect processes, files, networking, etc.
+* **Containers running inside a shim VM** — you get a shell inside the
+  `containerd-shim` process, *not* inside the guest VM. This is still useful
+  for inspecting the container's filesystem and OCI configuration, but you
+  are not inside the running application. To reach the application itself,
+  use `eve app console <console-id>` to attach to the VM console (see
+  [Application console](#application-console) below).
+* **VM applications** — similar to the shim-VM case, `eve app enter` brings
+  you into the containerd-shim context, which has limited utility for VMs.
+  Use `eve app console <console-id>` instead to get an interactive console
+  inside the virtual machine.
+
+### Application console
+
+A running application on an EVE device has a console for input or output. You
+can attach to the application console from the EVE device as a control terminal
+if the application (VM or Container) listens to the TTY line and communicates
+with the virtual console /dev/hvc0 device. For example for popular linux
+distributions deployed as a VM application this is usually the case.
+
+First list application consoles of all running QEMU (KVM) processes:
+
+```bash
+# eve app console
 PID     APP-UUID                                CONS-TYPE       CONS-ID
 ---     --------                                ---------       ---------
 3883    e4e2f56d-b833-4562-a86f-be654d6387ba    VM              e4e2f56d-b833-4562-a86f-be654d6387ba.1.1/cons
@@ -118,14 +182,14 @@ Where fields are:
 * PID       - the process ID of the QEMU process
 * APP-UUID  - UUID of the application
 * CONS-TYPE - Type of the console
-* CONS-ID   - ID of the console, should be used for attaching to the console by passing the console ID to the `eve attach-app-console` command
+* CONS-ID   - ID of the console, should be used for attaching to the console by passing the console ID to the `eve app console` command
 
 Different application types may have different consoles (as mentioned above). An application of type "Virtual Machine" can only have a console of type "VM", which leads to the console of the user application; An application of the "Container" type has two types of console: the console of the "VM" type leads to the Virtual Machine that hosts the container, the console of the "CONTAINER" type leads to the user container itself.
 
-Choose console ID you need to attach and pass it as an argument to the `eve attach-app-console` command:
+Choose console ID you need to attach and pass it as an argument to the `eve app console` command:
 
 ```bash
-# eve attach-app-console e4e2f56d-b833-4562-a86f-be654d6387ba.1.1/cons
+# eve app console e4e2f56d-b833-4562-a86f-be654d6387ba.1.1/cons
 [20:26:15.116] tio v1.37
 [20:26:15.116] Press ctrl-t q to quit
 [20:26:15.116] Connected
@@ -140,10 +204,10 @@ Note: `tio` utility is used as a simple TTY terminal, so in order to quit the se
 
 The same 'cons' console ID can be used for the Container application, but please be aware if container does not start a shell then terminal is very limited and can be used only for reading for the console output, but not for executing commands.
 
-In order to attach to the console of the hosting Vm of the Container application another console ID should be used which is named `shim-cons`:
+In order to attach to the console of the hosting VM of the Container application another console ID should be used which is named `shim-cons`:
 
 ```bash
-# eve attach-app-console f6d348cc-9c31-4f8b-8c4f-a4aae4590b97.1.2/shim-cons
+# eve app console f6d348cc-9c31-4f8b-8c4f-a4aae4590b97.1.2/shim-cons
 [20:41:47.124] tio v1.37
 [20:41:47.124] Press ctrl-t q to quit
 [20:41:47.124] Connected
@@ -151,7 +215,17 @@ In order to attach to the console of the hosting Vm of the Container application
 ~ #
 ```
 
-The `shim-cons` console exists only for the Container applications and is always reachable for executing commands on the Vm which hosts corresponding container.
+The `shim-cons` console exists only for the Container applications and is always reachable for executing commands on the VM which hosts corresponding container.
+
+### Deprecated command aliases
+
+The following older commands are kept as aliases for backward compatibility:
+
+| Deprecated command | New equivalent |
+|-|-|
+| `eve list-app-consoles` | `eve app console` |
+| `eve attach-app-console <console>` | `eve app console <console>` |
+| `eve enter-user-app <app>` | `eve app enter <app>` |
 
 Once terminal responds on the `shim-cons` console it is possible to enter container by executing the `eve-enter-container` command. The script takes an optional argument with the path to the program to run in the container (the path is relative to the root of the container filesystem). If no argument is provided, the script will try to call the shell (`/bin/sh`) in the container:
 
