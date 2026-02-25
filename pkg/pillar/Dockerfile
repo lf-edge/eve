@@ -5,7 +5,7 @@
 
 # use the same set of packages for simplicity
 ARG BUILD_PKGS_BASE="git gcc linux-headers libc-dev make linux-pam-dev m4 findutils util-linux make patch \
-                     libintl libuuid libtirpc libblkid libcrypto1.1 zlib tar"
+                     libintl libuuid libtirpc libblkid libcrypto3 zlib tar"
 
 # we use the same image in several places
 ARG EVE_ALPINE_IMAGE=lfedge/eve-alpine:80c5dbe1085d0650030be8a110eaec66ef532672
@@ -69,6 +69,8 @@ FROM target-${TARGETARCH}-build-${BUILDARCH} AS build
 ARG DEV=n
 ARG TEST_TOOLS=n
 ARG TARGETARCH
+
+ENV CGO_CFLAGS="-Dfstat64=fstat -Dstat64=stat"
 
 # some parts of pillar are build conditionally based on the hypervisor
 ARG HV
@@ -147,7 +149,7 @@ FROM lfedge/eve-gpt-tools:dd3e492b41e2eb41c293b6236e8c442054ecf0b0 as gpttools
 FROM ${EVE_ALPINE_IMAGE} as collector
 ENV BUILD_PKGS patch
 ENV PKGS alpine-baselayout musl-utils libtasn1-progs pciutils yajl xz bash iptables ip6tables iproute2 \
-    coreutils dmidecode libbz2 libuuid ipset curl radvd ethtool util-linux e2fsprogs libcrypto1.1 xorriso \
+    coreutils dmidecode libbz2 libuuid ipset curl radvd ethtool util-linux e2fsprogs libcrypto3 xorriso \
     qemu-img jq e2fsprogs-extra keyutils ca-certificates ip6tables-openrc iptables-openrc ipset-openrc hdparm \
     libintl libtirpc libblkid zlib rsync chrony
 RUN eve-alpine-deploy.sh
