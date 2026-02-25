@@ -68,7 +68,7 @@ endif
 $(APPS): $(DISTDIR)/$(APPS)
 $(DISTDIR)/$(APPS): $(DISTDIR)
 	@echo "Building $@"
-	GO111MODULE=on GOOS=linux GOARCH=$(ZARCH) go build -mod=vendor $(TAGS) $(GCFLAGS) $(LDFLAGS) -o $@ ./$(@F)
+	GO111MODULE=on GOOS=linux GOARCH=$(ZARCH) go build -ldflags "-s -w" -mod=vendor $(TAGS) $(GCFLAGS) $(LDFLAGS) -o $@ ./$(@F)
 
 $(APPS1): $(DISTDIR)
 	@echo $@
