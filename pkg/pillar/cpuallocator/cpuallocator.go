@@ -11,10 +11,10 @@ import (
 )
 
 type cpusList struct {
-	cpus []int
+	cpus []uint32
 }
 
-func (cpus *cpusList) contains(cpuToCheck int) bool {
+func (cpus *cpusList) contains(cpuToCheck uint32) bool {
 	for _, cpu := range cpus.cpus {
 		if cpu == cpuToCheck {
 			return true
@@ -28,16 +28,16 @@ func (cpus *cpusList) contains(cpuToCheck int) bool {
 type CPUAllocator struct {
 	sync.RWMutex                             // lock the access to the allocator
 	CPUsUsedByUUIDs   map[uuid.UUID]cpusList // per UUID list of allocated CPUs
-	totalCPUs         int                    // total amount of CPUs in the system
-	numReservedForEVE int                    // amount of the CPUs reserved for the EVE services
+	totalCPUs         uint32                 // total amount of CPUs in the system
+	numReservedForEVE uint32                 // amount of the CPUs reserved for the EVE services
 }
 
 // Init initializes a CPUAllocator instance.
 // totalCPUs is the number of CPUs available is the system,
 // numReserved is the number of CPUs considered to be always free, reserved for
 // the EVE services and VMs with no CPU pinning enabled.
-func Init(totalCPUs int, numReserved int) (*CPUAllocator, error) {
-	if totalCPUs <= 0 || numReserved < 0 || numReserved >= totalCPUs {
+func Init(totalCPUs uint32, numReserved uint32) (*CPUAllocator, error) {
+	if totalCPUs == 0 || numReserved >= totalCPUs {
 		return nil, fmt.Errorf("invalid totalCPUs %d and/or numReserved %d",
 			totalCPUs, numReserved)
 	}
@@ -52,12 +52,12 @@ func Init(totalCPUs int, numReserved int) (*CPUAllocator, error) {
 // less than the requested amount (numCPUs), return an error and an empty list.
 // If an allocation for a given uuid was already done before, also return an error
 // and an empty list.
-func (cpuAllocator *CPUAllocator) Allocate(uuid uuid.UUID, numCPUs int) ([]int, error) {
+func (cpuAllocator *CPUAllocator) Allocate(uuid uuid.UUID, numCPUs int) ([]uint32, error) {
 	cpuAllocator.Lock()
 	defer cpuAllocator.Unlock()
 	if _, ok := cpuAllocator.CPUsUsedByUUIDs[uuid]; ok {
 		// Already allocated; return error
-		return []int{}, fmt.Errorf("multiple allocations for %s", uuid)
+		return []uint32{}, fmt.Errorf("multiple allocations for %s", uuid)
 	}
 	list, err := cpuAllocator.getFree(numCPUs)
 	if err != nil {
@@ -80,7 +80,7 @@ func (cpuAllocator *CPUAllocator) Free(uuid uuid.UUID) error {
 	return nil
 }
 
-func (cpuAllocator *CPUAllocator) usedByAnyUUID(cpuToCheck int) bool {
+func (cpuAllocator *CPUAllocator) usedByAnyUUID(cpuToCheck uint32) bool {
 	for _, cpus := range cpuAllocator.CPUsUsedByUUIDs {
 		if cpus.contains(cpuToCheck) {
 			return true
@@ -90,28 +90,30 @@ func (cpuAllocator *CPUAllocator) usedByAnyUUID(cpuToCheck int) bool {
 }
 
 // Find the lowest numbered free CPUs, skipping the reserved ones
-func (cpuAllocator *CPUAllocator) getFree(numCPUsRequested int) ([]int, error) {
-	result := make([]int, 0, cpuAllocator.totalCPUs)
+func (cpuAllocator *CPUAllocator) getFree(numCPUsRequested int) ([]uint32, error) {
+	result := make([]uint32, 0, cpuAllocator.totalCPUs)
 	found := 0
-	for cpu := cpuAllocator.numReservedForEVE; cpu < cpuAllocator.totalCPUs && found < numCPUsRequested; cpu++ {
+	var cpu uint32
+	for cpu = cpuAllocator.numReservedForEVE; cpu < cpuAllocator.totalCPUs && found < numCPUsRequested; cpu++ {
 		if !cpuAllocator.usedByAnyUUID(cpu) {
 			result = append(result, cpu)
 			found++
 		}
 	}
 	if found < numCPUsRequested {
-		return []int{}, fmt.Errorf("looking for %d CPUs only found %d",
+		return []uint32{}, fmt.Errorf("looking for %d CPUs only found %d",
 			numCPUsRequested, found)
 	}
 	return result, nil
 }
 
 // GetAllFree returns all free CPUs (except the reserved ones)
-func (cpuAllocator *CPUAllocator) GetAllFree() []int {
+func (cpuAllocator *CPUAllocator) GetAllFree() []uint32 {
 	cpuAllocator.RLock()
 	defer cpuAllocator.RUnlock()
-	result := make([]int, 0, cpuAllocator.totalCPUs)
-	for cpu := 0; cpu < cpuAllocator.totalCPUs; cpu++ {
+	result := make([]uint32, 0, cpuAllocator.totalCPUs)
+	var cpu uint32
+	for cpu = 0; cpu < cpuAllocator.totalCPUs; cpu++ {
 		if !cpuAllocator.usedByAnyUUID(cpu) {
 			result = append(result, cpu)
 		}

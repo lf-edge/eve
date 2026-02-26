@@ -628,7 +628,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		log.Warnf("Failed to get reserved CPU number, use 1 by default: %s", err)
 	}
 
-	if domainCtx.cpuAllocator, err = cpuallocator.Init(int(resources.Ncpus), cpusReserved); err != nil {
+	if domainCtx.cpuAllocator, err = cpuallocator.Init(resources.Ncpus, uint32(cpusReserved)); err != nil {
 		log.Fatal(err)
 	}
 
@@ -753,7 +753,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 }
 
-func getReservedCPUsNum() (int, error) {
+func getReservedCPUsNum() (uint32, error) {
 	data, err := os.ReadFile("/proc/cmdline")
 	if err != nil {
 		return 1, err
@@ -765,11 +765,11 @@ func getReservedCPUsNum() (int, error) {
 			if len(argSplit) < 2 {
 				return 1, errors.New("kernel arg 'eve_max_vcpus' is malformed")
 			}
-			cpusReserved, err := strconv.Atoi(argSplit[1])
+			cpusReserved, err := strconv.ParseUint(argSplit[1], 10, 32)
 			if err != nil {
 				return 1, errors.New("value of kernel arg 'eve_max_vcpus' is malformed")
 			}
-			return cpusReserved, nil
+			return uint32(cpusReserved), nil
 		}
 	}
 	return 1, errors.New("kernel arg 'eve_max_vcpus' not found")
@@ -1360,7 +1360,7 @@ func setCgroupCpuset(config *types.DomainConfig, status *types.DomainStatus) err
 	// Convert a list of CPUs to a CPU string
 	cpuStrings := make([]string, 0)
 	for _, cpu := range status.VmConfig.CPUs {
-		cpuStrings = append(cpuStrings, strconv.Itoa(cpu))
+		cpuStrings = append(cpuStrings, strconv.FormatUint(uint64(cpu), 10))
 	}
 	cpuMask := strings.Join(cpuStrings, ",")
 
@@ -1432,7 +1432,7 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 		DeploymentType: config.DeploymentType,
 	}
 
-	status.VmConfig.CPUs = make([]int, 0)
+	status.VmConfig.CPUs = make([]uint32, 0)
 
 	// Note that the -emu interface doesn't exist until after boot of the domU, but we
 	// initialize the VifList here with the VifUsed.

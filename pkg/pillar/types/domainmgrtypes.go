@@ -254,7 +254,7 @@ type VmConfig struct {
 	ExtraArgs  string // added to bootargs
 	BootLoader string // default ""
 	// For CPU pinning
-	CPUs []int // default nil, list of [1,2]
+	CPUs []uint32 // default nil, list of [1,2]
 	// Needed for device passthru
 	DeviceTree string // default ""; sets device_tree
 	// Example: device_tree="guest-gpio.dtb"

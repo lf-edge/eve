@@ -12,8 +12,8 @@ import (
 
 func TestInit(t *testing.T) {
 	testMatrix := map[string]struct {
-		reservedCPUs   int
-		totalCPUs      int
+		reservedCPUs   uint32
+		totalCPUs      uint32
 		expectInitFail bool
 	}{
 		"init good": {
@@ -40,7 +40,7 @@ func TestInit(t *testing.T) {
 			assert.Nil(t, err)
 			all := ca.GetAllFree()
 			t.Logf("GetAllFree returned %v", all)
-			assert.Equal(t, test.totalCPUs, len(all))
+			assert.Equal(t, test.totalCPUs, uint32(len(all)))
 		})
 	}
 }
@@ -52,8 +52,8 @@ type tm struct {
 	allocate         int  // number of CPUs
 	free             int  // number of CPUs
 	expectFail       bool
-	expectAllocation []int
-	expectAllFree    []int
+	expectAllocation []uint32
+	expectAllFree    []uint32
 }
 
 func TestAllocate(t *testing.T) {
@@ -72,7 +72,7 @@ func TestAllocate(t *testing.T) {
 			uuid:          uuid1,
 			allocate:      16,
 			expectFail:    true,
-			expectAllFree: []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15},
+			expectAllFree: []uint32{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15},
 		})
 	testSequence = append(testSequence,
 		tm{
@@ -80,8 +80,8 @@ func TestAllocate(t *testing.T) {
 			description:      "allocate good",
 			uuid:             uuid1,
 			allocate:         8,
-			expectAllocation: []int{2, 3, 4, 5, 6, 7, 8, 9},
-			expectAllFree:    []int{0, 1, 10, 11, 12, 13, 14, 15},
+			expectAllocation: []uint32{2, 3, 4, 5, 6, 7, 8, 9},
+			expectAllFree:    []uint32{0, 1, 10, 11, 12, 13, 14, 15},
 		})
 	testSequence = append(testSequence,
 		tm{
@@ -89,15 +89,15 @@ func TestAllocate(t *testing.T) {
 			uuid:          uuid2,
 			allocate:      8,
 			expectFail:    true,
-			expectAllFree: []int{0, 1, 10, 11, 12, 13, 14, 15},
+			expectAllFree: []uint32{0, 1, 10, 11, 12, 13, 14, 15},
 		})
 	testSequence = append(testSequence,
 		tm{
 			description:      "allocate less",
 			uuid:             uuid2,
 			allocate:         2,
-			expectAllocation: []int{10, 11},
-			expectAllFree:    []int{0, 1, 12, 13, 14, 15},
+			expectAllocation: []uint32{10, 11},
+			expectAllFree:    []uint32{0, 1, 12, 13, 14, 15},
 		})
 	testSequence = append(testSequence,
 		tm{
@@ -105,15 +105,15 @@ func TestAllocate(t *testing.T) {
 			uuid:          uuid1,
 			doFree:        true,
 			free:          8, // from "allocate good" above
-			expectAllFree: []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 12, 13, 14, 15},
+			expectAllFree: []uint32{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 12, 13, 14, 15},
 		})
 	testSequence = append(testSequence,
 		tm{
 			description:      "allocate many after free",
 			uuid:             uuid3,
 			allocate:         8,
-			expectAllocation: []int{2, 3, 4, 5, 6, 7, 8, 9},
-			expectAllFree:    []int{0, 1, 12, 13, 14, 15},
+			expectAllocation: []uint32{2, 3, 4, 5, 6, 7, 8, 9},
+			expectAllFree:    []uint32{0, 1, 12, 13, 14, 15},
 		})
 	testSequence = append(testSequence,
 		tm{
@@ -121,7 +121,7 @@ func TestAllocate(t *testing.T) {
 			uuid:          uuid3,
 			allocate:      9,
 			expectFail:    true,
-			expectAllFree: []int{0, 1, 12, 13, 14, 15},
+			expectAllFree: []uint32{0, 1, 12, 13, 14, 15},
 		})
 	testSequence = append(testSequence,
 		tm{
@@ -130,7 +130,7 @@ func TestAllocate(t *testing.T) {
 			doFree:        true,
 			free:          0,
 			expectFail:    true,
-			expectAllFree: []int{0, 1, 12, 13, 14, 15},
+			expectAllFree: []uint32{0, 1, 12, 13, 14, 15},
 		})
 	testSequence = append(testSequence,
 		tm{
@@ -139,23 +139,23 @@ func TestAllocate(t *testing.T) {
 			doFree:        true,
 			free:          8, // from "allocate good" above
 			expectFail:    true,
-			expectAllFree: []int{0, 1, 12, 13, 14, 15},
+			expectAllFree: []uint32{0, 1, 12, 13, 14, 15},
 		})
 	testSequence = append(testSequence,
 		tm{
 			description:      "allocate remaining free",
 			uuid:             uuid5,
 			allocate:         4,
-			expectAllocation: []int{12, 13, 14, 15},
-			expectAllFree:    []int{0, 1},
+			expectAllocation: []uint32{12, 13, 14, 15},
+			expectAllFree:    []uint32{0, 1},
 		})
 	testSequence = append(testSequence,
 		tm{
 			description:      "allocate none",
 			uuid:             uuid6,
 			allocate:         0,
-			expectAllocation: []int{},
-			expectAllFree:    []int{0, 1},
+			expectAllocation: []uint32{},
+			expectAllFree:    []uint32{0, 1},
 		})
 	testSequence = append(testSequence,
 		tm{
@@ -163,7 +163,7 @@ func TestAllocate(t *testing.T) {
 			uuid:          uuid7,
 			allocate:      1,
 			expectFail:    true,
-			expectAllFree: []int{0, 1},
+			expectAllFree: []uint32{0, 1},
 		})
 
 	ca, err := Init(16, 2)

@@ -267,7 +267,7 @@ func (ctx xenContext) CreateDomConfig(domainName string,
 	if len(config.CPUs) > 0 {
 		cpusString := make([]string, 0)
 		for _, curCPU := range config.CPUs {
-			cpusString = append(cpusString, strconv.Itoa(curCPU))
+			cpusString = append(cpusString, strconv.FormatUint(uint64(curCPU), 10))
 		}
 		file.WriteString(fmt.Sprintf("cpus = \"%s\"\n", strings.Join(cpusString, ",")))
 	}
