@@ -745,11 +745,9 @@ func (aa *AssignableAdapters) CheckBadUSBBundles() {
 	}
 }
 
-// CheckBadAssignmentGroups sets ib.Error/ErrorTime if two IoBundles in different
-// assignment groups have the same PCI ID (ignoring the PCI function number)
-// Returns true if there was a modification so caller can publish.
-func (aa *AssignableAdapters) CheckBadAssignmentGroups(log *base.LogObject, PCISameController func(string, string) bool) bool {
-	changed := false
+// CheckBadAssignmentGroups logs a warning if two IoBundles in different
+// assignment groups have the same IOMMU group or PCI ID (ignoring the PCI function number)
+func (aa *AssignableAdapters) CheckBadAssignmentGroups(log *base.LogObject, PCISameController func(string, string) bool) {
 	for i := range aa.IoBundleList {
 		ib := &aa.IoBundleList[i]
 		for _, ib2 := range aa.IoBundleList {
@@ -767,51 +765,9 @@ func (aa *AssignableAdapters) CheckBadAssignmentGroups(log *base.LogObject, PCIS
 				continue
 			}
 			if PCISameController != nil && PCISameController(ib.PciLong, ib2.PciLong) {
-				err := fmt.Errorf("CheckBadAssignmentGroup: %s same PCI controller as %s; pci long %s vs %s",
-					ib2.Ifname, ib.Ifname, ib2.PciLong, ib.PciLong)
-				log.Error(err)
-				ib.Error.Append(err)
-				changed = true
+				log.Warnf("CheckBadAssignmentGroup: %s/%s same IOMMU group %s/%s",
+					ib2.Ifname, ib2.PciLong, ib.Ifname, ib.PciLong)
 			}
 		}
 	}
-
-	return changed || aa.CheckParentAssigngrp()
-}
-
-// ExpandControllers expands the list to include other PCI functions on the same PCI controller
-// (while ignoring the function number). The output might have duplicate entries.
-func (aa *AssignableAdapters) ExpandControllers(log *base.LogObject, list []*IoBundle, PCISameController func(string, string) bool) []*IoBundle {
-	var elist []*IoBundle
-
-	elist = list
-	for _, ib := range list {
-		for i := range aa.IoBundleList {
-			ib2 := &aa.IoBundleList[i]
-			already := false
-			for _, ib3 := range elist {
-				if ib2.Phylabel == ib3.Phylabel {
-					already = true
-					break
-				}
-			}
-			if already {
-				log.Tracef("ExpandController already %s long %s",
-					ib2.Phylabel, ib2.PciLong)
-				continue
-			}
-			if ib.UsbAddr != "" || ib2.UsbAddr != "" {
-				continue
-			}
-			if ib.UsbProduct != "" || ib2.UsbProduct != "" {
-				continue
-			}
-			if PCISameController != nil && PCISameController(ib.PciLong, ib2.PciLong) {
-				log.Warnf("ExpandController found %s matching %s; long %s long %s",
-					ib2.Phylabel, ib.Phylabel, ib2.PciLong, ib.PciLong)
-				elist = append(elist, ib2)
-			}
-		}
-	}
-	return elist
 }
