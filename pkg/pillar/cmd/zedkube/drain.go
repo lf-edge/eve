@@ -355,8 +355,23 @@ func drainAndDeleteNode(ctx *zedkube) {
 		log.Errorf("drainAndDeleteNode: can't get clientset %v", err)
 		return
 	}
-
 	nodeName := ctx.nodeName
+
+	nodeDeleteFn := func() {
+		if nodeName == "" {
+			log.Errorf("drainAndDeleteNode no nodename available for delete")
+			return
+		}
+		if err := clientset.CoreV1().Nodes().Delete(context.Background(), nodeName, metav1.DeleteOptions{}); err != nil {
+			log.Errorf("drainAndDeleteNode: clientset.CoreV1().Nodes().Delete failed: %v", err)
+			return
+		}
+		log.Noticef("drainAndDeleteNode: node %s drained and deleted", nodeName)
+	}
+	// For cases where the node-in-deletion is not healthy, don't
+	// leave a stale node object in the cluster, ensure its removed.
+	defer nodeDeleteFn()
+
 	node, err := clientset.CoreV1().Nodes().Get(context.Background(), nodeName, metav1.GetOptions{})
 	if err != nil {
 		log.Errorf("drainAndDeleteNode: can't get nodes %v, for %s", err, nodeName)
@@ -414,11 +429,5 @@ func drainAndDeleteNode(ctx *zedkube) {
 			return
 		}
 	}
-
-	if err := clientset.CoreV1().Nodes().Delete(context.Background(), nodeName, metav1.DeleteOptions{}); err != nil {
-		log.Errorf("drainAndDeleteNode: clientset.CoreV1().Nodes().Delete failed: %v", err)
-		return
-	}
-	log.Noticef("drainAndDeleteNode: node %s drained and deleted", nodeName)
 	return
 }
