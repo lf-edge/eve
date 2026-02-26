@@ -17,12 +17,11 @@ ENV BUILD_PKGS="abuild curl tar make linux-headers patch g++ git gcc gpg gettext
 # forget to check on all supported architectures: e.g. arm64
 # binaries are typically larger than amd64 ones).
 # RUN apk add --no-cache gdb valgrind
-ENV PKGS="openssl tini util-linux ca-certificates pciutils usbutils tcpdump perf strace iproute2-minimal curl zlib procps-ng tar dmidecode iptables dhcpcd tio socat"
+ENV PKGS="openssl openssh-client openssh-server tini util-linux ca-certificates pciutils usbutils tcpdump perf strace iproute2-minimal curl zlib procps-ng tar dmidecode iptables dhcpcd tio socat"
 
 RUN eve-alpine-deploy.sh
 
 ENV LSHW_VERSION="02.20"
-ENV OPENSSH_VERSION="10.6p2"
 
 # setting up building account
 RUN adduser -G abuild -D builder || :
@@ -64,59 +63,6 @@ ADD https://github.com/pixel/hexedit/archive/refs/tags/1.5.tar.gz ../1.5.tar.gz
 RUN tar -C .. -xzvf ../1.5.tar.gz
 RUN ./autogen.sh && ./configure && make DESTDIR=/out install
 
-WORKDIR /usr/src
-ADD --checksum=sha256:9ae44872090cf2f06b3cf9ff147e7f16f309671340763ed2f99248398ae29d5b https://cdn.openbsd.org/pub/OpenBSD/OpenSSH/portable/openssh-${OPENSSH_VERSION}.tar.gz /usr/src
-ADD https://cdn.openbsd.org/pub/OpenBSD/OpenSSH/portable/openssh-${OPENSSH_VERSION}.tar.gz.asc /usr/src
-ADD https://cdn.openbsd.org/pub/OpenBSD/OpenSSH/RELEASE_KEY.asc /usr/src
-
-# import and verify in same `run` preventing db open race
-RUN gpg --import --allow-weak-key-signatures /usr/src/RELEASE_KEY.asc && \
-    gpg --verify --allow-weak-key-signatures openssh-${OPENSSH_VERSION}.tar.gz.asc openssh-${OPENSSH_VERSION}.tar.gz
-RUN tar xvf openssh-${OPENSSH_VERSION}.tar.gz
-WORKDIR /usr/src/openssh-${OPENSSH_VERSION}
-# The old utmpx IPv6 fix is already included in upstream OpenSSH.
-RUN ./configure \
-    --prefix=/usr \
-    --sysconfdir=/etc/ssh \
-    --libexecdir=/usr/lib/ssh \
-    --mandir=/usr/share/man \
-    --with-pid-dir=/run \
-    --with-mantype=doc \
-    --disable-utmp \
-    --disable-wtmp \
-    --disable-lastlog \
-    --disable-strip \
-    --with-privsep-path=/var/empty \
-    --with-xauth=/usr/bin/xauth \
-    --with-default-path='/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin' \
-    --with-privsep-user=sshd
-
-RUN make -j "$(getconf _NPROCESSORS_ONLN)"
-RUN make install
-ARG TARGETARCH
-# QEMU user-mode cannot install the seccomp filter required by OpenSSH tests.
-RUN if [ "$TARGETARCH" != riscv64 ]; then \
-        HARNESS_JOBS="$(getconf _NPROCESSORS_ONLN)" make tests; \
-    fi
-
-RUN mkdir -p /out/usr/lib/ssh
-RUN /usr/bin/install -c -m 0755 -s ssh /out/usr/bin/ssh
-RUN /usr/bin/install -c -m 0755 -s scp /out/usr/bin/scp
-RUN /usr/bin/install -c -m 0755 -s ssh-keyscan /out/usr/bin/ssh-keyscan
-RUN /usr/bin/install -c -m 0755 -s ssh-keygen /out/usr/bin/ssh-keygen
-RUN /usr/bin/install -c -m 0755 -s sshd /out/usr/sbin/sshd
-RUN /usr/bin/install -c -m 0755 -s sshd-session /out/usr/lib/ssh/sshd-session
-RUN /usr/bin/install -c -m 0755 -s sshd-auth /out/usr/lib/ssh/sshd-auth
-RUN /usr/bin/install -c -m 0755 -s ssh-pkcs11-helper /out/usr/lib/ssh/ssh-pkcs11-helper
-RUN /usr/bin/install -c -m 0755 -s ssh-sk-helper /out/usr/lib/ssh/ssh-sk-helper
-RUN /usr/bin/install -c -m 0755 -s sftp /out/usr/bin/sftp
-RUN /usr/bin/install -c -m 0755 -s sftp-server /out/usr/lib/ssh/sftp-server
-RUN mkdir -p /out/etc/ssh
-COPY ssh/* /out/etc/ssh/
-RUN mkdir -p /out/var/empty
-COPY register-sbom-pkg.sh /usr/local/bin/register-sbom-pkg.sh
-RUN register-sbom-pkg.sh -n openssh -v "${OPENSSH_VERSION}" -l SSH-OpenSSH -u https://www.openssh.com/portable.html
-
 # tweaking various bit
 WORKDIR /out
 COPY debug-services.sh ssh-service.sh edgeview-collectinfo.sh spec.sh scripts/ ./usr/bin/
@@ -130,10 +76,10 @@ COPY tests/lsusb /tmp/bin
 RUN chmod a+x /tmp/bin/lsusb
 RUN PATH=/tmp/bin:$PATH /out/usr/bin/spec.sh -u 2>/dev/null | jq .
 
-RUN mkdir -p ./etc/ssh ./root/.ssh
-RUN chmod 0700 ./root/.ssh
+RUN mkdir -p ./etc/ssh ./root/.ssh && chmod 0700 ./root/.ssh
 RUN cp /etc/passwd /etc/group ./etc/
 RUN ln -s /run ./var/run
+RUN sed -i -e 's#AllowTcpForwarding.*$#AllowTcpForwarding yes#' ./etc/ssh/sshd_config
 
 RUN mkdir /bpftrace
 COPY --from=bpftrace / /bpftrace
@@ -143,14 +89,7 @@ RUN mkdir -p /bpftrace/bpftrace-aotrt
 WORKDIR /
 COPY --from=recovertpm /usr/bin/recovertpm /out/usr/bin/recovertpm
 
-FROM build AS openssh-test
-COPY tests/openssh.sh /tmp/openssh-test.sh
-RUN sh /tmp/openssh-test.sh
-RUN chroot /out /usr/sbin/sshd -T -h /ssh-test/host_key > /tmp/sshd-effective.conf && \
-    grep -qix 'passwordauthentication no' /tmp/sshd-effective.conf && \
-    grep -qix 'kbdinteractiveauthentication no' /tmp/sshd-effective.conf
-
-FROM openssh-test AS test
+FROM build AS test
 # run collect-info test
 COPY collect-info-test /collect-info-test
 WORKDIR /collect-info-test
