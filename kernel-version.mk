@@ -37,6 +37,11 @@ endif
 
 KERNEL_LTS_VERSION=next
 
+# ZFS version must be compatible with the kernel version.
+# When bumping kernel, make sure the ZFS version is compatible.
+# This selects which pkg/zfs/build-*.yml variant to use.
+ZFS_VERSION ?= 2.3.3
+
 ifeq ($(ZARCH), amd64)
     KERNEL_VERSION=v6.12.49
     KERNEL_FLAVOR=generic

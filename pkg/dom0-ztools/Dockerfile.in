@@ -1,0 +1,38 @@
+# Copyright (c) 2025-2026 Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+# hadolint ignore=DL3006
+FROM ZFS_TAG AS zfs
+
+FROM lfedge/eve-alpine:745ae9066273c73b0fd879c4ba4ff626a8392d04 AS base
+# runtime dependencies for ZFS userspace tools
+ENV PKGS="ca-certificates util-linux libintl libuuid libtirpc libblkid libcrypto1.1 zlib"
+RUN eve-alpine-deploy.sh
+
+# copy ZFS artifacts from the eve-zfs package
+COPY --from=zfs / /out/
+
+# Add directory for CDI files
+RUN mkdir -p /out/etc/cdi
+
+FROM scratch
+COPY --from=base /out/ /
+# hadolint ignore=DL3020
+ADD rootfs/ /
+### Create system-wide groups and users ###
+# add initial root user
+RUN touch /etc/group && touch /etc/passwd
+RUN addgroup -g 0 root
+RUN adduser -D -H -h /root -s /bin/sh -g "root" -G root -u 0 root
+# add nobody user and group
+RUN addgroup -g 65534 nogroup
+RUN adduser -D -H -h /nonexistent -s /bin/false -g "nobody" -u 65534 -G nogroup nobody
+# add tpms group so /dev/tpm* is accessible to non-root users via tpms group,
+# the group is set for /dev/tpm* in the mdev.conf file
+RUN addgroup -g 100 tpms
+# setup user and group for vtpm container and allow TPM access via tpms group
+RUN addgroup -g 101 vtpm
+RUN adduser -D -H -h /nonexistent -s /bin/false -g "vtpm" -G vtpm -u 101 vtpm
+RUN addgroup vtpm tpms
+# setup group for disk access, mdev handling
+RUN addgroup -g 6 disk

@@ -1,4 +1,7 @@
 ARG GOVER=1.20.1
+ARG ZFS_IMAGE
+# hadolint ignore=DL3006
+FROM ${ZFS_IMAGE} AS zfs
 FROM golang:${GOVER}-alpine
 ARG USER
 ARG GROUP
@@ -10,51 +13,16 @@ ARG GID
 ARG all_proxy
 # hadolint ignore=DL3018
 RUN apk add --no-cache openssh-client git gcc linux-headers libc-dev util-linux libpcap-dev bash vim make protobuf \
-        protobuf-dev sudo tar curl graphviz ttf-freefont patch dnsmasq ca-certificates build-base gettext-dev \
-        libtirpc-dev automake autoconf libtool attr-dev e2fsprogs-dev glib-dev openssl-dev util-linux-dev
+    protobuf-dev sudo tar curl graphviz ttf-freefont patch dnsmasq ca-certificates \
+    libintl libtirpc zlib
 
 RUN deluser ${USER} ; delgroup ${GROUP} || :
 RUN sed -ie /:${UID}:/d /etc/passwd /etc/shadow ; sed -ie /:${GID}:/d /etc/group || :
 RUN addgroup -g ${GID} ${GROUP} && adduser -h /home/${USER} -G ${GROUP} -D -H -u ${UID} ${USER}
 RUN echo "${USER} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/${USER}
-### Build OpenZFS 2.3.3 libs here for 'make test' and full eve build in one spot
-# should be aligned with kernel
-#  * ZFS on Linux
-# coreutils's uname -o breaks above url generation.
-# hadolint ignore=DL3018
-RUN apk add --no-cache coreutils
-ENV ZFS_VERSION=2.3.3
-ENV ZFS_COMMIT=zfs-${ZFS_VERSION}
-ENV ZFS_REPO=https://github.com/openzfs/zfs
 
-WORKDIR /tmp/zfs
-# hadolint ignore=DL3020
-ADD ${ZFS_REPO}/tarball/${ZFS_COMMIT}/ zfs.tgz
-RUN tar -zxvf zfs.tgz  --strip-components=1 && \
-    rm zfs.tgz
-
-RUN ./autogen.sh && \
-    ./configure \
-    --prefix=/usr \
-    --with-tirpc \
-    --sysconfdir=/etc \
-    --mandir=/usr/share/man \
-    --infodir=/usr/share/info \
-    --localstatedir=/var \
-    --with-config=user \
-    --with-udevdir=/lib/udev \
-    --disable-systemd \
-    --disable-static && \
-    ./scripts/make_gitrev.sh && \
-    make -j "$(getconf _NPROCESSORS_ONLN)" && \
-    make DESTDIR=/tmp/zfs-out install-strip
-
-# cleanup
-RUN rm -rf /tmp/zfs-out/usr/share && rm -rf /tmp/zfs-out/usr/src && \
-    rm -rf /tmp/zfs-out/etc/init.d && rm -rf /tmp/zfs-out/etc/conf.d
-
-RUN cp -r /tmp/zfs-out/* /
-
+# Install pre-built OpenZFS userspace libraries and tools from eve-zfs package
+COPY --from=zfs / /
 
 RUN go install github.com/golang/protobuf/protoc-gen-go@v1.5.2
 RUN go install gotest.tools/gotestsum@v1.7.0

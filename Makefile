@@ -144,6 +144,12 @@ FULL_VERSION:=$(ROOTFS_VERSION)-$(HV)-$(ZARCH)
 # must be included after ZARCH is set
 include $(CURDIR)/kernel-version.mk
 
+# Extract major.minor from ZFS_VERSION (e.g., 2.3.3 -> 2.3) to select
+# the right pkg/zfs/build-*.yml variant. Falls back to build.yml if no
+# version-specific variant exists.
+ZFS_MAJOR_MINOR=$(word 1,$(subst ., ,$(ZFS_VERSION))).$(word 2,$(subst ., ,$(ZFS_VERSION)))
+ZFS_BUILD_YML=build-$(ZFS_MAJOR_MINOR).yml
+
 # where we store outputs
 DIST=$(CURDIR)/dist/$(ZARCH)
 DOCKER_DIST=/eve/dist/$(ZARCH)
@@ -375,7 +381,8 @@ DOCKER_GO = _() { $(SET_X); mkdir -p $(CURDIR)/.go/src/$${3:-dummy} ; mkdir -p $
     $$docker_go_line "$$1" ; } ; _
 
 PARSE_PKGS=$(if $(strip $(EVE_HASH)),EVE_HASH=)$(EVE_HASH) DOCKER_ARCH_TAG=$(DOCKER_ARCH_TAG) KERNEL_TAG=$(KERNEL_TAG) \
-    KERNEL_EVAL_HWE_TAG=$(KERNEL_EVAL_HWE_TAG) KERNEL_EVAL_LTS_HWE_TAG=$(KERNEL_EVAL_LTS_HWE_TAG) PLATFORM=$(PLATFORM) ./tools/parse-pkgs.sh
+    KERNEL_EVAL_HWE_TAG=$(KERNEL_EVAL_HWE_TAG) KERNEL_EVAL_LTS_HWE_TAG=$(KERNEL_EVAL_LTS_HWE_TAG) PLATFORM=$(PLATFORM) \
+    ZFS_BUILD_YML=$(ZFS_BUILD_YML) ./tools/parse-pkgs.sh
 
 LINUXKIT_PKG_TARGET=build
 
@@ -398,6 +405,7 @@ endif
 # a given package, we create a target of the form lk-extra-opt/<pkg-name>/<env-var-name>
 LK_POSSIBLE_PKG_PLUS_BUILD_ARGS := pillar/IMM_PROFILING pillar/ARTIFICIAL_LEAK
 LK_POSSIBLE_BUILD_ARG_TARGETS := $(addprefix lk-extra-opt/,$(LK_POSSIBLE_PKG_PLUS_BUILD_ARGS))
+
 
 .PHONY: lk-extra-opt/%
 
@@ -423,6 +431,7 @@ lk-extra-opt/%: FORCE
 # lk-build-arg-<env-var-name> files in the package directories, this way changing
 # the package hash. It should be done before invoke of the parse-pkgs.sh script
 # which calculates the package hashes.
+
 RESCAN_DEPS=FORCE $(LK_POSSIBLE_BUILD_ARG_TARGETS)
 # set FORCE_BUILD to --force to enforce rebuild
 FORCE_BUILD=
@@ -509,7 +518,7 @@ PKGS=pkg/alpine $(PKGS_$(ZARCH))
 
 # these are the packages that, when built, also need to be loaded into docker
 # if you need a pkg to be loaded into docker, in addition to the lkt cache, add it here
-PKGS_DOCKER_LOAD=mkconf mkimage-iso-efi mkimage-raw-efi mkrootfs-ext4 mkrootfs-squash
+PKGS_DOCKER_LOAD=zfs mkconf mkimage-iso-efi mkimage-raw-efi mkrootfs-ext4 mkrootfs-squash
 # these packages should exists for HOSTARCH as well as for ZARCH
 # alpine-base, alpine and cross-compilers are dependencies for others
 PKGS_HOSTARCH=alpine-base alpine cross-compilers $(PKGS_DOCKER_LOAD)
@@ -1079,12 +1088,14 @@ $(BUILDTOOLS_BIN)/linuxkit-$(LINUXKIT_VERSION):
 	$(QUIET) curl -L -o $@ $(LINUXKIT_SOURCE)/releases/download/$(LINUXKIT_VERSION)/linuxkit-$(LOCAL_GOOS)-$(HOSTARCH) && chmod +x $@
 	$(QUIET): $@: Succeeded
 
-$(GOBUILDER):
+$(GOBUILDER): $(LINUXKIT) eve-zfs
 	$(QUIET): "$@: Begin: GOBUILDER=$(GOBUILDER)"
 ifneq ($(BUILD),local)
 	@echo "Creating go builder image for user $(USER)"
+	$(eval ZFS_IMAGE := $(shell $(LINUXKIT) pkg $(LINUXKIT_ORG_TARGET) show-tag --build-yml $(ZFS_BUILD_YML) --canonical pkg/zfs)-$(ZARCH))
 	$(QUIET)docker build --build-arg GOVER=$(GOVER) --build-arg USER=$(USER) --build-arg GROUP=$(GROUP) \
                       --build-arg UID=$(UID) --build-arg GID=$(GID) \
+                      --build-arg ZFS_IMAGE=$(ZFS_IMAGE) \
                       $(DOCKER_HTTP_PROXY) $(DOCKER_HTTPS_PROXY) $(DOCKER_NO_PROXY) $(DOCKER_ALL_PROXY) \
                       -t $@ build-tools/src/scripts > /dev/null
 	@echo "$@ docker container is ready to use"
@@ -1149,10 +1160,11 @@ endif
 # If HV=k and DEV!=y and file pkg/my_package/build-k.yml exists, returns the path to that file.
 # If pkg/my_package/build-<PLATFORM>.yml exists, returns the path to that file.
 # Otherwise returns pkg/my_package/build.yml.
-get_pkg_build_yml = $(if $(filter k,$(HV)), $(call get_pkg_build_k_yml,$1), \
+get_pkg_build_yml = $(if $(filter zfs,$1), $(ZFS_BUILD_YML), \
+                    $(if $(filter k,$(HV)), $(call get_pkg_build_k_yml,$1), \
                     $(if $(filter y,$(RSTATS)), $(call get_pkg_build_rstats_yml,$1), \
                     $(if $(filter y,$(DEV)), $(call get_pkg_build_dev_yml,$1), \
-                    $(call get_pkg_build_plat_yml,$1))))
+                    $(call get_pkg_build_plat_yml,$1)))))
 get_pkg_build_plat_yml = $(if $(wildcard pkg/$1/build-$(PLATFORM).yml),build-$(PLATFORM).yml,build.yml)
 get_pkg_build_dev_yml = $(if $(wildcard pkg/$1/build-dev.yml),build-dev.yml,build.yml)
 get_pkg_build_rstats_yml = $(if $(wildcard pkg/$1/build-rstats.yml),build-rstats.yml,build.yml)

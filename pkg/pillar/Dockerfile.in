@@ -11,16 +11,8 @@ ARG BUILD_PKGS_BASE="git gcc linux-headers libc-dev make linux-pam-dev m4 findut
 ARG EVE_ALPINE_IMAGE=lfedge/eve-alpine:745ae9066273c73b0fd879c4ba4ff626a8392d04
 
 FROM lfedge/eve-uefi:b3ef9ca37c99439c776673aeba83c52ea8b84626 AS uefi-build
-FROM lfedge/eve-dom0-ztools:e9fb7d625a47288420efa7431a8d9c5dc6f146e3 AS zfs
-RUN mkdir /out
-# copy zfs-related files from dom0-ztools using prepared list of files
-RUN while read -r x; do \
-        if [ -d "$x" ]; then \
-          mkdir -p "/out/$x"; \
-        else \
-          cp -P "$x" "/out/$x"; \
-        fi \
-    done < /etc/zfs-files
+# hadolint ignore=DL3006
+FROM ZFS_TAG AS zfs
 
 # hadolint ignore=DL3006
 FROM ${EVE_ALPINE_IMAGE} AS build-native
@@ -104,7 +96,7 @@ ARG ARTIFICIAL_LEAK=n
 ENV ARTIFICIAL_LEAK=${ARTIFICIAL_LEAK}
 
 # we need zfs files during build
-COPY --from=zfs /out /
+COPY --from=zfs / /
 
 COPY ./  /pillar/
 
@@ -168,7 +160,7 @@ WORKDIR /
 RUN mkdir -p /out/usr/lib/xen/boot
 COPY --from=uefi-build /OVMF_VARS.fd /out/usr/lib/xen/boot/OVMF_VARS.fd
 
-COPY --from=zfs /out /out
+COPY --from=zfs / /out
 COPY --from=fscrypt /opt/zededa/bin /out/opt/zededa/bin
 COPY --from=gpttools / /out
 COPY --from=dnsmasq /usr/sbin/dnsmasq /out/opt/zededa/bin/dnsmasq
