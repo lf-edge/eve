@@ -26,7 +26,6 @@ Normally, a user-space program will require more context switches and will alway
 
 * [Firecracker](https://github.com/firecracker-microvm/firecracker/blob/master/docs/design.md)
 * [ukvm/solo5](https://www.usenix.org/sites/default/files/conference/protected-files/hotcloud16_slides_williams.pdf)
-* [ACRN DM](https://projectacrn.github.io/latest/developer-guides/hld/hld-devicemodel.html)
 
 Obviously, every time we have a choice (e.g. we have full control over the device drivers running in the task's kernel), we will make sure that tasks can use device models that are mostly satisfied by the Linux kernel itself. The following table summarizes the choices available for Xen and KVM:
 
@@ -61,14 +60,12 @@ NOTE on virtio-bus vs virtio-pci-bus split: QEMU has gone through [a refactoring
 While conceptually creation of the domain itself (allocating RAM, CPU and setting up of an execution context) and supplying it with the device model are orthogonal, almost always the two get wrapped together into a single entry point managed by a user-space CLI utility. The job of any such utility is to take a configuration file that fully describes device model + hypervisor specific domain settings and execute all the necessary [hypervisor plumbing](https://lwn.net/Articles/658511/) and device model creation in a single shot:
 
 * [xl for Xen](https://xenbits.xen.org/docs/unstable/man/xl.1.html). NOTE: xl by itself, can only instruct the Linux Kernel to provide device model to a domain. If, however, a true user-space device model implementation is required, xl delegates that to qemu by invoking it with the device model [crafted by xl](https://github.com/xen-project/xen/blob/master/tools/libxl/libxl_dm.c#L674) mostly corresponding to the virtual devices that are missing in the kernel. The *mostly* part is a tricky one, because xl tries to be smart and a lot of times (e.g. for disks) would create a kernel-based part of the device model AND a user-space based one just in case
-* [acrn-dm for ACRN](https://github.com/projectacrn/acrn-hypervisor/blob/master/doc/user-guides/acrn-dm-parameters.rst)
 * [qemu for KVM](https://qemu.weilnetz.de/doc/qemu-doc.html)
 * [jailer for Firecracker](https://github.com/firecracker-microvm/firecracker/blob/master/docs/jailer.md)
 
 All these utilities share one common trait: once they are done executing they always leave some kind of an *anchor process* daemonized process to keep track of state transitions in the running domain. Type-2 hypervisors have an additional benefit in that all the hypervisor-level resource accounting (RAM allocated vs. consumed, CPU assigned vs. running, etc.) can be attributed directly to the anchor process in a very traditional UNIX/Linux sense (or to put it a different way: you can get all that information by querying /proc filesystem). With type-1 hypervisors no direct attribution of this kind is possible and they all require a centralized daemon that keeps track of each domain's resource consumption:
 
 * [xenstored for Xen](https://wiki.xen.org/wiki/XenStore)
-* [acrnd for ACRN](https://projectacrn.github.io/1.0/tools/acrn-manager/README.html#acrnd)
 
 Typically this anchor process is the same user-space process that serves up the device model, with the only exception to the rule here being Xen. As was noted above: xl actually delegates device model to qemu which means while xl itself serves as an anchor process, it actually has a child qemu process running as well.
 
@@ -76,7 +73,6 @@ Regardless of whether an anchor process runs by itself or, like in case of xl, f
 
 * [QMP for qemu based anchor processes](https://qemu.weilnetz.de/doc/qemu-qmp-ref.html)
 * [Firecracker API for firecracker](https://github.com/firecracker-microvm/firecracker/blob/master/src/api_server/swagger/firecracker.yaml)
-* [ACRN API for ACRN](https://github.com/projectacrn/acrn-hypervisor/blob/master/doc/api/devicemodel_api.rst)
 * [A Hodge-Podge of APIs fronted by xl CLI](https://wiki.xen.org/wiki/Choice_of_Toolstacks)
 
 ## How EVE manages hypervisors
@@ -100,7 +96,6 @@ Further details of Xen vs. KVM IOMMU handling are [documented here](https://docs
 Hardware quirks aside, EVE uses the following hypervisor capabilities to manage IOMMU-based device assignments to domains:
 
 * [Xen PCI Passthrough](https://wiki.xenproject.org/wiki/Xen_PCI_Passthrough) for Xen
-* [HV Dev Passthrough](https://projectacrn.github.io/1.0/developer-guides/hld/hv-dev-passthrough.html) for ACRN
 * [QEMU/VFIO Passthrough](https://wiki.archlinux.org/index.php/PCI_passthrough_via_OVMF) for KVM
 
 While IOMMU tries to make hardware presented to the domain look indistinguishable from the bare-metal hardware, some device drivers running inside of the domain (most notably [NVidia ones](https://forum.level1techs.com/t/the-pragmatic-neckbeard-3-vfio-iommu-and-pcie/111251)) will try to detect this and degrade their capabilities. EVE uses hypervisor spoofing techniques to trick the drivers into thinking that they are truly operating on bare-metal hardware:

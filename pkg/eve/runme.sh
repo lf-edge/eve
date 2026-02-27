@@ -265,7 +265,7 @@ prepare_for_platform() {
 prepare_for_hv() {
     hv="$1"
     case "$hv" in
-    kvm|xen|acrn)
+    kvm|xen)
         ;;
     k)
         # Override image sizes with the max of the two values

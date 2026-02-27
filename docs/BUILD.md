@@ -26,7 +26,7 @@ defaults, when possible.
 | --- | --- | --- | --- |
 | `ROOTFS_VERSION` | Version ID of the EVE image | calculated from the git commit | `snapshot`, `1.2.3-abcd567` |
 | `ZARCH` | Hardware architecture of the resulting image | your current platform | `amd64`, `arm64`, `riscv64` |
-| `HV` | Hypervisor flavor of the resulting image | `kvm` (amd64, arm64) or `mini` (riscv64) | `kvm`, `xen`, `acrn`, `mini`, `k` |
+| `HV` | Hypervisor flavor of the resulting image | `kvm` (amd64, arm64) or `mini` (riscv64) | `kvm`, `xen`, `mini`, `k` |
 | `PLATFORM` | Specific platform for which to build | `generic` | `generic`, `rt`, `nvidia-jp6`, `imx8mp_pollux` |
 
 Finally, the target determines what type of image you are building, e.g.`live`, `installer`.
@@ -51,16 +51,16 @@ make ROOTFS_VERSION=snapshot ZARCH=amd64 HV=kvm live-gcp
 
 Same way, since HV applies at
 the rootfs level (rootfs binary is then fed wholesale into live and installer builds) you can build
-a `snapshot` rootfs with the hypervisor set to acrn by doing either:
+a `snapshot` rootfs with the hypervisor set to xen by doing either:
 
 ```shell
-make ROOTFS_VERSION=snapshot HV=acrn rootfs
+make ROOTFS_VERSION=snapshot HV=xen rootfs
 ```
 
 or
 
 ```shell
-make ROOTFS_VERSION=snapshot rootfs-acrn
+make ROOTFS_VERSION=snapshot rootfs-xen
 ```
 
 In this hierarchy, think of `ZARCH` and `ROOTFS_VERSION` as applicable to anything hence they don't get a -foo shortcut treatment.
@@ -330,7 +330,7 @@ Note that once you flash `installer.raw` on the installer media, such as USB dri
 
 The core `rootfs.tar` or `installer.tar` files are generated using `linuxkit build`, which is driven by a `yml` file.
 The `yml` file is in the `images/out` directory and is named `rootfs-$(HV)-$(PLATFORM)-<rootfs flavor>.yml`, where `HV` is the hypervisor,
-e.g. `kvm`, `xen`, `acrn`, `mini`, `k`, and can be set in the environment variable `HV`, and `PLATFORM` is the platform, e.g. `generic`, `rt`, `nvidia-jp6`, `imx8mp_pollux`, etc. and can be set in the environment variable `PLATFORM`.
+e.g. `kvm`, `xen`, `mini`, `k`, and can be set in the environment variable `HV`, and `PLATFORM` is the platform, e.g. `generic`, `rt`, `nvidia-jp6`, `imx8mp_pollux`, etc. and can be set in the environment variable `PLATFORM`.
 e.g. `make rootfs.tar HV=kvm PLATFORM=generic`.
 
 Rootfs flavor is not currently used by any platform except for `evaluation`.
@@ -1040,8 +1040,6 @@ EVE's build system allows to override the default docker registry through the `R
     {
       "repositories": [
         "lfedge/eve",
-        "lfedge/eve-acrn",
-        "lfedge/eve-acrn-kernel",
         "lfedge/eve-alpine",
         "lfedge/eve-apparmor",
         "lfedge/eve-bpftrace",

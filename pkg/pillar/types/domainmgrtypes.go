@@ -638,8 +638,7 @@ type OemWindowsLicenseKeyInfo struct {
 	Qemu       struct {
 		DomainArguments []string
 	}
-	Xen  struct{}
-	Acrn struct{}
+	Xen struct{}
 }
 
 // DmiSystemInfo hold system information extracted from dmidecode

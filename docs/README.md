@@ -296,7 +296,7 @@ in greater details in the [booting EVE](BOOTING.md) section of our docs.
 Regardless of the initial boot environment, though, after GRUB is done
 loading ether:
 
-* type-1 hypervisor (Xen, ACRN) plus Control Domain kernel
+* type-1 hypervisor (Xen) plus Control Domain kernel
 * Linux kernel (with type-2 KVM hypervisor support enabled)
 
 the rest of the runtime sequence relies solely on what happens with EVE
