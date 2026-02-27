@@ -16,3 +16,4 @@ spec:
         - Snapshot
         - HostDevices
         - GPU
+        - VideoConfig
