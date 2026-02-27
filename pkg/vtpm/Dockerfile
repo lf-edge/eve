@@ -81,6 +81,8 @@ RUN strip --strip-unneeded /out/usr/bin/ptpm
 RUN find /out/usr/lib/ -name '*.la' -delete
 RUN find /out/usr/lib/ -name '*.a' -delete
 
+RUN rm /out/usr/lib/libprotoc.so* /out/usr/lib/libprotobuf*
+
 FROM build AS test
 # -race requires cgo, which needs a C compiler and libc headers.
 # swtpm needs its runtime shared libraries.
