@@ -90,14 +90,12 @@ resolve_tags() {
 gen_tags() {
 cat <<EOF
 CURDIR=$(pwd)
-ACRN_KERNEL_TAG=${ACRN_KERNEL_TAG}
 KERNEL_TAG=${KERNEL_TAG}
 FW_TAG=${FW_TAG}
 XENTOOLS_TAG=${XENTOOLS_TAG}
 DOM0ZTOOLS_TAG=${DOM0ZTOOLS_TAG}
 RNGD_TAG=${RNGD_TAG}
 XEN_TAG=${XEN_TAG}
-ACRN_TAG=${ACRN_TAG}
 DNSMASQ_TAG=${DNSMASQ_TAG}
 TESTMSVCS_TAG=${TESTMSVCS_TAG}
 PILLAR_TAG=${PILLAR_TAG}
@@ -138,11 +136,9 @@ MONITOR_TAG=${MONITOR_TAG}
 EOF
 }
 
-ACRN_KERNEL_TAG=$(linuxkit_tag pkg/acrn-kernel)
 FW_TAG=$(linuxkit_tag pkg/fw)
 XENTOOLS_TAG=$(linuxkit_tag pkg/xen-tools)
 XEN_TAG=$(linuxkit_tag pkg/xen)
-ACRN_TAG=$(linuxkit_tag pkg/acrn)
 GRUB_TAG=$(linuxkit_tag pkg/grub)
 UBOOT_TAG=$(linuxkit_tag pkg/u-boot)
 DNSMASQ_TAG=$(linuxkit_tag pkg/dnsmasq)

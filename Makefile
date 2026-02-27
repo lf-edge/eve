@@ -39,7 +39,7 @@ endif
 EVE_SNAPSHOT_VERSION=0.0.0
 # which language bindings to generate for EVE API
 PROTO_LANGS=go python
-# Use 'make HV=acrn|xen|kvm|kubevirt' to build ACRN images (AMD64 only), Xen or KVM
+# Use 'make HV=xen|kvm|kubevirt' to build Xen, KVM or kubevirt images
 HV=$(HV_DEFAULT)
 # Enable development build (disabled by default)
 DEV=n
