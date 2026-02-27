@@ -318,6 +318,12 @@ func (ctx kubevirtContext) CreateReplicaVMIConfig(domainName string, config type
 	vmi.Spec.Networks = nads
 	vmi.Spec.Domain.Devices.Interfaces = intfs
 
+	// Set video device for better VNC resolution.
+	// Note: Requires VideoConfig feature gate enabled in KubeVirt cluster configuration for kubevirt.io v1.6.0
+	vmi.Spec.Domain.Devices.Video = &v1.VideoDevice{
+		Type: "virtio",
+	}
+
 	// If FML type, set the firmware bootloader to EFI
 	if config.VirtualizationMode == types.FML {
 		if runtime.GOARCH == "amd64" {
