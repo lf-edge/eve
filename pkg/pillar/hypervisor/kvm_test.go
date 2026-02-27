@@ -206,22 +206,6 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
 
 
 
-#[device "video0"]
-#  driver = "qxl-vga"
-#  ram_size = "67108864"
-#  vram_size = "67108864"
-#  vram64_size_mb = "0"
-#  vgamem_mb = "16"
-#  max_outputs = "1"
-#  bus = "pcie.0"
-#  addr = "0x1"
-
-[device "video0"]
-  driver = "VGA"
-  vgamem_mb = "16"
-  bus = "pcie.0"
-  addr = "0x1"
-
 [device "pci.2"]
   driver = "pcie-root-port"
   port = "12"
@@ -493,22 +477,6 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
 
 
 
-#[device "video0"]
-#  driver = "qxl-vga"
-#  ram_size = "67108864"
-#  vram_size = "67108864"
-#  vram64_size_mb = "0"
-#  vgamem_mb = "16"
-#  max_outputs = "1"
-#  bus = "pcie.0"
-#  addr = "0x1"
-
-[device "video0"]
-  driver = "VGA"
-  vgamem_mb = "16"
-  bus = "pcie.0"
-  addr = "0x1"
-
 [device "pci.2"]
   driver = "pcie-root-port"
   port = "12"
@@ -744,19 +712,6 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
   name = "org.lfedge.eve.console.0"
 
 
-
-#[device "video0"]
-#  driver = "qxl-vga"
-#  ram_size = "67108864"
-#  vram_size = "67108864"
-#  vram64_size_mb = "0"
-#  vgamem_mb = "16"
-#  max_outputs = "1"
-#  bus = "pcie.0"
-#  addr = "0x1"
-
-[device "video0"]
-  driver = "virtio-gpu-pci"
 
 [device "pci.2"]
   driver = "pcie-root-port"
@@ -1222,6 +1177,7 @@ func domainConfigAndAssignableAdapters(dcl []types.DiskConfig) (types.DomainConf
 			ExtraArgs:  "init=/bin/sh",
 			Memory:     1024 * 1024 * 10,
 			VCpus:      2,
+			EnableVnc:  true,
 			VncDisplay: 5,
 			VncPasswd:  "rosebud",
 		},
@@ -1357,19 +1313,12 @@ func domConfigArm64() string {
 
 
 
-#[device "video0"]
-#  driver = "qxl-vga"
-#  ram_size = "67108864"
-#  vram_size = "67108864"
-#  vram64_size_mb = "0"
-#  vgamem_mb = "16"
-#  max_outputs = "1"
-#  bus = "pcie.0"
-#  addr = "0x1"
-
+[vnc "default"]
+  vnc = "0.0.0.0:5"
+  to = "99"
+  password = "on"
 [device "video0"]
   driver = "virtio-gpu-pci"
-
 [device "pci.2"]
   driver = "pcie-root-port"
   port = "12"
@@ -1658,22 +1607,14 @@ func domConfigAmd64FML() string {
 
 
 
-#[device "video0"]
-#  driver = "qxl-vga"
-#  ram_size = "67108864"
-#  vram_size = "67108864"
-#  vram64_size_mb = "0"
-#  vgamem_mb = "16"
-#  max_outputs = "1"
-#  bus = "pcie.0"
-#  addr = "0x1"
-
+[vnc "default"]
+  vnc = "0.0.0.0:5"
+  to = "99"
+  password = "on"
 [device "video0"]
-  driver = "VGA"
-  vgamem_mb = "16"
+  driver = "virtio-vga"
   bus = "pcie.0"
   addr = "0x1"
-
 [device "pci.2"]
   driver = "pcie-root-port"
   port = "12"
@@ -1958,22 +1899,14 @@ func domConfigAmd64Legacy() string {
 
 
 
-#[device "video0"]
-#  driver = "qxl-vga"
-#  ram_size = "67108864"
-#  vram_size = "67108864"
-#  vram64_size_mb = "0"
-#  vgamem_mb = "16"
-#  max_outputs = "1"
-#  bus = "pcie.0"
-#  addr = "0x1"
-
+[vnc "default"]
+  vnc = "0.0.0.0:5"
+  to = "99"
+  password = "on"
 [device "video0"]
-  driver = "VGA"
-  vgamem_mb = "16"
+  driver = "virtio-vga"
   bus = "pcie.0"
   addr = "0x1"
-
 [device "pci.2"]
   driver = "pcie-root-port"
   port = "12"
@@ -2246,22 +2179,14 @@ func domConfigAmd64() string {
 
 
 
-#[device "video0"]
-#  driver = "qxl-vga"
-#  ram_size = "67108864"
-#  vram_size = "67108864"
-#  vram64_size_mb = "0"
-#  vgamem_mb = "16"
-#  max_outputs = "1"
-#  bus = "pcie.0"
-#  addr = "0x1"
-
+[vnc "default"]
+  vnc = "0.0.0.0:5"
+  to = "99"
+  password = "on"
 [device "video0"]
-  driver = "VGA"
-  vgamem_mb = "16"
+  driver = "virtio-vga"
   bus = "pcie.0"
   addr = "0x1"
-
 [device "pci.2"]
   driver = "pcie-root-port"
   port = "12"
@@ -2556,22 +2481,10 @@ func domConfigContainerVNC() string {
   vnc = "0.0.0.0:5"
   to = "99"
   password = "on"
-#[device "video0"]
-#  driver = "qxl-vga"
-#  ram_size = "67108864"
-#  vram_size = "67108864"
-#  vram64_size_mb = "0"
-#  vgamem_mb = "16"
-#  max_outputs = "1"
-#  bus = "pcie.0"
-#  addr = "0x1"
-
 [device "video0"]
-  driver = "VGA"
-  vgamem_mb = "16"
+  driver = "virtio-vga"
   bus = "pcie.0"
   addr = "0x1"
-
 [device "pci.2"]
   driver = "pcie-root-port"
   port = "12"
