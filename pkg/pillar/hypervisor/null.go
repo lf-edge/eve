@@ -40,7 +40,7 @@ func (ctx nullContext) GetCapabilities() (*types.Capabilities, error) {
 }
 
 // CountMemOverhead - returns the memory overhead for a domain.
-// Null-implementation that returns 0 is used now for Acrn hypervisor
+// Null-implementation that returns 0
 func (ctx nullContext) CountMemOverhead(domainName string, domainUUID uuid.UUID, domainRAMSize int64, vmmMaxMem int64,
 	domainMaxCpus int64, domainVCpus int64, domainIoAdapterList []types.IoAdapter, aa *types.AssignableAdapters,
 	globalConfig *types.ConfigItemValueMap) (uint64, error) {
