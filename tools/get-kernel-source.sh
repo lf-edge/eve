@@ -6,7 +6,6 @@
 # Collect EVE's kernel sources from the upstream.
 #
 # Needs to run in a workspace where it has access to pkg/kernel/Dockerfile.
-# Can optionally feed in pkg/acrn-kernel/Dockerfile or pkg/new-kernel/Dockerfile
 # Example usage
 #  get-kernel-source.sh [-v] [-u urlfile] [-s outdir] [Dockerfile]
 # With -u <urlfile> it dumps the source URLs into that file

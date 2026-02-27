@@ -26,7 +26,7 @@ defaults, when possible.
 | --- | --- | --- | --- |
 | `ROOTFS_VERSION` | Version ID of the EVE image | calculated from the git commit | `snapshot`, `1.2.3-abcd567` |
 | `ZARCH` | Hardware architecture of the resulting image | your current platform | `amd64`, `arm64`, `riscv64` |
-| `HV` | Hypervisor flavor of the resulting image | `kvm` (amd64, arm64) or `mini` (riscv64) | `kvm`, `xen`, `acrn`, `mini`, `kubevirt` |
+| `HV` | Hypervisor flavor of the resulting image | `kvm` (amd64, arm64) or `mini` (riscv64) | `kvm`, `xen`, `mini`, `kubevirt` |
 | `PLATFORM` | Specific platform for which to build | `generic` | `generic`, `rt`, `nvidia-jp6`, `imx8mp_pollux` |
 
 Finally, the target determines what type of image you are building, e.g.`live`, `installer`.
@@ -51,16 +51,16 @@ make ROOTFS_VERSION=snapshot ZARCH=amd64 HV=kvm live-gcp
 
 Same way, since HV applies at
 the rootfs level (rootfs binary is then fed wholesale into live and installer builds) you can build
-a `snapshot` rootfs with the hypervisor set to acrn by doing either:
+a `snapshot` rootfs with the hypervisor set to xen by doing either:
 
 ```shell
-make ROOTFS_VERSION=snapshot HV=acrn rootfs
+make ROOTFS_VERSION=snapshot HV=xen rootfs
 ```
 
 or
 
 ```shell
-make ROOTFS_VERSION=snapshot rootfs-acrn
+make ROOTFS_VERSION=snapshot rootfs-xen
 ```
 
 In this hierarchy, think of `ZARCH` and `ROOTFS_VERSION` as applicable to anything hence they don't get a -foo shortcut treatment.
@@ -329,7 +329,7 @@ Note that once you flash `installer.raw` on the installer media, such as USB dri
 
 The core `rootfs.tar` file is generated using `linuxkit build`, which is driven by a `yml` file.
 The `yml` file is in the `images` directory and is named `rootfs-$(HV).yml`, where `HV` is the hypervisor,
-e.g. `kvm`, `xen`, `acrn`, `mini`, and can be set in the environment variable `HV`,
+e.g. `kvm`, `xen`, `mini`, and can be set in the environment variable `HV`,
 e.g. `make rootfs.tar HV=kvm`.
 
 The actual `yml` file `rootfs-$(HV).yml` is not checked into version control, nor is any file
@@ -999,8 +999,6 @@ Use `LINUXKIT_PKG_ORG` to redirect package pushes to a local registry. For examp
     {
       "repositories": [
         "lfedge/eve",
-        "lfedge/eve-acrn",
-        "lfedge/eve-acrn-kernel",
         "lfedge/eve-alpine",
         "lfedge/eve-apparmor",
         "lfedge/eve-bpftrace",

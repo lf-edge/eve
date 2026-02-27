@@ -35,7 +35,7 @@ Before we proceed describing each type of boot flow in details, let us first est
 
 1. rootfs image (either a [squashfs](https://www.kernel.org/doc/html/latest/filesystems/squashfs.html) or [ext4](https://www.kernel.org/doc/html/latest/filesystems/ext4/index.html))
 2. 2nd stage GRUB (in UEFI format)
-3. type-1 hypervisor ([Xen](https://xenproject.org/) or [ACRN](https://projectacrn.org/))
+3. type-1 hypervisor ([Xen](https://xenproject.org/))
 4. Dom0 linux kernel (this doubles as type-2 hypervisor for KVM)
 5. Optional Alpine-derived initramfs [init entrypoint](https://gitlab.alpinelinux.org/alpine/mkinitfs) as a compressed cpio
 6. Optional container that performs [EVE installation](../pkg/mkimage-raw-efi/install) as a compressed cpio
