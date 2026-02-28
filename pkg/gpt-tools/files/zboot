@@ -142,7 +142,7 @@ partstate() {
         0x102) state="active" ;;
         0x13) state="updating" ;;
         0x3) state="inprogress" ;;
-        0x0) state="unused" ;;
+        0) state="unused" ;;
         *) state="UNKNOWN ${attr}" ;;
     esac
     echo "${state}"
