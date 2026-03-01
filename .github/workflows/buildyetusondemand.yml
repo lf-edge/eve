@@ -34,8 +34,6 @@ jobs:
       IMG_TAG: "0.15.1-eve-1"
     strategy:
       fail-fast: false
-      matrix:
-        arch: [amd64, arm64]
 
     steps:
       - name: Starting Report
@@ -52,6 +50,8 @@ jobs:
           ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
           persist-credentials: false
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
       - name: Login to Docker Hub
         if: ${{ env.REPO_NAME == 'lf-edge/eve' }}
         uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef  # v3.6.0
@@ -60,7 +60,7 @@ jobs:
           password: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
       - name: Build and push Yetus image
         run: |
-          docker buildx build --platform linux/${{ matrix.arch }} --push --tag ${{ env.IMG_NAME }}:${{ env.IMG_TAG }} tools/yetus
+          docker buildx build --platform linux/amd64,linux/arm64 --push --tag ${{ env.IMG_NAME }}:${{ env.IMG_TAG }} tools/yetus
       - name: Post package report
         run: |
           echo Disk usage
