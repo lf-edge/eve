@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/getlantern/framed"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
@@ -26,9 +27,11 @@ import (
 // Implements Unix-domain socket or directory subscription,
 // and directory-based persistence.
 type Subscriber struct {
-	sockName         string   // there is one socket per publishing agent
-	sock             net.Conn // For socket subscriptions
-	subscribeFromDir bool     // Handle special case of file only info
+	sockName         string         // there is one socket per publishing agent
+	sock             net.Conn       // For socket subscriptions
+	reader           *framed.Reader // framed reader for the socket
+	writer           *framed.Writer // framed writer for the socket
+	subscribeFromDir bool           // Handle special case of file only info
 	name             string
 	topic            string
 	dirName          string
@@ -170,7 +173,6 @@ func (s *Subscriber) LargeDirName() string {
 func (s *Subscriber) watchSock() {
 	for {
 		msg, key, val := s.connectAndRead()
-		maybeLogAllocated(s.log)
 		switch msg {
 		case "hello":
 			// Do nothing
@@ -216,7 +218,7 @@ func (s *Subscriber) connectAndRead() (string, string, []byte) {
 			}
 		}
 		if s.sock == nil {
-			sock, err := net.Dial("unixpacket", s.sockName)
+			sock, err := net.Dial("unix", s.sockName)
 			if err != nil {
 				errStr := fmt.Sprintf("connectAndRead(%s): Dial failed %s",
 					s.name, err)
@@ -228,14 +230,18 @@ func (s *Subscriber) connectAndRead() (string, string, []byte) {
 				continue
 			}
 			s.sock = sock
+			s.writer = NewFramedWriter(sock)
+			s.reader = NewFramedReader(sock)
 			req := fmt.Sprintf("request %s", s.topic)
-			_, err = sock.Write([]byte(req))
+			_, err = s.writer.Write([]byte(req))
 			if err != nil {
 				errStr := fmt.Sprintf("connectAndRead(%s): sock write failed %s",
 					s.name, err)
 				s.log.Errorln(errStr)
 				s.sock.Close()
 				s.sock = nil
+				s.reader = nil
+				s.writer = nil
 				continue
 			}
 		}
@@ -244,17 +250,9 @@ func (s *Subscriber) connectAndRead() (string, string, []byte) {
 			return "done", "", nil
 		}
 
-		// wait for readable conn
+		// ReadFrame will block until a complete frame is available.
 		// We close s.sock when we close s.doneChan to make sure
-		// ConnReadCheck unblocks
-		if err := pubsub.ConnReadCheck(s.sock); err != nil {
-			errStr := fmt.Sprintf("connectAndRead(%s) ConnReadCheck failed: %s",
-				s.name, err)
-			s.log.Errorln(errStr)
-			s.sock.Close()
-			s.sock = nil
-			continue
-		}
+		// ReadFrame unblocks.
 		msg, key, val := s.read()
 		if msg == "" {
 			continue
@@ -268,26 +266,19 @@ func (s *Subscriber) connectAndRead() (string, string, []byte) {
 // msg is "" if there is nothing to process
 func (s *Subscriber) read() (string, string, []byte) {
 
-	buf, doneFunc := GetBuffer()
-	defer doneFunc()
-
-	res, err := s.sock.Read(buf)
+	frame, err := ReadFrame(s.reader)
 	if err != nil {
 		errStr := fmt.Sprintf("connectAndRead(%s): sock read failed %s",
 			s.name, err)
 		s.log.Errorln(errStr)
 		s.sock.Close()
 		s.sock = nil
+		s.reader = nil
+		s.writer = nil
 		return "", "", nil
 	}
 
-	if res == len(buf) {
-		// Likely truncated
-		// Peer process could have died
-		s.log.Errorf("connectAndRead(%s) request likely truncated\n", s.name)
-		return "", "", nil
-	}
-	reply := strings.Split(string(buf[0:res]), " ")
+	reply := strings.Split(string(frame), " ")
 	count := len(reply)
 	if count < 2 {
 		errStr := fmt.Sprintf("connectAndRead(%s): too short read", s.name)

@@ -43,9 +43,11 @@ func TestCheckMaxSize(t *testing.T) {
 	}
 	ps := pubsub.New(&driver, logger, log)
 
-	// The values 48000 and 49122 have been determined experimentally
-	// to be what fits and not for this particular struct and string
-	// content.
+	// With framed big frames (32-bit length prefix) the IPC message size
+	// limit is now 10MB, so the old 65KB boundary tests no longer apply.
+	// We add new test cases that exceed the 10MB limit to verify it.
+	// The "large tag" mechanism (pubsub-large-*) still has its own 1MB
+	// limit enforced by large.go, so those cases remain.
 	myCtx := context{}
 	testMatrix := map[string]struct {
 		agentName   string
@@ -74,20 +76,20 @@ func TestCheckMaxSize(t *testing.T) {
 		"File too large": {
 			agentName: "",
 			//			agentScope: "testscope1",
-			stringSize: 49122,
+			stringSize: 8 * 1024 * 1024,
 			expectFail: true,
 		},
 		"IPC too large": {
 			agentName: "testagent1",
 			//			agentScope: "testscope",
-			stringSize: 49122,
+			stringSize: 8 * 1024 * 1024,
 			expectFail: true,
 		},
 		"IPC with persistent too large": {
 			agentName: "testagent2",
 			//			agentScope: "testscope",
 			persistent: true,
-			stringSize: 49122,
+			stringSize: 8 * 1024 * 1024,
 			expectFail: true,
 		},
 		"File using large tag": {

@@ -10,9 +10,8 @@ import (
 	"os"
 	"path"
 	"strings"
-	"sync"
-	"sync/atomic"
 
+	"github.com/getlantern/framed"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/sirupsen/logrus"
@@ -47,7 +46,7 @@ const (
 	// being directory in /run/global
 	fixedName = "global"
 	fixedDir  = "/run/" + fixedName
-	maxsize   = 65535 // Max size for json which can be read or written
+	maxsize   = 10 * 1024 * 1024 // Max size for json which can be read or written (10MB with framed big frames)
 )
 
 // SocketDriver driver for pubsub using local unix-domain socket and files
@@ -119,7 +118,7 @@ func (s *SocketDriver) Publisher(global bool, name, topic string, persistent boo
 			// This could either be a left-over in the filesystem
 			// or some other process (or ourselves) using the same
 			// name to publish. Try connect to see if it is the latter.
-			sock, err := net.Dial("unixpacket", sockName)
+			sock, err := net.Dial("unix", sockName)
 			if err == nil {
 				sock.Close()
 				s.Log.Fatalf("Cannot publish %s since it is already used",
@@ -131,7 +130,7 @@ func (s *SocketDriver) Publisher(global bool, name, topic string, persistent boo
 				return nil, errors.New(errStr)
 			}
 		}
-		listener, err = net.Listen("unixpacket", sockName)
+		listener, err = net.Listen("unix", sockName)
 		if err != nil {
 			errStr := fmt.Sprintf("Publish(%s): failed %s",
 				name, err)
@@ -234,39 +233,38 @@ func (s *SocketDriver) persistentDirName(name string) string {
 	return fmt.Sprintf("%s/%s/status/%s", s.RootDir, "/persist", name)
 }
 
-// Use a buffer pool to minimize memory usage
-var bufPool = &sync.Pool{
-	New: func() interface{} {
-		buffer := make([]byte, maxsize+1)
-		return buffer
-	},
+// NewFramedWriter wraps a net.Conn with a framed.Writer that uses big frames
+// (32-bit length prefix), supporting messages up to maxsize.
+// The actual application-level limit is enforced by the send* methods.
+func NewFramedWriter(conn net.Conn) *framed.Writer {
+	w := framed.NewWriter(conn)
+	w.EnableBigFrames()
+	return w
 }
 
-// Track allocations for debug
-var allocated uint32
-
-// GetBuffer returns a buffer and a done func to call at defer.
-func GetBuffer() ([]byte, func()) {
-	buf := bufPool.Get().([]byte)
-	atomic.AddUint32(&allocated, 1)
-	return buf, func() {
-		bufPool.Put(buf)
-		atomic.AddUint32(&allocated, ^uint32(0))
-	}
+// NewFramedReader wraps a net.Conn with a framed.Reader that uses big frames
+// (32-bit length prefix). Callers must use readFrame() instead of calling
+// ReadFrame() directly, to enforce the maxsize limit and prevent unbounded
+// memory allocation from a buggy peer.
+func NewFramedReader(conn net.Conn) *framed.Reader {
+	r := framed.NewReader(conn)
+	r.EnableBigFrames()
+	return r
 }
 
-// logs a message if the allocation changed
-var lastLoggedAllocated uint32
-
-func maybeLogAllocated(log *base.LogObject) {
-	currentAllocated := atomic.LoadUint32(&allocated)
-	currentLastAllocated := atomic.LoadUint32(&lastLoggedAllocated)
-	if currentLastAllocated == currentAllocated {
-		return
+// ReadFrame reads a single frame from the framed.Reader and rejects frames
+// that exceed maxsize. This protects against unbounded memory allocation
+// from a buggy or malicious peer sending a large length prefix.
+func ReadFrame(r *framed.Reader) ([]byte, error) {
+	frame, err := r.ReadFrame()
+	if err != nil {
+		return nil, err
 	}
-	log.Functionf("pubsub buffer allocation changed from %d to  %d",
-		currentLastAllocated, currentAllocated)
-	atomic.StoreUint32(&lastLoggedAllocated, currentAllocated)
+	if len(frame) > maxsize {
+		return nil, fmt.Errorf("received frame of %d bytes exceeds max %d",
+			len(frame), maxsize)
+	}
+	return frame, nil
 }
 
 // Poll to check if we should go away
