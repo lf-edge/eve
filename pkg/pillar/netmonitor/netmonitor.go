@@ -7,6 +7,7 @@ import (
 	"context"
 	"net"
 
+	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils/netutils"
 )
 
@@ -48,6 +49,15 @@ type NetworkMonitor interface {
 	// The set of routes to list can be filtered.
 	// Returns both IPv4 and IPv6 routes.
 	ListRoutes(filters RouteFilters) ([]Route, error)
+	// GetPNACStatus returns the current PNAC (Port Network Access Control) status
+	// for the specified interface.
+	// The exact 802.1x supplicant state and any associated error condition are obtained
+	// by querying `wpa_cli status`. The per-interface PNAC state file (see PNACStateDir)
+	// is used only to determine the timestamp of the last successful 802.1X authentication.
+	GetPNACStatus(ifIndex int) (types.PNACStatus, error)
+	// GetPNACMetrics returns IEEE 802.1X PNAC (Port-Based Network Access Control)
+	// metrics for the specified interface.
+	GetPNACMetrics(ifIndex int) (types.PNACMetrics, error)
 	// ClearCache : clear cached mappings between interface names, interface indexes,
 	// attributes, assigned addresses, DNS info, DHCP info and default GWs.
 	// It is reasonable to do this once in a while because the monitor can miss some
@@ -199,3 +209,14 @@ type DHCPInfo struct {
 	IPv4NtpServers []netutils.HostnameOrIP
 	IPv6NtpServers []netutils.HostnameOrIP
 }
+
+// PNACEvent represents a change in port authentication state.
+// Only reports transitions between non-authenticated and fully authenticated.
+// Does not capture intermediate EAP states; intended to trigger network
+// configuration changes that depend on port auth (e.g., acquiring (new) DHCP lease).
+type PNACEvent struct {
+	IfName          string
+	IsAuthenticated bool
+}
+
+func (e PNACEvent) isNetworkEvent() {}

@@ -35,6 +35,11 @@ func initGetConfigCtx(g *GomegaWithT) *getconfigContext {
 		TopicType: types.PhysicalIOAdapterList{},
 	})
 	g.Expect(err).To(BeNil())
+	pubSCEPProfile, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName: agentName,
+		TopicType: types.SCEPProfile{},
+	})
+	g.Expect(err).To(BeNil())
 	pubDPC, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName: agentName,
 		TopicType: types.DevicePortConfig{},
@@ -52,6 +57,7 @@ func initGetConfigCtx(g *GomegaWithT) *getconfigContext {
 	getconfigCtx := &getconfigContext{
 		pubDevicePortConfig:     pubDPC,
 		pubPhysicalIOAdapters:   pubIOAdapters,
+		pubSCEPProfile:          pubSCEPProfile,
 		pubNetworkXObjectConfig: pubNetworks,
 		pubPatchEnvelopeInfo:    pubPatchEnvelopes,
 		zedagentCtx: &zedagentContext{
@@ -1840,4 +1846,381 @@ func TestParseIpspec_GatewayVersionMismatch(t *testing.T) {
 
 	g.Expect(err).To(HaveOccurred())
 	g.Expect(err.Error()).To(ContainSubstring("IP version mismatch"))
+}
+
+func TestParsePNAC(t *testing.T) {
+	g := NewGomegaWithT(t)
+	getconfigCtx := initGetConfigCtx(g)
+
+	const networkUUID = "572cd3bc-ade6-42ad-97a0-22cd24fed1a0"
+	config := &zconfig.EdgeDevConfig{
+		Networks: []*zconfig.NetworkConfig{
+			{
+				Id:   networkUUID,
+				Type: zcommon.NetworkType_V4,
+				Ip: &zcommon.Ipspec{
+					Dhcp: zcommon.DHCPType_Client,
+				},
+			},
+		},
+		DeviceIoList: []*zconfig.PhysicalIO{
+			{
+				Ptype:        zcommon.PhyIoType_PhyIoNetEth,
+				Phylabel:     "eth0",
+				Logicallabel: "ethernet0",
+				Assigngrp:    "eth-grp-1",
+				Phyaddrs: map[string]string{
+					"ifname":  "eth0",
+					"pcilong": "0000:04:00.0",
+				},
+				Usage: zcommon.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
+			},
+			{
+				Ptype:        zcommon.PhyIoType_PhyIoNetEth,
+				Phylabel:     "eth1",
+				Logicallabel: "ethernet1",
+				Assigngrp:    "eth-grp-1",
+				Phyaddrs: map[string]string{
+					"ifname":  "eth1",
+					"pcilong": "0000:05:00.0",
+				},
+				Usage: zcommon.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
+			},
+		},
+		SystemAdapterList: []*zconfig.SystemAdapter{
+			{
+				Name:           "adapter-ethernet0",
+				Uplink:         true,
+				NetworkUUID:    networkUUID,
+				Alias:          "ethernet0-alias",
+				LowerLayerName: "ethernet0",
+				Cost:           0,
+			},
+			{
+				Name:           "adapter-ethernet1",
+				Uplink:         true,
+				NetworkUUID:    networkUUID,
+				Alias:          "ethernet1-alias",
+				LowerLayerName: "ethernet1",
+				Cost:           10,
+			},
+		},
+		Pnacs: []*zconfig.PNAC{
+			{
+				Logicallabel:              "ethernet0",
+				EapIdentity:               "123456789",
+				EapMethod:                 zconfig.EAPMethod_EAP_METHOD_TLS,
+				CertEnrollmentProfileName: "scep-profile1",
+			},
+		},
+		ScepProfiles: []*zconfig.SCEPProfile{
+			{
+				ProfileName:        "scep-profile1",
+				ScepUrl:            "https://ca.example.com/scep",
+				UseControllerProxy: true,
+				CsrProfile: &zconfig.CSRProfile{
+					CommonName:         "123456789",
+					Organization:       "Test Organization",
+					OrganizationalUnit: "Unit Test",
+					Country:            "US",
+					State:              "TestState",
+					Locality:           "TestCity",
+					SanUri:             []string{"urn:test:device:123456789"},
+					RenewPeriodPercent: 60,
+					KeyType:            zconfig.KeyType_KEY_TYPE_RSA_4096,
+					HashAlgorithm:      zconfig.HashAlgorithm_HASH_ALGORITHM_SHA256,
+				},
+			},
+		},
+	}
+
+	parseDeviceIoListConfig(getconfigCtx, config)
+	parseSCEPProfiles(getconfigCtx, config)
+	parsePNACConfig(getconfigCtx, config, true)
+	parseNetworkXObjectConfig(getconfigCtx, config)
+	parseSystemAdapterConfig(getconfigCtx, config, fromController, true)
+
+	portConfig, err := getconfigCtx.pubDevicePortConfig.Get("zedagent")
+	g.Expect(err).To(BeNil())
+	dpc := portConfig.(types.DevicePortConfig)
+	g.Expect(dpc.Version).To(Equal(types.DPCIsMgmt))
+	g.Expect(dpc.HasError()).To(BeFalse())
+	g.Expect(dpc.Ports).To(HaveLen(2))
+	port0 := dpc.Ports[0]
+	g.Expect(port0.Logicallabel).To(Equal("adapter-ethernet0"))
+	g.Expect(port0.PNAC.Enabled).To(BeTrue())
+	g.Expect(port0.PNAC.CertEnrollmentProfileName).To(Equal("scep-profile1"))
+	g.Expect(port0.PNAC.EAPMethod).To(Equal(zconfig.EAPMethod_EAP_METHOD_TLS))
+	g.Expect(port0.PNAC.EAPIdentity).To(Equal("123456789"))
+	port1 := dpc.Ports[1]
+	g.Expect(port1.Logicallabel).To(Equal("adapter-ethernet1"))
+	g.Expect(port1.PNAC.Enabled).To(BeFalse())
+	g.Expect(port1.PNAC.CertEnrollmentProfileName).To(BeEmpty())
+	g.Expect(port1.PNAC.EAPMethod).To(Equal(zconfig.EAPMethod_EAP_METHOD_UNSPECIFIED))
+	g.Expect(port1.PNAC.EAPIdentity).To(BeEmpty())
+
+	scepProfileObj, err := getconfigCtx.pubSCEPProfile.Get("scep-profile1")
+	g.Expect(err).To(BeNil())
+	scepProfile := scepProfileObj.(types.SCEPProfile)
+	g.Expect(scepProfile.ProfileName).To(Equal("scep-profile1"))
+	g.Expect(scepProfile.SCEPServerURL).To(Equal("https://ca.example.com/scep"))
+	g.Expect(scepProfile.UseControllerProxy).To(BeTrue())
+
+	// No parsing errors expected
+	g.Expect(scepProfile.ParsingError.Error).To(BeEmpty())
+
+	// CA certs were not provided
+	g.Expect(scepProfile.CACertPEM).To(BeEmpty())
+
+	// CSR Subject checks
+	g.Expect(scepProfile.CSRProfile.Subject.CommonName).To(Equal("123456789"))
+	g.Expect(scepProfile.CSRProfile.Subject.Organization).To(Equal([]string{"Test Organization"}))
+	g.Expect(scepProfile.CSRProfile.Subject.OrganizationalUnit).To(Equal([]string{"Unit Test"}))
+	g.Expect(scepProfile.CSRProfile.Subject.Country).To(Equal([]string{"US"}))
+	g.Expect(scepProfile.CSRProfile.Subject.State).To(Equal([]string{"TestState"}))
+	g.Expect(scepProfile.CSRProfile.Subject.Locality).To(Equal([]string{"TestCity"}))
+
+	// CSR SAN checks
+	g.Expect(scepProfile.CSRProfile.SAN.DNSNames).To(BeEmpty())
+	g.Expect(scepProfile.CSRProfile.SAN.EmailAddresses).To(BeEmpty())
+	g.Expect(scepProfile.CSRProfile.SAN.IPAddresses).To(BeNil())
+	g.Expect(scepProfile.CSRProfile.SAN.URIs).
+		To(Equal([]string{"urn:test:device:123456789"}))
+
+	// Renewal + crypto parameters
+	g.Expect(scepProfile.CSRProfile.RenewPeriodPercent).To(Equal(uint8(60)))
+	g.Expect(scepProfile.CSRProfile.KeyType).
+		To(Equal(zconfig.KeyType_KEY_TYPE_RSA_4096))
+	g.Expect(scepProfile.CSRProfile.HashAlgorithm).
+		To(Equal(zconfig.HashAlgorithm_HASH_ALGORITHM_SHA256))
+
+	// Clear PNAC/SCEP config.
+	config.Pnacs = nil
+	config.ScepProfiles = nil
+	parseSCEPProfiles(getconfigCtx, config)
+	parsePNACConfig(getconfigCtx, config, true)
+	parseSystemAdapterConfig(getconfigCtx, config, fromController, true)
+
+	portConfig, err = getconfigCtx.pubDevicePortConfig.Get("zedagent")
+	g.Expect(err).To(BeNil())
+	dpc = portConfig.(types.DevicePortConfig)
+	g.Expect(dpc.Ports).To(HaveLen(2))
+	port0 = dpc.Ports[0]
+	g.Expect(port0.Logicallabel).To(Equal("adapter-ethernet0"))
+	g.Expect(port0.PNAC.Enabled).To(BeFalse())
+	port1 = dpc.Ports[1]
+	g.Expect(port1.Logicallabel).To(Equal("adapter-ethernet1"))
+	g.Expect(port1.PNAC.Enabled).To(BeFalse())
+
+	g.Expect(getconfigCtx.pubSCEPProfile.GetAll()).To(BeEmpty())
+}
+
+func TestParseInvalidPNAC(t *testing.T) {
+	g := NewGomegaWithT(t)
+	getconfigCtx := initGetConfigCtx(g)
+
+	const networkUUID = "572cd3bc-ade6-42ad-97a0-22cd24fed1a0"
+	config := &zconfig.EdgeDevConfig{
+		Networks: []*zconfig.NetworkConfig{
+			{
+				Id:   networkUUID,
+				Type: zcommon.NetworkType_V4,
+				Ip: &zcommon.Ipspec{
+					Dhcp: zcommon.DHCPType_Client,
+				},
+			},
+		},
+		DeviceIoList: []*zconfig.PhysicalIO{
+			{
+				Ptype:        zcommon.PhyIoType_PhyIoNetEth,
+				Phylabel:     "eth0",
+				Logicallabel: "ethernet0",
+				Assigngrp:    "eth-grp-1",
+				Phyaddrs: map[string]string{
+					"ifname":  "eth0",
+					"pcilong": "0000:04:00.0",
+				},
+				Usage: zcommon.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
+			},
+			{
+				Ptype:        zcommon.PhyIoType_PhyIoNetEth,
+				Phylabel:     "eth1",
+				Logicallabel: "ethernet1",
+				Assigngrp:    "eth-grp-1",
+				Phyaddrs: map[string]string{
+					"ifname":  "eth1",
+					"pcilong": "0000:05:00.0",
+				},
+				Usage: zcommon.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
+			},
+		},
+		// Test error propagation to higher-layer adapters.
+		Vlans: []*zconfig.VlanAdapter{
+			{
+				Logicallabel:   "ethernet1.10",
+				InterfaceName:  "ethernet1.10",
+				LowerLayerName: "ethernet1",
+				VlanId:         10,
+			},
+			{
+				Logicallabel:   "ethernet1.20",
+				InterfaceName:  "ethernet1.20",
+				LowerLayerName: "ethernet1",
+				VlanId:         20,
+			},
+		},
+		SystemAdapterList: []*zconfig.SystemAdapter{
+			{
+				Name:        "ethernet0",
+				Uplink:      true,
+				NetworkUUID: networkUUID,
+				Cost:        0,
+			},
+			{
+				Name:        "ethernet1",
+				Uplink:      true,
+				NetworkUUID: networkUUID,
+				Cost:        10,
+			},
+			{
+				Name:        "ethernet1.10",
+				Uplink:      true,
+				NetworkUUID: networkUUID,
+				Cost:        10,
+			},
+			{
+				Name:        "ethernet1.20",
+				Uplink:      true,
+				NetworkUUID: networkUUID,
+				Cost:        10,
+			},
+		},
+		Pnacs: []*zconfig.PNAC{
+			{
+				Logicallabel:              "ethernet0",
+				EapIdentity:               "123456789",
+				EapMethod:                 zconfig.EAPMethod_EAP_METHOD_TLS,
+				CertEnrollmentProfileName: "scep-profile1",
+			},
+			{
+				Logicallabel: "ethernet1",
+				// Empty EapIdentity is valid.
+				EapMethod:                 zconfig.EAPMethod_EAP_METHOD_TLS,
+				CertEnrollmentProfileName: "scep-profile3", // non-existent profile
+			},
+		},
+		ScepProfiles: []*zconfig.SCEPProfile{
+			{
+				ProfileName:        "scep-profile1",
+				ScepUrl:            "https://ca.example.com/scep",
+				UseControllerProxy: true,
+				CsrProfile: &zconfig.CSRProfile{
+					CommonName:         "123456789",
+					Organization:       "Test Organization",
+					OrganizationalUnit: "Unit Test",
+					Country:            "US",
+					State:              "TestState",
+					Locality:           "TestCity",
+					SanUri:             []string{"urn:test:device:123456789"},
+					RenewPeriodPercent: 60,
+					KeyType:            zconfig.KeyType_KEY_TYPE_RSA_4096,
+					HashAlgorithm:      zconfig.HashAlgorithm_HASH_ALGORITHM_SHA256,
+				},
+			},
+			{
+				ProfileName:        "scep-profile2",
+				ScepUrl:            "invalid-URL",
+				UseControllerProxy: true,
+				CsrProfile: &zconfig.CSRProfile{
+					CommonName:         "ABCDEF",
+					Organization:       "Test Organization",
+					OrganizationalUnit: "Unit Test",
+					Country:            "US",
+					State:              "TestState",
+					Locality:           "TestCity",
+					SanUri:             []string{"urn:test:device:ABCDEF"},
+					RenewPeriodPercent: 80,
+					KeyType:            zconfig.KeyType_KEY_TYPE_ECDSA_P384,
+					HashAlgorithm:      zconfig.HashAlgorithm_HASH_ALGORITHM_SHA256,
+				},
+			},
+		},
+	}
+
+	parseDeviceIoListConfig(getconfigCtx, config)
+	parseSCEPProfiles(getconfigCtx, config)
+	parsePNACConfig(getconfigCtx, config, true)
+	parseVlans(getconfigCtx, config)
+	parseNetworkXObjectConfig(getconfigCtx, config)
+	parseSystemAdapterConfig(getconfigCtx, config, fromController, true)
+
+	portConfig, err := getconfigCtx.pubDevicePortConfig.Get("zedagent")
+	g.Expect(err).To(BeNil())
+	dpc := portConfig.(types.DevicePortConfig)
+
+	g.Expect(dpc.HasError()).To(BeFalse())
+	g.Expect(dpc.Ports).To(HaveLen(4))
+
+	// ethernet0 (valid PNAC + valid SCEP profile)
+	var eth0 types.NetworkPortConfig
+	for _, p := range dpc.Ports {
+		if p.Logicallabel == "ethernet0" {
+			eth0 = p
+			break
+		}
+	}
+	g.Expect(eth0.Logicallabel).To(Equal("ethernet0"))
+	g.Expect(eth0.HasError()).To(BeFalse())
+	g.Expect(eth0.PNAC.Enabled).To(BeTrue())
+	g.Expect(eth0.PNAC.CertEnrollmentProfileName).To(Equal("scep-profile1"))
+
+	// scep-profile1 (valid)
+	scepProfile1Obj, err := getconfigCtx.pubSCEPProfile.Get("scep-profile1")
+	g.Expect(err).To(BeNil())
+	scepProfile1 := scepProfile1Obj.(types.SCEPProfile)
+	g.Expect(scepProfile1.ParsingError.Error).To(BeEmpty())
+
+	// ethernet1 (references non-existent profile)
+	var eth1 types.NetworkPortConfig
+	for _, p := range dpc.Ports {
+		if p.Logicallabel == "ethernet1" {
+			eth1 = p
+			break
+		}
+	}
+	g.Expect(eth1.HasError()).To(BeTrue())
+	g.Expect(eth1.LastError).To(ContainSubstring(
+		"PNAC config with logical label \"ethernet1\" references non-existent " +
+			"certificate enrollment profile \"scep-profile3\""))
+
+	// VLAN adapters (should inherit ethernet1 error)
+	var vlan10, vlan20 types.NetworkPortConfig
+	for _, p := range dpc.Ports {
+		switch p.Logicallabel {
+		case "ethernet1.10":
+			vlan10 = p
+		case "ethernet1.20":
+			vlan20 = p
+		}
+	}
+
+	g.Expect(vlan10.HasError()).To(BeTrue())
+	g.Expect(vlan10.LastError).To(ContainSubstring(
+		"Lower-layer adapter ethernet1 has an error (PNAC config with logical label " +
+			"\"ethernet1\" references non-existent certificate enrollment " +
+			"profile \"scep-profile3\""))
+
+	g.Expect(vlan20.HasError()).To(BeTrue())
+	g.Expect(vlan20.LastError).To(ContainSubstring(
+		"Lower-layer adapter ethernet1 has an error (PNAC config with logical label " +
+			"\"ethernet1\" references non-existent certificate enrollment " +
+			"profile \"scep-profile3\""))
+
+	// scep-profile2 (invalid URL)
+	scepProfile2Obj, err := getconfigCtx.pubSCEPProfile.Get("scep-profile2")
+	g.Expect(err).To(BeNil())
+	scepProfile2 := scepProfile2Obj.(types.SCEPProfile)
+	g.Expect(scepProfile2.ParsingError.Error).ToNot(BeEmpty())
+	g.Expect(scepProfile2.ParsingError.Error).To(ContainSubstring(
+		"Invalid SCEP URL \"invalid-URL\""))
 }

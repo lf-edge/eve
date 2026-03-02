@@ -615,6 +615,9 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext, dest destinationBitset) {
 	// Add SecurityInfo
 	ReportDeviceInfo.SecInfo = getSecurityInfo(ctx)
 
+	// Report certificates enrolled using the SCEP protocol.
+	ReportDeviceInfo.EnrolledCerts = getEnrolledCertsInfo(ctx)
+
 	// EVE needs to fill deprecated MaintenanceMode until it is removed
 	ReportDeviceInfo.MaintenanceMode = ctx.maintenanceMode
 	// if we are in maintenance mode, this must have at least one reason, but
@@ -986,6 +989,16 @@ func encodeNetworkPortStatus(ctx *zedagentContext,
 			Type: info.WirelessType_WIRELESS_TYPE_WIFI,
 		}
 	}
+	var lastAuthTimestamp *timestamppb.Timestamp
+	if !port.PNAC.LastAuthTimestamp.IsZero() {
+		lastAuthTimestamp = timestamppb.New(port.PNAC.LastAuthTimestamp)
+	}
+	devicePort.PnacStatus = &info.PNACStatus{
+		Enabled:           port.PNAC.Enabled,
+		State:             port.PNAC.State,
+		LastAuthTimestamp: lastAuthTimestamp,
+		Err:               port.PNAC.Error.ToProto(),
+	}
 	return devicePort
 }
 
@@ -1141,6 +1154,63 @@ func getOptionalCapabilities(ctx *zedagentContext) *info.OptionalCapabilities {
 		HvTypeKubevirt:     ctx.hvTypeKube,
 		HwInventorySupport: true,
 		EtcdSnapshot:       ctx.hvTypeKube,
+	}
+}
+
+func getEnrolledCertsInfo(ctx *zedagentContext) []*info.CertInfo {
+	var certs []*info.CertInfo
+
+	for _, certStatusObj := range ctx.subEnrolledCertStatus.GetAll() {
+		certStatus, ok := certStatusObj.(types.EnrolledCertificateStatus)
+		if !ok {
+			log.Warnf("Unexpected type for EnrolledCertStatus: %T", certStatusObj)
+			continue
+		}
+
+		var sanIPs []string
+		for _, ip := range certStatus.SAN.IPAddresses {
+			sanIPs = append(sanIPs, ip.String())
+		}
+
+		var issueTimestamp *timestamppb.Timestamp
+		if !certStatus.IssueTimestamp.IsZero() {
+			issueTimestamp = timestamppb.New(certStatus.IssueTimestamp)
+		}
+		var expirationTimestamp *timestamppb.Timestamp
+		if !certStatus.ExpirationTimestamp.IsZero() {
+			expirationTimestamp = timestamppb.New(certStatus.ExpirationTimestamp)
+		}
+
+		certInfo := &info.CertInfo{
+			CertEnrollmentProfileName: certStatus.CertEnrollmentProfileName,
+			Subject:                   convertCertDNToProto(certStatus.Subject),
+			Issuer:                    convertCertDNToProto(certStatus.Issuer),
+			SanDns:                    certStatus.SAN.DNSNames,
+			SanIp:                     sanIPs,
+			SanUri:                    certStatus.SAN.URIs,
+			SanEmail:                  certStatus.SAN.EmailAddresses,
+			IssueTimestamp:            issueTimestamp,
+			ExpirationTimestamp:       expirationTimestamp,
+			RenewPeriodPercent:        uint32(certStatus.RenewPeriodPercent),
+			Sha256Fingerprint:         certStatus.SHA256Fingerprint,
+			Status:                    certStatus.CertStatus,
+			Err:                       certStatus.Error.ToProto(),
+		}
+		certs = append(certs, certInfo)
+	}
+
+	return certs
+}
+
+func convertCertDNToProto(dn types.CertDistinguishedName) *info.CertDistinguishedName {
+	return &info.CertDistinguishedName{
+		CommonName:         dn.CommonName,
+		SerialNumber:       dn.SerialNumber,
+		Organization:       dn.Organization,
+		OrganizationalUnit: dn.OrganizationalUnit,
+		Country:            dn.Country,
+		StateOrProvince:    dn.State,
+		Locality:           dn.Locality,
 	}
 }
 

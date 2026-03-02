@@ -235,6 +235,10 @@ func (m *DpcManager) doAddDPC(ctx context.Context, dpc types.DevicePortConfig) {
 		return
 	}
 
+	// Cancel any active DHCP reacquire trackers — the new DPC may change
+	// port configuration, making the previous subnet baseline invalid.
+	m.cancelAllDHCPReacquireTrackers()
+
 	// Restart verification.
 	m.dpcVerify.inProgress = false
 	m.restartVerify(ctx, fmt.Sprintf("new DPC (%s/%v)", dpc.Key, dpc.TimePriority))

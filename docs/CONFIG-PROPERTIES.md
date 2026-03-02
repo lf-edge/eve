@@ -91,6 +91,9 @@
 | diag.probe.remote.http.endpoint | string | `"http://www.google.com"` | - | - | Remote endpoint (URL, IP instead of hostname is accepted) queried over HTTP to assess the state of network connectivity whenever the controller is not reachable. Used only for diagnostics (no functional impact). Set to an empty string to disable. |
 | diag.probe.remote.https.endpoint | string | `"https://www.google.com"` | - | - | Remote endpoint (URL, IP instead of hostname is NOT accepted) queried over HTTPS to assess the state of network connectivity whenever the controller is not reachable. Used only for diagnostics (no functional impact). Set to an empty string to disable. |
 | app.enable.tcp.mss.clamping | bool | true | - | - | Configuration property that enables EVE to automatically adjust (clamp) the TCP MSS on forwarded application traffic to match the path MTU, preventing fragmentation and connectivity issues on lower-MTU links. |
+| scep.retry.interval | timer in seconds | 300 (5 minutes) | 60 (1 minute) | 3600 (1 hour) | Interval between retry attempts for certificates that previously failed to enroll/renew or returned PENDING from the SCEP server. |
+| pnac.dhcp.reacquire.max.retries | integer | 4 | 0 | 8 | Maximum number of DHCP reacquire retries after a PNAC (802.1X) port authentication state change. When the network switch reassigns the port to a different access VLAN, EVE retries with exponential backoff (2s, 4s, 8s, ...) until the IP subnet changes or the retry limit is reached. Setting this value to 0 disables DHCP reacquire. |
+| dhcp.enable.vendorclassid | bool | true | - | - | Enables sending the DHCP Vendor Class Identifier (Option 60) to identify the device as EVE OS. This allows networks or DHCP servers to apply policies such as VLAN assignment or granting access to the EVE controller. Some badly configured DHCP servers may reject unknown vendor class IDs. Setting this to false disables sending the vendor class ID. |
 
 ## Log levels
 
@@ -156,3 +159,4 @@ Right now the following agents support per-agent log level settings:
 * msrv
 * domainmgr
 * diag
+* scepclient

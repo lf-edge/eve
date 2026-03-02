@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -16,6 +18,7 @@ import (
 	"time"
 
 	"github.com/fsnotify/fsnotify"
+	eveinfo "github.com/lf-edge/eve-api/go/info"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/netclone"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -522,6 +525,207 @@ func (m *LinuxNetworkMonitor) ListRoutes(filters RouteFilters) (routes []Route, 
 	return routes, nil
 }
 
+// GetPNACStatus returns the current PNAC (Port Network Access Control) status
+// for the specified interface.
+// The exact 802.1x supplicant state and any associated error condition are obtained
+// by querying `wpa_cli status`. The per-interface PNAC state file (see PNACStateDir)
+// is used only to determine the timestamp of the last successful 802.1X authentication.
+func (m *LinuxNetworkMonitor) GetPNACStatus(ifIndex int) (types.PNACStatus, error) {
+	attrs, err := m.GetInterfaceAttrs(ifIndex)
+	if err != nil {
+		return types.PNACStatus{}, err
+	}
+	ifName := attrs.IfName
+	status := types.PNACStatus{}
+
+	// Determine the control socket path for wpa_cli
+	ctrlSocket := filepath.Join(types.WpaSupplicantCtrlSockDir, ifName)
+	if _, err := os.Stat(ctrlSocket); os.IsNotExist(err) {
+		// Supplicant not running for this interface
+		return status, nil
+	}
+
+	// Query wpa_cli for detailed supplicant state
+	cmd := exec.Command("wpa_cli", "-p", types.WpaSupplicantCtrlSockDir,
+		"-i", ifName, "status")
+	outBytes, err := cmd.Output()
+	if err != nil {
+		return status, fmt.Errorf("failed to run wpa_cli status for %s: %w", ifName, err)
+	}
+
+	out := string(outBytes)
+	lines := strings.Split(out, "\n")
+	var paeState, eapState, suppPortStatus, keyMgmt string
+	for _, line := range lines {
+		fields := strings.SplitN(line, "=", 2)
+		if len(fields) != 2 {
+			continue
+		}
+		key, val := strings.TrimSpace(fields[0]), strings.TrimSpace(fields[1])
+		switch key {
+		case "key_mgmt":
+			keyMgmt = val
+		case "Supplicant PAE state":
+			paeState = val
+		case "suppPortStatus":
+			suppPortStatus = val
+		case "EAP state":
+			eapState = val
+		}
+	}
+
+	// Only enable PNAC if 802.1X is used
+	if !strings.Contains(keyMgmt, "IEEE 802.1X") {
+		// wpa_supplicant not used for 802.1X
+		return status, nil
+	}
+	status.Enabled = true
+
+	// Determine the current supplicant state based on the EAP and PAE state machines.
+	// EAP (Extensible Authentication Protocol) represents the authentication exchange
+	// itself (e.g., method negotiation, success, failure).
+	// PAE (Port Access Entity) is the 802.1X supplicant state machine defined by
+	// IEEE 802.1X that controls the overall authentication lifecycle of the port
+	// (e.g., DISCONNECTED, CONNECTING, AUTHENTICATING, AUTHENTICATED, HELD).
+	switch paeState {
+	case "DISCONNECTED", "LOGOFF":
+		status.State = eveinfo.SupplicantState_SUPPLICANT_STATE_DISCONNECTED
+	case "CONNECTING", "RESTART":
+		status.State = eveinfo.SupplicantState_SUPPLICANT_STATE_CONNECTING
+	case "AUTHENTICATING":
+		status.State = eveinfo.SupplicantState_SUPPLICANT_STATE_AUTHENTICATING
+	case "AUTHENTICATED":
+		if suppPortStatus == "Authorized" && eapState == "SUCCESS" {
+			status.State = eveinfo.SupplicantState_SUPPLICANT_STATE_AUTHENTICATED
+		} else {
+			// unlikely inconsistent state
+			status.State = eveinfo.SupplicantState_SUPPLICANT_STATE_AUTHENTICATING
+		}
+	case "HELD":
+		status.State = eveinfo.SupplicantState_SUPPLICANT_STATE_HELD
+	default:
+		status.State = eveinfo.SupplicantState_SUPPLICANT_STATE_UNSPECIFIED
+	}
+
+	if eapState == "FAILURE" {
+		status.State = eveinfo.SupplicantState_SUPPLICANT_STATE_FAILED
+	}
+
+	// Capture error description if failed or held
+	if status.State == eveinfo.SupplicantState_SUPPLICANT_STATE_FAILED ||
+		status.State == eveinfo.SupplicantState_SUPPLICANT_STATE_HELD {
+		errMsg := fmt.Sprintf(
+			"802.1X authentication failed (PAE=%s, EAP=%s, Port=%s)",
+			paeState, eapState, suppPortStatus,
+		)
+		status.Error.SetErrorDescription(types.ErrorDescription{
+			Error: errMsg,
+		})
+	}
+
+	// Read authentication timestamp from the PNAC state file.
+	if status.State == eveinfo.SupplicantState_SUPPLICANT_STATE_AUTHENTICATED {
+		pnacFile := filepath.Join(types.PNACStateDir, ifName)
+		if data, err := os.ReadFile(pnacFile); err == nil {
+			lines = strings.Split(string(data), "\n")
+			for _, line := range lines {
+				fields := strings.SplitN(line, ":", 2)
+				if len(fields) != 2 {
+					continue
+				}
+				key, val := strings.TrimSpace(fields[0]), strings.TrimSpace(fields[1])
+				switch key {
+				case "TIMESTAMP":
+					if tsInt, err := strconv.ParseInt(val, 10, 64); err == nil {
+						status.LastAuthTimestamp = time.Unix(tsInt, 0)
+					}
+				}
+			}
+		}
+	}
+	return status, nil
+}
+
+// GetPNACMetrics returns IEEE 802.1X PNAC (Port-Based Network Access Control)
+// metrics for the specified interface. Beware that PNACMetrics.LogicalLabel
+// is returned unset (NetworkMonitor does not work with logical labels).
+//
+// Metrics are obtained from the 802.1X supplicant using:
+//
+//	wpa_cli -p /run/nim/wpa_supplicant -i <ifname> mib
+//
+// The `mib` command exposes counters from the supplicant's internal
+// IEEE 802.1X / EAPOL state machines (dot1xSupp*), including frame
+// transmission/reception statistics and error counters.
+//
+// If the wpa_supplicant control socket for the interface does not exist,
+// PNAC is assumed to be disabled and zero-valued metrics are returned.
+func (m *LinuxNetworkMonitor) GetPNACMetrics(ifIndex int) (types.PNACMetrics, error) {
+	attrs, err := m.GetInterfaceAttrs(ifIndex)
+	if err != nil {
+		return types.PNACMetrics{}, err
+	}
+	ifName := attrs.IfName
+
+	metrics := types.PNACMetrics{}
+
+	ctrlSocket := filepath.Join(types.WpaSupplicantCtrlSockDir, ifName)
+	if _, err := os.Stat(ctrlSocket); os.IsNotExist(err) {
+		// Supplicant not running for this interface
+		return metrics, nil
+	}
+
+	cmd := exec.Command("wpa_cli", "-p", types.WpaSupplicantCtrlSockDir,
+		"-i", ifName, "mib")
+	outBytes, err := cmd.Output()
+	if err != nil {
+		return metrics, fmt.Errorf("failed to query wpa_cli mib for %s: %w", ifName, err)
+	}
+
+	lines := strings.Split(string(outBytes), "\n")
+	for _, line := range lines {
+		fields := strings.SplitN(line, "=", 2)
+		if len(fields) != 2 {
+			continue
+		}
+
+		key := strings.TrimSpace(fields[0])
+		if !strings.HasPrefix(key, "dot1xSupp") {
+			continue
+		}
+
+		var dst *uint64
+		switch key {
+		case "dot1xSuppEapolFramesRx":
+			dst = &metrics.EAPOLFramesRx
+		case "dot1xSuppEapolFramesTx":
+			dst = &metrics.EAPOLFramesTx
+		case "dot1xSuppEapolStartFramesTx":
+			dst = &metrics.EAPOLStartFramesTx
+		case "dot1xSuppEapolLogoffFramesTx":
+			dst = &metrics.EAPOLLogoffFramesTx
+		case "dot1xSuppEapolRespFramesTx":
+			dst = &metrics.EAPOLRespFramesTx
+		case "dot1xSuppEapolReqIdFramesRx":
+			dst = &metrics.EAPOLReqIDFramesRx
+		case "dot1xSuppEapolReqFramesRx":
+			dst = &metrics.EAPOLReqFramesRx
+		case "dot1xSuppInvalidEapolFramesRx":
+			dst = &metrics.EAPOLInvalidFramesRx
+		case "dot1xSuppEapLengthErrorFramesRx":
+			dst = &metrics.EAPLengthErrorFramesRx
+		default:
+			continue
+		}
+
+		val := strings.TrimSpace(fields[1])
+		if v, err := strconv.ParseUint(val, 10, 64); err == nil {
+			*dst = v
+		}
+	}
+	return metrics, nil
+}
+
 // WatchEvents allows to subscribe to watch for events from the Linux network stack.
 func (m *LinuxNetworkMonitor) WatchEvents(ctx context.Context, subName string) <-chan Event {
 	m.cacheLock.Lock()
@@ -567,6 +771,17 @@ func (m *LinuxNetworkMonitor) watcher() {
 			m.Log.Fatal(err)
 		}
 	}
+	pnacWatcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		m.Log.Fatal(err)
+	}
+	if err = os.MkdirAll(types.PNACStateDir, 0755); err != nil {
+		m.Log.Fatalf("Failed to create PNAC state dir: %v", err)
+	}
+	if err = pnacWatcher.Add(types.PNACStateDir); err != nil {
+		m.Log.Fatal(err)
+	}
+
 	// Remember previously published IfChange notifications to avoid
 	// spurious events.
 	lastIfChange := make(map[int]IfChange)
@@ -680,6 +895,45 @@ func (m *LinuxNetworkMonitor) watcher() {
 					m.ifIndexToDNS[ifIndex] = event.Info
 				}
 				m.cacheLock.Unlock()
+				m.publishEvent(event)
+			}
+
+		case pnacChange := <-pnacWatcher.Events:
+			// Handle per-interface PNAC state updates.
+			switch pnacChange.Op {
+			case fsnotify.Create, fsnotify.Remove, fsnotify.Write:
+				if filepath.Ext(pnacChange.Name) == ".tmp" {
+					continue
+				}
+				ifName := filepath.Base(pnacChange.Name)
+
+				// Default to disconnected.
+				isAuthenticated := false
+				// Attempt to read the PNAC state file.
+				data, err := os.ReadFile(pnacChange.Name)
+				if err == nil {
+					lines := strings.Split(string(data), "\n")
+					for _, line := range lines {
+						fields := strings.SplitN(line, ":", 2)
+						if len(fields) != 2 {
+							continue
+						}
+						key, val := strings.TrimSpace(fields[0]),
+							strings.TrimSpace(fields[1])
+						switch key {
+						case "STATE":
+							isAuthenticated = val == "CONNECTED"
+						}
+					}
+				} else {
+					m.Log.Warnf("Failed to read PNAC state file %s: %v",
+						pnacChange.Name, err)
+				}
+
+				event := PNACEvent{
+					IfName:          ifName,
+					IsAuthenticated: isAuthenticated,
+				}
 				m.publishEvent(event)
 			}
 		}

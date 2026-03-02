@@ -157,6 +157,8 @@ type zedagentContext struct {
 	subCipherMetricsZR        pubsub.Subscription
 	subCipherMetricsWwan      pubsub.Subscription
 	subPatchEnvelopeUsage     pubsub.Subscription
+	subEnrolledCertStatus     pubsub.Subscription
+	subPNACMetricsList        pubsub.Subscription
 
 	subNodeDrainStatus     pubsub.Subscription
 	pubNodeDrainRequest    pubsub.Publication
@@ -1190,6 +1192,13 @@ func mainEventLoop(zedagentCtx *zedagentContext, stillRunning *time.Ticker) {
 		case change := <-zedagentCtx.subNestedAppRuntimeStorageMetric.MsgChan():
 			zedagentCtx.subNestedAppRuntimeStorageMetric.ProcessChange(change)
 
+		case change := <-zedagentCtx.subEnrolledCertStatus.MsgChan():
+			zedagentCtx.subEnrolledCertStatus.ProcessChange(change)
+			triggerPublishDevInfo(zedagentCtx)
+
+		case change := <-zedagentCtx.subPNACMetricsList.MsgChan():
+			zedagentCtx.subPNACMetricsList.ProcessChange(change)
+
 		case <-stillRunning.C:
 			// Fault injection
 			if zedagentCtx.fatalFlag {
@@ -1255,6 +1264,15 @@ func initPublications(zedagentCtx *zedagentContext) {
 		log.Fatal(err)
 	}
 	getconfigCtx.pubPhysicalIOAdapters.ClearRestarted()
+
+	getconfigCtx.pubSCEPProfile, err = ps.NewPublication(pubsub.PublicationOptions{
+		AgentName: agentName,
+		TopicType: types.SCEPProfile{},
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	getconfigCtx.pubSCEPProfile.ClearRestarted()
 
 	getconfigCtx.pubDevicePortConfig, err = ps.NewPublication(pubsub.PublicationOptions{
 		AgentName: agentName,
@@ -2148,6 +2166,31 @@ func initPostOnboardSubs(zedagentCtx *zedagentContext) {
 		AgentName:   "zedrouter",
 		MyAgentName: agentName,
 		TopicImpl:   types.NestedAppRuntimeDiskMetric{},
+		Activate:    true,
+		WarningTime: warningTime,
+		ErrorTime:   errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	zedagentCtx.subEnrolledCertStatus, err = ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:   "scepclient",
+		MyAgentName: agentName,
+		TopicImpl:   types.EnrolledCertificateStatus{},
+		Activate:    true,
+		Persistent:  true,
+		WarningTime: warningTime,
+		ErrorTime:   errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	zedagentCtx.subPNACMetricsList, err = ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:   "nim",
+		MyAgentName: agentName,
+		TopicImpl:   types.PNACMetricsList{},
 		Activate:    true,
 		WarningTime: warningTime,
 		ErrorTime:   errorTime,

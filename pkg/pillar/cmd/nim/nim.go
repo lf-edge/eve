@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	eveinfo "github.com/lf-edge/eve-api/go/info"
 	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
@@ -80,6 +81,8 @@ type nim struct {
 	subNetworkInstanceConfig pubsub.Subscription
 	subEdgeNodeClusterStatus pubsub.Subscription
 	subKubeUserServices      pubsub.Subscription
+	subVaultStatus           pubsub.Subscription
+	subEnrolledCertStatus    pubsub.Subscription
 
 	// Publications
 	pubDummyDevicePortConfig pubsub.Publication // For logging
@@ -91,10 +94,13 @@ type nim struct {
 	pubCipherMetrics         pubsub.Publication
 	pubCachedResolvedIPs     pubsub.Publication
 	pubWwanConfig            pubsub.Publication
+	pubPNACMetrics           pubsub.Publication
 
 	// Metrics
-	agentMetrics  *controllerconn.AgentMetrics
-	cipherMetrics *cipher.AgentMetrics
+	agentMetrics   *controllerconn.AgentMetrics
+	cipherMetrics  *cipher.AgentMetrics
+	metricInterval uint32 // In seconds
+	publishTicker  *flextimer.FlexTickerHandle
 
 	// Configuration
 	globalConfig       types.ConfigItemValueMap
@@ -230,11 +236,12 @@ func (n *nim) run(ctx context.Context) (err error) {
 	stillRunning := time.NewTicker(stillRunTime)
 	n.PubSub.StillRunning(agentName, warningTime, errorTime)
 
-	// Publish metrics for zedagent every 10 seconds
-	interval := 10 * time.Second
+	// Publish network metrics
+	interval := time.Duration(n.metricInterval) * time.Second
 	max := float64(interval)
 	min := max * 0.3
-	publishTimer := flextimer.NewRangeTicker(time.Duration(min), time.Duration(max))
+	publishTicker := flextimer.NewRangeTicker(time.Duration(min), time.Duration(max))
+	n.publishTicker = &publishTicker
 
 	// Periodically resolve the controller hostname to keep its DNS entry cached,
 	// reducing the need for DNS lookups on every controller API request.
@@ -254,6 +261,8 @@ func (n *nim) run(ctx context.Context) (err error) {
 		n.subWwanStatus,
 		n.subNetworkInstanceConfig,
 		n.subKubeUserServices,
+		n.subVaultStatus,
+		n.subEnrolledCertStatus,
 	}
 	for _, sub := range inactiveSubs {
 		if err = sub.Activate(); err != nil {
@@ -303,8 +312,16 @@ func (n *nim) run(ctx context.Context) (err error) {
 		case change := <-n.subKubeUserServices.MsgChan():
 			n.subKubeUserServices.ProcessChange(change)
 
-		case <-publishTimer.C:
+		case change := <-n.subVaultStatus.MsgChan():
+			n.subVaultStatus.ProcessChange(change)
+
+		case change := <-n.subEnrolledCertStatus.MsgChan():
+			n.subEnrolledCertStatus.ProcessChange(change)
+			n.handleEnrolledCertUpdate()
+
+		case <-publishTicker.C:
 			start := time.Now()
+			n.publishPNACMetrics()
 			err = n.cipherMetrics.Publish(n.Log, n.pubCipherMetrics, "global")
 			if err != nil {
 				n.Log.Error(err)
@@ -430,6 +447,14 @@ func (n *nim) initPublications() (err error) {
 	n.pubWwanConfig, err = n.PubSub.NewPublication(pubsub.PublicationOptions{
 		AgentName: agentName,
 		TopicType: types.WwanConfig{},
+	})
+	if err != nil {
+		return err
+	}
+
+	n.pubPNACMetrics, err = n.PubSub.NewPublication(pubsub.PublicationOptions{
+		AgentName: agentName,
+		TopicType: types.PNACMetricsList{},
 	})
 	if err != nil {
 		return err
@@ -639,6 +664,27 @@ func (n *nim) initSubscriptions() (err error) {
 	if err != nil {
 		return err
 	}
+
+	n.subVaultStatus, err = n.PubSub.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "vaultmgr",
+		MyAgentName:   agentName,
+		TopicImpl:     types.VaultStatus{},
+		Activate:      false,
+		CreateHandler: n.handleVaultStatusCreate,
+		ModifyHandler: n.handleVaultStatusModify,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
+
+	n.subEnrolledCertStatus, err = n.PubSub.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:   "scepclient",
+		MyAgentName: agentName,
+		TopicImpl:   types.EnrolledCertificateStatus{},
+		Activate:    false,
+		Persistent:  true,
+		WarningTime: warningTime,
+		ErrorTime:   errorTime,
+	})
 	return nil
 }
 
@@ -687,6 +733,17 @@ func (n *nim) applyGlobalConfig(gcp *types.ConfigItemValueMap) {
 	timeout := gcp.GlobalValueInt(types.NetworkTestTimeout)
 	n.connTester.TestTimeout = time.Second * time.Duration(timeout)
 	n.connTester.DiagRemoteEndpoints = types.GetDiagRemoteEndpointURLs(n.Log, gcp)
+	metricInterval := gcp.GlobalValueInt(types.MetricInterval)
+	if metricInterval != 0 && n.metricInterval != metricInterval {
+		if n.publishTicker != nil {
+			interval := time.Duration(metricInterval) * time.Second
+			maxTime := float64(interval)
+			minTime := maxTime * 0.3
+			n.publishTicker.UpdateRangeTicker(
+				time.Duration(minTime), time.Duration(maxTime))
+		}
+		n.metricInterval = metricInterval
+	}
 	n.gcInitialized = true
 }
 
@@ -859,6 +916,31 @@ func (n *nim) handleKubeUserServicesDelete(_ interface{}, _ string, _ interface{
 	n.dpcManager.UpdateKubeUserServices(types.KubeUserServices{})
 }
 
+func (n *nim) handleVaultStatusCreate(_ interface{}, key string, statusArg interface{}) {
+	n.handleVaultStatusImpl(key, statusArg)
+}
+
+func (n *nim) handleVaultStatusModify(_ interface{}, key string, statusArg, _ interface{}) {
+	n.handleVaultStatusImpl(key, statusArg)
+}
+
+func (n *nim) handleVaultStatusImpl(_ string, statusArg interface{}) {
+	status := statusArg.(types.VaultStatus)
+	vaultIsReady := status.Name == types.DefaultVaultName &&
+		status.ConversionComplete &&
+		status.Status != eveinfo.DataSecAtRestStatus_DATASEC_AT_REST_ERROR
+	n.dpcManager.UpdateVaultReadiness(vaultIsReady)
+}
+
+func (n *nim) handleEnrolledCertUpdate() {
+	var enrolledCerts []types.EnrolledCertificateStatus
+	for _, item := range n.subEnrolledCertStatus.GetAll() {
+		certStatus := item.(types.EnrolledCertificateStatus)
+		enrolledCerts = append(enrolledCerts, certStatus)
+	}
+	n.dpcManager.UpdateEnrolledCerts(enrolledCerts)
+}
+
 func (n *nim) listPublishedDPCs(directory string) (dpcFilePaths []string) {
 	locations, err := os.ReadDir(directory)
 	if err != nil {
@@ -957,5 +1039,37 @@ func (n *nim) ingestDevicePortConfigFile(oldDirname string, newDirname string, n
 	if err != nil {
 		n.Log.Errorf("Failed to write new DevicePortConfig to %s: %s",
 			filename, err)
+	}
+}
+
+func (n *nim) publishPNACMetrics() {
+	var pnacMetricsList types.PNACMetricsList
+	dnsObj, err := n.pubDeviceNetworkStatus.Get("global")
+	if err != nil {
+		return
+	}
+	dns, ok := dnsObj.(types.DeviceNetworkStatus)
+	if !ok {
+		return
+	}
+	for _, port := range dns.Ports {
+		if port.IfName == "" || !port.PNAC.Enabled {
+			continue
+		}
+		ifIndex, exists, err := n.networkMonitor.GetInterfaceIndex(port.IfName)
+		if !exists || err != nil {
+			continue
+		}
+		metrics, err := n.networkMonitor.GetPNACMetrics(ifIndex)
+		if err != nil {
+			n.Log.Error(err)
+		} else {
+			metrics.LogicalLabel = port.Logicallabel
+			pnacMetricsList.Ports = append(pnacMetricsList.Ports, metrics)
+		}
+	}
+	err = n.pubPNACMetrics.Publish(pnacMetricsList.Key(), pnacMetricsList)
+	if err != nil {
+		n.Log.Error(err)
 	}
 }

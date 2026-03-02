@@ -55,6 +55,11 @@ type L2Adapter struct {
 	lowerPhysPorts []*types.PhysicalIOAdapter
 }
 
+type parsedPNACConfig struct {
+	config     types.PNACConfig
+	parsingErr error
+}
+
 // contains fields that are sent in the DeviceInfo message to the
 // controller and to LOC
 type deviceInfoFields struct {
@@ -84,6 +89,7 @@ type getconfigContext struct {
 	ntpSourcesTickerHandle     interface{}
 	pubDevicePortConfig        pubsub.Publication
 	pubPhysicalIOAdapters      pubsub.Publication
+	pubSCEPProfile             pubsub.Publication
 	devicePortConfig           types.DevicePortConfig
 	pubNetworkXObjectConfig    pubsub.Publication
 	subAppInstanceStatus       pubsub.Subscription
@@ -125,6 +131,9 @@ type getconfigContext struct {
 	// See docs/VM-BOOT-ORDER.md "Concurrency Model" section for details.
 	pubAppInstanceConfig pubsub.Publication
 	bootOrderUpdateMx    sync.Mutex
+
+	// parsed PNAC configurations
+	pnacs map[string]parsedPNACConfig // key: logical label
 
 	// parsed L2 adapters
 	vlans []L2Adapter

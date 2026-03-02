@@ -188,6 +188,27 @@ func itemIsCreatedWithLabelCb(label string) func() bool {
 	}
 }
 
+func dhcpReacquireCounter(ifName string) int {
+	currentState, release := dpcReconciler.GetCurrentState()
+	defer release()
+	itemRef := dg.Reference(generic.Dhcpcd{AdapterIfName: ifName})
+	item, _, _, found := currentState.Item(itemRef)
+	if !found {
+		return -1
+	}
+	dhcpcd, ok := item.(generic.Dhcpcd)
+	if !ok {
+		return -1
+	}
+	return dhcpcd.ReacquireCounter
+}
+
+func dhcpReacquireCounterCb(ifName string) func() int {
+	return func() int {
+		return dhcpReacquireCounter(ifName)
+	}
+}
+
 func dhcpcdArgs(ifName string) string {
 	currentState, release := dpcReconciler.GetCurrentState()
 	defer release()
@@ -202,7 +223,8 @@ func dhcpcdArgs(ifName string) string {
 	}
 	configurator := generic.DhcpcdConfigurator{Log: logObj}
 	op, args := configurator.DhcpcdArgs(
-		dhcpcd.DhcpConfig, dhcpcd.IgnoreDhcpGateways, dhcpcd.RouteMetric)
+		dhcpcd.DhcpConfig, dhcpcd.IgnoreDhcpGateways, dhcpcd.RouteMetric,
+		dhcpcd.EnableVendorClassID)
 	return fmt.Sprintf("%s %s", op, strings.Join(args, " "))
 }
 
@@ -2612,7 +2634,7 @@ func TestOverrideDhcpGateway(test *testing.T) {
 	t.Eventually(dnsKeyCb()).Should(Equal("bootstrap"))
 	t.Eventually(dpcStateCb(0)).Should(Equal(types.DPCStateSuccess))
 	t.Eventually(itemIsCreatedWithLabelCb("IPv4 route table 502 dst <default> dev mock-eth1 via 172.20.1.1")).Should(BeTrue())
-	t.Expect(dhcpcdArgs("eth1")).To(Equal("--request --metric 5000 -f /etc/dhcpcd.conf -b -t 0 --noipv4ll"))
+	t.Expect(dhcpcdArgs("eth1")).To(Equal("--request -i LFEDGE-EVE --metric 5000 -f /etc/dhcpcd.conf -b -t 0 --noipv4ll"))
 
 	// Apply "zedagent" DPC which enables DHCP but overwrites gateway for eth1.
 	timePrio2 := time.Now()
@@ -2670,7 +2692,7 @@ func TestOverrideDhcpGateway(test *testing.T) {
 	t.Eventually(dnsKeyCb()).Should(Equal("zedagent"))
 	t.Expect(getDPC(0).State).To(Equal(types.DPCStateSuccess))
 	t.Eventually(itemIsCreatedWithLabelCb("IPv4 route table 502 dst <default> dev mock-eth1 via 172.20.1.1")).Should(BeTrue())
-	t.Expect(dhcpcdArgs("eth1")).To(Equal("--request --metric 5000 -f /etc/dhcpcd.conf -b -t 0 --noipv4ll"))
+	t.Expect(dhcpcdArgs("eth1")).To(Equal("--request -i LFEDGE-EVE --metric 5000 -f /etc/dhcpcd.conf -b -t 0 --noipv4ll"))
 
 	// Check device network state.
 	eth1DhcpGw := net.ParseIP("172.20.1.1")
@@ -3412,10 +3434,10 @@ func TestRouteMetrics(test *testing.T) {
 	t.Eventually(dpcStateCb(0)).Should(Equal(types.DPCStateSuccess))
 
 	// Check route metrics assigned to ports.
-	t.Expect(dhcpcdArgs("eth0")).To(Equal("--request --metric 5002 -f /etc/dhcpcd.conf -b -t 0 --noipv4ll"))
-	t.Expect(dhcpcdArgs("eth1")).To(Equal("--request --metric 5000 -f /etc/dhcpcd.conf -b -t 0 --noipv4ll"))
-	t.Expect(dhcpcdArgs("eth2")).To(Equal("--request --metric 5001 -f /etc/dhcpcd.conf -b -t 0 --ipv6only"))
-	t.Expect(dhcpcdArgs("wlan0")).To(Equal("--request --metric 5003 -f /etc/dhcpcd.conf -b -t 0 --noipv4ll"))
+	t.Expect(dhcpcdArgs("eth0")).To(Equal("--request -i LFEDGE-EVE --metric 5002 -f /etc/dhcpcd.conf -b -t 0 --noipv4ll"))
+	t.Expect(dhcpcdArgs("eth1")).To(Equal("--request -i LFEDGE-EVE --metric 5000 -f /etc/dhcpcd.conf -b -t 0 --noipv4ll"))
+	t.Expect(dhcpcdArgs("eth2")).To(Equal("--request -i LFEDGE-EVE --metric 5001 -f /etc/dhcpcd.conf -b -t 0 --ipv6only"))
+	t.Expect(dhcpcdArgs("wlan0")).To(Equal("--request -i LFEDGE-EVE --metric 5003 -f /etc/dhcpcd.conf -b -t 0 --noipv4ll"))
 	wwan := dg.Reference(generic.Wwan{})
 	t.Expect(itemDescription(wwan)).To(ContainSubstring("RouteMetric:5004"))
 
@@ -3435,9 +3457,229 @@ func TestRouteMetrics(test *testing.T) {
 	t.Expect(getDPC(0).State).To(Equal(types.DPCStateSuccess))
 
 	// Check route metrics assigned to ports after the change.
-	t.Expect(dhcpcdArgs("eth0")).To(Equal("--request --metric 5001 -f /etc/dhcpcd.conf -b -t 0 --noipv4ll"))
-	t.Expect(dhcpcdArgs("eth1")).To(Equal("--request --metric 10000 -f /etc/dhcpcd.conf -b -t 0 --noipv4ll"))
-	t.Expect(dhcpcdArgs("eth2")).To(Equal("--request --metric 5000 -f /etc/dhcpcd.conf -b -t 0 --ipv6only"))
-	t.Expect(dhcpcdArgs("wlan0")).To(Equal("--request --metric 10001 -f /etc/dhcpcd.conf -b -t 0 --noipv4ll"))
+	t.Expect(dhcpcdArgs("eth0")).To(Equal("--request -i LFEDGE-EVE --metric 5001 -f /etc/dhcpcd.conf -b -t 0 --noipv4ll"))
+	t.Expect(dhcpcdArgs("eth1")).To(Equal("--request -i LFEDGE-EVE --metric 10000 -f /etc/dhcpcd.conf -b -t 0 --noipv4ll"))
+	t.Expect(dhcpcdArgs("eth2")).To(Equal("--request -i LFEDGE-EVE --metric 5000 -f /etc/dhcpcd.conf -b -t 0 --ipv6only"))
+	t.Expect(dhcpcdArgs("wlan0")).To(Equal("--request -i LFEDGE-EVE --metric 10001 -f /etc/dhcpcd.conf -b -t 0 --noipv4ll"))
 	t.Expect(itemDescription(wwan)).To(ContainSubstring("RouteMetric:5002"))
+}
+
+// TestPNACDHCPReacquire verifies that after a PNAC (802.1X) port authentication
+// state change, DPCManager retries DHCP lease reacquisition with exponential
+// backoff until the IP subnet changes or the max retry limit is reached.
+func TestPNACDHCPReacquire(test *testing.T) {
+	t := initTest(test)
+
+	// Prepare simulated network stack.
+	eth0 := mockEth0()
+	networkMonitor.AddOrUpdateInterface(eth0)
+
+	// Apply global config with PNAC DHCP reacquire enabled (max 3 retries).
+	gcp := globalConfig()
+	gcp.SetGlobalValueInt(types.PnacDHCPReacquireMaxRetries, 3)
+	dpcManager.UpdateGCP(gcp)
+
+	// Apply DPC with single ethernet port.
+	aa := makeAA(selectedIntfs{eth0: true})
+	timePrio1 := time.Now()
+	dpc := makeDPC("zedagent", timePrio1, selectedIntfs{eth0: true})
+	dpcManager.UpdateAA(aa)
+	dpcManager.AddDPC(dpc)
+
+	// Wait for verification to succeed.
+	t.Eventually(testingInProgressCb()).Should(BeTrue())
+	t.Eventually(testingInProgressCb()).Should(BeFalse())
+	t.Eventually(dpcIdxCb()).Should(Equal(0))
+	t.Eventually(dpcStateCb(0)).Should(Equal(types.DPCStateSuccess))
+
+	// Confirm initial reacquire counter is 0.
+	t.Expect(dhcpReacquireCounter("eth0")).To(Equal(0))
+
+	// Simulate PNAC authentication state change.
+	// eth0 is currently on 192.168.10.0/24.
+	networkMonitor.PublishPNACEvent(netmonitor.PNACEvent{
+		IfName:          "eth0",
+		IsAuthenticated: true,
+	})
+
+	// First retry should occur after ~2s.
+	t.Eventually(dhcpReacquireCounterCb("eth0"), 5*time.Second, 200*time.Millisecond).
+		Should(Equal(1))
+
+	// Simulate the DHCP client restarting and getting the same IP from
+	// the same subnet (VLAN transition not yet complete).
+	// Use a different IP in the same subnet to trigger an AddrChange event
+	// (the mock only publishes events for actual address changes).
+	eth0SameSubnet := mockEth0()
+	eth0SameSubnet.IPAddrs = []*net.IPNet{ipAddress("192.168.10.6/24")}
+	networkMonitor.AddOrUpdateInterface(eth0SameSubnet)
+
+	// Subnet hasn't changed (still 192.168.10.0/24), so a second retry
+	// should be scheduled (~4s after first).
+	t.Eventually(dhcpReacquireCounterCb("eth0"), 7*time.Second, 200*time.Millisecond).
+		Should(Equal(2))
+
+	// Now simulate the VLAN transition completing: change the subnet.
+	eth0New := mockEth0()
+	eth0New.IPAddrs = []*net.IPNet{ipAddress("10.0.0.5/16")}
+	eth0New.DHCP = netmonitor.DHCPInfo{
+		IPv4Subnet: ipSubnet("10.0.0.0/16"),
+	}
+	eth0New.DNS = []netmonitor.DNSInfo{
+		{
+			ResolvConfPath: "/etc/eth0-resolv.conf",
+			Domains:        []string{"auth-domain"},
+			DNSServers:     []net.IP{net.ParseIP("10.0.0.1")},
+		},
+	}
+	networkMonitor.AddOrUpdateInterface(eth0New)
+
+	// The reacquire counter should NOT increase further because the subnet changed.
+	// Wait long enough that a 3rd retry (at ~8s) would have triggered if not cancelled.
+	t.Consistently(dhcpReacquireCounterCb("eth0"), 12*time.Second, 500*time.Millisecond).
+		Should(Equal(2))
+}
+
+// TestPNACDHCPReacquireMaxRetries verifies that DHCP reacquire retries stop
+// after the configured maximum number of retries is reached, even if the subnet
+// hasn't changed.
+func TestPNACDHCPReacquireMaxRetries(test *testing.T) {
+	t := initTest(test)
+
+	// Prepare simulated network stack.
+	eth0 := mockEth0()
+	networkMonitor.AddOrUpdateInterface(eth0)
+
+	// Apply global config with max 2 retries.
+	// Total wait: 2s + 4s = 6s.
+	gcp := globalConfig()
+	gcp.SetGlobalValueInt(types.PnacDHCPReacquireMaxRetries, 2)
+	dpcManager.UpdateGCP(gcp)
+
+	// Apply DPC.
+	aa := makeAA(selectedIntfs{eth0: true})
+	dpc := makeDPC("zedagent", time.Now(), selectedIntfs{eth0: true})
+	dpcManager.UpdateAA(aa)
+	dpcManager.AddDPC(dpc)
+
+	// Wait for verification to succeed.
+	t.Eventually(testingInProgressCb()).Should(BeTrue())
+	t.Eventually(testingInProgressCb()).Should(BeFalse())
+	t.Eventually(dpcStateCb(0)).Should(Equal(types.DPCStateSuccess))
+
+	// Simulate PNAC event.
+	networkMonitor.PublishPNACEvent(netmonitor.PNACEvent{
+		IfName:          "eth0",
+		IsAuthenticated: true,
+	})
+
+	// First retry should fire after ~2s.
+	t.Eventually(dhcpReacquireCounterCb("eth0"), 5*time.Second, 200*time.Millisecond).
+		Should(Equal(1))
+
+	// Simulate DHCP getting same-subnet IP to trigger AddrChange and schedule retry 2.
+	eth0v2 := mockEth0()
+	eth0v2.IPAddrs = []*net.IPNet{ipAddress("192.168.10.6/24")}
+	networkMonitor.AddOrUpdateInterface(eth0v2)
+
+	// Second retry should fire after ~4s.
+	t.Eventually(dhcpReacquireCounterCb("eth0"), 7*time.Second, 200*time.Millisecond).
+		Should(Equal(2))
+
+	// Simulate DHCP getting same-subnet IP again.
+	eth0v3 := mockEth0()
+	eth0v3.IPAddrs = []*net.IPNet{ipAddress("192.168.10.7/24")}
+	networkMonitor.AddOrUpdateInterface(eth0v3)
+
+	// No more retries should happen (max reached, subnet still the same).
+	t.Consistently(dhcpReacquireCounterCb("eth0"), 12*time.Second, 500*time.Millisecond).
+		Should(Equal(2))
+}
+
+// TestPNACDHCPReacquireDisabled verifies that setting max retries to 0
+// disables DHCP reacquire after PNAC state changes.
+func TestPNACDHCPReacquireDisabled(test *testing.T) {
+	t := initTest(test)
+
+	// Prepare simulated network stack.
+	eth0 := mockEth0()
+	networkMonitor.AddOrUpdateInterface(eth0)
+
+	// Apply global config with PNAC DHCP reacquire disabled.
+	gcp := globalConfig()
+	gcp.SetGlobalValueInt(types.PnacDHCPReacquireMaxRetries, 0)
+	dpcManager.UpdateGCP(gcp)
+
+	// Apply DPC.
+	aa := makeAA(selectedIntfs{eth0: true})
+	dpc := makeDPC("zedagent", time.Now(), selectedIntfs{eth0: true})
+	dpcManager.UpdateAA(aa)
+	dpcManager.AddDPC(dpc)
+
+	// Wait for verification to succeed.
+	t.Eventually(testingInProgressCb()).Should(BeTrue())
+	t.Eventually(testingInProgressCb()).Should(BeFalse())
+	t.Eventually(dpcStateCb(0)).Should(Equal(types.DPCStateSuccess))
+
+	// Simulate PNAC event.
+	networkMonitor.PublishPNACEvent(netmonitor.PNACEvent{
+		IfName:          "eth0",
+		IsAuthenticated: true,
+	})
+
+	// No DHCP reacquire should be triggered.
+	t.Consistently(dhcpReacquireCounterCb("eth0"), 5*time.Second, 500*time.Millisecond).
+		Should(Equal(0))
+}
+
+// TestPNACDHCPReacquireCancelledByNewDPC verifies that active DHCP reacquire
+// trackers are cancelled when a new DPC is applied.
+func TestPNACDHCPReacquireCancelledByNewDPC(test *testing.T) {
+	t := initTest(test)
+
+	// Prepare simulated network stack.
+	eth0 := mockEth0()
+	eth1 := mockEth1()
+	networkMonitor.AddOrUpdateInterface(eth0)
+	networkMonitor.AddOrUpdateInterface(eth1)
+
+	// Apply global config.
+	gcp := globalConfig()
+	gcp.SetGlobalValueInt(types.PnacDHCPReacquireMaxRetries, 5)
+	dpcManager.UpdateGCP(gcp)
+
+	// Apply DPC with only eth0.
+	aa := makeAA(selectedIntfs{eth0: true, eth1: true})
+	timePrio1 := time.Now()
+	dpc := makeDPC("zedagent", timePrio1, selectedIntfs{eth0: true})
+	dpcManager.UpdateAA(aa)
+	dpcManager.AddDPC(dpc)
+
+	// Wait for verification to succeed.
+	t.Eventually(testingInProgressCb()).Should(BeTrue())
+	t.Eventually(testingInProgressCb()).Should(BeFalse())
+	t.Eventually(dpcStateCb(0)).Should(Equal(types.DPCStateSuccess))
+
+	// Simulate PNAC event.
+	networkMonitor.PublishPNACEvent(netmonitor.PNACEvent{
+		IfName:          "eth0",
+		IsAuthenticated: true,
+	})
+
+	// Wait for first retry.
+	t.Eventually(dhcpReacquireCounterCb("eth0"), 5*time.Second, 200*time.Millisecond).
+		Should(Equal(1))
+
+	// Apply a new DPC that adds eth1 — the config change should cancel
+	// the active reacquire tracker and trigger re-verification.
+	timePrio2 := time.Now()
+	dpc2 := makeDPC("zedagent", timePrio2, selectedIntfs{eth0: true, eth1: true})
+	dpcManager.AddDPC(dpc2)
+	t.Eventually(testingInProgressCb()).Should(BeTrue())
+	t.Eventually(testingInProgressCb()).Should(BeFalse())
+	t.Eventually(dpcStateCb(0)).Should(Equal(types.DPCStateSuccess))
+
+	// The reacquire counter should not increase further.
+	t.Consistently(dhcpReacquireCounterCb("eth0"), 10*time.Second, 500*time.Millisecond).
+		Should(Equal(1))
 }

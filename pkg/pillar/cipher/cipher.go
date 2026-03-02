@@ -31,6 +31,7 @@ func getEncryptionBlock(
 	decBlock.ProtectedUserData = zconfigDecBlockPtr.ProtectedUserData
 	decBlock.ClusterToken = zconfigDecBlockPtr.ClusterToken
 	decBlock.GzipRegistrationManifestYaml = zconfigDecBlockPtr.GzipRegistrationManifestYaml
+	decBlock.SCEPChallengePassword = zconfigDecBlockPtr.ScepChallengePassword
 	return decBlock
 }
 

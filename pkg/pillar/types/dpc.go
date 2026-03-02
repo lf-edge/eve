@@ -541,6 +541,13 @@ func (config *DevicePortConfig) MostlyEqual(config2 *DevicePortConfig) bool {
 			p1.IgnoreDhcpDNSConfig != p2.IgnoreDhcpDNSConfig {
 			return false
 		}
+		if p1.PNAC.Enabled != p2.PNAC.Enabled ||
+			p1.PNAC.CertEnrollmentProfileName != p2.PNAC.CertEnrollmentProfileName ||
+			p1.PNAC.EAPMethod != p2.PNAC.EAPMethod ||
+			p1.PNAC.EAPIdentity != p2.PNAC.EAPIdentity ||
+			!generics.EqualSetsFn(p1.PNAC.CACertPEM, p2.PNAC.CACertPEM, bytes.Equal) {
+			return false
+		}
 	}
 	return true
 }
@@ -687,6 +694,7 @@ type NetworkPortConfig struct {
 	ProxyConfig
 	L2LinkConfig
 	WirelessCfg WirelessConfig `json:",omitempty"`
+	PNAC        PNACConfig     `json:",omitempty"`
 	// TestResults - Errors from parsing plus success/failure from testing
 	TestResults
 	IgnoreDhcpNtpServers  bool             `json:",omitempty"` // Ignore NTP servers from DHCP
@@ -871,6 +879,13 @@ type DhcpConfig struct {
 	DNSServers []net.IP                `json:",omitempty"` // If not set we use Gateway as DNS server
 	Type       NetworkType             `json:",omitempty"` // IPv4 or IPv6 or Dual stack
 }
+
+// EveOSVendorClassID is the DHCP Vendor Class Identifier (Option 60)
+// used by EVE OS to identify itself to DHCP servers, which may use it
+// for policy decisions such as address assignment or network access.
+// For example, a network may grant access to the EVE controller when
+// it detects an EVE device through this vendor class identifier.
+const EveOSVendorClassID = "LFEDGE-EVE"
 
 // NetworkProxyType is used to differentiate proxies for different network protocols.
 type NetworkProxyType uint8

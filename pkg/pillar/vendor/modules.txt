@@ -878,6 +878,7 @@ github.com/lf-edge/eve-api/go/logs
 github.com/lf-edge/eve-api/go/metrics
 github.com/lf-edge/eve-api/go/nestedappinstancemetrics
 github.com/lf-edge/eve-api/go/profile
+github.com/lf-edge/eve-api/go/proxy
 github.com/lf-edge/eve-api/go/register
 # github.com/lf-edge/eve-libs v0.0.0-20260304091825-96eaa95b9f8b
 ## explicit; go 1.24.0
@@ -1120,6 +1121,15 @@ github.com/shjala/gostats
 # github.com/sirupsen/logrus v1.9.3
 ## explicit; go 1.13
 github.com/sirupsen/logrus
+# github.com/smallstep/pkcs7 v0.2.1
+## explicit; go 1.14
+github.com/smallstep/pkcs7
+github.com/smallstep/pkcs7/internal/legacy/x509
+# github.com/smallstep/scep v0.0.0-20250318231241-a25cabb69492
+## explicit; go 1.16
+github.com/smallstep/scep
+github.com/smallstep/scep/cryptoutil
+github.com/smallstep/scep/x509util
 # github.com/spf13/afero v1.10.0
 ## explicit; go 1.16
 github.com/spf13/afero

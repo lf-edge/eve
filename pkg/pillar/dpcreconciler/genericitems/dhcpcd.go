@@ -36,6 +36,13 @@ type Dhcpcd struct {
 	DhcpConfig         types.DhcpConfig
 	IgnoreDhcpGateways bool // Ignore gateways from DHCP
 	RouteMetric        uint32
+	// ReacquireCounter is incremented to force a restart of the DHCP client
+	// and reacquisition of the DHCP lease.
+	ReacquireCounter int
+	// EnableVendorClassID controls whether the DHCP Vendor Class Identifier (Option 60)
+	// is sent to the DHCP server to identify this device (LFEDGE-EVE).
+	// If false, no vendor class ID is sent.
+	EnableVendorClassID bool
 }
 
 // Name is based on the adapter interface name (one client per interface).
@@ -59,13 +66,17 @@ func (c Dhcpcd) Equal(other depgraph.Item) bool {
 	if !isDhcpcd {
 		return false
 	}
+	if c.ReacquireCounter != c2.ReacquireCounter {
+		// Forced restart of the DHCP client.
+		return false
+	}
 	// Consider two DHCP configs as equal if they result in the same set of arguments for dhcpcd.
 	// This avoids unnecessary restarts of dhcpcd (when e.g. going from override to zedagent DPC).
 	configurator := &DhcpcdConfigurator{}
 	op1, args1 := configurator.DhcpcdArgs(
-		c.DhcpConfig, c.IgnoreDhcpGateways, c.RouteMetric)
+		c.DhcpConfig, c.IgnoreDhcpGateways, c.RouteMetric, c.EnableVendorClassID)
 	op2, args2 := configurator.DhcpcdArgs(
-		c2.DhcpConfig, c2.IgnoreDhcpGateways, c2.RouteMetric)
+		c2.DhcpConfig, c2.IgnoreDhcpGateways, c2.RouteMetric, c2.EnableVendorClassID)
 	return op1 == op2 && generics.EqualLists(args1, args2)
 }
 
@@ -148,7 +159,8 @@ func (c *DhcpcdConfigurator) Create(ctx context.Context, item depgraph.Item) err
 		}
 
 		// Prepare input arguments for dhcpcd.
-		op, args := c.DhcpcdArgs(config, client.IgnoreDhcpGateways, client.RouteMetric)
+		op, args := c.DhcpcdArgs(config, client.IgnoreDhcpGateways, client.RouteMetric,
+			client.EnableVendorClassID)
 
 		// Start DHCP client.
 		if c.dhcpcdExists(client.AdapterIfName, config.Type) {
@@ -282,7 +294,8 @@ func (c *DhcpcdConfigurator) NeedsRecreate(oldItem, newItem depgraph.Item) (recr
 // DhcpcdArgs returns command line arguments for dhcpcd corresponding to the given
 // DHCP config. The method is exported only for the purpose of unit testing.
 func (c *DhcpcdConfigurator) DhcpcdArgs(config types.DhcpConfig,
-	ignoreDhcpGws bool, routeMetric uint32) (op string, args []string) {
+	ignoreDhcpGws bool, routeMetric uint32,
+	enableVendorClassID bool) (op string, args []string) {
 	commonArgs := []string{"-f", "/etc/dhcpcd.conf", "-b", "-t", "0"}
 	switch config.Type {
 	case types.NetworkTypeIpv4Only:
@@ -297,6 +310,10 @@ func (c *DhcpcdConfigurator) DhcpcdArgs(config types.DhcpConfig,
 	switch config.Dhcp {
 	case types.DhcpTypeClient:
 		op = "--request"
+		if enableVendorClassID {
+			// Set DHCP Vendor Class Identifier (Option 60) to identify EVE OS.
+			args = append(args, "-i", types.EveOSVendorClassID)
+		}
 		if config.Gateway != nil {
 			if config.Gateway.IsUnspecified() {
 				// The legacy approach of setting "0.0.0.0" to disable the default

@@ -1415,7 +1415,7 @@ func runWireless() {
 		_, _ = runCmd(prog, args, true)
 
 		retbytes, err = os.ReadFile(
-			fmt.Sprintf("/run/nim/wpa_supplicant.%s.conf", port.IfName))
+			fmt.Sprintf("/run/nim/wpa_supplicant-%s.conf", port.IfName))
 		if err != nil {
 			continue
 		}
