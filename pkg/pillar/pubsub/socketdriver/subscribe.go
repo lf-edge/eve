@@ -12,6 +12,7 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/getlantern/framed"
@@ -28,6 +29,7 @@ import (
 // and directory-based persistence.
 type Subscriber struct {
 	sockName         string         // there is one socket per publishing agent
+	sockMu           sync.Mutex     // protects sock against Stop() vs connectAndRead() race
 	sock             net.Conn       // For socket subscriptions
 	reader           *FrameReader   // frame reader for the socket
 	writer           *framed.Writer // framed writer for the socket
@@ -151,11 +153,16 @@ func (s *Subscriber) Stop() error {
 	} else if subscribeFromSock {
 		// Tell watchSock to finish
 		close(s.doneChan)
-		if s.sock != nil {
-			// Force connectAndRead to terminate
-			s.log.Warnf("Stop(%s): forcing socket closed",
-				s.name)
-			s.sock.Close()
+		// Snapshot s.sock under the lock: connectAndRead writes s.sock from
+		// a different goroutine, so a naked read here is a data race.
+		s.sockMu.Lock()
+		sock := s.sock
+		s.sockMu.Unlock()
+		if sock != nil {
+			// Force connectAndRead to terminate by closing the socket,
+			// which causes the blocking ReadFrame to return an error.
+			s.log.Warnf("Stop(%s): forcing socket closed", s.name)
+			sock.Close()
 		}
 		return nil
 	} else {
@@ -229,9 +236,14 @@ func (s *Subscriber) connectAndRead() (string, string, []byte) {
 				delay = 10 * time.Second
 				continue
 			}
+			s.sockMu.Lock()
 			s.sock = sock
+			s.sockMu.Unlock()
 			s.writer = NewFramedWriter(sock)
-			s.reader = NewFrameReader(sock)
+			// Use s.name (agentName/topicType) as the stats key so that
+			// multiple subscriptions to the same topic type from different
+			// publisher agents don't collide in the global stats registry.
+			s.reader = NewFrameReader(sock, s.name)
 			req := fmt.Sprintf("request %s", s.topic)
 			_, err = s.writer.Write([]byte(req))
 			if err != nil {
@@ -239,8 +251,13 @@ func (s *Subscriber) connectAndRead() (string, string, []byte) {
 					s.name, err)
 				s.log.Errorln(errStr)
 				s.sock.Close()
+				s.sockMu.Lock()
 				s.sock = nil
-				s.reader = nil
+				s.sockMu.Unlock()
+				if s.reader != nil {
+					s.reader.Close()
+					s.reader = nil
+				}
 				s.writer = nil
 				continue
 			}
@@ -272,8 +289,13 @@ func (s *Subscriber) read() (string, string, []byte) {
 			s.name, err)
 		s.log.Errorln(errStr)
 		s.sock.Close()
+		s.sockMu.Lock()
 		s.sock = nil
-		s.reader = nil
+		s.sockMu.Unlock()
+		if s.reader != nil {
+			s.reader.Close()
+			s.reader = nil
+		}
 		s.writer = nil
 		return "", "", nil
 	}
@@ -365,7 +387,7 @@ func (s *Subscriber) read() (string, string, []byte) {
 // translate takes file notifications from a file watcher and converts them
 // pubsub operations. Normally this is 1-1 but since the file watcher can not
 // ensure ordering for the restarted file we delay those until a bit to ensure
-// they are delivered after any notifictions for other files.
+// they are delivered after any notifications for other files.
 func (s *Subscriber) translate(in <-chan string, out chan<- pubsub.Change) {
 	statusDirName := s.dirName
 	gotRestarted := false

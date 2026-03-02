@@ -63,14 +63,18 @@ func startSubscriber(log *base.LogObject, agent string, topic interface{}, retCh
 			log.Errorf("connectAndRead(%s) failed %s\n", sockName, err)
 			continue
 		}
-		go serveConnection(log, c, retChan, sockName)
+		go serveConnection(log, c, retChan)
 	}
 }
 
 // serveConnection processes a single connection and sends received
 // notifications as a string on the retChan
-func serveConnection(log *base.LogObject, conn net.Conn, retChan chan<- string, name string) {
-	reader := socketdriver.NewFrameReader(conn)
+func serveConnection(log *base.LogObject, conn net.Conn, retChan chan<- string) {
+	// Ensure the connection is always closed, even if retChan blocks forever.
+	defer conn.Close()
+	// The reverse subscriber accepts one connection at a time; use a stats-free
+	// reader to avoid key collisions when multiple publishers reconnect.
+	reader := socketdriver.NewFrameReaderInternal(conn)
 
 	for {
 		frame, err := reader.ReadFrame()
@@ -79,9 +83,8 @@ func serveConnection(log *base.LogObject, conn net.Conn, retChan chan<- string, 
 				log.Errorf("serveConnection: Error on read: %s",
 					err)
 			}
-			break
+			return
 		}
 		retChan <- string(frame)
 	}
-	conn.Close()
 }

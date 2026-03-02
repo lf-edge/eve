@@ -280,7 +280,8 @@ func (s *Publisher) serveConnection(conn net.Conn, instance int) {
 	s.log.Functionf("serveConnection(%s/%d)\n", s.name, instance)
 	defer conn.Close()
 
-	reader := NewFrameReader(conn)
+	// The publisher reads only one handshake frame; use a stats-free reader.
+	reader := NewFrameReaderInternal(conn)
 	writer := NewFramedWriter(conn)
 
 	// Track the set of keys/values we are sending to the peer
