@@ -21,6 +21,7 @@ RUN git config --global user.email 'builder@projecteve.dev' && \
 # Jetpack tarballs
 ENV JETSON_JP5=https://developer.nvidia.com/downloads/embedded/l4t/r35_release_v5.0/release/jetson_linux_r35.5.0_aarch64.tbz2
 ENV JETSON_JP6=https://developer.nvidia.com/downloads/embedded/l4t/r36_release_v3.0/release/jetson_linux_r36.3.0_aarch64.tbz2
+ENV JETSON_JP7=https://developer.nvidia.com/downloads/embedded/L4T/r38_Release_v4.0/release/Jetson_Linux_R38.4.0_aarch64.tbz2
 
 # Default Jetpack version
 ENV JETSON_LINUX=${JETSON_JP5}
@@ -30,9 +31,11 @@ ENV JETPACK_VER=jp5
 FROM build-base AS amd64-generic
 FROM build-base AS amd64-nvidia-jp5
 FROM build-base AS amd64-nvidia-jp6
+FROM build-base AS amd64-nvidia-jp7
 FROM build-base AS riscv64-generic
 FROM build-base AS riscv64-nvidia-jp5
 FROM build-base AS riscv64-nvidia-jp6
+FROM build-base AS riscv64-nvidia-jp7
 
 FROM build-base AS arm64-nvidia-jp5
 ENV JETSON_LINUX=${JETSON_JP5}
@@ -41,6 +44,10 @@ ENV JETPACK_VER=jp5
 FROM build-base AS arm64-nvidia-jp6
 ENV JETSON_LINUX=${JETSON_JP6}
 ENV JETPACK_VER=jp6
+
+FROM build-base AS arm64-nvidia-jp7
+ENV JETSON_LINUX=${JETSON_JP7}
+ENV JETPACK_VER=jp7
 
 FROM ${TARGETARCH}-${PLATFORM} AS build
 
