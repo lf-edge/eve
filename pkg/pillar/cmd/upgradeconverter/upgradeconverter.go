@@ -29,6 +29,10 @@ const (
 // should be in postVaultconversionHandlers
 var preVaultconversionHandlers = []ConversionHandler{
 	{
+		description: "Move any configuration files from /config/GlobalConfig to /persist/status",
+		handlerFunc: importFromConfigPartition,
+	},
+	{
 		description: "Move UUIDPairToNum to AppInterfaceToNum",
 		handlerFunc: convertUUIDPairToNum,
 	},
