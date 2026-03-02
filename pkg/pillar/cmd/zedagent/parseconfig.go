@@ -2782,6 +2782,9 @@ func parseAppNetAdapterConfigEntry(
 
 var itemsPrevConfigHash []byte
 
+// Parses ConfigItemValueMap entries and places the result in
+// ctx.zedagentCtx.globalConfig. Unless source is civmOnly it also
+// publishes it.
 func parseConfigItems(ctx *getconfigContext, config *zconfig.EdgeDevConfig,
 	source configSource) {
 
@@ -2818,7 +2821,7 @@ func parseConfigItems(ctx *getconfigContext, config *zconfig.EdgeDevConfig,
 	// should default to "false".
 	// That way bringup of new hardware models can be done using an
 	// attached keyboard and monitor.
-	if source == fromBootstrap {
+	if source == fromBootstrap || source == civmOnly {
 		newGlobalConfig.SetGlobalValueBool(types.UsbAccess, true)
 		newGlobalConfig.SetGlobalValueBool(types.VgaAccess, true)
 		newGlobalConfig.SetGlobalValueBool(types.ConsoleAccess, true)
@@ -2905,6 +2908,10 @@ func parseConfigItems(ctx *getconfigContext, config *zconfig.EdgeDevConfig,
 		airgapModeVal := newGlobalConfig.GlobalValueTriState(types.AirGapMode)
 		ctx.zedagentCtx.airgapMode = airgapModeVal == types.TS_ENABLED
 
+		if source == civmOnly {
+			log.Function("Not publishing ConfigItemValueMap")
+			return
+		}
 		pub := ctx.zedagentCtx.pubGlobalConfig
 		err := pub.Publish("global", *gcPtr)
 		if err != nil {
@@ -2919,6 +2926,9 @@ func parseConfigItems(ctx *getconfigContext, config *zconfig.EdgeDevConfig,
 // mergeMaintenanceMode handles the configItem override (unless NONE)
 // and the API setting
 func mergeMaintenanceMode(ctx *zedagentContext, caller string) {
+
+	oldMaintenanceMode := ctx.maintenanceMode
+
 	switch ctx.gcpMaintenanceMode {
 	case types.TS_ENABLED:
 		// Overrides everything, and sets maintenance mode
@@ -2939,9 +2949,11 @@ func mergeMaintenanceMode(ctx *zedagentContext, caller string) {
 			ctx.maintModeReasons = ctx.localMaintModeReasons
 		}
 	}
-	log.Noticef("%s changed maintenanceMode to %t, with reason as %s, considering {%v, %v, %v}",
-		caller, ctx.maintenanceMode, ctx.maintModeReasons.String(), ctx.gcpMaintenanceMode,
-		ctx.apiMaintenanceMode, ctx.localMaintenanceMode)
+	if ctx.maintenanceMode != oldMaintenanceMode {
+		log.Noticef("%s changed maintenanceMode to %t, with reason as %s, considering {%v, %v, %v}",
+			caller, ctx.maintenanceMode, ctx.maintModeReasons.String(), ctx.gcpMaintenanceMode,
+			ctx.apiMaintenanceMode, ctx.localMaintenanceMode)
+	}
 	publishZedAgentStatus(ctx.getconfigCtx)
 }
 
