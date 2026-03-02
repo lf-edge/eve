@@ -604,6 +604,104 @@ There are two levels of errors:
 - A particular management port could not be used to reach the controller. In that case
   the `ErrorInfo` for the particular `DevicePort` is set to indicate the error and timestamp.
 
+## Port-Based Network Access Control (802.1X) and SCEP Certificate Enrollment
+
+EVE supports IEEE 802.1X Port-Based Network Access Control (PNAC), allowing network switches
+to restrict port-level access until the device authenticates with a valid certificate.
+IEEE 802.1X is a standard for port-based network access control that works at Layer 2
+of the network stack. A switch port starts in an unauthorized state and only grants full
+network access after the connected device (the supplicant) successfully authenticates
+against an authentication server (typically a RADIUS server) via the switch (the authenticator).
+
+To obtain the certificate required for authentication, EVE implements SCEP (Simple Certificate
+Enrollment Protocol), a protocol designed for automated certificate enrollment from
+a Certificate Authority (CA). SCEP allows a device to generate a key pair, submit
+a Certificate Signing Request (CSR) to a SCEP server, and receive a signed certificate
+in return.
+
+The 802.1X supplicant is implemented using [wpa_supplicant](https://w1.fi/wpa_supplicant/)
+with EAP-TLS as the authentication method. The SCEP client is implemented using
+the [github.com/smallstep/scep](https://github.com/smallstep/scep) Go library.
+
+### Bootstrapping workflow
+
+![SCEP + PNAC Workflow](images/scep-pnac-workflow.png)
+
+The full workflow from an unauthenticated device to an authenticated network port is:
+
+1. **DHCP with vendor class identification**: The device sends a DHCP request that includes
+   a Vendor Class Identifier (DHCP Option 60) set to `LFEDGE-EVE`. This identifies the device
+   as running EVE OS to the network infrastructure.
+
+2. **Non-authenticated VLAN access**: The network switch places the port into a non-authenticated
+   (bootstrap) VLAN. Because the switch detects the EVE OS vendor class identifier, it allows
+   the device to reach the controller and fetch the network configuration including the SCEP
+   enrollment profile. This step is critical for bootstrapping — the device needs connectivity
+   to obtain the certificate it will later use for authentication.
+
+3. **SCEP certificate enrollment**: The device follows the SCEP profile received from
+   the controller to enroll a certificate. It can communicate with the SCEP server in one
+   of two ways:
+   - **Directly**: The device contacts the SCEP server URL specified in the profile.
+   - **Via controller proxy**: The device routes SCEP requests through a controller-provided
+     SCEP proxy (essentially an HTTP proxy), which is useful when the SCEP server is not
+     directly reachable from the bootstrap VLAN.
+
+4. **802.1X port authentication**: Once the certificate is enrolled, the device uses it
+   to authenticate the port via 802.1X EAP-TLS. Upon successful authentication, the switch
+   moves the port to the authenticated VLAN, granting full network access.
+
+5. **DHCP reacquisition**: After the port authentication state changes, the device retries
+   the DHCP request with exponential backoff (2s, 4s, 8s, ...) to obtain an IP address from
+   the authenticated VLAN. Retries continue until the IP subnet changes (indicating the VLAN
+   transition completed) or the configured maximum number of retries
+   ([`pnac.dhcp.reacquire.max.retries`](CONFIG-PROPERTIES.md), default 4) is reached.
+
+### Configuration
+
+PNAC and SCEP are configured through the controller using the device API:
+
+- **SCEP profiles** are defined in `EdgeDevConfig.ScepProfiles` and specify the SCEP server URL,
+  whether to use the controller proxy, a challenge password (encrypted), trusted CA certificates,
+  and CSR parameters (subject DN, SANs, key type, hash algorithm, renewal period).
+
+- **PNAC configurations** are defined in `EdgeDevConfig.Pnacs`, each referencing network adapter
+  and a SCEP profile by logical names. They specify the EAP method (currently EAP-TLS),
+  an optional EAP identity. If no EAP identity is configured, EVE will derive the identity from
+  the enrolled certificate, preferring the subject common name (CN), or the SAN URI if CN is absent.
+
+Relevant [configuration properties](CONFIG-PROPERTIES.md):
+
+| Property | Default | Description |
+|---|---|---|
+| `scep.retry.interval` | 300s (5 min) | Interval between retry attempts for failed or pending SCEP enrollments |
+| `pnac.dhcp.reacquire.max.retries` | 4 | Max DHCP reacquire retries (with exponential backoff) after 802.1X authentication state change. Set to 0 to disable |
+| `dhcp.enable.vendorclassid` | true | Enables sending DHCP Vendor Class Identifier (Option 60) as `LFEDGE-EVE` |
+
+### Certificate lifecycle
+
+The enrolled certificate is stored on the device along with its private key (kept in the vault
+for protection). EVE monitors the certificate's validity and automatically initiates renewal
+when the configured percentage of the certificate's lifetime has elapsed
+(controlled by `RenewPeriodPercent` in the CSR profile). If the SCEP server or CSR profile
+configuration changes, EVE will re-enroll the certificate against the new parameters.
+
+### Status and metrics reporting
+
+EVE publishes the following information to the controller:
+
+- **PNAC status** (per-port): Whether 802.1X is enabled, the current supplicant state
+  (e.g. connecting, authenticating, authenticated, failed), the timestamp of the last
+  successful authentication, and any authentication errors.
+
+- **Enrolled certificate status**: Details of the installed certificate including subject,
+  issuer, SANs, validity period, SHA-256 fingerprint, key type, and current certificate status
+  (e.g. valid, expired, pending enrollment).
+
+- **PNAC metrics** (per-port): EAPOL frame counters including frames received/transmitted,
+  EAPOL-Start and EAPOL-Logoff frames, EAP-Request/Response frames, and counts of invalid
+  or malformed frames.
+
 ## Air-Gap Mode
 
 Air-Gap mode allows a device to operate without connectivity to the main controller,

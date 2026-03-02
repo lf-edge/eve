@@ -19,6 +19,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/netmonitor"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils/netutils"
 	uuid "github.com/satori/go.uuid"
 )
 
@@ -96,20 +97,24 @@ type DpcManager struct {
 	AgentMetrics *controllerconn.AgentMetrics
 
 	// Current configuration
-	dpcList          types.DevicePortConfigList
-	lpsConfig        map[string]*lpsPortConfig // key : port logical label
-	adapters         types.AssignableAdapters
-	globalCfg        types.ConfigItemValueMap
-	hasGlobalCfg     bool
-	rsConfig         types.RadioSilence
-	rsStatus         types.RadioSilence
-	enableLastResort bool
-	devUUID          uuid.UUID
-	flowlogEnabled   bool
-	clusterStatus    types.EdgeNodeClusterStatus
-	airGapMode       bool
-	locURL           string
-	kubeUserServices types.KubeUserServices
+	dpcList               types.DevicePortConfigList
+	lpsConfig             map[string]*lpsPortConfig // key : port logical label
+	adapters              types.AssignableAdapters
+	globalCfg             types.ConfigItemValueMap
+	hasGlobalCfg          bool
+	rsConfig              types.RadioSilence
+	rsStatus              types.RadioSilence
+	enableLastResort      bool
+	devUUID               uuid.UUID
+	flowlogEnabled        bool
+	clusterStatus         types.EdgeNodeClusterStatus
+	airGapMode            bool
+	locURL                string
+	kubeUserServices      types.KubeUserServices
+	vaultIsReady          bool
+	enrolledCerts         []types.EnrolledCertificateStatus
+	dhcpReacquireCounters map[string]int                   // key: port logical label
+	dhcpReacquireState    map[string]*dhcpReacquireTracker // key: port logical label
 	// Boot-time configuration
 	dpclPresentAtBoot bool
 
@@ -126,20 +131,22 @@ type DpcManager struct {
 	wwanStatus      types.WwanStatus
 
 	// Channels
-	inputCommands chan inputCommand
-	networkEvents <-chan netmonitor.Event
+	inputCommands        chan inputCommand
+	networkEvents        <-chan netmonitor.Event
+	dhcpReacquireSignals chan string // value : port logical label
 
 	// Timers
-	dpcTestTimer          *time.Timer
-	dpcTestBetterTimer    *time.Timer
-	pendingDpcTimer       *time.Timer
-	geoTimer              flextimer.FlexTickerHandle
-	dpcTestDuration       time.Duration // Wait for DHCP address
-	dpcTestInterval       time.Duration // Test interval in minutes.
-	dpcTestBetterInterval time.Duration // Look for lower/better index
-	geoRedoInterval       time.Duration
-	geoRetryInterval      time.Duration
-	lastPublishedLocInfo  types.WwanLocationInfo
+	dpcTestTimer            *time.Timer
+	dpcTestBetterTimer      *time.Timer
+	pendingDpcTimer         *time.Timer
+	geoTimer                flextimer.FlexTickerHandle
+	dpcTestDuration         time.Duration // Wait for DHCP address
+	dpcTestInterval         time.Duration // Test interval in minutes.
+	dpcTestBetterInterval   time.Duration // Look for lower/better index
+	geoRedoInterval         time.Duration
+	geoRetryInterval        time.Duration
+	lastPublishedLocInfo    types.WwanLocationInfo
+	dhcpReacquireMaxRetries int
 
 	// Netdump
 	netDumper       *netdump.NetDumper // nil if netdump is disabled
@@ -221,20 +228,24 @@ const (
 	commandUpdateClusterStatus
 	commandUpdateLOCUrl
 	commandUpdateKubeUserServices
+	commandUpdateVaultReadiness
+	commandUpdateEnrolledCerts
 )
 
 type inputCommand struct {
 	cmd              command
-	dpc              types.DevicePortConfig      // for commandAddDPC and commandDelDPC
-	gcp              types.ConfigItemValueMap    // for commandUpdateGCP
-	aa               types.AssignableAdapters    // for commandUpdateAA
-	rs               types.RadioSilence          // for commandUpdateRS
-	devUUID          uuid.UUID                   // for commandUpdateDevUUID
-	wwanStatus       types.WwanStatus            // for commandProcessWwanStatus
-	flowlogEnabled   bool                        // for commandUpdateFlowlogState
-	clusterStatus    types.EdgeNodeClusterStatus // for commandUpdateClusterStatus
-	locURL           string                      // for commandUpdateLOCUrl
-	kubeUserServices types.KubeUserServices      // for commandUpdateKubeUserServices
+	dpc              types.DevicePortConfig            // for commandAddDPC and commandDelDPC
+	gcp              types.ConfigItemValueMap          // for commandUpdateGCP
+	aa               types.AssignableAdapters          // for commandUpdateAA
+	rs               types.RadioSilence                // for commandUpdateRS
+	devUUID          uuid.UUID                         // for commandUpdateDevUUID
+	wwanStatus       types.WwanStatus                  // for commandProcessWwanStatus
+	flowlogEnabled   bool                              // for commandUpdateFlowlogState
+	clusterStatus    types.EdgeNodeClusterStatus       // for commandUpdateClusterStatus
+	locURL           string                            // for commandUpdateLOCUrl
+	kubeUserServices types.KubeUserServices            // for commandUpdateKubeUserServices
+	vaultIsReady     bool                              // for commandUpdateVaultReadiness
+	enrolledCerts    []types.EnrolledCertificateStatus // for commandUpdateEnrolledCerts
 }
 
 type dpcVerify struct {
@@ -242,6 +253,23 @@ type dpcVerify struct {
 	startedAt           time.Time
 	controllerConnWorks bool
 	crucialIfs          map[string]netmonitor.IfAttrs // key = ifName, change triggers restartVerify
+}
+
+// dhcpReacquireTracker tracks the state of DHCP lease reacquisition retries
+// for a port after an 802.1X authentication state change.
+type dhcpReacquireTracker struct {
+	// Number of DHCP reacquire retries already triggered.
+	retriesDone int
+	// IPv4 subnet assigned to the port before the 802.1X state change.
+	// Used to detect when the DHCP client obtains an IP from a different subnet
+	// (i.e. the VLAN transition completed successfully).
+	prevSubnet *net.IPNet
+	// Set to true after a reacquire is triggered. Cleared when an AddrChange
+	// is processed and the next action (retry or stop) is decided.
+	// Prevents duplicate scheduling when multiple AddrChange events arrive.
+	awaitingAddrChange bool
+	// Channel used to cancel a pending retry timer goroutine.
+	cancel chan struct{}
 }
 
 // Init DpcManager
@@ -259,6 +287,9 @@ func (m *DpcManager) Init(ctx context.Context) error {
 	}
 	m.dpcList.CurrentIndex = -1
 	m.lpsConfig = make(map[string]*lpsPortConfig)
+	m.dhcpReacquireSignals = make(chan string)
+	m.dhcpReacquireCounters = make(map[string]int)
+	m.dhcpReacquireState = make(map[string]*dhcpReacquireTracker)
 	// We start assuming controller connectivity works
 	m.dpcVerify.controllerConnWorks = true
 
@@ -341,6 +372,10 @@ func (m *DpcManager) run(ctx context.Context) {
 				m.doUpdateLOCUrl(ctx, inputCmd.locURL)
 			case commandUpdateKubeUserServices:
 				m.doUpdateKubeUserServices(ctx, inputCmd.kubeUserServices)
+			case commandUpdateVaultReadiness:
+				m.doUpdateVaultReadiness(ctx, inputCmd.vaultIsReady)
+			case commandUpdateEnrolledCerts:
+				m.doUpdateEnrolledCerts(ctx, inputCmd.enrolledCerts)
 			}
 			m.resumeVerifyIfAsyncDone(ctx)
 
@@ -468,9 +503,17 @@ func (m *DpcManager) run(ctx context.Context) {
 					}
 				}
 				m.updateDNS()
+				// Check if the subnet changed for any port with an active
+				// DHCP reacquire tracker (i.e. after PNAC state change).
+				m.checkDHCPReacquireSubnetChange(ifAttrs.IfName)
 			case netmonitor.DNSInfoChange:
 				m.updateDNS()
+			case netmonitor.PNACEvent:
+				m.processPNACEvent(ev)
 			}
+
+		case portLL := <-m.dhcpReacquireSignals:
+			m.processDHCPReacquireSignal(ctx, portLL)
 
 		case <-ctx.Done():
 			return
@@ -484,17 +527,148 @@ func (m *DpcManager) run(ctx context.Context) {
 
 func (m *DpcManager) reconcilerArgs() dpcreconciler.Args {
 	args := dpcreconciler.Args{
-		GCP:              m.globalCfg,
-		AA:               m.adapters,
-		RS:               m.rsConfig,
-		FlowlogEnabled:   m.flowlogEnabled,
-		ClusterStatus:    m.clusterStatus,
-		KubeUserServices: m.kubeUserServices,
+		GCP:                   m.globalCfg,
+		AA:                    m.adapters,
+		RS:                    m.rsConfig,
+		FlowlogEnabled:        m.flowlogEnabled,
+		ClusterStatus:         m.clusterStatus,
+		KubeUserServices:      m.kubeUserServices,
+		VaultReady:            m.vaultIsReady,
+		EnrolledCerts:         m.enrolledCerts,
+		DHCPReacquireCounters: m.dhcpReacquireCounters,
 	}
 	if dpc, haveDPC := m.getCurrentDPC(); haveDPC {
 		args.DPC = dpc
 	}
 	return args
+}
+
+// processPNACEvent handles PNAC (802.1X) port authentication state changes.
+// When the port's authentication state changes, the network switch may
+// reassign it to a different access VLAN. In that case, the DHCP client
+// must reacquire its lease to get a new IP address appropriate for the
+// new VLAN. EVE retries with exponential backoff (2s, 4s, 8s, ...)
+// until the IP subnet changes or the configured maximum number of retries
+// is reached. This is skipped if DHCP reacquire is disabled
+// (dhcpReacquireMaxRetries == 0).
+func (m *DpcManager) processPNACEvent(event netmonitor.PNACEvent) {
+	// Publish new PNAC state.
+	m.updateDNS()
+	if m.dhcpReacquireMaxRetries == 0 {
+		return
+	}
+	// Force DHCP lease reacquisition unless disabled.
+	dpc, haveDPC := m.getCurrentDPC()
+	if !haveDPC {
+		return
+	}
+	portConfig := dpc.LookupPortByIfName(event.IfName)
+	if portConfig == nil || portConfig.Dhcp != types.DhcpTypeClient {
+		return
+	}
+	portLL := portConfig.Logicallabel
+	// Cancel any existing reacquire tracker for this port.
+	m.cancelDHCPReacquireTracker(portLL)
+	// Record the current IPv4 subnet to detect VLAN transition.
+	var prevSubnet *net.IPNet
+	portStatus := m.deviceNetStatus.LookupPortByLogicallabel(portLL)
+	if portStatus != nil {
+		prevSubnet = portStatus.IPv4Subnet
+	}
+	tracker := &dhcpReacquireTracker{
+		prevSubnet: prevSubnet,
+		cancel:     make(chan struct{}),
+	}
+	m.dhcpReacquireState[portLL] = tracker
+	m.scheduleDHCPReacquireRetry(portLL, tracker)
+}
+
+// scheduleDHCPReacquireRetry schedules the next DHCP reacquire retry for a port.
+// The delay uses exponential backoff: 2^(retriesDone+1) seconds (2s, 4s, 8s, ...).
+func (m *DpcManager) scheduleDHCPReacquireRetry(portLL string, tracker *dhcpReacquireTracker) {
+	delay := time.Duration(1<<(tracker.retriesDone+1)) * time.Second
+	m.Log.Noticef(
+		"PNAC: Scheduling DHCP reacquire retry %d/%d for port %q after %v",
+		tracker.retriesDone+1, m.dhcpReacquireMaxRetries, portLL, delay)
+	cancel := tracker.cancel
+	go func() {
+		select {
+		case <-time.After(delay):
+			m.dhcpReacquireSignals <- portLL
+		case <-cancel:
+		}
+	}()
+}
+
+// cancelDHCPReacquireTracker cancels and removes the DHCP reacquire tracker
+// for the given port, if one exists.
+func (m *DpcManager) cancelDHCPReacquireTracker(portLL string) {
+	if tracker, ok := m.dhcpReacquireState[portLL]; ok {
+		close(tracker.cancel)
+		delete(m.dhcpReacquireState, portLL)
+		m.Log.Noticef("PNAC: Canceled DHCP reacquire tracker for port %q", portLL)
+	}
+}
+
+// cancelAllDHCPReacquireTrackers cancels all active DHCP reacquire trackers.
+func (m *DpcManager) cancelAllDHCPReacquireTrackers() {
+	for portLL := range m.dhcpReacquireState {
+		m.cancelDHCPReacquireTracker(portLL)
+	}
+}
+
+// processDHCPReacquireSignal handles a DHCP reacquire timer firing for a port.
+// It increments the reacquire counter to trigger DHCP client restart via the reconciler.
+func (m *DpcManager) processDHCPReacquireSignal(ctx context.Context, portLL string) {
+	tracker, ok := m.dhcpReacquireState[portLL]
+	if !ok {
+		// Tracker was cancelled (e.g. new DPC arrived); ignore stale signal.
+		return
+	}
+	tracker.retriesDone++
+	tracker.awaitingAddrChange = true
+	m.dhcpReacquireCounters[portLL]++
+	m.Log.Noticef(
+		"PNAC: DHCP reacquire retry %d/%d triggered for port %q",
+		tracker.retriesDone, m.dhcpReacquireMaxRetries, portLL)
+	m.reconcileStatus = m.DpcReconciler.Reconcile(ctx, m.reconcilerArgs())
+	m.resumeVerifyIfAsyncDone(ctx)
+	// The next retry (if needed) will be scheduled when we receive
+	// an AddrChange event and compare the new subnet with the previous one.
+}
+
+// checkDHCPReacquireSubnetChange checks whether a DHCP reacquire tracker
+// for the given interface should continue retrying or stop because the subnet
+// has changed. Called when an AddrChange event is received.
+func (m *DpcManager) checkDHCPReacquireSubnetChange(ifName string) {
+	// Find the port logical label and tracker for this interface.
+	portStatus := m.deviceNetStatus.LookupPortByIfName(ifName)
+	if portStatus == nil || portStatus.IPv4Subnet == nil {
+		return
+	}
+	tracker := m.dhcpReacquireState[portStatus.Logicallabel]
+	if tracker == nil || !tracker.awaitingAddrChange {
+		// No active tracker for this interface or not awaiting an address change.
+		return
+	}
+	tracker.awaitingAddrChange = false
+	subnetChanged := !netutils.EqualIPNets(tracker.prevSubnet, portStatus.IPv4Subnet)
+	if subnetChanged {
+		m.Log.Noticef(
+			"PNAC: DHCP reacquire for port %q: subnet changed from %v to %v, done",
+			portStatus.Logicallabel, tracker.prevSubnet, portStatus.IPv4Subnet)
+		m.cancelDHCPReacquireTracker(portStatus.Logicallabel)
+		return
+	}
+	if tracker.retriesDone >= m.dhcpReacquireMaxRetries {
+		m.Log.Warnf(
+			"PNAC: DHCP reacquire for port %q: max retries (%d) reached without "+
+				"subnet change", portStatus.Logicallabel, m.dhcpReacquireMaxRetries)
+		m.cancelDHCPReacquireTracker(portStatus.Logicallabel)
+		return
+	}
+	// Subnet has not changed yet, schedule another retry.
+	m.scheduleDHCPReacquireRetry(portStatus.Logicallabel, tracker)
 }
 
 // AddDPC : add a new DPC into the list of configurations to work with.
@@ -593,6 +767,22 @@ func (m *DpcManager) UpdateKubeUserServices(services types.KubeUserServices) {
 	}
 }
 
+// UpdateVaultReadiness notifies DpcManager about a change in Vault readiness.
+func (m *DpcManager) UpdateVaultReadiness(isReady bool) {
+	m.inputCommands <- inputCommand{
+		cmd:          commandUpdateVaultReadiness,
+		vaultIsReady: isReady,
+	}
+}
+
+// UpdateEnrolledCerts : apply an updated set of SCEP-enrolled certificates.
+func (m *DpcManager) UpdateEnrolledCerts(certs []types.EnrolledCertificateStatus) {
+	m.inputCommands <- inputCommand{
+		cmd:           commandUpdateEnrolledCerts,
+		enrolledCerts: certs,
+	}
+}
+
 // GetDNS returns device network state information.
 func (m *DpcManager) GetDNS() types.DeviceNetworkStatus {
 	return m.deviceNetStatus
@@ -618,6 +808,7 @@ func (m *DpcManager) doUpdateGCP(ctx context.Context, gcp types.ConfigItemValueM
 
 	airGapModeState := m.globalCfg.GlobalValueTriState(types.AirGapMode)
 	m.airGapMode = airGapModeState == types.TS_ENABLED
+	m.dhcpReacquireMaxRetries = int(m.globalCfg.GlobalValueInt(types.PnacDHCPReacquireMaxRetries))
 
 	if m.dpcTestInterval != testInterval {
 		if testInterval == 0 {
@@ -775,4 +966,27 @@ func (m *DpcManager) doUpdateKubeUserServices(ctx context.Context,
 	services types.KubeUserServices) {
 	m.kubeUserServices = services
 	m.reconcileStatus = m.DpcReconciler.Reconcile(ctx, m.reconcilerArgs())
+}
+
+func (m *DpcManager) doUpdateVaultReadiness(ctx context.Context, isReady bool) {
+	m.vaultIsReady = isReady
+	m.reconcileStatus = m.DpcReconciler.Reconcile(ctx, m.reconcilerArgs())
+}
+
+func (m *DpcManager) doUpdateEnrolledCerts(ctx context.Context,
+	certs []types.EnrolledCertificateStatus) {
+	m.enrolledCerts = certs
+	m.reconcileStatus = m.DpcReconciler.Reconcile(ctx, m.reconcilerArgs())
+	// Update reported PNAC status.
+	m.updateDNS()
+}
+
+func (m *DpcManager) getEnrolledCertStatus(
+	profileName string) (cert *types.EnrolledCertificateStatus) {
+	for _, enrolledCert := range m.enrolledCerts {
+		if enrolledCert.CertEnrollmentProfileName == profileName {
+			return &enrolledCert
+		}
+	}
+	return nil
 }

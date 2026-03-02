@@ -66,6 +66,7 @@ type NetworkPortStatus struct {
 	MTU              uint16
 	WirelessCfg      WirelessConfig
 	WirelessStatus   WirelessStatus
+	PNAC             PNACStatus
 	ConfigSource     PortConfigSource
 	ProxyConfig
 	L2LinkConfig
@@ -275,6 +276,10 @@ func (status DeviceNetworkStatus) MostlyEqual(status2 DeviceNetworkStatus) bool 
 		}
 		if !reflect.DeepEqual(p1.ProxyConfig, p2.ProxyConfig) ||
 			!reflect.DeepEqual(p1.WirelessStatus, p2.WirelessStatus) {
+			return false
+		}
+		if p1.PNAC.Enabled != p2.PNAC.Enabled ||
+			p1.PNAC.State != p2.PNAC.State {
 			return false
 		}
 	}

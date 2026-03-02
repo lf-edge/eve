@@ -18,7 +18,10 @@ ZTMPDIR=/run/global
 DPCDIR=$ZTMPDIR/DevicePortConfig
 FIRSTBOOTFILE=$ZTMPDIR/first-boot
 FIRSTBOOT=
-AGENTS="diag monitor evalmgr zedagent ledmanager nim nodeagent domainmgr loguploader tpmmgr vaultmgr zedmanager zedrouter downloader verifier baseosmgr wstunnelclient volumemgr watcher zfsmanager usbmanager zedkube vcomlink collectinfo"
+AGENTS="diag monitor evalmgr zedagent ledmanager nim nodeagent \
+domainmgr loguploader tpmmgr vaultmgr zedmanager zedrouter \
+downloader verifier baseosmgr wstunnelclient volumemgr watcher \
+zfsmanager usbmanager zedkube vcomlink collectinfo scepclient"
 TPM_DEVICE_PATH="/dev/tpmrm0"
 PATH=$BINDIR:$PATH
 TPMINFOTEMPFILE=/var/tmp/tpminfo.txt

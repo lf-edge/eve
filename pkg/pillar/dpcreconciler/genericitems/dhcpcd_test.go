@@ -148,12 +148,13 @@ func TestDhcpcdEqual(t *testing.T) {
 func TestDhcpcdArgs(t *testing.T) {
 	t.Parallel()
 	type test struct {
-		name          string
-		config        types.DhcpConfig
-		ignoreDhcpGws bool
-		routeMetric   uint32
-		expOp         string
-		expArgs       []string
+		name                string
+		config              types.DhcpConfig
+		ignoreDhcpGws       bool
+		routeMetric         uint32
+		enableVendorClassID bool
+		expOp               string
+		expArgs             []string
 	}
 	var tests = []test{
 		{
@@ -264,10 +265,22 @@ func TestDhcpcdArgs(t *testing.T) {
 			expArgs: []string{"--metric", "500", "-f", "/etc/dhcpcd.conf", "-b", "-t", "0",
 				"--noipv4ll", "--ipv4only"},
 		},
+		{
+			name: "DHCP client for IPv4 with enabled vendor class ID",
+			config: types.DhcpConfig{
+				Dhcp: types.DhcpTypeClient,
+				Type: types.NetworkTypeIpv4Only,
+			},
+			enableVendorClassID: true,
+			expOp:               "--request",
+			expArgs: []string{"-i", "LFEDGE-EVE", "-f", "/etc/dhcpcd.conf", "-b",
+				"-t", "0", "--noipv4ll", "--ipv4only"},
+		},
 	}
 	configurator := configitems.DhcpcdConfigurator{}
 	for _, test := range tests {
-		op, args := configurator.DhcpcdArgs(test.config, test.ignoreDhcpGws, test.routeMetric)
+		op, args := configurator.DhcpcdArgs(test.config, test.ignoreDhcpGws,
+			test.routeMetric, test.enableVendorClassID)
 		if op != test.expOp || !generics.EqualLists(args, test.expArgs) {
 			t.Errorf("TEST CASE \"%s\" FAILED - DhcpcdArgs() returned: %s %v, "+
 				"expected: %s %v", test.name, op, args, test.expOp, test.expArgs)

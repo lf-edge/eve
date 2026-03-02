@@ -135,6 +135,9 @@ func (m *DpcManager) updateDNS() {
 		}
 		m.deviceNetStatus.Ports[ix].MacAddr = macAddr
 
+		// Add 802.1x state information.
+		m.getPNACStatus(&m.deviceNetStatus.Ports[ix], port, ifindex)
+
 		// Below this point we collect L3-specific info for the port.
 		if !port.IsL3Port {
 			m.deviceNetStatus.Ports[ix].AddrInfoList = nil
@@ -375,4 +378,62 @@ func (m *DpcManager) getDNSInfo(
 	portStatus.DNSServers = generics.FilterDuplicatesFn(portStatus.DNSServers,
 		netutils.EqualIPs)
 	return nil
+}
+
+func (m *DpcManager) getPNACStatus(portStatus *types.NetworkPortStatus,
+	portConfig types.NetworkPortConfig, ifIndex int) {
+	if !portConfig.PNAC.Enabled {
+		portStatus.PNAC = types.PNACStatus{}
+		return
+	}
+	var errMsg string
+	portStatus.PNAC.Enabled = true
+	cert := m.getEnrolledCertStatus(portConfig.PNAC.CertEnrollmentProfileName)
+	certIsAvail := cert != nil &&
+		cert.CertFilepath != "" &&
+		cert.PrivateKeyFilepath != ""
+	if !certIsAvail {
+		// Report missing certificate.
+		switch {
+		case cert == nil:
+			errMsg = fmt.Sprintf(
+				"No certificate enrollment status found for SCEP profile %q",
+				portConfig.PNAC.CertEnrollmentProfileName,
+			)
+			portStatus.PNAC.Error.SetErrorDescription(
+				types.ErrorDescription{
+					Error: errMsg,
+				},
+			)
+		case cert.Error.Error != "":
+			portStatus.PNAC.Error = cert.Error
+			errMsg = cert.Error.Error
+		default:
+			errMsg = fmt.Sprintf(
+				"Certificate for SCEP profile %s is not available yet (state: %s)",
+				cert.CertEnrollmentProfileName, cert.CertStatus.String())
+			portStatus.PNAC.Error.SetErrorDescription(
+				types.ErrorDescription{
+					Error: errMsg,
+				})
+		}
+	} else {
+		// Get PNAC run-time status from wpa_supplicant.
+		pnacStatus, err := m.NetworkMonitor.GetPNACStatus(ifIndex)
+		if err != nil {
+			errMsg = fmt.Sprintf(
+				"Failed to get PNAC status for interface %s with index %d: %v",
+				portConfig.IfName, ifIndex, err)
+			portStatus.PNAC.Error.SetErrorDescription(
+				types.ErrorDescription{
+					Error: errMsg,
+				},
+			)
+		} else {
+			portStatus.PNAC = pnacStatus
+		}
+	}
+	if errMsg != "" {
+		portStatus.RecordFailure(errMsg)
+	}
 }

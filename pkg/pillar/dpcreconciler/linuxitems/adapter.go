@@ -134,6 +134,11 @@ func (a Adapter) GetMTU() uint16 {
 	return a.MTU
 }
 
+// GetWirelessType returns the wireless type of the adapter.
+func (a Adapter) GetWirelessType() types.WirelessType {
+	return a.WirelessType
+}
+
 // AdapterConfigurator implements Configurator interface (libs/reconciler) for network adapters.
 type AdapterConfigurator struct {
 	Log            *base.LogObject

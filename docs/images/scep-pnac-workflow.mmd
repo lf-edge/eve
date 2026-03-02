@@ -1,0 +1,87 @@
+sequenceDiagram
+    title EVE: SCEP Certificate Enrollment + IEEE 802.1x PNAC
+
+    participant Controller
+    participant zedagent
+    participant scepclient
+    participant nim
+    participant netmonitor
+    participant dhcpcd
+    participant Switch as Network Switch<br/>(+ RADIUS)
+    participant SCEP as SCEP Server<br/>(CA)
+
+    note over Controller, SCEP: 1. BOOT & DHCP BOOTSTRAP (onboarding VLAN)
+
+    nim ->> dhcpcd: start dhcpcd
+    dhcpcd ->> Switch: DHCP DISCOVER (Option 60: "LFEDGE-EVE")
+    note right of Switch: Switch detects EVE vendor class,<br/>assigns onboarding VLAN<br/>providing access to EVE controller
+    Switch -->> dhcpcd: DHCP OFFER (onboarding VLAN IP)
+
+    note over Controller, SCEP: 2. CONFIG FETCH (controller reachable via onboarding VLAN)
+
+    zedagent ->> Controller: HTTPS GET /config
+    Controller -->> zedagent: EdgeDevConfig { ScepProfiles, Pnacs }
+    zedagent ->> scepclient: pubsub: SCEPProfile
+    zedagent ->> nim: pubsub: DevicePortConfig { Port.PNAC }
+
+    note over Controller, SCEP: 3. SCEP CERTIFICATE ENROLLMENT
+
+    note over scepclient: Generate RSA key + CSR<br/>(subject DN, SAN from CSRProfile)
+    scepclient ->> SCEP: PKIOperation=PKCSReq { CSR, challenge }
+    note over scepclient, SCEP: (direct or via Controller SCEP proxy)
+
+    alt CertRep SUCCESS
+        SCEP -->> scepclient: Signed certificate
+    else CertRep PENDING
+        SCEP -->> scepclient: PENDING
+        note over scepclient: Retry (scep.retry.interval)
+        scepclient ->> SCEP: PKIOperation=GetCertInitial
+        SCEP -->> scepclient: Signed certificate
+    end
+
+    note over scepclient: Save cert -> /persist/pnac/<profile>.cert.pem<br/>Save key -> /persist/vault/pnac/<profile>.key.pem
+    scepclient ->> zedagent: pubsub: EnrolledCertificateStatus
+    scepclient ->> nim: pubsub: EnrolledCertificateStatus
+
+    note over Controller, SCEP: 4. IEEE 802.1x EAP-TLS AUTHENTICATION
+
+    note over nim: Reconcile: create WpaSupplicant item<br/>with enrolled cert + CA chain.<br/>Start wpa_supplicant (-D wired)<br/>Start wpa_cli event watcher
+
+    nim ->> Switch: EAPOL-Start
+    Switch -->> nim: EAP-Request/Identity
+    nim ->> Switch: EAP-Response/Identity (from cert CN)
+    nim -->> Switch: EAP-TLS handshake (mutual certificate auth)
+    Switch -->> nim: EAP-TLS handshake
+    note right of Switch: RADIUS validates client cert
+    Switch -->> nim: EAP-Success
+
+    note right of Switch: Port moved to<br/>authenticated VLAN
+
+    note over nim: wpa_cli watcher script writes<br/>/run/pnac/<ifName>:<br/>STATE: CONNECTED<br/>TIMESTAMP: <unix_time>
+
+    note over Controller, SCEP: 5. DHCP REACQUIRE (authenticated VLAN)
+
+    netmonitor ->> nim: PNACEvent { IsAuthenticated: true }<br/>(fsnotify on /run/pnac/<ifName>)
+    note over nim: Record current IPv4 subnet,<br/>schedule DHCP reacquire retry
+
+    loop Exponential backoff (2s, 4s, 8s, ...)
+        nim ->> dhcpcd: Increment ReacquireCounter<br/>(triggers dhcpcd restart)
+        dhcpcd ->> dhcpcd: release old lease, request new one
+        dhcpcd ->> Switch: DHCP DISCOVER
+        Switch -->> dhcpcd: DHCP OFFER (new VLAN IP)
+        netmonitor ->> nim: AddrChange event
+        alt Subnet changed
+            note over nim: VLAN transition complete, stop retries
+        else Same subnet & retries < pnac.dhcp.reacquire.max.retries (default 4)
+            note over nim: Schedule next retry
+        else Max retries reached
+            note over nim: Give up
+        end
+    end
+
+    note over Controller, SCEP: 6. STATUS REPORTING & CERT RENEWAL
+
+    zedagent ->> Controller: ZInfoMsg { PNACStatus, EnrolledCertStatus }
+    zedagent ->> Controller: ZMetricMsg { EAPOLFramesRx/Tx, ... }
+
+    note over scepclient: Monitor cert lifetime.<br/>At RenewPeriodPercent threshold:<br/>re-enroll -> re-authenticate

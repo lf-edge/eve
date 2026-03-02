@@ -6,7 +6,9 @@ package zedagent
 import (
 	"bytes"
 	"crypto/sha256"
+	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"hash"
@@ -153,6 +155,9 @@ func parseConfig(getconfigCtx *getconfigContext, config *zconfig.EdgeDevConfig,
 		// DeviceIoList has some defaults for Usage and UsagePolicy
 		// used by systemAdapters
 		physioChanged := parseDeviceIoListConfig(getconfigCtx, config)
+		scepChanged := parseSCEPProfiles(getconfigCtx, config)
+		forcePNACParse := physioChanged || scepChanged
+		pnacChanged := parsePNACConfig(getconfigCtx, config, forcePNACParse)
 		// It is important to parse Bonds before VLANs.
 		bondsChanged := parseBonds(getconfigCtx, config)
 		vlansChanged := parseVlans(getconfigCtx, config)
@@ -160,11 +165,11 @@ func parseConfig(getconfigCtx *getconfigContext, config *zconfig.EdgeDevConfig,
 		networksChanged := parseNetworkXObjectConfig(getconfigCtx, config)
 		sourceChanged := getconfigCtx.lastConfigSource != source
 		// system adapter configuration that we publish, depends
-		// on Physio, VLAN, Bond and Networks configuration.
+		// on Physio, PNAC, VLAN, Bond and Networks configuration.
 		// If any of these change, we should re-parse system adapters and
 		// publish updated configuration.
 		forceSystemAdaptersParse := physioChanged || networksChanged || vlansChanged ||
-			bondsChanged || sourceChanged
+			bondsChanged || sourceChanged || pnacChanged
 		parseSystemAdapterConfig(getconfigCtx, config, source, forceSystemAdaptersParse)
 
 		if source != fromBootstrap {
@@ -1244,7 +1249,8 @@ func propagateError(higherLayerPort, lowerLayerPort *types.NetworkPortConfig) {
 	}
 }
 
-func propagatePhyioAttrsToPort(port *types.NetworkPortConfig, phyio *types.PhysicalIOAdapter) {
+func propagatePhyioAttrsToPort(getconfigCtx *getconfigContext,
+	port *types.NetworkPortConfig, phyio *types.PhysicalIOAdapter) {
 	port.Phylabel = phyio.Phylabel
 	port.IfName = phyio.Phyaddr.Ifname
 	port.USBAddr = phyio.Phyaddr.UsbAddr
@@ -1275,6 +1281,13 @@ func propagatePhyioAttrsToPort(port *types.NetworkPortConfig, phyio *types.Physi
 			handleMissingIfname(port, phyio)
 		}
 	}
+	if pnac, hasPNAC := getconfigCtx.pnacs[phyio.Logicallabel]; hasPNAC {
+		port.PNAC = pnac.config
+		if pnac.parsingErr != nil {
+			log.Error(pnac.parsingErr)
+			port.RecordFailure(pnac.parsingErr.Error())
+		}
+	}
 }
 
 func handleMissingIfname(port *types.NetworkPortConfig, phyio *types.PhysicalIOAdapter) {
@@ -1290,9 +1303,10 @@ func handleMissingIfname(port *types.NetworkPortConfig, phyio *types.PhysicalIOA
 
 // Make NetworkPortConfig entry for PhysicalIO which is below an L2 port.
 // The port configuration will contain only labels and the interface name.
-func makeL2PhyioPort(phyio *types.PhysicalIOAdapter) *types.NetworkPortConfig {
+func makeL2PhyioPort(getconfigCtx *getconfigContext,
+	phyio *types.PhysicalIOAdapter) *types.NetworkPortConfig {
 	phyioPort := &types.NetworkPortConfig{Logicallabel: phyio.Logicallabel}
-	propagatePhyioAttrsToPort(phyioPort, phyio)
+	propagatePhyioAttrsToPort(getconfigCtx, phyioPort, phyio)
 	return phyioPort
 }
 
@@ -1301,7 +1315,8 @@ func makeL2PhyioPort(phyio *types.PhysicalIOAdapter) *types.NetworkPortConfig {
 // Recursively adds port entries for all adapter below this one.
 // The port configuration will contain only labels, the interface name
 // and L2 configuration.
-func makeL2Port(l2Adapter *L2Adapter) (ports []*types.NetworkPortConfig) {
+func makeL2Port(getconfigCtx *getconfigContext,
+	l2Adapter *L2Adapter) (ports []*types.NetworkPortConfig) {
 	ports = append(ports, &types.NetworkPortConfig{
 		IfName:       l2Adapter.config.IfName,
 		Phylabel:     l2Adapter.config.Phylabel,
@@ -1311,10 +1326,10 @@ func makeL2Port(l2Adapter *L2Adapter) (ports []*types.NetworkPortConfig) {
 		TestResults: l2Adapter.config.TestResults,
 	})
 	for _, phyio := range l2Adapter.lowerPhysPorts {
-		ports = append(ports, makeL2PhyioPort(phyio))
+		ports = append(ports, makeL2PhyioPort(getconfigCtx, phyio))
 	}
 	for _, lowerL2 := range l2Adapter.lowerL2Ports {
-		ports = append(ports, makeL2Port(lowerL2)...)
+		ports = append(ports, makeL2Port(getconfigCtx, lowerL2)...)
 	}
 	return ports
 }
@@ -1393,7 +1408,7 @@ func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
 		phyioFreeUplink = phyio.UsagePolicy.FreeUplink
 		log.Functionf("Found phyio for %s: free %t, oldController: %t",
 			sysAdapter.Name, phyioFreeUplink, oldController)
-		propagatePhyioAttrsToPort(port, phyio)
+		propagatePhyioAttrsToPort(getconfigCtx, port, phyio)
 	} else {
 		// Note that if controller sends VLAN or bond config,
 		// it means that it is new enough to not use FreeUplink anymore.
@@ -1402,10 +1417,10 @@ func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
 		propagateError(port, l2Adapter.config)
 		// Add NetworkPortConfig entries for lower-layer adapters.
 		for _, phyio := range l2Adapter.lowerPhysPorts {
-			ports = append(ports, makeL2PhyioPort(phyio))
+			ports = append(ports, makeL2PhyioPort(getconfigCtx, phyio))
 		}
 		for _, lowerL2 := range l2Adapter.lowerL2Ports {
-			ports = append(ports, makeL2Port(lowerL2)...)
+			ports = append(ports, makeL2Port(getconfigCtx, lowerL2)...)
 		}
 	}
 
@@ -1686,6 +1701,280 @@ func parseDeviceIoListConfig(getconfigCtx *getconfigContext,
 	getconfigCtx.pubPhysicalIOAdapters.Publish("zedagent", phyIoAdapterList)
 
 	log.Functionf("parseDeviceIoListConfig: Done")
+	return true
+}
+
+var scepPrevConfigHash []byte
+
+func parseSCEPProfiles(getconfigCtx *getconfigContext, config *zconfig.EdgeDevConfig) bool {
+	scepProfiles := config.GetScepProfiles()
+	h := sha256.New()
+	for _, profile := range scepProfiles {
+		computeConfigElementSha(h, profile)
+	}
+	configHash := h.Sum(nil)
+	same := bytes.Equal(configHash, scepPrevConfigHash)
+	if same {
+		return false
+	}
+	scepPrevConfigHash = configHash
+
+	// First un-publish deleted SCEP profiles.
+	publishedProfiles := getconfigCtx.pubSCEPProfile.GetAll()
+	for publishedProfile := range publishedProfiles {
+		found := false
+		for _, profile := range scepProfiles {
+			if publishedProfile == profile.GetProfileName() {
+				found = true
+				break
+			}
+		}
+		if !found {
+			getconfigCtx.pubSCEPProfile.Unpublish(publishedProfile)
+		}
+	}
+
+	for _, profile := range config.GetScepProfiles() {
+		csrProfile := profile.GetCsrProfile()
+		if profile.GetProfileName() == "" {
+			errStr := fmt.Sprintf("SCEP profile entry without name; "+
+				"ignoring config: %+v", profile)
+			log.Errorf("parseSCEPProfiles: %s", errStr)
+			continue
+		}
+
+		// Validate SCEP URL.
+		var parsingErr types.ErrorDescription
+		if profile.GetScepUrl() == "" {
+			errMsg := "SCEP URL must not be empty"
+			log.Errorf("parseSCEPProfiles: %s (profile %q)",
+				errMsg, profile.GetProfileName())
+			parsingErr.SetErrorDescription(types.ErrorDescription{Error: errMsg})
+		} else {
+			parsedURL, err := url.Parse(profile.GetScepUrl())
+			if err != nil || parsedURL.Scheme == "" || parsedURL.Host == "" {
+				errMsg := fmt.Sprintf("Invalid SCEP URL %q", profile.GetScepUrl())
+				log.Errorf("parseSCEPProfiles: %s (profile %q)",
+					errMsg, profile.GetProfileName())
+				parsingErr.SetErrorDescription(types.ErrorDescription{Error: errMsg})
+			}
+		}
+
+		// Validate CA certificates (PEM format).
+		for i, certBytes := range profile.GetCaCertPem() {
+			block, _ := pem.Decode(certBytes)
+			if block == nil {
+				errMsg := fmt.Sprintf("CA cert %d is not valid PEM", i)
+				log.Errorf("parseSCEPProfiles: %s (profile %q)",
+					errMsg, profile.GetProfileName())
+				parsingErr.SetErrorDescription(types.ErrorDescription{Error: errMsg})
+				continue
+			}
+
+			cert, err := x509.ParseCertificate(block.Bytes)
+			if err != nil {
+				errMsg := fmt.Sprintf(
+					"CA cert %d is not a valid X.509 certificate: %v", i, err)
+				log.Errorf("parseSCEPProfiles: %s (profile %q)",
+					errMsg, profile.GetProfileName())
+				parsingErr.SetErrorDescription(types.ErrorDescription{Error: errMsg})
+				continue
+			}
+
+			// Validate CA properties.
+			if !cert.BasicConstraintsValid || !cert.IsCA {
+				errMsg := fmt.Sprintf("CA cert %d is not marked as a CA certificate", i)
+				log.Errorf("parseSCEPProfiles: %s (profile %q)",
+					errMsg, profile.GetProfileName())
+				parsingErr.SetErrorDescription(types.ErrorDescription{Error: errMsg})
+				continue
+			}
+
+			if cert.KeyUsage != 0 && cert.KeyUsage&x509.KeyUsageCertSign == 0 {
+				errMsg := fmt.Sprintf("CA cert %d does not allow certificate signing", i)
+				log.Errorf("parseSCEPProfiles: %s (profile %q)",
+					errMsg, profile.GetProfileName())
+				parsingErr.SetErrorDescription(types.ErrorDescription{Error: errMsg})
+				continue
+			}
+		}
+
+		// Parse SAN IP addresses.
+		var parsedIPs []net.IP
+		for _, ipStr := range csrProfile.GetSanIp() {
+			ip := net.ParseIP(ipStr)
+			if ip == nil {
+				errMsg := fmt.Sprintf("Invalid SAN IP address %q", ipStr)
+				log.Errorf("parseSCEPProfiles: %s (profile %q)",
+					errMsg, profile.GetProfileName())
+				parsingErr.SetErrorDescription(types.ErrorDescription{Error: errMsg})
+				continue
+			}
+			parsedIPs = append(parsedIPs, ip)
+		}
+
+		// Validate SAN URIs.
+		for _, uri := range csrProfile.GetSanUri() {
+			// url.Parse implements a generic RFC 3986 URI parser (despite the name).
+			_, err := url.Parse(uri)
+			if err != nil {
+				errMsg := fmt.Sprintf("Invalid SAN URI %q: %v", uri, err)
+				log.Errorf("parseSCEPProfiles: %s (profile %q)",
+					errMsg, profile.GetProfileName())
+				parsingErr.SetErrorDescription(types.ErrorDescription{Error: errMsg})
+				continue
+			}
+		}
+
+		// Validate renew_period_percent
+		renewPercent := csrProfile.GetRenewPeriodPercent()
+		var parsedRenew uint8
+		if renewPercent > 100 {
+			errMsg := fmt.Sprintf("certificate renewal period (in percent) "+
+				"must be between 0 and 100 (got %d)", renewPercent)
+			log.Errorf("parseSCEPProfiles: %s (profile %q)",
+				errMsg, profile.GetProfileName())
+			parsingErr.SetErrorDescription(types.ErrorDescription{Error: errMsg})
+		} else {
+			parsedRenew = uint8(renewPercent)
+		}
+
+		// Parse encrypted challenge password.
+		encryptedChallengePassword, err := parseCipherBlock(
+			getconfigCtx, profile.GetProfileName(), profile.GetScepChallengePassword())
+		if err != nil {
+			errMsg := fmt.Sprintf(
+				"failed to parse encrypted SCEP challenge password: %v", err)
+			log.Errorf("parseSCEPProfiles: %s (profile %q)",
+				errMsg, profile.GetProfileName())
+			parsingErr.SetErrorDescription(types.ErrorDescription{Error: errMsg})
+		}
+
+		toStringSlice := func(val string) []string {
+			if val == "" {
+				return nil
+			}
+			return []string{val}
+		}
+
+		parsedProfile := types.SCEPProfile{
+			ProfileName:                profile.GetProfileName(),
+			SCEPServerURL:              profile.GetScepUrl(),
+			UseControllerProxy:         profile.GetUseControllerProxy(),
+			EncryptedChallengePassword: encryptedChallengePassword,
+			CACertPEM:                  profile.GetCaCertPem(),
+			CSRProfile: types.CSRProfile{
+				Subject: types.CertDistinguishedName{
+					CommonName:         csrProfile.GetCommonName(),
+					Organization:       toStringSlice(csrProfile.GetOrganization()),
+					OrganizationalUnit: toStringSlice(csrProfile.GetOrganizationalUnit()),
+					Country:            toStringSlice(csrProfile.GetCountry()),
+					State:              toStringSlice(csrProfile.GetState()),
+					Locality:           toStringSlice(csrProfile.GetLocality()),
+				},
+				SAN: types.CertSubjectAlternativeName{
+					DNSNames:       csrProfile.GetSanDns(),
+					EmailAddresses: csrProfile.GetSanEmail(),
+					IPAddresses:    parsedIPs,
+					URIs:           csrProfile.GetSanUri(),
+				},
+				RenewPeriodPercent: parsedRenew,
+				KeyType:            csrProfile.GetKeyType(),
+				HashAlgorithm:      csrProfile.GetHashAlgorithm(),
+			},
+			ParsingError: parsingErr,
+		}
+		getconfigCtx.pubSCEPProfile.Publish(parsedProfile.Key(), parsedProfile)
+	}
+	return true
+}
+
+var pnacPrevConfigHash []byte
+
+func parsePNACConfig(getconfigCtx *getconfigContext,
+	config *zconfig.EdgeDevConfig, forceParse bool) bool {
+	pnacs := config.GetPnacs()
+	h := sha256.New()
+	for _, pnac := range pnacs {
+		computeConfigElementSha(h, pnac)
+	}
+	configHash := h.Sum(nil)
+	same := bytes.Equal(configHash, pnacPrevConfigHash)
+	if same && !forceParse {
+		return false
+	}
+	pnacPrevConfigHash = configHash
+
+	getconfigCtx.pnacs = make(map[string]parsedPNACConfig)
+	for _, pnac := range config.GetPnacs() {
+		if pnac.GetLogicallabel() == "" {
+			errStr := fmt.Sprintf("PNAC entry missing logical label; "+
+				"ignoring config: %+v", pnac)
+			log.Errorf("parsePNACConfig: %s", errStr)
+			continue
+		}
+		if _, duplicate := getconfigCtx.pnacs[pnac.GetLogicallabel()]; duplicate {
+			errStr := fmt.Sprintf("Duplicate PNAC logical label %q; ignoring config: %+v",
+				pnac.GetLogicallabel(), pnac)
+			log.Errorf("parsePNACConfig: %s", errStr)
+			continue
+		}
+
+		// Check that the referenced physical IO exists and is Ethernet NIC.
+		physIO := lookupDeviceIoLogicallabel(getconfigCtx, pnac.GetLogicallabel())
+		if physIO == nil {
+			errStr := fmt.Sprintf("PNAC config with logical label %q references "+
+				"a non-existent physical IO; ignoring config", pnac.GetLogicallabel())
+			log.Errorf("parsePNACConfig: %s", errStr)
+			continue
+		}
+		physIOType := types.IoType(physIO.Ptype)
+		if physIOType != types.IoNetEth && physIOType != types.IoNetEthPF {
+			errStr := fmt.Sprintf("PNAC config with logical label %q references "+
+				"non-Ethernet physical IO (type: %v); ignoring config",
+				pnac.GetLogicallabel(), physIOType)
+			log.Errorf("parsePNACConfig: %s", errStr)
+			continue
+		}
+
+		// Check if the configured EAP method is supported
+		// (only EAP-TLS is supported currently).
+		var parsingErr error
+		if pnac.GetEapMethod() != zconfig.EAPMethod_EAP_METHOD_TLS {
+			parsingErr = fmt.Errorf(
+				"PNAC config with logical label %q uses unsupported EAP method %q; "+
+					"only EAP-TLS is supported", pnac.GetLogicallabel(),
+				pnac.GetEapMethod())
+		}
+
+		// Check if the referenced certificate enrollment profile exists and is valid.
+		profileName := pnac.GetCertEnrollmentProfileName()
+		profileObj, err := getconfigCtx.pubSCEPProfile.Get(profileName)
+		scepProfile, ok := profileObj.(types.SCEPProfile)
+		var caCerts [][]byte
+		if err != nil || !ok {
+			parsingErr = fmt.Errorf("PNAC config with logical label %q references "+
+				"non-existent certificate enrollment profile %q",
+				pnac.GetLogicallabel(), profileName)
+		} else if scepProfile.ParsingError.Error != "" {
+			parsingErr = fmt.Errorf("PNAC config with logical label %q references "+
+				"certificate enrollment profile %q which has parsing error: %s",
+				pnac.GetLogicallabel(), profileName, scepProfile.ParsingError.Error)
+		} else {
+			caCerts = scepProfile.CACertPEM
+		}
+
+		getconfigCtx.pnacs[pnac.GetLogicallabel()] = parsedPNACConfig{
+			config: types.PNACConfig{
+				Enabled:                   true,
+				EAPIdentity:               pnac.GetEapIdentity(),
+				EAPMethod:                 pnac.GetEapMethod(),
+				CertEnrollmentProfileName: profileName,
+				CACertPEM:                 caCerts,
+			},
+			parsingErr: parsingErr,
+		}
+	}
 	return true
 }
 

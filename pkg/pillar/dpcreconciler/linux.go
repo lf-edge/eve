@@ -5,8 +5,10 @@ package dpcreconciler
 
 import (
 	"context"
+
 	"errors"
 	"fmt"
+	"maps"
 	"net"
 	"sort"
 	"strconv"
@@ -54,16 +56,18 @@ import (
 // |                                               +------------------------------------+   |
 // |                                                                                        |
 // |                                                                                        |
-// |   +-----------------+  +------------------+   +-------------------------------------+  |
-// |   |  PhysicalIfs    |  |  LogicalIO (L2)  |   |             Wireless                |  |
-// |   |                 |  |                  |   |                                     |  |
-// |   |  +--------+     |  |  +------+        |   |  +-------------+   +-------------+  |  |
-// |   |  | PhysIf | ... |  |  | Vlan | ...    |   |  |    Wwan     |   |    Wlan     |  |  |
-// |   |  +--------+     |  |  +------+        |   |  | (singleton) |   | (singleton) |  |  |
-// |   +-----------------+  |  +------+        |   |  +-------------+   +-------------+  |  |
-// |                        |  | Bond | ...    |   +-------------------------------------+  |
-// |                        |  +------+        |                                            |
-// |                        +------------------+                                            |
+// |   +-------------------------+    +------------------+    +-------------------------+   |
+// |   |  PhysicalIfs            |    |  LogicalIO (L2)  |    |        Wireless         |   |
+// |   |                         |    |                  |    |                         |   |
+// |   |  +--------+             |    |  +------+        |    |  +-------------+        |   |
+// |   |  | PhysIf | ...         |    |  | Vlan | ...    |    |  |    Wwan     |        |   |
+// |   |  +--------+             |    |  +------+        |    |  | (singleton) |        |   |
+// |   |  +----------------+     |    |  +------+        |    |  +-------------+        |   |
+// |   |  |  WpaSupplicant | ... |    |  | Bond | ...    |    |  +---------------+      |   |
+// |   |  |    (802.1x)    |     |    |  +------+        |    |  | WpaSupplicant | ...  |   |
+// |   |  +----------------+     |    +------------------+    |  |    (WiFi)     |      |   |
+// |   +-------------------------+                            |  +---------------+      |   |
+// |                                                          +-------------------------+   |
 // |                                                                                        |
 // |  +----------------------------------------------------------------------------------+  |
 // |  |                                         L3                                       |  |
@@ -405,6 +409,7 @@ func (r *LinuxDpcReconciler) Reconcile(ctx context.Context, args Args) Reconcile
 		}
 		if r.gcpChanged(args.GCP) {
 			r.addPendingReconcile(ACLsSG, "GCP change", false)
+			r.addPendingReconcile(L3SG, "GCP change", false)
 		}
 		if r.aaChanged(args.AA) {
 			changed := r.updateCurrentNetworkIO(args.DPC, args.AA)
@@ -426,6 +431,19 @@ func (r *LinuxDpcReconciler) Reconcile(ctx context.Context, args Args) Reconcile
 		if !r.lastArgs.KubeUserServices.Equal(args.KubeUserServices) {
 			// Services and ingresses affect ACLs
 			r.addPendingReconcile(ACLsSG, "Kube services/ingresses change", false)
+		}
+		if r.lastArgs.VaultReady != args.VaultReady {
+			// Once vault is unlocked, private keys of SCEP-enrolled certificates become
+			// readable for 802.1x port authentication.
+			r.addPendingReconcile(PhysicalIfsSG, "Vault readiness changed", false)
+		}
+		if r.enrolledCertsChanged(args.EnrolledCerts) {
+			// Update wpa_supplicant config.
+			r.addPendingReconcile(PhysicalIfsSG, "Enrolled certificates changed", false)
+		}
+		if r.dhcpReacquireCountersChanged(args.DHCPReacquireCounters) {
+			// Reacquire DHCP lease(s).
+			r.addPendingReconcile(L3SG, "DHCP-reacquire counters changed", false)
 		}
 	}
 	if r.pendingReconcile.isPending {
@@ -464,14 +482,15 @@ func (r *LinuxDpcReconciler) Reconcile(ctx context.Context, args Args) Reconcile
 			intSG = r.getIntendedNetworkIO(args.DPC)
 		case PhysicalIfsSG:
 			r.rebuildMTUMap(args.DPC)
-			intSG = r.getIntendedPhysicalIfs(args.DPC)
+			intSG = r.getIntendedPhysicalIfs(args.DPC, args.VaultReady, args.EnrolledCerts)
 		case LogicalIoSG:
 			r.rebuildMTUMap(args.DPC)
 			intSG = r.getIntendedLogicalIO(args.DPC)
 		case L3SG:
 			r.rebuildMTUMap(args.DPC)
 			r.rebuildRouteMetricMap(args.DPC)
-			intSG = r.getIntendedL3Cfg(args.DPC, args.ClusterStatus)
+			intSG = r.getIntendedL3Cfg(args.DPC, args.ClusterStatus, args.GCP,
+				args.DHCPReacquireCounters)
 		case WirelessSG:
 			r.rebuildRouteMetricMap(args.DPC)
 			intSG = r.getIntendedWirelessCfg(args.DPC, args.AA, args.RS)
@@ -648,6 +667,8 @@ func (r *LinuxDpcReconciler) saveArgs(args Args) {
 
 	r.lastArgs.KubeUserServices.UserIngress = make([]types.KubeIngressInfo, len(args.KubeUserServices.UserIngress))
 	copy(r.lastArgs.KubeUserServices.UserIngress, args.KubeUserServices.UserIngress)
+
+	r.lastArgs.DHCPReacquireCounters = maps.Clone(args.DHCPReacquireCounters)
 }
 
 func (r *LinuxDpcReconciler) dpcChanged(newDPC types.DevicePortConfig) bool {
@@ -702,6 +723,27 @@ func (r *LinuxDpcReconciler) clusterStatusChanged(
 	return r.lastArgs.ClusterStatus.ClusterInterface != newStatus.ClusterInterface ||
 		!netutils.EqualIPNets(r.lastArgs.ClusterStatus.ClusterIPPrefix,
 			newStatus.ClusterIPPrefix)
+}
+
+func (r *LinuxDpcReconciler) enrolledCertsChanged(
+	newCerts []types.EnrolledCertificateStatus) bool {
+	return !generics.EqualSetsFn(r.lastArgs.EnrolledCerts, newCerts,
+		func(c1, c2 types.EnrolledCertificateStatus) bool {
+			return c1.Equivalent(c2)
+		})
+}
+
+func (r *LinuxDpcReconciler) dhcpReacquireCountersChanged(counters map[string]int) bool {
+	last := r.lastArgs.DHCPReacquireCounters
+	if len(counters) != len(last) {
+		return true
+	}
+	for k, v := range counters {
+		if last[k] != v {
+			return true
+		}
+	}
+	return false
 }
 
 func (r *LinuxDpcReconciler) updateCurrentState(args Args) (changed bool) {
@@ -881,9 +923,11 @@ func (r *LinuxDpcReconciler) updateIntendedState(args Args) {
 	r.intendedState = dg.New(graphArgs)
 	r.intendedState.PutSubGraph(r.getIntendedGlobalCfg(args.DPC, args.ClusterStatus))
 	r.intendedState.PutSubGraph(r.getIntendedNetworkIO(args.DPC))
-	r.intendedState.PutSubGraph(r.getIntendedPhysicalIfs(args.DPC))
+	r.intendedState.PutSubGraph(r.getIntendedPhysicalIfs(args.DPC, args.VaultReady,
+		args.EnrolledCerts))
 	r.intendedState.PutSubGraph(r.getIntendedLogicalIO(args.DPC))
-	r.intendedState.PutSubGraph(r.getIntendedL3Cfg(args.DPC, args.ClusterStatus))
+	r.intendedState.PutSubGraph(r.getIntendedL3Cfg(args.DPC, args.ClusterStatus,
+		args.GCP, args.DHCPReacquireCounters))
 	r.intendedState.PutSubGraph(r.getIntendedWirelessCfg(args.DPC, args.AA, args.RS))
 	r.intendedState.PutSubGraph(r.getIntendedACLs(args.DPC, args.ClusterStatus, args.GCP,
 		args.FlowlogEnabled, args.KubeUserServices))
@@ -1059,7 +1103,8 @@ func (r *LinuxDpcReconciler) rebuildRouteMetricMap(dpc types.DevicePortConfig) {
 	}
 }
 
-func (r *LinuxDpcReconciler) getIntendedPhysicalIfs(dpc types.DevicePortConfig) dg.Graph {
+func (r *LinuxDpcReconciler) getIntendedPhysicalIfs(dpc types.DevicePortConfig,
+	vaultReady bool, enrolledCerts []types.EnrolledCertificateStatus) dg.Graph {
 	graphArgs := dg.InitArgs{
 		Name:        PhysicalIfsSG,
 		Description: "Physical network interfaces",
@@ -1080,6 +1125,7 @@ func (r *LinuxDpcReconciler) getIntendedPhysicalIfs(dpc types.DevicePortConfig) 
 					MTU:          r.intfMTU[port.Logicallabel],
 				}, nil)
 			}
+
 		case types.L2LinkTypeVLAN:
 			parent := dpc.LookupPortByLogicallabel(port.VLAN.ParentPort)
 			if parent != nil && parent.L2Type == types.L2LinkTypeNone {
@@ -1091,6 +1137,7 @@ func (r *LinuxDpcReconciler) getIntendedPhysicalIfs(dpc types.DevicePortConfig) 
 					MTU:          r.intfMTU[port.Logicallabel],
 				}, nil)
 			}
+
 		case types.L2LinkTypeBond:
 			for _, aggrPort := range port.Bond.AggregatedPorts {
 				if nps := dpc.LookupPortByLogicallabel(aggrPort); nps != nil {
@@ -1103,6 +1150,42 @@ func (r *LinuxDpcReconciler) getIntendedPhysicalIfs(dpc types.DevicePortConfig) 
 						MTU:          r.intfMTU[port.Logicallabel],
 					}, nil)
 				}
+			}
+		}
+
+		if port.PNAC.Enabled && vaultReady {
+			certProfile := port.PNAC.CertEnrollmentProfileName
+			var cert *types.EnrolledCertificateStatus
+			for _, enrolledCert := range enrolledCerts {
+				if enrolledCert.CertEnrollmentProfileName == certProfile {
+					cert = &enrolledCert
+					break
+				}
+			}
+			certIsAvail := cert != nil &&
+				cert.CertFilepath != "" &&
+				cert.PrivateKeyFilepath != "" &&
+				cert.CACertBundleFilepath != ""
+			if certIsAvail {
+				var eapIdentity string
+				switch {
+				case port.PNAC.EAPIdentity != "":
+					eapIdentity = port.PNAC.EAPIdentity
+				case cert.Subject.CommonName != "":
+					eapIdentity = cert.Subject.CommonName
+				case len(cert.SAN.URIs) > 0:
+					eapIdentity = cert.SAN.URIs[0]
+				}
+				intendedIfs.PutItem(generic.WpaSupplicant{
+					AdapterLL:     port.Logicallabel,
+					AdapterIfName: port.IfName,
+					PNACConfig: &generic.PNAC8021XConfig{
+						EAPIdentity:      eapIdentity,
+						CACertBundlePath: cert.CACertBundleFilepath,
+						ClientCertPath:   cert.CertFilepath,
+						ClientKeyPath:    cert.PrivateKeyFilepath,
+					},
+				}, nil)
 			}
 		}
 	}
@@ -1154,13 +1237,15 @@ func (r *LinuxDpcReconciler) getIntendedLogicalIO(dpc types.DevicePortConfig) dg
 }
 
 func (r *LinuxDpcReconciler) getIntendedL3Cfg(dpc types.DevicePortConfig,
-	clusterStatus types.EdgeNodeClusterStatus) dg.Graph {
+	clusterStatus types.EdgeNodeClusterStatus, gcp types.ConfigItemValueMap,
+	dhcpReacquireCounters map[string]int) dg.Graph {
 	graphArgs := dg.InitArgs{
 		Name:        L3SG,
 		Description: "Network Layer3 configuration",
 	}
 	intendedL3 := dg.New(graphArgs)
-	intendedL3.PutSubGraph(r.getIntendedAdapters(dpc, clusterStatus))
+	intendedL3.PutSubGraph(r.getIntendedAdapters(
+		dpc, clusterStatus, gcp, dhcpReacquireCounters))
 	intendedL3.PutSubGraph(r.getIntendedSrcIPRules(dpc))
 	intendedL3.PutSubGraph(r.getIntendedRoutes(dpc, clusterStatus))
 	intendedL3.PutSubGraph(r.getIntendedArps(dpc))
@@ -1168,7 +1253,8 @@ func (r *LinuxDpcReconciler) getIntendedL3Cfg(dpc types.DevicePortConfig,
 }
 
 func (r *LinuxDpcReconciler) getIntendedAdapters(dpc types.DevicePortConfig,
-	clusterStatus types.EdgeNodeClusterStatus) dg.Graph {
+	clusterStatus types.EdgeNodeClusterStatus, gcp types.ConfigItemValueMap,
+	dhcpReacquireCounters map[string]int) dg.Graph {
 	graphArgs := dg.InitArgs{
 		Name:        AdaptersSG,
 		Description: "L3 configuration assigned to network interfaces",
@@ -1180,6 +1266,7 @@ func (r *LinuxDpcReconciler) getIntendedAdapters(dpc types.DevicePortConfig,
 		},
 	}
 	intendedAdapters := dg.New(graphArgs)
+	enableVendorClassID := gcp.GlobalValueBool(types.DHCPEnableVendorClassID)
 	for _, port := range dpc.Ports {
 		// As long as port can have Switch NI attached, we should create Adapter.
 		if dpc.IsPortAggregatedByBond(port.Logicallabel) ||
@@ -1214,11 +1301,13 @@ func (r *LinuxDpcReconciler) getIntendedAdapters(dpc types.DevicePortConfig,
 		if port.Dhcp != types.DhcpTypeNone && port.Dhcp != types.DhcpTypeNOOP &&
 			port.WirelessCfg.WType != types.WirelessTypeCellular {
 			intendedAdapters.PutItem(generic.Dhcpcd{
-				AdapterLL:          port.Logicallabel,
-				AdapterIfName:      port.IfName,
-				DhcpConfig:         port.DhcpConfig,
-				IgnoreDhcpGateways: port.IgnoreDhcpGateways,
-				RouteMetric:        r.intfMetric[port.Logicallabel],
+				AdapterLL:           port.Logicallabel,
+				AdapterIfName:       port.IfName,
+				DhcpConfig:          port.DhcpConfig,
+				IgnoreDhcpGateways:  port.IgnoreDhcpGateways,
+				RouteMetric:         r.intfMetric[port.Logicallabel],
+				ReacquireCounter:    dhcpReacquireCounters[port.Logicallabel],
+				EnableVendorClassID: enableVendorClassID,
 			}, nil)
 		}
 		// Inside the intended state the external items (like AdapterAddrs)

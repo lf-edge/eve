@@ -642,6 +642,9 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 	}
 	ctx.flowLogMetrics.Unlock()
 
+	// Report PNAC metrics.
+	addPNACMetrics(ctx, ReportDeviceMetric)
+
 	ReportMetrics.MetricContent = new(metrics.ZMetricMsg_Dm)
 	if x, ok := ReportMetrics.GetMetricContent().(*metrics.ZMetricMsg_Dm); ok {
 		x.Dm = ReportDeviceMetric
@@ -1990,5 +1993,31 @@ func createNestedAppRuntimeStorageMetrics(ctx *zedagentContext, reportMetrics *m
 		reportMetrics.NestMetric = append(reportMetrics.NestMetric, runtimeMetric)
 
 		log.Functionf("NestedAppRuntimeDiskMetric ps:%v proto:%v reportMetrics.NestMetric:%v", psMetric, runtimeMetric, reportMetrics.NestMetric)
+	}
+}
+
+func addPNACMetrics(ctx *zedagentContext, reportDevMetrics *metrics.DeviceMetric) {
+	metricsListObj, err := ctx.subPNACMetricsList.Get("global")
+	if err != nil {
+		return
+	}
+	metricsList, ok := metricsListObj.(types.PNACMetricsList)
+	if !ok {
+		return
+	}
+	for _, pnacMetrics := range metricsList.Ports {
+		reportDevMetrics.PnacMetrics = append(reportDevMetrics.PnacMetrics,
+			&metrics.PNACMetrics{
+				Logicallabel:           pnacMetrics.LogicalLabel,
+				EapolFramesRx:          pnacMetrics.EAPOLFramesRx,
+				EapolFramesTx:          pnacMetrics.EAPOLFramesTx,
+				EapolStartFramesTx:     pnacMetrics.EAPOLStartFramesTx,
+				EapolLogoffFramesTx:    pnacMetrics.EAPOLLogoffFramesTx,
+				EapolRespFramesTx:      pnacMetrics.EAPOLRespFramesTx,
+				EapolReqIdFramesRx:     pnacMetrics.EAPOLReqIDFramesRx,
+				EapolReqFramesRx:       pnacMetrics.EAPOLReqFramesRx,
+				InvalidEapolFramesRx:   pnacMetrics.EAPOLInvalidFramesRx,
+				EapLengthErrorFramesRx: pnacMetrics.EAPLengthErrorFramesRx,
+			})
 	}
 }

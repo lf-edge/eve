@@ -31,6 +31,7 @@
 /pkg/pillar/cmd/downloader/   @milan-zededa @rouming
 /pkg/pillar/cmd/ledmanager/   @rucoder @rene
 /pkg/pillar/cmd/nim/          @milan-zededa
+/pkg/pillar/cmd/scepclient/   @milan-zededa
 /pkg/pillar/cmd/tpmmgr/       @rucoder @shjala
 /pkg/pillar/cmd/volumemgr/    @OhmSpectator @rouming @europaul
 /pkg/pillar/cmd/zedagent/     @OhmSpectator @milan-zededa @rouming @uncleDecart

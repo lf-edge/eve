@@ -36,6 +36,14 @@ type Args struct {
 	ClusterStatus types.EdgeNodeClusterStatus
 	// Kubernetes service and ingress information for firewall configuration.
 	KubeUserServices types.KubeUserServices
+	// Vault readiness and enrolled certs are used for IEEE 802.1x Port-Based Network
+	// Access Control (PNAC).
+	VaultReady    bool
+	EnrolledCerts []types.EnrolledCertificateStatus
+	// Per-interface counters used to declaratively request DHCP client restart
+	// and lease reacquisition.
+	// Key is port logical label.
+	DHCPReacquireCounters map[string]int
 }
 
 // ReconcileStatus : state data related to config reconciliation.
