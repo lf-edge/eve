@@ -896,7 +896,7 @@ func removeMaintenanceModeReason(ctx *nodeagentContext, reason types.Maintenance
 		}
 	}
 
-	if len(ctx.maintModeReasons) == 0 {
+	if len(ctx.maintModeReasons) == 0 && ctx.maintMode {
 		ctx.maintMode = false
 		log.Noticef("%s : No reason to be in maintenance mode, clearing maintenance mode", caller)
 	}
