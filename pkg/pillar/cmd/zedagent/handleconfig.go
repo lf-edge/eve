@@ -4,10 +4,13 @@
 package zedagent
 
 import (
+	"bufio"
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -368,11 +371,146 @@ func maybeLoadBootstrapConfig(getconfigCtx *getconfigContext) {
 	case obsoleteConfig:
 		log.Error("Bootstrap config is obsolete")
 	}
+	// XXX should we save it as /persist/checkpoint/lastconfig if we
+	// have no such file?
 }
 
 func indicateInvalidBootstrapConfig(getconfigCtx *getconfigContext) {
 	utils.UpdateLedManagerConfig(log, types.LedBlinkInvalidBootstrapConfig)
 	getconfigCtx.ledBlinkCount = types.LedBlinkInvalidBootstrapConfig
+}
+
+// Load /config/GlobalConfig/ json file with ConfigItemValueMap provided that:
+//   - has not been loaded before (incl. previous device boots)
+//
+// The function will only load the ConfigItemValueMap items into
+// zedagentCtx,globalConfig. The caller is responsible for publishing those
+// if this returns true
+func maybeLoadGlobalConfig(getconfigCtx *getconfigContext) bool {
+	//  Check if global config has been already loaded.
+	if !fileutils.FileExists(log, types.ImportGlobalConfigFile) {
+		// No /config/GlobalConfig/ file to read
+		return false
+	}
+	changed, configSha, err := fileutils.CompareSha(
+		types.ImportGlobalConfigFile, types.IngestedGlobalConfigSha)
+	if err != nil {
+		log.Errorf("CompareSha failed for global config: %s", err)
+		// We will not record SHA for applied global config
+		// and as a result load it again with the next boot.
+		// However, with config timestamp preventing accidental revert
+		// to an older configuration, this should not be a problem.
+		configSha = nil
+		changed = true
+	}
+	// Mark global config as processed by storing SHA hash of its content
+	// under /persist/ingested/ directory.
+	// We do this even even if the unmarshalling (or anything else) below fails.
+	// This is to avoid repeated failing attempts to load invalid config on each boot.
+	// XXX but not ingested to disk!!!
+	// When will it make it to /persist/checkpoint/lastconfig? Not until
+	// we receive a possibly different config from the controller.
+	defer func() {
+		if configSha != nil {
+			err := fileutils.SaveShaInFile(types.IngestedGlobalConfigSha, configSha)
+			if err != nil {
+				log.Errorf("Failed to save SHA of global config: %v", err)
+			}
+		}
+	}()
+
+	// Start with defaults for this EVE version
+	newConfigPtr := types.DefaultConfigItemValueMap()
+	if changed {
+		// Load file content.
+		contents, err := os.ReadFile(types.ImportGlobalConfigFile)
+		if err != nil {
+			log.Errorf("Failed to read global config: %v", err)
+			return false
+		}
+
+		var config types.ConfigItemValueMap
+		err = json.Unmarshal(contents, &config)
+		if err != nil {
+			log.Errorf("Could not unmarshall data in file %s: %s",
+				types.ImportGlobalConfigFile, err)
+			return false
+		}
+		log.Noticef("/config/GlobalConfig contains: %v", config)
+		newConfigPtr.UpdateItemValues(&config)
+	}
+	var authorizedKeysSha []byte
+	keyData, keyDataValid := readAuthorizedKeys(types.BaseAuthorizedKeysFile)
+	doAuthorizedKeys := (len(keyData) != 0 && keyDataValid)
+	if doAuthorizedKeys {
+		doAuthorizedKeys, authorizedKeysSha, err = fileutils.CompareSha(types.BaseAuthorizedKeysFile,
+			types.IngestedAuthorizedKeysSha)
+		if err != nil {
+			log.Errorf("CompareSha failed: %s", err)
+		} else if !doAuthorizedKeys {
+			log.Noticef("No change to the key data in %s",
+				types.BaseAuthorizedKeysFile)
+		}
+	}
+	if doAuthorizedKeys {
+		log.Noticef("Found the key data in %s: %v",
+			types.BaseAuthorizedKeysFile, keyData)
+		newConfigPtr.SetGlobalValueString(types.SSHAuthorizedKeys,
+			keyData)
+		changed = true
+
+		// XXX but not ingested to disk!!!
+		// Save sha of what we ingested
+		err := fileutils.SaveShaInFile(types.IngestedAuthorizedKeysSha,
+			authorizedKeysSha)
+		if err != nil {
+			log.Errorf("SaveShaInFile %s failed: %s",
+				types.IngestedAuthorizedKeysSha, err)
+		} else {
+			log.Noticef("Saved new sha for %s in %s",
+				types.BaseAuthorizedKeysFile,
+				types.IngestedAuthorizedKeysSha)
+		}
+	}
+	getconfigCtx.zedagentCtx.globalConfig = *newConfigPtr
+	return changed
+}
+
+func readAuthorizedKeys(filename string) (string, bool) {
+	if !fileutils.FileExists(log, filename) {
+		return "", false
+	}
+
+	fileDesc, err := os.Open(filename)
+	keyData := ""
+	if err != nil {
+		log.Warnf("readAuthorizedKeys: File (%s) open error: %s", filename, err)
+	} else {
+		reader := bufio.NewReader(fileDesc)
+		for {
+			line, err := reader.ReadString('\n')
+			if err != nil {
+				log.Traceln(err)
+				if err != io.EOF {
+					log.Errorf("readAuthorizedKeys: ReadString (%s) error: %s", filename, err)
+					return "", false
+				}
+				break
+			}
+			// remove trailing "\n" from line
+			line = line[0 : len(line)-1]
+
+			// Is it a comment or a key?
+			if strings.HasPrefix(line, "#") {
+				continue
+			}
+			keyData += string(line)
+		}
+	}
+	if len(keyData) != 0 {
+		return keyData, true
+	}
+	return keyData, false
 }
 
 func initZedcloudContext(getconfigCtx *getconfigContext,
@@ -395,7 +533,7 @@ func initZedcloudContext(getconfigCtx *getconfigContext,
 	}
 	serverNameAndPort = strings.TrimSpace(string(bytes))
 
-	ctrlClient := controllerconn.NewClient(log, controllerconn.ClientOptions{
+	lclCtrlClient := controllerconn.NewClient(log, controllerconn.ClientOptions{
 		DeviceNetworkStatus: deviceNetworkStatus,
 		NetworkSendTimeout:  time.Duration(networkSendTimeoutSecs) * time.Second,
 		NetworkDialTimeout:  time.Duration(networkDialTimeoutSecs) * time.Second,
@@ -422,14 +560,14 @@ func initZedcloudContext(getconfigCtx *getconfigContext,
 	})
 
 	log.Functionf("Configure Get Device Serial %s, Soft Serial %s, Use V2 API %v",
-		ctrlClient.DevSerial, ctrlClient.DevSoftSerial, ctrlClient.UsingV2API())
+		lclCtrlClient.DevSerial, lclCtrlClient.DevSoftSerial, lclCtrlClient.UsingV2API())
 
 	// XXX need to redo this since the root certificates can change
-	err = ctrlClient.UpdateTLSConfig(nil)
+	err = lclCtrlClient.UpdateTLSConfig(nil)
 	if err != nil {
 		log.Fatal(err)
 	}
-	return ctrlClient
+	return lclCtrlClient
 }
 
 // Run a periodic fetch of the config
@@ -565,6 +703,9 @@ func updateTaskTimer(configInterval uint32, tickerHandle interface{}) {
 }
 
 func decryptAuthContainer(getconfigCtx *getconfigContext, sendRV *controllerconn.SendRetval) error {
+	if ctrlClient == nil {
+		log.Fatal("nil ctrlClient in decryptAuthContainer")
+	}
 	decryptCtx := &cipher.DecryptCipherContext{
 		Log:                  log,
 		AgentName:            agentName,
@@ -652,6 +793,10 @@ func decryptAuthContainer(getconfigCtx *getconfigContext, sendRV *controllerconn
 func requestConfigByURL(getconfigCtx *getconfigContext, url string,
 	isCompoundConfig bool, iteration int, withNetTracing bool) (
 	configProcessingRetval, []netdump.TracedNetRequest) {
+
+	if ctrlClient == nil {
+		log.Fatal("nil ctrlClient in requestConfigByURL")
+	}
 
 	log.Tracef("getLatestConfig(%s, %d)", url, iteration)
 	ctx := getconfigCtx.zedagentCtx
@@ -742,9 +887,10 @@ func requestConfigByURL(getconfigCtx *getconfigContext, url string,
 			// can be used to enable the local keyboard etc for
 			// debugging purposes.
 			confName := "lastconfig"
+			// XXX do we know bootreason?
 			if !ctx.bootReason.StartWithSavedConfig() {
 				log.Warnf("Use backup config due to boot reason %s",
-					ctx.bootReason)
+					ctx.bootReason.String())
 				confName = "lastconfig.bak"
 			}
 			var err error
@@ -764,8 +910,8 @@ func requestConfigByURL(getconfigCtx *getconfigContext, url string,
 				return invalidConfig, rv.TracedReqs
 			}
 			if config != nil {
-				log.Noticef("Using saved config dated %s",
-					ts.Format(time.RFC3339Nano))
+				log.Noticef("Using saved config %s dated %s",
+					confName, ts.Format(time.RFC3339Nano))
 
 				cfgRetval := inhaleDeviceConfig(getconfigCtx, config, savedConfig)
 				if cfgRetval != configOK {
@@ -937,6 +1083,9 @@ func needRequestLocConfig(getconfigCtx *getconfigContext,
 func getLatestConfig(getconfigCtx *getconfigContext, iteration int,
 	withNetTracing bool) (configProcessingRetval, []netdump.TracedNetRequest) {
 
+	if ctrlClient == nil {
+		log.Fatal("nil ctrlClient in getLatestConfig")
+	}
 	url := controllerconn.URLPathString(serverNameAndPort, ctrlClient.UsingV2API(),
 		devUUID, "config")
 
@@ -1008,6 +1157,9 @@ func existsSavedConfig(filename string) bool {
 // mtime is returned for callers pleasure
 func readSavedProtoMessageConfig(ctrlClient *controllerconn.Client, URL string,
 	filename string) (*zconfig.EdgeDevConfig, time.Time, error) {
+	if ctrlClient == nil {
+		log.Fatal("nil ctrlClient in readSaveProtoMessageConfig")
+	}
 	contents, ts, err := persist.ReadSavedConfig(log, filename)
 	if err != nil {
 		log.Errorln("readSavedProtoMessageConfig", err)
@@ -1101,8 +1253,8 @@ func inhaleDeviceConfig(getconfigCtx *getconfigContext, config *zconfig.EdgeDevC
 				devId.Uuid, err)
 			return invalidConfig
 		}
-		initialBootstrap := source == fromBootstrap && devUUID == nilUUID
-		if !initialBootstrap && id != devUUID {
+		if devUUID == nilUUID && id != devUUID &&
+			!(source == fromBootstrap || source == civmOnly) {
 			log.Warnf("Device UUID changed from %s to %s",
 				devUUID.String(), id.String())
 			potentialUUIDUpdate(getconfigCtx)
@@ -1397,17 +1549,22 @@ func publishConfigNetdump(ctx *zedagentContext,
 	ctx.lastConfigNetdumpPub = time.Now()
 }
 
+// Parses the ConfigItemValueMap from the lastconfig.
 // Use the .bak if /persist/checkpoint/lastconfig is missing or bad
-// Only parses the ConfigItemValueMap from the lastconfig, and publishes it.
-func initializeConfigItemValueMap(ctx *zedagentContext, ctrlClient *controllerconn.Client) {
+// If neither present it uses the default values.
+// Does NOT publish to pubsub - just sets ctx.globalConfig
+// Returns true if a checkpoint was found and parsed.
+func initializeConfigItemValueMap(ctx *zedagentContext) bool {
 	confName := "lastconfig"
 	url := "dummy"
 	var err error
 	var config *zconfig.EdgeDevConfig
 	var ts time.Time
+
+	tmpCtrlClient := controllerconn.NewClient(log, controllerconn.ClientOptions{})
 	for {
 		config, ts, err = readSavedProtoMessageConfig(
-			ctrlClient, url, confName)
+			tmpCtrlClient, url, confName)
 		if err == nil {
 			break
 		}
@@ -1416,16 +1573,29 @@ func initializeConfigItemValueMap(ctx *zedagentContext, ctrlClient *controllerco
 			confName = "lastconfig.bak"
 			continue
 		}
-		return
+		// No checkpoint file exists - use defaults.
+		// We use the parser with an empty config to do this since
+		// the parse has special logic for first boot
+		log.Notice("initializeConfigItemValueMap: Starting with default ConfigItemValueMap")
+		config := zconfig.EdgeDevConfig{}
+		parseConfigItems(ctx.getconfigCtx, &config, civmOnly)
+		return false
 	}
-	if config != nil {
-		log.Noticef("initializeConfigItemValueMap: Using saved config dated %s",
-			ts.Format(time.RFC3339Nano))
-		cfgRetval := inhaleDeviceConfig(ctx.getconfigCtx, config, civmOnly)
-		if cfgRetval != configOK {
-			log.Errorf("inhaleDeviceConfig failed: %d", cfgRetval)
-		} else {
-			log.Noticef("initializeConfigItemValueMap done parsing")
-		}
+	if config == nil {
+		config := zconfig.EdgeDevConfig{}
+		parseConfigItems(ctx.getconfigCtx, &config, civmOnly)
+		return false
 	}
+	log.Noticef("initializeConfigItemValueMap: Using saved config %s dated %s",
+		confName, ts.Format(time.RFC3339Nano))
+	cfgRetval := inhaleDeviceConfig(ctx.getconfigCtx, config, civmOnly)
+	if cfgRetval != configOK {
+		log.Errorf("inhaleDeviceConfig failed or skipped: %s",
+			cfgRetval.String())
+		config := zconfig.EdgeDevConfig{}
+		parseConfigItems(ctx.getconfigCtx, &config, civmOnly)
+		return false
+	}
+	log.Noticef("initializeConfigItemValueMap done parsing")
+	return true
 }

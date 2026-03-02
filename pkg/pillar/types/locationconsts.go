@@ -62,6 +62,14 @@ const (
 	V2TLSBaseFile = IdentityDirname + "/v2tlsbaseroot-certificates.pem"
 	// APIV1FileName - user can statically allow for API v1
 	APIV1FileName = IdentityDirname + "/Force-API-V1"
+	// ImportGlobalConfigFile - old legacy file with ConfigItemValueMap items for bootstrapping
+	ImportGlobalConfigFile = IdentityDirname + "/GlobalConfig/global.json"
+	// IngestedGlobalConfigSha - sha of above after ingested
+	IngestedGlobalConfigSha = IngestedDirname + "/GlobalConfig/global.sha"
+	// BaseAuthorizedKeysFile - for an initial SSH key
+	BaseAuthorizedKeysFile = IdentityDirname + "/authorized_keys"
+	// IngestedAuthorizedKeysSha - sha of above after ingested
+	IngestedAuthorizedKeysSha = IngestedDirname + "/authorized_keys.sha"
 	// BootstrapConfFileName - file to store initial device configuration for bootstrapping
 	BootstrapConfFileName = IdentityDirname + "/bootstrap-config.pb"
 	// RemoteAccessFlagFileName -- file to check for remote access configuration

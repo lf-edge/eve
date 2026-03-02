@@ -45,6 +45,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/netdump"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 
 	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
@@ -304,6 +305,9 @@ func queueInfoToDest(ctx *zedagentContext, dest destinationBitset,
 
 	locConfig := ctx.getconfigCtx.sideController.locConfig
 
+	if ctrlClient == nil {
+		log.Fatal("nil ctrlClient in queueInfoToDest")
+	}
 	if dest&ControllerDest != 0 {
 		url := controllerconn.URLPathString(serverNameAndPort, ctrlClient.UsingV2API(),
 			devUUID, "info")
@@ -390,28 +394,48 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	ps.StillRunning(agentName, warningTime, errorTime)
 
 	initializeDirs()
-
-	// Load bootstrap configuration if present.
 	getconfigCtx := zedagentCtx.getconfigCtx
-	maybeLoadBootstrapConfig(getconfigCtx)
 
-	// Get GlobalConfig.
-	// If not present (e.g. loading of bootstrap config failed), use default values.
-	item, err := zedagentCtx.pubGlobalConfig.Get("global")
-	if err == nil {
-		zedagentCtx.globalConfig = item.(types.ConfigItemValueMap)
-	} else {
-		log.Warnf("GlobalConfig is missing, publishing default values")
-		zedagentCtx.globalConfig = *types.DefaultConfigItemValueMap()
-		err = zedagentCtx.pubGlobalConfig.Publish("global", zedagentCtx.globalConfig)
-		if err != nil {
-			// Could fail if no space left in the filesystem.
-			log.Fatalf("Failed to publish default globalConfig: %s", err)
+	// Check if /persist/checkpoint/lastconfig exists.
+	// If not make sure we have defaults for ConfigItemValueMap.
+	// Does NOT publish yet since we want to get any bootstrap or
+	foundCheckpoint := initializeConfigItemValueMap(zedagentCtx)
+
+	// XXX should a bootstrap or /config/GlobalConfig file be able
+	// to override a checkpoint? Do we need to handle such after the first
+	// boot? Here we only look if no /persist/checkpoint/lastconfig.
+	if !foundCheckpoint {
+		// Load bootstrap configuration if present.
+		maybeLoadBootstrapConfig(getconfigCtx)
+
+		// If there was no bootstrap config, then look for /config/GlobalConfig
+		//  Check if bootstrap config has been already loaded.
+		if !fileutils.FileExists(log, types.BootstrapConfFileName) {
+			changed := maybeLoadGlobalConfig(getconfigCtx)
+			zedagentCtx.globalConfigPublished = !changed
+		} else {
+			if fileutils.FileExists(log, types.ImportGlobalConfigFile) {
+				log.Warnf("Skipping import of %s: "+
+					"bootstrap config is present", types.ImportGlobalConfigFile)
+			}
+			if fileutils.FileExists(log, types.BaseAuthorizedKeysFile) {
+				log.Warnf("Skipping import of %s: "+
+					"bootstrap config is present", types.BaseAuthorizedKeysFile)
+			}
 		}
 	}
-	// GlobalConfig is guaranteed to have been published by this point
-	// (otherwise the log.Fatalf above exits zedagent).
+	// We also publish the GlobalConfig
+	err = zedagentCtx.pubGlobalConfig.Publish("global",
+		zedagentCtx.globalConfig)
+	if err != nil {
+		// Could fail if no space in filesystem
+		log.Fatalf("Publish for globalConfig failed %s", err)
+	}
 	zedagentCtx.globalConfigPublished = true
+	triggerPublishDevInfo(zedagentCtx)
+
+	getconfigCtx.localCmdAgent.UpdateGlobalConfig(&zedagentCtx.globalConfig)
+
 	log.Noticef("Initialized GlobalConfig: %v", zedagentCtx.globalConfig)
 
 	// Apply saved radio config ASAP.
@@ -453,11 +477,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	// initialize ControllerCerts by reading from its /persist/checkpoint
 	// if that exists
 	initializeControllerCerts(zedagentCtx, ctrlClient)
-
-	// initialize a ConfigItemValueMap starting with the defaults,
-	// then parse only the ConfigItemValueMap parts from /persist/checkpoint/lastconfig,
-	// and then publish it.
-	initializeConfigItemValueMap(zedagentCtx, ctrlClient)
 
 	if parse != "" {
 		res, config := readValidateConfig(parse)
@@ -618,6 +637,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 // Use the .bak if /persist/checkpoint/controllercerts is missing or bad
 func initializeControllerCerts(ctx *zedagentContext, ctrlClient *controllerconn.Client) {
+	if ctrlClient == nil {
+		log.Fatal("nil ctrlClient in initializeControllerCerts")
+	}
 	useBackup := false
 	err := ctrlClient.LoadSavedServerSigningCert(useBackup)
 	certChainBytes := ctrlClient.GetCertChainBytes()
@@ -2395,6 +2417,9 @@ func handleDNSModify(ctxArg interface{}, key string,
 func handleDNSImpl(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
+	if ctrlClient == nil {
+		log.Fatal("nil ctrlClient in handleDNSImpl")
+	}
 	status := statusArg.(types.DeviceNetworkStatus)
 	ctx := ctxArg.(*DNSContext)
 	if key != "global" {
