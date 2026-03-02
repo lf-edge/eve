@@ -28,6 +28,11 @@ RUN make defconfig && \
     make oldconfig && \
     rm -rf /out && mkdir -p /out/boot
 
+RUN mkdir /patches
+COPY patches/* /patches
+
+RUN for i in /patches/*; do patch -Np1 < $i; done
+
 RUN make -j "$(getconf _NPROCESSORS_ONLN)" && \
     case $(uname -m) in \
     x86_64) \
