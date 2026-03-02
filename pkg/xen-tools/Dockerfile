@@ -125,6 +125,12 @@ COPY qemu-ifup xen-start /etc/xen/scripts/
 
 # We need to keep a slim profile, which means removing things we don't need
 RUN rm -rf /usr/lib/libxen*.a /usr/lib/libxl*.a /usr/lib/debug /usr/lib/python*
+RUN rm -f /usr/share/qemu-xen/qemu/skiboot.lid
+RUN rm -f /usr/share/qemu-xen/qemu/hppa-firmware.img
+RUN rm -f /usr/share/qemu-xen/qemu/s390-netboot.img
+RUN rm -f /usr/share/qemu-xen/qemu/opensbi-riscv32-generic-fw_dynamic.bin
+RUN rm -f /usr/share/qemu-xen/qemu/opensbi-riscv64-generic-fw_dynamic.bin
+RUN rm -f /usr/share/qemu-xen/qemu/slof.bin
 
 RUN rm -rf /usr/share/man \
     /usr/share/qemu-xen/qemu/openbios-* \
