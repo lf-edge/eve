@@ -4,8 +4,10 @@
 package socketdriver
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"path"
@@ -46,7 +48,10 @@ const (
 	// being directory in /run/global
 	fixedName = "global"
 	fixedDir  = "/run/" + fixedName
-	maxsize   = 10 * 1024 * 1024 // Max size for json which can be read or written (10MB with framed big frames)
+	// maxsize is the application-level limit on framed message size.
+	// Messages are base64-encoded before this check, so the effective raw JSON
+	// payload limit is approximately maxsize * 3/4 ≈ 7.5 MB.
+	maxsize = 10 * 1024 * 1024
 )
 
 // SocketDriver driver for pubsub using local unix-domain socket and files
@@ -242,29 +247,58 @@ func NewFramedWriter(conn net.Conn) *framed.Writer {
 	return w
 }
 
-// NewFramedReader wraps a net.Conn with a framed.Reader that uses big frames
-// (32-bit length prefix). Callers must use readFrame() instead of calling
-// ReadFrame() directly, to enforce the maxsize limit and prevent unbounded
-// memory allocation from a buggy peer.
-func NewFramedReader(conn net.Conn) *framed.Reader {
-	r := framed.NewReader(conn)
-	r.EnableBigFrames()
-	return r
+// initialBufSize is the initial size of the reusable read buffer.
+// It will grow as needed up to maxsize.
+const initialBufSize = 1024
+
+// FrameReader reads length-prefixed frames from a stream using a reusable
+// buffer that grows as needed up to maxsize. This avoids per-read allocations
+// (unlike framed.ReadFrame) and avoids wasting memory with fixed large buffers.
+// The wire format is identical to framed with EnableBigFrames: 4-byte
+// little-endian length prefix followed by payload.
+type FrameReader struct {
+	r   io.Reader
+	hdr [4]byte
+	buf []byte
 }
 
-// ReadFrame reads a single frame from the framed.Reader and rejects frames
-// that exceed maxsize. This protects against unbounded memory allocation
-// from a buggy or malicious peer sending a large length prefix.
-func ReadFrame(r *framed.Reader) ([]byte, error) {
-	frame, err := r.ReadFrame()
-	if err != nil {
+// NewFrameReader creates a FrameReader over conn with an initial buffer of
+// initialBufSize bytes. The buffer grows on demand up to maxsize.
+func NewFrameReader(conn net.Conn) *FrameReader {
+	return &FrameReader{
+		r:   conn,
+		buf: make([]byte, initialBufSize),
+	}
+}
+
+// ReadFrame reads a single frame. The returned slice is valid only until the
+// next call to ReadFrame (it aliases the internal buffer).
+func (fr *FrameReader) ReadFrame() ([]byte, error) {
+	// Read 4-byte length header
+	if _, err := io.ReadFull(fr.r, fr.hdr[:]); err != nil {
 		return nil, err
 	}
-	if len(frame) > maxsize {
+	nraw := binary.LittleEndian.Uint32(fr.hdr[:])
+	// Validate as uint32 before converting to int: on 32-bit platforms a large
+	// prefix would wrap negative, bypass the check, and panic on buf[:n].
+	if nraw > uint32(maxsize) {
 		return nil, fmt.Errorf("received frame of %d bytes exceeds max %d",
-			len(frame), maxsize)
+			nraw, maxsize)
 	}
-	return frame, nil
+	n := int(nraw)
+	// Grow buffer if needed with 25% headroom to reduce future
+	// re-allocations; never shrink.
+	if n > len(fr.buf) {
+		newSize := n + n/4
+		if newSize > maxsize {
+			newSize = maxsize
+		}
+		fr.buf = make([]byte, newSize)
+	}
+	if _, err := io.ReadFull(fr.r, fr.buf[:n]); err != nil {
+		return nil, err
+	}
+	return fr.buf[:n], nil
 }
 
 // Poll to check if we should go away

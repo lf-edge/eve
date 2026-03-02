@@ -280,7 +280,7 @@ func (s *Publisher) serveConnection(conn net.Conn, instance int) {
 	s.log.Functionf("serveConnection(%s/%d)\n", s.name, instance)
 	defer conn.Close()
 
-	reader := NewFramedReader(conn)
+	reader := NewFrameReader(conn)
 	writer := NewFramedWriter(conn)
 
 	// Track the set of keys/values we are sending to the peer
@@ -288,7 +288,7 @@ func (s *Publisher) serveConnection(conn net.Conn, instance int) {
 	sentRestartCounter := 0
 
 	// Read request
-	frame, err := ReadFrame(reader)
+	frame, err := reader.ReadFrame()
 	if err != nil {
 		// Peer process could have died
 		s.log.Errorf("serveConnection(%s/%d) error: %v", s.name, instance, err)
@@ -411,7 +411,7 @@ func (s *Publisher) sendUpdate(writer *framed.Writer, key string,
 	sendKey := base64.StdEncoding.EncodeToString([]byte(key))
 	sendVal := base64.StdEncoding.EncodeToString(val)
 	buf := fmt.Sprintf("update %s %s %s", s.topic, sendKey, sendVal)
-	if len(buf) >= maxsize {
+	if len(buf) > maxsize {
 		return fmt.Errorf("too large message (%d bytes) for %s topic %s key %s",
 			len(buf), s.name, s.topic, key)
 	}
@@ -424,7 +424,7 @@ func (s *Publisher) sendDelete(writer *framed.Writer, key string) error {
 	// base64-encode to avoid having spaces in the key
 	sendKey := base64.StdEncoding.EncodeToString([]byte(key))
 	buf := fmt.Sprintf("delete %s %s", s.topic, sendKey)
-	if len(buf) >= maxsize {
+	if len(buf) > maxsize {
 		return fmt.Errorf("too large message (%d bytes) for %s topic %s key %s",
 			len(buf), s.name, s.topic, key)
 	}
@@ -435,7 +435,7 @@ func (s *Publisher) sendDelete(writer *framed.Writer, key string) error {
 func (s *Publisher) sendRestarted(writer *framed.Writer, restartCounter int) error {
 	s.log.Functionf("sendRestarted(%s)\n", s.name)
 	buf := fmt.Sprintf("restarted %s %d", s.topic, restartCounter)
-	if len(buf) >= maxsize {
+	if len(buf) > maxsize {
 		return fmt.Errorf("too large message (%d bytes) for %s topic %s",
 			len(buf), s.name, s.topic)
 	}
@@ -446,7 +446,7 @@ func (s *Publisher) sendRestarted(writer *framed.Writer, restartCounter int) err
 func (s *Publisher) sendComplete(writer *framed.Writer) error {
 	s.log.Functionf("sendComplete(%s)\n", s.name)
 	buf := fmt.Sprintf("complete %s", s.topic)
-	if len(buf) >= maxsize {
+	if len(buf) > maxsize {
 		return fmt.Errorf("too large message (%d bytes) for %s topic %s",
 			len(buf), s.name, s.topic)
 	}
@@ -463,7 +463,7 @@ func (s *Publisher) CheckMaxSize(key string, val []byte) error {
 	sendKey := base64.StdEncoding.EncodeToString([]byte(key))
 	sendVal := base64.StdEncoding.EncodeToString(val)
 	buf := fmt.Sprintf("update %s %s %s", s.topic, sendKey, sendVal)
-	if len(buf) >= maxsize {
+	if len(buf) > maxsize {
 		return fmt.Errorf("key %s serialized to size %d exceeds max %d",
 			key, len(buf), maxsize)
 	}

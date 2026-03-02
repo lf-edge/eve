@@ -70,10 +70,10 @@ func startSubscriber(log *base.LogObject, agent string, topic interface{}, retCh
 // serveConnection processes a single connection and sends received
 // notifications as a string on the retChan
 func serveConnection(log *base.LogObject, conn net.Conn, retChan chan<- string, name string) {
-	reader := socketdriver.NewFramedReader(conn)
+	reader := socketdriver.NewFrameReader(conn)
 
 	for {
-		frame, err := socketdriver.ReadFrame(reader)
+		frame, err := reader.ReadFrame()
 		if err != nil {
 			if err != io.EOF {
 				log.Errorf("serveConnection: Error on read: %s",

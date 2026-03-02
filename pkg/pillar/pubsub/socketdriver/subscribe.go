@@ -29,7 +29,7 @@ import (
 type Subscriber struct {
 	sockName         string         // there is one socket per publishing agent
 	sock             net.Conn       // For socket subscriptions
-	reader           *framed.Reader // framed reader for the socket
+	reader           *FrameReader   // frame reader for the socket
 	writer           *framed.Writer // framed writer for the socket
 	subscribeFromDir bool           // Handle special case of file only info
 	name             string
@@ -231,7 +231,7 @@ func (s *Subscriber) connectAndRead() (string, string, []byte) {
 			}
 			s.sock = sock
 			s.writer = NewFramedWriter(sock)
-			s.reader = NewFramedReader(sock)
+			s.reader = NewFrameReader(sock)
 			req := fmt.Sprintf("request %s", s.topic)
 			_, err = s.writer.Write([]byte(req))
 			if err != nil {
@@ -266,7 +266,7 @@ func (s *Subscriber) connectAndRead() (string, string, []byte) {
 // msg is "" if there is nothing to process
 func (s *Subscriber) read() (string, string, []byte) {
 
-	frame, err := ReadFrame(s.reader)
+	frame, err := s.reader.ReadFrame()
 	if err != nil {
 		errStr := fmt.Sprintf("connectAndRead(%s): sock read failed %s",
 			s.name, err)
