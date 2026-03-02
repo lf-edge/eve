@@ -75,6 +75,9 @@ func TouchSavedConfig(log *base.LogObject, filename string) {
 	filename = filepath.Join(types.CheckpointDirname, filename)
 	_, err := os.Stat(filename)
 	if err != nil {
+		if os.IsNotExist(err) {
+			return
+		}
 		log.Warnf("TouchSavedConfig stat failed: %s", err)
 	}
 	currentTime := time.Now()
