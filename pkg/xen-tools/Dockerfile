@@ -117,24 +117,23 @@ RUN mkdir -p /out/usr/lib/xen/boot && cp /uefi/OVMF.fd /out/usr/lib/xen/boot/ovm
     cp /uefi/OVMF_PVH.fd /out/usr/lib/xen/boot/ovmf-pvh.bin && \
     [ -f /uefi/OVMF_CODE.fd ] && cp /uefi/OVMF_CODE.fd /out/usr/lib/xen/boot/OVMF_CODE.fd || :
 
+# We need to keep a slim profile, which means removing things we don't need
+RUN rm -rf /out/usr/lib/libxen*.a /out/usr/lib/libxl*.a /out/usr/lib/debug /out/usr/lib/python*
+RUN rm -rf /out/usr/share/man
+RUN rm -rf /out/usr/share/qemu-xen/qemu/openbios-*
+RUN rm -rf /out/usr/lib/xen/bin/qemu-storage-daemon
+RUN rm /out/usr/share/qemu-xen/qemu/skiboot.lid
+RUN rm /out/usr/share/qemu-xen/qemu/hppa-firmware.img
+RUN rm /out/usr/share/qemu-xen/qemu/s390-netboot.img
+RUN rm /out/usr/share/qemu-xen/qemu/opensbi-riscv32-generic-fw_dynamic.bin
+RUN rm /out/usr/share/qemu-xen/qemu/opensbi-riscv64-generic-fw_dynamic.bin
+RUN rm /out/usr/share/qemu-xen/qemu/slof.bin
+
 FROM scratch
 COPY --from=build /out/ /
 COPY --from=runx-build /runx-initrd /usr/lib/xen/boot/runx-initrd
 COPY init.sh /
 COPY qemu-ifup xen-start /etc/xen/scripts/
-
-# We need to keep a slim profile, which means removing things we don't need
-RUN rm -rf /usr/lib/libxen*.a /usr/lib/libxl*.a /usr/lib/debug /usr/lib/python*
-RUN rm -f /usr/share/qemu-xen/qemu/skiboot.lid
-RUN rm -f /usr/share/qemu-xen/qemu/hppa-firmware.img
-RUN rm -f /usr/share/qemu-xen/qemu/s390-netboot.img
-RUN rm -f /usr/share/qemu-xen/qemu/opensbi-riscv32-generic-fw_dynamic.bin
-RUN rm -f /usr/share/qemu-xen/qemu/opensbi-riscv64-generic-fw_dynamic.bin
-RUN rm -f /usr/share/qemu-xen/qemu/slof.bin
-
-RUN rm -rf /usr/share/man \
-    /usr/share/qemu-xen/qemu/openbios-* \
-    /usr/lib/xen/bin/qemu-storage-daemon
 
 # Adjust /var/run, /var/lib and /var/lock to be shared
 RUN mv /var /var.template && ln -s /run /var && ln -s /run /var.template/run
