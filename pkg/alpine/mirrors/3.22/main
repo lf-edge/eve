@@ -179,6 +179,7 @@ docbook-xsl-nons
 docbook-xsl-ns
 dosfstools
 doxygen
+dpkg
 dtc
 dtc-dev
 e2fsprogs
