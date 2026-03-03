@@ -6,7 +6,7 @@
 ARG PLATFORM=generic
 
 FROM lfedge/eve-alpine:745ae9066273c73b0fd879c4ba4ff626a8392d04 AS build-base
-ENV BUILD_PKGS="autoconf automake build-base coreutils gettext git glib-dev libtool libmd-dev ncurses-dev tar xz-dev yq zstd-dev"
+ENV BUILD_PKGS="autoconf automake build-base coreutils gettext git glib-dev libtool libmd-dev ncurses-dev tar xz-dev yq zstd-dev dpkg"
 
 RUN eve-alpine-deploy.sh
 
@@ -50,17 +50,6 @@ RUN echo "${EVE_PLATFORM}" > /eve-platform
 COPY cdi/${JETPACK_VER} /cdi
 
 ADD ${JETSON_LINUX} /jetson_linux.tbz2
-
-# We need to build dpkg in order to get support for .deb packages
-# compressed with zstd. Unfortunately dpkg from Alpine 3.16 doesn't support
-# it. It won't be required to build when we upgrade to Alpine 3.20.
-ENV DPKG_REVISION=1.22.6
-ADD --keep-git-dir=true https://salsa.debian.org/dpkg-team/dpkg.git#${DPKG_REVISION} /dpkg
-WORKDIR /dpkg
-RUN ./autogen && \
-    ./configure --prefix=/ && \
-    make -j "$(nproc)" && \
-    make install
 
 # Extract tarball
 WORKDIR /
