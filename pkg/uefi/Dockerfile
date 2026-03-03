@@ -15,7 +15,6 @@ ENV BUILD_PKGS make gcc g++ python3 libuuid nasm util-linux-dev bash git util-li
 ENV BUILD_PKGS_amd64 iasl
 ENV BUILD_PKGS_arm64 iasl
 RUN eve-alpine-deploy.sh
-RUN ln -s python3 /usr/bin/python
 
 COPY edk2-patches /edk2-patches
 
