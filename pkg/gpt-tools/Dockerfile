@@ -1,5 +1,5 @@
 FROM lfedge/eve-alpine:745ae9066273c73b0fd879c4ba4ff626a8392d04 AS build
-ENV BUILD_PKGS gcc make file patch libc-dev util-linux-dev linux-headers openssl-dev g++ tar
+ENV BUILD_PKGS gcc make file patch libc-dev util-linux-dev linux-headers openssl-dev util-linux-dev util-linux-static g++ tar coreutils
 RUN eve-alpine-deploy.sh
 
 ENV POPT_VERSION 1.16
@@ -22,7 +22,6 @@ COPY patches/popt* /popt
 RUN for patch in /popt/*patch ; do patch -p1 < $patch ; done
 RUN ./configure && make -j "$(getconf _NPROCESSORS_ONLN)" && make install
 
-
 WORKDIR /
 RUN mkdir -p /sgdisk/patches
 COPY gptfdisk-${GPTFDISK_VERSION}.tar.gz /sgdisk
@@ -36,7 +35,7 @@ RUN set -e && for patch in ../patches/sgdisk-*.patch; do \
         echo "Applying $patch"; \
         patch -p1 < "$patch"; \
     done
-RUN make LDFLAGS=-static sgdisk
+RUN make -j "$(getconf _NPROCESSORS_ONLN)" CXXFLAGS="-Dfstat64=fstat -Dstat64=stat -Dlseek64=lseek" LDFLAGS=-static sgdisk
 RUN strip sgdisk
 RUN cp sgdisk /out/sgdisk
 
@@ -51,7 +50,7 @@ RUN tar xvzf vboot_reference-${VBOOT_COMMIT}.tar.gz
 
 WORKDIR /vboot_reference
 RUN [ -d host/arch/riscv64 ] || cp -r host/arch/arm host/arch/riscv64
-RUN make cgpt LDFLAGS=-static CFLAGS=-Wno-error=address-of-packed-member
+RUN make cgpt -j "$(getconf _NPROCESSORS_ONLN)" LDFLAGS=-static CFLAGS=-Wno-error=address-of-packed-member
 RUN cp build/cgpt/cgpt /out/cgpt
 
 FROM scratch
