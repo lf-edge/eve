@@ -53,31 +53,26 @@ ENV GRUB_PLATFORM=efi
 # hadolint ignore=DL3006
 FROM grub-build-${TARGETARCH} AS grub-build
 
-ENV GRUB_REPO=git://git.git.savannah.gnu.org/grub.git
-
 COPY patches /patches
 COPY patches-2.06  /patches-2.06
 COPY patches-aarch64-2.06 /patches-aarch64-2.06
 COPY patches-riscv64-2.06 /patches-riscv64-2.06
-# because python is not available
-RUN ln -s python3 /usr/bin/python && \
-    mkdir /grub-lib
+RUN mkdir /grub-lib
 
-ADD --keep-git-dir ${GRUB_REPO}#${GRUB_COMMIT} /grub
+ENV GRUB_REPO=git://git.git.savannah.gnu.org/grub.git
+ADD ${GRUB_REPO}#${GRUB_COMMIT} /grub
 ENV GNULIB_REVISION=d271f868a8df9bbec29049d01e056481b7a1a263
 ADD --keep-git-dir https://github.com/coreutils/gnulib.git#${GNULIB_REVISION} /gnulib
 
-# hadolint ignore=DL3003,SC2086
-RUN cd /grub && \
-      mkdir -p /apply/patches && \
-      for dir in ${GRUB_PATCHES}; do \
-          cp -r /${dir}/* /apply/patches; \
-      done && \
-      git config --global user.name 'Project EVE' && \
-      git config --global user.email 'builder@projecteve.dev' && \
-      git am /apply/patches/*
-
 WORKDIR /grub
+RUN mkdir -p /apply/patches
+RUN for dir in ${GRUB_PATCHES}; do \
+    cp -r /${dir}/* /apply/patches; \
+    done
+RUN git config --global user.name 'Project EVE'
+RUN git config --global user.email 'builder@projecteve.dev'
+RUN git init . && git add . && git commit -m "init"
+RUN git am /apply/patches/*
 
 RUN ./bootstrap --gnulib-srcdir=/gnulib || ./autogen.sh
 
@@ -87,7 +82,7 @@ RUN set -e; for p in ${GRUB_PLATFORM}; do \
       begin=$(( ${#platform} + 1 )); \
       opt=${p:${begin}}; \
       if [ -f Makefile ]; then make distclean; fi; \
-      ./configure --disable-werror --libdir=/grub-lib --with-platform="${platform}" ${opt} CFLAGS='-Os -Wno-unused-value'; \
+      ./configure --disable-werror --libdir=/grub-lib --with-platform="${platform}" ${opt} CFLAGS='-Os -Wno-unused-value -Wno-incompatible-pointer-types'; \
       make -j $(getconf _NPROCESSORS_ONLN); \
       make install; \
     done
