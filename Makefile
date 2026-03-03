@@ -525,7 +525,7 @@ $(DOCKERFILE_FROM_CHECKER): $(DOCKERFILE_FROM_CHECKER_DIR)/*.go $(DOCKERFILE_FRO
 # pkg/debug (recovertpm among them), so a stale FROM hash silently ships an
 # installer whose TPM verification runs an outdated recovertpm.
 IGNORE_DOCKERFILE_HASHES_PKGS=alpine
-IGNORE_DOCKERFILE_HASHES_EVE_TOOLS=
+IGNORE_DOCKERFILE_HASHES_EVE_TOOLS=bpftrace-compiler
 
 IGNORE_DOCKERFILE_DOT_GO_DIR=$(shell find .go/ -name Dockerfile -exec echo "-i {}" \;)
 IGNORE_DOCKERFILE_DIST_DIR=$(shell find dist/ -name Dockerfile -exec echo "-i {}" \;)
