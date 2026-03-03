@@ -17,7 +17,7 @@ ENV BUILD_PKGS="abuild curl tar make linux-headers patch g++ git gcc gpg gettext
 # forget to check on all supported architectures: e.g. arm64
 # binaries are typically larger than amd64 ones).
 # RUN apk add --no-cache gdb valgrind
-ENV PKGS="openssl openssh-client openssh-server tini util-linux ca-certificates pciutils usbutils tcpdump perf strace iproute2-minimal curl zlib procps-ng tar dmidecode iptables dhcpcd tio socat"
+ENV PKGS="openssl openssh-client openssh-server tini util-linux ca-certificates pciutils usbutils tcpdump strace iproute2-minimal curl zlib procps-ng tar dmidecode iptables dhcpcd tio socat"
 
 RUN eve-alpine-deploy.sh
 
@@ -84,7 +84,6 @@ FROM build AS test
 COPY collect-info-test /collect-info-test
 WORKDIR /collect-info-test
 RUN go test
-
 
 FROM scratch
 ENTRYPOINT []
