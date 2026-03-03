@@ -27,7 +27,7 @@ RUN ./autogen.sh && \
     --infodir=/usr/share/info \
     --localstatedir=/var \
     --with-config=user \
-    --with-udevdir=/lib/udev \
+    --with-udevdir=/usr/lib/udev \
     --disable-systemd \
     --disable-static && \
     ./scripts/make_gitrev.sh && \
