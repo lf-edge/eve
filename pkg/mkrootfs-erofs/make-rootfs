@@ -1,0 +1,28 @@
+#!/bin/sh
+#
+# mkrootfs -- Create an EVE erofs image from a rootfs tar stream.
+#
+# Input is a tarball containing the rootfs tree.
+# Output is an erofs image on stdout.
+#
+# The following env variables change the behaviour of this script
+#     DEBUG - makes this script verbose
+
+set -e
+[ -n "$DEBUG" ] && set -x
+
+IMGFILE=/rootfs.img
+[ -f "$IMGFILE" ] || EXPORT_CMD="cat $IMGFILE"
+
+# we want everything except the final result to stderr
+( exec 1>&2;
+
+  mkdir -p /tmp/rootfs
+  cd /tmp/rootfs
+
+  [ -t 0 ] || bsdtar xzf -
+
+  mkfs.erofs -zlz4hc,9 "$IMGFILE" /tmp/rootfs
+)
+
+$EXPORT_CMD
