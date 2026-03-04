@@ -34,6 +34,9 @@ longhorn_install() {
 }
 
 Longhorn_uninstall() {
+    if ! kubectl get namespace/longhorn-system; then
+        return 0
+    fi
     logmsg "longhorn_uninstall ${LONGHORN_VERSION} beginning"
     longhorn_post_install_config_clean
     while ! kubectl apply -f /etc/longhorn_uninstall_settings.yaml; do
