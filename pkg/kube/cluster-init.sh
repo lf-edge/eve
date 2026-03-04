@@ -1308,6 +1308,15 @@ else
                         fi
                 fi
 
+                # Migrate KubeVirt feature gates added in newer EVE images (e.g. VideoConfig).
+                # Skipped on first boot after fresh install (kubevirt_initialized was just
+                # created by Kubevirt_install which already applied the features yaml).
+                if [ "$install_kubevirt" = "1" ] && [ ! -f /var/lib/kubevirt-feature-gates-migrated ]; then
+                        if Kubevirt_migrate_feature_gates; then
+                                touch /var/lib/kubevirt-feature-gates-migrated
+                        fi
+                fi
+
                 if Longhorn_is_ready; then
                         check_overwrite_nsmounter
                         Tie_breaker_configApply
