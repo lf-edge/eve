@@ -158,6 +158,8 @@ COPY --from=build /lib/firmware/iwlwifi-so-a0-gf-a0* /lib/firmware/
 COPY --from=build /lib/firmware/intel/ibt-0040-0041* /lib/firmware/intel/
 # Intel AX201NGW
 COPY --from=build /lib/firmware/iwlwifi-so-a0-hr-b0* /lib/firmware/
+# Intel Wi-Fi 6E AX211 160MHz on ASUS-NUC14SRK (Meteor Lake PCH CNVi)
+COPY --from=build /lib/firmware/iwlwifi-ma-b0-gf4-a0* /lib/firmware/
 # Dell Edge Gateway 300x firmware
 COPY --from=build /lib/firmware/rsi* /lib/firmware/rsi/
 # Intel Corporation Cannon Point-LP CNVi [Wireless-AC] (rev 30)
