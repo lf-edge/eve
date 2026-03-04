@@ -241,6 +241,32 @@ func handleGlobalConfigImpl(ctxArg interface{}, key string,
 	log.Functionf("handleGlobalConfigImpl done for %s", key)
 }
 
+func handleEvalStatusCreate(ctxArg interface{}, key string, statusArg interface{}) {
+	log.Functionf("handleEvalStatusCreate called: key=%s, type=%T", key, statusArg)
+	handleEvalStatusUpdate(ctxArg, key, statusArg)
+}
+
+func handleEvalStatusModify(ctxArg interface{}, key string, statusArg interface{}, oldStatusArg interface{}) {
+	log.Functionf("handleEvalStatusModify called: key=%s, type=%T", key, statusArg)
+	oldStatus := oldStatusArg.(types.EvalStatus)
+	newStatus := statusArg.(types.EvalStatus)
+	log.Functionf("handleEvalStatusModify: old phase=%s -> new phase=%s, allowOnboard %t -> %t",
+		oldStatus.Phase, newStatus.Phase, oldStatus.AllowOnboard, newStatus.AllowOnboard)
+	handleEvalStatusUpdate(ctxArg, key, statusArg)
+}
+
+func handleEvalStatusDelete(ctxArg interface{}, key string, statusArg interface{}) {
+	log.Functionf("handleEvalStatusDelete called: key=%s", key)
+}
+
+func handleEvalStatusUpdate(ctxArg interface{}, key string, statusArg interface{}) {
+	ctx := ctxArg.(*monitor)
+	status := statusArg.(types.EvalStatus)
+	log.Functionf("handleEvalStatusUpdate: EvalStatus details - platform=%t, slot=%s, phase=%s, allowOnboard=%t, inventory=%t",
+		status.IsEvaluationPlatform, status.CurrentSlot, status.Phase, status.AllowOnboard, status.InventoryCollected)
+	ctx.IPCServer.sendIpcMessage("EvalStatus", status)
+}
+
 func (ctx *monitor) subscribe(ps *pubsub.PubSub) error {
 	var err error
 
@@ -441,6 +467,26 @@ func (ctx *monitor) subscribe(ps *pubsub.PubSub) error {
 		ErrorTime:     errorTime,
 	})
 
+	log.Noticef("Creating subscription for EvalStatus from evalmgr")
+	subEvalStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "evalmgr",
+		MyAgentName:   agentName,
+		TopicImpl:     types.EvalStatus{},
+		Persistent:    true,
+		Activate:      false,
+		Ctx:           ctx,
+		CreateHandler: handleEvalStatusCreate,
+		ModifyHandler: handleEvalStatusModify,
+		DeleteHandler: handleEvalStatusDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
+	if err != nil {
+		log.Errorf("Cannot create subscription for EvalStatus: %v", err)
+		return err
+	}
+	log.Noticef("Successfully created subscription for EvalStatus")
+
 	ctx.subscriptions["IOAdapters"] = subPhysicalIOAdapter
 	ctx.subscriptions["VaultStatus"] = subVaultStatus
 	ctx.subscriptions["OnboardingStatus"] = subOnboardStatus
@@ -452,6 +498,7 @@ func (ctx *monitor) subscribe(ps *pubsub.PubSub) error {
 	ctx.subscriptions["LedBlinkCounter"] = subLedBlinkCounter
 	ctx.subscriptions["ZedAgentStatus"] = subZedAgentStatus
 	ctx.subscriptions["GlobalConfig"] = subGlobalConfig
+	ctx.subscriptions["EvalStatus"] = subEvalStatus
 	return nil
 }
 
