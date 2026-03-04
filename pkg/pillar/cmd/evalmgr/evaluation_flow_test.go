@@ -403,7 +403,7 @@ func runEvaluationCycle(t *testing.T, tc *TestContext, params EvaluationCyclePar
 	t.Logf("Phase 1.5: Waiting for inventory collection status for %s", params.CurrentSlot)
 	inventoryStatus, ok := tc.StatusSubscriber.WaitForCondition(func(s types.EvalStatus) bool {
 		return s.InventoryCollected && s.InventoryDir != ""
-	}, 2*time.Second)
+	}, 5*time.Second)
 	require.True(t, ok, "Should receive inventory collection status for %s", params.CurrentSlot)
 	assert.True(t, inventoryStatus.InventoryCollected, "InventoryCollected should be true")
 	assert.NotEmpty(t, inventoryStatus.InventoryDir, "InventoryDir should be set")

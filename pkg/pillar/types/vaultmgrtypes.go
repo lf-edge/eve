@@ -22,6 +22,16 @@ type VaultStatus struct {
 	ErrorAndTime
 }
 
+// VaultKeyEncVersion indicates the version of encryption used for vault key
+type VaultKeyEncVersion int
+
+const (
+	// EncryptionLegacy indicates no specific encryption version; used for backward compatibility
+	EncryptionLegacy VaultKeyEncVersion = iota
+	// EncryptionAEAD indicates AES GCM encryption
+	EncryptionAEAD
+)
+
 // VaultConfig represents vault key to be used
 type VaultConfig struct {
 	TpmKeyOnly bool
