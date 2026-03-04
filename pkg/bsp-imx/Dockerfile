@@ -114,6 +114,8 @@ RUN for t in ${ATF_TARGETS}; do \
             IMX_BOOT_UART_BASE="${uartbase}" \
             PLAT=${target} \
             SPD=${spd} \
+            CFLAGS="-Wno-array-bounds" \
+            LDFLAGS="--no-warn-rwx-segments" \
             bl31 ;\
          [ "$spd" = "none" ] && \
             mv build/${target}/release/bl31.bin /uboot-firmwares/${t}-bl31.bin || \
