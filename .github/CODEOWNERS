@@ -3,7 +3,7 @@
 # be requested for review when someone opens a pull request.
 
 *                             @eriknordmark
-/build-tools/                 @deitch
+/build-tools/                 @eriknordmark
 /pkg/alpine/                  @christoph-zededa
 /pkg/apparmor/                @shjala
 /pkg/bsp-imx/                 @rene
@@ -23,21 +23,21 @@
 /pkg/memory-monitor/          @OhmSpectator
 /pkg/mkimage-raw-efi/         @jsfakian @zedi-pramodh
 /pkg/new-kernel/              @rucoder @rene @rouming @shjala
-/pkg/newlog/                  @deitch @naiming-zededa @europaul
+/pkg/newlog/                  @naiming-zededa @europaul
 /pkg/optee-os/                @rene
-/pkg/pillar/cas/              @deitch @europaul
-/pkg/pillar/cmd/baseosmgr/    @deitch
+/pkg/pillar/cas/              @europaul
+/pkg/pillar/cmd/baseosmgr/    @eriknordmark
 /pkg/pillar/cmd/domainmgr/    @OhmSpectator @jsfakian @milan-zededa @uncleDecart
-/pkg/pillar/cmd/downloader/   @deitch @milan-zededa @rouming
+/pkg/pillar/cmd/downloader/   @milan-zededa @rouming
 /pkg/pillar/cmd/ledmanager/   @rucoder @rene
 /pkg/pillar/cmd/nim/          @milan-zededa
 /pkg/pillar/cmd/tpmmgr/       @rucoder @shjala
-/pkg/pillar/cmd/volumemgr/    @OhmSpectator @deitch @rouming @europaul
+/pkg/pillar/cmd/volumemgr/    @OhmSpectator @rouming @europaul
 /pkg/pillar/cmd/zedagent/     @OhmSpectator @milan-zededa @rouming @uncleDecart
 /pkg/pillar/cmd/zedkube/      @andrewd-zededa @naiming-zededa @zedi-pramodh
 /pkg/pillar/cmd/zedmanager/   @OhmSpectator @rouming
 /pkg/pillar/cmd/zedrouter/    @christoph-zededa @milan-zededa @rouming
-/pkg/pillar/containerd/       @deitch @rouming @europaul
+/pkg/pillar/containerd/       @rouming @europaul
 /pkg/pillar/cpuallocator/     @OhmSpectator
 /pkg/pillar/devicenetwork/    @milan-zededa
 /pkg/pillar/dpcmanager/       @milan-zededa
@@ -56,7 +56,7 @@
 /pkg/pillar/volumehandlers/   @OhmSpectator
 /pkg/pillar/controllerconn/   @christoph-zededa @rouming @milan-zededa
 /pkg/pillar/zfs/              @zedi-pramodh
-/pkg/rngd/                    @deitch
+/pkg/rngd/                    @eriknordmark
 /pkg/storage-init/            @rouming
 /pkg/u-boot/                  @rene
 /pkg/uefi/                    @rucoder
@@ -67,5 +67,5 @@
 /pkg/xen-tools/               @OhmSpectator @rucoder @rene @shjala
 /pkg/xen/                     @OhmSpectator @rucoder @rene @shjala
 /tests/eden/                  @milan-zededa @uncleDecart
-/tools/                       @deitch @jsfakian
-.github/workflows/            @deitch @uncleDecart @yash-zededa
+/tools/                       @jsfakian
+.github/workflows/            @eriknordmark @uncleDecart @yash-zededa
