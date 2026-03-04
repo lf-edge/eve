@@ -568,8 +568,8 @@ github.com/lf-edge/edge-containers v0.0.0-20251107072102-46bed3192170 h1:bzTmpY7
 github.com/lf-edge/edge-containers v0.0.0-20251107072102-46bed3192170/go.mod h1:ta4JI0ank21dn8T1GFZDRLmxVZ6kWVe32cnhKkqMJJQ=
 github.com/lf-edge/eve-api/go v0.0.0-20260114160322-5feda2767927 h1:X+FcGf7U22d4SkCdb3kSwslaM4EENNMNFmlUZiBZSjE=
 github.com/lf-edge/eve-api/go v0.0.0-20260114160322-5feda2767927/go.mod h1:6HxNA/qKJVEqwpuOFkcQ0h3QyotvAs/cjHLC961FPOY=
-github.com/lf-edge/eve-libs v0.0.0-20251217132956-95b6654d8655 h1:3XWIDdz3uCUuDxrpHPlroWJVMI6Dbs17Wn+Bbi64TUs=
-github.com/lf-edge/eve-libs v0.0.0-20251217132956-95b6654d8655/go.mod h1:ltvACFoIkGSeuuK+4Gl5+or3dbIxG2np6K0PQYkk6hU=
+github.com/lf-edge/eve-libs v0.0.0-20260413155918-4d8a68ded9cf h1:xNIQEOgjOvSjjkIYeby2HpNltYxy5Vk/zR/4am3q9G8=
+github.com/lf-edge/eve-libs v0.0.0-20260413155918-4d8a68ded9cf/go.mod h1:ltvACFoIkGSeuuK+4Gl5+or3dbIxG2np6K0PQYkk6hU=
 github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20240315102754-0f6d1f182e0d h1:tUBb9M6u42LXwHAYHyh22wJeUUQlTpDkXwRXalpRqbo=
 github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20240315102754-0f6d1f182e0d/go.mod h1:Nn3juMJJ1G8dyHOebdZyS4jOB/fuxAd5fIajBaWjHr8=
 github.com/lf-edge/go-qemu v0.0.0-20231121152149-4c467eda0c56 h1:LmFp0jbNSwPLuxJA+nQ+mMQrQ53ESkvHP4CVMqR0zrY=
@@ -859,8 +859,6 @@ github.com/yvasiyarov/gorelic v0.0.0-20141212073537-a9bba5b9ab50 h1:hlE8//ciYMzt
 github.com/yvasiyarov/gorelic v0.0.0-20141212073537-a9bba5b9ab50/go.mod h1:NUSPSUX/bi6SeDMUh6brw0nXpxHnc96TguQh0+r/ssA=
 github.com/yvasiyarov/newrelic_platform_go v0.0.0-20140908184405-b21fdbd4370f h1:ERexzlUfuTvpE74urLSbIQW0Z/6hF9t8U4NsJLaioAY=
 github.com/yvasiyarov/newrelic_platform_go v0.0.0-20140908184405-b21fdbd4370f/go.mod h1:GlGEuHIJweS1mbCqG+7vt2nvWLzLLnRHbXz5JKd/Qbg=
-github.com/zededa/ghw v0.0.0-20260121174541-9df1086a4e7a h1:xX9ExXni2yWHFBxFftsvXE9Shewz+lgWHvUbtjBlVt4=
-github.com/zededa/ghw v0.0.0-20260121174541-9df1086a4e7a/go.mod h1:bLYU9IrgrtEUiJ6smjXtTaej/MVO17v+kxGIC/jfj9c=
 github.com/zededa/ghw v0.0.0-20260218160843-b4fc0f8a6aa5 h1:XpWbH6y+ijvzerElhvg8x1VcheqouFjc2h1MqimzgbQ=
 github.com/zededa/ghw v0.0.0-20260218160843-b4fc0f8a6aa5/go.mod h1:bLYU9IrgrtEUiJ6smjXtTaej/MVO17v+kxGIC/jfj9c=
 github.com/zeebo/errs v1.4.0 h1:XNdoD/RRMKP7HD0UhJnIzUy74ISdGGxURlYG8HSWSfM=
