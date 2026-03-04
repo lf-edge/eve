@@ -133,6 +133,7 @@ RUN for t in ${OPTEEOS_TARGETS}; do \
             PLATFORM_FLAVOR="${flavor}" \
             CFG_UART_BASE="${uartbase}" \
             O=out/arm \
+            LDFLAGS="--no-warn-rwx-segments" \
             ${customdef} ;\
          mkdir -p "/opteeos_bins/${t}" ;\
          cp out/arm/core/tee-raw.bin "/opteeos_bins/${t}/optee.bin" ;\
