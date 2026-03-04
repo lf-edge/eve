@@ -327,7 +327,7 @@ func (dumper *NetDumper) Publish(topic, netTraceFolderPath string,
 
 			files = append(files, fileForTar{
 				info:    fileInfo,
-				dstPath: path.Join(netdumpName, "nettrace.json"),
+				dstPath: path.Join(dirName, "nettrace.json"),
 				content: fileHandle,
 			})
 

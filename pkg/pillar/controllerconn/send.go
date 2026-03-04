@@ -644,6 +644,8 @@ type tracedReq struct {
 	client         *nettrace.HTTPClient
 	reqName        string
 	reqDescription string
+	sink           *nettraceStorage.BoltBatchSink
+	sessionUUID    string
 }
 
 // SendOnIntf tries all source addresses on the given interface until one succeeds.
@@ -672,7 +674,6 @@ func (c *Client) SendOnIntf(ctx context.Context, destURL string, intf string,
 
 	var rv SendRetval
 	var reqURL string
-	var nettraceSessionUUID string
 	var useTLS, isEdgenode, isGet bool
 
 	if strings.HasPrefix(destURL, "http:") {
@@ -722,7 +723,7 @@ func (c *Client) SendOnIntf(ctx context.Context, destURL string, intf string,
 		Proxy:             clientConfig.Proxy,
 		DisableKeepAlives: clientConfig.DisableKeepAlive,
 	}
-	trace := &httptrace.ClientTrace{
+	httpTrace := &httptrace.ClientTrace{
 		GotConn: func(connInfo httptrace.GotConnInfo) {
 			c.log.Tracef("Got RemoteAddr: %+v, LocalAddr: %+v\n",
 				connInfo.Conn.RemoteAddr(),
@@ -761,58 +762,31 @@ func (c *Client) SendOnIntf(ctx context.Context, destURL string, intf string,
 			attempts = append(attempts, attempt)
 			continue
 		}
-		req = req.WithContext(httptrace.WithClientTrace(ctx, trace))
+		req = req.WithContext(httptrace.WithClientTrace(ctx, httpTrace))
 
 		// Prepare the HTTP client.
 		var client *http.Client
 		var tracing tracedReq
-		var sink *nettraceStorage.BoltBatchSink
 
 		if opts.WithNetTracing {
-			// Note that resolver cache is not supported when network tracing is enabled.
-			// This is actually intentional - when tracing, we want to run normal hostname
-			// IP resolution and collect traces of DNS queries.
-			if err := os.MkdirAll(opts.NetTraceFolder, 0o755); err != nil {
-				errorLog(fmt.Sprintf("SendOnIntf: failed to create nettrace folder %s: %v", opts.NetTraceFolder, err))
-				attempt.Err = err
-				attempts = append(attempts, attempt)
-				continue
+			var reqMethod string
+			if isGet {
+				reqMethod = "GET"
+			} else {
+				reqMethod = "POST"
 			}
-			// Create a per-session UUID (string) and a per-session Bolt DB sink.
-			id, _ := uuid.NewV4()
-			dateTime := time.Now().Format("20060102-150405")
-			nettraceSessionUUID = fmt.Sprintf("%s-%s", dateTime, id.String())
-
-			dbPath := fmt.Sprintf("%s/nettrace_%s.db", opts.NetTraceFolder, nettraceSessionUUID)
-			sink, err = nettraceStorage.NewBoltBatchSink(dbPath)
-			if err != nil {
-				c.log.Warningf("SendOnIntf: failed to create nettrace sink: %v", err)
-				continue
-			}
-			optsnt := make([]nettrace.TraceOpt, 0, len(c.NetTraceOpts)+1)
-			optsnt = append(optsnt, c.NetTraceOpts...)
-			optsnt = append(optsnt, &nettrace.WithBatchOffload{
-				Callback:          sink.Handler(),
-				Threshold:         1000, // per-map threshold
-				FinalFlushOnClose: true, // flush leftovers on Close()
-			})
-			tracing.client, err = nettrace.NewHTTPClient(clientConfig, nettraceSessionUUID, optsnt...)
+			reqName := fmt.Sprintf("%s-%d", intf, i)
+			reqDescription := fmt.Sprintf("%s %s via %s src IP %v",
+				reqMethod, reqURL, intf, srcIP)
+			tracing, err = c.prepareNetworkTracing(
+				reqName, reqDescription, clientConfig, opts)
 			if err != nil {
 				// Log error and revert to running send operation without tracing.
-				errorLog("SendOnIntf: nettrace.NewHTTPClient failed: %v", err)
+				errorLog("SendOnIntf: prepareNetworkTracing failed: %v", err)
 				opts.WithNetTracing = false
 				warnLog("Running SendOnIntf (req: %s) without network tracing", reqURL)
 			} else {
 				client = tracing.client.Client
-				var reqMethod string
-				if isGet {
-					reqMethod = "GET"
-				} else {
-					reqMethod = "POST"
-				}
-				tracing.reqName = fmt.Sprintf("%s-%d", intf, i)
-				tracing.reqDescription = fmt.Sprintf("%s %s via %s src IP %v",
-					reqMethod, reqURL, intf, srcIP)
 			}
 		}
 		if !opts.WithNetTracing {
@@ -833,8 +807,7 @@ func (c *Client) SendOnIntf(ctx context.Context, destURL string, intf string,
 		apiCallStartTime := time.Now()
 		resp, err := client.Do(req)
 		if err != nil {
-			processedErr := c.handleHTTPReqFailure(
-				err, opts, intf, proxyUsed, &rv, &tracing)
+			processedErr := c.handleHTTPReqFailure(err, opts, proxyUsed, &rv, tracing)
 			if processedErr != nil {
 				attempt.Err = processedErr
 				attempts = append(attempts, attempt)
@@ -851,37 +824,7 @@ func (c *Client) SendOnIntf(ctx context.Context, destURL string, intf string,
 
 		// Obtain traces and packet captured after the response body has been read.
 		if opts.WithNetTracing {
-			if c.nettraceWithPCAP() {
-				time.Sleep(pcapDelay)
-			}
-			netTrace, pcaps, err := tracing.client.GetTrace(tracing.reqDescription)
-			if err != nil {
-				errorLog(err.Error())
-			} else {
-				if sink != nil {
-					jsonPath := fmt.Sprintf("%s/nettrace_%s.json", opts.NetTraceFolder, nettraceSessionUUID)
-					if err := sink.ExportToJSON(jsonPath, netTrace.NetTrace); err != nil {
-						errorLog(err.Error())
-					}
-				}
-
-				// Delete db file
-				if sink != nil {
-					if err := sink.DeleteDBFile(); err != nil {
-						errorLog(err.Error())
-					}
-				}
-
-				netTrace.SessionUUID = nettraceSessionUUID
-				rv.TracedReqs = append(rv.TracedReqs, netdump.TracedNetRequest{
-					RequestName:    tracing.reqName,
-					NetTrace:       netTrace,
-					PacketCaptures: pcaps,
-				})
-			}
-			if err = tracing.client.Close(); err != nil {
-				errorLog(err.Error())
-			}
+			c.processNetworkTraces(&rv, tracing, opts)
 		}
 
 		// Handle failure to read HTTP response body.
@@ -1136,11 +1079,116 @@ func (c *Client) prepareHTTPRequest(reqURL string, b *bytes.Buffer,
 	return req, reqlen, nil
 }
 
+// prepareNetworkTracing initializes a traced HTTP client for a single request.
+// It creates a per-session UUID, sets up a Bolt-based batch sink for trace
+// offloading, and configures the nettrace HTTP client with batch mode enabled.
+// Note that resolver cache is not supported when network tracing is enabled.
+// This is actually intentional - when tracing, we want to run normal hostname
+// IP resolution and collect traces of DNS queries.
+func (c *Client) prepareNetworkTracing(reqName, reqDescription string,
+	clientCfg nettrace.HTTPClientCfg, opts RequestOptions) (
+	tracing tracedReq, err error) {
+
+	if err := os.MkdirAll(opts.NetTraceFolder, 0o755); err != nil {
+		err = fmt.Errorf("failed to create nettrace folder %s: %v",
+			opts.NetTraceFolder, err)
+		return tracedReq{}, err
+	}
+
+	// Create unique session ID (timestamp + UUID) for trace correlation.
+	id, _ := uuid.NewV4()
+	dateTime := time.Now().Format("20060102-150405")
+	sessionUUID := fmt.Sprintf("%s-%s", dateTime, id.String())
+
+	// Each tracing session uses its own Bolt DB file as batch sink.
+	dbPath := fmt.Sprintf("%s/nettrace_%s.db", opts.NetTraceFolder, sessionUUID)
+	sink, err := nettraceStorage.NewBoltBatchSink(dbPath)
+	if err != nil {
+		err = fmt.Errorf("failed to create nettrace Bolt DB storage: %v", err)
+		return tracedReq{}, err
+	}
+
+	// Enable batch offload mode: traces are written to the sink
+	// when in-memory maps reach threshold.
+	optsnt := make([]nettrace.TraceOpt, 0, len(c.NetTraceOpts)+1)
+	optsnt = append(optsnt, c.NetTraceOpts...)
+	optsnt = append(optsnt, &nettrace.WithBatchOffload{
+		Callback:          sink.Handler(),
+		Threshold:         1000, // per-map threshold
+		FinalFlushOnClose: true, // flush leftovers on Close()
+	})
+	client, err := nettrace.NewHTTPClient(clientCfg, sessionUUID, optsnt...)
+	if err != nil {
+		_ = sink.DeleteDBFile()
+		err = fmt.Errorf("failed to create traced HTTP client: %v", err)
+		return tracedReq{}, err
+	}
+	return tracedReq{
+		reqName:        reqName,
+		reqDescription: reqDescription,
+		client:         client,
+		sink:           sink,
+		sessionUUID:    sessionUUID,
+	}, nil
+}
+
+// processNetworkTraces finalizes tracing for a request and attaches
+// collected traces to the provided SendRetval.
+// It retrieves traces from the traced HTTP client (blocking until all
+// asynchronous batch offloads are completed), exports them to JSON when
+// a batch sink is used, removes temporary storage, and appends the
+// resulting TracedNetRequest (including packet captures) to rv.TracedReqs.
+// The traced HTTP client is closed before returning.
+func (c *Client) processNetworkTraces(rv *SendRetval,
+	request tracedReq, opts RequestOptions) {
+	errorLog := c.log.Errorf
+	if opts.SuppressLogs {
+		errorLog = c.log.Tracef
+	}
+
+	if c.nettraceWithPCAP() {
+		// Allow packet capture backend to flush remaining packets.
+		time.Sleep(pcapDelay)
+	}
+
+	// GetTrace blocks until all batch offloads are completed.
+	netTrace, pcaps, err := request.client.GetTrace(request.reqDescription)
+	if err != nil {
+		errorLog("Failed to get network traces: %v", err)
+	} else {
+		if request.sink != nil {
+			jsonPath := fmt.Sprintf(
+				"%s/nettrace_%s.json", opts.NetTraceFolder, request.sessionUUID)
+			if err = request.sink.ExportToJSON(jsonPath, netTrace.NetTrace); err != nil {
+				errorLog("Failed to export Bolt DB to JSON "+
+					"with collected network traces: %v", err)
+			}
+		}
+
+		if request.sink != nil {
+			if err = request.sink.DeleteDBFile(); err != nil {
+				errorLog("Failed to delete Bolt DB "+
+					"with collected network traces: %v", err)
+			}
+		}
+
+		netTrace.SessionUUID = request.sessionUUID
+		rv.TracedReqs = append(rv.TracedReqs, netdump.TracedNetRequest{
+			RequestName:    request.reqName,
+			NetTrace:       netTrace,
+			PacketCaptures: pcaps,
+		})
+	}
+	if err = request.client.Close(); err != nil {
+		errorLog("Failed to close traced HTTP client: %v", err)
+	}
+}
+
 // handleHTTPReqFailure analyzes and logs HTTP request failures, updates the SendRetval
 // status based on the type of error (e.g., cert failure, connection refused),
 // and appends any network tracing information. Returns a processed error.
 func (c *Client) handleHTTPReqFailure(reqErr error, reqOpts RequestOptions,
-	intf string, proxyUsed bool, rv *SendRetval, tracing *tracedReq) (processedErr error) {
+	proxyUsed bool, rv *SendRetval, tracing tracedReq) (processedErr error) {
 
 	errorLog := c.log.Errorf
 	warnLog := c.log.Warnf
@@ -1150,36 +1198,7 @@ func (c *Client) handleHTTPReqFailure(reqErr error, reqOpts RequestOptions,
 	}
 
 	if reqOpts.WithNetTracing {
-		if c.nettraceWithPCAP() {
-			time.Sleep(pcapDelay)
-		}
-		netTrace, pcaps, err := tracing.client.GetTrace(tracing.reqDescription)
-		if err != nil {
-			errorLog(err.Error())
-		} else {
-			rv.TracedReqs = append(rv.TracedReqs, netdump.TracedNetRequest{
-				RequestName:    tracing.reqName,
-				NetTrace:       netTrace,
-				PacketCaptures: pcaps,
-			})
-			// Find out if dial failed because there was no DNS server available.
-			var calledResolver, dnsWasAvail bool
-			for _, dialTrace := range netTrace.Dials {
-				if len(dialTrace.ResolverDials) > 0 {
-					dnsWasAvail = true
-					calledResolver = true
-				}
-				if len(dialTrace.SkippedNameservers) > 0 {
-					calledResolver = true
-				}
-			}
-			if calledResolver && !dnsWasAvail {
-				reqErr = &types.DNSNotAvailError{IfName: intf}
-			}
-		}
-		if err = tracing.client.Close(); err != nil {
-			errorLog(err.Error())
-		}
+		c.processNetworkTraces(rv, tracing, reqOpts)
 	}
 
 	if cf, cert := c.isCertFailure(reqErr); cf {
