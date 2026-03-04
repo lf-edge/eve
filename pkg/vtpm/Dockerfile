@@ -3,8 +3,8 @@
 # Copyright (c) 2023-2025 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-FROM lfedge/eve-dom0-ztools:586336774ffc3050834a1f2a001dc2cb8b3efdf2 AS dom0
-FROM lfedge/eve-alpine:745ae9066273c73b0fd879c4ba4ff626a8392d04 AS build
+FROM lfedge/eve-dom0-ztools:3daa3f33e4ba26e1bf14f592fff2a3ff9a564721 AS dom0
+FROM lfedge/eve-alpine:000e3b2bc3c441f8a0bb7f60921c394b60544c56 AS build
 ENV BUILD_PKGS="gcc g++ autoconf automake libtool make openssl-dev libtasn1-dev \
     json-glib-dev gnutls bash expect gawk socat libseccomp-dev gmp-dev \
     musl-utils autoconf-archive git json-c json-c-dev libcurl curl-dev \

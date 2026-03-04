@@ -1,4 +1,4 @@
-FROM lfedge/eve-alpine:745ae9066273c73b0fd879c4ba4ff626a8392d04 AS build
+FROM lfedge/eve-alpine:000e3b2bc3c441f8a0bb7f60921c394b60544c56 AS build
 
 ENV BUILD_PKGS="patch make gcc perl util-linux-dev git mtools linux-headers musl-dev xz-dev"
 RUN eve-alpine-deploy.sh
