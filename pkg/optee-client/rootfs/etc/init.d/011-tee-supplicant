@@ -1,0 +1,5 @@
+#!/bin/sh
+
+# Start tee-supplicant daemon
+/usr/sbin/tee-supplicant -f /persist/coretee -d
+
