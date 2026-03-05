@@ -1,0 +1,8 @@
+# linuxkit build template
+#
+# Copyright (c) 2026 Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+#
+---
+image: eve-optee-client
+org: lfedge

@@ -1,0 +1,61 @@
+From 2f8ee1f0fa292cbae9e13a9354fd45be27e7ccc9 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Ren=C3=AA=20de=20Souza=20Pinto?= <rene@renesp.com.br>
+Date: Thu, 5 Mar 2026 16:32:36 +0000
+Subject: [PATCH] tee-suplicant: Expose renameat2 for musl libc
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+musl libc (Alpine) does not expose renameat2 or RENAME_NOREPLACE,
+so we call the syscall directly.
+
+Signed-off-by: Renê de Souza Pinto <rene@renesp.com.br>
+---
+ tee-supplicant/src/tee_supplicant.h | 31 +++++++++++++++++++++++++++++
+ 1 file changed, 31 insertions(+)
+
+diff --git a/tee-supplicant/src/tee_supplicant.h b/tee-supplicant/src/tee_supplicant.h
+index 58a2ef7..4c00ffd 100644
+--- a/tee-supplicant/src/tee_supplicant.h
++++ b/tee-supplicant/src/tee_supplicant.h
+@@ -31,6 +31,37 @@
+ #include <stdbool.h>
+ #include <pthread.h>
+ 
++/* musl libc (Alpine) does not expose renameat2 or RENAME_NOREPLACE,
++ * so we call the syscall directly. */
++#ifndef RENAME_NOREPLACE
++#define RENAME_NOREPLACE (1 << 0)
++#endif
++
++#ifndef SYS_renameat2
++/* Syscall numbers for common architectures */
++#  if defined(__x86_64__)
++#    define SYS_renameat2 316
++#  elif defined(__aarch64__)
++#    define SYS_renameat2 276
++#  elif defined(__arm__)
++#    define SYS_renameat2 382
++#  elif defined(__i386__)
++#    define SYS_renameat2 353
++#  else
++#    error "SYS_renameat2 not defined for this architecture"
++#  endif
++#endif
++
++#include <sys/syscall.h>
++#include <unistd.h>
++
++static inline int renameat2(int oldfd, const char *oldpath,
++                             int newfd, const char *newpath,
++                             unsigned int flags)
++{
++    return syscall(SYS_renameat2, oldfd, oldpath, newfd, newpath, flags);
++}
++
+ /* Helpers to access memref parts of a struct tee_ioctl_param */
+ #define MEMREF_SHM_ID(p)	((p)->c)
+ #define MEMREF_SHM_OFFS(p)	((p)->a)
+-- 
+2.36.6
+
