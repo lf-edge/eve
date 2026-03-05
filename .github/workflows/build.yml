@@ -50,7 +50,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
       - name: Login to Docker Hub
-        if: ${{ github.event.repository.full_name }}== 'lf-edge/eve'
+        if: ${{ github.event.repository.full_name == 'lf-edge/eve' }}
         run: | # Runners must provide default credentials
           docker login
       - name: ensure zstd for cache  # this should be removed once the arm64 VM includes zstd
@@ -118,7 +118,7 @@ jobs:
           fetch-depth: 0
 
       - name: Login to Docker Hub
-        if: ${{ github.event.repository.full_name }}== 'lf-edge/eve'
+        if: ${{ github.event.repository.full_name == 'lf-edge/eve' }}
         run: | # Runners must provide default credentials
           docker login
 
