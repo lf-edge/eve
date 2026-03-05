@@ -49,10 +49,13 @@ RUN rm -rf /app/.cargo /app/rust-toolchain.toml
 
 WORKDIR /app
 
+# reduce RAM usage during linking
+ENV MOLD_JOBS=1
 ENV RUSTFLAGS="\
     -C opt-level=z \
-    -C lto=fat \
+    -C lto=off \
     -C embed-bitcode=yes \
+    -C link-arg=-fuse-ld=mold \
     -C codegen-units=1"
 RUN cargo build --release $VECTOR_FEATURES
 
