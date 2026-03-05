@@ -51,7 +51,7 @@ WORKDIR /app
 
 ENV RUSTFLAGS="\
     -C opt-level=z \
-    -C lto=fat \
+    -C lto=off \
     -C embed-bitcode=yes \
     -C codegen-units=1"
 RUN cargo build --release $VECTOR_FEATURES
