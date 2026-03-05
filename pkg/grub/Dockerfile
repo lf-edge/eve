@@ -90,6 +90,9 @@ RUN set -e; for p in ${GRUB_PLATFORM}; do \
 COPY embedded.cfg /
 
 # create the grub core image
+# grub-mkimage is currently broken with our binutils on riscv64 because:
+# ./grub-mkimage: error: relocation 0x13 is not implemented yet.
+# see also https://www.mail-archive.com/grub-devel@gnu.org/msg36136.html
 # hadolint ignore=SC2086
 RUN case "$(uname -m)" in \
   x86_64) \
@@ -99,8 +102,9 @@ RUN case "$(uname -m)" in \
   aarch64) \
     ./grub-mkimage -O arm64-efi -d /grub-lib/grub/arm64-efi -o /grub-lib/BOOTAA64.EFI -p /EFI/BOOT ${GRUB_MODULES_PORT} ${GRUB_MODULES} ;; \
   riscv64) \
-     ./grub-mkimage -O riscv64-efi -d /grub-lib/grub/riscv64-efi -o /grub-lib/BOOTRISCV64.EFI -p /EFI/BOOT ${GRUB_MODULES_PORT} ${GRUB_MODULES} ;;\
+    grep -q 3.22 /etc/os-release || ./grub-mkimage -O riscv64-efi -d /grub-lib/grub/riscv64-efi -o /grub-lib/BOOTRISCV64.EFI -p /EFI/BOOT ${GRUB_MODULES_PORT} ${GRUB_MODULES} ;;\
   esac
+
 
 FROM scratch
 ENTRYPOINT []
