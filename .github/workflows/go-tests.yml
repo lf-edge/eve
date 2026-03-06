@@ -24,7 +24,7 @@ on:  # yamllint disable-line rule:truthy
 
 jobs:
   test:
-    runs-on: zededa-ubuntu-2204
+    runs-on: jumbo
     env:
       REPO_NAME: ${{ github.event.repository.full_name }}
       GH_REF: ${{ github.ref }}
