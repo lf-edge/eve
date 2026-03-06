@@ -88,7 +88,7 @@ if CONFIG=$(findfs PARTLABEL=CONFIG) && [ -n "$CONFIG" ]; then
         echo "$(date -Ins -u) mount $CONFIG failed"
     fi
 
-    mount -t tmpfs -o rw,nosuid,nodev,noexec,relatime,size=1024k,mode=755 tmpfs $CONFIGDIR
+    mount -t tmpfs -o rw,nosuid,nodev,noexec,relatime,size=5120k,mode=755 tmpfs $CONFIGDIR
     echo "$(date -Ins -u) Create a copy of CONFIG partition in RAM"
     cp -r $CONFIGDIR_PERSIST/* $CONFIGDIR
     umount "$CONFIG"
