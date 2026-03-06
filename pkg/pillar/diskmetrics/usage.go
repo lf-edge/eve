@@ -278,16 +278,23 @@ type PathAndSize struct {
 // unless they are in an excluded (sub)directory
 func FindLargeFiles(root string, minSize int64, excludePaths []string) ([]PathAndSize, error) {
 	var list []PathAndSize
+	cleanExcludePaths := make([]string, 0, len(excludePaths))
+	for _, path := range excludePaths {
+		cleanExcludePaths = append(cleanExcludePaths, filepath.Clean(path))
+	}
 	walkErr := filepath.WalkDir(filepath.Clean(root), func(path string, di fs.DirEntry, err error) error {
 		// if there is any problem with path we stop
 		if err != nil {
 			return err
 		}
 
-		// Part of excludePath?
-		for _, ex := range excludePaths {
-			if filepath.HasPrefix(path, ex) {
-				return filepath.SkipDir
+		// Part of excluded directory?
+		for _, ex := range cleanExcludePaths {
+			if path == ex || strings.HasPrefix(path, ex+string(filepath.Separator)) {
+				if di.IsDir() {
+					return filepath.SkipDir
+				}
+				return nil
 			}
 		}
 		// We don't report any directories

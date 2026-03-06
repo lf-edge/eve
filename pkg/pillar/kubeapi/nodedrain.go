@@ -20,6 +20,10 @@ const forceNodeDrainPath string = "/persist/kube-status/force-NodeDrainStatus-gl
 
 // RequestNodeDrain generates the NodeDrainRequest object and publishes it
 func RequestNodeDrain(pubNodeDrainRequest pubsub.Publication, requester DrainRequester, context string) error {
+	if err := ensureKubeRuntime("RequestNodeDrain"); err != nil {
+		return err
+	}
+
 	drainReq := NodeDrainRequest{
 		RequestedAt: time.Now(),
 		RequestedBy: requester,
@@ -34,6 +38,10 @@ func RequestNodeDrain(pubNodeDrainRequest pubsub.Publication, requester DrainReq
 
 // GetDrainStatusOverride : an alternate way to set drain status for debug
 func GetDrainStatusOverride(log *base.LogObject) *NodeDrainStatus {
+	if ensureKubeRuntime("GetDrainStatusOverride") != nil {
+		return nil
+	}
+
 	if _, err := os.Stat(forceNodeDrainPath); err != nil {
 		return nil
 	}
@@ -60,6 +68,10 @@ func GetDrainStatusOverride(log *base.LogObject) *NodeDrainStatus {
 // CleanupDrainStatusOverride is used at microservice startup to cleanup
 // a previously user written override file
 func CleanupDrainStatusOverride(log *base.LogObject) {
+	if ensureKubeRuntime("CleanupDrainStatusOverride") != nil {
+		return
+	}
+
 	if _, err := os.Stat(forceNodeDrainPath); err != nil {
 		return
 	}
@@ -73,6 +85,10 @@ func CleanupDrainStatusOverride(log *base.LogObject) {
 
 // DrainStatusFaultInjectionWait while this file exists, wait in the drain status goroutine
 func DrainStatusFaultInjectionWait() bool {
+	if ensureKubeRuntime("DrainStatusFaultInjectionWait") != nil {
+		return false
+	}
+
 	injectFaultPath := "/tmp/DrainStatus_FaultInjection_Wait"
 	if _, err := os.Stat(injectFaultPath); err == nil {
 		return true
@@ -84,6 +100,10 @@ func DrainStatusFaultInjectionWait() bool {
 //
 //	or return a forced status from /persist/force-NodeDrainStatus-global.json
 func GetNodeDrainStatus(subNodeDrainStatus pubsub.Subscription, log *base.LogObject) *NodeDrainStatus {
+	if ensureKubeRuntime("GetNodeDrainStatus") != nil {
+		return &NodeDrainStatus{Status: NOTSUPPORTED, RequestedBy: NONE}
+	}
+
 	override := GetDrainStatusOverride(log)
 	if override != nil {
 		return override

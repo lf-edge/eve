@@ -249,9 +249,11 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 	if ctx.persistType == types.PersistZFS {
 		if isZvol, _ := zfs.IsDatasetTypeZvol(types.SealedDataset); isZvol {
-			// This code is called only for EVE 'k' images
+			// PVC-backed volume scan only applies to kube runtime.
 			initializeDirs()
-			populateExistingVolumesFormatPVC(&ctx)
+			if ctx.hvTypeKube {
+				populateExistingVolumesFormatPVC(&ctx)
+			}
 		} else {
 			// create datasets for volumes
 			initializeDatasets()

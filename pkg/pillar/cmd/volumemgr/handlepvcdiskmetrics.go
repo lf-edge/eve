@@ -13,6 +13,10 @@ import (
 // createOrUpdatePvcDiskMetrics creates or updates metrics for all longhorn PVCs
 // PVC mknod will match one of existing sdX devices, create copies for convenience
 func createOrUpdatePvcDiskMetrics(ctx *volumemgrContext) {
+	if !ctx.hvTypeKube {
+		return
+	}
+
 	log.Functionf("createOrUpdatePvcDiskMetrics")
 	var diskMetricList []*types.DiskMetric
 
