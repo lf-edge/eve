@@ -7,12 +7,13 @@ toolchain go1.24.6
 require (
 	github.com/google/go-tpm v0.9.1
 	github.com/lf-edge/eve/api/go v0.0.0-20230726103732-fec97665f8c9
-	github.com/lf-edge/eve/pkg/pillar v0.0.0-20251029075156-4a3aedeeddf7
+	github.com/lf-edge/eve/pkg/pillar v0.0.0-20260203234815-b6b41165272c
 	github.com/schollz/progressbar/v3 v3.14.2
 	google.golang.org/protobuf v1.36.7
 )
 
 require (
+	github.com/Masterminds/semver v1.5.0 // indirect
 	github.com/eriknordmark/ipinfo v0.0.0-20230728132417-2d8f4da903d7 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.2 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
@@ -25,7 +26,7 @@ require (
 	github.com/google/gofuzz v1.2.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/leodido/go-urn v1.2.4 // indirect
-	github.com/lf-edge/eve-api/go v0.0.0-20251118212149-2208af2d72d9 // indirect
+	github.com/lf-edge/eve-api/go v0.0.0-20260116205402-bac92fb1f235 // indirect
 	github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20240315102754-0f6d1f182e0d // indirect
 	github.com/mitchellh/colorstring v0.0.0-20190213212951-d06e56a500db // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
@@ -37,7 +38,7 @@ require (
 	github.com/vishvananda/netns v0.0.5 // indirect
 	golang.org/x/crypto v0.45.0 // indirect
 	golang.org/x/net v0.47.0 // indirect
-	golang.org/x/sys v0.38.0 // indirect
+	golang.org/x/sys v0.40.0 // indirect
 	golang.org/x/term v0.37.0 // indirect
 	golang.org/x/text v0.31.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
