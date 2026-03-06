@@ -29,14 +29,12 @@ RUN [ -f /etc/apk/repositories.upstream ] || mv /etc/apk/repositories /etc/apk/r
 # hadolint ignore=DL3059
 RUN [ -f /etc/apk/cache.url ] || echo https://dl-cdn.alpinelinux.org/alpine > /etc/apk/cache.url
 RUN for repo in main community testing; do \
-      for p in 3.22/"$repo"; do \
-        if [ ! -f "$p" ]; then echo "skipping $p"; continue; fi &&\
-        packages="" &&\
-        if [ -f "$p" ]; then packages="$packages $(cat "$p")"; fi &&\
-        if [ -f "$p.$(apk --print-arch)" ]; then packages="$packages $(cat "$p.$(apk --print-arch)")"; fi &&\
-        if [ -n "$packages" ]; then build-cache.sh "$p" "/mirror/$(dirname "$p")" "$packages"; fi \
-      done \
-    done
+    if [ ! -f "3.22/$repo" ]; then echo "skipping 3.22/$repo"; continue; fi &&\
+    packages="" &&\
+    if [ -f "3.22/$repo" ]; then packages="$packages $(cat "3.22/$repo")"; fi &&\
+    if [ -f "3.22/$repo.$(apk --print-arch)" ]; then packages="$packages $(cat "3.22/$repo.$(apk --print-arch)")"; fi &&\
+    if [ -n "$packages" ]; then build-cache.sh "3.22/$repo" "/mirror/$(dirname "3.22/$repo")" "$packages"; fi \
+done
 
 # set the default repository to use
 RUN cp /mirror/${ALPINE_VERSION}/rootfs/etc/apk/repositories /etc/apk
