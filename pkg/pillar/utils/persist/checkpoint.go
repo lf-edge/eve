@@ -128,6 +128,7 @@ func MaybeSaveControllerCerts(log *base.LogObject, contents []byte) {
 		log.Errorf("MaybeSaveControllerCerts failed: %s", err)
 		return
 	}
+	log.Notice("MaybeSaveControllerCerts updated the certs")
 }
 
 // ReadControllerCerts can read either "controllercerts" or "controllercerts.bak".
