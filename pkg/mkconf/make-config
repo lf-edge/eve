@@ -4,8 +4,8 @@ set -e
 [ -n "$DEBUG" ] && set -x
 
 CONFIG_FILE="$1"
-# Config is 1Mb
-CONFIG_SIZE_KB=1024
+# Config is 5Mb
+CONFIG_SIZE_KB=5120
 
 # Slurp the input in a form of a tarball
 (cd /conf/raw; tar xf -)

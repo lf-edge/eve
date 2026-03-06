@@ -125,7 +125,7 @@ fi
 
 
 # conf partition size in bytes
-CONF_PART_SIZE=$((1024 * 1024))
+CONF_PART_SIZE=$((5 * 1024 * 1024))
 # installer inventory partition size in bytes
 WIN_INVENTORY_PART_SIZE=$((40240 * 1024))
 # imx8 boot blob size in bytes

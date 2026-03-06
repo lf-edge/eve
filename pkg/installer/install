@@ -362,9 +362,9 @@ CONFIG_PART=$(find_part CONFIG "${ROOT_DEV}")
 # - if CONFIGPART is not set, use /bits/config.img, e.g. CONFIGPART="" becomes CONFIGPART=/bits/config.img
 CONFIG_PART="${CONFIG_PART:+"/dev/"}${CONFIG_PART:-"/bits/config.img"}"
 if [ -e "$CONFIG_PART" ]; then
-   dd if="$CONFIG_PART" of=$CONFIG_IMG bs=1M
+   dd if="$CONFIG_PART" of=$CONFIG_IMG bs=5M
 else
-   mkfs.vfat -v -n CONFIG -C $CONFIG_IMG 1024
+   mkfs.vfat -v -n CONFIG -C $CONFIG_IMG 5120
    # /config is bind-mounted into here from the host
    mcopy -i $CONFIG_IMG -s /config/* ::/
 fi
