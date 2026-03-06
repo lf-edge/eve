@@ -49,10 +49,13 @@ RUN rm -rf /app/.cargo /app/rust-toolchain.toml
 
 WORKDIR /app
 
+# reduce RAM usage during linking
+ENV MOLD_JOBS=1
 ENV RUSTFLAGS="\
     -C opt-level=z \
-    -C lto=fat \
+    -C lto=off \
     -C embed-bitcode=yes \
+    -C link-arg=-fuse-ld=mold \
     -C codegen-units=1"
 RUN cargo build --release $VECTOR_FEATURES
 
@@ -62,7 +65,7 @@ RUN strip "/app/target/$CARGO_BUILD_TARGET/release/vector"
 RUN cargo sbom > sbom.spdx.json
 RUN cp "/app/target/$CARGO_BUILD_TARGET/release/vector" /app/target/
 
-FROM lfedge/eve-alpine:745ae9066273c73b0fd879c4ba4ff626a8392d04 AS runtime
+FROM lfedge/eve-alpine:000e3b2bc3c441f8a0bb7f60921c394b60544c56 AS runtime
 ENV PKGS="inotify-tools"
 RUN eve-alpine-deploy.sh
 

@@ -1,4 +1,4 @@
-FROM lfedge/eve-alpine:745ae9066273c73b0fd879c4ba4ff626a8392d04 AS build
+FROM lfedge/eve-alpine:000e3b2bc3c441f8a0bb7f60921c394b60544c56 AS build
 
 ENV BUILD_PKGS patch curl make gcc perl util-linux-dev git mtools linux-headers musl-dev xz-dev elfutils-dev libbz2
 ENV PKGS xz-libs util-linux elfutils-dev libbz2
@@ -6,13 +6,13 @@ ENV PKGS xz-libs util-linux elfutils-dev libbz2
 RUN eve-alpine-deploy.sh
 
 # Build kexec-tools
-ENV KEXEC_VERSION=2.0.23
+ENV KEXEC_VERSION=2.0.32
 WORKDIR /tmp/kexec/kexec-tools-${KEXEC_VERSION}
-ADD https://mirrors.edge.kernel.org/pub/linux/utils/kernel/kexec/kexec-tools-2.0.23.tar.gz /tmp/kexec/kexec-tools.tgz
+ADD https://mirrors.edge.kernel.org/pub/linux/utils/kernel/kexec/kexec-tools-${KEXEC_VERSION}.tar.gz /tmp/kexec/kexec-tools.tgz
 RUN tar -C .. -xzvf ../kexec-tools.tgz && rm -f ../kexec-tools.tgz
-RUN ./configure --prefix /usr && \
-    make -j "$(getconf _NPROCESSORS_ONLN)" && \
-    make DESTDIR=/out install
+RUN ./configure --prefix /usr
+RUN make -j "$(getconf _NPROCESSORS_ONLN)"
+RUN make DESTDIR=/out install
 
 FROM scratch
 COPY --from=build /out /

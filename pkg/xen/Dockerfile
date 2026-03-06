@@ -1,4 +1,4 @@
-FROM lfedge/eve-alpine:745ae9066273c73b0fd879c4ba4ff626a8392d04 AS kernel-build
+FROM lfedge/eve-alpine:000e3b2bc3c441f8a0bb7f60921c394b60544c56 AS kernel-build
 
 ENV BUILD_PKGS argp-standalone automake bash bc binutils-dev bison build-base \
                diffutils flex git gmp-dev gnupg installkernel kmod \
@@ -27,6 +27,11 @@ RUN chmod +x scripts/* || :
 RUN make defconfig && \
     make oldconfig && \
     rm -rf /out && mkdir -p /out/boot
+
+RUN mkdir /patches
+COPY patches/* /patches
+
+RUN for i in /patches/*; do patch -Np1 < $i; done
 
 RUN make -j "$(getconf _NPROCESSORS_ONLN)" && \
     case $(uname -m) in \

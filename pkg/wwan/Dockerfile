@@ -3,7 +3,7 @@
 # Copyright (c) 2023-2025 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-FROM lfedge/eve-alpine:745ae9066273c73b0fd879c4ba4ff626a8392d04 AS build
+FROM lfedge/eve-alpine:000e3b2bc3c441f8a0bb7f60921c394b60544c56 AS build
 ENV BUILD_PKGS meson ninja git libc-dev glib-dev make gcc udev dbus-dev libgudev-dev
 ENV PKGS alpine-baselayout dbus glib kmod-dev libgudev
 RUN eve-alpine-deploy.sh
@@ -93,7 +93,7 @@ COPY --from=build /usr/share/ModemManager /usr/share/ModemManager
 COPY --from=build /etc/dbus-1 /etc/dbus-1
 COPY --from=build /usr/share/dbus-1 /usr/share/dbus-1
 COPY --from=build /bin/udevadm /bin/udevadm
-COPY --from=build /lib/udev/rules.d /lib/udev/rules.d
+COPY --from=build /usr/lib/udev/rules.d /lib/udev/rules.d
 
 COPY mm-init.sh /usr/bin/mm-init.sh
 CMD ["/usr/bin/mm-init.sh"]
