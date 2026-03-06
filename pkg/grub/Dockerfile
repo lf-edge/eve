@@ -2,7 +2,7 @@
 # Copyright (c) 2025-2026 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-FROM lfedge/eve-alpine:745ae9066273c73b0fd879c4ba4ff626a8392d04 AS grub-build-base
+FROM lfedge/eve-alpine:000e3b2bc3c441f8a0bb7f60921c394b60544c56 AS grub-build-base
 ENV BUILD_PKGS="automake \
                make \
                bison \
@@ -53,31 +53,26 @@ ENV GRUB_PLATFORM=efi
 # hadolint ignore=DL3006
 FROM grub-build-${TARGETARCH} AS grub-build
 
-ENV GRUB_REPO=git://git.git.savannah.gnu.org/grub.git
-
 COPY patches /patches
 COPY patches-2.06  /patches-2.06
 COPY patches-aarch64-2.06 /patches-aarch64-2.06
 COPY patches-riscv64-2.06 /patches-riscv64-2.06
-# because python is not available
-RUN ln -s python3 /usr/bin/python && \
-    mkdir /grub-lib
+RUN mkdir /grub-lib
 
-ADD --keep-git-dir ${GRUB_REPO}#${GRUB_COMMIT} /grub
+ENV GRUB_REPO=git://git.git.savannah.gnu.org/grub.git
+ADD ${GRUB_REPO}#${GRUB_COMMIT} /grub
 ENV GNULIB_REVISION=d271f868a8df9bbec29049d01e056481b7a1a263
 ADD --keep-git-dir https://github.com/coreutils/gnulib.git#${GNULIB_REVISION} /gnulib
 
-# hadolint ignore=DL3003,SC2086
-RUN cd /grub && \
-      mkdir -p /apply/patches && \
-      for dir in ${GRUB_PATCHES}; do \
-          cp -r /${dir}/* /apply/patches; \
-      done && \
-      git config --global user.name 'Project EVE' && \
-      git config --global user.email 'builder@projecteve.dev' && \
-      git am /apply/patches/*
-
 WORKDIR /grub
+RUN mkdir -p /apply/patches
+RUN for dir in ${GRUB_PATCHES}; do \
+    cp -r /${dir}/* /apply/patches; \
+    done
+RUN git config --global user.name 'Project EVE'
+RUN git config --global user.email 'builder@projecteve.dev'
+RUN git init . && git add . && git commit -m "init"
+RUN git am /apply/patches/*
 
 RUN ./bootstrap --gnulib-srcdir=/gnulib || ./autogen.sh
 
@@ -87,7 +82,7 @@ RUN set -e; for p in ${GRUB_PLATFORM}; do \
       begin=$(( ${#platform} + 1 )); \
       opt=${p:${begin}}; \
       if [ -f Makefile ]; then make distclean; fi; \
-      ./configure --disable-werror --libdir=/grub-lib --with-platform="${platform}" ${opt} CFLAGS='-Os -Wno-unused-value'; \
+      ./configure --disable-werror --libdir=/grub-lib --with-platform="${platform}" ${opt} CFLAGS='-Os -Wno-unused-value -Wno-incompatible-pointer-types'; \
       make -j $(getconf _NPROCESSORS_ONLN); \
       make install; \
     done
@@ -95,6 +90,9 @@ RUN set -e; for p in ${GRUB_PLATFORM}; do \
 COPY embedded.cfg /
 
 # create the grub core image
+# grub-mkimage is currently broken with our binutils on riscv64 because:
+# ./grub-mkimage: error: relocation 0x13 is not implemented yet.
+# see also https://www.mail-archive.com/grub-devel@gnu.org/msg36136.html
 # hadolint ignore=SC2086
 RUN case "$(uname -m)" in \
   x86_64) \
@@ -104,8 +102,9 @@ RUN case "$(uname -m)" in \
   aarch64) \
     ./grub-mkimage -O arm64-efi -d /grub-lib/grub/arm64-efi -o /grub-lib/BOOTAA64.EFI -p /EFI/BOOT ${GRUB_MODULES_PORT} ${GRUB_MODULES} ;; \
   riscv64) \
-     ./grub-mkimage -O riscv64-efi -d /grub-lib/grub/riscv64-efi -o /grub-lib/BOOTRISCV64.EFI -p /EFI/BOOT ${GRUB_MODULES_PORT} ${GRUB_MODULES} ;;\
+    grep -q 3.22 /etc/os-release || ./grub-mkimage -O riscv64-efi -d /grub-lib/grub/riscv64-efi -o /grub-lib/BOOTRISCV64.EFI -p /EFI/BOOT ${GRUB_MODULES_PORT} ${GRUB_MODULES} ;;\
   esac
+
 
 FROM scratch
 ENTRYPOINT []
