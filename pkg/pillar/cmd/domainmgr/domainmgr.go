@@ -357,7 +357,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		Ctx:         &domainCtx,
 		WarningTime: warningTime,
 		ErrorTime:   errorTime,
-		Persistent:  true,
+		Persistent:  false,
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -391,7 +391,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 			AgentName:     "zedagent",
 			MyAgentName:   agentName,
 			TopicImpl:     types.ConfigItemValueMap{},
-			Persistent:    true,
+			Persistent:    false,
 			Activate:      false,
 			Ctx:           &domainCtx,
 			CreateHandler: handleGlobalConfigCreate,
@@ -465,7 +465,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		AgentName:   "zedagent",
 		MyAgentName: agentName,
 		TopicImpl:   types.EdgeNodeInfo{},
-		Persistent:  true,
+		Persistent:  false,
 		Activate:    false,
 	})
 	if err != nil {
@@ -474,8 +474,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	domainCtx.subEdgeNodeInfo = subEdgeNodeInfo
 	_ = subEdgeNodeInfo.Activate()
 
-	// Parse any existing ConfigIntemValueMap but continue if there
-	// is none
+	// Wait for ConfigIntemValueMap and EdgeNodeInfo (if kube)
 	edgenodeInfoInitialized := false
 	for !domainCtx.GCComplete || (domainCtx.hvTypeKube && !edgenodeInfoInitialized) {
 		log.Noticef("waiting for GCComplete and EdgeNodeInfo")
@@ -669,7 +668,8 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 			// the device is powered off. Next config refresh will see app is gone and domainmgr will not do anything.
 			// But kubernetes thinks app is still running and starts. So its safe to delete all replica sets at the start
 			// on single node installs.
-			clusterMode := kubeapi.IsClusterMode()
+			clusterMode := kubeapi.IsClusterMode(domainCtx.ps,
+				log, agentName)
 
 			if !clusterMode {
 				count, err := kubeapi.CleanupStaleVMIRs()

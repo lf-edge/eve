@@ -73,9 +73,6 @@ const (
 	// BootstrapShaFileName - file to store SHA hash of an already ingested bootstrap config
 	BootstrapShaFileName = IngestedDirname + "/bootstrap-config.sha"
 
-	// ServerSigningCertFileName - filename for server signing leaf certificate
-	ServerSigningCertFileName = CertificateDirname + "/server-signing-cert.pem"
-
 	// ShareCertDirname - directory to place private proxy server certificates
 	ShareCertDirname = "/usr/local/share/ca-certificates"
 
@@ -152,8 +149,6 @@ const (
 
 	// LocalActiveAppConfigDir - directory to put JSON of the apps that are running.
 	LocalActiveAppConfigDir = "/persist/vault/active-app-instance-config/"
-	// EdgeNodeClusterConfigFile - the file which contains edgenodecluster config
-	EdgeNodeClusterConfigFile = PersistStatusDir + "/zedagent/EdgeNodeClusterConfig/global.json"
 
 	// K3sInitialVersionPath - file to store the first k3s version a node initializes to
 	K3sInitialVersionPath = PersistKubelogDir + "/initial_k3s_version"

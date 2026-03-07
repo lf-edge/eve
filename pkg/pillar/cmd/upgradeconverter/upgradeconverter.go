@@ -29,20 +29,8 @@ const (
 // should be in postVaultconversionHandlers
 var preVaultconversionHandlers = []ConversionHandler{
 	{
-		description: "Convert Global Settings to new format",
-		handlerFunc: convertGlobalConfig,
-	},
-	{
-		description: "Move ConfigItemValueMap from /persist/config to /persist/status",
-		handlerFunc: moveConfigItemValueMap,
-	},
-	{
 		description: "Move any configuration files from /config/GlobalConfig to /persist/status",
 		handlerFunc: importFromConfigPartition,
-	},
-	{
-		description: "Apply defaults for new items in ConfigItemValueMap",
-		handlerFunc: applyDefaultConfigItem,
 	},
 	{
 		description: "Move UUIDPairToNum to AppInterfaceToNum",

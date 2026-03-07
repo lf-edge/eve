@@ -56,7 +56,7 @@ func (ctx *downloaderContext) registerHandlers(ps *pubsub.PubSub) error {
 		Ctx:         ctx,
 		WarningTime: warningTime,
 		ErrorTime:   errorTime,
-		Persistent:  true,
+		Persistent:  false,
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -96,7 +96,7 @@ func (ctx *downloaderContext) registerHandlers(ps *pubsub.PubSub) error {
 		WarningTime:   warningTime,
 		ErrorTime:     errorTime,
 		TopicImpl:     types.ConfigItemValueMap{},
-		Persistent:    true,
+		Persistent:    false,
 		Ctx:           ctx,
 	})
 	if err != nil {

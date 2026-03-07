@@ -11,7 +11,6 @@ import (
 	"os"
 	"strings"
 
-	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 )
@@ -23,55 +22,6 @@ const (
 	ingestedGlobalConfigSha   = types.IngestedDirname + "/GlobalConfig/global.sha"
 )
 
-func applyDefaultConfigItem(ctxPtr *ucContext) error {
-	createConfigItemMapDir(ctxPtr.newConfigItemValueMapDir())
-	newConfigItemFile := ctxPtr.newConfigItemValueMapFile()
-	newExists := fileutils.FileExists(log, newConfigItemFile)
-	bootstrapExists := fileutils.FileExists(log, types.BootstrapConfFileName)
-
-	newConfigPtr := types.DefaultConfigItemValueMap()
-	if newExists {
-		oldConfigPtr, err := parseFile(newConfigItemFile)
-		if err != nil {
-			log.Error(err)
-		} else {
-			// Apply defaults
-			newConfigPtr.UpdateItemValues(oldConfigPtr)
-			if !cmp.Equal(oldConfigPtr, newConfigPtr) {
-				log.Noticef("Updated ConfigItemValueMap with new defaults")
-			} else {
-				log.Tracef("upgradeconverter.applyDefaultConfigItem done with no change")
-				return nil
-			}
-		}
-	} else {
-		if bootstrapExists {
-			log.Warnf("Not creating default %s: "+
-				"bootstrap config is present", newConfigItemFile)
-			return nil
-		}
-		log.Noticef("No existing ConfigItemValueMap; creating %s with defaults",
-			newConfigItemFile)
-	}
-
-	// Save New config to file.
-	var data []byte
-	data, err := json.Marshal(newConfigPtr)
-	if err != nil {
-		log.Fatalf("Failed to marshall new global config err %s", err)
-	}
-	// Do a write plus rename so we don't leave a zero-length file if
-	// there is no space left; leave old file content instead
-	err = fileutils.WriteRename(newConfigItemFile, data)
-	if err != nil {
-		// Could be low on disk space
-		log.Errorf("Failed to Save NewConfig: %s", err)
-		return err
-	}
-	log.Tracef("upgradeconverter.applyDefaultConfigItem done")
-	return nil
-}
-
 // If we have a /config/ importGlobalConfigFile then we compare its sha against
 // ingestedGlobalConfigSha and only import if different. This ensures that we only
 // apply it once.
@@ -80,6 +30,10 @@ func importFromConfigPartition(ctxPtr *ucContext) error {
 	var globalConfigPtr *types.ConfigItemValueMap
 	var configSha, authorizedKeysSha []byte
 
+	// XXX this file will never exist!
+	// Instead we should always publish /config/GlobalConfig/ (subject to
+	// igtested sha256) from agentName="upgradeconverter".
+	// XXX but upgradeconverter will go away - need the publication to persist!
 	persistStatusFile := ctxPtr.newConfigItemValueMapFile()
 	globalConfigExists := fileutils.FileExists(log, importGlobalConfigFile)
 	persistedConfigExists := fileutils.FileExists(log, persistStatusFile)
@@ -147,7 +101,7 @@ func importFromConfigPartition(ctxPtr *ucContext) error {
 		globalConfigPtr.SetGlobalValueString(types.SSHAuthorizedKeys, keyData)
 	}
 
-	// Save Global config to file.
+	// Save Global config to file in XXX /run
 	var data []byte
 	data, err = json.Marshal(globalConfigPtr)
 	if err != nil {
