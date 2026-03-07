@@ -30,8 +30,6 @@ config:
   devices:
     - path: all
       type: a
-  security_opt:
-    - seccomp:unconfined
 buildArgs:
   - HV=k
   - DEV=y
