@@ -15,6 +15,7 @@ import (
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
+	"github.com/lf-edge/eve/pkg/pillar/pubsub/socketdriver"
 )
 
 // Publish publishes data to
@@ -36,7 +37,7 @@ func Publish(log *base.LogObject, agent string, data interface{}) error {
 		return err
 	}
 
-	conn, err := net.Dial("unixpacket", sockName)
+	conn, err := net.Dial("unix", sockName)
 	if err != nil {
 		err := fmt.Errorf("publish(%s): exception while dialing socket. %s",
 			sockName, err.Error())
@@ -45,7 +46,8 @@ func Publish(log *base.LogObject, agent string, data interface{}) error {
 	}
 	defer conn.Close()
 
-	if _, err := conn.Write(byteData); err != nil {
+	writer := socketdriver.NewFramedWriter(conn)
+	if _, err := writer.Write(byteData); err != nil {
 		err := fmt.Errorf("publish(%s): exception while writing data to the socket. %s",
 			sockName, err.Error())
 		log.Error(err.Error())

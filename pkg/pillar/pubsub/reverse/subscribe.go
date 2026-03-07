@@ -13,7 +13,6 @@ import (
 	"path"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
-	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub/socketdriver"
 )
 
@@ -42,7 +41,7 @@ func startSubscriber(log *base.LogObject, agent string, topic interface{}, retCh
 		// This could either be a left-over in the filesystem
 		// or some other process (or ourselves) using the same
 		// name to publish. Try connect to see if it is the latter.
-		_, err := net.Dial("unixpacket", sockName)
+		_, err := net.Dial("unix", sockName)
 		if err == nil {
 			log.Fatalf("connectAndRead(%s): Can not publish %s since its already used",
 				agent, sockName)
@@ -52,7 +51,7 @@ func startSubscriber(log *base.LogObject, agent string, topic interface{}, retCh
 				agent, sockName, err)
 		}
 	}
-	listener, err := net.Listen("unixpacket", sockName)
+	listener, err := net.Listen("unix", sockName)
 	if err != nil {
 		log.Fatalf("connectAndRead(%s): Exception while listening at sock %s. %s",
 			agent, sockName, err)
@@ -64,36 +63,28 @@ func startSubscriber(log *base.LogObject, agent string, topic interface{}, retCh
 			log.Errorf("connectAndRead(%s) failed %s\n", sockName, err)
 			continue
 		}
-		go serveConnection(log, c, retChan, sockName)
+		go serveConnection(log, c, retChan)
 	}
 }
 
 // serveConnection processes a single connection and sends received
 // notifications as a string on the retChan
-func serveConnection(log *base.LogObject, conn net.Conn, retChan chan<- string, name string) {
+func serveConnection(log *base.LogObject, conn net.Conn, retChan chan<- string) {
+	// Ensure the connection is always closed, even if retChan blocks forever.
+	defer conn.Close()
+	// The reverse subscriber accepts one connection at a time; use a stats-free
+	// reader to avoid key collisions when multiple publishers reconnect.
+	reader := socketdriver.NewFrameReaderInternal(conn)
 
 	for {
-		// wait for readable conn
-		if err := pubsub.ConnReadCheck(conn); err != nil {
-			if err != io.EOF {
-				log.Errorf("serveConnection: Error on connReadCheck: %s",
-					err)
-			}
-			break
-		}
-
-		buf, doneFunc := socketdriver.GetBuffer()
-		defer doneFunc()
-
-		count, err := conn.Read(buf)
+		frame, err := reader.ReadFrame()
 		if err != nil {
 			if err != io.EOF {
 				log.Errorf("serveConnection: Error on read: %s",
 					err)
 			}
-			break
+			return
 		}
-		retChan <- string(buf[:count])
+		retChan <- string(frame)
 	}
-	conn.Close()
 }

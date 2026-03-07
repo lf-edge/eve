@@ -413,6 +413,11 @@ const (
 	// TUIMonitorLogLevel: log level for TUI monitor
 	TUIMonitorLogLevel GlobalSettingKey = "debug.tui.loglevel"
 
+	// PubsubStatsInterval sets the interval in seconds for pubsub FrameReader
+	// stats collection (0 = disabled). Useful for observing per-topic message
+	// size distributions and buffer growth on a running device.
+	PubsubStatsInterval GlobalSettingKey = "debug.pubsub.stats.interval"
+
 	// MsrvPrometheusMetricsRequestPerSecond: limit the number of requests per second
 	MsrvPrometheusMetricsRequestPerSecond GlobalSettingKey = "msrv.prometheus.metrics.rps"
 	// MsrvPrometheusMetricsBurst: limit the burst of requests
@@ -1114,6 +1119,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddStringItem(AppBootOrder, "", validateBootOrder)
 	configItemSpecMap.AddStringItem(TUIMonitorLogLevel, "info", blankValidator)
 	configItemSpecMap.AddStringItem(EdgeviewPublicKeys, "", blankValidator)
+	configItemSpecMap.AddIntItem(PubsubStatsInterval, 1, 0, 3600) // tmp: default 1s for profiling run
 
 	// Log deduplication and filtering settings
 	configItemSpecMap.AddIntItem(LogDedupWindowSize, 0, 0, 0xFFFFFFFF)
