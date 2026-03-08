@@ -17,3 +17,4 @@ spec:
         - HostDevices
         - GPU
         - VideoConfig
+        - CPUManager

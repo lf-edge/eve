@@ -20,19 +20,19 @@ Kubevirt_install() {
 
 # Kubevirt_migrate_feature_gates ensures the standard EVE feature gates are present
 # in the running KubeVirt CR. This is needed when upgrading from an older EVE image
-# that installed KubeVirt without certain gates (e.g. VideoConfig).
+# that installed KubeVirt without certain gates (e.g. VideoConfig, CPUManager).
 # Uses a targeted merge patch on developerConfiguration.featureGates only, so that
 # permittedHostDevices (PCIe/GPU/USB passthrough) is never disturbed.
 Kubevirt_migrate_feature_gates() {
     current_gates=$(kubectl get kubevirt kubevirt -n kubevirt \
         -o jsonpath='{.spec.configuration.developerConfiguration.featureGates[*]}' 2>/dev/null)
-    if echo "$current_gates" | tr ' ' '\n' | grep -qx "VideoConfig"; then
+    if echo "$current_gates" | tr ' ' '\n' | grep -qx "CPUManager"; then
         logmsg "KubeVirt feature gates already up to date, skipping migration"
         return 0
     fi
-    logmsg "KubeVirt VideoConfig feature gate missing, patching KubeVirt CR"
+    logmsg "KubeVirt CPUManager feature gate missing, patching KubeVirt CR"
     kubectl patch kubevirt kubevirt -n kubevirt --type='merge' \
-        -p='{"spec":{"configuration":{"developerConfiguration":{"featureGates":["HostDisk","Snapshot","HostDevices","GPU","VideoConfig"]}}}}'
+        -p='{"spec":{"configuration":{"developerConfiguration":{"featureGates":["HostDisk","Snapshot","HostDevices","GPU","VideoConfig","CPUManager"]}}}}'
 }
 
 Kubevirt_config() {

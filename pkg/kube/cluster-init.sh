@@ -216,6 +216,7 @@ setup_prereqs () {
         mount_kube_root
         # We need /var/lib to be mounted before we go for network connection check.
         check_network_connection
+        check_and_clean_cpu_manager_state
 }
 
 config_cluster_roles() {

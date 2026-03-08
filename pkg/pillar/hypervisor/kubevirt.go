@@ -273,6 +273,18 @@ func (ctx kubevirtContext) CreateReplicaVMIConfig(domainName string, config type
 	// Set CPUs
 	cpus := v1.CPU{}
 	cpus.Cores = uint32(config.VCpus)
+
+	// CPU Pinning (HV=k / KubeVirt):
+	// DedicatedCPUPlacement instructs the KubeVirt CPU Manager integration
+	// to pin every vCPU to a unique physical CPU thread.
+	// Cluster prerequisites:
+	//   - KubeVirt featureGate "CPUManager" must be enabled in the KubeVirt CR
+	//   - Node kubelet must run with --cpu-manager-policy=static
+	//   - VMI pod must reach Kubernetes Guaranteed QoS (cpu requests == limits)
+	if config.VmConfig.CPUsPinned {
+		cpus.DedicatedCPUPlacement = true
+	}
+
 	vmi.Spec.Domain.CPU = &cpus
 
 	// Set memory
@@ -284,6 +296,23 @@ func (ctx kubevirtContext) CreateReplicaVMIConfig(domainName string, config type
 	}
 	mem.Guest = &m
 	vmi.Spec.Domain.Memory = &mem
+
+	// Guaranteed QoS: Kubernetes static CPU Manager requires that CPU
+	// Requests == Limits. Without this, the VMI pod is in Burstable QoS and
+	// the CPU Manager will not honour dedicated (pinned) CPU placement.
+	// Memory must also be included in Requests/Limits to satisfy the
+	// KubeVirt admission webhook requirement.
+	if config.VmConfig.CPUsPinned {
+		cpuQuantity := resource.MustParse(strconv.Itoa(config.VCpus))
+		vmi.Spec.Domain.Resources.Requests = k8sv1.ResourceList{
+			k8sv1.ResourceCPU:    cpuQuantity,
+			k8sv1.ResourceMemory: m,
+		}
+		vmi.Spec.Domain.Resources.Limits = k8sv1.ResourceList{
+			k8sv1.ResourceCPU:    cpuQuantity,
+			k8sv1.ResourceMemory: m,
+		}
+	}
 
 	var netSelections []netattdefv1.NetworkSelectionElement
 	for _, vif := range config.VifList {
@@ -554,27 +583,24 @@ func (ctx kubevirtContext) Start(domainName string) error {
 		return err
 	}
 
-	// Create the VMI ReplicaSet
-	i := 5
-	for {
+	// Create the VMI ReplicaSet, retrying on transient kube API server errors.
+	const maxRetries = 5
+	for retries := maxRetries; ; retries-- {
 		_, err = virtClient.ReplicaSet(kubeapi.EVEKubeNameSpace).Create(context.Background(), repvmi, metav1.CreateOptions{})
-		if err != nil {
-			if errors.IsAlreadyExists(err) {
-				// VMI could have been already started, for example failover from other node.
-				// Its not an error, just proceed.
-				logrus.Warnf("VMI replicaset %v already exists", repvmi)
-				break
-			}
-			if strings.Contains(err.Error(), "dial tcp 127.0.0.1:6443") && i <= 0 {
-				logrus.Errorf("Start VMI replicaset failed %v\n", err)
-				return err
-			}
-			time.Sleep(10 * time.Second)
-			logrus.Errorf("Start VMI replicaset failed, retry (%d) err %v", i, err)
-		} else {
+		if err == nil {
 			break
 		}
-		i = i - 1
+		if errors.IsAlreadyExists(err) {
+			// VMI could have been already started, for example failover from other node.
+			logrus.Warnf("VMI replicaset %v already exists", repvmi)
+			break
+		}
+		if retries <= 0 {
+			logrus.Errorf("Start VMI replicaset failed, no retries left: %v", err)
+			return err
+		}
+		logrus.Errorf("Start VMI replicaset failed, retrying (%d left): %v", retries-1, err)
+		time.Sleep(10 * time.Second)
 	}
 	logrus.Infof("Started Kubevirt domain replicaset %s, VMI replicaset %s", domainName, vmis.name)
 
