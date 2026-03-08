@@ -42,6 +42,30 @@ check_network_connection () {
         done
 }
 
+check_and_clean_cpu_manager_state() {
+      local state_file="/var/lib/kubelet/cpu_manager_state"
+
+      if [ ! -f "${state_file}" ]; then
+        logmsg "$(date '+%Y-%m-%d %H:%M:%S') ${state_file} not found, nothing to do"
+        return
+      fi
+
+      local policy
+      if ! policy=$(jq -r '.policyName' "${state_file}" 2>/dev/null) || [ -z "${policy}" ] || [ "${policy}" = "null" ]; then
+        logmsg "$(date '+%Y-%m-%d %H:%M:%S') Failed to parse ${state_file}, file may be corrupt" >&2
+        return
+      fi
+
+      if [ "${policy}" = "none" ]; then
+        logmsg "$(date '+%Y-%m-%d %H:%M:%S') cpu_manager_state has policyName=none, deleting stale state file: ${state_file}"
+        rm -f "${state_file}"
+      else
+        logmsg "$(date '+%Y-%m-%d %H:%M:%S') [INFO] cpu_manager_state policyName=${policy}, no action needed"
+      fi
+
+      return
+}
+
 setup_cgroup () {
         echo "cgroup /sys/fs/cgroup cgroup defaults 0 0" >> /etc/fstab
 }
