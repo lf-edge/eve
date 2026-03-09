@@ -917,6 +917,9 @@ func encodeNetworkPortStatus(ctx *zedagentContext,
 	for _, ipAddr := range port.AddrInfoList {
 		devicePort.IPAddrs = append(devicePort.IPAddrs, ipAddr.Addr.String())
 	}
+	if port.ClusterIPAddr != nil {
+		devicePort.IPAddrs = append(devicePort.IPAddrs, port.ClusterIPAddr.String())
+	}
 	// devicePort.Gateway is deprecated - replaced by DefaultRouters
 	devicePort.DefaultRouters = utils.ToStrings(port.DefaultRouters)
 	// devicePort.DNSServers is deprecated - replaced by Dns

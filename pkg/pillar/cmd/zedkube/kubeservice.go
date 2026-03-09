@@ -333,7 +333,7 @@ func (z *zedkube) isDeviceInterfaceIP(ipStr string) bool {
 
 	// Check each port in deviceNetworkStatus
 	for _, port := range z.deviceNetworkStatus.Ports {
-		// Check each address in the port's AddrInfoList
+		// Check regular addresses, and not include the ClusterIPAddr
 		for _, addrInfo := range port.AddrInfoList {
 			if addrInfo.Addr.Equal(ip) {
 				log.Functionf("Found matching interface IP %s on port %s", ipStr, port.IfName)

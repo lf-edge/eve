@@ -211,13 +211,9 @@ func (z *zedkube) updateClusterIPReadiness() (changed bool) {
 			if port.Logicallabel != z.clusterConfig.ClusterInterface {
 				continue
 			}
-			for _, addr := range port.AddrInfoList {
-				if addr.Addr.Equal(z.clusterConfig.ClusterIPPrefix.IP) {
-					ready = true
-					break
-				}
-			}
-			if ready {
+			if port.ClusterIPAddr != nil &&
+				port.ClusterIPAddr.Equal(z.clusterConfig.ClusterIPPrefix.IP) {
+				ready = true
 				break
 			}
 		}
@@ -251,7 +247,6 @@ func (z *zedkube) startClusterStatusServer() {
 	mux.HandleFunc("/cluster-app/", func(w http.ResponseWriter, r *http.Request) {
 		z.clusterAppIDHandler(w, r)
 	})
-
 	serverAddr := net.JoinHostPort(
 		z.clusterConfig.ClusterIPPrefix.IP.String(), types.ClusterStatusPort)
 	z.statusServer = &http.Server{

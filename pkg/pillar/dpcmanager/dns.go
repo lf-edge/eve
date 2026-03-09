@@ -138,10 +138,12 @@ func (m *DpcManager) updateDNS() {
 		// Below this point we collect L3-specific info for the port.
 		if !port.IsL3Port {
 			m.deviceNetStatus.Ports[ix].AddrInfoList = nil
+			m.deviceNetStatus.Ports[ix].ClusterIPAddr = nil
 			continue
 		}
 
 		addrInfoList := make([]types.AddrInfo, 0, len(ipAddrs))
+		var clusterIPAddr net.IP
 		if len(ipAddrs) == 0 {
 			m.Log.Functionf("updateDNS: interface %s has NO IP addresses", port.IfName)
 		}
@@ -151,9 +153,18 @@ func (m *DpcManager) updateDNS() {
 				// IP address received over DHCP is ignored.
 				continue
 			}
+			// Cluster IP is kept separate from AddrInfoList — it is only
+			// for inter-node communication and must not be used as a source
+			// IP for controller-bound traffic.
+			if m.clusterStatus.ClusterIPPrefix != nil &&
+				m.clusterStatus.ClusterIPPrefix.Contains(addr.IP) {
+				clusterIPAddr = addr.IP
+				continue
+			}
 			addrInfoList = append(addrInfoList, types.AddrInfo{Addr: addr.IP})
 		}
 		m.deviceNetStatus.Ports[ix].AddrInfoList = addrInfoList
+		m.deviceNetStatus.Ports[ix].ClusterIPAddr = clusterIPAddr
 
 		// Get DNS etc info from dhcpcd. Updates DomainName and DNSServers.
 		err = m.getDHCPInfo(&m.deviceNetStatus.Ports[ix], port)
