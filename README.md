@@ -287,11 +287,27 @@ Once your Raspberry Pi 4 is happily running an EVE image you can start using EVE
 
 ### How to use on an Onlogic FR201 ARM device
 
-Onlogic Factor 201 (FR201) is a device based on the Raspberry Pi Compute Module 4 (CM4). To use EVE on FR201, build a live or installer image for Raspberry Pi 4, as described below and flash it on a USB stick. Then, to enable FR201's specific subdevices, the boot configuration has to be manually edited.
+Onlogic Factor 201 (FR201) is a device based on the Raspberry Pi Compute Module 4 (CM4). There are two methods to install EVE on the FR201: flashing a live image directly using rpiboot, or using the USB installer.
+
+#### Method 1: Direct installation using rpiboot
+
+The FR201 can be flashed directly using `rpiboot`, which exposes the internal eMMC (or NVMe) as a mass storage device on your host machine. This avoids the need for a USB installer entirely.
+
+1. Build a live raw image: `make ZARCH=arm64 HV=kvm live-raw` (Only KVM is supported)
+2. Connect the FR201 to your host machine and use `rpiboot` to expose the target drive (internal eMMC or NVMe)
+3. Flash the `dist/arm64/current/live.raw` live EVE image directly onto the exposed drive by [following these instructions](#how-to-write-the-eve-image-and-installer-onto-storage-media)
+4. Edit the `config.txt` on the flashed image as described in the [boot configuration section below](#fr201-boot-configuration)
+
+#### Method 2: USB installer
 
 1. To build a live raw image: `make ZARCH=arm64 HV=kvm live-raw` (Only KVM is supported)
 1. To build an installation raw image: `make ZARCH=arm64 HV=kvm installer-raw` (Only KVM is supported)
 1. Flash the `dist/arm64/current/installer.raw` install EVE image onto an USB Stick [following these instructions](../README.md#3-flash-the-image-to-the-device)
+1. Edit the `config.txt` as described in the [boot configuration section below](#fr201-boot-configuration)
+
+Finally, boot or install EVE, using the USB 3.0 port. The installer will install EVE on the eMMC drive by default, using the NVMe as the persist drive. If `eve_install_disk` is not specified, the installer will default to the internal eMMC when available. If an OS is already present on those two drives, see the [documentation](https://support.onlogic.com/documentation/factor/?_gl=1*o7b3gz*_gcl_au*NzI0MzU3NDU5LjE3MjMxMTk0NTQ.*_ga*MTk3NjkxMzg5LjE3MjMxMTk0NDc.*_ga_SEVJD5HQBB*MTcyOTI0NTcwMS4xNC4xLjE3MjkyNDk3MTUuNTguMC4w) from Onlogic on how to erase them and be able to boot from the USB stick.
+
+#### FR201 boot configuration
 
 Edit the file `config.txt` of the 1st partition of the live/installer image, two lines must be changed, as shown by the diff syntax below:
 
@@ -315,18 +331,31 @@ Edit the file `config.txt` of the 1st partition of the live/installer image, two
 +include fr201.txt
 ```
 
-Finally, boot or install EVE, using the USB 3.0 port. The installer will install EVE on the eMMC drive, using the NVMe as the persist drive. If an OS is already present on those two drives, see the [documentation](https://support.onlogic.com/documentation/factor/?_gl=1*o7b3gz*_gcl_au*NzI0MzU3NDU5LjE3MjMxMTk0NTQ.*_ga*MTk3NjkxMzg5LjE3MjMxMTk0NDc.*_ga_SEVJD5HQBB*MTcyOTI0NTcwMS4xNC4xLjE3MjkyNDk3MTUuNTguMC4w) from Onlogic on how to erase them and be able to boot from the USB stick.
-
 ### FR201 without eMMC
 
 Some variants of the FR201 don't have an internal eMMC. For these devices,
-EVE must be installed entirely in the internal NVMe. The following line
+EVE must be installed entirely on the internal NVMe.
+
+You can either flash a live image directly using `rpiboot` (see [Method 1](#method-1-direct-installation-using-rpiboot) above),
+or use the USB installer method. When using the installer, the following line
 must be added to the `grub.cfg` file inside the CONFIG partition of the
 installer USB stick:
 
 ```sh
 set_global dom0_platform_tweaks "eve_install_disk=sdb rootdelay=10"
 ```
+
+In certain hardware configurations (particularly when dealing with various USB
+stick controller speeds or slower NVMe initialization) the kernel may fail to
+recognize the bootable device within the standard 10-second timeout provided by
+`rootdelay=10`. To resolve persistent detection issues, you can replace
+`rootdelay=10` with the `rootwait` parameter in the kernel command line.
+
+> **⚠️ WARNING:** Using `rootwait` instead of `rootdelay=10` causes the kernel
+> to wait **indefinitely** for the root device to appear. If the target disk is
+> never detected (e.g. due to a hardware issue or misconfiguration), the kernel
+> will stall forever and the device will not boot. Use this option only when
+> `rootdelay=10` is insufficient for the NVMe drive to be detected in time.
 
 ## How to use on an HiKey ARM board
 
