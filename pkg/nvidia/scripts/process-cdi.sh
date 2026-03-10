@@ -8,7 +8,7 @@
 # the destination location.
 
 extract_debs() {
-    DEBS=$(ls Linux_for_Tegra/nv_tegra/l4t_deb_packages/*.deb)
+    DEBS=$(find Linux_for_Tegra/nv_tegra/l4t_deb_packages/ -type f -name "*.deb")
     for x in $DEBS; do
         dpkg -x "$x" "$1"
     done
