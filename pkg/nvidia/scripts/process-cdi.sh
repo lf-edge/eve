@@ -24,7 +24,7 @@ copy_rootfs_files() {
 }
 
 process_cdi() {
-    grep hostPath < "$1" | awk '{print $2}' > "$2"
+    grep hostPath < "$1" | sed "s#- ##" | awk '{print $2}' > "$2"
 }
 
 # Check arguments
