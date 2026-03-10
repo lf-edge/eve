@@ -93,24 +93,13 @@ IMX8_BLOB=/parts/imx8-flash.bin
 IMX8_CONF=/parts/imx8-flash.conf
 
 # EFI partition size in bytes
-EFI_PART_SIZE=$((36 * 1024 * 1024))
+EFI_PART_SIZE=$((2 * 1024 * 1024 * 1024))
 # Min rootfs partition size in bytes
 # Warning: don't change the rootfs partition size, before
 # Warning: fixing the EVE upgrade logic, which should find
 # Warning: free space and rellocate all tables if image has
 # Warning: been bloated.
-ROOTFS_PART_SIZE_MIN=$((512 * 1024 * 1024))
-# For eve-k lets set partition size to 4GB and EFI partition size to 2GB
-# Check if file /root/etc/eve-hv-type exists.
-# make-raw will be called twice during compilation and during installation.
-# The eve-hv-type file will be present only during installation.
-if [ -f /root/etc/eve-hv-type ]; then
-   eve_flavor=$(cat /root/etc/eve-hv-type)
-   if [ "$eve_flavor" = "k" ]; then
-      EFI_PART_SIZE=$((2 * 1024 * 1024 * 1024))
-      ROOTFS_PART_SIZE_MIN=$((4 * 1024 * 1024 * 1024))
-   fi
-fi
+ROOTFS_PART_SIZE_MIN=$((4 * 1024 * 1024 * 1024))
 
 # PLATFORM can be set in environment, it means we are executed using
 # docker during build time, otherwise we are executed from EVE e.g.
