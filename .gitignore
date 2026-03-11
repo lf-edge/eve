@@ -33,5 +33,6 @@ pkg/installer/target
 pkg/installer/vendor/windows*/lib
 pkg/installer/vendor/winapi-*/lib
 pkg/installer/vendor/windows-sys*/src/Windows/
+persist-backup/
 pkg/monitor/eve-monitor-rs
 pkg/pillar/lk-build-arg-COVER

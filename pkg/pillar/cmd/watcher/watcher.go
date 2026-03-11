@@ -7,11 +7,14 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 
 	ctrdd "github.com/containerd/containerd"
+	"github.com/containerd/containerd/errdefs"
 	"github.com/lf-edge/eve/pkg/pillar/containerd"
 
 	"github.com/containerd/cgroups"
@@ -25,10 +28,13 @@ import (
 )
 
 const (
-	agentName      = "watcher"
-	errorTime      = 3 * time.Minute
-	warningTime    = 40 * time.Second
-	usageThreshold = 2
+	agentName               = "watcher"
+	errorTime               = 3 * time.Minute
+	warningTime             = 40 * time.Second
+	usageThreshold          = 2
+	serviceOverrideDir      = "/run/eve-service-overrides"
+	serviceOverrideEnabled  = "enabled"
+	serviceOverrideDisabled = "disabled"
 )
 
 type watcherContext struct {
@@ -98,17 +104,30 @@ func setContainerRunning(containerID string, running bool) error {
 	if err != nil {
 		return fmt.Errorf("creating containerd client failed: %+v", err)
 	}
+	defer func() {
+		if err := ctrd.CloseClient(); err != nil {
+			log.Warnf("Closing containerd client failed: %v", err)
+		}
+	}()
 
 	ctx, done := ctrd.CtrNewSystemServicesCtx()
 	defer done()
 
 	container, err := ctrd.CtrLoadContainer(ctx, containerID)
 	if err != nil {
+		if errdefs.IsNotFound(err) {
+			log.Functionf("Container %s not found yet", containerID)
+			return nil
+		}
 		return fmt.Errorf("loading container failed: %+v", err)
 	}
 
 	task, err := container.Task(ctx, nil)
 	if err != nil {
+		if errdefs.IsNotFound(err) {
+			log.Functionf("Task for container %s not found yet", containerID)
+			return nil
+		}
 		return fmt.Errorf("getting container task failed: %+v", err)
 	}
 
@@ -134,21 +153,48 @@ func setContainerRunning(containerID string, running bool) error {
 	return nil
 }
 
+func localServiceOverride(serviceName string) (string, bool) {
+	overridePath := filepath.Join(serviceOverrideDir, serviceName)
+	data, err := os.ReadFile(overridePath)
+	if err != nil {
+		return "", false
+	}
+	override := strings.TrimSpace(string(data))
+	switch override {
+	case serviceOverrideEnabled, serviceOverrideDisabled:
+		return override, true
+	default:
+		log.Warnf("[%s] Ignoring invalid local override value %q from %s",
+			serviceName, override, overridePath)
+		return "", false
+	}
+}
+
+func desiredMemoryMonitorState(ctx *watcherContext) (bool, string, bool) {
+	if override, ok := localServiceOverride("memory-monitor"); ok {
+		return override == serviceOverrideEnabled, "local override", true
+	}
+	gcp := agentlog.GetGlobalConfig(log, ctx.subGlobalConfig)
+	if gcp == nil {
+		return false, "", false
+	}
+	return gcp.GlobalValueBool(types.MemoryMonitorEnabled), "global config", true
+}
+
 // read the global config and update the memory monitor status
 func updateMemoryMonitorConfig(ctx *watcherContext) {
 	log.Functionf("Updating memory monitor config")
-	gcp := agentlog.GetGlobalConfig(log, ctx.subGlobalConfig)
-	if gcp == nil {
+	enabled, source, ok := desiredMemoryMonitorState(ctx)
+	if !ok {
 		return
 	}
-	enabled := gcp.GlobalValueBool(types.MemoryMonitorEnabled)
 	if enabled {
-		log.Functionf("Enabling memory monitor")
+		log.Functionf("Enabling memory monitor (%s)", source)
 		if err := setContainerRunning("memory-monitor", true); err != nil {
 			log.Warnf("Resuming memory monitor failed: %v", err)
 		}
 	} else { // memory monitor is disabled
-		log.Functionf("Disabling memory monitor")
+		log.Functionf("Disabling memory monitor (%s)", source)
 		if err := setContainerRunning("memory-monitor", false); err != nil {
 			log.Warnf("Pausing memory monitor failed: %v", err)
 		}
@@ -354,6 +400,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		case change := <-subDiskMetric.MsgChan():
 			subDiskMetric.ProcessChange(change)
 		case <-stillRunning.C:
+			updateMemoryMonitorConfig(&ctx)
 		}
 		ps.StillRunning(agentName, warningTime, errorTime)
 	}

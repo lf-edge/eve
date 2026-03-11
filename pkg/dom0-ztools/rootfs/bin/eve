@@ -5,6 +5,7 @@ CTR_UA_CMD="ctr --namespace eve-user-apps"
 KVM_RUN_DIR="/run/hypervisor/kvm"
 APP_CONFIG_DIR="/run/zedagent/AppInstanceConfig"
 APP_STATUS_DIR="/run/zedmanager/AppInstanceStatus"
+SERVICE_OVERRIDE_DIR="/run/eve-service-overrides"
 
 # Locate jq: use the binary shipped inside the pillar onboot container.
 # The binary needs libonig from the same sysroot, so we set LD_LIBRARY_PATH.
@@ -28,6 +29,11 @@ Welcome to EVE!
             pause <service>
             resume <service>
             destroy <service>
+            list-app-consoles   Outputs list of available consoles for attach
+            attach-app-console <console id>   Attach to the application console, see 'eve list-app-consoles' for details
+            ext-start <service>   Start an extension service
+            ext-stop <service>    Pause an extension service
+            ext-list              List extension services and status
             persist list
             persist attach <disk>
             config mount <mountpoint>
@@ -140,6 +146,23 @@ psi_collector_start() {
 
 psi_collector_stop() {
     http_debug_request "/memory-monitor/psi-collector/stop"
+}
+
+is_extension_service() {
+    [ -d "/persist/exts/containers/services/$1" ]
+}
+
+set_service_override() {
+    mkdir -p "$SERVICE_OVERRIDE_DIR" || return 1
+    printf "%s\n" "$2" > "$SERVICE_OVERRIDE_DIR/$1"
+}
+
+clear_service_override() {
+    rm -f "$SERVICE_OVERRIDE_DIR/$1"
+}
+
+service_task_status() {
+    ${CTR_CMD} t ls 2>/dev/null | awk -v svc="$1" '$1 == svc {print $3; exit}'
 }
 
 is_in_debug_service() {
@@ -427,18 +450,36 @@ case "$1" in
   status) ${CTR_CMD} t ls
           ;;
    start) [ -z "$2" ] && help
-          ${CTR_CMD} c ls -q | grep -q $2 && echo "ERROR: make sure to run: $0 destroy $2" && help
+          if is_extension_service "$2"; then
+              exec "$0" ext-start "$2"
+          fi
+          ${CTR_CMD} c ls -q | grep -Fxq "$2" && echo "ERROR: make sure to run: $0 destroy $2" && help
           /usr/bin/service -v start $2
           ;;
  destroy) [ -z "$2" ] && help
+          if is_extension_service "$2"; then
+              clear_service_override "$2"
+          fi
           ${CTR_CMD} t kill -a -s SIGKILL $2
           ${CTR_CMD} t delete $2
           ${CTR_CMD} c rm $2
           ;;
    pause) [ -z "$2" ] && help
+          if is_extension_service "$2"; then
+              set_service_override "$2" disabled || {
+                  echo "ERROR: failed to write local override for $2"
+                  exit 1
+              }
+          fi
           ${CTR_CMD} t pause $2
           ;;
   resume) [ -z "$2" ] && help
+          if is_extension_service "$2"; then
+              set_service_override "$2" enabled || {
+                  echo "ERROR: failed to write local override for $2"
+                  exit 1
+              }
+          fi
           ${CTR_CMD} t resume $2
           ;;
 firewall) if [ "$2" = drop ]; then
@@ -556,6 +597,67 @@ __EOT__
  hv)
           type=$(cat /run/eve-hv-type)
           echo "$type"
+          ;;
+ ext-start) [ -z "$2" ] && echo "Usage: eve ext-start <service>" && help
+          SVC="$2"
+          SVC_PATH="/persist/exts/containers/services/$SVC"
+          if [ ! -d "$SVC_PATH" ]; then
+              echo "ERROR: extension service '$SVC' not found in $SVC_PATH"
+              exit 1
+          fi
+          set_service_override "$SVC" enabled || {
+              echo "ERROR: failed to write local override for $SVC"
+              exit 1
+          }
+          STATUS=$(service_task_status "$SVC")
+          case "$STATUS" in
+              RUNNING)
+                  echo "$SVC is already running"
+                  ;;
+              PAUSED)
+                  echo "Resuming $SVC..."
+                  ${CTR_CMD} t resume "$SVC" && echo "$SVC resumed"
+                  ;;
+              "")
+                  echo "Local override enabled for $SVC."
+                  echo "If the task is not present, extsloader will reconcile it on the next scan cycle (~30s)."
+                  ;;
+              *)
+                  echo "Local override enabled for $SVC (current task state: $STATUS)."
+                  echo "extsloader will reconcile it on the next scan cycle (~30s) if needed."
+                  ;;
+          esac
+          ;;
+ ext-stop) [ -z "$2" ] && echo "Usage: eve ext-stop <service>" && help
+          SVC="$2"
+          set_service_override "$SVC" disabled || {
+              echo "ERROR: failed to write local override for $SVC"
+              exit 1
+          }
+          STATUS=$(service_task_status "$SVC")
+          if [ -z "$STATUS" ]; then
+              echo "$SVC is not running (local override disabled)"
+              exit 0
+          fi
+          if [ "$STATUS" = "PAUSED" ]; then
+              echo "$SVC is already paused (local override disabled)"
+              exit 0
+          fi
+          echo "Pausing $SVC..."
+          ${CTR_CMD} t pause "$SVC"
+          echo "$SVC paused"
+          ;;
+ ext-list) echo "Extension services:"
+          for d in /persist/exts/containers/services/*/; do
+              SVC=$(basename "$d")
+              STATUS="stopped"
+              if ${CTR_CMD} t ls 2>/dev/null | grep -q "^${SVC} .*RUNNING"; then
+                  STATUS="running"
+              elif ${CTR_CMD} t ls 2>/dev/null | grep -q "^${SVC} .*PAUSED"; then
+                  STATUS="paused"
+              fi
+              printf "  %-20s %s\n" "$SVC" "$STATUS"
+          done
           ;;
  persist) case "$2" in
                list) list_partitions

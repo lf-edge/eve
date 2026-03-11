@@ -10,12 +10,12 @@ Core Image and an Extension Image, including:
 - Security design choices for Extension Image integrity and attestation
 - How split rootfs affects every installation method (USB, iPXE)
 - How split rootfs integrates with the existing A/B update mechanism
-- Relative effort estimation for each implementation path
+- Relative effort estimation and delivery plan
 
 The security analysis is central. Every architectural choice - where the
 Extension Image lives on disk, how it is verified, whether it participates in
-TPM measurement  and sealing - affects the installation flow, upgrade flow, 
-and controller integration. These connections are discussed together, not 
+TPM measurement and sealing - affects the installation flow, upgrade flow,
+and controller integration. These connections are discussed together, not
 in isolation.
 
 Effort estimates are relative, using the USB boot priority feature as a calibration point.
@@ -26,10 +26,10 @@ approximately 2,700 hand-written lines across 42 files in 6 subsystems over
 reference for all estimates in this document.
 
 Where controller-side changes are needed, the scope is identified but the work belongs to
-a separate team. Controller-side effort is outside our control and represents a scheduling
-risk: device-side work that depends on controller changes cannot ship until the controller
-team delivers. Approaches that require controller-side coordination are flagged throughout
-this document. All effort estimates are device-side unless explicitly marked otherwise.
+a separate team. In current practice, controller handling is typically a single hardcoded
+baseline table and customers mainly expect reliable recovery (not per-update PCR forensics).
+This lowers expected coordination for normal rollouts. All effort estimates are
+device-side unless explicitly marked otherwise.
 
 ## 2. Current Baseline: How EVE Boot, Measurement, and Sealing Work Today
 
@@ -92,13 +92,14 @@ only releases the key if current PCR values match the values recorded at seal ti
 {0, 1, 2, 3, 4, 6, 7, 8, 9, 10, 11, 12, 13, 14}
 ```
 
-This is all PCRs from 0 to 14, excluding PCR 5 (volatile GPT state) and PCR 15 (reserved).
+This is all PCRs from 0 to 14, excluding PCR 5 (volatile GPT state) and PCR 15 (OS/user-defined).
 
 **Critical detail**: PCRs 10, 11, and 12 are currently all-zeros because nothing extends
 them. Sealing works because zero is a consistent, reproducible value. If any code begins
 extending one of these PCRs, the sealed value changes, and vault unsealing fails on next
-boot. This is not a bug — it is an intentional property of measured boot. But it means that
-adding new PCR measurements requires deliberate policy migration.
+boot. This is not a bug — it is an intentional property of measured boot. In split-rootfs
+design, any decision to measure Extension into one of these currently-zero PCRs requires
+explicit rollout and unseal-order handling.
 
 The controller can also provide a custom PCR policy (via `VaultKeyPolicyPCR`) that overrides
 the default. This is the mechanism for planned PCR policy changes during rollout.
@@ -151,8 +152,8 @@ They are covered by PCR 13 measurement (GRUB measures the entire squashfs). Afte
 - Extension Image is a separate artifact. Its security posture depends on design choices
   covered in the rest of this document.
 
-The key question is not "is Extension secure?" but rather "what level of security assurance
-does each approach provide, and what does each cost to implement?"
+The key question is not "is Extension secure?" but rather "which security model provides
+the required assurance, and what does it cost to implement safely?"
 
 ## 3. Problem Statement
 
@@ -263,26 +264,63 @@ func ensureKubeRuntime(op string) error {
 }
 ```
 
-Runtime detection reads from `/run/eve-hv-type`, which is written at boot time by GRUB
-(from CONFIG partition) or falls back to `/etc/eve-hv-type` (baked into rootfs at build
-time).
+Runtime detection reads from `/run/eve-hv-type` (`pkg/pillar/base/kubevirt.go`, constant
+`EveVirtTypeFile`).
+
+Why we keep `/etc`, `/run`, and `/config` versions of `eve-hv-type`:
+- `/etc/eve-hv-type` is the baked-in default in the Core Image (`images/rootfs_core.yml.in`).
+- `/config/eve-hv-type` is an optional post-build override (for example from installer/ZFlash).
+- `/run/eve-hv-type` is the effective runtime value consumed by pillar/hypervisor code.
+
+Boot sequence with explicit actors and files:
+1. **GRUB** (`pkg/grub/rootfs.cfg`, function `set_eve_flavor`) reads `eve-hv-type` from CONFIG if
+   present, else from `($root)/etc/eve-hv-type`, and stores it in GRUB variable `eve_flavor`.
+   We need `eve_flavor` because GRUB must pick the pre-kernel boot path (`set_${eve_flavor}_boot`)
+   before Linux kernel/userspace exists.
+2. **Linux kernel** starts PID 1, and EVE's **LinuxKit init stage** (declared in
+   `images/rootfs_core.yml.in`, `init:` list with `linuxkit/init` and `DOM0ZTOOLS_TAG`) starts
+   early userspace. At this stage, `/run` exists as runtime writable filesystem space.
+3. **dom0-ztools init script** `pkg/dom0-ztools/rootfs/etc/init.d/009-id` copies
+   `/etc/eve-hv-type` to `/run/eve-hv-type` (initial runtime value).
+4. **LinuxKit onboot ordering** (also from `images/rootfs_core.yml.in`) runs `storage-init` before
+   `pillar-onboot`.
+5. **storage-init** (`pkg/storage-init/storage-init.sh`) mounts CONFIG, creates RAM-backed
+   `/config`, and reads `/config/eve-hv-type` for ext4/ZFS storage decisions.
+6. **pillar-onboot** (`pkg/pillar/scripts/onboot.sh`) overwrites `/run/eve-hv-type` from
+   `/config/eve-hv-type` if the override file exists.
+7. **Runtime agents** (for example `pkg/pillar/base/kubevirt.go`,
+   `pkg/pillar/hypervisor/hypervisor.go`, `pkg/pillar/scripts/device-steps.sh`) read
+   `/run/eve-hv-type`.
 
 ### CONFIG Partition as HV Selector
 
-The HV type is determined by a chain of overrides:
+The same value is consumed at different phases by different components:
 
 ```
-CONFIG partition /eve-hv-type   (set by ZFlash at flash time)
-  ↓ overrides
-/etc/eve-hv-type                (baked into rootfs at build time)
-  ↓ read by
-GRUB → writes /run/eve-hv-type
-  ↓ read by
-storage-init.sh → selects ext4 or ZFS for persist
-onboot.sh → propagates to runtime
-pillar agents → base.IsHVTypeKube(), hypervisor.BootTimeHypervisor()
-extsloader → skips HV-specific services (e.g., kube requires HV=k)
+GRUB phase (pre-kernel):
+  /config/eve-hv-type (fallback: /etc/eve-hv-type) → eve_flavor → set_${eve_flavor}_boot
+
+Linux early runtime:
+  /etc/eve-hv-type → /run/eve-hv-type   (seed by 009-id)
+
+Linux onboot phase:
+  /config/eve-hv-type (if present) → /run/eve-hv-type   (override by onboot.sh)
+
+Runtime agents:
+  read /run/eve-hv-type
 ```
+
+Related consumers:
+- `storage-init.sh` reads `/config/eve-hv-type` to select ext4/ZFS behavior.
+- Pillar/hypervisor runtime code reads `/run/eve-hv-type`.
+
+Files/scripts involved in this flow:
+- `pkg/grub/rootfs.cfg`: `set_eve_flavor`, `set_${eve_flavor}_boot`.
+- `images/rootfs_core.yml.in`: declares `init` and onboot order (`storage-init` before `pillar-onboot`).
+- `pkg/dom0-ztools/rootfs/etc/init.d/009-id`: seeds `/run/eve-hv-type` from `/etc/eve-hv-type`.
+- `pkg/storage-init/storage-init.sh`: mounts CONFIG and uses HV type for storage behavior.
+- `pkg/pillar/scripts/onboot.sh`: optional override `/config/eve-hv-type` -> `/run/eve-hv-type`.
+- `pkg/pillar/base/kubevirt.go`: runtime HV detection source (`/run/eve-hv-type`).
 
 This means HV selection happens at flash time (via ZFlash) or install time (via CONFIG
 partition content), not at build time. A single installer image supports all HV types.
@@ -373,11 +411,32 @@ This means Core and Extension are cryptographically bound: changing Extension re
 changing Core (new root hash), which changes PCR 13 (new squashfs hash). They are always
 the same version.
 
+### Signing vs Just Hashes for `ext.img`
+
+Current EVE verifier flow is hash-based: `VerifyImageConfig/Status` and verifier logic
+verify SHA256 of downloaded content (`pkg/pillar/types/verifiertypes.go`,
+`pkg/pillar/cmd/verifier/lib/verifier.go`). For split rootfs, this combines with
+dm-verity (runtime block verification) and Core-anchored root-hash trust.
+
+| Model | What it gives | Practical note |
+|------|---------------|----------------|
+| SHA256 only (current verifier baseline) | Integrity against corruption/mismatch vs expected digest | Authenticity depends on metadata/control-plane trust |
+| SHA256 + dm-verity root hash (this roadmap baseline) | Integrity + continuous runtime tamper detection on PERSIST | Strong local integrity for Extension load path |
+| + Detached signature for `ext.img` (hardening option) | Publisher authenticity bound to a signing key, independent of digest transport | Additional verification step and key lifecycle management |
+
+Related precedent: in the `eve-kernel` tree, module signing is enforced in x86 defconfigs
+(`CONFIG_MODULE_SIG=y`, `CONFIG_MODULE_SIG_FORCE=y`, `CONFIG_MODULE_SIG_SHA256=y` in
+`arch/x86/configs/eve-core_defconfig` and `arch/x86/configs/eve-hwe_defconfig`).
+
+Recommendation for split-rootfs v1 remains: keep dm-verity + hash/PCR path as baseline.
+A detached `ext.img` signature is a valid defense-in-depth step, but treat it as explicit
+hardening scope (not implicit in the current estimates unless added).
+
 ### Extension Loader (extsloader)
 
 The Extension Loader is a pillar agent inside Core that manages the Extension lifecycle:
 
-1. Wait for PERSIST to be accessible (and vault to be unlocked, if Extension is in vault)
+1. Wait for PERSIST to be accessible
 2. Determine active partition (IMGA or IMGB) via `zboot.GetCurrentPartition()`
 3. Find Extension Image at the corresponding path
 4. Read dm-verity root hash from `/hostfs/etc/ext-verity-roothash`
@@ -434,823 +493,344 @@ the root hash), then Core Image is built with the root hash embedded.
 
 Build: `make split_rootfs` produces both `rootfs-core.img` and `rootfs-ext.img`.
 
-## 6. Security Design Space: Three Key Questions
+## 6. Chosen Security Model
 
-The split introduces three independent security design choices. Each choice affects
-implementation effort, controller integration, and operational behavior. They can be
-combined independently, producing different security postures at different costs.
+For implementation planning, this roadmap uses one fixed model:
 
-### Question 1: Should Extension Image participate in PCR measurement?
+- Extension is measured in userspace into PCR12 after verification.
+- PCR12 is included in enforced sealing policy.
+- Extension is stored on PERSIST as A/B files: `/persist/ext-imga.img` and
+  `/persist/ext-imgb.img`.
 
-**Option 1A — No PCR measurement**: Extension Loader verifies the image via dm-verity and
-reports health to the controller through normal telemetry. No PCR is extended.
+Short note on alternatives: other models were evaluated earlier and rejected. This
+document does not plan or estimate them.
 
-- **Local integrity**: Strong. dm-verity prevents loading tampered content. Root hash in
-  Core (measured by PCR 13) ensures only the correct Extension is accepted.
-- **Remote assurance**: Controller relies on software-reported health telemetry for Extension
-  state. If the telemetry path is broken, delayed, or compromised, the controller has no
-  independent signal for Extension.
-- **Sealing impact**: None. No PCR changes, no policy migration needed.
-- **Controller work**: Minimal — controller needs to display Extension health status, but
-  no PCR-related changes.
+### Extension Measurement and Attestation on PCR12
 
-Realistic scenario — telemetry gap:
-> Extension fails locally. Health publication path is delayed. Controller sees Core
-> attestation is normal (PCR 13 matches). Without PCR evidence for Extension, controller
-> confidence depends on fail-closed treatment of unknown status.
+Extension Loader extends **PCR 12** after Extension verification/mount.
 
-**Option 1B — PCR measurement (userspace)**: Extension Loader extends a designated PCR
-(e.g., PCR 12) with the Extension Image hash after verification. Attestation quotes
-include this PCR, giving the controller a hardware-signed signal for Extension state.
+Why PCR12:
+- PCR12 is already in default EVE sealing set (`DefaultDiskKeySealingPCRs`).
+- PCR12 is currently unused (zero), so it is available without adding a new PCR family.
+- This gives direct coupling between Extension state and vault unseal behavior.
 
-Multi-step measurement creates diagnosable states:
+Attestation already quotes PCR 0-15, so PCR12 becomes controller-visible immediately.
+
+Expected progression:
 
 ```
-Boot starts:           PCR = 0x0000...     (loader hasn't run)
-Loader starts:         PCR = extend(0, "extsloader:starting")
-Image verified+mounted: PCR = extend(prev, SHA256(extension.img))
-Services running:      PCR = extend(prev, "extsloader:services-running")
-
-OR on failure:         PCR = extend(prev, "extsloader:failed:<reason>")
+Boot starts:            PCR12 = 0x0000... (loader not run yet)
+Loader starts:          PCR12 = extend(0, "extsloader:starting")
+Image verified+mounted: PCR12 = extend(prev, SHA256(extension.img))
+Services running:       PCR12 = extend(prev, "extsloader:services-running")
+Failure case:           PCR12 = extend(prev, "extsloader:failed:<reason>")
 ```
 
-Controller can distinguish: loader never ran (PCR = zero) vs. loader ran but Extension
-failed vs. Extension loaded successfully.
+Extsloader should also emit compact Extension measurement-log context (same pattern as
+`measure-config`) and append it to attestation payload context.
 
-- **Local integrity**: Same as 1A (dm-verity).
-- **Remote assurance**: Stronger. Controller has TPM-signed evidence of Extension state
-  independent of software telemetry. Fleet-wide drift detection is more reliable.
-- **Sealing impact**: Depends on Question 2 (below).
-- **Controller work**: Controller must understand the new PCR, maintain baselines, and
-  correlate PCR state with Extension health telemetry.
+### Sealing Coupling and Boot Ordering Contract
 
-Trust chain clarification: This measurement happens in userspace, but it is still chained
-to the measured boot. Extension Loader runs inside Core, which was measured into PCR 13 by
-GRUB. If Core is compromised, PCR measurements from userspace cannot be trusted — but if
-Core is compromised, the entire platform is compromised regardless. The practical security
-value of userspace PCR measurement is high for detecting Extension-specific failures while
-Core remains intact.
+Vault unseal behavior is intentionally coupled to PCR12 state.
 
-**Why not GRUB-stage measurement?** A third option would be to place the Extension Image
-on dedicated partitions (EXTA/EXTB) and have GRUB measure it directly, like it does for
-Core (PCR 13). This would provide the strongest remote assurance (boot-chain-level
-measurement). However, it requires changing the GPT partition table layout, which we want
-to avoid: it touches `make-raw`, `storage-init`, the installer, and every existing device
-needs a migration path. ZFS devices cannot shrink P3 at all. The cost is disproportionate
-to the security benefit over userspace PCR measurement (1B), which already provides
-TPM-attested Extension state.
+Implementation contract for deterministic behavior:
+1. `extsloader` performs final PCR12 extend for the boot attempt and writes a readiness
+   signal (file or pubsub state).
+2. `vaultmgr` must wait for that readiness signal (or terminal failure state) before the
+   unseal decision path.
+3. Timeout/failure path must be deterministic and must not create reboot/recovery loops.
 
-| | 1A: No PCR | 1B: Userspace PCR |
-|--|-----------|-------------------|
-| Local integrity | dm-verity | dm-verity |
-| Remote assurance | Telemetry only | TPM-attested |
-| Controller change | Minimal | New PCR baseline |
-| Device change | Loader + dm-verity | + PCR extend code |
-| Migration risk | None | PCR policy (Q2) |
-| **Effort (dev only)** | **3 SP** | **4 SP** |
+Note on current behavior: both `extsloader` and `vaultmgr` are started by the same
+`zedbox` process, but as separate asynchronous agents. Existing
+`vaultmgr waitUnsealed`/`wait.WaitForVault` logic is used by other components to wait
+for vault readiness; it does not enforce `extsloader -> PCR12 extend -> vaultmgr unseal`
+ordering. Without an explicit handshake, race conditions can trigger repeated recovery
+behavior during upgrades.
 
-The 3 SP base (Option 1A) covers the full Extension Loader: dm-verity setup, erofs mount,
-service management, and degraded mode. The effort delta between 1A and 1B is moderate:
-the PCR extend code itself is small, but it introduces the sealing policy question (Q2)
-and requires controller coordination.
+### Extension Placement on PERSIST
 
-### Question 2: Should the Extension PCR be in the sealing set?
+Chosen paths:
+- `/persist/ext-imga.img`
+- `/persist/ext-imgb.img`
 
-This question only applies if PCR measurement is chosen (1B). If no PCR measurement
-(1A), this is moot.
-
-**Option 2A — Not in sealing set (attestation only)**: The Extension PCR is used for
-attestation (controller can verify), but vault unsealing does not depend on it.
-
-- **Graceful degradation preserved**: If Extension fails, vault still unseals, Core boots
-  fully, device is reachable for recovery.
-- **Policy migration required**: The default sealing set includes PCRs 0–14 (except 5, 15).
-  If we choose a PCR in this range (like 12), we must update the sealing policy to exclude
-  it before rollout. This requires the controller to push a new `VaultKeyPolicyPCR` that
-  omits the Extension PCR, or a code change to the default.
-- **Controller work**: Must push updated sealing policy to all devices before Extension PCR
-  starts being extended. This is a one-time fleet-wide policy update.
-
-**Option 2B — In sealing set**: Vault unsealing requires Extension PCR to match.
-
-- **Strongest binding**: A device with wrong Extension cannot access encrypted data.
-- **No degradation vs master**: If the vault fails to unseal today (e.g., after an update
-  changes PCR 13), the device already enters the same state: nodeagent triggers maintenance
-  mode after 5 minutes, baseosmgr/downloader/verifier block on `WaitForVault()`, no
-  workloads run, but nim/zedagent/nodeagent stay up for controller communication and
-  device reporting. Adding Extension PCR to the sealing set does not change this behavior
-  — it just adds one more reason the vault might not unseal (Extension PCR mismatch),
-  alongside the existing Core PCR mismatch. The recovery path is the same: controller
-  sends backup key, vault re-seals to new PCR values.
-- **Update complexity**: Every EVE update changes the Extension PCR. Vault recovery must
-  handle this alongside the existing PCR 13 change. The two-party key escrow mechanism
-  already handles this pattern, but it doubles the number of changing PCRs per update.
-
-**Recommendation**: Option 2A (attestation only, not in sealing) is simpler to roll out
-because it avoids the PCR policy migration coordination. But 2B is viable — it does not
-degrade device behavior compared to how master handles vault unsealing failures today.
-
-| | 2A: Not in sealing | 2B: In sealing |
-|--|-------------------|----------------|
-| Degraded mode | Works (vault unseals) | Same as master vault-failure behavior |
-| baseosmgr (updates) | Works | Blocked until vault recovery (same as today) |
-| Extension required for boot | No | No (but vault locked without it) |
-| Policy migration | One-time PCR exclusion | None (already in set) |
-| Update recovery | Same as today | More PCRs changing per update |
-| **Effort (dev only)** | **+0.5 SP** (policy migration) | **+0 SP** (no code changes needed) |
-
-### Question 3: Should Extension Image live inside the vault directory?
-
-The vault (`/persist/vault/`) is encrypted by a key sealed to TPM PCRs. It is only
-accessible after `vaultmgr` successfully unseals the vault key.
-
-**Option 3A — Outside vault (plaintext on PERSIST)**: Extension Image at
-`/persist/ext-imga.img`, `/persist/ext-imgb.img`.
-
-```
-Boot ordering:
-  storage-init mounts /persist     ← Extension accessible HERE
-      ↓
-  extsloader verifies + mounts     ← runs immediately
-      ↓
-  vaultmgr unseals vault           ← happens in parallel
-```
-
-- **Pro**: Extension services start earlier (no vault dependency). Simpler implementation.
-- **Con**: An offline attacker (physical access, boots from USB) can read and modify the
-  Extension file on PERSIST. Modification is caught by dm-verity on next boot (image won't
-  load), but the attacker achieves denial of service (forces degraded mode). The attacker
-  can also delete the file entirely.
-- **Security**: dm-verity catches tampering. Attacker cannot inject malicious code into
-  Extension. The worst case is DoS (forced degraded mode).
-
-**Option 3B — Inside vault** (`/persist/vault/ext-imga.img`,
-`/persist/vault/ext-imgb.img`):
-
-```
-Boot ordering:
-  storage-init mounts /persist     ← vault encrypted, Extension NOT accessible
-      ↓
-  vaultmgr unseals vault           ← must complete first
-      ↓
-  extsloader verifies + mounts     ← can only run AFTER vault unlock
-```
-
-- **Pro**: Offline attacker cannot read Extension contents and cannot perform targeted,
-  content-level modification without unlocking the vault key.
-- **Con**: Extension services start later (after vault unlock). During updates when PCRs
-  change, vault cannot unseal until controller provides backup key. During this window,
-  Extension is inaccessible. However, Core services (including controller communication)
-  run independently. Also, offline deletion/corruption of the encrypted Extension file is
-  still possible and remains a DoS vector.
-- **Security**: Adds at-rest confidentiality and raises the bar for offline tampering.
-  dm-verity still enforces runtime integrity. This does not fully prevent offline DoS.
-
-**Upgrade path implication**: Vault placement directly affects the system upgrade flow.
-
-With **3A (outside vault)**, the upgrade path is straightforward:
-1. baseosmgr downloads new Core + Extension.
-2. Writes new Core to inactive IMGA/IMGB partition.
-3. Writes new Extension to `/persist/ext-{inactive}.img`.
-4. Device reboots. New PCR values → vault sealed to old values → vault recovery needed.
-5. But Extension is **outside** vault — accessible immediately regardless of vault state.
-6. Extension Loader can verify and mount the new Extension while vault recovery proceeds
-   in parallel. Extension services start without waiting for vault.
-
-With **3B (inside vault)**, the upgrade path has an additional dependency:
-1. Same download and write (baseosmgr can write to vault because vault is still unlocked
-   during the pre-reboot phase — PCR values haven't changed yet).
-2. Device reboots. New PCR values → vault cannot unseal.
-3. Extension Image is **inside** vault — encrypted, inaccessible.
-4. Device runs in degraded mode (Core only) until vault recovery completes.
-5. Controller provides backup key → vault unseals → Extension becomes accessible.
-6. Extension Loader verifies and mounts. Extension services start.
-
-The degraded-mode window during vault recovery is typically short (seconds to minutes,
-depending on controller reachability). Core services handle controller communication, so
-recovery proceeds normally. But for deployments with intermittent connectivity, this window
-could be longer.
-
-**Trade-off summary**:
-
-| | 3A: Outside vault | 3B: Inside vault |
-|--|------------------|------------------|
-| Extension start time | Earlier (parallel with vault) | Later (after vault unlock) |
-| Extension during update | Available immediately after reboot | **Unavailable until vault recovery** |
-| Offline DoS prevention | No (can delete/corrupt file) | No (delete/corrupt still possible) |
-| Offline tampering | Caught by dm-verity | Harder (encrypted at rest) + dm-verity at load time |
-| Upgrade complexity | Simpler | Vault recovery dependency |
-| Implementation complexity | Simpler | Vault unlock ordering |
-| **Effort (dev only)** | **baseline** | **+1.5 SP** (vault dependency + upgrade ordering) |
-
-**Recommendation**: Option 3B (inside vault) for production deployments where physical
-access is a concern. Option 3A for environments where offline DoS is not a significant
-threat and faster Extension availability during updates is preferred. This could also be
-a per-deployment configuration rather than a build-time decision — the Extension Loader
-can check both locations with vault-path preferred.
-
-### Combined Security Approaches
-
-The three questions produce independent choices that combine into overall security postures.
-Three practical combinations:
-
-**Approach A — Speed-first (1A + 3A)**: dm-verity only, no PCR, outside vault.
-- Fastest to implement. Strong local integrity. Weakest remote assurance.
-- Controller relies on telemetry for Extension state.
-- Extension available immediately after update reboot (no vault dependency).
-- **Security-specific dev effort: 3 SP.** Controller: 2 SP (×2 = 4 SP effective).
-- **Controller dependency**: Low. Health display is additive, not a blocker for device work.
-
-**Approach B — Balanced (1B + 2A + 3B)**: dm-verity + userspace PCR (not in sealing) +
-vault placement.
-- TPM-attested Extension state. Offline DoS prevention. Graceful degradation preserved.
-- Requires PCR policy migration before rollout.
-- Extension unavailable during post-update vault recovery window.
-- **Security-specific dev effort: 6 SP.** Controller: 5 SP (×2 = 10 SP effective).
-- **Controller dependency**: High. PCR policy must be deployed fleet-wide **before**
-  PCR-enabled images ship. Device work is blocked on controller delivery for production
-  rollout.
-
-**Approach B' — Balanced without vault (1B + 2A + 3A)**: dm-verity + userspace PCR +
-outside vault.
-- Same TPM-attested Extension state. No offline DoS prevention. Simpler upgrade path.
-- Extension available immediately after reboot.
-- **Security-specific dev effort: 4.5 SP.** Controller: 5 SP (×2 = 10 SP effective).
-- **Controller dependency**: Same as B — high.
-
-These are development-only, security-choice-specific estimates. Full effort including
-shared work (Generic Core Image, build system, installer, baseosmgr) and Eden testing
-is in Section 10.
+Implications:
+- Extension is available early after reboot.
+- Physical-access DoS (delete/corrupt file on PERSIST) remains possible, as with many
+  other physical-access vectors.
+- dm-verity still blocks silent code injection and detects tampering at read time.
 
 ## 7. Installation Flows
 
-EVE can be installed via several methods. Each method must deliver the Extension Image to
-the device alongside the Core Image. The security approach (from Section 6) affects where
-and how the Extension Image is placed.
+Every install path must deliver both images:
+- Core Image -> IMGA partition
+- Extension Image -> PERSIST file (`/persist/ext-imga.img`)
 
-### Current Installation: Single Rootfs
+### Current Installation Baseline
 
-In master, every installation method writes one `rootfs.img` to the IMGA partition. The
-installer (`pkg/installer/install`) receives the rootfs via `/bits/rootfs.img` (bound from
-the installer Linuxkit config in `images/installer.yml.in`). `make-raw` creates the GPT
-layout, `dd` copies the squashfs directly to the partition.
+Today installer writes one `rootfs.img` to IMGA via `pkg/installer/install`.
+Partition layout and flow come from `make-raw` and installer scripts.
 
-### Split Installation: Core + Extension
+### Split Installation Flow
 
-With split rootfs, the installer must deliver two artifacts:
-- Core Image → IMGA partition (same as today's rootfs.img)
-- Extension Image → PERSIST partition (as a file)
-
-The Core Image write is identical to today. The new step is placing the Extension Image.
-
-### Method 1: USB Installer
-
-The standard installation path. User boots from USB media containing the installer.
-The USB media is typically prepared using ZFlash (see Section 9), which writes the
-installer `.raw` image to the USB stick. With universal images, ZFlash will also
-parametrize the CONFIG partition (e.g., setting the HV type) — this capability exists
-as a local prototype but is not yet in production. ZFlash is a preparation tool — the
-actual installation runs on the target device.
-
-**Current flow** (`pkg/installer/install`):
 ```
-1. Boot installer from USB
-2. Probe for destination disk (eve_install_disk= or auto-detect)
-3. Create GPT partition table (make-raw): EFI, IMGA, IMGB, CONFIG, P3
-4. Write rootfs.img → IMGA partition (dd)
-5. Initialize PERSIST (ext4 or ZFS based on HV type)
-6. Write CONFIG partition (certs, server URL)
-7. Mark IMGA as bootable (GPT priority)
+1. Boot installer (USB or iPXE)
+2. Detect target disk
+3. Create GPT layout (EFI, IMGA, IMGB, CONFIG, P3)
+4. Write Core Image to IMGA
+5. Initialize PERSIST
+6. Copy /bits/rootfs-ext.img -> /persist/ext-imga.img
+7. Write CONFIG partition
+8. Mark IMGA bootable
 ```
 
-**Split flow additions**:
-```
-4a. Write Core Image → IMGA partition (dd, same as today)
-5a. Initialize PERSIST
-5b. [If vault placement (3B)]: vaultmgr creates vault on first boot,
-    Extension copied to /persist/vault/ext-imga.img after vault init
-    [If plaintext (3A)]: copy Extension to /persist/ext-imga.img during install
-```
-
-For vault placement (3B), the installer cannot write directly into the vault because vault
-encryption is set up on first boot by `vaultmgr`, not during installation. Two options:
-
-**Option A — First-boot copy**: Installer places Extension at a temporary location
-(`/persist/ext-staging.img`). On first boot, after vault is created, Extension Loader moves
-it into `/persist/vault/ext-imga.img`.
-
-**Option B — Installer initializes vault**: The installer calls `vaultmgr`-like code to
-create vault and seal the key during installation. More complex but Extension is in vault
-from the start.
-
-For plaintext placement (3A), the installer simply copies the file during installation.
-No first-boot step needed.
-
-**How Extension reaches the installer**: The installer image bundles the Extension Image
-at `/bits/rootfs-ext.img` (via `images/installer.yml.in` file binding):
+`images/installer.yml.in` must include Extension artifact binding:
 
 ```yaml
-# images/installer.yml.in
 - path: /rootfs-ext.img
   source: rootfs-ext.img
   optional: true
 ```
 
-The installer script copies it to PERSIST:
+Installer copy logic:
+
 ```bash
-# pkg/installer/install
 if [ -f /bits/rootfs-ext.img ]; then
-    cp /bits/rootfs-ext.img /persist/ext-imga.img   # or vault path
+    cp /bits/rootfs-ext.img /persist/ext-imga.img
 fi
 ```
 
-**Effort impact by approach**:
+### USB and iPXE
 
-| | Approach A (no PCR, plaintext) | Approach B/B' (PCR, vault/plain) |
-|--|-------------------------------|--------------------------------|
-| Installer change | Copy ext to /persist | Same (+ vault staging for 3B) |
-| make-raw change | None | None |
-| First-boot step | None | Move from staging to vault (3B) |
+- **USB**: normal production path; ZFlash prepares media, installer executes on device.
+- **iPXE/network**: same installer script path, but should be re-validated due to known
+  fragility in existing iPXE tooling.
 
-### Method 2: iPXE / Network Boot
+### Installation Effort
 
-EVE has iPXE-based network installation support (`tools/makenet.sh`,
-`pkg/eve/installer/ipxe.efi.cfg`). This path has a history of breakage — it was fixed
-multiple times in May–June 2025 and has fragile duplicated logic between `makenet.sh`
-and `runme.sh`. It is not as heavily tested as USB installation.
-
-When functional, the network installer runs the same `pkg/installer/install` script as
-the USB path. The Extension Image would be bundled inside the installer ISO, so no
-additional split-rootfs-specific effort is needed beyond what the USB installer requires.
-However, network boot should be verified as working before relying on it for split
-rootfs testing.
-
-### Installation Flow Summary
-
-The EVE installer (`pkg/installer/install`) is non-interactive by default — it reads
-kernel command-line parameters (`eve_install_disk`, `eve_install_server`, etc.) and
-auto-detects everything else. There is no separate "headless" mode; non-interactive is
-the normal behavior. An opt-in interactive TUI exists (selected via GRUB menu) but is
-not the common path.
-
-All installation paths — USB boot and iPXE/network boot — run the same installer script.
-ZFlash prepares the USB media but does not affect the installation flow itself
-(see Section 9).
-
-| Method | Extension delivery | Extra work vs current | Security approach impact |
-|--------|-------------------|----------------------|------------------------|
-| USB installer | Bundled in installer media | Copy to PERSIST (+staging for vault) | Vault: first-boot staging |
-| iPXE/network | Bundled in installer ISO | Same as USB (if iPXE is functional) | Same as USB |
-
-**Effort for installation changes: 0.5 SP development** (add Extension copy to installer
-script + optional vault staging; Eden testing in Section 10).
+- Device effort: **0.5 SP**
+- Scope: installer copy path, media recipe update, install validation
 
 ## 8. System Upgrade Flow
 
-System upgrades are the most security-sensitive lifecycle event: the running device
-downloads and installs new software, reboots into it, and validates it works. The Extension
-Image must participate in this flow correctly.
+Split updates always carry Core+Extension together (same version). No Extension-only
+upgrade track.
 
-### Current A/B Update Mechanism
-
-```
-1. Controller sends BaseOsConfig to zedagent
-   └─ Contains: version, ContentTreeUUID, Activate=true
-2. baseosmgr receives config
-   └─ Requests volumemgr to download + verify image (SHA256)
-3. volumemgr downloads to Content Addressable Storage on PERSIST
-   └─ Transitions to LOADED state
-4. baseosmgr assigns target partition
-   └─ If booted from IMGA → target is IMGB (and vice versa)
-5. Worker writes image to target partition
-   └─ zboot.WriteToPartition() — extracts from CAS to raw device
-6. baseosmgr sets GPT priority, marks partition "updating"
-7. Device reboots into new partition
-8. nodeagent monitors health (testing window)
-   └─ Must reach controller within timeout
-9. Success: mark new partition "active", old becomes "unused"
-   Failure: next reboot falls back to old partition automatically
-```
-
-### Split Update: Core + Extension
-
-Core and Extension are always the same version. There are no Extension-only updates. The
-update package contains both artifacts. baseosmgr must write both during a single update
-transaction.
-
-**Updated flow**:
+### Updated A/B Flow
 
 ```
-1-3. Same as current (download + verify)
-4.   baseosmgr assigns target partition for Core (IMGB if booted from IMGA)
-5a.  Worker writes Core Image to target partition (same as today)
-5b.  baseosmgr writes Extension Image to PERSIST:
-     [Approach 3A]: /persist/ext-{inactive}.img
-     [Approach 3B]: /persist/vault/ext-{inactive}.img
-     (where {inactive} matches the target Core partition; vault is still accessible
-      pre-reboot because PCRs have not changed yet)
-6.   Mark partition "updating"
-7.   Device reboots
+1. Controller sends BaseOsConfig
+2. baseosmgr requests download/verify via volumemgr+verifier
+3. baseosmgr selects inactive Core slot (IMGA/IMGB)
+4. Write Core to inactive partition
+5. Write Extension to matching inactive file:
+   /persist/ext-imga.img or /persist/ext-imgb.img
+6. Mark slot updating, reboot
 ```
 
-**Post-reboot (Approach 3A — outside vault)**:
-```
-8a.  GRUB measures new Core → PCR 13 changes
-8b.  Vault cannot unseal (PCR mismatch) → vault recovery starts
-8c.  Extension Loader finds /persist/ext-{active}.img → accessible immediately
-8d.  Verifies via dm-verity (root hash from new Core) → mounts → starts services
-8e.  [If PCR measurement (1B)]: extends PCR with Extension hash
-8f.  nodeagent testing window proceeds normally
-8g.  Vault recovery completes in parallel (controller provides backup key)
-9.   Test passes → mark active
-```
-
-**Post-reboot (Approach 3B — inside vault)**:
-```
-8a.  GRUB measures new Core → PCR 13 changes
-8b.  Vault cannot unseal → vault recovery starts
-8c.  Extension Image INACCESSIBLE (inside encrypted vault)
-8d.  Device in degraded mode — Core services only
-8e.  Controller provides backup key → vault unseals
-8f.  Extension Loader finds /persist/vault/ext-{active}.img → verifies → mounts
-8g.  [If PCR measurement (1B)]: extends PCR with Extension hash
-8h.  nodeagent testing window continues
-9.   Test passes → mark active
-```
-
-### Rollback Behavior
-
-Rollback is automatic via GRUB's gptprio mechanism. If the new partition fails to boot or
-the testing window expires without controller contact:
+### Post-Reboot Contract
 
 ```
-1. GRUB boots the previous partition (the one active before the failed update)
-2. Old Core is intact, old PCR 13 restored
-3. Old Extension Image for that partition is still at /persist/[vault/]ext-{rollback}.img
-4. Extension Loader loads old Extension → old services start
-5. Vault unseals normally (old PCR values match sealed policy)
+1. GRUB measures Core (PCR13)
+2. extsloader verifies+mounts Extension via dm-verity
+3. extsloader extends PCR12 and emits readiness
+4. vaultmgr unseal path executes after readiness/terminal state
+5. nodeagent testing window evaluates full device health (Core + Extension)
 ```
 
-Rollback works correctly because:
-- baseosmgr only overwrites the Extension file paired with the inactive target partition
-- The Extension file paired with the currently active partition is never modified during updates
-- A/B naming convention ensures the correct Extension pairs with the correct Core
+If Extension cannot load or PCR12 path is terminal-failed, device stays reachable in
+degraded mode and update should fail testing window -> rollback to prior slot.
 
-### Testing Window Considerations
+### Rollback and Extension Rehydrate Fallback
 
-The existing testing window (nodeagent monitors controller reachability) needs Extension
-awareness:
+Rollback is still GPT-native for Core (`gptprio` on IMGA/IMGB). Extension rollback is
+file-native on PERSIST and therefore less robust than dedicated A/B partitions.
 
-- **What to test**: Core services are healthy AND Extension services are healthy (if
-  Extension is a required component).
-- **Timeout behavior**: If Extension fails to load within the testing window, should the
-  update be considered failed?
+Rollback policy for Extension:
+1. On rollback boot, first use the Extension file paired with the rolled-back Core slot
+   (`ext-imga.img` or `ext-imgb.img`) using normal file-based A/B logic.
+2. Only if that paired file is missing/corrupt or fails verification/load, enter degraded
+   but controller-reachable mode and trigger re-download.
+3. Rewrite the failed slot Extension file from the downloaded artifact and retry load.
+4. Optionally refresh the inactive slot file after recovery to restore full A/B symmetry.
 
-**Recommendation**: Extension failure during testing window should trigger rollback.
-If Extension doesn't load, the new version is not fully functional, and rolling back to
-the previous known-good state is the correct action.
+This follows existing baseosmgr safety precedent (prefer re-download+overwrite when slot
+content trust is uncertain).
 
-### baseosmgr Changes Required
+### baseosmgr Delta
 
-| Change | Description | Approach |
-|--------|-------------|----------|
-| Extension download | Download Extension alongside Core (same ContentTree) | All |
-| Extension write | Write Extension to PERSIST after Core write | All |
-| Extension verification | Verify Extension SHA256 before writing | All |
-| A/B file management | Manage ext-imga.img / ext-imgb.img naming | All |
-| Vault staging | Handle staging → vault move on first boot | B (with 3B) |
-| Testing window | Include Extension health in test criteria | All |
-| Rollback | Preserve old Extension file (already handled by A/B naming) | All |
+| Change | Description |
+|--------|-------------|
+| Extension download/write | Handle Extension artifact together with Core |
+| A/B file pairing | Keep `ext-imga.img`/`ext-imgb.img` consistent with Core slot |
+| Testing window criteria | Require Extension health for successful activation |
+| Recovery fallback | Use paired rollback file first; re-download only if that file fails |
 
 ### Update Package Format
 
-Current: single rootfs.img (squashfs) in ContentTree.
-Split: Core + Extension bundled in the same ContentTree.
-
-Two options for bundling:
-
-**Option A — Single container with both images**: One OCI container containing both
-`rootfs.img` (Core) and `extension.img` (Extension). baseosmgr extracts both from the
-same download. Simpler controller-side (one ContentTree per update).
-
-**Option B — Separate ContentTrees**: Core and Extension as separate downloadable artifacts.
-Allows theoretical independent updates (not planned). More complex controller-side.
-
-**Recommendation**: Option A (single container). Core and Extension are always the same
-version. Bundling simplifies controller-side and eliminates version mismatch risk.
-
-### Effort for Upgrade Changes
-
-| Approach | baseosmgr changes | Controller changes | Dev effort | Controller (×2) |
-|----------|------------------|-------------------|------------|-----------------|
-| A | Extension write + A/B files + testing | Bundle format | 2 SP | 2×2 = 4 SP |
-| B'/B | Same + PCR extend + vault staging (B) | Bundle + PCR baseline | 2 SP | 2×2 = 4 SP (upgrade-specific) |
-
-Note: the total controller effort for B'/B is 5 SP raw (×2 = 10 SP effective), which
-includes 3 SP for PCR baseline management and sealing policy work beyond the upgrade
-flow. See Section 10 for the full breakdown.
+Chosen format: **single bundle artifact** containing both Core and Extension. This keeps
+version coupling explicit and simplifies controller/device coordination.
 
 ## 9. ZFlash Integration
 
-ZFlash is the tool used to prepare USB installer media. It is a Qt/QML desktop application
-(fork of Raspberry Pi Imager) that writes EVE installer `.raw` images to USB sticks or
-SD cards from a host machine (Windows, macOS, Linux). On EVE master today, ZFlash is a
-straightforward image writer — it does not parametrize the installer image. It does not
-represent a separate installation method; the actual installation runs on the target device
-via the standard installer script (`pkg/installer/install`), as described in Section 7.
+ZFlash prepares USB installer media. It does not execute installation logic itself.
 
-### Universal Image Support (local prototype, not yet pushed)
+### Universal Image Prototype Status
 
-A local prototype adds support for universal EVE images with HV selection at flash time.
-This code has not been pushed to the ZFlash repository and needs review before merging.
-It will become relevant when EVE starts producing universal images (Section 4).
+Local prototype (not merged yet) adds:
+1. Detect universal images by probing CONFIG partition (`eve-hv-supported`)
+2. Let user pick HV (KVM/Kubevirt/Xen)
+3. Write `eve-hv-type` into CONFIG on flashed media
 
-The prototype adds:
+### Split Rootfs Impact
 
-1. **Detect universal images**: Probe the source `.raw` file's CONFIG partition (GPT
-   entry 4) for an `eve-hv-supported` file. If found, show the HV selection popup.
-   If not found, behave as today.
-2. **Let the user choose HV type**: Popup with KVM/Kubevirt/Xen buttons, enabled based
-   on the supported list.
-3. **Write HV type to CONFIG**: After flashing, write `eve-hv-type` to the CONFIG
-   partition on the target USB media. On first boot, the installer copies CONFIG to the
-   device, and GRUB reads the HV type on subsequent boots.
-
-| Component | File (zflash repo) | Status |
-|-----------|-------------------|--------|
-| Universal image detection | `imagewriter.cpp` — `isEveImage()`, `getEveHvSupported()` | Local prototype |
-| HV selection popup | `main.qml` — KVM/Kubevirt/Xen buttons | Local prototype |
-| Post-flash HV write | `downloadthread.cpp` — `setEveCustomization()` | Local prototype |
-| FAT12 filesystem support | `devicewrapperfatpartition.cpp` | Local prototype |
-| CONFIG partition probing | `imagewriter.cpp` — reads GPT entry 4 | Local prototype |
-
-### Split Rootfs Impact on ZFlash
-
-ZFlash does not interact with the Extension Image directly. The Extension Image is bundled
-inside the installer `.raw` image alongside the Core Image. The installer script running
-on the target device handles placing Extension on PERSIST. ZFlash's awareness of split
-rootfs is limited to optional UI enhancements:
+ZFlash does not place Extension on target disk; installer does that. Split-rootfs impact
+is limited to UX/validation around installer payload completeness.
 
 | Change | Description | Effort |
 |--------|-------------|--------|
-| Extension presence indicator | Show in UI whether installer includes Extension Image | 0.25 SP |
-| Validation | Verify Extension Image is present in source .raw for split images | 0.25 SP |
-| Documentation | Update ZFlash user docs for universal + split images | Included |
+| Extension presence indicator | Show if source `.raw` includes Extension artifact | 0.25 SP |
+| Payload validation | Validate split image completeness before flashing | 0.25 SP |
 
-**Total ZFlash effort: 0.5 SP** (UI polish and validation).
+**Total ZFlash effort: 0.5 SP**
 
-## 10. Effort Comparison Matrix
+### Re-estimation Basis (Code-Grounded)
 
-Reference: USB boot priority feature = 8 story points (pillar types + zedagent LPS
-integration + KVM hypervisor + UEFI firmware patches + docs; ~2,700 hand-written lines
-across 42 files in 6 subsystems, 3 contributors, ~9 weeks).
+Estimate assumptions are tied to existing code:
 
-### Per-Workstream Effort (Development)
+- `tpmmgr` quote path already includes PCR 0-15.
+- `DefaultDiskKeySealingPCRs` already includes PCR12.
+- `zedagent` attestation path already carries TPM event log payload.
+- `evetpm.copyMeasurementLog()` provides concrete integration pattern for extra log context.
+- `vaultmgr` already supports controller-provided `VaultKeyPolicyPCR`.
+- `device-steps.sh` currently starts `extsloader` and `vaultmgr` asynchronously, so
+  policy-coupled mode requires explicit ordering/handshake work.
 
-| Workstream | Description | Approach A | Approach B' | Approach B |
-|------------|-------------|-----------|-------------|-----------|
-| **Generic Core Image** | Runtime guards (~50 sites), build tag removal (~20 files), CONFIG HV selection | 2 | 2 | 2 |
-| **Extension Loader** | dm-verity setup, erofs mount, service management, degraded mode. POC exists | 3 | 3 | 3 |
-| **PCR measurement** | Userspace PCR extend + sentinel states. Follows existing TPM patterns | — | 1 | 1 |
-| **PCR policy migration** | Change default PCR set constant | — | 0.5 | 0.5 |
-| **Vault placement** | Extension in vault, first-boot staging, boot ordering | — | — | 1.5 |
-| **Installer changes** | Add Extension copy to installer script | 0.5 | 0.5 | 0.5 |
-| **baseosmgr upgrade** | Extension write, A/B file management, testing window | 2 | 2 | 2 |
-| **ZFlash** | UI indicator, validation | 0.5 | 0.5 | 0.5 |
-| **Build system** | mkrootfs-erofs pkg, dm-verity hash gen, build ordering, kernel CONFIG flags | 2 | 2 | 2 |
-| **Documentation** | Operator docs, migration guide | 0.5 | 0.5 | 0.5 |
-| **Dev subtotal** | | **10.5** | **12** | **13.5** |
-| | | | | |
-| **Testing: docs only** | Test case docs for verification team, no Eden code | 2 | 2.5 | 3 |
-| **Testing: minimal Eden + docs** | One smoke test + full test case docs | 4 | 5 | 6 |
-| **Testing: full Eden** | Comprehensive Eden automation (see breakdown below) | 15 | 18 | 20 |
-| | | | | |
-| **TOTAL (docs only)** | | **~12.5** | **~14.5** | **~16.5** |
-| **TOTAL (minimal Eden + docs)** | | **~14.5** | **~17** | **~19.5** |
-| **TOTAL (full Eden)** | | **~25.5** | **~30** | **~33.5** |
-| **Controller team (×2)** | PCR baseline, health display, bundle format, policy | 2×2 = **4** | 5×2 = **10** | 5×2 = **10** |
-| **GRAND TOTAL (docs only)** | | **~17** | **~25** | **~27** |
-| **GRAND TOTAL (minimal Eden + docs)** | | **~19** | **~27** | **~30** |
-| **GRAND TOTAL (full Eden)** | | **~30** | **~40** | **~44** |
+## 10. Effort Estimate (Selected Design)
 
-Development estimates are calibrated against the development portion of USB boot priority
-(~3 SP dev out of 8 SP total). Testing estimates are calibrated against its Eden testing
-portion (~5 SP). The first Eden test suite (Generic Core) is the most expensive because it
-sets up shared infrastructure (QEMU configs, CI/CD); subsequent suites reuse it and are
-cheaper.
+Calibration reference: USB boot priority feature = **8 SP** total.
 
-Controller effort carries a ×2 multiplier because it is outside our control. Their
-schedule, priorities, and implementation approach are unpredictable. The raw estimate
-(2/5/5 SP) reflects the work itself; the multiplier reflects the coordination overhead
-and scheduling risk.
+### Development Workstreams
 
-### Testing Breakdown
+| Workstream | Scope | SP |
+|------------|-------|----|
+| Generic Core image | Runtime guards, build-tag removal, HV runtime selection plumbing | 2 |
+| Extension loader | dm-verity mount path, service lifecycle, degraded mode | 3 |
+| PCR12 measurement path | PCR12 extend states + attestation log context wiring | 1 |
+| Sealing coupling + ordering | deterministic extend/unseal contract + race-safe validation | 1 |
+| Installer changes | Extension artifact copy during install | 0.5 |
+| baseosmgr upgrade changes | Core+Extension paired write, testing window, recovery fallback | 2 |
+| ZFlash updates | split payload validation/indicator | 0.5 |
+| Build system | erofs image tooling, dm-verity root hash generation, build ordering | 2 |
+| Documentation | operator and rollout docs | 0.5 |
+| **Development subtotal** | | **12.5** |
 
-Full Eden testing is estimated at ~1.4–1.5× development effort, dominated by Eden
-integration tests.
-The USB boot priority feature required ~2,700 lines of EVE code but ~4,500 lines of Eden
-test code (17 test cases, QEMU setup scripts, CI/CD integration, eclient endpoint
-extensions). Split rootfs testing follows the same pattern: each scenario needs QEMU boot
-cycles, controller interaction, partition state verification, and failure injection.
+Ordering/coupling extra is not zero even with PCR12 default, because deterministic boot
+ordering and race-safe validation are still required to avoid recovery-loop behavior.
 
-The first Eden test suite (Generic Core Image) is the most expensive because it
-establishes shared test infrastructure — QEMU configurations, helper scripts, CI/CD
-pipeline. Subsequent suites reuse this infrastructure and are cheaper.
+### Testing Tiers
 
-| Test area | What it covers | A | B' | B |
-|-----------|---------------|---|----|----|
-| Generic Core Image | Eden: boot KVM, Xen, Kubevirt with same image; runtime guards; first test suite sets up shared QEMU/CI infrastructure | 4 | 4 | 4 |
-| Install + first boot | Eden: USB installer places Extension on PERSIST; dm-verity verification; Extension services start | 3 | 3 | 3 |
-| Upgrade + rollback | Eden: A/B update with Core+Extension; rollback on failure; A/B file integrity. Most complex scenario (multiple boot cycles) | 4 | 4 | 4 |
-| Degraded mode | Eden: corrupt/delete Extension; device stays reachable; dm-verity rejects tampered image | 2 | 2 | 2 |
-| Attestation + PCR | Eden: PCR extend with sentinel states; correct PCR values in quotes; baseline management | — | 3 | 3 |
-| Vault + Extension ordering | Eden: Extension in vault; upgrade with vault recovery window; first-boot staging | — | — | 2 |
-| Regression | Run existing Eden suites on split image; CI/CD integration for split builds | 2 | 2 | 2 |
-| **Testing total (full Eden)** | | **15** | **18** | **20** |
+| Tier | Scope | SP |
+|------|-------|----|
+| Docs only | Detailed manual test-case docs for verification team | 3 |
+| Minimal Eden + docs | Smoke Eden automation + full docs | 5.5 |
+| Full Eden | Full install/upgrade/rollback/degraded/race automation | 19 |
 
-### Testing Strategy: Test Case Docs vs Eden Automation
+### Totals (Device + Controller)
 
-The estimates above assume full Eden integration tests for every scenario. Eden is the
-best practice — automated, reproducible, runs in CI — but it is also the dominant cost
-driver (~59% of device effort). We have successfully shipped features in the past by
-providing **detailed test case documentation** for the verification team instead of full
-Eden automation, and it worked well enough.
+| Total Type | Docs only | Minimal Eden + docs | Full Eden |
+|------------|-----------|---------------------|-----------|
+| Device total | ~15.5 SP | ~18 SP | ~31.5 SP |
+| Controller raw | ~1 SP | ~1 SP | ~1 SP |
+| Controller effective (x2) | ~2 SP | ~2 SP | ~2 SP |
+| Grand total | ~17.5 SP | ~20 SP | ~33.5 SP |
 
-**Three testing tiers:**
+Controller multiplier reflects external-team scheduling/coordination uncertainty.
 
-| Tier | What | Effort | Ships with feature? |
-|------|------|--------|---------------------|
-| **Test case docs only** | Detailed step-by-step procedures covering all scenarios (install, upgrade, rollback, degraded mode, tamper, HV matrix). Written for the verification team to execute manually. No new Eden code. | ~2–3 SP total | Yes |
-| **Minimal Eden + docs** | One or two Eden smoke tests (e.g., "install and boot with Extension") plus full test case docs for everything else | ~4–6 SP total | Yes |
-| **Full Eden** | Comprehensive Eden automation of all scenarios | ~15–20 SP total | Ideally, but often deferred |
+## 11. Controller-Side Dependencies (Selected Design)
 
-**Effort impact on Approach A (Phase 0+1):**
+Controller scope for this design is intentionally minimal and informational only.
+No new controller-side security controls are planned.
 
-| Testing tier | Dev | Test | Device total |
-|---|---|---|---|
-| Test case docs only | 10.5 | 2 | **~12.5 SP** |
-| Minimal Eden + docs | 10.5 | 4 | **~14.5 SP** |
-| Full Eden | 10.5 | 15 | **~25.5 SP** |
+### Must-Have
 
-**Honest risk assessment**: Test case docs have worked well enough for us in the past.
-However, management should weigh the criticality: split rootfs touches the boot chain,
-update mechanism, and security verification — a regression here can brick devices.
-Furthermore, we have a pattern of planning to add Eden automation later but never
-actually doing it, because the next urgent task takes priority. If Eden automation is
-not built, the feature relies on manual verification indefinitely, which degrades as the
-codebase evolves and the verification team rotates.
+| Change | Why | When |
+|--------|-----|------|
+| Extension health telemetry | Show Extension `running/failed/missing/degraded` state | Before production rollout |
+| Recovery-state visibility | Make recovery/degraded reasons visible to operators | Before production rollout |
 
-**Recommendation**: Ship with test case docs (or minimal Eden + docs) to meet the
-timeline. Schedule full Eden automation as the **first task of the next phase**, not
-as a separate backlog item. Accept that there is a real risk it will be deprioritized.
-
-### Key Observations
-
-1. **Generic Core Image (2 SP dev) is a prerequisite for all approaches.** It should start
-   first and can proceed in parallel with Extension Loader development.
-
-2. **Approach A has limited controller scope, not zero dependency.** The controller work
-   (2 SP raw, 4 SP effective) is still required for production: split bundle handling and
-   Extension health/degraded telemetry. These changes do not block device-side development
-   or testing, but production rollout should wait for controller readiness.
-
-3. **The jump from A to B'/B adds controller-side risk.** The controller work jumps to
-   5 SP raw (10 SP effective), and it is a hard prerequisite: PCR-enabled images **cannot
-   ship** until the controller team deploys the policy update fleet-wide. The device-side
-   delta is +1.5 SP dev (+3 SP full Eden testing) for B', but the real risk is the
-   controller team's schedule, which is outside our control.
-
-4. **The jump from B' to B is small** — +1.5 SP dev (+2 SP full Eden testing). Vault
-   placement adds complexity to the upgrade path but is incremental and has no additional
-   controller dependency.
-
-5. **Testing cost depends heavily on the chosen tier.** With full Eden automation, testing
-   is ~59% of the device total (reflecting the USB boot priority experience where Eden
-   test code exceeded EVE code). With docs-only testing, the split is ~84% dev / ~16%
-   testing. See "Testing Strategy" above for tier comparison and risk assessment.
-
-## 11. Controller-Side Dependencies
-
-The controller team owns these changes. Device-side work can proceed independently for
-most items, but some changes must be coordinated.
-
-### Must-Have (All Approaches)
-
-| Change | Why | When needed |
-|--------|-----|-------------|
-| Extension health status display | Operator must see Extension state (running/failed/missing) | Before production rollout |
-| Update bundle format | Controller must deliver Core + Extension as bundled package | Before first split update |
-| Degraded mode signaling | API field for Extension state in device info | Before production rollout |
-
-### Needed for Approaches B, B' (PCR measurement)
-
-| Change | Why | When needed |
-|--------|-----|-------------|
-| PCR baseline management for Extension PCR | Controller must recognize new non-zero PCR value | Before PCR-enabled images ship |
-| Sealing policy update | Push VaultKeyPolicyPCR excluding Extension PCR to fleet | **Before** first PCR-enabled image ships |
-| PCR pre-computation | Build system provides expected Extension PCR value per release | Nice-to-have for operator tooling |
-
-**Critical sequencing for PCR approaches**: The sealing policy update must reach all
-devices **before** the first EVE version that extends the Extension PCR is installed.
-If a device installs a PCR-extending image without policy migration, vault unsealing
-fails and the device needs manual recovery. The controller team must implement and
-deploy the policy update before the device team ships PCR-enabled images.
+Assumption used for estimates: existing controller update/attestation flows stay as-is.
+Device-side ordering/race handling remains a device implementation concern.
 
 ### Nice-to-Have
 
 | Change | Why |
 |--------|-----|
-| Extension-specific attestation UI | Show Extension PCR separately from Core PCR in operator view |
-| Auto-baseline for known Extension | Pre-compute and auto-accept PCR changes for known EVE versions |
-| Split update progress | Show Core and Extension write progress independently |
+| Split update progress detail | Better visibility of Core vs Extension write state |
 
-## 12. Recommended Phasing
+## 12. Delivery Plan (Selected Design)
 
-Each phase below shows effort at three testing tiers. See "Testing Strategy" in
-Section 10 for the rationale and risk assessment.
+Target architecture is fixed: Extension measured into PCR12, PCR12 included in sealing
+policy, Extension stored on PERSIST as A/B files.
 
-### Phase 0: Generic Core Image (prerequisite, can start immediately)
-- Remove `//go:build k` tags, add runtime guards
-- CONFIG-based HV selection (GRUB, storage-init, onboot)
-- Universal Linuxkit template
-- **Docs only: 2 SP dev + 0.5 SP docs = ~2.5 SP device**
-- **Minimal Eden + docs: 2 SP dev + 1.5 SP test = ~3.5 SP device**
-- **Full Eden: 2 SP dev + 4 SP test = ~6 SP device**
-- **Controller dependency: none**
-- **Can run in parallel with Phase 1**
+### Scope
 
-### Phase 1: Extension Loader + Build System (solves 300MB problem)
-- Build system: `pkg/mkrootfs-erofs`, dm-verity hash generation, build ordering,
-  kernel CONFIG flags (erofs, dm-verity)
-- Extension Loader (dm-verity setup, erofs mount, service management, degraded mode)
-- Installer changes (Extension delivery to PERSIST)
-- baseosmgr changes (Extension write, A/B management, testing window)
-- ZFlash (Extension presence indicator)
-- **Docs only: ~8.5 SP dev + ~1.5 SP docs = ~10 SP device**
-- **Minimal Eden + docs: ~8.5 SP dev + ~2.5 SP test = ~11 SP device**
-  (one Eden smoke: install + boot + Extension loaded; docs for everything else)
-- **Full Eden: ~8.5 SP dev + ~11 SP test = ~19.5 SP device**
-- **Controller dependency: low.** Health status display and bundle format (2 SP raw,
-  4 SP effective) are needed for production but do not block device-side development
-  or testing.
-- **Result: Approach A functional** — strong local integrity, telemetry-based remote
+- Generic Core unification
+- Split rootfs mechanics (build, installer, extsloader, baseosmgr pairing)
+- PCR12 measurement and attestation visibility
+- Deterministic extend-before-unseal behavior with ordering/race validation
+- Controller informational updates: Extension health telemetry and recovery-state visibility
+- End-to-end install/upgrade/rollback/degraded validation
 
-### Phase 2: PCR Measurement + Policy Migration
-- Extension Loader: PCR extend with sentinel states
-- Controller: PCR baseline management for Extension PCR
-- **Docs only: ~1.5 SP dev + ~0.5 SP docs = ~2 SP device**
-- **Minimal Eden + docs: ~1.5 SP dev + ~1 SP test = ~2.5 SP device**
-- **Full Eden: ~1.5 SP dev + ~3 SP test = ~4.5 SP device**
-- **Controller dependency: high — this is the gating risk.** The controller team must
-  deploy the sealing policy update (VaultKeyPolicyPCR excluding the Extension PCR) to
-  the entire fleet **before** any PCR-enabled EVE image is installed. Device-side work
-  can be developed and tested independently, but production rollout is blocked until
-  the controller delivers. Controller effort: 3 SP raw (×2 = 6 SP effective).
-  Plan for this lead time.
-- **Result: Approach B' functional** — adds TPM-attested Extension state
+### Total Effort
 
-### Phase 3: Vault Placement (optional, if offline DoS is a concern)
-- Extension in vault directory, first-boot staging
-- Upgrade path with vault recovery ordering
-- **Docs only: ~1.5 SP dev + ~0.5 SP docs = ~2 SP device**
-- **Minimal Eden + docs: ~1.5 SP dev + ~1 SP test = ~2.5 SP device**
-- **Full Eden: ~1.5 SP dev + ~2 SP test = ~3.5 SP device**
-- **Controller dependency: none**
-- **Result: Approach B functional** — adds offline tamper protection
+- **Device**: ~15.5 SP (docs only) / ~18 SP (minimal Eden + docs) / ~31.5 SP (full Eden)
+- **Controller effective**: ~2 SP
 
-### Summary: Three Paths
+### Prerequisites and Dependency Gates
 
-| Phase | Docs only | Minimal Eden + docs | Full Eden |
-|-------|-----------|---------------------|-----------|
-| Phase 0: Generic Core | ~2.5 SP | ~3.5 SP | ~6 SP |
-| Phase 1: Split Rootfs (300MB fix) | ~10 SP | ~11 SP | ~19.5 SP |
-| **Phase 0+1 = Approach A** | **~12.5 SP** | **~14.5 SP** | **~25.5 SP** |
-| + Phase 2: PCR | ~2 SP | ~2.5 SP | ~4.5 SP |
-| **Phase 0+1+2 = Approach B'** | **~14.5 SP** | **~17 SP** | **~30 SP** |
-| + Phase 3: Vault | ~2 SP | ~2.5 SP | ~3.5 SP |
-| **Phase 0+1+2+3 = Approach B** | **~16.5 SP** | **~19.5 SP** | **~33.5 SP** |
+| Gate | What must be ready | Unlocks |
+|------|--------------------|---------|
+| G1 | Extension artifact contract is stable (A/B file names, build outputs, expected runtime paths) | Final extsloader integration, baseosmgr pairing logic |
+| G2 | extsloader can verify+mount real Extension image and expose deterministic success/failure states | Final PCR12 extend placement, ordering/race validation |
+| G3 | Deterministic readiness handshake between extsloader and vaultmgr is defined | Fail-closed unseal behavior validation |
+| G4 | Upgrade path writes inactive-slot Extension file and rollback uses paired file first | End-to-end upgrade/rollback validation |
 
-The docs-only path for Phase 0+1 (Approach A) is **~12.5 SP** — about 1.6× USB boot
-priority. With minimal Eden smoke tests, the same path is **~14.5 SP**.
+Important dependency note: PCR and ordering work are tightly coupled to real Extension
+image lifecycle behavior. Final PCR12 placement and ordering validation are blocked until G2.
 
-Full Eden automation (~25.5 SP) can follow as a separate effort — but given our track
-record, it should be scheduled as the first task of the next phase, not a backlog item.
+### Parallel Work Split
 
-### Parallel Tracks
+| Track | Main Work | Start Condition |
+|-------|-----------|-----------------|
+| Device Track A | Generic Core runtime guards + universal behavior | Start immediately |
+| Device Track B | Split mechanics + extsloader + installer + baseosmgr pairing + PCR12 integration + ordering/race validation | Start immediately, then execute internal sequence G1 -> G2 -> G3 -> G4 |
+| Controller Track X | Extension health telemetry + recovery-state visibility | Start once status/API contract from Device Track B is defined |
+| Integration Gate | End-to-end install/upgrade/rollback/race checks | Start after Device Track A + Device Track B + G4 |
+
+### Why This Split
+
+- **General Core stays a dedicated track** because it has real uncertainty and can hit
+  unpredictable blockers (for example, fragile runtime behavior around Kubevirt/KVM
+  compatibility). Running it in parallel prevents that risk from stalling split-rootfs work.
+- **PCR does not get a dedicated track** because only a small slice is truly independent
+  (roughly ~0.5 SP: helper/plumbing). The rest depends on real extsloader lifecycle states
+  and ordering handshake (G2/G3). A separate PCR track would add sync overhead and usually
+  not save meaningful calendar time.
+
+Expected schedule effect (with at least two active device contributors):
+- Main acceleration comes from running Track A and Track B in parallel.
+- Primary benefit is risk isolation: unexpected Generic Core issues do not stall
+  split-rootfs delivery work on Track B.
+- Realistic elapsed-time gain is still modest: about **~1.25-1.5 SP**.
+
+### Delivery Timeline (Conceptual)
 
 ```
-Phase 0: Generic Core ──────────────────────►
-Phase 1: Extension Loader + Build ──────────────────────────────►
-                                    Phase 2: PCR ──────────►
-                                              Phase 3: Vault ─────►
-Controller: Health+Bundle ──────────────► PCR Policy ──────────►
+T0: Device Track A + Device Track B start in parallel
+T1: Device Track B progresses through G1 -> G2 -> G3 -> G4
+T2: Integration gate (requires Track A + Track B + G4)
+T3: Rollout gate
 ```
-
-Phases 0 and 1 can run in parallel before controller changes are delivered. For production
-rollout of Approach A, controller Health+Bundle work is still required. Phase 2 cannot ship
-to production until the controller team deploys the PCR policy update — this is the primary
-scheduling risk. Phase 3 is independent of Phase 2 and has no additional controller
-dependency.
 
 ## 13. Code Anchors
 
@@ -1266,6 +846,8 @@ Key files referenced in this document:
 | `pkg/pillar/cmd/tpmmgr/tpmmgr.go:302-360` | Attestation quote generation |
 | `pkg/pillar/cmd/zedagent/attesttask.go:252-272` | PCR value encoding for attestation |
 | `pkg/pillar/cmd/vaultmgr/vaultmgr.go:434-460` | Controller PCR policy handling |
+| `pkg/pillar/types/verifiertypes.go:14` | Verifier scope note: SHA checksum only |
+| `pkg/pillar/cmd/verifier/lib/verifier.go:42-66` | SHA256 computation and comparison |
 
 ### GRUB and Measurement
 
@@ -1291,6 +873,7 @@ Key files referenced in this document:
 | File | Purpose |
 |------|---------|
 | `pkg/pillar/cmd/baseosmgr/handlebaseos.go` | Update orchestration |
+| `pkg/pillar/cmd/baseosmgr/handlebaseos.go:190-194` | Re-download/overwrite rationale for suspected bad image on other slot |
 | `pkg/pillar/cmd/baseosmgr/worker.go` | Partition write worker |
 | `pkg/pillar/zboot/zboot.go` | Partition state machine |
 | `pkg/pillar/cmd/nodeagent/handletimers.go` | Testing window management |

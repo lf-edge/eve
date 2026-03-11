@@ -426,7 +426,7 @@ func (client *Client) CtrLoadContainer(ctx context.Context, containerID string) 
 	}
 	container, err := client.ctrdClient.LoadContainer(ctx, containerID)
 	if err != nil {
-		err = fmt.Errorf("CtrLoadContainer: Exception while loading container: %v", err)
+		err = fmt.Errorf("CtrLoadContainer: Exception while loading container: %w", err)
 	}
 	return container, err
 }

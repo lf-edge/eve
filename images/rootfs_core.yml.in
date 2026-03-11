@@ -81,6 +81,9 @@ files:
     directory: true
   - path: /etc/eve-platform
     contents: 'EVE_PLATFORM'
+  - path: /etc/ext-verity-roothash
+    source: ext-verity-roothash
+    optional: true
   - path: /etc/securetty
     contents: |
       console

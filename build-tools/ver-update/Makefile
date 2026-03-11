@@ -1,7 +1,7 @@
 # build-tools/ver-update/Makefile
 
 # uses last definition
-ALP_BASE_OS = lfedge/eve-alpine:5.20.0
+ALP_BASE_OS = lfedge/eve-alpine:745ae9066273c73b0fd879c4ba4ff626a8392d04-dirty-fe81aa7
 ALP_BASE_OS = alpine:3.13.0
 UBU_BASE_OS = cassandra:3.11.9
 UBU_BASE_OS = ubuntu:18.04

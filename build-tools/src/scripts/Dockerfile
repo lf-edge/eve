@@ -11,7 +11,7 @@ ARG all_proxy
 # hadolint ignore=DL3018
 RUN apk add --no-cache openssh-client git gcc linux-headers libc-dev util-linux libpcap-dev bash vim make protobuf \
         protobuf-dev sudo tar curl graphviz ttf-freefont patch dnsmasq ca-certificates build-base gettext-dev \
-        libtirpc-dev automake autoconf libtool attr-dev e2fsprogs-dev glib-dev openssl-dev util-linux-dev
+        libtirpc-dev automake autoconf libtool attr-dev e2fsprogs-dev glib-dev openssl-dev util-linux-dev cryptsetup
 
 RUN deluser ${USER} ; delgroup ${GROUP} || :
 RUN sed -ie /:${UID}:/d /etc/passwd /etc/shadow ; sed -ie /:${GID}:/d /etc/group || :
