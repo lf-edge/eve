@@ -156,6 +156,9 @@ COPY --from=build /lib/firmware/intel/ibt-0041-0041* /lib/firmware/intel/
 # Intel AX211NGW
 COPY --from=build /lib/firmware/iwlwifi-so-a0-gf-a0* /lib/firmware/
 COPY --from=build /lib/firmware/intel/ibt-0040-0041* /lib/firmware/intel/
+# Intel Wi-Fi 6E AX1690i/AX211 (gf4 variant) on Intel-NUC12SNKi7
+COPY --from=build /lib/firmware/iwlwifi-so-a0-gf4-a0-89.ucode /lib/firmware/
+COPY --from=build /lib/firmware/iwlwifi-so-a0-gf4-a0.pnvm /lib/firmware/
 # Intel AX201NGW
 COPY --from=build /lib/firmware/iwlwifi-so-a0-hr-b0* /lib/firmware/
 # Intel Wi-Fi 6E AX211 160MHz on ASUS-NUC14SRK (Meteor Lake PCH CNVi)
