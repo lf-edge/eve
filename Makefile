@@ -221,6 +221,7 @@ ROOTFS_PKGS_TAR=$(ROOTFS_TAR_BASE)-pkgs.tar
 ROOTFS_UNIVERSAL_IMG=$(ROOTFS_IMG_BASE)-universal.img
 ROOTFS_CORE_IMG=$(ROOTFS_IMG_BASE)-core.img
 ROOTFS_EXT_IMG=$(ROOTFS_IMG_BASE)-ext.img
+ROOTFS_EXT_FORMAT?=erofs
 ROOTFS_UNIVERSAL_TAR=$(ROOTFS_TAR_BASE)-universal.tar
 ROOTFS_CORE_TAR=$(ROOTFS_TAR_BASE)-core.tar
 ROOTFS_EXT_TAR=$(ROOTFS_TAR_BASE)-ext.tar
@@ -529,7 +530,7 @@ PKGS=pkg/alpine $(PKGS_$(ZARCH))
 
 # these are the packages that, when built, also need to be loaded into docker
 # if you need a pkg to be loaded into docker, in addition to the lkt cache, add it here
-PKGS_DOCKER_LOAD=mkconf mkimage-iso-efi mkimage-raw-efi mkrootfs-ext4 mkrootfs-squash
+PKGS_DOCKER_LOAD=mkconf mkimage-iso-efi mkimage-raw-efi mkrootfs-ext4 mkrootfs-squash mkrootfs-erofs
 # these packages should exists for HOSTARCH as well as for ZARCH
 # alpine-base, alpine and cross-compilers are dependencies for others
 PKGS_HOSTARCH=alpine-base alpine cross-compilers $(PKGS_DOCKER_LOAD)
@@ -725,13 +726,16 @@ run-bootstrap-with-pkgs: $(SWTPM) GETTY
 run-universal: $(SWTPM) GETTY
 	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive file=$(CURRENT_DIR)/live-universal.$(IMG_FORMAT),format=$(IMG_FORMAT),id=uefi-disk
 
-# Split rootfs: core boots as imga, ext loaded by extsloader agent from pkgs.img
-# Ext rootfs is exposed as VVFAT disk (appears as /dev/sdb1 in VM)
+# Split rootfs: core boots as imga, ext loaded by extsloader agent from ext-imga.img
+# Ext rootfs is exposed as VVFAT disk (appears as /dev/sdb1 in VM).
 run-split: $(SWTPM) GETTY
-	@echo "Preparing ext rootfs as pkgs.img for VM..."
+	@echo "Preparing ext rootfs as ext-imga.img for VM..."
 	@mkdir -p $(CURRENT_DIR)/pkgs-inject
-	@cp $(CURRENT_DIR)/installer/rootfs-ext.img $(CURRENT_DIR)/pkgs-inject/pkgs.img
-	@echo "Starting VM with core rootfs + pkgs.img on /dev/sdb1..."
+	@rm -f $(CURRENT_DIR)/pkgs-inject/ext-imga.img.verity $(CURRENT_DIR)/pkgs-inject/ext-imga.img.roothash
+	@cp $(CURRENT_DIR)/installer/rootfs-ext.img $(CURRENT_DIR)/pkgs-inject/ext-imga.img
+	@[ ! -f $(CURRENT_DIR)/installer/rootfs-ext.img.verity ] || cp $(CURRENT_DIR)/installer/rootfs-ext.img.verity $(CURRENT_DIR)/pkgs-inject/ext-imga.img.verity
+	@[ ! -f $(CURRENT_DIR)/installer/rootfs-ext.img.roothash ] || cp $(CURRENT_DIR)/installer/rootfs-ext.img.roothash $(CURRENT_DIR)/pkgs-inject/ext-imga.img.roothash
+	@echo "Starting VM with core rootfs + ext-imga.img on /dev/sdb1..."
 	$(QEMU_SYSTEM) $(QEMU_OPTS) \
 		-drive file=$(CURRENT_DIR)/live-split.$(IMG_FORMAT),format=$(IMG_FORMAT),id=uefi-disk \
 		-drive file=fat:rw:$(CURRENT_DIR)/pkgs-inject,format=vvfat,id=pkgs-disk
@@ -866,13 +870,13 @@ core_rootfs: $(ROOTFS_CORE_IMG) current
 ext_rootfs: $(ROOTFS_EXT_IMG) current
 	$(QUIET): "$@: Succeeded, ROOTFS_EXT_IMG=$(ROOTFS_EXT_IMG)"
 
-split_rootfs: core_rootfs ext_rootfs
+split_rootfs: ext_rootfs core_rootfs
 	$(QUIET): "$@: Succeeded"
 
 live-universal: $(LIVE)-universal.$(IMG_FORMAT) $(BIOS_IMG) current
 	$(QUIET): "$@: Succeeded, LIVE_UNIVERSAL=$(LIVE)-universal.$(IMG_FORMAT)"
 
-# Split rootfs: core boots as imga, ext loaded by extsloader via pkgs.img
+# Split rootfs: core boots as imga, ext loaded by extsloader via ext-imga.img
 live-split: $(LIVE)-split.$(IMG_FORMAT) $(ROOTFS_EXT_IMG) $(BIOS_IMG) current
 	$(QUIET): "$@: Succeeded, LIVE_SPLIT=$(LIVE)-split.$(IMG_FORMAT)"
 
@@ -958,6 +962,9 @@ $(INSTALLER)-split.raw: $(INSTALLER_SPLIT_IMG) $(EFI_PART) $(BOOT_PART) $(CONFIG
 
 $(ROOTFS_IMG_BASE)-%.img: pkg/mkrootfs-$(ROOTFS_FORMAT)
 
+# Split-rootfs extension image is always built as erofs.
+$(ROOTFS_EXT_IMG): ROOTFS_FORMAT=$(ROOTFS_EXT_FORMAT)
+
 ifdef LIVE_UPDATE
 # Don't regenerate the whole image if tar was changed, but
 # do generate if does not exist. qcow2 target will handle
@@ -969,6 +976,15 @@ endif
 	$(QUIET): $@: Begin
 	echo "Building rootfs image $@ from $(ROOTFS_TAR_BASE)-$*.tar"
 	./tools/makerootfs.sh imagefromtar -t $(ROOTFS_TAR_BASE)-$*.tar -i $@ -f $(ROOTFS_FORMAT) -a $(ZARCH)
+	if [ "$*" = "ext" ]; then \
+		if command -v veritysetup >/dev/null 2>&1; then \
+			./tools/make-ext-verity.sh $@ $@.verity $@.roothash; \
+			cp $@.roothash $(INSTALLER)/ext-verity-roothash; \
+		else \
+			echo "WARNING: veritysetup not found; skipping dm-verity metadata generation for $@"; \
+			rm -f $@.verity $@.roothash $(INSTALLER)/ext-verity-roothash; \
+		fi; \
+	fi
 	@echo "size of $@ is $$(wc -c < "$@")B"
 ifeq ($(ROOTFS_FORMAT),squash)
 	@[ $$(wc -c < "$@") -gt $$(( $(ROOTFS_MAXSIZE_MB) * 1024 * 1024 )) ] && \
@@ -1589,7 +1605,7 @@ help:
 	@echo "   run-bootstrap        runs live-bootstrap disk image (experimental: minimal critical services)"
 	@echo "   run-bootstrap-with-pkgs  runs live-bootstrap with pkgs.img (extsloader agent auto-loads external services)"
 	@echo "   run-universal        runs universal live image (monolithic, all services in one rootfs)"
-	@echo "   run-split            runs split image: core boots, ext services loaded from pkgs.img via extsloader"
+	@echo "   run-split            runs split image: core boots, ext services loaded from ext-imga.img via extsloader"
 	@echo "   live-split-k         builds split image with eve-hv-type=k in CONFIG (for flashing to real device)"
 	@echo "   run-live-parallels   runs a full fledged virtual device on Parallels Desktop"
 	@echo "   run-live-vb          runs a full fledged virtual device on VirtualBox"

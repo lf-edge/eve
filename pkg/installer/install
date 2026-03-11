@@ -546,11 +546,19 @@ else
   mount_part P3 "$INSTALL_PERSIST" /persist 2>/dev/null
 fi
 
-# Copy ext rootfs to persist as pkgs.img for extsloader (split rootfs PoC)
+# Copy ext rootfs to persist as active-slot extension image (IMGA).
 if [ -f /bits/rootfs-ext.img ]; then
-    logmsg "Copying rootfs-ext.img to /persist/pkgs.img for extsloader"
-    cp /bits/rootfs-ext.img /persist/pkgs.img
-    logmsg "rootfs-ext.img copied ($(du -h /persist/pkgs.img | cut -f1))"
+    logmsg "Copying rootfs-ext.img to /persist/ext-imga.img for extsloader"
+    cp /bits/rootfs-ext.img /persist/ext-imga.img
+    logmsg "rootfs-ext.img copied ($(du -h /persist/ext-imga.img | cut -f1))"
+    if [ -f /bits/rootfs-ext.img.verity ]; then
+        logmsg "Copying rootfs-ext.img.verity to /persist/ext-imga.img.verity"
+        cp /bits/rootfs-ext.img.verity /persist/ext-imga.img.verity
+    fi
+    if [ -f /bits/rootfs-ext.img.roothash ]; then
+        logmsg "Copying rootfs-ext.img.roothash to /persist/ext-imga.img.roothash"
+        cp /bits/rootfs-ext.img.roothash /persist/ext-imga.img.roothash
+    fi
 fi
 
 # Note that /config is read only once the installer is done

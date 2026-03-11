@@ -1414,7 +1414,7 @@ The `UNIVERSAL=1` flag forces `HV=kvm` as the base (since all HV types share bin
 | File | Change |
 |------|--------|
 | `images/installer.yml.in` | Add `rootfs-ext.img` bind mount and file entry |
-| `pkg/installer/install` | Read HV type from CONFIG; copy rootfs-ext.img to `/persist/pkgs.img` |
+| `pkg/installer/install` | Read HV type from CONFIG; copy rootfs-ext.img to `/persist/ext-imga.img` |
 | `Makefile` | `installer-split` target, `eve-hv-supported` metadata injection |
 
 **Installer flow for split rootfs:**
@@ -1422,7 +1422,7 @@ The `UNIVERSAL=1` flag forces `HV=kvm` as the base (since all HV types share bin
 2. Reads `eve-hv-type` from CONFIG partition (set by ZFlash at flash time)
 3. Creates persist filesystem (ext4 for kvm/xen, ZFS for kubevirt/k)
 4. Writes rootfs-core.img to IMGA partition
-5. Copies rootfs-ext.img to `/persist/pkgs.img` for extsloader
+5. Copies rootfs-ext.img to `/persist/ext-imga.img` for extsloader
 
 **`eve-hv-supported` metadata:**
 

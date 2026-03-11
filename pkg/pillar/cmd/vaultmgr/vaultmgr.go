@@ -25,6 +25,8 @@ package vaultmgr
 import (
 	"bytes"
 	"crypto/sha256"
+	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -72,6 +74,12 @@ const (
 	// Time limits for event loop handlers
 	errorTime   = 3 * time.Minute
 	warningTime = 40 * time.Second
+	// extsloader synchronization to ensure deterministic PCR12 -> unseal ordering.
+	extsloaderStateFilePath    = "/run/extsloader-state.json"
+	extsloaderStateReady       = "ready"
+	extsloaderStateFailed      = "failed"
+	extsloaderStateWaitTimeout = 2 * time.Minute
+	extsloaderStatePoll        = 2 * time.Second
 )
 
 var (
@@ -81,6 +89,11 @@ var (
 	vaultConfigInited bool
 	handler           vault.Handler
 )
+
+type extsloaderState struct {
+	State  string `json:"state"`
+	Reason string `json:"reason,omitempty"`
+}
 
 // publishVaultConfig: publishes vault config and also updates in memory vaultConfig
 func publishVaultConfig(ctx *vaultMgrContext, tpmKeyOnly bool) {
@@ -277,6 +290,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		// TPM is enabled. Check if defaultVault directory exists, if not set vaultconfig
 		tpmKeyOnlyMode := checkAndPublishVaultConfig(&ctx)
 		handler.SetHandlerOptions(vault.HandlerOptions{TpmKeyOnlyMode: tpmKeyOnlyMode})
+		waitForExtsloaderState(ps)
 	}
 
 	if tpmEnabled {
@@ -318,6 +332,65 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 			// Publish current status of vault
 			getAndPublishAllVaultStatuses(&ctx)
 		}
+	}
+}
+
+func readExtsloaderState() (extsloaderState, error) {
+	data, err := os.ReadFile(extsloaderStateFilePath)
+	if err != nil {
+		return extsloaderState{}, err
+	}
+	var state extsloaderState
+	if err := json.Unmarshal(data, &state); err != nil {
+		return extsloaderState{}, fmt.Errorf("failed to decode %s: %w", extsloaderStateFilePath, err)
+	}
+	if state.State == "" {
+		return extsloaderState{}, fmt.Errorf("empty state in %s", extsloaderStateFilePath)
+	}
+	return state, nil
+}
+
+func waitForExtsloaderState(ps *pubsub.PubSub) {
+	log.Noticef("Waiting for extsloader terminal state before vault setup")
+	deadline := time.Now().Add(extsloaderStateWaitTimeout)
+	ticker := time.NewTicker(extsloaderStatePoll)
+	defer ticker.Stop()
+
+	lastSeenState := ""
+	missingLogged := false
+	for {
+		state, err := readExtsloaderState()
+		if err == nil {
+			missingLogged = false
+			if state.State != lastSeenState {
+				log.Noticef("extsloader state observed: %q", state.State)
+				lastSeenState = state.State
+			}
+			switch state.State {
+			case extsloaderStateReady:
+				log.Noticef("extsloader ready; proceeding with vault setup")
+				return
+			case extsloaderStateFailed:
+				log.Warnf("extsloader failed (%s); proceeding with vault setup", state.Reason)
+				return
+			}
+		} else if errors.Is(err, os.ErrNotExist) {
+			if !missingLogged {
+				log.Noticef("extsloader state file %s not found yet", extsloaderStateFilePath)
+				missingLogged = true
+			}
+		} else {
+			log.Warnf("Unable to read extsloader state: %v", err)
+		}
+
+		if time.Now().After(deadline) {
+			log.Warnf("Timed out waiting for extsloader state after %s; proceeding with vault setup",
+				extsloaderStateWaitTimeout)
+			return
+		}
+
+		ps.StillRunning(agentName, warningTime, errorTime)
+		<-ticker.C
 	}
 }
 

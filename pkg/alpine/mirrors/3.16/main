@@ -76,6 +76,7 @@ clang-libs
 clang-static
 cmake
 coreutils
+cryptsetup
 cryptsetup-dev
 cryptsetup-libs
 curl

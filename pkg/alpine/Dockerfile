@@ -1,8 +1,8 @@
 # DON'T FORGET TO UPDATE THE HASH WHEN SOMETHING CHANGES!
 # please see https://github.com/lf-edge/eve/blob/master/docs/BUILD.md#how-to-update-eve-alpine-package
-FROM lfedge/eve-alpine:e799def68af51dba83ec5a41f34bd0109704574f AS cache
+FROM lfedge/eve-alpine:745ae9066273c73b0fd879c4ba4ff626a8392d04-dirty-fe81aa7 AS cache
 
-FROM lfedge/eve-alpine:b96ae7c5b776702cdc7596e3722e40cc0d353ad7 AS cache-riscv64
+FROM lfedge/eve-alpine:745ae9066273c73b0fd879c4ba4ff626a8392d04-dirty-fe81aa7 AS cache-riscv64
 FROM cache AS cache-amd64
 FROM cache AS cache-arm64
 # hadolint ignore=DL3006
@@ -47,7 +47,7 @@ RUN for repo in main community testing; do \
 RUN cp /mirror/${ALPINE_VERSION}/rootfs/etc/apk/repositories /etc/apk
 RUN apk update
 
-FROM lfedge/eve-alpine:e799def68af51dba83ec5a41f34bd0109704574f AS compactor
+FROM lfedge/eve-alpine:745ae9066273c73b0fd879c4ba4ff626a8392d04-dirty-fe81aa7 AS compactor
 ARG TARGETARCH
 ARG GO_VERSION=1.24.6
 
@@ -60,8 +60,8 @@ RUN apk update && apk upgrade -a
 
 ADD "https://go.dev/dl/go${GO_VERSION}.linux-${TARGETARCH}.tar.gz" /tmp/go.tar.gz
 RUN rm -rf /usr/local/go && tar -C /usr/local -xzf /tmp/go.tar.gz
-RUN ln -s /usr/local/go/bin/go /usr/bin/go
-RUN ln -s /usr/local/go/bin/gofmt /usr/bin/gofmt
+RUN ln -sf /usr/local/go/bin/go /usr/bin/go
+RUN ln -sf /usr/local/go/bin/gofmt /usr/bin/gofmt
 
 # define arch-specific envs
 FROM scratch AS final-amd64
