@@ -100,6 +100,12 @@ ARG TARGETARCH
 
 # Actual k3s install and config happens when this container starts during EVE bootup, look at cluster-init.sh
 ### NOTE: the version of virtctl should match the version of kubevirt in cluster_init.sh, else PVC creation might fail due to incompatibility
+COPY k3s-control.sh /usr/bin/k3s-control
+RUN chmod +x /usr/bin/k3s-control && \
+    ln -s /usr/bin/k3s-control /usr/bin/k3s-stop && \
+    ln -s /usr/bin/k3s-control /usr/bin/k3s-start && \
+    ln -s /usr/bin/k3s-control /usr/bin/k3s-status
+
 ENV VIRTCTL_VERSION v1.6.0
 ADD https://github.com/kubevirt/kubevirt/releases/download/${VIRTCTL_VERSION}/virtctl-${VIRTCTL_VERSION}-linux-${TARGETARCH} .
 
