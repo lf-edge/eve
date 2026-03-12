@@ -955,3 +955,82 @@ The whole flow looks like this:
     * installs the target arch libraries from `cross-compile-libs`, which is based on `eve-alpine` for the `TARGETARCH`
     * sets `CROSS_COMPILE_ENV="${EVE_TARGET_ARCH}"-alpine-linux-musl-` environment variable to use later as cross-compile prefix
     * inherits from `build-cross-target-${TARGETARCH}`, which adjust the `EVE_TARGET_ARCH` environment variable and inherits from `build-cross` stage based on `eve-alpine`
+
+## Using a local container registry
+
+All containers built by the EVE project are available in the official [LF-Edge's Docker HUB](https://hub.docker.com/u/lfedge).
+However, developers might want to pull and/or push all containers to a local container registry for debugging and development purposes.
+EVE's build system provides two environment variables for this:
+
+* `LINUXKIT_PKG_ORG` — overrides the registry organization used for pushing and pulling package images.
+* `LINUXKIT_MIRROR` — configures a pull-through proxy (registry mirror) to cache upstream images locally and speed up builds.
+
+### Pushing to a custom registry
+
+Use `LINUXKIT_PKG_ORG` to redirect package pushes to a local registry. For example:
+
+1. Start docker registry at local port 5001 (to not clash with a running docker registry)
+
+    ```sh
+    docker run -d -p 5001:5000 --name lcreg registry:2
+    ```
+
+1. Build EVE with the local registry URL
+
+    ```sh
+    make LINUXKIT_PKG_ORG="localhost:5001/lfedge" pkgs eve
+    ```
+
+1. Push packages to the local registry
+
+    ```sh
+    make LINUXKIT_PKG_ORG="localhost:5001/lfedge" LINUXKIT_PKG_TARGET=push pkgs eve
+    ```
+
+1. A list of packages pushed to the local registry can be retrieved with the following command:
+
+    ```sh
+    curl -s http://localhost:5001/v2/_catalog? | jq
+    ```
+
+    Output will be in JSON format, for instance:
+
+    ```json
+    {
+      "repositories": [
+        "lfedge/eve",
+        "lfedge/eve-alpine",
+        "lfedge/eve-apparmor",
+        "lfedge/eve-bpftrace",
+        "lfedge/eve-bsp-imx",
+        "lfedge/eve-cross-compilers",
+        "lfedge/eve-gpt-tools",
+        "lfedge/eve-grub",
+        "lfedge/eve-ipxe",
+        "lfedge/eve-measure-config",
+        "lfedge/eve-memory-monitor",
+        "lfedge/eve-mkconf",
+        "lfedge/eve-mkimage-raw-efi",
+        "lfedge/eve-newlog",
+        "lfedge/eve-optee-os",
+        "lfedge/eve-recovertpm",
+        "lfedge/eve-rngd",
+        "lfedge/eve-storage-init",
+        "lfedge/eve-u-boot",
+        "lfedge/eve-udev",
+        "lfedge/eve-uefi",
+        "lfedge/eve-watchdog",
+        "lfedge/eve-xen"
+      ]
+    }
+    ```
+
+### Using a pull-through proxy
+
+To speed up builds by caching upstream images locally, use `LINUXKIT_MIRROR` to point at a pull-through registry mirror:
+
+```sh
+make LINUXKIT_MIRROR="http://localhost:5001" pkgs eve
+```
+
+This tells linuxkit to pull base images through the mirror instead of hitting Docker Hub directly, which is useful in CI environments or when working with rate-limited registries.
