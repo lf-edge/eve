@@ -973,7 +973,14 @@ The whole flow looks like this:
 
 All containers built by the EVE project are available in the official [LF-Edge's Docker HUB](https://hub.docker.com/u/lfedge).
 However, developers might want to pull and/or push all containers to a local container registry for debugging and development purposes.
-EVE's build system allows to override the default docker registry through the `REGISTRY` variable. For example:
+EVE's build system provides two environment variables for this:
+
+* `LINUXKIT_PKG_ORG` — overrides the registry organization used for pushing and pulling package images.
+* `LINUXKIT_MIRROR` — configures a pull-through proxy (registry mirror) to cache upstream images locally and speed up builds.
+
+### Pushing to a custom registry
+
+Use `LINUXKIT_PKG_ORG` to redirect package pushes to a local registry. For example:
 
 1. Start docker registry at local port 5001 (to not clash with a running docker registry)
 
@@ -984,13 +991,13 @@ EVE's build system allows to override the default docker registry through the `R
 1. Build EVE with the local registry URL
 
     ```sh
-    make REGISTRY="localhost:5001" pkgs eve
+    make LINUXKIT_PKG_ORG="localhost:5001/lfedge" pkgs eve
     ```
 
 1. Push packages to the local registry
 
     ```sh
-    make REGISTRY="localhost:5001" LINUXKIT_PKG_TARGET=push pkgs eve
+    make LINUXKIT_PKG_ORG="localhost:5001/lfedge" LINUXKIT_PKG_TARGET=push pkgs eve
     ```
 
 1. A list of packages pushed to the local registry can be retrieved with the following command:
@@ -1033,3 +1040,13 @@ EVE's build system allows to override the default docker registry through the `R
       ]
     }
     ```
+
+### Using a pull-through proxy
+
+To speed up builds by caching upstream images locally, use `LINUXKIT_MIRROR` to point at a pull-through registry mirror:
+
+```sh
+make LINUXKIT_MIRROR="http://localhost:5001" pkgs eve
+```
+
+This tells linuxkit to pull base images through the mirror instead of hitting Docker Hub directly, which is useful in CI environments or when working with rate-limited registries.
