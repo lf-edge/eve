@@ -378,11 +378,10 @@ LINUXKIT_PKG_TARGET=build
 
 # buildkitd.toml configuration file can control a configuration of the buildkit daemon
 # it is used for example to setup a Docker registry mirror for CI to speedup the builds
-# this option can be overridden by setting BUILDKIT_CONFIG_FILE variable on make command line
-BUILDKIT_CONFIG_FILE ?= /etc/buildkit/buildkitd.toml
-BUILDKIT_CONFIG_OPTS := $(if $(filter manifest,$(LINUXKIT_PKG_TARGET)),,$(if $(wildcard $(BUILDKIT_CONFIG_FILE)),--builder-config $(BUILDKIT_CONFIG_FILE),))
-
-LINUXKIT_OPTS=$(if $(strip $(EVE_HASH)),--hash) $(EVE_HASH) $(if $(strip $(EVE_REL)),--release) $(EVE_REL) $(BUILDKIT_CONFIG_OPTS)
+# defaults to /etc/buildkit/buildkitd.toml if it exists; override via LINUXKIT_BUILDER_CONFIG
+LINUXKIT_BUILDER_CONFIG ?= $(wildcard /etc/buildkit/buildkitd.toml)
+export LINUXKIT_BUILDER_CONFIG
+LINUXKIT_OPTS=$(if $(strip $(EVE_HASH)),--hash) $(EVE_HASH) $(if $(strip $(EVE_REL)),--release) $(EVE_REL)
 
 ifdef LIVE_FAST
 # Check the makerootfs.sh and the linuxkit tool invocation, the --input-tar
@@ -460,14 +459,6 @@ ifeq ($(LINUXKIT_PKG_TARGET),push)
   EVE_REL_master_snapshot:=$(if $(TAGPLAT),$(TAGPLAT)-snapshot,snapshot)
   EVE_REL:=$(EVE_REL_$(REPO_BRANCH)_$(REPO_TAG))
   EVE_REL:=$(EVE_REL)$(if $(TAGPLAT),-$(TAGPLAT),)
-endif
-
-# Check for a custom registry (used for development purposes)
-ifdef REGISTRY
-LINUXKIT_ORG_TARGET=--org $(REGISTRY)/lfedge
-export LINUXKIT_ORG_TARGET
-else
-LINUXKIT_ORG_TARGET=
 endif
 
 # The rootfs partition size is set to 512MB after 10.2.0 release (see commit 719b4d516)
@@ -634,8 +625,8 @@ $(UBOOT_IMG): PKG=u-boot
 $(BSP_IMX_PART): PKG=bsp-imx
 $(EFI_PART) $(BOOT_PART) $(INITRD_IMG) $(IPXE_IMG) $(BIOS_IMG) $(UBOOT_IMG) $(BSP_IMX_PART): $(LINUXKIT) | $(INSTALLER)
 	mkdir -p $(dir $@)
-	$(LINUXKIT) pkg build --pull $(LINUXKIT_ORG_TARGET) $(LINUXKIT_OPTS) --platforms linux/$(ZARCH) pkg/$(PKG) # running linuxkit pkg build _without_ force ensures that we either pull it down or build it.
-	cd $(dir $@) && $(LINUXKIT) cache export --platform linux/$(DOCKER_ARCH_TAG) --format filesystem --outfile - $(shell $(LINUXKIT) pkg $(LINUXKIT_ORG_TARGET) show-tag pkg/$(PKG)) | tar xvf - $(notdir $@)
+	$(LINUXKIT) pkg build --pull $(LINUXKIT_OPTS) --platforms linux/$(ZARCH) pkg/$(PKG) # running linuxkit pkg build _without_ force ensures that we either pull it down or build it.
+	cd $(dir $@) && $(LINUXKIT) cache export --platform linux/$(DOCKER_ARCH_TAG) --format filesystem --outfile - $(shell $(LINUXKIT) pkg show-tag pkg/$(PKG)) | tar xvf - $(notdir $@)
 	$(QUIET): $@: Succeeded
 
 # run swtpm if TPM flag defined
@@ -896,9 +887,9 @@ compare_sbom_collected_sources: $(SBOM) $(COLLECTED_SOURCES) $(COMPARESOURCES)
 publish_sources: $(COLLECTED_SOURCES)
 	$(QUIET): $@: Begin
 	cp pkg/sources/* $(SOURCES_DIR)
-	$(LINUXKIT) $(DASH_V) pkg $(LINUXKIT_PKG_TARGET) $(LINUXKIT_ORG_TARGET) $(LINUXKIT_OPTS) --platforms linux/$(ZARCH) --hash-path $(CURDIR) --hash $(ROOTFS_VERSION)-$(HV) --docker $(if $(strip $(EVE_REL)),--release) $(EVE_REL)$(if $(strip $(EVE_REL)),-$(HV)) $(SOURCES_DIR) $|
+	$(LINUXKIT) $(DASH_V) pkg $(LINUXKIT_PKG_TARGET) $(LINUXKIT_OPTS) --platforms linux/$(ZARCH) --hash-path $(CURDIR) --hash $(ROOTFS_VERSION)-$(HV) --docker $(if $(strip $(EVE_REL)),--release) $(EVE_REL)$(if $(strip $(EVE_REL)),-$(HV)) $(SOURCES_DIR) $|
 	$(QUIET)if [ -n "$(EVE_REL)" ] && [ $(HV) = $(HV_DEFAULT) ]; then \
-	   $(LINUXKIT) $(DASH_V) pkg $(LINUXKIT_PKG_TARGET) $(LINUXKIT_ORG_TARGET) $(LINUXKIT_OPTS) --platforms linux/$(ZARCH) --hash-path $(CURDIR) --hash $(EVE_REL)-$(HV) --docker --release $(EVE_REL) $(SOURCES_DIR) $| ;\
+	   $(LINUXKIT) $(DASH_V) pkg $(LINUXKIT_PKG_TARGET) $(LINUXKIT_OPTS) --platforms linux/$(ZARCH) --hash-path $(CURDIR) --hash $(EVE_REL)-$(HV) --docker --release $(EVE_REL) $(SOURCES_DIR) $| ;\
 	fi
 	$(QUIET): $@: Succeeded
 
@@ -950,7 +941,7 @@ pkg/kernel:
 	$(QUIET): $@: No-op pkg/kernel
 
 pkg/kube/external-boot-image.tar: pkg/external-boot-image
-	$(eval BOOT_IMAGE_TAG := $(shell $(LINUXKIT) pkg $(LINUXKIT_ORG_TARGET) show-tag --canonical pkg/external-boot-image))
+	$(eval BOOT_IMAGE_TAG := $(shell $(LINUXKIT) pkg show-tag --canonical pkg/external-boot-image))
 	$(eval CACHE_CONTENT := $(shell $(LINUXKIT) cache ls 2>&1))
 	$(if $(filter $(BOOT_IMAGE_TAG),$(CACHE_CONTENT)),,$(LINUXKIT) cache pull $(BOOT_IMAGE_TAG))
 	$(MAKE) cache-export IMAGE=$(BOOT_IMAGE_TAG) OUTFILE=pkg/kube/external-boot-image.tar
@@ -968,9 +959,9 @@ eve: $(INSTALLER) $(EVE_ARTIFACTS) current $(RUNME) $(BUILD_YML) | $(BUILD_DIR)
 	$(QUIET): "$@: Begin: EVE_REL=$(EVE_REL), HV=$(HV), LINUXKIT_PKG_TARGET=$(LINUXKIT_PKG_TARGET)"
 	cp images/out/*.yml $|
 	$(PARSE_PKGS) pkg/eve/Dockerfile.in > $|/Dockerfile
-	$(LINUXKIT) $(DASH_V) pkg $(LINUXKIT_PKG_TARGET) $(LINUXKIT_ORG_TARGET) $(LINUXKIT_OPTS) --platforms linux/$(ZARCH) --hash-path $(CURDIR) --hash $(ROOTFS_VERSION)-$(HV) --docker $(if $(strip $(EVE_REL)),--release) $(EVE_REL)$(if $(strip $(EVE_REL)),-$(HV)) $(FORCE_BUILD) $|
+	$(LINUXKIT) $(DASH_V) pkg $(LINUXKIT_PKG_TARGET) $(LINUXKIT_OPTS) --platforms linux/$(ZARCH) --hash-path $(CURDIR) --hash $(ROOTFS_VERSION)-$(HV) --docker $(if $(strip $(EVE_REL)),--release) $(EVE_REL)$(if $(strip $(EVE_REL)),-$(HV)) $(FORCE_BUILD) $|
 	$(QUIET)if [ -n "$(EVE_REL)" ] && [ $(HV) = $(HV_DEFAULT) ]; then \
-	   $(LINUXKIT) $(DASH_V) pkg $(LINUXKIT_PKG_TARGET) $(LINUXKIT_ORG_TARGET) $(LINUXKIT_OPTS) --platforms linux/$(ZARCH) --hash-path $(CURDIR) --hash $(EVE_REL)-$(if $(TAGPLAT),$(TAGPLAT)-)$(HV) --docker --release $(EVE_REL) $(FORCE_BUILD) $| ;\
+	   $(LINUXKIT) $(DASH_V) pkg $(LINUXKIT_PKG_TARGET) $(LINUXKIT_OPTS) --platforms linux/$(ZARCH) --hash-path $(CURDIR) --hash $(EVE_REL)-$(if $(TAGPLAT),$(TAGPLAT)-)$(HV) --docker --release $(EVE_REL) $(FORCE_BUILD) $| ;\
 	fi
 	$(QUIET): $@: Succeeded
 
@@ -1001,7 +992,7 @@ cache-export-docker-load: $(LINUXKIT)
 	rm -rf ${TARFILE}
 
 %-cache-export-docker-load: $(LINUXKIT) pkg/%
-	$(eval IMAGE_TAG := $(shell $(LINUXKIT) pkg $(LINUXKIT_ORG_TARGET) show-tag --canonical pkg/$*))
+	$(eval IMAGE_TAG := $(shell $(LINUXKIT) pkg show-tag --canonical pkg/$*))
 	$(eval CACHE_CONTENT := $(shell $(LINUXKIT) cache ls 2>&1))
 	$(if $(filter $(IMAGE_TAG),$(CACHE_CONTENT)),$(MAKE) cache-export-docker-load IMAGE=$(IMAGE_TAG),@echo "Missing image $(IMAGE_TAG) in cache")
 
@@ -1155,7 +1146,7 @@ eve-%: pkg/%/Dockerfile $(LINUXKIT) $(RESCAN_DEPS)
 	$(eval LINUXKIT_BUILD_PLATFORMS_LIST := $(call uniq,linux/$(ZARCH) $(if $(filter $(PKGS_HOSTARCH),$*),linux/$(HOSTARCH),)))
 	$(eval LINUXKIT_BUILD_PLATFORMS := --platforms $(subst $(space),$(comma),$(strip $(LINUXKIT_BUILD_PLATFORMS_LIST))))
 	$(eval LINUXKIT_FLAGS := $(if $(filter manifest,$(LINUXKIT_PKG_TARGET)),,$(FORCE_BUILD) $(LINUXKIT_DOCKER_LOAD) $(LINUXKIT_BUILD_PLATFORMS)))
-	$(QUIET)$(LINUXKIT) $(DASH_V) pkg $(LINUXKIT_PKG_TARGET) $(LINUXKIT_ORG_TARGET) $(LINUXKIT_OPTS) $(LINUXKIT_EXTRA_BUILD_ARGS) $(LINUXKIT_FLAGS) --build-yml $(call get_pkg_build_yml,$*) pkg/$*
+	$(QUIET)$(LINUXKIT) $(DASH_V) pkg $(LINUXKIT_PKG_TARGET) $(LINUXKIT_OPTS) $(LINUXKIT_EXTRA_BUILD_ARGS) $(LINUXKIT_FLAGS) --build-yml $(call get_pkg_build_yml,$*) pkg/$*
 	$(QUIET)if [ -n "$(PRUNE)" ]; then \
 		flock $(PARALLEL_BUILD_LOCK) docker image prune -f; \
 	fi
@@ -1251,7 +1242,7 @@ $(ROOTFS_FULL_NAME)-%-$(ZARCH).$(ROOTFS_FORMAT): $(ROOTFS_IMG_BASE).img
 	$(QUIET): $@: Succeeded
 
 %-show-tag:
-	@$(LINUXKIT) pkg $(LINUXKIT_ORG_TARGET) show-tag --canonical pkg/$*
+	@$(LINUXKIT) pkg show-tag --canonical pkg/$*
 
 %Gopkg.lock: %Gopkg.toml | $(GOBUILDER)
 	@$(DOCKER_GO) "dep ensure -update $(GODEP_NAME)" $(dir $@)
