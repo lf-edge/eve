@@ -42,6 +42,8 @@ type profileOrin struct {
 }
 type profileXavier struct {
 }
+type profileThor struct {
+}
 
 // Thermal zone path to read temperature
 const thermalDevice = string("/sys/devices/virtual/thermal/thermal_zone%d/temp")
@@ -141,6 +143,50 @@ func (p profileOrin) getCoolProfile() coolingMode {
 	return modeCool
 }
 
+// Jetson AGX Thor device model
+func (p profileThor) Model() string {
+	return "Jetson AGX Thor"
+}
+
+// Quiet profile (AGX Thor Series)
+// Slightly variation of Cool profile, which is the only one provided for Jetson
+// AGX Thor platform.
+func (p profileThor) getQuietProfile() coolingMode {
+	modeQuiet := coolingMode{
+		name: "quiet",
+		// Must be sorted!
+		points: [][]int{
+			{0,255},
+			{15,255},
+			{24,192},
+			{29,140},
+			{38,102},
+			{45,77},
+			{115,77},
+		},
+    }
+	return modeQuiet
+}
+
+// Cool profile (AGX Thor Series)
+// Data Source: /etc/nvfancontrol.conf from Jetpack 7.1 file.
+func (p profileThor) getCoolProfile() coolingMode {
+	modeCool := coolingMode{
+		name: "cool",
+		// Must be sorted!
+		points: [][]int{
+			{0,255},
+			{15,255},
+			{24,192},
+			{29,140},
+			{35,102},
+			{45,77},
+			{115,77},
+		},
+    }
+	return modeCool
+}
+
 // Check if the temperature file exist for a thermal zone
 func checkThermalZone(tzone int) bool {
 	if _, err := os.Stat(getThermalDevice(tzone)); err == nil {
@@ -180,6 +226,7 @@ func getDeviceProfile() (deviceProfiles, error) {
 		"2888": profileXavier{},
 		"3509": profileXavier{},
 		"2822": profileXavier{},
+		"3834": profileThor{},
 	}
 	dev, ok := devIDs[str]
 	if !ok {
