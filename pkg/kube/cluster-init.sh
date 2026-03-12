@@ -202,6 +202,7 @@ setup_prereqs () {
         modprobe iscsi_tcp
         #Needed for iscsi tools
         mkdir -p /run/lock
+        mkdir -p /run/kube
         rm -rf /var/log
         ln -s "$K3S_LOG_DIR" /var/log
         mkdir -p "$K3S_CONFIG_DIR"
@@ -251,6 +252,9 @@ config_cluster_roles() {
 }
 
 check_start_k3s() {
+  if [ -f "$K3S_STOP_FLAG" ]; then
+    return 1
+  fi
   # If cluster is in transition, wait until transition is complete
   if [ -f "$TRANSITION_FLAG_FILE" ]; then
     logmsg "Cluster transition in progress, waiting before starting k3s"
@@ -274,6 +278,13 @@ check_start_k3s() {
 
   pgrep -f "$K3S_SERVER_CMD" > /dev/null 2>&1
   if [ $? -eq 1 ]; then
+        # Reset backoff if a manual start was requested
+        if [ -f "$K3S_MANUAL_START_FLAG" ]; then
+                logmsg "Manual start requested, resetting restart backoff"
+                rm -f "$K3S_MANUAL_START_FLAG"
+                RESTART_COUNT=0
+                current_wait_time=$INITIAL_WAIT_TIME
+        fi
         # do exponential backoff for k3s restart, but not more than MAX_WAIT_TIME
         RESTART_COUNT=$((RESTART_COUNT+1))
         logmsg "k3s server not running, restart wait time $current_wait_time, restart count: $RESTART_COUNT"
