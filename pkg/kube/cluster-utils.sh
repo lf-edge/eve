@@ -282,8 +282,11 @@ terminate_k3s() {
     return 1
   else
     logmsg "All k3s server processes successfully terminated"
-    return 0
   fi
+
+  # Remove the flannel VXLAN device so the next k3s start gets a clean state.
+  ip link del flannel.1 2>/dev/null || true
+  return 0
 }
 
 # wait for debugging flag in /persist/k3s/wait_{flagname} if exist

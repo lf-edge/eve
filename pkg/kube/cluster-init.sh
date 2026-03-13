@@ -290,6 +290,9 @@ check_start_k3s() {
         fi
         # for now, always copy to get the latest
 
+        # Remove stale flannel VXLAN device before starting k3s.
+        ip link del flannel.1 2>/dev/null || true
+
         # start the k3s server now
         nohup /usr/bin/k3s server &
 
