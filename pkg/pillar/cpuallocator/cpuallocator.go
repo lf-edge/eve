@@ -101,8 +101,8 @@ func (cpuAllocator *CPUAllocator) getFree(numCPUsRequested int) ([]uint32, error
 		}
 	}
 	if found < numCPUsRequested {
-		return []uint32{}, fmt.Errorf("looking for %d CPUs only found %d",
-			numCPUsRequested, found)
+		return []uint32{}, fmt.Errorf("looking for %d CPUs only found %d reserved for EVE %d total %d",
+			numCPUsRequested, found, cpuAllocator.numReservedForEVE, cpuAllocator.totalCPUs)
 	}
 	return result, nil
 }

@@ -1389,7 +1389,7 @@ func assignCPUs(ctx *domainContext, config *types.DomainConfig, status *types.Do
 	if config.VmConfig.CPUsPinned { // Pin the CPU
 		cpusToAssign, err := ctx.cpuAllocator.Allocate(config.UUIDandVersion.UUID, config.VCpus)
 		if err != nil {
-			return errors.New("failed to allocate necessary amount of CPUs")
+			return err
 		}
 		for _, cpu := range cpusToAssign {
 			status.VmConfig.CPUs = append(status.VmConfig.CPUs, cpu)
@@ -1680,7 +1680,7 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 
 	if ctx.cpuPinningSupported {
 		if err := assignCPUs(ctx, &config, status); err != nil {
-			log.Warnf("failed to assign CPUs for %s", config.DisplayName)
+			log.Warnf("failed to assign CPUs for %s err %v", config.DisplayName, err)
 			errDescription := types.ErrorDescription{Error: err.Error()}
 			status.SetErrorDescription(errDescription)
 			publishDomainStatus(ctx, status)
