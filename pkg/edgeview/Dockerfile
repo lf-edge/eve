@@ -5,6 +5,15 @@ ENV BUILD_PKGS git
 ENV PKGS alpine-baselayout musl-utils iproute2 iptables
 RUN eve-alpine-deploy.sh
 
+# Switch iptables to nft backend. Legacy iptables (ip_tables/ip6_tables kernel modules)
+# is no longer supported on PREEMPT_RT kernels starting from 6.17.
+RUN ln -sf iptables-nft "/out/sbin/iptables" && \
+    ln -sf iptables-nft-save "/out/sbin/iptables-save" && \
+    ln -sf iptables-nft-restore "/out/sbin/iptables-restore" && \
+    ln -sf ip6tables-nft "/out/sbin/ip6tables" && \
+    ln -sf ip6tables-nft-save "/out/sbin/ip6tables-save" && \
+    ln -sf ip6tables-nft-restore "/out/sbin/ip6tables-restore"
+
 COPY src/  /edge-view/.
 COPY go.mod /edge-view/.
 COPY go.sum /edge-view/.

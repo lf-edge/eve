@@ -6,6 +6,15 @@ ENV PKGS alpine-baselayout musl-utils iproute2 iptables curl openrc \
          cni-plugins nfs-utils inotify-tools
 RUN eve-alpine-deploy.sh
 
+# Switch iptables to nft backend. Legacy iptables (ip_tables/ip6_tables kernel modules)
+# is no longer supported on PREEMPT_RT kernels starting from 6.17.
+RUN ln -sf iptables-nft "/out/sbin/iptables" && \
+    ln -sf iptables-nft-save "/out/sbin/iptables-save" && \
+    ln -sf iptables-nft-restore "/out/sbin/iptables-restore" && \
+    ln -sf ip6tables-nft "/out/sbin/ip6tables" && \
+    ln -sf ip6tables-nft-save "/out/sbin/ip6tables-save" && \
+    ln -sf ip6tables-nft-restore "/out/sbin/ip6tables-restore"
+
 COPY eve-bridge /plugins/eve-bridge
 WORKDIR /plugins/eve-bridge
 RUN GO111MODULE=on CGO_ENABLED=0 go build -v -ldflags "-s -w" -mod=vendor -o /out/usr/bin/eve-bridge .
