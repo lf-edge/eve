@@ -1,0 +1,9 @@
+# Copyright (c) 2025-2026 Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+---
+image: eve-zfs
+org: lfedge
+tag: "{{.Hash}}-2.4"
+buildArgs:
+  - ZFS_VERSION=2.4.1
