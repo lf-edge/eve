@@ -13,6 +13,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sort"
+	"strings"
 
 	"github.com/containerd/platforms"
 	"github.com/linuxkit/linuxkit/src/cmd/linuxkit/moby"
@@ -32,6 +34,8 @@ const (
 var (
 	outputImgFile  string
 	outputMakeFile string
+	hashDir        string
+	hashOnly       bool
 	rootfsDeps     bool
 )
 
@@ -118,7 +122,22 @@ func parseDockerfile(pkgName string) []string {
 		log.Fatalf("parsing instructions of %s failed: %v", dockerfilePath, err)
 	}
 
-	aeg := createDockerEnvGetter(filepath.Join(pkgName, "build.yml"), metaArgs)
+	// If no FROM line references a build arg (no '$' in the base name), skip the
+	// slow lktBuildArgs dry-run. Generated Dockerfiles (via parse-pkgs.sh) have
+	// fully-resolved image names, so this fast path covers the common case.
+	needsArgResolution := false
+	for _, st := range stages {
+		if strings.Contains(st.BaseName, "$") {
+			needsArgResolution = true
+			break
+		}
+	}
+	var aeg argsEnvGetter
+	if needsArgResolution {
+		aeg = createDockerEnvGetter(filepath.Join(pkgName, "build.yml"), metaArgs)
+	} else {
+		aeg = makePlatformEnvGetter(metaArgs)
+	}
 
 	shlex := shell.NewLex(dockerfile.EscapeToken)
 
@@ -137,16 +156,16 @@ func parseDockerfile(pkgName string) []string {
 	return targets
 }
 
-func createDockerEnvGetter(buildYmlFile string, metaArgs []instructions.ArgCommand) argsEnvGetter {
+// makePlatformEnvGetter builds an argsEnvGetter with platform args and
+// Dockerfile ARG defaults — without the slow lktBuildArgs dry-run.
+func makePlatformEnvGetter(metaArgs []instructions.ArgCommand) argsEnvGetter {
 	buildPlatform := []ocispecs.Platform{platforms.DefaultSpec()}[0]
 	targetPlatform := ocispecs.Platform{
 		Architecture: TARGETARCH,
 		OS:           TARGETOS,
 		Variant:      TARGETVARIANT,
 	}
-
 	aeg := argsEnvGetter{
-		// from github.com/moby/buildkit/frontend/dockerfile/dockerfile2llb/platform.go:getPlatformArgs
 		args: map[string]string{
 			"BUILDPLATFORM":  platforms.Format(buildPlatform),
 			"BUILDOS":        buildPlatform.OS,
@@ -160,16 +179,17 @@ func createDockerEnvGetter(buildYmlFile string, metaArgs []instructions.ArgComma
 	}
 	for _, ma := range metaArgs {
 		for _, arg := range ma.Args {
-			key := arg.Key
-			val := arg.ValueString()
-			aeg.args[key] = val
+			aeg.args[arg.Key] = arg.ValueString()
 		}
 	}
+	return aeg
+}
 
+func createDockerEnvGetter(buildYmlFile string, metaArgs []instructions.ArgCommand) argsEnvGetter {
+	aeg := makePlatformEnvGetter(metaArgs)
 	for k, v := range lktBuildArgs(buildYmlFile) {
 		aeg.args[k] = v
 	}
-
 	return aeg
 }
 
@@ -262,12 +282,24 @@ func getDeps(pkgName string) []string {
 	return filterPkg(ss)
 }
 
-// Write string to file with error checking
-func writeToFile(f *os.File, str string) {
-	_, err := f.WriteString(str)
-	if err != nil {
-		fmt.Println(err)
+// writeHashFile writes content to dir/<name>.hash using write-if-changed
+// semantics (only updates mtime when content differs).
+func writeHashFile(dir, name, content string) error {
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("mkdir %s: %v", dir, err)
 	}
+	hashFile := filepath.Join(dir, name+".hash")
+	newContent := []byte(content)
+	if existing, err := os.ReadFile(hashFile); err == nil && bytes.Equal(existing, newContent) {
+		// unchanged — preserve mtime
+		return nil
+	}
+	return os.WriteFile(hashFile, newContent, 0644)
+}
+
+// pkgBaseName returns the short package name from "pkg/foo" → "foo".
+func pkgBaseName(pkg string) string {
+	return strings.TrimPrefix(pkg, "pkg/")
 }
 
 func main() {
@@ -279,13 +311,50 @@ func main() {
 	// Build and validate the command line
 	flag.Usage = func() {
 		fmt.Printf("Create dependency packages tree\n\n")
-		fmt.Printf("Use:\n    %s [-r] <-i|-m> <output_file>\n\n", os.Args[0])
+		fmt.Printf("Use:\n    %s [-r] [-d <hashdir>] <-i|-m|-H> <output_file>\n\n", os.Args[0])
 		flag.PrintDefaults()
 	}
 	flag.StringVar(&outputImgFile, "i", "", "Generate a PNG image file")
 	flag.StringVar(&outputMakeFile, "m", "", "Generate a Makefile auxiliary file")
+	flag.StringVar(&hashDir, "d", "", "Directory for per-package .hash and .built files")
+	flag.BoolVar(&hashOnly, "H", false, "Hash-update-only mode: write .hash files for all pkg/*/build.yml packages and exit (no Dockerfile scan)")
 	flag.BoolVar(&rootfsDeps, "r", false, "Also generates dependencies for rootfs image")
 	flag.Parse()
+
+	// -H: fast hash-update mode — iterate all pkg/*/build.yml, compute linuxkit
+	// tag via pkglib (pure git, no Docker), write hashDir/<pkg>.hash with
+	// write-if-changed semantics.  No Dockerfile scan is performed.
+	if hashOnly {
+		if hashDir == "" {
+			log.Fatal("-H requires -d <hashdir>")
+		}
+		ent, err := os.ReadDir("./pkg")
+		if err != nil {
+			log.Fatal(err)
+		}
+		if err := os.MkdirAll(hashDir, 0755); err != nil {
+			log.Fatal(err)
+		}
+		for _, e := range ent {
+			if !e.IsDir() {
+				continue
+			}
+			pkgDir := filepath.Join("pkg", e.Name())
+			buildYML := filepath.Join(pkgDir, defaultPkgBuildYML)
+			if _, err := os.Stat(buildYML); err != nil {
+				continue // not a linuxkit package
+			}
+			tag, err := getPkgTag(pkgDir, defaultPkgBuildYML)
+			if err != nil {
+				log.Printf("Warning: could not compute tag for %s: %v", pkgDir, err)
+				continue
+			}
+			if err := writeHashFile(hashDir, e.Name(), tag); err != nil {
+				log.Printf("Warning: could not write hash file for %s: %v", pkgDir, err)
+			}
+		}
+		return
+	}
 
 	if len(outputImgFile) > 0 {
 		imgfile = true
@@ -303,24 +372,39 @@ func main() {
 		log.Fatal("Only one type of output dependency tree can be provided.\n")
 	}
 
-	// Create the output file, if we are generating image tree, then an
-	// intermediate file (.dot) must be created
+	// allPkgDeps maps consumer → list of deps (for DEPS_FORCE generation).
+	// depOf tracks which packages appear as a dependency of at least one other
+	// package (non-leaf set — these are the ones that get .hash files).
+	allPkgDeps := make(map[string][]string)
+	depOf := make(map[string]bool)
+
+	// For dot output we still write directly to a temp file.
+	// For makefile output we accumulate in a strings.Builder and do
+	// write-if-changed at the end.
+	var mkBuf strings.Builder
 	var outfile *os.File
-	var errF error
-	if len(outputImgFile) > 0 {
+
+	if imgfile {
+		var errF error
 		outfile, errF = os.CreateTemp("", "eve-dot-")
-		if errF != nil {
-			log.Fatal(errF)
-		}
-	} else {
-		outfile, errF = os.Create(outputMakeFile)
 		if errF != nil {
 			log.Fatal(errF)
 		}
 	}
 
-	// Beginning of the output file
-	writeToFile(outfile, p.printHead())
+	writeOut := func(s string) {
+		if mkfile {
+			mkBuf.WriteString(s)
+		} else {
+			_, err := outfile.WriteString(s)
+			if err != nil {
+				fmt.Println(err)
+			}
+		}
+	}
+
+	// Beginning of the output
+	writeOut(p.printHead())
 
 	// Scan all directories of pkg/
 	ent, err := os.ReadDir("./pkg")
@@ -334,33 +418,37 @@ func main() {
 		dockerFile := filepath.Join("./pkg/", e.Name(), "/Dockerfile")
 		dockerFileIn := dockerFile + ".in"
 
-		if _, err := os.Stat(dockerFile); err != nil {
+		// Regenerate from Dockerfile.in if Dockerfile is missing or empty.
+		dfStat, dfErr := os.Stat(dockerFile)
+		if dfErr != nil || dfStat.Size() == 0 {
 			if _, errIn := os.Stat(dockerFileIn); errIn == nil {
-				// Process Dockerfile.in
-				cmd := exec.Command("make", dockerFile)
+				cmd := exec.Command("make", "-o", "pkg-deps.mk", dockerFile)
 				out, err := cmd.Output()
 				if err != nil {
-					log.Printf("Failed to %s process, out: %s", dockerFileIn, out)
+					log.Printf("Failed to process %s: %s", dockerFileIn, out)
 					continue
 				}
-
-			} else {
+			} else if dfErr != nil {
 				continue
 			}
-
 		}
 		pkgName = "pkg/" + e.Name()
 
 		// Get package dependencies from Dockerfile
-		writeToFile(outfile, p.printSingleDep(pkgName))
+		writeOut(p.printSingleDep(pkgName))
 		depList := getDeps(pkgName)
+		if len(depList) > 0 {
+			allPkgDeps[pkgName] = depList
+		}
 		for _, d := range depList {
 			if d != pkgName {
 				// Write a single dependency of the package
-				writeToFile(outfile, p.printDep(pkgName, d))
+				writeOut(p.printDep(pkgName, d))
 				exportPkgName := fmt.Sprintf("%s-cache-export-docker-load", pkgName[4:])
 				exportD := fmt.Sprintf("%s-cache-export-docker-load", d[4:])
-				writeToFile(outfile, p.printDep(exportPkgName, exportD))
+				writeOut(p.printDep(exportPkgName, exportD))
+				// Track which packages are non-leaf (have consumers)
+				depOf[d] = true
 			}
 		}
 	}
@@ -376,19 +464,86 @@ func main() {
 					depYML := parseYMLfile(ymlFile)
 					depList := filterPkg(depYML)
 					for _, d := range depList {
-						writeToFile(outfile, p.printDep(ymlFile, d))
+						writeOut(p.printDep(ymlFile, d))
 					}
 				}
 			}
 		}
 	}
 
-	// We reach the end of the file
-	writeToFile(outfile, p.printTail())
-	outfileName := outfile.Name()
-	outfile.Close()
+	// We reach the end of the main dep rules
+	writeOut(p.printTail())
 
-	outfileName = p.generate(outfileName)
+	// --- Makefile-only: hash tracking rules ---
+	// Emitted only when -d <hashdir> is given.
+	// Per-consumer (packages with non-leaf deps only):
+	//   pkg/<consumer>: .gen-deps/<dep>.hash  (file prereq — triggers get-deps -H)
+	//   pkg/<consumer>: DEPS_FORCE = ...       (target-specific var, propagates to eve-%)
+	// The .gen-deps/%.hash pattern rule lives in the root Makefile.
+	if mkfile && hashDir != "" {
+		consumers := make([]string, 0, len(allPkgDeps))
+		for pkg := range allPkgDeps {
+			consumers = append(consumers, pkg)
+		}
+		sort.Strings(consumers)
 
-	fmt.Println("Done. Output file written to " + outfileName + ".")
+		// Collect consumers that actually have non-leaf (tracked) deps.
+		type consumerEntry struct {
+			name        string
+			trackedDeps []string
+		}
+		var tracked []consumerEntry
+		for _, consumer := range consumers {
+			var tDeps []string
+			for _, d := range allPkgDeps[consumer] {
+				if depOf[d] && d != consumer {
+					tDeps = append(tDeps, d)
+				}
+			}
+			if len(tDeps) > 0 {
+				tracked = append(tracked, consumerEntry{consumer, tDeps})
+			}
+		}
+
+		if len(tracked) > 0 {
+			mkBuf.WriteString("\n# Universal dependency hash tracking (generated by get-deps -d)\n")
+			mkBuf.WriteString("# Hash file rules live in the root Makefile (.gen-deps/%.hash pattern);\n")
+			mkBuf.WriteString("# only direct file prereqs and DEPS_FORCE assignments are emitted here.\n")
+
+			for _, e := range tracked {
+				consumerBase := pkgBaseName(e.name)
+				consumerHash := fmt.Sprintf("%s/%s.hash", hashDir, consumerBase)
+
+				var conditions []string
+				for _, d := range e.trackedDeps {
+					hashFile := fmt.Sprintf("%s/%s.hash", hashDir, pkgBaseName(d))
+					mkBuf.WriteString(fmt.Sprintf("pkg/%s: %s\n", consumerBase, hashFile))
+					conditions = append(conditions, fmt.Sprintf("[ %s -nt %s ]", hashFile, consumerHash))
+				}
+
+				mkBuf.WriteString(fmt.Sprintf(
+					"pkg/%s: DEPS_FORCE = $(if $(shell [ -f %s ] && { %s; } 2>/dev/null && echo y),--force,)\n",
+					consumerBase, consumerHash, strings.Join(conditions, " || ")))
+			}
+		}
+	}
+
+	// --- Finalize output ---
+	if imgfile {
+		outfileName := outfile.Name()
+		outfile.Close()
+		outfileName = p.generate(outfileName)
+		fmt.Println("Done. Output file written to " + outfileName + ".")
+	} else {
+		// Makefile: write-if-changed to avoid spurious Make restarts
+		outContent := []byte(mkBuf.String())
+		if existing, err := os.ReadFile(outputMakeFile); err == nil && bytes.Equal(existing, outContent) {
+			fmt.Println("Done. " + outputMakeFile + " unchanged.")
+			return
+		}
+		if err := os.WriteFile(outputMakeFile, outContent, 0644); err != nil {
+			log.Fatal(err)
+		}
+		fmt.Println("Done. Output file written to " + outputMakeFile + ".")
+	}
 }

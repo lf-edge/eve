@@ -6,9 +6,11 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/linuxkit/linuxkit/src/cmd/linuxkit/pkglib"
 	"github.com/linuxkit/linuxkit/src/cmd/linuxkit/spec"
@@ -19,7 +21,6 @@ import (
 const (
 	defaultPkgBuildYML  = "build.yml"
 	defaultPkgCommit    = "HEAD"
-	defaultPkgTag       = "{{.Hash}}"
 	defaultBuilderImage = "moby/buildkit:v0.12.3"
 )
 
@@ -82,7 +83,7 @@ func lktBuildArgs(ymlPath string) map[string]string {
 		BuildYML:   ymlBuildFile,
 		HashCommit: defaultPkgCommit,
 		Dev:        false,
-		Tag:        defaultPkgTag,
+		// Tag intentionally omitted: use the tag template from build.yml.
 	}
 	pkgs, err := pkglib.NewFromConfig(pkglibConfig, filepath.Dir(ymlPath))
 	if err != nil {
@@ -140,4 +141,34 @@ func lktBuildArgs(ymlPath string) map[string]string {
 	}
 
 	return badr.buildArgs
+}
+
+// getPkgTag returns the linuxkit content tag for a package directory.
+// pkgDir is a path like "pkg/zfs"; buildYml is the build yml filename
+// (e.g. "build.yml" or "build-2.3.yml").
+// The env-var convention EVE_PKG_BUILD_YML_<PKGNAME> (uppercase,
+// hyphens→underscores) overrides buildYml when set.
+func getPkgTag(pkgDir, buildYml string) (string, error) {
+	// Allow Makefile to override the build yml via env var.
+	pkgName := filepath.Base(pkgDir)
+	envKey := "EVE_PKG_BUILD_YML_" + strings.ToUpper(strings.ReplaceAll(pkgName, "-", "_"))
+	if override := os.Getenv(envKey); override != "" {
+		buildYml = override
+	}
+
+	pkglibConfig := pkglib.PkglibConfig{
+		BuildYML:   buildYml,
+		HashCommit: defaultPkgCommit,
+		Dev:        false,
+		// Tag intentionally omitted: use the tag template from build.yml
+		// (e.g. "{{.Hash}}-2.3" for ZFS). Setting Tag here would override it.
+	}
+	pkgs, err := pkglib.NewFromConfig(pkglibConfig, pkgDir)
+	if err != nil {
+		return "", fmt.Errorf("pkglib.NewFromConfig for %s: %v", pkgDir, err)
+	}
+	if len(pkgs) == 0 {
+		return "", fmt.Errorf("no packages found in %s", pkgDir)
+	}
+	return pkgs[0].Tag(), nil
 }
