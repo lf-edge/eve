@@ -115,6 +115,20 @@ func (ctx ctrdContext) Setup(status types.DomainStatus, config types.DomainConfi
 		return fmt.Errorf("updating spec with ioBundles failed: %v", err)
 	}
 
+	// When the container has CPU pinning, generate a filtered /proc/cpuinfo
+	// that only exposes the allowed CPUs.  Without this, applications like
+	// CODESYS read /proc/cpuinfo, see all host CPUs (e.g. 16), create
+	// per-CPU threads and then fail sched_setaffinity() with EINVAL for
+	// CPUs outside the cpuset — causing "Binding of task … to group System
+	// failed" errors.
+	if len(status.VmConfig.CPUs) > 0 {
+		if err := addCPUInfoBindMount(spec.Get(), status.DomainName, status.VmConfig.CPUs); err != nil {
+			// Non-fatal: the container will still work but may see
+			// all host CPUs and create extra threads.
+			logrus.Warnf("Setup(%s): failed to filter /proc/cpuinfo: %v", status.DomainName, err)
+		}
+	}
+
 	// we use patched version of dhcpcd with /etc/resolv.conf.new
 	vifsTaskResolv := filepath.Join(vifsDir, status.DomainName, "etc", "resolv.conf.new")
 	err = os.MkdirAll(filepath.Dir(vifsTaskResolv), 0755)
@@ -190,6 +204,8 @@ func (ctx ctrdContext) Delete(domainName string) error {
 	if err := ctx.ctrdClient.CtrDeleteContainer(ctrdCtx, domainName); err != nil {
 		return err
 	}
+	// Clean up the generated filtered cpuinfo file (if any).
+	cleanupFilteredCPUInfo(domainName)
 	if persistentSnapshotExists, _ := ctx.ctrdClient.CtrSnapshotExists(ctrdCtx, domainName); persistentSnapshotExists {
 		if err := ctx.ctrdClient.CtrRemoveSnapshot(ctrdCtx, domainName); err != nil {
 			return err
