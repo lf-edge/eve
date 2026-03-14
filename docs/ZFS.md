@@ -58,3 +58,44 @@ zfs_vdev_async_write_max_active = 10
 
 Minimum recommended system requirements to install ZFS storage is 32GB memory and 3 physical disks set in eve_persist_disk.
 eve_install_skip_zfs_checks should be set in installation config to override the requirement check for experimental installs.
+
+## pkg/zfs — dedicated ZFS userspace package
+
+EVE builds OpenZFS userspace tools and libraries as a dedicated linuxkit
+package (`pkg/zfs`). All consumers — `pkg/dom0-ztools`, `pkg/pillar`, and
+the GOBUILDER dev container — copy artifacts from this single image instead
+of each building ZFS independently.
+
+### Version selection
+
+The ZFS version is set in `kernel-version.mk`:
+
+```makefile
+ZFS_VERSION=2.3.3
+```
+
+The Makefile derives `ZFS_MAJOR_MINOR` (`2.3`) and selects the matching
+`pkg/zfs/build-2.3.yml` variant, which encodes the version in its linuxkit
+tag suffix (`<content-hash>-2.3`). To build with a different version:
+
+```shell
+make ZFS_VERSION=2.4.1 pkgs
+make ZFS_VERSION=2.4.1 pkg/zfs
+```
+
+Available versions have a corresponding `pkg/zfs/build-<major.minor>.yml`
+file. Adding a new version requires adding that file and a matching entry in
+`kernel-version.mk`.
+
+### How consumers reference pkg/zfs
+
+Packages that depend on `pkg/zfs` use `FROM ZFS_TAG` in their
+`Dockerfile.in`. The `ZFS_TAG` placeholder is resolved to the fully-qualified
+image reference by `tools/parse-pkgs.sh` before linuxkit runs, generating the
+actual `Dockerfile`. This means linuxkit sees a concrete image name in the
+`FROM` line, so it can resolve the dependency from its local content-addressed
+cache without requiring a registry push.
+
+See [PACKAGE-DEPS.md](./PACKAGE-DEPS.md) for how the build system detects
+when `pkg/zfs` (or any other dependency) has been rebuilt and forces
+consumers to rebuild accordingly.

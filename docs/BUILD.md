@@ -627,6 +627,30 @@ All of these packages are published regularly to the dockerhub registry, so it i
 
 **Note:** The net effect of this is that if you try to build `rootfs.img` or `installer.img` and reference a package that is _not_ published on the docker hub or available as a local image, it will _not_ try to build it locally for you; this functionality is not available in linuxkit. Instead, it will simply fail. You _must_ build the package and at least have it available in your local cache for the `rootfs.img` or `installer.img` build to succeed.
 
+#### Package dependency tracking
+
+Some packages depend on other EVE packages. For example, `pkg/pillar` and
+`pkg/dom0-ztools` both consume `pkg/zfs`. Because linuxkit uses the git tree
+hash as its cache key, and the generated `Dockerfile` (produced by
+`parse-pkgs.sh`) is gitignored, linuxkit cannot detect when a dependency has
+been rebuilt. The build system solves this with per-package hash files under
+`.gen-deps/` and a generated `pkg-deps.mk` that injects `--force` into
+linuxkit when a dependency was rebuilt more recently than its consumer.
+
+See [PACKAGE-DEPS.md](./PACKAGE-DEPS.md) for a full description.
+
+#### ZFS version selection
+
+`pkg/zfs` is a dedicated linuxkit package that builds OpenZFS userspace once.
+The ZFS version is controlled by `ZFS_VERSION` in `kernel-version.mk`:
+
+```shell
+make ZFS_VERSION=2.4.1 pkgs   # build everything with ZFS 2.4
+make ZFS_VERSION=2.3.3 pkg/zfs
+```
+
+See [ZFS.md](./ZFS.md) for details.
+
 #### Building packages with runtime stats
 
 Packages (currently Pillar) support collecting runtime memory and cpu statistics offered by Golang runtime. Collected statistics collected are sent over UDP to a [statsd](https://github.com/statsd/statsd) daemon running outside of EVE. To enable this, change the `RSTATS_ENDPOINT` (statsd endpoint) and `RSTATS_TAG` (the custom string used for tagging collected stats) inside `pkg/pillar/build-rstats.yml` to a proper value, then build:
@@ -837,7 +861,7 @@ Similarly, a `pkg/` may be sourced from another package which, in turn, has a sp
 FROM lfedge/eve-xen-tools@sha256:4a6d0bcfc33a3096398b4daa0931f9583c674358eeb47241e0df5f96e24c0110 as xentools
 ```
 
-The Dockerfile mentioned above is not checked into the repository, but instead generated from a template by a parse-pkgs script.
+The Dockerfile mentioned above is not checked into the repository, but instead generated from a template by a parse-pkgs script. Packages that depend on other EVE packages use `FROM <PKG>_TAG` placeholders in their `Dockerfile.in` (e.g. `FROM ZFS_TAG AS zfs`), which `parse-pkgs.sh` resolves to the fully-qualified image reference.
 
 The purpose of [parse-pkgs](../parse-pkgs.sh) is to collect the actual hashes of the latest version of every relevant package and either report them to stdout or modify a template file à la sed.
 
