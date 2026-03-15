@@ -1,13 +1,21 @@
-// gen-hash-deps reads .gen-deps/*.hash YAML files and emits a hash-deps.mk file
-// containing two sections:
-//   1. Hash file dependency rules — make rebuilds .gen-deps/X.hash when a dep's
-//      hash file changes (ordering + invalidation for file-target builds).
+// Copyright (c) 2026 Zededa, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
+// gen-hash-deps reads .gen-deps/.bootstrap/*.hash YAML files and emits a
+// hash-deps.mk file containing two sections:
+//   1. Hash file dependency rules — .gen-deps/X.hash depends on .gen-deps/Y.hash
+//      for every Y that X depends on.  Because .gen-deps/%.hash is a real file
+//      target whose recipe runs linuxkit pkg build, these deps drive both build
+//      ordering (Y is built before X) and cache invalidation (X rebuilds when
+//      Y's hash file is updated after a Y rebuild).
 //   2. Cache-export ordering rules (consumers after deps).
 //
-// Section 3 (eve-% ordering) is NOT needed: the file-target dep chain in Section 1
-// combined with the .gen-deps/%.hash build recipe handles ordering naturally.
+// Usage: gen-hash-deps -d <bootstrap-hash-dir> [-b <build-hash-dir>] -o <output.mk>
 //
-// Usage: gen-hash-deps -d <hash-dir> -o <output.mk>
+//   -d  directory containing .hash files written by linuxkit pkg update-hashes
+//       (used as input for dep graph extraction only)
+//   -b  directory prefix used in the generated make rules; defaults to -d
+//       Set -b .gen-deps when bootstrap hashes live in .gen-deps/.bootstrap
 package main
 
 import (
@@ -39,12 +47,18 @@ func pkgName(pkgPath string) string {
 
 func main() {
 	var (
-		hashDir string
-		outFile string
+		hashDir  string
+		buildDir string
+		outFile  string
 	)
-	flag.StringVar(&hashDir, "d", ".gen-deps", "Directory containing .hash files")
+	flag.StringVar(&hashDir, "d", ".gen-deps", "Directory containing .hash files (input)")
+	flag.StringVar(&buildDir, "b", "", "Directory prefix used in generated rules (default: same as -d)")
 	flag.StringVar(&outFile, "o", ".gen-deps/hash-deps.mk", "Output make file")
 	flag.Parse()
+
+	if buildDir == "" {
+		buildDir = hashDir
+	}
 
 	// Read all .hash files.
 	pattern := filepath.Join(hashDir, "*.hash")
@@ -90,17 +104,20 @@ func main() {
 	sb.WriteString("# Re-run 'make update-hashes' to regenerate.\n\n")
 
 	// Section 1: hash file dependency rules.
-	// These prereq-only rules (no recipe) are merged by make with the static
+	// These prereq-only rules (no recipe) are merged by make with the
 	// .gen-deps/%.hash pattern rule in the Makefile, which provides the recipe.
-	sb.WriteString("# Hash file deps (trigger pattern rule rebuild when dep tag changes):\n")
+	// They serve dual purpose: build ordering (dep built before consumer) and
+	// cache invalidation (consumer hash file is out-of-date when dep hash file
+	// is updated after a dep rebuild, triggering a consumer rebuild).
+	sb.WriteString("# Hash file deps (build ordering + cache invalidation):\n")
 	for _, e := range entries {
 		var depFiles []string
 		for _, dep := range e.depPkgs {
-			depFiles = append(depFiles, filepath.Join(hashDir, dep+".hash"))
+			depFiles = append(depFiles, filepath.Join(buildDir, dep+".hash"))
 		}
 		sort.Strings(depFiles)
 		fmt.Fprintf(&sb, "%s: %s\n",
-			filepath.Join(hashDir, e.name+".hash"),
+			filepath.Join(buildDir, e.name+".hash"),
 			strings.Join(depFiles, " "))
 	}
 

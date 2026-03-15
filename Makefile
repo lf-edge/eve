@@ -980,6 +980,8 @@ pkg/kube/external-boot-image.tar: pkg/external-boot-image
 	$(if $(filter $(BOOT_IMAGE_TAG),$(CACHE_CONTENT)),,$(LINUXKIT) cache pull $(BOOT_IMAGE_TAG))
 	$(MAKE) cache-export IMAGE=$(BOOT_IMAGE_TAG) OUTFILE=pkg/kube/external-boot-image.tar
 	rm -f pkg/external-boot-image/Dockerfile
+# kube needs external-boot-image.tar available before its pkg build runs.
+.gen-deps/kube.hash: pkg/kube/external-boot-image.tar
 eve-kube: pkg/kube/external-boot-image.tar .gen-deps/kube.hash
 	$(QUIET): $@: Succeeded
 
@@ -1214,46 +1216,59 @@ get_pkg_build_k_yml = $(if $(and $(filter y,$(DEV)),$(wildcard pkg/$1/build-k-de
 .gen-deps:
 	@mkdir -p $@
 
-# Compute content tags for all packages into .gen-deps/<pkgname>.hash with
-# Bootstrap: build hash-deps.mk (and all *.hash files) when absent.
-# make's -include mechanism: when hash-deps.mk is missing, make runs this rule
-# then re-reads the Makefile with the newly included recipes.
-.gen-deps/hash-deps.mk: | $(LINUXKIT) $(GEN_HASH_DEPS) .gen-deps
-	$(LINUXKIT) $(DASH_V) pkg update-hashes --hash-dir .gen-deps \
-	    $(foreach p,$(filter pkg/%,$(PKGS)),$p:$(strip $(call get_pkg_build_yml,$(notdir $p))))
-	$(GEN_HASH_DEPS) -d .gen-deps -o $@
+.gen-deps/.bootstrap:
+	@mkdir -p $@
 
-# update-hashes: (re-)compute all package hashes in topological order and
-# regenerate hash-deps.mk with file-based build targets.  Run explicitly for
-# bootstrap, ZFS_VERSION changes, or any dep-graph change (new package added).
-# write-if-changed semantics preserve hash file mtimes when tags are unchanged.
+# Bootstrap: build hash-deps.mk when absent.  Writes bootstrap hashes to
+# .gen-deps/.bootstrap/ (not .gen-deps/) so that the real .gen-deps/%.hash
+# file targets remain absent on a clean build, causing all build recipes to
+# run in topological order on the first 'make pkgs'.
+# make's -include mechanism re-reads the Makefile after this rule fires.
+.gen-deps/hash-deps.mk: $(wildcard pkg/*/build.yml) | $(LINUXKIT) $(GEN_HASH_DEPS) .gen-deps .gen-deps/.bootstrap
+	$(LINUXKIT) $(DASH_V) pkg update-hashes --hash-dir .gen-deps/.bootstrap \
+	    $(foreach p,$(filter pkg/%,$(PKGS)),$p:$(strip $(call get_pkg_build_yml,$(notdir $p))))
+	$(GEN_HASH_DEPS) -d .gen-deps/.bootstrap -b .gen-deps -o $@
+
+# update-hashes: refresh bootstrap hashes and regenerate hash-deps.mk.
+# Run explicitly after adding a new package or changing build.yml dep structure.
+# write-if-changed semantics preserve mtime when tags are unchanged.
 .PHONY: update-hashes
-update-hashes: $(LINUXKIT) $(GEN_HASH_DEPS) | .gen-deps
-	$(LINUXKIT) $(DASH_V) pkg update-hashes --hash-dir .gen-deps \
+update-hashes: $(LINUXKIT) $(GEN_HASH_DEPS) | .gen-deps .gen-deps/.bootstrap
+	$(LINUXKIT) $(DASH_V) pkg update-hashes --hash-dir .gen-deps/.bootstrap \
 	    $(foreach p,$(filter pkg/%,$(PKGS)),$p:$(strip $(call get_pkg_build_yml,$(notdir $p))))
-	$(GEN_HASH_DEPS) -d .gen-deps -o .gen-deps/hash-deps.mk
+	$(GEN_HASH_DEPS) -d .gen-deps/.bootstrap -b .gen-deps -o .gen-deps/hash-deps.mk
 
-# .gen-deps/%.hash files are written by update-hashes (write-if-changed).
-# Preserve them; make must not auto-delete them as intermediates.
+# .gen-deps/%.hash: real file targets written by linuxkit pkg build.
+# Recipe:
+#   1. Computes content hash for this package via update-hashes (single pkg,
+#      write-if-changed).  Reads dep hashes from .gen-deps/ which are already
+#      up-to-date thanks to Section 1 deps in hash-deps.mk.
+#   2. Builds the Docker image via linuxkit pkg build.
+# Source file deps (find pkg/$*) drive make's out-of-date detection for local
+# edits.  Inter-package deps from hash-deps.mk Section 1 handle propagation:
+# when a dep's hash file gets a new mtime (step 1 wrote a new hash), all
+# consumers are out-of-date and rebuild automatically.
+.SECONDEXPANSION:
 .PRECIOUS: .gen-deps/%.hash
-
-# eve-%: stage 1 always runs update-hashes (fast: recomputes all content tags,
-# handles make variable changes like ZFS_VERSION, propagates dep-tag changes).
-# Stage 2 runs linuxkit pkg build, which hits the docker cache and skips the
-# actual build when the image is already present — so the fast path is just a
-# cache lookup.
-.PHONY: eve-%
-eve-%: update-hashes | $(LINUXKIT)
+.gen-deps/%.hash: $$(shell find pkg/$$* \! -path '*/vendor/*' -type f 2>/dev/null) | .gen-deps $(LINUXKIT)
 	$(QUIET): "$@: Begin: LINUXKIT_PKG_TARGET=$(LINUXKIT_PKG_TARGET)"
 	$(eval LINUXKIT_DOCKER_LOAD := $(if $(filter $(PKGS_DOCKER_LOAD),$*),--docker,))
 	$(eval LINUXKIT_BUILD_PLATFORMS_LIST := $(call uniq,linux/$(ZARCH) $(if $(filter $(PKGS_HOSTARCH),$*),linux/$(HOSTARCH),)))
 	$(eval LINUXKIT_BUILD_PLATFORMS := --platforms $(subst $(space),$(comma),$(strip $(LINUXKIT_BUILD_PLATFORMS_LIST))))
 	$(eval LINUXKIT_FLAGS := $(if $(filter manifest,$(LINUXKIT_PKG_TARGET)),,$(FORCE_BUILD) $(LINUXKIT_DOCKER_LOAD) $(LINUXKIT_BUILD_PLATFORMS)))
+	$(QUIET)$(LINUXKIT) $(DASH_V) pkg update-hashes --hash-dir .gen-deps \
+	    pkg/$*:$(strip $(call get_pkg_build_yml,$*))
 	$(QUIET)$(LINUXKIT) $(DASH_V) pkg $(LINUXKIT_PKG_TARGET) $(LINUXKIT_ORG_TARGET) $(LINUXKIT_OPTS) $(LINUXKIT_EXTRA_BUILD_ARGS) $(LINUXKIT_FLAGS) --hash-dir .gen-deps pkg/$*
 	$(QUIET)if [ -n "$(PRUNE)" ]; then \
 		flock $(PARALLEL_BUILD_LOCK) docker image prune -f; \
 	fi
 	$(QUIET): "$@: Succeeded"
+
+# eve-%: thin PHONY wrapper — triggers the hash file target, which does the
+# real work.  Preserves the eve-<name> interface for existing callers.
+.PHONY: eve-%
+eve-%: .gen-deps/%.hash
+	@:
 
 # pkg/<name> is a convenience alias for eve-<name>.
 # Static pattern rule scoped to known packages so the pattern does not match
