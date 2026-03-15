@@ -18,9 +18,6 @@ uniq = $(if $1,$(firstword $1) $(call uniq,$(filter-out $(firstword $1),$1)))
 
 # you are not supposed to tweak these variables -- they are effectively R/O
 HV_DEFAULT=kvm
-# linuxkit version. This **must** be a published semver version so it can be downloaded already compiled from
-# the release page at https://github.com/linuxkit/linuxkit/releases
-LINUXKIT_VERSION=v1.7.0
 GOVER ?= 1.24.1
 PKGBASE=github.com/lf-edge/eve
 GOMODULE=$(PKGBASE)/pkg/pillar
@@ -975,31 +972,21 @@ shell: $(GOBUILDER)
 	$(QUIET)DOCKER_GO_ARGS=-t ; $(DOCKER_GO) bash $(GOTREE) $(GOMODULE)
 
 #
-# Linuxkit
+# Parallel build lock — a unique per-build sentinel file used to serialize
+# operations that must not run concurrently (e.g. docker image prune).
 #
-.PHONY: linuxkit
-linuxkit: $(LINUXKIT)
-
-LINUXKIT_SOURCE=https://github.com/linuxkit/linuxkit
-PARALLEL_BUILD_LOCK:=$(shell mktemp -u $(BUILD_DIR)/eve-parallel-build-XXXXXX)
+PARALLEL_BUILD_LOCK_FNAME := $(shell mktemp -u eve-parallel-build-XXXXXX)
+PARALLEL_BUILD_LOCK := $(BUILD_DIR)/$(PARALLEL_BUILD_LOCK_FNAME)
 
 $(PARALLEL_BUILD_LOCK): $(BUILD_DIR)
 	$(QUIET): "$@: Begin: PARALLEL_BUILD_LOCK=$(PARALLEL_BUILD_LOCK)"
 	@touch $@
 	$(QUIET): $@: Succeeded
 
-# $(PARALLEL_BUILD_LOCK) is unique for each build, so we can use is a flag
-# to cleanup possibly old linuxkit-builder containers because this
-# target is executed only once per build for both secuential and parallel builds
-$(LINUXKIT): $(BUILDTOOLS_BIN)/linuxkit-$(LINUXKIT_VERSION) $(PARALLEL_BUILD_LOCK)
-	$(QUIET)docker stop linuxkit-builder >/dev/null 2>&1 || true
-	$(QUIET)docker rm linuxkit-builder >/dev/null 2>&1 || true
-	$(QUIET)ln -sf  $(notdir $<) $@
-	$(QUIET): $@: Succeeded
-
-$(BUILDTOOLS_BIN)/linuxkit-$(LINUXKIT_VERSION):
-	$(QUIET) curl -L -o $@ $(LINUXKIT_SOURCE)/releases/download/$(LINUXKIT_VERSION)/linuxkit-$(LOCAL_GOOS)-$(HOSTARCH) && chmod +x $@
-	$(QUIET): $@: Succeeded
+#
+# Linuxkit
+#
+include $(CURDIR)/mk/linuxkit.mk
 
 $(GOBUILDER):
 	$(QUIET): "$@: Begin: GOBUILDER=$(GOBUILDER)"
