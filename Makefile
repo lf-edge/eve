@@ -1082,6 +1082,13 @@ shell: $(GOBUILDER)
 linuxkit: $(LINUXKIT)
 
 LINUXKIT_SOURCE=https://github.com/linuxkit/linuxkit
+# Fork that provides --hash-dir and update-hashes (not yet in a linuxkit release).
+# Set LINUXKIT_FORK_URL="" to revert to downloading the upstream release binary.
+LINUXKIT_FORK_URL    ?= https://github.com/rucoder/linuxkit
+LINUXKIT_FORK_BRANCH ?= rucoder/pkg-hash-dir
+# Optional: path to a local linuxkit source tree — skips the git clone above.
+#   make LINUXKIT_SRC=/path/to/linuxkit-fork pkg/pillar
+LINUXKIT_SRC ?=
 PARALLEL_BUILD_LOCK_FNAME:=$(shell mktemp -u eve-parallel-build-XXXXXX)
 PARALLEL_BUILD_LOCK:=$(BUILD_DIR)/$(PARALLEL_BUILD_LOCK_FNAME)
 
@@ -1093,15 +1100,35 @@ $(PARALLEL_BUILD_LOCK): $(BUILD_DIR)
 # $(PARALLEL_BUILD_LOCK) is unique for each build, so we can use is a flag
 # to cleanup possibly old linuxkit-builder containers because this
 # target is executed only once per build for both secuential and parallel builds
+ifneq ($(LINUXKIT_SRC),)
+# Case 1: local source tree provided — build directly, no clone needed.
+$(LINUXKIT): $(wildcard $(LINUXKIT_SRC)/src/cmd/linuxkit/*.go) $(PARALLEL_BUILD_LOCK) | $(BUILDTOOLS_BIN)
+	$(QUIET)cd $(LINUXKIT_SRC)/src/cmd/linuxkit && go build -o $(abspath $@) .
+	$(QUIET)docker stop linuxkit-builder >/dev/null 2>&1 || true
+	$(QUIET)docker rm linuxkit-builder >/dev/null 2>&1 || true
+	$(QUIET): $@: Succeeded
+else
 $(LINUXKIT): $(BUILDTOOLS_BIN)/linuxkit-$(LINUXKIT_VERSION) $(PARALLEL_BUILD_LOCK)
 	$(QUIET)docker stop linuxkit-builder >/dev/null 2>&1 || true
 	$(QUIET)docker rm linuxkit-builder >/dev/null 2>&1 || true
 	$(QUIET)ln -sf  $(notdir $<) $@
 	$(QUIET): $@: Succeeded
 
+ifneq ($(LINUXKIT_FORK_URL),)
+# Case 2: fork URL set — shallow-clone and build from source (default for this branch).
+$(BUILDTOOLS_BIN)/linuxkit-$(LINUXKIT_VERSION): | $(BUILDTOOLS_BIN)
+	$(QUIET)tmp=$$(mktemp -d) && \
+	  git clone --depth 1 --branch $(LINUXKIT_FORK_BRANCH) $(LINUXKIT_FORK_URL) $$tmp && \
+	  cd $$tmp/src/cmd/linuxkit && go build -o $(abspath $@) . && \
+	  rm -rf $$tmp
+	$(QUIET): $@: Succeeded
+else
+# Case 3: no fork — download the upstream release binary.
 $(BUILDTOOLS_BIN)/linuxkit-$(LINUXKIT_VERSION):
 	$(QUIET) curl -L -o $@ $(LINUXKIT_SOURCE)/releases/download/$(LINUXKIT_VERSION)/linuxkit-$(LOCAL_GOOS)-$(HOSTARCH) && chmod +x $@
 	$(QUIET): $@: Succeeded
+endif
+endif
 
 $(GOBUILDER):
 	$(QUIET): "$@: Begin: GOBUILDER=$(GOBUILDER)"
