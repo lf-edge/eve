@@ -1,8 +1,6 @@
 # Copyright (c) 2018-2026 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-#test 2
-
 ARG REL_HASH_LFEDGE_EVE_ALPINE
 ARG REL_HASH_LFEDGE_EVE_UEFI
 ARG REL_HASH_LFEDGE_EVE_ZFS
