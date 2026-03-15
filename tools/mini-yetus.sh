@@ -141,7 +141,7 @@ cd "$SRC_DIR" && \
     git commit -m "Changes in the PR" >/dev/null 2>&1
 
 echo "[+] Running yetus on the changes..."
-docker run --rm -v "$SRC_DIR":/src:delegated,z docker.io/lfedge/eve-yetus:0.15.10-eve-1 \
+docker run --rm -v "$SRC_DIR":/src:delegated,z docker.io/lfedge/eve-yetus:0.15.1-eve-1 \
     --basedir=/src \
     --test-parallel=true \
     --dirty-workspace \
