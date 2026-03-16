@@ -1,21 +1,15 @@
 // Copyright (c) 2026 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-// gen-hash-deps reads .gen-deps/.bootstrap/*.hash YAML files and emits a
-// hash-deps.mk file containing two sections:
+// gen-hash-deps reads .gen-deps/*.hash YAML files and emits a hash-deps.mk
+// file containing two sections:
 //   1. Hash file dependency rules — .gen-deps/X.hash depends on .gen-deps/Y.hash
-//      for every Y that X depends on.  Because .gen-deps/%.hash is a real file
-//      target whose recipe runs linuxkit pkg build, these deps drive both build
-//      ordering (Y is built before X) and cache invalidation (X rebuilds when
-//      Y's hash file is updated after a Y rebuild).
+//      for every Y that X depends on.  These drive both build ordering
+//      (Y is built before X) and cache invalidation (X rebuilds when Y's
+//      hash file gets a new mtime after a successful Y build).
 //   2. Cache-export ordering rules (consumers after deps).
 //
-// Usage: gen-hash-deps -d <bootstrap-hash-dir> [-b <build-hash-dir>] -o <output.mk>
-//
-//   -d  directory containing .hash files written by linuxkit pkg update-hashes
-//       (used as input for dep graph extraction only)
-//   -b  directory prefix used in the generated make rules; defaults to -d
-//       Set -b .gen-deps when bootstrap hashes live in .gen-deps/.bootstrap
+// Usage: gen-hash-deps -d <hash-dir> -o <output.mk>
 package main
 
 import (

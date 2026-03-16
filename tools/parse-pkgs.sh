@@ -1,6 +1,14 @@
 #!/bin/bash
 # Poor man's[1] yml generator
 #
+# Resolves package tags for .yml.in template processing.
+#
+# When HASH_DIR is set (e.g. .gen-deps), --hash-dir is passed
+# to `linuxkit pkg show-tag` so that @lkt: dep tags are read from
+# precomputed hash files written by `linuxkit pkg update-hashes`. This
+# avoids circular dependency issues with @lkt:pkgs:../* wildcards and
+# ensures version-specific build ymls (e.g. ZFS build-2.3.yml) are
+# correctly reflected in combined hashes.
 #
 # [1] A poor man is a man on a deadline.
 #
@@ -10,6 +18,10 @@ set -e
 
 EVE="$(cd "$(dirname "$0")" && pwd)/../"
 PATH="$EVE/build-tools/bin:$PATH"
+
+# HASH_DIR is set by the Makefile to point to the hash directory
+# (e.g. .gen-deps). When set, --hash-dir is forwarded to show-tag.
+HASH_DIR="${HASH_DIR:-}"
 
 get_git_tag() {
   echo "${EVE_HASH:-$(git tag -l --points-at HEAD | grep '[0-9]*\.[0-9]*\.[0-9]*' | head -1)}"
@@ -57,6 +69,7 @@ _linuxkit_tag() {
     local pkg="$3"
     local rootfs_flavor="$4"
     local -a build_yml_cmd
+    local -a hash_dir_cmd
 
     if [[ "${is_dev_build}" == 1 && "${is_k_build}" == 1 ]]; then
       build_yml_cmd=(--build-yml build-k-dev.yml)
@@ -70,8 +83,12 @@ _linuxkit_tag() {
       build_yml_cmd=(--build-yml "build-${PLATFORM}.yml")
     fi
 
+    if [[ -n "${HASH_DIR}" ]]; then
+      hash_dir_cmd=(--hash-dir "${HASH_DIR}")
+    fi
+
     # shellcheck disable=SC2086
-    linuxkit pkg ${LINUXKIT_ORG_TARGET} show-tag "${build_yml_cmd[@]}" ${EVE_HASH:+--hash $EVE_HASH} "${EVE}/${pkg}"
+    linuxkit pkg ${LINUXKIT_ORG_TARGET} show-tag "${hash_dir_cmd[@]}" "${build_yml_cmd[@]}" ${EVE_HASH:+--hash $EVE_HASH} "${EVE}/${pkg}"
 }
 
 immutable_tag() {

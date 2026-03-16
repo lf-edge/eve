@@ -77,9 +77,11 @@ DOM0_DEPS=$(grep -c '^    - path:' "$BDIR/dom0-ztools.hash" 2>/dev/null || echo 
 check "dom0-ztools.hash has deps entries"   test "$DOM0_DEPS" -ge 1
 PILLAR_DEPS=$(grep -c '^    - path:' "$BDIR/pillar.hash" 2>/dev/null || echo 0)
 check "pillar.hash has deps entries"        test "$PILLAR_DEPS" -ge 1
-check "hash-deps.mk created"               test -f "$GDIR/hash-deps.mk"
-check "hash-deps.mk has dom0-ztools rule"  grep -q 'dom0-ztools.hash:.*zfs.hash' "$GDIR/hash-deps.mk"
-check "hash-deps.mk has pillar rule"       grep -q 'pillar.hash:.*zfs.hash' "$GDIR/hash-deps.mk"
+ARCH=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
+HDMK="$GDIR/hash-deps-${ARCH}.mk"
+check "hash-deps.mk created"               test -f "$HDMK"
+check "hash-deps.mk has dom0-ztools rule"  grep -q 'dom0-ztools.hash:.*zfs.hash' "$HDMK"
+check "hash-deps.mk has pillar rule"       grep -q 'pillar.hash:.*zfs.hash' "$HDMK"
 
 # ── T3: warm update-hashes is a no-op (mtimes preserved) ─────────────────────
 echo ""
@@ -162,11 +164,11 @@ echo '# test-corner' >> pkg/zfs/Dockerfile
 make update-hashes >/dev/null
 DIRTY_23_TAG=$(grep '^tag:' "$BDIR/zfs.hash" | awk '{print $2}')
 # Strip only the dirty marker (e.g. -dirty-1c211db) but keep the version suffix (-2.3).
-BASE_23=$(echo "$DIRTY_23_TAG" | sed 's/-dirty-[0-9a-f]*//')
+BASE_23=${DIRTY_23_TAG/-dirty-[0-9a-f]*/}
 
 make ZFS_VERSION=2.4.1 update-hashes >/dev/null
 DIRTY_24_TAG=$(grep '^tag:' "$BDIR/zfs.hash" | awk '{print $2}')
-BASE_24=$(echo "$DIRTY_24_TAG" | sed 's/-dirty-[0-9a-f]*//')
+BASE_24=${DIRTY_24_TAG/-dirty-[0-9a-f]*/}
 
 SUFFIX_24=$(echo "$DIRTY_24_TAG" | grep -oP 'dirty-\K[0-9a-f]+' || true)
 
@@ -179,7 +181,7 @@ check "base hash differs 2.3 vs 2.4 (ZFS_VERSION preserved)" test "$BASE_23" != 
 check "dirty suffix same for 2.3 and 2.4 (same file content)" \
     test "$SUFFIX_23" = "$SUFFIX_24"
 check "clean 2.3 base matches dirty 2.3 base" \
-    test "$(echo "$CLEAN_23" | sed 's/-dirty-.*//')" = "$BASE_23"
+    test "${CLEAN_23/-dirty-*/}" = "$BASE_23"
 
 git checkout pkg/zfs/Dockerfile
 make update-hashes >/dev/null  # restore clean 2.3
