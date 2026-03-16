@@ -731,10 +731,7 @@ run-universal: $(SWTPM) GETTY
 run-split: $(SWTPM) GETTY
 	@echo "Preparing ext rootfs as ext-imga.img for VM..."
 	@mkdir -p $(CURRENT_DIR)/pkgs-inject
-	@rm -f $(CURRENT_DIR)/pkgs-inject/ext-imga.img.verity $(CURRENT_DIR)/pkgs-inject/ext-imga.img.roothash
 	@cp $(CURRENT_DIR)/installer/rootfs-ext.img $(CURRENT_DIR)/pkgs-inject/ext-imga.img
-	@[ ! -f $(CURRENT_DIR)/installer/rootfs-ext.img.verity ] || cp $(CURRENT_DIR)/installer/rootfs-ext.img.verity $(CURRENT_DIR)/pkgs-inject/ext-imga.img.verity
-	@[ ! -f $(CURRENT_DIR)/installer/rootfs-ext.img.roothash ] || cp $(CURRENT_DIR)/installer/rootfs-ext.img.roothash $(CURRENT_DIR)/pkgs-inject/ext-imga.img.roothash
 	@echo "Starting VM with core rootfs + ext-imga.img on /dev/sdb1..."
 	$(QEMU_SYSTEM) $(QEMU_OPTS) \
 		-drive file=$(CURRENT_DIR)/live-split.$(IMG_FORMAT),format=$(IMG_FORMAT),id=uefi-disk \
@@ -891,6 +888,25 @@ installer: $(INSTALLER).raw current
 # Split installer: bundles core rootfs + ext rootfs, HV type set at flash time via CONFIG
 installer-split: $(INSTALLER)-split.raw current
 	$(QUIET): "$@: Succeeded, INSTALLER_SPLIT=$(INSTALLER)-split.raw"
+# Split OCI image for OTA: contains both Core (disk-root) and Extension (disk-additional)
+# Build the non-rootfs EVE artifacts (EFI, config, persist, etc.) first, then
+# assemble the OCI image directly using rootfs-core.img as rootfs.img and
+# rootfs-ext.img as the additional disk. We cannot call $(MAKE) eve because it
+# would rebuild the monolithic rootfs-generic.img and overwrite our core image,
+# plus the dirty timestamp would create a different INSTALLER directory.
+# Split OCI artifacts: same as EVE_ARTIFACTS but WITHOUT $(ROOTFS_IMGS), $(INSTALLER_IMG),
+# $(SBOM), and fullname-rootfs — all of which chain back to the monolithic rootfs-generic.img.
+# The split OCI image uses rootfs-core.img (symlinked as rootfs.img) instead.
+EVE_SPLIT_ARTIFACTS=$(BIOS_IMG) $(EFI_PART) $(CONFIG_IMG) $(PERSIST_IMG) $(INITRD_IMG) $(BSP_IMX_PART) $(BOOT_PART)
+eve-split: $(ROOTFS_CORE_IMG) $(ROOTFS_EXT_IMG) $(EVE_SPLIT_ARTIFACTS) current $(RUNME) $(BUILD_YML) | $(BUILD_DIR)
+	$(QUIET): "$@: Begin: EVE_REL=$(EVE_REL), HV=$(HV)"
+	cp -f $(INSTALLER)/rootfs-core.img $(INSTALLER)/rootfs.img
+	cp images/out/*.yml $|
+	$(PARSE_PKGS) pkg/eve/Dockerfile.in > $|/Dockerfile
+	sed -i 's|#SPLIT_ROOTFS_LABEL#|LABEL org.lfedge.eci.artifact.disk-0="/bits/rootfs-ext.img"|' $|/Dockerfile
+	$(LINUXKIT) $(DASH_V) pkg $(LINUXKIT_PKG_TARGET) $(LINUXKIT_ORG_TARGET) $(LINUXKIT_OPTS) --platforms linux/$(ZARCH) --hash-path $(CURDIR) --hash $(ROOTFS_VERSION)-$(HV) --docker $(if $(strip $(EVE_REL)),--release) $(EVE_REL)$(if $(strip $(EVE_REL)),-$(HV)) $(FORCE_BUILD) $|
+	rm -f $(INSTALLER)/rootfs.img
+	$(QUIET): $@: Succeeded
 installer.tar: $(INSTALLER_TAR)
 installertar: $(INSTALLER_TAR)
 installer-img: $(INSTALLER_IMG)
@@ -965,6 +981,11 @@ $(ROOTFS_IMG_BASE)-%.img: pkg/mkrootfs-$(ROOTFS_FORMAT)
 # Split-rootfs extension image is always built as erofs.
 $(ROOTFS_EXT_IMG): ROOTFS_FORMAT=$(ROOTFS_EXT_FORMAT)
 
+# Core rootfs tar embeds ext-verity-roothash (from $(INSTALLER)/ext-verity-roothash),
+# which is produced during the Extension image build. Ensure ext image is built first
+# so the roothash file exists when linuxkit assembles the Core tar.
+$(ROOTFS_TAR_BASE)-core.tar: $(ROOTFS_EXT_IMG)
+
 ifdef LIVE_UPDATE
 # Don't regenerate the whole image if tar was changed, but
 # do generate if does not exist. qcow2 target will handle
@@ -978,11 +999,11 @@ endif
 	./tools/makerootfs.sh imagefromtar -t $(ROOTFS_TAR_BASE)-$*.tar -i $@ -f $(ROOTFS_FORMAT) -a $(ZARCH)
 	if [ "$*" = "ext" ]; then \
 		if command -v veritysetup >/dev/null 2>&1; then \
-			./tools/make-ext-verity.sh $@ $@.verity $@.roothash; \
+			./tools/make-ext-verity.sh $@ $@.roothash; \
 			cp $@.roothash $(INSTALLER)/ext-verity-roothash; \
 		else \
 			echo "WARNING: veritysetup not found; skipping dm-verity metadata generation for $@"; \
-			rm -f $@.verity $@.roothash $(INSTALLER)/ext-verity-roothash; \
+			rm -f $@.roothash $(INSTALLER)/ext-verity-roothash; \
 		fi; \
 	fi
 	@echo "size of $@ is $$(wc -c < "$@")B"
@@ -1097,7 +1118,7 @@ $(LIVE)-universal.raw: $(BOOT_PART) $(EFI_PART) $(ROOTFS_UNIVERSAL_IMG) $(CONFIG
 	$(QUIET): $@: Succeeded
 
 # Split rootfs: core boots as imga, ext loaded at runtime by extsloader
-$(LIVE)-split.raw: $(BOOT_PART) $(EFI_PART) $(ROOTFS_CORE_IMG) $(CONFIG_IMG) $(PERSIST_IMG) $(BSP_IMX_PART) $(BIOS_IMG) | $(INSTALLER)
+$(LIVE)-split.raw: $(BOOT_PART) $(EFI_PART) $(ROOTFS_EXT_IMG) $(ROOTFS_CORE_IMG) $(CONFIG_IMG) $(PERSIST_IMG) $(BSP_IMX_PART) $(BIOS_IMG) | $(INSTALLER)
 	./tools/prepare-platform.sh "$(PLATFORM)" "$(BUILD_DIR)" "$(INSTALLER)"
 	ln -sf rootfs-core.img $(INSTALLER)/rootfs.img
 	./tools/makeflash.sh "mkimage-raw-efi" -C $| $@ $(LIVE_PART_SPEC)
@@ -1184,6 +1205,11 @@ eve: $(INSTALLER) $(EVE_ARTIFACTS) current $(RUNME) $(BUILD_YML) | $(BUILD_DIR)
 	$(QUIET): "$@: Begin: EVE_REL=$(EVE_REL), HV=$(HV), LINUXKIT_PKG_TARGET=$(LINUXKIT_PKG_TARGET)"
 	cp images/out/*.yml $|
 	$(PARSE_PKGS) pkg/eve/Dockerfile.in > $|/Dockerfile
+	@if [ -f "$(INSTALLER)/rootfs-ext.img" ]; then \
+		sed -i 's|#SPLIT_ROOTFS_LABEL#|LABEL org.lfedge.eci.artifact.disk-0="/bits/rootfs-ext.img"|' $|/Dockerfile; \
+	else \
+		sed -i '/#SPLIT_ROOTFS_LABEL#/d' $|/Dockerfile; \
+	fi
 	$(LINUXKIT) $(DASH_V) pkg $(LINUXKIT_PKG_TARGET) $(LINUXKIT_ORG_TARGET) $(LINUXKIT_OPTS) --platforms linux/$(ZARCH) --hash-path $(CURDIR) --hash $(ROOTFS_VERSION)-$(HV) --docker $(if $(strip $(EVE_REL)),--release) $(EVE_REL)$(if $(strip $(EVE_REL)),-$(HV)) $(FORCE_BUILD) $|
 	$(QUIET)if [ -n "$(EVE_REL)" ] && [ $(HV) = $(HV_DEFAULT) ]; then \
 	   $(LINUXKIT) $(DASH_V) pkg $(LINUXKIT_PKG_TARGET) $(LINUXKIT_ORG_TARGET) $(LINUXKIT_OPTS) --platforms linux/$(ZARCH) --hash-path $(CURDIR) --hash $(EVE_REL)-$(if $(TAGPLAT),$(TAGPLAT)-)$(HV) --docker --release $(EVE_REL) $(FORCE_BUILD) $| ;\

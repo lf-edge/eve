@@ -25,6 +25,7 @@ RUN mkdir /in /out
 # The annotations to be used are available at https://github.com/lf-edge/edge-containers/blob/master/docs/annotations.md
 LABEL org.lfedge.eci.artifact.root="/bits/rootfs.img"
 LABEL org.lfedge.eci.artifact.initrd="/bits/initrd.img"
+#SPLIT_ROOTFS_LABEL#
 
 WORKDIR /bits
 ENTRYPOINT ["/runme.sh"]

@@ -8,10 +8,10 @@ ARG BUILD_PKGS_BASE="git gcc linux-headers libc-dev make linux-pam-dev m4 findut
                      libintl libuuid libtirpc libblkid libcrypto1.1 zlib tar"
 
 # we use the same image in several places
-ARG EVE_ALPINE_IMAGE=lfedge/eve-alpine:745ae9066273c73b0fd879c4ba4ff626a8392d04-dirty-fe81aa7
+ARG EVE_ALPINE_IMAGE=lfedge/eve-alpine:745ae9066273c73b0fd879c4ba4ff626a8392d04
 
 FROM lfedge/eve-uefi:b3ef9ca37c99439c776673aeba83c52ea8b84626 AS uefi-build
-FROM lfedge/eve-dom0-ztools:586336774ffc3050834a1f2a001dc2cb8b3efdf2 AS zfs
+FROM lfedge/eve-dom0-ztools:e9fb7d625a47288420efa7431a8d9c5dc6f146e3 AS zfs
 RUN mkdir /out
 # copy zfs-related files from dom0-ztools using prepared list of files
 RUN while read -r x; do \
@@ -148,7 +148,7 @@ fi
 
 FROM lfedge/eve-fscrypt:d528516ed00f61a5ba4ba2407ab3a94bd55aff90 AS fscrypt
 FROM lfedge/eve-dnsmasq:66334faad5620503b542c8faa2012c3697659ce2 AS dnsmasq
-FROM lfedge/eve-gpt-tools:f30cd5d07c0cd39bbf04e24b5d6d89019a5c4ce3 AS gpttools
+FROM lfedge/eve-gpt-tools:8e4f3e10e861373aa269b3ebeef483153f3399dc AS gpttools
 
 # collector collects everything together and then does any processing like stripping binaries.
 # We use this interim "collector" so that we can do processing.
@@ -158,7 +158,7 @@ ENV BUILD_PKGS patch
 ENV PKGS alpine-baselayout musl-utils libtasn1-progs pciutils yajl xz bash iptables ip6tables iproute2 \
     coreutils dmidecode libbz2 libuuid ipset curl radvd ethtool util-linux e2fsprogs libcrypto1.1 xorriso \
     qemu-img jq e2fsprogs-extra keyutils ca-certificates ip6tables-openrc iptables-openrc ipset-openrc hdparm \
-    libintl libtirpc libblkid zlib rsync chrony wireless-tools wpa_supplicant cryptsetup
+    libintl libtirpc libblkid zlib rsync chrony wireless-tools wpa_supplicant
 RUN eve-alpine-deploy.sh
 
 SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
@@ -183,7 +183,6 @@ COPY scripts/device-steps.sh \
     scripts/handlezedserverconfig.sh \
     scripts/veth.sh \
     scripts/dhcpcd.sh \
-    scripts/direct-net.sh \
     scripts/copy-image-to-qcow.sh \
     scripts/check-eval-state.sh \
     /out/opt/zededa/bin/

@@ -244,6 +244,15 @@ byte-identical across KVM, Xen, and Kubevirt deployments on the same architectur
 Xen packages (xen.gz, xen-tools) are already included in all rootfs variants regardless
 of HV type. Once pillar is also HV-agnostic, the entire Core Image becomes universal.
 
+> **Current limitation (PoC):** The `eve-split` Makefile target builds Core and Extension
+> for a specific hypervisor (`HV=kvm` by default). The kernel, Xen tools, and HV modifiers
+> applied by `compose-image-yml.sh -h $(HV)` are baked at build time. While pillar is
+> already universal (`PILLAR_K_TAG`), achieving a truly HV-agnostic Core Image requires:
+> (1) bundling kernels/tools for all supported HVs into the Core, and (2) selecting the
+> active HV at boot via the CONFIG partition `eve-hv-type` flag — similar to how
+> `live-split-k` works today. This is tracked as a follow-up to the initial split-rootfs
+> implementation.
+
 ### Runtime Guard Architecture
 
 With build tags removed, all HV-specific code is always present in the binary. Safety is
@@ -405,32 +414,67 @@ the root hash is transitively protected by the TPM-measured boot chain:
 PCR 13 (GRUB) seals Core squashfs
   └─ Core squashfs contains /etc/ext-verity-roothash
       └─ dm-verity validates every block of Extension erofs
+          └─ overlay lowerdir points into verity-mounted erofs
+              └─ containerd runs services from this overlay
 ```
 
 This means Core and Extension are cryptographically bound: changing Extension requires
 changing Core (new root hash), which changes PCR 13 (new squashfs hash). They are always
 the same version.
 
+### Why the dm-verity Root Hash Is Sufficient as Extension Identity
+
+The dm-verity root hash is the top of a Merkle hash tree computed over every block of the
+Extension erofs image. Changing any block in the image changes the root hash. This makes
+the root hash a complete cryptographic identity of the image content — equivalent in
+security strength to a SHA256 hash of the entire file, but with two advantages:
+
+1. **No full-file read required.** The root hash is computed once at build time and is a
+   compact 32-byte value. At runtime, the kernel verifies blocks on demand (only when read).
+   Computing a separate SHA256 of the entire image file would require reading the full image
+   (hundreds of MB) into page cache, consuming significant memory inside the pillar cgroup
+   for no additional security value.
+
+2. **Measures what is actually verified.** The root hash is the exact value that
+   `veritysetup open` uses to validate the Extension image. If `veritysetup open` succeeds,
+   the kernel has confirmed the image matches this root hash. A separate SHA256 computed by
+   reading the raw file on PERSIST bypasses dm-verity and does not prove that the dm-verity
+   device was set up correctly or that runtime reads are protected.
+
+For these reasons, the root hash (not a separately computed file hash) is used for PCR12
+measurement. After successful dm-verity mount, extsloader extends PCR12 with the root hash
+that was loaded from Core. This completes the trust chain: PCR 13 protects the root hash
+(via Core), PCR 12 records that extsloader successfully verified and mounted an Extension
+matching that root hash, and dm-verity enforces block-level integrity at runtime.
+
+**Important:** The root hash must only be loaded from the Core Image
+(`/etc/ext-verity-roothash`), never from files on PERSIST. The Core-embedded root hash is
+the sole trust anchor for Extension identity. The file contains two lines: the root hash
+(hex) and the data size in bytes (used as `--hash-offset` for `veritysetup open`, since
+the Merkle tree is appended directly to the extension image — no separate hash tree
+sidecar file).
+
 ### Signing vs Just Hashes for `ext.img`
 
 Current EVE verifier flow is hash-based: `VerifyImageConfig/Status` and verifier logic
 verify SHA256 of downloaded content (`pkg/pillar/types/verifiertypes.go`,
-`pkg/pillar/cmd/verifier/lib/verifier.go`). For split rootfs, this combines with
-dm-verity (runtime block verification) and Core-anchored root-hash trust.
+`pkg/pillar/cmd/verifier/lib/verifier.go`). For split rootfs, the dm-verity root hash
+embedded in Core provides both integrity verification and version binding, making a
+separate file-level SHA256 computation redundant at runtime.
 
 | Model | What it gives | Practical note |
 |------|---------------|----------------|
-| SHA256 only (current verifier baseline) | Integrity against corruption/mismatch vs expected digest | Authenticity depends on metadata/control-plane trust |
-| SHA256 + dm-verity root hash (this roadmap baseline) | Integrity + continuous runtime tamper detection on PERSIST | Strong local integrity for Extension load path |
+| dm-verity root hash in Core (this roadmap baseline) | Version binding + continuous runtime tamper detection on PERSIST | Root hash is the Merkle tree top — any block change invalidates it. No full-file read needed. |
 | + Detached signature for `ext.img` (hardening option) | Publisher authenticity bound to a signing key, independent of digest transport | Additional verification step and key lifecycle management |
 
 Related precedent: in the `eve-kernel` tree, module signing is enforced in x86 defconfigs
 (`CONFIG_MODULE_SIG=y`, `CONFIG_MODULE_SIG_FORCE=y`, `CONFIG_MODULE_SIG_SHA256=y` in
 `arch/x86/configs/eve-core_defconfig` and `arch/x86/configs/eve-hwe_defconfig`).
 
-Recommendation for split-rootfs v1 remains: keep dm-verity + hash/PCR path as baseline.
-A detached `ext.img` signature is a valid defense-in-depth step, but treat it as explicit
-hardening scope (not implicit in the current estimates unless added).
+Recommendation for split-rootfs v1 remains: keep dm-verity root hash (baked into Core) +
+PCR12 measurement path as baseline. A detached `ext.img` signature is a valid
+defense-in-depth step, but treat it as explicit hardening scope (not implicit in the
+current estimates unless added).
 
 ### Extension Loader (extsloader)
 
@@ -439,11 +483,30 @@ The Extension Loader is a pillar agent inside Core that manages the Extension li
 1. Wait for PERSIST to be accessible
 2. Determine active partition (IMGA or IMGB) via `zboot.GetCurrentPartition()`
 3. Find Extension Image at the corresponding path
-4. Read dm-verity root hash from `/hostfs/etc/ext-verity-roothash`
-5. Set up loop device + dm-verity (`veritysetup open`)
-6. Mount verified erofs read-only
-7. Start services via containerd (filtered by HV type for kube-specific services)
-8. Periodically verify running services, restart if needed
+4. Read dm-verity root hash and data size from `/hostfs/etc/ext-verity-roothash`
+   (Core Image only — never from files on PERSIST)
+5. Set up dm-verity device (`veritysetup open --hash-offset=<data-size>` using the same
+   image file as both data and hash device, with the Core-embedded root hash)
+6. Mount verified erofs read-only at `/persist/exts`
+7. Extend PCR12 with the root hash (on TPM-enabled devices; no-op without TPM)
+8. For each service: mount overlay (lowerdir from verity-mounted erofs, upperdir on
+   PERSIST) and start via containerd (filtered by HV type for kube-specific services)
+9. Periodically verify running services, restart if needed
+
+The runtime file access chain is:
+
+```
+/persist/ext-imga.img (erofs data + appended Merkle hash tree, on writable PERSIST)
+  → veritysetup open --hash-offset=<data-size> (root hash from Core)
+    → /dev/mapper/exts-verity-ext-imga-img (dm-verity verified block device)
+      → /persist/exts/ (read-only erofs mount, every read verified by kernel)
+        → overlay lowerdir=/persist/exts/containers/services/<name>/lower
+          → containerd runs service from overlay rootfs
+```
+
+Every file read by a running service passes through dm-verity. Tampering with the raw
+image on PERSIST causes kernel I/O errors on the affected blocks — services cannot
+silently execute modified code.
 
 ### Graceful Degradation
 
@@ -466,6 +529,46 @@ baseosmgr, etc.), containerd, networking (wlan, dnsmasq), Extension Loader
 **Extension Image** (from `images/rootfs_ext.yml.in`): eve-debug, eve-vtpm, eve-wwan,
 eve-vector, memory-monitor, node-exporter, edgeview, guacd, eve-kube (HV=k only).
 
+### Kernel Module and Firmware Deferred Loading
+
+When the rootfs splits, some kernel modules and firmware blobs currently in the
+monolithic image may belong in the Extension Image. The Core initramfs only needs
+modules essential for booting and mounting the root filesystem. Additional drivers
+can be loaded after extsloader mounts the Extension Image.
+
+Linux supports deferred probing natively: drivers return `-EPROBE_DEFER` when
+dependencies (firmware files, bus modules) are not yet available. The kernel
+re-attempts probe later. Once the Extension Image is mounted and its module/firmware
+paths are visible, udev re-triggers device enumeration and deferred drivers bind
+successfully.
+
+**Approach (multi-step module loading)**:
+
+1. Core initramfs/rootfs carries boot-critical modules only (storage, network for
+   controller connectivity, TPM)
+2. Extension Image carries additional modules and firmware
+3. After extsloader mounts Extension, udev coldplug re-trigger loads deferred drivers
+4. Services depending on those drivers start after module loading completes
+
+This is a parallel initiative (Avi's firmware/driver loading work) alongside the
+split-rootfs service extraction. Both need to be implemented and deployed.
+
+**PoC validation required**: Before finalizing which modules move to Extension, test
+udev-based deferred loading for candidate drivers on real hardware:
+
+- Identify drivers in current rootfs that support `-EPROBE_DEFER` vs those that
+  fail hard without firmware at initial probe time
+- Build a test image with selected modules removed from Core and available only
+  via a secondary mount point (simulating Extension)
+- Validate udev coldplug re-trigger successfully loads the deferred drivers
+- Measure any boot-time impact from the two-phase module loading
+- Document which driver categories (network, GPU, USB, wireless) are safe to defer
+
+**Build system consideration** (Erik's point): Moving modules to Extension may
+initially duplicate some firmware/drivers at the Core/Extension boundary. The first
+step is to validate the basic deferred-loading mechanism; build optimization to
+eliminate duplication follows once the module split boundary is established.
+
 ### Build System
 
 Two Linuxkit YAML templates define the split content:
@@ -484,9 +587,10 @@ containers from `rootfs_ext.yml.in` into a tar, but the conversion to erofs is n
 of the existing EVE build tooling. The build system needs:
 - `mkfs.erofs` added to the build tools (either a new `pkg/mkrootfs-erofs` package
   following the pattern of `pkg/mkrootfs-squash`, or a standalone build script)
-- `veritysetup` to generate the dm-verity hash tree and root hash
-- A build step that embeds the root hash into the Core Image (`/etc/ext-verity-roothash`)
-  before creating the Core squashfs
+- `veritysetup` to generate the dm-verity hash tree (appended to the erofs image) and
+  root hash
+- A build step that embeds the root hash and data size into the Core Image
+  (`/etc/ext-verity-roothash`) before creating the Core squashfs
 
 This creates a build ordering dependency: Extension Image must be built first (to produce
 the root hash), then Core Image is built with the root hash embedded.
@@ -521,10 +625,20 @@ Expected progression:
 ```
 Boot starts:            PCR12 = 0x0000... (loader not run yet)
 Loader starts:          PCR12 = extend(0, "extsloader:starting")
-Image verified+mounted: PCR12 = extend(prev, SHA256(extension.img))
+Image verified+mounted: PCR12 = extend(prev, "extsloader:image-verified:<root-hash>")
 Services running:       PCR12 = extend(prev, "extsloader:services-running")
 Failure case:           PCR12 = extend(prev, "extsloader:failed:<reason>")
 ```
+
+The `<root-hash>` is the dm-verity root hash loaded from Core (`/etc/ext-verity-roothash`).
+This is the same root hash used by `veritysetup open` to set up the dm-verity device. It
+uniquely identifies the Extension image content (it is the Merkle tree root — any block
+change changes this value). No separate SHA256 computation of the raw image file is needed;
+see "Why the dm-verity Root Hash Is Sufficient as Extension Identity" in Section 5.
+
+On devices without TPM, `extendPCR12` is a no-op. dm-verity still provides runtime
+integrity: the root hash is trusted because it is embedded in the read-only Core squashfs,
+and `veritysetup open` fails if the Extension image does not match.
 
 Extsloader should also emit compact Extension measurement-log context (same pattern as
 `measure-config`) and append it to attestation payload context.
@@ -615,30 +729,229 @@ fi
 Split updates always carry Core+Extension together (same version). No Extension-only
 upgrade track.
 
+### Update Package Format: OCI Content Tree with Multiple Layers
+
+The existing OCI Content Tree format already supports multiple layers with role
+annotations (edge-containers `Artifact` structure). The BaseOS OCI image is extended
+from one layer to two:
+
+```
+OCI Image Manifest (single ContentTree, single content_tree_uuid)
+  ├─ Layer 1: role="disk-root"        → Core squashfs     (existing)
+  └─ Layer 2: role="disk-additional"  → Extension erofs   (new)
+```
+
+**No eve-api proto change needed.** The `BaseOS.content_tree_uuid` still references a
+single ContentTree. The controller publishes one OCI image that now contains two layers.
+The `Blobs []string` field in `ContentTreeStatus` already tracks both layer digests.
+
+Build-side change: add one label to `pkg/eve/Dockerfile.in`:
+
+```dockerfile
+LABEL org.lfedge.eci.artifact.root="/bits/rootfs.img"
+LABEL org.lfedge.eci.artifact.initrd="/bits/initrd.img"
+LABEL org.lfedge.eci.artifact.disk-0="/bits/rootfs-ext.img"
+```
+
+On the device side, `WriteToPartition` (using edge-containers) is **not modified**.
+It writes `disk-root` to the partition as before, and silently skips `disk-additional`
+(empty handler in `target.go:191`). Edge-containers is a vendored third-party library
+and is not changed.
+
+Instead, a separate function reads the Extension blob directly from containerd CAS
+(Content Addressable Storage). All OCI layers — including `disk-additional` — are
+already stored in CAS by volumemgr during download. The Extension extraction uses
+EVE's existing CAS client (`pkg/pillar/cas/containerd.go`) to:
+
+1. Read the OCI manifest for the ContentTree reference
+2. Find the layer with `org.lfedge.eci.role == "disk-additional"` annotation
+3. Read the blob by its SHA256 digest from the containerd content store
+4. Write to the target PERSIST file
+
+This avoids any changes to edge-containers while reusing the blob data that was
+already downloaded and verified.
+
 ### Updated A/B Flow
 
 ```
-1. Controller sends BaseOsConfig
+1. Controller sends BaseOsConfig (single content_tree_uuid, same as today)
 2. baseosmgr requests download/verify via volumemgr+verifier
+   (all OCI layers — including disk-additional — stored in containerd CAS)
 3. baseosmgr selects inactive Core slot (IMGA/IMGB)
-4. Write Core to inactive partition
-5. Write Extension to matching inactive file:
-   /persist/ext-imga.img or /persist/ext-imgb.img
+4. WriteToPartition extracts disk-root → inactive partition (unchanged)
+5. NEW: WriteExtensionToPersist reads disk-additional blob from CAS
+   → writes to /persist/ext-imga.img or /persist/ext-imgb.img
+   Target file is determined by zboot.GetOtherPartition():
+   IMGA → ext-imga.img, IMGB → ext-imgb.img
+   No-op if OCI manifest has no disk-additional layer (monolithic image)
 6. Mark slot updating, reboot
 ```
+
+### Forward Upgrade: Monolithic → Split (Self-Healing CAS Extraction)
+
+When upgrading from a monolithic EVE version (pre-split) to a split-rootfs version,
+the old `WriteToPartition` code does not know about `disk-additional` layers. The
+edge-containers `FilesTarget` has an empty handler for `RoleAdditionalDisk` (line 191
+in `target.go`) — the layer is silently skipped, no error. However, all OCI layers
+are already stored in containerd CAS (`/persist/vault/containerd`), including the
+Extension layer that was not extracted.
+
+After reboot into the new Core, extsloader detects this situation and self-heals:
+
+```
+1. extsloader checks for Extension at /persist/ext-{imga,imgb}.img
+   (paired with current partition via zboot.GetCurrentPartition())
+2. File missing, but /etc/ext-verity-roothash exists → Extension IS expected
+3. extsloader reads the BaseOS ContentTree reference from baseosmgr pubsub
+4. Extracts disk-additional blob from local CAS by digest
+   (the blob is guaranteed to be present — it belongs to the active ContentTree
+   which baseosmgr never deletes; CAS lives on /persist, survives reboot)
+5. Writes blob to /persist/ext-{imga,imgb}.img
+   (file name derived from zboot.GetCurrentPartition(), NOT hardcoded)
+6. Proceeds with normal dm-verity verify + mount
+```
+
+This eliminates the need for an intermediate "split-aware monolithic" release.
+The upgrade path is: monolithic → split in a single step. The only requirement is
+that the OCI image containing both layers is properly built and published.
+
+CAS blob retention is guaranteed because:
+- The ContentTree is referenced by the **active** BaseOS config
+- baseosmgr has no post-activation cleanup logic for ContentTree
+- volumemgr only deletes blobs when RefCount reaches 0 (requires explicit
+  ContentTree deletion by controller)
+- containerd CAS lives on `/persist/vault/containerd`, survives reboot
 
 ### Post-Reboot Contract
 
 ```
 1. GRUB measures Core (PCR13)
-2. extsloader verifies+mounts Extension via dm-verity
-3. extsloader extends PCR12 and emits readiness
-4. vaultmgr unseal path executes after readiness/terminal state
-5. nodeagent testing window evaluates full device health (Core + Extension)
+2. extsloader finds Extension (or self-heals from CAS if missing)
+3. extsloader verifies+mounts Extension via dm-verity
+4. extsloader extends PCR12 and emits readiness
+5. vaultmgr unseal path executes after readiness/terminal state
+6. nodeagent testing window evaluates full device health (Core + Extension)
 ```
 
 If Extension cannot load or PCR12 path is terminal-failed, device stays reachable in
 degraded mode and update should fail testing window -> rollback to prior slot.
+
+### Update Success Criteria for Split-Rootfs
+
+> **Status: NOT YET IMPLEMENTED** — the current testing window in nodeagent does not
+> check Extension state. This section defines the target behavior.
+
+Today, nodeagent marks an update as successful (transitions from `testing` to `active`)
+when the device can connect to the controller and attestation completes. For split-rootfs,
+this is insufficient: an update that boots Core successfully but fails to load Extension
+leaves the device without debug access, logging, monitoring, and workload networking
+(wwan, guacd, etc.).
+
+**Proposed success criteria:**
+
+An update to a split-rootfs image should only be marked successful when:
+
+1. **Core boots and connects to controller** — same as today
+2. **Extension image is available** — `/persist/ext-{slot}.img` exists (either written
+   during OTA by baseosmgr, or extracted from CAS by extsloader self-heal)
+3. **Extension mounts successfully** — dm-verity verification passes and the erofs
+   filesystem is mounted at the expected mount point
+
+Individual Extension **services** failing to start should NOT block update success.
+The rationale: service failures can be transient (OOM, config issue) and are recoverable
+without rollback. But a missing or unmountable Extension image is a structural failure
+that will persist across reboots and requires rollback to restore device functionality.
+
+**Current testing window mechanism (code-level):**
+
+Today, nodeagent marks an update successful purely based on time:
+
+1. Device boots into new partition (state: `inprogress`)
+2. nodeagent starts a timer when controller connectivity is established
+   (`pkg/pillar/cmd/nodeagent/handletimers.go:setTestStartTime()`)
+3. After `timer.test.baseimage.update` seconds (default 600s / 10 min), if the device
+   hasn't rebooted, nodeagent calls `initiateBaseOsControllerTestComplete()`
+   (`handletimers.go:checkUpgradeValidationTestTimeExpiry()`)
+4. This sets `ZbootConfig.TestComplete = true` via pubsub
+5. baseosmgr receives this, calls `zboot.MarkCurrentPartitionStateActive()` — update
+   committed (`handlebaseos.go:handleZbootTestComplete()`)
+
+"Device survived" means: **no watchdog-monitored agent process died, and no agent
+stopped touching its `/run/<agent>.touch` file for 300 seconds, during the testing
+window.** The watchdog daemon (`pkg/watchdog/`) monitors touch files and PIDs. A stale
+touch file (300s) or dead PID triggers immediate hardware watchdog reboot. If this
+reboot happens during the testing window, the previous partition becomes active again
+(rollback).
+
+There is no health check for services, no Extension check, no attestation requirement
+in the testing window decision.
+
+**Implementation approach for Extension check:**
+
+extsloader must publish its status via pubsub (the standard EVE inter-agent
+communication mechanism). The current `/run/extsloader-state.json` file is a
+temporary debug aid and must be replaced — no other agent uses file-based state
+sharing.
+
+Required changes:
+
+1. **New type `types.ExtsloaderStatus`** with fields: State (ready/failed/starting),
+   Reason, Partition, ImagePath, MountPoint. Follows the same pattern as
+   `types.BaseOsStatus`, `types.ZbootStatus`, etc.
+
+2. **extsloader publishes** `ExtsloaderStatus` via `pubsub.Publish()` on every state
+   transition (starting, failed, ready). Remove `writeStateFile()` and the JSON file.
+
+3. **nodeagent subscribes** to `ExtsloaderStatus` from extsloader. In
+   `handletimers.go:checkUpgradeValidationTestTimeExpiry()`, before marking
+   TestComplete, check:
+   ```
+   if /etc/ext-verity-roothash exists (Core expects Extension):
+       if ExtsloaderStatus.State != "ready":
+           do NOT mark TestComplete yet (keep waiting)
+           if total testing time exceeds max timeout:
+               trigger reboot → rollback
+   ```
+
+4. **Testing window timing**: The existing 10-minute default should be sufficient.
+   CAS extraction takes ~30-60s, dm-verity mount ~5s, service startup ~10-20s.
+   Extension should be ready within ~2 minutes of boot. The remaining 8 minutes
+   provide ample margin. No need to increase the testing window.
+
+5. **Eden tests**: Switch from `eden eve ssh 'cat /run/extsloader-state.json'` to
+   checking via pubsub-derived info fields or `eden eve ssh` commands that verify
+   the mount point and services directly.
+
+**What this means for rollback:**
+
+- Corrupted Extension image → dm-verity fails → extsloader publishes `failed` →
+  nodeagent holds TestComplete → testing window expires → reboot → rollback
+- Missing Extension + CAS extraction fails → same path → rollback
+- Extension mounts but individual service crashes → extsloader publishes `ready` →
+  nodeagent marks TestComplete → update succeeds → no rollback (service issue, not
+  structural failure)
+- Monolithic image (no roothash) → Extension check skipped → normal testing
+
+### CAS Self-Healing: Implementation Details
+
+The CAS self-heal path uses the same `edge-containers` `Puller.Pull()` mechanism as
+`WriteToPartition`. The OCI image config labels (`org.lfedge.eci.artifact.disk-0`)
+route the Extension file from the tar layers to an output writer, via `FilesTarget`
+with `Disks[0]` set to the target file. This is deterministic: the CAS reference is
+resolved from pubsub (BaseOsStatus → ContentTreeStatus → ReferenceID), and the label
+path uniquely identifies the Extension file within the image.
+
+The flow in extsloader:
+1. Check `/etc/ext-verity-roothash` exists (Core expects Extension)
+2. Subscribe to `BaseOsStatus` (from baseosmgr) and `ContentTreeStatus` (from volumemgr)
+   via pubsub — **both subscriptions must have ProcessChange in the select loop** or
+   GetAll() returns empty
+3. Find BaseOsStatus where PartitionLabel matches current partition
+4. Look up ContentTreeStatus by ContentTreeUUID → get ReferenceID (CAS image ref)
+5. Call `Puller.Pull()` with `FilesTarget{Disks: []io.Writer{file}}` — the config label
+   `org.lfedge.eci.artifact.disk-0` routes the Extension file from the OCI layers
+6. Verify extracted file size > 0 (empty = monolithic image, no Extension label)
+7. Atomic rename `.tmp` → final path
 
 ### Rollback and Extension Rehydrate Fallback
 
@@ -648,27 +961,32 @@ file-native on PERSIST and therefore less robust than dedicated A/B partitions.
 Rollback policy for Extension:
 1. On rollback boot, first use the Extension file paired with the rolled-back Core slot
    (`ext-imga.img` or `ext-imgb.img`) using normal file-based A/B logic.
-2. Only if that paired file is missing/corrupt or fails verification/load, enter degraded
-   but controller-reachable mode and trigger re-download.
-3. Rewrite the failed slot Extension file from the downloaded artifact and retry load.
-4. Optionally refresh the inactive slot file after recovery to restore full A/B symmetry.
+   The file name is always derived from `zboot.GetCurrentPartition()`.
+2. Only if that paired file is missing/corrupt or fails verification/load, attempt
+   CAS extraction (same self-healing path as forward upgrade).
+3. If CAS extraction also fails, enter degraded but controller-reachable mode and
+   trigger re-download.
+4. Rewrite the failed slot Extension file from the downloaded artifact and retry load.
 
-This follows existing baseosmgr safety precedent (prefer re-download+overwrite when slot
-content trust is uncertain).
+### Rollback: Split → Monolithic
+
+When rolling back from a split-rootfs version to a pre-split monolithic version:
+- Old monolithic rootfs has all services baked in — Extension is not needed.
+- extsloader does not exist in the old code — no Extension loading attempted.
+- PCR12 returns to all-zeros (no extsloader to extend it).
+- Vault recovery handles the PCR12 change via the existing controller-based
+  key escrow mechanism (same path used for any PCR13 change during update).
+- Orphaned `/persist/ext-img{a,b}.img` files remain on PERSIST but are harmless
+  (old code ignores them; cleaned up on next split-rootfs deployment).
 
 ### baseosmgr Delta
 
 | Change | Description |
 |--------|-------------|
-| Extension download/write | Handle Extension artifact together with Core |
-| A/B file pairing | Keep `ext-imga.img`/`ext-imgb.img` consistent with Core slot |
-| Testing window criteria | Require Extension health for successful activation |
-| Recovery fallback | Use paired rollback file first; re-download only if that file fails |
-
-### Update Package Format
-
-Chosen format: **single bundle artifact** containing both Core and Extension. This keeps
-version coupling explicit and simplifies controller/device coordination.
+| WriteToPartition extension | After writing `artifact.Root` to partition, write `artifact.Disks[0]` to paired PERSIST file |
+| A/B file pairing | Target file derived from `zboot.GetOtherPartition()`: IMGA→ext-imga.img, IMGB→ext-imgb.img |
+| Testing window criteria | Require Extension health (extsloader readiness state) for successful activation |
+| No API change | Same `content_tree_uuid`, same ContentTree, same download/verify flow |
 
 ## 9. ZFlash Integration
 
@@ -714,15 +1032,16 @@ Calibration reference: USB boot priority feature = **8 SP** total.
 | Workstream | Scope | SP |
 |------------|-------|----|
 | Generic Core image | Runtime guards, build-tag removal, HV runtime selection plumbing | 2 |
-| Extension loader | dm-verity mount path, service lifecycle, degraded mode | 3 |
+| Extension loader | dm-verity mount path, service lifecycle, degraded mode, CAS self-heal for forward upgrade | 3.5 |
 | PCR12 measurement path | PCR12 extend states + attestation log context wiring | 1 |
 | Sealing coupling + ordering | deterministic extend/unseal contract + race-safe validation | 1 |
 | Installer changes | Extension artifact copy during install | 0.5 |
-| baseosmgr upgrade changes | Core+Extension paired write, testing window, recovery fallback | 2 |
+| baseosmgr upgrade changes | WriteToPartition disk-additional extraction, A/B file pairing, testing window | 1.5 |
 | ZFlash updates | split payload validation/indicator | 0.5 |
 | Build system | erofs image tooling, dm-verity root hash generation, build ordering | 2 |
+| Kernel module deferred loading PoC | udev-based deferred probe validation, module split boundary definition | 1 |
 | Documentation | operator and rollout docs | 0.5 |
-| **Development subtotal** | | **12.5** |
+| **Development subtotal** | | **13.5** |
 
 Ordering/coupling extra is not zero even with PCR12 default, because deterministic boot
 ordering and race-safe validation are still required to avoid recovery-loop behavior.
@@ -739,10 +1058,10 @@ ordering and race-safe validation are still required to avoid recovery-loop beha
 
 | Total Type | Docs only | Minimal Eden + docs | Full Eden |
 |------------|-----------|---------------------|-----------|
-| Device total | ~15.5 SP | ~18 SP | ~31.5 SP |
+| Device total | ~16.5 SP | ~19 SP | ~32.5 SP |
 | Controller raw | ~1 SP | ~1 SP | ~1 SP |
 | Controller effective (x2) | ~2 SP | ~2 SP | ~2 SP |
-| Grand total | ~17.5 SP | ~20 SP | ~33.5 SP |
+| Grand total | ~18.5 SP | ~21 SP | ~34.5 SP |
 
 Controller multiplier reflects external-team scheduling/coordination uncertainty.
 
@@ -775,25 +1094,27 @@ policy, Extension stored on PERSIST as A/B files.
 ### Scope
 
 - Generic Core unification
-- Split rootfs mechanics (build, installer, extsloader, baseosmgr pairing)
+- Split rootfs mechanics (build, OCI multi-layer packaging, installer, extsloader with CAS self-heal, baseosmgr pairing)
 - PCR12 measurement and attestation visibility
 - Deterministic extend-before-unseal behavior with ordering/race validation
 - Controller informational updates: Extension health telemetry and recovery-state visibility
+- Kernel module deferred loading PoC for Extension module boundary
 - End-to-end install/upgrade/rollback/degraded validation
 
 ### Total Effort
 
-- **Device**: ~15.5 SP (docs only) / ~18 SP (minimal Eden + docs) / ~31.5 SP (full Eden)
+- **Device**: ~16.5 SP (docs only) / ~19 SP (minimal Eden + docs) / ~32.5 SP (full Eden)
 - **Controller effective**: ~2 SP
 
 ### Prerequisites and Dependency Gates
 
 | Gate | What must be ready | Unlocks |
 |------|--------------------|---------|
+| Gfw | Deferred driver loading PoC validates candidate modules for Extension | Final Extension Image content definition, build system module split |
 | G1 | Extension artifact contract is stable (A/B file names, build outputs, expected runtime paths) | Final extsloader integration, baseosmgr pairing logic |
 | G2 | extsloader can verify+mount real Extension image and expose deterministic success/failure states | Final PCR12 extend placement, ordering/race validation |
 | G3 | Deterministic readiness handshake between extsloader and vaultmgr is defined | Fail-closed unseal behavior validation |
-| G4 | Upgrade path writes inactive-slot Extension file and rollback uses paired file first | End-to-end upgrade/rollback validation |
+| G4 | Upgrade path writes inactive-slot Extension file (including CAS self-heal for monolithic→split) and rollback uses paired file first | End-to-end upgrade/rollback validation |
 
 Important dependency note: PCR and ordering work are tightly coupled to real Extension
 image lifecycle behavior. Final PCR12 placement and ordering validation are blocked until G2.
@@ -822,6 +1143,13 @@ Expected schedule effect (with at least two active device contributors):
 - Primary benefit is risk isolation: unexpected Generic Core issues do not stall
   split-rootfs delivery work on Track B.
 - Realistic elapsed-time gain is still modest: about **~1.25-1.5 SP**.
+
+### Parallel Investigation: Kernel Module Deferred Loading
+
+The udev-based deferred driver loading PoC (Avi's initiative) runs in parallel with
+both device tracks. Results inform the module split boundary for the Extension build
+(impacts Build system workstream and Gate Gfw). This investigation should complete
+before the Extension Image content is finalized.
 
 ### Delivery Timeline (Conceptual)
 
@@ -868,15 +1196,22 @@ Key files referenced in this document:
 | `pkg/eve/installer/ipxe.efi.cfg` | iPXE network boot config |
 | `tools/makenet.sh` | iPXE/network installer preparation |
 
-### Update Mechanism
+### Update Mechanism and OCI Content Tree
 
 | File | Purpose |
 |------|---------|
 | `pkg/pillar/cmd/baseosmgr/handlebaseos.go` | Update orchestration |
 | `pkg/pillar/cmd/baseosmgr/handlebaseos.go:190-194` | Re-download/overwrite rationale for suspected bad image on other slot |
-| `pkg/pillar/cmd/baseosmgr/worker.go` | Partition write worker |
-| `pkg/pillar/zboot/zboot.go` | Partition state machine |
+| `pkg/pillar/cmd/baseosmgr/worker.go` | Partition write worker (`WriteToPartition` call site) |
+| `pkg/pillar/zboot/zboot.go` | Partition state machine, `WriteToPartition` using edge-containers |
 | `pkg/pillar/cmd/nodeagent/handletimers.go` | Testing window management |
+| `pkg/eve/Dockerfile.in` | OCI image assembly with ECI artifact role labels |
+| `vendor/.../edge-containers/pkg/registry/roles.go` | `RoleRootDisk`, `RoleAdditionalDisk` constants |
+| `vendor/.../edge-containers/pkg/registry/pull.go` | `Artifact{Root, Disks[]}` extraction from OCI layers |
+| `vendor/.../edge-containers/pkg/registry/target.go:191` | `RoleAdditionalDisk` empty handler (skip on old code) |
+| `vendor/.../edge-containers/pkg/registry/annotations.go` | `org.lfedge.eci.artifact.disk-%d` annotation pattern |
+| `pkg/pillar/cas/containerd.go` | CAS blob ingestion, lease-based GC protection |
+| `pkg/pillar/cmd/volumemgr/blob.go` | Blob RefCount management, GC (only on explicit delete) |
 
 ### Split Rootfs (POC)
 
@@ -905,3 +1240,110 @@ Key files referenced in this document:
 | `tools/compose-image-yml.sh` | Linuxkit YAML template rendering |
 | `tools/makerootfs.sh` | Rootfs image creation |
 | `images/installer.yml.in` | Installer image recipe |
+
+## 14. Memory Usage Analysis and THP Fix
+
+### Problem: Zedbox RSS Inflation
+
+During split-rootfs verification, zedbox RSS was observed at 250–267MB instead of the
+expected 100–120MB baseline. The Go heap (measured via pprof `inuse_space`) was only
+31–62MB, yet anonymous RSS reached 177MB. The discrepancy was traced to **Transparent
+Huge Pages (THP)** inflating the Go runtime's heap arena.
+
+### Root Cause: THP + Go 1.24 Arena Layout
+
+The EVE kernel has `CONFIG_TRANSPARENT_HUGEPAGE=y` with the default policy set to
+`always`. Go 1.24 maps a single large contiguous heap arena (512MB virtual range at
+`0xc000000000`). With THP in `always` mode, the kernel's `khugepaged` daemon
+automatically promotes 4KB pages within this range into 2MB huge pages.
+
+The problem: Go's garbage collector allocates and frees objects across the arena,
+leaving sparse live objects scattered across 2MB-aligned ranges. Each huge page
+containing even one live 4KB sub-page cannot be reclaimed. The result:
+
+- **Go heap in-use**: 31–62MB
+- **Actual anonymous RSS**: 177MB (137MB trapped in huge pages)
+- The slow RSS growth visible in `memory_usage.csv` is `khugepaged` scanning and
+  promoting pages over 5–10 minutes after boot
+
+This was not observed with the previous Go 1.21 + kernel 6.1 combination because
+Go 1.21 used a more fragmented heap layout (less THP-friendly) and kernel 6.1 had
+less aggressive `khugepaged` promotion.
+
+### Fix: THP Policy = madvise
+
+Setting `transparent_hugepage=madvise` on the kernel command line restricts huge page
+promotion to memory regions that explicitly request it via `madvise(MADV_HUGEPAGE)`.
+Go does not call this by default, so the heap arena uses standard 4KB pages.
+
+QEMU/KVM already calls `madvise(MADV_HUGEPAGE)` for guest memory, so VM performance
+is unaffected. This is the default policy on most modern distributions (RHEL, Ubuntu
+22.04+, Fedora).
+
+**Current implementation** (dev builds): added to `conf/grub.cfg` via `dom0_extra_args`:
+
+```
+set_global dom0_extra_args "$dom0_extra_args console=ttyS1,115200 transparent_hugepage=madvise"
+```
+
+**Upstream fix**: change `CONFIG_TRANSPARENT_HUGEPAGE_MADVISE=y` in the eve-kernel
+defconfig (`arch/x86/configs/eve-core_defconfig`).
+
+**Note**: editing `pkg/grub/rootfs.cfg` has no effect — grub is a pre-built OCI package.
+Kernel cmdline parameters must go through `conf/grub.cfg` (`dom0_extra_args`) or the
+linuxkit YAML `cmdline` field.
+
+### Results (app running, 32 min uptime, stabilized)
+
+| Metric | THP=always | THP=madvise | Savings |
+|--------|-----------|-------------|---------|
+| Total RSS | 267MB | 187MB | 80MB |
+| RssAnon | 177MB | 97MB | 80MB |
+| RssFile | 90MB | 90MB | 0 (binary pages) |
+| Go heap THP | 137MB | 0MB | 137MB |
+
+With THP=madvise, zedbox anonymous RSS (97MB with app running) falls within the
+original 100–120MB baseline. The `PROC_ZEDBOX_THRESHOLD_MB=200` memory-monitor
+threshold now has adequate headroom.
+
+### Memory Breakdown (zedbox, 143MB binary)
+
+| Component | RSS | Type |
+|-----------|-----|------|
+| Go heap + runtime | ~97MB | Anonymous (4KB pages with madvise) |
+| `.text` (code) | ~37MB | File-backed (demand-paged from binary) |
+| `.rodata` (constants) | ~44MB | File-backed (demand-paged from binary) |
+| Other (.data, stacks, libs) | ~9MB | Mixed |
+
+The 90MB file-backed RSS is the zedbox binary (143MB on disk, ~60% resident after
+warmup). This is proportional to binary size and unavoidable — the pages are clean
+and reclaimable under memory pressure.
+
+### Cgroup Memory During Extension Mount
+
+The extsloader temporarily raises the pillar cgroup limit by 2× the extension image
+size during dm-verity mount (erofs decompression pulls blocks into page cache). After
+mount, `dropImagePageCache()` uses `fadvise(FADV_DONTNEED)` to reclaim these pages,
+and the cgroup limit is restored before starting extension services.
+
+### Diagnostic Commands
+
+```bash
+# THP policy
+cat /sys/kernel/mm/transparent_hugepage/enabled
+
+# Zedbox RSS breakdown
+eve exec pillar cat /proc/$(pidof zedbox)/status | grep -E 'VmRSS|RssAnon|RssFile'
+
+# THP in Go heap arena
+eve exec pillar cat /proc/$(pidof zedbox)/smaps | grep -B1 AnonHugePages | grep -v '0 kB'
+
+# Go heap actual usage
+go tool pprof -top -inuse_space heap_pillar.out
+
+# Go runtime memstats (requires debug server enabled)
+eve exec pillar curl -s 'http://localhost:6543/debug/pprof/heap?debug=1' | tail -20
+
+# Memory-monitor CSV (tracks heap and RSS over time)
+cat /persist/memory-monitor/output/memory_usage.csv
+```

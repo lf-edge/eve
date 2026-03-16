@@ -4,6 +4,7 @@
 package types
 
 import (
+	"fmt"
 	"strings"
 )
 
@@ -104,6 +105,8 @@ const (
 	NewlogKeepSentQueueDir = NewlogDir + "/keepSentQueue"
 	// PillarHardMemoryLimitFile - hard memory reserved for pillar
 	PillarHardMemoryLimitFile = "/hostfs/sys/fs/cgroup/memory/eve/services/pillar/memory.limit_in_bytes"
+	// EveServicesMemoryLimitFile - memory limit for eve/services cgroup
+	EveServicesMemoryLimitFile = "/hostfs/sys/fs/cgroup/memory/eve/services/memory.limit_in_bytes"
 	// EveMemoryLimitFile - stores memory reserved for eve
 	EveMemoryLimitFile = "/hostfs/sys/fs/cgroup/memory/eve/memory.limit_in_bytes"
 	// EveMemoryUsageFile - current usage
@@ -163,6 +166,15 @@ const (
 	// changing this file does not change the actual policy, hence
 	// needs not be protected.
 	PolicyPcrFile = PersistStatusDir + "/policy-pcr.json"
+
+	// ExtImgNameIMGA - Extension image filename paired with IMGA partition slot
+	ExtImgNameIMGA = "ext-imga.img"
+	// ExtImgNameIMGB - Extension image filename paired with IMGB partition slot
+	ExtImgNameIMGB = "ext-imgb.img"
+	// ExtVerityRootHashPath - dm-verity root hash embedded in Core Image
+	ExtVerityRootHashPath = "/etc/ext-verity-roothash"
+	// ExtVerityRootHashHostPath - host-visible path to dm-verity root hash
+	ExtVerityRootHashHostPath = "/hostfs/etc/ext-verity-roothash"
 )
 
 var (
@@ -189,3 +201,16 @@ var (
 	// it is not a constant so tests can override it.
 	TpmMeasurefsEventLog = PersistStatusDir + "/measurefs_tpm_event_log"
 )
+
+// ExtensionImagePath returns the full path to the Extension image file
+// paired with the given partition label ("IMGA" or "IMGB").
+func ExtensionImagePath(partLabel string) (string, error) {
+	switch partLabel {
+	case "IMGA":
+		return PersistDir + "/" + ExtImgNameIMGA, nil
+	case "IMGB":
+		return PersistDir + "/" + ExtImgNameIMGB, nil
+	default:
+		return "", fmt.Errorf("ExtensionImagePath: unknown partition label %q", partLabel)
+	}
+}

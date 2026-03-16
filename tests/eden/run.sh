@@ -172,6 +172,7 @@ TEST_FILES[4]="eve-upgrade.tests.txt"
 TEST_FILES[5]="user-apps.tests.txt"
 TEST_FILES[6]="virtualization.tests.txt"
 TEST_FILES[7]="storage.tests.txt"
+TEST_FILES[8]="split-rootfs.tests.txt"
 
 declare -A TEST_NAMES
 TEST_NAMES[1]="Smoke Tests"
@@ -181,6 +182,7 @@ TEST_NAMES[4]="EVE Upgrade Tests"
 TEST_NAMES[5]="User Application Tests"
 TEST_NAMES[6]="Virtualization Tests"
 TEST_NAMES[7]="Storage Tests"
+TEST_NAMES[8]="Split Rootfs Tests"
 
 TESTS_TO_RUN=""
 
@@ -194,23 +196,24 @@ else
     [ -n "$TEST_UAPP" ] && TESTS_TO_RUN="$TESTS_TO_RUN 5"
     [ -n "$TEST_VIRT" ] && TESTS_TO_RUN="$TESTS_TO_RUN 6"
     [ -n "$TEST_STORAGE" ] && TESTS_TO_RUN="$TESTS_TO_RUN 7"
+    [ -n "$TEST_SPLIT" ] && TESTS_TO_RUN="$TESTS_TO_RUN 8"
 fi
 
 # If no tests selected via env vars, prompt user
 if [ -z "$TESTS_TO_RUN" ]; then
     echo "================================================================"
     echo "Select tests to run (space-separated, e.g., '1 3 4'):"
-    for i in {1..7}; do
+    for i in {1..8}; do
         echo "$i - ${TEST_NAMES[$i]}"
     done
-    echo "8 - All Tests"
+    echo "9 - All Tests (excludes Split Rootfs)"
     echo "Press Enter to run default (Smoke Tests only)"
     echo "================================================================"
     read -r -p "Selection: " USER_SELECTION
 
     if [ -z "$USER_SELECTION" ]; then
         TESTS_TO_RUN="1"
-    elif [[ "$USER_SELECTION" == *"8"* ]]; then
+    elif [[ "$USER_SELECTION" == *"9"* ]]; then
         TESTS_TO_RUN="1 2 3 4 5 6 7"
     else
         TESTS_TO_RUN="$USER_SELECTION"
