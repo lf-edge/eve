@@ -64,6 +64,15 @@ func installWorker(ctxPtr interface{}, w worker.Work) worker.WorkResult {
 	if err != nil {
 		result.Error = err
 		result.ErrorTime = time.Now()
+		return result
+	}
+
+	// Extract Extension Image (disk-additional) from CAS to paired PERSIST file.
+	// No-op if the OCI image has no disk-additional layer (monolithic image).
+	if err := WriteExtensionToPersist(d.ref, d.target); err != nil {
+		log.Errorf("installWorker: Extension extraction failed (non-fatal): %v", err)
+		// Non-fatal: Core was already written successfully. Extension
+		// can be self-healed by extsloader after reboot from CAS.
 	}
 	return result
 }

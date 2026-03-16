@@ -29,8 +29,6 @@ onboot:
     - /persist.img:/bits/persist.img:ro # this is the persist image
     - /config.img:/bits/config.img:ro   # this is the config image
     - /rootfs-ext.img:/bits/rootfs-ext.img:ro # extension services for extsloader (split rootfs)
-    - /rootfs-ext.img.verity:/bits/rootfs-ext.img.verity:ro # optional dm-verity hash tree sidecar
-    - /rootfs-ext.img.roothash:/bits/rootfs-ext.img.roothash:ro # optional dm-verity root hash sidecar
   - name: poweroff
     image: linuxkit/poweroff:401dc53c604c0b2179ed0369a6968fd4179cc176
     command: ["/bin/sh", "/poweroff.sh", "10"]
@@ -58,12 +56,6 @@ files:
     source: config.img
   - path: /rootfs-ext.img
     source: rootfs-ext.img
-    optional: true
-  - path: /rootfs-ext.img.verity
-    source: rootfs-ext.img.verity
-    optional: true
-  - path: /rootfs-ext.img.roothash
-    source: rootfs-ext.img.roothash
     optional: true
   - path: /EFI/BOOT/grub_include.cfg
     source: grub_installer.cfg

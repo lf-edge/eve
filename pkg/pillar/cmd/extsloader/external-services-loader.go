@@ -17,11 +17,12 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
 	"time"
+
+	"golang.org/x/sys/unix"
 
 	"github.com/containerd/containerd"
 	"github.com/containerd/containerd/cio"
@@ -29,9 +30,11 @@ import (
 	"github.com/containerd/containerd/namespaces"
 	"github.com/google/go-tpm/legacy/tpm2"
 	"github.com/google/go-tpm/tpmutil"
+	"github.com/lf-edge/edge-containers/pkg/registry"
 	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/cas"
 	evecontainerd "github.com/lf-edge/eve/pkg/pillar/containerd"
 	"github.com/lf-edge/eve/pkg/pillar/evetpm"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
@@ -46,13 +49,9 @@ const (
 	errorTime               = 3 * time.Minute
 	warningTime             = 40 * time.Second
 	containerdRPCTimeout    = 20 * time.Second
-	extImgNameIMGA          = "ext-imga.img"
-	extImgNameIMGB          = "ext-imgb.img"
 	extMount                = "/persist/exts"
-	extVerityHashSuffix     = ".verity"
-	extRootHashSuffix       = ".roothash"
-	extRootHashHostPath     = "/hostfs/etc/ext-verity-roothash"
-	extRootHashPath         = "/etc/ext-verity-roothash"
+	extRootHashHostPath     = types.ExtVerityRootHashHostPath
+	extRootHashPath         = types.ExtVerityRootHashPath
 	extVerityMapperPref     = "exts-verity-"
 	servicesDir             = "/persist/eve-services"
 	containerdSock          = "/run/containerd/containerd.sock"
@@ -64,8 +63,6 @@ const (
 	stateStarting           = "starting"
 	stateReady              = "ready"
 	stateFailed             = "failed"
-	eveCgroupPath           = "/hostfs/sys/fs/cgroup/memory/eve"
-	pillarCgroupPath        = "/hostfs/sys/fs/cgroup/memory/eve/services/pillar"
 	serviceOverrideEnabled  = "enabled"
 	serviceOverrideDisabled = "disabled"
 
@@ -112,21 +109,6 @@ func extendPCR12(measurement string) error {
 	return nil
 }
 
-// hashExtensionImage computes the SHA256 hash of the extension image file.
-func hashExtensionImage(imgPath string) (string, error) {
-	f, err := os.Open(imgPath)
-	if err != nil {
-		return "", err
-	}
-	defer f.Close()
-
-	h := sha256.New()
-	if _, err := io.Copy(h, f); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(h.Sum(nil)), nil
-}
-
 // writeMeasurementLog writes a simple text log of PCR12 extension events
 // for attestation payload context (same pattern as measure-config).
 func writeMeasurementLog(events []string) {
@@ -142,14 +124,16 @@ func writeMeasurementLog(events []string) {
 
 type externalServicesContext struct {
 	agentbase.AgentBase
-	ps               *pubsub.PubSub
-	subGlobalConfig  pubsub.Subscription
-	pkgsImgPath      string
-	pkgsImgMounted   bool
-	servicesStarted  map[string]bool
-	servicesSkipped  map[string]bool // services intentionally not started
-	containerdClient *containerd.Client
-	ctx              context.Context
+	ps                   *pubsub.PubSub
+	subGlobalConfig      pubsub.Subscription
+	subBaseOsStatus      pubsub.Subscription
+	subContentTreeStatus pubsub.Subscription
+	pkgsImgPath          string
+	pkgsImgMounted       bool
+	servicesStarted      map[string]bool
+	servicesSkipped      map[string]bool // services intentionally not started
+	containerdClient     *containerd.Client
+	ctx                  context.Context
 }
 
 type extensionLoaderState struct {
@@ -159,20 +143,6 @@ type extensionLoaderState struct {
 	ImagePath  string    `json:"imagePath,omitempty"`
 	MountPoint string    `json:"mountPoint,omitempty"`
 	UpdatedAt  time.Time `json:"updatedAt"`
-}
-
-type cgroupMemoryStats struct {
-	Usage uint64
-	Cache uint64
-	RSS   uint64
-}
-
-type memorySnapshot struct {
-	ProcessRSS uint64
-	GoAlloc    uint64
-	GoSys      uint64
-	EVE        cgroupMemoryStats
-	Pillar     cgroupMemoryStats
 }
 
 type serviceTaskLogIO struct {
@@ -249,6 +219,40 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	log.Functionf("Activating global config subscription")
 	subGlobalConfig.Activate()
 
+	// Subscribe to BaseOsStatus (from baseosmgr) for CAS self-heal.
+	// This lets us find the active BaseOS ContentTree UUID.
+	subBaseOsStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:   "baseosmgr",
+		MyAgentName: agentName,
+		TopicImpl:   types.BaseOsStatus{},
+		Activate:    true,
+		Ctx:         ctx,
+		WarningTime: warningTime,
+		ErrorTime:   errorTime,
+	})
+	if err != nil {
+		log.Errorf("BaseOsStatus subscription failed: %v", err)
+	} else {
+		ctx.subBaseOsStatus = subBaseOsStatus
+	}
+
+	// Subscribe to ContentTreeStatus (from volumemgr) for CAS self-heal.
+	// This lets us resolve ContentTree UUID to the CAS reference ID.
+	subContentTreeStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:   "volumemgr",
+		MyAgentName: agentName,
+		TopicImpl:   types.ContentTreeStatus{},
+		Activate:    true,
+		Ctx:         ctx,
+		WarningTime: warningTime,
+		ErrorTime:   errorTime,
+	})
+	if err != nil {
+		log.Errorf("ContentTreeStatus subscription failed: %v", err)
+	} else {
+		ctx.subContentTreeStatus = subContentTreeStatus
+	}
+
 	// Connect to containerd
 	log.Noticef("Connecting to containerd at %s", containerdSock)
 	log.Functionf("Using containerd namespace: %s", containerdNamespace)
@@ -268,11 +272,24 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 	log.Noticef("%s initial setup complete - entering main loop", agentName)
 
+	// Prepare channels for pubsub subscriptions (nil channels are never selected)
+	var baseOsChan, contentTreeChan <-chan pubsub.Change
+	if ctx.subBaseOsStatus != nil {
+		baseOsChan = ctx.subBaseOsStatus.MsgChan()
+	}
+	if ctx.subContentTreeStatus != nil {
+		contentTreeChan = ctx.subContentTreeStatus.MsgChan()
+	}
+
 	// Run forever
 	for {
 		select {
 		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
+		case change := <-baseOsChan:
+			ctx.subBaseOsStatus.ProcessChange(change)
+		case change := <-contentTreeChan:
+			ctx.subContentTreeStatus.ProcessChange(change)
 		}
 	}
 }
@@ -321,16 +338,22 @@ func tryMountAndStartServices(ctx *externalServicesContext) {
 	imageName, err := extensionImageName(partName)
 	if err != nil {
 		log.Errorf("Failed to map active partition %q to extension image: %v", partName, err)
-		log.Errorf("Falling back to %s", extImgNameIMGA)
-		imageName = extImgNameIMGA
+		log.Errorf("Falling back to %s", types.ExtImgNameIMGA)
+		imageName = types.ExtImgNameIMGA
 	}
 
 	// Search extension image on all block devices.
 	log.Functionf("Searching for %s (active partition: %s) on available disks...", imageName, partName)
 	pkgsImgPath := findPkgsImg(imageName)
 	if pkgsImgPath == "" {
-		log.Warnf("%s not found on any disk", imageName)
-		log.Warnf("Searched locations: /persist/%s, /mnt/pkgs-disk/%s, and all /dev/sd* devices", imageName, imageName)
+		// CAS self-heal: if Extension file is missing but Core expects one,
+		// extract the disk-additional blob from containerd CAS.
+		// This handles forward upgrade from monolithic to split rootfs.
+		pkgsImgPath = extractExtensionFromCAS(ctx, partName, imageName)
+	}
+	if pkgsImgPath == "" {
+		log.Warnf("%s not found on any disk or CAS", imageName)
+		log.Warnf("Searched locations: /persist/%s, /mnt/pkgs-disk/%s, block devices, and containerd CAS", imageName, imageName)
 		log.Warnf("To use external services, ensure %s is available in /persist", imageName)
 		log.Warnf("Will retry in %s...", scanInterval)
 		writeStateFile(stateFailed, "extension image not found", partName, "")
@@ -343,40 +366,58 @@ func tryMountAndStartServices(ctx *externalServicesContext) {
 	// Touch watchdog before mount
 	ctx.ps.StillRunning(agentName, warningTime, errorTime)
 
-	// Mount extension image.
+	// Mounting and starting extension services transiently pulls the
+	// compressed erofs image (~350 MB) into page cache charged to pillar's
+	// cgroup. Temporarily raise the cgroup memory limits to accommodate
+	// this, then restore them after fadvise drops the cache.
+	restoreLimits := raiseCgroupLimitsForExtMount(pkgsImgPath)
+
+	// Mount extension image via dm-verity. The root hash is loaded from the
+	// Core Image (/etc/ext-verity-roothash) and used both for veritysetup
+	// and for PCR12 measurement. No separate file hash is needed: the root
+	// hash is the Merkle tree root and uniquely identifies the image content.
 	log.Functionf("Attempting to mount extension image...")
-	if err := mountPkgsImg(pkgsImgPath); err != nil {
+	rootHash, err := mountPkgsImg(pkgsImgPath)
+	if err != nil {
 		log.Errorf("Failed to mount extension image: %v", err)
 		if err2 := extendPCR12("extsloader:failed:mount-failed"); err2 != nil {
 			log.Errorf("PCR12 mount-failed extend: %v", err2)
 		}
 		writeStateFile(stateFailed, fmt.Sprintf("mount failed: %v", err), partName, pkgsImgPath)
+		restoreLimits()
 		return
 	}
 
 	ctx.pkgsImgMounted = true
 	log.Noticef("✓ Mounted extension image at %s", extMount)
 
-	// Measure the verified extension image into PCR12. The image was
-	// integrity-checked by dm-verity during mount, so the hash we compute
-	// here is guaranteed to match what the kernel verified.
+	// Measure the verified extension image into PCR12 using the dm-verity
+	// root hash. This is the same root hash that veritysetup used to set up
+	// the device mapper, so it represents exactly what the kernel verified.
+	// The root hash is trusted because it comes from the read-only Core
+	// squashfs (measured into PCR13 by GRUB).
 	var measureEvents []string
 	measureEvents = append(measureEvents, "extsloader:starting")
-	hashBefore, hashWarningsBefore := collectMemorySnapshot()
-	hashStart := time.Now()
-	imgHash, err := hashExtensionImage(pkgsImgPath)
-	hashAfter, hashWarningsAfter := collectMemorySnapshot()
-	logHashMemoryOverhead(pkgsImgPath, time.Since(hashStart), hashBefore, hashAfter,
-		append(hashWarningsBefore, hashWarningsAfter...))
-	if err != nil {
-		log.Warnf("Failed to hash extension image for PCR12: %v", err)
-		imgHash = "unknown"
+	imgIdentity := rootHash
+	if imgIdentity == "" {
+		log.Warnf("No dm-verity root hash available (legacy mount); using 'no-verity' for PCR12")
+		imgIdentity = "no-verity"
 	}
-	verifiedMeasurement := "extsloader:image-verified:" + imgHash
+	verifiedMeasurement := "extsloader:image-verified:" + imgIdentity
 	if err := extendPCR12(verifiedMeasurement); err != nil {
 		log.Errorf("PCR12 image-verified extend: %v", err)
 	}
 	measureEvents = append(measureEvents, verifiedMeasurement)
+
+	// Release page cache for the backing image file and restore cgroup
+	// limits immediately after mount, before starting services. The
+	// compressed erofs blocks pulled in during mount are cached by the
+	// dm layer and charged to pillar's cgroup (~350 MB). Services
+	// mmap their executables from the mount, but those decompressed
+	// pages are demand-faulted independently and not affected by
+	// dropping the backing-file cache.
+	dropImagePageCache(pkgsImgPath)
+	restoreLimits()
 
 	// Touch watchdog before starting services
 	ctx.ps.StillRunning(agentName, warningTime, errorTime)
@@ -407,12 +448,159 @@ func tryMountAndStartServices(ctx *externalServicesContext) {
 func extensionImageName(partName string) (string, error) {
 	switch strings.TrimSpace(partName) {
 	case "IMGA":
-		return extImgNameIMGA, nil
+		return types.ExtImgNameIMGA, nil
 	case "IMGB":
-		return extImgNameIMGB, nil
+		return types.ExtImgNameIMGB, nil
 	default:
 		return "", fmt.Errorf("unsupported partition label %q", partName)
 	}
+}
+
+// extractExtensionFromCAS attempts CAS self-healing: when the Extension
+// image file is missing on PERSIST but the Core Image expects one
+// (/etc/ext-verity-roothash exists), find the active BaseOS ContentTree
+// reference, locate the disk-additional layer in CAS, and extract it.
+// This handles the forward upgrade case where old monolithic code wrote
+// Core but skipped Extension during WriteToPartition.
+func extractExtensionFromCAS(ctx *externalServicesContext, partName, imageName string) string {
+	targetPath, err := types.ExtensionImagePath(partName)
+	if err != nil {
+		log.Errorf("extractExtensionFromCAS: %v", err)
+		return ""
+	}
+
+	// Only attempt self-heal if Core expects an Extension
+	if _, err := os.Stat(extRootHashHostPath); os.IsNotExist(err) {
+		log.Functionf("extractExtensionFromCAS: no %s, Core does not expect Extension", extRootHashHostPath)
+		return ""
+	}
+
+	log.Noticef("extractExtensionFromCAS: Extension expected but missing, attempting CAS extraction")
+
+	// Find the active BaseOS ContentTree reference by reading
+	// ContentTreeStatus published by volumemgr via pubsub filesystem.
+	ref := findActiveBaseOSReference(ctx, partName)
+	if ref == "" {
+		log.Warnf("extractExtensionFromCAS: could not find active BaseOS ContentTree reference")
+		return ""
+	}
+
+	log.Noticef("extractExtensionFromCAS: active BaseOS reference: %s", ref)
+
+	// Use the same Puller.Pull + FilesTarget mechanism as WriteToPartition.
+	// The OCI image config label org.lfedge.eci.artifact.disk-0 tells
+	// edge-containers which file inside the tar layers is the Extension.
+	// FilesTarget.Disks[0] receives that file.
+	casClient, err := cas.NewCAS("containerd")
+	if err != nil {
+		log.Errorf("extractExtensionFromCAS: failed to create CAS client: %v", err)
+		return ""
+	}
+	defer casClient.CloseClient()
+
+	ctrdCtx, done := casClient.CtrNewUserServicesCtx()
+	defer done()
+
+	resolver, err := casClient.Resolver(ctrdCtx)
+	if err != nil {
+		log.Errorf("extractExtensionFromCAS: failed to get CAS resolver: %v", err)
+		return ""
+	}
+
+	tmpPath := targetPath + ".tmp"
+	f, err := os.Create(tmpPath)
+	if err != nil {
+		log.Errorf("extractExtensionFromCAS: failed to create %s: %v", tmpPath, err)
+		return ""
+	}
+
+	puller := registry.Puller{Image: ref}
+	_, artifact, err := puller.Pull(
+		&registry.FilesTarget{Disks: []io.Writer{f}, AcceptHash: true},
+		0, false, os.Stderr, resolver,
+	)
+	f.Close()
+
+	if err != nil {
+		os.Remove(tmpPath)
+		log.Errorf("extractExtensionFromCAS: pull failed for %s: %v", ref, err)
+		return ""
+	}
+	_ = artifact // Artifact.Disks is populated from layer annotations only; we use config label routing instead
+
+	// Verify something was actually written (config label routing via pathWriters)
+	fi, err := os.Stat(tmpPath)
+	if err != nil || fi.Size() == 0 {
+		os.Remove(tmpPath)
+		log.Warnf("extractExtensionFromCAS: no additional disk extracted from %s (monolithic image or missing label)", ref)
+		return ""
+	}
+
+	if err := os.Rename(tmpPath, targetPath); err != nil {
+		os.Remove(tmpPath)
+		log.Errorf("extractExtensionFromCAS: rename failed: %v", err)
+		return ""
+	}
+
+	log.Noticef("extractExtensionFromCAS: successfully extracted Extension (%d bytes) to %s", fi.Size(), targetPath)
+	return targetPath
+}
+
+// findActiveBaseOSReference uses pubsub subscriptions to find the CAS
+// reference for the BaseOS ContentTree on the given partition.
+func findActiveBaseOSReference(ctx *externalServicesContext, partName string) string {
+	if ctx.subBaseOsStatus == nil || ctx.subContentTreeStatus == nil {
+		log.Warnf("findActiveBaseOSReference: pubsub subscriptions not available")
+		return ""
+	}
+
+	// Find BaseOsStatus for our partition
+	items := ctx.subBaseOsStatus.GetAll()
+	for _, item := range items {
+		status, ok := item.(types.BaseOsStatus)
+		if !ok {
+			continue
+		}
+		if status.PartitionLabel != partName || status.ContentTreeUUID == "" {
+			continue
+		}
+
+		log.Functionf("findActiveBaseOSReference: BaseOsStatus for %s, ContentTreeUUID=%s",
+			partName, status.ContentTreeUUID)
+
+		// Look up ContentTreeStatus to get the CAS reference ID
+		ctsItem, err := ctx.subContentTreeStatus.Get(status.ContentTreeUUID)
+		if err != nil {
+			log.Errorf("findActiveBaseOSReference: ContentTreeStatus %s not found: %v",
+				status.ContentTreeUUID, err)
+			// Try iterating all entries as fallback
+			ctsItems := ctx.subContentTreeStatus.GetAll()
+			for _, ci := range ctsItems {
+				cts, ok := ci.(types.ContentTreeStatus)
+				if !ok {
+					continue
+				}
+				if cts.ContentID.String() == status.ContentTreeUUID {
+					refID := cts.ReferenceID()
+					log.Functionf("findActiveBaseOSReference: ContentTree %s -> ref %s",
+						status.ContentTreeUUID, refID)
+					return refID
+				}
+			}
+			return ""
+		}
+		cts, ok := ctsItem.(types.ContentTreeStatus)
+		if !ok {
+			return ""
+		}
+		refID := cts.ReferenceID()
+		log.Functionf("findActiveBaseOSReference: ContentTree %s -> ref %s",
+			status.ContentTreeUUID, refID)
+		return refID
+	}
+
+	log.Warnf("findActiveBaseOSReference: no BaseOsStatus found for partition %s", partName)
+	return ""
 }
 
 // findPkgsImg searches for extension image on all available block devices.
@@ -454,18 +642,6 @@ func findPkgsImg(imageName string) string {
 					log.Functionf("Copying %s from %s to %s...", imageName, pkgsPath, destPath)
 					if err := copyFile(pkgsPath, destPath); err == nil {
 						log.Noticef("✓ Copied %s from %s to %s", imageName, dev, destPath)
-						// Copy optional dm-verity sidecars if available.
-						for _, suffix := range []string{extVerityHashSuffix, extRootHashSuffix} {
-							src := pkgsPath + suffix
-							dst := destPath + suffix
-							if stat, statErr := os.Stat(src); statErr == nil && !stat.IsDir() {
-								if copyErr := copyFile(src, dst); copyErr != nil {
-									log.Warnf("Failed to copy %s sidecar %s: %v", imageName, suffix, copyErr)
-								} else {
-									log.Noticef("✓ Copied %s sidecar %s to %s", imageName, suffix, dst)
-								}
-							}
-						}
 						exec.Command("umount", tmpMount).Run()
 						os.RemoveAll(tmpMount)
 						searchPaths = append([]string{destPath}, searchPaths...)
@@ -512,71 +688,174 @@ func findPkgsImg(imageName string) string {
 	return ""
 }
 
-// mountPkgsImg mounts extension image.
-func mountPkgsImg(imgPath string) error {
+// mountPkgsImg mounts extension image and returns the dm-verity root hash
+// used for verification. The root hash is loaded exclusively from the Core
+// Image (/etc/ext-verity-roothash) and serves as the cryptographic identity
+// of the Extension. If dm-verity is not available (legacy images), the root
+// hash is empty.
+func mountPkgsImg(imgPath string) (rootHash string, err error) {
 	// Check if already mounted
 	mounts, err := os.ReadFile("/proc/mounts")
 	if err != nil {
-		return err
+		return "", err
 	}
 	if strings.Contains(string(mounts), extMount) {
 		log.Functionf("extension image already mounted")
-		return nil
+		return "", nil
 	}
 
 	// Create mount point
 	if err := os.MkdirAll(extMount, 0755); err != nil {
-		return err
+		return "", err
 	}
 
 	// Preferred path: dm-verity + erofs when metadata is present.
-	mountedWithVerity, err := mountPkgsImgWithVerity(imgPath)
+	rootHash, mountedWithVerity, err := mountPkgsImgWithVerity(imgPath)
 	if err != nil {
-		return err
+		return "", err
 	}
 	if mountedWithVerity {
-		return nil
+		return rootHash, nil
 	}
 
 	// Fallback path: plain read-only loop mount (legacy images without verity metadata).
 	cmd := exec.Command("mount", "-o", "loop,ro", imgPath, extMount)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("mount failed: %w; output: %s", err, string(out))
+		return "", fmt.Errorf("mount failed: %w; output: %s", err, string(out))
 	}
 
-	return nil
+	return "", nil
 }
 
-func mountPkgsImgWithVerity(imgPath string) (bool, error) {
-	if _, err := exec.LookPath("veritysetup"); err != nil {
-		log.Functionf("veritysetup not available; using legacy loop mount")
-		return false, nil
+// dropImagePageCache advises the kernel to release cached pages for the
+// extension image backing file. This reclaims the compressed erofs blocks
+// held in the loop/dm layer's page cache (charged to pillar's cgroup).
+// Decompressed pages that services have mmap'd are in erofs's own address
+// space and are NOT affected by this call.
+func dropImagePageCache(imgPath string) {
+	fd, err := unix.Open(imgPath, unix.O_RDONLY, 0)
+	if err != nil {
+		log.Warnf("dropImagePageCache: open %s: %v", imgPath, err)
+		return
+	}
+	defer unix.Close(fd)
+
+	var stat unix.Stat_t
+	if err := unix.Fstat(fd, &stat); err != nil {
+		log.Warnf("dropImagePageCache: fstat %s: %v", imgPath, err)
+		return
 	}
 
-	rootHash, rootHashPath, foundRootHash, err := loadExtensionRootHash(imgPath)
+	if err := unix.Fadvise(fd, 0, stat.Size, unix.FADV_DONTNEED); err != nil {
+		log.Warnf("dropImagePageCache: fadvise DONTNEED %s: %v", imgPath, err)
+		return
+	}
+	log.Noticef("dropImagePageCache: released page cache for %s (%d bytes)", imgPath, stat.Size)
+}
+
+// cgroupMemoryLimitPaths lists the cgroup memory limit files that must be
+// raised (in order: parent first) to accommodate transient page cache during
+// extension mount.
+var cgroupMemoryLimitPaths = []string{
+	types.EveMemoryLimitFile,
+	types.EveServicesMemoryLimitFile,
+	types.PillarHardMemoryLimitFile,
+}
+
+// raiseCgroupLimitsForExtMount temporarily increases the eve/services/pillar
+// cgroup memory limits to accommodate the transient page cache from mounting
+// the compressed erofs extension image. The returned function restores the
+// original limits and must always be called (even on error paths).
+//
+// Each limit is raised by 2x the image size to cover:
+//   - 1x for the compressed erofs blocks pulled into page cache
+//   - 1x for startup overhead (service RSS growth, decompression buffers,
+//     Go GC headroom) that occurs before fadvise reclaims the cache
+//
+// Parent cgroups (/eve, /eve/services) are raised by the same amount since
+// the transient spike is dominated by pillar; other services' memory is
+// roughly stable during extension loading.
+func raiseCgroupLimitsForExtMount(imgPath string) func() {
+	var imgSize int64
+	if info, err := os.Stat(imgPath); err == nil {
+		imgSize = info.Size()
+	} else {
+		log.Warnf("raiseCgroupLimits: stat %s: %v; skipping limit adjustment", imgPath, err)
+		return func() {}
+	}
+	extraBytes := imgSize * 2
+
+	type savedLimit struct {
+		path string
+		orig int64
+	}
+	var saved []savedLimit
+
+	for _, limitPath := range cgroupMemoryLimitPaths {
+		orig, err := types.ReadCgroupMemoryLimit(limitPath)
+		if err != nil {
+			log.Warnf("raiseCgroupLimits: read %s: %v; skipping", limitPath, err)
+			continue
+		}
+		if orig <= 0 {
+			// Unlimited — no adjustment needed.
+			continue
+		}
+
+		newLimit := orig + extraBytes
+		if err := types.WriteCgroupMemoryLimit(limitPath, newLimit); err != nil {
+			log.Warnf("raiseCgroupLimits: write %s: %v; skipping", limitPath, err)
+			continue
+		}
+		saved = append(saved, savedLimit{path: limitPath, orig: orig})
+		log.Noticef("raiseCgroupLimits: %s raised %d -> %d (+%d = 2x image size)",
+			limitPath, orig, newLimit, extraBytes)
+	}
+
+	return func() {
+		// Restore in reverse order: children first, then parents.
+		for i := len(saved) - 1; i >= 0; i-- {
+			s := saved[i]
+			if err := types.WriteCgroupMemoryLimit(s.path, s.orig); err != nil {
+				log.Warnf("restoreCgroupLimits: write %s: %v", s.path, err)
+				continue
+			}
+			log.Noticef("restoreCgroupLimits: %s restored to %d", s.path, s.orig)
+		}
+	}
+}
+
+func mountPkgsImgWithVerity(imgPath string) (string, bool, error) {
+	if _, err := exec.LookPath("veritysetup"); err != nil {
+		log.Functionf("veritysetup not available; using legacy loop mount")
+		return "", false, nil
+	}
+
+	rootHash, hashOffset, rootHashPath, foundRootHash, err := loadExtensionRootHash()
 	if err != nil {
-		return false, err
+		return "", false, err
 	}
 	if !foundRootHash {
-		log.Functionf("No dm-verity root hash found; using legacy loop mount")
-		return false, nil
-	}
-	hashPath := imgPath + extVerityHashSuffix
-	if _, err := os.Stat(hashPath); err != nil {
-		return false, fmt.Errorf("dm-verity hash tree %s is missing: %w", hashPath, err)
+		log.Functionf("No dm-verity root hash found in Core Image; using legacy loop mount")
+		return "", false, nil
 	}
 
 	mapperName := extensionVerityMapperName(imgPath)
 	mapperPath := filepath.Join("/dev/mapper", mapperName)
-	log.Noticef("Setting up dm-verity for extension image: data=%s hash=%s root-hash-source=%s",
-		imgPath, hashPath, rootHashPath)
+	hashOffsetStr := strconv.FormatInt(hashOffset, 10)
+	log.Noticef("Setting up dm-verity for extension image: data=%s hash-offset=%s root-hash-source=%s",
+		imgPath, hashOffsetStr, rootHashPath)
 
 	_ = exec.Command("veritysetup", "close", mapperName).Run()
-	cmd := exec.Command("veritysetup", "open", imgPath, mapperName, hashPath, rootHash)
+	// The Merkle hash tree is appended to the image file at hashOffset.
+	// Use the same file as both data and hash device with --hash-offset.
+	cmd := exec.Command("veritysetup", "open",
+		"--hash-offset", hashOffsetStr,
+		imgPath, mapperName, imgPath, rootHash)
 	cmdOut, err := cmd.CombinedOutput()
 	if err != nil {
-		return false, fmt.Errorf("veritysetup open failed: %w; output: %s", err, string(cmdOut))
+		return "", false, fmt.Errorf("veritysetup open failed: %w; output: %s", err, string(cmdOut))
 	}
 
 	// Split-rootfs extension image is expected to be erofs.
@@ -584,33 +863,48 @@ func mountPkgsImgWithVerity(imgPath string) (bool, error) {
 	mountOut, err := mountCmd.CombinedOutput()
 	if err != nil {
 		_ = exec.Command("veritysetup", "close", mapperName).Run()
-		return false, fmt.Errorf("mount verified erofs failed: %w; output: %s", err, string(mountOut))
+		return "", false, fmt.Errorf("mount verified erofs failed: %w; output: %s", err, string(mountOut))
 	}
 	log.Noticef("Mounted extension image via dm-verity at %s", extMount)
-	return true, nil
+	return rootHash, true, nil
 }
 
-func loadExtensionRootHash(imgPath string) (string, string, bool, error) {
+// loadExtensionRootHash loads the dm-verity root hash and data size from the
+// Core Image. The file contains two lines: root hash (hex) and data size in
+// bytes. The data size is the --hash-offset for veritysetup open, since the
+// Merkle tree is appended directly to the extension image.
+//
+// The root hash is the trust anchor that binds Core and Extension to the same
+// version. It must NOT be loaded from sidecar files on PERSIST, as those could
+// be replaced by an attacker alongside the Extension image.
+func loadExtensionRootHash() (rootHash string, hashOffset int64, path string, found bool, err error) {
 	candidates := []string{
 		extRootHashHostPath,
 		extRootHashPath,
-		imgPath + extRootHashSuffix,
 	}
-	for _, path := range candidates {
-		data, err := os.ReadFile(path)
-		if err != nil {
-			if os.IsNotExist(err) {
+	for _, p := range candidates {
+		data, readErr := os.ReadFile(p)
+		if readErr != nil {
+			if os.IsNotExist(readErr) {
 				continue
 			}
-			return "", "", false, fmt.Errorf("failed reading root hash from %s: %w", path, err)
+			return "", 0, "", false, fmt.Errorf("failed reading root hash from %s: %w", p, readErr)
 		}
-		rootHash := strings.TrimSpace(string(data))
-		if rootHash == "" {
-			return "", "", false, fmt.Errorf("empty dm-verity root hash in %s", path)
+		lines := strings.SplitN(strings.TrimSpace(string(data)), "\n", 2)
+		if len(lines) == 0 || strings.TrimSpace(lines[0]) == "" {
+			return "", 0, "", false, fmt.Errorf("empty dm-verity root hash in %s", p)
 		}
-		return rootHash, path, true, nil
+		rh := strings.TrimSpace(lines[0])
+		var offset int64
+		if len(lines) >= 2 {
+			offset, err = strconv.ParseInt(strings.TrimSpace(lines[1]), 10, 64)
+			if err != nil {
+				return "", 0, "", false, fmt.Errorf("invalid data size (hash offset) in %s: %w", p, err)
+			}
+		}
+		return rh, offset, p, true, nil
 	}
-	return "", "", false, nil
+	return "", 0, "", false, nil
 }
 
 func extensionVerityMapperName(imgPath string) string {
@@ -1038,167 +1332,6 @@ func copyFile(src, dst string) error {
 		return err
 	}
 	return os.WriteFile(dst, input, 0644)
-}
-
-func collectMemorySnapshot() (memorySnapshot, []string) {
-	var snapshot memorySnapshot
-	var warnings []string
-
-	processRSS, err := readProcRSSBytes()
-	if err != nil {
-		warnings = append(warnings, fmt.Sprintf("process RSS unavailable: %v", err))
-	} else {
-		snapshot.ProcessRSS = processRSS
-	}
-
-	var memStats runtime.MemStats
-	runtime.ReadMemStats(&memStats)
-	snapshot.GoAlloc = memStats.Alloc
-	snapshot.GoSys = memStats.Sys
-
-	eveStats, err := readCgroupMemoryStats(eveCgroupPath)
-	if err != nil {
-		warnings = append(warnings, fmt.Sprintf("%s unavailable: %v", eveCgroupPath, err))
-	} else {
-		snapshot.EVE = eveStats
-	}
-
-	pillarStats, err := readCgroupMemoryStats(pillarCgroupPath)
-	if err != nil {
-		warnings = append(warnings, fmt.Sprintf("%s unavailable: %v", pillarCgroupPath, err))
-	} else {
-		snapshot.Pillar = pillarStats
-	}
-
-	return snapshot, warnings
-}
-
-func readCgroupMemoryStats(path string) (cgroupMemoryStats, error) {
-	var stats cgroupMemoryStats
-
-	usage, err := readUintFromFile(filepath.Join(path, "memory.usage_in_bytes"))
-	if err != nil {
-		return stats, err
-	}
-	statData, err := os.ReadFile(filepath.Join(path, "memory.stat"))
-	if err != nil {
-		return stats, err
-	}
-
-	stats.Usage = usage
-	for _, line := range strings.Split(string(statData), "\n") {
-		fields := strings.Fields(line)
-		if len(fields) != 2 {
-			continue
-		}
-		value, err := strconv.ParseUint(fields[1], 10, 64)
-		if err != nil {
-			return stats, fmt.Errorf("parse %s in %s: %w", fields[0], path, err)
-		}
-		switch fields[0] {
-		case "cache":
-			stats.Cache = value
-		case "rss":
-			stats.RSS = value
-		}
-	}
-	return stats, nil
-}
-
-func readUintFromFile(path string) (uint64, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return 0, err
-	}
-	value, err := strconv.ParseUint(strings.TrimSpace(string(data)), 10, 64)
-	if err != nil {
-		return 0, fmt.Errorf("parse %s: %w", path, err)
-	}
-	return value, nil
-}
-
-func readProcRSSBytes() (uint64, error) {
-	data, err := os.ReadFile("/proc/self/status")
-	if err != nil {
-		return 0, err
-	}
-	for _, line := range strings.Split(string(data), "\n") {
-		if !strings.HasPrefix(line, "VmRSS:") {
-			continue
-		}
-		fields := strings.Fields(line)
-		if len(fields) < 2 {
-			return 0, fmt.Errorf("unexpected VmRSS line: %q", line)
-		}
-		kib, err := strconv.ParseUint(fields[1], 10, 64)
-		if err != nil {
-			return 0, fmt.Errorf("parse VmRSS value %q: %w", fields[1], err)
-		}
-		return kib * 1024, nil
-	}
-	return 0, fmt.Errorf("VmRSS not found")
-}
-
-func logHashMemoryOverhead(imgPath string, duration time.Duration, before, after memorySnapshot, warnings []string) {
-	size := "unknown"
-	if info, err := os.Stat(imgPath); err != nil {
-		warnings = append(warnings, fmt.Sprintf("stat %s failed: %v", imgPath, err))
-	} else {
-		size = formatBytes(uint64(info.Size()))
-	}
-
-	log.Noticef("Extension image hash stats: image=%s size=%s duration=%s",
-		imgPath, size, duration.Round(time.Millisecond))
-	log.Noticef("Extension image hash memory: process-rss %s -> %s (%s), go-alloc %s -> %s (%s), go-sys %s -> %s (%s)",
-		formatBytes(before.ProcessRSS), formatBytes(after.ProcessRSS), formatBytesDelta(bytesDelta(after.ProcessRSS, before.ProcessRSS)),
-		formatBytes(before.GoAlloc), formatBytes(after.GoAlloc), formatBytesDelta(bytesDelta(after.GoAlloc, before.GoAlloc)),
-		formatBytes(before.GoSys), formatBytes(after.GoSys), formatBytesDelta(bytesDelta(after.GoSys, before.GoSys)))
-	log.Noticef("Extension image hash /eve cgroup: usage %s -> %s (%s), cache %s -> %s (%s), rss %s -> %s (%s)",
-		formatBytes(before.EVE.Usage), formatBytes(after.EVE.Usage), formatBytesDelta(bytesDelta(after.EVE.Usage, before.EVE.Usage)),
-		formatBytes(before.EVE.Cache), formatBytes(after.EVE.Cache), formatBytesDelta(bytesDelta(after.EVE.Cache, before.EVE.Cache)),
-		formatBytes(before.EVE.RSS), formatBytes(after.EVE.RSS), formatBytesDelta(bytesDelta(after.EVE.RSS, before.EVE.RSS)))
-	log.Noticef("Extension image hash pillar cgroup: usage %s -> %s (%s), cache %s -> %s (%s), rss %s -> %s (%s)",
-		formatBytes(before.Pillar.Usage), formatBytes(after.Pillar.Usage), formatBytesDelta(bytesDelta(after.Pillar.Usage, before.Pillar.Usage)),
-		formatBytes(before.Pillar.Cache), formatBytes(after.Pillar.Cache), formatBytesDelta(bytesDelta(after.Pillar.Cache, before.Pillar.Cache)),
-		formatBytes(before.Pillar.RSS), formatBytes(after.Pillar.RSS), formatBytesDelta(bytesDelta(after.Pillar.RSS, before.Pillar.RSS)))
-
-	seenWarnings := make(map[string]struct{})
-	for _, warning := range warnings {
-		if _, seen := seenWarnings[warning]; seen {
-			continue
-		}
-		seenWarnings[warning] = struct{}{}
-		log.Warnf("Extension image hash memory stats incomplete: %s", warning)
-	}
-}
-
-func bytesDelta(after, before uint64) int64 {
-	if after >= before {
-		return int64(after - before)
-	}
-	return -int64(before - after)
-}
-
-func formatBytesDelta(delta int64) string {
-	if delta >= 0 {
-		return "+" + formatBytes(uint64(delta))
-	}
-	return "-" + formatBytes(uint64(-delta))
-}
-
-func formatBytes(value uint64) string {
-	const unit = 1024
-	if value < unit {
-		return fmt.Sprintf("%d B", value)
-	}
-
-	div := float64(unit)
-	exp := 0
-	for n := value / unit; n >= unit && exp < len("KMGTPE")-1; n /= unit {
-		div *= unit
-		exp++
-	}
-	return fmt.Sprintf("%.1f %ciB", float64(value)/div, "KMGTPE"[exp])
 }
 
 func writeStateFile(state, reason, partition, imagePath string) {
