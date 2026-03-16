@@ -27,11 +27,11 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/sriov"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	uuid "github.com/satori/go.uuid"
 
 	netattdefv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	netattdefclient "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/client/clientset/versioned"
 	"github.com/lf-edge/eve/pkg/pillar/kubeapi"
-	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 	appsv1 "k8s.io/api/apps/v1"
 	k8sv1 "k8s.io/api/core/v1"
@@ -78,8 +78,9 @@ type vmiMetaData struct {
 	mtype            MetaDataType                         // switch on is ReplicaSet, Pod or is VMI
 	name             string                               // Display-Name(all lower case) + first 5 bytes of domainName
 	cputotal         uint64                               // total CPU in NS so far
-	maxmem           uint32                               // total Max memory usage in bytes so far
+	maxmem           uint32                               // total Max memory usage in MB so far
 	startUnknownTime time.Time                            // time when the domain returned as unknown status
+	memOverhead      uint64                               // VMM memory overhead in bytes
 	// sriovVFs lists the (PF ifname, VF index) of every SR-IOV VF this VMI
 	// was wired with via attachSRIOVInterfaces.  Used on Stop/Delete/Cleanup
 	// to clear the per-VF admin MAC on the PF — sriov-cni's DEL path doesn't
@@ -106,6 +107,7 @@ type kubevirtContext struct {
 	prevDomainMetric  map[string]types.DomainMetric
 	kubeConfig        *rest.Config
 	nodeNameMap       map[string]string // to pass nodeName between methods without pointer receiver
+	globalConfig      *types.ConfigItemValueMap
 }
 
 // Use few states  for now
@@ -209,6 +211,14 @@ func (ctx kubevirtContext) GetCapabilities() (*types.Capabilities, error) {
 	return ctx.capabilities, nil
 }
 
+// CountMemOverhead returns the memory overhead estimation for a KubeVirt VM domain.
+func (ctx kubevirtContext) CountMemOverhead(domainName string, domainUUID uuid.UUID, domainRAMSize int64, vmmMaxMem int64,
+	domainMaxCpus int64, domainVCpus int64, domainIoAdapterList []types.IoAdapter, aa *types.AssignableAdapters,
+	globalConfig *types.ConfigItemValueMap) (uint64, error) {
+	result, err := vmmOverhead(domainName, domainUUID, domainRAMSize, vmmMaxMem, domainMaxCpus, domainVCpus, domainIoAdapterList, aa, globalConfig)
+	return uint64(result), err
+}
+
 func (ctx kubevirtContext) checkIOVirtualisation() (bool, error) {
 	f, err := os.Open("/sys/kernel/iommu_groups")
 	if err == nil {
@@ -283,6 +293,7 @@ func (ctx kubevirtContext) lookupVMIByUUIDPrefix(domainName string) (*vmiMetaDat
 func (ctx kubevirtContext) Setup(status types.DomainStatus, config types.DomainConfig,
 	aa *types.AssignableAdapters, globalConfig *types.ConfigItemValueMap, file *os.File) error {
 
+	ctx.globalConfig = globalConfig
 	diskStatusList := status.DiskStatusList
 	domainName := status.DomainName
 
@@ -655,12 +666,24 @@ func (ctx kubevirtContext) CreateReplicaVMIConfig(domainName string, config type
 	// Now we have VirtualMachine Instance object, save it to config file for debug purposes
 	// and save it in context which will be used to start VM in Start() call
 	// dispName is for vmi name/handle on kubernetes
+	var overhead int64
+	if config.VirtualizationMode != types.NOHYPER {
+		var err error
+		overhead, err = vmmOverhead(domainName, config.UUIDandVersion.UUID,
+			int64(config.Memory), int64(config.VMMMaxMem),
+			int64(config.MaxCpus), int64(config.VCpus), config.IoAdapterList, aa, ctx.globalConfig)
+		if err != nil {
+			logrus.Warnf("CreateReplicaVMIConfig: vmmOverhead failed for %s: %v, using 0", domainName, err)
+			overhead = 0
+		}
+	}
 	meta := vmiMetaData{
-		repVMI:   replicaSet,
-		name:     kubeName,
-		mtype:    IsMetaReplicaVMI,
-		domainID: int(rand.Uint32()),
-		sriovVFs: sriovVFs,
+		repVMI:      replicaSet,
+		name:        kubeName,
+		mtype:       IsMetaReplicaVMI,
+		domainID:    int(rand.Uint32()),
+		memOverhead: uint64(overhead),
+		sriovVFs:    sriovVFs,
 	}
 	ctx.evictStaleVMIByUUIDPrefix(domainName)
 	ctx.vmiList[domainName] = &meta
@@ -1633,11 +1656,23 @@ func (ctx kubevirtContext) CreateReplicaPodConfig(domainName string, config type
 
 	// Now we have VirtualMachine Instance object, save it to config file for debug purposes
 	// and save it in context which will be used to start VM in Start() call
+	var overhead int64
+	if config.VirtualizationMode != types.NOHYPER {
+		var err error
+		overhead, err = vmmOverhead(domainName, config.UUIDandVersion.UUID,
+			int64(config.Memory), int64(config.VMMMaxMem),
+			int64(config.MaxCpus), int64(config.VCpus), config.IoAdapterList, aa, ctx.globalConfig)
+		if err != nil {
+			logrus.Warnf("CreateReplicaPodConfig: vmmOverhead failed for %s: %v, using 0", domainName, err)
+			overhead = 0
+		}
+	}
 	meta := vmiMetaData{
-		repPod:   replicaSet,
-		mtype:    IsMetaReplicaPod,
-		name:     kubeName,
-		domainID: int(rand.Uint32()),
+		repPod:      replicaSet,
+		mtype:       IsMetaReplicaPod,
+		name:        kubeName,
+		domainID:    int(rand.Uint32()),
+		memOverhead: uint64(overhead),
 	}
 	ctx.evictStaleVMIByUUIDPrefix(domainName)
 	ctx.vmiList[domainName] = &meta
@@ -1896,36 +1931,44 @@ func getPodMetrics(clientset *metricsv.Clientset, pod k8sv1.Pod, vmis *vmiMetaDa
 	cpuTotalNsAsFloat64 := cpuTotalNs.AsApproximateFloat64() * float64(time.Second) // get nanoseconds
 	totalCPU := uint64(cpuTotalNsAsFloat64)
 
+	BytesInMegabyte := int64(1024 * 1024)
 	//allocatedMemory := metrics.Containers[0].Usage[k8sv1.ResourceMemory]
 	usedMemory := metrics.Containers[0].Usage[k8sv1.ResourceMemory]
-	maxMemory := uint32(usedMemory.Value())
+	usedMemoryMB := uint32(usedMemory.Value() / BytesInMegabyte)
+	limitMB := uint32(memoryLimits.Value() / BytesInMegabyte)
+	maxMemoryMB := usedMemoryMB
 	if vmis != nil {
-		if vmis.maxmem < maxMemory {
-			vmis.maxmem = maxMemory
+		if vmis.maxmem < maxMemoryMB {
+			vmis.maxmem = maxMemoryMB
 		} else {
-			maxMemory = vmis.maxmem
+			maxMemoryMB = vmis.maxmem
 		}
 	}
 
-	available := uint32(memoryLimits.Value())
-	if uint32(usedMemory.Value()) < available {
-		available = available - uint32(usedMemory.Value())
+	var availableMB uint32
+	if usedMemoryMB < limitMB {
+		availableMB = limitMB - usedMemoryMB
 	}
 	usedMemoryPercent := calculateMemoryUsagePercent(usedMemory.Value(), memoryLimits.Value())
-	BytesInMegabyte := uint32(1024 * 1024)
 
 	var realCPUTotal uint64
 	if vmis != nil {
 		realCPUTotal = vmis.cputotal + totalCPU
 		vmis.cputotal = realCPUTotal
 	}
+	// AllocatedMB is the Kubernetes resource limit (guest RAM only); add VMM
+	// overhead so it reflects total host memory consumption, consistent with KVM.
+	allocatedMB := limitMB
+	if vmis != nil && vmis.memOverhead > 0 {
+		allocatedMB += uint32(roundFromBytesToMbytes(vmis.memOverhead))
+	}
 	dm := &types.DomainMetric{
 		CPUTotalNs:        realCPUTotal,
 		CPUScaled:         1,
-		AllocatedMB:       uint32(memoryLimits.Value()) / BytesInMegabyte,
-		UsedMemory:        uint32(usedMemory.Value()) / BytesInMegabyte,
-		MaxUsedMemory:     maxMemory / BytesInMegabyte,
-		AvailableMemory:   available / BytesInMegabyte,
+		AllocatedMB:       allocatedMB,
+		UsedMemory:        usedMemoryMB,
+		MaxUsedMemory:     maxMemoryMB,
+		AvailableMemory:   availableMB,
 		UsedMemoryPercent: usedMemoryPercent,
 		NodeName:          pod.Spec.NodeName,
 	}
