@@ -96,12 +96,49 @@ func handleUpgradeTestValidation(ctxPtr *nodeagentContext) {
 		return
 	}
 	if checkUpgradeValidationTestTimeExpiry(ctxPtr) {
+		// Before marking test complete, verify Extension loaded if expected.
+		// Split-rootfs images have /etc/ext-verity-roothash in Core; if present,
+		// extsloader must reach "ready" state for the update to succeed.
+		if !checkExtsloaderReady(ctxPtr) {
+			log.Warnf("CurPart: %s, Upgrade test time expired but Extension not ready — waiting",
+				ctxPtr.curPart)
+			return
+		}
 		log.Functionf("CurPart: %s, Upgrade Validation Test Complete",
 			ctxPtr.curPart)
 		resetTestStartTime(ctxPtr)
 		initiateBaseOsControllerTestComplete(ctxPtr)
 		publishNodeAgentStatus(ctxPtr)
 	}
+}
+
+// checkExtsloaderReady verifies that extsloader has loaded the Extension
+// successfully. Returns true if Extension is not expected (monolithic image)
+// or if extsloader has reached "ready" state.
+func checkExtsloaderReady(ctxPtr *nodeagentContext) bool {
+	// If no ext-verity-roothash, this is a monolithic image — no Extension expected
+	if _, err := os.Stat(types.ExtVerityRootHashPath); os.IsNotExist(err) {
+		return true
+	}
+	// Extension is expected — check extsloader status via pubsub
+	if ctxPtr.subExtsloaderStatus == nil {
+		log.Warnf("checkExtsloaderReady: subscription not available")
+		return false
+	}
+	items := ctxPtr.subExtsloaderStatus.GetAll()
+	for _, item := range items {
+		status, ok := item.(types.ExtsloaderStatus)
+		if !ok {
+			continue
+		}
+		if status.State == types.ExtsloaderStateReady {
+			log.Functionf("checkExtsloaderReady: Extension ready (partition=%s)", status.Partition)
+			return true
+		}
+		log.Functionf("checkExtsloaderReady: Extension state=%s reason=%s",
+			status.State, status.Reason)
+	}
+	return false
 }
 
 // when baseos upgrade is inprogress,

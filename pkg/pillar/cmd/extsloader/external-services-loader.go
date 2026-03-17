@@ -45,24 +45,23 @@ import (
 )
 
 const (
-	agentName               = "extsloader"
-	errorTime               = 3 * time.Minute
-	warningTime             = 40 * time.Second
-	containerdRPCTimeout    = 20 * time.Second
-	extMount                = "/persist/exts"
-	extRootHashHostPath     = types.ExtVerityRootHashHostPath
-	extRootHashPath         = types.ExtVerityRootHashPath
-	extVerityMapperPref     = "exts-verity-"
-	servicesDir             = "/persist/eve-services"
-	containerdSock          = "/run/containerd/containerd.sock"
-	containerdNamespace     = "services.linuxkit"
-	scanInterval            = 30 * time.Second
-	hvTypePath              = "/run/eve-hv-type"
+	agentName            = "extsloader"
+	errorTime            = 3 * time.Minute
+	warningTime          = 40 * time.Second
+	containerdRPCTimeout = 20 * time.Second
+	extMount             = "/persist/exts"
+	extRootHashHostPath  = types.ExtVerityRootHashHostPath
+	extRootHashPath      = types.ExtVerityRootHashPath
+	extVerityMapperPref  = "exts-verity-"
+	servicesDir          = "/persist/eve-services"
+	containerdSock       = "/run/containerd/containerd.sock"
+	containerdNamespace  = "services.linuxkit"
+	scanInterval         = 30 * time.Second
+	hvTypePath           = "/run/eve-hv-type"
+	// stateFilePath kept for backward compatibility with Eden tests reading it via SSH.
+	// TODO: remove once tests switch to pubsub-derived checking.
 	stateFilePath           = "/run/extsloader-state.json"
 	serviceOverrideDir      = "/run/eve-service-overrides"
-	stateStarting           = "starting"
-	stateReady              = "ready"
-	stateFailed             = "failed"
 	serviceOverrideEnabled  = "enabled"
 	serviceOverrideDisabled = "disabled"
 
@@ -128,6 +127,7 @@ type externalServicesContext struct {
 	subGlobalConfig      pubsub.Subscription
 	subBaseOsStatus      pubsub.Subscription
 	subContentTreeStatus pubsub.Subscription
+	pubExtsloaderStatus  pubsub.Publication
 	pkgsImgPath          string
 	pkgsImgMounted       bool
 	servicesStarted      map[string]bool
@@ -190,7 +190,17 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		agentbase.WithPidFile(),
 		agentbase.WithWatchdog(ps, warningTime, errorTime),
 		agentbase.WithArguments(arguments))
-	writeStateFile(stateStarting, "", "", "")
+
+	// Publish ExtsloaderStatus for nodeagent testing window validation
+	pubExtsloaderStatus, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName: agentName,
+		TopicType: types.ExtsloaderStatus{},
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.pubExtsloaderStatus = pubExtsloaderStatus
+	publishExtsloaderStatus(ctx, types.ExtsloaderStateStarting, "", "", "")
 
 	// Extend PCR12 to mark loader startup. This is the first extend in
 	// the boot sequence; PCR12 transitions from all-zeros to a known value.
@@ -327,7 +337,7 @@ func tryMountAndStartServices(ctx *externalServicesContext) {
 	log.Functionf("tryMountAndStartServices: Checking if already mounted")
 	if ctx.pkgsImgMounted {
 		log.Functionf("extension image already mounted, skipping...")
-		writeStateFile(stateReady, "", "", ctx.pkgsImgPath)
+		publishExtsloaderStatus(ctx, types.ExtsloaderStateReady, "", "", ctx.pkgsImgPath)
 		return
 	}
 
@@ -356,7 +366,7 @@ func tryMountAndStartServices(ctx *externalServicesContext) {
 		log.Warnf("Searched locations: /persist/%s, /mnt/pkgs-disk/%s, block devices, and containerd CAS", imageName, imageName)
 		log.Warnf("To use external services, ensure %s is available in /persist", imageName)
 		log.Warnf("Will retry in %s...", scanInterval)
-		writeStateFile(stateFailed, "extension image not found", partName, "")
+		publishExtsloaderStatus(ctx, types.ExtsloaderStateFailed, "extension image not found", partName, "")
 		return
 	}
 
@@ -383,7 +393,7 @@ func tryMountAndStartServices(ctx *externalServicesContext) {
 		if err2 := extendPCR12("extsloader:failed:mount-failed"); err2 != nil {
 			log.Errorf("PCR12 mount-failed extend: %v", err2)
 		}
-		writeStateFile(stateFailed, fmt.Sprintf("mount failed: %v", err), partName, pkgsImgPath)
+		publishExtsloaderStatus(ctx, types.ExtsloaderStateFailed, fmt.Sprintf("mount failed: %v", err), partName, pkgsImgPath)
 		restoreLimits()
 		return
 	}
@@ -432,7 +442,7 @@ func tryMountAndStartServices(ctx *externalServicesContext) {
 		}
 		measureEvents = append(measureEvents, failMeasurement)
 		writeMeasurementLog(measureEvents)
-		writeStateFile(stateFailed, fmt.Sprintf("start services failed: %v", err), partName, pkgsImgPath)
+		publishExtsloaderStatus(ctx, types.ExtsloaderStateFailed, fmt.Sprintf("start services failed: %v", err), partName, pkgsImgPath)
 	} else {
 		log.Noticef("✓ All services started successfully")
 		runningMeasurement := "extsloader:services-running"
@@ -441,7 +451,7 @@ func tryMountAndStartServices(ctx *externalServicesContext) {
 		}
 		measureEvents = append(measureEvents, runningMeasurement)
 		writeMeasurementLog(measureEvents)
-		writeStateFile(stateReady, "", partName, pkgsImgPath)
+		publishExtsloaderStatus(ctx, types.ExtsloaderStateReady, "", partName, pkgsImgPath)
 	}
 }
 
@@ -1334,7 +1344,31 @@ func copyFile(src, dst string) error {
 	return os.WriteFile(dst, input, 0644)
 }
 
-func writeStateFile(state, reason, partition, imagePath string) {
+// publishExtsloaderStatus publishes the current extsloader state via pubsub.
+// This is consumed by nodeagent during the testing window to determine if
+// Extension loaded successfully (update success criteria).
+func publishExtsloaderStatus(ctx *externalServicesContext, state types.ExtsloaderState, reason, partition, imagePath string) {
+	status := types.ExtsloaderStatus{
+		State:      state,
+		Reason:     reason,
+		Partition:  partition,
+		ImagePath:  imagePath,
+		MountPoint: extMount,
+	}
+	if state == types.ExtsloaderStateFailed {
+		status.SetErrorNow(reason)
+	}
+	key := status.Key()
+	log.Functionf("publishExtsloaderStatus: state=%s partition=%s reason=%s", state, partition, reason)
+	if err := ctx.pubExtsloaderStatus.Publish(key, status); err != nil {
+		log.Errorf("publishExtsloaderStatus failed: %v", err)
+	}
+	// Also write state file for debug/testing (read via console or eden eve ssh).
+	// TODO: remove once Eden tests use pubsub-derived checking.
+	writeDebugStateFile(state.String(), reason, partition, imagePath)
+}
+
+func writeDebugStateFile(state, reason, partition, imagePath string) {
 	s := extensionLoaderState{
 		State:      state,
 		Reason:     reason,
@@ -1343,23 +1377,15 @@ func writeStateFile(state, reason, partition, imagePath string) {
 		MountPoint: extMount,
 		UpdatedAt:  time.Now().UTC(),
 	}
-	if err := os.MkdirAll(filepath.Dir(stateFilePath), 0755); err != nil {
-		log.Warnf("Failed to create state directory: %v", err)
-		return
-	}
 	data, err := json.Marshal(s)
 	if err != nil {
-		log.Warnf("Failed to marshal loader state: %v", err)
 		return
 	}
 	tmp := stateFilePath + ".tmp"
 	if err := os.WriteFile(tmp, data, 0644); err != nil {
-		log.Warnf("Failed to write temporary state file: %v", err)
 		return
 	}
-	if err := os.Rename(tmp, stateFilePath); err != nil {
-		log.Warnf("Failed to atomically update state file: %v", err)
-	}
+	os.Rename(tmp, stateFilePath)
 }
 
 // Global config handlers
