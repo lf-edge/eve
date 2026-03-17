@@ -79,6 +79,7 @@ type nodeagentContext struct {
 	subVolumeMgrStatus          pubsub.Subscription
 	subNodeDrainStatus          pubsub.Subscription
 	subTpmStatus                pubsub.Subscription
+	subExtsloaderStatus         pubsub.Subscription
 	pubZbootConfig              pubsub.Publication
 	pubNodeAgentStatus          pubsub.Publication
 	curPart                     string
@@ -300,6 +301,24 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	ctxPtr.subTpmStatus = subTpmStatus
 	subTpmStatus.Activate()
 
+	// Subscribe to ExtsloaderStatus for split-rootfs update validation.
+	// nodeagent checks this during the testing window to ensure Extension loaded.
+	subExtsloaderStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:   "extsloader",
+		MyAgentName: agentName,
+		TopicImpl:   types.ExtsloaderStatus{},
+		Activate:    true,
+		Ctx:         ctxPtr,
+		WarningTime: warningTime,
+		ErrorTime:   errorTime,
+	})
+	if err != nil {
+		// Non-fatal: extsloader may not exist on monolithic images
+		log.Warnf("ExtsloaderStatus subscription failed (expected on monolithic): %v", err)
+	} else {
+		ctxPtr.subExtsloaderStatus = subExtsloaderStatus
+	}
+
 	// publish zboot config as of now
 	publishZbootConfigAll(ctxPtr)
 
@@ -388,6 +407,12 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	initNodeDrainPubSub(ps, ctxPtr)
 
 	log.Functionf("zedbox event loop")
+	// nil channel is never selected in select — safe for monolithic images
+	var extsloaderStatusChan <-chan pubsub.Change
+	if ctxPtr.subExtsloaderStatus != nil {
+		extsloaderStatusChan = ctxPtr.subExtsloaderStatus.MsgChan()
+	}
+
 	for {
 		select {
 		case change := <-subGlobalConfig.MsgChan():
@@ -416,6 +441,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 		case change := <-subTpmStatus.MsgChan():
 			subTpmStatus.ProcessChange(change)
+
+		case change := <-extsloaderStatusChan:
+			ctxPtr.subExtsloaderStatus.ProcessChange(change)
 
 		case <-ctxPtr.stillRunning.C:
 		}
