@@ -100,8 +100,13 @@ func handleUpgradeTestValidation(ctxPtr *nodeagentContext) {
 		// Split-rootfs images have /etc/ext-verity-roothash in Core; if present,
 		// extsloader must reach "ready" state for the update to succeed.
 		if !checkExtsloaderReady(ctxPtr) {
-			log.Warnf("CurPart: %s, Upgrade test time expired but Extension not ready — waiting",
+			// Extension not ready after testing window. Reboot to trigger
+			// rollback to the previous partition.
+			errStr := fmt.Sprintf("CurPart: %s, Extension not ready after testing window — rebooting for rollback",
 				ctxPtr.curPart)
+			log.Error(errStr)
+			scheduleNodeOperation(ctxPtr, errStr, types.BootReasonFallback,
+				types.DeviceOperationReboot)
 			return
 		}
 		log.Functionf("CurPart: %s, Upgrade Validation Test Complete",
@@ -116,8 +121,10 @@ func handleUpgradeTestValidation(ctxPtr *nodeagentContext) {
 // successfully. Returns true if Extension is not expected (monolithic image)
 // or if extsloader has reached "ready" state.
 func checkExtsloaderReady(ctxPtr *nodeagentContext) bool {
-	// If no ext-verity-roothash, this is a monolithic image — no Extension expected
-	if _, err := os.Stat(types.ExtVerityRootHashPath); os.IsNotExist(err) {
+	// If no ext-verity-roothash, this is a monolithic image — no Extension expected.
+	// Use HostPath because nodeagent runs inside the pillar container; host rootfs
+	// is mounted at /hostfs/.
+	if _, err := os.Stat(types.ExtVerityRootHashHostPath); os.IsNotExist(err) {
 		return true
 	}
 	// Extension is expected — check extsloader status via pubsub
