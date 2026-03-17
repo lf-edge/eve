@@ -145,6 +145,7 @@ FROM ${EVE_ALPINE_IMAGE} AS dhcpcd-bin
 ENV PKGS dhcpcd
 RUN eve-alpine-deploy.sh
 
+
 # collector collects everything together and then does any processing like stripping binaries.
 # We use this interim "collector" so that we can do processing.
 # hadolint ignore=DL3006
@@ -153,7 +154,8 @@ ENV BUILD_PKGS patch
 ENV PKGS alpine-baselayout musl-utils libtasn1-progs pciutils yajl xz bash iptables ip6tables iproute2 \
     coreutils dmidecode libbz2 libuuid ipset curl radvd ethtool util-linux e2fsprogs libcrypto3 xorriso \
     qemu-img jq e2fsprogs-extra keyutils ca-certificates ip6tables-openrc iptables-openrc ipset-openrc hdparm \
-    libintl libtirpc libblkid zlib rsync chrony wireless-tools wpa_supplicant dnsmasq
+    libintl libtirpc libblkid zlib rsync chrony wireless-tools wpa_supplicant dnsmasq \
+    cryptsetup
 RUN eve-alpine-deploy.sh
 
 # Snapshot collector's own apk DB (alpine PKGS installed above) before the

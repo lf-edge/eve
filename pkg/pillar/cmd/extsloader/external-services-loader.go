@@ -408,12 +408,7 @@ func tryMountAndStartServices(ctx *externalServicesContext) {
 	// squashfs (measured into PCR13 by GRUB).
 	var measureEvents []string
 	measureEvents = append(measureEvents, "extsloader:starting")
-	imgIdentity := rootHash
-	if imgIdentity == "" {
-		log.Warnf("No dm-verity root hash available (legacy mount); using 'no-verity' for PCR12")
-		imgIdentity = "no-verity"
-	}
-	verifiedMeasurement := "extsloader:image-verified:" + imgIdentity
+	verifiedMeasurement := "extsloader:image-verified:" + rootHash
 	if err := extendPCR12(verifiedMeasurement); err != nil {
 		log.Errorf("PCR12 image-verified extend: %v", err)
 	}
@@ -698,11 +693,12 @@ func findPkgsImg(imageName string) string {
 	return ""
 }
 
-// mountPkgsImg mounts extension image and returns the dm-verity root hash
-// used for verification. The root hash is loaded exclusively from the Core
-// Image (/etc/ext-verity-roothash) and serves as the cryptographic identity
-// of the Extension. If dm-verity is not available (legacy images), the root
-// hash is empty.
+// mountPkgsImg mounts the Extension image via dm-verity and returns the root
+// hash used for verification. The root hash is loaded exclusively from the
+// Core Image (/etc/ext-verity-roothash) and serves as the cryptographic
+// identity of the Extension. dm-verity verification is mandatory — there is
+// no legacy fallback. If veritysetup is missing or roothash is not found,
+// mount fails and the update should be rolled back.
 func mountPkgsImg(imgPath string) (rootHash string, err error) {
 	// Check if already mounted
 	mounts, err := os.ReadFile("/proc/mounts")
@@ -719,23 +715,15 @@ func mountPkgsImg(imgPath string) (rootHash string, err error) {
 		return "", err
 	}
 
-	// Preferred path: dm-verity + erofs when metadata is present.
-	rootHash, mountedWithVerity, err := mountPkgsImgWithVerity(imgPath)
+	// dm-verity mount (mandatory, no legacy fallback)
+	rootHash, mounted, err := mountPkgsImgWithVerity(imgPath)
 	if err != nil {
 		return "", err
 	}
-	if mountedWithVerity {
-		return rootHash, nil
+	if !mounted {
+		return "", fmt.Errorf("dm-verity mount failed: veritysetup or roothash not available")
 	}
-
-	// Fallback path: plain read-only loop mount (legacy images without verity metadata).
-	cmd := exec.Command("mount", "-o", "loop,ro", imgPath, extMount)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		return "", fmt.Errorf("mount failed: %w; output: %s", err, string(out))
-	}
-
-	return "", nil
+	return rootHash, nil
 }
 
 // dropImagePageCache advises the kernel to release cached pages for the
@@ -838,8 +826,7 @@ func raiseCgroupLimitsForExtMount(imgPath string) func() {
 
 func mountPkgsImgWithVerity(imgPath string) (string, bool, error) {
 	if _, err := exec.LookPath("veritysetup"); err != nil {
-		log.Functionf("veritysetup not available; using legacy loop mount")
-		return "", false, nil
+		return "", false, fmt.Errorf("veritysetup binary not found in Core image: %w", err)
 	}
 
 	rootHash, hashOffset, rootHashPath, foundRootHash, err := loadExtensionRootHash()
@@ -847,8 +834,7 @@ func mountPkgsImgWithVerity(imgPath string) (string, bool, error) {
 		return "", false, err
 	}
 	if !foundRootHash {
-		log.Functionf("No dm-verity root hash found in Core Image; using legacy loop mount")
-		return "", false, nil
+		return "", false, fmt.Errorf("dm-verity root hash not found in Core (%s)", extRootHashPath)
 	}
 
 	mapperName := extensionVerityMapperName(imgPath)
