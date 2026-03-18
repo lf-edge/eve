@@ -5,6 +5,7 @@ package types
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 )
 
@@ -175,6 +176,10 @@ const (
 	ExtVerityRootHashPath = "/etc/ext-verity-roothash"
 	// ExtVerityRootHashHostPath - host-visible path to dm-verity root hash
 	ExtVerityRootHashHostPath = "/hostfs/etc/ext-verity-roothash"
+	// ExtMountPoint - where Extension erofs is mounted
+	ExtMountPoint = "/persist/exts"
+	// ExtVerityMapperPrefix - dm-verity device mapper name prefix
+	ExtVerityMapperPrefix = "exts-verity-"
 )
 
 var (
@@ -213,4 +218,12 @@ func ExtensionImagePath(partLabel string) (string, error) {
 	default:
 		return "", fmt.Errorf("ExtensionImagePath: unknown partition label %q", partLabel)
 	}
+}
+
+// ExtVerityMapperName returns the dm-verity device mapper name for the given
+// Extension image path (e.g., "exts-verity-ext-imgb-img").
+func ExtVerityMapperName(imgPath string) string {
+	base := strings.ToLower(filepath.Base(imgPath))
+	base = strings.ReplaceAll(base, ".", "-")
+	return ExtVerityMapperPrefix + base
 }

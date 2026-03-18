@@ -6,6 +6,8 @@ package nodeagent
 import (
 	"fmt"
 	"os"
+	"os/exec"
+	"strings"
 	"syscall"
 	"time"
 
@@ -61,6 +63,11 @@ func handleFallbackOnCloudDisconnect(ctxPtr *nodeagentContext) {
 	fallbackLimit := ctxPtr.globalConfig.GlobalValueInt(types.FallbackIfCloudGoneTime)
 	timePassed := ctxPtr.timeTickCount - ctxPtr.lastControllerReachableTime
 	if timePassed > fallbackLimit {
+		// Clean up Extension before rollback reboot (split-rootfs support).
+		// This handles the case where Extension loaded fine but controller
+		// connectivity was lost — the surviving monolithic partition won't
+		// have cleanup code.
+		cleanupCurrentExtension(ctxPtr)
 		errStr := fmt.Sprintf("Exceeded fallback outage for controller connectivity %d by %d seconds; rebooting\n",
 			fallbackLimit, timePassed-fallbackLimit)
 		log.Error(errStr)
@@ -100,8 +107,11 @@ func handleUpgradeTestValidation(ctxPtr *nodeagentContext) {
 		// Split-rootfs images have /etc/ext-verity-roothash in Core; if present,
 		// extsloader must reach "ready" state for the update to succeed.
 		if !checkExtsloaderReady(ctxPtr) {
-			// Extension not ready after testing window. Reboot to trigger
-			// rollback to the previous partition.
+			// Extension not ready after testing window. Clean up the failed
+			// Extension image before rebooting — after rollback, the old
+			// partition's baseosmgr may not have cleanup code.
+			cleanupCurrentExtension(ctxPtr)
+
 			errStr := fmt.Sprintf("CurPart: %s, Extension not ready after testing window — rebooting for rollback",
 				ctxPtr.curPart)
 			log.Error(errStr)
@@ -115,6 +125,59 @@ func handleUpgradeTestValidation(ctxPtr *nodeagentContext) {
 		initiateBaseOsControllerTestComplete(ctxPtr)
 		publishNodeAgentStatus(ctxPtr)
 	}
+}
+
+// cleanupCurrentExtension performs a full Extension cleanup before a rollback
+// reboot. Handles both mounted and unmounted cases:
+//  1. Lazy-unmount the Extension filesystem (MNT_DETACH: detaches from
+//     namespace immediately; running services keep open fds until reboot
+//     kills them — no need for graceful stop since we're rebooting)
+//  2. Close the dm-verity mapper device
+//  3. Remove the Extension image file from /persist
+//
+// This runs on the split image before rebooting into the previous partition,
+// so the old (possibly monolithic) baseosmgr doesn't need cleanup code.
+func cleanupCurrentExtension(ctxPtr *nodeagentContext) {
+	imgPath, err := types.ExtensionImagePath(ctxPtr.curPart)
+	if err != nil {
+		log.Warnf("cleanupCurrentExtension: %v", err)
+		return
+	}
+
+	// Step 1: Check if Extension mount point is active and unmount
+	mounts, _ := os.ReadFile("/proc/mounts")
+	mounted := strings.Contains(string(mounts), types.ExtMountPoint)
+
+	if mounted {
+		// Use lazy unmount (MNT_DETACH) — detaches the mount immediately
+		// even if services still have open files. They'll die on reboot.
+		// A regular unmount would fail with EBUSY if services are running.
+		log.Noticef("cleanupCurrentExtension: lazy-unmounting %s", types.ExtMountPoint)
+		if err := syscall.Unmount(types.ExtMountPoint, syscall.MNT_DETACH); err != nil {
+			log.Errorf("cleanupCurrentExtension: lazy unmount %s failed: %v", types.ExtMountPoint, err)
+		}
+
+		// Step 2: Close dm-verity mapper device
+		mapperName := types.ExtVerityMapperName(imgPath)
+		log.Noticef("cleanupCurrentExtension: closing verity device %s", mapperName)
+		cmd := exec.Command("veritysetup", "close", mapperName)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			// May fail if lazy unmount hasn't fully released — not fatal,
+			// the mapper will be orphaned and cleaned on next boot.
+			log.Warnf("cleanupCurrentExtension: veritysetup close %s: %v (%s)",
+				mapperName, err, string(out))
+		}
+	}
+
+	// Step 3: Remove the Extension image file
+	if err := os.Remove(imgPath); err != nil && !os.IsNotExist(err) {
+		log.Errorf("cleanupCurrentExtension: failed to remove %s: %v", imgPath, err)
+		return
+	}
+	// Also clean up any temp file from CAS extraction
+	os.Remove(imgPath + ".tmp")
+
+	log.Noticef("cleanupCurrentExtension: cleanup complete for %s (was mounted: %v)", imgPath, mounted)
 }
 
 // checkExtsloaderReady verifies that extsloader has loaded the Extension
