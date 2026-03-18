@@ -72,6 +72,27 @@ func WriteExtensionToPersist(ref, targetPartLabel string) error {
 	return nil
 }
 
+// CleanupUnusedExtension removes the Extension image file paired with the
+// given partition label. Called when a partition transitions to "unused"
+// state — the Extension is no longer needed and wastes persist space.
+// Safe to call even if the file doesn't exist.
+func CleanupUnusedExtension(partLabel string) {
+	path, err := types.ExtensionImagePath(partLabel)
+	if err != nil {
+		log.Functionf("CleanupUnusedExtension: %v (ignoring)", err)
+		return
+	}
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		log.Functionf("CleanupUnusedExtension: %s does not exist, nothing to clean", path)
+		return
+	}
+	if err := os.Remove(path); err != nil {
+		log.Errorf("CleanupUnusedExtension: failed to remove %s: %v", path, err)
+		return
+	}
+	log.Noticef("CleanupUnusedExtension: removed stale Extension %s (partition %s now unused)", path, partLabel)
+}
+
 // writeReaderToFile streams data from reader to a file at path.
 func writeReaderToFile(reader io.Reader, path string) error {
 	dir := filepath.Dir(path)

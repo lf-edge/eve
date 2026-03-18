@@ -49,10 +49,10 @@ const (
 	errorTime            = 3 * time.Minute
 	warningTime          = 40 * time.Second
 	containerdRPCTimeout = 20 * time.Second
-	extMount             = "/persist/exts"
+	extMount             = types.ExtMountPoint
 	extRootHashHostPath  = types.ExtVerityRootHashHostPath
 	extRootHashPath      = types.ExtVerityRootHashPath
-	extVerityMapperPref  = "exts-verity-"
+	extVerityMapperPref  = types.ExtVerityMapperPrefix
 	servicesDir          = "/persist/eve-services"
 	containerdSock       = "/run/containerd/containerd.sock"
 	containerdNamespace  = "services.linuxkit"

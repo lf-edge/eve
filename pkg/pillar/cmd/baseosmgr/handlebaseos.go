@@ -364,6 +364,7 @@ func doBaseOsActivate(ctx *baseOsMgrContext, uuidStr string,
 			log.Error(errString)
 			status.SetErrorNow(errString)
 			zboot.SetOtherPartitionStateUnused(log)
+			CleanupUnusedExtension(status.PartitionLabel)
 			updateAndPublishZbootStatus(ctx,
 				status.PartitionLabel, false)
 			baseOsSetPartitionInfoInStatus(ctx, status,
@@ -613,6 +614,7 @@ func doBaseOsUninstall(ctx *baseOsMgrContext, uuidStr string,
 			if curPartState == "active" {
 				log.Functionf("Mark other partition %s, unused", partName)
 				zboot.SetOtherPartitionStateUnused(log)
+				CleanupUnusedExtension(partName)
 				updateAndPublishZbootStatus(ctx,
 					status.PartitionLabel, false)
 				baseOsSetPartitionInfoInStatus(ctx, status,
@@ -802,6 +804,10 @@ func handleZbootTestComplete(ctx *baseOsMgrContext, config types.ZbootConfig,
 		}
 		status.TestComplete = true
 		publishZbootStatus(ctx, status)
+
+		// Clean up Extension image from the now-unused partition
+		otherPart := zboot.GetOtherPartition()
+		CleanupUnusedExtension(otherPart)
 
 		// XXX duplicate? Need to do the BaseOs presumably
 		// publish the updated partition information
