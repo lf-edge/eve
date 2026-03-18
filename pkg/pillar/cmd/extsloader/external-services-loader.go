@@ -128,6 +128,7 @@ type externalServicesContext struct {
 	subBaseOsStatus      pubsub.Subscription
 	subContentTreeStatus pubsub.Subscription
 	pubExtsloaderStatus  pubsub.Publication
+	scanTrigger          chan string
 	pkgsImgPath          string
 	pkgsImgMounted       bool
 	servicesStarted      map[string]bool
@@ -181,6 +182,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	log.Functionf("Creating agent context")
 	ctx := &externalServicesContext{
 		ps:              ps,
+		scanTrigger:     make(chan string, 1),
 		servicesStarted: make(map[string]bool),
 		servicesSkipped: make(map[string]bool),
 	}
@@ -232,13 +234,15 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	// Subscribe to BaseOsStatus (from baseosmgr) for CAS self-heal.
 	// This lets us find the active BaseOS ContentTree UUID.
 	subBaseOsStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:   "baseosmgr",
-		MyAgentName: agentName,
-		TopicImpl:   types.BaseOsStatus{},
-		Activate:    true,
-		Ctx:         ctx,
-		WarningTime: warningTime,
-		ErrorTime:   errorTime,
+		AgentName:     "baseosmgr",
+		MyAgentName:   agentName,
+		TopicImpl:     types.BaseOsStatus{},
+		Activate:      true,
+		Ctx:           ctx,
+		CreateHandler: handleBaseOsStatusCreate,
+		ModifyHandler: handleBaseOsStatusModify,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
 	})
 	if err != nil {
 		log.Errorf("BaseOsStatus subscription failed: %v", err)
@@ -249,13 +253,15 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	// Subscribe to ContentTreeStatus (from volumemgr) for CAS self-heal.
 	// This lets us resolve ContentTree UUID to the CAS reference ID.
 	subContentTreeStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:   "volumemgr",
-		MyAgentName: agentName,
-		TopicImpl:   types.ContentTreeStatus{},
-		Activate:    true,
-		Ctx:         ctx,
-		WarningTime: warningTime,
-		ErrorTime:   errorTime,
+		AgentName:     "volumemgr",
+		MyAgentName:   agentName,
+		TopicImpl:     types.ContentTreeStatus{},
+		Activate:      true,
+		Ctx:           ctx,
+		CreateHandler: handleContentTreeStatusCreate,
+		ModifyHandler: handleContentTreeStatusModify,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
 	})
 	if err != nil {
 		log.Errorf("ContentTreeStatus subscription failed: %v", err)
@@ -276,8 +282,10 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		log.Noticef("✓ Successfully connected to containerd")
 	}
 
-	// Start periodic scan for extension image.
-	log.Noticef("Starting periodic scan for extension image (interval: %s)", scanInterval)
+	// Start extension discovery loop. Discovery retries are event-driven from
+	// BaseOsStatus/ContentTreeStatus updates; the periodic timer is kept only
+	// for verifying already started services.
+	log.Noticef("Starting extension discovery loop")
 	go scanForPkgsImg(ctx)
 
 	log.Noticef("%s initial setup complete - entering main loop", agentName)
@@ -304,7 +312,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 }
 
-// scanForPkgsImg periodically scans for extension image on available disks.
+// scanForPkgsImg performs an initial extension scan, then reacts to rescan
+// triggers from pubsub updates. The periodic timer is used only to verify
+// already started services.
 func scanForPkgsImg(ctx *externalServicesContext) {
 	log.Noticef("scanForPkgsImg goroutine started")
 	ticker := time.NewTicker(scanInterval)
@@ -315,21 +325,115 @@ func scanForPkgsImg(ctx *externalServicesContext) {
 	ctx.ps.StillRunning(agentName, warningTime, errorTime)
 	tryMountAndStartServices(ctx)
 
-	scanCount := 1
-	for range ticker.C {
-		scanCount++
-		log.Functionf("Periodic scan #%d for extension image", scanCount)
-		ctx.ps.StillRunning(agentName, warningTime, errorTime)
-		if ctx.pkgsImgMounted {
-			log.Functionf("extension image already mounted, verifying services")
-			// Already mounted, verify services are running
-			verifyServices(ctx)
-		} else {
-			log.Functionf("extension image not yet mounted, attempting to find and mount")
-			// Try to find and mount extension image.
+	verifyCount := 0
+	for {
+		select {
+		case reason := <-ctx.scanTrigger:
+			log.Functionf("Extension rescan triggered: %s", reason)
+			ctx.ps.StillRunning(agentName, warningTime, errorTime)
 			tryMountAndStartServices(ctx)
+		case <-ticker.C:
+			verifyCount++
+			log.Functionf("Periodic verification scan #%d", verifyCount)
+			ctx.ps.StillRunning(agentName, warningTime, errorTime)
+			if ctx.pkgsImgMounted {
+				log.Functionf("extension image already mounted, verifying services")
+				verifyServices(ctx)
+			} else {
+				log.Functionf("extension image not mounted; waiting for relevant pubsub updates")
+			}
 		}
 	}
+}
+
+func handleBaseOsStatusCreate(ctxArg interface{}, key string, statusArg interface{}) {
+	handleBaseOsStatusImpl(ctxArg, key, statusArg)
+}
+
+func handleBaseOsStatusModify(ctxArg interface{}, key string, statusArg interface{}, oldStatusArg interface{}) {
+	handleBaseOsStatusImpl(ctxArg, key, statusArg)
+}
+
+func handleBaseOsStatusImpl(ctxArg interface{}, key string, statusArg interface{}) {
+	ctx := ctxArg.(*externalServicesContext)
+	status, ok := statusArg.(types.BaseOsStatus)
+	if !ok {
+		return
+	}
+	if !shouldTriggerRescanOnBaseOsStatus(ctx, status) {
+		return
+	}
+	triggerExtensionRescan(ctx, fmt.Sprintf("BaseOsStatus %s for partition %s", key, status.PartitionLabel))
+}
+
+func handleContentTreeStatusCreate(ctxArg interface{}, key string, statusArg interface{}) {
+	handleContentTreeStatusImpl(ctxArg, key, statusArg)
+}
+
+func handleContentTreeStatusModify(ctxArg interface{}, key string, statusArg interface{}, oldStatusArg interface{}) {
+	handleContentTreeStatusImpl(ctxArg, key, statusArg)
+}
+
+func handleContentTreeStatusImpl(ctxArg interface{}, key string, statusArg interface{}) {
+	ctx := ctxArg.(*externalServicesContext)
+	status, ok := statusArg.(types.ContentTreeStatus)
+	if !ok {
+		return
+	}
+	if !shouldTriggerRescanOnContentTreeStatus(ctx, status) {
+		return
+	}
+	triggerExtensionRescan(ctx, fmt.Sprintf("ContentTreeStatus %s", key))
+}
+
+func shouldTriggerRescanOnBaseOsStatus(ctx *externalServicesContext, status types.BaseOsStatus) bool {
+	if ctx.pkgsImgMounted || !coreExpectsExtension() {
+		return false
+	}
+	currentPart := zboot.GetCurrentPartition()
+	return status.PartitionLabel == currentPart && status.ContentTreeUUID != ""
+}
+
+func shouldTriggerRescanOnContentTreeStatus(ctx *externalServicesContext, status types.ContentTreeStatus) bool {
+	if ctx.pkgsImgMounted || !coreExpectsExtension() {
+		return false
+	}
+	currentPart := zboot.GetCurrentPartition()
+	baseOSStatus := baseOsStatusForPartition(ctx, currentPart)
+	return baseOSStatus != nil && baseOSStatus.ContentTreeUUID == status.ContentID.String()
+}
+
+func triggerExtensionRescan(ctx *externalServicesContext, reason string) {
+	select {
+	case ctx.scanTrigger <- reason:
+		log.Functionf("Queued extension rescan: %s", reason)
+	default:
+		log.Functionf("Extension rescan already queued, skipping trigger: %s", reason)
+	}
+}
+
+func coreExpectsExtension() bool {
+	_, err := os.Stat(extRootHashHostPath)
+	return !os.IsNotExist(err)
+}
+
+func baseOsStatusForPartition(ctx *externalServicesContext, partName string) *types.BaseOsStatus {
+	if ctx.subBaseOsStatus == nil {
+		return nil
+	}
+	items := ctx.subBaseOsStatus.GetAll()
+	for _, item := range items {
+		status, ok := item.(types.BaseOsStatus)
+		if !ok {
+			continue
+		}
+		if status.PartitionLabel != partName {
+			continue
+		}
+		statusCopy := status
+		return &statusCopy
+	}
+	return nil
 }
 
 // tryMountAndStartServices searches for extension image and starts services.
