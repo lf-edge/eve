@@ -375,6 +375,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	zedagentCtx.fatalFlag = *zedagentCtx.fatalPtr
 	zedagentCtx.startTime = time.Now()
 
+	// nothing ever changes
 	flowlogQueue := make(chan *flowlog.FlowMessage, flowlogQueueCap)
 	triggerDeviceInfo := make(chan destinationBitset, 1)
 	triggerHwInfo := make(chan destinationBitset, 1)
