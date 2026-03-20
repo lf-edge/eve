@@ -898,7 +898,21 @@ func updateAndPublishZbootStatusAll(ctx *baseOsMgrContext) {
 		}
 		publishZbootStatus(ctx, *status)
 	}
+	cleanupUnusedExtensions()
 	syscall.Sync()
+}
+
+// cleanupUnusedExtensions removes stale Extension images for partitions
+// currently marked "unused". This makes cleanup robust across reboot paths,
+// including unsupported explicit downgrades that may bypass the normal
+// transition-specific cleanup hooks.
+func cleanupUnusedExtensions() {
+	for _, partName := range zboot.GetValidPartitionLabels() {
+		if zboot.GetPartitionState(partName) != "unused" {
+			continue
+		}
+		CleanupUnusedExtension(partName)
+	}
 }
 
 func createZbootStatus(ctx *baseOsMgrContext, partName string) *types.ZbootStatus {
