@@ -553,11 +553,22 @@ func (c *Client) getModemStatus(modemObj dbus.BusObject) (
 	for i, simPath := range simSlots {
 		slot := uint8(i + 1)
 		isPrimary := uint32(slot) == primarySIM
+		// ModemPropertySIMSlots returns empty (root "/") D-Bus paths for slots
+		// with no SIM inserted or no active eSIM profile. Record whether the slot
+		// had a valid path before we attempt the fallback below.
+		hasSlotPath := simPath.IsValid() && len(simPath) > 1
 		simCard := types.WwanSimCard{
 			SlotNumber:    slot,
 			SlotActivated: isPrimary,
 			Type:          types.SimTypeUnspecified,
 			State:         SIMStateAbsent,
+		}
+		// ModemPropertySIMSlots may return an empty path for the active slot
+		// (e.g. eSIM with no profile), but ModemPropertySIM often still provides
+		// a valid object. Fall back to it so we can query SIM properties (EID,
+		// ICCID, etc.) for the active slot even when the slot array is incomplete.
+		if isPrimary && !hasSlotPath {
+			_ = getDBusProperty(c, modemObj, ModemPropertySIM, &simPath)
 		}
 		if simPath.IsValid() && len(simPath) > 1 {
 			simPaths = append(simPaths, string(simPath))
@@ -568,31 +579,27 @@ func (c *Client) getModemStatus(modemObj dbus.BusObject) (
 			_ = getDBusProperty(c, simObj, SIMPropertyIMSI, &simCard.IMSI)
 			var simType uint32
 			_ = getDBusProperty(c, simObj, SIMPropertyType, &simType)
+			// ModemManager often reports SIMPropertyType as "unknown" even for
+			// eSIMs. Improve detection by checking for an EID (eUICC Identifier).
+			// Only eSIM chips have one, so its presence is a reliable indicator.
+			var eid string
+			_ = getDBusProperty(c, simObj, SIMPropertyEID, &eid)
+			if simType == SIMTypeUnknown && eid != "" {
+				simType = SIMTypeESIM
+			}
 			switch simType {
-			case SIMTypeUnknown:
-				// If the SIM type is not recognized, consider SIM card as present
-				// if ICCID is not empty.
-				if simCard.ICCID != "" {
-					simCard.State = SIMStatePresent
-				}
-			case SIMTypeESIM:
-				// eSIM is not supported by EVE (or even by ModemManager) for connection
-				// establishment, but we still want to at least publish correct status
-				// information for the eSIM "slot".
-				simCard.Type = types.SimTypeEmbedded
-				var esimStatus uint32
-				_ = getDBusProperty(c, simObj, SIMPropertyESIMStatus, &esimStatus)
-				if esimStatus == ESIMWithProfiles {
-					simCard.State = SIMStatePresent
-				}
-			case SIMTypePhysical:
-				// Since we have valid dbus object for the physical SIM slot, it means
-				// that the SIM card is present.
-				// But note that even if SIM card is present but the slot is inactive,
-				// ModemManager might report the card as absent, without providing any SIM
-				// object path to work with.
-				// On the other hand, with mbimcli we are able to distinguish between
-				// missing and inactive SIM card:
+			case SIMTypeUnknown, SIMTypePhysical:
+				// For both unknown and physical SIM types, use the presence of
+				// a valid D-Bus path in the slot array (hasSlotPath) as the
+				// indicator of SIM card presence.
+				// Note: for the primary slot we may have obtained the path via
+				// the ModemPropertySIM fallback above, not from the slot array.
+				// In that case hasSlotPath is false, indicating empty SIM slot.
+				//
+				// However, for inactive slots, ModemManager may not provide any SIM
+				// object path even if a card is physically inserted.
+				// With mbimcli we are able to distinguish between missing and
+				// inactive SIM card:
 				//     mbimcli -p -d /dev/cdc-wdm0 --ms-query-slot-info-status 0
 				//     [/dev/cdc-wdm0] Slot info status retrieved:
 				//	          Slot '0': 'state-off'
@@ -616,8 +623,22 @@ func (c *Client) getModemStatus(modemObj dbus.BusObject) (
 				//             Num apps: 0
 				//             Is eUICC: no
 				// TODO: should we call mbimcli/qmicli ?
-				simCard.Type = types.SimTypePhysical
-				simCard.State = SIMStatePresent
+				if simType == SIMTypePhysical {
+					simCard.Type = types.SimTypePhysical
+				}
+				if hasSlotPath {
+					simCard.State = SIMStatePresent
+				}
+			case SIMTypeESIM:
+				// eSIM is not supported by EVE (or even by ModemManager) for connection
+				// establishment, but we still want to at least publish correct status
+				// information for the eSIM "slot".
+				simCard.Type = types.SimTypeEmbedded
+				var esimStatus uint32
+				_ = getDBusProperty(c, simObj, SIMPropertyESIMStatus, &esimStatus)
+				if esimStatus == ESIMWithProfiles {
+					simCard.State = SIMStatePresent
+				}
 			}
 			if !simCard.SlotActivated {
 				simCard.State = SIMStateInactive
@@ -1623,18 +1644,31 @@ func (c *Client) preferPhysSimOverESim(modemObj dbus.BusObject) error {
 		return fmt.Errorf("missing SIM card status for modem: %s", modem.Path)
 	}
 	var usesESim bool
-	var firstPhysSlot uint8 // slots starts with 1 (0 can be used as undefined)
+	var firstPhysSlot uint8          // first confirmed physical slot (0 = none found)
+	var firstCandidatePhysSlot uint8 // first unspecified-type slot (0 = none found)
 	for _, simCard := range modem.Status.SimCards {
 		switch simCard.Type {
 		case types.SimTypePhysical:
 			if firstPhysSlot == 0 || simCard.SlotNumber < firstPhysSlot {
 				firstPhysSlot = simCard.SlotNumber
 			}
+		case types.SimTypeUnspecified:
+			// When the active slot is eSIM, ModemManager often fails to report
+			// types for inactive slots (returns "unknown"). It is very unlikely
+			// for a modem to have multiple eUICCs, so assuming that the other
+			// slots are physical is a safe bet. However, prefer a confirmed
+			// physical slot if one is available.
+			if firstCandidatePhysSlot == 0 || simCard.SlotNumber < firstCandidatePhysSlot {
+				firstCandidatePhysSlot = simCard.SlotNumber
+			}
 		case types.SimTypeEmbedded:
 			if simCard.SlotActivated {
 				usesESim = true
 			}
 		}
+	}
+	if firstPhysSlot == 0 {
+		firstPhysSlot = firstCandidatePhysSlot
 	}
 	if !usesESim || firstPhysSlot == 0 {
 		// Nothing to do.
