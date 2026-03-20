@@ -63,6 +63,7 @@ const (
 	SIMPropertyIMSI       = SIMInterface + ".Imsi"
 	SIMPropertyType       = SIMInterface + ".SimType"
 	SIMPropertyESIMStatus = SIMInterface + ".EsimStatus"
+	SIMPropertyEID        = SIMInterface + ".Eid"
 )
 
 // SIM type
