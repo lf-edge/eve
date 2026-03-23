@@ -33,8 +33,6 @@ const (
 	PersistInstallerDir = PersistDir + "/installer"
 	// PersistKubelogDir - Location for kube service container logs
 	PersistKubelogDir = PersistDir + "/kubelog"
-	// IngestedDirname - location for shas of files we pulled from /config
-	IngestedDirname = PersistDir + "/ingested"
 	// SnapshotsDirname - location for snapshots
 	SnapshotsDirname = PersistDir + "/snapshots"
 	// SnapshotAppInstanceConfigFilename - file to store snapshot-related app instance config
@@ -68,18 +66,12 @@ const (
 	APIV1FileName = IdentityDirname + "/Force-API-V1"
 	// ImportGlobalConfigFile - old legacy file with ConfigItemValueMap items for bootstrapping
 	ImportGlobalConfigFile = IdentityDirname + "/GlobalConfig/global.json"
-	// IngestedGlobalConfigSha - sha of above after ingested
-	IngestedGlobalConfigSha = IngestedDirname + "/GlobalConfig/global.sha"
 	// BaseAuthorizedKeysFile - for an initial SSH key
 	BaseAuthorizedKeysFile = IdentityDirname + "/authorized_keys"
-	// IngestedAuthorizedKeysSha - sha of above after ingested
-	IngestedAuthorizedKeysSha = IngestedDirname + "/authorized_keys.sha"
 	// BootstrapConfFileName - file to store initial device configuration for bootstrapping
 	BootstrapConfFileName = IdentityDirname + "/bootstrap-config.pb"
 	// RemoteAccessFlagFileName -- file to check for remote access configuration
 	RemoteAccessFlagFileName = IdentityDirname + "/remote_access_disabled"
-	// BootstrapShaFileName - file to store SHA hash of an already ingested bootstrap config
-	BootstrapShaFileName = IngestedDirname + "/bootstrap-config.sha"
 
 	// ShareCertDirname - directory to place private proxy server certificates
 	ShareCertDirname = "/usr/local/share/ca-certificates"
