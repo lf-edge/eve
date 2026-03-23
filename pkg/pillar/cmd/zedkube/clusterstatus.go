@@ -156,6 +156,12 @@ func (z *zedkube) publishKubeConfigStatus() {
 		log.Errorf("publishKubeConfigStatus: cluster token is not from configitme or encrypted")
 	}
 
+	// Only the bootstrap node manages kube-vip load balancing; other nodes leave
+	// LBInterfaces empty so cluster-init.sh does not apply kubevip.
+	if z.clusterConfig.BootstrapNode {
+		status.LBInterfaces = z.clusterConfig.LBInterfaces
+	}
+
 	// publish the cluster status for the kube container
 	log.Functionf("publishKubeConfigStatus: publishing")
 	z.pubEdgeNodeClusterStatus.Publish("global", status)

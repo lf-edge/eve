@@ -8,7 +8,7 @@ kind: DaemonSet
 metadata:
   labels:
     app.kubernetes.io/name: kube-vip-ds
-    app.kubernetes.io/version: v0.8.9
+    app.kubernetes.io/version: v1.1.0
   name: kube-vip-ds
   namespace: kube-system
 spec:
@@ -19,7 +19,7 @@ spec:
     metadata:
       labels:
         app.kubernetes.io/name: kube-vip-ds
-        app.kubernetes.io/version: v0.8.9
+        app.kubernetes.io/version: v1.1.0
     spec:
       affinity:
         nodeAffinity:
@@ -69,7 +69,7 @@ spec:
               value: "2"
             - name: prometheus_server
               value: 0.0.0.0:2112
-          image: ghcr.io/kube-vip/kube-vip:v0.8.9
+          image: ghcr.io/kube-vip/kube-vip:v1.1.0
           imagePullPolicy: IfNotPresent
           name: kube-vip
           resources: {}

@@ -161,6 +161,23 @@ func (m *DpcManager) updateDNS() {
 				clusterIPAddr = addr.IP
 				continue
 			}
+			// kube-vip VIPs are floating addresses managed by leader election —
+			// they can migrate to another node at any time and no pillar code
+			// uses them, so drop them entirely from DeviceNetworkStatus.
+			isLBVIP := false
+			for _, lb := range m.clusterStatus.LBInterfaces {
+				if lb.IPPrefix == "" {
+					continue
+				}
+				_, lbNet, err := net.ParseCIDR(lb.IPPrefix)
+				if err == nil && lbNet.Contains(addr.IP) {
+					isLBVIP = true
+					break
+				}
+			}
+			if isLBVIP {
+				continue
+			}
 			addrInfoList = append(addrInfoList, types.AddrInfo{Addr: addr.IP})
 		}
 		m.deviceNetStatus.Ports[ix].AddrInfoList = addrInfoList

@@ -24,6 +24,9 @@ Kubevirt_install() {
 # Uses a targeted merge patch on developerConfiguration.featureGates only, so that
 # permittedHostDevices (PCIe/GPU/USB passthrough) is never disturbed.
 Kubevirt_migrate_feature_gates() {
+    if [ -f /var/lib/base-k3s-mode ]; then
+        return 0
+    fi
     current_gates=$(kubectl get kubevirt kubevirt -n kubevirt \
         -o jsonpath='{.spec.configuration.developerConfiguration.featureGates[*]}' 2>/dev/null)
     if echo "$current_gates" | tr ' ' '\n' | grep -qx "CPUManager"; then

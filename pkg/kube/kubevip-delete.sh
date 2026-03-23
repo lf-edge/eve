@@ -5,7 +5,6 @@
 #
 # kubevip-delete.sh
 # This script deletes the Kube-VIP ConfigMap and associated resources.
-# This script is for testing only, not for production use.
 
 if kubectl delete -f /etc/kubevip-ds.yaml && \
    kubectl delete -f /etc/kubevip-cm.yaml && \
