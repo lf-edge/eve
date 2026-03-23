@@ -26,9 +26,9 @@ var ReportDirPaths = []string{
 	ClearDirName,
 	PersistDebugDir,
 	PersistInstallerDir,
-	IngestedDirname,
 	NewlogDir,
 	MemoryMonitorOutputDir,
+	PersistDir + "/ingested",   // No longer used
 	PersistDir + "/containerd", // Old location
 	PersistDir + "/tmp",        // Should not be used by anything
 	PersistDir + "/log",

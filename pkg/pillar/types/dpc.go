@@ -114,8 +114,6 @@ type DevicePortConfig struct {
 	Key          string                  `json:",omitempty"`
 	TimePriority time.Time               `json:",omitempty"` // All zero's is fallback lowest priority
 	State        DPCState                `json:",omitempty"`
-	ShaFile      string                  `json:",omitempty"` // File in which to write ShaValue once DevicePortConfigList published
-	ShaValue     []byte                  `json:",omitempty"`
 	TestResults
 	LastIPAndDNS time.Time `json:",omitempty"` // Time when we got some IP addresses and DNS
 
