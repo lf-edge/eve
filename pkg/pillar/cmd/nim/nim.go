@@ -9,7 +9,6 @@ import (
 	"flag"
 	"os"
 	"path"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -697,24 +696,7 @@ func (n *nim) handleDPCImpl(key string, configArg interface{}, fromFile bool) {
 		SanitizeL3Port:       true,
 		SanitizeSharedLabels: true,
 	})
-	if fromFile {
-		// Use sha to determine if file has already been ingested
-		filename := filepath.Join(types.TmpDirname, "DevicePortConfig",
-			key) + ".json"
-		shaFilename := filepath.Join(types.IngestedDirname, "DevicePortConfig",
-			key) + ".sha"
-		changed, dpcSha, err := fileutils.CompareSha(filename,
-			shaFilename)
-		if err != nil {
-			n.Log.Errorf("CompareSha failed: %s", err)
-		} else if changed {
-			dpc.ShaFile = shaFilename
-			dpc.ShaValue = dpcSha
-		} else {
-			n.Log.Noticef("No change to %s", filename)
-			return
-		}
-	}
+
 	// if device can connect to controller it may get a new DPC in global config. This global DPC
 	// will have higher priority but can be invalid and the device will loose connectivity again
 	// at least temporarily while DPC is being tested. To avoid this we reset the timestamp on
@@ -873,12 +855,10 @@ func (n *nim) listPublishedDPCs(directory string) (dpcFilePaths []string) {
 }
 
 // ingestPortConfig reads all json files in configDevicePortConfigDir, ensures
-// they have a TimePriority, and adds a ShaFile and Shavalue to them and then writes to
-// runDevicePortConfigDir.
-// If a file has already been ingested (based on finding the sha of the file content
-// being in /persist/ingested/DevicePortConfig/<key>.sha), it is ignored.
-// Otherwise the ShaFile and Shavalue is used to write the sha for the new file to avoid
-// re-application of the same config.
+// they have a TimePriority, and then writes to runDevicePortConfigDir.
+// XXX do we need something to avoid re-application of the same file?
+// Or is it sufficient to depend on the fact that we only do this until we have
+// a /persist/checkpoint/lastconfig from the controller? Do we check that in nim?
 func (n *nim) ingestDevicePortConfig() {
 	dpcFiles := n.listPublishedDPCs(configDevicePortConfigDir)
 	// Skip these legacy DPC json files if there is bootstrap config.
@@ -922,22 +902,6 @@ func (n *nim) ingestDevicePortConfigFile(oldDirname string, newDirname string, n
 		SanitizeL3Port:       true,
 		SanitizeSharedLabels: true,
 	})
-
-	// Use sha to determine if file has already been ingested
-	basename := filepath.Base(filename)
-	shaFilename := filepath.Join(types.IngestedDirname, "DevicePortConfig",
-		strings.TrimSuffix(basename, ".json")) + ".sha"
-	changed, dpcSha, err := fileutils.CompareSha(filename,
-		shaFilename)
-	if err != nil {
-		n.Log.Errorf("CompareSha failed: %s", err)
-	} else if changed {
-		dpc.ShaFile = shaFilename
-		dpc.ShaValue = dpcSha
-	} else {
-		n.Log.Noticef("No change to %s", filename)
-		return
-	}
 
 	// Set the configuration source for each port.
 	configSource := types.PortConfigSource{
