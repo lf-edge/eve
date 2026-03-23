@@ -25,6 +25,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
+	"github.com/lf-edge/eve/pkg/pillar/utils/persist"
 	"github.com/sirupsen/logrus"
 )
 
@@ -186,9 +187,14 @@ func (n *nim) init() (err error) {
 func (n *nim) run(ctx context.Context) (err error) {
 	n.Log.Noticef("Starting %s", agentName)
 
+	// This will re-ingest network configuration from the bootstrap config
+	// (priority) or ImportGlobalConfigFile (fallback) on each boot until
+	// the device is onboarded and has a /persist/checkpoint/lastconfig.
+	ignoreBootstraps := n.hasPersistLastconfig()
+
 	// Check if we have a /config/DevicePortConfig/*.json which we need to
 	// take into account by copying it to /run/global/DevicePortConfig/
-	n.ingestDevicePortConfig()
+	n.ingestDevicePortConfig(ignoreBootstraps)
 
 	// Start DPC Manager.
 	if err = n.dpcManager.Init(ctx); err != nil {
@@ -197,6 +203,12 @@ func (n *nim) run(ctx context.Context) (err error) {
 	installerDPCs := n.listPublishedDPCs(runDevicePortConfigDir)
 	haveBootstrapConf := fileutils.FileExists(n.Log, types.BootstrapConfFileName)
 	expectBootstrapDPCs := len(installerDPCs) > 0 || haveBootstrapConf
+	if expectBootstrapDPCs && ignoreBootstraps {
+		n.Log.Noticef("Not ingesting bootstrap config from config partition: " +
+			"/persist/checkpoint/lastconfig is present")
+		expectBootstrapDPCs = false
+	}
+
 	if err = n.dpcManager.Run(ctx, expectBootstrapDPCs); err != nil {
 		return err
 	}
@@ -311,6 +323,21 @@ func (n *nim) run(ctx context.Context) (err error) {
 		}
 		n.PubSub.StillRunning(agentName, warningTime, errorTime)
 	}
+}
+
+// Check if we have /persist/checkpoint/lastconfig
+// Does not verify they will be used since we do not do the protobuf decode
+// nor check the signature.
+func (n *nim) hasPersistLastconfig() bool {
+	contents, _, err := persist.ReadSavedConfig(n.Log, "lastconfig")
+	if err == nil && len(contents) != 0 {
+		return true
+	}
+	contents, _, err = persist.ReadSavedConfig(n.Log, "lastconfig.bak")
+	if err == nil && len(contents) != 0 {
+		return true
+	}
+	return false
 }
 
 func (n *nim) initPublications() (err error) {
@@ -856,13 +883,19 @@ func (n *nim) listPublishedDPCs(directory string) (dpcFilePaths []string) {
 
 // ingestPortConfig reads all json files in configDevicePortConfigDir, ensures
 // they have a TimePriority, and then writes to runDevicePortConfigDir.
-// XXX do we need something to avoid re-application of the same file?
-// Or is it sufficient to depend on the fact that we only do this until we have
-// a /persist/checkpoint/lastconfig from the controller? Do we check that in nim?
-func (n *nim) ingestDevicePortConfig() {
+func (n *nim) ingestDevicePortConfig(ignoreBootstraps bool) {
 	dpcFiles := n.listPublishedDPCs(configDevicePortConfigDir)
+	if len(dpcFiles) == 0 {
+		return
+	}
+	if ignoreBootstraps {
+		n.Log.Noticef("Not ingesting DPC jsons (%v) from config partition: "+
+			"/persist/checkpoint/lastconfig is present",
+			strings.Join(dpcFiles, ", "))
+		return
+	}
 	// Skip these legacy DPC json files if there is bootstrap config.
-	if fileutils.FileExists(n.Log, types.BootstrapConfFileName) && len(dpcFiles) > 0 {
+	if fileutils.FileExists(n.Log, types.BootstrapConfFileName) {
 		n.Log.Noticef("Not ingesting DPC jsons (%v) from config partition: "+
 			"bootstrap config is present", strings.Join(dpcFiles, ", "))
 		return
