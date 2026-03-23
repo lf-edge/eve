@@ -434,8 +434,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	zedagentCtx.globalConfigPublished = true
 	triggerPublishDevInfo(zedagentCtx)
 
-	getconfigCtx.localCmdAgent.UpdateGlobalConfig(&zedagentCtx.globalConfig)
-
 	log.Noticef("Initialized GlobalConfig: %v", zedagentCtx.globalConfig)
 
 	// Apply saved radio config ASAP.

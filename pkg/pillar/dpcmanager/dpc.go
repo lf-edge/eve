@@ -9,7 +9,6 @@ import (
 	"fmt"
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 )
 
 func (m *DpcManager) currentDPC() *types.DevicePortConfig {
@@ -390,18 +389,6 @@ func (m *DpcManager) compressDPCL() {
 			retainedKeys[dpc.Key] = struct{}{}
 		} else {
 			m.Log.Noticef("compressDPCL: Removing DPC %s", dpc.PubKey())
-			if dpc.ShaFile != "" {
-				// Create a file containing the hash of the DPC to record
-				// that it has already been used.
-				// This applies only to DPCs injected by the installer.
-				err := fileutils.SaveShaInFile(dpc.ShaFile, dpc.ShaValue)
-				if err != nil {
-					m.Log.Errorf("SaveShaInFile %s failed: %s", dpc.ShaFile, err)
-				} else {
-					m.Log.Noticef("Updated ShaFile %s for DPC %s",
-						dpc.ShaFile, dpc.PubKey())
-				}
-			}
 			if dpc.Key == LastResortKey {
 				m.lastResort = nil
 			}

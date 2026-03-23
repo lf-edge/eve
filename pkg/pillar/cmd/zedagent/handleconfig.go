@@ -9,8 +9,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -268,8 +268,12 @@ func (r configProcessingRetval) String() string {
 
 // Load bootstrap config provided that:
 //   - it exists
-//   - has not been loaded before (incl. previous device boots)
 //   - has valid controller signature
+//
+// Note that we need to re-load on each boot since the loaded file content
+// is not persisted anywhere in /persist except the networking DPC which
+// is idempotent. Once the device has been onboarded and we have
+// a /persist/checkpoint/lastconfig this file is ignored (by the caller).
 //
 // The function will only load and publish global config items (publishes default values
 // if empty set is configured) and items related to networking (system adapters, networks,
@@ -280,19 +284,6 @@ func maybeLoadBootstrapConfig(getconfigCtx *getconfigContext) {
 		// No bootstrap config to read
 		return
 	}
-	changed, configSha, err := fileutils.CompareSha(
-		types.BootstrapConfFileName, types.BootstrapShaFileName)
-	if err != nil {
-		log.Errorf("CompareSha failed for bootstrap config: %s", err)
-		// We will not record SHA for applied bootstrap config
-		// and as a result load it again with the next boot.
-		// However, with config timestamp preventing accidental revert
-		// to an older configuration, this should not be a problem.
-		configSha = nil
-	} else if !changed {
-		// This bootstrap config was already applied.
-		return
-	}
 
 	// Load file content.
 	contents, err := os.ReadFile(types.BootstrapConfFileName)
@@ -301,19 +292,6 @@ func maybeLoadBootstrapConfig(getconfigCtx *getconfigContext) {
 		indicateInvalidBootstrapConfig(getconfigCtx)
 		return
 	}
-
-	// Mark bootstrap config as processed by storing SHA hash of its content
-	// under /persist/ingested/ directory.
-	// We do this even even if the unmarshalling (or anything else) below fails.
-	// This is to avoid repeated failing attempts to load invalid config on each boot.
-	defer func() {
-		if configSha != nil {
-			err := fileutils.SaveShaInFile(types.BootstrapShaFileName, configSha)
-			if err != nil {
-				log.Errorf("Failed to save SHA of bootstrap config: %v", err)
-			}
-		}
-	}()
 
 	// Unmarshal BootstrapConfig.
 	bootstrap := zconfig.BootstrapConfig{}
@@ -381,7 +359,11 @@ func indicateInvalidBootstrapConfig(getconfigCtx *getconfigContext) {
 }
 
 // Load /config/GlobalConfig/ json file with ConfigItemValueMap provided that:
-//   - has not been loaded before (incl. previous device boots)
+//   - the file exists
+//
+// Note that we need to re-load on each boot since the loaded file content
+// is not persisted anywhere in /persist. Once the device has been onboarded
+// and we have a /persist/checkpoint/lastconfig this file is ignored (by the caller).
 //
 // The function will only load the ConfigItemValueMap items into
 // zedagentCtx,globalConfig. The caller is responsible for publishing those
@@ -392,88 +374,36 @@ func maybeLoadGlobalConfig(getconfigCtx *getconfigContext) bool {
 		// No /config/GlobalConfig/ file to read
 		return false
 	}
-	changed, configSha, err := fileutils.CompareSha(
-		types.ImportGlobalConfigFile, types.IngestedGlobalConfigSha)
-	if err != nil {
-		log.Errorf("CompareSha failed for global config: %s", err)
-		// We will not record SHA for applied global config
-		// and as a result load it again with the next boot.
-		// However, with config timestamp preventing accidental revert
-		// to an older configuration, this should not be a problem.
-		configSha = nil
-		changed = true
-	}
-	// Mark global config as processed by storing SHA hash of its content
-	// under /persist/ingested/ directory.
-	// We do this even even if the unmarshalling (or anything else) below fails.
-	// This is to avoid repeated failing attempts to load invalid config on each boot.
-	// XXX but not ingested to disk!!!
-	// When will it make it to /persist/checkpoint/lastconfig? Not until
-	// we receive a possibly different config from the controller.
-	defer func() {
-		if configSha != nil {
-			err := fileutils.SaveShaInFile(types.IngestedGlobalConfigSha, configSha)
-			if err != nil {
-				log.Errorf("Failed to save SHA of global config: %v", err)
-			}
-		}
-	}()
 
 	// Start with defaults for this EVE version
 	newConfigPtr := types.DefaultConfigItemValueMap()
-	if changed {
-		// Load file content.
-		contents, err := os.ReadFile(types.ImportGlobalConfigFile)
-		if err != nil {
-			log.Errorf("Failed to read global config: %v", err)
-			return false
-		}
-
-		var config types.ConfigItemValueMap
-		err = json.Unmarshal(contents, &config)
-		if err != nil {
-			log.Errorf("Could not unmarshall data in file %s: %s",
-				types.ImportGlobalConfigFile, err)
-			return false
-		}
-		log.Noticef("/config/GlobalConfig contains: %v", config)
-		newConfigPtr.UpdateItemValues(&config)
+	// Load file content.
+	contents, err := os.ReadFile(types.ImportGlobalConfigFile)
+	if err != nil {
+		log.Errorf("Failed to read global config: %v", err)
+		return false
 	}
-	var authorizedKeysSha []byte
+
+	var config types.ConfigItemValueMap
+	err = json.Unmarshal(contents, &config)
+	if err != nil {
+		log.Errorf("Could not unmarshall data in file %s: %s",
+			types.ImportGlobalConfigFile, err)
+		return false
+	}
+	log.Noticef("/config/GlobalConfig contains: %v", config)
+	newConfigPtr.UpdateItemValues(&config)
+
 	keyData, keyDataValid := readAuthorizedKeys(types.BaseAuthorizedKeysFile)
 	doAuthorizedKeys := (len(keyData) != 0 && keyDataValid)
-	if doAuthorizedKeys {
-		doAuthorizedKeys, authorizedKeysSha, err = fileutils.CompareSha(types.BaseAuthorizedKeysFile,
-			types.IngestedAuthorizedKeysSha)
-		if err != nil {
-			log.Errorf("CompareSha failed: %s", err)
-		} else if !doAuthorizedKeys {
-			log.Noticef("No change to the key data in %s",
-				types.BaseAuthorizedKeysFile)
-		}
-	}
 	if doAuthorizedKeys {
 		log.Noticef("Found the key data in %s: %v",
 			types.BaseAuthorizedKeysFile, keyData)
 		newConfigPtr.SetGlobalValueString(types.SSHAuthorizedKeys,
 			keyData)
-		changed = true
-
-		// XXX but not ingested to disk!!!
-		// Save sha of what we ingested
-		err := fileutils.SaveShaInFile(types.IngestedAuthorizedKeysSha,
-			authorizedKeysSha)
-		if err != nil {
-			log.Errorf("SaveShaInFile %s failed: %s",
-				types.IngestedAuthorizedKeysSha, err)
-		} else {
-			log.Noticef("Saved new sha for %s in %s",
-				types.BaseAuthorizedKeysFile,
-				types.IngestedAuthorizedKeysSha)
-		}
 	}
 	getconfigCtx.zedagentCtx.globalConfig = *newConfigPtr
-	return changed
+	return true
 }
 
 func readAuthorizedKeys(filename string) (string, bool) {
