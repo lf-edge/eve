@@ -426,9 +426,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	// Does NOT publish yet since we want to get any bootstrap or
 	foundCheckpoint := initializeConfigItemValueMap(zedagentCtx)
 
-	// XXX should a bootstrap or /config/GlobalConfig file be able
-	// to override a checkpoint? Do we need to handle such after the first
-	// boot? Here we only look if no /persist/checkpoint/lastconfig.
 	if !foundCheckpoint {
 		// Load bootstrap configuration if present.
 		maybeLoadBootstrapConfig(getconfigCtx)

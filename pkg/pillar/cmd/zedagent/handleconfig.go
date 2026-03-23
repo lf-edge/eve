@@ -315,8 +315,6 @@ func maybeLoadBootstrapConfig(getconfigCtx *getconfigContext) {
 	case obsoleteConfig:
 		log.Error("Bootstrap config is obsolete")
 	}
-	// XXX should we save it as /persist/checkpoint/lastconfig if we
-	// have no such file?
 }
 
 func indicateInvalidBootstrapConfig(getconfigCtx *getconfigContext) {
@@ -786,7 +784,6 @@ func requestConfigByURL(getconfigCtx *getconfigContext, url string,
 			// can be used to enable the local keyboard etc for
 			// debugging purposes.
 			confName := "lastconfig"
-			// XXX do we know bootreason?
 			if !ctx.bootReason.StartWithSavedConfig() {
 				log.Warnf("Use backup config due to boot reason %s",
 					ctx.bootReason.String())
