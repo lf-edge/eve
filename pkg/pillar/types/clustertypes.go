@@ -35,6 +35,19 @@ const (
 	ClusterTypeHA
 )
 
+// LBInterfaceConfig pairs a network interface name with the IP CIDR pool that
+// kube-vip uses to allocate load balancer IPs on that interface.
+// Used in both EdgeNodeClusterConfig and EdgeNodeClusterStatus.
+type LBInterfaceConfig struct {
+	// Interface is the logical label of the network interface.
+	Interface string
+	// IPPrefix is the IP CIDR pool for load balancer IP allocation, in CIDR
+	// notation (e.g. "192.168.1.24/29"). The host bits are preserved so that
+	// jq consumers in cluster-init.sh see the original address, not the
+	// network address.
+	IPPrefix string
+}
+
 // EdgeNodeClusterConfig - Configuration for cluster multi-node from controller
 type EdgeNodeClusterConfig struct {
 	Initialized bool // To tell a subscriber that publisher is done
@@ -72,6 +85,12 @@ type EdgeNodeClusterConfig struct {
 
 	// TieBreakerNodeID - uuid of a node which will be unscheduled for all workloads
 	TieBreakerNodeID UUIDandVersion
+
+	// LBInterfaces - load balancer interface configurations from the controller.
+	// Populated only for ClusterTypeK3sBase clusters. Mirrors the LoadBalancerService
+	// interfaces array from the protobuf; each entry holds one interface name and its
+	// first CIDR from address_cidrs.
+	LBInterfaces []LBInterfaceConfig
 }
 
 // ENClusterAppStatus - Status of an App Instance in the multi-node cluster
@@ -123,6 +142,11 @@ type EdgeNodeClusterStatus struct {
 	// This token string is the decrypted from the CipherBlock in the EdgeNodeClusterConfig
 	// by zedkube using the Controller and Edge-node certificates. See decryptClusterToken()
 	EncryptedClusterToken string
+
+	// LBInterfaces - load balancer interface configurations.
+	// Only populated on the bootstrap node when LoadBalancerService is configured.
+	// IPPrefix strings are in CIDR notation consumed by cluster-init.sh via jq.
+	LBInterfaces []LBInterfaceConfig
 
 	Error ErrorDescription
 }

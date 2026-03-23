@@ -847,6 +847,51 @@ monitor_cluster_config_change() {
     done
 }
 
+# Persistent state file for kube-vip: stores "<iface> <cidr>" of the last
+# successfully applied config so that container/device restarts do not
+# trigger a redundant re-apply (which causes "configmaps kubevip already
+# exists" errors from kube-vip-cloud-provider).
+KUBEVIP_STATE_FILE="/var/lib/kubevip-applied"
+
+# check_kubevip_lb is called once per main loop iteration. It reads the
+# EdgeNodeClusterStatus published by zedkube and applies or removes the kube-vip
+# load balancer configuration when LBInterfaces[0] changes. On the bootstrap
+# node this field is set by zedkube; on other nodes it is empty so no action
+# is taken. prev_lb_state is seeded from KUBEVIP_STATE_FILE on first call so
+# that restarts skip re-applying an already-configured kube-vip.
+prev_lb_state=""
+check_kubevip_lb() {
+    # Seed in-memory state from the persistent file on first call.
+    if [ -z "$prev_lb_state" ] && [ -f "$KUBEVIP_STATE_FILE" ]; then
+        prev_lb_state=$(cat "$KUBEVIP_STATE_FILE")
+    fi
+    local lb_iface="" lb_cidr="" lb=""
+    if [ -f "$enc_status_file" ]; then
+        enc_data=$(cat "$enc_status_file")
+        lb_iface=$(echo "$enc_data" | jq -r '.LBInterfaces[0].Interface // ""')
+        lb_cidr=$(echo "$enc_data" | jq -r '.LBInterfaces[0].IPPrefix // ""')
+    fi
+    lb=$(printf '%s %s' "$lb_iface" "$lb_cidr" | xargs)  # trim whitespace
+    if [ "$lb" = "$prev_lb_state" ]; then
+        return
+    fi
+    if [ -n "$lb_iface" ] && [ -n "$lb_cidr" ]; then
+        logmsg "check_kubevip_lb: applying kube-vip with iface=$lb_iface cidr=$lb_cidr"
+        if /usr/bin/kubevip-apply.sh "$lb_iface" "$lb_cidr"; then
+            prev_lb_state="$lb"
+            echo "$prev_lb_state" > "$KUBEVIP_STATE_FILE"
+        fi
+    elif [ -n "$prev_lb_state" ]; then
+        logmsg "check_kubevip_lb: removing kube-vip"
+        if /usr/bin/kubevip-delete.sh; then
+            prev_lb_state="$lb"
+            rm -f "$KUBEVIP_STATE_FILE"
+        fi
+    else
+        prev_lb_state="$lb"
+    fi
+}
+
 # started when we detect registration addition
 # start cleaning up some components
 # these are cluster-wide operations, only one nodes initiates it
@@ -928,7 +973,7 @@ EOF
     elif [ $cluster_type -eq $CLUSTER_TYPE_REPLICATED_STORAGE ]; then
             cp "${KUBE_MANIFESTS_SRC_DIR}/${K3S_CONFIG_FILE_DISABLE_LOCAL_PATH}" "${K3S_CONFIG_DIR}/${K3S_CONFIG_FILE_DISABLE_LOCAL_PATH}"
     elif [ $cluster_type -eq $CLUSTER_TYPE_K3S_BASE ]; then
-            rm "${K3S_CONFIG_DIR}/${K3S_CONFIG_FILE_DISABLE_LOCAL_PATH}"
+            rm -f "${K3S_CONFIG_DIR}/${K3S_CONFIG_FILE_DISABLE_LOCAL_PATH}"
     else
             logmsg "possible unhandled cluster type $cluster_type in (provision_cluster_config_file)"
     fi
@@ -1408,6 +1453,7 @@ fi
         check_log_file_size "containerd-user.log"
         check_kubeconfig_yaml_files
         check_and_remove_excessive_k3s_logs
+        check_kubevip_lb
         wait_for_item "wait"
         sleep 15
 done

@@ -377,88 +377,339 @@ The Network Interface Manager (`nim`) microservice subscribes to the `KubeUserSe
 
 This implementation ensures that external traffic to Kubernetes services and ingresses is properly identified and can be subjected to appropriate traffic control policies.
 
-### Kube-VIP Service Load Balancer
+### Kube-VIP Load Balancer Service (K3S_BASE)
 
-Kube-VIP provides LoadBalancer implementations for services and ingress resources in the K3s cluster, enabling external access to applications. This feature is currently available as a testing tool that must be explicitly deployed by the user.
+For `CLUSTER_TYPE_K3S_BASE` clusters, EVE supports controller-driven Kubernetes
+`LoadBalancer` services via [kube-vip](https://kube-vip.io/). The controller configures
+a network interface and an IP CIDR pool; kube-vip then allocates IPs from that pool to
+`LoadBalancer`-type services and advertises them via ARP on the specified interface.
+Because kube-vip operates in ARP mode, all cluster nodes must be on the same Layer 2
+network segment.
 
-#### Architecture
+#### Architecture Overview
 
-Kube-VIP runs as a DaemonSet in the K3s cluster and handles:
-
-1. **IP Address Management**:
-   - Allocates IP addresses from a configured CIDR range
-   - Maintains a pool of available IPs for services
-   - Ensures IPs are unique across the cluster
-
-2. **Service Handling**:
-   - Watches for services of type LoadBalancer
-   - Allocates and assigns external IPs from the configured pool
-   - Creates appropriate ARP announcements to make IPs reachable
-
-3. **Ingress Support**:
-   - Works with ingress controllers to provide stable IPs for HTTP/HTTPS ingress
-   - Enables host-based and path-based routing to services
-
-#### Manual Deployment For Testing
-
-The Kube-VIP integration with EVE requires manual deployment before support from the controller side:
-
-1. **Deployment Command**:
-
-   ```bash
-   /usr/bin/kubevip-apply.sh <interface> <prefix>
-   ```
-
-   Where:
-   - `<interface>` is the network interface to use (e.g., `eth0`)
-   - `<prefix>` is the CIDR range for IP allocation (e.g., `10.20.30.0/24`)
-
-2. **Deployment Process**:
-   - The script generates a ConfigMap YAML file with the specified settings
-   - Applies the service account and provider-controller deployment from `kubevip-sa.yaml`
-   - Deploys the Kube-VIP DaemonSet from `kubevip-ds.yaml`
-
-3. **Configuration**:
-   - CIDR range is defined for allocating service IPs
-   - Network interface is configured to correspond with the application network
-   - Strict CIDR validation ensures IP allocations stay within defined ranges
-   - Exclusion ranges prevent conflicts with other network resources
-
-4. **Implementation Details**:
-   - The CIDR is split into IP and mask components for precise configuration
-   - Sort mechanisms ensure consistent ordering of IngressIP arrays
-   - Change detection algorithms monitor service type, protocol, and IP allocation changes
-
-#### Manual Removal/Cleanup
-
-To remove the deployed Kube-VIP components from the cluster, use the provided deletion script:
-
-```bash
-/usr/bin/kubevip-delete.sh
+```text
+┌──────────────────────────────┐   ┌────────────────────────────────────┐
+│  Cloud Controller            │   │  Kubernetes Operator               │
+│                              │   │                                    │
+│  EdgeNodeCluster config:     │   │  Git repo / Helm chart:            │
+│    LoadBalancerService:      │   │    kind: Deployment                │
+│      interface: "eth0"       │   │      containers: [myapp]           │
+│      ip_prefix: "10.1.2.0/28"│   │    kind: Service                   │
+│                              │   │      spec:                         │
+│                              │   │        type: LoadBalancer          │
+│                              │   │        ports: [{port: 80}]         │
+└──────────────┬───────────────┘   └──────────────┬─────────────────────┘
+               │ proto (zedagent)                 │ kubectl apply / Helm
+               ▼                                  ▼
+┌────────────────────────────────────────────────────────────────────┐
+│  EVE Device Cluster (K3S_BASE, 1–N nodes)                          │
+│                                                                    │
+│  Bootstrap node                                                    │
+│  ┌─────────────────────────────────────────────────────────────┐   │
+│  │  zedagent → EdgeNodeClusterConfig (pubsub)                  │   │
+│  │  zedkube  → EdgeNodeClusterStatus.LBInterfaces[] (pubsub)   │   │
+│  │  cluster-init.sh reads status JSON                          │   │
+│  │    └─→ kubevip-apply.sh eth0 10.1.2.0/28                    │   │
+│  │         ├─ kube-vip DaemonSet        (kube-system)          │   │
+│  │         └─ kube-vip-cloud-provider   (kube-system)          │   │
+│  └─────────────────────────────────────────────────────────────┘   │
+│                                                                    │
+│  Kubernetes (all nodes)                                            │
+│  ┌─────────────────────────────────────────────────────────────┐   │
+│  │  Pod: myapp (scheduled by k3s)                              │   │
+│  │  Service: type=LoadBalancer                                 │   │
+│  │    kube-vip-cloud-provider assigns VIP from 10.1.2.0/28     │   │
+│  │    kube-vip DaemonSet advertises VIP via ARP on eth0        │   │
+│  │                                                             │   │
+│  │  External client → 10.1.2.1:80 → Pod                        │   │
+│  └─────────────────────────────────────────────────────────────┘   │
+└────────────────────────────────────────────────────────────────────┘
 ```
 
-This script will:
+k3s's built-in ServiceLB (Klipper) and Traefik are disabled for `K3S_BASE` clusters
+since kube-vip replaces ServiceLB and users bring their own ingress controllers if needed.
 
-- Remove the Kube-VIP DaemonSet
-- Delete the Kube-VIP ConfigMap
-- Remove the Kube-VIP service account and provider-controller deployment
-- Clean up any allocated LoadBalancer IPs
+#### EVE-API
 
-It's recommended to run this script before attempting to redeploy Kube-VIP with different settings or when transitioning back to standard K3s networking.
+The controller sends `LoadBalancerService` inside `EdgeNodeCluster`. The proto definition is:
 
-#### Troubleshooting
+```protobuf
+message LoadBalancerInterface {
+    string interface_name = 1;      // network interface for VIP advertisement
+    repeated string address_cidrs = 2; // IP CIDR pool(s) for LB allocation
+}
 
-Common issues with the Kube-VIP implementation:
+message LoadBalancerService {
+    repeated LoadBalancerInterface interfaces = 1;
+}
+```
 
-1. **IP Allocation Failures**:
-   - Check the kubevip ConfigMap for proper CIDR configuration
-   - Ensure the CIDR range doesn't conflict with other network resources
-   - Verify that the strict-cidr setting is correctly configured
+The API supports multiple interfaces each with multiple CIDR pools. The current EVE
+implementation supports **one interface and one IP prefix** from the first entry;
+additional entries are parsed and stored in `EdgeNodeClusterConfig.LBInterfaces[]`
+but not yet applied by `cluster-init.sh`.
 
-2. **Connectivity Issues**:
-   - Confirm that the network interface is correctly specified
-   - Check that ARP announcements are functioning correctly
-   - Verify that allocated IPs are within the application network's reachable range
+The corresponding pillar types:
+
+```go
+// LBInterfaceConfig pairs a network interface with its IP CIDR pool.
+// Used in both EdgeNodeClusterConfig and EdgeNodeClusterStatus.
+type LBInterfaceConfig struct {
+    Interface string // logical label of the network interface
+    IPPrefix  string // CIDR pool in string form, e.g. "10.1.2.0/28"
+}
+```
+
+#### Data Flow
+
+```text
+Controller proto (EdgeNodeCluster.LoadBalancerService)
+  → zedagent: parse, populate EdgeNodeClusterConfig.LBInterfaces[]
+  → pubsub: EdgeNodeClusterConfig
+  → zedkube: relay to EdgeNodeClusterStatus.LBInterfaces[] (bootstrap node only)
+  → kube container (cluster-init.sh): reads EdgeNodeClusterStatus JSON
+      LB added/changed → kubevip-apply.sh <iface> <cidr>
+      LB removed       → kubevip-delete.sh
+```
+
+Only the bootstrap node applies kube-vip; worker and non-bootstrap server nodes leave
+`LBInterfaces` empty in their published `EdgeNodeClusterStatus`.
+
+#### Components deployed in the cluster
+
+- **kube-vip DaemonSet** (`kube-system`): runs on control-plane nodes, manages VIP
+  assignment and ARP advertisement in ARP mode.
+- **kube-vip-cloud-provider Deployment** (`kube-system`): watches `LoadBalancer`
+  services and allocates IPs from the configured CIDR pool via a `kubevip` ConfigMap.
+
+#### DeviceNetworkStatus
+
+kube-vip assigns VIPs by adding addresses to the host network interface (via
+`hostNetwork: true`). These addresses appear in EVE's netlink enumeration and are
+filtered out of `DeviceNetworkStatus.AddrInfoList` by `dpcmanager` using the
+`LBIPPrefix` range — preventing them from being used as source IPs for
+controller-bound traffic.
+
+#### User Application Examples
+
+Once the controller has configured kube-vip on the cluster, users deploy their
+applications independently of EVE — via Helm charts, plain YAML manifests, or any
+Kubernetes-native tooling — and simply declare a `Service` of type `LoadBalancer`.
+kube-vip-cloud-provider automatically allocates a VIP from the configured CIDR pool.
+No EVE-specific configuration is required on the application side.
+
+##### 1. Basic single-instance app
+
+One pod, one VIP. The simplest case.
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-app
+  namespace: user-app-ns
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: my-app
+  template:
+    metadata:
+      labels:
+        app: my-app
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:alpine
+        ports:
+        - containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-app-lb
+  namespace: user-app-ns
+spec:
+  type: LoadBalancer
+  selector:
+    app: my-app
+  ports:
+  - port: 80
+    targetPort: 80
+```
+
+kube-vip allocates the next free IP from the pool (e.g. `192.168.1.24`) and the app
+is reachable at `http://192.168.1.24`.
+
+##### 2. Load-sharing across two nodes (Deployment with pod anti-affinity)
+
+Two replicas spread across two nodes via `podAntiAffinity`. kube-vip round-robins
+connections across all pods behind the service.
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-app-rr
+  namespace: user-app-ns
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: my-app-rr
+  template:
+    metadata:
+      labels:
+        app: my-app-rr
+    spec:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchLabels:
+                app: my-app-rr
+            topologyKey: kubernetes.io/hostname
+      containers:
+      - name: nginx
+        image: nginx:alpine
+        ports:
+        - containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-app-rr-lb
+  namespace: user-app-ns
+spec:
+  type: LoadBalancer
+  selector:
+    app: my-app-rr
+  ports:
+  - port: 80
+    targetPort: 80
+```
+
+If one node drains or reboots, the remaining pod continues serving traffic uninterrupted.
+
+##### 3. Multiple services sharing one VIP on different ports
+
+Use the `kube-vip.io/loadbalancerIPs` annotation to pin both services to the same IP.
+They must use different external ports. IP sharing requires **all** services sharing
+that IP to use the annotation — if any service holds the IP via auto-allocation (no
+annotation), it is treated as exclusively owned and annotation-based sharing on that
+same IP will fail with the new service staying `<pending>`.
+
+In the context of these examples, example 1 auto-allocates `.24` to `my-app-lb`, so
+example 3 must target a different IP (`.25` below). If example 1 is not deployed,
+example 3 can freely use `.24` for both services.
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: app-a-lb
+  namespace: user-app-ns
+  annotations:
+    kube-vip.io/loadbalancerIPs: "192.168.1.25"
+spec:
+  type: LoadBalancer
+  selector:
+    app: app-a
+  ports:
+  - port: 8080
+    targetPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: app-b-lb
+  namespace: user-app-ns
+  annotations:
+    kube-vip.io/loadbalancerIPs: "192.168.1.25"   # same VIP, different port
+spec:
+  type: LoadBalancer
+  selector:
+    app: app-b
+  ports:
+  - port: 9090
+    targetPort: 9090
+```
+
+Both services are reachable at `192.168.1.25` on their respective ports, using only
+one IP from the pool.
+
+##### 4. Ingress controller fronted by a single LB VIP (recommended for HTTP/HTTPS apps)
+
+Deploy one ingress controller (e.g. `ingress-nginx`) as a `LoadBalancer` service.
+It receives one VIP. All HTTP/HTTPS apps are then served through that VIP using
+`Ingress` resources with hostname or path routing — consuming no additional VIPs
+regardless of how many apps are added.
+
+```bash
+helm install ingress-nginx ingress-nginx/ingress-nginx \
+  --namespace ingress-nginx --create-namespace
+# The controller service gets a VIP, e.g. 192.168.1.25
+```
+
+```yaml
+# Each app uses ClusterIP (not LoadBalancer) and routes through the ingress
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app-c
+  namespace: user-app-ns
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: app-c
+  template:
+    metadata:
+      labels:
+        app: app-c
+    spec:
+      containers:
+      - name: app-c
+        image: nginx:alpine
+        ports:
+        - containerPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: app-c
+  namespace: user-app-ns
+spec:
+  type: ClusterIP
+  selector:
+    app: app-c
+  ports:
+  - port: 80
+    targetPort: 8080
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: app-c-ingress
+  namespace: user-app-ns
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: app-c.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: app-c
+            port:
+              number: 80
+```
+
+Multiple apps can share `192.168.1.25` this way, differentiated by hostname or path.
+The ingress controller itself can be deployed in any namespace (e.g. `ingress-nginx`).
 
 ### Example
 

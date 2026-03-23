@@ -58,10 +58,14 @@ func (z *zedkube) collectKubeSvcs() {
 		// Continue anyway, we might have some services
 	}
 
+	// Collect kube-vip load balancer pool status if kubevip is deployed
+	lbPoolStatus := collectLBPoolStatus(clientset, serviceInfoList)
+
 	// Create new KubeUserServices struct with collected data
 	newKubeUserServices := types.KubeUserServices{
-		UserService: serviceInfoList,
-		UserIngress: ingressInfoList,
+		UserService:  serviceInfoList,
+		UserIngress:  ingressInfoList,
+		LBPoolStatus: lbPoolStatus,
 	}
 
 	// Get previous published data to compare
@@ -321,6 +325,38 @@ func (z *zedkube) GetAllKubeIngresses(clientset *kubernetes.Clientset, serviceIn
 
 	log.Functionf("GetAllKubeIngresses: found %d ingress paths", len(ingressInfoList))
 	return ingressInfoList, nil
+}
+
+// collectLBPoolStatus reads the kubevip ConfigMap from kube-system to get the configured
+// load balancer pool, and gathers IPs currently allocated to LoadBalancer-type services.
+// Returns nil if the kubevip ConfigMap does not exist (kubevip not yet deployed).
+func collectLBPoolStatus(clientset *kubernetes.Clientset, services []types.KubeServiceInfo) *types.KubeLBPoolStatus {
+	cm, err := clientset.CoreV1().ConfigMaps("kube-system").Get(
+		context.Background(), "kubevip", metav1.GetOptions{})
+	if err != nil {
+		// kubevip ConfigMap not present — not deployed yet
+		return nil
+	}
+
+	iface := cm.Data["interface-global"]
+	cidr := cm.Data["cidr-global"]
+	if iface == "" || cidr == "" {
+		return nil
+	}
+
+	var allocatedIPs []string
+	for _, svc := range services {
+		if svc.Type == corev1.ServiceTypeLoadBalancer && svc.LoadBalancerIP != "" {
+			allocatedIPs = append(allocatedIPs, svc.LoadBalancerIP)
+		}
+	}
+	sort.Strings(allocatedIPs)
+
+	return &types.KubeLBPoolStatus{
+		Interface:    iface,
+		IPPrefix:     cidr,
+		AllocatedIPs: allocatedIPs,
+	}
 }
 
 // isDeviceInterfaceIP checks if the given IP is assigned to any of the device's network interfaces

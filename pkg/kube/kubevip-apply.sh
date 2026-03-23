@@ -6,7 +6,6 @@
 # kubevip-apply.sh
 # This script creates a Kube-VIP ConfigMap with the specified interface and CIDR range
 # and applies the necessary Kubernetes resources.
-# This script is for testing only, not for production use.
 
 # Function to display usage information
 show_usage() {
@@ -15,7 +14,6 @@ show_usage() {
     echo ""
     echo "This script creates a Kube-VIP ConfigMap with the specified interface and CIDR range"
     echo "and applies the necessary Kubernetes resources."
-    echo "This script is for testing only, not for production use."
 }
 
 # Check if we have two arguments
@@ -53,10 +51,8 @@ metadata:
   namespace: kube-system
 data:
   # Global settings for all LoadBalancer services
-  cidr-default: "${CIDR}" # Default CIDR for LoadBalancer services
-  cidr-global: "${CIDR}" # Default CIDR for LoadBalancer services
-  interface-default: "${INTERFACE}" # All global LoadBalancer IPs will be advertised on ${INTERFACE}
-  interface-global: "${INTERFACE}" # All global LoadBalancer IPs will be advertised on ${INTERFACE}
+  cidr-global: "${CIDR}"
+  interface-global: "${INTERFACE}"
 EOF
 
 echo "Created Kube-VIP ConfigMap with interface ${INTERFACE} and CIDR ${CIDR}"

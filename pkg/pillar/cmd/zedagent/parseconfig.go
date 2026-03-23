@@ -3513,6 +3513,25 @@ func parseEdgeNodeClusterConfig(getconfigCtx *getconfigContext,
 		enClusterConfig.TieBreakerNodeID = types.UUIDandVersion{UUID: tieBreakerNodeID}
 	}
 
+	// Parse LoadBalancerService — only supported for ClusterTypeK3sBase clusters.
+	// Each proto interface contributes one LBInterfaceConfig entry using its first CIDR.
+	lbSvc := zcfgCluster.GetLoadBalancerService()
+	if lbSvc != nil && enClusterConfig.ClusterType == types.ClusterTypeK3sBase {
+		for _, iface := range lbSvc.GetInterfaces() {
+			ifName := iface.GetInterfaceName()
+			cidrs := iface.GetAddressCidrs()
+			if ifName == "" || len(cidrs) == 0 {
+				continue
+			}
+			if _, _, lbErr := net.ParseCIDR(cidrs[0]); lbErr != nil {
+				log.Errorf("parseEdgeNodeClusterConfig: invalid LB CIDR %s: %v", cidrs[0], lbErr)
+				continue
+			}
+			enClusterConfig.LBInterfaces = append(enClusterConfig.LBInterfaces,
+				types.LBInterfaceConfig{Interface: ifName, IPPrefix: cidrs[0]})
+		}
+	}
+
 	log.Functionf("parseEdgeNodeClusterConfig: ENCluster API, Config %+v, %v", zcfgCluster, enClusterConfig)
 	ctx.pubEdgeNodeClusterConfig.Publish("global", enClusterConfig)
 }
