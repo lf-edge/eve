@@ -3,51 +3,25 @@
 # Copyright (c) 2025 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-FROM lfedge/eve-alpine:745ae9066273c73b0fd879c4ba4ff626a8392d04 AS zfs
-ENV BUILD_PKGS="git patch ca-certificates util-linux build-base gettext-dev libtirpc-dev automake autoconf \
-    libtool linux-headers attr-dev e2fsprogs-dev glib-dev openssl-dev util-linux-dev coreutils"
+ARG REL_HASH_LFEDGE_EVE_ALPINE
+ARG REL_HASH_LFEDGE_EVE_ZFS
+
+# hadolint ignore=DL3006
+FROM ${REL_HASH_LFEDGE_EVE_ZFS} AS zfs
+
+# hadolint ignore=DL3006
+FROM ${REL_HASH_LFEDGE_EVE_ALPINE} AS base
 ENV PKGS="ca-certificates util-linux libintl libuuid libtirpc libblkid libcrypto1.1 zlib"
 RUN eve-alpine-deploy.sh
 
-# should be aligned with kernel
-#  * ZFS on Linux
-ENV ZFS_VERSION=2.3.3
-ENV ZFS_COMMIT=zfs-${ZFS_VERSION}
-ENV ZFS_REPO=https://github.com/openzfs/zfs.git
-
-WORKDIR /tmp/zfs
-ADD ${ZFS_REPO}#${ZFS_COMMIT} /tmp/zfs
-
-RUN ./autogen.sh && \
-    ./configure \
-    --prefix=/usr \
-    --with-tirpc \
-    --sysconfdir=/etc \
-    --mandir=/usr/share/man \
-    --infodir=/usr/share/info \
-    --localstatedir=/var \
-    --with-config=user \
-    --with-udevdir=/lib/udev \
-    --disable-systemd \
-    --disable-static && \
-    ./scripts/make_gitrev.sh && \
-    make -j "$(getconf _NPROCESSORS_ONLN)" && \
-    make DESTDIR=/tmp/zfs-out install-strip
-
-# cleanup
-RUN rm -rf /tmp/zfs-out/usr/share && rm -rf /tmp/zfs-out/usr/src && \
-    rm -rf /tmp/zfs-out/etc/init.d && rm -rf /tmp/zfs-out/etc/conf.d
-
-# make the list of files built from zfs to reuse later
-# hadolint ignore=DL4006
-RUN find /tmp/zfs-out -mindepth 1|sed 's@/tmp/zfs-out@@'>/out/etc/zfs-files
-RUN cp -r /tmp/zfs-out/* /out
+# copy zfs artifacts and file manifest from pkg/zfs
+COPY --from=zfs / /out/
 
 # Add directory for CDI files
 RUN mkdir -p /out/etc/cdi
 
 FROM scratch
-COPY --from=zfs /out/ /
+COPY --from=base /out/ /
 # hadolint ignore=DL3020
 ADD rootfs/ /
 ### Create system-wide groups and users ###

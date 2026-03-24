@@ -10,7 +10,7 @@ ZARCH         ?= $(HOSTARCH)
 DISTDIR       := dist/$(ZARCH)
 BUILD_VERSION ?=
 
-DOCKER_LIKE_LKT:= ../../build-tools/bin/linuxkit pkg build --network --platforms linux/$(ZARCH) --dry-run --force ./ | tail -n1 | perl -pe 's/ buildx / /g'
+DOCKER_LIKE_LKT:= ../../build-tools/bin/linuxkit pkg build --network --platforms linux/$(ZARCH) --hash-dir ../../.gen-deps --dry-run --force ./ | tail -n1 | perl -pe 's/ buildx / /g'
 DOCKER_TAG:=lfedge/eve-pillar:local-$(ZARCH)
 
 APPS = zedbox
