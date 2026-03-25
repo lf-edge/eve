@@ -2081,6 +2081,16 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus, impatient bool
 			status.DomainId = 0
 		}
 	}
+
+	// Terminate the vTPM instance if it was running, so we don't leave
+	// orphaned swtpm processes (e.g. when transitioning to DisableVTPM=true).
+	if status.VirtualTPM {
+		wp := &types.WatchdogParam{Ps: ctx.ps, AgentName: agentName, WarnTime: warningTime, ErrTime: errorTime}
+		if err := hyper.Task(status).VirtualTPMTerminate(status.DomainName, wp); err != nil {
+			log.Errorf("Failed to terminate vTPM for %s: %s", status.DomainName, err)
+		}
+	}
+
 	doCleanup(ctx, status)
 }
 
