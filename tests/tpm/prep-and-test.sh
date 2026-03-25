@@ -135,6 +135,8 @@ echo "========================================================"
 cd "$CWD/pkg/pillar/evetpm" && go test -v -coverprofile="evetpm.coverage.txt" -covermode=atomic
 cd "$CWD/pkg/pillar/cmd/msrv" && go test -v -test.run ^TestTpmActivateCred$ -coverprofile="actcred.coverage.txt" -covermode=atomic
 cd "$CWD/pkg/pillar/cmd/vcomlink" && go test -v -coverprofile="vcomlink.coverage.txt" -covermode=atomic
+cd "$CWD/pkg/vtpm/swtpm-vtpm" && go test -v -test.run ^TestLaunchWithRealTPMEncryption$ ./src/ -coverprofile="swtpm-vtpm.coverage.txt" -covermode=atomic
 
 # we are done, kill the swtpm
 kill $PID
+rm -rf $EVE_TPM_STATE
