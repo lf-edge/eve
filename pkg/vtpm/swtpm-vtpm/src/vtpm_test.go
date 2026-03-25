@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	etpm "github.com/lf-edge/eve/pkg/pillar/evetpm"
 	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 )
@@ -532,6 +533,96 @@ func TestSwtpmAbruptTerminationRequest(t *testing.T) {
 	b, _, err = sendTerminateRequest(id)
 	if err != nil {
 		t.Fatalf("failed to send request: %v, body : %s", err, b)
+	}
+	time.Sleep(1 * time.Second)
+
+	if liveInstances != 0 {
+		t.Fatalf("expected liveInstances to be 0, got %d", liveInstances)
+	}
+}
+
+func TestLaunchWithRealTPMEncryption(t *testing.T) {
+	// This test exercises UnsealDiskKeyWithRecovery from vtpm standpoint, maybe not
+	// necessarily becuse it is being tested in etpm tests, but better safe than sorry!
+	//
+	// We must end up here by tests/tpm/prep-and-test.sh, this test
+	// seals a key into the TPM NV storage, then launches an swtpm instance with
+	// encryption enabled. If getEncryptionKey (UnsealDiskKeyWithRecovery) fails,
+	// the launch request will fail, catching any regressions in key retrieval.
+	if !etpm.SimTpmAvailable() {
+		t.Skip("swtpm simulator not available, skipping")
+	}
+
+	if err := etpm.SimTpmWaitForTpmReadyState(); err != nil {
+		t.Fatalf("swtpm not ready: %v", err)
+	}
+
+	id := generateUUID()
+	defer cleanupFiles(id)
+
+	origTpmPath := etpm.TpmDevicePath
+	etpm.TpmDevicePath = etpm.SimTpmPath
+	isTPMAvailable = func() bool { return true }
+	binKeyPath := fmt.Sprintf(stateEncryptionKey, id.String())
+	isEncryptedPath := fmt.Sprintf(swtpmIsEncryptedPath, id.String())
+	defer func() { etpm.TpmDevicePath = origTpmPath }()
+
+	// Seal a key into TPM NV storage so UnsealDiskKeyWithRecovery can retrieve it
+	sealedKey := []byte("test-vtpm-encryption-key-32bytes")
+	if err := etpm.SealDiskKey(log, sealedKey, etpm.DefaultDiskKeySealingPCRs); err != nil {
+		t.Fatalf("failed to seal key into TPM: %v", err)
+	}
+
+	// Launch should succeed: runSwtpm calls getEncryptionKey which calls
+	// UnsealDiskKeyWithRecovery to retrieve the sealed key from the TPM.
+	t.Log("Step 1: launching swtpm with TPM encryption key")
+	b, code, err := sendLaunchRequest(id)
+	if err != nil {
+		t.Fatalf("launch with TPM encryption failed (status %d): %v, body: %s", code, err, b)
+	}
+	time.Sleep(1 * time.Second)
+
+	if liveInstances != 1 {
+		t.Fatalf("expected liveInstances to be 1, got %d", liveInstances)
+	}
+
+	// Verify the encryption key file was consumed by swtpm (remove=true flag)
+	if _, err := os.Stat(binKeyPath); !os.IsNotExist(err) {
+		t.Fatalf("encryption key file %s should have been removed by swtpm after reading", binKeyPath)
+	}
+	t.Log("  - encryption key file was consumed by swtpm (remove=true)")
+
+	// Verify the encrypted marker file exists with the correct content
+	markerContent, err := os.ReadFile(isEncryptedPath)
+	if err != nil {
+		t.Fatalf("failed to read encrypted marker file: %v", err)
+	}
+	if string(markerContent) != "Y" {
+		t.Fatalf("encrypted marker file should contain 'Y', got %q", string(markerContent))
+	}
+	t.Log("  - encrypted marker file exists with content 'Y'")
+
+	// Terminate (not purge!) to keep the encrypted marker file and state intact
+	b, _, err = sendTerminateRequest(id)
+	if err != nil {
+		t.Fatalf("failed to terminate: %v, body: %s", err, b)
+	}
+	time.Sleep(1 * time.Second)
+
+	// Disable the TPM and try to launch again. Since the state is marked as
+	// encrypted, vtpm must refuse to launch without a TPM to unseal the key.
+	isTPMAvailable = func() bool { return false }
+
+	b, code, err = sendLaunchRequest(id)
+	if err == nil {
+		t.Fatalf("launch without TPM should have failed for encrypted state, but succeeded")
+	}
+	t.Logf("  - launch without TPM correctly rejected (status %d): %s", code, b)
+
+	isTPMAvailable = func() bool { return true }
+	b, _, err = sendPurgeRequest(id)
+	if err != nil {
+		t.Fatalf("failed to purge: %v, body: %s", err, b)
 	}
 	time.Sleep(1 * time.Second)
 
