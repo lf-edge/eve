@@ -37,4 +37,5 @@ echo "${outfile}"
 "${eve}/build-tools/bin/go-sources-and-licenses" sources -b "${tmproot}" --find --out "${tmpout}" --prefix golang --template 'golang,{{.Module}}@{{.Version}},{{.Version}},{{.Path}}'
 } > "${manifest}"
 tar "${tar_opts}" -zcf "${outfile}" -C "${tmpout}" .
+chmod -R u+w "${tmproot}"
 rm -rf "${tmproot}" "${tmpout}"
