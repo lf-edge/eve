@@ -14,6 +14,25 @@ const (
 	// ClusterStatusPort - Port for k3s server for cluster status advertise
 	// See more detail description in pkg/pillar/docs/zedkube.md
 	ClusterStatusPort = "12346"
+	// VmiVNCDir is the directory for VNC parameter files.
+	// VmiVNCDir specifies the directory for VNC parameter files used by both remote-console and edgeview VNC.
+	VmiVNCDir = "/run/edgeview/VncParams"
+	// VmiVNCFileName is the unified path for both remote-console and edgeview VNC configuration file.
+	VmiVNCFileName = VmiVNCDir + "/vmiVNC.run"
+)
+
+// ClusterType represents a cluster configuration type including various preinstalled components
+type ClusterType uint8
+
+const (
+	// ClusterTypeNone - default value
+	ClusterTypeNone ClusterType = iota
+	// ClusterTypeK3sBase - k3s,registration yaml
+	ClusterTypeK3sBase
+	// ClusterTypeReplicatedStorage - k3s,cdi,kubevirt,longhorn
+	ClusterTypeReplicatedStorage
+	// ClusterTypeHA - future use
+	ClusterTypeHA
 )
 
 // EdgeNodeClusterConfig - Configuration for cluster multi-node from controller
@@ -45,6 +64,12 @@ type EdgeNodeClusterConfig struct {
 	// CipherGzipRegistrationManifestYaml, for compressed bytes of a registration yaml file
 	// Shares the same CipherBlock as CipherToken
 	CipherGzipRegistrationManifestYaml CipherBlockStatus
+
+	// ClusterType notes the base, replicated storage, ha attributes of the cluster
+	ClusterType ClusterType
+
+	// TieBreakerNodeID - uuid of a node which will be unscheduled for all workloads
+	TieBreakerNodeID UUIDandVersion
 }
 
 // ENClusterAppStatus - Status of an App Instance in the multi-node cluster
@@ -54,7 +79,8 @@ type ENClusterAppStatus struct {
 	ScheduledOnThisNode bool      // App is running on this device
 	StatusRunning       bool      // Status of the app in "Running" state
 	AppIsVMI            bool      // Is this a VMI app, vs a Pod app
-	AppKubeName         string    // Kube name of the app, either VMI or Pod
+	VMIName             string    // Kube name of the VMI
+	VNCPort             uint32    // VNC port for the VMI (e.g., 5901)
 }
 
 // Equal returns true if all ENClusterAppStatus fields are equal
@@ -106,4 +132,12 @@ type KubeLeaderElectInfo struct {
 	ElectionRunning  bool
 	LeaderIdentity   string
 	LatestChange     time.Time
+}
+
+// VmiVNCConfig is the JSON structure for vmiVNC.run file.
+// VmiVNCConfig defines the unified format used by both remote-console and edgeview VNC.
+type VmiVNCConfig struct {
+	VMIName   string `json:"VMIName"`
+	VNCPort   uint32 `json:"VNCPort"`
+	CallerPID int    `json:"CallerPID,omitempty"` // Set by edgeview to allow cleanup when it exits
 }

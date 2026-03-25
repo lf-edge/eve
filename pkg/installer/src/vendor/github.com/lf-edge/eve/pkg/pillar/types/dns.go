@@ -59,6 +59,7 @@ type NetworkPortStatus struct {
 	DNSServers       []net.IP                // from DHCP + static combined (with Gateway as fallback)
 	NtpServers       []netutils.HostnameOrIP // from DHCP + static combined
 	AddrInfoList     []AddrInfo              // from DHCP + static combined
+	ClusterIPAddr    net.IP                  // ClusterIPAddr is the cluster IP address assigned to this port
 	DefaultRouters   []net.IP                // from DHCP + static combined
 	Up               bool
 	MacAddr          net.HardwareAddr
@@ -260,6 +261,9 @@ func (status DeviceNetworkStatus) MostlyEqual(status2 DeviceNetworkStatus) bool 
 			func(a, b AddrInfo) bool {
 				return a.Addr.Equal(b.Addr)
 			}) {
+			return false
+		}
+		if !p1.ClusterIPAddr.Equal(p2.ClusterIPAddr) {
 			return false
 		}
 		if p1.Up != p2.Up ||
