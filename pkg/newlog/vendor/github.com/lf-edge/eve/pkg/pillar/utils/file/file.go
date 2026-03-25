@@ -5,11 +5,13 @@ package utils
 
 import (
 	"bufio"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
+	"syscall"
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
@@ -48,6 +50,20 @@ func DirExists(log *base.LogObject, dirname string) bool {
 			dirname, err)
 	}
 	return false
+}
+
+// EnsureDir checks if the specified directory exists, and if not, creates it
+// along with any necessary parent directories with permission 0755.
+func EnsureDir(dirname string) error {
+	_, err := os.Stat(dirname)
+	if err != nil {
+		err = os.MkdirAll(dirname, 0755)
+		if err != nil {
+			err = fmt.Errorf("failed to create directory %s: %w", dirname, err)
+			return err
+		}
+	}
+	return nil
 }
 
 // DirSync flushes changes made to a directory.
@@ -100,14 +116,35 @@ func WriteRenameWithBackup(fileName string, b []byte) error {
 	return writeRename(fileName, b, true)
 }
 
-func writeRename(fileName string, b []byte, withBackup bool) error {
+// WriteRenameJSON marshals the provided value 'v' into indented JSON format,
+// appends a newline, and writes it atomically to the specified file path.
+// The write operation is performed using an atomic write-rename strategy
+// with fsync and directory sync to ensure data integrity. No backup of the
+// previous file is created. Returns an error if marshalling or writing fails.
+func WriteRenameJSON(path, tmpPath string, v any) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	// Atomic write with fsync + rename + DirSync.
+	return writeRename(path, b, false, tmpPath)
+}
+
+func writeRename(fileName string, b []byte, withBackup bool, tmpPath ...string) error {
 	dirName := filepath.Dir(fileName)
 	// Do atomic rename to avoid partially written files
-	tmpfile, err := os.CreateTemp(dirName, "tmp")
+	var (
+		tmpfile *os.File
+		err     error
+	)
+	if len(tmpPath) > 0 && tmpPath[0] != "" {
+		tmpfile, err = os.OpenFile(tmpPath[0], os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+	} else {
+		tmpfile, err = os.CreateTemp(dirName, "tmp")
+	}
 	if err != nil {
-		errStr := fmt.Sprintf("WriteRename(%s): %s",
-			fileName, err)
-		return errors.New(errStr)
+		return fmt.Errorf("writeRename(%s): create temp: %w", fileName, err)
 	}
 	defer tmpfile.Close()
 	defer os.Remove(tmpfile.Name())
@@ -215,7 +252,7 @@ func ReadSavedCounter(log *base.LogObject, fileName string) (uint32, bool) {
 
 	b, _, err := StatAndRead(log, fileName, maxCounterReadSize)
 	if err == nil {
-		c, err := strconv.Atoi(b)
+		c, err := strconv.ParseUint(b, 10, 32)
 		if err != nil {
 			if log != nil {
 				log.Errorf("ReadSavedCounter(%s): %s", fileName, err)
@@ -228,4 +265,25 @@ func ReadSavedCounter(log *base.LogObject, fileName string) (uint32, bool) {
 		log.Functionf("ReadSavedCounter(%s): %s", fileName, err)
 	}
 	return 0, false
+}
+
+// AcquireLock acquires a file lock on the given path (appends .lock).
+// It returns the locked file handle which must be closed by the caller to release the lock.
+func AcquireLock(path string, exclusive bool) (*os.File, error) {
+	lockPath := path + ".lock"
+	lockFile, err := os.OpenFile(lockPath, os.O_RDWR|os.O_CREATE, 0644)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open lock file %s: %w", lockPath, err)
+	}
+
+	lockType := syscall.LOCK_SH
+	if exclusive {
+		lockType = syscall.LOCK_EX
+	}
+
+	if err := syscall.Flock(int(lockFile.Fd()), lockType); err != nil {
+		lockFile.Close()
+		return nil, fmt.Errorf("failed to acquire lock on %s: %w", lockPath, err)
+	}
+	return lockFile, nil
 }

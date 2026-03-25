@@ -250,21 +250,22 @@ type BootReason uint8
 const (
 	BootReasonNone BootReason = iota
 
-	BootReasonFirst              // Normal - was not yet onboarded
-	BootReasonRebootCmd          // Normal - result of a reboot command in the API
-	BootReasonUpdate             // Normal - from an EVE image update in the API
-	BootReasonFallback           // Fallback from a failed EVE image update
-	BootReasonDisconnect         // Disconnected from controller for too long
-	BootReasonFatal              // Fatal error causing log.Fatal
-	BootReasonOOM                // OOM causing process to be killed
-	BootReasonWatchdogHung       // Software watchdog due stuck agent
-	BootReasonWatchdogPid        // Software watchdog due to e.g., golang panic
-	BootReasonKernel             // Set by dump-capture kernel, see docs/KERNEL-DUMPS.md and pkg/kdump/kdump.sh for details
-	BootReasonPowerFail          // Known power failure e.g., from disk controller S.M.A.R.T counter increase
-	BootReasonUnknown            // Could be power failure, kernel panic, or hardware watchdog
-	BootReasonVaultFailure       // Vault was not ready within the expected time
-	BootReasonPoweroffCmd        // Start after Local Profile Server poweroff
-	BootReasonParseFail    = 255 // BootReasonFromString didn't find match
+	BootReasonFirst                // Normal - was not yet onboarded
+	BootReasonRebootCmd            // Normal - result of a reboot command in the API
+	BootReasonUpdate               // Normal - from an EVE image update in the API
+	BootReasonFallback             // Fallback from a failed EVE image update
+	BootReasonDisconnect           // Disconnected from controller for too long
+	BootReasonFatal                // Fatal error causing log.Fatal
+	BootReasonOOM                  // OOM causing process to be killed
+	BootReasonWatchdogHung         // Software watchdog due stuck agent
+	BootReasonWatchdogPid          // Software watchdog due to e.g., golang panic
+	BootReasonKernel               // Set by dump-capture kernel, see docs/KERNEL-DUMPS.md and pkg/kdump/kdump.sh for details
+	BootReasonPowerFail            // Known power failure e.g., from disk controller S.M.A.R.T counter increase
+	BootReasonUnknown              // Could be power failure, kernel panic, or hardware watchdog
+	BootReasonVaultFailure         // Vault was not ready within the expected time
+	BootReasonPoweroffCmd          // Start after Local Profile Server poweroff
+	BootReasonKubeTransition       // Transition to/from kubernetes single/cluster modes
+	BootReasonParseFail      = 255 // BootReasonFromString didn't find match
 )
 
 // String returns the string name
@@ -300,6 +301,8 @@ func (br BootReason) String() string {
 		return "BootReasonVaultFailure"
 	case BootReasonPoweroffCmd:
 		return "BootReasonPoweroffCmd"
+	case BootReasonKubeTransition:
+		return "BootReasonKubeTransition"
 	default:
 		return fmt.Sprintf("Unknown BootReason %d", br)
 	}
@@ -339,6 +342,8 @@ func (br BootReason) StartWithSavedConfig() bool {
 	case BootReasonVaultFailure:
 		return false
 	case BootReasonPoweroffCmd:
+		return true
+	case BootReasonKubeTransition:
 		return true
 	default:
 		return false
@@ -381,6 +386,8 @@ func BootReasonFromString(str string) BootReason {
 		return BootReasonVaultFailure
 	case "BootReasonPoweroffCmd":
 		return BootReasonPoweroffCmd
+	case "BootReasonKubeTransition":
+		return BootReasonKubeTransition
 	default:
 		return BootReasonParseFail
 	}
@@ -395,12 +402,13 @@ type MaintenanceModeMultiReason []MaintenanceModeReason
 // MaintenanceModeReason codes for storing reason for getting into maintenance mode,
 // this should match the values in api/proto/info/info.proto.MaintenanceModeReason
 const (
-	MaintenanceModeReasonNone            = MaintenanceModeReason(info.MaintenanceModeReason_MAINTENANCE_MODE_REASON_NONE)
-	MaintenanceModeReasonUserRequested   = MaintenanceModeReason(info.MaintenanceModeReason_MAINTENANCE_MODE_REASON_USER_REQUESTED)
-	MaintenanceModeReasonVaultLockedUp   = MaintenanceModeReason(info.MaintenanceModeReason_MAINTENANCE_MODE_REASON_VAULT_LOCKED_UP)
-	MaintenanceModeReasonNoDiskSpace     = MaintenanceModeReason(info.MaintenanceModeReason_MAINTENANCE_MODE_REASON_LOW_DISK_SPACE)
-	MaintenanceModeReasonTpmEncFailure   = MaintenanceModeReason(info.MaintenanceModeReason_MAINTENANCE_MODE_REASON_TPM_ENCRYPTION_FAILURE)
-	MaintenanceModeReasonTpmQuoteFailure = MaintenanceModeReason(info.MaintenanceModeReason_MAINTENANCE_MODE_REASON_TPM_QUOTE_FAILURE)
+	MaintenanceModeReasonNone                 = MaintenanceModeReason(info.MaintenanceModeReason_MAINTENANCE_MODE_REASON_NONE)
+	MaintenanceModeReasonUserRequested        = MaintenanceModeReason(info.MaintenanceModeReason_MAINTENANCE_MODE_REASON_USER_REQUESTED)
+	MaintenanceModeReasonVaultLockedUp        = MaintenanceModeReason(info.MaintenanceModeReason_MAINTENANCE_MODE_REASON_VAULT_LOCKED_UP)
+	MaintenanceModeReasonNoDiskSpace          = MaintenanceModeReason(info.MaintenanceModeReason_MAINTENANCE_MODE_REASON_LOW_DISK_SPACE)
+	MaintenanceModeReasonTpmEncFailure        = MaintenanceModeReason(info.MaintenanceModeReason_MAINTENANCE_MODE_REASON_TPM_ENCRYPTION_FAILURE)
+	MaintenanceModeReasonTpmQuoteFailure      = MaintenanceModeReason(info.MaintenanceModeReason_MAINTENANCE_MODE_REASON_TPM_QUOTE_FAILURE)
+	MaintenanceModeReasonEdgeNodeCertsRefused = MaintenanceModeReason(info.MaintenanceModeReason_MAINTENANCE_MODE_REASON_EDGE_NODE_CERTS_REFUSED)
 )
 
 // String returns the verbose equivalent of MaintenanceModeMultiReason code
@@ -434,6 +442,8 @@ func (mmr MaintenanceModeReason) String() string {
 		return "MaintenanceModeReasonNoDiskSpace"
 	case MaintenanceModeReasonTpmEncFailure:
 		return "MaintenanceModeReasonTpmEncFailure"
+	case MaintenanceModeReasonEdgeNodeCertsRefused:
+		return "MaintenanceModeReasonEdgeNodeCertsRefused"
 	default:
 		return "Unknown MaintenanceModeReason"
 	}
@@ -552,7 +562,8 @@ type ZedAgentStatus struct {
 	RequestedBootReason    BootReason // Why we will reboot
 	MaintenanceMode        bool       // Don't run apps etc
 	MaintenanceModeReasons MaintenanceModeMultiReason
-	ForceFallbackCounter   int          // Try image fallback when counter changes
+	EdgeNodeCertsRefused   bool         // Causes maintenance mode
+	ForceFallbackCounter   uint32       // Try image fallback when counter changes
 	CurrentProfile         string       // Current profile
 	RadioSilence           RadioSilence // Currently requested state of radio devices
 	DeviceState            DeviceState

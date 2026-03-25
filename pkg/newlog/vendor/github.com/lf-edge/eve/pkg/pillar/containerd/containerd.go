@@ -101,7 +101,7 @@ func init() {
 	if base.IsHVTypeKube() {
 		defaultSnapshotter = "overlayfs"
 		servicesNamespace = ctrdKubeServicesNamespace
-		// kubevirt image starts its own containerd in the kube container
+		// EVE 'k' image starts its own containerd in the kube container
 		shouldStartUserContainerd = false
 	}
 }

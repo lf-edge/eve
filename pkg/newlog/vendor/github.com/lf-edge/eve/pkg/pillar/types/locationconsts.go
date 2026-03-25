@@ -3,7 +3,9 @@
 
 package types
 
-import "strings"
+import (
+	"strings"
+)
 
 const (
 	// TmpDirname - used for files fed into pubsub as global subscriptions
@@ -29,6 +31,8 @@ const (
 	PersistDebugDir = PersistDir + "/agentdebug"
 	// PersistInstallerDir - location for installer output
 	PersistInstallerDir = PersistDir + "/installer"
+	// PersistKubelogDir - Location for kube service container logs
+	PersistKubelogDir = PersistDir + "/kubelog"
 	// IngestedDirname - location for shas of files we pulled from /config
 	IngestedDirname = PersistDir + "/ingested"
 	// SnapshotsDirname - location for snapshots
@@ -58,8 +62,6 @@ const (
 	OnboardKeyName = IdentityDirname + "/onboard.key.pem"
 	// RootCertFileName - what we trust for signatures and object encryption
 	RootCertFileName = IdentityDirname + "/root-certificate.pem"
-	// V2TLSCertShaFilename - find TLS root cert for API V2 based on this sha
-	V2TLSCertShaFilename = CertificateDirname + "/v2tlsbaseroot-certificates.sha256"
 	// V2TLSBaseFile is where the initial file
 	V2TLSBaseFile = IdentityDirname + "/v2tlsbaseroot-certificates.pem"
 	// APIV1FileName - user can statically allow for API v1
@@ -90,6 +92,8 @@ const (
 
 	// NewlogDir - newlog directories
 	NewlogDir = "/persist/newlog"
+	// NetTraceFolder - folder to store network traces
+	NetTraceFolder = "/persist/nettrace"
 	// NewlogCollectDir - newlog collect directory for temp log files
 	NewlogCollectDir = NewlogDir + "/collect"
 	// NewlogUploadDevDir - newlog device gzip file directory ready for upload
@@ -150,6 +154,15 @@ const (
 	LocalActiveAppConfigDir = "/persist/vault/active-app-instance-config/"
 	// EdgeNodeClusterConfigFile - the file which contains edgenodecluster config
 	EdgeNodeClusterConfigFile = PersistStatusDir + "/zedagent/EdgeNodeClusterConfig/global.json"
+
+	// K3sInitialVersionPath - file to store the first k3s version a node initializes to
+	K3sInitialVersionPath = PersistKubelogDir + "/initial_k3s_version"
+
+	// PolicyPcrFile - file to store TPM PCR policy indexes, this
+	// is just a hint to know which PCRs to use for sealing/unsealing,
+	// changing this file does not change the actual policy, hence
+	// needs not be protected.
+	PolicyPcrFile = PersistStatusDir + "/policy-pcr.json"
 )
 
 var (
@@ -169,4 +182,10 @@ var (
 	VolumeEncryptedZFSDataset = SealedDataset + "/volumes"
 	// EtcdZvol - zvol encrypted for etcd storage
 	EtcdZvol = PersistDataset + "/etcd-storage"
+	// TpmMeasurementLogFile is a kernel exposed variable that contains the
+	// TPM measurements and events log. it is not a constant so tests can override it.
+	TpmMeasurementLogFile = "/hostfs/sys/kernel/security/tpm0/binary_bios_measurements"
+	// TpmMeasurefsEventLog is the file containing the event log from the measure-config.
+	// it is not a constant so tests can override it.
+	TpmMeasurefsEventLog = PersistStatusDir + "/measurefs_tpm_event_log"
 )
