@@ -24,13 +24,20 @@ jobs:
       matrix:
         arch: [ arm64, amd64, riscv64 ]
         platform: [ generic ]
+        hv: [ default ]
         include:
           - arch: arm64
             platform: nvidia-jp5
+            hv: default
           - arch: arm64
             platform: nvidia-jp6
+            hv: default
           - arch: amd64
             platform: evaluation
+            hv: default
+          - arch: amd64
+            platform: generic
+            hv: k
     runs-on: ${{ matrix.arch == 'arm64' && 'zededa-ubuntu-2204-arm64' || 'zededa-ubuntu-2204' }}
 
     steps:
@@ -74,10 +81,10 @@ jobs:
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830  # v4.3.0
         with:
           path: ~/.linuxkit/cache
-          key: linuxkit-${{ matrix.arch }}-${{ github.event.pull_request.head.sha }}-${{ matrix.platform }}
-      - name: Build packages ${{ matrix.os }} for ${{ matrix.platform }}
+          key: linuxkit-${{ matrix.arch }}-${{ github.event.pull_request.head.sha }}-${{ matrix.platform }}-${{ matrix.hv }}
+      - name: Build packages for ${{ matrix.platform }} HV=${{ matrix.hv }}
         run: |
-          make V=1 PRUNE=1 PLATFORM=${{ matrix.platform }} ZARCH=${{ matrix.arch }} pkgs
+          make V=1 PRUNE=1 PLATFORM=${{ matrix.platform }} ZARCH=${{ matrix.arch }} ${{ matrix.hv != 'default' && format('HV={0}', matrix.hv) || '' }} pkgs
       - name: Post package report
         run: |
           echo Disk usage
@@ -136,7 +143,7 @@ jobs:
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830  # v4.3.0
         with:
           path: ~/.linuxkit/cache
-          key: linuxkit-amd64-${{ github.event.pull_request.head.sha }}-generic
+          key: linuxkit-amd64-${{ github.event.pull_request.head.sha }}-generic-default
           fail-on-cache-miss: true
       - name: load amd64 tools into docker for riscv64 cross-build
         if: ${{ matrix.arch == 'riscv64' }}
@@ -150,7 +157,7 @@ jobs:
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830  # v4.3.0
         with:
           path: ~/.linuxkit/cache
-          key: linuxkit-${{ matrix.arch }}-${{ github.event.pull_request.head.sha }}-${{ matrix.platform == 'rt' && 'generic' || matrix.platform }}
+          key: linuxkit-${{ matrix.arch }}-${{ github.event.pull_request.head.sha }}-${{ matrix.platform == 'rt' && 'generic' || matrix.platform }}-${{ matrix.hv == 'k' && 'k' || 'default' }}
           fail-on-cache-miss: true
       # For native builds, load tool images from the target cache we just restored.
       - name: load tool images into docker
