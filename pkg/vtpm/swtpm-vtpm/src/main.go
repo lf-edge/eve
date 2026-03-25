@@ -51,7 +51,7 @@ var (
 		return err == nil
 	}
 	getEncryptionKey = func() ([]byte, error) {
-		return etpm.UnsealDiskKey(etpm.DiskKeySealingPCRs)
+		return etpm.UnsealDiskKey(etpm.DefaultDiskKeySealingPCRs)
 	}
 )
 
