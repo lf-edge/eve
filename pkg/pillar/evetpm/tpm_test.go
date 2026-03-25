@@ -352,7 +352,7 @@ func TestSaveDiskKeySealingPCRsInvalidPolicy(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := SaveDiskKeyPolicyPcr(tc.policy, testPcrPolicyFile)
+			err := ValidatePolicyPcr(tc.policy)
 
 			if err == nil {
 				t.Fatalf("Expected error but got none")
