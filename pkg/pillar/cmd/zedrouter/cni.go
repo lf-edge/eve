@@ -204,6 +204,18 @@ func (z *zedrouter) handleDisconnectPodRequest(
 		return nil
 	}
 	retval.AppUUID = appStatus.UUIDandVersion.UUID
+	// Guard against a race during app restart: the new pod calls ConnectPodAtL2
+	// first, updating appStatus.AppPod to the new pod. Then, a few seconds later,
+	// the old pod's CNI teardown fires DisconnectPod. If we let it proceed, it
+	// would clear the PodVif and remove the VIF that was just created for the new
+	// pod, leaving the running VMI with no network. Detect this by comparing the
+	// disconnecting pod's name against the currently-connected pod in AppPod.
+	if appStatus.AppPod.Name != "" && appStatus.AppPod.Name != args.Pod.Name {
+		z.log.Warnf("handleDisconnectPodRequest: ignoring stale disconnect for pod %s "+
+			"(app %v is already connected via pod %s)",
+			args.Pod.Name, appStatus.UUIDandVersion.UUID, appStatus.AppPod.Name)
+		return nil
+	}
 	var adapterStatus *types.AppNetAdapterStatus
 	for i := range appStatus.AppNetAdapterList {
 		adapterStatus = &appStatus.AppNetAdapterList[i]
