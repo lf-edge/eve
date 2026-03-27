@@ -1,0 +1,41 @@
+From 1d186a7d455b270c48247d7592f29cde34439e20 Mon Sep 17 00:00:00 2001
+From: Mikhail Malyshev <mike.malyshev@gmail.com>
+Date: Fri, 27 Mar 2026 11:25:55 +0000
+Subject: [PATCH 15/15] tpm: include EFI status code in "unknown TPM error"
+ message
+
+When grub_efi_log_event_status() encounters an EFI status code that
+doesn't match any known case, it prints the unhelpful generic "unknown
+TPM error" message, making root cause analysis impossible.
+
+This was observed on Dell R630 servers booting EVE OS, where the boot
+process gets stuck at the "unknown TPM error" prompt after a hardware
+watchdog reset. The watchdog performs a hard reset without allowing the
+TPM to cleanly shut down, leaving the TPM in an unexpected state on
+the next boot that returns an EFI status code outside the handled set.
+
+Include the raw EFI status value in hex so the actual code is visible
+in the GRUB output, enabling proper diagnosis.
+
+Signed-off-by: Mikhail Malyshev <mike.malyshev@gmail.com>
+---
+ grub-core/commands/efi/tpm.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/grub-core/commands/efi/tpm.c b/grub-core/commands/efi/tpm.c
+index f250c30db..2e18e5a22 100644
+--- a/grub-core/commands/efi/tpm.c
++++ b/grub-core/commands/efi/tpm.c
+@@ -146,7 +146,8 @@ grub_efi_log_event_status (grub_efi_status_t status)
+     case GRUB_EFI_NOT_FOUND:
+       return grub_error (GRUB_ERR_UNKNOWN_DEVICE, N_("TPM unavailable"));
+     default:
+-      return grub_error (grub_is_tpm_fail_fatal () ? GRUB_ERR_UNKNOWN_DEVICE : GRUB_ERR_NONE, N_("unknown TPM error"));
++      return grub_error (grub_is_tpm_fail_fatal () ? GRUB_ERR_UNKNOWN_DEVICE : GRUB_ERR_NONE,
++			 "unknown TPM error: 0x%lx", (unsigned long) status);
+     }
+ }
+ 
+-- 
+2.43.0
+
