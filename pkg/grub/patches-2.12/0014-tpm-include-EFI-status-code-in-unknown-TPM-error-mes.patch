@@ -1,7 +1,7 @@
-From 1d186a7d455b270c48247d7592f29cde34439e20 Mon Sep 17 00:00:00 2001
+From 056dea9b468171ab5f795b7d3faf11312d63db15 Mon Sep 17 00:00:00 2001
 From: Mikhail Malyshev <mike.malyshev@gmail.com>
 Date: Fri, 27 Mar 2026 11:25:55 +0000
-Subject: [PATCH 15/15] tpm: include EFI status code in "unknown TPM error"
+Subject: [PATCH 14/14] tpm: include EFI status code in "unknown TPM error"
  message
 
 When grub_efi_log_event_status() encounters an EFI status code that

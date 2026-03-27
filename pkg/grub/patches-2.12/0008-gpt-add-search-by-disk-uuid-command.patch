@@ -1,7 +1,7 @@
 From 4f0dfe4c45f93cd721d7427ce405dc0d5525b678 Mon Sep 17 00:00:00 2001
 From: Michael Marineau <michael.marineau@coreos.com>
 Date: Fri, 27 Mar 2026 12:19:36 +0000
-Subject: [PATCH 08/15] gpt: add search by disk uuid command
+Subject: [PATCH 08/14] gpt: add search by disk uuid command
 
 Co-developed-by: Alex Crawford <alex.crawford@coreos.com>
 Signed-off-by: Alex Crawford <alex.crawford@coreos.com>

@@ -1,7 +1,7 @@
 From 6bf445b10e7ed03e24b839ec5d1b30dfe7fffc95 Mon Sep 17 00:00:00 2001
 From: Michael Marineau <michael.marineau@coreos.com>
 Date: Thu, 14 Oct 2021 00:41:31 +0530
-Subject: [PATCH 06/15] gpt: new gptprio.next command for selecting priority
+Subject: [PATCH 06/14] gpt: new gptprio.next command for selecting priority
  based partitions
 
 Basic usage would look something like this:

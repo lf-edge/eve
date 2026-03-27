@@ -1,7 +1,7 @@
 From 80c0a513bde5cbcc94480664cac928f391e783f5 Mon Sep 17 00:00:00 2001
 From: Roman Shaposhnik <rvs@zededa.com>
 Date: Tue, 26 Oct 2021 22:18:49 +0530
-Subject: [PATCH 01/15] Making it possible to export variables from inner
+Subject: [PATCH 01/14] Making it possible to export variables from inner
  contexts of GRUB
 
 Signed-off-by: Roman Shaposhnik <rvs@zededa.com>
