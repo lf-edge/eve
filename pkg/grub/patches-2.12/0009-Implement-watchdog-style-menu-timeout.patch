@@ -1,7 +1,7 @@
 From 4cda1f114546b4b23a0701a2558243db7f534a4d Mon Sep 17 00:00:00 2001
 From: Mikhail Malyshev <mike.malyshev@gmail.com>
 Date: Thu, 14 Oct 2021 11:14:22 +0530
-Subject: [PATCH 09/15] Implement watchdog style menu timeout
+Subject: [PATCH 09/14] Implement watchdog style menu timeout
 
 Standard GRUB implementation cannot resist spurious keypress and stops booting.
 This change resets timeout to its initial value. Grub menutimeout

@@ -1,7 +1,7 @@
 From fa279a4181ddfd5936af6bfb6046efe313ac0b3e Mon Sep 17 00:00:00 2001
 From: Michael Marineau <michael.marineau@coreos.com>
 Date: Thu, 14 Oct 2021 00:04:19 +0530
-Subject: [PATCH 05/15] gpt: start new GPT module
+Subject: [PATCH 05/14] gpt: start new GPT module
 
 This module is a new implementation for reading GUID Partition Tables
 which is much stricter than the existing part_gpt module and exports

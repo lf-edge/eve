@@ -1,7 +1,7 @@
 From cb5a891a4077aa396b188e40fb3ffbf4c96e72ae Mon Sep 17 00:00:00 2001
 From: Petr Fedchenkov <giggsoff@gmail.com>
 Date: Fri, 27 Mar 2026 12:21:03 +0000
-Subject: [PATCH 11/15] measurefs: skip measurement when no TPM is present
+Subject: [PATCH 11/14] measurefs: skip measurement when no TPM is present
 
 Use grub_tpm_present() (available in 2.12) to skip the measurefs
 command silently when no TPM device is found, instead of failing.

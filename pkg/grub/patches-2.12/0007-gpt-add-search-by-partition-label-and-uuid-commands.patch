@@ -1,7 +1,7 @@
 From d87a33108303e781578f24b0aa469f79d1730c6d Mon Sep 17 00:00:00 2001
 From: Michael Marineau <michael.marineau@coreos.com>
 Date: Fri, 27 Mar 2026 12:19:10 +0000
-Subject: [PATCH 07/15] gpt: add search by partition label and uuid commands
+Subject: [PATCH 07/14] gpt: add search by partition label and uuid commands
 
 Builds on the existing filesystem search code. Only for GPT right now.
 

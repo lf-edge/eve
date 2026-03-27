@@ -1,7 +1,7 @@
 From 0100a0ac5766065dfbfd91a1bb7831d4e87aa4c1 Mon Sep 17 00:00:00 2001
 From: Mikhail Malyshev <mikem@zededa.com>
 Date: Tue, 30 May 2023 13:59:05 +0000
-Subject: [PATCH 04/15] Put removable hard drives detected by UEFI at the end
+Subject: [PATCH 04/14] Put removable hard drives detected by UEFI at the end
  of the drive list
 
 When grub queries for available disks it doesn't take into account that

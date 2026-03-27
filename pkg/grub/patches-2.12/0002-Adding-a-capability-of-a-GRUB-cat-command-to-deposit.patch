@@ -1,7 +1,7 @@
 From 2fd7d198bb97485a43251a626fa793a70abc0ad7 Mon Sep 17 00:00:00 2001
 From: Roman Shaposhnik <rvs@zededa.com>
 Date: Tue, 26 Oct 2021 22:22:13 +0530
-Subject: [PATCH 02/15] Adding a capability of a GRUB cat command to deposit to
+Subject: [PATCH 02/14] Adding a capability of a GRUB cat command to deposit to
  a var, not stdout
 
 Signed-off-by: Roman Shaposhnik <rvs@zededa.com>

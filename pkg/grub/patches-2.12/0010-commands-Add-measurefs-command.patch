@@ -1,7 +1,7 @@
 From a724bef444c1068c283d6b228e2b586d1fda5a4c Mon Sep 17 00:00:00 2001
 From: Mikhail Malyshev <mike.malyshev@gmail.com>
 Date: Fri, 27 Mar 2026 12:20:33 +0000
-Subject: [PATCH 10/15] commands: Add measurefs command
+Subject: [PATCH 10/14] commands: Add measurefs command
 
 Add measurefs command that hashes a filesystem image and extends a TPM
 PCR with the result. Used by EVE to measure the root filesystem into

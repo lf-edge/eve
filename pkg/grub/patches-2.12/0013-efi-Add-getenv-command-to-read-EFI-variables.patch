@@ -1,7 +1,7 @@
 From 1a9a893635bf6666b22a9db109385d361cacf483 Mon Sep 17 00:00:00 2001
 From: Mikhail Malyshev <mike.malyshev@gmail.com>
 Date: Fri, 27 Mar 2026 12:22:31 +0000
-Subject: [PATCH 13/15] efi: Add getenv command to read EFI variables
+Subject: [PATCH 13/14] efi: Add getenv command to read EFI variables
 
 Add the getenv command (originally from CoreOS) that reads EFI
 variables by name and GUID, making their values available as GRUB
