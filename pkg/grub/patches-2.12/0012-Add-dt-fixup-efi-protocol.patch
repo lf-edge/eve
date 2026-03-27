@@ -1,0 +1,114 @@
+From a2728d292bcf24e3187743c7c3599e47e9ceb179 Mon Sep 17 00:00:00 2001
+From: Aleksandrov Dmitriy <goodmobiledevices@gmail.com>
+Date: Sat, 20 Feb 2021 23:27:22 +0300
+Subject: [PATCH 12/15] Add dt-fixup efi protocol
+
+Signed-off-by: Aleksandrov Dmitriy <goodmobiledevices@gmail.com>
+---
+ grub-core/loader/efi/fdt.c | 35 ++++++++++++++++++++++++++++++++++-
+ include/grub/efi/api.h     | 22 ++++++++++++++++++++++
+ 2 files changed, 56 insertions(+), 1 deletion(-)
+
+diff --git a/grub-core/loader/efi/fdt.c b/grub-core/loader/efi/fdt.c
+index 439964b9c..c607fcd81 100644
+--- a/grub-core/loader/efi/fdt.c
++++ b/grub-core/loader/efi/fdt.c
+@@ -29,6 +29,39 @@
+ 
+ static void *loaded_fdt;
+ static void *fdt;
++static grub_guid_t dt_fixup_guid = GRUB_EFI_DT_FIXUP_PROTOCOL_GUID;
++
++static void *grub_fdt_fixup (void)
++{
++  grub_efi_dt_fixup_t *dt_fixup_prot;
++  grub_efi_uintn_t size = 0;
++  grub_efi_status_t status;
++  void *fixup_fdt;
++
++  dt_fixup_prot = grub_efi_locate_protocol (&dt_fixup_guid, 0);
++  if (! dt_fixup_prot)
++    return loaded_fdt;
++
++  grub_dprintf ("linux", "EFI_DT_FIXUP_PROTOCOL available\n");
++
++  status = dt_fixup_prot->fixup (dt_fixup_prot, loaded_fdt, &size,
++				 GRUB_EFI_DT_APPLY_FIXUPS | GRUB_EFI_DT_RESERVE_MEMORY);
++  if (status != GRUB_EFI_BUFFER_TOO_SMALL)
++    return loaded_fdt;
++
++  fixup_fdt = grub_realloc (loaded_fdt, size);
++  if (!fixup_fdt)
++    return loaded_fdt;
++  loaded_fdt = fixup_fdt;
++
++  status = dt_fixup_prot->fixup (dt_fixup_prot, loaded_fdt, &size,
++				 GRUB_EFI_DT_APPLY_FIXUPS | GRUB_EFI_DT_RESERVE_MEMORY);
++
++  if (status == GRUB_EFI_SUCCESS)
++    grub_dprintf ("linux", "Device tree fixed up via EFI_DT_FIXUP_PROTOCOL\n");
++
++  return loaded_fdt;
++}
+ 
+ #define FDT_ADDR_CELLS_STRING "#address-cells"
+ #define FDT_SIZE_CELLS_STRING "#size-cells"
+@@ -49,7 +82,7 @@ grub_fdt_load (grub_size_t additional_size)
+     }
+ 
+   if (loaded_fdt)
+-    raw_fdt = loaded_fdt;
++    raw_fdt = grub_fdt_fixup();
+   else
+     raw_fdt = grub_efi_get_firmware_fdt();
+ 
+diff --git a/include/grub/efi/api.h b/include/grub/efi/api.h
+index d44d00ad7..ba7d5f17a 100644
+--- a/include/grub/efi/api.h
++++ b/include/grub/efi/api.h
+@@ -354,6 +354,11 @@
+     { 0x83, 0x0b, 0xd9, 0x15, 0x2c, 0x69, 0xaa, 0xe0 } \
+   }
+ 
++#define GRUB_EFI_DT_FIXUP_PROTOCOL_GUID \
++  { 0xe617d64c, 0xfe08, 0x46da, \
++    { 0xf4, 0xdc, 0xbb, 0xd5, 0x87, 0x0c, 0x73, 0x00 } \
++  }
++
+ #define GRUB_EFI_VENDOR_APPLE_GUID \
+   { 0x2B0585EB, 0xD8B8, 0x49A9,	\
+     { 0x8B, 0x8C, 0xE2, 0x1B, 0x01, 0xAE, 0xF2, 0xB7 } \
+@@ -1693,6 +1698,13 @@ enum
+     GRUB_EFI_SIMPLE_NETWORK_RECEIVE_PROMISCUOUS_MULTICAST = 0x10,
+   };
+ 
++enum
++  {
++    GRUB_EFI_DT_APPLY_FIXUPS		= 0x01,
++    GRUB_EFI_DT_RESERVE_MEMORY		= 0x02,
++    GRUB_EFI_EFI_DT_INSTALL_TABLE	= 0x04,
++  };
++
+ struct grub_efi_simple_network
+ {
+   grub_uint64_t revision;
+@@ -1775,6 +1787,16 @@ struct grub_efi_block_io
+ };
+ typedef struct grub_efi_block_io grub_efi_block_io_t;
+ 
++struct grub_efi_dt_fixup
++{
++  grub_efi_uint64_t revision;
++  grub_efi_status_t (*fixup) (struct grub_efi_dt_fixup *this,
++			      void *fdt,
++			      grub_efi_uintn_t *buffer_size,
++			      grub_uint32_t flags);
++};
++typedef struct grub_efi_dt_fixup grub_efi_dt_fixup_t;
++
+ struct grub_efi_shim_lock_protocol
+ {
+   /*
+-- 
+2.43.0
+

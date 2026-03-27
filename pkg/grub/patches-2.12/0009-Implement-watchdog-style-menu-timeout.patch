@@ -1,0 +1,50 @@
+From 4cda1f114546b4b23a0701a2558243db7f534a4d Mon Sep 17 00:00:00 2001
+From: Mikhail Malyshev <mike.malyshev@gmail.com>
+Date: Thu, 14 Oct 2021 11:14:22 +0530
+Subject: [PATCH 09/15] Implement watchdog style menu timeout
+
+Standard GRUB implementation cannot resist spurious keypress and stops booting.
+This change resets timeout to its initial value. Grub menutimeout
+should be set to some comfort value e.g. 5 sec
+
+Signed-off-by: Michael Malyshev <mikem@zededa.com>
+---
+ grub-core/normal/menu.c | 8 +++++---
+ 1 file changed, 5 insertions(+), 3 deletions(-)
+
+diff --git a/grub-core/normal/menu.c b/grub-core/normal/menu.c
+index 6a90e091f..f12fff887 100644
+--- a/grub-core/normal/menu.c
++++ b/grub-core/normal/menu.c
+@@ -579,6 +579,7 @@ run_menu (grub_menu_t menu, int nested, int *auto_boot, int *notify_boot)
+   int default_entry, current_entry;
+   int timeout;
+   enum timeout_style timeout_style;
++  int initial_timeout_value;
+ 
+   *notify_boot = 1;
+ 
+@@ -662,6 +663,7 @@ run_menu (grub_menu_t menu, int nested, int *auto_boot, int *notify_boot)
+ 
+   current_entry = default_entry;
+ 
++  initial_timeout_value = grub_menu_get_timeout ();
+  refresh:
+   menu_init (current_entry, menu, nested);
+ 
+@@ -705,9 +707,9 @@ run_menu (grub_menu_t menu, int nested, int *auto_boot, int *notify_boot)
+ 	{
+ 	  if (timeout >= 0)
+ 	    {
+-	      grub_env_unset ("timeout");
+-	      grub_env_unset ("fallback");
+-	      clear_timeout ();
++	      /* reset timeout value if the user press any key */
++	      grub_menu_set_timeout(initial_timeout_value);
++	      menu_print_timeout (initial_timeout_value);
+ 	    }
+ 
+ 	  switch (c)
+-- 
+2.43.0
+

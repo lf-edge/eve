@@ -1,0 +1,185 @@
+From 4f0dfe4c45f93cd721d7427ce405dc0d5525b678 Mon Sep 17 00:00:00 2001
+From: Michael Marineau <michael.marineau@coreos.com>
+Date: Fri, 27 Mar 2026 12:19:36 +0000
+Subject: [PATCH 08/15] gpt: add search by disk uuid command
+
+Co-developed-by: Alex Crawford <alex.crawford@coreos.com>
+Signed-off-by: Alex Crawford <alex.crawford@coreos.com>
+Signed-off-by: Michael Marineau <michael.marineau@coreos.com>
+Signed-off-by: Mikhail Malyshev <mike.malyshev@gmail.com>
+---
+ grub-core/Makefile.core.def           | 10 ++++++++++
+ grub-core/commands/search.c           | 25 +++++++++++++++++++++++--
+ grub-core/commands/search_disk_uuid.c |  5 +++++
+ grub-core/commands/search_part_uuid.c |  5 +++++
+ grub-core/commands/search_wrap.c      | 10 ++++++++++
+ include/grub/search.h                 |  6 ++++++
+ 6 files changed, 59 insertions(+), 2 deletions(-)
+ create mode 100644 grub-core/commands/search_disk_uuid.c
+ create mode 100644 grub-core/commands/search_part_uuid.c
+
+diff --git a/grub-core/Makefile.core.def b/grub-core/Makefile.core.def
+index 977c73983..9f7d31044 100644
+--- a/grub-core/Makefile.core.def
++++ b/grub-core/Makefile.core.def
+@@ -1112,11 +1112,21 @@ module = {
+   common = commands/search_label.c;
+ };
+ 
++module = {
++  name = search_part_uuid;
++  common = commands/search_part_uuid.c;
++};
++
+ module = {
+   name = search_part_label;
+   common = commands/search_part_label.c;
+ };
+ 
++module = {
++  name = search_disk_uuid;
++  common = commands/search_disk_uuid.c;
++};
++
+ module = {
+   name = setpci;
+   common = commands/setpci.c;
+diff --git a/grub-core/commands/search.c b/grub-core/commands/search.c
+index d239a8bc4..1691c8e74 100644
+--- a/grub-core/commands/search.c
++++ b/grub-core/commands/search.c
+@@ -30,7 +30,8 @@
+ #include <grub/i18n.h>
+ #include <grub/disk.h>
+ #include <grub/partition.h>
+-#if defined(DO_SEARCH_PART_UUID) || defined(DO_SEARCH_PART_LABEL)
++#if defined(DO_SEARCH_PART_UUID) || defined(DO_SEARCH_PART_LABEL) || \
++    defined(DO_SEARCH_DISK_UUID)
+ #include <grub/gpt_partition.h>
+ #endif
+ 
+@@ -89,7 +90,7 @@ iterate_device (const char *name, void *data)
+       grub_device_close (dev);
+     }
+ 
+-#ifdef DO_SEARCH_FS_UUID
++#if defined(DO_SEARCH_FS_UUID) || defined(DO_SEARCH_DISK_UUID)
+ #define compare_fn grub_strcasecmp
+ #else
+ #define compare_fn grub_strcmp
+@@ -145,6 +146,22 @@ iterate_device (const char *name, void *data)
+ 	  grub_device_close (dev);
+ 	}
+     }
++#elif defined(DO_SEARCH_DISK_UUID)
++    {
++      grub_device_t dev;
++      char *quid;
++      dev = grub_device_open (name);
++      if (dev)
++	{
++	  if (grub_gpt_disk_uuid (dev, &quid) == GRUB_ERR_NONE)
++	    {
++	      if (grub_strcmp (quid, ctx->key) == 0)
++		found = 1;
++	      grub_free (quid);
++	    }
++	  grub_device_close (dev);
++	}
++    }
+ #else
+     {
+       /* SEARCH_FS_UUID or SEARCH_LABEL */
+@@ -370,6 +387,8 @@ static grub_command_t cmd;
+ GRUB_MOD_INIT(search_fs_file)
+ #elif defined (DO_SEARCH_FS_UUID)
+ GRUB_MOD_INIT(search_fs_uuid)
++#elif defined (DO_SEARCH_DISK_UUID)
++GRUB_MOD_INIT(search_disk_uuid)
+ #elif defined(DO_SEARCH_PART_UUID)
+ GRUB_MOD_INIT(search_part_uuid)
+ #elif defined(DO_SEARCH_PART_LABEL)
+@@ -388,6 +407,8 @@ GRUB_MOD_INIT(search_label)
+ GRUB_MOD_FINI(search_fs_file)
+ #elif defined (DO_SEARCH_FS_UUID)
+ GRUB_MOD_FINI(search_fs_uuid)
++#elif defined (DO_SEARCH_DISK_UUID)
++GRUB_MOD_FINI(search_disk_uuid)
+ #elif defined(DO_SEARCH_PART_UUID)
+ GRUB_MOD_FINI(search_part_uuid)
+ #elif defined(DO_SEARCH_PART_LABEL)
+diff --git a/grub-core/commands/search_disk_uuid.c b/grub-core/commands/search_disk_uuid.c
+new file mode 100644
+index 000000000..fba96f6b8
+--- /dev/null
++++ b/grub-core/commands/search_disk_uuid.c
+@@ -0,0 +1,5 @@
++#define DO_SEARCH_DISK_UUID 1
++#define FUNC_NAME grub_search_disk_uuid
++#define COMMAND_NAME "search.disk_uuid"
++#define HELP_MESSAGE N_("Search devices by disk UUID. If VARIABLE is specified, the first device found is set to a variable.")
++#include "search.c"
+diff --git a/grub-core/commands/search_part_uuid.c b/grub-core/commands/search_part_uuid.c
+new file mode 100644
+index 000000000..2d1d3d0d7
+--- /dev/null
++++ b/grub-core/commands/search_part_uuid.c
+@@ -0,0 +1,5 @@
++#define DO_SEARCH_PART_UUID 1
++#define FUNC_NAME grub_search_part_uuid
++#define COMMAND_NAME "search.part_uuid"
++#define HELP_MESSAGE N_("Search devices by partition UUID. If VARIABLE is specified, the first device found is set to a variable.")
++#include "search.c"
+diff --git a/grub-core/commands/search_wrap.c b/grub-core/commands/search_wrap.c
+index b860752ea..41a5085dc 100644
+--- a/grub-core/commands/search_wrap.c
++++ b/grub-core/commands/search_wrap.c
+@@ -38,6 +38,10 @@ static const struct grub_arg_option options[] =
+      0, 0},
+     {"part-label",	'L', 0, N_("Search devices by a partition label."),
+      0, 0},
++    {"part-uuid",	'U', 0, N_("Search devices by a partition UUID."),
++     0, 0},
++    {"disk-uuid",	'U', 0, N_("Search devices by a disk UUID."),
++     0, 0},
+     {"set",		's', GRUB_ARG_OPTION_OPTIONAL,
+      N_("Set a variable to the first device found."), N_("VARNAME"),
+      ARG_TYPE_STRING},
+@@ -75,6 +79,8 @@ enum options
+     SEARCH_LABEL,
+     SEARCH_FS_UUID,
+     SEARCH_PART_LABEL,
++    SEARCH_PART_UUID,
++    SEARCH_DISK_UUID,
+     SEARCH_SET,
+     SEARCH_NO_FLOPPY,
+     SEARCH_EFIDISK_ONLY,
+@@ -198,6 +204,10 @@ grub_cmd_search (grub_extcmd_context_t ctxt, int argc, char **args)
+     grub_search_fs_uuid (id, var, flags, hints, nhints);
+   else if (state[SEARCH_PART_LABEL].set)
+     grub_search_part_label (id, var, flags, hints, nhints);
++  else if (state[SEARCH_PART_UUID].set)
++    grub_search_part_uuid (id, var, flags, hints, nhints);
++  else if (state[SEARCH_DISK_UUID].set)
++    grub_search_disk_uuid (id, var, flags, hints, nhints);
+   else if (state[SEARCH_FILE].set)
+     grub_search_fs_file (id, var, flags, hints, nhints);
+   else
+diff --git a/include/grub/search.h b/include/grub/search.h
+index eb6f97328..422019674 100644
+--- a/include/grub/search.h
++++ b/include/grub/search.h
+@@ -38,4 +38,10 @@ void grub_search_label (const char *key, const char *var,
+ void grub_search_part_label (const char *key, const char *var,
+ 			     enum search_flags flags,
+ 			     char **hints, unsigned nhints);
++void grub_search_part_uuid (const char *key, const char *var,
++			    enum search_flags flags,
++			    char **hints, unsigned nhints);
++void grub_search_disk_uuid (const char *key, const char *var,
++			    enum search_flags flags,
++			    char **hints, unsigned nhints);
+ #endif
+-- 
+2.43.0
+

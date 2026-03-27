@@ -19,49 +19,45 @@ ENV BUILD_PKGS="automake \
                patch \
                gettext-dev \
                bash \
-               gawk"
-ENV BUILD_PKGS_arm64=coreutils
-ENV BUILD_PKGS_riscv64=coreutils
+               gawk \
+               coreutils"
 RUN eve-alpine-deploy.sh
 
 # list of grub modules that are portable between x86_64 and aarch64
 ENV GRUB_MODULES_PORT="part_gpt fat ext2 iso9660 squash4 gzio linux acpi normal cpio crypto disk boot crc64 \
-search_disk_uuid search_part_label search_label xzio xfs video gfxterm serial gptprio chain probe reboot regexp smbios \
+search_disk_uuid search_part_uuid search_part_label search_label xzio xfs video gfxterm serial gptprio chain probe reboot regexp smbios \
 part_msdos cat echo test configfile loopback net tftp http true"
 
 FROM grub-build-base AS grub-build-amd64
-ENV GRUB_MODULES="multiboot multiboot2 efi_uga efi_gop linuxefi gpt verify gcry_sha256 measurefs efinet getenv"
-ENV GRUB_MODULES_i386_pc="multiboot multiboot2 biosdisk gpt verify"
-ENV GRUB_COMMIT=71f9e4ac44142af52c3fc1860436cf9e432bf764
-ENV GRUB_PATCHES=patches
+ENV GRUB_MODULES="multiboot multiboot2 efi_uga efi_gop gpt measurefs efinet getenv"
+ENV GRUB_MODULES_i386_pc="multiboot multiboot2 biosdisk gpt"
+ENV GRUB_COMMIT=grub-2.12
+ENV GRUB_PATCHES=patches-2.12
 # colon separates a platform from an additional option.
 # this is far from perfect, but it works for now.
 ENV GRUB_PLATFORM="efi pc:--disable-efiemu"
 
 FROM grub-build-base AS grub-build-arm64
-ENV GRUB_MODULES="xen_boot efi_gop gpt gcry_sha256 measurefs efinet"
-ENV GRUB_COMMIT=grub-2.06
-ENV GRUB_PATCHES="patches-2.06 patches-aarch64-2.06"
+ENV GRUB_MODULES="xen_boot efi_gop gpt measurefs efinet getenv"
+ENV GRUB_COMMIT=grub-2.12
+ENV GRUB_PATCHES=patches-2.12
 ENV GRUB_PLATFORM=efi
 
 FROM grub-build-base AS grub-build-riscv64
 ENV GRUB_MODULES="efinet"
-ENV GRUB_COMMIT=grub-2.06
-ENV GRUB_PATCHES="patches-2.06 patches-riscv64-2.06"
+ENV GRUB_COMMIT=grub-2.12
+ENV GRUB_PATCHES=patches-2.12
 ENV GRUB_PLATFORM=efi
 
 # hadolint ignore=DL3006
 FROM grub-build-${TARGETARCH} AS grub-build
 
-COPY patches /patches
-COPY patches-2.06  /patches-2.06
-COPY patches-aarch64-2.06 /patches-aarch64-2.06
-COPY patches-riscv64-2.06 /patches-riscv64-2.06
+COPY patches-2.12 /patches-2.12
 RUN mkdir /grub-lib
 
-ENV GRUB_REPO=git://git.git.savannah.gnu.org/grub.git
+ENV GRUB_REPO=https://gitlab.freedesktop.org/gnu-grub/grub.git
 ADD ${GRUB_REPO}#${GRUB_COMMIT} /grub
-ENV GNULIB_REVISION=d271f868a8df9bbec29049d01e056481b7a1a263
+ENV GNULIB_REVISION=9f48fb992a3d7e96610c4ce8be969cff2d61a01b
 ADD --keep-git-dir https://github.com/coreutils/gnulib.git#${GNULIB_REVISION} /gnulib
 
 WORKDIR /grub
@@ -89,10 +85,6 @@ RUN set -e; for p in ${GRUB_PLATFORM}; do \
 
 COPY embedded.cfg /
 
-# create the grub core image
-# grub-mkimage is currently broken with our binutils on riscv64 because:
-# ./grub-mkimage: error: relocation 0x13 is not implemented yet.
-# see also https://www.mail-archive.com/grub-devel@gnu.org/msg36136.html
 # hadolint ignore=SC2086
 RUN case "$(uname -m)" in \
   x86_64) \
@@ -102,9 +94,8 @@ RUN case "$(uname -m)" in \
   aarch64) \
     ./grub-mkimage -O arm64-efi -d /grub-lib/grub/arm64-efi -o /grub-lib/BOOTAA64.EFI -p /EFI/BOOT ${GRUB_MODULES_PORT} ${GRUB_MODULES} ;; \
   riscv64) \
-    grep -q 3.22 /etc/os-release || ./grub-mkimage -O riscv64-efi -d /grub-lib/grub/riscv64-efi -o /grub-lib/BOOTRISCV64.EFI -p /EFI/BOOT ${GRUB_MODULES_PORT} ${GRUB_MODULES} ;;\
+    ./grub-mkimage -O riscv64-efi -d /grub-lib/grub/riscv64-efi -o /grub-lib/BOOTRISCV64.EFI -p /EFI/BOOT ${GRUB_MODULES_PORT} ${GRUB_MODULES} ;;\
   esac
-
 
 FROM scratch
 ENTRYPOINT []
