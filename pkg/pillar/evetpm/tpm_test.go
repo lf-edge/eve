@@ -551,3 +551,109 @@ func TestComputePolicyPCRAuthDigest(t *testing.T) {
 		})
 	}
 }
+
+func TestSealUnsealWithParamEnc(t *testing.T) {
+	_, err := os.Stat(TpmDevicePath)
+	if err != nil {
+		t.Skip("TPM is not available, skipping the test.")
+	}
+
+	t.Run("Test Seal and Unseal with Parameter Encryption", func(t *testing.T) {
+		dataToSeal := []byte("secret")
+		if err := sealDiskKeyEncrypted(logger, dataToSeal, DefaultDiskKeySealingPCRs); err != nil {
+			t.Fatalf("sealDiskKeyEncrypted failed with err: %v", err)
+		}
+
+		unsealedData, err := unsealDiskKeyEncrypted(DefaultDiskKeySealingPCRs)
+		if err != nil {
+			t.Fatalf("unsealDiskKeyEncrypted failed with err: %v", err)
+		}
+		if !reflect.DeepEqual(dataToSeal, unsealedData) {
+			t.Fatalf("Seal/Unseal operation failed, want %v, but got %v", dataToSeal, unsealedData)
+		}
+	})
+
+	t.Run("Unseal fail after PCR extend", func(t *testing.T) {
+		dataToSeal := []byte("secret")
+		if err := sealDiskKeyEncrypted(logger, dataToSeal, DefaultDiskKeySealingPCRs); err != nil {
+			t.Fatalf("sealDiskKeyEncrypted failed with err: %v", err)
+		}
+
+		// Extend a PCR to invalidate the PCR policy
+		rw, err := tpm2.OpenTPM(TpmDevicePath)
+		if err != nil {
+			t.Fatalf("OpenTPM failed with err: %v", err)
+		}
+		pcrValue := bytes.Repeat([]byte{0xAB}, sha256.Size)
+		if err := tpm2.PCRExtend(rw, tpmutil.Handle(7), tpm2.AlgSHA256, pcrValue, ""); err != nil {
+			rw.Close()
+			t.Fatalf("Failed to extend PCR[7]: %v", err)
+		}
+		rw.Close()
+
+		_, err = unsealDiskKeyEncrypted(DefaultDiskKeySealingPCRs)
+		if err == nil {
+			t.Fatalf("Expected error from unsealDiskKeyEncrypted, got nil")
+		}
+	})
+}
+
+func TestSealUnsealLegacy(t *testing.T) {
+	_, err := os.Stat(TpmDevicePath)
+	if err != nil {
+		t.Skip("TPM is not available, skipping the test.")
+	}
+
+	dataToSeal := []byte("secret")
+	if err := sealDiskKeyLegacy(logger, dataToSeal, DefaultDiskKeySealingPCRs); err != nil {
+		t.Fatalf("Seal operation failed with err: %v", err)
+	}
+
+	unsealedData, err := unsealDiskKeyLegacy(DefaultDiskKeySealingPCRs)
+	if err != nil {
+		t.Fatalf("Unseal operation failed with err: %v", err)
+	}
+	if !reflect.DeepEqual(dataToSeal, unsealedData) {
+		t.Fatalf("Seal/Unseal operation failed, want %v, but got %v", dataToSeal, unsealedData)
+	}
+}
+
+func TestSealLegacyUnsealModern(t *testing.T) {
+	_, err := os.Stat(TpmDevicePath)
+	if err != nil {
+		t.Skip("TPM is not available, skipping the test.")
+	}
+
+	dataToSeal := []byte("secret")
+	if err := sealDiskKeyLegacy(logger, dataToSeal, DefaultDiskKeySealingPCRs); err != nil {
+		t.Fatalf("Legacy seal operation failed with err: %v", err)
+	}
+
+	unsealedData, err := unsealDiskKeyEncrypted(DefaultDiskKeySealingPCRs)
+	if err != nil {
+		t.Fatalf("Modern unseal operation failed with err: %v", err)
+	}
+	if !reflect.DeepEqual(dataToSeal, unsealedData) {
+		t.Fatalf("Legacy seal / modern unseal operation failed, want %v, but got %v", dataToSeal, unsealedData)
+	}
+}
+
+func TestSealModernUnsealLegacy(t *testing.T) {
+	_, err := os.Stat(TpmDevicePath)
+	if err != nil {
+		t.Skip("TPM is not available, skipping the test.")
+	}
+
+	dataToSeal := []byte("secret")
+	if err := sealDiskKeyEncrypted(logger, dataToSeal, DefaultDiskKeySealingPCRs); err != nil {
+		t.Fatalf("Modern seal operation failed with err: %v", err)
+	}
+
+	unsealedData, err := unsealDiskKeyLegacy(DefaultDiskKeySealingPCRs)
+	if err != nil {
+		t.Fatalf("Legacy unseal operation failed with err: %v", err)
+	}
+	if !reflect.DeepEqual(dataToSeal, unsealedData) {
+		t.Fatalf("Modern seal / legacy unseal operation failed, want %v, but got %v", dataToSeal, unsealedData)
+	}
+}
