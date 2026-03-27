@@ -88,27 +88,36 @@ func GetAppKubeName(displayName string, uuid uuid.UUID) string {
 	return appKubeName + "-" + uuid.String()[:KubeAppNameUUIDSuffixLen]
 }
 
-// GetVMINameFromVirtLauncher : get VMI name from the corresponding Kubevirt
-// launcher pod name for replicaset generated VMI.
-func GetVMINameFromVirtLauncher(podName string) (vmiName string, isVirtLauncher bool) {
+// GetVMINameFromVirtLauncher extracts VMI name and ReplicaSet name from a Kubevirt
+// launcher pod name.
+// Pod name format: virt-launcher-<vmi-name>-<5-char-pod-suffix>
+// VMI name format: <replicaset-name>-<5-char-random-suffix>
+// Returns:
+//   - vmiName: the actual VMI name (e.g., "ubuntu-cloudimg-vm-ff9d59r58j") for virtctl commands
+//   - rsName: the ReplicaSet name (e.g., "ubuntu-cloudimg-vm-ff9d5") for app identification
+//   - error: non-nil if podName is not a valid virt-launcher pod name
+func GetVMINameFromVirtLauncher(podName string) (vmiName string, rsName string, err error) {
 	if !strings.HasPrefix(podName, VMIPodNamePrefix) {
-		return "", false
+		return "", "", fmt.Errorf("not a virt-launcher pod: %s", podName)
 	}
-	vmiName = strings.TrimPrefix(podName, VMIPodNamePrefix)
-	lastSep := strings.LastIndex(vmiName, "-")
+	name := strings.TrimPrefix(podName, VMIPodNamePrefix)
+	lastSep := strings.LastIndex(name, "-")
 	if lastSep == -1 || lastSep < 5 {
-		return "", false
+		return "", "", fmt.Errorf("invalid virt-launcher pod name format: %s", podName)
 	}
 
-	// Check if the last part is 5 bytes long
-	if len(vmiName[lastSep+1:]) != 5 {
-		return "", false
+	// Check if the last part is 5 bytes long (pod suffix)
+	if len(name[lastSep+1:]) != 5 {
+		return "", "", fmt.Errorf("invalid pod suffix length in: %s", podName)
 	}
 
-	// Use the index minus 5 bytes to get the VMI name to remove added
-	// replicaset suffix
-	vmiName = vmiName[:lastSep-5]
-	return vmiName, true
+	// VMI name: remove only the pod suffix
+	vmiName = name[:lastSep]
+
+	// ReplicaSet name: remove both the pod suffix and the VMI random suffix (5 chars + dash)
+	rsName = name[:lastSep-5]
+
+	return vmiName, rsName, nil
 }
 
 // GetReplicaPodName : get the app name from the pod name for replica pods.
