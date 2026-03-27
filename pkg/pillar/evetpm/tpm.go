@@ -1073,8 +1073,9 @@ func FetchSealedVaultKey(log *base.LogObject) ([]byte, error) {
 	return key, err
 }
 
-// SealDiskKey seals key into TPM2.0, with provided PCRs
-func SealDiskKey(log *base.LogObject, key []byte, pcrSel tpm2.PCRSelection) error {
+// sealDiskKeyLegacy seals key into TPM using the legacy go-tpm API without
+// parameter encryption. Used as fallback when the TPM does not support AES-128-CFB.
+func sealDiskKeyLegacy(log *base.LogObject, key []byte, pcrSel tpm2.PCRSelection) error {
 	rw, err := tpm2.OpenTPM(TpmDevicePath)
 	if err != nil {
 		return err
@@ -1150,36 +1151,6 @@ func SealDiskKey(log *base.LogObject, key []byte, pcrSel tpm2.PCRSelection) erro
 		return fmt.Errorf("NVWrite %v failed: %w", TpmSealedDiskPubHdl, err)
 	}
 
-	// save a snapshot of current PCR values
-	if err := saveDiskKeySealingPCRs(); err != nil {
-		log.Warnf("saving snapshot of sealing PCRs failed: %s", err)
-	}
-
-	// In order to not lose the ability to diff and diagnose the issue,
-	// first backup the previous pair of logs (if any). This is needed because
-	// once the failing devices get connected to the controller to fetch the
-	// backup key, we end up here again and it'll override the MeasurementLogSealSuccess
-	// file content with current tpm measurement logs (which is same as the
-	// content of MeasurementLogSealFail).
-	if err := backupCopiedMeasurementLogs(); err != nil {
-		log.Warnf("copying previous snapshot of TPM event log failed: %s", err)
-	}
-
-	// fresh start, remove old copies of measurement logs.
-	removeCopiedMeasurementLogs()
-
-	// save a copy of the current measurement log, this is also called
-	// if unseal fails to have copy when we fail to unlock the vault.
-	if err := copyMeasurementLog(measurementLogSealSuccess); err != nil {
-		log.Warnf("copying current TPM measurement log failed: %s", err)
-	}
-
-	// save a copy of the current boot variables, this is also called
-	// if unseal fails to have copy when we fail to unlock the vault.
-	if err := saveBootVariables(bootVariablesSealSuccess); err != nil {
-		log.Warnf("copying current boot variables failed: %s", err)
-	}
-
 	return nil
 }
 
@@ -1200,8 +1171,9 @@ func isLegacyKeyPresent() bool {
 	return err == nil
 }
 
-// UnsealDiskKey unseals key from TPM2.0
-func UnsealDiskKey(pcrSel tpm2.PCRSelection) ([]byte, error) {
+// unsealDiskKeyLegacy unseals key from TPM using the legacy go-tpm API without
+// parameter encryption. Used as fallback when the TPM does not support AES-128-CFB.
+func unsealDiskKeyLegacy(pcrSel tpm2.PCRSelection) ([]byte, error) {
 	rw, err := tpm2.OpenTPM(TpmDevicePath)
 	if err != nil {
 		return nil, err
@@ -1235,6 +1207,75 @@ func UnsealDiskKey(pcrSel tpm2.PCRSelection) ([]byte, error) {
 
 	key, err := tpm2.UnsealWithSession(rw, session, sealedObjHandle, EmptyPassword)
 	if err != nil {
+		return nil, fmt.Errorf("UnsealWithSession failed: %w", err)
+	}
+	return key, nil
+}
+
+// SealDiskKey seals key into TPM, with provided PCRs. If the TPM supports
+// AES-128-CFB, it uses salted HMAC sessions with parameter encryption to
+// protect the key on the CPU-TPM bus. Otherwise, it falls back to the
+// legacy unencrypted seal path.
+func SealDiskKey(log *base.LogObject, key []byte, pcrSel tpm2.PCRSelection) error {
+	if tpmSupportsAES128CFB() {
+		log.Noticef("TPM supports AES-128-CFB, sealing with parameter encryption")
+		if err := sealDiskKeyEncrypted(log, key, pcrSel); err != nil {
+			return err
+		}
+	} else {
+		log.Warnf("TPM does not support AES-128-CFB, sealing without parameter encryption")
+		if err := sealDiskKeyLegacy(log, key, pcrSel); err != nil {
+			return err
+		}
+	}
+
+	// save a snapshot of current PCR values
+	if err := saveDiskKeySealingPCRs(); err != nil {
+		log.Warnf("saving snapshot of sealing PCRs failed: %s", err)
+	}
+
+	// In order to not lose the ability to diff and diagnose the issue,
+	// first backup the previous pair of logs (if any). This is needed because
+	// once the failing devices get connected to the controller to fetch the
+	// backup key, we end up here again and it'll override the MeasurementLogSealSuccess
+	// file content with current tpm measurement logs (which is same as the
+	// content of MeasurementLogSealFail).
+	if err := backupCopiedMeasurementLogs(); err != nil {
+		log.Warnf("copying previous snapshot of TPM event log failed: %s", err)
+	}
+
+	// fresh start, remove old copies of measurement logs.
+	removeCopiedMeasurementLogs()
+
+	// save a copy of the current measurement log, this is also called
+	// if unseal fails to have copy when we fail to unlock the vault.
+	if err := copyMeasurementLog(measurementLogSealSuccess); err != nil {
+		log.Warnf("copying current TPM measurement log failed: %s", err)
+	}
+
+	// save a copy of the current boot variables, this is also called
+	// if unseal fails to have copy when we fail to unlock the vault.
+	if err := saveBootVariables(bootVariablesSealSuccess); err != nil {
+		log.Warnf("copying current boot variables failed: %s", err)
+	}
+
+	return nil
+}
+
+// UnsealDiskKey unseals key from TPM2.0. If the TPM supports AES-128-CFB,
+// it uses salted HMAC sessions with parameter encryption to protect the
+// key on the CPU-TPM bus. Otherwise, it falls back to the legacy
+// unencrypted unseal path.
+func UnsealDiskKey(pcrSel tpm2.PCRSelection) ([]byte, error) {
+	var key []byte
+	var err error
+	if tpmSupportsAES128CFB() {
+		key, err = unsealDiskKeyEncrypted(pcrSel)
+	} else {
+		key, err = unsealDiskKeyLegacy(pcrSel)
+	}
+
+	if err != nil {
 		// We get here mostly because of RCPolicyFail error, so first try to save
 		// a copy of TPM measurement log, it comes handy for diagnosing the issue.
 		evtLogStat := "copied (failed unseal) TPM measurement log"
@@ -1254,11 +1295,12 @@ func UnsealDiskKey(pcrSel tpm2.PCRSelection) ([]byte, error) {
 		// try to find out the mismatching PCR index
 		mismatch, errPcrMiss := FindMismatchingPCRs()
 		if errPcrMiss != nil {
-			return nil, fmt.Errorf("UnsealWithSession failed: %w, %s, finding mismatching PCR failed: %v", err, evtLogStat, errPcrMiss)
+			return nil, fmt.Errorf("unseal failed: %w, %s, finding mismatching PCR failed: %v", err, evtLogStat, errPcrMiss)
 		}
 
-		return nil, fmt.Errorf("UnsealWithSession failed: %w, %s, possibly mismatching PCR indexes: %v", err, evtLogStat, mismatch)
+		return nil, fmt.Errorf("unseal failed: %w, %s, possibly mismatching PCR indexes: %v", err, evtLogStat, mismatch)
 	}
+
 	return key, nil
 }
 
