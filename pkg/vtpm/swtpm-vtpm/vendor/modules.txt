@@ -69,7 +69,7 @@ github.com/lf-edge/eve-api/go/profile
 # github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20240315102754-0f6d1f182e0d
 ## explicit; go 1.20
 github.com/lf-edge/eve/pkg/kube/cnirpc
-# github.com/lf-edge/eve/pkg/pillar v0.0.0-20260325052340-21987cccd573
+# github.com/lf-edge/eve/pkg/pillar v0.0.0-20260327103618-7dc10a52930b
 ## explicit; go 1.24.0
 github.com/lf-edge/eve/pkg/pillar/base
 github.com/lf-edge/eve/pkg/pillar/evetpm

@@ -3,7 +3,7 @@ module github.com/lf-edge/eve/pkg/vtpm
 go 1.24.0
 
 require (
-	github.com/lf-edge/eve/pkg/pillar v0.0.0-20260325052340-21987cccd573
+	github.com/lf-edge/eve/pkg/pillar v0.0.0-20260327103618-7dc10a52930b
 	github.com/satori/go.uuid v1.2.1-0.20180404165556-75cca531ea76
 	github.com/sirupsen/logrus v1.9.3
 )
