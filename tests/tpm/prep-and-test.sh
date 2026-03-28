@@ -1,9 +1,8 @@
 
 #!/bin/bash
-#
 # Copyright (c) 2023 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
-
+set -e
 
 CWD=$(pwd)
 TPM_SRV_PORT=1337
@@ -18,17 +17,46 @@ EVE_TPM_CTRL="$EVE_TPM_STATE/ctrl.sock"
 # it here, change it there too.
 EVE_TPM_SRV="$EVE_TPM_STATE/srv.sock"
 
-echo "[+] Installing swtpm and tpm2-tools ..."
-sudo apt-get -qq update -y > /dev/null
-sudo apt-get install curl swtpm tpm2-tools -y -qq > /dev/null
+echo "[+] Installing build dependencies and tpm2-tools ..."
+export DEBIAN_FRONTEND=noninteractive
+sudo -E apt-get -qq update -y > /dev/null
+sudo -E apt-get install -y -qq -o Dpkg::Options::="--force-confdef" \
+    curl git tpm2-tools automake autoconf autoconf-archive libtool \
+    build-essential libssl-dev libgnutls28-dev gnutls-bin libtasn1-dev \
+    libjson-glib-dev libjson-c-dev libseccomp-dev expect gawk net-tools \
+    socat libtirpc-dev > /dev/null
 
-echo "[+] Installing zfs (pillar dependency)..."
+# Purge distro ZFS and libtpms so their libraries can't shadow the versions we
+# build from source below.
+sudo -E apt-get remove -y -qq --purge 'libtpms*' 'libzfs*' 'libnvpair*' \
+    'libzpool*' 'libzfslinux*' 'zfs*' > /dev/null 2>&1 || true
+
+# Build libtpms, same version as pkg/vtpm/Dockerfile
+echo "[+] Building libtpms v0.10.0 from source ..."
+LIBTPMS_BUILD=$(mktemp -d)
+git clone --branch v0.10.0 --depth 1 https://github.com/stefanberger/libtpms.git "$LIBTPMS_BUILD"
+cd "$LIBTPMS_BUILD"
+./autogen.sh --prefix=/usr --with-tpm2 > /dev/null
+make -j "$(getconf _NPROCESSORS_ONLN)" > /dev/null
+sudo make install > /dev/null
+sudo ldconfig
+
+# Build swtpm from the same commit as pkg/vtpm/Dockerfile 
+echo "[+] Building swtpm from source (commit 732bbd6) ..."
+SWTPM_BUILD=$(mktemp -d)
+git clone https://github.com/stefanberger/swtpm.git "$SWTPM_BUILD"
+cd "$SWTPM_BUILD"
+git checkout 732bbd6ad3a52b9552b5a1620e03a9f6449a1aab
+./autogen.sh --prefix=/usr > /dev/null
+make -j "$(getconf _NPROCESSORS_ONLN)" > /dev/null
+sudo make install > /dev/null
+
+echo "[+] Building zfs (pillar dependency)..."
+ZFS_BUILD=$(mktemp -d)
 ZFS_URL="https://github.com/openzfs/zfs/archive/refs/tags/zfs-2.3.3.tar.gz"
-mkdir -p /tmp/zfs
-cd /tmp/zfs
-curl -s -LO $ZFS_URL > /dev/null
-tar -xf zfs-2.3.3.tar.gz --strip-components=1 > /dev/null
-./autogen.sh > /dev/null 2>&1
+curl -sL "$ZFS_URL" | tar -xz --strip-components=1 -C "$ZFS_BUILD"
+cd "$ZFS_BUILD"
+./autogen.sh > /dev/null
 ./configure \
   --prefix=/usr \
   --with-tirpc \
@@ -39,10 +67,11 @@ tar -xf zfs-2.3.3.tar.gz --strip-components=1 > /dev/null
   --with-config=user \
   --with-udevdir=/lib/udev \
   --disable-systemd \
-  --disable-static > /dev/null 2>&1
-./scripts/make_gitrev.sh > /dev/null 2>&1
-make -j "$(getconf _NPROCESSORS_ONLN)" > /dev/null 2>&1
-sudo make install-strip > /dev/null 2>&1
+  --disable-static > /dev/null
+./scripts/make_gitrev.sh > /dev/null
+make -j "$(getconf _NPROCESSORS_ONLN)" > /dev/null
+sudo make install-strip > /dev/null
+sudo ldconfig
 
 echo "[+] preparing the environment ..."
 rm -rf $EVE_TPM_STATE
@@ -53,6 +82,10 @@ flushtpm() {
   tpm2 flushcontext -l
   tpm2 flushcontext -s
 }
+
+echo "[+] swtpm version and capabilities:"
+swtpm --version
+swtpm socket --tpm2 --print-capabilities
 
 swtpm socket --tpm2 \
     --server port="$TPM_SRV_PORT" \
@@ -71,11 +104,25 @@ tpm2 clear
 
 # The ek, srk and aik are created here based on what we do in createOtherKeys
 # in pkg/pillar/cmd/tpmmgr/tpmmgr.go.
-# create Endorsement Key
-tpm2 createek -c ek.ctx
+#
+# create Endorsement Key, use -L to set the standard EK auth policy,
+# so we end up with the same EK as EVE creates.
+printf '\x83\x71\x97\x67\x44\x84\xb3\xf8\x1a\x90\xcc\x8d\x46\xa5\xd7\x24\xfd\x52\xd7\x6e\x06\x52\x0b\x64\xf2\xa1\xda\x1b\x33\x14\x69\xaa' > "$EVE_TPM_STATE/ek_policy.bin"
+tpm2 createprimary -C e -G rsa2048:aes128cfb -g sha256 -c ek.ctx \
+    -a 'fixedtpm|fixedparent|sensitivedataorigin|userwithauth|restricted|decrypt' \
+    -L "$EVE_TPM_STATE/ek_policy.bin"
+flushtpm
 
-# this setup seems very fragile, and quickly errors out with
-# "out of memory for object contexts", so flush everything to be safe.
+# create a self-signed EK cert and store it in the standard EK cert NV index (0x01C00002)
+EK_CERT_HANDLE=0x01C00002
+EK_CERT_FILE="$EVE_TPM_STATE/ek_test.cert.der"
+openssl req -x509 -newkey rsa:2048 -keyout "$EVE_TPM_STATE/ek_test.key" \
+    -out "$EVE_TPM_STATE/ek_test.cert.pem" \
+    -days 365 -nodes -subj "/CN=Test EK Cert/" 2>/dev/null
+openssl x509 -in "$EVE_TPM_STATE/ek_test.cert.pem" -outform DER -out "$EK_CERT_FILE"
+EK_CERT_SIZE=$(wc -c < "$EK_CERT_FILE")
+tpm2 nvdefine $EK_CERT_HANDLE -C o -s "$EK_CERT_SIZE" -a "authread|ownerwrite"
+tpm2 nvwrite $EK_CERT_HANDLE -C o -i "$EK_CERT_FILE"
 flushtpm
 
 # create srk
@@ -105,7 +152,7 @@ rm ek.ctx srk.ctx aik.ctx ecdh.ctx
 # kill swtpm, we are going to start it again with unix sockets
 kill $PID
 
-# start swtpm again, but this time with unix sockets for tests to use.
+# start swtpm again, but this time with unix sockets for tests to use,
 # in case we need to debug this, cat the log file.
 swtpm socket --tpm2 \
     --flags startup-clear \
@@ -127,16 +174,30 @@ openssl req -new -x509 -key "$EVE_TPM_STATE/ec_key_leading_zero.pem" \
 # give swtpm time to start and init the TPM
 sleep 1
 
-# run tests
+# disable set -e so all tests run regardless of individual failures
+set +e
+
+# add any test that requires the TPM here ...
 echo "[+] Running tests ..."
 echo "========================================================"
 
-# we dont have many test that require the TPM, so hardcode test paths here.
-cd "$CWD/pkg/pillar/evetpm" && go test -v -coverprofile="evetpm.coverage.txt" -covermode=atomic
-cd "$CWD/pkg/pillar/cmd/msrv" && go test -v -test.run ^TestTpmActivateCred$ -coverprofile="actcred.coverage.txt" -covermode=atomic
-cd "$CWD/pkg/pillar/cmd/vcomlink" && go test -v -coverprofile="vcomlink.coverage.txt" -covermode=atomic
-cd "$CWD/pkg/vtpm/swtpm-vtpm" && go test -v -test.run ^TestLaunchWithRealTPMEncryption$ ./src/ -coverprofile="swtpm-vtpm.coverage.txt" -covermode=atomic
+FAILED=0
+run_test() {
+    "$@"
+    local rc=$?
+    if [ $rc -ne 0 ]; then
+        echo "[!] FAILED: $*"
+        FAILED=1
+    fi
+}
+
+run_test sh -c "cd \"$CWD/pkg/pillar/evetpm\" && go test -v -coverprofile=\"evetpm.coverage.txt\" -covermode=atomic"
+run_test sh -c "cd \"$CWD/pkg/pillar/cmd/msrv\" && go test -v -test.run ^TestTpmActivateCred$ -coverprofile=\"actcred.coverage.txt\" -covermode=atomic"
+run_test sh -c "cd \"$CWD/pkg/pillar/cmd/vcomlink\" && go test -v -coverprofile=\"vcomlink.coverage.txt\" -covermode=atomic"
+run_test sh -c "cd \"$CWD/pkg/vtpm/swtpm-vtpm\" && go test -v -test.run ^TestLaunchWithRealTPMEncryption$ ./src/ -coverprofile=\"swtpm-vtpm.coverage.txt\" -covermode=atomic"
 
 # we are done, kill the swtpm
 kill $PID
 rm -rf $EVE_TPM_STATE
+
+exit $FAILED
