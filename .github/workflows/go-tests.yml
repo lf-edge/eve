@@ -55,12 +55,12 @@ jobs:
         if: ${{ github.event.repository.full_name == 'lf-edge/eve' }}
         run: | # Runners must provide default credentials
           docker login
-      - name: Test
-        run: |
-          make test
       - name: Test (TPM Required)
         run: |
           bash tests/tpm/prep-and-test.sh
+      - name: Test
+        run: |
+          make test
       - name: Report test results as Annotations
         if: ${{ always() }}
         uses: guyarb/golang-test-annoations@96fc379b171c49932041d6c789e73331a7bdeec1  # v0.9.0
