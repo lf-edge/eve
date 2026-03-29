@@ -24,7 +24,8 @@ jobs:
   test:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         with:
           ref: ${{ github.event.pull_request.head.sha }}
       - name: Check Docker Hashes Consistency
@@ -32,7 +33,7 @@ jobs:
           make check-docker-hashes-consistency
       - name: Store raw test results
         if: ${{ always() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
         with:
           name: 'check-docker-hashes-consistency-report'
           path: ${{ github.workspace }}/dist
