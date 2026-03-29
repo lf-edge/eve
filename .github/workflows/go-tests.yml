@@ -26,7 +26,20 @@ jobs:
   test:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - name: Starting Report
+        run: |
+          echo Git Ref: ${GH_REF}
+          echo GitHub Event: ${{ github.event_name }}
+          echo Disk usage
+          df -h
+          echo Memory
+          free -m
+      - name: Clear repository
+        run: |
+          sudo rm -fr "$GITHUB_WORKSPACE" && mkdir "$GITHUB_WORKSPACE"
+          rm -fr ~/.linuxkit
+          docker system prune --all --force --volumes
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
@@ -43,9 +56,16 @@ jobs:
           test-results: dist/amd64/results.json
       - name: Store raw test results
         if: ${{ always() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
         with:
           name: 'test-report'
           path: ${{ github.workspace }}/dist
       - name: Get code coverage
-        uses: codecov/codecov-action@v3
+        uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2  # v6.0.0
+      - name: Clean
+        if: ${{ always() }}
+        run: |
+          make clean || :
+          docker system prune -f -a || :
+          docker rm -f $(docker ps -aq) && docker volume rm -f $(docker volume ls -q) || :
+          rm -rf ~/.linuxkit || :

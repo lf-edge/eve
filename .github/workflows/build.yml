@@ -54,7 +54,7 @@ jobs:
           sudo rm -fr "$GITHUB_WORKSPACE" && mkdir "$GITHUB_WORKSPACE"
           rm -fr ~/.linuxkit
           docker system prune --all --force --volumes
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         with:
           repository: ${{ github.event.pull_request.head.repo.full_name }}
           ref: ${{ github.event.pull_request.head.ref }}
@@ -78,7 +78,7 @@ jobs:
       # If we rerun a job without changing the sha, we should not have to rebuild anything.
       # Since the cache is keyed on the head sha, it will retrieve it.
       - name: update linuxkit cache if available
-        uses: actions/cache@v4
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7  # v5.0.4
         with:
           path: ~/.linuxkit/cache
           key: linuxkit-${{ matrix.arch }}-${{ github.event.pull_request.head.sha }}-${{ matrix.platform }}-${{ matrix.hv }}
@@ -124,7 +124,7 @@ jobs:
     runs-on: ${{ matrix.arch == 'arm64' && 'zededa-ubuntu-2204-arm64' || 'zededa-ubuntu-2204' }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         with:
           repository: ${{ github.event.pull_request.head.repo.full_name }}
           ref: ${{ github.event.pull_request.head.ref }}
@@ -140,7 +140,7 @@ jobs:
       # So: restore amd64 cache -> load tools -> clear -> restore riscv64 cache.
       - name: load amd64 tool images for riscv64 cross-build
         if: ${{ matrix.arch == 'riscv64' }}
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@668228422ae6a00e4ad889ee87cd7109ec5666a7  # v5.0.4
         with:
           path: ~/.linuxkit/cache
           key: linuxkit-amd64-${{ github.event.pull_request.head.sha }}-generic-default
@@ -154,7 +154,7 @@ jobs:
       # this cache also contains the tool images we need.
       # The 'rt' platform has no platform-specific packages, so it uses the generic cache.
       - name: update linuxkit cache for target arch
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@668228422ae6a00e4ad889ee87cd7109ec5666a7  # v5.0.4
         with:
           path: ~/.linuxkit/cache
           key: linuxkit-${{ matrix.arch }}-${{ github.event.pull_request.head.sha }}-${{ matrix.platform == 'rt' && 'generic' || matrix.platform }}-${{ matrix.hv == 'k' && 'k' || 'default' }}
@@ -188,7 +188,7 @@ jobs:
         run: |
           make cache-export ZARCH=${{ matrix.arch }} IMAGE=lfedge/eve:$VERSION-${{ matrix.hv }} OUTFILE=eve-${{ matrix.hv }}-${{ matrix.arch }}-${{ matrix.platform }}.tar IMAGE_NAME=$TAG-${{ matrix.hv }}-${{ matrix.arch }}
       - name: Upload EVE ${{ matrix.hv }}-${{ matrix.arch }}-${{ matrix.platform }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
         with:
           name: eve-${{ matrix.hv }}-${{ matrix.arch }}-${{ matrix.platform }}
           path: eve-${{ matrix.hv }}-${{ matrix.arch }}-${{ matrix.platform }}.tar
