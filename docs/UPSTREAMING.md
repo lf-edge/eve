@@ -37,74 +37,139 @@ More relevant and useful is an analysis of the usage of `config` in a production
 
 ### grub
 
-[grub](pkg/grub) applies a series of necessary patches to [upstream grub](https://www.gnu.org/software/grub/). These patches are in [pkg/grub/patches](../pkg/grub/patches). The primary way to eliminate the need for custom grub is to upstream these patches into grub itself. The largest of them - the [coreos patches](../pkg/grub/patches/0000-core-os-merge.patch) is in the process of being upstreamed, courtesy of Matthew Garrett, who did the original work at CoreOS and is now at Google. The rest simply require effort to interact with the main grub team and get the patches accepted.
+[grub](pkg/grub) applies a series of necessary patches to [upstream GRUB 2.12](https://www.gnu.org/software/grub/). The patches live in [pkg/grub/patches-2.12](../pkg/grub/patches-2.12). The primary way to eliminate the need for a custom GRUB is to upstream these patches. Several patches that existed in previous versions of EVE (based on GRUB 2.06) have already been merged upstream and were dropped during the 2.12 migration.
 
-The customizations we apply via patches, and their purpose (i.e. we why need them for EVE), are as follows:
+**Upstream contribution note (as of March 2026):** GRUB moved its canonical repository from GNU Savannah to [GitLab at freedesktop.org](https://gitlab.freedesktop.org/gnu-grub/grub/) on March 13, 2026. Patches are no longer submitted via the old `grub-devel@gnu.org` mailing list; contributions are now made as GitLab Merge Requests. The replacement mailing list is `grub-devel@lists.freedesktop.org`. Any "Task: upstream" items below should target the freedesktop GitLab instance.
 
-#### 0000-core-os-merge.patch
+EVE's GRUB patches originated from two sources: the [CoreOS fork of GRUB](https://github.com/coreos/grub) (based on GRUB 2.02, last updated 2019) and EVE-specific additions. All patches have been traced back to their original authors and attributed accordingly; the CoreOS-originated commits map to specific upstream hashes in that fork (useful reference for future migrations):
 
-Merge in all of the changes that the CoreOS (RIP, CoreOS Inc) team included in their [fork of grub](https://github.com/coreos/grub). These include the following, and why we need them.
+* [`f69a9e0`](https://github.com/coreos/grub/commit/f69a9e0fdcf63ac33906e2753e14152bab2fcd05) — _gpt: start new GPT module_ (Michael Marineau)
+* [`508b02fc`](https://github.com/coreos/grub/commit/508b02fc8a1fe58413ec8938ed1a7b149b5855fe) — _gpt: new gptprio.next command for selecting priority based partitions_ (Michael Marineau)
+* [`67475f53`](https://github.com/coreos/grub/commit/67475f53e0ac4a844f793296ba2e4af707d5b20e) — _gpt: add search by partition label and uuid commands_ (Michael Marineau)
+* [`1545295a`](https://github.com/coreos/grub/commit/1545295ad49d2aff2b75c6c0e7db58214351768e) — _gpt: add search by disk uuid command_ (Alex Crawford)
 
-Generally, most of the support we needed was for tpm and a few other capabilities. We need to do the following:
+#### Dropped in 2.12 migration (now upstream)
 
-1. Create a state diagram for our boot process.
-2. Determine the logic used to transition between states.
-3. Determine the tools that implement the given logic.
-4. For state transitions that depend on grub, determine if grub mainstream supports it.
-5. Isolate just those elements that: are required for state transitions; are not implemented in mainstream grub; cannot be worked around in any other mainstream way.
-6. Apply just those patches.
-7. Upstream those few patches.
+The following patches from the GRUB 2.06 era were confirmed upstream in GRUB 2.12 and removed:
 
-For a reference boot state diagram from Android, see [this one](https://source.android.com/security/verifiedboot/boot-flow).
+* `0001-TPM-build-issue-fixing` — struct names corrected upstream
+* `0002-video-Allow-pure-text-mode` — superseded by `commands/efi/efitextmode.c`
+* `0004-Disabling-linuxefi` — `linuxefi` is proper in 2.12's unified `loader/efi/linux.c`
+* `0005-rc-may-be-used-uninitialized` — fixed upstream
+* `0009-fat-allow-out-of-range-timestamps` — merged upstream
+* `0014-loader-linux-newc-NULL-termination` — merged upstream
+* `riscv64/0002-riscv-binutils-2.38` — commit `049efdd72` upstream in 2.12
+* `0003-allow-probe-partuuid` — `probe --part-uuid` has been in upstream GRUB since before 2.12, handles both GPT and MBR; no patch needed and `rootfs.cfg` works unchanged with the upstream command
 
-#### 0001-TPM-build-issue-fixing.patch
+#### Current patches (patches-2.12/)
 
-Apparently, there is build issue which CoreOS grub has when building the tpm support; this fixes it in both `tpm.h` and `tpm.c`. The patch was submitted via staff at ARM in August 2017, so it is unclear if this is an issue _just_ on arm architectures, or a general problem. Additionally, even though tpm support was added (at least for efi booting) in mainstream grub as of late December 2018 into early 2019, `tpm.c` does not exist in the given location, and may be elsewhere. This entire patch may or may not be necessary.
+##### 0001 — Making it possible to export variables from inner contexts of GRUB
 
-More importantly, the purpose of the tpm patches to grub in general are for static root of trust measurement (SRTM), or measured boot. We currently do not use measured boot, and as such, this patch may be unnecessary.
+Author: Roman Shaposhnik
 
-**Task:** See if the issue exists in mainstream grub.
+Exports current GRUB setting vars. Required for `grub.cfg` where we [set global variables from submenus](../pkg/grub/rootfs.cfg). Allows a single boot menu to set options rather than duplicating entries for every combination.
 
-#### 0002-video-Allow-to-set-pure-text-mode-in-case-of-EFI.patch
+**Task:** Present use case to GRUB upstream and get the patch accepted.
 
-Mainstream grub's loader for `i386/linux`, when EFI is defined via `define GRUB_MACHINE_EFI`, does not accept pure text mode. This leads to the common, "no suitable video mode found" error. This patch fixes it by defining `define ACCEPTS_PURE_TEXT 1` in EFI.
+##### 0002 — Adding a capability of a GRUB cat command to deposit to a var, not stdout
 
-It is unclear _why_ mainstream grub does not accept pure text mode, and should be investigated.
+Author: Roman Shaposhnik
 
-**Task:** Determine why mainstream grub does not accept pure text and offer patch upstream.
+Extends the `cat` command to write file contents into a GRUB variable instead of printing to stdout. Used in `grub.cfg` to read configuration values from files on the CONFIG partition.
 
-#### 0003-allow-probe-partuuid.patch
+**Task:** Upstream as an extension to the `cat` command.
 
-Mainstream grub's does not enable searching for partitions via the partition's UUID. It does for filesystem elements, including its label and UUID, but not the partition's. This adds support for searching via partition UUID.
+##### 0003 — set cmddevice
 
-**Task:** Upstream support for probing via partition UUID.
+Author: Petr Fedchenkov
 
-#### 0004-Disabling-linuxefi-after-the-merge.patch
+Adds a `cmddevice` command that sets the device from which GRUB commands are executed. Required for EVE's two-stage GRUB boot where the second stage must locate its configuration on the correct partition.
 
-This disables and removes the `linuxefi` command that the coreos grub patch added. The original purpose of the `linuxefi` option, added [here](https://github.com/coreos/grub/pull/4) appears to be to handle shims for secure boot.
+##### 0004 — Put removable hard drives detected by UEFI at the end of the drive list
 
-This was removed because of issues with building it. If we are sticking with CoreOS's fork - which we should not, as it largely is abandonware - then we should make this work. Else, it is irrelevant.
+Author: Mikhail Malyshev
 
-**Task:** Get linuxefi to work, or remove it from CoreOS patch 0000.
+Moves UEFI-detected removable drives to the end of GRUB's device enumeration. Prevents removable media (USB drives, etc.) from being incorrectly selected as the boot device ahead of fixed disks.
 
-#### 0005-rc-may-be-used-uninitialized.patch
+**Task:** Upstream to GRUB — generally useful behavior for any system with removable media.
 
-In the function `grub_install_remove_efi_entries_by_distributor`, sets the default of `int rc = 0`, so it never is accessed uninitialized.
+##### 0005 — gpt: start new GPT module
 
-**Note:** this has been fixed in mainstream grub as of master on the date of this writing, see [grub-core/osdep/unix/platform.c#L88](http://git.savannah.gnu.org/cgit/grub.git/tree/grub-core/osdep/unix/platform.c#n88). If we update to a more recent commit, we can remove this patch, assuming, of course, that a previous patch does not break it, likely the coreos one.
+Author: Michael Marineau (CoreOS) — [coreos/grub@f69a9e0](https://github.com/coreos/grub/commit/f69a9e0fdcf63ac33906e2753e14152bab2fcd05)
 
-#### 0006-export-vars.patch
+Strict GPT parsing library that exports raw GPT data (headers, partition entries) instead of the generic `grub_partition` structure. Foundation for gptprio and the GPT search commands.
 
-Exports current grub setting vars. This is required for our use in grub.cfg where we [set global variable from submenus](../pkg/grub/rootfs.cfg).
+**Task:** This is fully upstream-ready; submit to GRUB upstream.
 
-Traditionally, grub would have menu options, each of which would launch a boot option with variables set. However, if there is a moderately large number of variables and a moderately large number of boot options, we end up with an MxN problem with a very large number of menu entries.
+##### 0006 — gpt: new gptprio.next command for selecting priority based partitions
 
-We attempt to solve this by making the grub variables settable from within the menu. This leaves one menu to set each option, and one menu to boot after options are set.
+Author: Michael Marineau (CoreOS) — [coreos/grub@508b02fc](https://github.com/coreos/grub/commit/508b02fc8a1fe58413ec8938ed1a7b149b5855fe)
 
-For upstreaming, we should:
+Adds the `gptprio.next` command that selects the highest-priority active GPT partition. This is the core of EVE's A/B partition boot scheme — GRUB uses it to pick IMGA or IMGB based on the `priority` and `successful` GPT attribute bits.
 
-1. See if there is an easier or more canonical way to do the same thing without a custom patch. If so, use it.
-2. If not, present the use case to grub upstream and get the patch upstreamed.
+**Task:** Submit to GRUB upstream — this is the key enabler of A/B boot and would benefit any distro using GPT-based dual-partition updates.
+
+##### 0007 — gpt: add search by partition label and uuid commands
+
+Author: Michael Marineau (CoreOS) — [coreos/grub@67475f53](https://github.com/coreos/grub/commit/67475f53e0ac4a844f793296ba2e4af707d5b20e)
+
+Adds `search.part_label` and `search.part_uuid` commands that search devices by GPT partition label and partition UUID respectively (distinct from filesystem label/UUID). Used in `grub.cfg` to locate EVE partitions by their GPT-assigned identifiers.
+
+**Task:** Submit to GRUB upstream alongside the gpt module.
+
+##### 0008 — gpt: add search by disk uuid command
+
+Author: Michael Marineau (CoreOS), co-developed by Alex Crawford (CoreOS) — [coreos/grub@1545295a](https://github.com/coreos/grub/commit/1545295ad49d2aff2b75c6c0e7db58214351768e)
+
+Adds `search.disk_uuid` command that searches devices by GPT disk UUID. Completes the GPT search trilogy alongside 0007.
+
+**Task:** Submit to GRUB upstream alongside 0007.
+
+##### 0009 — Implement watchdog style menu timeout
+
+Author: Mikhail Malyshev
+
+Resets the boot menu timeout to its initial value on any keypress, rather than stopping the countdown. Prevents a spurious keypress during unattended boot from hanging the device at the GRUB menu indefinitely.
+
+**Task:** Upstream to GRUB — useful default behavior for any headless or appliance system.
+
+##### 0010 — commands: Add measurefs command
+
+Author: Mikhail Malyshev
+
+Adds a `measurefs` command that performs TPM PCR measurements of filesystem contents during boot. Used for static root of trust measurement (SRTM) / measured boot in EVE's TPM-enabled boot flow.
+
+**Task:** Submit to GRUB upstream — TPM measurement of filesystems is broadly useful.
+
+##### 0011 — measurefs: skip measurement when no TPM is present
+
+Author: Petr Fedchenkov
+
+Makes `measurefs` a no-op when no TPM device is found (using `grub_tpm_present()`), rather than failing. Required so the same `grub.cfg` works on both TPM-equipped and non-TPM devices.
+
+##### 0012 — Add dt-fixup EFI protocol
+
+Author: Aleksandrov Dmitriy
+
+Implements support for the `EFI_DT_FIXUP_PROTOCOL`, which allows EFI firmware to apply device-tree fixups before the OS is loaded. Required on arm64 and riscv64 platforms where firmware may need to patch the DTB.
+
+**Task:** Submit to GRUB upstream — relevant for any arm64/riscv64 EFI platform.
+
+##### 0013 — efi: Add getenv command to read EFI variables
+
+Author: Mikhail Malyshev
+
+Adds a `getenv` command that reads an EFI NVRAM variable into a GRUB environment variable. Used in `grub.cfg` to retrieve boot-time configuration stored by the OS or by EVE's update logic in EFI variables.
+
+**Task:** Submit to GRUB upstream — reading EFI variables from GRUB scripts is broadly useful.
+
+##### 0014 — tpm: include EFI status code in "unknown TPM error" message
+
+Author: Mikhail Malyshev
+
+Includes the raw EFI status code in the GRUB error message when a TPM operation returns an unrecognized status. Makes TPM boot failures diagnosable without a debugger.
+
+**Task:** Submit to GRUB upstream — strictly a diagnostic improvement with no functional change.
 
 ### devices-trees
 
@@ -131,7 +196,7 @@ Further, the boot process is a bit "backwards", at least for the live `rootfs.im
 
 [gpt-tools](../pkg/gpt-tools) loads a series of gpt partition utilities/tools onto the base filesystem. It adds the following tools:
 
-* `sgdisk` - with specific patches listed [here](../pkg/gpt-tools/patches)
+* `sgdisk` - with specific patches listed in [pkg/gpt-tools/patches](../pkg/gpt-tools/patches)
 * `cgpt` - works with ChromeOS-specific GPT partitioning
 * [zboot](../pkg/gpt-tools/files/zboot) - a script that is the main entry point for EVE Go code querying and manipulating the state of partitions. It makes it easy to read and set partition information, by wrapping calls to `cgpt`.
 
