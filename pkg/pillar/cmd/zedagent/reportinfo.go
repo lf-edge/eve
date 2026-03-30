@@ -1140,6 +1140,7 @@ func getOptionalCapabilities(ctx *zedagentContext) *info.OptionalCapabilities {
 	return &info.OptionalCapabilities{
 		HvTypeKubevirt:     ctx.hvTypeKube,
 		HwInventorySupport: true,
+		EtcdSnapshot:       ctx.hvTypeKube,
 	}
 }
 
