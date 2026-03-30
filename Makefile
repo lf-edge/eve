@@ -28,7 +28,7 @@ PATH:=$(BUILDTOOLS_BIN):$(PATH)
 
 GOPKGVERSION=$(shell tools/goversion.sh 2>/dev/null)
 
-export CGO_ENABLED GOOS GOARCH PATH
+export CGO_ENABLED PATH
 
 ifeq ($(BUILDKIT_PROGRESS),)
 export BUILDKIT_PROGRESS := plain
@@ -80,9 +80,6 @@ BUILD_VM_SRC=$(BUILD_VM_SRC_$(ZARCH))
 
 UNAME_S := $(shell uname -s)
 UNAME_S_LCASE=$(shell uname -s | tr '[A-Z]' '[a-z]')
-
-# store the goos for local, as an easier-to-reference var
-LOCAL_GOOS=$(UNAME_S_LCASE)
 
 USER         = $(shell id -u -n)
 GROUP        = $(shell id -g -n)
@@ -324,7 +321,6 @@ QEMU_OPTS_GUI=$(QEMU_OPTS_VGA_DISPLAY_$(ZARCH)) $(QEMU_OPTS_COMMON) $(QEMU_ACCEL
 # -device virtio-blk-device,drive=image -drive if=none,id=image,file=X
 # -device virtio-net-device,netdev=user0 -netdev user,id=user0,hostfwd=tcp::1234-:22
 
-GOOS=linux
 CGO_ENABLED=1
 GOBUILDER=eve-build-$(shell echo $(USER) | tr A-Z a-z)
 
@@ -355,7 +351,7 @@ endif
 DOCKER_GO = _() { $(SET_X); mkdir -p $(CURDIR)/.go/src/$${3:-dummy} ; mkdir -p $(CURDIR)/.go/bin ; \
     docker_go_line="docker run $$DOCKER_GO_ARGS -i --rm -u $(USER) -w /go/src/$${3:-dummy} \
     -v $(CURDIR)/.go:/go:z -v $$2:/go/src/$${3:-dummy}:z -v $${4:-$(CURDIR)/.go/bin}:/go/bin:z -v $(CURDIR)/:/eve:z -v $${HOME}:/home/$(USER):z \
-    -e GOOS -e GOARCH -e CGO_ENABLED -e BUILD=local $(GOBUILDER) bash --noprofile --norc -c" ; \
+    -e GOOS=linux -e GOARCH=$(ZARCH) -e CGO_ENABLED -e BUILD=local $(GOBUILDER) bash --noprofile --norc -c" ; \
     verbose=$(V) ;\
     verbose=$${verbose:-0} ;\
     [ $$verbose -ge 1 ] && echo $$docker_go_line "\"$$1\""; \
@@ -797,7 +793,7 @@ endif
 	$(QUIET): $@: Succeeded
 
 $(GET_DEPS): tools/get-deps/*.go
-	$(MAKE) -C $(GET_DEPS_DIR) GOOS=$(LOCAL_GOOS)
+	$(MAKE) -C $(GET_DEPS_DIR)
 
 sbom_info:
 	@echo "$(SBOM)"
@@ -831,7 +827,7 @@ $(COLLECTED_SOURCES): $(ROOTFS_TARS) $(GOSOURCES)| $(INSTALLER) $(SOURCES_DIR)
 
 $(COMPARESOURCES):
 	$(QUIET): $@: Begin
-	cd $(COMPARE_SOURCE) && GOOS=$(LOCAL_GOOS) CGO_ENABLED=0 go build -o $(COMPARESOURCES)
+	cd $(COMPARE_SOURCE) && CGO_ENABLED=0 go build -o $(COMPARESOURCES)
 	@echo Done building packages
 	$(QUIET): $@: Succeeded
 
