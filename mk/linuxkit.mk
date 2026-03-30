@@ -11,6 +11,7 @@
 # Set LINUXKIT_GIT_URL="" to use the release binary (case 3).
 # LINUXKIT_VERSION must remain a published semver tag — it is used only for
 # the release-download URL in case 3.
+HOST_GOOS := $(shell uname -s | tr '[A-Z]' '[a-z]')
 
 # linuxkit version. This **must** be a published semver version so it can be
 # downloaded already compiled from the release page at
@@ -51,7 +52,7 @@ $(LINUXKIT): $(BUILDTOOLS_BIN)/linuxkit-$(_LK_VERSION) $(PARALLEL_BUILD_LOCK)
 	$(QUIET)ln -sf $(notdir $<) $@
 	$(QUIET): $@: Succeeded
 
-$(BUILDTOOLS_BIN)/linuxkit-$(_LK_VERSION): | $(BUILDTOOLS_BIN)
+$(BUILDTOOLS_BIN)/linuxkit-$(_LK_VERSION): $(CURDIR)/mk/linuxkit.mk | $(BUILDTOOLS_BIN)
 	@echo "Building linuxkit from $(LINUXKIT_GIT_URL) at $(LINUXKIT_GIT_REF)"
 	$(QUIET)tmp=$$(mktemp -d) && \
 	  git clone --filter=blob:none $(LINUXKIT_GIT_URL) $$tmp && \
@@ -68,10 +69,10 @@ $(LINUXKIT): $(BUILDTOOLS_BIN)/linuxkit-$(LINUXKIT_VERSION) $(PARALLEL_BUILD_LOC
 	$(QUIET)ln -sf $(notdir $<) $@
 	$(QUIET): $@: Succeeded
 
-$(BUILDTOOLS_BIN)/linuxkit-$(LINUXKIT_VERSION): | $(BUILDTOOLS_BIN)
+$(BUILDTOOLS_BIN)/linuxkit-$(LINUXKIT_VERSION): $(CURDIR)/mk/linuxkit.mk | $(BUILDTOOLS_BIN)
 	@echo "Downloading linuxkit release $(LINUXKIT_VERSION)"
 	$(QUIET)curl -fsSL -o $@ \
-	  $(LINUXKIT_SOURCE)/releases/download/$(LINUXKIT_VERSION)/linuxkit-$(LOCAL_GOOS)-$(HOSTARCH) \
+	  $(LINUXKIT_SOURCE)/releases/download/$(LINUXKIT_VERSION)/linuxkit-$(HOST_GOOS)-$(HOSTARCH) \
 	  && chmod +x $@
 	$(QUIET): $@: Succeeded
 
