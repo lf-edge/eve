@@ -382,17 +382,36 @@ func constructDatastoreContext(ctx *downloaderContext, configName string, NameIs
 	downloadURL := configName
 	if !NameIsURL {
 		downloadURL = dst.Fqdn
+
+		// Split any query string (e.g. SAS token) from configName before
+		// path-joining. url.JoinPath percent-encodes '?' as '%3F' when it
+		// appears inside a path segment, which breaks SAS tokens and any
+		// other credential passed as a query string in the relative URL.
+		configPath := configName
+		configQuery := ""
+		if idx := strings.IndexByte(configName, '?'); idx >= 0 {
+			configPath = configName[:idx]
+			configQuery = configName[idx:] // includes the leading '?'
+		}
+
 		if len(dpath) > 0 {
 			downloadURL, err = url.JoinPath(downloadURL, dpath)
 			if err != nil {
 				return nil, err
 			}
 		}
-		if len(configName) > 0 {
-			downloadURL, err = url.JoinPath(downloadURL, configName)
+		if len(configPath) > 0 {
+			downloadURL, err = url.JoinPath(downloadURL, configPath)
 			if err != nil {
 				return nil, err
 			}
+		}
+
+		// Reattach the raw query string after the path has been assembled.
+		// We do not re-encode it: the caller is responsible for passing a
+		// correctly percent-encoded query string in configName.
+		if len(configQuery) > 0 {
+			downloadURL += configQuery
 		}
 	}
 
