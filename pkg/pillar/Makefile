@@ -104,6 +104,8 @@ test: build-docker-test
 		--junitfile /pillar/results.xml \
 		--raw-command -- go test -tags kubevirt -coverprofile=coverage.txt -covermode=atomic -race -json \
 		./...
+
+fuzz-test: build-docker-test
 	docker run --platform linux/$(ZARCH) -w /pillar \
 		--entrypoint /bin/sh $(DOCKER_TAG) \
 		/pillar/build-scripts/fuzz_test.sh
