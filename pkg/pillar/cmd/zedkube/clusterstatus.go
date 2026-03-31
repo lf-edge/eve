@@ -116,7 +116,7 @@ func (z *zedkube) publishKubeConfigStatus() {
 	status := types.EdgeNodeClusterStatus{
 		ClusterName:      z.clusterConfig.ClusterName,
 		ClusterID:        z.clusterConfig.ClusterID,
-		ClusterInterface: z.clusterConfig.ClusterInterface,
+		ClusterInterface: z.resolveClusterInterfaceName(),
 		ClusterIPPrefix:  z.clusterConfig.ClusterIPPrefix,
 		ClusterIPIsReady: z.clusterIPIsReady,
 		IsWorkerNode:     z.clusterConfig.IsWorkerNode,
@@ -158,6 +158,17 @@ func (z *zedkube) publishKubeConfigStatus() {
 
 	// publish the cluster status for the kube container
 	z.pubEdgeNodeClusterStatus.Publish("global", status)
+}
+
+func (z *zedkube) resolveClusterInterfaceName() string {
+	if z.clusterConfig.ClusterInterface == "" {
+		return ""
+	}
+	port := z.deviceNetworkStatus.LookupPortByLogicallabel(z.clusterConfig.ClusterInterface)
+	if port == nil {
+		return ""
+	}
+	return port.IfName
 }
 
 func (z *zedkube) decryptClusterTokenAndManifest() (string, []byte, error) {
@@ -221,7 +232,12 @@ func (z *zedkube) updateClusterIPReadiness() (changed bool) {
 			}
 		}
 	}
-	if z.clusterIPIsReady != ready {
+	resolvedName := z.resolveClusterInterfaceName()
+	ifNameChanged := z.lastPublishedClusterIfName != resolvedName
+	if ifNameChanged {
+		z.lastPublishedClusterIfName = resolvedName
+	}
+	if z.clusterIPIsReady != ready || ifNameChanged {
 		z.clusterIPIsReady = ready
 		return true
 	}

@@ -94,8 +94,8 @@ type EdgeNodeClusterStatus struct {
 	ClusterName string
 	ClusterID   UUIDandVersion
 	// ClusterInterface - Interface to be used for kubernetes cluster for the node.
-	// This can be a Management interface or an App-Shared interface. This is a logical
-	// label of the port.
+	// This can be a Management interface or an App-Shared interface. This is the
+	// resolved Linux interface name of the port.
 	ClusterInterface string
 	// ClusterIPPrefix - IP Prefix for the kubernetes cluster Node IP. This IP prefix is
 	// applied to the ClusterInterface. It can be the only IP prefix on the interface, or
