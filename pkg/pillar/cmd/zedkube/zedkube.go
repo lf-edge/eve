@@ -97,12 +97,14 @@ type zedkube struct {
 	inKubeLeaderElection       atomic.Bool
 	electionFuncRunning        atomic.Bool
 	leaderIdentity             string
-	electionStartCh            chan struct{}
-	electionStopCh             chan struct{}
-	statusServer               *http.Server
-	statusServerWG             sync.WaitGroup
-	getKubePodsError           GetKubePodsError
-	drainOverrideTimer         *time.Timer
+	// electionShouldRun holds the desired state: true=start, false=stop.
+	// electionNotifyCh wakes up handleLeaderElection to act on the latest value.
+	electionShouldRun  atomic.Bool
+	electionNotifyCh   chan struct{}
+	statusServer       *http.Server
+	statusServerWG     sync.WaitGroup
+	getKubePodsError   GetKubePodsError
+	drainOverrideTimer *time.Timer
 
 	// Config Properties for Drain
 	drainTimeout                       time.Duration
@@ -424,8 +426,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	subEdgeNodeInfo.Activate()
 
 	// start the leader election
-	zedkubeCtx.electionStartCh = make(chan struct{}, 1)
-	zedkubeCtx.electionStopCh = make(chan struct{}, 1)
+	zedkubeCtx.electionNotifyCh = make(chan struct{}, 1)
 	go zedkubeCtx.handleLeaderElection()
 
 	// Wait for the certs, and nodeInfo which are needed to decrypt the token inside the
