@@ -194,6 +194,8 @@ e2fsprogs
 e2fsprogs-dev
 e2fsprogs-extra
 e2fsprogs-libs
+efibootmgr
+efivar-libs
 elfutils
 elfutils-dev
 ethtool
