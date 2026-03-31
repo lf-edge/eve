@@ -82,26 +82,27 @@ type zedkube struct {
 
 	pubKubeConfig pubsub.Publication
 
-	networkInstanceStatusMap sync.Map
-	ioAdapterMap             sync.Map
-	deviceNetworkStatus      types.DeviceNetworkStatus
-	clusterConfig            types.EdgeNodeClusterConfig
-	config                   *rest.Config
-	appLogStarted            bool
-	appContainerLogger       *logrus.Logger
-	clusterIPIsReady         bool
-	nodeuuid                 string
-	nodeName                 string
-	isKubeStatsLeader        atomic.Bool
-	inKubeLeaderElection     atomic.Bool
-	electionFuncRunning      atomic.Bool
-	leaderIdentity           string
-	electionStartCh          chan struct{}
-	electionStopCh           chan struct{}
-	statusServer             *http.Server
-	statusServerWG           sync.WaitGroup
-	getKubePodsError         GetKubePodsError
-	drainOverrideTimer       *time.Timer
+	networkInstanceStatusMap   sync.Map
+	ioAdapterMap               sync.Map
+	deviceNetworkStatus        types.DeviceNetworkStatus
+	clusterConfig              types.EdgeNodeClusterConfig
+	config                     *rest.Config
+	appLogStarted              bool
+	appContainerLogger         *logrus.Logger
+	clusterIPIsReady           bool
+	lastPublishedClusterIfName string
+	nodeuuid                   string
+	nodeName                   string
+	isKubeStatsLeader          atomic.Bool
+	inKubeLeaderElection       atomic.Bool
+	electionFuncRunning        atomic.Bool
+	leaderIdentity             string
+	electionStartCh            chan struct{}
+	electionStopCh             chan struct{}
+	statusServer               *http.Server
+	statusServerWG             sync.WaitGroup
+	getKubePodsError           GetKubePodsError
+	drainOverrideTimer         *time.Timer
 
 	// Config Properties for Drain
 	drainTimeout                       time.Duration

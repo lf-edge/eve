@@ -840,7 +840,7 @@ func (r *LinuxDpcReconciler) updateCurrentRoutes(dpc types.DevicePortConfig,
 			r.Log.Errorf("updateCurrentRoutes: ListRoutes failed for ifIndex %d: %v",
 				ifIndex, err)
 		}
-		if r.HVTypeKube && clusterStatus.ClusterInterface == port.Logicallabel {
+		if r.HVTypeKube && clusterStatus.ClusterInterface == port.IfName {
 			k3sSvcRoutes, err := r.NetworkMonitor.ListRoutes(netmonitor.RouteFilters{
 				FilterByTable: true,
 				Table:         types.KubeSvcRT,
@@ -1188,7 +1188,7 @@ func (r *LinuxDpcReconciler) getIntendedAdapters(dpc types.DevicePortConfig,
 		}
 		var staticIPs []*net.IPNet
 		if r.HVTypeKube {
-			if port.Logicallabel == clusterStatus.ClusterInterface &&
+			if port.IfName == clusterStatus.ClusterInterface &&
 				clusterStatus.ClusterIPPrefix != nil {
 				staticIPs = append(staticIPs, clusterStatus.ClusterIPPrefix)
 			}
@@ -1348,7 +1348,7 @@ func (r *LinuxDpcReconciler) getIntendedRoutes(dpc types.DevicePortConfig,
 				AdapterLL:     port.Logicallabel,
 			}, nil)
 		}
-		if r.HVTypeKube && clusterStatus.ClusterInterface == port.Logicallabel &&
+		if r.HVTypeKube && clusterStatus.ClusterInterface == port.IfName &&
 			clusterStatus.ClusterIPPrefix != nil {
 			// Ensure that packets destined for K3s services do not use the default route,
 			// but are instead routed through the cluster port. This guarantees that traffic
@@ -1972,7 +1972,7 @@ func (r *LinuxDpcReconciler) getIntendedFilterRules(gcp types.ConfigItemValueMap
 	icmpV6Rule.MatchOpts = []string{"-p", "ipv6-icmp"}
 	inputV6Rules = append(inputV6Rules, icmpV6Rule)
 
-	clusterPort := dpc.LookupPortByLogicallabel(clusterStatus.ClusterInterface)
+	clusterPort := dpc.LookupPortByIfName(clusterStatus.ClusterInterface)
 	if r.HVTypeKube && clusterPort != nil && !clusterPort.InvalidConfig &&
 		clusterPort.IfName != "" && clusterStatus.ClusterIPPrefix != nil {
 		// LookupExtInterface in k3s/pkg/agent/flannel/flannel.go will pick
