@@ -1,1 +1,1 @@
-.init += ["NVIDIA_TAG"]
+.init += ["NVIDIA_TAG", "OPTEE_CLIENT_TAG"]

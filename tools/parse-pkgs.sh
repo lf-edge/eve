@@ -151,6 +151,7 @@ RECOVERTPM_TAG=${RECOVERTPM_TAG}
 UDEV_TAG=${UDEV_TAG}
 INSTALLER_TAG=${INSTALLER_TAG}
 MONITOR_TAG=${MONITOR_TAG}
+OPTEE_CLIENT_TAG=${OPTEE_CLIENT_TAG}
 EOF
 }
 
@@ -196,6 +197,7 @@ RECOVERTPM_TAG=$(linuxkit_tag pkg/recovertpm)
 UDEV_TAG=$(linuxkit_tag pkg/udev)
 INSTALLER_TAG=$(linuxkit_tag pkg/installer)
 MONITOR_TAG=$(linuxkit_tag pkg/monitor)
+OPTEE_CLIENT_TAG=$(linuxkit_tag pkg/optee-client)
 
 # Synthetic tags: the following tags are based on hashing
 # the contents of all the Dockerfile.in that we can find.
