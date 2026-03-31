@@ -198,6 +198,39 @@ zfs_umount() {
   umount /root/dev ||:
 }
 
+# create_efi_boot_entry creates an EFI NVRAM boot entry for the installed EVE-OS.
+# Any pre-existing "EVE-OS" entries are removed first to avoid duplicates on reinstall.
+# Usage: create_efi_boot_entry DISK
+create_efi_boot_entry() {
+   local DISK="$1"
+   local BOOTLOADER=''
+   local PLATFORM=''
+   mount -t efivarfs efivarfs /sys/firmware/efi/efivars || bail "FATAL: cannot mount efivarfs"
+   # The path to the EFI bootloader differs by architecture
+   if [ -e /root/EFI/BOOT/BOOTRISCV64.EFI ]; then
+      BOOTLOADER='BOOTRISCV64.EFI'
+      PLATFORM='RISCV64'
+   elif [ -e /root/EFI/BOOT/BOOTAA64.EFI ]; then
+      BOOTLOADER='BOOTAA64.EFI'
+      PLATFORM='ARM64'
+   elif [ -e /root/EFI/BOOT/BOOTX64.EFI ]; then
+      BOOTLOADER='BOOTX64.EFI'
+      PLATFORM='X86_64'
+   else
+      bail "FATAL: cannot find EFI bootloader"
+   fi
+   # Remove any existing EVE-OS entries before creating a new one
+   efibootmgr | grep -i "EVE-OS" | grep -o 'Boot[0-9A-Fa-f]\{4\}' | sed 's/Boot//' | while read -r num; do
+      logmsg "removing existing EVE-OS EFI entry Boot$num"
+      efibootmgr -b "$num" -B -q
+   done
+   logmsg "creating EFI boot entry for EVE-OS: ($PLATFORM) /dev/$DISK EFI\\BOOT\\$BOOTLOADER"
+   efibootmgr -c -d "/dev/$DISK" -p 1 -L "EVE-OS" -l "\\EFI\\BOOT\\$BOOTLOADER" \
+      || bail "FATAL: cannot create EFI boot entry"
+   logmsg "EFI boot entries after install:"
+   efibootmgr -v 2>&1 | while read -r line; do logmsg "$line"; done
+}
+
 # make_raw run the command /make-raw, which is the entrypoint of mkimage-raw-efi container.
 make_raw() {
    if ! command -v /mkimage/make-raw >/dev/null; then
@@ -650,6 +683,9 @@ touch /persist/installer/first-boot
 # in case of no key received from controller
 mkdir -p /persist/status
 touch /persist/status/allow-vault-clean
+
+# create an EFI boot entry for the installed EVE-OS
+create_efi_boot_entry "$INSTALL_DEV"
 
 # lets hope this is enough to flush the caches
 sync; sleep 5; sync

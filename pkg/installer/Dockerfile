@@ -47,7 +47,7 @@ ENV PKGS="mtools dosfstools libarchive-tools sgdisk e2fsprogs util-linux \
     lm-sensors acpi iw libdrm hwinfo dhcpcd e2fsprogs-extra \
     libgcc pixman libvncserver musl-utils \
     tpm2-tss-esys tpm2-tss-fapi tpm2-tss-rc \
-    kmod-libs tpm2-tss-sys tpm2-tss-tctildr tpm2-abrmd libblkid cryptsetup-libs"
+    kmod-libs tpm2-tss-sys tpm2-tss-tctildr tpm2-abrmd libblkid cryptsetup-libs efibootmgr"
 RUN eve-alpine-deploy.sh
 
 COPY src/ /src/
