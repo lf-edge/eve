@@ -66,9 +66,6 @@ const (
 	//TpmDiskKeyHdl is the handle for constructing disk encryption key
 	TpmDiskKeyHdl tpmutil.Handle = 0x1700000
 
-	//TpmDeviceCertHdl is the well known TPM NVIndex for device cert
-	TpmDeviceCertHdl tpmutil.Handle = 0x1500000
-
 	//TpmSealedDiskPrivHdl is the handle for constructing disk encryption key
 	TpmSealedDiskPrivHdl tpmutil.Handle = 0x1800000
 

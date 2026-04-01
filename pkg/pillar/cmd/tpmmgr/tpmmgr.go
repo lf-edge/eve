@@ -88,7 +88,7 @@ var (
 	log    *base.LogObject
 )
 
-func createDeviceKey() (crypto.PublicKey, error) {
+func createDeviceKeyOnTpm() (crypto.PublicKey, error) {
 	rw, err := tpm2.OpenTPM(etpm.TpmDevicePath)
 	if err != nil {
 		log.Errorln(err)
@@ -128,73 +128,25 @@ func createDeviceKey() (crypto.PublicKey, error) {
 	return newPubKey, nil
 }
 
-func writeDeviceCert() error {
-
+func writeDeviceCertToDisk() error {
 	rw, err := tpm2.OpenTPM(etpm.TpmDevicePath)
 	if err != nil {
 		return err
 	}
 	defer rw.Close()
 
-	if err := tpm2.NVUndefineSpace(rw, etpm.EmptyPassword,
-		tpm2.HandleOwner, etpm.TpmDeviceCertHdl,
-	); err != nil {
-		log.Tracef("NVUndefineSpace failed: %v", err)
-	}
-
-	deviceCertBytes, err := os.ReadFile(types.DeviceCertName)
+	// Check if the device key exists in TPM
+	deviceKey, _, _, err := tpm2.ReadPublic(rw, etpm.TpmDeviceKeyHdl)
 	if err != nil {
-		log.Errorf("Failed to read device cert file: %v", err)
-		return err
+		return fmt.Errorf("device key not found in TPM: %w", err)
 	}
 
-	// Define space in NV storage and clean up afterwards or subsequent runs will fail.
-	if err := tpm2.NVDefineSpace(rw,
-		tpm2.HandleOwner,
-		etpm.TpmDeviceCertHdl,
-		etpm.EmptyPassword,
-		etpm.EmptyPassword,
-		nil,
-		tpm2.AttrOwnerWrite|tpm2.AttrOwnerRead,
-		uint16(len(deviceCertBytes)),
-	); err != nil {
-		log.Errorf("NVDefineSpace failed: %v", err)
-		return err
-	}
-
-	// Write the data
-	if err := tpm2.NVWrite(rw, tpm2.HandleOwner, etpm.TpmDeviceCertHdl,
-		etpm.EmptyPassword, deviceCertBytes, 0); err != nil {
-		log.Errorf("NVWrite %d bytes failed: %v",
-			len(deviceCertBytes), err)
-		return err
-	}
-	return nil
-}
-
-func readDeviceCert() error {
-
-	rw, err := tpm2.OpenTPM(etpm.TpmDevicePath)
+	pubKey, err := deviceKey.Key()
 	if err != nil {
 		return err
 	}
-	defer rw.Close()
 
-	// Read all of the data with NVReadEx
-	deviceCertBytes, err := tpm2.NVReadEx(rw, etpm.TpmDeviceCertHdl,
-		tpm2.HandleOwner, etpm.EmptyPassword, 0)
-	if err != nil {
-		log.Errorf("NVReadEx failed: %v", err)
-		return err
-	}
-
-	err = os.WriteFile(types.DeviceCertName, deviceCertBytes, 0644)
-	if err != nil {
-		log.Errorf("Writing to device cert file failed: %v", err)
-		return err
-	}
-
-	return nil
+	return writeSignedDeviceCertToDisk(pubKey)
 }
 
 func genCredentials() error {
@@ -608,31 +560,15 @@ func createDeviceCertTemplate() *x509.Certificate {
 	return &template
 }
 
-// generate the TPM device key and certificate,
-// the certificate is self-signed using the device private key
-func createDeviceCertOnTpm(pubkey crypto.PublicKey) error {
+// writeSignedDeviceCertToDisk generates a self-signed device certificate using the provided public key
+// and writes it to the configuration if it doesn't already exist.
+func writeSignedDeviceCertToDisk(pubkey crypto.PublicKey) error {
 	//Check if we already have the certificate
 	if fileutils.FileExists(log, types.DeviceCertName) {
 		return nil
 	}
 
 	//Cert is not present, generate new one
-	rw, err := tpm2.OpenTPM(etpm.TpmDevicePath)
-	if err != nil {
-		return err
-	}
-	defer rw.Close()
-
-	deviceKey, _, _, err := tpm2.ReadPublic(rw, etpm.TpmDeviceKeyHdl)
-	if err != nil {
-		return err
-	}
-
-	publicKey, err := deviceKey.Key()
-	if err != nil {
-		return err
-	}
-
 	// Need to force the public key since we haven't created
 	// the device cert yet.
 	etpm.SetDevicePublicKey(pubkey)
@@ -644,7 +580,7 @@ func createDeviceCertOnTpm(pubkey crypto.PublicKey) error {
 	var parent = template
 
 	cert, err := x509.CreateCertificate(rand.Reader,
-		template, parent, publicKey, tpmPrivKey)
+		template, parent, pubkey, tpmPrivKey)
 	if err != nil {
 		return fmt.Errorf("Failed to create device certificate: %w",
 			err)
@@ -1450,28 +1386,21 @@ func runCommand(command string, args []string) int {
 			log.Errorf("Error in generating credentials: %v", err)
 			return 1
 		}
-		// Do we already have a device cert in the TPM NVRAW?
-		// If so write to /config/device.cert.pem
-		if err = readDeviceCert(); err == nil {
-			log.Noticef("readDeviceCert success, re-using key and cert")
+		// If the device key is already persisted in TPM, generate and write
+		// the cert to /config partition.
+		if err = writeDeviceCertToDisk(); err == nil {
+			log.Noticef("writeDeviceCertToDisk success, re-using key and cert")
 			return 0
 		}
-		log.Errorf("readDeviceCert failed %s, generating new key and cert", err)
-		pubKey, err := createDeviceKey()
+		log.Errorf("writeDeviceCertToDisk failed %s, generating new key and cert", err)
+		pubKey, err := createDeviceKeyOnTpm()
 		if err != nil {
 			// No need for Fatal, caller will take action based on return code.
 			log.Errorf("Error in creating device primary key: %v ", err)
 			return 1
 		}
-		if err = createDeviceCertOnTpm(pubKey); err != nil {
+		if err = writeSignedDeviceCertToDisk(pubKey); err != nil {
 			log.Errorf("Failed to create TPM device cert: %v", err)
-			return 1
-		}
-		// Write to /config/device.cert.pem and backup to TPM NVRAW
-		if err = writeDeviceCert(); err != nil {
-			// No need for Fatal, caller will take action based on return code.
-			log.Errorf("Failed to backup device cert in TPM NVRAM: %v",
-				err)
 			return 1
 		}
 		if err = createOtherKeys(true); err != nil {
