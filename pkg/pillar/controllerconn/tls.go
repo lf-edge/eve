@@ -100,19 +100,24 @@ func (c *Client) GetTLSConfig(clientCert *tls.Certificate) (*tls.Config, error) 
 	// Thus V1 device can only talk to server with private Root-CA, V2
 	// device can talk to V2 enabled server with either private or well-known Root-CAs
 	// and only V2 includes proxy Cert CA
+	// XXX remove the v1 API code?
 	caCertPool := x509.NewCertPool()
 
 	if c.v2API {
-		// Load the well-known CAs from config directory (integrity protected)
-		caCert, err := os.ReadFile(types.V2TLSBaseFile)
-		if err != nil {
+		var err error
+		// Load the well-known CAs from the rootfs (integrity protected)
+		caCertPool, err = x509.SystemCertPool()
+		// Append any extra certs (used for testing) from /config
+		// (also integrity protected)
+		caCert, err := os.ReadFile(types.ExtraTLSCertFile)
+		if err != nil && !os.IsNotExist(err) {
 			return nil, err
 		}
-		if !caCertPool.AppendCertsFromPEM(caCert) {
+		if err != nil && len(caCert) != 0 &&
+			!caCertPool.AppendCertsFromPEM(caCert) {
 			errStr := fmt.Sprintf("Failed to append certs from %s",
-				types.V2TLSBaseFile)
-			c.log.Error(errStr)
-			return nil, errors.New(errStr)
+				types.ExtraTLSCertFile)
+			c.log.Warn(errStr)
 		}
 
 		// Append any proxy certs from any interface/port to caCertPool
@@ -245,16 +250,21 @@ func (c *Client) UpdateTLSProxyCerts() bool {
 	var caCertPool *x509.CertPool
 	if len(c.prevCertPEM) > 0 {
 		// previous certs we have are different, lets rebuild from beginning
-		caCertPool = x509.NewCertPool()
-		// Load the well-known CAs from config directory (integrity protected)
-		caCert, err := os.ReadFile(types.V2TLSBaseFile)
-		if err != nil {
-			errStr := fmt.Sprintf("Failed to read %s", types.V2TLSBaseFile)
+		// Load the well-known CAs from the rootfs (integrity protected)
+		var err error
+		caCertPool, err = x509.SystemCertPool()
+		// Append any extra certs (used for testing) from /config
+		// (also integrity protected)
+		caCert, err := os.ReadFile(types.ExtraTLSCertFile)
+		if err != nil && !os.IsNotExist(err) {
+
+			errStr := fmt.Sprintf("Failed to read %s", types.ExtraTLSCertFile)
 			c.log.Error(errStr)
 			return false
 		}
-		if !caCertPool.AppendCertsFromPEM(caCert) {
-			errStr := fmt.Sprintf("Failed to append certs from %s", types.V2TLSBaseFile)
+		if err == nil && len(caCert) != 0 &&
+			!caCertPool.AppendCertsFromPEM(caCert) {
+			errStr := fmt.Sprintf("Failed to append certs from %s", types.ExtraTLSCertFile)
 			c.log.Error(errStr)
 			return false
 		}
