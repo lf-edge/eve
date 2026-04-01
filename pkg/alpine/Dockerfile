@@ -47,7 +47,7 @@ ARG GO_VERSION=1.24.6
 COPY --from=cache-build /etc/apk/repositories* /etc/apk/
 COPY --from=cache-build /etc/apk/keys /etc/apk/keys/
 COPY --from=cache-build /mirror /mirror/
-COPY eve-alpine-deploy.sh go-compile.sh /bin/
+COPY eve-alpine-deploy.sh eve-cross-sysroot.sh go-compile.sh /bin/
 
 RUN apk update && apk upgrade -a
 
