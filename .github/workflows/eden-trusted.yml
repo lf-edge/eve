@@ -179,7 +179,7 @@ jobs:
     name: ${{ needs.context.outputs.eden_parent_job_title }} for 13.4-stable
     needs: context
     if: needs.context.outputs.skip_run == 'false' && needs.context.outputs.pr_base_ref == '13.4-stable'
-    uses: lf-edge/eden/.github/workflows/test.yml@1.0.9
+    uses: lf-edge/eden/.github/workflows/test.yml@1.0.15
     secrets: inherit
     with:
       eve_image: "evebuild/pr:${{ needs.context.outputs.pr_id }}"
@@ -192,7 +192,7 @@ jobs:
     name: ${{ needs.context.outputs.eden_parent_job_title }} for 14.5-stable
     needs: context
     if: needs.context.outputs.skip_run == 'false' && needs.context.outputs.pr_base_ref == '14.5-stable'
-    uses: lf-edge/eden/.github/workflows/test.yml@1.0.9
+    uses: lf-edge/eden/.github/workflows/test.yml@1.0.15
     secrets: inherit
     with:
       eve_image: "evebuild/pr:${{ needs.context.outputs.pr_id }}"
@@ -205,7 +205,7 @@ jobs:
     name: ${{ needs.context.outputs.eden_parent_job_title }} for 16.0-stable
     needs: context
     if: needs.context.outputs.skip_run == 'false' && needs.context.outputs.pr_base_ref == '16.0-stable'
-    uses: lf-edge/eden/.github/workflows/test.yml@1.0.13
+    uses: lf-edge/eden/.github/workflows/test.yml@1.0.15
     secrets: inherit
     with:
       eve_image: "evebuild/pr:${{ needs.context.outputs.pr_id }}"
@@ -218,7 +218,7 @@ jobs:
     name: ${{ needs.context.outputs.eden_parent_job_title }} for master
     needs: context
     if: needs.context.outputs.skip_run == 'false' && needs.context.outputs.pr_base_ref == 'master'
-    uses: lf-edge/eden/.github/workflows/test.yml@1.0.14
+    uses: lf-edge/eden/.github/workflows/test.yml@1.0.15
     secrets: inherit
     with:
       eve_image: "evebuild/pr:${{ needs.context.outputs.pr_id }}"
