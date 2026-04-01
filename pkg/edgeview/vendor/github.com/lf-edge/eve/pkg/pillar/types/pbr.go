@@ -36,4 +36,23 @@ const (
 	PbrKubeNetworkPrio = 13000
 	// PbrLocalOrigPrio : IP rule priority for locally (dom0) generated packets
 	PbrLocalOrigPrio = 15000
+
+	// For components that do not follow EVE's source-based routing and instead
+	// use the main routing table (e.g., pulling Kubernetes system images for eve-k),
+	// route metrics are assigned to reflect interface usage and priority.
+	//
+	// Each interface receives a unique metric to ensure deterministic ordering
+	// of default routes in the main routing table. Metrics are derived from a
+	// base value depending on interface usage and an incremental offset based on
+	// interface cost and order within the configuration.
+
+	// MgmtPortBaseMetric is the base metric value for all management ports.
+	// The final metric for each management port is calculated as:
+	//   MgmtPortBaseMetric + index_in_cost_order
+	MgmtPortBaseMetric = 5000
+
+	// AppSharedPortBaseMetric is the base metric value for all app-shared ports.
+	// The final metric for each app-shared port is calculated as:
+	//   AppSharedPortBaseMetric + index_in_cost_order
+	AppSharedPortBaseMetric = 10000
 )

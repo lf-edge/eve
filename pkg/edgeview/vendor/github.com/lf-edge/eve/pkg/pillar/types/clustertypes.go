@@ -14,10 +14,10 @@ const (
 	// ClusterStatusPort - Port for k3s server for cluster status advertise
 	// See more detail description in pkg/pillar/docs/zedkube.md
 	ClusterStatusPort = "12346"
-	// run VNC file - unified path for both remote-console and edgeview VNC
-	// Using /run/edgeview because edgeview container has /run mounted read-only
-	// except for /run/edgeview which is read-write
-	VmiVNCDir      = "/run/edgeview/VncParams"
+	// VmiVNCDir is the directory for VNC parameter files.
+	// VmiVNCDir specifies the directory for VNC parameter files used by both remote-console and edgeview VNC.
+	VmiVNCDir = "/run/edgeview/VncParams"
+	// VmiVNCFileName is the unified path for both remote-console and edgeview VNC configuration file.
 	VmiVNCFileName = VmiVNCDir + "/vmiVNC.run"
 )
 
@@ -134,8 +134,8 @@ type KubeLeaderElectInfo struct {
 	LatestChange     time.Time
 }
 
-// vmiVNCConfig is the JSON structure for vmiVNC.run file
-// This is the unified format used by both remote-console and edgeview VNC
+// VmiVNCConfig is the JSON structure for vmiVNC.run file.
+// VmiVNCConfig defines the unified format used by both remote-console and edgeview VNC.
 type VmiVNCConfig struct {
 	VMIName   string `json:"VMIName"`
 	VNCPort   uint32 `json:"VNCPort"`
