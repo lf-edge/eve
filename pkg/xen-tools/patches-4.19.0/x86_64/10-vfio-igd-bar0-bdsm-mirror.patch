@@ -1,0 +1,143 @@
+From eaeba971b492d4914535e9bde13b82bf57468a32 Mon Sep 17 00:00:00 2001
+From: Mikhail Malyshev <mike.malyshev@gmail.com>
+Date: Wed, 1 Apr 2026 01:13:31 +0000
+Subject: [PATCH] vfio/igd: add BAR0 BDSM MMIO mirror quirk for q35/UEFI
+
+Backport the BAR0 BDSM mirror quirk from upstream QEMU.
+
+The GPU reads BDSM through both PCI config space and MMIO (BAR0 +
+0x1080C0).  Without this quirk, the PCI config read returns the
+emulated guest PA (correct) while the BAR0 MMIO read returns the host
+PA from real hardware (wrong).  The driver sees conflicting values and
+crashes.
+
+Add vfio_probe_igd_bar0_quirk() which intercepts reads/writes at BAR0
+offset 0x1080C0 and redirects them to the emulated PCI config BDSM
+register (0x5C for Gen6-10, 0xC0 for Gen11+).
+
+Signed-off-by: Mikhail Malyshev <mike.malyshev@gmail.com>
+---
+ hw/vfio/igd.c        | 81 ++++++++++++++++++++++++++++++++++++++++++++
+ hw/vfio/pci-quirks.c |  1 +
+ hw/vfio/pci.h        |  1 +
+ 3 files changed, 83 insertions(+)
+
+diff --git a/tools/qemu-xen/hw/vfio/igd.c b/tools/qemu-xen/hw/vfio/igd.c
+index 3b52c471fc..37e985da6f 100644
+--- a/tools/qemu-xen/hw/vfio/igd.c
++++ b/tools/qemu-xen/hw/vfio/igd.c
+@@ -378,6 +378,87 @@ static const MemoryRegionOps vfio_igd_index_quirk = {
+     .endianness = DEVICE_LITTLE_ENDIAN,
+ };
+ 
++/*
++ * IGD BAR0 BDSM mirror quirk — backported from upstream QEMU.
++ *
++ * The GPU reads BDSM through MMIO (BAR0 + 0x1080C0) as well as through
++ * PCI config space.  Without this quirk the MMIO read returns the host
++ * physical address, which disagrees with the emulated PCI config value.
++ * Intercept reads/writes at this offset and redirect them to the emulated
++ * PCI config BDSM register.
++ */
++typedef struct IGDBdsmMirrorQuirk {
++    VFIOPCIDevice *vdev;
++    uint32_t bar_offset;     /* offset within BAR0 MMIO */
++    uint32_t config_offset;  /* PCI config offset (0x5C or 0xC0) */
++    uint8_t bar;
++    MemoryRegion mem;
++} IGDBdsmMirrorQuirk;
++
++static uint64_t igd_bdsm_mirror_read(void *opaque, hwaddr addr, unsigned size)
++{
++    IGDBdsmMirrorQuirk *mirror = opaque;
++    VFIOPCIDevice *vdev = mirror->vdev;
++
++    /* Read and discard from real hardware in case it has side effects */
++    (void)vfio_region_read(&vdev->bars[mirror->bar].region,
++                           addr + mirror->bar_offset, size);
++
++    return vfio_pci_read_config(&vdev->pdev,
++                                mirror->config_offset + addr, size);
++}
++
++static void igd_bdsm_mirror_write(void *opaque, hwaddr addr,
++                                  uint64_t data, unsigned size)
++{
++    IGDBdsmMirrorQuirk *mirror = opaque;
++    VFIOPCIDevice *vdev = mirror->vdev;
++
++    vfio_pci_write_config(&vdev->pdev,
++                          mirror->config_offset + addr, data, size);
++}
++
++static const MemoryRegionOps igd_bdsm_mirror_ops = {
++    .read = igd_bdsm_mirror_read,
++    .write = igd_bdsm_mirror_write,
++    .endianness = DEVICE_LITTLE_ENDIAN,
++};
++
++#define IGD_BDSM_MMIO_OFFSET 0x1080C0
++
++void vfio_probe_igd_bar0_quirk(VFIOPCIDevice *vdev, int nr)
++{
++    IGDBdsmMirrorQuirk *mirror;
++    VFIOQuirk *quirk;
++    int gen;
++
++    if (!vfio_pci_is(vdev, PCI_VENDOR_ID_INTEL, PCI_ANY_ID) ||
++        !vfio_is_vga(vdev) || nr != 0) {
++        return;
++    }
++
++    gen = igd_gen(vdev);
++    if (gen < 6) {
++        return;
++    }
++
++    quirk = vfio_quirk_alloc(1);
++    mirror = g_malloc0(sizeof(*mirror));
++    mirror->vdev = vdev;
++    mirror->bar = nr;
++    mirror->bar_offset = IGD_BDSM_MMIO_OFFSET;
++    mirror->config_offset = (gen < 11) ? IGD_BDSM : IGD_BDSM_GEN11;
++
++    memory_region_init_io(&quirk->mem[0], OBJECT(vdev), &igd_bdsm_mirror_ops,
++                          mirror, "vfio-igd-bdsm-quirk",
++                          (gen < 11) ? 4 : 8);
++    memory_region_add_subregion_overlap(vdev->bars[nr].region.mem,
++                                        IGD_BDSM_MMIO_OFFSET,
++                                        &quirk->mem[0], 1);
++
++    QLIST_INSERT_HEAD(&vdev->bars[nr].quirks, quirk, next);
++}
++
+ void vfio_probe_igd_bar4_quirk(VFIOPCIDevice *vdev, int nr)
+ {
+     g_autofree struct vfio_region_info *rom = NULL;
+diff --git a/tools/qemu-xen/hw/vfio/pci-quirks.c b/tools/qemu-xen/hw/vfio/pci-quirks.c
+index 39dae72497..d37f722cce 100644
+--- a/tools/qemu-xen/hw/vfio/pci-quirks.c
++++ b/tools/qemu-xen/hw/vfio/pci-quirks.c
+@@ -1259,6 +1259,7 @@ void vfio_bar_quirk_setup(VFIOPCIDevice *vdev, int nr)
+     vfio_probe_nvidia_bar0_quirk(vdev, nr);
+     vfio_probe_rtl8168_bar2_quirk(vdev, nr);
+ #ifdef CONFIG_VFIO_IGD
++    vfio_probe_igd_bar0_quirk(vdev, nr);
+     vfio_probe_igd_bar4_quirk(vdev, nr);
+ #endif
+ }
+diff --git a/tools/qemu-xen/hw/vfio/pci.h b/tools/qemu-xen/hw/vfio/pci.h
+index bf67df2fbc..5ad090a229 100644
+--- a/tools/qemu-xen/hw/vfio/pci.h
++++ b/tools/qemu-xen/hw/vfio/pci.h
+@@ -215,6 +215,7 @@ void vfio_setup_resetfn_quirk(VFIOPCIDevice *vdev);
+ bool vfio_add_virt_caps(VFIOPCIDevice *vdev, Error **errp);
+ void vfio_quirk_reset(VFIOPCIDevice *vdev);
+ VFIOQuirk *vfio_quirk_alloc(int nr_mem);
++void vfio_probe_igd_bar0_quirk(VFIOPCIDevice *vdev, int nr);
+ void vfio_probe_igd_bar4_quirk(VFIOPCIDevice *vdev, int nr);
+ 
+ extern const PropertyInfo qdev_prop_nv_gpudirect_clique;
+-- 
+2.43.0
+

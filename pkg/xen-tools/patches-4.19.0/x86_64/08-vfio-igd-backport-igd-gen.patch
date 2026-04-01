@@ -1,0 +1,112 @@
+From e130d1db4dc882bfbdf7d57c3e80432f5b39838f Mon Sep 17 00:00:00 2001
+From: Mikhail Malyshev <mike.malyshev@gmail.com>
+Date: Tue, 31 Mar 2026 20:34:07 +0000
+Subject: [PATCH 1/2] vfio/igd: backport igd_gen() with Gen7-Gen12 device ID
+ detection
+
+Backport upstream QEMU's igd_gen() which returns correct generation
+numbers for all Intel IGD device families:
+
+  Gen 7:  Haswell, Valleyview/Bay Trail
+  Gen 8:  Broadwell, Cherryview
+  Gen 9:  Skylake, Kaby Lake, Coffee Lake, Comet Lake, Gemini Lake,
+          Broxton/Apollo Lake
+  Gen 11: Ice Lake, Elkhart Lake, Jasper Lake
+  Gen 12: Tiger Lake, Rocket Lake, Alder Lake, Raptor Lake
+
+The old code only distinguished gen 6, gen 8, and returned 8 for all
+unknown device IDs.  This made generation-specific checks (e.g. for
+BDSM register offset) ineffective on Gen9+ hardware.
+
+Also change the default return from 8 to -1 (unknown), matching
+upstream.  Callers that check gen < 0 will now correctly reject
+unrecognised devices rather than silently treating them as gen 8.
+
+Signed-off-by: Mikhail Malyshev <mike.malyshev@gmail.com>
+---
+ hw/vfio/igd.c | 62 ++++++++++++++++++++++++++++++---------------------
+ 1 file changed, 37 insertions(+), 25 deletions(-)
+
+diff --git a/tools/qemu-xen/hw/vfio/igd.c b/tools/qemu-xen/hw/vfio/igd.c
+index d320d032a7..c105c9993f 100644
+--- a/tools/qemu-xen/hw/vfio/igd.c
++++ b/tools/qemu-xen/hw/vfio/igd.c
+@@ -59,38 +59,50 @@
+  */
+ static int igd_gen(VFIOPCIDevice *vdev)
+ {
+-    if ((vdev->device_id & 0xfff) == 0xa84) {
+-        return 8; /* Broxton */
++    /*
++     * Device IDs for Broxton/Apollo Lake are 0x0a84, 0x1a84, 0x1a85, 0x5a84
++     * and 0x5a85, match bit 11:1 here.
++     * Prefix 0x0a is taken by Haswell, this rule should be matched first.
++     */
++    if ((vdev->device_id & 0xffe) == 0xa84) {
++        return 9;
+     }
+ 
+     switch (vdev->device_id & 0xff00) {
+-    /* Old, untested, unavailable, unknown */
+-    case 0x0000:
+-    case 0x2500:
+-    case 0x2700:
+-    case 0x2900:
+-    case 0x2a00:
+-    case 0x2e00:
+-    case 0x3500:
+-    case 0xa000:
+-        return -1;
+-    /* SandyBridge, IvyBridge, ValleyView, Haswell */
+-    case 0x0100:
+-    case 0x0400:
+-    case 0x0a00:
+-    case 0x0c00:
+-    case 0x0d00:
+-    case 0x0f00:
++    case 0x0100:    /* SandyBridge, IvyBridge */
+         return 6;
+-    /* BroadWell, CherryView, SkyLake, KabyLake */
+-    case 0x1600:
+-    case 0x1900:
+-    case 0x2200:
+-    case 0x5900:
++    case 0x0400:    /* Haswell */
++    case 0x0a00:    /* Haswell */
++    case 0x0c00:    /* Haswell */
++    case 0x0d00:    /* Haswell */
++    case 0x0f00:    /* Valleyview/Bay Trail */
++        return 7;
++    case 0x1600:    /* Broadwell */
++    case 0x2200:    /* Cherryview */
+         return 8;
++    case 0x1900:    /* Skylake */
++    case 0x3100:    /* Gemini Lake */
++    case 0x5900:    /* Kaby Lake */
++    case 0x3e00:    /* Coffee Lake */
++    case 0x9B00:    /* Comet Lake */
++        return 9;
++    case 0x8A00:    /* Ice Lake */
++    case 0x4500:    /* Elkhart Lake */
++    case 0x4E00:    /* Jasper Lake */
++        return 11;
++    case 0x9A00:    /* Tiger Lake */
++    case 0x4C00:    /* Rocket Lake */
++    case 0x4600:    /* Alder Lake */
++    case 0xA700:    /* Raptor Lake */
++        return 12;
+     }
+ 
+-    return 8; /* Assume newer is compatible */
++    /*
++     * Unfortunately, Intel changes its specification quite often.  This makes
++     * it impossible to use a suitable default value for unknown devices.
++     * Return -1 for not applying any generation-specific quirks.
++     */
++    return -1;
+ }
+ 
+ typedef struct VFIOIGDQuirk {
+-- 
+2.43.0
+
