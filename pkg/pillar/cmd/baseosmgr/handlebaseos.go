@@ -222,18 +222,24 @@ func doBaseOsStatusUpdate(ctx *baseOsMgrContext, uuidStr string,
 		log.Warnf("doBaseOsStatusUpdate(%s): %s",
 			config.BaseOsVersion, err)
 	} else if isCurrentKube != isUpdateKube {
-		var errString string
-		if isUpdateKube {
-			errString = fmt.Sprintf("Upgrade to EVE-k (%s) from non EVE-k (%s) is not supported",
+		// Universal images work on both kvm and k devices
+		if strings.Contains(config.BaseOsVersion, "-uni-") {
+			log.Noticef("doBaseOsStatusUpdate: accepting universal image %s on %s device",
 				config.BaseOsVersion, shortVerCurPart)
 		} else {
-			errString = fmt.Sprintf("Upgrade to non EVE-k (%s) from  EVE-k (%s) is not supported",
-				config.BaseOsVersion, shortVerCurPart)
+			var errString string
+			if isUpdateKube {
+				errString = fmt.Sprintf("Upgrade to EVE-k (%s) from non EVE-k (%s) is not supported",
+					config.BaseOsVersion, shortVerCurPart)
+			} else {
+				errString = fmt.Sprintf("Upgrade to non EVE-k (%s) from  EVE-k (%s) is not supported",
+					config.BaseOsVersion, shortVerCurPart)
+			}
+			log.Error(errString)
+			status.SetErrorNow(errString)
+			changed = true
+			return changed
 		}
-		log.Error(errString)
-		status.SetErrorNow(errString)
-		changed = true
-		return changed
 	}
 
 	c, proceed := doBaseOsInstall(ctx, uuidStr, config, status)

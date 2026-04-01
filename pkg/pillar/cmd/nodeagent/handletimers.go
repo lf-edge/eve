@@ -22,6 +22,12 @@ import (
 func handleDeviceTimers(ctxPtr *nodeagentContext) {
 	updateTickerTime(ctxPtr)
 
+	if ctxPtr.updateInprogress {
+		log.Noticef("handleDeviceTimers: tick=%d testInprogress=%v configGetStatus=%d configGetSuccess=%v vaultOp=%s upgradeTestStart=%d",
+			ctxPtr.timeTickCount, ctxPtr.testInprogress, ctxPtr.configGetStatus, ctxPtr.configGetSuccess,
+			types.FormatTriState(ctxPtr.vaultOperational), ctxPtr.upgradeTestStartTime)
+	}
+
 	handleFallbackOnCloudDisconnect(ctxPtr)
 	handleRebootOnVaultLocked(ctxPtr)
 	handleResetOnCloudDisconnect(ctxPtr)
@@ -228,6 +234,9 @@ func handleRebootOnVaultLocked(ctxPtr *nodeagentContext) {
 	var timePassed uint32
 	if ctxPtr.vaultmgrReported && ctxPtr.configGetSuccess {
 		timePassed = ctxPtr.timeTickCount - ctxPtr.vaultTestStartTime
+	} else {
+		log.Warnf("handleRebootOnVaultLocked: vault timer NOT ticking: vaultmgrReported=%v configGetSuccess=%v updateInprogress=%v",
+			ctxPtr.vaultmgrReported, ctxPtr.configGetSuccess, ctxPtr.updateInprogress)
 	}
 	if timePassed > vaultCutOffTime {
 		if ctxPtr.updateInprogress {
@@ -317,7 +326,8 @@ func updateZedagentCloudConnectStatus(ctxPtr *nodeagentContext,
 		setTestStartTime(ctxPtr)
 
 	case types.ConfigGetTemporaryFail:
-		log.Functionf("Config get from controller, has temporarily failed")
+		log.Warnf("Config get from controller: temporary fail (testInprogress=%v updateInprogress=%v configGetSuccess=%v)",
+			ctxPtr.testInprogress, ctxPtr.updateInprogress, ctxPtr.configGetSuccess)
 		// We know it is reachable even though it is not (yet) giving
 		// us a config
 		ctxPtr.lastControllerReachableTime = ctxPtr.timeTickCount

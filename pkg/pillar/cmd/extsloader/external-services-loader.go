@@ -457,13 +457,19 @@ func tryMountAndStartServices(ctx *externalServicesContext) {
 	}
 
 	// Search extension image on all block devices.
-	log.Functionf("Searching for %s (active partition: %s) on available disks...", imageName, partName)
+	log.Noticef("Searching for %s (active partition: %s) on available disks...", imageName, partName)
 	pkgsImgPath := findPkgsImg(imageName)
-	if pkgsImgPath == "" {
+	if pkgsImgPath != "" {
+		log.Noticef("Extension image found at %s (pre-extracted by baseosmgr)", pkgsImgPath)
+	} else {
 		// CAS self-heal: if Extension file is missing but Core expects one,
 		// extract the disk-additional blob from containerd CAS.
 		// This handles forward upgrade from monolithic to split rootfs.
+		log.Noticef("Extension image %s not found on disk, attempting CAS self-heal...", imageName)
 		pkgsImgPath = extractExtensionFromCAS(ctx, partName, imageName)
+		if pkgsImgPath != "" {
+			log.Noticef("Extension image recovered from CAS to %s (self-heal)", pkgsImgPath)
+		}
 	}
 	if pkgsImgPath == "" {
 		log.Warnf("%s not found on any disk or CAS", imageName)

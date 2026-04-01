@@ -4,85 +4,109 @@
 package cas
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
 	"io"
-	"runtime"
+	"os"
 
-	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/lf-edge/edge-containers/pkg/registry"
-	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/sirupsen/logrus"
 )
 
-// FindAdditionalDiskBlob walks the OCI manifest tree for the given image
-// reference and returns the digest of the first layer with the
-// "disk-additional" role annotation. Returns ("", nil) if no such layer
-// exists (monolithic image). Returns an error only on CAS read failures.
-func FindAdditionalDiskBlob(casClient CAS, reference string) (string, error) {
-	imageHash, err := casClient.GetImageHash(reference)
-	if err != nil {
-		return "", fmt.Errorf("FindAdditionalDiskBlob: failed to get image hash for %s: %w", reference, err)
+// HasExtensionDisk checks whether the given OCI image reference in CAS
+// has an Extension disk (org.lfedge.eci.artifact.disk-0 label).
+// Uses the same registry.Puller mechanism as WriteToPartition so it works
+// with Docker labels (set by linuxkit), not just OCI layer annotations.
+//
+// Returns true if the image has an additional disk, false if monolithic.
+func HasExtensionDisk(casClient CAS, reference string) (bool, error) {
+	puller := registry.Puller{
+		Image: reference,
 	}
 
 	ctrdCtx, done := casClient.CtrNewUserServicesCtx()
 	defer done()
 
-	// Read the top-level blob (could be an index or a manifest)
-	reader, err := casClient.ReadBlob(ctrdCtx, imageHash)
+	resolver, err := casClient.Resolver(ctrdCtx)
 	if err != nil {
-		return "", fmt.Errorf("FindAdditionalDiskBlob: failed to read blob %s: %w", imageHash, err)
+		return false, fmt.Errorf("HasExtensionDisk: failed to get CAS resolver: %w", err)
 	}
-	blobData, err := io.ReadAll(reader)
+
+	// Pull with a nil Disks writer — the puller reads the config to check
+	// for disk annotations. If disk-0 label exists, it maps to Disks[0].
+	// We use a probe writer that just records whether anything was written.
+	probe := &writeProbe{}
+	target := &registry.FilesTarget{
+		Disks: []io.Writer{probe},
+	}
+
+	if _, _, err := puller.Pull(target, 0, false, io.Discard, resolver); err != nil {
+		return false, fmt.Errorf("HasExtensionDisk: pull probe failed for %s: %w", reference, err)
+	}
+
+	return probe.written, nil
+}
+
+// ExtractExtensionDisk extracts the Extension disk (disk-0) from the given
+// OCI image reference in CAS and writes it to the specified path.
+// Uses the same registry.Puller approach as WriteToPartition.
+//
+// Returns nil if the image has no Extension disk (monolithic image).
+func ExtractExtensionDisk(casClient CAS, reference, targetPath string) error {
+	puller := registry.Puller{
+		Image: reference,
+	}
+
+	ctrdCtx, done := casClient.CtrNewUserServicesCtx()
+	defer done()
+
+	resolver, err := casClient.Resolver(ctrdCtx)
 	if err != nil {
-		return "", fmt.Errorf("FindAdditionalDiskBlob: failed to read blob data %s: %w", imageHash, err)
+		return fmt.Errorf("ExtractExtensionDisk: failed to get CAS resolver: %w", err)
 	}
 
-	// Try to parse as OCI index first (multi-arch image)
-	var manifest *v1.Manifest
-	var index ocispec.Index
-	if err := json.Unmarshal(blobData, &index); err == nil && index.Manifests != nil {
-		// It's an index — find manifest for current architecture
-		manifestHash := ""
-		for _, m := range index.Manifests {
-			if m.Platform != nil && m.Platform.Architecture == runtime.GOARCH {
-				manifestHash = m.Digest.String()
-				break
-			}
-		}
-		if manifestHash == "" {
-			return "", fmt.Errorf("FindAdditionalDiskBlob: no manifest for arch %s in index", runtime.GOARCH)
-		}
-		ctrdCtx2, done2 := casClient.CtrNewUserServicesCtx()
-		defer done2()
-		mReader, err := casClient.ReadBlob(ctrdCtx2, manifestHash)
-		if err != nil {
-			return "", fmt.Errorf("FindAdditionalDiskBlob: failed to read manifest %s: %w", manifestHash, err)
-		}
-		manifest, err = v1.ParseManifest(mReader)
-		if err != nil {
-			return "", fmt.Errorf("FindAdditionalDiskBlob: failed to parse manifest %s: %w", manifestHash, err)
-		}
-	} else {
-		// Try to parse as direct manifest (single-arch image)
-		parsed, err := v1.ParseManifest(bytes.NewReader(blobData))
-		if err != nil {
-			return "", fmt.Errorf("FindAdditionalDiskBlob: blob %s is neither index nor manifest: %w", imageHash, err)
-		}
-		manifest = parsed
+	// Write to a temp file, then atomically rename
+	tmpPath := targetPath + ".tmp"
+	f, err := os.Create(tmpPath)
+	if err != nil {
+		return fmt.Errorf("ExtractExtensionDisk: failed to create %s: %w", tmpPath, err)
 	}
 
-	// Walk layers looking for disk-additional role
-	for _, layer := range manifest.Layers {
-		role, ok := layer.Annotations[registry.AnnotationRole]
-		if ok && role == registry.RoleAdditionalDisk {
-			logrus.Infof("FindAdditionalDiskBlob: found disk-additional layer %s", layer.Digest.String())
-			return layer.Digest.String(), nil
-		}
+	target := &registry.FilesTarget{
+		Disks: []io.Writer{f},
 	}
 
-	// No disk-additional layer — monolithic image
-	logrus.Infof("FindAdditionalDiskBlob: no disk-additional layer in %s (monolithic image)", reference)
-	return "", nil
+	_, _, err = puller.Pull(target, 0, false, io.Discard, resolver)
+	f.Close()
+	if err != nil {
+		os.Remove(tmpPath)
+		return fmt.Errorf("ExtractExtensionDisk: pull failed for %s: %w", reference, err)
+	}
+
+	// Check if anything was written (monolithic images have no disk-0)
+	info, err := os.Stat(tmpPath)
+	if err != nil || info.Size() == 0 {
+		os.Remove(tmpPath)
+		logrus.Infof("ExtractExtensionDisk: no Extension disk in %s (monolithic image)", reference)
+		return nil
+	}
+
+	if err := os.Rename(tmpPath, targetPath); err != nil {
+		os.Remove(tmpPath)
+		return fmt.Errorf("ExtractExtensionDisk: failed to rename %s to %s: %w", tmpPath, targetPath, err)
+	}
+
+	logrus.Infof("ExtractExtensionDisk: wrote Extension (%d bytes) to %s", info.Size(), targetPath)
+	return nil
+}
+
+// writeProbe is a minimal writer that just records whether Write was called.
+type writeProbe struct {
+	written bool
+}
+
+func (w *writeProbe) Write(p []byte) (int, error) {
+	if len(p) > 0 {
+		w.written = true
+	}
+	return len(p), nil
 }

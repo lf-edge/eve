@@ -21,7 +21,8 @@ Options:
   --store-tpm-id        Copy TPM-backed local QEMU identity:
                         - /config/soft_serial into ./conf and backup
                         - optional TPM/bootstrap config files into ./conf and backup
-                        - local ./swtpm TPM state into backup
+                        - local swtpm TPM state into backup (auto-detects
+                          ./swtpm or dist/<arch>/current/swtpm)
   --enable-ssh          For local_eve, enable device SSH through zcli using
                         the node name from ./conf/soft_serial or backup config.
   --restore-local-id    Auto-detect backup identity type and restore local
@@ -29,7 +30,8 @@ Options:
   --restore-tpm-id      Restore TPM-backed local QEMU identity into this repo:
                         - ./conf/soft_serial and optional TPM/bootstrap files
                         - ./swtpm TPM state
-                        Run this before starting the next local QEMU boot.
+                        Run this before rebuilding. Then boot with:
+                          make run-live TPM=y CURRENT_SWTPM=\$(pwd)/swtpm
   --restore-id          Restore identity files from backup into device /persist/certs.
   --restore-id-when-ready
     Wait until SSH is reachable, then restore identity files.
@@ -184,6 +186,17 @@ CONFIG_BACKUP_DIR="${BACKUP_BASE}/config"
 CONF_DIR="${SCRIPT_DIR}/conf"
 SWTPM_DIR="${SCRIPT_DIR}/swtpm"
 SWTPM_BACKUP_DIR="${BACKUP_BASE}/swtpm"
+
+# Compute the Makefile's default SWTPM location so we can find state there
+# when the user runs `make run-live TPM=y` without the CURRENT_SWTPM override.
+_hostarch="$(uname -m)"
+case "${_hostarch}" in
+  x86_64)  _zarch="amd64" ;;
+  aarch64) _zarch="arm64" ;;
+  *)       _zarch="${_hostarch}" ;;
+esac
+MAKEFILE_SWTPM_DIR="${SCRIPT_DIR}/dist/${_zarch}/current/swtpm"
+unset _hostarch _zarch
 IDENTITY_KIND_FILE="${BACKUP_BASE}/identity-kind.txt"
 IDENTITY_KIND_SOFTWARE="software"
 IDENTITY_KIND_TPM="tpm"
@@ -306,11 +319,15 @@ restore_required_local_config_file() {
 }
 
 local_swtpm_pid() {
-  local pid_file="${SWTPM_DIR}/swtpm.pid"
-  if [[ ! -f "${pid_file}" ]]; then
-    return 1
-  fi
-  cat "${pid_file}"
+  local pid_file dir
+  for dir in "${SWTPM_DIR}" "${MAKEFILE_SWTPM_DIR}"; do
+    pid_file="${dir}/swtpm.pid"
+    if [[ -f "${pid_file}" ]]; then
+      cat "${pid_file}"
+      return 0
+    fi
+  done
+  return 1
 }
 
 is_local_swtpm_running() {
@@ -438,23 +455,34 @@ detect_backup_identity_kind() {
   return 1
 }
 
-backup_local_swtpm_state() {
-  local item
+find_swtpm_state_dir() {
+  local dir
+  for dir in "${SWTPM_DIR}" "${MAKEFILE_SWTPM_DIR}"; do
+    if [[ -d "${dir}" ]] && compgen -G "${dir}/tpm2-*" >/dev/null 2>&1; then
+      printf "%s\n" "${dir}"
+      return 0
+    fi
+  done
+  return 1
+}
 
-  if [[ ! -d "${SWTPM_DIR}" ]]; then
-    echo "No local swtpm state directory at ${SWTPM_DIR}; skipping TPM state backup."
+backup_local_swtpm_state() {
+  local item src_dir
+
+  if ! src_dir="$(find_swtpm_state_dir)"; then
+    echo "No swtpm state found in ${SWTPM_DIR} or ${MAKEFILE_SWTPM_DIR}; skipping TPM state backup."
     return 0
   fi
 
   if is_local_swtpm_running; then
     echo "Warning: local swtpm appears to be running (pid $(local_swtpm_pid))."
-    echo "Backing up live TPM state from ${SWTPM_DIR}; for the safest snapshot, stop QEMU and rerun the store command."
+    echo "Backing up live TPM state from ${src_dir}; for the safest snapshot, stop QEMU and rerun the store command."
   fi
 
   rm -rf "${SWTPM_BACKUP_DIR}"
   install -d -m 700 "${SWTPM_BACKUP_DIR}"
   shopt -s dotglob nullglob
-  for item in "${SWTPM_DIR}"/*; do
+  for item in "${src_dir}"/*; do
     if [[ -S "${item}" || -p "${item}" ]]; then
       continue
     fi
@@ -462,7 +490,7 @@ backup_local_swtpm_state() {
   done
   shopt -u dotglob nullglob
   cleanup_swtpm_runtime_files "${SWTPM_BACKUP_DIR}"
-  echo "Backed up local swtpm state to ${SWTPM_BACKUP_DIR}"
+  echo "Backed up swtpm state from ${src_dir} to ${SWTPM_BACKUP_DIR}"
 }
 
 store_tpm_id() {
@@ -497,6 +525,7 @@ store_tpm_id() {
     ls -l "${CONF_DIR}/tpm_credential"
   fi
   echo "Next step: run --restore-tpm-id before the next local QEMU boot."
+  echo "Then boot with: make run-live TPM=y CURRENT_SWTPM=\$(pwd)/swtpm"
 }
 
 restore_local_swtpm_state() {
@@ -547,7 +576,9 @@ restore_tpm_id() {
 
   echo "Done."
   echo "Restored local TPM identity into ${CONF_DIR} and ${SWTPM_DIR}"
-  echo "Next step: boot the rebuilt local QEMU. The device cert should be recreated from TPM state."
+  echo "Next step: rebuild (make live), then boot with:"
+  echo "  make run-live TPM=y CURRENT_SWTPM=\$(pwd)/swtpm"
+  echo "The device cert will be recreated from the preserved TPM state."
 }
 
 store_software_id() {
@@ -806,12 +837,14 @@ clean_id() {
   fi
 
   # Clean swtpm state so new device gets fresh TPM.
-  local swtpm_dir="${SCRIPT_DIR}/swtpm"
-  if [[ -d "${swtpm_dir}" ]]; then
-    echo ""
-    rm -rf "${swtpm_dir}"
-    echo "  removed swtpm state: ${swtpm_dir}"
-  fi
+  local dir
+  for dir in "${SWTPM_DIR}" "${MAKEFILE_SWTPM_DIR}"; do
+    if [[ -d "${dir}" ]]; then
+      echo ""
+      rm -rf "${dir}"
+      echo "  removed swtpm state: ${dir}"
+    fi
+  done
 
   echo ""
   echo "Done. Next build will onboard as a new device."

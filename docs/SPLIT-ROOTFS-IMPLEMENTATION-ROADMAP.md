@@ -994,10 +994,11 @@ ZFlash prepares USB installer media. It does not execute installation logic itse
 
 ### Universal Image Prototype Status
 
-Local prototype (not merged yet) adds:
-1. Detect universal images by probing CONFIG partition (`eve-hv-supported`)
-2. Let user pick HV (KVM/Kubevirt/Xen)
-3. Write `eve-hv-type` into CONFIG on flashed media
+Implemented on `feature/split-rootfs` branch (see Section 15 for full details):
+1. `HV=uni` build variant produces a single `-uni-` image with all HV payloads
+2. GRUB shows KVM/Kubevirt menu at install time (60s timeout → KVM default)
+3. Installer writes selected HV to CONFIG; subsequent boots use CONFIG value
+4. baseosmgr accepts `-uni-` OTA updates on both kvm and k devices
 
 ### Split Rootfs Impact
 
@@ -1221,6 +1222,7 @@ Key files referenced in this document:
 | `images/rootfs_core.yml.in` | Core rootfs Linuxkit template |
 | `images/rootfs_ext.yml.in` | Extension rootfs Linuxkit template |
 | `images/rootfs_universal.yml.in` | Universal rootfs template |
+| `pkg/eve/installer/grub_installer.cfg` | GRUB installer overlay (HV selection menu) |
 
 ### Generic Core Image
 
@@ -1347,3 +1349,149 @@ eve exec pillar curl -s 'http://localhost:6543/debug/pprof/heap?debug=1' | tail 
 # Memory-monitor CSV (tracks heap and RSS over time)
 cat /persist/memory-monitor/output/memory_usage.csv
 ```
+
+## 15. Universal Image (`HV=uni`)
+
+### Overview
+
+A universal EVE image (`-uni-` variant) ships all hypervisor payloads in a single
+installer/OTA artifact. The user (or automation) selects KVM or Kubevirt at install
+time. After installation, the device behaves identically to a dedicated per-HV image.
+
+The universal image is additive: existing `-kvm-` and `-k-` pipelines are unchanged.
+
+### Size Impact
+
+The Extension image already includes kube services (filtered at runtime by extsloader).
+The Core image already uses `PILLAR_K_TAG`. Adding kube to a KVM build increases the
+Extension by ~165MB (350MB vs 185MB), which is acceptable for a single combined image.
+
+### Implementation Status (2026-03-20)
+
+**Implemented and QEMU-tested:**
+
+| File | Change |
+|------|--------|
+| `Makefile` | Added `uni` to `HV_SUPPORTED`, auto-sets `UNIVERSAL=1` when `HV=uni`, added `eve-uni` convenience target |
+| `pkg/grub/rootfs.cfg` | Added `set_uni_boot` function (marks `_eve_uni=true`, sets 60s timeout, delegates to `set_kvm_boot`). When `_eve_uni` is true, two boot menu entries are shown instead of one |
+| `pkg/eve/installer/grub_installer.cfg` | Conditional `eve_flavor` — skips hardcoding `kvm` when rootfs says `uni`, so `set_uni_boot` can run |
+| `pkg/installer/install` | Reads `eve_install_hv=kvm\|k` from kernel cmdline (passed by GRUB menu selection), writes chosen HV to CONFIG |
+| `pkg/pillar/cmd/baseosmgr/handlebaseos.go` | Accepts `-uni-` version strings on OTA update regardless of current HV type (bypasses kvm/k mismatch rejection) |
+
+### Build and Test
+
+```bash
+# Build
+make HV=uni eve-split installer-raw    # or: make eve-uni
+
+# QEMU smoke test (installer)
+make HV=uni run-installer-raw
+# GRUB shows: "Boot/Install EVE (KVM) [default]" / "Boot/Install EVE (Kubevirt / EVE-k)"
+# 60s timeout, defaults to KVM
+# Installer writes selected HV to CONFIG
+
+# Check version string
+cat dist/amd64/*/installer/eve_version   # contains "-uni-"
+
+# Go vet
+cd pkg/pillar && go vet -tags kubevirt ./cmd/baseosmgr/...
+```
+
+### Boot Flow
+
+```
+FRESH INSTALL (direct-dd / USB, universal image):
+  USB GRUB → /etc/eve-hv-type = "uni"
+  grub_installer.cfg → detects "uni", does NOT hardcode eve_flavor
+  set_eve_flavor → reads "uni" from rootfs
+  set_uni_boot → _eve_uni=true, timeout=60, KVM defaults
+  GRUB menu → user picks KVM or Kubevirt (60s timeout → KVM)
+  Selected entry adds eve_install_hv=kvm|k to kernel cmdline
+  Installer reads cmdline → writes "kvm" or "k" to target CONFIG
+  First real boot → GRUB reads CONFIG → normal per-HV boot
+
+FRESH INSTALL (ZFlash, universal image):
+  ZFlash → user picks HV → writes to CONFIG on USB media
+  Installer → reads CONFIG → "kvm" or "k" → no menu needed
+  Normal from here
+
+OTA UPDATE (universal image to existing device):
+  Device CONFIG already has "kvm" or "k" (from original install)
+  baseosmgr sees "-uni-" → accepts update (bypasses HV mismatch check)
+  After reboot → GRUB reads CONFIG → same HV as before → normal
+  /etc/eve-hv-type = "uni" in new rootfs → never consulted (CONFIG wins)
+```
+
+### Known Issues / TODO
+
+- **Substring match bug (fixed)**: `grep -q "eve_install_hv=k"` matched
+  `eve_install_hv=kvm`. Fixed by checking `kvm` first in the installer.
+- **`installer-split.raw` HV-supported list**: line 981 in Makefile writes
+  `kvm\nk\nxen\n` to CONFIG — should include `uni` if ZFlash needs to
+  validate it.
+- **Eden test coverage**: No automated test for the GRUB menu interaction
+  (inherently interactive). OTA acceptance can be tested via existing Eden
+  upgrade workflow with `EVE_HV=uni`.
+
+## 16. Kernel Module Deferred Loading PoC (2026-03-23)
+
+### Size Inventory (live QEMU EVE device, amd64)
+
+Total: ~11.5MB compressed modules + ~133MB firmware = ~144MB.
+
+| Category | Modules (KB) | Firmware (KB) | Connectivity? | Deferrable? |
+|----------|-------------|---------------|---------------|-------------|
+| Ethernet drivers | 2,736 | 2,631 (bnx2x) | YES — NIM primary | **No** |
+| WiFi drivers + stack | 2,402 | ~129,000 | YES — WiFi uplink | Firmware only (see below) |
+| WWAN/MHI | ~250 | — | YES — cellular | **No** |
+| ZFS + SPL | 1,509 | — | YES on k/ZFS | **No** |
+| Bluetooth | 340 | — | No | **Yes** |
+| CAN | 171 | — | No | **Yes** |
+| NFS/sunrpc + NFS fs | 936 | — | No | **Yes** |
+| iSCSI | 86 | — | No | **Yes** |
+| HID/input | 92 | — | No | **Yes** |
+| IIO sensors | 118 | — | No | **Yes** |
+
+Non-connectivity deferrable total: **~1.7MB** (modest).
+
+WiFi firmware: **~126MB** — only loads when WiFi hardware is present. Most edge servers
+have no WiFi, making this dead weight. Could move to Extension with a ~30s connectivity
+delay for WiFi-only devices (rare; wired/cellular is always primary).
+
+### Mechanism Validation (QEMU-tested, 2026-03-23)
+
+The overlay-based deferred loading mechanism was validated end-to-end:
+
+```
+1. Mount overlay on /lib/modules/<ver>/ with Extension as additional lowerdir  → WORKS
+2. depmod -a rebuilds dependency map including Extension modules               → WORKS
+3. modprobe loads a module from the Extension layer (bluetooth tested)         → WORKS
+4. rmmod + modprobe cycle (cfg80211) through overlay                           → WORKS
+```
+
+**Implementation pattern for extsloader:**
+```bash
+KVER=$(uname -r)
+# After Extension image is mounted at $EXT_MOUNT:
+mkdir -p /lib/modules/$KVER
+mount -t overlay overlay \
+  -o lowerdir=$EXT_MOUNT/lib/modules/$KVER:/hostfs/lib/modules/$KVER \
+  /lib/modules/$KVER
+depmod -a $KVER
+udevadm trigger --action=add   # re-probe unbound devices
+```
+
+**Limitation:** `depmod` writes to `modules.dep` in the upper layer (tmpfs). This is
+fine — the dependency map is ephemeral and rebuilt on every boot.
+
+### Recommendation
+
+1. **Phase 1 (low risk, ~1.7MB):** Move non-connectivity modules (bluetooth, CAN, NFS,
+   iSCSI, HID, IIO) to Extension. Validates the pipeline end-to-end with minimal risk.
+
+2. **Phase 2 (product decision, ~126MB):** Move WiFi firmware to Extension. Requires
+   explicit acceptance of ~30s WiFi delay on WiFi-only devices. WiFi kernel modules stay
+   in Core (they handle missing firmware gracefully — log warning, no crash).
+
+3. **Not recommended:** Moving ethernet drivers, WiFi drivers, WWAN, or ZFS. These are
+   all connectivity-critical or variant-essential.

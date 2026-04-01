@@ -180,7 +180,12 @@ prepare_build_marker() {
 build_split_image() {
     local label="$1"
     local with_pkgs="${2:-1}"
-    local make_args=(UNIVERSAL=1)
+    local make_args=("HV=$EVE_HV")
+
+    # HV=uni auto-sets UNIVERSAL=1 in Makefile; for other HVs, set it explicitly
+    if [ "$EVE_HV" != "uni" ]; then
+        make_args+=("UNIVERSAL=1")
+    fi
 
     if [ -n "$KERNEL_TAG" ]; then
         make_args+=("KERNEL_TAG=$KERNEL_TAG")
@@ -257,7 +262,7 @@ corrupt_split_image() {
     rm -f "$EVE_ROOT/dist/$EVE_ARCH/$ver/rootfs-core.tar" "$installer/rootfs-core.img"
 
     echo "$PREFIX Rebuilding core tar with corrupted roothash..."
-    "$EVE_ROOT/tools/makerootfs.sh" tar -y "$EVE_ROOT/images/out/rootfs-kvm-core.yml" \
+    "$EVE_ROOT/tools/makerootfs.sh" tar -y "$EVE_ROOT/images/out/rootfs-${EVE_HV}-core.yml" \
         -t "$EVE_ROOT/dist/$EVE_ARCH/$ver/rootfs-core.tar" \
         -d "$installer" -a "$EVE_ARCH"
 
@@ -420,10 +425,22 @@ if [ -z "$SKIP_EDEN_SETUP" ]; then
     fi
 
     if [ -f "eden" ]; then
-        ./eden clean 2>/dev/null || true
+        ./eden stop 2>/dev/null || true
+        ./eden clean --current-context 2>/dev/null || true
     fi
     docker rm -f eden_adam eden_redis 2>/dev/null || true
 
+    # Kill any leftover QEMU/swtpm from a previous run
+    if [ -f "dist/default-eve.pid" ]; then
+        kill "$(cat dist/default-eve.pid)" 2>/dev/null || true
+        rm -f dist/default-eve.pid
+    fi
+    pkill -f "swtpm socket.*eden" 2>/dev/null || true
+
+    # Remove stale EVE disk image, certs, and serial log so eden setup
+    # regenerates them and tests don't see GRUB entries from previous runs.
+    rm -rf dist/default-images/eve/live.img dist/default-images/eve/live.raw.qcow2
+    rm -f dist/default-eve.log
     rm -rf dist/default-certs
     rm -rf "$HOME/.eden/certs"
 
@@ -482,6 +499,7 @@ cd "$EDEN_DIR"
 
 export EVE_VERSION
 export EVE_REGISTRY
+export EVE_HV
 [ -n "$EVE_VERSION_2" ] && export EVE_VERSION_2
 [ -n "$EVE_VERSION_BROKEN" ] && export EVE_VERSION_BROKEN
 

@@ -25,8 +25,6 @@ package vaultmgr
 import (
 	"bytes"
 	"crypto/sha256"
-	"encoding/json"
-	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -75,11 +73,7 @@ const (
 	errorTime   = 3 * time.Minute
 	warningTime = 40 * time.Second
 	// extsloader synchronization to ensure deterministic PCR12 -> unseal ordering.
-	extsloaderStateFilePath    = "/run/extsloader-state.json"
-	extsloaderStateReady       = "ready"
-	extsloaderStateFailed      = "failed"
 	extsloaderStateWaitTimeout = 2 * time.Minute
-	extsloaderStatePoll        = 2 * time.Second
 )
 
 var (
@@ -89,11 +83,6 @@ var (
 	vaultConfigInited bool
 	handler           vault.Handler
 )
-
-type extsloaderState struct {
-	State  string `json:"state"`
-	Reason string `json:"reason,omitempty"`
-}
 
 // publishVaultConfig: publishes vault config and also updates in memory vaultConfig
 func publishVaultConfig(ctx *vaultMgrContext, tpmKeyOnly bool) {
@@ -335,62 +324,54 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 }
 
-func readExtsloaderState() (extsloaderState, error) {
-	data, err := os.ReadFile(extsloaderStateFilePath)
-	if err != nil {
-		return extsloaderState{}, err
-	}
-	var state extsloaderState
-	if err := json.Unmarshal(data, &state); err != nil {
-		return extsloaderState{}, fmt.Errorf("failed to decode %s: %w", extsloaderStateFilePath, err)
-	}
-	if state.State == "" {
-		return extsloaderState{}, fmt.Errorf("empty state in %s", extsloaderStateFilePath)
-	}
-	return state, nil
-}
-
+// waitForExtsloaderState waits for extsloader to reach a terminal state
+// (ready or failed) before vault setup, ensuring PCR 12 has its final value.
+// Uses pubsub subscription rather than file polling. On monolithic images
+// (no extsloader), the subscription will have no items and we proceed after
+// timeout. Safe to call on all image types.
 func waitForExtsloaderState(ps *pubsub.PubSub) {
-	log.Noticef("Waiting for extsloader terminal state before vault setup")
-	deadline := time.Now().Add(extsloaderStateWaitTimeout)
-	ticker := time.NewTicker(extsloaderStatePoll)
-	defer ticker.Stop()
+	log.Noticef("Waiting for extsloader terminal state (PCR12) before vault setup")
 
-	lastSeenState := ""
-	missingLogged := false
+	sub, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:   "extsloader",
+		MyAgentName: agentName,
+		TopicImpl:   types.ExtsloaderStatus{},
+		Activate:    true,
+	})
+	if err != nil {
+		log.Warnf("ExtsloaderStatus subscription failed (monolithic image?): %v; proceeding", err)
+		return
+	}
+	defer sub.Close()
+
+	deadline := time.After(extsloaderStateWaitTimeout)
 	for {
-		state, err := readExtsloaderState()
-		if err == nil {
-			missingLogged = false
-			if state.State != lastSeenState {
-				log.Noticef("extsloader state observed: %q", state.State)
-				lastSeenState = state.State
+		select {
+		case change := <-sub.MsgChan():
+			sub.ProcessChange(change)
+			items := sub.GetAll()
+			for _, item := range items {
+				status, ok := item.(types.ExtsloaderStatus)
+				if !ok {
+					continue
+				}
+				switch status.State {
+				case types.ExtsloaderStateReady:
+					log.Noticef("extsloader ready (PCR12 final); proceeding with vault setup")
+					return
+				case types.ExtsloaderStateFailed:
+					log.Warnf("extsloader failed (%s) (PCR12 final); proceeding with vault setup", status.Reason)
+					return
+				default:
+					log.Noticef("extsloader state: %s; waiting for terminal state", status.State)
+				}
 			}
-			switch state.State {
-			case extsloaderStateReady:
-				log.Noticef("extsloader ready; proceeding with vault setup")
-				return
-			case extsloaderStateFailed:
-				log.Warnf("extsloader failed (%s); proceeding with vault setup", state.Reason)
-				return
-			}
-		} else if errors.Is(err, os.ErrNotExist) {
-			if !missingLogged {
-				log.Noticef("extsloader state file %s not found yet", extsloaderStateFilePath)
-				missingLogged = true
-			}
-		} else {
-			log.Warnf("Unable to read extsloader state: %v", err)
-		}
-
-		if time.Now().After(deadline) {
-			log.Warnf("Timed out waiting for extsloader state after %s; proceeding with vault setup",
+		case <-deadline:
+			log.Warnf("Timed out (%s) waiting for extsloader terminal state; proceeding with vault setup",
 				extsloaderStateWaitTimeout)
 			return
 		}
-
 		ps.StillRunning(agentName, warningTime, errorTime)
-		<-ticker.C
 	}
 }
 
