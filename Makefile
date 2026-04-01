@@ -271,11 +271,16 @@ CLOUD_PROJECT=-project lf-edge-eve
 CLOUD_BUCKET=-bucket eve-live
 CLOUD_INSTANCE=-zone us-west1-a -machine n1-standard-1
 
-HV_SUPPORTED=kvm k mini xen
+HV_SUPPORTED=kvm k mini xen uni
 
 # Check if HV is supported
 ifeq (, $(filter $(HV), $(HV_SUPPORTED)))
     $(error "Unsupported hypervisor $(HV)")
+endif
+
+# Universal images include all hypervisor packages (kvm + kube)
+ifeq ($(HV),uni)
+  UNIVERSAL=1
 endif
 
 # qemu settings
@@ -907,6 +912,9 @@ eve-split: $(ROOTFS_CORE_IMG) $(ROOTFS_EXT_IMG) $(EVE_SPLIT_ARTIFACTS) current $
 	$(LINUXKIT) $(DASH_V) pkg $(LINUXKIT_PKG_TARGET) $(LINUXKIT_ORG_TARGET) $(LINUXKIT_OPTS) --platforms linux/$(ZARCH) --hash-path $(CURDIR) --hash $(ROOTFS_VERSION)-$(HV) --docker $(if $(strip $(EVE_REL)),--release) $(EVE_REL)$(if $(strip $(EVE_REL)),-$(HV)) $(FORCE_BUILD) $|
 	rm -f $(INSTALLER)/rootfs.img
 	$(QUIET): $@: Succeeded
+eve-uni:
+	$(MAKE) HV=uni eve-split
+
 installer.tar: $(INSTALLER_TAR)
 installertar: $(INSTALLER_TAR)
 installer-img: $(INSTALLER_IMG)

@@ -51,6 +51,21 @@ func readUint64File(filename string) (uint64, error) {
 	return dataUint64, err
 }
 
+// ReadCgroupMemoryLimit reads a cgroup v1 memory limit file and returns
+// the value in bytes. Returns 0 and an error if the file cannot be read.
+func ReadCgroupMemoryLimit(path string) (int64, error) {
+	v, err := readUint64File(path)
+	if err != nil {
+		return 0, err
+	}
+	return int64(v), nil
+}
+
+// WriteCgroupMemoryLimit writes a cgroup v1 memory limit value in bytes.
+func WriteCgroupMemoryLimit(path string, value int64) error {
+	return os.WriteFile(path, []byte(strconv.FormatInt(value, 10)), 0)
+}
+
 // ConfigureGOGC sets two main configuration parameters for the
 // garbage collector (GOGC): memory limit and percentage (see
 // explanation here: https://tip.golang.org/doc/gc-guide).

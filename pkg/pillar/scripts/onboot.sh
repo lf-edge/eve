@@ -25,13 +25,58 @@ MIN_DISKSPACE=4096 # MBytes
 
 echo "$(date -Ins -u) Starting onboot.sh"
 
-# Override HV type from CONFIG partition if present (post-build flavor selection)
+# Resolve runtime HV type.
+# Priority: CONFIG > GRUB cmdline (eve_hv_type=) > /run (linuxkit init) > rootfs.
+# "uni" is an image marker, never a valid runtime HV.
+# NOTE: The onboot container's /sys is a fresh sysfs without efivarfs, so
+# EFI var read/write is done in device-steps.sh (pillar service container).
+# NOTE: /etc/eve-hv-type does not exist inside the onboot container (it's on
+# the host rootfs).  Linuxkit init copies it to /run/eve-hv-type before
+# containers start, so we read it from there as a fallback.
+
+_hv_resolved=""
 if [ -f "$CONFIGDIR/eve-hv-type" ]; then
-    echo "$(date -Ins -u) Overriding eve-hv-type from CONFIG: $(cat $CONFIGDIR/eve-hv-type)"
-    if ! cp "$CONFIGDIR/eve-hv-type" /run/eve-hv-type; then
-        echo "$(date -Ins -u) ERROR: Failed to copy eve-hv-type to /run"
+    _hv_resolved=$(tr -d '[:space:]' < "$CONFIGDIR/eve-hv-type")
+    echo "$(date -Ins -u) eve-hv-type from CONFIG: $_hv_resolved"
+fi
+
+# Check kernel cmdline — GRUB's set_uni_boot passes resolved HV via eve_hv_type=
+if [ -z "$_hv_resolved" ]; then
+    _hv_resolved=$(cat /proc/cmdline | tr ' ' '\n' | sed -n 's/^eve_hv_type=//p' | head -1)
+    if [ -n "$_hv_resolved" ]; then
+        echo "$(date -Ins -u) eve-hv-type from GRUB cmdline: $_hv_resolved"
     fi
 fi
+
+# Linuxkit init copies /etc/eve-hv-type → /run/eve-hv-type before containers
+# start.  Use it as fallback when cmdline has no eve_hv_type= (GRUB resolved
+# HV via EFI var and called set_kvm_boot directly, skipping set_uni_boot).
+if [ -z "$_hv_resolved" ] && [ -f /run/eve-hv-type ]; then
+    _hv_resolved=$(tr -d '[:space:]' < /run/eve-hv-type)
+    if [ -n "$_hv_resolved" ]; then
+        echo "$(date -Ins -u) eve-hv-type from /run (linuxkit init): $_hv_resolved"
+    fi
+fi
+
+# Safety: "uni" must NEVER reach runtime — it is a build-time marker, not a
+# valid hypervisor.  If we still have "uni" here, something is wrong (e.g.
+# first OTA from legacy monolithic image that had no EFI var yet).
+# Default to KVM and log a prominent warning.
+if [ "$_hv_resolved" = "uni" ]; then
+    echo "$(date -Ins -u) ERROR: eve-hv-type resolved to 'uni' — this should never happen at runtime. Defaulting to kvm."
+    _hv_resolved="kvm"
+fi
+
+if [ -z "$_hv_resolved" ]; then
+    echo "$(date -Ins -u) ERROR: eve-hv-type could not be resolved from any source. Defaulting to kvm."
+    _hv_resolved="kvm"
+fi
+
+echo -n "$_hv_resolved" > /run/eve-hv-type
+echo "$(date -Ins -u) eve-hv-type resolved: $_hv_resolved"
+# NOTE: EFI variable writing is done in device-steps.sh (pillar service
+# container) because the onboot container's /sys is a fresh sysfs mount
+# that does not include the host's efivarfs.
 
 # Copy pre-defined fscrypt.conf
 cp fscrypt.conf /etc/fscrypt.conf

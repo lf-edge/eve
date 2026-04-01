@@ -41,6 +41,33 @@ else
     echo "$(date -Ins -u) HV flavor is '${EVE_HV_TYPE:-unknown}': skipping zedkube"
 fi
 
+# Write EFI variable so GRUB reads the resolved HV on next boot (uni→uni OTA).
+# This runs in the pillar service container which has the host's efivarfs
+# accessible at /sys/firmware/efi/efivars (unlike the onboot container).
+# Format: 4-byte LE attributes (0x07 = NV|BS|RT) + ASCII + NUL
+if [ -n "$EVE_HV_TYPE" ] && [ -d /hostfs/sys/firmware/efi/efivars ]; then
+    _EFI_GUID="7ad58f29-2b49-4f5a-9f0b-4e7bf7c2c311"
+    _EFI_VAR="/hostfs/sys/firmware/efi/efivars/eve-hv-type-${_EFI_GUID}"
+    # EFI var format: 4-byte LE attributes (0x07 = NV|BS|RT) + ASCII + NUL.
+    # Shell variables cannot hold NUL bytes, so emit the whole payload in one
+    # printf to guarantee a single write() syscall for efivarfs.
+    # Write to temp first — never delete the existing var unless we know the
+    # new value is ready, otherwise a failed boot (e.g. broken OTA) would
+    # leave GRUB without HV info and trigger the selection menu.
+    _efi_tmp=$(mktemp 2>/dev/null) || _efi_tmp="/tmp/efi-hv-type.$$"
+    printf '\x07\x00\x00\x00%s\x00' "$EVE_HV_TYPE" > "$_efi_tmp"
+    if [ -s "$_efi_tmp" ]; then
+        if [ -f "$_EFI_VAR" ]; then
+            chattr -i "$_EFI_VAR" 2>/dev/null
+            rm -f "$_EFI_VAR" 2>/dev/null
+        fi
+        cat "$_efi_tmp" > "$_EFI_VAR" 2>/dev/null && \
+            echo "$(date -Ins -u) Wrote EFI var eve-hv-type=$EVE_HV_TYPE" || \
+            echo "$(date -Ins -u) WARNING: Failed to write EFI var eve-hv-type"
+    fi
+    rm -f "$_efi_tmp"
+fi
+
 if [ -f "$FIRSTBOOTFILE" ]; then
   FIRSTBOOT=1
 fi

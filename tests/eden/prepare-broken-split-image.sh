@@ -100,7 +100,7 @@ rm -f "dist/$EVE_ARCH/$VER/rootfs-core.tar" "$INSTALLER/rootfs-core.img"
 
 # Rebuild core tar (linuxkit reads ext-verity-roothash from installer dir)
 echo "$PREFIX Building core tar..."
-./tools/makerootfs.sh tar -y images/out/rootfs-kvm-core.yml \
+./tools/makerootfs.sh tar -y images/out/rootfs-${EVE_HV}-core.yml \
     -t "dist/$EVE_ARCH/$VER/rootfs-core.tar" \
     -d "$INSTALLER" -a "$EVE_ARCH"
 

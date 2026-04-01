@@ -15,6 +15,7 @@ import (
 	"reflect"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	"github.com/lf-edge/eve-api/go/attest"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
@@ -688,6 +689,12 @@ func attestModuleStart(ctx *zedagentContext) error {
 	if ctx.attestCtx.attestFsmCtx == nil {
 		return fmt.Errorf("No state machine context found")
 	}
+
+	// Wait for extsloader terminal state so PCR 12 has its final value
+	// before we send the first attestation quote to the controller.
+	// On monolithic images (no extsloader), this returns after timeout.
+	waitForExtsloaderPCR12(ctx.ps)
+
 	log.Functionf("Creating %s at %s", "attestFsmCtx.EnterEventLoop",
 		agentlog.GetMyStack())
 	go ctx.attestCtx.attestFsmCtx.EnterEventLoop()
@@ -697,6 +704,57 @@ func attestModuleStart(ctx *zedagentContext) error {
 	// Add .touch file to watchdog config
 	ctx.ps.RegisterFileWatchdog(attestWdName)
 	return nil
+}
+
+const extsloaderAttestWaitTimeout = 2 * time.Minute
+
+// waitForExtsloaderPCR12 waits for extsloader to reach a terminal state
+// (ready or failed) so that PCR 12 has its final value before attestation
+// quotes are sent to the controller. Without this gate, early quotes would
+// report intermediate PCR 12 values, confusing controller baseline management.
+func waitForExtsloaderPCR12(ps *pubsub.PubSub) {
+	log.Noticef("[ATTEST] Waiting for extsloader terminal state (PCR12) before first attestation")
+
+	sub, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:   "extsloader",
+		MyAgentName: agentName,
+		TopicImpl:   types.ExtsloaderStatus{},
+		Activate:    true,
+	})
+	if err != nil {
+		log.Noticef("[ATTEST] ExtsloaderStatus subscription failed (monolithic image?): %v; proceeding", err)
+		return
+	}
+	defer sub.Close()
+
+	deadline := time.After(extsloaderAttestWaitTimeout)
+	for {
+		select {
+		case change := <-sub.MsgChan():
+			sub.ProcessChange(change)
+			items := sub.GetAll()
+			for _, item := range items {
+				status, ok := item.(types.ExtsloaderStatus)
+				if !ok {
+					continue
+				}
+				switch status.State {
+				case types.ExtsloaderStateReady:
+					log.Noticef("[ATTEST] extsloader ready (PCR12 final); starting attestation")
+					return
+				case types.ExtsloaderStateFailed:
+					log.Warnf("[ATTEST] extsloader failed (%s) (PCR12 final); starting attestation", status.Reason)
+					return
+				default:
+					log.Noticef("[ATTEST] extsloader state: %s; waiting for terminal state", status.State)
+				}
+			}
+		case <-deadline:
+			log.Warnf("[ATTEST] Timed out (%s) waiting for extsloader; starting attestation with current PCR12",
+				extsloaderAttestWaitTimeout)
+			return
+		}
+	}
 }
 
 // pubsub functions

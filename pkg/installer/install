@@ -397,6 +397,24 @@ else
     logmsg "Using eve-hv-type from rootfs: $eve_flavor"
 fi
 
+if [ "$eve_flavor" = "uni" ]; then
+    # GRUB passes the user's HV choice via kernel cmdline (eve_hv_type=kvm|k)
+    if cmdline eve_hv_type=kvm; then
+        eve_flavor="kvm"
+    elif cmdline eve_hv_type=k; then
+        eve_flavor="k"
+    else
+        eve_flavor="kvm"
+    fi
+    logmsg "Universal image: selected hypervisor $eve_flavor"
+fi
+
+# Always write resolved eve-hv-type to CONFIG so GRUB reads it on subsequent
+# boots (including after OTA to a universal image). Without this, OTA from
+# monolithic to universal would show the HV selection menu on every boot.
+echo -n "$eve_flavor" | mcopy -i "$CONFIG_IMG" -o - ::eve-hv-type
+logmsg "Wrote eve-hv-type=$eve_flavor to CONFIG"
+
 if [ "$eve_flavor" = "k" ]; then
    if echo "$INSTALL_PERSIST"| grep -q ","; then
       # Multiple persist disk on HV=k should default to zfs
