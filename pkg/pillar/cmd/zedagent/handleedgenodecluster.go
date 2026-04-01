@@ -176,10 +176,18 @@ func publishKubeClusterInfo(ctx *zedagentContext, dest destinationBitset) {
 	if !ok {
 		return
 	}
+	// Read cluster configuration to obtain the cluster ID.
+	// If not available (e.g. in single-node eve-k deployments),
+	// proceed and publish ClusterInfo with an empty cluster ID.
 	cfgItems := ctx.pubEdgeNodeClusterConfig.GetAll()
-	clusterCfg, ok := cfgItems["global"].(types.EdgeNodeClusterConfig)
-	if !ok {
-		return
+	var clusterID types.UUIDandVersion
+	if clusterCfgVal, haveClusterCfg := cfgItems["global"]; haveClusterCfg {
+		clusterCfg, ok := clusterCfgVal.(types.EdgeNodeClusterConfig)
+		if !ok {
+			log.Error("Unexpected type received from EdgeNodeClusterConfig publication")
+			return
+		}
+		clusterID = clusterCfg.ClusterID
 	}
 
 	// Setup Container
@@ -205,7 +213,7 @@ func publishKubeClusterInfo(ctx *zedagentContext, dest destinationBitset) {
 		kci.EveVmApps = append(kci.EveVmApps, vmi.ZKubeVMIInfo())
 	}
 	kci.Storage = psKubeClusterInfoGlb.Storage.ZKubeStorageInfo()
-	kci.ClusterId = clusterCfg.ClusterID.UUID.String()
+	kci.ClusterId = clusterID.UUID.String()
 
 	// Put it in the info msg
 	infoMsg.InfoContent = new(info.ZInfoMsg_ClusterInfo)
