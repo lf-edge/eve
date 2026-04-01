@@ -29,8 +29,8 @@ COPY rpi /rpi
 
 FROM build AS build-amd64-versions
 
-ENV EDK_VERSION edk2-stable202408.01
-ENV EDK_COMMIT 4dfdca63a93497203f197ec98ba20e2327e4afe4
+ENV EDK_VERSION edk2-stable202508.01
+ENV EDK_COMMIT 3d244c3b364bd4e21261380662186d064659161c
 
 FROM build-${TARGETARCH}-versions AS build-edk2
 
@@ -44,6 +44,12 @@ RUN set -e ; [ ! -d /edk2 ] ||  [ ! -d /edk2-patches/${EDK_VERSION} ] || \
         done
 
 FROM build-edk2 AS build-amd64
+
+# VfioIgdPkg: open-source EFI Option ROM for Intel iGPU passthrough.
+# Builds IgdAssignmentDxe which sets ASLS/BDSM registers correctly for
+# Gen11+ devices (64-bit BDSM at 0xC0) — not handled by classic IgdAssignmentDxe.
+ENV VFIOIGD_COMMIT 348860da70ca3a9ed6c1d95c30a97c757f54336b
+ADD --keep-git-dir=true https://github.com/tomitamoeko/VfioIgdPkg.git#${VFIOIGD_COMMIT} /edk2/VfioIgdPkg
 
 FROM build-edk2 AS build-arm64
 
@@ -63,7 +69,8 @@ COPY build.sh /edk2/
 RUN ./build.sh
 
 # create an out dir for all the artifacts
-RUN rm -rf /out && mkdir /out && cp /edk2/OVMF*.fd /out
+RUN rm -rf /out && mkdir /out && cp /edk2/OVMF*.fd /out && \
+    [ -f /edk2/igd.rom ] && cp /edk2/igd.rom /out/ || true
 
 # some architecture specific cases. There probably is a cleaner dockerfile-native way to do this.
 RUN case $(uname -m) in \
