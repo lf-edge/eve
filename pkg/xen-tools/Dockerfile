@@ -3,7 +3,7 @@
 # Copyright (c) 2023-2026 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-FROM lfedge/eve-uefi:b3ef9ca37c99439c776673aeba83c52ea8b84626 AS uefi-build
+FROM lfedge/eve-uefi:417cf0c3acf434fb0f775e8a588ae7b6e3523d6d AS uefi-build
 FROM lfedge/eve-alpine:745ae9066273c73b0fd879c4ba4ff626a8392d04 AS runx-build
 ENV BUILD_PKGS="mkinitfs gcc musl-dev e2fsprogs chrony agetty"
 RUN eve-alpine-deploy.sh
@@ -115,7 +115,8 @@ RUN if [ "$(uname -m)" = "x86_64" ]; then rm -f qemu-system-i386 && ln -s "qemu-
 COPY --from=uefi-build / /uefi/
 RUN mkdir -p /out/usr/lib/xen/boot && cp /uefi/OVMF.fd /out/usr/lib/xen/boot/ovmf.bin && \
     cp /uefi/OVMF_PVH.fd /out/usr/lib/xen/boot/ovmf-pvh.bin && \
-    [ -f /uefi/OVMF_CODE.fd ] && cp /uefi/OVMF_CODE.fd /out/usr/lib/xen/boot/OVMF_CODE.fd || :
+    [ -f /uefi/OVMF_CODE.fd ] && cp /uefi/OVMF_CODE.fd /out/usr/lib/xen/boot/OVMF_CODE.fd || : && \
+    [ -f /uefi/igd.rom ] && cp /uefi/igd.rom /out/usr/lib/xen/boot/igd.rom || :
 
 # We need to keep a slim profile, which means removing things we don't need
 RUN rm -rf /out/usr/lib/libxen*.a /out/usr/lib/libxl*.a /out/usr/lib/debug /out/usr/lib/python*

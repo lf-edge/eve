@@ -1,0 +1,27 @@
+From 91461d1da3417069df76a231138fb310c4a24549 Mon Sep 17 00:00:00 2001
+From: Shahriyar Jalayeri <shahriyar@zededa.com>
+Date: Mon, 14 Oct 2024 16:22:11 +0300
+Subject: [PATCH 1/4] Add Xen spoofing in XenPlatformPei
+
+Signed-off-by: Shahriyar Jalayeri <shahriyar@zededa.com>
+---
+ OvmfPkg/XenPlatformPei/Xen.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/OvmfPkg/XenPlatformPei/Xen.c b/OvmfPkg/XenPlatformPei/Xen.c
+index a54fd55c70..09cc3bf02d 100644
+--- a/OvmfPkg/XenPlatformPei/Xen.c
++++ b/OvmfPkg/XenPlatformPei/Xen.c
+@@ -240,6 +240,9 @@ XenDetect (
+     if (!AsciiStrCmp ((CHAR8 *)Signature, "XenVMMXenVMM")) {
+       return TRUE;
+     }
++    if (!AsciiStrCmp ((CHAR8 *)Signature, "ZenZenZenZen")) {
++      return TRUE;
++    }
+   }
+ 
+   mXenLeaf = 0;
+-- 
+2.43.0
+
