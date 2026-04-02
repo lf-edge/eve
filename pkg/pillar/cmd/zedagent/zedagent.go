@@ -416,12 +416,12 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 	if !foundCheckpoint {
 		// Load bootstrap configuration if present.
-		maybeLoadBootstrapConfig(getconfigCtx)
+		loadBootstrapConfig(getconfigCtx)
 
 		// If there was no bootstrap config, then look for /config/GlobalConfig
 		//  Check if bootstrap config has been already loaded.
 		if !fileutils.FileExists(log, types.BootstrapConfFileName) {
-			changed := maybeLoadGlobalConfig(getconfigCtx)
+			changed := loadGlobalConfig(getconfigCtx)
 			zedagentCtx.globalConfigPublished = !changed
 		} else {
 			if fileutils.FileExists(log, types.ImportGlobalConfigFile) {
