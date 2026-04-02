@@ -61,7 +61,7 @@ func (z *zedkube) collectAppLogs() {
 		if !aiconfig.IsDesignatedNodeID {
 			continue
 		}
-		kubeName := base.GetAppKubeName(aiconfig.DisplayName, aiconfig.UUIDandVersion.UUID)
+		kubeName := base.GetAppKubeNameWithPurge(aiconfig.DisplayName, aiconfig.UUIDandVersion.UUID, aiconfig.PurgeCmd.Counter+aiconfig.LocalPurgeCmd.Counter)
 		contName := kubeName
 		opt := &corev1.PodLogOptions{}
 		if z.appLogStarted {
@@ -195,7 +195,7 @@ func (z *zedkube) checkAppsStatus() {
 			AppUUID:    aiconfig.UUIDandVersion.UUID,
 			IsDNidNode: aiconfig.IsDesignatedNodeID,
 		}
-		contName := base.GetAppKubeName(aiconfig.DisplayName, aiconfig.UUIDandVersion.UUID)
+		contName := base.GetAppKubeNameWithPurge(aiconfig.DisplayName, aiconfig.UUIDandVersion.UUID, aiconfig.PurgeCmd.Counter+aiconfig.LocalPurgeCmd.Counter)
 
 		//
 		// We're looking for two pods:

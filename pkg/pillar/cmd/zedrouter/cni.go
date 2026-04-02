@@ -349,7 +349,7 @@ func (z *zedrouter) getAppByPodName(
 		if isReplicaPod {
 			appKubeName = repPodName
 		}
-		if base.GetAppKubeName(appStatus.DisplayName, appUUID) == appKubeName {
+		if strings.HasPrefix(appKubeName, base.GetAppKubeName(appStatus.DisplayName, appUUID)) {
 			appConfig := z.lookupAppNetworkConfig(appStatus.Key())
 			if appConfig == nil {
 				return nil, nil, fmt.Errorf("missing network config for app %v", appUUID)

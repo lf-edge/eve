@@ -107,7 +107,7 @@ func (z *zedkube) getVMIdomainName(config *types.AppInstanceConfig) (string, err
 		return "", err
 	}
 
-	vmiName := base.GetAppKubeName(config.DisplayName, config.UUIDandVersion.UUID)
+	vmiName := base.GetAppKubeNameWithPurge(config.DisplayName, config.UUIDandVersion.UUID, config.PurgeCmd.Counter+config.LocalPurgeCmd.Counter)
 	var domainName string
 	vmis, err := virtClient.VirtualMachineInstance(kubeapi.EVEKubeNameSpace).List(context.Background(), metav1.ListOptions{})
 	if err != nil {
