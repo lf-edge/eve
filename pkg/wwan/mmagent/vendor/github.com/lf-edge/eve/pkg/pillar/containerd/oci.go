@@ -1,4 +1,4 @@
-// Copyright (c) 2020 Zededa, Inc.
+// Copyright (c) 2020-2026 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 //
 // This is basically re-implementation of:
@@ -27,7 +27,6 @@ import (
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/sirupsen/logrus"
-	"golang.org/x/sys/unix"
 	"tags.cncf.io/container-device-interface/pkg/cdi"
 )
 
@@ -39,6 +38,8 @@ const eveECOCMDOverride = "EVE_ECO_CMD"
 var vethScript = []string{"eve", "exec", "pillar", "/opt/zededa/bin/veth.sh"}
 
 var dhcpcdScript = []string{"eve", "exec", "pillar", "/opt/zededa/bin/dhcpcd.sh"}
+
+var directNetScript = []string{"eve", "exec", "pillar", "/opt/zededa/bin/direct-net.sh"}
 
 // ociSpec is kept private (with all the actions done by getters and setters
 // This is because we expect the implementation to still evolve quite a bit
@@ -135,19 +136,23 @@ func (s *ociSpec) AddLoader(volume string) error {
 	snapshotPath := strings.TrimSuffix(snapshotMount[0].Source, "/fs")
 	logrus.Debugf("Snapshot path: %s", snapshotPath)
 
-	xenToolsMount := specs.Mount{
-		Type:        "overlay",
-		Source:      "overlay",
-		Destination: "/",
-		Options: []string{
-			"index=off",
-			"workdir=" + snapshotPath + "/work",
-			"upperdir=" + snapshotPath + "/fs",
-			"lowerdir=" + volume + "/rootfs",
-		}}
+	// Create the mount point for the overlay filesystem
+	overlayMountPoint := snapshotPath + "/merged"
+	if err := os.MkdirAll(overlayMountPoint, 0755); err != nil {
+		return fmt.Errorf("failed to create overlay mount point: %w", err)
+	}
 
-	// we need to prepend the loader mount to the existing mounts to make sure it's mounted first because it's the rootfs
-	spec.Mounts = append([]specs.Mount{xenToolsMount}, spec.Mounts...)
+	// Mount the overlay filesystem on the host
+	// This creates a writable overlay with the original rootfs as the lower layer
+	// and the snapshot's fs directory as the upper layer
+	if err := mountOverlay(volume+"/rootfs", snapshotPath+"/fs", snapshotPath+"/work", overlayMountPoint); err != nil {
+		return err
+	}
+
+	// Set the container's root to the mounted overlay filesystem
+	// This replaces the need for a mount to "/" which is not allowed in newer runc versions
+	spec.Root.Path = overlayMountPoint
+	spec.Root.Readonly = true
 
 	s.containerOpts = append(s.containerOpts, containerd.WithSnapshot(snapshotName))
 
@@ -318,42 +323,20 @@ func (s *ociSpec) AdjustMemLimit(dom types.DomainConfig, addMemory int64) {
 	}
 }
 
-func getDeviceInfo(path string) (specs.LinuxDevice, error) {
-	var statInfo unix.Stat_t
-	var devType string
-	ociDev := specs.LinuxDevice{}
-
-	err := unix.Stat(path, &statInfo)
-	if err != nil {
-		return ociDev, err
-	}
-
-	switch statInfo.Mode & unix.S_IFMT {
-	case unix.S_IFBLK:
-		devType = "b"
-	case unix.S_IFCHR:
-		devType = "c"
-	case unix.S_IFDIR:
-		devType = "d"
-	case unix.S_IFIFO:
-		devType = "p"
-	case unix.S_IFLNK:
-		devType = "l"
-	case unix.S_IFSOCK:
-		devType = "s"
-	}
-
-	ociDev.Path = path
-	ociDev.Type = devType
-	ociDev.Major = int64(unix.Major(statInfo.Rdev))
-	ociDev.Minor = int64(unix.Minor(statInfo.Rdev))
-	return ociDev, nil
+// directNetIf holds the host and guest interface names for a direct-attach
+// network adapter that should be moved into the container's network namespace.
+type directNetIf struct {
+	hostIfname  string // kernel interface name on the host (e.g. "eth1")
+	guestIfname string // name inside the container (e.g. "ethercat")
 }
 
 func (s *ociSpec) UpdateWithIoBundles(config *types.DomainConfig, aa *types.AssignableAdapters, domainID int) error {
 	// Process I/O adapters
 	devList := []string{}
 	cdiList := []string{}
+	var directNets []directNetIf
+	isNOHYPE := config.VirtualizationMode == types.NOHYPER
+
 	for _, adapter := range config.IoAdapterList {
 		logrus.Debugf("processing adapter %d %s\n", adapter.Type, adapter.Name)
 		list := aa.LookupIoBundleAny(adapter.Name)
@@ -394,6 +377,23 @@ func (s *ociSpec) UpdateWithIoBundles(config *types.DomainConfig, aa *types.Assi
 				logrus.Infof("Adding generic device %s\n", ib.Ifname)
 				devList = append(devList, ib.Ifname)
 			}
+
+			// Direct-attach network interfaces for NOHYPE containers.
+			// Instead of PCI passthrough (which requires a shim VM),
+			// we move the physical interface into the container's
+			// network namespace via an OCI prestart hook.
+			if isNOHYPE && ib.Type == types.IoNetEth && ib.Ifname != "" {
+				guestName := ib.Ifname
+				if ib.Logicallabel != "" {
+					guestName = ib.Logicallabel
+				}
+				logrus.Infof("Adding direct-attach net %s (guest: %s) for NOHYPE container\n",
+					ib.Ifname, guestName)
+				directNets = append(directNets, directNetIf{
+					hostIfname:  ib.Ifname,
+					guestIfname: guestName,
+				})
+			}
 		}
 	}
 
@@ -432,6 +432,42 @@ func (s *ociSpec) UpdateWithIoBundles(config *types.DomainConfig, aa *types.Assi
 		}
 		s.Linux.Resources.Devices = append(s.Linux.Resources.Devices, *cgrDev)
 	}
+
+	// Add OCI hooks for direct-attach network interfaces (NOHYPE only).
+	// The prestart hook moves the physical interface into the container's
+	// network namespace; the poststop hook moves it back on teardown.
+	if len(directNets) > 0 {
+		if s.Hooks == nil {
+			s.Hooks = &specs.Hooks{}
+		}
+		timeout := 60
+		for _, dn := range directNets {
+			s.Hooks.Prestart = append(s.Hooks.Prestart, specs.Hook{
+				Path:    eveScript,
+				Args:    append(directNetScript, "up", dn.hostIfname, dn.guestIfname),
+				Timeout: &timeout,
+			})
+			s.Hooks.Poststop = append(s.Hooks.Poststop, specs.Hook{
+				Path:    eveScript,
+				Args:    append(directNetScript, "down", dn.hostIfname, dn.guestIfname),
+				Timeout: &timeout,
+			})
+		}
+
+		// Grant CAP_NET_ADMIN so the container can configure the
+		// direct-attach interface (ip addr/route, ethtool, etc.)
+		// and CAP_NET_RAW for raw socket access (required by protocols
+		// like EtherCAT that operate directly on L2 frames).
+		if s.Process != nil && s.Process.Capabilities != nil {
+			for _, cap := range []string{"CAP_NET_ADMIN", "CAP_NET_RAW"} {
+				s.Process.Capabilities.Bounding = appendCapIfMissing(s.Process.Capabilities.Bounding, cap)
+				s.Process.Capabilities.Effective = appendCapIfMissing(s.Process.Capabilities.Effective, cap)
+				s.Process.Capabilities.Permitted = appendCapIfMissing(s.Process.Capabilities.Permitted, cap)
+				s.Process.Capabilities.Ambient = appendCapIfMissing(s.Process.Capabilities.Ambient, cap)
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -510,6 +546,16 @@ func (s *ociSpec) UpdateFromDomain(dom *types.DomainConfig, status *types.Domain
 		s.Hostname = dom.UUIDandVersion.UUID.String()
 	}
 	s.Annotations[EVEOCIVNCPasswordLabel] = dom.VncPasswd
+}
+
+// appendCapIfMissing appends a capability string to a slice if it is not already present.
+func appendCapIfMissing(caps []string, capName string) []string {
+	for _, c := range caps {
+		if c == capName {
+			return caps
+		}
+	}
+	return append(caps, capName)
 }
 
 // UpdateFromVolume updates values in the OCI spec based on the location

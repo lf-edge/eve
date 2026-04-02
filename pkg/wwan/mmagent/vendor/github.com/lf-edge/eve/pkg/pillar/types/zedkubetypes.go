@@ -511,3 +511,8 @@ func (s KubeUserServices) Equal(s2 KubeUserServices) bool {
 			return generics.EqualSets(ing1.IngressIP, ing2.IngressIP)
 		})
 }
+
+// KubeConfig : A root level structure to pass config from pillar to kube service container
+type KubeConfig struct {
+	K3sVersion string
+}
