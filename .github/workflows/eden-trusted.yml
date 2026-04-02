@@ -186,7 +186,7 @@ jobs:
       eve_log_level: "debug"
       eve_artifact_name: "eve-${{ needs.context.outputs.hv }}-${{ needs.context.outputs.arch }}-${{ needs.context.outputs.platform }}"
       artifact_run_id: ${{ needs.context.outputs.original_run_id }}
-      eden_version: "1.0.9"
+      eden_version: "EVE-13.4-stable"
 
   tests-14-5-stable:
     name: ${{ needs.context.outputs.eden_parent_job_title }} for 14.5-stable
@@ -199,7 +199,7 @@ jobs:
       eve_log_level: "debug"
       eve_artifact_name: "eve-${{ needs.context.outputs.hv }}-${{ needs.context.outputs.arch }}-${{ needs.context.outputs.platform }}"
       artifact_run_id: ${{ needs.context.outputs.original_run_id }}
-      eden_version: "1.0.9"
+      eden_version: "EVE-14.5-stable"
 
   tests-16-0-stable:
     name: ${{ needs.context.outputs.eden_parent_job_title }} for 16.0-stable
@@ -212,7 +212,7 @@ jobs:
       eve_log_level: "debug"
       eve_artifact_name: "eve-${{ needs.context.outputs.hv }}-${{ needs.context.outputs.arch }}-${{ needs.context.outputs.platform }}"
       artifact_run_id: ${{ needs.context.outputs.original_run_id }}
-      eden_version: "1.0.13"
+      eden_version: "EVE-16.0-stable"
 
   tests-master:
     name: ${{ needs.context.outputs.eden_parent_job_title }} for master
@@ -225,7 +225,7 @@ jobs:
       eve_log_level: "debug"
       eve_artifact_name: "eve-${{ needs.context.outputs.hv }}-${{ needs.context.outputs.arch }}-${{ needs.context.outputs.platform }}"
       artifact_run_id: ${{ needs.context.outputs.original_run_id }}
-      eden_version: "1.0.14"
+      eden_version: "master"
 
   finalize:
     name: Eden Tests Complete
