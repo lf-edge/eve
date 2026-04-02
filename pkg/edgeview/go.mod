@@ -10,7 +10,7 @@ require (
 	github.com/gorilla/websocket v1.5.0
 	github.com/grandcat/zeroconf v1.0.0
 	github.com/lf-edge/eve-api/go v0.0.0-20260116205402-bac92fb1f235
-	github.com/lf-edge/eve/pkg/pillar v0.0.0-20260325052340-21987cccd573
+	github.com/lf-edge/eve/pkg/pillar v0.0.0-20260402133217-2a5ed86d6257
 	github.com/onsi/gomega v1.35.1
 	github.com/satori/go.uuid v1.2.1-0.20180404165556-75cca531ea76
 	github.com/shirou/gopsutil v3.21.11+incompatible

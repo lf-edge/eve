@@ -52,8 +52,8 @@ github.com/lf-edge/eve/api/go v0.0.0-20230726103732-fec97665f8c9 h1:MUdEoZ6xqLJ1
 github.com/lf-edge/eve/api/go v0.0.0-20230726103732-fec97665f8c9/go.mod h1:pNFho84HAA/Vlb1DpLFlatJgQBJ43wH28elAs7wXdtA=
 github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20240315102754-0f6d1f182e0d h1:tUBb9M6u42LXwHAYHyh22wJeUUQlTpDkXwRXalpRqbo=
 github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20240315102754-0f6d1f182e0d/go.mod h1:Nn3juMJJ1G8dyHOebdZyS4jOB/fuxAd5fIajBaWjHr8=
-github.com/lf-edge/eve/pkg/pillar v0.0.0-20260325052340-21987cccd573 h1:TT+cI/xvQ3XzxQSIX4cN5eq1Lq7d8p2rO1CxVXnWqPI=
-github.com/lf-edge/eve/pkg/pillar v0.0.0-20260325052340-21987cccd573/go.mod h1:IFLV+htdvT3dCMLYz4vN3kOUBVKFr6PIy7r7yeubyYQ=
+github.com/lf-edge/eve/pkg/pillar v0.0.0-20260402133217-2a5ed86d6257 h1:dlkj+6AN3AEvHA9KO891BKHoRgazQXb0EF2F4nzkeCg=
+github.com/lf-edge/eve/pkg/pillar v0.0.0-20260402133217-2a5ed86d6257/go.mod h1:K2hwlF6pGguhVpTs+9KOWEKnuQQO0dJOxHopUE3LNHM=
 github.com/mattn/go-isatty v0.0.20/go.mod h1:W+V8PltTTMOvKvAeJH7IuucS94S2C6jfK/D7dTCTo3Y=
 github.com/mitchellh/colorstring v0.0.0-20190213212951-d06e56a500db h1:62I3jR2EmQ4l5rM/4FEfDWcRD+abF5XlKShorW5LRoQ=
 github.com/mitchellh/colorstring v0.0.0-20190213212951-d06e56a500db/go.mod h1:l0dey0ia/Uv7NcFFVbCLtqEBQbrT4OCwCSKTEv6enCw=
