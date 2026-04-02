@@ -5,6 +5,14 @@
 set -e
 
 CWD=$(pwd)
+
+SNIFF=0
+for arg in "$@"; do
+    case "$arg" in
+        -sniff) SNIFF=1 ;;
+    esac
+done
+
 TPM_SRV_PORT=1337
 TPM_CTR_PORT=$((TPM_SRV_PORT + 1))
 EK_HANDLE=0x81000001
@@ -41,7 +49,7 @@ make -j "$(getconf _NPROCESSORS_ONLN)" > /dev/null
 sudo make install > /dev/null
 sudo ldconfig
 
-# Build swtpm from the same commit as pkg/vtpm/Dockerfile 
+# Build swtpm from the same commit as pkg/vtpm/Dockerfile
 echo "[+] Building swtpm from source (commit 732bbd6) ..."
 SWTPM_BUILD=$(mktemp -d)
 git clone https://github.com/stefanberger/swtpm.git "$SWTPM_BUILD"
@@ -86,6 +94,7 @@ flushtpm() {
 echo "[+] swtpm version and capabilities:"
 swtpm --version
 swtpm socket --tpm2 --print-capabilities
+echo "========================================================"
 
 swtpm socket --tpm2 \
     --server port="$TPM_SRV_PORT" \
@@ -154,14 +163,34 @@ kill $PID
 
 # start swtpm again, but this time with unix sockets for tests to use,
 # in case we need to debug this, cat the log file.
-swtpm socket --tpm2 \
-    --flags startup-clear \
-    --server type=unixio,path="$EVE_TPM_SRV" \
-    --ctrl type=unixio,path="$EVE_TPM_CTRL" \
-    --tpmstate dir="$EVE_TPM_STATE" \
-    --log file="$EVE_TPM_STATE/swtpm.log" &
-
-PID=$!
+SNIFFER_PID=""
+if [ "$SNIFF" -eq 1 ]; then
+    # In sniff mode, swtpm listens on a separate socket and the sniffer
+    # bridges EVE_TPM_SRV → srv.real.sock so tests connect transparently.
+    EVE_TPM_SRV_REAL="$EVE_TPM_STATE/srv.real.sock"
+    swtpm socket --tpm2 \
+        --flags startup-clear \
+        --server type=unixio,path="$EVE_TPM_SRV_REAL" \
+        --ctrl type=unixio,path="$EVE_TPM_CTRL" \
+        --tpmstate dir="$EVE_TPM_STATE" \
+        --log file="$EVE_TPM_STATE/swtpm.log" &
+    PID=$!
+    echo "[+] Building sniffer ..."
+    (cd "$CWD/tests/tpm/sniffer" && go build -buildvcs=false -o sniffer .)
+    "$CWD/tests/tpm/sniffer/sniffer" \
+        -real "$EVE_TPM_SRV_REAL" \
+        -listen "$EVE_TPM_SRV" &
+    SNIFFER_PID=$!
+    echo "[+] Sniffer started (PID $SNIFFER_PID), intercepting TPM traffic on $EVE_TPM_SRV"
+else
+    swtpm socket --tpm2 \
+        --flags startup-clear \
+        --server type=unixio,path="$EVE_TPM_SRV" \
+        --ctrl type=unixio,path="$EVE_TPM_CTRL" \
+        --tpmstate dir="$EVE_TPM_STATE" \
+        --log file="$EVE_TPM_STATE/swtpm.log" &
+    PID=$!
+fi
 
 # copy test data, so it is accessible from the go tests
 cp "$CWD/tests/tpm/testdata/binary_bios_measurement" $EVE_TPM_STATE
@@ -196,8 +225,9 @@ run_test sh -c "cd \"$CWD/pkg/pillar/cmd/msrv\" && go test -v -test.run ^TestTpm
 run_test sh -c "cd \"$CWD/pkg/pillar/cmd/vcomlink\" && go test -v -coverprofile=\"vcomlink.coverage.txt\" -covermode=atomic"
 run_test sh -c "cd \"$CWD/pkg/vtpm/swtpm-vtpm\" && go test -v -test.run ^TestLaunchWithRealTPMEncryption$ ./src/ -coverprofile=\"swtpm-vtpm.coverage.txt\" -covermode=atomic"
 
-# we are done, kill the swtpm
+# we are done, kill swtpm and sniffer
 kill $PID
+[ -n "$SNIFFER_PID" ] && kill "$SNIFFER_PID"
 rm -rf $EVE_TPM_STATE
 
 exit $FAILED
