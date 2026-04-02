@@ -141,6 +141,18 @@ requires participation of both parties, controller and device, to use the backup
 To decrypt the key, one has to be on the same device with access to the same TPM, and the firmware+software on that device has to pass the
 [remote attestation](https://wiki.lfedge.org/display/EVE/Measured+Boot+and+Remote+Attestation) check in the controller.
 
+### TPM Bus Protection via Parameter Encryption
+
+The vault encryption key must travel over the physical bus that connects the CPU to the TPM (typically LPC or SPI). This bus can be passively monitored with inexpensive hardware, so a plaintext key on it would be recoverable even by an opportunistic adversary.
+
+EVE protects seal and unseal operations using **salted HMAC sessions with AES-128-CFB parameter encryption**:
+
+1. Before sealing or unsealing the vault key, EVE opens a TPM2 HMAC session bound to the Endorsement Key (EK). A random session salt is generated and RSA-OAEP encrypted with the EK public key, so only the specific TPM can recover it.
+2. The shared session key derived from that salt is used to AES-128-CFB encrypt the key material in the TPM command (seal) and response (unseal). The plaintext never appears on the bus.
+3. The session also provides an HMAC over each command, which prevents an attacker from replaying or modifying bus traffic.
+
+EVE probes AES-128-CFB support at runtime. On TPMs that do not support it, EVE falls back to the unencrypted legacy path so that compatibility with all hardware is preserved.
+
 ### Flexible PCR Policy
 
 EVE supports a flexible mechanism for defining which Platform Configuration Registers (PCRs) are used to seal the vault encryption key. While EVE ships with a sensible default set of PCRs (typically measuring firmware, bootloader, root filesystem and kernel configuration), this policy is not static.
