@@ -278,7 +278,7 @@ func (r configProcessingRetval) String() string {
 // The function will only load and publish global config items (publishes default values
 // if empty set is configured) and items related to networking (system adapters, networks,
 // vlans, bonds, etc.).
-func maybeLoadBootstrapConfig(getconfigCtx *getconfigContext) {
+func loadBootstrapConfig(getconfigCtx *getconfigContext) {
 	//  Check if bootstrap config has been already loaded.
 	if !fileutils.FileExists(log, types.BootstrapConfFileName) {
 		// No bootstrap config to read
@@ -366,7 +366,7 @@ func indicateInvalidBootstrapConfig(getconfigCtx *getconfigContext) {
 // The function will only load the ConfigItemValueMap items into
 // zedagentCtx,globalConfig. The caller is responsible for publishing those
 // if this returns true
-func maybeLoadGlobalConfig(getconfigCtx *getconfigContext) bool {
+func loadGlobalConfig(getconfigCtx *getconfigContext) bool {
 	//  Check if global config has been already loaded.
 	if !fileutils.FileExists(log, types.ImportGlobalConfigFile) {
 		// No /config/GlobalConfig/ file to read
