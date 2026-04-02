@@ -65,7 +65,7 @@ func (z *zedkube) checkAppsFailover(wdFunc func()) {
 			AppUUID:    aiconfig.UUIDandVersion.UUID,
 			IsDNidNode: aiconfig.IsDesignatedNodeID,
 		}
-		contName := base.GetAppKubeName(aiconfig.DisplayName, aiconfig.UUIDandVersion.UUID)
+		contName := base.GetAppKubeNameWithPurge(aiconfig.DisplayName, aiconfig.UUIDandVersion.UUID, aiconfig.PurgeCmd.Counter+aiconfig.LocalPurgeCmd.Counter)
 
 		//
 		// We're looking for two pods:

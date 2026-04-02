@@ -266,7 +266,7 @@ func (ctx kubevirtContext) CreateReplicaVMIConfig(domainName string, config type
 	if !ok {
 		return logError("Failed to get nodeName")
 	}
-	kubeName := base.GetAppKubeName(config.DisplayName, config.UUIDandVersion.UUID)
+	kubeName := base.GetAppKubeNameWithPurge(config.DisplayName, config.UUIDandVersion.UUID, config.PurgeCounter)
 	// Get a VirtualMachineInstance object and populate the values from DomainConfig
 	vmi := v1.NewVMIReferenceFromNameWithNS(kubeapi.EVEKubeNameSpace, kubeName)
 
@@ -1295,7 +1295,7 @@ func assignToInt64(parsedValue interface{}) int64 {
 func (ctx kubevirtContext) CreateReplicaPodConfig(domainName string, config types.DomainConfig, status types.DomainStatus,
 	diskStatusList []types.DiskStatus, aa *types.AssignableAdapters, file *os.File) error {
 
-	kubeName := base.GetAppKubeName(config.DisplayName, config.UUIDandVersion.UUID)
+	kubeName := base.GetAppKubeNameWithPurge(config.DisplayName, config.UUIDandVersion.UUID, config.PurgeCounter)
 	if config.KubeImageName == "" {
 		err := fmt.Errorf("domain config kube image name empty")
 		logrus.Errorf("CreateReplicaPodConfig: %v", err)
