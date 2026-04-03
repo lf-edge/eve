@@ -220,29 +220,45 @@ func doUpdate(ctx *zedmanagerContext,
 	if status.PurgeInprogress == types.DownloadAndVerify {
 		log.Functionf("PurgeInprogress(%s) volumemgr done",
 			status.Key())
-		status.PurgeInprogress = types.BringDown
-		status.State = types.HALTING
 		changed = true
+		// Temporarily set BringDown so that doRemove/doInactivate treats
+		// this as a purge (keep volumes) rather than an uninstall.
+		// We only persist this state if the removal cannot complete
+		// immediately, i.e. there is an active domain that must be halted.
+		status.PurgeInprogress = types.BringDown
 		// Keep the old volumes in place
 		_, done := doRemove(ctx, status, false)
 		if !done {
+			// A domain is actively running; record HALTING and publish
+			// BringDown. removeAIStatus will drive the
+			// BringDown→RecreateVolumes transition once the domain stops.
+			status.State = types.HALTING
 			log.Functionf("PurgeInprogress(%s) waiting for removal",
 				status.Key())
 			return changed
 		}
-		// doRemove completed; transition to RecreateVolumes and
-		// persist the purge counter so we don't re-detect the
-		// purge on next reboot. Without this transition the app
-		// would stay stuck in BringDown/HALTING forever when
-		// doUpdate is called directly (e.g. from
-		// handleCreateAppInstanceStatus or checkLowPriorityApps)
-		// instead of via updateAIStatusUUID → removeAIStatus.
-		log.Functionf("PurgeInprogress(%s) RecreateVolumes",
+		// No active domain to halt (e.g. app never started due to a prior
+		// download error): skip persisting BringDown and transition
+		// directly to RecreateVolumes so that purgeCmdDone is called,
+		// the purge counter is saved, and volumes are recreated cleanly.
+		log.Functionf("PurgeInprogress(%s) no domain to halt, RecreateVolumes",
 			status.Key())
 		status.PurgeInprogress = types.RecreateVolumes
 		publishAppInstanceStatus(ctx, status)
 		c := purgeCmdDone(ctx, config, status)
 		changed = changed || c
+		// Re-run doInstall with RecreateVolumes so that VerifyOnly is
+		// cleared and volumemgr is told to create the volumes.  Without
+		// this call the RecreateVolumes→BringUp transition below would
+		// fire before volumemgr has been asked to create the volume,
+		// leaving the app stuck at LOADED with VerifyOnly=true forever.
+		c, done = doInstall(ctx, config, status)
+		changed = changed || c
+		if !done {
+			log.Functionf("PurgeInprogress(%s) RecreateVolumes waiting for volumes",
+				status.Key())
+			return changed
+		}
 		log.Functionf("PurgeInprogress(%s) bringing it up",
 			status.Key())
 	}
