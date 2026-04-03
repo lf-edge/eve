@@ -1,7 +1,7 @@
-use std::num::NonZeroU16;
+use std::num::NonZero;
 use std::str::{self, FromStr};
 
-use super::{ast, unused, Error, Span, Spanned, Unused};
+use super::{Error, Span, Spanned, Unused, ast, unused};
 
 pub(super) fn parse<'a>(
     ast_items: impl Iterator<Item = Result<ast::Item<'a>, Error>>,
@@ -207,14 +207,16 @@ component_definition! {
         Day = "day" {
             padding = "padding": Option<Padding> => padding,
         },
-        End = "end" {},
+        End = "end" {
+            trailing_input = "trailing_input": Option<TrailingInput> => trailing_input,
+        },
         Hour = "hour" {
             padding = "padding": Option<Padding> => padding,
             base = "repr": Option<HourBase> => is_12_hour_clock,
         },
         Ignore = "ignore" {
             #[required]
-            count = "count": Option<#[from_str] NonZeroU16> => count,
+            count = "count": Option<#[from_str] NonZero<u16>> => count,
         },
         Minute = "minute" {
             padding = "padding": Option<Padding> => padding,
@@ -263,6 +265,7 @@ component_definition! {
         Year = "year" {
             padding = "padding": Option<Padding> => padding,
             repr = "repr": Option<YearRepr> => repr,
+            range = "range": Option<YearRange> => range,
             base = "base": Option<YearBase> => iso_week_based,
             sign_behavior = "sign": Option<SignBehavior> => sign_is_mandatory,
         },
@@ -381,6 +384,12 @@ modifier! {
         OneOrMore = b"1+",
     }
 
+    enum TrailingInput {
+        #[default]
+        Prohibit = b"prohibit",
+        Discard = b"discard",
+    }
+
     enum UnixTimestampPrecision {
         #[default]
         Second = b"second",
@@ -425,7 +434,14 @@ modifier! {
     enum YearRepr {
         #[default]
         Full = b"full",
+        Century = b"century",
         LastTwo = b"last_two",
+    }
+
+    enum YearRange {
+        Standard = b"standard",
+        #[default]
+        Extended = b"extended",
     }
 }
 

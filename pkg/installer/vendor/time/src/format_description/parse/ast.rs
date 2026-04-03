@@ -5,7 +5,7 @@ use alloc::string::String;
 use alloc::vec::Vec;
 use core::iter;
 
-use super::{lexer, unused, Error, Location, Spanned, SpannedValue, Unused};
+use super::{Error, Location, Spanned, SpannedValue, Unused, lexer, unused};
 use crate::internal_macros::bug;
 
 /// One part of a complete format description.
@@ -95,28 +95,27 @@ pub(super) struct Modifier<'a> {
 }
 
 /// Parse the provided tokens into an AST.
-pub(super) fn parse<
-    'item: 'iter,
-    'iter,
-    I: Iterator<Item = Result<lexer::Token<'item>, Error>>,
-    const VERSION: usize,
->(
+#[inline]
+pub(super) fn parse<'item, 'iter, I, const VERSION: usize>(
     tokens: &'iter mut lexer::Lexed<I>,
-) -> impl Iterator<Item = Result<Item<'item>, Error>> + 'iter {
+) -> impl Iterator<Item = Result<Item<'item>, Error>> + use<'item, 'iter, I, VERSION>
+where
+    'item: 'iter,
+    I: Iterator<Item = Result<lexer::Token<'item>, Error>>,
+{
     validate_version!(VERSION);
     parse_inner::<_, false, VERSION>(tokens)
 }
 
 /// Parse the provided tokens into an AST. The const generic indicates whether the resulting
 /// [`Item`] will be used directly or as part of a [`NestedFormatDescription`].
-fn parse_inner<
-    'item,
-    I: Iterator<Item = Result<lexer::Token<'item>, Error>>,
-    const NESTED: bool,
-    const VERSION: usize,
->(
+#[inline]
+fn parse_inner<'item, I, const NESTED: bool, const VERSION: usize>(
     tokens: &mut lexer::Lexed<I>,
-) -> impl Iterator<Item = Result<Item<'item>, Error>> + '_ {
+) -> impl Iterator<Item = Result<Item<'item>, Error>> + use<'_, 'item, I, NESTED, VERSION>
+where
+    I: Iterator<Item = Result<lexer::Token<'item>, Error>>,
+{
     validate_version!(VERSION);
     iter::from_fn(move || {
         if NESTED && tokens.peek_closing_bracket().is_some() {
@@ -174,26 +173,25 @@ fn parse_inner<
 }
 
 /// Parse a component. This assumes that the opening bracket has already been consumed.
-fn parse_component<
-    'a,
-    I: Iterator<Item = Result<lexer::Token<'a>, Error>>,
-    const VERSION: usize,
->(
+fn parse_component<'a, I, const VERSION: usize>(
     opening_bracket: Location,
     tokens: &mut lexer::Lexed<I>,
-) -> Result<Item<'a>, Error> {
+) -> Result<Item<'a>, Error>
+where
+    I: Iterator<Item = Result<lexer::Token<'a>, Error>>,
+{
     validate_version!(VERSION);
     let leading_whitespace = tokens.next_if_whitespace();
 
     let Some(name) = tokens.next_if_not_whitespace() else {
         let span = match leading_whitespace {
             Some(Spanned { value: _, span }) => span,
-            None => opening_bracket.to(opening_bracket),
+            None => opening_bracket.to_self(),
         };
         return Err(Error {
             _inner: unused(span.error("expected component name")),
             public: crate::error::InvalidFormatDescription::MissingComponentName {
-                index: span.start.byte as _,
+                index: span.start.byte as usize,
             },
         });
     };
@@ -204,7 +202,7 @@ fn parse_component<
                 _inner: unused(name.span.error("expected whitespace after `optional`")),
                 public: crate::error::InvalidFormatDescription::Expected {
                     what: "whitespace after `optional`",
-                    index: name.span.end.byte as _,
+                    index: name.span.end.byte as usize,
                 },
             });
         };
@@ -215,7 +213,7 @@ fn parse_component<
             return Err(Error {
                 _inner: unused(opening_bracket.error("unclosed bracket")),
                 public: crate::error::InvalidFormatDescription::UnclosedOpeningBracket {
-                    index: opening_bracket.byte as _,
+                    index: opening_bracket.byte as usize,
                 },
             });
         };
@@ -236,7 +234,7 @@ fn parse_component<
                 _inner: unused(name.span.error("expected whitespace after `first`")),
                 public: crate::error::InvalidFormatDescription::Expected {
                     what: "whitespace after `first`",
-                    index: name.span.end.byte as _,
+                    index: name.span.end.byte as usize,
                 },
             });
         };
@@ -250,7 +248,7 @@ fn parse_component<
             return Err(Error {
                 _inner: unused(opening_bracket.error("unclosed bracket")),
                 public: crate::error::InvalidFormatDescription::UnclosedOpeningBracket {
-                    index: opening_bracket.byte as _,
+                    index: opening_bracket.byte as usize,
                 },
             });
         };
@@ -277,12 +275,12 @@ fn parse_component<
             return Err(Error {
                 _inner: unused(
                     location
-                        .to(location)
+                        .to_self()
                         .error("modifier must be of the form `key:value`"),
                 ),
                 public: crate::error::InvalidFormatDescription::InvalidModifier {
                     value: String::from("["),
-                    index: location.byte as _,
+                    index: location.byte as usize,
                 },
             });
         }
@@ -296,7 +294,7 @@ fn parse_component<
                 _inner: unused(span.error("modifier must be of the form `key:value`")),
                 public: crate::error::InvalidFormatDescription::InvalidModifier {
                     value: String::from_utf8_lossy(value).into_owned(),
-                    index: span.start.byte as _,
+                    index: span.start.byte as usize,
                 },
             });
         };
@@ -308,7 +306,7 @@ fn parse_component<
                 _inner: unused(span.shrink_to_start().error("expected modifier key")),
                 public: crate::error::InvalidFormatDescription::InvalidModifier {
                     value: String::new(),
-                    index: span.start.byte as _,
+                    index: span.start.byte as usize,
                 },
             });
         }
@@ -317,16 +315,16 @@ fn parse_component<
                 _inner: unused(span.shrink_to_end().error("expected modifier value")),
                 public: crate::error::InvalidFormatDescription::InvalidModifier {
                     value: String::new(),
-                    index: span.shrink_to_end().start.byte as _,
+                    index: span.shrink_to_end().start.byte as usize,
                 },
             });
         }
 
         modifiers.push(Modifier {
             _leading_whitespace: unused(whitespace),
-            key: key.spanned(span.shrink_to_before(colon_index as _)),
-            _colon: unused(span.start.offset(colon_index as _)),
-            value: value.spanned(span.shrink_to_after(colon_index as _)),
+            key: key.spanned(span.shrink_to_before(colon_index as u32)),
+            _colon: unused(span.start.offset(colon_index as u32)),
+            value: value.spanned(span.shrink_to_after(colon_index as u32)),
         });
     };
 
@@ -334,7 +332,7 @@ fn parse_component<
         return Err(Error {
             _inner: unused(opening_bracket.error("unclosed bracket")),
             public: crate::error::InvalidFormatDescription::UnclosedOpeningBracket {
-                index: opening_bracket.byte as _,
+                index: opening_bracket.byte as usize,
             },
         });
     };
@@ -349,18 +347,22 @@ fn parse_component<
     })
 }
 
-/// Parse a nested format description. The location provided is the the most recent one consumed.
-fn parse_nested<'a, I: Iterator<Item = Result<lexer::Token<'a>, Error>>, const VERSION: usize>(
+/// Parse a nested format description. The location provided is the most recent one consumed.
+#[inline]
+fn parse_nested<'a, I, const VERSION: usize>(
     last_location: Location,
     tokens: &mut lexer::Lexed<I>,
-) -> Result<NestedFormatDescription<'a>, Error> {
+) -> Result<NestedFormatDescription<'a>, Error>
+where
+    I: Iterator<Item = Result<lexer::Token<'a>, Error>>,
+{
     validate_version!(VERSION);
     let Some(opening_bracket) = tokens.next_if_opening_bracket() else {
         return Err(Error {
             _inner: unused(last_location.error("expected opening bracket")),
             public: crate::error::InvalidFormatDescription::Expected {
                 what: "opening bracket",
-                index: last_location.byte as _,
+                index: last_location.byte as usize,
             },
         });
     };
@@ -369,7 +371,7 @@ fn parse_nested<'a, I: Iterator<Item = Result<lexer::Token<'a>, Error>>, const V
         return Err(Error {
             _inner: unused(opening_bracket.error("unclosed bracket")),
             public: crate::error::InvalidFormatDescription::UnclosedOpeningBracket {
-                index: opening_bracket.byte as _,
+                index: opening_bracket.byte as usize,
             },
         });
     };

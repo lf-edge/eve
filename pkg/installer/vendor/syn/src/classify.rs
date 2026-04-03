@@ -54,6 +54,7 @@ pub(crate) fn requires_comma_to_be_match_arm(expr: &Expr) -> bool {
         | Expr::Paren(_)
         | Expr::Path(_)
         | Expr::Range(_)
+        | Expr::RawAddr(_)
         | Expr::Reference(_)
         | Expr::Repeat(_)
         | Expr::Return(_)
@@ -105,6 +106,7 @@ pub(crate) fn confusable_with_adjacent_block(mut expr: &Expr) -> bool {
                 (None, None) => stack.pop(),
             }
         }
+        Expr::RawAddr(e) => Some(&e.expr),
         Expr::Reference(e) => Some(&e.expr),
         Expr::Return(e) => {
             if e.expr.is_none() && stack.is_empty() {
@@ -202,7 +204,9 @@ pub(crate) fn trailing_unparameterized_path(mut ty: &Type) -> bool {
     ) -> ControlFlow<bool, &Type> {
         match bounds.last().unwrap() {
             TypeParamBound::Trait(t) => last_type_in_path(&t.path),
-            TypeParamBound::Lifetime(_) | TypeParamBound::Verbatim(_) => ControlFlow::Break(false),
+            TypeParamBound::Lifetime(_)
+            | TypeParamBound::PreciseCapture(_)
+            | TypeParamBound::Verbatim(_) => ControlFlow::Break(false),
         }
     }
 }
@@ -246,6 +250,7 @@ pub(crate) fn expr_leading_label(mut expr: &Expr) -> bool {
             | Expr::Match(_)
             | Expr::Paren(_)
             | Expr::Path(_)
+            | Expr::RawAddr(_)
             | Expr::Reference(_)
             | Expr::Repeat(_)
             | Expr::Return(_)
@@ -291,6 +296,7 @@ pub(crate) fn expr_trailing_brace(mut expr: &Expr) -> bool {
                 Some(end) => expr = end,
                 None => return false,
             },
+            Expr::RawAddr(e) => expr = &e.expr,
             Expr::Reference(e) => expr = &e.expr,
             Expr::Return(e) => match &e.expr {
                 Some(e) => expr = e,
@@ -374,7 +380,9 @@ pub(crate) fn expr_trailing_brace(mut expr: &Expr) -> bool {
                 Some(t) => ControlFlow::Continue(t),
                 None => ControlFlow::Break(false),
             },
-            TypeParamBound::Lifetime(_) => ControlFlow::Break(false),
+            TypeParamBound::Lifetime(_) | TypeParamBound::PreciseCapture(_) => {
+                ControlFlow::Break(false)
+            }
             TypeParamBound::Verbatim(t) => ControlFlow::Break(tokens_trailing_brace(t)),
         }
     }

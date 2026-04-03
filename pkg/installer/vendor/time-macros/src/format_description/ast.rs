@@ -1,6 +1,6 @@
 use std::iter;
 
-use super::{lexer, unused, Error, Location, Spanned, SpannedValue, Unused};
+use super::{Error, Location, Spanned, SpannedValue, Unused, lexer, unused};
 
 pub(super) enum Item<'a> {
     Literal(Spanned<&'a [u8]>),
@@ -55,7 +55,7 @@ pub(super) fn parse<
     const VERSION: u8,
 >(
     tokens: &'iter mut lexer::Lexed<I>,
-) -> impl Iterator<Item = Result<Item<'item>, Error>> + 'iter {
+) -> impl Iterator<Item = Result<Item<'item>, Error>> + use<'item, 'iter, I, VERSION> {
     assert!(version!(1..=2));
     parse_inner::<_, false, VERSION>(tokens)
 }
@@ -67,7 +67,7 @@ fn parse_inner<
     const VERSION: u8,
 >(
     tokens: &mut lexer::Lexed<I>,
-) -> impl Iterator<Item = Result<Item<'item>, Error>> + '_ {
+) -> impl Iterator<Item = Result<Item<'item>, Error>> + use<'_, 'item, I, NESTED, VERSION> {
     iter::from_fn(move || {
         if NESTED && tokens.peek_closing_bracket().is_some() {
             return None;
@@ -210,9 +210,9 @@ fn parse_component<'a, I: Iterator<Item = Result<lexer::Token<'a>, Error>>, cons
 
         modifiers.push(Modifier {
             _leading_whitespace: unused(whitespace),
-            key: key.spanned(span.shrink_to_before(colon_index as _)),
-            _colon: unused(span.start.offset(colon_index as _)),
-            value: value.spanned(span.shrink_to_after(colon_index as _)),
+            key: key.spanned(span.shrink_to_before(colon_index as u32)),
+            _colon: unused(span.start.offset(colon_index as u32)),
+            value: value.spanned(span.shrink_to_after(colon_index as u32)),
         });
     };
 

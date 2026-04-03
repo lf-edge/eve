@@ -16,14 +16,21 @@ mod owned_format_item;
 mod parse;
 
 pub use borrowed_format_item::BorrowedFormatItem;
-#[allow(deprecated)]
-pub use borrowed_format_item::FormatItem;
+#[doc(hidden)]
+#[deprecated(since = "0.3.37", note = "use `BorrowedFormatItem` for clarity")]
+pub use borrowed_format_item::BorrowedFormatItem as FormatItem;
 #[cfg(feature = "alloc")]
 pub use owned_format_item::OwnedFormatItem;
 
 pub use self::component::Component;
+pub(crate) use self::component::Period;
 #[cfg(feature = "alloc")]
-pub use self::parse::{parse, parse_borrowed, parse_owned};
+pub use self::parse::{
+    parse, parse_borrowed, parse_owned, parse_strftime_borrowed, parse_strftime_owned,
+};
+
+/// The type output by the [`format_description!`](crate::macros::format_description) macro.
+pub type StaticFormatDescription = &'static [BorrowedFormatItem<'static>];
 
 /// Well-known formats, typically standards.
 pub mod well_known {
