@@ -473,7 +473,7 @@ github.com/digitalocean/go-libvirt/socket/dialers
 # github.com/distribution/reference v0.6.0
 ## explicit; go 1.20
 github.com/distribution/reference
-# github.com/docker/cli v29.2.0+incompatible
+# github.com/docker/cli v29.2.0+incompatible => github.com/docker/cli v28.5.1+incompatible
 ## explicit
 github.com/docker/cli/cli/config
 github.com/docker/cli/cli/config/configfile
@@ -2313,6 +2313,7 @@ tags.cncf.io/container-device-interface/pkg/parser
 # tags.cncf.io/container-device-interface/specs-go v0.8.0
 ## explicit; go 1.19
 tags.cncf.io/container-device-interface/specs-go
+# github.com/docker/cli => github.com/docker/cli v28.5.1+incompatible
 # github.com/openshift/api => github.com/openshift/api v0.0.0-20210105115604-44119421ec6b
 # k8s.io/api => k8s.io/api v0.32.5
 # k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.32.5
