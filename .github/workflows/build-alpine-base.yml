@@ -1,0 +1,70 @@
+# Copyright (c) 2026, Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+---
+name: Alpine base image - build and publish on demand
+on:  # yamllint disable-line rule:truthy
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    # Only run for the default branch
+    if: github.ref_name == github.event.repository.default_branch
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: zededa-ubuntu-2204
+          - arch: arm64
+            runner: zededa-ubuntu-2204-arm64
+          - arch: riscv64
+            runner: zededa-ubuntu-2204
+    runs-on: ${{ matrix.runner }}
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up QEMU for cross-arch builds
+        if: matrix.arch == 'riscv64'
+        run: |
+          APT_INSTALL="sudo apt install -y binfmt-support qemu-user-static"
+          $APT_INSTALL || { sudo apt update && $APT_INSTALL ; }
+      - name: Login to Docker Hub
+        uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2  # v4.0.0
+        with:
+          username: ${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}
+          password: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
+      - name: Build and push alpine-base (${{ matrix.arch }})
+        run: |
+          make V=1 ZARCH=${{ matrix.arch }} LINUXKIT_PKG_TARGET=push pkg/alpine-base
+
+  manifest:
+    needs: build
+    if: github.ref_name == github.event.repository.default_branch
+    runs-on: zededa-ubuntu-2204
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Login to Docker Hub
+        uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2  # v4.0.0
+        with:
+          username: ${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}
+          password: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
+      - name: Create multi-arch manifest
+        run: |
+          make V=1 LINUXKIT_PKG_TARGET=manifest pkg/alpine-base
