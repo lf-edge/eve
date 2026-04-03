@@ -102,9 +102,7 @@ pub(super) enum BracketKind {
 }
 
 pub(super) enum ComponentKind {
-    #[allow(clippy::missing_docs_in_private_items)]
     Whitespace,
-    #[allow(clippy::missing_docs_in_private_items)]
     NotWhitespace,
 }
 
@@ -124,25 +122,24 @@ fn attach_location<'item>(
     })
 }
 
-#[allow(clippy::unused_peekable)] // false positive
 pub(super) fn lex<const VERSION: u8>(
     mut input: &[u8],
     proc_span: proc_macro::Span,
 ) -> Lexed<impl Iterator<Item = Result<Token<'_>, Error>>> {
     assert!(version!(1..=2));
 
-    let mut depth: u8 = 0;
+    let mut depth: u32 = 0;
     let mut iter = attach_location(input.iter(), proc_span).peekable();
     let mut second_bracket_location = None;
 
     let iter = iter::from_fn(move || {
-        if version!(..=1) {
-            if let Some(location) = second_bracket_location.take() {
-                return Some(Ok(Token::Bracket {
-                    kind: BracketKind::Opening,
-                    location,
-                }));
-            }
+        if version!(..=1)
+            && let Some(location) = second_bracket_location.take()
+        {
+            return Some(Ok(Token::Bracket {
+                kind: BracketKind::Opening,
+                location,
+            }));
         }
 
         Some(Ok(match iter.next()? {

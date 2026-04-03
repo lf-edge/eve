@@ -1,11 +1,11 @@
 use std::iter::Peekable;
 
-use proc_macro::{token_stream, Span, TokenTree};
+use proc_macro::{Span, TokenStream, token_stream};
 use time_core::convert::*;
 
-use crate::helpers::{consume_any_ident, consume_number, consume_punct};
-use crate::to_tokens::ToTokenTree;
 use crate::Error;
+use crate::helpers::{consume_any_ident, consume_number, consume_punct};
+use crate::to_tokens::ToTokenStream;
 
 enum Period {
     Am,
@@ -63,8 +63,8 @@ pub(crate) fn parse(chars: &mut Peekable<token_stream::IntoIter>) -> Result<Time
             return Err(Error::InvalidComponent {
                 name: "hour",
                 value: hour.to_string(),
-                span_start: Some(hour_span),
-                span_end: Some(period_span.unwrap_or(hour_span)),
+                span_start: Some(hour_span.start()),
+                span_end: Some(period_span.unwrap_or_else(|| hour_span.end())),
             });
         }
         (12, Period::Am) => 0,
@@ -73,49 +73,48 @@ pub(crate) fn parse(chars: &mut Peekable<token_stream::IntoIter>) -> Result<Time
         (hour, Period::Pm) => hour + 12,
     };
 
-    if hour >= Hour::per(Day) {
+    if hour >= Hour::per_t(Day) {
         Err(Error::InvalidComponent {
             name: "hour",
             value: hour.to_string(),
-            span_start: Some(hour_span),
-            span_end: Some(period_span.unwrap_or(hour_span)),
+            span_start: Some(hour_span.start()),
+            span_end: Some(period_span.unwrap_or_else(|| hour_span.end())),
         })
-    } else if minute >= Minute::per(Hour) {
+    } else if minute >= Minute::per_t(Hour) {
         Err(Error::InvalidComponent {
             name: "minute",
             value: minute.to_string(),
-            span_start: Some(minute_span),
-            span_end: Some(minute_span),
+            span_start: Some(minute_span.start()),
+            span_end: Some(minute_span.end()),
         })
-    } else if second >= Second::per(Minute) as _ {
+    } else if second >= Second::per_t(Minute) {
         Err(Error::InvalidComponent {
             name: "second",
             value: second.to_string(),
-            span_start: Some(second_span),
-            span_end: Some(second_span),
+            span_start: Some(second_span.start()),
+            span_end: Some(second_span.end()),
         })
     } else {
         Ok(Time {
             hour,
             minute,
-            second: second.trunc() as _,
-            nanosecond: (second.fract() * Nanosecond::per(Second) as f64).round() as _,
+            second: second.trunc() as u8,
+            nanosecond: (second.fract() * Nanosecond::per_t::<f64>(Second)).round() as u32,
         })
     }
 }
 
-impl ToTokenTree for Time {
-    fn into_token_tree(self) -> TokenTree {
-        quote_group! {{
-            const TIME: ::time::Time = unsafe {
+impl ToTokenStream for Time {
+    fn append_to(self, ts: &mut TokenStream) {
+        quote_append! { ts
+            unsafe {
                 ::time::Time::__from_hms_nanos_unchecked(
                     #(self.hour),
                     #(self.minute),
                     #(self.second),
                     #(self.nanosecond),
                 )
-            };
-            TIME
-        }}
+            }
+        }
     }
 }

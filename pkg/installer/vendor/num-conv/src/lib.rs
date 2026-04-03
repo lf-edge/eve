@@ -13,7 +13,7 @@
 /// use num_conv::prelude::*;
 /// ```
 pub mod prelude {
-    pub use crate::{CastSigned as _, CastUnsigned as _, Extend as _, Truncate as _};
+    pub use crate::{Extend as _, Truncate as _};
 }
 
 mod sealed {
@@ -36,71 +36,9 @@ mod sealed {
 
     pub trait TruncateTargetSealed<T> {
         fn truncate(self) -> T;
+        fn saturating_truncate(self) -> T;
+        fn checked_truncate(self) -> Option<T>;
     }
-}
-
-/// Cast to a signed integer of the same size.
-///
-/// This trait is implemented for all integers. Unsigned to signed casts are equivalent to
-/// `0.wrapping_add_signed(value)`, while signed to signed casts are an identity conversion.
-///
-/// ```rust
-/// # use num_conv::CastSigned;
-/// assert_eq!(u8::MAX.cast_signed(), -1_i8);
-/// assert_eq!(u16::MAX.cast_signed(), -1_i16);
-/// assert_eq!(u32::MAX.cast_signed(), -1_i32);
-/// assert_eq!(u64::MAX.cast_signed(), -1_i64);
-/// assert_eq!(u128::MAX.cast_signed(), -1_i128);
-/// assert_eq!(usize::MAX.cast_signed(), -1_isize);
-/// ```
-///
-/// ```rust
-/// # use num_conv::CastSigned;
-/// assert_eq!(0_i8.cast_signed(), 0_i8);
-/// assert_eq!(0_i16.cast_signed(), 0_i16);
-/// assert_eq!(0_i32.cast_signed(), 0_i32);
-/// assert_eq!(0_i64.cast_signed(), 0_i64);
-/// assert_eq!(0_i128.cast_signed(), 0_i128);
-/// assert_eq!(0_isize.cast_signed(), 0_isize);
-/// ```
-pub trait CastSigned: sealed::Integer {
-    /// The signed integer type with the same size as `Self`.
-    type Signed;
-
-    /// Cast an integer to the signed integer of the same size.
-    fn cast_signed(self) -> Self::Signed;
-}
-
-/// Cast to an unsigned integer of the same size.
-///
-/// This trait is implemented for all integers. Signed to unsigned casts are equivalent to
-/// `0.wrapping_add_unsigned(value)`, while unsigned to unsigned casts are an identity conversion.
-///
-/// ```rust
-/// # use num_conv::CastUnsigned;
-/// assert_eq!((-1_i8).cast_unsigned(), u8::MAX);
-/// assert_eq!((-1_i16).cast_unsigned(), u16::MAX);
-/// assert_eq!((-1_i32).cast_unsigned(), u32::MAX);
-/// assert_eq!((-1_i64).cast_unsigned(), u64::MAX);
-/// assert_eq!((-1_i128).cast_unsigned(), u128::MAX);
-/// assert_eq!((-1_isize).cast_unsigned(), usize::MAX);
-/// ```
-///
-/// ```rust
-/// # use num_conv::CastUnsigned;
-/// assert_eq!(0_u8.cast_unsigned(), 0_u8);
-/// assert_eq!(0_u16.cast_unsigned(), 0_u16);
-/// assert_eq!(0_u32.cast_unsigned(), 0_u32);
-/// assert_eq!(0_u64.cast_unsigned(), 0_u64);
-/// assert_eq!(0_u128.cast_unsigned(), 0_u128);
-/// assert_eq!(0_usize.cast_unsigned(), 0_usize);
-/// ```
-pub trait CastUnsigned: sealed::Integer {
-    /// The unsigned integer type with the same size as `Self`.
-    type Unsigned;
-
-    /// Cast an integer to the unsigned integer of the same size.
-    fn cast_unsigned(self) -> Self::Unsigned;
 }
 
 /// A type that can be used with turbofish syntax in [`Extend::extend`].
@@ -148,7 +86,9 @@ impl<T: sealed::Integer> Extend for T {
     }
 }
 
-/// Truncate to an integer of the same size or smaller, preserving the least significant bits.
+/// Truncate to an integer of the same size or smaller.
+///
+/// Preserve the least significant bits with `.truncate()`:
 ///
 /// ```rust
 /// # use num_conv::Truncate;
@@ -165,10 +105,58 @@ impl<T: sealed::Integer> Extend for T {
 /// assert_eq!((-1_i64).truncate::<i32>(), -1_i32);
 /// assert_eq!((-1_i128).truncate::<i64>(), -1_i64);
 /// ```
+///
+/// Saturate to the numeric bounds with `.saturating_truncate()`:
+///
+/// ```rust
+/// # use num_conv::Truncate;
+/// assert_eq!(500_u16.saturating_truncate::<u8>(), u8::MAX);
+/// assert_eq!(u32::MAX.saturating_truncate::<u16>(), u16::MAX);
+/// assert_eq!(u64::MAX.saturating_truncate::<u32>(), u32::MAX);
+/// assert_eq!(u128::MAX.saturating_truncate::<u64>(), u64::MAX);
+/// ```
+///
+/// ```rust
+/// # use num_conv::Truncate;
+/// assert_eq!((-500_i16).saturating_truncate::<i8>(), i8::MIN);
+/// assert_eq!(i32::MIN.saturating_truncate::<i16>(), i16::MIN);
+/// assert_eq!(i64::MIN.saturating_truncate::<i32>(), i32::MIN);
+/// assert_eq!(i128::MIN.saturating_truncate::<i64>(), i64::MIN);
+/// ```
+///
+/// Checked with `.checked_truncate()`, returning `None` if the value is out of range:
+///
+/// ```rust
+/// # use num_conv::Truncate;
+/// assert_eq!(u16::MAX.checked_truncate::<u8>(), None);
+/// assert_eq!(u32::MAX.checked_truncate::<u16>(), None);
+/// assert_eq!(u64::MAX.checked_truncate::<u32>(), None);
+/// assert_eq!(u128::MAX.checked_truncate::<u64>(), None);
+/// ```
+///
+/// ```rust
+/// # use num_conv::Truncate;
+/// assert_eq!(i16::MIN.checked_truncate::<i8>(), None);
+/// assert_eq!(i32::MIN.checked_truncate::<i16>(), None);
+/// assert_eq!(i64::MIN.checked_truncate::<i32>(), None);
+/// assert_eq!(i128::MIN.checked_truncate::<i64>(), None);
+/// ```
 pub trait Truncate: sealed::Integer {
     /// Truncate an integer to an integer of the same size or smaller, preserving the least
     /// significant bits.
     fn truncate<T>(self) -> T
+    where
+        Self: TruncateTarget<T>;
+
+    /// Truncate an integer to an integer of the same size or smaller, saturating to the numeric
+    /// bounds instead of wrapping.
+    fn saturating_truncate<T>(self) -> T
+    where
+        Self: TruncateTarget<T>;
+
+    /// Truncate an integer to an integer of the same size or smaller, returning `None` if the value
+    /// is out of range.
+    fn checked_truncate<T>(self) -> Option<T>
     where
         Self: TruncateTarget<T>;
 }
@@ -180,50 +168,20 @@ impl<T: sealed::Integer> Truncate for T {
     {
         sealed::TruncateTargetSealed::truncate(self)
     }
-}
 
-macro_rules! impl_cast_signed {
-    ($($($from:ty),+ => $to:ty;)*) => {$($(
-        const _: () = assert!(
-            core::mem::size_of::<$from>() == core::mem::size_of::<$to>(),
-            concat!(
-                "cannot cast ",
-                stringify!($from),
-                " to ",
-                stringify!($to),
-                " because they are different sizes"
-            )
-        );
+    fn saturating_truncate<U>(self) -> U
+    where
+        T: TruncateTarget<U>,
+    {
+        sealed::TruncateTargetSealed::saturating_truncate(self)
+    }
 
-        impl CastSigned for $from {
-            type Signed = $to;
-            fn cast_signed(self) -> Self::Signed {
-                self as _
-            }
-        }
-    )+)*};
-}
-
-macro_rules! impl_cast_unsigned {
-    ($($($from:ty),+ => $to:ty;)*) => {$($(
-        const _: () = assert!(
-            core::mem::size_of::<$from>() == core::mem::size_of::<$to>(),
-            concat!(
-                "cannot cast ",
-                stringify!($from),
-                " to ",
-                stringify!($to),
-                " because they are different sizes"
-            )
-        );
-
-        impl CastUnsigned for $from {
-            type Unsigned = $to;
-            fn cast_unsigned(self) -> Self::Unsigned {
-                self as _
-            }
-        }
-    )+)*};
+    fn checked_truncate<U>(self) -> Option<U>
+    where
+        T: TruncateTarget<U>,
+    {
+        sealed::TruncateTargetSealed::checked_truncate(self)
+    }
 }
 
 macro_rules! impl_extend {
@@ -243,6 +201,7 @@ macro_rules! impl_extend {
         );
 
         impl sealed::ExtendTargetSealed<$to> for $from {
+            #[inline]
             fn extend(self) -> $to {
                 self as _
             }
@@ -269,31 +228,34 @@ macro_rules! impl_truncate {
         );
 
         impl sealed::TruncateTargetSealed<$to> for $from {
+            #[inline]
             fn truncate(self) -> $to {
                 self as _
+            }
+
+            #[inline]
+            fn saturating_truncate(self) -> $to {
+                if self > <$to>::MAX as _ {
+                    <$to>::MAX
+                } else if self < <$to>::MIN as _ {
+                    <$to>::MIN
+                } else {
+                    self as _
+                }
+            }
+
+            #[inline]
+            fn checked_truncate(self) -> Option<$to> {
+                if self > <$to>::MAX as _ || self < <$to>::MIN as _ {
+                    None
+                } else {
+                    Some(self as _)
+                }
             }
         }
 
         impl TruncateTarget<$to> for $from {}
     )+)*};
-}
-
-impl_cast_signed! {
-    u8, i8 => i8;
-    u16, i16 => i16;
-    u32, i32 => i32;
-    u64, i64 => i64;
-    u128, i128 => i128;
-    usize, isize => isize;
-}
-
-impl_cast_unsigned! {
-    u8, i8 => u8;
-    u16, i16 => u16;
-    u32, i32 => u32;
-    u64, i64 => u64;
-    u128, i128 => u128;
-    usize, isize => usize;
 }
 
 impl_extend! {
