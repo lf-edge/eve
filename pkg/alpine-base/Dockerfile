@@ -1,3 +1,6 @@
+# Copyright (c) 2018-2026 Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
 FROM alpine:3.22 AS builder
 
 WORKDIR /rootfs
@@ -19,5 +22,5 @@ FROM scratch
 COPY --from=builder /rootfs/ /
 
 # set the defaults for docker run
-ENV PATH /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ENV PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 CMD ["/bin/sh"]
