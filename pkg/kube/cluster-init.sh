@@ -868,6 +868,10 @@ check_kubevip_lb() {
     local lb_iface="" lb_cidr="" lb=""
     if [ -f "$enc_status_file" ]; then
         enc_data=$(cat "$enc_status_file")
+        lb_count=$(echo "$enc_data" | jq '.LBInterfaces | length')
+        if [ "$lb_count" -gt 1 ] 2>/dev/null; then
+            logmsg "check_kubevip_lb: $lb_count LB interfaces configured, only the first is supported; ignoring the rest"
+        fi
         lb_iface=$(echo "$enc_data" | jq -r '.LBInterfaces[0].Interface // ""')
         lb_cidr=$(echo "$enc_data" | jq -r '.LBInterfaces[0].IPPrefix // ""')
     fi

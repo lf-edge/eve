@@ -3523,6 +3523,10 @@ func parseEdgeNodeClusterConfig(getconfigCtx *getconfigContext,
 			if ifName == "" || len(cidrs) == 0 {
 				continue
 			}
+			if len(cidrs) > 1 {
+				log.Warnf("parseEdgeNodeClusterConfig: interface %s has %d CIDRs, only the first is supported; ignoring the rest",
+					ifName, len(cidrs))
+			}
 			if _, _, lbErr := net.ParseCIDR(cidrs[0]); lbErr != nil {
 				log.Errorf("parseEdgeNodeClusterConfig: invalid LB CIDR %s: %v", cidrs[0], lbErr)
 				continue
