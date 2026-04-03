@@ -289,6 +289,7 @@ require (
 )
 
 replace (
+	github.com/docker/cli => github.com/docker/cli v28.5.1+incompatible
 	github.com/openshift/api => github.com/openshift/api v0.0.0-20210105115604-44119421ec6b
 
 	k8s.io/api => k8s.io/api v0.32.5
