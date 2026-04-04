@@ -12,7 +12,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
+  # Step 1: Build alpine-base for each arch
+  build-base:
     # Only run for the default branch
     if: github.ref_name == github.event.repository.default_branch
     permissions:
@@ -34,6 +35,14 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+      - name: Compute unique hash
+        id: hash
+        run: |
+          CONTENT_HASH=$(make --no-print-directory -s alpine-base-show-tag | tail -1 | sed 's/.*://')
+          GIT_REV=$(git rev-parse --short HEAD)
+          HASH="${CONTENT_HASH}-${GIT_REV}"
+          echo "hash=${HASH}" >> "$GITHUB_OUTPUT"
+          echo "Alpine-base hash: ${HASH}"
       - name: Set up QEMU for cross-arch builds
         if: matrix.arch == 'riscv64'
         run: |
@@ -46,12 +55,18 @@ jobs:
           password: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
       - name: Build and push alpine-base (${{ matrix.arch }})
         run: |
-          make V=1 ZARCH=${{ matrix.arch }} LINUXKIT_PKG_TARGET=push pkg/alpine-base
+          make V=1 ZARCH=${{ matrix.arch }} LINUXKIT_PKG_TARGET=push \
+            \
+            LINUXKIT_EXTRA_BUILD_ARGS="--force --hash ${{ steps.hash.outputs.hash }}" \
+            pkg/alpine-base
+    outputs:
+      hash: ${{ steps.hash.outputs.hash }}
 
-  manifest:
-    needs: build
-    if: github.ref_name == github.event.repository.default_branch
+  # Step 2: Create multi-arch manifest for alpine-base
+  manifest-base:
+    needs: build-base
     runs-on: zededa-ubuntu-2204
+    if: github.ref_name == github.event.repository.default_branch
     permissions:
       contents: read
 
@@ -65,6 +80,105 @@ jobs:
         with:
           username: ${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}
           password: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
-      - name: Create multi-arch manifest
+      - name: Create multi-arch manifest for alpine-base
         run: |
-          make V=1 LINUXKIT_PKG_TARGET=manifest pkg/alpine-base
+          echo "Creating manifest for alpine-base: ${{ needs.build-base.outputs.hash }}"
+          make V=1 LINUXKIT_PKG_TARGET=manifest \
+            \
+            LINUXKIT_EXTRA_BUILD_ARGS="--hash ${{ needs.build-base.outputs.hash }}" \
+            pkg/alpine-base
+
+  # Step 3: Commit updated alpine-base hash to master
+  commit-hash:
+    needs: [build-base, manifest-base]
+    runs-on: zededa-ubuntu-2204
+    if: github.ref_name == github.event.repository.default_branch
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          fetch-depth: 0
+      - name: Update alpine Dockerfile and commit
+        run: |
+          NEW_HASH="${{ needs.build-base.outputs.hash }}"
+          echo "Updating eve-alpine-base hash to: ${NEW_HASH}"
+          sed -i "s|eve-alpine-base:[a-f0-9-]*|eve-alpine-base:${NEW_HASH}|g" pkg/alpine/Dockerfile
+          git diff pkg/alpine/Dockerfile
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add pkg/alpine/Dockerfile
+          git commit -s -m "alpine-base: update hash to ${NEW_HASH}
+
+          Automatically updated by the alpine-base bootstrap workflow.
+
+          Signed-off-by: github-actions[bot] <github-actions[bot]@users.noreply.github.com>"
+          git push origin HEAD:master
+
+  # Step 4: Build eve-alpine for each arch (using the new alpine-base hash)
+  build-alpine:
+    needs: commit-hash
+    permissions:
+      contents: read
+    if: github.ref_name == github.event.repository.default_branch
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: zededa-ubuntu-2204
+          - arch: arm64
+            runner: zededa-ubuntu-2204-arm64
+          - arch: riscv64
+            runner: zededa-ubuntu-2204
+    runs-on: ${{ matrix.runner }}
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          # Pull the commit we just pushed with the new hash
+          ref: master
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up QEMU for cross-arch builds
+        if: matrix.arch == 'riscv64'
+        run: |
+          APT_INSTALL="sudo apt install -y binfmt-support qemu-user-static"
+          $APT_INSTALL || { sudo apt update && $APT_INSTALL ; }
+      - name: Login to Docker Hub
+        uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2  # v4.0.0
+        with:
+          username: ${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}
+          password: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
+      - name: Build and push eve-alpine (${{ matrix.arch }})
+        run: |
+          make V=1 ZARCH=${{ matrix.arch }} LINUXKIT_PKG_TARGET=push \
+            \
+            LINUXKIT_EXTRA_BUILD_ARGS="--force --disable-cache" \
+            pkg/alpine
+
+  # Step 5: Create multi-arch manifest for eve-alpine
+  manifest-alpine:
+    needs: build-alpine
+    runs-on: zededa-ubuntu-2204
+    if: github.ref_name == github.event.repository.default_branch
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          ref: master
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Login to Docker Hub
+        uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2  # v4.0.0
+        with:
+          username: ${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}
+          password: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
+      - name: Create multi-arch manifest for eve-alpine
+        run: |
+          make V=1 LINUXKIT_PKG_TARGET=manifest \
+            \
+            pkg/alpine
