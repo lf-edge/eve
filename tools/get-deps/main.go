@@ -279,7 +279,7 @@ func main() {
 	// Build and validate the command line
 	flag.Usage = func() {
 		fmt.Printf("Create dependency packages tree\n\n")
-		fmt.Printf("Use:\n    %s [-r] <-i|-m> <output_file>\n\n", os.Args[0])
+		fmt.Printf("Use:\n    %s [-r] <-i|-m> <output_file> [pkg/name ...]\n\n", os.Args[0])
 		flag.PrintDefaults()
 	}
 	flag.StringVar(&outputImgFile, "i", "", "Generate a PNG image file")
@@ -322,16 +322,25 @@ func main() {
 	// Beginning of the output file
 	writeToFile(outfile, p.printHead())
 
-	// Scan all directories of pkg/
-	ent, err := os.ReadDir("./pkg")
-	if err != nil {
-		log.Fatal(err)
-	}
-	for _, e := range ent {
-		if !e.IsDir() {
-			continue
+	// Collect package list: use positional args if provided, otherwise scan ./pkg
+	var pkgList []string
+	if args := flag.Args(); len(args) > 0 {
+		pkgList = args
+	} else {
+		ent, err := os.ReadDir("./pkg")
+		if err != nil {
+			log.Fatal(err)
 		}
-		dockerFile := filepath.Join("./pkg/", e.Name(), "/Dockerfile")
+		for _, e := range ent {
+			if !e.IsDir() {
+				continue
+			}
+			pkgList = append(pkgList, "pkg/"+e.Name())
+		}
+	}
+
+	for _, pkgName = range pkgList {
+		dockerFile := filepath.Join(pkgName, "Dockerfile")
 		dockerFileIn := dockerFile + ".in"
 
 		if _, err := os.Stat(dockerFile); err != nil {
@@ -349,7 +358,6 @@ func main() {
 			}
 
 		}
-		pkgName = "pkg/" + e.Name()
 
 		// Get package dependencies from Dockerfile
 		writeToFile(outfile, p.printSingleDep(pkgName))
@@ -367,7 +375,7 @@ func main() {
 
 	// Scan rootfs dependencies
 	if rootfsDeps {
-		ent, err = os.ReadDir("./images/out/")
+		ent, err := os.ReadDir("./images/out/")
 		if err == nil {
 			for _, e := range ent {
 				if !e.IsDir() {

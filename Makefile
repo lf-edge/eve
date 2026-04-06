@@ -950,12 +950,7 @@ eve-fw-evaluation-generic: eve-fw
 pkgs: eve-fw-evaluation-generic
 endif
 
-# No-op target for get-deps which looks at
-# external-boot-image and sees a dep for eve-kernel
-# and attempts to build pkg/kernel, which is in
-# lf-edge/eve-kernel and not built here.
-pkg/kernel:
-	$(QUIET): $@: No-op pkg/kernel
+
 
 pkg/kube/external-boot-image.tar: pkg/external-boot-image
 	$(eval BOOT_IMAGE_TAG := $(shell $(LINUXKIT) pkg show-tag --canonical pkg/external-boot-image))
@@ -1312,7 +1307,7 @@ images/out/installer-%.yml.in: images/installer.yml.in $(RESCAN_DEPS) | images/o
 	$(QUIET)tools/compose-image-yml.sh -b $< -v "$(ROOTFS_VERSION)-$*-$(ZARCH)" -o $@ -h $(HV) -p $(PLATFORM) $(call find-modifiers-installer,$*)
 
 pkg-deps.mk: $(GET_DEPS)
-	$(QUIET)$(GET_DEPS) $(ROOTFS_GET_DEPS) -m $@
+	$(QUIET)$(GET_DEPS) $(ROOTFS_GET_DEPS) -m $@ $(PKGS)
 
 $(ROOTFS_FULL_NAME)-kvm-adam-$(ZARCH).$(ROOTFS_FORMAT): fullname-rootfs $(SSH_KEY)
 fullname-rootfs: $(ROOTFS_FULL_NAME)-$(HV)-$(ZARCH).$(ROOTFS_FORMAT) current
