@@ -402,14 +402,21 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 			}
 
 		case <-t1.C:
-			// If we already know a uuid we can skip waiting
-			// but if the network is working we do wait
+			// If we already know our uuid and we have a checkpoint
+			// of the controllercerts, we can skip waiting.
+			// However, if the network is working we do wait for
+			// a few seconds.
 			// This might not set hardwaremodel when upgrading
-			// an onboarded system
+			// an already onboarded system
 			// Unlikely to have a network outage during that
-			// upgrade *and* require an override.
+			// upgrade *and* require an override of the hardwaremodel
+			// by the controller.
+			// The wait for controllercerts checkpoint is needed
+			// to avoid issues when upgrading from a version
+			// which did not have and use that checkpoint.
 			if clientCtx.networkState != types.DPCStateSuccess &&
-				clientCtx.operations["getUuid"] && oldUUID != nilUUID {
+				clientCtx.operations["getUuid"] && oldUUID != nilUUID &&
+				haveControllerCertsCheckpoint() {
 
 				log.Noticef("Already have a UUID %s; declaring success",
 					oldUUID.String())
@@ -749,6 +756,19 @@ func fetchCertChain(ctrlClient *controllerconn.Client, tlsConfig *tls.Config, re
 	}
 	log.Functionf("client fetchCertChain: ok")
 	return true
+}
+
+// Return true if we have a checkpoint file or a backup checkpoint file.
+func haveControllerCertsCheckpoint() bool {
+	certChainBytes, _, _ := persist.ReadControllerCerts(log, false)
+	if certChainBytes != nil {
+		return true
+	}
+	certChainBytes, _, _ = persist.ReadControllerCerts(log, true)
+	if certChainBytes != nil {
+		return true
+	}
+	return false
 }
 
 // Return the set of keys aka CertHash in the parsed protobuf
