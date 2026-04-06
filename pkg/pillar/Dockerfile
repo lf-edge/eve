@@ -26,6 +26,7 @@ RUN while read -r x; do \
 FROM ${EVE_ALPINE_IMAGE} AS build-native
 ARG BUILD_PKGS_BASE
 RUN BUILD_PKGS="${BUILD_PKGS_BASE}" eve-alpine-deploy.sh
+ENV CGO_CFLAGS="-Dfstat64=fstat -Dstat64=stat"
 
 # hadolint ignore=DL3006,DL3029
 FROM --platform=${BUILDPLATFORM} ${EVE_ALPINE_IMAGE} AS build-cross
@@ -56,6 +57,11 @@ COPY --from=cross-compilers /packages /packages
 # hadolint ignore=DL3018
 RUN apk add --no-cache --allow-untrusted -X /packages build-base-"${EVE_TARGET_ARCH}"
 COPY --from=cross-compile-libs /out/ /usr/"${EVE_TARGET_ARCH}"-alpine-linux-musl/
+ENV CGO_CFLAGS="-Dfstat64=fstat -Dstat64=stat --sysroot=/usr/${EVE_TARGET_ARCH}-alpine-linux-musl"
+# GCC 14 no longer implicitly forwards --with-sysroot to the linker when acting as a
+# linker driver. Passing it explicitly via CGO_LDFLAGS ensures ld.bfd finds crt1.o and
+# all target libraries in the cross-compilation sysroot rather than the host arm64 paths.
+ENV CGO_LDFLAGS="--sysroot=/usr/${EVE_TARGET_ARCH}-alpine-linux-musl"
 
 # cross-compilers
 FROM build-cross-target AS target-arm64-build-amd64
@@ -70,31 +76,10 @@ ARG DEV=n
 ARG TEST_TOOLS=n
 ARG TARGETARCH
 
-ENV CGO_CFLAGS="-Dfstat64=fstat -Dstat64=stat"
-
 # some parts of pillar are build conditionally based on the hypervisor
 ARG HV
 
-# We need dhcpcd version 10.0.0 at least, especially for IPv6, containing these patches:
-#   - https://github.com/NetworkConfiguration/dhcpcd/commit/5f6f61cbe3edfc8313d7db63d6ecf1b08d7232f1
-#     Fixes: https://github.com/NetworkConfiguration/dhcpcd/issues/69
-#     Without this, NetworkMonitor fails to retrieve DHCPv6/RA info from dhcpcd.
-#   - https://github.com/NetworkConfiguration/dhcpcd/commit/2b4fe4c12b5d4366ff21fabf3a6c3799f8e4fa53
-#     Fixes: https://github.com/NetworkConfiguration/dhcpcd/issues/183
-#     Without this, dhcpcd will not obtain NTP server IPs from a DHCPv6 server.
-# I tried version 10.0.0, but "dhcpcd --release <interface>" crashes with a segfault.
-# Version 10.1.0 seems to be stable across all the features that we are using.
-# Note: After upgrading Alpine to version v3.21 or newer, a sufficiently up-to-date dhcpcd
-# will be available in the official Alpine repositories, so building it manually will no longer
-# be necessary.
-ENV DHCPCD_VERSION=v10.1.0
-
 ENV CC=${CROSS_COMPILE_ENV}gcc
-
-ADD --keep-git-dir=true https://github.com/NetworkConfiguration/dhcpcd.git#${DHCPCD_VERSION} /dhcpcd
-WORKDIR /dhcpcd
-RUN ./configure --libexecdir=/usr/lib/dhcpcd --dbdir=/var/lib/dhcpcd --runstatedir=/run && \
-    make -j "$(getconf _NPROCESSORS_ONLN)" && make install
 
 # building with runtime stats
 ARG RSTATS=n
@@ -152,6 +137,13 @@ FROM lfedge/eve-fscrypt:33875411fe54615d0c0c1f9637616c8012f488da AS fscrypt
 FROM lfedge/eve-dnsmasq:fe6241610dc17be349b02ed4c160c8b7bee9d05a AS dnsmasq
 FROM lfedge/eve-gpt-tools:cd4cfc1cac9885c35453bdc4ac88ab60eb667d05 AS gpttools
 
+# dhcpcd: Alpine 3.21+ ships a sufficiently up-to-date version (10.x with required IPv6 fixes).
+# No --platform means Docker BuildKit uses the target platform, giving us the correct binary arch.
+# hadolint ignore=DL3006
+FROM ${EVE_ALPINE_IMAGE} AS dhcpcd-bin
+ENV PKGS dhcpcd
+RUN eve-alpine-deploy.sh
+
 # collector collects everything together and then does any processing like stripping binaries.
 # We use this interim "collector" so that we can do processing.
 # hadolint ignore=DL3006
@@ -177,8 +169,8 @@ COPY --from=dnsmasq /usr/sbin/dnsmasq /out/opt/zededa/bin/dnsmasq
 # we use final directory and move the line to the bottom
 # to avoid conflicts and speedup re-builds
 COPY --from=build /final /out
-COPY --from=build /usr/lib/dhcpcd /out/usr/lib/dhcpcd
-COPY --from=build /sbin/dhcpcd /out/sbin/dhcpcd
+COPY --from=dhcpcd-bin /out/usr/lib/dhcpcd /out/usr/lib/dhcpcd
+COPY --from=dhcpcd-bin /out/sbin/dhcpcd /out/sbin/dhcpcd
 
 COPY scripts/device-steps.sh \
     scripts/onboot.sh \
