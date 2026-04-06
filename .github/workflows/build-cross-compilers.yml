@@ -1,0 +1,99 @@
+# Copyright (c) 2026, Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+---
+name: Cross-compilers image - build and publish on demand
+on:  # yamllint disable-line rule:truthy
+  workflow_dispatch:
+    inputs:
+      gcc_ver:
+        description: 'GCC version'
+        type: string
+        required: true
+        default: '14.2.0'
+      alpine_ver:
+        description: 'Alpine base image version'
+        type: string
+        required: true
+        default: '3.22'
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    # Only run for the default branch
+    if: github.ref_name == github.event.repository.default_branch
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: zededa-ubuntu-2204
+          - arch: arm64
+            runner: zededa-ubuntu-2204-arm64
+    runs-on: ${{ matrix.runner }}
+    env:
+      IMG_NAME: "lfedge/eve-cross-compilers"
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Compute image tag
+        id: tag
+        run: |
+          GIT_REV=$(git describe --always)
+          TAG="gcc-${{ inputs.gcc_ver }}-alpine-${{ inputs.alpine_ver }}-${GIT_REV}"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "Image tag: ${TAG}"
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd  # v4.0.0
+        with:
+      - name: Login to Docker Hub
+        uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2  # v4.0.0
+        with:
+          username: ${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}
+          password: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
+      - name: Build and push (${{ matrix.arch }})
+        run: |
+          docker buildx build \
+            --platform linux/${{ matrix.arch }} \
+            --build-arg GCC_VER=${{ inputs.gcc_ver }} \
+            --build-arg ALPINE_VERSION=${{ inputs.alpine_ver }} \
+            --push \
+            --tag ${{ env.IMG_NAME }}:${{ steps.tag.outputs.tag }}-${{ matrix.arch }} \
+            build-tools/cross-compilers
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+
+  manifest:
+    needs: build
+    if: github.ref_name == github.event.repository.default_branch
+    runs-on: zededa-ubuntu-2204
+    permissions:
+      contents: read
+    env:
+      IMG_NAME: "lfedge/eve-cross-compilers"
+      IMG_TAG: ${{ needs.build.outputs.tag }}
+
+    steps:
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd  # v4.0.0
+      - name: Login to Docker Hub
+        uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2  # v4.0.0
+        with:
+          username: ${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}
+          password: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
+      - name: Create and push multi-arch manifest
+        run: |
+          echo "Creating manifest: ${{ env.IMG_TAG }}"
+          docker buildx imagetools create \
+            --tag ${{ env.IMG_NAME }}:${{ env.IMG_TAG }} \
+            ${{ env.IMG_NAME }}:${{ env.IMG_TAG }}-amd64 \
+            ${{ env.IMG_NAME }}:${{ env.IMG_TAG }}-arm64
+          echo "Pushed: ${{ env.IMG_NAME }}:${{ env.IMG_TAG }}"
