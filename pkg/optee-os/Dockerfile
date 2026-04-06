@@ -17,13 +17,11 @@ ARG BUILD_PKGS_BASE
 RUN BUILD_PKGS="${BUILD_PKGS_BASE}" eve-alpine-deploy.sh
 
 # hadolint ignore=DL3029
-FROM --platform=${BUILDPLATFORM} lfedge/eve-cross-compilers:d794c049baf50389be1dd48da056fb2472574c3e AS cross-compilers
+FROM --platform=${BUILDPLATFORM} lfedge/eve-cross-compilers:gcc-14.2.0-alpine-3.22-40a25095 AS cross-compilers
 
-# will use several packages from target arch and copy them to sysroot
+# pull target-arch eve-alpine for its mirror (no RUN = no QEMU needed)
 # hadolint ignore=DL3006
-FROM ${EVE_ALPINE_IMAGE} AS cross-compile-libs
-ENV PKGS musl-dev libgcc libintl libuuid libtirpc libblkid libattr
-RUN eve-alpine-deploy.sh
+FROM ${EVE_ALPINE_IMAGE} AS target-alpine
 
 # adjust EVE_TARGET_ARCH for cross-compiler
 FROM build-cross AS build-cross-target-amd64
@@ -35,12 +33,18 @@ ENV EVE_TARGET_ARCH=riscv64
 
 # hadolint ignore=DL3006
 FROM build-cross-target-${TARGETARCH} AS build-cross-target
-ENV CROSS_COMPILE_ENV="${EVE_TARGET_ARCH}"-alpine-linux-musl-
-ENV CROSS_COMPILE_ARM32_ENV="armv6-alpine-linux-musleabihf-"
-COPY --from=cross-compilers /packages /packages
-# hadolint ignore=DL3018
-RUN apk add --no-cache --allow-untrusted -X /packages build-base-"${EVE_TARGET_ARCH}" build-base-armhf
-COPY --from=cross-compile-libs /out/ /usr/"${EVE_TARGET_ARCH}"-alpine-linux-musl/
+ENV CROSS_COMPILE_ENV="${EVE_TARGET_ARCH}"-linux-musl-
+ENV CROSS_COMPILE_ARM32_ENV="arm-linux-musleabihf-"
+# install musl.cc toolchains (target arch + ARM32)
+COPY --from=cross-compilers /toolchains/"${EVE_TARGET_ARCH}"-linux-musl-cross /opt/cross
+COPY --from=cross-compilers /toolchains/arm-linux-musleabihf-cross /opt/cross-arm32
+ENV PATH="/opt/cross/bin:/opt/cross-arm32/bin:${PATH}"
+# extract target-arch sysroot from eve-alpine mirror (no QEMU)
+COPY --from=target-alpine /mirror /target-mirror
+RUN EVE_TARGET_ARCH="${EVE_TARGET_ARCH}" \
+    PKGS="musl-dev libgcc libintl libuuid libtirpc libblkid libattr" \
+    eve-cross-sysroot.sh
+RUN cp -a /out/* /opt/cross/"${EVE_TARGET_ARCH}"-linux-musl/
 
 # cross-compilers
 FROM build-cross-target AS target-arm64-build-amd64
@@ -55,11 +59,10 @@ FROM build-native AS target-riscv64-build-riscv64
 # hadolint ignore=DL3006
 FROM target-${TARGETARCH}-build-${BUILDARCH} AS build
 
-# ARM32 compiler is needed on all platforms
-ENV CROSS_COMPILE_ARM32_ENV="armv6-alpine-linux-musleabihf-"
-COPY --from=cross-compilers /packages /packages
-# hadolint ignore=DL3018
-RUN apk add --no-cache --allow-untrusted -X /packages build-base-armhf
+# ARM32 compiler needed on all platforms (native and cross)
+COPY --from=cross-compilers /toolchains/arm-linux-musleabihf-cross /opt/cross-arm32
+ENV CROSS_COMPILE_ARM32_ENV="arm-linux-musleabihf-"
+ENV PATH="/opt/cross-arm32/bin:${PATH}"
 
 SHELL ["/bin/bash", "-eo", "pipefail", "-c"]
 
