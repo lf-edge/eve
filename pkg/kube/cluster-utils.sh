@@ -8,7 +8,8 @@
 
 LOG_SIZE=$((5*1024*1024))
 K3s_LOG_FILE="k3s.log"
-SAVE_KUBE_VAR_LIB_DIR="/persist/kube-save-var-lib"
+LEGACY_SAVE_KUBE_VAR_LIB_DIR="/persist/kube-save-var-lib"
+SAVE_KUBE_VAR_LIB_DIR="/persist/vault/kube-save-var-lib"
 K3S_SERVER_CMD="k3s server"
 # shellcheck disable=SC2034
 K3S_STOP_FLAG="/var/lib/k3s-stop"
@@ -230,6 +231,25 @@ restore_var_lib() {
         ## the saved files are missing, have do install again
         Update_CheckNodeComponents
   fi
+}
+
+# Migrate to secure vault
+migrate_var_lib() {
+        if [ ! -d "$LEGACY_SAVE_KUBE_VAR_LIB_DIR" ]; then
+                return
+        fi
+        if [ -d "$SAVE_KUBE_VAR_LIB_DIR" ]; then
+                return
+        fi
+        logmsg "migrating $LEGACY_SAVE_KUBE_VAR_LIB_DIR to $SAVE_KUBE_VAR_LIB_DIR"
+        if ! cp -a "$LEGACY_SAVE_KUBE_VAR_LIB_DIR" "$SAVE_KUBE_VAR_LIB_DIR"; then
+                logmsg "ERROR: failed to migrate $LEGACY_SAVE_KUBE_VAR_LIB_DIR to $SAVE_KUBE_VAR_LIB_DIR"
+                rm -rf "$SAVE_KUBE_VAR_LIB_DIR"
+                return
+        fi
+        logmsg "migrated  $LEGACY_SAVE_KUBE_VAR_LIB_DIR to $SAVE_KUBE_VAR_LIB_DIR"
+        rm -r "$LEGACY_SAVE_KUBE_VAR_LIB_DIR"
+        logmsg "removed $LEGACY_SAVE_KUBE_VAR_LIB_DIR"
 }
 
 # when transitioning from single node to cluster mode, the k3s.yaml file may need
