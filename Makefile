@@ -136,7 +136,7 @@ DOCKER_ARCH_TAG=$(ZARCH)
 FULL_VERSION:=$(ROOTFS_VERSION)-$(HV)-$(ZARCH)
 
 # must be included after ZARCH is set
-include $(CURDIR)/kernel-version.mk
+include $(CURDIR)/mk/kernel-version.mk
 
 # where we store outputs
 DIST=$(CURDIR)/dist/$(ZARCH)
@@ -465,13 +465,9 @@ endif
 # Even though the partition layout is now unified, let's still check for ROOTFS_MAXSIZE_MB not exceeding 4GB for 'k'
 # and NVIDIA based platforms, and 290MB for x86_64 and other arm64 platforms. That helps in catching image size
 # increases earlier than at later stage.
-# We are currently filtering out a few packages from bulk builds since they are not getting published in Docker HUB
 ifeq ($(HV),k)
-        PKGS_$(ZARCH)=$(shell find pkg -maxdepth 1 -type d | grep -Ev "eve|alpine|sources$$")
         ROOTFS_MAXSIZE_MB=4096
 else
-        #kube container will not be in non-k builds
-        PKGS_$(ZARCH)=$(shell find pkg -maxdepth 1 -type d | grep -Ev "eve|alpine|sources|kube|external-boot-image$$")
         # evaluation platform is not limited by rootfs size, set to some large value
         ifeq ($(PLATFORM),evaluation)
             ROOTFS_MAXSIZE_MB=9999
@@ -483,16 +479,11 @@ else
         endif
 endif
 
-PKGS_riscv64=pkg/ipxe pkg/mkconf pkg/mkimage-iso-efi pkg/grub     \
-             pkg/mkimage-raw-efi pkg/uefi pkg/u-boot pkg/cross-compilers \
-	     pkg/debug pkg/dom0-ztools pkg/gpt-tools pkg/storage-init pkg/mkrootfs-squash \
-	     pkg/bsp-imx pkg/optee-os pkg/recovertpm pkg/bpftrace
-# alpine-base and alpine must be the first packages to build
-PKGS=pkg/alpine $(PKGS_$(ZARCH))
-# eve-alpine-base is bootstrap image for eve-alpine
-# to update please see https://github.com/lf-edge/eve/blob/master/docs/BUILD.md#how-to-update-eve-alpine-package
-# if you want to bootstrap eve-alpine again, uncomment the line below
-# PKGS:=pkg/alpine-base $(PKGS)
+# Package lists are defined in mk/packages.mk:
+#   COMMON_PKGS, ARCH_PKGS_*, HV_PKGS_*, PLATFORM_PKGS_*
+include $(CURDIR)/mk/packages.mk
+# alpine must be first; alpine-base, eve, and sources are never part of PKGS.
+PKGS=pkg/alpine $(COMMON_PKGS) $(ARCH_PKGS_$(ZARCH)) $(HV_PKGS_$(HV)) $(PLATFORM_PKGS_$(PLATFORM))
 
 # these are the packages that, when built, also need to be loaded into docker
 # if you need a pkg to be loaded into docker, in addition to the lkt cache, add it here

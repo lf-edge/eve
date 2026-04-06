@@ -348,7 +348,7 @@ All intermediate files generated in `images/out/` can be inspected to debug modi
 
 When you run `make rootfs.tar`, or any target that depends upon it, the following happens:
 
-1. The Makefile includes [kernel-version.mk](../kernel-version.mk). This sets the variable `KERNEL_TAG` inside the make process to a specific docker image tag, based on the `ZARCH` and, if set, `PLATFORM`
+1. The Makefile includes [mk/kernel-version.mk](../mk/kernel-version.mk). This sets the variable `KERNEL_TAG` inside the make process to a specific docker image tag, based on the `ZARCH` and, if set, `PLATFORM`
 1. The Makefile sees a dependency on `images/out/rootfs-$(HV)-$(PLATFORM)-[<rootfs flavor>].yml`
 1. The Makefile runs `tools/compose-image-yml.sh -b images/rootfs.yml.in -v "$(ROOTFS_VERSION)-$(HV)-$(ZARCH)" -h $(HV) -o images/out/rootfs-$(HV)-$(PLATFORM)-[<rootfs flavor>].yml.in images/modifiers/hv/$(HV).yq images/modifiers/$(PLATFORM)/[rootfs-<flavor>| insstaller | <platform-name>].yq`, i.e. the utility [compose-image-yml.sh](../tools/compose-image-yml.sh), passing it:
    * the base template `images/rootfs.yml.in`, i.e. input file
@@ -381,7 +381,7 @@ These are all due to constraints within the usage of the `yml` files. If a clean
 
 The current process uses the control knob `PLATFORM` in the following places in the Makefile:
 
-* As a value in the included [kernel-version.mk](../kernel-version.mk), in order to set `KERNEL_TAG`, which is passed to [parse-pkgs.sh](../tools/parse-pkgs.sh).
+* As a value in the included [mk/kernel-version.mk](../mk/kernel-version.mk), in order to set `KERNEL_TAG`, which is passed to [parse-pkgs.sh](../tools/parse-pkgs.sh).
 * As the first argument to [prepare-platform.sh](../tools/prepare-platform.sh) in the Makefile targets for `live.*`, `installer.*` and `verification.*`, which, in turn, uses it to add specific files to the build and output directories prior to making the final image.
 * In the final eve image `lf-edge/eve`, specifically the entrypoint [runme.sh](../pkg/eve/runme.sh), where the platform is passed as `-p` argument when calling `docker run`, and is used to modify the final layout.
 
@@ -457,8 +457,8 @@ As described above, the bootable images - live `live.img` and installer `install
 
 ### Installer Image Contents
 
-|partition|purpose|
-|---|---|
+|partition|purpose|source|
+|---|---|---|
 |EFI|boot via grub|`makeraw.sh`|
 |imga|Root partition A|`rootfs_installer.img` from linuxkit build|
 |conf_win|Config data|`config.img` from `tools/makeconfig.sh`|
