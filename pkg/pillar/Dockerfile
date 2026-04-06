@@ -8,10 +8,10 @@ ARG BUILD_PKGS_BASE="git gcc linux-headers libc-dev make linux-pam-dev m4 findut
                      libintl libuuid libtirpc libblkid libcrypto3 zlib tar"
 
 # we use the same image in several places
-ARG EVE_ALPINE_IMAGE=lfedge/eve-alpine:a6a101a68aa7269506dbcb8a0a45c0d69e4f851b
+ARG EVE_ALPINE_IMAGE=lfedge/eve-alpine:7b892c4653d567eb3b6a306064c3bc7fc14f6bab
 
-FROM lfedge/eve-uefi:1a89ea30ce9057c50ce6650f44bd5b89716e6dd3 AS uefi-build
-FROM lfedge/eve-dom0-ztools:b7524a395418e34f7e7238d50ac34ce3e583dbb8 AS zfs
+FROM lfedge/eve-uefi:71544a3c31211503f9d9742a1ff1eb97cd3ffacc AS uefi-build
+FROM lfedge/eve-dom0-ztools:a6d70d175f7a129bef5d1cac2aea9db637e3f839 AS zfs
 RUN mkdir /out
 # copy zfs-related files from dom0-ztools using prepared list of files
 RUN while read -r x; do \
@@ -33,7 +33,7 @@ ARG BUILD_PKGS_BASE
 RUN BUILD_PKGS="${BUILD_PKGS_BASE}" eve-alpine-deploy.sh
 
 # hadolint ignore=DL3029
-FROM --platform=${BUILDPLATFORM} lfedge/eve-cross-compilers:b6ce78e9a973a15c10038b95d35abb8f1c8fca64 AS cross-compilers
+FROM --platform=${BUILDPLATFORM} lfedge/eve-cross-compilers:d794c049baf50389be1dd48da056fb2472574c3e AS cross-compilers
 
 # will use several packages from target arch and copy them to sysroot
 # hadolint ignore=DL3006
@@ -148,9 +148,9 @@ RUN --mount=type=cache,target=/root/.cache/go-build if [ "${TEST_TOOLS}" = "y" ]
     GOBIN=/final/opt/ GOFLAGS="" go install gotest.tools/gotestsum@v1.7.0; \
 fi
 
-FROM lfedge/eve-fscrypt:f5808e5982cc0042adfbdc36e9e5df237540cdca AS fscrypt
-FROM lfedge/eve-dnsmasq:3f17c7ab5bfeec6ff7134b61451d033bc2cd10bf AS dnsmasq
-FROM lfedge/eve-gpt-tools:8e3656be68b35662ba3eba09d5a5959afb58e89a AS gpttools
+FROM lfedge/eve-fscrypt:2c0a31f72c87233b31f9bc2fa166f18839484649 AS fscrypt
+FROM lfedge/eve-dnsmasq:f5a9c3cbb477cfc8b386bea4f7e743eb1c25833a AS dnsmasq
+FROM lfedge/eve-gpt-tools:dc06bcbe9d855bcaed4817e9dbad346d0b785529 AS gpttools
 
 # collector collects everything together and then does any processing like stripping binaries.
 # We use this interim "collector" so that we can do processing.
