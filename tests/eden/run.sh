@@ -2,21 +2,24 @@
 #
 # Copyright (c) 2026 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
-set -e
+set -eo pipefail
 
 # This assumes the script is run from the root of the EVE repository
 EVE_ROOT=$(pwd)
 EDEN_DEBUG_OPT=""
 PREFIX="[EDEN_TEST]"
-EDEN_TAG=${EDEN_TAG:-1.0.14}
+EDEN_TAG=${EDEN_TAG:-1.0.16}
+EDEN_REPO=${EDEN_REPO:-https://github.com/lf-edge/eden.git}
 EVE_FLAVOR=${EVE_FLAVOR:-kvm}
 EVE_ARCH=${EVE_ARCH:-amd64}
 USE_TPM=${USE_TPM:-true}
 ACCEL=${ACCEL:-true}
 DIST_DIR="$EVE_ROOT/dist/$EVE_ARCH/current"
 EDEN_DIR="$DIST_DIR/eden"
+RUNLOGS="$DIST_DIR/eden_runlogs"
 EVE_TAG_BASE=$(basename "$(readlink -f "$DIST_DIR")")
 EVE_TAG="${EVE_TAG_BASE}-${EVE_FLAVOR}-${EVE_ARCH}"
+export EDEN_HOME="$DIST_DIR/eden_config"
 
 if ! docker image inspect "lfedge/eve:$EVE_TAG" > /dev/null 2>&1; then
    echo "$PREFIX Error: EVE image lfedge/eve:$EVE_TAG not found."
@@ -24,11 +27,18 @@ if ! docker image inspect "lfedge/eve:$EVE_TAG" > /dev/null 2>&1; then
    exit 1
 fi
 
+if [ -n "$EDEN_DEBUG" ]; then
+    EDEN_DEBUG_OPT="-v debug"
+fi
+
+############################################
+#            Helper functions              #
+############################################
+
 cleanup_stale_processes() {
     # Cleanup stale swtpm
     SWTPM_PID_FILE="$DIST_DIR/swtpm/swtpm.pid"
     if [ -f "$SWTPM_PID_FILE" ]; then
-        echo "$PREFIX Checking for stale SWTPM process..."
         PID=$(cat "$SWTPM_PID_FILE")
         if [ -n "$PID" ] && kill -0 "$PID" 2>/dev/null; then
             echo "$PREFIX Killing stale SWTPM process $PID..."
@@ -40,7 +50,6 @@ cleanup_stale_processes() {
     # Cleanup stale QEMU
     EVE_PID_FILE="$EDEN_DIR/dist/default-eve.pid"
     if [ -f "$EVE_PID_FILE" ]; then
-        echo "$PREFIX Checking for stale EVE (QEMU) process..."
         PID=$(cat "$EVE_PID_FILE")
         if [ -n "$PID" ] && kill -0 "$PID" 2>/dev/null; then
             echo "$PREFIX Killing stale EVE (QEMU) process $PID..."
@@ -56,105 +65,135 @@ cleanup_eden() {
     fi
     docker rm -f eden_adam eden_redis 2>/dev/null || true
     rm -rf "$EDEN_DIR" || true
+    rm -rf "$EDEN_HOME" || true
 }
 
-# Cleanup stale Eden states (fix redis errors)
+check_eden_cloned() {
+    if [ -d "$EDEN_DIR" ]; then
+        echo "$PREFIX Eden directory already exists."
+    else
+        echo "$PREFIX Cloning Eden (repo $EDEN_REPO, branch $EDEN_TAG) into $EDEN_DIR..."
+        if ! git clone --branch "$EDEN_TAG" "$EDEN_REPO" "$EDEN_DIR"; then
+            echo "$PREFIX Error: git clone failed."
+            exit 1
+        fi
+    fi
+}
+
+check_eden_built() {
+    cd "$EDEN_DIR"
+    mkdir -p "$RUNLOGS"
+    if [ ! -f "eden" ]; then
+        echo "$PREFIX Building Eden..."
+        if ! make build > "$RUNLOGS/build.log" 2>&1; then
+            echo "$PREFIX Error: make build failed. Read logs at $RUNLOGS/build.log"
+            exit 1
+        fi
+        if ! make build-tests > "$RUNLOGS/build-tests.log" 2>&1; then
+            echo "$PREFIX Error: make build-tests failed. Read logs at $RUNLOGS/build-tests.log"
+            exit 1
+        fi
+    else
+        echo "$PREFIX Eden binary exists. Skipping build."
+    fi
+}
+
+resolve_firmware() {
+    if [ -f "$DIST_DIR/installer/firmware/OVMF_CODE.fd" ] && [ -f "$DIST_DIR/installer/firmware/OVMF_VARS.fd" ]; then
+        FIRMWARE_Code="$DIST_DIR/installer/firmware/OVMF_CODE.fd"
+        FIRMWARE_Vars="$DIST_DIR/installer/firmware/OVMF_VARS.fd"
+    elif [ -f "$DIST_DIR/firmware/OVMF_CODE.fd" ] && [ -f "$DIST_DIR/firmware/OVMF_VARS.fd" ]; then
+        FIRMWARE_Code="$DIST_DIR/firmware/OVMF_CODE.fd"
+        FIRMWARE_Vars="$DIST_DIR/firmware/OVMF_VARS.fd"
+    else
+        echo "$PREFIX Error: Firmware files (OVMF_CODE.fd and OVMF_VARS.fd) not found in expected locations."
+        exit 1
+    fi
+}
+
+configure_eden() {
+    echo "$PREFIX Configuring Eden..."
+    if ! {
+        ./eden config add default
+        ./eden config set default --key=eve.accel --value="$ACCEL"
+        ./eden config set default --key=eve.tpm --value="$USE_TPM"
+        ./eden config set default --key=eve.firmware --value="$FIRMWARE_Code $FIRMWARE_Vars"
+        ./eden config set default --key=eve.tag --value="$EVE_TAG_BASE"
+    } > "$RUNLOGS/config.log" 2>&1; then
+        echo "$PREFIX Error: eden config failed. Read logs at $RUNLOGS/config.log"
+        exit 1
+    fi
+
+    if ! ./dist/bin/eden+ports.sh 2223:2223 2224:2224 5912:5902 5911:5901 8027:8027 8028:8028 8029:8029 8030:8030 8031:8031 > "$RUNLOGS/ports.log" 2>&1; then
+        echo "$PREFIX Error: eden ports mapping failed. Read logs at $RUNLOGS/ports.log"
+        exit 1
+    fi
+}
+
+setup_eden() {
+    echo "$PREFIX Setting up Eden..."
+    # shellcheck disable=SC2086
+    if ! ./eden setup $EDEN_DEBUG_OPT > "$RUNLOGS/setup.log" 2>&1; then
+        echo "$PREFIX Error: eden setup failed."
+        echo "        Try with EDEN_CLEANUP=1 to clean up stale state."
+        echo "        Read logs at $RUNLOGS/setup.log"
+        exit 1
+    fi
+}
+
+start_eden() {
+    echo "$PREFIX Starting Eden..."
+    # shellcheck disable=SC2086
+    if ! ./eden start $EDEN_DEBUG_OPT > "$RUNLOGS/start.log" 2>&1; then
+        echo "$PREFIX Error: eden start failed"
+        echo "        Try with EDEN_CLEANUP=1 to clean up stale state."
+        echo "        Read logs at $RUNLOGS/start.log"
+        exit 1
+    fi
+}
+
+onboard_eve() {
+    echo "$PREFIX Onboarding EVE..."
+    # shellcheck disable=SC2086
+    if ! ./eden eve onboard $EDEN_DEBUG_OPT 2>&1 | tee "$RUNLOGS/onboard.log"; then
+        echo "$PREFIX Error: eden eve onboard failed."
+        echo "        Try with EDEN_CLEANUP=1 to clean up stale state."
+        echo "        Read logs at $RUNLOGS/onboard.log"
+        exit 1
+    fi
+}
+
+############################################
+#              Main flow                   #
+############################################
+
+# Always kill stale processes from previous runs
+cleanup_stale_processes
+
+# EDEN_CLEANUP: nuke everything and start from scratch
 if [ -n "$EDEN_CLEANUP" ]; then
-    echo "$PREFIX Cleaning up stale Eden containers and state..."
-    cleanup_stale_processes
+    echo "$PREFIX Full cleanup requested..."
     cleanup_eden
 fi
 
-# Clone Eden
-if [ -d "$EDEN_DIR" ]; then
-    echo "$PREFIX Eden directory already exists."
+# Check Eden is cloned and built
+check_eden_cloned
+check_eden_built
+resolve_firmware
+
+# Configure + Setup if certs are missing (the real indicator of a working config)
+if [ ! -d "$EDEN_HOME/certs" ]; then
+    echo "$PREFIX No Eden certs found. Running configure and setup..."
+    rm -rf "$EDEN_HOME" || true
+    configure_eden
+    setup_eden
 else
-    echo "$PREFIX Cloning Eden (tag $EDEN_TAG) into $EDEN_DIR..."
-    if ! git clone --branch "$EDEN_TAG" https://github.com/lf-edge/eden.git "$EDEN_DIR"; then
-        echo "$PREFIX Error: git clone failed."
-        exit 1
-    fi
+    echo "$PREFIX Existing Eden config and certs found. Reusing."
 fi
 
-cd "$EDEN_DIR"
-mkdir -p runlogs
-
-# Build Eden and tests
-if [ ! -f "eden" ]; then
-    echo "$PREFIX Building Eden..."
-    if ! make build > runlogs/build.log 2>&1; then
-        echo "$PREFIX Error: make build failed. Read logs at $PWD/runlogs/build.log"
-        exit 1
-    fi
-    if ! make build-tests > runlogs/build-tests.log 2>&1; then
-        echo "$PREFIX Error: make build-tests failed. Read logs at $PWD/runlogs/build-tests.log"
-        exit 1
-    fi
-else
-    echo "$PREFIX Eden binary exists. Skipping build."
-fi
-
-# Set firmware location
-if [ -f "$DIST_DIR/installer/firmware/OVMF_CODE.fd" ]; then
-    FIRMWARE_Code="$DIST_DIR/installer/firmware/OVMF_CODE.fd"
-    FIRMWARE_Vars="$DIST_DIR/installer/firmware/OVMF_VARS.fd"
-elif [ -f "$DIST_DIR/firmware/OVMF_CODE.fd" ]; then
-    FIRMWARE_Code="$DIST_DIR/firmware/OVMF_CODE.fd"
-    FIRMWARE_Vars="$DIST_DIR/firmware/OVMF_VARS.fd"
-else
-    echo "$PREFIX Error: Firmware files not found in expected locations."
-    exit 1
-fi
-
-if [ -n "$EDEN_DEBUG" ]; then
-    EDEN_DEBUG_OPT="-v debug"
-fi
-
-# Configure Eden
-echo "$PREFIX Configuring Eden..."
-if ! {
-    ./eden config add default
-    ./eden config set default --key=eve.accel --value="$ACCEL"
-    ./eden config set default --key=eve.tpm --value="$USE_TPM"
-    ./eden config set default --key=eve.firmware --value="$FIRMWARE_Code $FIRMWARE_Vars"
-    ./eden config set default --key=eve.tag --value="$EVE_TAG_BASE"
-} > runlogs/config.log 2>&1; then
-    echo "$PREFIX Error: eden config failed. Read logs at $PWD/runlogs/config.log"
-    exit 1
-fi
-
-if ! ./dist/bin/eden+ports.sh 2223:2223 2224:2224 5912:5902 5911:5901 8027:8027 8028:8028 8029:8029 8030:8030 8031:8031 > runlogs/ports.log 2>&1; then
-    echo "$PREFIX Error: eden ports mapping failed. Read logs at $PWD/runlogs/ports.log"
-    exit 1
-fi
-
-# Cleanup stale processes before starting
-cleanup_stale_processes
-
-# Setup and Start EVE
-echo "$PREFIX Setting up Eden..."
-if ! ./eden setup "$EDEN_DEBUG_OPT" > runlogs/setup.log 2>&1; then
-    echo "$PREFIX Error: eden setup failed."
-    echo "        Try with EDEN_CLEANUP=1 to clean up stale state."
-    echo "        Read logs at $PWD/runlogs/setup.log"
-    exit 1
-fi
-
-echo "$PREFIX Starting Eden..."
-if ! ./eden start "$EDEN_DEBUG_OPT" > runlogs/start.log 2>&1; then
-    echo "$PREFIX Error: eden start failed"
-    echo "        Try with EDEN_CLEANUP=1 to clean up stale state."
-    echo "        Read logs at $PWD/runlogs/start.log"
-    exit 1
-fi
-
-echo "$PREFIX Onboarding EVE..."
-if ! ./eden eve onboard "$EDEN_DEBUG_OPT" 2>&1 | tee runlogs/onboard.log; then
-    echo "$PREFIX Error: eden eve onboard failed."
-    echo "        Try with EDEN_CLEANUP=1 to clean up stale state."
-    echo "        Read logs at $PWD/runlogs/onboard.log"
-    exit 1
-fi
+# Start and onboard
+start_eden
+onboard_eve
 
 if [ -n "$SETUP_ONLY" ]; then
     echo "$PREFIX SETUP_ONLY is set. Skipping tests."
@@ -225,12 +264,12 @@ for id in $TESTS_TO_RUN; do
         echo "================================================================"
         echo "$PREFIX Running $TEST_NAME ($TEST_FILE)..."
         LOG_NAME=$(echo "$TEST_NAME" | tr '[:upper:]' '[:lower:]' | tr ' ' '_')
-        LOG_FILE="runlogs/${LOG_NAME}.log"
+        LOG_FILE="$RUNLOGS/${LOG_NAME}.log"
         # shellcheck disable=SC2086
         if ./eden test ./tests/workflow -s "$TEST_FILE" -v debug 2>&1 | tee "$LOG_FILE"; then
             echo "$PREFIX $TEST_NAME completed successfully."
         else
-            echo "$PREFIX $TEST_NAME failed. logs at $PWD/$LOG_FILE"
+            echo "$PREFIX $TEST_NAME failed. logs at $LOG_FILE"
         fi
         echo "================================================================"
     else

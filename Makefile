@@ -962,7 +962,7 @@ eve: $(INSTALLER) $(EVE_ARTIFACTS) current $(RUNME) $(BUILD_YML) | $(BUILD_DIR)
 	$(QUIET): $@: Succeeded
 
 eden:
-	EVE_FLAVOR=$(HV) EVE_ARCH=$(ZARCH) ACCEL=$(if $(ACCEL),true,false) USE_TPM=$(if $(TPM),true,false) tests/eden/run.sh
+	EVE_FLAVOR=$(HV) EVE_ARCH=$(ZARCH) ACCEL=$(if $(ACCEL),true,false) USE_TPM=$(if $(TPM),true,false) EDEN_CLEANUP=$(EDEN_CLEANUP) tests/eden/run.sh
 
 .PHONY: image-set outfile-set cache-export cache-export-docker-load cache-export-docker-load-all
 
@@ -1273,7 +1273,6 @@ help:
 	@echo "Commonly used maintenance and development targets:"
 	@echo "   build-vm                         prepare a build VM for EVE in qcow2 format"
 	@echo "   test                             run EVE tests"
-	@echo "   eden                             run Eden tests"
 	@echo "   test-profiling                   run pillar tests with memory profiler"
 	@echo "   clean                            clean build artifacts in a current directory (doesn't clean Docker)"
 	@echo "   release                          prepare branch for a release (VERSION=x.y.z required)"
@@ -1296,6 +1295,15 @@ help:
 	@echo "                                    Y, the output will be echoed to the console"
 	@echo "   check-docker-hashes-consistency  check for Dockerfile image inconsistencies"
 	@echo "   kernel-tag                       show current KERNEL_TAG"
+	@echo
+	@echo "Eden testing targets:"
+	@echo "   eden                             run Eden tests (clone, build, configure, start, onboard, test)"
+	@echo "                                    on repeat runs, reuses existing config, binaries, and certs"
+	@echo "   eden EDEN_CLEANUP=1              nuke Eden directory, config, and certs; start over from scratch"
+	@echo "   eden SETUP_ONLY=1                run setup and onboarding only, skip tests"
+	@echo "   eden EDEN_DEBUG=1                enable debug logging for Eden commands"
+	@echo "   eden TEST_SMOKE=1                run smoke tests (also: TEST_NET, TEST_LOC, TEST_UPGRADE,"
+	@echo "                                    TEST_UAPP, TEST_VIRT, TEST_STORAGE, TEST_ALL)"
 	@echo
 	@echo "Seldom used maintenance and development targets:"
 	@echo "   bump-eve-api    bump eve-api in all subprojects"
