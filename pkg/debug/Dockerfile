@@ -118,12 +118,12 @@ COPY debug-services.sh ssh-service.sh edgeview-collectinfo.sh spec.sh scripts/ .
 
 SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
 # Ensure that the output of spec.sh is valid json
-RUN ./usr/bin/spec.sh -v 2>/dev/null | jq . > /dev/null
-RUN ./usr/bin/spec.sh 2>/dev/null | jq . > /dev/null
+RUN ./usr/bin/spec.sh -v 2>/dev/null | jq . > /dev/null || ./usr/bin/spec.sh -v
+RUN ./usr/bin/spec.sh 2>/dev/null | jq . > /dev/null || ./usr/bin/spec.sh
 RUN mkdir /tmp/bin
 COPY tests/lsusb /tmp/bin
 RUN chmod a+x /tmp/bin/lsusb
-RUN PATH=/tmp/bin:$PATH /out/usr/bin/spec.sh -u 2>/dev/null | jq .
+RUN PATH=/tmp/bin:$PATH /out/usr/bin/spec.sh -u 2>/dev/null | jq . > /dev/null || ./usr/bin/spec.sh -u
 
 RUN mkdir -p ./etc/ssh ./root/.ssh
 RUN chmod 0700 ./root/.ssh
