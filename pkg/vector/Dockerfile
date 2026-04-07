@@ -41,7 +41,7 @@ RUN echo "Cargo target: $CARGO_BUILD_TARGET"
 # building the final image
 FROM toolchain AS builder
 ARG VECTOR_FEATURES
-ADD https://github.com/vectordotdev/vector.git#v0.50.0 /app
+ADD https://github.com/vectordotdev/vector.git#v0.54.0 /app
 # we have our own options, so remove the default cargo config
 # if this doesn't help then remove everything leaving only
 # the files from .dockerignore except rust-toolchain.toml
@@ -54,11 +54,13 @@ ENV RUSTFLAGS="\
     -C lto=fat \
     -C embed-bitcode=yes \
     -C codegen-units=1 \
-    -A dead_code"
+    -C link-arg=--ld-path=/usr/bin/mold \
+    -C link-arg=--target=$CARGO_BUILD_TARGET"
+
 RUN cargo build --release $VECTOR_FEATURES
 
 # strip unneeded symbols
-RUN strip "/app/target/$CARGO_BUILD_TARGET/release/vector"
+RUN llvm-strip "/app/target/$CARGO_BUILD_TARGET/release/vector"
 
 RUN cargo sbom > sbom.spdx.json
 RUN cp "/app/target/$CARGO_BUILD_TARGET/release/vector" /app/target/
