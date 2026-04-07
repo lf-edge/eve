@@ -38,7 +38,7 @@ jobs:
           - arch: amd64
             platform: generic
             hv: k
-    runs-on: ${{ matrix.arch == 'arm64' && 'zededa-ubuntu-2204-arm64' || 'jumbo' }}
+    runs-on: ${{ matrix.arch == 'arm64' && 'zededa-ubuntu-2204-arm64' || 'zededa-ubuntu-2204' }}
 
     steps:
       - name: Starting Report
@@ -121,7 +121,7 @@ jobs:
           - arch: amd64
             hv: k
             platform: generic
-    runs-on: ${{ matrix.arch == 'arm64' && 'zededa-ubuntu-2204-arm64' || 'jumbo' }}
+    runs-on: ${{ matrix.arch == 'arm64' && 'zededa-ubuntu-2204-arm64' || 'zededa-ubuntu-2204' }}
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
