@@ -1,0 +1,14 @@
+# EVE Memory Testing Configuration
+# Copy this file to terraform.tfvars and adjust for your system
+
+# Your EVE system specifications (check with ./eden status)
+eve_system_ram_gb = 3.0        # Total RAM allocated to EVE (in GB)
+eve_current_usage_mb = 800     # Current EVE system usage (in MB)
+
+# Test configuration
+test_duration_minutes = 5      # How long to run each test
+max_test_containers = 5        # Maximum concurrent containers to test
+
+# Allocation thresholds
+safe_allocation_percent = 90        # Safe allocation percentage
+aggressive_allocation_percent = 95  # Aggressive allocation percentage
