@@ -39,7 +39,6 @@ jobs:
             platform: generic
             hv: k
     runs-on: ${{ matrix.arch == 'arm64' && 'zededa-ubuntu-2204-arm64' || 'jumbo' }}
-    timeout-minutes: 1440
 
     steps:
       - name: Starting Report
@@ -123,7 +122,6 @@ jobs:
             hv: k
             platform: generic
     runs-on: ${{ matrix.arch == 'arm64' && 'zededa-ubuntu-2204-arm64' || 'jumbo' }}
-    timeout-minutes: 1440
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2

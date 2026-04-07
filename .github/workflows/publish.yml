@@ -21,7 +21,6 @@ jobs:
   packages-non-arm:
     if: github.event.repository.full_name == 'lf-edge/eve'
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 1440
     strategy:
       fail-fast: false
       matrix:
@@ -244,7 +243,6 @@ jobs:
     if: github.event.repository.full_name == 'lf-edge/eve'
     needs: [packages-non-arm, packages-arm]
     runs-on: jumbo
-    timeout-minutes: 1440
     strategy:
       fail-fast: false
       matrix:
@@ -304,7 +302,6 @@ jobs:
     if: github.event.repository.full_name == 'lf-edge/eve'
     needs: [packages-non-arm, packages-arm]
     runs-on: jumbo
-    timeout-minutes: 1440
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         with:

@@ -29,7 +29,6 @@ concurrency:
 jobs:
   test:
     runs-on: jumbo
-    timeout-minutes: 1440
     env:
       REPO_NAME: ${{ github.event.repository.full_name }}
       GH_REF: ${{ github.ref }}
