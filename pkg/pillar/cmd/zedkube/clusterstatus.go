@@ -159,7 +159,7 @@ func (z *zedkube) publishKubeConfigStatus() {
 	// Only the bootstrap node manages kube-vip load balancing; other nodes leave
 	// LBInterfaces empty so cluster-init.sh does not apply kubevip.
 	if z.clusterConfig.BootstrapNode {
-		status.LBInterfaces = z.clusterConfig.LBInterfaces
+		status.LBInterfaces = z.resolveLBInterfaces()
 	}
 
 	// publish the cluster status for the kube container
@@ -176,6 +176,24 @@ func (z *zedkube) resolveClusterInterfaceName() string {
 		return ""
 	}
 	return port.IfName
+}
+
+// resolveLBInterfaces translates the logical-label in each LBInterfaceConfig.Interface
+// to the Linux interface name required by cluster-init.sh / kube-vip.
+func (z *zedkube) resolveLBInterfaces() []types.LBInterfaceConfig {
+	var resolved []types.LBInterfaceConfig
+	for _, lb := range z.clusterConfig.LBInterfaces {
+		port := z.deviceNetworkStatus.LookupPortByLogicallabel(lb.Interface)
+		if port == nil {
+			log.Errorf("resolveLBInterfaces: no port found for logical label %q", lb.Interface)
+			continue
+		}
+		resolved = append(resolved, types.LBInterfaceConfig{
+			Interface: port.IfName,
+			IPPrefix:  lb.IPPrefix,
+		})
+	}
+	return resolved
 }
 
 func (z *zedkube) decryptClusterTokenAndManifest() (string, []byte, error) {
