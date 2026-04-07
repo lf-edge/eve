@@ -81,7 +81,7 @@ RUN strip --strip-unneeded /out/usr/bin/ptpm
 RUN find /out/usr/lib/ -name '*.la' -delete
 RUN find /out/usr/lib/ -name '*.a' -delete
 
-RUN rm /out/usr/lib/libprotoc.so* /out/usr/lib/libprotobuf*
+RUN rm /out/usr/lib/libprotoc.so*
 
 FROM scratch
 COPY --from=build /out/ /
