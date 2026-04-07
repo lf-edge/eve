@@ -2,7 +2,7 @@
 
 ## Overview
 
-Edge devices can be clustered together if they are installed with version of eve which supports kubevirt virtualization.
+Edge devices can be clustered together if they are installed with a version of EVE which supports kubevirt virtualization (HV=k).
 The volumes created on those devices are synchronously replicated within the cluster for data protection and high availability. The applications deployed on those devices are automatically failed over to surviving nodes by the underlying kubernetes infrastructure. This document covers the process of failover and the underlying data structures.
 
 ## Components
@@ -218,5 +218,95 @@ The workflow above guarantees that the app is running on only one node in a clus
 
 ### Failback handling
 
-Kubernetes descheduler decides to failback the app when the original failover scenario is resolved.
-After that the EVE handling of app failback is same as failover handling as mentioned above.
+When a failed node recovers and rejoins the cluster, Kubernetes does not automatically move applications back to their original designated node. EVE uses the Kubernetes descheduler to trigger failback by evicting apps that are running on a node that does not match their preferred affinity.
+
+**Descheduler trigger**
+
+`Update_RunDeschedulerOnBoot()` in `cluster-update.sh` runs the descheduler once per boot on any booting cluster node — this includes the recovered node returning to service, a surviving node rebooting, or any other node in the cluster. Before running, it verifies all of the following:
+
+- The cluster API is reachable
+- This node is `Ready` and not `SchedulingDisabled`
+- All Longhorn daemonsets report `numberReady == desiredNumberScheduled`
+- All KubeVirt daemonsets report `numberReady == desiredNumberScheduled` (if kubevirt is installed)
+
+Once prerequisites are met, any existing `descheduler-job` is deleted and a fresh Job is applied. The sentinel file `/tmp/descheduler-ran-onboot` ensures it runs at most once per boot.
+
+**Descheduler policy**
+
+The descheduler runs the `RemovePodsViolatingNodeAffinity` plugin scoped to the `eve-kube-app` namespace with `preferredDuringSchedulingIgnoredDuringExecution` affinity type. It evicts any pod in that namespace currently running on a node that does not satisfy its preferred node affinity — i.e., an app that failed over away from its designated node and whose designated node is now back online and ready.
+
+**After eviction**
+
+Once the descheduler evicts the pod, KubeVirt reschedules a new VMI. The surviving nodes detect the new scheduling via `ENClusterAppStatus` and EVE handles the transition using the same failover path described above.
+
+**Scope limitation**
+
+The descheduler only acts on apps with `AffinityType == PreferredDuringScheduling`. Apps configured with `AffinityType == RequiredDuringScheduling` never fail over and therefore never require failback.
+
+## Kubernetes Timeline on VMIRs Failover
+
+The following describes the sequence of Kubernetes and Longhorn object state changes during a VMIRs-managed application failover between EVE cluster nodes.
+
+**Best-case timing summary** (new pod already scheduled on failover node):
+
+```
+T+0s:       network lost
+T+40s:      node → NotReady/Unknown  (node-monitor-grace-period)
+T+55s:      DeletionTimestamp set, virt-launcher pod → Terminating  (tolerateSec=15)
+T+55–65s:   checkAppsFailover() fires  (logcollectInterval=10s polling)
+T+65s:      DetachOldWorkload begins
+```
+
+**1. Node network lost**
+
+The failed node loses network connectivity to the cluster. Its kubelet stops posting status updates to the Kubernetes API server.
+
+**2. Node object → NotReady**
+
+After the node monitor grace period (**40 seconds**, per EVE's k3s config `node-monitor-grace-period=40s` with `node-monitor-period=10s`), the Kubernetes control plane transitions the node's `Ready` condition to `Unknown` with the message `"Kubelet stopped posting node status."`. The `node.kubernetes.io/unreachable:NoExecute` taint is added to the node object.
+
+**3. virt-launcher pod → Terminating**
+
+EVE explicitly sets `tolerationSeconds=15` on all VMI and ReplicaSet pod specs at creation time (see `tolerateSec` in `hypervisor/kubevirt.go`), overriding the Kubernetes default of 300 seconds. After this **15-second** window following step 2, Kubernetes sets a `DeletionTimestamp` on all pods on the unreachable node, transitioning them to `Terminating`. The virt-launcher pod cannot fully terminate because the kubelet on the failed node is offline and cannot acknowledge the deletion. Total time from network loss to `Terminating` is approximately **~55 seconds** (40s detection + 15s toleration).
+
+EVE's zedkube `checkAppsFailover()` polls every **10 seconds** (`logcollectInterval`), so there is up to 10 seconds of additional latency before EVE detects the `Terminating` pod and begins acting on it.
+
+**3b. (Contingency if new virt-launcher pod not scheduled) VMIRs replica reset**
+
+If no new scheduling pod appears within ~2 minutes of the pod entering `Terminating`, EVE's zedkube microservice triggers `DetachUtilVmirsReplicaReset()`. This scales the `VirtualMachineInstanceReplicaSet` (VMIRs) from 1 replica to 0 and back to 1, prompting KubeVirt to schedule a new VMI and virt-launcher pod onto an available node.
+
+**4. New virt-launcher pod → Pending on failover node**
+
+KubeVirt creates a replacement VMI and virt-launcher pod, which is scheduled onto a surviving cluster node. The pod remains in `Pending` state because its PVC is still bound to a `VolumeAttachment` referencing the failed node.
+
+**5. Verify old node unreachable (DetachOldWorkload gate)**
+
+When zedkube detects a new pod scheduled on this node via `ENClusterAppStatus`, it calls `DetachOldWorkload()`. The first check verifies the failed node is genuinely unreachable by inspecting the node's `Ready` condition message for `"Kubelet stopped posting node status."`. Other `NotReady` reasons do not qualify — this prevents split-brain data corruption.
+
+**6. Verify PVC storage redundancy**
+
+For each Longhorn volume attached to the application, EVE checks that at least one healthy replica exists on a node other than the failed node. If any volume lacks an off-node healthy replica, the failover is blocked and does not proceed. This is a hard gate.
+
+**7. Control plane pod cleanup on failed node**
+
+Longhorn and KubeVirt control plane pods stuck in `Terminating` on the failed node are force-deleted, clearing the way for storage and compute cleanup.
+
+**8. virt-launcher and VMI cleanup on failed node**
+
+The stuck virt-launcher pod is force-deleted (grace period 0, Foreground propagation). The VMI on the failed node has its finalizers stripped before force-deletion. This unblocks KubeVirt's reconciliation loop.
+
+**9. Longhorn replica removal on failed node**
+
+Longhorn `Replica` objects associated with the failed node for this application's volumes are deleted, removing the failed node's claim on the volume data and allowing Longhorn to re-establish replica count on surviving nodes.
+
+**10. VolumeAttachment deletion**
+
+EVE polls and force-deletes all `VolumeAttachment` objects referencing the failed node for this application. The loop retries until the VA list is empty. The new virt-launcher pod's PVC bind cannot complete while the old `VolumeAttachment` exists.
+
+**11. Longhorn volume node assignment**
+
+With the old `VolumeAttachment` removed, `longhornVolumeSetNode()` updates the Longhorn volume's `spec.nodeID` to the failover node, directing Longhorn to attach the volume engine there. For volumes migrated from Longhorn < v1.7, `BackupTargetName` may be empty; the Longhorn v1.9.x webhook rejects updates with an empty `BackupTargetName`, so EVE sets it to `"default"` when unset.
+
+**12. New VMI → Running**
+
+Once the new `VolumeAttachment` reports `Attached`, storage is available on the failover node. The virt-launcher pod transitions from `Pending` to `Running` and the VMI reaches `Running` state. EVE's zedkube publishes an updated `ENClusterAppStatus` with `ScheduledOnThisNode=true` and `StatusRunning=true`, causing zedmanager on the failover node to set `AppInstanceStatus.Activated=true` and resume reporting app info to the controller.
