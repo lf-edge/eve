@@ -25,19 +25,19 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: jumbo
+          - os: zededa-ubuntu-2204
             arch: amd64
             platform: "generic"
             hv: kvm
-          - os: jumbo
+          - os: zededa-ubuntu-2204
             arch: amd64
             platform: "generic"
             hv: k
-          - os: jumbo
+          - os: zededa-ubuntu-2204
             arch: amd64
             platform: "evaluation"
             hv: kvm
-          - os: jumbo
+          - os: zededa-ubuntu-2204
             arch: riscv64
             platform: "generic"
             hv: mini
@@ -242,7 +242,7 @@ jobs:
   eve:
     if: github.event.repository.full_name == 'lf-edge/eve'
     needs: [packages-non-arm, packages-arm]
-    runs-on: jumbo
+    runs-on: zededa-ubuntu-2204
     strategy:
       fail-fast: false
       matrix:
@@ -301,7 +301,7 @@ jobs:
   manifest:
     if: github.event.repository.full_name == 'lf-edge/eve'
     needs: [packages-non-arm, packages-arm]
-    runs-on: jumbo
+    runs-on: zededa-ubuntu-2204
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         with:
