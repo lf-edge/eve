@@ -465,6 +465,12 @@ func longhornVolumeSetNode(lhVolName string, kubeNodeName string) error {
 	vol.Spec.NodeID = kubeNodeName
 	vol.Status.OwnerID = kubeNodeName
 	vol.Status.CurrentNodeID = kubeNodeName
+	// Volumes migrated from longhorn < v1.7 may have an empty BackupTargetName.
+	// The v1.9.x webhook validator rejects any Update() with an empty BackupTargetName,
+	// so set it to the well-known default if unset.
+	if vol.Spec.BackupTargetName == "" {
+		vol.Spec.BackupTargetName = "default"
+	}
 	_, err = lhClient.LonghornV1beta2().Volumes(longhornNamespace).Update(context.Background(), vol, metav1.UpdateOptions{})
 	if err != nil {
 		return err
