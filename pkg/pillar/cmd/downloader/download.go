@@ -23,6 +23,7 @@ import (
 	"github.com/lf-edge/eve-libs/zedUpload/types"
 	"github.com/lf-edge/eve/pkg/pillar/controllerconn"
 	"github.com/lf-edge/eve/pkg/pillar/netdump"
+	pillartypes "github.com/lf-edge/eve/pkg/pillar/types"
 	utils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 )
 
@@ -138,7 +139,10 @@ func download(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 	// create Endpoint
 	var dEndPoint zedUpload.DronaEndPoint
 	switch trType {
-	case zedUpload.SyncHttpTr, zedUpload.SyncSftpTr:
+	case zedUpload.SyncHttpTr:
+		allow := ctx.globalConfig.GlobalValueBool(pillartypes.DataStoreAllowInsecureAuth)
+		dEndPoint, err = ctx.dCtx.NewSyncerDest(trType, downloadURL, nettracePATH, dpath, auth, zedUpload.WithAllowInsecureAuth(allow))
+	case zedUpload.SyncSftpTr:
 		dEndPoint, err = ctx.dCtx.NewSyncerDest(trType, downloadURL, nettracePATH, dpath, auth)
 	case zedUpload.SyncAzureTr:
 		dEndPoint, err = ctx.dCtx.NewSyncerDest(trType, downloadURL, nettracePATH, dpath, auth)

@@ -143,8 +143,14 @@ func handleSyncOp(ctx *downloaderContext, key string,
 		serverURL = dst.Fqdn
 
 	case zconfig.DsType_DsHttp.String(), zconfig.DsType_DsHttps.String(), "":
+		// APIKey holds the auth scheme (e.g. "Bearer", "Basic", "NTLM"),
+		// Password holds the corresponding credential token.
+		// The Authorization header is "<APIKey> <Password>", matching the
+		// convention used in collectinfo.go.
 		auth = &zedUpload.AuthInput{
 			AuthType: "http",
+			Uname:    dsCtx.APIKey,
+			Password: dsCtx.Password,
 		}
 		trType = zedUpload.SyncHttpTr
 		// pass in the config.Name instead of 'filename' which

@@ -509,6 +509,9 @@ const (
 	LpsNetworkInterval GlobalSettingKey = "timer.lps.network.interval"
 	// LpsAppBootInfoInterval defines interval between LPS app boot info POSTs.
 	LpsAppBootInfoInterval GlobalSettingKey = "timer.lps.appbootinfo.interval"
+
+	// DataStoreAllowInsecureAuth allows authentication header via http
+	DataStoreAllowInsecureAuth GlobalSettingKey = "datastore.http.security.allowinsecureauth"
 )
 
 // LonghornDiskReservedGBDisabled is the sentinel value for LonghornDiskReservedGB that
@@ -1175,6 +1178,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddBoolItem(MemoryMonitorEnabled, false)
 	configItemSpecMap.AddBoolItem(DHCPEnableVendorClassID, true)
 	configItemSpecMap.AddBoolItem(EnableEFIDebug, false)
+	configItemSpecMap.AddBoolItem(DataStoreAllowInsecureAuth, false)
 
 	// Add TriState Items
 	configItemSpecMap.AddTriStateItem(NetworkFallbackAnyEth, TS_DISABLED)
