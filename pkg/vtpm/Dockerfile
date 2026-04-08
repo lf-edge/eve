@@ -4,7 +4,13 @@
 # SPDX-License-Identifier: Apache-2.0
 
 FROM lfedge/eve-dom0-ztools:41e448a70640e7b6f98d19f790cf35cf579fd0db AS dom0
-FROM lfedge/eve-alpine:47d267f35e4832f639bf65bbe8a2e7b2f31e3e36 AS build
+
+# ===========================================================================
+# C builds (libtpms, swtpm, tpm2-tss, tpm2-tools, ptpm)
+# These use autoconf/automake with many -dev dependencies, so for now they
+# remain under QEMU emulation when cross-building.
+# ===========================================================================
+FROM lfedge/eve-alpine:47d267f35e4832f639bf65bbe8a2e7b2f31e3e36 AS build-c
 ENV BUILD_PKGS="gcc g++ autoconf automake libtool make openssl-dev libtasn1-dev \
     json-glib-dev gnutls bash expect gawk socat libseccomp-dev gmp-dev \
     musl-utils autoconf-archive git json-c json-c-dev libcurl curl-dev \
@@ -23,7 +29,7 @@ RUN strip --strip-unneeded /out/usr/lib/libtpms.so.*
 
 # build swtpm
 WORKDIR /swtpm
-# This poinst to the latest commit that implements state backup functionality.
+# This points to the latest commit that implements state backup functionality.
 # TODO: revert this when there is a new release in swtpm
 ADD https://github.com/stefanberger/swtpm.git#732bbd6ad3a52b9552b5a1620e03a9f6449a1aab /swtpm
 RUN ./autogen.sh --prefix=/out/usr
@@ -58,20 +64,7 @@ RUN cp lib/.libs/libcommon.so* /out/usr/lib/
 RUN cp tools/.libs/tpm2 /out/usr/bin/
 RUN strip --strip-unneeded /out/usr/lib/*.so*
 
-# Build vtpm
-WORKDIR /vtpm-build
-COPY swtpm-vtpm/src/ /vtpm-build/.
-COPY swtpm-vtpm/ /vtpm-build/.
-ARG GOPKGVERSION
-SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
-# hadolint ignore=SC2046
-RUN echo "Running go vet" && go vet ./... && echo "Running go fmt" && \
-    ERR=$(gofmt -e -l -s $(find . -name \*.go | grep -v /vendor/)) && \
-    if [ -n "$ERR" ] ; then echo "go fmt Failed - ERR: $ERR"; exit 1 ; fi
-RUN GO111MODULE=on CGO_ENABLED=0 go build -ldflags "-s -w -X=main.Version=${GOPKGVERSION}" \
-    -mod=vendor -o /out/usr/bin/vtpm .
-
-# Build ptpm
+# Build ptpm (C++)
 WORKDIR /ptpm-build
 ADD ptpm/ /ptpm-build
 RUN make -j$(nproc) && cp ptpm /out/usr/bin/
@@ -83,8 +76,35 @@ RUN find /out/usr/lib/ -name '*.a' -delete
 
 RUN rm /out/usr/lib/libprotoc.so*
 
+# ===========================================================================
+# Go build (vtpm)
+# Go has first-class cross-compilation support, so we run this natively on
+# the build host using --platform=$BUILDPLATFORM and set GOARCH to target.
+# This avoids QEMU, which is known to deadlock on go vet / go build.
+# ===========================================================================
+# hadolint ignore=DL3029
+FROM --platform=$BUILDPLATFORM lfedge/eve-alpine:47d267f35e4832f639bf65bbe8a2e7b2f31e3e36 AS build-go
+ARG TARGETARCH
+
+WORKDIR /vtpm-build
+COPY swtpm-vtpm/src/ /vtpm-build/.
+COPY swtpm-vtpm/ /vtpm-build/.
+ARG GOPKGVERSION
+SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
+# hadolint ignore=SC2046
+RUN echo "Running go vet" && GOARCH=${TARGETARCH} go vet ./... && echo "Running go fmt" && \
+    ERR=$(gofmt -e -l -s $(find . -name \*.go | grep -v /vendor/)) && \
+    if [ -n "$ERR" ] ; then echo "go fmt Failed - ERR: $ERR"; exit 1 ; fi
+RUN GO111MODULE=on CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} \
+    go build -ldflags "-s -w -X=main.Version=${GOPKGVERSION}" \
+    -mod=vendor -o /out/usr/bin/vtpm .
+
+# ===========================================================================
+# Final image
+# ===========================================================================
 FROM scratch
-COPY --from=build /out/ /
+COPY --from=build-c /out/ /
+COPY --from=build-go /out/usr/bin/vtpm /usr/bin/vtpm
 COPY init.sh /usr/bin/
 COPY --from=dom0 /etc/group /etc/group
 COPY --from=dom0 /etc/passwd /etc/passwd
