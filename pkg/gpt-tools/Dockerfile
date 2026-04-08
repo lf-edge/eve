@@ -1,11 +1,27 @@
 FROM lfedge/eve-alpine:7b892c4653d567eb3b6a306064c3bc7fc14f6bab AS build
-ENV BUILD_PKGS gcc make file patch libc-dev util-linux-dev linux-headers openssl-dev util-linux-dev util-linux-static g++ tar coreutils
+ENV BUILD_PKGS="gcc make file patch libc-dev linux-headers openssl-dev g++ tar coreutils"
+# util-linux-static on riscv64 is broken; we build libuuid from source instead (see below).
+ENV BUILD_PKGS_amd64="util-linux-static util-linux-dev"
+ENV BUILD_PKGS_arm64="util-linux-static util-linux-dev"
+ENV BUILD_PKGS_riscv64="sqlite-dev"
 RUN eve-alpine-deploy.sh
 
-ENV POPT_VERSION 1.16
-ENV GPTFDISK_VERSION 1.0.3
-ENV VBOOT_REPO   https://github.com/coreboot/vboot.git
-ENV VBOOT_COMMIT ed6cb4054134efdd67215d9504f501cd36030d6a
+ENV POPT_VERSION=1.16
+ENV GPTFDISK_VERSION=1.0.3
+ENV VBOOT_REPO=https://github.com/coreboot/vboot.git
+ENV VBOOT_COMMIT=ed6cb4054134efdd67215d9504f501cd36030d6a
+
+ARG TARGETARCH
+ADD https://www.kernel.org/pub/linux/utils/util-linux/v2.41/util-linux-2.41.tar.gz /tmp/ul.tar.gz
+RUN if [ "${TARGETARCH}" = "riscv64" ]; then \
+      tar -xzf /tmp/ul.tar.gz -C /tmp/ && \
+      cd /tmp/util-linux-2.41 && \
+      ./configure --enable-static --disable-shared && \
+      make libuuid.la && \
+      cp .libs/libuuid.a /usr/lib/libuuid.a && \
+      mkdir -p /usr/include/uuid && \
+      cp libuuid/src/uuid.h /usr/include/uuid/uuid.h; \
+    fi
 
 #
 # Step 1: Install SGDISK
