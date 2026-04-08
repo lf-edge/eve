@@ -54,15 +54,17 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub/reverse"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub/socketdriver"
+
 	_ "github.com/lf-edge/eve/pkg/pillar/rstats"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/sirupsen/logrus"
 )
 
 const (
-	agentName   = "zedbox"
-	errorTime   = 3 * time.Minute
-	warningTime = 40 * time.Second
+	agentName    = "zedbox"
+	errorTime    = 3 * time.Minute
+	warningTime  = 40 * time.Second
+	statsCSVPath = "/persist/pubsub-frame-stats.csv"
 )
 
 type zedboxInline uint8
@@ -182,6 +184,55 @@ func runService(serviceName string, sep entrypoint, inline bool) int {
 	return 0
 }
 
+// zedboxContext holds per-run state for the zedbox main loop.
+type zedboxContext struct {
+	stopStats func() // non-nil when stats logger is running
+	log       *base.LogObject
+}
+
+func handleGlobalConfigCreate(ctxArg interface{}, key string, statusArg interface{}) {
+	if key != "global" {
+		return
+	}
+	ctx := ctxArg.(*zedboxContext)
+	gcp, ok := statusArg.(types.ConfigItemValueMap)
+	if !ok {
+		return
+	}
+	updateStatsLogger(ctx, gcp.GlobalValueInt(types.PubsubStatsInterval))
+}
+
+func handleGlobalConfigModify(ctxArg interface{}, key string, statusArg interface{}, _ interface{}) {
+	handleGlobalConfigCreate(ctxArg, key, statusArg)
+}
+
+func handleGlobalConfigDelete(ctxArg interface{}, key string, _ interface{}) {
+	if key != "global" {
+		return
+	}
+	ctx := ctxArg.(*zedboxContext)
+	updateStatsLogger(ctx, 0)
+}
+
+// updateStatsLogger starts, stops, or restarts the FrameReader stats logger
+// based on the configured interval (0 = disabled).
+func updateStatsLogger(ctx *zedboxContext, intervalSecs uint32) {
+	if intervalSecs == 0 {
+		if ctx.stopStats != nil {
+			ctx.stopStats()
+			ctx.stopStats = nil
+			ctx.log.Noticef("FrameReader stats logger stopped")
+		}
+		return
+	}
+	d := time.Duration(intervalSecs) * time.Second
+	if ctx.stopStats != nil {
+		ctx.stopStats()
+	}
+	ctx.stopStats = socketdriver.StartStatsLogger(ctx.log, d, statsCSVPath)
+	ctx.log.Noticef("FrameReader stats logger started: interval=%v csv=%s", d, statsCSVPath)
+}
+
 // runZedbox is the built-in starting of the main process
 func runZedbox(ps *pubsub.PubSub, logger *logrus.Logger, log *base.LogObject, arguments []string, baseDir string) int {
 	//Start zedbox
@@ -194,10 +245,32 @@ func runZedbox(ps *pubsub.PubSub, logger *logrus.Logger, log *base.LogObject, ar
 	stillRunning := time.NewTicker(15 * time.Second)
 	ps.StillRunning(agentName, warningTime, errorTime)
 
+	ctx := &zedboxContext{log: log}
+	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "zedagent",
+		MyAgentName:   agentName,
+		TopicImpl:     types.ConfigItemValueMap{},
+		Activate:      false,
+		Ctx:           ctx,
+		Persistent:    true,
+		CreateHandler: handleGlobalConfigCreate,
+		ModifyHandler: handleGlobalConfigModify,
+		DeleteHandler: handleGlobalConfigDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
+	if err != nil {
+		log.Fatalf("Failed to subscribe to GlobalConfig: %v", err)
+	}
+	subGlobalConfig.Activate()
+
 	subChan := reverse.NewSubscriber(log, agentName,
 		types.ServiceInitStatus{})
 	for {
 		select {
+		case change := <-subGlobalConfig.MsgChan():
+			subGlobalConfig.ProcessChange(change)
+
 		case subData := <-subChan:
 			subData = strings.TrimSpace(subData)
 			var serviceInitStatus types.ServiceInitStatus

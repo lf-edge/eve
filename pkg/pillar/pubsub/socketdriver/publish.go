@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/getlantern/framed"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
@@ -226,7 +227,6 @@ func (s *Publisher) Start() error {
 			}
 			s.log.Functionf("Creating %s at %s", "s.serveConnection", logutils.GetMyStack())
 			go s.serveConnection(c, instance)
-			maybeLogAllocated(s.log)
 			instance++
 		}
 		s.log.Warnf("Start(%s) acceptor goroutine exiting", s.name)
@@ -280,35 +280,30 @@ func (s *Publisher) serveConnection(conn net.Conn, instance int) {
 	s.log.Functionf("serveConnection(%s/%d)\n", s.name, instance)
 	defer conn.Close()
 
+	// The publisher reads only one handshake frame; use a stats-free reader.
+	reader := NewFrameReaderInternal(conn)
+	writer := NewFramedWriter(conn)
+
 	// Track the set of keys/values we are sending to the peer
 	sendToPeer := make(pubsub.LocalCollection)
 	sentRestartCounter := 0
 
-	// Small buffer since we only read "request <topic>"
-	buf := make([]byte, 256)
-
 	// Read request
-	res, err := conn.Read(buf)
+	frame, err := reader.ReadFrame()
 	if err != nil {
 		// Peer process could have died
 		s.log.Errorf("serveConnection(%s/%d) error: %v", s.name, instance, err)
 		return
 	}
-	if res == len(buf) {
-		// Likely truncated
-		// Peer process could have died
-		s.log.Errorf("serveConnection(%s/%d) request likely truncated\n", s.name, instance)
-		return
-	}
 
-	request := strings.Split(string(buf[0:res]), " ")
+	request := strings.Split(string(frame), " ")
 	s.log.Functionf("serveConnection read %d: %v\n", len(request), request)
 	if len(request) != 2 || request[0] != "request" || request[1] != s.topic {
 		s.log.Errorf("Invalid request message: %v\n", request)
 		return
 	}
 
-	_, err = conn.Write([]byte(fmt.Sprintf("hello %s", s.topic)))
+	_, err = writer.Write([]byte(fmt.Sprintf("hello %s", s.topic)))
 	if err != nil {
 		s.log.Errorf("serveConnection(%s/%d) failed %s\n", s.name, instance, err)
 		return
@@ -324,18 +319,18 @@ func (s *Publisher) serveConnection(conn net.Conn, instance int) {
 	keys := s.differ.DetermineDiffs(sendToPeer)
 
 	// Send the keys we just determined; all since this is the initial
-	err = s.serialize(conn, keys, sendToPeer)
+	err = s.serialize(writer, keys, sendToPeer)
 	if err != nil {
 		s.log.Errorf("serveConnection(%s/%d) serialize failed %s\n", s.name, instance, err)
 		return
 	}
-	err = s.sendComplete(conn)
+	err = s.sendComplete(writer)
 	if err != nil {
 		s.log.Errorf("serveConnection(%s/%d) sendComplete failed %s\n", s.name, instance, err)
 		return
 	}
 	if s.restarted.RestartCounter() != sentRestartCounter {
-		err = s.sendRestarted(conn, s.restarted.RestartCounter())
+		err = s.sendRestarted(writer, s.restarted.RestartCounter())
 		if err != nil {
 			s.log.Errorf("serveConnection(%s/%d) sendRestarted failed %s\n", s.name, instance, err)
 			return
@@ -367,14 +362,14 @@ func (s *Publisher) serveConnection(conn net.Conn, instance int) {
 		keys := s.differ.DetermineDiffs(sendToPeer)
 
 		// Send the updates and deletes for those keys
-		err = s.serialize(conn, keys, sendToPeer)
+		err = s.serialize(writer, keys, sendToPeer)
 		if err != nil {
 			s.log.Errorf("serveConnection(%s/%d) serialize failed %s\n", s.name, instance, err)
 			return
 		}
 
 		if newRestartCounter != sentRestartCounter {
-			err = s.sendRestarted(conn, newRestartCounter)
+			err = s.sendRestarted(writer, newRestartCounter)
 			if err != nil {
 				s.log.Errorf("serveConnection(%s/%d) sendRestarted failed %s\n", s.name, instance, err)
 				return
@@ -385,7 +380,7 @@ func (s *Publisher) serveConnection(conn net.Conn, instance int) {
 	s.log.Warnf("serveConnection(%s) goroutine exiting", s.name)
 }
 
-func (s *Publisher) serialize(sock net.Conn, keys []string,
+func (s *Publisher) serialize(writer *framed.Writer, keys []string,
 	sendToPeer pubsub.LocalCollection) error {
 
 	s.log.Tracef("serialize(%s, %v)\n", s.name, keys)
@@ -393,13 +388,13 @@ func (s *Publisher) serialize(sock net.Conn, keys []string,
 	for _, key := range keys {
 		val, ok := sendToPeer[key]
 		if ok {
-			err := s.sendUpdate(sock, key, val)
+			err := s.sendUpdate(writer, key, val)
 			if err != nil {
 				s.log.Errorf("serialize(%s) sendUpdate failed %s\n", s.name, err)
 				return err
 			}
 		} else {
-			err := s.sendDelete(sock, key)
+			err := s.sendDelete(writer, key)
 			if err != nil {
 				s.log.Errorf("serialize(%s) sendDelete failed %s\n", s.name, err)
 				return err
@@ -409,7 +404,7 @@ func (s *Publisher) serialize(sock net.Conn, keys []string,
 	return nil
 }
 
-func (s *Publisher) sendUpdate(sock net.Conn, key string,
+func (s *Publisher) sendUpdate(writer *framed.Writer, key string,
 	val []byte) error {
 
 	s.log.Tracef("sendUpdate(%s): key %s\n", s.name, key)
@@ -417,57 +412,59 @@ func (s *Publisher) sendUpdate(sock net.Conn, key string,
 	sendKey := base64.StdEncoding.EncodeToString([]byte(key))
 	sendVal := base64.StdEncoding.EncodeToString(val)
 	buf := fmt.Sprintf("update %s %s %s", s.topic, sendKey, sendVal)
-	if len(buf) >= maxsize {
-		s.log.Fatalf("Too large message (%d bytes) sent to %s topic %s key %s",
+	if len(buf) > maxsize {
+		return fmt.Errorf("too large message (%d bytes) for %s topic %s key %s",
 			len(buf), s.name, s.topic, key)
 	}
-	_, err := sock.Write([]byte(buf))
+	_, err := writer.Write([]byte(buf))
 	return err
 }
 
-func (s *Publisher) sendDelete(sock net.Conn, key string) error {
+func (s *Publisher) sendDelete(writer *framed.Writer, key string) error {
 	s.log.Tracef("sendDelete(%s): key %s\n", s.name, key)
 	// base64-encode to avoid having spaces in the key
 	sendKey := base64.StdEncoding.EncodeToString([]byte(key))
 	buf := fmt.Sprintf("delete %s %s", s.topic, sendKey)
-	if len(buf) >= maxsize {
-		s.log.Fatalf("Too large message (%d bytes) sent to %s topic %s key %s",
+	if len(buf) > maxsize {
+		return fmt.Errorf("too large message (%d bytes) for %s topic %s key %s",
 			len(buf), s.name, s.topic, key)
 	}
-	_, err := sock.Write([]byte(buf))
+	_, err := writer.Write([]byte(buf))
 	return err
 }
 
-func (s *Publisher) sendRestarted(sock net.Conn, restartCounter int) error {
+func (s *Publisher) sendRestarted(writer *framed.Writer, restartCounter int) error {
 	s.log.Functionf("sendRestarted(%s)\n", s.name)
 	buf := fmt.Sprintf("restarted %s %d", s.topic, restartCounter)
-	if len(buf) >= maxsize {
-		s.log.Fatalf("Too large message (%d bytes) sent to %s topic %s",
+	if len(buf) > maxsize {
+		return fmt.Errorf("too large message (%d bytes) for %s topic %s",
 			len(buf), s.name, s.topic)
 	}
-	_, err := sock.Write([]byte(buf))
+	_, err := writer.Write([]byte(buf))
 	return err
 }
 
-func (s *Publisher) sendComplete(sock net.Conn) error {
+func (s *Publisher) sendComplete(writer *framed.Writer) error {
 	s.log.Functionf("sendComplete(%s)\n", s.name)
 	buf := fmt.Sprintf("complete %s", s.topic)
-	if len(buf) >= maxsize {
-		s.log.Fatalf("Too large message (%d bytes) sent to %s topic %s",
+	if len(buf) > maxsize {
+		return fmt.Errorf("too large message (%d bytes) for %s topic %s",
 			len(buf), s.name, s.topic)
 	}
-	_, err := sock.Write([]byte(buf))
+	_, err := writer.Write([]byte(buf))
 	return err
 }
 
-// CheckMaxSize returns an error if too large
+// CheckMaxSize returns an error if the serialized message exceeds maxsize.
+// Even though the framed transport can support ~4GB frames, this driver enforces
+// a much smaller application-level limit (currently 10MB) to protect memory/IPC.
 func (s *Publisher) CheckMaxSize(key string, val []byte) error {
 	s.log.Tracef("CheckMaxSize(%s): key %s\n", s.name, key)
 	// base64-encode to avoid having spaces in the key and val
 	sendKey := base64.StdEncoding.EncodeToString([]byte(key))
 	sendVal := base64.StdEncoding.EncodeToString(val)
 	buf := fmt.Sprintf("update %s %s %s", s.topic, sendKey, sendVal)
-	if len(buf) >= maxsize {
+	if len(buf) > maxsize {
 		return fmt.Errorf("key %s serialized to size %d exceeds max %d",
 			key, len(buf), maxsize)
 	}
