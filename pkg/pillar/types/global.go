@@ -437,6 +437,9 @@ const (
 	LpsNetworkInterval GlobalSettingKey = "timer.lps.network.interval"
 	// LpsAppBootInfoInterval defines interval between LPS app boot info POSTs.
 	LpsAppBootInfoInterval GlobalSettingKey = "timer.lps.appbootinfo.interval"
+
+	// DataStoreAllowInsecureAuth allows authentication header via http
+	DataStoreAllowInsecureAuth GlobalSettingKey = "datastore.http.security.allowinsecureauth"
 )
 
 // AgentSettingKey - keys for per-agent settings
@@ -1092,6 +1095,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddBoolItem(WwanModemRecoveryRestartModemManager, false)
 	configItemSpecMap.AddBoolItem(NetworkLocalLegacyMACAddress, false)
 	configItemSpecMap.AddBoolItem(MemoryMonitorEnabled, false)
+	configItemSpecMap.AddBoolItem(DataStoreAllowInsecureAuth, false)
 
 	// Add TriState Items
 	configItemSpecMap.AddTriStateItem(NetworkFallbackAnyEth, TS_DISABLED)

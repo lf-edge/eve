@@ -253,6 +253,7 @@ func TestNewConfigItemSpecMap(t *testing.T) {
 		LpsDevInfoInterval,
 		LpsNetworkInterval,
 		LpsAppBootInfoInterval,
+		DataStoreAllowInsecureAuth,
 	}
 	if len(specMap.GlobalSettings) != len(gsKeys) {
 		t.Errorf("GlobalSettings has more (%d) than expected keys (%d)",
