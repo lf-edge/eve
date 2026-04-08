@@ -39,6 +39,7 @@
 | debug.enable.ssh | authorized ssh key | empty string(ssh disabled) | - | - | allow ssh to EVE |
 | debug.enable.console | boolean | false | - | - | allow console access to EVE (reboot required to disable) |
 | debug.enable.vnc.shim.vm | boolean | false | - | - | allow VNC access to the container application shim VM (reboot required to disable) |
+| datastore.http.security.allowinsecureauth | boolean | false | - | - | allow sending authorization header over unencrypted http connection |
 | storage.dom0.disk.minusage.percent | integer percent | 20 | 20 | 80 | min. percent of persist partition reserved for dom0 |
 | storage.zfs.reserved.percent | integer percent | 20 | 1 | 99 | min. percent of persist partition reserved for zfs performance |
 | storage.apps.ignore.disk.check | boolean | false | - | - | Ignore disk usage check for Apps. Allows apps to create images bigger than available disk|
