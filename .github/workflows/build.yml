@@ -43,8 +43,10 @@ jobs:
 
     steps:
       - name: Starting Report
+        env:
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
         run: |
-          echo Git Ref: ${{ github.event.pull_request.head.ref  }}
+          echo Git Ref: "$HEAD_REF"
           echo GitHub Event: ${{ github.event_name }}
           echo Disk usage
           df -h
@@ -64,10 +66,6 @@ jobs:
         if: ${{ github.event.repository.full_name == 'lf-edge/eve' }}
         run: | # Runners must provide default credentials
           docker login
-      - name: ensure zstd for cache  # this should be removed once the arm64 VM includes zstd
-        if: ${{ matrix.os == 'buildjet-4vcpu-ubuntu-2204-arm' || matrix.os == 'arm64-secure' }}
-        run: |
-          sudo apt install -y zstd
       - name: ensure packages for cross-arch build
         if: ${{ matrix.arch == 'riscv64' }}
         run: |
@@ -178,9 +176,11 @@ jobs:
           PR_ID: ${{ github.event.pull_request.number  }}
         run: |
           COMMIT_ID=$(git describe --abbrev=8 --always)
-          echo "VERSION=0.0.0-pr$PR_ID-$COMMIT_ID" >> $GITHUB_ENV
-          echo "TAG=evebuild/pr:$PR_ID" >> $GITHUB_ENV
-          echo "ARCH=${{ matrix.arch }}" >> "$GITHUB_ENV"
+          {
+            echo "VERSION=0.0.0-pr${PR_ID}-${COMMIT_ID}"
+            echo "TAG=evebuild/pr:${PR_ID}"
+            echo "ARCH=${{ matrix.arch }}"
+          } >> "$GITHUB_ENV"
 
       - name: Build EVE ${{ matrix.hv }}-${{ matrix.arch }}-${{ matrix.platform }}
         run: |
@@ -195,7 +195,7 @@ jobs:
           docker system df -v
       - name: Export docker container
         run: |
-          make cache-export ZARCH=${{ matrix.arch }} IMAGE=lfedge/eve:$VERSION-${{ matrix.hv }} OUTFILE=eve-${{ matrix.hv }}-${{ matrix.arch }}-${{ matrix.platform }}.tar IMAGE_NAME=$TAG-${{ matrix.hv }}-${{ matrix.arch }}
+          make cache-export ZARCH=${{ matrix.arch }} IMAGE="lfedge/eve:${VERSION}-${{ matrix.hv }}" OUTFILE="eve-${{ matrix.hv }}-${{ matrix.arch }}-${{ matrix.platform }}.tar" IMAGE_NAME="${TAG}-${{ matrix.hv }}-${{ matrix.arch }}"
       - name: Upload EVE ${{ matrix.hv }}-${{ matrix.arch }}-${{ matrix.platform }}
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
         with:

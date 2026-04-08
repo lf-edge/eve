@@ -1,3 +1,5 @@
+# Copyright (c) 2026, Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
 ---
 name: 'Run EVE make comand'
 description: 'Fetch tags, login to dockerhub, build and push artifacts produced by make command'
@@ -5,17 +7,17 @@ description: 'Fetch tags, login to dockerhub, build and push artifacts produced 
 inputs:
   command:
     required: true
-    type: string
+    description: 'Make command and arguments to run'
   dockerhub-token:
     required: true
-    type: string
+    description: 'Docker Hub authentication token'
   dockerhub-account:
     required: true
-    type: string
+    description: 'Docker Hub account name'
   clean:
     required: false
-    type: boolean
-    default: true
+    description: 'Whether to clean after build'
+    default: 'true'
 
 runs:
   using: 'composite'
