@@ -545,12 +545,13 @@ func VerifyProtoLeavesCertChainImpl(log *base.LogObject, content []byte) ([]byte
 		log.Errorln("VerifyProtoLeavesCertChain: " + errStr)
 		return nil, errors.New(errStr)
 	}
-	return VerifyLeavesCertChain(log, sm.Certs)
+	return VerifyLeavesCertChain(log, sm.Certs, true)
 }
 
-// VerifyLeavesCertChain - verify signing certificate chain from controller to leaves
+// VerifyLeavesCertChain - verify certificate chain from controller to leaves.
+// If requireECDH is true, the ECDH exchange certificate must also be present.
 // Returns content of the signing certificate and the verification error/nil value.
-func VerifyLeavesCertChain(log *base.LogObject, certs []*zcert.ZCert) ([]byte, error) {
+func VerifyLeavesCertChain(log *base.LogObject, certs []*zcert.ZCert, requireECDH bool) ([]byte, error) {
 	// prepare intermediate certs and validate the payload
 	var signCertBytes []byte
 	var keyCnt, signKeyCnt, encrKeyCnt int
@@ -591,7 +592,7 @@ func VerifyLeavesCertChain(log *base.LogObject, certs []*zcert.ZCert) ([]byte, e
 		log.Errorln("VerifyLeavesCertChain: " + errStr)
 		return nil, errors.New(errStr)
 	}
-	if encrKeyCnt == 0 {
+	if requireECDH && encrKeyCnt == 0 {
 		errStr := fmt.Sprintf("failed to acquire ECDH cert")
 		log.Errorln("VerifyLeavesCertChain: " + errStr)
 		return nil, errors.New(errStr)

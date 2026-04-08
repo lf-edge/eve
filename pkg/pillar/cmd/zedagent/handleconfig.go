@@ -304,7 +304,7 @@ func loadBootstrapConfig(getconfigCtx *getconfigContext) {
 
 	// Verify controller certificate chain.
 	tmpCtrlClient := controllerconn.NewClient(log, controllerconn.ClientOptions{})
-	sigCertBytes, err := controllerconn.VerifyLeavesCertChain(log, bootstrap.ControllerCerts)
+	sigCertBytes, err := controllerconn.VerifyLeavesCertChain(log, bootstrap.ControllerCerts, false)
 	if err != nil {
 		log.Errorf("Controller cert chain verification failed for bootstrap config: %v", err)
 		indicateInvalidBootstrapConfig(getconfigCtx)
