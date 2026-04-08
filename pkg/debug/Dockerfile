@@ -50,10 +50,12 @@ COPY lshw/ lshw-B.${LSHW_VERSION}/
 
 WORKDIR /lshw-B.${LSHW_VERSION}
 
+# hadolint ignore=SC2046
 RUN for patch in *.patch; do \
     patch -p1 < "$patch"; \
     done && \
-    make -C src VERSION=B.${LSHW_VERSION} NO_VERSION_CHECK=1  RPM_OPT_FLAGS=-DNONLS ZLIB=1 GZIP="busybox gzip -n9" static && \
+    make -j$(nproc) -C src VERSION=B.${LSHW_VERSION} NO_VERSION_CHECK=1 RPM_OPT_FLAGS=-DNONLS ZLIB=1 core && \
+    make -j$(nproc) -C src VERSION=B.${LSHW_VERSION} NO_VERSION_CHECK=1 RPM_OPT_FLAGS=-DNONLS ZLIB=1 GZIP="busybox gzip -n9" static && \
     cp src/lshw-static /out/usr/bin/lshw && strip /out/usr/bin/lshw
 
 # building hexedit
@@ -61,7 +63,8 @@ WORKDIR /tmp/hexedit/hexedit-1.5
 # hadolint ignore=DL4006
 ADD https://github.com/pixel/hexedit/archive/refs/tags/1.5.tar.gz ../1.5.tar.gz
 RUN tar -C .. -xzvf ../1.5.tar.gz
-RUN ./autogen.sh && ./configure && make DESTDIR=/out install
+# hadolint ignore=SC2046
+RUN ./autogen.sh && ./configure && make -j$(nproc) && make DESTDIR=/out install
 
 # tweaking various bit
 WORKDIR /out
