@@ -1,9 +1,9 @@
 # How to use EVE-OS on a NVIDIA Jetson platform
 
 NVIDIA Jetpack is the NVIDIA's software stack for Jetson modules and
-developer kits. EVE supports two versions of the Jetpack: 5.1.3 and 6.0.
+developer kits. EVE supports three versions of the Jetpack: 5.1.3, 6.0, and 7.1.
 These versions covers different devices from different Jetson platforms, as
-shown by the Table __1__.
+shown by the Tables __1__ and __2__.
 
 |            | Jetson AGX Orin | Jetson AGX Orin Industrial | Jetson Orin NX / Orin Nano | Jetson AGX Xavier | Jetson AGX Xavier Industrial | Jetson Xavier NX |
 |------------|-----------------|----------------------------|----------------------------|-------------------|------------------------------|------------------|
@@ -11,6 +11,12 @@ shown by the Table __1__.
 | Jetpack 5.1.3 |:heavy_check_mark:|:heavy_check_mark:|:heavy_check_mark:|:heavy_check_mark:|:heavy_check_mark:|:heavy_check_mark:|
 
 Table __1__: Jetpack support. _Source: [Jetson Linux Archive](https://developer.nvidia.com/embedded/jetson-linux-archive)._
+
+|            | Jetson T5000 | Jetson T4000 | Jetson AGX Orin | Jetson Orin NX | Jetson Orin Nano |
+|------------|--------------|--------------|-----------------|----------------|------------------|
+| Jetpack 7.1 |:heavy_check_mark:|:heavy_check_mark:| | | |
+
+Table __2__: Jetpack 7.1 support. _Source: [Jetson Linux Archive](https://developer.nvidia.com/embedded/jetson-linux-archive)._
 
 For each Jetpack version supported, EVE provides all default libraries and
 related files present in a regular installation of Jetpack under
@@ -49,6 +55,18 @@ Currently EVE supports the following devices based on the NVIDIA's Jetson Xavier
 1. Jetson Xavier NX developer kit
 
 See [NVIDIA-NX.md](./NVIDIA-NX.md) for instructions on how to build and deploy EVE on these devices.
+
+## How to use on a Jetson Thor device
+
+EVE supports Nvidia Jetpack 7.1 on the [Jetson Thor device](https://www.nvidia.com/en-us/autonomous-machines/embedded-systems/jetson-thor/). The installation process is pretty standard:
+
+1. Build an installation raw image `make ZARCH=arm64 HV=<kvm or k> PLATFORM=nvidia-jp7 installer-raw` (`xen` is not supported)
+1. Flash the `dist/arm64/current/installer.raw` install EVE image onto an USB Stick [following these instructions](../README.md#3-flash-the-image-to-the-device)
+1. Insert the USB Stick and power on the device
+
+The installation process will start and it will install EVE on the NVMe.
+
+If the installation succeed, the device will be powered off. Remove the USB Stick and power on the device again.
 
 ## Partial supported devices
 
