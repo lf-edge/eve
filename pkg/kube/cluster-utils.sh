@@ -46,6 +46,9 @@ check_network_connection () {
         done
 }
 
+# Check if file exists and delete it. The cpu manager policy can change between releases
+# which is set in config-k3s.yaml file. If previous config policy is different than new policy
+# k3s will not start. So deleting on every reboot is safe approach and this file gets created again from config.
 check_and_clean_cpu_manager_state() {
       local state_file="/var/lib/kubelet/cpu_manager_state"
 
@@ -53,19 +56,8 @@ check_and_clean_cpu_manager_state() {
         logmsg "$(date '+%Y-%m-%d %H:%M:%S') ${state_file} not found, nothing to do"
         return
       fi
-
-      local policy
-      if ! policy=$(jq -r '.policyName' "${state_file}" 2>/dev/null) || [ -z "${policy}" ] || [ "${policy}" = "null" ]; then
-        logmsg "$(date '+%Y-%m-%d %H:%M:%S') Failed to parse ${state_file}, file may be corrupt" >&2
-        return
-      fi
-
-      if [ "${policy}" = "none" ]; then
-        logmsg "$(date '+%Y-%m-%d %H:%M:%S') cpu_manager_state has policyName=none, deleting stale state file: ${state_file}"
-        rm -f "${state_file}"
-      else
-        logmsg "$(date '+%Y-%m-%d %H:%M:%S') [INFO] cpu_manager_state policyName=${policy}, no action needed"
-      fi
+      logmsg "$(date '+%Y-%m-%d %H:%M:%S')  deleting state file: ${state_file}"
+      rm -f "${state_file}"
 
       return
 }
