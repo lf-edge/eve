@@ -228,6 +228,8 @@ func (ctx *DronaCtx) NewSyncerDest(tr SyncTransportType, UrlOrRegion, nettraceDi
 				return nil, errors.New("auth.Password is not token68-conform")
 			}
 			syncEp.authType = auth.AuthType
+			syncEp.uname = auth.Uname
+			syncEp.password = auth.Password
 		}
 		syncEp.hClientWrap = &httpClientWrapper{}
 		syncEp.hClientWrap.nettraceDirPath = nettraceDirPATH
