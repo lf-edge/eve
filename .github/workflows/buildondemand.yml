@@ -119,6 +119,14 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         with:
           fetch-depth: 0
+      - name: ensure packages for cross-arch build
+        if: ${{ matrix.arch == 'riscv64' }}
+        run: |
+          APT_INSTALL="sudo apt install -y binfmt-support qemu-user-static"
+          # the following weird statement is here to speed up the happy path
+          # if the default server is responding -- we can skip apt update
+          $APT_INSTALL || { sudo apt update && $APT_INSTALL ; }
+      # Cache hits are optional — if expired, 'make pkgs' below will rebuild.
       - name: update linuxkit cache for our arch
         id: cache_for_packages
         if: ${{ matrix.arch != 'amd64' }}  # because our runner arch is amd64; if that changes, this will have to change
@@ -126,11 +134,10 @@ jobs:
         with:
           path: ~/.linuxkit/cache
           key: linuxkit-${{ matrix.arch }}-${{ github.sha }}
-          fail-on-cache-miss: true
 
       - uses: ./.github/actions/run-make
         with:
-          command: "V=1 HV=${{ matrix.hv }} PLATFORM=${{ matrix.platform }} ZARCH=${{ matrix.arch }} LINUXKIT_PKG_TARGET=push $FORCE_BUILD eve"
+          command: "V=1 HV=${{ matrix.hv }} PLATFORM=${{ matrix.platform }} ZARCH=${{ matrix.arch }} LINUXKIT_PKG_TARGET=push $FORCE_BUILD pkgs eve"
           dockerhub-token: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
           dockerhub-account: ${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}
       - uses: ./.github/actions/run-make

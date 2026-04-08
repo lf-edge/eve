@@ -135,33 +135,41 @@ jobs:
         run: | # Runners must provide default credentials
           docker login
 
+      - name: ensure packages for cross-arch build
+        if: ${{ matrix.arch == 'riscv64' }}
+        run: |
+          APT_INSTALL="sudo apt install -y binfmt-support qemu-user-static"
+          # the following weird statement is here to speed up the happy path
+          # if the default server is responding -- we can skip apt update
+          $APT_INSTALL || { sudo apt update && $APT_INSTALL ; }
       # For riscv64, we cross-build on amd64 runners. We need amd64 tool images
       # (mkconf, mkimage-raw-efi, etc.) in docker, but riscv64 packages in the cache.
       # So: restore amd64 cache -> load tools -> clear -> restore riscv64 cache.
       - name: load amd64 tool images for riscv64 cross-build
+        id: cache-amd64-tools
         if: ${{ matrix.arch == 'riscv64' }}
         uses: actions/cache/restore@668228422ae6a00e4ad889ee87cd7109ec5666a7  # v5.0.4
         with:
           path: ~/.linuxkit/cache
           key: linuxkit-amd64-${{ github.event.pull_request.head.sha }}-generic-default
-          fail-on-cache-miss: true
       - name: load amd64 tools into docker for riscv64 cross-build
-        if: ${{ matrix.arch == 'riscv64' }}
+        if: ${{ matrix.arch == 'riscv64' && steps.cache-amd64-tools.outputs.cache-hit == 'true' }}
         run: |
           make cache-export-docker-load-all
           rm -rf ~/.linuxkit
       # Restore the target arch/platform cache. For native builds (amd64, arm64),
       # this cache also contains the tool images we need.
       # The 'rt' platform has no platform-specific packages, so it uses the generic cache.
+      # Cache hits are optional — if expired, 'make pkgs' below will rebuild.
       - name: update linuxkit cache for target arch
+        id: cache-target
         uses: actions/cache/restore@668228422ae6a00e4ad889ee87cd7109ec5666a7  # v5.0.4
         with:
           path: ~/.linuxkit/cache
           key: linuxkit-${{ matrix.arch }}-${{ github.event.pull_request.head.sha }}-${{ matrix.platform == 'rt' && 'generic' || matrix.platform }}-${{ matrix.hv == 'k' && 'k' || 'default' }}
-          fail-on-cache-miss: true
       # For native builds, load tool images from the target cache we just restored.
       - name: load tool images into docker
-        if: ${{ matrix.arch != 'riscv64' }}
+        if: ${{ matrix.arch != 'riscv64' && steps.cache-target.outputs.cache-hit == 'true' }}
         run: |
           make cache-export-docker-load-all
       - name: set environment
@@ -175,7 +183,7 @@ jobs:
 
       - name: Build EVE ${{ matrix.hv }}-${{ matrix.arch }}-${{ matrix.platform }}
         run: |
-          make V=1 ROOTFS_VERSION="$VERSION" PLATFORM=${{ matrix.platform }} HV=${{ matrix.hv }} ZARCH=${{ matrix.arch }} eve
+          make V=1 ROOTFS_VERSION="$VERSION" PLATFORM=${{ matrix.platform }} HV=${{ matrix.hv }} ZARCH=${{ matrix.arch }} pkgs eve
       - name: Post eve build report
         run: |
           echo Disk usage
