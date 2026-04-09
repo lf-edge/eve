@@ -28,7 +28,7 @@ RUN cargo sbom > sbom.spdx.json
 
 RUN cp "/usr/local/my-installer/target/$CARGO_BUILD_TARGET/release/installer" /usr/local/my-installer/target/installer
 
-FROM lfedge/eve-debug:bba9da392f12550feaab79a1da15a49c2fc587e6 AS debug
+FROM lfedge/eve-debug:9e8c1c103b275e54537924c65aa3da622e4c09a1 AS debug
 
 # Dockerfile to build installer img initrd
 FROM lfedge/eve-alpine:7b892c4653d567eb3b6a306064c3bc7fc14f6bab AS build
