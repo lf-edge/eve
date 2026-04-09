@@ -288,6 +288,7 @@ IPS_NET2_FIRST_IP=192.168.2.10
 
 QEMU_MEMORY?=8192
 QEMU_EVE_SERIAL?=31415926
+QEMU_PID_FILE?=$(CURDIR)/qemu.pid
 
 PFLASH_amd64=y
 PFLASH=$(PFLASH_$(ZARCH))
@@ -315,6 +316,7 @@ QEMU_OPTS_VGA_DISPLAY_amd64=-vga std
 QEMU_OPTS_VGA_DISPLAY_arm64=-device virtio-gpu-pci -usb -device usb-ehci,id=ehci -device usb-kbd,bus=ehci.0
 QEMU_OPTS_VGA_DISPLAY_riscv64=-vga std
 QEMU_OPTS_COMMON= -m $(QEMU_MEMORY) -smp 4  $(QEMU_OPTS_BIOS) \
+        -pidfile $(QEMU_PID_FILE) \
         -serial mon:stdio      \
         -global ICH9-LPC.noreboot=false -watchdog-action reset \
         -rtc base=utc,clock=rt \

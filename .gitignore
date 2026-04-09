@@ -1,4 +1,5 @@
 *.swp
+qemu.pid
 .idea/
 .vscode/
 obj
