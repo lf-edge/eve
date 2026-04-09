@@ -24,13 +24,14 @@ const (
 	VolumeRobustnessUnknown  = VolumeRobustness("unknown")
 )
 
-// +kubebuilder:validation:Enum=blockdev;iscsi;nvmf;""
+// +kubebuilder:validation:Enum=blockdev;iscsi;nvmf;ublk;""
 type VolumeFrontend string
 
 const (
 	VolumeFrontendBlockDev = VolumeFrontend("blockdev")
 	VolumeFrontendISCSI    = VolumeFrontend("iscsi")
 	VolumeFrontendNvmf     = VolumeFrontend("nvmf")
+	VolumeFrontendUblk     = VolumeFrontend("ublk")
 	VolumeFrontendEmpty    = VolumeFrontend("")
 )
 
@@ -80,6 +81,14 @@ const (
 	UnmapMarkSnapChainRemovedEnabled  = UnmapMarkSnapChainRemoved("enabled")
 )
 
+type VolumeOfflineRebuilding string
+
+const (
+	VolumeOfflineRebuildingEnabled  = VolumeOfflineRebuilding("enabled")
+	VolumeOfflineRebuildingDisabled = VolumeOfflineRebuilding("disabled")
+	VolumeOfflineRebuildingIgnored  = VolumeOfflineRebuilding("ignored")
+)
+
 type VolumeCloneState string
 
 const (
@@ -96,6 +105,10 @@ type VolumeCloneStatus struct {
 	Snapshot string `json:"snapshot"`
 	// +optional
 	State VolumeCloneState `json:"state"`
+	// +optional
+	AttemptCount int `json:"attemptCount"`
+	// +optional
+	NextAllowedAttemptAt string `json:"nextAllowedAttemptAt"`
 }
 
 const (
@@ -160,13 +173,13 @@ const (
 	ReplicaDiskSoftAntiAffinityDisabled = ReplicaDiskSoftAntiAffinity("disabled")
 )
 
-// Deprecated.
-type BackendStoreDriverType string
+// +kubebuilder:validation:Enum=ignored;enabled;disabled
+type FreezeFilesystemForSnapshot string
 
 const (
-	BackendStoreDriverTypeV1  = BackendStoreDriverType("v1")
-	BackendStoreDriverTypeV2  = BackendStoreDriverType("v2")
-	BackendStoreDriverTypeAll = BackendStoreDriverType("all")
+	FreezeFilesystemForSnapshotDefault  = FreezeFilesystemForSnapshot("ignored")
+	FreezeFilesystemForSnapshotEnabled  = FreezeFilesystemForSnapshot("enabled")
+	FreezeFilesystemForSnapshotDisabled = FreezeFilesystemForSnapshot("disabled")
 )
 
 type DataEngineType string
@@ -175,14 +188,6 @@ const (
 	DataEngineTypeV1  = DataEngineType("v1")
 	DataEngineTypeV2  = DataEngineType("v2")
 	DataEngineTypeAll = DataEngineType("all")
-)
-
-type OfflineReplicaRebuilding string
-
-const (
-	OfflineReplicaRebuildingIgnored  = OfflineReplicaRebuilding("ignored")
-	OfflineReplicaRebuildingEnabled  = OfflineReplicaRebuilding("enabled")
-	OfflineReplicaRebuildingDisabled = OfflineReplicaRebuilding("disabled")
 )
 
 type KubernetesStatus struct {
@@ -237,9 +242,6 @@ type VolumeSpec struct {
 	NodeID string `json:"nodeID"`
 	// +optional
 	MigrationNodeID string `json:"migrationNodeID"`
-	// Deprecated: Replaced by field `image`.
-	// +optional
-	EngineImage string `json:"engineImage"`
 	// +optional
 	Image string `json:"image"`
 	// +optional
@@ -283,21 +285,27 @@ type VolumeSpec struct {
 	// +kubebuilder:validation:Enum=none;lz4;gzip
 	// +optional
 	BackupCompressionMethod BackupCompressionMethod `json:"backupCompressionMethod"`
-	// Deprecated:Replaced by field `dataEngine`.'
-	// +optional
-	BackendStoreDriver BackendStoreDriverType `json:"backendStoreDriver"`
 	// +kubebuilder:validation:Enum=v1;v2
 	// +optional
 	DataEngine DataEngineType `json:"dataEngine"`
-	// OfflineReplicaRebuilding is used to determine if the offline replica rebuilding feature is enabled or not
-	// +kubebuilder:validation:Enum=ignored;disabled;enabled
-	// +optional
-	OfflineReplicaRebuilding OfflineReplicaRebuilding `json:"offlineReplicaRebuilding"`
 	// +optional
 	SnapshotMaxCount int `json:"snapshotMaxCount"`
 	// +kubebuilder:validation:Type=string
 	// +optional
 	SnapshotMaxSize int64 `json:"snapshotMaxSize,string"`
+	// Setting that freezes the filesystem on the root partition before a snapshot is created.
+	// +optional
+	FreezeFilesystemForSnapshot FreezeFilesystemForSnapshot `json:"freezeFilesystemForSnapshot"`
+	// The backup target name that the volume will be backed up to or is synced.
+	// +optional
+	BackupTargetName string `json:"backupTargetName"`
+	// +kubebuilder:validation:Enum=ignored;disabled;enabled
+	// Specifies whether Longhorn should rebuild replicas while the detached volume is degraded.
+	// - ignored: Use the global setting for offline replica rebuilding.
+	// - enabled: Enable offline rebuilding for this volume, regardless of the global setting.
+	// - disabled: Disable offline rebuilding for this volume, regardless of the global setting
+	// +optional
+	OfflineRebuilding VolumeOfflineRebuilding `json:"offlineRebuilding"`
 }
 
 // VolumeStatus defines the observed state of the Longhorn volume
@@ -321,9 +329,6 @@ type VolumeStatus struct {
 	LastBackup string `json:"lastBackup"`
 	// +optional
 	LastBackupAt string `json:"lastBackupAt"`
-	// Deprecated.
-	// +optional
-	PendingNodeID string `json:"pendingNodeID"`
 	// the node that this volume is currently migrating to
 	// +optional
 	CurrentMigrationNodeID string `json:"currentMigrationNodeID"`
@@ -349,8 +354,6 @@ type VolumeStatus struct {
 	ShareEndpoint string `json:"shareEndpoint"`
 	// +optional
 	ShareState ShareManagerState `json:"shareState"`
-	// +optional
-	OfflineReplicaRebuildingRequired bool `json:"offlineReplicaRebuildingRequired"`
 }
 
 // +genclient

@@ -3,9 +3,14 @@ package v1beta2
 import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 const (
-	NodeConditionTypeReady            = "Ready"
-	NodeConditionTypeMountPropagation = "MountPropagation"
-	NodeConditionTypeSchedulable      = "Schedulable"
+	NodeConditionTypeReady               = "Ready"
+	NodeConditionTypeMountPropagation    = "MountPropagation"
+	NodeConditionTypeMultipathd          = "Multipathd"
+	NodeConditionTypeKernelModulesLoaded = "KernelModulesLoaded"
+	NodeConditionTypeRequiredPackages    = "RequiredPackages"
+	NodeConditionTypeNFSClientInstalled  = "NFSClientInstalled"
+	NodeConditionTypeSchedulable         = "Schedulable"
+	NodeConditionTypeHugePagesAvailable  = "HugePagesAvailable"
 )
 
 const (
@@ -16,7 +21,17 @@ const (
 	NodeConditionReasonKubernetesNodePressure    = "KubernetesNodePressure"
 	NodeConditionReasonUnknownNodeConditionTrue  = "UnknownNodeConditionTrue"
 	NodeConditionReasonNoMountPropagationSupport = "NoMountPropagationSupport"
+	NodeConditionReasonMultipathdIsRunning       = "MultipathdIsRunning"
+	NodeConditionReasonUnknownOS                 = "UnknownOS"
+	NodeConditionReasonNamespaceExecutorErr      = "NamespaceExecutorErr"
+	NodeConditionReasonKernelModulesNotLoaded    = "KernelModulesNotLoaded"
+	NodeConditionReasonPackagesNotInstalled      = "PackagesNotInstalled"
+	NodeConditionReasonCheckKernelConfigFailed   = "CheckKernelConfigFailed"
+	NodeConditionReasonNFSClientIsNotFound       = "NFSClientIsNotFound"
+	NodeConditionReasonNFSClientIsMisconfigured  = "NFSClientIsMisconfigured"
 	NodeConditionReasonKubernetesNodeCordoned    = "KubernetesNodeCordoned"
+	NodeConditionReasonHugePagesNotConfigured    = "HugePagesNotConfigured"
+	NodeConditionReasonInsufficientHugePages     = "InsufficientHugePages"
 )
 
 const (
@@ -44,6 +59,8 @@ const (
 	ErrorReplicaScheduleEngineImageNotReady              = "none of the node candidates contains a ready engine image"
 	ErrorReplicaScheduleHardNodeAffinityNotSatisfied     = "hard affinity cannot be satisfied"
 	ErrorReplicaScheduleSchedulingFailed                 = "replica scheduling failed"
+	ErrorReplicaSchedulePrecheckNewReplicaFailed         = "precheck new replica failed"
+	ErrorReplicaScheduleEvictReplicaFailed               = "evict replica failed"
 )
 
 type DiskType string
@@ -53,6 +70,14 @@ const (
 	DiskTypeFilesystem = DiskType("filesystem")
 	// DiskTypeBlock is the disk type for storing v2 replica logical volumes
 	DiskTypeBlock = DiskType("block")
+)
+
+type DiskDriver string
+
+const (
+	DiskDriverNone = DiskDriver("")
+	DiskDriverAuto = DiskDriver("auto")
+	DiskDriverAio  = DiskDriver("aio")
 )
 
 type SnapshotCheckStatus struct {
@@ -66,6 +91,9 @@ type DiskSpec struct {
 	Type DiskType `json:"diskType"`
 	// +optional
 	Path string `json:"path"`
+	// +kubebuilder:validation:Enum="";auto;aio
+	// +optional
+	DiskDriver DiskDriver `json:"diskDriver"`
 	// +optional
 	AllowScheduling bool `json:"allowScheduling"`
 	// +optional
@@ -90,11 +118,22 @@ type DiskStatus struct {
 	// +nullable
 	ScheduledReplica map[string]int64 `json:"scheduledReplica"`
 	// +optional
+	// +nullable
+	ScheduledBackingImage map[string]int64 `json:"scheduledBackingImage"`
+	// +optional
 	DiskUUID string `json:"diskUUID"`
+	// +optional
+	DiskName string `json:"diskName"`
+	// +optional
+	DiskPath string `json:"diskPath"`
 	// +optional
 	Type DiskType `json:"diskType"`
 	// +optional
+	DiskDriver DiskDriver `json:"diskDriver"`
+	// +optional
 	FSType string `json:"filesystemType"`
+	// +optional
+	InstanceManagerName string `json:"instanceManagerName"`
 }
 
 // NodeSpec defines the desired state of the Longhorn node
