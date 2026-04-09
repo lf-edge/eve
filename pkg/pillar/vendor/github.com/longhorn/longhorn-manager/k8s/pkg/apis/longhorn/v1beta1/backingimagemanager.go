@@ -54,6 +54,9 @@ type BackingImageManagerStatus struct {
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +kubebuilder:resource:shortName=lhbim
 // +kubebuilder:subresource:status
+// +kubebuilder:unservedversion
+// +kubebuilder:deprecatedversion
+// +kubebuilder:deprecatedversion:warning="longhorn.io/v1beta1 BackingImageManager is deprecated; use longhorn.io/v1beta2 BackingImageManager instead"
 // +kubebuilder:printcolumn:name="State",type=string,JSONPath=`.status.currentState`,description="The current state of the manager"
 // +kubebuilder:printcolumn:name="Image",type=string,JSONPath=`.spec.image`,description="The image the manager pod will use"
 // +kubebuilder:printcolumn:name="Node",type=string,JSONPath=`.spec.nodeID`,description="The node the manager is on"
