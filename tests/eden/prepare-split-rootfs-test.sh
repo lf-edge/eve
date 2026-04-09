@@ -40,6 +40,7 @@
 #   SKIP_PUSH=1             Skip push (images already in registry)
 #   SKIP_EDEN_SETUP=1       Skip Eden setup (already running)
 #   SETUP_ONLY=1            Only build+push+setup, don't run tests
+#   TEST_ONLY=<name>        Run only this test (e.g. update_split_pcr_enforcement_rollback)
 #   EVE_HV=<hv>             Hypervisor (default: kvm)
 #   EVE_ARCH=<arch>         Architecture (default: amd64)
 #   EDEN_TAG=<tag>          Eden version for fallback clone (default: 1.0.13)
@@ -52,7 +53,7 @@ PREFIX="[SPLIT-TEST]"
 # ── Configuration ──────────────────────────────────────────────
 EVE_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 EDEN_DIR="${EDEN_DIR:-$HOME/projects/eden}"
-EVE_HV="${EVE_HV:-kvm}"
+EVE_HV="${EVE_HV:-uni}"
 EVE_ARCH="${EVE_ARCH:-amd64}"
 EDEN_TAG="${EDEN_TAG:-1.0.13}"
 BUILD_V2="${BUILD_V2:-1}"
@@ -391,7 +392,7 @@ fi
 # ── Step 3: Setup Eden ────────────────────────────────────────
 SELECTED_WORKFLOW=$(choose_workflow_file)
 
-if [ -z "$SKIP_EDEN_SETUP" ]; then
+if [ -z "$SKIP_EDEN_SETUP" ] && [ -z "$TEST_ONLY" ]; then
     echo "================================================================"
     echo "$PREFIX Setting up Eden from $EDEN_DIR"
     echo "================================================================"
@@ -465,7 +466,17 @@ else
     cd "$EDEN_DIR"
 fi
 
-wait_for_eve_ssh
+if [ -z "$TEST_ONLY" ]; then
+    # Clear any stale PCR enforcement from a previous failed run.
+    # Adam may persist global options across eden stop/start cycles.
+    ADAM_URL="https://$(./eden config get default --key=adam.ip):$(./eden config get default --key=adam.port)"
+    echo "$PREFIX Clearing any stale Adam PCR enforcement..."
+    curl -k -s -X PUT "${ADAM_URL}/admin/options" \
+        -H "Content-Type: application/json" \
+        -d '{"enforceTemplateAttestation": false, "PCRTemplates": []}' || true
+
+    wait_for_eve_ssh
+fi
 
 if [ -n "$SETUP_ONLY" ]; then
     echo ""
@@ -503,7 +514,58 @@ export EVE_HV
 [ -n "$EVE_VERSION_2" ] && export EVE_VERSION_2
 [ -n "$EVE_VERSION_BROKEN" ] && export EVE_VERSION_BROKEN
 
-if [ -n "$EVE_VERSION_2" ] && [ -n "$EVE_VERSION_BROKEN" ]; then
+if [ -n "$TEST_ONLY" ]; then
+    echo "$PREFIX Running single test: $TEST_ONLY"
+
+    # Full redeploy: stop, clean all state, setup, start, onboard.
+    echo "$PREFIX Redeploying Eden for clean single-test run..."
+    ./eden stop 2>/dev/null || true
+    ./eden clean --current-context 2>/dev/null || true
+    docker rm -f eden_adam eden_redis eden_registry eden_eserver 2>/dev/null || true
+    docker volume rm eden_adam_volume eden_redis_volume eden_registry_volume eden_eserver_volume 2>/dev/null || true
+    if [ -f "dist/default-eve.pid" ]; then
+        kill "$(cat dist/default-eve.pid)" 2>/dev/null || true
+        rm -f dist/default-eve.pid
+    fi
+    pkill -f "swtpm socket.*eden" 2>/dev/null || true
+    rm -rf dist/default-images/eve/live.img dist/default-images/eve/live.raw.qcow2
+    rm -f dist/default-eve.log
+    rm -rf dist/default-certs
+    rm -rf "$HOME/.eden/certs"
+
+    ./eden config add default
+    ./eden config set default --key=eve.accel --value=true
+    ./eden config set default --key=eve.tpm --value=true
+    ./dist/bin/eden+ports.sh 2223:2223 2224:2224 5912:5902 5911:5901 \
+        8027:8027 8028:8028 8029:8029 8030:8030 8031:8031
+    ./eden setup
+    ./eden start
+    ./eden eve onboard
+
+    # Clear any stale enforcement in Adam
+    ADAM_URL="https://$(./eden config get default --key=adam.ip):$(./eden config get default --key=adam.port)"
+    curl -k -s -X PUT "${ADAM_URL}/admin/options" \
+        -H "Content-Type: application/json" \
+        -d '{"enforceTemplateAttestation": false, "PCRTemplates": []}' || true
+
+    # Install split v1 on the fresh device and wait for it to activate
+    EVE_ARCH=$(./eden config get default --key=eve.arch)
+    SPLIT_TAG="${EVE_VERSION}-${EVE_HV}-${EVE_ARCH}"
+    echo "$PREFIX Installing split v1 ($SPLIT_TAG)..."
+    ./eden controller edge-node update --config timer.test.baseimage.update=300
+    ./eden controller edge-node eveimage-update \
+        "oci://docker.io/${EVE_REGISTRY}:${SPLIT_TAG}" -m adam://
+
+    echo "$PREFIX Waiting for v1 ($SPLIT_TAG) to activate..."
+    ./dist/bin/eden.lim.test -test.v -timewait 30m -test.run TestInfo \
+        -out "InfoContent.dinfo.SwList[0].ShortVersion" \
+        "InfoContent.dinfo.SwList[0].PartitionState:active InfoContent.dinfo.SwList[0].ShortVersion:${SPLIT_TAG}"
+
+    wait_for_eve_ssh
+
+    echo "$PREFIX Running test: $TEST_ONLY"
+    ./eden test tests/update_eve_image -v debug -r "TestEdenScripts/$TEST_ONLY"
+elif [ -n "$EVE_VERSION_2" ] && [ -n "$EVE_VERSION_BROKEN" ]; then
     ./eden test ./tests/workflow -s "$WORKFLOW_FULL" -v debug
 elif [ -n "$EVE_VERSION_2" ]; then
     ./eden test ./tests/workflow -s "$WORKFLOW_SHORT" -v debug

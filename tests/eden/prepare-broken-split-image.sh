@@ -27,7 +27,7 @@ set -e
 PREFIX="[BROKEN-SPLIT]"
 
 EVE_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-EVE_HV="${EVE_HV:-kvm}"
+EVE_HV="${EVE_HV:-uni}"
 EVE_ARCH="${EVE_ARCH:-amd64}"
 
 cd "$EVE_ROOT"
