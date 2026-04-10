@@ -1,0 +1,86 @@
+# Copyright (c) 2026, Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+---
+name: Build EVE image
+on:  # yamllint disable-line rule:truthy
+  workflow_call:
+    inputs:
+      arch:
+        required: true
+        type: string
+      platform:
+        required: true
+        type: string
+      hv:
+        required: true
+        type: string
+      runner:
+        required: true
+        type: string
+      cache-artifact:
+        required: true
+        type: string
+        description: "Name of the linuxkit cache artifact to download"
+
+jobs:
+  build:
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 1440
+    steps:
+      - name: Clear repository
+        run: |
+          sudo rm -fr "$GITHUB_WORKSPACE" && mkdir "$GITHUB_WORKSPACE"
+          rm -fr ~/.linuxkit
+          docker system prune --all --force --volumes
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+      - name: Login to Docker Hub
+        if: ${{ github.event.repository.full_name == 'lf-edge/eve' }}
+        run: |
+          docker login
+      - name: Download linuxkit cache
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          name: ${{ inputs.cache-artifact }}
+          path: ~/.linuxkit/cache
+      - name: Build packages for ${{ inputs.platform }}
+        run: |
+          make V=1 PRUNE=1 PLATFORM=${{ inputs.platform }} ZARCH=${{ inputs.arch }} HV=${{ inputs.hv }} pkgs
+      - name: Load tool images into docker
+        run: |
+          make cache-export-docker-load-all
+      - name: Set environment
+        env:
+          PR_ID: ${{ github.event.pull_request.number }}
+        run: |
+          COMMIT_ID=$(git describe --abbrev=8 --always)
+          echo "VERSION=0.0.0-pr$PR_ID-$COMMIT_ID" >> $GITHUB_ENV
+          echo "TAG=evebuild/pr:$PR_ID" >> $GITHUB_ENV
+      - name: Build EVE ${{ inputs.hv }}-${{ inputs.arch }}-${{ inputs.platform }}
+        run: |
+          make V=1 ROOTFS_VERSION="$VERSION" PLATFORM=${{ inputs.platform }} \
+            HV=${{ inputs.hv }} ZARCH=${{ inputs.arch }} eve
+      - name: Post build report
+        run: |
+          df -h && free -m
+          docker system df -v
+      - name: Export docker container
+        run: |
+          make cache-export ZARCH=${{ inputs.arch }} \
+            IMAGE=lfedge/eve:$VERSION-${{ inputs.hv }} \
+            OUTFILE=eve-${{ inputs.hv }}-${{ inputs.arch }}-${{ inputs.platform }}.tar \
+            IMAGE_NAME=$TAG-${{ inputs.hv }}-${{ inputs.arch }}
+      - name: Upload EVE image
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
+        with:
+          name: eve-${{ inputs.hv }}-${{ inputs.arch }}-${{ inputs.platform }}
+          path: eve-${{ inputs.hv }}-${{ inputs.arch }}-${{ inputs.platform }}.tar
+      - name: Clean
+        if: ${{ always() }}
+        run: |
+          make clean
+          docker system prune -f -a --volumes
+          rm -rf ~/.linuxkit
