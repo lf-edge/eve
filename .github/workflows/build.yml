@@ -18,38 +18,24 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  packages:
-    strategy:
-      fail-fast: false
-      matrix:
-        arch: [ arm64, amd64, riscv64 ]
-        platform: [ generic ]
-        hv: [ default ]
-        include:
-          - arch: arm64
-            platform: nvidia-jp5
-            hv: default
-          - arch: arm64
-            platform: nvidia-jp6
-            hv: default
-          - arch: amd64
-            platform: evaluation
-            hv: default
-          - arch: amd64
-            platform: generic
-            hv: k
-    runs-on: ${{ matrix.arch == 'arm64' && 'zededa-ubuntu-2204-arm64' || 'zededa-ubuntu-2204' }}
-    timeout-minutes: 1440
+  # ════════════════════════════════════════════════════════════════════════
+  # Stage 1: Build base packages and upload linuxkit cache as artifacts.
+  # All stage-2 jobs download the cache so `make pkgs` is mostly a no-op,
+  # only building any extra platform/HV-specific packages on top.
+  # ════════════════════════════════════════════════════════════════════════
 
+  pkgs-amd64-generic:
+    runs-on: zededa-ubuntu-2204
+    timeout-minutes: 1440
     steps:
       - name: Starting Report
+        env:
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
         run: |
-          echo Git Ref: ${{ github.event.pull_request.head.ref  }}
+          echo "Git Ref: ${HEAD_REF}"
           echo GitHub Event: ${{ github.event_name }}
-          echo Disk usage
-          df -h
-          echo Memory
-          free -m
+          echo "Build target: pkgs amd64 generic"
+          df -h && free -m
       - name: Clear repository
         run: |
           sudo rm -fr "$GITHUB_WORKSPACE" && mkdir "$GITHUB_WORKSPACE"
@@ -62,150 +48,236 @@ jobs:
           fetch-depth: 0
       - name: Login to Docker Hub
         if: ${{ github.event.repository.full_name == 'lf-edge/eve' }}
-        run: | # Runners must provide default credentials
+        run: |
           docker login
-      - name: ensure zstd for cache  # this should be removed once the arm64 VM includes zstd
-        if: ${{ matrix.os == 'buildjet-4vcpu-ubuntu-2204-arm' || matrix.os == 'arm64-secure' }}
+      - name: Build packages
         run: |
-          sudo apt install -y zstd
-      - name: ensure packages for cross-arch build
-        if: ${{ matrix.arch == 'riscv64' }}
-        run: |
-          APT_INSTALL="sudo apt install -y binfmt-support qemu-user-static"
-          # the following weird statement is here to speed up the happy path
-          # if the default server is responding -- we can skip apt update
-          $APT_INSTALL || { sudo apt update && $APT_INSTALL ; }
-      # The next step explicitly use actions/cache, rather than actions/cache/save at the end.
-      # If we rerun a job without changing the sha, we should not have to rebuild anything.
-      # Since the cache is keyed on the head sha, it will retrieve it.
-      - name: update linuxkit cache if available
-        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7  # v5.0.4
+          make V=1 PRUNE=1 PLATFORM=generic ZARCH=amd64 HV=kvm pkgs
+      - name: Upload linuxkit cache
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
         with:
+          name: linuxkit-cache-amd64-generic
           path: ~/.linuxkit/cache
-          key: linuxkit-${{ matrix.arch }}-${{ github.event.pull_request.head.sha }}-${{ matrix.platform }}-${{ matrix.hv }}
-      - name: Build packages for ${{ matrix.platform }} HV=${{ matrix.hv }}
-        run: |
-          make V=1 PRUNE=1 PLATFORM=${{ matrix.platform }} ZARCH=${{ matrix.arch }} ${{ matrix.hv != 'default' && format('HV={0}', matrix.hv) || '' }} pkgs
+          retention-days: 1
       - name: Post package report
         run: |
-          echo Disk usage
-          df -h
-          echo Memory
-          free -m
-          docker system df
+          df -h && free -m
           docker system df -v
 
-  eve:
-    needs: packages  # all packages for all platforms must be built first
-    strategy:
-      fail-fast: false
-      matrix:
-        arch: [arm64, amd64]
-        hv: [xen, kvm]
-        platform: [generic]
-        include:
-          - arch: riscv64
-            hv: mini
-            platform: generic
-          - arch: amd64
-            hv: kvm
-            platform: rt
-          - arch: arm64
-            hv: kvm
-            platform: nvidia-jp5
-          - arch: arm64
-            hv: kvm
-            platform: nvidia-jp6
-          - arch: amd64
-            hv: kvm
-            platform: evaluation
-          - arch: amd64
-            hv: k
-            platform: generic
-    runs-on: ${{ matrix.arch == 'arm64' && 'zededa-ubuntu-2204-arm64' || 'zededa-ubuntu-2204' }}
+  pkgs-arm64-generic:
+    runs-on: zededa-ubuntu-2204-arm64
     timeout-minutes: 1440
-
     steps:
+      - name: Starting Report
+        env:
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          echo "Git Ref: ${HEAD_REF}"
+          echo GitHub Event: ${{ github.event_name }}
+          echo "Build target: pkgs arm64 generic"
+          df -h && free -m
+      - name: Clear repository
+        run: |
+          sudo rm -fr "$GITHUB_WORKSPACE" && mkdir "$GITHUB_WORKSPACE"
+          rm -fr ~/.linuxkit
+          docker system prune --all --force --volumes
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         with:
           repository: ${{ github.event.pull_request.head.repo.full_name }}
           ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
-
       - name: Login to Docker Hub
         if: ${{ github.event.repository.full_name == 'lf-edge/eve' }}
-        run: | # Runners must provide default credentials
+        run: |
           docker login
-
-      # For riscv64, we cross-build on amd64 runners. We need amd64 tool images
-      # (mkconf, mkimage-raw-efi, etc.) in docker, but riscv64 packages in the cache.
-      # So: restore amd64 cache -> load tools -> clear -> restore riscv64 cache.
-      - name: load amd64 tool images for riscv64 cross-build
-        if: ${{ matrix.arch == 'riscv64' }}
-        uses: actions/cache/restore@668228422ae6a00e4ad889ee87cd7109ec5666a7  # v5.0.4
+      - name: Build packages
+        run: |
+          make V=1 PRUNE=1 PLATFORM=generic ZARCH=arm64 HV=kvm pkgs
+      - name: Upload linuxkit cache
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
         with:
+          name: linuxkit-cache-arm64-generic
           path: ~/.linuxkit/cache
-          key: linuxkit-amd64-${{ github.event.pull_request.head.sha }}-generic-default
-          fail-on-cache-miss: true
-      - name: load amd64 tools into docker for riscv64 cross-build
-        if: ${{ matrix.arch == 'riscv64' }}
+          retention-days: 1
+      - name: Post package report
+        run: |
+          df -h && free -m
+          docker system df -v
+
+  # ════════════════════════════════════════════════════════════════════════
+  # Stage 2: Build EVE images using reusable workflow.
+  # Each job downloads the base cache, builds any extra packages for its
+  # platform/HV, then builds and exports the EVE image.
+  # ════════════════════════════════════════════════════════════════════════
+
+  # ── amd64 generic ──
+
+  eve-amd64-xen-generic:
+    needs: pkgs-amd64-generic
+    uses: ./.github/workflows/build-eve.yml
+    with:
+      arch: amd64
+      platform: generic
+      hv: xen
+      runner: zededa-ubuntu-2204
+      cache-artifact: linuxkit-cache-amd64-generic
+
+  eve-amd64-kvm-generic:
+    needs: pkgs-amd64-generic
+    uses: ./.github/workflows/build-eve.yml
+    with:
+      arch: amd64
+      platform: generic
+      hv: kvm
+      runner: zededa-ubuntu-2204
+      cache-artifact: linuxkit-cache-amd64-generic
+
+  # ── amd64 rt ──
+
+  eve-amd64-kvm-rt:
+    needs: pkgs-amd64-generic
+    uses: ./.github/workflows/build-eve.yml
+    with:
+      arch: amd64
+      platform: rt
+      hv: kvm
+      runner: zededa-ubuntu-2204
+      cache-artifact: linuxkit-cache-amd64-generic
+
+  # ── amd64 evaluation ──
+
+  eve-amd64-kvm-evaluation:
+    needs: pkgs-amd64-generic
+    uses: ./.github/workflows/build-eve.yml
+    with:
+      arch: amd64
+      platform: evaluation
+      hv: kvm
+      runner: zededa-ubuntu-2204
+      cache-artifact: linuxkit-cache-amd64-generic
+
+  # ── amd64 kubernetes ──
+
+  eve-amd64-k-generic:
+    needs: pkgs-amd64-generic
+    uses: ./.github/workflows/build-eve.yml
+    with:
+      arch: amd64
+      platform: generic
+      hv: k
+      runner: zededa-ubuntu-2204
+      cache-artifact: linuxkit-cache-amd64-generic
+
+  # ── arm64 generic ──
+
+  eve-arm64-xen-generic:
+    needs: pkgs-arm64-generic
+    uses: ./.github/workflows/build-eve.yml
+    with:
+      arch: arm64
+      platform: generic
+      hv: xen
+      runner: zededa-ubuntu-2204-arm64
+      cache-artifact: linuxkit-cache-arm64-generic
+
+  eve-arm64-kvm-generic:
+    needs: pkgs-arm64-generic
+    uses: ./.github/workflows/build-eve.yml
+    with:
+      arch: arm64
+      platform: generic
+      hv: kvm
+      runner: zededa-ubuntu-2204-arm64
+      cache-artifact: linuxkit-cache-arm64-generic
+
+  # ── arm64 nvidia ──
+
+  eve-arm64-kvm-nvidia-jp5:
+    needs: pkgs-arm64-generic
+    uses: ./.github/workflows/build-eve.yml
+    with:
+      arch: arm64
+      platform: nvidia-jp5
+      hv: kvm
+      runner: zededa-ubuntu-2204-arm64
+      cache-artifact: linuxkit-cache-arm64-generic
+
+  eve-arm64-kvm-nvidia-jp6:
+    needs: pkgs-arm64-generic
+    uses: ./.github/workflows/build-eve.yml
+    with:
+      arch: arm64
+      platform: nvidia-jp6
+      hv: kvm
+      runner: zededa-ubuntu-2204-arm64
+      cache-artifact: linuxkit-cache-arm64-generic
+
+  # ════════════════════════════════════════════════════════════════════════
+  # riscv64 cross-build (different pattern: needs amd64 tools + QEMU)
+  # ════════════════════════════════════════════════════════════════════════
+
+  build-riscv64:
+    needs: pkgs-amd64-generic
+    runs-on: zededa-ubuntu-2204
+    timeout-minutes: 1440
+    steps:
+      - name: Starting Report
+        run: |
+          echo "Build target: mini-riscv64-generic (cross-build)"
+          df -h && free -m
+      - name: Clear repository
+        run: |
+          sudo rm -fr "$GITHUB_WORKSPACE" && mkdir "$GITHUB_WORKSPACE"
+          rm -fr ~/.linuxkit
+          docker system prune --all --force --volumes
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+      - name: Login to Docker Hub
+        if: ${{ github.event.repository.full_name == 'lf-edge/eve' }}
+        run: |
+          docker login
+      - name: Ensure packages for cross-arch build
+        run: |
+          APT_INSTALL="sudo apt install -y binfmt-support qemu-user-static"
+          $APT_INSTALL || { sudo apt update && $APT_INSTALL ; }
+      - name: Download amd64 linuxkit cache
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          name: linuxkit-cache-amd64-generic
+          path: ~/.linuxkit/cache
+      - name: Load amd64 tools into docker
         run: |
           make cache-export-docker-load-all
           rm -rf ~/.linuxkit
-      # Restore the target arch/platform cache. For native builds (amd64, arm64),
-      # this cache also contains the tool images we need.
-      # The 'rt' platform has no platform-specific packages, so it uses the generic cache.
-      - name: update linuxkit cache for target arch
-        uses: actions/cache/restore@668228422ae6a00e4ad889ee87cd7109ec5666a7  # v5.0.4
-        with:
-          path: ~/.linuxkit/cache
-          key: linuxkit-${{ matrix.arch }}-${{ github.event.pull_request.head.sha }}-${{ matrix.platform == 'rt' && 'generic' || matrix.platform }}-${{ matrix.hv == 'k' && 'k' || 'default' }}
-          fail-on-cache-miss: true
-      # For native builds, load tool images from the target cache we just restored.
-      - name: load tool images into docker
-        if: ${{ matrix.arch != 'riscv64' }}
+      - name: Build riscv64 packages
         run: |
-          make cache-export-docker-load-all
-      - name: set environment
+          make V=1 PRUNE=1 PLATFORM=generic ZARCH=riscv64 HV=mini pkgs
+      - name: Set environment
         env:
-          PR_ID: ${{ github.event.pull_request.number  }}
+          PR_ID: ${{ github.event.pull_request.number }}
         run: |
           COMMIT_ID=$(git describe --abbrev=8 --always)
           echo "VERSION=0.0.0-pr$PR_ID-$COMMIT_ID" >> $GITHUB_ENV
           echo "TAG=evebuild/pr:$PR_ID" >> $GITHUB_ENV
-          echo "ARCH=${{ matrix.arch }}" >> "$GITHUB_ENV"
-
-      - name: Build EVE ${{ matrix.hv }}-${{ matrix.arch }}-${{ matrix.platform }}
+      - name: Build EVE mini-riscv64-generic
         run: |
-          make V=1 ROOTFS_VERSION="$VERSION" PLATFORM=${{ matrix.platform }} HV=${{ matrix.hv }} ZARCH=${{ matrix.arch }} eve
-      - name: Post eve build report
+          make V=1 ROOTFS_VERSION="$VERSION" PLATFORM=generic HV=mini ZARCH=riscv64 eve
+      - name: Post build report
         run: |
-          echo Disk usage
-          df -h
-          echo Memory
-          free -m
-          docker system df
+          df -h && free -m
           docker system df -v
       - name: Export docker container
         run: |
-          make cache-export ZARCH=${{ matrix.arch }} IMAGE=lfedge/eve:$VERSION-${{ matrix.hv }} OUTFILE=eve-${{ matrix.hv }}-${{ matrix.arch }}-${{ matrix.platform }}.tar IMAGE_NAME=$TAG-${{ matrix.hv }}-${{ matrix.arch }}
-      - name: Upload EVE ${{ matrix.hv }}-${{ matrix.arch }}-${{ matrix.platform }}
+          make cache-export ZARCH=riscv64 IMAGE=lfedge/eve:$VERSION-mini \
+            OUTFILE=eve-mini-riscv64-generic.tar IMAGE_NAME=$TAG-mini-riscv64
+      - name: Upload EVE mini-riscv64-generic
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
         with:
-          name: eve-${{ matrix.hv }}-${{ matrix.arch }}-${{ matrix.platform }}
-          path: eve-${{ matrix.hv }}-${{ matrix.arch }}-${{ matrix.platform }}.tar
-      - name: Clean EVE ${{ matrix.hv }}-${{ matrix.arch }}-${{ matrix.platform }}
-        run: |
-          make clean
-          docker rmi "$TAG-${{ matrix.hv }}-${{ matrix.arch }}" "lfedge/eve:$VERSION-${{ matrix.hv }}" "lfedge/eve:$VERSION-${{ matrix.hv }}-${{ matrix.arch }}" ||:
-      - name: Post clean eve ${{ matrix.hv }}-${{ matrix.arch }}-${{ matrix.platform }} report
-        run: |
-          echo Disk usage
-          df -h
-          echo Memory
-          free -m
-          docker system df
-          docker system df -v
+          name: eve-mini-riscv64-generic
+          path: eve-mini-riscv64-generic.tar
       - name: Clean
         if: ${{ always() }}
         run: |
