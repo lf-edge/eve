@@ -22,29 +22,34 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        arch: [ arm64, amd64, riscv64 ]
+        arch: [ arm64, amd64 ]
         platform: [ generic ]
-        hv: [ default ]
+        hv: [ kvm ]
         include:
           - arch: arm64
             platform: nvidia-jp5
-            hv: default
+            hv: kvm
           - arch: arm64
             platform: nvidia-jp6
-            hv: default
+            hv: kvm
           - arch: amd64
             platform: evaluation
-            hv: default
+            hv: kvm
           - arch: amd64
             platform: generic
             hv: k
+          - arch: riscv64
+            platform: generic
+            hv: mini
+    env:
+      HEAD_REF: ${{ github.event.pull_request.head.ref }}
     runs-on: ${{ matrix.arch == 'arm64' && 'zededa-ubuntu-2204-arm64' || 'zededa-ubuntu-2204' }}
     timeout-minutes: 1440
 
     steps:
       - name: Starting Report
         run: |
-          echo Git Ref: ${{ github.event.pull_request.head.ref  }}
+          echo Git Ref: "$HEAD_REF"
           echo GitHub Event: ${{ github.event_name }}
           echo Disk usage
           df -h
@@ -64,17 +69,6 @@ jobs:
         if: ${{ github.event.repository.full_name == 'lf-edge/eve' }}
         run: | # Runners must provide default credentials
           docker login
-      - name: ensure zstd for cache  # this should be removed once the arm64 VM includes zstd
-        if: ${{ matrix.os == 'buildjet-4vcpu-ubuntu-2204-arm' || matrix.os == 'arm64-secure' }}
-        run: |
-          sudo apt install -y zstd
-      - name: ensure packages for cross-arch build
-        if: ${{ matrix.arch == 'riscv64' }}
-        run: |
-          APT_INSTALL="sudo apt install -y binfmt-support qemu-user-static"
-          # the following weird statement is here to speed up the happy path
-          # if the default server is responding -- we can skip apt update
-          $APT_INSTALL || { sudo apt update && $APT_INSTALL ; }
       # The next step explicitly use actions/cache, rather than actions/cache/save at the end.
       # If we rerun a job without changing the sha, we should not have to rebuild anything.
       # Since the cache is keyed on the head sha, it will retrieve it.
@@ -85,7 +79,7 @@ jobs:
           key: linuxkit-${{ matrix.arch }}-${{ github.event.pull_request.head.sha }}-${{ matrix.platform }}-${{ matrix.hv }}
       - name: Build packages for ${{ matrix.platform }} HV=${{ matrix.hv }}
         run: |
-          make V=1 PRUNE=1 PLATFORM=${{ matrix.platform }} ZARCH=${{ matrix.arch }} ${{ matrix.hv != 'default' && format('HV={0}', matrix.hv) || '' }} pkgs
+          make V=1 PRUNE=1 PLATFORM=${{ matrix.platform }} ZARCH=${{ matrix.arch }} HV=${{ matrix.hv }} pkgs
       - name: Post package report
         run: |
           echo Disk usage
@@ -145,7 +139,7 @@ jobs:
         uses: actions/cache/restore@668228422ae6a00e4ad889ee87cd7109ec5666a7  # v5.0.4
         with:
           path: ~/.linuxkit/cache
-          key: linuxkit-amd64-${{ github.event.pull_request.head.sha }}-generic-default
+          key: linuxkit-amd64-${{ github.event.pull_request.head.sha }}-generic-kvm
           fail-on-cache-miss: true
       - name: load amd64 tools into docker for riscv64 cross-build
         if: ${{ matrix.arch == 'riscv64' }}
@@ -159,7 +153,7 @@ jobs:
         uses: actions/cache/restore@668228422ae6a00e4ad889ee87cd7109ec5666a7  # v5.0.4
         with:
           path: ~/.linuxkit/cache
-          key: linuxkit-${{ matrix.arch }}-${{ github.event.pull_request.head.sha }}-${{ matrix.platform == 'rt' && 'generic' || matrix.platform }}-${{ matrix.hv == 'k' && 'k' || 'default' }}
+          key: linuxkit-${{ matrix.arch }}-${{ github.event.pull_request.head.sha }}-${{ matrix.platform == 'rt' && 'generic' || matrix.platform }}-${{ matrix.hv == 'xen' && 'kvm' || matrix.hv }}
           fail-on-cache-miss: true
       # For native builds, load tool images from the target cache we just restored.
       - name: load tool images into docker
@@ -170,14 +164,16 @@ jobs:
         env:
           PR_ID: ${{ github.event.pull_request.number  }}
         run: |
-          COMMIT_ID=$(git describe --abbrev=8 --always)
-          echo "VERSION=0.0.0-pr$PR_ID-$COMMIT_ID" >> $GITHUB_ENV
-          echo "TAG=evebuild/pr:$PR_ID" >> $GITHUB_ENV
-          echo "ARCH=${{ matrix.arch }}" >> "$GITHUB_ENV"
+          COMMIT_ID="$(git describe --abbrev=8 --always)"
+          {
+            echo "VERSION=0.0.0-pr$PR_ID-$COMMIT_ID"
+            echo "TAG=evebuild/pr:$PR_ID"
+            echo "ARCH=${{ matrix.arch }}"
+          } >> "$GITHUB_ENV"
 
       - name: Build EVE ${{ matrix.hv }}-${{ matrix.arch }}-${{ matrix.platform }}
         run: |
-          make V=1 ROOTFS_VERSION="$VERSION" PLATFORM=${{ matrix.platform }} HV=${{ matrix.hv }} ZARCH=${{ matrix.arch }} eve
+          make V=1 ROOTFS_VERSION="$VERSION" PLATFORM="${{ matrix.platform }}" HV="${{ matrix.hv }}" ZARCH="${{ matrix.arch }}" eve
       - name: Post eve build report
         run: |
           echo Disk usage
@@ -188,7 +184,7 @@ jobs:
           docker system df -v
       - name: Export docker container
         run: |
-          make cache-export ZARCH=${{ matrix.arch }} IMAGE=lfedge/eve:$VERSION-${{ matrix.hv }} OUTFILE=eve-${{ matrix.hv }}-${{ matrix.arch }}-${{ matrix.platform }}.tar IMAGE_NAME=$TAG-${{ matrix.hv }}-${{ matrix.arch }}
+          make cache-export HV="${{ matrix.hv }}" ZARCH="${{ matrix.arch }}" IMAGE="lfedge/eve:$VERSION-${{ matrix.hv }}" OUTFILE="eve-${{ matrix.hv }}-${{ matrix.arch }}-${{ matrix.platform }}.tar" IMAGE_NAME="$TAG-${{ matrix.hv }}-${{ matrix.arch }}"
       - name: Upload EVE ${{ matrix.hv }}-${{ matrix.arch }}-${{ matrix.platform }}
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
         with:
