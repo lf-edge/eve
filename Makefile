@@ -929,6 +929,24 @@ pkgs: RESCAN_DEPS=
 pkgs: $(LINUXKIT) $(PKGS) $(LK_POSSIBLE_BUILD_ARG_TARGETS)
 	@echo Done building packages
 
+# The evaluation platform produces 3 rootfs flavors: generic, hwe, lts.
+# The generic flavor uses a modifier (rootfs-generic.yq) that substitutes FW_TAG
+# with FW_GENERIC_TAG, which resolves to eve-fw:HASH-generic via
+# build-evaluation-generic.yml. We must build this variant in addition to the
+# default eve-fw:HASH-evaluation so the image is available locally and in CI cache.
+ifeq ($(PLATFORM),evaluation)
+.PHONY: eve-fw-evaluation-generic
+eve-fw-evaluation-generic: eve-fw
+	$(QUIET): "$@: Begin"
+	$(QUIET)$(LINUXKIT) $(DASH_V) pkg $(LINUXKIT_PKG_TARGET) $(LINUXKIT_OPTS) $(FORCE_BUILD) --platforms linux/$(ZARCH) --build-yml build-evaluation-generic.yml pkg/fw
+	$(QUIET)if [ -n "$(PRUNE)" ]; then \
+		flock $(PARALLEL_BUILD_LOCK) docker image prune -f; \
+	fi
+	$(QUIET): "$@: Succeeded"
+
+pkgs: eve-fw-evaluation-generic
+endif
+
 # No-op target for get-deps which looks at
 # external-boot-image and sees a dep for eve-kernel
 # and attempts to build pkg/kernel, which is in
