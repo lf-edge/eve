@@ -305,6 +305,12 @@ check_start_k3s() {
         # Remove stale flannel VXLAN device before starting k3s.
         ip link del flannel.1 2>/dev/null || true
 
+        # Ensure CNI plugins are findable in PATH (required by k3s v1.34+).
+        # host-local is used by flannel for IPAM but lives only in /opt/cni/bin,
+        # which is not in the default PATH. Without this symlink k3s agent init
+        # blocks forever and cluster-reset never proceeds.
+        ln -sf /opt/cni/bin/host-local /usr/bin/host-local
+
         # start the k3s server now
         nohup /usr/bin/k3s server &
 

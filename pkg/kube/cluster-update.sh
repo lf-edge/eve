@@ -79,6 +79,9 @@ update_k3s() {
     }
     logmsg "Initializing K3S version $dst_k3s_version"
     ln -s /var/lib/k3s/bin/* /usr/bin
+    # Ensure host-local CNI plugin is in PATH (required by k3s v1.34+).
+    # /opt/cni/bin is not in PATH; k3s agent init uses exec.LookPath("host-local").
+    ln -sf /opt/cni/bin/host-local /usr/bin/host-local
     trigger_k3s_selfextraction
     link_multus_into_k3s
     touch /var/lib/k3s_installed_unpacked
