@@ -4,6 +4,7 @@
 // CAN Bus support package
 // This package provides functions to setup physical and/or create virtual
 // CAN interfaces
+// Force rebuild
 package canbus
 
 import (
