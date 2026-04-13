@@ -466,7 +466,7 @@ func publishFlowMessage(flowMsg *flowlog.FlowMessage, iteration int, expectNoCon
 	buf := bytes.NewBuffer(data)
 
 	flowlogURL := controllerconn.URLPathString(
-		serverNameAndPort, ctrlClient.UsingV2API(), devUUID, "flowlog")
+		serverNameAndPort, devUUID, "flowlog")
 	ctxWork, cancel := ctrlClient.GetContextForAllIntfFunctions()
 	defer cancel()
 	rv, err := ctrlClient.SendOnAllIntf(ctxWork, flowlogURL, buf,

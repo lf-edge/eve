@@ -522,7 +522,7 @@ func handleDNSImp(ctxArg interface{}, key string, statusArg interface{}) {
 	ctx.usableAddrCount = newAddrCount // inc both ipv4 and ipv6 of mgmt intfs
 
 	// update proxy certs if configured
-	if ctx.ctrlClient != nil && ctx.ctrlClient.UsingV2API() {
+	if ctx.ctrlClient != nil {
 		ctx.ctrlClient.UpdateTLSProxyCerts()
 	}
 	log.Tracef("handleDNSModify done for %s; %d usable",
@@ -825,16 +825,11 @@ func sendToCloud(ctx *loguploaderContext, data []byte, iter int, fName string, f
 			log.Fatal(err)
 		}
 		appUUID := fStr[0]
-		if ctx.ctrlClient.UsingV2API() {
-			appLogURL = fmt.Sprintf("apps/instanceid/%s/newlogs", appUUID)
-		} else {
-			// XXX temp support for adam controller
-			appLogURL = fmt.Sprintf("apps/instanceid/id/%s/newlogs", appUUID)
-		}
-		logsURL = controllerconn.URLPathString(ctx.serverNameAndPort, ctx.ctrlClient.UsingV2API(),
+		appLogURL = fmt.Sprintf("apps/instanceid/%s/newlogs", appUUID)
+		logsURL = controllerconn.URLPathString(ctx.serverNameAndPort,
 			ctx.devUUID, appLogURL)
 	} else {
-		logsURL = controllerconn.URLPathString(ctx.serverNameAndPort, ctx.ctrlClient.UsingV2API(),
+		logsURL = controllerconn.URLPathString(ctx.serverNameAndPort,
 			ctx.devUUID, "newlogs")
 	}
 	startTime := time.Now()

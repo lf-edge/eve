@@ -214,8 +214,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 	// XXX move to later for Get UUID if available
 
-	log.Functionf("diag Run: Use V2 API %v", ctrlClient.UsingV2API())
-
 	if fileutils.FileExists(log, types.DeviceCertName) {
 		// Load device cert
 		cert, err := controllerconn.GetClientCert()
@@ -644,7 +642,7 @@ func handleDNSImpl(ctxArg interface{}, key string,
 	}
 
 	// update proxy certs if configured
-	if ctx.ctrlClient != nil && ctx.ctrlClient.UsingV2API() && ctx.ctrlClient.TLSConfig != nil {
+	if ctx.ctrlClient != nil && ctx.ctrlClient.TLSConfig != nil {
 		ctx.ctrlClient.UpdateTLSProxyCerts()
 	}
 	if mostlyEqual {
@@ -1262,7 +1260,7 @@ func tryPing(ctx *diagContext, ifname string, reqURL string) bool {
 	}
 	if reqURL == "" {
 		reqURL = controllerconn.URLPathString(
-			ctx.serverNameAndPort, ctrlClient.UsingV2API(), nilUUID, "ping")
+			ctx.serverNameAndPort, nilUUID, "ping")
 	} else {
 		// Temporarily change TLS config for the non-controller destination.
 		origSkipVerify := ctrlClient.TLSConfig.InsecureSkipVerify
@@ -1318,7 +1316,7 @@ func tryPostUUID(ctx *diagContext, ifname string) bool {
 		time.Sleep(delay)
 		var resp *http.Response
 		var buf []byte
-		reqURL := controllerconn.URLPathString(ctx.serverNameAndPort, ctrlClient.UsingV2API(),
+		reqURL := controllerconn.URLPathString(ctx.serverNameAndPort,
 			nilUUID, "uuid")
 		done, resp, senderStatus, buf = myPost(ctx, reqURL, ifname, retryCount,
 			int64(len(b)), bytes.NewBuffer(b))

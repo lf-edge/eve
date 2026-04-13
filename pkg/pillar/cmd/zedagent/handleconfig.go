@@ -453,8 +453,8 @@ func initZedcloudContext(getconfigCtx *getconfigContext,
 		},
 	})
 
-	log.Functionf("Configure Get Device Serial %s, Soft Serial %s, Use V2 API %v",
-		lclCtrlClient.DevSerial, lclCtrlClient.DevSoftSerial, lclCtrlClient.UsingV2API())
+	log.Functionf("Configure Get Device Serial %s, Soft Serial %s",
+		lclCtrlClient.DevSerial, lclCtrlClient.DevSoftSerial)
 
 	// XXX need to redo this since the root certificates can change
 	err = lclCtrlClient.UpdateTLSConfig(nil)
@@ -990,7 +990,7 @@ func getLatestConfig(getconfigCtx *getconfigContext, iteration int,
 	if ctrlClient == nil {
 		log.Fatal("nil ctrlClient in getLatestConfig")
 	}
-	url := controllerconn.URLPathString(serverNameAndPort, ctrlClient.UsingV2API(),
+	url := controllerconn.URLPathString(serverNameAndPort,
 		devUUID, "config")
 
 	rv, tracedReqs := requestConfigByURL(getconfigCtx, url, false,
@@ -999,7 +999,7 @@ func getLatestConfig(getconfigCtx *getconfigContext, iteration int,
 	// Request configuration from the LOC
 	if needRequestLocConfig(getconfigCtx, rv) {
 		locURL := getconfigCtx.locConfig.LocURL
-		url = controllerconn.URLPathString(locURL, ctrlClient.UsingV2API(),
+		url = controllerconn.URLPathString(locURL,
 			devUUID, "compound-config")
 
 		// send DeviceInfoMsg to inform LOC about device name, enterprise and project

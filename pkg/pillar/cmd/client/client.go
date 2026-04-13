@@ -307,8 +307,8 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 			return 0
 		}
 
-		// try to fetch the server certs chain first, if it's V2
-		if !gotServerCerts && ctrlClient.UsingV2API() {
+		// try to fetch the server certs chain first
+		if !gotServerCerts {
 			// Set force so we re-download certs on each boot
 			gotServerCerts = fetchCertChain(ctrlClient, devtlsConfig, retryCount)
 			if !gotServerCerts {
@@ -646,9 +646,9 @@ func selfRegister(ctrlClient *controllerconn.Client, tlsConfig *tls.Config, devi
 		log.Errorln(err)
 		return false
 	}
-	// in V2 API, register does not send UUID string
+	// register URL does not include UUID string
 	requrl := controllerconn.URLPathString(
-		serverNameAndPort, ctrlClient.UsingV2API(), nilUUID, "register")
+		serverNameAndPort, nilUUID, "register")
 	done, rv := myPost(ctrlClient, tlsConfig, requrl, false, retryCount,
 		bytes.NewBuffer(b))
 	if rv.HTTPResp != nil {
@@ -685,8 +685,8 @@ func selfRegister(ctrlClient *controllerconn.Client, tlsConfig *tls.Config, devi
 // fetch V2 certs from cloud, return GotCloudCerts and ServerIsV1 boolean
 // if got certs, the chain is verified and then saved to /persist/checkpoint/controllercerts
 func fetchCertChain(ctrlClient *controllerconn.Client, tlsConfig *tls.Config, retryCount int) bool {
-	// certs API is always V2, and without UUID, use https
-	requrl := controllerconn.URLPathString(serverNameAndPort, true, nilUUID, "certs")
+	// certs API is and without UUID, use https
+	requrl := controllerconn.URLPathString(serverNameAndPort, nilUUID, "certs")
 	// Save and restore since we don't want the fetch of /certs to
 	// appear as if the device is onboarded.
 	savedNoLedManager := ctrlClient.NoLedManager
@@ -815,9 +815,9 @@ func doGetUUIDNew(ctx *clientContext, tlsConfig *tls.Config,
 	retryCount int) (bool, uuid.UUID, string) {
 	ctrlClient := ctx.ctrlClient
 
-	// get UUID does not have UUID string in V2 API
+	// get UUID does not have UUID string
 	requrl := controllerconn.URLPathString(
-		serverNameAndPort, ctrlClient.UsingV2API(), nilUUID, "uuid")
+		serverNameAndPort, nilUUID, "uuid")
 	b, err := generateUUIDRequest()
 	if err != nil {
 		log.Errorln(err)

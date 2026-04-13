@@ -81,7 +81,7 @@ func trySendToController(attestReq *attest.ZAttestReq,
 	}
 
 	buf := bytes.NewBuffer(data)
-	attestURL := controllerconn.URLPathString(serverNameAndPort, ctrlClient.UsingV2API(),
+	attestURL := controllerconn.URLPathString(serverNameAndPort,
 		devUUID, "attest")
 	ctxWork, cancel := ctrlClient.GetContextForAllIntfFunctions()
 	defer cancel()
@@ -137,11 +137,6 @@ func (server *VerifierImpl) SendNonceRequest(ctx *zattest.Context) error {
 		attestCtx.Nonce = nil
 	}
 	var attestReq = &attest.ZAttestReq{}
-
-	// bail if V2API is not supported
-	if !ctrlClient.UsingV2API() {
-		return zattest.ErrNoVerifier
-	}
 
 	attestReq.ReqType = attest.ZAttestReqType_ATTEST_REQ_NONCE
 
@@ -282,11 +277,6 @@ func (server *VerifierImpl) SendAttestQuote(ctx *zattest.Context) error {
 			ctx.OpaqueCtx)
 	}
 	var attestReq = &attest.ZAttestReq{}
-
-	// bail if V2API is not supported
-	if !ctrlClient.UsingV2API() {
-		return zattest.ErrNoVerifier
-	}
 
 	attestReq.ReqType = attest.ZAttestReqType_ATTEST_REQ_QUOTE
 	//XXX Fill GPS info, Version, Eventlog fields later
@@ -504,11 +494,6 @@ func (server *VerifierImpl) SendAttestEscrow(ctx *zattest.Context) error {
 	if !ok {
 		log.Fatalf("[ATTEST] Unexpected type from opaque ctx: %T",
 			ctx.OpaqueCtx)
-	}
-	// bail if V2API is not supported
-	if !ctrlClient.UsingV2API() {
-		attestCtx.zedagentCtx.publishedAttestEscrow = true
-		return zattest.ErrNoVerifier
 	}
 	if attestCtx.SkipEscrow {
 		log.Notice("[ATTEST] Escrow successful skipped")

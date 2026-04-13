@@ -166,7 +166,6 @@ func getDangerousList() []string {
 		"/config/bootstrap-config.pb",
 		"/config/DevicePortConfig/override.json",
 		"/config/GlobalConfig/global.json",
-		"/config/Force-API-V1",
 	}
 }
 
