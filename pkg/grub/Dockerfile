@@ -26,7 +26,7 @@ RUN eve-alpine-deploy.sh
 # list of grub modules that are portable between x86_64 and aarch64
 ENV GRUB_MODULES_PORT="part_gpt fat ext2 iso9660 squash4 gzio linux acpi normal cpio crypto disk boot crc64 \
 search_disk_uuid search_part_uuid search_part_label search_label xzio xfs video gfxterm serial gptprio chain probe reboot regexp smbios \
-part_msdos cat echo test configfile loopback net tftp http true"
+part_msdos cat echo test configfile loopback net tftp http true gcry_sha256"
 
 FROM grub-build-base AS grub-build-amd64
 ENV GRUB_MODULES="multiboot multiboot2 efi_uga efi_gop gpt measurefs efinet getenv"
