@@ -134,12 +134,10 @@ func (c *BondConfigurator) Create(ctx context.Context, item depgraph.Item) error
 		c.Log.Error(err)
 		return err
 	}
-	bond.Miimon = 0
-	bond.ArpInterval = 0
 	if bondCfg.MIIMonitor.Enabled {
-		bond.DownDelay = int(bondCfg.MIIMonitor.DownDelay)
-		bond.UpDelay = int(bondCfg.MIIMonitor.UpDelay)
 		bond.Miimon = int(bondCfg.MIIMonitor.Interval)
+		bond.UpDelay = int(bondCfg.MIIMonitor.UpDelay)
+		bond.DownDelay = int(bondCfg.MIIMonitor.DownDelay)
 	} else if bondCfg.ARPMonitor.Enabled {
 		bond.ArpInterval = int(bondCfg.ARPMonitor.Interval)
 		bond.ArpIpTargets = bondCfg.ARPMonitor.IPTargets
