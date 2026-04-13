@@ -436,12 +436,7 @@ func requestCertsByURL(ctx *zedagentContext, certURL string, desc string,
 // If main controller is unavailable (@false is returned), the next set of
 // attempts is to fallback to retrieve certs from the LOC.
 func getCertsFromController(ctx *zedagentContext, desc string) bool {
-	// not V2API
-	if !ctrlClient.UsingV2API() {
-		log.Noticef("getCertsFromController not V2API!")
-		return false
-	}
-	url := controllerconn.URLPathString(serverNameAndPort, ctrlClient.UsingV2API(),
+	url := controllerconn.URLPathString(serverNameAndPort,
 		nilUUID, "certs")
 
 	// Controller is in the power to push us outdated certs.
@@ -456,7 +451,7 @@ func getCertsFromController(ctx *zedagentContext, desc string) bool {
 	}
 	if !rv && ctx.getconfigCtx.locConfig != nil && ctx.getconfigCtx.locConfig.LocURL != "" {
 		locURL := ctx.getconfigCtx.locConfig.LocURL
-		url = controllerconn.URLPathString(locURL, ctrlClient.UsingV2API(),
+		url = controllerconn.URLPathString(locURL,
 			nilUUID, "certs")
 
 		// Don't let LOC push us outdated certs
@@ -507,12 +502,6 @@ func edgeNodeCertsTask(ctx *zedagentContext, triggerEdgeNodeCerts chan struct{})
 // nodeagent put this device in maintenance mode.
 func publishEdgeNodeCertsToController(ctx *zedagentContext) {
 	var attestReq = &attest.ZAttestReq{}
-
-	// not V2API
-	if !ctrlClient.UsingV2API() {
-		ctx.publishedEdgeNodeCerts = true
-		return
-	}
 
 	attestReq = new(attest.ZAttestReq)
 	startPubTime := time.Now()
@@ -574,7 +563,7 @@ func sendAttestReqProtobuf(
 
 	deferKey := "attest:" + devUUID.String()
 
-	attestURL := controllerconn.URLPathString(serverNameAndPort, ctrlClient.UsingV2API(),
+	attestURL := controllerconn.URLPathString(serverNameAndPort,
 		devUUID, "attest")
 	buf := bytes.NewBuffer(data)
 	if buf == nil {
@@ -604,10 +593,6 @@ func cipherModuleInitialize(ctx *zedagentContext) {
 
 // start the task threads
 func cipherModuleStart(ctx *zedagentContext) {
-	if !ctrlClient.UsingV2API() {
-		log.Functionf("V2 APIs are still not enabled")
-		// we will run the tasks for watchdog
-	}
 	// start the edge node certificate push task
 	log.Functionf("Creating %s at %s", "edgeNodeCertsTask", agentlog.GetMyStack())
 	go edgeNodeCertsTask(ctx, ctx.cipherCtx.triggerEdgeNodeCerts)

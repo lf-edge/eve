@@ -55,9 +55,6 @@ func (c *Client) RemoveAndVerifyAuthContainer(sendRV *SendRetval, skipVerify boo
 			reqURL = "https://" + sendRV.ReqURL
 		}
 	}
-	if !c.v2API {
-		return nil
-	}
 	contents, status, err := c.removeAndVerifyAuthContainer(sendRV.RespContents, skipVerify)
 	if status != types.SenderStatusNone {
 		sendRV.Status = status

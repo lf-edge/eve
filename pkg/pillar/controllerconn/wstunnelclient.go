@@ -125,8 +125,7 @@ func (t *WSTunnelClient) TestConnection(devNetStatus *types.DeviceNetworkStatus,
 		dialer.Proxy = http.ProxyURL(proxyURL)
 	}
 
-	useV2API := UseV2API()
-	pingURL := URLPathString(t.Tunnel, useV2API, devUUID, "connection/ping")
+	pingURL := URLPathString(t.Tunnel, devUUID, "connection/ping")
 	_, resp, err := dialer.Dial(pingURL, nil)
 	if resp == nil { // this can get error, but with resp code is still 200
 		log.Functionf("TestConnection: url %s, resp %v, err %v", pingURL, resp, err)
@@ -136,7 +135,7 @@ func (t *WSTunnelClient) TestConnection(devNetStatus *types.DeviceNetworkStatus,
 
 	switch resp.StatusCode {
 	case http.StatusOK, http.StatusCreated, http.StatusNotModified:
-		url := URLPathString(t.Tunnel, useV2API, devUUID, "connection/tunnel")
+		url := URLPathString(t.Tunnel, devUUID, "connection/tunnel")
 		t.DestURL = url
 		t.Dialer = dialer
 		log.Functionf("Connection test succeeded for url: %s on local address: %v, proxy: %v", url, localAddr, proxyURL)

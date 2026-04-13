@@ -318,7 +318,7 @@ func queueInfoToDest(ctx *zedagentContext, dest destinationBitset,
 		log.Fatal("nil ctrlClient in queueInfoToDest")
 	}
 	if dest&ControllerDest != 0 {
-		url := controllerconn.URLPathString(serverNameAndPort, ctrlClient.UsingV2API(),
+		url := controllerconn.URLPathString(serverNameAndPort,
 			devUUID, "info")
 		// Ignore all errors in case of periodic
 		ignoreErr := forcePeriodic
@@ -335,7 +335,7 @@ func queueInfoToDest(ctx *zedagentContext, dest destinationBitset,
 			})
 	}
 	if dest&LOCDest != 0 && locURL != "" {
-		url := controllerconn.URLPathString(locURL, ctrlClient.UsingV2API(),
+		url := controllerconn.URLPathString(locURL,
 			devUUID, "info")
 		ctx.deferredLOCPeriodicQueue.SetDeferred(key, buf, url, itemType,
 			controllerconn.DeferredItemOpts{
@@ -2462,10 +2462,7 @@ func handleDNSImpl(ctxArg interface{}, key string,
 	*deviceNetworkStatus = status
 	ctx.DNSinitialized = true
 
-	if ctrlClient.UsingV2API() {
-		ctrlClient.UpdateTLSProxyCerts()
-	}
-
+	ctrlClient.UpdateTLSProxyCerts()
 	log.Functionf("handleDNSImpl done for %s", key)
 }
 

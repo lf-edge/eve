@@ -60,8 +60,6 @@ const (
 	OnboardKeyName = IdentityDirname + "/onboard.key.pem"
 	// RootCertFileName - what we trust for signatures and object encryption
 	RootCertFileName = IdentityDirname + "/root-certificate.pem"
-	// APIV1FileName - user can statically allow for API v1
-	APIV1FileName = IdentityDirname + "/Force-API-V1"
 	// ImportGlobalConfigFile - old legacy file with ConfigItemValueMap items for bootstrapping
 	ImportGlobalConfigFile = IdentityDirname + "/GlobalConfig/global.json"
 	// BaseAuthorizedKeysFile - for an initial SSH key

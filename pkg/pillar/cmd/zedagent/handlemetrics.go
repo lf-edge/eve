@@ -1625,7 +1625,7 @@ func sendMetricsProtobufByURL(ctx *getconfigContext, metricsURL string,
 func sendMetricsProtobuf(ctx *getconfigContext,
 	ReportMetrics *metrics.ZMetricMsg, iteration int) {
 
-	url := controllerconn.URLPathString(serverNameAndPort, ctrlClient.UsingV2API(),
+	url := controllerconn.URLPathString(serverNameAndPort,
 		devUUID, "metrics")
 	sendMetricsProtobufByURL(ctx, url, ReportMetrics, iteration, ctx.zedagentCtx.airgapMode)
 
@@ -1635,7 +1635,7 @@ func sendMetricsProtobuf(ctx *getconfigContext,
 	if locConfig != nil {
 		// Don't block current execution context
 		go func() {
-			url := controllerconn.URLPathString(locConfig.LocURL, ctrlClient.UsingV2API(),
+			url := controllerconn.URLPathString(locConfig.LocURL,
 				devUUID, "metrics")
 			sendMetricsProtobufByURL(ctx, url, ReportMetrics, iteration, false)
 		}()
@@ -1693,7 +1693,7 @@ func sendHardwareHealthProtobufByURL(ctx *getconfigContext, hardwareHealthURL st
 func sendHardwareHealthProtobuf(ctx *getconfigContext,
 	HardwareHealth *hardwarehealth.ZHardwareHealth, iteration int) bool {
 
-	url := controllerconn.URLPathString(serverNameAndPort, ctrlClient.UsingV2API(),
+	url := controllerconn.URLPathString(serverNameAndPort,
 		devUUID, "hardwarehealth")
 	ret := sendHardwareHealthProtobufByURL(ctx, url, HardwareHealth, iteration,
 		ctx.zedagentCtx.airgapMode)
@@ -1704,7 +1704,7 @@ func sendHardwareHealthProtobuf(ctx *getconfigContext,
 	if locConfig != nil && locConfig.LocURL != "" {
 		// Don't block current execution context
 		go func() {
-			url := controllerconn.URLPathString(locConfig.LocURL, ctrlClient.UsingV2API(),
+			url := controllerconn.URLPathString(locConfig.LocURL,
 				devUUID, "hardwarehealth")
 			sendHardwareHealthProtobufByURL(ctx, url, HardwareHealth, iteration, false)
 		}()

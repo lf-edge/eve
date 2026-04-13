@@ -179,7 +179,7 @@ func (t *ControllerConnectivityTester) testControllerConnectivity(
 		t.controllerHostname = strings.TrimSpace(string(server))
 	}
 	testURL := controllerconn.URLPathString(
-		t.controllerHostname, connTest.ctrlClient.UsingV2API(), nilUUID, "ping")
+		t.controllerHostname, nilUUID, "ping")
 	ctx, cancel := connTest.ctrlClient.GetContextForAllIntfFunctions()
 	defer cancel()
 
@@ -206,7 +206,7 @@ func (t *ControllerConnectivityTester) testControllerConnectivity(
 func (t *ControllerConnectivityTester) testLOCConnectivity(
 	connTest connTestSetup) (rv connectivityTestRV) {
 	testURL := controllerconn.URLPathString(
-		connTest.airGapMode.LocURL, connTest.ctrlClient.UsingV2API(), nilUUID, "ping")
+		connTest.airGapMode.LocURL, nilUUID, "ping")
 	ctx, cancel := connTest.ctrlClient.GetContextForAllIntfFunctions()
 	defer cancel()
 

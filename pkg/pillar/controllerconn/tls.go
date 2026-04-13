@@ -90,43 +90,31 @@ func (c *Client) GetTLSConfig(clientCert *tls.Certificate) (*tls.Config, error) 
 
 	// Load CA certificates
 	// The RootCA will have both wellknown signed CA and private root CA
-	// This allows the V2 API transition to be decoupled from the server
-	// certificate transition.
-	// - First the server (controller) move to support V2
-	// - Then edge devices move to new image with V2 support and start to use
-	//   V2 API
-	// - When all the remote edge devices are on V2 API capable image, the server
-	//   can switch the certificate from private CA to well-known signed CA
-	// Thus V1 device can only talk to server with private Root-CA, V2
-	// device can talk to V2 enabled server with either private or well-known Root-CAs
-	// and only V2 includes proxy Cert CA
-	caCertPool := x509.NewCertPool()
-	var err error
+	// The private/additional ones include the /config/root-certificate.pem
+	// and any proxy certificates.
 
-	if c.v2API {
-		// Load the well-known CAs from the rootfs (integrity protected)
-		caCertPool, err = x509.SystemCertPool()
-		// Append any proxy certs from any interface/port to caCertPool
-		for _, port := range c.DeviceNetworkStatus.Ports {
-			for _, pem := range port.ProxyConfig.ProxyCertPEM {
-				if !caCertPool.AppendCertsFromPEM(pem) {
-					pemStr := string(pem)
-					// Keep the error message length reasonable.
-					const maxPrintedLen = 128
-					if len(pemStr) > maxPrintedLen {
-						pemStr = pemStr[:maxPrintedLen/2] + "..." +
-							pemStr[len(pemStr)-(maxPrintedLen/2):]
-					}
-					errStr := fmt.Sprintf("Failed to append ProxyCertPEM %s for %s",
-						pemStr, port.IfName)
-					c.log.Error(errStr)
-					return nil, errors.New(errStr)
+	// Load the well-known CAs from the rootfs (integrity protected)
+	caCertPool, err := x509.SystemCertPool()
+	// Append any proxy certs from any interface/port to caCertPool
+	for _, port := range c.DeviceNetworkStatus.Ports {
+		for _, pem := range port.ProxyConfig.ProxyCertPEM {
+			if !caCertPool.AppendCertsFromPEM(pem) {
+				pemStr := string(pem)
+				// Keep the error message length reasonable.
+				const maxPrintedLen = 128
+				if len(pemStr) > maxPrintedLen {
+					pemStr = pemStr[:maxPrintedLen/2] + "..." +
+						pemStr[len(pemStr)-(maxPrintedLen/2):]
 				}
+				errStr := fmt.Sprintf("Failed to append ProxyCertPEM %s for %s",
+					pemStr, port.IfName)
+				c.log.Error(errStr)
+				return nil, errors.New(errStr)
 			}
 		}
 	}
 
-	// Also append the controller's root-cert for TLS (it is separately
+	// Also append the controller's root-cert for TLS (which is also
 	// trusted and used for the authcontainer signing).
 	caCert1, err := os.ReadFile(types.RootCertFileName)
 	if err != nil {
@@ -140,11 +128,9 @@ func (c *Client) GetTLSConfig(clientCert *tls.Certificate) (*tls.Config, error) 
 		return nil, errors.New(errStr)
 	}
 
-	// Add on proxy certs if any
-	if c.v2API {
-		// save the proxy certs in the Client's internal variable, could be empty
-		c.prevCertPEM = c.cacheProxyCerts()
-	}
+	// Add on proxy certs if any and
+	// save them in the Client's internal variable, could be empty
+	c.prevCertPEM = c.cacheProxyCerts()
 
 	// Note that we do not set ServerName here (used to verify the hostname on the returned
 	// certificates and as the SNI value of the ClientHello TLS message).
@@ -315,7 +301,7 @@ func (c *Client) stapledCheck(connState *tls.ConnectionState) (bool, error) {
 
 func (c *Client) updateEtcSSLforProxyCerts() {
 	// Only zedagent is to update the host ca-certificates
-	if !c.v2API || c.AgentName != "zedagent" {
+	if c.AgentName != "zedagent" {
 		c.log.Functionf("updateEtcSSLforProxyCerts: skip agent %s", c.AgentName)
 		return
 	}

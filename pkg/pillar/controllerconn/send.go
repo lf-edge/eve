@@ -61,8 +61,7 @@ type Client struct {
 	// ClientOptions are exposed and can be changed (while Client is not being used)
 	// even after the Client is created.
 	ClientOptions
-	log   *base.LogObject
-	v2API bool
+	log *base.LogObject
 
 	prevCertPEM           [][]byte // cached proxy certs for later comparison
 	onBoardCert           *tls.Certificate
@@ -123,7 +122,6 @@ func NewClient(log *base.LogObject, opts ClientOptions) *Client {
 	return &Client{
 		ClientOptions: opts,
 		log:           log,
-		v2API:         UseV2API(),
 	}
 }
 
@@ -224,29 +222,13 @@ type VerifyRetval struct {
 
 var nilUUID = uuid.UUID{}
 
-// UseV2API - check the controller cert file and use V2 api if it exist
-// by default it is running V2, unless /config/Force-API-V1 file exists.
-// Note: with controllerconn.Client created, it is more efficient to call Client.UseV2API().
-func UseV2API() bool {
-	_, err := os.Stat(types.APIV1FileName)
-	if err == nil {
-		return false
+// URLPathString - generate url string for v2 API path
+func URLPathString(server string, devUUID uuid.UUID, action string) string {
+	urlstr := server + "/api/v2/edgedevice/"
+	if devUUID != nilUUID {
+		urlstr = urlstr + "id/" + devUUID.String() + "/"
 	}
-	return true
-}
-
-// URLPathString - generate url string for either v1 or v1 API path
-func URLPathString(server string, isV2api bool, devUUID uuid.UUID, action string) string {
-	var urlstr string
-	if !isV2api {
-		urlstr = server + "/api/v1/edgedevice/" + action
-	} else {
-		urlstr = server + "/api/v2/edgedevice/"
-		if devUUID != nilUUID {
-			urlstr = urlstr + "id/" + devUUID.String() + "/"
-		}
-		urlstr = urlstr + action
-	}
+	urlstr = urlstr + action
 	return urlstr
 }
 
@@ -292,11 +274,6 @@ func (c *Client) GetContextForAllIntfFunctions() (context.Context, context.Cance
 		maxWaitDuration = MaxWaitForRequests
 	}
 	return context.WithTimeout(context.Background(), maxWaitDuration)
-}
-
-// UsingV2API returns true if the client is set to use EVE API version 2.
-func (c *Client) UsingV2API() bool {
-	return c.v2API
 }
 
 // SendOnAllIntf tries all interfaces (free first) until one succeeds.
@@ -1031,7 +1008,7 @@ func (c *Client) prepareHTTPClientConfig(intf, reqURL string,
 func (c *Client) prepareHTTPRequest(reqURL string, b *bytes.Buffer,
 	isEdgenode, isGet, useOnboard bool) (req *http.Request, reqlen int64, err error) {
 	var b2 *bytes.Buffer
-	if c.v2API && isEdgenode && !isGet {
+	if isEdgenode && !isGet {
 		b2, err = c.AddAuthentication(b, useOnboard)
 		if err != nil {
 			return nil, 0, err
