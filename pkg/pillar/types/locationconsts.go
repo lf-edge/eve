@@ -60,8 +60,6 @@ const (
 	OnboardKeyName = IdentityDirname + "/onboard.key.pem"
 	// RootCertFileName - what we trust for signatures and object encryption
 	RootCertFileName = IdentityDirname + "/root-certificate.pem"
-	// ExtraTLSCertFile has extra certs (e.g., used by Eden for testing)
-	ExtraTLSCertFile = IdentityDirname + "/extratls-certificates.pem"
 	// APIV1FileName - user can statically allow for API v1
 	APIV1FileName = IdentityDirname + "/Force-API-V1"
 	// ImportGlobalConfigFile - old legacy file with ConfigItemValueMap items for bootstrapping

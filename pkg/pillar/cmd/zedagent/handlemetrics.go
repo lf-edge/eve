@@ -9,7 +9,6 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"fmt"
-	"io"
 	"net"
 	"net/http"
 	"os"
@@ -898,21 +897,6 @@ func getSecurityInfo(ctx *zedagentContext) *info.SecurityInfo {
 		hasher := sha256.New()
 		hasher.Write(caCert1)
 		si.ShaRootCa = hasher.Sum(nil)
-	}
-	// Add the sha of the any extra root CAs used for TLS, loaded from config directory (integrity protected)
-	f, err := os.Open(types.ExtraTLSCertFile)
-	if err != nil {
-		if !os.IsNotExist(err) {
-			log.Error(err)
-		}
-	} else {
-		h := sha256.New()
-		if _, err := io.Copy(h, f); err != nil {
-			log.Errorf("failed to get sha256 of %s: %v",
-				types.ExtraTLSCertFile, err)
-		} else {
-			si.ShaTlsRootCa = h.Sum(nil)
-		}
 	}
 	log.Tracef("getSecurityInfo returns %+v", si)
 	return si
