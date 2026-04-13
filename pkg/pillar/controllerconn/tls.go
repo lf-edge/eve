@@ -100,26 +100,12 @@ func (c *Client) GetTLSConfig(clientCert *tls.Certificate) (*tls.Config, error) 
 	// Thus V1 device can only talk to server with private Root-CA, V2
 	// device can talk to V2 enabled server with either private or well-known Root-CAs
 	// and only V2 includes proxy Cert CA
-	// XXX remove the v1 API code?
 	caCertPool := x509.NewCertPool()
+	var err error
 
 	if c.v2API {
-		var err error
 		// Load the well-known CAs from the rootfs (integrity protected)
 		caCertPool, err = x509.SystemCertPool()
-		// Append any extra certs (used for testing) from /config
-		// (also integrity protected)
-		caCert, err := os.ReadFile(types.ExtraTLSCertFile)
-		if err != nil && !os.IsNotExist(err) {
-			return nil, err
-		}
-		if err != nil && len(caCert) != 0 &&
-			!caCertPool.AppendCertsFromPEM(caCert) {
-			errStr := fmt.Sprintf("Failed to append certs from %s",
-				types.ExtraTLSCertFile)
-			c.log.Warn(errStr)
-		}
-
 		// Append any proxy certs from any interface/port to caCertPool
 		for _, port := range c.DeviceNetworkStatus.Ports {
 			for _, pem := range port.ProxyConfig.ProxyCertPEM {
@@ -140,7 +126,8 @@ func (c *Client) GetTLSConfig(clientCert *tls.Certificate) (*tls.Config, error) 
 		}
 	}
 
-	// Also append the v1's private signed root-cert
+	// Also append the controller's root-cert for TLS (it is separately
+	// trusted and used for the authcontainer signing).
 	caCert1, err := os.ReadFile(types.RootCertFileName)
 	if err != nil {
 		return nil, err
@@ -251,23 +238,7 @@ func (c *Client) UpdateTLSProxyCerts() bool {
 	if len(c.prevCertPEM) > 0 {
 		// previous certs we have are different, lets rebuild from beginning
 		// Load the well-known CAs from the rootfs (integrity protected)
-		var err error
-		caCertPool, err = x509.SystemCertPool()
-		// Append any extra certs (used for testing) from /config
-		// (also integrity protected)
-		caCert, err := os.ReadFile(types.ExtraTLSCertFile)
-		if err != nil && !os.IsNotExist(err) {
-
-			errStr := fmt.Sprintf("Failed to read %s", types.ExtraTLSCertFile)
-			c.log.Error(errStr)
-			return false
-		}
-		if err == nil && len(caCert) != 0 &&
-			!caCertPool.AppendCertsFromPEM(caCert) {
-			errStr := fmt.Sprintf("Failed to append certs from %s", types.ExtraTLSCertFile)
-			c.log.Error(errStr)
-			return false
-		}
+		caCertPool, _ = x509.SystemCertPool()
 		c.log.Functionf("UpdateTLSProxyCerts: rebuild root CA\n")
 	} else {
 		// we don't have proxy certs, add them if any exist
