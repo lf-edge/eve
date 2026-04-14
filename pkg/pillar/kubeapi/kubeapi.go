@@ -25,7 +25,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
-	"k8s.io/client-go/util/retry"
+	kubevirtv1 "kubevirt.io/api/core/v1"
 	"kubevirt.io/client-go/kubecli"
 )
 
@@ -44,9 +44,6 @@ const (
 	VolumeCSIStorageClassReplicaPrefix = "lh-sc-rep"
 	// VolumeCSILocalStorageClass : default local storage class
 	VolumeCSILocalStorageClass = "local-path"
-	// KubevirtPodsRunning : Wait for node to be ready, and require kubevirt namespace have at least 4 pods running
-	// (virt-api, virt-controller, virt-handler, and virt-operator)
-	KubevirtPodsRunning = 4
 	// EVEAppDomainNameLbl is the label key applied to vmi/vmirs to associate it with the eve domain
 	EVEAppDomainNameLbl = "App-Domain-Name"
 	// KubevirtVMINameLbl is a label applied to a virt-launcher pod which contains the associated vmi object name
@@ -161,9 +158,27 @@ func GetKubevirtClientSet(kubeconfig *rest.Config) (KubevirtClientset, error) {
 }
 */
 
-// WaitForKubernetes : Wait until kubernetes server is ready
+// WaitForKubernetesOptions controls which optional components WaitForKubernetes
+// blocks on, in addition to the API server and node becoming Ready.
+// WaitForKubevirt and WaitForLonghorn are no-ops unless ClusterType is
+// ClusterTypeReplicatedStorage. The caller is responsible for resolving
+// ClusterType from its own EdgeNodeClusterConfig subscription.
+type WaitForKubernetesOptions struct {
+	// WaitForKubevirt waits for the KubeVirt CR to report Available=True.
+	// Set by callers that launch VMs (e.g., domainmgr).
+	WaitForKubevirt bool
+	// WaitForLonghorn waits for the required Longhorn daemonsets to be Running
+	// and Ready on this node. Set by callers that attach persistent volumes
+	// (e.g., volumemgr).
+	WaitForLonghorn bool
+}
+
+// WaitForKubernetes waits until the kubernetes API server is reachable, this
+// node is Ready, and any optional components declared in opts are available.
+// The caller supplies ClusterType in opts; this function does not create any
+// pubsub subscriptions.
 func WaitForKubernetes(agentName string, ps *pubsub.PubSub, stillRunning *time.Ticker,
-	alsoWatch ...pubsub.ChannelWatch) (err error) {
+	opts WaitForKubernetesOptions, alsoWatch ...pubsub.ChannelWatch) (err error) {
 
 	var watches []pubsub.ChannelWatch
 	stillRunningWatch := pubsub.ChannelWatch{
@@ -199,7 +214,7 @@ func WaitForKubernetes(agentName string, ps *pubsub.PubSub, stillRunning *time.T
 
 	watches = append(watches, alsoWatch...)
 
-	// wait until the Kubernetes server is started
+	// Wait until the Kubernetes API server is reachable.
 	pubsub.MultiChannelWatch(watches)
 
 	if err != nil {
@@ -216,33 +231,49 @@ func WaitForKubernetes(agentName string, ps *pubsub.PubSub, stillRunning *time.T
 		return err
 	}
 
-	// Wait for the Kubernetes clientset to be ready, node ready and kubevirt pods in Running status
-	readyCh := make(chan bool)
-	go waitForNodeReady(client, readyCh, devUUID)
+	// Wait for the node to be Ready and for any optional components declared by opts.
+	var nodeReadyErr error
+	doneCh := make(chan struct{}, 1)
+	go func() {
+		nodeReadyErr = wait.PollImmediate(time.Second, time.Minute*20, func() (bool, error) {
+			hostname, err := waitForNodeReady(client, devUUID)
+			if err != nil {
+				return false, nil
+			}
+			if opts.WaitForKubevirt {
+				if err := waitForKubevirtReady(config); err != nil {
+					return false, nil
+				}
+			}
+			if opts.WaitForLonghorn {
+				if err := waitForLonghornReady(client, hostname); err != nil {
+					return false, nil
+				}
+			}
+			return true, nil
+		})
+		doneCh <- struct{}{}
+	}()
 
 	watches = nil
 	watches = append(watches, stillRunningWatch)
 	watches = append(watches, pubsub.ChannelWatch{
-		Chan: reflect.ValueOf(readyCh),
+		Chan: reflect.ValueOf(doneCh),
 		Callback: func(_ interface{}) (exit bool) {
 			return true
 		},
 	})
 	watches = append(watches, alsoWatch...)
 	pubsub.MultiChannelWatch(watches)
-	return nil
+	return nodeReadyErr
 }
 
 func waitForLonghornReady(client *kubernetes.Clientset, hostname string) error {
-	// Only wait for longhorn if we are not in base-k3s mode.
-	if err := registrationAppliedToCluster(); err == nil {
-		// In base k3s mode, pillar not deploying redundant storage
-		return nil
-	}
-
+	ctx, cancel := context.WithTimeout(context.Background(), kubeAPITimeout)
+	defer cancel()
 	// First we'll gate on the longhorn daemonsets existing
 	lhDaemonsets, err := client.AppsV1().DaemonSets("longhorn-system").
-		List(context.Background(), metav1.ListOptions{})
+		List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to list longhorn daemonsets: %v", err)
 	}
@@ -265,7 +296,7 @@ func waitForLonghornReady(client *kubernetes.Clientset, hostname string) error {
 		for dsLabelK, dsLabelV := range lhDaemonset.Spec.Template.Labels {
 			labelSelectors = append(labelSelectors, dsLabelK+"="+dsLabelV)
 		}
-		pods, err := client.CoreV1().Pods("longhorn-system").List(context.Background(), metav1.ListOptions{
+		pods, err := client.CoreV1().Pods("longhorn-system").List(ctx, metav1.ListOptions{
 			FieldSelector: "spec.nodeName=" + hostname,
 			LabelSelector: strings.Join(labelSelectors, ","),
 		})
@@ -296,64 +327,42 @@ func waitForLonghornReady(client *kubernetes.Clientset, hostname string) error {
 	return nil
 }
 
-func waitForNodeReady(client *kubernetes.Clientset, readyCh chan bool, devUUID string) {
-	err := wait.PollImmediate(time.Second, time.Minute*20, func() (bool, error) {
-		err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-			labelSelector := metav1.LabelSelector{
-				MatchLabels: map[string]string{"node-uuid": devUUID}}
-			options := metav1.ListOptions{
-				LabelSelector: metav1.FormatLabelSelector(&labelSelector)}
-			nodes, err := client.CoreV1().Nodes().List(context.Background(), options)
-			if err != nil {
-				return err
-			}
-
-			var hostname string
-			for _, node := range nodes.Items {
-				hostname = node.Name
-				break
-			}
-			if hostname == "" {
-				return fmt.Errorf("node not found by label uuid %s", devUUID)
-			}
-
-			// Only wait for kubevirt if we are not in base-k3s mode.
-			if err := registrationAppliedToCluster(); err == nil {
-				// In base k3s mode, pillar not deploying kubevirt VM app instances
-				return nil
-			}
-
-			// get all pods from kubevirt, and check if they are all running
-			pods, err := client.CoreV1().Pods("kubevirt").
-				List(context.Background(), metav1.ListOptions{
-					FieldSelector: "status.phase=Running",
-				})
-			if err != nil {
-				return err
-			}
-			// Wait for kubevirt namespace to have at least 4 pods running
-			// (virt-api, virt-controller, virt-handler, and virt-operator)
-			// to consider kubevirt system is ready
-			if len(pods.Items) < KubevirtPodsRunning {
-				return fmt.Errorf("kubevirt running pods less than 4")
-			}
-
-			err = waitForLonghornReady(client, hostname)
-			return err
-		})
-
-		if err == nil {
-			return true, nil
-		}
-
-		return false, nil
-	})
-
+func waitForKubevirtReady(kubeConfig *rest.Config) error {
+	ctx, cancel := context.WithTimeout(context.Background(), kubeAPITimeout)
+	defer cancel()
+	kvClient, err := kubecli.GetKubevirtClientFromRESTConfig(kubeConfig)
 	if err != nil {
-		readyCh <- false
-	} else {
-		readyCh <- true
+		return fmt.Errorf("could not get kubevirt client: %v", err)
 	}
+	kv, err := kvClient.KubeVirt("kubevirt").Get(ctx, "kubevirt", metav1.GetOptions{})
+	if err != nil {
+		return fmt.Errorf("could not get KubeVirt CR: %v", err)
+	}
+	for _, cond := range kv.Status.Conditions {
+		if cond.Type == kubevirtv1.KubeVirtConditionAvailable && cond.Status == corev1.ConditionTrue {
+			return nil
+		}
+	}
+	return fmt.Errorf("KubeVirt CR not yet Available")
+}
+
+func waitForNodeReady(client *kubernetes.Clientset, devUUID string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), kubeAPITimeout)
+	defer cancel()
+	labelSelector := metav1.LabelSelector{
+		MatchLabels: map[string]string{"node-uuid": devUUID},
+	}
+	options := metav1.ListOptions{
+		LabelSelector: metav1.FormatLabelSelector(&labelSelector),
+	}
+	nodes, err := client.CoreV1().Nodes().List(ctx, options)
+	if err != nil {
+		return "", err
+	}
+	for _, node := range nodes.Items {
+		return node.Name, nil
+	}
+	return "", fmt.Errorf("node not found by label uuid %s", devUUID)
 }
 
 // WaitForPVCReady : Loop until PVC is ready for timeout

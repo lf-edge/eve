@@ -238,7 +238,61 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	// wait for kubernetes up if in kube mode, if gets error, move on
 	if ctx.hvTypeKube {
 		log.Noticef("volumemgr run: wait for kubernetes")
-		err := kubeapi.WaitForKubernetes(agentName, ps, stillRunning)
+
+		// Resolve ClusterType from EdgeNodeClusterConfig before entering the
+		// kubernetes readiness wait. By this point vault and containerd are
+		// already up, so zedagent will have published EdgeNodeClusterConfig.
+		var encc types.EdgeNodeClusterConfig
+		subEncc, subEnccErr := ps.NewSubscription(pubsub.SubscriptionOptions{
+			AgentName:   "zedagent",
+			MyAgentName: agentName,
+			TopicImpl:   types.EdgeNodeClusterConfig{},
+			Activate:    false,
+			Ctx:         &encc,
+			CreateHandler: func(ctxArg interface{}, key string, configArg interface{}) {
+				*ctxArg.(*types.EdgeNodeClusterConfig) = configArg.(types.EdgeNodeClusterConfig)
+			},
+			ModifyHandler: func(ctxArg interface{}, key string, configArg interface{}, _ interface{}) {
+				*ctxArg.(*types.EdgeNodeClusterConfig) = configArg.(types.EdgeNodeClusterConfig)
+			},
+			WarningTime: warningTime,
+			ErrorTime:   errorTime,
+		})
+		if subEnccErr != nil {
+			log.Errorf("volumemgr: subscribe EdgeNodeClusterConfig: %v", subEnccErr)
+		} else {
+			_ = subEncc.Activate()
+			enccTimeout := time.NewTimer(60 * time.Second)
+		enccWait:
+			for {
+				select {
+				case change := <-subEncc.MsgChan():
+					subEncc.ProcessChange(change)
+					if encc.Initialized {
+						break enccWait
+					}
+				case <-enccTimeout.C:
+					log.Warnf("volumemgr: timeout waiting for EdgeNodeClusterConfig")
+					break enccWait
+				case <-stillRunning.C:
+					ps.StillRunning(agentName, warningTime, errorTime)
+				}
+			}
+			enccTimeout.Stop()
+			if err := subEncc.Close(); err != nil {
+				log.Errorf("volumemgr: close EdgeNodeClusterConfig sub: %v", err)
+			}
+		}
+
+		// Assume single node: where kubevirt is running
+		waitForLhFlag := true
+		if encc.Valid && encc.ClusterType != types.ClusterTypeReplicatedStorage {
+			waitForLhFlag = false
+		}
+		err := kubeapi.WaitForKubernetes(agentName, ps, stillRunning,
+			kubeapi.WaitForKubernetesOptions{
+				WaitForLonghorn: waitForLhFlag,
+			})
 		if err != nil {
 			log.Errorf("volumemgr run: wait for kubernetes error %v", err)
 		} else {

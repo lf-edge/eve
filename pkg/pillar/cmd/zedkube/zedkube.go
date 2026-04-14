@@ -597,6 +597,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	subZedAgentStatus.Activate()
 
 	err = kubeapi.WaitForKubernetes(agentName, ps, stillRunning,
+		kubeapi.WaitForKubernetesOptions{},
 		// Make sure we keep ClusterIPIsReady up to date while we wait
 		// for Kubernetes to come up.
 		pubsub.WatchAndProcessSubChanges(subEdgeNodeClusterConfig),
