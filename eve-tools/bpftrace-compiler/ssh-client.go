@@ -149,7 +149,9 @@ func (s *eveSSHClient) startSSHClient(sshHost string, privKey string) {
 }
 
 func (s *eveSSHClient) close() {
-	s.rStdout.Close()
+	if s.rStdout != nil {
+		_ = s.rStdout.Close()
+	}
 	if s.sftpClient != nil {
 		s.sftpClient.Close()
 	}
