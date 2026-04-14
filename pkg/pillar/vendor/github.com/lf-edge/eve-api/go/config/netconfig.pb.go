@@ -24,6 +24,53 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// Supported EAP methods
+type EAPMethod int32
+
+const (
+	EAPMethod_EAP_METHOD_UNSPECIFIED EAPMethod = 0
+	EAPMethod_EAP_METHOD_TLS         EAPMethod = 1
+)
+
+// Enum value maps for EAPMethod.
+var (
+	EAPMethod_name = map[int32]string{
+		0: "EAP_METHOD_UNSPECIFIED",
+		1: "EAP_METHOD_TLS",
+	}
+	EAPMethod_value = map[string]int32{
+		"EAP_METHOD_UNSPECIFIED": 0,
+		"EAP_METHOD_TLS":         1,
+	}
+)
+
+func (x EAPMethod) Enum() *EAPMethod {
+	p := new(EAPMethod)
+	*p = x
+	return p
+}
+
+func (x EAPMethod) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (EAPMethod) Descriptor() protoreflect.EnumDescriptor {
+	return file_config_netconfig_proto_enumTypes[0].Descriptor()
+}
+
+func (EAPMethod) Type() protoreflect.EnumType {
+	return &file_config_netconfig_proto_enumTypes[0]
+}
+
+func (x EAPMethod) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use EAPMethod.Descriptor instead.
+func (EAPMethod) EnumDescriptor() ([]byte, []int) {
+	return file_config_netconfig_proto_rawDescGZIP(), []int{0}
+}
+
 type NetworkConfig struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -810,6 +857,95 @@ func (x *WifiConfig) GetCipherData() *evecommon.CipherBlock {
 	return nil
 }
 
+// Configuration for Port-based Network Access Control (PNAC).
+type PNAC struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	// Logical name of the associated physical Ethernet interface (PhysicalIO.logicallabel)
+	Logicallabel string `protobuf:"bytes,1,opt,name=logicallabel,proto3" json:"logicallabel,omitempty"`
+	// EAP identity (optional).
+	// Even when certificate-based authentication is used (e.g., EAP-TLS),
+	// an explicit EAP identity may be configured and does not need to match
+	// the certificate’s DN or SAN attributes.
+	// If no EAP identity is configured and a certificate-based EAP method
+	// is used, EVE will derive the identity from the enrolled certificate,
+	// preferring the subject common name (CN), or the SAN URI if CN is absent.
+	EapIdentity string `protobuf:"bytes,2,opt,name=eap_identity,json=eapIdentity,proto3" json:"eap_identity,omitempty"`
+	// EAP method to use for authentication.
+	// Currently, only EAP-TLS is supported; additional methods may be added in the future.
+	EapMethod EAPMethod `protobuf:"varint,3,opt,name=eap_method,json=eapMethod,proto3,enum=org.lfedge.eve.config.EAPMethod" json:"eap_method,omitempty"`
+	// Certificate enrollment profile to use for authentication.
+	// Relevant only when the selected EAP method requires a certificate (e.g., EAP-TLS).
+	//
+	// This field references the profile_name of a certificate enrollment profile
+	// defined in EdgeDevConfig (currently SCEP profiles only, see scep_profiles).
+	// While SCEP is the only supported enrollment protocol today, this field is
+	// intended to reference any supported enrollment profile in the future.
+	CertEnrollmentProfileName string `protobuf:"bytes,10,opt,name=cert_enrollment_profile_name,json=certEnrollmentProfileName,proto3" json:"cert_enrollment_profile_name,omitempty"`
+}
+
+func (x *PNAC) Reset() {
+	*x = PNAC{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_config_netconfig_proto_msgTypes[7]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *PNAC) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PNAC) ProtoMessage() {}
+
+func (x *PNAC) ProtoReflect() protoreflect.Message {
+	mi := &file_config_netconfig_proto_msgTypes[7]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PNAC.ProtoReflect.Descriptor instead.
+func (*PNAC) Descriptor() ([]byte, []int) {
+	return file_config_netconfig_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *PNAC) GetLogicallabel() string {
+	if x != nil {
+		return x.Logicallabel
+	}
+	return ""
+}
+
+func (x *PNAC) GetEapIdentity() string {
+	if x != nil {
+		return x.EapIdentity
+	}
+	return ""
+}
+
+func (x *PNAC) GetEapMethod() EAPMethod {
+	if x != nil {
+		return x.EapMethod
+	}
+	return EAPMethod_EAP_METHOD_UNSPECIFIED
+}
+
+func (x *PNAC) GetCertEnrollmentProfileName() string {
+	if x != nil {
+		return x.CertEnrollmentProfileName
+	}
+	return ""
+}
+
 type WifiConfigCryptoblock struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -822,7 +958,7 @@ type WifiConfigCryptoblock struct {
 func (x *WifiConfigCryptoblock) Reset() {
 	*x = WifiConfigCryptoblock{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_config_netconfig_proto_msgTypes[7]
+		mi := &file_config_netconfig_proto_msgTypes[8]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -835,7 +971,7 @@ func (x *WifiConfigCryptoblock) String() string {
 func (*WifiConfigCryptoblock) ProtoMessage() {}
 
 func (x *WifiConfigCryptoblock) ProtoReflect() protoreflect.Message {
-	mi := &file_config_netconfig_proto_msgTypes[7]
+	mi := &file_config_netconfig_proto_msgTypes[8]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1032,12 +1168,29 @@ var file_config_netconfig_proto_rawDesc = []byte{
 	0x6f, 0x62, 0x6c, 0x6f, 0x63, 0x6b, 0x12, 0x1a, 0x0a, 0x08, 0x69, 0x64, 0x65, 0x6e, 0x74, 0x69,
 	0x74, 0x79, 0x18, 0x0b, 0x20, 0x01, 0x28, 0x09, 0x52, 0x08, 0x69, 0x64, 0x65, 0x6e, 0x74, 0x69,
 	0x74, 0x79, 0x12, 0x1a, 0x0a, 0x08, 0x70, 0x61, 0x73, 0x73, 0x77, 0x6f, 0x72, 0x64, 0x18, 0x0c,
-	0x20, 0x01, 0x28, 0x09, 0x52, 0x08, 0x70, 0x61, 0x73, 0x73, 0x77, 0x6f, 0x72, 0x64, 0x42, 0x3d,
-	0x0a, 0x15, 0x6f, 0x72, 0x67, 0x2e, 0x6c, 0x66, 0x65, 0x64, 0x67, 0x65, 0x2e, 0x65, 0x76, 0x65,
-	0x2e, 0x63, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x5a, 0x24, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62, 0x2e,
-	0x63, 0x6f, 0x6d, 0x2f, 0x6c, 0x66, 0x2d, 0x65, 0x64, 0x67, 0x65, 0x2f, 0x65, 0x76, 0x65, 0x2d,
-	0x61, 0x70, 0x69, 0x2f, 0x67, 0x6f, 0x2f, 0x63, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x62, 0x06, 0x70,
-	0x72, 0x6f, 0x74, 0x6f, 0x33,
+	0x20, 0x01, 0x28, 0x09, 0x52, 0x08, 0x70, 0x61, 0x73, 0x73, 0x77, 0x6f, 0x72, 0x64, 0x22, 0xcf,
+	0x01, 0x0a, 0x04, 0x50, 0x4e, 0x41, 0x43, 0x12, 0x22, 0x0a, 0x0c, 0x6c, 0x6f, 0x67, 0x69, 0x63,
+	0x61, 0x6c, 0x6c, 0x61, 0x62, 0x65, 0x6c, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x0c, 0x6c,
+	0x6f, 0x67, 0x69, 0x63, 0x61, 0x6c, 0x6c, 0x61, 0x62, 0x65, 0x6c, 0x12, 0x21, 0x0a, 0x0c, 0x65,
+	0x61, 0x70, 0x5f, 0x69, 0x64, 0x65, 0x6e, 0x74, 0x69, 0x74, 0x79, 0x18, 0x02, 0x20, 0x01, 0x28,
+	0x09, 0x52, 0x0b, 0x65, 0x61, 0x70, 0x49, 0x64, 0x65, 0x6e, 0x74, 0x69, 0x74, 0x79, 0x12, 0x3f,
+	0x0a, 0x0a, 0x65, 0x61, 0x70, 0x5f, 0x6d, 0x65, 0x74, 0x68, 0x6f, 0x64, 0x18, 0x03, 0x20, 0x01,
+	0x28, 0x0e, 0x32, 0x20, 0x2e, 0x6f, 0x72, 0x67, 0x2e, 0x6c, 0x66, 0x65, 0x64, 0x67, 0x65, 0x2e,
+	0x65, 0x76, 0x65, 0x2e, 0x63, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x2e, 0x45, 0x41, 0x50, 0x4d, 0x65,
+	0x74, 0x68, 0x6f, 0x64, 0x52, 0x09, 0x65, 0x61, 0x70, 0x4d, 0x65, 0x74, 0x68, 0x6f, 0x64, 0x12,
+	0x3f, 0x0a, 0x1c, 0x63, 0x65, 0x72, 0x74, 0x5f, 0x65, 0x6e, 0x72, 0x6f, 0x6c, 0x6c, 0x6d, 0x65,
+	0x6e, 0x74, 0x5f, 0x70, 0x72, 0x6f, 0x66, 0x69, 0x6c, 0x65, 0x5f, 0x6e, 0x61, 0x6d, 0x65, 0x18,
+	0x0a, 0x20, 0x01, 0x28, 0x09, 0x52, 0x19, 0x63, 0x65, 0x72, 0x74, 0x45, 0x6e, 0x72, 0x6f, 0x6c,
+	0x6c, 0x6d, 0x65, 0x6e, 0x74, 0x50, 0x72, 0x6f, 0x66, 0x69, 0x6c, 0x65, 0x4e, 0x61, 0x6d, 0x65,
+	0x2a, 0x3b, 0x0a, 0x09, 0x45, 0x41, 0x50, 0x4d, 0x65, 0x74, 0x68, 0x6f, 0x64, 0x12, 0x1a, 0x0a,
+	0x16, 0x45, 0x41, 0x50, 0x5f, 0x4d, 0x45, 0x54, 0x48, 0x4f, 0x44, 0x5f, 0x55, 0x4e, 0x53, 0x50,
+	0x45, 0x43, 0x49, 0x46, 0x49, 0x45, 0x44, 0x10, 0x00, 0x12, 0x12, 0x0a, 0x0e, 0x45, 0x41, 0x50,
+	0x5f, 0x4d, 0x45, 0x54, 0x48, 0x4f, 0x44, 0x5f, 0x54, 0x4c, 0x53, 0x10, 0x01, 0x42, 0x3d, 0x0a,
+	0x15, 0x6f, 0x72, 0x67, 0x2e, 0x6c, 0x66, 0x65, 0x64, 0x67, 0x65, 0x2e, 0x65, 0x76, 0x65, 0x2e,
+	0x63, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x5a, 0x24, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62, 0x2e, 0x63,
+	0x6f, 0x6d, 0x2f, 0x6c, 0x66, 0x2d, 0x65, 0x64, 0x67, 0x65, 0x2f, 0x65, 0x76, 0x65, 0x2d, 0x61,
+	0x70, 0x69, 0x2f, 0x67, 0x6f, 0x2f, 0x63, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x62, 0x06, 0x70, 0x72,
+	0x6f, 0x74, 0x6f, 0x33,
 }
 
 var (
@@ -1052,56 +1205,60 @@ func file_config_netconfig_proto_rawDescGZIP() []byte {
 	return file_config_netconfig_proto_rawDescData
 }
 
-var file_config_netconfig_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
+var file_config_netconfig_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_config_netconfig_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
 var file_config_netconfig_proto_goTypes = []interface{}{
-	(*NetworkConfig)(nil),                // 0: org.lfedge.eve.config.NetworkConfig
-	(*NetworkAdapter)(nil),               // 1: org.lfedge.eve.config.NetworkAdapter
-	(*WirelessConfig)(nil),               // 2: org.lfedge.eve.config.WirelessConfig
-	(*CellularConfig)(nil),               // 3: org.lfedge.eve.config.CellularConfig
-	(*CellularConnectivityProbe)(nil),    // 4: org.lfedge.eve.config.CellularConnectivityProbe
-	(*CellularAccessPoint)(nil),          // 5: org.lfedge.eve.config.CellularAccessPoint
-	(*WifiConfig)(nil),                   // 6: org.lfedge.eve.config.WifiConfig
-	(*WifiConfigCryptoblock)(nil),        // 7: org.lfedge.eve.config.WifiConfig.cryptoblock
-	(evecommon.NetworkType)(0),           // 8: org.lfedge.eve.common.NetworkType
-	(*evecommon.Ipspec)(nil),             // 9: org.lfedge.eve.common.ipspec
-	(*evecommon.ZnetStaticDNSEntry)(nil), // 10: org.lfedge.eve.common.ZnetStaticDNSEntry
-	(*evecommon.ProxyConfig)(nil),        // 11: org.lfedge.eve.common.ProxyConfig
-	(*ACE)(nil),                          // 12: org.lfedge.eve.config.ACE
-	(evecommon.WirelessType)(0),          // 13: org.lfedge.eve.common.WirelessType
-	(*evecommon.ConnectivityProbe)(nil),  // 14: org.lfedge.eve.common.ConnectivityProbe
-	(evecommon.CellularAuthProtocol)(0),  // 15: org.lfedge.eve.common.CellularAuthProtocol
-	(*evecommon.CipherBlock)(nil),        // 16: org.lfedge.eve.common.CipherBlock
-	(evecommon.RadioAccessTechnology)(0), // 17: org.lfedge.eve.common.RadioAccessTechnology
-	(evecommon.CellularIPType)(0),        // 18: org.lfedge.eve.common.CellularIPType
-	(evecommon.WiFiKeyScheme)(0),         // 19: org.lfedge.eve.common.WiFiKeyScheme
+	(EAPMethod)(0),                       // 0: org.lfedge.eve.config.EAPMethod
+	(*NetworkConfig)(nil),                // 1: org.lfedge.eve.config.NetworkConfig
+	(*NetworkAdapter)(nil),               // 2: org.lfedge.eve.config.NetworkAdapter
+	(*WirelessConfig)(nil),               // 3: org.lfedge.eve.config.WirelessConfig
+	(*CellularConfig)(nil),               // 4: org.lfedge.eve.config.CellularConfig
+	(*CellularConnectivityProbe)(nil),    // 5: org.lfedge.eve.config.CellularConnectivityProbe
+	(*CellularAccessPoint)(nil),          // 6: org.lfedge.eve.config.CellularAccessPoint
+	(*WifiConfig)(nil),                   // 7: org.lfedge.eve.config.WifiConfig
+	(*PNAC)(nil),                         // 8: org.lfedge.eve.config.PNAC
+	(*WifiConfigCryptoblock)(nil),        // 9: org.lfedge.eve.config.WifiConfig.cryptoblock
+	(evecommon.NetworkType)(0),           // 10: org.lfedge.eve.common.NetworkType
+	(*evecommon.Ipspec)(nil),             // 11: org.lfedge.eve.common.ipspec
+	(*evecommon.ZnetStaticDNSEntry)(nil), // 12: org.lfedge.eve.common.ZnetStaticDNSEntry
+	(*evecommon.ProxyConfig)(nil),        // 13: org.lfedge.eve.common.ProxyConfig
+	(*ACE)(nil),                          // 14: org.lfedge.eve.config.ACE
+	(evecommon.WirelessType)(0),          // 15: org.lfedge.eve.common.WirelessType
+	(*evecommon.ConnectivityProbe)(nil),  // 16: org.lfedge.eve.common.ConnectivityProbe
+	(evecommon.CellularAuthProtocol)(0),  // 17: org.lfedge.eve.common.CellularAuthProtocol
+	(*evecommon.CipherBlock)(nil),        // 18: org.lfedge.eve.common.CipherBlock
+	(evecommon.RadioAccessTechnology)(0), // 19: org.lfedge.eve.common.RadioAccessTechnology
+	(evecommon.CellularIPType)(0),        // 20: org.lfedge.eve.common.CellularIPType
+	(evecommon.WiFiKeyScheme)(0),         // 21: org.lfedge.eve.common.WiFiKeyScheme
 }
 var file_config_netconfig_proto_depIdxs = []int32{
-	8,  // 0: org.lfedge.eve.config.NetworkConfig.type:type_name -> org.lfedge.eve.common.NetworkType
-	9,  // 1: org.lfedge.eve.config.NetworkConfig.ip:type_name -> org.lfedge.eve.common.ipspec
-	10, // 2: org.lfedge.eve.config.NetworkConfig.dns:type_name -> org.lfedge.eve.common.ZnetStaticDNSEntry
-	11, // 3: org.lfedge.eve.config.NetworkConfig.entProxy:type_name -> org.lfedge.eve.common.ProxyConfig
-	2,  // 4: org.lfedge.eve.config.NetworkConfig.wireless:type_name -> org.lfedge.eve.config.WirelessConfig
-	12, // 5: org.lfedge.eve.config.NetworkAdapter.acls:type_name -> org.lfedge.eve.config.ACE
-	13, // 6: org.lfedge.eve.config.WirelessConfig.type:type_name -> org.lfedge.eve.common.WirelessType
-	3,  // 7: org.lfedge.eve.config.WirelessConfig.cellularCfg:type_name -> org.lfedge.eve.config.CellularConfig
-	6,  // 8: org.lfedge.eve.config.WirelessConfig.wifiCfg:type_name -> org.lfedge.eve.config.WifiConfig
-	4,  // 9: org.lfedge.eve.config.CellularConfig.probe:type_name -> org.lfedge.eve.config.CellularConnectivityProbe
-	5,  // 10: org.lfedge.eve.config.CellularConfig.access_points:type_name -> org.lfedge.eve.config.CellularAccessPoint
-	14, // 11: org.lfedge.eve.config.CellularConnectivityProbe.custom_probe:type_name -> org.lfedge.eve.common.ConnectivityProbe
-	15, // 12: org.lfedge.eve.config.CellularAccessPoint.auth_protocol:type_name -> org.lfedge.eve.common.CellularAuthProtocol
-	16, // 13: org.lfedge.eve.config.CellularAccessPoint.cipher_data:type_name -> org.lfedge.eve.common.CipherBlock
-	17, // 14: org.lfedge.eve.config.CellularAccessPoint.preferred_rats:type_name -> org.lfedge.eve.common.RadioAccessTechnology
-	18, // 15: org.lfedge.eve.config.CellularAccessPoint.ip_type:type_name -> org.lfedge.eve.common.CellularIPType
-	18, // 16: org.lfedge.eve.config.CellularAccessPoint.attach_ip_type:type_name -> org.lfedge.eve.common.CellularIPType
-	15, // 17: org.lfedge.eve.config.CellularAccessPoint.attach_auth_protocol:type_name -> org.lfedge.eve.common.CellularAuthProtocol
-	19, // 18: org.lfedge.eve.config.WifiConfig.keyScheme:type_name -> org.lfedge.eve.common.WiFiKeyScheme
-	7,  // 19: org.lfedge.eve.config.WifiConfig.crypto:type_name -> org.lfedge.eve.config.WifiConfig.cryptoblock
-	16, // 20: org.lfedge.eve.config.WifiConfig.cipherData:type_name -> org.lfedge.eve.common.CipherBlock
-	21, // [21:21] is the sub-list for method output_type
-	21, // [21:21] is the sub-list for method input_type
-	21, // [21:21] is the sub-list for extension type_name
-	21, // [21:21] is the sub-list for extension extendee
-	0,  // [0:21] is the sub-list for field type_name
+	10, // 0: org.lfedge.eve.config.NetworkConfig.type:type_name -> org.lfedge.eve.common.NetworkType
+	11, // 1: org.lfedge.eve.config.NetworkConfig.ip:type_name -> org.lfedge.eve.common.ipspec
+	12, // 2: org.lfedge.eve.config.NetworkConfig.dns:type_name -> org.lfedge.eve.common.ZnetStaticDNSEntry
+	13, // 3: org.lfedge.eve.config.NetworkConfig.entProxy:type_name -> org.lfedge.eve.common.ProxyConfig
+	3,  // 4: org.lfedge.eve.config.NetworkConfig.wireless:type_name -> org.lfedge.eve.config.WirelessConfig
+	14, // 5: org.lfedge.eve.config.NetworkAdapter.acls:type_name -> org.lfedge.eve.config.ACE
+	15, // 6: org.lfedge.eve.config.WirelessConfig.type:type_name -> org.lfedge.eve.common.WirelessType
+	4,  // 7: org.lfedge.eve.config.WirelessConfig.cellularCfg:type_name -> org.lfedge.eve.config.CellularConfig
+	7,  // 8: org.lfedge.eve.config.WirelessConfig.wifiCfg:type_name -> org.lfedge.eve.config.WifiConfig
+	5,  // 9: org.lfedge.eve.config.CellularConfig.probe:type_name -> org.lfedge.eve.config.CellularConnectivityProbe
+	6,  // 10: org.lfedge.eve.config.CellularConfig.access_points:type_name -> org.lfedge.eve.config.CellularAccessPoint
+	16, // 11: org.lfedge.eve.config.CellularConnectivityProbe.custom_probe:type_name -> org.lfedge.eve.common.ConnectivityProbe
+	17, // 12: org.lfedge.eve.config.CellularAccessPoint.auth_protocol:type_name -> org.lfedge.eve.common.CellularAuthProtocol
+	18, // 13: org.lfedge.eve.config.CellularAccessPoint.cipher_data:type_name -> org.lfedge.eve.common.CipherBlock
+	19, // 14: org.lfedge.eve.config.CellularAccessPoint.preferred_rats:type_name -> org.lfedge.eve.common.RadioAccessTechnology
+	20, // 15: org.lfedge.eve.config.CellularAccessPoint.ip_type:type_name -> org.lfedge.eve.common.CellularIPType
+	20, // 16: org.lfedge.eve.config.CellularAccessPoint.attach_ip_type:type_name -> org.lfedge.eve.common.CellularIPType
+	17, // 17: org.lfedge.eve.config.CellularAccessPoint.attach_auth_protocol:type_name -> org.lfedge.eve.common.CellularAuthProtocol
+	21, // 18: org.lfedge.eve.config.WifiConfig.keyScheme:type_name -> org.lfedge.eve.common.WiFiKeyScheme
+	9,  // 19: org.lfedge.eve.config.WifiConfig.crypto:type_name -> org.lfedge.eve.config.WifiConfig.cryptoblock
+	18, // 20: org.lfedge.eve.config.WifiConfig.cipherData:type_name -> org.lfedge.eve.common.CipherBlock
+	0,  // 21: org.lfedge.eve.config.PNAC.eap_method:type_name -> org.lfedge.eve.config.EAPMethod
+	22, // [22:22] is the sub-list for method output_type
+	22, // [22:22] is the sub-list for method input_type
+	22, // [22:22] is the sub-list for extension type_name
+	22, // [22:22] is the sub-list for extension extendee
+	0,  // [0:22] is the sub-list for field type_name
 }
 
 func init() { file_config_netconfig_proto_init() }
@@ -1196,6 +1353,18 @@ func file_config_netconfig_proto_init() {
 			}
 		}
 		file_config_netconfig_proto_msgTypes[7].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*PNAC); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_config_netconfig_proto_msgTypes[8].Exporter = func(v interface{}, i int) interface{} {
 			switch v := v.(*WifiConfigCryptoblock); i {
 			case 0:
 				return &v.state
@@ -1213,13 +1382,14 @@ func file_config_netconfig_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: file_config_netconfig_proto_rawDesc,
-			NumEnums:      0,
-			NumMessages:   8,
+			NumEnums:      1,
+			NumMessages:   9,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
 		GoTypes:           file_config_netconfig_proto_goTypes,
 		DependencyIndexes: file_config_netconfig_proto_depIdxs,
+		EnumInfos:         file_config_netconfig_proto_enumTypes,
 		MessageInfos:      file_config_netconfig_proto_msgTypes,
 	}.Build()
 	File_config_netconfig_proto = out.File
