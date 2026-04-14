@@ -982,7 +982,68 @@ func encodeNetworkPortStatus(ctx *zedagentContext,
 			Type: info.WirelessType_WIRELESS_TYPE_WIFI,
 		}
 	}
+	if port.L2LinkConfig.L2Type == types.L2LinkTypeBond {
+		devicePort.BondStatus = encodeBondStatus(&port.BondStatus)
+	}
 	return devicePort
+}
+
+func encodeBondStatus(bs *types.BondStatus) *info.BondStatus {
+	pbBond := &info.BondStatus{
+		Mode:         evecommon.BondMode(bs.Mode),
+		ActiveMember: bs.ActiveMember,
+	}
+	pbBond.MiiMonitor = &info.BondMIIMonitorStatus{
+		Enabled:         bs.MIIMonitor.Enabled,
+		PollingInterval: bs.MIIMonitor.PollingInterval,
+		Updelay:         bs.MIIMonitor.UpDelay,
+		Downdelay:       bs.MIIMonitor.DownDelay,
+	}
+	pbBond.ArpMonitor = &info.BondArpMonitorStatus{
+		Enabled:         bs.ARPMonitor.Enabled,
+		PollingInterval: bs.ARPMonitor.PollingInterval,
+		MissedMax:       bs.ARPMonitor.MissedMax,
+	}
+	for _, target := range bs.ARPMonitor.IPTargets {
+		pbBond.ArpMonitor.IpTargets = append(pbBond.ArpMonitor.IpTargets, target.String())
+	}
+	if bs.LACP.Enabled {
+		pbBond.Lacp = &info.BondLACPStatus{
+			LacpRate:           evecommon.LacpRate(bs.LACP.LACPRate),
+			ActiveAggregatorId: uint32(bs.LACP.ActiveAggregatorID),
+			PartnerMac:         bs.LACP.PartnerMAC.String(),
+			ActorKey:           uint32(bs.LACP.ActorKey),
+			PartnerKey:         uint32(bs.LACP.PartnerKey),
+		}
+	}
+	for _, member := range bs.Members {
+		pbMember := &info.BondMemberStatus{
+			Logicallabel: member.Logicallabel,
+			MiiUp:        member.MIIUp,
+		}
+		if member.LACP != nil {
+			pbMember.Lacp = &info.BondMemberLACPStatus{
+				AggregatorId:      uint32(member.LACP.AggregatorID),
+				ActorChurnState:   encodeChurnState(member.LACP.ActorChurnState),
+				PartnerChurnState: encodeChurnState(member.LACP.PartnerChurnState),
+			}
+		}
+		pbBond.Members = append(pbBond.Members, pbMember)
+	}
+	return pbBond
+}
+
+func encodeChurnState(state types.BondLACPChurnState) info.BondLACPChurnState {
+	switch state {
+	case types.BondLACPChurnNone:
+		return info.BondLACPChurnState_BOND_LACP_CHURN_STATE_NONE
+	case types.BondLACPChurnMonitoring:
+		return info.BondLACPChurnState_BOND_LACP_CHURN_STATE_MONITORING
+	case types.BondLACPChurnChurned:
+		return info.BondLACPChurnState_BOND_LACP_CHURN_STATE_CHURNED
+	default:
+		return info.BondLACPChurnState_BOND_LACP_CHURN_STATE_UNSPECIFIED
+	}
 }
 
 func encodeNetworkPortConfig(ctx *zedagentContext,

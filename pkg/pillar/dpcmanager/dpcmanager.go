@@ -470,6 +470,10 @@ func (m *DpcManager) run(ctx context.Context) {
 				m.updateDNS()
 			case netmonitor.DNSInfoChange:
 				m.updateDNS()
+
+			case netmonitor.BondActiveMemberChange:
+				m.updateDNS()
+				m.logBondActiveMemberChange(ev.BondIfIndex)
 			}
 
 		case <-ctx.Done():

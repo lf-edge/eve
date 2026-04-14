@@ -156,6 +156,7 @@ type zedagentContext struct {
 	subCipherMetricsZR        pubsub.Subscription
 	subCipherMetricsWwan      pubsub.Subscription
 	subPatchEnvelopeUsage     pubsub.Subscription
+	subBondMetricsList        pubsub.Subscription
 
 	subNodeDrainStatus     pubsub.Subscription
 	pubNodeDrainRequest    pubsub.Publication
@@ -1177,6 +1178,9 @@ func mainEventLoop(zedagentCtx *zedagentContext, stillRunning *time.Ticker) {
 		case change := <-zedagentCtx.subNestedAppRuntimeStorageMetric.MsgChan():
 			zedagentCtx.subNestedAppRuntimeStorageMetric.ProcessChange(change)
 
+		case change := <-zedagentCtx.subBondMetricsList.MsgChan():
+			zedagentCtx.subBondMetricsList.ProcessChange(change)
+
 		case <-stillRunning.C:
 			// Fault injection
 			if zedagentCtx.fatalFlag {
@@ -2135,6 +2139,18 @@ func initPostOnboardSubs(zedagentCtx *zedagentContext) {
 		AgentName:   "zedrouter",
 		MyAgentName: agentName,
 		TopicImpl:   types.NestedAppRuntimeDiskMetric{},
+		Activate:    true,
+		WarningTime: warningTime,
+		ErrorTime:   errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	zedagentCtx.subBondMetricsList, err = ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:   "nim",
+		MyAgentName: agentName,
+		TopicImpl:   types.BondMetricsList{},
 		Activate:    true,
 		WarningTime: warningTime,
 		ErrorTime:   errorTime,

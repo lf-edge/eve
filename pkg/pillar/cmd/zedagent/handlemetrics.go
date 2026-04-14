@@ -641,6 +641,9 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 	}
 	ctx.flowLogMetrics.Unlock()
 
+	// Report bond metrics.
+	addBondMetrics(ctx, ReportDeviceMetric)
+
 	ReportMetrics.MetricContent = new(metrics.ZMetricMsg_Dm)
 	if x, ok := ReportMetrics.GetMetricContent().(*metrics.ZMetricMsg_Dm); ok {
 		x.Dm = ReportDeviceMetric
@@ -1956,5 +1959,35 @@ func createNestedAppRuntimeStorageMetrics(ctx *zedagentContext, reportMetrics *m
 		reportMetrics.NestMetric = append(reportMetrics.NestMetric, runtimeMetric)
 
 		log.Functionf("NestedAppRuntimeDiskMetric ps:%v proto:%v reportMetrics.NestMetric:%v", psMetric, runtimeMetric, reportMetrics.NestMetric)
+	}
+}
+
+func addBondMetrics(ctx *zedagentContext, reportDevMetrics *metrics.DeviceMetric) {
+	metricsListObj, err := ctx.subBondMetricsList.Get("global")
+	if err != nil {
+		return
+	}
+	metricsList, ok := metricsListObj.(types.BondMetricsList)
+	if !ok {
+		return
+	}
+	for _, bond := range metricsList.Bonds {
+		pbBond := &metrics.BondMetrics{
+			Logicallabel: bond.LogicalLabel,
+		}
+		for _, member := range bond.Members {
+			pbMember := &metrics.BondMemberMetrics{
+				Logicallabel:     member.LogicalLabel,
+				LinkFailureCount: member.LinkFailureCount,
+			}
+			if member.LACP != nil {
+				pbMember.Lacp = &metrics.BondMemberLACPMetrics{
+					ActorChurnedCount:   member.LACP.ActorChurnedCount,
+					PartnerChurnedCount: member.LACP.PartnerChurnedCount,
+				}
+			}
+			pbBond.Members = append(pbBond.Members, pbMember)
+		}
+		reportDevMetrics.BondMetrics = append(reportDevMetrics.BondMetrics, pbBond)
 	}
 }
