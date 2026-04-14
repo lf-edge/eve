@@ -558,7 +558,7 @@ $(DOCKERFILE_FROM_CHECKER): $(DOCKERFILE_FROM_CHECKER_DIR)/*.go $(DOCKERFILE_FRO
 # this next section checks that the FROM hashes for any image in any dockerfile anywhere here are consistent.
 # For example, one Dockerfile has foo:abc and the next has foo:def, it will flag them.
 # These are the packages that we are ignoring for now
-IGNORE_DOCKERFILE_HASHES_PKGS=alpine
+IGNORE_DOCKERFILE_HASHES_PKGS=alpine cross-compilers
 IGNORE_DOCKERFILE_HASHES_EVE_TOOLS=bpftrace-compiler
 
 IGNORE_DOCKERFILE_DOT_GO_DIR=$(shell find .go/ -name Dockerfile -exec echo "-i {}" \;)
