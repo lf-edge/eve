@@ -13,8 +13,15 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 )
 
+// WaitForKubernetesOptions is the options type for WaitForKubernetes.
+// Defined here so callers can reference it without a build tag.
+type WaitForKubernetesOptions struct {
+	WaitForKubevirt bool
+	WaitForLonghorn bool
+}
+
 // WaitForKubernetes in this file is just stub for non EVE-k builds.
-func WaitForKubernetes(string, *pubsub.PubSub, *time.Ticker,
+func WaitForKubernetes(string, *pubsub.PubSub, *time.Ticker, WaitForKubernetesOptions,
 	...pubsub.ChannelWatch) error {
 	panic("WaitForKubernetes is not built")
 }

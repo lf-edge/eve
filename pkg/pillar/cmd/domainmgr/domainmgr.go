@@ -655,10 +655,74 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	// wait for kubernetes to be ready in EVE 'k' mode, if gets error, move on
 	if domainCtx.hvTypeKube {
 		log.Noticef("Domainmgr run: wait for kubernetes")
-		err = kubeapi.WaitForKubernetes(agentName, ps, stillRunning)
-		if err != nil {
-			log.Errorf("Domainmgr: wait for kubernetes error %v", err)
+
+		// Resolve ClusterType from EdgeNodeClusterConfig before entering the
+		// kubernetes readiness wait. By this point vault and containerd are
+		// already up, so zedagent will have published EdgeNodeClusterConfig.
+		var encc types.EdgeNodeClusterConfig
+		subEncc, subEnccErr := ps.NewSubscription(pubsub.SubscriptionOptions{
+			AgentName:   "zedagent",
+			MyAgentName: agentName,
+			TopicImpl:   types.EdgeNodeClusterConfig{},
+			Activate:    false,
+			Ctx:         &encc,
+			CreateHandler: func(ctxArg interface{}, key string, configArg interface{}) {
+				*ctxArg.(*types.EdgeNodeClusterConfig) = configArg.(types.EdgeNodeClusterConfig)
+			},
+			ModifyHandler: func(ctxArg interface{}, key string, configArg interface{}, _ interface{}) {
+				*ctxArg.(*types.EdgeNodeClusterConfig) = configArg.(types.EdgeNodeClusterConfig)
+			},
+			WarningTime: warningTime,
+			ErrorTime:   errorTime,
+		})
+		if subEnccErr != nil {
+			log.Errorf("Domainmgr: subscribe EdgeNodeClusterConfig: %v", subEnccErr)
 		} else {
+			_ = subEncc.Activate()
+			enccTimeout := time.NewTimer(60 * time.Second)
+		enccWait:
+			for {
+				select {
+				case change := <-subEncc.MsgChan():
+					subEncc.ProcessChange(change)
+					if encc.Initialized {
+						break enccWait
+					}
+				case <-enccTimeout.C:
+					log.Warnf("Domainmgr: timeout waiting for EdgeNodeClusterConfig")
+					break enccWait
+				case <-stillRunning.C:
+					ps.StillRunning(agentName, warningTime, errorTime)
+				}
+			}
+			enccTimeout.Stop()
+			if err := subEncc.Close(); err != nil {
+				log.Errorf("Domainmgr: close EdgeNodeClusterConfig sub: %v", err)
+			}
+		}
+
+		// Assume single node: where kubevirt is running
+		waitForKubevirtFlag := true
+
+		if encc.Valid && encc.ClusterType != types.ClusterTypeReplicatedStorage {
+			waitForKubevirtFlag = false
+		}
+		kubeOpts := kubeapi.WaitForKubernetesOptions{
+			WaitForKubevirt: waitForKubevirtFlag,
+		}
+		for {
+			err = kubeapi.WaitForKubernetes(agentName, ps, stillRunning, kubeOpts)
+			if err == nil {
+				break
+			}
+			if waitForKubevirtFlag {
+				log.Warnf("Domainmgr: WaitForKubernetes kubevirt not ready: %v, retrying", err)
+				continue
+			}
+			log.Errorf("Domainmgr: WaitForKubernetes error %v", err)
+			break
+		}
+		if err == nil {
 			// If device rebooted abruptly, kubernetes did not get time to stop the VMs.
 			// They will be in failed state, so clean them up if they exists.
 			// We have to do this only on single node config. In the cluster setup the VMs
