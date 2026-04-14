@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"flag"
+	"fmt"
 	"os"
 	"path"
 	"strings"
@@ -95,6 +96,7 @@ type nim struct {
 	pubCachedResolvedIPs     pubsub.Publication
 	pubWwanConfig            pubsub.Publication
 	pubPNACMetrics           pubsub.Publication
+	pubBondMetrics           pubsub.Publication
 
 	// Metrics
 	agentMetrics   *controllerconn.AgentMetrics
@@ -322,6 +324,7 @@ func (n *nim) run(ctx context.Context) (err error) {
 		case <-publishTicker.C:
 			start := time.Now()
 			n.publishPNACMetrics()
+			n.publishBondMetrics()
 			err = n.cipherMetrics.Publish(n.Log, n.pubCipherMetrics, "global")
 			if err != nil {
 				n.Log.Error(err)
@@ -455,6 +458,13 @@ func (n *nim) initPublications() (err error) {
 	n.pubPNACMetrics, err = n.PubSub.NewPublication(pubsub.PublicationOptions{
 		AgentName: agentName,
 		TopicType: types.PNACMetricsList{},
+	})
+	if err != nil {
+		return err
+	}
+	n.pubBondMetrics, err = n.PubSub.NewPublication(pubsub.PublicationOptions{
+		AgentName: agentName,
+		TopicType: types.BondMetricsList{},
 	})
 	if err != nil {
 		return err
@@ -1072,4 +1082,68 @@ func (n *nim) publishPNACMetrics() {
 	if err != nil {
 		n.Log.Error(err)
 	}
+}
+
+func (n *nim) publishBondMetrics() {
+	var bondMetricsList types.BondMetricsList
+	dnsObj, err := n.pubDeviceNetworkStatus.Get("global")
+	if err != nil {
+		return
+	}
+	dns, ok := dnsObj.(types.DeviceNetworkStatus)
+	if !ok {
+		return
+	}
+	for _, port := range dns.Ports {
+		if port.IfName == "" || port.L2LinkConfig.L2Type != types.L2LinkTypeBond {
+			continue
+		}
+		bondIfIndex, err := n.getBondIfIndex(port.IfName)
+		if err != nil {
+			continue
+		}
+		bondMetrics, err := n.networkMonitor.GetBondMetrics(bondIfIndex)
+		if err != nil {
+			n.Log.Error(err)
+			continue
+		}
+		bondMetrics.LogicalLabel = port.Logicallabel
+		for i := range bondMetrics.Members {
+			memberPort := dns.LookupPortByIfName(bondMetrics.Members[i].IfName)
+			if memberPort != nil {
+				bondMetrics.Members[i].LogicalLabel = memberPort.Logicallabel
+			}
+		}
+		bondMetricsList.Bonds = append(bondMetricsList.Bonds, bondMetrics)
+	}
+	err = n.pubBondMetrics.Publish(bondMetricsList.Key(), bondMetricsList)
+	if err != nil {
+		n.Log.Error(err)
+	}
+}
+
+// getBondIfIndex returns the ifindex of the actual bond interface for the given
+// port interface name. When the adapter is bridged by NIM, port.IfName refers
+// to the bridge while the bond is renamed to "k" + port.IfName.
+func (n *nim) getBondIfIndex(portIfName string) (int, error) {
+	ifIndex, exists, err := n.networkMonitor.GetInterfaceIndex(portIfName)
+	if !exists || err != nil {
+		return 0, fmt.Errorf("interface %s not found", portIfName)
+	}
+	attrs, err := n.networkMonitor.GetInterfaceAttrs(ifIndex)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get attrs for %s: %w", portIfName, err)
+	}
+	if attrs.IfType == "bond" {
+		return ifIndex, nil
+	}
+	if attrs.IfType == "bridge" {
+		kernIfName := "k" + portIfName
+		kernIfIndex, exists, err := n.networkMonitor.GetInterfaceIndex(kernIfName)
+		if exists && err == nil {
+			return kernIfIndex, nil
+		}
+	}
+	return 0, fmt.Errorf("interface %s is neither a bond nor a bridge with a bond",
+		portIfName)
 }

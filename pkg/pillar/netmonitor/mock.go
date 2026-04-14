@@ -29,12 +29,13 @@ type MockNetworkMonitor struct {
 
 // MockInterface : a simulated network interface and its state.
 type MockInterface struct {
-	Attrs   IfAttrs
-	IPAddrs []*net.IPNet
-	HwAddr  net.HardwareAddr
-	DNS     []DNSInfo
-	DHCP    DHCPInfo
-	PNAC    types.PNACStatus
+	Attrs      IfAttrs
+	IPAddrs    []*net.IPNet
+	HwAddr     net.HardwareAddr
+	DNS        []DNSInfo
+	DHCP       DHCPInfo
+	PNAC       types.PNACStatus
+	BondStatus *BondStatus // nil if not a bond interface
 }
 
 // AddOrUpdateInterface : allows to simulate an event of interface being added
@@ -267,6 +268,34 @@ func (m *MockNetworkMonitor) GetInterfaceDefaultGWs(ifIndex int) (gws []net.IP, 
 		gws = append(gws, route.Gw)
 	}
 	return gws, nil
+}
+
+// GetBondStatus returns bond status for the given mock interface.
+func (m *MockNetworkMonitor) GetBondStatus(ifIndex int) (BondStatus, error) {
+	m.Lock()
+	defer m.Unlock()
+	mockIf, exists := m.interfaces[ifIndex]
+	if !exists {
+		return BondStatus{}, fmt.Errorf("interface with index %d not found", ifIndex)
+	}
+	if mockIf.BondStatus == nil {
+		return BondStatus{}, fmt.Errorf("interface %s is not a bond", mockIf.Attrs.IfName)
+	}
+	return *mockIf.BondStatus, nil
+}
+
+// GetBondMetrics returns empty metrics for the given mock bond interface.
+func (m *MockNetworkMonitor) GetBondMetrics(ifIndex int) (types.BondMetrics, error) {
+	m.Lock()
+	defer m.Unlock()
+	mockIf, exists := m.interfaces[ifIndex]
+	if !exists {
+		return types.BondMetrics{}, fmt.Errorf("interface with index %d not found", ifIndex)
+	}
+	if mockIf.BondStatus == nil {
+		return types.BondMetrics{}, fmt.Errorf("interface %s is not a bond", mockIf.Attrs.IfName)
+	}
+	return types.BondMetrics{}, nil
 }
 
 // ListRoutes lists all mock routes.

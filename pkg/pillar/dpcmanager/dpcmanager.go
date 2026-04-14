@@ -508,8 +508,13 @@ func (m *DpcManager) run(ctx context.Context) {
 				m.checkDHCPReacquireSubnetChange(ifAttrs.IfName)
 			case netmonitor.DNSInfoChange:
 				m.updateDNS()
+
 			case netmonitor.PNACEvent:
 				m.processPNACEvent(ev)
+
+			case netmonitor.BondActiveMemberChange:
+				m.updateDNS()
+				m.logBondActiveMemberChange(ev.BondIfIndex)
 			}
 
 		case portLL := <-m.dhcpReacquireSignals:
