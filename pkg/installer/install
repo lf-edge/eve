@@ -227,13 +227,15 @@ create_efi_boot_entry() {
 }
 
 # make_raw run the command /make-raw, which is the entrypoint of mkimage-raw-efi container.
+# EVE_HV passes the resolved hypervisor type so make-raw can size partitions
+# correctly for universal images (where /root/etc/eve-hv-type is "uni").
 make_raw() {
    if ! command -v /mkimage/make-raw >/dev/null; then
       echo "would run"
       echo "make-raw $*"
       exit 0
    fi
-   DEBUG="$DEBUG" /mkimage/make-raw "$@"
+   DEBUG="$DEBUG" EVE_HV="$eve_flavor" /mkimage/make-raw "$@"
 }
 
 spec() {
@@ -426,11 +428,13 @@ else
 fi
 
 if [ "$eve_flavor" = "uni" ]; then
-    # GRUB passes the user's HV choice via kernel cmdline (eve_hv_type=kvm|k)
+    # GRUB passes the user's HV choice via kernel cmdline (eve_hv_type=kvm|k|xen)
     if cmdline eve_hv_type=kvm; then
         eve_flavor="kvm"
     elif cmdline eve_hv_type=k; then
         eve_flavor="k"
+    elif cmdline eve_hv_type=xen; then
+        eve_flavor="xen"
     else
         eve_flavor="kvm"
     fi

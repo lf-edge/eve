@@ -96,11 +96,16 @@ else
     echo "$(date -Ins -u) No separate $CONFIGDIR partition"
 fi
 
-# Determine HV flavor - check CONFIG override first, fall back to rootfs
+# Determine HV flavor - check CONFIG override first, fall back to rootfs.
+# "uni" is a build-time marker, never a valid runtime HV — default to kvm.
 if [ -f "$CONFIGDIR/eve-hv-type" ]; then
     eve_flavor=$(cat "$CONFIGDIR/eve-hv-type")
 else
     eve_flavor=$(cat /hostfs/etc/eve-hv-type)
+fi
+if [ "$eve_flavor" = "uni" ]; then
+    echo "$(date -Ins -u) WARNING: eve-hv-type is 'uni' at storage-init, defaulting to kvm"
+    eve_flavor="kvm"
 fi
 
 if [ "$eve_flavor" = "k" ]; then

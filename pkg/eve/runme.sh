@@ -260,8 +260,10 @@ prepare_for_hv() {
     case "$hv" in
     kvm|xen)
         ;;
-    k)
-        # Override image sizes for eve-k
+    k|uni)
+        # Override image sizes for eve-k. uni carries kube payloads and
+        # pre-compressed rootfs images that don't shrink in the outer
+        # squashfs, so it needs the same larger media as k.
         DEFAULT_INSTALLER_IMG_SIZE="$DEFAULT_K_INSTALLER_IMG_SIZE"
         DEFAULT_LIVE_IMG_SIZE="$DEFAULT_K_LIVE_IMG_SIZE"
         ;;
