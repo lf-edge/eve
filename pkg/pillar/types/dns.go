@@ -65,6 +65,7 @@ type NetworkPortStatus struct {
 	MTU              uint16
 	WirelessCfg      WirelessConfig
 	WirelessStatus   WirelessStatus
+	BondStatus       BondStatus // only populated when L2Type == L2LinkTypeBond
 	ConfigSource     PortConfigSource
 	ProxyConfig
 	L2LinkConfig
@@ -270,7 +271,8 @@ func (status DeviceNetworkStatus) MostlyEqual(status2 DeviceNetworkStatus) bool 
 			return false
 		}
 		if !reflect.DeepEqual(p1.ProxyConfig, p2.ProxyConfig) ||
-			!reflect.DeepEqual(p1.WirelessStatus, p2.WirelessStatus) {
+			!reflect.DeepEqual(p1.WirelessStatus, p2.WirelessStatus) ||
+			!p1.BondStatus.Equal(p2.BondStatus) {
 			return false
 		}
 	}

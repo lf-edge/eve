@@ -491,7 +491,7 @@ func TestParseBonds(t *testing.T) {
 				Logicallabel:    "bond-shopfloor",
 				InterfaceName:   "bond",
 				LowerLayerNames: []string{"shopfloor1", "shopfloor0"}, // order matters in Active-Backup mode
-				BondMode:        zconfig.BondMode_BOND_MODE_ACTIVE_BACKUP,
+				BondMode:        zcommon.BondMode_BOND_MODE_ACTIVE_BACKUP,
 				Monitoring: &zconfig.BondAdapter_Mii{
 					Mii: &zconfig.MIIMonitor{
 						Interval:  400,
@@ -641,7 +641,7 @@ func TestParseVlansOverBonds(t *testing.T) {
 				Logicallabel:    "bond-shopfloor",
 				InterfaceName:   "bond",
 				LowerLayerNames: []string{"shopfloor1", "shopfloor0"}, // order matters in Active-Backup mode
-				BondMode:        zconfig.BondMode_BOND_MODE_ACTIVE_BACKUP,
+				BondMode:        zcommon.BondMode_BOND_MODE_ACTIVE_BACKUP,
 				Monitoring: &zconfig.BondAdapter_Mii{
 					Mii: &zconfig.MIIMonitor{
 						Interval:  400,
@@ -941,7 +941,7 @@ func TestInvalidLowerLayerReferences(t *testing.T) {
 				Logicallabel:    "shopfloor", // collides with shopfloor from physicalIO
 				InterfaceName:   "bond",
 				LowerLayerNames: []string{"shopfloor", "warehouse"},
-				BondMode:        zconfig.BondMode_BOND_MODE_ACTIVE_BACKUP,
+				BondMode:        zcommon.BondMode_BOND_MODE_ACTIVE_BACKUP,
 			},
 		},
 		SystemAdapterList: []*zconfig.SystemAdapter{
@@ -999,7 +999,7 @@ func TestInvalidLowerLayerReferences(t *testing.T) {
 			Logicallabel:    "bond-shopfloor",
 			InterfaceName:   "bond",
 			LowerLayerNames: []string{"shopfloor", "warehouse"},
-			BondMode:        zconfig.BondMode_BOND_MODE_ACTIVE_BACKUP,
+			BondMode:        zcommon.BondMode_BOND_MODE_ACTIVE_BACKUP,
 		},
 	}
 	parseBonds(getconfigCtx, config)
@@ -1017,7 +1017,7 @@ func TestInvalidLowerLayerReferences(t *testing.T) {
 				Logicallabel:    "bond-shopfloor",
 				InterfaceName:   "bond",
 				LowerLayerNames: []string{"shopfloor", "warehouse"},
-				BondMode:        zconfig.BondMode_BOND_MODE_ACTIVE_BACKUP,
+				BondMode:        zcommon.BondMode_BOND_MODE_ACTIVE_BACKUP,
 			},
 		},
 		SystemAdapterList: []*zconfig.SystemAdapter{
@@ -1117,7 +1117,7 @@ func TestInvalidLowerLayerReferences(t *testing.T) {
 				Logicallabel:    "bond0",
 				InterfaceName:   "bond",
 				LowerLayerNames: []string{"shopfloor", "warehouse"},
-				BondMode:        zconfig.BondMode_BOND_MODE_ACTIVE_BACKUP,
+				BondMode:        zcommon.BondMode_BOND_MODE_ACTIVE_BACKUP,
 			},
 		},
 		Vlans: []*zconfig.VlanAdapter{
@@ -1174,13 +1174,13 @@ func TestInvalidLowerLayerReferences(t *testing.T) {
 				Logicallabel:    "bond0",
 				InterfaceName:   "bond",
 				LowerLayerNames: []string{"shopfloor", "warehouse"},
-				BondMode:        zconfig.BondMode_BOND_MODE_ACTIVE_BACKUP,
+				BondMode:        zcommon.BondMode_BOND_MODE_ACTIVE_BACKUP,
 			},
 			{
 				Logicallabel:    "bond1",
 				InterfaceName:   "bond1",
 				LowerLayerNames: []string{"shopfloor", "warehouse"},
-				BondMode:        zconfig.BondMode_BOND_MODE_ACTIVE_BACKUP,
+				BondMode:        zcommon.BondMode_BOND_MODE_ACTIVE_BACKUP,
 			},
 		},
 		SystemAdapterList: []*zconfig.SystemAdapter{
