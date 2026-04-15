@@ -58,7 +58,11 @@ Config_k3s_override_apply() {
 
 Config_cluster_exists() {
     if [ -f "$ENCC_FILE_PATH" ]; then
-        return 0
+        # Non-persistent ENCC will publish an empty config for no config
+        null_cluster_id=$(jq -r '.ClusterID.UUID=="00000000-0000-0000-0000-000000000000"' < "$ENCC_FILE_PATH")
+        if [ "$null_cluster_id" != "true" ]; then
+            return 0
+        fi
     fi
     return 1
 }
