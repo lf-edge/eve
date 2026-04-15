@@ -1064,7 +1064,7 @@ func FetchSealedVaultKey(log *base.LogObject) ([]byte, error) {
 		log.Noticef("sealed disk key present int TPM, about to unseal it")
 	}
 	//at this point, we have a key sealed into TPM
-	key, err := UnsealDiskKeyWithRecovery(pcrSelection)
+	key, err := UnsealDiskKeyWithRecovery(log, pcrSelection)
 	if err == nil {
 		// be more verbose, lets celebrate
 		log.Noticef("successfully unsealed the disk key from TPM")
@@ -1306,17 +1306,23 @@ func UnsealDiskKey(pcrSel tpm2.PCRSelection) ([]byte, error) {
 
 // UnsealDiskKeyWithRecovery unseals key from TPM2.0, with recovery option
 // to try recovering PCR indexes if saved ones don't work.
-func UnsealDiskKeyWithRecovery(pcrSel tpm2.PCRSelection) ([]byte, error) {
-	key, err := UnsealDiskKey(pcrSel)
-	if err == nil {
+func UnsealDiskKeyWithRecovery(log *base.LogObject, pcrSel tpm2.PCRSelection) ([]byte, error) {
+	log.Noticef("Trying to unseal disk key with PCRs %v", pcrSel.PCRs)
+
+	key, unsealErr := UnsealDiskKey(pcrSel)
+	if unsealErr == nil {
 		return key, nil
 	}
+
+	log.Warnf("UnsealDiskKey failed with PCRs %v: %v, trying to recover PCR indexes", pcrSel.PCRs, unsealErr)
 
 	// Try recovering Policy PCR indexes and try again
 	pcrSelection, err := RecoverDiskKeyPolicyPcr()
 	if err != nil {
 		return nil, err
 	}
+
+	log.Noticef("Trying to unseal disk key with recovered PCRs %v", pcrSelection.PCRs)
 
 	return UnsealDiskKey(pcrSelection)
 }
@@ -1354,7 +1360,7 @@ func PolicyPCRSession(rw io.ReadWriteCloser, pcrSel tpm2.PCRSelection) (tpmutil.
 
 // CompareLegacyandSealedKey compares legacy and sealed keys
 // to record if we are using a new key for sealed vault
-func CompareLegacyandSealedKey() SealedKeyType {
+func CompareLegacyandSealedKey(log *base.LogObject) SealedKeyType {
 	if !isSealedKeyPresent() {
 		return SealedKeyTypeUnprotected
 	}
@@ -1365,7 +1371,7 @@ func CompareLegacyandSealedKey() SealedKeyType {
 	}
 
 	pcrSelection := GetDiskKeyPolicyPcrOrDefault(types.PolicyPcrFile)
-	unsealedKey, err := UnsealDiskKeyWithRecovery(pcrSelection)
+	unsealedKey, err := UnsealDiskKeyWithRecovery(log, pcrSelection)
 	if err != nil {
 		//key is present but can't unseal it
 		//but legacy key is present
