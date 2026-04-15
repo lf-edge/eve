@@ -156,10 +156,7 @@ rm -rf dist/default-certs "$HOME/.eden/certs"
 echo "$PREFIX Configuring Eden..."
 ./eden config add default
 ./eden config set default --key=eve.accel --value=true
-# Disable TPM for installer test: GRUB's measurefs generates many TPM
-# errors (efi.mod not found in installer squashfs) which trigger the
-# GRUB --MORE-- pager, blocking the unattended boot.
-./eden config set default --key=eve.tpm --value=false
+./eden config set default --key=eve.tpm --value=true
 ./eden config set default --key=eve.custom-installer.path --value="$INSTALLER_SHORT"
 ./eden config set default --key=eve.custom-installer.format --value=raw
 ./eden config set default --key=eve.disks --value=1
@@ -262,11 +259,10 @@ check "Core has ext-verity-roothash" \
     "test -f /hostfs/etc/ext-verity-roothash && echo has-roothash || echo no-roothash" \
     "has-roothash"
 
-# PCR12 check — TPM is disabled for installer tests (GRUB --MORE-- pager issue)
-# so we just verify extsloader attempted measurement (logged even without TPM)
-check "extsloader measurement attempted" \
-    "eve exec pillar cat /persist/status/extsloader_tpm_event_log 2>/dev/null && echo log-exists || echo no-log" \
-    "log-exists"
+# PCR12 is non-zero (TPM measurement by extsloader)
+check "PCR12 non-zero" \
+    "eve exec pillar tpm2_pcrread sha256:12 2>/dev/null | grep -c '0x0000000000000000000000000000000000000000000000000000000000000000' || echo non-zero" \
+    "non-zero"
 
 # EFI variable written
 check "EFI variable written" \
