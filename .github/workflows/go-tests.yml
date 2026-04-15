@@ -60,6 +60,8 @@ jobs:
           bash tests/tpm/prep-and-test.sh
       - name: Test
         run: |
+          make pkg/bpftrace
+          make ZARCH=arm64 pkg/bpftrace
           make test
       - name: Report test results as Annotations
         if: ${{ always() }}
