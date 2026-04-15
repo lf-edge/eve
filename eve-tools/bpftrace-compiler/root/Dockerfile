@@ -10,7 +10,7 @@ FROM lfedge/eve-bpftrace:c08d714db34b7cde90d20c56e74d2c11afe483df AS eve-bpftrac
 FROM lfedge/eve-alpine:745ae9066273c73b0fd879c4ba4ff626a8392d04 AS bpftrace
 
 # hadolint ignore=DL3018
-RUN apk add --no-cache --initdb make gcc g++ git perl musl-dev cmake zlib-dev bcc-dev libbpf-dev cereal flex bison llvm13-libs llvm13-dev llvm13-static clang-dev clang-static pahole gtest-dev bash
+RUN apk add --no-cache --initdb binutils make gcc g++ git perl musl-dev cmake zlib-dev bcc-dev libbpf-dev cereal flex bison llvm17-libs llvm17-dev llvm17-static clang17-dev clang17-static pahole gtest-dev bash
 WORKDIR /
 COPY copy-out.sh /
 RUN mkdir /out
@@ -30,9 +30,13 @@ COPY bpftrace-helper /usr/src/bpftrace-helper
 WORKDIR /usr/src/bpftrace-helper
 RUN CGO_ENABLED=0 GOARCH=${TARGETARCH} go build -o /bpftrace-helper
 
+RUN touch /bpftrace-aotrt # bpftrace wants to call this binary, but does not care about outcome
+RUN chmod a+x /bpftrace-aotrt
+
 FROM scratch
 WORKDIR /
 COPY --from=bpftrace /out /
 # init
 COPY --from=bpftrace /bpftrace-helper /sbin/init
+COPY --from=bpftrace /bpftrace-aotrt /usr/bin/bpftrace-aotrt
 COPY --from=alpine:3.21 /bin/busybox /usr/bin/busybox
