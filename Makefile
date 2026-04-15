@@ -691,6 +691,12 @@ run-installer-raw: $(SWTPM) GETTY
 	qemu-img create -f ${IMG_FORMAT} $(TARGET_IMG) ${MEDIA_SIZE}M
 	$(QEMU_SYSTEM) -drive file=$(TARGET_IMG),format=$(IMG_FORMAT) -drive file=$(CURRENT_INSTALLER).raw,format=raw $(QEMU_OPTS)
 
+# Split installer: boots installer-split.raw, installs to target.img
+# Always uses HV=uni (split is always universal)
+run-installer-split: $(SWTPM) GETTY
+	qemu-img create -f ${IMG_FORMAT} $(TARGET_IMG) ${MEDIA_SIZE}M
+	$(QEMU_SYSTEM) -drive file=$(TARGET_IMG),format=$(IMG_FORMAT) -drive file=$(CURRENT_INSTALLER)-split.raw,format=raw $(QEMU_OPTS)
+
 run-installer-net: QEMU_TFTP_OPTS=,tftp=$(dir $(CURRENT_IPXE_IMG)),bootfile=$(notdir $(CURRENT_IPXE_IMG))
 run-installer-net: $(SWTPM) GETTY $(DEVICETREE_DTB)
 	tar -C $(CURRENT_NETBOOT) -xvf $(CURRENT_INSTALLER).net || :
@@ -731,6 +737,7 @@ run-universal: $(SWTPM) GETTY
 
 # Split rootfs: core boots as imga, ext loaded by extsloader agent from ext-imga.img
 # Ext rootfs is exposed as VVFAT disk (appears as /dev/sdb1 in VM).
+ifeq ($(HV),uni)
 run-split: $(SWTPM) GETTY
 	@echo "Preparing ext rootfs as ext-imga.img for VM..."
 	@mkdir -p $(CURRENT_DIR)/pkgs-inject
@@ -739,6 +746,10 @@ run-split: $(SWTPM) GETTY
 	$(QEMU_SYSTEM) $(QEMU_OPTS) \
 		-drive file=$(CURRENT_DIR)/live-split.$(IMG_FORMAT),format=$(IMG_FORMAT),id=uefi-disk \
 		-drive file=fat:rw:$(CURRENT_DIR)/pkgs-inject,format=vvfat,id=pkgs-disk
+else
+run-split:
+	$(MAKE) HV=uni $@
+endif
 
 run-target: $(SWTPM) GETTY
 	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive file=$(TARGET_IMG),format=$(IMG_FORMAT)
@@ -864,6 +875,10 @@ live-multirootfs: multi_rootfs $(BIOS_IMG) current
 universal_rootfs: $(ROOTFS_UNIVERSAL_IMG) current
 	$(QUIET): "$@: Succeeded, ROOTFS_UNIVERSAL_IMG=$(ROOTFS_UNIVERSAL_IMG)"
 
+# Split rootfs is always universal (HV=uni). These targets force HV=uni
+# so callers don't need to remember. Use _split_rootfs_impl for the
+# actual build when HV is already set.
+ifeq ($(HV),uni)
 core_rootfs: $(ROOTFS_CORE_IMG) current
 	$(QUIET): "$@: Succeeded, ROOTFS_CORE_IMG=$(ROOTFS_CORE_IMG)"
 
@@ -872,11 +887,16 @@ ext_rootfs: $(ROOTFS_EXT_IMG) current
 
 split_rootfs: ext_rootfs core_rootfs
 	$(QUIET): "$@: Succeeded"
+else
+core_rootfs ext_rootfs split_rootfs:
+	$(MAKE) HV=uni $@
+endif
 
 live-universal: $(LIVE)-universal.$(IMG_FORMAT) $(BIOS_IMG) current
 	$(QUIET): "$@: Succeeded, LIVE_UNIVERSAL=$(LIVE)-universal.$(IMG_FORMAT)"
 
 # Split rootfs: core boots as imga, ext loaded by extsloader via ext-imga.img
+ifeq ($(HV),uni)
 live-split: $(LIVE)-split.$(IMG_FORMAT) $(ROOTFS_EXT_IMG) $(BIOS_IMG) current
 	$(QUIET): "$@: Succeeded, LIVE_SPLIT=$(LIVE)-split.$(IMG_FORMAT)"
 
@@ -884,13 +904,23 @@ live-split: $(LIVE)-split.$(IMG_FORMAT) $(ROOTFS_EXT_IMG) $(BIOS_IMG) current
 # Uses mcopy to inject eve-hv-type into CONFIG (same mechanism as lfedge/eve Docker image /in mount)
 live-split-k: $(LIVE)-split-k.$(IMG_FORMAT) $(ROOTFS_EXT_IMG) $(BIOS_IMG) current
 	$(QUIET): "$@: Succeeded, LIVE_SPLIT_K=$(LIVE)-split-k.$(IMG_FORMAT)"
+else
+live-split live-split-k:
+	$(MAKE) HV=uni $@
+endif
 
 live: $(LIVE_IMG) $(BIOS_IMG) current	; $(QUIET): "$@: Succeeded, LIVE_IMG=$(LIVE_IMG)"
 live-%: $(LIVE).%		current ;  $(QUIET): "$@: Succeeded, LIVE=$(LIVE)"
 installer: $(INSTALLER).raw current
 # Split installer: bundles core rootfs + ext rootfs, HV type set at flash time via CONFIG
+# Split installer is always universal — force HV=uni
+ifeq ($(HV),uni)
 installer-split: $(INSTALLER)-split.raw current
 	$(QUIET): "$@: Succeeded, INSTALLER_SPLIT=$(INSTALLER)-split.raw"
+else
+installer-split:
+	$(MAKE) HV=uni $@
+endif
 # Split OCI image for OTA: contains both Core (disk-root) and Extension (disk-additional)
 # Build the non-rootfs EVE artifacts (EFI, config, persist, etc.) first, then
 # assemble the OCI image directly using rootfs-core.img as rootfs.img and
@@ -901,6 +931,8 @@ installer-split: $(INSTALLER)-split.raw current
 # $(SBOM), and fullname-rootfs — all of which chain back to the monolithic rootfs-generic.img.
 # The split OCI image uses rootfs-core.img (symlinked as rootfs.img) instead.
 EVE_SPLIT_ARTIFACTS=$(BIOS_IMG) $(EFI_PART) $(CONFIG_IMG) $(PERSIST_IMG) $(INITRD_IMG) $(BSP_IMX_PART) $(BOOT_PART)
+# Split OCI image is always universal — force HV=uni
+ifeq ($(HV),uni)
 eve-split: $(ROOTFS_CORE_IMG) $(ROOTFS_EXT_IMG) $(EVE_SPLIT_ARTIFACTS) current $(RUNME) $(BUILD_YML) | $(BUILD_DIR)
 	$(QUIET): "$@: Begin: EVE_REL=$(EVE_REL), HV=$(HV)"
 	cp -f $(INSTALLER)/rootfs-core.img $(INSTALLER)/rootfs.img
@@ -910,8 +942,12 @@ eve-split: $(ROOTFS_CORE_IMG) $(ROOTFS_EXT_IMG) $(EVE_SPLIT_ARTIFACTS) current $
 	$(LINUXKIT) $(DASH_V) pkg $(LINUXKIT_PKG_TARGET) $(LINUXKIT_ORG_TARGET) $(LINUXKIT_OPTS) --platforms linux/$(ZARCH) --hash-path $(CURDIR) --hash $(ROOTFS_VERSION)-$(HV) --docker $(if $(strip $(EVE_REL)),--release) $(EVE_REL)$(if $(strip $(EVE_REL)),-$(HV)) $(FORCE_BUILD) $|
 	rm -f $(INSTALLER)/rootfs.img
 	$(QUIET): $@: Succeeded
-eve-uni:
-	$(MAKE) HV=uni eve-split
+else
+eve-split:
+	$(MAKE) HV=uni $@
+endif
+# Convenience alias
+eve-uni: eve-split
 
 installer.tar: $(INSTALLER_TAR)
 installertar: $(INSTALLER_TAR)
@@ -1729,6 +1765,7 @@ help:
 	@echo "   run-grub             runs our copy of GRUB bootloader and nothing else (very limited usefulness)"
 	@echo "   run-installer-iso    runs installer.iso (via qemu) and 'installs' EVE into (initially blank) target.img"
 	@echo "   run-installer-raw    runs installer.raw (via qemu) and 'installs' EVE into (initially blank) target.img"
+	@echo "   run-installer-split  runs installer-split.raw (via qemu) and installs split EVE into target.img"
 	@echo "   run-installer-net    runs installer.net (via qemu/iPXE) and 'installs' EVE into (initially blank) target.img"
 	@echo "   run-target           runs a full fledged virtual device on qemu from target.img (similar to run-live)"
 	@echo
