@@ -163,6 +163,7 @@ coreutils
 coreutils-env
 coreutils-fmt
 coreutils-sha512sum
+cryptsetup
 cryptsetup-dev
 cryptsetup-libs
 curl
