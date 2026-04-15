@@ -113,104 +113,131 @@ jobs:
   # ── amd64 generic ──
 
   eve-amd64-xen-generic:
+    name: "eve (amd64, xen, generic)"
     needs: pkgs-amd64-generic
-    uses: ./.github/workflows/build-eve.yml
-    with:
-      arch: amd64
-      platform: generic
-      hv: xen
-      runner: zededa-ubuntu-2204
-      cache-artifact: linuxkit-cache-amd64-generic
+    runs-on: zededa-ubuntu-2204
+    timeout-minutes: 1440
+    steps:
+      - uses: ./.github/actions/build-eve
+        with:
+          arch: amd64
+          platform: generic
+          hv: xen
+          cache-artifact: linuxkit-cache-amd64-generic
 
   eve-amd64-kvm-generic:
+    name: "eve (amd64, kvm, generic)"
     needs: pkgs-amd64-generic
-    uses: ./.github/workflows/build-eve.yml
-    with:
-      arch: amd64
-      platform: generic
-      hv: kvm
-      runner: zededa-ubuntu-2204
-      cache-artifact: linuxkit-cache-amd64-generic
+    runs-on: zededa-ubuntu-2204
+    timeout-minutes: 1440
+    steps:
+      - uses: ./.github/actions/build-eve
+        with:
+          arch: amd64
+          platform: generic
+          hv: kvm
+          cache-artifact: linuxkit-cache-amd64-generic
 
   # ── amd64 rt ──
 
   eve-amd64-kvm-rt:
+    name: "eve (amd64, kvm, rt)"
     needs: pkgs-amd64-generic
-    uses: ./.github/workflows/build-eve.yml
-    with:
-      arch: amd64
-      platform: rt
-      hv: kvm
-      runner: zededa-ubuntu-2204
-      cache-artifact: linuxkit-cache-amd64-generic
+    runs-on: zededa-ubuntu-2204
+    timeout-minutes: 1440
+    steps:
+      - uses: ./.github/actions/build-eve
+        with:
+          arch: amd64
+          platform: rt
+          hv: kvm
+          cache-artifact: linuxkit-cache-amd64-generic
 
   # ── amd64 evaluation ──
 
   eve-amd64-kvm-evaluation:
+    name: "eve (amd64, kvm, evaluation)"
     needs: pkgs-amd64-generic
-    uses: ./.github/workflows/build-eve.yml
-    with:
-      arch: amd64
-      platform: evaluation
-      hv: kvm
-      runner: zededa-ubuntu-2204
-      cache-artifact: linuxkit-cache-amd64-generic
+    runs-on: zededa-ubuntu-2204
+    timeout-minutes: 1440
+    steps:
+      - uses: ./.github/actions/build-eve
+        with:
+          arch: amd64
+          platform: evaluation
+          hv: kvm
+          cache-artifact: linuxkit-cache-amd64-generic
 
   # ── amd64 kubernetes ──
 
   eve-amd64-k-generic:
+    name: "eve (amd64, k, generic)"
     needs: pkgs-amd64-generic
-    uses: ./.github/workflows/build-eve.yml
-    with:
-      arch: amd64
-      platform: generic
-      hv: k
-      runner: zededa-ubuntu-2204
-      cache-artifact: linuxkit-cache-amd64-generic
+    runs-on: zededa-ubuntu-2204
+    timeout-minutes: 1440
+    steps:
+      - uses: ./.github/actions/build-eve
+        with:
+          arch: amd64
+          platform: generic
+          hv: k
+          cache-artifact: linuxkit-cache-amd64-generic
 
   # ── arm64 generic ──
 
   eve-arm64-xen-generic:
+    name: "eve (arm64, xen, generic)"
     needs: pkgs-arm64-generic
-    uses: ./.github/workflows/build-eve.yml
-    with:
-      arch: arm64
-      platform: generic
-      hv: xen
-      runner: zededa-ubuntu-2204-arm64
-      cache-artifact: linuxkit-cache-arm64-generic
+    runs-on: zededa-ubuntu-2204-arm64
+    timeout-minutes: 1440
+    steps:
+      - uses: ./.github/actions/build-eve
+        with:
+          arch: arm64
+          platform: generic
+          hv: xen
+          cache-artifact: linuxkit-cache-arm64-generic
 
   eve-arm64-kvm-generic:
+    name: "eve (arm64, kvm, generic)"
     needs: pkgs-arm64-generic
-    uses: ./.github/workflows/build-eve.yml
-    with:
-      arch: arm64
-      platform: generic
-      hv: kvm
-      runner: zededa-ubuntu-2204-arm64
-      cache-artifact: linuxkit-cache-arm64-generic
+    runs-on: zededa-ubuntu-2204-arm64
+    timeout-minutes: 1440
+    steps:
+      - uses: ./.github/actions/build-eve
+        with:
+          arch: arm64
+          platform: generic
+          hv: kvm
+          cache-artifact: linuxkit-cache-arm64-generic
 
   # ── arm64 nvidia ──
 
   eve-arm64-kvm-nvidia-jp5:
+    name: "eve (arm64, kvm, nvidia-jp5)"
     needs: pkgs-arm64-generic
-    uses: ./.github/workflows/build-eve.yml
-    with:
-      arch: arm64
-      platform: nvidia-jp5
-      hv: kvm
-      runner: zededa-ubuntu-2204-arm64
-      cache-artifact: linuxkit-cache-arm64-generic
+    runs-on: zededa-ubuntu-2204-arm64
+    timeout-minutes: 1440
+    steps:
+      - uses: ./.github/actions/build-eve
+        with:
+          arch: arm64
+          platform: nvidia-jp5
+          hv: kvm
+          cache-artifact: linuxkit-cache-arm64-generic
 
   eve-arm64-kvm-nvidia-jp6:
+    name: "eve (arm64, kvm, nvidia-jp6)"
     needs: pkgs-arm64-generic
-    uses: ./.github/workflows/build-eve.yml
-    with:
-      arch: arm64
-      platform: nvidia-jp6
-      hv: kvm
-      runner: zededa-ubuntu-2204-arm64
-      cache-artifact: linuxkit-cache-arm64-generic
+    runs-on: zededa-ubuntu-2204-arm64
+    timeout-minutes: 1440
+    steps:
+      - uses: ./.github/actions/build-eve
+        with:
+          arch: arm64
+          platform: nvidia-jp6
+          hv: kvm
+          cache-artifact: linuxkit-cache-arm64-generic
 
   # ════════════════════════════════════════════════════════════════════════
   # riscv64 cross-build (different pattern: needs amd64 tools + QEMU)
