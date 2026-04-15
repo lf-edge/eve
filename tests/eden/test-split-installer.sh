@@ -63,10 +63,18 @@ fi
 
 cd "$EVE_ROOT"
 DIST_CURRENT="$(readlink -f "dist/$EVE_ARCH/current")"
-INSTALLER_RAW="$DIST_CURRENT/installer/installer-split.raw"
+INSTALLER_RAW="$DIST_CURRENT/installer-split.raw"
 
+# The HV=uni delegation may create a different dist dir than `current` points to.
+# Search for the most recent installer-split.raw if not found at expected path.
 if [ ! -f "$INSTALLER_RAW" ]; then
-    echo "$PREFIX Error: $INSTALLER_RAW not found. Build first or check SKIP_BUILD."
+    INSTALLER_RAW=$(find "dist/$EVE_ARCH" -maxdepth 2 -name 'installer-split.raw' \
+        -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2)
+fi
+
+if [ -z "$INSTALLER_RAW" ] || [ ! -f "$INSTALLER_RAW" ]; then
+    echo "$PREFIX Error: installer-split.raw not found under dist/$EVE_ARCH/."
+    echo "         Build first: make installer-split"
     exit 1
 fi
 
