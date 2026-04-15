@@ -4,18 +4,17 @@
 # SPDX-License-Identifier: Apache-2.0
 FROM lfedge/eve-alpine:47d267f35e4832f639bf65bbe8a2e7b2f31e3e36 AS build
 
-ENV BUILD_PKGS make gcc g++ git perl linux-headers musl-dev cmake zlib-dev bcc-dev libbpf-dev cereal flex bison llvm20-libs llvm20-dev llvm20-static llvm20-gtest clang-dev clang-static pahole gtest-dev bash libxml2-dev curl-dev binutils-dev libpcap-dev
+ENV BUILD_PKGS make gcc g++ git perl linux-headers musl-dev cmake zlib-dev bcc-dev libbpf-dev cereal flex bison llvm13-libs llvm13-dev llvm13-static clang-dev clang-static pahole gtest-dev bash
 
 RUN eve-alpine-deploy.sh
 
 RUN mkdir -p /usr/src
-ADD https://github.com/bpftrace/bpftrace.git#v0.23.3 /usr/src/bpftrace
+ADD https://github.com/bpftrace/bpftrace.git#v0.20.3 /usr/src/bpftrace
 COPY patches /usr/src/bpftrace/patches
 WORKDIR /usr/src/bpftrace
 RUN for i in patches/*.patch; do git apply "$i"; done
 RUN mkdir build
 WORKDIR /usr/src/bpftrace/build
-
 RUN cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang ..
 RUN make -j "$(getconf _NPROCESSORS_ONLN)"
 RUN make install
@@ -40,9 +39,7 @@ FROM scratch AS bin
 COPY --from=build /usr/bin/bpftrace /bpftrace/usr/bin/bpftrace
 
 COPY --from=build /usr/bin/bpftrace-aotrt /bpftrace-aotrt/usr/bin/bpftrace-aotrt
-COPY --from=build /usr/lib/libbpf.so.1.5.1 /bpftrace-aotrt/usr/lib/libbpf.so.1.5.1
-COPY --from=build /usr/lib/libbpf.so.1 /bpftrace-aotrt/usr/lib/libbpf.so.1
-COPY --from=build /usr/lib/libbpf.so /bpftrace-aotrt/usr/lib/libbpf.so
+COPY --from=build /usr/lib/libbpf.so.0 /bpftrace-aotrt/usr/lib/libbpf.so.0
 COPY --from=build /usr/lib/libelf.so.1 /bpftrace-aotrt/usr/lib/libelf.so.1
 COPY --from=build /usr/lib/libz.so.1.3.2 /bpftrace-aotrt/usr/lib/libz.so.1.3.2
 COPY --from=build /usr/lib/libz.so.1 /bpftrace-aotrt/usr/lib/libz.so.1
