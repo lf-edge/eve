@@ -995,13 +995,14 @@ $(INSTALLER_TAR): images/out/installer-$(HV)-$(PLATFORM).yml $(ROOTFS_IMGS) $(PE
 	$(QUIET): $@: Succeeded
 
 # Split installer: uses core rootfs as rootfs.img, bundles ext rootfs for delivery to persist
+# rootfs.img is a symlink to rootfs-core.img (linuxkit needs "rootfs.img" by convention).
+# rootfs-ext.img already exists as a real file from the ext_rootfs build — don't symlink over it.
 $(INSTALLER_SPLIT_TAR): images/out/installer-$(HV)-$(PLATFORM).yml $(ROOTFS_CORE_IMG) $(ROOTFS_EXT_IMG) $(PERSIST_IMG) $(CONFIG_IMG) | $(INSTALLER)
 	$(QUIET): $@: Begin
 	ln -sf rootfs-core.img $(INSTALLER)/rootfs.img
-	ln -sf rootfs-ext.img $(INSTALLER)/rootfs-ext.img
 	echo "Building split installer tarball from $<"
 	./tools/makerootfs.sh tar $(UPDATE_TAR) -y $< -t $@ -d $(INSTALLER) -a $(ZARCH)
-	rm -f $(INSTALLER)/rootfs.img $(INSTALLER)/rootfs-ext.img
+	rm -f $(INSTALLER)/rootfs.img
 	$(QUIET): $@: Succeeded
 
 $(INSTALLER_SPLIT_IMG): $(INSTALLER_SPLIT_TAR) | $(INSTALLER)
