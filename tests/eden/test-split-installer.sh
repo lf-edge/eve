@@ -132,6 +132,14 @@ if [ ! -f "eden" ]; then
     make build
 fi
 
+# Symlink installer to a short path. The EVE dist directory name is very
+# long (version+commit+kernel+author) and swtpm/QEMU use Unix sockets
+# placed alongside the image file — Unix sockets have a 108-byte path
+# limit. Eden's StartSWTPM puts the socket in filepath.Dir(imageFile).
+INSTALLER_SHORT="$EDEN_DIR/dist/installer-split.raw"
+ln -sf "$INSTALLER_RAW" "$INSTALLER_SHORT"
+echo "$PREFIX Symlinked installer to short path: $INSTALLER_SHORT"
+
 # Clean previous state
 ./eden stop 2>/dev/null || true
 ./eden clean --current-context 2>/dev/null || true
@@ -149,7 +157,7 @@ echo "$PREFIX Configuring Eden..."
 ./eden config add default
 ./eden config set default --key=eve.accel --value=true
 ./eden config set default --key=eve.tpm --value=true
-./eden config set default --key=eve.custom-installer.path --value="$INSTALLER_RAW"
+./eden config set default --key=eve.custom-installer.path --value="$INSTALLER_SHORT"
 ./eden config set default --key=eve.custom-installer.format --value=raw
 ./eden config set default --key=eve.disks --value=1
 
