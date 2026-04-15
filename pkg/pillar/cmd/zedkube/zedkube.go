@@ -114,6 +114,8 @@ type zedkube struct {
 	// Config Properties for Drain
 	drainTimeout                       time.Duration
 	drainSkipK8sAPINotReachableTimeout time.Duration
+	configInterval                     time.Duration
+	clusterWideDetectWindowMultiple    int
 
 	// Block 'uncordon' after running it once at bootup
 	onBootUncordonCheckComplete bool
@@ -219,6 +221,8 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		globalConfig:                       types.DefaultConfigItemValueMap(),
 		drainSkipK8sAPINotReachableTimeout: time.Duration(time.Second * types.DefaultDrainSkipK8sAPINotReachableTimeoutSeconds),
 		drainTimeout:                       time.Duration(time.Hour * types.DefaultDrainTimeoutHours),
+		configInterval:                     time.Duration(types.DefaultConfigItemValueMap().GlobalValueInt(types.ConfigInterval)) * time.Second,
+		clusterWideDetectWindowMultiple:    types.DefaultClusterWideDetectWindowMultiple,
 	}
 
 	// do we run a single command, or long-running service?
@@ -800,6 +804,23 @@ func handleGlobalConfigImpl(ctxArg interface{}, key string,
 			log.Functionf("handleGlobalConfigImpl: Updating drainSkipK8sApiTimeout from %d to %d",
 				existingDrainK8sAPINotReachableTimeout, newDrainK8sAPINotReachableTimeout)
 			z.drainSkipK8sAPINotReachableTimeout = time.Second * time.Duration(newDrainK8sAPINotReachableTimeout)
+		}
+
+		// Handle ConfigInterval Change
+		newConfigIntervalSec := newConfigItemValueMap.GlobalValueInt(types.ConfigInterval)
+		existingConfigIntervalSec := currentConfigItemValueMap.GlobalValueInt(types.ConfigInterval)
+		if newConfigIntervalSec != 0 && newConfigIntervalSec != existingConfigIntervalSec {
+			log.Functionf("handleGlobalConfigImpl: Updating configInterval from %d to %d",
+				existingConfigIntervalSec, newConfigIntervalSec)
+			z.configInterval = time.Second * time.Duration(newConfigIntervalSec)
+		}
+
+		newMultiple := newConfigItemValueMap.GlobalValueInt(types.KubernetesDrainAllNodesConfigMultiple)
+		existingMultiple := currentConfigItemValueMap.GlobalValueInt(types.KubernetesDrainAllNodesConfigMultiple)
+		if newMultiple != 0 && newMultiple != existingMultiple {
+			log.Functionf("handleGlobalConfigImpl: Updating clusterWideDetectWindowMultiple from %d to %d",
+				existingMultiple, newMultiple)
+			z.clusterWideDetectWindowMultiple = int(newMultiple)
 		}
 
 		handleK3sConfigOverrideChanged(currentConfigItemValueMap, newConfigItemValueMap)

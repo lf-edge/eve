@@ -25,6 +25,10 @@ const (
 	DefaultDrainSkipK8sAPINotReachableTimeoutSeconds = 300
 	// DefaultDrainTimeoutHours is time allowed for a node drain before a failure is returned
 	DefaultDrainTimeoutHours = 24
+	// DefaultClusterWideDetectWindowMultiple is the multiplier applied to the config interval
+	// to derive the cluster-wide simultaneous-drain detection window.
+	// A value of 2 covers nodes that poll at opposite edges of their config fetch windows.
+	DefaultClusterWideDetectWindowMultiple = 2
 )
 
 // KubeNodeStatus - Enum for the status of a Kubernetes node
