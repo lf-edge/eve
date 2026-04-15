@@ -156,6 +156,49 @@ func isExtendedKubeAPIUnreachable(duration time.Duration) (bool, error) {
 	return true, nil
 }
 
+// hasSchedulableNodes returns true if at least one cluster node other than
+// localNodeUUID is currently schedulable. Returns true on API errors so that
+// the caller falls back to the normal drain path.
+func hasSchedulableNodes(localNodeUUID string) bool {
+	config, err := kubeapi.GetKubeConfig()
+	if err != nil {
+		log.Warnf("hasSchedulableNodes: can't get kubeconfig: %v", err)
+		return true
+	}
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		log.Warnf("hasSchedulableNodes: can't get clientset: %v", err)
+		return true
+	}
+	nodes, err := clientset.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
+	if err != nil {
+		log.Warnf("hasSchedulableNodes: can't list nodes: %v", err)
+		return true
+	}
+	for _, node := range nodes.Items {
+		if node.Labels["node-uuid"] == localNodeUUID {
+			continue // skip self
+		}
+		if node.Spec.Unschedulable {
+			continue
+		}
+		cordoned := false
+		for _, t := range node.Spec.Taints {
+			if t.Key == "node.kubernetes.io/unschedulable" && t.Effect == "NoSchedule" {
+				cordoned = true
+				break
+			}
+		}
+		if !cordoned {
+			return true // found a schedulable peer
+		}
+	}
+	return false
+}
+
+// cordonAndDrainNode manages the multis-step process to
+// cordon and drain kubernetes EVE nodes.
+// This runs in a goroutine and will not watchdog zedkube.
 func cordonAndDrainNode(ctx *zedkube) {
 	log.Notice("cordonAndDrainNode nodedrain-step:drain-starting")
 	publishNodeDrainStatus(ctx, kubeapi.STARTING)
@@ -210,7 +253,38 @@ func cordonAndDrainNode(ctx *zedkube) {
 	publishNodeDrainStatus(ctx, kubeapi.CORDONED)
 
 	//
-	// 4. Drains
+	// 4. Detect cluster-wide simultaneous drain.
+	//    After cordoning this node, poll briefly to let concurrent drain
+	//    requests on other nodes cordon themselves.  If all peer nodes
+	//    become unschedulable within the window, pod eviction is futile:
+	//    evicted pods have no schedulable target node, and distributed
+	//    storage services (e.g. Longhorn instance-managers) will be
+	//    evicted from every node simultaneously, deadlocking volume
+	//    detachment.  Skip pod drain and go directly to COMPLETE.
+	//
+	// NOTE: this window only catches the cluster-wide drain scenario when
+	// all nodes receive the drain-triggering config within
+	// clusterWideDetectWindow of each other.  The window is set to
+	// kubernetes.drain.allnodes.config.multiple * timer.config.interval
+	// (ctx.clusterWideDetectWindowMultiple * ctx.configInterval) to cover
+	// nodes that poll at opposite edges of their config fetch windows.  If
+	// timer.config.interval is set very large the single-node drain
+	// startup delay grows proportionally.
+	//
+	clusterWideDetectWindow := time.Duration(ctx.clusterWideDetectWindowMultiple) * ctx.configInterval
+	const clusterWideDetectInterval = 5 * time.Second
+	detectEnd := time.Now().Add(clusterWideDetectWindow)
+	for time.Now().Before(detectEnd) {
+		if !hasSchedulableNodes(ctx.nodeuuid) {
+			log.Noticef("cordonAndDrainNode nodedrain-step:drain-skip-no-schedulable-nodes -> COMPLETE")
+			publishNodeDrainStatus(ctx, kubeapi.COMPLETE)
+			return
+		}
+		time.Sleep(clusterWideDetectInterval)
+	}
+
+	//
+	// 5. Drains
 	//
 	drainRetry := 1
 	for {
@@ -221,6 +295,16 @@ func cordonAndDrainNode(ctx *zedkube) {
 			break
 		}
 		log.Errorf("cordonAndDrainNode nodedrain-step:drain-failure try:%d err:%v", drainRetry, err)
+
+		// After a drain failure, re-check schedulability: if all peer
+		// nodes are now cordoned the failure was caused by the
+		// concurrent cluster-wide drain scenario rather than a
+		// transient error.  Declare COMPLETE instead of retrying.
+		if !hasSchedulableNodes(ctx.nodeuuid) {
+			log.Noticef("cordonAndDrainNode nodedrain-step:drain-skip-no-schedulable-nodes after failure try:%d -> COMPLETE", drainRetry)
+			break
+		}
+
 		drainRetry = drainRetry + 1
 		if drainRetry >= drainRetryMax {
 			log.Error("cordonAndDrainNode nodedrain-step:drain-failure-givingup NodeDrainStatus->FAILEDDRAIN")
@@ -241,7 +325,7 @@ func cordonAndDrainNode(ctx *zedkube) {
 
 	requestTime := getNodeDrainRequestTime(ctx)
 	//
-	// 5. Drain Complete: notify requester
+	// 6. Drain Complete: notify requester
 	//
 	log.Notice("cordonAndDrainNode nodedrain-step:drain-complete")
 	// Please keep this log message unchanged as it is intended to be mined for statistics

@@ -182,6 +182,7 @@ func TestNewConfigItemSpecMap(t *testing.T) {
 		BlobDownloadMaxRetries,
 		KubernetesDrainTimeout,
 		DrainSkipK8sAPINotReachableTimeout,
+		KubernetesDrainAllNodesConfigMultiple,
 		// Bool Items
 		UsbAccess,
 		VgaAccess,

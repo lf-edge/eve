@@ -410,6 +410,12 @@ const (
 	// IsTimeout
 	// IsTooManyRequests
 	DrainSkipK8sAPINotReachableTimeout GlobalSettingKey = "drain.skip.k8sapinotreachable.timeout"
+	// KubernetesDrainAllNodesConfigMultiple : multiplier applied to timer.config.interval to
+	// derive the cluster-wide simultaneous-drain detection window.  After cordoning this node,
+	// zedkube waits up to (multiple × config-interval) for all peer nodes to also become
+	// unschedulable before deciding whether to skip pod eviction.  Increase this value if nodes
+	// fetch config at widely staggered intervals.  Min 1, Max 1000, default 2.
+	KubernetesDrainAllNodesConfigMultiple GlobalSettingKey = "kubernetes.drain.allnodes.config.multiple"
 
 	// MemoryMonitorEnabled : Enable memory monitor
 	MemoryMonitorEnabled GlobalSettingKey = "memory-monitor.enabled"
@@ -1106,6 +1112,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	// Kubernetes Drain Section
 	configItemSpecMap.AddIntItem(KubernetesDrainTimeout, DefaultDrainTimeoutHours, 1, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(DrainSkipK8sAPINotReachableTimeout, DefaultDrainSkipK8sAPINotReachableTimeoutSeconds, 1, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(KubernetesDrainAllNodesConfigMultiple, DefaultClusterWideDetectWindowMultiple, 1, 1000)
 	// Internal Memory Monitoring section
 	configItemSpecMap.AddBoolItem(InternalMemoryMonitorStoreEnabled, true)
 	configItemSpecMap.AddBoolItem(InternalMemoryMonitorAnalyzeEnabled, true)
