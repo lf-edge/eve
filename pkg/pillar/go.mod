@@ -31,7 +31,7 @@ require (
 	github.com/jackwakefield/gopac v1.0.2
 	github.com/k8snetworkplumbingwg/network-attachment-definition-client v1.5.0
 	github.com/lf-edge/edge-containers v0.0.0-20251107072102-46bed3192170
-	github.com/lf-edge/eve-api/go v0.0.0-20260114160322-5feda2767927
+	github.com/lf-edge/eve-api/go v0.0.0-20260323170505-58819a210744
 	github.com/lf-edge/eve-libs v0.0.0-20260304091825-96eaa95b9f8b
 	github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20240315102754-0f6d1f182e0d
 	github.com/lf-edge/go-qemu v0.0.0-20231121152149-4c467eda0c56
@@ -60,7 +60,7 @@ require (
 	golang.org/x/net v0.47.0
 	golang.org/x/sys v0.40.0
 	google.golang.org/grpc v1.75.0
-	google.golang.org/protobuf v1.36.7
+	google.golang.org/protobuf v1.36.11
 	gopkg.in/yaml.v2 v2.4.0
 	k8s.io/api v0.29.3
 	k8s.io/apimachinery v0.29.3

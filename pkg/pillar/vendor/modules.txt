@@ -879,7 +879,7 @@ github.com/leodido/go-urn
 github.com/lf-edge/edge-containers/pkg/registry
 github.com/lf-edge/edge-containers/pkg/resolver
 github.com/lf-edge/edge-containers/pkg/tgz
-# github.com/lf-edge/eve-api/go v0.0.0-20260114160322-5feda2767927
+# github.com/lf-edge/eve-api/go v0.0.0-20260323170505-58819a210744
 ## explicit; go 1.21.1
 github.com/lf-edge/eve-api/go/attest
 github.com/lf-edge/eve-api/go/auth
@@ -1596,8 +1596,8 @@ google.golang.org/grpc/xds/internal/xdsclient/xdslbregistry
 google.golang.org/grpc/xds/internal/xdsclient/xdslbregistry/converter
 google.golang.org/grpc/xds/internal/xdsclient/xdsresource
 google.golang.org/grpc/xds/internal/xdsclient/xdsresource/version
-# google.golang.org/protobuf v1.36.7
-## explicit; go 1.22
+# google.golang.org/protobuf v1.36.11
+## explicit; go 1.23
 google.golang.org/protobuf/encoding/protodelim
 google.golang.org/protobuf/encoding/protojson
 google.golang.org/protobuf/encoding/prototext
