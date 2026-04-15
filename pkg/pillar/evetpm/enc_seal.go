@@ -97,6 +97,45 @@ func tpmSupportsAES128CFB() bool {
 	return err == nil
 }
 
+func getExpectedPCRDigest(t transport.TPM, selection tpm2.TPMLPCRSelection, hashAlg tpm2.TPMAlgID) ([]byte, error) {
+	cryptoHashAlg, err := hashAlg.Hash()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get crypto hash: %w", err)
+	}
+
+	var expectedVal []byte
+	for _, sel := range selection.PCRSelections {
+		for byteIdx, bitmask := range sel.PCRSelect {
+			for bit := uint(0); bit < 8; bit++ {
+				if bitmask&(1<<bit) == 0 {
+					continue
+				}
+				pcr := uint(byteIdx)*8 + bit
+				singleSel := tpm2.TPMLPCRSelection{
+					PCRSelections: []tpm2.TPMSPCRSelection{
+						{
+							Hash:      sel.Hash,
+							PCRSelect: tpm2.PCClientCompatible.PCRs(pcr),
+						},
+					},
+				}
+				rsp, err := (tpm2.PCRRead{PCRSelectionIn: singleSel}).Execute(t)
+				if err != nil {
+					return nil, fmt.Errorf("failed to read PCR %d: %w", pcr, err)
+				}
+				if len(rsp.PCRValues.Digests) != 1 {
+					return nil, fmt.Errorf("PCR %d: expected 1 digest, got %d", pcr, len(rsp.PCRValues.Digests))
+				}
+				expectedVal = append(expectedVal, rsp.PCRValues.Digests[0].Buffer...)
+			}
+		}
+	}
+
+	hash := cryptoHashAlg.New()
+	hash.Write(expectedVal)
+	return hash.Sum(nil), nil
+}
+
 // nvReadAll reads the entire contents of an NV index, using modern tpm2 APIs.
 func nvReadAll(t transport.TPM, nvIndex tpm2.TPMHandle) ([]byte, error) {
 	rpRsp, err := (tpm2.NVReadPublic{NVIndex: nvIndex}).Execute(t)
@@ -231,6 +270,15 @@ func sealDiskKeyEncrypted(log *base.LogObject, key []byte, pcrSel legacytpm2.PCR
 		return err
 	}
 
+	// Compute the expected PCR digest, if this is not set in PolicyPCR,
+	// specifically in trial session, TPM won't bother to calculated the
+	// PCRs digest and use a zero digest which leads to a wrong policy
+	// digest and ultimaetly unseal failure.
+	pcrDigest, err := getExpectedPCRDigest(t, pcrSelection, tpm2.TPMAlgSHA256)
+	if err != nil {
+		return fmt.Errorf("reading PCR values for seal: %w", err)
+	}
+
 	// Create a trial session to compute the policy digest
 	trialSess, trialCloser, err := tpm2.PolicySession(t, tpm2.TPMAlgSHA256, 16, tpm2.Trial())
 	if err != nil {
@@ -240,6 +288,7 @@ func sealDiskKeyEncrypted(log *base.LogObject, key []byte, pcrSel legacytpm2.PCR
 
 	_, err = (tpm2.PolicyPCR{
 		PolicySession: trialSess.Handle(),
+		PcrDigest:     tpm2.TPM2BDigest{Buffer: pcrDigest},
 		Pcrs:          pcrSelection,
 	}).Execute(t)
 	if err != nil {
@@ -275,10 +324,21 @@ func sealDiskKeyEncrypted(log *base.LogObject, key []byte, pcrSel legacytpm2.PCR
 			Type:    tpm2.TPMAlgKeyedHash,
 			NameAlg: tpm2.TPMAlgSHA256,
 			ObjectAttributes: tpm2.TPMAObject{
-				FixedTPM:    true,
-				FixedParent: true,
+				FixedTPM:        true,
+				FixedParent:     true,
+				AdminWithPolicy: true,
 			},
 			AuthPolicy: policyDigest,
+			// TPM spec mandates that for keyed hash objects,
+			// the Parameters field must be a TPM_AlgNull
+			Parameters: tpm2.NewTPMUPublicParms(
+				tpm2.TPMAlgKeyedHash,
+				&tpm2.TPMSKeyedHashParms{
+					Scheme: tpm2.TPMTKeyedHashScheme{
+						Scheme: tpm2.TPMAlgNull,
+					},
+				},
+			),
 		}),
 	}
 	createRsp, err := createCmd.Execute(t)
