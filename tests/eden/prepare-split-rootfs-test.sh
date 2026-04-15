@@ -85,6 +85,12 @@ echo "  HV/Arch:      $EVE_HV/$EVE_ARCH"
 [ -n "$KERNEL_TAG" ] && echo "  Kernel tag:   $KERNEL_TAG"
 echo ""
 
+if ! command -v veritysetup >/dev/null 2>&1; then
+    echo "$PREFIX Error: veritysetup not found. It is required to generate dm-verity metadata for split-rootfs images."
+    echo "         Install it with: dnf install veritysetup (Fedora) or apt install cryptsetup (Debian/Ubuntu)"
+    exit 1
+fi
+
 restore_build_marker() {
     if [ -n "$RUNME_BACKUP" ] && [ -f "$RUNME_BACKUP" ]; then
         cp "$RUNME_BACKUP" "$RUNME_FILE"
