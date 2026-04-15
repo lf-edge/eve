@@ -2,7 +2,7 @@
 
 # Copyright (c) 2024 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
-FROM lfedge/eve-alpine:7b892c4653d567eb3b6a306064c3bc7fc14f6bab AS build
+FROM lfedge/eve-alpine:47d267f35e4832f639bf65bbe8a2e7b2f31e3e36 AS build
 
 ENV BUILD_PKGS make gcc g++ git perl linux-headers musl-dev cmake zlib-dev bcc-dev libbpf-dev cereal flex bison llvm20-libs llvm20-dev llvm20-static llvm20-gtest clang-dev clang-static pahole gtest-dev bash libxml2-dev curl-dev binutils-dev libpcap-dev
 
@@ -44,7 +44,7 @@ COPY --from=build /usr/lib/libbpf.so.1.5.1 /bpftrace-aotrt/usr/lib/libbpf.so.1.5
 COPY --from=build /usr/lib/libbpf.so.1 /bpftrace-aotrt/usr/lib/libbpf.so.1
 COPY --from=build /usr/lib/libbpf.so /bpftrace-aotrt/usr/lib/libbpf.so
 COPY --from=build /usr/lib/libelf.so.1 /bpftrace-aotrt/usr/lib/libelf.so.1
-COPY --from=build /usr/lib/libz.so.1.3.1 /bpftrace-aotrt/usr/lib/libz.so.1.3.1
+COPY --from=build /usr/lib/libz.so.1.3.2 /bpftrace-aotrt/usr/lib/libz.so.1.3.2
 COPY --from=build /usr/lib/libz.so.1 /bpftrace-aotrt/usr/lib/libz.so.1
 COPY --from=build /usr/lib/libbcc_bpf.so.0 /bpftrace-aotrt/usr/lib/libbcc_bpf.so.0
 COPY --from=build /usr/lib/libstdc++.so.6 /bpftrace-aotrt/usr/lib/libstdc++.so.6
