@@ -158,6 +158,13 @@ clang20-headers
 clang20-libclang
 clang20-libs
 clang20-static
+clang17
+clang17-dev
+clang17-extra-tools
+clang17-headers
+clang17-libclang
+clang17-libs
+clang17-static
 cmake
 coreutils
 coreutils-env
@@ -223,6 +230,7 @@ gawk
 gc
 gcc
 gcompat
+gdb
 gdbm
 gettext
 gettext-asprintf
@@ -473,6 +481,13 @@ lua5.3-lzlib
 llvm18-libs
 llvm20-libs
 llvm20-linker-tools
+llvm17
+llvm17-dev
+llvm17-libs
+llvm17-linker-tools
+llvm17-static
+llvm17-test-utils
+llvm17-gtest
 lm-sensors
 lm-sensors-libs
 lua5.4-libs
