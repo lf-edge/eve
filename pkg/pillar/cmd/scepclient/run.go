@@ -475,9 +475,7 @@ func (c *SCEPClient) handleDevNetStatus(key string, status interface{}) {
 	c.log.Functionf("handleDevNetStatus for %s", key)
 	wasTesting := c.devNetworkStatus.Testing
 	*c.devNetworkStatus = devNetStatus
-	if c.httpClient.UsingV2API() {
-		c.httpClient.UpdateTLSProxyCerts()
-	}
+	c.httpClient.UpdateTLSProxyCerts()
 	if wasTesting && !c.devNetworkStatus.Testing {
 		// Network testing has just completed (either a new configuration
 		// was applied or a fallback was selected). Retry certificate

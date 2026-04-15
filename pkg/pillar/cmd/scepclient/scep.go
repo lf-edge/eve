@@ -575,7 +575,6 @@ func (c *SCEPClient) getCACertOverProxy(
 
 	proxyURL := controllerconn.URLPathString(
 		c.controllerHostname,
-		c.httpClient.UsingV2API(),
 		c.devUUID,
 		"proxy/scep",
 	)
@@ -870,7 +869,6 @@ func (c *SCEPClient) getCACapsOverProxy(
 
 	proxyURL := controllerconn.URLPathString(
 		c.controllerHostname,
-		c.httpClient.UsingV2API(),
 		c.devUUID,
 		"proxy/scep",
 	)
@@ -940,7 +938,6 @@ func (c *SCEPClient) execPKIOperationOverProxy(profile types.SCEPProfile,
 
 	proxyURL := controllerconn.URLPathString(
 		c.controllerHostname,
-		c.httpClient.UsingV2API(),
 		c.devUUID,
 		"proxy/scep",
 	)
