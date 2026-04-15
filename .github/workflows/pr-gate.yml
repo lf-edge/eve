@@ -88,7 +88,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RUN_ID: ${{ steps.meta.outputs.original_run_id }}
           GH_REPO: ${{ github.repository }}
-          BUILD_JOB_NAME: "eve (${{ matrix.arch }}, ${{ matrix.hv }}, ${{ matrix.platform }})"
+          BUILD_JOB_NAME: "eve-${{ matrix.arch }}-${{ matrix.hv }}-${{ matrix.platform }} / build"
         run: |
           build_conclusion=$(gh api \
             /repos/$GH_REPO/actions/runs/$RUN_ID/jobs \
