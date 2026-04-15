@@ -161,6 +161,17 @@ echo "$PREFIX Configuring Eden..."
 ./eden config set default --key=eve.custom-installer.format --value=raw
 ./eden config set default --key=eve.disks --value=1
 
+# Use EVE-built OVMF firmware (has TPM2 support).
+# Eden's default OVMF download does not include TPM2 drivers,
+# causing "Unknown TPM error" in GRUB and broken PCR measurements.
+EVE_FW_DIR="$(dirname "$INSTALLER_RAW")/installer/firmware"
+if [ -f "$EVE_FW_DIR/OVMF_CODE.fd" ] && [ -f "$EVE_FW_DIR/OVMF_VARS.fd" ]; then
+    echo "$PREFIX Using EVE-built OVMF firmware (TPM2-enabled)"
+    ./eden config set default --key=eve.firmware --value="[\"$EVE_FW_DIR/OVMF_CODE.fd\",\"$EVE_FW_DIR/OVMF_VARS.fd\"]"
+else
+    echo "$PREFIX Warning: EVE firmware not found at $EVE_FW_DIR, using Eden default (no TPM2)"
+fi
+
 ./dist/bin/eden+ports.sh 2223:2223 2224:2224 5912:5902 5911:5901 \
     8027:8027 8028:8028 8029:8029 8030:8030 8031:8031
 
