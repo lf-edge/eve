@@ -7,14 +7,21 @@ package zedkube
 
 import (
 	"context"
+	"errors"
 	"net"
 	"sort"
+	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 )
+
+// kubeAPITimeout caps every k8s API call made from the periodic timer handler.
+// It must be well under warningTime (40s) so the main event loop goroutine
+// can return and call ps.StillRunning() before the watchdog touch file goes stale.
+const kubeAPITimeout = 30 * time.Second
 
 var (
 	kubeServiceCIDR *net.IPNet
@@ -38,6 +45,11 @@ func (z *zedkube) initKubePrefixes() error {
 func (z *zedkube) collectKubeSvcs() {
 	log.Functionf("collectKubeStats: Started collecting kube stats")
 
+	// Bound all k8s API calls so that a degraded API server cannot block the
+	// main event loop goroutine long enough to stale the watchdog touch file.
+	ctx, cancel := context.WithTimeout(context.Background(), kubeAPITimeout)
+	defer cancel()
+
 	clientset, err := getKubeClientSet()
 	if err != nil {
 		log.Errorf("collectKubeSvcs: can't get clientset %v", err)
@@ -45,21 +57,21 @@ func (z *zedkube) collectKubeSvcs() {
 	}
 
 	// Get services
-	serviceInfoList, err := z.GetAllKubeServices(clientset)
+	serviceInfoList, err := z.GetAllKubeServices(ctx, clientset)
 	if err != nil {
 		log.Errorf("collectKubeSvcs: can't get services %v", err)
 		return
 	}
 
 	// Get ingresses, passing the service list to avoid redundant API calls
-	ingressInfoList, err := z.GetAllKubeIngresses(clientset, serviceInfoList)
+	ingressInfoList, err := z.GetAllKubeIngresses(ctx, clientset, serviceInfoList)
 	if err != nil {
 		log.Errorf("collectKubeSvcs: can't get ingresses %v", err)
 		// Continue anyway, we might have some services
 	}
 
 	// Collect kube-vip load balancer pool status if kubevip is deployed
-	lbPoolStatus := collectLBPoolStatus(clientset, serviceInfoList)
+	lbPoolStatus := collectLBPoolStatus(ctx, clientset, serviceInfoList)
 
 	// Create new KubeUserServices struct with collected data
 	newKubeUserServices := types.KubeUserServices{
@@ -89,9 +101,9 @@ func (z *zedkube) collectKubeSvcs() {
 // GetAllKubeServices returns a slice of KubeServiceInfo containing all Kubernetes services across namespaces,
 // excluding kube-system, kubevirt, longhorn-system, cdi namespaces,
 // and the 'kubernetes' service in the default namespace.
-func (z *zedkube) GetAllKubeServices(clientset *kubernetes.Clientset) ([]types.KubeServiceInfo, error) {
+func (z *zedkube) GetAllKubeServices(ctx context.Context, clientset *kubernetes.Clientset) ([]types.KubeServiceInfo, error) {
 	// List all services across all namespaces
-	services, err := clientset.CoreV1().Services("").List(context.Background(), metav1.ListOptions{})
+	services, err := clientset.CoreV1().Services("").List(ctx, metav1.ListOptions{})
 	if err != nil {
 		log.Errorf("GetAllKubeServices: can't get services: %v", err)
 		return nil, err
@@ -189,9 +201,9 @@ func (z *zedkube) GetAllKubeServices(clientset *kubernetes.Clientset) ([]types.K
 // GetAllKubeIngresses returns a list of all Kubernetes ingresses across namespaces,
 // excluding the same namespaces that we exclude for services.
 // It takes the serviceInfoList to avoid making redundant API calls for service information.
-func (z *zedkube) GetAllKubeIngresses(clientset *kubernetes.Clientset, serviceInfoList []types.KubeServiceInfo) ([]types.KubeIngressInfo, error) {
+func (z *zedkube) GetAllKubeIngresses(ctx context.Context, clientset *kubernetes.Clientset, serviceInfoList []types.KubeServiceInfo) ([]types.KubeIngressInfo, error) {
 	// List all ingresses across all namespaces
-	ingresses, err := clientset.NetworkingV1().Ingresses("").List(context.Background(), metav1.ListOptions{})
+	ingresses, err := clientset.NetworkingV1().Ingresses("").List(ctx, metav1.ListOptions{})
 	if err != nil {
 		log.Errorf("GetAllKubeIngresses: can't get ingresses: %v", err)
 		return nil, err
@@ -200,6 +212,11 @@ func (z *zedkube) GetAllKubeIngresses(clientset *kubernetes.Clientset, serviceIn
 	var ingressInfoList []types.KubeIngressInfo
 
 	for _, ing := range ingresses.Items {
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			log.Warningf("GetAllKubeIngresses: context deadline exceeded while processing ingresses: %v", ctx.Err())
+			return ingressInfoList, ctx.Err()
+		}
+
 		// Skip ingresses in excluded namespaces
 		if _, excluded := excludedKubeNamespaces[ing.Namespace]; excluded {
 			continue
@@ -291,11 +308,17 @@ func (z *zedkube) GetAllKubeIngresses(clientset *kubernetes.Clientset, serviceIn
 				// If not found in our list (which should include all services now),
 				// try to get it directly - this might happen in rare cases like race conditions
 				if !serviceFound {
+					if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+						log.Warningf("GetAllKubeIngresses: context deadline exceeded before resolving service %s/%s: %v",
+							serviceNamespace, serviceName, ctx.Err())
+						return ingressInfoList, ctx.Err()
+					}
+
 					log.Warningf("GetAllKubeIngresses: service %s/%s not found in serviceInfoList, fetching directly",
 						serviceNamespace, serviceName)
 
 					svc, err := clientset.CoreV1().Services(serviceNamespace).Get(
-						context.Background(), serviceName, metav1.GetOptions{})
+						ctx, serviceName, metav1.GetOptions{})
 					if err != nil {
 						log.Warningf("GetAllKubeIngresses: couldn't get service %s/%s: %v",
 							serviceNamespace, serviceName, err)
@@ -330,9 +353,9 @@ func (z *zedkube) GetAllKubeIngresses(clientset *kubernetes.Clientset, serviceIn
 // collectLBPoolStatus reads the kubevip ConfigMap from kube-system to get the configured
 // load balancer pool, and gathers IPs currently allocated to LoadBalancer-type services.
 // Returns nil if the kubevip ConfigMap does not exist (kubevip not yet deployed).
-func collectLBPoolStatus(clientset *kubernetes.Clientset, services []types.KubeServiceInfo) *types.KubeLBPoolStatus {
+func collectLBPoolStatus(ctx context.Context, clientset *kubernetes.Clientset, services []types.KubeServiceInfo) *types.KubeLBPoolStatus {
 	cm, err := clientset.CoreV1().ConfigMaps("kube-system").Get(
-		context.Background(), "kubevip", metav1.GetOptions{})
+		ctx, "kubevip", metav1.GetOptions{})
 	if err != nil {
 		// kubevip ConfigMap not present — not deployed yet
 		return nil

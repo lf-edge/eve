@@ -353,6 +353,10 @@ func (ctx kubevirtContext) CreateReplicaVMIConfig(domainName string, config type
 		Type: "virtio",
 	}
 
+	// Disable the guest-console-log sidecar container in the virt-launcher pod.
+	// EVE collects logs through its own mechanisms; the extra container is unnecessary.
+	vmi.Spec.Domain.Devices.LogSerialConsole = ptrBool(false)
+
 	// If FML type, set the firmware bootloader to EFI
 	if config.VirtualizationMode == types.FML {
 		if runtime.GOARCH == "amd64" {

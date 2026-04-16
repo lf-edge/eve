@@ -38,6 +38,10 @@ const (
 	warningTime          = 40 * time.Second
 	stillRunningInterval = 25 * time.Second
 	logcollectInterval   = 10
+	// kubeStatsInterval : how often cluster stats and service health are collected (seconds).
+	// Stats are only published by the elected leader and are less latency-sensitive than
+	// app-status or log collection, so a longer interval is acceptable.
+	kubeStatsInterval = 30
 
 	inlineCmdKubeClusterUpdateStatus = "pubKubeClusterUpdateStatus"
 	inlineCmdVmiDetach               = "vmiDetach"
@@ -591,7 +595,13 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	if err != nil { // should never happen
 		log.Fatalf("zedkube: initKubePrefixes %v", err)
 	}
+	// Three separate periodic timers replace the former single appLogTimer.
+	// Each branch runs at most two functions with a watchdog touch in between,
+	// so no single select case can block longer than ~2*kubeAPITimeout (60s) —
+	// well within errorTime (3 min) and safely bracketed by StillRunning calls.
 	appLogTimer := time.NewTimer(logcollectInterval * time.Second)
+	appStatusTimer := time.NewTimer(logcollectInterval * time.Second)
+	kubeStatsTimer := time.NewTimer(kubeStatsInterval * time.Second)
 
 	zedkubeWdUpdate := func() {
 		ps.StillRunning(agentName, warningTime, errorTime)
@@ -607,13 +617,30 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		case change := <-subAppInstanceConfig.MsgChan():
 			subAppInstanceConfig.ProcessChange(change)
 
+		// Timer 1: app log streaming only.
+		// collectAppLogs() returns early on stream timeout so this branch
+		// is bounded by a single kubeAPITimeout, not N*kubeAPITimeout.
 		case <-appLogTimer.C:
 			zedkubeCtx.collectAppLogs()
-			zedkubeCtx.checkAppsFailover(zedkubeWdUpdate)
-			zedkubeCtx.checkAppsStatus()
-			zedkubeCtx.collectKubeStats()
-			zedkubeCtx.collectKubeSvcs()
+			zedkubeWdUpdate()
 			appLogTimer = time.NewTimer(logcollectInterval * time.Second)
+
+		// Timer 2: failover detection and per-app cluster status.
+		// zedkubeWdUpdate between the two calls resets the watchdog budget
+		// so each function gets its own kubeAPITimeout window.
+		case <-appStatusTimer.C:
+			zedkubeCtx.checkAppsFailover(zedkubeWdUpdate)
+			zedkubeWdUpdate()
+			zedkubeCtx.checkAppsStatus()
+			appStatusTimer = time.NewTimer(logcollectInterval * time.Second)
+
+		// Timer 3: cluster-wide stats and service health (leader-only, less frequent).
+		// zedkubeWdUpdate between the two calls resets the watchdog budget.
+		case <-kubeStatsTimer.C:
+			zedkubeCtx.collectKubeStats()
+			zedkubeWdUpdate()
+			zedkubeCtx.collectKubeSvcs()
+			kubeStatsTimer = time.NewTimer(kubeStatsInterval * time.Second)
 
 		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)

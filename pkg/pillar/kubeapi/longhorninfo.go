@@ -393,7 +393,9 @@ func LonghornReplicaList(ownerNodeName string, longhornVolName string) (*lhv1bet
 	if longhornVolName != "" {
 		labelSelectors = append(labelSelectors, "longhornvolume="+longhornVolName)
 	}
-	replicas, err := lhClient.LonghornV1beta2().Replicas(longhornNamespace).List(context.Background(), metav1.ListOptions{
+	lhCtx, lhCancel := context.WithTimeout(context.Background(), kubeAPITimeout)
+	defer lhCancel()
+	replicas, err := lhClient.LonghornV1beta2().Replicas(longhornNamespace).List(lhCtx, metav1.ListOptions{
 		LabelSelector: strings.Join(labelSelectors, ","),
 	})
 	if err != nil {
