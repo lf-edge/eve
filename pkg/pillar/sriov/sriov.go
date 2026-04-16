@@ -4,7 +4,6 @@
 package sriov
 
 import (
-	"context"
 	"fmt"
 	"net"
 	"os"
@@ -365,36 +364,17 @@ func GetVf(device string) (*VFList, error) { //nolint:gocyclo
 
 // GetVfByTimeout returns Vf for given PF by timeout
 func GetVfByTimeout(timeout time.Duration, device string, expectedVfCount uint8) (*VFList, error) {
-	toCtx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-	c := AsyncGetVF(toCtx, device, expectedVfCount)
+	deadline := time.Now().Add(timeout)
 	for {
-		select {
-		case answer := <-c:
-			return answer, nil
-		case <-toCtx.Done():
+		vfs, err := GetVf(device)
+		if err == nil && vfs != nil && len(vfs.Data) == int(expectedVfCount) {
+			return vfs, nil
+		}
+		if time.Now().After(deadline) {
 			return nil, fmt.Errorf("getVfByTimeout reached timeout %v", timeout)
 		}
+		time.Sleep(1 * time.Second)
 	}
-}
-
-// AsyncGetVF returns Vf for given PF asynchronously
-func AsyncGetVF(ctx context.Context, device string, expectedVfCount uint8) chan *VFList {
-	ch := make(chan *VFList)
-	go func() {
-		select {
-		default:
-			time.Sleep(1 * time.Second)
-			vfs, _ := GetVf(device)
-			if len(vfs.Data) == int(expectedVfCount) {
-				ch <- vfs
-				break
-			}
-		case <-ctx.Done():
-			return
-		}
-	}()
-	return ch
 }
 
 // EthVF must match EthVF structure in devcommon.proto
