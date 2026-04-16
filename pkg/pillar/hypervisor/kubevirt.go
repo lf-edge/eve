@@ -32,6 +32,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	k8sapitypes "k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	metricsv "k8s.io/metrics/pkg/client/clientset/versioned"
@@ -353,9 +354,16 @@ func (ctx kubevirtContext) CreateReplicaVMIConfig(domainName string, config type
 		Type: "virtio",
 	}
 
-	// Disable the guest-console-log sidecar container in the virt-launcher pod.
-	// EVE collects logs through its own mechanisms; the extra container is unnecessary.
-	vmi.Spec.Domain.Devices.LogSerialConsole = ptrBool(false)
+	// Disable app log collection if user asked for it
+	if config.DisableLogs {
+		vmi.Spec.Domain.Devices.LogSerialConsole = ptrBool(false)
+	}
+
+	// Set Firmware UUID from app UUID so the guest always sees a stable SMBIOS UUID.
+	// This is required for Firewall kind of apps that needs a stable UUID to work with during failover and keep licenses valid.
+	vmi.Spec.Domain.Firmware = &v1.Firmware{
+		UUID: k8sapitypes.UID(config.UUIDandVersion.UUID.String()),
+	}
 
 	// If FML type, set the firmware bootloader to EFI
 	if config.VirtualizationMode == types.FML {
