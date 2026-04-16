@@ -16,6 +16,10 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
 )
 
+// bondDefaultMiimon is the default MII monitoring interval (in milliseconds) applied
+// to failover-type bonds when no monitoring method is explicitly configured.
+const bondDefaultMiimon = 100
+
 // Bond : Bond interface.
 type Bond struct {
 	types.BondConfig
@@ -141,6 +145,11 @@ func (c *BondConfigurator) Create(ctx context.Context, item depgraph.Item) error
 	} else if bondCfg.ARPMonitor.Enabled {
 		bond.ArpInterval = int(bondCfg.ARPMonitor.Interval)
 		bond.ArpIpTargets = bondCfg.ARPMonitor.IPTargets
+	} else if isFailoverBondMode(bondCfg.Mode) {
+		// Enable MII monitoring with a default interval for failover-type bonds
+		// when no monitoring method is explicitly configured. Without link monitoring,
+		// failover bonds cannot detect slave failures and are essentially useless.
+		bond.Miimon = bondDefaultMiimon
 	}
 	bond.MTU = int(bondCfg.GetMTU())
 	err := netlink.LinkAdd(bond)
@@ -186,6 +195,19 @@ func (c *BondConfigurator) aggregateInterface(bond *netlink.Bond, ifName string)
 		return err
 	}
 	return nil
+}
+
+// isFailoverBondMode returns true for bond modes that rely on link monitoring
+// to detect slave failures and trigger failover.
+func isFailoverBondMode(mode types.BondMode) bool {
+	switch mode {
+	case types.BondModeActiveBackup,
+		types.BondModeBalanceTLB,
+		types.BondModeBalanceALB:
+		return true
+	default:
+		return false
+	}
 }
 
 func (c *BondConfigurator) disaggregateInterface(aggrIfName string) error {
