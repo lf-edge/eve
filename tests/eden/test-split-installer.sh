@@ -1,19 +1,15 @@
 #!/bin/bash
 #
-# Test split-rootfs installer (USB install path).
+# Test split-rootfs installer (USB install path) with Eden.
 #
-# This script tests the full installer flow:
-#   1. Builds installer-split.raw (universal image, HV=uni)
-#   2. Optionally injects a pre-defined HV type into CONFIG (simulates ZFlash)
-#   3. Sets up Eden with custom-installer.path
-#   4. Eden boots the installer in QEMU, installs to target disk, reboots
-#   5. Verifies: CONFIG HV type, Extension mounted, services running, PCR12
+# This script handles the setup (build, CONFIG injection, Eden config).
+# Verification is done by the verify_split_install.txt escript.
 #
 # Usage:
-#   # Default install (KVM, 60s timeout):
+#   # Default install (KVM, 60s GRUB timeout):
 #   ./tests/eden/test-split-installer.sh
 #
-#   # Pre-parametrized Kubevirt (simulates ZFlash):
+#   # Pre-parametrized Kubevirt (simulates ZFlash, no menu):
 #   INSTALL_HV=k ./tests/eden/test-split-installer.sh
 #
 #   # Pre-parametrized Xen:
@@ -23,8 +19,9 @@
 #   SKIP_BUILD=1 ./tests/eden/test-split-installer.sh
 #
 # Options:
-#   INSTALL_HV=<kvm|k|xen>  Pre-parametrize HV in CONFIG (default: none, uses GRUB timeout → KVM)
+#   INSTALL_HV=<kvm|k|xen>  Pre-parametrize HV in CONFIG (default: none → GRUB timeout → KVM)
 #   SKIP_BUILD=1             Skip building installer-split.raw
+#   SKIP_EDEN_SETUP=1        Skip Eden setup (already running from previous test)
 #   EDEN_DIR=<path>          Path to Eden checkout (default: ~/projects/eden)
 #   EVE_ARCH=<arch>          Architecture (default: amd64)
 #   KERNEL_TAG=<tag>         Custom kernel tag
@@ -35,13 +32,16 @@ PREFIX="[INSTALLER-TEST]"
 EVE_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 EDEN_DIR="${EDEN_DIR:-$HOME/projects/eden}"
 EVE_ARCH="${EVE_ARCH:-amd64}"
-INSTALL_HV="${INSTALL_HV:-}"  # empty = interactive (timeout → KVM)
+INSTALL_HV="${INSTALL_HV:-}"
+EXPECTED_HV="${INSTALL_HV:-kvm}"  # if no HV injected, GRUB timeout defaults to KVM
+TESTDATA_DIR="$EVE_ROOT/tests/eden/testdata"
 
 echo "$PREFIX Configuration:"
 echo "  EVE repo:     $EVE_ROOT"
 echo "  Eden dir:     $EDEN_DIR"
 echo "  Arch:         $EVE_ARCH"
 echo "  Install HV:   ${INSTALL_HV:-<none, GRUB timeout → KVM>}"
+echo "  Expected HV:  $EXPECTED_HV"
 [ -n "$KERNEL_TAG" ] && echo "  Kernel tag:   $KERNEL_TAG"
 echo ""
 
@@ -83,106 +83,91 @@ echo "$PREFIX Installer image: $INSTALLER_RAW ($(du -h "$INSTALLER_RAW" | cut -f
 # ── Step 2: Inject HV into CONFIG if pre-parametrized ─────────
 if [ -n "$INSTALL_HV" ]; then
     echo "$PREFIX Pre-parametrizing CONFIG with eve-hv-type=$INSTALL_HV"
-
-    # Find the CONFIG partition inside the installer raw image.
-    # The CONFIG partition is a FAT image embedded in the GPT layout.
-    # We need to extract it, modify it, and put it back.
-    # Simpler approach: use mcopy directly on the installer raw image's
-    # CONFIG partition. First, find the CONFIG partition offset.
-    CONFIG_OFFSET=$(fdisk -l "$INSTALLER_RAW" 2>/dev/null | grep 'EBD0A0A2' | head -1 | awk '{print $2}')
-    if [ -z "$CONFIG_OFFSET" ]; then
-        # Fallback: look for the small FAT partition (CONFIG is ~1MB)
-        CONFIG_OFFSET=$(fdisk -l "$INSTALLER_RAW" 2>/dev/null | grep 'Microsoft basic data' | head -1 | awk '{print $2}')
-    fi
-
+    CONFIG_OFFSET=$(fdisk -l "$INSTALLER_RAW" 2>/dev/null | grep 'Microsoft basic data' | head -1 | awk '{print $2}')
     if [ -n "$CONFIG_OFFSET" ]; then
         CONFIG_OFFSET_BYTES=$((CONFIG_OFFSET * 512))
         echo -n "$INSTALL_HV" | MTOOLS_SKIP_CHECK=1 mcopy -i "$INSTALLER_RAW@@$CONFIG_OFFSET_BYTES" -o - ::eve-hv-type
         echo "$PREFIX Wrote eve-hv-type=$INSTALL_HV to CONFIG at offset $CONFIG_OFFSET_BYTES"
     else
-        echo "$PREFIX Warning: Could not find CONFIG partition in installer image."
-        echo "         Falling back to modifying config.img and rebuilding."
-        CONFIG_IMG="$DIST_CURRENT/installer/config.img"
-        if [ -f "$CONFIG_IMG" ]; then
-            echo -n "$INSTALL_HV" | MTOOLS_SKIP_CHECK=1 mcopy -i "$CONFIG_IMG" -o - ::eve-hv-type
-            echo "$PREFIX Wrote eve-hv-type=$INSTALL_HV to config.img"
-            echo "$PREFIX Warning: config.img modified but installer-split.raw not rebuilt."
-            echo "         Re-run without SKIP_BUILD for a clean test."
-        else
-            echo "$PREFIX Error: Cannot inject HV type. No CONFIG partition found."
-            exit 1
-        fi
+        echo "$PREFIX Error: Could not find CONFIG partition in installer image."
+        exit 1
     fi
 fi
 
 # ── Step 3: Setup Eden with custom installer ──────────────────
-echo "================================================================"
-echo "$PREFIX Setting up Eden with custom installer..."
-echo "================================================================"
+if [ -z "$SKIP_EDEN_SETUP" ]; then
+    echo "================================================================"
+    echo "$PREFIX Setting up Eden with custom installer..."
+    echo "================================================================"
 
-if [ ! -d "$EDEN_DIR" ]; then
-    echo "$PREFIX Error: Eden directory not found at $EDEN_DIR"
-    exit 1
-fi
+    if [ ! -d "$EDEN_DIR" ]; then
+        echo "$PREFIX Error: Eden directory not found at $EDEN_DIR"
+        exit 1
+    fi
 
-cd "$EDEN_DIR"
+    cd "$EDEN_DIR"
 
-if [ ! -f "eden" ]; then
-    echo "$PREFIX Building Eden binary..."
-    make build
-fi
+    if [ ! -f "eden" ]; then
+        echo "$PREFIX Building Eden binary..."
+        make build
+    fi
 
-# Symlink installer to a short path. The EVE dist directory name is very
-# long (version+commit+kernel+author) and swtpm/QEMU use Unix sockets
-# placed alongside the image file — Unix sockets have a 108-byte path
-# limit. Eden's StartSWTPM puts the socket in filepath.Dir(imageFile).
-INSTALLER_SHORT="$EDEN_DIR/dist/installer-split.raw"
-ln -sf "$INSTALLER_RAW" "$INSTALLER_SHORT"
-echo "$PREFIX Symlinked installer to short path: $INSTALLER_SHORT"
+    if [ ! -f "dist/bin/eden.escript.test" ]; then
+        echo "$PREFIX Building Eden test binaries..."
+        make build-tests
+    fi
 
-# Clean previous state
-./eden stop 2>/dev/null || true
-./eden clean --current-context 2>/dev/null || true
-docker rm -f eden_adam eden_redis eden_registry eden_eserver 2>/dev/null || true
-if [ -f "dist/default-eve.pid" ]; then
-    kill "$(cat dist/default-eve.pid)" 2>/dev/null || true
-    rm -f dist/default-eve.pid
-fi
-pkill -f "swtpm socket.*eden" 2>/dev/null || true
-rm -rf dist/default-images/eve/live.img dist/default-images/eve/live.raw.qcow2
-rm -f dist/default-eve.log
-rm -rf dist/default-certs "$HOME/.eden/certs"
+    # Symlink installer to a short path — Unix sockets have 108-byte limit
+    # and Eden puts swtpm socket alongside the image file.
+    INSTALLER_SHORT="$EDEN_DIR/dist/installer-split.raw"
+    ln -sf "$INSTALLER_RAW" "$INSTALLER_SHORT"
+    echo "$PREFIX Symlinked installer to short path: $INSTALLER_SHORT"
 
-echo "$PREFIX Configuring Eden..."
-./eden config add default
-./eden config set default --key=eve.accel --value=true
-./eden config set default --key=eve.tpm --value=true
-./eden config set default --key=eve.custom-installer.path --value="$INSTALLER_SHORT"
-./eden config set default --key=eve.custom-installer.format --value=raw
-./eden config set default --key=eve.disks --value=1
+    # Clean previous state
+    ./eden stop 2>/dev/null || true
+    ./eden clean --current-context 2>/dev/null || true
+    docker rm -f eden_adam eden_redis eden_registry eden_eserver 2>/dev/null || true
+    if [ -f "dist/default-eve.pid" ]; then
+        kill "$(cat dist/default-eve.pid)" 2>/dev/null || true
+        rm -f dist/default-eve.pid
+    fi
+    pkill -f "swtpm socket.*eden" 2>/dev/null || true
+    rm -rf dist/default-images/eve/live.img dist/default-images/eve/live.raw.qcow2
+    rm -f dist/default-eve.log
+    rm -rf dist/default-certs "$HOME/.eden/certs"
 
-# Use EVE-built OVMF firmware (has TPM2 support).
-# Eden's default OVMF download does not include TPM2 drivers,
-# causing "Unknown TPM error" in GRUB and broken PCR measurements.
-EVE_FW_DIR="$(dirname "$INSTALLER_RAW")/installer/firmware"
-if [ -f "$EVE_FW_DIR/OVMF_CODE.fd" ] && [ -f "$EVE_FW_DIR/OVMF_VARS.fd" ]; then
-    echo "$PREFIX Using EVE-built OVMF firmware (TPM2-enabled)"
-    ./eden config set default --key=eve.firmware --value="[\"$EVE_FW_DIR/OVMF_CODE.fd\",\"$EVE_FW_DIR/OVMF_VARS.fd\"]"
+    echo "$PREFIX Configuring Eden..."
+    ./eden config add default
+    ./eden config set default --key=eve.accel --value=true
+    ./eden config set default --key=eve.tpm --value=true
+    ./eden config set default --key=eve.custom-installer.path --value="$INSTALLER_SHORT"
+    ./eden config set default --key=eve.custom-installer.format --value=raw
+    ./eden config set default --key=eve.disks --value=1
+
+    # Use EVE-built OVMF firmware (has TPM2 support).
+    EVE_FW_DIR="$(dirname "$INSTALLER_RAW")/installer/firmware"
+    if [ -f "$EVE_FW_DIR/OVMF_CODE.fd" ] && [ -f "$EVE_FW_DIR/OVMF_VARS.fd" ]; then
+        echo "$PREFIX Using EVE-built OVMF firmware (TPM2-enabled)"
+        ./eden config set default --key=eve.firmware --value="[\"$EVE_FW_DIR/OVMF_CODE.fd\",\"$EVE_FW_DIR/OVMF_VARS.fd\"]"
+    else
+        echo "$PREFIX Warning: EVE firmware not found at $EVE_FW_DIR, using Eden default"
+    fi
+
+    ./dist/bin/eden+ports.sh 2223:2223 2224:2224 5912:5902 5911:5901 \
+        8027:8027 8028:8028 8029:8029 8030:8030 8031:8031
+
+    echo "$PREFIX Running eden setup..."
+    ./eden setup
+
+    echo "$PREFIX Starting Eden (installer runs in foreground)..."
+    ./eden start
+
+    echo "$PREFIX Onboarding EVE..."
+    ./eden eve onboard
 else
-    echo "$PREFIX Warning: EVE firmware not found at $EVE_FW_DIR, using Eden default (no TPM2)"
+    echo "$PREFIX Skipping Eden setup."
+    cd "$EDEN_DIR"
 fi
-
-./dist/bin/eden+ports.sh 2223:2223 2224:2224 5912:5902 5911:5901 \
-    8027:8027 8028:8028 8029:8029 8030:8030 8031:8031
-
-echo "$PREFIX Running eden setup..."
-./eden setup
-
-echo "$PREFIX Starting Eden (installer will run in foreground)..."
-./eden start
-
-echo "$PREFIX Onboarding EVE..."
-./eden eve onboard
 
 # ── Step 4: Wait for EVE to come online ───────────────────────
 echo "$PREFIX Waiting for EVE to become reachable..."
@@ -200,105 +185,26 @@ done
 
 if [ "$i" -ge "$ATTEMPTS" ]; then
     echo "$PREFIX Error: EVE did not become reachable after $((ATTEMPTS * DELAY))s."
-    echo "$PREFIX Dumping QEMU serial log (last 100 lines):"
-    tail -100 dist/default-eve.log 2>/dev/null || true
+    echo "$PREFIX Dumping serial log (last 50 lines):"
+    tail -50 dist/default-eve.log 2>/dev/null || true
     exit 1
 fi
 
-# Give services time to start after SSH becomes available
-echo "$PREFIX Waiting 120s for Extension services to start..."
-sleep 120
+# Give extsloader time to mount Extension and start services
+echo "$PREFIX Waiting 60s for Extension services to start..."
+sleep 60
 
-# ── Step 5: Verify installation ───────────────────────────────
+# ── Step 5: Run verification escript ──────────────────────────
 echo "================================================================"
-echo "$PREFIX Verifying installation..."
+echo "$PREFIX Running verification escript..."
 echo "================================================================"
 
-EXPECTED_HV="${INSTALL_HV:-kvm}"
-PASS=0
-FAIL=0
-
-check() {
-    local desc="$1"
-    local cmd="$2"
-    local expected="$3"
-
-    echo -n "  $desc... "
-    result=$(./eden eve ssh "$cmd" 2>/dev/null) || result="SSH_ERROR"
-
-    if echo "$result" | grep -q "$expected"; then
-        echo "OK"
-        PASS=$((PASS + 1))
-    else
-        echo "FAIL (expected '$expected', got '$result')"
-        FAIL=$((FAIL + 1))
-    fi
-}
-
-# CONFIG has correct HV type
-check "CONFIG eve-hv-type" \
-    "cat /config/eve-hv-type" \
-    "$EXPECTED_HV"
-
-# Runtime eve-hv-type resolved correctly
-check "Runtime /run/eve-hv-type" \
-    "cat /run/eve-hv-type" \
-    "$EXPECTED_HV"
-
-# Extension image exists on persist
-check "Extension image on persist" \
-    "ls -la /persist/ext-imga.img 2>/dev/null && echo ext-exists || echo ext-missing" \
-    "ext-exists"
-
-# dm-verity device active
-check "dm-verity device active" \
-    "eve exec pillar dmsetup status 2>/dev/null | grep -c verity || echo 0" \
-    "1"
-
-# Extension mount point
-check "Extension mounted" \
-    "eve exec pillar mount | grep -c '/persist/exts' || echo 0" \
-    "1"
-
-# extsloader state
-check "extsloader state ready" \
-    "eve exec pillar cat /run/extsloader-state.json 2>/dev/null | grep -o '\"state\":\"[^\"]*\"' || echo state-unknown" \
-    '"state":"ready"'
-
-# Core has ext-verity-roothash
-check "Core has ext-verity-roothash" \
-    "test -f /hostfs/etc/ext-verity-roothash && echo has-roothash || echo no-roothash" \
-    "has-roothash"
-
-# PCR12 is non-zero (TPM measurement by extsloader)
-check "PCR12 non-zero" \
-    "eve exec pillar tpm2_pcrread sha256:12 2>/dev/null | grep -c '0x0000000000000000000000000000000000000000000000000000000000000000' || echo non-zero" \
-    "non-zero"
-
-# EFI variable written
-check "EFI variable written" \
-    "ls /sys/firmware/efi/efivars/eve-hv-type-* 2>/dev/null && echo efi-var-exists || echo no-efi-var" \
-    "efi-var-exists"
-
-# Partition sizing for Kubevirt
-if [ "$EXPECTED_HV" = "k" ]; then
-    check "EFI partition >= 2GB (kubevirt)" \
-        "lsblk -b -n -o SIZE \$(lsblk -n -o NAME,PARTLABEL | grep 'EFI System' | awk '{print \"/dev/\"\$1}' | head -1) 2>/dev/null || echo 0" \
-        "214748"  # 2GB = 2147483648, check prefix
-
-    check "ZFS persist (kubevirt)" \
-        "zfs list persist 2>/dev/null && echo zfs-ok || echo no-zfs" \
-        "zfs-ok"
-fi
+export EXPECTED_HV
+./eden test "$EVE_ROOT/tests/eden" -v debug \
+    -testdata "$TESTDATA_DIR" \
+    -r "TestEdenScripts/verify_split_install"
 
 echo ""
 echo "================================================================"
-echo "$PREFIX Results: $PASS passed, $FAIL failed"
+echo "$PREFIX INSTALLER TEST PASSED (HV=$EXPECTED_HV)"
 echo "================================================================"
-
-if [ "$FAIL" -gt 0 ]; then
-    echo "$PREFIX SOME CHECKS FAILED"
-    exit 1
-else
-    echo "$PREFIX ALL CHECKS PASSED"
-fi
