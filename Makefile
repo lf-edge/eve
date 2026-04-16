@@ -753,6 +753,15 @@ run-split: $(SWTPM) GETTY
 		-drive file=$(CURRENT_DIR)/live-split.$(IMG_FORMAT),format=$(IMG_FORMAT),id=uefi-disk \
 		-drive file=fat:rw:$(CURRENT_DIR)/pkgs-inject,format=vvfat,id=pkgs-disk
 
+run-split-k: $(SWTPM) GETTY
+	@echo "Preparing ext rootfs as ext-imga.img for VM..."
+	@mkdir -p $(CURRENT_DIR)/pkgs-inject
+	@cp $(CURRENT_DIR)/installer/rootfs-ext.img $(CURRENT_DIR)/pkgs-inject/ext-imga.img
+	@echo "Starting VM with core rootfs (Kubevirt) + ext-imga.img on /dev/sdb1..."
+	$(QEMU_SYSTEM) $(QEMU_OPTS) \
+		-drive file=$(CURRENT_DIR)/live-split-k.$(IMG_FORMAT),format=$(IMG_FORMAT),id=uefi-disk \
+		-drive file=fat:rw:$(CURRENT_DIR)/pkgs-inject,format=vvfat,id=pkgs-disk
+
 run-split-xen: $(SWTPM) GETTY
 	@echo "Preparing ext rootfs as ext-imga.img for VM..."
 	@mkdir -p $(CURRENT_DIR)/pkgs-inject
@@ -762,7 +771,7 @@ run-split-xen: $(SWTPM) GETTY
 		-drive file=$(CURRENT_DIR)/live-split-xen.$(IMG_FORMAT),format=$(IMG_FORMAT),id=uefi-disk \
 		-drive file=fat:rw:$(CURRENT_DIR)/pkgs-inject,format=vvfat,id=pkgs-disk
 else
-run-split run-split-xen:
+run-split run-split-k run-split-xen:
 	$(MAKE) HV=uni $@
 endif
 
