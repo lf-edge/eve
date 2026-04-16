@@ -693,8 +693,14 @@ run-installer-raw: $(SWTPM) GETTY
 
 # Split installer: boots installer-split.raw, installs to target.img
 # Always uses HV=uni (split is always universal)
+# Reset OVMF_VARS to avoid stale EFI boot entries from previous runs.
 run-installer-split: $(SWTPM) GETTY
 	qemu-img create -f ${IMG_FORMAT} $(TARGET_IMG) ${MEDIA_SIZE}M
+	@if [ -f "$(CURRENT_FIRMWARE_DIR)/OVMF_VARS.fd.bak" ]; then \
+		cp -f "$(CURRENT_FIRMWARE_DIR)/OVMF_VARS.fd.bak" "$(CURRENT_FIRMWARE_DIR)/OVMF_VARS.fd"; \
+	else \
+		cp -f "$(CURRENT_FIRMWARE_DIR)/OVMF_VARS.fd" "$(CURRENT_FIRMWARE_DIR)/OVMF_VARS.fd.bak"; \
+	fi
 	$(QEMU_SYSTEM) -drive file=$(TARGET_IMG),format=$(IMG_FORMAT) -drive file=$(CURRENT_INSTALLER)-split.raw,format=raw $(QEMU_OPTS)
 
 run-installer-net: QEMU_TFTP_OPTS=,tftp=$(dir $(CURRENT_IPXE_IMG)),bootfile=$(notdir $(CURRENT_IPXE_IMG))
