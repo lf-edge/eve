@@ -1,30 +1,26 @@
 #!/bin/bash
 #
-# Test split-rootfs installer (USB install path) with Eden.
+# Test split-rootfs installer with Eden, covering all four pre-parametrized
+# cases (kvm, k, k-zfs, xen) plus an optional no-predef GRUB-menu check.
 #
-# This script handles the setup (build, CONFIG injection, Eden config).
-# Verification is done by the verify_split_install.txt escript.
+# Per case:
+#   1. Create a conf dir with eve-hv-type (no-predef: empty).
+#   2. docker run lfedge/eve:<uni-tag> installer_raw  →  installer-<case>.raw.
+#   3. Point Eden at the new installer, start fresh, wait for EVE.
+#   4. Run verify_split_install escript with EXPECTED_HV=<hv>.
 #
 # Usage:
-#   # Default install (KVM, 60s GRUB timeout):
-#   ./tests/eden/test-split-installer.sh
+#   ./tests/eden/test-split-installer.sh                      # all 4 predefined cases
+#   CASES="kvm xen"      ./tests/eden/test-split-installer.sh # subset
+#   INCLUDE_MENU_CHECK=1 ./tests/eden/test-split-installer.sh # add no-predef menu case
+#   SKIP_BUILD=1         ./tests/eden/test-split-installer.sh # reuse cached installer-<case>.raw
+#   SKIP_REBOOT=1        ./tests/eden/test-split-installer.sh # skip post-reboot re-verify
 #
-#   # Pre-parametrized Kubevirt (simulates ZFlash, no menu):
-#   INSTALL_HV=k ./tests/eden/test-split-installer.sh
-#
-#   # Pre-parametrized Xen:
-#   INSTALL_HV=xen ./tests/eden/test-split-installer.sh
-#
-#   # Skip build (reuse existing installer-split.raw):
-#   SKIP_BUILD=1 ./tests/eden/test-split-installer.sh
-#
-# Options:
-#   INSTALL_HV=<kvm|k|xen>  Pre-parametrize HV in CONFIG (default: none → GRUB timeout → KVM)
-#   SKIP_BUILD=1             Skip building installer-split.raw
-#   SKIP_EDEN_SETUP=1        Skip Eden setup (already running from previous test)
-#   EDEN_DIR=<path>          Path to Eden checkout (default: ~/projects/eden)
-#   EVE_ARCH=<arch>          Architecture (default: amd64)
-#   KERNEL_TAG=<tag>         Custom kernel tag
+# Env:
+#   EVE_TAG        OCI tag to docker-run (default: latest local lfedge/eve:*-uni-amd64)
+#   EDEN_DIR       Path to Eden checkout (default: ~/projects/eden)
+#   EVE_ARCH       Architecture (default: amd64)
+#   KERNEL_TAG     Custom kernel tag (forwarded to make when building OCI)
 
 set -e
 
@@ -32,179 +28,262 @@ PREFIX="[INSTALLER-TEST]"
 EVE_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 EDEN_DIR="${EDEN_DIR:-$HOME/projects/eden}"
 EVE_ARCH="${EVE_ARCH:-amd64}"
-INSTALL_HV="${INSTALL_HV:-}"
-EXPECTED_HV="${INSTALL_HV:-kvm}"  # if no HV injected, GRUB timeout defaults to KVM
-TESTDATA_DIR="$EVE_ROOT/tests/eden/testdata"
+CASES="${CASES:-kvm k k-zfs xen}"
+TESTDATA_DIR="$EDEN_DIR/tests/update_eve_image/testdata"
 
-echo "$PREFIX Configuration:"
-echo "  EVE repo:     $EVE_ROOT"
-echo "  Eden dir:     $EDEN_DIR"
-echo "  Arch:         $EVE_ARCH"
-echo "  Install HV:   ${INSTALL_HV:-<none, GRUB timeout → KVM>}"
-echo "  Expected HV:  $EXPECTED_HV"
-[ -n "$KERNEL_TAG" ] && echo "  Kernel tag:   $KERNEL_TAG"
-echo ""
+# Per-case HV value that ends up in CONFIG and on kernel cmdline.
+hv_of() {
+    case "$1" in
+        kvm|xen) echo "$1" ;;
+        k|k-zfs) echo "k" ;;
+        menu)    echo "kvm" ;;  # no predef → GRUB timeout defaults to KVM
+        *)       echo "UNKNOWN" ;;
+    esac
+}
 
-# ── Step 1: Build installer-split.raw ─────────────────────────
-if [ -z "$SKIP_BUILD" ]; then
-    echo "================================================================"
-    echo "$PREFIX Building installer-split.raw..."
-    echo "================================================================"
+# ── Step 0: discover the eve-split OCI tag ────────────────────
+if [ -z "$EVE_TAG" ]; then
+    EVE_TAG=$(docker images --format '{{.Repository}}:{{.Tag}}' \
+        | grep -E '^lfedge/eve:.*-uni-amd64$' \
+        | grep -v '<none>' \
+        | head -1)
+fi
+
+if [ -z "$EVE_TAG" ] && [ -z "$SKIP_BUILD" ]; then
+    echo "$PREFIX No local lfedge/eve:*-uni-amd64 image; running 'make eve-split'..."
     cd "$EVE_ROOT"
-
     MAKE_ARGS=()
     [ -n "$KERNEL_TAG" ] && MAKE_ARGS+=("KERNEL_TAG=$KERNEL_TAG")
-
-    make "${MAKE_ARGS[@]}" pkgs
-    make "${MAKE_ARGS[@]}" installer-split
-else
-    echo "$PREFIX Skipping build."
+    make "${MAKE_ARGS[@]}" eve-split
+    EVE_TAG=$(docker images --format '{{.Repository}}:{{.Tag}}' \
+        | grep -E '^lfedge/eve:.*-uni-amd64$' \
+        | grep -v '<none>' \
+        | head -1)
 fi
 
-cd "$EVE_ROOT"
-DIST_CURRENT="$(readlink -f "dist/$EVE_ARCH/current")"
-INSTALLER_RAW="$DIST_CURRENT/installer-split.raw"
-
-# The HV=uni delegation may create a different dist dir than `current` points to.
-# Search for the most recent installer-split.raw if not found at expected path.
-if [ ! -f "$INSTALLER_RAW" ]; then
-    INSTALLER_RAW=$(find "dist/$EVE_ARCH" -maxdepth 2 -name 'installer-split.raw' \
-        -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2)
-fi
-
-if [ -z "$INSTALLER_RAW" ] || [ ! -f "$INSTALLER_RAW" ]; then
-    echo "$PREFIX Error: installer-split.raw not found under dist/$EVE_ARCH/."
-    echo "         Build first: make installer-split"
+if [ -z "$EVE_TAG" ]; then
+    echo "$PREFIX Error: no lfedge/eve:*-uni-amd64 image found and SKIP_BUILD=1."
     exit 1
 fi
 
-echo "$PREFIX Installer image: $INSTALLER_RAW ($(du -h "$INSTALLER_RAW" | cut -f1))"
+[ -d "$EDEN_DIR" ] || { echo "$PREFIX Error: EDEN_DIR not found at $EDEN_DIR"; exit 1; }
+[ -d "$TESTDATA_DIR" ] || { echo "$PREFIX Error: verify testdata not found at $TESTDATA_DIR"; exit 1; }
 
-# ── Step 2: Inject HV into CONFIG if pre-parametrized ─────────
-if [ -n "$INSTALL_HV" ]; then
-    echo "$PREFIX Pre-parametrizing CONFIG with eve-hv-type=$INSTALL_HV"
-    CONFIG_OFFSET=$(fdisk -l "$INSTALLER_RAW" 2>/dev/null | grep 'Microsoft basic data' | head -1 | awk '{print $2}')
-    if [ -n "$CONFIG_OFFSET" ]; then
-        CONFIG_OFFSET_BYTES=$((CONFIG_OFFSET * 512))
-        echo -n "$INSTALL_HV" | MTOOLS_SKIP_CHECK=1 mcopy -i "$INSTALLER_RAW@@$CONFIG_OFFSET_BYTES" -o - ::eve-hv-type
-        echo "$PREFIX Wrote eve-hv-type=$INSTALL_HV to CONFIG at offset $CONFIG_OFFSET_BYTES"
-    else
-        echo "$PREFIX Error: Could not find CONFIG partition in installer image."
-        exit 1
-    fi
+CACHE_DIR="$EVE_ROOT/dist/$EVE_ARCH/installer-cases"
+mkdir -p "$CACHE_DIR"
+
+if [ -n "$INCLUDE_MENU_CHECK" ]; then
+    CASES="$CASES menu"
 fi
 
-# ── Step 3: Setup Eden with custom installer ──────────────────
-if [ -z "$SKIP_EDEN_SETUP" ]; then
-    echo "================================================================"
-    echo "$PREFIX Setting up Eden with custom installer..."
-    echo "================================================================"
+echo "$PREFIX Configuration:"
+echo "  EVE repo:    $EVE_ROOT"
+echo "  Eden dir:    $EDEN_DIR"
+echo "  OCI tag:     $EVE_TAG"
+echo "  Cases:       $CASES"
+echo "  Cache dir:   $CACHE_DIR"
+echo ""
 
-    if [ ! -d "$EDEN_DIR" ]; then
-        echo "$PREFIX Error: Eden directory not found at $EDEN_DIR"
-        exit 1
+# ── Build per-case installers via docker run installer_raw ────
+build_case_installer() {
+    local case_name="$1"
+    local out="$CACHE_DIR/installer-$case_name.raw"
+
+    if [ -n "$SKIP_BUILD" ] && [ -f "$out" ]; then
+        echo "$PREFIX [$case_name] Reusing cached $out"
+        return
     fi
+
+    local conf_dir="$CACHE_DIR/conf-$case_name"
+    rm -rf "$conf_dir"; mkdir -p "$conf_dir"
+
+    case "$case_name" in
+        kvm|xen)  echo -n "$case_name" > "$conf_dir/eve-hv-type" ;;
+        k|k-zfs)  echo -n "k"         > "$conf_dir/eve-hv-type" ;;
+        menu)     ;;  # empty conf → GRUB menu shown
+        *)        echo "$PREFIX Unknown case: $case_name"; return 1 ;;
+    esac
+
+    echo "$PREFIX [$case_name] Building installer via docker run..."
+    docker run --rm -v "$conf_dir:/in" "$EVE_TAG" installer_raw > "$out"
+    echo "$PREFIX [$case_name] Produced $(du -h "$out" | cut -f1) at $out"
+}
+
+# ── Run a single case through Eden ────────────────────────────
+run_case() {
+    local case_name="$1"
+    local expected_hv; expected_hv=$(hv_of "$case_name")
+    local raw="$CACHE_DIR/installer-$case_name.raw"
+    local disks=1
+    [ "$case_name" = "k-zfs" ] && disks=2
+
+    echo ""
+    echo "================================================================"
+    echo "$PREFIX [$case_name] Expected HV=$expected_hv  disks=$disks"
+    echo "================================================================"
 
     cd "$EDEN_DIR"
+    [ -f "eden" ]                 || make build
+    [ -f "dist/bin/eden.escript.test" ] || make build-tests
 
-    if [ ! -f "eden" ]; then
-        echo "$PREFIX Building Eden binary..."
-        make build
-    fi
-
-    if [ ! -f "dist/bin/eden.escript.test" ]; then
-        echo "$PREFIX Building Eden test binaries..."
-        make build-tests
-    fi
-
-    # Symlink installer to a short path — Unix sockets have 108-byte limit
-    # and Eden puts swtpm socket alongside the image file.
-    INSTALLER_SHORT="$EDEN_DIR/dist/installer-split.raw"
-    ln -sf "$INSTALLER_RAW" "$INSTALLER_SHORT"
-    echo "$PREFIX Symlinked installer to short path: $INSTALLER_SHORT"
-
-    # Clean previous state
+    # Fresh Eden state per case. Let eden stop/clean handle swtpm + certs;
+    # avoid manual pkill / cert wipe which race with eden setup.
     ./eden stop 2>/dev/null || true
     ./eden clean --current-context 2>/dev/null || true
     docker rm -f eden_adam eden_redis eden_registry eden_eserver 2>/dev/null || true
-    if [ -f "dist/default-eve.pid" ]; then
-        kill "$(cat dist/default-eve.pid)" 2>/dev/null || true
-        rm -f dist/default-eve.pid
-    fi
-    pkill -f "swtpm socket.*eden" 2>/dev/null || true
-    rm -rf dist/default-images/eve/live.img dist/default-images/eve/live.raw.qcow2
-    rm -f dist/default-eve.log
-    rm -rf dist/default-certs "$HOME/.eden/certs"
+    [ -f dist/default-eve.pid ] && { kill "$(cat dist/default-eve.pid)" 2>/dev/null || true; rm -f dist/default-eve.pid; }
+    rm -f  dist/default-images/eve/live.img dist/default-images/eve/live.raw.qcow2 dist/default-eve.log
+    # If a stale swtpm holds the socket path, only remove the socket file, not the process.
+    rm -f dist/swtpm/swtpm-sock 2>/dev/null || true
 
-    echo "$PREFIX Configuring Eden..."
+    local short="$EDEN_DIR/dist/installer-current.raw"
+    ln -sfn "$raw" "$short"
+
     ./eden config add default
     ./eden config set default --key=eve.accel --value=true
     ./eden config set default --key=eve.tpm --value=true
-    ./eden config set default --key=eve.custom-installer.path --value="$INSTALLER_SHORT"
+    ./eden config set default --key=eve.custom-installer.path --value="$short"
     ./eden config set default --key=eve.custom-installer.format --value=raw
-    ./eden config set default --key=eve.disks --value=1
+    ./eden config set default --key=eve.disks --value="$disks"
 
-    # Use EVE-built OVMF firmware (has TPM2 support).
-    EVE_FW_DIR="$(dirname "$INSTALLER_RAW")/installer/firmware"
-    if [ -f "$EVE_FW_DIR/OVMF_CODE.fd" ] && [ -f "$EVE_FW_DIR/OVMF_VARS.fd" ]; then
-        echo "$PREFIX Using EVE-built OVMF firmware (TPM2-enabled)"
-        ./eden config set default --key=eve.firmware --value="[\"$EVE_FW_DIR/OVMF_CODE.fd\",\"$EVE_FW_DIR/OVMF_VARS.fd\"]"
-    else
-        echo "$PREFIX Warning: EVE firmware not found at $EVE_FW_DIR, using Eden default"
+    # Use EVE-built OVMF (TPM2-enabled).
+    local fw_dir
+    fw_dir="$(dirname "$raw")/../installer/firmware"
+    if [ -f "$fw_dir/OVMF_CODE.fd" ] && [ -f "$fw_dir/OVMF_VARS.fd" ]; then
+        ./eden config set default --key=eve.firmware \
+            --value="[\"$fw_dir/OVMF_CODE.fd\",\"$fw_dir/OVMF_VARS.fd\"]"
     fi
 
     ./dist/bin/eden+ports.sh 2223:2223 2224:2224 5912:5902 5911:5901 \
         8027:8027 8028:8028 8029:8029 8030:8030 8031:8031
 
-    echo "$PREFIX Running eden setup..."
     ./eden setup
 
-    echo "$PREFIX Starting Eden (installer runs in foreground)..."
+    # Wait for the cert eden setup should regenerate, to avoid onboard racing it.
+    local certs_i=0
+    while [ "$certs_i" -lt 30 ] && [ ! -f "$HOME/.eden/certs/root-certificate.pem" ]; do
+        sleep 1; certs_i=$((certs_i+1))
+    done
+    if [ ! -f "$HOME/.eden/certs/root-certificate.pem" ]; then
+        echo "$PREFIX [$case_name] eden setup did not produce ~/.eden/certs — aborting case"
+        return 1
+    fi
+
     ./eden start
 
-    echo "$PREFIX Onboarding EVE..."
-    ./eden eve onboard
-else
-    echo "$PREFIX Skipping Eden setup."
-    cd "$EDEN_DIR"
-fi
-
-# ── Step 4: Wait for EVE to come online ───────────────────────
-echo "$PREFIX Waiting for EVE to become reachable..."
-ATTEMPTS=90
-DELAY=10
-i=0
-while [ "$i" -lt "$ATTEMPTS" ]; do
-    if ./eden eve ssh echo ssh-ready >/dev/null 2>&1; then
-        echo "$PREFIX EVE is reachable via SSH."
-        break
+    # Give swtpm a moment to create its socket before any QEMU-dependent step.
+    local sock_i=0
+    while [ "$sock_i" -lt 15 ] && [ ! -S "$EDEN_DIR/dist/swtpm/swtpm-sock" ]; do
+        sleep 1; sock_i=$((sock_i+1))
+    done
+    if [ ! -S "$EDEN_DIR/dist/swtpm/swtpm-sock" ]; then
+        echo "$PREFIX [$case_name] swtpm socket missing after 15s (eden.tpm=true) — check eden start logs"
+        tail -40 dist/default-eve.log 2>/dev/null || true
+        return 1
     fi
-    sleep "$DELAY"
-    i=$((i + 1))
+
+    ./eden eve onboard
+
+    echo "$PREFIX [$case_name] Waiting for EVE SSH..."
+    local i=0
+    while [ "$i" -lt 90 ]; do
+        ./eden eve ssh echo ssh-ready >/dev/null 2>&1 && break
+        sleep 10; i=$((i+1))
+    done
+    if [ "$i" -ge 90 ]; then
+        echo "$PREFIX [$case_name] EVE did not come online. Last serial log:"
+        tail -80 dist/default-eve.log 2>/dev/null || true
+        return 1
+    fi
+
+    # GRUB menu visibility: restrict to the current QEMU session (serial log
+    # is append-mode, so entries from previous cases may be present).
+    local menu_shown=0
+    if [ -f dist/default-eve.log ] && \
+       tac dist/default-eve.log | sed '/swtpm is starting/q' | tac \
+         | grep -q "Boot/Install EVE (KVM)"; then
+        menu_shown=1
+    fi
+
+    if [ "$case_name" = "menu" ]; then
+        if [ "$menu_shown" -ne 1 ]; then
+            echo "$PREFIX [menu] FAIL: GRUB menu was NOT shown (expected shown)."
+            return 1
+        fi
+        echo "$PREFIX [menu] OK: GRUB menu shown."
+    else
+        if [ "$menu_shown" -ne 0 ]; then
+            echo "$PREFIX [$case_name] FAIL: GRUB menu leaked (should be bypassed when predefined)."
+            return 1
+        fi
+    fi
+
+    echo "$PREFIX [$case_name] Waiting 60s for Extension services..."
+    sleep 60
+
+    local expected_persist_fs=""
+    [ "$case_name" = "k-zfs" ] && expected_persist_fs="zfs"
+
+    echo "$PREFIX [$case_name] First-boot verification..."
+    EXPECTED_HV="$expected_hv" EXPECTED_PERSIST_FS="$expected_persist_fs" \
+        ./eden test "$EDEN_DIR/tests/update_eve_image" -v debug \
+        -testdata "$TESTDATA_DIR" \
+        -r "TestEdenScripts/verify_split_install"
+
+    if [ -z "$SKIP_REBOOT" ]; then
+        echo "$PREFIX [$case_name] Rebooting installed system to verify second boot..."
+        ./eden eve ssh 'nohup sh -c "sleep 2 && reboot" >/dev/null 2>&1 &' || true
+
+        # Wait for the device to go down, then come back.
+        local wait_i=0
+        while [ "$wait_i" -lt 30 ]; do
+            ./eden eve ssh echo down-probe >/dev/null 2>&1 || break
+            sleep 2; wait_i=$((wait_i+1))
+        done
+        echo "$PREFIX [$case_name] Device went down at $((wait_i*2))s; waiting for reboot to complete..."
+
+        wait_i=0
+        while [ "$wait_i" -lt 90 ]; do
+            ./eden eve ssh echo up-probe >/dev/null 2>&1 && break
+            sleep 5; wait_i=$((wait_i+1))
+        done
+        if [ "$wait_i" -ge 90 ]; then
+            echo "$PREFIX [$case_name] FAIL: device did not come back up after reboot"
+            tail -60 dist/default-eve.log 2>/dev/null || true
+            return 1
+        fi
+        echo "$PREFIX [$case_name] Device back up; waiting 45s for Extension services..."
+        sleep 45
+
+        echo "$PREFIX [$case_name] Post-reboot verification..."
+        EXPECTED_HV="$expected_hv" EXPECTED_PERSIST_FS="$expected_persist_fs" \
+            ./eden test "$EDEN_DIR/tests/update_eve_image" -v debug \
+            -testdata "$TESTDATA_DIR" \
+            -r "TestEdenScripts/verify_split_install"
+    fi
+
+    echo "$PREFIX [$case_name] PASSED"
+}
+
+# ── Main ──────────────────────────────────────────────────────
+failures=()
+for case_name in $CASES; do
+    build_case_installer "$case_name" || { failures+=("$case_name:build"); continue; }
 done
 
-if [ "$i" -ge "$ATTEMPTS" ]; then
-    echo "$PREFIX Error: EVE did not become reachable after $((ATTEMPTS * DELAY))s."
-    echo "$PREFIX Dumping serial log (last 50 lines):"
-    tail -50 dist/default-eve.log 2>/dev/null || true
-    exit 1
-fi
-
-# Give extsloader time to mount Extension and start services
-echo "$PREFIX Waiting 60s for Extension services to start..."
-sleep 60
-
-# ── Step 5: Run verification escript ──────────────────────────
-echo "================================================================"
-echo "$PREFIX Running verification escript..."
-echo "================================================================"
-
-export EXPECTED_HV
-./eden test "$EVE_ROOT/tests/eden" -v debug \
-    -testdata "$TESTDATA_DIR" \
-    -r "TestEdenScripts/verify_split_install"
+for case_name in $CASES; do
+    [ -f "$CACHE_DIR/installer-$case_name.raw" ] || continue
+    if ! run_case "$case_name"; then
+        failures+=("$case_name:run")
+    fi
+done
 
 echo ""
 echo "================================================================"
-echo "$PREFIX INSTALLER TEST PASSED (HV=$EXPECTED_HV)"
-echo "================================================================"
+if [ "${#failures[@]}" -eq 0 ]; then
+    echo "$PREFIX ALL CASES PASSED ($CASES)"
+    exit 0
+else
+    echo "$PREFIX FAILURES: ${failures[*]}"
+    exit 1
+fi
