@@ -671,7 +671,7 @@ func newKvm() Hypervisor {
 			dmExec:       "/usr/lib/xen/bin/qemu-system-x86_64",
 			dmArgs:       []string{"-display", "none", "-S", "-no-user-config", "-nodefaults", "-no-shutdown", "-serial", "chardev:charserial0", "-machine", "hpet=off"},
 			dmCPUArgs:    []string{"-cpu", "host"},
-			dmFmlCPUArgs: []string{"-cpu", "host,hv_time,hv_relaxed,hv_vendor_id=eveitis,hypervisor=off,kvm=off"},
+			dmFmlCPUArgs: []string{"-cpu", "host,hv_time,hv_relaxed,hv_vendor_id=eveitis,hypervisor=off,kvm=off,vmx=off"},
 		}
 	}
 	return nil
