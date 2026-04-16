@@ -697,14 +697,6 @@ run-installer-split: $(SWTPM) GETTY
 	qemu-img create -f ${IMG_FORMAT} $(TARGET_IMG) ${MEDIA_SIZE}M
 	$(QEMU_SYSTEM) -drive file=$(TARGET_IMG),format=$(IMG_FORMAT) -drive file=$(CURRENT_INSTALLER)-split.raw,format=raw $(QEMU_OPTS)
 
-# Split installer with two persist disks (triggers ZFS for kubevirt).
-# Select "Kubevirt / EVE-k" from GRUB menu — installer detects two disks and uses ZFS.
-TARGET_IMG2=$(CURRENT_DIR)/target2.img
-run-installer-split-zfs: $(SWTPM) GETTY
-	qemu-img create -f ${IMG_FORMAT} $(TARGET_IMG) ${MEDIA_SIZE}M
-	qemu-img create -f ${IMG_FORMAT} $(TARGET_IMG2) ${MEDIA_SIZE}M
-	$(QEMU_SYSTEM) -drive file=$(TARGET_IMG),format=$(IMG_FORMAT) -drive file=$(TARGET_IMG2),format=$(IMG_FORMAT) -drive file=$(CURRENT_INSTALLER)-split.raw,format=raw $(QEMU_OPTS)
-
 run-installer-net: QEMU_TFTP_OPTS=,tftp=$(dir $(CURRENT_IPXE_IMG)),bootfile=$(notdir $(CURRENT_IPXE_IMG))
 run-installer-net: $(SWTPM) GETTY $(DEVICETREE_DTB)
 	tar -C $(CURRENT_NETBOOT) -xvf $(CURRENT_INSTALLER).net || :
@@ -761,10 +753,6 @@ endif
 
 run-target: $(SWTPM) GETTY
 	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive file=$(TARGET_IMG),format=$(IMG_FORMAT)
-
-# Boot installed target with two disks (for ZFS persist after run-installer-split-zfs)
-run-target-zfs: $(SWTPM) GETTY
-	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive file=$(TARGET_IMG),format=$(IMG_FORMAT) -drive file=$(TARGET_IMG2),format=$(IMG_FORMAT)
 
 run-rootfs%: $(SWTPM) GETTY
 	(echo 'set devicetree="(hd0,msdos1)/eve.dtb"' ; echo 'set rootfs_root=/dev/vdb' ; echo 'set root=hd1' ; echo 'export rootfs_root' ; echo 'export devicetree' ; echo 'configfile /EFI/BOOT/grub.cfg' ) > $(EFI_PART)/BOOT/grub.cfg
@@ -1779,10 +1767,8 @@ help:
 	@echo "   run-installer-iso    runs installer.iso (via qemu) and 'installs' EVE into (initially blank) target.img"
 	@echo "   run-installer-raw    runs installer.raw (via qemu) and 'installs' EVE into (initially blank) target.img"
 	@echo "   run-installer-split  runs installer-split.raw (via qemu) and installs split EVE into target.img"
-	@echo "   run-installer-split-zfs  same but with two disks (select Kubevirt from GRUB menu to get ZFS)"
 	@echo "   run-installer-net    runs installer.net (via qemu/iPXE) and 'installs' EVE into (initially blank) target.img"
 	@echo "   run-target           runs a full fledged virtual device on qemu from target.img (similar to run-live)"
-	@echo "   run-target-zfs       same but with two disks (after run-installer-split-zfs)"
 	@echo
 	@echo "make run is currently an alias for make run-live"
 	@echo
