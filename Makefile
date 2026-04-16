@@ -703,6 +703,19 @@ run-installer-split: $(SWTPM) GETTY
 	fi
 	$(QEMU_SYSTEM) -drive file=$(TARGET_IMG),format=$(IMG_FORMAT) -drive file=$(CURRENT_INSTALLER)-split.raw,format=raw $(QEMU_OPTS)
 
+# Boot any raw installer image (e.g. ZFlash-written loop device or custom image).
+# Usage: make run-installer-image INSTALLER_IMAGE=/tmp/usb-test.img
+INSTALLER_IMAGE ?=
+run-installer-image: $(SWTPM) GETTY
+	@if [ -z "$(INSTALLER_IMAGE)" ]; then echo "Usage: make run-installer-image INSTALLER_IMAGE=/path/to/image.raw"; exit 1; fi
+	qemu-img create -f ${IMG_FORMAT} $(TARGET_IMG) ${MEDIA_SIZE}M
+	@if [ -f "$(CURRENT_FIRMWARE_DIR)/OVMF_VARS.fd.bak" ]; then \
+		cp -f "$(CURRENT_FIRMWARE_DIR)/OVMF_VARS.fd.bak" "$(CURRENT_FIRMWARE_DIR)/OVMF_VARS.fd"; \
+	else \
+		cp -f "$(CURRENT_FIRMWARE_DIR)/OVMF_VARS.fd" "$(CURRENT_FIRMWARE_DIR)/OVMF_VARS.fd.bak"; \
+	fi
+	$(QEMU_SYSTEM) -drive file=$(TARGET_IMG),format=$(IMG_FORMAT) -drive file=$(INSTALLER_IMAGE),format=raw $(QEMU_OPTS)
+
 run-installer-net: QEMU_TFTP_OPTS=,tftp=$(dir $(CURRENT_IPXE_IMG)),bootfile=$(notdir $(CURRENT_IPXE_IMG))
 run-installer-net: $(SWTPM) GETTY $(DEVICETREE_DTB)
 	tar -C $(CURRENT_NETBOOT) -xvf $(CURRENT_INSTALLER).net || :
