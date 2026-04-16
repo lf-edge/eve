@@ -743,14 +743,15 @@ run-universal: $(SWTPM) GETTY
 
 # Split rootfs: core boots as imga, ext loaded by extsloader agent from ext-imga.img
 # Ext rootfs is exposed as VVFAT disk (appears as /dev/sdb1 in VM).
+# Each variant has CONFIG pre-set with the HV type (no GRUB menu wait).
 ifeq ($(HV),uni)
-run-split: $(SWTPM) GETTY
+run-split-kvm: $(SWTPM) GETTY
 	@echo "Preparing ext rootfs as ext-imga.img for VM..."
 	@mkdir -p $(CURRENT_DIR)/pkgs-inject
 	@cp $(CURRENT_DIR)/installer/rootfs-ext.img $(CURRENT_DIR)/pkgs-inject/ext-imga.img
-	@echo "Starting VM with core rootfs + ext-imga.img on /dev/sdb1..."
+	@echo "Starting VM with core rootfs (KVM) + ext-imga.img on /dev/sdb1..."
 	$(QEMU_SYSTEM) $(QEMU_OPTS) \
-		-drive file=$(CURRENT_DIR)/live-split.$(IMG_FORMAT),format=$(IMG_FORMAT),id=uefi-disk \
+		-drive file=$(CURRENT_DIR)/live-split-kvm.$(IMG_FORMAT),format=$(IMG_FORMAT),id=uefi-disk \
 		-drive file=fat:rw:$(CURRENT_DIR)/pkgs-inject,format=vvfat,id=pkgs-disk
 
 run-split-k: $(SWTPM) GETTY
@@ -771,7 +772,7 @@ run-split-xen: $(SWTPM) GETTY
 		-drive file=$(CURRENT_DIR)/live-split-xen.$(IMG_FORMAT),format=$(IMG_FORMAT),id=uefi-disk \
 		-drive file=fat:rw:$(CURRENT_DIR)/pkgs-inject,format=vvfat,id=pkgs-disk
 else
-run-split run-split-k run-split-xen:
+run-split-kvm run-split-k run-split-xen:
 	$(MAKE) HV=uni $@
 endif
 
@@ -924,15 +925,16 @@ ifeq ($(HV),uni)
 live-split: $(LIVE)-split.$(IMG_FORMAT) $(ROOTFS_EXT_IMG) $(BIOS_IMG) current
 	$(QUIET): "$@: Succeeded, LIVE_SPLIT=$(LIVE)-split.$(IMG_FORMAT)"
 
-# Split rootfs k-variant: same core+ext but CONFIG has eve-hv-type=k (kubevirt mode)
-# Uses mcopy to inject eve-hv-type into CONFIG (same mechanism as lfedge/eve Docker image /in mount)
+live-split-kvm: $(LIVE)-split-kvm.$(IMG_FORMAT) $(ROOTFS_EXT_IMG) $(BIOS_IMG) current
+	$(QUIET): "$@: Succeeded, LIVE_SPLIT_KVM=$(LIVE)-split-kvm.$(IMG_FORMAT)"
+
 live-split-k: $(LIVE)-split-k.$(IMG_FORMAT) $(ROOTFS_EXT_IMG) $(BIOS_IMG) current
 	$(QUIET): "$@: Succeeded, LIVE_SPLIT_K=$(LIVE)-split-k.$(IMG_FORMAT)"
 
 live-split-xen: $(LIVE)-split-xen.$(IMG_FORMAT) $(ROOTFS_EXT_IMG) $(BIOS_IMG) current
 	$(QUIET): "$@: Succeeded, LIVE_SPLIT_XEN=$(LIVE)-split-xen.$(IMG_FORMAT)"
 else
-live-split live-split-k live-split-xen:
+live-split live-split-kvm live-split-k live-split-xen:
 	$(MAKE) HV=uni $@
 endif
 
@@ -1192,6 +1194,19 @@ $(LIVE)-split.raw: $(BOOT_PART) $(EFI_PART) $(ROOTFS_EXT_IMG) $(ROOTFS_CORE_IMG)
 	./tools/prepare-platform.sh "$(PLATFORM)" "$(BUILD_DIR)" "$(INSTALLER)"
 	ln -sf rootfs-core.img $(INSTALLER)/rootfs.img
 	./tools/makeflash.sh "mkimage-raw-efi" -C $| $@ $(LIVE_PART_SPEC)
+	rm -f $(INSTALLER)/rootfs.img
+	$(QUIET): $@: Succeeded
+
+# Split rootfs kvm-variant: inject eve-hv-type=kvm into CONFIG (no GRUB menu wait)
+$(LIVE)-split-kvm.raw: $(LIVE)-split.raw
+	@echo "Creating kvm-variant split image..."
+	cp $(CONFIG_IMG) $(CONFIG_IMG).tmp
+	echo -n "kvm" | mcopy -i $(CONFIG_IMG).tmp -o - ::eve-hv-type
+	ln -sf rootfs-core.img $(INSTALLER)/rootfs.img
+	mv $(CONFIG_IMG) $(CONFIG_IMG).orig
+	mv $(CONFIG_IMG).tmp $(CONFIG_IMG)
+	./tools/makeflash.sh "mkimage-raw-efi" -C $(INSTALLER) $@ $(LIVE_PART_SPEC)
+	mv $(CONFIG_IMG).orig $(CONFIG_IMG)
 	rm -f $(INSTALLER)/rootfs.img
 	$(QUIET): $@: Succeeded
 
