@@ -752,8 +752,17 @@ run-split: $(SWTPM) GETTY
 	$(QEMU_SYSTEM) $(QEMU_OPTS) \
 		-drive file=$(CURRENT_DIR)/live-split.$(IMG_FORMAT),format=$(IMG_FORMAT),id=uefi-disk \
 		-drive file=fat:rw:$(CURRENT_DIR)/pkgs-inject,format=vvfat,id=pkgs-disk
+
+run-split-xen: $(SWTPM) GETTY
+	@echo "Preparing ext rootfs as ext-imga.img for VM..."
+	@mkdir -p $(CURRENT_DIR)/pkgs-inject
+	@cp $(CURRENT_DIR)/installer/rootfs-ext.img $(CURRENT_DIR)/pkgs-inject/ext-imga.img
+	@echo "Starting VM with core rootfs (Xen) + ext-imga.img on /dev/sdb1..."
+	$(QEMU_SYSTEM) $(QEMU_OPTS) \
+		-drive file=$(CURRENT_DIR)/live-split-xen.$(IMG_FORMAT),format=$(IMG_FORMAT),id=uefi-disk \
+		-drive file=fat:rw:$(CURRENT_DIR)/pkgs-inject,format=vvfat,id=pkgs-disk
 else
-run-split:
+run-split run-split-xen:
 	$(MAKE) HV=uni $@
 endif
 
@@ -910,8 +919,11 @@ live-split: $(LIVE)-split.$(IMG_FORMAT) $(ROOTFS_EXT_IMG) $(BIOS_IMG) current
 # Uses mcopy to inject eve-hv-type into CONFIG (same mechanism as lfedge/eve Docker image /in mount)
 live-split-k: $(LIVE)-split-k.$(IMG_FORMAT) $(ROOTFS_EXT_IMG) $(BIOS_IMG) current
 	$(QUIET): "$@: Succeeded, LIVE_SPLIT_K=$(LIVE)-split-k.$(IMG_FORMAT)"
+
+live-split-xen: $(LIVE)-split-xen.$(IMG_FORMAT) $(ROOTFS_EXT_IMG) $(BIOS_IMG) current
+	$(QUIET): "$@: Succeeded, LIVE_SPLIT_XEN=$(LIVE)-split-xen.$(IMG_FORMAT)"
 else
-live-split live-split-k:
+live-split live-split-k live-split-xen:
 	$(MAKE) HV=uni $@
 endif
 
@@ -1183,6 +1195,19 @@ $(LIVE)-split-k.raw: $(LIVE)-split.raw
 	ln -sf rootfs-core.img $(INSTALLER)/rootfs.img
 	mv $(CONFIG_IMG) $(CONFIG_IMG).kvm
 	mv $(CONFIG_IMG).k $(CONFIG_IMG)
+	./tools/makeflash.sh "mkimage-raw-efi" -C $(INSTALLER) $@ $(LIVE_PART_SPEC)
+	mv $(CONFIG_IMG).kvm $(CONFIG_IMG)
+	rm -f $(INSTALLER)/rootfs.img
+	$(QUIET): $@: Succeeded
+
+# Split rootfs xen-variant: inject eve-hv-type=xen into CONFIG partition
+$(LIVE)-split-xen.raw: $(LIVE)-split.raw
+	@echo "Creating xen-variant split image..."
+	cp $(CONFIG_IMG) $(CONFIG_IMG).xen
+	echo -n "xen" | mcopy -i $(CONFIG_IMG).xen -o - ::eve-hv-type
+	ln -sf rootfs-core.img $(INSTALLER)/rootfs.img
+	mv $(CONFIG_IMG) $(CONFIG_IMG).kvm
+	mv $(CONFIG_IMG).xen $(CONFIG_IMG)
 	./tools/makeflash.sh "mkimage-raw-efi" -C $(INSTALLER) $@ $(LIVE_PART_SPEC)
 	mv $(CONFIG_IMG).kvm $(CONFIG_IMG)
 	rm -f $(INSTALLER)/rootfs.img
