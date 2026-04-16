@@ -206,8 +206,6 @@ ROOTFS_EXT_FORMAT?=erofs
 ROOTFS_UNIVERSAL_TAR=$(ROOTFS_TAR_BASE)-universal.tar
 ROOTFS_CORE_TAR=$(ROOTFS_TAR_BASE)-core.tar
 ROOTFS_EXT_TAR=$(ROOTFS_TAR_BASE)-ext.tar
-INSTALLER_SPLIT_TAR=$(BUILD_DIR)/installer-split.tar
-INSTALLER_SPLIT_IMG=$(INSTALLER)/installer-split.img
 
 CONFIG_IMG=$(INSTALLER)/config.img
 INITRD_IMG=$(INSTALLER)/initrd.img
@@ -958,7 +956,7 @@ installer: $(INSTALLER).raw current
 # Split installer is always universal — force HV=uni
 ifeq ($(HV),uni)
 installer-split: $(INSTALLER)-split.raw current
-	$(QUIET): "$@: Succeeded, INSTALLER_SPLIT=$(INSTALLER)-split.raw"
+	$(QUIET): "$@: Succeeded, INSTALLER_SPLIT_RAW=$(INSTALLER)-split.raw"
 else
 installer-split:
 	$(MAKE) HV=uni $@
@@ -969,10 +967,11 @@ endif
 # rootfs-ext.img as the additional disk. We cannot call $(MAKE) eve because it
 # would rebuild the monolithic rootfs-generic.img and overwrite our core image,
 # plus the dirty timestamp would create a different INSTALLER directory.
-# Split OCI artifacts: same as EVE_ARTIFACTS but WITHOUT $(ROOTFS_IMGS), $(INSTALLER_IMG),
-# $(SBOM), and fullname-rootfs — all of which chain back to the monolithic rootfs-generic.img.
+# Split OCI artifacts: same as EVE_ARTIFACTS but WITHOUT $(ROOTFS_IMGS), $(SBOM),
+# and fullname-rootfs — all of which chain back to the monolithic rootfs-generic.img.
 # The split OCI image uses rootfs-core.img (symlinked as rootfs.img) instead.
-EVE_SPLIT_ARTIFACTS=$(BIOS_IMG) $(EFI_PART) $(CONFIG_IMG) $(PERSIST_IMG) $(INITRD_IMG) $(BSP_IMX_PART) $(BOOT_PART)
+# $(INSTALLER_IMG) here resolves to the HV=uni split recipe (core+ext, rootfs-core as rootfs.img).
+EVE_SPLIT_ARTIFACTS=$(BIOS_IMG) $(EFI_PART) $(CONFIG_IMG) $(PERSIST_IMG) $(INITRD_IMG) $(INSTALLER_IMG) $(BSP_IMX_PART) $(BOOT_PART)
 # Split OCI image is always universal — force HV=uni
 ifeq ($(HV),uni)
 eve-split: $(ROOTFS_CORE_IMG) $(ROOTFS_EXT_IMG) $(EVE_SPLIT_ARTIFACTS) current $(RUNME) $(BUILD_YML) | $(BUILD_DIR)
@@ -1030,35 +1029,30 @@ ifdef KERNEL_IMAGE
 	tar -P -u --transform="flags=r;s|$(KIMAGE)|/boot/kernel|" -f "$@" "$(KIMAGE)"
 endif
 
-$(INSTALLER_TAR): images/out/installer-$(HV)-$(PLATFORM).yml $(ROOTFS_IMGS) $(PERSIST_IMG) $(CONFIG_IMG) | $(INSTALLER)
-	$(QUIET): $@: Begin
-	echo "Building installer tarball from $<"
-	./tools/makerootfs.sh tar $(UPDATE_TAR) -y $< -t $@ -d $(INSTALLER) -a $(ZARCH)
-	$(QUIET): $@: Succeeded
-
-# Split installer: uses core rootfs as rootfs.img, bundles ext rootfs for delivery to persist
+# Split installer uses core rootfs as rootfs.img and bundles ext rootfs for delivery to persist.
 # rootfs.img is a symlink to rootfs-core.img (linuxkit needs "rootfs.img" by convention).
 # rootfs-ext.img already exists as a real file from the ext_rootfs build — don't symlink over it.
-$(INSTALLER_SPLIT_TAR): images/out/installer-$(HV)-$(PLATFORM).yml $(ROOTFS_CORE_IMG) $(ROOTFS_EXT_IMG) $(PERSIST_IMG) $(CONFIG_IMG) | $(INSTALLER)
+ifeq ($(HV),uni)
+$(INSTALLER_TAR): images/out/installer-$(HV)-$(PLATFORM).yml $(ROOTFS_CORE_IMG) $(ROOTFS_EXT_IMG) $(PERSIST_IMG) $(CONFIG_IMG) | $(INSTALLER)
 	$(QUIET): $@: Begin
 	ln -sf rootfs-core.img $(INSTALLER)/rootfs.img
 	echo "Building split installer tarball from $<"
 	./tools/makerootfs.sh tar $(UPDATE_TAR) -y $< -t $@ -d $(INSTALLER) -a $(ZARCH)
 	rm -f $(INSTALLER)/rootfs.img
 	$(QUIET): $@: Succeeded
-
-$(INSTALLER_SPLIT_IMG): $(INSTALLER_SPLIT_TAR) | $(INSTALLER)
+else
+$(INSTALLER_TAR): images/out/installer-$(HV)-$(PLATFORM).yml $(ROOTFS_IMGS) $(PERSIST_IMG) $(CONFIG_IMG) | $(INSTALLER)
 	$(QUIET): $@: Begin
-	./tools/makerootfs.sh imagefromtar -t $< -i $@ -f $(ROOTFS_FORMAT) -a $(ZARCH)
+	echo "Building installer tarball from $<"
+	./tools/makerootfs.sh tar $(UPDATE_TAR) -y $< -t $@ -d $(INSTALLER) -a $(ZARCH)
 	$(QUIET): $@: Succeeded
+endif
 
-$(INSTALLER)-split.raw: $(INSTALLER_SPLIT_IMG) $(EFI_PART) $(BOOT_PART) $(CONFIG_IMG) $(BSP_IMX_PART) $(BIOS_IMG) | $(INSTALLER)
+$(INSTALLER)-split.raw: $(INSTALLER_IMG) $(EFI_PART) $(BOOT_PART) $(CONFIG_IMG) $(BSP_IMX_PART) $(BIOS_IMG) | $(INSTALLER)
 	./tools/prepare-platform.sh "$(PLATFORM)" "$(BUILD_DIR)" "$(INSTALLER)"
 	@# Embed supported HV types in CONFIG for ZFlash validation
 	printf "kvm\nk\nxen\n" | MTOOLS_SKIP_CHECK=1 mcopy -i $(CONFIG_IMG) - ::/eve-hv-supported
-	ln -sf installer-split.img $(INSTALLER)/installer.img
 	./tools/makeflash.sh "mkimage-raw-efi" -C $| $@ "efi conf_win installer inventory_win"
-	rm -f $(INSTALLER)/installer.img
 	$(QUIET): $@: Succeeded
 
 $(ROOTFS_IMG_BASE)-%.img: pkg/mkrootfs-$(ROOTFS_FORMAT)
