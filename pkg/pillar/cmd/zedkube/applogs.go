@@ -8,6 +8,7 @@ package zedkube
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -38,7 +39,9 @@ func (z *zedkube) collectAppLogs() {
 	sinceSec = logcollectInterval
 
 	// Cache all pods once and separate into virt-launcher pods (for VMI apps) and other pods (for native containers).
-	podsAllList, err := clientset.CoreV1().Pods(kubeapi.EVEKubeNameSpace).List(context.TODO(), metav1.ListOptions{})
+	listCtx, listCancel := context.WithTimeout(context.Background(), kubeAPITimeout)
+	defer listCancel()
+	podsAllList, err := clientset.CoreV1().Pods(kubeapi.EVEKubeNameSpace).List(listCtx, metav1.ListOptions{})
 	if err != nil {
 		logrus.Errorf("collectAppLogs: can't list pods in namespace %s: %v", kubeapi.EVEKubeNameSpace, err)
 		return
@@ -113,12 +116,24 @@ func (z *zedkube) collectAppLogs() {
 		}
 
 		req := clientset.CoreV1().Pods(kubeapi.EVEKubeNameSpace).GetLogs(contName, opt)
-		podLogs, err := req.Stream(context.Background())
+		streamCtx, streamCancel := context.WithTimeout(context.Background(), kubeAPITimeout)
+		podLogs, err := req.Stream(streamCtx)
 		if err != nil {
 			log.Errorf("collectAppLogs: pod %s, log error %v", contName, err)
+			// Capture context error before canceling: streamCancel() sets Err() to
+			// context.Canceled regardless of whether the deadline actually fired.
+			ctxErr := streamCtx.Err()
+			streamCancel()
+			// If the context deadline fired, the API server is degraded.
+			// No point trying the remaining apps — bail out immediately.
+			// In order to avoid the waiting too long to trigger watchdog, we return here
+			// and we may lose some logs from certain pods
+			if errors.Is(ctxErr, context.DeadlineExceeded) {
+				log.Errorf("collectAppLogs: stream timeout, aborting log collection")
+				return
+			}
 			continue
 		}
-		defer podLogs.Close()
 
 		scanner := bufio.NewScanner(podLogs)
 		for scanner.Scan() {
@@ -132,6 +147,15 @@ func (z *zedkube) collectAppLogs() {
 		}
 		if err := scanner.Err(); err != nil {
 			log.Errorf("collectAppLogs: scanner error for pod %s: %v", contName, err)
+		}
+		podLogs.Close()
+		// Capture context error before canceling: streamCancel() sets Err() to
+		// context.Canceled regardless of whether the deadline actually fired.
+		ctxErr := streamCtx.Err()
+		streamCancel()
+		if errors.Is(ctxErr, context.DeadlineExceeded) {
+			log.Errorf("collectAppLogs: stream context expired mid-scan, aborting log collection")
+			return
 		}
 	}
 }
@@ -151,7 +175,9 @@ func (z *zedkube) checkAppsStatus() {
 
 	stItems := z.pubENClusterAppStatus.GetAll()
 
-	pods, err := clientset.CoreV1().Pods(kubeapi.EVEKubeNameSpace).List(context.TODO(), metav1.ListOptions{})
+	podsCtx, podsCancel := context.WithTimeout(context.Background(), kubeAPITimeout)
+	defer podsCancel()
+	pods, err := clientset.CoreV1().Pods(kubeapi.EVEKubeNameSpace).List(podsCtx, metav1.ListOptions{})
 	if err != nil {
 		log.Errorf("checkAppsStatus: can't get pods %v", err)
 		// If we can't get pods, process the error and return

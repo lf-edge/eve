@@ -7,6 +7,7 @@ package kubeapi
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"reflect"
@@ -72,8 +73,12 @@ const (
 )
 
 const (
-	errorTime   = 3 * time.Minute
-	warningTime = 40 * time.Second
+	errorTime      = 3 * time.Minute
+	warningTime    = 40 * time.Second
+	kubeAPITimeout = 30 * time.Second
+	// Bound the entire VMIRs reset workflow so failover does not sit in retry
+	// loops indefinitely when virt-api is degraded or unavailable.
+	detachUtilVmirsReplicaResetTimeout = 2 * time.Minute
 )
 
 // GetKubeConfig : Get handle to Kubernetes config
@@ -557,7 +562,11 @@ func DeleteControlPlanePodsOnNode(log *base.LogObject, kubernetesHostName string
 
 }
 
-func vmirsReplicaCountSet(log *base.LogObject, vmiRsName string, replicaCount int) error {
+func vmirsReplicaCountSet(ctx context.Context, log *base.LogObject, vmiRsName string, replicaCount int) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	config, err := GetKubeConfig()
 	if err != nil {
 		log.Errorf("vmirsReplicaCountSet: can't get kubeconfig %v", err)
@@ -570,15 +579,20 @@ func vmirsReplicaCountSet(log *base.LogObject, vmiRsName string, replicaCount in
 		return err
 	}
 
-	vmirs, err := kvClientset.ReplicaSet(EVEKubeNameSpace).Get(context.Background(), vmiRsName, metav1.GetOptions{})
-	if err == nil {
-		reps := int32(replicaCount)
-		vmirs.Spec.Replicas = &reps
-		_, err := kvClientset.ReplicaSet(EVEKubeNameSpace).Update(context.Background(), vmirs, metav1.UpdateOptions{})
-		if err != nil {
-			log.Noticef("vmirsReplicaCountSet vmirs:%s scaled to %d err:%v", vmiRsName, replicaCount, err)
-			return err
-		}
+	reqCtx, cancel := context.WithTimeout(ctx, kubeAPITimeout)
+	defer cancel()
+	vmirs, err := kvClientset.ReplicaSet(EVEKubeNameSpace).Get(reqCtx, vmiRsName, metav1.GetOptions{})
+	if err != nil {
+		log.Noticef("vmirsReplicaCountSet couldn't get vmirs:%s err:%v", vmiRsName, err)
+		return err
+	}
+
+	reps := int32(replicaCount)
+	vmirs.Spec.Replicas = &reps
+	_, err = kvClientset.ReplicaSet(EVEKubeNameSpace).Update(reqCtx, vmirs, metav1.UpdateOptions{})
+	if err != nil {
+		log.Noticef("vmirsReplicaCountSet vmirs:%s scaled to %d err:%v", vmiRsName, replicaCount, err)
+		return err
 	}
 	log.Noticef("vmirsReplicaCountSet complete for vmirs:%s", vmiRsName)
 	return nil
@@ -587,33 +601,46 @@ func vmirsReplicaCountSet(log *base.LogObject, vmiRsName string, replicaCount in
 // DetachUtilVmirsReplicaReset manages retries around scaling down and back up the replica
 // count of a vmirs to push the control plane into scheduling a new vmi
 func DetachUtilVmirsReplicaReset(log *base.LogObject, vmiRsName string) (err error) {
+	ctx, cancel := context.WithTimeout(context.Background(), detachUtilVmirsReplicaResetTimeout)
+	defer cancel()
+
 	vmiRsResetMaxTries := 60
-	vmiRsResetTry := 0
 	// Retries to handle connection issues to virt-api
-	for {
-		vmiRsResetTry++
-		if vmiRsResetTry > vmiRsResetMaxTries {
-			log.Errorf("DetachOldWorkload vmirs scale reset timeout, breaking...")
-			break
+	for vmiRsResetTry := 1; vmiRsResetTry <= vmiRsResetMaxTries; vmiRsResetTry++ {
+		if err := ctx.Err(); err != nil {
+			log.Errorf("DetachOldWorkload vmirs scale reset canceled for vmirs:%s err:%v", vmiRsName, err)
+			return err
 		}
-		time.Sleep(time.Second * 1)
-		err = vmirsReplicaCountSet(log, vmiRsName, 0)
+
+		time.Sleep(time.Second)
+
+		err = vmirsReplicaCountSet(ctx, log, vmiRsName, 0)
 		if err != nil {
+			if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+				log.Errorf("DetachOldWorkload aborting vmirs scale reset for %s after timeout scaling to 0: %v", vmiRsName, err)
+				return err
+			}
 			log.Errorf("DetachOldWorkload retrying scale:%s to 0 err:%v", vmiRsName, err)
-			time.Sleep(time.Second * 2)
+			time.Sleep(2 * time.Second)
 			continue
 		}
 
-		err = vmirsReplicaCountSet(log, vmiRsName, 1)
+		err = vmirsReplicaCountSet(ctx, log, vmiRsName, 1)
 		if err != nil {
+			if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+				log.Errorf("DetachOldWorkload aborting vmirs scale reset for %s after timeout scaling to 1: %v", vmiRsName, err)
+				return err
+			}
 			log.Errorf("DetachOldWorkload retrying scale:%s to 1 err:%v", vmiRsName, err)
-			time.Sleep(time.Second * 2)
+			time.Sleep(2 * time.Second)
 			continue
 		}
 		log.Noticef("DetachOldWorkload vmirs:%s scale reset", vmiRsName)
 		return nil
 	}
-	return
+	err = fmt.Errorf("DetachOldWorkload vmirs scale reset timeout for vmirs:%s", vmiRsName)
+	log.Errorf("%v", err)
+	return err
 }
 
 // GetVmiRsName returns the replicated VMI object name, the parent of a vmi
@@ -648,7 +675,9 @@ func GetVmiRsName(log *base.LogObject, appDomainName string) (string, error) {
 	}
 
 	vmiRsName := ""
-	vmi, err := kvClientset.VirtualMachineInstance(EVEKubeNameSpace).Get(context.Background(), vmiName, metav1.GetOptions{})
+	vmiCtx, vmiCancel := context.WithTimeout(context.Background(), kubeAPITimeout)
+	defer vmiCancel()
+	vmi, err := kvClientset.VirtualMachineInstance(EVEKubeNameSpace).Get(vmiCtx, vmiName, metav1.GetOptions{})
 	if err != nil {
 		return "", err
 	}
@@ -677,7 +706,9 @@ func GetVirtLauncherPods(log *base.LogObject, appDomainName string) (*corev1.Pod
 		return nil, err
 	}
 
-	vlPods, err := clientset.CoreV1().Pods(EVEKubeNameSpace).List(context.Background(), metav1.ListOptions{
+	ctx, cancel := context.WithTimeout(context.Background(), kubeAPITimeout)
+	defer cancel()
+	vlPods, err := clientset.CoreV1().Pods(EVEKubeNameSpace).List(ctx, metav1.ListOptions{
 		LabelSelector: "kubevirt.io=virt-launcher," + EVEAppDomainNameLbl + "=" + appDomainName,
 	})
 	return vlPods, err
@@ -706,7 +737,10 @@ func kubeNodeNotReporting(log *base.LogObject, node *corev1.Node) (notreporting 
 }
 
 func tryFastDeleteVmi(log *base.LogObject, kvClientset kubecli.KubevirtClient, vmiName string) error {
-	vmi, err := kvClientset.VirtualMachineInstance(EVEKubeNameSpace).Get(context.Background(), vmiName, metav1.GetOptions{})
+	ctx, cancel := context.WithTimeout(context.Background(), kubeAPITimeout)
+	defer cancel()
+
+	vmi, err := kvClientset.VirtualMachineInstance(EVEKubeNameSpace).Get(ctx, vmiName, metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
@@ -714,7 +748,7 @@ func tryFastDeleteVmi(log *base.LogObject, kvClientset kubecli.KubevirtClient, v
 	// VMI deletion can get stuck when the kubevirt control plane has been interrupted
 	// by some failover breaking access to a kubevirt api pod, remove finalizers and force the delete
 	vmi.ObjectMeta.Finalizers = []string{}
-	_, err = kvClientset.VirtualMachineInstance(vmi.ObjectMeta.Namespace).Update(context.Background(), vmi, metav1.UpdateOptions{})
+	_, err = kvClientset.VirtualMachineInstance(vmi.ObjectMeta.Namespace).Update(ctx, vmi, metav1.UpdateOptions{})
 	if err != nil {
 		// Not fatal, just means the delete may take longer to process
 		// Don't return an error here and disrupt the failover process
@@ -724,7 +758,7 @@ func tryFastDeleteVmi(log *base.LogObject, kvClientset kubecli.KubevirtClient, v
 	// Policy for all deletes in the failover path
 	gracePeriod := int64(0)
 	propagationPolicy := metav1.DeletePropagationForeground
-	return kvClientset.VirtualMachineInstance(EVEKubeNameSpace).Delete(context.Background(), vmiName,
+	return kvClientset.VirtualMachineInstance(EVEKubeNameSpace).Delete(ctx, vmiName,
 		metav1.DeleteOptions{
 			GracePeriodSeconds: &gracePeriod,
 			PropagationPolicy:  &propagationPolicy,
@@ -752,7 +786,9 @@ func getPodsLhVols(log *base.LogObject, pod *corev1.Pod) (lhVolNames []string) {
 		}
 		pvcName := vol.PersistentVolumeClaim.ClaimName
 
-		pvc, err := clientset.CoreV1().PersistentVolumeClaims(EVEKubeNameSpace).Get(context.Background(), pvcName, metav1.GetOptions{})
+		pvcCtx, pvcCancel := context.WithTimeout(context.Background(), kubeAPITimeout)
+		pvc, err := clientset.CoreV1().PersistentVolumeClaims(EVEKubeNameSpace).Get(pvcCtx, pvcName, metav1.GetOptions{})
+		pvcCancel()
 		if err != nil {
 			log.Errorf("DetachOldWorkload Can't get failed pod:%s PVC:%s err:%v", pod.ObjectMeta.Name, pvcName, err)
 			continue
@@ -841,7 +877,9 @@ func DetachOldWorkload(log *base.LogObject, failedNodeName string, appDomainName
 	}
 
 	// 2. Make sure the node is unreachable
-	node, err := clientset.CoreV1().Nodes().Get(context.Background(), failedNodeName, metav1.GetOptions{})
+	nodeCtx, nodeCancel := context.WithTimeout(context.Background(), kubeAPITimeout)
+	defer nodeCancel()
+	node, err := clientset.CoreV1().Nodes().Get(nodeCtx, failedNodeName, metav1.GetOptions{})
 	if (err != nil) || (node == nil) {
 		log.Errorf("DetachOldWorkload: can't get node:%s object err:%v", failedNodeName, err)
 		return
@@ -915,11 +953,13 @@ func DetachOldWorkload(log *base.LogObject, failedNodeName string, appDomainName
 	// Delete virt-launcher pod on failed node
 	if failedNodevLPodName != "" {
 		log.Noticef("DetachOldWorkload Deleting virt-launcher pod:%s", failedNodevLPodName)
-		err = clientset.CoreV1().Pods(EVEKubeNameSpace).Delete(context.Background(), failedNodevLPodName,
+		podDelCtx, podDelCancel := context.WithTimeout(context.Background(), kubeAPITimeout)
+		err = clientset.CoreV1().Pods(EVEKubeNameSpace).Delete(podDelCtx, failedNodevLPodName,
 			metav1.DeleteOptions{
 				GracePeriodSeconds: &gracePeriod,
 				PropagationPolicy:  &propagationPolicy,
 			})
+		podDelCancel()
 		if err != nil {
 			log.Errorf("DetachOldWorkload Can't delete terminating virt-launcher pod:%s err:%v", failedNodevLPodName, err)
 		}

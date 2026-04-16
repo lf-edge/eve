@@ -42,7 +42,9 @@ func (z *zedkube) checkAppsFailover(wdFunc func()) {
 		return
 	}
 
-	pods, err := clientset.CoreV1().Pods(kubeapi.EVEKubeNameSpace).List(context.TODO(), metav1.ListOptions{})
+	podsCtx, podsCancel := context.WithTimeout(context.Background(), kubeAPITimeout)
+	defer podsCancel()
+	pods, err := clientset.CoreV1().Pods(kubeapi.EVEKubeNameSpace).List(podsCtx, metav1.ListOptions{})
 	if err != nil {
 		log.Errorf("checkAppsFailover: can't get pods %v", err)
 		return

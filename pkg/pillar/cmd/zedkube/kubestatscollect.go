@@ -25,6 +25,11 @@ func (z *zedkube) collectKubeStats() {
 	if z.isKubeStatsLeader.Load() {
 		log.Functionf("collectKubeStats: Started collecting kube stats")
 
+		// Bound all k8s API calls so that a degraded API server cannot block the
+		// main event loop goroutine long enough to stale the watchdog touch file.
+		ctx, cancel := context.WithTimeout(context.Background(), kubeAPITimeout)
+		defer cancel()
+
 		clientset, err := getKubeClientSet()
 		if err != nil {
 			log.Errorf("collectKubeStats: can't get clientset %v", err)
@@ -36,7 +41,7 @@ func (z *zedkube) collectKubeStats() {
 		var vmisInfo []types.KubeVMIInfo
 
 		// get nodes
-		nodes, err := getKubeNodes(clientset)
+		nodes, err := getKubeNodes(ctx, clientset)
 		if err != nil {
 			log.Errorf("collectKubeStats: can't get nodes %v", err)
 			return
@@ -47,7 +52,7 @@ func (z *zedkube) collectKubeStats() {
 		}
 
 		// get app pods
-		pods, err := getAppKubePods(clientset)
+		pods, err := getAppKubePods(ctx, clientset)
 		if err != nil {
 			log.Errorf("collectKubeStats: can't get pods %v", err)
 			return
@@ -66,7 +71,7 @@ func (z *zedkube) collectKubeStats() {
 			log.Errorf("collectKubeStats: can't get virtClient %v", err)
 			return
 		}
-		vmis, err := getAppVMIs(virtClient)
+		vmis, err := getAppVMIs(ctx, virtClient)
 		if err != nil {
 			log.Errorf("collectKubeStats: can't get VMIs %v", err)
 			return
@@ -83,10 +88,10 @@ func (z *zedkube) collectKubeStats() {
 		}
 
 		var podNsInfoList []types.KubePodNameSpaceInfo
-		allNs, err := getAllNs()
+		allNs, err := getAllNs(ctx)
 		if err == nil {
 			for _, ns := range allNs {
-				nsInfo, err := getPodNsInfo(ns)
+				nsInfo, err := getPodNsInfo(ctx, ns)
 				if err == nil {
 					podNsInfoList = append(podNsInfoList, nsInfo)
 				}
@@ -111,8 +116,8 @@ func (z *zedkube) collectKubeStats() {
 	}
 }
 
-func getKubeNodes(clientset *kubernetes.Clientset) ([]corev1.Node, error) {
-	nodes, err := clientset.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
+func getKubeNodes(ctx context.Context, clientset *kubernetes.Clientset) ([]corev1.Node, error) {
+	nodes, err := clientset.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
 	if err != nil {
 		log.Errorf("getKubeNodes: can't get nodes %v", err)
 		return nil, err
@@ -207,9 +212,9 @@ func getKubeNodeInfo(node corev1.Node, z *zedkube) *types.KubeNodeInfo {
 	return &nodeInfo
 }
 
-func getAppKubePods(clientset *kubernetes.Clientset) ([]corev1.Pod, error) {
+func getAppKubePods(ctx context.Context, clientset *kubernetes.Clientset) ([]corev1.Pod, error) {
 	// List pods in the namespace
-	pods, err := clientset.CoreV1().Pods(kubeapi.EVEKubeNameSpace).List(context.Background(), metav1.ListOptions{})
+	pods, err := clientset.CoreV1().Pods(kubeapi.EVEKubeNameSpace).List(ctx, metav1.ListOptions{})
 	if err != nil {
 		log.Errorf("getAppKubePods: can't get nodes %v", err)
 		return nil, err
@@ -247,9 +252,9 @@ func getKubePodInfo(pod corev1.Pod) *types.KubePodInfo {
 	return &podInfo
 }
 
-func getAppVMIs(virtClient kubecli.KubevirtClient) ([]virtv1.VirtualMachineInstance, error) {
+func getAppVMIs(ctx context.Context, virtClient kubecli.KubevirtClient) ([]virtv1.VirtualMachineInstance, error) {
 	// List pods in the namespace
-	vmiList, err := virtClient.VirtualMachineInstance(kubeapi.EVEKubeNameSpace).List(context.Background(), metav1.ListOptions{})
+	vmiList, err := virtClient.VirtualMachineInstance(kubeapi.EVEKubeNameSpace).List(ctx, metav1.ListOptions{})
 	if err != nil {
 		log.Errorf("getAppVMIs: can't get nodes %v", err)
 		return nil, err

@@ -14,13 +14,13 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-func getAllNs() ([]string, error) {
+func getAllNs(ctx context.Context) ([]string, error) {
 	var nsNameList []string
 	clientset, err := kubeapi.GetClientSet()
 	if err != nil {
 		return nsNameList, err
 	}
-	nsList, err := clientset.CoreV1().Namespaces().List(context.Background(), metav1.ListOptions{})
+	nsList, err := clientset.CoreV1().Namespaces().List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return nsNameList, err
 	}
@@ -30,14 +30,14 @@ func getAllNs() ([]string, error) {
 	return nsNameList, nil
 }
 
-func getPodNsInfo(ns string) (types.KubePodNameSpaceInfo, error) {
+func getPodNsInfo(ctx context.Context, ns string) (types.KubePodNameSpaceInfo, error) {
 	kpnsi := types.KubePodNameSpaceInfo{Name: ns}
 
 	clientset, err := kubeapi.GetClientSet()
 	if err != nil {
 		return kpnsi, err
 	}
-	podList, err := clientset.CoreV1().Pods(ns).List(context.Background(), metav1.ListOptions{})
+	podList, err := clientset.CoreV1().Pods(ns).List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return kpnsi, err
 	}
