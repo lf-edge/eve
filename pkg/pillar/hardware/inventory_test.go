@@ -4,6 +4,9 @@
 package hardware
 
 import (
+	"encoding/json"
+	"errors"
+	"os"
 	"testing"
 
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
@@ -14,9 +17,14 @@ func TestCreateInventory(t *testing.T) {
 	_, log := agentlog.Init("someAgent")
 
 	inventory, err := GetInventoryInfo(log)
-	if err != nil {
-		panic(err)
+	// often the tests do not run as root, do not fail in this case
+	if inventory == nil || (err != nil && !errors.Is(err, os.ErrPermission)) {
+		t.Fatalf("creating inventory failed: %v", err)
 	}
 
-	t.Log(inventory)
+	bytes, err := json.MarshalIndent(inventory, "\t", "\t")
+	if err != nil {
+		t.Fatalf("could not create json: %v", err)
+	}
+	t.Log(string(bytes))
 }
