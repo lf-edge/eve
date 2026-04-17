@@ -17,30 +17,15 @@ on:  # yamllint disable-line rule:truthy
       - "[0-9]+.[0-9]+.[0-9]+-rc[0-9]+"
 
 jobs:
-  # 1) non-ARM packages, fully parallel
-  packages-non-arm:
+  # ════════════════════════════════════════════════════════════════════════
+  # Stage 1: Build and push base generic packages for each architecture.
+  # Stage 2 EVE jobs pull these from the registry; `make pkgs` only
+  # rebuilds any extra HV/platform-specific packages on top.
+  # ════════════════════════════════════════════════════════════════════════
+
+  pkgs-amd64:
     if: github.event.repository.full_name == 'lf-edge/eve'
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: zededa-ubuntu-2204
-            arch: amd64
-            platform: "generic"
-            hv: kvm
-          - os: zededa-ubuntu-2204
-            arch: amd64
-            platform: "generic"
-            hv: k
-          - os: zededa-ubuntu-2204
-            arch: amd64
-            platform: "evaluation"
-            hv: kvm
-          - os: zededa-ubuntu-2204
-            arch: riscv64
-            platform: "generic"
-            hv: mini
+    runs-on: zededa-ubuntu-2204
     steps:
       - name: Starting Report
         run: |
@@ -56,50 +41,24 @@ jobs:
       - name: Force fetch annotated tags (workaround)
         run: |
           git fetch --force --tags
-      - name: Determine architecture prefix and ref
-        env:
-          REF: ${{ github.ref }}
-        run: |
-          echo "ARCH=${{ matrix.arch }}" >> "$GITHUB_ENV"
-          echo "TAG=$(echo "$REF" | sed -e 's#^.*/##' -e 's#master#snapshot#' -e 's#main#snapshot#')" >> "$GITHUB_ENV"
-      - name: Login to Docker Hub (build)
+      - name: Login to Docker Hub
         uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2  # v4.0.0
-        if: ${{ github.event.repository.full_name == 'lf-edge/eve' }}
-        with:
-          username: ${{ secrets.DOCKERHUB_PULL_USER }}
-          password: ${{ secrets.DOCKERHUB_PULL_TOKEN }}
-      - name: Build packages
-        run: |
-          SUCCESS=
-          for i in 1 2 3; do
-            echo "Run attempt: $i"
-            if make -e V=1 HV="${{ matrix.hv }}" ZARCH="${{ matrix.arch }}" PLATFORM="${{ matrix.platform }}" LINUXKIT_PKG_TARGET=build pkgs; then
-              SUCCESS=true
-              break
-            else
-              docker system prune -f -a --volumes
-            fi
-          done
-          if [ -z "$SUCCESS" ]; then echo "::error::failed to build packages" && exit 1; fi
-      - name: Login to Docker Hub (push)
-        uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2  # v4.0.0
-        if: ${{ github.event.repository.full_name == 'lf-edge/eve' }}
         with:
           username: ${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}
           password: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
-      - name: Push packages
+      - name: Build and push packages
         run: |
           SUCCESS=
           for i in 1 2 3; do
             echo "Run attempt: $i"
-            if make -e V=1 HV="${{ matrix.hv }}" ZARCH="${{ matrix.arch }}" PLATFORM="${{ matrix.platform }}" LINUXKIT_PKG_TARGET=push PRUNE=1 pkgs; then
+            if make -e V=1 HV=kvm ZARCH=amd64 PLATFORM=generic LINUXKIT_PKG_TARGET=push PRUNE=1 pkgs; then
               SUCCESS=true
               break
             else
               docker system prune -f -a --volumes
             fi
           done
-          if [ -z "$SUCCESS" ]; then echo "::error::failed to push packages" && exit 1; fi
+          if [ -z "$SUCCESS" ]; then echo "::error::failed to build and push packages" && exit 1; fi
       - name: Post package report
         run: |
           echo Disk usage
@@ -115,25 +74,10 @@ jobs:
           docker system prune -f -a --volumes
           rm -rf ~/.linuxkit
 
-  # 2) ARM packages, serialized
-  packages-arm:
+  pkgs-arm64:
     if: github.event.repository.full_name == 'lf-edge/eve'
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 1440  # It takes more time when building arm64 on an amd64 runner
-    strategy:
-      fail-fast: false
-      max-parallel: 1
-      matrix:
-        include:
-          - os: zededa-ubuntu-2204-arm64
-            arch: arm64
-            platform: "generic"
-          - os: zededa-ubuntu-2204-arm64
-            arch: arm64
-            platform: "nvidia-jp5"
-          - os: zededa-ubuntu-2204-arm64
-            arch: arm64
-            platform: "nvidia-jp6"
+    runs-on: zededa-ubuntu-2204-arm64
+    timeout-minutes: 1440
     steps:
       - name: Starting Report
         run: |
@@ -147,68 +91,26 @@ jobs:
         with:
           fetch-depth: 0
       - name: Force fetch annotated tags (workaround)
-        # Workaround for https://github.com/actions/checkout/issues/290
         run: |
           git fetch --force --tags
-      - name: Determine architecture prefix and ref
-        env:
-          REF: ${{ github.ref }}
-        run: |
-          # some special installs when building for riscv64
-          if [ "${{ matrix.arch }}" = riscv64 ]; then
-             APT_INSTALL="sudo apt install -y binfmt-support qemu-user-static"
-             # the following weird statement is here to speed up the happy path
-             # if the default server is responding -- we can skip apt update
-             $APT_INSTALL || { sudo apt update && $APT_INSTALL ; }
-             # constraining environment for riscv64 builds
-             echo "ZARCH=riscv64" >> "$GITHUB_ENV"
-          fi
-          echo "ARCH=${{ matrix.arch }}" >> "$GITHUB_ENV"
-          echo "TAG=$(echo "$REF" | sed -e 's#^.*/##' -e 's#master#snapshot#' -e 's#main#snapshot#')" >> "$GITHUB_ENV"
-
-      - name: Login to Docker Hub (build)
-        if: ${{ github.event.repository.full_name == 'lf-edge/eve' }}
-        uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2  # v4.0.0
-        with:
-          username: ${{ secrets.DOCKERHUB_PULL_USER }}
-          password: ${{ secrets.DOCKERHUB_PULL_TOKEN }}
-
-      - name: Build packages
-        run: |
-          SUCCESS=
-          # sadly, our build sometimes times out on network access
-          # and running out of disk space: re-trying for 3 times
-          for i in 1 2 3; do
-             echo "Run attempt: $i"
-             if make -e V=1 ZARCH="${{ matrix.arch }}" PLATFORM="${{ matrix.platform }}" LINUXKIT_PKG_TARGET=build pkgs; then
-                SUCCESS=true
-                break
-             else
-                docker system prune -f -a --volumes
-             fi
-          done
-          if [ -z "$SUCCESS" ]; then echo "::error::failed to build packages" && exit 1; fi
-      - name: Login to Docker Hub (push)
-        if: ${{ github.event.repository.full_name == 'lf-edge/eve' }}
+      - name: Login to Docker Hub
         uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2  # v4.0.0
         with:
           username: ${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}
           password: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
-      - name: Push packages
+      - name: Build and push packages
         run: |
           SUCCESS=
-          # sadly, our build sometimes times out on network access
-          # and running out of disk space: re-trying for 3 times
           for i in 1 2 3; do
-             echo "Run attempt: $i"
-             if make -e V=1 ZARCH="${{ matrix.arch }}" PLATFORM="${{ matrix.platform }}" LINUXKIT_PKG_TARGET=push pkgs; then
-                SUCCESS=true
-                break
-             else
-                docker system prune -f -a --volumes
-             fi
+            echo "Run attempt: $i"
+            if make -e V=1 HV=kvm ZARCH=arm64 PLATFORM=generic LINUXKIT_PKG_TARGET=push PRUNE=1 pkgs; then
+              SUCCESS=true
+              break
+            else
+              docker system prune -f -a --volumes
+            fi
           done
-          if [ -z "$SUCCESS" ]; then echo "::error::failed to push packages" && exit 1; fi
+          if [ -z "$SUCCESS" ]; then echo "::error::failed to build and push packages" && exit 1; fi
       - name: Post package report
         run: |
           echo Disk usage
@@ -224,51 +126,107 @@ jobs:
           docker system prune -f -a --volumes
           rm -rf ~/.linuxkit
 
-  # 3) downstream jobs depend on both package jobs
+  # ════════════════════════════════════════════════════════════════════════
+  # Stage 2: Build and push EVE images for every variant.
+  # Base generic packages are already in the registry from Stage 1.
+  # Each job builds any remaining HV/platform-specific packages (a fast
+  # delta), pushes them, then builds and pushes the EVE image.
+  # ════════════════════════════════════════════════════════════════════════
+
   eve:
     if: github.event.repository.full_name == 'lf-edge/eve'
-    needs: [packages-non-arm, packages-arm]
-    runs-on: zededa-ubuntu-2204
+    needs: [pkgs-amd64, pkgs-arm64]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 1440
     strategy:
       fail-fast: false
       matrix:
-        arch: [arm64, amd64]
-        hv: [kvm, xen]
-        platform: ["generic"]
         include:
+          # amd64
+          - arch: amd64
+            hv: kvm
+            platform: "generic"
+            os: zededa-ubuntu-2204
+          - arch: amd64
+            hv: xen
+            platform: "generic"
+            os: zededa-ubuntu-2204
+          - arch: amd64
+            hv: k
+            platform: "generic"
+            os: zededa-ubuntu-2204
+          - arch: amd64
+            hv: kvm
+            platform: "evaluation"
+            os: zededa-ubuntu-2204
+          # arm64 generic
+          - arch: arm64
+            hv: kvm
+            platform: "generic"
+            os: zededa-ubuntu-2204-arm64
+          - arch: arm64
+            hv: xen
+            platform: "generic"
+            os: zededa-ubuntu-2204-arm64
+          - arch: arm64
+            hv: k
+            platform: "generic"
+            os: zededa-ubuntu-2204-arm64
+          # arm64 nvidia
+          - arch: arm64
+            hv: kvm
+            platform: "nvidia-jp5"
+            os: zededa-ubuntu-2204-arm64
+          - arch: arm64
+            hv: kvm
+            platform: "nvidia-jp6"
+            os: zededa-ubuntu-2204-arm64
+          - arch: arm64
+            hv: kvm
+            platform: "nvidia-jp7"
+            os: zededa-ubuntu-2204-arm64
+          - arch: arm64
+            hv: k
+            platform: "nvidia-jp5"
+            os: zededa-ubuntu-2204-arm64
+          - arch: arm64
+            hv: k
+            platform: "nvidia-jp6"
+            os: zededa-ubuntu-2204-arm64
+          - arch: arm64
+            hv: k
+            platform: "nvidia-jp7"
+            os: zededa-ubuntu-2204-arm64
+          # riscv64 (cross-build on amd64 runner via qemu)
           - arch: riscv64
             hv: mini
             platform: "generic"
-          - arch: arm64
-            hv: kvm
-            platform: "nvidia-jp5"
-          - arch: arm64
-            hv: kvm
-            platform: "nvidia-jp6"
-          - arch: amd64
-            hv: k
-            platform: "generic"
-          - arch: amd64
-            hv: kvm
-            platform: "evaluation"
+            os: zededa-ubuntu-2204
+
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         with:
           fetch-depth: 0
-      - name: Build EVE
+      - name: Install qemu for cross-arch build
+        if: matrix.arch == 'riscv64'
+        run: |
+          APT_INSTALL="sudo apt install -y binfmt-support qemu-user-static"
+          $APT_INSTALL || { sudo apt update && $APT_INSTALL ; }
+      - name: Build and push remaining packages
         uses: ./.github/actions/run-make
         with:
-          command: "V=1 HV=${{ matrix.hv }} ZARCH=${{ matrix.arch }} PLATFORM=${{ matrix.platform }} LINUXKIT_PKG_TARGET=build eve"
-          dockerhub-token: ${{ secrets.DOCKERHUB_PULL_TOKEN }}
-          dockerhub-account: ${{ secrets.DOCKERHUB_PULL_USER }}
+          command: "V=1 HV=${{ matrix.hv }} ZARCH=${{ matrix.arch }} PLATFORM=${{ matrix.platform }} LINUXKIT_PKG_TARGET=push PRUNE=1 pkgs"
+          dockerhub-token: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
+          dockerhub-account: ${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}
           clean: false
-      - name: Push EVE
+      - name: Build and push EVE
         uses: ./.github/actions/run-make
         with:
           command: "V=1 HV=${{ matrix.hv }} ZARCH=${{ matrix.arch }} PLATFORM=${{ matrix.platform }} LINUXKIT_PKG_TARGET=push eve"
           dockerhub-token: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
           dockerhub-account: ${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}
+          clean: false
       - name: Collect and push SBOM and sources
         uses: ./.github/actions/run-make
         if: matrix.arch != 'riscv64'
@@ -276,6 +234,7 @@ jobs:
           command: "V=1 HV=${{ matrix.hv }} ZARCH=${{ matrix.arch }} PLATFORM=${{ matrix.platform }} LINUXKIT_PKG_TARGET=push sbom collected_sources compare_sbom_collected_sources publish_sources"
           dockerhub-token: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
           dockerhub-account: ${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}
+          clean: false
       - name: Clean
         if: ${{ always() }}
         run: |
@@ -283,9 +242,14 @@ jobs:
           docker system prune -f -a --volumes
           rm -rf ~/.linuxkit
 
+  # ════════════════════════════════════════════════════════════════════════
+  # Stage 3: Multi-arch manifests and release assets.
+  # Runs after all EVE jobs so every package image has been pushed.
+  # ════════════════════════════════════════════════════════════════════════
+
   manifest:
     if: github.event.repository.full_name == 'lf-edge/eve'
-    needs: [packages-non-arm, packages-arm]
+    needs: eve
     runs-on: zededa-ubuntu-2204
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
