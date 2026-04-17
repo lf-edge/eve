@@ -1,7 +1,7 @@
-From f14761f5f76be900c571d215b9cb145250778a72 Mon Sep 17 00:00:00 2001
+From 82a556505cf48b7a2e631d93a2cd91822046cae4 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Ren=C3=AA=20de=20Souza=20Pinto?= <rene@renesp.com.br>
 Date: Fri, 23 May 2025 12:58:41 +0200
-Subject: [PATCH] MdeModulePkg: Logo: Replace Tianocore by EVE-OS Logo
+Subject: [PATCH 3/4] MdeModulePkg Logo: Replace Tianocore by EVE-OS Logo
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
@@ -485,5 +485,5 @@ zBjkB`Dk*}#0I^(mR=#I)0GPAF^D>{QDF}sHt~)E=sT_nwoE4sz`4n=H=5S_p3331o
 psZq=L&dN7)FA<zw-#W7gU^y%6zRc$tP4kvvoPVFMz}sJe{{eq`w(0-?
 
 -- 
-2.47.2
+2.43.0
 

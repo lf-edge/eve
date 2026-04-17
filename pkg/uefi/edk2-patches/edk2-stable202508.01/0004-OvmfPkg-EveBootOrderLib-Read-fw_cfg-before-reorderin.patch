@@ -1,11 +1,8 @@
-From 9eb6fdc29c6d61233eec6f78eefec8b1755fb0d1 Mon Sep 17 00:00:00 2001
+From fc68b6e0f73fe2298762f668a7e4a3778312c798 Mon Sep 17 00:00:00 2001
 From: Nikolay Martyanov <nikolay@zededa.com>
 Date: Tue, 23 Dec 2025 14:11:08 +0100
-Subject: [PATCH] OvmfPkg/EveBootOrderLib: Read fw_cfg before reordering boot
- options
-MIME-Version: 1.0
-Content-Type: text/plain; charset=UTF-8
-Content-Transfer-Encoding: 8bit
+Subject: [PATCH 4/4] OvmfPkg/EveBootOrderLib: Read fw_cfg before reordering
+ boot options
 
 Previously, SetBootOrderFromEve() unconditionally prioritized USB boot
 devices. This change makes USB boot order manipulation configurable via
@@ -13,12 +10,12 @@ the opt/eve.bootorder fw_cfg file, allowing the behavior to be
 controlled at runtime.
 
 A new ReadEveBootOrderFromFwCfg() helper reads the configuration from
-QEMU’s fw_cfg interface. When set to "usb", USB devices are moved to the
+QEMU's fw_cfg interface. When set to "usb", USB devices are moved to the
 front of the boot order. When set to "nousb", USB devices are removed
 from the boot order entirely. If the file is absent or contains an
 unrecognized value, the existing boot order is left unchanged.
 
-This approach is used instead of QEMU’s bootindex mechanism because EVE
+This approach is used instead of QEMU's bootindex mechanism because EVE
 attaches USB devices via dynamic hotplug using QMP device_add after VM
 startup. The bootindex parameter can only be applied to statically
 defined devices at VM launch time and cannot be specified for devices
@@ -376,5 +373,5 @@ index 5e11df7242..98a7ae715a 100644
  [Guids]
    gEfiGlobalVariableGuid
 -- 
-2.52.0
+2.43.0
 
