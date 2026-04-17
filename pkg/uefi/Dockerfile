@@ -28,8 +28,8 @@ COPY rpi /rpi
 
 FROM build AS build-amd64-versions
 
-ENV EDK_VERSION edk2-stable202408.01
-ENV EDK_COMMIT 4dfdca63a93497203f197ec98ba20e2327e4afe4
+ENV EDK_VERSION edk2-stable202508.01
+ENV EDK_COMMIT 3d244c3b364bd4e21261380662186d064659161c
 
 FROM build-${TARGETARCH}-versions AS build-edk2
 
@@ -43,6 +43,7 @@ RUN set -e ; [ ! -d /edk2 ] ||  [ ! -d /edk2-patches/${EDK_VERSION} ] || \
         done
 
 FROM build-edk2 AS build-amd64
+
 
 FROM build-edk2 AS build-arm64
 

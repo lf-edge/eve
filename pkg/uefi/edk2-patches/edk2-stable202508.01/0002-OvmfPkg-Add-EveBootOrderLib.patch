@@ -1,7 +1,7 @@
-From 9a1bb2cd356a920bfa431cd0aa482daa97a9bac4 Mon Sep 17 00:00:00 2001
+From 17914348290544cb3a6a447de7d8c013aa9f6feb Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Ren=C3=AA=20de=20Souza=20Pinto?= <rene@renesp.com.br>
 Date: Tue, 20 May 2025 17:37:24 +0200
-Subject: [PATCH] OvmfPkg: Add EveBootOrderLib
+Subject: [PATCH 2/4] OvmfPkg: Add EveBootOrderLib
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
@@ -299,10 +299,10 @@ index 0000000000..5e11df7242
 +  gEfiDevicePathProtocolGuid                            ## CONSUMES
 +  gEfiPciRootBridgeIoProtocolGuid                       ## CONSUMES
 diff --git a/OvmfPkg/Library/PlatformBootManagerLib/BdsPlatform.c b/OvmfPkg/Library/PlatformBootManagerLib/BdsPlatform.c
-index d9f61757cf..1fbc0d7a75 100644
+index b696f1b338..593483f074 100644
 --- a/OvmfPkg/Library/PlatformBootManagerLib/BdsPlatform.c
 +++ b/OvmfPkg/Library/PlatformBootManagerLib/BdsPlatform.c
-@@ -1854,6 +1854,7 @@ PlatformBootManagerAfterConsole (
+@@ -1709,6 +1709,7 @@ PlatformBootManagerAfterConsole (
  
    RemoveStaleFvFileOptions ();
    SetBootOrderFromQemu ();
@@ -311,7 +311,7 @@ index d9f61757cf..1fbc0d7a75 100644
    PlatformBmPrintScRegisterHandler ();
  }
 diff --git a/OvmfPkg/Library/PlatformBootManagerLib/BdsPlatform.h b/OvmfPkg/Library/PlatformBootManagerLib/BdsPlatform.h
-index 18b3deb9db..b507284236 100644
+index e238dda9e1..ca67c31271 100644
 --- a/OvmfPkg/Library/PlatformBootManagerLib/BdsPlatform.h
 +++ b/OvmfPkg/Library/PlatformBootManagerLib/BdsPlatform.h
 @@ -44,6 +44,7 @@ Abstract:
@@ -323,7 +323,7 @@ index 18b3deb9db..b507284236 100644
  #include <Protocol/Decompress.h>
  #include <Protocol/PciIo.h>
 diff --git a/OvmfPkg/Library/PlatformBootManagerLib/PlatformBootManagerLib.inf b/OvmfPkg/Library/PlatformBootManagerLib/PlatformBootManagerLib.inf
-index c6ffc1ed9e..38536dae5d 100644
+index 8257862662..9523890c49 100644
 --- a/OvmfPkg/Library/PlatformBootManagerLib/PlatformBootManagerLib.inf
 +++ b/OvmfPkg/Library/PlatformBootManagerLib/PlatformBootManagerLib.inf
 @@ -51,6 +51,7 @@
@@ -335,7 +335,7 @@ index c6ffc1ed9e..38536dae5d 100644
    UefiLib
    PlatformBmPrintScLib
 diff --git a/OvmfPkg/OvmfPkg.dec b/OvmfPkg/OvmfPkg.dec
-index c1c8198061..38c355198a 100644
+index 0a1a09fb70..37d6a5bad1 100644
 --- a/OvmfPkg/OvmfPkg.dec
 +++ b/OvmfPkg/OvmfPkg.dec
 @@ -96,6 +96,11 @@
@@ -347,23 +347,23 @@ index c1c8198061..38c355198a 100644
 +  #
 +  EveBootOrderLib|Include/Library/EveBootOrderLib.h
 +
-   ##  @libraryclass  Load a kernel image and command line passed to QEMU via
-   #                  the command line
+   ##  @libraryclass Common code PlatformBootManager and PlatformBootManagerLight
    #
+   PlatformBootManagerCommonLib|Include/Library/PlatformBootManagerCommonLib.h
 diff --git a/OvmfPkg/OvmfPkgX64.dsc b/OvmfPkg/OvmfPkgX64.dsc
-index efb0eedb04..b0326707e2 100644
+index f859db6acd..da7e10ecde 100644
 --- a/OvmfPkg/OvmfPkgX64.dsc
 +++ b/OvmfPkg/OvmfPkgX64.dsc
-@@ -416,6 +416,7 @@
+@@ -444,6 +444,7 @@
    PlatformBootManagerLib|OvmfPkg/Library/PlatformBootManagerLib/PlatformBootManagerLib.inf
    PlatformBmPrintScLib|OvmfPkg/Library/PlatformBmPrintScLib/PlatformBmPrintScLib.inf
    QemuBootOrderLib|OvmfPkg/Library/QemuBootOrderLib/QemuBootOrderLib.inf
 +  EveBootOrderLib|OvmfPkg/Library/EveBootOrderLib/EveBootOrderLib.inf
+   PlatformBootManagerCommonLib|OvmfPkg/Library/PlatformBootManagerCommonLib/PlatformBootManagerCommonLib.inf
    CpuExceptionHandlerLib|UefiCpuPkg/Library/CpuExceptionHandlerLib/DxeCpuExceptionHandlerLib.inf
  !if $(SMM_REQUIRE) == TRUE
-   LockBoxLib|MdeModulePkg/Library/SmmLockBoxLib/SmmLockBoxDxeLib.inf
 diff --git a/OvmfPkg/OvmfXen.dsc b/OvmfPkg/OvmfXen.dsc
-index c6fc3031ca..96d9590fec 100644
+index 4e99acb800..37a359eb31 100644
 --- a/OvmfPkg/OvmfXen.dsc
 +++ b/OvmfPkg/OvmfXen.dsc
 @@ -334,6 +334,7 @@
@@ -371,9 +371,9 @@ index c6fc3031ca..96d9590fec 100644
    PlatformBmPrintScLib|OvmfPkg/Library/PlatformBmPrintScLib/PlatformBmPrintScLib.inf
    QemuBootOrderLib|OvmfPkg/Library/QemuBootOrderLib/QemuBootOrderLib.inf
 +  EveBootOrderLib|OvmfPkg/Library/EveBootOrderLib/EveBootOrderLib.inf
+   PlatformBootManagerCommonLib|OvmfPkg/Library/PlatformBootManagerCommonLib/PlatformBootManagerCommonLib.inf
    CpuExceptionHandlerLib|UefiCpuPkg/Library/CpuExceptionHandlerLib/DxeCpuExceptionHandlerLib.inf
    LockBoxLib|OvmfPkg/Library/LockBoxLib/LockBoxDxeLib.inf
- !if $(SOURCE_DEBUG_ENABLE) == TRUE
 -- 
-2.47.2
+2.43.0
 
