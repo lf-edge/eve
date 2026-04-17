@@ -517,11 +517,13 @@ enc_status_file="/run/zedkube/EdgeNodeClusterStatus/global.json"
 # When the kubernetes node is in 'single node' mode, these variables are empty
 cluster_intf=""
 is_bootstrap=""
+is_worker_node=""
 join_serverIP=""
 cluster_token=""
 cluster_node_ip=""
 cluster_uuid=""
 convert_to_single_node=false
+save_cluster_startup_rank_retry_logged=false
 
 # get the EdgeNodeClusterStatus from zedkube publication
 # Return values:
@@ -537,6 +539,7 @@ get_enc_status() {
     enc_data=$(cat "$enc_status_file")
     cluster_intf=$(echo "$enc_data" | jq -r '.ClusterInterface')
     is_bootstrap=$(echo "$enc_data" | jq -r '.BootstrapNode')
+    is_worker_node=$(echo "$enc_data" | jq -r '.IsWorkerNode')
     join_serverIP=$(echo "$enc_data" | jq -r '.JoinServerIP')
     cluster_token=$(echo "$enc_data" | jq -r '.EncryptedClusterToken')
     cluster_node_ip=$(echo "$enc_data" | jq -r '.ClusterIPPrefix.IP')
@@ -549,6 +552,90 @@ get_enc_status() {
       return 0
     else
       return 1
+    fi
+}
+
+# Save this node's 0-based startup rank (position in sorted control-plane IP list)
+# to /var/lib/cluster-startup-rank for use by staggered_cluster_startup_delay on
+# the next reboot. Worker nodes are skipped — only control-plane nodes need etcd
+# staggering. For ReplicatedStorage, all 3 masters must be visible before saving;
+# if fewer are seen the function returns without writing so the steady-state loop
+# (every 15s) retries on the next iteration.
+save_cluster_startup_rank() {
+    if [ ! -f /var/lib/edge-node-cluster-mode ]; then
+        return 0
+    fi
+    [ -z "$cluster_node_ip" ] && return 0
+
+    # Already ranked; no need to re-query
+    [ -f /var/lib/cluster-startup-rank ] && return 0
+
+    # Worker nodes do not run etcd; no rank needed
+    if [ "$is_worker_node" = "true" ]; then
+        return 0
+    fi
+
+    Config_cluster_type_get
+    ctype=$?
+
+    # Query only control-plane nodes — these are the etcd members that need staggering
+    master_ips=$(kubectl get nodes -l "node-role.kubernetes.io/control-plane" \
+        -o jsonpath='{range .items[*]}{.status.addresses[?(@.type=="InternalIP")].address}{"\n"}{end}' \
+        2>/dev/null)
+    [ -z "$master_ips" ] && return 0
+
+    master_count=0
+    for ip in $master_ips; do
+        master_count=$((master_count + 1))
+    done
+
+    # ReplicatedStorage runs etcd on all 3 nodes; skip if cluster not fully assembled
+    # so we don't record a stale rank. Retry happens on the next loop iteration.
+    # K3sBase may have a single master so no minimum is enforced.
+    if [ "$ctype" -eq "$CLUSTER_TYPE_REPLICATED_STORAGE" ] && [ "$master_count" -lt 3 ]; then
+        if [ "$save_cluster_startup_rank_retry_logged" = "false" ]; then
+            logmsg "save_cluster_startup_rank: $master_count/3 control-plane nodes visible, will retry"
+            save_cluster_startup_rank_retry_logged=true
+        fi
+        return 0
+    fi
+
+    sorted_ips=$(printf '%s\n' "$master_ips" | sort -t. -k1,1n -k2,2n -k3,3n -k4,4n)
+    rank=0
+    for ip in $sorted_ips; do
+        [ "$ip" = "$cluster_node_ip" ] && break
+        rank=$((rank + 1))
+    done
+
+    logmsg "save_cluster_startup_rank: $cluster_node_ip rank=$rank (${master_count} control-plane nodes)"
+    printf '%d\n' "$rank" > /var/lib/cluster-startup-rank
+}
+
+# Delay k3s startup to stagger etcd joins across cluster nodes on simultaneous
+# reboot. Uses persisted rank written by save_cluster_startup_rank (delay = rank * 25s).
+# No rank file means the rank was never saved (e.g. first boot); no delay applied.
+staggered_cluster_startup_delay() {
+    if [ ! -f /var/lib/edge-node-cluster-mode ]; then
+        return 0
+    fi
+
+    if [ ! -f /var/lib/cluster-startup-rank ]; then
+        logmsg "staggered_cluster_startup_delay: no rank file, skipping"
+        return 0
+    fi
+
+    rank=$(cat /var/lib/cluster-startup-rank)
+    rm -f /var/lib/cluster-startup-rank
+    case "$rank" in
+        ''|*[!0-9]*)
+            logmsg "staggered_cluster_startup_delay: invalid rank '$rank', skipping"
+            return 0 ;;
+    esac
+    delay=$((rank * 25))
+
+    if [ "$delay" -gt 0 ]; then
+        logmsg "staggered_cluster_startup_delay: rank=$rank sleeping ${delay}s before k3s start"
+        sleep "$delay"
     fi
 }
 
@@ -1162,6 +1249,9 @@ else # a restart case, found all_components_initialized
   fi
 fi
 
+# Stagger cluster node starts to avoid etcd quorum races on simultaneous reboot
+staggered_cluster_startup_delay
+
 # use part of the /run/eve-release to get the OS-IMAGE string
 get_eve_os_release
 
@@ -1456,6 +1546,7 @@ else
                 fi
         fi
 fi
+        save_cluster_startup_rank
         check_log_file_size "k3s.log"
         check_log_file_size "multus.log"
         check_log_file_size "k3s-install.log"
