@@ -10,7 +10,7 @@ ARG BUILD_PKGS_BASE="git gcc linux-headers libc-dev make linux-pam-dev m4 findut
 # we use the same image in several places
 ARG EVE_ALPINE_IMAGE=lfedge/eve-alpine:47d267f35e4832f639bf65bbe8a2e7b2f31e3e36
 
-FROM lfedge/eve-uefi:557fd831485ef3e019b311c378e7ecf2b4c05f01 AS uefi-build
+FROM lfedge/eve-uefi:d34705816eae92ca6c736e92cbe56558472f6a28 AS uefi-build
 FROM lfedge/eve-dom0-ztools:41e448a70640e7b6f98d19f790cf35cf579fd0db AS zfs
 RUN mkdir /out
 # copy zfs-related files from dom0-ztools using prepared list of files
