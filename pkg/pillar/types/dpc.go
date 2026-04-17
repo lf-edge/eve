@@ -535,6 +535,9 @@ func (config *DevicePortConfig) MostlyEqual(config2 *DevicePortConfig) bool {
 			!reflect.DeepEqual(p1.WirelessCfg, p2.WirelessCfg) {
 			return false
 		}
+		if !p1.L2LinkConfig.Equal(p2.L2LinkConfig) {
+			return false
+		}
 		if p1.IgnoreDhcpNtpServers != p2.IgnoreDhcpNtpServers ||
 			p1.IgnoreDhcpIPAddresses != p2.IgnoreDhcpIPAddresses ||
 			p1.IgnoreDhcpGateways != p2.IgnoreDhcpGateways ||
@@ -1183,6 +1186,21 @@ type L2LinkConfig struct {
 	Bond   BondConfig `json:",omitempty"`
 }
 
+// Equal compares two L2LinkConfig values for equality.
+func (l L2LinkConfig) Equal(l2 L2LinkConfig) bool {
+	if l.L2Type != l2.L2Type {
+		return false
+	}
+	switch l.L2Type {
+	case L2LinkTypeVLAN:
+		return l.VLAN == l2.VLAN
+	case L2LinkTypeBond:
+		return l.Bond.Equal(l2.Bond)
+	default:
+		return true
+	}
+}
+
 // VLANConfig - VLAN sub-interface configuration.
 type VLANConfig struct {
 	// Logical name of the parent port.
@@ -1258,6 +1276,15 @@ type BondArpMonitor struct {
 	Enabled   bool     `json:",omitempty"`
 	Interval  uint32   `json:",omitempty"`
 	IPTargets []net.IP `json:",omitempty"`
+}
+
+// Equal compares two BondConfig values for equality.
+func (b BondConfig) Equal(b2 BondConfig) bool {
+	return b.Mode == b2.Mode &&
+		b.LacpRate == b2.LacpRate &&
+		generics.EqualSets(b.AggregatedPorts, b2.AggregatedPorts) &&
+		b.MIIMonitor == b2.MIIMonitor &&
+		b.ARPMonitor.Equal(b2.ARPMonitor)
 }
 
 // Equal compares two BondArpMonitor configs for equality.
