@@ -1,4 +1,4 @@
-FROM lfedge/eve-alpine:47d267f35e4832f639bf65bbe8a2e7b2f31e3e36 AS memory-monitor-build
+FROM lfedge/eve-alpine:1f744180283ffb4eabcc3862531aeacf1de886b3 AS memory-monitor-build
 
 ENV BUILD_PKGS gcc musl-dev make linux-headers cmake build-base
 ENV PKGS alpine-baselayout curl strace
