@@ -491,6 +491,60 @@ filtered out of `DeviceNetworkStatus.AddrInfoList` by `dpcmanager` using the
 `LBIPPrefix` range — preventing them from being used as source IPs for
 controller-bound traffic.
 
+kube-vip runs as a DaemonSet on **all** control-plane nodes, not just the
+bootstrap node, so VIPs appear on every node's interface. `dpcmanager` therefore
+needs the LB CIDR on all nodes to perform the filter correctly. Because
+`EdgeNodeClusterStatus.LBInterfaces` is intentionally empty on non-bootstrap
+nodes (to prevent `cluster-init.sh` from applying kube-vip there), a separate
+field `EdgeNodeClusterStatus.LBIPPrefixes` carries the raw CIDR strings and is
+populated by `zedkube` on **every** node regardless of bootstrap role.
+`dpcmanager` uses `LBIPPrefixes` — not `LBInterfaces` — for the VIP filter.
+
+#### Management IP / LB CIDR conflict detection
+
+A kube-vip VIP and the management IP can share an interface — kube-vip
+adds VIPs to the same L3 port that carries the mgmt IP, and the controller is
+expected to configure an LB CIDR that is a sub-range of the subnet disjoint from
+the mgmt IP (for example, mgmt IP `10.1.1.1/24` and LB CIDR `10.1.1.200/29`).
+The mgmt IP may be DHCP-assigned or statically configured. That co-existence is normal
+and the `dpcmanager` filter above is what keeps the VIPs from leaking into
+controller-bound source-address selection.
+
+The misconfiguration we guard against is when the controller sends an LB CIDR
+that *contains* the mgmt IP (e.g. mgmt IP `10.1.1.1` and LB CIDR
+`10.1.1.0/28`). kube-vip-cloud-provider would then allocate `10.1.1.1` as a
+service VIP and add it as `/32` on whichever node holds the VIP leader role.
+That `/32` can float to any node; when it lands on a different node it wins
+ARP for `10.1.1.1`, misrouting controller traffic and breaking the LB service.
+
+Every L3 port is checked against each LB CIDR (not just the LB interface):
+any local IP inside the CIDR could be allocated as a VIP, and when the `/32`
+floats to another node it wins ARP, breaking mgmt or app routing.
+
+Every node runs the check and reports the result in `LBConfigError`:
+
+- **Bootstrap** (`resolveLBInterfaces`): omits the conflicting entry from
+  `LBInterfaces` so kube-vip is not applied; surfaces the error via
+  `KubeLBPoolStatus.Error`.
+- **Non-bootstrap** (`checkLBCIDRConflict`): sets `LBConfigError` only.
+
+`applyDNS` re-publishes `EdgeNodeClusterStatus` on every DNS update whenever
+LB is configured, so the check re-runs as IP assignments change.
+
+#### Stale LoadBalancer service detection
+
+When kube-vip is removed or reconfigured, existing `LoadBalancer`-type services may
+retain allocated IPs that are no longer managed or advertised. Two conditions are
+detected and published in `KubeUserServices.ServiceError`:
+
+- **kube-vip removed**: no kube-vip ConfigMap but services still hold allocated IPs.
+  The VIPs are no longer announced via ARP; traffic to those IPs silently drops.
+- **prefix changed**: kube-vip is running with a new CIDR but services hold IPs from
+  the old range. Those IPs are outside the active pool and will not be re-advertised.
+
+In both cases the operator must delete the affected `LoadBalancer` services. Kubernetes
+does not automatically release the IPs when the LB provider is removed or reconfigured.
+
 #### User Application Examples
 
 Once the controller has configured kube-vip on the cluster, users deploy their

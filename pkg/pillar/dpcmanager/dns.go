@@ -171,15 +171,29 @@ func (m *DpcManager) updateDNS() {
 			// kube-vip VIPs are floating addresses managed by leader election —
 			// they can migrate to another node at any time and no pillar code
 			// uses them, so drop them entirely from DeviceNetworkStatus.
+			// VIPs live on the same interface as the management IP by design
+			// (kube-vip binds them to the same L3 port via hostNetwork).
+			// We distinguish VIPs from the primary management IP by prefix
+			// length: kube-vip (ARP mode) always assigns VIPs as /32 host
+			// routes, while the management IP (DHCP-assigned or statically
+			// configured) always has a subnet mask longer than /32 (e.g. /24).
+			// Filtering only host-route addresses preserves the management IP
+			// in AddrInfoList so that resolveLBInterfaces() can detect and
+			// report the overlap when the controller misconfigures the LB CIDR
+			// to include the mgmt IP.
+			// Edge case: point-to-point interfaces (e.g. cellular/LTE) can
+			// have a /32 management IP. If that IP also falls inside the LB
+			// CIDR, checkLBCIDRConflict/resolveLBInterfaces will detect and
+			// report the conflict, so kube-vip will not be deployed and no
+			// real VIPs will exist on the interface.
 			isLBVIP := false
-			for _, lb := range m.clusterStatus.LBInterfaces {
-				if lb.IPPrefix == "" {
-					continue
-				}
-				_, lbNet, err := net.ParseCIDR(lb.IPPrefix)
-				if err == nil && lbNet.Contains(addr.IP) {
-					isLBVIP = true
-					break
+			if ones, bits := addr.Mask.Size(); ones == bits {
+				for _, prefix := range m.clusterStatus.LBIPPrefixes {
+					_, lbNet, err := net.ParseCIDR(prefix)
+					if err == nil && lbNet.Contains(addr.IP) {
+						isLBVIP = true
+						break
+					}
 				}
 			}
 			if isLBVIP {

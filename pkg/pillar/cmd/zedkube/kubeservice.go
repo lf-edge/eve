@@ -14,14 +14,23 @@ import (
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	corev1 "k8s.io/api/core/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 )
 
-// kubeAPITimeout caps every k8s API call made from the periodic timer handler.
-// It must be well under warningTime (40s) so the main event loop goroutine
-// can return and call ps.StillRunning() before the watchdog touch file goes stale.
-const kubeAPITimeout = 30 * time.Second
+const (
+	// kubeAPITimeout caps every k8s API call made from the periodic timer handler.
+	// It must be well under warningTime (40s) so the main event loop goroutine
+	// can return and call ps.StillRunning() before the watchdog touch file goes stale.
+	kubeAPITimeout = 30 * time.Second
+	// lbOrphanErrMsg is published in KubeUserServices.ServiceError when kube-vip has
+	// been removed but LoadBalancer services still carry allocated IPs.
+	lbOrphanErrMsg = "kube-vip LB removed but services still have LoadBalancer allocated IPs"
+	// lbRangeMismatchErrMsg is published when kube-vip is running but one or more
+	// services hold IPs outside the current LB prefix (e.g. after a prefix change).
+	lbRangeMismatchErrMsg = "services have LoadBalancer IPs outside the current kube-vip prefix"
+)
 
 var (
 	kubeServiceCIDR *net.IPNet
@@ -71,13 +80,44 @@ func (z *zedkube) collectKubeSvcs() {
 	}
 
 	// Collect kube-vip load balancer pool status if kubevip is deployed
-	lbPoolStatus := collectLBPoolStatus(ctx, clientset, serviceInfoList)
+	lbPoolStatus := z.collectLBPoolStatus(ctx, clientset, serviceInfoList)
+
+	// Detect two LB error conditions and surface them via ServiceError:
+	// 1. kube-vip removed but services still hold allocated IPs (orphan).
+	// 2. kube-vip re-enabled with a different prefix; services hold IPs outside
+	//    the new range and need to be deleted and recreated.
+	var serviceError types.ErrorDescription
+	if lbPoolStatus == nil || lbPoolStatus.IPPrefix == "" {
+		for _, svc := range serviceInfoList {
+			if svc.Type == corev1.ServiceTypeLoadBalancer && svc.LoadBalancerIP != "" {
+				serviceError.SetErrorDescription(types.ErrorDescription{
+					Error:         lbOrphanErrMsg,
+					ErrorSeverity: types.ErrorSeverityWarning,
+				})
+				break
+			}
+		}
+	} else if lbPoolStatus.IPPrefix != "" {
+		_, lbNet, err := net.ParseCIDR(lbPoolStatus.IPPrefix)
+		if err == nil {
+			for _, ipStr := range lbPoolStatus.AllocatedIPs {
+				if ip := net.ParseIP(ipStr); ip != nil && !lbNet.Contains(ip) {
+					serviceError.SetErrorDescription(types.ErrorDescription{
+						Error:         lbRangeMismatchErrMsg,
+						ErrorSeverity: types.ErrorSeverityWarning,
+					})
+					break
+				}
+			}
+		}
+	}
 
 	// Create new KubeUserServices struct with collected data
 	newKubeUserServices := types.KubeUserServices{
 		UserService:  serviceInfoList,
 		UserIngress:  ingressInfoList,
 		LBPoolStatus: lbPoolStatus,
+		ServiceError: serviceError,
 	}
 
 	// Get previous published data to compare
@@ -352,18 +392,38 @@ func (z *zedkube) GetAllKubeIngresses(ctx context.Context, clientset *kubernetes
 
 // collectLBPoolStatus reads the kubevip ConfigMap from kube-system to get the configured
 // load balancer pool, and gathers IPs currently allocated to LoadBalancer-type services.
-// Returns nil if the kubevip ConfigMap does not exist (kubevip not yet deployed).
-func collectLBPoolStatus(ctx context.Context, clientset *kubernetes.Clientset, services []types.KubeServiceInfo) *types.KubeLBPoolStatus {
+// If zedkube has rejected the controller's LB config (z.lbConfigError is set) a status
+// with only Error populated is returned so the controller sees the conflict even when
+// kube-vip was never deployed. Returns nil only when kube-vip is not deployed and there
+// is no config-level error to report.
+func (z *zedkube) collectLBPoolStatus(ctx context.Context, clientset *kubernetes.Clientset, services []types.KubeServiceInfo) *types.KubeLBPoolStatus {
+	// configErr is set on bootstrap nodes by resolveLBInterfaces; on non-bootstrap
+	// nodes it comes from checkLBCIDRConflict via z.lbConflictError.
+	configErr := z.lbConfigError
+	if configErr.Error == "" {
+		configErr = z.lbConflictError
+	}
+
 	cm, err := clientset.CoreV1().ConfigMaps("kube-system").Get(
 		ctx, "kubevip", metav1.GetOptions{})
 	if err != nil {
-		// kubevip ConfigMap not present — not deployed yet
+		if !k8serrors.IsNotFound(err) {
+			log.Errorf("collectLBPoolStatus: failed to get kubevip ConfigMap: %v", err)
+		}
+		// kubevip ConfigMap not present — not deployed yet. If we rejected
+		// the controller's LB config, still surface that error to the controller.
+		if configErr.Error != "" {
+			return &types.KubeLBPoolStatus{Error: configErr}
+		}
 		return nil
 	}
 
 	iface := cm.Data["interface-global"]
 	cidr := cm.Data["cidr-global"]
 	if iface == "" || cidr == "" {
+		if configErr.Error != "" {
+			return &types.KubeLBPoolStatus{Error: configErr}
+		}
 		return nil
 	}
 
@@ -379,6 +439,7 @@ func collectLBPoolStatus(ctx context.Context, clientset *kubernetes.Clientset, s
 		Interface:    iface,
 		IPPrefix:     cidr,
 		AllocatedIPs: allocatedIPs,
+		Error:        configErr,
 	}
 }
 
