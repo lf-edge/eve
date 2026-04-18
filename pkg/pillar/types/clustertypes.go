@@ -186,6 +186,19 @@ type EdgeNodeClusterStatus struct {
 	// IPPrefix strings are in CIDR notation consumed by cluster-init.sh via jq.
 	LBInterfaces []LBInterfaceConfig
 
+	// LBIPPrefixes - LB CIDR pool strings populated on every cluster node
+	// (bootstrap and non-bootstrap) whenever LoadBalancerService is configured.
+	// Used by dpcmanager to filter kube-vip VIPs (/32 host-route addresses) out
+	// of AddrInfoList on all nodes, not just the bootstrap node.
+	LBIPPrefixes []string
+
+	// LBConfigError is set on any cluster node (bootstrap or not) when the
+	// controller-supplied LB CIDR overlaps with a local IP on any L3 port of
+	// that node. On the bootstrap node the offending LBInterface entry is also
+	// omitted from LBInterfaces so kube-vip is not applied; non-bootstrap nodes
+	// only report here since they do not control kube-vip deployment.
+	LBConfigError ErrorDescription
+
 	Error ErrorDescription
 }
 

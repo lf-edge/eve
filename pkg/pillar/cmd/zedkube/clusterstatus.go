@@ -58,7 +58,18 @@ func (z *zedkube) applyDNS(dns types.DeviceNetworkStatus) {
 		// cluster status in that case.
 		if z.clusterConfig.ClusterInterface != "" {
 			z.publishKubeConfigStatus()
+			return
 		}
+	}
+	// The LB-CIDR / mgmt-IP overlap check is independent of the cluster
+	// interface: the LB interface may be a different port, and the mgmt IP on
+	// the LB interface can change (via DHCP or static reconfiguration) without
+	// affecting cluster-IP readiness. Re-publish on every DNS update when LB is
+	// configured so the
+	// per-node check re-runs on all nodes (bootstrap and non-bootstrap);
+	// pubsub de-dupes unchanged payloads.
+	if len(z.clusterConfig.LBInterfaces) > 0 {
+		z.publishKubeConfigStatus()
 	}
 }
 
@@ -156,10 +167,28 @@ func (z *zedkube) publishKubeConfigStatus() {
 		log.Errorf("publishKubeConfigStatus: cluster token is not from configitme or encrypted")
 	}
 
+	// All nodes populate LBIPPrefixes so dpcmanager can filter kube-vip VIPs
+	// (/32 host-route addresses) from AddrInfoList regardless of bootstrap role.
+	for _, lb := range z.clusterConfig.LBInterfaces {
+		if lb.IPPrefix != "" {
+			status.LBIPPrefixes = append(status.LBIPPrefixes, lb.IPPrefix)
+		}
+	}
+
 	// Only the bootstrap node manages kube-vip load balancing; other nodes leave
 	// LBInterfaces empty so cluster-init.sh does not apply kubevip.
+	// All nodes check whether their own mgmt IPs conflict with any LB CIDR and
+	// report the result in LBConfigError so the controller can see per-node
+	// conflicts even from non-bootstrap nodes.
 	if z.clusterConfig.BootstrapNode {
+		// resolveLBInterfaces runs the overlap check and caches the error in
+		// z.lbConfigError; it omits conflicting entries from the returned list.
 		status.LBInterfaces = z.resolveLBInterfaces()
+		status.LBConfigError = z.lbConfigError
+	} else {
+		// Non-bootstrap nodes do not control kube-vip, but they still check
+		// their own mgmt IPs against each LB CIDR and report any conflict.
+		status.LBConfigError = z.checkLBCIDRConflict()
 	}
 
 	// publish the cluster status for the kube container
@@ -179,13 +208,57 @@ func (z *zedkube) resolveClusterInterfaceName() string {
 }
 
 // resolveLBInterfaces translates the logical-label in each LBInterfaceConfig.Interface
-// to the Linux interface name required by cluster-init.sh / kube-vip.
+// to the Linux interface name required by cluster-init.sh / kube-vip. For each
+// entry it checks ALL L3 ports against the LB CIDR: an IP on any L3 port
+// (mgmt or app-shared) could be allocated as a VIP by kube-vip-cloud-provider,
+// and when the /32 floats to another node it wins ARP for that IP, causing
+// routing conflicts. On a conflict the offending entry is dropped and
+// z.lbConfigError is populated so collectLBPoolStatus can surface it to the
+// controller; a clean pass clears it.
 func (z *zedkube) resolveLBInterfaces() []types.LBInterfaceConfig {
 	var resolved []types.LBInterfaceConfig
+	var confErr types.ErrorDescription
 	for _, lb := range z.clusterConfig.LBInterfaces {
 		port := z.deviceNetworkStatus.LookupPortByLogicallabel(lb.Interface)
 		if port == nil {
-			log.Errorf("resolveLBInterfaces: no port found for logical label %q", lb.Interface)
+			msg := fmt.Sprintf("LB interface %q not found in device network status; kube-vip not applied",
+				lb.Interface)
+			log.Errorf("resolveLBInterfaces: %s", msg)
+			confErr.SetErrorDescription(types.ErrorDescription{Error: msg})
+			continue
+		}
+		if port.IfName == "" {
+			msg := fmt.Sprintf("LB interface %q has empty Linux interface name; kube-vip not applied",
+				lb.Interface)
+			log.Errorf("resolveLBInterfaces: %s", msg)
+			confErr.SetErrorDescription(types.ErrorDescription{Error: msg})
+			continue
+		}
+		_, lbNet, err := net.ParseCIDR(lb.IPPrefix)
+		if err != nil {
+			msg := fmt.Sprintf("invalid LB CIDR %q for interface %q: %v; kube-vip not applied",
+				lb.IPPrefix, lb.Interface, err)
+			log.Errorf("resolveLBInterfaces: %s", msg)
+			confErr.SetErrorDescription(types.ErrorDescription{Error: msg})
+			continue
+		}
+		conflict := false
+		for i := range z.deviceNetworkStatus.Ports {
+			p := &z.deviceNetworkStatus.Ports[i]
+			if !p.IsL3Port {
+				continue
+			}
+			if ip := findPortIPInCIDR(p, lbNet); ip != nil {
+				msg := fmt.Sprintf(
+					"LB CIDR %s contains local IP %s on port %s; kube-vip not applied",
+					lb.IPPrefix, ip, p.Logicallabel)
+				log.Errorf("resolveLBInterfaces: %s", msg)
+				confErr.SetErrorDescription(types.ErrorDescription{Error: msg})
+				conflict = true
+				break
+			}
+		}
+		if conflict {
 			continue
 		}
 		resolved = append(resolved, types.LBInterfaceConfig{
@@ -193,7 +266,69 @@ func (z *zedkube) resolveLBInterfaces() []types.LBInterfaceConfig {
 			IPPrefix:  lb.IPPrefix,
 		})
 	}
+	// Preserve ErrorTime when the error string is unchanged to avoid spurious
+	// pubsub publishes on every DNS update (pubsub uses deep equality).
+	if confErr.Error != "" && confErr.Error == z.lbConfigError.Error {
+		confErr = z.lbConfigError
+	}
+	z.lbConfigError = confErr
 	return resolved
+}
+
+// findPortIPInCIDR returns the first IP of port that falls inside lbNet, or nil.
+func findPortIPInCIDR(port *types.NetworkPortStatus, lbNet *net.IPNet) net.IP {
+	if port == nil || lbNet == nil {
+		return nil
+	}
+	for _, ai := range port.AddrInfoList {
+		if ai.Addr == nil {
+			continue
+		}
+		if lbNet.Contains(ai.Addr) {
+			return ai.Addr
+		}
+	}
+	return nil
+}
+
+// checkLBCIDRConflict checks ALL L3 ports against each LB CIDR. An IP on any
+// L3 port (mgmt or app-shared) could be allocated as a VIP by
+// kube-vip-cloud-provider; when the /32 floats to another node it wins ARP for
+// that IP, causing routing conflicts. Updates and returns z.lbConflictError;
+// empty means no conflict. Runs on all nodes (bootstrap and non-bootstrap) so
+// each node reports its own verdict via LBConfigError.
+func (z *zedkube) checkLBCIDRConflict() types.ErrorDescription {
+	for _, lb := range z.clusterConfig.LBInterfaces {
+		if lb.IPPrefix == "" {
+			continue
+		}
+		_, lbNet, err := net.ParseCIDR(lb.IPPrefix)
+		if err != nil {
+			// Controller validates CIDRs before sending; log and skip.
+			log.Errorf("checkLBCIDRConflict: invalid LB CIDR %s: %v", lb.IPPrefix, err)
+			continue
+		}
+		for i := range z.deviceNetworkStatus.Ports {
+			p := &z.deviceNetworkStatus.Ports[i]
+			if !p.IsL3Port || p.IfName == "" {
+				continue
+			}
+			if ip := findPortIPInCIDR(p, lbNet); ip != nil {
+				msg := fmt.Sprintf(
+					"LB CIDR %s contains local IP %s on port %s",
+					lb.IPPrefix, ip, p.Logicallabel)
+				log.Errorf("checkLBCIDRConflict: %s", msg)
+				// Preserve ErrorTime for the same persistent conflict to avoid
+				// spurious pubsub publishes on every DNS update.
+				if msg != z.lbConflictError.Error {
+					z.lbConflictError.SetErrorDescription(types.ErrorDescription{Error: msg})
+				}
+				return z.lbConflictError
+			}
+		}
+	}
+	z.lbConflictError = types.ErrorDescription{}
+	return types.ErrorDescription{}
 }
 
 func (z *zedkube) decryptClusterTokenAndManifest() (string, []byte, error) {

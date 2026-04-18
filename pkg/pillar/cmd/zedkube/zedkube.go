@@ -138,6 +138,16 @@ type zedkube struct {
 	// window is live, preventing a false-positive delete of a new VMI that is
 	// legitimately Pending during failover start-up.
 	vmiFailoverSuppressUntil map[string]time.Time
+	// lbConfigError is set by resolveLBInterfaces when an LB CIDR from the
+	// controller overlaps with a management port IP. When set, the offending
+	// entry is omitted from EdgeNodeClusterStatus.LBInterfaces and the error
+	// is surfaced to the controller via KubeLBPoolStatus.Error.
+	lbConfigError types.ErrorDescription
+	// lbConflictError caches the last result of checkLBCIDRConflict (non-bootstrap
+	// path) so the ErrorTime is preserved across DNS updates for the same persistent
+	// conflict, avoiding spurious pubsub publishes (pubsub uses deep equality).
+	// Also used by collectLBPoolStatus to surface per-node conflicts on non-bootstrap nodes.
+	lbConflictError types.ErrorDescription
 }
 
 func inlineUsage() int {
