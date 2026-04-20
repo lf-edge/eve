@@ -165,6 +165,10 @@ func testKernels() []eveKernelWithArch {
 		if semver.Compare(version, "v6.0.0") < 0 {
 			continue
 		}
+		if strings.Contains(flavor, "nvidia") {
+			// currently bpftrace for EVE on NVidia is unsupported
+			continue
+		}
 
 		kernelBranch := fmt.Sprintf("eve-kernel-%s-%s-%s", arch, version, flavor)
 
