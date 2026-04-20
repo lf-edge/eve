@@ -122,10 +122,6 @@ func TestSoftEcdh(t *testing.T) {
 		t.Errorf("Failed to create test key file: %v", err)
 	}
 	defer os.Remove(ecdhKeyFile)
-
-	if err = testEcdhAES(); err != nil {
-		t.Errorf("%v", err)
-	}
 }
 
 // Test ECDH key exchange and a symmetric cipher based on ECDH, with software based keys

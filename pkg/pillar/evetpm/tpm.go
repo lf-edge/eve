@@ -1565,3 +1565,14 @@ func readDiskKeySealingPCRs() (map[int][]byte, error) {
 
 	return readPCRs, nil
 }
+
+// GetCertHash computes sha256 hash of the given certificate
+func GetCertHash(cert []byte, hashAlgo types.CertHashType) ([]byte, error) {
+	certHash := sha256.Sum256(cert)
+	switch hashAlgo {
+	case types.CertHashTypeSha256First16:
+		return certHash[:16], nil
+	default:
+		return []byte{}, fmt.Errorf("Unsupported cert hash type: %d\n", hashAlgo)
+	}
+}
