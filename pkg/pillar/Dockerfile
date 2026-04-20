@@ -89,11 +89,44 @@ ARG HV
 # be necessary.
 ENV DHCPCD_VERSION=v10.1.0
 
-ENV CC=${CROSS_COMPILE_ENV}gcc
+# Configure CC for cross-compilation:
+#
+# The cross gcc (e.g. aarch64-alpine-linux-musl-gcc) was built on a different
+# host and its built-in sysroot path (e.g. /home/builder/sysroot-aarch64) does
+# not exist in this image. The Alpine target libs/headers are copied to
+# /usr/${EVE_TARGET_ARCH}-alpine-linux-musl by the build-cross-target stage,
+# so we must point gcc at that sysroot via --sysroot. Without it both the
+# native C build of dhcpcd and Go cgo builds fail with "cannot find Scrt1.o"
+# / "stdlib.h: No such file or directory".
+#
+# We key the sysroot off CROSS_COMPILE_ENV (set only by the cross build
+# stages) rather than EVE_TARGET_ARCH, because the eve-alpine base image
+# already exports EVE_TARGET_ARCH in its own environment, so it is not a
+# reliable "are we cross-compiling?" signal. CROSS_COMPILE_ENV stays unset
+# in build-native, so for native builds CC is just "gcc" with no --sysroot.
+ENV CC="${CROSS_COMPILE_ENV}gcc${CROSS_COMPILE_ENV:+ --sysroot=/usr/${EVE_TARGET_ARCH}-alpine-linux-musl}"
 
 ADD --keep-git-dir=true https://github.com/NetworkConfiguration/dhcpcd.git#${DHCPCD_VERSION} /dhcpcd
 WORKDIR /dhcpcd
-RUN ./configure --libexecdir=/usr/lib/dhcpcd --dbdir=/var/lib/dhcpcd --runstatedir=/run && \
+# Pass --build/--host/--os/--privsepuser explicitly to dhcpcd's hand-rolled
+# `./configure` script (it is not autotools). Without these flags, configure
+# derives the target triplet from the build host's `uname -m`, never
+# realizes this is a cross build, and aborts. --privsepuser=dhcpcd skips
+# looking up the dhcpcd user in the build host's /etc/passwd (the user is
+# only added to the runtime image later).
+#
+# As with CC above, we use CROSS_COMPILE_ENV (not EVE_TARGET_ARCH) to detect
+# the cross-compile case so native builds get BUILD==HOST and configure
+# does not enter its cross-compilation code path.
+RUN BUILD_TRIPLET="$(uname -m)-unknown-linux" && \
+    if [ -n "${CROSS_COMPILE_ENV}" ]; then \
+        HOST_TRIPLET="${EVE_TARGET_ARCH}-alpine-linux-musl" ; \
+    else \
+        HOST_TRIPLET="${BUILD_TRIPLET}" ; \
+    fi && \
+    ./configure --libexecdir=/usr/lib/dhcpcd --dbdir=/var/lib/dhcpcd --runstatedir=/run \
+        --build="${BUILD_TRIPLET}" --host="${HOST_TRIPLET}" --os=linux \
+        --privsepuser=dhcpcd && \
     make -j "$(getconf _NPROCESSORS_ONLN)" && make install
 
 # building with runtime stats
