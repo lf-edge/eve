@@ -1036,8 +1036,10 @@ coverage-merge:
 	fi
 	@for d in $(EXTRA_COVERAGE_DIR); do \
 	    echo "  Including extra coverage from $$d..."; \
-	    go tool covdata textfmt -i "$$d" | tail -n +2 \
-	        >> $(DIST)/current/combined_coverage.txt; \
+	    _tmp=$$(mktemp); \
+	    go tool covdata textfmt -i "$$d" -o "$$_tmp"; \
+	    tail -n +2 "$$_tmp" >> $(DIST)/current/combined_coverage.txt; \
+	    rm -f "$$_tmp"; \
 	done
 	@echo "Done. Run: go tool cover -func=$(DIST)/current/combined_coverage.txt"
 
