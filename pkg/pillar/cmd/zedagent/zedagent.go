@@ -2315,6 +2315,15 @@ func triggerPublishNTPSourcesToDest(ctxPtr *zedagentContext, dest destinationBit
 func triggerPublishAllInfo(ctxPtr *zedagentContext, dest destinationBitset) {
 
 	log.Function("Triggered PublishAllInfo")
+
+	// Ad-hoc safety in case this trigger happens before all subscriptions
+	// are set up. We log the stack so that such callers can get fixed.
+	if ctxPtr.getconfigCtx == nil ||
+		ctxPtr.getconfigCtx.subAppInstanceStatus == nil {
+		log.Warnf("triggerPublishAllInfo: subscriptions not yet initialized, skipping at %s",
+			agentlog.GetMyStack())
+		return
+	}
 	// we use goroutine since every publish operation can take a long time
 	// and will block sending on TriggerObjectInfo channel
 	go func() {
