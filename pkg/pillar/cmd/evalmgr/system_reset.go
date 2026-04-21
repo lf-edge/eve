@@ -4,6 +4,7 @@
 package evalmgr
 
 import (
+	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/zboot"
 )
@@ -18,6 +19,7 @@ func NewZbootSystemReset() *ZbootSystemReset {
 
 // Reset triggers a system reboot via zboot
 func (z *ZbootSystemReset) Reset(log *base.LogObject) {
+	agentlog.FlushCoverage(log)
 	zboot.Reset(log)
 }
 
