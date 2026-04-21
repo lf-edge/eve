@@ -29,7 +29,6 @@ import (
 
 const (
 	swtpmPath          = "/usr/bin/swtpm"
-	maxInstances       = 32
 	swtpmLogMaxSize    = 10 * 1024 * 1024 // 10MB
 	swtpmLogMaxBackups = 3
 )
@@ -40,7 +39,8 @@ type swtpmInstance struct {
 }
 
 var (
-	maxPidWaitTime = 5 // seconds; overridden in tests
+	maxPidWaitTime = 5  // seconds; overridden in tests
+	maxInstances   = 32 // overridden in tests
 	liveInstances  int
 	m              sync.Mutex
 	log            *base.LogObject
