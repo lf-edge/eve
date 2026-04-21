@@ -215,6 +215,10 @@ const (
 	Dom0DiskUsageMaxBytes GlobalSettingKey = "storage.dom0.disk.maxusagebytes"
 	// StorageZfsReserved is the percentage reserved in a ZFS pool
 	StorageZfsReserved GlobalSettingKey = "storage.zfs.reserved.percent"
+	// LonghornDiskReservedGB is the number of GB reserved per disk on the local Longhorn node.
+	// Overrides Longhorn's default 25% reservation. 0 sets storageReserved to 0 bytes (no
+	// reservation). Set to LonghornDiskReservedGBDisabled to disable EVE's override entirely.
+	LonghornDiskReservedGB GlobalSettingKey = "storage.longhorn.disk.reserved.gigabytes"
 	// AppContainerStatsInterval - App Container Stats Collection
 	AppContainerStatsInterval GlobalSettingKey = "timer.appcontainer.stats.interval"
 	// VaultReadyCutOffTime global setting key
@@ -462,6 +466,10 @@ const (
 	// Set this to false to disable sending a vendor class ID.
 	DHCPEnableVendorClassID GlobalSettingKey = "dhcp.enable.vendorclassid"
 )
+
+// LonghornDiskReservedGBDisabled is the sentinel value for LonghornDiskReservedGB that
+// disables EVE's override, leaving the current Longhorn storageReserved value untouched.
+const LonghornDiskReservedGBDisabled uint32 = 1024 * 1024
 
 // AgentSettingKey - keys for per-agent settings
 type AgentSettingKey string
@@ -1060,6 +1068,8 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddIntItem(Dom0DiskUsageMaxBytes, 2*1024*1024*1024,
 		100*1024*1024, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(StorageZfsReserved, 20, 1, 99)
+	// LonghornDiskReservedGB - Default 2 GB. 0 = no reservation. LonghornDiskReservedGBDisabled = disable override.
+	configItemSpecMap.AddIntItem(LonghornDiskReservedGB, 2, 0, LonghornDiskReservedGBDisabled)
 	configItemSpecMap.AddIntItem(ForceFallbackCounter, 0, 0, 0xFFFFFFFF)
 	//
 	// Go garbage collector configuration section

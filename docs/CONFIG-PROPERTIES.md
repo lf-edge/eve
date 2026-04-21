@@ -33,7 +33,7 @@
 | timer.port.testbetterinterval | timer in seconds | 600 (10 minutes) | 0 | 4294967295 (max uint32) | test a higher prio port config |
 | network.fallback.any.eth | "enabled" or "disabled" | disabled (enabled forcefully during onboarding if no network config) | - | - | if no connectivity try any Ethernet, WiFi, or LTE with DHCP client |
 | network.download.max.cost | 0-255 | 0 | 0 | 255 | [max port cost for download](DEVICE-CONNECTIVITY.md) to avoid e.g., LTE ports |
-| blob.download.max.retries | 1-10 | 5 | 1 | 10 | max download retries when image verification fails.|
+| blob.download.max.retries | 1-10 | 5 | 1 | 10 | max download retries when image verification fails. |
 | debug.enable.usb | boolean | false | - | - | allow USB e.g. keyboards on device |
 | debug.enable.vga | boolean | false | - | - | allow VGA console on device |
 | debug.enable.ssh | authorized ssh key | empty string(ssh disabled) | - | - | allow ssh to EVE |
@@ -41,7 +41,8 @@
 | debug.enable.vnc.shim.vm | boolean | false | - | - | allow VNC access to the container application shim VM (reboot required to disable) |
 | storage.dom0.disk.minusage.percent | integer percent | 20 | 20 | 80 | min. percent of persist partition reserved for dom0 |
 | storage.zfs.reserved.percent | integer percent | 20 | 1 | 99 | min. percent of persist partition reserved for zfs performance |
-| storage.apps.ignore.disk.check | boolean | false | - | - | Ignore disk usage check for Apps. Allows apps to create images bigger than available disk|
+| storage.longhorn.disk.reserved.gigabytes | integer GB | 2 | 0 | 1048576 | per-disk storage reserved by Longhorn on the local node; overrides Longhorn's default 25% reservation. 0 sets storageReserved to 0 bytes (no reservation). 1048576 disables EVE's override, leaving Longhorn's current value in place |
+| storage.apps.ignore.disk.check | boolean | false | - | - | Ignore disk usage check for Apps. Allows apps to create images bigger than available disk |
 | timer.appcontainer.stats.interval | integer in seconds | 300 (5 minutes) | 1 | 4294967295 (max uint32) | collect application container stats |
 | timer.vault.ready.cutoff | integer in seconds | 300 (5 minutes) | 60 (1 minute) | 4294967295 (max uint32) | reboot after inaccessible vault |
 | maintenance.mode | "enabled" or "disabled" | "none" | - | - | don't run applications etc |
@@ -85,7 +86,7 @@
 | msrv.prometheus.metrics.burst | integer | 10 | 1 | 4294967295 (max uint32) | The maximum burst size for the Prometheus metrics endpoint. |
 | msrv.prometheus.metrics.idletimeout.seconds | integer | 240 (4 minutes) | 1 | 4294967295 (max uint32) | The idle timeout in seconds for the Prometheus metrics endpoint. If the connection is idle for this duration, the limit is reset. |
 | edgeview.authen.publickey | string | "" | - | - | Specifies SSH public keys for Edgeview client command authentication. The user must provide the path to the SSH private key in the client script, and the device verifies the command using one of the configured public keys. Separate multiple public keys with newline characters. |
-| wwan.modem.recovery.watchdog | boolean | false | - | - | Enable watchdog for cellular modems. If a modem firmware crashes and fails to recover, the device will automatically reboot.|
+| wwan.modem.recovery.watchdog | boolean | false | - | - | Enable watchdog for cellular modems. If a modem firmware crashes and fails to recover, the device will automatically reboot. |
 | wwan.modem.recovery.reload.drivers | boolean | false | - | - | If a modem firmware crashes and fails to recover, EVE will attempt to reload the MBIM/QMI/MHI drivers as a recovery step. This occurs before the watchdog mechanism is triggered (if enabled). |
 | wwan.modem.recovery.restart.modemmanager | boolean | false | - | - | If a modem firmware crash occurs and ModemManager fails to properly recognize or manage the restarted modem, EVE will attempt to restart ModemManager as a recovery step. This occurs before the watchdog mechanism is triggered (if enabled) and can be combined with driver reload recovery mechanism. |
 | diag.probe.remote.http.endpoint | string | `"http://www.google.com"` | - | - | Remote endpoint (URL, IP instead of hostname is accepted) queried over HTTP to assess the state of network connectivity whenever the controller is not reachable. Used only for diagnostics (no functional impact). Set to an empty string to disable. |
@@ -127,7 +128,7 @@ These use the same log levels as the default log level settings (logrus).
 The per-agent settings begin with "agent.*agentname*.*setting*":
 
 | Name | Type | Default | Description |
-| ---- | ---- |---------|------------ |
+| ---- | ---- | ------- | ----------- |
 | agent.*agentname*.debug.loglevel | string | if set overrides debug.default.loglevel for this particular agent | (Legacy setting debug.*agentname*.loglevel still supported) |
 | agent.*agentname*.debug.remote.loglevel | string | if set overrides debug.default.remote.loglevel for this particular agent | (Legacy setting debug.*agentname*.remote.loglevel) |
 

@@ -42,6 +42,7 @@ const (
 	// Stats are only published by the elected leader and are less latency-sensitive than
 	// app-status or log collection, so a longer interval is acceptable.
 	kubeStatsInterval = 30
+	kubeCfgInterval   = 60
 
 	inlineCmdKubeClusterUpdateStatus = "pubKubeClusterUpdateStatus"
 	inlineCmdVmiDetach               = "vmiDetach"
@@ -117,6 +118,9 @@ type zedkube struct {
 	// Block 'uncordon' after running it once at bootup
 	onBootUncordonCheckComplete bool
 	receivedENCC                bool
+
+	// longhornDiskReservedSet is true once the desired reservation has been applied to the Longhorn node
+	longhornDiskReservedSet bool
 }
 
 func inlineUsage() int {
@@ -602,6 +606,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	appLogTimer := time.NewTimer(logcollectInterval * time.Second)
 	appStatusTimer := time.NewTimer(logcollectInterval * time.Second)
 	kubeStatsTimer := time.NewTimer(kubeStatsInterval * time.Second)
+	kubeCfgTimer := time.NewTimer(kubeCfgInterval * time.Second)
 
 	zedkubeWdUpdate := func() {
 		ps.StillRunning(agentName, warningTime, errorTime)
@@ -641,6 +646,11 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 			zedkubeWdUpdate()
 			zedkubeCtx.collectKubeSvcs()
 			kubeStatsTimer = time.NewTimer(kubeStatsInterval * time.Second)
+
+		// Timer 4: cluster-wide component config application
+		case <-kubeCfgTimer.C:
+			zedkubeCtx.applyLonghornDiskReserved()
+			kubeCfgTimer = time.NewTimer(kubeCfgInterval * time.Second)
 
 		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
@@ -783,8 +793,41 @@ func handleGlobalConfigImpl(ctxArg interface{}, key string,
 
 		handleK3sConfigOverrideChanged(currentConfigItemValueMap, newConfigItemValueMap)
 		z.handleK3sVersionOverride(currentConfigItemValueMap, newConfigItemValueMap)
+
+		newReservedGB := newConfigItemValueMap.GlobalValueInt(types.LonghornDiskReservedGB)
+		existingReservedGB := currentConfigItemValueMap.GlobalValueInt(types.LonghornDiskReservedGB)
+		if newReservedGB != existingReservedGB {
+			log.Functionf("handleGlobalConfigImpl: LonghornDiskReservedGB changed %d -> %d",
+				existingReservedGB, newReservedGB)
+			z.longhornDiskReservedSet = false
+		}
+
+		z.globalConfig = newConfigItemValueMap
+		z.applyLonghornDiskReserved()
 	}
 	log.Functionf("handleGlobalConfigImpl(%s): done", key)
+}
+
+// applyLonghornDiskReserved attempts to set the per-disk reserved space on the local Longhorn
+// node. It is a no-op if the node name is not yet known or the value has already been applied.
+// Callers should retry periodically until longhornDiskReservedSet is true.
+func (z *zedkube) applyLonghornDiskReserved() {
+	if z.nodeName == "" || z.longhornDiskReservedSet {
+		return
+	}
+	reservedGB := z.globalConfig.GlobalValueInt(types.LonghornDiskReservedGB)
+	if reservedGB == types.LonghornDiskReservedGBDisabled {
+		// Operator disabled EVE's override; leave Longhorn's current value in place.
+		z.longhornDiskReservedSet = true
+		return
+	}
+	reservedBytes := int64(reservedGB) * 1024 * 1024 * 1024
+	applied, err := kubeapi.SetLonghornNodeDiskReserved(z.nodeName, reservedBytes)
+	if err != nil {
+		log.Errorf("applyLonghornDiskReserved: %v", err)
+		return
+	}
+	z.longhornDiskReservedSet = applied
 }
 
 func handleK3sConfigOverrideChanged(currentGcp *types.ConfigItemValueMap, newGcp *types.ConfigItemValueMap) {
@@ -829,7 +872,7 @@ func WriteBase64Cfg(parentDir string, filename string, base64Config string) erro
 	return nil
 }
 
-func (ctx *zedkube) handleK3sVersionOverride(currentGcp *types.ConfigItemValueMap, newGcp *types.ConfigItemValueMap) {
+func (z *zedkube) handleK3sVersionOverride(currentGcp *types.ConfigItemValueMap, newGcp *types.ConfigItemValueMap) {
 	oldVal := currentGcp.GlobalValueString(types.K3sVersionOverride)
 	newVal := newGcp.GlobalValueString(types.K3sVersionOverride)
 
@@ -840,13 +883,13 @@ func (ctx *zedkube) handleK3sVersionOverride(currentGcp *types.ConfigItemValueMa
 	// kube Update_CheckNodeComponents() will check this structure and revert
 	// the k3s version back to the baseos constant K3S_VERSION.
 	kubeConfig := types.KubeConfig{}
-	items := ctx.pubKubeConfig.GetAll()
+	items := z.pubKubeConfig.GetAll()
 	glbKubeConfig, ok := items["global"].(types.KubeConfig)
 	if ok {
 		kubeConfig = glbKubeConfig
 	}
 	kubeConfig.K3sVersion = newVal
-	ctx.pubKubeConfig.Publish("global", kubeConfig)
+	z.pubKubeConfig.Publish("global", kubeConfig)
 	currentGcp.SetGlobalValueString(types.K3sVersionOverride, newVal)
 }
 
@@ -932,20 +975,21 @@ func handleZedAgentStatusDelete(ctxArg interface{}, key string,
 
 // checkAndSaveEdgeNodeInfo checks if the device name is set in the EdgeNodeInfo
 // it returns true if we got the valid EdgeNodeInfo update
-func (ctx *zedkube) checkAndSaveEdgeNodeInfo() bool {
-	items := ctx.subEdgeNodeInfo.GetAll()
+func (z *zedkube) checkAndSaveEdgeNodeInfo() bool {
+	items := z.subEdgeNodeInfo.GetAll()
 	if len(items) > 0 {
 		for _, item := range items {
 			enInfo := item.(types.EdgeNodeInfo)
 			if enInfo.DeviceName != "" {
 				log.Noticef("checkAndSaveEdgeNodeInfo: found devicename %s", enInfo.DeviceName)
-				ctx.nodeName = strings.ReplaceAll(strings.ToLower(enInfo.DeviceName), "_", "-")
-				ctx.nodeuuid = enInfo.DeviceID.String()
-				if ctx.nodeName != "" && ctx.nodeuuid != "" {
+				z.nodeName = strings.ReplaceAll(strings.ToLower(enInfo.DeviceName), "_", "-")
+				z.nodeuuid = enInfo.DeviceID.String()
+				if z.nodeName != "" && z.nodeuuid != "" {
 					//Re-enable local node
-					if !ctx.onBootUncordonCheckComplete {
-						go nodeOnBootHealthStatusWatcher(ctx)
+					if !z.onBootUncordonCheckComplete {
+						go nodeOnBootHealthStatusWatcher(z)
 					}
+					z.applyLonghornDiskReserved()
 					return true
 				}
 			}

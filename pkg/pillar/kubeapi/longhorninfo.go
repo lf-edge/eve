@@ -497,6 +497,59 @@ func longhornVolumeSetNode(lhVolName string, kubeNodeName string) error {
 	return err
 }
 
+// SetLonghornNodeDiskReserved sets StorageReserved on every disk of the named Longhorn node.
+// Returns (false, nil) if the Longhorn API is absent or the node object does not exist yet,
+// so callers should retry until (true, nil) is returned.
+func SetLonghornNodeDiskReserved(nodeName string, reservedBytes int64) (bool, error) {
+	apiExists, err := longhornAPIExists()
+	if !apiExists && err == nil {
+		// Longhorn may not yet be installed on this boot yet
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+
+	config, err := GetKubeConfig()
+	if err != nil {
+		return false, fmt.Errorf("SetLonghornNodeDiskReserved: kubeconfig: %v", err)
+	}
+	lhClient, err := versioned.NewForConfig(config)
+	if err != nil {
+		return false, fmt.Errorf("SetLonghornNodeDiskReserved: versioned client: %v", err)
+	}
+
+	lhCtx, lhCancel := context.WithTimeout(context.Background(), kubeAPITimeout)
+	defer lhCancel()
+	node, err := lhClient.LonghornV1beta2().Nodes(longhornNamespace).Get(
+		lhCtx, nodeName, metav1.GetOptions{})
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return false, nil
+		}
+		return false, fmt.Errorf("SetLonghornNodeDiskReserved: get node %s: %v", nodeName, err)
+	}
+
+	changed := false
+	for key, disk := range node.Spec.Disks {
+		if disk.StorageReserved != reservedBytes {
+			disk.StorageReserved = reservedBytes
+			node.Spec.Disks[key] = disk
+			changed = true
+		}
+	}
+	if !changed {
+		return true, nil
+	}
+
+	_, err = lhClient.LonghornV1beta2().Nodes(longhornNamespace).Update(
+		lhCtx, node, metav1.UpdateOptions{})
+	if err != nil {
+		return false, fmt.Errorf("SetLonghornNodeDiskReserved: update node %s: %v", nodeName, err)
+	}
+	return true, nil
+}
+
 // longhornAPIExists will check for longhorn components installed and set
 // a flag in this module to gate all API access.  In some configurations
 // it is possible that longhorn is not installed but this intended configuration
@@ -508,9 +561,16 @@ func longhornAPIExists() (bool, error) {
 	if err != nil {
 		return false, err
 	}
+
+	lhCtx, lhCancel := context.WithTimeout(context.Background(), kubeAPITimeout)
+	defer lhCancel()
+
 	// If the longhorn-system namespace exists then we should expect the longhorn api endpoint is available.
-	ns, err := cs.CoreV1().Namespaces().Get(context.Background(), longhornNamespace, metav1.GetOptions{})
+	ns, err := cs.CoreV1().Namespaces().Get(lhCtx, longhornNamespace, metav1.GetOptions{})
 	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return false, nil
+		}
 		return false, err
 	}
 	if ns == nil {
