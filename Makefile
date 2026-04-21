@@ -534,6 +534,7 @@ test: $(LINUXKIT) pkg/pillar | $(DIST)
 	make -C eve-tools/bpftrace-compiler test
 	make -C pkg/dnsmasq test
 	make -C pkg/debug test
+	make -C pkg/vtpm test
 	go test -C pkg/newlog/cmd/ -v -race
 	$(QUIET): $@: Succeeded
 

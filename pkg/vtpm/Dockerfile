@@ -99,6 +99,18 @@ RUN GO111MODULE=on CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} \
     go build -ldflags "-s -w -X=main.Version=${GOPKGVERSION}" \
     -mod=vendor -o /out/usr/bin/vtpm .
 
+FROM build-go AS test
+# -race requires cgo, which needs a C compiler and libc headers.
+# swtpm needs its runtime shared libraries.
+RUN apk add --no-cache gcc musl-dev \
+    libseccomp glib json-glib gnutls libtasn1 json-c libffi
+# copy swtpm, its modules, and libtpms from the C build stage
+COPY --from=build-c /out/usr/bin/swtpm /usr/bin/swtpm
+COPY --from=build-c /out/usr/lib/ /usr/lib/
+WORKDIR /vtpm-build
+COPY swtpm-vtpm/src/ /vtpm-build/.
+COPY swtpm-vtpm/ /vtpm-build/.
+
 # ===========================================================================
 # Final image
 # ===========================================================================
