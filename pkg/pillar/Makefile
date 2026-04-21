@@ -41,8 +41,16 @@ endif
 ifneq ($(HV),)
 	TAGS+=$(HV)
 endif
+ifeq ($(COVER),y)
+	TAGS+=cover
+endif
 ifneq ($(TAGS),)
 	TAGS:=-tags "$(TAGS)"
+endif
+
+COVERFLAGS=
+ifeq ($(COVER),y)
+	COVERFLAGS:=-cover -covermode=atomic
 endif
 
 ifneq ($(HV),)
@@ -68,7 +76,7 @@ endif
 $(APPS): $(DISTDIR)/$(APPS)
 $(DISTDIR)/$(APPS): $(DISTDIR)
 	@echo "Building $@"
-	GO111MODULE=on GOOS=linux GOARCH=$(ZARCH) go build -ldflags "-s -w" -mod=vendor $(TAGS) $(GCFLAGS) $(LDFLAGS) -o $@ ./$(@F)
+	GO111MODULE=on GOOS=linux GOARCH=$(ZARCH) go build $(COVERFLAGS) -ldflags "-s -w" -mod=vendor $(TAGS) $(GCFLAGS) $(LDFLAGS) -o $@ ./$(@F)
 
 $(APPS1): $(DISTDIR)
 	@echo $@
@@ -92,13 +100,12 @@ build-docker-test: build-docker-test-build
 	docker image tag $(shell $(shell $(DOCKER_LIKE_LKT)) --build-arg TEST_TOOLS=y --load -q --target build) $(DOCKER_TAG)
 
 test: build-docker-test
-	rm -f results.json
-	rm -f results.xml
-	touch results.json
-	touch results.xml
+	rm -f results.json results.xml coverage.txt
+	touch results.json results.xml coverage.txt
 	docker run --platform linux/$(ZARCH) -w /pillar \
 		--mount type=bind,source=./results.json,target=/pillar/results.json \
 		--mount type=bind,source=./results.xml,target=/pillar/results.xml \
+		--mount type=bind,source=./coverage.txt,target=/pillar/coverage.txt \
 		--entrypoint /final/opt/gotestsum $(DOCKER_TAG) \
 		--jsonfile /pillar/results.json \
 		--junitfile /pillar/results.xml \
