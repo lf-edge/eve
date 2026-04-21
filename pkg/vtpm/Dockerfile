@@ -81,6 +81,18 @@ RUN strip --strip-unneeded /out/usr/bin/ptpm
 RUN find /out/usr/lib/ -name '*.la' -delete
 RUN find /out/usr/lib/ -name '*.a' -delete
 
+FROM build AS test
+# -race requires cgo, which needs a C compiler and libc headers.
+# swtpm needs its runtime shared libraries.
+RUN apk add --no-cache gcc musl-dev \
+    libseccomp glib json-glib gnutls libtasn1 json-c libffi
+# copy swtpm, its modules, and libtpms from the C build stage
+COPY --from=build /out/usr/bin/swtpm /usr/bin/swtpm
+COPY --from=build /out/usr/lib/ /usr/lib/
+WORKDIR /vtpm-build
+COPY swtpm-vtpm/src/ /vtpm-build/.
+COPY swtpm-vtpm/ /vtpm-build/.
+
 FROM scratch
 COPY --from=build /out/ /
 COPY init.sh /usr/bin/

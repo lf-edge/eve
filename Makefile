@@ -456,6 +456,7 @@ test: $(LINUXKIT) pkg/pillar test-images-patches | $(DIST)
 	make -C eve-tools/bpftrace-compiler test
 	make -C pkg/dnsmasq test
 	make -C pkg/debug test
+	make -C pkg/vtpm test
 	$(QUIET): $@: Succeeded
 
 test-profiling:
