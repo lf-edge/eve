@@ -139,6 +139,11 @@ const (
 	// CustomOVMFSettingsDir - directory for custom OVMF settings (for different resolutions)
 	CustomOVMFSettingsDir = "/hostfs/etc/ovmf"
 
+	// CoverageDir - directory where coverage-instrumented zedbox binaries
+	// write their binary coverage files (GOCOVERDIR).  Only used when EVE
+	// is built with COVER=y (go build -cover -covermode=atomic).
+	CoverageDir = PersistDir + "/coverage"
+
 	// CheckpointDirname - directory for persisting received configuration
 	// (from controller, LPS, etc.).
 	CheckpointDirname = PersistDir + "/checkpoint"

@@ -391,6 +391,7 @@ func handleNodeOperation(ctxPtr *nodeagentContext, op types.DeviceOperation) {
 		log.Errorf("Timer expired.. Exit %s", agentName)
 		os.Exit(0)
 	}()
+	agentlog.FlushCoverage(log)
 	if op == types.DeviceOperationPoweroff {
 		zboot.Poweroff(log)
 	} else {
