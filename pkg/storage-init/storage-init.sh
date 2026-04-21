@@ -308,6 +308,12 @@ UUID_SYMLINK_PATH="/dev/disk/by-uuid"
 mkdir -p $UUID_SYMLINK_PATH
 chmod 700 $UUID_SYMLINK_PATH
 
+# Check for tee-supplicant and create the directory for the Trustzone userspace
+# filesystem (if needed).
+if [ -f /hostfs/usr/sbin/tee-supplicant ]; then
+    mkdir -p $PERSISTDIR/coretee
+fi
+
 # create /run/edgeview early before the disk mount for edgeview container
 mkdir -p /run/edgeview
 
