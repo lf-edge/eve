@@ -390,7 +390,7 @@ endif
 
 # For all possible env variable that later can be handle by a Dockerfile as a build-arg-file of
 # a given package, we create a target of the form lk-extra-opt/<pkg-name>/<env-var-name>
-LK_POSSIBLE_PKG_PLUS_BUILD_ARGS := pillar/IMM_PROFILING pillar/ARTIFICIAL_LEAK
+LK_POSSIBLE_PKG_PLUS_BUILD_ARGS := pillar/IMM_PROFILING pillar/ARTIFICIAL_LEAK pillar/COVER
 LK_POSSIBLE_BUILD_ARG_TARGETS := $(addprefix lk-extra-opt/,$(LK_POSSIBLE_PKG_PLUS_BUILD_ARGS))
 
 .PHONY: lk-extra-opt/%
@@ -985,6 +985,62 @@ eve: $(INSTALLER) $(EVE_ARTIFACTS) current $(RUNME) $(BUILD_YML) | $(BUILD_DIR)
 eden:
 	EVE_FLAVOR=$(HV) EVE_ARCH=$(ZARCH) ACCEL=$(if $(ACCEL),true,false) USE_TPM=$(if $(TPM),true,false) EDEN_CLEANUP=$(EDEN_CLEANUP) tests/eden/run.sh
 
+# eden-cover builds EVE with coverage instrumentation (COVER=y) and then
+# runs the Eden end-to-end test suite.  Coverage data from running zedbox
+# agents is collected at the end and written to $(DIST)/eden_coverage/.
+# Use "make coverage-merge" to combine it with unit-test coverage.
+#
+# The EVE upgrade test is excluded: upgrading replaces the COVER=y image with
+# a release image, making coverage data from that point forward meaningless
+# and leaving EVE disconnected from Adam so SSH (required for collection) fails.
+eden-cover: $(LINUXKIT) | $(DIST)
+	$(MAKE) COVER=y HV=$(HV) ZARCH=$(ZARCH) eve-pillar
+	$(MAKE) COVER=y HV=$(HV) ZARCH=$(ZARCH) eve
+	COVER=y TEST_ALL=1 \
+	EVE_COVER_DIR=$(DIST)/current/eden_coverage \
+	EVE_FLAVOR=$(HV) EVE_ARCH=$(ZARCH) ACCEL=$(if $(ACCEL),true,false) \
+	USE_TPM=$(if $(TPM),true,false) EDEN_CLEANUP=$(EDEN_CLEANUP) \
+	tests/eden/run.sh
+
+# Path to the unit-test coverage profile produced by "make test".
+# Override for testing or to point at a profile from a different build.
+UNIT_COV_FILE ?= pkg/pillar/coverage.txt
+
+# Space-separated list of directories, each containing binary Go coverage
+# files (covmeta.* + covcounters.*) from additional instrumented test runs
+# (e.g. manually triggered runs against a COVER=y EVE image).
+# Each directory is converted via "go tool covdata textfmt" and merged into
+# the combined profile alongside the unit-test and Eden E2E profiles.
+EXTRA_COVERAGE_DIR ?=
+
+# coverage-merge combines coverage profiles from:
+#   1. Unit tests:  $(UNIT_COV_FILE)  (required; run "make test" to produce)
+#   2. Eden E2E:    $(DIST)/current/eden_coverage/eden_e2e_coverage.txt
+#                   (optional; produced by "make eden-cover")
+#   3. Extra dirs:  $(EXTRA_COVERAGE_DIR) — zero or more directories with
+#                   binary coverage files from instrumented test runs
+# Output: $(DIST)/current/combined_coverage.txt
+# All inputs must use -covermode=atomic (basic-block granularity).
+coverage-merge:
+	@if [ ! -f $(UNIT_COV_FILE) ]; then \
+	    echo "$(UNIT_COV_FILE) not found; run 'make test' first"; exit 1; \
+	fi
+	@mkdir -p $(DIST)/current
+	@echo "Merging coverage profiles into $(DIST)/current/combined_coverage.txt"
+	@head -1 $(UNIT_COV_FILE) > $(DIST)/current/combined_coverage.txt
+	@tail -n +2 $(UNIT_COV_FILE) >> $(DIST)/current/combined_coverage.txt
+	@if [ -f $(DIST)/current/eden_coverage/eden_e2e_coverage.txt ]; then \
+	    echo "  Including Eden E2E coverage..."; \
+	    tail -n +2 $(DIST)/current/eden_coverage/eden_e2e_coverage.txt \
+	        >> $(DIST)/current/combined_coverage.txt; \
+	fi
+	@for d in $(EXTRA_COVERAGE_DIR); do \
+	    echo "  Including extra coverage from $$d..."; \
+	    go tool covdata textfmt -i "$$d" | tail -n +2 \
+	        >> $(DIST)/current/combined_coverage.txt; \
+	done
+	@echo "Done. Run: go tool cover -func=$(DIST)/current/combined_coverage.txt"
+
 .PHONY: image-set outfile-set cache-export cache-export-docker-load cache-export-docker-load-all
 
 image-set:
@@ -1275,7 +1331,7 @@ kernel-tag:
 	@echo $(KERNEL_TAG)
 
 .PRECIOUS: rootfs-% $(ROOTFS)-%.img $(ROOTFS_COMPLETE)
-.PHONY: all clean test run pkgs help live rootfs config installer live current FORCE $(DIST) HOSTARCH image-set cache-export eden
+.PHONY: all clean test run pkgs help live rootfs config installer live current FORCE $(DIST) HOSTARCH image-set cache-export eden eden-cover coverage-merge
 FORCE:
 
 help:
@@ -1325,6 +1381,11 @@ help:
 	@echo "   eden EDEN_DEBUG=1                enable debug logging for Eden commands"
 	@echo "   eden TEST_SMOKE=1                run smoke tests (also: TEST_NET, TEST_LOC, TEST_UPGRADE,"
 	@echo "                                    TEST_UAPP, TEST_VIRT, TEST_STORAGE, TEST_ALL)"
+	@echo "   eden-cover                       build COVER=y EVE, run Eden E2E tests, collect binary"
+	@echo "                                    coverage to dist/<arch>/current/eden_coverage/"
+	@echo "   coverage-merge                   merge unit-test + Eden E2E + any EXTRA_COVERAGE_DIR"
+	@echo "                                    binary coverage dirs into combined_coverage.txt;"
+	@echo "                                    accepts UNIT_COV_FILE=<path> EXTRA_COVERAGE_DIR='<d>...'"
 	@echo
 	@echo "Seldom used maintenance and development targets:"
 	@echo "   bump-eve-api    bump eve-api in all subprojects"

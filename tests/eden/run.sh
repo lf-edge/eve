@@ -10,11 +10,14 @@ EDEN_DEBUG_OPT=""
 PREFIX="[EDEN_TEST]"
 EDEN_TAG=${EDEN_TAG:-1.0.16}
 EDEN_REPO=${EDEN_REPO:-https://github.com/lf-edge/eden.git}
+COVER=${COVER:-}
 EVE_FLAVOR=${EVE_FLAVOR:-kvm}
 EVE_ARCH=${EVE_ARCH:-amd64}
 USE_TPM=${USE_TPM:-true}
 ACCEL=${ACCEL:-true}
 DIST_DIR="$EVE_ROOT/dist/$EVE_ARCH/current"
+# EVE_COVER_DIR must be absolute so Eden (running from its own dir) writes to the right place.
+EVE_COVER_DIR=$(realpath "${EVE_COVER_DIR:-$DIST_DIR/eden_coverage}")
 EDEN_DIR="$DIST_DIR/eden"
 RUNLOGS="$DIST_DIR/eden_runlogs"
 EVE_TAG_BASE=$(basename "$(readlink -f "$DIST_DIR")")
@@ -47,7 +50,7 @@ cleanup_stale_processes() {
         rm -f "$SWTPM_PID_FILE"
     fi
 
-    # Cleanup stale QEMU
+    # Cleanup stale QEMU from current dist (PID file)
     EVE_PID_FILE="$EDEN_DIR/dist/default-eve.pid"
     if [ -f "$EVE_PID_FILE" ]; then
         PID=$(cat "$EVE_PID_FILE")
@@ -57,6 +60,10 @@ cleanup_stale_processes() {
         fi
         rm -f "$EVE_PID_FILE"
     fi
+
+    # Kill any lingering QEMU processes from previous runs of this EVE workspace
+    # (covers cases where the PID file was in an older dist directory).
+    pkill -f "qemu.*$(basename "$EVE_ROOT")/dist" 2>/dev/null || true
 }
 
 cleanup_eden() {
@@ -142,6 +149,12 @@ setup_eden() {
 }
 
 start_eden() {
+    # Stop any running Eden services so Docker containers are recreated with
+    # fresh credentials.  This prevents Redis password mismatches when the
+    # Eden config (and its redis.pass) was regenerated after a previous run.
+    echo "$PREFIX Stopping any previously running Eden services..."
+    ./eden stop > /dev/null 2>&1 || true
+
     echo "$PREFIX Starting Eden..."
     # shellcheck disable=SC2086
     if ! ./eden start $EDEN_DEBUG_OPT > "$RUNLOGS/start.log" 2>&1; then
@@ -263,10 +276,15 @@ for id in $TESTS_TO_RUN; do
     if [ -n "$TEST_FILE" ]; then
         echo "================================================================"
         echo "$PREFIX Running $TEST_NAME ($TEST_FILE)..."
-        LOG_NAME=$(echo "$TEST_NAME" | tr '[:upper:]' '[:lower:]' | tr ' ' '_')
+        LOG_NAME=$(echo "$TEST_NAME" | tr '[:upper:]' '[:lower:]' | tr ' /' '__')
         LOG_FILE="$RUNLOGS/${LOG_NAME}.log"
         # shellcheck disable=SC2086
-        if ./eden test ./tests/workflow -s "$TEST_FILE" -v debug 2>&1 | tee "$LOG_FILE"; then
+        COVER_FLAG=""
+        if [ -n "$COVER" ]; then
+            COVER_FLAG="--coverage-dir $EVE_COVER_DIR"
+        fi
+        # shellcheck disable=SC2086
+        if ./eden test ./tests/workflow -s "$TEST_FILE" -v debug $COVER_FLAG 2>&1 | tee "$LOG_FILE"; then
             echo "$PREFIX $TEST_NAME completed successfully."
         else
             echo "$PREFIX $TEST_NAME failed. logs at $LOG_FILE"
@@ -276,3 +294,23 @@ for id in $TESTS_TO_RUN; do
         echo "$PREFIX Warning: Invalid test ID selected: $id"
     fi
 done
+
+# Collect EVE coverage after all tests if COVER is set.
+# eden test --coverage-dir already triggers collection for each scenario; this
+# is an explicit final sweep to capture any counters not yet flushed.
+if [ -n "$COVER" ]; then
+    echo "================================================================"
+    echo "$PREFIX Collecting final EVE coverage data..."
+    mkdir -p "$EVE_COVER_DIR"
+    # The EVE image may have a new SSH host key (rebuilt); clear any stale
+    # entry so SCP inside collect-coverage is not blocked by host key mismatch.
+    ssh-keygen -f "${HOME}/.ssh/known_hosts" -R '[127.0.0.1]:2222' > /dev/null 2>&1 || true
+    if ./eden eve collect-coverage --output-dir "$EVE_COVER_DIR" \
+            > "$RUNLOGS/coverage.log" 2>&1 && \
+            [ -f "$EVE_COVER_DIR/eden_e2e_coverage.txt" ]; then
+        echo "$PREFIX Coverage written to $EVE_COVER_DIR/eden_e2e_coverage.txt"
+    else
+        echo "$PREFIX Warning: coverage collection failed; see $RUNLOGS/coverage.log"
+    fi
+    echo "================================================================"
+fi
