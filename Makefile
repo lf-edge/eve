@@ -450,6 +450,7 @@ test: $(LINUXKIT) pkg/pillar test-images-patches | $(DIST)
 	cp pkg/pillar/results.xml $(DIST)/
 	make -C eve-tools/bpftrace-compiler test
 	make -C pkg/dnsmasq test
+	make -C pkg/vtpm test
 	$(QUIET): $@: Succeeded
 
 test-profiling:
