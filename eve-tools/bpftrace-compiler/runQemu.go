@@ -256,7 +256,7 @@ func (qemuArchArgsArm64) verboseArchAppendLineArgs() []string {
 
 func (qemuArchArgsArm64) archArgs() []string {
 	args := []string{
-		"/usr/bin/qemu-system-aarch64",
+		"qemu-system-aarch64",
 		"-smp", "1",
 		"-nographic",
 		"-m", "256",
@@ -279,7 +279,7 @@ func (qemuArchArgsAmd64) verboseArchAppendLineArgs() []string {
 
 func (qemuArchArgsAmd64) archArgs() []string {
 	args := []string{
-		"/usr/bin/qemu-system-x86_64",
+		"qemu-system-x86_64",
 		"-smp", "1",
 		"-nographic",
 		"-m", "256",
