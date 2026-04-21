@@ -1160,7 +1160,11 @@ func inhaleDeviceConfig(getconfigCtx *getconfigContext, config *zconfig.EdgeDevC
 		if controllerEpoch != newControllerEpoch {
 			log.Noticef("Controller epoch changed from %d to %d", controllerEpoch, newControllerEpoch)
 			controllerEpoch = newControllerEpoch
-			triggerPublishAllInfo(getconfigCtx.zedagentCtx, AllDest)
+			// Too early to do this from initializeConfigItemValueMap
+			// since zedagent is not fully initialized.
+			if source != civmOnly {
+				triggerPublishAllInfo(getconfigCtx.zedagentCtx, AllDest)
+			}
 		}
 	}
 
