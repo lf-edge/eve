@@ -17,6 +17,15 @@ import (
 	. "github.com/onsi/gomega"
 )
 
+// TestGetDefrouteIntfSrcs verifies that getDefrouteIntfSrcs returns nil
+// gracefully when the DeviceNetworkStatus file is absent (i.e. outside EVE).
+func TestGetDefrouteIntfSrcs(t *testing.T) {
+	g := NewWithT(t)
+	// Outside EVE the file does not exist; the function must return nil, not panic.
+	got := getDefrouteIntfSrcs()
+	g.Expect(got).To(BeNil(), "expected nil when DeviceNetworkStatus file is absent")
+}
+
 func TestWalkLogDirs(t *testing.T) {
 	g := NewWithT(t)
 
