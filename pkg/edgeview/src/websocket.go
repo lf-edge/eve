@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/lf-edge/eve/pkg/pillar/types"
 	"golang.org/x/sys/unix"
 )
 
@@ -203,17 +204,34 @@ func tlsDial(isServer bool, pIP string, pport int, src []net.IP, idx int) (*webs
 	return dialer, nil
 }
 
-// get source IP addresses of ipv4 default route in main table
+// get source IP addresses from ports that have an IPv4 default router in DeviceNetworkStatus
 func getDefrouteIntfSrcs() []net.IP {
+	var devNetStatus types.DeviceNetworkStatus
+	retbytes, err := os.ReadFile("/run/nim/DeviceNetworkStatus/global.json")
+	if err != nil {
+		return nil
+	}
+	if err := json.Unmarshal(retbytes, &devNetStatus); err != nil {
+		return nil
+	}
 	var srcIPs []net.IP
-	table254 := 254
-	routes := getTableIPv4Routes(table254)
-	for _, r := range routes {
-		if r.Dst == nil && r.Gw.To4() != nil && r.Src.To4() != nil {
-			srcIPs = append(srcIPs, r.Src)
+	for _, port := range devNetStatus.Ports {
+		hasIPv4Router := false
+		for _, router := range port.DefaultRouters {
+			if router.To4() != nil {
+				hasIPv4Router = true
+				break
+			}
+		}
+		if !hasIPv4Router {
+			continue
+		}
+		for _, addrInfo := range port.AddrInfoList {
+			if addrInfo.Addr.To4() != nil {
+				srcIPs = append(srcIPs, addrInfo.Addr)
+			}
 		}
 	}
-	// if we have multiple source IPs, make sure they are returned in order always
 	if len(srcIPs) > 1 {
 		sort.Slice(srcIPs, func(i, j int) bool {
 			return bytes.Compare(srcIPs[i], srcIPs[j]) < 0
