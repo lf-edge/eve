@@ -1041,6 +1041,10 @@ coverage-merge:
 	    tail -n +2 "$$_tmp" >> $(DIST)/current/combined_coverage.txt; \
 	    rm -f "$$_tmp"; \
 	done
+	@_filtered=$$(mktemp); \
+	    python3 $(CURDIR)/tools/filter_coverage_conflicts.py \
+	        $(DIST)/current/combined_coverage.txt "$$_filtered" && \
+	    mv "$$_filtered" $(DIST)/current/combined_coverage.txt
 	@echo "Done. Run: go tool cover -func=$(DIST)/current/combined_coverage.txt"
 
 .PHONY: image-set outfile-set cache-export cache-export-docker-load cache-export-docker-load-all
